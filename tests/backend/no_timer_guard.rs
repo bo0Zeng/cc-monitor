@@ -2,7 +2,7 @@
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**各自只许有一句**，`readonly_guard::g6_scope_pins` 钉着）
 //!
-//! - **它守的性质是**：daemon **自己的生产代码**里不出现会让线程 / 任务自己醒来的构件 —— 判活由内核事件驱动（pidfile inotify + pidfd · socket 目录 inotify · tmux hook → SIGUSR1），不靠节拍反复问。
+//! - **它守的性质是**：backend **自己的生产代码**里不出现会让线程 / 任务自己醒来的构件 —— 判活由内核事件驱动（pidfile inotify + pidfd · socket 目录 inotify · tmux hook → SIGUSR1），不靠节拍反复问。
 //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs`（`SKIPPED_BY_NAME` 跳过自身）剥掉测试段之后的**源码文本**；依赖 crate 的源码、以及被起进程的行为，**都不在里面**。
 //!
 //! ⚠ **这两行今天对得上**（三道护栏里唯一一道），而它买到的东西**比字面小一格** —— 如实登记：
@@ -36,11 +36,11 @@
 //!
 //! # 范围
 //!
-//! **只钉 daemon crate（`src/backend/*.rs`）的生产段。** monitor 侧另有自己的
+//! **只钉 backend crate（`src/backend/*.rs`）的生产段。** monitor 侧另有自己的
 //! 轮询纪律（那边有 UI 刷新、重连退避等**正当**周期行为），把本护栏扩过去会立刻变成噪音
 //! ⇒ 要钉那半得单独论证。**范围写清楚，别默认扩** —— 守卫范围必须等于它真正证明的性质。
 //!
-//! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改 daemon 行为。
+//! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改后端行为。
 
 #[cfg(test)]
 mod f09_external_beat {
@@ -534,7 +534,7 @@ mod tests {
     /// - `recv_timeout`：等不到就自己醒，等价于给循环装了节拍
     /// - `tokio::time::interval`：字面意义的节拍器
     /// - `Instant::now`：本 crate 里它只会用来做「距上次多久了」的节流判断
-    ///   （真要打时间戳有 `SystemTime`，且 daemon 的帧不带时间戳）
+    ///   （真要打时间戳有 `SystemTime`，且后端的帧不带时间戳）
     /// - `Duration::from_secs`：秒级 `Duration` 在这个 crate 里只可能是节流常量
     ///   （去抖窗口是毫秒级，超时上限也不该出现在 reader 路径上）
     ///
@@ -682,7 +682,7 @@ mod tests {
     /// `src/<子目录>/`，扫到的文件只剩顶层那几个 mod 声明 + 本护栏 + `wire.rs`，
     /// 而当时的地板 `files.len() >= 5` **照样满足** ⇒ 护栏一行业务代码都没扫、全绿。
     /// 那正是本仓在「守卫范围 ≠ 性质范围」上栽过的第四次。
-    pub(super) fn daemon_sources() -> Vec<(String, String)> {
+    pub(super) fn backend_sources() -> Vec<(String, String)> {
         // 〔搬测试 2026-09-17〕人群是「**全体后端代码**」，而它今天住两棵树。
         // 只走 `src_root()` 会安静地少 19 个文件 —— 下面那条「采集 ＋ 跳过 ＝ 树上全部」
         // 正是因此红的（它跳过的 `no_timer_guard.rs` 自己就搬去了第二棵树）。
@@ -728,7 +728,7 @@ mod tests {
     /// 采集时**按文件名主动跳过**的文件。
     ///
     /// 单独成表，是为了让「数量相等」那条判据算得出跳过了几个 —— 原来写死 `files.len() + 1`，
-    /// 那个 `1` 与下面 `daemon_sources()` 里的跳过逻辑隔空耦合（Phase E 审计建议）。
+    /// 那个 `1` 与下面 `backend_sources()` 里的跳过逻辑隔空耦合（Phase E 审计建议）。
     /// U1b 若要再跳过一个（如 `control/` 的窄写护栏自身），只改这张表，判据自动跟上。
     const SKIPPED_BY_NAME: &[&str] = &["no_timer_guard.rs"];
 
@@ -795,12 +795,12 @@ mod tests {
         scanned_rel == registered_file || scanned_rel.ends_with(&format!("/{registered_file}"))
     }
 
-    /// 独立走一遍目录树，只数 `.rs` 个数 —— 用来与 `daemon_sources()` 的产出做**数量相等**核对。
+    /// 独立走一遍目录树，只数 `.rs` 个数 —— 用来与 `backend_sources()` 的产出做**数量相等**核对。
     ///
-    /// 刻意与 `daemon_sources` 分开写：那边还要读文件、剥生产段、跳过自身，
+    /// 刻意与 `backend_sources` 分开写：那边还要读文件、剥生产段、跳过自身，
     /// 这边只做「树上有几个 `.rs`」这一件事，两者对不上就说明采集环节漏了东西。
     fn count_rs_in_tree() -> usize {
-        // 两棵树 —— 与 `daemon_sources()` 同一个人群，否则那条「数量相等」在对拍两个不同的集合。
+        // 两棵树 —— 与 `backend_sources()` 同一个人群，否则那条「数量相等」在对拍两个不同的集合。
         let mut n = 0usize;
         let mut stack: Vec<std::path::PathBuf> = crate::guard_support::code_roots().to_vec();
         while let Some(dir) = stack.pop() {
@@ -818,8 +818,8 @@ mod tests {
 
     /// ★ 生产段不许有任何**周期性唤醒**构件。
     #[test]
-    fn daemon_production_code_has_no_periodic_wakeups() {
-        let files = daemon_sources();
+    fn backend_production_code_has_no_periodic_wakeups() {
+        let files = backend_sources();
         // 反向自检：**扫到的必须是真代码**。断言的是「命中数 == 0」+「扫到了东西」，
         // 而不是「命中数 < N」—— 阈值绝不能挂在被优化的那个量上（rust-ts-boundary 的教训）。
         //
@@ -887,7 +887,7 @@ mod tests {
         //（用的是 `Duration::new`）⇒ 两道防线**同时**被同一种改写绕过去。
         //
         // 补的是**调用形态**（名字要是完整的词、后面紧跟 `(`），与怎么导入无关。
-        // ⚠ 补之前量过误红面：这八个名字在 daemon 生产段今天**全为 0 处**。
+        // ⚠ 补之前量过误红面：这八个名字在后端生产段今天**全为 0 处**。
         for (name, code) in &files {
             for call in [
                 "sleep",
@@ -905,7 +905,7 @@ mod tests {
                 }) {
                     panic!(
                         "零定时器护栏违规（P6，**按调用形态**逮到）：生产代码 {name} 里有 `{call}(` 调用：\n  {}\n\
-                         daemon 的判活全部由内核事件驱动（inotify / pidfd / tmux hook）。\n\
+                         backend 的判活全部由内核事件驱动（inotify / pidfd / tmux hook）。\n\
                          ⚠ 换个 import 写法或换个 `Duration` 构造器**绕不过这一条** —— 它只看调用。",
                         line.trim()
                     );
@@ -917,7 +917,7 @@ mod tests {
                 assert!(
                     !code.contains(&pat),
                     "零定时器护栏违规（P6）：生产代码 {name} 含周期性唤醒构件 `{pat}`。\n\
-                     daemon 的判活全部由内核事件驱动（inotify / pidfd / tmux hook→SIGUSR1）；\n\
+                     backend 的判活全部由内核事件驱动（inotify / pidfd / tmux hook→SIGUSR1）；\n\
                      加回定时器等于把 P0-P5 的收益悄悄退掉。确有必要请先改本护栏的登记表并说明理由。"
                 );
             }
@@ -932,7 +932,7 @@ mod tests {
     fn every_duration_use_is_registered_as_non_timer() {
         let needle = format!("Duration::{}", "from_");
         let mut found: Vec<(String, usize)> = Vec::new();
-        for (name, code) in daemon_sources() {
+        for (name, code) in backend_sources() {
             let n = code.matches(&needle).count();
             if n > 0 {
                 found.push((name, n));
@@ -949,14 +949,14 @@ mod tests {
         );
         // 登记表里的每条都必须**还在**（删了代码却留着登记 = 表在腐烂）。
         //
-        // ★ 匹配按**文件名**不按完整相对路径（Phase E 审计 R4）：`daemon_sources()` 现在返回
+        // ★ 匹配按**文件名**不按完整相对路径（Phase E 审计 R4）：`backend_sources()` 现在返回
         // `observe/watcher.rs` 这种相对路径，而本表的键是裸文件名。若这里用全等，U2/U3 把
         // `watcher.rs` 搬进 `observe/` 的那一刻，本断言就会以「登记表在腐烂」红掉 ——
         // 那是一条**误导性诊断**：表没腐烂，只是文件搬了家。而 §4.1 红线又盯着这张表不许乱动，
         // 于是下一个人只能在「改红线表」和「改护栏」之间二选一。⇒ 现在就让纯搬家不触碰它。
         // （真删掉那处代码仍会红 —— `code.contains(snippet)` 那半边管这个。）
         for (file, snippet, ..) in REGISTERED_DURATION_USES {
-            let hit = daemon_sources()
+            let hit = backend_sources()
                 .into_iter()
                 .any(|(n, code)| matches_registered(&n, file) && code.contains(snippet));
             assert!(
@@ -1020,7 +1020,7 @@ mod tests {
 #[cfg(test)]
 mod g6_reach {
     use super::tests::{
-        daemon_sources, is_call_of, periodic_wake_patterns, REGISTERED_DURATION_USES,
+        backend_sources, is_call_of, periodic_wake_patterns, REGISTERED_DURATION_USES,
     };
 
     /// 按**调用形态**扫的那八个名字（与判据本体同一份清单，抄第二份必然漂开）。
@@ -1135,7 +1135,7 @@ mod g6_reach {
          依赖 crate 的源码不在里面。\
          ⚠ **诚实边界，别把它说过头**：那条线程**不是自由跑的节拍器** —— \
          有待合并事件时才带期限等，空闲时是无期限阻塞。\
-         ⇒ 它**不构成**「daemon 在轮询」的证据；它构成的是\
+         ⇒ 它**不构成**「backend 在轮询」的证据；它构成的是\
          「护栏按名字禁掉的构件，此刻正在这个进程里运行」的证据。两件事别混。",
         "去抖改由本 crate 自己实现（那时它落回人群内、由判据管），\
          或人群从「本 crate 源码文本」扩到「进程里实际跑着什么」的那天 —— \
@@ -1146,13 +1146,13 @@ mod g6_reach {
     /// ★ 反例仍在盘上、仍然通过；而它撞的那两个构件仍然在禁用表里。
     ///
     /// ★★ 本件专属陷阱（件文件 `§3`）在这一格的答案：这条路**未经任何放宽就已经通过**
-    /// —— 人群（`daemon_sources()`，分母 = 本 crate `src/` 树上的 `.rs` 减去跳过的那一个）
+    /// —— 人群（`backend_sources()`，分母 = 本 crate `src/` 树上的 `.rs` 减去跳过的那一个）
     /// 里根本没有那个依赖 crate 的源码。⇒ 正确说法不是「放宽了没红」，是「**它对这条路本来就不响**」。
     /// ⚠ 这句话是对**今天的判据与人群**说的；历史上它有没有因为别的原因红过，我没查。
     #[test]
     fn the_counterexample_is_still_on_the_board_and_still_passes() {
         assert_eq!(KNOWN_PASSING_COUNTEREXAMPLES.len(), 1, "反例表的条数变了");
-        let files = daemon_sources();
+        let files = backend_sources();
         let bytes: usize = files.iter().map(|(_, c)| c.len()).sum();
         // 本条自己的反空真地板。**刻意不复用判据本体那个常量**：
         // 那一行被 `ratchet_guard::PINS` 按「整行相等 + 恰好 1 次」钉着，

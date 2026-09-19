@@ -29,8 +29,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "no-counterpart",
         1,
         "`list_history_projects` 的 **codex 变体**(232)。⚠ **不属**「今天能退役」的范围：\
-             实测 daemon 的 `history_query.rs` 里 **codex / kinds / agent_kind 零命中** ——\
-             `--list-projects` 只服务 claude。退役条件 = daemon 侧补上 codex 的项目枚举（DG3 那一族）。",
+             实测后端的 `history_query.rs` 里 **codex / kinds / agent_kind 零命中** ——\
+             `--list-projects` 只服务 claude。退役条件 = backend 侧补上 codex 的项目枚举（DG3 那一族）。",
     ),
     (
         "src/history.rs",
@@ -39,7 +39,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "`stream_read_session_jsonl`(499) 的**路径围栏** —— 它解析 records 根**只为验\
              `target.starts_with(&root)`（拒绝越界路径），不读内容。\
              ⚠ **刻意保留、不属退役范围**：即使把读交给后端，围栏也该两侧各有一道\
-             （daemon 侧自己也有 canonicalize 前缀校验）—— 那是纵深防御，同 `remote_branch.rs` \
+             （backend 侧自己也有 canonicalize 前缀校验）—— 那是纵深防御，同 `remote_branch.rs` \
              那句「两个 id 已过白名单，仍照常 shell_quote」。",
     ),
     (
@@ -47,7 +47,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "write",
         4,
         "写操作**恰好也读 dir 来定位文件**：`delete_history_session`(621/622) · \
-             `create_branch_session`(744/745)。⚠ **不属读面** —— 删会话 **daemon 侧无对侧**\
+             `create_branch_session`(744/745)。⚠ **不属读面** —— 删会话 **backend 侧无对侧**\
              （14 条一次性子命令里没有删）；分叉走 `--fork-session`。",
     ),
     (
@@ -62,15 +62,15 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "src/ssh_source.rs",
         "remote",
         9,
-        "★ **说的全是远端主机的 claude 目录**：daemon `hello` 帧的 `claude_dir` 字段。\
+        "★ **说的全是远端主机的 claude 目录**：backend `hello` 帧的 `claude_dir` 字段。\
              **根本不是本机读面** ⇒ 不属 F10。\
              〔`K-R59` 09-11：**10 → 9**。退役的那 1 行是原先并列写在这里的第二样 —— \
              `daemonless` 那条远端 shell 串里的 `\\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`，\
              随定框 `K35` 整段删除。⚠ **口径没变，仍是远端**：拧下来的不是「本机读面少了一行」。〕\
              ⚠ 我摸底时差点把它算成本机的 8 行 —— 同名最便宜的误导。\
-             〔daemon-split `S4` 08-14〕**8 → 10**：additive 迁移在消费侧多了一个解析点 —— \
+             〔backend-split `S4` 08-14〕**8 → 10**：additive 迁移在消费侧多了一个解析点 —— \
              `claude_home_from_hello`（优先 `hello.homes`、回退 `claude_dir`）加上它的两处调用。\
-             口径**没变**，还是远端：涨的两行说的仍是**远端** daemon 自陈的目录，不是本机的。\
+             口径**没变**，还是远端：涨的两行说的仍是**远端** backend 自陈的目录，不是本机的。\
              ⚠ 这两行是**真的多出来的**，不是数字漂了 —— 本来可以把参数改名躲开针来保住 8，\
              那才是「改数字了事」的镜像（为了不动数字去拧代码）。",
     ),
@@ -89,14 +89,14 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              切后端之后它**仍然要在** ⇒ **不属**退役范围。",
     ),
     (
-        "src/local_daemon.rs",
+        "src/local_backend_host.rs",
         "non-read",
         4,
         "〔`K-P1` 08-26〕**一个字节的用户数据都没读。**四个命中全是「拿这条路径当身份比」：\
              3 处在 `hello_verdict`（解 hello 帧的**冻结 wire 字段** `claude_dir` + 比 + 那句诊断），\
              1 处是 `start_detached` 里问一次 `paths::resolve_claude_dir()` —— \
-             它只用来**算那台机的监听口**（`listen_port_for`）并核对「那个口上的 daemon 看的是不是同一个目录」。\
-             ⚠ 这一格恰恰是**反过来**的：它存在的理由是**不许静默复用**别人的 daemon。\
+             它只用来**算那台机的监听口**（`listen_port_for`）并核对「那个口上的后端看的是不是同一个目录」。\
+             ⚠ 这一格恰恰是**反过来**的：它存在的理由是**不许静默复用**别人的后端。\
              ⇒ **不属**退役范围（切后端之后仍要有人回答「我该连哪个口」）。",
     ),
     (
@@ -128,7 +128,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "`survey_marketplaces_in`(165/166) 读 `<claude_dir>/plugins/known_marketplaces.json`，\
              `list_plugin_marketplaces` 那条命令(203/204) 取 dir 再转交它；签名占 1 处。\
              ⚠ 机器数 **5 处**，我手数是 4 —— 与 F09/F10 首跑同一条纪律的第四次：**以机器数为准**。\
-             ★ **退役归 F10**，退役条件与本仓其它 reader 同形：**daemon 侧补一条\
+             ★ **退役归 F10**，退役条件与本仓其它 reader 同形：**backend 侧补一条\
              `--list-marketplaces`**（它已经会读远端 `~/.claude`，`--list-projects` / \
              `--list-sessions` / `--list-subagents` 是现成的形状）。那条一落地，\
              本机改走后端、远端那半（今天记在 `parity_ledger` 的 `plugins.marketplaces` \
@@ -142,11 +142,11 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              ⚠ **〔F10b 第三批实测〕这一处刻意不退役，解锁条件明确** —— 它与前几批**不是同一类**：\
              前几批是「查询直通」（monitor 只是转发 + 反序列化），而本文件维护一个\
              **本地全文索引**（`build_blocking` 走一遍 records 建内存索引，之后每次搜索走内存）。\
-             而 daemon 的 `--search` **没有索引**：它每次调用用 `WalkDir` 走一遍 \
+             而后端的 `--search` **没有索引**：它每次调用用 `WalkDir` 走一遍 \
              `<claude_dir>/projects/**/*.jsonl`（见 `observe/search_query.rs` 头注）。\
              ⇒ 迁它 = 把「建一次索引 + 内存查」换成「每次搜索 spawn 一个进程 + 走全部 jsonl」，\
              **那是用性能换账面**，而本机恰好是用户搜得最多的那一侧。\
-             ★ **退役归「daemon 侧也有索引」之后**（或一条能便宜地喂索引的查询）——那就是它的解锁条件。\
+             ★ **退役归「backend 侧也有索引」之后**（或一条能便宜地喂索引的查询）——那就是它的解锁条件。\
              那对远端同样有价值 —— 今天远端每次搜索也在走全库。已进 `ROADMAP §5`。",
     ),
     (
@@ -166,9 +166,9 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "remote",
         2,
         "⚠ **〔F10b-2 订正分类〕它根本不属退役范围** —— 头注逐字写着它是\
-             「这件事的**远端**那半（把 daemon 的 `--list-accounts` 包成 Tauri 命令）」，\
+             「这件事的**远端**那半（把后端的 `--list-accounts` 包成 Tauri 命令）」，\
              生产段**零本机文件读**。那 2 个命中是**用户可见的提示字符串**里提到了 \
-             `CLAUDE_CONFIG_DIR`（第 82/88 行「远端 daemon 版本较旧…」那两句）。\
+             `CLAUDE_CONFIG_DIR`（第 82/88 行「远端后端版本较旧…」那两句）。\
              ⚠ 这不是退役、**不算工作量减少** —— 是把一条误分类改对。\
              ★ 它暴露了量法的口径：`hits()` 数的是「提到那几个词的行」，\
              里面会有提示文案与 `/proc` 环境键名，**不等于「未退役的直读点」**。",
@@ -336,9 +336,9 @@ fn rust_files() -> Vec<(String, String)> {
 /// 具体守法仍在各自那张表里（E3：本表不复制它们的内容）。
 ///
 /// ⚠ **扫描面只有 monitor 树**（本模块的 `rust_files()` 就是这么定的）。
-/// daemon 侧另有 3 处 `home_dir()`（`observe/accounts_query.rs`），**刻意不并进来**：
+/// backend 侧另有 3 处 `home_dir()`（`observe/accounts_query.rs`），**刻意不并进来**：
 /// 那是**远端那台机器上**的 home，语义不同（monitor 碰的是用户自己的机器），
-/// 而 daemon 的写侧由它自己的 `readonly_guard` 整个禁掉。
+/// 而后端的写侧由它自己的 `readonly_guard` 整个禁掉。
 /// 把两侧混进一张表会让「这一处归谁管」这一列失去意义。
 const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     (
@@ -370,7 +370,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "write_account_aliases",
         "`~/.cc-monitor/account-aliases.sh`，以及**用户自己选的**那份 rc（`K-R49`）",
         "**两个落点，性质不同，别混成一格**：\
-             ① 生成的那份别名文件在 `~/.cc-monitor` 下 —— 与 `local_daemon.rs::cc_monitor_dir` \
+             ① 生成的那份别名文件在 `~/.cc-monitor` 下 —— 与 `local_backend_host.rs::cc_monitor_dir` \
              同一个目录、同一个理由：monitor 自己的东西，用 `home_dir()` 只为「每个用户各一份」；\
              ② 那一行 `source` 会写**用户既有的** shell 配置 —— 那一处**有围栏**：\
              `profile_installer::fence_path_under`（只许落在 home 之内），而且路径由界面上的人\
@@ -392,19 +392,19 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              问出来的，不是靠 stat 一个路径（比路径认不出同名不同物）。",
     ),
     (
-        "local_daemon.rs",
+        "local_backend_host.rs",
         "cc_monitor_dir",
         "`~/.cc-monitor`（`K-P1` 的 attach token 与「谁在听那个口」）",
         "**不是伸手拿用户的东西**：这是 monitor 自己的目录，只有我们写、只有我们读。\
              用 `home_dir()` 正是为了「每个用户各一份」—— 而那恰恰是这一格要买的东西：\
              token 文件 `0600` 是回环 TCP 上**唯一**挡住同机别的用户的门。\
-             写侧两条登记在 `write_site_registry` 的 `local_daemon.rs::ensure_listen_token` 与 \
-             `local_daemon.rs::write_listen_pid`",
+             写侧两条登记在 `write_site_registry` 的 `local_backend_host.rs::ensure_listen_token` 与 \
+             `local_backend_host.rs::write_listen_pid`",
     ),
     (
-        "local_daemon.rs",
+        "local_backend_host.rs",
         "start_local_backend",
-        "`~/.cc-monitor/bin`（P2z 自释放内嵌 daemon 的落点）",
+        "`~/.cc-monitor/bin`（P2z 自释放内嵌后端的落点）",
         "**不是伸手拿用户的东西**：这是 monitor 自己的缓存目录，只有我们写、只有我们读。\
              它用 `home_dir()` 只是为了「每个用户各一份」。写侧登记在 `write_site_registry` 的\
              `local_backend.rs::extract_embedded_to`；释放出来的文件按 build_id 命名 ⇒ 幂等、不覆盖别版",
@@ -613,24 +613,24 @@ fn every_reader_names_its_retirement_owner() {
              → **8**（F10b 第二批·下半：`local_accounts.rs` **真退役** —— 那 3 个命中全属\n\
              `list_local_session_accounts` 一个函数，它改走 sidecar 的 `--session-accounts`；\n\
              顺带删掉 `proc_claude_config_dir`/`pid_alive` 两个**平台原语的第二份实现**，\n\
-             它们的家在 daemon 的 `platform/proc.rs`）。\n\
+             它们的家在后端的 `platform/proc.rs`）。\n\
              → **7**（F10b 末批：`history.rs` 的 reader 条**转成 `no-counterpart`** ——\n\
              ⚠ **那不是退役**，是量清「今天的查询集下它迁不了」并写明退役条件。\n\
-             ★ 至此本机读面**在现有 daemon 查询集下已无可退**：剩下的每一处都有\n\
+             ★ 至此本机读面**在现有后端查询集下已无可退**：剩下的每一处都有\n\
              有名有姓的缺口（缺字段 / 缺索引 / 缺 codex 支持 / 根本不是读面）。\n\
              ⚠ **别把这个数往上调**：往上调等于承认又加了直读点，那要先说清为什么。\n\
              → **8**〔`P8a` 08-12〕**本表第一次往上走**，说清如下：`plugins.rs` 新开了\n\
              marketplace 只读枚举。⚠ 数字与上面那个 8 撞了名而**来历相反**（那次是退役退下来的，\n\
              这次是加上去的）—— 别把这段史读成「回到了那时的状态」。\n\
-             为什么不绕开：绕法只有两条，**两条都更差** —— ① 走 daemon（那要新子命令 +\n\
+             为什么不绕开：绕法只有两条，**两条都更差** —— ① 走后端（那要新子命令 +\n\
              BUILD_ID + 协议文档 + 内嵌重编，是另一件事的体量，而本件是梯队 5 的只读面）；\n\
              ② 不做（`U10d` 已裁「marketplace 面的只读枚举**可做**」）。\n\
              ⇒ 记账不记功：退役条件写在那条登记里，且它与远端那半是**同一条**\n\
-             （daemon 补 `--list-marketplaces` 一次清两笔）。\n\
+             （backend 补 `--list-marketplaces` 一次清两笔）。\n\
              → **9**〔`K-R92` 09-12〕`history.rs` 的 `list_history_projects` 那条\n\
              **从 `no-counterpart` 转回 `reader`**。⚠ **第三次「往上走」，而三次来历各不相同**：\n\
              `P8a` 那次是真加了直读点，这次是**把一处误分类改对**（同 `accounts.rs` 那次的形状、\n\
-             方向相反）。理由：`no-counterpart` 的字面含义是「daemon 侧没有对侧」，\n\
+             方向相反）。理由：`no-counterpart` 的字面含义是「backend 侧没有对侧」，\n\
              而 `K-R83` 已经把 `--list-projects` 那一行的 `sessionIds` 补齐了 ⇒ 对侧有了。\n\
              **F10 的工作面没变大，变真的是账** —— 那一处本来就要迁，只是从前记在\n\
              「等后端补东西」那一栏里，看起来不像工作量。\n\
@@ -654,7 +654,7 @@ fn every_reader_names_its_retirement_owner() {
 ///
 /// F05b 落地时它**确实红了**，而且红得对。但落地形态与它预设的不同：
 /// `externalBin` **没有**进主配置 —— 因为 `tauri-build` 要求**当前 target** 的 sidecar
-/// 在编译期就存在，进主配置会让 `cargo test` 也需要一份 daemon 二进制，
+/// 在编译期就存在，进主配置会让 `cargo test` 也需要一份后端二进制，
 /// 那正是 C2 反面（两半不许在构建期互相咬住）刚钉住的东西。
 /// ⇒ 它住进**发版补丁配置** `tauri.sidecar.conf.json`，只在 `tauri build --config` 时注入。
 ///
@@ -675,7 +675,7 @@ fn the_sidecar_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched() {
     );
     assert!(
         !main_conf.contains(key.as_str()),
-        "`{key}` 回到了主配置 —— 那会让 `cargo test` 也需要一份当前 target 的 daemon 二进制\n\
+        "`{key}` 回到了主配置 —— 那会让 `cargo test` 也需要一份当前 target 的后端二进制\n\
              （实测报错：`resource path binaries/cc-monitor-remote-<triple> doesn't exist`），\n\
              等于把两半在**构建期**绑死。它的家是 `tauri.sidecar.conf.json`，只在发版时 `--config` 注入。"
     );

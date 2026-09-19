@@ -1,4 +1,4 @@
-//! Phase-0 daemon watcher: tails `<claude_dir>/projects/**.jsonl` plus the
+//! Phase-0 backend watcher: tails `<claude_dir>/projects/**.jsonl` plus the
 //! `<claude_dir>/sessions/<PID>.json` files and turns filesystem activity into
 //! [`Frame`]s on a bounded channel.
 //!
@@ -39,14 +39,14 @@
 //!
 //! Known non-parity (accepted): on a mid-read I/O error the monitor keeps the
 //! complete lines it already consumed and advances the cursor past them, while
-//! this daemon gives up the whole pass (cursor untouched). Both are
+//! this backend gives up the whole pass (cursor untouched). Both are
 //! at-least-once-safe.
 //!
 //! ⚠ 这段话此前写的是 "reads via one `fs::read` snapshot" —— 那**曾经是真的**，
 //! 而它只评了**错误语义**那一面，对**内存与 IO 后果一个字没记**（audit-0805 B-4）：
 //! 每个 debounce 事件把整份 jsonl 读进内存，257 MB 的活跃会话 ⇒ 每次读 257 MB，
 //! 只为提取约 500 字节的新行；而本地 monitor 同一件事一直是 `seek` + `read_until`
-//! ⇒ **强机器流式、弱机器整读，正好反了**（daemon 住树莓派那类小机器）。
+//! ⇒ **强机器流式、弱机器整读，正好反了**（backend 住树莓派那类小机器）。
 //! F04 已改成只读新字节（`read_tail_from` + `read_new_lines_at`），
 //! 由 `the_two_tail_readers_do_not_slurp_the_whole_session_file` 钉住不许改回去。
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
@@ -132,7 +132,7 @@ enum WatchEvent {
 /// 只有在 `Alive` 时才敢把「`tmux ls` rc=1」判成真异常（见 `classify_with_server_state`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ServerState {
-    /// 还没探到过（daemon 刚起 / 探测失败）。
+    /// 还没探到过（backend 刚起 / 探测失败）。
     Unknown,
     /// 已探到并挂了 pidfd 看守。
     Alive(u32),
@@ -216,7 +216,7 @@ fn spawn_pid_watcher(
 /// starttime 就跳过（那说明 `/proc` 不可用，整条 pidfd 路本来也不成立）。
 ///
 /// 装的是**我们自己进程**的 pid + starttime —— hook 子进程据此校验身份再发 SIGUSR1，
-/// 挡的是「daemon 退出后 pid 被复用，hook 误伤无关进程」。
+/// 挡的是「backend 退出后 pid 被复用，hook 误伤无关进程」。
 fn install_tmux_hooks_best_effort() {
     let me = std::process::id();
     let (Ok(exe), Some(start)) = (std::env::current_exe(), proc_starttime(me)) else {
@@ -263,7 +263,7 @@ fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mu
 /// **P5：一次性初探**（取代 P2 那个 8s ticker 线程）。
 ///
 /// **删 ticker 时差点顺手删掉的东西**：它除了打节拍，还承担「**首轮立即发一拍**」——
-/// monitor 一连上就该拿到 tmux 状态。全删的话，daemon 要等到第一个 hook 触发才会探，
+/// monitor 一连上就该拿到 tmux 状态。全删的话，backend 要等到第一个 hook 触发才会探，
 /// 空闲机器上可能是**永远**。所以节拍没了，但这一拍要留下。
 ///
 /// 之后的每一拍都由事件驱动：tmux hook → `--tmux-notify` → SIGUSR1 → `WatchEvent::Poke`
@@ -317,7 +317,7 @@ use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV};
 // **双写点**：与 monitor `src/bridge/src/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
 // `observation_tokens_double_write_point_stays_in_sync` 测试钉住（`include_str!` 读本文件 +
 // 锚定 const 定义行）。**改本处必须同步 monitor**，同 `TMUX_LS_FMT` 的纪律。
-/// daemon 确证零会话（rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
+/// backend 确证零会话（rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
 const OBS_ZERO_SESSIONS: &str = "zero_sessions";
 /// 远端没装 tmux——与既有 `NO_TMUX` 哨兵同义，显式化。
 const OBS_NO_TMUX: &str = "no_tmux";
@@ -382,7 +382,7 @@ enum TmuxObservation {
 ///
 /// # 为什么把上界放在 shell 里而不是 Rust 里
 ///
-/// Rust 侧加超时要引入一个 `Duration::from_*`，而 daemon 有**零定时器**硬门禁
+/// Rust 侧加超时要引入一个 `Duration::from_*`，而后端有**零定时器**硬门禁
 /// （`no_timer_guard`：生产段 `Duration::from_*` 的处数必须**恰好等于**登记表条数，
 /// 「多一处就红」「登记表不是豁免清单」）。承接 **C8/C12** 与定框 **E6**。
 /// ⇒ 用 `timeout(1)`：**没有 Rust 定时器、没有新线程、不改线程模型**，
@@ -448,7 +448,7 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
         Some(0) => TmuxObservation::Sessions(stdout.to_string()),
         // rc=1 = server 不在。**一处刻意的保守**：socket 权限异常这类罕见情形也会落这里
         // ⇒ 理论上可能误 retire。缓解：socket 路径 uid 隔离（`/tmp/tmux-<uid>/`），同 uid 下
-        // 权限异常几乎不可能。**P3 落地后有更强判据**：那时 daemon 持有 server 的 pidfd，
+        // 权限异常几乎不可能。**P3 落地后有更强判据**：那时后端持有 server 的 pidfd，
         // 「pidfd 说 server 活着但 tmux ls rc=1」= 真异常 ⇒ 归 `Unobservable`。
         // 该升级**不改帧契约**（`ZeroSessions` 语义不变），所以 P1 现在就能安全落地。
         Some(1) => TmuxObservation::NoServer,
@@ -457,7 +457,7 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
     }
 }
 
-/// B2：在**本机**（daemon 就在远端主机）跑 `tmux ls` 取观测。`sh -c` + `command -v` 门控
+/// B2：在**本机**（backend 就在远端主机）跑 `tmux ls` 取观测。`sh -c` + `command -v` 门控
 /// （同 monitor `list_remote_tmux` 命令）解析 PATH。**只读**（tmux ls 不改任何状态）。
 ///
 /// P1 起返回四态分类而非裸 `String`——见 [`TmuxObservation`]。
@@ -600,11 +600,11 @@ fn rewatch_dir(
 ///
 /// # 病（`#60` 的根因）
 ///
-/// `P5` 删掉 8s ticker 之后 daemon **零定时器**，之后每一拍都靠事件。而两条唤醒路
+/// `P5` 删掉 8s ticker 之后 backend **零定时器**，之后每一拍都靠事件。而两条唤醒路
 /// **都以「已经见过 server」为前提**：tmux hook 是**观测到 server 那一刻**才装的；
 /// socket 目录的 inotify 路径是从 `probe.socket_path` 里拿的 —— 没 server 就没有路径。
 ///
-/// ⇒ **daemon 起得比 tmux server 早 = 永远不再探**。08-13 全链实测：`tmux_sessions` 帧
+/// ⇒ **backend 起得比 tmux server 早 = 永远不再探**。08-13 全链实测：`tmux_sessions` 帧
 /// 只有一帧且内容是 `zero_sessions`，`已给 tmux server … 挂 pidfd 看守` 与 `tmux hook 已装`
 /// 一行都没有；后来建的会话它一无所知 ⇒ `@ccm_sid` 到不了 monitor ⇒ 死亡一律判归档，
 /// **灰灯永不出现**（`#60` 现象 1）。
@@ -624,7 +624,7 @@ fn watch_sock_dir_if_present(
     // ★★ **目录没了要把记账翻回去**〔08-13 实测补〕：socket 目录**整个被删掉再重建**
     //    之后是**另一个 inode**，而我们的 watch 还挂在已删的那个上 ——
     //    与 `sessions/` 那个 inode bug **同型，只是高一层**。
-    //    实测：删掉目录、再起一个新 tmux server ⇒ daemon **一帧都收不到**（`sid-two` 命中 0）。
+    //    实测：删掉目录、再起一个新 tmux server ⇒ backend **一帧都收不到**（`sid-two` 命中 0）。
     //    ⇒ `*watched` 必须跟着盘上的事实走，否则下面那个 `if *watched` 会永远短路。
     if !sock_dir.is_dir() {
         if *watched {
@@ -785,7 +785,7 @@ fn diff_closed_into(
     };
     let closed = match prev.as_ref() {
         Some(old) => old.difference(&now).cloned().collect(),
-        // 第一次观测没有「上一份」可比 ⇒ 不报任何死亡（否则 daemon 一启动就诬告一批）。
+        // 第一次观测没有「上一份」可比 ⇒ 不报任何死亡（否则后端一启动就诬告一批）。
         None => Vec::new(),
     };
     *prev = Some(now);
@@ -893,12 +893,12 @@ fn watch_loop(
     //
     // **刻意建在 Phase 1 之前**：`process_session_added` 会顺手挂 pidfd 看守，而 Phase 1 的
     // 初始扫描就在调它。若把 channel 建在 Phase 2（本功能初版就是这么写的、被 clippy 的
-    // 「field `start` is never read」间接暴露），**daemon 启动时就活着的会话会一个看守都没有**
+    // 「field `start` is never read」间接暴露），**backend 启动时就活着的会话会一个看守都没有**
     // ——而原先那条 2s 判活轮询是覆盖它们的 ⇒ 那是回归。Phase 1 期间发出的 `PidDied` 只是
     // 在 channel 里排队，主循环起来后照常消费。
     // P4：channel 已由 `spawn` 造好传进来（poke 句柄要在线程起来前就交出去）。
     // **顺序仍然关键**（P2 那个静默回归的教训）：`state.events_tx` 必须在 Phase 1 之前设好，
-    // 否则 daemon 启动时就活着的会话一个 pidfd 看守都拿不到。
+    // 否则后端启动时就活着的会话一个 pidfd 看守都拿不到。
     state.events_tx = Some(events_tx.clone());
 
     // --- Phase 1: synchronous initial scan. ---
@@ -933,7 +933,7 @@ fn watch_loop(
     //
     // inotify 的 watch 绑在 **inode** 上，不是路径上。`sessions/` 被 `rm -rf` 再 `mkdir`
     // 之后是**另一个 inode**，旧 watch 还挂在那个已删的 inode 上 ⇒ 新目录里发生什么都听不见，
-    // **而且不会有任何错误**（daemon 活着、不吭声）。
+    // **而且不会有任何错误**（backend 活着、不吭声）。
     // 监视父目录之后，`sessions` 的创建/删除会作为**父目录里的一个事件**送到，我们据此重挂。
     if agent_home.is_dir() {
         if let Err(e) = debouncer
@@ -942,7 +942,7 @@ fn watch_loop(
         {
             // 挂不上不致命（退回「起来时是什么样就什么样」），但**要说出来**。
             tracing::warn!(
-                "watch failed for {}: {e} —— 子目录若被重建，本 daemon 将听不见",
+                "watch failed for {}: {e} —— 子目录若被重建，本后端将听不见",
                 agent_home.display()
             );
         }
@@ -991,7 +991,7 @@ fn watch_loop(
         // ⚠⚠ **这一支是个真缺陷，08-13 实测复现过**〔`P0b` 查 `#60` 时逮到〕：
         // 目录不存在 ⇒ 只打这一行 `warn!`，**然后再也不重试**。
         // 而 `<claude_dir>/sessions/` 正是**用户第一次跑 claude 时才被创建**的
-        // ⇒ daemon 起得比它早，就**永远看不到 pidfile、永远不宣告会话**。
+        // ⇒ backend 起得比它早，就**永远看不到 pidfile、永远不宣告会话**。
         //
         // 复现（帧的 `kind` 直方图）：
         // · fixture 目录里**有** `sessions/` ⇒ `hello · line · session_added · tmux_sessions`
@@ -1006,7 +1006,7 @@ fn watch_loop(
         // 那次全链复现用的 fixture 里 `sessions/` 是**在**的，所以它解释不了那三跑。
         tracing::warn!(
             "sessions dir does not exist: {} —— **本进程不会再重试挂它**（见上方注释：\
-             它若稍后才被创建，本 daemon 将永远不宣告会话）",
+             它若稍后才被创建，本后端将永远不宣告会话）",
             sessions.display()
         );
     }
@@ -1117,11 +1117,11 @@ fn watch_loop(
                 //
                 // 🔴 〔09-09 订正〕上面这段原先还有一句：「`@ccm_sid` 由 `shared/ccm` 的
                 // 1 秒 poller 回填，这次探测很可能仍抓到**旧** tag」。**今天两半都不成立**：
-                //   · 那个 poller 08-14 被整条删掉（`0085d0d`），事实键改由 daemon 自己写
+                //   · 那个 poller 08-14 被整条删掉（`0085d0d`），事实键改由后端自己写
                 //     （`control::identity_tag::tag`，就在本文件 `process_session_added` 里）；
                 //   · 而 `tag()` 是**同步**跑完的、在重探线程 spawn 之前 ⇒ 这次探测
                 //     **必然**抓到**新** tag，不是「很可能仍是旧的」。
-                // ⚠ 留这条订正是因为那句话不是无害的陈账：`tests/e2e/graylight-daemon-frames.sh`
+                // ⚠ 留这条订正是因为那句话不是无害的陈账：`tests/e2e/graylight-backend-frames.sh`
                 // 就是照着它写的（「本 fixture 没有那个 poller ⇒ 标签恒为最初 sid」），
                 // 于是那套夹具从 08-14 起一格红一格恒真，而云端从 08-05 起没跑到过这一步
                 // ⇒ 09-09 才被逮到。**一句过期的注释，教出了一套错的判据。**
@@ -1281,7 +1281,7 @@ struct ReaderState {
     /// P2：已挂过 pidfd 看守的 **(pidfile, pid) 对**——防同一进程重复起线程。
     /// **按对而不是按路径**：同路径换了 pid（`/clear` 原地换 sid、PID 复用写同路径）
     /// 要能重新挂；而按对存就不必在任何移除路径上做清理（陈旧条目至多一个/对，
-    /// 且 daemon 生命周期 ⊆ 一次 SSH 连接）。
+    /// 且后端生命周期 ⊆ 一次 SSH 连接）。
     /// 已挂过 pidfd 看守的 **(pidfile 路径, pid, 进程启动时刻)**〔audit-0805 F11 / 报告 I-7〕。
     ///
     /// ⚠ 第三元 `start` 是 F11 补的。此前键是 `(路径, pid)` 两元 ——
@@ -1332,7 +1332,7 @@ impl ReaderState {
 /// `/proc/<pid>` existence, matching the Phase-0 behaviour.
 ///
 /// **Residual limitation (#34 §5, by design)**: `start` is captured at add-time
-/// and never persisted. A daemon **restart** re-baselines `start` from the
+/// and never persisted. A backend **restart** re-baselines `start` from the
 /// *current* `/proc` on the next scan, so a PID that was reused *before* the
 /// restart is indistinguishable from the original session. Probability is low
 /// (restart ∧ PID-reuse ∧ reused-proc-still-alive) and this matches the local
@@ -1355,7 +1355,7 @@ struct SessionEntry {
 pub struct ReadLine {
     pub seq: u64,
     pub raw: String,
-    /// daemon-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐 aterm `LineFramer`
+    /// backend-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐 aterm `LineFramer`
     /// （计 `\r`、含 `\n`、残行不计）。**在原始字节上算**（非解码后串），故非法 UTF-8/CRLF 不错。
     pub byte_offset: u64,
 }
@@ -1520,7 +1520,7 @@ fn scan_new_lines(
         // (mid-write, possibly mid-multibyte) is deferred to the next event.
         let complete_end = slice.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
         consumed = complete_end as u64;
-        // daemon-01（gap#2）：**在原始字节上逐行切**（非先解码整段再 `.lines()`）——因为 `byte_offset` 必须是
+        // backend-01（gap#2）：**在原始字节上逐行切**（非先解码整段再 `.lines()`）——因为 `byte_offset` 必须是
         // 累计原始字节（对齐 aterm `LineFramer`：计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
         // 3 字节换 1 字节）会漂。每行的原始内容单独 lossy 解码（残行已在 tail 外，故整行 multibyte 完整、安全）。
         let mut pos = 0usize; // 相对 slice 的原始字节游标
@@ -1630,7 +1630,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     state.offsets.insert(key, new_cursor);
     let path_str = path.to_string_lossy().into_owned();
     for line in lines {
-        // daemon-09（phase②）：turn-end 边沿在 raw **之外**额外算——先解析（畸形→None、不影响 Line）。
+        // backend-09（phase②）：turn-end 边沿在 raw **之外**额外算——先解析（畸形→None、不影响 Line）。
         // 在 raw move 进 Line 帧前抽出（避免 clone raw）。§2.1 不变量并存：Line 逐行照发**每一条**。
         let turn_uuid: Option<String> = serde_json::from_str::<serde_json::Value>(&line.raw)
             .ok()
@@ -1640,11 +1640,11 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
             path: path_str.clone(),
             seq: line.seq,
             raw: line.raw,
-            byte_offset: line.byte_offset, // daemon-01 gap#2：累计原始字节（对齐 aterm LineFramer）
+            byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
         });
         // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
-        // 方案 C raw-per-record、daemon 不 dedup（aterm rolling-latest+debounce baselineByPath 塌合，
-        // #daemon 2026-07-18 定）。TurnEnd 不带 byte_offset（只 Line 带）。
+        // 方案 C raw-per-record、backend 不 dedup（aterm rolling-latest+debounce baselineByPath 塌合，
+        // #backend 2026-07-18 定）。TurnEnd 不带 byte_offset（只 Line 带）。
         if let Some(uuid) = turn_uuid {
             sink.send(Frame::TurnEnd {
                 session_id: session_id.clone(),
@@ -1660,14 +1660,14 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
 ///
 /// inotify 的 watch 绑在 **inode** 上。`rm -rf sessions && mkdir sessions` 之后是另一个
 /// inode，旧 watch 还挂在已删的那个上 ⇒ **新目录里发生什么都听不见，且没有任何错误**。
-/// 症状是 daemon「活着、不吭声」—— 08-13 离线对照实测：
+/// 症状是后端「活着、不吭声」—— 08-13 离线对照实测：
 ///
 /// | 组 | 帧 |
 /// |---|---|
 /// | 控制（不动 `sessions/`） | `hello · line · session_added · session_removed · tmux_sessions×2` |
 /// | **删掉再建** | **`hello · tmux_sessions`** |
 ///
-/// 下面那一行**与 `#60` 全链台架量到的 app 路径签名逐字相同**，而台架自己在 daemon
+/// 下面那一行**与 `#60` 全链台架量到的 app 路径签名逐字相同**，而台架自己在 backend
 /// 已经开始盯之后跑了 `rm -rf -- "$CLAUDE_DIR/sessions"`（`graylight-suite.sh`）。
 ///
 /// # 为什么重挂之后**必须重扫**
@@ -1753,7 +1753,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     if !pid_alive(pid) {
         return;
     }
-    // Batch6-F21: interactivity gate. CC 2.1.x 的 daemon 后台任务
+    // Batch6-F21: interactivity gate. CC 2.1.x 的后端后台任务
     // (--fork-session --resume) **会**写 sessions/<PID>.json（kind:"bg" +
     // jobId）——"子会话不注册 pidfile"的旧假设已过期。bg 进程是自己 pidfile
     // 的真作者（F20 身份证据对它们正确地放行），但不是交互会话、不该成 tab。
@@ -2008,7 +2008,7 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     );
     // Batch8 审计 D-I2：返回 prime 后的行号计数器现值（= 完整行总数 L），
     // session_added 帧带给 monitor 做快照完整性校验（拉到的行数 < L = 快照
-    // 中途断/daemon 报错——exit status 拿不到，行数校验更强）。
+    // 中途断/backend 报错——exit status 拿不到，行数校验更强）。
     state.seqs.peek(&key_str)
 }
 

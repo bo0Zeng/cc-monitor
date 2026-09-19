@@ -6,15 +6,15 @@
 //! 在 F03 之前它**只活在 monitor 一侧**，而且被拆成了两半、两种语言：
 //!
 //! - 本地半支：`src/bridge/src/tmux.rs` 里一个私有的 `is_ccm_tmux_name`；
-//! - 远端半支：daemon `control/gate.rs::probe` 取回的 `@ccm_sid`，由 `admit` 判。
+//! - 远端半支：backend `control/gate.rs::probe` 取回的 `@ccm_sid`，由 `admit` 判。
 //!   ⚠ `K-R72`（09-12）之前这里还有第二份：monitor 侧 `build_guarded_tmux_cmd` 拼出来的
 //!   **shell 串**里那句 `[ -n "$sid" ]`。那条路（送键与杀会话的桌面侧 SSH 回落）已经删了，
-//!   远端半支从此**只有 daemon 一个家**。
+//!   远端半支从此**只有后端一个家**。
 //!
-//! daemon 的 `control/launch.rs` 则**完全没有**这道门 —— 它建会话时 `set-option` **写**
-//! `@ccm_sid`，却从不**核验**它。于是「把 send-keys/kill 改走 daemon」会**静默丢掉一道门**：
-//! 功能看起来一样、门禁全绿，而门没了。那条路此前由 `tmux_daemon_gate_guard`
-//! 这条**前提触发器**挡着（「daemon 一出现身份守卫就主动红，逼人回来重新裁定」）。
+//! backend 的 `control/launch.rs` 则**完全没有**这道门 —— 它建会话时 `set-option` **写**
+//! `@ccm_sid`，却从不**核验**它。于是「把 send-keys/kill 改走后端」会**静默丢掉一道门**：
+//! 功能看起来一样、门禁全绿，而门没了。那条路此前由 `tmux_backend_gate_guard`
+//! 这条**前提触发器**挡着（「backend 一出现身份守卫就主动红，逼人回来重新裁定」）。
 //!
 //! ⇒ 定框 C1「backend 一份代码、两种承载」在这里的落地就是：
 //! **判定收进本 crate，两侧各自负责怎么把 `remote_sid` 取回来。**
@@ -23,14 +23,14 @@
 //!
 //! 「怎么问远端 `@ccm_sid`」两侧形态完全不同 ——
 //! monitor 拼一条穿过 ssh + shell 的原子命令（`display-message` 与动作同一个 round-trip，
-//! 防 TOCTOU）；daemon 就在那台机器上，argv 直传跑一次 `tmux display-message`。
+//! 防 TOCTOU）；backend 就在那台机器上，argv 直传跑一次 `tmux display-message`。
 //! 把取值也塞进来就得引入平台/进程/shell，共享当场破掉。
 //!
 //! # ⚠ `@ccm_sid` 不是 `@ccm_sid_expect`
 //!
 //! `shared/ccm` 刻意分了两个 option：通道 A（意图）写 `@ccm_sid_expect`，
 //! 只有通道 B（独立读会话文件确认后）才写 `@ccm_sid`。
-//! ⚠ `U-NP④`（08-14）：通道 B 的执行者已从 `shared/ccm` 里那条每秒 poller 换成 **daemon**
+//! ⚠ `U-NP④`（08-14）：通道 B 的执行者已从 `shared/ccm` 里那条每秒 poller 换成 **backend**
 //! （`control/identity_tag.rs`，pidfile inotify 驱动）。**两个 key 的语义一个字没变**，
 //! 只是事实的写者变成了独立第三方 —— 这里的判定不受影响，改注释是因为旧措辞已不成立。
 //! 原注释逐字写着「**破坏性动作只认 `@ccm_sid`**」——

@@ -15,7 +15,7 @@
  *
  * ⚠ **两处落点合并成一处了，这不是判据放宽**：bash 那版 send-keys 载荷与进程自身 env
  * 是**两段手写副本**（所以要钉两处，缺一处就漏）；原生实现里 `--print` 与真跑
- * **读同一个 `Plan`**（daemon 侧 `print_and_exec_cannot_drift_because_they_read_the_same_plan`
+ * **读同一个 `Plan`**（backend 侧 `print_and_exec_cannot_drift_because_they_read_the_same_plan`
  * 钉着这条结构事实）⇒ 那两段不可能分家。「两处都要有」这个要求**被结构吃掉了**，
  * 不是被删掉了。本文件下面因此只钉一处，并单独钉住容器路那一侧。
  *
@@ -107,7 +107,7 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
  *
  * # 它是被一次变异抽样逼出来的
  *
- * Phase G 的全局抽样覆盖了 monitor Rust / daemon / 前端 / bash 四面，**没抽 e2e 那一面**。
+ * Phase G 的全局抽样覆盖了 monitor Rust / backend / 前端 / bash 四面，**没抽 e2e 那一面**。
  * 08-06 补抽时造了一条 E10 点名的 argv 变异：把当时那份 `shared/ccm` 里
  * `tmux new-session -d -s …` 的 **`-d` 去掉**。结果 —— **红线内跑得动的四层一条都没红**：
  * `ccm-print-parity` 12/0 · monitor cargo 991/0 · vitest 1272/1272 ·

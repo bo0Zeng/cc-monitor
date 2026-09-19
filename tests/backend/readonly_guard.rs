@@ -1,14 +1,14 @@
-//! F08a：daemon 只读机器护栏（主计划红线 I7 的机器化守护）。
+//! F08a：backend 只读机器护栏（主计划红线 I7 的机器化守护）。
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
 //!
-//! - **它守的性质是**：daemon **进程自身**不许改动用户既有数据；新增文件须 `O_EXCL` 且只许在白名单模块里（`D1` 08-01 收窄后的铁律，与 `src/doc/INVARIANTS.md` §41.6 的「现措辞」同一句）。
+//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据；新增文件须 `O_EXCL` 且只许在白名单模块里（`D1` 08-01 收窄后的铁律，与 `src/doc/INVARIANTS.md` §41.6 的「现措辞」同一句）。
 //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Command::new` 的起进程点。
 //!
 //! ⚠ **这两行今天不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
 //! 「用户既有数据」是**语义**命题，人群是**文本形状**，两者之间没有可机检的桥。
 //! 人群比性质**小**（不含依赖 crate 的写、不含被起进程的写面、不含非 `fs::` 命名空间的写路径），
-//! 同时又比性质**大**（daemon 写一个与用户无关的自己的文件也会红）。
+//! 同时又比性质**大**（backend 写一个与用户无关的自己的文件也会红）。
 //! ⇒ **它今天真能拦住的形状全表在 [`g6_reach`]，一个今天在盘上、形状相同却通过了的反例也在那里。**
 //!
 //! # 〔`K-R79` 09-12〕上面那三条「小」里的第三条：**远端那一半今天有一层了**
@@ -41,8 +41,8 @@
 //! 钉住那两个承重词从此不许回来。
 //!
 //! 唯一合法的「写」是把 wire 帧写 **stdout**（`main.rs` 的 `AsyncWriteExt::write_all`，非 FS）。
-//! 本护栏遍历 daemon 生产源码，剥掉 `#[cfg(test)]` 块（测试夹具可用 temp 目录）后，断言不含任何
-//! **文件系统变更**调用。加只读测试是红线 I7 明确允许的（「daemon 只准加只读测试/门禁」）。
+//! 本护栏遍历后端生产源码，剥掉 `#[cfg(test)]` 块（测试夹具可用 temp 目录）后，断言不含任何
+//! **文件系统变更**调用。加只读测试是红线 I7 明确允许的（「backend 只准加只读测试/门禁」）。
 //!
 //! # ⚠ 本文件底部三个 `g6_*` 模块的住址是**写区限制的结果**，不是设计
 //!
@@ -51,7 +51,7 @@
 //! `K-G6` `C` 拍的写区只有三份护栏文件 + 件文件，新建文件与改 `main.rs` 都在写区外。
 //! ⇒ 暂住这里，**已上报 PM**。搬家那天把这段一起删掉。
 //!
-//! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改 daemon 行为。
+//! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改后端行为。
 
 #[cfg(test)]
 mod tests {
@@ -60,7 +60,7 @@ mod tests {
     /// 它做的事（「剥掉测试段，只留生产段」）在本仓**早就有唯一住址**：
     /// [`guard_core::production_source`]（`src/bridge/crates/guard-core`），
     /// 本 crate 经 `guard_support` 再导出。`guard_support` 的模块头注逐字记着搬家的理由：
-    /// 「monitor 侧够不着 daemon 的 `cfg(test)` 模块，于是它的守卫各自写了便宜近似
+    /// 「monitor 侧够不着后端的 `cfg(test)` 模块，于是它的守卫各自写了便宜近似
     /// （`src.split("\n#[cfg(test)]").next()`）—— 那个近似……**把扫描面砍掉三分之二**」。
     /// 〔散文墓碑〕`strip_cfg_test` 就是那一族里**最后一份没收进来的**：它自己的头注承认是启发式
     /// （括号配平不认字符串/注释里的大括号），并且已经造成过 ≥4 次事故。
@@ -97,7 +97,7 @@ mod tests {
     ///
     /// `(仓库相对路径, why —— 它写什么、为什么落在「只准新增、不许改动既有数据」之内)`
     ///
-    /// 收窄而非放开：见下面 [`daemon_write_capability_is_confined_to_the_registered_modules`]
+    /// 收窄而非放开：见下面 [`backend_write_capability_is_confined_to_the_registered_modules`]
     /// 的头注。**按仓库相对路径钉，不是按裸文件名。**
     ///
     /// # U3（2026-08-01）从裸文件名改成路径，理由是一次「该红没红」
@@ -239,11 +239,11 @@ mod tests {
             .copied()
     }
 
-    /// 扫 daemon 生产源码，按文件分流到两层判据。返回 (默认层文件数, 命中的白名单模块数)。
+    /// 扫后端生产源码，按文件分流到两层判据。返回 (默认层文件数, 命中的白名单模块数)。
     fn scan(src_dir: &std::path::Path) -> (usize, usize) {
         let mut default_scanned = 0usize;
         let mut whitelisted = 0usize;
-        // Phase G 审计：**递归**。原来是 `read_dir`（只看顶层）——今天 daemon src 是平的
+        // Phase G 审计：**递归**。原来是 `read_dir`（只看顶层）——今天 backend src 是平的
         // 所以尚未失效，但「写盘能力不可能悄悄扩散到第二个模块」这句承诺对
         // `src/<subdir>/x.rs` 是不成立的：那种文件既不进默认层也不进白名单层，
         // 而 `default_scanned >= 5` 与 `whitelisted == 1` 照样满足 ⇒ 护栏静默失效。
@@ -299,8 +299,8 @@ mod tests {
 
             if let Some(pat) = violates_default_layer(&prod) {
                 panic!(
-                    "daemon 写盘护栏违规（红线 I7 默认层）：生产代码 {} 含 `{pat}`。\n\
-                     daemon 今天只有这几个模块可以写，且只准 O_EXCL 新建：{}；\n\
+                    "backend 写盘护栏违规（红线 I7 默认层）：生产代码 {} 含 `{pat}`。\n\
+                     backend 今天只有这几个模块可以写，且只准 O_EXCL 新建：{}；\n\
                      如确需临时文件，放进 #[cfg(test)] 块内。",
                     path.display(),
                     write_whitelist_names()
@@ -315,14 +315,14 @@ mod tests {
     ///
     /// # 为什么是「收窄」而不是「放开」
     ///
-    /// 这条护栏的真实意图从来不是「daemon 不许碰文件系统」，而是
-    /// **「daemon 不许改动用户既有数据」**。此前 daemon 一个字都不用写，
+    /// 这条护栏的真实意图从来不是「backend 不许碰文件系统」，而是
+    /// **「backend 不许改动用户既有数据」**。此前后端一个字都不用写，
     /// 于是用「全面禁写」来近似它 —— 够用，且实现简单。
     ///
     /// `--fork-session` 要加的能力恰好落在这个近似的**误差**里：
     /// **用 `O_EXCL` 新建一个此前不存在的文件**，不修改、不覆盖、不删除任何既有文件。
     ///
-    /// ⇒ 拆成两层，而且**整体比原来更强**：原来对「daemon 将来要写盘」没有任何设计，
+    /// ⇒ 拆成两层，而且**整体比原来更强**：原来对「backend 将来要写盘」没有任何设计，
     /// 一旦有人要写就只能整条删掉护栏；现在写的能力被钉死在**逐条登记**的几个可审计的洞里，
     /// 洞口还额外挡住了截断 / 追加 / 改名 / 删除。
     ///
@@ -330,12 +330,12 @@ mod tests {
     /// 白名单从一个模块变成一张表（理由整段住 [`WRITE_WHITELIST_MODULES`] 头注）。
     /// 承重的性质**一个字没松** —— 它仍然是相等断言，只是分母改成现算的表长。
     #[test]
-    fn daemon_write_capability_is_confined_to_the_registered_modules() {
+    fn backend_write_capability_is_confined_to_the_registered_modules() {
         let src_dir = crate::guard_support::src_root();
         let (default_scanned, whitelisted) = scan(&src_dir);
         assert!(
             default_scanned >= 5,
-            "扫描到的 daemon 源文件过少（{default_scanned}），护栏可能没生效"
+            "扫描到的后端源文件过少（{default_scanned}），护栏可能没生效"
         );
         assert_eq!(
             whitelisted,
@@ -496,12 +496,12 @@ mod tests {
     ///
     /// # 原来那条漏了什么（实测，不是设想）
     ///
-    /// `FS_MUTATION_PATTERNS` 是**固定 11 项**的黑名单。08-06 在 daemon 生产段里写下
+    /// `FS_MUTATION_PATTERNS` 是**固定 11 项**的黑名单。08-06 在后端生产段里写下
     /// `std::os::unix::fs::symlink(a, b)` 与 `std::fs::set_permissions(b, …)` ——
-    /// 两个货真价实的文件系统变更 —— **daemon 281 条全过**。
+    /// 两个货真价实的文件系统变更 —— **backend 281 条全过**。
     /// 原因：表里写的是 `fs::soft_link`（那是**早已废弃的旧名**），而真 API 叫 `symlink`；
     /// `set_permissions` 则**根本没列**。
-    /// ⇒ 它守的是「daemon 对 `~/.claude` 只读」这条**用户级红线**，而绕过它只需要用一个
+    /// ⇒ 它守的是「backend 对 `~/.claude` 只读」这条**用户级红线**，而绕过它只需要用一个
     /// 没被想到的 API 名字 —— 这正是本仓 `structural_scan.rs` 头注说的黑名单通病。
     ///
     /// # 改法：枚举生产段里**每一处** `fs::` / `File::` 调用，要求它在只读白名单里
@@ -513,7 +513,7 @@ mod tests {
     /// `read_to_string`（纯只读）+ 两个仓内 helper（`mtime_ms` / `read_regular_capped`），
     /// 以及**只准出现在 [`WRITE_WHITELIST_MODULES`] 那几个模块里**的 [`WRITE_ONLY_IN_WHITELIST`]。
     #[test]
-    fn every_fs_call_in_daemon_production_is_read_only() {
+    fn every_fs_call_in_backend_production_is_read_only() {
         /// 只读动词 + 仓内只读 helper。**新增写 API 不在这里 ⇒ 自动红。**
         const READ_ONLY: &[&str] = &[
             "File",
@@ -543,7 +543,7 @@ mod tests {
         // `use std::fs::<条目>` / `use std::fs::{..}` / `use std::fs::*` / `use std::fs as X`
         // **一律禁** —— 它们把动词从调用点上摘掉了。
         //
-        // ⚠ 量过误红面：daemon 生产段今天只有 3 处 `use ... fs ...`，
+        // ⚠ 量过误红面：backend 生产段今天只有 3 处 `use ... fs ...`，
         // 全是 crate 内部的只读助手（`crate::common::fs::read_regular_capped` /
         // `crate::observe::fs::mtime_ms`），没有一处 `std::fs` 或 `tokio::fs` 导入 ⇒ 零误红。
         // 分类逻辑的常驻自检：真代码里今天**没有** `use std::fs;` 这种样本，
@@ -595,7 +595,7 @@ mod tests {
         }
         assert!(
             hatches.is_empty(),
-            "daemon 生产段把 `std::fs` / `tokio::fs` 的条目导入了作用域：\n{}\n\
+            "backend 生产段把 `std::fs` / `tokio::fs` 的条目导入了作用域：\n{}\n\
              ⚠ 这会让调用点不再带 `fs::` 前缀，于是下面那套只读白名单**整条看不见** ——\n\
              实测一次 `use std::fs::{{self as _f, write}};` + 裸 `write(..)` 就绕过了六条判据。\n\
              写法要求：`use std::fs;` 可以（调用点写 `fs::read_to_string`），\n\
@@ -651,14 +651,14 @@ mod tests {
         // ★ 枚举自检：扫不到足够多的 fs 调用 ⇒ 剥法或遍历坏了，下面是空转的。
         assert!(
             seen >= 25,
-            "daemon 生产段只扫到 {seen} 处 `fs::`/`File::` 调用 —— 枚举坏了（08-06 实测 39 处）"
+            "backend 生产段只扫到 {seen} 处 `fs::`/`File::` 调用 —— 枚举坏了（08-06 实测 39 处）"
         );
         bad.sort();
         bad.dedup();
         assert!(
             bad.is_empty(),
-            "daemon 生产段出现了**不在只读白名单里**的文件系统调用：\n{}\n\n\
-             ⚠ 红线（主计划 I7，`D1` 收窄后）：daemon **进程自身**不许改动用户既有数据；\n\
+            "backend 生产段出现了**不在只读白名单里**的文件系统调用：\n{}\n\n\
+             ⚠ 红线（主计划 I7，`D1` 收窄后）：backend **进程自身**不许改动用户既有数据；\n\
              新增文件须 `O_EXCL` 且只许在白名单模块里。\n\
              ★ 本条是白名单 —— 它挡的不只是已知的写 API，也挡**没人想到过**的那些：\n\
              08-06 实测，上面那条黑名单放过了 `os::unix::fs::symlink` 与 `fs::set_permissions`\n\
@@ -671,18 +671,18 @@ mod tests {
     }
 }
 
-/// U8a-2 / **D1 裁决的代码强制**：daemon 起进程的**受管例外清单**。
+/// U8a-2 / **D1 裁决的代码强制**：backend 起进程的**受管例外清单**。
 ///
 /// # 为什么要这条
 ///
 /// `readonly_guard` 的既有判据只认**文件系统写模式**，**它不认 `Command` / `spawn`**
-/// （`§0.2` 早就登记了这件事：「『daemon 只读』这个词今天已经在骗人」）。
+/// （`§0.2` 早就登记了这件事：「『backend 只读』这个词今天已经在骗人」）。
 /// 于是「起一个会写用户数据的进程」这条路，**机器护栏永远不会红**。
 ///
-/// D1 的裁决（主计划 §5）选了①：**铁律收窄为「daemon 进程自身不许写用户既有数据」**，
+/// D1 的裁决（主计划 §5）选了①：**铁律收窄为「backend 进程自身不许写用户既有数据」**，
 /// 间接写不算 —— 但推荐里带一个**强制条件**：
 ///
-/// > 必须同时：在 §41.6 写下「间接写的责任在被起的那个程序，daemon 的责任是不越权
+/// > 必须同时：在 §41.6 写下「间接写的责任在被起的那个程序，backend 的责任是不越权
 /// > 替它决定写什么」+ 把预信任那条单列为**受管的例外**，**逐条列举写面**。
 ///
 /// 「逐条列举」不能只是散文里列一遍 —— 那正是 §0.2 批评的「护栏与散文说的不是一件事」。
@@ -710,7 +710,7 @@ mod spawn_registry {
     /// 〔`K-R79` 09-12 订正：这一行原文逐字写的是「**本表七条**」，而现打 `ALLOWED.len()` 是 **9** ——
     ///  那是一处**写死的基数**（派工单固定项 13b：报一个基数也是复述，要现算）。
     ///  今天要那个数就让机器印：`readonly_guard::remote_write_layer` 的盲区读数里 `L2` 那一行现算它。〕
-    /// 「daemon **进程自身**不许改动用户既有数据」，而「缩掉的那一半从此归谁」的答案就是本表 ——
+    /// 「backend **进程自身**不许改动用户既有数据」，而「缩掉的那一半从此归谁」的答案就是本表 ——
     /// 归**被起的那个程序**。这不是巧合，是这张表存在的理由。
     pub(super) const ALLOWED: &[(&str, &str, &str, &str, &str)] = &[
         (
@@ -720,7 +720,7 @@ mod spawn_registry {
              （attach 那条、容器路的收尾那条、以及带 `CCM_ENV` / cc-bus 配方的那条）。\
              这与用户在自己终端里手敲同一条命令**没有区别** —— 它跑在用户的进程里、\
              做的是用户这一趟本来就要做的事（D1 裁决的正例，同 `control/launch.rs` 那条）。\
-             ⚠ **daemon 常驻那条路走不到这里**：入口在 `main()` 最前面按 `argv[0]` / 子命令词分出去，\
+             ⚠ **backend 常驻那条路走不到这里**：入口在 `main()` 最前面按 `argv[0]` / 子命令词分出去，\
              常驻模式一个字节都不经过本模块。",
             "缩性质",
             "把收尾那几段（兜底轮询 / attach / cc-bus 登记）逐条做成原生动作、不再经 shell 的那天。\
@@ -742,27 +742,27 @@ mod spawn_registry {
             "装 tmux hook（`set-hook -g`）。改的是 **tmux server 的运行期状态**，\
              不是用户既有数据；P4b 的零轮询判活靠它",
             "缩性质",
-            "判活不再需要 daemon 自己去装 hook 的那天（换成别的内核事件源，\
-             或 hook 由用户侧一次性装好而 daemon 只读）——那时这一条摘掉。",
+            "判活不再需要后端自己去装 hook 的那天（换成别的内核事件源，\
+             或 hook 由用户侧一次性装好而后端只读）——那时这一条摘掉。",
         ),
         (
             "control/launch.rs",
             "tmux",
             "U8a-2b 平面 ②：建 tmux 会话 / 往已有会话 send-keys（argv 直传，不过 shell）。\
              改的是 **tmux server 的运行期状态** + 起一个用户自己要起的 claude 进程，\
-             **不是 daemon 进程自身写用户既有数据** —— 载荷落盘由那个 claude 进程负责，\
+             **不是后端进程自身写用户既有数据** —— 载荷落盘由那个 claude 进程负责，\
              与用户在终端里手敲同一条命令没有区别（D1 裁决的正例）",
             "缩性质",
-            "「起会话」这条路整个搬出 daemon（或改成由 monitor 侧起、daemon 只观测）的那天。\
+            "「起会话」这条路整个搬出后端（或改成由 monitor 侧起、backend 只观测）的那天。\
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二种被起的程序。",
         ),
         (
             "control/kill.rs",
             "tmux",
             "F04a：`kill-session`（argv 直传）。**破坏性**，但改的是 **tmux server 的运行期状态**，\
-             不是 daemon 自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）",
+             不是后端自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）",
             "缩性质",
-            "§34 那三道门有任何一道被拆掉、或「杀会话」不再由 daemon 发起的那天，\
+            "§34 那三道门有任何一道被拆掉、或「杀会话」不再由后端发起的那天，\
              这一条要回来重判（它是本表里唯一**破坏性**的 tmux 动作）。",
         ),
         (
@@ -788,7 +788,7 @@ mod spawn_registry {
              **只读 tmux**：不 attach、不落 tmux buffer（`-p` = 打到 stdout，\
              换成落 buffer 就是改 tmux 状态了）、不写任何文件。\
              它服务的是 monitor 侧账本 `parity_ledger` 的 `tmux.manage` 那格挂了一个月的\
-             「画面预览」欠账 —— 那一格逐字写着「仍等 daemon 出原语」。\
+             「画面预览」欠账 —— 那一格逐字写着「仍等后端出原语」。\
              ⚠ **这张表的键分不出被调的是哪条 tmux 子命令**（同 `plugin/invoke.rs` 那条\
              自陈的 `K6b` 盲区）⇒ 光靠这一行**买不到「只读」**。\
              真正钉住它的是本文件的 [`super::capture_is_read_only`]：\
@@ -827,8 +827,8 @@ mod spawn_registry {
             "tmux",
             "`U-NP④`：`set-option @ccm_sid`（argv 直传）—— 把「这个 tmux 会话在跑哪个 sid」\
              这条事实打上去。接的是 `shared/ccm` 那条**每会话一条、每秒一轮**的身份 poller 的班\
-             （用户 08-14：「不要轮询」「ccm 做到必须走 daemon」）。改的是 **tmux server 的\
-             运行期状态**，不是 daemon 自己写用户既有数据（同 `tmux_hook`）。\
+             （用户 08-14：「不要轮询」「ccm 做到必须走后端」）。改的是 **tmux server 的\
+             运行期状态**，不是后端自己写用户既有数据（同 `tmux_hook`）。\
              ⚠ **探测不在这里**：它复用 `control/gate.rs` 那一处 `display-message`，\
              所以本文件只有这一处起进程 —— 刻意不让面变大",
             "缩性质",
@@ -856,7 +856,7 @@ mod spawn_registry {
              （它把条数钉成相等），是被逼回来读这一段之后才写下的 —— 那正是 `cc-kill` \
              漏登 13 天之后补的这道闸要买的东西。\
              四者都是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别\
-             （同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **daemon 进程自身**\
+             （同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **backend 进程自身**\
              不写用户既有数据）。\
              ⚠ 这一处口从此是**通用**的：将来经它起的每一个插件，写面都落在这一条理由底下，\
              而这条键**分不出**是哪个插件 —— 加一种新的被调命令时必须回来重读这一段，\
@@ -990,7 +990,7 @@ mod spawn_registry {
         // `grep -c 'Command::new(' `，逐文件看，`platform/shell.rs` 那份是新住址。
         // `K-R86`（09-13）：10 → 11，新增 `control/capture_pane.rs` 的
         // `tmux -u capture-pane -p -t '=名:'`。⚠ **这一处是真的新面，不是搬家**：
-        // 抓屏这件事此前 daemon 侧一处都没有（`ALLOWED` 里那条新登记逐字写了它做什么）。
+        // 抓屏这件事此前后端侧一处都没有（`ALLOWED` 里那条新登记逐字写了它做什么）。
         // ⚠ 它**只读**，而这张表的键分不出被调的子命令 ⇒ 「只读」由
         // [`super::capture_is_read_only`] 单独钉，别把这一格的 +1 读成「只读性质有人证了」。
         // `K-R87`（09-13）：11 → **13**，一次加两处，两处都是**真的新面**：
@@ -1025,7 +1025,7 @@ mod spawn_registry {
         assert!(
             unregistered.is_empty(),
             "这些起进程点没在受管例外清单里：{unregistered:?}\n\
-             D1 把铁律收窄成「daemon **进程自身**不许写用户既有数据」，代价是**必须逐条列举**\n\
+             D1 把铁律收窄成「backend **进程自身**不许写用户既有数据」，代价是**必须逐条列举**\n\
              起进程的写面 —— 否则收窄就退化成「隔一层 exec 就绕过」。\n\
              把它加进 `ALLOWED` 并**写明它做什么、为什么不违反收窄后的铁律**。"
         );
@@ -1376,7 +1376,7 @@ mod capture_is_read_only {
 //    不许写成 `pub(crate) mod` —— `guard_core::test_module_ranges` 认「测试模块」的判据是
 //    「属性的下一行以 `mod ` 打头、以 `{` 收尾」，写成 `pub(crate) mod` 就**认不出来**，
 //    整段测试代码会留在生产段里被别的守卫扫。〔本轮现打：写成 `pub(crate) mod` 时
-//    `every_daemon_file_strips_clean` 当场红，逐字「剥完仍残留 2 个测试属性」。〕
+//    `every_backend_file_strips_clean` 当场红，逐字「剥完仍残留 2 个测试属性」。〕
 //    ⇒ 跨模块可见性只能走这条再导出。」
 //
 // **那个前提被 `K-R75`（09-12）拆掉了**：剥法不再按字面前缀认 `mod `，改成**按形状**
@@ -1451,8 +1451,8 @@ pub(crate) mod g6_doctrine {
             "缩性质",
             "性质本身该缩 —— 它当初是一个更小性质的**粗近似**",
             "**单独论证**，并写清**缩掉的那一半从此归谁**",
-            "`D1` 把 daemon 那条写盘铁律从收窄前那句绝对话（原文见 `src/doc/INVARIANTS.md` §41.6 的\
-             「原措辞」，本文件刻意不抄）缩成「daemon 进程自身不许改动用户既有数据」就是这一格：\
+            "`D1` 把后端那条写盘铁律从收窄前那句绝对话（原文见 `src/doc/INVARIANTS.md` §41.6 的\
+             「原措辞」，本文件刻意不抄）缩成「backend 进程自身不许改动用户既有数据」就是这一格：\
              缩掉的那一半（间接写）归**被起的那个程序**，而代价是那条路必须逐条登记 —— \
              登记表就是「归谁」的落点。**只缩不写归属 = 把那一半丢了。**",
             "缩掉的那一半有了自己的判据（或那条路整个消失）之后，登记表随之摘掉。",
@@ -1617,14 +1617,14 @@ mod g6_reach {
         "control/cc_bus.rs",
         "run(\"cc-kill\"",
         "生产段起一个外部程序去**删除 / 覆盖用户既有数据**：被起的那个脚本会覆盖两份名册、\
-         删掉一个 id 的收件箱与它的状态文件。**形状对得上** —— daemon 若把同一件事写成\
+         删掉一个 id 的收件箱与它的状态文件。**形状对得上** —— backend 若把同一件事写成\
          `remove_file` / `rename` 那两个动词，默认层当场红。\
          **而它今天通过**：默认层的人群是本 crate 源码文本里 `fs::` / `File::` / `OpenOptions` \
          这三个命名空间的调用，起进程一个都不匹配（`spawn_registry` 头注逐字承认「它不认 \
          `Command` / `spawn`」）。⇒ 这不是漏洞，是**一次没有落到判据上的裁定**（`D1` 缩性质），\
          而缩掉的那一半由 `ALLOWED` 接着 —— 那张表的键**分不出被调命令**，所以本条另钉一格：\
          经那个键转调的命令**恰好三条**。",
-        "默认层能顺着起进程点读到被起程序的写面那天（或那条路改成 daemon 自己写、\
+        "默认层能顺着起进程点读到被起程序的写面那天（或那条路改成后端自己写、\
          从而落回默认层射程内）——那时这一条摘掉，并回来重判 `ALLOWED` 还需不需要。",
     )];
 
@@ -1766,7 +1766,7 @@ mod g6_staged_zero {
         ),
         (
             "tests/backend/wire_tests.rs",
-            "the_daemon_can_already_discover_homes_it_just_does_not_send_them",
+            "the_backend_can_already_discover_homes_it_just_does_not_send_them",
             "反锚：发现能力**还在**（合成夹具走真发现路 + 精确字节断言）",
             "自己就是那条判据",
             "本 crate",
@@ -1774,21 +1774,21 @@ mod g6_staged_zero {
         (
             "agents/codex/parse.rs",
             "codex_turn_end_uuid",
-            "daemon 生产段里**跨文件消费者 0 个**（今天只有它自己那份文件在提它）",
+            "backend 生产段里**跨文件消费者 0 个**（今天只有它自己那份文件在提它）",
             "—",
             "本 crate",
         ),
         (
             "agents/codex/parse.rs",
             "is_codex_turn_end",
-            "daemon 生产段里**跨文件消费者 0 个**（同上；它在自己文件内被兄弟函数调一次）",
+            "backend 生产段里**跨文件消费者 0 个**（同上；它在自己文件内被兄弟函数调一次）",
             "—",
             "本 crate",
         ),
         (
             "plugin/probe.rs",
             "negotiate",
-            "daemon 生产段里**跨文件消费者 0 个**（`main.rs` 那处是英文文档注释，不是调用）",
+            "backend 生产段里**跨文件消费者 0 个**（`main.rs` 那处是英文文档注释，不是调用）",
             "—",
             "本 crate",
         ),
@@ -1801,7 +1801,7 @@ mod g6_staged_zero {
     /// · **射程**：人群从「只有 `src/backend`」扩到**两棵树**。理由：`STAGED_ZERO` 那张表
     ///   第二栏登记的是**判据的名字**，而判据这一轮整批搬进了 `<repo>/tests/backend/`
     ///   ⇒ 只扫生产树时「那条判据还在不在」这一格必然报「找不到」
-    ///   （现打红：`wire.rs` 里已经找不到 `the_daemon_can_already_discover_homes_…`）。
+    ///   （现打红：`wire.rs` 里已经找不到 `the_backend_can_already_discover_homes_…`）。
     /// · **自摘**：原来靠 `scan_tree!` 的 `file!()`。本文件住 `tests/backend/`，
     ///   在旧射程（生产树）里本来就不在人群中，所以自摘失效一直**无害**；
     ///   射程一扩到 `tests/backend` 就**立刻有害**了 ——
@@ -1810,7 +1810,7 @@ mod g6_staged_zero {
     ///
     /// ⚠ 住址口径：生产树的文件相对 `src/backend`（表里旧行**一个字没改**），
     ///   测试树的文件写成 `tests/backend/…`（仓根相对）—— 两种靠前缀就分得开。
-    fn daemon_files() -> Vec<(String, String, String)> {
+    fn backend_files() -> Vec<(String, String, String)> {
         let src_root = crate::guard_support::src_root();
         let tests_root = crate::guard_support::tests_root();
         let mut out = Vec::new();
@@ -1846,10 +1846,10 @@ mod g6_staged_zero {
              但每加一条都要说清「被钉的那个零逐字是什么」与「接线那天为什么该红」",
             STAGED_ZERO.len()
         );
-        let files = daemon_files();
+        let files = backend_files();
         assert!(
             files.len() >= 60,
-            "只扫到 {} 个 daemon 源文件 —— **遍历坏了**，本条此刻在空转",
+            "只扫到 {} 个后端源文件 —— **遍历坏了**，本条此刻在空转",
             files.len()
         );
         let mut out_of_reach = 0usize;
@@ -1869,7 +1869,7 @@ mod g6_staged_zero {
             let owner = files
                 .iter()
                 .find(|(f, ..)| f.as_str() == *rel)
-                .unwrap_or_else(|| panic!("登记的住址 `{rel}` 今天不在 daemon 树上了 —— 幽灵条目"));
+                .unwrap_or_else(|| panic!("登记的住址 `{rel}` 今天不在后端树上了 —— 幽灵条目"));
             assert!(
                 owner.1.contains(name),
                 "`{rel}` 里已经找不到 `{name}` 了 —— 删掉了就**同轮摘登记**"
@@ -1877,7 +1877,7 @@ mod g6_staged_zero {
         }
         assert!(
             out_of_reach <= 1,
-            "有 {out_of_reach} 条标着 `跨 crate` —— 本判据住 daemon crate（它刻意不属于 workspace），\
+            "有 {out_of_reach} 条标着 `跨 crate` —— 本判据住 backend crate（它刻意不属于 workspace），\
              够不着 `src/bridge`。标的条数超过 1 就说明这张表的家选错了，\
              该按 `Bx` 说的另立一处两侧都够得着的落点。"
         );
@@ -1890,7 +1890,7 @@ mod g6_staged_zero {
     /// 而不是让一个「本来说好是零」的事实悄悄变成非零。
     #[test]
     fn the_symbols_registered_as_zero_have_no_cross_file_production_consumer() {
-        let files = daemon_files();
+        let files = backend_files();
         let mut checked = 0usize;
         let mut offenders: Vec<String> = Vec::new();
         for (rel, name, _zero, pinned_by, reach) in STAGED_ZERO {
@@ -2427,12 +2427,12 @@ mod g6_dependency_signoff {
         (
             MEASURED_WRITES_ON_PURPOSE,
             "读过它的源码、找到了写面，**而发布二进制里就是要它写** —— \
-             它的写面就是 daemon 要用的那个功能本身（远端部署 / 远端文件操作那一族）。\
+             它的写面就是后端要用的那个功能本身（远端部署 / 远端文件操作那一族）。\
              ⇒ 本档**不问**「凭什么进不来」，改问「**它写的那一面由谁划边界**」",
             "🔴 **本档自带边界，它不是例外**：签字里必须逐字出现 `边界判据：` \
              ＋ 一条**本文件里真存在**的判据名（反引号括起来），由 \
              `the_purposeful_write_verdict_names_a_boundary_judge_that_really_exists` 三处对拍。\
-             降档 / 摘掉的条件是「daemon 不再需要它写」—— 那时它回到 `已量·有写面`\
+             降档 / 摘掉的条件是「backend 不再需要它写」—— 那时它回到 `已量·有写面`\
              （并重新答「凭什么进不来」），或者直接从清单上摘掉",
         ),
         (
@@ -2448,7 +2448,7 @@ mod g6_dependency_signoff {
         ),
         (
             UNMEASURED,
-            "**没读它的源码。** 签字依据只有「daemon 在它身上的用法不需要它自己写盘」——\
+            "**没读它的源码。** 签字依据只有「backend 在它身上的用法不需要它自己写盘」——\
              那是**用法**判断，不是对它源码的读数",
             "有人真去读了它的源码（或它进了一次真的依赖审计）⇒ 那一条升到已量的两档之一；\
              在那之前如实标着「未量」，不许因为「看起来不会写」就升档",
@@ -2468,7 +2468,7 @@ mod g6_dependency_signoff {
     /// 有写面那一档今天唯一的成员，与它那个被关着的 feature。
     const GATED_CRATE: &str = "creds-core";
 
-    /// **签字表**：`(crate 名, 段, 判档, 签字——它在 daemon 里做什么 · 凭什么落这一档)`。
+    /// **签字表**：`(crate 名, 段, 判档, 签字——它在后端里做什么 · 凭什么落这一档)`。
     ///
     /// 谁签的：`实@09-04`（本轮实现方）。整表一个签字人，所以不占一列 ——
     /// 哪天有第二个人往里加行，那一列再立。
@@ -2492,7 +2492,7 @@ mod g6_dependency_signoff {
             "第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。\
              ★ **它自己有两处写面**：`perm.rs` 的 `make_private`（收窄既有文件的权限）与 \
              `create_private`（建一个只给本人的新文件）。两处**都在那个 feature 后面**，\
-             而本清单**刻意不开**它（清单那段注释逐字写着理由：daemon 只许读那份文件）\
+             而本清单**刻意不开**它（清单那段注释逐字写着理由：backend 只许读那份文件）\
              ⇒ 今天编不进来。这条前提由本模块那条 feature 判据钉着，不靠纪律",
         ),
         (
@@ -2519,7 +2519,7 @@ mod g6_dependency_signoff {
             "notify",
             DEPS,
             UNMEASURED,
-            "inotify 观测：daemon 只拿它订阅被观测目录底下的变化，一条写路径都不经它",
+            "inotify 观测：backend 只拿它订阅被观测目录底下的变化，一条写路径都不经它",
         ),
         (
             "notify-debouncer-mini",
@@ -2543,7 +2543,7 @@ mod g6_dependency_signoff {
              `flate2` / `rsa`），provider 就是本表上面 `rustls` 那条已经在用的 `ring`。\
              ⚠ **本档是「未量」不是「没写面」**：私钥由 `russh::keys::load_secret_key` \
              **读**一个路径（读不是写），而它建不建缓存 / 写不写 known_hosts \
-             **我没有扫过它的源码** —— daemon 侧这条路不传 known_hosts 路径、\
+             **我没有扫过它的源码** —— backend 侧这条路不传 known_hosts 路径、\
              host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
              ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做",
@@ -2560,7 +2560,7 @@ mod g6_dependency_signoff {
             "serde",
             DEPS,
             UNMEASURED,
-            "序列化派生；daemon 只拿它把 wire 帧与结构体互转，落盘那一步不经它",
+            "序列化派生；backend 只拿它把 wire 帧与结构体互转，落盘那一步不经它",
         ),
         (
             "serde_json",
@@ -2626,7 +2626,7 @@ mod g6_dependency_signoff {
     ///
     /// ⚠ 剥 `#` 整行注释走 `guard_core` 的**共享原语**，不在这里自己写第二份 ——
     /// 本函数第一版内联了一个 `#` 过滤，而 monitor 侧那张「剥注释实现只许一份」的登记表
-    /// **当场逮住了它**（09-04 现打；它的人群跨三棵树，daemon 这一侧也在里面）。
+    /// **当场逮住了它**（09-04 现打；它的人群跨三棵树，backend 这一侧也在里面）。
     fn dep_entries(manifest_text: &str) -> Vec<(String, String, String)> {
         let mut out: Vec<(String, String, String)> = Vec::new();
         let mut section = String::new();
@@ -2692,8 +2692,8 @@ mod g6_dependency_signoff {
     // 「⚠ 如实写明：**没有任何判据会在那一刻自动红** —— 这一档的尺子是签字那一刻现打的，
     //   不是常驻的」。⇒ 那个判决只在签字那一秒为真，之后无人再问。
     // `D1②` 现打过一刀确认这条读数：给 `branch-core` 加一处货真价实的 `fs::write`，
-    // **门禁九格一格没红**（cargo 1450 · daemon 587 · npm 1590 · e2e 12/8/264/72 · pb check 0，
-    // 量于 `b4e289f` + 那一刀、未铺 `embedded-daemons`）。
+    // **门禁九格一格没红**（cargo 1450 · backend 587 · npm 1590 · e2e 12/8/264/72 · pb check 0，
+    // 量于 `b4e289f` + 那一刀、未铺 `embedded-backends`）。
     //
     // # 为什么这一档做得起来，而 `UNMEASURED` 那一档做不起来
     //
@@ -2731,7 +2731,7 @@ mod g6_dependency_signoff {
     /// 〔`K-R79` 09-12〕并进了 [`super::remote_write_layer`] 那两张网。**理由是「同职」**：
     /// 这把尺子替 `已量·未见写面` 那一档回答「这几棵仓内 crate 今天干不干净」，
     /// 而「干净」如果只算本机写面，那么哪天 `acct-core` 里长出一处远端写，
-    /// 这一档照样绿 —— 那正是本件在 daemon 本体上治的同一个洞，换一棵树再挖一遍。
+    /// 这一档照样绿 —— 那正是本件在后端本体上治的同一个洞，换一棵树再挖一遍。
     /// ⚠ 并进来是**收紧**：今天这六棵 crate 上现打 0 处命中（本轮量过，逐词都是 0）。
     fn resident_ruler() -> Vec<String> {
         let mut v: Vec<String> = super::tests::FS_MUTATION_PATTERNS
@@ -2867,7 +2867,7 @@ mod g6_dependency_signoff {
              ⇒ 本护栏的人群行逐字承认它「不含依赖 crate 的写」——\
              一条新依赖在它自己的代码里写盘 / 起进程，两层判据一层都不会响。\n\
              **本表买的就是那一格**：加一条依赖，就在 `SIGNED` 里写一行\
-             「它在 daemon 里做什么 · 有没有写面 · 依据是什么」。\n\
+             「它在后端里做什么 · 有没有写面 · 依据是什么」。\n\
              判档只有这几个（现算）：{}",
             unsigned.join("\n"),
             verdict_names().join(" / ")
@@ -2913,7 +2913,7 @@ mod g6_dependency_signoff {
             assert!(
                 why.trim().chars().count() >= 20,
                 "`{name}` 的签字太短（实得 {} 字）—— 这一列的读者是下一个想加依赖的人，\
-                 要写的是「它在 daemon 里做什么 · 凭什么落这一档」，不是一句「没问题」",
+                 要写的是「它在后端里做什么 · 凭什么落这一档」，不是一句「没问题」",
                 why.trim().chars().count()
             );
             assert!(
@@ -2961,7 +2961,7 @@ mod g6_dependency_signoff {
              ⇒ 那个 feature 才带「把文件收窄 / 建私有文件」的平台原语，一开，\
              它那两处写面就真编进本 crate 的依赖树了。\n\
              **这不是改个断言的事**：`SIGNED` 里那一行的签字前提当场作废，回来重签，\
-             并回答「daemon 现在算不算自己在写用户既有数据」。"
+             并回答「backend 现在算不算自己在写用户既有数据」。"
         );
         // 反空真：探针对「开着」的写法必须认得出来，否则上面那条零命中断言什么也不说明。
         //
@@ -3006,7 +3006,7 @@ mod g6_dependency_signoff {
         assert_eq!(
             unsigned_of(&declared),
             vec![format!("  {DEPS} 里的 {engine}")],
-            "★ 这一刀正是本件的形状：**引擎被编进 daemon** 那天，它会作为一条新依赖出现，\
+            "★ 这一刀正是本件的形状：**引擎被编进 backend** 那天，它会作为一条新依赖出现，\
              而它自己就是「在 vendor 里写盘、判据看不见」的那一个 —— 本条要求那时候当场点名它。\
              同时它反向证明另一半：已经签过字的 `serde` / `guard-core` 不许被误报成没签字。"
         );
@@ -3076,7 +3076,7 @@ mod g6_dependency_signoff {
              ⇒ 这正是那一档的解锁条件说的那一刻：**那一条要回来重签**，判档多半该换成 \
              `{MEASURED_WRITES}`，并在签字里回答「凭什么它进不了发布二进制」「那个前提谁钉着」。\n\
              ⚠ **不许**为了让本条绿而把那几处从尺子里排除掉 —— 尺子是护栏自己那两张模式表，\
-             动它等于同时放宽 daemon 本体那两层判据。\n\
+             动它等于同时放宽后端本体那两层判据。\n\
              （本趟扫了 {} 棵：{}）",
             hits.len(),
             hits.join("\n"),
@@ -3291,7 +3291,7 @@ mod g6_dependency_signoff {
                 sftp_crate.as_str(),
                 DEPS,
                 *allowed,
-                "它的写面被一个没开的 feature 关着 / 边界判据：`the_daemon_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty`",
+                "它的写面被一个没开的 feature 关着 / 边界判据：`the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty`",
             )];
             assert!(
                 capability_supplier_misfits(&fake).is_empty(),
@@ -3316,13 +3316,13 @@ mod g6_dependency_signoff {
             Vec::<String>::new(),
             "真表上有一条落在第四档、而说不出边界 —— 逐条见上"
         );
-        let good = format!("daemon 就是要它写远端。{BOUNDARY_TAG}`{RESIDENT_GUARD}`");
+        let good = format!("backend 就是要它写远端。{BOUNDARY_TAG}`{RESIDENT_GUARD}`");
         let cases: [(&str, &str); 4] = [
-            ("没写边界", "daemon 就是要它写远端，反正已经登记了"),
-            ("边界不成形", "daemon 就是要它写远端。边界判据：那条常驻的"),
+            ("没写边界", "backend 就是要它写远端，反正已经登记了"),
+            ("边界不成形", "backend 就是要它写远端。边界判据：那条常驻的"),
             (
                 "点名了一个盘上没有的判据",
-                "daemon 就是要它写远端。边界判据：`a_judge_that_was_renamed_away`",
+                "backend 就是要它写远端。边界判据：`a_judge_that_was_renamed_away`",
             ),
             ("好形状", good.as_str()),
         ];
@@ -3361,7 +3361,7 @@ mod remote_write_layer {
     //!
     //! # 它守的性质 · 它扫的人群（两行，各只许有一句 —— 同本文件顶上 `KG62` 那对）
     //!
-    //! - **它守的性质是**：daemon **进程自身**不许改动**别人机器上**的用户既有数据。
+    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据。
     //!   （本机那一半由默认层与只读白名单守；本层守的是**远端**那一半。）
     //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里，
     //!   **把一条远端通道变成文件系统的那一步**（[`REMOTE_CAPABILITY_ANCHORS`]）
@@ -3415,7 +3415,7 @@ mod remote_write_layer {
             FAMILY_SUBSYSTEM,
             "在 SSH 连接上开一个**子系统** —— `ssh-connection` 协议里这是**唯一**一个动作，\
              而 SFTP 就是一个子系统名。换一份 crate、换一套方法名，这一步躲不掉；\
-             反过来，daemon 今天**没有任何理由**去开子系统（它那条 `--dial` 臂开的是 \
+             反过来，backend 今天**没有任何理由**去开子系统（它那条 `--dial` 臂开的是 \
              session channel，不是子系统）⇒ 这一条今天在树上恒零，出现即越线。",
         ),
         (
@@ -3455,7 +3455,7 @@ mod remote_write_layer {
     ///   默认层已经在数；`sftp.remove_file(` 是方法形，默认层一条都不匹配 —— 那正是本件的题面。
     /// - 它是**超集**：本机某个**恰好同名**的方法也会红（今天树上 **0 处**，分母 = 本 crate
     ///   `src/` 生产段全部 `.rs`，由 [`the_verb_net_has_no_false_positive_on_this_tree_today`] 现打）。
-    /// - 🔴 **`write_all(` 刻意不在表上**：daemon 唯一合法的写就是把 wire 帧写 stdout
+    /// - 🔴 **`write_all(` 刻意不在表上**：backend 唯一合法的写就是把 wire 帧写 stdout
     ///   （`main.rs` / `wire.rs` / `listen.rs` 那三处），把它收进来等于把本层做成一条恒红的闸，
     ///   而一条恒红的闸活不过一轮 —— 它会被人关掉。**这一格是想过的，不是漏的。**
     const REMOTE_MUTATION_VERBS: &[(&str, &str)] = &[
@@ -3814,9 +3814,9 @@ mod remote_write_layer {
         }
     }
 
-    /// ★★ 正题：**整棵 daemon 树的生产段，今天一处远端写都没有** —— 而这个零不是空转。
+    /// ★★ 正题：**整棵后端树的生产段，今天一处远端写都没有** —— 而这个零不是空转。
     #[test]
-    fn the_daemon_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty() {
+    fn the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty() {
         let tree = production_tree();
         let bytes: usize = tree.iter().map(|(_, c)| c.len()).sum();
         assert!(
@@ -3836,8 +3836,8 @@ mod remote_write_layer {
         }
         assert!(
             hit.is_empty(),
-            "daemon 生产段里有 {} 处**远端写**：\n{}\n\n\
-             红线 I7 守的性质是「daemon 进程自身不许改动用户既有数据」，\
+            "backend 生产段里有 {} 处**远端写**：\n{}\n\n\
+             红线 I7 守的性质是「backend 进程自身不许改动用户既有数据」，\
              而**别人机器上的数据也是用户既有数据** —— 本层就是那一半。\n\
              ⇒ 真要让后端去写远端，那不是改这条判据的事：\n\
              ① 先把「远端 rc 能不能替用户写」那一问裁掉（`ROADMAP.md#KU31`，今天还没裁）；\n\

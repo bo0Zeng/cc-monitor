@@ -43,7 +43,7 @@ const PENDING: &[&str] = &[
     //      `rust_timer_registry.rs`          → `rust_timer_registry_tests.rs`
     //      `session_name_registry.rs`        → `session_name_registry_tests.rs`
     //      `shared_crate_registry.rs`        → `shared_crate_registry_tests.rs`
-    //      `tmux_daemon_gate_guard.rs`       → `tmux_daemon_gate_guard_tests.rs`
+    //      `tmux_backend_gate_guard.rs`       → `tmux_backend_gate_guard_tests.rs`
     //
     // ⚠ **`backend/mod.rs` 那一条差点顶破棘轮，如实记**：它剖成了**两份**
     //    （`backend_tests.rs` ＋ `backend_layering.rs`），两份里都有裸遍历
@@ -55,7 +55,7 @@ const PENDING: &[&str] = &[
     // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕**下面 7 行换了住址，条数一格没变**
     //    （`PENDING_CEILING` 因此**没有动** —— 一个裸遍历都没少，只是它们跟着
     //    自己那条判据搬进了 `tests/`）。逐份点名：
-    //      `backend/control/daemon_kill.rs`  → `tests/bridge/backend/control/daemon_kill_tests.rs`
+    //      `backend/control/backend_kill.rs`  → `tests/bridge/backend/control/backend_kill_tests.rs`
     //      `backend/control/launch_wire.rs`  → `tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs`
     //      `panorama.rs`                     → `tests/bridge/panorama_tests.rs`
     //      `parser.rs`                       → `tests/bridge/parser_tests.rs`
@@ -63,7 +63,7 @@ const PENDING: &[&str] = &[
     //      `ssh_source.rs`                   → `tests/bridge/ssh_source_f032_idle_tests.rs`
     //      `utils.rs`                        → `tests/bridge/utils_tests.rs`
     "tests/bridge/atomic_replace_registry_tests.rs",
-    "tests/bridge/backend/control/daemon_kill_tests.rs",
+    "tests/bridge/backend/control/backend_kill_tests.rs",
     "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
     "tests/bridge/backend_layering.rs",
     "tests/bridge/backend/observe/local_query_tests.rs",
@@ -85,7 +85,7 @@ const PENDING: &[&str] = &[
     "tests/bridge/session_name_registry_tests.rs",
     "tests/bridge/shared_crate_registry_tests.rs",
     "tests/bridge/ssh_source_f032_idle_tests.rs",
-    "tests/bridge/tmux_daemon_gate_guard_tests.rs",
+    "tests/bridge/tmux_backend_gate_guard_tests.rs",
     "tests/bridge/utils_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
@@ -102,7 +102,7 @@ const PENDING: &[&str] = &[
     //     `tests/bridge/cross_half_edge_registry_tests.rs::both_halves` 的手写递归
     //     改走 `guard_core::scan_tree_excluding`（语义逐字相同，是纯死重）。
     //   〔同轮另迁了一处但**没**腾出格子，如实记：
-    //    `tests/backend/no_timer_guard.rs::daemon_sources` 也改走了那个原语，
+    //    `tests/backend/no_timer_guard.rs::backend_sources` 也改走了那个原语，
     //    但那份文件里还有 3 处别的 `read_dir(`（本判据按**文件**数）⇒ 它仍在清单上。〕
     "src/backend/observe/watcher.rs",
     "tests/backend/observe/watcher_tests.rs",
@@ -118,7 +118,7 @@ const PENDING: &[&str] = &[
 /// —— 历史里那个更低的档还在。⇒ 别在这里试「先抬一格让今天好过」，那正是它挡的动作。
 /// ⚠ 它守的是这个**数**；「删一行腾余量」那一形归
 /// [`no_new_guard_walks_the_tree_without_excluding_itself`]。
-// 08-08：`daemon_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
+// 08-08：`backend_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
 // 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
 const PENDING_CEILING: usize = 28; // `设计/50`：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
 
@@ -272,8 +272,8 @@ fn test_regions(src: &str) -> String {
 ///    单例守卫里各指各的常量），**真正的共用开关只有 `spec.fields.is_empty()` 那一处**，
 ///    已由 `inbound::declaring_zero_fields_needs_a_reason` 补上。
 /// ② **多条判据共用同一个采集器**（它一坏就集体失明）：逐个核过
-///    `rust_files` / `collect_ts` / `doc_files` / `daemon_sources` / `layer_sources` /
-///    `scan_files` / `platform_cfgs` / `backend_files` / `daemon_control_production` …
+///    `rust_files` / `collect_ts` / `doc_files` / `backend_sources` / `layer_sources` /
+///    `scan_files` / `platform_cfgs` / `backend_files` / `backend_control_production` …
 ///    —— **每一个都有自检**（地板、或与登记表的数量相等对拍）。**零发现。**
 ///
 /// ⚠ 为什么不把这条横扫做成判据：我写的两版探测器**都不可靠** ——
@@ -359,7 +359,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 抽取器自检⑤（`K-R37`）：**采集量地板，逐子树一个** —— 不是只看总数。
     //
     // 🔴 它买的是 `D2` 的 acceptor 逐字点名的那一格：「把新树加进实参而**实际上采不到
-    // 东西**」（路径拼错 / 后缀过滤掉了）。为什么必须**逐子树**：daemon 那棵今天对
+    // 东西**」（路径拼错 / 后缀过滤掉了）。为什么必须**逐子树**：backend 那棵今天对
     // `population` 的贡献是 **0**（闭集里那几个名字在那棵树上一处都没有，`D1` 现打），
     // ⇒ 把它的实参改坏，下面那些断言**一条都不会红**，而总数地板也顶得过去
     //（`src/bridge/src` 那 100 多份自己就够）。**一个只看总数的地板在这里等于没有。**
@@ -394,7 +394,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     );
     // 抽取器自检⑥（`K-R37`，**点名**）：**射程本身**也要被钉住。
     //
-    // 没有它，把实参改回一棵树是**静默**的：daemon 那棵今天对人群的贡献是 0
+    // 没有它，把实参改回一棵树是**静默**的：backend 那棵今天对人群的贡献是 0
     // ⇒ 删掉它，上面那个地板（只看还剩的那几棵）与下面所有断言**全部照旧绿**，
     // 而输出与今天一模一样。那正是本件立件的那一格，只是方向反过来。
     //
@@ -403,7 +403,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 形状照上面的 [`MUST_BE_RECOGNISED`]：拿**盘上真有的那一份**当见证。
     const MUST_BE_IN_REACH: &[(&str, &str)] = &[(
         "src/backend/wire.rs",
-        "daemon 那棵树的见证 —— `K-R37` 之前本条的实参逐字只有 `src/bridge/src`，\
+        "backend 那棵树的见证 —— `K-R37` 之前本条的实参逐字只有 `src/bridge/src`，\
              那棵树的 `.rs` 一份也没被打开过",
     )];
     let out_of_reach: Vec<String> = MUST_BE_IN_REACH

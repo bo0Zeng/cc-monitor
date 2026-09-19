@@ -212,12 +212,12 @@ fn every_exemption_still_points_at_a_real_ungated_suite() {
     }
 }
 
-/// `P0b`：全链台架的「没有孤儿 daemon」那一格，**人群要覆盖两族**。
+/// `P0b`：全链台架的「没有孤儿后端」那一格，**人群要覆盖两族**。
 ///
 /// # 它防的是一个实测出来的洞
 ///
-/// 那一格原来只数 `.build/backend/...`，而 08-12 实测：盘上活着的 daemon
-/// 走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-remote`（`sftp::ensure_daemon_deployed`
+/// 那一格原来只数 `.build/backend/...`，而 08-12 实测：盘上活着的 backend
+/// 走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-remote`（`sftp::ensure_backend_deployed`
 /// 的落点）—— **那一族当时根本不在人群里**，计数器却会安心地报 0。
 /// 这正是 `needle_anchor_registry` 那条：**匹配单位不许比事实小**。
 ///
@@ -225,10 +225,10 @@ fn every_exemption_still_points_at_a_real_ungated_suite() {
 /// 不是「字面量在文件里出现过」—— 首跑变异当场证明后者不成立：把 `pgrep` 那行删掉，
 /// 同一个字面量在**我自己写的说明注释**里还在，判据照样绿。
 ///
-/// ⚠ 本条钉「两族都数」，**不保证**盘上没有第三族。哪天 daemon 又多一个落点，
+/// ⚠ 本条钉「两族都数」，**不保证**盘上没有第三族。哪天后端又多一个落点，
 /// 这条会因为「新落点不在表里」而**沉默**，不会报。如实登记。
 #[test]
-fn the_orphan_daemon_gate_counts_both_families() {
+fn the_orphan_backend_gate_counts_both_families() {
     let raw = read_e2e("graylight-suite.sh");
     let src = strip_comments(&raw);
     for expr in [
@@ -237,7 +237,7 @@ fn the_orphan_daemon_gate_counts_both_families() {
     ] {
         assert!(
             guard_core::find_pinned(&src, expr).is_ok(),
-            "孤儿 daemon 那一格的**可执行行**里少了这条计数：`{expr}`。\
+            "孤儿后端那一格的**可执行行**里少了这条计数：`{expr}`。\
                  少数一族，计数器就会在真有残留时报 0（08-12 实测：部署落点那一族当时不在人群里）。\
                  ⚠ 写进注释不算数 —— 本条剥注释后才钉。"
         );
@@ -260,11 +260,11 @@ fn the_harness_no_longer_teaches_a_bare_pattern_kill() {
         "台架的可执行段又出现 `pkill` —— 那是模式杀，打到什么由命令行长相决定"
     );
     assert!(
-        guard_core::find_pinned(&src, "reap-orphan-daemons.sh").is_ok(),
+        guard_core::find_pinned(&src, "reap-orphan-backends.sh").is_ok(),
         "得给出替代品，否则被 ABORT 拦住的人只会自己去敲 pkill"
     );
     // 那把刀本身必须在，且**默认不杀**、按父进程判孤儿。
-    let reaper = read_e2e("reap-orphan-daemons.sh");
+    let reaper = read_e2e("reap-orphan-backends.sh");
     // 钉**那条判定表达式本身**，不是「文件里有 yes 这三个字母」。
     // ⚠ 形状 08-13 变过一次：原来是 `[ "${1:-}" = "--yes" ] && YES=1`（只吃一个参数），
     //   `--fixture` 加进来之后改成 `while`+`case` 的解析循环 ⇒ 老针失配，本条当场红。
@@ -338,9 +338,9 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
             .filter(|l| !l.trim_start().starts_with('#'))
             .collect();
         // ★★ **零例外**〔`P0e` 第三拍 08-12〕。最后一条例外是 `local-backend-supervise.sh`
-        //   —— 它把私有目录**喂给被监护的 daemon**，所以换 shim 要连 Rust 那侧一起改。
+        //   —— 它把私有目录**喂给被监护的 backend**，所以换 shim 要连 Rust 那侧一起改。
         //   已改：传的不再是 `TMUX_TMPDIR`，而是**带 shim 的 PATH**
-        //   （`CCM_E2E_TMUX_SHIM_BIN` → daemon 的 `PATH` 前缀）⇒ daemon shell out 的
+        //   （`CCM_E2E_TMUX_SHIM_BIN` → backend 的 `PATH` 前缀）⇒ backend shell out 的
         //   tmux 也被强插 `-L`，而**显式选择器压得过 `$TMUX`**（后者正是 08-11 的机制）。
         let name = f
             .file_name()
@@ -357,7 +357,7 @@ fn no_e2e_suite_isolates_with_tmux_tmpdir() {
         // `TMUX_TMPDIR`、也不挂 shim、直接裸调 `tmux new-session`，它照样全绿，
         // 而那些会话建在**用户的默认 socket** 上。
         //
-        // 08-13 实测发生了：`daemon-cc-bus.sh` 的头注写着「本套件不用 tmux」，
+        // 08-13 实测发生了：`backend-cc-bus.sh` 的头注写着「本套件不用 tmux」，
         // 我后来往里加了 tmux 用例、**照着那句过期的注释省掉了 shim** ⇒
         // 两个 fixture 会话落到了用户的默认 socket 上（事后按精确名字收回）。
         //

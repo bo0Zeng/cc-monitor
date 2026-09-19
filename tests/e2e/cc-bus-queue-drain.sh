@@ -10,15 +10,15 @@
 #
 # ## 它守的那件事
 #
-# daemon 在跑时 `cc-send` 只入队就返回（打印「已入队」——当时是真话）。若 `cc-busd` 在
+# backend 在跑时 `cc-send` 只入队就返回（打印「已入队」——当时是真话）。若 `cc-busd` 在
 # 取走它之前死掉/关机（`POLL` 默认 0.5s，这个窗口天天存在），那条消息就**永远躺在队列里**：
-# 此后 `cc-send` 判定 daemon 不在、走兜底，而兜底**只处理自己刚入队的那一条**，从不回头看队列。
+# 此后 `cc-send` 判定后端不在、走兜底，而兜底**只处理自己刚入队的那一条**，从不回头看队列。
 #
-# 实测（A 正常投递 → daemon 卡住时发 B → daemon 被杀 → 再发 C、D）：
+# 实测（A 正常投递 → backend 卡住时发 B → backend 被杀 → 再发 C、D）：
 #   收件箱 3 条 `[A C D]`，队列里永远躺着 1 条 `[B]`
 # 发信方看到的是「已入队」、收信方 `cc-recv` 读到 3 条 —— **两侧都不知道少了一条**。
 #
-# ⚠ 人群不是零，但也不是所有人：装了 systemd 单元的用户 daemon 会被拉起来、队列随即补投
+# ⚠ 人群不是零，但也不是所有人：装了 systemd 单元的用户后端会被拉起来、队列随即补投
 #（那是**迟到**不是丢）。真正永久丢的是 `cc-bus-install.sh` 教的另一条路 ——
 # 手动 `cc-busd start` 起过、之后它死了或关机。
 #
@@ -131,12 +131,12 @@ new_bus 1; start_busd
 chk "cc-busd 起来了（pidfile 有 pid）" "$([ -n "$PID" ] && echo yes || echo no)" "yes"
 "$S/cc-send" bob "A 正常" >/dev/null 2>&1
 wait_inbox "$B/inbox/bob.jsonl" 1 || true
-chk "对照组：daemon 在跑时正常投递" "$(wc -l < "$B/inbox/bob.jsonl" 2>/dev/null || echo 0)" "1"
-# SIGSTOP：daemon 还活着（kill -0 通过、argv 没变、pidfile 还在）⇒ cc-send 判它在跑、只入队
+chk "对照组：backend 在跑时正常投递" "$(wc -l < "$B/inbox/bob.jsonl" 2>/dev/null || echo 0)" "1"
+# SIGSTOP：backend 还活着（kill -0 通过、argv 没变、pidfile 还在）⇒ cc-send 判它在跑、只入队
 kill -STOP "$PID"
 "$S/cc-send" bob "B 卡住时发的" >/dev/null 2>&1
 sleep 0.6
-chk "daemon 卡住 ⇒ 那条留在队列里" "$(qcount "$B")" "1"
+chk "backend 卡住 ⇒ 那条留在队列里" "$(qcount "$B")" "1"
 chk "  且**没有**进收件箱（这就是事故现场）" "$(wc -l < "$B/inbox/bob.jsonl")" "1"
 kill -9 "$PID" 2>/dev/null; sleep 0.3
 out1="$("$S/cc-send" bob "C 之后发的" 2>&1)"
@@ -145,9 +145,9 @@ chk "★ 顺序是入队序（滞留的先于自己那条）" "$(inbox_texts "$B
 chk "  队列清空" "$(qcount "$B")" "0"
 chk "  且明说了（stderr 有补投计数）" "$(printf '%s' "$out1" | grep -c '补投 1 条')" "1"
 
-echo "[2] daemon 在跑时**不走**这条路（零影响）"
+echo "[2] backend 在跑时**不走**这条路（零影响）"
 new_bus 2; start_busd
-out2="$("$S/cc-send" bob "D daemon 活着" 2>&1)"
+out2="$("$S/cc-send" bob "D backend 活着" 2>&1)"
 wait_inbox "$B/inbox/bob.jsonl" 1 || true
 chk "走的是入队路径" "$(printf '%s' "$out2" | grep -c '已入队')" "1"
 chk "没有补投那句话" "$(printf '%s' "$out2" | grep -c '滞留消息')" "0"
@@ -181,7 +181,7 @@ chk "带走 5 条 + 自己那条 = 6" "$(wc -l < "$B/inbox/bob.jsonl" 2>/dev/nul
 chk "剩下 25 条**原样留在队列**（不是被丢掉）" "$(qcount "$B")" "25"
 chk "★ 报数诚实（超预算那 25 条明写出来）" "$(printf '%s' "$out4" | grep -c '补投 5 条.*超预算 25 条')" "1"
 
-echo "[5] 只碰顶层 *.json —— 点前缀是别人的地盘（与 daemon 口径一致）"
+echo "[5] 只碰顶层 *.json —— 点前缀是别人的地盘（与后端口径一致）"
 new_bus 5
 printf '{}\n' > "$B/queue/.proc.999.stale.json"
 printf '{}\n' > "$B/queue/.dead.badmsg.json"

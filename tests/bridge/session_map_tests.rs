@@ -75,7 +75,7 @@ fn scan_dir_show_bg_switch() {
 }
 
 /// v2.22.2:同 sid 多 pidfile 的 kind 冲突消解——interactive 恒压过 bg,
-/// 与目录扫描顺序无关(实证形态:cc-daemon bg-spare 复用父会话 sid)。
+/// 与目录扫描顺序无关(实证形态:cc-backend bg-spare 复用父会话 sid)。
 #[test]
 fn scan_dir_same_sid_interactive_wins_over_bg() {
     let dir = std::env::temp_dir().join(format!("ccm-kindrace-{}", std::process::id()));

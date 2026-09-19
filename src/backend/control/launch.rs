@@ -3,7 +3,7 @@
 //! # 这一层归哪、不做什么
 //!
 //! U8a 把「起会话」拆成三个平面：① 计划面（`resolve_query`，已在这儿）·
-//! ② 远端执行面（**本模块**）· ③ 本机开窗面（结构上只能是 monitor —— daemon 在远端，
+//! ② 远端执行面（**本模块**）· ③ 本机开窗面（结构上只能是 monitor —— backend 在远端，
 //! 开不了你面前的窗）。所以本模块**不 attach**，一次都不。
 //!
 //! # ★ argv，不过 shell
@@ -11,12 +11,12 @@
 //! 今天 monitor 那条路是「渲染一整条 shell 串 → `ssh -t "bash -lic '<串>'"`」，于是
 //! 引号 / 转义 / 注入是一整类必须一直防的问题。本模块用
 //! `Command::new("tmux").args([...])` 直传 argv ⇒ **那类问题在这条路上不存在**，
-//! 不是「被挡住了」。这是搬进 daemon 最实在的收益之一。
+//! 不是「被挡住了」。这是搬进后端最实在的收益之一。
 //!
 //! # ★ 这里的校验是**形状校验**，不是安全边界
 //!
 //! 入方向命令来自**已经握着这台机器 SSH 会话**的对端 —— 它本来就能在这台机器上跑任意命令。
-//! daemon 再校验一遍挡不住任何它原本挡不住的东西；假装有一层会更糟：下一个人会以为
+//! backend 再校验一遍挡不住任何它原本挡不住的东西；假装有一层会更糟：下一个人会以为
 //! 那是安全边界，从而放松上游真正在把关的地方（前端的 sid 白名单 / launcher denylist）。
 //!
 //! # ★ 错误码分两层
@@ -45,7 +45,7 @@
 //! idle tmux、不新建」。所以 monitor 的 CLI 渲染器 `launch-render-cli.ts` 对 `send-into`
 //! **诚实放弃、强制走兜底**（那条注释逐字写着「这条是防 #76 复发的关键」）。
 //!
-//! daemon 直接调 tmux 之后那个表达力缺口消失：[`Mode::SendInto`] 是一等模式。
+//! backend 直接调 tmux 之后那个表达力缺口消失：[`Mode::SendInto`] 是一等模式。
 //! **但语义要守死**：会话不存在时**报错，绝不顺手新建** —— 顺手新建就是 #76 的反向
 //! （用户以为在复用那个 idle 会话，实际上被丢进一个新建的空 shell）。
 //! 由 `send_into_never_creates_a_session` 钉住。
@@ -69,10 +69,10 @@ pub(crate) enum Mode {
     /// # 为什么这必须是一个新 **mode 名**，而不是给 `send-into` 加一个 `enter` 字段
     ///
     /// [`parse_request`] 是**手工从 `Map` 取键**的，**不 deny unknown fields** ⇒
-    /// 旧版本 daemon 收到一个它不认识的 `enter` 字段会**静默忽略**，照样附 `Enter`。
+    /// 旧版本后端收到一个它不认识的 `enter` 字段会**静默忽略**，照样附 `Enter`。
     /// 而 monitor 唯一会发 `enter=false` 的地方是「优雅退出时发 `Escape` 打断当前回合」——
     /// 多一个 `Enter` 就把它变成「**提交用户输入框里排队的文本**」。
-    /// 换成新 mode 名则天然 **fail-closed**：旧 daemon 的 [`Mode::parse`] 返回 `None`
+    /// 换成新 mode 名则天然 **fail-closed**：旧后端的 [`Mode::parse`] 返回 `None`
     /// ⇒ `invalid_args` ⇒ monitor 拿到明确错误、干净回落到一次性 SSH。
     /// **能力协商在这里是免费的，不需要新机制。**
     SendKeysRaw,
@@ -166,7 +166,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     ))?;
     let mode = Mode::parse(mode_raw).ok_or((
         "invalid_args",
-        format!("未知 mode `{mode_raw}` —— 只有 create-or-attach / send-into / send-keys-raw；attach 是平面 ③，不归 daemon"),
+        format!("未知 mode `{mode_raw}` —— 只有 create-or-attach / send-into / send-keys-raw；attach 是平面 ③，不归 backend"),
     ))?;
 
     let name = get_str("name")
@@ -205,7 +205,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     // · 别的控制字符（`ESC` / `CR` / `NUL` …）不是「键」，是**会改掉终端状态**的东西
     //   ⇒ 照旧拒收。⚠ 这一格**比本机那条旧路更严**：旧路经 `sq` + `bash` 什么都放过去。
     // · `send-into` / `send-keys-raw` **一个字节不动**：`§19 裁六` 逐字「放宽它会同时改掉
-    //   已有两个生产调用方的行为」（`daemon_launch.rs` 的 send-into · `daemon_send_keys.rs`
+    //   已有两个生产调用方的行为」（`backend_launch.rs` 的 send-into · `backend_send_keys.rs`
     //   的裸键）—— 那两条路的 `payload` 语义不同，不该被这一格牵连。
     // ⚠ **这里刻意写 `if matches!(…)` 而不是 `match mode { Mode::CreateOrAttach => … }`**
     //   〔本轮现打，判据当场逮住的〕：`create_or_attach_never_types_into_a_session_it_did_not_just_create`

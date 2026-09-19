@@ -58,11 +58,11 @@ run() { # run <名字> <目录> <命令...>
 }
 
 run monitor-lib   "$WT/src/bridge"           cargo check --lib
-run daemon        "$WT/src/backend" cargo check --all-targets
+run backend        "$WT/src/backend" cargo check --all-targets
 
-# ── 跨 target（`daemon-win`）：**这一格的前提早就作废了，08-25 起** 〔`K-R52` 09-11 订正〕──
+# ── 跨 target（`backend-win`）：**这一格的前提早就作废了，08-25 起** 〔`K-R52` 09-11 订正〕──
 #
-# 这里原本写着一句前提：「daemon 是纯 Rust，`check` 不需要链接器（monitor 不行 —— 它有 C
+# 这里原本写着一句前提：「backend 是纯 Rust，`check` 不需要链接器（monitor 不行 —— 它有 C
 # 依赖要 lib.exe）」。**那句话自 `K-H1` 引入 TLS（`rustls` → `ring`）起就是假的** ——
 # `ring` 的 build script 要**编 C**，而 cc-rs 在 Linux 上给 `*-pc-windows-msvc`
 # 找不到 MSVC 的工具链。注释没跟着改，于是这一格看起来还在守着什么。
@@ -74,7 +74,7 @@ run daemon        "$WT/src/backend" cargo check --all-targets
 #   ⇒ 那个红**不是**「Windows 编不过」的证据，它什么都不是。
 #   一道永远红、而红得没有信息的门，与一道「跑了就绿」的假门是同一种东西。
 #
-# ★ 出路照抄 CI（`.github/workflows/ci.yml` 的 daemon job）：装了 `zig` 就把那三个
+# ★ 出路照抄 CI（`.github/workflows/ci.yml` 的 backend job）：装了 `zig` 就把那三个
 #   环境变量给上 —— `zig cc` 发 COFF、自带 mingw-w64 的 libc 头、`zig lib` 就是 cc-rs
 #   缺的那个归档器。`cargo check` 不链接 ⇒ 那份 `.lib` 从头到尾没人用，
 #   它存在只是为了让 build script 走完、好让检查走到我们的代码。
@@ -102,29 +102,29 @@ if rustup target list --installed | grep -q x86_64-pc-windows-msvc; then
       AR_x86_64_pc_windows_msvc="zig lib")
   fi
   win_fail_before="$fail"
-  run daemon-win  "$WT/src/backend" "${winenv[@]}" cargo check --all-targets --target x86_64-pc-windows-msvc
+  run backend-win  "$WT/src/backend" "${winenv[@]}" cargo check --all-targets --target x86_64-pc-windows-msvc
   # 🔴 **重判**：`run` 只看退出码，而退出码在这一格上说明不了事（见上面那一段）。
   #    没走到我们的代码 ⇒ 把 `run` 刚记下的那一笔**撤回**，改记成「没有读数」。
-  if ! grep -q 'Checking cc-monitor-remote' "$WT/.verify-daemon-win.log"; then
+  if ! grep -q 'Checking cc-monitor-remote' "$WT/.verify-backend-win.log"; then
     fail="$win_fail_before"
     if command -v zig >/dev/null 2>&1; then
       why="装了 zig 也没走到我们的代码"
     else
       why="没装 zig，构建卡在 \`ring\` 的 C 构建脚本上"
     fi
-    skipped="daemon-win（$why —— 日志里 \`Checking cc-monitor-remote\` 命中 0）"
-    echo "   量不到 daemon-win —— $why"
+    skipped="backend-win（$why —— 日志里 \`Checking cc-monitor-remote\` 命中 0）"
+    echo "   量不到 backend-win —— $why"
     echo "        ⇒ **上面那条 FAIL（如果打了）不算数**：它量的不是我们的代码。"
-    echo "        见 $WT/.verify-daemon-win.log；装法照抄 .github/workflows/ci.yml 的 daemon job（mlugg/setup-zig，0.14.0）"
+    echo "        见 $WT/.verify-backend-win.log；装法照抄 .github/workflows/ci.yml 的 backend job（mlugg/setup-zig，0.14.0）"
   fi
 else
-  skipped="daemon-win（没装 x86_64-pc-windows-msvc target）"
+  skipped="backend-win（没装 x86_64-pc-windows-msvc target）"
   echo "   skip $skipped"
 fi
 
 # ★ **跳过必须改变结论，不能只多打一行**〔audit-0805 08-08〕。
 #
-# 08-08 真路实测：把机器上的 windows target 拿掉之后，本脚本打完 `skip daemon-win`
+# 08-08 真路实测：把机器上的 windows target 拿掉之后，本脚本打完 `skip backend-win`
 # 仍然原样输出「== 提交状态编得过 ==」并 exit 0 —— 而读门禁的人（和 loop 里的我）
 # 读的就是最后那一行。**三项还在** ≠ **三项都跑了**。
 #
@@ -138,7 +138,7 @@ fi
 #   （`shared_crate_registry::a_skipped_windows_check_cannot_look_like_a_full_pass`
 #    逐字钉着「含『Linux 上编得过』的行恰好 1 行」—— 本轮先分成两条，当场被它逮住，
 #    **那条判据干对了活**：两条降级结论就是两句会各自漂移的话）。
-#    先前 `daemon-win` 卡在 `ring` 上那一形既没走 `skipped`、也没被识别，
+#    先前 `backend-win` 卡在 `ring` 上那一形既没走 `skipped`、也没被识别，
 #    它只是让 `fail=1`、把结论写成「提交状态编不过」——
 #    于是**一个与我们的代码无关的失败，冒充了一次关于我们的代码的读数**。
 if [ "$fail" -ne 0 ]; then

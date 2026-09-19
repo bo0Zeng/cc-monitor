@@ -19,8 +19,8 @@
 //!
 //! | 候选 | 今天的形态由什么钉住 |
 //! |---|---|
-//! | `cc-bus` | 脚本族条数 · daemon 命令表里 `bus-*` 的条数 · 起进程口**恰好一处**且住在**通用调用口**里（转调壳里**零处**）· 边界判据还在且针数没缩 |
-//! | `code-picture` | monitor 的 `Cargo.toml` 那条 path 依赖**整行**存在 · daemon 的依赖清单与整棵源码树**零命中** |
+//! | `cc-bus` | 脚本族条数 · backend 命令表里 `bus-*` 的条数 · 起进程口**恰好一处**且住在**通用调用口**里（转调壳里**零处**）· 边界判据还在且针数没缩 |
+//! | `code-picture` | monitor 的 `Cargo.toml` 那条 path 依赖**整行**存在 · backend 的依赖清单与整棵源码树**零命中** |
 //! | `cc-spawn` | 生产段里有 `CCM_BIN` 与能力协商 · 且**零**总线数据针（「它不碰总线目录了」这句话的机检形态） |
 //! | `ccm` | `agent_*` 适配函数条数 · 每个函数两臂**是不是真的分叉** · `--ccm-probe` 的能力 token 数与 agent 数 · 它在受管工具表里 |
 //!
@@ -66,13 +66,13 @@
 //! # 与已有判据的分工（**不重造**）
 //!
 //! · 后端不许碰 cc-bus 的**数据布局** → `tests/backend/cc_bus_boundary_guard.rs`；
-//! · daemon 生产段的**起进程点总数** → `readonly_guard::spawn_registry`（相等断言，今天 9 处）；
+//! · backend 生产段的**起进程点总数** → `readonly_guard::spawn_registry`（相等断言，今天 9 处）；
 //! · 全景引擎的**取用口恰好一处** → `panorama_seam_registry`；
-//! · daemon 协议面**零全景** → `protocol_doc_guard`（它只扫 `inbound.rs` + `wire.rs`）。
+//! · backend 协议面**零全景** → `protocol_doc_guard`（它只扫 `inbound.rs` + `wire.rs`）。
 //!
 //! 本模块只在**上面这些判据管不到的接缝**上补：`E4` 那张表的**每一格**今天成不成立。
-//! 唯一与既有判据重叠的是「daemon 零 code-picture」那条 —— 重叠是刻意的：
-//! `protocol_doc_guard` 扫的是**协议面两个文件**，这里扫的是**整棵 daemon 源码树**。
+//! 唯一与既有判据重叠的是「backend 零 code-picture」那条 —— 重叠是刻意的：
+//! `protocol_doc_guard` 扫的是**协议面两个文件**，这里扫的是**整棵后端源码树**。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销。
 

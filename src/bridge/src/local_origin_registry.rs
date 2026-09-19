@@ -6,7 +6,7 @@
 //! **「未找到远端配置: `<local>`」** —— 一句与真实原因毫无关系的话。真实原因从来不是
 //! 「配置没找到」，而是「这条路是远端专属的，本机根本不该走到这里」。
 //!
-//! 已逐个修过三处（`daemon_kill` / `list_remote_tmux` / `launch_remote_terminal`），
+//! 已逐个修过三处（`backend_kill` / `list_remote_tmux` / `launch_remote_terminal`），
 //! 而 `P3b` 的 E 阶段又量到第四处（`capture_remote_pane`）。
 //!
 //! ⇒ **别再一个一个修。** 一个一个修的问题不是慢，是它对「第六次」毫无办法：

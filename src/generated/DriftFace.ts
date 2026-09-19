@@ -3,4 +3,4 @@
 /**
  * 四个「降级点」。每一个都对应一处**刻意的**宽容或排他。
  */
-export type DriftFace = "unknown_record_type" | "known_type_parse_failed" | "unknown_session_kind" | "unknown_daemon_token";
+export type DriftFace = "unknown_record_type" | "known_type_parse_failed" | "unknown_session_kind" | "unknown_backend_token";

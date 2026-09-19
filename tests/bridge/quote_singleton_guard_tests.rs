@@ -35,7 +35,7 @@ fn repo_root() -> PathBuf {
     crate::guard_support::repo_root()
 }
 
-/// 扫 monitor + daemon + 共享 crate 的**所有** `.rs`（`target/` 与 vendor 除外）。
+/// 扫 monitor + backend + 共享 crate 的**所有** `.rs`（`target/` 与 vendor 除外）。
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     for base in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
@@ -138,7 +138,7 @@ fn the_sole_home_really_holds_the_implementation() {
 /// 不逃逸的实现」这个变异照样全绿（自己的变异检查抓到的）。零命中守卫也挡不住它 ——
 /// 换成 `format!` 不带逃逸序列时根本不含那个子串。⇒ 三个**逐个**对拍。
 ///
-/// daemon 的 `tmux_hook::sq` 跨 crate 够不着，由它自己那侧的测试覆盖。
+/// backend 的 `tmux_hook::sq` 跨 crate 够不着，由它自己那侧的测试覆盖。
 #[test]
 fn every_monitor_entry_point_agrees_byte_for_byte() {
     for s in [

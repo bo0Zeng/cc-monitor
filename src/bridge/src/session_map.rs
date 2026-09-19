@@ -45,7 +45,7 @@ use std::time::Duration;
 /// `tmux ls` 原文里 `@ccm_sid` 还在不在**来猜。`/branch` 场景这个猜法必错——见
 /// [`Superseded`](RemovalCause::Superseded)。
 ///
-/// ⚠ **F01b 订正**：原文写「远端由 daemon 在帧里明说，**本地由 diff 得出**」——
+/// ⚠ **F01b 订正**：原文写「远端由后端在帧里明说，**本地由 diff 得出**」——
 /// **后半句是假的**。实测本地那条 diff（`session_map.rs` 的两处）**全部产 `Gone`**，
 /// 一处 `Superseded` 都没有；`Superseded` 今天**只从远端帧来**
 /// （`ssh_source.rs` 解析 `"cause":"superseded"` 后直接构造）。
@@ -166,7 +166,7 @@ pub struct SessionInfo {
     /// 由骨架清单/树状标题消费。
     #[serde(default)]
     pub name: Option<String>,
-    /// Batch6-F21：会话类型。CC 2.1.x 起 daemon 后台任务（--fork-session）也写
+    /// Batch6-F21：会话类型。CC 2.1.x 起后端后台任务（--fork-session）也写
     /// pidfile，标 `kind:"bg"`（另带 jobId）；交互会话为 `"interactive"`。
     /// Option 兜旧版 CC 无此字段（缺失视为交互，保守放行）。
     #[serde(default)]
@@ -280,7 +280,7 @@ impl SessionMap {
 
 fn scan_dir(dir: &Path, show_bg: bool) -> HashMap<String, SessionInfo> {
     // v2.22.2:先按 pid(文件名,天然唯一)收全量,再按 sid 归并。同 sid 多份
-    // pidfile(实证:cc-daemon 的 bg-spare 备用进程复用父会话 sid、标 kind=bg)
+    // pidfile(实证:cc-backend 的 bg-spare 备用进程复用父会话 sid、标 kind=bg)
     // 时 **interactive 恒压过 bg**——此前直接按 sid 建 map = 目录序先到先得,
     // bg 先扫到会把真交互会话降格成 ⚙、树状挂错宿主(用户截图实锤)。
     // 同 rank 取更新的(procStart 数值比较,缺失回退 pid 大者),消除任意性。
@@ -303,9 +303,9 @@ fn scan_dir(dir: &Path, show_bg: bool) -> HashMap<String, SessionInfo> {
     if show_bg {
         return map;
     }
-    // Batch6-F21：交互性过滤。CC 2.1.x 的 daemon 后台任务（--fork-session）也写
+    // Batch6-F21：交互性过滤。CC 2.1.x 的后端后台任务（--fork-session）也写
     // pidfile（kind:"bg" + jobId）——是自己文件的真作者，但不是交互会话，不该成
-    // Tab / 进红绿灯 / 进骨架清单。保守规则（与远端 daemon 一字一致）：kind 存在
+    // Tab / 进红绿灯 / 进骨架清单。保守规则（与远端后端一字一致）：kind 存在
     // 且非 "interactive" 才排除，旧 CC 无该字段 → 保留。在 by_id 源头纯净化，
     // 下游（diff/snapshot/activity/list_active_sessions）自动干净。
     map.retain(is_interactive);
@@ -362,7 +362,7 @@ fn diff_sessions(
     // ★★ **P3 刀 0：本地也判 `Superseded`。**
     //
     // 原注释逐字写着「本地路径**没有**远端那条『同 pidfile 原地换 sid』的信息
-    // （那是 daemon 才看得见的 per-pidfile 视角）」—— **那句话是假的**：
+    // （那是后端才看得见的 per-pidfile 视角）」—— **那句话是假的**：
     // `SessionInfo` 自己就带 `pid` 与 `procStart`，而本地会话文件正是 `sessions/<PID>.json`。
     // 信息一直在，只是**没人算**。
     //
@@ -625,11 +625,11 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
 ///
 /// 上面那半要真 `/proc`，测不了；而**判定规则本身**恰恰是本条要修的东西。
 ///
-/// # 它此前与 daemon 那份**方向相反**
+/// # 它此前与后端那份**方向相反**
 ///
 /// 原来最后一行是 `proc_stat_starttime(&raw).is_some_and(|got| got == want)` ——
 /// **字段解析不出时 `is_some_and` 给 `false` ⇒ 判死**。
-/// 而 daemon 侧 `platform/liveness.rs` 对同一格逐字写着：
+/// 而后端侧 `platform/liveness.rs` 对同一格逐字写着：
 /// 「current unreadable right now: existence is all we can assert.
 /// **Do not archive a still-existing PID on missing start info.**」
 ///
@@ -638,11 +638,11 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
 /// 不是「它不在了」。判死会让一个**活着的会话**被归档。
 ///
 /// ⚠ 保守方向的代价也要说清：这样改之后，「pid 被复用且 starttime 恰好解析不出」会误判成活。
-/// 那比误杀活会话轻 —— 而且 daemon 侧一直是这么选的，两边现在口径一致。
+/// 那比误杀活会话轻 —— 而且后端侧一直是这么选的，两边现在口径一致。
 #[cfg(target_os = "linux")]
 fn liveness_from_stat(raw: &str, expected_proc_start: Option<&str>) -> bool {
     let Some(want) = expected_proc_start else {
-        return true; // 缺 procStart ⇒ 退到存在性，同 Windows 侧与 daemon 侧
+        return true; // 缺 procStart ⇒ 退到存在性，同 Windows 侧与后端侧
     };
     match proc_stat_starttime(raw) {
         Some(got) => got == want,
@@ -672,7 +672,7 @@ fn proc_stat_starttime(raw: &str) -> Option<&str> {
 /// **这是如实的未实现，不是判据**。macOS 没有 `/proc`，要做得走 `sysctl KERN_PROC`
 /// 的 FFI；本仓没有 macOS CI，我也无法在这里实测 —— 按本仓纪律**不写没验过的实现**。
 ///
-/// 为什么返回 `false` 而不是像 daemon 侧那样 `unimplemented!()`：
+/// 为什么返回 `false` 而不是像后端侧那样 `unimplemented!()`：
 /// 那边是 CLI，panic 是「没人能忽略的信号」；这边是 GUI 常驻进程，panic 会直接崩掉窗口。
 /// `false` 在这里是 **fail-safe**（少显示，而不是显示永不消失的僵尸会话），
 /// 且这条限制已写进 `src/doc/ARCHITECTURE.md` 与双语 README —— **不是静默的谎**。

@@ -43,7 +43,7 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 /// **大小写不敏感的 `UTF-8`/`UTF8` 子串匹配**。`zz_ZZ.UTF-8`（locale 根本不存在）**干净**，
 /// 而 `C` / `zh_CN.GB18030` / `LC_ALL=''` / 什么都不设 **全脏**。
 ///
-/// # 🔴 为什么跨 SSH 这两处必须用 `-u`，不能学 daemon 那边挂 `LC_ALL`
+/// # 🔴 为什么跨 SSH 这两处必须用 `-u`，不能学后端那边挂 `LC_ALL`
 ///
 /// 1. **这里没有本地 `Command` 可挂 env** —— 命令是一条字符串，交给 `russh` 的
 ///    `channel.exec` 在**对端**跑。
@@ -68,19 +68,19 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 /// ⚠ `K-R72`（09-12）：处置那一半原先是**两条** —— 另一条是 `build_guarded_tmux_cmd`
 /// 那道门用 `K-R23` 落的 `CCM_GUARD_UNPARSABLE`。那条门随送键与杀会话的桌面侧回落
 /// 一起走了 ⇒ **跨 SSH 的 tmux 读今天只剩 `ls` 一条**，人群与处置一起缩到 1。
-/// daemon 侧同族的那一条仍在（`control/gate.rs` 的 `CCM_TMUX_UNPARSABLE`），
-/// 它守的是 daemon **本机**那次 `display-message`，与跨 SSH 这条不是同一处。
+/// backend 侧同族的那一条仍在（`control/gate.rs` 的 `CCM_TMUX_UNPARSABLE`），
+/// 它守的是 backend **本机**那次 `display-message`，与跨 SSH 这条不是同一处。
 ///
 /// # ★★ K-R12 下一拍（09-04）：**这一份为什么留在这里** —— 两条路各自的论据
 ///
-/// daemon 那两份上一拍是三份里的两份，本拍已经归位到**一个家**
+/// backend 那两份上一拍是三份里的两份，本拍已经归位到**一个家**
 /// （`src/backend/common/tmux_utf8.rs`，`control/` 与 `observe/` 两层各自 `use` 它，
 /// 编译器兜住、漂不了）。本份是**第三份**，它跨的是二进制，两条路都量过：
 ///
 /// - **乙 · 放进某个已有的 `*-core` 共享 crate**（那是本仓治「五份逐字节相同」的成方，
 ///   `shell-quote-core` 的头注逐字写着「两个二进制不共享源码树 ⇒ 共享 crate 是唯一载体」）。
 ///   逐个对职责，**七个都装不下**，其中两条是硬的、不是口味：
-///   ① `guard-core` 在 daemon 那侧只是 `[dev-dependencies]` ⇒ 生产段**引不到**它，
+///   ① `guard-core` 在后端那侧只是 `[dev-dependencies]` ⇒ 生产段**引不到**它，
 ///      而本 const 恰恰长在生产段（结构性不可能，不是取舍）；
 ///   ② `gate-core` 的边界头注逐字是「**本 crate 只判，不取**」，而「怎么起 tmux」正是**取**那一侧
 ///      （它自己接着写：把取值塞进来「共享当场破掉」）；
@@ -113,7 +113,7 @@ const UTF8_CLIENT_FLAG: &str = "-u";
 /// 六个 TAB **全部**消失，段数必然从 6 塌到 1。**没有「内容被改写了但 TAB 还在」的中间态**
 /// ⇒ 一条判据同时盖住「分隔符被吞」与「内容被改写」两半，**格式串一个字节不用动**。
 ///
-/// ⚠ **K-R12 下一拍（09-04）订正这条边界**：daemon 那两份已经归位到**一个家**
+/// ⚠ **K-R12 下一拍（09-04）订正这条边界**：backend 那两份已经归位到**一个家**
 /// （`src/backend/common/tmux_utf8.rs::tab_underflow`）——
 /// 上一拍这里写的「各另有一份」今天只剩**跨仓那一份**（就是本函数）。
 /// 两侧同形由 `utf8_client_kou_jing_has_one_home_and_this_side_matches_it` 对拍着
@@ -168,8 +168,8 @@ pub struct TmuxSession {
 ///
 /// ⚠ 另记一条边界：`f.len() != 6` 里的**下溢**这半在 [`list_remote_tmux`] 那条路上
 /// **已经走不到**了（`J1` 在 raw 入口就把整份判废、回 `Err`）。它在这里仍然必须留着 ——
-/// 本函数还吃 **daemon 推来的 `tmux_sessions` 帧**那份 raw，而那条路的入口不在本文件里
-/// （daemon 侧由 `watcher.rs::classify_tmux_probe` 把关；**老 daemon 没有那道关**）。
+/// 本函数还吃 **backend 推来的 `tmux_sessions` 帧**那份 raw，而那条路的入口不在本文件里
+/// （backend 侧由 `watcher.rs::classify_tmux_probe` 把关；**老后端没有那道关**）。
 pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
     output
         .lines()
@@ -270,7 +270,7 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
 /// # 为什么不是 `list_remote_tmux` 加一条本机分支
 ///
 /// 那条今天对 `<local>` 会去 `load_remote_config_by_label("<local>")`，报
-/// **「未找到远端配置: "<local>"」** —— 一句与真实原因毫无关系的错（同 P3 刀 2 在 `daemon_kill`
+/// **「未找到远端配置: "<local>"」** —— 一句与真实原因毫无关系的错（同 P3 刀 2 在 `backend_kill`
 /// 那里治过的形态）。但**不能**简单地给它加一条读快照的本机分支：
 /// `tabs.ts::awaitExitFor` 等的是「**pane 前台命令**从 claude 变回 shell」，
 /// 而那个变化**不触发任何 tmux hook** ⇒ 快照在那个场景下永不刷新
@@ -306,7 +306,7 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
 /// ⇒ 依赖 `command` 判活的流程（换号重启的 `awaitExitFor`）**不许**改读本机这条，
 /// 它今天由 `tabs.ts` 的 `origin === null` 闸挡着（A7 前不支持本地重启）。
 ///
-/// 拿不到快照（本机 daemon 通道没起 / 还没推过帧）⇒ 回 `None`，**不是空表**：
+/// 拿不到快照（本机后端通道没起 / 还没推过帧）⇒ 回 `None`，**不是空表**：
 /// 空表会让调用方以为「一个会话都没有」，那是把「不知道」当成「知道没有」。
 #[tauri::command]
 pub fn list_local_tmux() -> Option<Vec<TmuxSession>> {
@@ -316,15 +316,15 @@ pub fn list_local_tmux() -> Option<Vec<TmuxSession>> {
 
 // ---------- P1（zero-poll-liveness）：`TmuxSessions.observation` 的取值 ----------
 //
-// **第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX` 哨兵）。monitor 与 daemon 分属两个
+// **第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX` 哨兵）。monitor 与后端分属两个
 // 独立 crate、不能共享类型，所以这三个字符串两侧各写一份，由
 // `observation_tokens_double_write_point_stays_in_sync` 测试逐字节钉住（同 `TMUX_LS_FMT`
-// 那条守卫的做法：`include_str!` daemon 源 + 锚定 const 定义行，改任一侧忘同步即红）。
+// 那条守卫的做法：`include_str!` backend 源 + 锚定 const 定义行，改任一侧忘同步即红）。
 //
 // **为什么用字符串而不是布尔**：P3 会加「server 已死」vs「server 活着但零会话」的细分
 // （两者对 retire 决策等价、只对复活监视有意义）。字符串枚举加一个取值是 additive；
 // 布尔字段加第二个就得改帧形状。
-/// daemon 确证零会话（`tmux ls` rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
+/// backend 确证零会话（`tmux ls` rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
 const OBS_ZERO_SESSIONS: &str = "zero_sessions";
 /// 远端没装 tmux（`command -v tmux` 失败）——与既有 `NO_TMUX` 哨兵同义，显式化。
 const OBS_NO_TMUX: &str = "no_tmux";
@@ -340,12 +340,12 @@ const OBS_UNOBSERVABLE: &str = "unobservable";
 /// P8c：`Skip` 的原因。**机器可读**（进日志后要能被 grep/统计），不是给人读的句子。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SkipReason {
-    /// 远端没装 tmux（旧 daemon 的 `NO_TMUX` 哨兵，或新 daemon 的 `no_tmux`）。
+    /// 远端没装 tmux（旧后端的 `NO_TMUX` 哨兵，或新后端的 `no_tmux`）。
     NoTmux,
-    /// daemon **自报**这一轮观测失败（`unobservable`）—— 那正是 `#82` 想知道频率的那一格。
+    /// backend **自报**这一轮观测失败（`unobservable`）—— 那正是 `#82` 想知道频率的那一格。
     Unobservable,
-    /// 旧 daemon 的空串歧义：零会话与「`|| true` 吞掉的错」同形 ⇒ 保守跳过。
-    /// **新 daemon 走不到这里**（它零会话报 `zero_sessions`、出错报 `unobservable`）。
+    /// 旧后端的空串歧义：零会话与「`|| true` 吞掉的错」同形 ⇒ 保守跳过。
+    /// **新后端走不到这里**（它零会话报 `zero_sessions`、出错报 `unobservable`）。
     LegacyAmbiguousEmpty,
 }
 
@@ -364,7 +364,7 @@ impl SkipReason {
 pub(crate) enum TmuxObservation {
     /// 有效观测：某后端自报正在跑的 sid 集。
     ///
-    /// **可能为空集**——空集 = daemon **确证**该主机零会话（不是"观测失败"）。
+    /// **可能为空集**——空集 = backend **确证**该主机零会话（不是"观测失败"）。
     /// 空集照常进对账、照常累计缺失，**这正是 P1 修掉的那个 bug**：
     /// 原先空 backend 一律保守跳过 ⇒ 当被杀的是该 origin 最后一个 tmux 会话时
     /// （server 随之退出、`tmux ls` 回空）⇒ 对账整段跳过 ⇒ idle 灰灯**卡到断连才清**。
@@ -373,7 +373,7 @@ pub(crate) enum TmuxObservation {
     ///
     /// ★★ **P8c（`U3` 08-11 的裁定）：它带上「为什么」。**
     ///
-    /// 原来三种完全不同的原因（远端没装 tmux / daemon 自报观测失败 / 旧 daemon 的空串歧义）
+    /// 原来三种完全不同的原因（远端没装 tmux / backend 自报观测失败 / 旧后端的空串歧义）
     /// 被压成同一个无载荷的 `Skip` ⇒ **这一维在日志里根本不可见**。
     /// `U3` 的读数逐字记着这件事的后果：
     /// 「`Unobservable` 计数 = 0，而**那个 0 是瞎的** —— 日志根本不记这一维 ⇒ 分母不存在。
@@ -384,21 +384,21 @@ pub(crate) enum TmuxObservation {
     Skip(SkipReason),
 }
 
-/// P1：把一帧 `TmuxSessions` 分类。`observation` = daemon 的显式分类字段
-/// （P1 起的 additive wire 字段；旧 daemon 为 `None`）。
+/// P1：把一帧 `TmuxSessions` 分类。`observation` = backend 的显式分类字段
+/// （P1 起的 additive wire 字段；旧后端为 `None`）。
 ///
-/// **判据只用 rc + stdout 空否**（daemon 侧已折成 `observation`），**绝不看 stderr 文本**——
+/// **判据只用 rc + stdout 空否**（backend 侧已折成 `observation`），**绝不看 stderr 文本**——
 /// P0 实测 stderr 有两种措辞（`no server running on …` / `error connecting to … `），
 /// 且拿英文消息当判据本身就是错的。
 ///
-/// 未知的 `observation` 取值 → **落回 raw 判据**（向前兼容：未来 daemon 加新分类时，
+/// 未知的 `observation` 取值 → **落回 raw 判据**（向前兼容：未来后端加新分类时，
 /// 老 monitor 退化成今天的保守行为，不会误灰）。
 pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) -> TmuxObservation {
-    // NO_TMUX 哨兵（旧 daemon 唯一能表达的"后端不存在"）：远端没装 tmux ⇒ 无从对账。
+    // NO_TMUX 哨兵（旧后端唯一能表达的"后端不存在"）：远端没装 tmux ⇒ 无从对账。
     if raw.trim() == "NO_TMUX" {
         return TmuxObservation::Skip(SkipReason::NoTmux);
     }
-    // P1：daemon 的显式分类优先。**未知取值刻意不在此匹配** ⇒ 落回下方 raw 判据（向前兼容）。
+    // P1：backend 的显式分类优先。**未知取值刻意不在此匹配** ⇒ 落回下方 raw 判据（向前兼容）。
     match observation {
         // ★ 两者压成一个 `Skip` 是对的（都不该累计缺失），但**原因必须分开记** ——
         // `#82` 要知道的正是 `unobservable` 的频率，把它和「远端没装 tmux」混在一起就问不出来。
@@ -415,15 +415,15 @@ pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) ->
         .iter()
         .filter_map(|s| s.sid.clone())
         .collect();
-    // 旧 daemon 的空串语义不可分（零会话 / `|| true` 吞掉的错，两者同形）⇒ 保守跳过。
-    // **新 daemon 走不到这里**：它零会话时带 `zero_sessions`、出错时带 `unobservable`。
+    // 旧后端的空串语义不可分（零会话 / `|| true` 吞掉的错，两者同形）⇒ 保守跳过。
+    // **新后端走不到这里**：它零会话时带 `zero_sessions`、出错时带 `unobservable`。
     if backend.is_empty() {
         return TmuxObservation::Skip(SkipReason::LegacyAmbiguousEmpty);
     }
     TmuxObservation::Backend(backend)
 }
 
-/// daemon 那条**抓一屏**原语的名字（`K-R86` 出 CLI 面 · `K-R104` 搬上帧面）。
+/// backend 那条**抓一屏**原语的名字（`K-R86` 出 CLI 面 · `K-R104` 搬上帧面）。
 ///
 /// 闭集只许有一个住址：调用点不写字面量。
 const CAPTURE_PANE: &str = "capture-pane";
@@ -444,15 +444,15 @@ const CAPTURE_PANE: &str = "capture-pane";
 /// 老那条串只有两个哨兵，而「tmux 没装」「一个 server 都没有」「这个会话不存在」
 /// 「抓屏本身失败」四件事里有三件被压进 `NO_PANE` 一个读数 ——
 /// 它们的下一步各不相同（装 tmux / 那台机器上没有会话在跑 / 刷新列表 / 看 tmux 原话）。
-/// 那五个码是 daemon 按**退出码 ＋ stderr 命中哪张针表**分出来的
+/// 那五个码是后端按**退出码 ＋ stderr 命中哪张针表**分出来的
 /// （`src/backend/control/capture_pane.rs` 头注那张表），不是这一侧猜的。
 ///
-/// ⚠ **认不出的码不许猜**：原样带出去。「压成一个具体而错误的答案」正是 daemon 那侧
+/// ⚠ **认不出的码不许猜**：原样带出去。「压成一个具体而错误的答案」正是后端那侧
 /// 兜底档（`capture_failed` ＋ stderr 原样回包）写下来要避免的形状 —— 这一侧照抄那条纪律。
 fn describe_capture_refusal(target: &str, code: &str, message: &str) -> String {
     match code {
         "no_tmux" => format!("抓不了 `{target}` 的画面：那台机器上起不来 tmux（{message}）"),
-        // ⚠ 「tmux 的 server」不是啰嗦：写成「tmux server」会被 `tmux_daemon_gate_guard`
+        // ⚠ 「tmux 的 server」不是啰嗦：写成「tmux server」会被 `tmux_backend_gate_guard`
         //    那条「远端 tmux 动词」守卫读成一个叫 `server` 的动词（它按字面「tmux 空格 小写词」
         //    取，刻意不问上下文 —— 那是它 fail-closed 的方式）。**说的是同一件事，不许改语义。**
         "no_server" => format!(
@@ -520,10 +520,10 @@ fn gate1_reject_empty(target: &str) -> Result<(), String> {
 // 抓屏改走 `capture-pane` 帧之后它零生产调用点 ⇒ 整块删（`KR72D1` 逐字禁止
 // 「把回落改成恒失败的桩留在原地 —— 那不是删，那是把一份实现变成一句谎话」）。
 //
-// 🔴 **那条「必须精确匹配」的性质今天真正在跑的那一份住 daemon**：
+// 🔴 **那条「必须精确匹配」的性质今天真正在跑的那一份住 backend**：
 // `src/backend/control/capture_pane.rs::capture_on` 逐字
 // 「Gate 1（`=name:` 精确匹配）—— 裸 `-t <名>` 会被 tmux 按『精确名 → 名字开头 → glob』解析」，
-// 它调的是 daemon 自己那份 `launch::exact_target`，与 `kill` 共用同一份。
+// 它调的是后端自己那份 `launch::exact_target`，与 `kill` 共用同一份。
 //
 // **Gate 1 的空目标那一格仍留在本侧**（[`gate1_reject_empty`]）：`=:` 会被 tmux 解析成
 // 「当前会话」，而**空目标不该先花一次往返**才被拒 —— 三条命令（抓屏 / 送键 / 杀会话）
@@ -538,15 +538,15 @@ fn gate1_reject_empty(target: &str) -> Result<(), String> {
 /// # 🔴 `K-R112`（09-13）：**本函数今天没有生产调用方了 —— 而它必须留着，理由如实写**
 ///
 /// 最后一个消费者 `build_capture_pane_cmd` 随抓屏改走帧面一起删了（上面那块墓碑）〔散文墓碑〕。
-/// **不能顺手删掉它**：daemon 侧
+/// **不能顺手删掉它**：backend 侧
 /// `control/launch.rs::tests::exact_target_shape_matches_the_monitor_side`
 /// 拿 monitor 这一处当**跨轨对拍锚点** —— 它 `include_str!` 本文件，要求里面找得到
 /// `={target}:` 那个形状，理由逐字「两侧必须同形，否则一边打到兄弟会话上而另一边不会」。
-/// 而**那条性质今天仍然成立、仍然值得守**（daemon 的 `capture_pane` / `kill` 都在用它那份）。
+/// 而**那条性质今天仍然成立、仍然值得守**（backend 的 `capture_pane` / `kill` 都在用它那份）。
 /// ⇒ 留下这个壳，`#[allow(dead_code)]` 明写「今天没人调」，**不假装它在路上**
 /// （形状抄 `K-R72` 给 `is_ccm_tmux_name` 那个转调壳留的先例）。
 ///
-/// ⚠ **想真删它，得先在 daemon 那棵树上给那条对拍换个锚点** —— `src/backend/**`
+/// ⚠ **想真删它，得先在后端那棵树上给那条对拍换个锚点** —— `src/backend/**`
 /// 不在本件写区（归 `K-R113`）。**已上报，别当它没有主人。**
 #[allow(dead_code)]
 pub(crate) fn exact_target(target: &str) -> Result<String, String> {
@@ -609,31 +609,31 @@ fn no_channel_message(action: &str, origin: &str, target: &str, why: &str) -> St
 // **那不是删，那是把一份实现变成一句谎话**。
 //
 // **§34 那三道门没有消失，只是只剩一个家**：Gate 1 住 [`gate1_reject_empty`]
-// （本文件，三条路共用）· Gate 2 / Gate 3 住 daemon 的 `control/gate.rs`
+// （本文件，三条路共用）· Gate 2 / Gate 3 住后端的 `control/gate.rs`
 // （`admit` / `admit_destructive`，判定本体转调 `gate-core`，金表 `gate2-golden.tsv`
-// 由 daemon 侧与 `backend/control/gate2_parity.rs` 两条轨道共读）。
-// 回潮闸在 `tmux_daemon_gate_guard`：那两条命令里**再出现** `connect_and_exec_cmd` 就红。
+// 由后端侧与 `backend/control/gate2_parity.rs` 两条轨道共读）。
+// 回潮闸在 `tmux_backend_gate_guard`：那两条命令里**再出现** `connect_and_exec_cmd` 就红。
 
-/// 抓一屏走 daemon 的 `capture-pane` 帧〔`K-R112` 09-13〕。
+/// 抓一屏走后端的 `capture-pane` 帧〔`K-R112` 09-13〕。
 ///
 /// 回 `Err(Routed)` 而不是 `Err(String)`：**「一个字节都没发出去」与「后端说了话」不是一回事**，
-/// 而这一层判不了该怎么对用户说 —— 那归调用方（同 `daemon_kill` / `daemon_send_keys` 的分法）。
+/// 而这一层判不了该怎么对用户说 —— 那归调用方（同 `backend_kill` / `backend_send_keys` 的分法）。
 ///
-/// ⚠ **分流走那唯一的一份**（`daemon_route::route_call_error`）：本模块不许自己 match
+/// ⚠ **分流走那唯一的一份**（`backend_route::route_call_error`）：本模块不许自己 match
 /// 一遍错误枚举 —— 分流规则一旦有第二份实现，「被门拒绝」就会在某一份里被洗成「换条路重做」。
-async fn capture_via_daemon(
+async fn capture_via_backend(
     origin: &str,
     target: &str,
-) -> Result<String, crate::backend::control::daemon_route::Routed> {
-    use crate::backend::control::daemon_route::{no_channel, route_call_error, Routed};
+) -> Result<String, crate::backend::control::backend_route::Routed> {
+    use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
     let Some(client) = crate::inbound_client::client_for(origin) else {
         return Err(no_channel(origin));
     };
-    // 能力协商放在抓之前：抓一屏是 `K-R86`/`K-R104` 之后才有的原语，老 daemon 上没有。
-    // **「这台的后端太旧」是问得出答案的**，不许与超时同形（同 `cc_bus::send_via_daemon`）。
+    // 能力协商放在抓之前：抓一屏是 `K-R86`/`K-R104` 之后才有的原语，老后端上没有。
+    // **「这台的后端太旧」是问得出答案的**，不许与超时同形（同 `cc_bus::send_via_backend`）。
     if !client.accepts(CAPTURE_PANE) {
         return Err(Routed::NoChannel(format!(
-            "`{origin}` 的 daemon 没声明 `{CAPTURE_PANE}` 能力 —— \
+            "`{origin}` 的后端没声明 `{CAPTURE_PANE}` 能力 —— \
              抓一屏是后来才上帧面的原语，**重装那台机器的后端**就有了"
         )));
     }
@@ -649,7 +649,7 @@ async fn capture_via_daemon(
                 describe_capture_refusal(target, code, message)
             })
         })?;
-    // ⚠ **空屏是合法的成功**（daemon 侧头注逐字）：一个刚建起来、什么都没打印的 pane
+    // ⚠ **空屏是合法的成功**（backend 侧头注逐字）：一个刚建起来、什么都没打印的 pane
     //   抓回来就是空串。所以这里判的是**字段在不在**，不是「内容空不空」。
     reply
         .as_ref()
@@ -665,32 +665,32 @@ async fn capture_via_daemon(
 
 /// F60:抓一个 tmux 会话当前窗口/pane 的屏幕文本(**只读快照,非 attach**)。
 ///
-/// # ★★ `K-R112`（09-13）：**改走 daemon 的 `capture-pane` 帧，本机那一支跟着通了**
+/// # ★★ `K-R112`（09-13）：**改走后端的 `capture-pane` 帧，本机那一支跟着通了**
 ///
 /// 在本件之前这条命令是**一次性 SSH**〔散文墓碑〕（`build_capture_pane_cmd` 拼一条带 `command -v tmux`
 /// 门控与 `NO_PANE` 哨兵的 shell 串 → `connect_and_exec_cmd`），而**本机那一支直接回一句
-/// 「还看不了」**。那句话当时是诚实的：daemon 没有抓屏原语。
+/// 「还看不了」**。那句话当时是诚实的：backend 没有抓屏原语。
 /// `K-R86`（09-13）补了 CLI 面、`K-R104` 把它搬上帧面 ⇒ **前提到期了**，这一条不再拒本机。
 ///
 /// 换来的三样，逐条都是具体的：
 /// 1. **本机能预览了** —— `<local>` 也是一个 origin，`client_for` 两侧都答得出。
 /// 2. **五档错误分得开**（[`describe_capture_refusal`]）：老路两个哨兵把四件事压成两个读数。
-/// 3. **精确形态只剩一份**：`=name:` 那道 Gate 1 今天只住 daemon 侧
+/// 3. **精确形态只剩一份**：`=name:` 那道 Gate 1 今天只住后端侧
 ///    （`control/capture_pane.rs::capture_on`），monitor 不再拼第二份。
 ///
 /// ⚠ **代价如实写**：后端通道不在时，抓屏从「远端还能靠一次性 SSH 抓到」变成**明确失败**
 /// （出口 [`no_channel_message`]）。远端那一侧这是**净损失一条路**，值不值由这三样换 ——
 /// 而 `K33` 逐字「所有命令只许有一处」把它判成了值。
 ///
-/// ⚠ **只读快照，刻意不过身份门（Gate 2）** —— 两侧口径一致，daemon 侧
+/// ⚠ **只读快照，刻意不过身份门（Gate 2）** —— 两侧口径一致，backend 侧
 /// `control/capture_pane.rs::capture` 头注逐字记着同一句。别顺手给它加门。
 #[tauri::command]
 pub async fn capture_remote_pane(origin: String, target: String) -> Result<String, String> {
-    use crate::backend::control::daemon_route::Routed;
+    use crate::backend::control::backend_route::Routed;
     // Gate 1 仍在**本地就地**判（同 `tmux_send_keys` / `kill_remote_tmux`）：
     // 空目标不该先花一次往返（`=:` 会被 tmux 解析成「当前会话」）。
     gate1_reject_empty(&target)?;
-    match capture_via_daemon(&origin, &target).await {
+    match capture_via_backend(&origin, &target).await {
         Ok(screen) => Ok(screen),
         Err(Routed::Refused(why)) => Err(why),
         Err(Routed::NoChannel(why)) => Err(no_channel_message("抓不了", &origin, &target, &why)),
@@ -705,9 +705,9 @@ pub async fn capture_remote_pane(origin: String, target: String) -> Result<Strin
 ///
 /// # ★★ `K-R72`（09-12）：**只剩后端这一条路**（`C7` 的过渡期 SSH 回落已删）
 ///
-/// `F04b` 把主路切到 daemon 时留了一条「monitor 自己拼一条 SSH 串杀会话」的过渡期回落
-/// （`C7`）。`K-R54` 的逐处裁定表第 2 处判它**留 daemon、删回落**，理由是实的：
-/// daemon 那条先 `admit_destructive` 拿 `#{session_id}` **句柄**再杀，而那条 SSH 串杀的是
+/// `F04b` 把主路切到后端时留了一条「monitor 自己拼一条 SSH 串杀会话」的过渡期回落
+/// （`C7`）。`K-R54` 的逐处裁定表第 2 处判它**留后端、删回落**，理由是实的：
+/// backend 那条先 `admit_destructive` 拿 `#{session_id}` **句柄**再杀，而那条 SSH 串杀的是
 /// `=name:`（**名字**）—— 破坏性动作对名字下手就把 TOCTOU 窗口留着。
 ///
 /// ⚠ **代价如实写**：远端后端通道不在时，杀会话从「换一条路悄悄做掉」变成**明确失败**。
@@ -717,15 +717,15 @@ pub async fn capture_remote_pane(origin: String, target: String) -> Result<Strin
 /// ⚠ **三态分流仍在，而且今天三条都 `return`**：`Refused` 是**门做的决定**
 /// （`wrong_owner` / `too_many_windows`），`NoChannel` 是**通道不在**。
 /// 先前那条回落最危险的形状正是把 `Refused` 洗成另一条路的成功；今天连那条路都没有了，
-/// 但两个读数仍然不许合并 —— 由 `tmux_daemon_gate_guard` 那条同名判据钉着。
+/// 但两个读数仍然不许合并 —— 由 `tmux_backend_gate_guard` 那条同名判据钉着。
 #[tauri::command]
 pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), String> {
     // Gate 1 仍在**本地就地**判（同 `tmux_send_keys`）。
     gate1_reject_empty(&target)?;
-    match crate::backend::control::daemon_kill::daemon_kill(&origin, &target).await {
-        crate::backend::control::daemon_route::Routed::Done => Ok(()),
-        crate::backend::control::daemon_route::Routed::Refused(why) => Err(why),
-        crate::backend::control::daemon_route::Routed::NoChannel(why) => {
+    match crate::backend::control::backend_kill::backend_kill(&origin, &target).await {
+        crate::backend::control::backend_route::Routed::Done => Ok(()),
+        crate::backend::control::backend_route::Routed::Refused(why) => Err(why),
+        crate::backend::control::backend_route::Routed::NoChannel(why) => {
             Err(no_channel_message("杀不了", &origin, &target, &why))
         }
     }
@@ -736,17 +736,17 @@ pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), Stri
 ///
 /// # ★★ `K-R72`（09-12）：**只剩后端这一条路**（`C7` 的过渡期 SSH 回落已删）
 ///
-/// `F04c` 把主路切到 daemon 时留了一条「monitor 自己拼一条 SSH 串往别人会话里打字」的
-/// 过渡期回落（`C7`）。`K-R54` 的逐处裁定表第 1 处判它**留 daemon、删回落**：
+/// `F04c` 把主路切到后端时留了一条「monitor 自己拼一条 SSH 串往别人会话里打字」的
+/// 过渡期回落（`C7`）。`K-R54` 的逐处裁定表第 1 处判它**留后端、删回落**：
 /// 那条回落在 `cc-*` 形状名上 `need_sid`/`need_windows` 双 false ⇒ 落退化分支，
-/// 而 daemon 的 `control/gate.rs::admit` 恒先 `probe` 拿 `#{session_id}` 句柄。
+/// 而后端的 `control/gate.rs::admit` 恒先 `probe` 拿 `#{session_id}` 句柄。
 /// `K-R56`（09-11）先把「探了没有」这一维补齐、让两条路等价，本件才删得掉第二条。
 ///
-/// `enter` 落在 daemon 的**两个 mode 名**上，不是一个字段：
+/// `enter` 落在后端的**两个 mode 名**上，不是一个字段：
 /// `true` → 既有的 `send-into` · `false` → `F04c` 新增的 `send-keys-raw`。
-/// **为什么不能是字段**：daemon 的 `parse_request` 手工取键、不 deny unknown fields ⇒
+/// **为什么不能是字段**：backend 的 `parse_request` 手工取键、不 deny unknown fields ⇒
 /// 旧版本会**静默忽略**它、照样附 `Enter` ⇒ 把「打断当前回合」变成
-/// 「**提交用户输入框里排队的文本**」。新 mode 名则天然 fail-closed：旧 daemon 回
+/// 「**提交用户输入框里排队的文本**」。新 mode 名则天然 fail-closed：旧后端回
 /// `invalid_args`，我们拿到明确错误。
 ///
 /// ⚠ **代价如实写**（`K-R54` 表第 1 处逐字点的那一条）：远端后端通道不在时，送键从
@@ -768,14 +768,14 @@ pub async fn tmux_send_keys(
     let enter = enter.unwrap_or(true);
     // Gate 1 仍在**本地就地**判：空目标不该先花一次往返（`=:` 会被 tmux 解析成「当前会话」）。
     gate1_reject_empty(&target)?;
-    match crate::backend::control::daemon_send_keys::daemon_send_keys(
+    match crate::backend::control::backend_send_keys::backend_send_keys(
         &origin, &target, &keys, enter,
     )
     .await
     {
-        crate::backend::control::daemon_route::Routed::Done => Ok(()),
-        crate::backend::control::daemon_route::Routed::Refused(why) => Err(why),
-        crate::backend::control::daemon_route::Routed::NoChannel(why) => {
+        crate::backend::control::backend_route::Routed::Done => Ok(()),
+        crate::backend::control::backend_route::Routed::Refused(why) => Err(why),
+        crate::backend::control::backend_route::Routed::NoChannel(why) => {
             Err(no_channel_message("送不了按键给", &origin, &target, &why))
         }
     }
@@ -790,13 +790,13 @@ pub async fn tmux_send_keys(
 /// （用户 `R55`：「要是可读的名字 / 不要id」）。**sid 不在名字里，它骑在 `@ccm_sid` 上。**
 ///
 /// F04：**不再是唯一身份判据**，降级为 Gate 2（identity）union 的本地半支——`@ccm_sid` 已设
-/// 是远端半支（`K-R72` 起只在 daemon `control/gate.rs::admit` 里核验；先前 monitor 侧
+/// 是远端半支（`K-R72` 起只在 backend `control/gate.rs::admit` 里核验；先前 monitor 侧
 /// `build_guarded_tmux_cmd` 那条 SSH 串里还有第二份，随两条回落一起删了）。
 /// 命中此判据即可跳过远端核验（零 IO，覆盖今天
 /// 100% 的真实流量）；未命中不代表拒绝，只代表"需要问远端 `@ccm_sid`"。**不删除**——F02 之前的
 /// 老 `cc-*` 会话没有 `@ccm_sid`，只靠这条名字判据仍必须可 kill/send-keys，否则是向后兼容回归。
 ///
-/// **F03：实现搬进 `gate-core`**（定框 C1「一份代码、两种承载」）—— daemon 的
+/// **F03：实现搬进 `gate-core`**（定框 C1「一份代码、两种承载」）—— backend 的
 /// `control/gate.rs` 调的是同一份。本地保留这个名字是为了调用点零改，
 /// 同 `shell_quote_core::posix_quote` 的收口手法。
 /// ⚠ **不许在这里重新实现一遍** —— `gate_singleton_guard` 机检钉着「全仓只有一份」。
@@ -821,18 +821,18 @@ fn is_ccm_tmux_name(name: &str) -> bool {
     gate_core::is_ccm_tmux_name(name)
 }
 
-/// daemon 侧 `watcher.rs` 的源码路径 —— **跨 crate 硬路径的单一落点**。
+/// backend 侧 `watcher.rs` 的源码路径 —— **跨 crate 硬路径的单一落点**。
 ///
 /// # 为什么要有这个常量
 ///
-/// monitor 的两条对拍守卫用 `include_str!` 读 daemon 的源码（两个 crate 不能共享 `const`，
+/// monitor 的两条对拍守卫用 `include_str!` 读后端的源码（两个 crate 不能共享 `const`，
 /// 只能靠「读对方源码 + 断言」防跨语言/跨 crate 漂移）。U2 的 Phase D 审计点名过：
-/// **这类硬路径在 daemon 重构时会一起断，而且断的是编译期**。
+/// **这类硬路径在后端重构时会一起断，而且断的是编译期**。
 ///
 /// U3 把 `watcher.rs` 搬进 `observe/` 时它**当场兑现** —— `cargo test --lib` 直接
 /// `couldn't read src/../../backend/observe/watcher.rs`。
 /// 好消息是它**响**（编译错，不是静默假绿）；坏消息是它有两处、还散着。收进一个常量，
-/// 下次 daemon 再搬家只改这一行。
+/// 下次后端再搬家只改这一行。
 ///
 /// ⚠ **必须是 `macro_rules!` 不能是 `const`**：`include_str!` 只接受**字面量 token**，
 /// 喂给它一个 `const` 会报 `argument must be a string literal`（我第一版就这么写的）。

@@ -2,7 +2,7 @@
 //!
 //! # 它为什么存在
 //!
-//! 〔用 08-14〕逐字：「**现在的daemon几乎都是兼容claudecode, 那就标清楚, 分离清楚,
+//! 〔用 08-14〕逐字：「**现在的后端几乎都是兼容claudecode, 那就标清楚, 分离清楚,
 //! 后面搞兼容其他agent的时候才方便**」。
 //!
 //! 病灶不是"代码散"，是**「加一个 agent 要改哪几处」这份清单只住在人的脑子里**。
@@ -44,7 +44,7 @@
 //!
 //! # 〔`S5` 08-14〕**注册表**：本文件从"目录索引"变成了"这台机器认得哪几个 agent"
 //!
-//! [`REGISTRY`] + [`visible_homes`] 让 daemon **有能力**声明它看得见哪些 agent
+//! [`REGISTRY`] + [`visible_homes`] 让 backend **有能力**声明它看得见哪些 agent
 //! （`G1` 成功标准③）。⚠ **能力先建、生产路径今天不接** —— `main.rs` 仍硬写
 //! `homes: Vec::new()`，一个线上字节都没变。理由不是保守：填 `homes` 是一次**跨仓契约变更**
 //! （仓外 aterm 的 hello fixture 按精确字节对），而本机没有 aterm 仓、验不了它的运行时
@@ -108,7 +108,7 @@ pub(crate) struct Adapter {
     pub(crate) home: fn() -> Option<PathBuf>,
 }
 
-/// **这个 daemon 认得哪几个 agent**〔`S5`〕。加一个 agent = 加一行（+ 上面加一行 `mod`）。
+/// **这个后端认得哪几个 agent**〔`S5`〕。加一个 agent = 加一行（+ 上面加一行 `mod`）。
 ///
 /// ⚠ 它与 `agent_locality_guard::tests::HOMES`（判据用的"agent 家"清单）**必须一样长**，
 /// 由 `every_agent_adapter_has_exactly_one_registry_entry` 双向钉住：
@@ -147,18 +147,18 @@ pub(crate) fn account_env_of(kind: &str) -> Option<&'static str> {
 /// 1. **字段语义只允许这一条**。`homes` 的每一项是 `{agent_kind, path}` —— 一个**路径**。
 ///    按 `PATH` 判的话，claude 那家 [`claudecode::home`] 恒 `Some`（有默认值），
 ///    我们就得为一个**不存在的目录**报一个路径 —— 那是在说谎，消费方拿它去列会话只会得到空。
-/// 2. **它与 daemon 真正能干的事对齐**。四类能力里的三类（会话发现与判活 · 会话内容读 ·
+/// 2. **它与后端真正能干的事对齐**。四类能力里的三类（会话发现与判活 · 会话内容读 ·
 ///    用量）**全部** root 在 home 之下；home 不在，这三类一律零输出。
-///    ⇒「home 在」就是「daemon 对这个 agent 的观测面能干活」。
+///    ⇒「home 在」就是「backend 对这个 agent 的观测面能干活」。
 ///    ⚠ 第四类（起会话/resume）确实靠 `PATH`，本判准**覆盖不到** —— 如实登记，见 `§4`。
 /// 3. **排除「目录下有会话记录」**：那是"用过"不是"装了"。三条具体害处 ——
-///    ① 刚装好还没开过会话的 agent 会被判成看不见，而 daemon 的 watcher 正是要
+///    ① 刚装好还没开过会话的 agent 会被判成看不见，而后端的 watcher 正是要
 ///    inotify 那个目录**等第一条会话出现**（自相矛盾）；② `hello` 一次连接只发一次，
 ///    而"有没有会话记录"在连接期内会变（清理/轮转）—— 会中途变旧的值不该进握手帧；
 ///    ③ 它要扫盘，而 hello 是 flush 前的**第一件事**，给握手加一次全树扫描是加了一段不确定的延迟。
 /// 4. **排除「可执行文件在 `PATH` 里」**：① 它答不出 `path` 该填什么（见 1）；
-///    ② daemon 自己的 `PATH` 与用户在 tmux 里的 `PATH` 常常不是一回事（非交互 SSH 登录）
-///    —— 拿 daemon 的 `PATH` 判"用户能不能起 claude"是**问错了人群**；
+///    ② backend 自己的 `PATH` 与用户在 tmux 里的 `PATH` 常常不是一回事（非交互 SSH 登录）
+///    —— 拿后端的 `PATH` 判"用户能不能起 claude"是**问错了人群**；
 ///    ③ 它答的是"能不能起"，而 `homes` 声明的是"数据在哪"。
 ///
 /// ⇒ 对 `S6` 的含义（判准决定假 agent 怎么伪造自己）：**`mkdir` 一个 home 目录就够了**。

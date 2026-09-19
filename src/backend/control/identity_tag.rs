@@ -1,4 +1,4 @@
-//! `U-NP④`：**会话身份打标（`@ccm_sid`）** —— 从 `shared/ccm` 的每秒轮询搬到 daemon。
+//! `U-NP④`：**会话身份打标（`@ccm_sid`）** —— 从 `shared/ccm` 的每秒轮询搬到后端。
 //!
 //! # 它接的是谁的班
 //!
@@ -6,15 +6,15 @@
 //! `<claude_dir>/sessions/<自己的 PID>.json` 拿 `sessionId`，写进 tmux 会话级 option
 //! `@ccm_sid`。那是全仓唯一一条「每会话一条、跑在远端机器上」的轮询
 //!（开五个会话 = 每秒五条循环）。用户 08-14 裁定：「**可以动 ccm. 不要轮询**」＋
-//!「**ccm 做到必须走 daemon**」⇒ 整条 poller 删掉、**不留轮询退路**，改由本模块打标。
+//!「**ccm 做到必须走 backend**」⇒ 整条 poller 删掉、**不留轮询退路**，改由本模块打标。
 //!
-//! # 为什么 daemon 干这件事**不需要**任何新的节拍
+//! # 为什么后端干这件事**不需要**任何新的节拍
 //!
-//! daemon 已经在 inotify `<claude_dir>/sessions/`（`observe/watcher.rs`）——
+//! backend 已经在 inotify `<claude_dir>/sessions/`（`observe/watcher.rs`）——
 //! 那正是 pidfile 目录。它看到 `<PID>.json` 的那一刻，**pid 与 sid 同时在手**：
 //! 文件名是 pid、内容里是 sid。`/clear`、`/branch` 会**原地重写同一个 pidfile**
 //!（wire 上就是 `session_removed.cause="superseded"`），inotify 的 modify 照样送到
-//! ⇒ 换 sid 这件事 daemon 看得见，本模块跟着重打，与旧 poller 的「sid 变了立即刷」等效。
+//! ⇒ 换 sid 这件事后端看得见，本模块跟着重打，与旧 poller 的「sid 变了立即刷」等效。
 //!
 //! # (pid, sid) → 「打到哪个 tmux 会话上」怎么解
 //!
@@ -29,7 +29,7 @@
 //! - **孙子进程**（用户已在 pane 里，shell fork 出 ccm 再 exec ⇒ `pid != pane_pid`）：
 //!   `TMUX_PANE=%1` 照样在 ✓ —— 所以**不能**改用 `#{pane_pid}` 去 join，那条只覆盖前一种。
 //!
-//! **排除掉的另一条**：让 ccm 自己写一个 `@ccm_pid=$$` 当 join 键，daemon 用
+//! **排除掉的另一条**：让 ccm 自己写一个 `@ccm_pid=$$` 当 join 键，backend 用
 //! `list-sessions -F` 反查。它跨平台（不依赖 `/proc`），但**有陈旧面**：ccm 退出后那个值
 //! 留在会话里，PID 复用时会把新会话的 sid 打到旧会话上 —— 而 `@ccm_sid` 是破坏性动作
 //!（kill）唯一认的事实 ⇒ 打错 = 杀错。`/proc` 那条没有这个面，故取它。
@@ -40,7 +40,7 @@
 //!
 //! 通道 A 写 `@ccm_sid_expect`（**意图**：「打算跑这个 sid」），
 //! 通道 B 写 `@ccm_sid`（**事实**）。破坏性动作只认后者。搬家之后这条分离**更硬**了：
-//! 事实的写者从「那个会话自己」变成了**独立的第三方**，而且 daemon 是在
+//! 事实的写者从「那个会话自己」变成了**独立的第三方**，而且后端是在
 //! `process_session_added` 走完 `pid_alive` + `add_time_verdict`（procStart 冒名检查）
 //! 之后才调本模块 —— 也就是说打标前已经证过「这个 pid 真的是写那份 pidfile 的那个 claude」。
 //!
@@ -50,7 +50,7 @@
 //! `@ccm_sid_expect`。它此前写的是**裸 `@ccm_sid`**，也就是**绕过本模块这道确认**
 //! 直接授予事实身份（F04 修掉的 `R10` 形状），已在那一拍改掉。
 //! ⇒ 准确的说法是：**意图由「建会话的那个人」声明**（`shared/ccm` 走 shell 那条路时是它，
-//! 走 daemon 的 `launch` 时是 `launch.rs`），而**事实只由本模块写**。
+//! 走后端的 `launch` 时是 `launch.rs`），而**事实只由本模块写**。
 //! **本模块仍然一个字都不写 `@ccm_sid_expect`。**
 //!
 //! # 谁兜「标题被冲掉」
@@ -67,7 +67,7 @@
 //!
 //! 探测复用 [`super::gate::probe`]（**零新增起进程点**），只有真要写时才多起一个
 //! `tmux set-option`。已登记进 `readonly_guard::spawn_registry`。
-//! 改的是 **tmux server 的运行期状态**，不是 daemon 自己写用户既有数据（同 `tmux_hook`）。
+//! 改的是 **tmux server 的运行期状态**，不是后端自己写用户既有数据（同 `tmux_hook`）。
 
 /// 一次打标的结局。**返回而不是吞掉** —— 调用方今天丢弃它，但日志与测试要看得见。
 #[derive(Debug, Clone, PartialEq, Eq)]

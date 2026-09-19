@@ -46,13 +46,13 @@ fn both_halves() -> Vec<String> {
     out
 }
 
-/// 哪一半：`monitor` / `daemon` / 其它（`doc/` `shared/` `tests/e2e/` `src/` …）。
+/// 哪一半：`monitor` / `backend` / 其它（`doc/` `shared/` `tests/e2e/` `src/` …）。
 ///
-/// ⚠ 只有 monitor ↔ daemon 这两个方向算「两半互相咬」。
+/// ⚠ 只有 monitor ↔ backend 这两个方向算「两半互相咬」。
 /// 读 `doc/` `shared/` `tests/e2e/` 与前端 `src/*.ts` 的边**另有 13 处**，它们不是这件的标的 ——
 /// 那些是「判据去读文档/脚本/前端源」，两半的关系不在其中。
 /// ⚠ 这条口径是**量出来的**：全仓 123 处 `include_*!`，跨侧 24 处，
-/// 其中 monitor↔daemon 恰好 **8 + 2**。别把 24 当成这件的数。
+/// 其中 monitor↔backend 恰好 **8 + 2**。别把 24 当成这件的数。
 fn half_of(rel: &str) -> &'static str {
     // 🔴 〔搬树 2026-09-18〕每一半各有**两个**住址前缀：生产段与测试段。
     // ⚠ `tests/e2e/` 与前端 `tests/*.ts` **仍然是「外部」** —— 本模块头注逐字：
@@ -62,7 +62,7 @@ fn half_of(rel: &str) -> &'static str {
     if rel.starts_with("src/bridge/") || rel.starts_with("tests/bridge/") {
         "monitor"
     } else if rel.starts_with("src/backend/") || rel.starts_with("tests/backend/") {
-        "daemon"
+        "backend"
     } else {
         "外部"
     }
@@ -137,7 +137,7 @@ fn includes_of(rel: &str, raw: &str) -> Vec<(String, String)> {
     // 运行时拼，免得命中本文件自己的说明文字。
     //
     // ⚠ **不许要求 `!(` 与 `"` 连着。** 第一版要求连着，于是 **rustfmt 折行的那两条边
-    // 直接消失了**（`daemon_kill.rs` 与 `daemon_send_keys.rs` 的路径太长，被折成
+    // 直接消失了**（`backend_kill.rs` 与 `backend_send_keys.rs` 的路径太长，被折成
     // `include_str!(\n    "…"\n)`）—— 抽取器读出 8 条，真值 10 条。
     // 那个洞**只被「条数自检」那一条断言逮住**，别的断言都会跟着一起错得很一致。
     for verb in verbs() {
@@ -158,9 +158,9 @@ fn includes_of(rel: &str, raw: &str) -> Vec<(String, String)> {
             if s >= b.len() || b[s] != b'"' {
                 // 〔audit-0805 08-06〕**参数是同文件里的单臂宏时，把它展开**。
                 //
-                // `tmux.rs` 有两处 `include_str!(daemon_watcher_src!())`，
+                // `tmux.rs` 有两处 `include_str!(backend_watcher_src!())`，
                 // 而那个宏展开成 `"../../backend/observe/watcher.rs"` ——
-                // **两条真的 monitor→daemon 跨界边**，此前整条不在登记表里。
+                // **两条真的 monitor→backend 跨界边**，此前整条不在登记表里。
                 // 讽刺的是 `tmux.rs` 自己写着为什么要用宏：`include_str!` 只接字面量 token，
                 // 用宏是为了「单一落点」—— 一个为了减少重复的好做法，
                 // 恰好把这条边从本护栏的视野里摘了出去。
@@ -230,11 +230,11 @@ fn discovered_edges() -> Vec<(String, String, String)> {
 fn the_edge_scan_sees_both_trees_and_actually_parses() {
     let files = both_halves();
     let monitor = files.iter().filter(|f| half_of(f) == "monitor").count();
-    let daemon = files.iter().filter(|f| half_of(f) == "daemon").count();
-    // 实测（F20 摸底）：monitor 侧 77 个 `.rs`、daemon 侧 37 个。
+    let backend = files.iter().filter(|f| half_of(f) == "backend").count();
+    // 实测（F20 摸底）：monitor 侧 77 个 `.rs`、backend 侧 37 个。
     assert!(
-        monitor >= 70 && daemon >= 30,
-        "只扫到 monitor {monitor} 个 / daemon {daemon} 个 `.rs` —— 遍历坏了\
+        monitor >= 70 && backend >= 30,
+        "只扫到 monitor {monitor} 个 / backend {backend} 个 `.rs` —— 遍历坏了\
              （摸底实测 77 / 37）"
     );
     let total: usize = files.iter().map(|f| includes_in(f).len()).sum();
@@ -278,8 +278,8 @@ fn every_non_literal_include_is_registered_with_a_reason() {
     const NON_LITERAL_INCLUDES: &[(&str, usize, &str)] = &[(
         "src/bridge/src/sftp.rs",
         2,
-        "`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/daemon-<arch>\"))` —— 读的是 \
-             build script 放进 `OUT_DIR` 的**产物**（内嵌 daemon 二进制），\
+        "`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/backend-<arch>\"))` —— 读的是 \
+             build script 放进 `OUT_DIR` 的**产物**（内嵌后端二进制），\
              不是对面那一半的**源码** ⇒ 不属两半编译期互咬。\
              ⚠ 但它确实是一条编译期边：`OUT_DIR` 里没有那个文件就编不过 —— \
              那条边由 `build.rs` 与 `shared_crate_registry` 的 CI 步骤那侧管。",
@@ -372,11 +372,11 @@ fn every_cross_half_edge_is_registered_with_a_reason() {
 ///
 /// 这是「部署路径不受影响」那句话的机检形态：
 /// 十条边全在判据里 ⇒ `cargo build`（目标机原生构建走的就是它）看不见它们，
-/// 摸底那次决定性实验实测过 —— 把两条 daemon→monitor 的路径打断，
+/// 摸底那次决定性实验实测过 —— 把两条 backend→monitor 的路径打断，
 /// `cargo build` 仍然 **exit=0 / 0 error**，只有 `cargo test --no-run` 炸。
 ///
 /// 一旦有人把跨半边的 `include_str!` 写进生产段，两半就**真的**在编译期咬住了
-/// （daemon 的部署构建从此需要 monitor 那棵树），本条当场红。
+/// （backend 的部署构建从此需要 monitor 那棵树），本条当场红。
 ///
 /// ⚠ 用的是仓里那把尺子 `guard_core::production_code`，不自己手搓
 /// （F+08 的教训：手搓的粗切在 `lib.rs` 第 57 行砍掉了 2108 行）。
@@ -457,9 +457,9 @@ fn no_cross_half_edge_lives_in_production_code() {
     // 另外 13 个逐份点名，一个都不是「文件没了」：
     //   ④ `src/bridge/src/polling_registry.rs` —— **早就是 0**（整个模块带
     //      `#[cfg(test)]`，上一版那句「十个里九个」说的就是它这一格）；
-    //   ⑤–⑯ 12 个判据**整份搬去了 `tests/`**（`daemon_kill_tests.rs` ·
-    //      `daemon_launch_tests.rs` · `daemon_send_keys_tests.rs` · `history_tests.rs`×2 ·
-    //      `inbound_client_tests.rs`×2 · `local_daemon_tests.rs` ·
+    //   ⑤–⑯ 12 个判据**整份搬去了 `tests/`**（`backend_kill_tests.rs` ·
+    //      `backend_launch_tests.rs` · `backend_send_keys_tests.rs` · `history_tests.rs`×2 ·
+    //      `inbound_client_tests.rs`×2 · `local_backend_host_tests.rs` ·
     //      `search_kou_jing_guard.rs` · `ssh_source_emits_parity.rs` ·
     //      `ssh_source_f032_idle_tests.rs` · `tmux_tests.rs`）——
     //      它们**按构造**没有生产段，上面那条正控逐个核过「它真的是测试文件」。
@@ -493,7 +493,7 @@ fn no_cross_half_edge_lives_in_production_code() {
     assert!(
         offenders.is_empty(),
         "跨半边的编译期边长进了生产段：\n{}\n\
-             ⇒ 从此 daemon 的部署构建（`cargo build`）需要 monitor 那棵树在，\
+             ⇒ 从此后端的部署构建（`cargo build`）需要 monitor 那棵树在，\
              而它的 `Cargo.toml` 逐字写着 standalone。\n\
              正解：把这次对拍搬进 `#[cfg(test)]`；真需要在运行期拿到那份内容，\
              就把它做成协议字段或夹具，别做成编译期依赖。",

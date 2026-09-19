@@ -70,7 +70,7 @@ fn an_endless_sse_line_is_dropped_and_counted_instead_of_growing_forever() {
 /// ⚠ 等待逻辑刻意住在 `mod tests` 里、**不做成 `TeeSink` 的 `#[cfg(test)]` 方法**：
 /// `no_timer_guard` 的 `production_code()` 只剥 `#[cfg(test)] mod`，**不剥单个 `#[cfg(test)]` 函数**
 /// —— 我第一版就是那么写的，当场被它逮到两条红
-///（`daemon_production_code_has_no_periodic_wakeups` 点名 `relay/tee.rs` 里的 `sleep(`，
+///（`backend_production_code_has_no_periodic_wakeups` 点名 `relay/tee.rs` 里的 `sleep(`，
 /// 以及 `every_duration_use_is_registered_as_non_timer` 说「生产段 `Duration::from_*` 有 2 处」）。
 /// 那两条红是**对的**：按那把尺子，我那个方法确实算生产段。
 #[derive(Clone)]

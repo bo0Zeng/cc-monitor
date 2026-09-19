@@ -6,7 +6,7 @@ fn v(a: &[&str]) -> Vec<String> {
 
 /// F66（#58③）★ §26 死循环护栏的**代码强制**：`CAPABILITIES` 里每个能力 token 的
 /// CLI flag 都必须被 `split_stream_flags` 剥离——否则声明它 = 埋 monitor 侧死循环
-/// （monitor 发该 flag → 本 daemon 不剥 → 当一次性查询退出 → 无 hello → 重连死循环）。
+/// （monitor 发该 flag → 本后端不剥 → 当一次性查询退出 → 无 hello → 重连死循环）。
 /// 加新能力 token 时，若忘了在此登记它的 flag、或忘了给 `split_stream_flags` 加剥离
 /// 分支，本测试红。把审计指出的「约定强制」拉回「代码强制」。
 #[test]

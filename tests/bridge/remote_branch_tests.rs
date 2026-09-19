@@ -18,9 +18,9 @@ fn exit_zero_parses_result() {
     assert!(r.jsonl_path.ends_with("new-sid-1.jsonl"));
 }
 
-/// ★ 失败必须**可见**：daemon 的 `{code,message}` 要变成人话，不能静默。
+/// ★ 失败必须**可见**：backend 的 `{code,message}` 要变成人话，不能静默。
 #[test]
-fn exit_two_surfaces_daemon_message() {
+fn exit_two_surfaces_backend_message() {
     let e = interpret_fork_exec(&ex(
         "",
         r#"{"code":"fork_failed","message":"refuse fork: message uuid not found"}"#,
@@ -40,7 +40,7 @@ fn unrecognized_stderr_is_passed_through() {
 }
 
 /// ★★ 没收到退出码**绝不当成 0**。真出现过的形态：连接被中途掐断，stdout 是空的，
-/// 若把 `None` 当 0 就会走进「报成功却没有输出」那条，措辞会把锅甩给 daemon。
+/// 若把 `None` 当 0 就会走进「报成功却没有输出」那条，措辞会把锅甩给后端。
 #[test]
 fn missing_exit_status_is_failure_not_success() {
     let e = interpret_fork_exec(&ex("", "", None)).unwrap_err();
@@ -57,10 +57,10 @@ fn exit_zero_with_garbage_stdout_fails() {
     assert!(e2.contains("没有输出结果"), "got: {e2}");
 }
 
-/// ★ 旧 daemon 不认参数会进流模式、先吐 hello 帧。必须**先于**解析判掉，
-/// 否则用户看到的是「结果解析失败」而不是「去重新部署 daemon」。
+/// ★ 旧后端不认参数会进流模式、先吐 hello 帧。必须**先于**解析判掉，
+/// 否则用户看到的是「结果解析失败」而不是「去重新部署后端」。
 #[test]
-fn old_daemon_hello_is_detected_first() {
+fn old_backend_hello_is_detected_first() {
     let hello = r#"{"kind":"hello","v":1,"build_id":"old"}"#;
     let e = interpret_fork_exec(&ex(hello, "", Some(0))).unwrap_err();
     assert!(e.contains("版本过旧"), "got: {e}");
@@ -94,7 +94,7 @@ fn banner_before_error_envelope_still_surfaces_the_reason() {
 }
 
 /// exit 0 但**只有噪声没有结果** —— 措辞要指向真正的怀疑对象（远端 shell），
-/// 而不是甩锅给 daemon 说它「没有输出」。
+/// 而不是甩锅给后端说它「没有输出」。
 #[test]
 fn noise_only_stdout_says_where_to_look() {
     let e = interpret_fork_exec(&ex("some banner line\n", "", Some(0))).unwrap_err();
@@ -116,12 +116,12 @@ fn fork_ids_are_whitelisted() {
     }
     assert!(
         validate_fork_id("sid", &"a".repeat(65)).is_err(),
-        "上限该与 daemon 的 64 对齐"
+        "上限该与后端的 64 对齐"
     );
     assert!(validate_fork_id("sid", &"a".repeat(64)).is_ok());
 }
 
-/// 命令形状 = daemon 的 argv 契约。**位置参数顺序错了 daemon 会拿 uuid 当 sid 去找文件**，
+/// 命令形状 = backend 的 argv 契约。**位置参数顺序错了后端会拿 uuid 当 sid 去找文件**，
 /// 于是报一句「找不到会话」，排查方向被带偏一整轮——所以钉死。
 #[test]
 fn fork_cmd_shape_is_pinned() {
@@ -135,6 +135,9 @@ fn fork_cmd_shape_is_pinned() {
 /// 纵深防御：id 已过白名单，`shell_quote` 仍照上（白名单哪天被放宽也不至于直接漏）。
 #[test]
 fn daemon_path_with_space_is_quoted() {
-    let c = build_fork_cmd("/opt/my daemons/p1q", "s", "u");
-    assert!(c.starts_with("'/opt/my daemons/p1q' --fork-session"), "{c}");
+    let c = build_fork_cmd("/opt/my backends/p1q", "s", "u");
+    assert!(
+        c.starts_with("'/opt/my backends/p1q' --fork-session"),
+        "{c}"
+    );
 }

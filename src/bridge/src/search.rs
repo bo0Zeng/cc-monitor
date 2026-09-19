@@ -34,7 +34,7 @@
 //! ## 🔴 口径不住在这里 —— 住 `search-core`（`K-R100`）
 //!
 //! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序，
-//! **一份都不在本文件**：它们住 `crates/search-core`，daemon 的 `--search`
+//! **一份都不在本文件**：它们住 `crates/search-core`，backend 的 `--search`
 //! （`src/backend/observe/search_query.rs`）调的是**同一份**。
 //! 本文件只剩「怎么扫盘、怎么建索引、怎么组装 wire 类型」这些**本地特有**的活。
 //! 收口前两侧各写一遍那 12 个助手（`K-R85` 实测逐字相同），而 `CROSS_EDGES` 里
@@ -55,7 +55,7 @@ use walkdir::WalkDir;
 
 // 🔴 口径常量**一个都不在这里**——它们就是口径本身，两侧各写一个字面量 = 两份口径。
 // `MAIN_CAP` / `TOOL_CAP` / `SNIPPET_CTX` / `PER_SESSION_CAP` / `DEFAULT_LIMIT` 住
-// `search_core`，daemon 用的是同一份。
+// `search_core`，backend 用的是同一份。
 use search_core::{MAIN_CAP, TOOL_CAP};
 
 // === wire 类型（camelCase，契约测试守护） ===
@@ -106,15 +106,15 @@ pub struct SessionHits {
     /// `hitCount > hits.length` 反推，而那个式子对**两个完全不同的原因**给出同一个答案
     /// （① 整份结果被 `--limit` 砍了 ② 这个会话超过 30 条只列前 30）。
     /// ① 该让用户知道「缩小范围 / 加大 limit」，② 只需要「点进去看」。
-    /// daemon 侧同名字段由 `--search` 逐会话吐出（它才知道自己是哪一种），
+    /// backend 侧同名字段由 `--search` 逐会话吐出（它才知道自己是哪一种），
     /// monitor 合并时 OR 进 `SearchResponse::truncated`。
     ///
-    /// 兼容：旧 daemon 不发这个字段 ⇒ `serde(default)` = false（退化成收口前的行为，不炸）。
+    /// 兼容：旧后端不发这个字段 ⇒ `serde(default)` = false（退化成收口前的行为，不炸）。
     #[serde(default)]
     pub hits_truncated: bool,
     /// issue #28：数据来源。`None` = 本地（不序列化，前端无 `[host]` 前缀）；
     /// `Some(label)` = 远端机器 label，前端据此加 `[host]` 前缀 + 点击走远端 viewer。
-    /// daemon 的 `--search` 输出**不含** origin（远端无身份概念）；由 monitor fan-out
+    /// backend 的 `--search` 输出**不含** origin（远端无身份概念）；由 monitor fan-out
     /// 反序列化后补上。
     #[cfg_attr(test, ts(optional))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -317,7 +317,7 @@ impl SearchIndex {
         }
 
         // 🔴 snippet 预算按**最近优先**花 —— 排序与预算判定都在 `search_core`，
-        // daemon 的 `--search` 调的是同一份（`K-R100`；理由与读数见 `sort_by_recency` 文档注释）。
+        // backend 的 `--search` 调的是同一份（`K-R100`；理由与读数见 `sort_by_recency` 文档注释）。
         let mut order: Vec<usize> = (0..data.sessions.len()).collect();
         search_core::sort_by_recency(&mut order, |&i| data.sessions[i].updated_at);
 
@@ -575,7 +575,7 @@ fn push_msg(
 // 🔴 那 12 个助手（`extract_text_blocks` · `extract_tool_text` · `stringify_json` ·
 // `clean_user_text` · `make_snippet` · `find_ci` · `tail_chars` · `head_chars` ·
 // `collapse_ws` · `collapse_ws_keep_ellipsis` · `truncate_plain` · `truncate_excerpt`）
-// 与它们的单元测试全部住 `crates/search-core`。本文件调它，daemon 也调它 —— **同一份**。
+// 与它们的单元测试全部住 `crates/search-core`。本文件调它，backend 也调它 —— **同一份**。
 // 别在这里「顺手再写一个小的」：那就是 `K-R100` 收口前的形状（两份、逐字同、零判据）。
 
 // === IPC ===
@@ -691,7 +691,7 @@ pub async fn rebuild_search_index(
 /// 第 ③ 刀（「改 core 一处、两侧行为都跟着变」）**不在这里** —— 那是行为，
 /// 判不了源码。它由两侧各一条**期望值取自 core、实际值来自本侧生产管线**的行为判据承担：
 /// `tests::the_snippet_window_comes_from_core`（monitor）
-/// ＋ `src/backend/observe/search_query.rs` 里的同名那条（daemon）。
+/// ＋ `src/backend/observe/search_query.rs` 里的同名那条（backend）。
 #[cfg(test)]
 #[path = "../../../tests/bridge/search_kou_jing_guard.rs"]
 mod kou_jing_guard;

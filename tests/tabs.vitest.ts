@@ -496,7 +496,7 @@ describe("TabManager 生命周期", () => {
     // 一个"全绿"的界面既可能是"都在忙"，也可能是"灯一条都没到"，肉眼分不出。
     //
     // 08-14 排一个「Windows 前端会话全是绿灯」的实机现象时，这条链被逐跳读过一遍
-    // （daemon 发初始 status → monitor `status_changed` → `session-activity` →
+    // （backend 发初始 status → monitor `status_changed` → `session-activity` →
     // `updateActivity` → `pendingActivity` → `ensureTab` → `activityLightClass`），
     // **每一跳都是通的**，但**没有任何一条判据在守整条链**。这一格补的就是最险的那一跳。
     // ⚠ 只断言**可观察行为**，不戳内部 `pendingActivity`：那个字段不在 `TMInternals` 上，
@@ -562,13 +562,13 @@ describe("TabManager 生命周期", () => {
     expect(btn().classList.contains("tmux-idle")).toBe(false);
   });
 
-  it("F03.2 远端复活清灰（主信号）：idle-tmux tab 又收 daemon 重宣告/行 → ensureTab 清灰", () => {
-    // D 审计修：清灰不能只靠 session-activity（非 queue、null-activity daemon 下永不清 →
+  it("F03.2 远端复活清灰（主信号）：idle-tmux tab 又收后端重宣告/行 → ensureTab 清灰", () => {
+    // D 审计修：清灰不能只靠 session-activity（非 queue、null-activity backend 下永不清 →
     // 活跃流式会话永久卡灰）。ensureTab（远端重宣告/行 = claude 复活，queue 内保序）是主信号。
     const tab = tm.ensureTab("gr1", "/x", "p", 0, "pi");
     tm.markTmuxIdle("gr1");
     expect(tab.tmuxIdle).toBe(true);
-    // 复活：daemon 重放该会话的行（或重宣告）→ 同 sid ensureTab
+    // 复活：backend 重放该会话的行（或重宣告）→ 同 sid ensureTab
     tm.ensureTab("gr1", "/x", "p", 1, "pi");
     expect(tab.tmuxIdle).toBe(false); // 删 ensureTab 里的清灰块则此断言红
     expect(tab.status).toBe("live");
@@ -612,7 +612,7 @@ describe("TabManager 生命周期", () => {
     const tab = tm.ensureTab("s6", "/x", "p", 0, "pi");
     tm.archiveTab("s6");
     expect(tab.status).toBe("archived");
-    tm.ensureTab("s6", "/x", "p", 1, "pi"); // daemon 重连重放
+    tm.ensureTab("s6", "/x", "p", 1, "pi"); // backend 重连重放
     expect(tab.status).toBe("live");
   });
 
@@ -1430,7 +1430,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   //    留着它等于让用户点一个必失败的 kill。
   // ② 命中恰好一个 ⇒ 按 `@ccm_sid` 认，**不按名字前缀猜**（下面那条埋了名字诱饵）。
   // ③ 命中 ≥2 个 ⇒ 拒绝，不折叠成第一个（F04 R10 同款分级：破坏性动作代价不可逆）。
-  it("P3 刀2-UI 本机 tab 右键：daemon 通道不在（null）→ kill 项消失，不留必失败的破坏性动作", async () => {
+  it("P3 刀2-UI 本机 tab 右键：backend 通道不在（null）→ kill 项消失，不留必失败的破坏性动作", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       cmd === "list_local_tmux" ? Promise.resolve(null) : Promise.resolve(undefined),
     );
@@ -2207,7 +2207,7 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
       return Promise.resolve(undefined);
     });
     tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "devbox");
-    // 这就是那一格的**唯一入口**：daemon 的 `--session-accounts` 出参经 main.ts 喂进来。
+    // 这就是那一格的**唯一入口**：backend 的 `--session-accounts` 出参经 main.ts 喂进来。
     tm.setSessionAccounts([ROW(launchId)], new Map());
     rightClick("m1");
     await flushMicro();
@@ -2981,7 +2981,7 @@ describe("E73：↗ 拉前失败的归因", () => {
  * **空壳**、给出「杀死会话（kill 空 tmux）」。它以为那是空的，实际里面跑着东西。
  */
 describe("E73：attachable 门控", () => {
-  it("★ 缺席 = 可以（存量会话与旧 daemon 零迁移）", () => {
+  it("★ 缺席 = 可以（存量会话与旧后端零迁移）", () => {
     const tm = makeTM();
     tm.createSkeletonTab("s1", "/p", "devbox", "interactive", null);
     expect(tm.isAttachable("s1")).toBe(true);

@@ -21,7 +21,7 @@ export interface AccountCommand {
 }
 
 export interface AccountCommandsInput {
-  /** chip 的 ready 快照：非 ready（未连远端 / 未启用 / 老 daemon）传 null。 */
+  /** chip 的 ready 快照：非 ready（未连远端 / 未启用 / 老后端）传 null。 */
   snapshot: { accounts: Account[]; defaultName: string | null } | null;
   /** 取某 action 当前生效 chord 的友好名（用于命令右侧的快捷键提示）。 */
   chordHint: (id: string) => string | undefined;

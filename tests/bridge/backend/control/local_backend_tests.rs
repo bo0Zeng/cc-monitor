@@ -438,7 +438,7 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
 ///
 /// # 它防的是什么
 ///
-/// `.partial` + `rename` 存在的全部理由是「**半截文件不许被当成可执行的 daemon 起起来**」。
+/// `.partial` + `rename` 存在的全部理由是「**半截文件不许被当成可执行的后端起起来**」。
 /// 而临时名原来是**固定的** ⇒ 两个同版本 monitor 同时释放会写同一个文件：
 /// 一个写到一半、另一个 `rename` 走 —— 出来的正是这道防线要防的东西。
 /// ⚠ 不是理论：`tauri_plugin_single_instance` **只在 `#[cfg(windows)]` 注册**
@@ -541,24 +541,24 @@ fn the_sweep_only_takes_the_old_ones() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `P3-Y1` 的**兑现证据**〔08-12 补〕：帧 → 账本这一跳，**不起 daemon、不起 tmux**。
+/// `P3-Y1` 的**兑现证据**〔08-12 补〕：帧 → 账本这一跳，**不起后端、不起 tmux**。
 ///
 /// # 它补的是什么洞
 ///
 /// 下面那条 `the_local_tmux_frames_really_land_in_the_ledger` 是 `P3-Y1` 原本唯一的
 /// 证据，而它 `#[ignore]`（08-11 误伤用户 9 个真实会话之后的处置），且件的 `§0h` 逐字
-/// 承认「**就算解开它也验不出来**」——它的客户端与 daemon 用的**不是同一个 socket**。
+/// 承认「**就算解开它也验不出来**」——它的客户端与后端用的**不是同一个 socket**。
 /// ⇒ 这条 DoD 一直挂着「没有兑现证据」。
 ///
 /// 本条走**另一条路**：既然「帧 → 账本」是 `absorb_local_frame` 一个函数，就直接喂它
 /// 一条**真实形状**的帧，再从**账本那一侧**（`snapshot_tmux_by_origin`，也就是 emitter
 /// 判 idle/archived 时读的那一份）读回来。
 ///
-/// ⚠ **射程**：本条钉的是「收到帧之后账本里有」。**daemon 真的会发**那个帧
-/// 归 daemon 侧 `EMITS "tmux_sessions"`（逐字「登记 = 承诺真发」）；那一跳这里够不到，
+/// ⚠ **射程**：本条钉的是「收到帧之后账本里有」。**backend 真的会发**那个帧
+/// 归后端侧 `EMITS "tmux_sessions"`（逐字「登记 = 承诺真发」）；那一跳这里够不到，
 /// 所以那条真 tmux 的实测**留着**，不是被本条替掉了。
 #[test]
-fn a_local_tmux_frame_lands_in_the_ledger_without_any_daemon() {
+fn a_local_tmux_frame_lands_in_the_ledger_without_any_backend() {
     // 用一个本条专属的 raw，避免与别的测试抢同一个 origin 的那一格。
     let raw = "p3y1-proof-cc: 1 windows (created Tue Aug 12 20:00:00 2026)";
     let line = format!(r#"{{"kind":"tmux_sessions","raw":{raw:?}}}"#);
@@ -602,7 +602,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
     );
 }
 
-/// P3-Y1（acceptor: **实测**）：**本机 daemon 的 tmux 帧真的进了账本**。
+/// P3-Y1（acceptor: **实测**）：**本机后端的 tmux 帧真的进了账本**。
 ///
 /// # 为什么必须从账本那一侧读
 ///
@@ -612,7 +612,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
 ///
 /// # 隔离：私有 `TMUX_TMPDIR` + 跑前跑后比对（`C7e`）
 ///
-/// daemon 跑 `tmux ls`。给它一个**私有的 `TMUX_TMPDIR`** ⇒ 它只看得见本条自己建的那台
+/// backend 跑 `tmux ls`。给它一个**私有的 `TMUX_TMPDIR`** ⇒ 它只看得见本条自己建的那台
 /// tmux server，碰不到用户真实的那台。
 /// ⚠ **比对本身就是判据的一部分，不是附带步骤** —— 隔离若没做对（比如忘了私有目录），
 /// 测试会连进用户的 server 而**照样通过**：通过与否与隔离无关。
@@ -636,19 +636,19 @@ fn the_read_loop_really_calls_the_absorb_point() {
 /// 「红线的落地**不该有三份实现**：改一处漏两处」。
 /// ⇒ 改成问 `CCM_E2E_TMUX_SHIM_BIN` 要那一份（`$BIN/tmux` 强插 `-L`），
 /// **同时**让本条的人群判据与那两条同族测试**变成同一条**（见
-/// `every_test_that_starts_the_real_daemon_demands_a_private_tmux`）。
+/// `every_test_that_starts_the_real_backend_demands_a_private_tmux`）。
 ///
 /// ⚠ 跑前/跑后那两次 `tmux ls`（`user_tmux()`）**刻意绕开 shim、按绝对路径问** ——
 /// 它们要问的正是**用户那台真 server**「你变了没有」。走了 shim 就问到自己那台上去了，
 /// 那条比对会变成一句恒真的空话。**而它此前正是那样**（见函数体里那段实打记录）。
-#[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
+#[cfg(all(embedded_backends, target_os = "linux", target_arch = "x86_64"))]
 #[test]
 #[ignore = "会起真 tmux；08-11 出过误伤用户会话的事故，改成显式触发"]
 fn the_local_tmux_frames_really_land_in_the_ledger() {
     use std::time::Duration;
 
     // ★★ **fail closed，排在一切之前**（`K-R7`）。
-    let shim = crate::local_daemon::tests::demand_tmux_shim("本条起真 daemon 且起真 tmux");
+    let shim = crate::local_backend_host::tests::demand_tmux_shim("本条起真后端且起真 tmux");
     let _guard = crate::inbound_client::local_origin_test_lock();
 
     // ★★★ 「用户真实的 tmux」这一问**必须绕开 PATH 上的 shim**〔`K-R7` 08-31，实测逼出来的〕。
@@ -689,7 +689,7 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
     let user_tmux_before = user_tmux();
 
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("embedded-daemons")
+        .join("embedded-backends")
         .join("cc-monitor-remote-x86_64");
     let base = std::env::temp_dir().join(format!("p3-tmux-{}", std::process::id()));
     let home = base.join("home");
@@ -703,7 +703,7 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
     // `TMUX` 就会压过 `TMUX_TMPDIR`，命令直接打到用户真实的 server 上 ——
     // 我在一次 shell 探针里正是漏了它，用户 9 个会话没了。
     // ⇒ 客户端这一侧**也按绝对路径调 shim**（不是裸 `tmux`）：
-    //   shim 与 daemon 走的是**同一个** `-L`，而「同一台 server」正是本条的全部要害。
+    //   shim 与后端走的是**同一个** `-L`，而「同一台 server」正是本条的全部要害。
     let shim_tmux = std::path::Path::new(&shim).join("tmux");
     assert!(
         shim_tmux.exists(),
@@ -740,10 +740,10 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
             ("HOME".into(), home.display().to_string()),
             ("CLAUDE_CONFIG_DIR".into(), cfg_dir.display().to_string()),
             // ★★ 〔`P0e` 08-13〕**这条以前验不到帧，病根就写在原注释里**：
-            // 「daemon 内部用默认 socket 名……上面客户端用另一个 socket。
+            // 「backend 内部用默认 socket 名……上面客户端用另一个 socket。
             //  **两者不是同一个 socket**」⇒ `seen` 恒 false（`P3 §0h` 如实登记过）。
             //
-            // 修法与 e2e 那边同一手：给 daemon 一条**前面挂着 shim 的 PATH**，
+            // 修法与 e2e 那边同一手：给后端一条**前面挂着 shim 的 PATH**，
             // shim `exec` 真 tmux 并强插选择器 ⇒ 两边落在同一台 server 上。
             // ⚠ 〔`K-R7` 08-31〕客户端那一侧现在**按绝对路径调同一个 shim**，
             //   所以「同一台 server」不再靠两处各自写对一个 socket 名去对齐 ——
@@ -797,7 +797,7 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
              ★ 「消费者收到了」不算：消费者里加一行日志也能让人以为通了。\n\
              本条读的是 emitter 真正会读的那一份。"
     );
-    println!("E2E-OK P3 本机 daemon 的 tmux 帧真的进了账本（`{sess}` 出现在快照里）");
+    println!("E2E-OK P3 本机后端的 tmux 帧真的进了账本（`{sess}` 出现在快照里）");
 }
 
 /// ★★ **本机读帧不许被一个坏字节杀死，也不许无界**〔D 阶段补审 08-11 新增〕。
@@ -806,8 +806,8 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
 ///
 /// | # | 原版 | 后果 |
 /// |---|---|---|
-/// | B1 | `BufReader::lines()`（**UTF-8 严格**）+ `let Ok(line) = line else { break }` | 一个坏字节 ⇒ `InvalidData` 与 EOF 同路 ⇒ 消费者返回 = 判死 ⇒ daemon 因 EPIPE 自杀 ⇒ 记一次「崩溃」，三次后**整个进程周期不再起来**，日志写「崩了 3 次」——**一个错误的诊断** |
-/// | B2 | `read_line` 语义 ⇒ **完全无界** | 远端有 `read_capped_line`（64 MiB 上限，头注记着 daemon 侧「512 MiB 无换行流 ⇒ RSS 6→518 MiB」的实测）。同一个对端、同一种失效模式，只有本机这侧没上限 |
+/// | B1 | `BufReader::lines()`（**UTF-8 严格**）+ `let Ok(line) = line else { break }` | 一个坏字节 ⇒ `InvalidData` 与 EOF 同路 ⇒ 消费者返回 = 判死 ⇒ backend 因 EPIPE 自杀 ⇒ 记一次「崩溃」，三次后**整个进程周期不再起来**，日志写「崩了 3 次」——**一个错误的诊断** |
+/// | B2 | `read_line` 语义 ⇒ **完全无界** | 远端有 `read_capped_line`（64 MiB 上限，头注记着后端侧「512 MiB 无换行流 ⇒ RSS 6→518 MiB」的实测）。同一个对端、同一种失效模式，只有本机这侧没上限 |
 ///
 /// 本条钉三件：① 不许再出现 `.lines()` 那条严格路 ② 必须走 `read_capped_line_sync`
 /// ③ **上限必须取远端那个常量**（两边各写一份机制，但值不许漂）。
@@ -832,13 +832,13 @@ fn the_local_frame_reader_is_bounded_and_lossy() {
     assert!(
         !body.contains(concat!(".li", "nes()")),
         "本机读帧又用回了按行迭代器 —— 那是 **UTF-8 严格**的，\n\
-             一个坏字节会被当成 EOF ⇒ 把 daemon 读死，还记成一次「崩溃」，三次后永久放弃。\n\
+             一个坏字节会被当成 EOF ⇒ 把后端读死，还记成一次「崩溃」，三次后永久放弃。\n\
              远端那条路早就取了相反的取舍（`from_utf8_lossy`，注释逐字「非 UTF-8 不该让整条连接死掉」）。"
     );
     guard_core::find_pinned(&body, "read_capped_line_sync(").unwrap_or_else(|e| {
         panic!("本机读帧没走有界读行（{e}）—— 无界读遇一条永不结束的行就是无界堆分配")
     });
-    guard_core::find_pinned(&body, "DAEMON_FRAME_LINE_CAP").unwrap_or_else(|e| {
+    guard_core::find_pinned(&body, "BACKEND_FRAME_LINE_CAP").unwrap_or_else(|e| {
         panic!(
             "本机读帧的上限不是远端那个常量（{e}）。\n\
                  两边机制各写一份（sync/async 跨不过去），但**值不许漂** —— 漂了就没人知道哪边先炸。"
@@ -892,7 +892,7 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
                 panic!(
                     "`{name}` 没把**兜底版**消费者 `local_stdio_consumer_guarded` 传下去（{e}）。\n\
                          ⚠ 传裸的 `local_stdio_consumer` 也不行：它体内一次 panic 会 unwind 出 supervise 线程，\n\
-                         留下「daemon 活着但没人读它 stdout」的**全绿死锁态**（补审 B3）。\n\
+                         留下「backend 活着但没人读它 stdout」的**全绿死锁态**（补审 B3）。\n\
                          管子接出来了却没人读 ⇒ hello 帧没人解 ⇒ `client_for(<local>)` 恒 None，\n\
                          且不会报任何错。"
                 )
@@ -901,8 +901,8 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
     }
 }
 
-/// P2-Y1 + P2-Y3（acceptor: **实测**）：起**真的** daemon 二进制，
-/// 看入方向通道是不是真的登记上了；再关写端，看 daemon 是不是**还活着**。
+/// P2-Y1 + P2-Y3（acceptor: **实测**）：起**真的** backend 二进制，
+/// 看入方向通道是不是真的登记上了；再关写端，看后端是不是**还活着**。
 ///
 /// # 为什么不起 GUI
 ///
@@ -912,24 +912,24 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
 ///
 /// # 沙箱 HOME 只给子进程
 ///
-/// daemon 会 tail `$HOME/.claude/projects`。用 `envs` 参数给**子进程**单独设 `HOME`
+/// backend 会 tail `$HOME/.claude/projects`。用 `envs` 参数给**子进程**单独设 `HOME`
 /// ⇒ 测试进程自己的 env 一个字不动（`std::env::set_var` 是进程全局的，
 /// cargo 又是多线程跑测试 ⇒ 那样会污染同批别的用例）。
 ///
 /// # ⚠ 这条测试在缺内嵌二进制时**不存在**（诚实边界 10c）
 ///
-/// `cfg(embedded_daemons)` 由 `build.rs` 在 `embedded-daemons/` 齐全时才置，而那个目录是
+/// `cfg(embedded_backends)` 由 `build.rs` 在 `embedded-backends/` 齐全时才置，而那个目录是
 /// gitignore 的 ⇒ 干净 clone 上本条**不编译进去**，`cargo test` 照样全绿。
 /// 不做成「缺了就 red」是因为那会让干净 clone 无法跑测试；缺失不是静默的 ——
-/// `build.rs` 那处 `cargo:warning=缺少内嵌 daemon` 会喊（U-1 那次事故之后加的）。
+/// `build.rs` 那处 `cargo:warning=缺少内嵌 backend` 会喊（U-1 那次事故之后加的）。
 ///
 /// # ★★ `K-R7`（08-31）：**这一条此前没有人点过名，而它与那条正题完全同形**
 ///
 /// `K-R7` 的件文件 `§0` / `§2` 与风险 `6p` 讲的都只是
-/// `local_daemon::tests::the_local_daemon_can_be_stopped_and_started_again`。
+/// `local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again`。
 /// 而 `D3` 的全表现打之后，**本条是同一族的第二条**：普通 `#[test]`、同一个 `cfg`、
-/// 起同一个真 daemon 二进制（还起了两次：探针一次 + `supervise_with_stdio` 一次），
-/// 而 daemon 一上来就**无条件**往它连得到的 tmux server 装三条**全局** hook（槽位 `[50]`）。
+/// 起同一个真后端二进制（还起了两次：探针一次 + `supervise_with_stdio` 一次），
+/// 而后端一上来就**无条件**往它连得到的 tmux server 装三条**全局** hook（槽位 `[50]`）。
 ///
 /// ⚠⚠ **本条原来那句 `.env_remove("TMUX")` 读起来像隔离，其实不是**：
 /// `TMUX` 一空，tmux 客户端就**回落到默认 socket** `/tmp/tmux-$UID/default` ——
@@ -937,16 +937,16 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
 /// 那句注释说的是另一件对的事（不继承「测试进程恰好在哪个 tmux 里」），别把它读成隔离。
 ///
 /// ⇒ 与那条正题同样三道锁：`#[ignore]` + `CCM_E2E_TMUX_SHIM_BIN` fail-closed（排在
-/// **任何 spawn 之前**）+ 那个 shim **真的挂进 daemon 的 `PATH` 最前面**（探针与被监护进程都要）。
+/// **任何 spawn 之前**）+ 那个 shim **真的挂进后端的 `PATH` 最前面**（探针与被监护进程都要）。
 ///
 /// ⚠⚠ **第三道锁的射程要分两格看**〔`D1` 审计 08-31 查实，阻塞 4 的另一半〕——
-/// 与 `local_daemon_tests.rs::the_local_daemon_can_be_stopped_and_started_again` 头注里那张表**同一份**：
+/// 与 `local_backend_host_tests.rs::the_local_backend_host_can_be_stopped_and_started_again` 头注里那张表**同一份**：
 /// 走 `bash tests/e2e/local-backend-supervise.sh` 时 `tmux-shim.sh` 已经把 shim 挂进
 /// **测试进程自己的 `PATH`**，而 `supervise_with_stdio` **从不 `env_clear()`**
 /// ⇒ 第三道锁在**那条跑法上是冗余的**；它真正买的是「**手工 `cargo test -- --ignored`、
 /// 变量设上但 shim 不在自己 `PATH` 上**」那一格。别把两格混着读。
-/// 看着它的判据是 `local_daemon.rs` 那条
-/// `every_test_that_starts_the_real_daemon_demands_a_private_tmux` 的 ㈡ 与 ㈢ **两格**
+/// 看着它的判据是 `local_backend_host.rs` 那条
+/// `every_test_that_starts_the_real_backend_demands_a_private_tmux` 的 ㈡ 与 ㈢ **两格**
 /// ——㈡ 判**写法**（`"PATH"` 与 `"{<绑定名>}:` 同行，插值紧跟开引号），
 /// ㈢ 判**处数**（`PATH` 这个 env 键在本体里恰好写一次）。
 /// ⚠ ㈢ 是 `D2` 复审 09-01 逼出来的〔阻塞 1 形 ②〕：本条的 `envs` 里**再追加一条**
@@ -954,41 +954,41 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
 /// `for (k, v) in &envs { cmd.env(k, v); }`，**后写的赢**，见 `:336`-`:337`），
 /// 而在 ㈢ 落地之前那一刀**全量门禁新红 0**。两格的代价不是一种，判据也刻意分开（`K13`）。
 ///
-/// # 🔴 复跑纪律：**换了 `embedded-daemons/` 的有无之后，必须 `touch src/bridge/build.rs`**
+/// # 🔴 复跑纪律：**换了 `embedded-backends/` 的有无之后，必须 `touch src/bridge/build.rs`**
 ///
 /// 〔`D2 §G-1` 的陈账，09-01 收 —— 此前只写在件文件里，**被守对象这一侧一个字都没有**。〕
-/// 本条由 `#[cfg(embedded_daemons)]` 门着。**实测的现象**（`D2` 复审 09-01，我没重打，
+/// 本条由 `#[cfg(embedded_backends)]` 门着。**实测的现象**（`D2` 复审 09-01，我没重打，
 /// 住址 `audits/K-R7-D2.md#§G-1`）：同一个 `CARGO_TARGET_DIR` 里把
-/// `src/bridge/embedded-daemons/` 从「无」加成「有」，**`build.rs` 不重跑** ⇒
+/// `src/bridge/embedded-backends/` 从「无」加成「有」，**`build.rs` 不重跑** ⇒
 /// 读出的是「无 emb」那一档的数（`1208/0/10`），`touch build.rs` 之后才是 `1211/0/11`。
 /// ⚠⚠ **两档的输出面长得一模一样，这个坑看不出来。**
 /// ⇒ 换 emb 状态之后 `touch src/bridge/build.rs`，或**直接换一个全新的 target 目录名**。
-/// ⚠ 机制**我没有实验证明**；`local_daemon.rs` 那条姊妹测试的同名小节里记着两条候选，
+/// ⚠ 机制**我没有实验证明**；`local_backend_host.rs` 那条姊妹测试的同名小节里记着两条候选，
 /// 其中「`rerun-if-changed` 只在文件存在时登记」那条**现打对不上源码**（那一行是无条件的）。
-#[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
+#[cfg(all(embedded_backends, target_os = "linux", target_arch = "x86_64"))]
 #[test]
-#[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 tests/e2e/local-backend-supervise.sh 那条带 shim 的路"]
-fn the_local_daemon_really_registers_an_inbound_client() {
+#[ignore = "K-R7：起真 backend ⇒ 会装全局 tmux hook。走 tests/e2e/local-backend-supervise.sh 那条带 shim 的路"]
+fn the_local_backend_host_really_registers_an_inbound_client() {
     // ★★ **fail closed，而且排在一切之前** —— 见上面头注第三段。
-    let shim = crate::local_daemon::tests::demand_tmux_shim(
-        "本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook",
+    let shim = crate::local_backend_host::tests::demand_tmux_shim(
+        "本条起真后端，而后端一上来就往它连得到的 tmux server 装全局 hook",
     );
     let _guard = crate::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("embedded-daemons")
+        .join("embedded-backends")
         .join("cc-monitor-remote-x86_64");
     assert!(
         bin.exists(),
-        "`cfg(embedded_daemons)` 置了但 {bin:?} 不在 —— build.rs 与磁盘不一致"
+        "`cfg(embedded_backends)` 置了但 {bin:?} 不在 —— build.rs 与磁盘不一致"
     );
 
     let home = std::env::temp_dir().join(format!("p2-local-inbound-{}", std::process::id()));
     let cfg_dir = home.join(".claude");
     std::fs::create_dir_all(cfg_dir.join("projects")).expect("建沙箱 HOME");
     // ⚠⚠ **只设 `HOME` 不够，而且这条是实测逼出来的**（P2s 摸底 08-11）：
-    // daemon 的 `resolve_claude_dir()` 逐字「`$CLAUDE_CONFIG_DIR` if set, else `$HOME/.claude`」
+    // backend 的 `resolve_claude_dir()` 逐字「`$CLAUDE_CONFIG_DIR` if set, else `$HOME/.claude`」
     // ⇒ 继承来的 `CLAUDE_CONFIG_DIR` **压过** `HOME`。本条第一版只设 HOME，
-    // 那一跑 daemon 读的其实是**真实**的配置目录（只读 tail，没有写，但隔离是假的）。
+    // 那一跑后端读的其实是**真实**的配置目录（只读 tail，没有写，但隔离是假的）。
     let envs = vec![
         ("HOME".to_string(), home.display().to_string()),
         (
@@ -1003,7 +1003,7 @@ fn the_local_daemon_really_registers_an_inbound_client() {
         ),
     ];
 
-    // 隔离**必须是断言，不能是假设**：起一趟一次性的，从 hello 帧里把 daemon 自陈的
+    // 隔离**必须是断言，不能是假设**：起一趟一次性的，从 hello 帧里把后端自陈的
     // `claude_dir` 读回来对一遍。上面那次教训就是「我以为设了 HOME 就隔离了」。
     {
         use std::io::BufRead;
@@ -1028,13 +1028,13 @@ fn the_local_daemon_really_registers_an_inbound_client() {
         assert_eq!(
             Path::new(claude_dir),
             cfg_dir,
-            "daemon 自陈的 claude_dir 不在沙箱里 —— 这一跑读的是**真实**配置目录。\n\
+            "backend 自陈的 claude_dir 不在沙箱里 —— 这一跑读的是**真实**配置目录。\n\
                  `resolve_claude_dir()` 是 `$CLAUDE_CONFIG_DIR` 优先、`$HOME/.claude` 兜底，\n\
                  两个都要设。（只设 HOME 那版跑起来一切正常，隔离却是假的。）"
         );
         // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `tests/e2e/local-backend-supervise.sh` 驱动，
         //   而那个脚本的收尾自检是「标记数 < 跑成的测试数 ⇒ 有测试提前退出」。
-        println!("E2E-OK P2 daemon 自陈的 claude_dir 就在沙箱里（隔离是断言，不是假设）");
+        println!("E2E-OK P2 backend 自陈的 claude_dir 就在沙箱里（隔离是断言，不是假设）");
     }
 
     let h = supervise_with_stdio(
@@ -1075,14 +1075,14 @@ fn the_local_daemon_really_registers_an_inbound_client() {
         );
     };
 
-    // P2-Y1：登记了还得是**能用的** —— daemon 声明的入方向命令要在。
+    // P2-Y1：登记了还得是**能用的** —— backend 声明的入方向命令要在。
     assert!(
         client.accepts("launch") && client.accepts("kill"),
-        "通道登记了，但 daemon 没声明接受 launch/kill ⇒ P3 接过来也发不出去"
+        "通道登记了，但后端没声明接受 launch/kill ⇒ P3 接过来也发不出去"
     );
     println!("E2E-OK P2 本机入方向通道登记上了，而且声明接受 launch/kill");
 
-    // P2-Y3：关写端**不许**把 daemon 带走（C8 裁定「默认不 kill、daemon 继续跑」）。
+    // P2-Y3：关写端**不许**把后端带走（C8 裁定「默认不 kill、backend 继续跑」）。
     // 单独观测，不顺带看一眼 —— 件里 §0d 把这条从「推断」改成了实测，就是这个意思。
     let pid = h.current_pid().expect("已经收到 hello 了，进程必然在");
     client.close_write();
@@ -1092,11 +1092,11 @@ fn the_local_daemon_really_registers_an_inbound_client() {
     cleanup(&h);
     assert!(
         alive,
-        "关掉 stdin 写端之后 daemon（pid={pid}）没了。\n\
+        "关掉 stdin 写端之后后端（pid={pid}）没了。\n\
              这与 C8「默认不 kill」直接冲突，也推翻了 `local_backend.rs::stop` 头注那句\n\
              「它的入方向对『写端关闭』是刻意不敏感的」——那句注释得改，不是这条测试得改。"
     );
-    println!("E2E-OK P2 关掉 stdin 写端之后 daemon（pid={pid}）还活着（C8「默认不 kill」）");
+    println!("E2E-OK P2 关掉 stdin 写端之后后端（pid={pid}）还活着（C8「默认不 kill」）");
 }
 
 use super::*;
@@ -1401,7 +1401,7 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
 /// `ccm::plan` 的内层载荷以 `self_path` 开头，取自 `CCM_SELF` → 兜底 `argv[0]`。
 /// 入口①（改名副本）的 `argv[0]` basename 本来就是 `ccm`；入口②（本 shim）`exec` 的是
 /// 二进制真身 ⇒ 不传 `CCM_SELF` 的话内层命令是 `<bin> --cwd …`，**没有 `ccm`**，
-/// 被当 daemon 直连口解析 ⇒ `unknown argument: --cwd`。
+/// 被当后端直连口解析 ⇒ `unknown argument: --cwd`。
 ///
 /// ⚠ **为什么这条判据必须存在**：那个失败**不红在任何现有判据上** ——
 /// tmux 会话建得出来、`@ccm_agent` 打得上、`--print` 吐的是同一条坏命令，
@@ -1529,7 +1529,7 @@ const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安�
 ///
 /// # 🔴 `K-R42`（09-10 同日）：**换完靶之后一天，被测对象自己变了 —— 本条现在守什么**
 ///
-/// 本件给自释放那条路接上了「产物自己带着的那份」（[`native_embedded_daemon`]），
+/// 本件给自释放那条路接上了「产物自己带着的那份」（[`native_embedded_backend`]），
 /// 〔那条路 `K-R42` 时住 [`start_or_extract`] 体内，`K-R43` 抽进了 [`resolve_or_extract`]〕
 /// 于是要先回答一句：**「找不到 sidecar」这一形还存不存在？**
 ///
@@ -1678,7 +1678,7 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
     std::fs::write(&blocker, b"x").expect("写占位文件");
     let dir = blocker.join("bin");
 
-    let err = extract_embedded_to(&dir, "p2e-dial", b"not-a-real-daemon", &|_| Ok(()))
+    let err = extract_embedded_to(&dir, "p2e-dial", b"not-a-real-backend", &|_| Ok(()))
         .expect_err("目标目录的父路径是个普通文件，它居然报了成功");
     let reason = extraction_failure_reason(&dir, &err);
     assert!(
@@ -1698,7 +1698,7 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
 ///
 /// # 没有这一条会怎样
 ///
-/// [`native_embedded_daemon`] 是纯的、[`extraction_failure_reason`] 是纯的 ——
+/// [`native_embedded_backend`] 是纯的、[`extraction_failure_reason`] 是纯的 ——
 /// 两条都测得漂漂亮亮，而**只要没人在生产段里接上它们，整件事就是死代码**，
 /// 上面那几格照样全绿。本仓这一形有名字（`K-R28` 那条「防空转」逐字记着同一件事）。
 ///
@@ -1711,11 +1711,11 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
 /// 必须**真的有生产调用点**，而且「问产物」必须排在「找 exe 旁边」之后。
 ///
 /// **还守得住，而且盖的面变大了**：`K-R43` 之后**只有一条自释放路**，
-/// 两个生产入口（[`start_or_extract`] · `local_daemon.rs::resolve_daemon_bin`）都走它
+/// 两个生产入口（[`start_or_extract`] · `local_backend_host.rs::resolve_backend_bin`）都走它
 /// ⇒ 同一条断言从盖 1 处变成盖 **2** 处。
 /// ⚠ **但「都走了它」这一半不在本条射程里** —— 靶搬家之后，谁把 `start_or_extract`
 /// 里那行调用删掉、自己再写一遍，本条**照样绿**（它只看共用那份的体）。
-/// 那一半由 `local_daemon::the_two_resolution_paths_still_agree_on_the_order` 钉
+/// 那一半由 `local_backend_host::the_two_resolution_paths_still_agree_on_the_order` 钉
 /// （`K-R43` 同拍换了它的机制，理由住那条的头注）。**两条合起来才是原来那一格，单条都不够。**
 ///
 /// # 顺序那一半
@@ -1747,9 +1747,9 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
                  而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（本轮实测过）。\n逐字：{body}"
         )
     });
-    let asked = guard_core::find_pinned(&body, "native_embedded_daemon").unwrap_or_else(|e| {
+    let asked = guard_core::find_pinned(&body, "native_embedded_backend").unwrap_or_else(|e| {
         panic!(
-            "那份共用的解析体内 `native_embedded_daemon` 不是恰好一处（{e}）——\n\
+            "那份共用的解析体内 `native_embedded_backend` 不是恰好一处（{e}）——\n\
                  一处都没有 ⇒「产物自己带着的那份」没有任何生产调用点：\n\
                  裸 exe 回到 09-10 那个读数（0 个本机后端进程），而本模块每一条判据照样绿。\n\
                  多于一处 ⇒ 有第二条取法，下面那条顺序断言就说不清它断的是哪一处。\n逐字：{body}"
@@ -1809,15 +1809,15 @@ fn the_native_daemon_path_is_spelled_the_same_on_both_sides() {
         let close = decl[open..].find('"').expect("字面量没闭合");
         decl[open..open + close].to_string()
     };
-    let dir = spelled("NATIVE_DAEMON_DIR");
-    let file = spelled("NATIVE_DAEMON_FILE");
+    let dir = spelled("NATIVE_BACKEND_DIR");
+    let file = spelled("NATIVE_BACKEND_FILE");
     let prod = guard_core::production_code(include_str!(
         "../../../../src/bridge/src/backend/control/local_backend.rs"
     ));
     // 🔴 〔2026-09-18 修笔误〕原来是 `"\"../../..{dir}/{file}\""` —— **`../../..` 与
-    // `{dir}` 之间少一个 `/`**，拼出来是 `"../../..native-daemon/…"`，而代码里是
-    // `"../../../native-daemon/…"` ⇒ `contains` 永远不成立。
-    // ⚠ 如实说：**我解释不了它以前怎么过的** —— 常量近 6 个提交都是 `"native-daemon"`
+    // `{dir}` 之间少一个 `/`**，拼出来是 `"../../..native-backend/…"`，而代码里是
+    // `"../../../native-backend/…"` ⇒ `contains` 永远不成立。
+    // ⚠ 如实说：**我解释不了它以前怎么过的** —— 常量近 6 个提交都是 `"native-backend"`
     // （无前导斜杠），本测试也没有平台门控，而 CI 的 Windows job 会跑它。
     // 可能是那条 job 有一段时间没绿过；没有证据就不编一个说法。
     let want = format!("\"../../../{dir}/{file}\"");
@@ -1964,14 +1964,14 @@ fn nothing_in_the_production_path_wakes_itself_up() {
 
 /// ★ 生产接线的**前提钉**：本模块今天**不许**被接成「扫仓库 dev 产物」。
 ///
-/// 摸底量到 daemon 一启动就无条件往 tmux server 装全局 hook 且没有开关 ⇒
+/// 摸底量到后端一启动就无条件往 tmux server 装全局 hook 且没有开关 ⇒
 /// 扫到 dev 产物就起它会去改用户真实 tmux 的状态。这条钉住那个前提：
 /// 候选路径里**只能有 exe 同目录**，出现任何 `target`/`debug`/仓库相对路径就红。
 /// ★★ **F06b-1d：给窗口的那份 env —— 名字从唯一的家来，sidecar 不在就不设。**
 ///
 /// 判据形态：**纯函数**（跑法：单测 · 钉的性质：wire/边界映射 —— 两维分开写，见 `ROADMAP §4`
 /// 登记的计量缺陷）。它钉两件：
-/// ① `Found` ⇒ 键**必须**是 [`super::DAEMON_BIN_ENV`]（不是另抄一个字面量），值是那条真路径；
+/// ① `Found` ⇒ 键**必须**是 [`super::BACKEND_BIN_ENV`]（不是另抄一个字面量），值是那条真路径；
 /// ② `Missing` ⇒ **`None`，不是 `Some((名, ""))`** —— 导一个指向空处的路径不会让 ccm 更聪明
 ///    （它那边 `[ -x ]` 一样过不了），只会给「这台机有没有本机后端」多一个假阳性来源。
 #[test]
@@ -1980,7 +1980,7 @@ fn the_window_env_uses_the_one_home_and_stays_silent_without_a_sidecar() {
     let (k, v) = found.expect("Found 必须给出一对 env");
     assert_eq!(
         k,
-        super::DAEMON_BIN_ENV,
+        super::BACKEND_BIN_ENV,
         "给窗口的 env 名没走唯一的家 —— 有人另抄了一个字面量"
     );
     assert_eq!(v, "/tmp/x/ccm-remote", "值必须是解析出来的那条真路径");
@@ -2013,11 +2013,11 @@ fn the_window_env_uses_the_one_home_and_stays_silent_without_a_sidecar() {
 /// 是因为**对侧没了**，不是因为有判据盯着 —— 哪天再出现一个按名字读它的消费者，
 /// 这条判据**不会**替你盯着它。
 #[test]
-fn the_daemon_bin_env_name_has_exactly_one_home() {
+fn the_backend_bin_env_name_has_exactly_one_home() {
     let me = guard_core::production_code(include_str!(
         "../../../../src/bridge/src/backend/control/local_backend.rs"
     ));
-    let lit = format!("\"{}\"", super::DAEMON_BIN_ENV);
+    let lit = format!("\"{}\"", super::BACKEND_BIN_ENV);
     let n_lit = me.matches(lit.as_str()).count();
     assert_eq!(
         n_lit, 1,
@@ -2033,7 +2033,7 @@ fn the_daemon_bin_env_name_has_exactly_one_home() {
 ///
 /// `externalBin` 一旦注入，`tauri build` 就要求**当前 target** 的那份二进制存在，
 /// 少了它整个 job 以 `resource path ... doesn't exist` 失败（本机实测过）。
-/// ⇒ 发版流水线里**每一处** `tauri build` 都得配三件：原生编 daemon · 按 triple 命名放好 ·
+/// ⇒ 发版流水线里**每一处** `tauri build` 都得配三件：原生编 backend · 按 triple 命名放好 ·
 /// `--config` 注入补丁。少任何一件那个 job 就红，而**发版红是最贵的红**（tag 已经打出去了）。
 ///
 /// 所以发现机制是**遍历 workflow 里所有 `tauri build` 调用**，不是手写「有两个 job」。
@@ -2070,7 +2070,7 @@ fn every_bundle_job_stages_the_sidecar_before_building() {
     let staged = src.matches("Stage sidecar for externalBin").count();
     assert!(
         native >= calls.len() && staged >= calls.len(),
-        "打包调用 {} 处，而「原生编 daemon」{native} 处、「按 triple 放好」{staged} 处 —— \n\
+        "打包调用 {} 处，而「原生编后端」{native} 处、「按 triple 放好」{staged} 处 —— \n\
              有 job 会以 `resource path ... doesn't exist` 失败，而那是**发版时**才炸。",
         calls.len()
     );
@@ -2089,7 +2089,7 @@ fn every_bundle_job_stages_the_sidecar_before_building() {
 /// 发版流水线里同一个文件被拷了两次：
 /// `.build/backend/release/cc-monitor-remote.exe`
 /// → `src/bridge/binaries/…`（载体③，Tauri `externalBin`，装机那份）
-/// → `src/bridge/native-daemon/cc-monitor-native`（载体①，自释放那份）。
+/// → `src/bridge/native-backend/cc-monitor-native`（载体①，自释放那份）。
 /// 两步之间**一条 `cargo` 都没有** ⇒ 它们逐字节相同，是最强的那种同源。
 /// 🔴 **而这件事此前没有任何断言守着**：中间插一条 `cargo build`（换个 feature、
 /// 换个 profile、甚至只是重编一次）就不再是同一份字节，**没人会红**。
@@ -2111,7 +2111,7 @@ fn every_bundle_job_stages_the_sidecar_before_building() {
 /// ⚠ **为什么按 job 分组，而不是拿全仓那几处一起比** —— 这一格是本条第一次跑就
 /// 逮出来的（写它的时候以为是 2 处，实得 **3** 处）：第三处在 `build-linux` 里，
 /// 它同样把那个原生产物拷成载体③，而 **Linux 那条路根本没有载体①**
-/// （`K-R68` 现打：`native-daemon` 那三个字只出现在 `build-windows` 一个 job 里 ——
+/// （`K-R68` 现打：`native-backend` 那三个字只出现在 `build-windows` 一个 job 里 ——
 /// 已立成待决 `KU26` 问用户）。跨 job 比是**分母错**：两个 job 各自 `checkout` 各自编，
 /// 它们之间当然有构建动作，那不是缺陷。
 ///
@@ -2163,7 +2163,7 @@ fn the_two_carriers_are_copies_of_one_build_with_nothing_rebuilt_between() {
     // 词表如实登记：它是「已经栽过 + 想得到」的那几个，不是全称。
     const BUILD_VERBS: [&str; 3] = ["cargo build", "cargo zigbuild", "cargo run"];
     // 🔴 `rustc` 要分「编」与「问」—— **这一格是本条第一次跑就被它自己逮到的**：
-    //    `Stage native daemon for self-extract` 头一行是 `rustc -vV | …` 取 target triple，
+    //    `Stage native backend for self-extract` 头一行是 `rustc -vV | …` 取 target triple，
     //    那是一次**查询**，一个字节都没编。把它读成构建就是一条自信的假报警
     //    （`C17`：诊断不许比它证得出的说得更死）。
     const RUSTC_QUERIES: [&str; 4] = ["rustc -vV", "rustc -V", "rustc --version", "rustc --print"];
@@ -2214,7 +2214,7 @@ fn the_two_carriers_are_copies_of_one_build_with_nothing_rebuilt_between() {
         jobs_with_a_pair >= 1,
         "没有任何一个 job 把那个原生产物拷去两个载体 —— 上面那段检查此刻**一格都没跑**。\n\
              （09-12 实测 `build-windows` 是那一个：`Stage sidecar for externalBin` → 载体③、\n\
-              `Stage native daemon for self-extract` → 载体①。）"
+              `Stage native backend for self-extract` → 载体①。）"
     );
 }
 
@@ -2227,7 +2227,7 @@ fn candidates_never_point_into_a_build_tree() {
             assert!(
                 !s.contains(forbidden),
                 "候选路径含 `{forbidden}`：{s}\n\
-                     扫 dev 产物就起 daemon = 去改用户真实 tmux server 的状态（它无条件装全局 hook，\
+                     扫 dev 产物就起 backend = 去改用户真实 tmux server 的状态（它无条件装全局 hook，\
                      而且没有开关）。只许在 exe 同目录找。"
             );
         }
@@ -2250,14 +2250,16 @@ fn candidates_never_point_into_a_build_tree() {
 #[test]
 fn the_startup_path_really_calls_this_module() {
     // ⚠ **P2s 搬过一次家**：接线原来住 `lib.rs` 的 `run()` 里，P2s 把它抽进
-    // `local_daemon.rs`（理由是结构性的：`#[tauri::command]` 不能与 `generate_handler!`
+    // `local_backend_host.rs`（理由是结构性的：`#[tauri::command]` 不能与 `generate_handler!`
     // 同模块）。⇒ 语料从「一个文件」变成「启动路径这两个文件」。
     // **这不是把判据放宽**：仍然要求「至少一个已知入口被接上」，只是接线可以住这两处之一；
     // 两个文件都不接，照样红（M8 变异实测）。
     let prod = format!(
         "{}\n{}",
         guard_core::production_code(include_str!("../../../../src/bridge/src/lib.rs")),
-        guard_core::production_code(include_str!("../../../../src/bridge/src/local_daemon.rs")),
+        guard_core::production_code(include_str!(
+            "../../../../src/bridge/src/local_backend_host.rs"
+        )),
     );
     let prod = prod.as_str();
     let me = guard_core::production_code(include_str!(
@@ -2340,7 +2342,7 @@ fn the_startup_path_really_calls_this_module() {
     // 句柄必须被**存下来**：不存就没人能 `stop()`。
     //
     // ⚠ **原版是恒绿的**〔D 阶段补审 08-11 逮到〕：它断言 `prod.contains("LOCAL_BACKEND")`，
-    // 而 `prod` = `lib.rs` + `local_daemon.rs` 的生产段，**那个静态量的声明就在后者里**
+    // 而 `prod` = `lib.rs` + `local_backend_host.rs` 的生产段，**那个静态量的声明就在后者里**
     //（`pub static LOCAL_BACKEND: …`）。把「存进去」那一句删掉，字面量照样在（声明处 + 三个读者）
     // ⇒ 绿。要让它红只能删掉静态量本身，而那会先编译错。
     // ⇒ 改成钉**赋值那一句**（`*g = Some(h)`），那才是「存下来」这件事。
@@ -2378,7 +2380,7 @@ fn the_startup_path_really_calls_this_module() {
 /// | 读了策略却永远不 stop（开关拨到「杀」也没反应） | 「体内必须有 `.stop()`」 |
 ///
 /// ★ **原理由（「不 stop 就成游魂进程」）实测是错的**〔08-11，P2s §0a〕：
-/// daemon 是纯 stdio 子进程，monitor 一退读端就断，它 **153 毫秒**内自己 broken-pipe 退出。
+/// backend 是纯 stdio 子进程，monitor 一退读端就断，它 **153 毫秒**内自己 broken-pipe 退出。
 /// ⇒ 不杀**不会**留游魂。那条理由曾是这条判据存在的全部依据，现在它的依据换成了
 /// 「开关必须真的起作用，两个方向都要」。**依据换了就写出来，不假装它没变。**
 #[test]
@@ -2435,7 +2437,7 @@ fn the_exit_path_really_stops_the_local_backend() {
         panic!(
             "退出臂里没有 `.stop()`。\n\
                  ★ 「文件里某处有一个 `.stop()`」不算 —— 本条要的是**这一处**。\n\
-                 没有它，开关拨到「monitor 退出时结束 daemon」也**不会有任何反应**。\n\
+                 没有它，开关拨到「monitor 退出时结束后端」也**不会有任何反应**。\n\
                  ⚠ 08-08 实测：把这一句拿掉、在别处留一个 `.stop()`，旧版本条照样绿。\n\
                  （锚点诊断：{e}）"
         )
@@ -2444,7 +2446,7 @@ fn the_exit_path_really_stops_the_local_backend() {
     let policy_at = guard_core::find_pinned(body, "kill_on_exit(").unwrap_or_else(|e| {
         panic!(
             "退出臂里没有读 `kill_on_exit(` —— 它在**无条件**收本机后端。\n\
-                 那与 `C8`③「默认不 kill」直接冲突：用户什么都没设就被杀 daemon，\n\
+                 那与 `C8`③「默认不 kill」直接冲突：用户什么都没设就被杀后端，\n\
                  而开关默认是关着的。（锚点诊断：{e}）"
         )
     });
@@ -2488,52 +2490,52 @@ fn the_exit_path_really_stops_the_local_backend() {
 
 // ── 真进程（`#[ignore]`，由 tests/e2e/local-backend-supervise.sh 驱动）──────────
 
-/// ★★ **起真 daemon 的 e2e 必须 fail-closed 地要一个私有 tmux 目录**
+/// ★★ **起真后端的 e2e 必须 fail-closed 地要一个私有 tmux 目录**
 /// 〔audit-0805 08-08，Phase G 第 51 件〕。
 ///
-/// 本模块头注逐字写着「**绝不让被监护的 daemon 碰用户真实的 tmux server**」。
+/// 本模块头注逐字写着「**绝不让被监护的后端碰用户真实的 tmux server**」。
 /// 那道保护今天全靠下面那句 `.expect("要 CCM_E2E_TMUX_TMPDIR")` ——
 /// 裸跑 `cargo test -- --ignored` 会 panic 而不是去连真 server，形态是对的。
 ///
 /// **但没人钉它**：08-08 实测把那句换成 `.unwrap_or_default()`，
-/// **全仓 982 条判据一条不红**；此后任何一次 `--ignored` 都会把真 daemon
+/// **全仓 982 条判据一条不红**；此后任何一次 `--ignored` 都会把真 backend
 /// 接到用户的 tmux server 上。`#[ignore]` 测试平时不跑 ⇒ 它坏了也没人知道，
 /// 正是「新分支平时没人走」那一族（本仓已栽过六次）。
 ///
-/// 人群**从源码派生**：本文件里 `#[ignore]` 且体内出现 `CCM_E2E_DAEMON`
-/// （= 真的要一个 daemon 二进制）的测试。用假二进制的那条不在其中。
+/// 人群**从源码派生**：本文件里 `#[ignore]` 且体内出现 `CCM_E2E_BACKEND`
+/// （= 真的要一个后端二进制）的测试。用假二进制的那条不在其中。
 ///
 /// # ⚠⚠ 射程订正〔`K-R7-D2`，08-31〕：**人群画在两个属性上，都够不着最危险的那一形**
 ///
-/// 本条的人群有两个条件，**两个都是「怎么标记的」**：`#[ignore]` · 提到 `CCM_E2E_DAEMON`。
-/// 而本文件里 `the_local_daemon_really_registers_an_inbound_client` 是**普通 `#[test]`**、
-/// 用的是**内嵌**那份二进制（不经 `CCM_E2E_DAEMON`）⇒ **两个条件各差一个**，
-/// 于是它起着真 daemon 而本条一声不吭。`local_daemon.rs` 那条姊妹判据同理够不着。
-/// ⇒ 正题已经搬到 `local_daemon.rs` 的
-/// `every_test_that_starts_the_real_daemon_demands_a_private_tmux`：
-/// 人群按「**那个二进制哪来的**」派生（内嵌目录 / `CCM_E2E_DAEMON` / `E2eSandbox::demand`），
+/// 本条的人群有两个条件，**两个都是「怎么标记的」**：`#[ignore]` · 提到 `CCM_E2E_BACKEND`。
+/// 而本文件里 `the_local_backend_host_really_registers_an_inbound_client` 是**普通 `#[test]`**、
+/// 用的是**内嵌**那份二进制（不经 `CCM_E2E_BACKEND`）⇒ **两个条件各差一个**，
+/// 于是它起着真后端而本条一声不吭。`local_backend_host.rs` 那条姊妹判据同理够不着。
+/// ⇒ 正题已经搬到 `local_backend_host.rs` 的
+/// `every_test_that_starts_the_real_backend_demands_a_private_tmux`：
+/// 人群按「**那个二进制哪来的**」派生（内嵌目录 / `CCM_E2E_BACKEND` / `E2eSandbox::demand`），
 /// **两个文件一起扫**，不看任何属性。
-/// **本条留着**（它守的是一格更窄但仍然真的性质），但别把它读成「起真 daemon 有人守了」。
+/// **本条留着**（它守的是一格更窄但仍然真的性质），但别把它读成「起真后端有人守了」。
 #[test]
-fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
-    const REAL: &str = "CCM_E2E_DAEMON";
+fn every_real_backend_e2e_demands_a_private_tmux_dir() {
+    const REAL: &str = "CCM_E2E_BACKEND";
     // ⚠⚠ 〔`P0e` 08-12〕这个名字换过一次，**换的是机制不是名字**：
-    //   原来是 `CCM_E2E_TMUX_TMPDIR`（把私有目录传给 daemon）—— 而 `$TMUX` 一有值
+    //   原来是 `CCM_E2E_TMUX_TMPDIR`（把私有目录传给后端）—— 而 `$TMUX` 一有值
     //   就会压过它，那正是 08-11 打没用户 9 个真实会话的机制，`C7i` 因此逐字禁止
     //   「靠 `TMUX_TMPDIR` 做隔离」。
-    //   现在传的是**带 shim 的 PATH**：daemon shell out 的 tmux 会被强插 `-L`，
+    //   现在传的是**带 shim 的 PATH**：backend shell out 的 tmux 会被强插 `-L`，
     //   **显式选择器压得过 `$TMUX`**。本条钉的性质一个字没变：
-    //   **起真 daemon 的 e2e 必须 fail-closed 地要一个私有 tmux 隔离**。
+    //   **起真后端的 e2e 必须 fail-closed 地要一个私有 tmux 隔离**。
     const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
-    // 取 shim 的**唯一入口**〔`K-R7` 09-01〕：住 `local_daemon::tests::demand_tmux_shim`。
+    // 取 shim 的**唯一入口**〔`K-R7` 09-01〕：住 `local_backend_host::tests::demand_tmux_shim`。
     const GATE: &str = "demand_tmux_shim(";
     // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着测试搬。**
     //
-    // 本条数的是「**本文件里**带 `#[ignore]` 的真 daemon e2e」。剖分把本模块的测试段
+    // 本条数的是「**本文件里**带 `#[ignore]` 的真 backend e2e」。剖分把本模块的测试段
     // 整个搬来了 `tests/bridge/backend/control/local_backend_tests.rs`（就是本文件），
     // 而 `src/bridge/src/backend/control/local_backend.rs` 今天**一个 `#[test]` 都没有**
     // ⇒ 老语料一条都抓不到，那条「抽取器自检」按设计响了。
-    // ⚠ 下面那句「本条的文档注释里就写着 `#[ignore]` 与 `CCM_E2E_DAEMON`」正是
+    // ⚠ 下面那句「本条的文档注释里就写着 `#[ignore]` 与 `CCM_E2E_BACKEND`」正是
     //   **因为语料是本文件**才成立的纪律 —— 两件事必须同改，别只改一半。
     let src = include_str!("local_backend_tests.rs");
     // ⚠ **不在语料串上做裸 `split`**：`needle_anchor_registry` 的递减棘轮把它
@@ -2553,7 +2555,7 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
     }
     chunks.push(cur.join("\n"));
     // ⚠ 认属性要**整行相等**，不能 `contains` —— 本条的**文档注释里**就写着
-    //   `#[ignore]` 与 `CCM_E2E_DAEMON`，第一版因此把自己也算进了人群，
+    //   `#[ignore]` 与 `CCM_E2E_BACKEND`，第一版因此把自己也算进了人群，
     //   然后拿自己的 `const` 行去判 fail-closed，当场自红。
     //   （F24 那一族：匹配单位比事实大；这次事实是「一条属性」，而我匹配了「提到过」。）
     let is_ignored = |c: &String| c.lines().any(|l| l.trim() == concat!("#[ig", "nore]"));
@@ -2570,7 +2572,7 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
     // ⚠⚠ **剥注释这一步是 09-01（`C` 第六拍）补的**〔`D5` 阻塞 2；PM `§0s` 五 ①〕。
     //
     //   下面那两格原来判在 `c.lines()`（**没剥注释的原始行**）上，而下游
-    //   —— `local_daemon.rs` 那条正题的 ㈡（`shim_first_on_path` 取绑定名）——
+    //   —— `local_backend_host.rs` 那条正题的 ㈡（`shim_first_on_path` 取绑定名）——
     //   **当时**读的是它自己那份 `code_only`（**剥掉 `//` 打头的行**）。**两条判在不同的文本上。**
     //   `D5-M4` 实证：在合法落点上方加**一行纯注释**提到那个口
     //   ⇒ **本条当场红（新红 1）、主守卫一声不吭**，而本条的报文却说
@@ -2590,14 +2592,14 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
     //   本条与主守卫原来各写了一份**私有副本**（只剥 `//` 打头的整行），现在都直接调
     //   `guard_core::strip_comment_lines`。仓规逐字「剥注释只许有一个权威实现」
     //   （`structural_scan.rs:425`）；**先量再选**的读数（`*` 打头的解引用行会被多剥掉，
-    //   而今天判决不同 0 处）写在 `local_daemon.rs` 那条正题守卫的同名那一段里，不在这里抄一遍。
+    //   而今天判决不同 0 处）写在 `local_backend_host.rs` 那条正题守卫的同名那一段里，不在这里抄一遍。
     //   🔴 **它剥不掉块注释里那些自己不以 `//` / `*` / `/*` 打头的内层行** ——
     //   `/*` 与 `*/` 各独占一行、内层行以 `let ` 打头时，那几行原样留着。
     //   ⚠ **别把上一句读成全称**〔`C8` 09-01 收窄，`D7` `B1`〕：内层行写成 ` * let …`
     //   （块注释的 `*` 对齐续行写法）今天**剥得掉** ⇒ 两条守卫一起红（实打，新红 2）。
     //   多行式 / 一行式**两个方向**今天都实打过：**多行式是一次静默的假绿**（`D6` `M-D6-3`，全量门禁 `GATE: OK`）、
     //   **一行式在旧剥法下是一次假阳**（`D6-M1`，换共享原语之后不再假阳）。
-    //   逐条登记在 `local_daemon.rs` 头注「诚实边界 9」，并归跟进件 `K-R8`。
+    //   逐条登记在 `local_backend_host.rs` 头注「诚实边界 9」，并归跟进件 `K-R8`。
     for c in real_e2e {
         let code = guard_core::strip_comment_lines(c);
         let name = code
@@ -2610,11 +2612,11 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
         //   原来是两句：先找「含 `CCM_E2E_TMUX_SHIM_BIN` 的那一行」，再判那行含 `.expect(`。
         //   `D4` 那一刀（`var(SHIM).unwrap_or_else(|_| var(<真 PATH>).expect(..))`）
         //   **同一行上三样东西都还在** ⇒ 旧判据说合规，而 fail-closed 没了。
-        //   🔴 **本条是那一族的第 4 处，而 `§0q` 只点了 `local_daemon.rs` 的 3 处** ——
+        //   🔴 **本条是那一族的第 4 处，而 `§0q` 只点了 `local_backend_host.rs` 的 3 处** ——
         //     09-01 实测：只改本条人群里那条 e2e（`e2e_the_supervisor_restarts_…`）的取值，
         //     **全量门禁新红 0**，本条一声不吭。⇒ 一起换。
         //   现在判的是「**走没走取 shim 的那个唯一入口**」；
-        //   「**那个口关不关得上**」由 `local_daemon.rs` 的
+        //   「**那个口关不关得上**」由 `local_backend_host.rs` 的
         //   `the_one_shim_gate_really_fails_closed` 在**默认门禁里真跑一遍**（不是文本钉）。
         //   ⚠ **判在剥过注释的 `code` 上**（见上面那段）—— 09-01 之前判的是原始行。
         let line = code
@@ -2622,10 +2624,10 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
             .find(|l| l.contains(GATE))
             .unwrap_or_else(|| {
                 panic!(
-                    "`{name}` 会起一个**真** daemon，却没走取 shim 的那个唯一入口 \
+                    "`{name}` 会起一个**真** backend，却没走取 shim 的那个唯一入口 \
                          （`{GATE}`）—— 它会连上用户真实的 tmux server。\n\
                          本模块头注写的是「绝不」。⚠ 那个变量叫 `{PRIVATE_TMUX}`，\
-                         而**取它只许从那一个口取**（`local_daemon::tests::demand_tmux_shim`）：\
+                         而**取它只许从那一个口取**（`local_backend_host::tests::demand_tmux_shim`）：\
                          口里那句 fail-closed 是被一条真跑的测试钉住的，\
                          自己现取就退回到「谁也没在守」。\n\
                          ⚠ 判的是**剥掉整行注释之后**的本体 —— 剥法是 \
@@ -2642,7 +2644,7 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
                          而内层行三种写法**一律**剥掉。\n\
                          ⚠ 边界**换了地方、没有消失**：那份剥法词法与某文件对不上时\
                          （`depth` 不收口 / 停在字符串里）**一个字都不剥**（兜底，宁可留洞不许造假红），\
-                         那份文件上这个洞会重开 ⇒ 由 `local_daemon.rs` 的 \
+                         那份文件上这个洞会重开 ⇒ 由 `local_backend_host.rs` 的 \
                          `no_monitor_file_falls_back_to_leaving_block_comments_in` 看着\
                          （现打：105 份 `.rs`，走兜底 0 份）。"
                 )
@@ -2653,7 +2655,7 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
             "`{name}` 里出现 `{GATE}` 的那一行（**剥掉「`//` / `*` / `/*` 打头的整行」之后**）\
                  不是一条绑定：\n  {}\n\
                  ⇒ 本条只认「`let <名字> = …` 一行到底」这一种写法，因为下游\
-                 （`local_daemon.rs` 那条正题的 ㈡）要从**同一把尺子剥出来的这一行**上取绑定名。\n\
+                 （`local_backend_host.rs` 那条正题的 ㈡）要从**同一把尺子剥出来的这一行**上取绑定名。\n\
                  ⚠ **三条已知的边界（分母 = 下面逐条列出的 ①②③），\
                  写在这里免得下一个人以为自己写错了**：\n\
                  ① **假阳**：把这条调用按 rustfmt 在 `=` 后断行（`let shim =` 换行再写调用）\
@@ -2665,7 +2667,7 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
                  ③ ★ **09-04（`K-R9`）关上了 —— 原文「今天开着的」那句已经不是现状**。\
                  原文逐字：「**块注释的内层行，只要自己不以 `//` / `*` / `/*` 打头就剥不掉**\
                  ……本条与下游 ㈡ 都会把它当真代码读」，并按内层行的写法分了三形：\
-                 ㋐ 以 `let ` 打头 ⇒ **一次静默的假绿**（`D6` `M-D6-3`：一条起真 daemon 的 e2e，\
+                 ㋐ 以 `let ` 打头 ⇒ **一次静默的假绿**（`D6` `M-D6-3`：一条起真后端的 e2e，\
                  `PATH` 里一点 shim 都没有，全量门禁 `GATE: OK`、新红 0）；\
                  ㋑ 既不以 `let ` 也不以那三种前缀打头 ⇒ 落到 `MISS_NO_BINDING`；\
                  ㋒ 以 `*` 打头 ⇒ 那时就剥得掉、两条守卫一起红（`C8` 09-01 实打）。\n\
@@ -2676,7 +2678,7 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
                  ㋐ 那个「静默假绿」`K-R9` `D3` 在本工作树上重打过两个读数：\
                  旧剥法 monitor `1275 passed / 0 failed`，新剥法当场红。\n\
                  ⚠ **今天真正的边界是那条静默兜底**：词法与某份文件对不上时一个字都不剥，\
-                 那份文件上这个洞会重开 ⇒ 由 `local_daemon.rs` 的 \
+                 那份文件上这个洞会重开 ⇒ 由 `local_backend_host.rs` 的 \
                  `no_monitor_file_falls_back_to_leaving_block_comments_in` 看着\
                  （现打：105 份 `.rs`，走兜底 0 份）。\
                  **「块注释这一族还能怎么走」这个分母仍然给不出** —— 变的是\
@@ -2688,12 +2690,12 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
     }
 }
 
-/// ★ 起真 daemon → 杀它 → 看它自己回来。
+/// ★ 起真 backend → 杀它 → 看它自己回来。
 #[test]
 #[ignore]
-fn e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed() {
-    let bin = std::env::var("CCM_E2E_DAEMON").expect("要 CCM_E2E_DAEMON");
-    let shim = crate::local_daemon::tests::demand_tmux_shim("本条起真 daemon");
+fn e2e_the_supervisor_restarts_a_real_backend_after_it_is_killed() {
+    let bin = std::env::var("CCM_E2E_BACKEND").expect("要 CCM_E2E_BACKEND");
+    let shim = crate::local_backend_host::tests::demand_tmux_shim("本条起真 backend");
     let claude = std::env::var("CCM_E2E_CLAUDE_DIR").expect("要 CCM_E2E_CLAUDE_DIR");
     let events: Arc<Mutex<Vec<SuperviseEvent>>> = Arc::new(Mutex::new(Vec::new()));
     let ev = events.clone();
@@ -2701,7 +2703,7 @@ fn e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed() {
         PathBuf::from(&bin),
         vec!["--tail-only".into()],
         vec![
-            // `C7i`：给 daemon 一条**前面挂着 shim** 的 PATH —— 它 shell out 的 tmux
+            // `C7i`：给后端一条**前面挂着 shim** 的 PATH —— 它 shell out 的 tmux
             // 会被强插 `-L`。比传 `TMUX_TMPDIR` 硬：`$TMUX` 压不过显式选择器。
             (
                 "PATH".into(),
@@ -2715,7 +2717,7 @@ fn e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed() {
         crate::spawn_managed::local_backend_supervised(),
     );
     let first = spin(|| h.current_pid()).expect("10s 内没起来");
-    println!("E2E-OK 真 daemon 起来了 pid={first}");
+    println!("E2E-OK 真后端起来了 pid={first}");
     kill_for_test(first);
     let second = spin(|| h.current_pid().filter(|p| *p != first)).expect("10s 内没重起");
     assert_ne!(first, second, "pid 没变 ⇒ 没有真的重起");
@@ -2830,9 +2832,9 @@ fn kill_for_test(pid: u32) {
 /// 〔`K-R43` 改：原来切的是 [`start_or_extract`]（当时那三问就住在它体内）。
 ///  今天三问住共用那份，`start_or_extract` 体内只剩「调它 + 监护」⇒ 靶跟着搬。
 ///  **切法一个字没动**，动的只是切哪个函数。
-///  搬完之后这把尺子买到的比原来多一格：`local_daemon.rs` 那条路今天也走这一份，
+///  搬完之后这把尺子买到的比原来多一格：`local_backend_host.rs` 那条路今天也走这一份，
 ///  ⇒ 同一条断言同时盖住**两个**生产落点（「都走了它」那半由
-///  `local_daemon::the_two_resolution_paths_still_agree_on_the_order` 钉）。〕
+///  `local_backend_host::the_two_resolution_paths_still_agree_on_the_order` 钉）。〕
 ///
 /// ⚠ 切法照下面那个 `wait_section()`（`find` 一个锚点再往后取），**但多一个右界**：
 /// `wait_section` 取到文件尾，那对「顺序」类断言没关系，对「体内有没有某个名字」
@@ -2842,10 +2844,10 @@ fn kill_for_test(pid: u32) {
 ///
 /// 🔴 **它必须住在这里，不许挪到 `never()` 旁边** —— 那一块是
 /// `e2e_a_missing_sidecar_degrades_honestly_against_the_real_filesystem` 与它之前那几个
-/// e2e 块的地界，而 `local_daemon_tests.rs::every_test_that_starts_the_real_daemon_demands_a_private_tmux`
+/// e2e 块的地界，而 `local_backend_host_tests.rs::every_test_that_starts_the_real_backend_demands_a_private_tmux`
 /// 按 `#[te st]` 行切块、并把**含 `include_st r!(` 的块当守卫整块跳过**。
-/// 一挪过去，`the_local_daemon_really_registers_an_inbound_client` 会**静默掉出那条判据的人群**
-/// （实测：那条判据的地板当场红，报文逐字「它起真 daemon 的来历不见了」）。
+/// 一挪过去，`the_local_backend_host_really_registers_an_inbound_client` 会**静默掉出那条判据的人群**
+/// （实测：那条判据的地板当场红，报文逐字「它起真后端的来历不见了」）。
 fn shared_resolution_body() -> String {
     let prod = guard_core::production_code(include_str!(
         "../../../../src/bridge/src/backend/control/local_backend.rs"
@@ -2878,7 +2880,7 @@ fn wait_section() -> String {
 
 /// ★ ①「等它死」不许把 stdout 攒起来。
 ///
-/// 原来是 `read_to_end(&mut Vec::new())` —— 被监护的 daemon **持续产帧**
+/// 原来是 `read_to_end(&mut Vec::new())` —— 被监护的 backend **持续产帧**
 /// （那正是头注用来论证「它不会关 stdout」的理由）⇒ 那个 `Vec` 单调增长且没有消费者。
 /// ⚠ 今天不咬人只因为 `resolve_beside_this_exe` 恒 `Missing` —— **离生效只差一个配置项**。
 #[test]
@@ -2993,7 +2995,7 @@ fn reaping_never_holds_the_child_lock_while_it_waits() {
 /// 原来 `stopping` 只在循环顶部与 EOF 之后检查 ⇒ 刚过顶部检查就 `spawn` 时，
 /// 一个并发的 `stop()` 会看到锁里还是 `None`、**一个字节的 kill 都没发**，
 /// 而线程接着把子进程存进锁并进 `io::copy` 永久阻塞
-/// ⇒ **monitor 退了、daemon 还在跑且没人能 kill 它** —— `stop()` 头注说的「游魂进程」。
+/// ⇒ **monitor 退了、backend 还在跑且没人能 kill 它** —— `stop()` 头注说的「游魂进程」。
 #[test]
 fn the_window_between_spawn_and_registration_is_closed() {
     let sec = wait_section();
@@ -3009,7 +3011,7 @@ fn the_window_between_spawn_and_registration_is_closed() {
     assert!(
         window.contains("stopping.load("),
         "登记子进程之后没有复查 `stopping` —— 那个窗口还开着：\n\
-             `stop()` 落在里面就是一个**没人能 kill 的游魂 daemon**。\n\
+             `stop()` 落在里面就是一个**没人能 kill 的游魂 backend**。\n\
              实得这一段：{window:?}"
     );
     assert!(
@@ -3134,14 +3136,14 @@ fn stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on() {
 ///   喂 `CleanEof` 会让「读坏了」在账上变成「崩了」（`B1` 那条错误诊断的全部内容：
 ///   `InvalidData` 与 EOF 走同一条路 ⇒ 记一次崩溃 ⇒ 三次之后整个进程周期不再起来）。
 /// - 「它说过话没有」：读的是 `registered`，而那个值**只在**
-///   `DaemonHello::from_hello_frame` 给出见证之后才变成 `Some` ——
+///   `BackendHello::from_hello_frame` 给出见证之后才变成 `Some` ——
 ///   写成常量就等于把 2026-07-09 的判别式换成一句猜测。
 ///
 /// # ⚠ 射程：这是**源码判据**，如实登记
 ///
 /// 「读端出错」那一支要一次**真的 IO 错误**才走得到（`read_capped_line_sync` 的 `Err`），
 /// 在一根真管道上造不出来 ⇒ 这一格只证「那一行写在那儿」。
-/// 行为那一半在 `local_daemon_tests.rs::three_fake_daemons_land_in_three_different_cells`：
+/// 行为那一半在 `local_backend_host_tests.rs::three_fake_backends_land_in_three_different_cells`：
 /// 那里 ①② 两格走的是**真的**这个消费者（hello 之后 `exit 3` / 一个字节不说就 `exit 2`），
 /// ③ 那一格喂的是注入的消费者 —— 各自的射程写在那条判据自己的头注里。
 #[test]
@@ -3155,7 +3157,7 @@ fn the_consumer_reports_what_it_observed_not_a_default() {
         prod.len()
     );
     for l in [
-        "reader_end = crate::daemon_policy::ReaderEnd::Broken(e.to_string());",
+        "reader_end = crate::backend_policy::ReaderEnd::Broken(e.to_string());",
         "let handshake = if registered.is_some() {",
     ] {
         guard_core::pin_line(&prod, l).unwrap_or_else(|why| {

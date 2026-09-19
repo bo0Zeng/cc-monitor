@@ -106,7 +106,7 @@ fn resolves_one_level_glob() {
 fn remote_project_and_profile_are_not_local() {
     assert_eq!(
         resolve_touched_path(
-            "~/.local/bin/ccm-daemon",
+            "~/.local/bin/ccm-backend",
             &ToolDestination::RemoteHomeRelative("x"),
             HostScope::Remote,
             &home(),
@@ -114,7 +114,7 @@ fn remote_project_and_profile_are_not_local() {
             &no_dir
         )
         .unwrap(),
-        PathResolution::Remote("~/.local/bin/ccm-daemon".into())
+        PathResolution::Remote("~/.local/bin/ccm-backend".into())
     );
     assert_eq!(
         resolve_touched_path(
@@ -698,15 +698,15 @@ fn all_host_scopes_are_really_used() {
 fn host_projection_preserves_the_richer_resolution() {
     // 🔴 〔`K-R81` 09-12〕`remote-daemon` 改名成 `backend`；而它今天有**三个载体**
     //    ⇒ 这里不许再拿 `touches[0]` 碰运气，要**点名那一份**（推给远端的那份）。
-    let daemon = TOOLS.iter().find(|t| t.id == "backend").unwrap();
-    let (c, f) = daemon
+    let backend = TOOLS.iter().find(|t| t.id == "backend").unwrap();
+    let (c, f) = backend
         .carrier_touches()
         .find(|(_, f)| f.host == HostScope::Remote)
         .expect("后端必须有一份是推给远端那台机器的");
     let r = resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir).unwrap();
     match r {
         PathResolution::NeedsUserConfig { what } => {
-            assert!(what.contains("daemon"), "实得 {what}");
+            assert!(what.contains("backend"), "实得 {what}");
         }
         other => panic!("远端投影把 NeedsUserConfig 吞成了 {other:?}"),
     }
@@ -749,7 +749,7 @@ fn destination_checks_still_run_under_every_host() {
 /// 审计说得对：此前没有一条测试把 `TOOLS` 的申报与 `sftp.rs` / `mcp.rs` /
 /// `acct_iso_deploy` 对齐，所以这张告知页可以自信地说错而门禁不会红。
 /// 追查下去比审计报的更严重——**六条声明里三条没有任何代码支撑**：
-/// `remote-daemon` 的 `.local/bin/ccm-daemon` 全仓只出现在注册表自己里
+/// `remote-daemon` 的 `.local/bin/ccm-backend` 全仓只出现在注册表自己里
 /// （真实是 `RemoteConfig.daemon_path`）、`cc-acct-iso` 声明成本机而实际是远端 +
 /// 前端传的 `dest_dir`、`cc-bus` 的落点是未实现的愿景。
 /// 前两条已改成 `ToolDestination::UserConfiguredPath`（承认"这是配置项"），
@@ -1128,11 +1128,11 @@ fn rows_cover_every_touched_file_and_use_all_spec_fields() {
     }
     // destination：远端那条必须解析不出本机路径
     // 🔴 〔`K-R81`〕`remote-daemon` → `backend`，而它今天有三行 ⇒ 点名远端那一行。
-    let daemon = rows
+    let backend = rows
         .iter()
         .find(|r| r.tool_id == "backend" && r.host_label == host_label(HostScope::Remote))
         .unwrap();
-    assert!(daemon.path_resolved.is_none());
+    assert!(backend.path_resolved.is_none());
     // installable / uninstallable：三种组合都真出现在表里 —— 两个字段都得有区分力
     // 〔`K-R60` 订正：cc-bus 原先在这里被当成「两者都 false」的样本，
     //  而那个 false 是一处**假申报**（部署 08-13 就实现了）。样本换成 `claude-code`
@@ -1255,7 +1255,7 @@ fn unreadable_settings_does_not_claim_absence_of_hooks() {
 ///
 /// 已把兜底换成四条具名臂（零行为变更）。⇒ 第 8 个变体会**编译失败**。
 /// 但「靠编译器」本身是个**没人盯的前提**：谁再加一条 `_`，穷尽性当场消失。
-/// 本条就钉这一件事，与 `watcher.rs` 那条同型（daemon 侧七路信号分派）。
+/// 本条就钉这一件事，与 `watcher.rs` 那条同型（backend 侧七路信号分派）。
 #[test]
 fn the_path_resolution_dispatch_has_no_catch_all_arm() {
     // 与隔壁 `this_module_only_reads` 用同一种剥法（按首个 cfg-test 切），
@@ -1399,9 +1399,9 @@ fn this_module_only_reads() {
     // ★〔audit-0805 08-06 复核〕**上面那条「use 列表钉死」已实测验过**：
     // 往本模块插 `use std::fs::{self as _f, write};` ⇒ 当场红，诊断逐字
     // 「本模块的 use 列表被改了——它是上面那条 fs:: 白名单的前提」。
-    // ⚠ 为什么专门来验：同一天在 daemon 侧实测到**同一个改写绕过了那边的 fs:: 白名单**
+    // ⚠ 为什么专门来验：同一天在后端侧实测到**同一个改写绕过了那边的 fs:: 白名单**
     //（`readonly_guard`，六条判据全绿），原因就是那边**没有**钉 use 列表这一手。
-    // ⇒ 本模块用对了 T01 要件 4（逃生口的定义要逐字钉住），而它是被 daemon 那次反衬出来的。
+    // ⇒ 本模块用对了 T01 要件 4（逃生口的定义要逐字钉住），而它是被后端那次反衬出来的。
     // 且明确不许出现这些（即便将来换成别的前缀写法，上面的白名单也已经兜住 std::fs::）
     for bad in [
         "OpenOptions",

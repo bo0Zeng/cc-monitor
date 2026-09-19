@@ -1,8 +1,8 @@
-//! **会话分叉的记录变换** —— monitor 与远端 daemon 共用的**唯一**一份实现。
+//! **会话分叉的记录变换** —— monitor 与远端后端共用的**唯一**一份实现。
 //!
 //! # 为什么要单独一个 crate（G1，branch-anywhere）
 //!
-//! 分叉这件事本地和远端都要做：本地由 monitor 直接算，远端由 daemon 在**远端本地**算
+//! 分叉这件事本地和远端都要做：本地由 monitor 直接算，远端由后端在**远端本地**算
 //! （几十 MB 的 jsonl 不该为了分叉拉过 ssh）。两边跑的必须是**同一段逻辑**。
 //!
 //! 备选过三条路，选这条的理由见 `.claude/planned-build/branch-anywhere/features/G1-*.md`：
@@ -10,12 +10,12 @@
 //! `RemovalCause` 字面量），但那三个都是**常量**；把一个 80 行的算法复制一份，
 //! 守卫要么脆（改个变量名就假红），要么退化成整体字节比对。**共享 crate 让漂移在结构上不存在。**
 //!
-//! # 硬约束：不能把 daemon 拖进 monitor 的 workspace
+//! # 硬约束：不能把后端拖进 monitor 的 workspace
 //!
 //! `src/backend` 是**独立 crate、刻意不在 workspace 里** —— 否则 Windows CI 的
-//! `cargo test --all` 会去构建这个 Linux-only 的 daemon 并炸掉。
+//! `cargo test --all` 会去构建这个 Linux-only 的后端并炸掉。
 //! 本 crate 位于 monitor 的 workspace 内（`cargo test --all` 会跑它的测试），
-//! 而 daemon 只是**单向 path 依赖**过来 —— 依赖不会反向制造 workspace 成员关系。
+//! 而后端只是**单向 path 依赖**过来 —— 依赖不会反向制造 workspace 成员关系。
 //!
 //! # 落盘格式的判据
 //!

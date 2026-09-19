@@ -52,7 +52,7 @@ fn the_event_dispatch_has_no_catch_all_arm() {
         "事件分派里出现了兜底臂：{arms:?}\n\
              ⚠ 它一加上，`match` 的穷尽性就没了 —— 新增的 `WatchEvent` 变体会被**静默吞掉**，\n\
              而本文件既有的判据**不会有一条因此变红**（它们各测各的变体）。\n\
-             daemon 的判活全靠这七路信号；被吞掉的那一路不会报错，只会「什么都不发生」。\n\
+             backend 的判活全靠这七路信号；被吞掉的那一路不会报错，只会「什么都不发生」。\n\
              ⇒ 要新增变体就在这里显式处理它；确实无事可做也请写成具名臂加一句注释。"
     );
 }
@@ -287,7 +287,7 @@ fn arm_pid_watcher_is_a_noop_without_sender() {
 /// 为什么需要一条扫源码的守卫而不是一条行为测试：`watch_loop` 要真文件系统 + notify +
 /// 多线程，单测碰不到；而这个顺序错了的后果**极其安静**——`process_session_added` 在
 /// Phase 1 里被调用时 `events_tx` 还是 `None` ⇒ `arm_pid_watcher` 直接 return ⇒
-/// **daemon 启动时就活着的会话一个 pidfd 看守都没有**，永远判不出死。而 P2 之前那条
+/// **backend 启动时就活着的会话一个 pidfd 看守都没有**，永远判不出死。而 P2 之前那条
 /// 2s 判活轮询是覆盖它们的 ⇒ 是回归。
 ///
 /// **P2 初版真犯了这个错**（channel 建在 "Phase 2: live watch" 处），是被 clippy 的
@@ -501,7 +501,7 @@ fn unobservable_never_reports_deaths_and_keeps_snapshot() {
     }
 }
 
-/// 第一次观测没有「上一份」可比 ⇒ 不报任何死亡（否则 daemon 一启动就诬告一批）。
+/// 第一次观测没有「上一份」可比 ⇒ 不报任何死亡（否则后端一启动就诬告一批）。
 #[test]
 fn first_observation_reports_nothing() {
     let mut prev = None;
@@ -1253,7 +1253,7 @@ fn appending_lines_advances_offset_and_seq_monotonically() {
 
 #[test]
 fn byte_offset_matches_aterm_lineframer() {
-    // daemon-01（gap#2）：Line.byte_offset **逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、
+    // backend-01（gap#2）：Line.byte_offset **逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、
     // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自 aterm LineFramerTest 的关键语料。
     let mut seqs = SeqCounter::new();
     // aterm feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
@@ -1657,7 +1657,7 @@ fn missing_data_degrades_to_allow() {
 /// # 这条判据够得到什么、够不到什么（先说清）
 ///
 /// 够不到：**它真的听得见新 inode 吗** —— 那是 inotify 的运行期事实，
-/// 只有真起 daemon、真删目录才验得出来（`tests/e2e/daemon-sessions-rewatch.sh` 四组对照）。
+/// 只有真起后端、真删目录才验得出来（`tests/e2e/backend-sessions-rewatch.sh` 四组对照）。
 /// 够得到：**那两件事还在不在代码里**。删掉任一件，e2e 会红 —— 但 e2e 不在 `cargo test` 里，
 /// 有人只跑单测就会以为没事。⇒ 这条是给「改到这附近的人」的第一道提醒。
 ///
@@ -1675,7 +1675,7 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
         .join("\n");
     assert!(
         prod.contains("fn rewatch_sessions("),
-        "`rewatch_sessions` 没了 —— `sessions/` 被 rm+mkdir 之后 daemon 会**活着、不吭声**\n             \
+        "`rewatch_sessions` 没了 —— `sessions/` 被 rm+mkdir 之后后端会**活着、不吭声**\n             \
              （inotify 的 watch 绑在 inode 上）。那正是 `#60` 全链台架九拍拿不到读数的原因。"
     );
     // 调用点在（只有函数、没人调 = 死代码，e2e 会红但单测看不见）。
@@ -1832,7 +1832,7 @@ fn the_socket_dir_watch_survives_an_inode_swap() {
 /// 该换的是**判据落在哪一层**，不是给红线开例外。
 ///
 /// ⚠ 硬编码 `/tmp` 的后果是**静默失效**：在设了 `TMUX_TMPDIR` 的机器上，
-/// daemon 会去监视一个永远不会有动静的目录 —— 与修之前一模一样，且没有任何错误。
+/// backend 会去监视一个永远不会有动静的目录 —— 与修之前一模一样，且没有任何错误。
 #[test]
 fn tmux_socket_dir_follows_tmux_tmpdir() {
     // ⚠ env 是进程全局的：设完必须还原，否则会污染同进程里别的测试。
@@ -1850,7 +1850,7 @@ fn tmux_socket_dir_follows_tmux_tmpdir() {
     assert!(
         s.starts_with("/x/y/tmux-"),
         "socket 目录没跟着 `TMUX_TMPDIR` 走（实得 {s}）—— \
-             硬编码 `/tmp` 会让 daemon 监视一个永远没动静的目录，且**没有任何错误**。"
+             硬编码 `/tmp` 会让后端监视一个永远没动静的目录，且**没有任何错误**。"
     );
     assert!(
         !s.starts_with("/tmp/"),
@@ -1900,7 +1900,7 @@ fn sid_change_in_place_retires_old_sid() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// daemon-09：`process_jsonl` 对 turn-end 记录发 **Line 后紧跟 TurnEnd**；非 turn-end 只发 Line；
+/// backend-09：`process_jsonl` 对 turn-end 记录发 **Line 后紧跟 TurnEnd**；非 turn-end 只发 Line；
 /// **畸形行照发 Line、不 panic、无 TurnEnd**（§2.1 逐行转发 + turn-end 是 raw 之外额外边沿）。
 #[test]
 fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
@@ -3065,7 +3065,7 @@ fn session_alive_decision_table_linux() {
 /// 本条**不是**在断言那是对的 —— 它钉的是**那条已知缺陷的说明还在**，
 /// 因为下一个读到那两个 `else` 分支的人，第一反应会是「打个 warn 挺合理」。
 /// 而实测告诉我们：`<claude_dir>/sessions/` 是**用户第一次跑 claude 时才建的**，
-/// daemon 起得早一步，就**永远不宣告会话**。
+/// backend 起得早一步，就**永远不宣告会话**。
 ///
 /// 复现（帧的 `kind` 直方图，其余条件一模一样）：
 /// · 有 `sessions/` ⇒ `hello · line · session_added · tmux_sessions`

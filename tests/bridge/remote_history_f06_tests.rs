@@ -4,7 +4,7 @@ use super::*;
 ///
 /// 此前是 `take(MAX)` + `if n == 0 { break; }` —— 到限与正常 EOF **完全同形**，
 /// 前端拿到一份「看起来完整」的历史而后面的内容无声消失。
-/// 而同一份数据走 daemon 的 `--fork-session` 会**硬报错**（`common/fs.rs`）：
+/// 而同一份数据走后端的 `--fork-session` 会**硬报错**（`common/fs.rs`）：
 /// **同一份数据走两条路得到两个答案**，正是 E5 要消灭的。
 #[test]
 fn the_truncation_message_says_what_is_missing_and_where_it_still_is() {
@@ -120,7 +120,7 @@ fn the_cap_check_is_still_wired_not_just_declared() {
             .starts_with("return Err(session_truncated_message("),
         "★ 撞上限那一支的第一句是 `{}`，不是 `return Err(session_truncated_message(…))`。\n\
              换成 break/continue 就是「读完了」：前端拿到一份**看起来完整**的历史，\n\
-             而同一份数据走 daemon 的 `--fork-session` 会硬报错 —— 同一份数据两条路两个答案，\n\
+             而同一份数据走后端的 `--fork-session` 会硬报错 —— 同一份数据两条路两个答案，\n\
              正是定框 E5 要消灭的那种不一致。",
         body.trim()
     );

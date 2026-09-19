@@ -9,7 +9,7 @@
 
 use super::{
     forget_verified_build, preflight_can_be_skipped, record_verified_build, verified_build_of,
-    EXPECTED_DAEMON_BUILD_ID,
+    EXPECTED_BACKEND_BUILD_ID,
 };
 
 fn prod() -> String {
@@ -37,7 +37,7 @@ fn only_an_exact_build_match_may_skip_the_preflight() {
     assert!(
         !preflight_can_be_skipped(Some("abc123-dirty"), e),
         "`abc123-dirty` 被当成了 `abc123` —— 判据写成了前缀/包含匹配。\
-             那会让一个**改过的** daemon 冒充期望 build 并跳过部署"
+             那会让一个**改过的** backend 冒充期望 build 并跳过部署"
     );
     assert!(
         !preflight_can_be_skipped(Some("abc"), e),
@@ -57,13 +57,13 @@ fn the_memo_round_trips_and_can_be_forgotten() {
     assert_eq!(
         verified_build_of(host),
         None,
-        "抹不掉的话，一台 daemon 被删的机器会**每一轮都跳预检、每一轮都失败**"
+        "抹不掉的话，一台后端被删的机器会**每一轮都跳预检、每一轮都失败**"
     );
 }
 
 /// ★ **写入点恰好一处**，而且在收到 hello 之后。
 ///
-/// 记忆的全部安全性都压在「它只记 daemon **自报**的身份」上。
+/// 记忆的全部安全性都压在「它只记 backend **自报**的身份」上。
 /// 多一处写入 = 把自证换回了猜。
 #[test]
 fn the_memo_is_written_in_exactly_one_place() {
@@ -72,7 +72,7 @@ fn the_memo_is_written_in_exactly_one_place() {
         .unwrap_or_else(|e| {
             panic!(
                 "自证记忆的写入点不是恰好一处：{e}\n\
-                     ★ 这份记忆的全部安全性压在「只记 daemon **自报**的身份」上 —— \n\
+                     ★ 这份记忆的全部安全性压在「只记 backend **自报**的身份」上 —— \n\
                      多一处写入就把自证换回了猜（比如拿预检结论去写）。"
             )
         });
@@ -95,13 +95,15 @@ fn skipping_the_preflight_still_feeds_the_capability_ladder() {
     //   根本不起作用。实测对照（同一处撑大 `.map(|s| s)`）：`find_pinned` **通过**，
     //   `pin_line` **红**并报「没有任何一行 trim 之后等于…」。
     //   生产段那一行整行就是这个串，所以整行相等是**能用且更强**的写法。
-    guard_core::pin_line(&prod, "Some(EXPECTED_DAEMON_BUILD_ID.to_string())").unwrap_or_else(|e| {
-        panic!(
-            "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
+    guard_core::pin_line(&prod, "Some(EXPECTED_BACKEND_BUILD_ID.to_string())").unwrap_or_else(
+        |e| {
+            panic!(
+                "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
                      ★ 置 `None` 会让 caps 掉进「空集全降级」⇒ 省下两条连接、换来一轮降级\n\
                      加一轮升级重连（`should_upgrade_reconnect`）—— **比不跳还糟**。"
-        )
-    });
+            )
+        },
+    );
 }
 
 /// ★ 失败路径必须抹记忆，而且**不止一处**（起流失败 + hello 身份不符）。
@@ -112,7 +114,7 @@ fn every_failure_path_forgets_the_memo() {
     assert!(
         n >= 2,
         "生产段只有 {n} 处 `forget_verified_build` —— 该有两处：\n\
-             ① 跳过预检后**起流失败**（daemon 被删/被换旧）；\n\
+             ① 跳过预检后**起流失败**（backend 被删/被换旧）；\n\
              ② 收到 hello 但 **build_id 不是期望值**（装的不是当前 build）。\n\
              少一处，那台机器就会一直跳预检、一直失败，永远等不到重新部署。"
     );
@@ -122,7 +124,7 @@ fn every_failure_path_forgets_the_memo() {
 #[test]
 fn the_expected_build_id_is_not_empty() {
     assert!(
-        !EXPECTED_DAEMON_BUILD_ID.is_empty(),
-        "`EXPECTED_DAEMON_BUILD_ID` 是空串 —— 上面那些判据会退化"
+        !EXPECTED_BACKEND_BUILD_ID.is_empty(),
+        "`EXPECTED_BACKEND_BUILD_ID` 是空串 —— 上面那些判据会退化"
     );
 }

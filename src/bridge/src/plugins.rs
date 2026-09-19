@@ -198,7 +198,7 @@ pub fn survey_marketplaces_in(claude_dir: &Path) -> Result<MarketplaceSurvey, St
 
 /// `P8a`：列出本机登记的 marketplace（**只读**）。
 ///
-/// ⚠ **本机专属**：远端同一个问题今天答不出（要 daemon 补一条子命令），
+/// ⚠ **本机专属**：远端同一个问题今天答不出（要后端补一条子命令），
 /// 已在 `parity_ledger` 里记成 `ParityDebt` 并写明欠的是什么 —— 不假装两侧都有。
 #[tauri::command]
 pub async fn list_plugin_marketplaces() -> Result<MarketplaceSurvey, String> {

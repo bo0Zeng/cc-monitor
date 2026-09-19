@@ -92,7 +92,7 @@ fn every_project_row_carries_the_session_ids_the_three_numbers_are_indexed_by() 
 ///
 /// ⚠ 同 [`every_project_row_carries_the_session_ids_the_three_numbers_are_indexed_by`]：
 /// 数的是**带前缀的那几个值**，不按 key 取 —— 本模块**没有一条判据碰那个字段名**，
-/// 这就是 `KR83D1` 第 ③ 刀（改名必须绿）在 daemon 这一侧的落法。
+/// 这就是 `KR83D1` 第 ③ 刀（改名必须绿）在后端这一侧的落法。
 #[test]
 fn the_session_id_list_and_the_count_are_produced_by_the_same_guard() {
     let root = tmp_root("d1b");

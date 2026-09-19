@@ -10,7 +10,7 @@ const ALLOWED_SEMANTICS: &[&str] = &[
     "拒收+回错",
     // 🔴 `K-R59`（09-11）：这里原来还有第四种 **「分轮续读」** —— 它的**唯一**用户是
     //    远端会话流那一段里那条 8 MiB 的「单文件单轮读满即停、下轮续读」上限
-    //    〔散文墓碑〕它当年叫 `DAEMONLESS_READ_CAP`，与 `DAEMONLESS_DISCOVER_CAP` 同批。
+    //    〔散文墓碑〕它当年叫 `BACKENDLESS_READ_CAP`，与 `BACKENDLESS_DISCOVER_CAP` 同批。
     //    那一整段随定框 `K35` 删除 ⇒ 这一项当场变成「没人用的名字」，
     //    而本文件那条判据逐字要求「登记表里每一种都得真有人用……别留一个谁都能往里塞的口子」
     //    ⇒ **一起摘掉，不是顺手，是被那条判据逼下来的**（它先红，摘了才绿）。
@@ -36,7 +36,7 @@ const ALLOWED_SEMANTICS: &[&str] = &[
     // 与「manifest 超限」（异常），两者被合并成同一种降级 —— 分开报要动账号错误面的
     // UX，超出 1x 的范围，进 `ROADMAP §5`。
     "降级+说清",
-    // ⚠ 第八种，同样**论证后**加〔devbench F10b〕：daemon 出方向单行超限时
+    // ⚠ 第八种，同样**论证后**加〔devbench F10b〕：backend 出方向单行超限时
     // **丢掉那一行**，并往 `REMOTE_HEALTH` 发一条带 origin 的说明。
     //
     // ★ 它与「跳过+说清」的分界是**谁被告知**：那一档告的是**日志**（`warn!`），
@@ -69,7 +69,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              `BUILD_ID` 长一个字符它跟着长一个字符。\
              ⚠ 它之所以必须是**定长数组**而不是 `&str`：`#[used] static [u8; N]` 有地址、\
              进 `.rodata`、字节按定义连续，编译器拆不成立即数 —— 那正是「拿到一份二进制\
-             扫得出它是谁」这条性质的支点（理由全文住 daemon `main.rs` 的 `build_stamp`）。",
+             扫得出它是谁」这条性质的支点（理由全文住 backend `main.rs` 的 `build_stamp`）。",
     ),
     // ── 〔audit-0805 08-06〕默认拒绝上线后，把「名字没关键词的尺寸类常量」逐个判过。
     // **七个全都不是字节上限** —— 也就是说旧的名字关键词过滤今天恰好完整；
@@ -186,7 +186,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // ── `K-P1`：常驻监听口的握手（**两侧各一条，方向不同**）───────────
     (
-        "src/bridge/src/local_daemon.rs",
+        "src/bridge/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
         8 * 1024,
         "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 ~1.1 KB",
@@ -196,7 +196,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "src/backend/listen.rs",
         "ATTACH_LINE_CAP",
         8 * 1024,
-        "daemon 读一行 attach 请求 —— `{\"attach\":\"<32 位十六进制>\"}` 本机实测 51 字节。\
+        "backend 读一行 attach 请求 —— `{\"attach\":\"<32 位十六进制>\"}` 本机实测 51 字节。\
              ⚠ 对端是**同机任何进程**，不是我们自己的子进程",
         "拒收+回错",
     ),
@@ -238,8 +238,8 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "截断+说清",
     ),
     // 🔴 `K-R59`（09-11，定框 `K35`）：这里原来有**两条** ——
-    //    `DAEMONLESS_READ_CAP`（8 MiB，单文件单轮读，超了分轮续读）与
-    //    `DAEMONLESS_DISCOVER_CAP`（4 MiB，`find` 发现命令的 stdout，超了截断+说清）。
+    //    `BACKENDLESS_READ_CAP`（8 MiB，单文件单轮读，超了分轮续读）与
+    //    `BACKENDLESS_DISCOVER_CAP`（4 MiB，`find` 发现命令的 stdout，超了截断+说清）。
     //    它们随 `ssh_source.rs` 那一整段 `daemonless` 轮询读一起退役 ——
     //    **不是「上限放宽了」，是被它们限住的那条读根本不存在了。**
     (
@@ -257,14 +257,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "src/bridge/crates/search-core/src/lib.rs",
         "MAIN_CAP",
         20_000,
-        "单条 main 文本进索引的**字符**数（monitor 与 daemon 同一份）",
+        "单条 main 文本进索引的**字符**数（monitor 与后端同一份）",
         "索引截断（不丢数据）",
     ),
     (
         "src/bridge/crates/search-core/src/lib.rs",
         "TOOL_CAP",
         4_000,
-        "单条 tool 文本进索引的**字符**数（monitor 与 daemon 同一份）",
+        "单条 tool 文本进索引的**字符**数（monitor 与后端同一份）",
         "索引截断（不丢数据）",
     ),
     // ── 〔devbench F10b〕以下七条此前**全都不在本表的扫描面里**。
@@ -287,7 +287,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // 🔴 `K-R112`（09-13）：**cc-bus 查在线那条读上限删了，不是「忘了」。**
     //    它是老那条按名字探在线的 shell 串（`tmux has-session`）的读上限，
-    //    而查在线整条改走 daemon 的 `bus-list` 帧之后**没有一条流要读** ——
+    //    而查在线整条改走后端的 `bus-list` 帧之后**没有一条流要读** ——
     //    帧应答是结构化的，上限由入方向通道自己那一层管。
     //    ⇒ 常量不存在了，留着这一行就是**僵尸账**（本表自己那条反向锚点会当场逮住）。
     (
@@ -326,18 +326,18 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "读远端 `settings.json`",
         "拒收+回错",
     ),
-    // 第七条不是内联字面量，是**压根没有上限**：daemon 出方向单行此前走无界 `read_line`。
-    // ⚠ 它的数**刻意不等于** daemon 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
+    // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
+    // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
     // 实测本机 525,132 行 jsonl 里有 78 行超过 1 MiB、最长 2.97 MiB，
-    // 抄过去就是丢真实数据。理由全文在 `ssh_source.rs::DAEMON_FRAME_LINE_CAP` 头注。
+    // 抄过去就是丢真实数据。理由全文在 `ssh_source.rs::BACKEND_FRAME_LINE_CAP` 头注。
     (
         "src/bridge/src/ssh_source.rs",
-        "DAEMON_FRAME_LINE_CAP",
+        "BACKEND_FRAME_LINE_CAP",
         64 * 1024 * 1024,
-        "daemon **出方向单行**（一帧 = 一条 Claude jsonl 行）",
+        "backend **出方向单行**（一帧 = 一条 Claude jsonl 行）",
         "丢弃+带身份报告",
     ),
-    // ---- daemon 侧 ----
+    // ---- backend 侧 ----
     (
         "src/backend/control/fork_write.rs",
         "MAX_SESSION_JSONL_BYTES",
@@ -373,7 +373,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "入方向单行",
         "拒收+回错",
     ),
-    // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：daemon 的 Claude 知识搬进
+    // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：backend 的 Claude 知识搬进
     // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
     // 两格同时红（「有上限没登记」+「登记的那个算不出值」）。**登记表的键随搬迁同轮改。**
     (
@@ -387,7 +387,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "src/backend/observe/accounts_query.rs",
         "MAX_MANIFEST_BYTES",
         8 * 1024 * 1024,
-        "daemon 侧读账号 manifest",
+        "backend 侧读账号 manifest",
         "硬报错",
     ),
     (
@@ -440,7 +440,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "丢弃+带身份报告",
     ),
     // 🔴 **〔条 67 · 2026-09-18〕`ASSET_BYTE_CAP` 与 `RESPONSE_HEAD_BYTE_CAP` 这一对摘了。**
-    // 它们管的是「daemon 给自己拉一个可执行文件」那一跳，而那一跳随 `sidecars/` 整棵删了
+    // 它们管的是「backend 给自己拉一个可执行文件」那一跳，而那一跳随 `sidecars/` 整棵删了
     // （用户逐字「不在现在设计里的全部删掉」）。
     //
     // ⚠ **那一对买到的道理是本表最值钱的一条，删代码不许连它一起删**：
@@ -735,7 +735,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
             .unwrap_or_else(|| panic!("抠不到 `{f}::{n}` —— 本条会零命中地绿"))
     };
 
-    // 对 A：注释逐字「与 daemon 侧**同值**」⇒ 钉相等。
+    // 对 A：注释逐字「与后端侧**同值**」⇒ 钉相等。
     let a1 = by("src/bridge/src/local_accounts.rs", "MANIFEST_CAP");
     let a2 = by(
         "src/backend/observe/accounts_query.rs",
@@ -743,8 +743,8 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     );
     assert_eq!(
         a1, a2,
-        "两侧读同一份 manifest 的上限漂开了（monitor {a1} / daemon {a2}）。\
-             `local_accounts.rs` 的注释逐字写着「与 daemon 侧同值」—— \
+        "两侧读同一份 manifest 的上限漂开了（monitor {a1} / backend {a2}）。\
+             `local_accounts.rs` 的注释逐字写着「与后端侧同值」—— \
              那句话此前**没有任何东西守着**，靠人抄。"
     );
 
@@ -756,7 +756,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     );
     assert_eq!(
         b1, b2,
-        "「一整份会话 jsonl」的上限两侧漂开了（monitor {b1} / daemon {b2}）。\
+        "「一整份会话 jsonl」的上限两侧漂开了（monitor {b1} / backend {b2}）。\
              ⚠ `fork_write.rs` 的注释写的是「同一**量级**」，而本条钉的是**相等** —— \
              因为它们是同一个量。要刻意分开就把这条判据与那句注释**一起**改。"
     );
@@ -778,7 +778,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     let (hi, lo) = if c1 >= c2 { (c1, c2) } else { (c2, c1) };
     assert!(
         lo > 0 && hi <= lo * 4,
-        "「一条人能读的启动命令」两侧差得太远（daemon {c1} / monitor {c2}）。\
+        "「一条人能读的启动命令」两侧差得太远（backend {c1} / monitor {c2}）。\
              ⚠ 这一对**刻意不同值**（今天 8192 vs 4096），注释写的是「同量级」；\
              这里把「量级」形式化成**不超过 4 倍** —— 那是个约定，不是实测阈值。"
     );
@@ -987,7 +987,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
     (
         "src/backend/common/fs.rs",
         "cap + 1",
-        "`read_file_capped` 是 daemon 侧共用的有界读助手，上限是入参；\
+        "`read_file_capped` 是后端侧共用的有界读助手，上限是入参；\
              调用方给的是 `MAX_CONFIG_BYTES` / `MAX_MANIFEST_BYTES` 等具名常量。",
     ),
     // ⚠〔`K-H1` 回修轮之五 08-25，D3 `阻-1(D3)`〕这一处的 `n` 与上面两条**不同族**，
@@ -1021,7 +1021,7 @@ const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
     //    它欠的是「整读一条远端 SSH exec 的 stdout，没有上限」。
     //    编排搬上后端帧面之后，本模块**不再读任何流** —— 抓回来的那一屏是一条
     //    `capture-pane` 帧应答的 `screen` 字段，而**帧那一层自己有单行上限**
-    //    （daemon 侧 `inbound.rs` 的超长行处理 + monitor 侧收帧那一层）。
+    //    （backend 侧 `inbound.rs` 的超长行处理 + monitor 侧收帧那一层）。
     //    ⇒ 这一处不再属于「异步流整读」那个人群，留着就是幽灵条目。
     (
         "src/bridge/src/acct_iso_deploy.rs",
@@ -1082,7 +1082,7 @@ fn every_inline_read_cap_resolves_to_something_registered() {
     // 自检：抠不到东西时下面的默认拒绝是空转的。
     assert!(
         sites.len() >= 6,
-        "只扫到 {} 处内联读上限（08-10 实测 7：cc-bus ×3 · mcp · hooks_diag · daemon 的 fs 助手 · `--resolve` stdin）—— 抽取器坏了，本条此刻是空转的。\n\
+        "只扫到 {} 处内联读上限（08-10 实测 7：cc-bus ×3 · mcp · hooks_diag · backend 的 fs 助手 · `--resolve` stdin）—— 抽取器坏了，本条此刻是空转的。\n\
              ⚠ 旧版就是**在这个位置**假绿了五次：它数的是「裸十进制字面量」而不是「有没有上限」。",
         sites.len()
     );
@@ -1277,7 +1277,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     //    而人群真的少了一个成员时，不跟着改这个数才是让它继续替真判据挡枪（`K-G8`）。
     // 🔴 `K-R112`（09-13）：地板 13 → **11**，理由与上面 `K-R104` 那一段**同形**：
     //    `cc_bus.rs::check_cc_bus_agent_online` 与 `tmux.rs::capture_remote_pane`
-    //    那两处 `read_to_end`（一次性 SSH 的 stdout）随两条命令改走 daemon 帧面而
+    //    那两处 `read_to_end`（一次性 SSH 的 stdout）随两条命令改走后端帧面而
     //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
     assert!(
         population >= 11,
@@ -1287,8 +1287,8 @@ fn every_uncapped_stream_read_has_an_owner() {
     assert!(
         orphans.is_empty(),
         "这些地方把一整条**流**读进内存，既没有上限也没有主人：\n{}\n\n\
-             ★ 对端是**远端进程** —— 它坏掉、或者压根不是我们的 daemon，都会让\n\
-             「无界读」变成「无界堆分配」。daemon 侧为此栽过一次实测：\n\
+             ★ 对端是**远端进程** —— 它坏掉、或者压根不是我们的后端，都会让\n\
+             「无界读」变成「无界堆分配」。backend 侧为此栽过一次实测：\n\
              喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB\n\
              （见 `src/backend/inbound.rs` 头注）。\n\
              两条路：① 加上限（`.take(CAP + 1)` + 超了回错，形态见 `common/fs.rs`）；\n\
@@ -1310,7 +1310,7 @@ fn every_uncapped_stream_read_has_an_owner() {
 ///
 /// 隔壁 `a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site` 是
 /// 「从常量被提到的那一行往下看 N 行找 marker」。那个形状对本档**不成立**：
-/// `DAEMON_FRAME_LINE_CAP` 在三个地方被提到（有界读的判断处 · 措辞函数 · 消费点的
+/// `BACKEND_FRAME_LINE_CAP` 在三个地方被提到（有界读的判断处 · 措辞函数 · 消费点的
 /// `warn!`），而报告只发生在**第三处** —— 按每处提及去要求 marker 会造出两条假红。
 ///
 /// ⇒ 换个取样单位：**处置分支本身**。人群 = `ssh_source.rs` 生产段里每一处

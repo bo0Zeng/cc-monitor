@@ -143,7 +143,7 @@ fn read_session_rejects_outside_projects() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// daemon-02：offset 续拉的字节语义**逐字节对拍** watcher 发出的 `byte_offset`
+/// backend-02：offset 续拉的字节语义**逐字节对拍** watcher 发出的 `byte_offset`
 /// 与 aterm `tail -c +(offset+1)`。用与 `byte_offset_matches_aterm_lineframer` 同一
 /// 语料 `"你\r\nx\n"`（LineFramer offset=[5,7]）：从续点 N 起 = `bytes[N..]`。
 #[test]
@@ -163,7 +163,7 @@ fn slice_from_offset_matches_lineframer_resume() {
     assert_eq!(slice_from_offset(data, 4), b"\nx\n");
 }
 
-/// daemon-02：offset 续拉沿用 `read_session` 的路径守卫（projects 外 / 非 jsonl 拒）。
+/// backend-02：offset 续拉沿用 `read_session` 的路径守卫（projects 外 / 非 jsonl 拒）。
 #[test]
 fn read_session_from_offset_path_guard() {
     let tmp = std::env::temp_dir().join(format!("ccm-hq-off-{}", std::process::id()));

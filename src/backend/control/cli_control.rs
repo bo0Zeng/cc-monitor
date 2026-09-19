@@ -1,6 +1,6 @@
 //! P4d：控制面的 **CLI 入口** —— 与 SSH 帧入口共用 [`crate::inbound::REGISTRY`] 里同一个 `run`。
 //!
-//! 〔用 08-12〕「要给 daemon 留暴露接口……以后集成的 skill 就靠着 daemon 来兼容和集成」
+//! 〔用 08-12〕「要给后端留暴露接口……以后集成的 skill 就靠着后端来兼容和集成」
 //! 「**先把确切的命令组件做出来**，外面怎么变后面再说」。
 //!
 //! # 它**不实现任何一条命令**，这是全部要点
@@ -24,9 +24,9 @@
 //! **帧入口的对端身份**。本入口的调用方是**本机任意进程**，那条依据在这里不成立，
 //! 照抄过来就是一句没人验过的话。本入口自己的理由是另一条，写在这里备核：
 //!
-//! > 本机进程已经能直接跑 `tmux kill-session` / `tmux new-session` —— 它们与 daemon
+//! > 本机进程已经能直接跑 `tmux kill-session` / `tmux new-session` —— 它们与 backend
 //! > 跑的是同一个 tmux server，用的是同一个 `$TMUX_TMPDIR` 下的 socket，权限由文件系统
-//! > 而不是由 daemon 把守。⇒ 本入口**不新授任何权力**，它只是把「daemon 已经会做的事」
+//! > 而不是由后端把守。⇒ 本入口**不新授任何权力**，它只是把「backend 已经会做的事」
 //! > 换一种调用法。真正的边界在 tmux socket 的文件权限上，一直如此。
 //!
 //! ⚠ 这条理由的**射程**：它只覆盖「起/杀 tmux 会话」这一族（今天 `REGISTRY` 上 CLI 面的全部）。
@@ -65,11 +65,11 @@ const MAX_CLI_STDIN: u64 = 1024 * 1024;
 ///
 /// 保留 JSON 而不是去迁就那个解析器，理由有账：`§0c` ① 是用户对 cc-bus 的不满逐字
 /// 「五个命令**全无 `--json`**，输出是定宽 `printf` + 中文表头」⇒ **JSON 进 JSON 出，
-/// 第一天就有**。而 `parse_probe_output` 是 **`ccm` 专用**的（实测：daemon 侧零消费者，
-/// monitor 也不用 CLI 面 —— 它走帧），让 daemon 去说 ccm 的方言只会多一种方言。
+/// 第一天就有**。而 `parse_probe_output` 是 **`ccm` 专用**的（实测：backend 侧零消费者，
+/// monitor 也不用 CLI 面 —— 它走帧），让后端去说 ccm 的方言只会多一种方言。
 ///
 /// ⇒ 真正抄过来的是那条**理念**：集成方按**能力**兼容，不按版本号。
-pub(crate) const PROBE_FLAG: &str = "--daemon-probe";
+pub(crate) const PROBE_FLAG: &str = "--backend-probe";
 
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
 /// 天然 1:1、没有并发的第二条请求可混淆 ⇒ 这里给一个固定值，不假装有号段。
@@ -150,7 +150,7 @@ pub(crate) async fn run(args: &[String]) -> i32 {
     }
     let Some(spec) = spec_for(flag) else {
         // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：
-        // daemon 的一次性模式对未知参数的既定行为是 exit 2 + 结构化 stderr。
+        // backend 的一次性模式对未知参数的既定行为是 exit 2 + 结构化 stderr。
         return emit_err("unknown_command", format!("CLI 控制面不认识 {flag}"));
     };
     let mut input = String::new();

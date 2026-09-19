@@ -9,9 +9,9 @@
 //! # 🔴 它原来叫 `usage-core`，头注讲的是另一件事 —— 那段话今天已经失效
 //!
 //! 原头注整篇在论证一件事：**同一套 Claude 用量口径写了两遍** ——
-//! monitor 侧一份（走 `parse_line` / `JsonlRecord`）、daemon 侧一份
+//! monitor 侧一份（走 `parse_line` / `JsonlRecord`）、backend 侧一份
 //! （在裸 `serde_json::Value` 上抽取），那个双写没有护栏、而且已经漂开
-//! （daemon 剥 BOM、monitor 不剥）⇒ 建这个 crate 就是为了让那条口径只有一个家。
+//! （backend 剥 BOM、monitor 不剥）⇒ 建这个 crate 就是为了让那条口径只有一个家。
 //!
 //! **`设计/50`（删用量）把那两侧同时删了**：用量的**聚合轴**（②）与**探针轴**（③）
 //! 整轴退役 —— `usage.rs` 与 `usage_query.rs` 两份文件都不存在了。
@@ -33,7 +33,7 @@
 //!
 //! # 依赖约束（这一条原样保留，它仍然成立）
 //!
-//! **依赖只有 `serde_json`。** daemon 是 Linux-only 的静态 musl 二进制、且刻意不在
+//! **依赖只有 `serde_json`。** backend 是 Linux-only 的静态 musl 二进制、且刻意不在
 //! monitor 的 workspace 里；一旦这里引入 tauri / tokio / 平台相关的东西，共享就破了。
 
 use serde_json::Value;
@@ -66,7 +66,7 @@ impl CodexDelta {
 /// `reasoning_output_tokens` 是 output 的子集、`total_tokens` 冗余 ⇒ 都不单列。
 ///
 /// 来历：`U7-2` 把 Claude 口径收进本 crate 时**漏了 Codex 这一侧** ——
-/// daemon 的 `agents/codex/parse.rs` 与 monitor 的 `codex_record.rs` 各写一份、逐字相同、
+/// backend 的 `agents/codex/parse.rs` 与 monitor 的 `codex_record.rs` 各写一份、逐字相同、
 /// 无一条判据钉住，后来才收到这里。
 /// 🔴 **〔`设计/50`〕守它「是唯一家」的那条判据没了**：它住 `src/bridge/src/usage.rs`
 /// （`kou_jing_singleton`），而那份文件随用量 ② 轴整轴退役 ——  〔散文墓碑〕

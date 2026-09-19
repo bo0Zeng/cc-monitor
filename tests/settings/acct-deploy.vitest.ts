@@ -94,7 +94,7 @@ describe("buildAcctIsoCmd", () => {
 });
 
 describe("deriveAcctIsoDir (F5 部署目录推导)", () => {
-  it("从 daemonPath 的 .cc-monitor 根推导（与 daemon 同根）", () => {
+  it("从 daemonPath 的 .cc-monitor 根推导（与后端同根）", () => {
     expect(deriveAcctIsoDir("/home/z/.cc-monitor/bin/cc-monitor-remote")).toBe(
       "/home/z/.cc-monitor/cc-acct-iso",
     );

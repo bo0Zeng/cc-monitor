@@ -31,7 +31,7 @@ const NOTHING: MachineStatus = {};
 /** 五格全绿。`computeGaps` 见 `ok` 就跳过 ⇒ 这一形不该产出任何缺口。 */
 const ALL_OK: MachineStatus = {
   connection: { kind: "ok", at: T },
-  daemon: { kind: "ok", at: T },
+  backend: { kind: "ok", at: T },
   ccm: { kind: "ok", at: T },
   acctIso: { kind: "ok", at: T },
   accounts: { kind: "ok", at: T },

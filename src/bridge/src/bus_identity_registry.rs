@@ -12,7 +12,7 @@
 //! | `cc-agents` | 假报「活」 |
 //!
 //! 另外三处不是事故但同一个问题（`bus-list` / `bus-send` 的三态 · UI 那盏在线灯），
-//! 全在 monitor / daemon 侧，用的是同一份证据。
+//! 全在 monitor / backend 侧，用的是同一份证据。
 //!
 //! # 唯一的证据：登记时记下的 pane 根进程 pid
 //!

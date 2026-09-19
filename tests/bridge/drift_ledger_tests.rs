@@ -106,10 +106,10 @@ fn an_empty_key_is_labelled() {
 fn the_global_entry_points_delegate_to_the_pure_ones() {
     // 用一个**本测试专属**的键：全局账本会被别的测试写，只断言「我这条在」。
     let key = "u-cc1-delegation-probe";
-    record(DriftFace::UnknownDaemonToken, key, Some("s"));
+    record(DriftFace::UnknownBackendToken, key, Some("s"));
     let found = snapshot()
         .into_iter()
-        .find(|f| f.face == DriftFace::UnknownDaemonToken)
+        .find(|f| f.face == DriftFace::UnknownBackendToken)
         .and_then(|f| f.entries.into_iter().find(|e| e.key == key));
     let e = found.expect("全局 record/snapshot 没接上纯函数");
     assert!(e.count >= 1);
@@ -123,7 +123,7 @@ fn every_face_states_its_consequence() {
         DriftFace::UnknownRecordType,
         DriftFace::KnownTypeParseFailed,
         DriftFace::UnknownSessionKind,
-        DriftFace::UnknownDaemonToken,
+        DriftFace::UnknownBackendToken,
     ];
     for f in faces {
         assert!(f.consequence().len() > 10, "{f:?} 的后果说明太短");

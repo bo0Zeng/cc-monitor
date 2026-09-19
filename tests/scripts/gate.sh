@@ -35,8 +35,8 @@
 # │
 # │ 〔自述·格数〕21 格
 # │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · installface ·
-# │   fmt · fmt-daemon ·
-# │   winchk · winchk-daemon · cargo · deadcode · generated · daemon · tsc · npm ·
+# │   fmt · fmt-backend ·
+# │   winchk · winchk-backend · cargo · deadcode · generated · backend · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity · pb check
 # │ 〔自述·现物〕四套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
@@ -52,7 +52,7 @@
 # │ 〔自述·现物〕`installface` 那一格的判据本体：`tests/evidence/K-R117-ruler.py`（`K-R128` 09-15
 # │   第 21 格）—— 它同时是 `K-R117` 第一拍摸底的那把尺子，本件只往它上面加了 `R8`/`R9`/`R10`
 # │   三条判定（`R1`–`R7` 一个字节没动）。死值验 16 刀住 `tests/evidence/K-R128-deathvalue.md`。
-# │ 〔自述·现物〕`winchk-daemon` 那一格没有独立的判据文件 —— 它就是一趟
+# │ 〔自述·现物〕`winchk-backend` 那一格没有独立的判据文件 —— 它就是一趟
 # │   `cargo check --all-targets`，target 是 `x86_64-pc-windows-gnu`，跑在
 # │   `src/backend` 那个 workspace 上（`K-R122` 09-14 第 18 格）。
 # │ 〔自述·现物〕`deadcode` 那一格没有独立的判据文件 —— 它就是一趟 `cargo check -p monitor`
@@ -61,7 +61,7 @@
 # │   （发版那条 `npm run build` 的**第一步**）加一条「程序面没被掏空」的对账，
 # │   判定逐字写在下面那一行 `run_gate tsc` 的内联脚本里（`K-R118` 09-14 第 16 格）；
 # │   程序面由 `tsconfig.json` 的 include 决定。
-# │ 〔自述·不在射程〕跨平台 / 提交状态那一维归 `npm run verify:committed`（`C16`，动 daemon 时跑）。
+# │ 〔自述·不在射程〕跨平台 / 提交状态那一维归 `npm run verify:committed`（`C16`，动后端时跑）。
 # │
 # └─ 〔自述·射程〕完 ────────────────────────────────────────────────────────────
 #
@@ -176,7 +176,7 @@
 #     `cc-spawn-uplift` 67/5→**71/1**：那 1 条是**沙箱的既有红**（非 ASCII 目录名在容器里
 #     被搞成 `__ ____ ______`，locale 的事），**与 `shared/ccm` 无关** ——
 #     现打对照：同一份新夹具喂**旧** `shared/ccm` 也是 **71/1**，逐字相同。
-#     买到这些的是一份**可复用的假后端** `tests/e2e/fake-daemon.sh`（六套共用一份，不是六份各写一遍）。
+#     买到这些的是一份**可复用的假后端** `tests/e2e/fake-backend.sh`（六套共用一份，不是六份各写一遍）。
 #
 #   🔴 **给 `K-G` 的建议（只写建议，本件不挂）**〔量于 09-04；`ccm-acceptance` 09-11 已删，
 #      这条建议随之作废 —— 留着是因为它记着「不挂的理由当时只剩没人重量过」〕：
@@ -325,12 +325,12 @@ GATE_DIAG_PAT='^(error|npm error|npm ERR!|thread .+ panicked|failures:|test resu
 #   同一份输出里 `   × <用例名>` 那行同样被 `ESC[31m` 挡着。
 #
 # ★ **每一格各量了一次**（分母：**7 份原始输出**，盖住走 `gate_diag` 的 **5 个门禁格**
-#   —— `cargo` · `daemon` · `npm` · `e2e` · `pb check`；全是现打，不是抽样。
+#   —— `cargo` · `backend` · `npm` · `e2e` · `pb check`；全是现打，不是抽样。
 #   ⚠ 第九格 `generated` 不进这个分母：它红了走的是 `git diff --stat`，根本不调 `gate_diag`）：
 #     npm·vitest      2413 行 · 含 ESC **1584** 行 · 改前命中 **0** · 去色后 **2**  ← 只有它中招
 #     npm·tsx（`✗`）   186 行 · 含 ESC 0 · 改前 **1** · 去色后 1
 #     cargo·workspace 1740 行 · 含 ESC 0 · 改前 **11** · 去色后 11
-#     cargo·daemon     642 行 · 含 ESC 0 · 改前 **6**  · 去色后 6
+#     cargo·backend     642 行 · 含 ESC 0 · 改前 **6**  · 去色后 6
 #     cargo·编译错误    15 行 · 含 ESC 0 · 改前 **2**  · 去色后 2
 #     e2e·地板不符      28 行 · 含 ESC 0 · 改前 **1**  · 去色后 1
 #     pb check         40 行 · 含 ESC 0 · 改前 **3**  · 去色后 3
@@ -720,7 +720,7 @@ run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里
 #
 # `K-R75`（09-12）：变异台 `restore` 用 `shutil.copy2` 把**旧 mtime** 一起搬回
 #   ⇒ `cargo` 判「源码没变」⇒ 复用上一刀的产物 ⇒ **那一趟读到的是上一刀的回声**，整趟作废。
-# `K-R102`（09-13）：**同形复发**在另一把量具上 —— `M6-final` 印 `GATE: OK · daemon 755`，
+# `K-R102`（09-13）：**同形复发**在另一把量具上 —— `M6-final` 印 `GATE: OK · backend 755`，
 #   而那条判据还在盘上、一趟都没跑。它自己逮住并重跑。
 # ⇒ 当时的处置逐字是「每趟变异都要有一个『它真的重编过吗』的活体信号」——
 #   **一句纪律，没有任何东西在执行它**。第二次发生就是证据。本格是那句纪律的机器面。
@@ -837,8 +837,8 @@ run_gate shellcheck '不是「几条断言过了」：这个数是**从 `.github
 # ## 题面：`K-R119` 那趟五条红里有**两条**是这一形，而它在本地一个字都看不见
 #
 # `K-R48` 第二拍（09-11）把 `ccm` 收成后端的原生命令、`K-R104`（09-13）把用量探针整条
-# 重写成「往真 daemon 的帧面写帧」—— **两次都换了被测对象，而 `ci.yml` 里那两处 job 的
-# 前置一次都没跟上** ⇒ 云端双双红在「找不到原生入口 / 需要先 build daemon」。
+# 重写成「往真后端的帧面写帧」—— **两次都换了被测对象，而 `ci.yml` 里那两处 job 的
+# 前置一次都没跟上** ⇒ 云端双双红在「找不到原生入口 / 需要先 build backend」。
 #
 # 🔴 **为什么本地看不见**：本脚本自己在跑四套 ccm e2e 之前**有一步 build 后端二进制**
 #（下面那行 `e2e 前置`），CI 那两个 job 没有 ⇒ 同一份被测对象，两边的「绿」长得一模一样。
@@ -929,11 +929,11 @@ run_gate installface '判过的条数（`§S5c`/`§S5d`/`§S5e` 三节逐条印�
 #   · 它跑在 `src/bridge` 上（`--all` = 那个 workspace 的全部成员）；
 #     `src/backend` 是**另一个 workspace**，本行盖不到它。
 #     🔴 **`K-R80`（09-12）：那句话一个字没改，改的是它后面缺的那一格** ——
-#     那棵树今天由下面 `fmt-daemon` 那一行盖。**别再把这一句读成处置。**
-run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/bridge` 那个 workspace 的全部成员；`src/backend` 是另一个 workspace，本行盖不到（那一棵由下面 fmt-daemon 那一格盖）' \
+#     那棵树今天由下面 `fmt-backend` 那一行盖。**别再把这一句读成处置。**
+run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/bridge` 那个 workspace 的全部成员；`src/backend` 是另一个 workspace，本行盖不到（那一棵由下面 fmt-backend 那一格盖）' \
          bash -c 'cd src/bridge && cargo fmt --all --check 2>&1 && echo "fmt: 1 passed"'
 
-# ── daemon 那棵树的格式漂移（`K-R80` 09-12）──────────────────────────────────
+# ── backend 那棵树的格式漂移（`K-R80` 09-12）──────────────────────────────────
 #
 # 🔴 **本格买的是上面那句诚实注释的处置。**
 #
@@ -941,7 +941,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #
 # 上面那一格的分母里逐字写着「`src/backend` 是另一个 workspace，本行盖不到」，
 # 而那句话**每趟门禁都印在终端上** —— 它不是静默失效，是**一格「我盖不到那儿」的注释
-# 被当成了处置**。`K-R79` 交回时报出：daemon 那棵树 `cargo fmt --check` **在基点上就是红的**，
+# 被当成了处置**。`K-R79` 交回时报出：backend 那棵树 `cargo fmt --check` **在基点上就是红的**，
 # PM 现打复核 **6 处 / 3 文件**（`agents/mod.rs` 1 · `control/ccm/argv.rs` 4 · `protocol_doc_guard.rs` 1）。
 # ⇒ **说清了射程 ≠ 射程够。** 本仓反复抓这一形，这一次长在门禁自己身上。
 #
@@ -950,7 +950,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 # 把 `src/backend` 塞进 `src/bridge` 那个 workspace 就能「顺便盖到」——
 # **不许**。`K25` 裁的是「一份代码、每平台一份原生二进制」，而那棵树的 standalone
 # 是**真架构约束**（它自己的 `Cargo.toml` 头注逐字：一个 workspace 会把这个 Linux-only 的
-# daemon 拖进 Windows CI 的 `cargo test --all`）。为一格排版去动两棵树的依赖关系，
+# backend 拖进 Windows CI 的 `cargo test --all`）。为一格排版去动两棵树的依赖关系，
 # **代价远大于本格**。⇒ 多一行，各跑各的。
 #
 # ## 🔴 为什么是 `cargo fmt --check` 而**不是** `cargo fmt --all --check`
@@ -973,12 +973,12 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #   · 它买的是「**排版与 rustfmt 一致**」，**买不到**「代码对」——与上面那一格同一句话。
 #   · 分母是**一个包** `cc-monitor-remote`，射程 = 从 `src/main.rs` 顺 `mod` 走得到的那些文件；
 #     那棵树里**走不到的 `.rs` 文件本格看不见**（今天没有这样的文件，但那是事实不是判据）。
-#   · `.github/workflows/ci.yml` 的 `daemon` job **早就有这一步**（逐字同一条命令
+#   · `.github/workflows/ci.yml` 的 `backend` job **早就有这一步**（逐字同一条命令
 #     `cargo fmt --check`，`working-directory: src/backend`）⇒ 本行**不是新买一条判据**，
 #     是把「本机门禁不是云端的超集」这个已知缺口在这一维上补平。⚠ 因此 `ci.yml` **不用改**，
 #     上面那条「三处一起改」的纪律与本行无关。
-run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-remote`；`src/bridge` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
-         bash -c 'cd src/backend && cargo fmt --check 2>&1 && echo "fmt-daemon: 1 passed"'
+run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-remote`；`src/bridge` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
+         bash -c 'cd src/backend && cargo fmt --check 2>&1 && echo "fmt-backend: 1 passed"'
 
 # ── Windows 那半编不编得过 ──────────────────────────────────────────────────
 #
@@ -1021,13 +1021,13 @@ run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红�
 #   fail-closed 比静默跳过好。
 # ⚠⚠ **`--all-targets` 是 `15 §5.1 A5` 补的，它把本格的射程从「生产段」扩到「生产段 ＋ test 档」。**
 #
-# 题面逐字（`15 §2.6` 漏洞 2）：「**`winchk` 少 `--all-targets`，而兄弟格 `winchk-daemon` 有**，
+# 题面逐字（`15 §2.6` 漏洞 2）：「**`winchk` 少 `--all-targets`，而兄弟格 `winchk-backend` 有**，
 # 并注明『云端那 10 个错**全在 test 档**，所以 `--all-targets` 是**承重的**』
 # ⇒ **同一个性质两把不同长度的尺子**。修它只要一个词。」
 #
 # ⇒ 本行加上之后，两格量的是**同一件事的同一个面**，只是包不同：
 #   · `winchk`        = `src/bridge` 的 `-p monitor` 一个包，生产段 ＋ test 档
-#   · `winchk-daemon` = `src/backend` 一个 crate，生产段 ＋ test 档
+#   · `winchk-backend` = `src/backend` 一个 crate，生产段 ＋ test 档
 #
 # ⚠ **它买不到的仍然一个字没变**（别因为射程变长就把这句读松）：
 #   · 买的是「**编得过**」，**不是「行为对」**——那要一台真 Windows（`99 §4.5.8` 的 `G2a`）。
@@ -1036,16 +1036,16 @@ run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红�
 #     `creds-core` 的 `--features harden` 那 2 处**本行还是盖不到**（`15 §2.6` 漏洞 4 还欠着）。
 # ⚠ `--locked` 照旧带着：本格同时是 `src/bridge/Cargo.toml ↔ Cargo.lock` 那条对账的落点
 #   （`doc_claim_registry` 两处逐字点名「门禁 `winchk` 那一格的 `cargo check --locked`」）。
-#   与 `winchk-daemon` 刻意不带 `--locked` 的差别是**另一维**，别顺手抹平。
-run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包的**生产段 ＋ test 档**（`src/bridge/src` 的 67 处 `cfg(windows)`；`--all-targets` 是 `A5` 补的，与兄弟格 `winchk-daemon` 对齐 —— 那一格的读数逐字「云端那 10 个错全在 test 档」）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
+#   与 `winchk-backend` 刻意不带 `--locked` 的差别是**另一维**，别顺手抹平。
+run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包的**生产段 ＋ test 档**（`src/bridge/src` 的 67 处 `cfg(windows)`；`--all-targets` 是 `A5` 补的，与兄弟格 `winchk-backend` 对齐 —— 那一格的读数逐字「云端那 10 个错全在 test 档」）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
          bash -c 'cd src/bridge && cargo check --locked --all-targets -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
-# ── `winchk-daemon`：**daemon 那棵树在 Windows 上编不编得过**（`K-R122` `KR122D2` 甲，09-14，第 18 格）──
+# ── `winchk-backend`：**backend 那棵树在 Windows 上编不编得过**（`K-R122` `KR122D2` 甲，09-14，第 18 格）──
 #
 # ## 题面：上面那一行自己写着「盖不到」，而那句话 09-14 兑现成了发版被拦
 #
 # 上面 `winchk` 那一行的分母逐字写着「`src/backend` 那 17 处与 `creds-core` 那 2 处
-# 本行盖不到」。`K-R119` 推 `v3.8.0` 那一趟，云端 `Remote daemon (Linux) lint + test`
+# 本行盖不到」。`K-R119` 推 `v3.8.0` 那一趟，云端 `Remote backend (Linux) lint + test`
 # 那个 job 正是红在它的第 7 步（`cargo check --all-targets --target x86_64-pc-windows-msvc`）：
 # **10 个编译错，全在 test 档**。⇒ **射程印在那一行上，而没有任何东西替它出声。**
 #
@@ -1071,21 +1071,21 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 #   仓外、不进版本控制）。没装的机器上本格红在「找不到 target」—— fail-closed，那是对的。
 # ⚠ 刻意**不带** `--locked`：CI 那一步也没带（`src/backend` 的锁文件由它自己的
 #   `cargo test` 那一步管）。一个性质两把尺子是本区最贵那族病。
-run_gate winchk-daemon '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/bridge` 那棵树由上面 winchk 那一格盖' \
-         bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-daemon: 1 passed"'
+run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/bridge` 那棵树由上面 winchk 那一格盖' \
+         bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
 
 # 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
 run_gate_sum cargo 9 bash -c 'cd src/bridge && cargo test --workspace --exclude code-picture-core --lib 2>&1'
 
-# ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/bridge/embedded-daemons/` 铺没铺。
+# ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/bridge/embedded-backends/` 铺没铺。
 #
-# `build.rs:376` 只有在 `src/bridge/embedded-daemons/` 里两个 arch 的二进制**都在且 build_id 对得上**
-# 时才 `println!("cargo:rustc-cfg=embedded_daemons")`；那个目录被 `.gitignore` 挡着
-# ⇒ **它跟着「铺没铺」走，不跟着 git 走**。挂 `#[cfg(embedded_daemons)]` 的那一族全是
-# 「本地后端真的能起来吗」：`sftp::embedded_daemon_binaries_present_and_valid` ·
-# `local_daemon::the_local_daemon_can_be_stopped_and_started_again` ·
+# `build.rs:376` 只有在 `src/bridge/embedded-backends/` 里两个 arch 的二进制**都在且 build_id 对得上**
+# 时才 `println!("cargo:rustc-cfg=embedded_backends")`；那个目录被 `.gitignore` 挡着
+# ⇒ **它跟着「铺没铺」走，不跟着 git 走**。挂 `#[cfg(embedded_backends)]` 的那一族全是
+# 「本地后端真的能起来吗」：`sftp::embedded_backend_binaries_present_and_valid` ·
+# `local_backend_host::the_local_backend_host_can_be_stopped_and_started_again` ·
 # `local_backend::the_local_tmux_frames_really_land_in_the_ledger` ·
-# `local_backend::the_local_daemon_really_registers_an_inbound_client`。
+# `local_backend::the_local_backend_host_really_registers_an_inbound_client`。
 #
 # 病灶逐字（`ROADMAP.md` 风险行 `5t`，PM 08-25 实测撞上、08-29 复打）：
 # **「没有任何东西报出『这一跑少编了几条』」** —— 少编与「都跑了」在终端上一模一样，
@@ -1095,10 +1095,10 @@ run_gate_sum cargo 9 bash -c 'cd src/bridge && cargo test --workspace --exclude 
 #   铺了与没铺**本来就该是两个数**，钉死任何一个都会把另一种铺法误判成红。
 #   真要买成判据得先有一张「铺法 ⇒ 应有条数」的映射，那张表今天盘上没有 ⇒ 交回 PM。
 # ⚠ 行首刻意**不是** `ok` —— 它不判任何东西，写成 `ok` 就是把一条诊断伪装成一格绿。
-if [ -d src/bridge/embedded-daemons ]; then
-  printf '  分母 %-14s %s\n' "cargo" "本树铺了 src/bridge/embedded-daemons/ ⇒ embedded_daemons cfg 会置上，「本地后端真的能起来吗」那一族在跑"
+if [ -d src/bridge/embedded-backends ]; then
+  printf '  分母 %-14s %s\n' "cargo" "本树铺了 src/bridge/embedded-backends/ ⇒ embedded_backends cfg 会置上，「本地后端真的能起来吗」那一族在跑"
 else
-  printf '  分母 %-14s %s\n' "cargo" "本树未铺 src/bridge/embedded-daemons/ ⇒ embedded_daemons cfg 不置 ⇒ 上面那个合计里少了「本地后端真的能起来吗」那一族（4 条，逐个点名见上方注释）"
+  printf '  分母 %-14s %s\n' "cargo" "本树未铺 src/bridge/embedded-backends/ ⇒ embedded_backends cfg 不置 ⇒ 上面那个合计里少了「本地后端真的能起来吗」那一族（4 条，逐个点名见上方注释）"
 fi
 
 # ★ 生成物漂移（K-A1 第四轮 `R1`）：**改了 Rust 不跑生成，这里红。**
@@ -1186,7 +1186,7 @@ deadcode_t0=$(date +%s)
 # **一条都不含用量相关符号**（逐条核过）。
 # ⚠ `codex_record.rs` 的 `token_usage_last` / `turn_context_model` **仍在这 33 条里**，那是
 # 「codex 后面单独做」（用户 2026-09-18 拍板）的**已知代价**，不是删漏 —— 别顺手清掉。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 33，理由见上方注释）。射程只有 monitor 一个包的生产段；daemon 那棵树与 cfg(test) 里的死代码本行盖不到' \
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 33，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
          bash -c 'cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
@@ -1196,7 +1196,7 @@ if [ "$n" -lt 33 ]; then printf "deadcode: never used 只数到 %s 条，钉的�
 printf "deadcode: %s passed（never used %s 条，恒等钉在 41）\n" "$n" "$n"'
 printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode_t0 )) 秒（现打，与门禁基线相减就是加这一格的代价）"
 
-run_gate daemon '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
+run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd src/backend && cargo test 2>&1'
 # ── `tsc`：**发版产物编不编得出来**，此前门禁一格都没有（`K-R118` `KR118D1` ②，09-14，第 16 格）──
 #
@@ -1334,7 +1334,7 @@ gate_selftest_e2e
 # 〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
 # ⇒ `shared/ccm` 删了，四套 e2e 的 `$CCM` 指向 `$CARGO_TARGET_DIR/debug/cc-monitor-remote`。
 #
-# 🔴 **为什么要单独 build，不能指望上面 `daemon` 那格顺手带出来**：现打实测过 ——
+# 🔴 **为什么要单独 build，不能指望上面 `backend` 那格顺手带出来**：现打实测过 ——
 #   `cargo test`（那一格跑的就是它）**只编 `src/main.rs` 的 test 版**
 #   （`deps/cc_monitor_remote-<hash>`），**不产 `debug/cc-monitor-remote`**。
 #   不加这一步的话，四套 e2e 会在 fail-closed 那道 `[ -x ]` 上一起红，
@@ -1352,7 +1352,7 @@ run_e2e ccm-rbind-title  8
 # ⚠ 这两套硬依赖 `jq` 且 fail-closed：镜像里没有 `jq` ⇒ 这两格红，不会静默跳过。
 # ★★ **`K-P2` `D` 阶段（09-03）：`ccm-cli` 棘 `126` → `203`**（`ccm-contract-parity` 本拍没动）。
 #   那 77 条分两拍买的：`D1` 的 `JSONENC` 47 条（真 JSON 编码器，与 `jq -Rs .` 逐字节对拍）
-#   ＋ `D2` 的 `WIRE` 30 条（真发请求那一半：落盘式假 daemon，「发了」与「发对了」分两族判）。
+#   ＋ `D2` 的 `WIRE` 30 条（真发请求那一半：落盘式假后端，「发了」与「发对了」分两族判）。
 #   量于 `65b2792`、同一份 devbox 镜像，`PASS=203 FAIL=0`。
 #   🔴 **顺带如实登记这一格是怎么被逮到的**：`D1` 交回时实得 **173**、地板还停在 **126**，
 #   而 `tests/e2e/assert-pass-floor.sh:56` 是 `n -lt FLOOR` ⇒ **只挡缩水、不挡「涨了不跟」**
@@ -1368,12 +1368,12 @@ run_e2e ccm-rbind-title  8
 #   两条本地退路都删了。那不是「删几条判据」——盘上是**整族翻面 ＋ 净增**：
 #     · `ccm-cli` +19：`WIRE/launch` 的「降级」族翻成「不可达」族（＋`腿分开` 3 条：
 #       用一份「账号答得上、只有 `--launch` 答不出」的后端把两条腿分开）· `KCY2` 整族翻面
-#       （`rc=4` / 「`CCM_NO_DAEMON=1` 不是逃生口」/「空表是合法答案」各成一格）·
+#       （`rc=4` / 「`CCM_NO_BACKEND=1` 不是逃生口」/「空表是合法答案」各成一格）·
 #       身份前置检查那族补了「不给 `--base` ⇒ 账号那条腿先报」的反向对照 ·
 #       `WIRE/夹具自检④` 拆成「没后端 ⇒ 没有兜底」＋「后端在但答不出 `--resolve` ⇒ 静默退路仍在」。
 #     · `ccm-contract-parity` +4：`A″`/`A′e`/`A′h` 三处的反向对照从「关掉后端」换成
 #       「换一份后端」（同一条代码路径、只有输入不同 —— provenance 正是后者），
-#       并各补一格「`CCM_NO_DAEMON=1` ⇒ rc=4」。
+#       并各补一格「`CCM_NO_BACKEND=1` ⇒ rc=4」。
 #     · `ccm-cli` 再 +3：`控制字符` 那一族拆成两半 —— 「换行照发」（修回来的那个能力：
 #       载荷里的 `\n`/`\t` 是**键**，`create-or-attach` 放行；`ESC`/`CR`/`NUL` 照旧挡）
 #       ＋「线上那份请求里那个换行是**转义**过去的」。
@@ -1398,22 +1398,22 @@ run_e2e ccm-rbind-title  8
 #   · `WIRE` 85 —— 「发了 / 发对了 / 不可达 / 撞名」。同一个进程之下没有「上线字节」这回事；
 #     其中「那几件事一件都不许丢」已落成 Rust 判据
 #     `the_container_launch_goes_through_the_one_door_with_every_field_intact`。
-#   · 账号解析走 daemon 一节 69 + 身份 daemon 前置检查 15 —— 「找不到 daemon」这个概念没了。
+#   · 账号解析走后端一节 69 + 身份后端前置检查 15 —— 「找不到后端」这个概念没了。
 #   · `A″`/`A′d`/`A′e`/`A′f`/`A′h` 31 —— 全是「ccm 去问另一个进程」这件事的形状。
 #   · `A′g` 2 —— **搬进了 Rust**（`a_command_from_the_backend_is_never_rewritten_by_the_shell`）。
 #
 # 🔴 **两族是本拍实测推翻第一拍判词的**（第一拍判「搬得过去」，指过去之后发现没有指称对象）：
 #   ccm-cli 第 82–83（`--print` 不受身份前置检查影响 ＋ **非空对照断的正是已删的 rc=2**）·
-#   第 281–284（`--print` 纯性，第 281 数「假 daemon 被调几次」⇒ 原生实现恒 0，**空真**）。
+#   第 281–284（`--print` 纯性，第 281 数「假后端被调几次」⇒ 原生实现恒 0，**空真**）。
 #
-# ⚠ **新增判据落在别处，不在这四格里**：daemon 那格 676 → 677（容器路三条转发那条）。
+# ⚠ **新增判据落在别处，不在这四格里**：backend 那格 676 → 677（容器路三条转发那条）。
 run_e2e ccm-cli               46
 # 🔴 〔`K-R61` 09-11〕39 → **42**：C 组加了三格（`capabilities=` 声明
 #    `base-url-across-tmux` · 容器载荷真带 `export ANTHROPIC_BASE_URL=` · 反空真）。
 #    判法是 `exact` ⇒ 这个数不改，涨了照样红。**同一拍要改三处**（本行 + `ci.yml` 的
 #    调用行 + 那个 job 里的清单副本），三处都不在 `K-R61` 写区，已点名交回 PM。
 # 🔴 〔`K-R70` 09-12〕42 → **45**：C 组再加三格，问的是**一份真编出来的二进制**
-#    「你是哪一次构建」——① 抽取器自检（从 daemon 源码抠得到 `BUILD_ID`）·
+#    「你是哪一次构建」——① 抽取器自检（从后端源码抠得到 `BUILD_ID`）·
 #    ② `--ccm-probe` 的 `build=` 行 == 那个 `BUILD_ID` · ③ `build=` 与 `version=` 不同值
 #    （后者是 CLI 契约版本，答不出身份）。**它是本件唯一跑真二进制的判据**，
 #    Rust 侧那几条跑的是测试壳。⚠ `ci.yml` 那两处（调用行 + 清单副本）**不在本件写区**，
@@ -1475,7 +1475,7 @@ run_e2e ccm-contract-parity   45
 #（读数住 `tests/evidence/K-R119-发版读数.md § 六`）。四条差异里三条落在门禁自己**逐格印出来**的
 # 射程之外 —— 读数在那儿，而**没有人把它读成「所以这三件事没人管」**；
 # 第四条更直接：`shellcheck` 当时 16 格里**一格都没有**。
-# ⇒ 本件甲那一半已经把其中两条收成了格（`shellcheck` · `winchk-daemon`）。
+# ⇒ 本件甲那一半已经把其中两条收成了格（`shellcheck` · `winchk-backend`）。
 #   **剩下的这几条今天仍然买不到，所以要在裁决那一刻逐字说出来。**
 #
 # ## 形状：`键|说明`，而**键是有牙的那一半**
@@ -1509,14 +1509,14 @@ echo
 if [ "${#fails[@]}" -eq 0 ]; then
   # 🔴 `K-R80`（09-12）：**这一行原来逐字是「三道门 + 生成物漂移 + pb check + 四套 ccm e2e」
   #   —— 那是 09-10 加 `fmt`/`winchk` 之前的点名，盘上现打 11 格时它只点得出 9 格。**
-  #   本拍加了第 12 格（`fmt-daemon`），顺手把它订正到今天，并且**不让它再自己烂下去**：
+  #   本拍加了第 12 格（`fmt-backend`），顺手把它订正到今天，并且**不让它再自己烂下去**：
   #   下面这个 `12` 与「本文件里到底有几格判定」由 `tests/evidence/K-R80-gate-cell-coverage.py`
   #   三方对拍（本行的数 · 本文件真有的判定格 · 那份覆盖登记的条数），对不上就红。
   #   ⚠ 那把尺子**不在本脚本里跑** —— 它是登记的机检，不是出货闸的一格。
   # 🔴 `K-R82`（09-12）：**12 → 13**，加的是 `hooks` 那一格（上面 `gate_selftest` 之后那一段）。
   #   这一行的数与点名跟着改了 —— 而**不是靠人记得改**：`C5` 那条三方对拍会当场逮到。
   # 🔴 `K-R122`（09-14）：**16 → 19**，加了三格 —— `shellcheck`（第 17 格）·
-  #   `ci-e2e-prereq`（第 18 格）· `winchk-daemon`（第 19 格）。三格都是
+  #   `ci-e2e-prereq`（第 18 格）· `winchk-backend`（第 19 格）。三格都是
   #   「CI 那边有人看、本门禁一个字都看不见」的那一维（`KR122D2` 甲）。
   # 🔴 `K-R128`（09-15）：**20 → 21**，加的是 `installface`（第 21 格）——
   #   第三块（`S1`–`S5`）开工前，把 `K-R117` 自陈的那个洞（收工判据没有闸）
@@ -1524,7 +1524,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   # 🔴 `K-R124`（09-15）：**19 → 20**，加的是 `release-gate`（第 20 格）。它治的不是
   #   「CI 有、本地没有」，是**更坏的一档**：CI 里那一步从加进去那天起就不可能过，
   #   而它在本地跑不起来（判据本体用了沙箱里没有的 PyYAML）⇒ **两头都看不见**。
-  echo "GATE: OK —— 21 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · installface · fmt · fmt-daemon · winchk · winchk-daemon · cargo · deadcode · generated · daemon · tsc · npm · 四套 ccm e2e · pb check），可以出货"
+  echo "GATE: OK —— 21 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · installface · fmt · fmt-backend · winchk · winchk-backend · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e · pb check），可以出货"
   gate_print_blind
   exit 0
 fi

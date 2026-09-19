@@ -2,18 +2,18 @@
 //!
 //! # 它补上的是哪一半
 //!
-//! U6b-1/2/3 在 daemon 侧建了完整的入方向：信封、`id` 回显、取消、单行上限、能力协商。
+//! U6b-1/2/3 在后端侧建了完整的入方向：信封、`id` 回显、取消、单行上限、能力协商。
 //! 但 U8a-2 摸底实测出一件事：**monitor 侧一个字节都没往那条流的 stdin 写过**
-//! （`ssh_source.rs` 里写半边的唯一用法是 `probe_daemon` 的 `shutdown()`，零数据字节）。
+//! （`ssh_source.rs` 里写半边的唯一用法是 `probe_backend` 的 `shutdown()`，零数据字节）。
 //! ⇒ 那条通道在生产里**不可达**。本模块就是那条缺失的发送端。
 //!
-//! # 「Hello 之前不许写」做成不可表示（对称于 daemon 的 `wire::HelloFlushed`）
+//! # 「Hello 之前不许写」做成不可表示（对称于后端的 `wire::HelloFlushed`）
 //!
 //! ```text
 //! connect_and_exec → ChannelStream
 //!         └── split_and_park(stream) ─→ (ReadHalf, ParkedWriter<WriteHalf>)
 //!                     │                            ▲ 身上没有任何写方法
-//!                     │                            └── .into_client(hello: DaemonHello)
+//!                     │                            └── .into_client(hello: BackendHello)
 //!                     └── ReadHalf → 既有 reader task      ▲ 只能由 InboundFrame::Hello 换来
 //! ```
 //!
@@ -31,8 +31,8 @@
 //!
 //! # 超时归客户端
 //!
-//! 主计划已定「超时一律推给客户端」（daemon 的零定时器铁律不改，登记表仍 1 条）。
-//! 所以 [`InboundClient::call`] 自带超时，且超时后**补发一条 `cancel`**，让 daemon 别白跑 ——
+//! 主计划已定「超时一律推给客户端」（backend 的零定时器铁律不改，登记表仍 1 条）。
+//! 所以 [`InboundClient::call`] 自带超时，且超时后**补发一条 `cancel`**，让后端别白跑 ——
 //! 这顺带让 U6b-1 写好的 `cancel` 命令第一次有真调用方。
 
 use crate::ssh_source::InboundFrame;
@@ -47,9 +47,9 @@ use tokio::sync::{mpsc, oneshot};
 
 /// 同一条连接上**同时在等应答**的命令数上限。
 ///
-/// 超时**不摘登记**（见 [`InboundClient::call`]），所以一个死掉但没断连的 daemon
+/// 超时**不摘登记**（见 [`InboundClient::call`]），所以一个死掉但没断连的 backend
 /// 会让登记表只涨不落。这条上限把它变成「新命令快速失败」而不是「内存无界增长」。
-/// 取值与 daemon 侧应答通道容量同量级（`src/backend/inbound.rs` 的
+/// 取值与后端侧应答通道容量同量级（`src/backend/inbound.rs` 的
 /// `REPLY_CHANNEL_CAPACITY = 256`）—— 那头一次也只缓 256 条应答。
 pub const MAX_PENDING: usize = 256;
 
@@ -60,18 +60,18 @@ pub const WRITE_QUEUE_CAPACITY: usize = 64;
 /// 一次调用失败的原因。**每一档都要能让调用方分辨「该重试」还是「别重试」。**
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallError {
-    /// daemon 在 `hello.commands` 里没声明这条命令（含旧 daemon：无该字段 ⇒ 空集）。
+    /// backend 在 `hello.commands` 里没声明这条命令（含旧后端：无该字段 ⇒ 空集）。
     /// 客户端侧直接拒，省一次往返 + 一次超时。**别重试**。
     Unsupported { cmd: String, offered: Vec<String> },
     /// 同时在等的命令已达 [`MAX_PENDING`]。**可稍后重试**。
     TooManyPending,
     /// 连接（或写任务）已经没了。**重连后重试**。
     Disconnected,
-    /// daemon 回了 `{"kind":"cancelled"}`。
+    /// backend 回了 `{"kind":"cancelled"}`。
     Cancelled,
     /// 本地超时。已补发 `cancel`（best-effort）。
     Timeout { after: Duration },
-    /// daemon 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）。
+    /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）。
     Remote { code: String, message: String },
 }
 
@@ -80,7 +80,7 @@ impl std::fmt::Display for CallError {
         match self {
             CallError::Unsupported { cmd, offered } => write!(
                 f,
-                "远端 daemon 不支持入方向命令 `{cmd}`（它声明的是 {offered:?}）—— 多半是旧版本，请重装该机器的 daemon"
+                "远端后端不支持入方向命令 `{cmd}`（它声明的是 {offered:?}）—— 多半是旧版本，请重装该机器的 backend"
             ),
             CallError::TooManyPending => write!(
                 f,
@@ -111,29 +111,29 @@ enum Outcome {
 /// 交给 writer task 的活。
 ///
 /// 之所以不是纯 `String`：**关写半边**必须是一条显式指令，不能是「写任务结束时顺手做的事」。
-/// 关掉写半边 = 让 daemon 的入方向 reader 见 EOF 寿终；一次性探测想要这个收尾，
+/// 关掉写半边 = 让后端的入方向 reader 见 EOF 寿终；一次性探测想要这个收尾，
 /// 长连接不想要（那头之后还要能发命令）。两种语义必须分开表达。
 ///
-/// ⚠ **不要以为关写半边就能让 daemon 退出。** e2e 实测（`tests/e2e/inbound-daemon-frames.sh` 第 9 条）：
-/// stdin EOF 只结束 daemon 的入方向 reader **task**，进程照活。daemon 只在
+/// ⚠ **不要以为关写半边就能让后端退出。** e2e 实测（`tests/e2e/inbound-backend-frames.sh` 第 9 条）：
+/// stdin EOF 只结束后端的入方向 reader **task**，进程照活。backend 只在
 /// ① `writer_task` 结束（stdout 关了）或 ② 收到停机信号 时退出（见其 `main.rs` 的 select）。
-/// `ssh_source::probe_daemon` 里那句「daemon 看到 EOF 自行退出」的老注释是错的 ——
+/// `ssh_source::probe_backend` 里那句「backend 看到 EOF 自行退出」的老注释是错的 ——
 /// 它真正的收尾靠的是整条 SSH channel 被 drop。
 enum WriteJob {
     Line(String),
     CloseWrite,
 }
 
-/// **Hello 见证**：拿到它 = 已经真的收到过 daemon 的 `hello` 帧。
+/// **Hello 见证**：拿到它 = 已经真的收到过后端的 `hello` 帧。
 ///
-/// 唯一构造入口是 [`DaemonHello::from_hello_frame`]，它只对 `InboundFrame::Hello` 返回 `Some`。
+/// 唯一构造入口是 [`BackendHello::from_hello_frame`]，它只对 `InboundFrame::Hello` 返回 `Some`。
 /// 字段私有 ⇒ 外部造不出来。
 #[derive(Debug, Clone)]
-pub struct DaemonHello {
+pub struct BackendHello {
     commands: Vec<String>,
 }
 
-impl DaemonHello {
+impl BackendHello {
     /// 从一个真的 Hello 帧换见证。非 Hello 帧 → `None`。
     pub fn from_hello_frame(frame: &InboundFrame) -> Option<Self> {
         match frame {
@@ -147,7 +147,7 @@ impl DaemonHello {
 
 /// **停在手里的写半边** —— 身上没有任何写方法。
 ///
-/// 唯一出口是 [`ParkedWriter::into_client`]，而它要一个 [`DaemonHello`]。
+/// 唯一出口是 [`ParkedWriter::into_client`]，而它要一个 [`BackendHello`]。
 /// 这就是「Hello 之前不许写」在 monitor 侧的落点。
 pub struct ParkedWriter<W> {
     inner: W,
@@ -204,13 +204,13 @@ where
 /// 上面那道门防的是**从双工流里切出来、却忘了停**的裸 WriteHalf：切与停必须由
 /// [`split_and_park`] 一步做完，否则会出现「有人能在 hello 之前写」的窗口。
 ///
-/// 而本函数的入参**不是从任何流切出来的**。本机 daemon 是 `std::process::Child`，
+/// 而本函数的入参**不是从任何流切出来的**。本机后端是 `std::process::Child`，
 /// 它的 `ChildStdin` / `ChildStdout` 是**两条本来就独立的管道** —— 这条路上
 /// **压根没有「切」这个动作**，因此也没有「切了忘了停」这个失效模式可防。
 ///
 /// ⇒ 本函数承认的是**结构差异**，不是给「切了不停」开后门。它仍然产出 [`ParkedWriter`]，
 /// 也就是说「hello 之前不许写」那条性质**照旧由类型保证**（要拿到可写的 client，
-/// 唯一的路仍是 [`ParkedWriter::into_client`]，而它要一个 [`DaemonHello`] 见证）。
+/// 唯一的路仍是 [`ParkedWriter::into_client`]，而它要一个 [`BackendHello`] 见证）。
 ///
 /// # 为什么远端那条路用不了
 ///
@@ -236,7 +236,7 @@ where
     /// 收到 Hello 之后，把停着的写半边换成一个能发命令的客户端。
     ///
     /// 写半边被移进一个独立的 writer task —— 之后没有任何人还能直接碰它。
-    pub fn into_client(self, hello: DaemonHello) -> Arc<InboundClient> {
+    pub fn into_client(self, hello: BackendHello) -> Arc<InboundClient> {
         let (tx, mut rx) = mpsc::channel::<WriteJob>(WRITE_QUEUE_CAPACITY);
         let mut w = self.inner;
         tauri::async_runtime::spawn(async move {
@@ -260,7 +260,7 @@ where
                 }
             }
             // 走到这里 = 通道关了或写崩了。**不隐式 shutdown**：关掉写半边 =
-            // daemon 的入方向 reader 寿终 ⇒ 这条连接**再也发不出命令**。
+            // backend 的入方向 reader 寿终 ⇒ 这条连接**再也发不出命令**。
             // 长连接上那是不可接受的，所以关不关由调用方用 `CloseWrite` 明说。
         });
         Arc::new(InboundClient {
@@ -284,7 +284,7 @@ pub struct InboundClient {
 }
 
 impl InboundClient {
-    /// daemon 声明接受这条命令吗。
+    /// backend 声明接受这条命令吗。
     pub fn accepts(&self, cmd: &str) -> bool {
         self.commands.iter().any(|c| c == cmd)
     }
@@ -292,7 +292,7 @@ impl InboundClient {
     /// 本连接内唯一的请求 `id`。
     ///
     /// 形状 `<连接 nonce>-<单调序号>`：nonce 让重连后的号段不撞，序号在连接内唯一
-    /// ⇒ daemon 的 `duplicate_id` 拒绝路径在正常情况下打不到。
+    /// ⇒ backend 的 `duplicate_id` 拒绝路径在正常情况下打不到。
     fn next_id(&self) -> String {
         let n = self.seq.fetch_add(1, Ordering::Relaxed);
         format!("{}-{n}", self.nonce)
@@ -307,9 +307,9 @@ impl InboundClient {
     ///
     /// ```text
     /// monitor 读侧一停（stream_loop 卡在 flush_lines）
-    ///   → daemon stdout 反压
-    ///   → daemon 应答通道满（IPC-PROTOCOL 第 4 条：「满时阻塞入方向正是想要的」）
-    ///   → daemon 停读 stdin
+    ///   → backend stdout 反压
+    ///   → backend 应答通道满（IPC-PROTOCOL 第 4 条：「满时阻塞入方向正是想要的」）
+    ///   → backend 停读 stdin
     ///   → monitor 的 write_all 永久 pending（MASTERPLAN 逐字记着这条）
     ///   → 写队列（64）填满
     ///   → call() **无视自己的 timeout 永久挂起**
@@ -348,7 +348,7 @@ impl InboundClient {
                 return Err(CallError::Disconnected);
             }
             Err(_elapsed) => {
-                // 没入队 ⇒ 不会有应答 ⇒ 摘掉，也不用补 cancel（daemon 没见过这条命令）。
+                // 没入队 ⇒ 不会有应答 ⇒ 摘掉，也不用补 cancel（backend 没见过这条命令）。
                 self.take_pending(&id);
                 return Err(CallError::Timeout { after: timeout });
             }
@@ -394,14 +394,14 @@ impl InboundClient {
         self.deliver(id, Outcome::Cancelled)
     }
 
-    /// **显式关掉写半边** —— daemon 的入方向 reader 见 EOF 后寿终。
+    /// **显式关掉写半边** —— backend 的入方向 reader 见 EOF 后寿终。
     ///
-    /// 只有一次性探测该调（`ssh_source::probe_daemon`：探完就不再发命令了）。
+    /// 只有一次性探测该调（`ssh_source::probe_backend`：探完就不再发命令了）。
     /// 长连接上调它 = 之后**再也发不出任何命令**，而连接看起来一切正常。
     /// 之所以做成一条要主动发的指令而不是「writer task 结束时顺手做」，就是为了让这个
     /// 区别在调用点显形。
     ///
-    /// **它不会让 daemon 退出**（e2e 第 9 条实测钉住）—— 见 [`WriteJob`] 的说明。
+    /// **它不会让后端退出**（e2e 第 9 条实测钉住）—— 见 [`WriteJob`] 的说明。
     pub fn close_write(&self) {
         if self.writes.try_send(WriteJob::CloseWrite).is_err() {
             // 队列满 / 写任务已退。**说出来** —— 调用方会以为已经关了。
@@ -427,7 +427,7 @@ impl InboundClient {
             // ★ 归不到任何命令头上的应答。**最要紧的是别把 code/message 丢了** ——
             // 它们往往是唯一能说清「为什么那条命令没反应」的东西。
             //
-            // daemon 对**协议级**错误（坏 JSON / 超长单行）回的 `id` 是**空串**
+            // backend 对**协议级**错误（坏 JSON / 超长单行）回的 `id` 是**空串**
             // （它那时还不知道 id 是什么），所以空 id 不是「回显错了」，是这一类。
             let detail = match &outcome {
                 Outcome::Reply {
@@ -444,12 +444,12 @@ impl InboundClient {
             };
             if id.is_empty() {
                 tracing::warn!(
-                    "远端 daemon 回了一条**协议级**错误应答（id 为空，归不到具体命令）{detail} —— \
+                    "远端后端回了一条**协议级**错误应答（id 为空，归不到具体命令）{detail} —— \
                      多半是上一条命令的 JSON 坏了或超过单行上限；那条命令会走本地超时"
                 );
             } else {
                 tracing::warn!(
-                    "入方向应答的 id `{id}` 没有登记{detail} —— 要么 daemon 回显错了 id，\
+                    "入方向应答的 id `{id}` 没有登记{detail} —— 要么后端回显错了 id，\
                      要么登记表满时补发的 cancel 回来了"
                 );
             }
@@ -467,10 +467,10 @@ impl InboundClient {
     /// # ★ 满之前先回收「调用方已走」的登记
     ///
     /// 「超时不摘登记」那条设计有个前提：晚到的应答终会把登记摘掉。
-    /// D 审计指出这个前提在**背压路径上不成立** —— daemon 侧 cancel 的两条应答都是
+    /// D 审计指出这个前提在**背压路径上不成立** —— backend 侧 cancel 的两条应答都是
     /// `try_send`（`inbound.rs`），应答通道满时**静默丢弃**，被 abort 的命令也不补应答。
     /// 那条 id 就永远等不到任何帧，是真泄漏；每次超时消耗 2 格，128 次封死 256 格，
-    /// **而且 daemon 恢复之后也不会自愈**。
+    /// **而且后端恢复之后也不会自愈**。
     ///
     /// 回收判据用 `oneshot::Sender::is_closed()`：接收端已 drop = 调用方早走了，
     /// 这条登记留着只是为了「让晚到的应答别刷 warn」，满的时候它显然不值那个价。
@@ -503,7 +503,7 @@ impl InboundClient {
         lock(&self.pending).remove(id)
     }
 
-    /// 超时后补一条 `cancel`，让 daemon 别白跑。**不等它的应答。**
+    /// 超时后补一条 `cancel`，让后端别白跑。**不等它的应答。**
     ///
     /// 它自己那条应答也登记（接收端立刻丢掉）——这样路由到它时走的是
     /// 「调用方已走」的 debug 路径，而不是「未登记的 id」的 warn。
@@ -560,13 +560,13 @@ pub fn encode_request(id: &str, cmd: &str, args: &Value) -> String {
 /// 已经是一条**渲染好的 shell 串**，拆不回结构化计划。切换要等前端改成发结构化请求
 /// （U8c 的两个 TS 渲染器 + IR 退役），登记为 **U8a-2c**。
 ///
-/// 那为什么现在就写：**它是契约**。字段名一旦与 daemon 的解析器漂开，症状是
-/// 「命令发出去了、daemon 回 `bad_request` 说缺字段」，而两边各自看都「对」。
-/// `launch_args_field_names_match_the_daemon_parser` 把这件事变成编译期就会红的对拍。
+/// 那为什么现在就写：**它是契约**。字段名一旦与后端的解析器漂开，症状是
+/// 「命令发出去了、backend 回 `bad_request` 说缺字段」，而两边各自看都「对」。
+/// `launch_args_field_names_match_the_backend_parser` 把这件事变成编译期就会红的对拍。
 ///
-/// `mode` 只有两种取值 —— **没有 `attach-only`**：attach 是平面 ③，daemon 在远端，
-/// 开不了你面前的窗（见 daemon `control/launch.rs` 头注）。
-// U8a-2c-1：**它有生产调用方了** —— `backend::control::daemon_launch::daemon_send_into`。
+/// `mode` 只有两种取值 —— **没有 `attach-only`**：attach 是平面 ③，backend 在远端，
+/// 开不了你面前的窗（见 backend `control/launch.rs` 头注）。
+// U8a-2c-1：**它有生产调用方了** —— `backend::control::backend_launch::backend_send_into`。
 // 在那之前这里挂着 `#[allow(dead_code)]`（编码器早写好、零调用方，正是复盘点名的「方向偏移」形状）。
 pub fn launch_args(
     mode: &str,
@@ -598,9 +598,9 @@ pub fn launch_args(
 
 /// `K-R104`：`capture-pane` 命令的**参数构造器**（monitor 这一侧的契约面）。
 ///
-/// 与 [`launch_args`] 同一条理由：字段名一旦与 daemon 的解析器漂开，症状是
-/// 「命令发出去了、daemon 回 `invalid_args` 说缺字段」，而两边各自看都「对」。
-/// 由 [`tests::the_tmux_primitive_arg_builder_matches_the_daemon_parser`] 对拍。
+/// 与 [`launch_args`] 同一条理由：字段名一旦与后端的解析器漂开，症状是
+/// 「命令发出去了、backend 回 `invalid_args` 说缺字段」，而两边各自看都「对」。
+/// 由 [`tests::the_tmux_primitive_arg_builder_matches_the_backend_parser`] 对拍。
 pub fn capture_pane_args(name: &str) -> Value {
     let mut m = serde_json::Map::new();
     m.insert("name".into(), Value::String(name.to_string()));
@@ -616,13 +616,13 @@ pub fn capture_pane_args(name: &str) -> Value {
 /// 具名字段让那类错**在源码上就看得见**。
 ///
 /// ⚠ `send-into` / `send-keys-raw` 那两个 mode 用 [`LaunchExtras::default`]：
-/// 这三个字段**只对新建会话有意义**（daemon 侧也只在 `CreateOrAttach` 那条臂上读它们）。
+/// 这三个字段**只对新建会话有意义**（backend 侧也只在 `CreateOrAttach` 那条臂上读它们）。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LaunchExtras<'a> {
     /// 哪个 AI —— 落成 tmux 的 `@ccm_agent` 标记。
     pub agent: Option<&'a str>,
     /// 新建窗口宽（十进制串）。**与 `height` 成对**：只给一半时这里直接两个都不发，
-    /// 让「半个尺寸」在**发出去之前**就不存在，而不是等 daemon 回 `invalid_args`。
+    /// 让「半个尺寸」在**发出去之前**就不存在，而不是等后端回 `invalid_args`。
     pub width: Option<&'a str>,
     /// 新建窗口高（十进制串）。见 `width`。
     pub height: Option<&'a str>,
@@ -633,7 +633,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 /// 每条连接一个前缀。用进程内单调计数 + 起始时间戳：**不需要密码学随机**，
-/// 只需要「同一个 daemon 进程看到的两条连接不会用同一个号段」。
+/// 只需要「同一个后端进程看到的两条连接不会用同一个号段」。
 fn connection_nonce() -> String {
     static CONN: AtomicU64 = AtomicU64::new(0);
     let n = CONN.fetch_add(1, Ordering::Relaxed);
@@ -696,7 +696,7 @@ pub const LOCAL_ORIGIN: &str = "<local>";
 
 /// **测试期 `<local>` 的独占锁**。
 ///
-/// 登记表是**进程内全局**的，而 cargo 默认并行跑用例 ⇒ 两条都在 `<local>` 键上起真 daemon
+/// 登记表是**进程内全局**的，而 cargo 默认并行跑用例 ⇒ 两条都在 `<local>` 键上起真 backend
 /// 的用例会互相看见对方登记的通道。实测形态：一条用例的 `等通道出现` 立刻为真
 /// （其实是另一条登记的），随后 `起来了却没有 pid`。
 ///

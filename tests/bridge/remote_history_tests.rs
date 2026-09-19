@@ -12,16 +12,16 @@ fn jsonl_stem_basics() {
 }
 
 #[test]
-fn old_daemon_hello_detected() {
-    assert!(is_old_daemon_hello(
+fn old_backend_hello_detected() {
+    assert!(is_old_backend_hello(
         r#"{"kind":"hello","v":1,"build_id":"phase0-proto","host_arch":"aarch64","claude_dir":"/home/pi/.claude"}"#
     ));
     // 查询模式的正常输出不含 kind
-    assert!(!is_old_daemon_hello(
+    assert!(!is_old_backend_hello(
         r#"{"dirName":"-home-pi-proj","projectPath":"/home/pi/proj","sessionCount":3,"lastActivityMs":1}"#
     ));
     // jsonl 正文里聊到 hello 不该误判（必须是 kind 字段形态）
-    assert!(!is_old_daemon_hello(
+    assert!(!is_old_backend_hello(
         r#"{"type":"user","message":{"content":"say hello"}}"#
     ));
 }

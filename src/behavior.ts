@@ -80,7 +80,7 @@ export interface BehaviorConfig {
   bringMonitorToFrontOnUserActive: boolean;
   /**
    * Batch7-F24：显示 bg 后台任务会话（⚙ 标识 + 树状挂宿主后）。默认 true。
-   * **重启生效**（后端启动时读一次：本地扫描过滤 + 远端 daemon --with-bg）。
+   * **重启生效**（后端启动时读一次：本地扫描过滤 + 远端 backend --with-bg）。
    */
   showBgSessions: boolean;
   /**

@@ -731,7 +731,7 @@ fn bare_session_is_attributed_to_account_zero() {
 /// 也就是说「0 字节」这个信号自己也装着两件事：「这一刻读不出来」与「环境真的是空的」。
 /// 生产上后者不会发生（真 claude 进程至少有 `PATH`/`HOME`），且两者都落到**保守**的
 /// 那一侧（报「不知道」而不是报「账号 0」）⇒ `K-R21` **刻意不拆它**，登记在 `§7`。
-/// **别把本条读成「daemon 分得清这两件事」—— 它分不清。**
+/// **别把本条读成「backend 分得清这两件事」—— 它分不清。**
 ///
 /// # 🔴🔴 `K-R55`（09-11）：补了一个**真实存在的前提缺口**；
 /// #    而「它是不是那条 flaky 的根因」—— **判不了，如实写**
@@ -1081,7 +1081,7 @@ fn main_dispatches_every_subcommand_we_handle() {
             main_prod.contains(lit.as_str()),
             "`--{name}` 在本模块有完整实现，但 `main.rs` 的调度里找不到 `{lit}`。\n\
                  它会落进 `_` 臂走历史查询 ⇒ 回 `unknown argument` + exit 2，\n\
-                 而调用方（monitor）拿到的是一个看起来像「daemon 太旧」的失败。\n\
+                 而调用方（monitor）拿到的是一个看起来像「backend 太旧」的失败。\n\
                  **v3.4.0 就是这么漏出去的。** 加子命令时两处都要加。"
         );
     }
@@ -1107,7 +1107,7 @@ fn account_trust_zero_takes_no_path_argument() {
 
 // ---- K-A1：鉴权方式这一维（生产者①） ----
 
-/// ★ **跨生产者对拍，daemon 这一半。**
+/// ★ **跨生产者对拍，backend 这一半。**
 ///
 /// 喂的是 `acct_core::auth_kind_parity_manifest`（**两个 crate 共用的那一份**），
 /// 断的是 `acct_core::AUTH_KIND_PARITY_CASES` 里手写的金样。
@@ -1117,7 +1117,7 @@ fn account_trust_zero_takes_no_path_argument() {
 /// ⚠ 它**只覆盖 `authKind` / `authReady` 这一维**（`KA6c`）：其余 6 个字段今天仍是
 /// 两份实现各写一遍，这条对拍看不见它们漂。
 #[test]
-fn auth_kind_parity_daemon_side() {
+fn auth_kind_parity_backend_side() {
     let root = tmpdir("authkind-parity");
     for c in &acct_core::AUTH_KIND_PARITY_CASES {
         let d = root.join(c.name);
@@ -1143,12 +1143,12 @@ fn auth_kind_parity_daemon_side() {
         assert_eq!(v["name"], c.name, "顺序变了，下面几格就对错人了");
         assert_eq!(
             v["authKind"], c.expect_auth_kind,
-            "{}：daemon 产出的 authKind 与金样不一致",
+            "{}：backend 产出的 authKind 与金样不一致",
             c.name
         );
         assert_eq!(
             v["authReady"], c.expect_auth_ready,
-            "{}：daemon 产出的 authReady 与金样不一致",
+            "{}：backend 产出的 authReady 与金样不一致",
             c.name
         );
         // `loggedIn` 逐字节旧语义：仍然只是「凭据文件在不在」。
@@ -1304,15 +1304,15 @@ fn the_launch_id_env_var_matches_the_monitor_side_home() {
 
 /// ★★ **本文件读环境这件事的射程不许悄悄变大**〔本文件头注那条「两个写死的键」的判据〕。
 ///
-/// 🔴 **主语就是「本文件」，不是「daemon 全体」**〔`K-R21` 09-03 收窄的措辞〕：
+/// 🔴 **主语就是「本文件」，不是「backend 全体」**〔`K-R21` 09-03 收窄的措辞〕：
 /// 本条的分母是 `include_str!("../../../src/backend/observe/accounts_query.rs")` 的生产段 —— **一个文件**，
 /// 与测试名里那个 `this_module` 逐字对齐。
-/// ⚠ daemon 里**还有第三处**在读 `/proc/<pid>/environ`：`control/identity_tag.rs`
+/// ⚠ backend 里**还有第三处**在读 `/proc/<pid>/environ`：`control/identity_tag.rs`
 /// 读 `TMUX_PANE`（09-03 现打，生产段共 3 个调用方）。它**不在本条视野里**，
 /// 而这句话原来读起来像全仓 —— 那正是本仓登记过的「量具的作用域对不上事实」那一形。
 /// ⇒ `K-R21` PM 裁定：**不为此装第二把尺子**（那个人群今天产出过 0 条假话，
 /// 为它付一把新尺子的固定成本不划算 —— 同 `K-R19` 裁「闸 G 不装」的口径），
-/// **改的是这句话的主语**。别把这一格读成「全 daemon 只读两个键」。
+/// **改的是这句话的主语**。别把这一格读成「全后端只读两个键」。
 ///
 /// 守的性质：`/proc/<pid>/environ` 只抠**两个常量键**，键名**不许成为一维参数**。
 /// 多一处 `proc_env_var(pid, …)` ⇒ 红，来这里回答「新那个键是什么、为什么它不

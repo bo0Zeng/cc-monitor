@@ -47,8 +47,8 @@ LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
 #
 #    **查找次序**:`$CCM_BIN`(显式) → 部署落点 `~/.cc-monitor/bin/` → PATH 上的
 #    `cc-monitor-remote` → PATH 上的 `ccm`(给「已经把后端软链成 `ccm`」的人用)。
-#    🔴 **刻意不认 `$CCM_DAEMON_BIN`**:那个变量在仓里的 e2e 夹具里指的是**假 daemon**
-#    (`tests/e2e/fake-daemon.sh` 这一族,只会答几条 wire 子命令),拿它当 CLI 叫会得到一个
+#    🔴 **刻意不认 `$CCM_BACKEND_BIN`**:那个变量在仓里的 e2e 夹具里指的是**假 backend**
+#    (`tests/e2e/fake-backend.sh` 这一族,只会答几条 wire 子命令),拿它当 CLI 叫会得到一个
 #    「答得出话、干不了活」的东西 —— 那正是本仓最贵的一类假信号。显式覆盖走 `CCM_BIN`。
 #    ⚠ **必须 `-f` 而不能只 `-x`**:`[ -x <目录> ]` 为真,而查找次序里那几档都可能是目录
 #    (历史实测:`~/.claude/skills/` 下全是目录,装个名叫 `ccm` 的 skill 就会劫持解析)。
@@ -121,7 +121,7 @@ base="$(printf '%s' "$bn" | tr -c 'A-Za-z0-9_-' '_' | sed 's/^-*//; s/-*$//')_cc
 # 与「**cc-spawn 不应该复用活会话**」。
 #
 # ⚠ 这是那个 `or` 的**第四份**实现:P3s 数出两份(ccm 的、TS 的),P4d 的冒烟又撞出
-# daemon 的 wire mode(第三份),这里是第四份。「我数完了」这句话在这个仓里已经错过三次。
+# backend 的 wire mode(第三份),这里是第四份。「我数完了」这句话在这个仓里已经错过三次。
 #
 # 命名避让**必须留着**:不复用 ≠ 不避让。同名直接建会撞上别人的会话,
 # 那正是 C14 要消灭的东西的另一面。

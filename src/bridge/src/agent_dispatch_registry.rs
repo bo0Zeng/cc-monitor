@@ -5,16 +5,16 @@
 //! 本模块初版就叫那个名字（派工时的预批名），落地当轮撞出一处真伤害，PM 裁定改名。
 //! 把来历留在这儿，是为了让下一个人**不要再把它改回去**：
 //!
-//! 1. **daemon 那棵树里已经有一个 `agent_boundary_guard`**
+//! 1. **backend 那棵树里已经有一个 `agent_boundary_guard`**
 //!    （`src/backend/agent_boundary_guard.rs`，`S1`：通用层不许知道任何 agent 的
 //!    名字与文件格式，人群由它的 `CORE_FILES` **opt-in** 列举）。**本模块不是它的桌面版**：
 //!    那一条判「通用层提没提 agent 的名字/布局」，本条数「通用层认不认得出**具体哪一个**
-//!    adapter」—— 形态照的是 daemon 侧**另一条**，`agent_locality_guard` 的判据④
+//!    adapter」—— 形态照的是后端侧**另一条**，`agent_locality_guard` 的判据④
 //!    （`general_layer_adapter_call_sites_are_enumerated_one_by_one`）。
 //! 2. **同名会当场把一处既有引用指错**：`src/bridge/src/ssh_source.rs` 里有一处逐字写着
-//!    「`agent_boundary_guard::FROZEN_COMPAT`」，指的是 **daemon 那一个**。本模块若同名，
+//!    「`agent_boundary_guard::FROZEN_COMPAT`」，指的是 **backend 那一个**。本模块若同名，
 //!    那一处在本树里就变成一个**指得到、但指错**的名字（本模块没有 `FROZEN_COMPAT`）。
-//!    ⚠ 那一处**不用改**：改名之后它在本树里重新变成唯一解 —— 只指 daemon 那个模块，而那是对的。
+//!    ⚠ 那一处**不用改**：改名之后它在本树里重新变成唯一解 —— 只指后端那个模块，而那是对的。
 //! 3. **`K-W3` 正要把两棵树并成一个 crate** ⇒ 同名同 crate 时必须改，早改比晚改便宜。
 //!
 //! 名字按 monitor 侧「清账 + 递减棘轮」那族的既有命名取（`local_read_surface_registry` ·
@@ -23,7 +23,7 @@
 //!
 //! # 它数什么 —— 四张脸，前三张该压到零，第四张方向相反
 //!
-//! 桌面侧的机制与 daemon 侧**不同**：这边**有** trait（`adapter::AgentAdapter`，9 个方法）
+//! 桌面侧的机制与后端侧**不同**：这边**有** trait（`adapter::AgentAdapter`，9 个方法）
 //! ＋ `for_kind()` 派发。⇒ 「直呼 `agents::<名>::`」那根针在这边一处都打不中，
 //! 而耦合**换了形状**住在别处。四张脸，逐张一句话：
 //!
@@ -35,15 +35,15 @@
 //! | [`Face::RuntimeDispatch`] | `for_kind(kind)` | 传的是**运行时** kind ⇒ 接口正在被正确使用 | **不上棘轮** |
 //!
 //! ★ 第四张脸单独登记、**刻意不上棘轮**：它是好方向。混进同一个计数，棘轮就会奖励
-//! 「把真分派改回写死」。这条分家的理由与 daemon 侧 `AGENT_REGISTRY_SITES` 的头注同族
+//! 「把真分派改回写死」。这条分家的理由与后端侧 `AGENT_REGISTRY_SITES` 的头注同族
 //! （两类性质相反的东西不许共用一个数），但方向反过来。
 //!
 //! # 为什么是**逐文件相等**，而不是只比总数
 //!
-//! daemon 侧那条判据的头注已经写死并实测过：只比总数的话「从 A 文件挪一处到 B 文件」
+//! backend 侧那条判据的头注已经写死并实测过：只比总数的话「从 A 文件挪一处到 B 文件」
 //! 会**全绿**，而那是把改动面藏起来、不是消掉。⇒ 本条也是**多一处红、少一处也红**。
 //!
-//! ⚠ **本条比 daemon 侧那条少一个洞**：那边为了不稀释靶子，把注册表文件整个**扣出人群**，
+//! ⚠ **本条比后端侧那条少一个洞**：那边为了不稀释靶子，把注册表文件整个**扣出人群**，
 //! 于是得再立一条判据⑦（注册表文件处数钉死 = `REGISTRY.len()`）当对价，堵「挪进去刷数」。
 //! 本条**一个文件都不扣** —— `adapter.rs`（接口自己那一份）也在人群里，按文件分行；
 //! 唯一不算的是**定义行**（`pub fn active()` / `pub fn records_dir(…)` 那几行本身就是接口）。
@@ -67,7 +67,7 @@
 //!
 //! ⇒ 而这三道**都由 [`tests::the_detectors_catch_synthetic_violations`] 反向钉着**：
 //! 把针拼坏成 `.active(`、或去掉边界、或去掉闭括号，那条会**红在「针空转」上**，
-//! 不是安静地全绿。形状照 daemon 侧的 `the_s4b_detectors_catch_synthetic_violations`。
+//! 不是安静地全绿。形状照后端侧的 `the_s4b_detectors_catch_synthetic_violations`。
 //!
 //! # ⚠ 诚实边界（四条，写在这里而不是只写在件计划里）
 //!

@@ -1,7 +1,7 @@
-# SSH 远端模式 — daemon 部署 runbook（issue #15 / #29）
+# SSH 远端模式 — backend 部署 runbook（issue #15 / #29）
 
 > **更新（issue #29 F08b 已实现自动部署）**：cc-monitor.exe **内嵌**交叉编译好的 aarch64/x86_64
-> musl daemon 二进制；连接远端时**自动**探测远端 arch（`uname -m`）、按 build_id 版本门控经 SFTP
+> musl backend 二进制；连接远端时**自动**探测远端 arch（`uname -m`）、按 build_id 版本门控经 SFTP
 > 把对应二进制推到 `cfg.daemon_path`（默认 `~/.cc-monitor/bin/cc-monitor-remote`）并 exec——用户**零手动步骤**。
 > 自动部署失败（无内嵌该 arch / daemon_path 含 `~` / SFTP 失败）会优雅降级到下面的手动部署。
 >
@@ -12,9 +12,9 @@
 
 ---
 
-## 发版构建：交叉编译 + 内嵌 daemon 二进制（F08b）
+## 发版构建：交叉编译 + 内嵌后端二进制（F08b）
 
-打包 cc-monitor.exe 前，需把 daemon 交叉编译成两份 musl 二进制放进 `src/bridge/embedded-daemons/`。
+打包 cc-monitor.exe 前，需把后端交叉编译成两份 musl 二进制放进 `src/bridge/embedded-backends/`。
 🔴 **`K-R70`（09-12）：旁边那份同名 `.build_id` 清单不要了。** 身份住在二进制**自己的字节**里
 （`main.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static [u8; N]`，形如 `<<ccm-build-id:<id>:ccm-build-id>>`），
 `build.rs` 直接扫它。〔为什么换：清单是从**源码常量**抠出来写的一张标签，三个载体的清单**恒等**，
@@ -34,14 +34,14 @@ cargo zigbuild --release --target x86_64-unknown-linux-musl
 cargo zigbuild --release --target aarch64-unknown-linux-musl
 
 # 放进内嵌目录（build.rs 会 include_bytes 进 exe）
-mkdir ..\src/bridge\embedded-daemons
-copy target\x86_64-unknown-linux-musl\release\cc-monitor-remote   ..\src/bridge\embedded-daemons\cc-monitor-remote-x86_64
-copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src/bridge\embedded-daemons\cc-monitor-remote-aarch64
+mkdir ..\src/bridge\embedded-backends
+copy target\x86_64-unknown-linux-musl\release\cc-monitor-remote   ..\src/bridge\embedded-backends\cc-monitor-remote-x86_64
+copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src/bridge\embedded-backends\cc-monitor-remote-aarch64
 
 # 🔴 K-R70（09-12）：**没有第三步了** —— 不必再写 .build_id 清单，身份跟着字节走。
 #   想自己核一眼这两份是谁（不看它旁边任何文件）：
-#     Select-String -Path ..\src/bridge\embedded-daemons\cc-monitor-remote-x86_64 -Pattern 'ccm-build-id' -Encoding ascii
-#   Linux/macOS 上：grep -ao '<<ccm-build-id:[^>]*>>' ../../src/bridge/embedded-daemons/cc-monitor-remote-x86_64
+#     Select-String -Path ..\src/bridge\embedded-backends\cc-monitor-remote-x86_64 -Pattern 'ccm-build-id' -Encoding ascii
+#   Linux/macOS 上：grep -ao '<<ccm-build-id:[^>]*>>' ../../src/bridge/embedded-backends/cc-monitor-remote-x86_64
 ```
 
 > **不想装 zig 也行（U-1 实测，零安装）**：`rust-lld` 随 rustc 自带，两个 musl target 都能链：
@@ -55,28 +55,28 @@ copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src/bridge\
 > 官方发版一律走 release.yml 的 zigbuild。另外本机若无 qemu，**aarch64 那份从未被执行过**，
 > 只做过字节级核对，真机 smoke 前别当已验收。
 
-> **纪律（2026-08-01 U-1 起：`build.rs` 从 warning 升成硬 panic）**：每次改了 daemon
+> **纪律（2026-08-01 U-1 起：`build.rs` 从 warning 升成硬 panic）**：每次改了 backend
 > （尤其 bump `main.rs::BUILD_ID`）都要**重编二进制 + 同步改清单**，两件一起做。
 > `build.rs` 会在三种情况直接 panic 掉编译。
-> **三条都以「`embedded-daemons/` 里真有那个 arch 的二进制」为前提**（`build.rs:266` 的
+> **三条都以「`embedded-backends/` 里真有那个 arch 的二进制」为前提**（`build.rs:266` 的
 > `if src.exists()`）—— 整个目录不存在时走的是优雅降级（两条 `cargo:warning` + 自动部署 no-op），
 > 那正是 dev / CI 的常态，见下方补注：
 >
 > | 情况 | 为什么必须 fail 而不是 warn |
 > |---|---|
-> | 抠不到源码 `const BUILD_ID` | 单源链条断了，`DAEMON_BUILD_ID` 会静默退化成 `"unknown"`，每台远端都判 StaleBuild |
-> | **有二进制但字节里问不出身份戳** | 🔴 `K-R70` 换掉的就是这一格。〔原话逐字：「清单是二进制在运行期的**唯一**身份来源（`BUILD_ID` 被编译器优化成立即数，字节里搜不到连续明文，`sftp.rs` 的字节启发式会**误拒正品**）」—— 那句对**当时那个被测对象**是真的；今天 daemon 带着一段 `#[used] static` 的戳，有地址、进 `.rodata`、字节按定义连续，拆不成立即数。〕问不出身份 = 这份字节不是这套源码编出来的（或太旧），放它进去等于内嵌一份没人认得的二进制 |
+> | 抠不到源码 `const BUILD_ID` | 单源链条断了，`BACKEND_BUILD_ID` 会静默退化成 `"unknown"`，每台远端都判 StaleBuild |
+> | **有二进制但字节里问不出身份戳** | 🔴 `K-R70` 换掉的就是这一格。〔原话逐字：「清单是二进制在运行期的**唯一**身份来源（`BUILD_ID` 被编译器优化成立即数，字节里搜不到连续明文，`sftp.rs` 的字节启发式会**误拒正品**）」—— 那句对**当时那个被测对象**是真的；今天后端带着一段 `#[used] static` 的戳，有地址、进 `.rodata`、字节按定义连续，拆不成立即数。〕问不出身份 = 这份字节不是这套源码编出来的（或太旧），放它进去等于内嵌一份没人认得的二进制 |
 > | 字节自报的身份与源码 `BUILD_ID` 不符（**半 bump**） | monitor 判过期的唯一判据就是这个字符串不等 ⇒ 装上去**永远判 StaleBuild、无限重装** |
 >
 > 原来只有一条比 mtime 的 `cargo:warning`。它漏掉了真实发生过的那次：源码已 bump 到
 > `p1v-attachable`、清单还是 `p1u-fork-session`，而二进制 mtime **更新**——mtime 判据完全不响。
-> 不想重编就 `rm -rf src/bridge/embedded-daemons/`：自动部署诚实关闭，编译立刻恢复。
+> 不想重编就 `rm -rf src/bridge/embedded-backends/`：自动部署诚实关闭，编译立刻恢复。
 >
 > **⚠ 这三条挡不住「根本没有内嵌目录」那一档**（Phase E 审计 R3 订正）。干净 clone / CI 里
-> `embedded-daemons/` 不存在 ⇒ 三条 panic 一条都够不着，`DAEMON_BUILD_ID` 静默变 `"unknown"`。
+> `embedded-backends/` 不存在 ⇒ 三条 panic 一条都够不着，`BACKEND_BUILD_ID` 静默变 `"unknown"`。
 > 兜这一档的**不是** `build.rs`，是 monitor 侧的
 > `src/bridge/src/ssh_source_stream_flag_gate_tests.rs::embedded_build_id_single_source_wired`（断言它 ≠ `"unknown"`）。
-> 发版链上二者都够得着：`release.yml` 的 `build-daemons` 现场生成二进制**并写清单**
+> 发版链上二者都够得着：`release.yml` 的 `build-backends` 现场生成二进制**并写清单**
 > （`:56-58` 从源码抠 `BUILD_ID`），`build-windows` `:113-118` 还会再对拍一次。
 
 ---
@@ -95,7 +95,7 @@ copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src/bridge\
 | **A. WSL / 本地 Linux 容器**（推荐先做） | S8 本地端到端 de-risk，不碰 NanoPi | Windows 上一个 WSL Ubuntu 或 Docker Linux |
 | **B. NanoPi(aarch64)** | S9 真实里程碑（跨网络） | NanoPi 可 SSH 登录 |
 
-两条路径的 daemon 构建/安装步骤**完全相同**（都是目标机原生 `cargo build`）。区别只在 cc-monitor 设置里填的 host（A 填 `localhost`/WSL IP，B 填 Pi 的地址）。
+两条路径的后端构建/安装步骤**完全相同**（都是目标机原生 `cargo build`）。区别只在 cc-monitor 设置里填的 host（A 填 `localhost`/WSL IP，B 填 Pi 的地址）。
 
 ---
 
@@ -116,11 +116,11 @@ NanoPi 上首次编译 Rust 可能需要几分钟，且需要一些系统包（�
 sudo apt-get update && sudo apt-get install -y build-essential pkg-config
 ```
 
-> daemon 当前依赖：`tokio` / `notify` / `notify-debouncer-mini` / `walkdir` / `serde` / `tracing`。**纯 Rust，不需要 OpenSSL / NASM**（russh 在本地端，daemon 不含 SSH 库）。
+> backend 当前依赖：`tokio` / `notify` / `notify-debouncer-mini` / `walkdir` / `serde` / `tracing`。**纯 Rust，不需要 OpenSSL / NASM**（russh 在本地端，backend 不含 SSH 库）。
 
 ---
 
-## 2. 把 daemon 源码弄到目标机
+## 2. 把后端源码弄到目标机
 
 只需要仓库里的 `src/backend/` 这一个目录（它是独立 crate，不依赖 src/bridge）。任选其一：
 
@@ -161,28 +161,28 @@ chmod 700 ~/.cc-monitor/bin/cc-monitor-remote
 
 ---
 
-## 5. 本机 smoke（确认 daemon 自己 OK，不连 cc-monitor）
+## 5. 本机 smoke（确认后端自己 OK，不连 cc-monitor）
 
-daemon 启动后**第一行**必是 `hello`，之后监听 `~/.claude/projects/` 与 `~/.claude/sessions/`：
+backend 启动后**第一行**必是 `hello`，之后监听 `~/.claude/projects/` 与 `~/.claude/sessions/`：
 
 ```bash
 # 准备一个 scratch claude 目录（或直接用真实 ~/.claude）
 export CLAUDE_CONFIG_DIR=/tmp/ccm-smoke/.claude
 mkdir -p "$CLAUDE_CONFIG_DIR/projects/proj" "$CLAUDE_CONFIG_DIR/sessions"
 
-# 前台跑 daemon，stdout 是 wire（JSON Lines），stderr 是日志
+# 前台跑后端，stdout 是 wire（JSON Lines），stderr 是日志
 ~/.cc-monitor/bin/cc-monitor-remote
 # 另开一个终端，往 jsonl 追加一行：
 echo '{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","sessionId":"s1","message":{"role":"user","content":"hi from remote"}}' \
   >> "$CLAUDE_CONFIG_DIR/projects/proj/s1.jsonl"
 ```
 
-预期 daemon stdout 依次出现（一行一条 JSON）：
+预期 backend stdout 依次出现（一行一条 JSON）：
 ```
 {"kind":"hello","v":1,"build_id":"phase0-proto","host_arch":"aarch64","claude_dir":"..."}
 {"kind":"line","session_id":"s1","path":".../s1.jsonl","seq":0,"raw":"{...}"}
 ```
-> 日志（tracing）走 **stderr**，不会污染 stdout 的 wire 流——这是 daemon 的硬约束。
+> 日志（tracing）走 **stderr**，不会污染 stdout 的 wire 流——这是后端的硬约束。
 
 ---
 
@@ -227,25 +227,25 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 - **S9（路径 B，NanoPi 跨网络）**：cc-monitor 连 Pi → Pi 上真跑 `claude` → 本地 Tab 实时渲染、seq 顺序正确；会话结束 → Tab 归档。
 
 ### Phase 0 已知边界（**不是 bug**，是 scope）
-- ~~断线不自动重连~~ → 已补：断线**自动重连**（指数退避 2→30s，issue #17）；重连后 catch-up：旧 daemon 重扫活跃会话全量重放、客户端按 seq 去重；**p1f tail-only 起**改为 tail 从当前行数续 + monitor 旁路快照重拉（INVARIANTS §25a）。
-- ~~慢消费者无 overflow 信号~~ → 已补：daemon 管道满时回传 `overflow` 哨兵帧，前端弹拥塞 toast（issue #32）。
-- ~~远端历史浏览未接~~ → 已补：远端**历史浏览**已实现（#16，多机**分组 / 来源筛选** #30/#31）。~~全文搜索~~ → 已补：远端**全文搜索**已实现（#28，daemon `--search`）。~~resume~~ → 已补：远端 `↺` **直接拉起远端终端跑 `claude --resume`**（Windows 上 `wt.exe` 优先，失败才回退复制到剪贴板；**Linux / macOS 上刻意只复制**——POSIX 上没有「唯一的终端」，替用户挑一个是个会在别人机器上错的决定。⚠ 旧文这里写「monitor 无法在远端开交互 TTY」，那是 Windows 拉窗口做出来之前的形态，已假；权威描述在仓根 `README.md` 的「一键 resume」条)。~~拉前~~ → 已补：远端 ↗ 拉前已实现（#18，设置面板每台机器卡片「装 ccm 助手」一键装）。⚠ **不存在名叫 `__ccm_rbind` 的函数**（本段此前逐字教用户写 `( __ccm_rbind; exec claude … )`）——实现早已搬进 `shared/ccm`（部署为 `~/.local/bin/ccm`），且 `sftp.rs:1059` 有测试**明令**别名块不得含它。照旧文写的外部集成方会调一个不存在的函数：bash 下只打一行 command-not-found、**rc=0 继续跑** ⇒ 静默不注册、↗ 永远「未绑定窗口」。**入口就是 `ccm` 本身**；协议侧的权威描述在 `src/doc/IPC-PROTOCOL.md` 的「注册流程」节。装 ccm 助手时**不覆盖用户同名函数**（旧版曾无条件覆盖清掉用户自己的启动器）。**tmux 启动器注意**（真机踩坑）：`tmux new-session ... "ccm"` 的命令串走**非交互 shell**——bashrc 顶部的交互 guard 直接 return，函数不存在（报 `ccm: 未找到命令`）；应改用 `tmux new-session -d` + `tmux send-keys "ccm" Enter`（往交互 shell 里敲）。**tmux 自适配**：tmux 默认 `set-titles off` 会把 marker 截在 pane title 层——原语自动对当前 session 开标题直通（session 级选项，不写 tmux.conf）。旧版 ccm 块需重装一次才升级到此形态。**F74 起原语还写 tmux user option `@ccm_sid`**（当前 sid，随 `/branch` 实时更新；pane title 会被 Claude 活动标题抢写、不可靠，user option Claude 碰不到）——cc-monitor 靠它精确认「哪个 tmux 跑目标 sid」，修 resume/attach 撞进漂移/同目录别的会话（#63，见 INVARIANTS §30）。**旧 ccm 块需再重装一次才升级到带 `@ccm_sid` 形态**；未重装则 cc-monitor 退回按 cwd 匹配 = 旧行为，不变砖。**WT 多 tab 限制**：多个 ssh 会话开在同一 WT 窗口的不同 tab 时，↗ 只能拉起该窗口、无法切到具体 tab（建议每会话单独开窗）。
-- ~~daemon 重启后 seq 从 0 重来（**p1f tail-only 起不再成立**：seq=行号、从当前行数起算，见 INVARIANTS §25a；本句仅描述旧 daemon 全量推流路径），客户端不处理~~ → 已补：客户端用 per-Tab `seenSeqs` 去重消化重放（issue #17），不重复、不丢新行。
-- ~~远端探活仅 /proc 存在性~~ → 已补两层：①add-time 冒名判定（Batch5-F20）：**主证据 = pidfile 自带的 `procStart` 与当前占用者的 /proc starttime ticks 逐位相等 → 身份确认**（免疫全部时钟域问题）；不等/缺字段时 fallback 启发式——proc 启动时刻晚于 pidfile mtime+60s 或 cmdline 非 claude/node → 拒（防 daemon 启动前 PID 已被复用的 tmux 残留场景）；②运行期 procStart 双校验（issue #34，基线在 ① 把关后捕获才可信）。
-- ~~bg 后台任务被当会话~~ → 已补 **kind 交互性门**（Batch6-F21，与"活性/作者身份"正交的第三维度——作者≠交互会话）：`kind` 存在且非 `interactive` 不宣告（缺失=旧 CC=放行），双端一字一致。**Batch7-F24 起改配置门**：monitor 按 `showBgSessions`（默认开）exec 时传 `--with-bg` → daemon 放行 bg 并在 `session_added` 帧附 `session_kind/cwd/name`；开关关 = F21 行为。旧 daemon（&lt; p1e）不识 `--with-bg` 会误入一次性查询模式——monitor 仅对 **auto-deploy 确认为 p1e+** 的远端加该参数（手动部署的旧 daemon 自动降级为不带参数连接）。
+- ~~断线不自动重连~~ → 已补：断线**自动重连**（指数退避 2→30s，issue #17）；重连后 catch-up：旧后端重扫活跃会话全量重放、客户端按 seq 去重；**p1f tail-only 起**改为 tail 从当前行数续 + monitor 旁路快照重拉（INVARIANTS §25a）。
+- ~~慢消费者无 overflow 信号~~ → 已补：backend 管道满时回传 `overflow` 哨兵帧，前端弹拥塞 toast（issue #32）。
+- ~~远端历史浏览未接~~ → 已补：远端**历史浏览**已实现（#16，多机**分组 / 来源筛选** #30/#31）。~~全文搜索~~ → 已补：远端**全文搜索**已实现（#28，backend `--search`）。~~resume~~ → 已补：远端 `↺` **直接拉起远端终端跑 `claude --resume`**（Windows 上 `wt.exe` 优先，失败才回退复制到剪贴板；**Linux / macOS 上刻意只复制**——POSIX 上没有「唯一的终端」，替用户挑一个是个会在别人机器上错的决定。⚠ 旧文这里写「monitor 无法在远端开交互 TTY」，那是 Windows 拉窗口做出来之前的形态，已假；权威描述在仓根 `README.md` 的「一键 resume」条)。~~拉前~~ → 已补：远端 ↗ 拉前已实现（#18，设置面板每台机器卡片「装 ccm 助手」一键装）。⚠ **不存在名叫 `__ccm_rbind` 的函数**（本段此前逐字教用户写 `( __ccm_rbind; exec claude … )`）——实现早已搬进 `shared/ccm`（部署为 `~/.local/bin/ccm`），且 `sftp.rs:1059` 有测试**明令**别名块不得含它。照旧文写的外部集成方会调一个不存在的函数：bash 下只打一行 command-not-found、**rc=0 继续跑** ⇒ 静默不注册、↗ 永远「未绑定窗口」。**入口就是 `ccm` 本身**；协议侧的权威描述在 `src/doc/IPC-PROTOCOL.md` 的「注册流程」节。装 ccm 助手时**不覆盖用户同名函数**（旧版曾无条件覆盖清掉用户自己的启动器）。**tmux 启动器注意**（真机踩坑）：`tmux new-session ... "ccm"` 的命令串走**非交互 shell**——bashrc 顶部的交互 guard 直接 return，函数不存在（报 `ccm: 未找到命令`）；应改用 `tmux new-session -d` + `tmux send-keys "ccm" Enter`（往交互 shell 里敲）。**tmux 自适配**：tmux 默认 `set-titles off` 会把 marker 截在 pane title 层——原语自动对当前 session 开标题直通（session 级选项，不写 tmux.conf）。旧版 ccm 块需重装一次才升级到此形态。**F74 起原语还写 tmux user option `@ccm_sid`**（当前 sid，随 `/branch` 实时更新；pane title 会被 Claude 活动标题抢写、不可靠，user option Claude 碰不到）——cc-monitor 靠它精确认「哪个 tmux 跑目标 sid」，修 resume/attach 撞进漂移/同目录别的会话（#63，见 INVARIANTS §30）。**旧 ccm 块需再重装一次才升级到带 `@ccm_sid` 形态**；未重装则 cc-monitor 退回按 cwd 匹配 = 旧行为，不变砖。**WT 多 tab 限制**：多个 ssh 会话开在同一 WT 窗口的不同 tab 时，↗ 只能拉起该窗口、无法切到具体 tab（建议每会话单独开窗）。
+- ~~backend 重启后 seq 从 0 重来（**p1f tail-only 起不再成立**：seq=行号、从当前行数起算，见 INVARIANTS §25a；本句仅描述旧后端全量推流路径），客户端不处理~~ → 已补：客户端用 per-Tab `seenSeqs` 去重消化重放（issue #17），不重复、不丢新行。
+- ~~远端探活仅 /proc 存在性~~ → 已补两层：①add-time 冒名判定（Batch5-F20）：**主证据 = pidfile 自带的 `procStart` 与当前占用者的 /proc starttime ticks 逐位相等 → 身份确认**（免疫全部时钟域问题）；不等/缺字段时 fallback 启发式——proc 启动时刻晚于 pidfile mtime+60s 或 cmdline 非 claude/node → 拒（防后端启动前 PID 已被复用的 tmux 残留场景）；②运行期 procStart 双校验（issue #34，基线在 ① 把关后捕获才可信）。
+- ~~bg 后台任务被当会话~~ → 已补 **kind 交互性门**（Batch6-F21，与"活性/作者身份"正交的第三维度——作者≠交互会话）：`kind` 存在且非 `interactive` 不宣告（缺失=旧 CC=放行），双端一字一致。**Batch7-F24 起改配置门**：monitor 按 `showBgSessions`（默认开）exec 时传 `--with-bg` → backend 放行 bg 并在 `session_added` 帧附 `session_kind/cwd/name`；开关关 = F21 行为。旧后端（&lt; p1e）不识 `--with-bg` 会误入一次性查询模式——monitor 仅对 **auto-deploy 确认为 p1e+** 的远端加该参数（手动部署的旧后端自动降级为不带参数连接）。
 - ~~同 pidfile 原地换 sid 旧 tab 假 live / 同 sid 多 PID 误杀~~ → 已补（Batch6-F22）：sid 变更走 removed 路径 + `retire_sid_if_unreferenced` 引用计数（sid 退休唯一出口）。
 
 **Phase 1/2 远端能力均已完成**：auto-deploy（#29，本文顶部）+ 全文搜索（#28）+ overflow 信号（#32）+ 版本协商（#33）+ 探活精确化（#34）+ 删除/resume/ccm 安装 + reconnect/seq 去重（#17）+ ↗ 拉前（#18）+ 历史浏览（#16）+ 多机聚合/分组/筛选（#30/#31）。剩仅真机 e2e 实测。
 
 ---
 
-## 9. 更新 daemon（改了 wire/逻辑后）
+## 9. 更新后端（改了 wire/逻辑后）
 
 ```bash
 cd ~/cc-monitor-src && git pull          # 或重新 scp src/backend/
 cd src/backend && cargo build --release
 cp target/release/cc-monitor-remote ~/.cc-monitor/bin/   # 覆盖
-# 重启 cc-monitor（它会重新 exec daemon）
+# 重启 cc-monitor（它会重新 exec backend）
 ```
 
-> Phase 0 没有 daemon/client 版本协商（hello 里有 `build_id:"phase0-proto"` 但不强校验）。wire 在 Phase 0 期间冻结；客户端解析器**忽略未知 kind/字段不 panic**，所以 Phase 1 加 `event_id` 等是向前兼容的。版本/sha 协商是 Phase 1（SFTP + build_id）。
+> Phase 0 没有 backend/client 版本协商（hello 里有 `build_id:"phase0-proto"` 但不强校验）。wire 在 Phase 0 期间冻结；客户端解析器**忽略未知 kind/字段不 panic**，所以 Phase 1 加 `event_id` 等是向前兼容的。版本/sha 协商是 Phase 1（SFTP + build_id）。

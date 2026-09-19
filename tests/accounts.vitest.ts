@@ -102,11 +102,11 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   //    `accounts.rs::cfg_for` 不再产出那条错误串 ⇒ `AccountsUi` 的 `hidden` 那一档
   //    **再也到不了**，连档带测一起下岗。
   it("🔴 K-R59：任何 `available:false` 都落到 needs-update —— 不再有「安静隐藏」那一档", () => {
-    const ui = deriveUi(state({ available: false, error: "该主机配置为 daemonless（无 daemon），账号功能不可用" }));
+    const ui = deriveUi(state({ available: false, error: "该主机配置为 daemonless（无后端），账号功能不可用" }));
     expect(ui.kind).toBe("needs-update");
   });
-  it("旧 daemon → needs-update", () => {
-    const ui = deriveUi(state({ available: false, error: "远端 daemon 不支持账号查询（版本过旧）——请更新 daemon" }));
+  it("旧 backend → needs-update", () => {
+    const ui = deriveUi(state({ available: false, error: "远端后端不支持账号查询（版本过旧）——请更新 backend" }));
     expect(ui.kind).toBe("needs-update");
   });
   it("未启用（enabled:false）→ not-enabled，带 manifest 路径", () => {
@@ -200,7 +200,7 @@ describe("accountColorsActive（account-ux U8：单账号/降级时账号色系�
     expect(s.accounts.length).toBe(2); // 总数够
     expect(accountColorsActive(s)).toBe(false); // 但可选数不够
   });
-  it("available=false（老 daemon / 查询失败）→ 休眠，哪怕账号数够", () => {
+  it("available=false（老 backend / 查询失败）→ 休眠，哪怕账号数够", () => {
     expect(
       accountColorsActive(state({ available: false, accounts: [sel("wei"), sel("amy")] })),
     ).toBe(false);
@@ -775,10 +775,10 @@ describe("Z01 账号 0（configDir 缺席）", () => {
   });
 
   it("deriveUi 把降级说明透传出去（绝不静默）", () => {
-    const st = state({ accounts: [acct({})], notice: "远端 daemon 版本较旧：…" });
+    const st = state({ accounts: [acct({})], notice: "远端后端版本较旧：…" });
     const ui = deriveUi(st);
     expect(ui.kind).toBe("ready");
-    if (ui.kind === "ready") expect(ui.notice).toContain("daemon");
+    if (ui.kind === "ready") expect(ui.notice).toContain("后端");
   });
 
   it("无缺时 notice 为 null", () => {
@@ -887,7 +887,7 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
     expect(opts.map((o) => (o.kind === "account" ? o.name : "base"))).toEqual(["base", "z", "api"]);
   });
 
-  it("旧 daemon（两个键都缺）⇒ 逐字节旧行为：回落到 loggedIn", () => {
+  it("旧后端（两个键都缺）⇒ 逐字节旧行为：回落到 loggedIn", () => {
     // 这是 `authReady` 为 `undefined` 的**唯一**来因。缺席 ⇒ 按 loggedIn 判。
     const old = acct({ name: "o", loggedIn: true });
     expect(old.authKind).toBeUndefined();
@@ -1226,7 +1226,7 @@ describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说�
   it("非空对照（尺子不是恒同一句）：没有身份 token ⇒ 还是那句「两条成因并排」的老话", () => {
     const m = restartLocateFailureMessage(row({ launchId: null }));
     expect(m.body).toContain(BOTH_CAUSES);
-    // 老 daemon 的出参逐字节没有这个键 ⇒ `undefined`，必须与 `null` 同判。
+    // 老后端的出参逐字节没有这个键 ⇒ `undefined`，必须与 `null` 同判。
     expect(restartLocateFailureMessage(row())).toEqual(m);
     // 行整个缺席（这条会话根本不在 `--session-accounts` 里）也走这一支。
     expect(restartLocateFailureMessage(undefined)).toEqual(m);
@@ -1255,7 +1255,7 @@ describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说�
   });
 
   it("进程已死的行不作数：`alive:false` 上的 token 一律不参与这次判断", () => {
-    // daemon 侧本来就不读死进程的 environ，但这一格**不靠上游守**：本函数自己判。
+    // backend 侧本来就不读死进程的 environ，但这一格**不靠上游守**：本函数自己判。
     expect(restartLocateFailureMessage(row({ launchId: TOKEN, alive: false }))).toEqual(
       restartLocateFailureMessage(row({ launchId: null })),
     );
@@ -1338,7 +1338,7 @@ describe("K-P5h：用身份 token 反查新会话的 sid（sidOfLaunch）", () =
   });
 
   it("★ 同一个 token 落在一条以上活会话上 ⇒ null（继承值，判不出谁是原主）", () => {
-    // daemon 侧本来就会把这种涉事的行全置 `null`，但这一格**不靠上游守**。
+    // backend 侧本来就会把这种涉事的行全置 `null`，但这一格**不靠上游守**。
     const rows = [r({ sessionId: "sid-A", launchId: T1 }), r({ sessionId: "sid-B", launchId: T1 })];
     expect(sidOfLaunch(rows, T1)).toBeNull();
   });

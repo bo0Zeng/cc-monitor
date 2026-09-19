@@ -19,7 +19,7 @@
 //!    也给判据一个不依赖文件名的入口）。
 //!
 //! ⚠ **它不是一条 wire 子命令**，所以**不进 `main::SUBCOMMANDS`**、也不进
-//! `src/doc/IPC-PROTOCOL.md` §10：那份文档是 monitor↔daemon 的**冻结线上契约**，
+//! `src/doc/IPC-PROTOCOL.md` §10：那份文档是 monitor↔backend 的**冻结线上契约**，
 //! 而这里是**用户终端**的命令面，两者的读者与兼容性义务都不同。
 //! 这个决定不是靠「没人查」成立的 —— `protocol_doc_guard::TERMINAL_SURFACE_FILES`
 //! 把它登记成一个受管例外，并**另立一格**（每个旗标都要能在 [`USAGE`] 里找到）。
@@ -27,7 +27,7 @@
 //! # 本轮**没有**做到的，逐条写在这里（别读成做到了）
 //!
 //! - **预信任**（`~/.claude.json` / `~/.codex/config.toml` 那两处写入）：**没搬**。
-//!   daemon 这个 crate 有一条「进程自身不许写用户既有数据」的红线
+//!   backend 这个 crate 有一条「进程自身不许写用户既有数据」的红线
 //!   （`readonly_guard`，白名单恰好一个模块）⇒ 搬它要先动那条红线，那是另一件活。
 //!   后果：`claude` 起来可能弹信任框。`--print` 那条兜底轮询照旧在，捞得回来。
 //! - **`$CCM_CONFIG` 是 bash 源文件**：旧实现 `. "$CCM_CONFIG"`（真 source 一段 bash）。
@@ -64,7 +64,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 ///   [`crate::plugin::probe::tests::the_required_list_is_checked_against_what_the_real_plugin_declares`]
 ///   —— 它拿 [`probe_output`] **真吐出来的那一行** `capabilities=` 当活体语料，再数**个数**。
 ///   加 token ⇒ **那个数要跟着改**（与上一行同形，是本树内的第二处计数）。
-///   〔依据：PM 刀 `P`（09-11）往本常量再加一个 token、别处一字不改，daemon 套
+///   〔依据：PM 刀 `P`（09-11）往本常量再加一个 token、别处一字不改，backend 套
 ///   `682 → 681 passed / 1 failed`，**只红这一条**；monitor 套同刀 `1381 → 1380 / 1`，
 ///   只红上一行那条。⇒ 两处**各自最小面 1 条**，而它们是仅有的两处「数个数」的。〕
 /// - `src/bridge/src/backend/control/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
@@ -72,8 +72,8 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 /// - `tests/e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
 /// - `src/bridge/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
 ///   它按 `const CAPABILITIES` 这一行去 `src/backend/main.rs` 里抠，
-///   抠的是 daemon **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
-///   〔这句话是本轮实测的，不是推的：加了下面那个 token 之后 `DAEMON_CAPABILITIES` 逐字不变。〕
+///   抠的是 backend **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
+///   〔这句话是本轮实测的，不是推的：加了下面那个 token 之后 `BACKEND_CAPABILITIES` 逐字不变。〕
 ///
 /// ⇒ 归一句：**「数个数」的两处必须跟着改（前两行）· 「子集检查」的两处加 token 安全，
 /// 删 / 改名才危险 · `build.rs` 那一处与本常量无关。**
@@ -105,8 +105,8 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "tmux-size",
     "tmux-base",
     "bus-register",
-    "daemon-discover",
-    "account-via-daemon",
+    "backend-discover",
+    "account-via-backend",
     "base-url-across-tmux",
 ];
 
@@ -342,7 +342,7 @@ fn die(msg: &str) -> i32 {
 }
 
 /// `resume` 那一问：这个会话该怎么起。**在同一个进程里答** ——
-/// 从前这里要跨一次进程去问 daemon（`--resolve`），那整段是 bash 与后端说话的税。
+/// 从前这里要跨一次进程去问后端（`--resolve`），那整段是 bash 与后端说话的税。
 fn resolved(plan: &Plan) -> Option<String> {
     let Plan::Direct(d) = plan else { return None };
     let sid = d.resolve_sid.as_deref()?;

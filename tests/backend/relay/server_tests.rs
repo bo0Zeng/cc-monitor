@@ -3239,7 +3239,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_the_relay_with_that_ac
 ///
 /// ⇒ 这里调的是 `creds_store::write_key_at` 生产段里逐字那两个纯函数
 /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
-/// 这个共同祖先上会合**：daemon 单向依赖 `src/bridge/crates/*`，够得着它们。
+/// 这个共同祖先上会合**：backend 单向依赖 `src/bridge/crates/*`，够得着它们。
 ///
 /// # ⚠⚠ 它**买不到**什么 —— 逐字落在这里，别读宽〔PM `裁二`，09-02〕
 ///
@@ -3252,7 +3252,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_the_relay_with_that_ac
 ///    本条只走它算内容的那两步，写盘由 monitor 侧那几条既有判据分管。
 ///
 /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
-/// （`history::relay_account_id_of_dir`，住 monitor，daemon 够不着）——
+/// （`history::relay_account_id_of_dir`，住 monitor，backend 够不着）——
 /// 那一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for` 钉。
 /// **本条从「已经有了一个 id」那一刻接手。**
 #[cfg(unix)]
@@ -3280,8 +3280,8 @@ fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {
 /// | agent | **桩**（红线：绝不起真 claude） |
 ///
 /// ⚠ 红线的例外口径逐字〔PM 09-02〕：**由测试自己拉起、跑在沙箱容器内、端口 0、
-/// 用完即杀的中转子进程，不算「起真 daemon」**。它**不覆盖**那个会碰 tmux 的 daemon ·
-/// 在宿主上拉任何进程 · 手工起 daemon 冒烟。
+/// 用完即杀的中转子进程，不算「起真后端」**。它**不覆盖**那个会碰 tmux 的 backend ·
+/// 在宿主上拉任何进程 · 手工起后端冒烟。
 #[cfg(unix)]
 #[test]
 fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upstream() {

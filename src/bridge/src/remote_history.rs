@@ -5,8 +5,8 @@
 //! 完全不碰稳定的流式路径；连接建立复用 `ssh_source::connect_session` 全套
 //! 指纹校验/鉴权）。
 //!
-//! 旧 daemon 兼容：不认参数的旧版会照常进流模式、首行发 hello 帧——这里检测
-//! `"kind":"hello"` 即返回明确的"daemon 版本过旧"错误（优雅降级，前端 toast）。
+//! 旧后端兼容：不认参数的旧版会照常进流模式、首行发 hello 帧——这里检测
+//! `"kind":"hello"` 即返回明确的"backend 版本过旧"错误（优雅降级，前端 toast）。
 //!
 //! 只读铁律（INVARIANT § 1）：本模块只读远端；resume/delete 对远端在前端禁用。
 //! INVARIANTS § 25：本路径是一次性读取（非 at-least-once 行流），SessionViewer
@@ -38,7 +38,7 @@ const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
 ///
 /// 读法是 `stream.take(MAX_SESSION_BYTES)` + `if n == 0 { break; }` ——
 /// 到限之后 `read_line` 返回 0，与**正常 EOF 完全同形** ⇒ 前端拿到一份「看起来完整」的历史，
-/// 而后面的内容**无声消失**。同一份数据走 daemon 的 `--fork-session` 那条路会**硬报错**
+/// 而后面的内容**无声消失**。同一份数据走后端的 `--fork-session` 那条路会**硬报错**
 /// （`common/fs.rs`），走这条路却什么都不说 —— 这正是定框 **E5** 要消灭的
 /// 「同一份数据走不同路得到不同答案」。
 ///
@@ -55,14 +55,14 @@ pub(crate) fn require_cfg_by_label(label: &str) -> Result<RemoteConfig, String> 
         .ok_or_else(|| format!("远端 '{label}' 未配置或未启用"))
 }
 
-/// 旧 daemon 检测：查询命令的输出行不可能含 wire 的 `"kind":"hello"`（查询模式
-/// 输出裸 JSON 对象 / 裸 jsonl 行）；出现即说明远端 daemon 不认参数、进了流模式。
-fn is_old_daemon_hello(line: &str) -> bool {
+/// 旧后端检测：查询命令的输出行不可能含 wire 的 `"kind":"hello"`（查询模式
+/// 输出裸 JSON 对象 / 裸 jsonl 行）；出现即说明远端后端不认参数、进了流模式。
+fn is_old_backend_hello(line: &str) -> bool {
     line.contains(r#""kind":"hello""#) || line.contains(r#""kind": "hello""#)
 }
 
-const OLD_DAEMON_MSG: &str =
-    "远端 daemon 版本过旧（不支持历史查询）——请按 src/doc/REMOTE-PHASE0-DEPLOY.md 重新构建部署";
+const OLD_BACKEND_MSG: &str =
+    "远端后端版本过旧（不支持历史查询）——请按 src/doc/REMOTE-PHASE0-DEPLOY.md 重新构建部署";
 
 /// 跑一条列举类查询，收集全部输出行（带整体超时 + 旧版检测）。
 pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, String> {
@@ -72,15 +72,15 @@ pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec
         let mut reader = BufReader::new(stream);
         let mut lines = Vec::new();
         // ★〔G 审计〕原来是无界 `read_line` —— 与 F10b 修掉的那三处**同一个量**
-        // （daemon 出方向单行），只是当时的人群只扫了 `ssh_source.rs`。
+        // （backend 出方向单行），只是当时的人群只扫了 `ssh_source.rs`。
         // 外面那层 `LIST_TIMEOUT` 拦不住它：对端 30s 内不吐换行地灌字节，
-        // `buf` 就是无界堆分配（daemon 侧同形态实测 RSS 6 MiB → 518 MiB）。
+        // `buf` 就是无界堆分配（backend 侧同形态实测 RSS 6 MiB → 518 MiB）。
         let mut buf: Vec<u8> = Vec::new();
         loop {
             let text = match ssh_source::read_capped_line(
                 &mut reader,
                 &mut buf,
-                ssh_source::DAEMON_FRAME_LINE_CAP,
+                ssh_source::BACKEND_FRAME_LINE_CAP,
             )
             .await
             .map_err(|e| format!("读取远端输出失败: {e}"))?
@@ -91,7 +91,7 @@ pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec
                 ssh_source::CappedLine::TooLong(bytes) => {
                     return Err(format!(
                         "远端输出的单行 {bytes} 字节，超过上限 {} —— 拒收，不拿截断的结果当完整的用",
-                        ssh_source::DAEMON_FRAME_LINE_CAP
+                        ssh_source::BACKEND_FRAME_LINE_CAP
                     ));
                 }
                 ssh_source::CappedLine::Line => String::from_utf8_lossy(&buf).into_owned(),
@@ -100,8 +100,8 @@ pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec
             if line.is_empty() {
                 continue;
             }
-            if lines.is_empty() && is_old_daemon_hello(line) {
-                return Err(OLD_DAEMON_MSG.to_string());
+            if lines.is_empty() && is_old_backend_hello(line) {
+                return Err(OLD_BACKEND_MSG.to_string());
             }
             lines.push(line.to_string());
         }
@@ -112,11 +112,11 @@ pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec
         .map_err(|_| format!("远端查询超时（{}s）: {args}", LIST_TIMEOUT.as_secs()))?
 }
 
-/// 远端全文搜索 fan-out（issue #28）：对所有已配置远端各 exec 一次 `<daemon> --search`，
+/// 远端全文搜索 fan-out（issue #28）：对所有已配置远端各 exec 一次 `<backend> --search`，
 /// 把每行 camelCase `SessionHits` JSON 反序列化、补 `origin = 该台 label`。无远端 → 空；
-/// 逐台失败 warn + 跳过（不拖垮其余台）。复用 `run_list_query`（连接/超时/旧 daemon 检测）。
+/// 逐台失败 warn + 跳过（不拖垮其余台）。复用 `run_list_query`（连接/超时/旧后端检测）。
 ///
-/// `scope` 透传原始字符串（"user"/"assistant"/其它=不限）；只对 daemon 认的两值下发。
+/// `scope` 透传原始字符串（"user"/"assistant"/其它=不限）；只对后端认的两值下发。
 pub async fn search_remote_all(
     query: &str,
     include_tools: bool,
@@ -128,7 +128,7 @@ pub async fn search_remote_all(
     if cfgs.is_empty() {
         return Vec::new();
     }
-    // 参数对所有台一致（不含 cfg），构建一次。经 shell_quote 防注入；daemon 侧再做 projects/ 白名单校验。
+    // 参数对所有台一致（不含 cfg），构建一次。经 shell_quote 防注入；backend 侧再做 projects/ 白名单校验。
     let mut args = format!("--search {}", ssh_source::shell_quote(query));
     if include_tools {
         args.push_str(" --include-tools");
@@ -173,7 +173,7 @@ pub async fn search_remote_all(
     out
 }
 
-/// `K-R83`（09-12）：daemon 那一行里装着**每项目会话 sid 清单**的字段名。
+/// `K-R83`（09-12）：backend 那一行里装着**每项目会话 sid 清单**的字段名。
 ///
 /// # 🔴 它是常量，不是散在两处的字面量 —— 这一格是判据要求的
 ///
@@ -219,7 +219,7 @@ pub(crate) enum Counted<T> {
 /// 为什么算不出来。**每一档都得说得出人话**，不许只有一个光秃秃的 `None`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WhyUnknown {
-    /// daemon 那一行没带会话 sid 清单 —— 远端版本旧（`K-R83` 之前的 daemon）。
+    /// backend 那一行没带会话 sid 清单 —— 远端版本旧（`K-R83` 之前的后端）。
     NoSessionIdList,
     /// 带了，但**清单长度与 `sessionCount` 对不上**（或清单里混着非字符串）：
     /// 这一行坏了。⚠ 这一档**刻意不退化成「按拿得到的那几个算」** ——
@@ -302,10 +302,10 @@ pub(crate) trait LivenessOracle: Send + Sync {
 ///    「这台没连上」与「这台没有活会话」在它眼里同形 ——
 ///    那**正是本件要治的病换个位置又长一次**。要用它，得先给它加一维「连没连上」，
 ///    那是设计，不是本件的数据层改造。
-/// ④ daemon 的 `platform::proc::session_alive` —— **真相源在这**，但 `--list-projects`
+/// ④ backend 的 `platform::proc::session_alive` —— **真相源在这**，但 `--list-projects`
 ///    跑在一次性查询模式（`p1a-history` 子进程），要判活得在那里再造一份 pidfile 扫描；
 ///    按用户 09-12 那条裁定（`DECISIONS.md#R52` 裁定一：Gate 判活改成**读观测快照、
-///    且「询问即触发一次更新」**）该走的是同一条思路，而那是 daemon 的面。
+///    且「询问即触发一次更新」**）该走的是同一条思路，而那是后端的面。
 ///
 /// ⇒ 本件**不新造真相源**，把「缺真相源」建成一等公民：这条路答「不知道」，
 /// 而「不知道」现在**过得了线**（`Counted::known` ⇒ `None`）。接哪一条已报 PM 裁（`〔R92a〕`）。
@@ -350,12 +350,12 @@ impl ProjectCounts {
     }
 }
 
-/// daemon 的一行 `--list-projects` ＋ 本机 metadata ⇒ 那三个数。
+/// backend 的一行 `--list-projects` ＋ 本机 metadata ⇒ 那三个数。
 ///
 /// # 判的是「算不算得出」，不是「字段叫什么」
 ///
 /// 三个数的真相源全在本机、且**全部按会话 sid 索引**（metadata 按 sid 查 star/hide；
-/// `SessionMap` 按 sid 查活）—— 所以 daemon 那一行只要说得出「这个项目下有哪几个 sid」，
+/// `SessionMap` 按 sid 查活）—— 所以后端那一行只要说得出「这个项目下有哪几个 sid」，
 /// star / hide 就**当场算得出真值**，一次调用、零额外进程（`KR83D3`）。
 ///
 /// # `has_live` 由传进来的真相源答；答不出就是 `Unknown`，**不是 `false`**
@@ -377,7 +377,7 @@ pub(crate) fn project_counts(
         return ProjectCounts::all_unknown(WhyUnknown::NoSessionIdList);
     };
     let sids: Vec<&str> = ids.iter().filter_map(|v| v.as_str()).collect();
-    // ★ **空清单 ≠ 没有**：daemon 侧的契约是「清单与 `sessionCount` 恒等长」
+    // ★ **空清单 ≠ 没有**：backend 侧的契约是「清单与 `sessionCount` 恒等长」
     //（`observe/history_query.rs::project_row` 里两者共用同一个守卫）。对不上 ⇒ 这一行坏了
     // ⇒ 报「不知道」，**不许**拿手上这几个算出一个看起来像真值的少数。
     if sids.len() as u64 != session_count {
@@ -414,7 +414,7 @@ pub(crate) fn project_counts(
     }
 }
 
-/// daemon 的一行 `--list-projects` ＋ 本机 metadata ＋ 判活真相源 ⇒ **一条项目行**。
+/// backend 的一行 `--list-projects` ＋ 本机 metadata ＋ 判活真相源 ⇒ **一条项目行**。
 /// 这一行没有 `dirName`（拿不到懒加载的键）⇒ `None`，跳过。
 ///
 /// # 🔴 为什么它是一个函数 ——〔`K-R97` 09-12〕**本机那条路今天也走它**
@@ -640,12 +640,12 @@ where
     Ok(FanoutOutcome { rows, failed_hosts })
 }
 
-/// daemon 的一行 `--list-sessions` ＋ 本机 metadata ＋ 判活真相源 ⇒ 一条会话行。
+/// backend 的一行 `--list-sessions` ＋ 本机 metadata ＋ 判活真相源 ⇒ 一条会话行。
 /// 行坏了（解析不了 / 没有 `sessionId`）⇒ `None`（跳过，同上一版的行为）。
 ///
 /// # 🔴 为什么它是一个函数，而不是那个 `#[tauri::command]` 里的一段
 ///
-/// 与 daemon 侧 `history_query::project_row` 同一条理由：那条命令的出口是一条 SSH ＋
+/// 与后端侧 `history_query::project_row` 同一条理由：那条命令的出口是一条 SSH ＋
 /// 一个 `tauri::ipc::Channel`，红线内测不了；而 `KR92D2` 要判的是**这一行带了什么**。
 /// ⇒ 把「算出那一行」与「把它发出去」分开，判据就喂得进一个会答话的假真相源。
 fn remote_session_entry(
@@ -687,7 +687,7 @@ fn remote_session_entry(
         project_path: cwd,
         project_name,
         ai_title: v["aiTitle"].as_str().map(String::from),
-        // Batch11-F32：p1h daemon 附 isBg；旧 daemon 缺字段 → false 安全降级
+        // Batch11-F32：p1h backend 附 isBg；旧后端缺字段 → false 安全降级
         is_bg: v["isBg"].as_bool().unwrap_or(false),
         first_user_excerpt: v["firstUserExcerpt"]
             .as_str()
@@ -701,7 +701,7 @@ fn remote_session_entry(
         starred: meta.starred,
         custom_title: meta.custom_title,
         hidden: meta.hidden,
-        // P1a：daemon 不提取 fork 关系，远端会话在 fork 树上呈平铺
+        // P1a：backend 不提取 fork 关系，远端会话在 fork 树上呈平铺
         forked_from_session_id: None,
         forked_from_message_uuid: None,
         origin: Some(origin.to_string()),
@@ -717,7 +717,7 @@ pub async fn stream_remote_history_sessions(
     on_entry: tauri::ipc::Channel<HistorySessionEntry>,
 ) -> Result<u32, String> {
     let cfg = require_cfg_by_label(&origin)?;
-    // 防穿越：目录名不允许含分隔符（daemon 侧同样校验，双层防御）
+    // 防穿越：目录名不允许含分隔符（backend 侧同样校验，双层防御）
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("非法项目目录名: {project_dir}"));
     }
@@ -758,7 +758,7 @@ pub async fn stream_read_remote_session(
     const CHUNK_SIZE: usize = 100;
     let cfg = require_cfg_by_label(&origin)?;
     // 深度防御（与 stream_remote_history_sessions 的 project_dir 校验对称）：jsonl_path 来自
-    // 前端，monitor 侧先做廉价校验（拒 `..` + 强制 .jsonl 后缀）。真正的越权读由 daemon 侧
+    // 前端，monitor 侧先做廉价校验（拒 `..` + 强制 .jsonl 后缀）。真正的越权读由后端侧
     // canonicalize + projects/ 前缀 + symlink 逃逸校验兜底，这里补齐不对称的防御缺口。
     if jsonl_path.contains("..") || !jsonl_path.ends_with(".jsonl") {
         return Err(format!("非法会话路径: {jsonl_path}"));
@@ -788,15 +788,15 @@ pub async fn stream_read_remote_session(
     loop {
         // ★〔G 审计〕原来是无界 `read_line`。下面那条 `MAX_SESSION_BYTES` 是**总量**且
         // **读完再判** —— 一条 10 GiB 的行会在 `read_line` 返回**之前**就把内存吃光，
-        // 那条总量检查根本轮不到跑。这正是 daemon 侧 `inbound.rs` 头注逐字警告的
+        // 那条总量检查根本轮不到跑。这正是后端侧 `inbound.rs` 头注逐字警告的
         // 「上限必须在**读的时候**生效，不能读完再判」，而当时那次实测是 RSS 6 MiB → 518 MiB。
-        // ⇒ 补一层**单行**上限（与 daemon 出方向单行同量），总量那条保持不动。
+        // ⇒ 补一层**单行**上限（与后端出方向单行同量），总量那条保持不动。
         let n = match tokio::time::timeout(
             READ_LINE_TIMEOUT,
             ssh_source::read_capped_line(
                 &mut reader,
                 &mut line_buf,
-                ssh_source::DAEMON_FRAME_LINE_CAP,
+                ssh_source::BACKEND_FRAME_LINE_CAP,
             ),
         )
         .await
@@ -810,7 +810,7 @@ pub async fn stream_read_remote_session(
                 return Err(format!(
                     "远端会话里有一行 {bytes} 字节，超过单行上限 {} —— 已停止读取。\
                      这不是会话太大（那会报另一句），是**单条记录**异常巨大，多半该直接看源文件。",
-                    ssh_source::DAEMON_FRAME_LINE_CAP
+                    ssh_source::BACKEND_FRAME_LINE_CAP
                 ));
             }
             ssh_source::CappedLine::Line => {
@@ -821,7 +821,7 @@ pub async fn stream_read_remote_session(
         };
         read_bytes += n as u64;
         if read_bytes > MAX_SESSION_BYTES {
-            // F06：**不许静默截断**。同一份数据走 daemon 的 `--fork-session` 会硬报错，
+            // F06：**不许静默截断**。同一份数据走后端的 `--fork-session` 会硬报错，
             // 走这条路却假装读完了 —— 定框 E5 要的是「同一份数据走不同路得到同一个答案」。
             return Err(session_truncated_message(read_bytes, total));
         }
@@ -831,8 +831,8 @@ pub async fn stream_read_remote_session(
         }
         if first_line {
             first_line = false;
-            if is_old_daemon_hello(trimmed) {
-                return Err(OLD_DAEMON_MSG.to_string());
+            if is_old_backend_hello(trimmed) {
+                return Err(OLD_BACKEND_MSG.to_string());
             }
         }
         // 与本地 stream_read_session_jsonl 同口径：parse + displayable 过滤 + per-file seq

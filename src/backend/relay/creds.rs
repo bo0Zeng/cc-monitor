@@ -17,7 +17,7 @@
 //! # ⚠ 「路径文档化」这一格落在哪（如实记）
 //!
 //! `KS9` 逐字要求「**路径必须文档化**（写进 README 或 `--help`）：一个『能手编但没人知道在哪』
-//! 的文件等于不能手编」。今天两个字面落点**都不在本轮写区**（`README.md` 不在；daemon **没有**
+//! 的文件等于不能手编」。今天两个字面落点**都不在本轮写区**（`README.md` 不在；backend **没有**
 //! `--help`，现打：`main.rs` 里 `"--help"` 零命中）。
 //! ⇒ 落点改成**启动日志**：中转起来时把**算出来的那条绝对路径**印在 stderr 上，
 //! 文件不在时连**模板**一起印。它比 README 更强（在你需要它的那一刻告诉你），
@@ -38,7 +38,7 @@ pub(crate) struct Loaded {
     /// 文件里写着的那些账号。**没配 ⇒ 空** —— 空与「读坏了」是两回事，后者走 `problem`。
     ///
     /// ⚠ **它还不是路由表**：这里的每条还带着一个**没解析过**的 `base_url` 字符串，
-    /// 而「id 当不当得了路由段 / `base_url` 解析不解析得了」要 daemon 那两个谓词才判得了。
+    /// 而「id 当不当得了路由段 / `base_url` 解析不解析得了」要后端那两个谓词才判得了。
     /// 装成表那一步在 `super::table::build`，两条判断都在那里，都出声。
     pub(crate) accounts: Vec<AccountEntry>,
     /// 权限判断（`KS11`）。`OwnerOnly` 之外都要出声。
@@ -60,7 +60,7 @@ pub(crate) fn resolve_path(get: &dyn Fn(&str) -> Option<String>, home: &Path) ->
 }
 
 /// 读一次。**只读** —— 本模块一个文件系统变更调用都没有（`K-H2a` 裁四；
-/// daemon 的 `readonly_guard` 扫的就是这件事）。
+/// backend 的 `readonly_guard` 扫的就是这件事）。
 pub(crate) fn load(path: &Path) -> Loaded {
     // ★ 顺序是承重的：**先查权限，再读内容**。
     //   反过来的话，一份过宽的文件已经被读进内存了才开始出声 —— 那时提醒的意义少一半。

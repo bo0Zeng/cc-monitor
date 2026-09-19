@@ -1,10 +1,10 @@
-/// ★ P7c1-Y2：**daemon 不许自己匹配或排序 subagent**。
+/// ★ P7c1-Y2：**backend 不许自己匹配或排序 subagent**。
 ///
 /// 最容易的写法是把 monitor 的 `load_subagent` 整套搬过来。那会长出第二套语义
 /// —— 定框 `C1` 逐字排除，而本轮已经在那个 `or` 上数出**四份**实现。
 /// ⇒ 这里只列候选；`description` 精确匹配与按时间戳挑最近**留在 monitor**。
 #[test]
-fn the_daemon_never_matches_or_ranks_subagents() {
+fn the_backend_never_matches_or_ranks_subagents() {
     let prod = crate::guard_support::production_code(include_str!(
         "../../../src/backend/observe/history_query.rs"
     ));

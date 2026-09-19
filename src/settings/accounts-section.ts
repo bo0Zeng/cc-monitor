@@ -297,7 +297,7 @@ export class AccountsSection {
    * Phase G：给状态账本记一格。
    *
    * **这里此前是个洞**：`MACHINE_FACETS` 有 5 格，而全仓 `recordFacet` 的生产者只覆盖
-   * 3 格（machine-card 的 connection/daemon/ccm）—— `acctIso` 与 `accounts` **一个写点都没有**。
+   * 3 格（machine-card 的 connection/backend/ccm）—— `acctIso` 与 `accounts` **一个写点都没有**。
    * 后果不是「少两个格子」，而是**「还差什么」那张清单在任何真实安装上都清不空**：
    * 每台机器恒定产出 ≥2 条 `unknown` ⇒ `summarizeGaps` 恒非 null ⇒
    * `remote-section` 里「全绿就整块不出现」那一支是**死代码**。
@@ -309,7 +309,7 @@ export class AccountsSection {
    * ⇒ 远端补上了，**本机一格都没写过**（`N-F2` 开工时现打：全仓对 `LOCAL_MACHINE_KEY`
    * 的 `recordFacet` 写点 **0 个** —— ⚠ **这是那一刻的快照，而改掉它的正是下面这一行**：
    * 本件之后是 1 个，就是这里）。而 `readiness.notApplicable` 对本机只排掉
-   * `daemon` / `connection` 两格（`ccm` 另有一条，仅 Windows），
+   * `backend` / `connection` 两格（`ccm` 另有一条，仅 Windows），
    * 于是本机的 `acctIso` / `accounts` 是**适用而恒 `unknown`** 的两格 ——
    * 上面那句「清单在任何真实安装上都清不空」在本机这一侧原封不动地仍然成立。
    *
@@ -366,8 +366,8 @@ export class AccountsSection {
       // 🔴 `K-R59`：这里原来还有一支 `case "hidden"`，把 `accounts`/`acctIso` 两格
       //    记成 `na`、理由「用户显式选的降级」。那一档（`daemonless`）整格没了 ⇒ 支也没了。
       case "needs-update":
-        this.note("accounts", { kind: "fail", detail: "daemon 需更新" });
-        this.info(`远端 daemon 需要更新才能用多账号：${ui.reason}`);
+        this.note("accounts", { kind: "fail", detail: "backend 需更新" });
+        this.info(`远端后端需要更新才能用多账号：${ui.reason}`);
         return;
       case "not-enabled":
         // 读得到、但多账号管线没启用 ⇒ accounts 这一格算读到了，acctIso 那格是真的缺。
@@ -571,7 +571,7 @@ export class AccountsSection {
 
   /**
    * A6：在远端终端里跑一个部署/维护步骤——构建命令（校验失败即提示不动手）→ danger 步二次确认 →
-   * `launch_remote_terminal` 弹真实终端让用户看着跑（DESIGN §6，不经 daemon、不代跑）。
+   * `launch_remote_terminal` 弹真实终端让用户看着跑（DESIGN §6，不经后端、不代跑）。
    */
   private async launchStep(
     step: AcctIsoStep,
@@ -842,7 +842,7 @@ export class AccountsSection {
   ): Promise<void> {
     const def = currentWorkingAccount(state);
     this.body.appendChild(this.renderCurrentBanner(def));
-    // Z01：**能用但有缺**（远端 daemon / cc-acct-iso 旧到看不见账号 0）。列表本身是好的，
+    // Z01：**能用但有缺**（远端 backend / cc-acct-iso 旧到看不见账号 0）。列表本身是好的，
     // 所以不走 needs-update 那条整体降级——但也**绝不静默**：少一行账号用户看不出来。
     if (notice) {
       const n = document.createElement("div");

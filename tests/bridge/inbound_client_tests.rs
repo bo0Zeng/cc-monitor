@@ -7,8 +7,8 @@ fn hello_frame(commands: &[&str]) -> InboundFrame {
         build_id: "test".into(),
         host_arch: "x86_64".into(),
         claude_dir: "/tmp".into(),
-        // daemon-split `S4`：`hello.homes` 与本用例无关（它测的是入方向命令协商），
-        // 空表 = 今天所有已部署 daemon 的形态。
+        // backend-split `S4`：`hello.homes` 与本用例无关（它测的是入方向命令协商），
+        // 空表 = 今天所有已部署后端的形态。
         homes: vec![],
         capabilities: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
@@ -35,7 +35,7 @@ fn client_on_duplex(
     tokio::io::BufReader<tokio::io::DuplexStream>,
 ) {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
-    let hello = DaemonHello::from_hello_frame(&hello_frame(commands)).expect("是 Hello 帧");
+    let hello = BackendHello::from_hello_frame(&hello_frame(commands)).expect("是 Hello 帧");
     (
         park(mine).into_client(hello),
         tokio::io::BufReader::new(theirs),
@@ -46,13 +46,13 @@ fn client_on_duplex(
 /// P2s：**`<local>` 在两侧必须是同一个串**。
 ///
 /// 漂了**不会报错** —— 前端的本机开关会去操作一个谁都没登记过的 origin：
-/// `set_daemon_kill_on_exit("<localhost>", …)` 存进一张没人读的表，
-/// `daemon_status` 永远回 `channel: false`。**设了没反应，且不报错。**
+/// `set_backend_kill_on_exit("<localhost>", …)` 存进一张没人读的表，
+/// `backend_status` 永远回 `channel: false`。**设了没反应，且不报错。**
 ///
 /// 照仓里现成的跨语言对拍形状写（`payload.rs` 的 `REFUSE_TAG` 那条 / `launch.rs` 的
 /// POSIX marker 那条）：`include_str!` 读前端那份、抠出字面量、逐字比。
 fn the_local_origin_is_the_same_string_on_both_sides() {
-    let ts = include_str!("../../src/daemon-policy.ts");
+    let ts = include_str!("../../src/backend-policy.ts");
     let line = ts
         .lines()
         .find(|l| l.trim_start().starts_with("export const LOCAL_ORIGIN"))
@@ -79,7 +79,7 @@ fn the_local_origin_is_the_same_string_on_both_sides() {
 /// ⇒ 它会退化成一条要人反复放宽的白名单（铁律 16 骂的正是这个）。
 ///
 /// 真正保证「本机与远端拿到的是同一种 client」的性质是：**两边都经 `into_client`**。
-/// 而 `into_client` 要求交出 `DaemonHello` 见证（`the_hello_witness_can_only_come_from_a_hello_frame`
+/// 而 `into_client` 要求交出 `BackendHello` 见证（`the_hello_witness_can_only_come_from_a_hello_frame`
 /// 守着见证只能来自真 hello 帧）⇒ 钉住构造点唯一，整条链就闭合了。
 ///
 /// # 这不是抽样，是完备的
@@ -118,7 +118,7 @@ fn the_only_way_to_build_an_inbound_client_is_into_client() {
         sites.len(),
         1,
         "`InboundClient` 的构造点不止一处（实得 {} 处）。\n\
-             多一处 = 多一条不经 `DaemonHello` 见证就能造出 client 的路 ⇒\n\
+             多一处 = 多一条不经 `BackendHello` 见证就能造出 client 的路 ⇒\n\
              本机与远端拿到的 client 可能语义不同，而没有任何东西会响。",
         sites.len()
     );
@@ -133,21 +133,21 @@ fn the_only_way_to_build_an_inbound_client_is_into_client() {
     assert_eq!(
         name, "into_client",
         "唯一的构造点跑到了 `{name}` 里，而不是 `into_client`。\n\
-             `into_client` 的签名要 `DaemonHello`（那是「换写能力必须交出见证」的门）；\n\
+             `into_client` 的签名要 `BackendHello`（那是「换写能力必须交出见证」的门）；\n\
              构造搬到别的函数里 = 那道门被绕开了。"
     );
 }
 
 /// ★★ **那两句「唯一入口 / 唯一出口」必须有人读**〔audit-0805 08-07，Phase G 第 45 件〕。
 ///
-/// 本模块头注逐字写着「`DaemonHello` 的**唯一构造入口**是 `from_hello_frame`」
-/// 与「`ParkedWriter` 的**唯一出口**是 `into_client`，而它要一个 `DaemonHello`」。
+/// 本模块头注逐字写着「`BackendHello` 的**唯一构造入口**是 `from_hello_frame`」
+/// 与「`ParkedWriter` 的**唯一出口**是 `into_client`，而它要一个 `BackendHello`」。
 /// 整条「Hello 之前不许写」的类型保证就压在这两句上 ——
 /// `ssh_source` 那两条判据的诊断也是这么写的（「在这里直接写 = 静默绕过那条类型保证」）。
 ///
 /// # 而它们是散文
 ///
-/// 08-07 实测：给 `DaemonHello` 加 `pub fn forged(commands) -> Self`（凭空造见证）、
+/// 08-07 实测：给 `BackendHello` 加 `pub fn forged(commands) -> Self`（凭空造见证）、
 /// 给 `ParkedWriter` 加 `pub fn into_inner(self) -> W`（不要见证就把写半边取回来），
 /// **全仓 976 条判据一条不红**。旁边那条 `the_hello_witness_can_only_come_from_a_hello_frame`
 /// 是**单函数行为测试**（Hello→Some / 非 Hello→None），它只管那一扇门开得对不对，
@@ -158,7 +158,7 @@ fn the_only_way_to_build_an_inbound_client_is_into_client() {
 /// # 钉法
 ///
 /// 人群从 `impl` 块**派生**（不手写清单），默认拒绝：两个类型各自的公开关联函数
-/// 必须恰好是登记的那一个。顺带钉住 `ParkedWriter` 那扇门**要见证**（签名里有 `DaemonHello`）。
+/// 必须恰好是登记的那一个。顺带钉住 `ParkedWriter` 那扇门**要见证**（签名里有 `BackendHello`）。
 #[test]
 fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/inbound_client.rs"));
@@ -191,15 +191,15 @@ fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
         out
     };
 
-    let witness_doors = doors("impl DaemonHello {");
+    let witness_doors = doors("impl BackendHello {");
     assert_eq!(
         witness_doors,
         vec!["from_hello_frame".to_string()],
-        "`DaemonHello` 的公开关联函数不再只有 `from_hello_frame`。\n\
+        "`BackendHello` 的公开关联函数不再只有 `from_hello_frame`。\n\
              多出来的那个**就是第二个构造入口** —— 见证一旦能凭空造出来，\n\
              `ParkedWriter::into_client` 那道门就形同虚设，「Hello 之前不许写」当场破。\n\
              ⚠ 08-07 实测：加一个 `pub fn forged(..) -> Self`，全仓判据一条不红。\n\
-             真要加，先想清楚它凭什么能证明「daemon 已经打过招呼」。"
+             真要加，先想清楚它凭什么能证明「backend 已经打过招呼」。"
     );
 
     let exit_doors = doors("impl<W> ParkedWriter<W>");
@@ -218,8 +218,8 @@ fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
         .find(|l| l.contains("pub fn into_client("))
         .expect("上面已确认它存在");
     assert!(
-        exit_sig.contains("DaemonHello"),
-        "`into_client` 的签名里不再要 `DaemonHello`（实得 {exit_sig:?}）——\n\
+        exit_sig.contains("BackendHello"),
+        "`into_client` 的签名里不再要 `BackendHello`（实得 {exit_sig:?}）——\n\
              门还在，但不查票了。整条保证靠的就是「换写能力必须交出见证」。"
     );
 
@@ -229,51 +229,51 @@ fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
     // （参数类型 · **字段私有** · 跨模块可见性）。⇒ 那一刀说明**字段私有才是真保障**，
     // 而本条当时只钉关联函数与 `Default`，没钉它。
     // 实测把 `commands` 改成 `pub`：全仓 **977 条判据一条不红**，而从此
-    // 任何模块都能 `DaemonHello { commands: vec![] }` 凭空造见证 —— 连一扇门都不用走。
+    // 任何模块都能 `BackendHello { commands: vec![] }` 凭空造见证 —— 连一扇门都不用走。
     // ⇒ **验一条判据的时候，编译器替你挡住的那些，正是没人写下来的那些。**
     let witness_fields: Vec<&str> = prod
         .lines()
-        .skip_while(|l| !l.starts_with("pub struct DaemonHello"))
+        .skip_while(|l| !l.starts_with("pub struct BackendHello"))
         .skip(1)
         .take_while(|l| l.starts_with(char::is_whitespace) || l.is_empty())
         .filter(|l| l.contains(':'))
         .collect();
     assert!(
         !witness_fields.is_empty(),
-        "抽不到 `DaemonHello` 的字段 —— 抽取器坏了，下面那条在空转"
+        "抽不到 `BackendHello` 的字段 —— 抽取器坏了，下面那条在空转"
     );
     for f in &witness_fields {
         assert!(
             !f.trim().starts_with("pub "),
-            "`DaemonHello` 的字段 {f:?} 是 `pub` 的 —— 那是第四条路：\n\
-                 任何模块都能 `DaemonHello {{ … }}` 凭空造一个见证，连一扇门都不用走。\n\
+            "`BackendHello` 的字段 {f:?} 是 `pub` 的 —— 那是第四条路：\n\
+                 任何模块都能 `BackendHello {{ … }}` 凭空造一个见证，连一扇门都不用走。\n\
                  整条「Hello 之前不许写」压在这个字段的私有性上，别把它打开。"
         );
     }
 
     // 见证类型不许有 `Default`：那是一条**不经过任何函数**的构造路。
     assert!(
-        !prod.contains("impl Default for DaemonHello"),
-        "`DaemonHello` 实现了 `Default` —— 那是第三条路：`DaemonHello::default()` \
+        !prod.contains("impl Default for BackendHello"),
+        "`BackendHello` 实现了 `Default` —— 那是第三条路：`BackendHello::default()` \
              凭空就是一个见证，而它连一扇门都不用走。"
     );
     let derive_line = prod
         .lines()
         .zip(prod.lines().skip(1))
-        .find(|(_, next)| next.starts_with("pub struct DaemonHello"))
+        .find(|(_, next)| next.starts_with("pub struct BackendHello"))
         .map(|(d, _)| d)
-        .expect("找不到 DaemonHello 的 derive 行 —— 抽取器坏了");
+        .expect("找不到 BackendHello 的 derive 行 —— 抽取器坏了");
     assert!(
         !derive_line.contains("Default"),
-        "`DaemonHello` 的 derive 里出现了 `Default`（{derive_line:?}）—— 同上，那是不走门的构造路。"
+        "`BackendHello` 的 derive 里出现了 `Default`（{derive_line:?}）—— 同上，那是不走门的构造路。"
     );
 }
 
 #[test]
 fn the_hello_witness_can_only_come_from_a_hello_frame() {
-    assert!(DaemonHello::from_hello_frame(&hello_frame(&["ping"])).is_some());
+    assert!(BackendHello::from_hello_frame(&hello_frame(&["ping"])).is_some());
     assert!(
-        DaemonHello::from_hello_frame(&InboundFrame::Overflow {
+        BackendHello::from_hello_frame(&InboundFrame::Overflow {
             dropped: 1,
             lost: Vec::new(),
             lost_truncated: false
@@ -283,15 +283,15 @@ fn the_hello_witness_can_only_come_from_a_hello_frame() {
     );
 }
 
-/// ★ **跨轨对拍**：`tests/e2e/inbound-daemon-frames.sh` 喂给真 daemon 的那条 ping 行，
+/// ★ **跨轨对拍**：`tests/e2e/inbound-backend-frames.sh` 喂给真后端的那条 ping 行，
 /// 必须**逐字节**等于本模块编码器的产物。
 ///
-/// 没有这条，那套 e2e 只证明了「daemon 认得我手写的那串 JSON」，
+/// 没有这条，那套 e2e 只证明了「backend 认得我手写的那串 JSON」，
 /// 证明不了「monitor 真发出去的那串 JSON」—— 两者一旦漂开，e2e 会**继续全绿**
 /// 而生产里一条命令都发不出去。同 `removal_cause_wire_literal_stays_in_sync` 的思路。
 #[test]
 fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
-    const SUITE: &str = include_str!("../e2e/inbound-daemon-frames.sh");
+    const SUITE: &str = include_str!("../e2e/inbound-backend-frames.sh");
     let key = "INBOUND_PING_LINE='";
     let at = SUITE
         .find(key)
@@ -305,13 +305,13 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
     assert_eq!(
         format!("{literal}\n"),
         encode_request("e2e-ping-1", "ping", &Value::Null),
-        "\ne2e 脚本喂给真 daemon 的行与 monitor 编码器的产物不一致。\n\
+        "\ne2e 脚本喂给真后端的行与 monitor 编码器的产物不一致。\n\
              改了编码器就把脚本里那条 `INBOUND_PING_LINE` 一起改（反之亦然）——\n\
              它们必须是同一份事实，否则 e2e 是在验证一个 monitor 永远不会发的形状。"
     );
 
     // ★ 光钉变量不够 —— D 审计变异 EMU2：变量一字不动，只把 `send "$INBOUND_PING_LINE"`
-    //   换成一串手抄字面量 ⇒ **两轨全绿**，而 DoD 那句「喂给 daemon 的就是编码器的字节」
+    //   换成一串手抄字面量 ⇒ **两轨全绿**，而 DoD 那句「喂给后端的就是编码器的字节」
     //   已经不成立了（shellcheck 也拦不住：未用变量是 SC2034 warning，CI 只看 error）。
     //   所以再钉一条：那个变量必须真的被送出去，且**只此一处**发 ping。
     let sends: Vec<&str> = SUITE
@@ -332,7 +332,7 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
         via_var, 1,
         "\n脚本里经 `$INBOUND_PING_LINE` 发出去的行应恰好一条（实得 {via_var}）——\n\
              那个变量是与 monitor 编码器逐字节对拍的**唯一**载体，绕过它 e2e 就变成\n\
-             「daemon 认得我手抄的 JSON」，证明不了「monitor 发的那种 JSON」。"
+             「backend 认得我手抄的 JSON」，证明不了「monitor 发的那种 JSON」。"
     );
     // 反面：别的 send 里不许再出现 `"cmd":"ping"` 的手抄 ping 请求（cancel/unknown 等无妨）。
     let hand_written_ping: Vec<&&str> = sends
@@ -352,13 +352,13 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
 
 /// ★ U8a-2c-1：同上，但钉的是**业务命令**那一行。
 ///
-/// ping 那条证明「daemon 认得 monitor 编的信封」；这条证明的是
-/// **monitor 真正会发的那条 `launch`**（`daemon_send_into` 唯一会说的 `send-into`）。
-/// 少了它，那套 e2e 只验证了「daemon 认得我手写的 launch 形状」——
+/// ping 那条证明「backend 认得 monitor 编的信封」；这条证明的是
+/// **monitor 真正会发的那条 `launch`**（`backend_send_into` 唯一会说的 `send-into`）。
+/// 少了它，那套 e2e 只验证了「backend 认得我手写的 launch 形状」——
 /// 而 `launch_args` 的键名/键序一改，e2e 会继续全绿而生产里一条命令都发不出去。
 #[test]
 fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
-    const SUITE: &str = include_str!("../e2e/inbound-daemon-frames.sh");
+    const SUITE: &str = include_str!("../e2e/inbound-backend-frames.sh");
     let key = "INBOUND_SEND_INTO_LINE='";
     let at = SUITE
         .find(key)
@@ -383,42 +383,42 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
                 Default::default(),
             )
         ),
-        "\ne2e 脚本喂给真 daemon 的 send-into 行与 monitor 编码器的产物不一致。\n\
+        "\ne2e 脚本喂给真后端的 send-into 行与 monitor 编码器的产物不一致。\n\
              `launch_args` 的键名/键序改了就把脚本里那条 `INBOUND_SEND_INTO_LINE` 一起改 ——\n\
              它们必须是同一份事实，否则 e2e 在验证一个 monitor 永远不会发的形状。"
     );
 }
 
-/// ★ e2e 脚本里硬编码的那三个命令名，必须等于 daemon 的 `inbound::COMMANDS`。
+/// ★ e2e 脚本里硬编码的那三个命令名，必须等于后端的 `inbound::COMMANDS`。
 ///
-/// 那是命令面的**第五处**副本（前四处已由 daemon 侧两条护栏钉住）。没有这条的话，
+/// 那是命令面的**第五处**副本（前四处已由后端侧两条护栏钉住）。没有这条的话，
 /// 加一条新命令时 e2e 不会红 —— 只是**悄悄漏测**，而 e2e 恰恰是唯一跑真进程的那一层。
 #[test]
-fn the_e2e_command_list_matches_the_daemon_command_table() {
-    const SUITE: &str = include_str!("../e2e/inbound-daemon-frames.sh");
-    const DAEMON_INBOUND: &str = include_str!("../../src/backend/inbound.rs");
+fn the_e2e_command_list_matches_the_backend_command_table() {
+    const SUITE: &str = include_str!("../e2e/inbound-backend-frames.sh");
+    const BACKEND_INBOUND: &str = include_str!("../../src/backend/inbound.rs");
 
-    // daemon 侧：`pub const COMMANDS: &[&str] = &["cancel", "ping", "resolve"];`
-    let i = DAEMON_INBOUND
+    // backend 侧：`pub const COMMANDS: &[&str] = &["cancel", "ping", "resolve"];`
+    let i = BACKEND_INBOUND
         .find("const COMMANDS")
-        .expect("daemon inbound.rs 里找不到 COMMANDS —— 抽取坏了");
-    let j = DAEMON_INBOUND[i..]
+        .expect("backend inbound.rs 里找不到 COMMANDS —— 抽取坏了");
+    let j = BACKEND_INBOUND[i..]
         .find("];")
         .map(|k| i + k)
         .expect("COMMANDS 没有收尾");
-    let mut daemon: Vec<String> = DAEMON_INBOUND[i..j]
+    let mut backend: Vec<String> = BACKEND_INBOUND[i..j]
         .split('"')
         .skip(1)
         .step_by(2)
         .filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
         .map(str::to_string)
         .collect();
-    daemon.sort();
-    daemon.dedup();
+    backend.sort();
+    backend.dedup();
     assert!(
-        daemon.len() >= 3,
-        "只抽到 {} 条 daemon 命令 —— 抽取坏了，本断言在空转：{daemon:?}",
-        daemon.len()
+        backend.len() >= 3,
+        "只抽到 {} 条后端命令 —— 抽取坏了，本断言在空转：{backend:?}",
+        backend.len()
     );
 
     // e2e 侧：`for c in ping cancel resolve; do`
@@ -446,15 +446,15 @@ fn the_e2e_command_list_matches_the_daemon_command_table() {
     suite.dedup();
 
     assert_eq!(
-        suite, daemon,
-        "\ne2e 脚本断言的命令集与 daemon 的 `inbound::COMMANDS` 对不上。\n\
+        suite, backend,
+        "\ne2e 脚本断言的命令集与后端的 `inbound::COMMANDS` 对不上。\n\
              加/删入方向命令时这两处要一起动 —— 否则新命令在**唯一跑真进程的那一层**漏测。"
     );
 }
 
-/// ★★ `KR104D1` 的跨轨对拍：那条新原语的参数构造器与 daemon 的解析器对得上。
+/// ★★ `KR104D1` 的跨轨对拍：那条新原语的参数构造器与后端的解析器对得上。
 ///
-/// 〔`设计/50`：本条原名 `the_two_tmux_primitive_arg_builders_match_the_daemon_parsers`  〔散文墓碑〕
+/// 〔`设计/50`：本条原名 `the_two_tmux_primitive_arg_builders_match_the_backend_parsers`  〔散文墓碑〕
 ///  （`tests/evidence/K-R104-deathvalue.md` 里按那个名字记着读数）。「两条」里的
 ///  `oneshot-session` 随用量 ③ 轴退役，剩 `capture-pane` 一条 ⇒ 名字跟着改，
 ///  免得它自己变成一句假话。〕
@@ -463,23 +463,23 @@ fn the_e2e_command_list_matches_the_daemon_command_table() {
 ///
 /// `launch` 的解析器逐个 `get_str("<key>")`，抠得出来。`capture-pane` 的解析器写法不同
 /// （复用 `kill::parse_name`）⇒ 照抄那把尺子会**零命中地绿**。
-/// ⇒ 这里换一个**共同的、数据级**的真相源：daemon 的 `inbound::REGISTRY` 里那条
-/// `CommandSpec::fields`（它自己已经被 `protocol_doc_guard` 与 daemon 侧的判据
+/// ⇒ 这里换一个**共同的、数据级**的真相源：backend 的 `inbound::REGISTRY` 里那条
+/// `CommandSpec::fields`（它自己已经被 `protocol_doc_guard` 与后端侧的判据
 /// 双向钉着，不是第三份手写清单）。
 ///
 /// **args 是 fields 的子集**（fields = args ∪ data）⇒ 断的是**包含**，
 /// 并另加一格「data 那几个键不许出现在 args 里」，免得包含关系退化成空真。
 #[test]
-fn the_tmux_primitive_arg_builder_matches_the_daemon_parser() {
-    const DAEMON_INBOUND: &str = include_str!("../../src/backend/inbound.rs");
-    let prod = guard_core::production_code(DAEMON_INBOUND);
+fn the_tmux_primitive_arg_builder_matches_the_backend_parser() {
+    const BACKEND_INBOUND: &str = include_str!("../../src/backend/inbound.rs");
+    let prod = guard_core::production_code(BACKEND_INBOUND);
 
-    /// 从 daemon 的 `REGISTRY` 里抠出某条命令那一格 `fields: &[…]` 的成员。
+    /// 从后端的 `REGISTRY` 里抠出某条命令那一格 `fields: &[…]` 的成员。
     fn fields_of(prod: &str, cmd: &str) -> Vec<String> {
         let head = format!("name: \"{cmd}\",");
-        let at = prod
-            .find(&head)
-            .unwrap_or_else(|| panic!("daemon 的 `REGISTRY` 里找不到 `{cmd}` —— 尺子的作用域没了"));
+        let at = prod.find(&head).unwrap_or_else(|| {
+            panic!("backend 的 `REGISTRY` 里找不到 `{cmd}` —— 尺子的作用域没了")
+        });
         let rest = &prod[at..];
         let f = rest
             .find("fields: &[")
@@ -502,7 +502,7 @@ fn the_tmux_primitive_arg_builder_matches_the_daemon_parser() {
     assert_eq!(
         cap_fields,
         vec!["name".to_string(), "screen".to_string()],
-        "daemon 侧 `capture-pane` 的 `fields` 变了 —— 两边同拍改"
+        "backend 侧 `capture-pane` 的 `fields` 变了 —— 两边同拍改"
     );
     let cap = capture_pane_args("cc-x");
     let cap_keys: Vec<String> = cap.as_object().expect("对象").keys().cloned().collect();
@@ -517,14 +517,14 @@ fn the_tmux_primitive_arg_builder_matches_the_daemon_parser() {
     );
 }
 
-/// ★ 跨轨对拍：`launch_args` 吐的键名必须**恰好**是 daemon 解析器认的那几个。
+/// ★ 跨轨对拍：`launch_args` 吐的键名必须**恰好**是后端解析器认的那几个。
 ///
-/// 漂开的症状是「命令发出去了、daemon 回 `bad_request` 说缺字段」，而两边各自看都对。
+/// 漂开的症状是「命令发出去了、backend 回 `bad_request` 说缺字段」，而两边各自看都对。
 #[test]
-fn launch_args_field_names_match_the_daemon_parser() {
-    const DAEMON_LAUNCH: &str = include_str!("../../src/backend/control/launch.rs");
-    let prod = guard_core::production_code(DAEMON_LAUNCH);
-    // daemon 侧逐个 `get_str("<key>")` 抠出来。
+fn launch_args_field_names_match_the_backend_parser() {
+    const BACKEND_LAUNCH: &str = include_str!("../../src/backend/control/launch.rs");
+    let prod = guard_core::production_code(BACKEND_LAUNCH);
+    // backend 侧逐个 `get_str("<key>")` 抠出来。
     let key = "get_str(\"";
     let mut wanted: Vec<String> = Vec::new();
     let mut from = 0usize;
@@ -538,11 +538,11 @@ fn launch_args_field_names_match_the_daemon_parser() {
     wanted.dedup();
     assert!(
         wanted.len() >= 5,
-        "只从 daemon 解析器抠到 {} 个字段 —— 抽取坏了，本断言在空转：{wanted:?}",
+        "只从后端解析器抠到 {} 个字段 —— 抽取坏了，本断言在空转：{wanted:?}",
         wanted.len()
     );
 
-    // ⚠ **每个可选字段都要给**：漏一个，`got` 就少一个键，而 `wanted` 是从 daemon
+    // ⚠ **每个可选字段都要给**：漏一个，`got` 就少一个键，而 `wanted` 是从 backend
     //   解析器抠的 —— 这条 `assert_eq!` 会当场红。那正是它该有的样子（`K-P2` `D3`
     //   加 `agent`/`width`/`height` 时它逐字红过一次）。
     let full = launch_args(
@@ -566,11 +566,11 @@ fn launch_args_field_names_match_the_daemon_parser() {
     got.sort();
     assert_eq!(
         got, wanted,
-        "\nmonitor 的 `launch_args` 与 daemon 的解析器字段名对不上。\n\
-             两边必须同时改 —— 否则症状是「daemon 回 bad_request 说缺字段」，很难归因。"
+        "\nmonitor 的 `launch_args` 与后端的解析器字段名对不上。\n\
+             两边必须同时改 —— 否则症状是「backend 回 bad_request 说缺字段」，很难归因。"
     );
 
-    // 可选字段真的可选：不传就不出现（daemon 侧 `cwd`/`ccm_sid` 都是 `Option`）。
+    // 可选字段真的可选：不传就不出现（backend 侧 `cwd`/`ccm_sid` 都是 `Option`）。
     let minimal = launch_args("send-into", "cc-x", "true", None, None, Default::default());
     let keys: Vec<&String> = minimal.as_object().expect("对象").keys().collect();
     assert_eq!(
@@ -579,7 +579,7 @@ fn launch_args_field_names_match_the_daemon_parser() {
         "最小形态应当只有 mode/name/payload：{keys:?}"
     );
     // ★〔`K-P2` `D3`〕**半个尺寸不许上线**：只给 `width` 时两个都不发 ——
-    //   让「一半的修饰」在**发出去之前**就不存在，而不是等 daemon 回 `invalid_args`。
+    //   让「一半的修饰」在**发出去之前**就不存在，而不是等后端回 `invalid_args`。
     let half = launch_args(
         "create-or-attach",
         "cc-x",
@@ -601,10 +601,10 @@ fn launch_args_field_names_match_the_daemon_parser() {
 }
 
 #[test]
-fn encode_request_is_byte_stable_and_matches_the_daemon_envelope() {
+fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {
     let line = encode_request("abc-0", "ping", &serde_json::json!({}));
     assert_eq!(line, "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{}}\n");
-    // 反向：daemon 侧就是拿它当 `Request` 反序列化的，字段名必须对得上。
+    // 反向：backend 侧就是拿它当 `Request` 反序列化的，字段名必须对得上。
     let v: Value = serde_json::from_str(line.trim_end()).expect("必须是合法 JSON");
     for k in ["id", "cmd", "args"] {
         assert!(v.get(k).is_some(), "信封缺字段 `{k}`：{line}");
@@ -699,7 +699,7 @@ async fn an_undeclared_command_is_refused_without_writing_anything() {
     assert!(read.is_err(), "被拒的命令却发出去了：{buf:?}");
 }
 
-/// 超时 ⇒ `Timeout`，且**自动补发一条 `cancel`**（daemon 别白跑）。
+/// 超时 ⇒ `Timeout`，且**自动补发一条 `cancel`**（backend 别白跑）。
 #[tokio::test]
 async fn a_timeout_fires_a_cancel_for_the_abandoned_id() {
     let (client, mut peer) = client_on_duplex(&["ping", "cancel"]);
@@ -735,9 +735,9 @@ async fn a_timeout_fires_a_cancel_for_the_abandoned_id() {
     );
 }
 
-/// daemon 没声明 `cancel` 时不许补发（否则那是一条注定 `unknown_command` 的噪声）。
+/// backend 没声明 `cancel` 时不许补发（否则那是一条注定 `unknown_command` 的噪声）。
 #[tokio::test]
-async fn no_cancel_is_fired_when_the_daemon_does_not_declare_it() {
+async fn no_cancel_is_fired_when_the_backend_does_not_declare_it() {
     let (client, mut peer) = client_on_duplex(&["ping"]);
     let c = client.clone();
     let caller =
@@ -789,7 +789,7 @@ async fn the_pending_table_is_capped_by_live_waiters() {
     }
     assert!(
         client.register("overflow").is_none(),
-        "登记表没有上限 —— 死 daemon 下会无界增长"
+        "登记表没有上限 —— 死后端下会无界增长"
     );
     drop(held);
 }
@@ -797,9 +797,9 @@ async fn the_pending_table_is_capped_by_live_waiters() {
 /// ★ 满的时候先回收「调用方已走」的登记（D 审计发现的真泄漏路径）。
 ///
 /// 「超时不摘登记」那条设计的前提是「晚到的应答终会把它摘掉」。审计指出这个前提在
-/// **背压路径上不成立**：daemon 侧 cancel 的两条应答都是 `try_send`，应答通道满时
+/// **背压路径上不成立**：backend 侧 cancel 的两条应答都是 `try_send`，应答通道满时
 /// 静默丢弃，被 abort 的命令也不补应答 ⇒ 那条 id 永远等不到任何帧。
-/// 每次超时吃 2 格，128 次封死 256 格，**而且 daemon 恢复之后也不会自愈**。
+/// 每次超时吃 2 格，128 次封死 256 格，**而且后端恢复之后也不会自愈**。
 #[tokio::test]
 async fn a_full_table_reclaims_registrations_whose_caller_has_left() {
     let (client, _peer) = client_on_duplex(&["ping"]);
@@ -849,7 +849,7 @@ async fn shutdown_wakes_every_waiter_with_disconnected() {
 fn ids_from_two_connections_never_collide() {
     let mk = || {
         let (mine, _theirs) = tokio::io::duplex(1024);
-        let hello = DaemonHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
+        let hello = BackendHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
         park(mine).into_client(hello)
     };
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -872,7 +872,7 @@ fn unregister_never_removes_someone_elses_client() {
         .expect("rt");
     let mk = || {
         let (mine, _theirs) = tokio::io::duplex(1024);
-        let hello = DaemonHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
+        let hello = BackendHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
         park(mine).into_client(hello)
     };
     let (old, new) = rt.block_on(async { (mk(), mk()) });

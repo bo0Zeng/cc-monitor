@@ -19,7 +19,7 @@ fn cfg(host: &str, user: &str, port: u16, key: Option<&str>) -> RemoteConfig {
 /// 原文案「拉起终端窗口仅支持 Windows（v1）」里那个 `(v1)` 在撒谎 —— L1 早就裁决过
 /// 反方向（`launch_local_posix` 头注：开窗要先猜终端模拟器，是平白引入一个会在别人
 /// 机器上错的决定）。用户在 Linux 上每次点 ↗ 都会读到那句话。
-/// ★★ **F06b-1d（C9）：backend 开的每一个终端窗口都必须带上 daemon 路径。**
+/// ★★ **F06b-1d（C9）：backend 开的每一个终端窗口都必须带上后端路径。**
 ///
 /// 判据形态：**零命中守卫**（跑法：单测扫生产源码 · 钉的性质：**生产接线** ——
 /// 两维分开写，见 `ROADMAP §4` 登记的计量缺陷）。
@@ -42,7 +42,7 @@ fn every_terminal_window_backend_opens_carries_the_daemon_path() {
     // ⚠ 钉**真正的动作** `.env(k, v)`，不是 helper 的调用次数：
     //    Windows 那个函数**只调一次 helper**，把结果给两个 spawn 点共用
     //    ⇒ 按 helper 数写地板会写成 3，实测 2（第一版就这么错的，被本条自己逮住）。
-    let helper = prod.matches("daemon_bin_env_for_window(").count();
+    let helper = prod.matches("backend_bin_env_for_window(").count();
     let carried = prod.matches(".env(k, v)").count();
     // 抽取器自检：剥完必须还看得见东西，且**确实剥掉了**测试里那两条字面量。
     assert!(
@@ -70,7 +70,7 @@ fn every_terminal_window_backend_opens_carries_the_daemon_path() {
     assert_eq!(
         spawns, 4,
         "`launch.rs` 生产代码里的 `Command::new(` 从 4 变成了 {spawns}。\n\
-             若新增的是**开终端窗口**，它必须也带上 `daemon_bin_env_for_window(...)` 的 env，\n\
+             若新增的是**开终端窗口**，它必须也带上 `backend_bin_env_for_window(...)` 的 env，\n\
              否则那条路上的 `ccm resume` 会**静默地**永远走本地（与名字打错同一族的静默失败）；\n\
              若新增的只是探测进程（如 `where.exe`），把本条的数字与这句说明一起更新。"
     );
@@ -85,7 +85,7 @@ fn every_terminal_window_backend_opens_carries_the_daemon_path() {
     // 那个不带 env 的必须是探测，不是开窗：钉住它的身份，别让「探测」变成豁免借口。
     assert!(
         prod.contains("Command::new(\"where.exe\")"),
-        "唯一允许不带 daemon env 的 `Command::new` 是 `where.exe` 探测；它不见了 ⇒ \n\
+        "唯一允许不带 backend env 的 `Command::new` 是 `where.exe` 探测；它不见了 ⇒ \n\
              要么被改名，要么 4-3=1 这个差额现在对应的是一个**真开窗点**"
     );
 }

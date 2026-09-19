@@ -2,7 +2,7 @@
 //!
 //! # 为什么需要它
 //!
-//! 那份文档是 daemon↔monitor（以及 aterm）之间的**权威契约**，而 U6 要在它上面加双向通道。
+//! 那份文档是 backend↔monitor（以及 aterm）之间的**权威契约**，而 U6 要在它上面加双向通道。
 //! 摸底实测缺口（**以本护栏首跑的机检结果为准，不是手工 grep 的估数**——
 //! 手工那版报 8 个字段 / 6 个子命令，两个数都不对）：
 //!
@@ -13,7 +13,7 @@
 //!   另有 `--fork-session` 出现在别处但不在一次性查询表里。手工那版把
 //!   `--list-accounts` / `--search` / `--session-accounts` 也算成漏了，实际早在表里。
 //! - 另有一处**比漏写更糟**的：`tmux_sessions` 帧的字段文档里叫 `classification`，
-//!   而全仓（daemon + monitor）没有任何东西叫这个名字 —— 线上真名是 `observation`。
+//!   而全仓（backend + monitor）没有任何东西叫这个名字 —— 线上真名是 `observation`。
 //!   照文档写的客户端会永远读到 `None`、退回「保守跳过」，正是这字段当初要修的 idle 灰灯。
 //!
 //! 拿这份文档当冻结基线，等于把这些缺口固化进新协议。
@@ -85,8 +85,8 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     ),
     // P4d：控制面的 CLI 入口。它**不做 match 分派**（认哪些 flag 由
     // `cli_control::spec_for` 从 `inbound::REGISTRY` 派生），但它持有
-    // `PROBE_FLAG = "--daemon-probe"` 这个字面量 —— 派生的文件集因此把它扫了进来。
-    // ⇒ 登记在这里，`--daemon-probe` 才受 IPC-PROTOCOL.md 对拍约束。
+    // `PROBE_FLAG = "--backend-probe"` 这个字面量 —— 派生的文件集因此把它扫了进来。
+    // ⇒ 登记在这里，`--backend-probe` 才受 IPC-PROTOCOL.md 对拍约束。
     (
         "control/cli_control.rs",
         include_str!("../../src/backend/control/cli_control.rs"),
@@ -118,7 +118,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
 ///
 /// `dispatch_registry_is_complete` 的判法是「生产段里出现 `"--` 字面量的文件集
 /// == [`DISPATCH_FILES`]」，而 [`DISPATCH_FILES`] 里的每个 token 都得落进
-/// `src/doc/IPC-PROTOCOL.md` §10 的代码跨度。那份文档是 **monitor↔daemon 的冻结线上契约**，
+/// `src/doc/IPC-PROTOCOL.md` §10 的代码跨度。那份文档是 **monitor↔backend 的冻结线上契约**，
 /// 读者在仓外（aterm），改一个字就是改协议。
 ///
 /// `ccm` 那套旗标（`--tmux` / `--account` / `--cwd` …）**不属于那份契约**：
@@ -182,7 +182,7 @@ mod tests {
     ///
     /// # 这条今天是**前提触发器**，不是空真
     ///
-    /// daemon 今天**没有**全景（`code-picture-core` 在 daemon 侧命中 0）。本条断言的正是
+    /// backend 今天**没有**全景（`code-picture-core` 在后端侧命中 0）。本条断言的正是
     /// 这个前提：一旦有人把全景接进 wire，下面那个计数会变、本条**当场红** ——
     /// 红了不是坏事，是让那个人**先读完这段话**再往下写。
     ///
@@ -193,18 +193,18 @@ mod tests {
     /// · **索引方式** 在我们这层（monitor 的 22 个命令已是纯查询语义）⇒ 管得了；
     /// · **解析方式** / **加新语言** 住在 `vendor/code-picture-core`（`Lang::` 散在 6 个文件 73 处），
     ///   而 `C7` 逐字「vendor 不动」、`VENDOR.md` 更硬（「副本是上游的镜子，不是分身，
-    ///   要改行为**先改上游再 re-vendor**」）⇒ **daemon 的接口形状决定不了那两件**。
+    ///   要改行为**先改上游再 re-vendor**」）⇒ **backend 的接口形状决定不了那两件**。
     ///
-    /// ⇒ daemon 侧唯一能保证、也唯一该保证的是：**不给那条路添新障碍** ——
+    /// ⇒ backend 侧唯一能保证、也唯一该保证的是：**不给那条路添新障碍** ——
     /// 协议里**不复制** grammar 清单、不暴露存储、不暴露解析开关。
-    /// 复制了才真的锁死（那时改一门语言要同时动上游、vendor、和 daemon 协议三处）。
+    /// 复制了才真的锁死（那时改一门语言要同时动上游、vendor、和后端协议三处）。
     ///
     /// ⚠ 这条比用户原话**窄**。窄的那部分不是被砍掉的，是它本来就不在这一层。
     #[test]
     fn the_panorama_protocol_would_only_expose_query_semantics() {
         let inbound = include_str!("../../src/backend/inbound.rs");
         let wire = include_str!("../../src/backend/wire.rs");
-        // ⚠ 剥注释用**共享原语**（`guard_core::production_code`，daemon 侧经 `guard_support` 再导出）。
+        // ⚠ 剥注释用**共享原语**（`guard_core::production_code`，backend 侧经 `guard_support` 再导出）。
         //   本会话已经栽过一次：自己内联一份 `#` 剥法，被 `structural_scan` 的
         //   「剥注释实现只许一份」当场逮住，而答案是「共享原语早就有了，我只是没找」。
         let prod = format!(
@@ -212,11 +212,11 @@ mod tests {
             guard_core::production_code(inbound),
             guard_core::production_code(wire)
         );
-        // ① 前提：今天 daemon 里没有全景。它变了就该回来读上面那段。
+        // ① 前提：今天后端里没有全景。它变了就该回来读上面那段。
         for absent in ["code_picture", "panorama"] {
             assert!(
                 !prod.contains(absent),
-                "daemon 的协议面出现了 {absent:?} —— 全景接进来了。\n             \
+                "backend 的协议面出现了 {absent:?} —— 全景接进来了。\n             \
                  ⇒ 请先读本判据的头注（`P7c-2` 的解耦约束），再把下面 ② 那张禁词表核一遍。"
             );
         }
@@ -232,7 +232,7 @@ mod tests {
         ] {
             assert!(
                 !prod.to_lowercase().contains(&leaked.to_lowercase()),
-                "daemon 的协议面泄漏了实现细节 {leaked:?}。\n             \
+                "backend 的协议面泄漏了实现细节 {leaked:?}。\n             \
                  协议只许说**查询语义**（overview/node/callers/callees/impact/search…）——\n             \
                  说了存储或 grammar，换索引实现就得改协议，而改一门语言要动三处。"
             );
@@ -1113,8 +1113,8 @@ mod tests {
     ///
     /// # 而它的**定义与值对不上**
     ///
-    /// `src/doc/IPC-PROTOCOL.md` 原本把它定义成「本 daemon **会发射的帧 kind 集**」，
-    /// 而 `EMITS` 8 项**不含** `hello`/`reply`/`cancelled` —— 这三个 daemon **确实会发**。
+    /// `src/doc/IPC-PROTOCOL.md` 原本把它定义成「本 backend **会发射的帧 kind 集**」，
+    /// 而 `EMITS` 8 项**不含** `hello`/`reply`/`cancelled` —— 这三个 backend **确实会发**。
     /// ⇒ 按字面读，它是错的；按意图读，它是「**门控用**帧集」（握手与应答不需要门控：
     /// `hello` 是首帧、客户端必然收；`reply`/`cancelled` 是**应答**，只在你发过命令之后才来）。
     /// 本条把那个意图钉住：**子集 + 缺席者必须逐个有理由**。
@@ -1177,7 +1177,7 @@ mod tests {
             assert!(
                 EXEMPT.iter().any(|(k, _)| *k == m.as_str()),
                 "帧种 `{m}` 既不在 `EMITS` 里、也不在本条的豁免表里。\n\
-                 ★ 要么它该进 `EMITS`（daemon 会发它、消费侧要据此门控），\n\
+                 ★ 要么它该进 `EMITS`（backend 会发它、消费侧要据此门控），\n\
                  要么它是握手/应答那一族 —— **那就把理由写进 `EXEMPT`**。\n\
                  两者都不做 = `emits` 这个声明对下游又变回一句不可信的话。"
             );
@@ -1248,7 +1248,7 @@ mod tests {
         // 但也不能要求「自成一个跨度」（`` `ok` ``）：文档里有 `v, build_id, host_arch, …`
         // 这种**逗号连写在同一个跨度**的写法，那样会把 3 个既有的、确实有文档的字段误报。
         // ⇒ 取所有反引号跨度的内容、按标识符切词，字段名必须是其中一个**完整词**。
-        // ★ **只在 §10「远端 daemon wire 协议」那一节里找**（U6b-3，据 D 审计收紧）。
+        // ★ **只在 §10「远端 backend wire 协议」那一节里找**（U6b-3，据 D 审计收紧）。
         //
         // 收紧前判据是「全文的代码跨度」。审计实测强度：把 §10 的帧字段表整段
         // （12 002 字节 / 69 行）从文档里挖掉，**31 个字段里 16 个照样通过** ——
@@ -1281,7 +1281,7 @@ mod tests {
         assert!(
             missing.is_empty(),
             "这些 wire 字段不在 `src/doc/IPC-PROTOCOL.md` **§10 wire 协议节**里：{missing:?}\n\
-             那份文档是 daemon↔monitor↔aterm 的权威契约。字段加进代码却没进文档，\n\
+             那份文档是 backend↔monitor↔aterm 的权威契约。字段加进代码却没进文档，\n\
              下游只能靠读源码或抓包才知道它存在。"
         );
     }
@@ -1298,7 +1298,7 @@ mod tests {
     /// 只有 `ping_replies_ok` 这条**行为测试**红了 —— 而重命名时那条自然会被一起改。
     /// 改完之后文档里的 `ping` 就成了一个不存在的命令，**没有任何东西会响**。
     ///
-    /// 客户端是照文档发命令的：文档说 `ping`、daemon 只认 `heartbeat`，
+    /// 客户端是照文档发命令的：文档说 `ping`、backend 只认 `heartbeat`，
     /// 表现是 `unknown_command`，而两边各自看都"对"。
     #[test]
     fn every_inbound_command_appears_in_the_protocol_doc() {
@@ -1338,7 +1338,7 @@ mod tests {
         assert!(
             missing.is_empty(),
             "这些入方向命令不在 `src/doc/IPC-PROTOCOL.md` §10 里：{missing:?}\n\
-             客户端是照文档发命令的 —— 文档说一个名字、daemon 只认另一个，\n\
+             客户端是照文档发命令的 —— 文档说一个名字、backend 只认另一个，\n\
              表现是 `unknown_command`，而两边各自看都「对」。"
         );
     }

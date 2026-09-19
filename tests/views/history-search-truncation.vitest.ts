@@ -1,7 +1,7 @@
 // `K-R100` `KR100D3` 的**下游**判据：「有结果但没显示」不许与「真的没有结果」同形。
 //
 // 🔴 收口前的形状（本文件锁的就是它不许回来）：
-//   · daemon 的 `--search` 被自己的 `--limit` 砍掉 snippet 后，wire 上只剩
+//   · backend 的 `--search` 被自己的 `--limit` 砍掉 snippet 后，wire 上只剩
 //     `hitCount: 12, hits: []` —— **没有任何字段说「我被砍了」**；
 //   · monitor 合并时逐字 `truncated: local.truncated` ⇒ **远端那一半整个丢掉**，
 //     状态行照旧只报总数；

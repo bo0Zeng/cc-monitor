@@ -58,23 +58,23 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 |---|---|---|
 | `restart-suite` | 24 过 / 0 败 | |
 | `resume-suite` | 17 过 / 0 败 | |
-| `inbound-daemon-frames` | 32 过 / 0 败 | |
-| `resume-daemon-frames` | 7 过 / 0 败 | |
-| `graylight-daemon-frames` | 12 过 / 0 败 | |
-| `daemon-gate2-acceptance` | 35 过 / 0 败 | ★ 修了它自己开的方子（登记豁免），此前每跑必 RC=1 |
+| `inbound-backend-frames` | 32 过 / 0 败 | |
+| `resume-backend-frames` | 7 过 / 0 败 | |
+| `graylight-backend-frames` | 12 过 / 0 败 | |
+| `backend-gate2-acceptance` | 35 过 / 0 败 | ★ 修了它自己开的方子（登记豁免），此前每跑必 RC=1 |
 | `local-backend-supervise` | 7 过 / 0 败 | ★ 修前 7/1 —— 那条 `#[ignore]` 首跑就红，见 `P3 §0h-2` |
 | ~~`usage-probe-acceptance`~~ | — | 🔴 〔`设计/50` 09-18〕**整套删了**：用量 ②③ 两轴整轴退役 ⇒ 被测对象没了（不是断言变少了）。CI 里那条 `assert-pass-floor.sh` 的通过下限同拍**整条**摘掉（地板值的家在 `ci.yml` 的调用行，这里不存副本）|
 | `ccm-print-parity` | 12 过 / 0 败 | |
 | `ccm-contract-parity` | 61 过 / 0 败 | |
 | `tmux-target-acceptance` | 26 过 / 0 败 | |
-| `daemon-fork-session` | 10 过 / 0 败 | |
+| `backend-fork-session` | 10 过 / 0 败 | |
 | `p3t-local-tmux` | 10 过 / 0 败 | |
 | `cc-spawn-uplift` | **72 过 / 0 败**（08-13 更新） | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为；`C15` 收编后 +10 条；08-13 再 +7（地址簿不许被抹 · 敲门不许打进别人屏幕） |
 | `exec-bit-guard` | RC=0 | ⚠ 打了非阻断警告：`src/shared/cc-bus` 与 `~/.claude/skills/cc-bus` **已漂移** |
-| `daemon-sessions-rewatch` | 4 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 |
-| `daemon-tmux-late-server` | 2 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：**后端起得比 tmux server 早**（`#60` 现象 1 的根因） |
+| `backend-sessions-rewatch` | 4 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 |
+| `backend-tmux-late-server` | 2 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：**后端起得比 tmux server 早**（`#60` 现象 1 的根因） |
 | `cc-bus-queue-drain` | 43 过 / 0 败 | ★ 08-13 新增：`cc-send` **消息没到时必须有人说话**——滞留队列没人管 + 收件人根本不存在。**本套不用 tmux** |
-| `daemon-cc-bus` | 50 过 / 0 败 | ★ 08-13 新增（`P4f`）：后端的 `--bus-list` / `--bus-send` 真跑（含身份空间对账三态）。`CLAUDE_CONFIG_DIR` 与 `CC_BUS_HOME` 双沙箱；用到 tmux 的那格经 shim 强制 `-L` |
+| `backend-cc-bus` | 50 过 / 0 败 | ★ 08-13 新增（`P4f`）：后端的 `--bus-list` / `--bus-send` 真跑（含身份空间对账三态）。`CLAUDE_CONFIG_DIR` 与 `CC_BUS_HOME` 双沙箱；用到 tmux 的那格经 shim 强制 `-L` |
 | **`graylight-suite`** | **3 过 / 0 败**（08-13） | ★★ 它**不再是「跑不了」的** —— 跑法见下方 `§ 全链套件怎么跑` |
 
 **跑不了的（本机缺条件，不是没跑）**：`ccm-rbind-title`（要 Windows 的 `wt.exe`）。
@@ -125,15 +125,15 @@ E2E_DISPLAY=:80 HOME=<沙箱> CLAUDE_CONFIG_DIR=<沙箱>/.claude bash tests/e2e/
 2. **后端的 `.build_id` 标记文件名逐字是 `.build_id`**（同目录隐藏文件），
    不是 `<二进制名>.build_id` —— 写错的话 app 判「远端无版本标记」，
    **把 wrapper 覆盖成内嵌二进制**，后端就用**真** `~/.claude` 起来了。
-3. **gate 丁 会因为盘上多余的后端直接 ABORT**：先 `bash tests/e2e/reap-orphan-daemons.sh` 看清楚，
-   自己上一轮留下的按 pid 精确收，认不出的用 `E2E_ACK_DAEMONS=<pid>` 点名放行（要举证）。
+3. **gate 丁 会因为盘上多余的后端直接 ABORT**：先 `bash tests/e2e/reap-orphan-backends.sh` 看清楚，
+   自己上一轮留下的按 pid 精确收，认不出的用 `E2E_ACK_BACKENDS=<pid>` 点名放行（要举证）。
 4. **收尾要连 vite 一起收**：只收 `tauri dev` 那个 node 的话，vite 还占着 devUrl 端口，
    下一次起会报 `Port 24174 is already in use`。⇒ `ss -ltnp | grep :<端口>` 按 pid 收。
 
 ★★ **这一轮真跑逮到 3 处真问题**，全都是「平时没人跑」养出来的：
 ① `local_backend` 那条 `#[ignore]` 两天里被判成「验不出来」，其实是**测试与后端不在同一台
    tmux server**（修法：给后端一条挂着 shim 的 PATH，强插同一个 `-S`）；
-② `daemon-gate2` **每跑必 RC=1**，因为它自己写的「造不出的名字应当…从表里说明」没人执行；
+② `backend-gate2` **每跑必 RC=1**，因为它自己写的「造不出的名字应当…从表里说明」没人执行；
 ③ `cc-spawn-uplift` 还在断言 `cc-spawn` **已被删掉的复用行为**（`P4b` 的 E 阶段横扫漏了它）。
 
 ⇒ **「改了语义要跟改测试」这条纪律，在一套没人跑的测试上是失效的** —— 它不会红给你看。
@@ -165,11 +165,11 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 | job | 套件 |
 |---|---|
 | `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume · ccm-rbind-title |
-| `e2e-tmux-rust` | inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork · daemon-sessions-rewatch · daemon-tmux-late-server · daemon-cc-bus |
+| `e2e-tmux-rust` | inbound-frames · backend-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · backend-fork · backend-sessions-rewatch · backend-tmux-late-server · backend-cc-bus |
 
 > 〔`K-R72` 09-12〕`tmux-guarded-acceptance.sh` **整套删了**：它的输入源是 `tmux.rs` 那两条
 > 桌面侧 SSH 回落的 builder，回落删净之后它连命令串都取不到 ⇒ 跑不起来。三道门的真机覆盖
-> 转由 `daemon-gate2-acceptance.sh` 承担（真后端二进制 + 真 tmux server，用例逐行来自
+> 转由 `backend-gate2-acceptance.sh` 承担（真后端二进制 + 真 tmux server，用例逐行来自
 > 同一张 `gate2-golden.tsv`）。
 
 **这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
@@ -250,21 +250,21 @@ fixtures:
 - `gen-idle-tmux.sh <sid>`——`tmux new-session -d -s cc-<sid8> "…fake-claude…; exec sh"` + `set-option
   @ccm_sid <sid>`。`exec sh` 让 kill fake-claude 后 pane 落回 shell(tmux 会话+@ccm_sid 仍在=灰灯态)。
   **CLAUDE_CONFIG_DIR 必须内联进 tmux 命令串**(new-session 不继承本 shell env,老坑)。
-- `daemon-wrapper.sh`——`exec env CLAUDE_CONFIG_DIR=/tmp/e2e-remote-claude <daemon> "$@"`,隔离远端
+- `backend-wrapper.sh`——`exec env CLAUDE_CONFIG_DIR=/tmp/e2e-remote-claude <backend> "$@"`,隔离远端
   读的目录(防本地会话双 tab)。
 
 两级跑法(先建后端,或全链跑 app):
 
-1. **daemon-frame 级(无 GUI,最稳,后端半场)**:`bash tests/e2e/graylight-daemon-frames.sh`
-   (需仓内 debug 后端;缺则 `CCM_E2E_DAEMON=<某个 p1p+ 的 cc-monitor-remote>`)。断言后端 stdout 帧:
+1. **backend-frame 级(无 GUI,最稳,后端半场)**:`bash tests/e2e/graylight-backend-frames.sh`
+   (需仓内 debug 后端;缺则 `CCM_E2E_BACKEND=<某个 p1p+ 的 cc-monitor-remote>`)。断言后端 stdout 帧:
    `session_added` → (kill fake-claude) `session_removed` **且** `tmux_sessions.raw` 仍含 `@ccm_sid`
    (=灰,Idle 非 Archive) → (kill-session) `tmux_sessions` 不再含 sid(=归档触发边沿)。
 
 2. **全链级(GUI + loopback SSH)**:前置同 f40(Xvfb + dev 实例)+ config.json 配一个 loopback 远端,
-   `daemonPath` 指向 `daemon-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash tests/e2e/graylight-suite.sh`。断言 monitor
+   `daemonPath` 指向 `backend-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash tests/e2e/graylight-suite.sh`。断言 monitor
    日志:`[e2e] tab-state … status=live tmuxIdle=1`(灰,该行 status=live 同时证明变灰前是 live)→
    `… status=archived`。**★ app 会自动部署后端**:daemonPath 同目录须放一个 `.build_id`(内容=app
-   **内嵌** 后端的 build_id,见 `sftp.rs::deploy_decision`——不是 `EXPECTED_DAEMON_BUILD_ID`),否则
+   **内嵌** 后端的 build_id,见 `sftp.rs::deploy_decision`——不是 `EXPECTED_BACKEND_BUILD_ID`),否则
    app 会用内嵌二进制覆盖写 daemonPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
    让 app 先收到含 @ccm_sid 的 `TmuxSessions` 帧,否则 removed 到达时 tmux 账本无此 sid → 判 Archive 丢灰。
 
@@ -293,16 +293,16 @@ fixtures / 驱动:
    ④断言 argv.log(sid 命中行的 `CLAUDE_CONFIG_DIR` + `--resume`)与 `tmux list-sessions` 孤儿计数。覆盖:idle
    就地复用无孤儿 / 无 tmux 新建注账号 / 带 pin 落 X 目录(两隔离账号) / 不带 pin 走基座 + `resolveFollowAccount`
    落当前工作账号 / 重复 resume 幂等(create-gate 短路) / tmux 消失回退 / 会话仍 live 守卫不误动。
-2. **daemon-frame 复活清灰(后端半场)**:`bash tests/e2e/resume-daemon-frames.sh`(需仓内 debug 后端;缺则
-   `CCM_E2E_DAEMON=<某 p1p+ 的 cc-monitor-remote>`)。序列 `SessionAdded`(live)→(kill fake-claude)
+2. **backend-frame 复活清灰(后端半场)**:`bash tests/e2e/resume-backend-frames.sh`(需仓内 debug 后端;缺则
+   `CCM_E2E_BACKEND=<某 p1p+ 的 cc-monitor-remote>`)。序列 `SessionAdded`(live)→(kill fake-claude)
    `SessionRemoved` + tmux 帧仍含 @ccm_sid(灰)→(真源就地 resume 命令复用原名)`SessionAdded` **再现**
    = 后端灰→live 复活边沿;全程 tmux 单会话无 `-N` 孤儿。
 
 ## auto-e2e:换号重启编排(F-E3,#68/#69)
 
-命令级 + daemon-frame 验优雅换号:`compact→exit→kill→resume(新账号)` 序列、resume 落新账号 `CLAUDE_CONFIG_DIR`、失败中止语义(kill 失败不续 resume / resume 未起不记账)、批量对齐 idle/busy 分流。诚实分层同 F-E2(GUI 结构性不可执行 → 命令级天花板)。
+命令级 + backend-frame 验优雅换号:`compact→exit→kill→resume(新账号)` 序列、resume 落新账号 `CLAUDE_CONFIG_DIR`、失败中止语义(kill 失败不续 resume / resume 未起不记账)、批量对齐 idle/busy 分流。诚实分层同 F-E2(GUI 结构性不可执行 → 命令级天花板)。
 - `restart-cmd-driver.ts` + `restart-shims/`(ESM loader 只重定向 Tauri IPC 边界到真 tmux+fake-claude,其余全真源;含 kill/resume 失败注入)。
-- 跑:`bash tests/e2e/restart-suite.sh`(命令级 24/0) + `bash tests/e2e/restart-daemon-frames.sh`(5/0:旧号 `SessionRemoved`→新号 `SessionAdded` 迁移、无孤儿)。批量对齐 idle/busy 另由 `tabs.vitest.ts`「account-ux U6」覆盖。
+- 跑:`bash tests/e2e/restart-suite.sh`(命令级 24/0) + `bash tests/e2e/restart-backend-frames.sh`(5/0:旧号 `SessionRemoved`→新号 `SessionAdded` 迁移、无孤儿)。批量对齐 idle/busy 另由 `tabs.vitest.ts`「account-ux U6」覆盖。
 
 ## auto-e2e:Tier2 Windows DOM 冒烟(F-E5)
 

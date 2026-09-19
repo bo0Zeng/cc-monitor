@@ -2,8 +2,8 @@
 //!
 //! # 为什么补这一半
 //!
-//! daemon 侧的 `no_timer_guard`（§41）是**零容忍**的。它的头注写着范围：
-//! 「**只钉 daemon crate。** monitor 侧另有自己的轮询纪律…**要钉那半得单独论证**。」
+//! backend 侧的 `no_timer_guard`（§41）是**零容忍**的。它的头注写着范围：
+//! 「**只钉 backend crate。** monitor 侧另有自己的轮询纪律…**要钉那半得单独论证**。」
 //! 而 monitor 侧的 `polling_registry` 只覆盖了 **TS 与 `shared/ccm`**，它自己的头注逐字写着：
 //! 「**monitor 的 Rust 侧刻意不在范围内**…逐条论证是另一件事。**如实登记为未做，不假装覆盖了。**」
 //!
@@ -15,7 +15,7 @@
 //!
 //! - **`time::interval` 零处** —— 没有一个 tokio 节拍器；
 //! - **23 处 `Duration::from_*` 是 timeout / debounce / 退避上限** ——
-//!   那是「等待的**上界**」，不是「自己醒过来」。把它们混进禁令就是 daemon 那条护栏
+//!   那是「等待的**上界**」，不是「自己醒过来」。把它们混进禁令就是后端那条护栏
 //!   头注预言的**噪音**；
 //! - **真正要清的是 `sleep` 那一族** —— 手工 grep 数出 8 处，
 //!   而本表首跑（正确剥段后）数出 **13 处**（见下）。⚠ **以机器那个数为准。**
@@ -33,14 +33,14 @@
 //! # ★ 它一上岗就抓到**两个**真节拍器，而且我摸底时都数漏了
 //!
 //! 1. `bind.rs::run_heartbeat` = `loop { sleep(10s); cleanup_dead(); }` —— 无限、周期、无上限。
-//! 2. ★★ `ssh_source.rs` 的 **daemonless 数据轮询**（`DAEMONLESS_POLL_INTERVAL = 2s`）——
+//! 2. ★★ `ssh_source.rs` 的 **daemonless 数据轮询**（`BACKENDLESS_POLL_INTERVAL = 2s`）——
 //!    **它与定框 C7（没有 daemonless）和 C8（不许轮询）直接冲突**，而且是本工作区的正题。
 //!    〔`K-R59` 09-11：**这一条已经退役** —— 定框 `K35` 把那一档整个取消。本段记的是
 //!     「它一上岗抓到了什么」，不是今天的清单；今天的清单以 `REGISTERED` 与
 //!     `every_ticker_names_its_event_source_and_owner` 里那个 `tickers` 数为准。〕
 //!
 //! **两个都此前完全没有被任何账本记过**：`polling_registry` 按设计不管 Rust 侧，
-//! `no_timer_guard` 只管 daemon crate ⇒ 它们正落在「两个护栏各自划了范围、中间那块没人管」里。
+//! `no_timer_guard` 只管 backend crate ⇒ 它们正落在「两个护栏各自划了范围、中间那块没人管」里。
 //!
 //! ⚠ 而且**我自己摸底时数漏了**：手工 grep 数出 8 处 `sleep`、`ssh_source` 只数到 1 处；
 //! 本表首跑用 `guard_core::production_code` 正确剥段后数出 **13 处**、`ssh_source` **4 处**、

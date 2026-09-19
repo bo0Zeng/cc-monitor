@@ -43,7 +43,7 @@
 //! - `UnknownRecordType` / `KnownTypeParseFailed`：**每条记录一次**（解析热路径）。
 //! - `UnknownSessionKind`：**每次扫描一次**（`scan_dir` 随文件事件重扫）⇒ 数字反映的是
 //!   「观测了多少次」，不是「有多少个这样的会话」。**要看的是键的集合，不是数字。**
-//! - `UnknownDaemonToken`：每次收到 `hello` 一次（每条连接一次 + 重连）。
+//! - `UnknownBackendToken`：每次收到 `hello` 一次（每条连接一次 + 重连）。
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -67,8 +67,8 @@ pub enum DriftFace {
     KnownTypeParseFailed,
     /// `sessions/<PID>.json` 里未登记的 `kind`（排他白名单：非 `interactive` 一律当 bg）。
     UnknownSessionKind,
-    /// 远端 daemon `hello` 里我们不认识的能力 token（`capabilities` / `emits` / `commands`）。
-    UnknownDaemonToken,
+    /// 远端 backend `hello` 里我们不认识的能力 token（`capabilities` / `emits` / `commands`）。
+    UnknownBackendToken,
 }
 
 impl DriftFace {
@@ -84,8 +84,8 @@ impl DriftFace {
             DriftFace::UnknownSessionKind => {
                 "该会话被当作后台（bg）：关掉「显示后台会话」就完全看不见它"
             }
-            DriftFace::UnknownDaemonToken => {
-                "该能力不会被使用（保守缺省）。多半是远端 daemon 比 monitor 新"
+            DriftFace::UnknownBackendToken => {
+                "该能力不会被使用（保守缺省）。多半是远端后端比 monitor 新"
             }
         }
     }

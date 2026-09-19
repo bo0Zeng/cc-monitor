@@ -674,7 +674,7 @@ fn pump<R: Read, W: Write>(
 ///
 /// **今天盘上的真话，逐条重写**：
 /// 1. **配了 key ⇒ 换头**：下游那份 `Authorization` 被**丢掉**，换上中转自己那把。
-///    取明文的那一行就在下面，它是 `expose_for_auth_header` 在**整个 daemon 生产段里唯一**的调用点
+///    取明文的那一行就在下面，它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
 ///    （`KS2`，由 `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate` 相等断言钉住）。
 /// 2. **这一行没配 key ⇒ 原样转发**（`K-H1` 甲半那个形状，一个字节不动）。
 ///
@@ -760,7 +760,7 @@ fn render_upstream_request(head: &RequestHead, rest: &str, row: &Row, body_len: 
         }
         out.push_str(&format!("{k}: {v}\r\n"));
     }
-    // ★★ **这是整个 daemon 生产段里唯一一处把明文取出来的地方**（`KS2`）。
+    // ★★ **这是整个后端生产段里唯一一处把明文取出来的地方**（`KS2`）。
     //    它就在「往上游请求写鉴权头」这一行上，与 `KS2` 的字面逐字对应。
     //    ⚠ 加第二处是**放宽**：必须先在件计划里说清那一处是什么，
     //      不许在实现里顺手把 `creds_guard` 那条相等断言改大。
@@ -960,7 +960,7 @@ fn run_reading(
     exec(port.as_deref(), upstream.as_deref(), get, home)
 }
 
-/// `--relay` 的入口。配置面只有环境变量（daemon 今天没有配置文件面）。
+/// `--relay` 的入口。配置面只有环境变量（backend 今天没有配置文件面）。
 ///
 /// 本函数今天**只剩一件事**：把「真取值器」与 `run_with` 接上。接线本身（哪个变量
 /// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了

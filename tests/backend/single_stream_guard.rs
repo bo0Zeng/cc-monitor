@@ -50,7 +50,7 @@
 //! ```
 //!
 //! 一个**真的**第二消费者（真 task、真 `recv`），只是靠**左边的类型标注**定型而不是 turbofish。
-//! 读数（本工作树 `0abfacc`，沙箱门禁，`DEVBOX_NET=host`）：**`GATE: OK` · daemon
+//! 读数（本工作树 `0abfacc`，沙箱门禁，`DEVBOX_NET=host`）：**`GATE: OK` · backend
 //! `489 passed` · 0 failed —— 静默走过去**；而同一段里含 `mpsc::Receiver<Frame>` **1 次**
 //! ⇒ **旧针会红（3→4）**。★ 这一形上「新针比旧针弱」是**一次回退**，
 //! **不是**「一个看不见的角落」—— 一个正常拼法就能塞进第二个真消费者。
@@ -85,7 +85,7 @@
 //! - **它保证不了什么**（诚实边界，别读成证明）：
 //!   1. **② 要求 `::` 紧挨着 `channel(`。** `use tokio::sync::mpsc::channel;` 之后裸调
 //!      `channel(8)` / `channel::<Frame>(8)` —— ①②**都看不见**。
-//!      （现打于 `a68fd25`（工作树 `.claude/worktrees/k-g5`，**未铺** `src/bridge/embedded-daemons/`），
+//!      （现打于 `a68fd25`（工作树 `.claude/worktrees/k-g5`，**未铺** `src/bridge/embedded-backends/`），
 //!      分母 = 全 crate 生产段 **72 个文件 / 255 999 字节**（摘掉本模块自己）。
 //!      ★ **「字节」这一格的量法钉死，别再拿别的单位来对**：
 //!      字节 = `corpus.iter().map(|(_, c)| c.len()).sum()`，也就是本条那道字节下限
@@ -119,7 +119,7 @@
 //!      ⇒ 在注释里写一句 `mpsc::channel::<Frame>(` **不再**计入本模块的任何计数。
 //!      ⚠ 今天真正的边界换了个地方，是 `K-R9` 那条**静默兜底**：剥法的词法与某份文件对不上时
 //!      （`depth` 不收口 / 停在字符串里）它**一个字都不剥**，那份文件上的块注释洞当场重开。
-//!      ⇒ 那件事由 [`tests::no_daemon_file_falls_back_to_leaving_block_comments_in`] 看着
+//!      ⇒ 那件事由 [`tests::no_backend_file_falls_back_to_leaving_block_comments_in`] 看着
 //!      （现打：73 份 `.rs`，走兜底 0 份）。**别把这条读成「注释都剥干净了」。**
 //!   7. 它只管「观测帧那条通道有没有第二个消费端」；`Overflow.lost` 那本账**该怎么**重新
 //!      定义，判据一个字都不管 —— 那要立件。
@@ -212,7 +212,7 @@ mod tests {
              `Receiver<Frame>` 不增本行计数；射程与诚实边界逐条写在本模块头注。\
              ★★ 〔`K-G5` 09-01〕**本行一个人挡不住第二个消费者** —— 它只认 turbofish 那一形，\
              而靠左边类型标注定型的写法（`… : (Sender<Frame>, Receiver<Frame>) = mpsc::channel(8)`）\
-             它一处都不数（`PM` 实打：daemon `489 passed` 0 failed，静默过）。\
+             它一处都不数（`PM` 实打：backend `489 passed` 0 failed，静默过）。\
              ⇒ 与 `no_qualified_channel_call_leaves_its_payload_type_to_inference` **成对**：\
              那条钉着「生产段里 `::channel(` 恰好 0 处」，把**带路径前缀的**诞生点逼回 turbofish\
              这一种写法，本行在**那两条锚点够得着的范围内**才数得全（够不着的四条列在模块头注）。\
@@ -244,7 +244,7 @@ mod tests {
     ///
     /// `PINS` 里那条观测针只认 `mpsc::channel::<Frame>(`。少了本条，
     /// 一个**正常拼法**（靠左边的类型标注定型）就能塞进第二个真消费者而它一声不吭 ——
-    /// `PM` 09-01 现打过：daemon `489 passed` · 0 failed（那一刀的逐字形状见模块头注）。
+    /// `PM` 09-01 现打过：backend `489 passed` · 0 failed（那一刀的逐字形状见模块头注）。
     ///
     /// ★ 本锚点要求 `::` **紧挨着** `channel(`：
     /// - 逮得到：`mpsc::channel(8)` · `tokio::sync::mpsc::channel(N)` · `std::sync::mpsc::channel()`
@@ -276,7 +276,7 @@ mod tests {
     /// ⚠ 把自己加进那张存量清单是**放宽**（`KPY7` 逐字：本件一行都不许放宽已有判据）——
     /// 一个字都没往那边加。
     ///
-    /// 递归这件事由 `scan_tree!` 自己保证；`no_timer_guard::daemon_sources` 头注记着
+    /// 递归这件事由 `scan_tree!` 自己保证；`no_timer_guard::backend_sources` 头注记着
     /// 不递归的实测后果：**目录没有扩展名于是被整个跳过**，护栏一行业务代码都没扫还全绿。
     fn crate_sources() -> Vec<(String, String)> {
         let root = crate::guard_support::src_root();
@@ -367,7 +367,7 @@ mod tests {
     /// （在块注释里写一句 `mpsc::channel::<Frame>(` 就把计数顶上去 / 把真的那处注掉却仍计数），
     /// 而上面两条判据一个数都不会动。**本条就是看着那件事的那道判据。**
     ///
-    /// 现打（09-04，本工作树，**未铺** `src/bridge/embedded-daemons/`）：daemon `src/` 下
+    /// 现打（09-04，本工作树，**未铺** `src/bridge/embedded-backends/`）：backend `src/` 下
     /// **73 份 `.rs`，走兜底 0 份**。地板是计数自检（遍历坏了要红，不是静默扫 0 份通过）。
     /// 🔴 〔条 67 · 2026-09-18〕地板 67 → **62**（现打 64）：用户逐字「**不在现在设计里的全部删掉**」
     /// ⇒ 删了 `sidecars/` 整棵树四份 `.rs`（2 008 行）＋ `platform/landing.rs`（它的唯一消费者没了）。
@@ -385,7 +385,7 @@ mod tests {
     /// 整份文件 ＋ `guard_core::test_attr_chunks` 按 `#[test]` 切出的每一块。
     /// 两个地板各自量（**块数不是文件数**）：`min_files` 挡「遍历坏了」，`min_blocks` 挡「切法坏了」。
     ///
-    /// ⚠ **daemon 这一侧的读数，量于 `d305ffa`（`K-R25` 的基点）与本拍出货尖，两趟同值**
+    /// ⚠ **backend 这一侧的读数，量于 `d305ffa`（`K-R25` 的基点）与本拍出货尖，两趟同值**
     /// （量具 `tests/evidence/K-R25-D1-strip-input-unit-census.py`；它自己印被测对象、`HEAD` sha，
     /// 以及「盘上与 `HEAD` 一不一致」。⚠ **这里刻意不写出货尖那个 sha** ——
     /// 那是**每轮都变的量**，写死了下一轮自动变成假话；要重打就跑量具，它自己会报它量的是哪一棵）：
@@ -395,10 +395,10 @@ mod tests {
     /// ⚠ 那个 0 的分母是**那把尺子的射程**（它自己判不了的逐条列在输出的 `PARAM` 段里，
     /// 由 `tests/evidence/K-R25-D2-unit-alignment.md` 逐条手核）—— 不是「所有写法」的全称。
     #[test]
-    fn no_daemon_file_falls_back_to_leaving_block_comments_in() {
+    fn no_backend_file_falls_back_to_leaving_block_comments_in() {
         // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**两棵树一起喂，地板一格不动。**
         //
-        // daemon 这半边今天也住两处：生产段 `src/backend`、测试段 `<repo>/tests/backend`。
+        // backend 这半边今天也住两处：生产段 `src/backend`、测试段 `<repo>/tests/backend`。
         // 本条第二个单位（`#[test]` 块）**整个住在测试段** ⇒ 只喂 `src/` 那一棵的话，
         // `min_blocks` 会在一个已经掉空的分母上通过。两条地板（62 / 500）逐字照旧。
         let roots = crate::guard_support::code_roots();
@@ -463,7 +463,7 @@ mod tests {
     ///
     /// `PINS` 那条只认 `mpsc::channel::<Frame>(`。`PM` 09-01 现打的那一刀
     /// （逐字形状在模块头注）用**类型标注**定型而不是 turbofish ⇒ 那条针 0 命中，
-    /// **daemon `489 passed` · 0 failed 静默走过去**，而**旧针（数类型名）在同一形上会红**。
+    /// **backend `489 passed` · 0 failed 静默走过去**，而**旧针（数类型名）在同一形上会红**。
     /// ⇒ 那一版在这一形上是相对旧针的**回退**，不是「一个看不见的角落」。
     ///
     /// 本条把那条缝堵上的办法**不是**把那个数改大一格（`§0a` 写死了不许），而是**换个方向**：
