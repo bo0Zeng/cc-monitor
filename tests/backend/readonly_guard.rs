@@ -55,89 +55,27 @@
 
 #[cfg(test)]
 mod tests {
-    /// U-1（2026-08-01）修掉两条**过剥**（= fail-open，静默删掉扫描面，比假阳性危险得多）。
-    /// 两条都由 Phase E 工程审计逮出，并各自实测确认：
+    /// 🔴 〔`99 §2.5 P9` 2026-09-18〕〔散文墓碑〕**这里原来住着 `strip_cfg_test` —— 一份便宜近似，已退役。**
     ///
-    /// ① **锚点必须钉在行首。** 原来是裸 `find("#[cfg(test)]")`，于是**注释里**逐字写出这个属性
-    ///    也会起跳。`main.rs::build_id_guard` 那条 `mod` 声明的行尾注释正是这个形状
-    ///    （「内部整体 #[cfg(test)]，生产构建为空」），起跳后括号配平一路吃到本文件
-    ///    **第一条 `use tokio::io::{…}`** 收尾 ⇒ **夹在这两者之间的那一整段 `mod` 声明
-    ///    与 `use` 从来不在本护栏的扫描面里**。这与 §41.4 第 1 条纪律
-    ///    「护栏连注释一起扫，是 fail-closed 的设计」正好相反 —— 对本函数而言，注释里出现这个
-    ///    属性是 **fail-open**。
+    /// 它做的事（「剥掉测试段，只留生产段」）在本仓**早就有唯一住址**：
+    /// [`guard_core::production_source`]（`src/bridge/crates/guard-core`），
+    /// 本 crate 经 `guard_support` 再导出。`guard_support` 的模块头注逐字记着搬家的理由：
+    /// 「monitor 侧够不着 daemon 的 `cfg(test)` 模块，于是它的守卫各自写了便宜近似
+    /// （`src.split("\n#[cfg(test)]").next()`）—— 那个近似……**把扫描面砍掉三分之二**」。
+    /// 〔散文墓碑〕`strip_cfg_test` 就是那一族里**最后一份没收进来的**：它自己的头注承认是启发式
+    /// （括号配平不认字符串/注释里的大括号），并且已经造成过 ≥4 次事故。
     ///
-    /// ② **无花括号体的声明不许吃掉后文。** `#[cfg(test)] mod x;` 底下没有块，
-    ///    `after.find('{')` 会一路找到**后面某个不相干 item** 的左大括号并从那里配平。
-    ///    `guard_support.rs` 落地时新加的 `#[cfg(test)] mod guard_support;`（`main.rs::guard_support`）
-    ///    当场把洞从 429 B 撑到 497 B。判据：属性与第一个左大括号之间若先出现 `;`，那就是声明。
+    /// 🔴 **退役的理由不是「它变成恒等函数了」** —— `设计/16 §4.1` 当初那条预言
+    /// **今天还不成立**，现打读数进了 `16 §4.1`：`src/backend` 上它剥掉 1 081 538 字节
+    /// （64 份里 51 份被它动过），`src/bridge/src` 上 1 429 612 字节。
+    /// 实测把它改成恒等函数，后端当场红 3 条，`no_test_code_leaks_into_any_production_section`
+    /// 逐字报「49 份文件、533 个残留测试属性」。⇒ 退役的理由是 `16 §5.1`
+    /// **一条形状只许有一个住址**，不是「它没用了」。
     ///
-    /// 修完扫描面 **217_853 → 221_928 字节**（+4_075）——是**扩大**不是收窄（红线 I7 只禁收窄）。
-    ///
-    /// 剥掉所有 `#[cfg(test)]` 属性修饰的花括号块（按括号配平跳过其后第一个块）。
-    /// 不能简单「从首个 `#[cfg(test)]` 截断到 EOF」——`main.rs` 的测试模块在文件**中部**，
-    /// 其后仍有生产代码（`main`/`writer_task`/`write_frame`）。按块剥除才不误伤生产段。
-    /// 字节索引均落在 `#`/`{`/`}`/`;`/`\n` 这些 ASCII 边界上，切片对 UTF-8（中文注释）安全。
-    ///
-    /// **已知局限**（本护栏是纵深防御、非严格证明，不值当为它塞个 Rust 词法器）：括号配平不识别
-    /// 字符串/注释里的大括号，若某 `#[cfg(test)]` 块内有含不配对大括号的字符串字面量，剥除边界会
-    /// 偏。偏向**保守**（少剥）→ 残留测试代码进扫描 → 顶多假阳性（CI 红、人一看是测试代码即排除，
-    /// fail-closed 安全）。这条局限**已被 `no_test_code_leaks_into_any_production_section` 钉住**：
-    /// 剥完全 crate 不许残留 `#[test]`，撞了就**改注释措辞**（§41.4 第 1 条纪律），别改本函数。
-    pub(super) fn strip_cfg_test(src: &str) -> String {
-        const ATTR: &str = "#[cfg(test)]";
-        // 只认**行首**的属性；文件开头那一处没有前导换行，单独放行。
-        fn anchor(hay: &str, at_file_start: bool) -> Option<usize> {
-            if at_file_start && hay.starts_with(ATTR) {
-                return Some(0);
-            }
-            let mut pat = String::with_capacity(ATTR.len() + 1);
-            pat.push('\n');
-            pat.push_str(ATTR);
-            hay.find(&pat).map(|i| i + 1)
-        }
-        let mut out = String::new();
-        let mut rest = src;
-        let mut first = true;
-        while let Some(pos) = anchor(rest, first) {
-            first = false;
-            out.push_str(&rest[..pos]);
-            let after = &rest[pos..];
-            let brace = after.find('{');
-            let semi = after.find(';');
-            // 先遇到 `;` ⇒ 是**声明**（`#[cfg(test)] mod x;` / `use …;`），没有块可剥。
-            let is_block = match (brace, semi) {
-                (Some(b), Some(s)) => s > b,
-                (Some(_), None) => true,
-                (None, _) => false,
-            };
-            if is_block {
-                let brace = brace.expect("is_block 为真时必有左大括号");
-                let bytes = after.as_bytes();
-                let mut depth: i32 = 0;
-                let mut end = brace;
-                while end < after.len() {
-                    match bytes[end] {
-                        b'{' => depth += 1,
-                        b'}' => {
-                            depth -= 1;
-                            if depth == 0 {
-                                end += 1;
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                    end += 1;
-                }
-                rest = &after[end..]; // 跳过整个 cfg(test) 块
-            } else {
-                // 声明或 `#[cfg(test)]` 修饰的非块 item——只跳过属性本身，保留其余。
-                rest = &after[ATTR.len()..];
-            }
-        }
-        out.push_str(rest);
-        out
-    }
+    /// 两者的差别现打过（`16 §4.1` 表）：换成 `production_source` 之后，
+    /// `src/bridge/src` 上的残留测试属性从 **42 → 4**（它认得原始字符串与可见性修饰，
+    /// 朴素括号配平认不得），`src/backend` 上两者同为 **0**；
+    /// 两个 workspace 的用例数与红绿**一格没动**。
 
     /// 文件系统**变更**模式。用 `fs::`/`File::`/`OpenOptions` 命名空间锚定，故 stdout 的
     /// `AsyncWriteExt::write_all`（trait 方法、非 `fs::`）天然不匹配 = 合法放行。
@@ -334,7 +272,7 @@ mod tests {
                 .to_string_lossy()
                 .replace('\\', "/");
             let src = std::fs::read_to_string(&path).expect("read rs file");
-            let prod = strip_cfg_test(&src);
+            let prod = crate::guard_support::production_source(&src);
 
             if is_write_whitelisted(&rel) {
                 whitelisted += 1;
@@ -441,7 +379,7 @@ mod tests {
                      搬走 / 删掉就**同轮把这一条摘掉**，别留幽灵账"
                 ),
             };
-            let prod = strip_cfg_test(&src);
+            let prod = crate::guard_support::production_source(&src);
             assert!(
                 prod.contains(WHITELIST_REQUIRED),
                 "白名单登记了 `{rel}`，而它的生产段里找不到 `{WHITELIST_REQUIRED}` —— \
@@ -452,7 +390,7 @@ mod tests {
 
     /// U-1（2026-08-01）：**剥法的欠剥方向也要机器钉住。**
     ///
-    /// `strip_cfg_test` 的已知局限（括号配平不识别字符串/注释里的大括号）此前只写在散文里。
+    /// 剥法的已知局限（早年那份朴素括号配平不识别字符串/注释里的大括号）此前只写在散文里。
     /// 散文挡不住事：`guard_support.rs` 落地时，我自己注释里一个孤立的右大括号就把配平提前收尾，
     /// 让那个测试模块的 5 个 `#[test]` 整段留在「生产段」里 —— 而这**不会红**（那些测试只读文件、
     /// 不含写模式），是静默的。下一个往 `guard_support.rs` 加 tempdir 测试的人才会撞上
@@ -460,6 +398,10 @@ mod tests {
     ///
     /// 处置遵循 §41.4 第 1 条纪律：**撞了改注释措辞，别改护栏**（本次就是把注释里的
     /// 孤立大括号改成中文名词）。
+    ///
+    /// ⚠ 〔`99 §2.5 P9` 2026-09-18〕剥法本体已收进 [`guard_core::production_source`]
+    /// （本文件那份便宜近似退役了，理由住本模块头注）。**本条一个字都没放宽** ——
+    /// 它量的仍然是「剥完的生产段里不许残留测试属性」，只是尺子换成了那个唯一住址。
     #[test]
     fn no_test_code_leaks_into_any_production_section() {
         let src_dir = crate::guard_support::src_root();
@@ -479,7 +421,9 @@ mod tests {
                 if name == "readonly_guard.rs" {
                     continue; // 与 `scan` 同款跳过：本文件的模式字面量必然含这些子串
                 }
-                let prod = strip_cfg_test(&std::fs::read_to_string(&path).expect("read rs file"));
+                let prod = crate::guard_support::production_source(
+                    &std::fs::read_to_string(&path).expect("read rs file"),
+                );
                 // 用拼接写法，免得本行自己被数进去。
                 let attr = format!("#[{}]", "test");
                 let n = prod.matches(attr.as_str()).count();
@@ -493,7 +437,8 @@ mod tests {
             leaks.is_empty(),
             "剥完仍有测试属性残留在生产段里：{leaks:?}\n\
              多半是某个注释/字符串里有**不配对的大括号**，把括号配平提前收尾了。\n\
-             ⇒ 改那处措辞（§41.4 第 1 条纪律），**不要**动 `strip_cfg_test`。"
+             ⇒ 改那处措辞（§41.4 第 1 条纪律），**不要**动剥法本体
+             （`guard_core::production_source`）。"
         );
     }
 
@@ -1602,7 +1547,7 @@ pub(crate) mod g6_doctrine {
 #[cfg(test)]
 mod g6_reach {
     use super::tests::{
-        strip_cfg_test, violates_default_layer, violates_whitelist_layer, FS_MUTATION_PATTERNS,
+        violates_default_layer, violates_whitelist_layer, FS_MUTATION_PATTERNS,
         WHITELIST_STILL_FORBIDDEN,
     };
 
@@ -1700,7 +1645,7 @@ mod g6_reach {
             KNOWN_PASSING_COUNTEREXAMPLES.len()
         );
         for (rel, frag, why, unlock) in KNOWN_PASSING_COUNTEREXAMPLES {
-            let prod = strip_cfg_test(source_of(rel));
+            let prod = crate::guard_support::production_source(source_of(rel));
             assert!(
                 prod.contains(frag),
                 "反例 `{rel}` 里找不到 `{frag}` 了 —— 修掉了就**同轮摘登记**，\
@@ -1741,7 +1686,7 @@ mod g6_reach {
     /// 本条把「今天是三条」钉成**相等**：加第四条就必须回来重读那条豁免理由。
     #[test]
     fn the_non_literal_spawn_key_still_covers_exactly_three_commands() {
-        let prod = strip_cfg_test(source_of("control/cc_bus.rs"));
+        let prod = crate::guard_support::production_source(source_of("control/cc_bus.rs"));
         let mut cmds: Vec<&str> = Vec::new();
         for opener in ["run(\"", "run_as(\""] {
             let mut from = 0usize;
@@ -3423,8 +3368,6 @@ mod remote_write_layer {
     //! 就是件计划点名的那个失效方向；而且那张表的语义是「本机文件系统变更」，
     //! 混进远端的东西之后，`g6_reach` 那张全表说的话会当场变得说不清。
 
-    use super::tests::strip_cfg_test;
-
     /// 能力家族。**闭集**，名字只有这一处住址。
     const FAMILY_SUBSYSTEM: &str = "远端文件传输子系统";
     const FAMILY_TODAY_ONLY: &str = "今天那份实现的名字（不是形状）";
@@ -3593,7 +3536,7 @@ mod remote_write_layer {
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            out.push((rel, strip_cfg_test(&src)));
+            out.push((rel, crate::guard_support::production_source(&src)));
         }
         out.sort();
         out.dedup_by(|a, b| a.0 == b.0);

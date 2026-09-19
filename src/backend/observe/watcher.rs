@@ -2890,7 +2890,7 @@ mod tests {
     #[test]
     fn still_exactly_one_event_channel() {
         // ★ 只数**生产代码**：测试自己造了 6 条同型 channel（各自的夹具），把它们算进来
-        // 这条断言就恒红（初版实测 7 处）。做法与 `readonly_guard::tests::strip_cfg_test`
+        // 这条断言就恒红（初版实测 7 处）。做法与 `guard_core::production_source`
         // 同源，这里用够用的简化版：本文件只有**一个**测试模块，且在文件末尾。
         //
         // ★★ **锚点必须避开自指**，这个坑本功能连踩三次：
