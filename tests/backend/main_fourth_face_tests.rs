@@ -5,7 +5,7 @@ use super::{
 
 /// ★ `K-P4` 红线之一：**生产路径今天恒空** ⇒ hello 帧的线上字节逐字节不变。
 ///
-/// 它与 `wire.rs::hello_unavailable_is_additive_present_and_absent` 是**两半**：
+/// 它与 `wire_tests.rs::hello_unavailable_is_additive_present_and_absent` 是**两半**：
 /// 那条证「给空表就得到旧字节」，本条证「**生产确实给的是空表**」。
 /// 缺任一条，「今天线上字节没变」这句话都不成立 —— 与 `homes` 那两条同一个分工。
 /// ⚠ 真填那天本条会**故意变红**：那是提醒（去 bump `BUILD_ID`、去更新 fixture），不是障碍。

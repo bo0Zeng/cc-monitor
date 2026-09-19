@@ -155,7 +155,7 @@
 //! - 更曲折的间接（把符号先 `pub use` 到第三个模块再引）也扫不到
 //!   （`refs_to_layer` 头注逐字登记了这一条）。
 //! - **测试段不受管**（判据扫的是 `production_code`）。这是**有意**的：分层是生产架构的性质。
-//!   活标本就在本层：`server.rs::relay_child_process_entry_point` 走
+//!   活标本就在本层：`server_tests.rs::relay_child_process_entry_point` 走
 //!   `crate::agents::claudecode::paths::resolve_home()` —— 那是子进程入口的夹具，**不算违规**。
 //! - 判据的人群是**层目录**：`src/` 顶层那几个文件（`main.rs` · `listen.rs` · `wire.rs`）
 //!   伸手进 `relay::table::…` 这一形，**今天没有判据挡着**（`mod relay;` 声明在 `main.rs`，

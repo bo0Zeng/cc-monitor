@@ -196,7 +196,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
 /// （`src/backend/guard_support.rs` ＋ `tests/bridge/structural_scan_tests.rs`）——
 /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
 /// 下一次还是一处真一处假。钉着它的是
-/// `guard_support.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
+/// `guard_support_tests.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
 // ⟦KR115D3 共用段·止⟧
 #[test]
 fn every_monitor_file_strips_clean() {
@@ -761,7 +761,7 @@ fn every_comment_stripping_transformer_is_registered() {
             "同 cc_bus：本文件自用。⚠ 与共享原语重复，登记为待收口",
         ),
         (
-            "tmux_hook.rs::prod_code",
+            "tmux_hook_tests.rs::prod_code",
             "daemon 侧本地剥法（跨 crate 够不着 monitor 的 `guard_core`）",
         ),
         (
@@ -777,7 +777,7 @@ fn every_comment_stripping_transformer_is_registered() {
         ("ccm_invocation_tests.rs::refusal_variants", "不是剥法：从 `enum Refusal` 的定义里抽变体名（跳过 doc 行只是为了不把注释当变体）"),
         ("agent_profile_parity_tests.rs::rows", "不是剥法：解析对拍表的行"),
         ("gate2_parity_tests.rs::rows", "不是剥法：解析 golden 表的行"),
-        ("gate.rs::golden_rows", "不是剥法：daemon 侧解析同一张 golden 表"),
+        ("gate_tests.rs::golden_rows", "不是剥法：daemon 侧解析同一张 golden 表"),
         // 08-08 第二刀：`live_lines` 已变成一句委托（改调 `strip_hash_comment_lines`）⇒
         // 它不再是一份剥法，登记删掉。**同一天里这张表两次告诉我「你在写第二份剥法」**：
         // 一次是内联的 `#` 过滤（登记表逮的），一次是 `sftp.rs` 读 `release.yml`（变异逮的）。
@@ -1272,15 +1272,73 @@ fn the_shell_metachar_blacklist_has_exactly_one_home() {
 /// 这是本工作区反复吃亏的地方（人群取宽 ⇒ 逼人往豁免表里塞条目 ⇒ 判据变废纸）。
 #[test]
 fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
+    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` B 类 ＋ `§5.4b` 纪律 3、4〕
+    //    **人群补上两棵测试树。**
+    //
+    // 本条认的是「比源码位置的**判据**」，而判据整批住进了 `tests/`。
+    // 只给两棵生产树时识别数从 6 掉到 **0**，自检逐字报「识别口径坏了，本条会零命中地绿」
+    // —— 红得对，而它红的正是「一整棵树掉出扫描面」。
+    // ⚠ A 类同治：改用 `scan_tree_excluding` 的明写名单。本文件住 `tests/bridge/`，
+    //   现在在人群里，而它头注里就带着这一族的示例文本 ⇒ 必须明写摘掉，摘不到就 panic。
     let root = crate::guard_support::repo_root().to_path_buf();
-    let mut files = guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]);
-    files.extend(guard_core::scan_tree!(&root.join("src/backend"), &["rs"]));
+    let mut files = Vec::new();
+    for (sub, excluded) in [
+        ("src/bridge/src", &[] as &[&str]),
+        ("src/backend", &[]),
+        ("tests/bridge", &["structural_scan_tests.rs"]),
+        ("tests/backend", &[]),
+    ] {
+        files.extend(guard_core::scan_tree_excluding(
+            &root.join(sub),
+            &["rs"],
+            excluded,
+        ));
+    }
 
     let mut population = 0usize;
     let mut bad: Vec<String> = Vec::new();
+    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.4b` 第二条元教训〕
+    //    **切函数体的锚点原来是 `"\n    fn "` —— 针里嵌着 4 个空格，而缩进是位置。**
+    //
+    // 那 4 个空格当年是**判别式**：它同时表示「这是个函数」与「它住在 `mod tests {}` 里」。
+    // 剖分之后判据整批退了一层缩进、落在列 0 ⇒ 那根针只认得**嵌套的辅助函数**，
+    // 识别数从 6 掉到 3（补完人群之后的读数；只给生产树时是 0）。
+    // ⇒ 锚点改成**按行认 `fn`、与缩进无关**，而「是不是判据」这一维改由**住址**答：
+    //   住 `tests/` ⇒ 里面的函数都是判据；住 `src/` ⇒ 仍按 4 缩进认
+    //   （剖分之后那一支应当采不到东西，留着是为了「有人把判据写回生产段」那天还看得见）。
+    let fn_bodies = |src: &str, in_tests: bool| -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut cur: Option<Vec<String>> = None;
+        for l in src.lines() {
+            let t = l.trim_start();
+            let indent = l.len() - t.len();
+            let head = t
+                .strip_prefix("pub(crate) ")
+                .or_else(|| t.strip_prefix("pub(super) "))
+                .or_else(|| t.strip_prefix("pub "))
+                .unwrap_or(t);
+            let head = head.strip_prefix("async ").unwrap_or(head);
+            let is_fn = head.starts_with("fn ") && (in_tests || indent == 4);
+            if is_fn {
+                if let Some(b) = cur.take() {
+                    out.push(b.join("\n"));
+                }
+                // 契约与原来那个 `split("\n    fn ")` 一致：块从 `fn ` **之后**起头，
+                // 好让下面 `body.split('(').next()` 抠得到函数名。
+                cur = Some(vec![head["fn ".len()..].to_string()]);
+            } else if let Some(b) = cur.as_mut() {
+                b.push(l.to_string());
+            }
+        }
+        if let Some(b) = cur {
+            out.push(b.join("\n"));
+        }
+        out
+    };
     for (path, src) in &files {
         let name = path.to_string_lossy().replace('\\', "/");
-        for body in src.split("\n    fn ").skip(1) {
+        for body in fn_bodies(src, name.contains("/tests/")) {
+            let body = body.as_str();
             let fname = body.split('(').next().unwrap_or("").trim();
             let finds = body.matches(".find(").count() + body.matches(".rfind(").count();
             if finds < 2 {
@@ -2268,10 +2326,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "handlers_never_run_on_the_reader_task",
             1,
         ),
+        // 🔴 〔步 7c 后端剖分 2026-09-19 · C 类〕**这一条拆成两行，总处数守恒（3 ＝ 2 ＋ 1）。**
+        //    那个名字的 3 处散文引用里，2 处留在生产段的头注里、1 处随测试段搬走了。
         (
             "src/backend/inbound.rs",
             "hello_commands_match_the_dispatch_table",
-            3,
+            2,
+        ),
+        (
+            "tests/backend/inbound_structure_guards.rs",
+            "hello_commands_match_the_dispatch_table",
+            1,
         ),
         (
             "src/backend/inbound.rs",
@@ -2279,10 +2344,16 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("src/backend/listen.rs", "frozen_single_client_guard", 1),
+        // 〔步 7c 后端剖分 2026-09-19 · C 类〕同上，**总处数守恒（2 ＝ 1 ＋ 1）**。
         (
             "src/backend/observe/accounts_query.rs",
             "credential_filename_matches_native_identity_declaration",
-            2,
+            1,
+        ),
+        (
+            "tests/backend/observe/accounts_query_tests.rs",
+            "credential_filename_matches_native_identity_declaration",
+            1,
         ),
         (
             "src/backend/observe/accounts_query.rs",
@@ -2296,7 +2367,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("src/backend/relay/http1.rs", "handle_alloc_error", 1),
-        ("src/backend/relay/http1.rs", "head_cap_is_enforced", 1),
+        // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家，处数一格没变。
+        ("tests/backend/relay/http1_tests.rs", "head_cap_is_enforced", 1),
         (
             "tests/backend/relay/nodelay_guard.rs",
             "both_directions_disable_nagle_in_relay_production_code",
@@ -2304,12 +2376,14 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("src/backend/relay/server.rs", "handle_alloc_error", 1),
         (
-            "src/backend/relay/server.rs",
+            // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
+            "tests/backend/relay/server_tests.rs",
             "the_relay_entry_reads_each_env_var_into_its_own_config_slot",
             1,
         ),
         (
-            "src/backend/relay/upstream.rs",
+            // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
+            "tests/backend/relay/upstream_tests.rs",
             "tls_client_config_builds_and_carries_roots",
             1,
         ),
@@ -2758,10 +2832,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    ⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
         //    别让表替真判据挡枪」（同 `K-R96` 那次的处置）。
         // `K-R56`（09-11）买的那条判据：它守的性质（**探不到就不动手**）没消失，
-        // 换住址钉在今天唯一那处实现上（`control/gate.rs::both_gates_always_probe_before_they_act`），
+        // 换住址钉在今天唯一那处实现上（`control/gate_tests.rs::both_gates_always_probe_before_they_act`），
         // 而那一段散文必须逐字点出它的旧名字才说得清「接的是谁」。
         (
-            "src/backend/control/gate.rs",
+            // 〔步 7c 后端剖分 2026-09-19 · C 类〕那段墓碑散文随测试段搬家，处数一格没变。
+            "tests/backend/control/gate_tests.rs",
             "the_ssh_fallback_always_probes_before_it_acts",
             1,
         ),

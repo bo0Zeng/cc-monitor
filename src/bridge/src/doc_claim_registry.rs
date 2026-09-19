@@ -298,6 +298,11 @@ enum EnvKeyClaim {
 /// （`the_registry_file_itself_stays_out_of_that_population` 钉着这条性质）。
 #[cfg(test)]
 const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
+    // 🔴 〔步 7c 后端剖分 2026-09-19 · `设计/16 §6.2` C 类〕
+    //    `src/backend/observe/accounts_query.rs` 那 5 行换成
+    //    `tests/backend/observe/accounts_query_tests.rs` —— 那 5 份副本全在测试段里，
+    //    随剖分整批搬走了。**副本份数一格没变**（`the_environ_key_claim_scan_is_not_zero_hit`
+    //    那条地板量的就是份数，它没动）。
     // ── 断言当下的那几份 ──────────────────────────────────────────────────
     // 🔴 `K-P5f` 漏的就是这一份：铁律那一节，全树寿命最长的文档。
     (
@@ -311,13 +316,15 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
         EnvKeyClaim::Asserts,
     ),
     (
+        // ⚠ 这一条**刻意留在生产文件里**：它的锚点是 `//!`（模块头注），
+        //    而模块头注不属于测试段，剖分不搬它。上一版整批换住址时换过头了，已撤回。
         "src/backend/observe/accounts_query.rs",
         "//! - `/proc/<pid>/environ`",
         EnvKeyClaim::Asserts,
     ),
     // `K-P5f` 同一拍新写的第五份 —— 它自己就是「订正的同时又添一份副本」的活证据。
     (
-        "src/backend/observe/accounts_query.rs",
+        "tests/backend/observe/accounts_query_tests.rs",
         "守的性质：",
         EnvKeyClaim::Asserts,
     ),
@@ -362,17 +369,17 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     ),
     // ── 在引述那句话本身的那几份（逐字带着旧说法是故意的）────────────────
     (
-        "src/backend/observe/accounts_query.rs",
+        "tests/backend/observe/accounts_query_tests.rs",
         "文档那一行把",
         EnvKeyClaim::Quotes,
     ),
     (
-        "src/backend/observe/accounts_query.rs",
+        "tests/backend/observe/accounts_query_tests.rs",
         "那句诚实边界：文档与本文件头注",
         EnvKeyClaim::Quotes,
     ),
     (
-        "src/backend/observe/accounts_query.rs",
+        "tests/backend/observe/accounts_query_tests.rs",
         "里没点名",
         EnvKeyClaim::Quotes,
     ),
@@ -383,7 +390,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     ),
     // ── 同句式、别的主语 ──────────────────────────────────────────────────
     (
-        "src/backend/observe/accounts_query.rs",
+        "tests/backend/observe/accounts_query_tests.rs",
         "从出参 `json!`",
         EnvKeyClaim::OtherSubject,
     ),

@@ -815,7 +815,7 @@ fn starting_twice_does_not_spawn_a_second_local_daemon() {
 /// 那条更是把它逐字叫作「反向自检②」。
 ///
 /// ★ 「字节数地板 → 语义锚点」这个换法**本仓已有判例**：
-/// `guard_support.rs::main_production_section_keeps_its_load_bearing_items` 的头注逐字写着
+/// `guard_support_tests.rs::main_production_section_keeps_its_load_bearing_items` 的头注逐字写着
 /// 「字节数地板挡不住『单个文件被剥空/剥过头』…… 这条用**语义锚点**直接钉住那一类失效」。
 fn body_of(prod: &str, head: &str) -> String {
     let at = guard_core::find_pinned(prod, head)

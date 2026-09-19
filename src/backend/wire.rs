@@ -89,7 +89,7 @@ pub struct AgentHome {
 /// 事前那一句要是自造一套词，客户端就得维护**两张**「这句话怎么翻成人话」的表 ——
 /// 而 monitor 侧那张表已经写好了（`backend/control/daemon_launch.rs` 等三处逐字「远端未安装 tmux」）。
 /// ⇒ 复用同一套 code，**事前与事后是同一句话，只是来得早**。
-/// 这一条由 `main.rs::the_declared_code_is_one_the_registry_already_declares` 钉住：
+/// 这一条由 `main_fourth_face_tests.rs::the_declared_code_is_one_the_registry_already_declares` 钉住：
 /// 本表只许说 `inbound::REGISTRY` 里那条命令**自己登记过**的 code。
 ///
 /// # 为什么不带一句 `message`
@@ -132,9 +132,9 @@ pub enum Frame {
         ///
         /// skip_if_empty：今天 agent **发现**（DG1）未接线 ⇒ 恒空 ⇒ 省略
         /// ⇒ **hello 帧对 Claude 的线上字节逐字节不变** —— 由
-        /// `wire.rs::production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen`
+        /// `wire_tests.rs::production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen`
         /// （生产路径**确实**给空表）与
-        /// `wire.rs::dg3_codex_fields_skipped_when_absent_claude_byte_equivalent`
+        /// `wire_tests.rs::dg3_codex_fields_skipped_when_absent_claude_byte_equivalent`
         /// （**给了**空表就得到旧字节）两条**合起来**钉住 —— 缺任一条这句话都不成立。
         /// ⚠ 〔`K-R20` 订正 09-03〕原先写的是 `hello_bytes_for_claude_are_frozen`〔散文墓碑〕，
         /// **那个名字全仓零定义**，而这句话是**当现状在说**，还撑着一条**契约级**结论
@@ -210,7 +210,7 @@ pub enum Frame {
         ///
         /// `main.rs` 硬写 `Vec::new()`（`production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen`
         /// 钉住）⇒ **hello 帧的线上字节逐字节不变**。而「不是没能力」由
-        /// `main.rs::the_answer_is_a_function_of_the_machine_not_of_the_build` 钉另一半。
+        /// `main_fourth_face_tests.rs::the_answer_is_a_function_of_the_machine_not_of_the_build` 钉另一半。
         /// 真填 = 一次**跨仓契约变更**（仓外 aterm 按精确字节读这一帧，契约冻结 2026-07-18），
         /// 而本机没有 aterm 仓、验不了它的运行时 ⇒ 留成一次**纯发布决策**。
         /// 真填那天要**同轮**做三件事：① 换 `main.rs` 那一行（`Vec::new()` → `unavailable_here()`）；

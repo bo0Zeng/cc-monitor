@@ -67,7 +67,10 @@ const PENDING: &[&str] = &[
     "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
     "tests/bridge/backend_layering.rs",
     "tests/bridge/backend/observe/local_query_tests.rs",
-    "tests/bridge/cross_half_edge_registry_tests.rs",
+    // 🔴 〔步 7c 2026-09-19〕**`cross_half_edge_registry_tests.rs` 这一行删了 —— 真迁完了。**
+    //    它的 `both_halves()` 手写递归改走了 `guard_core::scan_tree_excluding`
+    //    （语义逐字相同，是纯死重）。腾出来的这一格给了 watcher 那条「一变二」。
+    //    ⇒ 清单条数 28 → 28，`PENDING_CEILING` **一格没动**。
     "tests/bridge/doc_claim_registry_tests.rs",
     "tests/bridge/doc_copy_registry_tests.rs",
     "tests/bridge/frame_cadence_guard_tests.rs",
@@ -86,7 +89,23 @@ const PENDING: &[&str] = &[
     "tests/bridge/utils_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
+    // 🔴 〔步 7c 后端剖分 2026-09-19〕**watcher 这一条变成了两条，逐份点名。**
+    //
+    // · `tests/backend/observe/watcher_tests.rs` —— 测试段搬过来的那一份；
+    // · `src/backend/observe/watcher.rs` —— **生产段那份仍然命中**，而它命中的原因
+    //   是本判据 `test_regions()` 的**粗切法**：那份文件顶上有几行 `#[cfg(test)] use …`，
+    //   粗切从那里一直吃到下一个列 0 的 `}`，把紧跟其后的 `use walkdir::WalkDir;`
+    //   （一行**生产 import**，不是遍历）一起收进了「测试段」。
+    //   ⚠ 这是**剖分前就存在的假阳**（那时两者同文件、算一条），不是本轮新增的债。
+    //   〔现打：这一份的命中就是那一行 `use`；测试树那一份的 5 处命中全是**字符串针**。〕
+    //   ⇒ 两条都如实登记，而**上限一格没抬** —— 腾出来的那一格是真迁的：
+    //     `tests/bridge/cross_half_edge_registry_tests.rs::both_halves` 的手写递归
+    //     改走 `guard_core::scan_tree_excluding`（语义逐字相同，是纯死重）。
+    //   〔同轮另迁了一处但**没**腾出格子，如实记：
+    //    `tests/backend/no_timer_guard.rs::daemon_sources` 也改走了那个原语，
+    //    但那份文件里还有 3 处别的 `read_dir(`（本判据按**文件**数）⇒ 它仍在清单上。〕
     "src/backend/observe/watcher.rs",
+    "tests/backend/observe/watcher_tests.rs",
     "tests/backend/platform/fallback_guard.rs",
     "tests/backend/protocol_doc_guard.rs",
     "tests/backend/readonly_guard.rs",

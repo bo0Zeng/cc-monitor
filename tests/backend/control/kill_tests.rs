@@ -22,7 +22,7 @@ fn shape_validation_rejects_what_would_break_the_tmux_target() {
 /// ★ **生产接线（顺序钉）**：门必须在 `kill-session` **之前**。
 ///
 /// 反过来（先杀再判）＝ 门形同虚设，而「函数被调用了」这种判据照样绿。
-/// 同 `launch.rs::the_send_into_arm_admits_before_it_types` 一族 ——
+/// 同 `launch_tests.rs::the_send_into_arm_admits_before_it_types` 一族 ——
 /// **破坏性动作的顺序错法后果最重**，所以单独钉。
 #[test]
 fn the_kill_path_admits_before_it_kills() {

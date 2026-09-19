@@ -287,7 +287,7 @@ fn remote_truncation_survives_the_merge() {
 /// （`build_blocking` → `query` → `search_core::make_snippet`）。
 /// · 改 core 的 `SNIPPET_CTX` ⇒ 两头一起动，本条仍绿（＝行为确实跟着变）；
 /// · 本侧哪天写回一个自己的 `const SNIPPET_CTX = 48` ⇒ 实际不动、期望动 ⇒ **当场红**。
-/// daemon 侧有一条同形的（`observe/search_query.rs::the_snippet_window_comes_from_core`）。
+/// daemon 侧有一条同形的（`observe/search_query_tests.rs::the_snippet_window_comes_from_core`）。
 #[test]
 fn the_snippet_window_comes_from_core() {
     let ctx = search_core::SNIPPET_CTX;

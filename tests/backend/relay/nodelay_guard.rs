@@ -2,7 +2,7 @@
 //!
 //! # 分工（这一条与行为那一条各买什么，别混着读）
 //!
-//! - **行为那一半**住 `server.rs::both_directions_really_disable_nagle_on_the_socket`：
+//! - **行为那一半**住 `server_tests.rs::both_directions_really_disable_nagle_on_the_socket`：
 //!   它用 `try_clone()`（= `dup`，两个 fd 同一条 socket）在**真的跑过一遍生产段之后**
 //!   `getsockopt` 读 `TCP_NODELAY`，**两个方向各一格、各带非空对照**。
 //!   「两个方向都真的关了 Nagle」这句承诺由**它**背书。
