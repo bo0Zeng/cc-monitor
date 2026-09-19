@@ -26,7 +26,19 @@ import { defineConfig } from "vitest/config";
 // ⚠ 在 `defineConfig` 之外、模块顶层设 —— worker 是**新进程**，从这里继承 env；
 //   放进 `test.env` 太晚（ICU 的默认 locale 在进程启动时就定了）。
 process.env.TZ = "America/Los_Angeles";
-process.env.LC_ALL = "zh-CN";
+// 🔴 **写 `LANG` 的 POSIX 形，并把两个更高优先级的清掉** —— 三点理由，都是现打出来的：
+//   ① `LC_ALL="zh-CN"`（BCP-47 形）Node 的 ICU 认，**但 bash / `locale` / 任何
+//      `setlocale(LC_ALL,"")` 的程序不认** ⇒ 容器里当场
+//      `warning: setlocale: LC_ALL: cannot change locale (zh-CN)` 并退回 C。
+//      那是**往测试输出里灌噪声**，而且悄悄改了子进程的 collation/ctype。
+//   ② `LC_ALL="zh_CN.UTF-8"`（POSIX 形）在**没生成这个 locale 的容器**里同样报警
+//      （现打：`locale -a | grep -ci zh` == 0）。
+//   ③ `LANG="zh_CN.UTF-8"` 两边都干净：Node 解析出 `zh-CN`，bash 零报警（现打）。
+// ⚠ `LANG` 是**最低优先级**（`LC_ALL` > `LC_*` > `LANG`）⇒ 光设它不够，
+//   一台把 `LC_ALL` 设成别的值的机器会把它盖掉 ⇒ **连带清掉那两个**，钉子才钉得住。
+delete process.env.LC_ALL;
+delete process.env.LC_TIME;
+process.env.LANG = "zh_CN.UTF-8";
 
 export default defineConfig({
   test: {

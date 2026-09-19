@@ -30,7 +30,9 @@ mkdir -p "$WORK"
 #    金标准的 `env.displayLocale` / `env.timeZone`，而 `tests/scale2-height-truth.vitest.ts`
 #    有一条判据拿它跟运行时对拍 —— 三处对不上，那一条当场红并说「判不了」。
 export TZ="America/Los_Angeles"
-export LC_ALL="zh-CN"
+# ⚠ 取值与形式的理由逐条写在 `vitest.config.ts` 顶层那一段（`LANG` 的 POSIX 形 ＋ 清掉更高优先级的）。
+unset LC_ALL LC_TIME
+export LANG="zh_CN.UTF-8"
 
 # ── ① 语料 ────────────────────────────────────────────────────────────────
 # 🔴 **默认不重采样。** 采样源 `~/.claude/projects/-home-zbl----claudecode-frontend/`
