@@ -1,0 +1,82 @@
+# 秤 1 读数原文（bash tests/evidence/S1-run.sh 覆盖重写）
+# 时间：2026-09-18T18:02:40-07:00
+# 机器：gpd · Linux 7.0.0-30-generic x86_64 · node v22.22.1
+# 语料：tests/__fixtures__/scale2-height-records.jsonl（与秤 2 同一份；结构真、正文全合成）
+
+
+ RUN  v4.1.10 /home/zbl/文档/claudecode-frontend/cc-monitor
+
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+stdout | tests/scale1-render-cost.vitest.ts
+
+秤 1 · 单条渲染成本直方图（语料 69 条 × 8 遍 = 552 样本）
+| 桶 | n | total p50 | total p90 | total max | render p50 | merge p50 | estimate p50 | mount p50 | render 占 total p50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| <2K | 240 | 0.302 | 1.093 | 4.021 | 0.197 | 0.000 | 0.089 | 0.012 | 66.4% |
+| 2-8K | 160 | 3.001 | 12.471 | 16.523 | 2.643 | 0.000 | 0.235 | 0.047 | 78.3% |
+| 8-32K | 136 | 0.351 | 20.076 | 50.399 | 0.288 | 0.000 | 0.041 | 0.012 | 69.2% |
+| 32-128K | 16 | 0.160 | 0.214 | 0.281 | 0.112 | 0.047 | 0.000 | 0.000 | 70.5% |
+| >128K | 0 | — | — | — | — | — | — | — | — |
+
+桶 × 分支（n / total p50 ms）—— 这张表是本秤最重要的产出，理由见读数：
+| 桶 | skip | card | tool-group | tool-group-merged |
+|---|---|---|---|---|
+| <2K | 16 / 0.001 | 160 / 0.610 | — | 64 / 0.070 |
+| 2-8K | 24 / 0.001 | 80 / 10.238 | 8 / 0.246 | 48 / 0.085 |
+| 8-32K | 16 / 0.001 | 72 / 14.293 | — | 48 / 0.101 |
+| 32-128K | — | — | — | 16 / 0.160 |
+| >128K | — | — | — | — |
+
+只看 `card` 分支（真正建卡那条路）逐桶：
+| 桶 | n | total p50 | total p90 | total max | render p50 | render 占比 p50 |
+|---|---:|---:|---:|---:|---:|---:|
+| <2K | 160 | 0.610 | 1.331 | 4.021 | 0.450 | 72.7% |
+| 2-8K | 80 | 10.238 | 13.850 | 16.523 | 7.787 | 80.5% |
+| 8-32K | 72 | 14.293 | 33.332 | 50.399 | 10.308 | 77.5% |
+| 32-128K | 0 | — | — | — | — | — |
+| >128K | 0 | — | — | — | — | — |
+
+残余（total − Σ四段）占比：p50=0.07% p90=2.95% max=26.76%
+
+按分支：
+  skip               n=  56  total p50=0.001ms  max=0.006ms
+  card               n= 312  total p50=1.426ms  max=50.399ms
+  tool-group         n=   8  total p50=0.246ms  max=0.369ms
+  tool-group-merged  n= 176  total p50=0.085ms  max=2.504ms
+
+
+stderr | tests/scale1-render-cost.vitest.ts
+[height-estimate] pretext 连续失败,永久转算术降级: TypeError: Cannot set properties of null (setting 'font')
+    at getFontMeasurementState (file:///home/zbl/%E6%96%87%E6%A1%A3/claudecode-frontend/cc-monitor/node_modules/@chenglou/pretext/dist/measurement.js:199:14)
+    at measureAnalysis (file:///home/zbl/%E6%96%87%E6%A1%A3/claudecode-frontend/cc-monitor/node_modules/@chenglou/pretext/dist/layout.js:67:40)
+    at prepareInternal (file:///home/zbl/%E6%96%87%E6%A1%A3/claudecode-frontend/cc-monitor/node_modules/@chenglou/pretext/dist/layout.js:218:12)
+    at Module.prepare (file:///home/zbl/%E6%96%87%E6%A1%A3/claudecode-frontend/cc-monitor/node_modules/@chenglou/pretext/dist/layout.js:235:12)
+    at textHeight (/home/zbl/文档/claudecode-frontend/cc-monitor/src/height-estimate.ts:120:35)
+    at blockHeight (/home/zbl/文档/claudecode-frontend/cc-monitor/src/height-estimate.ts:232:11)
+    at estimateStreamNodeHeight (/home/zbl/文档/claudecode-frontend/cc-monitor/src/height-estimate.ts:327:57)
+    at applyIntrinsicSize (/home/zbl/文档/claudecode-frontend/cc-monitor/src/height-estimate.ts:340:13)
+    at renderContentRecord (/home/zbl/文档/claudecode-frontend/cc-monitor/src/render-stream-record.ts:363:7)
+    at drivePass (/home/zbl/文档/claudecode-frontend/cc-monitor/tests/scale1-render-cost.vitest.ts:173:5)
+
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 反空真（绿必须来自相等断言，不是「扫不到就绿」） > 样本总数 == **绝对**登记数（不是「登记数 × PASSES」那种恒等式） 1ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 反空真（绿必须来自相等断言，不是「扫不到就绿」） > ★ 每个桶的 n == 显式登记数（桶边界改坏、语料换了都当场红） 1ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 反空真（绿必须来自相等断言，不是「扫不到就绿」） > ★ 语料真的分到了多个桶，且每个登记为非空的桶 n > 0 1ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 反空真（绿必须来自相等断言，不是「扫不到就绿」） > 探针自报的字节 == 原始 jsonl 行字节（逐条相等，不是抽查） 0ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 四个子段真的各自被量到（死值验的着力点） > ★ render / merge / estimate / mount 四段各自至少在一条样本上 > 0 0ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 四个子段真的各自被量到（死值验的着力点） > 四条分支都被走到（skip / card / tool-group / tool-group-merged） 0ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 四个子段真的各自被量到（死值验的着力点） > ★ 四段之和 ≤ total（入口出口是真夹的，不是把差额摊进某一段） 0ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 四个子段真的各自被量到（死值验的着力点） > ★ 残余（total − Σ四段）**两侧都钉**：既不能变大，也不能恒为 0 0ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导 > ★ `render` 段在每个非空桶都是大头（O(len) 的那几条声称都住在它里面） 0ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导 > ★ 只看 `card` 分支：total p50 **确实**随记录字节单调上升 0ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导 > ★ 建卡那条路上，长记录比短记录贵一个量级以上（倍率，跨机可比） 0ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导 > 🔴 反例也要钉住：按**字节**取的「长尾桶」里全是**便宜**的折叠 tool-group 0ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 环形缓冲（设计逐字 cap 5000） > cap 就是 5000，且超出之后覆盖最旧的、条数停在 cap 7ms
+ ✓ tests/scale1-render-cost.vitest.ts > 秤 1 · 环形缓冲（设计逐字 cap 5000） > 探针关着时采不到东西（对照组：默认不该有常驻账本） 0ms
+
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  18:02:40
+   Duration  3.65s (transform 215ms, setup 0ms, import 331ms, tests 2.73s, environment 433ms)
+

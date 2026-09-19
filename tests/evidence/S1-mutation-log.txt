@@ -1,0 +1,90 @@
+# 秤 1 死值验 —— 原文（bash tests/evidence/S1-mutation.sh 覆盖重写）
+# 时间：2026-09-18T18:01:41-07:00
+# 机器：gpd · Linux 7.0.0-30-generic x86_64 · node v22.22.1
+
+######## M0 · 基线（未变异，必须全绿）
+      Tests  14 passed (14)
+
+######## M1 · 摘掉 `estimate` 子段（两处写成 0）—— 预期红
+     × ★ render / merge / estimate / mount 四段各自至少在一条样本上 > 0 2ms
+     × ★ 残余（total − Σ四段）**两侧都钉**：既不能变大，也不能恒为 0 0ms
+AssertionError: 子段 [estimate] 在整份语料上恒为 0 —— 要么计时被摘掉了，要么语料根本走不到那条分支。两种都让「拆 4 个子段」这句话变成假话: expected 'estimate' to be '' // Object.is equality
+AssertionError: 残余中位占比 16.46% ——四段之外的开销不该是大头；它变大通常意味着某一段的计时被删了: expected 0.1645603488419037 to be less than 0.1
+      Tests  2 failed | 12 passed (14)
+
+######## M2 · 摘掉 `mount` 子段（三处写成 0）—— 预期红
+     × ★ render / merge / estimate / mount 四段各自至少在一条样本上 > 0 3ms
+AssertionError: 子段 [mount] 在整份语料上恒为 0 —— 要么计时被摘掉了，要么语料根本走不到那条分支。两种都让「拆 4 个子段」这句话变成假话: expected 'mount' to be '' // Object.is equality
+      Tests  1 failed | 13 passed (14)
+
+######## M3 · 摘掉 `merge` 子段（两处写成 0）—— 预期红
+     × ★ render / merge / estimate / mount 四段各自至少在一条样本上 > 0 3ms
+AssertionError: 子段 [merge] 在整份语料上恒为 0 —— 要么计时被摘掉了，要么语料根本走不到那条分支。两种都让「拆 4 个子段」这句话变成假话: expected 'merge' to be '' // Object.is equality
+      Tests  1 failed | 13 passed (14)
+
+######## M4 · `total` 不再入口出口夹，改成 Σ四段（伪装成真夹）—— 预期红
+     × ★ 残余（total − Σ四段）**两侧都钉**：既不能变大，也不能恒为 0 4ms
+AssertionError: 552 条样本里没有一条的 total 大于四段之和 —— `total` 多半不是入口出口夹出来的，而是被算成了 Σ四段: expected 0 to be greater than 0
+      Tests  1 failed | 13 passed (14)
+
+######## M5 · 探针自报字节恒为 0（分桶轴塌成一个桶）—— 预期红
+     × ★ 每个桶的 n == 显式登记数（桶边界改坏、语料换了都当场红） 4ms
+     × ★ 语料真的分到了多个桶，且每个登记为非空的桶 n > 0 0ms
+     × 探针自报的字节 == 原始 jsonl 行字节（逐条相等，不是抽查） 1ms
+     × ★ 只看 `card` 分支：total p50 **确实**随记录字节单调上升 0ms
+     × ★ 建卡那条路上，长记录比短记录贵一个量级以上（倍率，跨机可比） 0ms
+     × 🔴 反例也要钉住：按**字节**取的「长尾桶」里全是**便宜**的折叠 tool-group 0ms
+     × cap 就是 5000，且超出之后覆盖最旧的、条数停在 cap 3ms
+AssertionError: 分桶结果与登记表不符 —— 桶边界、语料、或探针的字节口径变了: expected { '<2K': 552, '2-8K': +0, …(3) } to deeply equal { '<2K': 240, '2-8K': 160, …(3) }
+AssertionError: 只有 1 个桶有人（<2K）——一条直方图挤在单个桶里，「长尾 vs 短记录」那句话就没有对照组: expected 1 to be greater than or equal to 4
+AssertionError: expected '#0: 探针 0 ≠ 行 4239；#1: 探针 0 ≠ 行 7613；#…' to be '' // Object.is equality
+AssertionError: `card` 分支只落在一个桶里 —— 没有对照组，下面的单调性恒真: expected 1 to be greater than or equal to 3
+AssertionError: 8-32K 的 card 只比 <2K 贵 NaN 倍 ——§1.1「推论二：任何 O(单条长度) 的操作都要按长尾估」失去依据: expected NaN to be greater than 10
+
+######## M6 · 桶边界 2-8K 的上界 8192 → 16384（桶边界改坏）—— 预期红
+     × ★ 每个桶的 n == 显式登记数（桶边界改坏、语料换了都当场红） 7ms
+AssertionError: 分桶结果与登记表不符 —— 桶边界、语料、或探针的字节口径变了: expected { '<2K': 240, '2-8K': 240, …(3) } to deeply equal { '<2K': 240, '2-8K': 160, …(3) }
+      Tests  1 failed | 13 passed (14)
+
+######## M7 · 探针根本没开（缓冲恒空 ⇒ 分桶表是空的）—— 预期红
+     × 样本总数 == **绝对**登记数（不是「登记数 × PASSES」那种恒等式） 4ms
+     × ★ 每个桶的 n == 显式登记数（桶边界改坏、语料换了都当场红） 2ms
+     × ★ 语料真的分到了多个桶，且每个登记为非空的桶 n > 0 0ms
+     × ★ render / merge / estimate / mount 四段各自至少在一条样本上 > 0 0ms
+     × 四条分支都被走到（skip / card / tool-group / tool-group-merged） 0ms
+     × ★ 残余（total − Σ四段）**两侧都钉**：既不能变大，也不能恒为 0 0ms
+     × ★ 只看 `card` 分支：total p50 **确实**随记录字节单调上升 0ms
+     × ★ 建卡那条路上，长记录比短记录贵一个量级以上（倍率，跨机可比） 0ms
+     × 🔴 反例也要钉住：按**字节**取的「长尾桶」里全是**便宜**的折叠 tool-group 0ms
+AssertionError: 环形缓冲里只有 0 条样本，期望 552 ——探针没开 / 驱动没跑 / 采集点被绕过，任何一种都会让下面的分桶表空着还绿: expected +0 to be 552 // Object.is equality
+AssertionError: 分桶结果与登记表不符 —— 桶边界、语料、或探针的字节口径变了: expected { '<2K': +0, '2-8K': +0, …(3) } to deeply equal { '<2K': 240, '2-8K': 160, …(3) }
+AssertionError: 只有 0 个桶有人（）——一条直方图挤在单个桶里，「长尾 vs 短记录」那句话就没有对照组: expected 0 to be greater than or equal to 4
+
+######## M8 · 少跑一半遍数（PASSES 8 → 4）—— 预期红〔第一轮曾绿，见上方注释〕
+     × 样本总数 == **绝对**登记数（不是「登记数 × PASSES」那种恒等式） 4ms
+     × ★ 每个桶的 n == 显式登记数（桶边界改坏、语料换了都当场红） 2ms
+AssertionError: 环形缓冲里只有 276 条样本，期望 552 ——探针没开 / 驱动没跑 / 采集点被绕过，任何一种都会让下面的分桶表空着还绿: expected 276 to be 552 // Object.is equality
+AssertionError: 分桶结果与登记表不符 —— 桶边界、语料、或探针的字节口径变了: expected { '<2K': 120, '2-8K': 80, …(3) } to deeply equal { '<2K': 240, '2-8K': 160, …(3) }
+      Tests  2 failed | 12 passed (14)
+
+######## M9 · 登记表里 8-32K 桶改成 16（差一条）—— 预期红
+     × ★ 每个桶的 n == 显式登记数（桶边界改坏、语料换了都当场红） 6ms
+AssertionError: 「每遍」登记表 × PASSES 与「绝对」登记表对不上 —— 两张表要一起改: expected { '<2K': 240, '2-8K': 160, …(3) } to deeply equal { '<2K': 240, '2-8K': 160, …(3) }
+      Tests  1 failed | 13 passed (14)
+
+######## M10 · 环形缓冲 cap 5000 → 50000（设计逐字那个数被改）—— 预期红
+     × cap 就是 5000，且超出之后覆盖最旧的、条数停在 cap 3ms
+AssertionError: expected 50000 to be 5000 // Object.is equality
+      Tests  1 failed | 13 passed (14)
+
+######## M11 · 去掉预热那一遍（读数会抖，但判据只钉占比与倍率）—— **预期不红**
+      Tests  14 passed (14)
+
+######## 全部还原后复跑（必须回到 M0 的全绿）
+      Tests  14 passed (14)
+
+######## 真仓那两个文件有没有被动过（指纹对拍）
+真仓未被触碰 ✓
+c93db2af5ad0817e09865b247eda563e  /home/zbl/文档/claudecode-frontend/cc-monitor/src/render-stream-record.ts
+f3253a251de568310b6037cdd0de97e3  /home/zbl/文档/claudecode-frontend/cc-monitor/tests/scale1-render-cost.vitest.ts
+[END]

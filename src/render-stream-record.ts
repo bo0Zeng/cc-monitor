@@ -217,15 +217,120 @@ export function renderStreamRecord(
   renderContentRecord(payload, ctx, sink);
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// 秤 1（`设计/17 §6` 表第 1 行）：**单条渲染成本直方图**的采集端。
+//
+// 设计逐字要的是：「`renderContentRecord` wall time，**按记录字节分桶**，拆 4 个子段」
+// ＋「入口出口夹 `performance.now()`，push 进环形缓冲（cap 5000）」。
+// 它要验的声称是 §2.1 §2.4 §2.5 §2.6 §2.8 共同的那一句 ——
+// **「长尾桶被 O(len) 操作主导」**。
+//
+// # 四个子段怎么切的（改这里等于改秤）
+//
+// | 子段 | 覆盖 | 为什么单独成段 |
+// |---|---|---|
+// | `render`   | `renderMessage()` | §2.1/§2.4/§2.5/§2.6/§2.8 点名的 O(len) 全在它里面 |
+// | `merge`    | tool-group 邻居判定 + `addToToolGroup` + `buildToolGroup` | P5.3 合并算法，与卡长度无关的那一半 |
+// | `estimate` | `markCardUuid` + `onCardRendered` + `applyIntrinsicSize` | 估高（秤 2 的被测面），走的是 DOM 遍历不是正文 |
+// | `mount`    | `timeline.insert` + `observeForEnhance` | 二分插入 + DOM 挂载 |
+//
+// `total` 是**入口出口真夹**出来的，所以 `total − Σ四段 ≥ 0`，差额 = 分派开销
+// ＋ `onRealUserInput` 这类 caller 回调。**不把差额摊进任何一段** —— 摊进去
+// 就等于把"秤没量到的部分"伪装成量到了。判据那边专门有一格盯这个差额。
+//
+// # 🔴 默认关。为什么不能常开
+//
+// 分桶要"记录字节"，而 payload 上**没有**这个字段（`JsonlLinePayload` 只有
+// 反序列化后的 `message`）⇒ 只能 `JSON.stringify(message)` 现算，而那**正好就是
+// §2.4 点名的那种 O(len) 操作**。常开 = 为了量成本而付一份同量级的成本。
+// ⇒ 探针默认 `null`，热路径上塌成一次布尔判断；开了之后，字节数在
+// **总时刻取完之后**才算，不污染任何一段读数（但确实会抬高整体 wall time —— 见判据的射程段）。
+// ───────────────────────────────────────────────────────────────────────────
+
+/** 秤 1 的一条样本。时间单位 ms（`performance.now()` 的差）。 */
+export interface RenderCostSample {
+  /** `JSON.stringify(message)` 的 UTF-8 字节数 —— 分桶用的那根轴 */
+  bytes: number;
+  /**
+   * 走了哪条分支。**`skip` 也留**：那是"白跑一趟 `renderMessage` 什么也没建"的成本，
+   * 从账上抹掉它，长尾里的 attachment/空 user 就成了免费的。
+   */
+  branch: "skip" | "card" | "tool-group" | "tool-group-merged";
+  /** ① `renderMessage()` */
+  render: number;
+  /** ② tool-group 合并 / 新建外壳 */
+  merge: number;
+  /** ③ 估高（markCardUuid + onCardRendered + applyIntrinsicSize） */
+  estimate: number;
+  /** ④ DOM 挂载（timeline.insert + observeForEnhance） */
+  mount: number;
+  /** 入口出口夹出来的总 wall time。`≥ render+merge+estimate+mount` */
+  total: number;
+}
+
+/** 设计逐字：「push 进环形缓冲（**cap 5000**）」 */
+export const RENDER_COST_RING_CAP = 5000;
+
+/** `null` = 探针关（生产默认）。非 null 时是环形缓冲的底层数组。 */
+let costRing: RenderCostSample[] | null = null;
+/** 环形写指针（`length === CAP` 之后才真的绕回来覆盖最旧的） */
+let costRingNext = 0;
+
+/** 打开秤 1 的采集并清空缓冲。**只给测量用**，生产代码不调。 */
+export function enableRenderCostProbe(): void {
+  costRing = [];
+  costRingNext = 0;
+}
+
+/** 关掉秤 1 的采集并丢掉缓冲（不丢的话它就是一个 5000 条的常驻账本）。 */
+export function disableRenderCostProbe(): void {
+  costRing = null;
+  costRingNext = 0;
+}
+
+/**
+ * 按**时间顺序**取出缓冲里的样本（未满时就是 push 顺序；满了之后写指针处是最旧的）。
+ * 探针关着时返回空数组 —— 判据那边有一格专门钉"空数组不许被当成绿"。
+ */
+export function readRenderCostSamples(): RenderCostSample[] {
+  const ring = costRing;
+  if (!ring) return [];
+  if (ring.length < RENDER_COST_RING_CAP) return ring.slice();
+  return ring.slice(costRingNext).concat(ring.slice(0, costRingNext));
+}
+
+function pushCostSample(ring: RenderCostSample[], s: RenderCostSample): void {
+  if (ring.length < RENDER_COST_RING_CAP) ring.push(s);
+  else ring[costRingNext] = s;
+  costRingNext = (costRingNext + 1) % RENDER_COST_RING_CAP;
+}
+
+/** 记录字节数。⚠ 调用点必须在**总时刻取完之后**，否则它自己的 O(len) 会进读数。 */
+function recordBytes(message: JsonlRecord): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(message)).length;
+  } catch {
+    // 循环引用之类 —— 不让仪表把渲染搞崩，记 0 让它落进最小桶并在报表里显形
+    return 0;
+  }
+}
+
 /**
  * 纯渲染段:建卡 / tool-group 后处理合并 / DOM 挂载 / userActive。
  * 前置:routeMetaAndBranch 已对该 payload 返回 "content"(meta 已消费、branch 已喂)。
+ *
+ * 秤 1 的仪表夹在本函数的入口与每一条 `return` 之前（见上方那段）。
+ * **仪表不改渲染行为**：探针关着时每处只多一次 `probe ?` 布尔判断，
+ * 开着时也只是多读几次 `performance.now()`，DOM 产物一个字节都不动
+ * （`tests/scale2-height-truth.vitest.ts` 的 DOM 指纹格钉着这一条）。
  */
 export function renderContentRecord(
   payload: JsonlLinePayload,
   ctx: RenderContext,
   sink: StreamSink,
 ): void {
+  const probe = costRing;
+  const t0 = probe ? performance.now() : 0;
   const message = payload.message;
 
   // 3. 渲染
@@ -233,9 +338,22 @@ export function renderContentRecord(
   // jsdom 单测无 main.ts,须防 undefined)
   if (window.__ccmPerf) window.__ccmPerf.recordsRendered = (window.__ccmPerf.recordsRendered ?? 0) + 1;
   const result = renderMessage(message, ctx);
+  const tRender = probe ? performance.now() : 0;
 
   switch (result.kind) {
     case "skip":
+      if (probe) {
+        const total = performance.now() - t0;
+        pushCostSample(probe, {
+          bytes: recordBytes(message),
+          branch: "skip",
+          render: tRender - t0,
+          merge: 0,
+          estimate: 0,
+          mount: 0,
+          total,
+        });
+      }
       return;
 
     case "card": {
@@ -243,6 +361,7 @@ export function renderContentRecord(
       markCardUuid(result.element, message);
       sink.onCardRendered?.(result.element, message); // F62：viewer 挂分支按钮
       applyIntrinsicSize(result.element); // Batch13-F38：c-v 估高初值
+      const tEstimate = probe ? performance.now() : 0;
       sink.timeline.insert({
         seq: payload.seq,
         element: result.element,
@@ -250,6 +369,7 @@ export function renderContentRecord(
         toolGroup: null,
       });
       if (sink.observeForLazyEnhance) observeForEnhance(result.element);
+      const tMount = probe ? performance.now() : 0;
 
       // 真用户输入触发回调（让 TabManager 自动切 Tab）。
       //
@@ -261,6 +381,18 @@ export function renderContentRecord(
       if (message.type === "user" || message.type === "queue-operation") {
         sink.onRealUserInput?.(payload.session_id);
       }
+      if (probe) {
+        const total = performance.now() - t0;
+        pushCostSample(probe, {
+          bytes: recordBytes(message),
+          branch: "card",
+          render: tRender - t0,
+          merge: 0,
+          estimate: tEstimate - tRender,
+          mount: tMount - tEstimate,
+          total,
+        });
+      }
       return;
     }
 
@@ -269,10 +401,24 @@ export function renderContentRecord(
       const prev = sink.timeline.peekPrev(payload.seq);
       if (prev && prev.kind === "tool-group" && prev.toolGroup) {
         addToToolGroup(prev.toolGroup, result.units);
+        const tMerge = probe ? performance.now() : 0;
         // units 已挂进 prev.toolGroup.body（DOM 内嵌），不入 timeline 新 entry。
         // 若 batch 模式新 units 要 observe lazy hljs：units 是新插入的 DOM
         if (sink.observeForLazyEnhance) {
           for (const u of result.units) observeForEnhance(u);
+        }
+        const tMount = probe ? performance.now() : 0;
+        if (probe) {
+          const total = performance.now() - t0;
+          pushCostSample(probe, {
+            bytes: recordBytes(message),
+            branch: "tool-group-merged",
+            render: tRender - t0,
+            merge: tMerge - tRender,
+            estimate: 0,
+            mount: tMount - tMerge,
+            total,
+          });
         }
         return;
       }
@@ -280,9 +426,11 @@ export function renderContentRecord(
       // 否则新建 group 并 insert
       const group = buildToolGroup(result.timestamp);
       addToToolGroup(group, result.units);
+      const tMerge = probe ? performance.now() : 0;
       // tool-group root 也写 data-uuid（首条贡献 uuid）让 BranchFolder 把它当卡识别
       markCardUuid(group.root, message);
       applyIntrinsicSize(group.root); // Batch13-F38：折叠组 = summary 常数
+      const tEstimate = probe ? performance.now() : 0;
       sink.timeline.insert({
         seq: payload.seq,
         element: group.root,
@@ -290,6 +438,19 @@ export function renderContentRecord(
         toolGroup: group,
       });
       if (sink.observeForLazyEnhance) observeForEnhance(group.root);
+      const tMount = probe ? performance.now() : 0;
+      if (probe) {
+        const total = performance.now() - t0;
+        pushCostSample(probe, {
+          bytes: recordBytes(message),
+          branch: "tool-group",
+          render: tRender - t0,
+          merge: tMerge - tRender,
+          estimate: tEstimate - tMerge,
+          mount: tMount - tEstimate,
+          total,
+        });
+      }
       return;
     }
   }
