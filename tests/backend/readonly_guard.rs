@@ -1446,7 +1446,7 @@ mod capture_is_read_only {
 //   `crate::readonly_guard::g6_doctrine::{cell_names, is_cell}`（唯一的跨模块消费者是
 //   `no_timer_guard::registered_uses_all_have_reasons`），**顶层那一行再导出没有了**。
 //   ⚠ **别再写回来**：这一族今天有闸了 —— monitor 侧
-//   `structural_scan.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
+//   `structural_scan_tests.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
 //   语料面含本文件所在的这棵树，写回一行当场红并点名这份文件。
 
 /// 〔`K-G6` `KG64`〕**`§0a` 四情形表的代码形态** —— 一条护栏的人群与性质对不上时该怎么处置。

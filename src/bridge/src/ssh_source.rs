@@ -1409,7 +1409,7 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 ///
 /// `origin` 的取值域**只有两类**：远端的 `host_label`/`origin_label`，
 /// 或本机的 [`crate::inbound_client::LOCAL_ORIGIN`]。
-/// 由 `ssh_source.rs::the_tmux_cache_has_one_writer_and_only_origin_keys` 钉住。
+/// 由 `ssh_source_f032_idle_tests.rs::the_tmux_cache_has_one_writer_and_only_origin_keys` 钉住。
 ///
 /// 〔`K-R19` 订正 09-03〕这一句原先点的是
 /// `the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache`。

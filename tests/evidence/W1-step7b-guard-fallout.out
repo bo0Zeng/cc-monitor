@@ -1,3 +1,13 @@
+# ✅ 2026-09-18 步 7b-②（分支 `w1/reaim-guards`）：下面这 35 条**全部转绿**，一条都没有靠放宽判据。
+#   收口读数：`src/bridge` 1 614 → 1 617 条 · 0 红（+3 全是新原语
+#   `guard_core::scan_tree_excluding` 的自检，逐条点名，一条测试都没丢）；
+#   `src/backend` 703 条 · 0 红（那边另有 2 条同族的红 —— 本文件这一趟只跑了 bridge，
+#   没记下来：`guard_support::the_two_strip_clean_notes_stay_one_sentence` 与
+#   `listen::every_file_this_head_note_points_at_really_exists` —— 一并修了）。
+#   四类各怎么修的、还欠 `P9` 什么，逐条住 `调研/设计/16 §6.3`。
+#   🔴 **本文件以下是那一刻的生数，保持原样不改** —— 它记的是「搬树之后尺子没跟着搬」
+#   长什么样，那是这一族判据第一次大规模被正向验证的证据。
+#
 # 步 7b（`设计/16 §6` 第 3 批）剖分之后的守卫落点 —— 现打读数，不是结论
 #
 # 量法：git checkout w1/split-mixed-files && cd src/bridge && cargo test --workspace

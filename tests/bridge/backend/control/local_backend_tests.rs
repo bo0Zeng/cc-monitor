@@ -940,7 +940,7 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
 /// **任何 spawn 之前**）+ 那个 shim **真的挂进 daemon 的 `PATH` 最前面**（探针与被监护进程都要）。
 ///
 /// ⚠⚠ **第三道锁的射程要分两格看**〔`D1` 审计 08-31 查实，阻塞 4 的另一半〕——
-/// 与 `local_daemon.rs::the_local_daemon_can_be_stopped_and_started_again` 头注里那张表**同一份**：
+/// 与 `local_daemon_tests.rs::the_local_daemon_can_be_stopped_and_started_again` 头注里那张表**同一份**：
 /// 走 `bash tests/e2e/local-backend-supervise.sh` 时 `tmux-shim.sh` 已经把 shim 挂进
 /// **测试进程自己的 `PATH`**，而 `supervise_with_stdio` **从不 `env_clear()`**
 /// ⇒ 第三道锁在**那条跑法上是冗余的**；它真正买的是「**手工 `cargo test -- --ignored`、
@@ -2527,7 +2527,15 @@ fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
     const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
     // 取 shim 的**唯一入口**〔`K-R7` 09-01〕：住 `local_daemon::tests::demand_tmux_shim`。
     const GATE: &str = "demand_tmux_shim(";
-    let src = include_str!("../../../../src/bridge/src/backend/control/local_backend.rs");
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着测试搬。**
+    //
+    // 本条数的是「**本文件里**带 `#[ignore]` 的真 daemon e2e」。剖分把本模块的测试段
+    // 整个搬来了 `tests/bridge/backend/control/local_backend_tests.rs`（就是本文件），
+    // 而 `src/bridge/src/backend/control/local_backend.rs` 今天**一个 `#[test]` 都没有**
+    // ⇒ 老语料一条都抓不到，那条「抽取器自检」按设计响了。
+    // ⚠ 下面那句「本条的文档注释里就写着 `#[ignore]` 与 `CCM_E2E_DAEMON`」正是
+    //   **因为语料是本文件**才成立的纪律 —— 两件事必须同改，别只改一半。
+    let src = include_str!("local_backend_tests.rs");
     // ⚠ **不在语料串上做裸 `split`**：`needle_anchor_registry` 的递减棘轮把它
     //   判为「匹配单位比事实小」的一族，且**不许调上限**（本条第一版就栽在这）。
     //   改成按行扫、遇到下一处 `#[test]` 收尾 —— 边界是「行」，比子串确定。
@@ -2834,7 +2842,7 @@ fn kill_for_test(pid: u32) {
 ///
 /// 🔴 **它必须住在这里，不许挪到 `never()` 旁边** —— 那一块是
 /// `e2e_a_missing_sidecar_degrades_honestly_against_the_real_filesystem` 与它之前那几个
-/// e2e 块的地界，而 `local_daemon.rs::every_test_that_starts_the_real_daemon_demands_a_private_tmux`
+/// e2e 块的地界，而 `local_daemon_tests.rs::every_test_that_starts_the_real_daemon_demands_a_private_tmux`
 /// 按 `#[te st]` 行切块、并把**含 `include_st r!(` 的块当守卫整块跳过**。
 /// 一挪过去，`the_local_daemon_really_registers_an_inbound_client` 会**静默掉出那条判据的人群**
 /// （实测：那条判据的地板当场红，报文逐字「它起真 daemon 的来历不见了」）。
@@ -3133,7 +3141,7 @@ fn stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on() {
 ///
 /// 「读端出错」那一支要一次**真的 IO 错误**才走得到（`read_capped_line_sync` 的 `Err`），
 /// 在一根真管道上造不出来 ⇒ 这一格只证「那一行写在那儿」。
-/// 行为那一半在 `local_daemon.rs::three_fake_daemons_land_in_three_different_cells`：
+/// 行为那一半在 `local_daemon_tests.rs::three_fake_daemons_land_in_three_different_cells`：
 /// 那里 ①② 两格走的是**真的**这个消费者（hello 之后 `exit 3` / 一个字节不说就 `exit 2`），
 /// ③ 那一格喂的是注入的消费者 —— 各自的射程写在那条判据自己的头注里。
 #[test]

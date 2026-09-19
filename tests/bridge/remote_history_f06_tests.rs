@@ -54,22 +54,40 @@ fn the_truncation_message_says_what_is_missing_and_where_it_still_is() {
 /// async fn 里抽出来（连 `tauri::ipc::Channel` 那个出口一起抽象）。本轮不做，
 /// §5 1g **保留**，但范围缩小到行为层那一半。
 ///
-/// # 对照组是自带的，不是另写一条
+/// # 「判据不会读到自己」今天由什么保障〔搬树 2026-09-18 订正〕
 ///
-/// 本判据的 needle 在**未剥测试段**的源码里有两处：生产一处 + 本测试的字面量一处。
-/// 下面第一条断言的就是「剥完之后它变少了」—— 于是「有人把 `production_source` 拿掉」
-/// 会当场红，而不是让本条静默地读到自己（F23 那一族，本区已犯过三次）。
+/// **原文（已作废）**：「本判据的 needle 在未剥测试段的源码里有两处：生产一处 ＋ 本测试的
+/// 字面量一处。下面第一条断言的就是『剥完之后它变少了』。」——那条对照组的前提是
+/// 判据与被测代码同住一份文件，剖分之后不成立（`16 §4.1` 预言的恒等变换）。
+/// 今天的保障是**结构性**的：本条住 `tests/bridge/`，语料住 `src/bridge/src/` ——
+/// 两份文件物理不同，读到自己**不可能发生**；而「有人把测试搬回去」那一形
+/// 由体内那条 `assert_no_test_code` 钉着。
 #[test]
 fn the_cap_check_is_still_wired_not_just_declared() {
     let raw = include_str!("../../src/bridge/src/remote_history.rs");
     let prod = guard_core::production_source(raw);
 
-    const COND: &str = "if read_bytes > MAX_SESSION_BYTES {";
+    // 🔴 〔搬树 2026-09-18 · `设计/99 §2.5 P9` / `16 §4.1`〕**对照组退役，换成它今天真正的那道保障。**
+    //
+    // 上一版那条对照组的前提是「**判据与被测代码同住一份文件**」：needle 在未剥的源码里
+    // 有两处（生产一处 ＋ 本测试的字面量一处），所以「剥完之后变少 / 归零」能证明
+    // `production_source` 真在起作用。剖分之后那个前提**不成立了** ——
+    // 本条住 `tests/bridge/`，语料是 `src/bridge/src/remote_history.rs`，
+    // 两份文件物理不同 ⇒ `raw` 与 `prod` 逐字节相同，对照组**恒假**。
+    // 这正是 `16 §4.1` 早就预言的那一格：`production_source` 在 `src/` 上是恒等变换。
+    //
+    // ⇒ 不是删掉一条检查，是把它换成**今天真的成立、而且仍然会红**的那一条：
+    //   ① 语料真的读进来了（空串会让下面几条一起「找不到」—— 假红与假绿同形）；
+    //   ② 被测那份文件里**一个 `#[test]` 都没有** —— 那就是「判据不会读到自己」
+    //      在剖分之后的**结构性**保障。有人把测试搬回 `remote_history.rs`，这一格当场红。
     assert!(
-        raw.matches(COND).count() > prod.matches(COND).count(),
-        "★ 对照组：剥掉测试段之后这个 needle 应当变少（本测试自己的字面量被剥走了）。\n\
-             没变少 ⇒ `production_source` 没在起作用，下面三条就是在**读自己**、恒绿。"
+        raw.len() > 5_000,
+        "只读到 {} 字节的 `remote_history.rs` —— 本条在空转",
+        raw.len()
     );
+    guard_core::assert_no_test_code("remote_history.rs", raw);
+
+    const COND: &str = "if read_bytes > MAX_SESSION_BYTES {";
 
     // ① `+ 1`：它是「到限」与「正好读完」唯一的区分手段。
     guard_core::pin_line(

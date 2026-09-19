@@ -139,7 +139,7 @@ fn call_sites(code: &str) -> usize {
 
 /// 按**行**取一个函数体：从 `head` 那一行起，到第一行**恰好是 `}`** 为止。
 ///
-/// 与 `local_daemon.rs::body_of` 同形 —— 本仓已经在用这一把尺子，不另发明一把。
+/// 与 `local_daemon_tests.rs::body_of` 同形 —— 本仓已经在用这一把尺子，不另发明一把。
 fn body_of(code: &str, head: &str) -> String {
     let Some(at) = code.find(head) else {
         return String::new();

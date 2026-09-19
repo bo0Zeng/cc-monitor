@@ -742,7 +742,14 @@ fn the_ts_fallback_renderer_now_stands_on_its_own_consumers() {
 /// （`shared/ccm`），没人发现。本条断的正是「指着的那几样今天都还在盘上」。
 #[test]
 fn the_retired_premise_left_a_tombstone_that_is_still_on_the_board() {
-    let me = include_str!("../../../../src/bridge/src/backend/control/launch_wire.rs");
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕`me` 一直是**本文件**。
+    //
+    // 上一版嵌的是生产段那份 `launch_wire.rs` —— 当年本条住在它的
+    // `#[cfg(test)]` 段里，那一行就是「读我自己」。剖分之后本条与它要找的那块墓碑
+    // （`tomb_fn` / `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，现打全仓只住本文件）
+    // 一起搬来了 `tests/`，而生产段那份只剩 14 475 字节、一块墓碑都没有。
+    // ⚠ 上面那段「针一律现拼」的纪律正是**因为 `me` 是本文件**才立的 —— 两件事必须同改。
+    let me = include_str!("launch_wire_f07_main_path_tests.rs");
     // 地板：切不到语料时下面几条会零命中地绿。
     assert!(
         me.len() > 20_000,
@@ -861,8 +868,19 @@ fn the_send_keys_mode_names_have_exactly_one_production_home() {
 
 /// 对拍那条判据的源码。**编译期嵌进来** —— 文件被删/改名 ⇒ **编译失败**，
 /// 不是运行时静默跳过。（同 `launch_payload_parity.rs` 自己对夹具与 TS 那一半的做法。）
-const PARITY_SRC: &str =
-    include_str!("../../../../src/bridge/src/backend/control/launch_payload_parity.rs");
+/// 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着判据搬**：
+/// 那条逐字节对拍是一条 `#[test]`，剖分把它从
+/// `src/bridge/src/backend/control/launch_payload_parity.rs` 搬到了
+/// `tests/bridge/backend/control/launch_payload_parity_tests.rs`。
+/// 指着生产段那一份的话，下面三条量的是一个**已经不含那条判据**的文件 ——
+/// 而它们的反空真（「对拍那条判据不在了」）**按设计当场响了**，没有零命中地绿。
+/// ⚠ **两半拼起来**：剖分把那条 `#[test]` 搬去了 `_tests.rs`，而它依赖的
+/// 那份入库夹具（`fixtures/payload-golden.json`）与 `TS_HALF` 仍然住生产段
+/// ⇒ 本条第 ①②③④ 格要的东西**跨在剖分线两侧**，少喂一边就有一半在空转。
+const PARITY_SRC: &str = concat!(
+    include_str!("../../../../src/bridge/src/backend/control/launch_payload_parity.rs"),
+    include_str!("launch_payload_parity_tests.rs")
+);
 
 /// 对拍**左边**那个真相源的源码。同上，编译期嵌。
 const GOLDEN_SRC: &str = include_str!("../../../../src/launch-payload-golden.ts");
@@ -915,7 +933,11 @@ impl ParityBypass {
 /// 对拍函数体的**切法**（带长度地板）—— 判据与棘轮共用，两处各切一遍就会漂。
 fn the_parity_fn_body(src: &str, at: usize) -> Result<&str, String> {
     let rest = &src[at..];
-    let end = rest.find("\n    }\n").map(|k| k + 6).unwrap_or(rest.len());
+    // 🔴 〔搬树 2026-09-18〕收尾针从 `"\n    }\n"` 改成 `"\n}\n"`：那条对拍判据搬出
+    //    `mod tests {}` 之后是**文件顶层**的 `fn`，缩进整整少了一级。
+    //    按缩进认边界的针会随搬树静默失配（`设计/16 §5.4b`）—— 旧针会切在 `for` 循环
+    //    那个 `    }` 上，把函数体截短一大截；下面那条 `<= 300` 的地板是它的反空真。
+    let end = rest.find("\n}\n").map(|k| k + 2).unwrap_or(rest.len());
     let body = &rest[..end];
     if body.len() <= 300 {
         return Err(format!(
@@ -1049,8 +1071,10 @@ fn the_parity_guard_counts_bindings_it_does_not_merely_look_for_them() {
     // ② 🔴 `K-R105` 那一刀：**原行一字不动**，前面再绑一次同名的。
     //    这一份就是本棘轮的正题：**只有「计数」看得见它。**
     let shadowed = mutate(
-        "            if got != want {",
-        "            let want = got.clone();\n            if got != want {",
+        // 〔搬树 2026-09-18〕锚点缩进少一级：那条判据搬出 `mod tests {}` 之后
+        // 函数体整体左移 4 格。**锚点内容一个字没变。**
+        "        if got != want {",
+        "        let want = got.clone();\n        if got != want {",
     );
     assert!(
         shadowed.contains("let want = c.payload.clone();"),
