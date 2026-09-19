@@ -288,7 +288,9 @@ mod tests {
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                (rel, production_code(&src))
+                // 🔴 〔步 7c 剖分 2026-09-19〕同 `no_timer_guard`：按住哪棵树分流，
+                // 理由在 `guard_support::production_side_of` 的头注里。
+                (rel, crate::guard_support::production_side_of(&path, &src))
             })
             .collect()
     }
@@ -658,7 +660,10 @@ mod tests {
     /// （两份实现迟早分叉 —— 本仓最贵的那一族）。
     #[test]
     fn the_hello_witness_pin_still_lives_where_this_module_says_it_does() {
-        let wire = include_str!("../../src/backend/wire.rs");
+        // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕指的是**判据住的那份文件**。
+        // `fn the_hello_witness_has_exactly_one_way_to_exist` 这一轮从
+        // `src/backend/wire.rs` 的测试段搬进了 `tests/backend/wire_tests.rs`。
+        let wire = include_str!("wire_tests.rs");
         assert!(
             wire.contains("fn the_hello_witness_has_exactly_one_way_to_exist"),
             "本模块头注指着 `wire.rs` 的那条见证判据，而它已经不在了 ——\n\

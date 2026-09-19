@@ -622,7 +622,7 @@ mod tests {
     ///
     /// # ⚠ 诚实边界：`relay/` 的**测试段**确实引了 `agents/`，那不算违规
     ///
-    /// `relay/server.rs::relay_child_process_entry_point`（子进程入口，`#[ignore]`）
+    /// `relay/server_tests.rs::relay_child_process_entry_point`（子进程入口，`#[ignore]`）
     /// 走 `crate::agents::claudecode::paths::resolve_home()`。本判据扫的是
     /// `production_code`（测试段被剥掉）⇒ 看不见它，**这是有意的**：
     /// 分层是**生产架构**的性质，测试跨层构造夹具是正常的（`refs_to_layer` 头注同款取舍）。

@@ -242,7 +242,7 @@ pub fn pin_definition(
 //   完全机器判得了，而行号地址的真伪完全判不了。棘轮就是那道逼迫。
 //
 // 同族先例（本件的形状抄它，只是把扫描面从散文换成源码）：
-// `doc_claim_registry.rs::every_code_symbol_named_in_the_docs_still_resolves`
+// `doc_claim_registry_tests.rs::every_code_symbol_named_in_the_docs_still_resolves`
 // —— 它 08-06 就在守 `doc/` 里的符号地址了，**而源码这一侧一直没人守**。
 // 那正是「处方写好了只落了一处」的机制答案：处方落进了一个**没有判据的人群**。
 // ═══════════════════════════════════════════════════════════════════════════

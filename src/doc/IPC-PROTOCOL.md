@@ -496,7 +496,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 （`the_e2e_ping_line_is_exactly_what_the_encoder_produces`），否则那套件只是在验证一个
 monitor 永远不会发的形状。
 
-**今天有三条命令**：`ping` / `cancel`（骨架验收用）+ **`resolve`**（第一条真业务命令，见下），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`inbound.rs::the_commands_mirror_matches_the_registry` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
+**今天有三条命令**：`ping` / `cancel`（骨架验收用）+ **`resolve`**（第一条真业务命令，见下），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`inbound_structure_guards.rs::the_commands_mirror_matches_the_registry` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
 
 > ⚠ 〔`K-R20` 订正 09-03〕上面那句原先点的是 `hello_commands_match_the_dispatch_table`〔散文墓碑〕——
 > **那个名字全仓零定义**（`U8a-2d` 把「扫 `dispatch` 分派臂文本」换成了「`COMMANDS` 对 `REGISTRY` 数据对数据」
@@ -782,7 +782,7 @@ monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优�
 pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样退 0**，
 而键被 copy-mode 的键表吃掉、载荷根本没进应用。后端侧**没有第二种确认**
 （`pane_in_mode` / `-X cancel` 全仓零命中），由
-`launch.rs::typed_is_only_as_strong_as_the_send_keys_exit_code` 钉住这个语义边界。
+`launch_tests.rs::typed_is_only_as_strong_as_the_send_keys_exit_code` 钉住这个语义边界。
 ⇒ **消费方别把 `typed:true` 读成「载荷确凿落地」**。补第二种确认要真 tmux 才验得了，
 登记在 `ROADMAP §5` 的诚实边界，留给 e2e tier2。
 | 形状不合 | false | `invalid_args` | 没起成 |

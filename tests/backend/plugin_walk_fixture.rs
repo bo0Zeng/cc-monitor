@@ -1230,13 +1230,13 @@ mod tests {
     /// 那张表从 `REGISTRY.codes` 派生，而 [`REGISTRY_OWNED_CODE`] 那个字面量是**第二份拷贝**。
     /// 有人把 `REGISTRY` 里的那个词改名（比如收窄成 `plugin_missing`），
     /// 派生出来的表会**静默变空** —— 所有测试照绿，而插件轴上的第四条面从此永远不说话。
-    /// 本格把那次改名变成一次红。形状照 `main.rs::the_declared_code_is_one_the_registry_already_declares`
+    /// 本格把那次改名变成一次红。形状照 `main_fourth_face_tests.rs::the_declared_code_is_one_the_registry_already_declares`
     /// （那一条守的是 tmux 轴的 `no_tmux`，本条守的是插件轴的那个词；两条互不覆盖）。
     ///
     /// # 🔴 三条红线，本格一条都没碰（逐条点名，便于复核）
     ///
     /// 1. `main.rs` 生产段那一行 `unavailable: Vec::new(),` —— 本文件**没有**改它；
-    /// 2. `wire.rs::hello_unavailable_is_additive_present_and_absent` 的两串期望字节 ——
+    /// 2. `wire_tests.rs::hello_unavailable_is_additive_present_and_absent` 的两串期望字节 ——
     ///    本文件**没有**构造任何 `Frame::Hello`，一个字节都没碰；
     /// 3. 宣称的 `code` 必须是那条命令自己登记过的 —— 那正是本格的正题。
     #[test]
