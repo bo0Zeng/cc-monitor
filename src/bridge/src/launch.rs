@@ -319,7 +319,7 @@ fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> R
     }
     // F06b-1d（C9）：backend 把后端路径交给它亲手开的这个窗口 —— 窗口里那次 `ccm resume`
     // 据此去调 `--resolve`（旧 `shared/ccm::resolve_from_backend` 〔散文墓碑〕，`K-R48` 已删；
-    // 今天那一问在后端进程内直接答）。sidecar 不在就不设。
+    // 今天那一问在后端进程内直接答）。local_backend 不在就不设。
     if let Some((k, v)) = crate::backend::control::local_backend::backend_bin_env_for_window(env!(
         "CCM_TARGET_TRIPLE"
     )) {

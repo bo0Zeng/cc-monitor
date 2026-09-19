@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 ///
 /// 为什么这件事非得由读面发起？能不能反过来由控制面主动做？
 /// —— 今天这三条的答案是同一个：读面要起本机后端做一次性查询，
-/// 而「那个 sidecar 装在哪、算不算找得到」是**控制面立起来的事实**
+/// 而「那个本机后端装在哪、算不算找得到」是**控制面立起来的事实**
 /// （起它、看住它、判它崩得太频繁的那半都住 `control/local_backend.rs`）。
 /// 读面自己再解析一遍路径 = 第二份路径解析，而两份必漂。
 ///
@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 const ALLOWED_OBSERVE_TO_CONTROL: &[(&str, &str)] = &[
     (
         "crate::backend::control::local_backend::resolve_beside_this_exe",
-        "读面起本机后端拿 stdout 之前，先要知道那份 sidecar 在哪。\
+        "读面起本机后端拿 stdout 之前，先要知道那份本机后端在哪。\
              「装在哪、找过哪儿、算不算找到」是控制面立的事实（起进程与看住它的那半住在那里），\
              读面自己再解析一份路径就是第二个权威源",
     ),

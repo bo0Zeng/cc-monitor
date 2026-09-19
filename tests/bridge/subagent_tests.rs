@@ -28,15 +28,15 @@ fn listed(path: &str, description: &str, timestamp: Option<&str>) -> String {
 ///
 /// | 盘上 | 后端 | 期望 |
 /// |---|---|---|
-/// | **有**两个货真价实的候选（真文件） | **不在**（开发树没有 sidecar） | **必须报「后端不在」** |
+/// | **有**两个货真价实的候选（真文件） | **不在**（开发树没有本机后端） | **必须报「后端不在」** |
 ///
 /// ⇒ 只要它还从盘上枚举，就会**成功**返回其中一个 ⇒ 本条当场红。
 /// 这正是 `KR94D1` 第 ③ 刀（「本机退回自己 `read_dir` ⇒ 必须红」）的可执行形态。
 ///
-/// ⚠ 它**不证明** happy path 对（那要真 sidecar，属 e2e）。只杀「悄悄读本机盘」这一类。
+/// ⚠ 它**不证明** happy path 对（那要真本机后端，属 e2e）。只杀「悄悄读本机盘」这一类。
 #[tokio::test]
 async fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() {
-    // 前提自检：本测试环境**必须**没有 sidecar，否则下面那条断言会走 happy path 而空转。
+    // 前提自检：本测试环境**必须**没有本机后端，否则下面那条断言会走 happy path 而空转。
     let probe = run_query(
         env!("CCM_TARGET_TRIPLE"),
         &["--list-subagents"],
@@ -44,8 +44,8 @@ async fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() 
     );
     assert!(
         matches!(probe, QueryOutcome::NoBackend(_)),
-        "测试环境里居然找得到 sidecar —— 本条的前提不成立，下面那条断言会空转。\n\
-             （若哪天单测环境真带 sidecar，本条要改成显式指一个不存在的 target triple）"
+        "测试环境里居然找得到 local_backend —— 本条的前提不成立，下面那条断言会空转。\n\
+             （若哪天单测环境真带本机后端，本条要改成显式指一个不存在的 target triple）"
     );
 
     // 盘上摆两个**货真价实**的候选：meta 描述精确匹配、jsonl 首行有时间戳。

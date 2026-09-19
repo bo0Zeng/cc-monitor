@@ -97,7 +97,7 @@ fn every_project_row_carries_the_session_ids_the_three_numbers_are_indexed_by() 
 fn the_session_id_list_and_the_count_are_produced_by_the_same_guard() {
     let root = tmp_root("d1b");
     let dir = project_with(&root, "p", &["kr83-a", "kr83-b", "kr83-c", "kr83-d"]);
-    // 非会话文件（sidecar / 目录）既不进计数、也不进清单。
+    // 非会话文件（local_backend / 目录）既不进计数、也不进清单。
     std::fs::write(dir.join("notes.txt"), b"x").unwrap();
     std::fs::create_dir_all(dir.join("subagents")).unwrap();
 
@@ -111,10 +111,10 @@ fn the_session_id_list_and_the_count_are_produced_by_the_same_guard() {
         Some(ids as u64),
         "★ 计数与清单长度错开了 —— 下游的「空清单是坏行还是真没有」这条判断就瞎了：{row}"
     );
-    assert_eq!(ids, 4, "sidecar / 子目录不该被算进来：{row}");
+    assert_eq!(ids, 4, "local_backend / 子目录不该被算进来：{row}");
 }
 
-/// 空目录（只剩 sidecar）**不出行** —— 「没有这一行」与「有这一行但清单空」
+/// 空目录（只剩本机后端）**不出行** —— 「没有这一行」与「有这一行但清单空」
 /// 必须是两件事，否则下游没法把第二种当成坏行。
 #[test]
 fn a_project_with_no_sessions_has_no_row_at_all() {

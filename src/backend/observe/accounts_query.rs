@@ -129,7 +129,7 @@ fn is_safe_config_dir(p: &str) -> bool {
     // 而那份 monitor 要在 Windows 上跑 —— Windows 的账号目录是 `C:\Users\…`，
     // 旧的第一条会把每一个 Windows 账号判成不安全 ⇒ **清单恒空**。
     // ⚠ 障碍是这条检查，**不是**「backend 不能在 Windows 上跑」：发版流水线的
-    //   `build-windows` 里有原生 sidecar 构建，产物装进 `externalBin`。
+    //   `build-windows` 里有原生本机后端构建，产物装进 `externalBin`。
     fn looks_absolute(p: &str) -> bool {
         if p.starts_with('/') {
             return true; // POSIX

@@ -49,7 +49,7 @@ pub struct SubagentLoadResult {
 
 /// **两条路唯一的差别**：谁去跑那条一次性查询。
 ///
-/// 本机 = exec 一次 sidecar 拿 stdout；远端 = 经 ssh exec 同一个二进制。
+/// 本机 = exec 一次本机后端拿 stdout；远端 = 经 ssh exec 同一个二进制。
 /// 定框 `C1` 逐字「本地 = 不走 ssh 的远端」——⇒ 子命令、参数、解析、挑选**全是同一份**。
 enum Backend {
     Local,
@@ -96,7 +96,7 @@ impl Backend {
     }
 }
 
-/// 本机那条 transport：exec 一次 sidecar 拿 stdout。
+/// 本机那条 transport：exec 一次本机后端拿 stdout。
 ///
 /// ⚠ 定框 §5：**「后端不在」与「查询失败」不许压成同一句话** ——
 /// 前者该提示用户装/起后端，后者该把原因原样端出来。

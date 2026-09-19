@@ -189,7 +189,7 @@ fn emit_backend_build_id() {
     let (open, close) = backend_stamp_marks();
     println!("cargo:rustc-env=BACKEND_STAMP_OPEN={open}");
     println!("cargo:rustc-env=BACKEND_STAMP_CLOSE={close}");
-    // F05a：本机 sidecar 的文件名是 `<stem>-<target-triple>`（Tauri `externalBin` 的规矩），
+    // F05a：本机后端的文件名是 `<stem>-<target-triple>`（Tauri `externalBin` 的规矩），
     // 而 std 里没有「当前 target triple」这个常量 —— 只有 build script 拿得到 `TARGET`。
     println!(
         "cargo:rustc-env=CCM_TARGET_TRIPLE={}",
@@ -591,7 +591,7 @@ fn embed_native_backend() {
     if !src.exists() {
         println!(
             "cargo:warning=没有本机内嵌后端（src/bridge/{}）——**裸可执行文件起不了本机后端**，\
-             只有安装包那份带 sidecar 的能起。开发构建里这是正常的；\
+             只有安装包那份带本机后端的能起。开发构建里这是正常的；\
              发版构建里出现这一行 = 那一版的裸 exe 又回到 09-10 那个读数（0 个本机后端进程）。",
             src.display()
         );

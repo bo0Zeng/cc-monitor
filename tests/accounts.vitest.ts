@@ -1429,7 +1429,7 @@ describe("K-P5h：新会话的账号 pin 靠 token 回填（等多久 / 问几�
 
   it("查询整个抛错也不许把主路弄崩（回填是补记账，不是关键路径）", async () => {
     rememberLocalLaunch(T1, "acct-a");
-    invokeMock.mockRejectedValue(new Error("sidecar 不在"));
+    invokeMock.mockRejectedValue(new Error("local_backend 不在"));
     await expect(resolvePendingLocalLaunches()).resolves.toBeUndefined();
     expect(pinned()).toEqual([]);
   });

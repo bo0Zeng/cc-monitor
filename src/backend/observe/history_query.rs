@@ -100,7 +100,7 @@ fn list_projects(agent_home: &Path) -> Result<(), String> {
         }
         let dir_name = entry.file_name().to_string_lossy().into_owned();
         let Some(line) = project_row(&dir, dir_name) else {
-            continue; // 空目录（全删过/只剩 sidecar）不展示
+            continue; // 空目录（全删过/只剩本机后端）不展示
         };
         writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
     }
@@ -146,7 +146,7 @@ fn project_row(dir: &Path, dir_name: String) -> Option<serde_json::Value> {
         }
     }
     if session_count == 0 {
-        return None; // 空目录（全删过/只剩 sidecar）不展示
+        return None; // 空目录（全删过/只剩本机后端）不展示
     }
     let project_path = newest_jsonl
         .and_then(|(_, p)| extract_cwd_from_head(&p))

@@ -20,7 +20,7 @@ use super::*;
 /// # ★ 探针是定框 §5 自己给的：**诚实降级的 tagged 返回 + `reason`**
 ///
 /// 定框 §5 逐字：「拿不到依赖」是**诚实降级**（tagged 返回 + `reason`），不是 `Err`。
-/// ⇒ 在**没有 sidecar** 的环境里（单测就是这种环境）：
+/// ⇒ 在**没有 local_backend** 的环境里（单测就是这种环境）：
 ///
 /// | 真走了那条路 | 被短路了 |
 /// |---|---|
@@ -30,11 +30,11 @@ use super::*;
 /// 不侵入生产代码、也不需要真二进制 —— 那条纪律本身就是探针。
 ///
 /// ⚠ 诚实说清它**不能**做什么：它证明的是「调用发生了且拿到了后端不在的答复」，
-/// **不证明** happy path 正确（那要真 sidecar，属 e2e）。⇒ 它只杀「短路」这一类，
+/// **不证明** happy path 正确（那要真本机后端，属 e2e）。⇒ 它只杀「短路」这一类，
 /// 而那正是 A1/A3 那一类。
 #[tokio::test]
 async fn a_short_circuit_cannot_fake_the_honest_degrade() {
-    // 前提自检：本测试环境**必须**没有 sidecar，否则下面两条会走 happy path 而空转。
+    // 前提自检：本测试环境**必须**没有本机后端，否则下面两条会走 happy path 而空转。
     let probe = run_query(
         env!("CCM_TARGET_TRIPLE"),
         &["--list-accounts"],
@@ -42,8 +42,8 @@ async fn a_short_circuit_cannot_fake_the_honest_degrade() {
     );
     assert!(
         matches!(probe, QueryOutcome::NoBackend(_)),
-        "测试环境里居然找得到 sidecar —— 本条的前提不成立，两条断言会空转。\n\
-             （若哪天单测环境真带 sidecar，本条要改成显式指一个不存在的 target triple）"
+        "测试环境里居然找得到 local_backend —— 本条的前提不成立，两条断言会空转。\n\
+             （若哪天单测环境真带本机后端，本条要改成显式指一个不存在的 target triple）"
     );
 
     // 账号查询：诚实降级必须 available=false **且带 error 理由**。
@@ -54,11 +54,11 @@ async fn a_short_circuit_cannot_fake_the_honest_degrade() {
     let r = crate::local_accounts::list_local_session_accounts()
         .await
         .expect("这条路的诚实降级是 Ok(available=false)，不该是 Err");
-    assert!(!r.available, "没有 sidecar 却报 available=true");
+    assert!(!r.available, "没有本机后端却报 available=true");
     assert!(
         r.error.is_some(),
         "`list_local_session_accounts` 返回了「空但成功」——\n\
-             没有 sidecar 时它**必须说出理由**（定框 §5：tagged 返回 + reason）。\n\
+             没有本机后端时它**必须说出理由**（定框 §5：tagged 返回 + reason）。\n\
              ⇒ 拿不出 reason 就意味着**那条查询根本没发生**（被短路了），\n\
              而扫源码的守卫看不见这种错：调用那行文字还在。"
     );
@@ -135,8 +135,8 @@ fn no_backend_is_not_a_failed_query() {
             );
         }
         other => panic!(
-            "开发树里没有 sidecar，本条应当走 `NoBackend`，实得 {other:?}\n\
-                 ⚠ 如果这台机器上**确实**有 sidecar（比如刚跑过发版构建），\
+            "开发树里没有本机后端，本条应当走 `NoBackend`，实得 {other:?}\n\
+                 ⚠ 如果这台机器上**确实**有本机后端（比如刚跑过发版构建），\
                  那本条会误报 —— 那时该把它改成注入一个不存在的 triple，而不是放宽断言。"
         ),
     }

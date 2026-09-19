@@ -611,7 +611,7 @@ fn every_reader_names_its_retirement_owner() {
              → **9**（F10b 第二批：`accounts.rs` **改分类**为 `remote` —— 它本来就不是本机读面，\n\
              ⚠ **那一格不算退役、不算工作量减少**，只是把误分类改对，理由写在它自己那条登记里）\n\
              → **8**（F10b 第二批·下半：`local_accounts.rs` **真退役** —— 那 3 个命中全属\n\
-             `list_local_session_accounts` 一个函数，它改走 sidecar 的 `--session-accounts`；\n\
+             `list_local_session_accounts` 一个函数，它改走本机后端的 `--session-accounts`；\n\
              顺带删掉 `proc_claude_config_dir`/`pid_alive` 两个**平台原语的第二份实现**，\n\
              它们的家在后端的 `platform/proc.rs`）。\n\
              → **7**（F10b 末批：`history.rs` 的 reader 条**转成 `no-counterpart`** ——\n\
@@ -653,18 +653,18 @@ fn every_reader_names_its_retirement_owner() {
 /// 「F05b 落地了 ⇒ F10 的正题现在能做了」。
 ///
 /// F05b 落地时它**确实红了**，而且红得对。但落地形态与它预设的不同：
-/// `externalBin` **没有**进主配置 —— 因为 `tauri-build` 要求**当前 target** 的 sidecar
+/// `externalBin` **没有**进主配置 —— 因为 `tauri-build` 要求**当前 target** 的 local_backend
 /// 在编译期就存在，进主配置会让 `cargo test` 也需要一份后端二进制，
 /// 那正是 C2 反面（两半不许在构建期互相咬住）刚钉住的东西。
 /// ⇒ 它住进**发版补丁配置** `tauri.sidecar.conf.json`，只在 `tauri build --config` 时注入。
 ///
 /// ⇒ 本条换成后继形态：**盯新的家**，并且钉住「棘轮一格没放」。
-/// ⚠ **这不是降强度**：断言从「一条」变成「三条」（sidecar 契约有家 · stem 与
-/// `SIDECAR_STEM` 一致 · 棘轮上限没被放宽），而且扫描面从主配置**换到了它真正的家** ——
+/// ⚠ **这不是降强度**：断言从「一条」变成「三条」（local_backend 契约有家 · stem 与
+/// `LOCAL_BACKEND_STEM` 一致 · 棘轮上限没被放宽），而且扫描面从主配置**换到了它真正的家** ——
 /// 留在旧扫描面上才是降强度（它永远不会再红）。
 #[test]
-fn the_sidecar_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched() {
-    // ① sidecar 契约必须有家，而且**不在主配置里**（进主配置 = 每个编译点都要一份二进制）。
+fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched() {
+    // ① local_backend 契约必须有家，而且**不在主配置里**（进主配置 = 每个编译点都要一份二进制）。
     let key = format!("external{}", "Bin"); // 运行时拼，免得命中本文件自己的说明
     let main_conf =
         fs::read_to_string(root().join("tauri.conf.json")).expect("读不到 tauri.conf.json");
@@ -680,17 +680,17 @@ fn the_sidecar_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched() {
              等于把两半在**构建期**绑死。它的家是 `tauri.sidecar.conf.json`，只在发版时 `--config` 注入。"
     );
     let patch = fs::read_to_string(root().join("tauri.sidecar.conf.json"))
-        .expect("读不到 tauri.sidecar.conf.json —— sidecar 契约没有家了");
+        .expect("读不到 tauri.sidecar.conf.json —— local_backend 契约没有家了");
     assert!(
         patch.contains(key.as_str()),
         "发版补丁配置里没有 `{key}` —— 那安装包里就不会带上本机后端（C7）"
     );
 
-    // ② stem 与 Rust 侧的 `SIDECAR_STEM` 必须是同一个（同一个名字不许两侧各写一份，定框 §4）。
-    let stem = crate::backend::control::local_backend::SIDECAR_STEM;
+    // ② stem 与 Rust 侧的 `LOCAL_BACKEND_STEM` 必须是同一个（同一个名字不许两侧各写一份，定框 §4）。
+    let stem = crate::backend::control::local_backend::LOCAL_BACKEND_STEM;
     assert!(
         patch.contains(&format!("binaries/{stem}")),
-        "补丁配置里的 sidecar 路径与 Rust 侧的 `SIDECAR_STEM`（{stem:?}）对不上 —— \n\
+        "补丁配置里的本机后端路径与 Rust 侧的 `LOCAL_BACKEND_STEM`（{stem:?}）对不上 —— \n\
              消费侧 `resolve_with` 找的是 `{stem}-<triple>` 与裸 `{stem}`，\n\
              两边写不一样 ⇒ 安装包里带了一个谁也找不到的文件。"
     );

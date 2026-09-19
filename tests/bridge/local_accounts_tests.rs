@@ -454,7 +454,7 @@ fn fake_listing() -> String {
 ///
 /// 喂一份**已知的假清单**，断它答出几个、名字是什么、字段有没有在这一跳里丢掉。
 ///
-/// ⚠ 它买不到什么，如实写：**不证明后端真的会这么答**（那要真 sidecar，
+/// ⚠ 它买不到什么，如实写：**不证明后端真的会这么答**（那要真本机后端，
 /// 属 e2e；开发树里 `externalBin` 现打零命中，`nc2` 已登记）。
 /// 它证明的是**这一跳的解析与折叠是对的**，而 `NcM1` 那一刀（读口改回直读磁盘）
 /// 会让它当场红 —— 直读磁盘那条路根本不看这份 stdout。
@@ -506,7 +506,7 @@ fn the_three_endings_are_told_apart_and_say_different_things() {
     const EMPTY_ANSWER: &str = r#"{"kind":"accounts-meta","enabled":false,"acctsDir":"/h/lib","manifestPath":"/h/lib/accounts.json","updatedAt":null,"sharedStore":null,"count":0,"error":"清单不可读","accountZeroAware":true}"#;
     let listed = classify_local_accounts(QueryOutcome::Ok(EMPTY_ANSWER.into()));
     let no_backend = classify_local_accounts(QueryOutcome::NoBackend(
-        "sidecar 不在旁边；找过 [\"/opt/x\"]".into(),
+        "local_backend 不在旁边；找过 [\"/opt/x\"]".into(),
     ));
     let unreadable = classify_local_accounts(QueryOutcome::Failed {
         code: Some(2),
@@ -587,7 +587,7 @@ fn the_three_endings_are_told_apart_and_say_different_things() {
 /// ★★ 「代码还在但走不到」那一族在**本件读口**上的落点。
 ///
 /// 形状照 `a_short_circuit_cannot_fake_the_honest_degrade`（`local_query.rs` 里那条）：
-/// 单测环境**没有** sidecar ⇒ 真走了那条路才拿得到**带理由**的诚实降级；
+/// 单测环境**没有** local_backend ⇒ 真走了那条路才拿得到**带理由**的诚实降级；
 /// 被短路（比如 `return Ok(Default::default())`）给出的是「空但成功」——
 /// 而扫源码的守卫看不见那种错，调用那行文字还在。
 ///
@@ -595,7 +595,7 @@ fn the_three_endings_are_told_apart_and_say_different_things() {
 /// **不证明** happy path 正确（那一格由上面那条正面读数与将来的 e2e 分担）。
 #[tokio::test]
 async fn the_read_port_really_asks_the_backend() {
-    // 前提自检：本环境必须没有 sidecar，否则下面几条会走 happy path 而空转。
+    // 前提自检：本环境必须没有本机后端，否则下面几条会走 happy path 而空转。
     let probe = run_query(
         env!("CCM_TARGET_TRIPLE"),
         &["--list-accounts"],
@@ -603,16 +603,16 @@ async fn the_read_port_really_asks_the_backend() {
     );
     assert!(
         matches!(probe, QueryOutcome::NoBackend(_)),
-        "测试环境里居然找得到 sidecar —— 本条的前提不成立，下面几条会空转。\n\
-             （若哪天单测环境真带 sidecar，本条要改成显式指一个不存在的 target triple）"
+        "测试环境里居然找得到 local_backend —— 本条的前提不成立，下面几条会空转。\n\
+             （若哪天单测环境真带本机后端，本条要改成显式指一个不存在的 target triple）"
     );
     let r = list_local_accounts()
         .await
         .expect("这条路的诚实降级是 Ok(available=false)，不该是 Err");
-    assert!(!r.available, "没有 sidecar 却报 available=true");
+    assert!(!r.available, "没有本机后端却报 available=true");
     let why = r.error.expect(
         "`list_local_accounts` 返回了「空但成功」——\n\
-             没有 sidecar 时它**必须说出理由**（定框 §5：tagged 返回 + reason）。\n\
+             没有本机后端时它**必须说出理由**（定框 §5：tagged 返回 + reason）。\n\
              ⇒ 拿不出 reason 就意味着那条查询根本没发生（被短路了）。",
     );
     assert!(

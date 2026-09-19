@@ -669,11 +669,11 @@ static LAST_START_REFUSAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::
 /// ★ 而这撞的是 `lib.rs` 自己写下的分档标准〔引的是 **2026-09-10 之前**那一版原话，
 /// 逐字保着 —— 这一段说的是 08-27 当时的判断，改写引文就是改写历史〕：
 /// 「**拒绝**（口上有东西、接不上）=
-/// 一件**用户能动手解决的事** ⇒ 说到眼前；别的失败（安装包里还没有 sidecar…）=
+/// 一件**用户能动手解决的事** ⇒ 说到眼前；别的失败（安装包里还没有 local_backend…）=
 /// 诚实降级 ⇒ 仍走日志」。
 /// ⚠ 括号里那个例子今天不成立（09-10 干净 win11 现打，PM：装出来那份跑着 2 个
-/// `cc-monitor-remote.exe`、裸 `monitor.exe` 那份 0 个 ⇒ 安装包里带着 sidecar），
-/// `lib.rs` 那处已订正为「这一份产物里没带 sidecar」。**分档标准本身一格没动。**
+/// `cc-monitor-remote.exe`、裸 `monitor.exe` 那份 0 个 ⇒ 安装包里带着本机后端），
+/// `lib.rs` 那处已订正为「这一份产物里没带本机后端」。**分档标准本身一格没动。**
 /// 「盘上有个零字节的 token 文件，删掉它再起一次」按这条标准
 /// **属于前者**，而上一轮把它落在了后者。⇒ **`阻-4` 只修了一半**：它让诊断指对了地方，
 /// 而「指对了的那句话被谁听见」落在了 `重-2` 的人群外面。
@@ -682,10 +682,10 @@ static LAST_START_REFUSAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::
 ///
 /// - **用户动得了手**（删一个文件、停一个进程、改一个权限位）⇒ 调本函数，
 ///   并且那句话要**说得出下一步**（判据钉着「下一步」这三个字）；
-/// - **诚实降级**（**这一份产物里没带 sidecar** —— 裸 exe / 开发树、
+/// - **诚实降级**（**这一份产物里没带 local_backend** —— 裸 exe / 开发树、
 ///   或释放内嵌那一份也失败了；或这台机不走脱离那条路）⇒ **不要**调本函数：
 ///   每次启动都弹一次就成了噪音。那一档仍走 `tracing::info!`。
-///   〔订正 2026-09-10（v3.7.0）—— 原话逐字：「**诚实降级**（安装包里还没有 sidecar、
+///   〔订正 2026-09-10（v3.7.0）—— 原话逐字：「**诚实降级**（安装包里还没有本机后端、
 ///    这台机不走脱离那条路）」。「安装包里还没有」今天不成立：09-10 干净 win11 现打
 ///    （PM）装出来那份跑着 2 个 `cc-monitor-remote.exe`、裸 `monitor.exe` 那份 0 个。
 ///    ⚠ **分档口径一格没动**，换掉的只是它举的那个例子。〕
@@ -1431,7 +1431,7 @@ pub fn start_local_backend() -> StartOutcome {
     // **同样不看目标 OS**。于是在 Windows 构建上：
     // ① 释放一个 Linux ELF 到 `%USERPROFILE%\.cc-monitor\bin\`（**没有 `.exe` 后缀**，
     //    `platform_fs::make_executable` 在非 unix 是 no-op）；
-    // ② `start_or_extract` **返回 `Resolved::Found`** ⇒ 日志打「本机后端 sidecar: …」、
+    // ② `start_or_extract` **返回 `Resolved::Found`** ⇒ 日志打「本机后端 local_backend: …」、
     //    前端回「已起」；③ 真正的失败发生在 supervise 线程里（`spawn` 报错 → `GaveUp` 只进日志）。
     //
     // ⇒ **每次启动往用户目录写一份 10MB 级的无用二进制，UI 与日志报告启动成功，进程从来没起来过。**
@@ -1535,7 +1535,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 //
 // - **中转能不能承受所有会话都走它**：`server.rs::INFLIGHT_CONNECTIONS` 有上界、超了回 503，
 //   那个数够不够**我没量**。（本件裁的是「只接 api-key 号」⇒ 今天的量级远小于「所有会话」。）
-// - **Windows 上这条路的运行时行为**：内嵌的那两份 sidecar 是 musl Linux 二进制。
+// - **Windows 上这条路的运行时行为**：内嵌的那两份本机后端是 musl Linux 二进制。
 //   ⚠⚠ **原文这里写的是「`start_local_backend` 里那条 `cfg!(target_os = "linux")` 闸
 //   对本函数同样适用 ⇒ 非 Linux 宿主上 `resolve_backend_bin` 拿不到东西，本函数就不会被
 //   调到」—— 两句都不成立**（`K-R31` `D5⑴`，09-06 现打订正）：
@@ -1551,14 +1551,14 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 //      **结论一格没动**：第一条路仍是「找 exe 旁边」、仍与平台无关，只是它今天住共用那份里。
 //      ⚠ 留下这条订正是有意的：本段自己就是「一句注释在开发树上恒真、在用户手上恒假」的病历，
 //      而**抄逐字**正是让它馊得更快的那一手。〕
-//   ⇒ 发版的 Windows 包里那份 sidecar **就在 `monitor.exe` 旁边**
+//   ⇒ 发版的 Windows 包里那份 local_backend **就在 `monitor.exe` 旁边**
 //     （`src/bridge/tauri.sidecar.conf.json` 逐字声明 `"externalBin": ["binaries/cc-monitor-remote"]`；
 //     `.github/workflows/release.yml` 的 `build-windows` job 跑在 `windows-latest` 上，
-//     有 `Build local backend sidecar (native)` 与 `Stage sidecar for externalBin` 两步）
+//     有 `Build local backend (native)` 与 `Stage local backend for externalBin` 两步）
 //     ⇒ 头一条路**命中**，本机中转在 Windows 上**会**起。
 //   ★★ **它为什么能活这么久 —— 这比「写错了」值钱，别只改结论**：
 //     `local_accounts.rs` 里那条既有登记逐字写着「开发树里 `externalBin` 现打零命中
-//     ⇒ 那一档在本地是**恒真**的」。开发树上没有那份 sidecar，头一条路必 `Missing`、
+//     ⇒ 那一档在本地是**恒真**的」。开发树上没有那份本机后端，头一条路必 `Missing`、
 //     `embedded` 又被那道闸置空 ⇒ **在开发树上本函数确实调不到**。
 //     ⇒ 那句话**在开发环境里恒真、在用户手上恒假**，而**所有人只在开发树上读它**。
 //     下一个人在开发树上一验，又会把它验成对的。

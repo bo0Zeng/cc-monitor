@@ -18,7 +18,7 @@ enum Semantics {
 /// 轴二（`C21` 三档 → **几个二进制**）。⚠ **提案，未获批**。
 ///
 /// ⚠ `BuiltIn` 今天**没有候选落在它上面** —— 那本身是一条读数
-/// （`C21` 那三档里，今天有真实实例的只有 `Plugin` 与 `Sidecar`（且 sidecar 那格还是提案）），
+/// （`C21` 那三档里，今天有真实实例的只有 `Plugin` 与 `LocalBackend`（且本机后端那格还是提案）），
 /// 不是死代码。删掉它等于让「三档」在类型上悄悄变成两档，
 /// 而下一个人再想把某个候选归到「内建」时，会发现这个选项根本不存在。
 #[allow(dead_code)]
@@ -29,7 +29,7 @@ enum Shape {
     /// 编进同一个二进制。
     BuiltIn,
     /// 我们自己出、随产品发的独立二进制。
-    Sidecar,
+    LocalBackend,
     /// 用户自己装的外部命令。
     Plugin,
     /// ⚠ **不是三档中的任何一档**：`tool_registry` 里 `installable` 的受管工具。
@@ -70,9 +70,9 @@ const REGISTERED: &[Candidate] = &[
         id: "code-picture",
         home: "src/bridge/vendor/code-picture-core",
         semantics: Semantics::Plugin,
-        shape: Shape::Sidecar,
+        shape: Shape::LocalBackend,
         today: "vendor crate 由 path 依赖**编进 monitor**；backend 侧整棵树零命中",
-        gap: "★ **今天对不上**：轴二说 sidecar，而 monitor 侧是内嵌。\
+        gap: "★ **今天对不上**：轴二说本机后端，而 monitor 侧是内嵌。\
                   `E10` 裁「本区不做」、待决 `EU5` 记着这笔账 —— 本模块只如实登记，不去拆它",
     },
     Candidate {
@@ -312,7 +312,7 @@ fn every_candidate_answers_both_axes_and_states_its_gap() {
         unanswered.is_empty(),
         "这些格子没答：{unanswered:?}\n\
              ⇒ `E3` 逐字「每个候选必须**同时**答两轴，缺一轴的结论不算结论」。\
-             实测过一次代价：`code-picture` 当初只答了轴二（sidecar）没答轴一，\
+             实测过一次代价：`code-picture` 当初只答了轴二（local_backend）没答轴一，\
              于是 monitor 侧内嵌那笔账拖到 `E10` 才被量出来。"
     );
     assert!(
@@ -429,7 +429,7 @@ fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_backend() {
         panic!(
             "monitor 的 `Cargo.toml` 里那条 vendor path 依赖不见了或变形了：{e}\n\
                  ⇒ 本表 `code-picture` 那一行的 `today` 逐字说「**编进 monitor**」。\
-                 真改成了别的形态（sidecar / 可选 feature），那是待决 `EU5` 的答案落地 —— \
+                 真改成了别的形态（local_backend / 可选 feature），那是待决 `EU5` 的答案落地 —— \
                  请先去 `E10`/`EU5` 把账改了，再回来改这一行，别反过来。\n\
                  ⚠ 只是**改了写法**（空格 / 换成表段形式）而语义没变的话，同轮把这里的\
                  期望串一起改 —— 用整行相等是刻意的：子串会被「path 改指别处」\
@@ -453,7 +453,7 @@ fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_backend() {
              盘上逐字「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」\
              （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。\
              **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
-             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（sidecar），\
+             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（local_backend），\
              不是第三方插件，**也不编进 backend**」—— 这一条是主理由；\n\
              ② 实测代价（`K-R2` 的 `§0b`，09-04 沙箱现打，量于 `e1944e8`，\
              与发版同版本的 zig 0.14.0 + cargo-zigbuild 0.23.0，同一趟同一提交的基线）：\
@@ -495,8 +495,8 @@ fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_backend() {
              盘上逐字「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」\
              （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。\
              **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
-             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（sidecar），\
-             不是第三方插件，**也不编进 backend**」⇒ 要给后端全景能力，答案是 sidecar，不是内嵌\
+             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（local_backend），\
+             不是第三方插件，**也不编进 backend**」⇒ 要给后端全景能力，答案是本机后端，不是内嵌\
              （独立二进制，它自己那份 C 依赖跟着它走）；\n\
              ② 实测代价（`K-R2` 的 `§0b`，09-04 沙箱现打，量于 `e1944e8`，与发版同版本的 zigbuild）：\
              backend 二进制**每架构 +18.87～18.88 MB**（×5.15–5.64），安装包内嵌两个架构 ⇒ **+37.75 MB**；\

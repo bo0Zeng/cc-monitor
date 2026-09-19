@@ -767,7 +767,7 @@ fn the_backend_is_one_thing_landing_in_several_places() {
             "$APP_DIR".into(),
             HostScope::Client,
         ),
-        // ① 这一份产物自己带着、旁边没有 sidecar 时自释放的那份
+        // ① 这一份产物自己带着、旁边没有本机后端时自释放的那份
         (
             "src/bridge/native-backend/cc-monitor-native".into(),
             "~/.cc-monitor/bin/cc-monitor-local-*".into(),
