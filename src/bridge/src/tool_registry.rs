@@ -151,8 +151,8 @@ pub enum ToolDestination {
     ///
     /// T02 审计追问「注册表与真写入方零耦合」时查出来的（比审计报的更严重）：
     /// - `remote-daemon` 原先声明 `RemoteHomeRelative(".local/bin/ccm-backend")`，
-    ///   而这个字符串**全仓只出现在注册表自己里**；真实路径是 `RemoteConfig.daemon_path`，
-    ///   每个远端各自配置（`remote_history.rs::run_list_query` 直接 `shell_quote(&cfg.daemon_path)`）。
+    ///   而这个字符串**全仓只出现在注册表自己里**；真实路径是 `RemoteConfig.backend_path`，
+    ///   每个远端各自配置（`remote_history.rs::run_list_query` 直接 `shell_quote(&cfg.backend_path)`）。
     /// - `cc-acct-iso` 原先声明 `LocalHomeRelative(".claude/skills/cc-acct-iso")`，
     ///   而 `acct_iso_deploy::deploy_remote_acct_iso(cfg, dest_dir)` 是**远端**部署、
     ///   落点还是**前端传进来的** `dest_dir`。
@@ -160,7 +160,7 @@ pub enum ToolDestination {
     /// 两处都是我凭印象写的常量。**声明一个不存在的常量比不声明更坏**——审计页会拿它去
     /// 查一个没人写的路径，然后言之凿凿地报"缺失"。所以这里显式承认"这是配置项"。
     ///
-    /// `token` 是申报路径里用的占位符（形如 `$DAEMON_PATH`，与 `$PROFILE` 同一套写法，
+    /// `token` 是申报路径里用的占位符（形如 `$BACKEND_PATH`，与 `$PROFILE` 同一套写法，
     /// 因此仍满足 `path` 的 ASCII-graphic 判据）；`what` 是给用户看的「去哪儿改」。
     UserConfiguredPath {
         token: &'static str,
@@ -415,7 +415,7 @@ pub const TOOLS: &[ToolSpec] = &[
         //     逮到它的是 `structural_scan` 那条「源码里点名的符号今天还对不对」的判据
         //     （报文逐字「符号还在，但**搬家了**」），不是人。〕
         //    ⚠ **它今天不是一份「仓里的文件」** —— `EmbeddedText { repo_path }` 这个形状
-        //    在这一条上已经不合身了（值是**算出来的**，路径取自用户填的 `daemon_path`）。
+        //    在这一条上已经不合身了（值是**算出来的**，路径取自用户填的 `backend_path`）。
         //    本模块头注自己写着「零生产消费者、T02 接不上就该删掉本模块」⇒ **不为它改类型**，
         //    如实指到那个函数的住址，并把这一格的形状问题登记在这里。
         // 🔴 〔`K-R81` 09-12〕**上面那段话里「一个 `source` 装不下两个来源」那一格，今天没了。**
@@ -647,7 +647,7 @@ pub const TOOLS: &[ToolSpec] = &[
         // 🔴 〔`K-R63` 09-11〕**这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
         // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
         // `sftp.rs::uninstall_remote_backend` 是**设置面板「卸载后端」按钮**背后那条命令
-        // （删后端二进制 + 同目录 `.build_id`，`is_safe_remote_daemon_path` 守着）。
+        // （删后端二进制 + 同目录 `.build_id`，`is_safe_remote_backend_path` 守着）。
         // ⇒ 少报一格的后果与多报同向：配置面那一列「能否装/撤」直接印给用户看，
         //   写着「卸不掉」而按钮就在旁边。这正是 `K-R60` 在 `installable` 上治过的同一族病，
         //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
@@ -665,7 +665,7 @@ pub const TOOLS: &[ToolSpec] = &[
                     repo_path: "src/bridge/binaries/cc-monitor-backend",
                 },
                 // **路径不是常量，也不是家目录相对** —— 它跟着 app 装到哪儿走，
-                // 而那个目录是装机时由人选的。同 `$DAEMON_PATH` 那一格的理由：
+                // 而那个目录是装机时由人选的。同 `$BACKEND_PATH` 那一格的理由：
                 // 申报一个我们其实没在用的常量，审计页会拿它去查一个没人写的路径
                 // 然后言之凿凿地报「缺失」。
                 destination: ToolDestination::UserConfiguredPath {
@@ -707,11 +707,11 @@ pub const TOOLS: &[ToolSpec] = &[
                     repo_path: "embedded-backends",
                 },
                 destination: ToolDestination::UserConfiguredPath {
-                    token: "$DAEMON_PATH",
+                    token: "$BACKEND_PATH",
                     what: "每个远端连接的「backend 路径」配置项",
                 },
                 touches: &[TouchedFile {
-                    path: "$DAEMON_PATH",
+                    path: "$BACKEND_PATH",
                     host: HostScope::Remote,
                     note: Some(
                         "路径由该连接的「backend 路径」配置项决定——**不是**固定的 ~/.local/bin/ccm-backend。\
@@ -765,7 +765,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 repo_path: "src/shared/ccm-aliases.sh",
             },
             // 🔴 **路径由人选，产品不猜** —— 这一格用占位符而不是 `~/.bashrc`，
-            // 理由与后端那条 `$DAEMON_PATH` 逐字同源：申报一个我们其实没在用的常量，
+            // 理由与后端那条 `$BACKEND_PATH` 逐字同源：申报一个我们其实没在用的常量，
             // 审计页会拿它去查一个没人写的路径然后言之凿凿地报「缺失」。
             // `.bashrc` / `.zshrc` / `config.fish` 写法不同，替人选一份是最坏的那条路
             // （`account_aliases` 的 `§0e`）。

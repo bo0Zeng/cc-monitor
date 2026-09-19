@@ -375,7 +375,7 @@ const BODY_BEFORE_THIS_ITEM_LINES: &[&str] = &[
     "    // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定",
     "    // 部署确认为当前版本，见该处注释）。tail_only=true → backend 不重放历史",
     "    // （历史由本侧旁路 --read-session 快照拉取），实时通道流量趋零。",
-    "    let mut cmd = shell_quote(&cfg.daemon_path);",
+    "    let mut cmd = shell_quote(&cfg.backend_path);",
     "    if with_bg {",
     "        cmd.push_str(\" --with-bg\");",
     "    }",
@@ -445,9 +445,9 @@ fn a_comment_only_edit_does_not_move_the_verdict() {
     let body = body_of(&prod, "pub async fn connect_and_exec(");
     backend_stream_dial_verdict(&body).expect("真身就该是绿的");
     let edited = body.replace(
-        "    let mut cmd = shell_quote(&cfg.daemon_path);",
+        "    let mut cmd = shell_quote(&cfg.backend_path);",
         "    // 这一行是本判据现加的注释，只为证明它不按文本相等判\n\
-             \x20   let mut cmd = shell_quote(&cfg.daemon_path);",
+             \x20   let mut cmd = shell_quote(&cfg.backend_path);",
     );
     assert_ne!(edited, body, "注释没插进去 —— 本条在空转");
     backend_stream_dial_verdict(&edited)
@@ -463,7 +463,7 @@ fn the_request_line_is_written_with_snake_case_keys() {
         port: 2222,
         user: "u".into(),
         key_path: Some("/k".into()),
-        daemon_path: "/d".into(),
+        backend_path: "/d".into(),
         host_key_fingerprint: Some("SHA256:x".into()),
         addresses: Vec::new(),
         jump: None,

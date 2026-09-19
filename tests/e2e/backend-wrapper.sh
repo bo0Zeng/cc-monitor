@@ -2,17 +2,17 @@
 # auto-e2e F-E0:loopback-remote 的后端包装器(测试 fixture,**非** backend 改动)。
 # 把后端的 $CLAUDE_CONFIG_DIR 钉到一个一次性隔离目录(默认 /tmp/e2e-remote-claude),
 # 让 app 经 loopback SSH 连上来时读的是 fixture 而**不是**真实 ~/.claude——否则本机会话会
-# 同时以「本地 tab」和「远端 tab」双份出现(§ 双 tab)。config.json 的 daemonPath 指向本脚本即可。
+# 同时以「本地 tab」和「远端 tab」双份出现(§ 双 tab)。config.json 的 backendPath 指向本脚本即可。
 # 默认后端二进制 = 仓内 debug 构建;CCM_E2E_BACKEND / CCM_E2E_CLAUDE_DIR 可覆盖。
 #
-# ★重要(实测,F-E1 全链):app **会自动部署** backend——若 daemonPath 同目录没有匹配当前
-#   app 期望 build_id 的 `.build_id` 标记文件,app 会把内嵌后端二进制**覆盖写到 daemonPath**
+# ★重要(实测,F-E1 全链):app **会自动部署** backend——若 backendPath 同目录没有匹配当前
+#   app 期望 build_id 的 `.build_id` 标记文件,app 会把内嵌后端二进制**覆盖写到 backendPath**
 #   (把本脚本冲掉!)。故全链跑法:把本脚本(或其副本)放进一个目录,旁边放一个 `.build_id`
 #   ⚠⚠ **文件名逐字是 `.build_id`(同目录下的隐藏文件),不是 `<二进制名>.build_id`**
 #   ——`sftp.rs::marker_path` 是 `format!("{dir}/.build_id")`。08-13 写错成后者,
 #   app 当场判「远端无版本标记」⇒ **把本脚本覆盖成内嵌二进制**,于是后端用**真** `~/.claude`
 #   起来了(只读铁律没破,但沙箱意图整个落空)。这一行写清楚,省得下一个人再踩。
-#   (内容 = app 期望的 backend build_id,如 `p1p-tmux-frame`),再把 daemonPath 指向它 →
+#   (内容 = app 期望的 backend build_id,如 `p1p-tmux-frame`),再把 backendPath 指向它 →
 #   deploy_decision=Skip、脚本存活。(见 src/bridge/src/sftp.rs::deploy_decision +
 #   ssh_source EXPECTED_BACKEND_BUILD_ID)
 E2E_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

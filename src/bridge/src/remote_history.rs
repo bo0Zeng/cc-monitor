@@ -1,6 +1,6 @@
 //! issue #16 P1a：远端历史浏览的 monitor 侧。
 //!
-//! 每条查询走**独立 SSH 连接**一次性 exec `<daemon_path> --list-projects` 等
+//! 每条查询走**独立 SSH 连接**一次性 exec `<backend_path> --list-projects` 等
 //! （方案权衡见 issue #16 计划评论：历史浏览用户驱动低频，握手开销可接受，
 //! 完全不碰稳定的流式路径；连接建立复用 `ssh_source::connect_session` 全套
 //! 指纹校验/鉴权）。
@@ -66,7 +66,7 @@ const OLD_BACKEND_MSG: &str =
 
 /// 跑一条列举类查询，收集全部输出行（带整体超时 + 旧版检测）。
 pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, String> {
-    let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.daemon_path), args);
+    let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.backend_path), args);
     let collect = async {
         let stream = ssh_source::connect_and_exec_cmd(cfg, &cmd).await?;
         let mut reader = BufReader::new(stream);
@@ -772,7 +772,7 @@ pub async fn stream_read_remote_session(
         .unwrap_or(file_name)
         .to_string();
     let args = format!("--read-session {}", ssh_source::shell_quote(&jsonl_path));
-    let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.daemon_path), args);
+    let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.backend_path), args);
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     // F06：`+ 1` 是为了**能分辨「到限」与「正好读完」** —— 只 take(MAX) 的话，
     // 到限时 read_line 返回 0，与正常 EOF 完全同形，于是静默截断。

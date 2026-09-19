@@ -164,7 +164,7 @@ const REMOTE_INFO_TEXT =
   "「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 " +
   "jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n" +
   "关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。" +
-  "配置不完整（缺 host / user / daemonPath）时后端自动回退本地模式。";
+  "配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。";
 
 const DIAG_STORAGE_INFO_TEXT =
   "「诊断」—— 打开后端 INFO 级别 tracing 到状态栏（开发用；出问题排查时打开）。\n\n" +

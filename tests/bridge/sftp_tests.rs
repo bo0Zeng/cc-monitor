@@ -5,7 +5,7 @@ fn probe_cfg() -> crate::ssh_source::RemoteConfig {
         port: 1,
         user: "nobody".into(),
         key_path: None,
-        daemon_path: "/tmp/nope".into(),
+        backend_path: "/tmp/nope".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,
@@ -51,7 +51,7 @@ async fn the_remote_delete_entry_point_actually_goes_through_the_fence() {
 fn both_remote_path_sinks_still_ask_their_fence() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
     for (f, fence) in [
-        ("uninstall_remote_backend", "is_safe_remote_daemon_path"),
+        ("uninstall_remote_backend", "is_safe_remote_backend_path"),
         ("remove_remote_file", "is_safe_remote_jsonl"),
     ] {
         let at = prod
@@ -288,11 +288,11 @@ fn the_remote_ccm_entry_is_an_entry_not_an_implementation() {
             "唯一那一行里出现了 `{forbidden}` —— shim 长出了第二处实现（K33）。现打：{head}"
         );
     }
-    // ③ 路径必须经 POSIX quote（daemon_path 是用户填的，可能带空格 / 引号）。
+    // ③ 路径必须经 POSIX quote（backend_path 是用户填的，可能带空格 / 引号）。
     let tricky = ccm_entry_shim("/home/用户/带 空格/it's");
     assert!(
         tricky.contains(&shell_quote_core::posix_quote("/home/用户/带 空格/it's")),
-        "daemon_path 没经 `shell_quote_core::posix_quote` —— 带空格的路径会被拆成两个词。\n{tricky}"
+        "backend_path 没经 `shell_quote_core::posix_quote` —— 带空格的路径会被拆成两个词。\n{tricky}"
     );
 }
 
@@ -1406,15 +1406,15 @@ fn strip_aborts_on_malformed_begin_without_end() {
 }
 
 #[test]
-fn safe_daemon_path_accepts_convention_rejects_suspicious() {
-    assert!(is_safe_remote_daemon_path(
+fn safe_backend_path_accepts_convention_rejects_suspicious() {
+    assert!(is_safe_remote_backend_path(
         "/home/pi/.cc-monitor/bin/cc-monitor-backend"
     ));
-    assert!(!is_safe_remote_daemon_path("")); // 空
-    assert!(!is_safe_remote_daemon_path("relative/cc-monitor")); // 非绝对
-    assert!(!is_safe_remote_daemon_path("/")); // 根
-    assert!(!is_safe_remote_daemon_path("/etc/passwd")); // 不含 cc-monitor
-    assert!(!is_safe_remote_daemon_path(
+    assert!(!is_safe_remote_backend_path("")); // 空
+    assert!(!is_safe_remote_backend_path("relative/cc-monitor")); // 非绝对
+    assert!(!is_safe_remote_backend_path("/")); // 根
+    assert!(!is_safe_remote_backend_path("/etc/passwd")); // 不含 cc-monitor
+    assert!(!is_safe_remote_backend_path(
         "/home/pi/.cc-monitor/../../../etc/x"
     )); // 含 ..
 }

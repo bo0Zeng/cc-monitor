@@ -8,12 +8,12 @@
 const TOOL = "cc-acct-iso";
 
 /**
- * F5：从 daemonPath / user 推导 cc-acct-iso 的远端部署目录（绝对路径，供一键部署）。纯函数、可单测。
- * 约定与后端同根：`<...>/.cc-monitor/cc-acct-iso`。daemonPath 含 `.cc-monitor` 则取其根；
- * 否则回退 `/home/<user>/.cc-monitor/cc-acct-iso`。都拿不到（无 daemonPath 且 user 非法）→ null。
+ * F5：从 backendPath / user 推导 cc-acct-iso 的远端部署目录（绝对路径，供一键部署）。纯函数、可单测。
+ * 约定与后端同根：`<...>/.cc-monitor/cc-acct-iso`。backendPath 含 `.cc-monitor` 则取其根；
+ * 否则回退 `/home/<user>/.cc-monitor/cc-acct-iso`。都拿不到（无 backendPath 且 user 非法）→ null。
  */
-export function deriveAcctIsoDir(daemonPath?: string, user?: string): string | null {
-  const p = (daemonPath ?? "").trim();
+export function deriveAcctIsoDir(backendPath?: string, user?: string): string | null {
+  const p = (backendPath ?? "").trim();
   const idx = p.indexOf("/.cc-monitor/");
   if (idx >= 0) return `${p.slice(0, idx)}/.cc-monitor/cc-acct-iso`;
   if (p.endsWith("/.cc-monitor")) return `${p}/cc-acct-iso`;

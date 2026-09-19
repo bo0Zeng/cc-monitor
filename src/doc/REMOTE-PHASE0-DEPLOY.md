@@ -2,10 +2,10 @@
 
 > **更新（issue #29 F08b 已实现自动部署）**：cc-monitor.exe **内嵌**交叉编译好的 aarch64/x86_64
 > musl backend 二进制；连接远端时**自动**探测远端 arch（`uname -m`）、按 build_id 版本门控经 SFTP
-> 把对应二进制推到 `cfg.daemon_path`（默认 `~/.cc-monitor/bin/cc-monitor-backend`）并 exec——用户**零手动步骤**。
-> 自动部署失败（无内嵌该 arch / daemon_path 含 `~` / SFTP 失败）会优雅降级到下面的手动部署。
+> 把对应二进制推到 `cfg.backend_path`（默认 `~/.cc-monitor/bin/cc-monitor-backend`）并 exec——用户**零手动步骤**。
+> 自动部署失败（无内嵌该 arch / backend_path 含 `~` / SFTP 失败）会优雅降级到下面的手动部署。
 >
-> **daemon_path 必须是绝对路径**（如 `/home/pi/.cc-monitor/bin/cc-monitor-backend`）：SFTP 无 shell、
+> **backend_path 必须是绝对路径**（如 `/home/pi/.cc-monitor/bin/cc-monitor-backend`）：SFTP 无 shell、
 > 不展开 `~`，含 `~` 时自动部署会跳过（手动部署仍可用 `~`，因为那走 shell exec）。
 >
 > 下面的**手动部署**仍然有效，作为：① 自动部署不可用时的回退；② Phase 0 钢丝验证的原始步骤。
@@ -150,7 +150,7 @@ cargo build --release        # aarch64 编 aarch64 / x86_64 编 x86_64，零交�
 
 ## 4. 安装到固定路径
 
-cc-monitor 默认 exec 的路径是 `~/.cc-monitor/bin/cc-monitor-backend`（可在设置里改 `daemonPath`）：
+cc-monitor 默认 exec 的路径是 `~/.cc-monitor/bin/cc-monitor-backend`（可在设置里改 `backendPath`）：
 
 ```bash
 mkdir -p ~/.cc-monitor/bin
@@ -210,7 +210,7 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 | `port` | 22 | 22 |
 | `user` | 你的 WSL 用户名 | `pi` |
 | `keyPath` | `C:\Users\<you>\.ssh\id_ed25519` | 同 |
-| `daemonPath` | `/home/<you>/.cc-monitor/bin/cc-monitor-backend` | `/home/pi/.cc-monitor/bin/cc-monitor-backend` |
+| `backendPath` | `/home/<you>/.cc-monitor/bin/cc-monitor-backend` | `/home/pi/.cc-monitor/bin/cc-monitor-backend` |
 | `hostKeyFingerprint` | `SHA256:...`（第 6 步） | 同 |
 | `addresses`（可选，F45 备用地址数组，每项 `host`/`host:port`/`[IPv6]:port`；与 `host` 竞速故障切换，首个成功者胜；设置卡「备用地址」多行输入即写此字段） | `[]` | `["10.0.0.9","pi.公网:2222"]` |
 

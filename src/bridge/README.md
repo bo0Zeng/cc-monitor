@@ -201,8 +201,8 @@ src/bridge/
 | `delete_remote_history_session` (F11, SFTP) | `{ origin, jsonlPath }` | `()` | 远端历史会话物理删除（二次确认 + SFTP 双路径守卫 + 清本地元数据） |
 | `install_remote_ccm_helper` (F10, SFTP) | `{ cfg, profile }` | `String` | 一键把 `ccm` wrapper 写进远端 `~/.bashrc`（BEGIN/END 块 + 备份 + 写后校验） |
 | `uninstall_remote_ccm_helper` (F10, SFTP) | `{ cfg, profile }` | `String` | 从远端 profile 删 `ccm` BEGIN/END 块（备份 + 写后校验回滚；块外内容不动） |
-| `deploy_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「安装后端」：按远端 arch 选内嵌二进制 + build_id 版本门控 + SFTP 原子上传到 daemonPath（已最新则跳过）；返回人读结果，无 arch/路径含 `~` 等显式报错 |
-| `uninstall_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「卸载后端」：删远端后端二进制 + 同目录 `.build_id`（`is_safe_remote_daemon_path` 守卫；机器仍启用会自动装回的提示） |
+| `deploy_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「安装后端」：按远端 arch 选内嵌二进制 + build_id 版本门控 + SFTP 原子上传到 backendPath（已最新则跳过）；返回人读结果，无 arch/路径含 `~` 等显式报错 |
+| `uninstall_remote_backend` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「卸载后端」：删远端后端二进制 + 同目录 `.build_id`（`is_safe_remote_backend_path` 守卫；机器仍启用会自动装回的提示） |
 | `list_ssh_host_aliases` (issue #15) | — | `String[]` | 设置面板「从 ~/.ssh/config 导入」下拉 |
 | `resolve_ssh_host` (issue #15) | `{ alias }` | `ResolvedHost` | 选中别名后用 `ssh -G` 解析有效连接参数自动填表（F57 加 proxyJump） |
 | `import_ssh_hosts` (B14-F57) | — | `ImportGroup[]` | 批量导入:list 别名→逐个 `ssh -G`→`aggregate_ssh_hosts` 智能聚合(同 key+user+基名前缀→同机多地址,ProxyJump→jump)→预览组（含 members 供拆分） |

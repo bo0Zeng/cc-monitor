@@ -9,7 +9,7 @@ fn remote_obj(v: serde_json::Value) -> serde_json::Map<String, serde_json::Value
 #[test]
 fn legacy_single_object_one_host() {
     let remote = remote_obj(json!({
-        "host": "pi.local", "user": "pi", "daemonPath": "/x"
+        "host": "pi.local", "user": "pi", "backendPath": "/x"
     }));
     let cfgs = parse_remote_hosts(&remote);
     assert_eq!(cfgs.len(), 1);
@@ -23,9 +23,9 @@ fn legacy_single_object_one_host() {
 fn jump_field_parsed() {
     let remote = remote_obj(json!({
         "hosts": [
-            {"host": "internal", "user": "u", "daemonPath": "/x", "jump": "bastion"},
-            {"host": "direct", "user": "u", "daemonPath": "/y"},
-            {"host": "empty", "user": "u", "daemonPath": "/z", "jump": ""}
+            {"host": "internal", "user": "u", "backendPath": "/x", "jump": "bastion"},
+            {"host": "direct", "user": "u", "backendPath": "/y"},
+            {"host": "empty", "user": "u", "backendPath": "/z", "jump": ""}
         ]
     }));
     let cfgs = parse_remote_hosts(&remote);
@@ -40,8 +40,8 @@ fn jump_field_parsed() {
 fn hosts_array_multi() {
     let remote = remote_obj(json!({
         "hosts": [
-            {"label": "pi", "host": "pi.local", "user": "pi", "daemonPath": "/x"},
-            {"host": "nano.local", "user": "u", "daemonPath": "/y", "port": 2222}
+            {"label": "pi", "host": "pi.local", "user": "pi", "backendPath": "/x"},
+            {"host": "nano.local", "user": "u", "backendPath": "/y", "port": 2222}
         ]
     }));
     let cfgs = parse_remote_hosts(&remote);
@@ -51,12 +51,12 @@ fn hosts_array_multi() {
     assert_eq!(cfgs[1].port, 2222);
 }
 
-/// 缺必填字段(daemonPath)的台被跳过，不影响其他台。
+/// 缺必填字段(backendPath)的台被跳过，不影响其他台。
 #[test]
 fn missing_required_field_skipped() {
     let remote = remote_obj(json!({
         "hosts": [
-            {"host": "ok.local", "user": "u", "daemonPath": "/x"},
+            {"host": "ok.local", "user": "u", "backendPath": "/x"},
             {"host": "bad.local", "user": "u"}
         ]
     }));
@@ -70,8 +70,8 @@ fn missing_required_field_skipped() {
 fn duplicate_label_suffixed() {
     let remote = remote_obj(json!({
         "hosts": [
-            {"label": "box", "host": "a", "user": "u", "daemonPath": "/x"},
-            {"label": "box", "host": "b", "user": "u", "daemonPath": "/y"}
+            {"label": "box", "host": "a", "user": "u", "backendPath": "/x"},
+            {"label": "box", "host": "b", "user": "u", "backendPath": "/y"}
         ]
     }));
     let cfgs = parse_remote_hosts(&remote);

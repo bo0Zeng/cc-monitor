@@ -261,11 +261,11 @@ fixtures:
    (=灰,Idle 非 Archive) → (kill-session) `tmux_sessions` 不再含 sid(=归档触发边沿)。
 
 2. **全链级(GUI + loopback SSH)**:前置同 f40(Xvfb + dev 实例)+ config.json 配一个 loopback 远端,
-   `daemonPath` 指向 `backend-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash tests/e2e/graylight-suite.sh`。断言 monitor
+   `backendPath` 指向 `backend-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash tests/e2e/graylight-suite.sh`。断言 monitor
    日志:`[e2e] tab-state … status=live tmuxIdle=1`(灰,该行 status=live 同时证明变灰前是 live)→
-   `… status=archived`。**★ app 会自动部署后端**:daemonPath 同目录须放一个 `.build_id`(内容=app
+   `… status=archived`。**★ app 会自动部署后端**:backendPath 同目录须放一个 `.build_id`(内容=app
    **内嵌** 后端的 build_id,见 `sftp.rs::deploy_decision`——不是 `EXPECTED_BACKEND_BUILD_ID`),否则
-   app 会用内嵌二进制覆盖写 daemonPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
+   app 会用内嵌二进制覆盖写 backendPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
    让 app 先收到含 @ccm_sid 的 `TmuxSessions` 帧,否则 removed 到达时 tmux 账本无此 sid → 判 Archive 丢灰。
 
 ## auto-e2e:resume idle 就地复用(F-E2,#75/#76)

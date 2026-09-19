@@ -610,13 +610,13 @@ export class SftpPanel implements OverlayHandle {
     if (!this.cfg) return;
     const remoteCmd = buildOpenTerminalCmd(this.cwd);
     // D 审计重要-1:launch_remote_terminal 按 origin 从**已保存**配置加载(需完整 host/user/
-    // daemonPath);SFTP 浏览用的是即时 cfg(daemonPath 可空)。配置未存全时给可操作提示。
+    // backendPath);SFTP 浏览用的是即时 cfg(backendPath 可空)。配置未存全时给可操作提示。
     void commands.launch_remote_terminal({ origin: this.origin(), remoteCmd }).catch((e) => {
       const msg = String(e);
       showActionFailureToast(
         "打开终端失败",
         msg.includes("未找到远端配置")
-          ? "该主机配置未完整保存——请在设置里填好 daemonPath 等字段(SFTP 浏览不需要,但打开终端需要完整配置)。"
+          ? "该主机配置未完整保存——请在设置里填好 backendPath 等字段(SFTP 浏览不需要,但打开终端需要完整配置)。"
           : msg,
       );
     });

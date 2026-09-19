@@ -1495,13 +1495,13 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 ///   "hosts": [
 ///     { "label": "pi", "host": "raspberrypi.local", "port": 22, "user": "pi",
 ///       "keyPath": "C:\\Users\\me\\.ssh\\id_ed25519",
-///       "daemonPath": "/home/pi/cc-monitor-backend",
+///       "backendPath": "/home/pi/cc-monitor-backend",
 ///       "hostKeyFingerprint": "SHA256:..." }
 ///   ]
 /// }
 /// ```
 /// **向后兼容**：旧单对象形态 `"remote": { "enabled": true, "host": …, … }`（无 `hosts`
-/// 键）归一成 1 元素列表（`label` 默认 = host）。每台缺必填字段(host/user/daemonPath)
+/// 键）归一成 1 元素列表（`label` 默认 = host）。每台缺必填字段(host/user/backendPath)
 /// 则跳过 + warn；`label` 重复则后缀化 ` (#2)`（保证 by-label 选台 key 唯一）。
 pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
     let Some(cfg_path) = paths::resolve_config_path() else {
@@ -1564,7 +1564,7 @@ fn parse_remote_hosts(
     out
 }
 
-/// 解析单个 host JSON 对象 → RemoteConfig；缺必填字段(host/user/daemonPath) → None+warn。
+/// 解析单个 host JSON 对象 → RemoteConfig；缺必填字段(host/user/backendPath) → None+warn。
 fn parse_host_obj(
     obj: &serde_json::Map<String, serde_json::Value>,
 ) -> Option<ssh_source::RemoteConfig> {
@@ -1574,14 +1574,14 @@ fn parse_host_obj(
             .filter(|s| !s.is_empty())
     };
 
-    let (host, user, daemon_path) = match (
+    let (host, user, backend_path) = match (
         str_field("host"),
         str_field("user"),
-        str_field("daemonPath"),
+        str_field("backendPath"),
     ) {
         (Some(h), Some(u), Some(d)) => (h.to_string(), u.to_string(), d.to_string()),
         _ => {
-            tracing::warn!("remote host 缺必填字段(host/user/daemonPath)，跳过该台");
+            tracing::warn!("remote host 缺必填字段(host/user/backendPath)，跳过该台");
             return None;
         }
     };
@@ -1626,7 +1626,7 @@ fn parse_host_obj(
         port,
         user,
         key_path,
-        daemon_path,
+        backend_path,
         host_key_fingerprint,
         addresses,
         jump,

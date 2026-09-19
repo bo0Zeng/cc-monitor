@@ -7,7 +7,7 @@ fn cfg(host: &str, user: &str, port: u16, key: Option<&str>) -> RemoteConfig {
         port,
         user: user.into(),
         key_path: key.map(String::from),
-        daemon_path: "d".into(),
+        backend_path: "d".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,
@@ -35,7 +35,7 @@ fn cfg(host: &str, user: &str, port: u16, key: Option<&str>) -> RemoteConfig {
 /// 不剥的话，下面那两条**测试里的字符串字面量** `"Command::new(\"gnome-terminal\")"`
 /// 会被数进去 —— 实测裸数是 6，生产里只有 4。
 #[test]
-fn every_terminal_window_backend_opens_carries_the_daemon_path() {
+fn every_terminal_window_backend_opens_carries_the_backend_path() {
     let src = include_str!("../../src/bridge/src/launch.rs");
     let prod = guard_core::production_code(src);
     let spawns = prod.matches("Command::new(").count();

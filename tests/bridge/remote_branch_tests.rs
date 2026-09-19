@@ -134,7 +134,7 @@ fn fork_cmd_shape_is_pinned() {
 
 /// 纵深防御：id 已过白名单，`shell_quote` 仍照上（白名单哪天被放宽也不至于直接漏）。
 #[test]
-fn daemon_path_with_space_is_quoted() {
+fn backend_path_with_space_is_quoted() {
     let c = build_fork_cmd("/opt/my backends/p1q", "s", "u");
     assert!(
         c.starts_with("'/opt/my backends/p1q' --fork-session"),
