@@ -205,7 +205,6 @@ export class RemoteSection {
   private original: RemoteConfig = {
     enabled: false,
     hosts: [],
-    legacyNoBackend: [],
   };
 
   /**
@@ -363,12 +362,9 @@ export class RemoteSection {
    * 后果写出来（不只是一个 ✗），让他自己判断值不值得补。
    */
   private renderGaps(hosts: RemoteHostConfig[]): void {
-    // `KR59D3`：盘上还带着旧「不装后端」开关的主机 ⇒ 那一格换成一条**指名的**告知。
-    const legacy = new Set(this.original.legacyNoBackend);
     const gaps = computeGaps({
       origins: [LOCAL_MACHINE_KEY, ...hosts.map(hostKey)],
       statusOf: readStatus,
-      legacyNoBackend: (o) => legacy.has(o),
       // S9：Windows 本机的启动器是「终端集成」那块，不是 POSIX 的 ccm。
       hostOs: hostOs(),
     });
@@ -1027,9 +1023,6 @@ export class RemoteSection {
     return {
       enabled: this.enabledCheckbox.checked,
       hosts: this.cards.map((c) => c.collect()),
-      // K-R59：这一格说的是**盘上那份 JSON**，卡片上表示不出来 ⇒ 原样带过来。
-      // 它只喂那条迁移告知；`writeRemoteConfig` 根本不读它（保存那一刻旧键就没了）。
-      legacyNoBackend: this.original.legacyNoBackend,
     };
   }
 

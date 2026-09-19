@@ -10,8 +10,6 @@ import {
   summarizeGaps,
   describeGap,
   GAP_HEAD,
-  NO_BACKEND_GAP_CODE,
-  NO_BACKEND_CONSEQUENCE,
   type Gap,
 } from "../../src/settings/readiness";
 import { LOCAL_MACHINE_KEY, type MachineStatus } from "../../src/settings/machine-status";
@@ -158,46 +156,11 @@ describe("computeGaps", () => {
     expect(gaps.some((g) => g.facet === "backend")).toBe(false);
   });
 
-  /**
-   * 🔴 `KR59D3`：旧配置里那个 `true` **不许被静默吞掉**。
-   *
-   * 这一条此前逐字叫「★ daemonless 的机器不该被说「缺后端」（那是用户显式选的降级）」，
-   * 断的是注入 `isBackendless` 之后那台机器的 `backend` 一格**消失**。
-   * `K35` 把那一档删了 ⇒ 语义整个翻面：那台机器从此**要连后端**，
-   * 而它连不上的时候用户该看见的是「你这台机器本来就是按不装后端配的，去装」，
-   * **不是**一句通用的「没测过」。
-   */
-  it("🔴 KR59D3：盘上还带着旧「不装后端」开关的主机 ⇒ 一条**指名的**告知", () => {
-    const gaps = computeGaps({
-      origins: ["aya"],
-      statusOf: none,
-      legacyNoBackend: (o) => o === "aya",
-    });
-    const backend = gaps.filter((g) => g.facet === "backend");
-    expect(backend).toHaveLength(1);
-    expect(backend[0]?.code, "那条告知没有名字 —— 形状抄 `K-P2` 的唯一失败面").toBe(
-      NO_BACKEND_GAP_CODE,
-    );
-    // **有名字还不够**：它得说清「为什么」+「下一步」，而且是 blocking。
-    expect(backend[0]?.consequence).toBe(NO_BACKEND_CONSEQUENCE);
-    expect(backend[0]?.severity).toBe("blocking");
-    // 「确认没有」而不是「没测过」—— 盘上那份配置就是证据。
-    expect(backend[0]?.kind).toBe("missing");
-    // ⚠ **它压过账本**：旧路径把这台机器的两格记成 `na`（「用户显式选的降级」），
-    //   那正是要被撤掉的那句话；账本说 `na` 也照样告知。
-    const over = computeGaps({
-      origins: ["aya"],
-      statusOf: () => ({ backend: { kind: "na", at: T } }),
-      legacyNoBackend: () => true,
-    });
-    expect(over.filter((g) => g.facet === "backend")[0]?.code).toBe(NO_BACKEND_GAP_CODE);
-    // 反向自检①：没有旧开关的机器**不带**这个名字（不是恒挂一条）。
-    const plain = computeGaps({ origins: ["aya"], statusOf: none });
-    expect(plain.some((g) => g.code === NO_BACKEND_GAP_CODE)).toBe(false);
-    expect(plain.some((g) => g.facet === "backend")).toBe(true);
-    // 反向自检②：那条告知**看得见** —— 显示文案里含它的「下一步」。
-    expect(describeGap(backend[0]!)).toContain("装上后端");
-  });
+  // 🔴 〔步 8 · 条 80 「不要管旧配置」〕**`KR59D3` 那条整条退役了。**
+  //    它断的是「盘上还带着旧 `daemonless: true` 的主机要给一条指名的告知」，
+  //    而那条告知（`NO_BACKEND_GAP_CODE` / `NO_BACKEND_CONSEQUENCE`）与它背后的
+  //    `legacyNoBackend` 入参这一拍整块删了 ⇒ **它已经没有被测对象**。
+  //    ⚠ 用例数 −1，逐条点名在本轮报告里。
 
   it("★ blocking 排在 optional 前面，且顺序稳定", () => {
     const gaps = computeGaps({ origins: ["aya", "nano"], statusOf: none });

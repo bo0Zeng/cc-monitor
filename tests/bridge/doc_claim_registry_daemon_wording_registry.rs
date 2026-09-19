@@ -159,8 +159,10 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         //   （`embedded-daemons/` · `daemon_send_keys.rs` · `--daemon-probe` · `daemonPath`），
         //   而**步 8 把那四个全改名了** —— 夹具又一次指向不存在的东西。
         //   ⇒ 这一次换成**本仓明写保护、不会再改的那一档**（`tests/evidence/w8-rename.py` 的 `PROTECTED`）：
-        //   两个已落盘的用户配置键（`daemonPath` 现役 · `daemonless` 已退役但仍要认），
-        //   以及由它们派生的两个符号。
+        //   `daemonPath` —— **用户盘上 `config.json` 里那个现役的键**（步 8 刻意摘出去，
+        //   改它要配一次迁移，见 `调研/真相源/94 §A1`）；
+        //   `DaemonTransport` —— **仓外 aterm 自己的类型名**（冻结在 2026-07-18 那份契约里）。
+        //   两个都不是我们的名字，两个都不会再动。
         //   ⚠ 教训与 `调研/设计/16 §5.3` 同一条：**机械替换会砸坏刻意构造的夹具**；
         //   而夹具指着**活体**时每一轮改名都会再砸一次 ⇒ 指向「不许改的那一档」才是稳的。
         // 🔴 **刻意不用旧闭集 id / 旧 crate 目录名那两个拼写当夹具**（第一版就是那样，当场被逮）：
@@ -168,9 +170,7 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         //   `every_place_that_still_says_the_old_name_is_registered_and_only_shrinks`
         //   把本文件读成「又一处还在说旧名字的地方」（实发 `OldId × 2`）。
         ("daemonPath", false),
-        ("daemonlessInput", false),
-        ("daemonless", false),
-        ("daemonless_stream_loop", false),
+        ("DaemonTransport", false),
     ] {
         let h = hits(probe);
         assert_eq!(h.len(), 1, "自检串 {probe:?} 里应当恰好一处命中");
@@ -237,7 +237,8 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
     //    这不是「把地板调下去让今天好过」：那 139 处里绝大多数是 `daemon_*` / `--daemon-probe`
     //    / `embedded-daemons/` 这类**代码标识符**，而步 8 把它们全改名了 ⇒ 盘上真的没有了。
     //    今天剩下的 25 处全部来自两个**明写保护、不许改**的拼写
-    //    （`daemonless` 那个已落盘的旧配置键 · 旧闭集 id 与旧 crate 目录名那两个拼写）。
+    //    （`daemonPath` 那个现役配置键 · 旧闭集 id 与旧 crate 目录名那两个拼写 ·
+    //      仓外 aterm 的类型名）。
     //    ⚠ 这一格本来就不是承重的那半：「切 token 坏掉」的两个方向分别由上面的合成串自检
     //    与下面的 `offenders` 接着；本条只答「真语料确实喂进来、而且里面确实有非裸词」。
     assert!(
