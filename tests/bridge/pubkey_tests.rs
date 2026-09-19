@@ -25,7 +25,7 @@ async fn the_push_entry_point_actually_sanitizes_the_key() {
         port: 1,
         user: "nobody".into(),
         key_path: None,
-        daemon_path: "/tmp/nope".into(),
+        backend_path: "/tmp/nope".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,

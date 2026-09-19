@@ -313,7 +313,7 @@ fn remote_config_deserializes_frontend_shape() {
             "port": 2200,
             "user": "pi",
             "keyPath": "",
-            "daemonPath": "/home/pi/cc-monitor-backend",
+            "backendPath": "/home/pi/cc-monitor-backend",
             "hostKeyFingerprint": ""
         }"#;
     let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
@@ -321,7 +321,7 @@ fn remote_config_deserializes_frontend_shape() {
     assert_eq!(cfg.port, 2200);
     assert_eq!(cfg.user, "pi");
     assert_eq!(cfg.key_path, None, "空串 keyPath → None");
-    assert_eq!(cfg.daemon_path, "/home/pi/cc-monitor-backend");
+    assert_eq!(cfg.backend_path, "/home/pi/cc-monitor-backend");
     assert_eq!(cfg.host_key_fingerprint, None, "空串指纹 → None");
 }
 
@@ -332,7 +332,7 @@ fn remote_config_defaults_and_some() {
             "host": "h",
             "user": "u",
             "keyPath": "C:\\k",
-            "daemonPath": "d",
+            "backendPath": "d",
             "hostKeyFingerprint": "SHA256:abc"
         }"#;
     let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
@@ -496,7 +496,7 @@ fn endpoints_host_first_dedup_preserve_order() {
         port: 22,
         user: "pi".into(),
         key_path: None,
-        daemon_path: "d".into(),
+        backend_path: "d".into(),
         host_key_fingerprint: None,
         addresses: vec![
             "10.0.0.2".into(),
@@ -525,7 +525,7 @@ fn endpoints_empty_addresses_is_just_host() {
         port: 2200,
         user: "u".into(),
         key_path: None,
-        daemon_path: "d".into(),
+        backend_path: "d".into(),
         host_key_fingerprint: None,
         addresses: vec![],
         jump: None,
@@ -1063,7 +1063,7 @@ fn cfg_with(label: &str, host: &str, port: u16, addresses: Vec<String>) -> Remot
         port,
         user: "u".into(),
         key_path: None,
-        daemon_path: "d".into(),
+        backend_path: "d".into(),
         host_key_fingerprint: None,
         addresses,
         jump: None,

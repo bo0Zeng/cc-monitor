@@ -156,10 +156,10 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         // 🔴 〔2026-09-18 修复 · 步 8 2026-09-19 **再修一次**〕这几格是**故意构造的夹具**：
         //   `daemon` 出现在更长的 token 里 ⇒ 切出来不是裸词。
         //   09-18 那次把它们从 `remote-daemon-proto` 换成了当时活着的四个标识符
-        //   （`embedded-daemons/` · `daemon_send_keys.rs` · `--daemon-probe` · `daemonPath`），
+        //   （`embedded-daemons/` · `daemon_send_keys.rs` · `--daemon-probe` · `backendPath`），
         //   而**步 8 把那四个全改名了** —— 夹具又一次指向不存在的东西。
         //   ⇒ 这一次换成**本仓明写保护、不会再改的那一档**（`tests/evidence/w8-rename.py` 的 `PROTECTED`）：
-        //   `daemonPath` —— **用户盘上 `config.json` 里那个现役的键**（步 8 刻意摘出去，
+        //   `backendPath` —— **用户盘上 `config.json` 里那个现役的键**（步 8 刻意摘出去，
         //   改它要配一次迁移，见 `调研/真相源/94 §A1`）；
         //   `DaemonTransport` —— **仓外 aterm 自己的类型名**（冻结在 2026-07-18 那份契约里）。
         //   两个都不是我们的名字，两个都不会再动。
@@ -169,7 +169,20 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         //   它们正是 `tool_registry::old_name_counts` 的针，写在这儿会让
         //   `every_place_that_still_says_the_old_name_is_registered_and_only_shrinks`
         //   把本文件读成「又一处还在说旧名字的地方」（实发 `OldId × 2`）。
-        ("daemonPath", false),
+        // 🔴 〔2026-09-19 · 第三次被砸〕上一版这一格是 `daemonPath`，理由逐字写在上面那段
+        //   注释里：「**用户盘上 `config.json` 里那个现役的键**（步 8 刻意摘出去，改它要配
+        //   一次迁移）」。**条 80 把那条迁移要求整个裁掉了**（用户逐字「新版本要完全抛弃旧的」），
+        //   于是 `A1` 当天就把它改成了 `backendPath` —— 夹具里再没有 `daemon` 可找，本条当场红。
+        //
+        // 🔴 **第三次了，说明「挑一个活着的、看起来不会改的名字」这条路本身是错的。**
+        //   每一轮都在赌「这个名字这次不会动」，而三轮都赌输了。
+        //   ⇒ 换做法：**现拼一个**。`concat!` 是编译期拼接，`daemonSuffix` 这个字面量
+        //   **在源码里根本不存在** ⇒ 任何机械替换（按整词、按子串、按标识符）都砸不到它，
+        //   任何「还有谁在说旧名字」的账本也数不到它。
+        //   ⚠ 它**不需要**指向真东西：`hits()` 只在 probe 串**自身**里找（见它的实现），
+        //     这一格买的是「`daemon` 嵌在更长 token 里时不算裸词」，与盘上有没有这个名字无关。
+        (concat!("daemon", "Suffix"), false),
+        // 仓外 aterm 自己的类型名，冻结在 2026-07-18 那份契约里 —— 不是我们的名字，我们改不动。
         ("DaemonTransport", false),
     ] {
         let h = hits(probe);
@@ -237,7 +250,7 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
     //    这不是「把地板调下去让今天好过」：那 139 处里绝大多数是 `daemon_*` / `--daemon-probe`
     //    / `embedded-daemons/` 这类**代码标识符**，而步 8 把它们全改名了 ⇒ 盘上真的没有了。
     //    今天剩下的 25 处全部来自两个**明写保护、不许改**的拼写
-    //    （`daemonPath` 那个现役配置键 · 旧闭集 id 与旧 crate 目录名那两个拼写 ·
+    //    （`backendPath` 那个现役配置键 · 旧闭集 id 与旧 crate 目录名那两个拼写 ·
     //      仓外 aterm 的类型名）。
     //    ⚠ 这一格本来就不是承重的那半：「切 token 坏掉」的两个方向分别由上面的合成串自检
     //    与下面的 `offenders` 接着；本条只答「真语料确实喂进来、而且里面确实有非裸词」。

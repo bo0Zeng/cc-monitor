@@ -7,7 +7,7 @@
  *
  * **camelCase key 必须与 Rust reader 严格一致**（否则后端读不到）：
  *   enabled (bool) / hosts[] 内每台：label (string, 可选默认 host) / host / port (默认 22) /
- *   user / keyPath (可选) / daemonPath / hostKeyFingerprint (可选)
+ *   user / keyPath (可选) / backendPath / hostKeyFingerprint (可选)
  *
  * **向后兼容**：旧的单对象 `remote: { enabled, host, ... }`（无 `hosts` 键）读取时归一成
  * 1 台（label 默认 = host）；保存时升级写成 `hosts` 数组。
@@ -48,7 +48,7 @@ import {
 } from "../remote-config";
 import {
   MachineCard,
-  defaultDaemonPathFor,
+  defaultBackendPathFor,
   shouldShowResetFingerprint,
 } from "./machine-card";
 import { markRestartNeeded } from "./restart-notice";
@@ -84,7 +84,7 @@ const REMOTE_INFO_TEXT =
   "与本地聚合（渲染、Tab、分支等行为完全相同；远端 Tab 标题带 [机器名] 前缀）。\n" +
   "关闭（默认）或机器列表为空时一切走本地，不受影响。\n\n" +
   "⚠ 启用 / 修改任意远端设置后，需重启 monitor 才生效。\n" +
-  "某台配置不完整（缺 host / user / daemonPath）时后端会跳过该台。";
+  "某台配置不完整（缺 host / user / backendPath）时后端会跳过该台。";
 
 /**
  * Feature ②：远端 ↗ 拉前的 bashrc 块——**注册原语与启动器分离**（镜像本地
@@ -791,7 +791,7 @@ export class RemoteSection {
       port: g.port || 22,
       user: g.user,
       keyPath: g.keyPath ?? "",
-      daemonPath: g.user ? defaultDaemonPathFor(g.user) : "",
+      backendPath: g.user ? defaultBackendPathFor(g.user) : "",
       hostKeyFingerprint: "",
       addresses: g.addresses,
       jump: g.jump ?? "",
@@ -807,7 +807,7 @@ export class RemoteSection {
       port: m.port || 22,
       user: g.user,
       keyPath: g.keyPath ?? "",
-      daemonPath: g.user ? defaultDaemonPathFor(g.user) : "",
+      backendPath: g.user ? defaultBackendPathFor(g.user) : "",
       hostKeyFingerprint: "",
       addresses: [],
       jump: m.proxyJump ?? "",
@@ -1031,7 +1031,7 @@ export class RemoteSection {
     const next = this.collect();
     // best-effort UI 校验：启用但某台缺必填字段 → 软提示（不拦保存，后端会跳过该台）。
     const incompleteCount = next.enabled
-      ? next.hosts.filter((h) => !h.host || !h.user || !h.daemonPath).length
+      ? next.hosts.filter((h) => !h.host || !h.user || !h.backendPath).length
       : 0;
     // 指纹格式软校验：非空且不以 SHA256: 开头 → 大概率粘错字段。
     const fingerprintLooksOff = next.hosts.some(
@@ -1041,7 +1041,7 @@ export class RemoteSection {
 
     if (incompleteCount > 0) {
       this.showBanner(
-        `已保存，但有 ${incompleteCount} 台 host/user/daemonPath 不完整 —— 后端会跳过这些台。补全后重启 monitor 才会连。`,
+        `已保存，但有 ${incompleteCount} 台 host/user/backendPath 不完整 —— 后端会跳过这些台。补全后重启 monitor 才会连。`,
       );
     } else if (fingerprintLooksOff) {
       this.showBanner(
@@ -1134,7 +1134,7 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
     a.port === b.port &&
     a.user === b.user &&
     a.keyPath === b.keyPath &&
-    a.daemonPath === b.daemonPath &&
+    a.backendPath === b.backendPath &&
     a.hostKeyFingerprint === b.hostKeyFingerprint &&
     a.jump === b.jump && // F56（D-I3）:仅改跳板也算变更，触发「需重启生效」提示
     // F45（Phase G 补）:仅改「备用地址」也算变更。此前独漏 addresses（jump 比了）

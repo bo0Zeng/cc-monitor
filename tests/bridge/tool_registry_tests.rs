@@ -776,7 +776,7 @@ fn the_backend_is_one_thing_landing_in_several_places() {
         // ② 推给远端那台机器、在那台机器上当**它的本地后端**跑的那份
         (
             "embedded-backends".into(),
-            "$DAEMON_PATH".into(),
+            "$BACKEND_PATH".into(),
             HostScope::Remote,
         ),
     ];
@@ -984,29 +984,27 @@ const SITES: &[(&str, Why, usize)] = &[
     // 下面那条判据的 `stale` 那一向逐字：「那一处已经改完了，**把这一行删掉**
     // （账不许挂空号：一张挂着空号的表会让人以为债还在那儿，而它其实早还了）」⇒ 照办。
     //
-    // **今天还剩的 12 行，逐档说清为什么还在**：
+    // **今天还剩的 8 行，逐档说清为什么还在**：
     //   · `Why::OldId`（9 行）—— **本来就不该改**（那一档头注逐字「没有解锁条件」）：
     //     订正段 / 墓碑 / 病史里对旧闭集 id 的逐字引用。步 8 的机械替换把这个拼写
     //     **明写进了保护名单**（`tests/evidence/w8-rename.py` 的 `PROTECTED`）。
-    //   · `Why::SymbolName`（3 行 · 共 12 处）—— 🔴 **全部是「远端那份后端的路径」那一族符号**
-    //     （拼法就是本尺子 `stem_sym` 那个针后面再接 `_path`；这里**刻意不写全**，
-    //      写全了本文件自己就成了又一处「还在说旧名字的地方」——第一版就是那样，当场被逮），
-    //     它们跟着 `daemonPath` 走：那是**用户盘上 `config.json` 里那个键**
-    //     （`RemoteConfig` 带 `#[serde(rename_all = "camelCase")]` ⇒ Rust 字段名就是线上键名）。
-    //     改它要配一次读旧键的迁移，而 `设计/90 §1.4` 逐字「单独一刀，不要混进功能改动」
-    //     ⇒ **本拍刻意摘出去**，读数与判词见 `调研/真相源/94-步8改名-判据影响面地图.md` 的 `A1`。
-    //     **解锁条件**：`daemonPath` 那条迁移落地的同一拍。
+    //   · `Why::SymbolName`（**0 行 · 这一档 2026-09-19 清零**）—— 上一版是 3 行共 12 处，
+    //     全部是「远端那份后端的路径」那一族符号。它们跟着**用户盘上 `config.json` 里那个键**走
+    //     （`RemoteConfig` 带 `#[serde(rename_all = "camelCase")]` ⇒ Rust 字段名就是线上键名），
+    //     而那一版写的解锁条件逐字是：「`backendPath` **那条迁移**落地的同一拍」。
+    //     🔴 **它不是被迁移清掉的，是被一条裁决清掉的** —— 条 80（用户 2026-09-19 逐字
+    //     「新版本要完全抛弃旧的」）把「为盘上已有状态写回落」这件事整个撤了 ⇒
+    //     `A1` 那一刀直接改名、**没有写迁移**，代价（已配好的远端主机路径丢一次）由用户承担。
+    //     ⚠ **这条账的写法值得记**：解锁条件写的是「做完某件事」，而真实的出口是
+    //     「那件事被裁定不必做」。⇒ 解锁条件最好写成**可观测的状态**（「盘上不再有这个拼写」），
+    //     而不是**某个动作**（「迁移落地」）——后者遇到「动作被取消」就会指空。
     //   · `Why::Wording`（0 行）—— **这一档清零了**。界面串与散文里那句「远端 ＋ 旧词」
     //     两侧同拍改成了「远端后端」，一处不剩。
-    ("src/acct_iso_deploy.rs", Why::SymbolName, 1),
-    ("src/sftp.rs", Why::SymbolName, 4),
     ("src/skill_host.rs", Why::OldId, 1),
     ("src/structural_scan.rs", Why::OldId, 1),
     ("src/tool_registry.rs", Why::OldId, 2),
-    ("src/tool_registry.rs", Why::SymbolName, 1),
     ("tests/bridge/config_surface_tests.rs", Why::OldId, 4),
     ("tests/bridge/fenced_block_tests.rs", Why::OldId, 1),
-    ("tests/bridge/sftp_tests.rs", Why::SymbolName, 7),
     ("tests/bridge/skill_host_tests.rs", Why::OldId, 1),
     (
         "tests/bridge/tool_registry_environment_tests.rs",

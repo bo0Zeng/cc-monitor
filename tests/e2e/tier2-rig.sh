@@ -69,7 +69,7 @@ cfg = {
             "port": 22,
             "user": os.environ.get("USER") or os.getlogin(),
             "keyPath": f"{real_home}/.ssh/id_ed25519",
-            "daemonPath": f"{rig}/backend-wrapper.sh",
+            "backendPath": f"{rig}/backend-wrapper.sh",
             "hostKeyFingerprint": fp,
             "addresses": [],
             "jump": "",

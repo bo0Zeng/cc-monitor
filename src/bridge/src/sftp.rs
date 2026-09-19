@@ -410,7 +410,7 @@ fn marker_phrase(remote_build_id: Option<&str>, expected: &str) -> String {
 /// `.build_id` 是 **目录级** 的（[`marker_path`] 把它放在二进制的同目录，
 /// 路径里不带二进制名），而 [`deploy_decision`] **只读它、从不 stat 二进制本身**。
 /// 于是那一个读数今天同时被当成两件事用：「版本对不对」**和**「那个文件在不在」。
-/// 已部署且 build 未变的机器上，二进制被删 / 被截成 0 字节 / `daemonPath` 被改到
+/// 已部署且 build 未变的机器上，二进制被删 / 被截成 0 字节 / `backendPath` 被改到
 /// 同目录另一个文件名，标记照旧匹配 ⇒ 判 `Skip` ⇒ 新的字节**永远不会上传**，
 /// 而 exec 走的是那个不存在的路径。
 ///
@@ -463,8 +463,8 @@ fn remote_parent(path: &str) -> &str {
 ///
 /// ⚠ **目录级** —— 路径里不带二进制名。所以它认不出「同目录里换了个文件名」，
 /// 那半个事实由 [`probe_target_binary`] 单独取样（K-W4 `§0c`）。
-fn marker_path(daemon_path: &str) -> String {
-    let dir = remote_parent(daemon_path);
+fn marker_path(backend_path: &str) -> String {
+    let dir = remote_parent(backend_path);
     if dir == "/" {
         "/.build_id".to_string()
     } else {
@@ -546,9 +546,9 @@ async fn probe_remote_arch(cfg: &RemoteConfig) -> Result<String, String> {
     Ok(arch)
 }
 
-/// 连接前确保远端后端已（自动）部署到 `cfg.daemon_path`（issue #29）。
+/// 连接前确保远端后端已（自动）部署到 `cfg.backend_path`（issue #29）。
 ///
-/// 流程：① S-2 守卫（daemon_path 含 `~` → 跳过，SFTP 不展开 `~`）；② 探测远端 arch 选内嵌
+/// 流程：① S-2 守卫（backend_path 含 `~` → 跳过，SFTP 不展开 `~`）；② 探测远端 arch 选内嵌
 /// 二进制（[`backend_binary`]）——无对应 arch 内嵌（F08b 未嵌入该 arch）则**优雅 no-op**；
 /// ③ 开 SFTP、读版本标记、[`deploy_decision`]、需要则 mkdir -p + 原子上传 + 写标记。
 ///
@@ -559,12 +559,12 @@ async fn probe_remote_arch(cfg: &RemoteConfig) -> Result<String, String> {
 /// 是否传新版才认识的流模式参数（如 `--with-bg`）——未确认一律降级不传，
 /// 避免旧后端把未知参数当一次性查询处理后退出（无 hello 死循环）。
 pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String>, String> {
-    // S-2（审计）：SFTP 无 shell 不展开 `~`，而 backend exec 路径会展开——daemon_path 含 `~`
+    // S-2（审计）：SFTP 无 shell 不展开 `~`，而 backend exec 路径会展开——backend_path 含 `~`
     // 会两边错位。含 `~` 直接跳过自动部署（用户应填绝对路径），手动部署的后端仍可连。
-    if cfg.daemon_path.contains('~') {
+    if cfg.backend_path.contains('~') {
         tracing::debug!(
-            "daemon_path 含 ~（SFTP 不展开），跳过自动部署：{}",
-            cfg.daemon_path
+            "backend_path 含 ~（SFTP 不展开），跳过自动部署：{}",
+            cfg.backend_path
         );
         return Ok(None);
     }
@@ -602,12 +602,12 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String
     let conn = connect_sftp(cfg).await?;
     let sftp = &conn.sftp;
 
-    let marker = marker_path(&cfg.daemon_path);
+    let marker = marker_path(&cfg.backend_path);
     let remote_id = read_optional(sftp, &marker)
         .await
         .map(|b| String::from_utf8_lossy(&b).trim().to_string());
     // K-W4 §0c：标记是目录级的，光凭它判 Skip 会在「标记还在、二进制没了」时静默跳过。
-    let target = probe_target_binary(sftp, &cfg.daemon_path).await;
+    let target = probe_target_binary(sftp, &cfg.backend_path).await;
 
     match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
         DeployAction::Skip => {
@@ -621,10 +621,10 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String
             tracing::info!(
                 "远端 [{}] 自动部署后端（{reason}）→ {}",
                 cfg.origin_label(),
-                cfg.daemon_path
+                cfg.backend_path
             );
-            ensure_dir_all(sftp, remote_parent(&cfg.daemon_path)).await;
-            upload_atomic_verified(sftp, &cfg.daemon_path, bin.bytes, 0o700).await?;
+            ensure_dir_all(sftp, remote_parent(&cfg.backend_path)).await;
+            upload_atomic_verified(sftp, &cfg.backend_path, bin.bytes, 0o700).await?;
             upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
             tracing::info!(
                 "远端 [{}] backend 部署完成：{}",
@@ -711,7 +711,7 @@ pub fn backend_binary(arch: &str) -> Option<&'static BackendBinary> {
 
 // ============================================================================
 // F08c：手动安装 / 卸载后端（设置面板两个按钮）。安装逻辑同自动部署、但返回人读结果；
-// 卸载删后端二进制 + 同目录 .build_id（is_safe_remote_daemon_path 守卫）。
+// 卸载删后端二进制 + 同目录 .build_id（is_safe_remote_backend_path 守卫）。
 // ============================================================================
 
 /// 远端受管路径的安全谓词。**T04 审计⑤：两个消费者、5 个条件里 4 个逐字相同，
@@ -732,7 +732,7 @@ pub(crate) fn is_safe_remote_managed_path(path: &str, markers: &[&str]) -> bool 
 
 /// 远端后端路径安全守卫（卸载用，纯函数可单测）：绝对、无 `..`、非根、且含 `cc-monitor`
 /// （约定 `~/.cc-monitor/bin/cc-monitor-backend`）—— 杜绝把卸载误用成删任意远端文件。
-fn is_safe_remote_daemon_path(path: &str) -> bool {
+fn is_safe_remote_backend_path(path: &str) -> bool {
     is_safe_remote_managed_path(path, &["cc-monitor"])
 }
 
@@ -741,7 +741,7 @@ fn is_safe_remote_daemon_path(path: &str) -> bool {
 /// （路径含 `~` / 探测不到 arch / 无该 arch 内嵌）显式报错——手动触发时用户要反馈。
 #[tauri::command]
 pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
-    let path = cfg.daemon_path.trim().to_string();
+    let path = cfg.backend_path.trim().to_string();
     if path.is_empty() {
         return Err(
             "请先填后端路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-backend）".into(),
@@ -790,15 +790,15 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
 }
 
 /// 卸载远端后端（设置面板「卸载后端」按钮）：删后端二进制 + 同目录 `.build_id`。
-/// [`is_safe_remote_daemon_path`] 守卫。只读铁律豁免（SS-G）：用户显式触发的删。
+/// [`is_safe_remote_backend_path`] 守卫。只读铁律豁免（SS-G）：用户显式触发的删。
 /// 注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
 pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
-    let path = cfg.daemon_path.trim().to_string();
+    let path = cfg.backend_path.trim().to_string();
     if path.contains('~') {
         return Err("backend 路径含 ~（SFTP 不展开），请改用绝对路径后再卸载".into());
     }
-    if !is_safe_remote_daemon_path(&path) {
+    if !is_safe_remote_backend_path(&path) {
         return Err(format!(
             "拒绝删除可疑后端路径（须为含 cc-monitor 的绝对路径、无 ..）: {path}"
         ));
@@ -1191,10 +1191,10 @@ pub async fn install_remote_ccm_helper(
     }
     // 🔴 `K-R48` 第二拍：推的不再是那个 1592 行的 bash 启动器，是 [`ccm_entry_shim`]
     //    —— 三行、零实现，只把 argv 转给**已经部署好的后端**（`ensure_backend_deployed`
-    //    把它推到 `cfg.daemon_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-backend`）。
+    //    把它推到 `cfg.backend_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-backend`）。
     // ⚠ **入口与后端本体的部署是两条路，这里刻意不合并**：本函数是「装 shell 便捷层」，
     //   后端本体由连接流程自己保证；合并就等于在这条路上再造一次部署逻辑（第二处实现）。
-    let shim = ccm_entry_shim(&cfg.daemon_path);
+    let shim = ccm_entry_shim(&cfg.backend_path);
     upload_atomic(sftp, CCM_CLI_REMOTE_PATH, shim.as_bytes(), 0o755)
         .await
         .map_err(|e| format!("部署 ccm 入口到远端 ~/{CCM_CLI_REMOTE_PATH} 失败: {e}"))?;

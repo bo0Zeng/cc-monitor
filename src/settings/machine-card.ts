@@ -156,17 +156,17 @@ export interface MachineCardHooks {
   onStatusChanged?: (card: MachineCard) => void;
 }
 /**
- * daemonPath placeholder：必须是**绝对路径**。SSH exec 不经 shell，`~` 不会被展开，
+ * backendPath placeholder：必须是**绝对路径**。SSH exec 不经 shell，`~` 不会被展开，
  * 故用 `/home/<user>/...` 形式而非 `~/...`（避免误导用户以为 `~` 可用）。
  */
-const DAEMON_PATH_PLACEHOLDER =
+const BACKEND_PATH_PLACEHOLDER =
   "/home/<user>/.cc-monitor/bin/cc-monitor-backend";
 /**
- * 按远端用户名生成 daemonPath 默认值（与自动部署的约定路径一致，
+ * 按远端用户名生成 backendPath 默认值（与自动部署的约定路径一致，
  * 见 src/doc/REMOTE-PHASE0-DEPLOY.md）。root 的 home 不在 /home 下，特判。
  * 只是预填——远端 home 不标准（如 macOS /Users）时用户可改，「测试连接」会暴露问题。
  */
-export function defaultDaemonPathFor(user: string): string {
+export function defaultBackendPathFor(user: string): string {
   const home = user === "root" ? "/root" : `/home/${user}`;
   return `${home}/.cc-monitor/bin/cc-monitor-backend`;
 }
@@ -186,7 +186,7 @@ export class MachineCard {
   private portInput!: HTMLInputElement;
   private userInput!: HTMLInputElement;
   private keyPathInput!: HTMLInputElement;
-  private daemonPathInput!: HTMLInputElement;
+  private backendPathInput!: HTMLInputElement;
   private fingerprintInput!: HTMLInputElement;
   private addressesInput!: HTMLTextAreaElement;
   private jumpInput!: HTMLInputElement;
@@ -241,7 +241,7 @@ export class MachineCard {
       port: parsePort(this.portInput.value),
       user: this.userInput.value.trim(),
       keyPath: this.keyPathInput.value.trim(),
-      daemonPath: this.daemonPathInput.value.trim(),
+      backendPath: this.backendPathInput.value.trim(),
       hostKeyFingerprint: this.fingerprintInput.value.trim(),
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
@@ -257,8 +257,8 @@ export class MachineCard {
     this.userInput.value = resolved.user;
     this.keyPathInput.value = resolved.keyPath ?? "";
     if (resolved.proxyJump) this.jumpInput.value = resolved.proxyJump; // F57 S-2:单别名也填跳板
-    if (!this.daemonPathInput.value.trim() && resolved.user) {
-      this.daemonPathInput.value = defaultDaemonPathFor(resolved.user);
+    if (!this.backendPathInput.value.trim() && resolved.user) {
+      this.backendPathInput.value = defaultBackendPathFor(resolved.user);
     }
     this.updateLegend();
   }
@@ -349,10 +349,10 @@ export class MachineCard {
       "如 ubuntu / pi / root",
       onChange,
     );
-    this.daemonPathInput = buildTextRow(
+    this.backendPathInput = buildTextRow(
       body,
-      "backend 路径 (daemonPath)",
-      DAEMON_PATH_PLACEHOLDER,
+      "backend 路径 (backendPath)",
+      BACKEND_PATH_PLACEHOLDER,
       onChange,
     );
     const backendHint = document.createElement("div");
@@ -360,12 +360,12 @@ export class MachineCard {
     backendHint.textContent =
       "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-backend）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
     body.appendChild(backendHint);
-    // F13：手动填完 user（change = 失焦提交，避免逐键拿半截用户名）后，daemonPath
+    // F13：手动填完 user（change = 失焦提交，避免逐键拿半截用户名）后，backendPath
     // 为空则按约定路径预填——与 ssh config 导入（applyResolved）同一兜底；已有值不覆盖。
     this.userInput.addEventListener("change", () => {
       const user = this.userInput.value.trim();
-      if (user && !this.daemonPathInput.value.trim()) {
-        this.daemonPathInput.value = defaultDaemonPathFor(user);
+      if (user && !this.backendPathInput.value.trim()) {
+        this.backendPathInput.value = defaultBackendPathFor(user);
         onChange();
       }
     });
@@ -538,7 +538,7 @@ export class MachineCard {
       // K-W4 §0c：此前这句写「已是最新则跳过」，而「最新」当时只看同目录 .build_id
       // 那个字符串 —— 落点那个文件被删/截成 0 字节时它照样跳过，且回「无需重装」。
       // 判定改成两个事实各自说话之后，这句话跟着说清跳过的条件是两条。
-      "把内嵌的后端二进制按远端架构装到 daemonPath（版本已是最新、且落点那个文件在，才跳过）",
+      "把内嵌的后端二进制按远端架构装到 backendPath（版本已是最新、且落点那个文件在，才跳过）",
       () => void this.onDeployBackend(),
     );
     actionRow.appendChild(this.backendInstallButton);
@@ -592,7 +592,7 @@ export class MachineCard {
     this.portInput.value = cfg.port ? String(cfg.port) : "";
     this.userInput.value = cfg.user;
     this.keyPathInput.value = cfg.keyPath;
-    this.daemonPathInput.value = cfg.daemonPath;
+    this.backendPathInput.value = cfg.backendPath;
     this.fingerprintInput.value = cfg.hostKeyFingerprint;
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
@@ -678,8 +678,8 @@ export class MachineCard {
   /** 点「测试连接」：组本卡片 → test_remote_connection → 渲染结果。 */
   private async onTestConnection(): Promise<void> {
     const cfg = this.collect();
-    if (!cfg.host || !cfg.user || !cfg.daemonPath) {
-      this.renderTestResult(null, "请先填好 host / user / daemonPath 再测试。");
+    if (!cfg.host || !cfg.user || !cfg.backendPath) {
+      this.renderTestResult(null, "请先填好 host / user / backendPath 再测试。");
       return;
     }
     this.testButton.disabled = true;
@@ -1013,11 +1013,11 @@ export class MachineCard {
     this.renderStatusStrip();
   }
 
-  /** F08c：点「安装后端」——把内嵌后端按远端架构装到 daemonPath。 */
+  /** F08c：点「安装后端」——把内嵌后端按远端架构装到 backendPath。 */
   private async onDeployBackend(): Promise<void> {
     const cfg = this.collect();
-    if (!cfg.host || !cfg.user || !cfg.daemonPath) {
-      this.showResultText("请先填好 host / user / daemonPath 再安装后端。");
+    if (!cfg.host || !cfg.user || !cfg.backendPath) {
+      this.showResultText("请先填好 host / user / backendPath 再安装后端。");
       return;
     }
     await this.runRemoteAction(
@@ -1031,13 +1031,13 @@ export class MachineCard {
   /** F08c：点「卸载后端」——删远端后端二进制 + .build_id（二次确认）。 */
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
-    if (!cfg.host || !cfg.user || !cfg.daemonPath) {
-      this.showResultText("请先填好 host / user / daemonPath 再卸载后端。");
+    if (!cfg.host || !cfg.user || !cfg.backendPath) {
+      this.showResultText("请先填好 host / user / backendPath 再卸载后端。");
       return;
     }
     if (
       !window.confirm(
-        `确认从 ${cfg.host} 删除后端？\n会删：${cfg.daemonPath} 及同目录 .build_id。\n（若该机器仍勾选启用，下次连接会自动装回。）`,
+        `确认从 ${cfg.host} 删除后端？\n会删：${cfg.backendPath} 及同目录 .build_id。\n（若该机器仍勾选启用，下次连接会自动装回。）`,
       )
     ) {
       return;

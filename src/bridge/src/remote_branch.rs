@@ -79,10 +79,10 @@ fn validate_fork_id(what: &str, s: &str) -> Result<(), String> {
 }
 
 /// 拼远端命令。两个 id 已过白名单，仍照常 `shell_quote`（纵深防御，同 `--search`）。
-fn build_fork_cmd(daemon_path: &str, source_sid: &str, message_uuid: &str) -> String {
+fn build_fork_cmd(backend_path: &str, source_sid: &str, message_uuid: &str) -> String {
     format!(
         "{} --fork-session {} {}",
-        ssh_source::shell_quote(daemon_path),
+        ssh_source::shell_quote(backend_path),
         ssh_source::shell_quote(source_sid),
         ssh_source::shell_quote(message_uuid),
     )
@@ -164,7 +164,7 @@ pub async fn create_remote_branch_session(
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
 
-    let cmd = build_fork_cmd(&cfg.daemon_path, &source_session_id, &message_uuid);
+    let cmd = build_fork_cmd(&cfg.backend_path, &source_session_id, &message_uuid);
     let ex = tokio::time::timeout(
         FORK_TIMEOUT,
         ssh_source::connect_and_exec_capture(&cfg, &cmd, Some(HELLO_MARKER)),

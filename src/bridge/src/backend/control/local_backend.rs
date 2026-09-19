@@ -1059,7 +1059,7 @@ pub fn native_embedded_backend() -> Option<(&'static str, &'static [u8])> {
     // `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason`
     // 默认拒绝解析不出路径的 `include_*!`，而它的登记表不在本件写区 —— 实测当场红）。
     // ⇒ 名字定死在两处：这一行，与 `build.rs` 的 `NATIVE_BACKEND_DIR`/`NATIVE_BACKEND_FILE`。
-    //   两处同一个串由 `the_native_daemon_path_is_spelled_the_same_on_both_sides` 对拍
+    //   两处同一个串由 `the_native_backend_path_is_spelled_the_same_on_both_sides` 对拍
     //   （闭集本该只有一个住址，这一处是 `include_bytes!` 的语法逼出来的例外 ⇒ 用判据补上）。
     // ⚠ 目录名**刻意不是** `embedded-backends`：那个串是 `local_backend_host.rs` 那条
     //   「谁会起真后端」判据认来历用的，写进本文件的生产段会把整段代码拖进它的人群
@@ -1223,10 +1223,10 @@ pub fn local_ccm_entry_name() -> String {
 /// 只有窗格里那一行是红的 —— 而 `--print` 吐的是同一条坏命令，所以平价预言机也不会红。
 /// ⇒ 用 `$0`（`sh` 里就是「我是被当作什么叫的」那个路径，经 PATH 调用时也是绝对路径）
 /// 把入口名补回去，正是 `CCM_SELF` 那条注释写的语义。外部已设则不覆盖。
-pub fn ccm_entry_shim(daemon_path: &str) -> String {
+pub fn ccm_entry_shim(backend_path: &str) -> String {
     format!(
         "#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\n# CCM_SELF：内层载荷要用「我是被当作什么叫的」那个名字，不是二进制真身（容器路靠它）。\nCCM_SELF=\"${{CCM_SELF:-$0}}\" exec {} {CCM_ENTRY_WORD} \"$@\"\n",
-        shell_quote_core::posix_quote(daemon_path)
+        shell_quote_core::posix_quote(backend_path)
     )
 }
 
@@ -1237,7 +1237,7 @@ pub fn ccm_entry_shim(daemon_path: &str) -> String {
 /// 三条路各自为什么不走，写清楚免得下一个人以为是随手选的：
 /// · **不写一个壳** —— `K33` 逐字「所有命令只许有一处」。多一份壳就多一处要跟着改的东西，
 ///   而 `KR69D1` 的失效方向逐字写着「在本机再写一个 `ccm` 壳 ⇒ 不算兑现」。
-/// · **不写 shim** —— 远端那条只能是 shim（后端落点由用户配置的 `daemon_path` 决定，
+/// · **不写 shim** —— 远端那条只能是 shim（后端落点由用户配置的 `backend_path` 决定，
 ///   而且推过去的是文本）；本机这一份的字节**我们手里就有**，直接给它一个名字最省。
 ///   而且 `#!/bin/sh` 那一形在 Windows 上根本起不来，本层不许认识平台（`C10`）。
 /// · **不做软链** —— `std::os::unix::fs::symlink` 与 Windows 那条都是**平台原语**，

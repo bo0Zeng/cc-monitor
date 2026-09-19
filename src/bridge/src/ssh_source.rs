@@ -155,7 +155,7 @@ fn next_backoff(cur: Duration) -> Duration {
 /// Tier 1（issue #15）的「测试连接」命令直接收前端传来的同形对象（camelCase）。
 ///
 /// **serde camelCase 必须与前端 RemoteHostConfig / lib.rs::load_remote_configs 严格一致**：
-/// host / port / user / keyPath / daemonPath / hostKeyFingerprint / label（多机 #30，
+/// host / port / user / keyPath / backendPath / hostKeyFingerprint / label（多机 #30，
 /// 可选，缺省回退 host）。前端多发的 `enabled`
 /// 字段被忽略（serde 默认丢弃未知字段，测试连接不关心 enabled）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,7 +173,7 @@ pub struct RemoteConfig {
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub key_path: Option<String>,
     /// 远端要 exec 的后端命令（含参数前缀由 S5 决定）。
-    pub daemon_path: String,
+    pub backend_path: String,
     /// 期望的 server host key 指纹（`SHA256:...` 形式）。
     /// Some = 严格校验（TOFU 之后固化）；None = 首次连接 TOFU 接受并 LOUD warn。
     #[serde(default, deserialize_with = "empty_string_as_none")]
@@ -860,7 +860,7 @@ async fn authenticate_via_agent(
     Err("未配置私钥路径(keyPath)，且本平台暂不支持 ssh-agent".to_string())
 }
 
-/// 连接远端、鉴权、开 session channel、exec `cfg.daemon_path`，
+/// 连接远端、鉴权、开 session channel、exec `cfg.backend_path`，
 /// 返回 channel 的双向流（`AsyncRead + AsyncWrite`）——读端即后端的 stdout 数据。
 ///
 /// 鉴权委托给 [`connect_session`]（publickey 或 ssh-agent）。
@@ -1243,7 +1243,7 @@ pub async fn connect_and_exec(
     // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定
     // "部署确认为当前版本"，见该处注释）。tail_only=true → backend 不重放历史
     // （历史由本侧旁路 --read-session 快照拉取），实时通道流量趋零。
-    let mut cmd = shell_quote(&cfg.daemon_path);
+    let mut cmd = shell_quote(&cfg.backend_path);
     if with_bg {
         cmd.push_str(" --with-bg");
     }
@@ -1922,7 +1922,7 @@ async fn fetch_snapshot(
     // meta 解析仍留防御回退）。
     let cmd = format!(
         "{} --read-session-tail {} {SNAPSHOT_TAIL_LINES}",
-        shell_quote(&cfg.daemon_path),
+        shell_quote(&cfg.backend_path),
         shell_quote(path)
     );
     let stream = connect_and_exec_cmd(cfg, &cmd).await?;
@@ -2055,7 +2055,7 @@ fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
 }
 
 /// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走
-/// `<daemon_path> --list-projects` 等一次性命令，与流式后端同一连接建立逻辑、
+/// `<backend_path> --list-projects` 等一次性命令，与流式后端同一连接建立逻辑、
 /// 各自独立连接互不影响）。
 pub async fn connect_and_exec_cmd(
     cfg: &RemoteConfig,
@@ -2920,7 +2920,7 @@ pub async fn run(
         cfg.user,
         cfg.host,
         cfg.port,
-        cfg.daemon_path
+        cfg.backend_path
     );
 
     // FIX 2（issue #15 review）：跟踪当前**已向前端宣告**的远端 sid。stream_loop 在每条
@@ -3122,7 +3122,7 @@ async fn stream_loop(
     // ⚠ 埋点本身**不改任何行为**，也不该改：它只是让下一次讨论有数可依。
     let t_connect_start = std::time::Instant::now();
 
-    // issue #29（F08）：连接前确保远端后端已（自动）部署到 cfg.daemon_path。
+    // issue #29（F08）：连接前确保远端后端已（自动）部署到 cfg.backend_path。
     // 嵌入二进制就位前（F08b 未做）backend_binary() 返回 None → ensure_backend_deployed
     // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的后端仍可连。
     // ★ F05 下半：**上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接**。
@@ -4204,8 +4204,8 @@ pub async fn test_remote_connection(
     result.endpoint = Some(format!("{}:{}", win.host, win.port));
 
     // 3. exec backend 并等首行 hello。
-    let daemon_path = cfg.daemon_path.clone();
-    match probe_backend(&session, &daemon_path).await {
+    let backend_path = cfg.backend_path.clone();
+    match probe_backend(&session, &backend_path).await {
         Ok(Some(probe)) => {
             result.backend_ok = true;
             result.message = if probe.control_ok {
@@ -4267,16 +4267,16 @@ struct BackendProbe {
 /// - `Err(_)`          —— channel/exec/IO 硬错误。
 async fn probe_backend(
     session: &client::Handle<ClientHandler>,
-    daemon_path: &str,
+    backend_path: &str,
 ) -> Result<Option<BackendProbe>, String> {
     let channel = session
         .channel_open_session()
         .await
         .map_err(|e| format!("打开 session channel 失败: {e}"))?;
     channel
-        .exec(true, daemon_path.as_bytes())
+        .exec(true, backend_path.as_bytes())
         .await
-        .map_err(|e| format!("exec {daemon_path} 失败: {e}"))?;
+        .map_err(|e| format!("exec {backend_path} 失败: {e}"))?;
 
     // U8a-2a：切成两半，写半边同一步停住（见 `inbound_client::split_and_park`）。
     let (rh, parked) =

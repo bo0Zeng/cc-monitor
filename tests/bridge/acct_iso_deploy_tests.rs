@@ -5,7 +5,7 @@ fn probe_cfg() -> RemoteConfig {
         port: 1,
         user: "nobody".into(),
         key_path: None,
-        daemon_path: "/tmp/nope".into(),
+        backend_path: "/tmp/nope".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,

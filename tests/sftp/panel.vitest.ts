@@ -29,7 +29,7 @@ const CFG = {
   port: 22,
   user: "u",
   keyPath: "",
-  daemonPath: "",
+  backendPath: "",
   hostKeyFingerprint: "",
   addresses: [],
   jump: "",

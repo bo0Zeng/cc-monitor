@@ -41,7 +41,7 @@ fn cfg(label: &str) -> RemoteConfig {
         "host": format!("{label}.example"),
         "label": label,
         "user": "u",
-        "daemonPath": "/opt/cc-monitor-backend",
+        "backendPath": "/opt/cc-monitor-backend",
     }))
     .expect("夹具配置")
 }

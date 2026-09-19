@@ -2,7 +2,7 @@
 # auto-e2e F-E1(全链级):驱 gray-light 生命周期,断言 monitor 日志里的 `[e2e] tab-state` 序列。
 # **前置**(同 tests/e2e/f40-suite.sh 契约,见 tests/e2e/README):
 #   - Xvfb 上跑着 dev 实例(`npx tauri dev`,DEV 探针内建);
-#   - config.json 配了一个 loopback 远端,daemonPath 指向 tests/e2e/backend-wrapper.sh
+#   - config.json 配了一个 loopback 远端,backendPath 指向 tests/e2e/backend-wrapper.sh
 #     (把后端的 CLAUDE_CONFIG_DIR 钉到隔离 fixture 目录,防与本地会话双 tab);
 #   - 本机可读 monitor 日志(fe_perf/[e2e] 行是断言数据源)。
 # 序列(跨进程整链,单测碰不到):
@@ -79,7 +79,7 @@ ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 TmuxSessions 帧 +
 #
 # 病史：查 #60 时**连着六次**跑出「1 过 2 败」，而**每一次的成因都不是 #60** ——
 #   ① 陈旧 pidfile（读到上一跑的残骸，kill 打给死 pid）
-#   ② `daemonPath` 指向真后端而非本 wrapper（backend 盯 `~/.claude` 不是 fixture）
+#   ② `backendPath` 指向真后端而非本 wrapper（backend 盯 `~/.claude` 不是 fixture）
 #   ③ wrapper 副本搬出仓外后 `$REPO` 推错 ⇒ 回落到陈旧 backend
 #   ④ 跑的是 `target/debug/monitor` 而非 `npx tauri dev` ⇒ **DEV 探针整支被 vite 消除**
 #   ⑤ `P0d` 换 socket 隔离后后端与套件**分家**（backend 在 SSH 那头，不吃 shim）

@@ -1116,7 +1116,7 @@ fn never(_: &Path) -> bool {
 /// P2z-Y2（自批 D1）：**本机释放点与远端部署点结构上不许撞**。
 ///
 /// 钉的是**构造方式**不是两个字面量不相等 —— 后者一改配置就绕过去了
-/// （远端落点由 `cfg.daemon_path` 给，是**运行期**的值，编译期比不了）。
+/// （远端落点由 `cfg.backend_path` 给，是**运行期**的值，编译期比不了）。
 /// 所以断言：那条路径必须由 `build_id` 拼出来。
 ///
 /// 病史：实测 08-11 本机 `~/.cc-monitor/bin/.build_id` = `p1r-event-liveness`
@@ -1799,7 +1799,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
 /// ⚠ 诚实边界：它对的是**拼法**，不是「那个文件真在那儿」——
 /// 真不在时 `build.rs` 不置 cfg，`include_bytes!` 整个不参与编译（那一格由构建本身守）。
 #[test]
-fn the_native_daemon_path_is_spelled_the_same_on_both_sides() {
+fn the_native_backend_path_is_spelled_the_same_on_both_sides() {
     // 🔴 **必须是 `include_str!`，不许 `std::fs::read_to_string`** —— 后者是
     //    `needle_anchor_registry::CORPUS_SEEDS` 的**种子**：写下它，这个函数里的局部
     //    （`line` / `s` / `e` …）会被那条棘轮的传递闭包一路认成「语料变量」，

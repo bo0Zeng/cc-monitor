@@ -1279,7 +1279,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
             what: "E · launch.rs（进程级，开窗那一跳）",
             src: include_str!("../../../../src/bridge/src/launch.rs"),
             // 3 处：POSIX 开窗 1 + Windows 两个 spawn 点各 1（`launch.rs` 自己那条
-            // `every_terminal_window_backend_opens_carries_the_daemon_path` 也数这个数）。
+            // `every_terminal_window_backend_opens_carries_the_backend_path` 也数这个数）。
             needle: ".env(k, v)",
             want: 3,
             wired: Some(NOT_WIRED_WINDOW),

@@ -623,7 +623,7 @@ export class AccountsSection {
         // 探测不依赖 dest（D 审计 S2/S5：只 command -v 一次 exec，任何配置下都能判 installed）。
         const status = await commands.check_remote_acct_iso({ cfg: host });
         if (!status.installed) {
-          const dest = deriveAcctIsoDir(host.daemonPath, host.user);
+          const dest = deriveAcctIsoDir(host.backendPath, host.user);
           this.renderNeedsDeploy(host, dest);
           return;
         }
@@ -644,13 +644,13 @@ export class AccountsSection {
     h.textContent = "该远端还没装多账号管线（cc-acct-iso）";
     box.appendChild(h);
 
-    // dest 推不出（缺 daemonPath 且 user 缺失/非法）→ 给不出一键部署落点，退回文字指引，不留死角。
+    // dest 推不出（缺 backendPath 且 user 缺失/非法）→ 给不出一键部署落点，退回文字指引，不留死角。
     if (!dest) {
       const p = document.createElement("div");
       p.className = "accounts-ne-desc";
       p.textContent =
-        "多账号靠 cc-acct-iso（每账号一个隔离配置目录、数据共享）。这台远端缺 daemonPath / 用户名，" +
-        "自动推不出部署目录——请先在「连接」组填好远端 user / daemonPath，再回来一键部署。";
+        "多账号靠 cc-acct-iso（每账号一个隔离配置目录、数据共享）。这台远端缺 backendPath / 用户名，" +
+        "自动推不出部署目录——请先在「连接」组填好远端 user / backendPath，再回来一键部署。";
       box.appendChild(p);
       this.body.appendChild(box);
       return;

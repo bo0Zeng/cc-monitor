@@ -137,7 +137,7 @@ fn a_symlink_inside_the_tree_is_not_a_hit() {
 
 /// 子 agent 记录不可分叉 —— 这条判据在共享 crate 里，这里钉住后端真的走了它。
 #[test]
-fn sidechain_reject_reaches_daemon_path() {
+fn sidechain_reject_reaches_backend_path() {
     let root = tmp("side");
     seed(&root, "sc");
     let f = root.join("projects").join("proj").join("sc.jsonl");

@@ -455,14 +455,14 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 /// | `backend_bin_env_for_window(` | 2 | **1** |
 ///
 /// ⇒ 本文件那条**普通 `#[test]`**
-/// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_daemon_path`
+/// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path`
 /// （就在 `cargo` 门里跑）用**三条等号断言**钉着这 5 个构造。
 ///
 /// **实打（`C` 第十轮 刀 `R10M1`，沙箱快道 `cargo test -p monitor --lib`，09-02）**：
 /// 把本函数体里 Plan B 那个 `if let Some((k, v)) = backend_env { builder.env(k, v); }`
 /// 换成 `let _ = backend_env;`（＝真实缺陷形状「开窗点漏了带 env」；锚点是那三行，**全文命中 1**）
 /// ⇒ **`1243 passed; 2 failed`**（同树干净分母 **`1245 passed; 0 failed`**），红名单**恰好两条**：
-/// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_daemon_path` 与
+/// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 与
 /// `payload_tests.rs::the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated`。
 ///
 /// ⚠ **分母话**：那是**一刀打出来的红名单**，不是「全部判据」的枚举 ——

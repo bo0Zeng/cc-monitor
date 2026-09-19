@@ -543,7 +543,7 @@ fn every_host_declaration_is_pinned() {
         //    ⚠ 标 `Either` 会说假话：①② 那两份远端那台上没有。
         ("backend", "$APP_DIR", Client),
         ("backend", "~/.cc-monitor/bin/cc-monitor-local-*", Client),
-        ("backend", "$DAEMON_PATH", Remote),
+        ("backend", "$BACKEND_PATH", Remote),
         ("project-mcp", ".mcp.json", ProjectDir),
         ("powershell-profile", "$PROFILE", Client),
         // 〔`K-R62` 09-11〕本机 POSIX 那一格补上之后升进 `TOOLS` 的那一条。
@@ -750,7 +750,7 @@ fn destination_checks_still_run_under_every_host() {
 /// `acct_iso_deploy` 对齐，所以这张告知页可以自信地说错而门禁不会红。
 /// 追查下去比审计报的更严重——**六条声明里三条没有任何代码支撑**：
 /// `remote-daemon` 的 `.local/bin/ccm-backend` 全仓只出现在注册表自己里
-/// （真实是 `RemoteConfig.daemon_path`）、`cc-acct-iso` 声明成本机而实际是远端 +
+/// （真实是 `RemoteConfig.backend_path`）、`cc-acct-iso` 声明成本机而实际是远端 +
 /// 前端传的 `dest_dir`、`cc-bus` 的落点是未实现的愿景。
 /// 前两条已改成 `ToolDestination::UserConfiguredPath`（承认"这是配置项"），
 /// 剩下**真有常量**的两条在这里用 `pin_definition` 钉死。
