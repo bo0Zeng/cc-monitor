@@ -38,6 +38,29 @@ edition = "2021"
 name = "cc-monitor-remote"
 path = "main.rs"
 
+# ── 秤 7（`调研/设计/17 §6` 表第 7 行）：`benches/` 从零立的第一条 ───────────────
+#
+# `harness = false`：不写 `[[bench]]` 的话 cargo 会套 libtest 的 bench harness，
+# 那个要 `#![feature(test)]`（nightly）。本仓是 stable + **断网**（`~/.cargo` 里没有
+# criterion 的 `.crate`，`--offline` 解析不动）⇒ 自带 `fn main()` + `std::time::Instant`。
+# **不为了好看去联网。**
+#
+# 🔴 **为什么源码不住 `src/backend/benches/`** —— 现打，不是偏好：
+# 本 crate 有 **17 个扫描型守卫**按 `guard_support::src_root()`（= 本 manifest 所在目录）
+# **递归走全树收 `.rs`**。其中 `no_timer_guard::periodic_wake_patterns()` 的禁用表里
+# 逐字有一条 `format!("{}::now", "Instant")` —— 而一把计时的秤**必须**调它。
+# ⇒ 只要这个文件落在 `src/backend/` 下面任何一层，`daemon_production_code_has_no_periodic_wakeups`
+# 当场红，而那条守卫住 `tests/backend/`、不在本件的写区里。
+# 同理还有 `readonly_guard::every_fs_call_in_daemon_production_is_read_only` 那张只读白名单。
+# ⇒ 源码放 `tests/evidence/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
+#   `src/backend/` 与 `tests/backend/`），住址由本节的 `path` 指过去。
+#   这与 `.cargo/config.toml` 把 `target-dir` 挪出源码树是**同一条理由的第二例**：
+#   「源码树上多一个 `.rs`」对这个仓来说从来不是中性的。
+[[bench]]
+name = "s7_history_read"
+path = "../../tests/evidence/S7-history-read.rs"
+harness = false
+
 [dependencies]
 # Versions pinned to whatever ../bridge/Cargo.lock already resolved so the
 # local cargo cache serves these offline (serde 1.0.228 / serde_json 1.0.x,
