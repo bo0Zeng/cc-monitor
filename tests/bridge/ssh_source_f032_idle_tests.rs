@@ -124,7 +124,7 @@ fn the_tmux_cache_has_one_writer_and_only_origin_keys() {
         .lines()
         .skip(1)
         // ⚠ 收尾行**不写字面量右花括号** —— 本仓有判据用「花括号配平」剥测试段
-        // （`ssh_source::strip_cfg_test`），源码里多一个孤立的右花括号会让它**提前闭合**（`b'…'` 的字符字面量也算，我第一次「修」时就还带着一个），
+        // （剥法的唯一住址是 `guard_core::production_source`），源码里多一个孤立的右花括号会让它**提前闭合**（`b'…'` 的字符字面量也算，我第一次「修」时就还带着一个），
         // 测试段整段泄漏进「生产段」⇒ 别的判据当场误报（08-11 实测：单写者守卫红了）。
         .take_while(|l| *l != "\u{7d}")
         .collect::<Vec<_>>()
@@ -272,39 +272,10 @@ fn remote_idle_single_writer_guard() {
     // 单写者此前靠注释约定、`cargo check` 抓不住（同 §8「漏 manage 带病 5 版本」失败类）。本测把
     // 约定机器化：扫 src/bridge 生产源码（剥 cfg(test) 块 + 跳注释/定义行），断言对 mark_idle/
     // clear_idle 的**调用**只出现在 lib.rs。emitter 之外新增写者 → 本测红。
-    fn strip_cfg_test(src: &str) -> String {
-        // 括号配平剥掉 `#[cfg(test)]` 修饰的块（同 daemon readonly_guard 的证明过的做法）。
-        let mut out = String::new();
-        let mut rest = src;
-        while let Some(pos) = rest.find("#[cfg(test)]") {
-            out.push_str(&rest[..pos]);
-            let after = &rest[pos..];
-            match after.find('{') {
-                Some(brace) => {
-                    let b = after.as_bytes();
-                    let (mut depth, mut end) = (0i32, brace);
-                    while end < after.len() {
-                        match b[end] {
-                            b'{' => depth += 1,
-                            b'}' => {
-                                depth -= 1;
-                                if depth == 0 {
-                                    end += 1;
-                                    break;
-                                }
-                            }
-                            _ => {}
-                        }
-                        end += 1;
-                    }
-                    rest = &after[end..];
-                }
-                None => rest = &after["#[cfg(test)]".len()..],
-            }
-        }
-        out.push_str(rest);
-        out
-    }
+    // 🔴 〔`99 §2.5 P9` 2026-09-18〕剥法从本文件里那份就地复制的括号配平，换成唯一住址
+    // `guard_core::production_source`。**不是因为剥法没必要了** —— 现打：这棵树上它今天
+    // 仍然剥掉 1 429 612 字节、`src/bridge/src` 里还住着 314 个 `#[test]`；
+    // 换住址之后残留的测试属性 42 → 4。理由是 `设计/16 §5.1`：一条形状只许有一个住址。
     fn is_comment(l: &str) -> bool {
         let t = l.trim_start();
         t.starts_with("//") || t.starts_with('*') || t.starts_with("/*")
@@ -327,7 +298,8 @@ fn remote_idle_single_writer_guard() {
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_string();
-            let prod = strip_cfg_test(&std::fs::read_to_string(&path).expect("read rs"));
+            let prod =
+                guard_core::production_source(&std::fs::read_to_string(&path).expect("read rs"));
             for line in prod.lines() {
                 if is_comment(line) {
                     continue;
