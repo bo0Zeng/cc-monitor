@@ -25,6 +25,33 @@ const RAW_WALKS: &[&str] = &["read_dir(", "WalkDir", "collect_rs(", "collect_ts(
 ///   （删掉的那份文件还在裸遍历 ⇒ 当场以 `newcomers` 红）。
 /// - 它**挡不住把那条判据本身删掉** —— 买的是**留痕**，不是不可能。
 const PENDING: &[&str] = &[
+    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**下面 15 行换了住址，条数一格没变。**
+    //    整份是判据的那批 registry 文件这一轮剖分了 ⇒ 它们的裸遍历跟着测试段
+    //    搬进了 `tests/bridge/`。`PENDING_CEILING` **没有动** —— 一个裸遍历都没少。
+    //    逐份点名（`src/bridge/src/X.rs` → `tests/bridge/…`）：
+    //      `atomic_replace_registry.rs`      → `atomic_replace_registry_tests.rs`
+    //      `backend/mod.rs`                  → `backend_layering.rs`〔见下面那条注〕
+    //      `backend/observe/local_query.rs`  → `backend/observe/local_query_tests.rs`
+    //      `cross_half_edge_registry.rs`     → `cross_half_edge_registry_tests.rs`
+    //      `doc_claim_registry.rs`           → `doc_claim_registry_tests.rs`
+    //      `doc_copy_registry.rs`            → `doc_copy_registry_tests.rs`
+    //      `frame_cadence_guard.rs`          → `frame_cadence_guard_tests.rs`
+    //      `gate_singleton_guard.rs`         → `gate_singleton_guard_tests.rs`
+    //      `local_read_surface_registry.rs`  → `local_read_surface_registry_tests.rs`
+    //      `polling_registry.rs`             → `polling_registry_tests.rs`
+    //      `quote_singleton_guard.rs`        → `quote_singleton_guard_tests.rs`
+    //      `rust_timer_registry.rs`          → `rust_timer_registry_tests.rs`
+    //      `session_name_registry.rs`        → `session_name_registry_tests.rs`
+    //      `shared_crate_registry.rs`        → `shared_crate_registry_tests.rs`
+    //      `tmux_daemon_gate_guard.rs`       → `tmux_daemon_gate_guard_tests.rs`
+    //
+    // ⚠ **`backend/mod.rs` 那一条差点顶破棘轮，如实记**：它剖成了**两份**
+    //    （`backend_tests.rs` ＋ `backend_layering.rs`），两份里都有裸遍历
+    //    ⇒ 按文件数的这张清单会从 1 条变 2 条。抬上限是被明文禁止的
+    //    （而且 `the_pending_ratchet_never_turns_backwards` 对着 git 历史比，
+    //    抬了也不会绿）⇒ **真迁掉一个**：`backend_tests.rs::backend_files` 那个
+    //    手写递归改走 `guard_core::scan_tree_excluding`（语义逐字相同，是纯死重）。
+    //    ⇒ 清单里只留 `backend_layering.rs` 一条，条数与上限都不变。
     // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕**下面 7 行换了住址，条数一格没变**
     //    （`PENDING_CEILING` 因此**没有动** —— 一个裸遍历都没少，只是它们跟着
     //    自己那条判据搬进了 `tests/`）。逐份点名：
@@ -35,27 +62,27 @@ const PENDING: &[&str] = &[
     //      `profile_installer.rs`            → `tests/bridge/profile_installer_tests.rs`
     //      `ssh_source.rs`                   → `tests/bridge/ssh_source_f032_idle_tests.rs`
     //      `utils.rs`                        → `tests/bridge/utils_tests.rs`
-    "src/bridge/src/atomic_replace_registry.rs",
+    "tests/bridge/atomic_replace_registry_tests.rs",
     "tests/bridge/backend/control/daemon_kill_tests.rs",
     "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-    "src/bridge/src/backend/mod.rs",
-    "src/bridge/src/backend/observe/local_query.rs",
-    "src/bridge/src/cross_half_edge_registry.rs",
-    "src/bridge/src/doc_claim_registry.rs",
-    "src/bridge/src/doc_copy_registry.rs",
-    "src/bridge/src/frame_cadence_guard.rs",
-    "src/bridge/src/gate_singleton_guard.rs",
-    "src/bridge/src/local_read_surface_registry.rs",
+    "tests/bridge/backend_layering.rs",
+    "tests/bridge/backend/observe/local_query_tests.rs",
+    "tests/bridge/cross_half_edge_registry_tests.rs",
+    "tests/bridge/doc_claim_registry_tests.rs",
+    "tests/bridge/doc_copy_registry_tests.rs",
+    "tests/bridge/frame_cadence_guard_tests.rs",
+    "tests/bridge/gate_singleton_guard_tests.rs",
+    "tests/bridge/local_read_surface_registry_tests.rs",
     "tests/bridge/panorama_tests.rs",
     "tests/bridge/parser_tests.rs",
-    "src/bridge/src/polling_registry.rs",
+    "tests/bridge/polling_registry_tests.rs",
     "tests/bridge/profile_installer_tests.rs",
-    "src/bridge/src/quote_singleton_guard.rs",
-    "src/bridge/src/rust_timer_registry.rs",
-    "src/bridge/src/session_name_registry.rs",
-    "src/bridge/src/shared_crate_registry.rs",
+    "tests/bridge/quote_singleton_guard_tests.rs",
+    "tests/bridge/rust_timer_registry_tests.rs",
+    "tests/bridge/session_name_registry_tests.rs",
+    "tests/bridge/shared_crate_registry_tests.rs",
     "tests/bridge/ssh_source_f032_idle_tests.rs",
-    "src/bridge/src/tmux_daemon_gate_guard.rs",
+    "tests/bridge/tmux_daemon_gate_guard_tests.rs",
     "tests/bridge/utils_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
@@ -686,17 +713,25 @@ fn raw_walkers() -> Vec<String> {
     // 🔴 〔搬树 2026-09-18 补 `"tests"`〕19 份纯测试文件从后端树搬到了
     // `<repo>/tests/backend/` ⇒ 原来那两棵树**一份也够不着它们**，
     // 而本模块治的正是「没红与没看在输出上一模一样」那个形状。
-    for sub in ["src/bridge/src", "src/backend", "tests"] {
-        // ★ 本模块自己也走 `scan_tree!` —— 它就是那条规矩的第一个遵守者。
+    for (sub, excluded) in [
+        ("src/bridge/src", &[] as &[&str]),
+        ("src/backend", &[]),
+        ("tests", &["bridge/scanning_guard_registry_tests.rs"]),
+    ] {
+        // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.4b` 纪律 4〕
+        //    **摘除从 `file!()` 改成明写名单，而且它现在是真承重的。**
         //
-        // ⚠ **摘除在这里今天不是承重的**（变异实测）：把 `scan_tree!` 换成一个匹配不上的
-        // 摘除名，本条**照样绿** —— 因为真正让本文件不被标记的是下面那个
-        // `!regs.contains("scan_tree!")`：本模块的测试段里就写着 `scan_tree!`。
-        // 留着摘除是**纵深防御**：哪天本模块多写一个不走 `scan_tree!` 的扫描助手，
-        // 没有摘除就会拿 `RAW_WALKS` 里那四个字面量把自己算进去。
-        // ★ 「哪一行在真正干活」这种断言**必须变异验过再写** —— 本区第三次
-        //（F14 第六刀 `[ -r ]` 不能省 · F12 `uiStrings` 两道都不能省 · 本条）。
-        for (f, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+        // 上一版的注释说「摘除今天不是承重的，真正让本文件不被标记的是
+        // `!regs.contains("scan_tree!")`」—— **那句话已经过期了**：F23 第二刀
+        // 就把 `!regs.contains("scan_tree!")` 那半删掉了（理由写在下面）。
+        // 于是今天**只剩摘除在挡**，而 `file!()` 那条路在剖分之后是空转的
+        // （本文件被 `#[path]` 引进来 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比恒不命中）。
+        // 现打后果：本文件的测试段里写着 `RAW_WALKS` 那四个字面量当语料，
+        // 于是它**把自己算进了裸遍历人群**（`newcomers` 里多出一条
+        // `tests/bridge/scanning_guard_registry_tests.rs`）。
+        // ⇒ 排除明写成名单，`scan_tree_excluding` 摘不到就 panic ——
+        //   本文件改名/搬家会当场出声，而不是安静地把自己收进语料。
+        for (f, src) in guard_core::scan_tree_excluding(&root.join(sub), &["rs"], excluded) {
             let rel = f
                 .strip_prefix(&root)
                 .unwrap_or(&f)
@@ -788,7 +823,27 @@ fn the_pending_inventory_only_shrinks() {
 // 以及它**没有**买到什么，全写在模块头注 `K-R38` 那一节，这里不写第二遍。
 
 /// 本文件在仓里的相对住址 —— 下面要拿它去问 git 历史。
-const SELF_REL: &str = "src/bridge/src/scanning_guard_registry.rs";
+///
+/// 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**从 `src/bridge/src/…` 换到
+/// `tests/bridge/…`**：`PENDING` 与 `PENDING_CEILING` 这一轮跟着测试段搬过来了，
+/// 而这两个解析器要跑在**住着那两个常量的那份文件**的历史版本上。
+/// 没跟着改的后果现打过：两个解析器在「本文件此刻的源码」上都回 `None`
+/// ⇒ 对拍自检当场红（`left: (None, None)` / `right: (Some(28), Some(28))`）——
+/// 红得对，而它红的正是「住址馊了」这一格（上面第 ③ 条来路逐字写着）。
+const SELF_REL: &str = "tests/bridge/scanning_guard_registry_tests.rs";
+
+/// 那两个常量在 git 历史上住过的**全部**住址，`(相对路径, 要不要 --follow)`。
+///
+/// 🔴 为什么是一张表而不是一个字符串：**剖分不是改名**，`--follow` 跨不过去。
+/// 逐条写明每一个住址买到哪一段历史（缺一段 = 历史面变短 = 棘轮变松）：
+/// · `tests/bridge/scanning_guard_registry_tests.rs` —— 步 7c 剖分**之后**的提交。
+///   不带 `--follow`：它是新增文件，没有可跟的改名链。
+/// · `src/bridge/src/scanning_guard_registry.rs` —— 剖分**之前**的整条历史。
+///   带 `--follow`：它自己还跨着 2026-09-17 那次搬树（`src-tauri/src/…` → `src/bridge/src/…`）。
+const SELF_HOMES: &[(&str, bool)] = &[
+    (SELF_REL, false),
+    ("src/bridge/src/scanning_guard_registry.rs", true),
+];
 
 /// 找 `PENDING_CEILING` 那行声明的针 —— 🔴 **运行时拼，别写成字面量**。
 ///
@@ -886,29 +941,40 @@ fn ratchet_history(root: &Path) -> (Vec<(String, usize, usize)>, usize) {
     //      —— 那些提交里它叫**旧名字**（现打：92 份里 91 份读不出来）。
     // ⇒ 用 `--name-only` 让 git 顺带报出每个提交里**当时的**路径，成对取。
     // 少任何一半，这条棘轮都会「历史面一空 ⇒ 下面几格恒真地绿」。
-    let log = git_read(
-        root,
-        &[
-            "log",
-            "--follow",
-            "--format=%h",
-            "--name-only",
-            "--",
-            SELF_REL,
-        ],
-    );
+    //
+    // 🔴 〔步 7c 剖分 2026-09-19〕**再加一件：历史面要跨「剖分」这一刀。**
+    //
+    // `--follow` 认的是**改名**（git 的相似度检测）。而剖分不是改名：
+    // `PENDING`/`PENDING_CEILING` 从 `src/bridge/src/scanning_guard_registry.rs`
+    // 里被**切出一段**放进新文件 `tests/bridge/scanning_guard_registry_tests.rs`
+    // ⇒ git 眼里那是一个**新增文件**，`--follow` 一步都跨不过去。
+    // 现打：只把 `SELF_REL` 改成新住址 ⇒ 历史面从 9 份掉到 **1 份**，
+    // 地板（5）当场红 —— 红得对，而**不许靠调低地板让今天好过**（上面那句逐字）。
+    // ⇒ 历史面改成**两个住址并起来**：新住址查剖分之后的提交，
+    //   旧住址带 `--follow` 查剖分之前的整条历史（它自己还跨着 09-17 那次搬树改名）。
+    //   按 sha 去重。少任何一个住址，这条棘轮都会退回「历史面一空 ⇒ 恒真地绿」。
     let mut pairs: Vec<(String, String)> = Vec::new();
-    let mut cur: Option<String> = None;
-    for line in log.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
+    for (rel, follow) in SELF_HOMES {
+        let mut args: Vec<&str> = vec!["log"];
+        if *follow {
+            args.push("--follow");
         }
-        match cur.take() {
-            None => cur = Some(line.to_string()),
-            Some(sha) => pairs.push((sha, line.to_string())),
+        args.extend(["--format=%h", "--name-only", "--", rel]);
+        let log = git_read(root, &args);
+        let mut cur: Option<String> = None;
+        for line in log.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            match cur.take() {
+                None => cur = Some(line.to_string()),
+                Some(sha) => pairs.push((sha, line.to_string())),
+            }
         }
     }
+    pairs.sort();
+    pairs.dedup();
     for (sha, path_then) in pairs {
         let spec = format!("{sha}:{path_then}");
         let blob = git_read(root, &["show", &spec]);
@@ -976,7 +1042,14 @@ fn the_pending_ratchet_never_turns_backwards() {
     // 上面那两个针是拿文本认的，而下面比的是**真常量**（`PENDING_CEILING` / `n`）。
     // 解析器要是系统性偏了（比如总是多数一行、或总回一个大数），历史最低档跟着偏，
     // 而**真树上照样绿**。⇒ 拿本文件此刻的源码喂一遍解析器，逼它复现那两个真值。
-    let me = include_str!("../../src/bridge/src/scanning_guard_registry.rs");
+    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**嵌的是「本文件」，不是那份生产文件。**
+    //
+    // 这一行的意思逐字是「拿**本文件此刻的源码**喂一遍解析器」。剖分之前本条住在
+    // `src/bridge/src/scanning_guard_registry.rs` 的 `#[cfg(test)]` 段里，那份文件就是本文件；
+    // 剖分之后那两个常量跟着本条搬来了 `tests/bridge/`，而生产段那份里一个都没有了。
+    // ⚠ 剖分器把这条相对路径**按原语义重定向**过（它仍然指向那份生产文件）——
+    //   路径是对的，指错的是**对象**。这一格正是「机械正确、语义失效」那一形。
+    let me = include_str!("scanning_guard_registry_tests.rs");
     assert_eq!(
         (ceiling_in(me), pending_count_in(me)),
         (Some(PENDING_CEILING), Some(n)),

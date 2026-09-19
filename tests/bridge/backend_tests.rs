@@ -69,29 +69,32 @@ fn the_extra_backend_files_are_not_ghosts() {
 }
 
 /// `backend/` 下的所有 `.rs`，路径相对 `backend/`，`/` 分隔。
+///
+/// 🔴 〔步 7c 2026-09-19〕**手写递归遍历迁到共享原语** ——
+/// `scanning_guard_registry::PENDING` 那张存量清单里的一条，真的迁掉了一条。
+///
+/// 起因：`src/bridge/src/backend/mod.rs` 剖分成了**两份**测试文件
+/// （`backend_tests.rs` ＋ `backend_layering.rs`），而那张清单是**按文件**数的
+/// ⇒ 一条存量变成两条，`PENDING_CEILING`（递减棘轮，**只许往下调**）会被顶破。
+/// 而 `the_pending_ratchet_never_turns_backwards` 拿 git 历史当权威，
+/// 抬上去「提交了也不会绿」。⇒ 正确出路只有一条：**真迁一个**。
+/// 这一处的语义与 `guard_core::scan_tree_excluding` 逐字相同（递归收 `.rs`、
+/// 返回相对路径），是纯死重。
 fn backend_files() -> Vec<String> {
     let root = backend_dir();
-    let mut out = Vec::new();
-    walk(&root, &root, &mut out);
+    // 明写「一份都不排除」（`设计/16 §5.4b` 纪律 4）：这里没有「摘掉我自己」这回事 ——
+    // 本文件住 `tests/bridge/`，不在 `src/backend` 这棵树里。
+    let mut out: Vec<String> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
+        .into_iter()
+        .map(|(p, _)| {
+            p.strip_prefix(&root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
     out.sort();
     out
-}
-
-fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
-    let Ok(rd) = fs::read_dir(dir) else { return };
-    for e in rd.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            walk(root, &p, out);
-        } else if p.extension().is_some_and(|x| x == "rs") {
-            out.push(
-                p.strip_prefix(root)
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-                    .replace('\\', "/"),
-            );
-        }
-    }
 }
 
 /// ★ 抽取器自检：遍历坏掉时下面两条会零命中零失败地绿。
