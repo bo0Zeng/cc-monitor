@@ -184,7 +184,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 > ⚠ **08-06 订正：那句已经不成立。**〔用 08-05〕裁定**不再 push**，而 `ci.yml` 只在
 > `push` / `pull_request` 上触发 ⇒ **CI 至今没跑过**。今天不手跑的后果不是「CI 上才发现」，
 > 是**没有任何一次发现**。这个前提由
-> `shared_crate_registry.rs::the_premise_behind_three_honesty_boundaries_still_holds` 盯着
+> `shared_crate_registry_tests.rs::the_premise_behind_three_honesty_boundaries_still_holds` 盯着
 > （谁加了 `workflow_dispatch`/`schedule`，这句话与另外三条诚实边界都要一起重判）。
 >
 > ★ 而且**这些套件并非都要真 tmux**：实测有几套零依赖跑得通（清单与跑法以判据里的

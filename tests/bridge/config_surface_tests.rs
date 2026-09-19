@@ -759,7 +759,7 @@ fn destination_checks_still_run_under_every_host() {
 ///
 /// 「申报 ↔ 现实」这条性质在 `tool_registry` 的两个 `bool`（`installable` / `uninstallable`）
 /// 上已经收成**一条覆盖全表**的判据了
-/// （`tool_registry.rs::every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
+/// （`tool_registry_tests.rs::every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
 /// ：对拍表与 `TOOLS` 的 id 集合逐字相等，多一条少一条都红）。
 /// **本条守的是同一族的第三格 `destination`，而它逐个工具手写、只钉了 `TOOLS` 里的两条**
 /// （`ccm` 与 `project-mcp`；这个「两条」是下面那段代码自己数得出来的，不写死在这里）。

@@ -22,8 +22,39 @@ use super::*;
 /// 若又遇到一个 `#[test]`，就是这个形态。
 #[test]
 fn no_two_test_attributes_land_on_the_same_function() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let files = guard_core::scan_tree_excluding_self(&root, &["rs"], file!());
+    // 🔴 〔步 7c 剖分 2026-09-19〕**这一格同时踩了 `§6.2` 的 A 类与 B 类，两条一起修。**
+    //
+    // · **B 类**：语料根原来只有 `<bridge>/src` 一棵。`#[test]` 剖分之后整批住进
+    //   `<repo>/tests/` ⇒ 那一棵树里 `#[test]` 归零，自检逐字报「扫到 0 个 —— 扫描面坏了」。
+    //   ⇒ 语料改成**四棵互不包含的根**：两棵生产树 ＋ 两棵测试树。
+    //   两棵生产树今天该是 0 个 `#[test]`，但**仍然要扫** —— 哪天有人在 `src/` 里写一个，
+    //   本条要看得见它（少扫不会红，只会零命中地绿）。
+    // · **A 类**：原来靠 `scan_tree_excluding_self(.., file!())` 摘掉自己。本文件被
+    //   `#[path]` 引进来 ⇒ `file!()` 是折返路径 ⇒ 摘除恒空转（`§5.4b` 纪律 4）。
+    //   而语料里现在**含 `tests/bridge/` 这棵树，也就是含本文件自己** ⇒ 摘除失效不再无害：
+    //   本条会数到自己头注里那些讲形状的 `#[test]` 字样。
+    //   ⇒ 改成 `scan_tree_excluding` 的**明写名单**，摘不到就 panic。
+    //
+    // 🔴 本条这一轮真的咬到东西了：`src/backend` 从来不在它的射程里，
+    // 而那棵树上**有 3 处**「一个 fn 两个 `#[test]`」（libtest 因此把它们各注册两遍：
+    // `cargo test -- --list` 705 行 / 702 个不同名字）。逐处在步 7c 报告里点名。
+    let repo = addr_repo_root();
+    let mut files = Vec::new();
+    for (tree, excluded) in [
+        ("src/bridge/src", &[] as &[&str]),
+        ("src/backend", &[]),
+        ("tests/bridge", &["structural_scan_tests.rs"]),
+        ("tests/backend", &[]),
+    ] {
+        // 排除名单里写的是**本文件自己**：它住 `tests/bridge/`，在语料里，
+        // 而它的头注为了讲清形状逐字写了 `#[test]` 字样 ⇒ 必须明写摘掉。
+        // `scan_tree_excluding` 摘不到就 panic ⇒ 本文件改名/搬家会当场出声。
+        files.extend(guard_core::scan_tree_excluding(
+            &repo.join(tree),
+            &["rs"],
+            excluded,
+        ));
+    }
     let mut offenders: Vec<String> = Vec::new();
     let mut seen = 0usize;
     for (path, src) in &files {
@@ -716,7 +747,7 @@ fn every_comment_stripping_transformer_is_registered() {
         // 而误登记的害处是具体的：登记表是「已知的第二份剥法」清单，
         // 混进一条不是剥法的，下一个人会照它去找一份并不存在的实现。
         (
-            "e2e_gate_registry.rs::strip_comments",
+            "e2e_gate_registry_tests.rs::strip_comments",
             "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 语义上刻意只剥**整行注释**、不碰行尾注释（shell 里 `#` 可以出现在字符串中间，                 按 marker 截断会误伤 `pgrep` 模式里的 `#`）。要收口的正确做法是给共享原语加一个                 「注释前缀」参数，那是另一件事。",
         ),
         (
@@ -734,18 +765,18 @@ fn every_comment_stripping_transformer_is_registered() {
             "daemon 侧本地剥法（跨 crate 够不着 monitor 的 `guard_core`）",
         ),
         (
-            "tool_registry.rs::production_code",
+            "tool_registry_tests.rs::production_code",
             "⚠ **按 `//` 截断整行**——共享原语刻意不这么做（会砍坏 `\"http://host\"`）。\
                  本文件今天没有 `://` 字面量所以没事，但那是运气不是设计。登记为待收口",
         ),
         (
-            "session_name_registry.rs::production",
+            "session_name_registry_tests.rs::production",
             "**多语言**剥法（`.rs` 走共享原语，`.ts`/shell 各有注释语法）——共享原语只管 Rust",
         ),
         // 〔搬树 2026-09-18 · `16 §6.2` C 类〕随测试段搬去 `tests/bridge/backend/control/`。
         ("ccm_invocation_tests.rs::refusal_variants", "不是剥法：从 `enum Refusal` 的定义里抽变体名（跳过 doc 行只是为了不把注释当变体）"),
-        ("agent_profile_parity.rs::rows", "不是剥法：解析对拍表的行"),
-        ("gate2_parity.rs::rows", "不是剥法：解析 golden 表的行"),
+        ("agent_profile_parity_tests.rs::rows", "不是剥法：解析对拍表的行"),
+        ("gate2_parity_tests.rs::rows", "不是剥法：解析 golden 表的行"),
         ("gate.rs::golden_rows", "不是剥法：daemon 侧解析同一张 golden 表"),
         // 08-08 第二刀：`live_lines` 已变成一句委托（改调 `strip_hash_comment_lines`）⇒
         // 它不再是一份剥法，登记删掉。**同一天里这张表两次告诉我「你在写第二份剥法」**：
@@ -758,9 +789,9 @@ fn every_comment_stripping_transformer_is_registered() {
         // 08-07：原 `ci_job_block`/`ci_yml` 搬进同文件的 `pub(crate) mod ci_yaml`
         // （E3：`ci.yml` 的读取与切块只有一个家，`lockfile_conflict_guard` 也要用）。
         // 搬家当场被本条逮住（多出 `job_block`、少了那两个）—— 这正是默认拒绝该有的样子。
-        ("shared_crate_registry.rs::job_block", "不是剥法：抽某个 job 的段落"),
+        ("shared_crate_registry_ci_yaml.rs::job_block", "不是剥法：抽某个 job 的段落"),
         ("ssh_source.rs::parse_host_aliases", "不是剥法：解析 ssh config 的 Host 别名"),
-        ("tool_registry.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
+        ("tool_registry_tests.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
         // 〔`K-R62` 09-11〕**方向恰好相反的一条**：它不剥注释，它**把注释留下来并指名**。
         // 那一格的正题是「你 rc 里这几行是旧的」——`#` 打头的行照样进结果，只是分类成
         // `LegacyRcKind::Comment`（`K-R57` 现打用户 `~/.bashrc`：14 行里 4 行是注释，
@@ -1386,7 +1417,7 @@ fn addr_base(p: &std::path::Path) -> String {
 /// 全仓声明：符号名 → 它出现在哪些**文件基名**里。
 ///
 /// 口径逐字取自本仓已有的同族判据
-/// `doc_claim_registry.rs::every_code_symbol_named_in_the_docs_still_resolves`：
+/// `doc_claim_registry_tests.rs::every_code_symbol_named_in_the_docs_still_resolves`：
 /// 「文档写 `a·rs::foo`，就要求 `foo` 的声明**出现在 `a·rs` 里**」——
 /// 比「符号存在」严一档，因为**搬家**恰恰是本仓重构的常见形态。
 /// 注释里的 `fn foo` 不算声明（先过 `strip_comment_lines`），否则「注掉一个函数」

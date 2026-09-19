@@ -93,7 +93,7 @@ impl StartOutcome {
 //
 // 这一段全部住在**宿主知识层**，理由是硬的（`K-P1 §0b-5` 现打）：
 // `process_group(0)` 来自 `std::os::unix::process::CommandExt`，而 `std::os::unix`
-// 在 `backend/mod.rs::the_backend_half_stays_platform_agnostic` 的禁针里
+// 在 `backend/backend_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里
 // ⇒ **写进 `backend/` 当场红**；而「加一条平台例外」这条路被**递减棘轮**堵着
 // （`assert!(PLATFORM_EXCEPTIONS.len() <= 1)`，今天正好 1 条）。
 // ⇒ 落点只能是这里，形状照 `platform_fs::make_executable` 那个**注入**先例。
@@ -766,7 +766,7 @@ fn reap_detached(
 /// 把一次 `wait()` 的结果翻成 [`crate::daemon_policy::Outcome`]。
 ///
 /// ★ **信号号只有这一层取得到**：它要 `std::os::unix::process::ExitStatusExt`，
-/// 而 `std::os::unix` 在 `backend/mod.rs::the_backend_half_stays_platform_agnostic`
+/// 而 `std::os::unix` 在 `backend/backend_tests.rs::the_backend_half_stays_platform_agnostic`
 /// 的禁针里 ⇒ `backend/` 那半只能把 `ExitStatus` **原样**交上来
 /// （`SuperviseEvent::Exited.status`），翻译落在这里。
 ///

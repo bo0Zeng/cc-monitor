@@ -117,7 +117,14 @@ def literal_line_starts(text: str):
 
 # ───────────────────────── 识别顶层 `#[cfg(test)] mod X { … }` ─────────────────────────
 ATTR = re.compile(r"^#\[[^\n]*\]$")
-CFG_TEST = re.compile(r"^#\[cfg\(test\)\]$")
+
+# 🔴 步 7c 加 `all(test, …)` 那一支。盘上一共 5 种含 `test` 的 cfg 形，**两族含义相反**：
+#   · `#[cfg(test)]` 280 处 · `#[cfg(all(test, target_os = "linux"))]` 4 处
+#     · `#[cfg(all(test, not(windows)))]` 4 处      ⇒ **只在 test 下存在** ⇒ 是测试段，搬。
+#   · `#[cfg(any(windows, test))]` 6 处 · `#[cfg(any(not(windows), test))]` 1 处
+#     ⇒ **生产下也存在**（测试只是额外的一个开关）⇒ 是生产项，**不许搬**。
+# 只认 `all(test, …)`，不认 `any(…, test)` —— 这条区分是语义的，不是形状的。
+CFG_TEST = re.compile(r"^#\[cfg\((?:test|all\(test\s*,[^\n]*\))\)\]$")
 MOD_OPEN = re.compile(r"^(pub(\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{\s*$")
 
 

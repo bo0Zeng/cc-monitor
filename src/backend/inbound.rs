@@ -1575,11 +1575,6 @@ mod structure_guards {
         );
     }
 
-    /// ★ **有 `fields` 就必须有自己的文档小节。**
-    ///
-    /// 没有小节就没地方钉字段名 —— 那正是设计审计 P2 说的
-    /// 「帧的字段有对拍，命令的载荷没有」。
-    #[test]
     /// ★〔audit-0805 08-06〕**「声明零字段」不许成为免检开关**。
     ///
     /// # 它补的洞
@@ -1643,6 +1638,10 @@ mod structure_guards {
         }
     }
 
+    /// ★ **有 `fields` 就必须有自己的文档小节。**
+    ///
+    /// 没有小节就没地方钉字段名 —— 那正是设计审计 P2 说的
+    /// 「帧的字段有对拍，命令的载荷没有」。
     #[test]
     fn a_command_with_a_payload_must_own_a_doc_section() {
         for spec in super::REGISTRY {

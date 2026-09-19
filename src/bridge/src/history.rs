@@ -2532,7 +2532,7 @@ pub fn new_local_session(
 /// 分母 = 剥掉整行 `//` 注释后 `src/bridge/src/**.rs` 里 `#[tauri::command]` 紧跟着的
 /// **149** 处 `fn`（= 148 个唯一命令名 ＋ `bring_monitor_to_front` 的第二份 cfg 实现））：
 /// **入参出现 `&str` 的 0 处**。⚠ 不剥注释会读成 16 处 —— 那 16 处全是散文里逐字提到
-/// 这个属性、而它下面碰巧跟着一个内部 `fn`（`parity_ledger.rs::registered_commands`
+/// 这个属性、而它下面碰巧跟着一个内部 `fn`（`parity_ledger_tests.rs::registered_commands`
 /// 的头注逐字警告过这个形状）。**一个数不写清它的剥法，就是半句假话。**
 ///
 /// 命令入参要从 IPC 那一侧反序列化出来，借用形态在这条路上不是「省一次拷贝」，
