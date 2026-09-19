@@ -134,44 +134,49 @@ function relErrByClass(
  * 那一步会让门禁红一次，**那正是它想要的**：没有人能靠"修好了"绕过登记。
  */
 const P90_CEILING: Record<string, number> = {
-  // ⚠ 下面每条注释里的实测值都是 **2026-09-18 换成"真形语料"之后**重打的
-  //   （Chromium 153 / WebKitGTK 2.52.6，content-box 口径）。
-  //   换语料前后 p90 几乎没动（`card-assistant` 96.8/105.9 → 97.6/104.1，
-  //   `card-user` 10.7/14.3 → 10.7/14.3，`card-tool-group` 9.8/11.8 → 9.8/11.8）
-  //   —— 这本身就是「同形替换不改排版」的一条实证：正文换成填充字符，估高与真高一起不动。
+  // ⚠ 下面每条注释里的实测值都是 **2026-09-18 下半场**重打的（Chromium 153 / WebKitGTK 2.52.6，
+  //   content-box 口径），即 `height-estimate.ts` 那两处修之后：
+  //   ① `extractProseText` 把「markdown 产物里的排版换行」归一成空格（正文卡 ~2× 虚高的根）；
+  //   ② 三条细条常数从 border-box 手算值改成 content-box 实测值（24/32/34 → 17/19/19）。
+  //   修前 → 修后（Chromium p90）：assistant 97.6%→**21.8%** · bash-input 72.1%→**29.1%** ·
+  //   slash 82.9%→**29.1%** · api-retry 40.8%→**40.8%（没动，地板吃掉了）**。
   // ── 达标段：设计门槛 ──
+  // 🔴 正文卡（最值钱的一格）：`extractProseText` 修完之后**第一次**够到设计门槛。
+  //   ⚠ WebKitGTK 上是 26.7%（字体 fallback 不同，真高差几个点）——两引擎都在 30% 内，
+  //     但 slash/bash-input 不是（见下），所以这条线是**擦着过**的，别再往上放语料就不看。
+  "card-assistant": 0.3, //    实测 p90 21.8% / 26.7%，max 21.8% / 26.7%（方向已从"全部虚高"变成双向）
   "card-bash-output": 0.3, //  实测 p90 8.6% / 10.0%，max 15.2%
   "card-compact": 0.3, //      实测 p90 9.8% / 11.8%
   "card-tool-group": 0.3, //   实测 p90 9.8% / 11.8%
   "card-user": 0.3, //         实测 p90 10.7% / 14.3%
+  // ⚠ 这两条**不是常数准了才进达标段的**：常数 19 对真值 18.60 只差 2.1%，
+  //   但 `applyIntrinsicSize` 的 `Math.max(24, …)` 地板把 19 顶成 24 ⇒ 落地误差停在 29.1%。
+  //   🔴 裕度只有 0.9 个点，而 **WebKitGTK 上 card-slash 是 33.3%**（那台的真高 18.0px）——
+  //   金标准取 Chromium，所以这一格绿；换引擎/换字体它就红。要真正修好得动那块地板。
+  "card-bash-input": 0.3, //   实测 p90 29.1% / 26.3%
+  "card-slash": 0.3, //        实测 p90 29.1% / **33.3%（WebKitGTK 超线）**
   // ── 超标段：逐条写明成因 ──
-  // 常数 24 是**含 padding 的 border-box 值**（23.05 ≈ 3×2 + 11×1.55），
-  // 而 `contain-intrinsic-size` 实测是 **content-box**（本文件 B 段那一格）
-  // ⇒ 24 对上的真值是 17.05，差 6px = 恰好一份 padding。
-  "card-api-retry": 0.45, //   实测 p90 40.8% / 41.2%
-  // 同一个病：常数 32 vs content-box 真值 18.6（12px×1.55），差 12 = 一份 padding 6×2。
-  "card-bash-input": 0.8, //   实测 p90 72.1% / 68.4%
-  // 同一个病：常数 34 vs content-box 真值 18.6，差 12 + 2.4 常数本身偏大。
-  "card-slash": 0.95, //       实测 p90 82.9% / 88.9%
+  // 常数已经从 24 改成 **17**（= content-box 真值 17.05，误差 0.3%），可 `applyIntrinsicSize`
+  // 的 24px 地板把它顶回 24 ⇒ **写进 style 的一个字没变**，p90 也就一个点没动。
+  // ⇒ 这一条现在是**地板的账，不是常数的账**。要它进 30% 内只有一条路：动地板（本轮没动）。
+  "card-api-retry": 0.45, //   实测 p90 40.8% / 41.2%（修前修后相同）
   // 反向：常数 40 是**单行**错误卡的高度，可 `card-api-error` 有 `.api-error-body`
   // （`white-space: pre-wrap`）会多行 ⇒ 长报错整个虚低。`设计/17 §2.2` 早就点过这一条。
+  // 本轮没碰它（那是另一格的活：要么按行数算，要么承认构造体不像真的）。
   "card-api-error": 0.9, //    实测 p90 70.7% / 69.8%（**虚低**方向）
-  // 🔴 最值钱的一格：正文卡系统性 **~2× 虚高**。成因见 `U-scale2-height-truth.md` 的
-  // 「`extractProseText` 把 markdown 产物里的排版换行当成硬断行」那一节。
-  // ⚠ max 从旧语料的 134.0% / 141.9% 降到 **103.9% / 106.7%** —— 不是修好了，
-  //   是旧语料里那条最极端的记录（住在活会话文件的后半段）不在新语料里了。
-  //   **p90 没动**，所以结论没变；但"最坏能坏到多少"这一格，新语料盖得比旧语料浅。
-  "card-assistant": 1.2, //    实测 p90 97.6% / 104.1%（**虚高**），max 103.9% / 106.7%
 };
 
-/** 今天**不满足**设计那句「p90 < 30%」的 class（只许变短；变长变短都要回来改这里）。 */
-const EXCEEDS_DESIGN_GATE = [
-  "card-api-error",
-  "card-api-retry",
-  "card-assistant",
-  "card-bash-input",
-  "card-slash",
-];
+/**
+ * 今天**不满足**设计那句「p90 < 30%」的 class（只许变短；变长变短都要回来改这里）。
+ *
+ * 2026-09-18 这份名单从 **5 条变成 2 条**：`card-assistant`（正文卡 ~2× 虚高，根是
+ * `extractProseText` 把排版换行当硬断行）、`card-bash-input`、`card-slash` 三条修掉了。
+ * 剩下这两条**都不是估值算错**：
+ *   · `card-api-retry` —— 常数已改对（17 = content-box 真值），被 24px 地板顶回去了；
+ *   · `card-api-error` —— 常数 40 假设"单行"，而构造体里有多行长报错 ⇒ 虚低；
+ *     而且这个卡型真语料里 **0 条**，读数带着"构造体像不像真的"这个前提。
+ */
+const EXCEEDS_DESIGN_GATE = ["card-api-error", "card-api-retry"];
 
 /** 这些卡型的估值是**纯常数 / 纯算术**，不碰 pretext ⇒ jsdom 与真浏览器必须逐位相同。 */
 const PRETEXT_FREE = new Set([
@@ -395,8 +400,13 @@ describe("秤 2 · 读数（不做判据，只产表）", () => {
           (x) =>
             `  ${x.c.id}（${x.c.cls}）估值 ${x.raw!.toFixed(1)} → 写进 style 的是 24`,
         ),
-        "  ⇒ 凡是常数本身 ≥24 的卡型（api-retry 24 / bash-input 32 / api-error 40 / slash 34），",
-        "     地板**碰不到它们**：`Math.max(24, 24) === 24`。改常数与地板是两件事。",
+        "  🔴 2026-09-18 下半场之后这块地板**从 2 张变成 13 张**：三条细条常数按 content-box",
+        "     改成 17/19/19 之后，全部落到 24 以下 ⇒ **地板把这三条改动整个吃掉了**，",
+        "     写进 style 的还是 24。所以：",
+        "     · `card-api-retry` 的 p90 一个点没动（40.8%）—— 常数已经是 17（真值 17.05，0.3%）；",
+        "     · `card-bash-input` / `card-slash` 从 72.1%/82.9% 降到 29.1%，但**不是降到 2.1%**，",
+        "       那 27 个点全是地板的账。",
+        "  ⇒ 「改常数」与「改地板」现在是**同一件事的两半**，只做一半就停在这张表上。",
       ].join("\n"),
     );
     expect(floored.length).toBeLessThan(corpus.length); // 只产读数
@@ -428,8 +438,13 @@ describe("秤 2 · `contain-intrinsic-size` 的盒模型（B 段真浏览器实�
           (x) =>
             `  ${x.label.padEnd(44)} 声明=${String(x.declared).padStart(4)} +padding/border=${String(x.padBorder).padStart(3)} ⇒ 实测占 ${x.measured}px`,
         ),
+        "  ⚠ 标签里那几个「今天的常数」是**探针写死的声明值**（24/32/40），不是源码现在的常数：",
+        "     源码 2026-09-18 下半场已改成 17/19/19（content-box 语义）。B 段问的是盒模型，",
+        "     声明多少都答同一件事，所以这一段不受影响。",
         "  ⇒ `card-api-retry` 写 24 ⇒ 视口外实际占 **30px**，而真高是 23.05px ⇒ **虚高 30%**，",
         "     不是 `真相源` 里按手算推的 4%。R 路那条「24 比 23.05 高 4%」的前提在这里被替换掉了。",
+        "  ⚠ 而且「写 24」这件事**今天仍然成立** —— 常数虽然改成了 17，`applyIntrinsicSize` 的",
+        "     24px 地板又把它顶回 24。⇒ 下面悬案③那段推导的前提没变，变的只是它归谁的账。",
       ].join("\n"),
     );
     expect(golden.intrinsic.length).toBeGreaterThan(0);
@@ -447,6 +462,10 @@ describe("秤 2 · 悬案③：一屏门控的三段边界，换上实测值之�
    * | 它在视口外对 `scrollHeight` 的贡献 | 24px | **30px** ❌ 差一份 padding（B 段：CIS 是 content-box） |
    *
    * ⇒ 「估值比真高高 4%」这个前提被换成「**高 30%**」，三段边界必须重算。
+   *
+   * ⚠ 2026-09-18 下半场把常数从 24 改成 17（content-box 真值）之后，这一段**一个字都不用改**：
+   * `applyIntrinsicSize` 的 `Math.max(24, …)` 地板把 17 顶回 24 ⇒ 视口外仍然占 30px。
+   * 这不是巧合成立，是**地板吃掉了那次修正**；哪天地板动了，这一整段要跟着重算。
    */
   const GATE = { clientHeight: 800, maxRounds: 4, tailK: 150 };
 
