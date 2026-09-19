@@ -6,7 +6,7 @@ use super::*;
 /// 那正是 issue #76 的失管会话形态（本条与 CLI 渲染器的 #76 防线是同一条纪律的两侧）。
 #[test]
 fn the_only_mode_this_channel_can_speak_is_send_into() {
-    let args = crate::inbound_client::launch_args(
+    let args = crate::backend::control::inbound_client::launch_args(
         "send-into",
         "cc-x",
         "true",

@@ -76,7 +76,7 @@ fn refusal_text(code: &str, message: &str) -> String {
 /// 不是 `#[tauri::command]` —— 前端**够不着才对**（C9：frontend 只剩开窗）。
 /// 唯一调用方是 `tmux.rs::kill_remote_tmux`，它按三态分流。
 pub(crate) async fn backend_kill(origin: &str, name: &str) -> Routed {
-    let Some(client) = crate::inbound_client::client_for(origin) else {
+    let Some(client) = crate::backend::control::inbound_client::client_for(origin) else {
         return no_channel(origin);
     };
     let args = serde_json::json!({ "name": name });

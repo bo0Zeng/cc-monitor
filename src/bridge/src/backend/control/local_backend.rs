@@ -1484,7 +1484,10 @@ fn absorb_local_frame(frame: &crate::ssh_source::InboundFrame) {
     // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
     // 把「永远消不掉的灰点」那个 bug 请回来。
     if let crate::ssh_source::InboundFrame::TmuxSessions { raw, .. } = frame {
-        crate::ssh_source::record_tmux_raw(crate::inbound_client::LOCAL_ORIGIN, raw.clone());
+        crate::ssh_source::record_tmux_raw(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            raw.clone(),
+        );
     }
 }
 
@@ -1555,9 +1558,13 @@ pub(crate) fn local_stdio_consumer(
                 };
             }
         };
-    let mut parked = Some(crate::inbound_client::park_owned_writer(stdin));
+    let mut parked = Some(crate::backend::control::inbound_client::park_owned_writer(
+        stdin,
+    ));
     // 留一份副本给 `unregister` —— 它要 `&Arc` 比对身份（「不摘别人的 client」）。
-    let mut registered: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
+    let mut registered: Option<
+        std::sync::Arc<crate::backend::control::inbound_client::InboundClient>,
+    > = None;
     let mut early = false;
     // ★ `K-P3b`：**我们这一侧的读端怎么结束的** —— 观测在这里，判在宿主层。
     //   初值是「干净 EOF」，而它**只在真的读到 EOF 时才成立**：下面那条 `Err` 支
@@ -1593,7 +1600,9 @@ pub(crate) fn local_stdio_consumer(
         if parked.is_none() {
             continue;
         }
-        let Some(witness) = crate::inbound_client::BackendHello::from_hello_frame(&frame) else {
+        let Some(witness) =
+            crate::backend::control::inbound_client::BackendHello::from_hello_frame(&frame)
+        else {
             continue;
         };
         // 日志取自**帧**而不是 client —— `InboundClient` 的 `commands` 是私有的，
@@ -1609,11 +1618,14 @@ pub(crate) fn local_stdio_consumer(
             .take()
             .expect("上面刚判过 is_some")
             .into_client(witness);
-        crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+        crate::backend::control::inbound_client::register(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            client.clone(),
+        );
         registered = Some(client);
         tracing::info!(
             "本机入方向通道已登记：origin={} build_id={build_id} commands={commands:?}",
-            crate::inbound_client::LOCAL_ORIGIN
+            crate::backend::control::inbound_client::LOCAL_ORIGIN
         );
     }
 
@@ -1627,7 +1639,10 @@ pub(crate) fn local_stdio_consumer(
     };
     // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。
     if let Some(mine) = registered {
-        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &mine);
+        crate::backend::control::inbound_client::unregister(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            &mine,
+        );
     }
     // ★ **本机那份 tmux 原文也要清**〔D 阶段补审 08-11，判据路〕。
     //
@@ -1635,7 +1650,7 @@ pub(crate) fn local_stdio_consumer(
     // **只摘入方向 client、不碰这张表** ⇒ 停掉本机后端之后 `<local>` 那份原文永久留着，
     // 成了「tmux 还在」的**陈旧证据**：`find_tmux_origin_for_sid` 仍返回 `Some(<local>)`
     // ⇒ `classify_removed(Some(_), Gone)` = `Idle` = 那个「永远消不掉、也 attach 不上的灰点」。
-    crate::ssh_source::forget_tmux_raw(crate::inbound_client::LOCAL_ORIGIN);
+    crate::ssh_source::forget_tmux_raw(crate::backend::control::inbound_client::LOCAL_ORIGIN);
     ConsumerReport {
         exit: if early {
             ConsumerExit::Early

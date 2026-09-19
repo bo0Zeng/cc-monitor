@@ -776,9 +776,12 @@ fn the_local_capture_is_no_longer_a_dead_end() {
         );
     }
     // ② 两侧同一段代码：通道不在时只差一个称呼。
-    let _guard = crate::inbound_client::local_origin_test_lock();
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     assert!(
-        crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_none(),
+        crate::backend::control::inbound_client::client_for(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN
+        )
+        .is_none(),
         "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面几句会空转"
     );
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -786,7 +789,7 @@ fn the_local_capture_is_no_longer_a_dead_end() {
         .expect("建不出 runtime —— 本条无从判断，别读成绿");
     let local = rt
         .block_on(capture_remote_pane(
-            crate::inbound_client::LOCAL_ORIGIN.to_string(),
+            crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string(),
             "cc-abc12345".to_string(),
         ))
         .expect_err("本机后端通道不在，这一趟不该报成功");
@@ -870,9 +873,12 @@ fn the_local_kill_never_falls_back_to_ssh() {
              就把 TOCTOU 窗口留着。要恢复它先回 `K-R54` 重新裁定。"
     );
     // ② 真实原因：本机那句话不许说成「未找到远端配置」。
-    let _guard = crate::inbound_client::local_origin_test_lock();
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     assert!(
-        crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_none(),
+        crate::backend::control::inbound_client::client_for(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN
+        )
+        .is_none(),
         "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面那句会空转"
     );
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -880,7 +886,7 @@ fn the_local_kill_never_falls_back_to_ssh() {
         .expect("建不出 runtime —— 本条无从判断，别读成绿");
     let err = rt
         .block_on(kill_remote_tmux(
-            crate::inbound_client::LOCAL_ORIGIN.to_string(),
+            crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string(),
             "cc-abc12345".to_string(),
         ))
         .expect_err("本机后端通道不在，这一趟不该报成功");
@@ -957,10 +963,13 @@ fn the_local_send_keys_never_falls_back_to_ssh() {
 
     // ②③ 行为：真调生产入口，看它报了哪句话。
     // 登记表是**进程内全局**的 ⇒ 与别的会在 `<local>` 键上登记通道的用例串起来跑。
-    let _guard = crate::inbound_client::local_origin_test_lock();
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     // 前提自检：本条靠「`<local>` 上没有通道」才走得到 `NoChannel` 那一臂。
     assert!(
-        crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_none(),
+        crate::backend::control::inbound_client::client_for(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN
+        )
+        .is_none(),
         "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面那句会空转"
     );
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -975,7 +984,7 @@ fn the_local_send_keys_never_falls_back_to_ssh() {
         ))
         .expect_err("后端通道不在，这一趟不该报成功")
     };
-    let local = send(crate::inbound_client::LOCAL_ORIGIN);
+    let local = send(crate::backend::control::inbound_client::LOCAL_ORIGIN);
     assert!(
         !local.contains("未找到远端配置"),
         "本机 send-keys 报的是「未找到远端配置」—— 那是 SSH 回落那条路的话，\n\

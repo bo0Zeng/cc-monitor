@@ -788,7 +788,7 @@ fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_
 /// ★ **它是从一个事实推出来的，不是一个孤零零的字面量**：入参就是那道门的产物。
 /// [`attach_stream`] 开头两行是 `parse_frame` + `BackendHello::from_hello_frame`，
 /// 任一给不出东西就 `Err` 返回、**根本进不到流循环**，也就没有人调得到 [`reap_detached`]。
-/// ⇒ **拿得出一份 [`crate::inbound_client::BackendHello`] = 一帧合法 hello 已经到手**，
+/// ⇒ **拿得出一份 [`crate::backend::control::inbound_client::BackendHello`] = 一帧合法 hello 已经到手**，
 /// 而那正是「它说过话」的定义。要这个参数是为了让这条推理**在类型上**成立：
 /// 没有见证就调不出这个函数（见证的构造入口只有 `from_hello_frame` 一个，
 /// 由 `inbound_client` 那条「见证不许凭空造」的判据钉着）。
@@ -797,7 +797,7 @@ fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_
 /// 这一句就成了假的 —— 由 [`tests::the_detached_handshake_is_derived_from_the_hello_gate`]
 /// 钉住那道门还在。
 fn handshake_from_hello(
-    _witness: &crate::inbound_client::BackendHello,
+    _witness: &crate::backend::control::inbound_client::BackendHello,
 ) -> crate::backend_policy::Handshake {
     crate::backend_policy::Handshake::Spoke
 }
@@ -826,7 +826,7 @@ fn note_detached_death(
         start_failure: None,
     };
     shout_if_the_ledger_refused(crate::backend_policy::record_death(
-        crate::inbound_client::LOCAL_ORIGIN,
+        crate::backend::control::inbound_client::LOCAL_ORIGIN,
         &ev,
         &mut crate::backend_policy::MonitorLog,
     ));
@@ -859,7 +859,7 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), String> {
     let frame = crate::ssh_source::parse_frame(hello_line)
         .ok_or_else(|| "hello 行解析不出帧".to_string())?;
-    let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
+    let witness = crate::backend::control::inbound_client::BackendHello::from_hello_frame(&frame)
         .ok_or_else(|| "首帧不是 hello ⇒ 拿不到见证，按契约不许登记通道".to_string())?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一拍，而不是在那边写一个 `Handshake::Spoke` 字面量。
@@ -873,11 +873,15 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         tokio::net::TcpStream::from_std(sock).map(tokio::net::TcpStream::into_split)
     })
     .map_err(|e| format!("socket 转 tokio 失败：{e}"))?;
-    let client = crate::inbound_client::park_owned_writer(wr).into_client(witness);
-    crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+    let client =
+        crate::backend::control::inbound_client::park_owned_writer(wr).into_client(witness);
+    crate::backend::control::inbound_client::register(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        client.clone(),
+    );
     tracing::info!(
         "本机入方向通道已登记（常驻载体）：origin={}",
-        crate::inbound_client::LOCAL_ORIGIN
+        crate::backend::control::inbound_client::LOCAL_ORIGIN
     );
     tauri::async_runtime::spawn(async move {
         use crate::ssh_source::{CappedLine, BACKEND_FRAME_LINE_CAP};
@@ -915,15 +919,18 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
             // `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
             if let crate::ssh_source::InboundFrame::TmuxSessions { raw, .. } = &f {
                 crate::ssh_source::record_tmux_raw(
-                    crate::inbound_client::LOCAL_ORIGIN,
+                    crate::backend::control::inbound_client::LOCAL_ORIGIN,
                     raw.clone(),
                 );
             }
         }
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client；那份陈旧的 tmux 原文也要清
         // （留着它 `find_tmux_origin_for_sid` 仍会回 `Some(<local>)` ⇒ 那个永远消不掉的灰点）。
-        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
-        crate::ssh_source::forget_tmux_raw(crate::inbound_client::LOCAL_ORIGIN);
+        crate::backend::control::inbound_client::unregister(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            &client,
+        );
+        crate::ssh_source::forget_tmux_raw(crate::backend::control::inbound_client::LOCAL_ORIGIN);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
         // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一拍才拿得到第三维（退出状态）。
         reap_detached(handshake, reader_end);
@@ -1348,7 +1355,7 @@ fn backend_supervise_events() -> std::sync::Arc<dyn Fn(local_backend::SuperviseE
             start_failure: None,
         };
         shout_if_the_ledger_refused(crate::backend_policy::record_death(
-            crate::inbound_client::LOCAL_ORIGIN,
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
             &ev,
             &mut crate::backend_policy::MonitorLog,
         ));
@@ -1371,7 +1378,7 @@ fn note_never_started(out: StartOutcome) -> StartOutcome {
             start_failure: Some((reason.to_string(), looked_at.to_vec())),
         };
         shout_if_the_ledger_refused(crate::backend_policy::record_death(
-            crate::inbound_client::LOCAL_ORIGIN,
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
             &ev,
             &mut crate::backend_policy::MonitorLog,
         ));

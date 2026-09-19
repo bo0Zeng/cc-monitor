@@ -2,7 +2,7 @@
 //!
 //! # 这一层认识什么、不认识什么
 //!
-//! 它只认识 **origin**（本机是 [`crate::inbound_client::LOCAL_ORIGIN`]，远端是用户配的 label）。
+//! 它只认识 **origin**（本机是 [`crate::backend::control::inbound_client::LOCAL_ORIGIN`]，远端是用户配的 label）。
 //! 它**不认识 ssh、不认识进程监护** —— 那两样分别住 `ssh_source` 与 `local_backend_host`。
 //! 远端怎么起，由 `lib.rs` 在启动时注册一个**重起闭包**（把 replay / app handle / tx 那几个
 //! 克隆关进去），本层只按 origin 找把手。
@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::inbound_client::LOCAL_ORIGIN;
+use crate::backend::control::inbound_client::LOCAL_ORIGIN;
 
 /// 一台远端的「怎么再起」+ 「现在这条流的把手」。
 struct RemoteSlot {
@@ -99,7 +99,7 @@ pub fn backend_machines() -> Result<Vec<String>, String> {
 #[tauri::command]
 pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
     check_origin(&origin)?;
-    let channel = crate::inbound_client::client_for(&origin).is_some();
+    let channel = crate::backend::control::inbound_client::client_for(&origin).is_some();
     // ★★ `K-P1 KPY5`：**`detached` 的真相源只能是「起它的时候走没走那条路」。**
     //
     // `is_detached()` 读的是一条**只在真的走过脱离那条路时才会被写下**的记录

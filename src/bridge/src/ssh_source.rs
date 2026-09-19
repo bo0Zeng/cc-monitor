@@ -1408,7 +1408,7 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 /// 一边清一边不清）。⇒ 收成一个口，两侧共用 —— 这正是 `C1` 在数据面上的样子。
 ///
 /// `origin` 的取值域**只有两类**：远端的 `host_label`/`origin_label`，
-/// 或本机的 [`crate::inbound_client::LOCAL_ORIGIN`]。
+/// 或本机的 [`crate::backend::control::inbound_client::LOCAL_ORIGIN`]。
 /// 由 `ssh_source_f032_idle_tests.rs::the_tmux_cache_has_one_writer_and_only_origin_keys` 钉住。
 ///
 /// 〔`K-R19` 订正 09-03〕这一句原先点的是
@@ -2741,15 +2741,15 @@ mod emits_parity;
 /// 客户端永不登记）⇒ `cargo test` **全绿**。它埋在 `stream_loop` 中段时没有任何判据碰得到。
 fn attach_inbound_client<W>(
     host_label: &str,
-    parked: &mut Option<crate::inbound_client::ParkedWriter<W>>,
+    parked: &mut Option<crate::backend::control::inbound_client::ParkedWriter<W>>,
     frame: Option<&InboundFrame>,
-) -> Option<std::sync::Arc<crate::inbound_client::InboundClient>>
+) -> Option<std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>
 where
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    let witness = crate::inbound_client::BackendHello::from_hello_frame(frame?)?;
+    let witness = crate::backend::control::inbound_client::BackendHello::from_hello_frame(frame?)?;
     let client = parked.take()?.into_client(witness);
-    crate::inbound_client::register(host_label, client.clone());
+    crate::backend::control::inbound_client::register(host_label, client.clone());
     Some(client)
 }
 
@@ -2760,7 +2760,7 @@ where
 /// **抽成函数同样是为了可测**（D 审计变异 MU12：把 `route_reply` 换成丢弃 ⇒ 全绿）。
 fn route_inbound_frame(
     host_label: &str,
-    client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
+    client: Option<&std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
     frame: InboundFrame,
 ) -> bool {
     let (kind, id) = match &frame {
@@ -3196,19 +3196,21 @@ async fn stream_loop(
     // 把写半边停住 —— `ParkedWriter` 身上没有任何写方法，要等收到 hello 才换得出能发命令的
     // 客户端。切与停必须是同一步：中间留一个裸 `WriteHalf` 就等于留了一个「Hello 之前能写」
     // 的窗口（D 审计实测过那个窗口，两条护栏都拦不住）。见 `inbound_client` 头注。
-    let (stream, parked) = crate::inbound_client::split_and_park(stream);
+    let (stream, parked) = crate::backend::control::inbound_client::split_and_park(stream);
     let mut parked = Some(parked);
     // 本连接的入方向客户端（收到 hello 后才有）。函数任何退出路径经 guard 摘除注册表
     // 并叫醒还在等应答的调用方 —— 同 `SnapshotQueueCloser` 的形状。
-    let mut inbound: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
+    let mut inbound: Option<
+        std::sync::Arc<crate::backend::control::inbound_client::InboundClient>,
+    > = None;
     struct InboundCloser(
         String,
-        Option<std::sync::Arc<crate::inbound_client::InboundClient>>,
+        Option<std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
     );
     impl Drop for InboundCloser {
         fn drop(&mut self) {
             if let Some(c) = self.1.take() {
-                crate::inbound_client::unregister(&self.0, &c);
+                crate::backend::control::inbound_client::unregister(&self.0, &c);
             }
         }
     }
@@ -4274,7 +4276,8 @@ async fn probe_backend(
         .map_err(|e| format!("exec {daemon_path} 失败: {e}"))?;
 
     // U8a-2a：切成两半，写半边同一步停住（见 `inbound_client::split_and_park`）。
-    let (rh, parked) = crate::inbound_client::split_and_park(channel.into_stream());
+    let (rh, parked) =
+        crate::backend::control::inbound_client::split_and_park(channel.into_stream());
     let mut reader = BufReader::new(rh);
 
     // ★ F10b：与主帧读同一个量（backend 出方向单行）⇒ 同一个上限、同一个机制。
@@ -4351,7 +4354,7 @@ const CONTROL_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 ///
 /// 结果只追加进 `backend_hello` 摘要串（前端已有展示位），不新增字段 ⇒ 零 TS 绑定改动。
 async fn probe_control_channel<R, W>(
-    parked: crate::inbound_client::ParkedWriter<W>,
+    parked: crate::backend::control::inbound_client::ParkedWriter<W>,
     reader: BufReader<R>,
     hello: &InboundFrame,
 ) -> String
@@ -4359,7 +4362,9 @@ where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    let Some(witness) = crate::inbound_client::BackendHello::from_hello_frame(hello) else {
+    let Some(witness) =
+        crate::backend::control::inbound_client::BackendHello::from_hello_frame(hello)
+    else {
         // 不可达（调用方已确认是 Hello），但不 panic —— 探测路径宁可少报一行。
         return "control=n/a".to_string();
     };
@@ -4392,7 +4397,7 @@ where
 /// 只做一件事：把读到的 `reply`/`cancelled` 路由给客户端。其余帧丢弃（探测不关心）。
 async fn pump_inbound_replies<R>(
     mut reader: BufReader<R>,
-    client: std::sync::Arc<crate::inbound_client::InboundClient>,
+    client: std::sync::Arc<crate::backend::control::inbound_client::InboundClient>,
 ) where
     R: tokio::io::AsyncRead + Unpin,
 {

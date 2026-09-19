@@ -1,5 +1,5 @@
 use super::*;
-use crate::inbound_client;
+use crate::backend::control::inbound_client;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 

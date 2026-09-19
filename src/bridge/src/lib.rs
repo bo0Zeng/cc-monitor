@@ -45,7 +45,6 @@ mod backend_policy; // P2s（C8）：每台机一份后端策略（生效值住�
 mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
-mod inbound_client;
 mod launch;
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
@@ -1420,7 +1419,7 @@ pub fn run() {
                 // ⇒ 这个勾必须对**三条起法**都生效，否则用户勾了「退出时结束它」、退出、
                 // 而它没被结束 —— 一个说谎的开关。
                 // 策略**只读一次**，三条路共用同一个答案。
-                let kill = backend_policy::kill_on_exit(inbound_client::LOCAL_ORIGIN);
+                let kill = backend_policy::kill_on_exit(crate::backend::control::inbound_client::LOCAL_ORIGIN);
                 // ── 起法 ①：被监护的子进程，句柄在 `LOCAL_BACKEND` 里 ──
                 // ⚠ 锁在这里取、句柄不克隆：`SuperviseHandle` 刻意不是 `Clone`
                 // （克隆出去的那份 `stop()` 谁都能调，就没有「一个句柄一条命」这回事了）。

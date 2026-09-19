@@ -170,12 +170,12 @@ pub async fn backend_send_into(req: SendIntoRequest) -> SendIntoResponse {
         // ⚠ **坏数据不许回落**：拿一个空载荷去渲染整串只会产出一条无意义的 shell 命令。
         return SendIntoResponse::refused("会话名或载荷为空 —— 拒绝发出（坏数据不是缺省）");
     }
-    let Some(client) = crate::inbound_client::client_for(&req.origin) else {
+    let Some(client) = crate::backend::control::inbound_client::client_for(&req.origin) else {
         return SendIntoResponse::from_routed(super::backend_route::no_channel(&req.origin));
     };
     // ⚠ `LaunchExtras::default()`：`agent` / `width` / `height` 是 `create-or-attach` 专有的
     //   （`K-P2` `D3` 加的），这条路**只发 `send-into`** ⇒ 一个都不该带。
-    let args = crate::inbound_client::launch_args(
+    let args = crate::backend::control::inbound_client::launch_args(
         "send-into",
         &req.name,
         &req.payload,

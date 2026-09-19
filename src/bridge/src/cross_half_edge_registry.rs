@@ -90,13 +90,13 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/bridge/inbound_client_tests.rs",
+        "tests/bridge/backend/control/inbound_client_tests.rs",
         "src/backend/inbound.rs",
         "入方向帧的种类与错误码两侧同形",
     ),
     (
         "monitor→backend",
-        "tests/bridge/inbound_client_tests.rs",
+        "tests/bridge/backend/control/inbound_client_tests.rs",
         "src/backend/control/launch.rs",
         "launch 请求的字段名两侧同形",
     ),

@@ -6,28 +6,24 @@ fn backend_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend")
 }
 
-/// ★★ 住在 `backend/` **之外**、但属于 backend 那一半的文件 —— 必须一起受两道守卫管。
-///
-/// # 为什么需要这张表〔G2，Phase G 整体设计审计的产物〕
-///
-/// 两道守卫（宿主无关 / 平台无关）此前只扫 `src/backend` 子树。
-/// 而 `inbound_client.rs` **物理位置在 `src/` 顶层** ⇒ **整个在扫描面之外**。
-/// 审计当天实测它是干净的（无 `AppHandle` / `State<` / `.emit(`）——
-/// **但那是巧合，不是被钉住**。它承担的正是 **C1**「一份代码两种承载」里
-/// 「本机进程」那一半最关键的传输层（`backend_kill` / `backend_launch` /
-/// `backend_send_keys` 共同依赖它）。它一旦长出宿主耦合，backend 的护栏体系**整体看不见**。
-///
-/// ⚠ **为什么是加进扫描面而不是挪文件**：挪 1183 行的文件会动到一大批 `use` 路径与
-/// `mod` 声明，半径远大于收益，且与 `cross_half_edge_registry` 的边登记表相互作用。
-/// **先把它纳入管辖，挪不挪是另一件事**（若将来挪进 `backend/`，把这一行删掉即可）。
-const EXTRA_BACKEND_FILES: &[(&str, &str)] = &[(
-    "inbound_client.rs",
-    "backend 流通道的 wire 客户端 —— C1「本机进程」那一半的传输层，\
-         被 backend_kill / backend_launch / backend_send_keys 共同依赖。\
-         它不在 backend/ 下是历史位置，不是它不属于这一半。",
-)];
+// 🔴 〔步 8 · 归属 2026-09-19〕**`EXTRA_BACKEND_FILES` 整张表删了 —— 表真的空了。**
+//
+// 它当年（G2 整体设计审计）登记的只有一条：`inbound_client.rs`。那张表的头注逐字
+// 写着为什么不挪而是纳管：「挪 1183 行的文件会动到一大批 `use` 路径与 `mod` 声明，
+// 半径远大于收益 …… **先把它纳入管辖，挪不挪是另一件事**（若将来挪进 `backend/`，
+// 把这一行删掉即可）」。
+//
+// **步 8 是全仓冻结窗口** ⇒ 那个「半径太大」的前提当场消失。这一拍真挪了：
+// `src/bridge/src/inbound_client.rs` → `src/bridge/src/backend/control/inbound_client.rs`
+// （住 `control/` 而不是 `backend/` 根下 —— `every_file_under_backend_lives_on_a_capability_line`
+//  逐字「根下只允许 mod.rs」，而它的三个消费者全在 `control` 这条线上）。
+// ⇒ 表空了，按它自己那条 `the_extra_backend_files_are_not_ghosts`〔散文墓碑〕的逐字指示
+//   （「表空了 —— 若真的把它们都挪进了 `backend/`，**连这条一起删**；
+//     但别留一张空表假装还有人管」）**连表带判据一起删**。
+// ⚠ 扫描面**没有缩小**：它从「表外那一格」变成 `backend_files()` 正常扫到的一份
+//   （那才是这张表当初想要的终态）。用例数 −1，逐条点名在本轮报告里。
 
-/// 两道守卫共同的扫描面：`backend/` 全部 `.rs` + [`EXTRA_BACKEND_FILES`]。
+/// 两道守卫共同的扫描面：`backend/` 全部 `.rs`。
 /// 返回 `(展示名, 绝对路径)`。
 fn guarded_files() -> Vec<(String, PathBuf)> {
     let root = backend_dir();
@@ -38,34 +34,7 @@ fn guarded_files() -> Vec<(String, PathBuf)> {
             (f, p)
         })
         .collect();
-    let src_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    for (f, _) in EXTRA_BACKEND_FILES {
-        out.push((format!("（表外）{f}"), src_root.join(f)));
-    }
     out
-}
-
-/// ★ 表外那几个必须真的存在 —— 挡「文件改名/挪走后登记留成僵尸」。
-/// 僵尸的后果不是红，是**那一行悄悄不再扫任何东西**（扫描面缩水且无人知道）。
-#[test]
-fn the_extra_backend_files_are_not_ghosts() {
-    let src_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    assert!(
-        !EXTRA_BACKEND_FILES.is_empty(),
-        "表空了 —— 若真的把它们都挪进了 `backend/`，连这条一起删；\n\
-             但别留一张空表假装还有人管"
-    );
-    for (f, why) in EXTRA_BACKEND_FILES {
-        assert!(
-            src_root.join(f).is_file(),
-            "`src/{f}` 不存在 —— 登记成了僵尸，那一行从此不扫任何东西"
-        );
-        assert!(
-            why.len() > 30,
-            "`{f}` 的理由太短（{} 字）—— 这张表的价值全在「为什么它属于 backend 那一半」",
-            why.len()
-        );
-    }
 }
 
 /// `backend/` 下的所有 `.rs`，路径相对 `backend/`，`/` 分隔。
