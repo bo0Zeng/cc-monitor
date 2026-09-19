@@ -44,26 +44,26 @@ export CCM_CODEXTOML="$SANDBOX/codex-config.toml"
 # 问不到后端就 `exit 4`。不带后端的话，本套件 72 条里 41 条连锁失败（现打过），
 # 而它们红的原因（这台机器没装后端）与它们要测的东西（cc-spawn 有没有把活交给 ccm）**无关**。
 # ⇒ 与 `tmux` shim / 假 launcher 同一条既有纪律：**要测的变量之外的东西，套件自己钉住**。
-# ⚠ `tests/e2e/fake-daemon.sh` 里的 `tmux` 走 **PATH** ⇒ 落在上面那个 `-L $SOCK` 的 shim 上，
+# ⚠ `tests/e2e/fake-backend.sh` 里的 `tmux` 走 **PATH** ⇒ 落在上面那个 `-L $SOCK` 的 shim 上，
 #   隔离面一格没变（它碰不到用户的 tmux server）。
 # ⚠ `CCM_ACCTS_MANIFEST` 指向一个**不存在的**隔离路径（形态仍是 `<目录>/accounts.json`）：
 #   后端对它答「meta ＋ 零个账号」= 空表 ⇒ ccm 退化为基座启动器、不注入账号，
 #   本套件要测的那一面因此干净；同时**绝不摸**开发者真实的 `~/.claude-alt`。
-# `FAKE_DAEMON_TMUX_SOCK` 与本套件的 `-L $SOCK` **给同一个名字**（理由同上：那份假后端
+# `FAKE_BACKEND_TMUX_SOCK` 与本套件的 `-L $SOCK` **给同一个名字**（理由同上：那份假后端
 # 自带选择器且 fail-closed；shim 会再插一个，tmux 取最后一个）。
-export FAKE_DAEMON_TMUX_SOCK="$SOCK"
+export FAKE_BACKEND_TMUX_SOCK="$SOCK"
 export CCM_ACCTS_MANIFEST="$SANDBOX/no-accts/accounts.json"
 
 # ★★ 🔴 `K-R48` 第二拍（09-11）：**`ccm` 就是后端二进制本体，`shared/ccm` 那个脚本删了。**
 #   〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」。
-#   ⇒ 上一行原来的 `export CCM_DAEMON_BIN="$REPO/tests/e2e/fake-daemon.sh"`（给 bash `ccm` 一个
+#   ⇒ 上一行原来的 `export CCM_BACKEND_BIN="$REPO/tests/e2e/fake-backend.sh"`（给 bash `ccm` 一个
 #   跨进程问得到的后端）**整条删了**：今天没有那一跳，账号表由 `CCM_ACCTS_MANIFEST` 直接读。
-#   ⇒ `cc-spawn` 的查找次序刻意**不认** `$CCM_DAEMON_BIN`（它在仓里指的是假 daemon），
+#   ⇒ `cc-spawn` 的查找次序刻意**不认** `$CCM_BACKEND_BIN`（它在仓里指的是假后端），
 #   所以这里用 `CCM_BIN` 显式钉住本工作树刚 build 出来的那一份。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$CCM_NATIVE" ] || {
-  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-remote\`" >&2
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2; }
 CCMDIR="$(mktemp -d)"
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"
@@ -81,8 +81,8 @@ CCM="$CCMDIR/ccm"     # 本套件里那几处**直接叫 ccm**（不经 cc-spawn
 # ⇒ 那条返回 1 ⇒ **trap 被 set -e 中途打断**：`rm -rf` 根本没跑到（临时目录泄漏），
 # 且整套的退出码变成 1 —— 60 格全 PASS、打印「全部通过」，而 `assert-pass-floor`（fail-closed）
 # 判它失败。**套件的裁决被清理绑架了**，这正是 gate-integrity 要防的那类事。
-# ★ 惯例本来就在：`daemon-gate2` / `graylight-suite` / `graylight-daemon-frames` /
-#   `restart-daemon-frames` 四套的 cleanup 第一行都是 `set +e`，只有本套漏了。
+# ★ 惯例本来就在：`backend-gate2` / `graylight-suite` / `graylight-backend-frames` /
+#   `restart-backend-frames` 四套的 cleanup 第一行都是 `set +e`，只有本套漏了。
 #   ⇒ 量完人群是 1，**不扩登记表**，照同一个形状补上即可。
 cleanup() {
   set +e
@@ -202,10 +202,10 @@ mkdir -p "$WORK/inh"
 (
   export PATH="$BIN8:$PATH"
   # ⚠ 〔`K-P2` `F` 拍 09-04〕**假后端那个 socket 也要跟着换**：它自带 `-L`（fail-closed，
-  #   见 `tests/e2e/fake-daemon.sh` 头注），而 shim 插的 `-L` 在它**前面** ⇒ tmux 取最后一个
+  #   见 `tests/e2e/fake-backend.sh` 头注），而 shim 插的 `-L` 在它**前面** ⇒ tmux 取最后一个
   #   ⇒ 不换的话会话会落回 `$SOCK`，本格那个「现起一个 server」的前提当场不成立
   #   （现打逮到过：本格两条一起红，而红的原因与它要测的东西无关）。
-  export FAKE_DAEMON_TMUX_SOCK="$SOCK8"
+  export FAKE_BACKEND_TMUX_SOCK="$SOCK8"
   # 该 socket 上尚无 server → 这次调用会**现起**一个，从而把 CC_BUS_ID 带进 server 全局环境
   CCM_NO_PRETRUST=1 CC_BUS_ID=STALEPARENT timeout 30 "$CCSPAWN" --tool codex "$WORK/inh" > "$WORK/out5.txt" 2>&1
 )

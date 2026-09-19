@@ -1,8 +1,8 @@
 use super::*;
 
-/// 行计数口径必须与 daemon read_new_lines 一字一致：BOM+全空白跳过。
+/// 行计数口径必须与 backend read_new_lines 一字一致：BOM+全空白跳过。
 #[test]
-fn snapshot_line_countable_matches_daemon_semantics() {
+fn snapshot_line_countable_matches_backend_semantics() {
     assert!(snapshot_line_countable(r#"{"a":1}"#));
     assert!(snapshot_line_countable("\u{feff}{\"a\":1}")); // BOM+内容 → 计
     assert!(!snapshot_line_countable("")); // 空行 → 跳

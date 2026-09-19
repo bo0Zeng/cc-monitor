@@ -58,13 +58,13 @@ fn there_are_exactly_two_ways_in() {
     assert_eq!(intercept("C:\\x\\ccm.exe", &none), Some(vec![]));
     let sub = vec!["ccm".to_string(), "resume".to_string()];
     assert_eq!(
-        intercept("/opt/cc-monitor-remote", &sub),
+        intercept("/opt/cc-monitor-backend", &sub),
         Some(vec!["resume".to_string()])
     );
     // 不是 ccm ⇒ 一律放行给流模式 / wire 子命令
-    assert_eq!(intercept("/opt/cc-monitor-remote", &none), None);
+    assert_eq!(intercept("/opt/cc-monitor-backend", &none), None);
     assert_eq!(
-        intercept("/opt/cc-monitor-remote", &vec!["--ping".to_string()]),
+        intercept("/opt/cc-monitor-backend", &vec!["--ping".to_string()]),
         None
     );
     assert_eq!(intercept("/opt/ccmonitor", &none), None, "子串不算");
@@ -259,17 +259,20 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
 /// 「tmux 真的这么解释它」那一半**没有判据了** —— 登记在件文件 `§8`，别读成等价。
 #[test]
 fn the_window_title_is_synthesised_from_the_identity_tag_not_the_pane_title() {
-    assert_eq!(RBIND_TITLE_FORMAT, "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}");
+    assert_eq!(
+        TERMINAL_BIND_TITLE_FORMAT,
+        "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}"
+    );
     assert!(
-        RBIND_TITLE_FORMAT.starts_with("#{?@ccm_sid,"),
+        TERMINAL_BIND_TITLE_FORMAT.starts_with("#{?@ccm_sid,"),
         "它必须是**条件式**：有 @ccm_sid 才出 marker，没有才回退 #T"
     );
     assert!(
-        RBIND_TITLE_FORMAT.contains("ccm-rbind-#{@ccm_sid}"),
+        TERMINAL_BIND_TITLE_FORMAT.contains("ccm-rbind-#{@ccm_sid}"),
         "marker 必须逐字是 monitor 侧 bind.rs 要扫的那个前缀 + sid"
     );
     assert!(
-        RBIND_TITLE_FORMAT.ends_with(",#T}"),
+        TERMINAL_BIND_TITLE_FORMAT.ends_with(",#T}"),
         "sid 还没回填时要回退 pane 标题，而不是产出一个空的 `ccm-rbind-`"
     );
 }
@@ -291,8 +294,8 @@ fn the_window_title_format_has_the_same_text_on_both_sides() {
         "../../../src/backend/control/launch.rs"
     ));
     assert!(
-        launch.contains(RBIND_TITLE_FORMAT),
-        "`control/launch.rs` 的生产段里找不到这个格式串的逐字副本：\n  {RBIND_TITLE_FORMAT}\n             两份已经漂开了（或者那一行被收口成了标识符 —— 别那么做，理由见本条头注）。"
+        launch.contains(TERMINAL_BIND_TITLE_FORMAT),
+        "`control/launch.rs` 的生产段里找不到这个格式串的逐字副本：\n  {TERMINAL_BIND_TITLE_FORMAT}\n             两份已经漂开了（或者那一行被收口成了标识符 —— 别那么做，理由见本条头注）。"
     );
     assert!(
         launch.contains("set-titles-string"),

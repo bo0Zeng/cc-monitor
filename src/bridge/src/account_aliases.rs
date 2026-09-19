@@ -13,7 +13,7 @@
 //! 3. **弄坏的代价是「shell 起不来」** —— 而那正是用户用来救火的东西。
 //!
 //! ⇒ 落点是 [`alias_file_in`]（`~/.cc-monitor/account-aliases.sh`，**monitor 自己的目录**，
-//! 与 `local_backend` / `local_daemon` 用的是同一个），**每次按账号表整份重写**：
+//! 与 `local_backend` / `local_backend_host` 用的是同一个），**每次按账号表整份重写**：
 //! 幂等、删了账号那一行当场消失、删掉整份文件也只是少几个命令，shell 照常起得来。
 //!
 //! # 用户的 shell 配置里最多只多**一行** `source`，而且多数人连这一行都不用加

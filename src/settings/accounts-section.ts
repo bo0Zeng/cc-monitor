@@ -22,7 +22,7 @@ import {
   accountStatusBadge,
   accountLoginActionLabel,
   setDefaultName,
-  // K-H2c：「这几个号在不在中转表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
+  // K-H2c：「这几个号在不在apikey 表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
   fetchLocalRelayRouting,
   getModelForAccount,
   setModelForAccount,
@@ -70,7 +70,7 @@ export interface RelayKeyAccount {
   name: string;
   /** 递给后端那条命令的不透明串。 */
   configDir: string;
-  /** 中转表里今天有没有它那一行 —— `KH2B7` 的答案，**后端算的**。 */
+  /** apikey 表里今天有没有它那一行 —— `KH2B7` 的答案，**后端算的**。 */
   routed: boolean;
 }
 
@@ -120,7 +120,7 @@ export function renderRelayKeyBlock(
 
   const title = document.createElement("div");
   title.className = "relay-key-title";
-  title.textContent = "中转 API key";
+  title.textContent = "第三方 API key";
   box.appendChild(title);
 
   // ★ `K-H2c`：配给**哪个账号**。选项的 value 是那个不透明的 configDir。
@@ -141,8 +141,8 @@ export function renderRelayKeyBlock(
     state.textContent = !a
       ? "这台机器上没有能配的账号：账号 0 在 manifest 里没有目录名，说不出 id ⇒ 配了也不会被注入。先加一个隔离账号，或者直接编辑下面那份 JSON。"
       : a.routed
-        ? `${a.name}：中转表里已经有它那一行。再存一次会**替换**它那一把 key。`
-        : `${a.name}：中转表里还没有它那一行 —— 它的会话今天走官方直连。`;
+        ? `${a.name}：apikey 表里已经有它那一行。再存一次会**替换**它那一把 key。`
+        : `${a.name}：apikey 表里还没有它那一行 —— 它的会话今天走官方直连。`;
   };
   if (accounts.length) box.appendChild(picker);
   syncState();
@@ -297,7 +297,7 @@ export class AccountsSection {
    * Phase G：给状态账本记一格。
    *
    * **这里此前是个洞**：`MACHINE_FACETS` 有 5 格，而全仓 `recordFacet` 的生产者只覆盖
-   * 3 格（machine-card 的 connection/daemon/ccm）—— `acctIso` 与 `accounts` **一个写点都没有**。
+   * 3 格（machine-card 的 connection/backend/ccm）—— `acctIso` 与 `accounts` **一个写点都没有**。
    * 后果不是「少两个格子」，而是**「还差什么」那张清单在任何真实安装上都清不空**：
    * 每台机器恒定产出 ≥2 条 `unknown` ⇒ `summarizeGaps` 恒非 null ⇒
    * `remote-section` 里「全绿就整块不出现」那一支是**死代码**。
@@ -309,7 +309,7 @@ export class AccountsSection {
    * ⇒ 远端补上了，**本机一格都没写过**（`N-F2` 开工时现打：全仓对 `LOCAL_MACHINE_KEY`
    * 的 `recordFacet` 写点 **0 个** —— ⚠ **这是那一刻的快照，而改掉它的正是下面这一行**：
    * 本件之后是 1 个，就是这里）。而 `readiness.notApplicable` 对本机只排掉
-   * `daemon` / `connection` 两格（`ccm` 另有一条，仅 Windows），
+   * `backend` / `connection` 两格（`ccm` 另有一条，仅 Windows），
    * 于是本机的 `acctIso` / `accounts` 是**适用而恒 `unknown`** 的两格 ——
    * 上面那句「清单在任何真实安装上都清不空」在本机这一侧原封不动地仍然成立。
    *
@@ -366,8 +366,8 @@ export class AccountsSection {
       // 🔴 `K-R59`：这里原来还有一支 `case "hidden"`，把 `accounts`/`acctIso` 两格
       //    记成 `na`、理由「用户显式选的降级」。那一档（`daemonless`）整格没了 ⇒ 支也没了。
       case "needs-update":
-        this.note("accounts", { kind: "fail", detail: "daemon 需更新" });
-        this.info(`远端 daemon 需要更新才能用多账号：${ui.reason}`);
+        this.note("accounts", { kind: "fail", detail: "backend 需更新" });
+        this.info(`远端后端需要更新才能用多账号：${ui.reason}`);
         return;
       case "not-enabled":
         // 读得到、但多账号管线没启用 ⇒ accounts 这一格算读到了，acctIso 那格是真的缺。
@@ -540,7 +540,7 @@ export class AccountsSection {
    * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
    *
    * ⚠ 徽章走 `accountStatusBadge(a)` 而**不传** `relay`：那个参数说的是
-   * 「这个号在中转表里有没有一行、本机中转在不在跑」，本件没有去问后端要这两格
+   * 「这个号在apikey 表里有没有一行、本机中转在不在跑」，本件没有去问后端要这两格
    *（那要多一条 IPC，属下一件）⇒ **不传就是如实说「这一处没被告知」**，
    * 它自己的那一支逐字写着「所以不替它下判断」。
    * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
@@ -571,7 +571,7 @@ export class AccountsSection {
 
   /**
    * A6：在远端终端里跑一个部署/维护步骤——构建命令（校验失败即提示不动手）→ danger 步二次确认 →
-   * `launch_remote_terminal` 弹真实终端让用户看着跑（DESIGN §6，不经 daemon、不代跑）。
+   * `launch_remote_terminal` 弹真实终端让用户看着跑（DESIGN §6，不经后端、不代跑）。
    */
   private async launchStep(
     step: AcctIsoStep,
@@ -842,7 +842,7 @@ export class AccountsSection {
   ): Promise<void> {
     const def = currentWorkingAccount(state);
     this.body.appendChild(this.renderCurrentBanner(def));
-    // Z01：**能用但有缺**（远端 daemon / cc-acct-iso 旧到看不见账号 0）。列表本身是好的，
+    // Z01：**能用但有缺**（远端 backend / cc-acct-iso 旧到看不见账号 0）。列表本身是好的，
     // 所以不走 needs-update 那条整体降级——但也**绝不静默**：少一行账号用户看不出来。
     if (notice) {
       const n = document.createElement("div");
@@ -916,7 +916,7 @@ export class AccountsSection {
    *
    * # ⚠ `K-H2c` 三条口径，一条都别省
    *
-   * ① **「这个号在不在中转表里」是问后端要的**（`KH2B7` 那条既有命令），
+   * ① **「这个号在不在apikey 表里」是问后端要的**（`KH2B7` 那条既有命令），
    *    前端不推账号 id、也不读那份凭据文件。它失败**不挡配 key** ——
    *    那只影响状态那一行的措辞，而配 key 本身是这一块存在的理由。
    * ② **没有 `configDir` 的账号（账号 0）被滤掉**：起会话那一侧对它逐字回 `None`
@@ -949,14 +949,14 @@ export class AccountsSection {
             await commands.write_relay_credentials_key({ key, configDir });
             void this.reload(true);
           } catch (e) {
-            showActionFailureToast("保存中转 API key", String(e));
+            showActionFailureToast("保存第三方 API key", String(e));
           }
         }),
       );
     } catch (e) {
       const box = document.createElement("div");
       box.className = "relay-key-problem";
-      box.textContent = `读不到中转 API key 的状态：${String(e)}`;
+      box.textContent = `读不到第三方 API key 的状态：${String(e)}`;
       this.body.appendChild(box);
     }
   }

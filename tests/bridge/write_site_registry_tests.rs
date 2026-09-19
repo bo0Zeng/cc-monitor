@@ -31,14 +31,14 @@ const WRITE_CALLS: &[&str] = &[
 /// 「谁进人群」由机器定，「它是不是安装动作」才是人的答案。
 #[allow(clippy::type_complexity)]
 pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
-    // ── P2z：单 exe 自释放内嵌 daemon。**不是安装动作** —— 它写的是 monitor 自己的缓存。
+    // ── P2z：单 exe 自释放内嵌后端。**不是安装动作** —— 它写的是 monitor 自己的缓存。
     ("local_backend.rs", "extract_embedded_to", None,
-     "把内嵌的 daemon 二进制释放到 `~/.cc-monitor/bin/cc-monitor-local-<build_id>`，\
-          供 exe 旁没有 sidecar 时起进程。写的是 monitor 自己的目录，\
+     "把内嵌的后端二进制释放到 `~/.cc-monitor/bin/cc-monitor-local-<build_id>`，\
+          供 exe 旁没有本机后端时起进程。写的是 monitor 自己的目录，\
           不碰用户既有环境、不注册到任何用户配置里；按 build_id 命名 ⇒ 幂等、不覆盖别的版本。\
           ⚠ **唯一调用点是 `local_backend::resolve_or_extract`**〔`K-R43` 改：本行原先写\
           「供 `start_or_extract` …」，那时它是唯一调用点；今天 `start_or_extract` 与\
-          `local_daemon::resolve_daemon_bin` **都经那一份共用的解析**走到这里 ⇒ 写盘这一跳\
+          `local_backend_host::resolve_backend_bin` **都经那一份共用的解析**走到这里 ⇒ 写盘这一跳\
           仍然只有一处，而**吃它的路从一条变成两条**〕"),
     // ── P2t：收掉自己留下的 `.partial` 残骸。**不是安装动作** —— 它只**删**，且只删自己那套命名。
     ("local_backend.rs", "sweep_stale_partials", None,
@@ -84,8 +84,8 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── 构建期写盘：**不碰用户既有环境**，只往 `OUT_DIR` 放构建产物。
     // 单列在这里是因为它此前**整个在扫描面之外**（08-08 并入），
     // 而它确实在开发者机器上写文件 —— 「不是安装动作」得由人说出来，不是靠没人看见。
-    ("build.rs", "embed_daemons", None,
-     "把 `embedded-daemons/cc-monitor-remote-<arch>` 复制进 `OUT_DIR`，\
+    ("build.rs", "embed_backends", None,
+     "把 `embedded-backends/cc-monitor-backend-<arch>` 复制进 `OUT_DIR`，\
           供 `include_bytes!` 内嵌。写的是 cargo 自己的构建目录，不碰用户环境；\
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
@@ -106,7 +106,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── `K-R49`：加了账号就把 `alphacc` / `betacc` 那条命令落下来。**两个落点性质完全不同，分两行记。**
     ("account_aliases.rs", "write_alias_file", None,
      "整份重写 `~/.cc-monitor/account-aliases.sh`。**不是安装动作** —— 写的是 monitor \
-          自己的目录（与 `local_backend` 的 `bin/`、`local_daemon` 的 `listen-token` 同一个），\
+          自己的目录（与 `local_backend` 的 `bin/`、`local_backend_host` 的 `listen-token` 同一个），\
           用户的 shell 配置一个字节都不碰。\
           ★ 为什么是「整份重写」而不是往 `~/.bashrc` 追加：追加那条路上，加三个账号就追三次、\
           删了账号那一行还留着指向一个不存在的号，而**弄坏的代价是 shell 起不来**。\
@@ -153,13 +153,13 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
     ("utils.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
     // ── `K-P1`：常驻那条路要写两样东西。**都不是安装动作** —— 写的是 monitor 自己的目录。
-    ("local_daemon.rs", "ensure_listen_token", None,
+    ("local_backend_host.rs", "ensure_listen_token", None,
      "写 `~/.cc-monitor/listen-token`（**`0600`**，`create_new` 只创建一次）。\
           ★ 它买的是**权限位**：回环 TCP 上同机任何进程（含别的用户）都连得上，\
-          Unix socket 有权限位而它没有，收窄只能靠一个 token；而 **daemon 只读铁律不许它自己写文件**\
+          Unix socket 有权限位而它没有，收窄只能靠一个 token；而 **backend 只读铁律不许它自己写文件**\
           ⇒ token 只能由宿主生成、当 env 传进去。**这一格是一条真裁决，不是实现细节。**\
-          幂等：已存在就读回（重写会让上一个宿主留下的那个 daemon 当场变成接不上的孤儿）"),
-    ("local_daemon.rs", "write_listen_pid", None,
+          幂等：已存在就读回（重写会让上一个宿主留下的那个后端当场变成接不上的孤儿）"),
+    ("local_backend_host.rs", "write_listen_pid", None,
      "写 `~/.cc-monitor/listen-<port>.pid` —— 「谁在听那个口」。\
           它**不是**真相源（真相源永远是「那个口连不连得上」），只在**停**那一步用，\
           且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。\
@@ -188,7 +188,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
 /// 而 `ffs::write(` 里**含有** `fs::write(` 子串 ⇒ 两条判据都红了，
 /// 差点被我读成「有人守着」。**变异要造得像，巧合的红比不红更骗人。**
 ///
-/// 修法照 daemon 侧 `readonly_guard` 的先例：**堵逃生口**，别去追那些改写形态。
+/// 修法照后端侧 `readonly_guard` 的先例：**堵逃生口**，别去追那些改写形态。
 fn fs_import_verdict(line: &str) -> Result<(), String> {
     let s = line.trim();
     if !s.starts_with("use ") || !s.contains("fs") {
@@ -288,7 +288,7 @@ fn src_root() -> PathBuf {
 ///
 /// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
 /// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
-/// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌 daemon）。
+/// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌后端）。
 /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src/bridge/src` · `src/backend`
 /// · `src/bridge/crates` · `src` · `doc` —— **`src/bridge/build.rs` 一张表都没扫到**，
 /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。

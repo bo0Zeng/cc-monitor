@@ -1,9 +1,9 @@
 //! U8c-2c-1：**`ccm …` 调用行的渲染器** —— TS `launch-render-cli.ts::tryRenderCli` 的 Rust 对侧。
 //!
-//! ⚠ **P4b 搬家**：它原来是共享 crate（当时叫 `launch-core`）的 `cli` 模块 —— 而 **daemon 对它零引用**。
+//! ⚠ **P4b 搬家**：它原来是共享 crate（当时叫 `launch-core`）的 `cli` 模块 —— 而 **backend 对它零引用**。
 //! 架构审计点破「这就是决策内核，放在共享 crate 里的真实原因是 monitor 没处放」。
 //! 现在住 `backend/control/`：§1.3 把最终 exec 钉在用户自己的终端进程里，
-//! U8a-2b 把 daemon 的执行面定成 argv 直传、不过 shell ⇒ **渲染 shell 串永远属于开终端那一侧。**
+//! U8a-2b 把后端的执行面定成 argv 直传、不过 shell ⇒ **渲染 shell 串永远属于开终端那一侧。**
 //!
 //! # 它为什么比载荷那一半更要紧
 //!

@@ -31,7 +31,7 @@ fn parse_lock(rel: &str) -> BTreeMap<String, BTreeSet<String>> {
 
 /// ★ 正题：**真冲突集必须为空**。
 ///
-/// 「真冲突」= 同一个包，**daemon 解析出的版本集不是 monitor 的子集**。
+/// 「真冲突」= 同一个包，**backend 解析出的版本集不是 monitor 的子集**。
 /// 超集（monitor 多持有几版）不算 —— 那不是「同一份源码编两次」。
 #[test]
 fn the_two_lockfiles_have_no_real_version_conflict() {
@@ -51,7 +51,7 @@ fn the_two_lockfiles_have_no_real_version_conflict() {
         let (mv, dv) = (&m[k], &d[k]);
         if !dv.is_subset(mv) {
             conflicts.push(format!(
-                "  {k}: monitor {:?} / daemon {:?}",
+                "  {k}: monitor {:?} / backend {:?}",
                 mv.iter().collect::<Vec<_>>(),
                 dv.iter().collect::<Vec<_>>()
             ));
@@ -59,14 +59,14 @@ fn the_two_lockfiles_have_no_real_version_conflict() {
     }
     assert!(
         conflicts.is_empty(),
-        "两份 lockfile 有**真冲突**（daemon 解析出的版本不在 monitor 的集合里）：\n{}\n\n\
-             ★ 后果不是「多编一遍」：`ci.yml` 的 daemon job 有 \
+        "两份 lockfile 有**真冲突**（backend 解析出的版本不在 monitor 的集合里）：\n{}\n\n\
+             ★ 后果不是「多编一遍」：`ci.yml` 的 backend job 有 \
              `defaults.run.working-directory: src/backend` ⇒ 那条**跨 target Windows check** \n\
-             走的是 **daemon 的 lock**，而 monitor 真编走**它自己的**。\n\
-             而 `branch-core` / `usage-core` 既是 daemon 生产依赖、又是 monitor workspace member \n\
+             走的是 **backend 的 lock**，而 monitor 真编走**它自己的**。\n\
+             而 `branch-core` / `usage-core` 既是后端生产依赖、又是 monitor workspace member \n\
              ⇒ **同一份源码分别编进两个版本**，那条 check 证明的依赖树与真编的不是同一棵。\n\
              ⚠ 它是 `ci.yml` 自称的「平台线**唯一真判据**」。\n\n\
-             修法：在 `src/bridge/` 下 `cargo update -p <包>` 把 monitor 抬到 daemon 那一版\n\
+             修法：在 `src/bridge/` 下 `cargo update -p <包>` 把 monitor 抬到后端那一版\n\
              （两侧都验一遍编译），**不是**把判据放宽成「版本集合相同」——\n\
              那会把 11 个 monitor 超集也判红，是一条错的判据。",
         conflicts.join("\n")
@@ -80,43 +80,43 @@ fn the_two_lockfiles_have_no_real_version_conflict() {
 ///
 /// ⚠⚠ **08-07 订正：本条原本钉的是两个「字符串各自存在」，不是它们的关系。**
 /// 变异实测两刀：① 把跨 target check 整步搬进 `rust` job（它改走 monitor 的 lock）；
-/// ② 把 daemon job 的 `working-directory` 改成 `src/bridge`、同时把那一行原样挪到别的 job。
+/// ② 把 backend job 的 `working-directory` 改成 `src/bridge`、同时把那一行原样挪到别的 job。
 /// 两刀都让本模块整套论证**反过来**，而本条**一声不吭**（三条全绿）。
 ///
 /// ★ 两刀确实各有别的判据红了 —— 但读它们的诊断：说的是
 /// 「切出来的块里没有 `working-directory: src/backend` —— **切错 job 了，本条会零命中地绿**」，
-/// 那是 `ci_actually_runs_the_daemon_four_steps` 的**抽取器自检**在说话。
-/// 照它去修，人会去查切块逻辑，而真实事件是 **daemon job 换了工作目录**。
+/// 那是 `ci_actually_runs_the_backend_four_steps` 的**抽取器自检**在说话。
+/// 照它去修，人会去查切块逻辑，而真实事件是 **backend job 换了工作目录**。
 /// ⇒ **「有别的判据接住」不等于「有人把这件事讲对了」** —— 本条才是该讲这句话的那条。
 ///
 /// 改法：钉**关系** —— 两件事必须落在**同一个 job 块**里。切块用
 /// `shared_crate_registry::ci_yaml`（E3：`ci.yml` 的读取与切块只有一个家）。
 #[test]
-fn the_cross_target_check_still_runs_under_the_daemon_lock() {
+fn the_cross_target_check_still_runs_under_the_backend_lock() {
     use crate::shared_crate_registry::ci_yaml;
     const CHECK: &str = "cargo check --all-targets --target x86_64-pc-windows-msvc";
     // ⚠ **行锚定**，不能用 `contains` 裸匹配：`src/backend` 是
     // `src/backend-X` 的**前缀** —— 变异实测过，裸 `contains` 照样绿。
     const WD: &str = "working-directory: src/backend";
 
-    let block = ci_yaml::job_block("daemon");
+    let block = ci_yaml::job_block("backend");
     // 抽取器自检：切不出块时下面两条会零命中地绿。
     assert!(
         block.lines().count() >= 10,
-        "从 `ci.yml` 切 `daemon:` job 只得到 {} 行 —— job 名或缩进变了，本条会零命中地绿",
+        "从 `ci.yml` 切 `backend:` job 只得到 {} 行 —— job 名或缩进变了，本条会零命中地绿",
         block.lines().count()
     );
     assert!(
         block.lines().any(|l| l.trim() == WD),
-        "`daemon:` job 里没有 `{WD}` 了 —— 它可能被改了值、也可能被挪到了别的 job。\n\
+        "`backend:` job 里没有 `{WD}` 了 —— 它可能被改了值、也可能被挪到了别的 job。\n\
              ⚠ **别只看「这行字在不在 ci.yml 里」** —— 它在别处照样在，而本模块要的是\n\
-             「**跨 target check 所在的那个 job** 跑在 daemon 的 lock 下」。\n\
+             「**跨 target check 所在的那个 job** 跑在后端的 lock 下」。\n\
              这个前提一没，`the_two_lockfiles_have_no_real_version_conflict` 整套论证就落空，\n\
              该回来重判整条，而不是留着一条论证已经落空的判据。"
     );
     assert!(
         block.contains(CHECK),
-        "跨 target Windows check 不在 `daemon:` job 里了（它是 `ci.yml` 自称的\n\
+        "跨 target Windows check 不在 `backend:` job 里了（它是 `ci.yml` 自称的\n\
              「平台线唯一真判据」）。要么它被删了（那是个更大的问题），\n\
              要么它被搬进了别的 job —— 而别的 job 的 `working-directory` 不是\n\
              `src/backend` ⇒ 它改走 **monitor 的 lock**，本模块整套论证反过来。\n\

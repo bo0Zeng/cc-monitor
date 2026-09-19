@@ -22,8 +22,8 @@ pub(crate) fn live_lines() -> String {
 
 /// 切出某个顶层 job 的行范围（剔注释）。
 ///
-/// 顶层 job 键的形状是**两个空格 + 名字 + 冒号**（`  daemon:`），下一个同缩进的键即块尾。
-/// ⚠ 用它而不是整份 `contains` 的理由见 `ci_actually_runs_the_daemon_four_steps`：
+/// 顶层 job 键的形状是**两个空格 + 名字 + 冒号**（`  backend:`），下一个同缩进的键即块尾。
+/// ⚠ 用它而不是整份 `contains` 的理由见 `ci_actually_runs_the_backend_four_steps`：
 /// 有的步骤命令是别的 job 里某条命令的**子串**，整份查会被盖住。
 pub(crate) fn job_block(name: &str) -> String {
     let head = format!("  {name}:");

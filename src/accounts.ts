@@ -7,7 +7,7 @@
 //   3. 提供纯函数（降级判定 / 会话徽章映射）供 UI 与 vitest。
 //
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
-// available:false 降级：未迁移 / 旧 daemon 一律安静隐藏账号 UI，不报错。
+// available:false 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
 import { invoke } from "@tauri-apps/api/core";
 import { commands } from "./ipc/commands";
 import type { AuthKind } from "./generated/AuthKind";
@@ -43,7 +43,7 @@ export interface AccountsMeta {
   sharedStore: string | null;
   count: number;
   error: string | null;
-  /** Z01：远端 daemon 认不认「configDir 缺席 = 账号 0」。旧 daemon 不出这个键 ⇒ undefined。 */
+  /** Z01：远端后端认不认「configDir 缺席 = 账号 0」。旧后端不出这个键 ⇒ undefined。 */
   accountZeroAware?: boolean;
 }
 
@@ -66,14 +66,14 @@ export interface SessionAccount {
   bare: boolean;
   alive: boolean;
   /**
-   * `K-P5f`：起会话方铸进这条会话进程环境的**身份 token**（`CCM_LAUNCH_ID`），由 daemon 从
+   * `K-P5f`：起会话方铸进这条会话进程环境的**身份 token**（`CCM_LAUNCH_ID`），由后端从
    * `/proc/<pid>/environ` 读回来。`null` = **不作数**（没设 / 形状不合格 / 同一 token 落在
    * 一条以上活会话上 / 进程已死，四种原因刻意合并，见 `src/bridge/src/accounts.rs`
    * 的 `SessionAccount::launch_id`）。
    *
-   * ⚠ **可选是因为老 daemon 的出参里逐字节没有这个键**（additive）。本机那条路来的行是
-   * `src/generated/SessionAccount.ts`（必有此键），远端那条路是 daemon 直出的原始 JSON
-   * （老 daemon 缺键 ⇒ `undefined`）—— 两者在这里合流，所以这一格写成可选、
+   * ⚠ **可选是因为老后端的出参里逐字节没有这个键**（additive）。本机那条路来的行是
+   * `src/generated/SessionAccount.ts`（必有此键），远端那条路是后端直出的原始 JSON
+   * （老后端缺键 ⇒ `undefined`）—— 两者在这里合流，所以这一格写成可选、
    * 而消费方一律把 `undefined` 与 `null` 当同一件事。
    */
   launchId?: string | null;
@@ -96,7 +96,7 @@ export interface AccountsState {
   defaultName: string | null;
   /**
    * Z01：**能用但有缺**时的人话说明（`available` 仍是 true）。null = 无缺。
-   * 「绝不静默降级」是它存在的全部理由——旧 daemon / 旧 cc-acct-iso 会让账号 0
+   * 「绝不静默降级」是它存在的全部理由——旧 backend / 旧 cc-acct-iso 会让账号 0
    * 从列表里凭空少一行，用户看不出区别。
    */
   notice: string | null;
@@ -104,10 +104,10 @@ export interface AccountsState {
 
 /** chip / 设置组据此决定怎么显示。纯派生自 AccountsState。 */
 // 🔴 `K-R59`（09-11）：这里原来还有一档 `{ kind: "hidden" }` —— 它**只由**
-// 「该主机配置为 daemonless（无 daemon）」那条错误串产出，而 `K35` 把那一档整个删了
+// 「该主机配置为 daemonless（无后端）」那条错误串产出，而 `K35` 把那一档整个删了
 //（`accounts.rs::cfg_for` 那个早返回一起走）⇒ 留着就是一档**再也到不了**的 UI 状态。
 export type AccountsUi =
-  | { kind: "needs-update"; reason: string } // 旧 daemon
+  | { kind: "needs-update"; reason: string } // 旧 backend
   | { kind: "not-enabled"; manifestPath: string | null; reason: string } // 未迁移/无账号
   | { kind: "ready"; accounts: Account[]; defaultName: string | null; notice: string | null };
 
@@ -118,7 +118,7 @@ export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
     if (e.includes("过旧") || e.includes("不支持账号")) {
-      return { kind: "needs-update", reason: e || "远端 daemon 需要更新" };
+      return { kind: "needs-update", reason: e || "远端后端需要更新" };
     }
     // 其它不可用（查询失败等）：当作"需更新/不可用"，可点开设置看原因
     return { kind: "needs-update", reason: e || "账号功能暂不可用" };
@@ -167,7 +167,7 @@ export function currentWorkingAccount(state: AccountsState): Account | null {
  * 规则本身**不在这儿** —— 它住 `acct_core::auth_ready`，两个 Rust 生产者调它、
  * 把结果放进 `authReady` 字段。本函数只做一件事：**对面没说时回落到旧行为**。
  *
- * `authReady === undefined` 只有一种来因：**旧 daemon**（本字段之前的版本压根不出这个键，
+ * `authReady === undefined` 只有一种来因：**旧 backend**（本字段之前的版本压根不出这个键，
  * monitor 会连任意版本的远端）。那时回落到 `loggedIn` = 逐字节旧行为。
  *
  * ⚠ **`KA6b`（诚实边界，第四轮补的标签）：这里回落到的 `loggedIn` 只是 stat 了一下
@@ -179,9 +179,9 @@ export function currentWorkingAccount(state: AccountsState): Account | null {
  * 没有标签（D 阶段审计 `S3`）⇒ `grep KA6b` 找不到它那一半。Rust 侧那份头注不在第四轮
  * 写区里（改它会连带重写 `src/generated/RemoteAccount.ts` —— ts-rs 把 doc 一起导出），
  * 所以标签先补在 TS 这一侧**唯一读 `loggedIn` 的地方**，Rust 侧那一半交回 PM。
- * ⚠ 连带的诚实边界：旧 daemon 那一侧，一个 api-key 号会被判成「未登录的订阅号」
- * ——那是**看得见**的降级（徽章写「未登录」，用户能修：更新远端 daemon）。
- * 刻意**不**为它加一个 `authKindAware` 能力标记：新 daemon 恒出这两个键，
+ * ⚠ 连带的诚实边界：旧后端那一侧，一个 api-key 号会被判成「未登录的订阅号」
+ * ——那是**看得见**的降级（徽章写「未登录」，用户能修：更新远端后端）。
+ * 刻意**不**为它加一个 `authKindAware` 能力标记：新后端恒出这两个键，
  * 那个标记的「不认识」分支在结构上不可达，写出来就是一段永远不跑的代码。
  */
 function authReady(a: Account): boolean {
@@ -214,7 +214,7 @@ export interface AccountStatusBadge {
  * `K-H2b` `KH2B7`：**api-key 号那一格今天不是一态。**
  *
  * 本件之前那句 hover 文案逐字是「cc-monitor 今天还不会替它配 API key 与 base URL」——
- * 本件落地那一刻，它对**一部分号**就成了假话（本机、且中转表里有它那一行、且中转在跑
+ * 本件落地那一刻，它对**一部分号**就成了假话（本机、且apikey 表里有它那一行、且中转在跑
  * 的那些号，cc-monitor **真的**会替它配）。⇒ 按「这个号属于哪一半 / 那两个前置成不成立」
  * 分别说各自的话。
  *
@@ -258,12 +258,12 @@ export type AccountRelayState =
  * （`parity_ledger.rs` 5 个数 + `tests/ipc/commands.vitest.ts` 两处 `144`），
  * 而后者当时不在写区。**那两个数是联动的**：注册了不调 ⇒ 前一个红；调了没注册 ⇒ 编不过。
  *
- * ⚠ **两个字段各自的射程，别读宽**：`routed` 说的是「中转表里有这一行」，
+ * ⚠ **两个字段各自的射程，别读宽**：`routed` 说的是「apikey 表里有这一行」，
  * **不是**「那把 key 能用」；`running` 说的是「我们起过它而且没停过」，
  * **不是**「那个口上真有人听」。
  */
 export interface RelayRoutingView {
-  /** 传进去的那些 configDir 里，中转表里**有对应行**的那几个（原样回）。 */
+  /** 传进去的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回）。 */
   routed: string[];
   /** 本机中转在不在跑。 */
   running: boolean;
@@ -451,7 +451,7 @@ export async function fetchLocalRelayRouting(configDirs: string[]): Promise<Rela
  * 把上面那份读数落到**一个账号**上。
  *
  * `configDir` 缺席（账号 0）⇒ `null`：账号 0 在 manifest 里没有目录名，
- * **推不出中转表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `relay_account_id` 的三态同形）。
+ * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `relay_account_id` 的三态同形）。
  */
 export function localRelayStateFor(
   a: Account,
@@ -479,7 +479,7 @@ export function accountStatusBadge(
         text: "api-key（经本机中转）",
         warn: false,
         title:
-          "这个号在中转凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
+          "这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
           "ANTHROPIC_BASE_URL 指向本机中转，由中转按账号换上这一行的 key。\n" +
           "⚠ 它保证的是「请求发得到中转、中转按这一行转发」；" +
           "那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。",
@@ -490,7 +490,7 @@ export function accountStatusBadge(
         text: "api-key（中转未运行）",
         warn: true,
         title:
-          "这个号在中转凭据文件里有一行，但本机中转没在跑 —— 起会话会被**当场拒**" +
+          "这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被**当场拒**" +
           "（不是静默失败：中转没起来与网络坏了在 claude 那边长得一模一样，" +
           "所以这一条在起会话那一侧就拦下来）。请先起本机后端。",
       };
@@ -498,14 +498,14 @@ export function accountStatusBadge(
     // 三种「没配上」的成因，各说各的 —— **合成一句就等于又写下一句说不准的话**。
     const why =
       local != null
-        ? "中转凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。" +
+        ? "apikey 凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。" +
           "要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 " +
           "shell 环境里配好第三方端点。"
         : relay?.scope === "remote"
           ? "cc-monitor 今天只给**本机**会话配 base URL；**远端**这一半还不做" +
             "（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上" +
             "自己配好第三方端点。"
-          : "cc-monitor 只在两件事都成立时替它配端点（base URL）：① 中转凭据文件里有这个" +
+          : "cc-monitor 只在两件事都成立时替它配端点（base URL）：① apikey 凭据文件里有这个" +
             "账号 id 的一行；② 本机中转在跑。**这一处没被告知它属于哪一半、那两条成不成立**，" +
             "所以不替它下判断。";
     return {
@@ -653,7 +653,7 @@ export function accountConfigDir(state: AccountsState, name: string): string | n
  * Z01：这个账号是不是账号 0（「不设 CLAUDE_CONFIG_DIR」这个状态本身）。
  *
  * 判据是**结构性**的（`configDir` 缺席），**不认名字**——manifest 想把它叫什么都行，
- * 前端不硬编码 "0"。空串**不算**：那是非法拼法，daemon 侧已挡掉。
+ * 前端不硬编码 "0"。空串**不算**：那是非法拼法，backend 侧已挡掉。
  */
 export function isAccountZero(a: Account): boolean {
   return a.configDir === null || a.configDir === undefined;
@@ -729,7 +729,7 @@ export function sessionBadge(
 /**
  * A4/§7 降级：某会话是否**该显**账号徽章。只有「账号可查询」的远端才显（即 available 的
  * origin,由 main.ts 收进 readyOrigins）。本地会话（origin null）与不可查询的远端
- * （未迁移 / 旧 daemon）一律不显——否则满屏 `—` 是噪音、违反 §7「不可用即安静隐藏」。
+ * （未迁移 / 旧后端）一律不显——否则满屏 `—` 是噪音、违反 §7「不可用即安静隐藏」。
  */
 export function shouldShowAccountBadge(
   origin: string | null,
@@ -763,7 +763,7 @@ export function shouldShowAccountBadge(
  * # ⚠ 它答不到的（照抄 `K-P5f` 已登记的那格残留洞，别在这里悄悄拓宽）
  *
  * `launchId` 是**继承型**环境变量：在一条本工具起的会话里手敲 `claude` 起出来的孩子
- * 也带着同一个 token。daemon 挡得住「同一个 token 同时落在一条以上活会话上」
+ * 也带着同一个 token。backend 挡得住「同一个 token 同时落在一条以上活会话上」
  * （那种涉事的全置 `null`），**挡不住父会话已经退出**的那一格。
  * ⇒ 本函数的「是」精确读作「**这个进程的环境里带着本工具铸的身份标记**」，
  * 不读作「一定是本工具直接拉起的」。文案也按这个强度写，不许写强。
@@ -772,7 +772,7 @@ export function restartLocateFailureMessage(row: SessionAccount | undefined): {
   title: string;
   body: string;
 } {
-  // ⚠ `undefined`（老 daemon 不出这个键）与 `null`（daemon 说「不作数」）在这里是同一件事。
+  // ⚠ `undefined`（老后端不出这个键）与 `null`（backend 说「不作数」）在这里是同一件事。
   const carriesOurLaunchMark = Boolean(row && row.alive && row.launchId);
   if (carriesOurLaunchMark) {
     return {
@@ -802,7 +802,7 @@ export function restartLocateFailureMessage(row: SessionAccount | undefined): {
  * # 它买的是 `K-P5` 立项时那条结构性事实的另一半
  *
  * `K-P5 §3 三` 记着：**5 处起会话方，没有一处在起新会话时知道 sid** ——
- * 那正是身份 token 存在的全部理由。写侧铸 token（`K-P5b`）· daemon 从
+ * 那正是身份 token 存在的全部理由。写侧铸 token（`K-P5b`）· backend 从
  * `/proc/<pid>/environ` 读回来（`K-P5f`）· 铸法把 token 交给调用方（`K-P5h` `KP5HD1`）
  * ⇒ 本函数是最后一跳：**起会话方终于说得出「我刚起的那条是哪个会话」。**
  *
@@ -817,12 +817,12 @@ export function restartLocateFailureMessage(row: SessionAccount | undefined): {
  * | 没有任何行带这个 token | `null` | 会话还没起来，或它压根不是我们起的 |
  * | 命中的行 `alive:false` | `null` | 死进程的 environ 不作数（口径同 `restartLocateFailureMessage`） |
  * | 命中的行没有 `sessionId` | `null` | 认得出进程、说不出会话 ⇒ 说不出就不说 |
- * | **命中一条以上** | `null` | 判不出谁是原主。daemon 侧本来就会把这种全置 `null`，**这一格不靠上游守** |
+ * | **命中一条以上** | `null` | 判不出谁是原主。backend 侧本来就会把这种全置 `null`，**这一格不靠上游守** |
  *
  * # ⚠ 它答不到的（照抄 `K-P5f §12 裁七`·1 已登记的那格残留洞，别在这里悄悄拓宽）
  *
  * `CCM_LAUNCH_ID` 是**继承型**环境变量：在一条本工具起的会话里手敲 `claude` 起出来的孩子
- * 带着同一个 token。daemon 挡得住「同一个 token 同时落在一条以上**活**会话上」，
+ * 带着同一个 token。backend 挡得住「同一个 token 同时落在一条以上**活**会话上」，
  * **挡不住父会话已经退出**的那一格 ⇒ 那种情形下本函数会把**孩子**的 sid 当成答案，
  * **指错**。本件买不到它（那洞另有登记，不在本件账上），但**必须写在这里**：
  * 读作「**这条活着的会话的进程环境里带着这个 token**」，不读作「它就是我刚起的那条」。
@@ -870,7 +870,7 @@ export const PENDING_LAUNCH_TTL_MS = 120_000;
 /**
  * 🔴 **问几次**：每条待回填最多 8 次。
  *
- * 每一次「问」= 一次 `list_local_session_accounts`（一次 exec sidecar）。
+ * 每一次「问」= 一次 `list_local_session_accounts`（一次 exec local_backend）。
  * 触发它的是**会话集合变化事件**，不是表 —— 一台机上短时间内起十几条会话是可能的，
  * 没有这个上限时，一条永远回填不了的待办会跟着每一次事件白发一次 IPC。
  */
@@ -925,7 +925,7 @@ export function rememberLocalLaunch(
  * | 做法 | 为什么不是它 / 为什么是它 |
  * |---|---|
  * | 起一个定时器隔 N 秒重试 | 🔴 **本项目有一条已交付的性质是「判活不靠定时轮询（内核一有事就通知）」**（`polling_registry` / `rust_timer_registry` 两张表在管），在这里开一个新的周期唤醒就是开倒车 |
- * | ★ **搭已有的那条事件**：会话集合变了才问 | daemon 侧 `sessions/<PID>.json` 的变化本来就会一路走到前端的 `session-started` 事件（`lib.rs` 那个 `session-changes-emitter`）——**一条新会话出生正是它响的时刻**，而这正是我们要等的那件事 |
+ * | ★ **搭已有的那条事件**：会话集合变了才问 | backend 侧 `sessions/<PID>.json` 的变化本来就会一路走到前端的 `session-started` 事件（`lib.rs` 那个 `session-changes-emitter`）——**一条新会话出生正是它响的时刻**，而这正是我们要等的那件事 |
  *
  * ⇒ **本函数不排任何定时器**，它的调用方是 `main.ts` 里 `onSessionStarted` 那一跳。
  * 「等多久 / 问几次 / 问不到怎么办」三格分别由 [`PENDING_LAUNCH_TTL_MS`] ·
@@ -956,7 +956,7 @@ export async function resolvePendingLocalLaunches(nowMs: number = Date.now()): P
   let rows: SessionAccount[] = [];
   try {
     const r = await commands.list_local_session_accounts();
-    // `available:false`（Windows / 没有 sidecar）⇒ 空行集 ⇒ 下面一条都命不中 = 不猜。
+    // `available:false`（Windows / 没有本机后端）⇒ 空行集 ⇒ 下面一条都命不中 = 不猜。
     if (r.available) rows = r.sessions;
   } catch {
     /* 查不到就按「这一次没问出来」处理，待办留着等下一次事件 */
@@ -1113,7 +1113,7 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
     meta: raw.meta,
     accounts: raw.accounts ?? [],
     defaultName,
-    // Z01：后端算好的降级说明（旧 daemon / 旧 cc-acct-iso ⇒ 列表里少了账号 0）。
+    // Z01：后端算好的降级说明（旧 backend / 旧 cc-acct-iso ⇒ 列表里少了账号 0）。
     notice: raw.notice ?? null,
   };
   accountsCache.set(origin, { at: now, value: state });
@@ -1266,7 +1266,7 @@ export interface TrustResult {
 }
 /**
  * Z01：`configDir` 传 `null` = 问账号 0（后端走 `--account-trust-zero`，它的
- * `.claude.json` 在 `$HOME`）。**绝不传空串**——那会被 daemon 判成不安全路径拒掉。
+ * `.claude.json` 在 `$HOME`）。**绝不传空串**——那会被后端判成不安全路径拒掉。
  */
 export async function checkTrust(
   origin: string,

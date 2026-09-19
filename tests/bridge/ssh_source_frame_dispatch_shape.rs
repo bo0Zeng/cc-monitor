@@ -1,21 +1,21 @@
-/// ★ **daemon 帧的消费分派不许有兜底臂**〔audit-0805 08-06〕。
+/// ★ **backend 帧的消费分派不许有兜底臂**〔audit-0805 08-06〕。
 ///
 /// # 它钉的是「谁是被偶然守住的」那一类（第三例）
 ///
 /// `stream_loop` 里那条 `match frame` 今天用**九条具名臂**盖住 `InboundFrame`
 /// 的全部 10 个变体（`Reply` 与 `Cancelled` 合用一条）＋ 一条 `None`，
-/// **没有兜底臂** ⇒ daemon 新加一种帧、monitor 忘了处理时**编译失败**。
+/// **没有兜底臂** ⇒ backend 新加一种帧、monitor 忘了处理时**编译失败**。
 ///
 /// ⚠ 那是个没人盯的前提：谁加一条兜底臂，穷尽性当场消失，
 /// 新帧从此被**静默丢弃** —— 而 monitor 侧既有判据一条都不会因此变红
 /// （它们各测各的帧）。后果不是报错，是**功能默默不生效**：
-/// 用户看到的是「daemon 明明发了，界面没反应」。
+/// 用户看到的是「backend 明明发了，界面没反应」。
 /// ★ 赌注比前两例高：这条流**同时被仓外的 aterm 消费**（承接 D6：
 /// 暴露给第三方 = 契约冻结成本），而 monitor 是它的参考实现。
 ///
-/// 与 `watcher.rs`（daemon 七路信号）、`config_surface.rs`（审计页解析形态）同型。
+/// 与 `watcher.rs`（backend 七路信号）、`config_surface.rs`（审计页解析形态）同型。
 #[test]
-fn the_daemon_frame_dispatch_has_no_catch_all_arm() {
+fn the_backend_frame_dispatch_has_no_catch_all_arm() {
     // ⚠ **不能按首个 cfg-test 切**：本文件有十几个测试模块，第一个在 915 行，
     //   而要守的那条分派在 3552 行 —— 第一版就是这么写的，
     //   抽取器自检当场报「只扫到 0 条臂」。用共享原语剥全部测试段。
@@ -88,9 +88,9 @@ fn the_daemon_frame_dispatch_has_no_catch_all_arm() {
     }
     assert!(
         offenders.is_empty(),
-        "daemon 帧的消费分派里出现了兜底臂（生产段第 {offenders:?} 行）。\n\
+        "backend 帧的消费分派里出现了兜底臂（生产段第 {offenders:?} 行）。\n\
              ⚠ 后果不是报错，是**新帧被静默丢弃** —— 用户看到的是\n\
-             「daemon 明明发了，界面没反应」，而既有判据一条都不会红。\n\
+             「backend 明明发了，界面没反应」，而既有判据一条都不会红。\n\
              这条流同时被仓外 aterm 消费（D6：契约冻结成本）。\n\
              新增帧请写成具名臂；确实不处理也请显式写出来并加一句为什么。"
     );

@@ -195,7 +195,7 @@ mod tests {
         crate::guard_support::src_root().join("relay")
     }
 
-    /// 整个 daemon crate 的生产段（逐文件）。`KS2` 的人群是**整个 crate**，不是 `relay/` ——
+    /// 整个 backend crate 的生产段（逐文件）。`KS2` 的人群是**整个 crate**，不是 `relay/` ——
     /// 「取明文的地方恰好一处」这句话的分母如果只到 `relay/`，
     /// 那么有人在 `observe/` 里再取一次就不会红。**人群要恰好等于性质。**
     fn crate_production() -> Vec<(String, String)> {
@@ -211,13 +211,13 @@ mod tests {
     ///
     /// # 它守的是一句**承重**的话，而那句话此前零判据
     ///
-    /// 本件对外声称的形状逐字是：「『daemon 写不了这份文件』是**编译器**兜的，
+    /// 本件对外声称的形状逐字是：「『backend 写不了这份文件』是**编译器**兜的，
     /// 不是一条判据兜的」——`creds_core::perm::make_private` 与 `create_private` 都挂在
-    /// `harden` 上，daemon 不开它 ⇒ 那两个函数在本 crate 里**根本不存在**。
+    /// `harden` 上，backend 不开它 ⇒ 那两个函数在本 crate 里**根本不存在**。
     ///
     /// ⚠ 而「不开」这件事本身，此前**只是 manifest 上的一行约定**。
     /// `E` 阶段实打：给 `src/backend/Cargo.toml` 那一行加上 `features = ["harden"]`
-    /// ⇒ **daemon 474 passed / 0 failed，一条都没红**（我自己复打确认，读数逐字相同），
+    /// ⇒ **backend 474 passed / 0 failed，一条都没红**（我自己复打确认，读数逐字相同），
     /// 顺带依赖树 **96 → 101**、`windows*` 条目 **21 → 26**。
     /// ⇒ 五轮买来的那格「性质由编译器买」，整个挂在这一行上，而没人看着它。
     ///
@@ -231,8 +231,8 @@ mod tests {
     /// （monitor 是唯一该开它的一侧）。没有这一格，「0 次」可能只是因为尺子瞎了。
     ///
     /// ⚠ 它**认不出**什么：`--features harden` 从**命令行**传进来（`cargo test -p … --features`）。
-    /// 那条路不经 manifest，本条看不见；今天没有任何脚本这么跑 daemon（`gate.sh` 里
-    /// daemon 那道门逐字是 `cd src/backend && cargo test`，零 `--features`）。
+    /// 那条路不经 manifest，本条看不见；今天没有任何脚本这么跑后端（`gate.sh` 里
+    /// backend 那道门逐字是 `cd src/backend && cargo test`，零 `--features`）。
     #[test]
     fn this_crate_never_turns_on_the_write_half_of_the_credentials_crate() {
         let mine = std::fs::read_to_string(
@@ -258,10 +258,10 @@ mod tests {
         assert_eq!(
             n, 0,
             "本 crate 的 `Cargo.toml` 里出现了 `harden` {n} 次，应当 **0** 次。\n\
-             ⚠ `K-H2a` 裁四：daemon **只许读**那份凭据文件，不许写。\n\
+             ⚠ `K-H2a` 裁四：backend **只许读**那份凭据文件，不许写。\n\
              `creds_core::perm::{{make_private, create_private}}` 都挂在 `harden` 上 ——\n\
-             一旦打开，「daemon 写不了这份文件」就从**编译器兜的**退回成**没人兜的**。\n\
-             （`E` 阶段实打：打开它之后 daemon 474 passed，一条都没红。）"
+             一旦打开，「backend 写不了这份文件」就从**编译器兜的**退回成**没人兜的**。\n\
+             （`E` 阶段实打：打开它之后 backend 474 passed，一条都没红。）"
         );
 
         // ★ 非空对照：同一把尺子量 monitor 那份 manifest，**必须数得到** `harden`。
@@ -315,12 +315,12 @@ mod tests {
             "唯一那处不在 `server.rs`（换头那一行）而在 {} —— 靶子挪了",
             header_sites[0]
         );
-        // ★ 另一半：**落盘那个出口在本 crate 里应当一次都没有**（`K-H2a` 裁四：daemon 只读）。
+        // ★ 另一半：**落盘那个出口在本 crate 里应当一次都没有**（`K-H2a` 裁四：backend 只读）。
         assert_eq!(
             persist_sites.len(),
             0,
-            "daemon 里出现了「把 key 写回文件」的出口：{persist_sites:?}\n\
-             裁四逐字：daemon 只许读那份文件，不许写。",
+            "backend 里出现了「把 key 写回文件」的出口：{persist_sites:?}\n\
+             裁四逐字：backend 只许读那份文件，不许写。",
         );
     }
 

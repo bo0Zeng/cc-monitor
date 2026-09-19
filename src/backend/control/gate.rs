@@ -1,21 +1,21 @@
-//! F03：**§34 Gate 2（identity）在 daemon 侧的落地** —— 「这个 tmux 会话是不是本工具管的」。
+//! F03：**§34 Gate 2（identity）在后端侧的落地** —— 「这个 tmux 会话是不是本工具管的」。
 //!
 //! # 它补的是哪个洞
 //!
 //! F03 之前，[`super::launch`] 的 `send-into` **只核会话存在性**（`no_such_session`）就
 //! `send-keys`。它建会话时 `set-option` **写** `@ccm_sid`，却从不**核验**它。
 //! monitor 那条路带着 §34 的 Gate 2（`cc-*` 前缀命中 **或** 远端 `@ccm_sid` 已设），
-//! 于是「把 send-keys/kill 改走 daemon」等于**静默丢掉一道门** ——
+//! 于是「把 send-keys/kill 改走后端」等于**静默丢掉一道门** ——
 //! 功能看起来一样、门禁全绿，而「不许往别人的 tmux 里打字」那道门没了。
-//! 这条路此前由 monitor 的 `tmux_daemon_gate_guard`（前提触发器）挡着。
+//! 这条路此前由 monitor 的 `tmux_backend_gate_guard`（前提触发器）挡着。
 //!
-//! **判定本身不在这里** —— 在 `gate-core`，monitor 与 daemon 共用同一份（定框 C1）。
+//! **判定本身不在这里** —— 在 `gate-core`，monitor 与后端共用同一份（定框 C1）。
 //! 本模块只负责这一侧的**承载**：怎么把 `@ccm_sid` 从本机 tmux 取回来。
 //!
 //! # ★ 用 `#{session_id}` 当句柄，把 TOCTOU 窗口关掉
 //!
 //! monitor 那条路是**一条原子远端命令**（`display-message` 与动作折进同一个 round-trip），
-//! 刻意不给「查完再动」之间留窗口。daemon 这边 argv 直传、没有 shell，做不到把两条
+//! 刻意不给「查完再动」之间留窗口。backend 这边 argv 直传、没有 shell，做不到把两条
 //! tmux 调用折成一条 —— 照抄「先查名字、再对名字下手」就会**引入一个 monitor 没有的窗口**。
 //!
 //! 处置：探测时**连 `#{session_id}` 一起取回**（tmux 的 `$N`，server 生命周期内唯一、不复用），
@@ -69,7 +69,7 @@ pub(crate) struct Probed {
     /// ⚠ 这是 `@ccm_sid`，**不是 `@ccm_sid_expect`**。刻意分了两个：
     /// 通道 A（`shared/ccm`）只写意图，只有通道 B 才写事实，而**破坏性动作只认事实**。
     /// 放宽到 `_expect` 就是把这道门拆了。
-    /// ⚠ `U-NP④`（08-14）之后**通道 B 的写者是 daemon 自己**（[`super::identity_tag`]，
+    /// ⚠ `U-NP④`（08-14）之后**通道 B 的写者是后端自己**（[`super::identity_tag`]，
     /// 由 pidfile inotify 驱动），不再是 ccm 里那条每秒轮询 —— 分离更硬了（事实的写者
     /// 变成独立第三方，且打标前已过 `procStart` 冒名检查），但两个 key 的语义一个字没变。
     pub(crate) ccm_sid: String,
@@ -142,7 +142,7 @@ const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
 /// （`$<数字>` / `[A-Za-z0-9_-]` / 正整数）。
 /// ⇒ 本处的**过溢只可能来自「有人手工把 `@ccm_sid` 设成含 TAB 的值」或格式串被改**，
 /// 那两种都该拒 ⇒ 既有的 fail-closed 处置是对的，**本拍不动它**。
-/// 那条误伤是真的、但只在 `src/bridge/src/tmux.rs::parse_tmux_ls` 那一处（见该处头注）。
+/// 那条误伤是真的、但只在 `src/bridge/src/backend/control/tmux.rs::parse_tmux_ls` 那一处（见该处头注）。
 const PROBE_FMT_FIELDS: usize = 3;
 
 /// 跑一次 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来。

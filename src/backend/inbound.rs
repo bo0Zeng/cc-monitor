@@ -15,7 +15,7 @@
 //! # 为什么需要入方向（实证，不是推测）
 //!
 //! 没有它已经在制造绕路：
-//! - **`--tmux-notify` 存在的唯一理由**就是 tmux hook 子进程没法给正在跑的 daemon 发消息，
+//! - **`--tmux-notify` 存在的唯一理由**就是 tmux hook 子进程没法给正在跑的后端发消息，
 //!   只能新起一个进程、校验身份、发信号。
 //! - **`--resolve` 为一次极小的 RPC 单开一整条 SSH exec。**
 //!
@@ -24,7 +24,7 @@
 //!
 //! # 信任边界
 //!
-//! 出方向 daemon 是唯一写者；入方向它变成**读取不可信输入**的一方。三条硬约束：
+//! 出方向后端是唯一写者；入方向它变成**读取不可信输入**的一方。三条硬约束：
 //! 单行长度上限（不缓冲、不 OOM）· 未见 Hello 之前不许有 stdin（时序，机检钉住）·
 //! 坏行只回错误、**绝不结束进程**。
 
@@ -64,7 +64,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// 所以给应答一条独立的小通道，writer 两边都收。
 pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 
-/// U6b-2：本 daemon **接受的命令集**，随 `hello` 上线（`commands` 字段）。
+/// U6b-2：本 backend **接受的命令集**，随 `hello` 上线（`commands` 字段）。
 ///
 /// 能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）。
 /// 入方向同样需要：客户端得知道发什么过去才有人接，否则只能试错。
@@ -90,8 +90,8 @@ pub const COMMANDS: &[&str] = &[
 
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
-/// `id` 是客户端给的**不透明串**——daemon 不解析、不校验格式、只当 map 的键和回显值。
-/// 谁生成谁负责唯一。daemon 自己发号的话重连后号段会撞（同 F90「不许拿会变的东西当持久键」）。
+/// `id` 是客户端给的**不透明串**——backend 不解析、不校验格式、只当 map 的键和回显值。
+/// 谁生成谁负责唯一。backend 自己发号的话重连后号段会撞（同 F90「不许拿会变的东西当持久键」）。
 type Running = Arc<Mutex<HashMap<String, InFlight>>>;
 
 /// 一条在跑的命令。**`cancellable` 不是装饰** —— 见 [`Disposition::SpawnBlocking`]。
@@ -240,7 +240,7 @@ enum Disposition {
     ///
     /// `launch` 的处理器是同步的，起 tmux 进程会真的阻塞。放在 `tokio::spawn` 上就是
     /// **占住一个 worker**；`main` 是裸 `#[tokio::main]`（worker 数 = 可用并行度），
-    /// 单核机器（Pi 那一档，正是本 daemon 的目标机型）上一条在跑的 `launch` 就会占住
+    /// 单核机器（Pi 那一档，正是本后端的目标机型）上一条在跑的 `launch` 就会占住
     /// **唯一**的 worker —— 而 `writer_task`（出方向帧的唯一出口）和入方向 reader 都在
     /// 同一个 runtime 上。症状是「远端还活着但一句话不说」，极难归因
     /// （观测 watcher 在 `std::thread` 上，不受影响，所以看起来更像网络问题）。
@@ -317,7 +317,7 @@ fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> D
                 Run::Builtin => Disposition::Reply(err(
                     &req.id,
                     "unknown_command",
-                    &format!("内建命令 `{other}` 没有在 dispatch 里被处理 —— 这是本 daemon 的 bug"),
+                    &format!("内建命令 `{other}` 没有在 dispatch 里被处理 —— 这是本后端的 bug"),
                 )),
             },
             None => Disposition::Reply(err(
@@ -386,7 +386,7 @@ pub(crate) struct CommandSpec {
     /// 它换了扇门回来，因为守它的判据是**恒真**的（`fields.is_empty()` ⟺ `!reads_stdin`
     /// 两边是同一个表达式，两个分支都不可能红）。
     ///
-    /// ⇒ 改成每条命令自己说。真不真由**行为**判据验（`tests/e2e/daemon-cc-bus.sh`：
+    /// ⇒ 改成每条命令自己说。真不真由**行为**判据验（`tests/e2e/backend-cc-bus.sh`：
     /// 声明无输入的命令，在 stdin 不关时必须秒回）。
     pub(crate) takes_input: bool,
     pub(crate) run: Run,
@@ -394,9 +394,9 @@ pub(crate) struct CommandSpec {
 
 /// **单一事实源。** `COMMANDS` 是它的镜子，`dispatch` 从它查。
 pub(crate) const REGISTRY: &[CommandSpec] = &[
-    // P4f：cc-bus 的两条基础命令。**转调本机的 cc-bus 命令**，不在 daemon 里重实现总线
+    // P4f：cc-bus 的两条基础命令。**转调本机的 cc-bus 命令**，不在后端里重实现总线
     //（用户 08-13 逐字：「细节先按原本的就行」「后面我可能要改ccbus」）。
-    // ⚠ 刻意**没有** `bus-recv`：`cc-recv` 会推进已读位置，daemon 代读等于把消息从人那里
+    // ⚠ 刻意**没有** `bus-recv`：`cc-recv` 会推进已读位置，backend 代读等于把消息从人那里
     //   偷走。「有没有新的」由 `bus-list` 的待读数回答（只读、不消费）。理由全文在 `control/cc_bus.rs`。
     CommandSpec {
         name: "bus-list",
@@ -463,7 +463,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
     //
     // ⚠ 两条都**只做一次**：抓一屏就返回、起一个会话就返回。
     // 「隔多久再抓一次」留在调用方（`K37`：后端只给机制，不给偏好），
-    // daemon 侧由 `no_timer_guard` 零容忍地钉着。
+    // backend 侧由 `no_timer_guard` 零容忍地钉着。
     CommandSpec {
         name: "capture-pane",
         doc_anchor: Some("#### `capture-pane`"),
@@ -511,7 +511,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         // 那三个是「ccm 的 `--tmux` 真的改走这条路」逼出来的 —— 本地那条编排里
         // `@ccm_agent` 与 `-x/-y` 一直都在，这一侧此前没有字段能表达它们
         // ⇒ 不补就是**静默丢修饰**。⚠ `avoid_collision` **不加**：撞名避让住在要搬的那一块
-        // **之外**，而「撞了」这件事 daemon 已经用 `created:false` 表达完了（`§15 裁五`）。
+        // **之外**，而「撞了」这件事后端已经用 `created:false` 表达完了（`§15 裁五`）。
         fields: &[
             "agent", "ccm_sid", "created", "cwd", "height", "mode", "name", "payload", "session",
             "typed", "width",
@@ -576,7 +576,7 @@ async fn spawn_handler<F, Fut>(
     //    `ok:true`（"取消不存在的 id 是幂等的"这条规则把它盖住了）；
     // ② 先跑完的那条在 `remove(&id)` 时**把另一条的句柄摘了**。
     //
-    // 文档把唯一性推给客户端（"谁生成谁负责唯一"），但 daemon 侧对违约的反应是
+    // 文档把唯一性推给客户端（"谁生成谁负责唯一"），但后端侧对违约的反应是
     // **静默产生不可取消的僵尸任务 + 回一条看起来成功的应答** —— 那不是客户端的错能兜住的。
     // 现在明确拒绝。
     // 锁只在这一个语句里活着 —— **绝不跨 await**（那会让整个 future 变成 !Send）。
@@ -640,7 +640,7 @@ async fn spawn_handler<F, Fut>(
                 .send(err(
                     &id_sup,
                     "handler_panicked",
-                    "命令处理器 panic 了；daemon 仍在跑",
+                    "命令处理器 panic 了；backend 仍在跑",
                 ))
                 .await;
         }

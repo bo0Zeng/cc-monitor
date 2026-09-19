@@ -1,4 +1,4 @@
-//! Phase-0 SSH-remote daemon prototype.
+//! Phase-0 SSH-remote backend prototype.
 //!
 //! The remote half of the steel thread: it resolves `~/.claude`, emits a single
 //! `Hello` frame, then tails session JSONL files and streams `line` /
@@ -33,10 +33,10 @@ mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的�
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
 #[cfg(test)]
 #[path = "../../tests/backend/cc_bus_boundary_guard.rs"]
-mod cc_bus_boundary_guard; // P4f-Y2：daemon 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
+mod cc_bus_boundary_guard; // P4f-Y2：backend 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
-mod dial; // K-P6b：`--dial` 代理进程 —— daemon 那条长连接流的 SSH 握手住这里（**只此一处**，判据在它自己的测块）
+mod dial; // K-P6b：`--dial` 代理进程 —— backend 那条长连接流的 SSH 握手住这里（**只此一处**，判据在它自己的测块）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
 mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
@@ -64,7 +64,7 @@ mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
-mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
+mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
@@ -81,19 +81,19 @@ use wire::{to_line, Frame};
 /// The monitor negotiates against its own `EXPECTED_PROTO_V` (#33).
 const PROTO_VERSION: u32 = 1;
 
-/// Daemon build id reported in the `Hello` frame (#33 version negotiation).
+/// Backend build id reported in the `Hello` frame (#33 version negotiation).
 /// Human-readable, monotonic build/feature tag; the monitor compares it against
-/// `EXPECTED_DAEMON_BUILD_ID` and warns the user when a manually-deployed daemon
+/// `EXPECTED_BACKEND_BUILD_ID` and warns the user when a manually-deployed backend
 /// is stale (staleness 提示 + 部署确认)。
 ///
-/// **与 F66 `capabilities` 两轴正交（§26）**：`build_id` = daemon 的**身份/构建版本**
-/// （改了 daemon 二进制就该 bump，用于 staleness + 部署确认）；`capabilities` = 该版本
+/// **与 F66 `capabilities` 两轴正交（§26）**：`build_id` = backend 的**身份/构建版本**
+/// （改了后端二进制就该 bump，用于 staleness + 部署确认）；`capabilities` = 该版本
 /// **声明支持什么能力**（用于运行时门控发哪些 flag）。两者不混——bump build_id 是
 /// 「我是新构建」，声明 capability 是「我这个构建支持 X」。
 ///
-/// **★ F66 待 bump（发版前一套动作，Phase G 记账）**：F66 给 daemon 加了 `capabilities`
+/// **★ F66 待 bump（发版前一套动作，Phase G 记账）**：F66 给后端加了 `capabilities`
 /// 声明（wire.rs Hello + 下面的 `CAPABILITIES`），是新构建 → **发版前应 bump 到 p1i-xxx**。
-/// 但 bump **必须与 re-zigbuild 内嵌二进制 + 更新 `embedded-daemons/*.build_id` 清单一套做**
+/// 但 bump **必须与 re-zigbuild 内嵌二进制 + 更新 `embedded-backends/*.build_id` 清单一套做**
 /// （只 bump 源码不 re-embed = 源码 build_id 与内嵌清单不一致的半 bump，更糟）。当前 p1h
 /// 不 bump **良性**：monitor 乐观路径照发 flag、旧内嵌二进制自 F24/F25 起就剥
 /// `--with-bg`/`--tail-only`，不死循环、不降级（Phase G 双 agent 核实）。
@@ -111,35 +111,35 @@ const PROTO_VERSION: u32 = 1;
 ///   --read-session-tail 尾部优先查询（Batch9-F30）
 /// - p1h-bg-badge = --list-sessions 输出附 isBg（记录级 sessionKind:"bg" 探测，
 ///   Batch11-F32 历史 ⚙ 徽标；additive，查询字段无版本门控问题）
-/// - p1i-line-offset = Line 帧附 `byte_offset`（daemon-01/gap#2，累计原始字节、逐字节对齐 aterm
+/// - p1i-line-offset = Line 帧附 `byte_offset`（backend-01/gap#2，累计原始字节、逐字节对齐 aterm
 ///   `LineFramer`：计 CRLF `\r`、含 `\n`、残行不计；给 offset 续拉/截断检测。additive、不 bump
-///   PROTO_VERSION——旧 client 忽略、旧 daemon 缺字段 client 得 0）
-/// - p1j-offset-resume = + `--read-session-from-offset <path> <offset>` 一次性查询（daemon-02/
+///   PROTO_VERSION——旧 client 忽略、旧后端缺字段 client 得 0）
+/// - p1j-offset-resume = + `--read-session-from-offset <path> <offset>` 一次性查询（backend-02/
 ///   Phase 1）：从字节 offset 透传 [offset,EOF] = aterm `tail -c +(offset+1)`；配 p1i 的
-///   `byte_offset` 做重连/断线 offset 续拉。additive 子命令（旧 daemon 报 unknown arg、client 降级）
-/// - p1k-resolve-rpc = + `--resolve` advisor RPC（daemon-04/Phase 1）：读 stdin ResumeSpec JSON →
+///   `byte_offset` 做重连/断线 offset 续拉。additive 子命令（旧后端报 unknown arg、client 降级）
+/// - p1k-resolve-rpc = + `--resolve` advisor RPC（backend-04/Phase 1）：读 stdin ResumeSpec JSON →
 ///   出 stdout CommandPlan JSON（camelCase，caps 复用 aterm `SessionCapabilities` 4 名），错误
 ///   exit2+stderr `{code,message}`。契约与 aterm cc-bus 对齐定死。additive 子命令、advisory 零 handle
-/// - p1l-audit-fixes = daemon Phase 1 三视角代码审查修复（daemon-05）：一次性查询模式不再向 stderr
+/// - p1l-audit-fixes = backend Phase 1 三视角代码审查修复（backend-05）：一次性查询模式不再向 stderr
 ///   打 info（`--resolve` 错误信封 stderr 纯 `{code,message}`）；resolve base(launchCandidate) 补
 ///   shell-safe 校验（B2 对称化，新错误码 `unsafe_launch_candidate`）；stdin `.take(1MiB)` 兜 DoS。
 ///   纯查询/流协议 wire 不变——非破坏、无 PROTO_VERSION bump。
-/// - p1m-hello-emits = phase② 联调（daemon-08）：Hello 加 `emits:[帧 kind]`（additive，与 capabilities
+/// - p1m-hello-emits = phase② 联调（backend-08）：Hello 加 `emits:[帧 kind]`（additive，与 capabilities
 ///   正交、不受 §26）——aterm 门控消费。现声明 line/session_added/session_status/session_removed/
 ///   overflow；turn_end 待其帧接线后加。additive、无 PROTO_VERSION bump。
-/// - p1n-turn-end = phase② 联调（daemon-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
+/// - p1n-turn-end = phase② 联调（backend-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
 ///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `turn_detect` 对拍 aterm TurnDetector）；
 ///   `turn_end` 加进 EMITS。dedup 视界在 aterm rolling+debounce baselineByPath。additive、无 bump。
 /// - p1o-codex-dg = Phase 2D Codex 泛化（DG3 wire additive agent_kind/liveness_confidence/codex_dir/kinds、
 ///   DG4 turn-end 检测器、DG5 `--usage` per-kind、DG6 resume）。全 additive、**不 bump PROTO_VERSION**；
-///   bump BUILD_ID 给含 DG3-6 的 daemon 独立身份（Phase G 审计 I2：防"同 id 不同内容"静默陈旧）。
+///   bump BUILD_ID 给含 DG3-6 的后端独立身份（Phase G 审计 I2：防"同 id 不同内容"静默陈旧）。
 ///   Codex live 监视/判活（DG1/DG2）暂停、未接线。
 /// - p1p-tmux-frame = B2：watch_loop 周期本机 `tmux ls` 发 `TmuxSessions` 帧（+EMITS "tmux_sessions"），
 ///   替 monitor 每 8s 新建 SSH 跑 tmux ls 的对账刷屏。additive、**不 bump PROTO_VERSION**。
 /// - p1q-accounts = A2：多账号只读三命令 `--list-accounts` / `--session-accounts` /
 ///   `--account-trust`（cc-acct-iso manifest 的消费侧；账号=一个 CLAUDE_CONFIG_DIR）。
 ///   纯一次性查询、零写入、不 shell out；**不动** PROTO_VERSION / CAPABILITIES / EMITS。
-///   bump BUILD_ID 只为给"含账号命令"的 daemon 独立身份，旧版遇到新命令会
+///   bump BUILD_ID 只为给"含账号命令"的后端独立身份，旧版遇到新命令会
 ///   `unknown argument` exit 2，monitor 侧按"功能不可用"优雅降级。
 /// - p1r-event-liveness = zero-poll-liveness P0-P6：判活信号全部换成内核事件
 ///   （pidfile inotify + pidfd 看进程死 · socket 目录 inotify 看 server 生死复活 ·
@@ -147,17 +147,17 @@ const PROTO_VERSION: u32 = 1;
 ///   tmux 8s tick）都已删除，生产段零定时器（`no_timer_guard.rs` 钉住）。
 ///   wire 两处 additive、**不 bump PROTO_VERSION**：`TmuxSessions` 加
 ///   `observation`（有会话时省略 ⇒ 载荷逐字节不变）+ 新帧 `TmuxSessionClosed`（进 EMITS）。
-///   **bump BUILD_ID 是必须的**：旧 daemon 报同一个 id 就不会被判 stale、不自动重装，
+///   **bump BUILD_ID 是必须的**：旧后端报同一个 id 就不会被判 stale、不自动重装，
 ///   整轮改动会在已部署的远端**休眠**（本条正是 P1 记档里点名、P5 漏做、P7 补上的那次 bump）。
 /// - p1t-removal-cause = **修 v3.4.0 发出去的一个真 bug**：`--account-trust-zero`
 ///   在 `accounts_query.rs` 里实现完整，但本文件的 match 漏列它 ⇒ 落进 `_` 臂走历史查询
 ///   ⇒ 回 `unknown argument` + exit 2，而 monitor 的账号 0 信任预检**真的在发这条命令**。
-///   **必须 bump**：不 bump 的话已部署的 v3.4.0 daemon 不被判 stale、不会自动换掉，
+///   **必须 bump**：不 bump 的话已部署的 v3.4.0 backend 不被判 stale、不会自动换掉，
 ///   修了也到不了用户手上（P5 漏做、P7 补上的那一课）。
-/// - p1u-fork-session = **G2/G6（branch-anywhere）新增 `--fork-session`**：daemon 第一次
+/// - p1u-fork-session = **G2/G6（branch-anywhere）新增 `--fork-session`**：backend 第一次
 ///   有写盘能力（`fork_write.rs`，`readonly_guard` 两层白名单只放行它一个模块）。
 ///   **必须 bump**：monitor 侧的远端分叉命令要靠这个 id 判 stale 才会自动重装；不 bump
-///   的话已部署的 daemon 报同一个 id ⇒ 不判 stale ⇒ 不重装 ⇒ 用户点远端 `⑂` 永远只拿到
+///   的话已部署的后端报同一个 id ⇒ 不判 stale ⇒ 不重装 ⇒ 用户点远端 `⑂` 永远只拿到
 ///   「版本过旧，请重新部署」。**这条是 Phase G 审计当场抓出来的** —— 上面 p1r/p1t 两段
 ///   逐字写着这课，本轮仍然漏了，说明「加子命令」这一步该有机检而不是靠记性（登记 E77）。
 /// - p1v-attachable = **E73**：`SessionAdded` 帧 additive 加 `attachable`（来自 pidfile 的同名布尔）。
@@ -166,8 +166,8 @@ const PROTO_VERSION: u32 = 1;
 ///   而 `build_id_guard` 的指纹只看 `main.rs` 的 `Some("--`（一次性子命令那一面）
 ///   ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**。
 ///   ⚠ 后果不是纸面的：`sftp.rs::deploy_decision` 判**版本那一维**的唯一判据是 build_id 字符串
-///   （〔K-W4 09-04〕daemon 部署路今天走 `deploy_decision_at`，另看「落点文件在不在」；stale 但文件在时仍只凭 build_id），
-///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 daemon **整个控制面静默不可用**。
+///   （〔K-W4 09-04〕backend 部署路今天走 `deploy_decision_at`，另看「落点文件在不在」；stale 但文件在时仍只凭 build_id），
+///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 backend **整个控制面静默不可用**。
 ///   本轮把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
 ///   报 `p1v` 的远端从此会被判 stale 并重装。CLI 那一面**一字未改**。
 /// - p1x-overflow-identity = **audit-0805 F03**：`Overflow` additive 加 `lost` / `lost_truncated`。
@@ -178,18 +178,18 @@ const PROTO_VERSION: u32 = 1;
 ///   `session_kind` 此前把两件事压在一个轴上 —— ①「该不该在 UI 出现」②「attach 进去对人有没有
 ///   意义」。SDK / 脚本驱动的会话正好「①要②不要」：它**有** tmux、`@ccm_sid` 也对，但
 ///   `stdin=DEVNULL`，用户敲的字会被脚本吃掉。省略 = true（存量零迁移）。
-///   **必须 bump**：monitor 要靠新 daemon 才拿得到这个字段；不 bump 就不判 stale、不重装。
+///   **必须 bump**：monitor 要靠新后端才拿得到这个字段；不 bump 就不判 stale、不重装。
 ///   （wire 是 additive、旧 monitor 忽略未知字段 ⇒ **不 bump PROTO_VERSION**。）
 ///
 /// - p2a-rewatch-sessions〔`P0b-Y2` 08-13〕：**盯着的 `sessions/` 被换掉/还没出现时会重挂**。
 ///   wire 一个字节没变（不 bump `PROTO_VERSION`），但**二进制行为变了** ⇒ 照上面的先例 bump。
-///   ★ **必须 bump**：旧 daemon 在这条路上是**静默失效**的（活着、不吭声、不发 `session_added`），
-///   报同一个 id 就不会被判 stale、不会自动重装 —— 用户会带着一个永远不宣告会话的 daemon 过日子。
+///   ★ **必须 bump**：旧后端在这条路上是**静默失效**的（活着、不吭声、不发 `session_added`），
+///   报同一个 id 就不会被判 stale、不会自动重装 —— 用户会带着一个永远不宣告会话的后端过日子。
 ///
-/// - p2e-dial〔`K-P6b` 09-06〕：新增 `--dial` —— 把 **daemon 那条长连接流**的 SSH 握手
+/// - p2e-dial〔`K-P6b` 09-06〕：新增 `--dial` —— 把 **backend 那条长连接流**的 SSH 握手
 ///   搬进一个由界面起的子进程（候选 E 的字节代理）。
 ///   ⚠ **必须 bump**：`--dial` 是**新的进程形态**（常驻、只有一条管子进一条管子出），
-///   已部署的旧 daemon 根本没有这条臂；而 monitor 判 stale 只看 build_id
+///   已部署的旧后端根本没有这条臂；而 monitor 判 stale 只看 build_id
 ///   ⇒ 不 bump 就不重装（p1r / p1t / G2 / p2d 那四次的同一个形状）。
 ///   🔴 **别把这条读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里
 ///   本件只覆盖 1 处，SFTP / 端口转发 / 跳板 / 其余 exec 路径**界面仍然自己拨**。
@@ -202,34 +202,34 @@ const PROTO_VERSION: u32 = 1;
 ///   ⚠ **必须 bump**：在此之前，「这份二进制是谁」只能去读它**旁边**那个 `.build_id`
 ///   文本文件，而那个文件与二进制是两回事（`K-R68` 现打：三个载体的 `.build_id`
 ///   全部从同一处源码常量抠出来 ⇒ 恒等 ⇒ 一格证据都不提供）。
-///   已部署的旧 daemon **既没有戳、也答不出 `build=`** ⇒ 它必须被判 stale 换掉，
+///   已部署的旧 backend **既没有戳、也答不出 `build=`** ⇒ 它必须被判 stale 换掉，
 ///   否则「问得出它是谁」这条性质在已部署的机器上永远为假。
 ///
 /// - p2g-capture-pane〔`K-R86` 09-13〕：新增 `--capture-pane` —— **一条只读的一次性原语**，
 ///   把某个 tmux 会话此刻那一屏抓回来（`tmux -u capture-pane -p -t '=名:'`）。
-///   在此之前 daemon 会列会话、会探 `@ccm_sid`、会杀、会键入，**唯独没有「把那一屏取回来」**；
+///   在此之前后端会列会话、会探 `@ccm_sid`、会杀、会键入，**唯独没有「把那一屏取回来」**；
 ///   monitor 侧账本 `parity_ledger` 的 `tmux.manage` 那一格为此挂了一个月的欠账。
-///   ⚠ **必须 bump**：这是**新增的一条子命令**，已部署的旧 daemon 上它 `exit 2`
+///   ⚠ **必须 bump**：这是**新增的一条子命令**，已部署的旧后端上它 `exit 2`
 ///   （落进 `unknown argument`），而调用方判「这台机有没有这条能力」看的是 build_id
 ///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
 ///   （p1r / p1t / G2 / p2d / p2e 那五次的同一个形状）。
 ///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
-///   本轮**没做**（本工作树也没铺 `src/bridge/embedded-daemons/`）。
-///   🔴 **别把它读成「远端画面预览通了」**：本件只出 daemon 这一侧的原语，
+///   本轮**没做**（本工作树也没铺 `src/bridge/embedded-backends/`）。
+///   🔴 **别把它读成「远端画面预览通了」**：本件只出后端这一侧的原语，
 ///   monitor 那条 `capture_remote_pane` 一个字节没动 —— 欠账换了个名字，没有被结掉。
 ///
 /// - p2h-oneshot-session〔`K-R87` 09-13〕：新增 `--oneshot-session` —— **一次性会话**，
 ///   起一个到点**自己会死**的 tmux 会话（`new-session -d -P -F '#{session_id}'` ＋
 ///   一条 `setsid sh -c 'sleep N; tmux kill-session -t $N'` 的**外部**看门狗）。
 ///   `K-R86` 出的是「看得见」那一半（抓一屏），这一条是「有寿命」那一半 ——
-///   在它之前 daemon 建得出会话、杀得掉会话，**唯独没有「建出来的这个到点自己没」**。
-///   ⚠ **必须 bump**：又一条**新增的子命令**，已部署的旧 daemon 上它落进
+///   在它之前后端建得出会话、杀得掉会话，**唯独没有「建出来的这个到点自己没」**。
+///   ⚠ **必须 bump**：又一条**新增的子命令**，已部署的旧后端上它落进
 ///   `unknown argument` + exit 2，而调用方判「这台机有没有这条能力」看的是 build_id
 ///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
 ///   （p1r / p1t / G2 / p2d / p2e / p2g 那六次的同一个形状）。
 ///   ★ 同 p2d / p2e / p2g 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
-///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/bridge/embedded-daemons/`）。
-///   🔴 **别把它读成「用量探针搬进后端了」**：本件只出 daemon 这一侧的原语，
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/bridge/embedded-backends/`）。
+///   🔴 **别把它读成「用量探针搬进后端了」**：本件只出后端这一侧的原语，
 ///   monitor 的 `account_usage` 那条 shell 串编排**一个字节没动**。
 ///
 /// - p2i-frame-tmux-primitives〔`K-R104` 09-13〕：**`capture-pane` 与 `oneshot-session`
@@ -239,7 +239,7 @@ const PROTO_VERSION: u32 = 1;
 ///   用量探针两段轮询上限 12+20 轮 ⇒ 单次探测最多 **36** 次握手，
 ///   撑破 monitor 侧的 `EXEC_TIMEOUT_SECS = 25` ⇒ **结构上超时**，不是慢。
 ///   帧面是一条长连接上多次往返，握手恒 1 次。
-///   ⚠ **必须 bump**，而这一次的形状与前七次不同：旧 daemon 不是「`exit 2`」，
+///   ⚠ **必须 bump**，而这一次的形状与前七次不同：旧后端不是「`exit 2`」，
 ///   是它的 `hello.commands` 里**根本没有这两条** ⇒ monitor 的 `InboundClient::accepts`
 ///   当场判 `CallError::Unsupported`、一个字节都不发（`bus-send` 是现成先例）。
 ///   ⇒ 探针在已部署的旧远端上整条不可用，而判 stale 只看 build_id。
@@ -250,12 +250,12 @@ const PROTO_VERSION: u32 = 1;
 ///   `inbound::REGISTRY` 与 `COMMANDS` 10 → 11），这是本谱系里第一次两面一起变。
 ///   它补的是 `K-R111` 摸底点名的那个缺口：monitor 侧 `read_cc_bus_state` 想改走后端，
 ///   而**后端没有对侧** —— 那条读面的头注逐字写着解锁条件是「格式契约稳下来」，
-///   届时「正确形状多半不是把 shell 串搬过去，而是 daemon 出一条**具名的读命令**」。
+///   届时「正确形状多半不是把 shell 串搬过去，而是后端出一条**具名的读命令**」。
 ///   ⚠ **必须 bump**，而这一次两个失效形状**同时**成立：CLI 面那半是 p1r/p1t/G2/p2d/p2e/p2g/p2h
 ///   那七次的 `unknown argument` + exit 2；帧面那半是 p2i 那次的 `hello.commands` 里没有它
 ///   ⇒ monitor 的 `InboundClient::accepts` 判 `Unsupported`、一个字节都不发。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
-///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/bridge/embedded-daemons/` ⇒ 不涉及 re-embed）。
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/bridge/embedded-backends/` ⇒ 不涉及 re-embed）。
 ///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：本件只出后端这一侧的命令，
 ///   monitor 的 `read_cc_bus_state` **一个字节没动**（那是下一件）。
 ///
@@ -265,20 +265,30 @@ const PROTO_VERSION: u32 = 1;
 ///   起因是产品裁定：用量的**聚合轴**（后端服务端聚合 `--usage`）与**探针轴**
 ///   （一次性会话跑 `/usage` 抓屏）两轴整轴不做了；`oneshot-session` 这条原语当初
 ///   （`K-R87`）就是为探针建的，探针没了它零生产调用方 ⇒ 随之退役。
-///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（`tmux.rs::capture_via_daemon`）。
-///   ⚠ **必须 bump，而这一次的理由与前九次相反**：前九次是「新能力在旧 daemon 上休眠」，
-///   这一次是**旧 daemon 上那三条还在**，而新 monitor 不再调它们 ——
-///   真正会出事的是**反向**：一台装着新 daemon 的远端，旧 monitor 仍会去调
+///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（`tmux.rs::capture_via_backend`）。
+///   ⚠ **必须 bump，而这一次的理由与前九次相反**：前九次是「新能力在旧后端上休眠」，
+///   这一次是**旧后端上那三条还在**，而新 monitor 不再调它们 ——
+///   真正会出事的是**反向**：一台装着新后端的远端，旧 monitor 仍会去调
 ///   `--usage` / `ch:oneshot-session`，得到 `unknown argument` / `Unsupported`。
-///   判「这台机上的 daemon 是不是我们这一版」看的就是 build_id ⇒ 减法同样要 bump，
+///   判「这台机上的后端是不是我们这一版」看的就是 build_id ⇒ 减法同样要 bump，
 ///   否则「它变了」这件事在协议面上无人可知。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j 如实登记：这一半是**源码半**，
 ///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**。
-const BUILD_ID: &str = "p2k-usage-retired";
+/// - p2l-rename-daemon-to-backend〔`设计/99 §4` 步 8 · 全仓改名一刀〕：**第一次「只换口，不换能力」** ——
+///   `--daemon-probe` → `--backend-probe`。`SUBCOMMANDS` 仍是 25 条，帧面那半一个字没动。
+///   ⚠ **必须 bump**：同一条能力换了名字，**两个方向都会断** —— 旧后端不认 `--backend-probe`，
+///   新后端不认 `--daemon-probe`，两边都落 `unknown argument` + exit 2。而「这台机上的后端是哪一版」
+///   只有 build_id 答得了。
+///   🔴 **`build_id_guard::SUBCOMMAND_HISTORY` 里那 13 行历史快照一个字节没改** ——
+///   机械替换第一版曾把它们全改成新名字，那等于宣布「历史上每一版都有 `--backend-probe`」，
+///   而护栏照样绿（当前指纹与快照一起说了谎）。历史证据不是待同步的副本。
+///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j / p2k 如实登记：这一半是**源码半**，
+///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**。
+const BUILD_ID: &str = "p2l-rename-daemon-to-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
-/// 再经 `DAEMON_STAMP_OPEN` / `DAEMON_STAMP_CLOSE` 交给 monitor 生产段。
+/// 再经 `BACKEND_STAMP_OPEN` / `BACKEND_STAMP_CLOSE` 交给 monitor 生产段。
 /// **别在第二处写这两个字面量。**
 pub(crate) const BUILD_STAMP_OPEN: &str = "<<ccm-build-id:";
 /// 见 [`BUILD_STAMP_OPEN`]。
@@ -289,7 +299,7 @@ const BUILD_STAMP_LEN: usize = BUILD_STAMP_OPEN.len() + BUILD_ID.len() + BUILD_S
 /// 编译期把 `<开>` ＋ `BUILD_ID` ＋ `<关>` 拼成一段**定长字节**。
 ///
 /// 🔴 **为什么必须是 `static [u8; N]` 而不是一个 `&str` 常量** —— 这一条是本件的支点，
-/// 它治的是 `build.rs` 里逐字记着的那次失败（`embed_daemons` 头注）：
+/// 它治的是 `build.rs` 里逐字记着的那次失败（`embed_backends` 头注）：
 /// 「编译器可把 BUILD_ID 优化成立即数指令（字符串在字节里**不连续**），
 ///  运行时 `bytes_contain` 启发式会误拒正品二进制」⇒ 当时的出路是**旁挂一份清单**，
 /// 也就是「把标签抄到旁边」。
@@ -338,32 +348,32 @@ pub static CC_MONITOR_BUILD_STAMP: [u8; BUILD_STAMP_LEN] = build_stamp();
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
-/// （闭合 2026-07-09「漏拷身份清单 → 确认不了 → 全降级」事故：能力由 daemon 自己
+/// （闭合 2026-07-09「漏拷身份清单 → 确认不了 → 全降级」事故：能力由后端自己
 /// 声明，即使清单丢失也照开）。
 ///
 /// **加法式，两轴正交**：加新能力就往这里加 token（旧 monitor 忽略未知 token）；
-/// **绝不为此 bump `PROTO_VERSION`**（那是破坏性变更专用，会把每台旧 daemon 误判
+/// **绝不为此 bump `PROTO_VERSION`**（那是破坏性变更专用，会把每台旧后端误判
 /// Incompatible）。build_id 继续管 staleness / 重部署提示，与能力正交。
 ///
-/// **§26 死循环护栏（硬约束）**：只声明本 daemon **会在一次性查询判定前剥离对应
+/// **§26 死循环护栏（硬约束）**：只声明本 backend **会在一次性查询判定前剥离对应
 /// flag** 的能力——即每个 token 必须有 `split_stream_flags`（`:76`）里对应的剥离分支。
 /// `bg`→`--with-bg`、`tail-only`→`--tail-only`，二者 `split_stream_flags` 都剥。
 /// 加新能力 token 时，必须同时给它的 flag 加剥离分支，否则声明它 = 埋死循环
-/// （monitor 发对应 flag → 本 daemon 不剥 → 当查询退出 → 无 hello → 重连死循环）。
+/// （monitor 发对应 flag → 本后端不剥 → 当查询退出 → 无 hello → 重连死循环）。
 /// **此硬约束由 `every_capability_token_is_strippable` 测试代码强制**（不再只是约定）。
 const CAPABILITIES: &[&str] = &["bg", "tail-only"];
 
-/// phase②（daemon-08）：本 daemon **会发射的帧 kind 集**（snake_case），填进 `Hello.emits`——
+/// phase②（backend-08）：本 backend **会发射的帧 kind 集**（snake_case），填进 `Hello.emits`——
 /// aterm 门控消费（emits 含 kind → 依赖该帧；不含 → 回退 β/watchdog）。**与 `CAPABILITIES` 正交**：
 /// emits 是纯发射声明、无对应流 flag、不受 §26 护栏（见 `wire.rs` Hello.emits）。`turn_end` 待其帧
-/// 发射接线（daemon-08+）后加入——**在此登记 = 承诺 daemon 真发该帧**，勿提前声明未接线的帧。
+/// 发射接线（backend-08+）后加入——**在此登记 = 承诺后端真发该帧**，勿提前声明未接线的帧。
 const EMITS: &[&str] = &[
     "line",
     "session_added",
     "session_status",
     "session_removed",
     "overflow",
-    "turn_end",      // daemon-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
+    "turn_end",      // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
     "tmux_sessions", // B2：watch_loop 周期本地 tmux ls 发 TmuxSessions（登记=承诺真发，已接线）
     // P5：与上一份快照差分算出的**正向死亡帧**。登记 = 承诺真发（已接线，见 watcher.rs
     // 的 `diff_closed`）。monitor 收到即 retire、绕过 miss 计数；旧 monitor 忽略未知 kind。
@@ -548,7 +558,7 @@ const TMUX_PLATFORM: TmuxPlatform = if cfg!(windows) {
 ///
 /// 🔴 **它在本仓门禁上给不出任何读数** —— 本机是 Linux，这个 item 在这儿
 /// **编译期就不存在**。它开口的时刻是任何一次 **Windows 编译**
-/// （daemon「必须在 Windows 上编得过」这条纪律见 `plugin/discover.rs::is_executable` 头注）。
+/// （backend「必须在 Windows 上编得过」这条纪律见 `plugin/discover.rs::is_executable` 头注）。
 /// 写它的理由：Linux 那侧只有源码文本判据（读的是「那一支写在那儿」），
 /// 而这一条读的是「**那一支真的被编进去了**」—— 两者证的不是同一件事。
 #[cfg(windows)]
@@ -597,7 +607,7 @@ mod fourth_face_tests;
 //
 // # 今天它扫到的真实命中是 **0**（这一句必须写在前面）
 //
-// daemon crate 里今天一个 Win32 拉窗构件都没有（`Cargo.toml` 里 `windows`/`winapi` 命中 0）。
+// backend crate 里今天一个 Win32 拉窗构件都没有（`Cargo.toml` 里 `windows`/`winapi` 命中 0）。
 // ⇒ 上面两条正题断言今天**都在空转**，真正有读数的是**空转自检**那两条合成样本。
 // 本模块是**在搬家之前**先把闸门立起来：等 `control/focus.rs` 那一段真落进来的那天，
 // 它是第一个开口的人。
@@ -606,20 +616,20 @@ mod fourth_face_tests;
 #[path = "../../tests/backend/main_window_raise_guard.rs"]
 mod window_raise_guard;
 
-// U6b-2 **argv 三分表**：daemon 认识的每个 `--token` 恰好属于其中一类。
+// U6b-2 **argv 三分表**：backend 认识的每个 `--token` 恰好属于其中一类。
 //
 // # 为什么要有这张表
 //
 // 在它之前是**二分**：剥掉流 flag，剩下非空就当一次性查询。后果实测：
 //
 // ```text
-// $ cc-monitor-remote --some-future-flag
-// cc-monitor-remote query error: unknown argument: --some-future-flag
+// $ cc-monitor-backend --some-future-flag
+// cc-monitor-backend query error: unknown argument: --some-future-flag
 // rc=2
 // ```
 //
 // **未知 flag 在流位置 ⇒ exit 2、一个字节都不输出、没有 hello。** monitor 那头看到的
-// 和「daemon 崩了」无法区分 ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**。这正是 2026-07-09
+// 和「backend 崩了」无法区分 ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**。这正是 2026-07-09
 // 事故的形状。`every_capability_token_is_strippable` 挡不住它——那条只覆盖**与已声明
 // 能力绑定**的 flag，「monitor 因为别的原因发了个新 flag」不在它的判据里。
 //
@@ -656,7 +666,7 @@ const SUBCOMMANDS: &[&str] = &[
     // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
     // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
     "--capture-pane",
-    "--daemon-probe",
+    "--backend-probe",
     // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
     // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都
     // 看得见，而那份 JSON 里有主机名、用户名、私钥**路径**；`/proc/<pid>/environ` 只有本人
@@ -668,13 +678,13 @@ const SUBCOMMANDS: &[&str] = &[
     //  🔴 它**不是**同族的「前提翻了」，是纯粹的漂移：没有任何前提翻，只是这一处没跟着改。
     //
     //  证据（09-10 在本树现打的读数，不是从代码推的）：本仓 debug 构建的
-    //  `cc-monitor-remote --dial` 跑两趟 ——
+    //  `cc-monitor-backend --dial` 跑两趟 ——
     //  ① 不设 `CCM_DIAL_REQUEST`、stdin 给 `/dev/null` ⇒ **退出码 2**，stdout **0 字节**，
     //     stderr 逐字 `dial: 环境变量 CCM_DIAL_REQUEST 没设（或是空的）—— 界面没交请求`；
     //  ② **把那份 JSON 原样喂进 stdin 第一行**、仍不设那个环境变量 ⇒ **还是退出码 2、
     //     stdout 还是 0 字节、还是同一句话**
     //  ⇒ 「stdin 第一行」那条路今天**一个字节都不被读**。
-    //  ⚠ 两趟都是 **Linux gnu debug 构建**，不是 Windows sidecar。
+    //  ⚠ 两趟都是 **Linux gnu debug 构建**，不是 Windows local_backend。
     //
     //  为什么改：`dial/mod.rs` 头注自陈 —— `ssh_source` 有一条判据逐字禁止它自己往流里写
     //  （写的能力在 `U8a-2a` 整个交给了 `ParkedWriter`），硬走 stdin 就得去放宽那条判据，
@@ -703,7 +713,7 @@ const SUBCOMMANDS: &[&str] = &[
     "--tmux-notify",
 ];
 
-/// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，daemon 顶层不解释它们。
+/// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--accts-dir",
     "--after-ms",
@@ -730,9 +740,9 @@ fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, bool, bool) {
 /// # 未知 `--flag` 忽略，未知**裸参数**仍报错
 ///
 /// 两者要分开：
-/// - 未知 `--flag`：可能是**新版 monitor 发给旧版 daemon** 的。忽略它 + 一行 warn，
+/// - 未知 `--flag`：可能是**新版 monitor 发给旧版 backend** 的。忽略它 + 一行 warn，
 ///   照常进流模式发 hello ⇒ monitor 拿得到握手、能看出对面旧、可以降级。
-///   这条不能追溯修好**已经部署**的旧 daemon，但它让**下一个** flag 的新增是安全的。
+///   这条不能追溯修好**已经部署**的旧后端，但它让**下一个** flag 的新增是安全的。
 /// - 未知裸参数（不以 `--` 开头）：那是明确的调用错误。任何未来协议都不会把裸参数放 `args[0]`，
 ///   静默吞掉只会让人查半天。**仍旧落进查询分支报 `unknown argument` + exit 2。**
 fn is_query_mode(args: &[String]) -> bool {
@@ -754,8 +764,8 @@ fn is_query_mode(args: &[String]) -> bool {
             }
             for a in args {
                 tracing::warn!(
-                    "未知 flag {a}：本 daemon 不认识它，已忽略并照常进流模式。\
-                     （若这是新版 monitor 的新能力，请升级 daemon。）"
+                    "未知 flag {a}：本后端不认识它，已忽略并照常进流模式。\
+                     （若这是新版 monitor 的新能力，请升级后端。）"
                 );
             }
             false
@@ -775,11 +785,11 @@ async fn main() {
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
-    // ⇒ 终端里敲的 `ccm` 就是本二进制（别名 / 软链指过来，或 `cc-monitor-remote ccm …`）。
+    // ⇒ 终端里敲的 `ccm` 就是本二进制（别名 / 软链指过来，或 `cc-monitor-backend ccm …`）。
     //
     // 🔴 **三个「必须排在前面」，一个都不是排版**：
     //   ① 排在 `tracing_subscriber` 之前 —— 一次性模式的 stderr 是给人看的，
-    //      混进 daemon 的日志行就把「正常路径一个字都不说」这条契约破了；
+    //      混进后端的日志行就把「正常路径一个字都不说」这条契约破了；
     //   ② 排在 `split_stream_flags` 之前 —— 那一步会把 `--with-bg` / `--tail-only`
     //      从 argv **任意位置**剥掉，而 `ccm -- --tail-only` 里那个要原样透传给 agent；
     //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
@@ -803,7 +813,7 @@ async fn main() {
     let agent_home = resolve_agent_home();
 
     // issue #16：带参数 = 一次性历史查询模式，干完即退，不进流式协议。
-    // 旧 daemon 不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
+    // 旧后端不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
     // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
@@ -812,9 +822,9 @@ async fn main() {
     let args = args_rest;
     if is_query_mode(&args) {
         // 一次性查询模式：--search 全文搜索（#28）/
-        // --resolve advisor（daemon-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
+        // --resolve advisor（backend-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
-            // P4b：hook 子进程走这条 —— 校验身份后给 daemon 发 SIGUSR1，**不碰文件系统**。
+            // P4b：hook 子进程走这条 —— 校验身份后给后端发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
             // `K-R86`：只读抓屏原语。**抓一次、立刻返回** —— 轮询归 `K-R87`，
             // 零定时器铁律（`no_timer_guard`）看着本 crate 的每一份生产段。
@@ -826,7 +836,7 @@ async fn main() {
             Some("--list-subagents") => observe::history_query::list_subagents(&agent_home, &args),
             Some("--resolve") => control::resolve_query::run(&agent_home, &args),
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
-            // **daemon 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
+            // **backend 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
             Some("--fork-session") => control::fork_write::run(&agent_home, &args),
             // K-H1：HTTP 中转。**常驻**，起来就不返回；配置面只有环境变量。
             // K-H2a：多传一个 `agent_home` —— 中转要从 `<home>/work/` 下
@@ -915,9 +925,9 @@ async fn main() {
     // 父提交同一脚本 100ms 内退出。
     //
     // 爆炸半径正是生产形状：monitor 经 SSH exec 连着时 stdin 一直开着。
-    // 远端手工 kill 一个卡住的 daemon、部署脚本替换在跑的二进制，今天都会失效。
+    // 远端手工 kill 一个卡住的后端、部署脚本替换在跑的二进制，今天都会失效。
     //
-    // 为什么 exit 是安全的：**流模式 daemon 没有任何待落盘状态** —— 它只读；
+    // 为什么 exit 是安全的：**流模式后端没有任何待落盘状态** —— 它只读；
     // 唯一的写盘入口 `control/fork_write.rs` 在一次性查询模式，那条路早就 exit 了。
     // stdout 也不欠 flush：`writer_task` 每帧写完即 flush。
     std::process::exit(0);
@@ -952,7 +962,7 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         // ⚠ 无论如何**不要再加第二个目录字段** —— 那正是 `D3` 排除掉的路。
         // 这一行由 `production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen` 钉住
         //（它会在那天**故意变红**：那是提醒，不是障碍）；旁边那条
-        // `the_daemon_can_already_discover_homes_it_just_does_not_send_them`
+        // `the_backend_can_already_discover_homes_it_just_does_not_send_them`
         // 钉的是另一半 —— 空表不等于没能力。
         homes: Vec::new(),
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
@@ -979,7 +989,7 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
     }
 }
 
-/// 今天那条路：**stdin/stdout 一对管道**。宿主一退读端就断，daemon 153ms 内自己走。
+/// 今天那条路：**stdin/stdout 一对管道**。宿主一退读端就断，backend 153ms 内自己走。
 ///
 /// ⚠ 本函数体是 `K-P1` 之前 `main()` 的那一段**原样搬过来的**，一行行为都没改 ——
 /// 常驻是**加一条载体**，不是把这条改掉。改这一段之前先问：另一条载体要不要跟着改？
@@ -1019,11 +1029,11 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, with_bg: bool, tail_o
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
     //
     // ★ **这一步必须先于任何 hook 安装落地** —— `SIGUSR1` 的**默认处置是终止进程**。
-    // 先装 hook 再装处理器，等于给一个会自杀的 daemon 装了自杀触发器。
-    // 本轮（P4 daemon 侧）刻意只做这一半：没有 hook 在发信号，它完全惰性。
+    // 先装 hook 再装处理器，等于给一个会自杀的后端装了自杀触发器。
+    // 本轮（P4 backend 侧）刻意只做这一半：没有 hook 在发信号，它完全惰性。
     //
-    // 为什么是信号而不是别的：原方案让 hook 追加事件日志、daemon inotify 读增量，
-    // **撞红线 I7「daemon 只读」**（`readonly_guard` 当场拦下）。信号通路让 daemon 的
+    // 为什么是信号而不是别的：原方案让 hook 追加事件日志、backend inotify 读增量，
+    // **撞红线 I7「backend 只读」**（`readonly_guard` 当场拦下）。信号通路让后端的
     // 文件系统写归零，且会话名根本不经 shell ⇒ 那条引号/注入面直接消失。
     // 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
     // P5：留一份给停机用（下面 select 结束后要显式通知 reader）。
@@ -1062,10 +1072,10 @@ type PokeSlot = std::sync::Arc<std::sync::Mutex<Option<observe::watcher::Watcher
 /// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
 ///
 /// ★ **这一步必须先于任何 hook 安装落地** —— `SIGUSR1` 的**默认处置是终止进程**。
-/// 先装 hook 再装处理器，等于给一个会自杀的 daemon 装了自杀触发器。
+/// 先装 hook 再装处理器，等于给一个会自杀的后端装了自杀触发器。
 ///
-/// 为什么是信号而不是别的：原方案让 hook 追加事件日志、daemon inotify 读增量，
-/// **撞红线 I7「daemon 只读」**（`readonly_guard` 当场拦下）。信号通路让 daemon 的
+/// 为什么是信号而不是别的：原方案让 hook 追加事件日志、backend inotify 读增量，
+/// **撞红线 I7「backend 只读」**（`readonly_guard` 当场拦下）。信号通路让后端的
 /// 文件系统写归零，且会话名根本不经 shell ⇒ 那条引号/注入面直接消失。
 /// 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
 #[cfg(unix)]
@@ -1080,7 +1090,7 @@ fn spawn_sigusr1_task(slot: PokeSlot) -> tokio::task::JoinHandle<()> {
                 // 这句话原先逐字是「⇒ tmux hook 通路不可用，退回定时探测」——
                 // 而**那条退路今天不存在**：`P5` 删掉 8s ticker 之后本进程零定时器
                 //（`observe/watcher.rs` 那条 `P0b-Y2` 头注逐字：「`P5` 删掉 8s ticker 之后
-                // daemon **零定时器**，之后每一拍都靠事件」；`no_timer_guard` 钉着它）。
+                // backend **零定时器**，之后每一拍都靠事件」；`no_timer_guard` 钉着它）。
                 //
                 // ★ 病根不是打错字：**`P5` 删掉了一个构件，而替那个构件说话的散文散在别处，
                 //   没人回去改。**然后它继续以权威口吻骗下一个读者 ——
@@ -1099,7 +1109,7 @@ fn spawn_sigusr1_task(slot: PokeSlot) -> tokio::task::JoinHandle<()> {
                 return;
             }
         };
-        tracing::info!("SIGUSR1 处理器已就位（tmux hook 通路的 daemon 侧）");
+        tracing::info!("SIGUSR1 处理器已就位（tmux hook 通路的后端侧）");
         while sigusr1.recv().await.is_some() {
             // 锁毒化不该让 tmux 通路整条哑掉 ⇒ `into_inner` 取回内容再用。
             if let Some(p) = slot.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
@@ -1130,7 +1140,7 @@ struct Attached {
 ///
 /// # 为什么 hello 写在分档**之前**
 ///
-/// 否则「这台机上有没有一个长驻 daemon」只能从「`connect()` 成没成」推 ——
+/// 否则「这台机上有没有一个长驻后端」只能从「`connect()` 成没成」推 ——
 /// 而 TCP 的 backlog 会让**没人 accept 的口照样连得上** ⇒ 那是个「一直说是」的假信号。
 /// 写在前面之后，那一问的答案是**读一行**，协议一个字节都不用加
 /// （`shared/ccm:1182-1185` 自陈「后者今天没有便宜的问法」，说的就是这一格）。
@@ -1167,7 +1177,7 @@ async fn handshake_one(
     };
     let mut r = tokio::io::BufReader::new(r);
     // ⚠ **有上限地读** —— 对端是同机任何进程，它完全可以一直发字节不发换行，
-    // 而无界读就是无界堆分配（daemon 侧为同一形栽过一次实测，见 `inbound.rs` 头注）。
+    // 而无界读就是无界堆分配（backend 侧为同一形栽过一次实测，见 `inbound.rs` 头注）。
     let line = match listen::read_capped_line(&mut r, listen::ATTACH_LINE_CAP).await {
         Ok(listen::HandshakeLine::Line(l)) => l,
         Ok(listen::HandshakeLine::Eof) => {
@@ -1223,7 +1233,7 @@ async fn handshake_one(
 ///
 /// 常驻真正买到的是两样东西，第二样就在这里：
 /// ① `ccm` 那一问有答案了（连一次 + 读一行 hello）；
-/// ② **`@ccm_sid` 打标那段时间窗关掉了** —— 写 `@ccm_sid` 的是**正在跑的** daemon
+/// ② **`@ccm_sid` 打标那段时间窗关掉了** —— 写 `@ccm_sid` 的是**正在跑的** backend
 ///   （`observe/watcher.rs` inotify `sessions/` → `identity_tag::tag`），
 ///   而 `shared/ccm` 那条每会话每秒的身份 poller 已经被 `U-NP④` **整条删掉、不留轮询退路**。
 ///   monitor 没开着的时候若这里不看 `sessions/`，②就一格都没买到。
@@ -1259,9 +1269,9 @@ async fn serve_listening(
         Err(e) => {
             let in_use = e.kind() == std::io::ErrorKind::AddrInUse;
             // ★★ **绑不上就退出，绝不自己换端口。**
-            // 换端口 = 每台机 N 个 daemon，各自往 tmux server 装 `[50]` 槽位的全局 hook
+            // 换端口 = 每台机 N 个后端，各自往 tmux server 装 `[50]` 槽位的全局 hook
             // 互相盖（`control/tmux_hook.rs::install_hooks`，**没有关掉它的开关**，
-            // 载荷里烤着那一个 daemon 的 pid+starttime）⇒ 比今天更糟。
+            // 载荷里烤着那一个后端的 pid+starttime）⇒ 比今天更糟。
             tracing::error!(
                 "绑不上 {addr}（{e}）⇒ 退出。\n\
                  这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\
@@ -1333,14 +1343,14 @@ async fn serve_listening(
                     //
                     // ⚠ 这一格是 `K-P1` 的 e2e **实测**逼出来的，不是设计出来的：
                     // 只等 `writer_task`（它靠**写**拿到错误才结束）时，
-                    // 一个**空闲**的 daemon 根本没有东西可写 ⇒ 上一个 monitor 退了之后
+                    // 一个**空闲**的后端根本没有东西可写 ⇒ 上一个 monitor 退了之后
                     // 那张牌**永远不还回来** ⇒ 下一个 monitor 拿到 `stream-busy`
                     // ⇒ 「换个 monitor 重开就没有本机后端了」。实测：等满 50×20ms 仍是 busy。
                     //
                     // ⇒ 再认一个事件：**入方向读到 EOF**（客户端关了它的写半边 / 进程没了）。
                     // 那与 stdio 那条载体上「stdin EOF」是同一个事实，只是这条载体上它**必须**被当真：
                     // socket 的对端关了就是走了，而 stdio 那边刻意对写端关闭不敏感
-                    //（那是为了不让一次误关掉整个 daemon —— 两条载体的取舍不同，写清楚）。
+                    //（那是为了不让一次误关掉整个 backend —— 两条载体的取舍不同，写清楚）。
                     tokio::select! {
                         _ = writer_task(writer, rx, reply_rx) => {
                             tracing::info!("流结束：写不出去了（客户端走了）");
@@ -1458,13 +1468,13 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 /// 解析会话数据根。
 ///
 /// ⚠ `S3` 把**怎么解析**搬进了 `agents/claudecode/paths.rs`（环境变量名与目录名是
-/// Claude 的知识）。这里只剩"去问适配层" —— 今天 daemon 只服务一种 agent，所以是写死的一句。
+/// Claude 的知识）。这里只剩"去问适配层" —— 今天后端只服务一种 agent，所以是写死的一句。
 ///
 /// ⚠〔`S5` 08-14 订正〕原注这里写着「`S5` 落地时它会变成按 kind 取」——**`S5` 没有那么做，
 /// 而且这条订正比原话更要紧**：本函数要的是**恒定**答得出的那个 home（流式 watcher 与
 /// 所有一次性子命令都拿它当根），而 `agents::visible_homes()` 只报**看得见**的那些
 ///（home 目录不存在就一条都不报）。两者语义不同 ——
-/// 把这里换成"按 kind 取"会让 `~/.claude` 还没建出来的新机器上 daemon 直接失根，
+/// 把这里换成"按 kind 取"会让 `~/.claude` 还没建出来的新机器上后端直接失根，
 /// 而它原本是能正常起来、等 inotify 等到第一个会话的。
 /// ⇒ 真正会变的是**别处**：`main` 里 `homes:` 那一行（见上）。归 `S6`/`L2` 的接口那轮再看。
 fn resolve_agent_home() -> PathBuf {

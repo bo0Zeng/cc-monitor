@@ -13,14 +13,14 @@
  *
  * 改一处，另两处**不会有任何信号**。
  *
- * ⚠ **这不是理论风险，是刚发生过的事**：`daemon-split` 的 `S2`/`S3`（08-14）建
+ * ⚠ **这不是理论风险，是刚发生过的事**：`backend-split` 的 `S2`/`S3`（08-14）建
  * `agents/<名>/resume.rs` 时，把副本**从两份变成了三份**，全程零告警 ——
  * 而那两件的作者（本仓 PM）当时正拿着「铁律 15：报新发现前先检索真相源」这条在做事。
  * **不是没人守规矩，是没有东西会红。**
  *
  * # 为什么是「对拍」而不是「收成一份」
  *
- * 收成一份的自然做法是让 daemon 也读 `golden.tsv` —— **不成立**：daemon 要**裸交叉编译、
+ * 收成一份的自然做法是让后端也读 `golden.tsv` —— **不成立**：backend 要**裸交叉编译、
  * 零 C 依赖、~3.5 MB**，且它跑在**远端**，读一个 monitor 仓里的 fixture 没有意义。
  * ⇒ 三处各自持有是必然的，能钉的是「**它们必须一致**」。
  *
@@ -30,7 +30,7 @@
  * # ⚠ 诚实边界（三条）
  *
  * 1. 本条只对拍 **golden 有 key 的那两项**（`default_launcher` / `resume_kind`+`resume_token`）。
- *    `agent_has_identity` · `agent_needs_bus_id` · daemon 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
+ *    `agent_has_identity` · `agent_needs_bus_id` · backend 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
  *    **今天在 golden 里没有 key** ⇒ 它们**没有真相源、也没被本条守住**。
  *    那是 `EL6` 的欠账，不是本条能顺手解决的（加 key 要动 golden 的契约面）。
  *    下面 `the_gaps_are_named_not_forgotten` 把这三项**逐个点名钉住**：
@@ -43,7 +43,7 @@
  *    上限 8）当场逮住。**没有调那个上限** —— 它的理由是对的：**匹配单位（子串）比事实
  *    （一个完整的声明）小时，把事实撑大的改动会从缝里溜过去而判据照样绿**。
  *    改成锚定提取之后，判据反而更强：它钉的是「那个声明长这样」，不是「那串字出现过」。
- * 3. daemon 侧抽取**先剥注释**（见 `productionRust`）—— ccm 那侧今天**没剥**：
+ * 3. backend 侧抽取**先剥注释**（见 `productionRust`）—— ccm 那侧今天**没剥**：
  *    它的 `case "$1" in claude) …` 形状在注释里不会出现，暂时安全，但这是**运气不是设计**。
  * 4. 只覆盖 `claude` 与 `codex` 两个 agent。加第三个时本条**不会自动扩** ——
  *    `AGENTS` 那个常量会与 golden 的行数对不上而红，那就是提醒。
@@ -94,7 +94,7 @@ const GOLDEN = "src/bridge/src/backend/control/fixtures/agent-profile-golden.tsv
 // （〔用@09-11 `K33`〕「后端只有一个…**不要有什么 bash 脚本**」），
 // per-agent 适配表搬进了后端本体。**三写点还是三个，第二份换了语言与住址。**
 const CCM = "src/backend/control/ccm/mod.rs";
-const DAEMON_RESUME = (agent: string) =>
+const BACKEND_RESUME = (agent: string) =>
   `src/backend/agents/${agent}/resume.rs`;
 
 /** 本条覆盖的 agent。加第三个 agent 时这里不改 ⇒ 下面的行数自检会红。 */
@@ -184,17 +184,17 @@ function productionRust(src: string): string {
     .join("\n");
 }
 
-const daemonSrc = (agent: string) =>
-  productionRust(read(DAEMON_RESUME(agent === "claude" ? "claudecode" : agent)));
+const backendSrc = (agent: string) =>
+  productionRust(read(BACKEND_RESUME(agent === "claude" ? "claudecode" : agent)));
 
-/** daemon 侧某 agent 的默认命令名（抠不到 → `undefined`，由调用方判死）。 */
-function daemonDefaultCommand(agent: string): string | undefined {
-  return /DEFAULT_COMMAND:\s*&str\s*=\s*"([^"]+)"/.exec(daemonSrc(agent))?.[1];
+/** backend 侧某 agent 的默认命令名（抠不到 → `undefined`，由调用方判死）。 */
+function backendDefaultCommand(agent: string): string | undefined {
+  return /DEFAULT_COMMAND:\s*&str\s*=\s*"([^"]+)"/.exec(backendSrc(agent))?.[1];
 }
 
-/** daemon 侧某 agent 的 resume 命令模板（`format!("…")` 里那一串）。 */
-function daemonResumeTemplate(agent: string): string {
-  return /format!\("([^"]+)"/.exec(daemonSrc(agent))?.[1] ?? "";
+/** backend 侧某 agent 的 resume 命令模板（`format!("…")` 里那一串）。 */
+function backendResumeTemplate(agent: string): string {
+  return /format!\("([^"]+)"/.exec(backendSrc(agent))?.[1] ?? "";
 }
 
 describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => {
@@ -208,27 +208,27 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
     ).toBe(AGENTS.length);
     for (const a of AGENTS) {
       expect(
-        daemonDefaultCommand(a),
-        `daemon ${a} 侧抠不到 \`DEFAULT_COMMAND: &str = "…"\` —— 声明形状变了，抽取器失效`,
+        backendDefaultCommand(a),
+        `backend ${a} 侧抠不到 \`DEFAULT_COMMAND: &str = "…"\` —— 声明形状变了，抽取器失效`,
       ).toBeTruthy();
     }
   });
 
-  it("★ 默认命令名：golden ↔ ccm ↔ daemon 三边一致", () => {
+  it("★ 默认命令名：golden ↔ ccm ↔ backend 三边一致", () => {
     const g = golden();
     const ccm = ccmTable("default_launcher");
     for (const a of AGENTS) {
       const want = g[a]?.default_launcher;
       expect(ccm[a], `${CCM} 的 default_launcher 与 golden 不一致（agent=${a}）`).toBe(want);
       expect(
-        daemonDefaultCommand(a),
-        `daemon 的 DEFAULT_COMMAND 与 golden 不一致（agent=${a}）。\n` +
+        backendDefaultCommand(a),
+        `backend 的 DEFAULT_COMMAND 与 golden 不一致（agent=${a}）。\n` +
           "⚠ 这三处是同一个事实的三份副本，改一处必须改三处 —— 本条就是为此存在的。",
       ).toBe(want);
     }
   });
 
-  it("★ resume 的形状（flag 还是子命令）：golden ↔ ccm ↔ daemon 三边一致", () => {
+  it("★ resume 的形状（flag 还是子命令）：golden ↔ ccm ↔ backend 三边一致", () => {
     const g = golden();
     const ccm = ccmTable("resume_flag");
     for (const a of AGENTS) {
@@ -239,16 +239,16 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
         ccm[a],
         `${CCM} 的 resume_flag 与 golden 的 resume_kind=${kind} 对不上（agent=${a}）`,
       ).toBe(kind === "flag" ? token : "");
-      // daemon：整条命令模板按**形状**比，不是找子串。
+      // backend：整条命令模板按**形状**比，不是找子串。
       //   flag 形     `{base} --resume {session_id}`
       //   子命令形    `{base} resume {session_id}`
-      const fmt = daemonResumeTemplate(a);
+      const fmt = backendResumeTemplate(a);
       const FLAG = /^\{base\} --[A-Za-z][\w-]* \{session_id\}$/;
       const SUB = /^\{base\} [A-Za-z][\w-]* \{session_id\}$/;
       expect(
         FLAG.test(fmt) ? "flag" : SUB.test(fmt) ? "subcommand" : `认不出的形状(${fmt})`,
-        `daemon 的 resume 命令形状与 golden 的 resume_kind=${kind} 对不上（agent=${a}）。\n` +
-          `  golden 说 ${kind}，而 daemon 拼的是 ${JSON.stringify(fmt)}`,
+        `backend 的 resume 命令形状与 golden 的 resume_kind=${kind} 对不上（agent=${a}）。\n` +
+          `  golden 说 ${kind}，而后端拼的是 ${JSON.stringify(fmt)}`,
       ).toBe(kind);
     }
   });
@@ -278,8 +278,8 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
       "ccm 里没有 needs_bus_id 的定义",
     ).toBe(true);
     expect(
-      /SESSION_NAME_PREFIX:\s*&str\s*=\s*"[^"]+"/.test(daemonSrc("claude")),
-      "daemon 里没有 SESSION_NAME_PREFIX 的声明",
+      /SESSION_NAME_PREFIX:\s*&str\s*=\s*"[^"]+"/.test(backendSrc("claude")),
+      "backend 里没有 SESSION_NAME_PREFIX 的声明",
     ).toBe(true);
   });
 });

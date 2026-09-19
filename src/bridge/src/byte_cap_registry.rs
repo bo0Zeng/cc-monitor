@@ -9,10 +9,10 @@
 //! | 本轮系统扫描 | **14** 处 |
 //! | 〔devbench F10b，08-10〕| **26** 处 —— 多出来的 12 里有 7 处是把**内联字面量**提成具名的
 //!   （那一族此前整个在扫描面外，而盯着它的那条「前提触发器」一直在假绿，详见本文件末尾），
-//!   另有 `DAEMON_FRAME_LINE_CAP` 是**压根没有上限**的那处补上的。
+//!   另有 `BACKEND_FRAME_LINE_CAP` 是**压根没有上限**的那处补上的。
 //!
 //! 台账漏掉的八处里，`ssh_source.rs` 自己就还有三处（`EXEC_CAPTURE_MAX_BYTES` /
-//! `DAEMONLESS_READ_CAP` / `DAEMONLESS_DISCOVER_CAP`）。
+//! `BACKENDLESS_READ_CAP` / `BACKENDLESS_DISCOVER_CAP`）。
 //! 〔`K-R59` 09-11：后两处**已退役**（`daemonless` 那一整段随定框 `K35` 删掉）。
 //!  上面那几个数是**那一刻的快照**，刻意不改 —— 它们记的是「谁数出了几处」这段账。〕
 //! ⇒ **E1「筛子不是免检章」这一轮兑现在计数上**：筛过一次的数字仍然可能是错的。

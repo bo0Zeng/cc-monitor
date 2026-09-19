@@ -406,7 +406,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
   });
 
   it("★★ 本机 tmux 快照是 `null`（**不知道**）⇒ `tmuxName` 传 `null`，**绝不硬铸**", async () => {
-    // `list_local_tmux` 回 `null` = 本机 daemon 通道没起 / 还没推过帧 = 不知道，
+    // `list_local_tmux` 回 `null` = 本机后端通道没起 / 还没推过帧 = 不知道，
     // **不是**「一个名字都没占」。此时硬铸就是「不避让」⇒ issue #76
     //「静默接进第一个会话，而用户以为开了新的」。诚实的做法是不传，让后端降级回旧路。
     serveLocalTmux(null);

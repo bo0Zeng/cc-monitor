@@ -11,7 +11,7 @@
 
 `ci.yml` 的 `steps:` 里每一条形如 `bash e2e/assert-pass-floor.sh <套件> <地板>` 的 `run:`
 （现打 20 条），逐条按 `package.json` 的 `scripts["test:<套件>"]` 解析到那份 `.sh`，
-再看那份 `.sh`（**连同它逐字点名的 `e2e/*.sh` 助手**）里有没有 `debug/cc-monitor-remote`。
+再看那份 `.sh`（**连同它逐字点名的 `e2e/*.sh` 助手**）里有没有 `debug/cc-monitor-backend`。
 
 # 🔴 它从哪来 —— 不是设想，是 `K-R119` 推 tag 那一趟云端实打出来的两条红
 
@@ -30,7 +30,7 @@ CI 那两个 job 没有；两边的「绿」长得一模一样。
 
 1. **它不跑任何 e2e**，只读三份盘上的文本（`ci.yml` · `package.json` · 那些 `.sh`）。
    「前置齐了」不等于「那一套会绿」。
-2. **认「要不要后端二进制」靠一个字面量** `debug/cc-monitor-remote`。
+2. **认「要不要后端二进制」靠一个字面量** `debug/cc-monitor-backend`。
    哪天有人换个写法拿到那个二进制（环境变量、别的路径），本条**看不见它**
    ⇒ 那时这条判据在那一套上静默。挡这一形的是下面的**地板**（人群非空 ＋ 命中非空）。
 3. **认「有 build」靠 `cargo build`**。一条 `cargo build` 不一定编的就是那个 bin ——
@@ -60,7 +60,11 @@ CI = ROOT / ".github" / "workflows" / "ci.yml"
 PKG = ROOT / "package.json"
 
 #: 「这一套的被测对象是后端二进制」的**唯一**认法。射程写在头注第 2 条。
-BINARY_NEEDLE = "debug/cc-monitor-remote"
+# 🔴 〔步 8 改名 2026-09-19〕`cc-monitor-remote → cc-monitor-backend`。
+# ⚠ 本条**没有静默** —— 它自带反空真，红的时候逐字说「那个字面量全不命中，
+#   本条此刻是**空真，判不了**」。那正是这一族该有的样子（对比：同一天另一把尺子
+#   解析出 0 条却不红，是靠它自己的地板才逮住的）。
+BINARY_NEEDLE = "debug/cc-monitor-backend"
 #: 「这一步真编了东西」的认法。射程写在头注第 3 条。
 BUILD_NEEDLE = "cargo build"
 #: e2e 调用行的形状。

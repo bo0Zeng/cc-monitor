@@ -317,12 +317,12 @@ fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> R
     if let Some(d) = cwd.filter(|c| std::path::Path::new(c).is_dir()) {
         builder.current_dir(d);
     }
-    // F06b-1d（C9）：backend 把 daemon 路径交给它亲手开的这个窗口 —— 窗口里那次 `ccm resume`
-    // 据此去调 `--resolve`（旧 `shared/ccm::resolve_from_daemon` 〔散文墓碑〕，`K-R48` 已删；
-    // 今天那一问在后端进程内直接答）。sidecar 不在就不设。
-    if let Some((k, v)) =
-        crate::backend::control::local_backend::daemon_bin_env_for_window(env!("CCM_TARGET_TRIPLE"))
-    {
+    // F06b-1d（C9）：backend 把后端路径交给它亲手开的这个窗口 —— 窗口里那次 `ccm resume`
+    // 据此去调 `--resolve`（旧 `shared/ccm::resolve_from_backend` 〔散文墓碑〕，`K-R48` 已删；
+    // 今天那一问在后端进程内直接答）。local_backend 不在就不设。
+    if let Some((k, v)) = crate::backend::control::local_backend::backend_bin_env_for_window(env!(
+        "CCM_TARGET_TRIPLE"
+    )) {
         builder.env(k, v);
     }
     builder.stdin(Stdio::null()).stdout(Stdio::null());
@@ -452,15 +452,15 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 /// |---|---|---|
 /// | `Command::new(` | 4 | **2** |
 /// | `.env(k, v)` | 3 | **2** |
-/// | `daemon_bin_env_for_window(` | 2 | **1** |
+/// | `backend_bin_env_for_window(` | 2 | **1** |
 ///
 /// ⇒ 本文件那条**普通 `#[test]`**
 /// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_daemon_path`
 /// （就在 `cargo` 门里跑）用**三条等号断言**钉着这 5 个构造。
 ///
 /// **实打（`C` 第十轮 刀 `R10M1`，沙箱快道 `cargo test -p monitor --lib`，09-02）**：
-/// 把本函数体里 Plan B 那个 `if let Some((k, v)) = daemon_env { builder.env(k, v); }`
-/// 换成 `let _ = daemon_env;`（＝真实缺陷形状「开窗点漏了带 env」；锚点是那三行，**全文命中 1**）
+/// 把本函数体里 Plan B 那个 `if let Some((k, v)) = backend_env { builder.env(k, v); }`
+/// 换成 `let _ = backend_env;`（＝真实缺陷形状「开窗点漏了带 env」；锚点是那三行，**全文命中 1**）
 /// ⇒ **`1243 passed; 2 failed`**（同树干净分母 **`1245 passed; 0 failed`**），红名单**恰好两条**：
 /// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_daemon_path` 与
 /// `payload_tests.rs::the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated`。
@@ -530,16 +530,16 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     for a in ps_args {
         wt_args.push(a.into());
     }
-    // F06b-1d（C9）：同 POSIX 那条 —— 见 `daemon_bin_env_for_window` 头注。
+    // F06b-1d（C9）：同 POSIX 那条 —— 见 `backend_bin_env_for_window` 头注。
     // ⚠ **这一格的诚实边界**：`wt.exe` 多半只是把请求转交给**已在跑的** Windows Terminal 进程，
     //   新标签的环境来自那个进程、不是本次 spawn ⇒ **这里设的 env 未必落得进去**。
     //   下面 Plan B（CREATE_NEW_CONSOLE 直起 powershell）是真正会继承的那条。
-    let daemon_env = crate::backend::control::local_backend::daemon_bin_env_for_window(env!(
+    let backend_env = crate::backend::control::local_backend::backend_bin_env_for_window(env!(
         "CCM_TARGET_TRIPLE"
     ));
     let mut wt = Command::new("wt.exe");
     wt.args(&wt_args);
-    if let Some((k, v)) = daemon_env.clone() {
+    if let Some((k, v)) = backend_env.clone() {
         wt.env(k, v);
     }
     // ★★ 三条策略（`00 §1.5.2`）。**Plan A 与 Plan B 只有第一格不同，而那是照着盘面写的：**
@@ -567,7 +567,7 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     let mut builder = Command::new("powershell.exe");
     builder.args(ps_args);
     // F06b-1d（C9）：同上。这一格是**真新起的进程**，env 一定继承。
-    if let Some((k, v)) = daemon_env {
+    if let Some((k, v)) = backend_env {
         builder.env(k, v);
     }
     if let Some(d) = start_dir {
@@ -609,7 +609,7 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
 ///
 /// ⚠ **这不代表 POSIX 上「远端拉起」这件事就该只复制命令** —— 那是另一个缺口：
 /// 本机 resume 有 OS 分派（`history.rs::launch_local`），远端**没有**（`launch_remote_terminal`
-/// 一律走本函数）。补它要等前端改成发结构化请求（U8c）之后走 daemon 的 `launch`，
+/// 一律走本函数）。补它要等前端改成发结构化请求（U8c）之后走后端的 `launch`，
 /// 登记在 **U8a-2c**。今天硬补只能 fire-and-forget，而那会**静默失败**（见 U8b 计划）。
 #[cfg(not(windows))]
 pub fn launch_powershell_window(_ps_command: &str, _local_cwd: Option<&str>) -> Result<(), String> {
@@ -666,13 +666,13 @@ pub async fn launch_remote_terminal(origin: String, remote_cmd: String) -> Resul
     //
     // 在此之前 `<local>` 会掉进下面那句 `load_remote_config_by_label`，报
     // **「未找到远端配置: "<local>"」** —— 与真实原因毫无关系的一句话。
-    // 同一族错误文案本轮第四次遇到（前三次：`daemon_kill` · `list_remote_tmux` · 本条）。
+    // 同一族错误文案本轮第四次遇到（前三次：`backend_kill` · `list_remote_tmux` · 本条）。
     //
     // 两侧各按裁定走，**没有 ssh 那一跳**：
     // · Windows → `launch_powershell_window`（PowerShell + Windows Terminal，与远端同一个函数）；
     // · POSIX   → 那个函数的非 Windows 臂回 `POSIX_NO_TERMINAL_WINDOW`，前端据此把命令交给用户
     //   在自己的 bash 里执行。**这不是失败**，前端有专门的标题分档（`POSIX_NO_WINDOW_MARKER`）。
-    if origin == crate::inbound_client::LOCAL_ORIGIN {
+    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         return tokio::task::spawn_blocking(move || {
             launch_powershell_window(&remote_cmd, None)?;
             tracing::info!("launch: local terminal (no ssh)");

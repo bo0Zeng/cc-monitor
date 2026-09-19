@@ -29,6 +29,14 @@ const SITES: &[&str] = &[
 /// 每条片段必须在那份文件里**恰好命中一次** —— 命中 0 次 = 那句话被改过了、这条例外
 /// 此刻在空转；命中多次 = 片段太短，说不清点的是哪一处。两侧都由下面的判据断言。
 const EXEMPT: &[(&str, &str, &str)] = &[
+    // 🔴 〔步 8 改名一刀 2026-09-19 · `设计/99 §4` 步 8〕**六条例外在这一拍删掉了 —— 那是例外真的没有了，不是放宽。**
+    //    它们当年的理由全都是「那一处在本轮写区之外 ⇒ 改不动」，而**步 8 是全仓冻结窗口**：
+    //    写区就是全仓，那个前提当场消失。逐条：
+    //      · `CONTRIBUTING.md` 的 markdown 锚点 —— 目标标题（`REMOTE-PHASE0-DEPLOY.md`）这一拍跟着改了，锚点同步改，链接没断；
+    //      · `README.md` 里那串 CI job 名 —— `.github/workflows/ci.yml` 的 job 同拍改名；
+    //      · `tests/e2e/README.md` 与 `src/bridge/README.md` 的两处占位符 `<daemon>` —— 换成 `<backend>`；
+    //      · `src/bridge/README.md` 里「安装 / 卸载 daemon」两句 —— 界面按钮文案住 `src/settings/machine-card.ts`，同拍改成「安装 / 卸载后端」。
+    //    ⇒ **账不许挂空号**：这六条今天在盘上都命中 0 次，留着就是六条空转的放行。
     ("src/doc/INVARIANTS.md", "「**ccm做到必须走daemon**」",
      "用户 08-14 逐字裁定的原话 —— 引文改了就不是引文了"),
     ("src/doc/IPC-PROTOCOL.md", "「ccm 做到必须走 daemon」",
@@ -41,22 +49,10 @@ const EXEMPT: &[(&str, &str, &str)] = &[
      "`K-R106` 订正段里**逐字回抄的原文**（下一句就是「那句被用户当场推翻了一半」）"),
     ("src/doc/INVARIANTS.md", "不许再用「daemon」这个词把「远端常驻的那份」与「后端」压成一个",
      "`R61` 裁定三本身 —— 它说的就是这个词，把词换掉这句话就没有指称对象了"),
-    ("src/doc/CONTRIBUTING.md", "REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b",
-     "markdown **锚点**，指向 `src/doc/REMOTE-PHASE0-DEPLOY.md` 的标题；那份文件不在本轮写区 ⇒ 标题不动，锚点跟着不许动，否则链接当场断"),
     ("src/doc/IPC-PROTOCOL.md", "= CC 2.1.x daemon 后台任务",
      "这一处的 `daemon` 指的是 **Claude Code 自己**那个 `--fork-session` 后台模式，不是本仓的后端 —— 换了词就把两个不同的东西压成一个（`R61` 治的正是这一形，反方向）"),
     ("src/doc/IPC-PROTOCOL.md", "（`daemon-协议-v1 §3`）",
      "与仓外 aterm **冻结在 2026-07-18** 的那份契约文档的**名字**，不是散文"),
-    ("README.md", "`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke`",
-     "`.github/workflows/ci.yml` 里的 **job 名**，改它 CI 就对不上"),
-    ("tests/e2e/README.md", "<daemon>",
-     "shell 命令里的**占位符** `<daemon>`（要替进去的是那个二进制的路径）"),
-    ("src/bridge/README.md", "设置面板「安装 daemon」",
-     "**逐字引用界面上那个按钮的文案** —— 文案住 `src/settings/machine-card.ts`（本轮写区之外）；只改文档不改界面，文档当场说假话。UI 文案那一档整体交回 PM 另派"),
-    ("src/bridge/README.md", "设置面板「卸载 daemon」",
-     "同上，另一个按钮的逐字文案"),
-    ("src/bridge/README.md", "一次性 exec `<daemon> --list-projects/--list-sessions/",
-     "同上，命令行占位符 `<daemon>`"),
 ];
 
 /// 语料地板：低于这个字节数就判「散文没喂进来」，而不是「一处都没有」。
@@ -70,7 +66,10 @@ const CORPUS_FLOOR_BYTES: usize = 300_000;
 /// 〔`设计/50` 09-18〕**15 → 14**：`src/bridge/README.md` 那条
 /// 「各配置远端 exec `<daemon> --usage`」的放行随那一行文档一起删了
 /// （用量 ② 轴整轴退役）。**这是例外表变短，不是放宽。**
-const EXEMPT_HITS: usize = 14;
+/// 〔步 8 改名一刀 2026-09-19〕**14 → 8**：六条例外的前提（「那一处在本轮写区之外」）
+/// 被全仓冻结窗口整个取消了 ⇒ 那六处真的改成「后端」了，例外随之作废。
+/// 逐条理由见 [`EXEMPT`] 表头那段注释。**又一次是例外表变短，不是放宽。**
+const EXEMPT_HITS: usize = 8;
 
 /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。
 fn is_ident(c: u8) -> bool {
@@ -154,16 +153,24 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
         //   而那张账数的是「还没改的措辞」，一处**自检夹具**混进去会把它读成一笔真债。
         ("常驻 daemon 的 stdin", true),
         ("ccm做到必须走daemon", true),
-        // 🔴 〔2026-09-18 修复〕这一格原是 `("remote-daemon-proto", false)` ——
-        //   一个**故意构造的夹具**：`daemon` 出现在更长的 token 里。
-        //   重组的机械改名把它换成了 `"src/backend"`，而那串里**一个 `daemon` 都没有**
-        //   ⇒ 夹具失去意义、本条当场红。这正是 `调研/设计/16 §5.3` 记的那类假阳性：
-        //   **机械替换会砸坏刻意构造的测试夹具**。
-        //   换成 `embedded-daemons/`（活的目录名，同样是「非裸词」那一形）。
-        ("embedded-daemons/", false),
-        ("daemon_send_keys.rs", false),
-        ("--daemon-probe", false),
+        // 🔴 〔2026-09-18 修复 · 步 8 2026-09-19 **再修一次**〕这几格是**故意构造的夹具**：
+        //   `daemon` 出现在更长的 token 里 ⇒ 切出来不是裸词。
+        //   09-18 那次把它们从 `remote-daemon-proto` 换成了当时活着的四个标识符
+        //   （`embedded-daemons/` · `daemon_send_keys.rs` · `--daemon-probe` · `daemonPath`），
+        //   而**步 8 把那四个全改名了** —— 夹具又一次指向不存在的东西。
+        //   ⇒ 这一次换成**本仓明写保护、不会再改的那一档**（`tests/evidence/w8-rename.py` 的 `PROTECTED`）：
+        //   `daemonPath` —— **用户盘上 `config.json` 里那个现役的键**（步 8 刻意摘出去，
+        //   改它要配一次迁移，见 `调研/真相源/94 §A1`）；
+        //   `DaemonTransport` —— **仓外 aterm 自己的类型名**（冻结在 2026-07-18 那份契约里）。
+        //   两个都不是我们的名字，两个都不会再动。
+        //   ⚠ 教训与 `调研/设计/16 §5.3` 同一条：**机械替换会砸坏刻意构造的夹具**；
+        //   而夹具指着**活体**时每一轮改名都会再砸一次 ⇒ 指向「不许改的那一档」才是稳的。
+        // 🔴 **刻意不用旧闭集 id / 旧 crate 目录名那两个拼写当夹具**（第一版就是那样，当场被逮）：
+        //   它们正是 `tool_registry::old_name_counts` 的针，写在这儿会让
+        //   `every_place_that_still_says_the_old_name_is_registered_and_only_shrinks`
+        //   把本文件读成「又一处还在说旧名字的地方」（实发 `OldId × 2`）。
         ("daemonPath", false),
+        ("DaemonTransport", false),
     ] {
         let h = hits(probe);
         assert_eq!(h.len(), 1, "自检串 {probe:?} 里应当恰好一处命中");
@@ -226,9 +233,17 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
     // ── 抽取器自检③：标识符那一档必须真的数到东西 ──
     //
     // 数不到 = 切 token 那一步在真语料上根本没跑（合成串过了不代表真树上跑到了）。
+    // 🔴 〔步 8 改名一刀 2026-09-19〕**139 → 25，地板 100 → 20。**
+    //    这不是「把地板调下去让今天好过」：那 139 处里绝大多数是 `daemon_*` / `--daemon-probe`
+    //    / `embedded-daemons/` 这类**代码标识符**，而步 8 把它们全改名了 ⇒ 盘上真的没有了。
+    //    今天剩下的 25 处全部来自两个**明写保护、不许改**的拼写
+    //    （`daemonPath` 那个现役配置键 · 旧闭集 id 与旧 crate 目录名那两个拼写 ·
+    //      仓外 aterm 的类型名）。
+    //    ⚠ 这一格本来就不是承重的那半：「切 token 坏掉」的两个方向分别由上面的合成串自检
+    //    与下面的 `offenders` 接着；本条只答「真语料确实喂进来、而且里面确实有非裸词」。
     assert!(
-        idents >= 100,
-        "只数出 {idents} 处代码标识符（09-14 现打 139）—— 本条在真语料上没跑起来"
+        idents >= 20,
+        "只数出 {idents} 处代码标识符（步 8 后现打 25；改名前 139）—— 本条在真语料上没跑起来"
     );
 
     // ── 抽取器自检④：例外表不许空转（**恒等**，不是地板）──

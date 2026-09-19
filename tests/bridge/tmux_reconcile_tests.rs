@@ -62,7 +62,7 @@ fn sid_leaving_announced_drops_tracking() {
     let mut st = ReconcileState::default();
     reconcile_step(&mut st, &hs(&["s"]), &hs(&["s"]), &hs(&[]), 1); // bound
     reconcile_step(&mut st, &hs(&["s"]), &hs(&[]), &hs(&[]), 1); // retire s（miss>=1）
-                                                                 // s 经 daemon 正常结束 → 离开 announced_live → 追踪被剔除。
+                                                                 // s 经后端正常结束 → 离开 announced_live → 追踪被剔除。
     reconcile_step(&mut st, &hs(&[]), &hs(&[]), &hs(&[]), 1);
     // s 又出现且后端在跑（复用同名）→ 重新 ever_bound、不带旧 retired 状态。
     assert!(reconcile_step(&mut st, &hs(&["s"]), &hs(&["s"]), &hs(&[]), 1).is_empty());
@@ -70,10 +70,10 @@ fn sid_leaving_announced_drops_tracking() {
 
 #[test]
 fn branch_drift_does_not_retire_old_sid() {
-    // /branch：daemon 先退旧 A 宣告新 B。对账里 A 离开 announced_live → 不 retire；B 新绑。
+    // /branch：backend 先退旧 A 宣告新 B。对账里 A 离开 announced_live → 不 retire；B 新绑。
     let mut st = ReconcileState::default();
     reconcile_step(&mut st, &hs(&["A"]), &hs(&["A"]), &hs(&[]), 2); // A bound
-                                                                    // 漂移后一轮：announced_live 只剩 B（daemon 已退 A），后端自报 B。
+                                                                    // 漂移后一轮：announced_live 只剩 B（backend 已退 A），后端自报 B。
     let retire = reconcile_step(&mut st, &hs(&["B"]), &hs(&["B"]), &hs(&[]), 2);
     assert!(
         retire.is_empty(),
@@ -83,14 +83,14 @@ fn branch_drift_does_not_retire_old_sid() {
 
 #[test]
 fn branch_drift_lag_round_does_not_retire_with_threshold_2() {
-    // 审计发现的滞后竞态：daemon 退旧 sid A 晚一拍——某轮 A 仍 announced、backend 已是 B（A 缺失）。
-    // threshold=2 下这单轮 miss=1 < 2 → 不 retire；下一轮 daemon 退 A、A 离开 announced → 剔除。
+    // 审计发现的滞后竞态：backend 退旧 sid A 晚一拍——某轮 A 仍 announced、backend 已是 B（A 缺失）。
+    // threshold=2 下这单轮 miss=1 < 2 → 不 retire；下一轮后端退 A、A 离开 announced → 剔除。
     // （这正是 threshold ≥ 2 编译期兜死要保的性质。）
     let mut st = ReconcileState::default();
     reconcile_step(&mut st, &hs(&["A"]), &hs(&["A"]), &hs(&[]), 2); // A bound
                                                                     // 滞后 1 轮：A 仍 announced、backend=B → A miss=1 < 2 → 不 retire。
     assert!(reconcile_step(&mut st, &hs(&["A", "B"]), &hs(&["B"]), &hs(&[]), 2).is_empty());
-    // 下一轮 daemon 退 A → A 离开 announced_live → 剔除追踪、不 retire。
+    // 下一轮后端退 A → A 离开 announced_live → 剔除追踪、不 retire。
     assert!(reconcile_step(&mut st, &hs(&["B"]), &hs(&["B"]), &hs(&[]), 2).is_empty());
 }
 

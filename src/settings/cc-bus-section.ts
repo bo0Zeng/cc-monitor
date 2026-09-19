@@ -4,7 +4,7 @@
 //  ① **不新增轮询**（红线）。cc-bus 的状态在**跑着 cc-bus 的那台机**的 `~/.cc-bus/`。
 //     ⚠ 原文写「cc-monitor 跑在 Windows 只能经 SSH 看」——**那是把一种部署当成了全部**：
 //     cc-monitor 也跑在 Linux 上，而那台机器上 `~/.cc-bus/` 就在本地（P4a 实测 86 行 agents）。
-//     ⇒ P4a 起，读面三条支持 `<local>`（后端走同一条命令串、只是不包进 ssh）。复用 daemon 的 inotify watcher 要改 daemon（零改红线），
+//     ⇒ P4a 起，读面三条支持 `<local>`（后端走同一条命令串、只是不包进 ssh）。复用后端的 inotify watcher 要改后端（零改红线），
 //     所以只能按需读。**本文件里不得出现 setInterval / setTimeout 轮询 / 后台定时任务。**
 //  ② **登记 ≠ 在线**。`agents.tsv` 只证明它登记过——实测最早的条目是 10 天前的，进程早没了。
 //     判在线要另查 `tmux has-session`，那是**第二次往返**，所以放在用户点某一行的「检查」上，
@@ -26,11 +26,11 @@ import { showActionFailureToast } from "../error-toast";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
 // 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
 import { fetchAccounts, selectableAccounts } from "../accounts";
-// ⚠ **本机 origin 必须从 `daemon-policy` 导**，不是从上面那个 `../accounts`：
-// 仓里有**两个** `LOCAL_ORIGIN` —— `daemon-policy.ts` 的是 `"<local>"`（与 Rust 侧
+// ⚠ **本机 origin 必须从 `backend-policy` 导**，不是从上面那个 `../accounts`：
+// 仓里有**两个** `LOCAL_ORIGIN` —— `backend-policy.ts` 的是 `"<local>"`（与 Rust 侧
 // `inbound_client::LOCAL_ORIGIN` 逐字相同，跨语言钉住），`accounts.ts` 的是 `"__local__"`
 // （账号面的标记）。导错了**不会报错**，只会让后端那条本机分支永远走不到。
-import { LOCAL_ORIGIN } from "../daemon-policy";
+import { LOCAL_ORIGIN } from "../backend-policy";
 
 // C04d 批 5a：四个类型换成生成物（源 `cc_bus.rs`）。手写版与生成物**逐字等价** ⇒ 零漂移，
 // 价值是防将来漂。`CcBusState.skipped` 在 Rust 侧是 `usize`

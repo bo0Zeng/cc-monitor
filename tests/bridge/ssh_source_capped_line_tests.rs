@@ -12,7 +12,7 @@
 /// 08-13 全链台架终于可信（连续两跑、四格全绿、读数一致），报的是
 /// 「30s 内未见灰灯 tab-state」。而当时日志**回答不了最基本的那一问：帧到 monitor 了吗？**
 /// —— 因为这一臂只有 emit **失败**才打日志，成功一个字不留。
-/// 帧级套件 `graylight-daemon-frames` 同期 **12 过 / 0 败**（daemon 那侧发得对），
+/// 帧级套件 `graylight-backend-frames` 同期 **12 过 / 0 败**（backend 那侧发得对），
 /// 前端 `建卡 rendered=0`（一条都没收到）⇒ 断点就在这两者之间，而这里是那段路上的分叉点。
 ///
 /// ⚠ **位置性质**：日志要排在 `app.emit` **之前**。排在后面的话，emit 那一跳若卡住/panic，
@@ -94,7 +94,7 @@ fn the_ledger_is_pruned_before_the_retire_is_sent() {
 ///
 /// `#60` 问的是**灰灯**，而灰灯是「死亡」这件事的 UI 表现。只给 `added` 加日志，
 /// 全链失败时能回答「上线那跳到没到」，**答不出「死亡那跳到没到」** ——
-/// 08-13 实测当场撞上：daemon 侧 tap 里明明有 `session_removed`，monitor 日志里
+/// 08-13 实测当场撞上：backend 侧 tap 里明明有 `session_removed`，monitor 日志里
 /// 一个字都没有，于是「收到了没转发」与「根本没收到」分不开。补上这一行才分得开
 /// （补完立刻量到：`cause=Gone`，两跳都通）。
 ///
@@ -107,7 +107,7 @@ fn the_session_removed_arm_is_not_silent() {
     let at = guard_core::find_pinned(&prod, "session-removed: [{host_label}] sid={sid}")
         .expect(
             "`SessionRemoved` 那一臂必须留下一行「收到了」——`#60`（灰灯不出现）问的正是\n             \
-                 「死亡这件事走到哪一步丢了」，而 08-13 全链实测时 daemon 侧 tap 里明明有\n             \
+                 「死亡这件事走到哪一步丢了」，而 08-13 全链实测时后端侧 tap 里明明有\n             \
                  `session_removed`、monitor 日志里一个字都没有 ⇒ 分不清「收到了没转发」与「根本没收到」。",
         );
     // `cause` 必须一起打：灰灯与归档走**不同的 cause**（`Superseded` 直接归档，
@@ -146,7 +146,7 @@ fn the_frame_arm_logs_the_observation_kind() {
     // 它是**纯观测**：决策仍只看 `classify_tmux_observation` 的结果（`verdict`）。
     let decide_at = guard_core::find_pinned(
         &prod,
-        "if let crate::tmux::TmuxObservation::Backend(backend) = verdict {",
+        "if let crate::backend::control::tmux::TmuxObservation::Backend(backend) = verdict {",
     )
     .unwrap_or_else(|e| panic!("{e}\n对账不再直接吃分类结果 —— 观测与决策的界线糊了"));
     assert!(
@@ -200,7 +200,7 @@ async fn one_byte_over_the_cap_is_dropped_and_counted() {
     assert!(buf.is_empty(), "超限的行不许留在 buf 里被当数据用");
 }
 
-/// ★ **超限之后不许继续往 buf 里塞字节**（daemon 那次 518 MiB 的正题）。
+/// ★ **超限之后不许继续往 buf 里塞字节**（backend 那次 518 MiB 的正题）。
 ///
 /// 喂一条 100_000 字节的行、上限 16。若机制是「读完再判」，
 /// `buf` 的容量会涨到 10 万量级；正确实现下它应当在超限那一刻就被清掉并归还。
@@ -216,7 +216,7 @@ async fn over_limit_stops_growing_the_buffer() {
     }
     assert!(
         buf.capacity() < 1024,
-        "超限之后 buf 容量涨到了 {} —— 说明字节还在往里塞（那正是 daemon 侧 518 MiB 的形状）",
+        "超限之后 buf 容量涨到了 {} —— 说明字节还在往里塞（那正是后端侧 518 MiB 的形状）",
         buf.capacity()
     );
 }

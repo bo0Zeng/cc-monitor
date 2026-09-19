@@ -83,9 +83,9 @@ powershell -NoProfile -File scripts\run.ps1 dev
       > **这条 2026-08-01 起是机器强制的**，不再靠自觉：`src/bridge/build.rs` 在「内嵌二进制的
       > **字节里问不出身份戳**」「字节自报的身份 ≠ 源码 `BUILD_ID`」「抠不到源码 `BUILD_ID`」三种情况
       > 直接 **panic 掉编译**（原来只有一条比 mtime 的 warning，漏掉了真实发生过的半 bump）。
-      > 三条都以「`src/bridge/embedded-daemons/` 里真有二进制」为前提；该目录不存在（干净 clone / CI 常态）
+      > 三条都以「`src/bridge/embedded-backends/` 里真有二进制」为前提；该目录不存在（干净 clone / CI 常态）
       > 时是优雅降级，那一档由 `ssh_source_stream_flag_gate_tests.rs::embedded_build_id_single_source_wired` 兜。
-      > 详见 [REMOTE-PHASE0-DEPLOY.md § 发版构建](REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b)。
+      > 详见 [REMOTE-PHASE0-DEPLOY.md § 发版构建](REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-backend-二进制f08b)。
 - [ ] [CHANGELOG.md](../../CHANGELOG.md) 加新版本段（写法见 [RELEASING.md](RELEASING.md)）
 - [ ] `cargo fmt --all --check + cargo check + cargo test --workspace --exclude code-picture-core + npm run build` 全绿
       （`.github/workflows/ci.yml` 第一步就是 `cargo fmt --check` 严格 verify；
@@ -280,14 +280,14 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 
 > ⚠⚠ **G3 订正（2026-08-04）：本节的「阶段②」已经是现在时了。**
 > 下面第 4 步把「取命令方式转后端 RPC」写成**未来动作**，而 **F04b（kill）与 F04c（send-keys）
-> 已经把生产主路切到后端 RPC**：`src/bridge/src/backend/control/daemon_kill.rs` /
-> `daemon_send_keys.rs`（分流判定在 `daemon_route.rs`，三态而非二态）。
+> 已经把生产主路切到后端 RPC**：`src/bridge/src/backend/control/backend_kill.rs` /
+> `backend_send_keys.rs`（分流判定在 `backend_route.rs`，三态而非二态）。
 >
 > 🔴 **订正二（`K-R106` 2026-09-13 现打）：这一段原来那两句今天都假了。**
 > 原文逐字是「`src/session-backend.ts` 那条 shell 串**已降级为 C7 过渡期**的第二条路
-> （`tmux_daemon_gate_guard.rs` 反过来钉着**它必须还在**）」——
+> （`tmux_backend_gate_guard.rs` 反过来钉着**它必须还在**）」——
 > ① `C7` 那条一次性 SSH 的第二条路 **`K-R72`（2026-09-12）整块删了**（`K-R54` 裁定表第 1 · 2 处）；
-> ② `tmux_daemon_gate_guard.rs` 今天钉的是**反向**（回潮闸）：那两条命令的生产段里
+> ② `tmux_backend_gate_guard.rs` 今天钉的是**反向**（回潮闸）：那两条命令的生产段里
 > **再出现** `connect_and_exec_cmd` 就红。两次翻面方向相反，别读成只改了措辞。
 > ③ 而且 `session-backend.ts` 今天**与 kill / send-keys 无关** ——
 > 它只有 `createRunAttach` / `attach` / `runInExistingAttach` 三个方法。
@@ -298,8 +298,8 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 >
 > | 命令 | 今天的主路 | 改哪里 |
 > |---|---|---|
-> | `kill` | 后端 RPC（F04b） | `backend/control/daemon_kill.rs`；**盘上没有第二条路** |
-> | `send-keys` | 后端 RPC（F04c） | `backend/control/daemon_send_keys.rs`；同上 |
+> | `kill` | 后端 RPC（F04b） | `backend/control/backend_kill.rs`；**盘上没有第二条路** |
+> | `send-keys` | 后端 RPC（F04c） | `backend/control/backend_send_keys.rs`；同上 |
 > | `attach`（**本机**） | 🔴 **本机后端**〔`K-R106` 2026-09-13，用户逐字「归本机后端就好了啊」〕 | `src/bridge/src/history.rs::render_local_attach` ⇒ `ccm attach <名>`（走 `render_local_ccm` 那条既有渲染路）。⚠ 前端那条 `↗` 还没改成问它要 |
 > | `attach` / `new-session`（**远端兜底**） | 仍是 `session-backend.ts` 那条 shell 串 | 照本节原步骤。⚠ 它今天靠哪几个消费者站着，两把尺子都在 `launch_wire.rs`（`TS_FALLBACK_KEEPERS` 数处数 · `TS_FALLBACK_REACH` 判有没有生产调用方），**从源码派生，别在这里抄一份数** |
 

@@ -1,11 +1,11 @@
 #!/bin/sh
-# auto-e2e F-E0:确定性 `claude` shim(测试 fixture,**非** daemon 改动——红线:daemon
+# auto-e2e F-E0:确定性 `claude` shim(测试 fixture,**非** backend 改动——红线:backend
 # 零行为改动,只加 tests/e2e/ 外部 wrapper/shim)。职责:
 #   1. 把 argv + $CLAUDE_CONFIG_DIR 追加进 argv.log(F-E2/F-E3 验 resume/换号命令用;F-E1 只登记);
 #   2. 写自身 $CLAUDE_CONFIG_DIR/sessions/<PID>.json pidfile(pid/sessionId/procStart/kind/status)
-#      ——喂 daemon 判活(procStart=/proc/<pid>/stat 第 22 字段=starttime ticks,add-time 判活主证据);
+#      ——喂后端判活(procStart=/proc/<pid>/stat 第 22 字段=starttime ticks,add-time 判活主证据);
 #   3. 追一条 jsonl 记录(projects/<enc-cwd>/<sid>.jsonl);
-#   4. 前台常驻 `sleep`(tmux pane_current_command 读得到;kill 本 PID → daemon 判活失败 → SessionRemoved)。
+#   4. 前台常驻 `sleep`(tmux pane_current_command 读得到;kill 本 PID → backend 判活失败 → SessionRemoved)。
 # **pidfile 先落、jsonl 后落**:watcher 只 emit 活跃会话,jsonl 先落会被判非活跃整文件跳过(实测,见 tests/e2e/README)。
 set -eu
 
@@ -54,5 +54,5 @@ printf '{"type":"user","uuid":"%s","parentUuid":null,"timestamp":"%s","sessionId
   >>"$PROJ_DIR/$SID.jsonl"
 
 # (4) 前台常驻。exec:保持同一 PID(pidfile pid=$$ 仍有效,exec 不改 starttime),
-# kill 该 PID → daemon 判活失败 → SessionRemoved(claude 退出)。CCM_FAKE_SLEEP 可覆盖(默认近乎无限)。
+# kill 该 PID → backend 判活失败 → SessionRemoved(claude 退出)。CCM_FAKE_SLEEP 可覆盖(默认近乎无限)。
 exec sleep "${CCM_FAKE_SLEEP:-2147483647}"

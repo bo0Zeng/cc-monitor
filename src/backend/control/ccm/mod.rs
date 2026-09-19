@@ -7,7 +7,7 @@
 //!
 //! # 同一份实现两种模式
 //!
-//! - **常驻**：`cc-monitor-remote` 起来接流，别人连它（`main.rs` 的流模式）。
+//! - **常驻**：`cc-monitor-backend` 起来接流，别人连它（`main.rs` 的流模式）。
 //! - **一次性**：在用户终端里认 argv，做完就走 —— **就是本模块**。
 //!
 //! # 怎么进到这里
@@ -15,11 +15,11 @@
 //! 两条，**都只经 [`intercept`] 这一处**：
 //! ① `argv[0]` 的 basename 是 `ccm`（别名 / 软链 / 改名拷贝指过来；`src/shared/ccm-aliases.sh`
 //!    里 `cc` / `cct` 那几个别名调的就是它）；
-//! ② 显式子命令 `cc-monitor-remote ccm <argv…>`（给「二进制没改名」的场合，
+//! ② 显式子命令 `cc-monitor-backend ccm <argv…>`（给「二进制没改名」的场合，
 //!    也给判据一个不依赖文件名的入口）。
 //!
 //! ⚠ **它不是一条 wire 子命令**，所以**不进 `main::SUBCOMMANDS`**、也不进
-//! `src/doc/IPC-PROTOCOL.md` §10：那份文档是 monitor↔daemon 的**冻结线上契约**，
+//! `src/doc/IPC-PROTOCOL.md` §10：那份文档是 monitor↔backend 的**冻结线上契约**，
 //! 而这里是**用户终端**的命令面，两者的读者与兼容性义务都不同。
 //! 这个决定不是靠「没人查」成立的 —— `protocol_doc_guard::TERMINAL_SURFACE_FILES`
 //! 把它登记成一个受管例外，并**另立一格**（每个旗标都要能在 [`USAGE`] 里找到）。
@@ -27,7 +27,7 @@
 //! # 本轮**没有**做到的，逐条写在这里（别读成做到了）
 //!
 //! - **预信任**（`~/.claude.json` / `~/.codex/config.toml` 那两处写入）：**没搬**。
-//!   daemon 这个 crate 有一条「进程自身不许写用户既有数据」的红线
+//!   backend 这个 crate 有一条「进程自身不许写用户既有数据」的红线
 //!   （`readonly_guard`，白名单恰好一个模块）⇒ 搬它要先动那条红线，那是另一件活。
 //!   后果：`claude` 起来可能弹信任框。`--print` 那条兜底轮询照旧在，捞得回来。
 //! - **`$CCM_CONFIG` 是 bash 源文件**：旧实现 `. "$CCM_CONFIG"`（真 source 一段 bash）。
@@ -64,7 +64,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 ///   [`crate::plugin::probe::tests::the_required_list_is_checked_against_what_the_real_plugin_declares`]
 ///   —— 它拿 [`probe_output`] **真吐出来的那一行** `capabilities=` 当活体语料，再数**个数**。
 ///   加 token ⇒ **那个数要跟着改**（与上一行同形，是本树内的第二处计数）。
-///   〔依据：PM 刀 `P`（09-11）往本常量再加一个 token、别处一字不改，daemon 套
+///   〔依据：PM 刀 `P`（09-11）往本常量再加一个 token、别处一字不改，backend 套
 ///   `682 → 681 passed / 1 failed`，**只红这一条**；monitor 套同刀 `1381 → 1380 / 1`，
 ///   只红上一行那条。⇒ 两处**各自最小面 1 条**，而它们是仅有的两处「数个数」的。〕
 /// - `src/bridge/src/backend/control/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
@@ -72,8 +72,8 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 /// - `tests/e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
 /// - `src/bridge/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
 ///   它按 `const CAPABILITIES` 这一行去 `src/backend/main.rs` 里抠，
-///   抠的是 daemon **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
-///   〔这句话是本轮实测的，不是推的：加了下面那个 token 之后 `DAEMON_CAPABILITIES` 逐字不变。〕
+///   抠的是 backend **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
+///   〔这句话是本轮实测的，不是推的：加了下面那个 token 之后 `BACKEND_CAPABILITIES` 逐字不变。〕
 ///
 /// ⇒ 归一句：**「数个数」的两处必须跟着改（前两行）· 「子集检查」的两处加 token 安全，
 /// 删 / 改名才危险 · `build.rs` 那一处与本常量无关。**
@@ -105,8 +105,8 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "tmux-size",
     "tmux-base",
     "bus-register",
-    "daemon-discover",
-    "account-via-daemon",
+    "backend-discover",
+    "account-via-backend",
     "base-url-across-tmux",
 ];
 
@@ -121,10 +121,19 @@ pub(crate) const NAME_TAKEN_FMT: &str =
 /// 窗口标题的合成式 —— **让 tmux 自己从 `@ccm_sid` 合成**，与 pane 标题彻底分开。
 ///
 /// monitor 靠扫窗口标题里的 `ccm-rbind-<sid>` 绑定终端窗口（`bind.rs`）。
+///
+/// 🔴 〔步 8 · `设计/90 §1.2`〕**`rbind` ＝ remote bind（远端终端窗口绑定）**。
+/// 这个缩写不自明，`§1.2` 给了两条出路：「改成 `terminal_bind`」或「保留但每处加一句展开」。
+/// ⇒ **这一拍走第二条，而且是被迫的**：`ccm-rbind-<sid>`（窗口标题 marker）与
+/// `__ccm_rbind`（用户 shell profile 里那个注册原语）**都在 `ccm` 的对外面上** ——
+/// 前者是 monitor↔远端 wrapper 之间已经在线的约定，后者已经装在用户机器上。
+/// `设计/90 §1.1` 逐字：`ccm` 是「用户在终端里敲的命令名，属于产品对外接口」，**不许改**。
+/// ⇒ 改的只有**内部标识符**（本常量 `RBIND_TITLE_FORMAT` → `TERMINAL_BIND_TITLE_FORMAT`）；
+/// 线上那两个拼写一个字节没动。
 /// 从前这里是 `#T`（窗口标题 = pane 标题），而 **claude 也在往 pane 标题写自己的状态**
 /// ⇒ 两者抢同一个位置，真机实测忙碌那个会话的 marker 被冲成「⠐ 理解…」，
 /// 点 ↗ 必弹「未绑定窗口」。⚠ 改它之前先读 `e2e` 那条已经删掉的套件在件文件 `§8` 里的登记。
-pub(crate) const RBIND_TITLE_FORMAT: &str = "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}";
+pub(crate) const TERMINAL_BIND_TITLE_FORMAT: &str = "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}";
 
 /// codex 的 cc-bus 身份配方。**输出的是配方不是值** —— 这样 `--print` 仍然不查实时 tmux 状态。
 pub(crate) const BUS_ID_RECIPE: &str = "if [ -n \"${TMUX:-}\" ]; then _ccm_bus=\"$(tmux display-message -p \"#S\" 2>/dev/null)\"; [ -n \"$_ccm_bus\" ] && export CC_BUS_ID=\"$_ccm_bus\"; unset _ccm_bus; fi;";
@@ -215,7 +224,7 @@ pub(crate) fn own_source() -> &'static str {
     include_str!("mod.rs")
 }
 
-/// 显式子命令形（`cc-monitor-remote ccm …`）的那个词。
+/// 显式子命令形（`cc-monitor-backend ccm …`）的那个词。
 ///
 /// ⚠ 刻意**不是** `--ccm`：那样它会长得像一条 wire 子命令，而它不是。
 pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
@@ -342,7 +351,7 @@ fn die(msg: &str) -> i32 {
 }
 
 /// `resume` 那一问：这个会话该怎么起。**在同一个进程里答** ——
-/// 从前这里要跨一次进程去问 daemon（`--resolve`），那整段是 bash 与后端说话的税。
+/// 从前这里要跨一次进程去问后端（`--resolve`），那整段是 bash 与后端说话的税。
 fn resolved(plan: &Plan) -> Option<String> {
     let Plan::Direct(d) = plan else { return None };
     let sid = d.resolve_sid.as_deref()?;

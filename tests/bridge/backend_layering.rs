@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 ///
 /// 为什么这件事非得由读面发起？能不能反过来由控制面主动做？
 /// —— 今天这三条的答案是同一个：读面要起本机后端做一次性查询，
-/// 而「那个 sidecar 装在哪、算不算找得到」是**控制面立起来的事实**
+/// 而「那个本机后端装在哪、算不算找得到」是**控制面立起来的事实**
 /// （起它、看住它、判它崩得太频繁的那半都住 `control/local_backend.rs`）。
 /// 读面自己再解析一遍路径 = 第二份路径解析，而两份必漂。
 ///
@@ -14,11 +14,11 @@ use std::path::{Path, PathBuf};
 ///
 /// 下面那条判据是 `assert_eq!(found, want)`：多一条、少一条都红。
 /// **「有正当例外」与「这条线随便穿」是两回事**，中间隔着的就是这个等号。
-/// 一条没人数的合法边会长成一张网 —— daemon 那份头注逐字记着这句话。
+/// 一条没人数的合法边会长成一张网 —— backend 那份头注逐字记着这句话。
 const ALLOWED_OBSERVE_TO_CONTROL: &[(&str, &str)] = &[
     (
         "crate::backend::control::local_backend::resolve_beside_this_exe",
-        "读面起本机后端拿 stdout 之前，先要知道那份 sidecar 在哪。\
+        "读面起本机后端拿 stdout 之前，先要知道那份本机后端在哪。\
              「装在哪、找过哪儿、算不算找到」是控制面立的事实（起进程与看住它的那半住在那里），\
              读面自己再解析一份路径就是第二个权威源",
     ),
@@ -74,7 +74,7 @@ fn layer_sources_at(root: &Path, label: &str) -> Vec<(String, String)> {
     out
 }
 
-/// 采集面自检 —— 照 daemon 那份的做法：**数量相等**，不是「至少几个字节」。
+/// 采集面自检 —— 照后端那份的做法：**数量相等**，不是「至少几个字节」。
 /// 它对「文件增删」免疫（那是正常演进），只对「采集漏了」敏感 —— 后者才是要防的。
 fn assert_collection_is_complete(layer: &str, files: &[(String, String)]) {
     assert_collection_is_complete_at(&backend_dir().join(layer), layer, files);
@@ -116,7 +116,7 @@ fn assert_collection_is_complete_at(root: &Path, layer: &str, files: &[(String, 
 ///
 /// # 三个锚点根，一种都不许少
 ///
-/// daemon 那份的头注用两张表记着它被证伪过两轮：只认 `crate::<层>::` 时，
+/// backend 那份的头注用两张表记着它被证伪过两轮：只认 `crate::<层>::` 时，
 /// 层别名（`use crate::x as y;`）、`super::super::` 那种拼法、**最朴素的
 /// `use crate::x;` 加裸调用**、以及成组导入 `use crate::{x, y};` 各自都能全绿过去。
 /// ⇒ 这里同样**从层名派生**、不列拼法清单：每一处锚点按**紧随其后的字符**分类
@@ -249,7 +249,7 @@ fn control_layer_must_not_reference_observe() {
     assert!(
         bad.is_empty(),
         "control/ 引用了 observe/（反向不许）：\n  {}\n\
-             **先别急着加例外** —— daemon 侧摸底时那条反向边的正解是\
+             **先别急着加例外** —— backend 侧摸底时那条反向边的正解是\
              「被引的那个函数根本不属于观测面」，搬走之后边就没了。\n\
              先问：被引用的那个东西，是不是只是个放错地方的通用工具？\n\
              ⚠ 另一条常见正解见 `src/doc/ARCHITECTURE.md` 2.2：**只喂控制决策的只读查询一律归 \
@@ -337,13 +337,13 @@ fn the_backend_layer_scan_actually_bites() {
         refs_to_layer("super::super::control::local_backend::x();", "control"),
         vec!["crate::backend::control::local_backend::x"]
     );
-    // 🔴 层自己的 `mod.rs` 看兄弟层 —— **daemon 那份样板认不出这一种**。
+    // 🔴 层自己的 `mod.rs` 看兄弟层 —— **backend 那份样板认不出这一种**。
     assert_eq!(
         refs_to_layer(
-            "pub fn f() { super::control::daemon_route::y(); }",
+            "pub fn f() { super::control::backend_route::y(); }",
             "control"
         ),
-        vec!["crate::backend::control::daemon_route::y"]
+        vec!["crate::backend::control::backend_route::y"]
     );
     // 模块级引入的四种写法都要认。
     for form in [
@@ -408,7 +408,7 @@ fn the_backend_direction_judgments_bite_on_a_live_tree() {
     // 探针二：observe 形状的文件引一个**没登记**的 control 符号。
     let t2 = write_probe_tree(
         "b",
-        "pub fn y() { super::super::control::daemon_route::look(); }\n",
+        "pub fn y() { super::super::control::backend_route::look(); }\n",
         clean,
     );
     let f2 = layer_sources_at(&t2, "x");
@@ -422,7 +422,7 @@ fn the_backend_direction_judgments_bite_on_a_live_tree() {
     assert!(
         found
             .iter()
-            .any(|s| s == "crate::backend::control::daemon_route::look"),
+            .any(|s| s == "crate::backend::control::backend_route::look"),
         "正向登记那条采不到一条真的 observe→control 边 —— 它此刻在数一个空集。实得：{found:?}"
     );
     assert!(

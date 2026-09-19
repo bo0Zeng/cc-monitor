@@ -160,14 +160,14 @@ fn the_tmux_cache_has_one_writer_and_only_origin_keys() {
         panic!(
             "本机那条路不清 `tmux_raw_registry`（{e}）。\n\
                  远端断连早就清了（Batch9-F28 那处）；本机若只摘入方向 client 不清这张表，\n\
-                 停掉本机 daemon 之后 `<local>` 那份 `tmux ls` 原文**永久留着**，\n\
+                 停掉本机后端之后 `<local>` 那份 `tmux ls` 原文**永久留着**，\n\
                  成了「tmux 还在」的陈旧证据 ⇒ `classify_removed(Some(_), Gone)` = `Idle`\n\
                  = 那个「永远消不掉、也 attach 不上的灰点」（F01b 那个 bug）。"
         )
     });
 
     // ② 键的取值域：调用方只许传远端标签或本机那个常量。
-    let local_origin = crate::inbound_client::LOCAL_ORIGIN;
+    let local_origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
     for f in [
         guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs")),
         guard_core::production_code(include_str!(
@@ -228,30 +228,30 @@ fn superseded_always_archives_even_when_tmux_snapshot_still_shows_the_sid() {
     );
 }
 
-/// ★ S0 跨语言双写点：monitor 认的字面量必须与 daemon 发的逐字一致。
+/// ★ S0 跨语言双写点：monitor 认的字面量必须与后端发的逐字一致。
 ///
 /// 照本仓既有纪律（`TMUX_LS_FMT` / 观测取值那几条）：**读另一侧的源文件 + 锚定那一行**。
 /// 漂了的表现是**静默失效**——monitor 认不出 `cause`、退回 `Gone`、灰点 bug 悄悄复活，
 /// 而两侧各自的测试都是绿的。
 #[test]
 fn removal_cause_wire_literal_stays_in_sync() {
-    let daemon_wire = include_str!("../../src/backend/wire.rs");
+    let backend_wire = include_str!("../../src/backend/wire.rs");
     // 反向自检：真读到了那个文件，且它确实是那个 enum 所在的文件。
-    assert!(daemon_wire.len() > 2000, "没读到 daemon wire.rs");
+    assert!(backend_wire.len() > 2000, "没读到 backend wire.rs");
     assert!(
-        daemon_wire.contains("pub enum RemovalCause"),
-        "daemon 侧 RemovalCause 不在预期文件里，双写点锚点已失效"
+        backend_wire.contains("pub enum RemovalCause"),
+        "backend 侧 RemovalCause 不在预期文件里，双写点锚点已失效"
     );
-    // daemon 用 `#[serde(rename_all = "snake_case")]` + 变体名 `Superseded`
+    // backend 用 `#[serde(rename_all = "snake_case")]` + 变体名 `Superseded`
     // ⇒ 线上就是 "superseded"。两个锚点都钉住，任一侧改名都红。
     assert!(
-        daemon_wire.contains(r#"#[serde(rename_all = "snake_case")]"#),
-        "daemon 侧 RemovalCause 的 serde 命名策略变了，线上字面量可能已不是 snake_case"
+        backend_wire.contains(r#"#[serde(rename_all = "snake_case")]"#),
+        "backend 侧 RemovalCause 的 serde 命名策略变了，线上字面量可能已不是 snake_case"
     );
     assert_eq!(REMOVAL_CAUSE_SUPERSEDED, "superseded");
     assert!(
-        daemon_wire.contains("    Superseded,"),
-        "daemon 侧变体名 Superseded 变了 ⇒ 线上字面量跟着变，monitor 会认不出"
+        backend_wire.contains("    Superseded,"),
+        "backend 侧变体名 Superseded 变了 ⇒ 线上字面量跟着变，monitor 会认不出"
     );
 }
 

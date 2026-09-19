@@ -1,11 +1,11 @@
 //! `P4f`：cc-bus 的**基础命令** —— `bus-list`（谁在线 + 各自待读数）与 `bus-send`（发一条）。
 //!
-//! 〔用 08-13〕逐字：「**也是daemon先把基础命令做了, 其他具体的细节先按原本的就行,
+//! 〔用 08-13〕逐字：「**也是后端先把基础命令做了, 其他具体的细节先按原本的就行,
 //! 后面我可能要改ccbus**」。三条判断都是从这句话推出来的，读数在账本 `P4f §3`。
 //!
 //! # ① 第一刀**不做** `bus-recv`
 //!
-//! `cc-recv` **有副作用**：它会推进已读位置。daemon 代读 = **把消息从人那里偷走** ——
+//! `cc-recv` **有副作用**：它会推进已读位置。backend 代读 = **把消息从人那里偷走** ——
 //! agent 自己再跑 `cc-recv` 就什么都看不到了。（08-13 刚修过同一族的一条真事故：
 //! Stop 钩子把 40 条积压「读过了却没喂回去」，账本 `P4b §7g-9k`。）
 //!
@@ -14,7 +14,7 @@
 //!
 //! # ② 转调脚本，**不在这里重实现**总线
 //!
-//! 用户逐字「细节先按原本的就行」+「后面我可能要改ccbus」⇒ 在 daemon 里重写一份
+//! 用户逐字「细节先按原本的就行」+「后面我可能要改ccbus」⇒ 在后端里重写一份
 //! 路由/投递会造**双写点**：cc-bus 一改，这边就错，而且错得静悄悄。
 //!
 //! # ③ ★ 把 cc-bus 的**命令**当接口，不要把它的**文件格式**当接口
@@ -28,7 +28,7 @@
 //! 今天 `cc-list` 的输出是空白分列、且 id/target 都过 `[A-Za-z0-9_-]` 白名单消毒
 //! （不含空白）⇒ 解析可靠（`parse_list` 有判据）。
 //!
-//! 这条由 [`tests::no_cc_bus_data_layout_leaks_into_the_daemon`] 钉住。
+//! 这条由 [`tests::no_cc_bus_data_layout_leaks_into_the_backend`] 钉住。
 //!
 //! # ④ 找它 / 起它这套壳**搬走了**，本模块只留 cc-bus 自己的语义〔`K-W1A`，08-26〕
 //!
@@ -54,7 +54,7 @@
 //! [`tests::TRANSCALLS`]（从生产段现算之后与它对拍）。这一段只讲写面。
 //!
 //! 四条都是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别
-//!（同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **daemon 进程自身**不写用户既有数据）。
+//!（同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **backend 进程自身**不写用户既有数据）。
 //!
 //! ⚠⚠ 这段话此前逐字写着「**两条命令**共用」，而 `cc-kill` 是 08-13 当天稍晚进来的
 //!（那个 commit 动了 8 个文件，`readonly_guard.rs` 不在其中）⇒ 那条豁免理由**漏掉了今天真实的写面**，
@@ -83,9 +83,9 @@ type CmdErr = (&'static str, String);
 ///
 /// `CC_BUS_BIN_DIR`（部署/台架覆盖）→ `~/.local/bin` → `~/.claude/skills/cc-bus/scripts`。
 ///
-/// ⚠ 为什么不只靠 `PATH`：daemon 由 app 经 **SSH exec** 起，那是**非登录 shell**，
+/// ⚠ 为什么不只靠 `PATH`：backend 由 app 经 **SSH exec** 起，那是**非登录 shell**，
 /// `~/.local/bin` 未必在 `PATH` 里（08-13 实测）⇒ 只靠 PATH 会出现「明明装了却找不到」。
-/// 这条与 `ccm` 的 `DAEMON_BIN_RECIPE` 是同一个形状（那边找 daemon，这边找 cc-bus），
+/// 这条与 `ccm` 的 `BACKEND_BIN_RECIPE` 是同一个形状（那边找后端，这边找 cc-bus），
 /// 两边都只写一份。
 pub(crate) fn fixed_candidates(
     override_dir: Option<&Path>,
@@ -139,21 +139,21 @@ fn timeout_secs() -> u64 {
 ///
 /// argv 直传、**不过 shell** ⇒ 收件人/正文里的元字符不构成注入面。
 ///
-/// # ★★ 期限住在**子进程**里，不在 daemon 里〔08-13 实测事故 + 铁律冲突〕
+/// # ★★ 期限住在**子进程**里，不在后端里〔08-13 实测事故 + 铁律冲突〕
 ///
 /// 病先说清楚：`Command::output()` **无限等**。实测把 `cc-send` 换成 `sleep 300` 的桩，
-/// `--bus-send` 25 秒都没回来（25 是我从外面掐的，daemon 自己没有任何期限）。
+/// `--bus-send` 25 秒都没回来（25 是我从外面掐的，backend 自己没有任何期限）。
 /// 这不是假想 —— `cc-send` 的投递走 `flock`，**锁被别人占住就一直等**；
 /// 而这两条命令是阻塞档，一条卡住就占死一个 tokio worker，且 `cancel` 对 `spawn_blocking`
 /// 是**空操作**（`inbound` 那条判据逐字：「`cancel` 会对它撒谎」）。
 ///
-/// ⚠ 我的第一版是在 daemon 里等（先 `try_wait` 轮询、后 `recv_timeout`）——
+/// ⚠ 我的第一版是在后端里等（先 `try_wait` 轮询、后 `recv_timeout`）——
 /// **两版都被零定时器护栏当场逮住**，而它是对的：`IPC-PROTOCOL` 自己写着
-/// 「daemon 侧刻意不管超时…零定时器铁律不改，**超时一律推给客户端**」。
+/// 「backend 侧刻意不管超时…零定时器铁律不改，**超时一律推给客户端**」。
 ///
 /// ⇒ 正确形状是**让子进程自己有期限**：能找到 `timeout(1)` 就用它当前缀
-///（`ccm` 里问 daemon 那条早就是这么写的，同一条纪律的另一侧）。
-/// daemon 这边仍然只是老老实实 `wait` 一个**注定会退出**的子进程 —— 零计时器。
+///（`ccm` 里问后端那条早就是这么写的，同一条纪律的另一侧）。
+/// backend 这边仍然只是老老实实 `wait` 一个**注定会退出**的子进程 —— 零计时器。
 ///
 /// ⚠ 找不到 `timeout(1)` 就**如实降级**：裸跑、没有期限。
 /// 那种机器上这条路会退回「可能卡住」，判据与文档都照实写（不假装有保障）。
@@ -171,13 +171,13 @@ fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
 /// # ★★ 这一族环境键从此**由本模块显式交办**，不再靠继承〔`K-R26` 09-05〕
 ///
 /// `plugin::invoke::run` 今天先 `env_clear()`、再按它自己那张白名单
-/// （`plugin::invoke::INHERITED_ENV_KEYS`）喂 —— 那一刀关掉的是「daemon 进程内部的秘密
+/// （`plugin::invoke::INHERITED_ENV_KEYS`）喂 —— 那一刀关掉的是「backend 进程内部的秘密
 /// （常驻监听口的地址与令牌）顺着环境漏进插件」这条没人设计过的回程。
 ///
 /// ⚠ **代价落在这里**：本插件族此前是靠**继承**拿到自己的配置的
 /// （`CC_BUS_HOME` · `CCBUS_POLICY_MODE` · 不带 `from` 那一趟的 `CC_BUS_ID`），
 /// 而本模块**一个都没显式交办过**。现打读数：只加 `env_clear()` 那一刀之后
-/// `tests/e2e/daemon-cc-bus.sh` 从 `PASS=50 FAIL=0` 掉到 `PASS=31 FAIL=19`，
+/// `tests/e2e/backend-cc-bus.sh` 从 `PASS=50 FAIL=0` 掉到 `PASS=31 FAIL=19`，
 /// 其中最重的一格是 `[15]`：`CC_BUS_HOME` 一没，`cc-kill` 就照着一份**空台账**
 /// 判「这个名字还是原来那个人吗」，判成「是」，**把同名的无辜会话连进程一起杀了**。
 ///
@@ -326,7 +326,7 @@ pub(crate) fn parse_spawned(text: &str) -> Vec<serde_json::Value> {
 
 /// `cc-send` 的退出码 → **语义码** —— 纯函数。
 ///
-/// `P4f-Y5`：如实转达，**不在 daemon 侧再写一份收件人白名单**。
+/// `P4f-Y5`：如实转达，**不在后端侧再写一份收件人白名单**。
 /// 收件人合法性归 cc-bus 自己（它已有，rc=2）；这边再写一份的话两处规则会漂。
 ///
 /// # ★ 这张表**刻意住在这里**，不许上收到 `plugin/`（`E6`）
@@ -385,7 +385,7 @@ fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String
     if to.trim().is_empty() {
         return Err(("invalid_args", "`to` 是空的".to_string()));
     }
-    // ★ `from` 可选：**不给就是今天的行为**（cc-whoami 在 daemon 的处境里解不出身份 ⇒ `unknown`）。
+    // ★ `from` 可选：**不给就是今天的行为**（cc-whoami 在后端的处境里解不出身份 ⇒ `unknown`）。
     //   给了就以那个身份发 —— 收信人才知道是谁，回复才有地方去。
     //   ⚠ 合法性仍归 cc-bus（`cc-whoami` 自己会消毒成 `[A-Za-z0-9_-]`），这里只判形状。
     let from = obj
@@ -503,7 +503,7 @@ pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> 
 ///
 /// monitor 侧 `cc_bus.rs::read_cc_bus_state` 今天走的是一条 shell 串（两次 `cat`
 /// 拼一个分隔标记），它的头注逐字写着解锁条件是「**格式契约稳下来**」，届时
-/// 「正确形状多半**不是**把 shell 串搬过去，而是 daemon 出一条**具名的读命令**」。
+/// 「正确形状多半**不是**把 shell 串搬过去，而是后端出一条**具名的读命令**」。
 /// **本命令就是那一条。** 而「具名」的实质是：契约面从 *cc-bus 的文件布局*
 /// 换成了 *后端的一条命令* —— 后者变的时候有人接得住（`REGISTRY` / 协议文档 / `BUILD_ID`），
 /// 前者变的时候只会静悄悄地错。
@@ -562,14 +562,14 @@ fn recipient_status(to: &str) -> (bool, serde_json::Value) {
 
 /// `bus-kill`：收掉一个总线成员（转调 `cc-kill`）。
 ///
-/// # 为什么不是走 daemon 自己那条带三道门的 `kill`
+/// # 为什么不是走后端自己那条带三道门的 `kill`
 ///
 /// 两者做的**不是同一件事**：`kill` 只杀 tmux 会话；`cc-kill` 还要清名册、清台账、
 /// 清那个 id 的状态 —— 那是 cc-bus 的语义，只有它自己知道要清哪些文件。
 ///
 /// # 门在哪
 ///
-/// daemon 的 `kill` 用 §34 三道门，因为它的归属证据**弱**（名字前缀 / `@ccm_sid`）。
+/// backend 的 `kill` 用 §34 三道门，因为它的归属证据**弱**（名字前缀 / `@ccm_sid`）。
 /// `cc-kill` 今天用的是**强证据**：`agents.tsv` 第 4 列（登记时记下的 pane 根进程 pid）
 /// 与登记的完整地址一起核 —— 08-13 实测过不核的后果：**杀掉占了同名的无辜进程与会话**。
 /// ⇒ 门住在懂那套语义的那一侧，不在这里重写一遍。
@@ -649,14 +649,14 @@ pub(crate) fn send_for_inbound(
     // ★ 投出去之后，把「有没有人会读」也一并回答〔用@08-13 那条架构点的另一半〕。
     //
     // 病：今天两种「没人会读」都只回 `sent:true` —— ① 收件人**压根没登记**
-    //（cc-send 会在 stderr 警告，但那句话到不了 daemon 的调用方）；
+    //（cc-send 会在 stderr 警告，但那句话到不了后端的调用方）；
     // ② 登记过、**会话早没了**（cc-bus 那份名单会过期）。
     // ⇒ 投递照旧（先发后到是正当用法），但**说清楚**：`registered` + 三态 `live`。
     let (registered, live) = recipient_status(&to);
     Ok(serde_json::json!({
         "to": to, "sent": true, "registered": registered, "live": live,
         // 回显**以谁的身份发的**：不给 `from` 时是 `null`，那时收信人看到的是
-        // cc-whoami 在 daemon 处境里解出来的东西（实测：`unknown`）——
+        // cc-whoami 在后端处境里解出来的东西（实测：`unknown`）——
         // 回显出来，调用方才看得见这件事，而不是等收信人来问「谁发的」。
         "from": from
     }))

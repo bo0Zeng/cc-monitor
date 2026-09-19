@@ -86,7 +86,7 @@ fn main_production_section_keeps_its_load_bearing_items() {
     }
 }
 
-/// ★ 全 crate 实测：daemon 的每个源文件用列 0 收尾判据都能剥干净。
+/// ★ 全 crate 实测：backend 的每个源文件用列 0 收尾判据都能剥干净。
 ///
 // ⟦KR115D3 共用段·起⟧
 /// 这条同时是「列 0 收尾判据够不够用」的持续验证 —— **而它自己已经守不住那一形了**。
@@ -107,7 +107,7 @@ fn main_production_section_keeps_its_load_bearing_items() {
 /// `guard_support_tests.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
 // ⟦KR115D3 共用段·止⟧
 #[test]
-fn every_daemon_file_strips_clean() {
+fn every_backend_file_strips_clean() {
     // 地板 = **实测值**（2026-08-02：34 个 .rs）。原先是 10，松了 24 个文件。
     guard_core::assert_tree_strips_clean(
         &crate::guard_support::src_root(),
@@ -131,7 +131,7 @@ fn the_reexported_leak_check_still_bites() {
 ///
 /// # 题面
 ///
-/// 本文件的 `every_daemon_file_strips_clean` 与 monitor 那一侧的同名判据
+/// 本文件的 `every_backend_file_strips_clean` 与 monitor 那一侧的同名判据
 /// （住 `src/bridge/src/structural_scan.rs`，扫的是另一棵树）头上挂着**同一段散文**。
 ///
 /// ⚠ 这里**刻意不写出对侧那个判据的函数名**：`structural_scan.rs` 里的
@@ -189,12 +189,12 @@ fn the_two_strip_clean_notes_stay_one_sentence() {
         // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b`〕**比之前先把每行的行首空白削掉。**
         //
         // 剖分把 monitor 那一份从 `mod tests {}` 里搬了出来 ⇒ 它整段**左移了一级**，
-        // 而 daemon 那一份仍在模块内、缩进 4。两份逐字节比当场不等，而**那句话
+        // 而后端那一份仍在模块内、缩进 4。两份逐字节比当场不等，而**那句话
         // 一个字都没改** —— 不等的是缩进，缩进是「位置」，正是搬树会改的那一样东西。
         // ⚠ 削掉的**只有行首空白**：句子内容、标点、行序、行数一律照比。
         //   这不是放宽 —— 本条买的逐字写在头注里：「不会再一处真一处假」，
         //   而「一处比另一处多四个空格」不是「说的不是同一句话」。
-        // ⚠ 连**块尾那截空白**也要削：`j` 落在「止」标记的 `//` 上，而 daemon 那一份
+        // ⚠ 连**块尾那截空白**也要削：`j` 落在「止」标记的 `//` 上，而后端那一份
         //   那一行带 4 个缩进 ⇒ 块尾是 `\n    `，monitor 那一份是 `\n`。
         //   `str::lines()` 会把 `"a\n"` 切成 1 行、把 `"a\n    "` 切成 2 行
         //   —— 两边行数当场差一，而差的那一行是**空白**。

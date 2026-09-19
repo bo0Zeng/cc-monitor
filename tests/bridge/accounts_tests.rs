@@ -57,7 +57,7 @@ fn session_account_row_parses() {
     assert!(row.bare);
     assert!(row.alive);
     assert!(row.account.is_none());
-    // ★ `K-P5f` `KP5FD4` 的 **additive 那一半**：上面这一行是**老 daemon 的出参**
+    // ★ `K-P5f` `KP5FD4` 的 **additive 那一半**：上面这一行是**老后端的出参**
     // （逐字节没有 `launchId` 键）。它必须照样解析成功、读成 `None`。
     // 生产上翻掉它的症状是**整台远端的会话账号映射一条都不剩**（每行解析失败被 warn
     // 跳过），徽章整片消失且没人说得出为什么。
@@ -67,13 +67,13 @@ fn session_account_row_parses() {
     // `missing field \`probeRequired\``）。这一格记在 `SessionAccount::launch_id` 头注里。
     assert!(
         row.launch_id.is_none(),
-        "老 daemon 的行缺 launchId 应读成 None，不是报错"
+        "老后端的行缺 launchId 应读成 None，不是报错"
     );
 }
 
-/// `K-P5f`：新 daemon 那一侧 —— `launchId` 有值时逐字带回来，`null` 读成 `None`。
+/// `K-P5f`：新后端那一侧 —— `launchId` 有值时逐字带回来，`null` 读成 `None`。
 ///
-/// ⚠ 这里刻意**不**判「什么时候该是 null」：那是 daemon 侧
+/// ⚠ 这里刻意**不**判「什么时候该是 null」：那是后端侧
 /// `accounts_query::suppress_inherited_launch_ids` 与它的活体夹具的活。
 /// 本条只买「这条线在 monitor 侧接得住」——一个性质两个量法就是本区最贵那族病。
 #[test]
@@ -89,7 +89,7 @@ fn session_account_row_carries_the_launch_identity() {
     .unwrap();
     assert!(
         nulled.launch_id.is_none(),
-        "daemon 判「不作数」时发的是 null，monitor 侧必须读成 None"
+        "backend 判「不作数」时发的是 null，monitor 侧必须读成 None"
     );
 }
 
@@ -131,9 +131,9 @@ fn account_zero_parses_with_absent_config_dir_key() {
     assert!(accts[0].config_dir.is_none());
 }
 
-/// 旧 daemon：不出 `accountZeroAware` ⇒ 必须**明说**它会少一行，绝不静默。
+/// 旧后端：不出 `accountZeroAware` ⇒ 必须**明说**它会少一行，绝不静默。
 #[test]
-fn old_daemon_gets_an_explicit_notice() {
+fn old_backend_gets_an_explicit_notice() {
     let lines: Vec<String> = vec![
         r#"{"kind":"accounts-meta","enabled":true,"acctsDir":"/a","manifestPath":"/a/accounts.json","updatedAt":null,"sharedStore":null,"count":1,"error":null}"#.into(),
         ACCT_Z.into(),
@@ -142,11 +142,11 @@ fn old_daemon_gets_an_explicit_notice() {
     let m = meta.unwrap();
     assert!(!m.account_zero_aware, "缺键 ⇒ default false");
     let n = degraded_notice(&m, &accts).expect("必须给出人话说明");
-    assert!(n.contains("daemon"), "要指明是 daemon 旧：{n}");
+    assert!(n.contains("后端"), "要指明是后端旧：{n}");
 }
 
-/// 新 daemon + 旧 cc-acct-iso：manifest 里根本没有账号 0 ⇒ 也要明说，
-/// 且要指向**另一个**动作（跑 sync / 重新部署 cc-acct-iso），不是更新 daemon。
+/// 新 backend + 旧 cc-acct-iso：manifest 里根本没有账号 0 ⇒ 也要明说，
+/// 且要指向**另一个**动作（跑 sync / 重新部署 cc-acct-iso），不是更新后端。
 #[test]
 fn old_cc_acct_iso_gets_a_different_notice() {
     let lines: Vec<String> = vec![META_AWARE.into(), ACCT_Z.into()];
@@ -155,7 +155,7 @@ fn old_cc_acct_iso_gets_a_different_notice() {
     let n = degraded_notice(&m, &accts).expect("必须给出人话说明");
     assert!(n.contains("cc-acct-iso"), "要指明是 cc-acct-iso 旧：{n}");
     assert!(
-        !n.contains("更新远端 daemon"),
+        !n.contains("更新远端 backend"),
         "别把用户指向错误的动作：{n}"
     );
 }
@@ -170,7 +170,7 @@ fn disabled_manifest_has_no_account_zero_notice() {
     assert!(degraded_notice(&meta.unwrap(), &accts).is_none());
 }
 
-/// ★ 账号 0 的 trust 查询**不传路径**——传空串会被 daemon 判不安全路径拒掉，
+/// ★ 账号 0 的 trust 查询**不传路径**——传空串会被后端判不安全路径拒掉，
 /// 用户看到一句莫名其妙的错。这条钉住命令行拼法。
 #[test]
 fn trust_args_for_account_zero_passes_no_path() {
@@ -230,7 +230,7 @@ fn the_wire_names_match_the_shared_contract() {
 ///
 /// 件计划 §0 把它写成「三个生产者」，Bx 实测订正：`parse_accounts_lines` 一个字段都不算
 /// （通体只有一句 `from_value::<RemoteAccount>`）。⇒ 它该断的性质不是「产出与另两家相同」
-/// （那会写成一条循环自证），而是**原样透传**：daemon 说什么就是什么，一个字都不改。
+/// （那会写成一条循环自证），而是**原样透传**：backend 说什么就是什么，一个字都不改。
 #[test]
 fn the_relay_passes_the_auth_dimension_through_verbatim() {
     let lines: Vec<String> = vec![
@@ -252,14 +252,14 @@ fn the_relay_passes_the_auth_dimension_through_verbatim() {
     );
 }
 
-/// ★ **旧 daemon（两个键都不出）⇒ 中继必须回 `None`，不许悄悄编一个值出来。**
+/// ★ **旧后端（两个键都不出）⇒ 中继必须回 `None`，不许悄悄编一个值出来。**
 ///
 /// 这一格是整条降级链的起点：`None` 才让前端能**回落到逐字节旧行为**
 /// （`authReady ?? loggedIn`）。若这里 `#[serde(default)]` 被改成
 /// 「缺键 ⇒ `Some(Subscription)` / `Some(false)`」，前端就分不出
 /// 「对面说它没就绪」和「对面压根没说」——而这两件事该走不同的路。
 #[test]
-fn an_old_daemon_yields_none_not_a_made_up_value() {
+fn an_old_backend_yields_none_not_a_made_up_value() {
     let lines: Vec<String> = vec![
         r#"{"kind":"accounts-meta","enabled":true,"acctsDir":"/a","manifestPath":"/a/accounts.json","updatedAt":null,"sharedStore":null,"count":1,"error":null}"#.into(),
         r#"{"name":"z","configDir":"/a/z","mode":"isolated","exists":true,"loggedIn":true}"#.into(),
@@ -337,9 +337,9 @@ fn an_unrecognized_auth_ready_shape_does_not_silently_drop_the_account() {
 
 #[test]
 fn unavailable_helper_sets_flag_and_reason() {
-    let r: AccountsResult = unavailable("daemon 太旧");
+    let r: AccountsResult = unavailable("backend 太旧");
     assert!(!r.available);
-    assert_eq!(r.error.as_deref(), Some("daemon 太旧"));
+    assert_eq!(r.error.as_deref(), Some("backend 太旧"));
     assert!(r.accounts.is_empty());
     assert!(r.meta.is_none());
     let s: SessionAccountsResult = unavailable("x");

@@ -28,15 +28,15 @@ fn listed(path: &str, description: &str, timestamp: Option<&str>) -> String {
 ///
 /// | 盘上 | 后端 | 期望 |
 /// |---|---|---|
-/// | **有**两个货真价实的候选（真文件） | **不在**（开发树没有 sidecar） | **必须报「后端不在」** |
+/// | **有**两个货真价实的候选（真文件） | **不在**（开发树没有本机后端） | **必须报「后端不在」** |
 ///
 /// ⇒ 只要它还从盘上枚举，就会**成功**返回其中一个 ⇒ 本条当场红。
 /// 这正是 `KR94D1` 第 ③ 刀（「本机退回自己 `read_dir` ⇒ 必须红」）的可执行形态。
 ///
-/// ⚠ 它**不证明** happy path 对（那要真 sidecar，属 e2e）。只杀「悄悄读本机盘」这一类。
+/// ⚠ 它**不证明** happy path 对（那要真本机后端，属 e2e）。只杀「悄悄读本机盘」这一类。
 #[tokio::test]
 async fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() {
-    // 前提自检：本测试环境**必须**没有 sidecar，否则下面那条断言会走 happy path 而空转。
+    // 前提自检：本测试环境**必须**没有本机后端，否则下面那条断言会走 happy path 而空转。
     let probe = run_query(
         env!("CCM_TARGET_TRIPLE"),
         &["--list-subagents"],
@@ -44,8 +44,8 @@ async fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() 
     );
     assert!(
         matches!(probe, QueryOutcome::NoBackend(_)),
-        "测试环境里居然找得到 sidecar —— 本条的前提不成立，下面那条断言会空转。\n\
-             （若哪天单测环境真带 sidecar，本条要改成显式指一个不存在的 target triple）"
+        "测试环境里居然找得到 local_backend —— 本条的前提不成立，下面那条断言会空转。\n\
+             （若哪天单测环境真带本机后端，本条要改成显式指一个不存在的 target triple）"
     );
 
     // 盘上摆两个**货真价实**的候选：meta 描述精确匹配、jsonl 首行有时间戳。
@@ -128,7 +128,7 @@ fn changing_what_the_backend_lists_changes_what_gets_picked() {
         "后端零候选却挑出了东西 —— 那个东西只可能来自别处"
     );
 
-    // ④ description 不匹配的不许混进来（筛选留在本侧，daemon 不挑）
+    // ④ description 不匹配的不许混进来（筛选留在本侧，backend 不挑）
     let l3 = vec![listed(
         "/r/agent-d.jsonl",
         "别的",
@@ -332,7 +332,7 @@ fn both_shapes_of_a_missing_timestamp_land_in_the_same_tier() {
 
 /// ★ **两条路都去问后端，问的是同一对既有子命令**（不新造读口）。
 ///
-/// 〔散文墓碑〕改前这条只钉远端那半（`the_remote_path_actually_asks_the_daemon`）——
+/// 〔散文墓碑〕改前这条只钉远端那半（`the_remote_path_actually_asks_the_backend`）——
 /// 那时本机那条根本不问后端。`K-R94` 之后它钉的是**两条**。
 #[test]
 fn both_paths_ask_the_backend_and_reuse_the_existing_subcommands() {

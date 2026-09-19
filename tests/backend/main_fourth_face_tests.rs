@@ -37,7 +37,7 @@ fn production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen() {
 ///
 /// # 少了本条会怎样
 ///
-/// 只有上一条的话，「`unavailable` 恒空」与「daemon 根本答不出这个问题」在判据眼里
+/// 只有上一条的话，「`unavailable` 恒空」与「backend 根本答不出这个问题」在判据眼里
 /// **一模一样** —— 那样这一拍就只是在 wire 上多挂了一个永远为空的字段，
 /// 也就是握手帧上多了一句谁都不会读的话。**「事前协商」一格都没买到，而没有任何东西会说。**
 ///
@@ -366,7 +366,7 @@ fn the_windows_arm_is_wired_into_the_source() {
 /// ★ `K-P4` 红线之三：**声明用的 code，必须是那条命令自己登记过的 code。**
 ///
 /// 事前那句话与事后那句话要是各说各的词，客户端就得维护**两张**「这句话怎么翻成人话」
-/// 的表，而 monitor 侧那张已经写好了（`daemon_launch.rs` 等三处逐字「远端未安装 tmux」）。
+/// 的表，而 monitor 侧那张已经写好了（`backend_launch.rs` 等三处逐字「远端未安装 tmux」）。
 ///
 /// # 它真正逮的是什么（不是同义反复）
 ///

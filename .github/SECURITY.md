@@ -16,7 +16,7 @@ We aim to acknowledge reports within a few days.
 ## Scope notes
 
 - **Zero-intrusion** (INVARIANT §1): the app never modifies Claude Code files, except
-  two user-initiated remote writes — deploying/uninstalling the remote daemon, and
+  two user-initiated remote writes — deploying/uninstalling the remote backend, and
   explicit history deletion.
 - **SSH host keys** use trust-on-first-use (TOFU) by default; the first connection is
   MITM-capable. The UI warns loudly and offers one-click fingerprint pinning — pre-share

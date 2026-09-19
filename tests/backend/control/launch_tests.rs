@@ -19,7 +19,7 @@ fn parses_a_well_formed_create_request() {
     assert_eq!(r.cwd.as_deref(), Some("/home/u/p"));
 }
 
-/// **没有 `attach-only`** —— attach 是平面 ③，daemon 开不了你面前的窗。
+/// **没有 `attach-only`** —— attach 是平面 ③，backend 开不了你面前的窗。
 #[test]
 fn attach_is_not_a_mode_here() {
     let e = parse_request(&args(serde_json::json!({
@@ -135,7 +135,7 @@ fn the_create_only_fields_have_their_own_shapes() {
 /// [`parse_request`] 与 `launch_for_inbound` 的键名有一面镜子
 /// （`inbound::structure_guards::launch_fields_match_its_parser_and_output`），
 /// 而那面镜子**只看解析器与输出构造器** —— 一个字段完全可以「解析出来、存进结构体、
-/// 然后一个地方都不用」。⇒ 症状是 **ccm 照发、daemon 照收、`@ccm_agent` 与尺寸静默消失**，
+/// 然后一个地方都不用」。⇒ 症状是 **ccm 照发、backend 照收、`@ccm_agent` 与尺寸静默消失**，
 /// 而两侧任何一条现有判据都不会红。**那正是本命令这一拍要防的那件事。**
 ///
 /// ⚠ 这里只能判**源码形态**（真验要起 tmux，红线禁）。诚实边界写在这儿，别读大了。
@@ -161,7 +161,7 @@ fn the_create_arm_actually_uses_the_three_new_fields() {
         assert!(
             prod.contains(needle),
             "生产段里找不到 {what}（needle {needle:?}）—— 字段**收得下却不起作用**：\n\
-                 ccm 照发、daemon 照收，而 `@ccm_agent` 与窗口尺寸静默消失。\n\
+                 ccm 照发、backend 照收，而 `@ccm_agent` 与窗口尺寸静默消失。\n\
                  `launch_fields_match_its_parser_and_output` 那面镜子只看解析器与输出构造器，\n\
                  **它看不见这一格**（`K-P2` `D3` 立本条的全部理由）。"
         );
@@ -189,7 +189,7 @@ fn a_double_quote_in_the_payload_is_perfectly_fine_here() {
 /// F04c 实测踩到：新分支 `Mode::SendKeysRaw` 插在 `SendInto` 与 `CreateOrAttach` 之间，
 /// 而那两条判据的收尾锚点写死了 `Mode::CreateOrAttach =>` ⇒ 它们把**两个分支当成一个**
 /// 扫，断言照样全绿（249 条一条没红）。**扫到了东西，但扫的不是那件事** —— 本仓这一族
-/// 的又一次（`tmux_daemon_gate_guard` 的硬编码文件表是同一个病）。
+/// 的又一次（`tmux_backend_gate_guard` 的硬编码文件表是同一个病）。
 /// 「收尾行」与「枚举头」两个针 —— **运行时拼，源码里不留不配对的大括号**。
 ///
 /// ⚠ `readonly_guard::no_test_code_leaks_into_any_production_section` 的剥法是**数括号**：
@@ -225,7 +225,7 @@ fn arm_of<'a>(src: &'a str, head: &str) -> &'a str {
 fn exact_target_shape_matches_the_monitor_side() {
     assert_eq!(exact_target("cc-abc"), "=cc-abc:");
     // 跨轨对拍：monitor `tmux.rs` 里那条 `format!("={target}:")`。
-    const MONITOR_TMUX: &str = include_str!("../../../src/bridge/src/tmux.rs");
+    const MONITOR_TMUX: &str = include_str!("../../../src/bridge/src/backend/control/tmux.rs");
     let prod = crate::guard_support::production_code(MONITOR_TMUX);
     // 运行时拼，避免命中本文件自己。
     let shape = format!("=%s{}", "target}:");
@@ -240,21 +240,21 @@ fn exact_target_shape_matches_the_monitor_side() {
 /// ★ #76 防线的形态迁移：`send-into` **绝不新建会话**。
 ///
 /// TS 侧那条防线（`launch-render-cli.ts` 让 `send-into` 强制走兜底）挡的是
-/// 「用 create-or-attach 的语法去近似 send-into」；daemon 直接调 tmux 之后那个
+/// 「用 create-or-attach 的语法去近似 send-into」；backend 直接调 tmux 之后那个
 /// 表达力缺口没了，但**语义陷阱还在**：顺手新建就是 #76 的反向。
 ///
 /// 这条扫的是 `run()` 的 `SendInto` 分支源码：它里面不许出现 `new-session`。
 /// ★ **建会话必须是后台建**〔audit-0805 08-07〕。
 ///
 /// `-d` 不是可有可无的旗标，它**就是**「后台建会话」这件事：没有它，
-/// `tmux new-session` 会去 attach 当前终端，而 daemon 这条路上根本没有终端。
+/// `tmux new-session` 会去 attach 当前终端，而后端这条路上根本没有终端。
 ///
 /// # 为什么这条到今天才有
 ///
 /// 定框 **E10** 逐字举证过「`-d` 去掉 …… SURVIVED `cargo test`，只有 shell e2e 抓住」。
 /// 08-07 重跑那份举证：**B（`@ccm_sid` 改名）与 C（Gate 3 门限放松）今天仍然 SURVIVED**，
 /// 而 A（去掉 `-d`）**会红** —— 但读诊断就知道那是**假信号**：红的是
-/// `daemon_kill` 的创建路径人群探测器（它的发现口径恰好含 `-d`），
+/// `backend_kill` 的创建路径人群探测器（它的发现口径恰好含 `-d`），
 /// 诊断说的是「那条路没了 ⇒ 删登记」，照做反而会把这条路移出人群。
 ///
 /// ⚠ **订正上面 B 那一格**〔`K-P2` C 第五拍，09-03〕：本文件的创建臂**今天不再写
@@ -282,7 +282,7 @@ fn the_create_argv_is_detached_and_names_the_session() {
     assert!(
         prod.contains(r#"vec!["new-session", "-d", "-s""#),
         "创建分支的 argv 不再是 `[\"new-session\", \"-d\", \"-s\", …]`。\n\
-             `-d` 一去掉，tmux 就会去 attach 当前终端 —— daemon 这条路上没有终端，\n\
+             `-d` 一去掉，tmux 就会去 attach 当前终端 —— backend 这条路上没有终端，\n\
              会话建不起来或挂住，而**除了真二进制 e2e 没人会发现**（E10 举证过）。\n\
              顺序也钉在这里：`-s` 必须紧跟在 `-d` 之后、名字紧跟 `-s`。\n\
              真要改形态，先想清楚谁来接住它 —— 别指望现有 cargo test。"
@@ -316,7 +316,7 @@ fn send_into_never_creates_a_session() {
 ///
 /// # 它守的是 `ROADMAP §5 4h` 那条登记
 ///
-/// 08-08 先核出来的事实：`payload` 从 webview 一路进到这里，本 daemon 只查
+/// 08-08 先核出来的事实：`payload` 从 webview 一路进到这里，本后端只查
 /// **三件形状**（非空 / 长度上限 / 无控制字符），**不查它是什么命令**。
 /// 也就是说前端能送任意载荷 —— 于是 monitor 侧 `render_payload` 里那几道字符闸
 ///（`arg_is_join_safe` · `config_dir_command_safe` · launcher 那道）都是**纵深，不是边界**，
@@ -487,7 +487,7 @@ fn the_new_mode_name_parses_and_the_old_ones_still_do() {
     assert_eq!(Mode::parse("send-into"), Some(Mode::SendInto));
     assert_eq!(Mode::parse("create-or-attach"), Some(Mode::CreateOrAttach));
     // ★ **fail-closed 的那一半**：未知 mode 必须回 `None` ⇒ `invalid_args`。
-    // 这正是「为什么是新 mode 名而不是新字段」的全部理由 —— 旧 daemon 会走到这里。
+    // 这正是「为什么是新 mode 名而不是新字段」的全部理由 —— 旧后端会走到这里。
     for unknown in ["send-keys", "attach-only", "SendKeysRaw", "", "send-into "] {
         assert_eq!(Mode::parse(unknown), None, "{unknown:?} 不该被认出来");
     }
@@ -498,7 +498,7 @@ fn the_new_mode_name_parses_and_the_old_ones_still_do() {
     assert_eq!(e.0, "invalid_args");
     assert!(
         e.1.contains("send-keys-raw"),
-        "错误文案没列出真正的 mode 集合，旧 daemon 的使用者会不知道该升级什么：{}",
+        "错误文案没列出真正的 mode 集合，旧后端的使用者会不知道该升级什么：{}",
         e.1
     );
 }
@@ -582,7 +582,7 @@ fn the_send_keys_raw_arm_admits_before_it_types_and_never_creates() {
 ///
 /// F04c 实测：新增一个变体时，既有那几条「扫某个分支源码」的判据**一条都不会红** ——
 /// 它们只认自己写死的那个分支名。⇒ 加一条**枚举驱动**的判据：变体表变了就红，
-/// 逼人回来给新变体配判据。（同族：`tmux_daemon_gate_guard` 的硬编码文件表。）
+/// 逼人回来给新变体配判据。（同族：`tmux_backend_gate_guard` 的硬编码文件表。）
 #[test]
 fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
     // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**两个语料分开了。**
@@ -651,7 +651,7 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
 /// 所以它自己不会自匹配 —— 但**说法要跟着判据的真实扫描面走**，否则就是 F23 那一族。）
 ///
 /// 后果是链式的，且**每一环都在放大上一环的乐观**：
-/// `send-keys` 退 0 → daemon 回 `typed:true` → `daemon_launch.rs` 逐字转发 →
+/// `send-keys` 退 0 → backend 回 `typed:true` → `backend_launch.rs` 逐字转发 →
 /// 前端 `launch-cli-wire.ts:63` 逐字「`typed:false` 时 `reason` 必有值 ——
 /// **那是回落到整串走终端的唯一线索**」⇒ `typed:true` **不回落** ⇒ 用户的载荷静默消失。
 ///
@@ -692,7 +692,7 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
                 "`{f}` 里出现了 `{confirm}` —— 看起来加了第二种确认。\n\
                      ★ 那是**好事**，但契约与注释此刻还写着「只有退出码那么强」：\n\
                      `src/doc/IPC-PROTOCOL.md` 的 `typed` 那几行 · 本文件 `LaunchOutcome::typed` \n\
-                     · monitor 侧 `daemon_launch.rs::SendIntoResponse::typed`。**一起改。**"
+                     · monitor 侧 `backend_launch.rs::SendIntoResponse::typed`。**一起改。**"
             );
         }
     }
@@ -738,7 +738,7 @@ fn no_doc_claims_the_payload_really_landed() {
     let overclaim = format!("{}键入了", "真的");
     let files = [
         "src/doc/IPC-PROTOCOL.md",
-        "src/bridge/src/backend/control/daemon_launch.rs",
+        "src/bridge/src/backend/control/backend_launch.rs",
     ];
     let mut total = 0usize;
     let mut hits = Vec::new();

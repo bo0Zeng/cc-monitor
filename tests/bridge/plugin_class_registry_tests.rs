@@ -18,7 +18,7 @@ enum Semantics {
 /// 轴二（`C21` 三档 → **几个二进制**）。⚠ **提案，未获批**。
 ///
 /// ⚠ `BuiltIn` 今天**没有候选落在它上面** —— 那本身是一条读数
-/// （`C21` 那三档里，今天有真实实例的只有 `Plugin` 与 `Sidecar`（且 sidecar 那格还是提案）），
+/// （`C21` 那三档里，今天有真实实例的只有 `Plugin` 与 `LocalBackend`（且本机后端那格还是提案）），
 /// 不是死代码。删掉它等于让「三档」在类型上悄悄变成两档，
 /// 而下一个人再想把某个候选归到「内建」时，会发现这个选项根本不存在。
 #[allow(dead_code)]
@@ -29,7 +29,7 @@ enum Shape {
     /// 编进同一个二进制。
     BuiltIn,
     /// 我们自己出、随产品发的独立二进制。
-    Sidecar,
+    LocalBackend,
     /// 用户自己装的外部命令。
     Plugin,
     /// ⚠ **不是三档中的任何一档**：`tool_registry` 里 `installable` 的受管工具。
@@ -60,7 +60,7 @@ const REGISTERED: &[Candidate] = &[
         home: "src/shared/cc-bus/scripts",
         semantics: Semantics::CarrierIsAPlugin,
         shape: Shape::Plugin,
-        today: "一族 shell 脚本；daemon 只经命令面转调它，且那唯一一处起进程口\
+        today: "一族 shell 脚本；backend 只经命令面转调它，且那唯一一处起进程口\
                     自 08-26 起住在**通用调用口** `plugin/invoke.rs` 里，转调壳自己零处",
         gap:
             "还差「插件」这个名分（`EU3`：粒度是命令还是包）—— **通用口那一半 `K-W1A` 已经补上**：\
@@ -70,9 +70,9 @@ const REGISTERED: &[Candidate] = &[
         id: "code-picture",
         home: "src/bridge/vendor/code-picture-core",
         semantics: Semantics::Plugin,
-        shape: Shape::Sidecar,
-        today: "vendor crate 由 path 依赖**编进 monitor**；daemon 侧整棵树零命中",
-        gap: "★ **今天对不上**：轴二说 sidecar，而 monitor 侧是内嵌。\
+        shape: Shape::LocalBackend,
+        today: "vendor crate 由 path 依赖**编进 monitor**；backend 侧整棵树零命中",
+        gap: "★ **今天对不上**：轴二说本机后端，而 monitor 侧是内嵌。\
                   `E10` 裁「本区不做」、待决 `EU5` 记着这笔账 —— 本模块只如实登记，不去拆它",
     },
     Candidate {
@@ -150,8 +150,8 @@ fn segment_after(hay: &str, anchor: &str, close: &str) -> String {
     tail[..end].to_string()
 }
 
-/// daemon 命令注册表里的**每一条命令名**（`REGISTRY` 那张表内，段界之内）。
-fn daemon_command_names() -> Vec<String> {
+/// backend 命令注册表里的**每一条命令名**（`REGISTRY` 那张表内，段界之内）。
+fn backend_command_names() -> Vec<String> {
     let prod = rust_production("src/backend/inbound.rs", 10_000);
     let seg = segment_after(&prod, "const REGISTRY: &[CommandSpec] = &[", "\n];");
     let mut out = Vec::new();
@@ -173,7 +173,7 @@ fn daemon_command_names() -> Vec<String> {
 /// 〔用@09-11 `K33`〕那个脚本删了，per-agent 适配表与 probe 那一行搬进了
 /// `src/backend/control/ccm/`（Rust）⇒ 取法整块换成读那份源码的 `const`。
 ///
-/// **为什么运行期读文件而不是 `include_str!`**：后者会在 monitor 与 daemon 之间造一条
+/// **为什么运行期读文件而不是 `include_str!`**：后者会在 monitor 与后端之间造一条
 /// **编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），而本条要的只是一份文本。
 fn ccm_module_source(file: &str) -> String {
     let p = crate::guard_support::repo_root()
@@ -215,7 +215,7 @@ fn ccm_const_list(name: &str) -> Vec<String> {
 /// 「吃一个 agent 名，回这个 agent 的那一份」。⚠ 抠不到就 panic（免得零命中地绿）。
 ///
 /// 🔴 **人群只到 `control/ccm/mod.rs` 为止，`agents/mod.rs::account_env_of` 刻意不算**：
-/// 后者是 daemon **早就有**的东西（「切账号靠改哪个环境变量」），`ccm` 只是**问它要**
+/// 后者是 backend **早就有**的东西（「切账号靠改哪个环境变量」），`ccm` 只是**问它要**
 /// （`mod.rs` 头注逐字「本文件不认识任何 agent 的名字」）。把它数进来，
 /// 这个数就从「`ccm` 的 per-agent 表有多大」变成「全仓有几个吃 agent 名的函数」——
 /// **那是另一个量**，而 `E4b` 裁的是前者。〔本拍现打时它真的混进来过一次，读数 6 vs 5。〕
@@ -240,7 +240,7 @@ fn ccm_per_agent_fns() -> Vec<String> {
     out
 }
 
-/// cc-bus **专有**的数据布局针（与 daemon 的 `cc_bus_boundary_guard` 同一组）。
+/// cc-bus **专有**的数据布局针（与后端的 `cc_bus_boundary_guard` 同一组）。
 ///
 /// ⚠ 运行时拼：写成字面量的话，本文件就成了下一个扫描型判据的假语料
 /// （`panorama_seam_registry` 头注逐字记过「判据的针不只会读到自己，还会喂给别人」）。
@@ -312,7 +312,7 @@ fn every_candidate_answers_both_axes_and_states_its_gap() {
         unanswered.is_empty(),
         "这些格子没答：{unanswered:?}\n\
              ⇒ `E3` 逐字「每个候选必须**同时**答两轴，缺一轴的结论不算结论」。\
-             实测过一次代价：`code-picture` 当初只答了轴二（sidecar）没答轴一，\
+             实测过一次代价：`code-picture` 当初只答了轴二（local_backend）没答轴一，\
              于是 monitor 侧内嵌那笔账拖到 `E10` 才被量出来。"
     );
     assert!(
@@ -341,31 +341,31 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
         scripts.len()
     );
 
-    // ② daemon 命令表里的 `bus-*`。
-    let names = daemon_command_names();
+    // ② backend 命令表里的 `bus-*`。
+    let names = backend_command_names();
     assert!(
         names.len() >= 5,
-        "只从 daemon 命令表里抠出 {} 条命令名 —— 抽取器坏了，本条此刻是空转的：{names:?}",
+        "只从后端命令表里抠出 {} 条命令名 —— 抽取器坏了，本条此刻是空转的：{names:?}",
         names.len()
     );
     let bus: Vec<&String> = names.iter().filter(|n| n.starts_with("bus-")).collect();
     assert_eq!(
         bus.len(),
         4,
-        "daemon 转调 cc-bus 的命令从 4 条变成 {} 条：{bus:?}\n\
+        "backend 转调 cc-bus 的命令从 4 条变成 {} 条：{bus:?}\n\
              今天这四条是 `bus-list` / `bus-send` / `bus-kill` / `bus-state`\
              （`bus-state` 是 `K-R113` 09-13 补的**具名读命令**：总线名单 ＋ spawn 台账一次回全）。\n\
              ⚠ **`C19` 的 ⚠ 与实测今天对上了**：那里写的是「`bus-*` 四条」，实测也是四条 ——\
              ⚠⚠ 而这一句此前**反过来是过期的**（它逐字写着「`C19` 说四条、实测三条」，\
              `K-R113` 之后实测就是四条了）⇒ 本行是那次订正的订正，别再照旧读。\n\
              ★ **仍然刻意没有 `bus-recv`**：`cc-recv` 有副作用（推进已读位置），\
-             daemon 代读等于把消息从人那里偷走 —— 这句今天仍是真的，理由全文在\
+             backend 代读等于把消息从人那里偷走 —— 这句今天仍是真的，理由全文在\
              `src/backend/control/cc_bus.rs` 的模块头注 ①。\n\
              🔴 **变了要去看什么：不是 `EU3`。** 本行原先写着「变了就该回去看那条待决\
              （`EU3`：插件的粒度是命令还是包）」，而 `EU3` **今天已经作废** ——\
              `backend-consolidation/OPEN-PREMISES.md` 逐字「`plugin-split` `EF04` 已撤件、\
              `EU3` 同时作废」。⇒ 别去读一份不存在的待决。今天这条绊线买到的是\
-             「**daemon 的 cc-bus 命令面长了一条，而 monitor 这张登记表没人看见**」——\
+             「**backend 的 cc-bus 命令面长了一条，而 monitor 这张登记表没人看见**」——\
              改这个数之前，先回本表 `cc-bus` 那一行看它的「今天什么样 / 差在哪」还成不成立。",
         bus.len()
     );
@@ -415,10 +415,10 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     );
 }
 
-/// `EF01-Y4`：`code-picture` 今天**编在 monitor 里**、**不在 daemon 里** ——
+/// `EF01-Y4`：`code-picture` 今天**编在 monitor 里**、**不在后端里** ——
 /// 这一格是本表唯一一处「提案与现状对不上」，把它钉成会红的，而不是抹平。
 #[test]
-fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_daemon() {
+fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_backend() {
     // ① monitor 侧：那条 path 依赖**整行**在（`pin_line` 而不是子串 —— 事实就是「有这么一行」）。
     let cargo = must_read("src/bridge/Cargo.toml", 1_000);
     let dep = format!(
@@ -429,7 +429,7 @@ fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_daemon() {
         panic!(
             "monitor 的 `Cargo.toml` 里那条 vendor path 依赖不见了或变形了：{e}\n\
                  ⇒ 本表 `code-picture` 那一行的 `today` 逐字说「**编进 monitor**」。\
-                 真改成了别的形态（sidecar / 可选 feature），那是待决 `EU5` 的答案落地 —— \
+                 真改成了别的形态（local_backend / 可选 feature），那是待决 `EU5` 的答案落地 —— \
                  请先去 `E10`/`EU5` 把账改了，再回来改这一行，别反过来。\n\
                  ⚠ 只是**改了写法**（空格 / 换成表段形式）而语义没变的话，同轮把这里的\
                  期望串一起改 —— 用整行相等是刻意的：子串会被「path 改指别处」\
@@ -437,27 +437,27 @@ fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_daemon() {
         )
     });
 
-    // ② daemon 侧的依赖清单：零命中（**第一层**；③ 是第二层，扫源码树）。
-    //    ⚠ 这两层守的是「**vendor 全景引擎不许进 daemon**」，**不是** `C18`「依赖树零 C」——
-    //    后者**已被推翻（08-29）**，盘上逐字「~~**C18** daemon 不引 C 生态链~~ 已被推翻（08-29）」
+    // ② backend 侧的依赖清单：零命中（**第一层**；③ 是第二层，扫源码树）。
+    //    ⚠ 这两层守的是「**vendor 全景引擎不许进 backend**」，**不是** `C18`「依赖树零 C」——
+    //    后者**已被推翻（08-29）**，盘上逐字「~~**C18** backend 不引 C 生态链~~ 已被推翻（08-29）」
     //    （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。
     //    **规矩没变，换的是理由** —— 新理由（`C21` ＋ 实测代价）写在下面两条的失败文案里，
     //    刻意各写一份：谁踩到哪一条，就只看得到哪一段字。
-    let daemon_cargo =
+    let backend_cargo =
         guard_core::strip_hash_comment_lines(&must_read("src/backend/Cargo.toml", 500));
     assert!(
-        !guard_core::contains_word(&daemon_cargo, "code-picture-core"),
-        "daemon 的**依赖树**里出现了 vendor 全景引擎（`code-picture-core`）——\
+        !guard_core::contains_word(&backend_cargo, "code-picture-core"),
+        "backend 的**依赖树**里出现了 vendor 全景引擎（`code-picture-core`）——\
              这一条今天仍是红线，不是权衡项。\n\
-             ⚠ **别拿 `C18` 当它的理由**：那条「daemon 不引 C 生态链」**已被推翻** ——\
-             盘上逐字「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」\
+             ⚠ **别拿 `C18` 当它的理由**：那条「backend 不引 C 生态链」**已被推翻** ——\
+             盘上逐字「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」\
              （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。\
              **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
-             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（sidecar），\
-             不是第三方插件，**也不编进 daemon**」—— 这一条是主理由；\n\
+             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（local_backend），\
+             不是第三方插件，**也不编进 backend**」—— 这一条是主理由；\n\
              ② 实测代价（`K-R2` 的 `§0b`，09-04 沙箱现打，量于 `e1944e8`，\
              与发版同版本的 zig 0.14.0 + cargo-zigbuild 0.23.0，同一趟同一提交的基线）：\
-             daemon 二进制**每架构 +18.87～18.88 MB**（x86_64 4.55→23.43 · aarch64 4.07→22.94，×5.15–5.64），\
+             backend 二进制**每架构 +18.87～18.88 MB**（x86_64 4.55→23.43 · aarch64 4.07→22.94，×5.15–5.64），\
              而安装包内嵌两个架构 ⇒ **+37.75 MB**（`rusqlite(bundled)` 是整份 SQLite C 源码 + 9 门 tree-sitter grammar）。\
              而 `K30③`「体积在预算内」的**那个预算今天没有人定过** ⇒ 今天没有账能证明它在预算内。\n\
              ⚠ **盘上流传的两个旧数别再抄**：「3.5 MB → 17.43 MB」**分母与增量都馊了**\
@@ -466,13 +466,13 @@ fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_daemon() {
              `K-R2` 实测**两个架构都 EXIT=0** ⇒ **交叉编译今天不是拦路虎**，是尺子换了，不是结论翻了。"
     );
 
-    // ③ daemon 侧**整棵源码树**：零命中（第二层 —— 这一层 `protocol_doc_guard` 够不到，
+    // ③ backend 侧**整棵源码树**：零命中（第二层 —— 这一层 `protocol_doc_guard` 够不到，
     //    它只扫协议面那两个文件）。
     let root = repo_root();
     let files = guard_core::scan_tree!(&root.join("src/backend"), &["rs"]);
     assert!(
         files.len() >= 30,
-        "只遍历到 {} 个 daemon 源文件 —— 遍历坏了，本条此刻是空转的（08-14 实测 53）",
+        "只遍历到 {} 个后端源文件 —— 遍历坏了，本条此刻是空转的（08-14 实测 53）",
         files.len()
     );
     let needle = format!("code{}picture", '_');
@@ -489,17 +489,17 @@ fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_daemon() {
     }
     assert!(
         hits.is_empty(),
-        "daemon 的**源码树**（生产段）里出现了全景引擎：{hits:?}\n\
-             ⇒ 本条钉的是「**vendor 全景引擎不许进 daemon**」—— 上面 ② 钉依赖树，这一条钉源码树。\n\
-             ⚠ **别拿 `C18` 当它的理由**：那条「daemon 的依赖树里不许出现 C」**已被推翻** ——\
-             盘上逐字「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」\
+        "backend 的**源码树**（生产段）里出现了全景引擎：{hits:?}\n\
+             ⇒ 本条钉的是「**vendor 全景引擎不许进 backend**」—— 上面 ② 钉依赖树，这一条钉源码树。\n\
+             ⚠ **别拿 `C18` 当它的理由**：那条「backend 的依赖树里不许出现 C」**已被推翻** ——\
+             盘上逐字「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」\
              （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。\
              **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
-             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（sidecar），\
-             不是第三方插件，**也不编进 daemon**」⇒ 要给 daemon 全景能力，答案是 sidecar，不是内嵌\
+             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（local_backend），\
+             不是第三方插件，**也不编进 backend**」⇒ 要给后端全景能力，答案是本机后端，不是内嵌\
              （独立二进制，它自己那份 C 依赖跟着它走）；\n\
              ② 实测代价（`K-R2` 的 `§0b`，09-04 沙箱现打，量于 `e1944e8`，与发版同版本的 zigbuild）：\
-             daemon 二进制**每架构 +18.87～18.88 MB**（×5.15–5.64），安装包内嵌两个架构 ⇒ **+37.75 MB**；\
+             backend 二进制**每架构 +18.87～18.88 MB**（×5.15–5.64），安装包内嵌两个架构 ⇒ **+37.75 MB**；\
              而 `K30③`「体积在预算内」的**那个预算今天没有人定过** ⇒ 今天没有账能证明它在预算内。\n\
              ⚠ **盘上流传的两个旧数别再抄**：「3.5 MB → 17.43 MB」**分母与增量都馊了**（旧增量少算约 5 MB）；\
              「aarch64 交叉编译当场失败」是**裸 `cargo build`** 在没装 `aarch64-linux-musl-gcc` 的机器上量的，\
@@ -560,7 +560,7 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
     //   Rust 侧是 `match` 里的表达式 —— 逐字比它们的文本是在比实现细节，不是在比性质。
     //   ⇒ 本条今天只保住「**per-agent 适配面有几个函数**」这一格（`E4b` 那句
     //   「通用骨架不动，加一张表的一行」靠的正是它），另两格**如实作废，不假装还在**。
-    //   那条「codex 与 claude 到底哪几项不同」今天由 daemon 侧
+    //   那条「codex 与 claude 到底哪几项不同」今天由后端侧
     //   `control::ccm::tests::the_agent_set_has_one_address_and_every_member_is_wired` 逐项钉。
     let fns = ccm_per_agent_fns();
     assert_eq!(
@@ -588,7 +588,7 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
              〔`K-R61` 09-11：17 → 18，加的是 `base-url-across-tmux`。\
              『谁在数它』那张表住 `src/backend/control/ccm/mod.rs` 的 \
              `CAPABILITIES` 头注，**本条不复述第二份** —— 只提醒：`src/bridge/build.rs` \
-             那个 `extract_capabilities` 抠的是 daemon 流模式那个同名常量，盖不到这里。〕",
+             那个 `extract_capabilities` 抠的是后端流模式那个同名常量，盖不到这里。〕",
         caps.len()
     );
     assert_eq!(
@@ -596,7 +596,7 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
         vec!["claude".to_string(), "codex".to_string()],
         "`--ccm-probe` 报的 agent 集合变了 —— `E4b` 的 per-agent 表要跟着加行，\
              而 `E4c` 记着那张表今天有**三份副本**（`golden.tsv` 4 key · `control/ccm` 5 函数 · \
-             daemon `agents/*/resume.rs`），真相源只覆盖一半。"
+             backend `agents/*/resume.rs`），真相源只覆盖一半。"
     );
 
     // 轴二那一格：它是**受管工具**，不是三档中的任何一档。
@@ -741,7 +741,7 @@ fn the_const_list_extractor_takes_one_list_not_the_whole_file() {
         assert!(f.starts_with("mod.rs::"), "per-agent 函数名没带住址：{f}");
     }
     // 段界自检：人群刻意**只到 `control/ccm/mod.rs`** —— `agents/mod.rs::account_env_of`
-    // 是 daemon 早有的东西，混进来这个数就变成另一个量（见 `ccm_per_agent_fns` 头注）。
+    // 是后端早有的东西，混进来这个数就变成另一个量（见 `ccm_per_agent_fns` 头注）。
     assert!(
         !fns.iter().any(|f| f.contains("account_env_of")),
         "人群扩到 `agents/mod.rs` 了：{fns:?} —— 那个数不再是「`ccm` 的 per-agent 表有多大」"

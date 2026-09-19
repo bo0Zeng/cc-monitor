@@ -16,7 +16,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
              ⚠ **F02 订正**：原文写「事件源已经存在」，实测**只有一半成立** —— \
              本 UI 自己切号确实有回调（`onDefaultChanged → refreshSessionAccounts`），\
              但「**别人**（另一个 monitor / 终端里的 ccm）改了账号」**没有事件源**：\
-             daemon 的帧集合里**没有任何账号帧**（`Hello/Line/TmuxSessions/SessionAdded/…` 十四种，\
+             backend 的帧集合里**没有任何账号帧**（`Hello/Line/TmuxSessions/SessionAdded/…` 十四种，\
              逐个数过），`--session-accounts` 是**一次性子命令查询**、不是帧。\
              ⇒ 这 10s 补的正是那一块。退役归 **U7e**，而 U7e 的前提是**先有一种账号事件** \
              （新帧或文件事件），不是「已经有了」。",
@@ -25,7 +25,7 @@ const REGISTERED: &[(&str, &str, &str)] = &[
         "src/views/grid-monitor.ts",
         "ui-clock",
         "1s 重绘一次网格。**不取数** —— 只把已有状态（相对时间等）重画；\
-             取数走事件（`events.ts` 的帧）。这一类是 daemon 那条护栏头注说的「正当周期行为」。",
+             取数走事件（`events.ts` 的帧）。这一类是后端那条护栏头注说的「正当周期行为」。",
     ),
     (
         "src/tabs.ts",
@@ -33,9 +33,9 @@ const REGISTERED: &[(&str, &str, &str)] = &[
         "`awaitExitFor`：等 claude 退出时每 1s 拉一次 `list_remote_tmux`（有 timeout 上限）。\
              ⚠⚠ **F02 订正：原文那句「事件源已经存在」是错的。** 它等的**不是会话消失**，\
              是 `claudeExited` —— 「目标 sid 不再被精确命中」，也就是**前台命令从 claude 变回 shell**\
-             （会话还在）。而 daemon 只装三条 hook：`session-created` / `session-closed` / \
+             （会话还在）。而后端只装三条 hook：`session-created` / `session-closed` / \
              `session-renamed`（`control/tmux_hook.rs::HOOK_EVENTS`，逐个数过）——\
-             **「pane 里的命令变了」一条都不覆盖**，而 P5 之后 daemon 零定时器 ⇒ \
+             **「pane 里的命令变了」一条都不覆盖**，而 P5 之后后端零定时器 ⇒ \
              那种情形下帧**可能永不刷新**。改等帧会永远等到超时再降级 kill。\
              ⇒ 这 1s 轮询**正在补 hook 覆盖不到的那一块**，今天**不能退役**。\
              **退役归**「先造一个『pane 前台命令变化』的事件源」这件事本身 —— \
@@ -56,8 +56,8 @@ const REGISTERED: &[(&str, &str, &str)] = &[
              没有内核事件源，只能看屏）。\
              ⚠ **`U-NP④`（2026-08-14）**：本条原来还有「② 1s 身份轮询（`sleep 1`）」，\
              那是本仓唯一一条**与会话同寿、每会话一条、跑在远端**的每秒循环。\
-             用户裁定「不要轮询」＋「ccm 做到必须走 daemon」⇒ **整条删掉，没留轮询退路**。\
-             接班的是 daemon 的 `control/identity_tag.rs`（由 `sessions/` 的 pidfile inotify \
+             用户裁定「不要轮询」＋「ccm 做到必须走后端」⇒ **整条删掉，没留轮询退路**。\
+             接班的是后端的 `control/identity_tag.rs`（由 `sessions/` 的 pidfile inotify \
              驱动，零新增节拍）。所以本文件今天**不再是两类**，是一类。\
              钉住「它真的没了」的是本模块的 `the_identity_poller_is_gone_for_good`。",
     ),
@@ -74,10 +74,10 @@ const REGISTERED: &[(&str, &str, &str)] = &[
              里每 0.5s 醒一次扫队列目录（`:101` `sleep \"$POLL\"`；`:99` 是「一整轮没进展」的退避）。\
              它**自己的注释就承认了**：`:20` 逐字「队列空时轮询间隔秒(**本实现恒轮询,未用 inotify**)」。\
              **事件源**：`$BUS/queue` 目录的 inotify —— 队列是文件系统目录、天然可 watch，\
-             与 daemon 侧看 pidfile 的做法同构。\
+             与后端侧看 pidfile 的做法同构。\
              **退役归**未排期（cc-bus 增强属 issue #77/#78 那一族，用户 08-10 明确「后面再增强」）。\
              如实记未排期，不编一个假 owner 让它看起来有人管。\
-             ⚠ 同文件 `:115` 另有 `for _i in $(seq 1 10); do sleep 0.3; daemon_running && break; done` \
+             ⚠ 同文件 `:115` 另有 `for _i in $(seq 1 10); do sleep 0.3; backend_running && break; done` \
              —— 那是 wait-for-condition（上限 ~3s，注释自陈「轮询确认最多 ~3s」），不是节拍器。",
     ),
     (
@@ -152,7 +152,7 @@ fn the_other_half_of_the_sweep_still_has_a_home() {
 }
 
 /// ★ **前提触发器**：上面两条「今天不能退役」的理由，前提是
-/// **daemon 只装那三条 hook**（`session-created` / `session-closed` / `session-renamed`）。
+/// **backend 只装那三条 hook**（`session-created` / `session-closed` / `session-renamed`）。
 ///
 /// hook 覆盖面一变（多一条、少一条、换名字）⇒ 本条**主动红**，逼人回来重新裁定
 /// 「哪些轮询现在可以退役了」。这是好事：多一条 hook 往往正好解锁一处轮询。
@@ -161,8 +161,8 @@ fn the_other_half_of_the_sweep_still_has_a_home() {
 /// 那属于外部世界，本仓钉不了。**比没有强，别读成证明。**
 #[test]
 fn the_hook_coverage_that_these_reasons_rest_on_has_not_changed() {
-    const DAEMON_HOOKS: &str = include_str!("../../src/backend/control/tmux_hook.rs");
-    let prod = guard_core::production_code(DAEMON_HOOKS);
+    const BACKEND_HOOKS: &str = include_str!("../../src/backend/control/tmux_hook.rs");
+    let prod = guard_core::production_code(BACKEND_HOOKS);
     // 判据串运行时拼，免得命中本文件自己上面那两段说明。
     let want: Vec<String> = ["created", "closed", "renamed"]
         .iter()
@@ -171,7 +171,7 @@ fn the_hook_coverage_that_these_reasons_rest_on_has_not_changed() {
     for w in &want {
         assert!(
             prod.contains(w.as_str()),
-            "daemon 的 hook 里找不到 `{w}` —— 覆盖面缩小了。\n\
+            "backend 的 hook 里找不到 `{w}` —— 覆盖面缩小了。\n\
                  上面 `src/tabs.ts` / `src/main.ts` 两条「今天不能退役」的理由建立在\
                  「只有这三条 hook」之上，覆盖面一变就要重新裁定。"
         );
@@ -201,7 +201,7 @@ fn the_hook_coverage_that_these_reasons_rest_on_has_not_changed() {
         + hook_events.matches("client-").count();
     assert_eq!(
         n, 3,
-        "daemon 装的 hook 从 3 条变成了 {n} 条 —— **这多半是好事**，\n\
+        "backend 装的 hook 从 3 条变成了 {n} 条 —— **这多半是好事**，\n\
              但它意味着上面两条「今天不能退役」的理由前提变了：\n\
              请回 F02 重新裁定哪些轮询可以改等帧了（多一条 hook 常常正好解锁一处）。\n\
              抽到的数组：{hook_events}"
@@ -451,11 +451,11 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/branch-fold.ts", "setTimeout", 1, "★ F15：上面那条的**无 rAF 兜底**（`typeof requestAnimationFrame !== \"function\"` 时）。0ms，一次性。"),
     ("src/branch-button.ts", "setTimeout", 1, "2s 后把按钮文字恢复成 `⑂`。一次性 UI 反馈。"),
     // P2s（补审 A4）：**有退出条件的自链**，不是 data-poll。
-    ("src/settings/daemon-section.ts", "setTimeout", 1,
+    ("src/settings/backend-section.ts", "setTimeout", 1,
      "起/停一台机之后轮询状态到落定。**上限 30 次 × 100ms**、由用户动作触发、\
           落定即停 ⇒ 有退出条件的自链，不进 `REGISTERED`。\
-          ⚠ 不轮询的后果很具体：两个命令都是「发出去就返回」（`daemon_start` 只 spawn 了监护线程、\
-          `daemon_stop` 只发 SIGKILL），命令一返回就画等于**每次操作后都显示操作前的状态**。"),
+          ⚠ 不轮询的后果很具体：两个命令都是「发出去就返回」（`backend_start` 只 spawn 了监护线程、\
+          `backend_stop` 只发 SIGKILL），命令一返回就画等于**每次操作后都显示操作前的状态**。"),
     ("src/e2e-probe.ts", "requestAnimationFrame", 2, "★ **rAF 自链**：`sample` 每帧重排自己（起点 1 处 + 链内 1 处）。退出条件是 `stopReplayJitterProbe` 显式 `cancelAnimationFrame`。只在 e2e 探针里启用，不在正常路径上。"),
     ("src/error-toast.ts", "setTimeout", 1, "`durationMs` 后移除 toast。一次性。"),
     ("src/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② ③ `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。"),
@@ -628,9 +628,9 @@ fn every_scheduling_call_site_is_classified() {
 /// 「本条钉的是**每次醒来的代价**，不是醒不醒；『别每秒醒』要 inotify，
 /// 得动 ccm 的进程模型 —— 如实登记为未做」。
 ///
-/// 用户 08-14 裁定「**可以动ccm. 不要轮询**」＋「**ccm做到必须走daemon**」
+/// 用户 08-14 裁定「**可以动ccm. 不要轮询**」＋「**ccm做到必须走backend**」
 /// ⇒ 那件「未做」被做掉了，做法不是给 ccm 上 inotify（破「纯 POSIX shell、零第三方」，
-/// 而 ccm 要经 `include_str!` 部署到任意远端），而是**把通道 B 整条搬去 daemon**
+/// 而 ccm 要经 `include_str!` 部署到任意远端），而是**把通道 B 整条搬去 backend**
 ///（`src/backend/control/identity_tag.rs`，由它已有的 pidfile inotify 驱动）。
 /// ⇒ 「醒来的代价」这个量**不再存在**，钉它的判据必须换成钉「它真的没了」。
 ///
@@ -682,11 +682,11 @@ fn the_identity_poller_is_gone_for_good() {
         assert!(
             !prod.contains(shape),
             "`control/ccm/` 渲出去的 shell 里又出现了 `{shape}` —— 那是一条**与会话同寿**的循环。\n\
-                 `U-NP④` 把身份通道 B 整条搬去了 daemon（`control/identity_tag.rs`），\n\
-                 用户裁定逐字：「不要轮询」「ccm 做到必须走 daemon」。\n\
+                 `U-NP④` 把身份通道 B 整条搬去了后端（`control/identity_tag.rs`），\n\
+                 用户裁定逐字：「不要轮询」「ccm 做到必须走后端」。\n\
                  ⚠ 别把它当成「加个 sleep 兜一下更稳」——那正是本件要根除的东西：\n\
                  每会话一条、跑在**远端**机器上、与会话同寿。\n\
-                 真需要一个新的等待，先回答「它的内核事件源是什么、为什么 daemon 接不了」。"
+                 真需要一个新的等待，先回答「它的内核事件源是什么、为什么后端接不了」。"
         );
     }
     // 反向锚点 ①：那条 poller 用的解析器也一起没了（留着就是死代码）。
@@ -701,13 +701,13 @@ fn the_identity_poller_is_gone_for_good() {
     );
 }
 
-// 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有 `ccm_fails_loudly_when_no_daemon_can_be_found` 〔散文墓碑〕，
+// 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有 `ccm_fails_loudly_when_no_backend_can_be_found` 〔散文墓碑〕，
 //   随 `shared/ccm` 一起删了 —— 而且它是「被测对象消失」，不是「判据放宽」。**
 //
-//   它钉的是 `U-NP④`（08-14）那条：**在 tmux 里找不到 daemon ⇒ 响亮失败（rc=2）**，
-//   形状面四格（身份分支真去查 daemon · 找不到就 `die` · 逃生口会说话 · 前置检查排在
+//   它钉的是 `U-NP④`（08-14）那条：**在 tmux 里找不到 backend ⇒ 响亮失败（rc=2）**，
+//   形状面四格（身份分支真去查 backend · 找不到就 `die` · 逃生口会说话 · 前置检查排在
 //   任何 `tmux` 调用之前）。〔用@09-11 `K33`〕「后端只有一个」之后，
-//   **「找不到 daemon」这个概念不存在了**：敲的那个命令就是后端。
+//   **「找不到后端」这个概念不存在了**：敲的那个命令就是后端。
 //   `tests/evidence/K-R48-356-verdicts.tsv` 第 67–81 行那 15 条 e2e 判的是同一件事，判词同为 `N`。
 //
 // ⚠ **如实边界，别读成「这条风险没了」**：`K-R48` 第一拍逐字登记着一格**没裁**的 ——

@@ -1,7 +1,7 @@
 use super::*;
 use crate::history::{EntryMetadata, HistoryMetadata};
 
-/// daemon 那一行的夹具。**字段名从生产常量取** —— 见 [`REMOTE_SESSION_IDS_FIELD`]
+/// backend 那一行的夹具。**字段名从生产常量取** —— 见 [`REMOTE_SESSION_IDS_FIELD`]
 /// 的头注：名字写死在测试里，改名就会让判据红，那等于把「判能力」偷换成「判名字」，
 /// 正是 `KR83D1` 第 ③ 刀要治的。
 fn row(dir: &str, sids: &[&str]) -> serde_json::Value {
@@ -15,7 +15,7 @@ fn row(dir: &str, sids: &[&str]) -> serde_json::Value {
     v
 }
 
-/// 旧 daemon（`K-R83` 之前）的那一行：四个字段，**没有**会话 sid 清单。
+/// 旧后端（`K-R83` 之前）的那一行：四个字段，**没有**会话 sid 清单。
 fn row_without_ids(dir: &str, session_count: u64) -> serde_json::Value {
     serde_json::json!({
         "dirName": dir,
@@ -41,7 +41,7 @@ fn cfg(label: &str) -> RemoteConfig {
         "host": format!("{label}.example"),
         "label": label,
         "user": "u",
-        "daemonPath": "/opt/cc-monitor-remote",
+        "daemonPath": "/opt/cc-monitor-backend",
     }))
     .expect("夹具配置")
 }
@@ -73,7 +73,7 @@ impl LivenessOracle for OracleBlindTo {
 
 // ───────────────────────────── `KR83D1` ─────────────────────────────
 
-/// ★★ `KR83D1`：**daemon 那一行带得出算这三个数所需的东西。**
+/// ★★ `KR83D1`：**backend 那一行带得出算这三个数所需的东西。**
 ///
 /// 判的是**性质**：拿到那一行 ＋ 本机 metadata，`starred_count` / `hidden_count`
 /// 就地算得出**真值**。
@@ -121,7 +121,7 @@ fn a_row_without_the_list_yields_unknown_and_unknown_is_not_zero() {
     assert_eq!(
         c.starred,
         Counted::Unknown(WhyUnknown::NoSessionIdList),
-        "★ 旧 daemon 不带清单 ⇒ 这三个数是**不知道**"
+        "★ 旧后端不带清单 ⇒ 这三个数是**不知道**"
     );
     assert_ne!(
         c.starred,
@@ -137,7 +137,7 @@ fn a_row_without_the_list_yields_unknown_and_unknown_is_not_zero() {
 
 /// ★ `KR83D1` 第 ② 刀：**清单是空的、而这个项目下确实有会话 ⇒ 不许当成 0。**
 ///
-/// 「空清单」与「没有会话」是两件事：后者在 daemon 侧**根本不会出这一行**
+/// 「空清单」与「没有会话」是两件事：后者在后端侧**根本不会出这一行**
 ///（`project_row` 返回 `None`）。所以出了行还空 = 这一行坏了 ⇒ 报「不知道」。
 #[test]
 fn an_empty_list_on_a_project_that_has_sessions_is_a_broken_row_not_a_zero() {
@@ -262,7 +262,7 @@ fn liveness_has_no_oracle_here_so_it_says_so_instead_of_saying_false() {
 #[tokio::test]
 async fn an_unknown_count_reaches_the_wire_as_unknown_not_as_zero() {
     let md = metadata_with(&["s1"], &["s1"]);
-    // 旧 daemon 那一行（`K-R83` 之前的版本）：没有会话 sid 清单 ⇒ 三个数都算不出。
+    // 旧后端那一行（`K-R83` 之前的版本）：没有会话 sid 清单 ⇒ 三个数都算不出。
     let lines = vec![row_without_ids("-home-u-p", 3).to_string()];
     let out = fanout_list_projects(&[cfg("pi")], &md, &NoLivenessOracleYet, |_| {
         let lines = lines.clone();

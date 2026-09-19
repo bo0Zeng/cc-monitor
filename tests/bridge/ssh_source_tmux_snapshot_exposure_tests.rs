@@ -22,7 +22,7 @@ fn the_tmux_snapshot_stays_out_of_the_ipc_surface() {
              \n\
              ⚠ **开这个出口之前先回答：消费者是谁？**\n\
              最常见的动机是「让 `tabs.ts` 的 `awaitExitFor` 改读快照，省掉每 1s 一条 SSH」——\n\
-             **那条路走不通**：daemon 的 `TmuxProbeDue` 只在初探发一次，之后每一拍靠 tmux hook，\n\
+             **那条路走不通**：backend 的 `TmuxProbeDue` 只在初探发一次，之后每一拍靠 tmux hook，\n\
              而 hook 只有 session-created/closed/renamed 三条。`awaitExitFor` 等的是\n\
              「pane 前台命令从 claude 变回 shell」——**那个变化一条 hook 都不覆盖** ⇒\n\
              快照在那个场景下永不刷新 ⇒ 改读它 = 每次等到 10s 超时再降级 kill，**功能退化**。\n\

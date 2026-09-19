@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # auto-e2e F-E0:造一个「可变灰」的 @ccm_sid tmux 会话——cc-<sid8> 里跑 fake-claude(该 sid)。
-#   - fake-claude 前台 sleep,pane 持有它 → daemon 判活 SessionAdded(live) + tmux ls 带 @ccm_sid;
+#   - fake-claude 前台 sleep,pane 持有它 → backend 判活 SessionAdded(live) + tmux ls 带 @ccm_sid;
 #   - `; exec sh`:kill fake-claude(读 pidfile pid)后 pane 落回 shell,**tmux 会话仍在、@ccm_sid 仍在**
 #     → 灰灯态(claude 退但 tmux 未亡);随后 `tmux kill-session` 才 → archived。
-# 打印会话名(cc-<sid8>)。TMUX_LS_FMT / @ccm_sid 是 daemon 与 monitor 双写点,勿改格式(红线)。
+# 打印会话名(cc-<sid8>)。TMUX_LS_FMT / @ccm_sid 是后端与 monitor 双写点,勿改格式(红线)。
 set -euo pipefail
 
 SID="${1:?usage: gen-idle-tmux.sh <sid>}"

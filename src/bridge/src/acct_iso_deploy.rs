@@ -1,12 +1,12 @@
 //! F5：一键部署 vendored `cc-acct-iso`（bash skill）到远端 + 存在性检测。
 //!
-//! 对标 [`crate::sftp::deploy_remote_daemon`]，但 cc-acct-iso 是一套 **bash 脚本**（非架构相关
+//! 对标 [`crate::sftp::deploy_remote_backend`]，但 cc-acct-iso 是一套 **bash 脚本**（非架构相关
 //! 二进制），故直接 `include_bytes!` 内嵌 `src/bridge/vendor/cc-acct-iso/`，部署时 SFTP 推文件 +
 //! 跑 `cc-acct-iso-install.sh`（**只软链 `~/.local/bin`、不碰 rc**，见脚本头注释）。
 //!
 //! 版本身份 = vendored 脚本内容哈希（`.vendor_id`）→ 远端 marker `<dest>/.vendor_id`，复用
 //! [`crate::sftp::deploy_decision`] 的 skip-if-current 语义。**只读铁律豁免**：这是用户显式触发的
-//! 一键安装（同 daemon 部署），且落点被 [`is_safe_remote_acct_iso_dir`] 守卫限制。
+//! 一键安装（同后端部署），且落点被 [`is_safe_remote_acct_iso_dir`] 守卫限制。
 
 use crate::sftp::{
     connect_sftp, deploy_decision, ensure_dir_all, read_optional, upload_atomic,
@@ -162,7 +162,7 @@ pub(crate) const SHELLINIT_FENCE_BEGIN: &str = "# ===== BEGIN cc-acct-iso ====="
 pub(crate) const SHELLINIT_FENCE_END: &str = "# ===== END cc-acct-iso =====";
 
 /// 一键部署 / 更新 vendored cc-acct-iso 到远端 `dest_dir`，随后跑 install 脚本建软链。
-/// 返回人读结果。逻辑对标 [`crate::sftp::deploy_remote_daemon`]。
+/// 返回人读结果。逻辑对标 [`crate::sftp::deploy_remote_backend`]。
 #[tauri::command]
 pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Result<String, String> {
     let dest = dest_dir.trim().trim_end_matches('/').to_string();

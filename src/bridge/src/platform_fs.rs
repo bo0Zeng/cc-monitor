@@ -17,7 +17,7 @@ use std::path::Path;
 
 /// 置可执行位。
 ///
-/// Unix：`0o700`（**只给本人**——释放出来的是 daemon 二进制，没有理由让同机别的用户能跑它）。
+/// Unix：`0o700`（**只给本人**——释放出来的是后端二进制，没有理由让同机别的用户能跑它）。
 /// Windows：**无操作** —— 可执行性由扩展名决定，没有对应的位可置。
 ///
 /// 这是 `backend/control/local_backend.rs::extract_embedded_to` 的注入参数：
@@ -28,7 +28,7 @@ use std::path::Path;
 ///
 /// 本文件的存在理由是 `backend-split` `C10`〔用 08-01〕：「`platform/` 是**唯一**允许
 /// 平台原语与平台 cfg 的地方」。而 `K-H2a` 裁三（PM 08-27）把这条原语的**住址**定在了
-/// `crates/creds-core`，理由是**中转住 daemon crate、它不依赖 `src/bridge`** ——
+/// `crates/creds-core`，理由是**中转住 backend crate、它不依赖 `src/bridge`** ——
 /// 两边各写一份 `#[cfg(windows)]` 设 DACL，就是「**一个安全性质两个实现**」，
 /// 什么时候漂开没有任何东西会说。
 ///
@@ -38,7 +38,7 @@ use std::path::Path;
 /// 调用方只知道「写完要让它只给本人」，不知道这个平台上那句话怎么落。
 ///
 /// ⚠ **诚实边界**（与本文件头注 `10g` 同一条）：没有判据钉「平台原语只许住这一层」。
-/// `backend/mod.rs` 那条只扫 `backend/`，daemon 的 `fallback_guard` 只扫 `platform/`,
+/// `backend/mod.rs` 那条只扫 `backend/`，backend 的 `fallback_guard` 只扫 `platform/`,
 /// **两条都扫不到 `src/bridge/crates/`** ⇒ 有人在别处再写一个平台 cfg **不会红**。今天靠约定。
 pub fn make_private(p: &Path) -> Result<(), String> {
     creds_core::perm::make_private(p)

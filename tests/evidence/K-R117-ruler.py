@@ -131,7 +131,13 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
                        "POSIX 那一侧的同一件事是写进 rc 的那个围栏块")),
     ("ccm.status", (B1, "R64+K26+K-R111",
                     "查装态。`K-R111` 已判 `cc_integration_status` 归属重判、该挪进安装面")),
-    ("daemon.deploy", (B1, "K33+K27", "推 / 撤远端那一份后端，本来就是「装后端」")),
+    # 🔴 〔步 8 改名 2026-09-19〕这张归档表的四个能力 id 跟着账本改了：
+    #   `daemon.deploy` · `app.daemon-policy` · `daemon.lifecycle` · `daemon.status`
+    #   → `backend.*`。判据自己红的时候说「**别改表去凑**」，核法照它给的两条：
+    #   ① 新名在盘上吗 —— `tests/bridge/parity_ledger_tests.rs` 里四个 `backend.*` 都在 ✅
+    #   ② 两侧跟上了吗 —— `sftp.rs:743/796` ＋ `ipc/commands.ts:739/959` 都跟上了 ✅
+    #   ⇒ 是「有人改了命令名」那一种，**改表是跟上真相，不是凑绿**。
+    ("backend.deploy", (B1, "K33+K27", "推 / 撤远端那一份后端，本来就是「装后端」")),
     ("acct-iso.deploy", (B1, "R75〔用@09-14「account进后端」〕", "已裁：account 进后端 ⇒ 落 ①")),
     ("acct-iso.check", (B1, "R75", "同上，查装态那一半")),
     # ──────────────────── ② 生成 rc 片段让用户自己填 ────────────────────
@@ -159,7 +165,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("accounts.trust", (NA, "—", "查远端信任态（ssh 那一侧，不是装东西）")),
     ("app.auto-launch", (NA, "—", "app 自己的开机自启开关")),
     ("app.config", (NA, "—", "app 自己的配置读写")),
-    ("app.daemon-policy", (NA, "—", "app 自己的退出策略开关")),
+    ("app.backend-policy", (NA, "—", "app 自己的退出策略开关")),
     ("app.data-paths", (NA, "—", "报 app 自己的数据目录")),
     ("app.diagnostics", (NA, "—", "app 自己的诊断开关 / 埋点")),
     ("app.logs", (NA, "—", "app 自己的日志")),
@@ -170,8 +176,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
     ("cc-bus.cockpit", (NA, "—", "cc-bus 驾驶舱的读 / 发消息，不是装 cc-bus")),
     ("creds.relay-key", (NA, "—", "中转那把第三方 API key（monitor 自己的凭据文件）")),
-    ("daemon.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
-    ("daemon.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
+    ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
+    ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
     ("history.branch", (NA, "—", "会话历史")),
     ("history.delete", (NA, "—", "会话历史")),
     ("history.list-projects", (NA, "—", "会话历史")),
@@ -273,10 +279,15 @@ SITE_TOOLID_NONE_BUT_ARCHIVED = ("build.rs::embed_daemons",)
 #    两边任何一侧漂了，`R8a`/`R8b` 当场红。
 SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
     ("S1", ("①-远端半", (
-        "deploy_remote_daemon",
+        # 🔴 〔步 8 改名 2026-09-19〕`*_remote_daemon → *_remote_backend`。
+        # ⚠ 本条红的时候逐字写着「**别改表去凑**：要么是切件方案指了一条盘上不存在的命令，
+        #   要么是有人改了命令名」。**核过了，是后者**：
+        #   `sftp.rs:743/796` 两个新名在盘上、`ipc/commands.ts:739/959` 两侧都跟上了。
+        #   ⇒ 改表是**跟上真相**，不是凑绿。
+        "deploy_remote_backend",
         "install_remote_ccm_helper",
         "uninstall_remote_ccm_helper",
-        "uninstall_remote_daemon",
+        "uninstall_remote_backend",
     ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
        "`ccm.install`/`ccm.uninstall` 的远端半」。现打这四条的住址恰好都在 `sftp.rs`")),
     ("S2", ("①-本机半", (
@@ -1415,8 +1426,8 @@ def main() -> int:
         ("ORIGIN_TAKING_BOTH", re.search(r"const ORIGIN_TAKING_BOTH", led_src)),
         ("tmux.manage 那条 ASYMMETRY_REASONS",
          re.search(r'\("tmux\.manage", Asym::', led_src)),
-        ("the_tmux_manage_row_stops_waiting_for_a_daemon_primitive",
-         re.search(r"fn the_tmux_manage_row_stops_waiting_for_a_daemon_primitive", led_src)),
+        ("the_tmux_manage_row_stops_waiting_for_a_backend_primitive",
+         re.search(r"fn the_tmux_manage_row_stops_waiting_for_a_backend_primitive", led_src)),
     ]
     for name, m in chain:
         if m is None:

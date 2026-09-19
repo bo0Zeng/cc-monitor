@@ -338,7 +338,7 @@ fn path_before(line: &str, at: usize) -> &str {
 /// **前缀形**（第四个返回值 `true`）：抽出来的符号名以 `_` 收尾。本仓真实出现两形，
 /// 都不是腐坏，而是写法：
 ///   · 通配（`build_local_` 后面跟着 `*_command`）；
-///   · 行折（`emit_daemon_` 与它的后半截被 `///` 换行拆开）。
+///   · 行折（`emit_backend_` 与它的后半截被 `///` 换行拆开）。
 /// ⇒ 这一档降级成「那个文件里有**某个**以它打头的声明」，**不许**当成找不到就报红。
 pub fn symbol_addresses(text: &str) -> Vec<SymbolAddress> {
     let mut out = Vec::new();
@@ -410,8 +410,8 @@ pub fn line_addresses(text: &str) -> Vec<LineAddress> {
 ///
 /// 一族「**声明缺口**」：某张表上写着「这一格今天盘上没有实现」（`None` / `false`），
 /// 而那句话**没有任何东西核**。本仓的活体是 `tool_registry.rs::TOOLS` 的 `remote-daemon`：
-/// 字段写着 `uninstallable: false`，而 `sftp.rs::uninstall_remote_daemon` 是设置面板上
-/// 那个「卸载 daemon」按钮背后的实现，**一直都在** —— 假申报活了一个月，一格没红。
+/// 字段写着 `uninstallable: false`，而 `sftp.rs::uninstall_remote_backend` 是设置面板上
+/// 那个「卸载后端」按钮背后的实现，**一直都在** —— 假申报活了一个月，一格没红。
 ///
 /// ⇒ 处方：申报「没有」的那一格，**去它家里扫一眼有没有一个没人认领的同族实现**。
 ///

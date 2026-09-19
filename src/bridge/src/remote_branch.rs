@@ -2,7 +2,7 @@
 //!
 //! 本地分叉在 `history::create_branch_session`（读本机 jsonl、写本机新文件）。
 //! 远端会话的 jsonl 在**另一台机器上**，monitor 够不着 —— 所以远端这条路是
-//! 「经 ssh 让 daemon 自己在那台机器上分叉」，monitor 只收结果。
+//! 「经 ssh 让后端自己在那台机器上分叉」，monitor 只收结果。
 //!
 //! # 为什么另起一个模块，而不是塞进 `remote_history.rs`
 //!
@@ -10,15 +10,15 @@
 //! 一个新文件 —— 虽然是纯新增（见 INVARIANTS §1 里 F62/G6 那两段澄清），但把它塞进一个
 //! 自称只读的模块里，等于让那句头注开始说谎。**注释撒谎比没有注释更贵**，所以分家。
 //!
-//! # 契约（与 daemon `fork_write.rs` 对表；发版后冻结、已知会 aterm）
+//! # 契约（与 backend `fork_write.rs` 对表；发版后冻结、已知会 aterm）
 //!
 //! ```text
-//! <daemon> --fork-session <source-sid> <message-uuid>
+//! <backend> --fork-session <source-sid> <message-uuid>
 //!   成功: exit 0 + stdout 一行 {"sessionId":"…","jsonlPath":"…"}
 //!   失败: exit 2 + stderr 一行 {"code":"…","message":"…"}
 //! ```
 //!
-//! **daemon 只收 sid、不收路径**（见 `branch_core::find_session_file` 头注）：daemon 是被
+//! **backend 只收 sid、不收路径**（见 `branch_core::find_session_file` 头注）：backend 是被
 //! ssh 远程调起来的，少一个可被构造的路径入参就少一条路径穿越的攻击面。所以 monitor 这边
 //! 拿到的远端 jsonl 路径**不往回传**，只传 sid。
 //!
@@ -33,23 +33,23 @@ use crate::ssh_source::{self, RemoteExec};
 /// 与慢链路留的余量，同 `remote_history::LIST_TIMEOUT` 的量级。
 const FORK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// 旧 daemon 掉进流模式的判据：查询模式的输出不可能含 wire 的 `"kind":"hello"`。
+/// 旧后端掉进流模式的判据：查询模式的输出不可能含 wire 的 `"kind":"hello"`。
 ///
-/// **两种写法都要认**（Phase G 审计：原来只认无空格那条，而 `remote_history::is_old_daemon_hello`
+/// **两种写法都要认**（Phase G 审计：原来只认无空格那条，而 `remote_history::is_old_backend_hello`
 /// 认两条 —— 注释却写着「同一判据」，是句错话）。序列化器今天产的是无空格那条，
 /// 所以 `abort_marker` 用它（`abort_marker` 只能给一个子串，且要能在**半行**上命中、不等换行）；
 /// 判定时两条都查，免得哪天序列化器换了写法就退化成「等 30s 超时」。
 const HELLO_MARKER: &str = r#""kind":"hello""#;
 const HELLO_MARKER_SPACED: &str = r#""kind": "hello""#;
 
-fn looks_like_old_daemon(stdout: &str) -> bool {
+fn looks_like_old_backend(stdout: &str) -> bool {
     stdout.contains(HELLO_MARKER) || stdout.contains(HELLO_MARKER_SPACED)
 }
 
-const OLD_DAEMON_MSG: &str =
-    "远端 daemon 版本过旧（不支持远端分叉）——请重新部署 daemon 后再试（src/doc/REMOTE-PHASE0-DEPLOY.md）";
+const OLD_BACKEND_MSG: &str =
+    "远端后端版本过旧（不支持远端分叉）——请重新部署后端后再试（src/doc/REMOTE-PHASE0-DEPLOY.md）";
 
-/// daemon 失败时 stderr 上的信封。字段少写/多写都容忍不了 —— 认不出就退回展示原文，
+/// backend 失败时 stderr 上的信封。字段少写/多写都容忍不了 —— 认不出就退回展示原文，
 /// **绝不**把「认不出的错误」静默成成功。
 #[derive(serde::Deserialize)]
 struct ForkErrEnvelope {
@@ -60,7 +60,7 @@ struct ForkErrEnvelope {
 /// 拼进远端命令的 id 一律先过白名单。
 ///
 /// 两个参数最终都会经 `shell_quote` 单引号包裹，所以这里**不是**注入防线的最后一道；
-/// 它的作用是 **fail-fast**：一个明显不是 sid/uuid 的串没必要跑一趟 ssh 才被 daemon 拒。
+/// 它的作用是 **fail-fast**：一个明显不是 sid/uuid 的串没必要跑一趟 ssh 才被后端拒。
 /// 字符集与共享那份 `branch_core::is_plain_sid` 一致（`[A-Za-z0-9-]`，长度 1..=64）。
 ///
 /// ⚠ **这里刻意没有改成直接调它**，理由如实写：本函数要把「长度不对」与「有非法字符」
@@ -93,13 +93,13 @@ fn build_fork_cmd(daemon_path: &str, source_sid: &str, message_uuid: &str) -> St
 /// 纯函数，故可直测 —— 这是本模块真正要守的判断，SSH 那半只是搬运。
 ///
 /// 判定顺序刻意如此：
-/// 1. **先看旧 daemon** —— 它 stdout 有内容、可能还 exit 0，不先拦会被误读成「输出解析失败」。
+/// 1. **先看旧 backend** —— 它 stdout 有内容、可能还 exit 0，不先拦会被误读成「输出解析失败」。
 /// 2. **`exit_status == None` 归失败**。没拿到退出码 = 连接被掐/服务端不守规矩，
 ///    把它当 0 正好把「没跑成」读成「跑成了」。
 /// 3. exit 0 才解析 stdout；解析不出来仍是失败（**绝不返回一个空壳 `BranchResult`**）。
 fn interpret_fork_exec(ex: &RemoteExec) -> Result<BranchResult, String> {
-    if looks_like_old_daemon(&ex.stdout) {
-        return Err(OLD_DAEMON_MSG.to_string());
+    if looks_like_old_backend(&ex.stdout) {
+        return Err(OLD_BACKEND_MSG.to_string());
     }
 
     // ★ Phase G 审计：**扫所有行**，不是只看第一条非空行。
@@ -131,15 +131,15 @@ fn interpret_fork_exec(ex: &RemoteExec) -> Result<BranchResult, String> {
                 }
             }
             Err(if saw_any {
-                "远端分叉：daemon 报成功，但输出里找不到结果 JSON（远端 shell 是不是打了 banner？）"
+                "远端分叉：backend 报成功，但输出里找不到结果 JSON（远端 shell 是不是打了 banner？）"
                     .to_string()
             } else {
-                "远端分叉：daemon 报成功却没有输出结果".to_string()
+                "远端分叉：backend 报成功却没有输出结果".to_string()
             })
         }
         Some(code) => Err(match stderr_detail() {
             Some(d) => format!("远端分叉失败：{d}"),
-            None => format!("远端分叉失败（daemon 退出码 {code}，且没有给出原因）"),
+            None => format!("远端分叉失败（backend 退出码 {code}，且没有给出原因）"),
         }),
         None => Err(match stderr_detail() {
             Some(d) => format!("远端分叉失败（没收到退出码，连接可能中断）：{d}"),

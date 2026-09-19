@@ -91,7 +91,7 @@ fn claude_shape_is_not_codex_turn_end() {
 }
 
 /// Phase D 审计修：sid 提取校验对齐 monitor（rollout- 前缀 + 末36 UUID 形），畸形名 → None（跳过、
-/// 不吐幽灵行），合法名 → 末36 UUID。补 daemon 侧此前缺的畸形名覆盖。
+/// 不吐幽灵行），合法名 → 末36 UUID。补后端侧此前缺的畸形名覆盖。
 #[test]
 fn codex_sid_from_path_validates_like_monitor() {
     let p = |n: &str| PathBuf::from(n);

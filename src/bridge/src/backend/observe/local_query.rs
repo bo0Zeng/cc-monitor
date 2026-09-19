@@ -2,13 +2,13 @@
 //!
 //! # 它是什么、为什么形态是这样
 //!
-//! daemon 的**读面**是 14 条一次性查询子命令（`--list-projects` / `--usage` / `--search` …）。
+//! backend 的**读面**是 14 条一次性查询子命令（`--list-projects` / `--usage` / `--search` …）。
 //! ⚠ 那批读**不在常驻通道上**：流连接的 hello 声明的 `commands` 是
 //! `["cancel","kill","launch","ping","resolve"]` —— **一条读命令都没有**。
-//! ⇒ 「把本机读面切到后端」的意思是 **exec 一次 sidecar 拿 stdout**，
+//! ⇒ 「把本机读面切到后端」的意思是 **exec 一次本机后端拿 stdout**，
 //! **不是**跟那个被监护的常驻进程说话（那个是给 observe / 控制用的）。
 //!
-//! 远端那条路早就是这个形态（`ssh host <daemon> --list-projects`），
+//! 远端那条路早就是这个形态（`ssh host <backend> --list-projects`），
 //! 而本机一直缺这一跳 —— `src/doc/ARCHITECTURE.md §1.1` 里写着
 //! 「POSIX 本地 = 不走 ssh 的远端，同一套分解，只是没有 SSH 那一跳」，本模块就是那一跳的本地版。
 //!
@@ -18,7 +18,7 @@
 //!
 //! # 诚实降级不是可选项（定框 §5）
 //!
-//! sidecar 可能**不在**：开发树里今天就没有（`externalBin` 只在发版 `--config` 时注入，F05b）。
+//! local_backend 可能**不在**：开发树里今天就没有（`externalBin` 只在发版 `--config` 时注入，F05b）。
 //! ⇒ 本模块的返回值是 **tagged 三态**，不是 `Result<String, String>`：
 //! 调用方必须能分开「后端不在」（该回落/该提示装）与「后端在但这条查询失败了」（该报原因）。
 //! 把两者压成一个 `Err(String)` 就是让上层猜 —— 那正是 F14 那次「静默回落」的形状。
@@ -52,7 +52,7 @@ pub(crate) fn classify(code: Option<i32>, stdout: String, stderr: String) -> Que
         Some(0) => QueryOutcome::Ok(stdout),
         other => QueryOutcome::Failed {
             code: other,
-            // 保留原样（含尾部换行由调用方决定怎么显示）——daemon 把失败原因写在 stderr 上，
+            // 保留原样（含尾部换行由调用方决定怎么显示）——backend 把失败原因写在 stderr 上，
             // 而 `--fork-session` 那族的经验是：截断/改写它等于把用户能看懂的原因弄丢。
             stderr,
         },
@@ -75,11 +75,11 @@ pub(crate) fn run_query(
 ) -> QueryOutcome {
     // 🔴 这是本文件唯一一条**跨能力线**的引用（`observe → control`），`K-R71` 归位时才显形 ——
     // 先前它写成 `super::local_backend::…`，因为两个文件当时同住 `control/`。
-    // 方向是对的（daemon 侧 `layering_guard` 逐字：`observe → control` 许、反向一条都不许），
+    // 方向是对的（backend 侧 `layering_guard` 逐字：`observe → control` 许、反向一条都不许），
     // ★〔`K-R73` 09-12，`DECISIONS.md#R29` 裁定三〕**这条边现在有登记的家了**：
-    // `backend/mod.rs` 的 `layering` 模块照 daemon 的形立了两条判据 ——
+    // `backend/mod.rs` 的 `layering` 模块照后端的形立了两条判据 ——
     // 正向逐条列举、条数被等号钉住（下面三个符号各占一条），反向零容忍。
-    // 〔本段原话逐字，留作来历：「⚠ 但**monitor 侧今天没有任何判据在数这条边**：daemon
+    // 〔本段原话逐字，留作来历：「⚠ 但**monitor 侧今天没有任何判据在数这条边**：backend
     //  那侧要求「接口面显式列举、条数钉住」（`ALLOWED_OBSERVE_TO_CONTROL`），
     //  monitor 侧的对应物**不存在**。如实记，不假装钉住了。」〕
     // ⚠ 加一处新的 `control::` 引用**会红** —— 那不是坏了，是要你先回答

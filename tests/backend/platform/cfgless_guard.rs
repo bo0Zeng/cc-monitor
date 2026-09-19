@@ -15,11 +15,11 @@
 //! ⇒ 判据只看得见**带 cfg** 的平台代码，看不见**不带 cfg** 的，
 //! 而后者才是真正编不过的那一类。09-10 `K-W2D` 接线那一拍就从这条缝里漏了一处：
 //! 已删的那条按需拉取路里「落一个可执行文件」那一跳，引了 `std::os::unix::fs` 里那个给 `mode(…)` 的扩展
-//! trait，**一个 cfg 都没有**，daemon 从那一刻起在 Windows 上名字解析就过不了 ——
+//! trait，**一个 cfg 都没有**，backend 从那一刻起在 Windows 上名字解析就过不了 ——
 //! ⚠ 这里刻意**不把那个 trait 的名字逐字写出来**：`readonly_guard` 的默认层扫本 crate
 //!   生产段（**连注释一起扫**，那是它 fail-closed 的设计），而那个名字在它的禁词表上
 //!   —— 本文件不在写面白名单里，写出来当场红。实测过一次，如实记在这里。
-//! 而当天**门禁全绿**：沙箱门禁的 `winchk` 射程是 `-p monitor`，**不含 daemon**。
+//! 而当天**门禁全绿**：沙箱门禁的 `winchk` 射程是 `-p monitor`，**不含 backend**。
 //!
 //! # 两族判据，一张人群
 //!
@@ -76,14 +76,14 @@
 //!   本 crate 全量过 `cargo fmt --check`（CI 与沙箱门禁各一道）⇒ 今天不会出现；
 //!   哪天 fmt 那道门没了，这一条同时失效。
 //! - 🔴 **它不是跨 target 编译的替代品。** 真判据一直是
-//!   `cargo check --all-targets --target x86_64-pc-windows-msvc`（CI 的 daemon job 那一步，
+//!   `cargo check --all-targets --target x86_64-pc-windows-msvc`（CI 的 backend job 那一步，
 //!   带 zig 的三个环境变量）。本模块买到的是**在那道门跑不到的地方也能出声**
-//!   —— 本机那道 `tests/scripts/verify-committed-state.sh` 的 `daemon-win` 今天卡在 `ring`
+//!   —— 本机那道 `tests/scripts/verify-committed-state.sh` 的 `backend-win` 今天卡在 `ring`
 //!   的构建脚本上（现打：EXIT=101、`failed to find tool "lib.exe"`、
-//!   `Checking cc-monitor-remote` 命中 **0** ⇒ 根本走不到我们的代码），
+//!   `Checking cc-monitor-backend` 命中 **0** ⇒ 根本走不到我们的代码），
 //!   而 CI 那道只看 `origin/main`，本仓的红线是**不 push**。
 //!
-//! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改 daemon 行为。
+//! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改后端行为。
 
 #![cfg(test)]
 

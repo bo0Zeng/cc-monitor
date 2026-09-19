@@ -31,7 +31,7 @@ fn inbound_never_reaches_into_the_observe_layer() {
 /// F90 说「登记表主键必须 opaque + 稳定」。今天 `running` 表的主键就是客户端给的
 /// 不透明 `id`，天然合规 —— 本条防的是**后人「顺手」从 id 里抠信息**
 /// （比如约定 `sid:xxx` 前缀然后 `strip_prefix`）。一旦那样，`id` 就不再不透明，
-/// 客户端换个格式就崩，而且 daemon 会开始依赖一个它无权定义的结构。
+/// 客户端换个格式就崩，而且后端会开始依赖一个它无权定义的结构。
 #[test]
 fn the_request_id_is_never_parsed() {
     let src = crate::guard_support::production_code(include_str!("../../src/backend/inbound.rs"));
@@ -53,8 +53,8 @@ fn the_request_id_is_never_parsed() {
     assert!(
         hits.is_empty(),
         "有人在解析 `id`：{hits:?}\n\
-             它是**客户端给的不透明串** —— daemon 只许 clone / 比较 / 回显。\n\
-             从里面抠信息 = 让 daemon 依赖一个它无权定义的结构（F90）。"
+             它是**客户端给的不透明串** —— backend 只许 clone / 比较 / 回显。\n\
+             从里面抠信息 = 让后端依赖一个它无权定义的结构（F90）。"
     );
 }
 
@@ -70,7 +70,7 @@ fn the_request_id_is_never_parsed() {
 ///
 /// # 为什么还留着这面镜子
 ///
-/// monitor 侧 `inbound_client.rs` 与 `tests/e2e/inbound-daemon-frames.sh` 都在**文本抽取**
+/// monitor 侧 `inbound_client.rs` 与 `tests/e2e/inbound-backend-frames.sh` 都在**文本抽取**
 /// `const COMMANDS`（拿它做跨轨对拍）。把它换成运行时派生会同时打断那两处。
 /// ⇒ 保留字面量，由本条钉住它不漂。
 #[test]

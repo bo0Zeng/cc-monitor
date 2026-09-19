@@ -175,7 +175,7 @@ struct Manifest {
     accounts: Vec<Account>,
 }
 
-/// 账号表。**唯一真相源是那份 manifest** —— 从前 `shared/ccm` 要跨一次进程去问 daemon
+/// 账号表。**唯一真相源是那份 manifest** —— 从前 `shared/ccm` 要跨一次进程去问 backend
 /// 才拿得到它（`--list-accounts --accts-dir`），那一整段是 bash 与后端说话的**税**，
 /// 不是功能。同一个二进制之下它整块消失。
 #[derive(Debug, Clone, Default)]

@@ -210,7 +210,7 @@ impl LivenessOracle for SessionMapLiveness {
 /// # 🔴 为什么查询要作为参数传进来 —— `KR97D3` 判的那个可数的事实
 ///
 /// 同 `KR83D3` 的口径：**别判「代码里有没有 for 循环」**（那判的是写法），
-/// 要判**「一次调用里 spawn 了几次」**。真 sidecar 在红线内跑不了 ⇒ 把 spawn 那一步做成入参，
+/// 要判**「一次调用里 spawn 了几次」**。真本机后端在红线内跑不了 ⇒ 把 spawn 那一步做成入参，
 /// 判据就能拿一个**会计数的假查询**喂进来，直接数出「N 个项目 ⇒ 查询被调了几次」。
 ///
 /// 失效方向（本函数存在的理由）：一旦有人为了拿 star/hide 而在下面那个循环里补一句
@@ -276,7 +276,7 @@ where
 /// 而远端那条路早就是「问那台机器的后端要 `--list-projects`」。⇒ 同一个问题两份实现
 /// （`K-R54` 表第 12 行），且本机那份必然与后端那份漂移。
 /// 今天两条路**吃同一条查询、同一份解释**（`remote_history::history_project_from_row`），
-/// 差别只剩传输：远端多一跳 SSH，本机 exec 一次 sidecar（`backend::observe::local_query`）。
+/// 差别只剩传输：远端多一跳 SSH，本机 exec 一次本机后端（`backend::observe::local_query`）。
 ///
 /// ⚠ **如实记诚实边界，别读成「完全等价」**：
 /// - **`project_dir` 的形状变了**：从前是**绝对路径**，现在是后端给的**编码目录名**
@@ -286,7 +286,7 @@ where
 ///   两份实现从前**故意不一致**并被一条判据钉着（`ROADMAP §5`）；本件把 monitor 那份删了，
 ///   分歧随之消失（不是「对齐」，是**只剩一处**）。
 /// - **`CLAUDE_CONFIG_DIR` 指向不存在的路径时**：monitor 从前会回落到 `~/.claude`，
-///   sidecar 不会。极少见，但不是零。
+///   local_backend 不会。极少见，但不是零。
 /// - **Codex 那半没动**：后端侧今天没有 codex 的项目枚举（`--list-projects` 只服务 claude），
 ///   本机仍自己合成（`codex_projects`）—— 那条登记还挂在 `local_read_surface_registry` 上。
 ///
@@ -815,7 +815,7 @@ pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<
 
 /// 建分支的返回体（前端据此提示 / 一键 resume 新分支）。
 ///
-/// **`Deserialize` 是给远端那条路用的**（G6）：daemon 的 `--fork-session` 在 stdout 吐同形 JSON，
+/// **`Deserialize` 是给远端那条路用的**（G6）：backend 的 `--fork-session` 在 stdout 吐同形 JSON，
 /// `remote_branch` 直接反序列化成本类型 —— 两条路一个类型，前端的成功处理才只有一份。
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -859,7 +859,7 @@ fn read_jsonl_values(path: &Path) -> Result<Vec<serde_json::Value>, String> {
     Ok(out)
 }
 
-// G1：**记录变换已提成共享 crate** `branch-core` —— monitor 与远端 daemon 共用同一份。
+// G1：**记录变换已提成共享 crate** `branch-core` —— monitor 与远端后端共用同一份。
 // 搬走的理由与选型过程见 `.claude/planned-build/branch-anywhere/features/G1-*.md`；
 // 落盘格式的实证判据见该 crate 的 `build_branch_records` 头注。
 // **本文件只留 IO**（读 jsonl 的口径 ＋ `O_EXCL` 落盘，那两样是 monitor 侧特有的）；
@@ -1059,7 +1059,7 @@ fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
 /// ⚠ 那句「本模块**不 attach**，一次都不」（`src/backend/control/launch.rs`
 /// 头注）**仍然对** —— 它说的是**远端后端**，理由逐字是「在远端，**开不了你面前的窗**」。
 /// 🔴 **本机后端就在用户面前那台机器上** ⇒ 那条位置约束在这一侧不成立。
-/// `R61` 立的就是这件事：**不许再用「daemon」这个词把这两件事压平。**
+/// `R61` 立的就是这件事：**不许再用「backend」这个词把这两件事压平。**
 ///
 /// # ⚠ `Attach` 与另外两个变体**不是同一类动作**，三处边界写在这里
 ///
@@ -1680,9 +1680,9 @@ fn render_local_ccm_with(
 /// 加上 `launch_local_posix` 的 stdio 全 null ⇒ 一个**无 tty、无 tmux** 的进程，
 /// 用户敲进去的字会被脚本吃掉。顺序由 `the_local_launch_tries_the_renderer_before_the_old_path` 钉住。
 ///
-/// # ⚠ 本机 `launch` **不经 daemon**，而本机 `kill` 经〔E 阶段全局审计 08-12，待决 `U13`〕
+/// # ⚠ 本机 `launch` **不经 backend**，而本机 `kill` 经〔E 阶段全局审计 08-12，待决 `U13`〕
 ///
-/// `daemon_kill.rs::daemon_kill` 那条本机 kill 走的是 daemon 通道（P3 刀 2）；本函数**没有**。
+/// `backend_kill.rs::backend_kill` 那条本机 kill 走的是后端通道（P3 刀 2）；本函数**没有**。
 /// 同一个控制面里两条命令走了两条路，而 `control-parity` 的 `C1` 逐字排除的正是
 /// 「本地直接 `Command::new` spawn」这条今天的做法 —— 也就是**本函数下游那条**。
 ///
@@ -1717,7 +1717,7 @@ fn render_local_ccm_with(
 ///   app 自带并自管环境、后端只有一个 ⇒「对面装了**别的** `ccm`」这个概念本身正在退场，
 ///   **不许再拿它当理由**；
 /// - 我们自己这份 `ccm` 的容器路**本来就转发** `ANTHROPIC_BASE_URL`
-///   （`src/backend/control/ccm/plan.rs`，daemon 侧有判据真去驱动它）。
+///   （`src/backend/control/ccm/plan.rs`，backend 侧有判据真去驱动它）。
 ///
 /// ⇒ 今天的形状是：**转发做到了、也声明了** —— `K-R61` 把 `base-url-across-tmux`
 /// 补进了 `src/backend/control/ccm/mod.rs` 的 `CAPABILITIES`，
@@ -1887,13 +1887,13 @@ fn launch_local(
 // `K-H2b`：注入侧的三个判断（**账号 id 从哪来 · 表里有没有它 · 中转在不在**）
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// 这次拉起的账号在**中转表**里的 id。
+/// 这次拉起的账号在**apikey 表**里的 id。
 ///
 /// # ⚠ 它是**推出来的**，不是传下来的 —— 这一格必须写清楚
 ///
 /// [`LaunchAccount::Named`] 只有一个字段 `config_dir`，**没有名字**（`render_local_ccm`
 /// 头注里那条「②有 configDir 没名字 ⇒ 说不出 ⇒ 降级」记的就是这件事）。
-/// 而中转表按**账号 id** 索引 ⇒ 这里只能拿 `config_dir` 的**末段目录名**当 id：
+/// 而apikey 表按**账号 id** 索引 ⇒ 这里只能拿 `config_dir` 的**末段目录名**当 id：
 /// `cc-acct-iso` 的布局逐字是 `~/.claude-alt/<名字>`，`local_accounts.rs` 读出来的
 /// 账号名**就是那个目录名**。
 ///
@@ -1910,7 +1910,7 @@ fn relay_account_id(account: Option<&LaunchAccount>) -> Option<String> {
     }
 }
 
-/// 上一条的**纯派生半** —— 「一个 configDir 对应中转表里哪个 id」。
+/// 上一条的**纯派生半** —— 「一个 configDir 对应apikey 表里哪个 id」。
 ///
 /// ★ 抽出来的理由是**只许有一份**：界面那一侧（徽章要显「这个号走不走中转」）问的是
 /// **同一个问题**，而它手上也只有 configDir。两边各写一个 basename 规则，
@@ -1935,7 +1935,7 @@ pub(crate) fn relay_account_id_of_dir(config_dir: &str) -> Option<String> {
 /// 而**这条规则本身**（怎么从 configDir 推 id、怎么和表比）不该只能对着真实的家目录跑。
 ///
 /// ⚠ **它答的是「表里有没有这一行」，不是「这个 key 能不能用」** —— 后者要到 claude 那边才知道。
-/// ⚠ 也不是「这次拉起会不会真的注入」：那还要过 `relay_running` 那一格（`relay_injection_for`）。
+/// ⚠ 也不是「这次拉起会不会真的注入」：那还要过 `relay_running` 那一格（`apikey_endpoint_for`）。
 pub(crate) fn relay_routed_subset(config_dirs: &[String], rows: &[String]) -> Vec<String> {
     config_dirs
         .iter()
@@ -1944,7 +1944,7 @@ pub(crate) fn relay_routed_subset(config_dirs: &[String], rows: &[String]) -> Ve
         .collect()
 }
 
-/// 中转凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
+/// apikey 凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
 ///
 /// ⚠ 「读不到」与「一条都没配」在这里**故意同一处置**：两者的正确行为都是
 /// 「照旧走官方直连」，而把「读文件失败」变成一次起会话失败，是拿一个**能用的**状态
@@ -1968,7 +1968,7 @@ pub(crate) fn relay_rows() -> Vec<String> {
 /// 中转装表时会把两类行**丢出表**（`relay::table::build`）：① 账号 id 当不了路由段；
 /// ② `base_url` 解析不了。本函数**只筛得掉第 ①** 类（`payload::relay_segment_is_safe`
 /// 与 `route::segment_is_safe` 是同一条规则，由 `payload.rs` 那边的头注登记着）。
-/// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住 daemon 那一侧、monitor 够不着
+/// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住后端那一侧、monitor 够不着
 /// （单向依赖）。
 /// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而中转那侧 404。
 /// **如实登记，不假装两侧人群相等。**〔`D1` 点名的那条同族，处置是「筛掉能筛的、写清剩下的」。〕
@@ -1983,7 +1983,7 @@ pub(crate) fn relay_rows_at(path: &std::path::Path) -> Vec<String> {
             .filter(|id| crate::backend::control::payload::relay_segment_is_safe(id))
             .collect(),
         Err(e) => {
-            tracing::debug!("中转凭据文件读不成表（照旧走官方直连）：{e:?}");
+            tracing::debug!("apikey 凭据文件读不成表（照旧走官方直连）：{e:?}");
             Vec::new()
         }
     }
@@ -2000,7 +2000,7 @@ fn relay_prefix_for(
     windows: bool,
 ) -> Result<String, String> {
     let agent = crate::adapter::active().id();
-    let url = crate::backend::control::payload::relay_injection_for(
+    let url = crate::backend::control::payload::apikey_endpoint_for(
         account_id, rows, running, sid, agent,
     )?;
     Ok(match url {
@@ -2018,7 +2018,7 @@ fn relay_prefix_for(
 /// 700 字节，断言那个窗口里**有没有**那两段文本。`D5` 现打的读数：在同一个窗口里加一行
 /// 把两段文本原样留住的死赋值（一个用不到的绑定就够），同时把真入参换成空表 / 常量
 /// ⇒ 文本一处不少、锚点命中数一处不少、**全量门禁四个数与干净树逐字相同**，
-/// 而「这个号在不在中转表里」「中转在不在跑」两件事**都不再被问**、中转前缀恒空。
+/// 而「这个号在不在apikey 表里」「中转在不在跑」两件事**都不再被问**、中转前缀恒空。
 ///
 /// 病史五层，每一层都是**上一层的修法买到的东西被下一层的量法漏掉**：
 /// ① 参数位没有账号 → ② 参数位有、值恒空 → ③ 值到得了、判据只量文本 →
@@ -2035,7 +2035,7 @@ fn relay_prefix_for(
 ///
 /// 先前这里逐字写着「这两个取值口的**生产消费方恰好 2**」，并把那个 2 当成了闸。
 /// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、**绕开这条缝**直接调
-/// `history::relay_rows()` / `local_daemon::relay_running()` ⇒ **全量门禁四个数与干净树逐字相同**。
+/// `history::relay_rows()` / `local_backend_host::relay_running()` ⇒ **全量门禁四个数与干净树逐字相同**。
 /// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
 /// ★ 定性（PM `§8 裁四`）：**治一个「今天数出来的 N」的过程中，长出了一个新的「今天数出来的 N」。**
 ///
@@ -2046,7 +2046,7 @@ fn relay_prefix_for(
 /// - 裸标识符 `relay_rows` / `relay_running` 各恰好 **2** 处（定义 + 本结构这一处）；
 /// - [`platform_is_windows`] **不再数总数**〔ccbus-win 09-10〕：它从今天起有了第二类消费方
 ///   （`cc_bus::resolve_bash` 只要「是不是 Windows」，走缝要顺带付 `relay_rows()` 读文件
-///   与 `relay_running()` 问 daemon 两笔钱），⇒ 那一格换成**点名住址**（`PLATFORM_TAKE_SITES`），
+///   与 `relay_running()` 问后端两笔钱），⇒ 那一格换成**点名住址**（`PLATFORM_TAKE_SITES`），
 ///   函数指针那一半改钉**差值**（裸标识符 − 调用形 == 1 = 只有本结构持有它）。
 ///   ★ 换制的理由是数个数会**抵消**：「加一处绕缝」＋「删一处正当」总数不变 ⇒ 一声不吭。
 ///   PM 09-10 在沙箱里现打过这一刀，住址制两条都逮得住（读数住 `audits/ccbus-win-PM.md`）。
@@ -2058,7 +2058,7 @@ fn relay_prefix_for(
 /// # 它买不到什么（如实写，别读宽）
 ///
 /// 本结构只管「**问不问**」与「**答案用不用**」。「那三个取值口自己答得对不对」由它们各自的
-/// 判据买（[`relay_rows_at`] 那条读真文件的 · `local_daemon::relay_running_really_reads_the_handle_table`）。
+/// 判据买（[`relay_rows_at`] 那条读真文件的 · `local_backend_host::relay_running_really_reads_the_handle_table`）。
 /// 而「生产上这条缝里插的**就是**那三个取值口」由 `the_production_relay_facts_are_those_two_take_points`
 /// 按**函数地址**对拍 —— 不是按文本。
 ///
@@ -2067,7 +2067,7 @@ fn relay_prefix_for(
 ///    `D6` 的刀 `Xa` 把它掏空成 `Vec::new()` ⇒ **全绿、门禁四个数与干净树逐字相同**。
 ///    🔴 **先前这里写的理由（「要动真实家目录，红线不许 ⇒ 做不到」）是假的，解锁条件（「要动 `paths.rs`」）也是假的**：
 ///    `paths.rs` 从 `dirs::home_dir()` 拼路径 ⇒ 在 Linux 上它读的就是 `$HOME`，
-///    而**本 crate 今天就有这个手法的先例**（`local_daemon::become_host_with_home` 里那行
+///    而**本 crate 今天就有这个手法的先例**（`local_backend_host::become_host_with_home` 里那行
 ///    `std::env::set_var("HOME", …)`）⇒ **写得出来，一个字节都不用动 `paths.rs`**。
 ///    **真代价**是这种判据必须 `--test-threads=1` ⇒ 只能住 `#[ignore]` 的 e2e 那条道
 ///    ⇒ **进不了 `tests/scripts/gate.sh`**。重新裁定的落点就是这一栏 + 件文件 `§4`。
@@ -2090,9 +2090,9 @@ fn relay_prefix_for(
 ///    「PowerShell 那一格」当场红（`D6` 的刀 `Xb` 打的正是调用点那一格）。
 #[derive(Clone, Copy)]
 pub(crate) struct RelayFactSources {
-    /// 「这个号在不在中转表里」——生产恒指 [`relay_rows`]。
+    /// 「这个号在不在apikey 表里」——生产恒指 [`relay_rows`]。
     pub(crate) rows: fn() -> Vec<String>,
-    /// 「中转在不在跑」——生产恒指 [`crate::local_daemon::relay_running`]。
+    /// 「中转在不在跑」——生产恒指 [`crate::local_backend_host::relay_running`]。
     pub(crate) running: fn() -> bool,
     /// 🔴 「这台机是不是 Windows」——生产恒指 [`platform_is_windows`]〔`D6 阻-3`，08-29〕。
     ///
@@ -2116,7 +2116,7 @@ pub(crate) fn platform_is_windows() -> bool {
 /// 生产上这条缝里插的那三个取值口。**只有这一处**，判据按地址对拍它。
 pub(crate) const PRODUCTION_RELAY_FACTS: RelayFactSources = RelayFactSources {
     rows: relay_rows,
-    running: crate::local_daemon::relay_running,
+    running: crate::local_backend_host::relay_running,
     windows: platform_is_windows,
 };
 
@@ -2213,7 +2213,7 @@ pub(crate) const LAUNCH_ID_VAR: &str = "CCM_LAUNCH_ID";
 /// # ⚠ 它欠的一笔账（如实登记，别读成缺陷也别读成没有）
 ///
 /// **新开**会话时，中转路由键与本 token 是**两个不同的 nonce**（同一份铸法被调了两次）——
-/// 中转那一次在 `payload::relay_injection_for` 里面，本文件够不着它算好的值。
+/// 中转那一次在 `payload::apikey_endpoint_for` 里面，本文件够不着它算好的值。
 /// 今天不构成缺陷：`mint_route_key` 头注现打登记过「route key 对路由完全惰性、tee 今天零消费者」，
 /// 而身份 token 与它**不共享任何消费者**。要它们相等得改 `payload.rs`（本拍只许读它）。
 fn launch_identity_token(action: &LocalPsAction) -> String {

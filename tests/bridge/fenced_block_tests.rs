@@ -217,7 +217,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 /// ＋ 全仓那条符号地址判据（改名 / 删了会红）。
 /// **`None` 那半边一条判据都没有** —— 「今天没有卸口」这句话，盘上真长出一个卸口
 /// 也不会有人回来改它。那正是 `tool_registry.rs::TOOLS` 上 `remote-daemon` 栽的坑
-/// （`sftp.rs::uninstall_remote_daemon` 是设置面板上的按钮，而字段写着卸不掉）。
+/// （`sftp.rs::uninstall_remote_backend` 是设置面板上的按钮，而字段写着卸不掉）。
 ///
 /// # 🔴 本条同时是 `K-R63 §0c-2` 要的那个**射程读数**
 ///

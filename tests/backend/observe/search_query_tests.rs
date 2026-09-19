@@ -112,7 +112,7 @@ fn filetime_from_ms(ms: i64) -> std::time::SystemTime {
 /// 🔴 `K-R122`（09-14）：**这一处换成了 `std::fs::File::set_times`，加的不是 `cfg`。**
 /// 上一版走 `unsafe { libc::utimensat(libc::AT_FDCWD, …) }` —— 那两个名字在
 /// `x86_64-pc-windows-msvc` 上**不存在**（`libc` 的 Windows 侧没有它们），
-/// 于是 daemon 那条「Windows 编得过」的跨 target check 在 **test 档**上红了 2 个错。
+/// 于是后端那条「Windows 编得过」的跨 target check 在 **test 档**上红了 2 个错。
 ///
 /// ⚠ **为什么这一处与 `sidecars/codepicture/acquire.rs` 那三条的处置相反**：
 /// 那三条断的是**只在 unix 上成立的语义**（可执行位 · `chmod` 造出来的 `EACCES`），

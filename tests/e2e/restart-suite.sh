@@ -11,7 +11,7 @@
 # 由 tests/tabs.vitest.ts「account-ux U6」块覆盖(单独 vitest 跑);本套件在**命令级**钉 confirm 闸门
 # (放行 / 拦下,B4/B1/B2),两者互补。
 #
-# 红线:daemon 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude / 只 kill 本套件建的 cc-<sid8>。
+# 红线:backend 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude / 只 kill 本套件建的 cc-<sid8>。
 set -euo pipefail
 
 # ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────

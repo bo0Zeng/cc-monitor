@@ -28,7 +28,7 @@
 //! | 调用点形态 | 用哪个表示 | 为什么 |
 //! |---|---|---|
 //! | `sh -c '<可能有多条分支的脚本>'` | [`UTF8_CLIENT_ENV`] | 一行盖住全部分支，「漏一条」这个动作不存在 |
-//! | 本机 argv 直传（一处就是一处） | [`UTF8_CLIENT_FLAG`] | 不依赖任何继承来的 env，而 daemon 的 env 最不受控 |
+//! | 本机 argv 直传（一处就是一处） | [`UTF8_CLIENT_FLAG`] | 不依赖任何继承来的 env，而后端的 env 最不受控 |
 //! | 跨 SSH 的命令串 | [`UTF8_CLIENT_FLAG`] | 对端不需要装任何 locale、不需要 sshd 配合 |
 //!
 //! ⚠ [`UTF8_CLIENT_FLAG`] **必须排在子命令之前**。放到后面实测是
@@ -58,7 +58,7 @@
 //! 本 crate 内的两个消费者（`control/gate.rs` · `observe/watcher.rs`）**引用**这里，
 //! 编译器兜住，漂不了。monitor 是**另一个二进制**：两个 crate 不共享源码树，
 //! 而共享 crate 的落点（`src/bridge/crates/*-core`）没有一个的职责装得下
-//! 「怎么起 tmux」这件事 ⇒ 那一份只能留在 `src/bridge/src/tmux.rs`，
+//! 「怎么起 tmux」这件事 ⇒ 那一份只能留在 `src/bridge/src/backend/control/tmux.rs`，
 //! 由它那侧的**跨仓对拍**读本文件把两边焊住（判据名与作用域写在那边的头注里）。
 
 /// **UTF-8 客户端旗（argv 形）** —— 一个口径两种表示里的那个**旗**。

@@ -141,7 +141,7 @@ impl EventReplay {
     /// `on_line_batch` 的 await 变体（Batch5-F17 审计 R1）：大 batch 的块序列
     /// **在调用方任务内发完才返回**——ssh_source 的攒批 flush 用它，保证行 emit
     /// 严格先于随后的 SessionRemoved/断连归档（issue #20 / FIX 2 的顺序契约），
-    /// 同时对 daemon 帧流形成天然背压（emit 期间不再收帧）。
+    /// 同时对后端帧流形成天然背压（emit 期间不再收帧）。
     pub async fn on_line_batch_awaited<R: Runtime>(
         &self,
         handle: &AppHandle<R>,
@@ -354,9 +354,9 @@ impl EventReplay {
     /// **远端**（`origin == Some(host)`）session 的去重 sid。
     ///
     /// 远端 sid 不在 session_map 里，对账要用 lib.rs 维护的远端活跃集
-    /// （remote-session-emitter 随 daemon 的 added/removed 增删）。**不区分 host**：
+    /// （remote-session-emitter 随后端的 added/removed 增删）。**不区分 host**：
     /// 多机（#30）下仍依赖「sid 全局唯一」—— Claude sid 是 UUID v4，跨机碰撞概率 ≈ 0，
-    /// 故按裸 sid 去重/对账安全。**若将来 daemon 改用非 UUID sid（PID/自增），必须把
+    /// 故按裸 sid 去重/对账安全。**若将来后端改用非 UUID sid（PID/自增），必须把
     /// remote_active / 前端 Tab key / RemoteHwndCache 升为 (origin, sid)**（见 #30 跟进）。
     pub fn buffered_remote_session_ids(&self) -> Vec<String> {
         let inner = self.inner.lock();

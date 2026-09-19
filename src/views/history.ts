@@ -460,7 +460,7 @@ export class HistoryView {
     };
 
     // issue #16：远端项目走 stream_remote_history_sessions（独立 SSH 连接一次性
-    // exec daemon --list-sessions），本地走原 IPC。entry 结构两端一致。
+    // exec backend --list-sessions），本地走原 IPC。entry 结构两端一致。
     //
     // **C04d 批 6c：这里原来是「动态派发口」，现在不是了**（同批 6a 的两个 `stream_read_*`）。
     // 原形态 `const ipc = origin ? "A" : "B"` + `invoke(ipc, 超集args)` 是 C04a 记的
@@ -1909,7 +1909,7 @@ export class HistoryView {
     } catch {
       return; // fetch 失败 → 就不加账号项，默认 resume 仍可用
     }
-    if (!state.available) return; // 旧 daemon / 未启用 → 安静降级
+    if (!state.available) return; // 旧 backend / 未启用 → 安静降级
     const selectable = state.accounts.filter(isSelectable);
     if (selectable.length < 2) return; // 无可切换选择就不加噪
     if (this.openEntryMenu !== menu) return; // fetch 期间菜单已变/已关
