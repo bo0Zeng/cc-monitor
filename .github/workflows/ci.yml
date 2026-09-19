@@ -297,7 +297,7 @@ jobs:
       # 为什么突然要它：backend 引入 TLS（`rustls` → `ring`）之后，`ring` 的 build script 要**编 C**，
       # 而 cc-rs 在 Linux 上给 `*-pc-windows-msvc` 找不到 MSVC 的工具 ⇒ 下面那条跨 target check
       # **必红**（本机实测 exit 101，`error occurred in cc-rs: failed to find tool "lib.exe"`）。
-      # ⚠ 那个红**不是**我们的代码坏了：失败输出里 `Checking cc-monitor-remote` 命中 **0**，
+      # ⚠ 那个红**不是**我们的代码坏了：失败输出里 `Checking cc-monitor-backend` 命中 **0**，
       #   它根本没走到我们这一行 ⇒ 「平台线的唯一真判据」当时等于**没了**。
       #
       # 为什么是 zig：它一个包同时给齐三样（本机逐条实测过）——
@@ -340,8 +340,8 @@ jobs:
         #
         # ★★ 逐字说清这一步今天证什么、**不**证什么（别让下一个人把它读大一格）：
         #   · **证**：我们自己的 Rust 代码（含中转与 TLS）在 `x86_64-pc-windows-msvc` 上
-        #     `--all-targets` 全量类型检查通过。本机实测 exit **0**，`Checking cc-monitor-remote` 命中 **1**
-        #     （⚠ 包名是 `cc-monitor-remote`，目录名才是 `src/backend` —— 拿目录名当 needle 会永远数出 0）。
+        #     `--all-targets` 全量类型检查通过。本机实测 exit **0**，`Checking cc-monitor-backend` 命中 **1**
+        #     （⚠ 包名是 `cc-monitor-backend`，目录名才是 `src/backend` —— 拿目录名当 needle 会永远数出 0）。
         #   · **不证**：`ring` 的那点 C 在 **MSVC ABI** 下编得过。这里编的是 **windows-gnu ABI 的 COFF**，
         #     因为 zig 不带 MSVC 的 libc 头（实测 `-target x86_64-windows-msvc` 直接
         #     `'string.h' file not found`）。`cargo check` **不链接** ⇒ 那份 `.lib` 从头到尾没人用，
@@ -951,11 +951,11 @@ jobs:
       #    `backend-cc-bus` 三套原先加在这里，已搬去 `e2e-tmux-rust`。**
       #    它们每一套第一件事就是硬门一个**真后端二进制**
       #    （`tests/e2e/backend-sessions-rewatch.sh:29` · `backend-tmux-late-server.sh:23` ·
-      #    `backend-cc-bus.sh:31`，默认路径 `.build/backend/debug/cc-monitor-remote`），
+      #    `backend-cc-bus.sh:31`，默认路径 `.build/backend/debug/cc-monitor-backend`），
       #    而本 job 按上面那条拆法（`:623`「按『要不要 Rust 工具链』拆两个 job」）
       #    **刻意不装 Rust 工具链、不编任何东西** ⇒ 它们在这里
       #    **不可能绿**。云端首跑（run `34432595554`）三套逐字报
-      #    「需要后端二进制：…/target/debug/cc-monitor-remote（先 cargo build -p cc-monitor-remote）」。
+      #    「需要后端二进制：…/target/debug/cc-monitor-backend（先 cargo build -p cc-monitor-backend）」。
       #    ⚠ **加错 job 这件事从 `a952b47` / `81c1bab`（08-13）起就在**，一个月没人发现 ——
       #    因为本流水线只在 `push`/`pull_request` 上触发，而本仓当时不 push：
       #    **一条没人在跑的判据，加错了地方也不会有人知道。**
@@ -1026,7 +1026,7 @@ jobs:
       #   `:660` 那道反向自检在这一套上永远命中，见它头上那段警告。
 
       # G-C：这三套要一个**真后端二进制**（backend-wrapper.sh 默认取
-      # `.build/backend/debug/cc-monitor-remote`）。主计划把「怎么把后端产物
+      # `.build/backend/debug/cc-monitor-backend`）。主计划把「怎么把后端产物
       # 从 `backend` job 传过来」记成 G-C 唯一的技术不确定性——**直接在本 job 里编就绕开了**：
       # 本 job 已有 Rust 工具链，而 backend crate 比它已经在编的 src/bridge 轻得多。
       - name: build debug backend（供 backend-frames 三套）
@@ -1052,7 +1052,7 @@ jobs:
       # 🔴 〔`K-R48` 第二拍 09-11〕264 → 46：`shared/ccm` 删了，本套件的被测对象换成后端二进制。
       #    逐条判词住 `tests/evidence/K-R48-356-verdicts.tsv`；构成与理由写在 `tests/scripts/gate.sh`
       #    那两行 `run_e2e` 上方（那是「三处一起改」里说理最全的一处，别在这儿再抄一份）。
-      # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-remote`）——
+      # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-backend`）——
       #    套件顶上那道 `[ -x ]` 是 fail-closed 的，不 build 就红。
       - name: ccm CLI 契约（F02）
         run: bash tests/e2e/assert-pass-floor.sh ccm-cli 46

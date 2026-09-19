@@ -379,7 +379,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 ## 10. 远端后端 wire 协议（issue #15 / #16，**流式，非文件 IPC**）
 
-唯一的非文件 IPC：SSH 远端模式下，远端 `cc-monitor-remote` 后端经 **SSH stdout** 把远端会话流式传回 monitor。在此集中协议契约；部署见 [REMOTE-PHASE0-DEPLOY.md](REMOTE-PHASE0-DEPLOY.md)。
+唯一的非文件 IPC：SSH 远端模式下，远端 `cc-monitor-backend` 后端经 **SSH stdout** 把远端会话流式传回 monitor。在此集中协议契约；部署见 [REMOTE-PHASE0-DEPLOY.md](REMOTE-PHASE0-DEPLOY.md)。
 
 ### 实时流（流模式启动后端）
 
@@ -871,8 +871,8 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 **在此之前是二分**（剥掉流 flag、剩下非空就当查询），实测后果：
 
 ```text
-$ cc-monitor-remote --some-future-flag
-cc-monitor-remote query error: unknown argument: --some-future-flag
+$ cc-monitor-backend --some-future-flag
+cc-monitor-backend query error: unknown argument: --some-future-flag
 rc=2
 ```
 
@@ -1136,7 +1136,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
   > 而安装包今天**没有 `externalBin`**（F05b）⇒ 两处都空 ⇒ 界面**回落到进程内拨号**。
 
   **前提翻了（这一格有读数）**：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
-  装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**、
+  装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**、
   裸 `monitor.exe` 那份 **0 个**。F05b 已随 v3.7.0 发出去：`externalBin` 住
   `src/bridge/tauri.sidecar.conf.json`，发版那一步用 `--config` 注入（**刻意不进基础
   `tauri.conf.json`**，进了 `cargo test` 也要一份当前 target 的二进制）。
@@ -1154,7 +1154,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
   1. 干净 win11 + **真安装包**装一次，配一行**填了 `keyPath`** 的远端，开一条后端流；
   2. 读两样：① monitor 日志里那条 `K-P6b: 不走拨号代理（有二进制=… · 配了 keyPath=…）` warn
      **出没出现**（它就是「这台机器上拨号仍在界面进程里」的运行期证据，出现即回落）；
-     ② 流开着的时候 monitor 底下**有没有**一个 `cc-monitor-remote.exe --dial` 子进程。
+     ② 流开着的时候 monitor 底下**有没有**一个 `cc-monitor-backend.exe --dial` 子进程。
      两样一致才算数；再各跑一趟**不填 `keyPath`** 的对照，把回落②那一支也钉住。
 
   ⚠ **今天没有任何自动化会碰到这一格**：`CCM_DIAL_PROXY` 在 `tests/e2e/` 与 `scripts/` 下**零命中**，

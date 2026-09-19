@@ -1,5 +1,5 @@
 [package]
-name = "cc-monitor-remote"
+name = "cc-monitor-backend"
 # 🔴 K-R70（09-12）：本 crate 刻意不用 Cargo.toml 的版本 —— 真身份住 src/main.rs 的 BUILD_ID
 #
 # 这一行**不是忘了填**，也**不许**顺手换成一个「像样」的数字。
@@ -35,7 +35,7 @@ edition = "2021"
 # 「一条都不许长到生产段」（真长过去，上面那句 standalone 就变假了）。
 
 [[bin]]
-name = "cc-monitor-remote"
+name = "cc-monitor-backend"
 path = "main.rs"
 
 # ── 秤 7（`调研/设计/17 §6` 表第 7 行）：`benches/` 从零立的第一条 ───────────────

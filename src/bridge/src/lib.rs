@@ -129,7 +129,7 @@ mod launcher_identity_registry; // K-P5b：起会话方身份落点清账 + 递�
                                 //  「F10（出口④）：本机读面清账 + 递减棘轮（**正题被 F05b 挡着**）」。
                                 //  括号里那句今天不成立：F05b 已经做完并随 v3.7.0 发出去了
                                 //  （09-10 干净 win11 现打，PM：装出来那份跑着 2 个
-                                //  `cc-monitor-remote.exe`、裸 `monitor.exe` 那份 0 个）。
+                                //  `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个）。
                                 //  今天挡着正题的是后端侧一批有名有姓的缺口，逐条写在
                                 //  那张表**自己每一行**里 —— 这里刻意不抄第二份（定框 E12）。〕
 mod local_read_surface_registry;
@@ -526,7 +526,7 @@ pub fn run() {
             //  local_backend（`externalBin` 归 F05b）。」它记的是 F05b 之前的世界，**今天不成立**。〕
             //
             // 证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
-            // **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
+            // **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
             // **2 个进程在跑**；**裸 `monitor.exe`** 那份 **0 个**。
             // F05b 已经做完并随 v3.7.0 发出去了：`externalBin` 配在
             // `src/bridge/tauri.sidecar.conf.json`，发版那一步用
@@ -579,7 +579,7 @@ pub fn run() {
                         //     〔订正 2026-09-10（v3.7.0）—— 原话逐字：「别的失败（安装包里
                         //      还没有 local_backend…）= 今天的**诚实降级**」。括号里那句今天不成立：
                         //      09-10 干净 win11 现打（PM）装出来那份跑着 2 个
-                        //      `cc-monitor-remote.exe`、裸 `monitor.exe` 那份 0 个。
+                        //      `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个。
                         //      ⚠ **分档标准本身一格没动**，换掉的只是它举的那个例子 ——
                         //      「诚实降级」这一档今天仍然有人（裸 exe · 开发树 · 释放失败）。〕
                         //   分档的依据是 `local_backend_host` 里那条**只在真的被拒绝时才写下**的记录，
@@ -1495,7 +1495,7 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 ///   "hosts": [
 ///     { "label": "pi", "host": "raspberrypi.local", "port": 22, "user": "pi",
 ///       "keyPath": "C:\\Users\\me\\.ssh\\id_ed25519",
-///       "daemonPath": "/home/pi/cc-monitor-remote",
+///       "daemonPath": "/home/pi/cc-monitor-backend",
 ///       "hostKeyFingerprint": "SHA256:..." }
 ///   ]
 /// }

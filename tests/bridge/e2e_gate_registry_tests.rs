@@ -217,7 +217,7 @@ fn every_exemption_still_points_at_a_real_ungated_suite() {
 /// # 它防的是一个实测出来的洞
 ///
 /// 那一格原来只数 `.build/backend/...`，而 08-12 实测：盘上活着的 backend
-/// 走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-remote`（`sftp::ensure_backend_deployed`
+/// 走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-backend`（`sftp::ensure_backend_deployed`
 /// 的落点）—— **那一族当时根本不在人群里**，计数器却会安心地报 0。
 /// 这正是 `needle_anchor_registry` 那条：**匹配单位不许比事实小**。
 ///
@@ -232,8 +232,8 @@ fn the_orphan_backend_gate_counts_both_families() {
     let raw = read_e2e("graylight-suite.sh");
     let src = strip_comments(&raw);
     for expr in [
-        "pgrep -fc '.build/backend/[^ ]*/cc-monitor-remote'",
-        "pgrep -fc '\\.cc-monitor/bin/cc-monitor-remote'",
+        "pgrep -fc '.build/backend/[^ ]*/cc-monitor-backend'",
+        "pgrep -fc '\\.cc-monitor/bin/cc-monitor-backend'",
     ] {
         assert!(
             guard_core::find_pinned(&src, expr).is_ok(),

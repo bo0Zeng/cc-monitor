@@ -130,7 +130,7 @@ fn no_backend_is_not_a_failed_query() {
         QueryOutcome::NoBackend(reason) => {
             // 理由里必须能看出「找过哪儿」，否则 UI 只能说一句「不可用」。
             assert!(
-                reason.contains("cc-monitor-remote") || reason.contains("找过"),
+                reason.contains("cc-monitor-backend") || reason.contains("找过"),
                 "「后端不在」的理由里看不出找过哪些路径：{reason}"
             );
         }

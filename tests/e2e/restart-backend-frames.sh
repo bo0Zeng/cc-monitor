@@ -76,10 +76,10 @@ DRV="$E2E/restart-cmd-driver.ts"
 BACKEND="${CCM_E2E_BACKEND:-}"
 if [ -z "$BACKEND" ]; then
   for c in \
-    "$REPO/.build/backend/debug/cc-monitor-remote" \
-    "$REPO/.build/backend/release/cc-monitor-remote" \
-    "$HOME/.cc-monitor/bin/cc-monitor-remote" \
-    "$HOME/.cc-monitor/e2e/cc-monitor-remote"; do
+    "$REPO/.build/backend/debug/cc-monitor-backend" \
+    "$REPO/.build/backend/release/cc-monitor-backend" \
+    "$HOME/.cc-monitor/bin/cc-monitor-backend" \
+    "$HOME/.cc-monitor/e2e/cc-monitor-backend"; do
     [ -x "$c" ] && { BACKEND="$c"; break; }
   done
 fi

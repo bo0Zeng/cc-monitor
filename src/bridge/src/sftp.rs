@@ -731,7 +731,7 @@ pub(crate) fn is_safe_remote_managed_path(path: &str, markers: &[&str]) -> bool 
 }
 
 /// 远端后端路径安全守卫（卸载用，纯函数可单测）：绝对、无 `..`、非根、且含 `cc-monitor`
-/// （约定 `~/.cc-monitor/bin/cc-monitor-remote`）—— 杜绝把卸载误用成删任意远端文件。
+/// （约定 `~/.cc-monitor/bin/cc-monitor-backend`）—— 杜绝把卸载误用成删任意远端文件。
 fn is_safe_remote_daemon_path(path: &str) -> bool {
     is_safe_remote_managed_path(path, &["cc-monitor"])
 }
@@ -744,7 +744,7 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     let path = cfg.daemon_path.trim().to_string();
     if path.is_empty() {
         return Err(
-            "请先填后端路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-remote）".into(),
+            "请先填后端路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-backend）".into(),
         );
     }
     if path.contains('~') {
@@ -1191,7 +1191,7 @@ pub async fn install_remote_ccm_helper(
     }
     // 🔴 `K-R48` 第二拍：推的不再是那个 1592 行的 bash 启动器，是 [`ccm_entry_shim`]
     //    —— 三行、零实现，只把 argv 转给**已经部署好的后端**（`ensure_backend_deployed`
-    //    把它推到 `cfg.daemon_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-remote`）。
+    //    把它推到 `cfg.daemon_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-backend`）。
     // ⚠ **入口与后端本体的部署是两条路，这里刻意不合并**：本函数是「装 shell 便捷层」，
     //   后端本体由连接流程自己保证；合并就等于在这条路上再造一次部署逻辑（第二处实现）。
     let shim = ccm_entry_shim(&cfg.daemon_path);

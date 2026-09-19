@@ -28,7 +28,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-D="$REPO/.build/backend/debug/cc-monitor-remote"
+D="$REPO/.build/backend/debug/cc-monitor-backend"
 [ -x "$D" ] || { echo "需要先 build backend：cd src/backend && cargo build"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "需要 jq"; exit 1; }
 TIMEOUT="$(command -v timeout)" || { echo "需要 timeout"; exit 1; }

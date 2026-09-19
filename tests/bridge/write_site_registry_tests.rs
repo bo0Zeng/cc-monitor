@@ -85,7 +85,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // 单列在这里是因为它此前**整个在扫描面之外**（08-08 并入），
     // 而它确实在开发者机器上写文件 —— 「不是安装动作」得由人说出来，不是靠没人看见。
     ("build.rs", "embed_backends", None,
-     "把 `embedded-backends/cc-monitor-remote-<arch>` 复制进 `OUT_DIR`，\
+     "把 `embedded-backends/cc-monitor-backend-<arch>` 复制进 `OUT_DIR`，\
           供 `include_bytes!` 内嵌。写的是 cargo 自己的构建目录，不碰用户环境；\
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\

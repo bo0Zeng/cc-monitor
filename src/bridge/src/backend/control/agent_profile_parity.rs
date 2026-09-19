@@ -8,7 +8,7 @@
 //! 〔墓碑 —— 第一条理由原话逐字：「本机没有后端在跑（F05b 未做）」。
 //!  🔴 **它 2026-09-10 起判不了。** 先是前提翻了：F05b 已经做完并随 v3.7.0 发出去了 ——
 //!  09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）：装出来那份
-//!  `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**、
+//!  `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**、
 //!  裸 `monitor.exe` 那份 **0 个**；`externalBin` 住 `src/bridge/tauri.sidecar.conf.json`，
 //!  发版那一步 `--config` 注入，**刻意不进基础 `tauri.conf.json`**
 //!  ⇒「基础配置里没有」≠「没配」。

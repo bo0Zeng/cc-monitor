@@ -69,7 +69,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
      "Hidden · JobKillOnClose · Null"),
     ("ssh_source.rs", "spawn_dial_proxy", "`<代理二进制> --dial`（子进程，常驻到某一头断开）",
      "`K-P6b`：**backend 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
-          起的是什么：`cc-monitor-remote`（本仓 `src/backend` 的产物）——\
+          起的是什么：`cc-monitor-backend`（本仓 `src/backend` 的产物）——\
           发版包里它就在 `monitor.exe` 旁边（`externalBin` local_backend），\
           解析口 `resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY` 与 exe 旁那份。\
           **argv 只有一个常量 flag，零插值**；主机名 / 用户名 / 私钥**路径**走环境变量 \

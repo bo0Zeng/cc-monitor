@@ -313,7 +313,7 @@ fn remote_config_deserializes_frontend_shape() {
             "port": 2200,
             "user": "pi",
             "keyPath": "",
-            "daemonPath": "/home/pi/cc-monitor-remote",
+            "daemonPath": "/home/pi/cc-monitor-backend",
             "hostKeyFingerprint": ""
         }"#;
     let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
@@ -321,7 +321,7 @@ fn remote_config_deserializes_frontend_shape() {
     assert_eq!(cfg.port, 2200);
     assert_eq!(cfg.user, "pi");
     assert_eq!(cfg.key_path, None, "空串 keyPath → None");
-    assert_eq!(cfg.daemon_path, "/home/pi/cc-monitor-remote");
+    assert_eq!(cfg.daemon_path, "/home/pi/cc-monitor-backend");
     assert_eq!(cfg.host_key_fingerprint, None, "空串指纹 → None");
 }
 

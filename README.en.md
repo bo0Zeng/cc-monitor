@@ -137,7 +137,7 @@ Get the latest version from [Releases](https://github.com/bo0Zeng/cc-monitor/rel
 - `monitor.exe` — bare exe (you manage the path yourself)
   > 🔴 **It is also missing a feature, not just "manage the path yourself"** (measured 09-10 on a
   > clean Windows machine): **the local backend will not start.** That backend
-  > (`cc-monitor-remote.exe`) is a *separate file installed alongside the app*, and the bare exe
+  > (`cc-monitor-backend.exe`) is a *separate file installed alongside the app*, and the bare exe
   > has no such file next to it, so the "your own machine is also a machine" features are
   > unavailable (**remote features are unaffected**). Measured: the installed build runs **2**
   > backend processes, the bare exe runs **0**.

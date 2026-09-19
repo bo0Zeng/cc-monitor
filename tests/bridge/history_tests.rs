@@ -1892,7 +1892,7 @@ fn one_call_asks_the_backend_exactly_once_no_matter_how_many_projects() {
 fn a_missing_backend_is_not_an_empty_project_list() {
     let md = HistoryMetadata::default();
     let no_backend = local_projects_via(
-        |_| QueryOutcome::NoBackend("找过 [\"…/cc-monitor-remote\"]".into()),
+        |_| QueryOutcome::NoBackend("找过 [\"…/cc-monitor-backend\"]".into()),
         &md,
         &R97Oracle(&[]),
     )

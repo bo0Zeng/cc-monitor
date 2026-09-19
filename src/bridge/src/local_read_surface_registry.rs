@@ -12,7 +12,7 @@
 //!  **本机没有在跑的后端进程**，没有对侧可切。」它记的是 F05b 之前的世界。〕
 //!
 //! **前提翻了（这一格有读数）**：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
-//! 各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
+//! 各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
 //! **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个**。F05b 已随 v3.7.0 发出去：
 //! `externalBin` 住 `tauri.sidecar.conf.json`，发版那一步 `--config` 注入
 //! （**刻意不进基础 `tauri.conf.json`** —— 进了 `cargo test` 也要一份当前 target 的二进制；

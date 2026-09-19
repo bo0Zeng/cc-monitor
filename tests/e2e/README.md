@@ -256,7 +256,7 @@ fixtures:
 两级跑法(先建后端,或全链跑 app):
 
 1. **backend-frame 级(无 GUI,最稳,后端半场)**:`bash tests/e2e/graylight-backend-frames.sh`
-   (需仓内 debug 后端;缺则 `CCM_E2E_BACKEND=<某个 p1p+ 的 cc-monitor-remote>`)。断言后端 stdout 帧:
+   (需仓内 debug 后端;缺则 `CCM_E2E_BACKEND=<某个 p1p+ 的 cc-monitor-backend>`)。断言后端 stdout 帧:
    `session_added` → (kill fake-claude) `session_removed` **且** `tmux_sessions.raw` 仍含 `@ccm_sid`
    (=灰,Idle 非 Archive) → (kill-session) `tmux_sessions` 不再含 sid(=归档触发边沿)。
 
@@ -294,7 +294,7 @@ fixtures / 驱动:
    就地复用无孤儿 / 无 tmux 新建注账号 / 带 pin 落 X 目录(两隔离账号) / 不带 pin 走基座 + `resolveFollowAccount`
    落当前工作账号 / 重复 resume 幂等(create-gate 短路) / tmux 消失回退 / 会话仍 live 守卫不误动。
 2. **backend-frame 复活清灰(后端半场)**:`bash tests/e2e/resume-backend-frames.sh`(需仓内 debug 后端;缺则
-   `CCM_E2E_BACKEND=<某 p1p+ 的 cc-monitor-remote>`)。序列 `SessionAdded`(live)→(kill fake-claude)
+   `CCM_E2E_BACKEND=<某 p1p+ 的 cc-monitor-backend>`)。序列 `SessionAdded`(live)→(kill fake-claude)
    `SessionRemoved` + tmux 帧仍含 @ccm_sid(灰)→(真源就地 resume 命令复用原名)`SessionAdded` **再现**
    = 后端灰→live 复活边沿;全程 tmux 单会话无 `-N` 孤儿。
 

@@ -880,7 +880,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
             }
         },
         other => {
-            eprintln!("cc-monitor-remote accounts error: unknown argument: {other:?}");
+            eprintln!("cc-monitor-backend accounts error: unknown argument: {other:?}");
             2
         }
     }

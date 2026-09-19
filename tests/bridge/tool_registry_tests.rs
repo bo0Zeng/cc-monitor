@@ -763,7 +763,7 @@ fn the_backend_is_one_thing_landing_in_several_places() {
     let mut want: Vec<(String, String, HostScope)> = vec![
         // ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）
         (
-            "src/bridge/binaries/cc-monitor-remote".into(),
+            "src/bridge/binaries/cc-monitor-backend".into(),
             "$APP_DIR".into(),
             HostScope::Client,
         ),
@@ -1140,7 +1140,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///
 /// # 🔴 射程与**刻意不管**的两样，写死在这里
 ///
-/// - **crate 目录（`…-proto`）与包名（`cc-monitor-remote`）本拍不碰**，
+/// - **crate 目录（`…-proto`）与包名（`cc-monitor-backend`）本拍不碰**，
 ///   而且它们**根本不进这把尺子**（`old_name_counts` 第一步就把那个拼写剥掉了）。
 ///   理由不是嫌麻烦：改那两样要**同拍**改发版流水线的产物名、`embedded-backends/`
 ///   的文件名约定、`tauri.sidecar.conf.json` 的 `externalBin`、`build.rs` 的清单

@@ -336,7 +336,7 @@ fn extract_capabilities(src: &str) -> Option<String> {
 }
 
 /// 把交叉编译好的 musl backend 二进制
-/// （`src/bridge/embedded-backends/cc-monitor-remote-<arch>`）复制进 OUT_DIR 并置
+/// （`src/bridge/embedded-backends/cc-monitor-backend-<arch>`）复制进 OUT_DIR 并置
 /// `embedded_backends` cfg；任一缺失则不置 cfg（`sftp::backend_binary` 返回 None → 自动部署
 /// 优雅 no-op，沿用手动部署）。二进制由 `cargo zigbuild --target *-unknown-linux-musl` 产出后
 /// 放进 `embedded-backends/`（见 doc/REMOTE-PHASE0-DEPLOY 的 F08b 段）。
@@ -355,7 +355,7 @@ fn embed_backends() {
     let (stamp_open, stamp_close) = backend_stamp_marks();
     let mut all = true;
     for arch in ["x86_64", "aarch64"] {
-        let src = dir.join(format!("cc-monitor-remote-{arch}"));
+        let src = dir.join(format!("cc-monitor-backend-{arch}"));
         println!("cargo:rerun-if-changed={}", src.display());
         // 🔴 **`K-R70`（09-12）：身份改从这份字节自己里读，旁边那个 `.build_id` 不再有话语权。**
         //
@@ -457,8 +457,8 @@ fn embed_backends() {
                         cd src/backend\n\
                         cargo build --release --target {arch}-unknown-linux-musl \\\n\
                           --config 'target.{arch}-unknown-linux-musl.linker=\"rust-lld\"'\n\
-                        cp target/{arch}-unknown-linux-musl/release/cc-monitor-remote \\\n\
-                           ../src/bridge/embedded-backends/cc-monitor-remote-{arch}\n\
+                        cp target/{arch}-unknown-linux-musl/release/cc-monitor-backend \\\n\
+                           ../src/bridge/embedded-backends/cc-monitor-backend-{arch}\n\
                         〔`K-R70` 起**没有第三步了**：身份随字节走（`CC_MONITOR_BUILD_STAMP`），\n\
                          再写一份 `.build_id` 旁文件没有任何人读它。〕\n\
                         （x86_64 上不加 --config 也能链；aarch64 必须加，否则会挂在系统 ld 上。\n\
@@ -538,7 +538,7 @@ const NATIVE_BACKEND_FILE: &str = "cc-monitor-native";
 ///
 /// | | `embed_backends`（远端那条） | 本函数（本机这条） |
 /// |---|---|---|
-/// | 内嵌什么 | `cc-monitor-remote-{x86_64,aarch64}`，**musl Linux**，按 **arch** 分派 | `cc-monitor-native-<target triple>`，**当前 TARGET 的原生二进制** |
+/// | 内嵌什么 | `cc-monitor-backend-{x86_64,aarch64}`，**musl Linux**，按 **arch** 分派 | `cc-monitor-native-<target triple>`，**当前 TARGET 的原生二进制** |
 /// | 给谁用 | SFTP 推到远端主机（远端就是 Linux ⇒ musl 是对的） | 本机自释放（`local_backend::start_or_extract`） |
 /// | 认不认 OS | **不认**（只看 arch） | **由 TARGET 定死**，编译期就选好了 |
 ///

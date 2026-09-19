@@ -2,7 +2,7 @@
 # F05a：**本机后端进程「起与看住」的真进程验收**。
 #
 # 与单测的分工：单测断言「重启策略与路径解析怎么答」（纯函数）；
-# **本脚本断言「监护器在真进程上到底干了什么」** —— 起真 `cc-monitor-remote`、把它杀掉、
+# **本脚本断言「监护器在真进程上到底干了什么」** —— 起真 `cc-monitor-backend`、把它杀掉、
 # 看它自己回来；再喂一个必崩的二进制，看它在上限内被判死而不是无限自旋。
 # 门禁只锁判定不锁行为是 R1 的教训（三门禁全绿仍放行过一个让 send-keys 完全失效的改动）。
 #
@@ -47,7 +47,7 @@ TMUX_SHIM_SOCK=e2eLocalBackend
 . "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-remote}"
+BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
 WORK="$(mktemp -d /tmp/e2e-lb.XXXXXX)"
 CLAUDE_DIR="$WORK/claude"; mkdir -p "$CLAUDE_DIR/projects"
 

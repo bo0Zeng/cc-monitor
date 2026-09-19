@@ -46,7 +46,7 @@ LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
 #    落在 `~/.claude/skills/ccm`)。**那个文件今天不存在了**,查找规则整条换成找后端。
 #
 #    **查找次序**:`$CCM_BIN`(显式) → 部署落点 `~/.cc-monitor/bin/` → PATH 上的
-#    `cc-monitor-remote` → PATH 上的 `ccm`(给「已经把后端软链成 `ccm`」的人用)。
+#    `cc-monitor-backend` → PATH 上的 `ccm`(给「已经把后端软链成 `ccm`」的人用)。
 #    🔴 **刻意不认 `$CCM_BACKEND_BIN`**:那个变量在仓里的 e2e 夹具里指的是**假 backend**
 #    (`tests/e2e/fake-backend.sh` 这一族,只会答几条 wire 子命令),拿它当 CLI 叫会得到一个
 #    「答得出话、干不了活」的东西 —— 那正是本仓最贵的一类假信号。显式覆盖走 `CCM_BIN`。
@@ -55,20 +55,20 @@ LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
 #    `CCM_BIN` 可显式覆盖(测试钩子),语义一个字没变。
 CCM_BIN="${CCM_BIN:-}"
 if [ -z "$CCM_BIN" ]; then
-  for _x in "$HOME/.cc-monitor/bin/cc-monitor-remote" \
-            "$(command -v cc-monitor-remote 2>/dev/null)" \
+  for _x in "$HOME/.cc-monitor/bin/cc-monitor-backend" \
+            "$(command -v cc-monitor-backend 2>/dev/null)" \
             "$(command -v ccm 2>/dev/null)"; do
     if [ -n "$_x" ] && [ -f "$_x" ] && [ -x "$_x" ]; then CCM_BIN="$_x"; break; fi
   done
   unset _x
   [ -n "$CCM_BIN" ] || {
-    echo "cc-spawn: 找不到后端(~/.cc-monitor/bin/cc-monitor-remote / PATH 上的 cc-monitor-remote 或 ccm 都没有)" >&2
+    echo "cc-spawn: 找不到后端(~/.cc-monitor/bin/cc-monitor-backend / PATH 上的 cc-monitor-backend 或 ccm 都没有)" >&2
     echo "  后端由 cc-monitor 客户端自己释放到 ~/.cc-monitor/bin/;或用 CCM_BIN=<路径> 显式指定。" >&2
     exit 2; }
 fi
 
 # **怎么把它当 `ccm` 叫**:后端认两条入口,都只经 `control::ccm::intercept` ——
-#   ① `argv[0]` 的 basename 是 `ccm`(别名/软链指过来);② `cc-monitor-remote ccm <argv…>`。
+#   ① `argv[0]` 的 basename 是 `ccm`(别名/软链指过来);② `cc-monitor-backend ccm <argv…>`。
 # 找到的那份 basename 不是 `ccm` 时走②。**这不是两套实现**,是同一处解析的两条入口。
 ccm_prefix=("$CCM_BIN")
 case "$(basename "$CCM_BIN")" in

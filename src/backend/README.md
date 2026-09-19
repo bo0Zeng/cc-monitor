@@ -1,4 +1,4 @@
-# cc-monitor-remote (远端后端)
+# cc-monitor-backend (远端后端)
 
 cc-monitor 的 SSH-远端功能后端（issue #15 起，已历 F14–F30+ 多轮迭代）。它 tail 远端
 `~/.claude` 会话 JSONL 并流式回传已连接的 client（cc-monitor / 未来 aterm）。协议契约的权威文档是

@@ -27,7 +27,7 @@ TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-remote}"
+BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
 GOLDEN="$REPO/src/bridge/src/backend/control/fixtures/gate2-golden.tsv"
 WORK="$(mktemp -d /tmp/e2e-gate2.XXXXXX)"
 IN="$WORK/in.fifo"; OUT="$WORK/out.jsonl"; ERR="$WORK/backend.stderr"

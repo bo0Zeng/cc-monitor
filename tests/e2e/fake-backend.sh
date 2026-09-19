@@ -1,5 +1,5 @@
 #!/bin/sh
-# 一份**可复用的假 `cc-monitor-remote`**〔`K-P2` `F` 拍 09-04，PM 裁定②〕。
+# 一份**可复用的假 `cc-monitor-backend`**〔`K-P2` `F` 拍 09-04，PM 裁定②〕。
 #
 # # 它为什么必须存在
 #
@@ -149,6 +149,6 @@ case "$_sub" in
     # 未知子命令：照真二进制的样子回一句可辨认的话（`main.rs:203-204` 逐字 `unknown argument`），
     # 别静默 `exit 0` —— 静默会让「这份假货不认它」与「后端答上了但内容是空」在调用方眼里同形。
     cat >/dev/null 2>/dev/null
-    printf 'cc-monitor-remote query error: unknown argument: %s\n' "$_sub" >&2
+    printf 'cc-monitor-backend query error: unknown argument: %s\n' "$_sub" >&2
     exit 2 ;;
 esac

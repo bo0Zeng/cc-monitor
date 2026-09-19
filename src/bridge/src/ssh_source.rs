@@ -936,10 +936,10 @@ mod stream_flag_gate_tests;
 //      与 exe 旁的本机后端。
 //      🔴 **这一条的射程是「开发树」，不是「默认装机」——我第一版判错过。**
 //      现打四环（逐份读的原文，**点符号不点行号**）：`local_backend.rs::LOCAL_BACKEND_STEM`
-//      逐字 `"cc-monitor-remote"`
-//      · `src/bridge/tauri.sidecar.conf.json` 的 `"externalBin": ["binaries/cc-monitor-remote"]`
+//      逐字 `"cc-monitor-backend"`
+//      · `src/bridge/tauri.sidecar.conf.json` 的 `"externalBin": ["binaries/cc-monitor-backend"]`
 //      · `.github/workflows/release.yml` 的 `build-windows` 三步（Windows 原生编 backend → 拷成
-//      `cc-monitor-remote-<triple>.exe` → `tauri build --config …local_backend.conf.json`）
+//      `cc-monitor-backend-<triple>.exe` → `tauri build --config …local_backend.conf.json`）
 //      · Linux job 同形（`:270/:273/:283`）⇒ **发版包里本机后端就在 exe 旁边，命中。**
 //      而 `externalBin` **不住 `tauri.conf.json`**、只在发版那一步注入 ⇒ **开发树上恒空**。
 //      ⇒ 「查开发树得到一个只在开发树为真的答案」正是 `local_accounts.rs` 里那条登记
@@ -964,7 +964,7 @@ mod stream_flag_gate_tests;
 ///  这条路**一台机器上都走不到**，那就成了一份「编得过但永远不跑」的代码。」〕
 ///
 /// **前提翻了（这一格有读数）**：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
-/// 各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
+/// 各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
 /// **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 「安装包里没有本机后端」不成立
 /// （`externalBin` 住 `src/bridge/tauri.sidecar.conf.json`，发版那一步 `--config` 注入，
 /// **刻意不进基础 `tauri.conf.json`** ⇒「基础配置里没有」≠「没配」）。

@@ -497,7 +497,7 @@ fn the_sweep_only_takes_the_old_ones() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&dir).unwrap();
-    let name = "cc-monitor-remote-testbuild";
+    let name = "cc-monitor-backend-testbuild";
     // 把 mtime 拨老 48h。⚠ 这一步是**判据的一部分**：首跑时我只放了「新鲜的别人的文件」，
     // 于是把命名法过滤整个删掉**照样绿** —— 年龄检查替它挡了。
     // **两道过滤各自的作用，必须各有一个只有它能挡住的夹具。**
@@ -690,7 +690,7 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
 
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-backends")
-        .join("cc-monitor-remote-x86_64");
+        .join("cc-monitor-backend-x86_64");
     let base = std::env::temp_dir().join(format!("p3-tmux-{}", std::process::id()));
     let home = base.join("home");
     let cfg_dir = home.join(".claude");
@@ -976,7 +976,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     let _guard = crate::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-backends")
-        .join("cc-monitor-remote-x86_64");
+        .join("cc-monitor-backend-x86_64");
     assert!(
         bin.exists(),
         "`cfg(embedded_backends)` 置了但 {bin:?} 不在 —— build.rs 与磁盘不一致"
@@ -1133,8 +1133,8 @@ fn the_local_extract_path_is_build_id_scoped() {
         );
     }
     assert!(
-        !a.contains("cc-monitor-remote"),
-        "本机释放名不许长成远端那个名字（`cc-monitor-remote`）—— 那正是要避开的那个文件"
+        !a.contains("cc-monitor-backend"),
+        "本机释放名不许长成远端那个名字（`cc-monitor-backend`）—— 那正是要避开的那个文件"
     );
 }
 
@@ -1380,7 +1380,7 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
         "本机那条入口的文件名不是「那个词 + 目标平台后缀」：{name:?}"
     );
     // ② 远端：shim 把 argv 交给的就是那个子命令词。
-    let shim = ccm_entry_shim("/x/cc-monitor-remote");
+    let shim = ccm_entry_shim("/x/cc-monitor-backend");
     let handoff = format!(" {CCM_ENTRY_WORD} \"$@\"");
     assert!(
         shim.contains(&handoff),
@@ -1409,7 +1409,7 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
 /// 它在坏版本里**照样命中**（坏的恰恰是 `exec` 之前少了一段）。
 #[test]
 fn remote_shim_carries_the_entry_name_for_the_container_path() {
-    let shim = ccm_entry_shim("/x/cc-monitor-remote");
+    let shim = ccm_entry_shim("/x/cc-monitor-backend");
     assert!(
         shim.contains("CCM_SELF="),
         "远端 shim 没有把入口名传下去 ⇒ 容器路（--tmux）的内层命令会缺 `{CCM_ENTRY_WORD}` 子命令：\n{shim}"
@@ -2087,7 +2087,7 @@ fn every_bundle_job_stages_the_local_backend_before_building() {
 /// # 题面（`K-R68` 现打，`DECISIONS.md#R26` 裁定一）
 ///
 /// 发版流水线里同一个文件被拷了两次：
-/// `.build/backend/release/cc-monitor-remote.exe`
+/// `.build/backend/release/cc-monitor-backend.exe`
 /// → `src/bridge/binaries/…`（载体③，Tauri `externalBin`，装机那份）
 /// → `src/bridge/native-backend/cc-monitor-native`（载体①，自释放那份）。
 /// 两步之间**一条 `cargo` 都没有** ⇒ 它们逐字节相同，是最强的那种同源。

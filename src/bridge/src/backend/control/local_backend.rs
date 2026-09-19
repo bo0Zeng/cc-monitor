@@ -49,7 +49,7 @@
 //!
 //! 摸底量到一件安全相关的事：backend 一启动就**无条件**往它能连到的 tmux server 上装三条
 //! 全局 hook（`observe/watcher.rs::install_tmux_hooks_best_effort` → `set-hook -g`），
-//! **而且没有关掉它的开关**。所以「顺手在 dev 环境里扫到 `target/debug/cc-monitor-remote`
+//! **而且没有关掉它的开关**。所以「顺手在 dev 环境里扫到 `target/debug/cc-monitor-backend`
 //! 就起它」会去改用户真实 tmux server 的状态。
 //!
 //! ⇒ [`resolve_with`] **只认打包进安装包的那一份本机后端**（exe 同目录、按 target triple 命名），
@@ -66,7 +66,7 @@
 //! ⇒ **「基础配置里没有」≠「没配」，别再把这两句写成一句。**
 //!
 //! 干净 win11 虚拟机上现打（PM，09-10，真安装包 + 真裸 exe 各一趟）：
-//! **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**；
+//! **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**；
 //! **裸 `monitor.exe`** 那份 **0 个**。⇒ 走 [`Resolved::Found`] 还是 [`Resolved::Missing`]，
 //! 取决于**用户手里是哪一份产物**，不再是一个常数。
 //! **C7 由 F05a + F05b 两件共同满足**，ROADMAP §3 就是这么记的 —— 两件今天都在了。
@@ -93,7 +93,7 @@ use std::sync::{Arc, Mutex};
 
 /// 本机后端的基名。Tauri 的 `externalBin` 会把它按 `<基名>-<target-triple>[.exe]`
 /// 放到 app 可执行文件旁边。
-pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-remote";
+pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-backend";
 
 /// F06b-1：**monitor 告诉 `ccm` 「backend 二进制在哪」的那个 env 名**。
 ///
@@ -1215,8 +1215,8 @@ pub fn local_ccm_entry_name() -> String {
 /// 容器路（`--tmux`）生成的**内层命令**以 `ccm::plan::Env::self_path` 开头，而那个值是
 /// `CCM_SELF` → 兜底 `argv[0]`。两条入口在这一格上**不对称**：
 /// · 入口①（本机改名副本）：`argv[0]` 的 basename 本来就是 `ccm` ⇒ 内层命令天然对。
-/// · 入口②（远端 shim）：shim `exec` 的是**二进制真身**，`argv[0]` 因此是 `<…>/cc-monitor-remote`
-///   ⇒ 内层命令变成 `cc-monitor-remote --cwd …`，**缺了 `ccm` 这个子命令词**，
+/// · 入口②（远端 shim）：shim `exec` 的是**二进制真身**，`argv[0]` 因此是 `<…>/cc-monitor-backend`
+///   ⇒ 内层命令变成 `cc-monitor-backend --cwd …`，**缺了 `ccm` 这个子命令词**，
 ///   被当后端直连口解析，当场 `query error: unknown argument: --cwd`。
 ///
 /// 失败长得**不像 shim 的错**：tmux 会话建得出来、`@ccm_agent` 也打上了，
@@ -1351,7 +1351,7 @@ pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
 ///
 /// ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10 现打，v3.7.0〕：
 /// 安装包（NSIS / MSI）里**带着** local_backend —— 干净 win11 虚拟机上装完现打，
-/// `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**；
+/// `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**；
 /// 而**裸 `monitor.exe`** 那份 **0 个**，走的才是降级那一支。
 /// 〔本行原话「今天恒走降级那一支 —— 安装包里还没有本机后端（`externalBin` 是 F05b）」
 /// 已被那次读数证伪。`externalBin` 配着，只是住 `src/bridge/tauri.sidecar.conf.json`

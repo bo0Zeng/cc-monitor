@@ -80,7 +80,7 @@
 //!   带 zig 的三个环境变量）。本模块买到的是**在那道门跑不到的地方也能出声**
 //!   —— 本机那道 `tests/scripts/verify-committed-state.sh` 的 `backend-win` 今天卡在 `ring`
 //!   的构建脚本上（现打：EXIT=101、`failed to find tool "lib.exe"`、
-//!   `Checking cc-monitor-remote` 命中 **0** ⇒ 根本走不到我们的代码），
+//!   `Checking cc-monitor-backend` 命中 **0** ⇒ 根本走不到我们的代码），
 //!   而 CI 那道只看 `origin/main`，本仓的红线是**不 push**。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改后端行为。

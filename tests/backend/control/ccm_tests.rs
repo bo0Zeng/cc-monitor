@@ -58,13 +58,13 @@ fn there_are_exactly_two_ways_in() {
     assert_eq!(intercept("C:\\x\\ccm.exe", &none), Some(vec![]));
     let sub = vec!["ccm".to_string(), "resume".to_string()];
     assert_eq!(
-        intercept("/opt/cc-monitor-remote", &sub),
+        intercept("/opt/cc-monitor-backend", &sub),
         Some(vec!["resume".to_string()])
     );
     // 不是 ccm ⇒ 一律放行给流模式 / wire 子命令
-    assert_eq!(intercept("/opt/cc-monitor-remote", &none), None);
+    assert_eq!(intercept("/opt/cc-monitor-backend", &none), None);
     assert_eq!(
-        intercept("/opt/cc-monitor-remote", &vec!["--ping".to_string()]),
+        intercept("/opt/cc-monitor-backend", &vec!["--ping".to_string()]),
         None
     );
     assert_eq!(intercept("/opt/ccmonitor", &none), None, "子串不算");

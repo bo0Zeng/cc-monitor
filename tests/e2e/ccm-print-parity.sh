@@ -24,15 +24,15 @@ contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 #
 # ★ `K-R48` 第二拍（09-11）：`ccm` 从**仓内 bash 脚本**换成**后端二进制本体**。
 #   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
-#   ⇒ 终端里敲的 `ccm` 就是 `cc-monitor-remote`（`argv[0]` 的 basename 是 `ccm` 就进一次性模式）。
+#   ⇒ 终端里敲的 `ccm` 就是 `cc-monitor-backend`（`argv[0]` 的 basename 是 `ccm` 就进一次性模式）。
 #   **本套件 12 条断言一个字都没改** —— 它测的一直是「renderCli 渲出来的那行，被真 `ccm`
 #   解析后展开成什么」，那是后端今天仍要保证的命令契约，与用什么语言实现无关。
 #   依据是 `K-R48` 第一拍的逐字节对拍（`tests/evidence/K-R48-native-vs-bash-parity.py`，SAME=27/DIFF=2）。
 # 🔴 **fail-closed**：二进制没 build 就**响亮退出**，不许静默回落到 PATH 上碰巧有的那一份
 #   —— 那正是本段头注第一句要治的病。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$CCM_NATIVE" ] || {
-  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-remote\`" >&2
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2
 }
 BIN="$(mktemp -d)"; trap 'rm -rf "$BIN"' EXIT

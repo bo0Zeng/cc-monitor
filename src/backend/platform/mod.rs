@@ -23,7 +23,7 @@
 //!
 //! - **本机**：`tests/scripts/verify-committed-state.sh` 的 `backend-win` 卡在 `ring` 的 C 构建脚本上
 //!   （09-11 沙箱实测：EXIT=101 · `failed to find tool "lib.exe"` ·
-//!   `Checking cc-monitor-remote` 命中 **0** ⇒ 根本没走到我们的代码）。
+//!   `Checking cc-monitor-backend` 命中 **0** ⇒ 根本没走到我们的代码）。
 //!   而沙箱门禁那道 `winchk` 射程逐字是 `-p monitor`，**不含本 crate**。
 //! - **CI**：backend job 那一步带 zig、口径是对的，但它只看 `origin/main`，
 //!   而本仓的红线是**不 push** —— 09-11 现打：最后一趟 CI 跑在 `14e0f05`（09-10 17:16Z，

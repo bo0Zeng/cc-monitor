@@ -662,7 +662,7 @@ pub const TOOLS: &[ToolSpec] = &[
             Carrier {
                 what: "安装包放在 app 可执行文件旁边的那一份（`tauri.sidecar.conf.json` 的 `externalBin`）—— 解析次序里**第一个**被采用的就是它（`local_backend::resolve_beside_this_exe`）",
                 source: ToolSource::EmbeddedBinary {
-                    repo_path: "src/bridge/binaries/cc-monitor-remote",
+                    repo_path: "src/bridge/binaries/cc-monitor-backend",
                 },
                 // **路径不是常量，也不是家目录相对** —— 它跟着 app 装到哪儿走，
                 // 而那个目录是装机时由人选的。同 `$DAEMON_PATH` 那一格的理由：
@@ -676,7 +676,7 @@ pub const TOOLS: &[ToolSpec] = &[
                     path: "$APP_DIR",
                     host: HostScope::Client,
                     note: Some(
-                        "本机，随安装包落盘；文件名带 target triple（`cc-monitor-remote-<triple>`，\
+                        "本机，随安装包落盘；文件名带 target triple（`cc-monitor-backend-<triple>`，\
                          Windows 上再带 `.exe`）—— 名字的真相源是 `local_backend::resolve_with`",
                     ),
                     effect: TouchEffect::OwnedFile,

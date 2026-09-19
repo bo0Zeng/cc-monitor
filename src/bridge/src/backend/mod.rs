@@ -30,7 +30,7 @@
 //! ## 为什么说它已经被叫醒了（三条，逐条有出处）
 //!
 //! ① **前提翻了**：F05b 已落地并随 v3.7.0 发出去。09-10 干净 win11 上现打（PM 的读数）——
-//!    装出来那份 `cc-monitor-remote.exe` **2 个进程在跑**、裸 `monitor.exe` **0 个**。
+//!    装出来那份 `cc-monitor-backend.exe` **2 个进程在跑**、裸 `monitor.exe` **0 个**。
 //! ② **不只是「有后端可切」，是已经切过两次**：`local_read_surface_registry` 的棘轮史逐字
 //!    记着 `11 → 10`（F10b 第一批，`usage.rs` 改走本机后端的 `--usage`）→ `9`
 //!    → `8`（F10b 第二批·下半，`local_accounts.rs` 改走本机后端的 `--session-accounts`）

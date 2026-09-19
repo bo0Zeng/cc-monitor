@@ -51,7 +51,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     let query = match args.get(1) {
         Some(q) => q.as_str(),
         None => {
-            eprintln!("cc-monitor-remote query error: --search requires <query> argument");
+            eprintln!("cc-monitor-backend query error: --search requires <query> argument");
             return 2;
         }
     };
@@ -61,7 +61,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     match search(agent_home, query, &opts, &mut out) {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("cc-monitor-remote search error: {e}");
+            eprintln!("cc-monitor-backend search error: {e}");
             2
         }
     }
