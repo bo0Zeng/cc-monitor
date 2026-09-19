@@ -24,8 +24,7 @@ fn roundtrip_serialize() {
 
 #[test]
 fn save_and_load_roundtrip() {
-    let tmp =
-        std::env::temp_dir().join(format!("ccm-auto-launch-rt-{}.json", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("ccm-auto-launch-rt-{}.json", std::process::id()));
     let _ = fs::remove_file(&tmp);
     let cfg = AutoLaunchConfig {
         auto_launch_enabled: true,

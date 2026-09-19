@@ -95,15 +95,13 @@ fn skipping_the_preflight_still_feeds_the_capability_ladder() {
     //   根本不起作用。实测对照（同一处撑大 `.map(|s| s)`）：`find_pinned` **通过**，
     //   `pin_line` **红**并报「没有任何一行 trim 之后等于…」。
     //   生产段那一行整行就是这个串，所以整行相等是**能用且更强**的写法。
-    guard_core::pin_line(&prod, "Some(EXPECTED_DAEMON_BUILD_ID.to_string())").unwrap_or_else(
-        |e| {
-            panic!(
-                "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
+    guard_core::pin_line(&prod, "Some(EXPECTED_DAEMON_BUILD_ID.to_string())").unwrap_or_else(|e| {
+        panic!(
+            "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
                      ★ 置 `None` 会让 caps 掉进「空集全降级」⇒ 省下两条连接、换来一轮降级\n\
                      加一轮升级重连（`should_upgrade_reconnect`）—— **比不跳还糟**。"
-            )
-        },
-    );
+        )
+    });
 }
 
 /// ★ 失败路径必须抹记忆，而且**不止一处**（起流失败 + hello 身份不符）。

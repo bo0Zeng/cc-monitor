@@ -120,9 +120,7 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
     // `VERBS_IF_BUILDS_A_COMMAND` 那两条就是死规则，而死规则看起来和「干净」一模一样。
     let builders = files
         .iter()
-        .filter(|(_, raw)| {
-            guard_core::production_code(raw).contains(concat!("Command::", "new("))
-        })
+        .filter(|(_, raw)| guard_core::production_code(raw).contains(concat!("Command::", "new(")))
         .count();
     assert!(
         builders >= 5,

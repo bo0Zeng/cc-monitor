@@ -1154,8 +1154,7 @@ fn an_open_write_handle_reads_as_an_unmet_premise_not_as_a_broken_spawn() {
 fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/launch.rs"));
     // 锚点必须**唯一**：Windows 那一份的形参带下划线前缀（`_cmd` / `_cwd`）⇒ 签名不同。
-    let head =
-        "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {";
+    let head = "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {";
     let at = guard_core::find_pinned(&prod, head)
         .unwrap_or_else(|e| panic!("`launch_local_posix` 的签名不是恰好一处 —— 先修锚点：{e}"));
     // 花括号配平切体（本文件唯一一处切块，刻意不另造第二种切法）。

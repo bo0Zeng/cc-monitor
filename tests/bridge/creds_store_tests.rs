@@ -342,11 +342,8 @@ fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
 
     // 非空对照**排最前**：还没写的时候，起会话那一侧说「这个号没有行」。
     assert!(
-        crate::history::relay_routed_subset(
-            &[one.to_string()],
-            &crate::history::relay_rows_at(&p)
-        )
-        .is_empty(),
+        crate::history::relay_routed_subset(&[one.to_string()], &crate::history::relay_rows_at(&p))
+            .is_empty(),
         "文件还不存在就说这个号有行了 —— 这把尺子恒真，下面全是空真"
     );
 
@@ -702,8 +699,7 @@ fn the_write_path_narrows_both_the_temp_file_and_the_final_one() {
              `a_written_file_is_owner_only_and_a_widened_one_is_called_out` 照样绿。"
     );
     // 顺序也要对：tmp 那次必须在原子替换**之前**。
-    let i_tmp =
-        guard_core::find_pinned(body, "make_private(&tmp)").expect("tmp 那次应当恰好一处");
+    let i_tmp = guard_core::find_pinned(body, "make_private(&tmp)").expect("tmp 那次应当恰好一处");
     let i_rep = guard_core::find_pinned(body, "atomic_replace(").expect("原子替换应当恰好一处");
     assert!(
         i_tmp < i_rep,
@@ -764,8 +760,7 @@ fn the_temp_file_is_created_narrow_not_widened_afterwards() {
     // ③ 出生必须排在**写内容之前**（否则「出生时窄」买到的是空文件窄，没意义）。
     let i_born =
         guard_core::find_pinned(body, "create_private(&tmp)").expect("上一条已断言它恰好一处");
-    let i_write =
-        guard_core::find_pinned(body, "write_all(").expect("写内容那一步应当恰好一处");
+    let i_write = guard_core::find_pinned(body, "write_all(").expect("写内容那一步应当恰好一处");
     assert!(
         i_born < i_write,
         "tmp 的创建排在写内容之后了 —— 那顺序上不成立"
@@ -805,9 +800,8 @@ fn the_ts_status_type_matches_this_struct() {
     );
 
     // TS 侧：从 `src/ipc/commands.ts` 里切出接口体，派生字段名。
-    let ts =
-        std::fs::read_to_string(crate::guard_support::repo_src_root().join("ipc/commands.ts"))
-            .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
+    let ts = std::fs::read_to_string(crate::guard_support::repo_src_root().join("ipc/commands.ts"))
+        .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
     let tat = guard_core::find_pinned(&ts, "export interface RelayCredentialsStatus {")
         .expect("TS 侧找不到那个接口 —— 它被改名或删了");
     let tbody = brace_block(&ts, tat).expect("接口没闭合 —— 按红处理");
@@ -950,7 +944,10 @@ fn count_ident(hay: &str, ident: &str) -> usize {
 fn the_plaintext_argument_is_only_ever_handed_one_hop_further() {
     let sources: &[(&str, &str)] = &[
         ("lib.rs", include_str!("../../src/bridge/src/lib.rs")),
-        ("creds_store.rs", include_str!("../../src/bridge/src/creds_store.rs")),
+        (
+            "creds_store.rs",
+            include_str!("../../src/bridge/src/creds_store.rs"),
+        ),
     ];
 
     for (file, anchor, binding, only_use) in PLAINTEXT_HOPS {

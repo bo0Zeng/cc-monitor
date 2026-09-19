@@ -35,7 +35,9 @@ const MUST_CALL: &[&str] = &[
 #[test]
 fn the_search_kou_jing_has_exactly_one_home() {
     // ── ① core 确实持有口径，否则下面两条退化成「哪里都没有」，零命中地绿。
-    let core = guard_core::production_code(include_str!("../../src/bridge/crates/search-core/src/lib.rs"));
+    let core = guard_core::production_code(include_str!(
+        "../../src/bridge/crates/search-core/src/lib.rs"
+    ));
     let missing: Vec<&str> = HELPERS
         .iter()
         .copied()
@@ -67,7 +69,10 @@ fn the_search_kou_jing_has_exactly_one_home() {
 
     // ── ② 两侧：不许自己再有一份，且必须真的调 core。
     for (name, raw) in [
-        ("monitor src/search.rs", include_str!("../../src/bridge/src/search.rs")),
+        (
+            "monitor src/search.rs",
+            include_str!("../../src/bridge/src/search.rs"),
+        ),
         (
             "daemon observe/search_query.rs",
             include_str!("../../src/backend/observe/search_query.rs"),

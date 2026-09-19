@@ -134,9 +134,8 @@ fn the_probe_carries_the_build_identity_of_the_binary_itself() {
         "对面自报了身份而我们没接住 —— 「问一份二进制它是谁」这条路断在解析这一跳"
     );
     // ② 旧后端不吐这一行 ⇒ 只许答「不知道」，不许拿别处的值顶上。
-    let without = parse_probe_output(
-        "name=ccm\nversion=5\nself=/x/ccm\ncapabilities=new\nagents=claude\n",
-    );
+    let without =
+        parse_probe_output("name=ccm\nversion=5\nself=/x/ccm\ncapabilities=new\nagents=claude\n");
     assert_eq!(
         without.build, None,
         "对面没说，我们替它编了一个 —— 那正是「把失败面换成假答案」那一族"

@@ -129,7 +129,10 @@ fn the_health_copy_has_exactly_one_home() {
             "src/settings/daemon-section.ts",
             include_str!("../../src/settings/daemon-section.ts"),
         ),
-        ("daemon_control.rs", include_str!("../../src/bridge/src/daemon_control.rs")),
+        (
+            "daemon_control.rs",
+            include_str!("../../src/bridge/src/daemon_control.rs"),
+        ),
     ];
     for (name, src) in HOMES {
         assert!(
@@ -601,8 +604,14 @@ fn the_health_reading_branches_are_wired_into_the_typescript() {
 #[test]
 fn the_unconditional_ban_is_gone_from_all_four_homes() {
     const HOMES: &[(&str, &str)] = &[
-        ("daemon_policy.rs", include_str!("../../src/bridge/src/daemon_policy.rs")),
-        ("daemon_control.rs", include_str!("../../src/bridge/src/daemon_control.rs")),
+        (
+            "daemon_policy.rs",
+            include_str!("../../src/bridge/src/daemon_policy.rs"),
+        ),
+        (
+            "daemon_control.rs",
+            include_str!("../../src/bridge/src/daemon_control.rs"),
+        ),
         (
             "src/daemon-policy.ts",
             include_str!("../../src/daemon-policy.ts"),
@@ -791,7 +800,9 @@ fn the_death_ledger_is_wired_at_exactly_these_sites() {
 /// ⇒ 接线必须落在**客户这一侧**的 `on_event` 上。
 #[test]
 fn the_supervisor_itself_never_records_a_death() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/backend/control/local_backend.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     assert!(
         prod.len() > 10_000,
         "剥完只剩 {} 字节 —— 本条在空转",

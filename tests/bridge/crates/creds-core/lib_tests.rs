@@ -4,7 +4,9 @@ use super::*;
 /// 不剥的话判据会在自己的测试代码里找到它们（`scanning_guard_registry` 记着这一族实测五次、
 /// 五次都不是被判据变红发现的）。剥生产段是那张表里「**按构造读不到自己**」那一类。
 fn production() -> String {
-    guard_core::production_code(include_str!("../../../../src/bridge/crates/creds-core/src/lib.rs"))
+    guard_core::production_code(include_str!(
+        "../../../../src/bridge/crates/creds-core/src/lib.rs"
+    ))
 }
 
 /// 从 `at` 之后的第一个 `{` 起，按花括号配平切出一整块（含两端花括号）。

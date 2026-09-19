@@ -131,14 +131,13 @@ fn the_session_removed_arm_is_not_silent() {
 #[test]
 fn the_frame_arm_logs_the_observation_kind() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
-    let log_at =
-        guard_core::find_pinned(&prod, "\"tmux-observation: [{host_label}] {} → {kind}\"")
-            .unwrap_or_else(|e| {
-                panic!(
+    let log_at = guard_core::find_pinned(&prod, "\"tmux-observation: [{host_label}] {} → {kind}\"")
+        .unwrap_or_else(|e| {
+            panic!(
                 "{e}\n收 `TmuxSessions` 帧时不再记观测分类 —— `U3` 裁定的那一行可观测性没了，\n\
                      而它存在的全部理由是：不记就分不清『0 次』与『记不下来』。"
             )
-            });
+        });
     // 只记**变化** —— 帧由 tmux hook 驱动，逐帧记会把日志淹掉（淹掉的日志与没有一样不可读）。
     let gate_at =
         guard_core::find_pinned(&prod, "if last_observation_kind.as_deref() != Some(kind) {")

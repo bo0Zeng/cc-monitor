@@ -659,9 +659,8 @@ fn the_intersection_uses_the_same_id_on_both_sides() {
 /// 那条成文规则的档位。如实记，别读成「类型也对上了」。
 #[test]
 fn the_ts_view_type_matches_this_struct() {
-    let ts =
-        std::fs::read_to_string(crate::guard_support::repo_src_root().join("ipc/commands.ts"))
-            .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
+    let ts = std::fs::read_to_string(crate::guard_support::repo_src_root().join("ipc/commands.ts"))
+        .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
     let at = ts
         .find("export interface SkillView {")
         .expect("TS 侧找不到 `SkillView` 接口 —— 它被改名或删了");

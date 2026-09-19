@@ -1,4 +1,3 @@
-
 /// ★★ **写侧只许有一个出口**〔audit-0805 08-08，Phase G 第 61 件，SS-14〕。
 ///
 /// 本文件头注与 `mcp_json_path` 的注释都写着「写侧唯一出口，硬编码 `.mcp.json`，
@@ -78,9 +77,7 @@ fn collect_merges_three_scopes() {
     let out = collect_entries(Some(&claude), "cj", Some(&proj), "mcp", Some("/proj"));
     assert_eq!(out.len(), 3);
     let scopes: Vec<&str> = out.iter().map(|e| e.scope.as_str()).collect();
-    assert!(
-        scopes.contains(&"user") && scopes.contains(&"local") && scopes.contains(&"project")
-    );
+    assert!(scopes.contains(&"user") && scopes.contains(&"local") && scopes.contains(&"project"));
     // server 原样保留
     let proj_e = out.iter().find(|e| e.scope == "project").unwrap();
     assert_eq!(proj_e.server["url"], json!("x"));
@@ -129,8 +126,7 @@ fn write_and_remove_only_touch_mcp_json() {
     std::fs::write(&fake_claude, "{\"mcpServers\":{\"keep\":{}}}").unwrap();
 
     // 写：建骨架 + 加条目（测同步 _impl；命令是 async 薄封装）
-    write_project_mcp_server_impl(dir.clone(), "srv".into(), json!({ "command": "c" }))
-        .unwrap();
+    write_project_mcp_server_impl(dir.clone(), "srv".into(), json!({ "command": "c" })).unwrap();
     let mcp = tmp.join(".mcp.json");
     assert!(mcp.is_file());
     let v: Value = serde_json::from_str(&std::fs::read_to_string(&mcp).unwrap()).unwrap();
@@ -204,8 +200,7 @@ fn remote_mcp_path_guard_rejects_traversal_and_nonabsolute() {
 fn upsert_and_remove_value_cores() {
     // F89a：本机/远端复用的纯核心——upsert/remove Value 变换。
     let mut root = json!({ "mcpServers": { "a": { "command": "x" } } });
-    upsert_mcp_server_value(&mut root, "b".into(), json!({ "type": "http", "url": "u" }))
-        .unwrap();
+    upsert_mcp_server_value(&mut root, "b".into(), json!({ "type": "http", "url": "u" })).unwrap();
     assert_eq!(root["mcpServers"]["a"]["command"], json!("x")); // 原有不动
     assert_eq!(root["mcpServers"]["b"]["url"], json!("u")); // 新增
     upsert_mcp_server_value(&mut root, "a".into(), json!({ "command": "y" })).unwrap();

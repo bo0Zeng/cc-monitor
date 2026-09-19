@@ -172,8 +172,7 @@ fn damaged_fence_leaves_the_file_byte_identical() {
     let path = dir.join("Microsoft.PowerShell_profile.ps1");
 
     // 坏围栏：有 BEGIN、没有配对 END，**下面是用户自己的代码**
-    let original =
-        "# my stuff\n# === cc-monitor BEGIN v1 ===\nfunction cc { Write-Host mine }\n";
+    let original = "# my stuff\n# === cc-monitor BEGIN v1 ===\nfunction cc { Write-Host mine }\n";
     std::fs::write(&path, original).expect("写 tempdir 样本");
     let before = std::fs::read(&path).expect("读原文");
 
@@ -700,7 +699,8 @@ fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
 /// 下面第一条断言（POSIX 那一臂必须调远端那两个函数）当场红。
 #[test]
 fn the_posix_arm_borrows_the_remote_implementation_instead_of_growing_a_second_one() {
-    let src = guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
+    let src =
+        guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
     for call in [
         "crate::sftp::merge_profile_block(",
         "crate::sftp::strip_profile_block(",
@@ -1095,8 +1095,14 @@ fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
     let squeeze = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
     let want = squeeze(&want);
     let hosts: [(&str, &str); 2] = [
-        ("local_daemon.rs", include_str!("../../src/bridge/src/local_daemon.rs")),
-        ("ccm_probe.rs", include_str!("../../src/bridge/src/ccm_probe.rs")),
+        (
+            "local_daemon.rs",
+            include_str!("../../src/bridge/src/local_daemon.rs"),
+        ),
+        (
+            "ccm_probe.rs",
+            include_str!("../../src/bridge/src/ccm_probe.rs"),
+        ),
     ];
     for (name, raw) in hosts {
         let prod = squeeze(&guard_core::production_code(raw));
@@ -1224,7 +1230,8 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
     // ③ **写 PATH 的地方恰好两处**，而它们**就是那两个 `render_*` 函数** ——
     //    这一条守的是 `K33`「实现只许有一处」：谁要在别处再拼一段改 PATH 的
     //    PowerShell（哪怕拼得对），这里当场红。
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
+    let prod =
+        guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
     let spawns = prod.matches("Command::new(").count();
     assert_eq!(
         spawns, 1,

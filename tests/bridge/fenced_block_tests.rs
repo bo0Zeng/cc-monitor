@@ -195,9 +195,18 @@ fn the_pairing_half_is_converged_and_the_install_half_is_not() {
 /// 每一份被 [`FENCE_SHAPES`] 点到名的源文件。覆盖由下面那条判据钉死。
 const SHAPE_FILES: &[(&str, &str)] = &[
     ("sftp.rs", include_str!("../../src/bridge/src/sftp.rs")),
-    ("profile_installer.rs", include_str!("../../src/bridge/src/profile_installer.rs")),
-    ("account_aliases.rs", include_str!("../../src/bridge/src/account_aliases.rs")),
-    ("fenced_block.rs", include_str!("../../src/bridge/src/fenced_block.rs")),
+    (
+        "profile_installer.rs",
+        include_str!("../../src/bridge/src/profile_installer.rs"),
+    ),
+    (
+        "account_aliases.rs",
+        include_str!("../../src/bridge/src/account_aliases.rs"),
+    ),
+    (
+        "fenced_block.rs",
+        include_str!("../../src/bridge/src/fenced_block.rs"),
+    ),
 ];
 
 /// ★★ 〔`K-R63` 09-11〕**这张账的「卸」那一格也是一句申报，而申报要对得上现实。**
@@ -232,9 +241,7 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
         SHAPE_FILES
             .iter()
             .find(|(n, _)| *n == base)
-            .unwrap_or_else(|| {
-                panic!("`{base}` 不在 SHAPE_FILES 里 —— 账里点了它，而本条读不到它")
-            })
+            .unwrap_or_else(|| panic!("`{base}` 不在 SHAPE_FILES 里 —— 账里点了它，而本条读不到它"))
             .1
     };
     // ①b 覆盖是**逐列**查的，不是等用到才查：三列住址点到的每一份文件都要读得到。

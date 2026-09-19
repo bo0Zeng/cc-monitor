@@ -409,9 +409,8 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
     let mut said: Vec<String> = Vec::new();
     let mut stack = vec![root.join("src/doc")];
     while let Some(d) = stack.pop() {
-        let rd = std::fs::read_dir(&d).unwrap_or_else(|e| {
-            panic!("读不到 {} —— 人群空了本条会零命中地绿：{e}", d.display())
-        });
+        let rd = std::fs::read_dir(&d)
+            .unwrap_or_else(|e| panic!("读不到 {} —— 人群空了本条会零命中地绿：{e}", d.display()));
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -482,7 +481,9 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
 /// 它自己那句「下一步该干什么」单独钉。
 #[test]
 fn the_refusal_wording_matches_the_sibling_command() {
-    let sibling = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/daemon_send_keys.rs"));
+    let sibling = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/daemon_send_keys.rs"
+    ));
     for (code, needle) in [
         ("no_tmux", "远端未安装 tmux"),
         ("no_such_session", "远端会话已不存在（可能已被终止）"),

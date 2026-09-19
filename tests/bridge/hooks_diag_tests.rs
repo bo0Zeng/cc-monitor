@@ -185,8 +185,7 @@ fn malformed_input_degrades_with_a_reason() {
 
 #[test]
 fn bom_is_tolerated() {
-    let raw =
-        "\u{feff}{\"hooks\":{\"Stop\":[{\"hooks\":[{\"command\":\"cc-bus-stop-hook\"}]}]}}";
+    let raw = "\u{feff}{\"hooks\":{\"Stop\":[{\"hooks\":[{\"command\":\"cc-bus-stop-hook\"}]}]}}";
     assert!(diagnose(Some(raw), &always).stop.is_working());
 }
 
@@ -368,9 +367,8 @@ fn remote_probe_uses_each_kind_of_evidence_precisely() {
     // **审计指出的真实假阴性**：只装在 /usr/local/bin 且在 PATH 上——
     // 旧代码按 basename 匹配会把它算成 `$HOME` 路径存在 → `$HOME` 形态不警示 →
     // 用户贴上去正是一个 path-missing 钩子。
-    let (_, p) = parse_remote_probe(
-        "P\t/usr/local/bin/cc-register\nP\t/usr/local/bin/cc-bus-stop-hook\n",
-    );
+    let (_, p) =
+        parse_remote_probe("P\t/usr/local/bin/cc-register\nP\t/usr/local/bin/cc-bus-stop-hook\n");
     assert_eq!(
         p.home_path_exists,
         Some(false),

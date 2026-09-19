@@ -20,8 +20,7 @@
 #[test]
 fn the_reconcile_path_touches_no_ssh_exec_entry_point() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let ssh =
-        std::fs::read_to_string(root.join("ssh_source.rs")).expect("读不到 ssh_source.rs");
+    let ssh = std::fs::read_to_string(root.join("ssh_source.rs")).expect("读不到 ssh_source.rs");
     let mut entries: Vec<String> = Vec::new();
     for l in guard_core::production_code(&ssh).lines() {
         let t = l.trim();

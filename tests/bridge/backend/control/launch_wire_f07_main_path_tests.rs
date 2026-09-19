@@ -57,8 +57,7 @@ fn repo_root() -> std::path::PathBuf {
 }
 
 fn read_ts(rel: &str) -> String {
-    std::fs::read_to_string(repo_root().join(rel))
-        .unwrap_or_else(|e| panic!("读不到 {rel}: {e}"))
+    std::fs::read_to_string(repo_root().join(rel)).unwrap_or_else(|e| panic!("读不到 {rel}: {e}"))
 }
 
 /// 剥 TS 的生产段：整行 `//` / `*` / `/*` 注释 + 行尾 `//`。
@@ -414,8 +413,7 @@ fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
                 continue; // 本文件的说明里逐字写着那个串
             }
             scanned += 1;
-            let src =
-                guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
+            let src = guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
             if src.contains(mode.as_str()) {
                 hits.push(p.file_name().unwrap().to_string_lossy().to_string());
             }
@@ -578,8 +576,7 @@ fn the_ts_fallback_renderer_now_stands_on_its_own_consumers() {
     //    两向对拍：`TS_FALLBACK_KEEPERS` 里出现过的文件必须在 `TS_FALLBACK_REACH` 里恰好一行，
     //    反之亦然 —— 少一行，那个文件的「生产可达吗」就没人判过。
     {
-        let mut keeper_files: Vec<&str> =
-            TS_FALLBACK_KEEPERS.iter().map(|(_, f, ..)| *f).collect();
+        let mut keeper_files: Vec<&str> = TS_FALLBACK_KEEPERS.iter().map(|(_, f, ..)| *f).collect();
         // 座本身那一格：`SESSION_BACKEND` 的消费者里有 `launch-render-fallback.ts`，
         // 而 `renderFallback` 的定义也住在它里面 ⇒ 它两种身份都算，只登记一次。
         keeper_files.sort_unstable();
@@ -843,8 +840,7 @@ fn the_send_keys_mode_names_have_exactly_one_production_home() {
             if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
                 continue;
             }
-            let src =
-                guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
+            let src = guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
             if src.contains(raw.as_str()) {
                 homes.push(p.file_name().unwrap().to_string_lossy().to_string());
             }
@@ -865,7 +861,8 @@ fn the_send_keys_mode_names_have_exactly_one_production_home() {
 
 /// 对拍那条判据的源码。**编译期嵌进来** —— 文件被删/改名 ⇒ **编译失败**，
 /// 不是运行时静默跳过。（同 `launch_payload_parity.rs` 自己对夹具与 TS 那一半的做法。）
-const PARITY_SRC: &str = include_str!("../../../../src/bridge/src/backend/control/launch_payload_parity.rs");
+const PARITY_SRC: &str =
+    include_str!("../../../../src/bridge/src/backend/control/launch_payload_parity.rs");
 
 /// 对拍**左边**那个真相源的源码。同上，编译期嵌。
 const GOLDEN_SRC: &str = include_str!("../../../../src/launch-payload-golden.ts");

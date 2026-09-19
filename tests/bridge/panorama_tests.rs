@@ -107,8 +107,8 @@ fn engine_pool_same_repo_same_arc_distinct_repo_distinct_arc() {
     std::fs::create_dir_all(&r1).ok();
     std::fs::create_dir_all(&r2).ok();
     let a1 = engine_for_with_store(r1.to_str().unwrap(), Some(store.clone())).expect("open r1");
-    let a1b = engine_for_with_store(r1.to_str().unwrap(), Some(store.clone()))
-        .expect("open r1 again");
+    let a1b =
+        engine_for_with_store(r1.to_str().unwrap(), Some(store.clone())).expect("open r1 again");
     let a2 = engine_for_with_store(r2.to_str().unwrap(), Some(store.clone())).expect("open r2");
     assert!(
         Arc::ptr_eq(&a1, &a1b),
@@ -127,8 +127,7 @@ fn store_dir_some_writes_to_store_not_user_repo() {
     std::fs::remove_dir_all(repo.join(".codepicture")).ok(); // 干净起点
     std::fs::remove_dir_all(&store).ok();
     std::fs::create_dir_all(&repo).ok();
-    let _e =
-        engine_for_with_store(repo.to_str().unwrap(), Some(store.clone())).expect("open repo");
+    let _e = engine_for_with_store(repo.to_str().unwrap(), Some(store.clone())).expect("open repo");
     assert!(
         !repo.join(".codepicture").exists(),
         "store_dir=Some 时用户仓不该凭空出现 .codepicture（D20）"

@@ -149,12 +149,13 @@ fn the_tmux_cache_has_one_writer_and_only_origin_keys() {
         .take_while(|l| *l != "\u{7d}")
         .collect::<Vec<_>>()
         .join("\n");
-    guard_core::find_pinned(&forget_body, "tmux_raw_registry()").expect(
-        "`forget_tmux_raw` 里没有恰好一处 `tmux_raw_registry()` —— 切错了或它不再清那张表",
-    );
+    guard_core::find_pinned(&forget_body, "tmux_raw_registry()")
+        .expect("`forget_tmux_raw` 里没有恰好一处 `tmux_raw_registry()` —— 切错了或它不再清那张表");
 
     // ③ **两侧都要清** —— 远端断连清了、本机不清，就是补审逮到的那个真 bug。
-    let lb = guard_core::production_code(include_str!("../../src/bridge/src/backend/control/local_backend.rs"));
+    let lb = guard_core::production_code(include_str!(
+        "../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     guard_core::find_pinned(&lb, "forget_tmux_raw(").unwrap_or_else(|e| {
         panic!(
             "本机那条路不清 `tmux_raw_registry`（{e}）。\n\
@@ -169,7 +170,9 @@ fn the_tmux_cache_has_one_writer_and_only_origin_keys() {
     let local_origin = crate::inbound_client::LOCAL_ORIGIN;
     for f in [
         guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs")),
-        guard_core::production_code(include_str!("../../src/bridge/src/backend/control/local_backend.rs")),
+        guard_core::production_code(include_str!(
+            "../../src/bridge/src/backend/control/local_backend.rs"
+        )),
     ] {
         for seg in f.split("record_tmux_raw(").skip(1) {
             let head = &seg[..seg.len().min(120)];

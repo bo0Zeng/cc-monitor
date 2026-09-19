@@ -57,8 +57,8 @@ fn the_three_ports_are_one_command_each_and_all_take_origin() {
 #[test]
 fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
     let src = guard_core::production_code(include_str!("../../src/bridge/src/daemon_control.rs"));
-    let at = guard_core::find_pinned(&src, "pub fn daemon_start(origin: String)")
-        .expect("起口不在了");
+    let at =
+        guard_core::find_pinned(&src, "pub fn daemon_start(origin: String)").expect("起口不在了");
     let body: String = src[at..]
         .lines()
         .skip(1)
