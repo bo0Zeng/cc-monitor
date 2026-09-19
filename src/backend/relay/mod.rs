@@ -217,5 +217,8 @@ mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的�
 mod table_guard; // `K-H2` `KH1`：决定点三条腿里的两条（焊接点 · 开上游连接点），整体 #[cfg(test)]
 mod tee;
 mod upstream;
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/wire_golden.rs"]
+mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节金标准（三条线各一份手写期望）
 
 pub use server::run;
