@@ -121,10 +121,19 @@ pub(crate) const NAME_TAKEN_FMT: &str =
 /// 窗口标题的合成式 —— **让 tmux 自己从 `@ccm_sid` 合成**，与 pane 标题彻底分开。
 ///
 /// monitor 靠扫窗口标题里的 `ccm-rbind-<sid>` 绑定终端窗口（`bind.rs`）。
+///
+/// 🔴 〔步 8 · `设计/90 §1.2`〕**`rbind` ＝ remote bind（远端终端窗口绑定）**。
+/// 这个缩写不自明，`§1.2` 给了两条出路：「改成 `terminal_bind`」或「保留但每处加一句展开」。
+/// ⇒ **这一拍走第二条，而且是被迫的**：`ccm-rbind-<sid>`（窗口标题 marker）与
+/// `__ccm_rbind`（用户 shell profile 里那个注册原语）**都在 `ccm` 的对外面上** ——
+/// 前者是 monitor↔远端 wrapper 之间已经在线的约定，后者已经装在用户机器上。
+/// `设计/90 §1.1` 逐字：`ccm` 是「用户在终端里敲的命令名，属于产品对外接口」，**不许改**。
+/// ⇒ 改的只有**内部标识符**（本常量 `RBIND_TITLE_FORMAT` → `TERMINAL_BIND_TITLE_FORMAT`）；
+/// 线上那两个拼写一个字节没动。
 /// 从前这里是 `#T`（窗口标题 = pane 标题），而 **claude 也在往 pane 标题写自己的状态**
 /// ⇒ 两者抢同一个位置，真机实测忙碌那个会话的 marker 被冲成「⠐ 理解…」，
 /// 点 ↗ 必弹「未绑定窗口」。⚠ 改它之前先读 `e2e` 那条已经删掉的套件在件文件 `§8` 里的登记。
-pub(crate) const RBIND_TITLE_FORMAT: &str = "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}";
+pub(crate) const TERMINAL_BIND_TITLE_FORMAT: &str = "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}";
 
 /// codex 的 cc-bus 身份配方。**输出的是配方不是值** —— 这样 `--print` 仍然不查实时 tmux 状态。
 pub(crate) const BUS_ID_RECIPE: &str = "if [ -n \"${TMUX:-}\" ]; then _ccm_bus=\"$(tmux display-message -p \"#S\" 2>/dev/null)\"; [ -n \"$_ccm_bus\" ] && export CC_BUS_ID=\"$_ccm_bus\"; unset _ccm_bus; fi;";
