@@ -586,7 +586,19 @@ jobs:
           #        + tests/e2e/local-backend-container/*.sh 3 + tests/evidence/*.sh 2
           #        + tests/scripts/*.sh 3 + vendored cc-acct-iso 4 + fake-claude 1
           #        + tests/hooks/pre-commit 1**。
-          [ "$N" -ge 62 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 62）"; exit 1; }
+          # **2026-09-18 同日棘到 66** —— 波 2 四路并发各留了一个复算 / 死值验脚本，
+          # 全部落进上面刚补的 `tests/evidence/*.sh` 那一组：
+          #   `S1-run.sh`（秤 1 复算）· `S1-mutation.sh`（秤 1 死值验）·
+          #   `S4-deathvalue.sh`（秤 4 死值验）· `S6-mutations.sh`（秤 6 死值验）。
+          # ★ **这一次是判据自己逮的，不是事后补**：`shell_lint_registry` 那条**恒等**判据
+          #   当场红并逐字给出「地板写着 62，而那条表达式今天真实覆盖 66」。
+          #   那正是把「≥」改成等号买到的东西 —— 前三次落后（37→39→41）全是「≥ 不响，没人回来」。
+          # 今天实测构成（**逐组现打，不倒推**）：
+          # **66 = tests/e2e/*.sh 30 + src/shared/cc-bus/scripts/* 14 + tests/e2e/weak-net/*.sh 4
+          #        + tests/e2e/local-backend-container/*.sh 3 + tests/evidence/*.sh 6
+          #        + tests/scripts/*.sh 3 + vendored cc-acct-iso 4 + fake-claude 1
+          #        + tests/hooks/pre-commit 1**。
+          [ "$N" -ge 66 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 66）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
