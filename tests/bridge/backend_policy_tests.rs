@@ -898,3 +898,55 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
         "`NotObserved` 把一次真的异常终止判成了别的格"
     );
 }
+
+// ── 〔步 12 · 2026-09-19〕两个同名 `LOCAL_ORIGIN` 的钉子 ────────────────────
+//
+// ⚠ **这一段原本是两条，删掉了一条 —— 那条是我重复造的。**
+//   跨语言那条（Rust `inbound_client::LOCAL_ORIGIN` ↔ TS `backend-policy.ts`）
+//   **仓里本来就有**：`tests/bridge/backend/control/inbound_client_tests.rs::
+//   the_local_origin_is_the_same_string_on_both_sides`。
+//   我一度判它「不存在」，依据是一条 `grep … | head -4` 的输出 ——
+//   🔴 **拿一个截断过的人群下「不存在」的判，正是本仓反复治的那个病。**
+//   `src/settings/cc-bus-section.ts:31` 那句「跨语言钉住」**是真的**，没有假话要修。
+//
+// 下面这一条是真的没有：全仓判据里 `__local__` 现打**只有本条**提到它。
+
+/// 仓里那**两个同名 `LOCAL_ORIGIN`** 是**刻意不同**的 —— 钉住这件事本身。
+///
+/// # 为什么这条判据该存在
+///
+/// `src/remote-launch-run.ts:14` · `src/tabs.ts:75` · `src/settings/cc-bus-section.ts:29`
+/// —— **三处注释**分别警告过同一件事，措辞都是「导错一个**不会红**，只会静默……」。
+/// 按 `16 §5.1`（一条形状出现 N 次就抽一个住址）：**三份警告 ＝ 一条该立而没立的判据**。
+///
+/// ⚠ 它钉的是「**两者不同**」，不是「两者该不该合并」——
+///   后者是设计题（`origin` 归一那一节），本条只保证：在合并之前，
+///   谁把其中一个顺手改成另一个的值，**当场红**。
+#[test]
+fn the_two_same_named_local_origin_constants_stay_deliberately_different() {
+    let policy = include_str!("../../src/backend-policy.ts");
+    let accounts = include_str!("../../src/accounts.ts");
+    let pick = |src: &str, what: &str| -> String {
+        let needle = "export const LOCAL_ORIGIN = ";
+        let n = src.matches(needle).count();
+        assert_eq!(
+            n, 1,
+            "{what} 里 `{needle}` 命中 {n} 次（应当 1 次）—— 抽取器坏了"
+        );
+        src.split_once(needle)
+            .and_then(|(_, rest)| rest.split_once(';'))
+            .map(|(v, _)| v.trim().trim_matches('"').to_string())
+            .expect("抠不出值")
+    };
+    let backend_origin = pick(policy, "backend-policy.ts");
+    let account_origin = pick(accounts, "accounts.ts");
+    assert_eq!(backend_origin, "<local>", "backend origin 的哨兵值变了");
+    assert_eq!(account_origin, "__local__", "账号面的本机标记变了");
+    assert_ne!(
+        backend_origin, account_origin,
+        "两个 `LOCAL_ORIGIN` 变成同一个值了。\n\
+         它们**刻意不同**：`backend-policy.ts` 的是 **backend origin**（与 Rust 侧协议对拍），\n\
+         `accounts.ts` 的是**账号面自己的标记**。合并它们是一次设计变更，\n\
+         不是一次「顺手统一常量」—— 回去看 `设计/00 §2.5 ①`。"
+    );
+}
