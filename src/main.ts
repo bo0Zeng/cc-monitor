@@ -421,12 +421,11 @@ window.addEventListener("DOMContentLoaded", async () => {
         window.addEventListener("blur", onBlur);
       });
       appEl.appendChild(resizer);
-      // 窄窗折叠：内容列 780px + 栏 + 呼吸空间放不下 → 图标条（44px）
-      const applyCollapse = (): void => {
-        document.body.classList.toggle("tabbar-collapsed", window.innerWidth < 980);
-      };
-      window.addEventListener("resize", applyCollapse);
-      applyCollapse();
+      // 窄窗折叠（内容列 780px + 栏 + 呼吸空间放不下 → 图标条 44px）现在**整条在 CSS 里**：
+      // `styles.css` 的 `@media (width < 980px)`（`设计/40 §7` 步 5 · S24）。
+      // 这里原本是一个 `resize` 监听往 body 上挂 `.tabbar-collapsed`，而那个类
+      // **只被写、从没被读**（唯一读者就是那几条 CSS 规则）⇒ 纯视觉断点绕一圈 JS，
+      // 白付一次「窄窗启动先闪一下宽栏」。删掉监听不留等价物，别再加回来。
     }
   }
 
