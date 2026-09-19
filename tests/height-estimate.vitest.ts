@@ -57,6 +57,27 @@ describe("extractProseText(R1:块感知提取)", () => {
     expect(r.text).toBe("para1\npara2\na\nb");
     expect(r.blockCount).toBe(4);
   });
+  // 🔴 下面三条钉的是 2026-09-18 那次回摆(秤 2 §2):R1 保留了**所有** \n,而 marked
+  //    产出的 HTML 里绝大多数换行只是**源码排版**——浏览器折叠成空格,估高却当硬断行
+  //    ⇒ 正文卡系统性 ~2× 虚高。口径:只有块边界与 <br> 算断行。
+  it("HTML 源码里的排版换行归一成空格(不是硬断行)", () => {
+    const el = document.createElement("div");
+    el.innerHTML = "<p>one\ntwo</p>\n<p>three</p>";
+    expect(extractProseText(el).text).toBe("one two\nthree");
+  });
+  it("表格一行算一行(一行 4 个单元格不是 4 行)", () => {
+    const el = document.createElement("div");
+    el.innerHTML =
+      "<table><tbody>\n<tr>\n<td>a</td>\n<td>b</td>\n</tr>\n<tr>\n<td>c</td>\n<td>d</td>\n</tr>\n</tbody></table>";
+    const r = extractProseText(el);
+    expect(r.text).toBe("a b\nc d");
+    expect(r.blockCount).toBe(2);
+  });
+  it("真 pre-wrap 容器(.block-body 非 md)里的换行原样保留", () => {
+    const el = document.createElement("div");
+    el.innerHTML = '<pre class="block-body block-body-json">{\n  "a": 1\n}</pre>';
+    expect(extractProseText(el).text).toBe('{\n  "a": 1\n}');
+  });
   it("跳过 .code-block 与 .katex-mathml(单独估/aria 重复)", () => {
     const el = document.createElement("div");
     el.innerHTML =
@@ -106,7 +127,11 @@ describe("estimateStreamNodeHeight", () => {
     expect(estimateStreamNodeHeight(err)).toBe(40);
     const slash = document.createElement("div");
     slash.className = "card card-slash";
-    expect(estimateStreamNodeHeight(slash)).toBe(34);
+    // 19 = 12px(--font-size-small) × 1.55 的 **content-box** 值(秤 2 的 B 段实测
+    // `contain-intrinsic-size` 吃 content-box;原来的 34 是按 border-box 手算的,
+    // 多了一份 padding 6×2 ⇒ p90 相对误差 82.9%)。
+    // ⚠ `applyIntrinsicSize` 的 24px 地板会把 19 顶成 24,写进 style 的是 24。
+    expect(estimateStreamNodeHeight(slash)).toBe(19);
   });
   it("认不出的形态返回 null(CSS 兜底接管)", () => {
     const el = document.createElement("div");

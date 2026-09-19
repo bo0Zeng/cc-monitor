@@ -3,9 +3,9 @@
 ######## M0 · 基线（未变异）
       Tests  12 passed (12)
 
-######## M1 · card-api-retry 常数 24 → 120（退回修之前的 CSS 兜底值）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 79ms
-     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 1ms
+######## M1 · card-api-retry 常数 17 → 120（退回修之前的 CSS 兜底值）
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 120ms
+     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 2ms
     card-api-retry：p90=603.8% > 上限 45%（n=5）: expected [ Array(1) ] to deeply equal []
 +   "card-api-retry：p90=603.8% > 上限 45%（n=5）",
     syn#0（card-api-retry）现算 120 ≠ 金标准 24
@@ -14,8 +14,8 @@
     syn#3（card-api-retry）现算 120 ≠ 金标准 24
 
 ######## M2 · 删掉 card-api-retry 那一行（退回 return null ⇒ 落 CSS 120 兜底）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 79ms
-     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 1ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 90ms
+     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 2ms
     card-api-retry：p90=603.8% > 上限 45%（n=5）: expected [ Array(1) ] to deeply equal []
 +   "card-api-retry：p90=603.8% > 上限 45%（n=5）",
     syn#0（card-api-retry）现算 120 ≠ 金标准 24
@@ -24,7 +24,7 @@
     syn#3（card-api-retry）现算 120 ≠ 金标准 24
 
 ######## M3 · SUMMARY_H 38 → 52（折叠卡估高改坏）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 82ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 120ms
      × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 2ms
     card-compact：p90=50.3% > 上限 30%（n=2）
     card-tool-group：p90=50.3% > 上限 30%（n=23）: expected [ …(2) ] to deeply equal []
@@ -33,41 +33,41 @@
     real#29（card-compact）现算 52 ≠ 金标准 38
     real#40（card-tool-group）现算 52 ≠ 金标准 38
 
-######## M4 · LH_PROSE ×1.65 → ×1.20（正文行高往**真值方向**改 ⇒ 预期**不红**，见读数里那段说明）
+######## M4 · LH_PROSE ×1.65 → ×1.20（正文行高砍 27% ⇒ **仍然不红**，原因见日志末尾）
       Tests  12 passed (12)
 
 ######## M5 · COL_W 780 → 390（列宽假设改错一半）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 76ms
-    card-assistant：p90=133.1% > 上限 120%（n=28）
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 105ms
+    card-assistant：p90=75.2% > 上限 30%（n=28）
     card-user：p90=54.9% > 上限 30%（n=10）: expected [ …(2) ] to deeply equal []
-+   "card-assistant：p90=133.1% > 上限 120%（n=28）",
++   "card-assistant：p90=75.2% > 上限 30%（n=28）",
 +   "card-user：p90=54.9% > 上限 30%（n=10）",
       Tests  1 failed | 11 passed (12)
 
 ######## M6 · LH_PROSE ×1.65 → ×2.40（正文行高往虚高方向再推）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 76ms
-    card-assistant：p90=180.0% > 上限 120%（n=28）: expected [ Array(1) ] to deeply equal []
-+   "card-assistant：p90=180.0% > 上限 120%（n=28）",
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 119ms
+    card-assistant：p90=45.3% > 上限 30%（n=28）: expected [ Array(1) ] to deeply equal []
++   "card-assistant：p90=45.3% > 上限 30%（n=28）",
       Tests  1 failed | 11 passed (12)
 
 ######## M7 · BASH_OUTPUT_MAX_LINES 20 → 60
-     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 4ms
+     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 6ms
     syn#14（card-bash-output）现算 529 ≠ 金标准 428: expected [ Array(1) ] to deeply equal []
 +   "syn#14（card-bash-output）现算 529 ≠ 金标准 428",
       Tests  1 failed | 11 passed (12)
 
-######## M8 · card-slash 34 → 19（往真值方向改一个常数）
-     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 4ms
-    syn#17（card-slash）现算 24 ≠ 金标准 34
-    syn#18（card-slash）现算 24 ≠ 金标准 34
-    syn#19（card-slash）现算 24 ≠ 金标准 34: expected [ …(3) ] to deeply equal []
-+   "syn#17（card-slash）现算 24 ≠ 金标准 34",
-+   "syn#18（card-slash）现算 24 ≠ 金标准 34",
-+   "syn#19（card-slash）现算 24 ≠ 金标准 34",
-      Tests  1 failed | 11 passed (12)
+######## M8 · card-slash 19 → 34（退回 2026-09-18 之前那个 border-box 手算值）
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 87ms
+     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 1ms
+    card-slash：p90=82.9% > 上限 30%（n=3）: expected [ Array(1) ] to deeply equal []
++   "card-slash：p90=82.9% > 上限 30%（n=3）",
+    syn#17（card-slash）现算 34 ≠ 金标准 24
+    syn#18（card-slash）现算 34 ≠ 金标准 24
+    syn#19（card-slash）现算 34 ≠ 金标准 24: expected [ …(3) ] to deeply equal []
++   "syn#17（card-slash）现算 34 ≠ 金标准 24",
 
 ######## M9 · BASH_OUTPUT_HEADER_H 19 → 90
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 78ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 103ms
      × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 2ms
     card-bash-output：p90=115.8% > 上限 30%（n=6）: expected [ Array(1) ] to deeply equal []
 +   "card-bash-output：p90=115.8% > 上限 30%（n=6）",
@@ -76,8 +76,25 @@
     syn#13（card-bash-output）现算 499 ≠ 金标准 428
     syn#14（card-bash-output）现算 499 ≠ 金标准 428
 
+######## M10 · extractProseText 不再折叠源码换行（退回修之前那个「全留 \n」）
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 123ms
+    card-assistant：p90=99.8% > 上限 30%（n=28）: expected [ Array(1) ] to deeply equal []
++   "card-assistant：p90=99.8% > 上限 30%（n=28）",
+      Tests  1 failed | 11 passed (12)
+
 ######## 全部还原后复跑
       Tests  12 passed (12)
 
-######## 真仓 src/height-estimate.ts 的状态（下一行为空 = 一个字没改）
+######## ⚠ M4 为什么还是绿的（这是秤的钝处，不是它守住了）
+  LH_PROSE ×1.65 → ×1.20 把正文行高砍掉 27%，card-assistant 的 p90 只从 21.8% 动到 25.7%
+  （p50 9.5% → 18.6%，max 21.8% → 30.6%，方向从「偏高」翻成「偏低」）—— 仍在 30% 门槛之内。
+  原因：门槛量的是 |相对误差| 的 p90，而这个改动把估值从「+10%」推到「−19%」，**穿过零点**，
+  两头都还在线内 ⇒ 行高常数的灵敏度粗度就是 ±30%。要更细必须再加一杆「有符号偏差」的秤（今天没有）。
+  ⚠ 2026-09-18 之前这一条更钝：那时 card-assistant 的上限挂着 1.2，而正文卡本身 2× 虚高，
+  砍行高等于往真值方向改 —— 门禁连「变差」都看不出来。这一轮把根修掉、上限拧到 0.3 之后，
+  同一个变异离红只剩 4.3 个点。**钝是真的钝，但比原来锐了一个数量级。**
+
+######## 真仓 src/height-estimate.ts 有没有被变异溅到（两行相同 = 一个字没改）
+  跑之前 a0ac22d8500a18fa9a80d4012e2a44c0b787d3a72d1edc54dcdd2776d5d2c7d3  src/height-estimate.ts
+  跑之后 a0ac22d8500a18fa9a80d4012e2a44c0b787d3a72d1edc54dcdd2776d5d2c7d3  src/height-estimate.ts
 [END]

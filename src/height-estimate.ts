@@ -17,11 +17,13 @@
  * 宽度/字体常数镜像 styles.css tokens(--stream-max-width/--font-*):780px 定宽
  * 列是本模块成立的前提(宽度不变 → 高度长期有效),若列宽 token 改动需同步这里。
  *
- * ⚠ 上面那句「解钉升级须重跑估值精度对照」在 0.0.8 → 0.0.9 这一跳**没有被执行**:
- * 本模块今天**没有任何「估值 vs 真实布局高度」的读数**(`height-estimate.vitest.ts`
- * 全部是自一致测试——拿估算函数的输出跟它自己的常数比;jsdom 无布局引擎也比不了)。
- * 该对照表是 `设计/17 §6` 的「秤 2」,要真浏览器 e2e 才做得出来,尚未落地。
- * ⇒ 本模块所有常数的准确度,目前状态是**未测**,不是「已验证」。
+ * ⚠ 上面那句「解钉升级须重跑估值精度对照」在 0.0.8 → 0.0.9 这一跳**没有被执行**,
+ * 但对照表本身 2026-09-18 已经有了:`设计/17 §6` 的「秤 2」落成
+ * `tests/scale2-height-truth.vitest.ts`(真高来自 Chromium 153 + WebKitGTK 2.52.6
+ * 两个真引擎的金标准,估值门禁跑的时候现算)。⇒ 本模块常数的准确度**不再是「未测」**,
+ * 逐 class 的 p90 相对误差写在 `tests/evidence/U-scale2-height-truth.md`。
+ * ⇒ 改这里任何一个常数,都要跑一次 `npx vitest run tests/scale2-height-truth.vitest.ts`;
+ *   0.0.8→0.0.9 那一跳的对照仍然缺(没有 0.0.8 的读数),那一格今天仍然判不了。
  */
 
 // 镜像 styles.css 的字体 token(canvas font 接受完整 fallback 栈——必须逐字同栈,
@@ -46,9 +48,9 @@ const P_GAP = 12; // 段落/列表项之间的 margin 均摊(浏览器默认 p m
 // 下面三条细条卡常数补的是「建得出卡、估不出高」的三个 class ——
 // 它们此前全部走 `return null` ⇒ 由 styles.css:1599 的 `contain-intrinsic-size: auto 120px`
 // 接管。⚠ 这三条是**候选成因**不是已证实的根因:`设计/17 §2.2` 那条「虚高 ⇒ 提前停止补批
-// ⇒ 只渲染半屏」的链条是**手算**的(按 CSS token 推真高、按视口 800px 推轮次),
-// 而「估得准不准」今天零读数(同文档 §5.3)。装上秤 2(估值 vs 真值 e2e 对照表)之后再判
-// 这三条改动到底修没修掉半屏 —— 在那之前,它们只是「把没估的估上」,不是「已修复」。
+// ⇒ 只渲染半屏」的链条是**手算**的(按 CSS token 推真高、按视口 800px 推轮次)。
+// 秤 2(2026-09-18)把「估得准不准」量出来了:`card-bash-output` 的 p90 相对误差 8.6%,
+// 这一支是准的;但「半屏修没修掉」归秤 3,不是这里能判的。
 const BASH_OUTPUT_HEADER_H = 19; // .bash-output-header 单行 flex:12px × 1.55 ≈ 18.6
 const BASH_OUTPUT_BODY_MARGIN = 6; // .bash-output-body margin: 6px 0 0
 /** `buildOutputPre` 超 30 行只展示头 20 行(cards/bash.ts OUTPUT_HEAD_LINES) */
@@ -149,31 +151,69 @@ const BLOCK_TAGS = new Set([
   "H6",
 ]);
 
+/**
+ * R1 的回摆(秤 2 现打):R1 保留了**所有** \n,而其中绝大多数根本不是断行——
+ * `marked` 产出的 HTML 里标签之间/段落内部全是**源码排版换行**(表格尤甚:一行 4 个
+ * `<td>` 各占一行源码)。浏览器对 `white-space: normal` 的内容把它们折叠成一个空格,
+ * 而 `textHeight` 用 `pre-wrap` 喂 pretext ⇒ 每一个都被当成一次硬断行。
+ * 实测 28 张 `card-assistant`:提取文本 2726 个 \n,有 DOM 依据的(块边界)只有 961 个,
+ * `<br>` 0 个 ⇒ **1765 个凭空多出来的行** ⇒ 正文卡系统性 ~2× 虚高
+ * (`tests/evidence/U-scale2-height-truth.md` §2)。
+ *
+ * ⇒ 口径定死:**只有块边界与 `<br>` 算硬断行,其余位置的空白一律按 `white-space: normal`
+ * 折叠成一个空格**;真正 `pre`/`pre-wrap` 的容器(见 `preservesWhitespace`)才原样保留。
+ * 两头都不对:吞掉断行 = 8 倍低估(R1 修的那个),全留 = 2 倍虚高(这次修的这个)。
+ */
+function preservesWhitespace(e: Element): boolean {
+  // styles.css `.block-collapsible .block-body { white-space: pre-wrap }`,
+  // 被 `.block-body-md { white-space: normal }` 覆盖回正常折叠(markdown 正文)。
+  return (
+    e.tagName === "PRE" ||
+    (e.classList.contains("block-body") && !e.classList.contains("block-body-md"))
+  );
+}
+
 /** 导出仅为单测。返回带 \n 的文本 + 块数(段间 margin 按块数均摊)。 */
 export function extractProseText(root: Element): { text: string; blockCount: number } {
   let out = "";
   let blockCount = 0;
-  const walk = (node: Node): void => {
+  /** 硬断行(块边界 / <br>):插之前吃掉排版留下的行尾空格 */
+  const pushBreak = (): void => {
+    if (!out || out.endsWith("\n")) return;
+    out = out.replace(/ +$/, "") + "\n";
+  };
+  const walk = (node: Node, preserve: boolean): void => {
     for (const child of Array.from(node.childNodes)) {
       if (child.nodeType === 3) {
-        out += child.nodeValue ?? "";
+        const raw = child.nodeValue ?? "";
+        if (preserve) {
+          out += raw.replace(/\r\n?/g, "\n");
+          continue;
+        }
+        // 折叠:连续空白(含源码换行/缩进)→ 一个空格;行首的那个空格没有宽度,丢掉
+        const s = raw.replace(/\s+/g, " ");
+        out += !out || out.endsWith("\n") ? s.replace(/^ /, "") : s;
         continue;
       }
       if (child.nodeType !== 1) continue;
       const e = child as Element;
       if (e.tagName === "BR") {
-        out += "\n";
+        out += "\n"; // <br> 是**无条件**断行:连着两个 <br> 就是两行,不能被 pushBreak 去重
         continue;
       }
       if (e.classList.contains("code-block") || e.classList.contains("katex-mathml")) continue;
       const isBlock = BLOCK_TAGS.has(e.tagName);
-      if (isBlock) blockCount++;
-      walk(e);
-      if (isBlock && !out.endsWith("\n")) out += "\n";
+      // 块**前后**都断:源码换行归一成空格之后,块边界是唯一还认得出断行的依据
+      if (isBlock) {
+        blockCount++;
+        pushBreak();
+      }
+      walk(e, preserve || preservesWhitespace(e));
+      if (isBlock) pushBreak();
     }
   };
-  walk(root);
-  return { text: out.replace(/\n+$/, ""), blockCount };
+  walk(root, preservesWhitespace(root));
+  return { text: out.trim(), blockCount };
 }
 
 /** 代码块:等宽字体纯算术——行数 × 行高 + bar/padding 常数,不需要 pretext */
@@ -256,12 +296,25 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
     return textHeight(text, `14px ${FONT_BASE}`, 14, LH_BASE, USER_BODY_W);
   }
 
-  // 高频细条卡:120px 兜底偏大 3 倍,常数更准(渲染后 auto 记忆接管)
+  // 高频细条卡:120px 兜底偏大 3 倍,常数更准(渲染后 auto 记忆接管)。
+  //
+  // ⚠ 这三条是 **content-box** 值(`contain-intrinsic-size` 吃的就是 content-box,
+  //   秤 2 的 B 段在两个真引擎里实测过:声明 N ⇒ 实际占 N + padding + border)。
+  //   2026-09-18 之前写的是 24 / 32 / 34,全是**按 border-box 手算**的
+  //   ⇒ 每条各多一份 padding,p90 相对误差 40.8% / 72.1% / 82.9%。现值逐条:
+  //     card-api-retry  17 ← 11px(--font-size-xs)   × 1.55 = 17.05(实测 content-box 真高 17.05)
+  //     card-bash-input 19 ← 12px(--font-size-small) × 1.55 = 18.59
+  //     card-slash      19 ← 同一套紧凑系 token,真高同 18.59
+  //   padding 不在这里加:api-retry 3×2 / bash-input 6×2 / slash 6×2 由盒模型另算(S1)。
+  // ⚠ 但 `applyIntrinsicSize` 的 `Math.max(24, …)` 地板会把 17/19 一律顶成 **24**
+  //   ⇒ 写进 style 的仍是 24,三条卡的落地误差停在 40.8% / 29.1% / 29.1%,
+  //   **不是**常数本身对应的 0.3% / 2.2% / 2.2%。读数与登记见
+  //   `tests/evidence/U-scale2-height-truth.md` §2/§4。
   if (el.classList.contains("card-api-error")) return 40;
-  if (el.classList.contains("card-slash")) return 34;
+  if (el.classList.contains("card-slash")) return 19;
   // `设计/17 §2.2` 修法①:两行常数。card-api-retry 是"重试风暴"时成批出现的那一种。
-  if (el.classList.contains("card-api-retry")) return 24;
-  if (el.classList.contains("card-bash-input")) return 32;
+  if (el.classList.contains("card-api-retry")) return 17;
+  if (el.classList.contains("card-bash-input")) return 19;
   // `设计/17 §2.2` 修法②:card-bash-output 按 header + min(行数, 20) 算。
   // 行数直接数 DOM 里**已经截过的** pre(cards/bash.ts 超 30 行只留头 20 行),
   // 所以这里不需要知道原始输出多长。stderr 标签/展开按钮/空态各算一个细条行。
