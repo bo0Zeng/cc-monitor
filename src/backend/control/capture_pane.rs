@@ -11,7 +11,7 @@
 //! 会 `send-keys`（[`super::launch`]）—— **唯独没有「把那一屏取回来」**。
 //!
 //! ⚠ **它只是原语。** monitor 侧那条 `capture_remote_pane` 今天仍然只有远端一条路
-//! （`src/bridge/src/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
+//! （`src/bridge/src/backend/control/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
 //! 「等 monitor 侧接上去」，**没有被结掉**。
 //!
 //! # 🔴 只出原语，不出轮询（`KR86D3`）

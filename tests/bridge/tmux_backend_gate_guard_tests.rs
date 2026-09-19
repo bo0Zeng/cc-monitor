@@ -21,7 +21,7 @@ const GUARDED_COMMANDS: &[&str] = &[
     "pub async fn kill_remote_tmux(",
 ];
 
-const MONITOR_TMUX: &str = include_str!("../../src/bridge/src/tmux.rs");
+const MONITOR_TMUX: &str = include_str!("../../src/bridge/src/backend/control/tmux.rs");
 
 fn backend_control_dir() -> PathBuf {
     // 住址唯一源：`crate::guard_support`。原来这里自己爬一级（`src/bridge` 的上级只到

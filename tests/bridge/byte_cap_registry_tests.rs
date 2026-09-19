@@ -1048,7 +1048,7 @@ const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
         "同上一条。**退役归 F10d**。",
     ),
     (
-        "src/bridge/src/tmux.rs",
+        "src/bridge/src/backend/control/tmux.rs",
         "远端 `tmux ls` / `capture-pane` 等四处的 stdout",
         "同上一条；四处同一族同一文件，故按文件登记（照 `polling_registry` 的口径）。\
              **退役归 F10d**。",

@@ -124,7 +124,8 @@ fn the_sole_home_really_holds_the_decision() {
 /// 这里直接比行为 —— 两者对同一批输入必须逐个一致。
 #[test]
 fn the_monitor_wrapper_really_delegates() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
+    let prod =
+        guard_core::production_code(include_str!("../../src/bridge/src/backend/control/tmux.rs"));
     assert!(
         prod.contains("gate_core::is_ccm_tmux_name"),
         "`tmux.rs` 的生产段里没有转调 `gate_core::is_ccm_tmux_name` —— \

@@ -394,7 +394,9 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
 /// - **它不判那三份副本说得对不对** —— 只判「那句话在不在」与「代码里那条路在不在」一致。
 #[test]
 fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
-    let tmux_rs = guard_core::production_code(include_str!("../../../../src/bridge/src/tmux.rs"));
+    let tmux_rs = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/tmux.rs"
+    ));
     let at = tmux_rs
         .find("pub async fn kill_remote_tmux(")
         .expect("找不到 kill 命令 —— 签名变了就把本条一起改");

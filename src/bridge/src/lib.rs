@@ -158,7 +158,6 @@ mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shel
 mod structural_scan;
 mod subagent;
 mod tasks;
-mod tmux;
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
 mod tmux_reconcile;
 mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
@@ -1343,11 +1342,11 @@ pub fn run() {
             sftp_pool::sftp_read_text_for_edit,
             sftp_pool::sftp_write_text,
             pubkey::push_public_key,
-            tmux::list_remote_tmux,
-            tmux::list_local_tmux,
-            tmux::capture_remote_pane,
-            tmux::kill_remote_tmux,
-            tmux::tmux_send_keys,
+            backend::control::tmux::list_remote_tmux,
+            backend::control::tmux::list_local_tmux,
+            backend::control::tmux::capture_remote_pane,
+            backend::control::tmux::kill_remote_tmux,
+            backend::control::tmux::tmux_send_keys,
             ccm_probe::probe_ccm_cli,
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,

@@ -84,7 +84,9 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     ("remote_branch.rs", "create_remote_branch_session"),
     ("remote_history.rs", "require_cfg_by_label"),
     ("ssh_source.rs", "connect_via_jump"),
-    ("tmux.rs", "list_remote_tmux"),
+    // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
+    //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
+    ("backend/control/tmux.rs", "list_remote_tmux"),
     // `K-R56`（09-11）：`tmux.rs::tmux_send_keys` 从这里**还掉了** —— 它现在在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
     // 行为那一半由 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh` 钉着。
