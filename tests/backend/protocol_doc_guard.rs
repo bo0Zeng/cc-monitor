@@ -609,13 +609,22 @@ mod tests {
         //    （现打红：「接盘判据不再扫 `argv.rs` 了」）。
         //    ⇒ 针改成**只认路径的收尾文件名**：它认的是「有一处 include 读的是 argv.rs」，
         //      而不是「那条相对路径逐字长这样」。前者是事实，后者是位置。
-        let opener = format!("include_str{}(\"", "!");
+        // ⚠ 针要**跳过左括号与引号之间的空白**：`cargo fmt` 会把长的嵌入调用折行
+        //   （左括号一行、路径字面量另一行），那时「宏名紧跟引号」就不再连写。
+        //   〔步 7c 现打：格式化那一趟本条就是这么红的 —— 又一处「按位置认的针」。〕
+        //
+        // ⚠⚠ **这段注里刻意不写那个宏调用的完整形**〔步 7c 第二次现打〕：
+        //   `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason`
+        //   按文本数「嵌入宏的调用处」，而它数的是**整份文件**（含注释）。
+        //   第一版在这里逐字写了 `宏名!(` 加一个转义换行 ⇒ 那条判据把这句话数成了
+        //   「一处解析不出路径的调用」，当场红。**判据数到注释**，本仓记过多次。
+        let opener = format!("include_str{}(", "!");
         let reads_argv = ccm_mod
             .match_indices(opener.as_str())
             .filter(|(i, _)| {
-                ccm_mod[i + opener.len()..]
-                    .split('"')
-                    .next()
+                let rest = ccm_mod[i + opener.len()..].trim_start();
+                rest.strip_prefix('"')
+                    .and_then(|r| r.split('"').next())
                     .is_some_and(|path| path.ends_with("argv.rs"))
             })
             .count();

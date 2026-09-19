@@ -333,8 +333,7 @@ fn account_trust_paths() {
     assert_eq!(v["known"], true);
     // 已记录但未接受 → known:true, trusted:false
     let v: serde_json::Value =
-        serde_json::from_str(&account_trust(&accts, &z.to_string_lossy(), "/x").unwrap())
-            .unwrap();
+        serde_json::from_str(&account_trust(&accts, &z.to_string_lossy(), "/x").unwrap()).unwrap();
     assert_eq!(v["known"], true);
     assert_eq!(v["trusted"], false);
     // manifest 之外的 configDir → 拒（防任意文件读）
@@ -1285,8 +1284,7 @@ fn production_text() -> String {
 /// 五格的活，本条不重复买。
 #[test]
 fn the_launch_id_env_var_matches_the_monitor_side_home() {
-    let monitor_history_path =
-        crate::guard_support::repo_root().join("src/bridge/src/history.rs");
+    let monitor_history_path = crate::guard_support::repo_root().join("src/bridge/src/history.rs");
     let monitor_history = std::fs::read_to_string(&monitor_history_path)
         .unwrap_or_else(|e| panic!("读不到 {monitor_history_path:?}：{e}"));
     assert!(

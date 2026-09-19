@@ -12,8 +12,7 @@ const LAUNCH_CAPS: &[&str] = &["session.launch", "launch.send-into"];
 ///
 /// ⚠ 这一格买的只是「那条判据还在」，**不是**「那条判据有牙」。
 /// 有没有牙由它自己那五格与逐刀变异回答，本表不重复买。
-const PLANTED_JUDGE: &str =
-    "the_launcher_plants_the_session_identity_into_the_process_environment";
+const PLANTED_JUDGE: &str = "the_launcher_plants_the_session_identity_into_the_process_environment";
 
 /// 一处**起会话方**。
 ///
@@ -373,7 +372,8 @@ fn the_identity_token_has_exactly_one_mint_and_one_env_var_name() {
     );
     for (k, (needle, want, what)) in probes.iter().enumerate() {
         assert_eq!(
-            counts[k], *want,
+            counts[k],
+            *want,
             "\n★★ `{needle}` 在 `src/bridge/src` 的生产段里有 {} 处（期望 {want} 处 = {what}）。\n\
                  **多了** ⇒ 身份这件事长出了第二个家。`KP5BD1` 的「铸法只有一份」是承重的：\n\
                  照 `K-H2c` 那一拍买到的形状，**共用一份实现**才能让「漂开」在结构上不可表示；\n\

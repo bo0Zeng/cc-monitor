@@ -84,8 +84,8 @@ fn capturing_a_real_pane_brings_the_screen_back() {
 
     // ★ 反向对照：同一个 server 上问一个**不存在**的会话，必须是「会话不存在」，
     //   不是空串、也不是「没有 server」。
-    let miss = capture_on(Some(&sock.to_string_lossy()), "kr86nope")
-        .expect_err("不存在的会话不许回成功");
+    let miss =
+        capture_on(Some(&sock.to_string_lossy()), "kr86nope").expect_err("不存在的会话不许回成功");
     assert_eq!(
         miss.0, "no_such_session",
         "server 在、目标不在 ⇒ 该报 `no_such_session`。实得：{miss:?}"
@@ -156,8 +156,8 @@ fn an_empty_screen_is_a_success_and_a_failure_is_never_an_empty_string() {
 /// ★ 兜底那一档**说不清但不撒谎**：两张针都不命中 ⇒ `capture_failed` ＋ stderr 原样带出。
 #[test]
 fn an_unrecognised_failure_carries_the_real_words_instead_of_a_guess() {
-    let e = classify(&raw(Some(3), "", "tmux: 未来某个版本的新措辞"))
-        .expect_err("非零退出不许回成功");
+    let e =
+        classify(&raw(Some(3), "", "tmux: 未来某个版本的新措辞")).expect_err("非零退出不许回成功");
     assert_eq!(
         e.0, "capture_failed",
         "认不出来的失败被塞进了一个具体的码 —— 那是拿一个错答案冒充知识"

@@ -127,8 +127,8 @@ fn the_other_half_of_the_sweep_still_has_a_home() {
              ★ 要么把那半的新家写进头注，要么把头注改回「未做」；\n\
              **不许留着一句指向空处的指针** —— 那比没有注释更坏（skill 铁律 14）。"
     );
-    let me = fs::read_to_string(root.join("src/bridge/src/polling_registry.rs"))
-        .expect("读不到本文件");
+    let me =
+        fs::read_to_string(root.join("src/bridge/src/polling_registry.rs")).expect("读不到本文件");
     // ⚠ **只看头注那半**（`production_source` 把 `#[cfg(test)]` 段剥掉）。
     // 变异实测：拿整份文件 `contains` 时，**本条自己的代码里就写着这个名字**
     // （上面那个路径 join、下面那个 `mod` 断言）⇒ 散文里的指针被删光了它照样绿。
@@ -367,8 +367,7 @@ fn the_scan_actually_reads_the_frontend_and_ccm() {
     //   都不剥 ⇒ 这里**不许**断言「它剥掉了东西」（那不是它对 shell 语料的契约）。
     //   今天被抹掉的 9 行全是 shell 的 `*)` case 分支 —— 那是 `scan()` 在 ccm 上的
     //   真实行为，是另一件事，不是本条该钉的性质。
-    let ccm =
-        fs::read_to_string(root.join("src/backend/control/ccm/plan.rs")).unwrap_or_default();
+    let ccm = fs::read_to_string(root.join("src/backend/control/ccm/plan.rs")).unwrap_or_default();
     assert!(
         !guard_core::strip_comment_lines(&ccm).trim().is_empty(),
         "剥注释后 `control/ccm/plan.rs` 一个非空白字节都不剩（原文 {} 字节）。两个可能的真因：\n\
@@ -651,9 +650,8 @@ fn the_identity_poller_is_gone_for_good() {
     let raw: String = ["mod.rs", "plan.rs"]
         .iter()
         .map(|f| {
-            fs::read_to_string(root.join("src/backend/control/ccm").join(f)).unwrap_or_else(
-                |e| panic!("control/ccm/{f} 读不到 —— 路径变了就把这条一起改：{e}"),
-            )
+            fs::read_to_string(root.join("src/backend/control/ccm").join(f))
+                .unwrap_or_else(|e| panic!("control/ccm/{f} 读不到 —— 路径变了就把这条一起改：{e}"))
         })
         .collect::<Vec<_>>()
         .join("\n");

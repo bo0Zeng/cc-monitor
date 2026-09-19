@@ -13,7 +13,9 @@ use super::*;
 /// **`--print` 与真跑吐的名字可以不一样**，而 `--print` 的全部意义就是当平价预言机。
 #[test]
 fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/control/ccm/mod.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/ccm/mod.rs"
+    ));
     crate::guard_support::assert_no_test_code("control/ccm/mod.rs", &prod);
 
     let builds = prod.matches("plan::build(").count();
@@ -39,8 +41,10 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
     );
     // 反向自检：这几针不是靠「本文件恰好不含那些词」空转的。
     assert!(
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/ccm/plan.rs"))
-            .contains("fn next_free_name"),
+        crate::guard_support::production_code(include_str!(
+            "../../../src/backend/control/ccm/plan.rs"
+        ))
+        .contains("fn next_free_name"),
         "`plan.rs` 里找不到 `next_free_name` —— 退让规则搬家/改名了，本条在空转"
     );
 }
@@ -112,7 +116,9 @@ fn the_version_moved_because_the_implementation_did() {
 /// （那边保证「旗标字面量只住 argv.rs」，这边保证「住在那里的都说得出来」）。
 #[test]
 fn every_flag_we_accept_has_a_usage_line() {
-    let src = crate::guard_support::production_code(include_str!("../../../src/backend/control/ccm/argv.rs"));
+    let src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/ccm/argv.rs"
+    ));
     let mut flags: Vec<String> = Vec::new();
     let mut from = 0usize;
     while let Some(rel) = src[from..].find("\"--") {
@@ -203,8 +209,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
         let Parsed::Opts(o) = argv::parse(&args).expect("该解析得动") else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
-        match plan::build(&o, env, &AccountTable::default(), None).expect("该算得出计划")
-        {
+        match plan::build(&o, env, &AccountTable::default(), None).expect("该算得出计划") {
             Plan::Container(c) => c.payload,
             other => panic!("`--tmux=` 该走容器路，实得 {other:?}"),
         }
@@ -282,7 +287,9 @@ fn the_window_title_is_synthesised_from_the_identity_tag_not_the_pane_title() {
 /// ⇒ 收口会把一条真判据变瞎。**留两份 + 本条钉住它们逐字相同**，买到的比收口多。
 #[test]
 fn the_window_title_format_has_the_same_text_on_both_sides() {
-    let launch = crate::guard_support::production_code(include_str!("../../../src/backend/control/launch.rs"));
+    let launch = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
     assert!(
         launch.contains(RBIND_TITLE_FORMAT),
         "`control/launch.rs` 的生产段里找不到这个格式串的逐字副本：\n  {RBIND_TITLE_FORMAT}\n             两份已经漂开了（或者那一行被收口成了标识符 —— 别那么做，理由见本条头注）。"

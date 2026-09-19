@@ -53,8 +53,7 @@ fn capability_json() -> String {
 #[test]
 fn the_webview_execution_surface_stays_closed() {
     let raw = capability_json_sibling("tauri.conf.json");
-    let v: serde_json::Value =
-        serde_json::from_str(&raw).expect("tauri.conf.json 不是合法 JSON");
+    let v: serde_json::Value = serde_json::from_str(&raw).expect("tauri.conf.json 不是合法 JSON");
     let app = v
         .get("app")
         .expect("找不到 `app` —— 配置形状变了，本条此刻无效");
@@ -519,8 +518,7 @@ fn offenders_under(root: &std::path::Path, slots: &[String]) -> Vec<String> {
 /// ⚠ 目录名与那一格的相对路径都取**中性名**（`brief` `6g`：夹具的名字不许成为断言的
 /// 承重词）——下面每一条断言认的都是**判据自己报文里的词**，不是这里的路径。
 fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
-    let dir =
-        std::env::temp_dir().join(format!("ccm-capreg-slot-{tag}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ccm-capreg-slot-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let rel = "d/.cargo/config.toml".to_string();
     let p = dir.join(&rel);
@@ -1000,16 +998,19 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 fn the_build_time_execution_surface_stays_registered() {
     // ① `tauri.conf.json` 的构建前置命令：登记值 + 理由。
     const BEFORE: &[(&str, &str, &str)] = &[
-        ("beforeDevCommand", "npm run dev", "起前端 dev server；`tauri dev` 会执行它"),
+        (
+            "beforeDevCommand",
+            "npm run dev",
+            "起前端 dev server；`tauri dev` 会执行它",
+        ),
         (
             "beforeBuildCommand",
             "npm run build",
             "打包前构建前端产物；`tauri build` 会执行它 —— 改这里等于改「发版时在构建机上跑什么」",
         ),
     ];
-    let v: serde_json::Value =
-        serde_json::from_str(&capability_json_sibling("tauri.conf.json"))
-            .expect("tauri.conf.json 不是合法 JSON");
+    let v: serde_json::Value = serde_json::from_str(&capability_json_sibling("tauri.conf.json"))
+        .expect("tauri.conf.json 不是合法 JSON");
     let build = v
         .get("build")
         .expect("`tauri.conf.json` 里没有 `build` 段 —— 形状变了，本条会零命中地绿");

@@ -120,7 +120,9 @@ fn crate_production_sources() -> Vec<(String, String)> {
 /// - **反面**：别处**零声明**。
 #[test]
 fn each_kou_jing_has_exactly_one_home_and_it_is_this_file() {
-    let home = crate::guard_support::production_code(include_str!("../../../src/backend/common/tmux_utf8.rs"));
+    let home = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/common/tmux_utf8.rs"
+    ));
     crate::guard_support::assert_no_test_code("common/tmux_utf8.rs", &home);
     let others = crate_production_sources();
     // 反空真：语料塌了 ⇒ 下面「别处零声明」会空着绿。
@@ -167,11 +169,15 @@ fn both_consumer_layers_reference_the_home_instead_of_declaring_their_own() {
     let files: Vec<(String, String)> = vec![
         (
             "control/gate.rs".to_string(),
-            crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs")),
+            crate::guard_support::production_code(include_str!(
+                "../../../src/backend/control/gate.rs"
+            )),
         ),
         (
             "observe/watcher.rs".to_string(),
-            crate::guard_support::production_code(include_str!("../../../src/backend/observe/watcher.rs")),
+            crate::guard_support::production_code(include_str!(
+                "../../../src/backend/observe/watcher.rs"
+            )),
         ),
     ];
     // 人群自检：登记的两个消费者与真读到的两个逐条对上（表改了、读的没改 ⇒ 红）。

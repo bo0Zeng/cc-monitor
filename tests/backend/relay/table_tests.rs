@@ -324,8 +324,8 @@ fn every_auth_style_other_than_the_default_gets_announced() {
         if s == AuthStyle::DEFAULT {
             continue;
         }
-        let what = note_for_auth_style(s)
-            .unwrap_or_else(|| panic!("{s:?} 是非默认形状，却一个字都不说"));
+        let what =
+            note_for_auth_style(s).unwrap_or_else(|| panic!("{s:?} 是非默认形状，却一个字都不说"));
         said.push(what);
     }
     // 反空真：真的走过至少一个非默认成员。

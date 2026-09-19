@@ -213,10 +213,7 @@ fn every_file_this_head_note_points_at_really_exists() {
             "single_stream_guard.rs",
             include_str!("single_stream_guard.rs"),
         ),
-        (
-            "ratchet_guard.rs",
-            include_str!("ratchet_guard.rs"),
-        ),
+        ("ratchet_guard.rs", include_str!("ratchet_guard.rs")),
     ];
     let head: String = heads
         .iter()

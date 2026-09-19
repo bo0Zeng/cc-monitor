@@ -537,9 +537,8 @@ fn asymmetric_capabilities() -> BTreeSet<&'static str> {
         .into_iter()
         .filter(|(_, sides)| {
             let both = sides.len() == 1 && sides.contains(&Side::Both);
-            let paired = sides.len() == 2
-                && sides.contains(&Side::Local)
-                && sides.contains(&Side::Remote);
+            let paired =
+                sides.len() == 2 && sides.contains(&Side::Local) && sides.contains(&Side::Remote);
             !(both || paired)
         })
         .map(|(cap, _)| cap)

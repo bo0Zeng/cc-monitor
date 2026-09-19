@@ -223,8 +223,7 @@ fn cc_spawn_reads_the_name_back_instead_of_computing_it() {
         name_assigns[0]
     );
     assert!(
-        name_assigns[0].starts_with("name=$(")
-            && name_assigns[0].contains("s/^ccm-session=//p"),
+        name_assigns[0].starts_with("name=$(") && name_assigns[0].contains("s/^ccm-session=//p"),
         "`name` 不是从 ccm 报的 `ccm-session=` 摘来的 —— 那它拿什么名字去登记总线？实得：{}",
         name_assigns[0]
     );

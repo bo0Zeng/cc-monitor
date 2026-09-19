@@ -118,7 +118,9 @@ fn the_stale_read_door_never_appears_in_production_code() {
 fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
     const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
     const ARGS_OPEN: &str = ".args([";
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/common/session_snapshot.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/common/session_snapshot.rs"
+    ));
     crate::guard_support::assert_no_test_code("common/session_snapshot.rs", &prod);
 
     let starts = prod.matches("Command::new(\"tmux\")").count();

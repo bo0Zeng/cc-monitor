@@ -418,9 +418,9 @@ fn every_registered_facade_really_erases_the_kind() {
         // 它的实现体真的抹 kind：调 `active()`，或调另一个已登记门面（`is_record_file` 那形）。
         let body = body_of(&adapter, &define);
         let via_active = guard_core::contains_word(&body, &needle_active());
-        let via_peer = KIND_ERASING_FACADES.iter().any(|(peer, _)| {
-            peer != name && guard_core::contains_word(&body, &format!("{peer}("))
-        });
+        let via_peer = KIND_ERASING_FACADES
+            .iter()
+            .any(|(peer, _)| peer != name && guard_core::contains_word(&body, &format!("{peer}(")));
         assert!(
             via_active || via_peer,
             "门面 `{name}` 的实现体里既没有 `{}`、也没调另一个已登记门面 —— \

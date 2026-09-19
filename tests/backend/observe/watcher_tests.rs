@@ -1,4 +1,3 @@
-
 /// ★ **事件分派不许有兜底臂**〔audit-0805 08-06〕。
 ///
 /// # 它钉的是一个「没人盯的前提」，不是一个缺陷
@@ -17,7 +16,9 @@
 /// ⇒ 本条只做一件事：钉住那条 `match` 里**没有兜底臂**。
 #[test]
 fn the_event_dispatch_has_no_catch_all_arm() {
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/observe/watcher.rs"
+    ));
     let anchor = "WatchEvent::Notify(Ok(events)) =>";
     let at = prod
         .find(anchor)
@@ -304,7 +305,9 @@ fn arm_pid_watcher_is_a_noop_without_sender() {
 /// 现在锚在 `WalkDir::new(&sessions)`（生产段唯一一处，扫描真正开始的地方）。
 #[test]
 fn events_channel_is_created_before_the_initial_scan() {
-    let src = crate::guard_support::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
+    let src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/observe/watcher.rs"
+    ));
     let tx_at = src
         .find("state.events_tx = Some(events_tx.clone());")
         .expect("找不到 events_tx 注入点——守卫锚点漂了，先修锚点别改断言");
@@ -562,7 +565,11 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
     // 而剖分之后那份生产文件里**本来就没有测试段可剥** ⇒ 那句话恒假。
     // 换成两句今天成立、而且仍然会红的：① 语料没塌；② 生产段里一点测试代码都没有
     // （后者比原来那句强：原来只要求「剥掉了一些」，剥漏了一半照样过）。
-    assert!(prod.len() > 1000, "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转", prod.len());
+    assert!(
+        prod.len() > 1000,
+        "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转",
+        prod.len()
+    );
     crate::guard_support::assert_no_test_code("observe/watcher.rs", prod);
 }
 
@@ -591,7 +598,11 @@ fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
     // 而剖分之后那份生产文件里**本来就没有测试段可剥** ⇒ 那句话恒假。
     // 换成两句今天成立、而且仍然会红的：① 语料没塌；② 生产段里一点测试代码都没有
     // （后者比原来那句强：原来只要求「剥掉了一些」，剥漏了一半照样过）。
-    assert!(prod.len() > 1000, "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转", prod.len());
+    assert!(
+        prod.len() > 1000,
+        "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转",
+        prod.len()
+    );
     crate::guard_support::assert_no_test_code("observe/watcher.rs", prod);
     // 触发器 = 处理前后拿同一个 key 的 sid 比一次。判据运行时拼，避免本测试自己的
     // 源码把 `contains` 喂成恒真（那正是 P4 那条守卫初版栽的跟头）。
@@ -680,7 +691,11 @@ fn still_exactly_one_event_channel() {
     // 而剖分之后那份生产文件里**本来就没有测试段可剥** ⇒ 那句话恒假。
     // 换成两句今天成立、而且仍然会红的：① 语料没塌；② 生产段里一点测试代码都没有
     // （后者比原来那句强：原来只要求「剥掉了一些」，剥漏了一半照样过）。
-    assert!(prod.len() > 1000, "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转", prod.len());
+    assert!(
+        prod.len() > 1000,
+        "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转",
+        prod.len()
+    );
     crate::guard_support::assert_no_test_code("observe/watcher.rs", prod);
 }
 
@@ -940,7 +955,10 @@ fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
         "正对照：干净的六段必须照常放行，否则买到的是「门坏了」而不是「门对了」"
     );
     assert!(
-        matches!(classify_tmux_probe(Some(0), OVERFLOW), TmuxObservation::Sessions(_)),
+        matches!(
+            classify_tmux_probe(Some(0), OVERFLOW),
+            TmuxObservation::Sessions(_)
+        ),
         "过溢是**合法内容**（cwd 里带真 TAB）⇒ 必须放行。这一格钉的是「下溢」而不是「不等于 6」"
     );
 
@@ -1032,7 +1050,9 @@ fn the_underflow_predicate_only_fires_downward() {
 /// 私有 socket 打过，改前段数 1、改后各回各的 N。
 #[test]
 fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/observe/watcher.rs"
+    ));
     crate::guard_support::assert_no_test_code("observe/watcher.rs", &prod);
     // 非空对照：剥过头 / 没读到 ⇒ 下面全是 0 == 0 的空真。
     // 地板 = 实测值的一半（09-04 现打 41_149 字节）。
@@ -1951,9 +1971,7 @@ fn same_sid_two_pidfiles_refcount() {
     std::fs::write(&p1, &body).unwrap();
     std::fs::write(&p2, &body).unwrap();
     process_session_added(&p1, &mut state, &mut sink);
-    assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "shared-sid")
-    );
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "shared-sid"));
     process_session_added(&p2, &mut state, &mut sink);
     // 第二个 pidfile：幂等检查是 per-key 的 → 恰好再发一条 Added（前端
     // ensureTab 幂等）。断言帧序（审计 S3：吞帧会掩盖"先 Removed 再 Added

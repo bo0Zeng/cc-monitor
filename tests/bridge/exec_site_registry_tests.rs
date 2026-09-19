@@ -107,8 +107,7 @@ fn body_around(lines: &[&str], at: usize) -> String {
 /// 于是 `ok_or_else(|| format!("未找到远端配置: …"))` 又把一处误判成「在拼命令」。
 /// **一种一种追就是「按怎么写的取样」** —— 那正是本工作区反复在治的病。
 /// **边界**：真在 `unwrap_or_else` 里拼命令的话本条看不见（今天全树无此形态）。
-const ERROR_COMBINATORS: &[&str] =
-    &["Err(", "map_err", "ok_or_else", "unwrap_or_else", "expect("];
+const ERROR_COMBINATORS: &[&str] = &["Err(", "map_err", "ok_or_else", "unwrap_or_else", "expect("];
 
 fn non_error_lines(body: &str) -> String {
     body.lines()
@@ -211,8 +210,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
                 // 三种都算常量命令：实参就是字面量 · 实参是全大写常量 ·
                 // 实参是个绑定到**字面量**的局部（`let cmd = "…"`，`ccm_probe` 就是这形）。
                 let ok = arg.starts_with('"')
-                    || (!arg.is_empty()
-                        && arg.chars().all(|c| c.is_ascii_uppercase() || c == '_'))
+                    || (!arg.is_empty() && arg.chars().all(|c| c.is_ascii_uppercase() || c == '_'))
                     || body.contains(&format!("{arg} = \""));
                 assert!(
                     ok,

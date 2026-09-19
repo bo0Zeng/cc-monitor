@@ -1144,10 +1144,9 @@ fn the_brace_balance_check_actually_bites() {
 #[test]
 fn the_brace_balance_check_says_it_cannot_tell_when_the_lexer_gives_up() {
     let src = "fn a() {}\nlet x = r#\"never closed\n";
-    let e = std::panic::catch_unwind(|| {
-        assert_test_module_ranges_are_brace_balanced("判不了", src)
-    })
-    .expect_err("词法兜底时必须出声");
+    let e =
+        std::panic::catch_unwind(|| assert_test_module_ranges_are_brace_balanced("判不了", src))
+            .expect_err("词法兜底时必须出声");
     let msg = e
         .downcast_ref::<String>()
         .map(String::as_str)

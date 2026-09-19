@@ -62,7 +62,11 @@ fn analyze_session_detects_bg_kind() {
     let v = analyze_session(&f);
     assert_eq!(v["isBg"], true);
     let g = tmp.join("normal.jsonl");
-    std::fs::write(&g, "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n").unwrap();
+    std::fs::write(
+        &g,
+        "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n",
+    )
+    .unwrap();
     assert_eq!(analyze_session(&g)["isBg"], false);
     std::fs::remove_dir_all(&tmp).ok();
 }
@@ -81,7 +85,9 @@ fn analyze_session_detects_bg_kind() {
 /// 收成一处之后，任何新写的「自己解析一下路径再判」都会让这个数变大。
 #[test]
 fn path_resolution_has_exactly_one_home() {
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/observe/history_query.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/observe/history_query.rs"
+    ));
     let n = prod.matches("canonicalize()").count();
     // 抽取器自检：剥过头 / 抠不到 ⇒ 下面那条会零命中地绿。
     assert!(

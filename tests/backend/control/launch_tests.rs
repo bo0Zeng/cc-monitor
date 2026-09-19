@@ -141,7 +141,9 @@ fn the_create_only_fields_have_their_own_shapes() {
 /// ⚠ 这里只能判**源码形态**（真验要起 tmux，红线禁）。诚实边界写在这儿，别读大了。
 #[test]
 fn the_create_arm_actually_uses_the_three_new_fields() {
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/control/launch.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
     // ★ 抽取器自检：剥注释器没把代码也剥掉（建条当天生产段 300+ 行）。
     assert!(
         prod.lines().count() >= 200,
@@ -289,7 +291,9 @@ fn the_create_argv_is_detached_and_names_the_session() {
 
 #[test]
 fn send_into_never_creates_a_session() {
-    let src = crate::guard_support::production_code(include_str!("../../../src/backend/control/launch.rs"));
+    let src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
     let arm = arm_of(&src, "Mode::SendInto =>");
     let verb = format!("new-{}", "session");
     assert!(
@@ -330,7 +334,9 @@ fn send_into_never_creates_a_session() {
 /// 挡不住「`MAX_FIELD_BYTES` 被调大」——那是量纲不是姿态，另有 `byte_cap_registry` 管。
 #[test]
 fn the_payload_is_still_only_shape_checked() {
-    let src = crate::guard_support::production_code(include_str!("../../../src/backend/control/launch.rs"));
+    let src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
     let at = src
         .find("fn check_field(")
         .expect("`check_field` 不见了 —— 形状检查搬家了，`ROADMAP §5 4h` 要跟着重判");
@@ -407,7 +413,9 @@ fn the_payload_is_still_only_shape_checked() {
 /// 顺序错的形态在本仓出现过（`launch_wire` 的 env 顺序），是**最容易被 review 漏掉**的一类。
 #[test]
 fn the_send_into_arm_admits_before_it_types() {
-    let src = crate::guard_support::production_code(include_str!("../../../src/backend/control/launch.rs"));
+    let src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
     let arm = arm_of(&src, "Mode::SendInto =>");
     let admit_at = arm.find("gate::admit").expect("分支里没有 `gate::admit`");
     let type_at = arm.find("type_payload").expect("分支里没有 `type_payload`");
@@ -430,7 +438,9 @@ fn the_send_into_arm_admits_before_it_types() {
 /// 一旦有人让这个分支在「会话已存在」时也去 `type_payload`，本条就红。
 #[test]
 fn create_or_attach_never_types_into_a_session_it_did_not_just_create() {
-    let src = crate::guard_support::production_code(include_str!("../../../src/backend/control/launch.rs"));
+    let src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
     // ⚠ F04c 改用 `arm_of`：原来是 `&src[at..]`（一直切到文件末尾）——
     // 那不是「这个分支」，是「这个分支之后的全部生产代码」。
     // 本轮新加的 `every_mode_variant_…` 当场点名了它（**它是最后一个分支，所以一直没出事**，
@@ -500,7 +510,9 @@ fn the_new_mode_name_parses_and_the_old_ones_still_do() {
 /// （否则是把两个语义合并成一个 —— 那才是这一整件要拆开的东西）。
 #[test]
 fn send_keys_raw_never_appends_enter() {
-    let src = crate::guard_support::production_code(include_str!("../../../src/backend/control/launch.rs"));
+    let src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
     let arm = arm_of(&src, "Mode::SendKeysRaw =>");
     assert!(
         arm.contains("type_keys_raw(&handle"),
@@ -542,7 +554,9 @@ fn send_keys_raw_never_appends_enter() {
 /// 裸键分支与 `send-into` **同一道门、同一个顺序**；且不许顺手建会话。
 #[test]
 fn the_send_keys_raw_arm_admits_before_it_types_and_never_creates() {
-    let src = crate::guard_support::production_code(include_str!("../../../src/backend/control/launch.rs"));
+    let src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
     let arm = arm_of(&src, "Mode::SendKeysRaw =>");
     let admit_at = arm
         .find("gate::admit")
@@ -652,7 +666,9 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
 /// 把没有身份的成功说成确凿的成功）。
 #[test]
 fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
-    let src = crate::guard_support::production_code(include_str!("../../../src/backend/control/launch.rs"));
+    let src = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/launch.rs"
+    ));
     for f in ["fn type_payload(", "fn type_keys_raw("] {
         let at = src
             .find(f)

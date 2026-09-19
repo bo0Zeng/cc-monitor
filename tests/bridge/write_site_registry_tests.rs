@@ -322,10 +322,7 @@ fn write_fns(src: &str) -> Vec<String> {
                 cur = name;
             }
         }
-        if WRITE_CALLS.iter().any(|c| line.contains(c))
-            && !cur.is_empty()
-            && !out.contains(&cur)
-        {
+        if WRITE_CALLS.iter().any(|c| line.contains(c)) && !cur.is_empty() && !out.contains(&cur) {
             out.push(cur.clone());
         }
     }

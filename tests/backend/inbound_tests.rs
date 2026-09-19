@@ -1,4 +1,3 @@
-
 /// ★★ **daemon 的 runtime 必须是多 worker 的**〔audit-0805 08-08，Phase G 第 63 件〕。
 ///
 /// `Disposition::SpawnBlocking` 的头注逐字写着：`main` 是**裸** `#[tokio::main]`
@@ -619,8 +618,7 @@ async fn a_panicking_handler_still_answers_the_client() {
 /// 取消一个不存在的 id 是**幂等**的，不是错误。
 #[tokio::test]
 async fn cancelling_an_unknown_id_is_idempotent_not_an_error() {
-    let out =
-        one_line("{\"id\":\"c\",\"cmd\":\"cancel\",\"args\":{\"target\":\"ghost\"}}\n").await;
+    let out = one_line("{\"id\":\"c\",\"cmd\":\"cancel\",\"args\":{\"target\":\"ghost\"}}\n").await;
     assert!(
         out.iter()
             .any(|l| l.contains("\"id\":\"c\"") && l.contains("\"ok\":true")),

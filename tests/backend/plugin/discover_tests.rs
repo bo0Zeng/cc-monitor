@@ -35,8 +35,7 @@ fn the_first_candidate_that_exists_wins() {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755))
-                .expect("chmod");
+            std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).expect("chmod");
         }
     }
     let fixed = vec![b.join("tool"), a.join("tool")];

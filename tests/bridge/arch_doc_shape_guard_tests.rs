@@ -378,8 +378,7 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
              本条会像第一版那样对 `launch_wire` 那次回归**零真阳**。"
     );
 
-    let citing: Vec<&(String, String)> =
-        blocks.iter().filter(|(_, b)| b.contains("§36")).collect();
+    let citing: Vec<&(String, String)> = blocks.iter().filter(|(_, b)| b.contains("§36")).collect();
 
     // ★ 完备性自检（`ENTRIES` 那条的教训：人群为空时「全过」与「没测」长得一模一样）。
     assert!(
@@ -389,8 +388,7 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
              无论哪种，本条都会零命中地绿。",
         citing.len()
     );
-    let files: std::collections::BTreeSet<&str> =
-        citing.iter().map(|(f, _)| f.as_str()).collect();
+    let files: std::collections::BTreeSet<&str> = citing.iter().map(|(f, _)| f.as_str()).collect();
     // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕`parity_ledger.rs` → `parity_ledger_tests.rs`：
     // 那张平价账本（上面头注逐字说它「整个住在测试段里」）这一轮搬进了 `tests/bridge/`。
     for expect in [
