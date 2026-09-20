@@ -22,7 +22,7 @@ pub fn render_headless_nonvirtual(
                 for (i, r) in rows.iter().enumerate() {
                     t.rows_materialized += 1;
                     t.last_row = i + 1;
-                    paint_one_row(ui, r);
+                    paint_one_row(ui, i, r);
                 }
             });
         t.total_rows = rows.len();
