@@ -176,6 +176,65 @@ export function buildCliRenderRequest(
 }
 
 /** 同 [`buildCliRenderRequest`]：抽出来好让夹具用同一份代码产 `req`。 */
+/**
+ * `设计/90 §4 E`：把一个**要外层 tmux 命令**的 plan 摊成上线形状。
+ *
+ * 三格：`container:tmux` 的 `create` / `send-into`，加上 `action:attach`。
+ * 与 `buildPayloadRenderRequest` 的两处分工差别，都是**真差别**不是口味：
+ *
+ * 1. **cwd 归外层** —— tmux 那两格的内层没有 `cd`（cwd 是 `new-session -c` 的实参）。
+ *    顶层 `cwd` 因此恒 `null`；两个都送后端会 fail-closed 拒。
+ * 2. **attach 那一格不带载荷** —— 它一个 agent 进程都不起，
+ *    `env` / `args` / `launcher` 一律空；带了后端会拒（而不是静默丢）。
+ *
+ * ⚠ **生产调用方今天是 0**〔`设计/90 §4 E` 本轮只搬了「后端产得出」那一半〕：
+ * 唯一的调用者是金标准发生器 `src/launch-tmux-outer-golden.ts`。
+ * 把 `renderLaunchCommand` 的最后那一行接过来是下一拍的事 ——
+ * **如实登记，别把「后端产得出」读成「生产在用它」**（尺子A 与尺子B 的老毛病，
+ * 逐字见 `launch_wire.rs` 的 `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH` 两张表）。
+ */
+export function buildTmuxOuterRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
+  const base = buildPayloadRenderRequest(plan);
+  if (plan.action.kind === "attach") {
+    if (plan.container.kind !== "tmux") throw new Error("attach 必须是 tmux 容器");
+    return {
+      ...base,
+      env: [],
+      args: [],
+      launcher: "",
+      cwd: null,
+      wrap: [],
+      outer: {
+        mode: "attach",
+        name: plan.container.name,
+        quoting: plan.container.nameQuoting,
+      },
+    };
+  }
+  if (plan.container.kind !== "tmux") throw new Error("这三格必须是 tmux 容器");
+  if (plan.container.mode === "attach-only") {
+    throw new Error("不可达：attach-only 应由 action.kind==='attach' 那一格处理");
+  }
+  return {
+    ...base,
+    cwd: null, // ★ 内层不加 `cd` —— cwd 交给外层的 `new-session -c`
+    outer:
+      plan.container.mode === "create"
+        ? {
+            mode: "create",
+            name: plan.container.name,
+            quoting: plan.container.nameQuoting,
+            cwd: plan.cwd,
+            ccmSid: plan.identity?.ccmSid ?? null,
+          }
+        : {
+            mode: "send-into",
+            name: plan.container.name,
+            quoting: plan.container.nameQuoting,
+          },
+  };
+}
+
 export function buildPayloadRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
   return {
     env: plan.env,
