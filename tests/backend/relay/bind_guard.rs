@@ -2,7 +2,7 @@
 //!
 //! # 为什么它单住一个文件，而不是待在 `server.rs` 里
 //!
-//! 它扫的正是 `server.rs`（`LOOPBACK` 那个常量住在那儿）。而 monitor 侧的
+//! 它扫的正是 `relay/` 这棵树（`LOOPBACK` 那个常量住 `server.rs`）。而 monitor 侧的
 //! `scanning_guard_registry` 立过一条**递减棘轮**：扫描型判据不许裸遍历目录，
 //! 要走 `guard_core::scan_tree!` —— 那个宏**按构造摘掉调用者自己那份**，
 //! 治的是「判据在自己的登记表/注释/常量里找到自己 ⇒ 恒绿」那一族

@@ -30,7 +30,7 @@ use super::{Destination, Destinations};
 use creds_core::store::AuthStyle;
 use creds_core::SecretKey;
 use std::io::{BufReader, Read, Write};
-use std::net::TcpStream;
+use std::net::{IpAddr, Ipv4Addr, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -38,6 +38,30 @@ use std::sync::Arc;
 //   住址 `accounts/mod.rs`。搬完之后层 1 里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（层 1 零处 ＋ 层 2 恰好一处），不是一条散文。
+
+// ══ 下面这三个常量的**职责在 `listen.rs`**（监听面），代码留在这里 ══════════════
+//    理由**不是**职责，是两处**写区外的散文住址**逐字点着 `…/relay/server.rs::<常量名>`，
+//    而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` 真的判得了
+//    那种住址（现打：搬去 `listen.rs` 之后它当场红，诊断逐字「符号还在，但**搬家了**」）。
+//    逐条登记在 `listen.rs` 的头注里。⇒ `listen.rs` `use` 它们。
+
+/// 只听回环。**这是一个字面量常量，不是拼出来的** —— 拼出来的地址源码扫描看不见
+/// （`DoD-4` 那条 acceptor 的第一个瞎法就是这个）。行为那半由 `DoD-4㈡` 兜底。
+pub(super) const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+
+/// 默认端口。形状抄 `control/cc_bus.rs` 的 `timeout_secs()`：**写死一个默认 + 环境变量能盖**。
+/// 端口被占怎么办本仓零先例 ⇒ 本刀的处置是**起不来就退出并出声**，不自己换端口。
+pub(super) const DEFAULT_PORT: u16 = 8788;
+
+/// 同时在途的下游连接数上限〔回修轮之五 08-25，D3 `阻-3(D3)` 的**做得到的那一半**〕。
+///
+/// ⚠ **是条数不是体量**，所以名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`
+/// —— 那几个词是 `byte_cap_registry` 的钩子，带了会让它把一个**连接数**当成字节上限收进人群。
+///
+/// 超了怎么办：**回 `503 Service Unavailable` 并关连接**，不是静默 FIN。
+/// 先前 `serve()` 是每连接无条件 spawn、且 `let _ = …spawn(…)` 把失败**整个吞掉**
+/// ⇒ 线程顶满之后下游拿到的是一个**没有任何 HTTP 响应**的 FIN，而 `serve` 一个字都不印。
+pub(super) const INFLIGHT_CONNECTIONS: usize = 256;
 
 /// 请求头部字节上限。
 const HEAD_CAP: usize = 64 * 1024;
