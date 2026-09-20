@@ -9,6 +9,19 @@
    **与钉在本文件里的那一份逐字相同**。
 2. 〔`KR124D2`，本件 09-15 立〕**每一处「往 Release 上写」的步骤都带一个正文来源**，
    而且那份正文**同一个 job 里真的有人生成它**、生成器盘上真的在、生成出来的段真的非空。
+3. 〔`19b`，2026-09-19 立〕**产字节那条路**：条 63 承诺的每一格都有一条产线在本文件上
+   （两向），本文件上没有第二条**没人登记**的产线（两向），每一处抠后端 `const BUILD_ID` /
+   身份戳界标的住址**实打指得到真东西**，而「抠不到」在 `build.rs` 那一侧是一条
+   **所有构建形态都响**的失败（`"unknown"` 兜底从类型上消失）。
+
+# 🔴 第 3 句为什么归这份判据，而不是归 `platform` 那一格
+
+`K-G4-platform-ledger.py`（`platform`，第 24 格）判的是「**门禁盖到了哪些平台**」——
+它读 `gate.sh`。本条判的是「**产线盖到了哪些平台**」—— 它读 `release.yml`。
+两件事分开的理由是硬的（`设计/96 §7.1.2` 现打）：三个落点全部 gitignore ⇒ **字节不进仓**，
+三条产线**只由 `release.yml` 一个文件驱动** ⇒ 「这张表的门禁只能建在 `release.yml` 上，
+不能建在 `cargo` 上」。⇒ 门禁编得过 ≠ 发版那趟产得出字节，**两格都要有**。
+⚠ **条 63 的承诺面本文件一个字不抄**：`PROMISED` 的唯一住址是那份账本，这里 import 它。
 
 # 🔴 它为什么住在这里，而不是住在 `ci.yml` 的 `run:` 块里
 
@@ -43,7 +56,13 @@
    或 `run:` 里出现 `gh release` / `gh api` 打 `/releases`。
    **换第三种路子上传（手写 `curl` 打 `uploads.github.com`）它看不见。**
 3. 它读的是**盘上的 `release.yml`**，不是某一次 run 真正跑的那一份。
-4. **它不证明「云端真会绿」。** 它证明的是「盘上这份文本满足这几条」。
+4. 🔴 **它不证明「云端真会绿」。** 它证明的是「**盘上这几份文本满足下面逐条列出的那些条件**」。
+   `release.yml` 那一族**在本地一步都真跑不起来**（触发器只有推 `v*` tag 与手工 dispatch；
+   `windows-latest` / `ubuntu-latest` 两个 runner 本机都没有；`cargo zigbuild` 那两趟、
+   `npx tauri build` 那两趟、`softprops/action-gh-release` 那两处，本判据**一条都不执行**）。
+   ⇒ 你买到的是「**盘上这份文本满足这几条**」，**不是**「云端那一趟会绿」。
+   ⇒ 尤其是 `19b` 那几条：「**登记的那一步在文件里**」≠「**那一步在 runner 上编得出字节**」，
+   更不等于「那份字节在目标机器上跑得起来」。真机行为这一维仍然是**判不了**，不是「通过」。
    本地绿 ＋ 云端红这一形，`K-R119` 那趟已经实打过一次（读数住 `evidence/K-R119-发版读数.md`）。
 5. 第 2 条性质里「正文真的是我们写的那份」，机器认的是
    **「有 `body_path` · 不是 `generate_release_notes` · 那个路径同 job 里有人生成 · 生成器跑得出非空的段」**。
@@ -62,6 +81,8 @@
 退出码 0 = 过；1 = 有违例 / 地板没过 / 切块器坏了。
 最后一行恒印 `release-gate: <N> passed（…）`，那个 `N` = 上面逐行印出来的 `PASS` 条数。
 """
+import collections
+import importlib.util
 import os
 import re
 import subprocess
@@ -79,6 +100,194 @@ CANON_IF = "env.PUBLISH == 'true'"
 # 〔搬树 2026-09-18〕`scripts/` 并进了 `tests/scripts/`。`release.yml` 已经改对，
 # 是本守卫这个常量没跟 —— 而它红的那条诊断（「生成器不在盘上」）指的方向是对的。
 RENDERER = "tests/scripts/release-notes.mjs"
+
+# ══ `19b`（2026-09-19）：产字节那条路 ═══════════════════════════════════════════
+#
+#: 条 63 的**承诺面**住这份账本，本文件只 import、**不抄第二份**
+#: （`G4` 09-19 立，它是 `platform` 那一格的本体）。
+LEDGER = "tests/evidence/K-G4-platform-ledger.py"
+#: 门禁本体 —— ⑫ 要读它那条 `muslbuild` 裁词里点名的工具链版本。
+GATE_SH = "tests/scripts/gate.sh"
+#: 内嵌那一段的住址 —— ⑪ 读它，确认「抠不到 `BUILD_ID`」是一条响亮的失败。
+BUILD_RS = "src/bridge/build.rs"
+
+#: 🔴 **本文件里全部「跑 cargo 编后端」的步骤的完整登记** —— 与盘上现打**两向集合相等**。
+#: 失效方向逐字：有人给一个**没承诺的平台**加一条交叉编译（例：arm64 的 Windows），
+#: 而今天的输出面上一个字都不会说 ⇒ 那份跑不起来的字节会被静默发出去（条 63 `D7` 反面）。
+#: 每条：(job, 步骤名逐字, 这一趟编出什么, 它喂给条 63 的哪一格)
+COMPILE_STEPS = [
+    ("build-backends", "Cross-compile backend for both musl targets",
+     "两个 musl target 的静态字节（x86_64 ＋ aarch64）",
+     "远端 Linux（musl 两个 arch）· 本机 Linux（同一份字节自释放，不另编）"),
+    ("build-windows", "Build local backend (native)",
+     "runner host triple 的原生 `.exe`",
+     "本机 Windows x86_64"),
+    ("build-linux", "Build local backend (native)",
+     "runner host triple 的原生 glibc 字节",
+     "🟡 **本机 Linux 的第二份来源** —— `设计/96 §7.3` 逐字「哪一份该留、哪一份该删，"
+     "我判不了 —— 要先有条 62 那次迁移（步 `19`）把落点收成一个」。"
+     "⇒ 本条**不是**在认可它，是把「同一格今天有两份来源」这件事钉成一个**数**："
+     "变成三份会红，被人在裁之前偷偷删掉一份也会红"),
+]
+
+#: 🔴 **条 63 承诺的每一格，它的字节由本文件哪几步产出/铺到 `build.rs` 够得着的地方。**
+#: `plat` 必须与账本 `PROMISED` 里那几个平台名**逐字相同**（⑨a 两向集合相等靠它）。
+#: `steps` 里每一项 `(job, 步骤名)` 在那个 job 里 `count() == 1`（⑨c）。
+BYTE_LINES = [
+    {
+        "plat": "本机 Windows x86_64",
+        "runner": ("build-windows", "windows-latest"),
+        "steps": [
+            ("build-windows", "Build local backend (native)"),
+            ("build-windows", "Stage local backend for externalBin"),
+            ("build-windows", "Stage native backend for self-extract"),
+        ],
+        "into": "① Tauri `externalBin` ⇒ **只进安装包**（装完落在 exe 同目录）；"
+                "② `build.rs::embed_native_backend` 的 `include_bytes!` ⇒ **进 exe 本体**（`K-R42`）",
+    },
+    {
+        "plat": "远端 Linux（musl 两个 arch）",
+        "runner": ("build-backends", "ubuntu-latest"),
+        "steps": [
+            ("build-backends", "Cross-compile backend for both musl targets"),
+            ("build-backends", "Stage binaries"),
+            ("build-windows", "Place + verify embedded backends"),
+        ],
+        "into": "artifact `embedded-backends` → `src/bridge/embedded-backends/` → "
+                "`build.rs::embed_backends` 的 `include_bytes!` ⇒ 进 exe 本体",
+    },
+    {
+        "plat": "本机 Linux",
+        "runner": ("build-linux", "ubuntu-latest"),
+        "steps": [
+            ("build-linux", "Place embedded backends"),
+        ],
+        "into": "**不另编一份**（`设计/96 §7.1.5` 待点① 逐字：`local_daemon.rs::start_local_backend` 里"
+                "那道 `cfg!(target_os = \"linux\")` 闸让本机 Linux 直接用远端那两份 **musl 静态**字节自释放）"
+                "⇒ 这一格的产线增量是 **0**，它要的是**门禁多一格 ＋ 一次真机验**。"
+                "⚠ 真机验这一维本判据**买不到**",
+    },
+]
+
+#: 🔴 **本文件里出现的全部 target triple，与登记的那一份两向集合相等。**
+#: 它是「没覆盖的格子怎么显式拒绝」落在**产线**这一侧的形状：条 63 显式拒绝的那一格
+#: （arm64 的 Windows）在全仓是零脚印（`platform` 那一格的 `P3` 在盯），
+#: 而本条盯的是**别的**没承诺的 triple 被悄悄加进产线。
+TRIPLES = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"}
+
+#: 🔴 **每一处抠后端源码常量的住址**（路径, 常量名）→ 出现次数。**Counter 相等，不是包含。**
+#: 它治的是一件真发生过的事：步 9（09-19）把 `BUILD_ID` 从 `main.rs` 搬到 `lib.rs`，
+#: `release.yml` 里**两处**要抠它，那一拍**只改了一处** ⇒ 另一处指着一份**没有那个 const**
+#: 的文件，真发版时死在「抠不到后端的 const BUILD_ID」上，而红的原因与它要守的事无关。
+#: ⇒ 本条不只比登记，还**实打去读那份文件**，抠不出恰好一行就红（⑩b）。
+IDENTITY_READS = {
+    ("src/backend/lib.rs", "BUILD_ID"): 2,
+    ("src/backend/lib.rs", "BUILD_STAMP_OPEN"): 1,
+    ("src/backend/lib.rs", "BUILD_STAMP_CLOSE"): 1,
+}
+
+#: ⑪ `build.rs` 那一侧：这两个函数**必须**以 panic 结束「抠不到」那一支，
+#: 且函数体里**不许**再出现兜底值（`设计/96 §7.2.5` 逐字：「`"unknown"` 这个值必须从类型上消失」）。
+#: 每条：(函数名, 禁词逐条, 为什么)
+NO_FALLBACK_FNS = [
+    ("backend_source_build_id", ['"unknown"', "unwrap_or_default()"],
+     "抠不到源码 `const BUILD_ID` 时给一个会参与比较的字符串 ⇒ 每台远端判 StaleBuild ⇒ "
+     "无限重装（真事故，`设计/16 §5.4a`）"),
+    ("backend_stamp_marks", ["unwrap_or_default()"],
+     "抠不到身份戳界标时给一对空串 ⇒ 运行期拿空界标去扫，对**任何**字节都答不出身份 ⇒ "
+     "与 `\"unknown\"` 同族的静默恒假"),
+]
+
+
+def read_rel(rel):
+    """读仓内一份文件；读不到给 `None`（调用方按红记，不静默跳过）。"""
+    try:
+        return (ROOT / rel).read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def promised_platforms():
+    """条 63 承诺的平台集合 —— **唯一住址是那份账本**，本文件不抄。
+
+    读不到 / 导不进来一律给 `None`，调用方按红记（不许退化成「空集，于是两向相等」）。
+    """
+    p = ROOT / LEDGER
+    if not p.exists():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("k_g4_platform_ledger", p)
+        mod = importlib.util.module_from_spec(spec)
+        # ⚠ 账本模块顶层会读 `sys.argv[1]`（它自己的死值验入口）。本文件带参数跑时
+        #   那个参数与账本无关 ⇒ 借跑期间把 argv 收成一个元素，跑完还回去。
+        saved, sys.argv = sys.argv, sys.argv[:1]
+        try:
+            spec.loader.exec_module(mod)
+        finally:
+            sys.argv = saved
+        return {plat for plat, _, _, _ in mod.PROMISED}
+    except Exception as e:                      # noqa: BLE001 —— 导不进来就是判不了，按红记
+        return ("导入失败", repr(e))
+
+
+def rust_fn_body(src, name):
+    """抠出 `fn <name>(` 那一对大括号之间的正文。找不到给 `None`。"""
+    m = re.search(r"^fn %s\b" % re.escape(name), src, re.M)
+    if not m:
+        return None
+    i = src.find("{", m.start())
+    if i < 0:
+        return None
+    depth, j = 0, i
+    while j < len(src):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[i:j + 1]
+        j += 1
+    return None
+
+
+def ps_identity_reads(text, doc):
+    """本文件里每一处 `Select-String -Path <p> -Pattern 'const <X>…'` 解出的 (路径, 常量名)。
+
+    路径三种形：字面量 · `$env:NAME`（查 workflow 的 `env:`）· `$var`（查同文件里那条赋值）。
+    解不出来的**照样登记**，值写成 `<解不出: …>` —— 它会让下面的 Counter 对不上而红，
+    **不会**被悄悄丢掉（丢掉 = 少一处抽取点没人看，正是本条要治的形状）。
+    """
+    env = {k: v for k, v in (doc.get("env") or {}).items() if isinstance(v, str)}
+    assigns = {}
+    for m in re.finditer(r"\$(\w+)\s*=\s*(\"[^\"]*\"|\$env:\w+)", text):
+        assigns.setdefault(m.group(1), m.group(2))
+
+    def resolve(raw):
+        raw = raw.strip()
+        if raw.startswith('"') and raw.endswith('"'):
+            return raw[1:-1]
+        if raw.startswith("$env:"):
+            return env.get(raw[5:], "<解不出: env.%s 不在 workflow 的 env: 里>" % raw[5:])
+        if raw.startswith("$"):
+            v = assigns.get(raw[1:])
+            if v is None:
+                return "<解不出: 找不到 %s 的赋值>" % raw
+            return resolve(v)
+        return raw
+
+    out = collections.Counter()
+    for m in re.finditer(r"-Path\s+(\S+)\s+-Pattern\s+'const\s+(\w+)\b", text):
+        out[(resolve(m.group(1)), m.group(2))] += 1
+    return out
+
+
+def source_const_hits(rel, name):
+    """盘上那份源码里 `(pub )?const <name>: &str = "…";` 命中几行。读不到给 `None`。"""
+    src = read_rel(rel)
+    if src is None:
+        return None
+    return len(re.findall(r"^\s*(?:pub )?const %s: &str = \"[^\"]+\";" % re.escape(name),
+                          src, re.M))
 
 
 # ── YAML 子集切块器 ──────────────────────────────────────────────────────────
@@ -361,6 +570,126 @@ def run_checks(emit):
         except subprocess.TimeoutExpired:
             check(False, "⑧生成器吐得出本版正文", "`node` 跑超时 60s —— 判不了，按红记")
 
+    # ══ `19b`（09-19）：产字节那条路 ═══════════════════════════════════════════
+    text = TARGET.read_text(encoding="utf-8")
+    by_job = collections.Counter()
+    for jname, _, st in steps:
+        nm = st.get("name")
+        if nm:
+            by_job[(jname, str(nm))] += 1
+
+    # ── ⑨a 条 63 承诺的每一格都有产线，且**没有**登记了却不在承诺面里的格（两向）────
+    #   🔴 **反空真锚就是这一条**：单向「承诺表里每格都找得到」在承诺表被清空时恒真。
+    promised = promised_platforms()
+    if promised is None:
+        check(False, "⑨a地板·条 63 的承诺面读得到",
+              "`%s` 不在盘上 —— 承诺面没有住址了，本条**判不了，按红记**"
+              "（绝不退化成「空集，于是两向相等」）" % LEDGER)
+    elif isinstance(promised, tuple):
+        check(False, "⑨a地板·条 63 的承诺面读得到",
+              "import `%s` 失败：%s —— 判不了，按红记" % (LEDGER, promised[1]))
+    else:
+        mine = {b["plat"] for b in BYTE_LINES}
+        check(mine == promised, "⑨a承诺的平台 ↔ 产线登记，两向集合相等",
+              "承诺了却没产线 %s · 有产线却不在承诺面里 %s（承诺面现打 %s，唯一住址 `%s`）"
+              % (sorted(promised - mine), sorted(mine - promised), sorted(promised), LEDGER))
+
+    # ── ⑨b 本文件里「跑 cargo 编后端」的步骤 ↔ 登记，两向集合相等 ────────────────
+    on_disk = set()
+    for jname, _, st in steps:
+        if re.search(r"\bcargo\s+(?:zigbuild|build)\b", str(st.get("run") or "")):
+            on_disk.add((jname, str(st.get("name") or "<无名步骤>")))
+    registered = {(j, n) for j, n, _, _ in COMPILE_STEPS}
+    check(on_disk == registered, "⑨b编后端的步骤 ↔ 登记，两向集合相等",
+          "盘上有而没登记 %s · 登记了而盘上没有 %s —— 前者是**给一个可能没承诺的平台"
+          "悄悄加了一条产线**（条 63 `D7` 反面），后者是登记陈了"
+          % (sorted(on_disk - registered), sorted(registered - on_disk)))
+
+    # ── ⑨c 每一格登记的步骤在那个 job 里恰好一处 ─────────────────────────────────
+    for b in BYTE_LINES:
+        for jname, sname in b["steps"]:
+            n = by_job[(jname, sname)]
+            check(n == 1, "⑨c产线步骤·%s / %s / %s" % (b["plat"], jname, sname),
+                  "在那个 job 里命中 %d 次（应当恰好 1 次）—— 0 = 这一格的字节今天没人产/没人铺" % n)
+
+    # ── ⑨d runner 标签逐字 ──────────────────────────────────────────────────────
+    #   ⚠ **它买到的只有「标签没被人换掉」**：`windows-latest` 今天是 x86_64，
+    #     而那是 GitHub 说了算的事，本判据**问不出来**。条 63「本机 Windows 不含 arm64」
+    #     这一票落在产线上的全部依据就是这个标签 ⇒ 至少得钉住它别被人改。
+    for b in BYTE_LINES:
+        jname, want = b["runner"]
+        got = ((jobs.get(jname) or {}) or {}).get("runs-on")
+        check(got == want, "⑨d runner·%s / %s" % (b["plat"], jname),
+              "runs-on=%r（登记 %r）。⚠ 本条买的是「标签没被换掉」，"
+              "**买不到**「那个标签今天是哪个 arch」" % (got, want))
+
+    # ── ⑨e 本文件里出现的全部 target triple ↔ 登记，两向集合相等 ────────────────
+    seen_triples = set(re.findall(r"\b[a-z0-9_]+-(?:pc|unknown|apple)-[a-z0-9_.-]+\b", text))
+    seen_triples = {t for t in seen_triples if t.count("-") >= 2}
+    check(seen_triples == TRIPLES, "⑨e target triple ↔ 登记，两向集合相等",
+          "盘上有而没登记 %s · 登记了而盘上没有 %s —— 多出来的那个就是"
+          "「给一个没承诺的格子悄悄开了产线」的样子"
+          % (sorted(seen_triples - TRIPLES), sorted(TRIPLES - seen_triples)))
+
+    # ── ⑩ `BUILD_ID` / 身份戳界标的抽取住址 ────────────────────────────────────
+    reads = ps_identity_reads(text, doc)
+    check(reads == IDENTITY_READS, "⑩抽取住址 ↔ 登记，逐处计数相等",
+          "盘上现打 %r（登记 %r）—— 多/少/改路径都红；`<解不出…>` = 那一处的 `-Path` "
+          "解析不出来，按红记不按忽略记" % (dict(reads), dict(IDENTITY_READS)))
+    for (rel, const) in sorted({k for k in IDENTITY_READS} | set(reads)):
+        if rel.startswith("<解不出"):
+            continue
+        hits = source_const_hits(rel, const)
+        check(hits == 1, "⑩b住址实打·%s 里的 `const %s`" % (rel, const),
+              "%s（应当恰好 1 行）—— 🔴 **这一格就是步 9 那次漏改的形状**："
+              "住址指着一份没有那个 const 的文件，发版当场死在抽取上"
+              % ("那份文件**读不到**" if hits is None else "命中 %d 行" % hits))
+
+    # ── ⑪ 「抠不到」在 `build.rs` 那一侧是一条所有构建形态都响的失败 ────────────
+    brs = read_rel(BUILD_RS)
+    check(brs is not None, "⑪地板·`%s` 读得到" % BUILD_RS, "%s" % (ROOT / BUILD_RS))
+    if brs is not None:
+        for fname, banned, why in NO_FALLBACK_FNS:
+            body = rust_fn_body(brs, fname)
+            if body is None:
+                check(False, "⑪`%s` 找得到" % fname,
+                      "`%s` 里没有这个函数 —— 它被改名/删了，本条此刻是空真，按红记" % BUILD_RS)
+                continue
+            hit = [w for w in banned if w in body]
+            check(not hit, "⑪`%s` 没有兜底值" % fname,
+                  "函数体里出现 %r —— %s" % (hit, why))
+            check("panic!" in body, "⑪`%s` 抠不到就当场失败" % fname,
+                  "函数体里%s `panic!`（`设计/96 §7.2.5`：让「抠不到」在**所有**构建形态下都响，"
+                  "而不是只在恰好铺了字节的那种）" % ("有" if "panic!" in body else "**没有**"))
+        emitter = rust_fn_body(brs, "emit_backend_build_id")
+        wired = bool(emitter) and "backend_source_build_id()" in emitter
+        check(wired, "⑪`BACKEND_BUILD_ID` 的值取自那个会 panic 的住址",
+              "`emit_backend_build_id` %s 调 `backend_source_build_id()` —— 不调它 = "
+              "又开了一条绕过 panic 的取值路" % ("有" if wired else "**没有**"))
+
+    # ── ⑫ 门禁 `muslbuild` 那一格的工具链版本 == 本文件真装的那两个 ──────────────
+    #   G4 立那一格时逐字写着「版本一漂，本格的绿就不代表发版那趟会绿」——
+    #   而在本条之前，**没有任何东西在核这句话**：两个版本号是两处手抄的。
+    zig = next((str(((st.get("with") or {}).get("version")) or "")
+                for _, _, st in steps if str(st.get("uses") or "").startswith("mlugg/setup-zig")), "")
+    zb = next((str(((st.get("with") or {}).get("tool")) or "")
+               for _, _, st in steps if str(st.get("uses") or "").startswith("taiki-e/install-action")), "")
+    zb = zb.split("@")[-1] if "@" in zb else ""
+    gate_text = read_rel(GATE_SH)
+    verdict = ""
+    if gate_text:
+        m = re.search(r"^run_gate muslbuild '(.*)'\s*\\?$", gate_text, re.M)
+        verdict = m.group(1) if m else ""
+    check(bool(zig) and bool(zb) and bool(verdict), "⑫地板·两侧的版本都取得到",
+          "`release.yml` zig=%r cargo-zigbuild=%r · `gate.sh` 那条 muslbuild 裁词%s"
+          % (zig, zb, "取到了" if verdict else "**取不到**（改名/改行形了）"))
+    if zig and zb and verdict:
+        named = set(re.findall(r"\b(?:zig|cargo-zigbuild)\s+\**(\d+\.\d+\.\d+)", verdict))
+        check(named == {zig, zb}, "⑫门禁那一格与发版那趟用同一套工具链",
+              "裁词里点名 %s · `release.yml` 真装 %s —— 两向相等才算数："
+              "版本一漂，`muslbuild` 那一格的绿就**不再代表**发版那趟会绿"
+              % (sorted(named), sorted({zig, zb})))
+
     return (1 if fails else 0), passes[0], fails
 
 
@@ -374,7 +703,12 @@ def main():
         return rc
     print("release-gate: %d passed（分母 = 上面逐行印出来的 PASS 条数；被测对象 `%s`。"
           "⚠ 它不执行 GitHub 的表达式求值器、只认两种「往 Release 上写」的形状、"
-          "不判正文写得对不对 —— 逐条射程写在本文件头注）" % (n, TARGET))
+          "不判正文写得对不对。"
+          "🔴 **诚实边界（`19b` 加，写死别读宽）**：`release.yml` 那一族**在本地一步都真跑不起来** "
+          "⇒ 买到的是「**盘上这几份文本满足上面逐行列出的那些条件**」，**不是**「云端那一趟会绿」；"
+          "⑨ 那几条尤其是 —— 「登记的那一步在文件里」≠「那一步在 runner 上编得出字节」，"
+          "更不等于「那份字节在目标机器上跑得起来」。真机行为仍是**判不了**，不是「通过」。"
+          "—— 逐条射程写在本文件头注）" % (n, TARGET))
     return rc
 
 

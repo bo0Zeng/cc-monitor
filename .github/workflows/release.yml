@@ -8,6 +8,20 @@ name: Release
 #     把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
 #  3. build-linux：同一批 backend artifact → tauri build --bundles deb → 追加进同一个 Release。
 # 注意：默认 build 会尝试下载 WiX toolset 来打 MSI，若网络不稳定可临时改 --bundles nsis。
+#
+# ── 🔴 `19b`（2026-09-19）：**本文件是「产字节那条路」的唯一驱动** ─────────────────
+#
+# `设计/96 §7.1.2` 现打两条硬事实，它们是这一段存在的全部理由：
+#  ① 三个落点（`embedded-backends/` · `binaries/` · `native-backend/`）**全部 gitignore**
+#     ⇒ **字节不进仓**，它只在「发版那一趟」存在 ⇒ 表的值不是一个文件，是**一条产线**；
+#  ② 三条产线**只由本文件驱动**，而本文件只在推 `v*` tag / 手工触发时跑
+#     ⇒ 平常的 `cargo build` 一格字节都没有 ⇒ **这张表的门禁只能建在本文件上，不能建在 `cargo` 上**。
+#
+# ⚠ **条 63 承诺哪几格 ↔ 本文件哪几步产它们的字节** —— 那张表**不抄在这里**。
+#   唯一住址：`tests/evidence/K-R124-ruler.py` 的 `BYTE_LINES`（承诺面那一侧它又是从
+#   `tests/evidence/K-G4-platform-ledger.py::PROMISED` 导进去的，全仓只有那一份）。
+#   本文件里每加/删/改名一个「编后端」的步骤，那份判据会**两向**红 —— 这是刻意的：
+#   多一条没人登记的产线 ＝ 给一个**没承诺的平台**悄悄发了字节。
 on:
   push:
     tags: ['v*']
@@ -38,8 +52,20 @@ on:
 # ⚠ 它守的是**「往 GitHub Release 写」**这一件事，**不是** job 之间传的
 #   `actions/upload-artifact`（那份 `embedded-backends` 是内部件，不发给任何人，
 #   而且 `build-windows` / `build-linux` 靠它才起得来）。
+#
+# ── 🔴 `19b`（09-19）：**「后端身份住哪份源码」这个量也只有这一个住址** ──────────────
+#
+# 本文件有**两步**要抠后端的 `const BUILD_ID`（内嵌校验那一步 · 版本对账那一步）。
+# 步 9 把身份从 `main.rs` 搬到 `lib.rs` 时**只改了其中一步**，另一步留在 `main.rs` 上
+# —— 而 `main.rs` 里今天**没有**那个 const ⇒ 那一步在真发版时抠回一个空值，
+# 死在「抠不到后端的 const BUILD_ID」上，而红的原因与它要守的事毫无关系。
+# ⇒ 收成一个 `env:`：两步都读它，**再也漏不掉第二处**。
+# ⚠ 消费侧写成 `$env:CCM_BACKEND_IDENTITY_SRC`（两步都是 pwsh）。
+# ⚠ 判据那一侧同拍钉住：`K-R124-ruler.py` 的 ⑩ 会把本文件里每一处抽取的路径解出来，
+#   **实打去读那份文件**，抠不出恰好一个 const 就红 —— 住址指空这一形从此当场现形。
 env:
   PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+  CCM_BACKEND_IDENTITY_SRC: src/backend/lib.rs
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
@@ -197,7 +223,8 @@ jobs:
       #  BUILD_ID 优化成立即数、字节内搜不到明文——运行时启发式会误拒正品；清单从源码同一
       #  提取点生成，与刚编出的字节天然同源）」。**最后半句正是病灶**：清单从**源码**抠，
       #  所以三个载体的清单**恒等**，而恒等的东西一格证据都不提供（K-R68 · DECISIONS#R26 裁定零）。〕
-      # 今天后端自己带着一段 `#[used] static` 的身份戳（main.rs::CC_MONITOR_BUILD_STAMP），
+      # 今天后端自己带着一段 `#[used] static` 的身份戳（lib.rs::CC_MONITOR_BUILD_STAMP，
+      # 〔19b 订正：步 9 起它住 lib.rs，这段头注原写 main.rs —— 指向一份抠不出东西的住址〕），
       # 连续、拆不成立即数 ⇒ 下游（src/bridge/build.rs）直接从字节里扫，不需要任何旁文件。
       - name: Stage binaries
         run: |
@@ -249,8 +276,9 @@ jobs:
       #  它与刚编出来那份字节之间没有任何因果 —— 三个载体的清单永远一致，
       #  而「永远一致」证不了任何事（K-R68 · DECISIONS#R26 裁定零）。〕
       # 今天问的是**这份字节自己**：backend 里那段 `#[used] static CC_MONITOR_BUILD_STAMP`
-      # 逐字是 `<<ccm-build-id:$src:ccm-build-id>>`，界标的唯一住址在 main.rs 的
-      # BUILD_STAMP_OPEN / BUILD_STAMP_CLOSE（这里按同一条既有机制从源码抠，不手抄）。
+      # 逐字是 `<<ccm-build-id:$src:ccm-build-id>>`，界标的唯一住址在 `env.CCM_BACKEND_IDENTITY_SRC`
+      # 那份源码的 BUILD_STAMP_OPEN / BUILD_STAMP_CLOSE（这里按同一条既有机制从源码抠，不手抄）。
+      # 〔19b 订正：这两行原写 `main.rs`，步 9 之后那里没有界标了。〕
       # ⚠ 用 Latin1 解字节流：只是把每个字节映成一个字符好做子串搜索，不是在解码文本。
       - name: Place + verify embedded backends
         shell: pwsh
@@ -264,13 +292,26 @@ jobs:
           }
           # 🔴 〔步 9 · 09-19〕从 main.rs 改成 lib.rs —— BUILD_ID 与身份戳界标已按
           #    `设计/00 §1.5.4` 前置 2 搬进后端库面（in-process 那条路没有那个 main.rs）。
-          #    `src/bridge/build.rs::backend_lib_rs` 与本行是同一条住址，改一处就要改另一处；
+          #    `src/bridge/build.rs::backend_lib_rs` 与本处是同一条住址，改一处就要改另一处；
           #    `tests/backend/build_id_guard.rs` 那条判据钉着三处都指得到真东西。
-          $main = "src/backend/lib.rs"
-          $src   = (Select-String -Path $main -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
-          $open  = (Select-String -Path $main -Pattern 'const BUILD_STAMP_OPEN: &str = "([^"]+)"').Matches[0].Groups[1].Value
-          $close = (Select-String -Path $main -Pattern 'const BUILD_STAMP_CLOSE: &str = "([^"]+)"').Matches[0].Groups[1].Value
-          if (-not $src -or -not $open -or -not $close) { Write-Error "从 $main 抠不出 BUILD_ID / 身份戳界标——本步此刻是无效的，先修抽取"; exit 1 }
+          # 🔴 〔19b · 09-19〕住址收进文件头那个 `env:` —— 本文件另有一步也要抠同一个 const，
+          #    步 9 那次**只改了这一处**，另一处留在 main.rs 上指空了。读同一个量，不各写一份。
+          $main = $env:CCM_BACKEND_IDENTITY_SRC
+          # 🔴 〔19b〕**抠不到要落在下面那句诊断上，不是落在 PowerShell 的空数组索引上。**
+          #    原写法 `(...).Matches[0].Groups[1].Value` 在零命中时抛 "Cannot index into a null
+          #    array" ⇒ 那句写好的「先修抽取」一个字都印不出来。读不出来时**显示什么**，
+          #    是 `设计/96 §7.2.4` 点名要答的一格 —— 这里答：印住址、印抠的是哪个 const、退 1。
+          $mId    = Select-String -Path $main -Pattern 'const BUILD_ID: &str = "([^"]+)"'        | Select-Object -First 1
+          $mOpen  = Select-String -Path $main -Pattern 'const BUILD_STAMP_OPEN: &str = "([^"]+)"'  | Select-Object -First 1
+          $mClose = Select-String -Path $main -Pattern 'const BUILD_STAMP_CLOSE: &str = "([^"]+)"' | Select-Object -First 1
+          $src   = if ($mId)    { $mId.Matches[0].Groups[1].Value }    else { $null }
+          $open  = if ($mOpen)  { $mOpen.Matches[0].Groups[1].Value }  else { $null }
+          $close = if ($mClose) { $mClose.Matches[0].Groups[1].Value } else { $null }
+          if (-not $src -or -not $open -or -not $close) {
+            Write-Error ("从 $main 抠不出 BUILD_ID / 身份戳界标（BUILD_ID={0} OPEN={1} CLOSE={2}，空 = 那一行不在这份文件里）" -f $src, $open, $close)
+            Write-Error "——本步此刻是无效的（拿一个空戳去扫字节，任何字节都会被判「不是这套源码编的」）。先修抽取：住址在本文件头的 env.CCM_BACKEND_IDENTITY_SRC"
+            exit 1
+          }
           $want = "$open$src$close"
           Write-Host "expecting stamp: $want"
           foreach ($a in "x86_64","aarch64") {
@@ -324,13 +365,19 @@ jobs:
           # ⇒ 这里不比它与 tag，而是**盯住它别被人顺手改成一个假数字**，
           #   并确认真身份（BUILD_ID）在这一版里是**说得出**的。
           $dv = (Select-String -Path src/backend/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
-          $did = (Select-String -Path src/backend/main.rs -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
+          # 🔴 〔19b · 09-19〕**这一行原来指着 `src/backend/main.rs`** —— 步 9 把 `BUILD_ID`
+          #    搬进 `lib.rs` 时改了上面那一步、漏了这一步，而 `main.rs` 里今天没有那个 const。
+          #    后果不是「静默放行」（那还好些），是**发版必红在这里**，且原写法在零命中时
+          #    抛 PowerShell 的空数组索引异常 ⇒ 连下面那句诊断都印不出来。
+          #    ⇒ 住址读文件头那个 `env:`（全文件唯一一份），抽取写成零命中安全的形状。
+          $mDid = Select-String -Path $env:CCM_BACKEND_IDENTITY_SRC -Pattern 'const BUILD_ID: &str = "([^"]+)"' | Select-Object -First 1
+          $did = if ($mDid) { $mDid.Matches[0].Groups[1].Value } else { $null }
           if ($dv -ne '0.0.0') {
             Write-Error "src/backend 的 version 现在是 $dv —— 它刻意是 0.0.0（真身份是 BUILD_ID）。改它之前先答：谁在数这个新数字？"
             exit 1
           }
           if (-not $did) {
-            Write-Error "抠不到后端的 const BUILD_ID —— 后端这一版说不出自己是谁，不许发出去"
+            Write-Error "抠不到后端的 const BUILD_ID —— 找的是 $env:CCM_BACKEND_IDENTITY_SRC 里那行 'const BUILD_ID: &str = ...;'，它不在那份文件里。后端这一版说不出自己是谁，不许发出去"
             exit 1
           }
           Write-Host "Backend identity OK: src/backend version=0.0.0 (deliberate), BUILD_ID=$did"
