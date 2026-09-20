@@ -17,7 +17,9 @@
     python3 evidence/K-R124-cut.py --run <刀>
     python3 evidence/K-R124-cut.py --all
 
-副本落 `$K_R124_WORK`（缺省 `<仓根>/../k-r124-cuts`，**不进仓**）。
+副本落 `$K_R124_WORK`（缺省**系统临时目录**下的 `k-r124-cuts`，**不进仓**）。
+⚠ 〔`19c` 订正 09-19〕缺省值原来按 `ROOT.parent` 算 —— 那在 worktree 里**仍然落在主仓内**，
+  理由与读数见下面 `WORK` 那一行的头注。
 """
 import json
 import os
@@ -25,10 +27,17 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-WORK = Path(os.environ.get("K_R124_WORK") or (ROOT.parent / "k-r124-cuts"))
+#: 🔴 〔`19c` 订正 09-19〕**副本落仓外，而「仓外」不等于 `ROOT.parent`。**
+#: 原来这里是 `ROOT.parent / "k-r124-cuts"`，读起来像「仓的上一级」——
+#: 而本仓的 agent 全跑在 `<主仓>/.claude/worktrees/<名>/` 里，那棵树的 `ROOT.parent`
+#: 是 `<主仓>/.claude/worktrees/`，**仍然在主仓里面**。上一轮就这么把一份 32 MB 的副本
+#: 落进了仓内，污染了一族「走一遍文件系统」的判据。
+#: ⇒ 缺省改成系统临时目录，与仓根在哪**无关**；要换地方用 `K_R124_WORK`。
+WORK = Path(os.environ.get("K_R124_WORK") or (Path(tempfile.gettempdir()) / "k-r124-cuts"))
 
 #: 副本里要有的那几份 —— 判据本体 ＋ 它的全部被测对象。
 #: 🔴 〔`19b` 订正 09-19〕**这张表在本拍之前整张指空**：仓库重组（09-18）把
@@ -51,6 +60,10 @@ FILES = [
     "tests/evidence/K-G4-platform-ledger.py",
     "src/bridge/build.rs",
     "src/backend/lib.rs",
+    # 〔`19c` 09-19〕⑬ 那一组的两份新被测对象：re-embed 那条命令本体（⑬a–⑬c ＋ ⑬g 真跑它），
+    # 与内嵌落点的 gitignore 住址（⑬d 两向对拍）。
+    "tests/scripts/re-embed.sh",
+    "src/bridge/.gitignore",
 ]
 #: 阴性对照那一刀要跑本仓**另一格**也读 `.github/` 的尺子（`K-R122`），它还要 `tests/e2e/` 那些 `.sh`。
 DIRS = ["tests/e2e"]
@@ -69,6 +82,8 @@ RENDERER = "tests/scripts/release-notes.mjs"
 GATE = "tests/scripts/gate.sh"
 LEDGER = "tests/evidence/K-G4-platform-ledger.py"
 BUILD_RS = "src/bridge/build.rs"
+REEMBED = "tests/scripts/re-embed.sh"
+GITIGNORE = "src/bridge/.gitignore"
 
 ENV_LINE = "  PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}"
 CANON_LINE = 'CANON_ENV = "${{ github.event_name == \'push\' || inputs.publish == true }}"'
@@ -275,6 +290,76 @@ CUTS = {
              "    # ══ `19b`（09-19）：产字节那条路 ═══════════════════════════════════════════", 1),
          sub(RELEASE, "  CCM_BACKEND_IDENTITY_SRC: src/backend/lib.rs",
              "  CCM_BACKEND_IDENTITY_SRC: src/backend/main.rs", 1)],
+        "ruler",
+    ),
+    # ══ `19c`（09-19）：`BUILD_ID` bump 的同拍债 —— re-embed ══════════════════
+    "e1": (
+        "🔴 **`.gitignore` 的落点行改回步 8 之前的旧名** —— 逐字重演今天盘上那个现物"
+        "（改名只改了一边，两个内嵌落点从那天起没被挡住）。该红在 ⑬d（两向集合相等）",
+        [sub(GITIGNORE, "\n/embedded-backends/\n", "\n/embedded-daemons/\n", 1)],
+        "ruler",
+    ),
+    "e2": (
+        "**摘掉一个落点的机检锚** —— `native-backend` 那一行上面那句 `⇐ 内嵌落点` 拿掉。"
+        "盘侧少一格 ⇒ 该红在 ⑬d 的「登记了却没被挡」那一侧",
+        [sub(GITIGNORE, "# ⇐ 内嵌落点\n# K-R42", "# K-R42", 1)],
+        "ruler",
+    ),
+    "e2b": (
+        "**只改 `build.rs` 那一侧的落点名** —— 与 `e1` 互为镜像：登记侧改名、gitignore 没跟。"
+        "该红在 ⑬d 的另一侧（「挡着却没人登记」）",
+        [sub(BUILD_RS, 'const EMBEDDED_BACKENDS_DIR: &str = "embedded-backends";',
+             'const EMBEDDED_BACKENDS_DIR: &str = "embedded-daemons";', 1)],
+        "ruler",
+    ),
+    "e3": (
+        "**本机那条 re-embed 少编一个 arch** —— `REEMBED_TARGETS` 摘掉 aarch64。"
+        "该红在 ⑬b（target 两向集合相等）＋ ⑬c（铺的 arch ↔ 吃的 arch）",
+        [sub(REEMBED, "REEMBED_TARGETS=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl)",
+             "REEMBED_TARGETS=(x86_64-unknown-linux-musl)", 1)],
+        "ruler",
+    ),
+    "e4": (
+        "**配方漂了** —— `REEMBED_BUILD_FLAGS` 去掉 `--locked`（本机编出来的那份与发版那份"
+        "依赖树可能不同）。该红在 ⑬b 的旗标那两条",
+        [sub(REEMBED, "REEMBED_BUILD_FLAGS=(--release --locked)",
+             "REEMBED_BUILD_FLAGS=(--release)", 1)],
+        "ruler",
+    ),
+    "e5": (
+        "**出路那个住址指空** —— `build.rs::REEMBED_CMD` 改成一个不存在的脚本名。"
+        "该红在 ⑬a（与钉住的字面逐字相同）",
+        [sub(BUILD_RS, 'const REEMBED_CMD: &str = "bash tests/scripts/re-embed.sh";',
+             'const REEMBED_CMD: &str = "bash tests/scripts/reembed.sh";', 1)],
+        "ruler",
+    ),
+    "e5b": (
+        "**re-embed 那条命令整份删掉** —— ⑬ 的地板（出路指着一个不在盘上的东西，"
+        "与「没有出路」在文案上一模一样）",
+        [rm(REEMBED)],
+        "ruler",
+    ),
+    "e6": (
+        "**mtime 安全网改回只看一份源码** —— 步 9 那次搬家逼出来的那条改回去"
+        "（改 `main.rs` 时它当场变瞎）。该红在 ⑬f",
+        [sub(BUILD_RS, "let src_mtime = [backend_lib_rs(), backend_main_rs()]",
+             "let src_mtime = [backend_lib_rs()]", 1)],
+        "ruler",
+    ),
+    "e7": (
+        "🔴 **把手抄的配方塞回出路里** —— 半 bump 那条 panic 的 ① 换成"
+        "`cargo build --release --target …`（＝第二个住址回来了）。该红在 ⑬e 的禁词那一条，"
+        "而**不该**红在「点名那条命令」那一条（还剩两处）",
+        [sub(BUILD_RS, "                     ① `{REEMBED_CMD}`\\n\\\n",
+             "                     ① `cargo build --release --target {arch}-unknown-linux-musl`\\n\\\n", 1)],
+        "ruler",
+    ),
+    "e8n": (
+        "阴性对照：**`19c` 新加的 ⑬ 整块摘掉** ＋ 刀 `e1` —— 摘了就不该红",
+        [sub(RULER, "    # ══ `19c`（09-19）：`BUILD_ID` bump 的同拍债 —— re-embed ═══════════════════",
+             "    return (1 if fails else 0), passes[0], fails\n"
+             "    # ══ `19c`（09-19）：`BUILD_ID` bump 的同拍债 —— re-embed ═══════════════════", 1),
+         sub(GITIGNORE, "\n/embedded-backends/\n", "\n/embedded-daemons/\n", 1)],
         "ruler",
     ),
     "d0": (
