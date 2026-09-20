@@ -33,8 +33,9 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕23 格
+# │ 〔自述·格数〕24 格
 # │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
+# │   ccbus-twophase ·
 # │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
@@ -56,6 +57,9 @@
 # │ 〔自述·现物〕`muslbuild` 那一格没有独立的判据文件 —— 它就是两趟 `cargo zigbuild`
 # │   （`x86_64-unknown-linux-musl` ＋ `aarch64-unknown-linux-musl`），判定逐字写在
 # │   下面那一行 `run_gate muslbuild` 的内联脚本里（`G4` 09-19 第 23 格）。
+# │ 〔自述·现物〕`ccbus-twophase` 那一格的判据本体：`tests/evidence/W24C-ccbus-twophase-ruler.py`
+# │   （`w24c` 09-19 第 24 格）—— 它既读盘上那几份 shell，也在一次性 `CC_BUS_HOME` 里真跑；
+# │   死值验住 `tests/evidence/W24C-deathvalue.md`。
 # │ 〔自述·现物〕`gate-selfdesc` 那一格的判据本体：`tests/evidence/K-R80-gate-cell-coverage.py`
 # │   （09-19 第 22 格）—— **被测对象就是本文件**。它默认读 `tests/scripts/gate.sh`，
 # │   也接一个路径参数（对着变异过的副本跑死值验时用）。
@@ -959,6 +963,25 @@ run_gate platform '判过的条数（判据本体每趟现算并印在它自己�
 run_gate installface '判过的条数（`§S5c`/`§S5d`/`§S5e` 三节逐条印出来的 PASS：22 条命令各归一组 ＋ 闭集并集两向 ＋ 五组交集空 ＋ 5 组前端落点棘轮 ＋ 22 条包装层入口两侧 ＋ `claims()` 10 个装/卸符号各有着落）。⚠ `ruler.py` 原有的 `R1`–`R7` **不在这个数里**（它们只在红的时候出声，没有逐条的「过了」事件）⇒ 这个数**不是**「那把尺子判过的全部条数」。⚠ 落点只认**调用形状** `.<命令>(`，只在注释/散文里提到命令名的**不算落点**（否则这把尺子可以靠删一条注释变绿）；别的调用形状（`invoke("<名>")` 直呼）它看不见，那一档逐处印在 `§S5d` 第二档里只出读数。⚠ 度量的是「几**份**文件」不是「几处引用」⇒ 往一份已经在名单里的文件里再加一处引用**不红**。⚠ `parity_ledger.rs` 那一份 `§S5e` **判不了**（空真），闸在 `§S5c`' \
          python3 tests/evidence/K-R117-ruler.py
 
+
+# ── `ccbus-twophase`：**cc-bus 两阶段读口 ＋ 三个适配 trait ＋ Windows 那一侧**（`w24c`，09-19，第 24 格）──
+#
+# ## 题面：cc-bus 这一族此前**没有任何一格在判它的行为**
+#
+# 落地前现打：`grep -c cc-peek tests/scripts/gate.sh` = **0**。
+# 这棵树以前只被两样东西碰过 —— `shellcheck`（语法那一档）与 `plugin_class_registry`
+# （脚本**条数**）⇒ 「这条命令做的事对不对」这一维一格都没有。
+# 而本轮加的正是**有副作用的那一跳**（推进已读位置），它错一次的形状是
+# 「消息被消费掉却没人看见」（实测：160KB 积压那件事故，40 条一次性读不到了）。
+#
+# ⚠ 判据本体住 `tests/evidence/W24C-ccbus-twophase-ruler.py`，**射程与买不到的东西
+#   逐条写在那份文件的头注里**，这里不复述一份（复述就会漂 —— 与上面几格同一条取法）。
+#   要在这儿点一句的只有一条：**没有真 Windows 机器** —— 那一侧靠 `CCBUS_ADAPT_OS=windows`
+#   在 Linux 上把实现整段跑一遍，买的是「实现跑得通、能力自陈与降级是真的」，
+#   **不买**「在 Windows 上跑得起来」。
+run_gate ccbus-twophase '判过的条数（判据本体每趟现算并印在它自己那几行上：静态 7 条 —— `cc-peek` 零写面（写形集合 == 登记的两处豁免，且正控要在 `cc-commit` 上扫出写）· `.pos` 写点全仓集合相等 · 锁族不增 · 通用层零脚印（带正控）· 与 `cc-recv` 的渲染逐字节对拍 · `cc-recv` 的 sha256 恒等 · 手册页那几句；真跑 14 条 —— 令牌/CAS/anchor/分段/并发/截短自愈/Stop 钩子两条路/Windows 那一侧四条）。⚠ **反空真锚不是这个数，是末尾那条「标签集合与登记两向相等」** —— 某一格悄悄没跑与它过了，在输出上一模一样。⚠ 它**不判**在真 Windows 上跑得起来（无真机）、不判性能、不判并发的公平性' \
+         python3 tests/evidence/W24C-ccbus-twophase-ruler.py
+
 # ── 格式漂移 ────────────────────────────────────────────────────────────────
 #
 # 🔴 **这一格补的是本文件头注里那条「归 PM」的第 ②**（09-10 落，PM）。
@@ -1588,7 +1611,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
   #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
-  echo "GATE: OK —— 23 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e），可以出货"
+  echo "GATE: OK —— 24 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e），可以出货"
   gate_print_blind
   exit 0
 fi

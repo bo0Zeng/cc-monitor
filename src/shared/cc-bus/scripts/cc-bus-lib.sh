@@ -14,6 +14,17 @@
 
 : "${BUS:=${CC_BUS_HOME:-$HOME/.cc-bus}}"
 
+# ── 三个适配面(设计 95 §3.2):本文件是**通用层**,不认识 tmux / flock ─────────────
+# 缝切在 shell 里、**不搬进后端**(条 55)。装不齐就地 return 13(fail-closed):
+# 少一个函数而继续跑,后果是投递路径上某一步静默变成 no-op —— 那正是本仓在治的病。
+# shellcheck source=cc-bus-adapt.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cc-bus-adapt.sh"
+ccbus_adapt_load || return 13
+
+# 两阶段读口的锚(cc-peek 发、cc-commit 校验,**两边必须是同一份实现**,否则永远比不中)。
+# 取第 <行号> 行现算 cksum,形如 `<校验和>-<字节数>` —— 与下面 `_dedup_hash` 同一招,零新依赖。
+twophase_anchor() { sed -n "${2}p" "$1" | cksum | awk '{print $1"-"$2}'; }
+
 route_load_config() {
   # shellcheck disable=SC1091
   [ -f "$BUS/config" ] && . "$BUS/config" || true
@@ -34,7 +45,7 @@ route_load_config() {
   done
 }
 
-route_log() { printf '[%s] %s\n' "$(date -Iseconds)" "$*" >> "$BUS/log/bus.log" 2>/dev/null || true; }
+route_log() { printf '[%s] %s\n' "$(store_now)" "$*" >> "$BUS/log/bus.log" 2>/dev/null || true; }
 
 # 守护进程是否在跑:pidfile + kill-0 + cmdline 校验。
 # 【不能用 flock 试锁判活】——那会让并发探测者自己短暂持锁、彼此 flock -n 失败而互相误判"在跑",
@@ -218,7 +229,7 @@ route_deliver() {
   local to="$1" line="$2"
   local inbox="$BUS/inbox/$to.jsonl"      # 独立行:同一 local 里引用刚赋的 $to 会取到旧值
   mkdir -p "$BUS/inbox" || return 1
-  ( flock 9; printf '%s\n' "$line" >> "$inbox" ) 9>>"$inbox.lock" || return 1
+  ( store_lock_exclusive 9; store_append_line "$inbox" "$line" ) 9>>"$inbox.lock" || return 1
   return 0
 }
 
@@ -239,16 +250,20 @@ route_nudge() {
       # ⚠ 第 4 列为空(老表/不在 tmux 里登记的)⇒ **按老行为敲**,不制造假跳过。
       want_pid=$(awk -F'\t' -v id="$to" '$1==id{p=$4} END{print p}' "$BUS/agents.tsv" 2>/dev/null || true)
       if [ -n "$target" ] && [ -n "$want_pid" ]; then
-        have_pid=$(tmux display-message -p -t "=$target" '#{pane_pid}' 2>/dev/null || true)
+        have_pid=$(os_pane_fingerprint "$target" || true)
         if [ "$have_pid" != "$want_pid" ]; then
           route_log "NUDGE stale $to target=$target 登记时 pid=$want_pid 现在 pid=${have_pid:-<没有这个 pane>} —— 不敲,免得打进别人的屏幕"
           target=""
         fi
       fi
-      if [ -n "$target" ] && tmux send-keys -t "=$target" \
-           "🔔 cc-bus: 你有来自 $from 的新消息,运行 cc-recv 读取并按内容处理" 2>/dev/null; then
-        sleep 0.3
-        tmux send-keys -t "=$target" Enter 2>/dev/null || true
+      if [ -n "$target" ] && os_send_keys "$target" \
+           "🔔 cc-bus: 你有来自 $from 的新消息,运行 cc-recv 读取并按内容处理"; then
+        # claude 的输入要**另打一个 Enter** 才算提交 —— 这一位由 agent 词典自陈(§3.2b),
+        # 不是所有 agent 都这样;`sleep 0.3` 刻意留在本文件(它是本仓登记在册的周期唤醒)。
+        if agent_submit_enter; then
+          sleep 0.3
+          os_send_keys "$target" Enter || true
+        fi
         echo "$now" > "$nf"
       fi
     else

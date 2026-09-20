@@ -332,10 +332,16 @@ fn every_candidate_answers_both_axes_and_states_its_gap() {
 fn cc_bus_is_reached_only_through_its_command_surface_today() {
     // ① 脚本族：`shell_scripts` 走的是「`.sh` 或 shebang 带 sh」，不是按后缀一种取。
     let scripts = guard_core::shell_scripts(&repo_root().join("src/shared/cc-bus/scripts"));
+    // 🔴 〔`w24c` 09-19〕**14 → 20**:步 24c 加了 6 份 —— 两阶段读口两条**给人敲的命令**
+    //    (`cc-peek` / `cc-commit`)＋ 三个适配面四份(`cc-bus-adapt.sh` 契约 · posix · windows ·
+    //    `cc-bus-agent-claude.sh`,它们**被 source、不进 PATH**)。
+    //    ⚠ 按本条自己的要求登记:这一笔**不是「改数字了事」** —— 命令面确实变了。
+    //    而 `EU3`(插件的粒度是命令还是包)**仍未决**:本轮没有替它做决定,只把「命令面变了」这件事
+    //    如实记在这里,交回 PM 裁。
     assert_eq!(
         scripts.len(),
-        14,
-        "cc-bus 脚本族从 14 个变成 {} 个：{scripts:?}\n\
+        20,
+        "cc-bus 脚本族从 20 个变成 {} 个：{scripts:?}\n\
              ⇒ 这不是要你改数字了事：加/删一条脚本 = 这个「插件包」的**命令面**变了，\
              而 `EU3` 正卡在「插件的粒度是命令还是包」上 —— 变了就该回去看那条待决。",
         scripts.len()
