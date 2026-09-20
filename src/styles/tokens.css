@@ -75,17 +75,12 @@
   --text-2: #a8a39a;
   --text-faint: #6b665e;
   --accent: #c96442; /* Anthropic terracotta orange，单一强调色 */
-  /* 🔴 S30 现打：下面这两个是 `theme.ts` 那 14 个**用户可调**旋钮里的两个
-     （设置里的「用户色」「Claude 色」，住址 `src/settings/panel.ts:120-121`），
-     而**全仓没有一条 CSS 读它们** ⇒ 用户拖那两个取色器，界面上不会有任何变化。
-     ⚠ 这不是本轮改出来的：`git show main:src/styles.css` 里 `var(--user)` / `var(--assistant)`
-       同样是 0 处 —— 一直如此，只是以前没有任何东西在对账。
-     旁边那句「仍可用于 slash 卡左条等」是**当时的打算，不是今天的事实**，已改成现状。
-     ⇒ 该让哪些元素跟着它们走（气泡底色？左边条？）是产品决定，`设计/40`/`41` 都没写，
-       所以本轮不自己挑；已登记进 `tests/css-conventions.vitest.ts` 的 `UNUSED_TOKENS`，
-       并有一条**正控**专盯「既是旋钮、又零消费者」这一族 —— 再多一个就红。 */
-  --user: var(--accent); /* ⚠ 今天零消费者（见上） */
-  --assistant: var(--accent); /* ⚠ 今天零消费者（见上） */
+  /* 🔴 〔2026-09-19 用户裁定〕这里原先定义 `--user` / `--assistant` 两个令牌，
+     S30 现打逮到它们是**零消费者**：设置里「用户色」「Claude 色」两个取色器拖了
+     界面不会有任何变化（链子一路通到 `setProperty`，而没有一条 CSS 读它们）。
+     用户逐字「**取色器撤掉**」⇒ 旋钮、令牌定义、三处判据登记**同拍全删**。
+     ⚠ **只删定义不删旋钮**（或反过来）都会当场红：`css-conventions` 有一条恒等断言
+       钉着「CSS 里 `var()` 到的 减掉 CSS 自己定义的 == TS 侧 `setProperty` 设的」。 */
   --success: #6fb074;
   --warn: #d4a04a;
   --error: #d96868;
