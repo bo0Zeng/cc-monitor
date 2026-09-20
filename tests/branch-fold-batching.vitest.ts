@@ -134,3 +134,165 @@ describe("F15 live 模式的主线重算合批", () => {
     ).toBe(afterSync);
   });
 });
+
+/** 与 `rec()` 同一套时间轴，单独拿出来给下面那条 DOM 对拍用。 */
+function iso(i: number): string {
+  return new Date(Date.UTC(2026, 7, 6, 0, 0, i)).toISOString();
+}
+
+/**
+ * `设计/17 §7` 第 6 条 ＝ `§2.7` 档 3：**`addQueuedContent` 接上同一个帧末合批**。
+ *
+ * # 它钉的那条链
+ *
+ * `tabs.ts` 的 `onQueueOperation` 把**每一条** enqueue 记录喂给
+ * `BranchFolder.addQueuedContent`，而那里原先在 live 模式下**同步**跑一次
+ * `computeMain()`（`computeMainBranch` 是扫全部 records 的 Kahn 拓扑 ⇒ O(N)，
+ * 变了还要再走一次 O(N) 的 DOM `rebuild()`）——
+ * **与 F15 修掉之前的 `recordAdded` 是同一个形状**：M 条 enqueue × O(N) = O(M·N)，
+ * 而且与同一帧里 `recordAdded` 排的那次**各算各的**。
+ *
+ * `设计/17 §2.7` 逐字把它列在「一个没合批的兄弟」下面，修法逐字是「接上合批 —— 一行，立刻做」。
+ *
+ * # 判据钉什么
+ *
+ * 与上面 F15 那一组同一套口径：钉 **`computeMainBranch` 被调了几次**（可判定），
+ * 不钉「快不快」（那要真机 ＋ 大历史库，红线内做不到 —— 诚实边界）。
+ * 另加一条**行为不变**的相等断言：合批只许改「什么时候算」，不许改「算出什么」。
+ *
+ * # 它挡不住什么（诚实段 · 死值验现打出来的）
+ *
+ * 🔴 最后那条 DOM 相等断言**逮不住「`addQueuedContent` 干脆不排程」** ——
+ * 死值验 `M7`（把那行 `scheduleLiveRecompute()` 整个删掉）实测：那一条**照样绿**。
+ * 成因是它的夹具里先喂了 records，`recordAdded` 已经替它排了同一帧的那次活，
+ * 帧末真算时 `queuedContents` 早就写进去了 ⇒ 豁免照样生效。
+ * ⇒ **那一格量的是「算出什么」，不是「谁排的活」**；「谁排的活」归上面
+ * 「反向：不许变成永远不算」那条（`M7` 下它红），两条合起来才盖满。
+ */
+describe("`设计/17 §2.7` 档 3：addQueuedContent 接上帧末合批", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    spy.compute = 0;
+    spy.lastLen = -1;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("★ 一帧内连来 8 条 enqueue → `computeMainBranch` 只跑一次，不是八次", () => {
+    const { folder } = mount();
+    // 先把 records 那一批喂进去并结掉，否则 N=0，「省掉一趟 O(N)」量的是空气。
+    for (let i = 0; i < 4; i++) folder.recordAdded(rec(i, i === 0 ? null : `u-${i - 1}`));
+    vi.advanceTimersByTime(50);
+    expect(spy.compute, "前置不成立：records 那一批没在帧末算掉").toBe(1);
+    // 量具自检：mock 没挂上 / 记录被去重吞掉时，下面的次数断言会零命中地绿。
+    expect(
+      spy.lastLen,
+      `computeMainBranch 最后一次手里有 ${spy.lastLen} 条 records（该是 4）—— ` +
+        "要么 mock 没挂上、要么记录被吞了。那样下面的次数断言没有意义。",
+    ).toBe(4);
+
+    spy.compute = 0;
+    for (let i = 0; i < 8; i++) folder.addQueuedContent(`排队的第 ${i} 句`);
+    expect(
+      spy.compute,
+      `8 条 enqueue 在帧内就算了 ${spy.compute} 次 —— 档 3 没接上合批，还在逐条同步跑 computeMain`,
+    ).toBe(0);
+
+    vi.advanceTimersByTime(50);
+    expect(
+      spy.compute,
+      `一帧内连来 8 条 enqueue，computeMainBranch 跑了 ${spy.compute} 次（该是 1）`,
+    ).toBe(1);
+  });
+
+  it("★ enqueue 与新记录混在同一帧 → 合成同一次，不是两次", () => {
+    const { folder } = mount();
+    folder.recordAdded(rec(0, null));
+    folder.addQueuedContent("排队的那句");
+    folder.recordAdded(rec(1, "u-0"));
+    folder.addQueuedContent("排队的另一句");
+    vi.advanceTimersByTime(50);
+    expect(
+      spy.compute,
+      `同一帧里两条记录 ＋ 两条 enqueue 算了 ${spy.compute} 次。` +
+        "两条路要排进**同一个**待办，不是各排各的 —— 否则合批只省一半。",
+    ).toBe(1);
+  });
+
+  it("★ 反向：enqueue 那条路的合批不许变成「永远不算」", () => {
+    const { folder } = mount();
+    folder.addQueuedContent("排队的那句");
+    expect(spy.compute, "前置：enqueue 不该在帧内同步算").toBe(0);
+    vi.advanceTimersByTime(50);
+    expect(
+      spy.compute,
+      "帧末也没算 —— 那不是合批，是把队列豁免整个关掉了（豁免从此永远不生效）",
+    ).toBeGreaterThan(0);
+  });
+
+  it("★ 去重 / 空白那两条早退路径不许凭空排一次活", () => {
+    const { folder } = mount();
+    folder.addQueuedContent("同一句");
+    vi.advanceTimersByTime(50);
+    expect(spy.compute, "前置：第一次该算一次").toBe(1);
+
+    spy.compute = 0;
+    folder.addQueuedContent("同一句"); // 已登记 ⇒ 早退
+    folder.addQueuedContent("   "); // trim 后为空 ⇒ 早退
+    vi.advanceTimersByTime(50);
+    expect(
+      spy.compute,
+      `早退路径排了 ${spy.compute} 次帧末重算 —— 豁免集合一个字没变，那趟 O(N) 是纯白跑`,
+    ).toBe(0);
+  });
+
+  it("batch 模式照旧：enqueue 攒着不算，flushPending 才算一次", () => {
+    const { folder } = mount();
+    folder.setBatchMode(true);
+    for (let i = 0; i < 5; i++) folder.addQueuedContent(`排队的第 ${i} 句`);
+    vi.advanceTimersByTime(50);
+    expect(spy.compute, "batch 模式下不该算").toBe(0);
+    folder.flushPending();
+    expect(spy.compute, "flushPending 该算一次").toBe(1);
+  });
+
+  it("★ 行为不变：队列豁免仍然生效，帧末的 DOM 与同步路径**逐字节相同**", () => {
+    const QUEUED = "这句进过输入队列";
+    // u-0 底下分叉：u-1（较早，user，正文 == 那句 enqueue）与 u-2（较晚，assistant）。
+    // 主线走 u-0 → u-2 ⇒ u-1 是 off-main 叶子 ⇒ 正是 `exemptQueuedLeaves` 要捞回来的那条。
+    const recs: BranchRecord[] = [
+      { uuid: "u-0", timestamp: iso(0), type: "user", text: "根" },
+      { uuid: "u-1", parentUuid: "u-0", timestamp: iso(1), type: "user", text: QUEUED },
+      { uuid: "u-2", parentUuid: "u-0", timestamp: iso(2), type: "assistant" },
+    ];
+
+    // A 路 —— 本次改动这条：帧末合批。
+    const a = mount();
+    for (const r of recs) a.folder.recordAdded(r);
+    a.folder.addQueuedContent(QUEUED);
+    vi.advanceTimersByTime(50);
+
+    // B 路 —— 对照组：同一批输入走**同步**出口（`rebuildNow`，改动前那段内联计算的等价物）。
+    const b = mount();
+    for (const r of recs) b.folder.recordAdded(r);
+    b.folder.addQueuedContent(QUEUED);
+    b.folder.rebuildNow();
+
+    // C 路 —— **量具自检**：同一批记录，**不喂**那句 enqueue。
+    const c = mount();
+    for (const r of recs) c.folder.recordAdded(r);
+    c.folder.rebuildNow();
+
+    expect(
+      c.el.innerHTML,
+      "量具自检不成立：这个夹具里「喂不喂那句 enqueue」根本不改变 DOM ⇒ " +
+        "下面那条相等断言是空真，得换一个真能让豁免生效的夹具。",
+    ).not.toBe(a.el.innerHTML);
+
+    expect(
+      a.el.innerHTML,
+      "帧末合批之后的折叠结果与同步路径不一致 —— 档 3 改的该只是「什么时候算」，不是「算出什么」。",
+    ).toBe(b.el.innerHTML);
+  });
+});
