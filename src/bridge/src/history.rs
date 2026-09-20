@@ -536,12 +536,29 @@ fn codex_first_user_excerpt(path: &Path) -> String {
 /// 〔`K-R97` 09-12〕`project_dir` 的形状变了：**编码目录名**（`codex:<cwd>` 那支除外），
 /// 不再是绝对路径 —— 列表那条路改问本机后端之后，`HistoryProject::project_dir`
 /// 带回来的就是名字，与远端那条路（`stream_remote_history_sessions`）逐字同形。
+/// 🔴 **〔步 12·C 2026-09-20〕本机 ＋ 远端两条合成了一条带 `origin` 的。**
+///
+/// 同上一条，住 `真相源/97 §二 丙`。远端那一支的头注原先逐字写着
+/// 「**对齐本地 `stream_history_sessions_in_project`**」——「对齐」两个字就是判据：
+/// 两侧发的是**同一个** `HistorySessionEntry`、走的是**同一种** Channel、
+/// 取消语义（前端 drop channel ⇒ `send` 返 Err ⇒ 停）也是同一套。
+///
+/// ⚠ **`project_dir` 的形状两侧早已同形**（`K-R97` 09-12：本机那条改问后端要
+/// `--list-projects` 之后带回来的就是**编码目录名**，与远端逐字同形）——
+/// 那一刀是这次合并的前置，不是这次做的。
 #[tauri::command]
 pub async fn stream_history_sessions_in_project(
+    origin: crate::origin::Origin,
     project_dir: String,
     on_entry: tauri::ipc::Channel<HistorySessionEntry>,
     map: tauri::State<'_, Arc<SessionMap>>,
 ) -> Result<u32, String> {
+    if let crate::origin::Route::Remote(host) =
+        origin.route("stream_history_sessions_in_project")?
+    {
+        return crate::remote_history::stream_remote_history_sessions(project_dir, host, on_entry)
+            .await;
+    }
     let map = map.inner().clone();
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
@@ -626,12 +643,24 @@ pub async fn stream_history_sessions_in_project(
 /// 上千条 / 10MB+）。
 ///
 /// 取消：前端 drop channel 时 send 返 Err → break。
+/// 🔴 **〔步 12·C 2026-09-20〕本机 ＋ 远端两条合成了一条带 `origin` 的。**
+///
+/// 这一对住 `真相源/97 §二 丙`（「措辞不同」那一档）：本机叫
+/// `stream_read_session_jsonl`、远端叫 `stream_read_remote_session`，**名字里没有一个
+/// 共同的词** ⇒ 按名字数分叉的量法看不见它。认出它靠的是两条实打的判据：
+/// ① 两侧的 chunk 口径**逐字对齐**（每 100 条一发、同一个 `JsonlLinePayload`、
+/// 同一套 per-file `seq`）；② 前端的 `SessionViewer` 对两条路**共用同一段消费代码**
+/// （`session-viewer.ts` 里那个三目就是全部差别）。
 #[tauri::command]
 pub async fn stream_read_session_jsonl(
+    origin: crate::origin::Origin,
     jsonl_path: String,
     on_chunk: tauri::ipc::Channel<Vec<crate::bridge::JsonlLinePayload>>,
 ) -> Result<u32, String> {
     const CHUNK_SIZE: usize = 100;
+    if let crate::origin::Route::Remote(host) = origin.route("stream_read_session_jsonl")? {
+        return crate::remote_history::stream_read_remote_session(jsonl_path, host, on_chunk).await;
+    }
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
         let target = PathBuf::from(&jsonl_path);
@@ -759,8 +788,28 @@ fn validate_delete_target(jsonl_path: &str, projects_dir: &Path) -> Result<PathB
     Ok(canon_target)
 }
 
+/// 🔴 **〔步 12·C 2026-09-20〕本机 ＋ 远端两条删除合成了一条带 `origin` 的。**
+///
+/// **凭什么说它们是同一件事**：两侧都是「用户显式删掉一份会话 jsonl，然后清掉本机
+/// 按 sid 存的那份注解」。后半句**本来就只有一份实现** —— [`remove_metadata_entry`]
+/// 的头注逐字写着「本地删除与远端删除（issue F11 `delete_remote_history_session`）
+/// **共用**」，因为注解是 monitor 本机的东西，**与会话本体在哪台机器上无关**。
+/// 前半句两侧各有一道路径守卫（本机 `validate_delete_target` canonicalize ＋ 围栏、
+/// 远端 `sftp::remove_remote_file` 双重守卫），那是「同一个动作在两种介质上的实现」，
+/// 不是两件能力。
+///
+/// ⚠ **一处刻意保留的不对称**：远端那一支不信前端送来的 `session_id`，
+/// 自己从 `jsonl_path` 算 stem（理由写在 `remote_history::delete_remote_history_session`
+/// 那一行上）。合并**没有**把它抹平 —— 抹平会多开一个「删 A 的文件、清 B 的注解」的口。
 #[tauri::command]
-pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<(), String> {
+pub async fn delete_history_session(
+    origin: crate::origin::Origin,
+    session_id: String,
+    jsonl_path: String,
+) -> Result<(), String> {
+    if let crate::origin::Route::Remote(host) = origin.route("delete_history_session")? {
+        return crate::remote_history::delete_remote_history_session(host, jsonl_path).await;
+    }
     // 安全校验：必须在 claude_dir/projects 之下，避免前端传错路径误删别处文件
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
     let projects_dir = crate::adapter::records_dir(&claude_dir);
@@ -872,14 +921,38 @@ use branch_core::build_branch_records;
 /// 🔴〔`K-R88` 09-13〕**入参从路径改成了 sid**，与远端那条
 /// （`remote_branch::create_remote_branch_session`）**形状一致**。
 /// 前端两条路本来就都拿得到 sid（按钮那份上下文里一直有），所以这不是给调用方加负担。
+///
+/// 🔴 **〔步 12·C 2026-09-20〕两条合成了一条带 `origin` 的。**
+///
+/// **这一对是本批里最便宜的一对，而便宜的理由是前人已经把贵的那部分做完了**：
+/// `K-R88`（09-13）把两侧的入参统一成了 sid，`G1` 把记录变换提成了共享 crate
+/// `branch-core`，`G6` 让远端那条路吐**同一个** [`BranchResult`]。
+/// 被合并掉的那条命令自己的头注逐字写着「与本地那条的差异**今天只剩一处：活儿在远端干**」
+/// —— 那句话就是本次合并的判据，不是我新造的。
+///
+/// ⇒ 合并之后「活儿在哪干」由 `origin` 说，不再由**命令名**说。
+/// ⚠ 本机 ＝ `Origin::local()`（线上 `"<local>"`），**不是 `null`**。
 #[tauri::command]
-pub fn create_branch_session(
+pub async fn create_branch_session(
+    origin: crate::origin::Origin,
     source_session_id: String,
     message_uuid: String,
 ) -> Result<BranchResult, String> {
-    let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-    let projects_dir = crate::adapter::records_dir(&claude_dir);
-    branch_impl(&source_session_id, &message_uuid, &projects_dir)
+    match origin.route("create_branch_session")? {
+        crate::origin::Route::Local => {
+            let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
+            let projects_dir = crate::adapter::records_dir(&claude_dir);
+            branch_impl(&source_session_id, &message_uuid, &projects_dir)
+        }
+        crate::origin::Route::Remote(host) => {
+            crate::remote_branch::create_remote_branch_session(
+                host,
+                &source_session_id,
+                &message_uuid,
+            )
+            .await
+        }
+    }
 }
 
 /// 建分支核心（可注入 projects_dir 直测，绕开 resolve_claude_dir 全局依赖——同 delete 的

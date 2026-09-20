@@ -1251,7 +1251,6 @@ pub fn run() {
             mcp::read_mcp_servers,
             mcp::read_remote_mcp_servers,
             mcp::list_remote_mcp_origins,
-            mcp::list_remote_mcp_project_dirs,
             mcp::read_remote_project_mcp,
             mcp::write_remote_mcp_server,
             mcp::remove_remote_mcp_server,
@@ -1297,12 +1296,7 @@ pub fn run() {
             history::list_history_projects,
             history::stream_history_sessions_in_project,
             history::stream_read_session_jsonl,
-            remote_branch::create_remote_branch_session, // G6
             remote_history::list_remote_history_projects,
-            remote_history::stream_remote_history_sessions,
-            remote_history::stream_read_remote_session,
-            // F11：远端历史删除（SFTP 写，SS-G 用户数据写豁免）
-            remote_history::delete_remote_history_session,
             // F10：一键装 / 卸远端 ccm 助手到 ~/.bashrc（SFTP 写 profile，SS-H）
             sftp::install_remote_ccm_helper,
             sftp::uninstall_remote_ccm_helper,

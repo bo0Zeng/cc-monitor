@@ -9,6 +9,9 @@
  */
 import { subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
+// 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
+// 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
+import { LOCAL_ORIGIN } from "../backend-policy";
 import { showActionFailureToast } from "../error-toast";
 
 export type McpScope = "user" | "local" | "project";
@@ -259,7 +262,7 @@ export class McpSection {
     // 远端那条早就有这个守卫（`if (this.origin !== origin) return;`），本机那条**漏了**。
     const want = this.origin;
     try {
-      const dirs = await commands.list_mcp_project_dirs();
+      const dirs = await commands.list_mcp_project_dirs({ origin: LOCAL_ORIGIN });
       if (this.origin !== want) return; // 期间切走
       this.renderDirCandidates(dirs);
     } catch {
@@ -339,7 +342,8 @@ export class McpSection {
   private async loadRemoteProjectCandidates(origin: string): Promise<void> {
     let dirs: string[] | null = null;
     try {
-      dirs = await commands.list_remote_mcp_project_dirs({ origin });
+      // 〔步 12·C〕与本机那条是**同一条命令**了（`list_mcp_project_dirs`）。
+      dirs = await commands.list_mcp_project_dirs({ origin });
     } catch {
       // ★ `null` 与 `[]` 是**两件事**〔E 阶段补审〕：原来这里 catch 之后 `dirs` 仍是 `[]`，
       // 于是读失败会显示「这台机器还没有用过的项目目录」—— 一句与真实原因无关的话。

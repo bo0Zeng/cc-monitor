@@ -709,14 +709,21 @@ fn remote_session_entry(
 }
 
 /// 远端某项目的历史会话列表（流式 Channel，对齐本地 stream_history_sessions_in_project）。
-/// `project_dir` = 远端编码目录名（list_remote_history_projects 给出的 projectDir）。
-#[tauri::command]
-pub async fn stream_remote_history_sessions(
+/// `project_dir` = 远端编码目录名（`list_remote_history_projects` 给出的 projectDir）。
+///
+/// 🔴 **〔步 12·C 2026-09-20〕它不再是一条 Tauri 命令。**
+/// 上线的那一条是 [`crate::history::stream_history_sessions_in_project`]，本函数是它的远端那一支。
+/// 这一行的头注原先逐字写着「**对齐本地 `stream_history_sessions_in_project`**」——
+/// 那句「对齐」就是 `真相源/97 §二 丙` 认出这一对的依据：名字里一个共同的词都没有
+/// （grep 数不出来），而**实现动作是同一件**（枚举一个项目下的会话、逐条经 Channel 发）。
+///
+/// ⚠ 名字**刻意没改**（同 `remote_branch` 那条的理由）。
+pub(crate) async fn stream_remote_history_sessions(
     project_dir: String,
-    origin: String,
+    host: &str,
     on_entry: tauri::ipc::Channel<HistorySessionEntry>,
 ) -> Result<u32, String> {
-    let cfg = require_cfg_by_label(&origin)?;
+    let cfg = require_cfg_by_label(host)?;
     // 防穿越：目录名不允许含分隔符（backend 侧同样校验，双层防御）
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("非法项目目录名: {project_dir}"));
@@ -749,14 +756,24 @@ pub async fn stream_remote_history_sessions(
 
 /// 流式读取远端单个会话（对齐本地 stream_read_session_jsonl 的 chunk 口径：
 /// 每 100 条一发，payload 带 origin=Some(host)，SessionViewer 零改动复用）。
-#[tauri::command]
-pub async fn stream_read_remote_session(
+///
+/// 🔴 **〔步 12·C 2026-09-20〕它不再是一条 Tauri 命令。**
+/// 上线的那一条是 [`crate::history::stream_read_session_jsonl`]，本函数是它的远端那一支。
+/// 同上一条：这是 `真相源/97 §二 丙`「措辞不同」那一档 —— 判它是一对靠的是
+/// **chunk 口径逐字对齐**（每 100 条一发、同一个 `JsonlLinePayload`、同一套 per-file `seq`），
+/// 不是名字。
+///
+/// ⚠ **两侧有一处如实记着的不对称**：`origin` 字段本机侧填 `None`、远端侧填 `Some(label)`。
+/// 那**不是**这次合并引入的，也**不是**这次合并要治的 —— 它是载荷那一层的事
+/// （`JsonlLinePayload::origin`），治它要动前端 `SessionViewer` 的来源判定。
+/// 本步只合命令面，**不顺手改载荷语义**。
+pub(crate) async fn stream_read_remote_session(
     jsonl_path: String,
-    origin: String,
+    host: &str,
     on_chunk: tauri::ipc::Channel<Vec<crate::bridge::JsonlLinePayload>>,
 ) -> Result<u32, String> {
     const CHUNK_SIZE: usize = 100;
-    let cfg = require_cfg_by_label(&origin)?;
+    let cfg = require_cfg_by_label(host)?;
     // 深度防御（与 stream_remote_history_sessions 的 project_dir 校验对称）：jsonl_path 来自
     // 前端，monitor 侧先做廉价校验（拒 `..` + 强制 .jsonl 后缀）。真正的越权读由后端侧
     // canonicalize + projects/ 前缀 + symlink 逃逸校验兜底，这里补齐不对称的防御缺口。
@@ -876,12 +893,20 @@ pub async fn stream_read_remote_session(
 
 /// 删除一个远端历史会话的 jsonl（issue 未拆，F11）。**只读铁律豁免（SS-G）**：用户
 /// 显式删除 + 前端二次确认 + `sftp::remove_remote_file` 双重路径守卫。删除后清本地元数据。
-#[tauri::command]
-pub async fn delete_remote_history_session(
-    origin: String,
+///
+/// 🔴 **〔步 12·C 2026-09-20〕它不再是一条 Tauri 命令。**
+/// 上线的那一条是 [`crate::history::delete_history_session`]，本函数是它的远端那一支。
+///
+/// ⚠ **合并时逮到的一处真差别，如实记下来**：清本地元数据那一步，本机侧用的是
+/// **前端送来的** `session_id`，而这一侧是从 `jsonl_path` 里 `jsonl_stem` **算出来**的。
+/// 合并之后签名只剩一个 `session_id`（前端两条路本来都送得出），而**这一侧仍然自己算**
+/// —— 刻意的：远端那条路的守卫（`remove_remote_file`）只认路径，让它去信一个
+/// 可以与路径**不一致**的 sid，等于多开一个「删 A 的文件、清 B 的注解」的口。
+pub(crate) async fn delete_remote_history_session(
+    host: &str,
     jsonl_path: String,
 ) -> Result<(), String> {
-    let cfg = require_cfg_by_label(&origin)?;
+    let cfg = require_cfg_by_label(host)?;
     crate::sftp::remove_remote_file(&cfg, &jsonl_path).await?;
     // 清本地元数据（注解按 sid = jsonl 文件名 stem）。
     if let Some(sid) = jsonl_stem(&jsonl_path) {

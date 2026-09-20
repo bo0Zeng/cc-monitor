@@ -11,6 +11,9 @@
 
 import { Channel } from "@tauri-apps/api/core";
 import { commands } from "../ipc/commands";
+// 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
+// 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
+import { LOCAL_ORIGIN } from "../backend-policy";
 import { MessageStream } from "../stream";
 import {
   type JsonlRecord,
@@ -270,27 +273,21 @@ export class SessionViewer {
     };
 
     try {
-      // issue #16：远端会话走 stream_read_remote_session（SSH 拉取，payload 带
-      // origin），本地走原 IPC。chunk 结构一致，下游渲染零差异。
+      // 🔴 **〔步 12·C 2026-09-20〕两条命令收成了一条。**
       //
-      // **C04d 批 6a：这里原来是「动态派发口」，现在不是了。**
-      // 原形态是 `const ipc = origin ? "A" : "B"` + `invoke<number>(ipc, 超集args)`
-      // ——它被 C04a 记成「7 个命令 TS 静态看不见」的盲区之一。但它**从来不是任意字符串**，
-      // 只是在**两个字面量之间**选。改成两次静态调用后：
-      // ① 那个盲区消失（两个命令名现在是 TS 侧的字面量，守卫扫得到）；
-      // ② **两条命令拿到各自精确的签名**——远端那条 `origin` 必填、本地那条**根本没有
-      //    origin 参数**（Rust 签名本就不同）。此前给两边传同一个超集 args、靠 Tauri
-      //    丢掉 `undefined` 才对；现在「给本地命令传 origin」是**编译期错误**。
-      const finalCount = opts.origin
-        ? await commands.stream_read_remote_session({
-            jsonlPath: opts.jsonlPath,
-            origin: opts.origin,
-            onChunk: channel,
-          })
-        : await commands.stream_read_session_jsonl({
-            jsonlPath: opts.jsonlPath,
-            onChunk: channel,
-          });
+      // **这里的历史值得留着，因为它正好是 `设计/00 §2.5 ①` 的反面教材**：
+      // C04a 量到这里是个「动态派发口」（`const ipc = origin ? "A" : "B"`），
+      // C04d 批 6a 把它改成两次静态调用，买到的是「两条命令各拿精确签名」——
+      // 那是**在两条命令这个前提下**能买到的最好结果。本步把前提换掉：
+      // 只有一条命令，`origin` 是它的参数，于是既没有派发口、也没有第二个签名。
+      //
+      // ⚠ **原先那条编译期保护没有丢**：从前是「给本地命令传 origin」编译错，
+      //   现在是「不传 origin」编译错（`origin` 必填）。方向反了，牙没掉。
+      const finalCount = await commands.stream_read_session_jsonl({
+        origin: opts.origin ?? LOCAL_ORIGIN,
+        jsonlPath: opts.jsonlPath,
+        onChunk: channel,
+      });
       // **竞态修复**：Channel 和 invoke 是两条独立 IPC 通道，invoke resolve 时
       // 余下 chunk 的 onmessage 可能还排队没跑。等 totalRecords 追上 finalCount
       // 再切到最终状态文，否则会被晚到的 onmessage 又改回"加载中"。
