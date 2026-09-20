@@ -6,6 +6,15 @@
  * （`--fg` vs `--text`、`--danger` vs `--error`、`--mono` vs `--font-mono`）。
  * 问题不是命名语法不好，**是没人知道有哪些**。
  *
+ * 🔴 **「只许用这里的名字」现在有机器在看**：`tests/css-conventions.vitest.ts` 格 ⑤，
+ * **两个方向都是恒等式**：
+ *   · 正向 —— CSS 里 `var(--x)` 到的名字减掉 CSS 自己定义的，必须**恰好**等于
+ *     TS 侧 `style.setProperty("--x", …)` 现读出来的那几个（今天 2 个：
+ *     `--tab-bar-w` / `--fork-depth`）。多一个就是又写错了一个变量名。
+ *   · 反向 —— 定义了却没有任何 `var()` 读它的，必须**恰好**等于判据里那张登记表。
+ * ⚠ `设计/40 §7` 步 9 ① 原本要的是装 stylelint 插件；装包要动 `package.json` /
+ *   `package-lock.json`，不在 CSS 的写区，而且那个插件**只看正向**。理由逐字写在判据头注里。
+ *
  * # 命名语法（`设计/41 §2`）—— 定死，但**不重命名现有的**
  *
  *     --{族}-{角色}[-{变体}]
@@ -33,6 +42,23 @@
  * 3. **状态用 `data-*`，不用类名** —— `data-*` 天然「加也有减也有」，类名容易只加不减。
  *    ⚠ 改成 `data-*` 还不够，**减的那一半也要有判据**。
  *
+ * 🔴 约定 1 现在有机器在看：`tests/css-conventions.vitest.ts` 格 ⑦
+ * （「会被 `hidden` 切的元素，CSS 不许在它身上裸写 `display`」，恒等式对拍一张登记表）。
+ * 它今天逮着一条真的：`.tab-archive-list`，逐字理由写在 `styles.css` 那条规则上面。
+ * ⚠ 约定 2（`visibility`）与约定 3（`data-*` 的减半）**还没有判据**，仍然只是纪律。
+ *
+ * # 动画只许过渡这五个（`设计/41 §10`）
+ *
+ *     transform · opacity · background · color · border-color
+ *
+ * 理由是这五个只走合成/重绘。**要动尺寸就用 `transform: scale`** ——
+ * `.sftp-bar-fill` 那条 `transition: width` 就是这么治好的（每帧重排 → 只走合成，`S24`）。
+ * 白名单之外只有**逐条登记**的例外，今天两条：`grid-template-rows`（`0fr ↔ 1fr`
+ * 那个「不用预知内容高度就能平滑展开」的标准技巧，只在展开那 200ms 重排）与
+ * `none`（那是**关掉**过渡）。
+ * ⇒ 机检住 `tests/css-conventions.vitest.ts` 格 ⑥，**两向**：白名单外的当场红，
+ *   登记了却今天已经不存在的例外也红（免得登记表自己腐成永远放行）。
+ *
  * # 主题
  *
  * ❌ 主题预设 / 亮色模式 **不做**（用户 2026-09-16 拍板，`设计/41 §8`）。
@@ -49,8 +75,17 @@
   --text-2: #a8a39a;
   --text-faint: #6b665e;
   --accent: #c96442; /* Anthropic terracotta orange，单一强调色 */
-  --user: var(--accent); /* 兼容，仍可用于 slash 卡左条等 */
-  --assistant: var(--accent);
+  /* 🔴 S30 现打：下面这两个是 `theme.ts` 那 14 个**用户可调**旋钮里的两个
+     （设置里的「用户色」「Claude 色」，住址 `src/settings/panel.ts:120-121`），
+     而**全仓没有一条 CSS 读它们** ⇒ 用户拖那两个取色器，界面上不会有任何变化。
+     ⚠ 这不是本轮改出来的：`git show main:src/styles.css` 里 `var(--user)` / `var(--assistant)`
+       同样是 0 处 —— 一直如此，只是以前没有任何东西在对账。
+     旁边那句「仍可用于 slash 卡左条等」是**当时的打算，不是今天的事实**，已改成现状。
+     ⇒ 该让哪些元素跟着它们走（气泡底色？左边条？）是产品决定，`设计/40`/`41` 都没写，
+       所以本轮不自己挑；已登记进 `tests/css-conventions.vitest.ts` 的 `UNUSED_TOKENS`，
+       并有一条**正控**专盯「既是旋钮、又零消费者」这一族 —— 再多一个就红。 */
+  --user: var(--accent); /* ⚠ 今天零消费者（见上） */
+  --assistant: var(--accent); /* ⚠ 今天零消费者（见上） */
   --success: #6fb074;
   --warn: #d4a04a;
   --error: #d96868;
