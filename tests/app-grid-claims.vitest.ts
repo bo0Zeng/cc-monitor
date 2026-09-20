@@ -165,13 +165,10 @@ const INSERTED_CHILDREN: readonly AppChild[] = [
     modes: ["viewer"],
     why: "只有 bootstrapViewer 建它，而它第一件事就是挂 body.viewer-mode",
   },
-  {
-    file: "src/tabs.ts",
-    expr: "wrap",
-    selector: ".tab-archive",
-    modes: BOTH,
-    why: "🔴 viewer 也 new 一个 TabManager（main.ts bootstrapViewer）⇒ 两种模式都会插",
-  },
+  // 🔴 〔步 17·A · 2026-09-19〕`.tab-archive` 这条**摘掉** —— 那个插入点没了。
+  //    归档抽屉随用户裁定整个删除（`设计/30 §A`「已定：删归档抽屉」），
+  //    `ensureArchiveUi()` 与 `#app` 模板里的 `archive` 那一行一并消失。
+  //    ⇒ 留着它，尺 A（源码里的插入点 ↔ 本表）会报「表上有而源码没有」。
 ];
 
 const ALL_CHILDREN = [...STATIC_CHILDREN, ...INSERTED_CHILDREN];
@@ -612,12 +609,22 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
     for (const c of STATIC_CHILDREN) expect(html).toContain(c.expr);
   });
 
-  it("尺 C 自检：把 .tab-archive 的 grid-area 摘掉，这条判据必须当场红", () => {
-    const mutated = parseCss(CSS.replace(/(\.tab-archive\s*\{[^}]*?)\n\s*grid-area:\s*archive;/, "$1"));
+  // 🔴 〔步 17·A · 2026-09-19〕靶子从 `.tab-archive` 换成 `#message-stream`。
+  //    前者随归档抽屉一起删了；本条买的是「摘掉 `grid-area` 这条判据会不会红」，
+  //    与靶子是谁无关 —— **换靶子，判红条件一个字没动**。
+  //    ⚠ 仍然保留下半段那条「未变异的必须是认领了的」—— 没有它，
+  //      「两边都红」也能让上半段过去，那是假证明。
+  it("尺 C 自检：把 #message-stream 的 grid-area 摘掉，这条判据必须当场红", () => {
+    const mutated = parseCss(CSS.replace(/(#message-stream\s*\{[^}]*?)\n\s*grid-area:\s*main;/, "$1"));
     const tpl = templateOf(mutated, "default");
-    expect(claimOf(mutated, ".tab-archive", "default", tpl).kind).toBe("none");
-    // 未变异的那份必须是认领了的 —— 否则上面那条是「两边都红」的假证明
-    expect(claimOf(RULES, ".tab-archive", "default", templateOf(RULES, "default")).kind).toBe("area");
+    expect(
+      claimOf(mutated, "#message-stream", "default", tpl).kind,
+      "把 grid-area 摘掉之后还判成「认领了」⇒ 这把尺子根本没在看 grid-area",
+    ).toBe("none");
+    expect(
+      claimOf(RULES, "#message-stream", "default", templateOf(RULES, "default")).kind,
+      "未变异的那份就不是「认领了」⇒ 上面那条是两边都红的假证明",
+    ).toBe("area");
   });
 
   for (const mode of BOTH) {

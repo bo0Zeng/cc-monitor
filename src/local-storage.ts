@@ -25,7 +25,9 @@ export const LS_KEYS = {
   /** issue #23：agents 面板折叠状态（与 tasks 面板同形态的全局单例） */
   agentsPanelCollapsed: "cc-monitor.agents-panel.collapsed",
   /** P7a-1（#61）：归档区折叠状态。默认折叠（缺省即 "1"），与 agents/tasks 面板同形态。 */
-  tabArchiveCollapsed: "cc-monitor.tab-archive.collapsed",
+  // 🔴 〔步 17·A · 2026-09-19〕`tabArchiveCollapsed` 删掉 —— 归档抽屉整个不存在了。
+  //    用户逐字「没有归档这个东西，不要归档，就是灰 tab」。盘上遗留的那个键无人再读
+  //    （条 80：不为盘上已有状态留兼容 ⇒ 不写清理，让它自然作废）。
   /** v2.1.0 issue #7：每分组的折叠状态。动态生成 key。 */
   settingsCollapsed: (groupId: string) => `cc-monitor.settings.collapsed.${groupId}`,
   /** issue #12：fork 树展开状态（按 sessionId 入集合）。 */
