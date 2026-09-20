@@ -29,8 +29,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use russh::client;
-use russh_sftp::client::SftpSession;
+use russh_sftp::client::{RawSftpSession, SftpSession};
 use russh_sftp::protocol::{FileAttributes, OpenFlags};
+use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 
 use crate::ssh_source::{connect_session, ClientHandler, RemoteConfig};
@@ -38,8 +39,11 @@ use crate::ssh_source::{connect_session, ClientHandler, RemoteConfig};
 /// 一条 SFTP 连接：持有底层 russh `Handle`（**必须与 SFTP 会话同生命周期**——Handle 一 drop
 /// 整条 SSH 连接就断）+ SFTP 会话本身。
 pub struct SftpConn {
-    /// 保活：底层 SSH 连接句柄。下划线 = 仅持有不直接用，但绝不能提前 drop。
-    _session: client::Handle<ClientHandler>,
+    /// 保活：底层 SSH 连接句柄。**它同时是 [`SftpConn::open_raw_sftp`] 另起通道的出处**
+    /// （步 23b 之前这个字段叫 `_session`、逐字写着「仅持有不直接用」；
+    /// 那句话随 `copy-data` 那一路落地而不再成立，下划线一起去掉）。
+    /// 绝不能提前 drop。
+    session: client::Handle<ClientHandler>,
     pub sftp: SftpSession,
 }
 
@@ -57,10 +61,139 @@ pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
     let sftp = SftpSession::new(channel.into_stream())
         .await
         .map_err(|e| format!("初始化 sftp 会话失败: {e}"))?;
-    Ok(SftpConn {
-        _session: session,
-        sftp,
-    })
+    Ok(SftpConn { session, sftp })
+}
+
+// ═══ 步 23b：`copy-data` —— 远端内部复制，客户端零流量 ════════════════════════
+//
+// # 消息体格式：**现打核到逐字段对上**，不是照别人的散文抄的
+//
+// `真相源/98 §1.3` 只答了「库里有 `extended()` 这条通用通道」，**没有给消息体**。
+// 而派工单里那句 `copy-data from "%s" (handle %d) …` 是 `sftp-server` 的**日志格式串**，
+// 派工单自己就标了「⚠ 别照我这句话当规格」。⇒ 本拍拿本机 `/usr/lib/openssh/sftp-server`
+// （`OpenSSH_10.2p1 Ubuntu-2ubuntu3.6`）**当被测对象**，用一个只讲 SFTP v3 裸字节的探针
+// 逐字段量出来：
+//
+// ```text
+//   byte    SSH_FXP_EXTENDED (200)
+//   uint32  request-id
+//   string  "copy-data"          ← **不带 `@openssh.com` 后缀**
+//   string  read-from-handle     ← **是句柄，不是路径**
+//   uint64  read-from-offset
+//   uint64  read-data-length     ← 0 = 一直读到 EOF
+//   string  write-to-handle
+//   uint64  write-to-offset
+//   ⇒ 回一个 SSH_FXP_STATUS
+// ```
+//
+// ★ **七刀突变，刀刀改结果** —— 「这个布局是承重的」不是自称：
+//
+// | 改了什么 | 现打读数 |
+// |---|---|
+// | 原样（4096 字节） | `code=0 Success`，两份**逐字节相同** |
+// | 第三个字段填 100 | 目的地**只有 100 字节** ⇒ 那一格确是 **length** |
+// | 第二个字段填 100、length 留 0 | 目的地 **3996 字节** ⇒ 那一格确是 **read offset**，且 `len=0` 真的是「到 EOF」 |
+// | 砍掉末尾 `write-to-offset` | **服务端直接断连**（不是回一个错） |
+// | 两个句柄换成路径字符串 | `code=4 Failure` |
+// | 读/写句柄对调 | `code=2 No such file` |
+// | 偏移量写成 `uint32` | **服务端直接断连** |
+// | 名字写成 `copy-data@openssh.com` | `code=8 Operation unsupported` ⇐ **后缀那一刀** |
+//
+// 最后一刀正是 `真相源/98 §1.1` 记过的那一形（「我搜的时候模式带了 `@openssh.com`，
+// 搜不到，然后拿搜不到当不存在」）**反过来的一面**：名字真的不带后缀，
+// 带了后缀的请求服务端当场判 `OP_UNSUPPORTED`。
+//
+// ⚠ **这八行读数量的是本机这一台**。远端逐台支持度仍然没量（`真相源/98 §1.4`
+// 三条边界一条没解：`copy-data` 是哪个 OpenSSH 版本进的 · Windows 版有没有 ·
+// 非 OpenSSH 服务端）⇒ **退路是承重墙**，见 [`crate::sftp_pool::copy_remote_path`]。
+
+/// OpenSSH `sftp-server` 注册 `copy-data` 时用的名字。
+///
+/// ⚠ **不带 `@openssh.com` 后缀** —— 与 russh-sftp `src/extensions.rs` 里那 5 个先例
+/// （`limits@openssh.com` · `hardlink@openssh.com` · `fsync@openssh.com` ·
+/// `statvfs@openssh.com` · `expand-path@openssh.com`）**形状同、后缀不同**。
+/// 带上后缀发过去，本机 10.2p1 现打回 `SSH_FX_OP_UNSUPPORTED`（见上表最后一行）。
+pub const COPY_DATA: &str = "copy-data";
+
+/// 服务端在 `SSH_FXP_VERSION` 的扩展对里给 `copy-data` 报的修订号。
+///
+/// 现打（本机 10.2p1，扩展对全表）：`copy-data` ⇒ `b"1"`。
+/// 照 russh-sftp 高层会话开张时判 `hardlink` / `fsync` / `statvfs` 那几个扩展的形状，
+/// **名字与修订号一起判** —— 只认名字的话，将来 revision 2 换了消息体我们会照旧发老格式。
+pub const COPY_DATA_VERSION: &str = "1";
+
+/// `copy-data` 的消息体。字段顺序 = 上表那个布局，一个字段都不许挪。
+///
+/// 照 russh-sftp `HardlinkExtension` / `StatvfsExtension` 那几个的形状做：
+/// 一个只有数据字段的 `Serialize` struct，交给 `russh_sftp::ser::to_bytes` 出字节
+/// （那个序列化器把 `String` 写成 `uint32 长度 + 裸字节`、把 `u64` 写成 8 字节大端，
+/// 与 SFTP 的 `string` / `uint64` 逐字对应 —— 现打核过 3.0.0 那个序列化器）。
+///
+/// ⚠ 与那 5 个先例的**唯一形状差异**：它们用宏 `impl TryInto<Vec<u8>>`，这里实现
+/// `TryFrom<…> for Vec<u8>`（标准库的一揽子实现会顺带给出 `TryInto`，
+/// 而反过来不成立）。**字节一模一样**，只是不照抄那个宏里的反向 impl。
+#[derive(Debug, Clone, Serialize)]
+pub struct CopyDataExtension {
+    pub read_from_handle: String,
+    pub read_from_offset: u64,
+    pub read_data_length: u64,
+    pub write_to_handle: String,
+    pub write_to_offset: u64,
+}
+
+impl TryFrom<CopyDataExtension> for Vec<u8> {
+    type Error = String;
+
+    fn try_from(v: CopyDataExtension) -> Result<Self, Self::Error> {
+        russh_sftp::ser::to_bytes(&v)
+            .map(|b| b.to_vec())
+            .map_err(|e| format!("copy-data 消息体序列化失败: {e}"))
+    }
+}
+
+/// 一个**裸** SFTP 会话 ＋ 这一趟握手真协商到的 `copy-data` 支持度。
+///
+/// # 为什么非得要裸会话
+///
+/// `copy-data` 要**句柄**，而句柄只在 `SSH_FXP_HANDLE` 里回来。
+/// russh-sftp 的高层 `SftpSession` 把句柄包进了 `File` 里、`session` 字段是私有的、
+/// `extended()` 只长在 `RawSftpSession` 上 ⇒ **拿着 `SftpSession` 发不出这条消息**
+/// （现打核过 russh-sftp 3.0.0：高层会话里那个裸会话字段是私有的，无 `pub` 访问器）。
+pub struct RawSftp {
+    pub raw: RawSftpSession,
+    /// 握手时服务端报了 `copy-data` 且修订号对得上。
+    /// **`false` ⇒ 走退路**，而且要出声（不许静默变成 2× 流量）。
+    pub copy_data: bool,
+}
+
+impl SftpConn {
+    /// 在**同一条已鉴权的 SSH 连接**上另起一个 sftp 子系统通道，拿一个裸会话。
+    ///
+    /// ★ **刻意是按需的、不是在 `connect_sftp` 里顺手建第二条**：那 14 处
+    /// `connect_sftp` 调用点（`sftp_move_ledger::DIAL_CENSUS`）里只有复制这一路要它，
+    /// 塞进 `connect_sftp` 等于让每一次部署 / 每一次读 `.mcp.json` 都多付一个通道
+    /// ＋ 一趟扩展协商。**代价如实记**：每次复制多开一条通道、多一趟 `SSH_FXP_INIT`。
+    pub async fn open_raw_sftp(&self) -> Result<RawSftp, String> {
+        let channel = self
+            .session
+            .channel_open_session()
+            .await
+            .map_err(|e| format!("打开复制用 SFTP channel 失败: {e}"))?;
+        channel
+            .request_subsystem(true, "sftp")
+            .await
+            .map_err(|e| format!("请求 sftp 子系统失败（远端 sshd 未开 sftp?）: {e}"))?;
+        let raw = RawSftpSession::new(channel.into_stream());
+        let version = raw
+            .init()
+            .await
+            .map_err(|e| format!("初始化裸 sftp 会话失败: {e}"))?;
+        let copy_data = version
+            .extensions
+            .get(COPY_DATA)
+            .is_some_and(|v| v == COPY_DATA_VERSION);
+        Ok(RawSftp { raw, copy_data })
+    }
 }
 
 /// 原子上传 `bytes` 到 `remote_path`，权限 `mode`（八进制如 0o700）。

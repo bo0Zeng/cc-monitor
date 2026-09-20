@@ -471,6 +471,25 @@ export const commands = {
   sftp_cancel_transfer: (args: { transferId: string }) =>
     invoke<void>("sftp_cancel_transfer", args),
 
+  /**
+   * 远端内部复制（步 23b）。Rust 返回 `Result<Option<String>, String>` ⇒ `string | null`
+   * （**原始类型**，与 `sftp_read_text_for_edit` 同一形；不生成类型）。
+   *
+   * 🔴 **`null` 与非 `null` 是两条不同的路，调用方必须分开处理：**
+   * - `null` ⇒ 走了 `copy-data` 扩展，**服务端自己搬字节，一个文件字节都没经过这台机器**；
+   * - 一串话 ⇒ **退了路**（协商不到 / 服务端拒了），字节走了「远端 → 你的机器 → 远端」，
+   *   也就是 **2× 流量**。那串话是**给用户看的**，已经含了实际过网字节数。
+   *
+   * ⚠ 把返回值丢掉 = 静默退化成 2× 流量，`设计/60 §5` 第二段逐字禁止。
+   */
+  sftp_copy: (args: {
+    cfg: unknown;
+    from: string;
+    to: string;
+    transferId: string;
+    onProgress: Channel<TransferProgress>;
+  }) => invoke<string | null>("sftp_copy", args),
+
   /** 删远端文件/目录。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   sftp_delete: (args: { cfg: unknown; path: string; isDir: boolean }) =>
     invoke<void>("sftp_delete", args),

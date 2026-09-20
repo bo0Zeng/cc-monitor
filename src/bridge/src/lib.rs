@@ -1341,6 +1341,7 @@ pub fn run() {
             sftp_pool::sftp_mkdir,
             sftp_pool::sftp_rename,
             sftp_pool::sftp_delete,
+            sftp_pool::sftp_copy, // 步 23b：零流量复制（`copy-data`），退不了路要出声
             sftp_pool::sftp_read_text_for_edit,
             sftp_pool::sftp_write_text,
             pubkey::push_public_key,

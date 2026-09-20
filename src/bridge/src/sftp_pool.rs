@@ -6,7 +6,7 @@
 //! （2026-07-10 用户拍板:SFTP 属独立文件传输功能,不算 monitor 写)。防误伤守卫见
 //! [`is_protected_claude_data_path`]:SFTP 写命令拒碰 Claude 数据源文件(往正被 Claude
 //! 打开的 jsonl 写会损坏会话)——这是防手滑,不是合规。
-//! ★〔devbench F10c〕这条承诺**现在有牙了**：五个写入口都过 `guard_write` 这件事由
+//! ★〔devbench F10c〕这条承诺**现在有牙了**：六个写入口都过 `guard_write` 这件事由
 //! `remote_write_registry::a_user_chosen_remote_write_passes_the_claude_data_fence` 钉着。
 //! 在那之前它零判据 —— 删掉任一处 `guard_write?`，全仓一条不红。
 //!
@@ -536,6 +536,268 @@ async fn upload_inner(
     Ok(())
 }
 
+// === 步 23b：远端内部复制 —— 零流量走 `copy-data`，协商不到就退路 **并出声** ===
+
+/// 一次远端内部复制的裁决。
+///
+/// - `None` ⇒ 走了 `copy-data`，**一个文件字节都没经过这台机器**；
+/// - `Some(说明)` ⇒ **退了路**，那一句就是要摆到用户眼前的话（含实际过网字节数）。
+///
+/// ★ 刻意**不是 `bool`**：`设计/60 §5` 第二段逐字「不许静默退化成 2× 流量 ——
+/// 用户看得见『这一趟走的是慢路』」。一个 `bool` 到了界面上还得由界面去编一句话，
+/// 而**慢路为什么慢**（没协商到扩展 / 句柄不是 UTF-8 / 服务端判 `OP_UNSUPPORTED`）
+/// 只有这一层答得出。把那句话做成返回值的一部分 ⇒ 静默退化在类型上就做不到。
+pub type CopyVerdict = Option<String>;
+
+/// 远端内部复制的核心。**语料由调用方给**（一个裸会话），所以它在判据里
+/// 既走得了「服务端支持」这一路、也走得了「服务端不支持」那一路 —— 秤 F3 两个方向。
+///
+/// # 两条路
+///
+/// **快路**（`rs.copy_data == true` 且两个句柄都能逐字节回送）：
+/// `open(src,READ)` · `open(tmp,CREATE|EXCLUDE|WRITE)` · 一条 `copy-data` · `close` ×2
+/// · 换名上位。**客户端侧 `SSH_FXP_READ` / `SSH_FXP_WRITE` / `SSH_FXP_DATA` 恒 0 条。**
+///
+/// **退路**（协商不到 / 句柄非 UTF-8 / 服务端回 `OP_UNSUPPORTED`）：
+/// 逐块 `read` → `write` 中转。字节走「远端 → 你的机器 → 远端」，**就是 2× 流量**，
+/// 与 `设计/60 §5` 说的「下载再上传」同一件事、同一个代价。
+///
+/// ⚠ **与「下载再上传」的实现差异如实记**：这里**不落本机磁盘**（块在内存里转手），
+/// 省掉一趟本机读写；过网字节数与落盘版**一模一样**，所以「不许静默 2×」那条
+/// 承诺的对象没变。选它的理由：不必再造一处本机临时文件的落点与清理
+/// （那会多一处 `write_site_registry` 管辖的本机写面）。
+///
+/// # 落地纪律照 [`upload_inner`]
+///
+/// 先写 `<to>.part`（**EXCLUDE** 创建，防 symlink 预置 clobber，同 `upload_atomic`）
+/// → 成功后删旧 → rename 上位。**半途失败绝不在正名上留半截文件**。
+///
+/// # 它不守什么（逐条，别读大）
+///
+/// - **只复制一个普通文件**。目录递归不在这一层（`copy-data` 自己也只吃文件句柄；
+///   本机 `sftp` 客户端现打同样拒：`Cannot copy non-regular file: %s`）。
+/// - **退路没有取消点之外的断点续传**：取消/失败即清 `.part`，下次从头。
+/// - 服务端报了 `copy-data` 却回**别的**错误状态（权限 / 磁盘满）⇒ **原样报错，不退路**。
+///   退路只接「协商不到」那一族 —— 拿退路去盖真实故障，会把「远端满了」伪装成「慢了点」。
+pub async fn copy_remote_path(
+    rs: &crate::sftp::RawSftp,
+    from: &str,
+    to: &str,
+    cancel: &AtomicBool,
+    progress: &(dyn Fn(u64, u64) + Sync),
+) -> Result<CopyVerdict, String> {
+    use russh_sftp::protocol::{Packet, StatusCode};
+
+    let total = rs
+        .raw
+        .stat(from.to_string())
+        .await
+        .ok()
+        .and_then(|a| a.attrs.size)
+        .unwrap_or(0);
+    progress(0, total);
+
+    let tmp = format!("{to}.part");
+    let _ = rs.raw.remove(tmp.clone()).await; // best-effort 清残留/预置
+
+    let h_src = rs
+        .raw
+        .open(
+            from.to_string(),
+            russh_sftp::protocol::OpenFlags::READ,
+            attrs_empty(),
+        )
+        .await
+        .map_err(|e| format!("打开远端源 {from} 失败: {e}"))?
+        .handle;
+    let h_dst = match rs
+        .raw
+        .open(
+            tmp.clone(),
+            russh_sftp::protocol::OpenFlags::CREATE
+                | russh_sftp::protocol::OpenFlags::EXCLUDE
+                | russh_sftp::protocol::OpenFlags::WRITE,
+            attrs_empty(),
+        )
+        .await
+    {
+        Ok(h) => h.handle,
+        Err(e) => {
+            let _ = rs.raw.close(h_src).await;
+            return Err(format!("创建远端 {tmp} 失败: {e}"));
+        }
+    };
+
+    // ── 选路。**三个岔口，每个都留一句给用户的话** ──────────────────────────
+    let mut verdict: CopyVerdict = if !rs.copy_data {
+        Some("远端的 sftp-server 握手时没报 `copy-data` 扩展（或修订号不是 1）".to_string())
+    } else if handle_is_lossy(&h_src) || handle_is_lossy(&h_dst) {
+        // russh-sftp 解 SFTP 的 `string` 字段时对非 UTF-8 走 `from_utf8_lossy`
+        // （现打核过 3.0.0 那份取 string 的辅助函数）⇒ 句柄里的字节被换成了 U+FFFD，
+        // **再发回去就不是同一个句柄**。OpenSSH 的句柄是 4 字节大端的句柄序号，
+        // 序号 ≥ 0x80 时末字节就不是合法 UTF-8 ⇒ 同一条会话开到 128 个以上句柄才碰得到。
+        // ⚠ 这一条是**库的既有缺陷**（`read`/`write`/`close` 同样受影响），不是本路新增；
+        //   但 `copy-data` 是唯一一处**我们自己把句柄再序列化一遍**的地方 ⇒ 这里必须判。
+        Some("远端给的 SFTP 句柄含非 UTF-8 字节，库已有损解码 ⇒ 不敢照原样发回去".to_string())
+    } else {
+        None
+    };
+
+    let core = async {
+        if verdict.is_none() {
+            let body: Vec<u8> = crate::sftp::CopyDataExtension {
+                read_from_handle: h_src.clone(),
+                read_from_offset: 0,
+                read_data_length: 0, // 0 = 一直读到 EOF（现打验过，见 sftp.rs 那张突变表）
+                write_to_handle: h_dst.clone(),
+                write_to_offset: 0,
+            }
+            .try_into()?;
+            match rs.raw.extended(crate::sftp::COPY_DATA, body).await {
+                Ok(Packet::Status(s)) if s.status_code == StatusCode::Ok => return Ok(0u64),
+                Ok(Packet::Status(s)) if s.status_code == StatusCode::OpUnsupported => {
+                    verdict = Some(
+                        "远端报了 `copy-data`，可真发过去它回 `SSH_FX_OP_UNSUPPORTED`".to_string(),
+                    );
+                }
+                Ok(Packet::Status(s)) => {
+                    // 真实故障（权限 / 空间 / 路径）—— **不拿退路去盖它**。
+                    return Err(format!(
+                        "远端 copy-data 失败（{:?}）: {}",
+                        s.status_code, s.error_message
+                    ));
+                }
+                Ok(_) => return Err("远端对 copy-data 回了个非 STATUS 包".to_string()),
+                Err(e) => return Err(format!("发 copy-data 失败: {e}")),
+            }
+        }
+        // ── 退路：逐块中转。**这里每一块都是真的 2× 流量** ──────────────────
+        let mut off: u64 = 0;
+        let mut last_report: u64 = 0;
+        loop {
+            if cancel.load(Ordering::SeqCst) {
+                return Err("已取消".to_string());
+            }
+            let chunk = match rs.raw.read(h_src.clone(), off, CHUNK as u32).await {
+                Ok(d) => d.data,
+                Err(russh_sftp::client::error::Error::Status(s))
+                    if s.status_code == StatusCode::Eof =>
+                {
+                    break
+                }
+                Err(e) => return Err(format!("读远端源失败: {e}")),
+            };
+            if chunk.is_empty() {
+                break;
+            }
+            let n = chunk.len() as u64;
+            rs.raw
+                .write(h_dst.clone(), off, chunk)
+                .await
+                .map_err(|e| format!("写远端目标失败: {e}"))?;
+            off += n;
+            if off - last_report >= PROGRESS_EVERY {
+                last_report = off;
+                progress(off, total);
+            }
+        }
+        Ok(off)
+    }
+    .await;
+
+    let _ = rs.raw.close(h_src).await;
+    let _ = rs.raw.close(h_dst).await;
+
+    let relayed = match core {
+        Ok(n) => n,
+        Err(e) => {
+            let _ = rs.raw.remove(tmp.clone()).await; // 清半成品 .part
+            return Err(e);
+        }
+    };
+
+    // 目标原文件在此之前完好无损；此后才删旧 + 换名（russh-sftp 的 rename 不覆盖）。
+    if rs.raw.stat(to.to_string()).await.is_ok() {
+        rs.raw
+            .remove(to.to_string())
+            .await
+            .map_err(|e| format!("删旧 {to} 失败: {e}"))?;
+    }
+    rs.raw
+        .rename(tmp.clone(), to.to_string())
+        .await
+        .map_err(|e| format!("rename {tmp} → {to} 失败: {e}"))?;
+    progress(total.max(relayed), total);
+
+    // 退路那句话在这里才**装上读数** —— 「慢」不是形容词，是一个字节数。
+    Ok(verdict
+        .map(|why| format!("{why} ⇒ 退回中转：{relayed} 字节经过了你这台机器（零流量复制没走上）")))
+}
+
+/// 一个空属性块（`SSH_FXP_OPEN` 的 attrs 位图全 0）。
+///
+/// 抽成函数**不是**为了省字：`russh_sftp::protocol::FileAttributes::empty()` 在
+/// `copy_remote_path` 里要写两遍，而那两处必须一模一样（一处带了 permissions
+/// 就会在 `EXCLUDE` 创建时改变落地权限）。
+fn attrs_empty() -> russh_sftp::protocol::FileAttributes {
+    russh_sftp::protocol::FileAttributes::empty()
+}
+
+/// 这个 SFTP 句柄是不是已经被库有损解码过了（含 U+FFFD ⇒ 原字节回不去）。
+///
+/// 与 [`is_lossy_name`] 同一条性质、**刻意不复用那一个**：那个判的是**文件名**
+/// （有损只影响显示），这个判的是**句柄**（有损意味着「发回去就是另一个句柄」）。
+/// 两个判据的后果完全不同，共用一个名字会让下一个人以为改一处就够。
+fn handle_is_lossy(handle: &str) -> bool {
+    handle.contains('\u{FFFD}')
+}
+
+/// 远端内部复制。**零流量优先，退路必出声。**
+///
+/// 返回 `null` = 服务端内部复制（`copy-data`），一个文件字节都没过网；
+/// 返回一串话 = **退了路**，那串话就是要给用户看的（已含实际过网字节数）。
+///
+/// `from`（源）与 `to`（目标）**各过一次** `guard_write` —— 照 [`sftp_rename`] 的先例：
+/// 既不许把 Claude 的会话文件复制走，也不许复制成一个 Claude 数据源名
+/// （往正被 Claude 打开的 jsonl 上盖一份复制品，和覆写它一样会损坏会话）。
+/// ★ **池化那一段刻意留在本函数体内、不抽 `copy_inner`**（`download_inner` /
+/// `upload_inner` 那两条是抽出去的）。理由是判据的形状，不是风格：
+/// `remote_write_registry::the_ipc_entry_points_route_through_a_registered_write_site`
+/// 那张路由表是 `(入口所在文件, 入口名, 它该转发到的已登记写点)` **一跳**的 ——
+/// 中间多垫一层 `copy_inner`，「按钮 ↔ 真实写点」那条边就表达不出来，
+/// 而那条边正是那一条判据存在的全部理由（「两个不同的层，一条边」）。
+/// ⇒ 让 `sftp_copy` 的函数体里**直接点名** `copy_remote_path`。
+///
+/// **不走 `with_sftp` 的重试**：同 `download_inner` / `upload_inner`，
+/// 半途失败不静默从头重来（`.part` 已清，重来由用户决定）。
+#[tauri::command]
+pub async fn sftp_copy(
+    cfg: RemoteConfig,
+    from: String,
+    to: String,
+    transfer_id: String,
+    on_progress: tauri::ipc::Channel<TransferProgress>,
+) -> Result<CopyVerdict, String> {
+    guard_write(&from)?;
+    guard_write(&to)?;
+    let (cancel, _guard) = register_cancel(&transfer_id); // _guard 摘除注册项(含 abort)
+    let r = async {
+        let slot = slot_for(&cfg.origin_label()).await;
+        let mut guard = slot.lock().await;
+        if guard.is_none() {
+            *guard = Some(connect_sftp(&cfg).await?);
+        }
+        let rs = guard.as_ref().unwrap().open_raw_sftp().await?;
+        let report_to = |done: u64, total: u64| report(&on_progress, done, total);
+        copy_remote_path(&rs, &from, &to, &cancel, &report_to).await
+    }
+    .await;
+    if let Err(e) = &r {
+        evict_if_dead(&cfg.origin_label(), e).await; // R1:死连不留在槽里毒化后续
+    }
+    r
+}
+
 // === 小文件编辑(F49):read_text_for_edit / write_text ===
 
 /// F49 编辑上限。aterm 契约:超上限**拒编而非截断**(截断标记当编辑源会写坏文件)。
@@ -673,3 +935,10 @@ pub async fn sftp_delete(cfg: RemoteConfig, path: String, is_dir: bool) -> Resul
 #[cfg(test)]
 #[path = "../../../tests/bridge/sftp_pool_tests.rs"]
 mod tests;
+
+/// **秤 F3**（`设计/17 §6.9`）：零流量复制的对拍，正反两个方向。
+/// 刻意**另立一个模块**而不是塞进上面那份 —— 它自带一个合成 SFTP 服务端与一层
+/// 按字节数包的计数流，是一台**台架**，与 `sftp_pool_tests` 那些单点判据不同族。
+#[cfg(test)]
+#[path = "../../../tests/bridge/sftp_copy_f3_tests.rs"]
+mod copy_f3_tests;

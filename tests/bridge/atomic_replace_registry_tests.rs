@@ -122,10 +122,13 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     (
         "sftp_pool.rs",
         "rename",
-        3,
+        4,
         "**monitor 自己的**下载落盘 + **远端主机上的用户文件**",
-        "415：下载先写 `<local>.part` 再 rename 落地（半成品不冒充成品，失败即删）；\
-             529/641：远端 SFTP rename，同 sftp.rs 那两处。\
+        "`download_inner`：下载先写 `<local>.part` 再 rename 落地（半成品不冒充成品，失败即删）；\
+             `upload_inner` / `sftp_rename`：远端 SFTP rename，同 sftp.rs 那两处。\
+             **〔步 23b +1〕`copy_remote_path`**：远端内部复制先写 `<to>.part`（**EXCLUDE** 创建）\
+             再 rename 上位 —— 与 `upload_inner` 同一条纪律、同一个理由（半途失败绝不在正名上\
+             留半截文件），走的同样是 SFTP 协议、写的同样是远端文件系统 ⇒ 同样不属本机原子替换那条分工。\
              ⚠ 本行是**混类**的，刻意不拆：拆了会让「按文件求和」的对拍口径与实测那侧不一致，\
              而这条登记的用途是「让人看懂为什么这里可以 rename」，不是精确到行。",
     ),
