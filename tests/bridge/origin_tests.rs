@@ -350,10 +350,7 @@ fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
     // 拿到 `Route` 的代码**没有办法**把它误当本机。
     // 这一格用**穷尽 match**（没有 `_` 臂）把这件事钉在类型上：
     // 哪天有人给 `Route` 加第三个变体，这里编译不过。
-    for (o, want_local) in [
-        (Origin::local(), true),
-        (Origin("aya".into()), false),
-    ] {
+    for (o, want_local) in [(Origin::local(), true), (Origin("aya".into()), false)] {
         let got = o.route("t").expect("具名的 origin 不该被拒");
         let is_local = match got {
             Route::Local => true,
