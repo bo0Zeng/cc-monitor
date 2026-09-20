@@ -195,6 +195,27 @@ describe("T07 分区块隔离（真行为）", () => {
     ).not.toBeNull();
   });
 
+  it("🔴 步 3：RemoteSection 真挂了 ⇒ 兜底态**亮出来**，那几块都还能用", async () => {
+    // `设计/70 §1.3 C`：兜底态只在**真失败**时出现。这条钉的是「真失败」那一半 ——
+    // 加载中那一半（不许提前露脸）由 `panel-groups.vitest.ts` 两条钉。
+    // 两条合起来才是一个判别式；只有其中一条时，「永远藏着」和「永远露着」各能蒙混一条。
+    boom.remote = true;
+    const p = new SettingsPanel({ windowMode: true });
+    void p;
+    await new Promise((r) => setTimeout(r, 0));
+    const page = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machines"]',
+    )!;
+    const slot = page.querySelector<HTMLElement>(".machine-page-sections")!;
+    expect(slot.hidden, "机器页一个都注册不出来 ⇒ 这几块只能留在列表页上").toBe(false);
+    const hint = page.querySelector<HTMLElement>('[data-fallback="per-machine"]');
+    expect(hint, "得说一句「为什么它们在这儿」，不能默默换个位置").not.toBeNull();
+    expect(hint!.hasAttribute("aria-busy"), "它不是加载态了，别再说自己在忙").toBe(false);
+    expect(hint!.textContent).toContain("位置不对");
+    // 「都还能用」——账号那块的真身还在 DOM 里，不是被兜底提示替掉了。
+    expect(document.querySelector(".accounts-section-stub")).not.toBeNull();
+  });
+
   it("换一块抛（McpSection）→ 同样只坏那一块", async () => {
     boom.mcp = true;
     const p = new SettingsPanel({ windowMode: true });

@@ -21,6 +21,7 @@
 // 否则用户会把它当成历史统计。
 import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
+import { withPending } from "./pending";
 import type { DriftEntry } from "../generated/DriftEntry";
 import type { DriftFace } from "../generated/DriftFace";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
@@ -87,6 +88,18 @@ export class DriftLedgerSection {
 
   constructor() {
     this.element = this.build();
+    // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
+    // 这一块住「改动足迹」页，而落地页是「机器」⇒ 原来那句 `void this.refresh()`
+    // 是每次打开设置都白发的一趟 `drift_ledger_report`。
+    // `§10.4` 那一行逐字点了它：判据 #3「非落地页零 I/O」今天正是被那三块
+    // **外加 `drift-ledger`** 打破的。
+  }
+
+  /**
+   * 步 2：宿主在「这一页首次可见」时调它。
+   * ⚠ **幂等由宿主保证**（`panel.ts::pagesLoaded`）。
+   */
+  loadNow(): void {
     void this.refresh();
   }
 
@@ -107,13 +120,18 @@ export class DriftLedgerSection {
     const refreshBtn = document.createElement("button");
     refreshBtn.className = "btn";
     refreshBtn.textContent = "重新读取";
-    refreshBtn.addEventListener("click", () => void this.refresh());
+    // 步 4·E（`70 §1.3 E`）：读一趟账本是一次真往返，期间按住。
+    refreshBtn.addEventListener("click", () =>
+      void withPending(refreshBtn, "读取中…", () => this.refresh()),
+    );
     bar.appendChild(refreshBtn);
 
     this.copyBtn = document.createElement("button");
     this.copyBtn.className = "btn";
     this.copyBtn.textContent = "复制诊断文本";
-    this.copyBtn.addEventListener("click", () => void this.copy());
+    this.copyBtn.addEventListener("click", () =>
+      void withPending(this.copyBtn, "复制中…", () => this.copy()),
+    );
     bar.appendChild(this.copyBtn);
     root.appendChild(bar);
 

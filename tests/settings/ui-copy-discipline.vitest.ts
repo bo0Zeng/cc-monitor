@@ -1,0 +1,235 @@
+/**
+ * 🔴 `设计/70 §2.4` 那条通用纪律的判据（第二刀 · 步 8）＋ `§8` 判据 **#5**（界面上零 markdown 标记）。
+ *
+ * 纪律逐字：
+ * > **后端返回的字符串，凡是会直接进界面的，都不许包含：
+ * > markdown 标记 · 文件路径以外的源码住址 · 设计论证 · 「下一步」处方 · 日志行格式。**
+ *
+ * # 这一条判的是**前端这一侧**，而且**不冒充**判了后端那一侧
+ *
+ * 纪律的主语是「后端返回的字符串」，而**同一条形状前端自己也犯**：
+ * `70 §10.4` 第二刀那一行点名的六条现打实例里，有四条在 `src/settings/` 里
+ *（`diagnostics-section.ts` 的源码住址与三处内部标识符 · `data-section.ts` 的文案嵌 HTML ·
+ * `config-surface-section.ts` 的设计承诺当文案与欠账当文案）。本条盯的就是它们。
+ *
+ * 🔴 **〔射程 · 说清它盖不到什么〕**
+ * - **盖不到后端产的那一半**：`**下一步：…**`（`src/bridge/src/backend_policy.rs::death_copy`）
+ *   与整条 `ledger_line` 是**运行期**才拼出来的，jsdom 里没有真后端 ⇒ 这把尺子看不见它们。
+ *   那是 `70 §7` **第二刀 步 7** 的活，住 `src/bridge/`（本轮写区之外）。
+ *   它们登记在下面的 `BACKEND_SIDE_DEBT` 里 —— **登记不等于判了**，写出来是为了
+ *   「没提」不被读成「治好了」。
+ * - **盖不到运行期才灌进来的后端字符串**：`data_paths.rs` 那条带 `sid` / `HWND` 的说明
+ *   （`70 §10.2` 差项 4）是后端给的数据，本条扫的是**前端源码里写死的那些句子**
+ *   ＋ **真渲染出来的 DOM**（而 DOM 里那部分今天是 mock 出来的）。
+ * - **盖不到「文案写得好不好」**：它只认那五种**形状**。
+ *
+ * # 反空真
+ *
+ * 两道：① **正控** —— 拿一段合成文本喂给同一个 `violationsOf()`，五种形状必须一条不落地被逮到；
+ * ② **量具自检** —— 真扫出来的文本量要够大（零字节时上面每一条「零命中」都是空转）。
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const { ipc } = vi.hoisted(() => ({ ipc: { calls: [] as string[] } }));
+
+vi.mock("../../src/ipc/commands", () => ({
+  commands: new Proxy(
+    {},
+    {
+      get: (_t, name: string) => () => {
+        ipc.calls.push(name);
+        return Promise.reject(new Error(`[录音机] ${name} 没有真后端`));
+      },
+    },
+  ),
+}));
+vi.mock("../../src/settings/remote-section", () => ({
+  MACHINE_PAGE_PREFIX: "machine:",
+  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  RemoteSection: class {
+    element = document.createElement("div");
+    refresh = vi.fn().mockResolvedValue(undefined);
+    constructor(opts?: {
+      pages?: { addMachinePage: (id: string, t: string, el: HTMLElement) => void };
+    }) {
+      setTimeout(() => {
+        opts?.pages?.addMachinePage(
+          "machine:（本机）",
+          "本机",
+          document.createElement("div"),
+        );
+      }, 0);
+    }
+  },
+}));
+vi.mock("../../src/settings/accounts-section", () => ({
+  AccountsSection: class { element = document.createElement("div"); },
+}));
+vi.mock("../../src/settings/mcp-section", () => ({
+  McpSection: class { element = document.createElement("div"); },
+}));
+vi.mock("../../src/settings/plugins-section", () => ({
+  PluginsSection: class { element = document.createElement("div"); },
+}));
+vi.mock("../../src/settings/cc-bus-hooks-section", () => ({
+  CcBusHooksSection: class { element = document.createElement("div"); },
+}));
+vi.mock("../../src/settings/cc_integration", () => ({
+  CcIntegrationSection: class { element = document.createElement("div"); },
+}));
+vi.mock("../../src/keybindings/editor", () => ({
+  KeybindingsEditor: class { element = document.createElement("div"); },
+}));
+vi.mock("../../src/keybindings/registry", () => ({
+  dispatcher: {
+    pushOverlay: vi.fn(),
+    popOverlay: vi.fn(),
+    startRecording: vi.fn(),
+    cancelRecording: vi.fn(),
+    exportOverrides: vi.fn().mockReturnValue({}),
+    applyOverrides: vi.fn(),
+  },
+}));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn() }) }));
+
+import { SettingsPanel } from "../../src/settings/panel";
+import { __setHostOsForTests } from "../../src/settings/host-os";
+import { __resetMachineContextForTests } from "../../src/settings/machine-context";
+
+/** `70 §2.4` 那五种形状，一条规则一个名字（红的时候要说得出是哪一种）。 */
+const SHAPES: ReadonlyArray<{ name: string; re: RegExp; why: string }> = [
+  {
+    name: "markdown 标记",
+    // `**粗体**`。⚠ 只认成对的，单个星号（`*.log` 之类）不算。
+    re: /\*\*[^*\n]+\*\*/g,
+    why: "界面不渲染 markdown ⇒ 星号会连着一起显示给用户看（`70 §2.1` #1）",
+  },
+  {
+    name: "源码住址",
+    // `foo.rs` / `bar.ts:123` / `a::b`。⚠ **刻意不认** `.json` / `.log` / `.sh`
+    // ——那些是**用户自己机器上的文件路径**，纪律里写明「文件路径以外的源码住址」。
+    re: /[\w/-]+\.(?:rs|ts|tsx|mts|mjs)\b|[A-Za-z_]\w*::[A-Za-z_]\w*|\b\w+_subsystem\s*=/g,
+    why: "用户不需要知道这件事发生在我们哪个文件的第几行（`70 §2.4`）",
+  },
+  {
+    name: "内部标识符",
+    re: /\btracing\b|\bts-rs\b|\bserde\b|\bOnceCell\b|\bspawn_blocking\b/g,
+    why: "我们这一侧的词（`91 §2.1` 那一族）——用户不知道我们用的是哪个库",
+  },
+  {
+    name: "日志行格式",
+    re: /\[死亡账\]|\borigin=|\b判定=|\b退出状态=/g,
+    why: "`ledger_line` 自己的注释就写着「落点是 monitor 自己的滚动日志」（`70 §2.1` #3）",
+  },
+  {
+    name: "设计论证 / 下一步处方",
+    re: /下一步：|放大器|本条不推翻|如实登记|判不了/g,
+    why: "写给开发文档看的论证，不该出现在设置面板上（`70 §2.1` #2）",
+  },
+];
+
+/** 一段文本犯了哪几条。**判据与正控共用同一个函数** —— 两份实现会各自漂。 */
+export function violationsOf(text: string): { shape: string; hit: string }[] {
+  const out: { shape: string; hit: string }[] = [];
+  for (const s of SHAPES) {
+    for (const m of text.matchAll(s.re)) out.push({ shape: s.name, hit: m[0] });
+  }
+  return out;
+}
+
+/**
+ * 🔴 **后端那一侧今天还欠着的**（本条**判不了**，登记在此）。
+ * 逐条：住址 → 它今天产的是哪一种形状。
+ */
+const BACKEND_SIDE_DEBT: Readonly<Record<string, string>> = {
+  "src/bridge/src/backend_policy.rs::death_copy":
+    "产 `**下一步：…**`（markdown ＋ 设计论证 ＋ 同一个 exit 码说两遍）—— `70 §7` 第二刀 步 7",
+  "src/bridge/src/backend_policy.rs::ledger_line":
+    "整条日志行被 `「」` 包着拼进 `HEALTH_CRASHED` 的 `{last}` —— 同上",
+  "src/bridge/src/data_paths.rs":
+    "条目说明里有 `sid` / `HWND`（`91 §4` R1 硬命中）—— `70 §10.2` 差项 4",
+};
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/** 面板上**用户真看得见**的全部文字：文本节点 ＋ `title` ＋ ⓘ 的 `aria-label`。 */
+function visibleCopy(root: HTMLElement): string {
+  const parts: string[] = [];
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) parts.push(n.nodeValue ?? "");
+  for (const el of root.querySelectorAll<HTMLElement>("[title]")) {
+    parts.push(el.getAttribute("title") ?? "");
+  }
+  // ⓘ 的正文住在 `aria-label` 上（tooltip 只在 hover 期间存在，见 `info-icon.ts` 头注）。
+  for (const el of root.querySelectorAll<HTMLElement>("[aria-label]")) {
+    parts.push(el.getAttribute("aria-label") ?? "");
+  }
+  for (const el of root.querySelectorAll<HTMLElement>("[placeholder]")) {
+    parts.push(el.getAttribute("placeholder") ?? "");
+  }
+  return parts.join("\n");
+}
+
+describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址", () => {
+  beforeEach(() => {
+    ipc.calls = [];
+    document.body.replaceChildren();
+    __resetMachineContextForTests();
+    __setHostOsForTests("windows");
+  });
+
+  it("🔴 正控：五种形状，同一个 `violationsOf()` 一条不落地逮得到", () => {
+    const sample =
+      "崩了：**下一步：这一格才是自愈要治的那一格**，而重起归第二档 —— 判据不可信的时候重起是放大器。\n" +
+      "src/bridge/src/backend_policy.rs:371 里那句；monitor 是 GUI 应用（windows_subsystem=windows）。\n" +
+      "所有后端 tracing 输出写到文件。\n" +
+      "「[死亡账] origin=<local> 判定=崩了 退出状态=exit -1073741510」";
+    const shapes = new Set(violationsOf(sample).map((v) => v.shape));
+    expect([...shapes].sort()).toEqual(SHAPES.map((s) => s.name).sort());
+  });
+
+  it("🔴 反向正控：一段干净文案一条都不许命中（免得这把尺子是「见字就红」）", () => {
+    const clean =
+      "cc-monitor 会碰你哪些文件、对它做什么、现在什么状态、还能不能撤。\n" +
+      "按天滚动写入 monitor.YYYY-MM-DD.log，保留最近 3 天。\n" +
+      "项目里的 .mcp.json 得先知道是哪个项目；Windows 的 $PROFILE 由 PowerShell 决定。";
+    expect(violationsOf(clean)).toEqual([]);
+  });
+
+  it("设置面板**真渲染出来**的文字：一条都不许命中", async () => {
+    const p = new SettingsPanel({ windowMode: true });
+    await p.open();
+    await tick();
+    // 三个顶层页 + 本机子页都走一遍 —— 只看落地页等于只判了三分之一。
+    for (const id of ["app", "footprint", "machine:（本机）", "machines"]) {
+      const btn = document.querySelector<HTMLButtonElement>(
+        `[id="settings-tab-${id}"]`,
+      );
+      btn?.click();
+      await tick();
+    }
+    const root = document.querySelector<HTMLElement>(".settings-panel")!;
+    const copy = visibleCopy(root);
+    // 量具自检：扫到的文字量要够大。零字节时下面那条「一条都不许命中」是空转。
+    expect(copy.length, "面板上一个字都没扫到 ⇒ 本条在空转").toBeGreaterThan(2000);
+    const bad = violationsOf(copy);
+    expect(
+      bad.map((v) => `${v.shape}: ${v.hit}`).sort(),
+      `设置面板上出现了 ${bad.length} 处 \`70 §2.4\` 禁的形状。\n` +
+        SHAPES.map((s) => `  · ${s.name} —— ${s.why}`).join("\n"),
+    ).toEqual([]);
+  });
+
+  it("后端那一侧的欠账**登记在案**（本条判不了，别把「没提」读成「治好了」）", () => {
+    // 这一格不是断言代码，是断言**我们没有假装那几条已经没了**。
+    // 它会在有人把登记清空时红 —— 那时要么债真还了（去 `src/bridge/` 核过再删），
+    // 要么是有人把不方便的话删掉了。
+    expect(Object.keys(BACKEND_SIDE_DEBT).length).toBe(3);
+    for (const [addr, why] of Object.entries(BACKEND_SIDE_DEBT)) {
+      expect(addr.startsWith("src/bridge/"), `${addr} 不在后端那一侧，登记错地方了`).toBe(true);
+      expect(why.length, `${addr} 的理由是空的`).toBeGreaterThan(10);
+    }
+  });
+});

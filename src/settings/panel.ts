@@ -31,6 +31,7 @@ import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置
 import { DriftLedgerSection } from "./drift-ledger-section"; // U-CC1：数据面漂移记账（只读、按需一次、不轮询）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
+import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
 // E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
@@ -174,9 +175,12 @@ const REMOTE_INFO_TEXT =
   "关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。" +
   "配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。";
 
+// 🔴 `70 §10.3`/`§10.2` 改名 ＋ `§2.4` 纪律：两块的名字跟着改（「诊断」→「日志」·
+// 「数据存储」→「数据位置」），并且把 `tracing` 这个**内部标识符**拿掉
+//（`91 §2.1` 那一族 —— 用户不需要知道我们用的是哪个日志库）。
 const DIAG_STORAGE_INFO_TEXT =
-  "「诊断」—— 打开后端 INFO 级别 tracing 到状态栏（开发用；出问题排查时打开）。\n\n" +
-  "「数据存储」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / " +
+  "「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。\n\n" +
+  "「数据位置」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / " +
   "WebView2 UserDataFolder / localStorage keys 等。每项可点 [打开] 直接到文件管理器。" +
   "纯展示，无危险操作。";
 
@@ -207,12 +211,41 @@ export class SettingsPanel {
   private router!: SettingsRouter;
   /** S4b-2：跟着当前机器页走的那几块分节（整块搬 DOM，不每台各起一份）。 */
   private perMachineSlot!: HTMLElement;
+  /** 步 3：机器列表页上那块**加载态**（不是兜底态）。机器页注册上来就撤掉。 */
+  private perMachineFallbackHint!: HTMLElement;
+  /** 步 3：机器页到底注册上来过没有 —— 兜底态的**判别式**，不是猜的。 */
+  private machinePageRegistered = false;
   private perMachineBlocks: {
     appliesTo: "local" | "remote" | "both";
-    /** S4b-3b-2：这块归详情页的哪一栏。 */
-    tab: "acct" | "tools";
+    /** S4b-3b-2：这块归详情页的哪一栏。`footprint` 是 `70 §10.1`/`§5.3` 新增的第五栏。 */
+    tab: "acct" | "tools" | "footprint";
     el: HTMLElement;
   }[] = [];
+  /**
+   * 🔴 第一刀 · 步 2（`设计/70 §1.3 B`）：**「这一页首次可见」才发 I/O。**
+   *
+   * # 为什么门开在这里，而不是各块自己判
+   *
+   * `70 §1.2` 的成因链第 ③ 层：14 个块**全部在 `buildBody()` 里即时构造**，
+   * 而其中 9 个文件 / 24 处在构造期就 `void this.loadX()`。落地页只有一页
+   *（`machines`），于是另外两页的 IPC 是**白发的**，并且正好落在那 3 秒重排窗口里。
+   *
+   * `router.ts` 头注拒绝过「懒加载」，理由是两条：会引入「某页第一次打开才炸」这类新
+   * 失效模式，且 `panel.ts` 那几个 build 时赋值、`open()` 时使用的字段会行为漂移。
+   * 🔴 **本机制绕开了那两条**：**不改构造时机**（块照常在 `buildBody` 里 `new` 出来、
+   * 字段照常赋值），只把**那一发网络往返**推后。构造仍然在一个地方、仍然被 `safeBlock`
+   * 包着；漂不了。
+   *
+   * # 为什么钩子要在 `buildBody` 跑完之后才挂
+   *
+   * `SettingsRouter.addRoute` 里有一句「第一页注册完就得有东西可看」——
+   * 于是**「应用」在注册的那一瞬间是 active 的**（它排在「机器」前面注册），
+   * 等落地页「机器」注册上来才切过去。挂早了，「应用」会被当成「可见过」而当场放行，
+   * 这条门就白开了。⇒ 钩子挂在所有 `addRoute` 之后，然后只 flush **此刻真正 active 的那一页**。
+   */
+  private readonly pageLoaders = new Map<string, Array<() => void>>();
+  /** 本次打开以来，哪几页已经放过 I/O 了。`open()` 会清空它（重开要看新读数）。 */
+  private readonly pagesLoaded = new Set<string>();
   /**
    * S9：本机页上按 OS 显隐的块（今天只有「终端集成」）。
    *
@@ -223,10 +256,10 @@ export class SettingsPanel {
   private static readonly CC_INTEGRATION_HOST_OS: readonly HostOs[] = [
     "windows",
   ];
-  /** S4b-3b-2：pageId → 该页「账号 / 工具」两栏的容器。 */
+  /** S4b-3b-2：pageId → 该页「账号 / 工具 / 足迹」三栏的容器。 */
   private machineTabSlots = new Map<
     string,
-    { acct: HTMLElement; tools: HTMLElement }
+    { acct: HTMLElement; tools: HTMLElement; footprint: HTMLElement }
   >();
   /** 当前编辑中的 theme（实时预览用） */
   private current: ThemeConfig = {};
@@ -247,8 +280,12 @@ export class SettingsPanel {
 
   /** 顶部状态提示行（保存成功 / 需重启 等） */
   private banner!: HTMLElement;
-  /** issue #3 (A): 数据存储展示区。打开面板时 refresh 一次拉最新 stat */
+  /** issue #3 (A): 「数据位置」展示区（`70 §10.2` 改名）。打开面板时 refresh 一次拉最新 stat */
   private dataSection?: DataSection;
+  /** `70 §10.1`（步 14a）：「足迹」——已从顶层「改动足迹」页搬进机器子页第五栏。 */
+  private footprintSection?: ConfigSurfaceSection;
+  /** `70 §10.3` 改名后的「日志」块。步 2 要在「应用」页首次可见时叫醒它。 */
+  private logsSection?: DiagnosticsSection;
   /** issue #15 (S6): 远端 (SSH) 配置区。打开面板时 refresh 一次拉最新 config */
   private remoteSection?: RemoteSection;
   /** P2s（C8）：backend 开关区。打开面板时 refresh 一次，重拉每台机的状态。 */
@@ -347,17 +384,28 @@ export class SettingsPanel {
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
     this.syncInputs();
-    // issue #3: 每次打开重拉一次 stat，让"已创建 / 文件大小"是最新的
-    this.dataSection?.refresh();
+    // 🔴 步 2：**重开设置 = 每一页的「首次可见」重新算一遍**，但仍然只拉
+    // **用户真看得见的那一页**。原来这里是无条件 `this.dataSection?.refresh()`
+    // 与「日志」那两发 —— 那三发在落地页是「机器」的情况下**每次打开都是白发的**，
+    // 正是 `§8` 判据 #3（非落地页零 I/O）今天被打破的那一处。
+    this.pagesLoaded.clear();
     // issue #15 (S6): 每次打开重拉 config.json 的 remote 子对象，跟外部改动对齐
-    void this.remoteSection?.refresh();
+    // 步 4（`70 §1.3 D`）：`refresh()` 失败时会把原因画到那一块自己的 banner 上；
+    // 这里 `catch` 掉是为了不再多产一条走状态栏的未捕获 rejection（同一件事说两遍，
+    // 而其中一遍说在了离现场十万八千里的地方）。
+    void this.remoteSection?.refresh().catch(() => {});
     // P2s：状态是**运行期**的东西，每次打开都要重拉 —— 缓存住等于给用户看一张旧照片。
+    // ⚠ 它住**落地页**（「机器」），所以它不在延后那一档里：打开就该是新的。
     void this.backendSection?.refresh();
     // issue #5: 同步快捷键覆盖数 chip（编辑器关闭时也可能改了）
     this.refreshKbChip();
     // S2：每次打开回落地页。**刻意不记忆上次停在哪一页** —— 既然计划把「机器」定为落地页，
     // 记忆就会让这个决定从第二次打开起失效。
     this.router.navigate(SETTINGS_LANDING_ROUTE);
+    // ⚠ `navigate()` 在「已经在这一页」时会**提前返回、不通知订阅者**（同页不重复通知，
+    //   那条是对的：订阅者会做搬 DOM 这类有代价的事）。⇒ 第二次打开时落地页的 flush
+    //   必须在这里补一刀，否则它只在**第一次**打开时发生过。
+    this.flushPage(this.router.activeId);
     this.el.classList.add("open");
     this.isOpen = true;
     // 面板始终作为 overlay 栈**底**（窗口模式也是）：这样设置窗内的快捷键编辑器 / SFTP 面板
@@ -616,10 +664,8 @@ export class SettingsPanel {
     }
     const slots = pageId ? this.machineTabSlots.get(pageId) : undefined;
     if (slots) {
-      // S4b-3b-2：分栏页 —— 每块按 `tab` 归到「账号 / 工具」栏里。
-      for (const b of this.perMachineBlocks) {
-        (b.tab === "acct" ? slots.acct : slots.tools).appendChild(b.el);
-      }
+      // S4b-3b-2：分栏页 —— 每块按 `tab` 归到「账号 / 工具 / 足迹」栏里。
+      for (const b of this.perMachineBlocks) slots[b.tab].appendChild(b.el);
       return;
     }
     // 没有分栏（本机页、以及 RemoteSection 挂掉时的兜底落点）→ 整块搬，形态同 S4b-2。
@@ -646,9 +692,13 @@ export class SettingsPanel {
     tabs.addRoute({ id: `${pageId}#comp`, title: "组件", element: parts.components });
     const acct = document.createElement("div");
     const tools = document.createElement("div");
+    const footprint = document.createElement("div");
     tabs.addRoute({ id: `${pageId}#acct`, title: "账号", element: acct });
     tabs.addRoute({ id: `${pageId}#tools`, title: "工具", element: tools });
-    this.machineTabSlots.set(pageId, { acct, tools });
+    // 步 14a（`70 §5.3` 那张图 · `§10.1`）：**第五栏「足迹」**。
+    // ⚠ 它是**新增一栏**，不是把已有的某一栏搬个位置 —— 所以 `§10.4` 把它单列成 `14a`。
+    tabs.addRoute({ id: `${pageId}#footprint`, title: "足迹", element: footprint });
+    this.machineTabSlots.set(pageId, { acct, tools, footprint });
     return tabs.element;
   }
 
@@ -712,20 +762,36 @@ export class SettingsPanel {
       infoTooltip: LOGS_AND_DATA_INFO_TEXT,
     });
     logsAndData.appendChild(this.buildDataGroup());
+    // 🔴 `70 §10.3`：「诊断」→「日志」。**让名**给 `§5.3` 那个改名，否则设置面板里
+    // 会同时有两个「诊断」（一个是「这台机器还缺什么」，一个是 monitor 的日志开关）。
     logsAndData.appendChild(
-      this.safeBlock(
-        "诊断",
-        () => new DiagnosticsSection({ headless: true }).element,
-      ),
+      this.safeBlock("日志", () => {
+        const sec = new DiagnosticsSection({ headless: true });
+        this.logsSection = sec;
+        return sec.element;
+      }),
     );
-    // 用局部常量捕获：thunk 延后求值，TS 无法证明字段此时已赋值
-    const dataSection = new DataSection({ headless: true });
-    this.dataSection = dataSection;
+    // 🔴 步 3b（`70 §10.2` 差项 2 · `§10.4` 第一刀）：**这一块原先的 `new` 在 `safeBlock` 外面。**
+    // 原文是 `const dataSection = new DataSection(...)` 裸构造，`safeBlock` 只包住了
+    // `() => dataSection.element` 那个 thunk —— 而 thunk 不可能抛。
+    // ⇒ 这一块**没有 T07 那层隔离**：`§9` 里写着「`safeBlock` 每块一个 catch 不动」，
+    //   那条纪律在这里**漏了一块**。现在 `new` 挪进 thunk 里，与它的九个兄弟同形。
+    // ⚠ 字段仍然在 build 时赋值（`open()` 那边 `?.refresh()` 靠它）——
+    //   构造失败时留 `undefined`，与 `remoteSection` 那一格同一个约定。
     logsAndData.appendChild(
-      this.safeBlock("数据存储", () => dataSection.element),
+      this.safeBlock("数据位置", () => {
+        const sec = new DataSection({ headless: true });
+        this.dataSection = sec;
+        return sec.element;
+      }),
     );
     appPage.appendChild(logsAndData.element);
     router.addRoute({ id: "app", title: "应用", element: appPage });
+    // 步 2：这一页的 I/O（日志 2 发 + 数据位置 1 发）挂到「这一页首次可见」上。
+    this.loadOnFirstVisit("app", () => {
+      this.logsSection?.loadNow();
+      this.dataSection?.loadNow();
+    });
 
     // ---- 机器：改**某一台机器**的状态 ----
     //
@@ -756,7 +822,18 @@ export class SettingsPanel {
         const sec = new RemoteSection({
           headless: true,
           pages: {
+            machinePagesSettled: () => this.onMachinePagesSettled(),
             addMachinePage: (id, title, element, parts) => {
+              // 步 3：**判别式**——机器页真注册上来了，兜底态就不该出现。
+              // ⚠ 那两句 `.hidden =` 刻意住在 `onMachinePageRegistered()` 里而不是这里：
+              //   `css-conventions.vitest.ts` 的 S30 ⑦ 那把尺子只往**上游**找类名赋值，
+              //   而 `perMachineSlot.className = …` 在本文件里排在这一行**之后** ⇒
+              //   写在这儿会让那处变成「静态推不出它挂的是哪个类」，判据就看不见它了。
+              this.onMachinePageRegistered();
+              // 步 2 + 步 14a：机器子页是**动态注册**的，登记表只能在这一刻填。
+              // ⚠ 用 `set` 不是 `push`：`rebuildCards` 每次 refresh 都会重注册一遍同一批
+              //   页 id，push 会让同一发 I/O 排队攒到 N 份。
+              this.pageLoaders.set(id, [() => this.footprintSection?.loadNow()]);
               // ★ S4b-3b-2：远端机器页拆成横向四栏（主计划 §2.3）。
               // 复用 `SettingsRouter`（横向 + 无页头）而不是另造 tab 原语 ——
               // 「同一时刻只有一栏可见 + aria + 方向键 + 不重复注册」与左侧导航
@@ -768,7 +845,13 @@ export class SettingsPanel {
               // 用户第一次点进某台机器之前是**游离的**（不在文档里，谁也找不到它）。
               if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(element, true);
             },
-            removeMachinePage: (id) => router.removeRoute(id),
+            removeMachinePage: (id) => {
+              router.removeRoute(id);
+              // 机器没了，它那一页的登记与「放过了没有」一起清 —— 留着就是死条目，
+              // 而且同名机器再出现时会被当成「这一页已经放过了」。
+              this.pageLoaders.delete(id);
+              this.pagesLoaded.delete(id);
+            },
             navigateToMachinePage: (id) => router.navigate(id),
           },
         });
@@ -843,16 +926,70 @@ export class SettingsPanel {
         tab: "tools",
         el: this.safeBlock("cc-bus 钩子", () => new CcBusHooksSection().element),
       },
+      // 🔴 步 14a（`70 §10.1` · `§5.3` 那张图的第五栏）：**「足迹」**。
+      //
+      // 它原来住顶层「改动足迹」页，名字叫「配置面审计」。两条都改：
+      // ① **住哪**：它答的是「装了 cc-monitor 之后，它在**我这台机器**上动过哪些文件」
+      //    —— 被设置的对象是**一台机器**，按 `panel.ts` 那条顶层判据（每个顶层 = 一类
+      //    「被设置的对象」）它归**机器子页**，不归顶层页。
+      // ② **叫什么**：「配置面审计」→「足迹」。⚠ **诚实标注：这不是 R5 命中**
+      //    （「配置面审计」本来就是名词短语，`91 §4` 的 R5 抓不到它）。理由是另外两条：
+      //    「面」「审计」是**我们这侧**的词（`91 §2.1` 那一族）；且它要和顶层页
+      //    「改动足迹」同一个口径，而不是页叫足迹、块叫审计。
+      //
+      // ⚠ `appliesTo: "both"` 而**远端那一页上它不画表** —— 今天后端那条读口不收 origin
+      //   （`§10.1` ②），照原样画就是拿本机的答案冒充 aya 的。那一格由
+      //   `ConfigSurfaceSection.applyOriginGate()` 负责说实话，头注在那边。
+      {
+        appliesTo: "both",
+        tab: "footprint",
+        el: this.safeBlock("足迹", () => {
+          const sec = new ConfigSurfaceSection();
+          this.footprintSection = sec;
+          return sec.element;
+        }),
+      },
     ];
     for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
     // ★ 兜底落点：先挂在列表页上。
     //
     // 这不是"顺手"—— 它是 `safeBlock` 隔离的一部分。`RemoteSection` 是唯一活的同步
     // throw 宿主（T07 审计阻塞 1）；它挂掉就没有任何机器页被注册，slot 便无处安放，
-    // **这四块会一起从界面上消失**。那等于「一块坏，五块没」，把 T07 好不容易建立的
+    // **这五块会一起从界面上消失**。那等于「一块坏，六块没」，把 T07 好不容易建立的
     // 隔离又打破了。有兜底落点的话，最坏情况只是它们留在列表页上 —— 位置不理想，
     // 但都还在、都能用。（审计时真造 RemoteSection 抛才发现的。）
+    //
+    // 🔴 步 3（`70 §1.1` · `§1.3 C`）：**但它今天是每次打开的前 3 秒的默认视图。**
+    //
+    // 安全网本身没错（它防的是真问题）。错的是**没有第三态**：
+    //   今天：  兜底态（= 失败态）→ 正常态
+    //   该有：  骨架/加载态        → 正常态
+    //                              └→ 兜底态（**只在真失败时**）
+    // 机器列表是异步加载的（`RemoteSection.refresh()` 里才 `addMachinePage`），
+    // 于是那个「RemoteSection 抛异常时的最坏情况」变成了**每次打开都先看一眼**的样子
+    // —— 用户截图 1 里那个「账号（只有一个刷新按钮）」「POWERSHELL 集成」就是它。
+    //
+    // ⇒ slot 默认**藏起来**，屏幕上先给一块骨架；机器页注册上来的那一刻骨架撤掉、
+    //   slot 被 `movePerMachineTo` 搬走。**只有在 `RemoteSection` 真的挂了**
+    //   （构造同步抛 ⇒ `this.remoteSection` 留 `undefined`）才当场把 slot 亮出来。
+    //
+    // ⚠ 还有一条**异步**的失败路：`RemoteSection` 构造成功、但它那趟 `refresh()`
+    //   reject（`readRemoteConfig()` 失败）⇒ 一个机器页都不会注册。那一档由
+    //   `machinePagesSettled()` 回调兜（`remote-section.ts` 那侧在 `refresh()` 的
+    //   `finally` 里叫它），**不是靠定时器猜**。
+    this.perMachineSlot.hidden = true;
+    this.perMachineFallbackHint = makeSkeleton(
+      "backend",
+      "正在列这台机器上的账号 / 工具…",
+    );
+    machinesPage.appendChild(this.perMachineFallbackHint);
     machinesPage.appendChild(this.perMachineSlot);
+    // 步 3：`safeBlock` 收住了同步抛 ⇒ `this.remoteSection` 留 `undefined`。
+    // **那正是「机器页注册失败」的判别式**（`RemoteSection` 是唯一活的同步 throw 宿主，
+    // 也是唯一会注册机器页的人）。这一档就是设计意图里的「最坏情况」，当场亮兜底。
+    // ⚠ 这一句必须排在 slot 与那块提示**建出来之后** —— 排在 `safeBlock` 紧后面的话，
+    //   它会去读两个还没赋值的字段，把「RemoteSection 挂了」变成「整个面板挂了」。
+    if (!this.remoteSection) this.revealPerMachineFallback("机器列表这一块没能建起来");
     router.addRoute({
       id: "machines",
       title: "机器",
@@ -862,17 +999,22 @@ export class SettingsPanel {
 
     // ---- 改动足迹：「你在我机器上写过什么、能不能撤」 ----
     const footprintPage = document.createElement("div");
-    // T02：一张表回答「你动过我哪些文件」。它就是这一页的全部内容（S5 会扩充）。
-    footprintPage.appendChild(this.safeBlock("配置面审计", () => new ConfigSurfaceSection().element));
-    // U-CC1：同一页的另一半 —— 「CC 变了、而我们看不懂的那些东西」。
-    footprintPage.appendChild(
-      this.safeBlock("数据面漂移记账", () => new DriftLedgerSection().element),
-    );
+    // 🔴 步 14a（`70 §10.1`）：原来这一页的第一块是「配置面审计」——**它已经搬走了**，
+    // 改名「足迹」、挂进**每台机器自己的子页**（那张表答的是「我这台机器」的事）。
+    // U-CC1：这一页剩下的那一半 —— 「CC 变了、而我们看不懂的那些东西」。
+    const drift = new DriftLedgerSection();
+    footprintPage.appendChild(this.safeBlock("数据面漂移记账", () => drift.element));
     router.addRoute({
       id: "footprint",
       title: "改动足迹",
       element: footprintPage,
     });
+    // 步 2：这一页也不是落地页 ⇒ 它那一发 IPC 同样推到「首次可见」。
+    this.loadOnFirstVisit("footprint", () => drift.loadNow());
+    // ⚠ `70 §10.5` #1 **判不了**：「足迹」搬走之后这个顶层页还留不留。
+    //   剩下的 `DriftLedgerSection` 也**没有 origin**、计数还是本进程内的
+    //   ⇒ 按那条顶层判据它其实属「应用」，那这个顶层页就空了。
+    //   但 drift ledger 不在 `99 §3.2` 点的那三块射程里，**撤不撤这一页本件不定**。
 
     // S6：cc-bus 驾驶舱**已搬出设置**，成为顶层运营视图（入口 = 命令面板）。
     // S2 当初把它临时单列成一页，正是为了这一刻只删这一段注册 —— 兑现了。
@@ -890,8 +1032,75 @@ export class SettingsPanel {
       if (page) this.movePerMachineTo(page, isLocal, id);
     });
 
+    // 🔴 步 2 的门闩：**所有 `addRoute` 都跑完之后**才挂 flush 钩子，然后只放行
+    // 此刻真正 active 的那一页。挂早了，「应用」会因为 `addRoute` 里那句
+    // 「第一页注册完就得有东西可看」而被当成可见过 —— 这条门就白开了。
+    router.onNavigate((id) => this.flushPage(id));
+    this.flushPage(router.activeId);
+
     body.appendChild(router.element);
     return body;
+  }
+
+  /**
+   * 步 2：登记「这一页首次可见时要做的事」。
+   *
+   * ⚠ 登记表**不删条目**（`flushPage` 用一个单独的 `pagesLoaded` 记「放过了没有」）：
+   * `open()` 要能把「放过了没有」整体清零，让重开一次设置真的重拉一遍读数。
+   * 删条目的话第二次打开就永远拉不到新数了 —— 而界面上看不出来，它只是显示旧值。
+   */
+  private loadOnFirstVisit(pageId: string, load: () => void): void {
+    const list = this.pageLoaders.get(pageId);
+    if (list) list.push(load);
+    else this.pageLoaders.set(pageId, [load]);
+  }
+
+  /** 步 2：某一页可见了 —— 把它那几块的第一发 I/O 放出去。重复调用是 no-op。 */
+  private flushPage(id: string | null): void {
+    if (id === null || this.pagesLoaded.has(id)) return;
+    this.pagesLoaded.add(id);
+    for (const load of this.pageLoaders.get(id) ?? []) {
+      try {
+        load();
+      } catch (e) {
+        // 一块的加载抛异常不能连累同一页上的其它块 —— 同 `safeBlock` 的隔离思路。
+        console.warn("[settings] 该页首次可见时的加载抛异常：", e);
+      }
+    }
+  }
+
+  /**
+   * 步 3：机器页一个都没注册上来 ⇒ 这是**真失败**，把兜底态亮出来。
+   *
+   * 两个调用点，对应两条失败路：
+   * ① `RemoteSection` 构造同步抛（`safeBlock` 收住 ⇒ 字段留 `undefined`）；
+   * ② 构造成功、但 `refresh()` 那趟 reject（`readRemoteConfig()` 失败）——
+   *    由 `machinePagesSettled()` 从 `remote-section.ts` 那侧回调过来。
+   *
+   * ⚠ **不是定时器**。「等 N 毫秒还没来就算失败」会在慢机器上把正常加载判成失败，
+   * 而它出错的方向正好是本件要治的那一个（让兜底态提前露脸）。
+   */
+  private onMachinePageRegistered(): void {
+    this.machinePageRegistered = true;
+    this.perMachineFallbackHint.hidden = true;
+    this.perMachineSlot.hidden = false;
+  }
+
+  private revealPerMachineFallback(why: string): void {
+    if (this.machinePageRegistered) return;
+    this.perMachineSlot.hidden = false;
+    this.perMachineFallbackHint.hidden = false;
+    this.perMachineFallbackHint.removeAttribute("aria-busy");
+    this.perMachineFallbackHint.dataset.fallback = "per-machine";
+    this.perMachineFallbackHint.textContent =
+      `${why} —— 下面这几块本该在每台机器自己的页面上，` +
+      `现在临时留在这里。它们都还能用，只是位置不对。`;
+  }
+
+  /** 步 3：`RemoteSection` 那趟 `refresh()` 收尾了（成或败）。一个页都没来 ⇒ 兜底。 */
+  private onMachinePagesSettled(): void {
+    if (this.machinePageRegistered) return;
+    this.revealPerMachineFallback("这台机器上的机器列表没读出来");
   }
 
   /**
@@ -1011,7 +1220,10 @@ export class SettingsPanel {
       "默认：claude",
       "远端 resume / 起会话时实际敲的启动器。\n" +
         "推荐填 `ccm`（装了「ccm 启动器」后可用）——tmux 与账号由 cc-monitor 经参数控制。\n" +
-        "**别填 cct 这类自己建 tmux 的命令**：它会另起一个 tmux，cc-monitor 设的账号 env\n" +
+        // `70 §2.4` ＋ `§8` #5：这里原来是 `**…**` —— **界面不渲染 markdown**，
+        // 那两对星号是连着一起显示给用户看的（截图 2 里那句 `**下一步：…**` 同一个病）。
+        // ⇒ 强调改由句子结构承担（`§2.3` 那条「强调由 DOM 结构承担」的同一条道理）。
+        "⚠ 别填 cct 这类自己建 tmux 的命令：它会另起一个 tmux，cc-monitor 设的账号 env\n" +
         "落在那个 tmux 进程边界之外、被整个吃掉，「用账号 X resume」就不生效。\n" +
         "留空 = claude。",
     );
@@ -1035,12 +1247,27 @@ export class SettingsPanel {
     // 用户 09-10 逐字说的是「添加账号后添加对应命令」，那条路该在手工拼之前被看见。
     // ⚠ 账号读口取**本机**那条（`fetchLocalAccounts`）：这几条命令是给这台机器上的
     //   shell 用的，`ccm --account <名>` 也在这台机器上跑。
-    group.appendChild(
-      buildAccountAliasBlock(async () =>
-        (await fetchLocalAccounts()).accounts.map((a) => a.name),
-      ),
-    );
-    group.appendChild(buildAliasGeneratorSection());
+    // 🔴 步 2（`70 §1.3 B` · `§8` 判据 #3）：**这两块的构造期也发 I/O**
+    // （`local_ccm_entry_status` ＋ 一次 `write_account_aliases` 的 `dryRun` 预览
+    //  ＋ `fetchLocalAccounts`），而它们住「应用」页、落地页是「机器」。
+    //
+    // ⚠ 这一处与上面那几块**不同**：那几块是「构造照常、只延后网络往返」，
+    // 这一处**连构造一起延后** —— 它们的 I/O 在 `launcher-diagnostics.ts` 的
+    // 建造函数体里，从外面推不后。形态照 `CC_INTEGRATION_HOST_OS` 那一格：
+    // **门开在「建不建」这一层**（藏起来那几发照发）。
+    // 代价如实写：这两块的构造错误会推迟到用户第一次点进「应用」才出现。
+    const aliasSlot = document.createElement("div");
+    group.appendChild(aliasSlot);
+    this.loadOnFirstVisit("app", () => {
+      // 只建一次 —— `open()` 会把「这一页放过没有」清零，别在重开时重建一份 DOM。
+      if (aliasSlot.childElementCount > 0) return;
+      aliasSlot.appendChild(
+        buildAccountAliasBlock(async () =>
+          (await fetchLocalAccounts()).accounts.map((a) => a.name),
+        ),
+      );
+      aliasSlot.appendChild(buildAliasGeneratorSection());
+    });
 
     return group;
   }

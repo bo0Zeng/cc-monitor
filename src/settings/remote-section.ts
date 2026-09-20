@@ -127,6 +127,16 @@ export interface MachinePagesHost {
   ): void;
   removeMachinePage(id: string): void;
   navigateToMachinePage(id: string): void;
+  /**
+   * 🔴 步 3（`设计/70 §1.3 C`）：**这一趟「同步机器页」收尾了**（成或败都叫一次）。
+   *
+   * 宿主要它是为了分开两件在屏幕上长得一样的事：
+   * 「还在加载」与「一个机器页都注册不出来」。没有这个回调，宿主只能靠定时器猜 ——
+   * 而猜错的方向正好是本件要治的那一个（让兜底态提前露脸）。
+   *
+   * ⚠ 可选：不带路由器的宿主（既有单测）不必实现它。
+   */
+  machinePagesSettled?(): void;
 }
 
 export interface RemoteSectionOptions {
@@ -226,7 +236,10 @@ export class RemoteSection {
     this.headless = opts.headless ?? false;
     this.pages = opts.pages;
     this.root = this.build();
-    void this.refresh();
+    // 步 4：`refresh()` 自己会把失败画到这一块的 banner 上（见它的 catch），
+    // 这里再收一次是为了**不产生未捕获 rejection** —— 那条路的终点是状态栏，
+    // 而状态栏不是这一块的错误该去的地方。
+    void this.refresh().catch(() => {});
   }
 
   get element(): HTMLElement {
@@ -235,11 +248,31 @@ export class RemoteSection {
 
   /** 设置面板每次 open 时调，确保展示的是 config.json 里的最新值。 */
   async refresh(): Promise<void> {
-    this.original = await readRemoteConfig();
-    this.enabledCheckbox.checked = this.original.enabled;
-    this.rebuildCards(this.original.hosts);
-    this.hideBanner();
-    void this.populateAliases();
+    // 步 3：**成也好败也好，收尾时告诉宿主一声。**
+    // `readRemoteConfig()` reject 时这个方法是 `void this.refresh()` 掉的一个
+    // 未捕获 rejection ⇒ 一个机器页都不会注册，而宿主那边只看得到「什么都没来」。
+    // `finally` 让两条路都经过这里。
+    try {
+      this.original = await readRemoteConfig();
+      this.enabledCheckbox.checked = this.original.enabled;
+      this.rebuildCards(this.original.hosts);
+      this.hideBanner();
+      void this.populateAliases();
+    } catch (e) {
+      // 🔴 步 4（`设计/70 §1.3 D`）：**异步失败落在这一块上**，不再只打到状态栏。
+      //
+      // 这个方法的两个调用点都是 `void this.refresh()`（本类构造器 ＋ `panel.open()`），
+      // 而 `void` 掉的 Promise 其 reject 是**未捕获 rejection** ⇒ 今天它一路走到
+      // `main.ts` 那条全局兜底，变成状态栏上一行 `REJ: …`
+      //（`70 §1.3 D` 逐字：截图里那句 `REJ: Command plugin:dialog|confirm not allowed
+      //   by ACL` 就是这条路出来的）。状态栏离出事的那一块十万八千里，用户看不出
+      //   「机器列表为什么是空的」。
+      // ⇒ 就地说一句，并把异常继续往外抛（调用方要判成不成功，本行只负责说出口）。
+      this.showBanner(`读远端配置失败：${String(e)} —— 机器列表这一趟没读出来。`);
+      throw e;
+    } finally {
+      this.pages?.machinePagesSettled?.();
+    }
   }
 
   /**
