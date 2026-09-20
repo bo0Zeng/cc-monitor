@@ -6992,6 +6992,17 @@ body.settings-window-mode .grid-monitor-trigger {
 .tab-archive-toggle:hover {
   color: var(--text);
 }
+/* 🔴 S30：这一条今天**违反**上面 `.tab-archive[hidden]` 刚治好的那条约定，而且是刻意留着的。
+   `src/tabs.ts:3474` 的 `this.archiveList.hidden = collapsed` 被下面这条 `display: flex`
+   压过 ⇒ 归档抽屉的「折叠」从来没生效过：默认是折叠态（`tabs.ts:3278` 逐字「默认折叠，
+   缺省 "1"」），按钮画着 `▸ 已归档 N`，而归档 tab 照样全列出来 —— **箭头在骗人**。
+   修法只有一行（`.tab-archive-list[hidden] { display: none; }`），**没修不是忘了**：
+   它改的是用户看得见的交互，而仓里对这件事有两句相反的话 ——
+   `tabs.ts:3294-3299` 那段头注逐字「宁可退回改之前的样子（归档 tab 灰着留在主栏）……
+   『灰着但还在』正是用户对归档的全部期待」。同一个文件里两个意图，**该听哪一句是产品裁定**。
+   而 `设计/99 §4` 步 17（`设计/30` tab 三刀）本来就要把「归档」整个重做。
+   ⇒ 已登记进 `tests/css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD`：**再多一个同形的就会红**，
+     这一个修好之后要把那条登记一起删（判据会提醒）。 */
 .tab-archive-list {
   display: flex;
   flex-wrap: wrap;
