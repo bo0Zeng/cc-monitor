@@ -14,8 +14,28 @@ name: Release
 # `设计/96 §7.1.2` 现打两条硬事实，它们是这一段存在的全部理由：
 #  ① 三个落点（`embedded-backends/` · `binaries/` · `native-backend/`）**全部 gitignore**
 #     ⇒ **字节不进仓**，它只在「发版那一趟」存在 ⇒ 表的值不是一个文件，是**一条产线**；
+#     🔴 〔步 `19c` 订正 09-19〕**这一句在步 8（全仓改名 `daemon`→`backend`）到今天之间是假的**：
+#     `src/bridge/.gitignore` 里还写着 `/embedded-daemons/` 与 `/native-daemon/`，
+#     现打 `git check-ignore` **两条都不命中** ⇒ 三个落点里有两个从改名那天起就没被挡住。
+#     本拍把那两行改对，并给它们加了机检锚（`K-R124-ruler.py` ⑬d 与 `build.rs` 的落点常量两向对拍）
+#     —— 这句「硬事实」从此有人每趟核它。
 #  ② 三条产线**只由本文件驱动**，而本文件只在推 `v*` tag / 手工触发时跑
 #     ⇒ 平常的 `cargo build` 一格字节都没有 ⇒ **这张表的门禁只能建在本文件上，不能建在 `cargo` 上**。
+#
+# ── 🔴 `19c`（2026-09-19）：本文件有一个**本机孪生** ─────────────────────────────
+#
+# `tests/scripts/re-embed.sh` 是「`BUILD_ID` bump 的同拍步骤」：开发树上 bump 了
+# `src/backend/lib.rs` 的 `const BUILD_ID` 之后，盘上那几份内嵌字节立刻变旧，
+# `src/bridge/build.rs` 的半 bump 守卫当场 panic、**整棵树编不过**
+#（2026-09-18 实地踩过一次，四路 agent 同时中）。那条命令把它们重编回来。
+# 🔴 **它与本文件下面那两步是同一条配方，不是两条**：
+#   · `Cross-compile backend for both musl targets` ↔ 脚本的 `REEMBED_TARGETS` ＋ `REEMBED_BUILD_FLAGS`
+#   · `Build local backend (native)`（两个 job 各一处）     ↔ 脚本的 `--native` 那一趟
+#   两侧由 `tests/evidence/K-R124-ruler.py` 的 ⑬b **每趟两向对拍**（target 集合相等 ＋ 旗标逐字相同）。
+#   ⇒ **改本文件那几步的 target 或旗标，不同拍改那条命令，门禁当场红**（反过来也一样）。
+# ⚠ **诚实边界**：本机那一趟买到的是「开发期自洽 ＋ 裸 exe 恢复部署能力」，
+#   **不等于**本文件这一趟办完了 —— 形态不同（`build.rs` 自陈：static-pie / 未 strip / 不同 rustc），
+#   工具链版本也未必是下面钉的那两个。
 #
 # ⚠ **条 63 承诺哪几格 ↔ 本文件哪几步产它们的字节** —— 那张表**不抄在这里**。
 #   唯一住址：`tests/evidence/K-R124-ruler.py` 的 `BYTE_LINES`（承诺面那一侧它又是从

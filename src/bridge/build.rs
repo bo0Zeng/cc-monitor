@@ -36,6 +36,47 @@ fn backend_main_rs() -> PathBuf {
     Path::new("..").join("backend").join("main.rs")
 }
 
+/// 🔴 **`BUILD_ID` bump 的同拍步骤只有这一个住址**〔步 `19c` · 09-19〕。
+///
+/// # 它治的是一件真发生过的事，而且是一件本文件自己造成的事
+///
+/// 协议面一变就要 bump `lib.rs` 的 `const BUILD_ID`，而 bump 的那一刻
+/// `embedded-backends/` 里那两份 musl 字节立刻变旧 ⇒ 下面那条**半 bump 守卫**当场
+/// `panic!`，**整棵树编不过**。2026-09-18 实地踩过一次：删用量 ⇒ bump `p2j`→`p2k`
+/// ⇒ **四路 agent 同时编不过**。`设计/99 §4` 步 `19c` 的裁定逐字：
+/// 「**把 re-embed 写成 bump 的同拍步骤**，别让它变成一次事故。」
+///
+/// # 🔴 为什么是一条命令，而不是像以前那样在 panic 文案里手抄一段配方
+///
+/// 〔墓碑 —— 本文件下面那条半 bump panic 原来写着整整八行出路，逐字是
+///  `cargo build --release --target {arch}-unknown-linux-musl --config
+///  'target.{arch}-unknown-linux-musl.linker="rust-lld"'` ＋ 一段 `cp`，
+///  并自陈「这样编出来的形态与发版 CI 的 zigbuild 产物**不同**」。
+///  **那是第二条产字节的路，也就是第二个住址** —— 而 09-18 那次真正救活那棵树的
+///  是 `cargo zigbuild --release --locked`（＝发版那趟那条），**不是它**。
+///  ⇒ 手抄的那段撤掉，出路收成本常量指的那一条命令；那条命令与 `release.yml` 的
+///  `Cross-compile backend for both musl targets` **逐字同源**，
+///  由 `tests/evidence/K-R124-ruler.py` ⑬b 每趟两向对拍。
+///  08-25 那条实测读数（`ring` 的 C 要 `zig cc`，`rust-lld` 替不了，aarch64 不给就 rc=101）
+///  **一个字没丢**，搬进了 `tests/scripts/re-embed.sh` 的头注 —— 它现在是那条命令
+///  必须用 zigbuild 的理由，写在跑那条命令的地方。〕
+///
+/// ⚠ **它不撤任何一条既有的守卫。** mtime 那张安全网、三处 `panic!` 全部留着；
+/// 本常量只是把「出事之后怎么办」收成一个住址。安全网与机制的分工逐字写在
+/// `tests/scripts/re-embed.sh` 的头注里。
+const REEMBED_CMD: &str = "bash tests/scripts/re-embed.sh";
+
+/// 远端那两份 musl 字节的落点目录名。与 [`NATIVE_BACKEND_DIR`] 对称，两个都是
+/// **机检过的落点**：`tests/evidence/K-R124-ruler.py` ⑬d 把这两个常量与
+/// `src/bridge/.gitignore` 里带 `⇐ 内嵌落点` 锚的那几行**两向集合相等**。
+///
+/// 🔴 立这个常量的直接起因：步 8 全仓改名（`daemon` → `backend`）之后，
+/// `.gitignore` 里还写着 `/embedded-daemons/` 与 `/native-daemon/` ——
+/// **两个落点从那天起就没被挡住**（09-19 现打 `git check-ignore` 两条都不命中），
+/// 而 `设计/96 §7.1.2` 与 `release.yml` 文件头都还把「三个落点全部 gitignore」
+/// 当成硬事实在用。目录名从字面量变成常量，那条对拍才有东西可读。
+const EMBEDDED_BACKENDS_DIR: &str = "embedded-backends";
+
 /// backend 源码里那个 `const BUILD_ID`。**这是本机与远端两条内嵌路共用的期望值。**
 ///
 /// # 🔴 `19b`（09-19）：**抠不到 ＝ 构建当场失败，没有兜底值**（`设计/96 §7.2.5`）
@@ -421,18 +462,32 @@ fn extract_capabilities(src: &str) -> Option<String> {
 /// 把交叉编译好的 musl backend 二进制
 /// （`src/bridge/embedded-backends/cc-monitor-backend-<arch>`）复制进 OUT_DIR 并置
 /// `embedded_backends` cfg；任一缺失则不置 cfg（`sftp::backend_binary` 返回 None → 自动部署
-/// 优雅 no-op，沿用手动部署）。二进制由 `cargo zigbuild --target *-unknown-linux-musl` 产出后
-/// 放进 `embedded-backends/`（见 doc/REMOTE-PHASE0-DEPLOY 的 F08b 段）。
+/// 优雅 no-op，沿用手动部署）。
+///
+/// 🔴 〔步 `19c` · 09-19〕**这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
+/// `Cross-compile backend for both musl targets`，本机那趟是 [`REEMBED_CMD`]，
+/// 两者**逐字同一条配方**（`K-R124` ⑬b 两向对拍）。
+/// 〔墓碑，本段原话逐字：「二进制由 `cargo zigbuild --target *-unknown-linux-musl` 产出后
+///  放进 `embedded-backends/`（见 doc/REMOTE-PHASE0-DEPLOY 的 F08b 段）」——
+///  那是**半条配方**（漏了 `--release --locked`），照它敲出来的字节不是发版那份。
+///  ⚠ 那个文档**还在**，只是路径陈了：今天它住 `src/doc/REMOTE-PHASE0-DEPLOY.md`
+///  （`doc/` 这个前缀是仓库重组之前的写法）。那份文档里的旧路径**本拍没核**
+///  —— `tests/evidence/K-W4-D1-rename-surface.md` 逐字登记着它有 8 处旧路径待查，
+///  归那一件，不归本拍。〕
 fn embed_backends() {
     // 允许自定义 cfg（Rust 1.80+ unexpected_cfgs 检查）。
     println!("cargo:rustc-check-cfg=cfg(embedded_backends)");
     let out = std::env::var("OUT_DIR").expect("OUT_DIR");
-    let dir = Path::new("embedded-backends");
+    let dir = Path::new(EMBEDDED_BACKENDS_DIR);
     // staleness 安全网（审计 SUGGESTION-1）：backend 源码 mtime，用于提示「bump BUILD_ID 后
     // 忘了 re-zigbuild」——否则内嵌旧二进制 build_id 与源码不符 → 永不收敛的重复部署。
     // 🔴 〔步 9 · 09-19〕**两份都看，取较新的那个。** 身份搬去了 `lib.rs`，而分派仍在
-    //    `main.rs` —— 只看一份，改另一份时这张安全网当场变瞎（而它是「bump 了 BUILD_ID
-    //    却忘了 re-zigbuild」的唯一拦截点）。
+    //    `main.rs` —— 只看一份，改另一份时这张安全网当场变瞎。
+    // 🔴 〔步 19c · 09-19〕**它是安全网，不是机制** —— 原话里「唯一拦截点」那半句已经不成立了：
+    //    ① 它只在**已经出事之后**说话；② 它说「旧了」却不说怎么办；③ 它是一条 `cargo:warning`，
+    //    在几百行输出里滚过去。机制那一半住 [`REEMBED_CMD`]：一条真跑得起来的命令，
+    //    外加 `--check` —— 「盘上的字节与源码对不对得上」当场用相等断言回答，
+    //    不必等谁去编整棵树。⚠ 安全网**一条没撤**（判据 `K-R124` ⑬f 钉着这两份源码都还在被看）。
     let src_mtime = [backend_lib_rs(), backend_main_rs()]
         .iter()
         .filter_map(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
@@ -470,7 +525,7 @@ fn embed_backends() {
             ) {
                 if bin_mtime < sm {
                     println!(
-                        "cargo:warning=内嵌 backend {arch} 比后端源码旧——若刚 bump 了 BUILD_ID，请重跑 `cargo zigbuild --target {arch}-unknown-linux-musl` 并更新 embedded-backends/"
+                        "cargo:warning=内嵌 backend {arch} 比后端源码旧——若刚 bump 了 BUILD_ID，同拍跑 `{REEMBED_CMD}`（它重编两个 musl arch 并铺回落点；`{REEMBED_CMD} --check` 只问对不对得上，不产字节）"
                     );
                 }
             }
@@ -507,54 +562,46 @@ fn embed_backends() {
                      ⇒ 走到这里时界标必然非空（现打 open=`{stamp_open}` close=`{stamp_close}`）。\n\
                      🔴 **别去写一个 `.build_id` 旁文件来糊它** —— `K-R70` 之后没有任何东西\
                      读那个文件了，写一份只是把标签换个地方抄。\n\
-                     出路：重跑 `cargo zigbuild --target {arch}-unknown-linux-musl` 重编，\
-                     或 `rm -rf src/bridge/embedded-backends/`（自动部署诚实关闭，编译立刻恢复）。",
+                     出路二选一，**两条都是同一条命令**（步 `19c`）：\n\
+                     ① `{REEMBED_CMD}` —— 重编两个 musl arch 并铺回落点；\n\
+                     ② `{REEMBED_CMD} --clean` —— 删掉落点，自动部署诚实关闭，编译立刻恢复。",
                     src.display()
                 );
             }
-            // ★ 08-25（`K-H1` / 风险 `5v`）：**引 TLS 之后这条自救路分 arch 了。**
-            // 下面那段原本逐字写着「不需要装 zig（U-1 实测）」——`rustls` → `ring` 进来之后
-            // 那句话**变成了假话**：`ring` 的 build script 要**编 C**，而 `rust-lld` 只是个
-            // 链接器，它替不了 C 编译器。08-25 把那两条命令逐条重打，读数分岔：
-            //   x86_64  照做 **rc=0**
-            //   aarch64 照做 **rc=101** ⇒ `error occurred in cc-rs:
-            //           failed to find tool "aarch64-linux-musl-gcc"`
-            let c_cross_note: &str = if arch == "aarch64" {
-                "⚠ **这个 arch 还额外要一个 C 交叉编译器**（08-25 实测：不给就 rc=101，\n\
-                        死在 `cc-rs: failed to find tool \"aarch64-linux-musl-gcc\"` ——\n\
-                        `ring` 的 build script 要编 C，`rust-lld` 只是链接器，替不了它）。\n\
-                        **实测走得通的一条**（zig 0.14.0，08-25 本机跑到 rc=0）：\n\
-                        给上面那条 `cargo build` 前面加三个环境变量 ——\n\
-                          CC_aarch64_unknown_linux_musl=\"zig cc\" \\\n\
-                          CFLAGS_aarch64_unknown_linux_musl=\"--target=aarch64-linux-musl\" \\\n\
-                          AR_aarch64_unknown_linux_musl=\"zig ar\" \\\n\
-                        另一条是装一套提供 `aarch64-linux-musl-gcc` 的 musl 交叉工具链\n\
-                        —— **我没量过**，别当成验过的路。"
-            } else {
-                "· 这个 arch **不额外要 C 交叉编译器**（08-25 实测 rc=0）：\n\
-                        `ring` 的那点 C 用本机的 `x86_64-linux-musl-gcc` 就编过去了。"
-            };
+            // 🔴 〔步 `19c` · 09-19〕**这里原来手抄着第二条产字节的配方，已经撤掉。**
+            //
+            // 〔墓碑，原话的骨架逐字：「① 重编。两步都在 `src/backend/` 目录下跑：
+            //  `cargo build --release --target {arch}-unknown-linux-musl --config
+            //  'target.{arch}-unknown-linux-musl.linker="rust-lld"'` ＋ `cp target/…`」，
+            //  后面跟着一段按 arch 分岔的 `c_cross_note`〔散文墓碑〕（08-25 实测：aarch64 不给
+            //  `zig cc` 就 rc=101，死在 `cc-rs: failed to find tool
+            //  "aarch64-linux-musl-gcc"`），以及它自己的一句自陈：「这样编出来的形态与
+            //  发版 CI 的 zigbuild 产物**不同** —— static-pie / 未 strip / 不同 rustc」，
+            //  最后一句「发版 CI 走的是 `cargo zigbuild`……**那条路多半仍通，但我没量过**」。〕
+            //
+            // **它为什么必须撤**：那是「本机怎么重编这两份字节」的**第二个住址**，
+            // 而且与发版那趟**不是同一条路**。09-18 那次四路 agent 编不过，真正救活那棵树的
+            // 是 `cargo zigbuild --release --locked`（＝发版那趟那条），**不是这段文案**。
+            // ⇒ 出路收成 [`REEMBED_CMD`] 一条；那条命令与 `release.yml` 的
+            //   `Cross-compile backend for both musl targets` 逐字同源（`K-R124` ⑬b 两向对拍）。
+            // ⚠ **那段 08-25 的实测读数一个字没丢**，它搬进了 `tests/scripts/re-embed.sh`
+            //   的头注 —— 它现在是「那条命令为什么必须用 zigbuild、不能换回 rust-lld」的理由，
+            //   写在**跑那条命令的地方**，而不是写在一段没人会照着敲的 panic 文案里。
             if embedded_id != expected {
                 panic!(
                     "内嵌 backend {arch} 的 build_id 是 `{embedded_id}`，而后端源码是 `{expected}` —— \
                      **半 bump**。装上去会被 monitor 永远判 StaleBuild 并无限重装。\n\
-                     出路二选一：\n\
-                     ① 重编。两步都在 `src/backend/` 目录下跑：\n\
-                        cd src/backend\n\
-                        cargo build --release --target {arch}-unknown-linux-musl \\\n\
-                          --config 'target.{arch}-unknown-linux-musl.linker=\"rust-lld\"'\n\
-                        cp target/{arch}-unknown-linux-musl/release/cc-monitor-backend \\\n\
-                           ../src/bridge/embedded-backends/cc-monitor-backend-{arch}\n\
-                        〔`K-R70` 起**没有第三步了**：身份随字节走（`CC_MONITOR_BUILD_STAMP`），\n\
-                         再写一份 `.build_id` 旁文件没有任何人读它。〕\n\
-                        （x86_64 上不加 --config 也能链；aarch64 必须加，否则会挂在系统 ld 上。\n\
-                         注意：这样编出来的形态与发版 CI 的 zigbuild 产物**不同**\n\
-                         —— static-pie / 未 strip / 不同 rustc，只适合本机打包。）\n\
-                        {c_cross_note}\n\
-                        ⚠ 发版 CI（`release.yml`）走的是 `cargo zigbuild`，它自己装 zig，\n\
-                         而 `zig cc` 能编 C ⇒ **那条路多半仍通，但我没量过**，别读成量过了。\n\
-                     ② 直接 `rm -rf src/bridge/embedded-backends/`：自动部署诚实关闭，\
-                        编译立刻恢复（该目录已被 gitignore，删除零代价）。"
+                     🔴 这是 `BUILD_ID` bump 的**同拍债**（步 `19c`）：bump 了源码，\
+                     而盘上这两份字节还是上一版编的。\n\
+                     出路二选一，**两条都是同一条命令**：\n\
+                     ① `{REEMBED_CMD}`\n\
+                        —— 两个 musl arch 各一趟 `cargo zigbuild --release --locked`\
+                        （与发版那趟逐字同一条配方），编完铺回落点并当场核一遍身份。\n\
+                     ② `{REEMBED_CMD} --clean`\n\
+                        —— 删掉落点：自动部署诚实关闭，编译立刻恢复（落点已被 gitignore，删除零代价）。\n\
+                     ⚠ **诚实边界**：①买到的是「开发期自洽 ＋ 裸 exe 恢复部署能力」，\
+                     **不等于**发版那一拍办完了（本机的 zigbuild 形态与发版 CI 不同，\
+                     逐条写在那条命令自己的头注里）。"
                 );
             }
             let dst = Path::new(&out).join(format!("backend-{arch}"));
@@ -564,7 +611,7 @@ fn embed_backends() {
             // `sftp::backend_binary()` 返回 None、远端自动部署整个消失而无人知晓。
             // 那正是 v2.19–v2.22 那批安装包的事故形状（见 release.yml 的账）。
             println!(
-                "cargo:warning=缺少内嵌 backend {arch}（{}）——远端自动部署将关闭（embedded_backends cfg 不置）",
+                "cargo:warning=缺少内嵌 backend {arch}（{}）——远端自动部署将关闭（embedded_backends cfg 不置）。要它就跑 `{REEMBED_CMD}`",
                 src.display()
             );
             all = false;
@@ -678,7 +725,8 @@ fn embed_native_backend() {
         println!(
             "cargo:warning=没有本机内嵌后端（src/bridge/{}）——**裸可执行文件起不了本机后端**，\
              只有安装包那份带本机后端的能起。开发构建里这是正常的；\
-             发版构建里出现这一行 = 那一版的裸 exe 又回到 09-10 那个读数（0 个本机后端进程）。",
+             发版构建里出现这一行 = 那一版的裸 exe 又回到 09-10 那个读数（0 个本机后端进程）。\
+             要它就跑 `{REEMBED_CMD} --native`。",
             src.display()
         );
         return;
@@ -695,12 +743,12 @@ fn embed_native_backend() {
              （清单读作 `{staged_target}`；空串 = 根本没有 `{}.target` 这个文件。）\n\
              内嵌一个别的平台的二进制 = 释放到用户盘上再起，起不来 —— \
              而 `Resolved::Found` 会先撒一次谎（它只证明文件落地了）。\n\
-             出路二选一：① 为这个 target 重编并重铺那三个文件；\
-             ② `rm -rf src/bridge/{}`：自释放诚实关闭，编译立刻恢复。",
+             出路二选一，**两条都是同一条命令**（步 `19c`）：\
+             ① `{REEMBED_CMD} --native` —— 为这一趟的 TARGET 重编并重铺那两个文件；\
+             ② `{REEMBED_CMD} --clean` —— 删掉落点，自释放诚实关闭，编译立刻恢复。",
             src.display(),
             staged_target,
             NATIVE_BACKEND_FILE,
-            NATIVE_BACKEND_DIR
         );
     }
     // ── ② 它的 build_id 与后端源码对得上吗 ─────────────────────────────
@@ -716,10 +764,9 @@ fn embed_native_backend() {
              可能是：① 它不是这套源码编出来的（`p2f-build-stamp` 之前的后端没有戳）；\
              ② 被改过 / 截断；③ 界标抠失败（现打 open=`{stamp_open}` close=`{stamp_close}`）。\n\
              🔴 **别去补一个 `.build_id` 旁文件** —— `K-R70` 之后没人读它，那只是把标签换个地方抄。\n\
-             出路：在 `src/backend/` 下 `cargo build --release` 重编并重铺，\
-             或 `rm -rf src/bridge/{}`：自释放诚实关闭，编译立刻恢复。",
+             出路二选一，**两条都是同一条命令**（步 `19c`）：`{REEMBED_CMD} --native` 重编重铺，\
+             或 `{REEMBED_CMD} --clean` 删掉落点（自释放诚实关闭，编译立刻恢复）。",
             src.display(),
-            NATIVE_BACKEND_DIR
         );
     }
     if embedded_id != expected {
@@ -728,10 +775,11 @@ fn embed_native_backend() {
              —— **半 bump**。\n\
              这一份会以 `cc-monitor-local-{embedded_id}` 之名落到用户盘上，而 monitor 这一侧\
              按 `{expected}` 谈能力：能力协商按源码谈、跑起来的是另一个。\n\
-             出路二选一：① 重编并重铺（在 `src/backend/` 下 `cargo build --release`，\
-             产物铺成 `src/bridge/{}` 那两个文件：二进制 ＋ `.target`）；\
-             ② `rm -rf src/bridge/{}`：自释放诚实关闭，编译立刻恢复。",
-            src.display(),
+             🔴 这是 `BUILD_ID` bump 的**同拍债**（步 `19c`），与远端那两份同一形。\
+             出路二选一，**两条都是同一条命令**：\
+             ① `{REEMBED_CMD} --native` —— `cargo build --release --locked` 重编，\
+             产物铺成 `src/bridge/{}` 那两个文件（二进制 ＋ `.target`）；\
+             ② `{REEMBED_CMD} --clean` —— 删掉落点，自释放诚实关闭，编译立刻恢复。",
             src.display(),
             NATIVE_BACKEND_DIR
         );
