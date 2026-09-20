@@ -488,6 +488,41 @@ cell(
     },
 )
 
+# ── 第 26 格 `f3-copy`（`23b·B`，09-20）：**秤 F3 两向从 `cargo` 的合计里独立出来** ──
+# 🔴 立它的起因：`tests/bridge/sftp_copy_f3_tests.rs`（1075 行）落地那天只靠
+#   `src/bridge/src/sftp_pool.rs` 的 `#[path]` 挂进 `monitor` 的 lib ⇒ 它那 9 条被
+#   `cargo` 那一格的**求和**吃掉了。那一格的绿是 9 个包的合计，**这 9 条静默消失
+#   只会让合计小一点，而「小一点」与「有测试没跑」在终端上一模一样**
+#   （同一条道理 `run_gate_sum` 的头注为**包数**论证过一遍 —— 那里的解法是相等断言，
+#     这里同理）。
+# ⚠ **本格不改 `cargo` 那一格的任何裁词**：那 9 条照旧算在它的合计里。两格都在，
+#   档位不叠加（同 `tsc`/`npm` 那一对）—— 那一格买 workspace 合计，本格买
+#   「秤 F3 这两向没有静默消失」。
+# ⚠ 本格的相等断言里有一个**写死的 `pin=9`**，那是**刻意的**：现打的死值验里
+#   「真删掉一条测试」这一刀让 `declared` 与 `ran` **一起**掉到 8（两侧同源）——
+#   只有那个写死的 pin 认得出来。⇒ 真加/删测试的那一拍回 `gate.sh` 改 pin。
+cell(
+    "f3-copy",
+    anchor="run_gate f3-copy '判过的条数 = 秤 F3",
+    cwd="仓根（内层 cd src/bridge）",
+    cmd="cargo test -p monitor --lib sftp_pool::copy_f3_tests::（＋ 三方对拍 ＋ 两向锚点）",
+    **{
+        "tests/": (PART, "〔现打 09-20〕**只有 `tests/bridge/sftp_copy_f3_tests.rs` 这一份**"
+                         "（1075 行、9 条测试）：本格既**跑**它（靠 `src/bridge/src/sftp_pool.rs` "
+                         "的 `#[path]` 挂进 `monitor` 的 lib），又**读它的文本**（数 `#[test]`/"
+                         "`#[tokio::test]` 的条数，那是三方对拍里的 `declared` 那一边）。"
+                         "⚠ 这棵树的其余每一份本格一个字都不碰 —— 那一棵的合计归 `cargo` 那一格"),
+        "src/bridge/": (PART, "〔现打 09-20〕**编的是 `-p monitor` 一个包**（另 8 个成员本格不编），"
+                              "而**判据只问一条路**：`src/bridge/src/sftp_pool.rs` 里 "
+                              "`copy_remote_path` 的 `copy-data` 协商与退路。⚠ 「整个包编得过」"
+                              "这一层是副产品，不是本格的判据 —— 那一层归 `cargo`/`fmt`/`winchk` 三格。"
+                              "⚠ 本格**不起任何网络**：服务端是那份判据自己在内存里立的合成件"),
+        "tests/evidence/": blind("🔴 本格**没有独立的判据文件** —— 判定逐字写在 `gate.sh` 那一行的"
+                                 "内联脚本里（同 `muslbuild`/`deadcode`/`tsc`/`winchk-backend` 四格）。"
+                                 "这棵树一份都不读"),
+    },
+)
+
 cell(
     "generated",
     anchor="git diff --quiet --exit-code -- src/generated/",
@@ -1081,6 +1116,350 @@ def check_blind_scope(text, cells):
     return out
 
 
+# ── `C5d`（`G4` 空洞③，09-20）：**裁决行那串点名有人守** ＋ 格数不许有第三份住址 ──
+#
+# 🔴 题面（本拍现打，**非截断** grep，两条都逐字）：
+#   · `gate.sh` 的裁决行逐字 `echo "GATE: OK —— 26 格全绿（worktree-clean · hooks · …）"`
+#     ⇒ 那个数是**字面量**。而且它必须是字面量：`C5` 的 `ROLLCALL` 正则就是靠抠这个
+#     字面量去跟**现打格数**对拍的 —— 改成「门禁自己算」，那条对拍的两侧当场同源、恒真。
+#   · 而同一份文件的射程表里，`did-ci-actually-run` 那一条的说明逐字写着
+#     「几格由裁决行现算，这里刻意不写死一个数」⇒ **那句话是假的**。
+#   · 它**没人守**：`C5c` 的 docstring 逐字「说明那一栏写得对不对，它一个字都不判」。
+#   ⇒ 「一处写死、另一处自称算出来」的两份住址 —— 而**腐掉的正是后面那一句散文**。
+#
+# 🔴 **更值钱的那一半：裁决行括号里那串点名，此前一条判据都没有。**
+#   `C5` 只抠 `(\d+)`；`C5b` 的逐格点名住在**头注的自述节**里，射程就是头注（那条
+#   docstring 自己写着「射程 = 头注」）⇒ **钉不到裁决行**。于是那串名字是一份
+#   **能自己烂掉的第二住址** —— 而 `pb check` 09-18 烂的就是它（裁决行点了一整天
+#   一个已经整格删掉的名字，见上面 `:74` 那条墓碑）。当时靠人发现，不是靠判据。
+#
+# ★ 取法（两半，各有各的失效方向）：
+#   ① **裁决行括号里的点名 ↔ 现打格名，两向集合相等。** 少点一格 / 多点一格都红。
+#      e2e 那四格在裁决行上写**套件短名**（`ccm-cli`），归一那一跳与 `found_cells()` 里
+#      `run_e2e` 那条**同一份写法**：短名不在格名集合里时补前缀 `ccm tests/e2e/`。
+#      🔴 写成**两向相等**不写成「点到的都存在」：后者在那串点名被清空时**恒真**。
+#   ② **射程表的说明栏里不许出现逐字 `现算`。** 「这个数怎么来的」只许住两处
+#      （头注自述节 · 裁决行），那两处各有判据钉着；而说明栏 `C5c` 逐字声明
+#      「一个字都不判」⇒ 在那儿说取法 = 一句**没人守**的散文，而它已经腐过一次。
+#
+# ⚠ **买不到什么**（逐条写死，别读成「裁决行从此都对」）：
+#   · 裁决行那句散文的其余每个字（「可以出货」之类）本条不判；
+#   · ② 那一半是**关键词黑名单**：换个说法说同一句假话，它逮不到（那要读语义）；
+#   · **刻意没做**「说明栏里不许出现 `N 格` 这一形的数」那条更宽的闸 —— 现打会**假红**：
+#     `ci-job-shape` 那条说明里「条 63 承诺的**三格**」是一处**正当**的引用（说的是
+#     平台承诺，不是本门禁的格数）。一条会假红的闸会被人关掉，比没有闸更坏。
+VERDICT_ROLL = re.compile(r"GATE: OK —— \d+ 格全绿（([^）]*)）")
+E2E_PREFIX = "ccm tests/e2e/"
+BLIND_BANNED = "现算"
+
+
+def check_verdict_rollcall(text, cells):
+    out = []
+    ms = VERDICT_ROLL.findall(text)
+    if len(ms) != 1:
+        out.append(f"C5d 裁决行上 `GATE: OK —— N 格全绿（…）` 那串点名命中 {len(ms)} 处"
+                   f"（应当恰好 1 处）—— 那串名字没了 / 有了第二份，本条按红处理")
+        return out
+    got = set(cells)
+    named = set()
+    for tok in ms[0].split("·"):
+        tok = tok.strip().strip("`").strip()
+        if not tok:
+            continue
+        # 归一：e2e 四格在裁决行上写短名，规范名带前缀（与 `found_cells()` 同一份写法）
+        named.add(tok if tok in got else E2E_PREFIX + tok)
+    if named != got:
+        out.append(f"C5d 裁决行那串点名与现打的格**对不上**："
+                   f"点了而盘上没有 {sorted(named - got)} · "
+                   f"盘上有而没点 {sorted(got - named)} —— "
+                   f"`C5` 只抠那一行的数、`C5b` 只管头注的自述节，"
+                   f"这串名字此前没有任何判据（`pb check` 09-18 就是从这儿烂的）")
+    items, bad = blind_items(text)
+    if bad:
+        return out + bad
+    for it in items:
+        if "|" not in it:
+            continue
+        k, why = it.split("|", 1)
+        if BLIND_BANNED in why:
+            out.append(f"C5d 射程表 `{k}` 的说明里出现了逐字 `{BLIND_BANNED}` —— "
+                       f"「这个数怎么来的」只许住头注自述节与裁决行那两处（各有判据钉着）；"
+                       f"说明栏 `C5c` 逐字声明「一个字都不判」⇒ 在这儿说取法就是"
+                       f"**一句没人守的散文**，而它 09-20 之前正逐字躺着一句假话"
+                       f"（自称裁决行那个数是算出来的，而它是字面量）")
+    return out
+
+
+
+# ── `C8`（`G4` 空洞③，09-20）：**这道门到底被谁调用** ────────────────────────────
+#
+# 🔴 题面（`真相源/92 §2.1.2` ①，本拍非截断复打）：
+#   `grep -c 'bash tests/scripts/gate.sh' .github/workflows/*.yml` ⇒ 落地前**两份都是 0**；
+#   `.git/hooks/` 下零个非 sample 钩子；`tests/hooks/` 下只有一份 `pre-commit`，而它
+#   **默认是死的**（要人手 `git config core.hooksPath` 才活）。
+#   ⇒ **此前没有任何东西强制这道门在出货前跑过。**「跑了」与「没跑」在终端上一模一样。
+#
+# ★ 取法：**一张登记，两向对拍，三个消费者。**
+#   登记（下面 `INVOCATION`）是「每一格在云端有没有人跑、没有的话为什么」的**唯一住址**；
+#   `ci.yml` 那个 `local-gate` job 的 `GATE_ONLY:` 与它**两向集合相等**（`C8b`）——
+#   ⇒ 改了 yml 不改登记、或改了登记不改 yml，**两边都当场红**。
+#   「哪几格不进云端」因此**不可能静默**：少跑一格必须先在这儿写一条理由。
+#
+# 🔴 **反空真锚是 `C8a` 那两向相等**（登记 ↔ 现打格名），不是「登记里每条都找得到格」——
+#   后者在登记被清空时**恒真**。这与 `C1` 是同一条道理、同一种写法。
+#
+# ★ 「不进云端」分**两档**，刻意不混成一档 ——「云端另有人跑」与「云端根本没人看」
+#   在一张只写「不进」的表上**长得一模一样**，而后者才是空洞：
+#   · `ELSEWHERE`：云端**另有 job 跑同一份被测对象** ⇒ 必须给一条**逐字锚点**，
+#     `C8c` 现打要求它在 `ci.yml` 里命中 ≥1（钉子没了 / 陈了，当场红）。
+#     ⚠ 锚点买的是「那一步写在 yml 里」，**不是**「那一步在 runner 上跑过、绿过」。
+#   · `NOWHERE`：**云端这一维零覆盖**，登记里明写缺什么。不许给锚点（给了就是自相矛盾，`C8c` 红）。
+#
+# ⚠⚠ **本条的诚实边界，写死在这里**：本拍在**断网沙箱**里做，`gh run view` 一次都做不到
+#   ⇒ 下面每一条买到的都只是「**盘上这几份文本满足这几条**」。
+#   `C8` 一个字都没说「云端那一趟会绿」，也没说「那个 job 起过」。
+#   事实上**它一趟都没起过**：`ci.yml` 的触发器只有 `push`(main/`v*`) 与 `pull_request`，
+#   而本仓红线是**不推送** ⇒ 那个 job 与 `tests/hooks/pre-push` 今天**都触发不了**，
+#   逐字登记在下面 `HOOKS` 与 `gate.sh` 射程表的 `did-ci-actually-run` 那一条里。
+CLOUD, ELSEWHERE, NOWHERE = "进云端子集", "云端另有 job 盖着", "云端零覆盖"
+
+INVOCATION = {}
+
+
+def invoke(name, where, why, anchor=None):
+    INVOCATION[name] = {"where": where, "why": why, "anchor": anchor}
+
+
+# ── 进云端子集的那几格：只要 git · bash · python3 · node · shellcheck ────────────
+# ⚠ 挑人群的口径是**「这个 job 装什么就能跑什么」**，不是「哪几格重要」——
+#   后者要拍脑袋，前者现打得出来。要 zig / musl target / mingw / 整棵 cargo 的，一律不进。
+_CLOUD_WHY = "只要 `actions/checkout` ＋ runner 自带的 git/bash/python3/node/shellcheck，不装任何工具链"
+invoke("worktree-clean", NOWHERE,
+       "🔴 **它在云端构造上红不了** —— 云端那一趟是 `actions/checkout` 出来的**全新单份副本**，"
+       "「仓里有没有第二份工作副本」这个条件在那儿恒成立。把一格恒绿的东西放进云端子集，买到的是**一分虚的绿**，"
+       "而虚的绿与真的绿在流水线的勾上一模一样 ⇒ 明着不放。它治的是本机并发 worktree 那一族（`真相源` 记过 09-19 一天绊三次），那是本机的活")
+invoke("hooks", CLOUD, _CLOUD_WHY + "。它判 `tests/hooks/` 下每一份的可执行位 · index mode · 语法 —— 其中 **index mode 那一条只有云端这种全新 checkout 才最有意义**（本机那一份 `chmod` 过的看不出来）")
+invoke("copy2", CLOUD, _CLOUD_WHY)
+invoke("shellcheck", CLOUD, _CLOUD_WHY + "。⚠ 云端另有 `E2E scripts health` 那个 job 跑同一档，本格与它**同一份人群**（都从 `ci.yml` 现读）⇒ 这里是第二道，不是唯一一道")
+invoke("ci-e2e-prereq", CLOUD, _CLOUD_WHY + "：它只读盘上三份文本")
+invoke("release-gate", CLOUD, _CLOUD_WHY + "：判据本体是 python3，它顺带调的 `release-notes.mjs --check` 只用 node 内置模块（现打：那份文件的 import 全是 `node:fs`/`node:url`/`node:path`）⇒ **不需要 `npm ci`**")
+invoke("gate-selfdesc", CLOUD, _CLOUD_WHY + "。🔴 它是本 job 最承重的一格：`C8` 自己就住在它里面 ⇒ 云端那一趟会自己检查「登记与 yml 对不对得上」")
+invoke("platform", CLOUD, _CLOUD_WHY)
+invoke("installface", CLOUD, _CLOUD_WHY)
+invoke("generated", NOWHERE,
+       "🔴 同 `worktree-clean`：它判的是**工作树与 index 的 diff**，而云端那一趟是全新 checkout ⇒ 那个 diff 恒空、**在构造上红不了**。"
+       "⚠ 别把这条读成「生成物漂移云端有人管」——真要在云端买到它，得先跑一趟 `npm run gen:types` 再 diff，"
+       "那要 `npm ci` ＋ 整棵 cargo（`ts-rs` 是跑测试时导出的）。那笔账本拍没量（断网，起不了云端）⇒ 明着欠着，不拿一个恒绿的格顶上")
+
+# ── 云端另有 job 盖着的那几格：逐条给**逐字锚点**，`C8c` 现打钉着 ────────────────
+invoke("fmt", ELSEWHERE,
+       "`rust` 那个 job（windows-latest）跑整个 workspace 的 fmt。⚠ 同一条命令、不同 host",
+       anchor="cargo fmt --all --check")
+invoke("fmt-backend", ELSEWHERE,
+       "`backend` 那个 job（ubuntu-latest）在 `src/backend` 上跑 fmt",
+       anchor="run: cargo fmt --check")
+invoke("cargo", ELSEWHERE,
+       "`rust`（windows-latest）与 `rust-linux`（ubuntu-latest）**两个 job** 各跑一趟同一条命令。"
+       "⚠ 云端那两趟**不带 `--lib`** ⇒ 人群比本格宽（含 integration/doc 档）；"
+       "而本格多一条**包数相等**断言，云端没有 ⇒ 一个 crate 静默掉出 workspace 时**云端看不见**",
+       anchor="cargo test --workspace --exclude code-picture-core")
+invoke("f3-copy", ELSEWHERE,
+       "秤 F3 那 9 条靠 `#[path]` 挂在 `monitor` 的 lib 上 ⇒ 云端那两趟 workspace test **会跑到它们**。"
+       "🔴 **但云端没有本格的三方对拍与两个方向的逐字锚点** —— 那 9 条静默消失时，"
+       "云端只是合计小 9，而「小一点」与「有测试没跑」在那边的输出上一模一样。"
+       "⇒ 这一维**只有本机这一格买得到**，如实记着",
+       anchor="cargo test --workspace --exclude code-picture-core")
+invoke("backend", ELSEWHERE,
+       "`backend` 那个 job 在 `src/backend` 上跑单包 `cargo test`",
+       anchor="name: Remote backend (Linux) lint + test")
+invoke("tsc", ELSEWHERE,
+       "`frontend` 那个 job 跑 `npm run build`，而 `tsc --noEmit` 是它的第一步。"
+       "⚠ 云端买的是「build 过得去」，**没有**本格那条「真读进 tsc 的份数 == 盘上现打份数」的恒等对账"
+       "（`include` 被收窄那一形，云端看不见）",
+       anchor="name: npm run build (tsc + vite)")
+invoke("npm", ELSEWHERE,
+       "`frontend` 那个 job 跑 `npm test`（同一条命令）",
+       anchor="name: unit tests (node pure-fn + vitest DOM)")
+invoke("winchk", ELSEWHERE,
+       "`rust` 那个 job 整个跑在 **windows-latest 原生**（host = `x86_64-pc-windows-msvc`）"
+       "⇒「monitor 在 Windows 上编不编得过」这一维云端有人看。"
+       "⚠ **ABI 不同**：本格是 `-gnu` 交叉，云端是 `-msvc` 原生 ⇒ 两边各盖一半，不是同一格",
+       anchor="cargo clippy --workspace --exclude code-picture-core --all-targets")
+invoke("winchk-backend", ELSEWHERE,
+       "`backend` 那个 job 有一条 `-msvc` 跨 target check（`真相源/92 §2.1.1` 的 `C3`）。"
+       "⚠ 同上：本格 `-gnu`、云端 `-msvc`",
+       anchor="cargo check --all-targets --target x86_64-pc-windows-msvc")
+for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity"):
+    invoke("ccm tests/e2e/" + _s, ELSEWHERE,
+           "云端有一条同套件的 `assert-pass-floor.sh` 调用行。"
+           "⚠ 那几条调用行**在 GitHub runner 上一趟都没跑过**（本仓不推送）—— "
+           "`ci.yml` 里 `weak-net` 那一步的头注已经为同一笔账登记过一次",
+           anchor="assert-pass-floor.sh " + _s)
+
+# ── 云端零覆盖的那几格：明写缺什么，**不许给锚点** ──────────────────────────────
+invoke("muslbuild", NOWHERE,
+       "🔴 现打（非截断）：`ci.yml` 里 `musl` 与 `zigbuild` **各命中 1 处，两处都在注释里**，"
+       "没有任何一步真编 musl ⇒ **云端这一维零覆盖**，与 `真相源/92 §2.1.4` 那条读数一致。"
+       "缺的是：zig 0.14.0 ＋ cargo-zigbuild 0.23.0 ＋ 两个 musl target —— 装得上，但那是一笔"
+       "**本拍量不了**的账（沙箱断网，`gh run view` 做不到）⇒ 不猜，明着登记欠着")
+invoke("deadcode", NOWHERE,
+       "本格是 `cargo check -p monitor` **非 test 构建**里 `never used` 的**恒等棘轮**（钉在 36）。"
+       "云端那几趟 clippy 跑的是 `--all-targets`（含 test 档，那些函数有调用方）⇒ **量的不是同一个数**，"
+       "也没有任何一处棘轮。⇒ 这一维云端零覆盖")
+invoke("ccbus-twophase", NOWHERE,
+       "它有 14 条是**真跑**（一次性 `CC_BUS_HOME` 里跑令牌/CAS/并发/Stop 钩子两条路）。"
+       "那几条在 GitHub runner 上依赖什么，**本拍一次都没量过**（断网，起不了云端）。"
+       "把一格我判不了的东西塞进云端子集，换回来的是一个我读不懂的红或绿 ⇒ 明着不进。"
+       "解锁条件写死：**有人能真跑一趟那个 job 并把逐条读数贴回来**，再定")
+
+
+# ── `HOOKS`：`tests/hooks/` 下每一份**今天触发得了吗**，如实登记 ─────────────────
+# 🔴 **「装了钩子」不等于「它跑过」** —— 这张表买的是前半句的**诚实**，不是后半句。
+#   后半句由 `tests/evidence/K-G4C-gate-receipt.py` 那张收据买。
+# ★ `fires` 那一栏**有现物钉着**（`C8e`）：现打 `git config --get core.hooksPath`，
+#   它为空 ⇒ 盘上**每一份** hook 都不在 git 的钩子路径上 ⇒ 登记里任何一条 `fires: True` 当场红。
+#   ⚠ 反过来那一半**机检买不到**：`core.hooksPath` 设上了也不代表 `pre-push` 会跑
+#   （要有人真 push，而本仓红线是不推送）⇒ 那一条只能是散文，已在 `why` 里逐字写死。
+HOOKS = {
+    "tests/hooks/pre-commit": {
+        "fires": False,
+        "why": "**默认是死的**，逐字写在它自己的头注里：要人手 `git config core.hooksPath tests/hooks` "
+               "才活。刻意不替用户设 —— 那会改用户本地配置，且 `core.hooksPath` 一设，"
+               "`.git/hooks/` 下的东西会全部失效。⚠ 它挡的是 `C7`（`[profile.dev]` 不许进提交），"
+               "**不跑门禁**：门禁全量含两趟 musl 交叉编译，挂到每一次提交上，人会立刻 "
+               "`--no-verify` 把它关掉，而「关掉了」与「过了」在终端上一模一样 ⇒ 更坏",
+    },
+    "tests/hooks/pre-push": {
+        "fires": False,
+        "why": "🔴 **今天触发不了，两层各一条，都如实记**：① 与上面同因 —— `core.hooksPath` 没设，"
+               "它不在 git 的钩子路径上（现打，`C8e` 钉着）；② **就算设上也仍然触发不了** —— "
+               "本仓红线是**不推送**（用户 09-20 明确裁定），没有 push 就没有 pre-push。"
+               "⇒ 它今天是一份**备好的机制**，不是一道在跑的闸。**别把「装上了」读成「有用了」。**"
+               "⚠ 那也正是它存在的意义：门禁那张收据的判据（`K-G4C-gate-receipt.py`）"
+               "在它里面**真接了线**，哪天用户改口允许推送，这条路当天就是活的，不用再补一次。",
+    },
+}
+
+def git_config(key):
+    """现打一条 git 配置。取不到就返回空串（`C8e` 把空串读成「没设」）。"""
+    try:
+        out = subprocess.run(["git", "-C", str(ROOT), "config", "--get", key],
+                             capture_output=True, text=True)
+        return out.stdout.strip()
+    except Exception:
+        return ""
+
+
+GATE_ONLY_RE = re.compile(r"^\s*GATE_ONLY:\s*(\S.*?)\s*$", re.M)
+CI_YML = ROOT / ".github/workflows/ci.yml"
+GATE_CALL = "bash tests/scripts/gate.sh"
+RECEIPT_RULER = "tests/evidence/K-G4C-gate-receipt.py"
+RECEIPT_WRITER = "gate_write_receipt"
+
+
+def check_invocation(text, cells):
+    """`C8`：门禁被谁调用 —— 登记 ↔ 现打格名 ↔ `ci.yml` 三处对拍。取法见上面那段头注。"""
+    out = []
+    got, want = set(cells), set(INVOCATION)
+    # C8a：反空真锚 —— 两向集合相等
+    if got - want:
+        out.append(f"C8a `gate.sh` 里有格**没登记「云端跑不跑」**：{sorted(got - want)} —— "
+                   f"加一格就回本文件的 `INVOCATION` 补一条（写 `CLOUD` 就同拍改 `ci.yml` 的 "
+                   f"`GATE_ONLY:`，写不进云端就明写为什么）")
+    if want - got:
+        out.append(f"C8b 调用登记里有格**盘上没有**：{sorted(want - got)} —— 登记陈了")
+
+    for name, ent in sorted(INVOCATION.items()):
+        if ent["where"] not in (CLOUD, ELSEWHERE, NOWHERE):
+            out.append(f"C8c `{name}` 的去处 {ent['where']!r} 不在闭集里")
+        if not (ent["why"] or "").strip():
+            out.append(f"C8c `{name}` 没给理由 —— 空白格不算登记（同 `C6`）")
+
+    if not CI_YML.exists():
+        out.append(f"C8d `{CI_YML}` 盘上不存在 —— 本条的被测对象没了")
+        return out
+    ci = CI_YML.read_text(encoding="utf-8")
+
+    # C8c：`ELSEWHERE` 的锚点现打要在 `ci.yml` 里；`NOWHERE` 不许有锚点
+    for name, ent in sorted(INVOCATION.items()):
+        if ent["where"] == ELSEWHERE:
+            a = ent["anchor"]
+            if not a:
+                out.append(f"C8c `{name}` 自称「云端另有 job 盖着」却**没给逐字锚点** —— "
+                           f"一句没有钉子的「别处有人看」就是一句没人守的散文")
+            elif ci.count(a) < 1:
+                out.append(f"C8c `{name}` 的锚点在 `ci.yml` 里命中 0 次：{a!r} —— "
+                           f"那一步搬走了 / 改了名，而这条登记还在说「云端有人看」。"
+                           f"**那正是本条要抓的形状**（买到了没有，却还在说买到了）")
+        elif ent["where"] == NOWHERE and ent["anchor"]:
+            out.append(f"C8c `{name}` 自称**云端零覆盖**却带了一条锚点 —— 自相矛盾，"
+                       f"两档只能挑一档")
+
+    # C8d：`local-gate` 那个 job 真的在 `ci.yml` 里，且**门禁之后**跑收据判据
+    n_gate = ci.count(GATE_CALL)
+    if n_gate != 1:
+        out.append(f"C8d `ci.yml` 里 `{GATE_CALL}` 命中 {n_gate} 处（应当恰好 1 处）—— "
+                   f"这道门在云端零调用，正是 `G4` 空洞③ 的题面；多于 1 处则两个 job "
+                   f"各跑一趟，收据会互相盖掉")
+    else:
+        i_gate = ci.index(GATE_CALL)
+        if RECEIPT_RULER not in ci:
+            out.append(f"C8d `ci.yml` 里找不到 `{RECEIPT_RULER}` —— **跑了门禁而没人验收据**，"
+                       f"那就退回成「装了钩子」那一形：门禁哪一步静默跳过了，云端一个字都不会说")
+        elif ci.index(RECEIPT_RULER) < i_gate:
+            out.append(f"C8d `ci.yml` 里 `{RECEIPT_RULER}` 排在 `{GATE_CALL}` **前面** —— "
+                       f"验的是上一趟留下的收据，那是一张陈收据，比没有更坏")
+
+    # C8d：`GATE_ONLY:` 那一行 ↔ 登记里的 `CLOUD` 集合，**两向相等**
+    ms = GATE_ONLY_RE.findall(ci)
+    if len(ms) != 1:
+        out.append(f"C8d `ci.yml` 里 `GATE_ONLY:` 命中 {len(ms)} 处（应当恰好 1 处）—— "
+                   f"云端跑哪几格只许有一份住址")
+    else:
+        yml_set = {t for t in ms[0].split() if t}
+        cloud = {n for n, e in INVOCATION.items() if e["where"] == CLOUD}
+        # 归一：`GATE_ONLY` 写套件短名，登记与 `found_cells()` 用规范名（同 `C5d` 那一跳）
+        norm = {t if t in got else E2E_PREFIX + t for t in yml_set}
+        if norm != cloud:
+            out.append(f"C8d `ci.yml` 的 `GATE_ONLY:` 与登记里的「{CLOUD}」**对不上**："
+                       f"yml 点了而登记没写 {sorted(norm - cloud)} · "
+                       f"登记写了而 yml 没点 {sorted(cloud - norm)} —— "
+                       f"🔴 **这一条就是「不许静默少跑」那句话的机器面**："
+                       f"少跑一格必须先在登记里写一条理由，改 yml 不改登记当场红")
+
+    # C8e：`HOOKS` 登记 ↔ `git ls-files tests/hooks/`，两向相等 ＋ `fires` 有现物钉着
+    on_disk = {f for f in ls_files() if f.startswith("tests/hooks/")}
+    reg = set(HOOKS)
+    if on_disk - reg:
+        out.append(f"C8e `tests/hooks/` 下有文件**没登记「今天触发得了吗」**：{sorted(on_disk - reg)}")
+    if reg - on_disk:
+        out.append(f"C8e 钩子登记里有文件**盘上没有**：{sorted(reg - on_disk)} —— 登记陈了")
+    if not on_disk:
+        out.append("C8e `tests/hooks/` 下一个被跟踪的文件都没有 —— 分母是空的，"
+                   "这张表全成空真（不许当成绿，同 `hooks` 那一格的口径）")
+    hooks_path = git_config("core.hooksPath")
+    for f, ent in sorted(HOOKS.items()):
+        if not isinstance(ent.get("fires"), bool):
+            out.append(f"C8e `{f}` 的 `fires` 不是布尔 —— 「触发得了吗」只许答是/否")
+        if not (ent.get("why") or "").strip():
+            out.append(f"C8e `{f}` 没说清为什么 —— 空白格不算如实登记")
+        if ent.get("fires") and not hooks_path:
+            out.append(f"C8e `{f}` 登记着**触发得了**，而现打 `git config core.hooksPath` 是空的 "
+                       f"⇒ 盘上没有一份 hook 在 git 的钩子路径上，这条登记是假的。"
+                       f"🔴 「装了钩子」不等于「它会跑」——本条买的正是这句话")
+
+    # C8f：收据这条路在 `gate.sh` 里**真接上了**，判据本体也在盘上
+    n_writer = text.count(RECEIPT_WRITER)
+    if n_writer < 2:
+        out.append(f"C8f `gate.sh` 里 `{RECEIPT_WRITER}` 只命中 {n_writer} 处"
+                   f"（定义 ＋ 裁决那一段的调用，至少 2 处）—— 收据的写手还在，"
+                   f"而**没有人调它**：那就退回成一段注释了（同 `C5c` 对 `gate_print_blind` 的判法）")
+    if not (ROOT / RECEIPT_RULER).exists():
+        out.append(f"C8f `{RECEIPT_RULER}` 盘上不存在 —— 收据没人判，"
+                   f"「这一趟真跑了门禁吗」这句话又回到没有判据的状态")
+    return out
+
+
 def check_self_description(text, cells, rollcall):
     out = []
     hdr = header_lines(text)
@@ -1382,6 +1761,12 @@ def main():
     fails += check_self_description(text, cells, int(m.group(1)) if m else None)
     # `C5c`（`K-R122`）：裁决行上那句**射程**（`KR122D2` 乙），取法见上面那段头注。
     fails += check_blind_scope(text, cells)
+    # `C5d`（`G4` 空洞③ 09-20）：裁决行那串**点名**与盘上两向相等 ＋
+    #   射程表的说明栏里不许再有第二份「这个数怎么来的」。取法见上面那段头注。
+    fails += check_verdict_rollcall(text, cells)
+    # `C8`（`G4` 空洞③ 09-20）：这道门**被谁调用** —— 登记 ↔ 现打格名 ↔ `ci.yml`
+    #   三处对拍 ＋ 钩子那张「今天触发得了吗」。取法与诚实边界见上面那段头注。
+    fails += check_invocation(text, cells)
 
     print(f"# `K-R80` `KR80D3` 门禁分格覆盖登记 —— 量于 `{GATE}`")
     print()
@@ -1396,7 +1781,7 @@ def main():
     order = [c for c in ("worktree-clean", "hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
                          "gate-selfdesc", "platform",
                          "installface", "fmt", "fmt-backend", "winchk", "winchk-backend",
-                         "muslbuild", "cargo", "deadcode", "generated", "backend", "tsc", "npm")
+                         "muslbuild", "cargo", "f3-copy", "deadcode", "generated", "backend", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
     missing = sorted(set(REGISTRY) - set(order))
     if missing:
@@ -1506,6 +1891,12 @@ def main():
               + 1                                 # C4a 分区恒等（15 棵合计 == 现打总数）
               + len(TREES) * 2                    # C4b 每棵非空 + 每棵盘上存在
               + 1                                 # C5  裁决行的数 == 现打格数
+              + 2                                 # C5d 裁决行那串点名两向 ＋ 说明栏黑名单
+              + 2                                 # C8a 调用登记两向集合对拍
+              + len(INVOCATION)                   # C8c 每格一条去处＋理由（`ELSEWHERE` 还要锚点现打在 ci.yml）
+              + 3                                 # C8d job 在、收据判据排在门禁之后、GATE_ONLY 两向
+              + 2 + len(HOOKS)                    # C8e 钩子登记两向 ＋ 每份一条「今天触发得了吗」
+              + 2                                 # C8f 收据写手接上了 ＋ 判据本体在盘
               + len(NO_GATE_NEEDED)               # C6b 每条「不需要门」的说明 + 钉子
               + n_arch)                           # C6c 分档表里逐份点名的成员
     # 🔴 **这个数不是本条的反空真锚** —— 它只说「判了多少条」。真正拦「一条都没判」的是
@@ -1514,9 +1905,16 @@ def main():
     print(f"gate-selfdesc: {checks} passed（分母 = C1 两向 2 ＋ C2 锚点 {len(REGISTRY)} ＋ "
           f"C3/C6 逐格逐树裁词与理由 {len(REGISTRY)}×{len(TREES)}×2 ＋ C4a 分区恒等 1 ＋ "
           f"C4b 每棵树非空与在盘 {len(TREES)}×2 ＋ C5 格数对拍 1 ＋ "
+          f"C5d 裁决行点名两向 ＋ 说明栏黑名单 2 ＋ "
+          f"C8 被谁调用（登记两向 2 ＋ 逐格去处 {len(INVOCATION)} ＋ ci.yml 三条 3 ＋ "
+          f"钩子登记 {2 + len(HOOKS)} ＋ 收据接线 2）＋ "
           f"C6b「不需要门」{len(NO_GATE_NEEDED)} 条 ＋ C6c 分档成员 {n_arch} 份）")
     print("KR80D3: OK —— C1..C6 全过；C5b 全过（`K-R91` `KR91D1`）；"
           "C5c 全过（`K-R122` `KR122D2` 乙：裁决行那句射程）；"
+          "C5d 全过（`G4` 空洞③：裁决行那串点名两向相等 ＋ 说明栏不许有第二份取法）；"
+          "C8 全过（`G4` 空洞③：门禁被谁调用 —— 登记 ↔ 格名 ↔ `ci.yml` 两向相等 ＋ "
+          "钩子「今天触发得了吗」如实登记；⚠ 它买的**只是盘上这几份文本**，"
+          "一个字都没说云端那一趟会绿，也没说那个 job 起过）；"
           "C6b 全过（`K-R82` `KR82D3`）；C6c 全过（`K-R91` `KR91D2`）"
           "（⚠ 它只判「登记完整且指得到真东西」，不判裁词对不对、不判归得对不对）")
     return 0
