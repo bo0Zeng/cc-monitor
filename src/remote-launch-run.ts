@@ -24,7 +24,15 @@ import {
   planAttach,
 } from "./launch-requests";
 import type { LaunchModifiers } from "./launch-plan";
-import { renderFallback } from "./launch-render-fallback";
+// 🔴 〔步 22b·B 2026-09-20〕**这里原来 `import { renderFallback } from "./launch-render-fallback"`。**
+// `设计/90 §4 E` 收官：外层 tmux 那三格切到 `backend::control::payload::render_tmux_outer`
+// 之后，本文件是 `renderFallback` **最后一个生产消费者** —— 那一行随之退役。
+// ⚠ 那两个文件（`launch-render-fallback.ts` / `session-backend.ts`）**没删**：
+// 它们今天是逐字节金标准（`payload-golden.json` / `tmux-outer-golden.json`）的**左边**，
+// 也就是「另一种语言的独立实现」；删它们等于把跨语言对拍降级成「Rust 没变」的冻结快照
+// —— 与 `launch-render-cli.ts` 同一条先例（复裁过两次：不划算，不删）。
+// 逐处住址与「还站不站在生产路上」两把尺子见 `launch_wire_f07_main_path_tests.rs` 的
+// `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，**本刀两张都重裁过**。
 // U8c-2c-2：`tryRenderCli` **不再是生产渲染器**（那一支已切到 Rust）——
 // 它降级为「只供 `launch-cli-golden.ts` 生成夹具」。
 // ⚠ 〔U8c-3-r2 08-14〕原写「删在 U8c-3」。**那个排期本身该被重问一次**：它今天是
@@ -52,9 +60,16 @@ import type { LaunchContext, LaunchPlan } from "./launch-plan";
  *  与「IPC/序列化异常」（通道问题，与载荷无关 ⇒ 可回落）。 */
 const REFUSE_TAG = "REFUSE:";
 
-/** 挑渲染器：`forceLegacyLaunchRenderer` 手动逃生口（MASTERPLAN R2）短路到兜底；否则探测到 ccm
+/** 挑渲染器：`forceLegacyLaunchRenderer` 手动逃生口（MASTERPLAN R2）短路到载荷那条；否则探测到 ccm
  *  且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/含 CLI 表达不了的
- *  维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。 */
+ *  维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。
+ *
+ *  🔴 〔步 22b·B 2026-09-20〕**两条分支今天都在 Rust 里**（`设计/90 §4 E` 收官）：
+ *  `render_ccm_launch`（`ccm …` 调用行）与 `render_launch_payload`（内层载荷 ＋ 外层 tmux 三格）。
+ *  ⚠ `forceLegacyLaunchRenderer` 这个键名从此**名不副实** —— 它短路掉的不再是「Rust → TS」，
+ *  是「`ccm` 调用行 → 裸载荷/tmux 编排串」。改名要动 `src/behavior.ts`（落盘键名，改了会把
+ *  用户手写的 `true` 静默当未知键忽略 —— `evidence/S29-readings.md` 那条登记）与
+ *  `src/settings/panel.ts`，**两处都不在步 22b 的写区** ⇒ 如实登记，交回报给 PM。 */
 async function renderLaunchCommand(
   origin: string,
   ctx: LaunchContext,
@@ -71,20 +86,15 @@ async function renderLaunchCommand(
     // 前端只发结构化请求，命令由后端渲染 —— 这是本工作区第一条真正切过去的渲染路径。
     // TS 的 `tryRenderCli` **没删**，降级为「只供夹具对拍」（删在 U8c-3）。
     //
-    // ⚠ **兜底那支仍在 TS**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
-    // 而 §33b 写死了「搬它之前必须先回答三件事」。⇒ 那支归 U8c-3。
-    // ⚠ 〔U8c-3-r2 08-14 复裁〕那一拍的结论是「三问一条都没过期到可以放行」——
-    // 🔴 **那是 08-14 的读数，今天不成立**：③ 已随定框 `K35` / `K-R59`（09-11）退役，
-    // ① 也在 `K-P2 D3`（09-03）之后变过一次。三问的**今天版**只有一个家：
-    // `src/doc/INVARIANTS.md §33b` 那张表（由 `doc_claim_registry` 逐问与现场对拍，
-    // 改行为不改答案当场红）。**别在这儿复述那三问，复述就会漂。**
-    //
-    // 🔴 〔`K-R105` 09-13〕**这一处删不得的理由**：本行是 `renderFallback` 今天
-    // **唯一有生产调用方**的那个消费者（尺子B），而它产的三格全要外层 tmux 命令。
-    // 处数与「站不站在生产路上」两把尺子都住 `launch_wire.rs`
-    //（`TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，**从源码派生**）——
-    // 这里原来写着「今天有 3 个生产消费者」，那是尺子A 的数被当成尺子B 读，已撤。
-    // 依据各有一条会红的判据，住 `launch_wire.rs` 的 `f07_main_path_tests`。
+    // 🔴 〔步 22b·B 2026-09-20〕**降级那条路今天也在 Rust 里了。**
+    // 这里原来写着两段：「兜底那支仍在 TS（`container: tmux` 时它要外层 tmux 命令）」
+    // 与「本行是 `renderFallback` 唯一有生产调用方的那个消费者（尺子B）」——
+    // `设计/90 §4 E` 收官之后**两句都假了**：降级落到下面那两格，
+    // 两格都是 `commands.render_launch_payload`（内层 ＋ 外层三格同一条命令）。
+    // ⇒ 降级换的是**渲染形态**（`ccm …` 调用行 → 裸载荷/tmux 编排串），
+    //   不再是**换一种语言**。
+    // ⚠ §33b 那三问的**今天版**只有一个家：`src/doc/INVARIANTS.md §33b` 那张表
+    //（由 `doc_claim_registry` 逐问与现场对拍）。**别在这儿复述，复述就会漂。**
     const r = await renderCliViaBackend(ctx, plan, probe);
     if (r.ok) return r.cmd;
     // R04① 的第二条收益（Phase D 审计指出它此前"只活在测试里"，生产侧零消费者）：
@@ -92,11 +102,10 @@ async function renderLaunchCommand(
     // 走兜底渲染器是**正常且预期**的路径（没装 ccm 的用户每次拉起都会走它），
     // 弹 toast 或 warn 等于对着正常行为报警，是净噪音。要查"为什么这台机没走 CLI 路径"时，
     // 这一行是唯一线索；不查的时候它不打扰任何人。
-    console.debug(`[launch] CLI 渲染器降级 → 兜底渲染器（origin=${origin}）: ${r.reason}`);
+    console.debug(`[launch] CLI 渲染器降级 → 后端载荷渲染器（origin=${origin}）: ${r.reason}`);
   }
-  // U8a-2c-pre（账本 S28）：兜底那支的 **`container:"none"` 那一格**也切到 Rust 了
-  // （`backend::control::payload::render_payload`）。**只有这一格** —— tmux 那两格还要外层容器命令
-  // （`session-backend.ts`），而 §33b 写死了「搬它之前必须先回答三件事」⇒ U8c-3。
+  // U8a-2c-pre（账本 S28）：兜底那支的 **`container:"none"` 那一格**先切到 Rust
+  // （`backend::control::payload::render_payload`）。
   if (plan.container.kind === "none" && plan.action.kind !== "attach") {
     try {
       return await commands.render_launch_payload({ req: buildPayloadRenderRequest(plan) });
@@ -106,12 +115,41 @@ async function renderLaunchCommand(
       throw new Error(`后端拒绝渲染载荷：${String(e)}`);
     }
   }
-  return renderFallback(plan);
+  // ★★★ `设计/90 §4 E` 收官那一刀〔步 22b·B 2026-09-20〕：**外层 tmux 那三格也走后端了。**
+  //
+  // 剩下的这三格是 `container:tmux` 的 `create` / `send-into` 加 `action:attach` ——
+  // 它们要的是**外层 tmux 命令**（`new-session` / `send-keys` / `attach`），
+  // 22b·A 把承接方补在了 `backend::control::payload::render_tmux_outer`
+  // （并进「Rust 载荷」那一份，不单开模块 —— `设计/00 §2.5 ④` 要的是消灭副本），
+  // 外加一份**入库的逐字节金标准**（`fixtures/tmux-outer-golden.json`，13 条）
+  // 证明它与今天线上那一串一个字节都不差。本刀把生产接过来。
+  //
+  // 🔴 **不留回落、不留开关、不留双写**（条 80「不要管旧配置」的同一条纪律）：
+  // 后端拒了就**诚实失败**。曾经那条回落（`renderFallback(plan)`）从此不在生产段里 ——
+  // 保留它等于把 Rust 侧那一整排 fail-closed 闸（空会话名 · `Raw` 越出
+  // `[A-Za-z0-9_-]` · 控制符/视觉欺骗字符 · 越界 `@ccm_sid` · 空串 cwd ·
+  // create 少送载荷 · attach 多送载荷 · 两层 cwd 同时送）一次性变成 fail-open，
+  // 因为 TS 座头注逐字「不做校验/转义」—— 同样的坏输入它**照拼**。
+  //
+  // ⚠ **这一跳不经网络、不依赖远端**：`render_launch_payload` 是 monitor 自己进程里的
+  // tauri 命令（`src/bridge`），不是远端那份后端。⇒ 切过去不引入任何可用性前提。
+  //
+  // ⚠ 三格各自送什么、两层的 cwd 怎么分工，见 [`buildTmuxOuterRenderRequest`]；
+  // **生产送出去的请求必须带 `outer`**（少送它后端会渲出一条只有内层载荷、
+  // 没有 tmux 容器的串 —— 那时用户的会话根本不在 tmux 里，而两侧的闸一个都不响）。
+  // 那一条由 `tests/remote-launch-run.vitest.ts` 的 `W22B` 组逐格钉着。
+  try {
+    return await commands.render_launch_payload({ req: buildTmuxOuterRenderRequest(plan) });
+  } catch (e) {
+    // 同上一格：带 `REFUSE:` 标的是坏输入（换条路渲染只会糊过去），不带标的是通道异常；
+    // 两者在这一格的处置**相同** —— 因为这里已经没有第二条路了。
+    throw new Error(`后端拒绝渲染外层 tmux 命令：${String(e)}`);
+  }
 }
 
 /** U8c-2c-2：把 `{ctx, plan, probe}` 摊成上线形状，交给 Rust 渲染 `ccm …` 调用行。
  *
- *  **`ok:false` 不是错误，是诚实降级**（§33）—— 调用方拿着 `reason` 去走兜底渲染器，
+ *  **`ok:false` 不是错误，是诚实降级**（§33）—— 调用方拿着 `reason` 去走载荷那条，
  *  与切换前 `tryRenderCli` 的语义逐字相同。
  *
  *  ⚠ IPC 本身失败（后端崩/参数被拒）与「渲染器说渲染不出来」是**两件事**：
@@ -136,7 +174,9 @@ async function renderCliViaBackend(
  *
  *  ⚠ 抽之前，`renderCliViaBackend` 里这 22 行**零判据** —— 审计实测三个变异全绿：
  *  成功分支整个作废 · `isSsh` 恒 false（CLI 路径永久死掉）· `ccmSid`/`model` 恒 null
- *  （两个维度静默消失）。它们静默的形态都一样：**回落 TS 兜底渲染器，功能不变砖、门禁全绿**。
+ *  （两个维度静默消失）。它们静默的形态都一样：**回落到另一条渲染路，功能不变砖、门禁全绿**
+ *  〔那时那一条是 TS 的兜底渲染器；步 22b·B 之后是 Rust 的载荷渲染器 —— **形状没变**：
+ *  「静默换一条路」永远长得和「本来就该走那条」一模一样，所以它需要一条自己的判据〕。
  *
  *  现在 `launch-cli-golden.ts` 用这同一个函数产夹具里的 `req`，Rust 侧拿**生产 wire 类型**
  *  反序列化它、跑**生产命令**、与 TS 渲染器的产物逐字节比 ⇒ 上面那三个变异各自会让
@@ -187,11 +227,16 @@ export function buildCliRenderRequest(
  * 2. **attach 那一格不带载荷** —— 它一个 agent 进程都不起，
  *    `env` / `args` / `launcher` 一律空；带了后端会拒（而不是静默丢）。
  *
- * ⚠ **生产调用方今天是 0**〔`设计/90 §4 E` 本轮只搬了「后端产得出」那一半〕：
- * 唯一的调用者是金标准发生器 `src/launch-tmux-outer-golden.ts`。
- * 把 `renderLaunchCommand` 的最后那一行接过来是下一拍的事 ——
- * **如实登记，别把「后端产得出」读成「生产在用它」**（尺子A 与尺子B 的老毛病，
- * 逐字见 `launch_wire.rs` 的 `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH` 两张表）。
+ * 🔴 **〔步 22b·B 2026-09-20〕生产接过来了。** 这里原来逐字写着「生产调用方今天是 0
+ * 〔本轮只搬了『后端产得出』那一半〕，唯一的调用者是金标准发生器」——
+ * 那是 22b·A 的读数。今天的调用方有两个：`renderLaunchCommand` 最后那一格（**生产**）
+ * 与 `src/launch-tmux-outer-golden.ts`（金标准发生器）。
+ *
+ * ⚠ **最要紧的一条**：生产那一格送出去的 `req` **必须带 `outer`**。
+ * 少送它不会有任何一道闸响 —— 后端会老老实实渲一条**只有内层载荷**的串
+ *（那是 `container:"none"` 的合法形态），而用户的会话于此根本不在 tmux 里。
+ * ⇒ 「三格各自送的是哪个 `outer.mode`」由 `tests/remote-launch-run.vitest.ts`
+ * 的 `W22B` 组逐格钉着（死值验：把这一格换成 `buildPayloadRenderRequest` ⇒ 三条红）。
  */
 export function buildTmuxOuterRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
   const base = buildPayloadRenderRequest(plan);
@@ -394,9 +439,15 @@ export async function runRemoteResumeTmux(
  *  ⚠ **`"refused"` 要 toast**（改了原来那条「绝不 toast」的纪律）：回落是用户看不出区别的，
  *  所以不该吵；而**拒绝**意味着这次就地 resume 没做成，用户必须知道 —— 否则他会以为成功了。
  *
- *  ⚠ **诚实登记一处仍然 fail-open**：载荷渲染被 Rust 拒（非法 configDir / 会裂的 arg）时走
- *  `"fallback"`，而兜底渲染器（TS）对同样输入**未必拒**。那不是本件引入的（这一格今天根本不经
- *  Rust 渲染）；收成 fail-closed 要连兜底渲染器一起收 ⇒ U8c-3。 */
+ *  🔴 **〔步 22b·B 2026-09-20〕那条登记在案的 fail-open 关掉了。**
+ *  原文逐字：「⚠ **诚实登记一处仍然 fail-open**：载荷渲染被 Rust 拒（非法 configDir /
+ *  会裂的 arg）时走 `"fallback"`，而兜底渲染器（TS）对同样输入**未必拒** ……
+ *  收成 fail-closed 要连兜底渲染器一起收 ⇒ U8c-3。」
+ *  ⇒ `设计/90 §4 E` 收官之后，`"fallback"` 那一跳去渲染整串走的也是
+ *  `commands.render_launch_payload`（同一个 Rust 渲染器、同一排闸）⇒
+ *  **同样的坏输入在回落那条路上照样被拒**，不再有「换条路糊过去」这个出口。
+ *  ⚠ 诚实边界：本条说的是「两条路的拒绝口径同源」，**不是**「回落那一跳不会重做」——
+ *  重做安不安全仍由 `mayFallBack` 那条判定（F14）负责，一个字没动。 */
 async function sendIntoViaBackend(
   origin: string,
   name: string,
@@ -421,8 +472,11 @@ async function sendIntoViaBackend(
     //   「两者都在后端那一跳之前 ⇒ 能证明什么都没发出去 ⇒ 可回落」
     // **对一半错一半**：「没发出去 ⇒ 重做不会重复执行」对；「所以可以回落」错 ——
     // 没发出去只说明**重做是安全的**，**不说明重做走的那条路也会拒**。
-    // 而回落那条路是 TS 兜底渲染器，它对同样输入**未必拒**（本文件上面那格逐字承认过）。
-    // ⇒ 一次 Rust 侧的 fail-closed，被这个 catch 变成了 fail-open。
+    // 🔴 〔步 22b·B 2026-09-20 订正一句〕原文写「而回落那条路是 TS 兜底渲染器，它对同样输入
+    // **未必拒**」——`设计/90 §4 E` 收官之后那条路也是 Rust 渲染（同一排闸），
+    // **口径已经同源**。⇒ 今天保留这个分法的理由**换人了，而结论不变**：
+    // 带标说明这是一次**业务拒绝**，重做只会被同一道闸再拒一次（净噪音 ＋ 一次假成功的机会），
+    // 而 `refused` 会让用户看见「这次就地 resume 没做成」。**不是因为另一条路更松。**
     //
     // 分法：Rust 的**业务拒绝**都经 `payload::refuse()` 打了 `REFUSE:` 标
     //（那侧有判据 `every_business_rejection_is_tagged` 钉住「一条都不许裸写」）。
@@ -433,7 +487,7 @@ async function sendIntoViaBackend(
     // 本件不在这里开第一个结构化的口 —— 那是 `U6`）。手写一个带同样前缀的普通错误串会被误判。
     const raw = String(e);
     if (raw.includes(REFUSE_TAG)) {
-      console.debug(`[P1] send-into 载荷渲染被拒，**不回落**（回落会用兜底渲染器糊过去）：${raw}`);
+      console.debug(`[P1] send-into 载荷渲染被拒，**不回落**（同一道闸只会再拒一次）：${raw}`);
       return { verdict: "refused", reason: raw };
     }
     console.debug(`[F14] send-into 回落到整串（通道异常，尚未发出）：${raw}`);
@@ -444,8 +498,10 @@ async function sendIntoViaBackend(
 /** F03：往一个**已存在的空 tmux**（idle-tmux：claude 已退、只剩交互 shell 的 `<sid8>-cc`）就地
  *  resume——send-keys 载荷 + attach，复用原会话名（不产孤儿，治 #76）。签名/返回值与
  *  `runRemoteResumeTmux` 对齐：true=真拉起来了；false=命令构造失败/拉起失败（已回退剪贴板）。
- *  **`tryRenderCli` 对这类 plan（`mode==="send-into"`）恒返回 `ok:false`**——shared/ccm 没有就地
- *  复用能力，本函数因此恒走兜底渲染器（诚实放弃，见 F03 计划 §2「#76 防线」）。 */
+ *  **CLI 那条渲染器对这类 plan（`mode==="send-into"`）恒返回 `ok:false`**——ccm 没有就地
+ *  复用能力，本函数因此恒走载荷那条（诚实放弃，见 F03 计划 §2「#76 防线」）。
+ *  🔴 〔步 22b·B 2026-09-20〕「载荷那条」今天是 **Rust**（`render_launch_payload` 带
+ *  `outer:{mode:"send-into"}`），不再是 TS 的座。 */
 export async function runRemoteResumeIntoExistingTmux(
   origin: string,
   sid: string,

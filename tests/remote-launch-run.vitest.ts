@@ -20,6 +20,8 @@ import {
   // 🔴 `K-R109` `KR109D3`：wire 上那两态同形，是「兜底那条路走得到」的第一环。
   buildCliRenderRequest } from "../src/remote-launch-run";
 import { planAttach } from "../src/launch-requests";
+import { renderLaunchPayloadStub } from "./test-support/launch-render-ipc-stub.ts";
+import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
@@ -43,45 +45,37 @@ function stubClipboard(writeText: (t: string) => Promise<void>): void {
 const LOCAL_ATTACH_FROM_BACKEND = "<backend-rendered-attach-line>";
 
 /**
+ * 🔴 〔步 22b·B 2026-09-20〕**外层 tmux 那三格**由后端交出来的那一串的替身。
+ * 同上一条的理由：本文件判的是「前端有没有把后端交的那一串原样交出去」，
+ * 不是「后端渲得对不对」（那是 `fixtures/tmux-outer-golden.json` 那条逐字节对拍的活）。
+ * 刻意**不**长得像 `tmux new-session …` —— 长得像的话，前端偷偷自己拼一条也照样过。
+ */
+const OUTER_FROM_BACKEND = "<backend-rendered-outer-line>";
+
+/**
  * F03：`renderLaunchCommand` 先给 `probeCcm` 打一发 `invoke("probe_ccm_cli", …)`，早于本测试组
  * 原本唯一关心的 `launch_remote_terminal` 调用——不能再用 `mockResolvedValueOnce`/
  * `mockRejectedValueOnce` 排队（先到的是 probe 调用，会把队列里配给 launch_remote_terminal 的
  * once 值吃掉）。改按 cmd 路由：probe 恒答"未装"（强制走兜底渲染器，保持本文件断言的裸 shell
  * 命令串不变），`launch_remote_terminal` 才落到调用方传入的具体行为。
  */
-interface PayloadRenderReq {
-  env: ({ kind: string; value?: string })[];
-  cwd: string | null;
-  launcher: string;
-  args: string[];
-  nestedEnv: string[];
-}
-
 function mockInvoke(launchTerminal: () => Promise<unknown>): void {
   invokeMock.mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === "probe_ccm_cli") {
       return Promise.resolve({ installed: false, version: null, capabilities: [] });
     }
-    // U8a-2c-pre：兜底那支的 `container:"none"` 载荷现在由 **Rust** 渲染
-    // （`backend::control::payload::render_payload`）。本文件的题目是 toast/剪贴板分支，不是渲染 ——
-    // 但下面几条断言要看命令内容，所以这里给一个**忠实的最小镜像**。
-    // ⚠ 它不是第三份实现：渲染的正确性由 `src/backend/control/fixtures/payload-golden.json`
-    // 的跨语言逐字节对拍钉住，这里只是让 IPC 桩吐出形状对的串。
+    // U8a-2c-pre：兜底那支的 `container:"none"` 载荷由 **Rust** 渲染
+    //（`backend::control::payload::render_payload`）；🔴 **步 22b·B 起外层 tmux 那三格
+    // 也走同一条命令**（`设计/90 §4 E` 收官）。本文件的题目是 toast/剪贴板分支，不是渲染 ——
+    // 但下面几条断言要看命令内容，所以桩要吐出形状对的串。
+    // ⚠ 它**不是**第三份渲染实现：字节的正确性由 `payload-golden.json` 与
+    //   `tmux-outer-golden.json` 两份入库夹具的跨语言逐字节对拍钉着。
+    // 🔴 **这份镜像只有一个家**（`tests/test-support/launch-render-ipc-stub.ts`）——
+    //   原来本文件与 `send-into-backend.vitest.ts` 各写一份，而两份手写镜像必漂。
     if (cmd === "render_launch_payload") {
-      const r = (args as { req: PayloadRenderReq }).req;
-      const env = r.env
-        .map((op) =>
-          op.kind === "export-config-dir"
-            ? `export CLAUDE_CONFIG_DIR='${op.value}'; `
-            : op.kind === "export-model"
-              ? `export ANTHROPIC_MODEL='${op.value}'; `
-              : op.kind === "unset-config-dir"
-                ? "unset CLAUDE_CONFIG_DIR; "
-                : `unset ${r.nestedEnv.join(" ")}; `,
-        )
-        .join("");
-      const cd = r.cwd ? `cd '${r.cwd}' && ` : "";
-      return Promise.resolve(`${env}${cd}${[r.launcher, ...r.args].join(" ")}`);
+      return Promise.resolve(
+        renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req),
+      );
     }
     if (cmd === "launch_remote_terminal") return launchTerminal();
     return Promise.resolve(undefined);
@@ -117,7 +111,7 @@ describe("F41 runRemoteResume", () => {
     expect(cmds).toContain("render_launch_payload");
     // 送过去的必须是**结构化请求**，不是渲染好的串。
     const req = (invokeMock.mock.calls.find((c) => c[0] === "render_launch_payload")?.[1] as
-      { req: PayloadRenderReq }).req;
+      { req: PayloadRenderRequest }).req;
     expect(Array.isArray(req.env)).toBe(true);
     expect(req.args).toContain("sid-9");
     expect(req.nestedEnv.length).toBeGreaterThan(0);
@@ -250,6 +244,10 @@ describe("F41 runRemoteResume", () => {
         return Promise.resolve([
           { name: "proj-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: null },
         ]);
+      // 🔴 〔步 22b·B〕铸出来的名字今天落在**后端渲的外层 tmux 命令**里
+      //（`create` 那一格 ⇒ `new-session -d -s <名>`），所以这条桩非配不可。
+      if (cmd === "render_launch_payload")
+        return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
       if (cmd === "launch_remote_terminal") {
         remoteCmds.push((args as { remoteCmd: string }).remoteCmd);
         return Promise.resolve(undefined);
@@ -269,6 +267,8 @@ describe("F41 runRemoteResume", () => {
     const remoteCmds: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "list_remote_tmux") return Promise.reject("ssh 抖动");
+      if (cmd === "render_launch_payload")
+        return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
       if (cmd === "launch_remote_terminal") {
         remoteCmds.push((args as { remoteCmd: string }).remoteCmd);
         return Promise.resolve(undefined);
@@ -494,13 +494,33 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
 //
 // ⇒ `KR109D3` 判 **A**：座留着，**这一条路写成判据钉住**。
 //
+// # 🔴🔴 〔步 22b·B 2026-09-20〕**这一组重裁了一半：那条路还在，落点换人了。**
+//
+// `设计/90 §4 E` 收官 ⇒ `renderLaunchCommand` 最后那一格（`container:tmux` 的
+// `create` / `send-into` ＋ `action:attach`）改问 `commands.render_launch_payload` 要，
+// 请求里带 `outer`，由 `backend::control::payload::render_tmux_outer` 渲。
+// ⇒ **上面那句「后端拒 ⇒ 落到座」今天只对前半句**：
+// 后端的 **CLI 渲染器**（`render_ccm_launch`）拒了没错，但接手的是**后端的载荷渲染器**，
+// 不再是 TS 的座。⇒ 第二环原来断的「真的落到座产的那一串」**是一句今天为假的话**，
+// 本刀把它翻成「真的落到**后端渲**的那一串，而且请求里带着对的那一格 `outer`」。
+//
+// 🔴 **判 A 的结论没变（座留着），而理由换人了 ——** 座今天靠的不是「这条路走得到」，
+// 是「它是逐字节金标准（`tmux-outer-golden.json` / `payload-golden.json`）的**左边**」，
+// 也就是那份「另一种语言的独立说法」。逐处住址与「还站不站在生产路上」两把尺子见
+// `launch_wire_f07_main_path_tests.rs` 的 `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`
+//（本刀两张都重裁过；座的 Reach 从 `On` 翻成 `Off`）。
+//
+// 〔墓碑〕第二环原名逐字：「★★ 第二环：那一态走到生产入口上 ⇒ 真的落到座产的那一串（tmux …）」
+// —— `tests/evidence/K-R109-deathvalue.md` 里那两行按旧名字记着，**那份留档不动**。
+//
 // # ⚠ 它买不到什么（如实写）
 //
 // - 它**不**证明「今天真的有用户走过这条路」—— 那要真机，不在本条射程。
 //   它证明的是「这条路在代码上通着，而且触发它的条件今天造得出来」。
 // - 它**不**替 `not-installed` 那一半辩护：那一半确实是幽灵态，
 //   处置归 `K-R107`（`R64` 的「归属」那一节逐字点的名）。
-describe("KR109D3 兜底渲染器（座）今天真走得到 —— 判 A 的机检形态", () => {
+// - 它**不**验那一串的字节（那是两份入库夹具的活）。它验的是**路由与请求形状**。
+describe("KR109D3 探不到那一态今天真走得到 —— 判 A 的机检形态（步 22b·B 起落点是后端）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -530,14 +550,22 @@ describe("KR109D3 兜底渲染器（座）今天真走得到 —— 判 A 的机
     ).toEqual({ unknown: null, notInstalled: null });
   });
 
-  it("★★ 第二环：那一态走到生产入口上 ⇒ 真的落到座产的那一串（`tmux …`）", async () => {
+  it("★★ 第二环：那一态走到生产入口上 ⇒ 落到**后端渲**的那一串，且请求带对的那一格 `outer`", async () => {
     const rendered: string[] = [];
+    const reqs: PayloadRenderRequest[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       // 探测**出错** ⇒ `ccm-probe.ts` 回 `{state:"unknown"}`（它不进缓存，下次会重探）。
       if (cmd === "probe_ccm_cli") return Promise.reject("ssh 抖了一下");
       // 后端照 wire 上那两态办事：拿不到能力集 ⇒ 诚实降级（**不是错误**）。
       if (cmd === "render_ccm_launch")
         return Promise.resolve({ ok: false, cmd: null, reason: "远端未装 ccm" });
+      // ★ 这一格刻意**不**用那份镜像：本条要判的是「前端把后端交的那一串原样交出去」，
+      //   所以给一个中性、认得出的哨兵 —— 拿一条「长得像 tmux 命令」的串会让断言
+      //   在前端自己拼串时也蒙混过关（`brief` 第 12 条：别让夹具名字混进断言）。
+      if (cmd === "render_launch_payload") {
+        reqs.push((args as { req: PayloadRenderRequest }).req);
+        return Promise.resolve(OUTER_FROM_BACKEND);
+      }
       if (cmd === "launch_remote_terminal") {
         rendered.push((args as { remoteCmd: string }).remoteCmd);
         return Promise.resolve(undefined);
@@ -547,9 +575,160 @@ describe("KR109D3 兜底渲染器（座）今天真走得到 —— 判 A 的机
     stubClipboard(vi.fn().mockResolvedValue(undefined));
     await runRemoteResumeTmux("devbox", "sid-u1", "/p", "claude", "u1-cc");
     expect(rendered, "生产入口一次拉起都没发起 —— 本条此刻什么都没量到").toHaveLength(1);
-    // ★ 座产的外层 tmux 命令：这一串只可能从 `launch-render-fallback.ts` → `session-backend.ts` 来
-    //   （Rust 那条渲染器刚刚拒了，而 `container:"none"` 那一格走的是 `render_launch_payload`）。
-    expect(rendered[0]).toContain("tmux new-session");
-    expect(rendered[0]).toContain("u1-cc");
+    // ① **那一串逐字节是后端交出来的** —— 前端不再自己拼，也不许加工。
+    expect(rendered[0]).toBe(OUTER_FROM_BACKEND);
+    // ② 送过去的是**那一格**：`create` ＋ 裸会话名 ＋ cwd 归外层（顶层恒 null）。
+    expect(reqs, "一次 render_launch_payload 都没发 —— 这一格没接上后端").toHaveLength(1);
+    expect(reqs[0].outer).toEqual({
+      mode: "create",
+      name: "u1-cc",
+      quoting: "raw",
+      cwd: "/p",
+      ccmSid: "sid-u1",
+    });
+    expect(reqs[0].cwd, "顶层 cwd 必须是 null —— 两个都送后端会 fail-closed 拒").toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `W22B`：**`设计/90 §4 E` 生产切换那道闸** —— 它必须有一条会红的判据
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// # 它是哪道闸，以及为什么它此前**没有**判据
+//
+// 步 22b·A 的死值验 `M6` 逮到过一次这个形状：把 wire 上「attach 不许带载荷」那道闸
+// **整个关掉**，1465 条 Rust 判据**全绿** —— 病因逐字是「既有判据喂的是**渲染器本体**
+//（`render_tmux_outer` 自己也有一道同义的闸），**根本走不到 wire 那一层**」。
+// 那一拍同时补了 `the_wire_refuses_an_attach_request_that_still_carries_a_payload`。
+//
+// 🔴 **切生产之后同一形上移了一层，而这一层此前一个判据都没有：**
+// wire 那几道闸（attach 带载荷 · 两层 cwd · 空会话名 · `Raw` 越出白名单 · 控制符 ·
+// 越界 `@ccm_sid` · 空串 cwd · create/send-into 少送载荷）今天全部**承重** ——
+// 它们是生产路上唯一的那排门。而它们只在**请求真的带着 `outer` 走过这条 IPC** 时才生效。
+// ⇒ 于是有两种改动能把整排门一次性变成 fail-open，而**两种都不会让任何一条既有判据红**：
+//
+// ① 最后那一格换回 `buildPayloadRenderRequest`（少送 `outer`）⇒ 后端老老实实渲一条
+//    **只有内层载荷**的串（那是 `container:"none"` 的合法形态）⇒ 用户的会话**根本不在
+//    tmux 里**，而两侧的闸一个都不响。切之前没有任何东西会红：金标准那两份夹具喂的是
+//    `buildTmuxOuterRenderRequest` **本体**，走不到生产调用点 —— 与 `M6` 逐字同形。
+// ② `catch` 里把 `renderFallback(plan)` 接回去 ⇒ Rust 那排 fail-closed 门被 TS 座
+//    **照拼**过去（座头注逐字「不做校验/转义」）⇒ 一次拒绝变成一条会执行的命令。
+//    切之前同样没有东西会红：功能不变砖、门禁全绿。
+//
+// ⇒ 本组就是那条判据。**三格逐格 ＋ 拒绝时不许有第二条路 ＋ 正控**。
+//
+// # ⚠ 它买不到什么（如实写）
+//
+// - **不**验那一串的字节 —— 那是 `fixtures/tmux-outer-golden.json`（外层 13 条）与
+//   `payload-golden.json`（内层 10 条）两份入库夹具的跨语言逐字节对拍的活。
+//   本组刻意用哨兵串（`OUTER_FROM_BACKEND`）当后端的产物，好让「前端偷偷自己拼一条」
+//   在断言上分得开（长得像 `tmux …` 的期望值会让那种改动照样过）。
+// - **不**验 Rust 那排门判得对（那由 `launch_tmux_outer_parity_tests.rs` 与
+//   `payload_tests.rs` 负责，各自带正控）。本组验的是**它们在生产路上够得着**。
+// - **不**做可达性分析：它走的是生产入口（`runRemoteResumeTmux` / `runRemoteAttach` /
+//   `runRemoteResumeIntoExistingTmux`）真调一遍，而不是数代码里有没有那几个字。
+describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** 按 cmd 路由：CLI 渲染器恒诚实降级（逼到载荷那条），载荷那条按参数作答。 */
+  function routeOuter(payloadReply: () => Promise<unknown>): {
+    reqs: PayloadRenderRequest[];
+    launched: string[];
+  } {
+    const reqs: PayloadRenderRequest[] = [];
+    const launched: string[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      if (cmd === "render_ccm_launch")
+        return Promise.resolve({ ok: false, cmd: null, reason: "远端未装 ccm" });
+      if (cmd === "render_launch_payload") {
+        reqs.push((args as { req: PayloadRenderRequest }).req);
+        return payloadReply();
+      }
+      if (cmd === "backend_send_into")
+        // 「能证明没发出去」⇒ 回落去渲整串，那正是 `send-into` 那一格的生产路。
+        return Promise.resolve({ typed: false, reason: "拿不到控制通道", mayFallBack: true });
+      if (cmd === "launch_remote_terminal") {
+        launched.push((args as { remoteCmd: string }).remoteCmd);
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    return { reqs, launched };
+  }
+
+  it("★ create 那一格：请求带 `outer.mode==='create'`，cwd 归外层、顶层恒 null", async () => {
+    const { reqs, launched } = routeOuter(() => Promise.resolve(OUTER_FROM_BACKEND));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runRemoteResumeTmux("devbox", "sid-w1", "/w22b", "claude", "w1-cc");
+    expect(ok).toBe(true);
+    expect(reqs, "没走后端 —— 这一格没接上").toHaveLength(1);
+    expect(reqs[0].outer?.mode).toBe("create");
+    expect(reqs[0].outer).toMatchObject({ name: "w1-cc", quoting: "raw", cwd: "/w22b" });
+    // ★ 两层的 cwd 只许有一个非空 —— 两个都送后端会 fail-closed 拒。
+    expect(reqs[0].cwd).toBeNull();
+    // ★ 正控：后端交的那一串**原样**交给拉起那一跳（前端不加工、不自己拼）。
+    expect(launched).toEqual([OUTER_FROM_BACKEND]);
+  });
+
+  it("★ send-into 那一格：请求带 `outer.mode==='send-into'`（回落去渲整串那一跳）", async () => {
+    const { reqs, launched } = routeOuter(() => Promise.resolve(OUTER_FROM_BACKEND));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runRemoteResumeIntoExistingTmux("devbox", "sid-w2", "w2-cc", "claude");
+    expect(ok).toBe(true);
+    // 第一发是 `sendIntoViaBackend` 的内层载荷（没有 `outer`）；回落那一发才带 `outer`。
+    const withOuter = reqs.filter((r) => r.outer !== undefined);
+    expect(withOuter, "回落那一跳没带外层 —— 整串会退化成一条没有 tmux 的命令").toHaveLength(1);
+    expect(withOuter[0].outer).toEqual({ mode: "send-into", name: "w2-cc", quoting: "raw" });
+    expect(withOuter[0].cwd).toBeNull();
+    expect(launched).toEqual([OUTER_FROM_BACKEND]);
+  });
+
+  it("★ attach 那一格：请求带 `outer.mode==='attach'`，且载荷三个字段全空", async () => {
+    const { reqs, launched } = routeOuter(() => Promise.resolve(OUTER_FROM_BACKEND));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteAttach("devbox", "w3-cc");
+    expect(reqs, "没走后端 —— attach 这一格没接上").toHaveLength(1);
+    // ⚠ `quoting` 是 **"quoted"** 不是 `"raw"`：`planAttach` 收的是用户可能自定义的会话名
+    //   （「开新 Claude」那一族带空格），它过的是那条宽校验 ⇒ 渲染时要 posix quote。
+    //   〔现打逼出来的：本条第一版写 `"raw"`，红了，而**它说对了**。〕
+    expect(reqs[0].outer).toEqual({ mode: "attach", name: "w3-cc", quoting: "quoted" });
+    // ★ attach 一个 agent 进程都不起 ⇒ 这三个字段必须是空的（带了后端会拒，而不是静默丢）。
+    expect({ env: reqs[0].env, args: reqs[0].args, launcher: reqs[0].launcher }).toEqual({
+      env: [],
+      args: [],
+      launcher: "",
+    });
+    expect(launched).toEqual([OUTER_FROM_BACKEND]);
+  });
+
+  it("★★ 后端拒（带 REFUSE 标）⇒ 诚实失败：一次拉起都不发起，也不往剪贴板塞串", async () => {
+    const { launched } = routeOuter(() =>
+      Promise.reject('REFUSE: tmux 会话名 "w4-cc;evil" 声明成 Raw（裸拼）却不在白名单里'),
+    );
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    const ok = await runRemoteResumeTmux("devbox", "sid-w4", "/w", "claude", "w4-cc");
+    expect(ok).toBe(false);
+    // ★★ 最要紧的一格：**没有第二条路**。回落到 TS 座 = 把 Rust 那排门整排变成 fail-open。
+    expect(launched, `后端拒了却还是拉起了：${launched.join(" | ")}`).toEqual([]);
+    expect(writeText, "把一条被拒的命令复制给用户，等于让他手动执行那一条").not.toHaveBeenCalled();
+    expect(String(toastMock.mock.calls[0][0])).toContain("无法构造 tmux resume 命令");
+    expect(String(toastMock.mock.calls[0][1])).toContain("后端拒绝渲染外层 tmux 命令");
+  });
+
+  it("★★ 通道异常（不带 REFUSE 标）⇒ 同样诚实失败 —— 这一格已经没有第二条路了", async () => {
+    // ⚠ 与 `container:"none"` 那一格的纪律相同，但理由更硬：那一格当年还能说
+    //   「回落有 TS 版」，本格连那条都没有 ⇒ 带标不带标处置一致。
+    const { launched } = routeOuter(() => Promise.reject("ipc closed"));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    await runRemoteAttach("devbox", "w5-cc");
+    expect(launched).toEqual([]);
+    expect(writeText).not.toHaveBeenCalled();
+    expect(String(toastMock.mock.calls[0][0])).toContain("无法构造 attach 命令");
   });
 });
