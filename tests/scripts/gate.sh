@@ -33,13 +33,13 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕25 格
+# │ 〔自述·格数〕26 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
-# │   winchk · winchk-backend · cargo · deadcode · generated · backend · tsc · npm ·
+# │   winchk · winchk-backend · cargo · f3-copy · deadcode · generated · backend · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity
 # │ 〔自述·现物〕四套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
@@ -62,6 +62,13 @@
 # │ 〔自述·现物〕`ccbus-twophase` 那一格的判据本体：`tests/evidence/W24C-ccbus-twophase-ruler.py`
 # │   （`w24c` 09-19 第 24 格）—— 它既读盘上那几份 shell，也在一次性 `CC_BUS_HOME` 里真跑；
 # │   死值验住 `tests/evidence/W24C-deathvalue.md`。
+# │ 〔自述·现物〕`f3-copy` 那一格没有独立的判据文件 —— 它的**被测对象**是
+# │   `src/bridge/src/sftp_pool.rs` 里那条 `copy_remote_path`，**判据本体**是
+# │   `tests/bridge/sftp_copy_f3_tests.rs`（秤 F3，`23b·B` 09-20 第 26 格）：
+# │   那份文件自带一台合成 SFTP 服务端 ＋ 一层按字节数包的计数流，两种人格各一个。
+# │   判定（三方对拍 ＋ 两个方向的逐字函数名）逐字写在下面那一行 `run_gate f3-copy`
+# │   的内联脚本里。⚠ 这 9 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，
+# │   档位不叠加（同 `tsc` 与 `npm` 那一对）。
 # │ 〔自述·现物〕`gate-selfdesc` 那一格的判据本体：`tests/evidence/K-R80-gate-cell-coverage.py`
 # │   （09-19 第 22 格）—— **被测对象就是本文件**。它默认读 `tests/scripts/gate.sh`，
 # │   也接一个路径参数（对着变异过的副本跑死值验时用）。
@@ -264,6 +271,130 @@ set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 2
 fails=()
 
+# ── 〔被谁调用〕`GATE_ONLY` 子集 ＋ 一张**跑过的收据**（`G4` 空洞③，09-20）──────────
+#
+# ## 题面：这道门此前**只有人手动跑**
+#
+# 现打（本拍复打，读数与 `真相源/92 §2.1.2` ①那条一致）：
+#   `grep -c 'bash tests/scripts/gate.sh' .github/workflows/ci.yml` ⇒ 落地前是 **0**；
+#   `.git/hooks/` 下零个非 sample 钩子；`tests/hooks/` 下当时只有一份 `pre-commit`，
+#   而那一份**默认是死的**（要人手 `git config core.hooksPath` 才活）。
+# ⇒ **此前没有任何东西强制它在出货前跑过。** 而「跑了」与「没跑」在终端上**一模一样**
+#   —— 两边都是**什么都没有**。这正是本仓反复治的那一形，长在门禁自己身上。
+#
+# ## 🔴 反空真：「装了钩子」**不等于**「它跑过」
+#
+# 一个 hook 文件躺在盘上、一个 job 写在 `ci.yml` 里，这两件事**一个字都没说那一趟真跑了**。
+# 同一族的另一半本仓已经现打过读数（`tests/scripts/hooks-are-runnable.sh` 头注，git 2.43.0）：
+# 没有可执行位时 git **忽略这个 hook 并照常提交**，`rc=0`，只留一句**可以关掉**的 advice hint。
+# ⇒ 光看退出码、光看盘上有没有文件，**分不开「跑了」与「跳过了」**。
+#
+# ★ 取法：**这一趟自己开一张收据**（`GATE_RECEIPT`，默认 `.build/gate-receipt.json`，
+#   那个目录 `.gitignore` 已经整棵忽略 ⇒ 不脏工作树、也不用动写区外的 `.gitignore`）。
+#   收据里记的都是**只有真跑过这一趟才拿得到**的东西：
+#     ① 这份 `gate.sh` 的 sha256 —— 换了版本开的收据不算这一份门禁开的；
+#     ② 这棵树的 tree oid ＋ 工作树脏不脏 —— 别的树上那一趟不算这一趟；
+#     ③ 这一趟**真的判过**哪几格（`GATE_RAN`，**现算**，不是抄的清单）；
+#     ④ 被 `GATE_ONLY` 挡掉哪几格（`GATE_SKIPPED`，**现算**）。
+#   判它的判据本体是 `tests/evidence/K-G4C-gate-receipt.py` —— 它**刻意不在本脚本里跑**：
+#   本脚本跑得了它就说明本脚本跑了，那是同源恒真。它是给**调用方**（`ci.yml` 那个 job /
+#   `tests/hooks/pre-push`）在门禁**之后**跑的那一条：门禁跳过了 ⇒ 没有收据 / 收据陈了 ⇒ 当场红。
+#   🔴 **那条判据的反空真锚是「`ran ∪ skipped` 与本文件现打的格名两向集合相等」** ——
+#     收据写空了、或本文件被读成空串，两个集合当场分叉。单向包含在表被清空时恒真。
+#
+# ## `GATE_ONLY`：**子集是明着少跑，不是静默少跑**
+#
+# 给 `GATE_ONLY` 一串空格分隔的格名 ⇒ 只跑那几格（e2e 那四格用套件短名）。
+# 四条纪律焊在下面的代码里，一条都不是装饰：
+#   ① `GATE_ONLY` 里有一个名字不是盘上真有的格 ⇒ **红**。拼错**不许**静默降级成「少跑一格」；
+#   ② 跳过的格**逐字印出来**，不许只印跑了的那几格；
+#   ③ 只要跳过了一格，裁决行就**不许**是 `GATE: OK`，换成 `GATE: PARTIAL` ——
+#      🔴 **`GATE: OK` 这四个字的意思只有一个：盘上每一格都跑过了。** 不许有第二种意思；
+#   ④ 自检探针（`自检①`–`自检⑩`）**不受 `GATE_ONLY` 影响**：它们是量具的量具，
+#      被过滤掉就等于把门禁自己的自检关了，而那一形在输出上看不出来。
+#      ⇒ `gate_selftest` / `gate_selftest_e2e` 里各有一句 `local GATE_PROBE=1`（动态作用域）。
+#   ⚠ 探针一律跑在 `$( )` 里（子 shell）⇒ 它们**进不了** `GATE_RAN`/`GATE_SKIPPED` 那两张表，
+#     那不是巧合，是 `found_cells()` 只认行首调用、刻意不把探针数成格的同一条边界。
+GATE_ONLY="${GATE_ONLY:-}"
+GATE_RECEIPT="${GATE_RECEIPT:-.build/gate-receipt.json}"
+GATE_DECLARED=()   # 盘上声明过的格（短名，现算）
+GATE_RAN=()        # 这一趟**命令真的执行过并被判过**的格（规范名，现算）
+GATE_SKIPPED=()    # 这一趟被 GATE_ONLY 挡掉的格（短名，现算）
+
+# 这一格这一趟要不要跑。返回 0 = 跑。⚠ 副作用：把短名记进 `GATE_DECLARED`。
+gate_wants() {
+  if [ "${GATE_PROBE:-0}" = 1 ]; then return 0; fi
+  GATE_DECLARED+=("$1")
+  if [ -z "$GATE_ONLY" ]; then return 0; fi
+  case " $GATE_ONLY " in
+    *" $1 "*) return 0 ;;
+  esac
+  GATE_SKIPPED+=("$1")
+  printf '  skip %-14s %s\n' "$1" "GATE_ONLY 没点它 ⇒ 这一格这一趟**没判**（收据里如实记着，裁决行因此不许是 GATE: OK）"
+  return 1
+}
+
+# `GATE_ONLY` 里每一个名字都得是盘上真有的格 —— 拼错是**红**，不是「少跑一格」。
+gate_check_only() {
+  if [ -z "$GATE_ONLY" ]; then return 0; fi
+  local tok d known
+  for tok in $GATE_ONLY; do
+    known=0
+    for d in ${GATE_DECLARED[@]+"${GATE_DECLARED[@]}"}; do
+      if [ "$tok" = "$d" ]; then known=1; break; fi
+    done
+    if [ "$known" -ne 1 ]; then
+      fails+=("GATE_ONLY 里的 \`$tok\` 不是盘上任何一格的名字 —— \
+拼错一个字就等于**静默少跑一格**，而少跑与跑过在终端上一模一样 ⇒ 一律按红记。\
+盘上现打这几格（短名）：${GATE_DECLARED[*]}")
+    fi
+  done
+}
+
+# 一串字符串印成 JSON 数组。⚠ 格名里没有引号与反斜杠（`found_cells()` 那三条正则决定了这件事），
+#   所以这里不做转义 —— 哪天格名里真出现引号，是那一边该改，不是这里该补一层猜。
+gate_json_arr() {
+  local i first=1
+  printf '['
+  for i in "$@"; do
+    if [ "$first" -eq 1 ]; then first=0; else printf ', '; fi
+    printf '"%s"' "$i"
+  done
+  printf ']'
+}
+
+# 落一张收据。**两条路都要落**（`OK`/`PARTIAL` 与 `FAIL`）——
+# 只在绿那一支落，就买不到「红过一趟、然后有人把红的那一格删了」那一形。
+gate_write_receipt() {
+  local verdict="$1" sha tree head dirty
+  sha="$(sha256sum "$0" 2>/dev/null | cut -d' ' -f1)"
+  sha="${sha:-<数不出 sha256>}"
+  tree="$(git rev-parse 'HEAD^{tree}' 2>/dev/null)"
+  tree="${tree:-<不在 git 仓里>}"
+  head="$(git rev-parse HEAD 2>/dev/null)"
+  head="${head:-<不在 git 仓里>}"
+  if git diff --quiet HEAD 2>/dev/null; then dirty=false; else dirty=true; fi
+  mkdir -p "$(dirname "$GATE_RECEIPT")" 2>/dev/null
+  {
+    printf '{\n'
+    printf '  "verdict": "%s",\n' "$verdict"
+    printf '  "gate_sha256": "%s",\n' "$sha"
+    printf '  "tree": "%s",\n' "$tree"
+    printf '  "head": "%s",\n' "$head"
+    printf '  "dirty": %s,\n' "$dirty"
+    printf '  "when": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "gate_only": "%s",\n' "$GATE_ONLY"
+    printf '  "ran": '    ; gate_json_arr ${GATE_RAN[@]+"${GATE_RAN[@]}"}        ; printf ',\n'
+    printf '  "skipped": '; gate_json_arr ${GATE_SKIPPED[@]+"${GATE_SKIPPED[@]}"}; printf '\n'
+    printf '}\n'
+  } > "$GATE_RECEIPT" || {
+    printf 'GATE: 收据落不了盘（%s 写不进去）—— 后面那条 K-G4C-gate-receipt.py 会因此红，那是对的\n' "$GATE_RECEIPT"
+    return 0
+  }
+  printf 'GATE: 收据 —— %s（verdict=%s · 真判过 %s 格 · 跳过 %s 格 · tree %s · dirty %s）\n' \
+    "$GATE_RECEIPT" "$verdict" "${#GATE_RAN[@]}" "${#GATE_SKIPPED[@]}" "${tree:0:12}" "$dirty"
+}
+
 # ── 失败诊断（`K-R22` 09-04）：**红的那一格必须自带「为什么红」** ────────────────
 #
 # 病灶逐字：本文件把子命令的输出吃进变量，而**失败支只记退出码、把输出整个丢掉**
@@ -434,9 +565,13 @@ gate_diag() {
 #   代价如实记：**红的那一行今天仍不带分母。** 要补得连着改那条自检的字面，归 PM 裁。
 run_gate() {
   local name="$1"; local denom="$2"; shift 2
+  gate_wants "$name" || return 0
   local out
   out="$("$@" 2>&1)"
   local rc=$?
+  # 🔴 记在**命令执行完之后**，不是在派发之前 —— 收据里 `ran` 那一栏的意思必须是
+  #   「这一格的命令真的跑过并被判过」，不是「这一格被点到过」。两者在收据上长得一样。
+  GATE_RAN+=("$name")
   # ⚠ **`rc=0` 不等于绿**：`0 passed` 也会 rc=0（`C7` 逐字：「0 passed 不是绿」）。
   #   ⇒ 两条都判：退出码 + 那行读数里的数字。
   local n
@@ -498,9 +633,11 @@ run_gate() {
 #  而实测 `checked = 7` —— 余量 2.3 倍，4 个块可以静默掉出采集面而地板照绿」。〕
 run_gate_sum() {
   local name="$1"; local want_pkgs="$2"; shift 2
+  gate_wants "$name" || return 0
   local out
   out="$("$@" 2>&1)"
   local rc=$?
+  GATE_RAN+=("$name")
   local lines n pkgs
   lines="$(printf '%s' "$out" | grep -oE '^test result: ok\. [0-9]+ passed')"
   pkgs="$(printf '%s' "$lines" | grep -c . || true)"
@@ -637,6 +774,10 @@ gate_assert_judged() {
 }
 
 gate_selftest() {
+  # 🔴 探针**不受 `GATE_ONLY` 影响**（`gate_wants` 第一行读它）。bash 是动态作用域 ⇒
+  #   这一句在本函数调出去的 `run_gate`/`run_gate_sum` 里也看得见。
+  #   把量具的量具过滤掉，在输出面上**一个字都不会说**。
+  local GATE_PROBE=1
   local probe
   probe="$(run_gate 自检① - bash -c 'printf "error: KR22-PROBE-A\n"; exit 3' 2>&1)"
   case "$probe" in
@@ -1268,8 +1409,13 @@ fi
 #   2. 它不判生成物**内容对不对**（该不该 `ts(optional)` 之类）—— 那也是上面那一族的活。
 #   3. 它判的是**工作树**，不判「你有没有真把它 commit 上去」（那一维归 `npm run verify:committed`，
 #      与本脚本头注里那条分工一致）。
+# ⚠ 本格**不走** `run_gate`（判定手写在下面那个 `case` 里）⇒ `gate_wants`/`GATE_RAN`
+#   也得手接一次。漏接的形状是：`GATE_ONLY` 点不到它、而它照样跑，
+#   于是收据里 `ran ∪ skipped` 少一格 ⇒ `K-G4C` 的两向相等当场分叉（那是**响的**）。
+if gate_wants generated; then
 git diff --quiet --exit-code -- src/generated/
 gen_rc=$?
+GATE_RAN+=("generated")
 case "$gen_rc" in
   0) printf '  ok   %-14s %s\n' "generated" "与 Rust 源一致（跑过上面那道 cargo 门之后再判的）" ;;
   1)
@@ -1282,6 +1428,7 @@ case "$gen_rc" in
     fails+=("generated（git diff 退出码 $gen_rc —— 判不了，不许当成绿）")
     ;;
 esac
+fi
 
 # ── `dead_code`：门禁此前**没有这一格**（`K-R115` `KR115D2` 甲，09-14，第 15 格）────────
 #
@@ -1348,7 +1495,12 @@ if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判�
 if [ "$n" -gt "$pin" ]; then printf "deadcode: never used %s 条，钉的是 %s —— 有人写了新的死代码；修掉它，或者说清为什么留着、再来改这个数\n" "$n" "$pin"; exit 1; fi; \
 if [ "$n" -lt "$pin" ]; then printf "deadcode: never used 只数到 %s 条，钉的是 %s —— 要么真清掉了几条（好事：回来把这个数改小，并写清降的是哪几条），要么这一趟 cargo 根本没重编 / 没重放警告。两者在终端上一模一样，所以一律按红记\n" "$n" "$pin"; exit 1; fi; \
 printf "deadcode: %s passed（never used %s 条，恒等钉在 %s）\n" "$n" "$n" "$pin"'
-printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode_t0 )) 秒（现打，与门禁基线相减就是加这一格的代价）"
+# ⚠ 这一行是**读数**不是判定 —— 那一格被 `GATE_ONLY` 挡掉时它会印出「墙钟 0 秒」，
+#   而 0 秒与「真的快」在这一行上长得一模一样 ⇒ 挡掉了就别印。
+case " ${GATE_SKIPPED[*]-} " in
+  *" deadcode "*) : ;;
+  *) printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode_t0 )) 秒（现打，与门禁基线相减就是加这一格的代价）" ;;
+esac
 
 run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd src/backend && cargo test 2>&1'
@@ -1442,9 +1594,15 @@ run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字�
 #     回落等于把「拼错了」静默降级成旧行为 —— 那正是这道闸要治的那一族。
 run_e2e() {
   local suite="$1"; local floor="$2"
+  # ⚠ 两个名字**刻意不同**：`GATE_ONLY` 里写套件短名（`ccm-cli`），而收据与
+  #   `found_cells()` 认的**规范名**带前缀（`ccm tests/e2e/ccm-cli`）。
+  #   规范名里有空格 ⇒ 它当不了空格分隔的 `GATE_ONLY` 记号，所以两侧各用一个，
+  #   归一那一跳写在 `K-G4C-gate-receipt.py` 与 `K-R80` 的 `C5d`/`C8` 里（同一份取法）。
+  gate_wants "$suite" || return 0
   local out rc n
   out="$(bash tests/e2e/assert-pass-floor.sh "$suite" "$floor" exact 2>&1)"
   rc=$?
+  GATE_RAN+=("ccm tests/e2e/$suite")
   n="$(printf '%s' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
   if [ "$rc" -ne 0 ]; then
     fails+=("ccm tests/e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor，判法 exact。\
@@ -1477,6 +1635,7 @@ run_e2e() {
 #   ⇒ 「抓不到「合计 PASS=」」那条**已被满足**，掏掉退出码那条就一路落到绿行。
 # ⚠ 那一步排在 `npm run` 与 `mktemp` **之前** ⇒ 不跑 npm、不落文件（见上面自检段头注）。
 gate_selftest_e2e() {
+  local GATE_PROBE=1   # 同 `gate_selftest`：探针不受 `GATE_ONLY` 影响
   local probe
   probe="$(run_e2e 自检⑩ '合计 PASS=7 NG2-PROBE-J' 2>&1)"
   gate_assert_judged 自检⑩ "$probe" NG2-PROBE-J "run_e2e 的「退出码非零 ⇒ 红」"
@@ -1495,8 +1654,20 @@ gate_selftest_e2e
 #   而诊断说的是「先 cargo build」——对，但那件事该由门禁自己做。
 # ⚠ 它**不进判定面**：build 失败时下面四格会各自红并说清原因（fail-closed），
 #   这里再加一层判定只会让同一件事报两遍。
+gate_e2e_wanted() {
+  if [ -z "$GATE_ONLY" ]; then return 0; fi
+  local suite
+  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity; do
+    case " $GATE_ONLY " in *" $suite "*) return 0 ;; esac
+  done
+  return 1
+}
+if gate_e2e_wanted; then
 printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（四套 ccm e2e 的被测对象）"
 ( cd src/backend && cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) || true
+else
+printf '  ·    %-14s %s\n' "e2e 前置" "跳过（GATE_ONLY 一套 e2e 都没点 ⇒ 不白编那一趟 cargo build）"
+fi
 
 run_e2e ccm-print-parity 12
 run_e2e ccm-rbind-title  8
@@ -1573,6 +1744,41 @@ run_e2e ccm-cli               46
 #    Rust 侧那几条跑的是测试壳。⚠ `ci.yml` 那两处（调用行 + 清单副本）**不在本件写区**，
 #    逐字 diff 已交回 PM（头注那条「三处一起改」的纪律照旧）。
 run_e2e ccm-contract-parity   45
+
+# ── `f3-copy`：**秤 F3 两向**独立成格（`23b·B` 落地，本拍第 26 格）────────────────
+#
+# 🔴 **题面：一台台架落在一个求和格里，就等于没有名字。**
+#   `tests/bridge/sftp_copy_f3_tests.rs`（1075 行）是设计 `17 §6.9` 那杆秤的本体 ——
+#   零流量复制的包计数对拍，**正反两个方向都钉**。它落地那天只靠 `#[path]` 挂进
+#   `monitor` 的 lib，于是被 `cargo` 那一格的**合计**吃掉了：
+#   那一格印的是 9 个包的求和，**这 9 条静默消失，合计只会小一点，而「小一点」和
+#   「有测试没跑」在终端上一模一样**（同一条道理 `run_gate_sum` 的头注为包数论证过一遍）。
+#
+# 🔴 **所以本格的绿不是「又跑了一遍」，是给那杆秤一个自己的名字与一个自己的相等断言。**
+#   `cargo` 那一格照旧把这 9 条算进它的合计 —— 两格都在，不叠加档位
+#   （同 `tsc` 与 `npm` 那一对：一格买行为、一格买另一维）。
+#
+# ★ 取法：**三方对拍**，三个数必须相等 ——
+#   ① 本行 `pin=9`（写死在这里，真加/删了测试就回来改它）
+#   ② 那份文件里现打的 `#[test]` / `#[tokio::test]` 条数（`declared`）
+#   ③ `cargo test` 那趟真跑出来的 `passed` 数（`ran`）
+#   三条失效路各自被哪一对差额逮到，逐条写在下面那条裁词里。
+# ★ 再加**两个方向的逐字锚点**：正向那条（零包）与反向那条（退路出声）的函数名
+#   各要求在「跑过的名单」里命中**恰好 1 次** —— 少一向、改一向的名，当场红。
+#   ⚠ 锚点比对的两侧**不同源**：名字写死在本文件里，命中数来自 `cargo` 的运行时输出。
+run_gate f3-copy '判过的条数 = 秤 F3 这一趟真跑过的测试条数。**三方对拍**：本行钉的 9 · 那份文件里现打的 `#[test]`/`#[tokio::test]` 条数 · `cargo test` 真跑出来的 passed 数，三个数必须**相等** ＋ 两个方向的逐字函数名各命中**恰好 1 次**。⚠ **反空真锚是那个三方相等**，不是「有数就算绿」：`#[path]` 挂载被摘 / 模块改名 / 过滤器打空 ⇒ ran 掉到 0 而另两个数还是 9；`#[ignore]` 一条 ⇒ 8 vs 9；真删一条测试 ⇒ declared 掉到 8 而 pin 还是 9。三条路都分叉。⚠ 本格买的是「那台合成 SFTP 台架上包计数对得上」，**不买**「真 OpenSSH 服务端上 copy-data 真的零流量」（无真机、本格不起任何网络、不装 sftp-server）；⚠ 这 9 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加：那一格买 workspace 合计，本格买「这 9 条没有静默消失」' \
+         bash -c 'pin=9; f=tests/bridge/sftp_copy_f3_tests.rs; \
+fwd=f3_forward_a_server_side_copy_costs_zero_client_read_write_packets; \
+rev=f3_reverse_a_server_without_copy_data_falls_back_loudly_and_pays_the_traffic; \
+[ -r "$f" ] || { printf "f3-copy: 秤 F3 的判据本体 %s 盘上读不到 —— 住址改了就回来改本格，不许静默跳过\n" "$f"; exit 1; }; \
+declared=$(grep -cE "^[[:space:]]*#\[(tokio::)?test\]" "$f"); \
+out=$(cd src/bridge && cargo test -p monitor --lib sftp_pool::copy_f3_tests:: 2>&1); rc=$?; \
+if [ "$rc" -ne 0 ]; then printf "%s\n" "$out" | tail -25; printf "f3-copy: cargo test 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
+ran=$(printf "%s\n" "$out" | grep -oE "^test result: ok\. [0-9]+ passed" | grep -oE "[0-9]+" | head -1); \
+if [ -z "$ran" ]; then printf "%s\n" "$out" | tail -25; printf "f3-copy: 那趟输出里抠不出「test result: ok. N passed」—— 读法与 cargo 的输出面对不上，本格判不了（不许当成绿）\n"; exit 1; fi; \
+if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "f3-copy: 三方对拍分叉 —— 本行钉 %s · %s 里现打声明 %s 条 · cargo 真跑 %s 条；三个数必须相等。真加/删了一条测试，就回来改本行那个 pin（别去动另外两边）\n" "$pin" "$f" "$declared" "$ran"; exit 1; fi; \
+for t in "$fwd" "$rev"; do n=$(printf "%s\n" "$out" | grep -c "copy_f3_tests::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "f3-copy: 方向锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 秤 F3 那两向里有一向没跑，或它改了名\n" "$t" "$n"; exit 1; fi; done; \
+printf "f3-copy: %s passed（秤 F3 两向；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
 #
@@ -1660,6 +1866,29 @@ gate_print_blind() {
 }
 
 echo
+# ── 〔被谁调用〕拼错的 `GATE_ONLY` 是**红**，不是「少跑一格」 ───────────────────
+gate_check_only
+# ── 〔被谁调用〕落收据。**三种裁词都落** —— 判它的是 `tests/evidence/K-G4C-gate-receipt.py` ──
+# ⚠ 裁词**先算再落**：`OK` 只在「一格没红 **且** 一格没跳」时给。
+#   少了后半个条件，`GATE_ONLY` 一设就能拿到一行 `GATE: OK` —— 那正是本段要焊死的那一形。
+if [ "${#fails[@]}" -ne 0 ]; then
+  gate_verdict=FAIL
+elif [ "${#GATE_SKIPPED[@]}" -ne 0 ]; then
+  gate_verdict=PARTIAL
+else
+  gate_verdict=OK
+fi
+gate_write_receipt "$gate_verdict"
+
+if [ "${#fails[@]}" -eq 0 ] && [ "${#GATE_SKIPPED[@]}" -ne 0 ]; then
+  # 🔴 **这一支刻意不印 `GATE: OK`。** 跑过的那几格全绿是真的，而「全绿」与「全都跑过」
+  #   是两句话 —— 把它们印成同一行，就是本仓反复治的那一形（少跑与跑过在终端上一模一样）。
+  printf 'GATE: PARTIAL —— 跑过的那 %s 格全绿，但 GATE_ONLY 挡掉了 %s 格：%s\n' \
+    "${#GATE_RAN[@]}" "${#GATE_SKIPPED[@]}" "${GATE_SKIPPED[*]}"
+  echo "**这不是 GATE: OK，不许拿它出货。** 出货要的是不带 GATE_ONLY 的那一趟。"
+  gate_print_blind
+  exit 0
+fi
 if [ "${#fails[@]}" -eq 0 ]; then
   # 🔴 `K-R80`（09-12）：**这一行原来逐字是「三道门 + 生成物漂移 + pb check + 四套 ccm e2e」
   #   —— 那是 09-10 加 `fmt`/`winchk` 之前的点名，盘上现打 11 格时它只点得出 9 格。**
@@ -1685,7 +1914,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
   #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
-  echo "GATE: OK —— 25 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e），可以出货"
+  echo "GATE: OK —— 26 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · f3-copy · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity），可以出货"
   gate_print_blind
   exit 0
 fi
