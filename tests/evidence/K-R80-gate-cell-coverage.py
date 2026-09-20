@@ -420,18 +420,29 @@ cell(
                            "`ci-e2e-prereq` 两格各判一块）；⚠ 它**不跑那条流水线**，"
                            "「盘上这份文本满足这几条」≠「云端那一趟会绿」——"
                            "「登记的那一步在文件里」也**不等于**「那一步在 runner 上编得出字节」"),
-        "tests/scripts/": (PART, "两份，各只判一点点：① `release-notes.mjs` —— 它在不在盘上、"
+        "tests/scripts/": (PART, "三份，各只判一点点：① `release-notes.mjs` —— 它在不在盘上、"
                            "`--check` 跑不跑得出一段非空的正文（那份文件里的段落切法 · 拼装 · "
                            "写文件那一半本格都不看）；② 〔`19b` 09-19 加〕`gate.sh` —— **只读**"
                            "`run_gate muslbuild '…'` 那一条裁词里点名的工具链版本，与 `release.yml` "
                            "真装的那两个两向对拍。`gate.sh` 的其余每一行本格一个字不看"
-                           "（那是 `gate-selfdesc` 那一格的事）"),
+                           "（那是 `gate-selfdesc` 那一格的事）；"
+                           "③ 〔`19c` 09-19 加〕`re-embed.sh` —— 在不在盘上 · 它那两行配方登记"
+                           "（`REEMBED_TARGETS` / `REEMBED_BUILD_FLAGS`）与 `release.yml` 产字节那两步"
+                           "**两向对拍** · 它往哪两个目录倒字节 · **真跑一次 `--check`**（只读，要有数）。"
+                           "⚠ 那份脚本里的编译与拷贝那一半本格**不跑**（它要 zig ＋ cargo-zigbuild，"
+                           "本格一个都不装）"),
         "src/bridge/": (PART, "〔`19b` 09-19 加〕**只读 `build.rs` 里那两个取身份的函数**"
                            "（`backend_source_build_id` / `backend_stamp_marks` ＋ "
                            "`emit_backend_build_id` 调不调前者）：函数体里不许再有兜底值"
                            "（`\"unknown\"` / `unwrap_or_default()`），且「抠不到」那一支必须 `panic!`。"
+                           "〔`19c` 09-19 再加两处，仍只读文本〕④ `build.rs` 的三个常量与两个内嵌函数："
+                           "`REEMBED_CMD` 逐字 · `EMBEDDED_BACKENDS_DIR`/`NATIVE_BACKEND_DIR` 的值 · "
+                           "`embed_backends`/`embed_native_backend` 的出路各点名那条命令 ≥2 处、"
+                           "代码行里不许手抄第二条产字节配方 · mtime 安全网仍看**两份**源码；"
+                           "⑤ `src/bridge/.gitignore` —— **只读**带 `⇐ 内嵌落点` 锚的那几行，"
+                           "与上面那几个落点常量两向集合相等（现物：步 8 改名后那两行指空过）。"
                            "⚠ 买的是**源码形状**，不是行为 —— 它不编也不跑 `build.rs`；"
-                           "这棵树的其余 156 份本格一个字不碰"),
+                           "这棵树的其余每一份本格一个字不碰"),
         "src/backend/": (PART, "〔`19b` 09-19 加〕**只读 `lib.rs` 里那三行 `const`**"
                            "（`BUILD_ID` · `BUILD_STAMP_OPEN` · `BUILD_STAMP_CLOSE`），"
                            "各要求**恰好 1 行**命中 —— 这是「`release.yml` 里那几处抽取住址"

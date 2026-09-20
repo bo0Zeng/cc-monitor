@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+# `BUILD_ID` bump 的**同拍步骤**：re-embed —— 把内嵌的那几份后端字节重编并铺回落点。
+#
+# ── 它治的病（`设计/99 §4` 步 `19c`）────────────────────────────────────────────
+#
+# 协议面一变就要 bump `src/backend/lib.rs` 的 `const BUILD_ID`（那份谱系里每一条都写着
+# 「不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠」）。而 bump 的那一刻，
+# `src/bridge/embedded-backends/` 里那两份 musl 字节**立刻变旧** —— 它们是上一版源码编的，
+# 身份戳里写的还是上一个 id。于是二选一，两条都坏：
+#
+#   · 有人在盯（今天就是这样）⇒ `src/bridge/build.rs::embed_backends` 的**半 bump 守卫**
+#     当场 `panic!`，**整棵树编不过**。2026-09-18 实地踩过一次：删用量 ⇒ bump `p2j`→`p2k`
+#     ⇒ **四路 agent 同时编不过**。
+#   · 没人在盯 ⇒ 装出去的是一份自报旧 id 的字节，已部署的远端**不判 stale、不重装**，
+#     整轮改动在那边休眠（`设计/16 §5.4a` 那次事故的孪生形）。
+#
+# ⇒ 单子的裁定逐字：「**把 re-embed 写成 bump 的同拍步骤**，别让它变成一次事故。」
+#   本文件就是那个步骤，**全仓唯一的本机产字节入口**。
+#
+# ── 它与那张 mtime 安全网的关系（别读混）──────────────────────────────────────
+#
+# `build.rs::embed_backends` 里有一张 mtime 安全网：取 `lib.rs` 与 `main.rs` 两份源码的
+# **较新**那个 mtime，比内嵌字节新就打一条 `cargo:warning=内嵌 backend … 比后端源码旧`。
+# 它**是安全网，不是机制**，三条都是构造性的：
+#   ① 它只在**已经出事之后**说话（字节已经旧了）；
+#   ② 它说的是「旧了」，**不说怎么办** —— 出路要人去读 panic 文案里那一段；
+#   ③ 它一条 `warning`，在几百行 cargo 输出里滚过去（本仓自己的账：长输出里那行
+#      `1 failed` 会滚过去，08-13 实测红着出过一次货）。
+# ⇒ 本文件补的是它缺的那一半：**一条真跑得起来的命令**，以及一条 `--check`
+#   ——「盘上这几份字节与源码的 `BUILD_ID` 对不对得上」由它**当场用相等断言回答**，
+#   不必等谁去编整棵树、也不必在 cargo 的输出里找那一行。
+# ⚠ 安全网**一条没撤**：mtime 那条 warning 与三处 panic 全部留着（判据 ⑬f 钉着它别被改瘦）。
+#
+# ── 🔴 一个事实一个住址：配方与 `release.yml` 逐字同源 ───────────────────────────
+#
+# 下面 `REEMBED_BUILD_FLAGS` / `REEMBED_TARGETS` 与 `.github/workflows/release.yml` 的
+# `Cross-compile backend for both musl targets` 那一步**是同一条配方**，由
+# `tests/evidence/K-R124-ruler.py` 的 ⑬b **每趟两向对拍**（target 集合相等 ＋ 旗标逐字相同）。
+# ⚠ 这不是洁癖：在本文件之前，「本机怎么重编这两份字节」那条配方**手抄在 `build.rs` 的
+#   panic 文案里**，写的是 `cargo build --release --target … --config linker="rust-lld"`
+#   —— 与发版那趟的 `cargo zigbuild --release --locked` **不是同一条路**，而 09-18 那次
+#   真正救活那棵树的恰恰是 zigbuild 那条。⇒ 那段手抄的配方已经撤掉（判据 ⑬e 盯着它别回来）。
+#
+# 🔧 **`zig cc` 是承重的，别换回 `rust-lld`**〔08-25 本机实测，读数从 `build.rs` 搬来〕：
+#   引 `rustls` → `ring` 之后，`ring` 的 build script **要编 C**，而 `rust-lld` 只是链接器。
+#   逐条读数：`x86_64` 照做 rc=0；`aarch64` 照做 **rc=101**，死在
+#   `error occurred in cc-rs: failed to find tool "aarch64-linux-musl-gcc"`。
+#   `cargo zigbuild` 自带 `zig cc` ⇒ 两个 arch 都不用另装 C 交叉工具链。
+#
+# ── ⚠⚠ 诚实边界（写死，别读宽）────────────────────────────────────────────────
+#
+# 1. 🔴 **本机重编 ≠ 发版那一拍办完了。** `build.rs` 自陈逐字：「这样编出来的形态与发版 CI 的
+#    zigbuild 产物**不同** —— static-pie / 未 strip / 不同 rustc」。本机这台上的
+#    `cargo-zigbuild` 与 `zig` 版本也未必是 `release.yml` 钉的那两个（门禁 `muslbuild`
+#    那一格钉的是 zig 0.14.0 / cargo-zigbuild 0.23.0，而宿主上现打是 zig 0.16.0）。
+#    ⇒ 本命令买到的是「**开发期自洽 ＋ 裸 exe 恢复部署能力**」，**不是**「这一版发得出去」。
+# 2. **买不到「那份字节在真的远端 Linux 上跑得起来」** —— 本文件不运行它，没有真机。
+# 3. `--check` 在**没铺字节**的树上（＝ clone 下来的默认状态、CI、绝大多数开发树）
+#    只答得出「没有字节 ⇒ 无半 bump 可言」。⇒ 它那一趟的绿**不代表**字节是对的，
+#    只代表「这棵树上没有一份对不上的字节」。⚠ 那正是「地板在『变少』方向上是瞎的」
+#    这条纪律在本文件里的形状：人群**从 `REEMBED_TARGETS` 派生**，不从「扫落点目录、
+#    扫到几份算几份」来 —— 后者在目录被删空时恒绿。
+# 4. **它不判「这份字节是不是伪造的」** —— 逐字照抄 `sftp.rs::bytes_carry_build_stamp` 头注：
+#    「⚠ 买不到：**防篡改**。谁都能往一段字节里塞一个假戳。它防的是漂移与手滑……
+#      不防恶意 —— 那要签名，不是戳。」
+#
+# ── 跑法 ──────────────────────────────────────────────────────────────────────
+#
+#   bash tests/scripts/re-embed.sh            # 重编两份 musl 字节并铺回落点，铺完自检
+#   bash tests/scripts/re-embed.sh --check    # 只问「盘上的字节与源码对不对得上」，不产字节
+#   bash tests/scripts/re-embed.sh --native   # 本机那一份（裸 exe 自带的后端）重编并重铺
+#   bash tests/scripts/re-embed.sh --clean    # 守卫给的第二条出路：删掉落点（自动部署诚实关闭）
+#
+# 退出码 0 = 过；1 = 有对不上的 / 抠不到身份 / 编不过。
+# 最后一行恒印 `re-embed: <N> passed（…）`，`N` = 上面逐行印出来的 PASS 条数。
+set -euo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+#: 🔴 与 `release.yml` 那一步**逐字同源**（判据 `K-R124` ⑬b 两向对拍）。
+REEMBED_BUILD_FLAGS=(--release --locked)
+REEMBED_TARGETS=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl)
+
+#: 身份的唯一住址 —— 与 `build.rs::backend_lib_rs()` / `release.yml` 的
+#: `env.CCM_BACKEND_IDENTITY_SRC` 是同一份文件（步 9 把它从 `main.rs` 搬来）。
+IDENTITY_SRC="$ROOT/src/backend/lib.rs"
+#: 内嵌落点 —— 名字定死在 `build.rs` 的 `EMBEDDED_BACKENDS_DIR` / `NATIVE_BACKEND_DIR`
+#: （判据 ⑬c/⑬d 把这两处与本文件、与 `src/bridge/.gitignore` 三向钉在一起）。
+EMBEDDED_DIR="$ROOT/src/bridge/embedded-backends"
+NATIVE_DIR="$ROOT/src/bridge/native-backend"
+
+pass=0
+fail=0
+
+ok()  { printf 'PASS  %s :: %s\n' "$1" "$2"; pass=$((pass + 1)); }
+bad() { printf 'FAIL  %s :: %s\n' "$1" "$2"; fail=$((fail + 1)); }
+
+# 从身份那份源码里抠一个 `const <名>: &str = "…";`，**恰好一行**才算数。
+# 抠不到给空串，调用方按红记 —— **不许兜底成一个会参与比较的字符串**
+# （`设计/96 §7.2.5` 逐字：「`"unknown"` 这个值必须从类型上消失」，事故住 `设计/16 §5.4a`）。
+src_const() {
+  local name="$1" hits
+  hits="$(grep -cE "^[[:space:]]*(pub )?const ${name}: &str = \"[^\"]+\";" "$IDENTITY_SRC" || true)"
+  [ "$hits" = "1" ] || return 0
+  sed -nE "s/^[[:space:]]*(pub )?const ${name}: &str = \"([^\"]+)\";.*/\2/p" "$IDENTITY_SRC" | head -1
+}
+
+# 一份字节自报的身份：扫它里面那段定长戳 `<开><id><关>`。
+# 🔴 **恰好一个才是身份**（`build.rs::bytes_build_id` 头注逐字：「多个 ＝ 身份不唯一，
+#    两种都不许当成答案」）。0 个 / 多个都回一个说明串，它必然不等于任何真 `BUILD_ID`，
+#    于是落在下面那条相等断言的红这一侧 —— 不静默、不兜底。
+bytes_id() {
+  local f="$1" open="$2" close="$3" found n s
+  found="$(LC_ALL=C grep -aoE "${open}[[:alnum:]_.-]*${close}" "$f" | sort -u || true)"
+  n="$(printf '%s' "$found" | grep -c . || true)"
+  if [ "$n" != "1" ]; then
+    printf '<问出 %s 个身份戳>' "$n"
+    return 0
+  fi
+  s="${found#"$open"}"
+  s="${s%"$close"}"
+  printf '%s' "$s"
+}
+
+do_build() {
+  local t arch
+  for t in "${REEMBED_TARGETS[@]}"; do
+    printf '==> cargo zigbuild %s --target %s\n' "${REEMBED_BUILD_FLAGS[*]}" "$t"
+    ( cd "$ROOT/src/backend" && cargo zigbuild "${REEMBED_BUILD_FLAGS[@]}" --target "$t" )
+  done
+  mkdir -p "$EMBEDDED_DIR"
+  for t in "${REEMBED_TARGETS[@]}"; do
+    arch="${t%%-*}"
+    cp "$ROOT/.build/backend/$t/release/cc-monitor-backend" \
+       "$EMBEDDED_DIR/cc-monitor-backend-$arch"
+    printf '==> 铺好 src/bridge/embedded-backends/cc-monitor-backend-%s\n' "$arch"
+  done
+}
+
+# 本机那一份（裸 exe 自己带着的后端）。与 `release.yml` 的
+# `Build local backend (native)` ＋ `Stage native backend for self-extract` 同一条配方。
+# ⚠ 它**不进缺省那一趟**：19c 的病灶是远端那两份 musl（09-18 那次编不过的就是它们），
+#   本机这一份只在 Windows job 上铺、开发树上缺席是常态（`build.rs` 那条 warning 逐字说了）。
+do_native() {
+  local triple exe
+  triple="$(rustc -vV | sed -n 's/^host: //p')"
+  case "$triple" in *windows*) exe=".exe" ;; *) exe="" ;; esac
+  printf '==> cargo build %s（本机 target %s）\n' "${REEMBED_BUILD_FLAGS[*]}" "$triple"
+  ( cd "$ROOT/src/backend" && cargo build "${REEMBED_BUILD_FLAGS[@]}" )
+  mkdir -p "$NATIVE_DIR"
+  cp "$ROOT/.build/backend/release/cc-monitor-backend$exe" "$NATIVE_DIR/cc-monitor-native"
+  # 名字里没有 triple ⇒ 「给哪个平台编的」只能靠这份旁挂清单
+  # （`build.rs::embed_native_backend` 的 ① 号硬校验读它，对不上当场 panic）。
+  printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-native.target"
+  printf '==> 铺好 src/bridge/native-backend/cc-monitor-native（＋ .target = %s）\n' "$triple"
+}
+
+do_clean() {
+  rm -rf "$EMBEDDED_DIR" "$NATIVE_DIR"
+  printf '==> 已删两个内嵌落点 —— 自动部署与自释放诚实关闭，编译立刻恢复\n'
+}
+
+do_check() {
+  local id open close arch t f got present=0
+
+  id="$(src_const BUILD_ID)"
+  open="$(src_const BUILD_STAMP_OPEN)"
+  close="$(src_const BUILD_STAMP_CLOSE)"
+
+  if [ -n "$id" ]; then
+    ok "源码身份抠得出（恰好一行）" "src/backend/lib.rs 的 const BUILD_ID = $id"
+  else
+    bad "源码身份抠得出（恰好一行）" \
+        "在 src/backend/lib.rs 里抠不出**恰好一行** \`const BUILD_ID\` —— 身份又搬家了？住址是本文件顶上的 IDENTITY_SRC，与 build.rs::backend_lib_rs() 同一份"
+  fi
+  if [ -n "$open" ] && [ -n "$close" ]; then
+    ok "身份戳界标抠得出（各恰好一行）" "open=$open close=$close"
+  else
+    bad "身份戳界标抠得出（各恰好一行）" \
+        "抠不出 BUILD_STAMP_OPEN / BUILD_STAMP_CLOSE —— 拿一对空界标去扫，对**任何**字节都答不出身份"
+  fi
+
+  # 🔴 **人群从 `REEMBED_TARGETS` 派生，不从「扫落点目录」来。**
+  #    后者在目录被删空时零命中地全绿，正是本仓那句「地板在『变少』方向上是瞎的」。
+  #    ⚠ 这一条与「盘上有没有字节」无关 ⇒ 它是本命令在空树上唯一非空真的那几条之一。
+  ok "落点人群从 REEMBED_TARGETS 派生" \
+     "${#REEMBED_TARGETS[@]} 个 target ⇒ ${REEMBED_TARGETS[*]}（＋本机内嵌那一份，若铺了）"
+
+  if [ -z "$id" ] || [ -z "$open" ] || [ -z "$close" ]; then
+    printf '::error:: 身份抠不出来 ⇒ 下面那几条**判不了，按红记**（绝不退化成「没有字节，于是绿」）\n'
+    return 1
+  fi
+
+  for t in "${REEMBED_TARGETS[@]}"; do
+    arch="${t%%-*}"
+    f="$EMBEDDED_DIR/cc-monitor-backend-$arch"
+    if [ ! -f "$f" ]; then
+      printf 'skip  内嵌 backend %s :: 没铺（这棵树上没有这一份字节 —— 无半 bump 可言，也无自动部署）\n' "$arch"
+      continue
+    fi
+    present=$((present + 1))
+    got="$(bytes_id "$f" "$open" "$close")"
+    if [ "$got" = "$id" ]; then
+      ok "内嵌 backend $arch 与源码同一版" "字节自报 [$got] == 源码 [$id]"
+    else
+      bad "内嵌 backend $arch 与源码同一版" \
+          "字节自报 [$got]，源码是 [$id] —— **半 bump**：装上去会被判 StaleBuild 并无限重装"
+    fi
+  done
+
+  f="$NATIVE_DIR/cc-monitor-native"
+  if [ -f "$f" ]; then
+    present=$((present + 1))
+    got="$(bytes_id "$f" "$open" "$close")"
+    if [ "$got" = "$id" ]; then
+      ok "本机内嵌后端与源码同一版" "字节自报 [$got] == 源码 [$id]"
+    else
+      bad "本机内嵌后端与源码同一版" \
+          "字节自报 [$got]，源码是 [$id] —— **半 bump**：它会以 cc-monitor-local-[$got] 之名落到用户盘上"
+    fi
+  else
+    printf 'skip  本机内嵌后端 :: 没铺（裸 exe 起不了本机后端；开发构建里这是正常的）\n'
+  fi
+
+  if [ "$fail" -ne 0 ]; then
+    printf -- '---- 红 %d 条 ----\n' "$fail"
+    printf '::error:: 半 bump。出路二选一：① bash tests/scripts/re-embed.sh（重编重铺，同拍把账平掉）；② bash tests/scripts/re-embed.sh --clean（删掉落点，自动部署诚实关闭，编译立刻恢复）\n'
+    return 1
+  fi
+  printf 're-embed: %d passed（分母 = 上面逐行印出来的 PASS 条数；盘上现打 %d 份内嵌字节。' "$pass" "$present"
+  printf '⚠ 诚实边界：0 份时本行的绿只代表「这棵树上没有一份对不上的字节」，'
+  printf '**不代表**「发版那一拍办完了」—— 本机 zigbuild 的形态与发版 CI 不同，'
+  printf '也没有任何东西验过那份字节在真远端上跑得起来。逐条射程见本文件头注）\n'
+  return 0
+}
+
+case "${1:---reembed}" in
+  --check) do_check ;;
+  --clean) do_clean ;;
+  --native) do_native; do_check ;;
+  --reembed) do_build; do_check ;;
+  *)
+    printf 'usage: %s [--check|--clean|--native]\n' "$0" >&2
+    exit 2
+    ;;
+esac
