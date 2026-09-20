@@ -250,6 +250,12 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "control",
         "上面那条裸载荷与 TS 黄金串的跨语言逐字节对拍",
     ),
+    (
+        "control/launch_tmux_outer_parity.rs",
+        "control",
+        "`设计/90 §4 E`：**外层 tmux 那三格**（`new-session` / `send-keys` / `attach`）\
+         与 TS 黄金串的跨语言逐字节对拍。与上面那条的分工：那条管**内层载荷**，这条管**外层容器**",
+    ),
 ];
 
 #[cfg(test)]

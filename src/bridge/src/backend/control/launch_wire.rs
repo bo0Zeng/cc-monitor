@@ -216,6 +216,21 @@ pub struct PayloadRenderRequest {
     pub args: Vec<String>,
     /// 嵌套 env 键表（TS `AGENT_PROFILE.nestedEnvVars`）—— `unset-nested-env` 用。
     pub nested_env: Vec<String>,
+    /// `设计/90 §4 E`：**外层容器那一层**。`None` = `container:"none"` 那一格
+    /// （本命令 U8a-2c-pre 交付时的唯一形态，字节一个都没变）。
+    ///
+    /// # 为什么是加一个字段，而不是加一条新命令
+    ///
+    /// `设计/00 §2.5 ④` 要的是「5 个渲染实现 → **2 个**」—— **消灭副本**。
+    /// 「起一个会话的那条串」在 Rust 这侧只该有一个入口；给外层单开一条 IPC
+    /// 等于在同一件事上再开一个家（而且会连带动 `parity_ledger` 的命令底账与
+    /// `installface` 的装卸分组 —— 那两处要动的理由应该是「多了一项能力」，
+    /// 不是「同一项能力换了个拼法」）。
+    ///
+    /// ⚠ **`#[serde(default)]` 是承重的**：入库夹具 `payload-golden.json` 的 10 条用例
+    /// 一个字都没改，靠的就是它 —— 而 `deny_unknown_fields` 仍然拒多送的字段。
+    #[serde(default)]
+    pub outer: Option<WireTmuxOuter>,
     /// `( <prelude>; exec <inner> )` 包裹（§39 给 F04 rbind 留的槽）。
     ///
     /// ⚠ **这个字段是复盘补的。** 初版 wire 里根本没有它，`render_launch_payload` 硬写
@@ -235,6 +250,54 @@ pub struct WireWrap {
     pub prelude: String,
 }
 
+/// tmux 名字来自哪条校验路径 —— 与 TS `session-backend.ts::TmuxTarget["kind"]` 同名同义。
+///
+/// **它不是「要不要加引号」这个问题的答案，是「这个名字过的是哪道校验」**：
+/// 渲染时怎么拼由 Rust 那侧按变体决定，前端不许替它决定
+/// （那正是 F03 在 TS 侧消灭掉的「按首尾是不是引号猜」的嗅探写法）。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WireQuoting {
+    Raw,
+    Quoted,
+}
+
+/// 外层容器那一层的三格。与 TS `launch-render-fallback.ts` 的三个分支一一对应。
+///
+/// ⚠ **`attach` 那一格刻意不收载荷字段**：它只把终端接进一个已经在跑的会话，
+/// 一个 agent 进程都不出生。请求里 `env` / `args` / `launcher` 必须是空的，
+/// 由 [`render_launch_payload`] fail-closed 拒 —— 让「格搞错了」当场响，
+/// 而不是渲染出一条看起来对、实际把载荷丢了的命令。
+#[derive(Debug, Deserialize)]
+// ⚠ `rename_all` 管的是**变体名**（`create` / `send-into` / `attach`），字段名要单独用
+// `rename_all_fields` —— 少这一条，`ccm_sid` 就与前端送的 `ccmSid` 对不上，
+// 而 `deny_unknown_fields` 会把它当未知字段拒（本件第一次跑就是这么红的，那证明这道闸是活的）。
+#[serde(
+    tag = "mode",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum WireTmuxOuter {
+    Create {
+        name: String,
+        quoting: WireQuoting,
+        /// `new-session -c <目录>` 的实参。⚠ 这一格的 cwd **不进载荷**
+        /// （tmux 那两格的内层没有 `cd`）⇒ 它与顶层 `cwd` 只许有一个非空，
+        /// 两个都送会被拒（那说明调用方把两层的 cwd 搞混了）。
+        cwd: Option<String>,
+        ccm_sid: Option<String>,
+    },
+    SendInto {
+        name: String,
+        quoting: WireQuoting,
+    },
+    Attach {
+        name: String,
+        quoting: WireQuoting,
+    },
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum WireEnvOp {
@@ -244,8 +307,50 @@ pub enum WireEnvOp {
     UnsetNestedEnv,
 }
 
+/// 会话名 + 「它过的是哪道校验」 → 渲染器认的判别式。
+fn wire_target<'a>(name: &'a str, q: &WireQuoting) -> super::payload::TmuxTarget<'a> {
+    match q {
+        WireQuoting::Raw => super::payload::TmuxTarget::Raw(name),
+        WireQuoting::Quoted => super::payload::TmuxTarget::Quoted(name),
+    }
+}
+
+/// wire 形状 → 渲染器形状。借 `req` 里的串，不复制。
+fn wire_outer(o: &WireTmuxOuter) -> super::payload::TmuxOuter<'_> {
+    match o {
+        WireTmuxOuter::Create {
+            name,
+            quoting,
+            cwd,
+            ccm_sid,
+        } => super::payload::TmuxOuter::Create {
+            target: wire_target(name, quoting),
+            cwd: cwd.as_deref(),
+            ccm_sid: ccm_sid.as_deref(),
+        },
+        WireTmuxOuter::SendInto { name, quoting } => super::payload::TmuxOuter::SendInto {
+            target: wire_target(name, quoting),
+        },
+        WireTmuxOuter::Attach { name, quoting } => super::payload::TmuxOuter::Attach {
+            target: wire_target(name, quoting),
+        },
+    }
+}
+
 #[tauri::command]
 pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String> {
+    let outer = req.outer.as_ref().map(wire_outer);
+    // `attach` 先走，因为它**根本不渲染载荷** —— 与 TS `renderFallback` 的分支序同形
+    // （那边也是 `action.kind === "attach"` 第一个判）。
+    if let Some(o @ super::payload::TmuxOuter::Attach { .. }) = &outer {
+        if !req.env.is_empty() || !req.args.is_empty() || !req.launcher.is_empty() {
+            return Err(super::payload::refuse(
+                "attach 那一格带了载荷字段（env / args / launcher）—— 它一个 agent 进程都不起，\
+                 这几个字段只会被丢掉。请求形状对不上，拒。",
+            ));
+        }
+        return super::payload::render_tmux_outer(o, None);
+    }
     let nested: Vec<&str> = req.nested_env.iter().map(String::as_str).collect();
     let env: Vec<super::payload::EnvOp> = req
         .env
@@ -268,13 +373,30 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
             prelude: &w.prelude,
         })
         .collect();
-    super::payload::render_payload(&super::payload::PayloadSpec {
+    // ⚠ **tmux 那两格的内层没有 `cd`** —— cwd 交给外层的 `new-session -c`。
+    //   `payload.rs::render_payload` 头注逐字写过这一条：「U8c-2 接 tmux 路径时
+    //   **必须传 `cwd: None`**，否则会多出一段 `cd`」。这里就是那个落点。
+    if outer.is_some() && req.cwd.is_some() {
+        return Err(super::payload::refuse(
+            "同时送了顶层 cwd 与外层容器 —— tmux 那两格的 cwd 归外层的 `new-session -c`，\
+             内层不加 `cd`。两个都送说明调用方把两层的 cwd 搞混了，拒。",
+        ));
+    }
+    let payload = super::payload::render_payload(&super::payload::PayloadSpec {
         env: &env,
-        cwd: req.cwd.as_deref(),
+        cwd: if outer.is_some() {
+            None
+        } else {
+            req.cwd.as_deref()
+        },
         launcher: &req.launcher,
         args: &args,
         wrap: &wrap,
-    })
+    })?;
+    match &outer {
+        None => Ok(payload),
+        Some(o) => super::payload::render_tmux_outer(o, Some(&payload)),
+    }
 }
 
 #[cfg(test)]

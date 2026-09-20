@@ -363,6 +363,250 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// `设计/90 §4 E`：**外层 tmux 命令那三格** —— 后端把它们产出来
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// # 它补的是本模块头注那张图的**左半边**
+//
+// ```text
+// tmux new-session -d -s '=name:' … ; send-keys -t … '<载荷>' Enter ; tmux attach …
+// └────────────────────── 外层：容器 ──────────────────────┘ └─ 内层：载荷 ─┘
+//                        ↑ 本节（`设计/90 §4 E`）                ↑ 上面那半（U8c-1）
+// ```
+//
+// 三格逐条：`container:tmux` 的 `create` / `send-into`，加上 `action:attach`。
+// 它们今天在 TS 那侧的家是 `src/session-backend.ts`（座），由
+// `launch-render-fallback.ts` 三个分支各调一次。
+//
+// # ⚠ 它**不**住新模块，这是本件的要点之一
+//
+// `设计/00 §2.5 ④` 的目标是「**5 个渲染实现 → 2 个（Rust CLI + Rust 载荷）**」——
+// 整件事的要点是**消灭副本**。给外层单开一个模块会让盘上的渲染实现
+// 从 5 变 6，方向是反的。⇒ 外层并进**「Rust 载荷」那一份**（就是本模块），
+// 与内层共用同一份 quote 原语、同一套 fail-closed 姿态。
+// 盘上还剩几份、各自住哪，由 `the_launch_renderers_on_disk_are_exactly_these`
+// **逐份点名 + 恒等**钉着。
+//
+// # 与 TS 座的两处**刻意分歧**（同 [`render_payload`] 那几条，不是漏）
+//
+// 1. **校验**：TS 座头注逐字「座只在这些**已安全**的片段外拼后端语法，不做校验/转义」——
+//    它收的是**调用方已经 quote 好**的 `quotedCwd` / `quotedPayload`。
+//    本侧收的是**生料**，自己 quote、自己校验：会话名 / `@ccm_sid` 不合白名单一律 `Err`。
+//    ⇒ **合法输入逐字节相同**（入库金标准钉着），非法输入这侧拒、那侧照拼。
+// 2. **空串**：TS 的 `ccmSid ? … : ""` 把 `""` 当「没有」；本侧把 `Some("")` 判成坏数据
+//    （空值 ≠ 未设，Z01 的支点）。金标准里因此没有这一形 —— **如实登记，不假装覆盖了**。
+
+/// tmux 目标 —— **判别式，不嗅探**。与 TS `session-backend.ts::TmuxTarget` 一一对应。
+///
+/// `value` 恒是**明文名字**（两个变体都不预先带引号），变体声明它来自哪条校验路径：
+/// `Raw` = 已证明只含 `[A-Za-z0-9_-]`（`cc-<sid8>` 那一族），渲染时裸拼；
+/// `Quoted` = 校验时允许空格等自由字符（用户自定义会话名），渲染时 `posix_quote` 包裹。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TmuxTarget<'a> {
+    Raw(&'a str),
+    Quoted(&'a str),
+}
+
+impl<'a> TmuxTarget<'a> {
+    fn value(&self) -> &'a str {
+        match self {
+            Self::Raw(v) | Self::Quoted(v) => v,
+        }
+    }
+
+    /// `new-session -s <名>` 收的是**名字**不是 target ⇒ 不加 `=`/`:`。
+    fn token(&self) -> String {
+        match self {
+            Self::Raw(v) => (*v).to_string(),
+            Self::Quoted(v) => shell_quote_core::posix_quote(v),
+        }
+    }
+
+    /// `-t` 一律经这里。
+    ///
+    /// **裸 `-t <名>` 不是精确匹配**：tmux 依次按「精确名 → 名字开头 → glob」解析。
+    /// `=name:` 是唯一在 send-keys / attach / set-option 全部动词上都既通用又精确的形式
+    /// （尾冒号把串强制成 `session:` 形态，`=` 才落在会话名段上被识别）。
+    ///
+    /// ⚠ 与 [`super::tmux::exact_target`] 是**同一件事的两处写法，不是副本**：
+    /// 那一处服务的是**本机直接 spawn `tmux` 进程**（argv 元素，不过 shell ⇒ 不 quote），
+    /// 这一处服务的是**要拼进一条 shell 串**的远端命令（⇒ `Quoted` 那支要 quote）。
+    /// `=`/`:` 的形状相同、quote 姿态相反，合并会让其中一侧错。
+    fn exact(&self) -> String {
+        let marked = format!("={}:", self.value());
+        match self {
+            Self::Raw(_) => marked,
+            Self::Quoted(_) => shell_quote_core::posix_quote(&marked),
+        }
+    }
+
+    fn check(&self) -> Result<(), String> {
+        let v = self.value();
+        if v.is_empty() {
+            return Err(refuse("tmux 会话名是空串 —— 空值 ≠ 未设"));
+        }
+        match self {
+            // 裸拼进命令 ⇒ 白名单必须是 tmux 名字那一族，一个字符都不许多。
+            Self::Raw(_) => {
+                if !v
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+                {
+                    return Err(refuse(format!(
+                        "tmux 会话名 {v:?} 声明成 Raw（裸拼）却不在 `[A-Za-z0-9_-]` 里 ——\n\
+                         要么它该声明成 Quoted，要么上游铸名口漏了一道。"
+                    )));
+                }
+                Ok(())
+            }
+            // quote 之后 shell 元字符都是字面量了，真正要挡的是控制符与视觉欺骗字符：
+            // 前者会把一条命令劈成两条，后者让人眼看不出接的是哪个会话。
+            Self::Quoted(_) => {
+                if let Some(c) = v
+                    .chars()
+                    .find(|c| c.is_control() || acct_core::is_deceptive_char(*c))
+                {
+                    return Err(refuse(format!(
+                        "tmux 会话名 {v:?} 含控制符或视觉欺骗字符 {c:?} —— 拒绝拼进命令。"
+                    )));
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+/// 外层容器那一层的**三格**，与 TS `launch-render-fallback.ts` 的三个分支一一对应。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TmuxOuter<'a> {
+    /// `container: tmux` / `mode: create` ⇒ TS `SESSION_BACKEND.createRunAttach`。
+    Create {
+        target: TmuxTarget<'a>,
+        /// `None` = 不带 `-c`。⚠ 这一格的 cwd **不进载荷**（内层没有 `cd`），
+        /// 它是 `new-session -c <目录>` 的实参 —— 与 `container:"none"` 那一格分工不同。
+        cwd: Option<&'a str>,
+        /// `None` = 不打身份标记，`set_sid` 与 `set_title` 两段一起不出现（TS 侧同一个三元）。
+        ccm_sid: Option<&'a str>,
+    },
+    /// `container: tmux` / `mode: send-into` ⇒ TS `SESSION_BACKEND.runInExistingAttach`。
+    SendInto { target: TmuxTarget<'a> },
+    /// `action: attach` ⇒ TS `SESSION_BACKEND.attach`。**不带载荷。**
+    Attach { target: TmuxTarget<'a> },
+}
+
+/// `@ccm_sid` 是裸拼进命令的，白名单与 TS 座声称调用方会保证的那一条同口径
+/// （座头注逐字「调用方须保证 `ccmSid` 为 `[A-Za-z0-9_-]`（座不做校验、裸拼）」）。
+///
+/// **本侧不信那句声称** —— 它是一句注释纪律，而这条路的上游是 webview。
+fn ccm_sid_safe(sid: &str) -> bool {
+    !sid.is_empty()
+        && sid
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+}
+
+/// 外层三格的编译。`payload` = **内层已渲染好的生料**（没 quote），本函数负责 quote。
+///
+/// `Create` / `SendInto` **必须**带载荷；`Attach` **必须不**带 —— 两个方向都 fail-closed，
+/// 免得「少送一格」静默变成「建个空会话再把用户接进去」（issue #76 那一形）。
+///
+/// # 幂等闸为什么不在这里（`C14`〔用 08-12〕：起会话就是起会话，不要 `or`）
+///
+/// 这一支原来是「幂等 create-or-attach」，那个 `or` 藏在三个符号里：
+/// `2>/dev/null` 吞掉「会话已存在」的报错、`&&` 于是短路**不送载荷**、
+/// 而 `; tmux attach` 无条件把你接进去 ⇒「静默接回，且不告诉你载荷没送」。
+/// ⇒ 今天**不吞错**：`new-session` 失败就整条非零退出；撞名由上游唯一铸造口避让。
+/// 尾部 `attach` 保留，但挂在 `&&` 后面（`§1.3`：最终 exec 落在用户自己的终端里）。
+pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<String, String> {
+    match outer {
+        TmuxOuter::Create {
+            target,
+            cwd,
+            ccm_sid,
+        } => {
+            target.check()?;
+            // ⚠ **不许写 `ok_or_else`**：`every_business_rejection_is_tagged` 把它连同
+            //   `ok_or` / `.map_err` 一起列成**禁令**（它们能产出一个没经 [`refuse`] 的错误串，
+            //   而 TS 侧按 `REFUSE:` 标分流 ⇒ 不打标的拒绝会被当成 IPC 异常、回落到兜底渲染器
+            //   ⇒ 一次 fail-closed 当场变 fail-open）。本件第一次跑就撞上了它。
+            let p = match payload {
+                Some(p) => p,
+                None => {
+                    return Err(refuse(
+                        "create 那一格没带载荷 —— 会渲染出一条只建空会话再接进去的命令",
+                    ))
+                }
+            };
+            let cflag = match cwd {
+                Some("") => return Err(refuse("cwd 是空串 —— 空值 ≠ 未设；不带 -c 请用 None")),
+                Some(c) => format!(" -c {}", shell_quote_core::posix_quote(c)),
+                None => String::new(),
+            };
+            let t = target.exact();
+            // 身份标记与外层标题是**次要**动作，绝不能阻断主要动作（后面那个 `&& send-keys`）
+            // ⇒ 各自 `( … 2>/dev/null || true ) && ` 包起来：古董 tmux 上 set 失败就降级到
+            // 「无标记」（= #72 之前的行为），resume 照跑，而不是把用户丢进空 shell。
+            let (set_sid, set_title) = match ccm_sid {
+                None => (String::new(), String::new()),
+                Some(s) => {
+                    if !ccm_sid_safe(s) {
+                        return Err(refuse(format!(
+                            "@ccm_sid {s:?} 不在 `[A-Za-z0-9_-]` 里 —— 它是裸拼进命令的。"
+                        )));
+                    }
+                    (
+                        format!("(tmux set-option -t {t} @ccm_sid {s} 2>/dev/null || true) && "),
+                        // 外层终端窗口标题 = `ccm-rbind-<sid>`，由 tmux 格式 `#{@ccm_sid}`
+                        // **从上一句刚设的 option 派生** —— claude 碰不到 option（OSC 只改
+                        // pane_title），所以这个标题永远稳定、不需要轮询重刷。
+                        format!(
+                            "(tmux set-option -t {t} set-titles on 2>/dev/null || true) && \
+                             (tmux set-option -t {t} set-titles-string ccm-rbind-#{{@ccm_sid}} 2>/dev/null || true) && "
+                        ),
+                    )
+                }
+            };
+            Ok(format!(
+                "tmux new-session -d -s {}{} && {}{}tmux send-keys -t {} {} Enter && tmux attach -t {}",
+                target.token(),
+                cflag,
+                set_sid,
+                set_title,
+                t,
+                shell_quote_core::posix_quote(p),
+                t,
+            ))
+        }
+        // 会话确实在（claude 已退、只剩交互 shell）⇒ **无条件** send-keys + attach，
+        // 没有 new-session、没有短路。复用原名 = 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）。
+        TmuxOuter::SendInto { target } => {
+            target.check()?;
+            let p = match payload {
+                Some(p) => p,
+                None => return Err(refuse("send-into 那一格没带载荷 —— 那会把用户接进空 shell")),
+            };
+            let t = target.exact();
+            Ok(format!(
+                "tmux send-keys -t {} {} Enter; tmux attach -t {}",
+                t,
+                shell_quote_core::posix_quote(p),
+                t,
+            ))
+        }
+        TmuxOuter::Attach { target } => {
+            target.check()?;
+            if payload.is_some() {
+                return Err(refuse(
+                    "attach 那一格带了载荷 —— 它只把终端接进一个已经在跑的会话，\
+                     一个 agent 进程都不出生。带载荷说明调用方把格搞错了。",
+                ));
+            }
+            Ok(format!("tmux attach -t {}", target.exact()))
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // `K-H2b`：**接上注入点** —— 起会话那一刻把 `ANTHROPIC_BASE_URL` 指向本机中转
 // ═════════════════════════════════════════════════════════════════════════════
 //

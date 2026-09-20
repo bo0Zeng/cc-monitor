@@ -1252,3 +1252,197 @@ fn the_byte_for_byte_parity_still_has_two_independent_sides() {
              `KR89D4` 逐字：删了它，下一个人不会知道这条捷径为什么不许走。"
     );
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `设计/00 §2.5 ④`：**盘上还剩几份渲染实现** —— 给那个数一个住址
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// # 那个数本来没有家
+//
+// `设计/00 §2.5 ④` 逐字「**5 个渲染实现 → 2 个（Rust CLI + Rust 载荷）**」——
+// 而「5」在盘上**一处都没有**：它是散文里的一个数，没有判据钉着，
+// 也没有写清它是按什么口径数的。⇒ 与 `K-R105` 那两把尺子被混读是同一个形状的病，
+// 只是这次连尺子都还没有。本节把它落成：**口径写死 + 逐份点名 + 恒等 + 反向闭合。**
+//
+// # 口径（不写清口径的数就是半句假话）
+//
+// 数的是 **monitor 这一侧**（`src/*.ts` ＋ `src/bridge/src/**.rs`）
+// 「能产出**起一个会话的那条 shell 串**（或它的一整层）」的实现。
+//
+// ⚠ **`src/backend/` 那棵树不在人群里**，这是口径不是遗漏：那是**后端二进制自己**的
+// CLI 面（`control/ccm/`，跑在远端那台机器上的 `ccm` 命令），它是这条路的**被调方**，
+// 不是 monitor 侧的第 6 个副本。把它数进来，「5 → 2」这个目标本身就无从谈起。
+//
+// ⚠ **`remote-launch.ts` 那 5 个 builder 不算 5 份**：它们只是 5 个**调用点**，
+// 各自调的都是同一个 `renderFallback`（`K-R89` 的 PM 审计逐字纠过「那 5 个 builder
+// 是生产消费者」这句话）。**调用点不是实现。**
+
+/// `(仓相对路径, 这一份的入口符号, 它是什么, 它今天站在哪)`。
+///
+/// 🔴 **条数写成恒等**（[`the_launch_renderers_on_disk_are_exactly_these`]）：
+/// 地板在「变少」方向是瞎的，而本表整个存在的理由就是**看着它变少**。
+/// 加一份、删一份都必须回来改这张表 —— 改的时候人会看见 `LAUNCH_RENDERER_TARGET`。
+const LAUNCH_RENDERERS: &[(&str, &str, &str, &str)] = &[
+    (
+        "src/launch-render-cli.ts",
+        "tryRenderCli",
+        "TS · ccm 调用行",
+        "**零生产调用**（U8c-2c-2 起生产走 Rust）。它今天是 `cli-golden.json` 的唯一生成者 \
+         —— 删它是拿一份独立说法换 ~500 行非生产代码，本仓已复裁过两次：不划算，不删。",
+    ),
+    (
+        "src/launch-render-fallback.ts",
+        "renderFallback",
+        "TS · 载荷 ＋ 往座上分派那三格",
+        "**仍在生产路上**：`remote-launch-run.ts::renderLaunchCommand` 最后那一行。\
+         逐处与处数见 `TS_FALLBACK_KEEPERS`，站不站在生产路上见 `TS_FALLBACK_REACH`。",
+    ),
+    (
+        "src/session-backend.ts",
+        "TMUX_BACKEND",
+        "TS · 外层 tmux 那三格（座）",
+        "只被上面那份引。`设计/90 §4 E` 起它在 Rust 侧有了对侧 \
+         （`payload::render_tmux_outer`，逐字节对拍钉着）—— **但生产还没切过去**，\
+         所以它今天仍在人群里。别把「有对侧」读成「它走了」。",
+    ),
+    (
+        "src/bridge/src/backend/control/ccm_invocation.rs",
+        "render_ccm_invocation",
+        "Rust · ccm 调用行",
+        "✅ **目标态那两份之一**。生产在跑（`render_ccm_launch` ⇒ 装了 ccm 的远端）。",
+    ),
+    (
+        "src/bridge/src/backend/control/payload.rs",
+        "render_payload",
+        "Rust · 载荷（`设计/90 §4 E` 起同时管外层那三格）",
+        "✅ **目标态那两份之一**。内层生产在跑（`render_launch_payload` 的 \
+         `container:\"none\"` 那一格）；外层三格 `render_tmux_outer` 本拍刚补出来，\
+         **生产调用方 0**，如实登记。",
+    ),
+];
+
+/// `设计/00 §2.5 ④` 承诺的终点。**只许降到它，不许从它往上爬。**
+const LAUNCH_RENDERER_TARGET: usize = 2;
+
+/// ★ 逐份点名 + 恒等 + 每一份**实打指得到真东西**。
+#[test]
+fn the_launch_renderers_on_disk_are_exactly_these() {
+    // ① 条数恒等。⚠ 不是地板 —— 本表要看的就是它变少。
+    assert_eq!(
+        LAUNCH_RENDERERS.len(),
+        5,
+        "盘上的渲染实现份数变了。这不是把数字改一改就行的事：\n\
+         · **多了一份** ⇒ 先问「为什么同一件事要有第二个家」（`设计/00 §2.5 ④` 的整个要点就是消灭副本）；\n\
+         · **少了一份** ⇒ 好事，把这张表与 `设计/00 §2.5 ④` 一起改，并在 commit 里写清删的是哪一份。"
+    );
+    assert!(
+        LAUNCH_RENDERERS.len() > LAUNCH_RENDERER_TARGET,
+        "份数已经降到（或低于）目标 {LAUNCH_RENDERER_TARGET} —— 那一天到了，\n\
+         回 `设计/00 §2.5 ④` 结账：把这条判据改成「恰好是那两份」，别让它继续说「还在路上」。"
+    );
+
+    // ② 每一份的住址在盘上，且入口符号真的在它的**生产段**里。
+    //    没有这一步，上面那个 5 只是一个数字 —— 把五行路径全改成 `a.ts` 它照样绿。
+    for (path, symbol, what, _) in LAUNCH_RENDERERS {
+        let full = repo_root().join(path);
+        assert!(full.is_file(), "登记的渲染实现 {path}（{what}）不在盘上");
+        let raw = std::fs::read_to_string(&full).expect("读不到");
+        let prod = if path.ends_with(".ts") {
+            production_ts(&raw)
+        } else {
+            guard_core::production_code(&raw)
+        };
+        assert!(
+            guard_core::contains_word(&prod, symbol),
+            "{path} 的生产段里找不到入口符号 `{symbol}` ——\n\
+             要么它改名了（回来改这张表），要么这一份已经不是渲染实现了（那就该删行）。"
+        );
+    }
+
+    // ③ 目标态那两份**今天真的是 Rust**（不是把两份 TS 标个勾就算达标）。
+    let rust: Vec<&str> = LAUNCH_RENDERERS
+        .iter()
+        .filter(|(p, ..)| p.ends_with(".rs"))
+        .map(|(p, ..)| *p)
+        .collect();
+    assert_eq!(
+        rust.len(),
+        LAUNCH_RENDERER_TARGET,
+        "Rust 侧的份数不是 {LAUNCH_RENDERER_TARGET} —— 目标态是「Rust CLI ＋ Rust 载荷」两份，\
+         多出来的那份说明外层又被单开了一个家（`设计/90 §4 E` 刻意把它并进载荷那份，理由在 `payload.rs` 头注）"
+    );
+}
+
+/// ★ **反向闭合（外层 tmux 那一层）** —— 从源码派生，多一个家就红。
+///
+/// 上面那张表是**人写的**：少登记一份它看不见。这一条补的正是那个方向 ——
+/// 「`tmux new-session -d -s ` 这条命令在 monitor 这一侧有几个家」由机器数出来，
+/// 与登记表里那两份**两向集合相等**。
+///
+/// 🔴 **为什么盯这一条字面量**：`设计/90 §4 E` 搬的就是它，
+/// 而它是**要落进用户 shell 去执行的字节** —— 第三个家出现的那一刻，
+/// 「两份实现、逐字节对拍」这个结构就已经不成立了，而**别的判据一条都不会响**
+/// （各自的夹具只管自己那一份）。
+///
+/// ⚠ 射程如实写：它数的是**剥完注释的生产段里那个字面量出现过没有**。
+/// 把命令拆成几段拼（`"tmux new-" + "session"`）能从缝里过去 —— 本条不声称堵住那个。
+/// 它买的是「**照抄一份**」这种最常见的形状会有东西说话。
+#[test]
+fn the_outer_tmux_command_has_exactly_two_homes() {
+    let needle = format!("tmux new-{} -d -s ", "session");
+    let mut homes: Vec<String> = Vec::new();
+    let mut scanned = 0usize;
+
+    let root = repo_root();
+    for (p, raw) in guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]) {
+        scanned += 1;
+        if guard_core::production_code(&raw).contains(needle.as_str()) {
+            homes.push(format!(
+                "src/bridge/src/{}",
+                p.strip_prefix(root.join("src/bridge/src"))
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+            ));
+        }
+    }
+    let rs_scanned = scanned;
+    for (p, raw) in guard_core::scan_tree!(&root.join("src"), &["ts"]) {
+        let name = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        if name.ends_with(".test.ts") || name.ends_with(".vitest.ts") {
+            continue;
+        }
+        scanned += 1;
+        if production_ts(&raw).contains(needle.as_str()) {
+            homes.push(format!(
+                "src/{}",
+                p.strip_prefix(root.join("src"))
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+            ));
+        }
+    }
+    // ★ 抽取器自检：人群没缩水（否则 `homes` 恒空 ⇒ 集合相等会在两边都空时假绿）。
+    assert!(
+        rs_scanned >= 50 && scanned - rs_scanned >= 100,
+        "只扫到 {rs_scanned} 个 monitor 侧 `.rs` ／ {} 份生产 TS —— 遍历坏了",
+        scanned - rs_scanned
+    );
+
+    homes.sort();
+    let want = vec![
+        "src/bridge/src/backend/control/payload.rs".to_string(),
+        "src/session-backend.ts".to_string(),
+    ];
+    assert_eq!(
+        homes, want,
+        "\n★ 外层 tmux 命令的家变了。两向集合相等，所以多一个少一个都在这儿说话：\n\
+         · **多一个** ⇒ 有人又照抄了一份 `tmux new-session …`。`设计/00 §2.5 ④` 的整个\n\
+           要点是消灭副本；第三份出现的那一刻，「两份逐字节对拍」这个结构就不成立了。\n\
+         · **少一个** ⇒ 如果走的是 `session-backend.ts` 那份，那就是 `设计/90 §4 E` 收官了：\n\
+           回来把 `LAUNCH_RENDERERS` 那张表和 `设计/00 §2.5 ④` 一起结账。\n"
+    );
+}
