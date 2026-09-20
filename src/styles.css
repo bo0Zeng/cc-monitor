@@ -1201,6 +1201,19 @@ body.viewer-mode .grid-monitor-trigger {
 .tab:not(.has-cwd) .tab-cwd {
   display: none;
 }
+/* 〔步 17·B · 设计/30 §B.3b〕📌 固定角标。
+   🔴 **没有「固定区」** —— 固定的 tab 留在原位，只多这一个角标：
+   pin 管的是「别丢」，不是「排前面」（位置由 §C 的顺序落盘管，两者不抢）。
+   与 .tab-badge 同族：一次性 append、可见性交给 class，不在 refreshTabBar 里建节点。 */
+.tab:not(.pinned) .tab-pin {
+  display: none;
+}
+.tab-pin {
+  flex: none;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.85;
+}
 .tab:not(.archived) .tab-close {
   display: none;
 }
@@ -6979,6 +6992,19 @@ body.settings-window-mode .grid-monitor-trigger {
   box-shadow: inset 0 2px 0 0 var(--accent, #6aa9ff);
 }
 
+/* 〔步 17·D · 设计/30 §D.5〕`onto` 落点：**与这个 tab 成组**。
+   🔴 **必须用 `outline` 而不是 `border`**（§D.5 逐字）：`border` 改盒模型 ⇒ 拖动时目标
+      tab 尺寸变化 ⇒ 连锁 reflow，而且会让 §D.4 那个基于矩形的停留判定**自己失效**
+      （矩形一变，指针就"移出"了，停留永远攒不满 250ms）。
+   ⚠ `transform: scale` 只 repaint 不 reflow，同理由。**不给它加 transition** ——
+      拖动里 250ms 的动画会让「满了没有」这件事看不清，而且 transition 属性白名单
+      （css-conventions ⑥）本来就不该为一个瞬时反馈开口子。 */
+.tab.drop-onto {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  transform: scale(1.03);
+}
+
 /* P7a-3（#61）：标签页集合。**纯手动**建、手动命名 —— 组头点一下改名、× 解散。
    ⚠ 解散只去掉分组，一个会话都不会关：集合是个视图，不是容器。 */
 .tab-group {
@@ -7018,6 +7044,31 @@ body.settings-window-mode .grid-monitor-trigger {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* 〔步 17·B · 设计/30 §B.5/§B.6〕复活出来的固定 tab 的**空态**。
+   已结束的会话点进去**不能看内容，只能 resume**（99 §2.5 P3 裁定）⇒ 这块里
+   一条记录都不会有。不放点东西进去，用户点它就是一片空白 —— 与坏了没有区别
+   （这个仓刚因为「能操作但没反应」撤掉过两个取色器）。 */
+.pin-revived-hint {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 24px auto;
+  max-width: 520px;
+  padding: 16px 20px;
+}
+.pin-revived-hint-btn {
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 8px;
+  padding: 4px 12px;
 }
 
 /* P7b（全景 P4，#79）：多跳调用子图 / 影响面。
