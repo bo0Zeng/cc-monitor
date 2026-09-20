@@ -2806,7 +2806,11 @@ fn both_branch_commands_take_a_session_id_not_a_path() {
     let local = guard_core::production_code(include_str!("../../src/bridge/src/history.rs"));
     let remote = guard_core::production_code(include_str!("../../src/bridge/src/remote_branch.rs"));
     for (who, src, sig) in [
-        ("本机（合并后那条命令）", &local, "pub async fn create_branch_session("),
+        (
+            "本机（合并后那条命令）",
+            &local,
+            "pub async fn create_branch_session(",
+        ),
         (
             "远端（那条命令的远端分支）",
             &remote,

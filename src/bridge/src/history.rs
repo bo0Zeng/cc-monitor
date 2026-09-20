@@ -553,7 +553,8 @@ pub async fn stream_history_sessions_in_project(
     on_entry: tauri::ipc::Channel<HistorySessionEntry>,
     map: tauri::State<'_, Arc<SessionMap>>,
 ) -> Result<u32, String> {
-    if let crate::origin::Route::Remote(host) = origin.route("stream_history_sessions_in_project")?
+    if let crate::origin::Route::Remote(host) =
+        origin.route("stream_history_sessions_in_project")?
     {
         return crate::remote_history::stream_remote_history_sessions(project_dir, host, on_entry)
             .await;

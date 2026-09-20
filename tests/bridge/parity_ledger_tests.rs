@@ -190,11 +190,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("read_remote_mcp_servers", "mcp.read", Side::Remote),
     ("read_remote_project_mcp", "mcp.read", Side::Remote),
     // 〔步 12·C〕合成一条（同上那五行的第四条）。
-    (
-        "list_mcp_project_dirs",
-        "mcp.list-project-dirs",
-        Side::Both,
-    ),
+    ("list_mcp_project_dirs", "mcp.list-project-dirs", Side::Both),
     // 🔴🔴 **〔步 12·C 2026-09-20〕这两对**该合、但本步合不了** —— 卡的是工作边界，不是判据。**
     //
     // 判定：**它们是真双份**（同一个动作、同一个写面 `<dir>/.mcp.json`、

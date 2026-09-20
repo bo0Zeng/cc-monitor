@@ -10,6 +10,20 @@
 //!
 //! `D` 那一格尤其要说清：它**不是**「都换完了」的判据，是「**别再新增**」的判据。
 //! 头注里写着现打的数与口径，改小了要连着改那个数、被人看见一次。
+//!
+//! # 🔴 步 12·C（2026-09-20）加的两组：`E` · `F`
+//!
+//! 第一刀（步 12·A）只定类型、不换调用点；这一刀开始**真的有命令吃它**了，
+//! 于是多出一种第一刀不存在的失败形状：**「没说」被某条命令悄悄当成本机**。
+//!
+//! · `E` `Origin::route` 的三态**逐个点名**（线上字面量写死）——
+//!   `null` 必须被拒，而且拒的那句话要点名是哪条命令、并说清本机该送什么。
+//! · `F` **两向集合相等**：吃 `origin: Origin` 的 `#[tauri::command]`
+//!   == 体里经 `.route(` 分本机的那些。两边不同源（一边读签名、一边读体）⇒ 不是恒等。
+//!   带一条**阳性对照**（喂一份手写分本机的假源码，摘出来必须是「只在左边」那一形）。
+//!
+//! ⚠ **这两组都不判**「本机那一支干得对不对」——那是各命令自己的测试。
+//!   它们买的是「**分本机这一步只有一个住址，而且那个住址不许把 `null` 当本机**」。
 
 use super::*;
 
@@ -193,5 +207,227 @@ fn no_new_raw_string_origin_parameters() {
          ⚠ 换掉一批之后**把上面那个数改小**（连着改，别攒着）。",
         hits.len(),
         ORIGIN_MIGRATION_CEILING
+    );
+}
+
+// ── E：`route` 的三态 —— 步 12·C 的地基 ───────────────────────────────────
+//
+// 🔴 **这一组判的是「『没说』不会被悄悄当成本机」。**
+//
+// `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」⇒ 本机是一个**具名**的 origin。
+// 合并之后每条命令都要在入口分一次本机，而「分错」这件事**不报错**：
+// 调用方送 `null`，命令去动了本机的文件，用户看到的是一次「成功」。
+// ⇒ 三态在这里逐个点名，**写死线上字面量**（不从代码里取 —— 从代码里取就成了
+//   「它跟自己一致」，那是本文件 `A` 组头注已经写过的那条纪律）。
+
+#[test]
+fn route_names_all_three_wire_values_and_refuses_the_one_that_says_nothing() {
+    // 线上那三种值，逐个从**字面量**解出来再路由 —— 走的是真正的 `serde` 那条路。
+    let local: Origin = serde_json::from_str("\"<local>\"").expect("读不进 <local>");
+    let remote: Origin = serde_json::from_str("\"devbox\"").expect("读不进 devbox");
+    let unsaid: Origin = serde_json::from_str("null").expect("读不进 null");
+
+    assert_eq!(
+        local.route("t"),
+        Ok(Route::Local),
+        "线上 `\"<local>\"` 没有被路由成本机 —— 那本机那条路就没人走得到了"
+    );
+    assert_eq!(
+        remote.route("t"),
+        Ok(Route::Remote("devbox")),
+        "线上 `\"devbox\"` 没有被路由成那台远端"
+    );
+
+    // 🔴 **这一格是本组的全部力气所在。**
+    let err = unsaid
+        .route("某条命令")
+        .expect_err("线上 `null` 被路由出去了 —— 「没说」被当成了一台机器");
+    assert!(
+        err.contains("某条命令"),
+        "拒绝的那句话没点名是哪条命令，排障时无从下手：{err}"
+    );
+    // 拒的那句话里要**逐字**给出本机该送什么，否则调用方只知道被拒、不知道怎么改。
+    assert!(
+        err.contains(LOCAL),
+        "拒绝的那句话没告诉调用方本机该送 `{LOCAL}`：{err}"
+    );
+}
+
+#[test]
+fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
+    // `Route` 只有两个变体 —— 「没说」在 `route` 那一步就成了 `Err`，
+    // 拿到 `Route` 的代码**没有办法**把它误当本机。
+    // 这一格用**穷尽 match**（没有 `_` 臂）把这件事钉在类型上：
+    // 哪天有人给 `Route` 加第三个变体，这里编译不过。
+    for (o, want_local) in [
+        (Origin::local(), true),
+        (Origin::Named("devbox".into()), false),
+    ] {
+        let got = o.route("t").expect("具名的 origin 不该被拒");
+        let is_local = match got {
+            Route::Local => true,
+            Route::Remote(_) => false,
+        };
+        assert_eq!(is_local, want_local, "{o:?} 路由错了边");
+    }
+
+    // 🔴 **「本机」与「没说」在线上是两个不同的字节串** —— 这一条不是废话：
+    //    合并之前本机那几条命令**根本没有 origin 参数**，前端省掉它就对了；
+    //    合并之后省掉它就是 `null`，而 `null` ≠ 本机。两者在 UI 上都长成「没填」。
+    assert_ne!(
+        serde_json::to_string(&Origin::local()).unwrap(),
+        serde_json::to_string(&Origin::Unspecified(())).unwrap(),
+        "本机与「没说」序列化成了同一个东西 —— 那两者就再也分不开了"
+    );
+}
+
+// ── F：合并后的命令**一律**经 `route` 分本机 ──────────────────────────────
+//
+// 🔴 **它治的是一种不报错的失败**：一条吃 `Origin` 的命令自己手写
+// `if origin.is_local() { 本机 } else { 远端 }` —— 编译得过、测试多半也绿，
+// 而 `Unspecified` 会掉进 `else` 那一臂，拿着一个 `None` 的机器名去连远端，
+// 报出来的话与真实原因毫无关系（`local_origin_registry` 整篇治的正是这一形）。
+//
+// ⚠ **判法是两向集合相等，不是「有几处」**：
+//   左边 = 签名里吃 `origin: crate::origin::Origin` 的 `#[tauri::command]`；
+//   右边 = 函数体里调了 `.route(` 的那些。
+//   两边**不同源**（一边读签名、一边读体）⇒ 不是恒等。
+//   · 新写一条吃 `Origin` 却手写分支的命令 ⇒ 只在左边 ⇒ 红；
+//   · 某条命令不再吃 `Origin` 了却还留着 `.route(` ⇒ 只在右边 ⇒ 红。
+
+/// 从生产段里摘出每条 `#[tauri::command]` 的 (名字, 参数列表, 函数体)。
+///
+/// ⚠ **收尾括号从签名之后找起** —— 这是本轮实打踩过的坑（`history_tests.rs` 那条
+/// 同形判据）：`pub(crate) async fn …(` 这样的签名**自己就含一个 `)`**。
+/// 这里从 `fn` 后面的第一个 `(` 起算，天然避开。
+fn tauri_commands_with_bodies(src: &str) -> Vec<(String, String, String)> {
+    let attr = format!("#[tauri::{}]", "command");
+    let mut out = Vec::new();
+    for (i, _) in src.match_indices(&attr) {
+        let rest = &src[i..];
+        let Some(fpos) = rest.find("fn ") else {
+            continue;
+        };
+        // 属性与 fn 之间只许别的属性/空白 —— 否则不是同一个声明。
+        if rest[..fpos].contains('{') {
+            continue;
+        }
+        let after = &rest[fpos + 3..];
+        let Some(open) = after.find('(') else {
+            continue;
+        };
+        let name = after[..open].trim();
+        if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            continue;
+        }
+        // 参数列表：从第一个 `(` 配对到它的 `)`（参数里有泛型尖括号与嵌套括号）。
+        let mut depth = 0usize;
+        let mut close = None;
+        for (k, c) in after[open..].char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(open + k);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(close) = close else { continue };
+        let params = after[open + 1..close].to_string();
+        // 函数体：从参数列表之后的第一个 `{` 到**列 0 的右大括号**
+        //（`rustfmt` 保证顶层 item 这么收；同 `parity_ledger_tests::top_level_fn_bodies` 的口径）。
+        let tail = &after[close..];
+        let Some(brace) = tail.find('{') else {
+            continue;
+        };
+        let body_rest = &tail[brace..];
+        let end = body_rest
+            .find("\n}\n")
+            .map(|x| x + 2)
+            .unwrap_or(body_rest.len());
+        out.push((name.to_string(), params, body_rest[..end].to_string()));
+    }
+    out
+}
+
+#[test]
+fn every_origin_taking_command_splits_local_through_route() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("src/bridge/src");
+    // 🔴 遍历走 `scan_tree!`（同本文件 `D` 组的理由：`scanning_guard_registry` 那条
+    //    结构性判据禁止手写遍历）。
+    let mut takes_origin: std::collections::BTreeSet<String> = Default::default();
+    let mut calls_route: std::collections::BTreeSet<String> = Default::default();
+    let mut total_cmds = 0usize;
+    for (_, raw) in guard_core::scan_tree!(&dir, &["rs"]) {
+        let prod = guard_core::production_source(&raw);
+        for (name, params, body) in tauri_commands_with_bodies(&prod) {
+            total_cmds += 1;
+            let flat: String = params.split_whitespace().collect::<Vec<_>>().join(" ");
+            // 认的是**类型**，不是参数名：叫 origin 但收 String 的那一档归递减棘轮管。
+            if flat.contains("origin: crate::origin::Origin") || flat.contains("origin: Origin") {
+                takes_origin.insert(name.clone());
+            }
+            if body.contains(".route(") {
+                calls_route.insert(name);
+            }
+        }
+    }
+    // 反向自检①：抽取器真的摘到了命令（塌成 0 的话下面那条相等是 `{} == {}`）。
+    assert!(
+        total_cmds >= 100,
+        "只摘到 {total_cmds} 条 `#[tauri::command]` —— 抽取器坏了，本条在空转"
+    );
+    // 反向自检②：左边那个人群不许是空集 —— 步 12·C 落地之后它至少有 5 条。
+    assert!(
+        takes_origin.len() >= 5,
+        "吃 `Origin` 的命令只数到 {} 条（现打应 ≥5）—— 人群塌了，本条在空转：{takes_origin:?}",
+        takes_origin.len()
+    );
+    // ★ 有牙的那条：两向集合相等。
+    assert_eq!(
+        takes_origin, calls_route,
+        "**吃 `Origin` 的命令 与 经 `route` 分本机的命令，两边对不上。**\n\
+         · 只在左边（吃了 `Origin` 却没走 `route`）＝ 有人手写了分本机那一步。\n\
+           手写的那一版会把线上 `null`（`Origin::Unspecified`）掉进「远端」那一臂，\n\
+           然后拿着一个 `None` 的机器名去连 —— 报出来的话与真实原因毫无关系，\n\
+           而且**不报错的那一半更贵**：掉进「本机」那一臂就是替调用方做了决定。\n\
+         · 只在右边（走了 `route` 却不吃 `Origin`）＝ 签名退回裸字符串了，\n\
+           那一档归 `ORIGIN_MIGRATION_CEILING` 那条递减棘轮。\n\
+         ⇒ 出路只有一条：`match origin.route(\"<命令名>\")? {{ Route::Local => …, Route::Remote(host) => … }}`。"
+    );
+}
+
+#[test]
+fn the_command_body_scanner_would_notice_a_hand_rolled_split() {
+    // ★ **阳性对照** —— 上面那条全靠 `tauri_commands_with_bodies` 摘得准。
+    //   这里喂它一份**手写分本机**的假源码：签名吃 `Origin`、体里不调 `route`，
+    //   摘出来必须是「只在左边」那一形。摘不出来 ⇒ 上面那条在空转。
+    let poisoned = format!(
+        "#[tauri::{}]\npub async fn fake_cmd(origin: crate::origin::Origin, x: String) -> Result<(), String> {{\n    if origin.is_local() {{ return Ok(()); }}\n    Err(x)\n}}\n",
+        "command"
+    );
+    let got = tauri_commands_with_bodies(&poisoned);
+    assert_eq!(got.len(), 1, "阳性对照：一条命令都没摘到 —— 抽取器坏了");
+    let (name, params, body) = &got[0];
+    assert_eq!(name, "fake_cmd");
+    assert!(
+        params.contains("origin: crate::origin::Origin"),
+        "阳性对照：签名里的 `Origin` 没摘出来 —— 上面那条的**左边**永远是空集，\
+         于是「有人手写分本机」这一形它一辈子看不见"
+    );
+    assert!(
+        !body.contains(".route("),
+        "阳性对照：这份假源码体里本来就没有 `.route(`，却被摘出来了 —— 体的切法错位了"
+    );
+    assert!(
+        body.contains("is_local()"),
+        "阳性对照：体没切到（切出来的是 {body:?}）—— 切法塌了，\
+         而塌了之后「体里没有 `.route(`」恒成立 ⇒ 上面那条会**反过来**假红/假绿"
     );
 }
