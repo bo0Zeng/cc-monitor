@@ -79,7 +79,7 @@ pub fn show_file_rows(
         for i in range {
             let r = &rows[i];
             tally.rows_materialized += 1;
-            if paint_one_row(ui, r) {
+            if paint_one_row(ui, i, r) {
                 tally.clicked = Some(i);
             }
         }
@@ -89,10 +89,29 @@ pub fn show_file_rows(
 /// 一行的长相。**刻意抽出来**：虚拟与不虚拟两条路要画的是同一样东西，
 /// 否则对照组比的就不是「虚不虚拟」而是「画得多不多」。
 ///
-/// 回值 = 这一帧这一行被点了。⚠ **刻意不在这里做「点了之后干什么」** ——
-/// 那是窗口状态机的事（[`super::shell::FileWindow::activate`]），
-/// 画一行的函数不许知道「换目录」这回事。
-fn paint_one_row(ui: &mut Ui, r: &Row) -> bool {
+/// 回值 = 这一帧这一行被**双击**了（同旧面板 `panel.ts` 的 `dblclick`，别让两个面板两套手感）。
+///
+/// ⚠ **刻意不在这里做「点了之后干什么」** —— 那是窗口状态机的事
+/// （[`super::shell::FileWindow::activate`]），画一行的函数不许知道「换目录」这回事。
+///
+/// # 🔴 为什么是 `ui.interact(rect, 自己造的 Id, …)`，而不是 `响应.interact(…)`
+///
+/// 直觉写法是 `ui.horizontal(…).response.interact(Sense::click())`。
+/// **那一版在 headless 下现打是死的**：同一趟里、同一个位置上，
+/// `ui.button()` 拿得到 `hovered/clicked`，而 `ui.horizontal(…)` 那个**布局作用域
+/// 响应**上再 `interact` 出来的那一份 `hovered` 恒 `false`
+/// （逐帧读数见 `真相源/99 §8.10`）——
+/// 命中测试在 `begin_pass` 时按上一帧的 widget 表做，而那条路上那个 id 没进到能被命中的那一档。
+///
+/// ⇒ 换成**给这一行自己造一个 `Id`、用 `ui.interact` 正经登记一个 widget**，
+/// 当场活（`hov=true` / `click=true` / 第三帧 `dbl=true`）。
+/// ⚠ 这不是「换个写法凑绿」：换之前那一版**在真窗口上也一样不接点击**，
+/// 判据逮住的是一条真缺陷 —— 只是它在本机只能以 headless 的形式被看见。
+///
+/// ⚠ 买不到的那一半照旧写在这儿：**真机上鼠标双击能不能触发，本机判不了**
+/// （`XDG_SESSION_TYPE=tty`，没有图形会话，也就没有真事件源）。
+/// 这里买到的是「**egui 收到这样一串事件之后，认出来的是哪一行**」。
+fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> bool {
     let inner = ui.horizontal(|ui| {
         ui.label(if r.is_dir { "📁" } else { "📄" });
         ui.label(&r.name);
@@ -105,13 +124,16 @@ fn paint_one_row(ui: &mut Ui, r: &Row) -> bool {
             ui.label("⚠");
         }
     });
-    // ⚠ 整行都可点（不是只有名字那几个像素）—— 文件管理器的常规手感。
-    //   `interact` 只是把这块矩形按 click 语义再登记一次，**不往 `Memory::data` 里
-    //   按行存状态** ⇒ `scale_tests::egui_itself_does_not_keep_per_row_state` 那条
-    //   相等断言仍然成立（落地时现打核过：两档都仍是 1 条）。
-    inner
-        .response
-        .interact(egui::Sense::click())
+    // 整行都可点（不是只有名字那几个像素）—— 文件管理器的常规手感
+    // ⇒ 命中矩形在横向拉满整行宽。
+    let band = inner.response.rect;
+    let full = egui::Rect::from_min_max(
+        egui::pos2(ui.max_rect().left(), band.top()),
+        egui::pos2(ui.max_rect().right().max(band.right()), band.bottom()),
+    );
+    // ⚠ `Id` 按**行下标**造（不是按名字）：下标随滚动是绝对的、且同一行跨帧稳定，
+    //   而名字会重（同名文件在不同目录、或列表里刚好两行同名）。
+    ui.interact(full, ui.id().with(("filewin-row", index)), egui::Sense::click())
         .double_clicked()
 }
 
