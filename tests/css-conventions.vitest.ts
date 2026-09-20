@@ -293,19 +293,16 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
  *
  * 作者样式里的 `display` 压过 UA 的 `[hidden] { display: none }` ⇒ 那句 `hidden` 是空写。
  */
-const HIDDEN_KNOWN_BAD: Readonly<Record<string, string>> = {
-  "tab-archive-list":
-    "`src/tabs.ts:3474` 的 `this.archiveList.hidden = collapsed` 今天是空写 ⇒ 归档抽屉的「折叠」" +
-    "从来没生效过（默认就是折叠态 `▸`，而归档 tab 照样全列出来，箭头在骗人）。\n" +
-    "  **本轮刻意没修**，两条理由：\n" +
-    "  ① 修法是一行 CSS（`.tab-archive-list[hidden] { display: none }`），但它改的是**用户看得见的交互** ——\n" +
-    "     修完之后有归档会话时默认收起来。而仓里对这件事有两个相反的意图：\n" +
-    "     `tabs.ts:3278` 逐字「默认折叠（缺省 \"1\"）」，`tabs.ts:3294-3299` 那段头注又逐字\n" +
-    "     「宁可退回改之前的样子（归档 tab 灰着留在主栏）…『灰着但还在』正是用户对归档的全部期待」。\n" +
-    "     两句在同一个文件里，**该听哪一句是产品裁定不是工程问题**。\n" +
-    "  ② `设计/99 §4` 步 17（`设计/30` tab 三刀）本来就要把「归档」整个重做。\n" +
-    "  ⇒ 同形的 `.tab-archive` 已由 S24 修掉（它是「偷高度 + 画错地方」，不涉交互），见下面那条正控。",
-} as const;
+// 🔴 〔步 17·A · 2026-09-19〕**这张表清空了。**
+//   唯一那条 `tab-archive-list` 摘掉 —— **不是修好了，是那个功能整个不存在了**：
+//   归档抽屉随用户裁定删除（逐字「没有归档这个东西，不要归档，就是灰 tab。
+//   现在的归档是错误的，甚至是 bug 的来源，全部删掉」），
+//   而 `设计/30 §A` 抬头本来就写着「已定：删归档抽屉」。
+//   ⚠ 那条缺陷（`hidden` 是空写、箭头在骗人）**没有被修，是随载体一起消失的** ——
+//     两者在「表上少一行」这件事上长得一模一样，所以写清楚。
+//   ⚠ 空表**不等于这格判据没用**：下面那条仍是**恒等**（盘上现打的违例集合 == 本表），
+//     再冒出一个同形的当场红。空的是人群，不是判据。
+const HIDDEN_KNOWN_BAD: Readonly<Record<string, string>> = {} as const;
 
 describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 display（设计/41 §7 约定 1）", () => {
   const resolved = HIDDEN.filter((h) => h.classes !== null);
@@ -348,14 +345,44 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
     ).toEqual(sorted(Object.keys(HIDDEN_KNOWN_BAD)));
   });
 
-  it("🔴 正控：`.tab-archive` 必须被判成「写了 display 但有 [hidden] 兜底」", () => {
-    // 这一条证明「有兜底」不是恒真：换一个尺子，只要它把所有东西都判成「有兜底」，
-    // 上面那格就会永远绿。`.tab-archive` 是唯一一个**两边都命中**的活样本
-    // （S24 给它补了 `.tab-archive[hidden] { display: none }`）。
-    const v = verdicts.get("tab-archive");
-    expect(v, "`.tab-archive` 不在人群里了 —— 正控没了对象，上面那格会假绿").toBeDefined();
-    expect(v?.bare.length, "`.tab-archive` 身上已经没有裸 display 了 ⇒ 这个正控换一个样本").toBeGreaterThan(0);
-    expect(v?.guarded, "`.tab-archive[hidden] { display: none }` 不见了 ⇒ 抽屉的「一条都没有就不显」又成空写").toBe(true);
+  // 🔴 〔步 17·A · 2026-09-19〕**正控从活体换成合成夹具 —— 今天第三次栽在同一课上。**
+  //
+  // 上一版锚在 `.tab-archive` 上，理由逐字「它是唯一一个**两边都命中**的活样本」。
+  // 归档抽屉整个删掉之后，现打：全仓「既有裸 `display` 又有 `[hidden]{display:none}`」
+  // 的类 **0 个** ⇒ **正控没有对象了**，而上一版自己的报错里就预言了这句话。
+  //
+  // ⇒ 换成**合成的 `CssFacts`**：正控不依赖盘上任何一个类，谁也删不掉它。
+  //   ⚠ 「挑一个活着的、看起来不会改的样本」这条路本身是错的 —— 每轮都在赌，每轮都输。
+  //
+  // ⚠ 顺带**变强了**：上一版只有正控（证明「有兜底」不恒真）。这一版正反两控 ——
+  //   还证明了「没兜底」也不恒真，否则一把把所有东西都判成「没兜底」的尺子同样过得了。
+  it("🔴 正反两控：`displayVerdict` 对合成样本判得出「有兜底」与「没兜底」两种", () => {
+    const synth = (rules: { sel: string; body: string }[]): CssFacts => ({
+      root: "<合成>",
+      cssFiles: [],
+      strippedChars: 0,
+      defined: new Map(),
+      used: new Map(),
+      usedRaw: new Map(),
+      transitions: [],
+      transitionDecls: 0,
+      rules: rules.map((r, k) => ({ file: "<合成>", line: k + 1, ...r })),
+    });
+    const ok = displayVerdict(
+      synth([
+        { sel: ".synthetic-guarded", body: "display: flex;" },
+        { sel: ".synthetic-guarded[hidden]", body: "display: none;" },
+      ]),
+      "synthetic-guarded",
+    );
+    expect(ok.bare.length, "裸 display 一条都没认出来 ⇒ 尺子瞎了，上面那格会假绿").toBe(1);
+    expect(ok.guarded, "有 `[hidden]{display:none}` 却判成没兜底 ⇒ 会把好的报成坏的").toBe(true);
+    const bad = displayVerdict(
+      synth([{ sel: ".synthetic-bare", body: "display: flex;" }]),
+      "synthetic-bare",
+    );
+    expect(bad.bare.length, "这一条就是「空写 hidden」的形状，认不出来那格判据没有意义").toBe(1);
+    expect(bad.guarded, "没有任何 `[hidden]` 规则却判成有兜底 ⇒ **上面那格恒绿**").toBe(false);
   });
 
   it("已知违例表不许有死条目（修好了就把登记删掉）", () => {

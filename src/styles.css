@@ -55,12 +55,16 @@
      ⚠ 这条模板与 `tests/app-grid-claims.vitest.ts` 绑着：`#app` 的每个 in-flow 直接
        子元素都必须认领一个**本模板里声明过的**具名区域，否则那条判据当场红。 */
   display: grid;
+  /* 🔴 〔步 17·A · 2026-09-19〕`archive` 那一行**删了**，模板从三行回到两行。
+     上面那段 S24 的病史留着（它记录的是当时为真的事），但它治的那个病
+     随归档抽屉一起消失了：抽屉不存在 ⇒ 没有那个没认领格子的 grid item ⇒
+     不需要给它开一行，`main` 也不必再跨两行。
+     ⚠ `设计/30 §A.1` 逐字承诺的「左边 450px 空地消失」就是这一刀。 */
   grid-template-areas:
     "tabs main"
-    "archive main"
     "status status";
   grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto 24px;
+  grid-template-rows: minmax(0, 1fr) 24px;
   height: 100vh;
   position: relative;
 }
@@ -97,7 +101,6 @@ body.viewer-mode .viewer-topbar {
    `grid-template-rows` 从 `auto 644px 24px` 变成 `auto 511px 24px 133px`，
    消息流被偷 133px。tab 栏在 viewer 里本就 `display:none`，抽屉是它的附属 ⇒ 一起藏。 */
 body.viewer-mode #tab-bar,
-body.viewer-mode .tab-archive,
 body.viewer-mode #tab-bar-resizer,
 body.viewer-mode .settings-trigger,
 body.viewer-mode .history-trigger,
@@ -284,9 +287,6 @@ body.viewer-mode .grid-monitor-trigger {
  * `tests/evidence/S24-css-readings.md` §步5。 */
 @media (width < 980px) {
   body:not(.viewer-mode) #tab-bar {
-    width: 44px;
-  }
-  body:not(.viewer-mode) .tab-archive {
     width: 44px;
   }
   body:not(.viewer-mode) #tab-bar-resizer {
@@ -6960,54 +6960,18 @@ body.settings-window-mode .grid-monitor-trigger {
       `minmax(0,1fr)` 那行（tab 栏）压到 0。封顶后最坏情况是抽屉自己出滚动条。
    ⚠ 这一刀**只治「偷高度 + 画错地方」**。归档这个概念整个怎么处置归 `设计/99` 步 17
      （`设计/30` 三刀），别在这里顺手重做交互。 */
-.tab-archive {
-  grid-area: archive;
-  width: var(--tab-bar-w, 150px);
-  max-height: 40vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 2px 6px 6px;
-}
 /* 🔴 S24：`tabs.ts` 现打写着 `archiveWrap.hidden = archived === 0`（逐字注释：
    「一条都没有就整块不显：一个空抽屉只会占地方」），但上面那条 `display: flex`
    是**作者层**的，压过 UA 的 `[hidden]{display:none}` ⇒ 那句 `hidden` 一直是空写。
    实测：0 个归档会话时抽屉照样占 35px。这正是 `styles/tokens.css` 抬头那条
    「不参与布局用 `hidden` 属性、CSS 里禁止对这些元素写 `display`」要防的形状；
    既然 `display` 这里必须写，就得把 `[hidden]` 显式补回来。 */
-.tab-archive[hidden] {
-  display: none;
-}
-.tab-archive-toggle {
-  align-self: flex-start;
-  background: transparent;
-  border: 1px solid var(--border, #3a3a3a);
-  border-radius: 4px;
-  color: var(--text-2);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 2px 8px;
-}
-.tab-archive-toggle:hover {
-  color: var(--text);
-}
-/* 🔴 S30：这一条今天**违反**上面 `.tab-archive[hidden]` 刚治好的那条约定，而且是刻意留着的。
-   `src/tabs.ts:3474` 的 `this.archiveList.hidden = collapsed` 被下面这条 `display: flex`
-   压过 ⇒ 归档抽屉的「折叠」从来没生效过：默认是折叠态（`tabs.ts:3278` 逐字「默认折叠，
-   缺省 "1"」），按钮画着 `▸ 已归档 N`，而归档 tab 照样全列出来 —— **箭头在骗人**。
-   修法只有一行（`.tab-archive-list[hidden] { display: none; }`），**没修不是忘了**：
-   它改的是用户看得见的交互，而仓里对这件事有两句相反的话 ——
-   `tabs.ts:3294-3299` 那段头注逐字「宁可退回改之前的样子（归档 tab 灰着留在主栏）……
-   『灰着但还在』正是用户对归档的全部期待」。同一个文件里两个意图，**该听哪一句是产品裁定**。
-   而 `设计/99 §4` 步 17（`设计/30` tab 三刀）本来就要把「归档」整个重做。
-   ⇒ 已登记进 `tests/css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD`：**再多一个同形的就会红**，
-     这一个修好之后要把那条登记一起删（判据会提醒）。 */
-.tab-archive-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
+/* 🔴 〔步 17·A · 2026-09-19〕这里原先有一段 S30 写的说明，讲 `.tab-archive-list`
+   的 `hidden` 是空写、归档抽屉的折叠从来没生效、箭头在骗人。
+   **那条缺陷随抽屉一起消失了** —— 用户 2026-09-19 逐字「没有归档这个东西，
+   不要归档，就是灰 tab。现在的归档是错误的，甚至是 bug 的来源，全部删掉」。
+   `设计/30 §A` 抬头本来就写着「已定：删归档抽屉」，这一刀是步 17 的 A。
+   ⚠ `css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD` 里那条登记要一起摘。 */
 
 /* P7a-2 D 补审：拖动排序的落点指示。被拖的那块会插到这个 tab **之前**。
    只搬不指示的话，「拖动排序」是一次盲操作 —— 松手前不知道会落在哪。 */

@@ -3145,74 +3145,26 @@ describe("F15 每行代价的现状基线", () => {
 // `#61` 正文自陈「状态机已经有了，缺的是那个「口」」。判据钉的是**分流**本身：
 // 主栏里没有它 **且** 抽屉里有它 —— 两面都钉，否则「两边各渲一份」也能过。
 
-describe("P7a-1 独立归档区", () => {
-  let tm: TabManager;
-  let bar: HTMLElement;
+describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    tm = makeTM();
-    bar = document.body.firstElementChild as HTMLElement;
-  });
-  // 生产里由 `scheduleTabBarRefresh` 经 rAF 调；测试里直接催一次。
-  const flushBar = (): void =>
-    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
-
-  it("★ P7a1-Y1：归档的 tab 离开主栏、进抽屉，而且只有一份", () => {
-    tm.ensureTab("a", "/c", "p", 0, null);
-    tm.ensureTab("b", "/c", "p", 0, null);
-    tm.switchTo("a"); // a 是当前，b 不是
-    tm.archiveTab("b");
-    flushBar();
-
-    const inBar = [...bar.children].filter((e) => e.classList.contains("tab"));
-    const drawer = document.querySelector<HTMLElement>(".tab-archive-list")!;
-    const inDrawer = [...drawer.children].filter((e) => e.classList.contains("tab"));
-    expect(inBar).toHaveLength(1);
-    expect(inDrawer).toHaveLength(1);
-    // 两面都钉：主栏里没有它，抽屉里有它。只钉一面的话「两边各渲一份」也能过。
-    expect(inBar[0]).not.toBe(inDrawer[0]);
-    // 抽屉默认折叠，但整块要显（有东西可捞）。
-    expect(drawer.hidden).toBe(true);
-    expect(document.querySelector<HTMLElement>(".tab-archive")!.hidden).toBe(false);
-    expect(document.querySelector(".tab-archive-toggle")!.textContent).toContain("1");
   });
 
-  it("★ P7a1-Y2：**当前 tab 绝不进抽屉**，哪怕它已归档", () => {
-    // 用户会遇到的顺序：正看着某个会话，它跑完了 ⇒ 当场归档。
-    // 照 status 无条件分流的话，它会从主栏消失、掉进折叠的抽屉 ⇒ 界面看起来空了、内容还在。
-    tm.ensureTab("a", "/c", "p", 0, null);
-    tm.switchTo("a");
-    tm.archiveTab("a");
-    flushBar();
 
-    const inBar = [...bar.children].filter((e) => e.classList.contains("tab"));
-    expect(inBar, "当前 tab 必须还在主栏").toHaveLength(1);
-    const drawer = document.querySelector<HTMLElement>(".tab-archive-list")!;
-    expect([...drawer.children].filter((e) => e.classList.contains("tab"))).toHaveLength(0);
-    // 它仍然是归档态（本件不碰状态机），只是没被挪走。
-    expect(peek(tm).tabs.get("a")!.status).toBe("archived");
-    // 一条都没进抽屉 ⇒ 整块不显（空抽屉只占地方）。
-    expect(document.querySelector<HTMLElement>(".tab-archive")!.hidden).toBe(true);
-  });
 
-  it("★ P7a1-Y2b：切走之后，那个归档 tab 才落进抽屉", () => {
-    tm.ensureTab("a", "/c", "p", 0, null);
-    tm.ensureTab("b", "/c", "p", 0, null);
-    tm.switchTo("a");
-    tm.archiveTab("a");
-    flushBar();
-    expect([...bar.children].filter((e) => e.classList.contains("tab"))).toHaveLength(2);
-    tm.switchTo("b");
-    flushBar();
-    const drawer = document.querySelector<HTMLElement>(".tab-archive-list")!;
-    expect([...drawer.children].filter((e) => e.classList.contains("tab"))).toHaveLength(1);
-  });
 
-  it("★ P7a1-D：`barEl` 没有父节点时，归档的 tab **不许消失**", () => {
-    // 抽屉是 `barEl` 的兄弟 ⇒ 要插进 `barEl.parentElement`。拿不到父节点时若仍把
-    // tab 挪进那个**孤儿**容器，它就从文档里整个不见了 —— 而「灰着但还在」正是
-    // 用户对归档的全部期待。⇒ 拿不到父节点就**别分流**，留在主栏（灰着，与改之前一样）。
+  it("★ 已结束的 tab 留在主栏，一个都不许消失（连 barEl 没有父节点时也一样）", () => {
+    // 🔴 〔步 17·A · 2026-09-19〕**本条留着，但它买的东西变了 —— 从「边界情形」变成「正题」。**
+    //
+    // 旧理由：抽屉是 `barEl` 的兄弟，拿不到父节点时若仍把 tab 挪进那个**孤儿**容器，
+    // 它就从文档里整个不见了。那时这是一条**边界**判据（只在拿不到父节点时有意义）。
+    //
+    // 今天抽屉整个删了（用户逐字「没有归档这个东西……就是灰 tab」，`设计/30 §A`）
+    // ⇒ 「已结束的 tab 留在主栏灰着」**成了正常行为本身**，这一条于是是它的正面断言。
+    // ⚠ 孤儿 `barEl` 那个布景**刻意留着**：它仍是一个真的边界情形，而且这条断言
+    //   在那个布景下也该成立 —— 顺手把两件事一起买了。
+    // ⚠ 「灰着但还在」这句话来自 `tabs.ts` 自己的旧头注，而用户 2026-09-19 逐字说了同一句。
     document.body.innerHTML = "";
     const orphanBar = document.createElement("div"); // 刻意不 append 到 body
     const streamRootEl = document.createElement("div");
@@ -3227,30 +3179,6 @@ describe("P7a-1 独立归档区", () => {
     expect(inBar, "两个都该还在主栏 —— 一个都不许被挪进孤儿容器").toHaveLength(2);
   });
 
-  it("★ P7a1-Y3：抽屉里的 tab 不挂 tear-off 拖拽（那条判定线对它没意义）", () => {
-    tm.ensureTab("a", "/c", "p", 0, null);
-    tm.ensureTab("b", "/c", "p", 0, null);
-    tm.switchTo("a");
-    tm.archiveTab("b");
-    flushBar();
-    const drawer = document.querySelector<HTMLElement>(".tab-archive-list")!;
-    const chip = [...drawer.children].find((e) => e.classList.contains("tab")) as HTMLElement;
-    expect(chip).toBeTruthy();
-    // 在抽屉里按下左键 —— 不许起一轮拖拽（`drag` 是 TabManager 的内部状态）。
-    chip.dispatchEvent(
-      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
-    );
-    expect(
-      (peek(tm) as unknown as { drag: unknown }).drag,
-      "抽屉里按下不该起拖拽：主栏那条 tear-off 判定线对抽屉没有意义",
-    ).toBeFalsy();
-    // 对照组：主栏里的那个照常能起拖拽（别把功能修没了）。
-    const inBar = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
-    inBar.dispatchEvent(
-      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
-    );
-    expect((peek(tm) as unknown as { drag: unknown }).drag).toBeTruthy();
-  });
 });
 
 // ===== P7a-2（#61）：栏内拖动排序 =====
@@ -3464,8 +3392,16 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
       new MouseEvent("mouseup", { clientX: 10, clientY: 10, bubbles: true }),
     );
     expect(barSnap(), "松手后归档那一格要落实，否则守卫就成了静默丢刷新").not.toBe(during);
-    const archived = document.querySelector<HTMLElement>(".tab-archive-list")!;
-    expect(archived.children.length, "b 应已搬进归档抽屉").toBe(1);
+    // 🔴 〔步 17·A · 2026-09-19〕后置断言换了，**本条的正题一个字没动**。
+    //   原来这里断言「b 已搬进归档抽屉」。抽屉整个删了（用户逐字「没有归档这个东西」，
+    //   `设计/30 §A`「已定：删归档抽屉」）⇒ 新行为是**留在原位灰着**。
+    //   本条买的仍是条 54：**拖拽进行中 tab 不自己跳位置**；变的只是「松手后落实成什么」。
+    const barTabs = [...bar.children].filter((e) => e.classList.contains("tab"));
+    expect(barTabs.length, "三个 tab 必须都还在主栏里 —— 归档不再把谁搬走").toBe(3);
+    expect(
+      barTabs.filter((e) => e.classList.contains("archived")).length,
+      "b 已结束 ⇒ 原位灰着（`.tab.archived`），而不是消失进另一个容器",
+    ).toBe(1);
     expect(order(), "拖动本身的结果照常落实").toEqual(["c", "a", "b"]);
   });
 });
@@ -3486,6 +3422,23 @@ describe("P7a-3 集合分组渲染", () => {
     (tm as unknown as { collections: unknown }).collections = cols;
   };
   const order = (): string[] => (tm as unknown as { orderedIds: string[] }).orderedIds;
+
+  // ── 🔴 〔步 17·A · 2026-09-19〕墓碑：五条测「归档抽屉」的判据整块删除 ──────
+  //
+  // 删的是：`P7a1-Y1`（归档 tab 离开主栏进抽屉）· `P7a1-Y2`（当前 tab 绝不进抽屉）
+  // · `P7a1-Y2b`（切走之后才落进抽屉）· `P7a1-Y3`（抽屉里的 tab 不挂 tear-off）
+  // · `P7a3-Y2b`（归档优先于集合：灰 tab 进抽屉不进组）。
+  //
+  // **它们没有失效，是被测的那个功能整个不存在了。** 用户 2026-09-19 逐字：
+  // 「没有归档这个东西，不要归档，就是灰 tab。现在的归档是错误的，甚至是 bug 的来源，
+  //   全部删掉。」而 `设计/30 §A` 抬头本来就写着「**已定**：删归档抽屉 · 固定灰 tab」。
+  //
+  // ⚠ **`P7a3-Y2b` 那条的判词今天正好反过来**：它断言「灰 tab 进抽屉**不进组**」，
+  //   而 `§A.3` 逐字「**灰 tab 也能在组里**，更符合直觉」⇒ 留着它就是把设计判红。
+  //   下面 `P7a3` 那一族里已经有「按集合分组」的正向判据盖住新行为，不另立。
+  //
+  // ⚠ 留下这块墓碑而不是静悄悄删：`设计/16 §5.3` 那条 —— 一条判据消失时，
+  //   「它被删了」与「它从来没有过」在盘上长得一模一样。
 
   it("★ P7a3-Y2：成员进它的组，非成员照常直接挂主栏", () => {
     tm.ensureTab("a", "/c1", "p", 0, null);
@@ -3545,19 +3498,6 @@ describe("P7a-3 集合分组渲染", () => {
     expect(gi, "组排在未归组的之前").toBeLessThan(ti);
   });
 
-  it("★ P7a3-Y2b：归档优先于集合 —— 灰 tab 进抽屉，不进组", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null);
-    tm.ensureTab("b", "/c2", "p", 0, null);
-    tm.switchTo("b");
-    tm.archiveTab("a");
-    setCols([{ id: "g1", name: "白天", members: ["a"] }]);
-    flushBar();
-    expect(bar.querySelectorAll(".tab-group-list > .tab")).toHaveLength(0);
-    expect(
-      document.querySelectorAll(".tab-archive-list > .tab"),
-      "归档那条分流优先",
-    ).toHaveLength(1);
-  });
 
   it("★ P7a3-Y3：解散集合**一个会话都不许少**", () => {
     tm.ensureTab("a", "/c1", "p", 0, null);

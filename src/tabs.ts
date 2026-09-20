@@ -52,7 +52,7 @@ import {
 import type { BranchRecord } from "./branching";
 import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
-import { LS_KEYS, safeGet, safeSet } from "./local-storage";
+import { LS_KEYS, safeSet } from "./local-storage";
 import {
   addMember,
   collectionOf,
@@ -558,9 +558,6 @@ export class TabManager {
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
   private groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
 
-  private archiveWrap: HTMLElement | null = null;
-  private archiveToggle: HTMLButtonElement | null = null;
-  private archiveList: HTMLElement | null = null;
 
   constructor(
     private barEl: HTMLElement,
@@ -3276,36 +3273,18 @@ export class TabManager {
   }
 
   /** P7a-1：归档区 UI 建一次。默认折叠（缺省 `"1"`，与 agents/tasks 面板同形态）。 */
-  private ensureArchiveUi(): void {
-    if (this.archiveWrap) return;
-    const wrap = document.createElement("div");
-    wrap.className = "tab-archive";
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "tab-archive-toggle";
-    const list = document.createElement("div");
-    list.className = "tab-archive-list";
-    toggle.addEventListener("click", () => {
-      const next = !this.archiveCollapsed();
-      safeSet(LS_KEYS.tabArchiveCollapsed, next ? "1" : "0");
-      this.refreshTabBar();
-    });
-    wrap.append(toggle, list);
-    // ★★ **拿不到父节点就整个不启用归档区**〔D 阶段补审〕。
-    //
-    // 抽屉是 `barEl` 的**兄弟**，要插进 `barEl.parentElement`。原来这里写的是
-    // `?.insertBefore(...)` 然后照样把三个字段存下来 ⇒ 拿不到父节点时，
-    // `archiveList` 是一个**孤儿容器**，而下面的分流会把归档的 tab 挪进去
-    // ⇒ **它从文档里整个消失**。而「灰着但还在」正是用户对归档的全部期待。
-    //
-    // ⇒ 宁可退回改之前的样子（归档 tab 灰着留在主栏），也不要让它凭空不见。
-    const parent = this.barEl.parentElement;
-    if (!parent) return;
-    parent.insertBefore(wrap, this.barEl.nextSibling);
-    this.archiveWrap = wrap;
-    this.archiveToggle = toggle;
-    this.archiveList = list;
-  }
+  // 🔴 〔步 17·A · 2026-09-19〕**`ensureArchiveUi()` 整个删掉。**
+  //
+  // `设计/30 §A` 抬头逐字「**已定**：删归档抽屉 · 固定灰 tab」，三条独立理由：
+  //   ① 它永久吃 450px 屏宽（`.tab-archive` 是 `#app` 的 grid item 却没认领格子）
+  //   ② 它是个撕窗口陷阱（tear-off 判定线对抽屉没有意义）
+  //   ③ **它的存在理由本来就自相矛盾** —— 原 `belongsInArchive` 的注释自己写着：
+  //      active tab 会「在你正看着它的时候」掉进折叠的抽屉里 ⇒ 已经为 active 开了例外。
+  //      把例外推广到全部，抽屉就没了。
+  //
+  // ⚠ **删的是抽屉，不是状态。** `status === "archived"` 照旧存在，那种 tab
+  //   **留在原位灰着**（`.tab.archived` 那条 CSS 本来就有，`§A.3` 逐字「不用新写」）。
+  //   用户 2026-09-19 逐字：「没有归档这个东西，不要归档，就是灰 tab。」
 
   /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
   async loadCollections(): Promise<void> {
@@ -3325,22 +3304,7 @@ export class TabManager {
     }
   }
 
-  private archiveCollapsed(): boolean {
-    return safeGet(LS_KEYS.tabArchiveCollapsed) !== "0";
-  }
 
-  /**
-   * P7a-1：这个 tab 该不该进归档区。
-   *
-   * ★★ **`sid !== activeId` 这一半不是可选的。** `activeId` 指着的那个 tab 可能
-   * **在你正看着它的时候**变成 `archived`（会话跑完就归档）。照 `status` 无条件分流的话，
-   * 它会当场从主栏消失、掉进一个折叠起来的抽屉里 ⇒ **界面看起来空了，而内容还在**。
-   * 那比「灰着但还在」坏得多。
-   */
-  private belongsInArchive(sid: string, tab: { status: TabStatus }): boolean {
-    if (!this.archiveList) return false; // 归档区没建起来（见 `ensureArchiveUi`）⇒ 不分流
-    return tab.status === "archived" && sid !== this.activeId;
-  }
 
   /**
    * P7a-3：拿到某集合在主栏里的容器（没有就建）。
@@ -3411,10 +3375,8 @@ export class TabManager {
     }
 
     // 2 + 3 + 4. 创建 / 更新 / 排序
-    // P7a-1：主栏 / 归档抽屉两个容器；P7a-3：主栏里再按集合分若干组
+    // 〔步 17·A〕抽屉没了 ⇒ 只剩主栏 ＋ 按集合分的若干组
     // ⇒ 推广成「**每容器一个游标**」。
-    this.ensureArchiveUi();
-    const collapsed = this.archiveCollapsed();
     // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
     for (const [id, g] of this.groupEls) {
       if (!this.collections.some((x) => x.id === id)) {
@@ -3434,7 +3396,6 @@ export class TabManager {
       .filter((e) => e.classList.contains("tab-group"))
       .pop();
     if (lastGroup) cursors.set(this.barEl, lastGroup);
-    let archived = 0;
     for (const sid of this.orderedIds) {
       const tab = this.tabs.get(sid);
       if (!tab) continue;
@@ -3444,15 +3405,10 @@ export class TabManager {
         this.tabButtons.set(sid, refs);
       }
       this.updateTabButton(refs, sid, tab);
-      const toArchive = this.belongsInArchive(sid, tab);
-      if (toArchive) archived += 1;
-      // 归档优先于集合：灰 tab 进抽屉，不进组（`P7a-1` 的分流优先）。
-      const col = toArchive ? null : collectionOf(this.collections, sid);
-      const host = toArchive
-        ? this.archiveList!
-        : col
-          ? this.groupElFor(col)
-          : this.barEl;
+      // 〔步 17·A〕分流从三路（抽屉 / 组 / 主栏）降到**两路**（组 / 主栏）。
+      // 「归档优先于集合」那条判定整条消失 ⇒ **灰 tab 也能在组里**（`§A.3` 逐字）。
+      const col = collectionOf(this.collections, sid);
+      const host = col ? this.groupElFor(col) : this.barEl;
       // 排序：希望此 button 出现在**同容器内**前一个之后。
       const prev = cursors.get(host) ?? null;
       const targetNext: ChildNode | null = prev ? prev.nextSibling : host.firstChild;
@@ -3460,18 +3416,6 @@ export class TabManager {
         host.insertBefore(refs.root, targetNext);
       }
       cursors.set(host, refs.root);
-    }
-    if (this.archiveToggle && this.archiveList && this.archiveWrap) {
-      // ▸ = 点开，▾ = 已展开（收起）。方向别反：箭头指的是**点下去会发生什么**。
-      this.archiveToggle.textContent = collapsed
-        ? `▸ 已归档 ${archived}`
-        : `▾ 已归档 ${archived}`;
-      this.archiveToggle.title = archived
-        ? "已结束的会话搬到这里，内容还在 —— 点开就能捞回来"
-        : "还没有已归档的会话";
-      // 一条都没有就整块不显：一个空抽屉只会占地方。
-      this.archiveWrap.hidden = archived === 0;
-      this.archiveList.hidden = collapsed;
     }
 
     this.notifyChanged();
@@ -3555,13 +3499,8 @@ export class TabManager {
     // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
     root.addEventListener("mousedown", (e) => {
       if (e.button !== 0) return;
-      // ★ P7a-1-Y3：**归档区里的 tab 不参与拖拽。**
-      //
-      // `beginTabDrag` 把 `barEl` 的右边界当 tear-off 判定线（`barRight`）。
-      // 抽屉是 `barEl` 的**兄弟**、在它下面 —— 在抽屉里往右拖一点就越过那条线，
-      // 会被判成「拖出栏外」而撕出一个窗口。那条线对抽屉**没有意义**。
-      // ⇒ 抽屉内排序是 `P7a-2` 的题目，本件先把这条路关掉，不留一个会误触的手势。
-      if (this.archiveList && root.parentElement === this.archiveList) return;
+      // 〔步 17·A〕原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
+      // 抽屉没了，那条例外自动不需要（`§A.3` 逐字「净收益」）。
       this.beginTabDrag(e, sid, root);
     });
     // 中键点击归档 Tab 也关闭（常见 UX）
