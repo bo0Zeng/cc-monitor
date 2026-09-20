@@ -207,8 +207,10 @@ pub struct ChannelStats {
     pub in_use: usize,
     /// 同时在借的**历史最大值**（高水位）。判据拿它钉「上限真的生效」。
     pub peak: usize,
-    /// 预算上限（= 建池时给的那个数）。
+    /// 通道闸（= 建池时给的那个数）。
     pub cap: usize,
+    /// 传输车道闸。`cap - lane_cap` 就是**永远留给浏览的格子数**。
+    pub lane_cap: usize,
 }
 
 struct ChannelSetInner<C> {
@@ -225,20 +227,35 @@ struct ChannelSetInner<C> {
     generation: AtomicU64,
 }
 
-/// 一条 SSH 连接上的 SFTP 通道集合：**预算封顶 · 空闲复用 · 读数可取**。
+/// 一条 SSH 连接上的 SFTP 通道集合：**两道闸 · 空闲复用 · 读数可取**。
 ///
-/// # 泛型参数 `C` 不是品味，是判据的形状
+/// # 两道闸，叠加
 ///
-/// 生产实例是 `ChannelSet<PooledChannel>`，而 `PooledChannel` 攥着一条真 SSH 连接
-/// ⇒ 要一台真 sshd 才构造得出来。把「通道是什么」抽成 `C` 之后，判据能拿
-/// 一条**讲真 SFTP 字节的合成会话**（`tests/bridge/sftp_channel_pool_tests.rs` 那台台架，
-/// 照秤 F3 的形状办）当通道，在进程内把「边传边浏览」「并发排队」「空闲复用」
-/// 三件事量成**相等断言**。被判的是**同一个类型的同一个方法**，不是它的抄件。
+/// - **通道闸**（`cap`，生产值 [`SESSION_CHANNEL_CAP`]）：谁要通道都得过它 ——
+///   它对着的是远端的 `MaxSessions`。
+/// - **车道闸**（`lane_cap`，生产值 [`TRANSFER_LANE_CAP`]）：**只有传输**再过一道 ——
+///   它对着的是「边传边浏览」，把 `cap - lane_cap` 格永久留给浏览。
+///
+/// ⚠ **车道闸刻意长在这里、不长在 `OriginPool` 上。** 理由是判据的形状，不是风格：
+/// `OriginPool` 攥着一条真 SSH 连接，要一台真 sshd 才构造得出来 ⇒ 车道闸挂在它身上，
+/// 「传输占满时浏览还进不进得来」这件事就**一条判据都写不出来**。
+/// 挂在本类型上之后，那句话是一个**相等读数**：
+/// 10 条传输 ＋ 1 次浏览、`(cap=6, lane_cap=4)` ⇒ 在借的恰好是 **5**（4 传输 ＋ 1 浏览）。
+/// 少了车道闸那个数是 6（6 条传输把格子占满、浏览永远排队）——**两个数差得开**。
+///
+/// # 泛型参数 `C` 同理
+///
+/// 生产实例是 `ChannelSet<PooledChannel>`；判据拿 `ChannelSet<…>` 配一条
+/// **讲真 SFTP 字节的合成会话**（`tests/bridge/sftp_pool_f4_tests.rs` 那台台架，
+/// 照秤 F3 的形状办）。被判的是**同一个类型的同一个方法**，不是它的抄件。
 pub struct ChannelSet<C> {
     inner: Arc<ChannelSetInner<C>>,
-    /// 预算凭据池。**借不到就 await**（不是报错）—— 那个 await 就是「队列」。
+    /// 通道闸。**借不到就 await**（不是报错）—— 那个 await 就是「队列」。
     permits: Arc<tokio::sync::Semaphore>,
+    /// 车道闸，只有传输过。
+    lanes: Arc<tokio::sync::Semaphore>,
     cap: usize,
+    lane_cap: usize,
 }
 
 /// 一条借出去的通道。**drop 即归还**（凭据回信号量、通道回空闲栈）。
@@ -247,8 +264,10 @@ pub struct Leased<C> {
     /// 借出那一刻的世代号。归还时与当前世代不符 ⇒ 这条通道整个丢掉。
     generation: u64,
     inner: Arc<ChannelSetInner<C>>,
-    /// 预算凭据。drop 即归还 —— 排队等通道的下一个人由此被唤醒。
+    /// 通道闸凭据。drop 即归还 —— 排队等通道的下一个人由此被唤醒。
     _permit: tokio::sync::OwnedSemaphorePermit,
+    /// 车道闸凭据（只有传输那一路有）。同样 drop 即归还。
+    _lane: Option<tokio::sync::OwnedSemaphorePermit>,
 }
 
 impl<C> Leased<C> {
@@ -278,7 +297,19 @@ impl<C> Drop for Leased<C> {
 }
 
 impl<C> ChannelSet<C> {
-    pub fn new(cap: usize) -> Self {
+    /// `cap` = 通道闸，`lane_cap` = 传输车道闸。
+    ///
+    /// # 断言 `lane_cap < cap`，不是在挑剔风格
+    ///
+    /// 两者相等 ⇒ 传输占得满全部通道 ⇒ 「浏览永远留得出格子」这句话当场作废，
+    /// 而**代码照样跑、判据照样绿**（`in_use` 那个恒等会跟着一起变）。
+    /// ⇒ 这个前提只能由构造处守，守不住就炸在建池那一刻，而不是某天用户点不动面板。
+    pub fn new(cap: usize, lane_cap: usize) -> Self {
+        assert!(
+            lane_cap < cap && lane_cap > 0,
+            "车道闸 {lane_cap} 必须真窄于通道闸 {cap}（且非 0）—— \
+             等于它就等于没有车道闸：传输能把通道占满，「边传边浏览」那句话就是假的"
+        );
         Self {
             inner: Arc::new(ChannelSetInner {
                 idle: std::sync::Mutex::new(Vec::new()),
@@ -288,7 +319,9 @@ impl<C> ChannelSet<C> {
                 generation: AtomicU64::new(0),
             }),
             permits: Arc::new(tokio::sync::Semaphore::new(cap)),
+            lanes: Arc::new(tokio::sync::Semaphore::new(lane_cap)),
             cap,
+            lane_cap,
         }
     }
 
@@ -298,6 +331,7 @@ impl<C> ChannelSet<C> {
             in_use: self.inner.in_use.load(Ordering::SeqCst),
             peak: self.inner.peak.load(Ordering::SeqCst),
             cap: self.cap,
+            lane_cap: self.lane_cap,
         }
     }
 
@@ -325,9 +359,52 @@ impl<C> ChannelSet<C> {
             .map_err(|_| "SFTP 通道预算已关闭".to_string())
     }
 
-    /// 借一条通道：空闲有就复用，没有就调 `open` 现开一条。
-    /// **预算满了就排队等**（`acquire_owned().await`）—— 那个等待就是「队列传输」的队列。
+    /// 占一格**车道**但不要通道（裸通道那一路：它自己去开 `RawSftpSession`）。
+    /// ⚠ 调用方必须**先**要它、**再** [`ChannelSet::reserve`]，次序同
+    /// [`ChannelSet::lease_transfer`]。
+    pub async fn reserve_lane(&self) -> Result<tokio::sync::OwnedSemaphorePermit, String> {
+        self.lanes
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| "SFTP 传输车道已关闭".to_string())
+    }
+
+    /// 借一条**浏览用**的通道：只过通道闸。
+    /// **借不到就排队等**（`acquire_owned().await`）—— 那个等待就是「队列」。
     pub async fn lease<F, Fut>(&self, open: F) -> Result<Leased<C>, String>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<C, String>>,
+    {
+        self.lease_inner(None, open).await
+    }
+
+    /// 借一条**传输用**的通道：**先过车道闸，再过通道闸**。
+    ///
+    /// ⚠ 次序是承重的。反过来（先通道后车道）⇒ `cap` 条传输先把通道全占住、
+    /// 再一起去等车道 —— 浏览那几格当场蒸发，而车道闸的全部意义就是留住它们。
+    /// 这一条由 `tests/bridge/sftp_pool_f4_tests.rs` 那个「在借恰好 5 不是 6」的
+    /// 相等读数钉着：把下面这行 `lanes` 挪到 `reserve()` 之后，那个数就变成 6。
+    pub async fn lease_transfer<F, Fut>(&self, open: F) -> Result<Leased<C>, String>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<C, String>>,
+    {
+        let lane = self
+            .lanes
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| "SFTP 传输车道已关闭".to_string())?;
+        self.lease_inner(Some(lane), open).await
+    }
+
+    async fn lease_inner<F, Fut>(
+        &self,
+        lane: Option<tokio::sync::OwnedSemaphorePermit>,
+        open: F,
+    ) -> Result<Leased<C>, String>
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<C, String>>,
@@ -348,17 +425,19 @@ impl<C> ChannelSet<C> {
         self.inner.peak.fetch_max(now, Ordering::SeqCst);
         let s = self.stats();
         tracing::debug!(
-            "SFTP 通道借出：已开 {} 条、在借 {}、高水位 {}、上限 {}",
+            "SFTP 通道借出：已开 {} 条、在借 {}、高水位 {}、通道闸 {}、车道闸 {}",
             s.opened,
             s.in_use,
             s.peak,
-            s.cap
+            s.cap,
+            s.lane_cap
         );
         Ok(Leased {
             chan: Some(chan),
             generation,
             inner: self.inner.clone(),
             _permit: permit,
+            _lane: lane,
         })
     }
 
@@ -371,25 +450,20 @@ impl<C> ChannelSet<C> {
     }
 }
 
-/// 一个 origin 的池格：**一条 SSH 连接 ＋ 它上面的一池 SFTP 通道 ＋ 一组传输车道**。
+/// 一个 origin 的池格：**一条 SSH 连接 ＋ 它上面的一池 SFTP 通道（自带两道闸）**。
 struct OriginPool {
     /// 懒建的底层连接。**整份 `sftp_pool.rs` 里 `connect_sftp` 只出现在
     /// [`OriginPool::conn`] 一处**（此前 5 处；`sftp_move_ledger::DIAL_CENSUS` 数的就是它）。
     conn: Mutex<Option<Arc<SftpConn>>>,
+    /// 两道闸都住在这里面（见 [`ChannelSet`] 头注里「车道闸为什么不长在 `OriginPool` 上」）。
     channels: ChannelSet<PooledChannel>,
-    /// 传输车道，见 [`TRANSFER_LANE_CAP`]。
-    lanes: Arc<tokio::sync::Semaphore>,
 }
 
-/// 一条**传输**的借据：车道 ＋ 通道两道闸都过。两个 `_` 字段的用途就是「活着」。
-struct TransferLease {
-    _lane: tokio::sync::OwnedSemaphorePermit,
-    chan: Leased<PooledChannel>,
-}
-
-/// 一条**裸**通道的借据（`copy-data` 那一路）。
+/// 一条**裸**通道的借据（`copy-data` 那一路）。三个 `_` 字段的用途就是「活着」。
 struct RawLease {
+    /// 车道凭据：退路那一支是真的在搬字节，它就是一条传输。
     _lane: tokio::sync::OwnedSemaphorePermit,
+    /// 通道凭据：裸通道在远端同样占一格 `MaxSessions`，不分高层裸层。
     _slot: tokio::sync::OwnedSemaphorePermit,
     /// 保活：裸通道跑在这条连接上，它一 drop 连接就断。
     _conn: Arc<SftpConn>,
@@ -400,8 +474,7 @@ impl OriginPool {
     fn new() -> Self {
         Self {
             conn: Mutex::new(None),
-            channels: ChannelSet::new(SESSION_CHANNEL_CAP),
-            lanes: Arc::new(tokio::sync::Semaphore::new(TRANSFER_LANE_CAP)),
+            channels: ChannelSet::new(SESSION_CHANNEL_CAP, TRANSFER_LANE_CAP),
         }
     }
 
@@ -420,40 +493,31 @@ impl OriginPool {
         Ok(g.as_ref().expect("上面刚填过").clone())
     }
 
+    /// 怎么在这条连接上现开一条通道 —— `lease` / `lease_transfer` 共用同一份。
+    fn opener(
+        conn: Arc<SftpConn>,
+    ) -> impl std::future::Future<Output = Result<PooledChannel, String>> {
+        async move {
+            let sftp = conn.open_sftp_channel().await?;
+            Ok(PooledChannel::Extra { _conn: conn, sftp })
+        }
+    }
+
+    /// 借一条**浏览用**通道（列目录 / stat / 小文件读写 / mkdir / rename / delete）。
     async fn lease(&self, cfg: &RemoteConfig) -> Result<Leased<PooledChannel>, String> {
         let conn = self.conn(cfg).await?;
-        self.channels
-            .lease(|| async move {
-                let sftp = conn.open_sftp_channel().await?;
-                Ok(PooledChannel::Extra { _conn: conn, sftp })
-            })
-            .await
+        self.channels.lease(|| Self::opener(conn)).await
     }
 
-    /// 借一条传输用的通道：**先拿车道再拿通道**。
-    ///
-    /// ⚠ 次序是承重的：反过来（先通道后车道）会让 6 条传输把全部通道占住、
-    /// 然后 4 个去等车道 —— 浏览那 2 格当场蒸发，而 [`TRANSFER_LANE_CAP`]
-    /// 的全部意义就是留住那 2 格。
-    async fn lease_transfer(&self, cfg: &RemoteConfig) -> Result<TransferLease, String> {
-        let lane = self
-            .lanes
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| "传输车道已关闭".to_string())?;
-        let chan = self.lease(cfg).await?;
-        Ok(TransferLease { _lane: lane, chan })
+    /// 借一条**传输用**通道：两道闸都过（次序与理由见 [`ChannelSet::lease_transfer`]）。
+    async fn lease_transfer(&self, cfg: &RemoteConfig) -> Result<Leased<PooledChannel>, String> {
+        let conn = self.conn(cfg).await?;
+        self.channels.lease_transfer(|| Self::opener(conn)).await
     }
 
-    /// 借一条裸通道发 `copy-data`。次序同 [`OriginPool::lease_transfer`]。
+    /// 借一条裸通道发 `copy-data`。两道闸同样都过。
     async fn lease_raw(&self, cfg: &RemoteConfig) -> Result<RawLease, String> {
-        let lane = self
-            .lanes
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| "传输车道已关闭".to_string())?;
+        let lane = self.channels.reserve_lane().await?;
         let slot = self.channels.reserve().await?;
         let conn = self.conn(cfg).await?;
         let rs = conn.open_raw_sftp().await?;
@@ -728,7 +792,7 @@ pub async fn sftp_download(
         let pool = pool_for(&cfg.origin_label()).await;
         let lease = pool.lease_transfer(&cfg).await?; // 车道 ＋ 通道两道闸
         download_inner(
-            lease.chan.get().sftp(),
+            lease.get().sftp(),
             &remote_path,
             &local_path,
             &cancel,
@@ -979,7 +1043,7 @@ pub async fn sftp_upload(
         let pool = pool_for(&cfg.origin_label()).await;
         let lease = pool.lease_transfer(&cfg).await?; // 车道 ＋ 通道两道闸
         upload_inner(
-            lease.chan.get().sftp(),
+            lease.get().sftp(),
             &local_path,
             &remote_path,
             &cancel,
@@ -1512,3 +1576,10 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../tests/bridge/sftp_copy_f3_tests.rs"]
 mod copy_f3_tests;
+
+/// **秤 F4**（`设计/60 §2 档③`）：多通道池那三件事的对拍 ——
+/// 边传边浏览 · 并发/队列 · 断点续传。同 F3，它也是一台**台架**
+/// （进程内合成 SFTP 服务端 ＋ 逐条记 `READ`/`WRITE` 偏移），与上面那些单点判据不同族。
+#[cfg(test)]
+#[path = "../../../tests/bridge/sftp_pool_f4_tests.rs"]
+mod pool_f4_tests;
