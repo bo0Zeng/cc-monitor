@@ -33,6 +33,7 @@ mod cc_bus_boundary_guard; // P4f-Y2：backend 不许碰 cc-bus 的数据布局�
 pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 pub mod dial; // K-P6b：`--dial` 代理进程 —— backend 那条长连接流的 SSH 握手住这里（**只此一处**，判据在它自己的测块）
+pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力（`设计/96 §2.9`）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
 pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
