@@ -16,7 +16,7 @@
 //!
 //! Tauri 2.11 在 Linux 上经 `tao 0.35.2` 落到 **GTK3**（`gtk 0.18` ＋ `webkit2gtk`），
 //! 它的事件循环在主线程上。`eframe` 走 `winit 0.30.13`，winit 默认**也要主线程** ——
-//! `winit/src/platform_impl/linux/mod.rs:724` 逐字：
+//! winit 的 `platform_impl::linux::EventLoop::new` 里那道检查逐字：
 //!
 //! ```text
 //! if !attributes.any_thread && !is_main_thread() { panic!(...) }
@@ -27,9 +27,9 @@
 //! | 现物 | 住址 | 是什么 |
 //! |---|---|---|
 //! | `with_any_thread` | `winit-0.30.13/src/platform/{x11,wayland,windows}.rs` | 把上面那道主线程检查关掉；**x11 / wayland / windows 三个平台都有** |
-//! | 关掉之后走哪条路 | `winit .../linux/mod.rs:772-784` | `new_x11_any_thread()` / `new_wayland_any_thread()` |
-//! | 用户代码怎么够得着 | `eframe-0.36.2/src/epi.rs:351` `NativeOptions::event_loop_builder` | 一个 `EventLoopBuilderHook` |
-//! | 它真的被调用 | `eframe-0.36.2/src/native/run.rs:45` | `builder.build()` **之前**执行这个 hook |
+//! | 关掉之后走哪条路 | winit `platform_impl::linux::EventLoop` | 分派到它自己那两个「任意线程」构造器（x11 一个 / wayland 一个） |
+//! | 用户代码怎么够得着 | `eframe::NativeOptions::event_loop_builder` | 一个 `EventLoopBuilderHook` |
+//! | 它真的被调用 | `eframe::native::run::create_event_loop` | `builder.build()` **之前**执行这个 hook |
 //!
 //! ⇒ 不用 fork eframe，也不用自己接 winit：设一个 hook 就够。见 [`shell`]。
 //!
@@ -61,12 +61,12 @@
 //! - **主线程那侧是裸 `tao` 窗口，不是真的 Tauri app**（没有 webkit2gtk webview 在跑）。
 //!   「再塞一个 WebView 进来还成不成立」**没量**。
 //! - **Windows 上一次都没跑过**（手上没有 Windows 机器）。那侧今天只有两条：
-//!   `winit .../platform/windows.rs:174` 有 `with_any_thread`，以及 `winchk` 那一格的交叉编译过得了。
+//!   winit 的 `EventLoopBuilderExtWindows` 有 `with_any_thread`，以及 `winchk` 那一格的交叉编译过得了。
 //!
 //! ## 为什么不走「独立二进制 ＋ 一条 IPC」那条退路
 //!
 //! 退路本身是通的，但它有一条**不是工作量的**代价：
-//! `sftp_pool.rs:539` 的连接池是一个**进程级 `OnceLock`** ——
+//! `sftp_pool.rs::pool` 那个连接池是一个**进程级 `OnceLock`** ——
 //!
 //! ```text
 //! fn pool() -> &'static Mutex<HashMap<String, Arc<OriginPool>>>
@@ -86,8 +86,8 @@
 //! 1. **同进程**（上面那一节）⇒ 代码必须链进 app 那个二进制 ⇒ 它得是
 //!    `monitor` 或 `monitor` 的依赖。
 //! 2. **门禁 `cargo` 那一格把 workspace 包数恒等钉在 9**
-//!    （`tests/scripts/gate.sh:1351` 逐字 `run_gate_sum cargo 9`；
-//!    判法住 `gate.sh:634` 的 `run_gate_sum`，包数不等就红）。
+//!    （`gate.sh` 里逐字写着 `run_gate_sum cargo 9`；
+//!    判法住 `gate.sh` 的 `run_gate_sum`，包数不等就红）。
 //!    新增任何一个 workspace 成员（哪怕叫 `crates/filewin-core`）都会让那一格当场红，
 //!    而那个 `9` 住 `gate.sh` —— **不在 24e 的写区** ⇒ 不许为了塞一个 crate 去改判据。
 //!

@@ -148,6 +148,27 @@ tracing-appender = "0.2"
 #    ⚠ `muslbuild` 那一格的射程是 `src/backend`（`gate.sh:1117` 逐字 `cd src/backend`）
 #      ⇒ 本条依赖**碰不到它**；「GUI crate 能不能 musl 静态链接」这个设计题**没被本刀回答**。
 egui = "0.36"
+# 🔴 **它今天让门禁 `cargo` 那一格红着，红在 `lockfile_conflict_guard` 上 —— 如实留着，没绕。**
+#
+# 现象：`tests/bridge/lockfile_conflict_guard_tests.rs` 要求**后端那份 lock 解析出的版本
+# 必须落在 monitor 的集合里**（它是 `ci.yml` 自称「平台线唯一真判据」那条跨 target check 的前提）。
+# 加上 eframe 之后：`cfg_aliases` 在 monitor 是 **0.2.2**，在 `src/backend/Cargo.lock` 是 **0.2.1** ⇒ 红。
+#
+# 谁在要它（逐个 manifest 现打）：`winit` 与 `glutin` 都只要 `^0.2.1`，**只有 `wgpu` 要 `^0.2.2`**。
+#
+# ⚠ **试过的退路，以及它为什么不成立（现打，别再走一遍）：**
+# 把渲染后端从 `wgpu` 换成 `glow` —— `cargo tree -i wgpu` 确认 wgpu **真的离开了构建图**，
+# 但 `cargo update -p cfg_aliases --precise 0.2.1` **照样失败**：
+# **`Cargo.lock` 记的是所有 feature 的并集**，`egui-wgpu` 作为 eframe 的可选依赖仍在 lock 里，
+# 它带着 `wgpu` 的 `^0.2.2` 一起留下 ⇒ 换后端**解决不了这条冲突**（总包数只从 871 降到 857）。
+#
+# ⇒ 今天只有两条真出路，**两条都不在 24e 的写区，所以停下报备、不自作主张**：
+#   ① 把 `src/backend/Cargo.lock` 的 `cfg_aliases` 抬到 0.2.2（它只是 `nix` 的 build-dependency，
+#      纯构建期、零运行时面）——**改的是 `src/backend/`**；
+#   ② 不用 `eframe`，改成直接拼 `egui-winit` ＋ `egui_glow` ＋ `glutin`
+#      （scratchpad 现打过：那样 `wgpu` 从 lock 里彻底消失，`cfg_aliases` 钉得回 0.2.1，
+#      总包数 308）——但那是**为了躲一行 lockfile 而自己重写一遍 eframe 的集成层**，
+#      是「硬绕」，得先有人拍板。
 eframe = "0.36"
 # `winit` 是 `eframe` 的传递依赖，这里**提升为直接依赖**，只为一件事：
 # `EventLoopBuilderExtX11` / `ExtWayland` / `ExtWindows` 这三个**平台扩展 trait**
