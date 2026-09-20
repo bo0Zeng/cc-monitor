@@ -770,20 +770,17 @@ export class McpSection {
     const startOrigin = this.origin; // 捕获：目标机器在 await 前定死（写入目标不受切机器影响）
     try {
       // F89a：本机 → 本地 FS 写；远端 → SFTP 写远端 .mcp.json（写面仍只 .mcp.json，SS-14；SS-G 用户显式触发）。
-      if (startOrigin === null) {
-        await commands.write_project_mcp_server({
-          projectDir: dir,
-          name,
-          server,
-        });
-      } else {
-        await commands.write_remote_mcp_server({
-          origin: startOrigin,
-          projectDir: dir,
-          name,
-          server,
-        });
-      }
+      // 〔步 12·C 收尾〕**两侧同一条命令**（`write_remote_mcp_server` 已退役）：
+      // 走哪一侧由 `origin` 说，不再由命令名说。
+      // 🔴 本机是 `LOCAL_ORIGIN`（`"<local>"`）**不是 `null`** —— `this.origin === null`
+      //    是本分节自己表示「本机」的内部形状，送上线前必须翻成那个具名的 origin，
+      //    否则线上是 `null`，而 Rust 侧 `Origin::route` 把 `null` 当场拒。
+      await commands.write_project_mcp_server({
+        origin: startOrigin ?? LOCAL_ORIGIN,
+        projectDir: dir,
+        name,
+        server,
+      });
     } catch (e) {
       if (this.origin === startOrigin)
         showActionFailureToast("写入 .mcp.json 失败", String(e));
@@ -803,15 +800,12 @@ export class McpSection {
     )
       return;
     try {
-      if (startOrigin === null) {
-        await commands.remove_project_mcp_server({ projectDir: dir, name });
-      } else {
-        await commands.remove_remote_mcp_server({
-          origin: startOrigin,
-          projectDir: dir,
-          name,
-        });
-      }
+      // 〔步 12·C 收尾〕同 `writeEntry`：两侧一条命令，本机逐字送 `LOCAL_ORIGIN`。
+      await commands.remove_project_mcp_server({
+        origin: startOrigin ?? LOCAL_ORIGIN,
+        projectDir: dir,
+        name,
+      });
     } catch (e) {
       if (this.origin === startOrigin)
         showActionFailureToast("删除失败", String(e));

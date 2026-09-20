@@ -165,7 +165,24 @@ fn local_and_remote_are_exactly_complementary() {
 //
 // ⚠ **这个数是跑出来的**：把上限临时改成 0、让本条印出现打的 88，再照它写。
 //    93 − 5 = 88 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
-const ORIGIN_MIGRATION_CEILING: usize = 88;
+// 🔴 **〔步 12·C 收尾 2026-09-20〕88 → 86，降的 2 处逐处记在这里**（本条自己要求
+//    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
+//
+//    两处都出自「`origin` 归一的**最后两对**同义双份命令合成一条带 origin 的」那一刀 ——
+//    被合掉的那 2 条远端命令，签名从 `origin: String` 变成了 `host: &str`：
+//      · `mcp.rs::write_remote_mcp_server`
+//      · `mcp.rs::remove_remote_mcp_server`
+//
+//    改名的理由与上一拍那五处**逐字同形**：这两个函数今天拿到的是**已经分过本机**的
+//    机器名（分本机那一步住合并后那条命令里），继续叫 `origin` 是句假话
+//    （`origin` 的取值域含 `"<local>"`，而它们**结构上收不到它**）。
+//
+// ⚠ **这个数是跑出来的**：把上限临时改成 0、让本条印出现打的 86，再照它写
+//   （现打那一行逐字「裸字符串 origin 参数现打 86 处，上限 0」）。
+//   88 − 2 = 86 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
+// ⚠ 这一拍**没有**新增一条吃 `Origin` 的命令却让这个数不动的情形：
+//   新落地的 `sftp_pool::sftp_chmod` 收的是 `RemoteConfig` 不是 origin，不进本条人群。
+const ORIGIN_MIGRATION_CEILING: usize = 86;
 
 #[test]
 fn no_new_raw_string_origin_parameters() {

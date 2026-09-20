@@ -6,8 +6,9 @@
 //! （2026-07-10 用户拍板:SFTP 属独立文件传输功能,不算 monitor 写)。防误伤守卫见
 //! [`is_protected_claude_data_path`]:SFTP 写命令拒碰 Claude 数据源文件(往正被 Claude
 //! 打开的 jsonl 写会损坏会话)——这是防手滑,不是合规。
-//! ★〔devbench F10c〕这条承诺**现在有牙了**：六个写入口都过 `guard_write` 这件事由
-//! `remote_write_registry::a_user_chosen_remote_write_passes_the_claude_data_fence` 钉着。
+//! ★〔devbench F10c〕这条承诺**现在有牙了**：**七个**写入口都过 `guard_write` 这件事由
+//! `remote_write_registry::a_user_chosen_remote_write_passes_the_claude_data_fence` 钉着
+//! 〔`设计/60 §5.4c` 09-20：`sftp_chmod` 是第七个〕。
 //! 在那之前它零判据 —— 删掉任一处 `guard_write?`，全仓一条不红。
 //!
 //! ## 连接分离 + 已知取舍
@@ -1561,6 +1562,68 @@ pub async fn sftp_delete(cfg: RemoteConfig, path: String, is_dir: bool) -> Resul
                     .await
                     .map_err(|e| format!("删除文件失败: {e}"))
             }
+        })
+    })
+    .await
+}
+
+/// `sftp_chmod` 发上线的那一份属性块：**只带权限位，`size` 一律 `None`。**
+///
+/// # 🔴 这个函数存在的唯一理由是「`size` 必须缺席」，不是为了省字
+///
+/// 本仓有一条**真机 e2e 实证**逐字记在 `sftp.rs::upload_atomic` 的尾注里：
+/// 「在 OpenSSH sftp-server 上 setstat（即便只设 permissions、`size=None`）会把刚 rename
+/// 好的文件**截断成 0 字节**」—— 后端因此变 0 字节不可 exec、连接 EOF、无限重部署。
+/// 那是本仓被 `SETSTAT` 咬过的一口，`设计/60 §5.4c` 那句「协议侧没有障碍」**没有提到它**。
+///
+/// ⇒ 落这条命令之前先把那一口**读到底**（现打 `russh-sftp` 3.0.0 那份属性块序列化器；
+/// ⚠ 住址刻意不写成「文件::符号」那一形 —— 它在**依赖树里**，不在本仓，
+/// 写成那一形会被 `structural_scan` 当成一处本仓符号地址而报「全仓找不到」）：
+/// `SSH_FILEXFER_ATTR_SIZE`（`0x1`）这个标志位**只在 `size.is_some()` 时才置**，
+/// `size` 字段也只在那时才上线。⇒ 只要 `size` 是 `None`，线上那个包里
+/// **既没有 SIZE 标志也没有 size 字段**，服务端没有任何东西可以拿来截断。
+///
+/// ⚠ **如实登记本函数买不到什么**：它买的是「**线上那个包的形状**」
+/// （由 `sftp_pool_tests::the_chmod_attrs_never_put_a_size_on_the_wire` 逐字节钉着，
+/// 那是一条**相等**断言，不是「不含某个子串」）。它**买不到**
+/// 「真机上 OpenSSH 不会截断」—— 那要一趟真机，本仓今天没有。
+/// 两者别混着读：前者排除的是**本仓那次事故的成因**（把 size 一起送上去），
+/// 后者是一个更大的声称，本函数**不做**。
+///
+/// ⚠ `mode` 掩到 `0o7777`：SFTP 的 permissions 字段是 unix mode，高位是**文件类型**
+/// （`FileMode::{DIR, REG, LNK…}`）。让调用方把类型位送上去 = 让面板改文件类型，
+/// 那既不是 chmod 的语义，也是服务端行为未定义的一档。
+fn chmod_attrs(mode: u32) -> russh_sftp::protocol::FileAttributes {
+    russh_sftp::protocol::FileAttributes {
+        permissions: Some(mode & 0o7777),
+        ..Default::default()
+    }
+}
+
+/// 改远端文件/目录的权限位（`SSH_FXP_SETSTAT`）。
+///
+/// 〔`设计/60 §5.4c` 裁定：**准了，作为跟进件**〕它当初被挡的是**并发纪律**
+/// （加一条 `#[tauri::command]` 要同改几张计数表，而那一拍别人握着它们），
+/// 不是协议也不是判据。今天那个理由消失了。
+///
+/// **路径由用户选**（面板里点的那一项）⇒ 与 [`sftp_mkdir`] / [`sftp_delete`] 同族，
+/// `guard_write` 在函数第一行：不许把正被 Claude 打开的 jsonl 改成不可读/可执行
+/// （改权限一样能弄坏一场正在跑的会话，而它不像删除那样显眼）。
+///
+/// ⚠ **它只有一个路径参数** —— `remote_write_registry::a_two_path_write_entry_fences_both_of_its_paths`
+/// 那条判据的人群是「签名里有**两个**路径参数」的写入口（`sftp_rename` / `sftp_copy`），
+/// 本条**按构造**不在它的人群里，不是被漏掉。它归单路径那一条
+/// （`a_user_chosen_remote_write_passes_the_claude_data_fence` 的 `USER_CHOSEN_ENTRIES`），
+/// 那张名单里本条是第七个。
+#[tauri::command]
+pub async fn sftp_chmod(cfg: RemoteConfig, path: String, mode: u32) -> Result<(), String> {
+    guard_write(&path)?;
+    with_sftp(&cfg, move |s| {
+        let path = path.clone();
+        Box::pin(async move {
+            s.set_metadata(path, chmod_attrs(mode))
+                .await
+                .map_err(|e| format!("改权限失败: {e}"))
         })
     })
     .await
