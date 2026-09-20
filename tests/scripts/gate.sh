@@ -33,8 +33,8 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕24 格
-# │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
+# │ 〔自述·格数〕25 格
+# │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
 # │   installface ·
@@ -52,6 +52,8 @@
 # │ 〔自述·现物〕`release-gate` 那一格的判据本体：`tests/evidence/K-R124-ruler.py`（`K-R124` 09-15 第 20 格）
 # │   —— 它与 `.github/workflows/ci.yml` 里那一步跑的是**同一份文件**，不是两份抄件；
 # │   被测对象是 `.github/workflows/release.yml`，它顺带调 `scripts/release-notes.mjs --check`。
+# │ 〔自述·现物〕`worktree-clean` 那一格的判据本体：`tests/evidence/K-W25-worktree-clean.py`
+# │   （09-19 第 25 格）—— **前置条件**，排在所有格之前。
 # │ 〔自述·现物〕`platform` 那一格的判据本体：`tests/evidence/K-G4-platform-ledger.py`
 # │   （`G4` 09-19 第 24 格）—— 承诺的平台（条 63：三格）↔ 门禁真跑的格，两向对拍。
 # │ 〔自述·现物〕`muslbuild` 那一格没有独立的判据文件 —— 它就是两趟 `cargo zigbuild`
@@ -700,6 +702,25 @@ N-G1 治的正是这一形：vitest 在非 TTY 下照样上色，ESC 不是 [[:s
   gate_assert_judged 自检⑨ "$probe" NG2-PROBE-I "run_gate_sum 的「0 passed 不是绿」"
 }
 gate_selftest
+
+# ── `worktree-clean`：**前置条件** —— 仓里不许有第二份工作副本（第 25 格，09-19）──
+#
+# 🔴 **它排在所有格之前，这是刻意的。** 本仓有一族判据的人群是「走文件系统」
+#   （`walk` / `read_dir` / `readdirSync` / `find` / `eslint .`），现打至少 8 份文件里
+#   有这种取法。仓内一出现第二份工作副本（并发 agent 的 worktree、死值验的变异副本），
+#   它们的人群就**静默膨胀**，然后一片**和本拍改动毫无关系**的红。
+#   〔2026-09-19 一天绊了三次：`shell_lint_registry` · `bus_identity_registry` ·
+#     `cc_bus_deploy` · `eslint 基线 7 → 1383` 同时红，每次都要花时间才认出来。〕
+#
+# 🔴 **更坏的那一半今天没发作但它在**：上面那几条是**恒等**断言所以红得响。
+#   同族里凡是用**地板**（`>= N`）的，人群膨胀时**一声不吭地过去** ——
+#   「多扫了 1138 个文件」在地板下和「扫对了」长得一模一样。**那才是本格的真正理由。**
+#
+# ⚠ 它**不修**那一族（八处以上的改动，另案），只让这个条件先出声、并说清
+#   「这不是你的改动坏了」。⇒ 本格红时**先清副本再重跑**，别去追下面那些红。
+run_gate worktree-clean '判过的条数（抽样的 4 个扩展名 `.sh`/`.mjs`/`.rs`/`.ts`，每个一条**恒等**断言：`git ls-files` 认的份数 == 走文件系统走出的份数）。⚠ **抽样不是全集** —— 挑的是那几条真出过事的判据在数的东西（`.sh`→shellcheck 那一族 · `.mjs`→eslint 基线 · `.rs`→`readonly_guard` 的分区恒等 · `.ts`→`tsc` 的 `want`）。⚠ 它买的是「仓里没有第二份工作副本」，**买不到**「所有判据的人群都对」——一份被 `.gitignore` 掉的源码同样会让走文件系统的判据多看一份，而本格按 gitignore 的口径算、看不见它' \
+         python3 tests/evidence/K-W25-worktree-clean.py
+
 
 # ── `hooks/` 里那份**会被执行**的东西，跑不跑得起来（`K-R82` 09-12，第 13 格）──────
 #
@@ -1631,7 +1652,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
   #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
-  echo "GATE: OK —— 24 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e），可以出货"
+  echo "GATE: OK —— 25 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e），可以出货"
   gate_print_blind
   exit 0
 fi
