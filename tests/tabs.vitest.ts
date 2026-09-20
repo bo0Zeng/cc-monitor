@@ -212,8 +212,19 @@ import {
   isCwdFallbackMatch,
   claudeExited,
   moveTabBlock,
+  applyDropToCollections,
+  collectionsEqual,
+  commonDirName,
+  defaultGroupName,
+  pickDropTarget,
+  tabUnderY,
+  DWELL_MS,
+  DWELL_MOVE_PX,
+  type DropTarget,
   type Tab,
+  type TabRect,
 } from "../src/tabs";
+import type { TabCollection } from "../src/tab-collections";
 
 // 私有字段的只读探针（TS private 仅编译期；运行时可读）。仅测试用。
 interface TMInternals {
@@ -223,6 +234,14 @@ interface TMInternals {
   pendingArchive: Set<string>;
   pendingTmuxIdle: Set<string>;
   materializeQueue: string[];
+  /** 〔步 17·B/D〕下面几组要读的私有面。全部只读 + 只在判据里用。 */
+  collections: TabCollection[];
+  collectionsLoaded: boolean;
+  pinnedLoaded: boolean;
+  tabButtons: Map<string, { root: HTMLElement }>;
+  barEl: HTMLElement;
+  tabRects: () => TabRect[];
+  applyDrop: (sid: string, target: DropTarget) => void;
 }
 const peek = (tm: TabManager): TMInternals => tm as unknown as TMInternals;
 
@@ -3521,5 +3540,635 @@ describe("P7a-3 集合分组渲染", () => {
     flushBar();
     expect(bar.querySelector(".tab-group")).toBeTruthy();
     expect(bar.querySelectorAll(".tab-group-list > .tab")).toHaveLength(0);
+  });
+});
+
+// ==========================================================================
+// 〔步 17·B · `设计/30 §B`〕固定（pinned）—— 「关了 app 再打开它还在」
+//
+// `§B.1` 现打：在这之前全仓 `pinned`/`isPinned`/`pinTab` **零命中**。
+// `§B.3` 的承重：它**必须是正交的一维**，不能做成 `TabStatus` 的第三态 ——
+//   因为 `archived + pinned` 才是用户的主用例（固定住一个已经跑完的会话）。
+//
+// 🔴 反空真：这一组的 config 是**一份真的在内存里的盘**（走那个已经被 mock 的
+//   `invoke`，`load_config`/`save_config` 两条命令），所以「落盘了没有」是
+//   **读盘对拍**，不是「有没有调过某个函数」。
+// ==========================================================================
+describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
+  let tm: TabManager;
+  let disk: Record<string, unknown>;
+  const tabOf = (sid: string): Tab => peek(tm).tabs.get(sid)!;
+  /** 落盘是 fire-and-forget（`先改内存再落盘`）⇒ 读盘前要把那条链子跑完。
+   *  两次 `Promise.resolve()` 不够：`writeSegKey` 里 load→save 是两跳 `invoke`。 */
+  const flushDisk = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+  const pinnedOnDisk = (): unknown[] => {
+    const seg = disk.tabBar as Record<string, unknown> | undefined;
+    return (seg?.pinned as unknown[]) ?? [];
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    disk = {};
+    // 🔴 config 走 `invoke` 这一层（与仓里 `src/config.ts` 的真实链路一致）：
+    //   上面的 `tab-bar-state` / `tab-collections` 因此是**真跑**的，
+    //   判据买到的是那一段的形状（只动自己那个键 · 清洗 · 上界），不是一个 spy。
+    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
+      if (cmd === "save_config") {
+        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    tm = makeTM();
+  });
+
+  it("🔴 量具自检：这一组的「盘」真的在读写（不过这格，下面全是空转）", async () => {
+    disk = { tabBar: { pinned: [{ sid: "写进去的", title: "T" }] } };
+    await tm.loadPinned();
+    expect(peek(tm).tabs.has("写进去的"), "盘上的东西没被读进来 ⇒ 下面的复活判据全是空转").toBe(
+      true,
+    );
+    await tm.loadPinned(); // 幂等：再读一次不该多出东西
+    expect(peek(tm).orderedIds).toEqual(["写进去的"]);
+  });
+
+  it("复活：盘上一条 ⇒ 造出一个**灰着的**骨架 tab，字段逐个对拍（`§B.5`）", async () => {
+    disk = {
+      tabBar: {
+        pinned: [
+          {
+            sid: "s1",
+            jsonlPath: "/p/s1.jsonl",
+            cwd: "/home/u/proj",
+            origin: null,
+            account: "work",
+            lastActiveAt: 1700000000000,
+            kind: "interactive",
+            name: null,
+            title: "存下来的标题",
+          },
+        ],
+      },
+    };
+    await tm.loadPinned();
+    const t = tabOf("s1");
+    expect(t.status, "没有活进程 ⇒ 灰着（`§B.5` 逐字）").toBe("archived");
+    expect(t.pinned, "复活出来的当然是固定的").toBe(true);
+    expect(t.title, "🔴 标题要用存下来的那份 —— 不等读文件（`§B.5` 逐字）").toBe("存下来的标题");
+    expect(t.parentPath, "jsonlPath 是复活的必需品，没落到 tab 上等于白存").toBe("/p/s1.jsonl");
+    expect(t.cwd).toBe("/home/u/proj");
+  });
+
+  it("🔴 盘上那条**已经活着**时：只补 `pinned`，`status` 一个字不碰", async () => {
+    // 后端 `event_replay` 可能已经先宣告了它。把一条真活着的会话按回 archived 是一句假话。
+    tm.ensureTab("s1", "/c", "/real.jsonl", 0, null);
+    disk = { tabBar: { pinned: [{ sid: "s1", title: "旧标题", jsonlPath: "/old.jsonl" }] } };
+    await tm.loadPinned();
+    expect(tabOf("s1").status, "🔴 把活着的会话按成灰的了").toBe("live");
+    expect(tabOf("s1").pinned).toBe(true);
+    expect(tabOf("s1").parentPath, "活着那条的真路径不许被盘上的旧值覆盖").toBe("/real.jsonl");
+  });
+
+  it("`togglePin` ⇒ 内存翻转 ＋ **盘上真的出现/消失那一条**", async () => {
+    await tm.loadPinned(); // 先取得资格
+    tm.ensureTab("s1", "/home/u/proj", "/p/s1.jsonl", 0, null);
+    tm.togglePin("s1");
+    await flushDisk();
+    expect(tabOf("s1").pinned).toBe(true);
+    expect(
+      (pinnedOnDisk() as { sid: string; jsonlPath: string }[]).map((p) => [p.sid, p.jsonlPath]),
+      "落盘的记录不对（sid / jsonlPath 是复活的两个必需品）",
+    ).toEqual([["s1", "/p/s1.jsonl"]]);
+
+    tm.togglePin("s1");
+    await flushDisk();
+    expect(tabOf("s1").pinned).toBe(false);
+    expect(pinnedOnDisk(), "取消固定之后盘上还留着 ⇒ 下次启动它又回来了").toEqual([]);
+  });
+
+  it("🔴 没 `loadPinned` 过的实例：`togglePin` 什么都不做（防静默清空）", async () => {
+    // `persistPinned` 是**按当前 tab 重算整张表**写回去的 —— 没读过盘就写 = 清空。
+    // 撕离出来的 viewer 窗口正是这种实例（与 `collectionsLoaded` 同一条理由）。
+    disk = { tabBar: { pinned: [{ sid: "别人固定的", title: "T" }] } };
+    tm.ensureTab("s1", "/c", "p", 0, null);
+    tm.togglePin("s1");
+    await flushDisk();
+    expect(tabOf("s1").pinned, "没资格就不许改内存").toBe(false);
+    expect(
+      (pinnedOnDisk() as { sid: string }[]).map((p) => p.sid),
+      "🔴 用户上次固定的那条被冲掉了",
+    ).toEqual(["别人固定的"]);
+  });
+
+  it("`closeTab` 一个固定的灰 tab ⇒ 盘上那条跟着摘掉（点了 × 就不该第二天还在）", async () => {
+    await tm.loadPinned();
+    tm.ensureTab("s1", "/c", "/p/s1.jsonl", 0, null);
+    tm.togglePin("s1");
+    await flushDisk();
+    expect((pinnedOnDisk() as { sid: string }[]).map((p) => p.sid)).toEqual(["s1"]);
+
+    tm.archiveTab("s1");
+    tm.closeTab("s1");
+    await flushDisk();
+    expect(pinnedOnDisk(), "关掉了还留在盘上 ⇒ 下次开 app 它又回来了").toEqual([]);
+  });
+
+  it("🔴 正交：`archived` 与 `pinned` **同时成立**（`§B.3` 的主用例）", async () => {
+    await tm.loadPinned();
+    tm.ensureTab("s1", "/c", "p", 0, null);
+    tm.togglePin("s1"); // live 也能 pin（`§B.3b`：效果等它变灰才显现）
+    expect(tabOf("s1").status).toBe("live");
+    expect(tabOf("s1").pinned).toBe(true);
+    tm.archiveTab("s1");
+    expect(tabOf("s1").status, "四种组合的第四格 —— pin 唯一真正生效的那一格").toBe("archived");
+    expect(tabOf("s1").pinned, "🔴 归档把 pin 冲掉了 ⇒ 正交性破了，主用例没了").toBe(true);
+  });
+
+  it("🔴 `§B.3b`：固定**不影响位置** —— `orderedIds` 一个字不许动", async () => {
+    await tm.loadPinned();
+    for (const s of ["a", "b", "c"]) tm.ensureTab(s, "/c", "p", 0, null);
+    const before = [...peek(tm).orderedIds];
+    tm.togglePin("b"); // 固定中间那个
+    expect(peek(tm).orderedIds, "有人把固定的排到前面去了 —— 那是被 `§B.3b` 删掉的「固定区」").toEqual(
+      before,
+    );
+    expect(before).toEqual(["a", "b", "c"]);
+  });
+
+  it("📌 角标：`.tab.pinned` 跟着 `Tab.pinned` 走，且角标元素真的在（正反两控）", async () => {
+    await tm.loadPinned();
+    tm.ensureTab("s1", "/c", "p", 0, null);
+    const root = peek(tm).tabButtons.get("s1")!.root;
+    expect(root.classList.contains("pinned"), "还没固定就显角标 ⇒ 这个类没在跟着值走").toBe(false);
+    tm.togglePin("s1");
+    expect(root.classList.contains("pinned"), "固定了却不显 —— 用户看不出哪些是固定的").toBe(true);
+    expect(root.querySelector(".tab-pin")?.textContent, "角标元素不在 / 内容不对").toBe("📌");
+  });
+
+  it("右键菜单：那一项的文案跟着状态翻转；没资格时整项不出现", async () => {
+    const rightClick = (sid: string): void => {
+      peek(tm)
+        .tabButtons.get(sid)!
+        .root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    };
+    const labels = (): string[] =>
+      [
+        ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ??
+          []),
+      ].map((b) => b.textContent ?? "");
+
+    tm.ensureTab("s1", "/c", "p", 0, null);
+    rightClick("s1");
+    expect(labels(), "🔴 没 `loadPinned` 过就给入口 ⇒ 点一下清空用户的固定表").not.toContain(
+      "📌 固定此标签",
+    );
+
+    await tm.loadPinned();
+    rightClick("s1");
+    expect(labels()).toContain("📌 固定此标签");
+    (
+      [...document.body.querySelectorAll(".tab-context-menu-item")].find(
+        (b) => b.textContent === "📌 固定此标签",
+      ) as HTMLButtonElement
+    ).click();
+    expect(tabOf("s1").pinned, "菜单项点了没反应 —— 这个仓刚因为这个撤掉过两个取色器").toBe(true);
+    rightClick("s1");
+    expect(labels(), "已经固定了还显「固定此标签」⇒ 用户没法取消").toContain("取消固定");
+  });
+
+  it("🔴 `§B.6` 第一格：复活出来的空 tab 里**有话说**，两种情形两种话（正反两控）", async () => {
+    disk = {
+      tabBar: {
+        pinned: [
+          { sid: "ok", jsonlPath: "/p/ok.jsonl", title: "有记录的" },
+          { sid: "bad", jsonlPath: "", title: "没记录的" },
+        ],
+      },
+    };
+    await tm.loadPinned();
+    const hintOf = (sid: string): HTMLElement =>
+      tabOf(sid).streamEl.querySelector(".pin-revived-hint") as HTMLElement;
+
+    expect(hintOf("ok"), "复活的 tab 里一片空白 —— 那与坏了没有区别").toBeTruthy();
+    expect(hintOf("ok").querySelector(".pin-revived-hint-btn")?.textContent).toBe("Resume 这个会话");
+
+    expect(
+      hintOf("bad").querySelector("strong")?.textContent,
+      "`§B.6` 逐字：`jsonlPath` 为空的要提示「这个会话没有留下记录」",
+    ).toBe("这个会话没有留下记录");
+    expect(
+      hintOf("bad").querySelector(".pin-revived-hint-btn"),
+      "🔴 没有记录还给一个 Resume 按钮 ⇒ 那就是一个点了必失败的按钮",
+    ).toBeNull();
+  });
+
+  it("resume 真接上了（`reviveTab`）⇒ 那块空态提示自己走掉", async () => {
+    disk = { tabBar: { pinned: [{ sid: "s1", jsonlPath: "/p/s1.jsonl", title: "T" }] } };
+    await tm.loadPinned();
+    expect(tabOf("s1").streamEl.querySelector(".pin-revived-hint")).toBeTruthy();
+    tm.reviveTab("s1");
+    expect(
+      tabOf("s1").streamEl.querySelector(".pin-revived-hint"),
+      "会话已经活了，那块「只能 resume」的话还挂在内容上面",
+    ).toBeNull();
+  });
+});
+
+// ==========================================================================
+// 〔步 17·D · `设计/30 §D`〕Edge 式拖动合并成组 —— **纯判定那一半**
+//
+// `§D.1` 现打：数据层全都在（`TabCollection` 与它那五个操作、落盘、上界、组容器渲染）
+// ⇒ **缺的只有那个手势**。所以这一组打的是手势拆出来的那几个纯函数：
+// 落点（3 种语义）· 停留（时间维）· 默认组名 · 归属跟着落点宿主走。
+//
+// 🔴 反空真：每一格都是**相等断言**。三种落点语义各有正例，而且每一条正例旁边
+//    都有一条「它不该给出这个答案」的反例 —— 一个「永远回 `end`」的实现
+//    必须在这一组里红掉，否则这组就是空转。
+// ==========================================================================
+describe("步 17·D ⓪ 量具自检：落点函数真的在分三种，不是恒回一种", () => {
+  // 三个 tab，每个高 28（`§D.4` 里那个实测值），首个 top=0。
+  const rects: TabRect[] = [
+    { sid: "a", top: 0, height: 28 },
+    { sid: "b", top: 28, height: 28 },
+    { sid: "c", top: 56, height: 28 },
+  ];
+  const none = new Set<string>();
+
+  it("🔴 三种语义**都出得来**，而且各自出在该出的地方", () => {
+    // 一格里三条分开断言：合成一条的话，只要有一种出不来，另两种也能让它看起来对。
+    expect(pickDropTarget(rects, 5, none, null), "指针在 a 的上半 ⇒ 插到 a 之前").toEqual({
+      kind: "before",
+      sid: "a",
+    });
+    expect(pickDropTarget(rects, 200, none, null), "指针在所有 tab 下面 ⇒ 末尾").toEqual({
+      kind: "end",
+    });
+    expect(pickDropTarget(rects, 40, none, "b"), "停留攒满了 ⇒ 与 b 成组").toEqual({
+      kind: "onto",
+      sid: "b",
+    });
+  });
+
+  it("中线是分界：过了中线就轮到下一个（差一错在这里露）", () => {
+    expect(pickDropTarget(rects, 13, none, null)).toEqual({ kind: "before", sid: "a" });
+    expect(pickDropTarget(rects, 14, none, null), "恰好在 a 的中线上 ⇒ 已经不是 a 了").toEqual({
+      kind: "before",
+      sid: "b",
+    });
+  });
+
+  it("🔴 **按视觉序扫，不按 `orderedIds` 扫**（`§D.2` 拆掉组过滤之后的必要条件）", () => {
+    // 组容器整块排在散 tab 前面 ⇒ 数组次序与屏幕次序不再一致。
+    // 喂一份「数组里 c 在最前、屏幕上 c 在最后」的读数：按数组扫会答 c。
+    const shuffled: TabRect[] = [
+      { sid: "c", top: 56, height: 28 },
+      { sid: "a", top: 0, height: 28 },
+      { sid: "b", top: 28, height: 28 },
+    ];
+    expect(
+      pickDropTarget(shuffled, 5, none, null),
+      "按数组次序扫的话这里会答 `c` —— 而 c 在屏幕最下面，指针在最上面",
+    ).toEqual({ kind: "before", sid: "a" });
+  });
+
+  it("被拖的那一块整体不参与落点（落到自己身上不是一次重排）", () => {
+    expect(pickDropTarget(rects, 5, new Set(["a"]), null), "a 被拖着，落点该轮到 b").toEqual({
+      kind: "before",
+      sid: "b",
+    });
+    expect(
+      pickDropTarget(rects, 40, new Set(["b"]), "b"),
+      "🔴 停留攒在自己身上也不许成组（不然拖一下自己就多一个组）",
+    ).toEqual({ kind: "before", sid: "c" });
+  });
+
+  it("🔴 停留攒满了、但指针已经划出那个矩形 ⇒ **不给 `onto`**（两个来源都得同意）", () => {
+    // 只信计时器的话，指针早已划走还会合并成组 —— 那正是 `§D.4` 要避的误触。
+    expect(pickDropTarget(rects, 5, none, "c"), "计时器说 c，可指针在 a 头上").toEqual({
+      kind: "before",
+      sid: "a",
+    });
+  });
+
+  it("`tabUnderY` 正反两控：压在矩形里才算，边界按左闭右开", () => {
+    expect(tabUnderY(rects, 28, new Set()), "28 是 b 的上沿 ⇒ 算 b").toBe("b");
+    expect(tabUnderY(rects, 27.9, new Set()), "27.9 还在 a 里").toBe("a");
+    expect(tabUnderY(rects, 999, new Set()), "谁都没压着要能说「没有」").toBeNull();
+    expect(tabUnderY(rects, 5, new Set(["a"])), "被拖的那块要排除").toBeNull();
+  });
+
+  it("两个常数就是 `§D.4` 写的那两个数（改了要有人知道）", () => {
+    expect(DWELL_MS, "停留门槛不是 250ms ⇒ 与 Edge 的手感、与 `§D.4` 的推理都脱钩").toBe(250);
+    expect(DWELL_MOVE_PX).toBe(4);
+  });
+});
+
+describe("步 17·D ① 默认组名（`§D.6`）—— 这条路上不能弹 `window.prompt`", () => {
+  it("① 共同前缀的目录名（最常见：同项目的两个会话）", () => {
+    expect(commonDirName("/home/u/proj/a", "/home/u/proj/b")).toBe("proj");
+    expect(commonDirName("/home/u/proj", "/home/u/proj"), "两条同 cwd ⇒ 就是它自己").toBe("proj");
+    expect(commonDirName("C:\\work\\proj\\a", "C:/work/proj/b"), "两种分隔符都要认").toBe("proj");
+  });
+
+  it("算不出来要**说算不出来**（反面控：不许随便回一个）", () => {
+    expect(commonDirName("/home/a", "/var/b"), "没有共同前缀").toBeNull();
+    expect(commonDirName(null, "/var/b"), "一边没有 cwd").toBeNull();
+    expect(commonDirName("C:\\a", "C:\\b"), "只共到盘符 ⇒ 「C:」当组名是噪声").toBeNull();
+  });
+
+  it("② 没有共同 cwd ⇒ `组 N`，取当前最大编号 +1", () => {
+    expect(defaultGroupName(null, null, []), "一个组都没有 ⇒ 从 1 起").toBe("组 1");
+    expect(defaultGroupName(null, null, ["组 1", "白天", "组 3"]), "最大编号是 3 ⇒ 下一个是 4").toBe(
+      "组 4",
+    );
+    expect(defaultGroupName("/a/x", "/b/y", ["组 2"]), "共同前缀算不出来才轮到编号").toBe("组 3");
+  });
+
+  it("有共同目录名时**优先用它**（反面控：别退回编号）", () => {
+    expect(defaultGroupName("/home/u/proj/a", "/home/u/proj/b", ["组 1"])).toBe("proj");
+  });
+});
+
+describe("步 17·D ② 归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则）", () => {
+  const cols = (list: TabCollection[]): TabCollection[] => JSON.parse(JSON.stringify(list));
+
+  it("🆕 `onto` 到一个**没有组**的 tab ⇒ 现建一个组，两个都进去", () => {
+    const next = applyDropToCollections([], ["a"], { kind: "onto", sid: "b" }, "proj", "gX");
+    expect(next, "建组 + 两个成员，顺序 = 目标在前、被拖的在后").toEqual([
+      { id: "gX", name: "proj", members: ["b", "a"] },
+    ]);
+  });
+
+  it("`onto` 到一个**已经在组里**的 tab ⇒ 进那个组，不新建", () => {
+    const base = cols([{ id: "g1", name: "白天", members: ["b"] }]);
+    const next = applyDropToCollections(base, ["a"], { kind: "onto", sid: "b" }, "proj", "gX");
+    expect(next).toEqual([{ id: "g1", name: "白天", members: ["b", "a"] }]);
+  });
+
+  it("整块一起走（交互 tab 连同它的 bg 子串）—— 不许把子树劈成两半", () => {
+    const next = applyDropToCollections([], ["a", "a-bg"], { kind: "onto", sid: "b" }, "n", "gX");
+    expect(next[0].members).toEqual(["b", "a", "a-bg"]);
+  });
+
+  it("🔴 `before` 一个**散 tab** ⇒ 从原来的组里**移出**（`§D.7` 的拖出组）", () => {
+    const base = cols([{ id: "g1", name: "白天", members: ["a", "b"] }]);
+    const next = applyDropToCollections(base, ["a"], { kind: "before", sid: "z" }, "n", "gX");
+    expect(next, "落点宿主是散 tab 区 ⇒ a 不再属于 g1").toEqual([
+      { id: "g1", name: "白天", members: ["b"] },
+    ]);
+  });
+
+  it("`before` 一个**组里的 tab** ⇒ 进那个组（同一条规则的另一侧）", () => {
+    const base = cols([{ id: "g1", name: "白天", members: ["b"] }]);
+    const next = applyDropToCollections(base, ["a"], { kind: "before", sid: "b" }, "n", "gX");
+    expect(next).toEqual([{ id: "g1", name: "白天", members: ["b", "a"] }]);
+  });
+
+  it("`end` ⇒ 移出（末尾就是散 tab 区）", () => {
+    const base = cols([{ id: "g1", name: "白天", members: ["a"] }]);
+    expect(applyDropToCollections(base, ["a"], { kind: "end" }, "n", "gX")).toEqual([
+      { id: "g1", name: "白天", members: [] },
+    ]);
+  });
+
+  it("🔴 反面控：什么都不该变的两种情形，**一个字节都不许变**", () => {
+    const base = cols([{ id: "g1", name: "白天", members: ["a"] }]);
+    expect(
+      applyDropToCollections(base, ["a"], { kind: "onto", sid: "a" }, "n", "gX"),
+      "压在自己身上不是一次合并",
+    ).toEqual(base);
+    const flat = cols([{ id: "g1", name: "白天", members: ["z"] }]);
+    expect(
+      applyDropToCollections(flat, ["a"], { kind: "before", sid: "b" }, "n", "gX"),
+      "两个都是散 tab ⇒ 归属这一维没有任何事发生",
+    ).toEqual(flat);
+  });
+
+  it("🔴 建组到上界（32 个）⇒ **原样返回**，不许把 tab 塞进一个不存在的集合", () => {
+    const full = Array.from({ length: 32 }, (_, i) => ({
+      id: `g${i}`,
+      name: `组 ${i + 1}`,
+      members: [] as string[],
+    }));
+    const next = applyDropToCollections(full, ["a"], { kind: "onto", sid: "b" }, "新", "gX");
+    expect(next, "满了还建 ⇒ a 会挂在一个 `createCollection` 根本没造出来的 id 上").toEqual(full);
+  });
+
+  it("`collectionsEqual` 正反两控（它是「没变就不写盘」那道门）", () => {
+    const a = cols([{ id: "g1", name: "n", members: ["x", "y"] }]);
+    expect(collectionsEqual(a, cols(a)), "同一份判成不同 ⇒ 每拖一下都白写一次盘").toBe(true);
+    expect(
+      collectionsEqual(a, [{ id: "g1", name: "n", members: ["y", "x"] }]),
+      "成员次序变了也是变了",
+    ).toBe(false);
+    expect(collectionsEqual(a, [{ id: "g1", name: "改了", members: ["x", "y"] }])).toBe(false);
+    expect(collectionsEqual(a, []), "长度不同").toBe(false);
+  });
+});
+
+// ==========================================================================
+// 〔步 17·D〕手势接到真 DOM 上那一半：`§D.2` 的两个缺口是不是真的堵上了
+// ==========================================================================
+describe("步 17·D ③ 组里的 tab 真的参与落点（`§D.2` 缺口一）", () => {
+  let tm: TabManager;
+  let bar: HTMLElement;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tm = makeTM();
+    bar = document.body.firstElementChild as HTMLElement;
+  });
+
+  it("🔴 量具自检 ＋ 正题：`tabRects()` 量到的集合 == 栏里所有 tab（**含组里的**）", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("b", "/c1", "p", 0, null);
+    (tm as unknown as { collections: TabCollection[] }).collections = [
+      { id: "g1", name: "白天", members: ["b"] },
+    ];
+    peek(tm).collectionsLoaded = true;
+    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+
+    // jsdom 的 `getBoundingClientRect` 恒回全 0 ⇒ 先给每个按钮钉一个真读数，
+    // 否则下面量到的「高度」全是 0，落点判定看起来正常其实没在量任何东西。
+    const stub = (sid: string, top: number): void => {
+      const el = peek(tm).tabButtons.get(sid)!.root;
+      el.getBoundingClientRect = (): DOMRect => ({ top, height: 28, bottom: top + 28 }) as DOMRect;
+    };
+    stub("b", 0); // 组容器排在前面
+    stub("a", 28);
+
+    const rects = peek(tm).tabRects();
+    expect(
+      rects.map((r) => r.sid).sort(),
+      "🔴 `parentElement !== barEl` 那道过滤还在 ⇒ 组里的 b 量不到 ⇒ 拖不进也拖不出组",
+    ).toEqual(["a", "b"]);
+    expect(rects.every((r) => r.height === 28), "量具自检：高度得是真读数，不是 jsdom 的 0").toBe(
+      true,
+    );
+    // 组容器是 barEl 的子树 —— 这一句钉住「参与」的原因是 contains，不是别的巧合。
+    expect(bar.contains(peek(tm).tabButtons.get("b")!.root)).toBe(true);
+    expect(peek(tm).tabButtons.get("b")!.root.parentElement).not.toBe(bar);
+  });
+});
+
+describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyDrop`）", () => {
+  let tm: TabManager;
+  const order = (): string[] => peek(tm).orderedIds;
+  const colsOf = (): TabCollection[] => peek(tm).collections;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tm = makeTM();
+    peek(tm).collectionsLoaded = true;
+  });
+
+  it("`onto` ⇒ 建组 + 入组 + 落到目标之前，三件事一次做完", () => {
+    tm.ensureTab("a", "/home/u/proj/x", "p", 0, null);
+    tm.ensureTab("b", "/home/u/proj/y", "p", 0, null);
+    peek(tm).applyDrop("a", { kind: "onto", sid: "b" });
+    expect(colsOf().length, "没建组").toBe(1);
+    expect(colsOf()[0].members, "成员不对").toEqual(["b", "a"]);
+    expect(colsOf()[0].name, "默认名该走「共同前缀目录名」那一条（`§D.6` ①）").toBe("proj");
+    expect(order(), "顺序也要落实：a 插到 b 之前").toEqual(["a", "b"]);
+  });
+
+  it("🔴 顺序没变、只有归属变了的那一拍**不许被吞掉**", () => {
+    // 这是把 `applyReorder` 改成 `applyDrop` 的正题：旧实现 `if (顺序没变) return`，
+    // 而「把组里的 tab 原地拖出来」恰好就是顺序不变、归属变。
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    (tm as unknown as { collections: TabCollection[] }).collections = [
+      { id: "g1", name: "白天", members: ["a"] },
+    ];
+    peek(tm).applyDrop("a", { kind: "before", sid: "b" }); // a 本来就在 b 前面 ⇒ 顺序不变
+    expect(order(), "顺序确实没变（前提成立，这一格才有意义）").toEqual(["a", "b"]);
+    expect(colsOf()[0].members, "🔴 归属那一半被「没变化就 return」吞了").toEqual([]);
+  });
+
+  it("`end` ⇒ 拖出组并落到末尾", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    (tm as unknown as { collections: TabCollection[] }).collections = [
+      { id: "g1", name: "白天", members: ["a"] },
+    ];
+    peek(tm).applyDrop("a", { kind: "end" });
+    expect(order()).toEqual(["b", "a"]);
+    expect(colsOf()[0].members).toEqual([]);
+  });
+
+  it("没 `loadCollections` 过的实例：归属一个字不动（顺序照常）", () => {
+    // 与右键菜单那道门同一条理由：没读过盘就写，等于把用户已有的集合清空。
+    peek(tm).collectionsLoaded = false;
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    peek(tm).applyDrop("b", { kind: "onto", sid: "a" });
+    expect(colsOf(), "没读过盘还敢建组 ⇒ 下一次落盘会把用户的集合全冲掉").toEqual([]);
+    expect(order(), "顺序这一半照常").toEqual(["b", "a"]);
+  });
+});
+
+// ==========================================================================
+// 〔步 17·D ⑤〕停留计时器**真的接在拖拽上** —— 一次完整的假手势
+//
+// 🔴 这一格买的是上面那些纯函数买不到的东西：`§D.4` 的整个推理建立在
+//    「**指针停住之后 `mousemove` 就不再来了**」这件事上 ⇒ 必须有计时器。
+//    一个只在 `mousemove` 里数时间的实现，纯函数那几格**全绿**，而手势根本不存在。
+// ==========================================================================
+describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", () => {
+  let tm: TabManager;
+  const rootOf = (sid: string): HTMLElement => peek(tm).tabButtons.get(sid)!.root;
+  /** jsdom 的 `getBoundingClientRect` 恒回全 0 ⇒ 不钉读数的话「压在谁身上」永远答第一个。 */
+  const stubRect = (sid: string, top: number): void => {
+    rootOf(sid).getBoundingClientRect = (): DOMRect =>
+      ({ top, height: 28, bottom: top + 28 }) as DOMRect;
+  };
+  const move = (y: number): void => {
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 0, clientY: y, bubbles: true }),
+    );
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    vi.useFakeTimers();
+    tm = makeTM();
+    peek(tm).collectionsLoaded = true;
+    tm.ensureTab("a", "/home/u/proj/x", "p", 0, null);
+    tm.ensureTab("b", "/home/u/proj/y", "p", 0, null);
+    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+    stubRect("a", 0);
+    stubRect("b", 28);
+    // 起拖：先按下，再越过 6px 阈值。
+    rootOf("a").dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, buttons: 1, clientX: 0, clientY: 5, bubbles: true }),
+    );
+  });
+  afterEach(() => {
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    vi.useRealTimers();
+    document.body.querySelectorAll(".tab-drag-ghost").forEach((n) => n.remove());
+  });
+
+  it("🔴 不到 250ms 是 `before`，满了才翻成 `onto`（时间这一维真的在承重）", () => {
+    move(40); // 落在 b 的上半 ⇒ before b
+    expect(rootOf("b").classList.contains("drop-before"), "落点指示没出来 ⇒ 这一格在空转").toBe(
+      true,
+    );
+    expect(rootOf("b").classList.contains("drop-onto"), "还没压够就成组 = `§D.4` 要避的误触").toBe(
+      false,
+    );
+
+    vi.advanceTimersByTime(DWELL_MS - 1);
+    expect(rootOf("b").classList.contains("drop-onto"), "差 1ms 就翻 ⇒ 门槛是假的").toBe(false);
+
+    vi.advanceTimersByTime(1);
+    expect(
+      rootOf("b").classList.contains("drop-onto"),
+      "🔴 压满 250ms 还不成组 —— 指针停住之后没有 `mousemove` 了，没有计时器这件事就永远不发生",
+    ).toBe(true);
+    expect(rootOf("b").classList.contains("drop-before"), "两个标不许同时挂着").toBe(false);
+  });
+
+  it("攒满之后抖一下（>4px）⇒ 退回 `before`（可逆）", () => {
+    move(40);
+    vi.advanceTimersByTime(DWELL_MS);
+    expect(rootOf("b").classList.contains("drop-onto")).toBe(true);
+    move(40 + DWELL_MOVE_PX + 1);
+    expect(rootOf("b").classList.contains("drop-onto"), "抖过 4px 还锁在 `onto` 上 ⇒ 不可逆").toBe(
+      false,
+    );
+  });
+
+  it("松手在 `onto` 态 ⇒ 真的建出组来（手势整条链走通，不是只改了个 class）", () => {
+    move(40);
+    vi.advanceTimersByTime(DWELL_MS);
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    const cols = peek(tm).collections;
+    expect(cols.length, "松手了却没建组 ⇒ 视觉反馈与真实后果脱钩（比没做更坏）").toBe(1);
+    expect(cols[0].members).toEqual(["b", "a"]);
+    expect(cols[0].name, "默认名走 `§D.6` ①：两个 cwd 的共同前缀目录名").toBe("proj");
+  });
+
+  it("🔴 松手早于 250ms ⇒ 计时器必须**已经被清掉**（数在飞的定时器，不是只看后果）", () => {
+    // ⚠ 这一格最初写成「松手后再快进，`.drop-onto` 不许出现」—— 死值验刀 21 实测**杀不掉**：
+    //   计时器回调里那道 `if (!cur) return` 已经把后果挡住了，于是「清没清」看不出来。
+    //   ⇒ 改成直接数在飞的定时器：那才是「悬空引线」这条性质本身。
+    const base = vi.getTimerCount();
+    move(40);
+    expect(vi.getTimerCount(), "停留计时器根本没排上 ⇒ 这一格在空转").toBe(base + 1);
+
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    expect(
+      vi.getTimerCount(),
+      "🔴 拖拽收尾了，停留计时器还挂在那儿 —— 一条悬空引线（同 `pendingMenuTimers` 那条教训）",
+    ).toBe(base);
+
+    vi.advanceTimersByTime(DWELL_MS * 4);
+    expect(rootOf("b").classList.contains("drop-onto"), "更不该事后翻成组").toBe(false);
+    expect(peek(tm).collections, "更不该无中生有地建组").toEqual([]);
   });
 });

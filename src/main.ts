@@ -209,7 +209,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   void tabs.loadCollections();
   // 〔步 17·C〕顺序也要拉回来。排在集合之后：两者都只改内存 + 重画，互不依赖，
   // 但集合决定分组容器、顺序决定容器内次序 —— 先有容器再排，少一次无谓重画。
-  void tabs.loadOrder();
+  //
+  // 🔴 〔步 17·B · 2026-09-19〕**固定表必须排在顺序之前，而且要真的等它**（不是并排 `void`）：
+  //   `loadOrder` 按「今天真的存在的 sid」过滤（`getTabOrder(new Set(orderedIds))`），
+  //   而固定的 tab 是 `loadPinned` **凭空造出来**的 —— 造之前跑 `loadOrder`，
+  //   它们的位置会被当成「已删会话」整条摘掉，固定回来的 tab 全堆在末尾。
+  // ⚠ `finally` 不是 `then`：`loadPinned` 失败也得让顺序照常回来（互不为前提）。
+  void tabs.loadPinned().finally(() => void tabs.loadOrder());
 
   // A3：状态栏「当前账号」chip（多账号 cc-acct-iso）。绑第一台可用远端的默认账号；
   // 未连远端 / 未启用多账号 各自安静降级（不报错）。点击弹选单切默认账号。

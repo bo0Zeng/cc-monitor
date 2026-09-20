@@ -18,14 +18,48 @@
  *
  * # 射程
  *
- * 本文件今天只装 `order`（`§C`）。`pinned`（`§B`，固定 tab）**还没做**，
- * 按 `§4` 它落在**同一个段**里 —— 那一刀来时往这里加一个键，不另开文件。
+ * 本文件装 `§4` 那张表里的**两个键**：`order`（`§C`，2026-09-19 上午）与
+ * `pinned`（`§B`，固定 tab，2026-09-19 下午）。按 `§4` 它们住**同一个段**，
+ * 不另开文件 —— 「一个事实一个住址」在这里的形是「一段配置一个模块」。
  * ⚠ 因此本文件的读写**刻意只动自己那个键**，不整段覆盖：
- *   否则 `B` 落地后，两条路会互相把对方的键写没。
+ *   否则两条路会互相把对方的键写没。
+ *   🔴 这条不靠自觉：`writeSegKey` 是**两个键唯一的写口**（下面那个函数），
+ *   而 `tests/tab-bar-state.vitest.ts` 对 `order`/`pinned` **各有一格**专盯它。
  */
 import { loadConfig, saveConfig } from "./config";
 
 const KEY = "tabBar";
+
+/**
+ * 🔴 **段里两个键唯一的写口** —— 读出整段、只覆盖 `field` 这一个键、写回去。
+ *
+ * 为什么抽成一个函数而不是两处各写一遍：`§B` 与 `§C` 是**同一条不变量的两侧**
+ * （「不写没别人的键」），两处各抄一份的话，将来只改一侧就是一次静默的互相清空。
+ * ⚠ 这里**刻意不做 try/catch**：写失败要让调用方知道（调用方的形状是
+ *   「先改内存再落盘，落盘失败只记日志」——日志由调用方打，不是这里吞掉）。
+ */
+async function writeSegKey(field: "order" | "pinned", value: unknown): Promise<void> {
+  const cfg = (await loadConfig()) as Record<string, unknown>;
+  const prev = cfg[KEY];
+  const seg: Record<string, unknown> =
+    prev && typeof prev === "object" && !Array.isArray(prev)
+      ? { ...(prev as Record<string, unknown>) }
+      : {};
+  seg[field] = value;
+  cfg[KEY] = seg;
+  await saveConfig(cfg);
+}
+
+/**
+ * 段里两个键唯一的读口。段不是对象（数组 / 字符串 / 缺失）⇒ 回 `undefined`，
+ * 由各自的 `sanitize*` 把它变成空表。
+ */
+async function readSegKey(field: "order" | "pinned"): Promise<unknown> {
+  const cfg = (await loadConfig()) as Record<string, unknown>;
+  const seg = cfg[KEY];
+  if (!seg || typeof seg !== "object" || Array.isArray(seg)) return undefined;
+  return (seg as Record<string, unknown>)[field];
+}
 
 /**
  * 顺序的上界。
@@ -72,10 +106,7 @@ export function sanitizeOrder(raw: unknown, alive: ReadonlySet<string> | null): 
  */
 export async function getTabOrder(alive: ReadonlySet<string>): Promise<string[]> {
   try {
-    const cfg = (await loadConfig()) as Record<string, unknown>;
-    const seg = cfg[KEY];
-    if (!seg || typeof seg !== "object" || Array.isArray(seg)) return [];
-    return sanitizeOrder((seg as Record<string, unknown>).order, alive);
+    return sanitizeOrder(await readSegKey("order"), alive);
   } catch (e) {
     console.warn("getTabOrder failed:", e);
     return [];
@@ -83,19 +114,140 @@ export async function getTabOrder(alive: ReadonlySet<string>): Promise<string[]>
 }
 
 /**
- * 写顺序。**只动 `tabBar.order` 这一个键**，段里别的键（将来的 `pinned`）原样留着。
+ * 写顺序。**只动 `tabBar.order` 这一个键**，段里别的键（`pinned`）原样留着。
  *
  * ⚠ 调用方的形状是「**先改内存再落盘**」（`§C.3` 逐字）：UI 立刻响应，
  *   落盘失败只记日志 —— 顺序丢一次远好过拖动卡一下。
  */
 export async function setTabOrder(order: readonly string[]): Promise<void> {
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  const prev = cfg[KEY];
-  const seg: Record<string, unknown> =
-    prev && typeof prev === "object" && !Array.isArray(prev)
-      ? { ...(prev as Record<string, unknown>) }
-      : {};
-  seg.order = sanitizeOrder(order, null);
-  cfg[KEY] = seg;
-  await saveConfig(cfg);
+  await writeSegKey("order", sanitizeOrder(order, null));
+}
+
+// ===== `§B` 固定（pinned）=====
+
+/**
+ * 一条固定记录。**字段表逐条照 `设计/30 §B.5`**，一个不多一个不少 ——
+ * 那张表不是清单，是由「重启后要把一个**没有活进程**的 tab 恢复出来」反推出来的。
+ *
+ * 🔴 **落盘的是条目，不是内容**（`§3.5.7` 逐字）：内容由 resume 拿
+ * （`99 §2.5 P3` 已裁定「已结束的会话点进去**不能**看内容，只能 resume」）
+ * ⇒ 不需要回答「存全量还是存尾部」那类容量问题。
+ */
+export interface PinnedTab {
+  /** resume 的主键。 */
+  sid: string;
+  /** = `Tab.parentPath`。空串 = 这条从没收到过带路径的行（`§B.6` 第一格：降级，不是丢）。 */
+  jsonlPath: string;
+  cwd: string | null;
+  /** `null` = 本机（决定复活后走哪条读命令 / resume 往哪台机去）。 */
+  origin: string | null;
+  /**
+   * 🔴 **非有不可**（`§3.5.7`）：缺了 resume 会静默落到默认号，
+   * 撞 `accounts.ts` 那条「绝不下沉到当前号」的纪律。
+   * ⚠ `null` 在这里是**诚实的「没记到」**，不是「默认号」—— 两者不是一回事。
+   */
+  account: string | null;
+  /**
+   * 列表排序与「说不清」那一态要用（`§B.5` 逐字）。
+   * ⚠ `null` = **说不清**（`01 §6.9`：判不了就说判不了）。今天只有 live tab 落盘时
+   *   才有一个诚实的读数（「此刻它还活着」）；已经灰了的 tab 什么时候最后活动过，
+   *   前端**没有这个数**（`Tab` 上零时间戳字段，现打），所以原样沿用盘上那份、否则 `null`。
+   */
+  lastActiveAt: number | null;
+  /** bg 任务 vs 交互（复活骨架时喂给 `createSkeletonTab`）。 */
+  kind: string | null;
+  /** bgName（同上）。 */
+  name: string | null;
+  /** 存一份，骨架期就能显示正确标题（不等读完）。 */
+  title: string;
+}
+
+/**
+ * 固定条数上界 —— `§4` 那张表逐字「**上界 32 条**（照 `COLLECTION_CAP` 的量级）」。
+ *
+ * ⚠ 与 `ORDER_CAP` 不同，这里**没有第二道** `alive` 过滤：`pinned` 的全部意义
+ * 就是「这条今天不在，明天也要把它造出来」—— 按存活过滤等于把这个功能过滤掉。
+ */
+export const PINNED_CAP = 32;
+
+/** 盘上的字符串：不是字符串或空白 ⇒ 空串。 */
+function pinStr(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+/** 同上，但空串收敛成 `null`（可空字段用）。 */
+function pinStrOrNull(v: unknown): string | null {
+  const s = pinStr(v);
+  return s === "" ? null : s;
+}
+
+/**
+ * 清洗落盘来的固定表。形状照 `sanitizeCollections`（认不出就丢，不抛）。
+ *
+ * 逐条筛的三条：
+ * 1. `sid` 是主键 —— 空的 / 重复的整条丢（重复会让同一个 tab 被复活两遍）。
+ * 2. `jsonlPath` 为空**保留**（`§4` 逐字「保留但标记降级」）—— 丢掉它等于
+ *    「用户固定过的东西第二天自己没了」，那比降级坏。降级的判词住 `isDegradedPin`。
+ * 3. 文件已被删的那一条要自动摘除（`§4`）—— **今天做不到**，理由写在
+ *    `isDegradedPin` 的头注里（前端没有任何文件存在性探针）。
+ */
+export function sanitizePinned(raw: unknown): PinnedTab[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PinnedTab[] = [];
+  const seen = new Set<string>();
+  for (const x of raw) {
+    if (!x) continue;
+    const o = x as Record<string, unknown>;
+    const sid = pinStr(o.sid);
+    if (!sid || seen.has(sid)) continue;
+    const ts = o.lastActiveAt;
+    seen.add(sid);
+    out.push({
+      sid,
+      jsonlPath: pinStr(o.jsonlPath),
+      cwd: pinStrOrNull(o.cwd),
+      origin: pinStrOrNull(o.origin),
+      account: pinStrOrNull(o.account),
+      lastActiveAt: typeof ts === "number" && Number.isFinite(ts) ? ts : null,
+      kind: pinStrOrNull(o.kind),
+      name: pinStrOrNull(o.name),
+      // 标题缺了也要有个认得出的东西 —— 照全仓那条「session_id 前 8 位」的兜底。
+      title: pinStr(o.title) || sid.slice(0, 8),
+    });
+    if (out.length >= PINNED_CAP) break;
+  }
+  return out;
+}
+
+/**
+ * 这条固定记录是不是**降级**的（`§B.6` 第一格 / `§4` 那张表的「标记降级」）。
+ *
+ * 🔴 **`§4` 还要求「文件不存在的自动摘除」，那一条今天做不到，如实记在这里**：
+ * 前端一侧**没有任何文件存在性探针** —— `src/ipc/commands.ts` 里零个 `exists`
+ * 类命令，`package.json` 也没有 `@tauri-apps/plugin-fs`（两处现打）。
+ * 唯一能碰到那个文件的是 `stream_read_session_jsonl`，而 `99 §2.5 P3` 已裁定
+ * **复活不读内容** ⇒ 拿它当存在性探针就是绕过那条裁定。
+ * ⇒ 要做这一条得先加一个后端命令，**那不在本刀的写区**。判不了就写判不了。
+ */
+export function isDegradedPin(p: PinnedTab): boolean {
+  return p.jsonlPath === "";
+}
+
+/**
+ * 读固定表。
+ *
+ * ⚠ 读失败**不阻断启动**（`§4` 逐字，照 `loadCollections` 的 try/catch 形状）：
+ *   一份坏掉的配置最坏也就是这次少几个灰 tab，不该让 tab 栏起不来。
+ */
+export async function getPinned(): Promise<PinnedTab[]> {
+  try {
+    return sanitizePinned(await readSegKey("pinned"));
+  } catch (e) {
+    console.warn("getPinned failed:", e);
+    return [];
+  }
+}
+
+/** 写固定表。**只动 `tabBar.pinned` 这一个键**，段里别的键（`order`）原样留着。 */
+export async function setPinned(list: readonly PinnedTab[]): Promise<void> {
+  await writeSegKey("pinned", sanitizePinned(list));
 }
