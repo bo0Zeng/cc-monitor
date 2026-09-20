@@ -488,6 +488,41 @@ cell(
     },
 )
 
+# ── 第 26 格 `f3-copy`（`23b·B`，09-20）：**秤 F3 两向从 `cargo` 的合计里独立出来** ──
+# 🔴 立它的起因：`tests/bridge/sftp_copy_f3_tests.rs`（1075 行）落地那天只靠
+#   `src/bridge/src/sftp_pool.rs` 的 `#[path]` 挂进 `monitor` 的 lib ⇒ 它那 9 条被
+#   `cargo` 那一格的**求和**吃掉了。那一格的绿是 9 个包的合计，**这 9 条静默消失
+#   只会让合计小一点，而「小一点」与「有测试没跑」在终端上一模一样**
+#   （同一条道理 `run_gate_sum` 的头注为**包数**论证过一遍 —— 那里的解法是相等断言，
+#     这里同理）。
+# ⚠ **本格不改 `cargo` 那一格的任何裁词**：那 9 条照旧算在它的合计里。两格都在，
+#   档位不叠加（同 `tsc`/`npm` 那一对）—— 那一格买 workspace 合计，本格买
+#   「秤 F3 这两向没有静默消失」。
+# ⚠ 本格的相等断言里有一个**写死的 `pin=9`**，那是**刻意的**：现打的死值验里
+#   「真删掉一条测试」这一刀让 `declared` 与 `ran` **一起**掉到 8（两侧同源）——
+#   只有那个写死的 pin 认得出来。⇒ 真加/删测试的那一拍回 `gate.sh` 改 pin。
+cell(
+    "f3-copy",
+    anchor="run_gate f3-copy '判过的条数 = 秤 F3",
+    cwd="仓根（内层 cd src/bridge）",
+    cmd="cargo test -p monitor --lib sftp_pool::copy_f3_tests::（＋ 三方对拍 ＋ 两向锚点）",
+    **{
+        "tests/": (PART, "〔现打 09-20〕**只有 `tests/bridge/sftp_copy_f3_tests.rs` 这一份**"
+                         "（1075 行、9 条测试）：本格既**跑**它（靠 `src/bridge/src/sftp_pool.rs` "
+                         "的 `#[path]` 挂进 `monitor` 的 lib），又**读它的文本**（数 `#[test]`/"
+                         "`#[tokio::test]` 的条数，那是三方对拍里的 `declared` 那一边）。"
+                         "⚠ 这棵树的其余每一份本格一个字都不碰 —— 那一棵的合计归 `cargo` 那一格"),
+        "src/bridge/": (PART, "〔现打 09-20〕**编的是 `-p monitor` 一个包**（另 8 个成员本格不编），"
+                              "而**判据只问一条路**：`src/bridge/src/sftp_pool.rs` 里 "
+                              "`copy_remote_path` 的 `copy-data` 协商与退路。⚠ 「整个包编得过」"
+                              "这一层是副产品，不是本格的判据 —— 那一层归 `cargo`/`fmt`/`winchk` 三格。"
+                              "⚠ 本格**不起任何网络**：服务端是那份判据自己在内存里立的合成件"),
+        "tests/evidence/": blind("🔴 本格**没有独立的判据文件** —— 判定逐字写在 `gate.sh` 那一行的"
+                                 "内联脚本里（同 `muslbuild`/`deadcode`/`tsc`/`winchk-backend` 四格）。"
+                                 "这棵树一份都不读"),
+    },
+)
+
 cell(
     "generated",
     anchor="git diff --quiet --exit-code -- src/generated/",
@@ -1396,7 +1431,7 @@ def main():
     order = [c for c in ("worktree-clean", "hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
                          "gate-selfdesc", "platform",
                          "installface", "fmt", "fmt-backend", "winchk", "winchk-backend",
-                         "muslbuild", "cargo", "deadcode", "generated", "backend", "tsc", "npm")
+                         "muslbuild", "cargo", "f3-copy", "deadcode", "generated", "backend", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
     missing = sorted(set(REGISTRY) - set(order))
     if missing:
