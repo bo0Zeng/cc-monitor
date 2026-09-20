@@ -5,6 +5,9 @@
 //! - **写**：**只** `<dir>/.mcp.json`（增/改/删）。**绝不写 `~/.claude.json` / `settings.json`**——本机经 `mcp_json_path`
 //!   硬编码 / **远端**经 `remote_mcp_json_path`+`is_safe_remote_mcp_json` 守卫 + `sftp::upload_atomic`（本文件承载
 //!   `write_remote_mcp_server`/`remove_remote_mcp_server`）。SS-G：远端写仅用户显式触发。
+//!   🔴 **〔步 12·C 收尾 09-20〕上一行那两个名字今天是「函数」不是「命令」** ——
+//!   上线的两条是 `write_project_mcp_server` / `remove_project_mcp_server`（各吃一个 `origin`），
+//!   它们是那两个函数的唯一调用点。别把「函数还在」读成「命令还在」。
 //!
 //! `~/.claude.json` 路径有变体（`CLAUDE_CONFIG_DIR` vs `$HOME`），故 `claude_json_candidates` 取多候选、
 //! 读第一个存在的——防御式，schema 真机可能变，不硬假设完整。
@@ -389,15 +392,40 @@ fn write_project_mcp_server_impl(
 }
 
 /// F87 写命令：增 / 改项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**§10 spawn_blocking。
+///
+/// 🔴 **〔步 12·C 收尾 2026-09-20〕两条合成了一条带 `origin` 的**（本机那条
+/// ＋ [`write_remote_mcp_server`]）。`设计/00 §2.5 ①` 逐字「同义双份命令合成一条带 origin 参数的」。
+///
+/// **凭什么说这一对是同一件事**（判据不是名字 —— `真相源/97 §二b` 逐字「按名字数分叉会系统性高估」）：
+/// 两侧写的是**同一个写面**（`<dir>/.mcp.json`，SS-14 那条铁律的两端），
+/// 而**改那份 JSON 的那一份代码本来就只有一份** —— [`upsert_mcp_server_value`]
+/// （它的头注逐字「本机/远端复用、可测」，F89a 落地那天就是为这件事抽出来的）。
+/// 两侧的差别只剩两处，且两处都只是「字节走哪条路」：
+/// 读回来走 `read_or_skeleton`（读盘）还是 `read_remote_mcp_value`（SFTP）·
+/// 写回去走 `write_json_atomic`（`ReplaceFileW`）还是 `sftp::upload_atomic`（tmp+rename）。
+/// ⇒ 这正是 `INVARIANTS §40`「本地 ＝ 不走 ssh 的远端」在命令面上的样子。
+///
+/// ⚠ 上一路（步 12·C 首拍）判过这一对「**该合、但本步合不了**」——
+/// 卡的不是判据，是 `tests/evidence/K-R117-ruler.py::SPLIT_GROUPS["S5"]` 那张
+/// 字面量名单不在它的写区。本拍同拍把那张名单从 7 条改成 5 条，卡点消失。
+///
+/// ⚠ 本机 ＝ `Origin::local()`（线上 `"<local>"`），**不是 `null`** ——
+/// 「没说」那一支由 [`Origin::route`] 当场拒掉，理由见它的头注。
 #[tauri::command]
 pub async fn write_project_mcp_server(
+    origin: Origin,
     project_dir: String,
     name: String,
     server: Value,
 ) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || write_project_mcp_server_impl(project_dir, name, server))
+    match origin.route("write_project_mcp_server")? {
+        Route::Local => tokio::task::spawn_blocking(move || {
+            write_project_mcp_server_impl(project_dir, name, server)
+        })
         .await
-        .map_err(|e| format!("spawn_blocking: {e}"))?
+        .map_err(|e| format!("spawn_blocking: {e}"))?,
+        Route::Remote(host) => write_remote_mcp_server(host, project_dir, name, server).await,
+    }
 }
 
 fn remove_project_mcp_server_impl(project_dir: String, name: String) -> Result<(), String> {
@@ -413,11 +441,29 @@ fn remove_project_mcp_server_impl(project_dir: String, name: String) -> Result<(
 }
 
 /// F87 写命令：删项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**§10 spawn_blocking。
+///
+/// 🔴 **〔步 12·C 收尾 2026-09-20〕两条合成了一条带 `origin` 的**（本机那条
+/// ＋ [`remove_remote_mcp_server`]）。凭据与 [`write_project_mcp_server`] 同形，
+/// 只是共用的那一份纯核心换成了 [`remove_mcp_server_value`]（同样「本机/远端复用、可测」）。
+///
+/// ⚠ **两侧的「不存在就 no-op」语义也本来就是同一句**：本机先 `mcp.is_file()`、
+/// 远端先 `try_exists`，之后都走 `remove_mcp_server_value` 的返回值决定要不要重写。
+/// 合并没有改动其中任何一句 —— 那两句留在各自那一支里，因为「文件在不在」的问法
+/// 本机与远端不同（这正是 §40 说的「只是远端走 ssh」那一处差别）。
 #[tauri::command]
-pub async fn remove_project_mcp_server(project_dir: String, name: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || remove_project_mcp_server_impl(project_dir, name))
-        .await
-        .map_err(|e| format!("spawn_blocking: {e}"))?
+pub async fn remove_project_mcp_server(
+    origin: Origin,
+    project_dir: String,
+    name: String,
+) -> Result<(), String> {
+    match origin.route("remove_project_mcp_server")? {
+        Route::Local => {
+            tokio::task::spawn_blocking(move || remove_project_mcp_server_impl(project_dir, name))
+                .await
+                .map_err(|e| format!("spawn_blocking: {e}"))?
+        }
+        Route::Remote(host) => remove_remote_mcp_server(host, project_dir, name).await,
+    }
 }
 
 // ───────────────────────── F89a：远端项目级 MCP 读写（SFTP） ─────────────────────────
@@ -479,15 +525,25 @@ pub async fn read_remote_project_mcp(
 }
 
 /// F89a：增/改远端项目 `.mcp.json` 一条 server。**SS-G 用户显式触发 + SS-14 只碰 .mcp.json。**SFTP 原子 RMW。
-#[tauri::command]
-pub async fn write_remote_mcp_server(
-    origin: String,
+///
+/// 🔴 **〔步 12·C 收尾 2026-09-20〕它不再是一条 Tauri 命令。**
+/// 上线的那一条是 [`write_project_mcp_server`]，本函数是它的远端那一支。
+///
+/// ⚠ 名字**刻意没改**（同 [`list_remote_mcp_project_dirs`] 的先例）：
+/// `local_origin_registry::TRIAGE_DEBT` 与
+/// `remote_write_registry_tests` 的接线层路由表都按「文件::函数」登记着这一处，
+/// 改名会让那两张表静默失配。
+/// ⚠ 参数名从 `origin` 改成 `host`，理由同 `ORIGIN_MIGRATION_CEILING` 上方那一段：
+/// 本函数今天拿到的是**已经分过本机**的机器名，`origin` 的取值域含 `"<local>"`
+/// 而这里结构上收不到它 —— 继续叫 `origin` 是句假话。
+pub(crate) async fn write_remote_mcp_server(
+    host: &str,
     project_dir: String,
     name: String,
     server: Value,
 ) -> Result<(), String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    let cfg = crate::load_remote_config_by_label(host)
+        .ok_or_else(|| format!("远端 '{host}' 未配置或未启用"))?;
     let path = remote_mcp_json_path(&project_dir)?;
     let conn = crate::sftp::connect_sftp(&cfg).await?;
     let mut root = read_remote_mcp_value(&conn.sftp, &path).await?; // 已存在坏文件 → Err 拒覆盖
@@ -497,14 +553,17 @@ pub async fn write_remote_mcp_server(
 }
 
 /// F89a：删远端项目 `.mcp.json` 一条 server。**SS-G 用户显式触发 + SS-14 只碰 .mcp.json。**SFTP 原子 RMW。
-#[tauri::command]
-pub async fn remove_remote_mcp_server(
-    origin: String,
+///
+/// 🔴 **〔步 12·C 收尾 2026-09-20〕它不再是一条 Tauri 命令。**
+/// 上线的那一条是 [`remove_project_mcp_server`]，本函数是它的远端那一支。
+/// 名字与参数名的处置同 [`write_remote_mcp_server`]。
+pub(crate) async fn remove_remote_mcp_server(
+    host: &str,
     project_dir: String,
     name: String,
 ) -> Result<(), String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    let cfg = crate::load_remote_config_by_label(host)
+        .ok_or_else(|| format!("远端 '{host}' 未配置或未启用"))?;
     let path = remote_mcp_json_path(&project_dir)?;
     let conn = crate::sftp::connect_sftp(&cfg).await?;
     if !conn.sftp.try_exists(path.clone()).await.unwrap_or(false) {

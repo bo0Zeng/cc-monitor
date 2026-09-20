@@ -1572,11 +1572,16 @@ fn claims() -> Vec<Claim> {
             }),
             install: Some(ImplSite {
                 addr: "mcp.rs::write_project_mcp_server",
-                definition: "pub async fn write_project_mcp_server(\n    project_dir: String,\n    name: String,\n    server: Value,\n) -> Result<(), String> {",
+                // 🔴 〔步 12·C 收尾 09-20〕签名多了一个 `origin: Origin` —— 本机与远端
+                //    两条 MCP 写命令合成了一条。**逐字签名是钉住实现的那把锁**，
+                //    实现真的变了就得跟着改；判法（住址 ↔ 逐字签名互校）一个字没动。
+                definition: "pub async fn write_project_mcp_server(\n    origin: Origin,\n    project_dir: String,\n    name: String,\n    server: Value,\n) -> Result<(), String> {",
             }),
             uninstall: Some(ImplSite {
                 addr: "mcp.rs::remove_project_mcp_server",
-                definition: "pub async fn remove_project_mcp_server(project_dir: String, name: String) -> Result<(), String> {",
+                // 同上那一条：`remove_remote_mcp_server` 并进来之后，签名多了 `origin`
+                // 并因此被 rustfmt 折成多行。
+                definition: "pub async fn remove_project_mcp_server(\n    origin: Origin,\n    project_dir: String,\n    name: String,\n) -> Result<(), String> {",
             }),
         },
         Claim {

@@ -107,6 +107,21 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "sftp_pool.rs",
+        "sftp_chmod",
+        "远端",
+        "★〔`设计/60 §5.4c` · 09-20〕改远端权限位（`SSH_FXP_SETSTAT`）。\
+             **路径由用户选**（面板里点的那一项），`guard_write` 在函数第一行 —— \
+             改权限一样能弄坏一场正在跑的会话（把 jsonl 改成不可读），\
+             而它不像删除那样显眼。⚠ 它只有**一个**路径参数 ⇒ 按构造不在\
+             `a_two_path_write_entry_fences_both_of_its_paths` 的人群里，不是漏掉；\
+             它归单路径那一条（`USER_CHOSEN_ENTRIES`，本条是第七个）。\
+             ⚠ 它的写原语是 `.set_metadata(`，而本仓被这一个咬过一口：\
+             `sftp.rs::upload_atomic` 尾注记着带 size 的 setstat 会把文件截断成 0 字节。\
+             ⇒ 属性块的线上形状另有一条逐字节相等的判据钉着\
+             （`sftp_pool_tests::the_chmod_attrs_never_put_a_size_on_the_wire`）。",
+    ),
+    (
+        "sftp_pool.rs",
         "copy_remote_path",
         "远端",
         "★〔步 23b · 09-20〕**零流量复制的核心** —— 写面在退路那一支上：\
@@ -235,7 +250,8 @@ fn every_write_primitive_in_a_capability_holder_is_classified() {
     let sites = write_sites();
     assert!(
         sites.len() >= 8,
-        "只抠到 {} 处写点（08-10 实测 10；〔步 23b 09-20〕+1 = **11**）—— 抽取器坏了，本条此刻是空转的",
+        "只抠到 {} 处写点（08-10 实测 10；〔步 23b 09-20〕+1 = 11；\
+             〔`设计/60 §5.4c` 09-20〕`sftp_chmod` +1 = **12**）—— 抽取器坏了，本条此刻是空转的",
         sites.len()
     );
     let missing: Vec<String> = sites
@@ -318,7 +334,8 @@ fn fn_body_end(lines: &[&str], start: usize) -> usize {
 ///
 /// 08-10 实测：那句话今天**是真的** —— `sftp_write_text` / `sftp_upload` / `sftp_mkdir` /
 /// `sftp_rename` / `sftp_delete` 五个入口全都调了 `guard_write`
-/// （〔步 23b 09-20〕**+ `sftp_copy` = 六个**，同样两个参数各过一次）。
+/// （〔步 23b 09-20〕**+ `sftp_copy` = 六个**，同样两个参数各过一次；
+/// 〔`设计/60 §5.4c` 09-20〕**+ `sftp_chmod` = 七个**，它只有一个路径参数）。
 /// ⚠ 但**在本条之前没有任何判据钉着它**：删掉任一处 `guard_write?`，
 /// 全仓判据一条不红，而那台远端机上正被 Claude 打开的 jsonl 就能被面板删掉。
 ///
@@ -340,6 +357,12 @@ fn a_user_chosen_remote_write_passes_the_claude_data_fence() {
     //   复制品，与覆写它一样会损坏会话）。
     //   ⚠ **本条只钉「函数体里出现 `guard_write`」这个形态**（头注里那条失效模式），
     //   所以「两个参数各过一次」这件事在 `sftp_copy` 上同样**不是机检**，是登记说明。
+    // 🔴 〔`设计/60 §5.4c` · 09-20〕**六 → 七**：`sftp_chmod`（改权限位）。
+    //   它只有**一个**路径参数 ⇒ 归本条（单路径那一档），`guard_write` 在函数第一行。
+    //   ⚠ **它不进下面那条双路径判据的人群**，而那不是漏掉：那一条的人群逐字是
+    //   「签名里有两个路径参数」的写入口，`sftp_chmod` 按构造不满足。
+    //   把它塞进去会让那一条去找一个叫 `from`/`to` 的参数、当场 `panic!` ——
+    //   那是**误伤**，不是覆盖。两条判据各管各的那一半，这里写死，免得下一个人来「补全」。
     const USER_CHOSEN_ENTRIES: &[&str] = &[
         "sftp_write_text",
         "sftp_upload",
@@ -347,6 +370,7 @@ fn a_user_chosen_remote_write_passes_the_claude_data_fence() {
         "sftp_rename",
         "sftp_delete",
         "sftp_copy",
+        "sftp_chmod",
     ];
     let lines: Vec<&str> = prod.lines().collect();
     let mut unfenced = Vec::new();
@@ -485,6 +509,16 @@ fn a_two_path_write_entry_fences_both_of_its_paths() {
 /// （`sftp_write_text` / `sftp_upload` / `deploy_remote_backend` /
 /// `write_remote_mcp_server` / `delete_remote_history_session`）——
 /// 它们自己**不调写原语**，所以按能力边界派生的人群里**一个都没有**。
+///
+/// ⚠ 〔步 12·C 收尾 09-20〕上面那句话是 audit-0805 当时的**现打**，留着不改；
+/// 但今天它里面的 `write_remote_mcp_server` 与 `delete_remote_history_session`
+/// **已经不是 IPC 命令**了（`origin` 归一把它们并进了本机同族那条）。
+/// 它们仍留在下面那张路由表里，而且**必须留** —— 本表这一条判的是
+/// 「**按得到的那一层 ↔ 真正写盘的那一层**」这条边，而合并之后那条边是
+/// `write_project_mcp_server`（命令）→ `write_remote_mcp_server`（远端分支）
+/// → `upload_atomic`（写点）。本表是**一跳**的（理由见 `sftp_copy` 那一条），
+/// 所以它钉的是后半跳；前半跳由 `origin_tests::every_origin_taking_command_splits_local_through_route`
+/// 钉着（吃 `Origin` 的命令 ↔ 走 `route` 的命令，两向集合相等）。
 ///
 /// ⇒ 两份名单只重合五个。那不是谁错了，是**两个不同的层**：
 /// 「谁按下按钮」与「谁真的写」。本表的人群是后者，而前者是外面看得见的那一层
