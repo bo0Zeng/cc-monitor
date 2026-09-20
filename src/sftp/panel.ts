@@ -430,6 +430,49 @@ export class SftpPanel implements OverlayHandle {
     );
   }
 
+  /**
+   * 步 23b：远端内部复制。**零流量优先，退了路必出声。**
+   *
+   * 🔴 那条 `if (verdict !== null)` 是**承重的，不是锦上添花**：
+   * `设计/60 §5` 第二段逐字「**不许静默退化成 2× 流量** —— 用户看得见
+   * 『这一趟走的是慢路』」。后端把「为什么退 ＋ 过了多少字节」拼成一句话交上来，
+   * 这里的活只有一件：**把它摆到用户眼前**。
+   * 删掉这一支 ⇒ 复制在不支持的服务端上会静默花掉 2× 带宽，而界面上一切正常。
+   *
+   * ⚠ 快路（`null`）**刻意不提示** —— 零流量是它该有的样子，不是成就。
+   */
+  private async copyFile(e: SftpEntry): Promise<void> {
+    if (!this.cfg) return;
+    const to = window.prompt(`复制 ${e.name} 为:`, `${e.name}.copy`);
+    if (!to?.trim() || to.trim() === e.name) return;
+    const target = joinPath(this.cwd, to.trim());
+    let exists = false;
+    try {
+      await commands.sftp_stat({ cfg: this.cfg, path: target });
+      exists = true;
+    } catch {
+      exists = false;
+    }
+    if (exists && !window.confirm(`远端已存在 ${to.trim()},覆盖?`)) return;
+    let verdict: string | null = null;
+    await this.runTransfer(`复制 ${e.name}`, e.size, async (transferId, onProgress) => {
+      verdict = await commands.sftp_copy({
+        cfg: this.cfg,
+        from: joinPath(this.cwd, e.name),
+        to: target,
+        transferId,
+        onProgress,
+      });
+    });
+    if (verdict !== null) {
+      showActionFailureToast("这一趟走的是慢路", String(verdict), {
+        level: "info",
+        durationMs: 12000,
+      });
+    }
+    await this.reload();
+  }
+
   private async remove(e: SftpEntry): Promise<void> {
     if (!this.cfg) return;
     // 二次确认,文案回显真实条目名(aterm 契约:防误删)。
@@ -670,6 +713,9 @@ export class SftpPanel implements OverlayHandle {
       if (!e.isDir) {
         acts.appendChild(mkRowBtn("下载", e.lossyName, () => void this.download(e)));
         acts.appendChild(mkRowBtn("编辑", e.lossyName, () => void this.editFile(e)));
+        // 步 23b：复制。**只对文件** —— `copy-data` 吃的是文件句柄，
+        // 目录递归不在这一层（后端 `copy_remote_path` 头注逐条写着它不守什么）。
+        acts.appendChild(mkRowBtn("复制", e.lossyName, () => void this.copyFile(e)));
       }
       acts.appendChild(mkRowBtn("改名", e.lossyName, () => void this.rename(e)));
       acts.appendChild(mkRowBtn("删除", e.lossyName, () => void this.remove(e)));
