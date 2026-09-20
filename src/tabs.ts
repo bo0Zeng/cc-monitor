@@ -65,7 +65,14 @@ import {
   setCollections,
   type TabCollection,
 } from "./tab-collections";
-import { getTabOrder, setTabOrder } from "./tab-bar-state";
+import {
+  getPinned,
+  getTabOrder,
+  isDegradedPin,
+  setPinned,
+  setTabOrder,
+  type PinnedTab,
+} from "./tab-bar-state";
 import {
   runRemoteResume,
   runRemoteResumeTmux,
@@ -136,6 +143,204 @@ export function moveTabBlock(
   return [...rest.slice(0, at), ...block, ...rest.slice(at)];
 }
 
+// ===== 〔步 17·D · `设计/30 §D`〕Edge 式拖动合并成组 =====
+
+/**
+ * 落点语义。**从 1 种扩到 3 种**（`§D.3` 逐字）—— 在这之前只有 `before`（与 `null`＝末尾）。
+ *
+ * ⚠ `onto` 与 `before` 的区别不只是「插哪儿」：`onto` 会**建组 / 入组**，
+ *   而落点所在的容器还顺带决定「拖出组」（`§D.7`）。两件事在 `applyDropToCollections` 里合一。
+ */
+export type DropTarget =
+  | { kind: "before"; sid: string } // 插到它前面（今天的行为）
+  | { kind: "onto"; sid: string } // 🆕 与它成组
+  | { kind: "end" }; // 落到末尾（今天的 `null`）
+
+/**
+ * `onto` 的触发：**停留**，不是三等分（`§D.4` 已推荐，理由三条）。
+ *
+ * 🔴 **为什么不三等分**：竖栏里 tab 高约 28px，切成上/中/下三档 = 每档 9px。
+ * 9px 的判定区在实际拖动里误触率极高 —— 用户想插到两个 tab 之间，结果建了个组。
+ * 而插入排序是**快动作**、成组是**慢动作**，两个手势在**时间**上天然分开，
+ * 不用去抢那 9px 的空间。
+ */
+export const DWELL_MS = 250;
+/** 停留期间允许的抖动。超过就不算「压住」，退回 `before`/`end`（`§D.4` 逐字）。 */
+export const DWELL_MOVE_PX = 4;
+
+/** 一个 tab 按钮在纵轴上占的那一段。判据直接喂这个，不必先造一次真 DOM 布局。 */
+export interface TabRect {
+  sid: string;
+  top: number;
+  height: number;
+}
+
+/**
+ * 指针**正压在**哪个 tab 上（`null` = 没压在任何一个上）。停留计时器靠它决定「还在不在同一个」。
+ *
+ * ⚠ 被拖的那一块要排除：压在自己身上不是一次合并。
+ */
+export function tabUnderY(
+  rects: readonly TabRect[],
+  clientY: number,
+  block: ReadonlySet<string>,
+): string | null {
+  for (const r of rects) {
+    if (block.has(r.sid)) continue;
+    if (clientY >= r.top && clientY < r.top + r.height) return r.sid;
+  }
+  return null;
+}
+
+/**
+ * 算落点。三种语义的**唯一判定处**。
+ *
+ * @param dwellSid 停留已经攒满的那个 sid（`null` = 还没攒满）。攒满这件事由计时器判，
+ *                 不在这里判 —— 但「攒满之后指针有没有还在那个矩形里」在这里**再判一次**：
+ *                 计时器与指针是两个来源，只信计时器的话，指针早已划走还会合并成组。
+ *
+ * 🔴 **必须按视觉序（`top` 升序）扫，不能按 `orderedIds` 扫。**
+ *   `§D.2` 拆掉「组里的 tab 不参与」那道过滤之后，`orderedIds` 的次序与屏幕上的次序
+ *   **不再一致**（组容器整块排在散 tab 前面，见 `refreshTabBar`）⇒ 按 `orderedIds` 扫会
+ *   在第一个「中线在指针下方」的元素上停住，而那个元素可能在屏幕上离指针很远。
+ */
+export function pickDropTarget(
+  rects: readonly TabRect[],
+  clientY: number,
+  block: ReadonlySet<string>,
+  dwellSid: string | null,
+): DropTarget {
+  const sorted = rects.filter((r) => !block.has(r.sid)).sort((a, b) => a.top - b.top);
+  if (dwellSid !== null && !block.has(dwellSid)) {
+    const r = sorted.find((x) => x.sid === dwellSid);
+    if (r && clientY >= r.top && clientY < r.top + r.height) {
+      return { kind: "onto", sid: dwellSid };
+    }
+  }
+  for (const r of sorted) {
+    if (clientY < r.top + r.height / 2) return { kind: "before", sid: r.sid };
+  }
+  return { kind: "end" };
+}
+
+/**
+ * 两个 cwd 的**共同前缀的目录名**（`§D.6` 默认名规则第 1 条）——
+ * 最常见情况：同项目的两个会话。算不出来回 `null`。
+ *
+ * ⚠ 两种分隔符都认：这个 app 的客户端常在 Windows 上，而会话可能来自 Linux 远端。
+ * ⚠ 盘符（`C:`）不算目录名 —— 「C:」当组名是噪声，退回 `组 N` 更诚实。
+ */
+export function commonDirName(a: string | null, b: string | null): string | null {
+  if (!a || !b) return null;
+  const seg = (p: string): string[] => p.split(/[/\\]+/).filter((s) => s !== "");
+  const sa = seg(a);
+  const sb = seg(b);
+  const n = Math.min(sa.length, sb.length);
+  let i = 0;
+  while (i < n && sa[i] === sb[i]) i++;
+  if (i === 0) return null;
+  const last = sa[i - 1];
+  if (/^[A-Za-z]:$/.test(last)) return null;
+  return last;
+}
+
+/**
+ * 拖动合并出来的那个组**叫什么**（`§D.6`）。
+ *
+ * 🔴 **这条路上不能弹 `window.prompt`**（`真相源/05` I5：原生阻塞弹窗、风格不一致，
+ * 且仓里另一套 dialog 插件正在被 ACL 拒）⇒ 必须能算出一个默认名。
+ *
+ * 优先级：① 两个 cwd 的共同前缀目录名 ② `组 N`（取当前最大编号 +1）。
+ * 事后点组头改名（那条路已有，`groupElFor`）。
+ */
+export function defaultGroupName(
+  cwdA: string | null,
+  cwdB: string | null,
+  existingNames: readonly string[],
+): string {
+  const dir = commonDirName(cwdA, cwdB);
+  if (dir) return dir;
+  let max = 0;
+  for (const name of existingNames) {
+    const m = /^组\s*(\d+)$/.exec(name.trim());
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `组 ${max + 1}`;
+}
+
+/**
+ * 一次落点对**集合**的全部后果。`§D.7` 那条判据的唯一住址：
+ * 「**落点宿主 ≠ 该 tab 当前所属组的容器 ⇒ 视为移出**」。
+ *
+ * 这里把它写成对称的一句话：**归属跟着落点宿主走**。
+ * | 落点 | 宿主 | 后果 |
+ * |---|---|---|
+ * | `onto X` | X 所在的组；X 还没组 ⇒ 现建一个 | 整块**入组** |
+ * | `before X` | X 所在的组（X 是散 tab ⇒ 无宿主）| 入组 / **拖出组** |
+ * | `end` | 无宿主（末尾就是散 tab 区）| **拖出组** |
+ *
+ * ⚠ 整块一起走（`block` = 被拖的交互 tab 连同它的 bg 子串）：
+ *   把子树劈成「一半在组里一半在外面」比不能拖更坏（`dragBlockOf` 的头注同一条理由）。
+ * ⚠ 建组失败（到 32 个集合的上界 / 名字空）⇒ **原样返回，什么都不做** ——
+ *   不许把 tab 塞进一个不存在的集合（`newCollectionId` 那条路已有同样的守卫）。
+ */
+export function applyDropToCollections(
+  collections: readonly TabCollection[],
+  block: readonly string[],
+  target: DropTarget,
+  newName: string,
+  newId: string,
+): TabCollection[] {
+  let next: TabCollection[] = [...collections];
+  let hostId: string | null = null;
+  if (target.kind === "onto") {
+    if (block.includes(target.sid)) return next; // 压在自己身上不是一次合并
+    const existing = collectionOf(next, target.sid);
+    if (existing) {
+      hostId = existing.id;
+    } else {
+      // 🔴 **这里刻意没有「建组失败就提前 return」那道守卫** —— 死值验刀 24 实测它恒不承重：
+      //   到 32 个集合的上界时 `createCollection` 原样返回，随后 `addMember` 找不到
+      //   `newId` 这个集合、也原样返回（`tab-collections.ts` 里那两条各自的守卫），
+      //   于是加不加那一行，输出一个字节都不差。
+      //   照 `sanitizeCollections` 的逐字先例：任何输入都区分不出的守卫是一条假绿的防线。
+      // ⇒ 「到上界就什么都不做」这条性质的住址是 `COLLECTION_CAP`，判据也钉在那儿
+      //   （死值验刀 24 改的是那一行，当场红）。
+      next = addMember(createCollection(next, newName, newId), newId, target.sid);
+      hostId = newId;
+    }
+  } else if (target.kind === "before") {
+    hostId = collectionOf(next, target.sid)?.id ?? null;
+  }
+  for (const sid of block) {
+    next = hostId ? addMember(next, hostId, sid) : removeMember(next, sid);
+  }
+  return next;
+}
+
+/**
+ * 两份集合表是不是同一件事（顺序、id、名字、成员全比）。
+ *
+ * 只为一件事存在：**拖动是高频动作**，落点没改变归属时不该每拖一下就写一次
+ * `config.json`。写盘本身没坏处，但那会把「用户改了分组」这条信号淹掉。
+ */
+export function collectionsEqual(
+  a: readonly TabCollection[],
+  b: readonly TabCollection[],
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x.id !== y.id || x.name !== y.name) return false;
+    if (x.members.length !== y.members.length) return false;
+    for (let j = 0; j < x.members.length; j++) {
+      if (x.members[j] !== y.members[j]) return false;
+    }
+  }
+  return true;
+}
+
 export interface Tab {
   sessionId: string;
   /** Batch7-F24：会话类型（"interactive"/"bg"/null=未知视为交互）。bg → ⚙ 标题 + 树状挂宿主后。 */
@@ -170,6 +375,21 @@ export interface Tab {
    */
   origin: string | null;
   status: TabStatus;
+  /**
+   * 〔步 17·B · `设计/30 §B`〕**固定** —— 「关了 app 再打开它还在」。
+   *
+   * 🔴 **必须是正交的一维，不能做成 `TabStatus` 的第三态**（`§B.3` 逐字）：
+   * `archived + pinned` 才是用户的主用例（固定住一个**已经跑完**的会话），
+   * 做成第三态就表达不了它。三个维度各管一件事：
+   * `status`（进程活没活，用户改不了）· `pinned`（你要不要它一直在，只由用户改）·
+   * 集合归属（你怎么分类）。仓里已有先例：`tmuxIdle` 那条注释逐字「与 `archived` 正交」。
+   *
+   * ⚠ **它只影响「重启后还在不在」，不影响位置**（`§B.3b` 用户 2026-09-16 收窄）：
+   *   没有「固定区」，固定的 tab **留在原位**，只多一个 📌 角标；位置由 `§C` 的顺序落盘管。
+   * ⚠ live tab 也可以打 pin（「这个会话我还在跑，但**它跑完之后别丢**」是真实意图），
+   *   但**效果只在它变灰之后才显现** —— live 的重启后由后端 `event_replay` 自动宣告回来。
+   */
+  pinned: boolean;
   /**
    * issue #23：红绿灯（与 TabStatus 正交，不碰 archived 门控）。null=未知（旧版 CC
    * 无 status 字段 / 远端 v1 暂无透传）→ 维持现状绿点。
@@ -331,6 +551,11 @@ interface TabButtonRefs {
   /** A3：账号徽章（该会话属于哪个账号；本地会话不显示，未知显 —）。 */
   acctBadge: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
+  /**
+   * 〔步 17·B〕📌 角标。**纯展示，不可点** —— 与 `.tab-badge`（未读数）同族。
+   * 固定是右键菜单那一项的事；这里再放一个能点的东西就是同一个动作两个入口。
+   */
+  pinBadge: HTMLSpanElement;
 }
 
 import {
@@ -509,8 +734,20 @@ export class TabManager {
    */
   private drag: {
     sid: string;
-    /** P7a-2：松手时要插到谁之前（`null` = 末尾）。只在**未 armed** 时有意义。 */
-    dropBefore?: string | null;
+    /**
+     * 〔步 17·D〕松手时的落点。**三种语义**（`§D.3`）——在这之前这里是
+     * `dropBefore?: string | null`（只有「插到谁之前」与「末尾」两种）。只在**未 armed** 时有意义。
+     */
+    dropTarget: DropTarget;
+    /** 〔步 17·D〕指针此刻压着谁（停留计时的对象）。`null` = 没压在任何 tab 上。 */
+    dwellSid: string | null;
+    /** 〔步 17·D〕停留已经攒满的那个 sid。计时器到点才写，抖动 / 换目标即清回 `null`。 */
+    dwellArmed: string | null;
+    /** 〔步 17·D〕本轮停留的锚点。指针离它超过 `DWELL_MOVE_PX` 就重新计时。 */
+    dwellX: number;
+    dwellY: number;
+    /** 〔步 17·D〕停留计时器句柄。`teardownDrag` 必须清 —— 否则它会在拖拽结束后才到点。 */
+    dwellTimer: number | null;
     startX: number;
     startY: number;
     barRight: number;
@@ -558,6 +795,32 @@ export class TabManager {
   private collectionsLoaded = false;
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
   private groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
+  /**
+   * 〔步 17·B〕**这个实例拉过固定表没有** —— 与 `collectionsLoaded` 同一条理由，
+   * 而且这里更要命：`persistPinned` 是**按当前 tab 重算整张表**写回去的，
+   * 没拉过就写 ⇒ 用户上次固定的全没了。撕离出来的 viewer 窗口正是这种实例。
+   * ⇒ 没拉过就不给入口（右键菜单里那两项不出现），也不落盘。
+   */
+  private pinnedLoaded = false;
+  /**
+   * 〔步 17·B〕`loadPinned` 那一趟从盘上读到的记录（sid → 条目）。
+   *
+   * 🔴 **它不是「谁被固定了」的真相** —— 那件事的唯一住址是 `Tab.pinned`
+   * （一个事实一个住址）。这里存的是**盘上那份记录的内容**，只有两个用途：
+   * ① `§B.6` 第一格的降级判定（`jsonlPath` 为空的那些，点进去要说人话）；
+   * ② `lastActiveAt` 的沿用 —— 已经灰了的 tab 什么时候最后活动过，前端没有这个数，
+   *    不许在每次落盘时把它刷成 `Date.now()`（那是把「说不清」写成一句假话）。
+   */
+  private pinnedRecords = new Map<string, PinnedTab>();
+  /**
+   * 〔步 17·B〕复活出来的固定 tab 的**空态提示**（sid → 元素）。
+   *
+   * 🔴 它是「**不许留一个点了没反应的 tab**」这条纪律的落点：复活的 tab 里
+   * 一条内容都没有（`99 §2.5 P3` 裁定「已结束的会话点进去不能看内容，只能 resume」），
+   * 不放点东西进去，用户点它就是一片空白 —— 那与坏了没有区别。
+   * 复活成 live（真 resume 上了）时摘掉。
+   */
+  private pinHintEls = new Map<string, HTMLElement>();
 
 
   constructor(
@@ -1416,6 +1679,7 @@ export class TabManager {
       // 翻转，避免会话退出时尾写把已归档的本地 Tab 误复活（远端掉线归档是连接驱动，无此风险）。
       if (tab.status === "archived" && tab.origin !== null) {
         tab.status = "live";
+        this.clearPinHint(sessionId); // 〔步 17·B〕远端复活：空态提示的对象没了
         this.refreshTabBar();
       }
       // audit-fixes F03.2（D 审计修）：远端 idle-tmux tab 又收到后端重宣告 / jsonl 行 = claude
@@ -1510,6 +1774,9 @@ export class TabManager {
       forkedFromSessionId: null, // issue #63①:onLine 见首条 forkedFrom 记录时锁定
       origin,
       status: "live",
+      // 〔步 17·B〕**不做自动固定**（照 `tab-collections.ts` 那条「手动建，不要自动」的先例，
+      // `§B.7` 逐字）。盘上固定过的那些由 `loadPinned` 在复活时置回 true。
+      pinned: false,
       streamEl,
       stream,
       parentPath: sourcePath,
@@ -1681,6 +1948,7 @@ export class TabManager {
     if (tab.origin !== null) return; // 仅本地；远端复活走 ensureTab 见行路径
     if (tab.status !== "archived") return;
     tab.status = "live";
+    this.clearPinHint(sessionId); // 〔步 17·B〕真接上了 ⇒ 那块「只能 resume」的空态该走了
     this.refreshTabBar();
     this.emitTabStateProbe(tab); // F-E1:本地复活(archived→live)
   }
@@ -1950,6 +2218,17 @@ export class TabManager {
     this.tasksBySid.delete(sessionId);
     this.tabs.delete(sessionId);
     if (idx >= 0) this.orderedIds.splice(idx, 1);
+    // 〔步 17·B〕**关掉 = 取消固定。**
+    //
+    // pin 的语义是「别丢」（`§B.3b`），而 `×` 是用户**明确说要丢**。两者撞上时以后者为准 ——
+    // 不摘的话下次开 app 它又回来了，那正是「能操作但没反应」的一种（点了 ×，第二天还在）。
+    // ⚠ 只有真被固定过才写盘：没固定的 tab 关一下不该顺手改 `config.json`。
+    if (tab.pinned) {
+      tab.pinned = false;
+      this.pinnedRecords.delete(sessionId);
+      void this.persistPinned();
+    }
+    this.clearPinHint(sessionId);
 
     // 让后端 event_replay 把这个 session 的历史也丢掉
     void invoke("forget_session", { sessionId }).catch((e) => {
@@ -2155,7 +2434,12 @@ export class TabManager {
       root,
       dragging: false,
       armed: false,
-      dropBefore: null,
+      dropTarget: { kind: "end" },
+      dwellSid: null,
+      dwellArmed: null,
+      dwellX: e.clientX,
+      dwellY: e.clientY,
+      dwellTimer: null,
       ghost: null,
       onMove,
       onUp,
@@ -2202,11 +2486,13 @@ export class TabManager {
 
     // P7a-2：**纵向那根轴今天一个消费者都没有** —— arm 只看 `clientX`（见下一行）。
     // 所以栏内重排走 `clientY`，与 tear-off 天然不争同一根轴。
-    d.dropBefore = this.dropTargetAt(e.clientY, d.sid);
+    // 〔步 17·D〕这里先更新停留状态，再算落点 —— 落点的 `onto` 那一支要读停留的结论。
+    this.updateDwell(e.clientX, e.clientY);
+    d.dropTarget = this.computeDropTarget(e.clientY);
     // ★ **落点要看得见**〔D 阶段补审〕：只搬不指示的话，「拖动排序」是一次盲操作 ——
     // 用户松手前不知道会落在哪，只能松开看结果、错了再拖一次。
     // armed（拖出右缘）时不指示：那一路根本不重排，指一条不会发生的落点是在骗人。
-    this.markDropTarget(e.clientX > d.barRight + 16 ? null : d.dropBefore);
+    this.markDropTarget(e.clientX > d.barRight + 16 ? null : d.dropTarget);
 
     // arm：指针拖离竖栏右缘一段距离 = 松手即弹独立窗口（F33 前是下缘判定）。
     const armed = e.clientX > d.barRight + 16;
@@ -2222,20 +2508,71 @@ export class TabManager {
   }
 
   /**
-   * P7a-2：指针在纵向落在谁**之前**（`null` = 末尾）。
+   * 〔步 17·D · `§D.2`〕量一遍栏里每个 tab 在纵轴上占的那一段。
    *
-   * 只看**主栏**里的 tab —— 归档抽屉不参与（`P7a-1` 已经关掉了它的拖拽，
-   * 而且那条 tear-off 判定线对抽屉本来就没意义）。
+   * 🔴 **`parentElement !== this.barEl` 那道过滤没了。**
+   *   `§D.2` 现打它是两个缺口之一：它把**组里的 tab 整体排除**在落点之外
+   *   ⇒ 拖不进组、也拖不出组。换成 `barEl.contains(...)`：组容器是 `barEl` 的子树，
+   *   组里的 tab 因此照常参与，而栏外的东西（撕出去的窗口等）仍然不参与。
+   *
+   * ⚠ 只量一次、返回纯数据 —— 判定逻辑在 `pickDropTarget`（纯函数，判据直接打它）。
+   *   这也顺带守住 `§3 P3`「拖拽 layout thrash：量一次、只改变化的那一个」。
    */
-  private dropTargetAt(clientY: number, draggedSid: string): string | null {
-    for (const sid of this.orderedIds) {
-      if (sid === draggedSid) continue;
-      const refs = this.tabButtons.get(sid);
-      if (!refs || refs.root.parentElement !== this.barEl) continue;
+  private tabRects(): TabRect[] {
+    const out: TabRect[] = [];
+    for (const [sid, refs] of this.tabButtons) {
+      if (!this.barEl.contains(refs.root)) continue;
       const r = refs.root.getBoundingClientRect();
-      if (clientY < r.top + r.height / 2) return sid;
+      out.push({ sid, top: r.top, height: r.height });
     }
-    return null;
+    return out;
+  }
+
+  /** 〔步 17·D〕现在的落点。三种语义的判定住 `pickDropTarget`，这里只负责喂它读数。 */
+  private computeDropTarget(clientY: number): DropTarget {
+    const d = this.drag;
+    if (!d) return { kind: "end" };
+    return pickDropTarget(
+      this.tabRects(),
+      clientY,
+      new Set(this.dragBlockOf(d.sid)),
+      d.dwellArmed,
+    );
+  }
+
+  /**
+   * 〔步 17·D · `§D.4`〕停留（dwell）判定：**压住 ≥250ms 且抖动 <4px ⇒ 切进 `onto` 态**。
+   *
+   * 🔴 **必须用计时器，不能只在 `mousemove` 里数时间** —— 指针停住之后
+   *   `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满，这个手势等于没做。
+   *
+   * 三种情况清零重来（`§D.4` 逐字「一旦移出该 tab 的矩形 **或** 移动超过 4px ⇒ 退回」）：
+   * ① 换了压着的 tab；② 没压在任何 tab 上；③ 还在同一个上但离锚点超过 `DWELL_MOVE_PX`。
+   */
+  private updateDwell(clientX: number, clientY: number): void {
+    const d = this.drag;
+    if (!d) return;
+    const hovered = tabUnderY(this.tabRects(), clientY, new Set(this.dragBlockOf(d.sid)));
+    const moved = Math.hypot(clientX - d.dwellX, clientY - d.dwellY);
+    if (hovered === d.dwellSid && moved < DWELL_MOVE_PX) return; // 还在攒，别打断计时
+    d.dwellSid = hovered;
+    d.dwellArmed = null;
+    d.dwellX = clientX;
+    d.dwellY = clientY;
+    if (d.dwellTimer !== null) window.clearTimeout(d.dwellTimer);
+    d.dwellTimer = null;
+    if (hovered === null) return;
+    d.dwellTimer = window.setTimeout(() => {
+      const cur = this.drag;
+      // 计时器到点时拖拽可能已经结束 / 已经换了目标 —— 两者都不许再改状态。
+      if (!cur || cur.dwellTimer === null || cur.dwellSid !== hovered) return;
+      cur.dwellTimer = null;
+      cur.dwellArmed = hovered;
+      // **可逆可见**（`§D.4` 理由 3）：攒满的那一刻就给反馈，用户看到了再松手。
+      // 指针停着不动 ⇒ 不会再有 `mousemove` 来重算落点，所以这里自己算一次。
+      cur.dropTarget = { kind: "onto", sid: hovered };
+      if (!cur.armed) this.markDropTarget(cur.dropTarget);
+    }, DWELL_MS);
   }
 
   /**
@@ -2263,18 +2600,62 @@ export class TabManager {
     return out;
   }
 
-  /** P7a-2 D 补审：给落点那个 tab 打标（`null` = 落到末尾 ⇒ 谁都不标）。 */
-  private markDropTarget(beforeSid: string | null): void {
+  /**
+   * P7a-2 D 补审：给落点那个 tab 打标（`null` = 不指示，armed 那一路用）。
+   *
+   * 〔步 17·D · `§D.5`〕两种态两种标：`before` 顶部一条线（原样）· `onto` 整块描边 + 轻微放大。
+   * `end` 不标（原样 —— 末尾没有可以描的对象）。
+   */
+  private markDropTarget(target: DropTarget | null): void {
+    const beforeSid = target?.kind === "before" ? target.sid : null;
+    const ontoSid = target?.kind === "onto" ? target.sid : null;
     for (const [sid, refs] of this.tabButtons) {
       refs.root.classList.toggle("drop-before", sid === beforeSid);
+      refs.root.classList.toggle("drop-onto", sid === ontoSid);
     }
   }
 
-  /** P7a-2：把拖动的结果落实到 `orderedIds` 并重画。 */
-  private applyReorder(sid: string, beforeSid: string | null): void {
-    const next = moveTabBlock(this.orderedIds, this.dragBlockOf(sid), beforeSid);
-    if (next.length !== this.orderedIds.length) return; // 防御：块算错了就什么都不做
-    if (next.every((x, i) => x === this.orderedIds[i])) return; // 没变化
+  /**
+   * 〔步 17·D〕把一次落点的**全部后果**落实：顺序 ＋ 集合归属，一拍做完。
+   *
+   * 🔴 **两件事不许分两拍** —— 顺序没变（拖回原位）但归属变了（从组里拖出来）是
+   *   真实情形；反过来也是。谁先 `return`，另一半就静默丢了。
+   *   在这之前这里叫 `applyReorder`，只管顺序、`if (没变化) return` 直接结束。
+   */
+  private applyDrop(sid: string, target: DropTarget): void {
+    const block = this.dragBlockOf(sid);
+    // ① 集合归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则的两侧）。
+    if (this.collectionsLoaded) {
+      const other = target.kind === "end" ? null : this.tabs.get(target.sid);
+      const nextCols = applyDropToCollections(
+        this.collections,
+        block,
+        target,
+        defaultGroupName(
+          this.tabs.get(sid)?.cwd ?? null,
+          other?.cwd ?? null,
+          this.collections.map((c) => c.name),
+        ),
+        newCollectionId(),
+      );
+      // 没变就不写盘：拖动是高频动作，每拖一下都改一次 `config.json` 是白写。
+      if (!collectionsEqual(this.collections, nextCols)) {
+        this.collections = nextCols; // 先改内存（下面统一重画一次），再落盘
+        void this.persistCollections(nextCols);
+      }
+    }
+    // ② 顺序。`onto` 的落位 = 插到目标**之前**（组里成员的相对次序由 `orderedIds` 定，
+    //    见 `refreshTabBar`）；`end` 是末尾。
+    const beforeSid = target.kind === "end" ? null : target.sid;
+    const next = moveTabBlock(this.orderedIds, block, beforeSid);
+    if (next.length !== this.orderedIds.length) {
+      this.refreshTabBar(); // 防御：块算错了就只重画（①可能已经改了归属）
+      return;
+    }
+    if (next.every((x, i) => x === this.orderedIds[i])) {
+      this.refreshTabBar();
+      return;
+    }
     this.orderedIds = next;
     this.refreshTabBar();
     // 🔴 〔步 17·C · 2026-09-19〕**拖动的结果要落盘** —— `设计/30 §C` 逐字「今天拖了白拖」。
@@ -2318,6 +2699,11 @@ export class TabManager {
     if (!d) return;
     document.removeEventListener("mousemove", d.onMove);
     document.removeEventListener("mouseup", d.onUp);
+    // 〔步 17·D〕停留计时器必须在这里清。不清的话它会在拖拽结束之后才到点，
+    // 往一个已经收尾的状态上写 `onto` —— 而那时 `this.drag` 已是 null，
+    // 回调里的守卫会吞掉它，但计时器本身是条悬空引线（同 `pendingMenuTimers` 那条教训）。
+    if (d.dwellTimer !== null) window.clearTimeout(d.dwellTimer);
+    d.dwellTimer = null;
     this.markDropTarget(null); // 拖拽结束必须清掉落点标记，否则它会挂在那儿
     d.ghost?.remove();
     d.root.classList.remove("dragging");
@@ -2336,7 +2722,8 @@ export class TabManager {
   private onDragUp(e: MouseEvent): void {
     const d = this.drag;
     if (!d) return;
-    const { dragging, armed, sid } = d;
+    // 〔步 17·D〕落点要在 `teardownDrag` 之前取出来 —— 它会把整个 `drag` 清成 null。
+    const { dragging, armed, sid, dropTarget } = d;
     this.teardownDrag();
 
     if (!dragging) return; // 没越阈值 = 纯点击，交给 click handler 正常切 Tab。
@@ -2349,7 +2736,7 @@ export class TabManager {
       void this.openInNewWindow(sid, e.screenX, e.screenY);
       return;
     }
-    this.applyReorder(sid, d.dropBefore ?? null);
+    this.applyDrop(sid, dropTarget);
   }
 
   /**
@@ -3331,11 +3718,188 @@ export class TabManager {
   private async commitCollections(next: TabCollection[]): Promise<void> {
     this.collections = next;
     this.refreshTabBar();
+    await this.persistCollections(next);
+  }
+
+  /**
+   * 只落盘、不重画。〔步 17·D〕`applyDrop` 要在同一拍里改**顺序 ＋ 归属**，
+   * 由它统一重画一次 —— 这里再画一次就是白画（拖动结束那一拍本来就重。`§3 P3`）。
+   * ⚠ 「落盘失败只记日志」这句话只能有一个住址，所以 `commitCollections` 也走这里。
+   */
+  private async persistCollections(next: readonly TabCollection[]): Promise<void> {
     try {
       await setCollections(next);
     } catch (e) {
       console.warn("[tab-collections] 落盘失败:", e);
     }
+  }
+
+  // ===== 〔步 17·B · `设计/30 §B`〕固定（pinned）=====
+
+  /**
+   * 启动时把固定的 tab **复活**出来。宿主在 `loadCollections` 之后、`loadOrder` **之前**调一次。
+   *
+   * 🔴 **顺序不是随口排的**：`loadOrder` 用 `getTabOrder(new Set(this.orderedIds))`
+   * 按「今天真的存在的 sid」过滤，复活的 tab 得**先存在**，它的位置才排得回来。
+   *
+   * # 复活流程（`§B.5` 逐字）
+   * ```
+   * 读 tabBar.pinned[] → 逐条 createSkeletonTab(sid, cwd, origin, kind, name)
+   *   ├ 标 pinned = true
+   *   ├ 标 status = "archived"（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回 live）
+   *   └ 标题直接用存下来的那份（不等读文件）
+   * ```
+   * 🔴 **不读内容** —— `99 §2.5 P3` 已裁定「已结束的会话点进去不能看内容，只能 resume」。
+   *   `replay_session_to_window` 那条路对 archived 本来就走不通（它的头注逐字：
+   *   「仅活跃 session 的历史在 buffer 里」）。
+   *
+   * ⚠ **已经存在的 sid 不重建**（后端 replay 可能已经先宣告了它）—— 只补一个 `pinned = true`，
+   *   `status` 一个字不碰：那条会话真活着的时候，把它按回 archived 是一句假话。
+   */
+  async loadPinned(): Promise<void> {
+    const list = await getPinned();
+    this.pinnedRecords = new Map(list.map((p) => [p.sid, p]));
+    for (const p of list) {
+      const existed = this.tabs.get(p.sid);
+      if (!existed) {
+        this.createSkeletonTab(p.sid, p.cwd, p.origin, p.kind, p.name);
+        const t = this.tabs.get(p.sid);
+        if (!t) continue;
+        // 没有活进程 ⇒ 灰着。`archiveTab` 那条路要求 tab 已在事件流里，这里是**凭空造**，
+        // 所以直接置位；两者最终形态一致（`.tab.archived` 那条 CSS 本来就有）。
+        t.status = "archived";
+        t.activity = null;
+        t.parentPath = p.jsonlPath; // `§B.5`：复活的必需品（resume 与「有没有记录」都靠它）
+        t.title = p.title; // 骨架期就显示正确标题，不等读文件
+        t.pinned = true;
+        this.mountPinHint(t);
+      } else {
+        existed.pinned = true;
+      }
+    }
+    this.pinnedLoaded = true;
+    this.refreshTabBar();
+  }
+
+  /**
+   * 复活出来的固定 tab 的空态：**说清它是什么 ＋ 给出那唯一的出口**。
+   *
+   * `§B.5` 复活流程最后一行逐字：「用户点进去那一刻，**出现 resume 入口**（🔴 不读内容）」。
+   * `§B.6` 第一格：`jsonlPath` 为空的那种要提示「这个会话没有留下记录」——
+   * **不要留一个点了没反应的 tab**。两种情形在这里分叉。
+   */
+  private mountPinHint(tab: Tab): void {
+    const sid = tab.sessionId;
+    const degraded = this.pinIsDegraded(sid);
+    const box = document.createElement("div");
+    box.className = "pin-revived-hint";
+    const head = document.createElement("strong");
+    head.textContent = degraded ? "这个会话没有留下记录" : "📌 固定下来的已结束会话";
+    const body = document.createElement("p");
+    body.textContent = degraded
+      ? "固定它的时候它还没写下任何一行，前端没有它的 jsonl 路径 —— 没有可以接回去的东西。右键 × 可以把它去掉。"
+      : "内容不在本地缓存里（已结束的会话只能 resume，不能回看）。resume 成功后 Claude 会续写同一份记录，这个 tab 会自己亮起来。";
+    box.append(head, body);
+    if (!degraded) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pin-revived-hint-btn";
+      btn.textContent = "Resume 这个会话";
+      // 与右键菜单的「Resume」同一个动作、同一个住址 —— 这里只是把入口放在用户正看着的地方。
+      btn.addEventListener("click", () => void this.resumeTab(sid));
+      box.appendChild(btn);
+    }
+    tab.streamEl.appendChild(box);
+    this.pinHintEls.set(sid, box);
+  }
+
+  /** 复活成 live（resume 真的接上了）或 tab 关掉时，摘掉那块空态提示。 */
+  private clearPinHint(sid: string): void {
+    this.pinHintEls.get(sid)?.remove();
+    this.pinHintEls.delete(sid);
+  }
+
+  /**
+   * 把一个 tab 压成一条落盘记录。字段表逐条照 `§B.5`。
+   *
+   * ⚠ `lastActiveAt`：**live ⇒ 此刻**（「它现在还活着」是个真读数）；
+   *   **archived ⇒ 沿用盘上那份，没有就 `null`** —— 前端 `Tab` 上零时间戳字段（现打），
+   *   把它刷成 `Date.now()` 会让「最后活动时刻」变成「最后一次落盘时刻」，那是假话。
+   */
+  private pinRecordFor(tab: Tab): PinnedTab {
+    const prev = this.pinnedRecords.get(tab.sessionId);
+    return {
+      sid: tab.sessionId,
+      jsonlPath: tab.parentPath,
+      cwd: tab.cwd,
+      origin: tab.origin,
+      // `§3.5.7`：缺了 resume 会静默落到默认号。两个源都读不到 ⇒ `null`＝没记到，不是默认号。
+      account:
+        this.sessionAccountsByS.get(tab.sessionId)?.account ??
+        this.accountLastByS.get(tab.sessionId) ??
+        prev?.account ??
+        null,
+      lastActiveAt: tab.status === "live" ? Date.now() : prev?.lastActiveAt ?? null,
+      kind: tab.kind,
+      name: tab.bgName,
+      title: tab.title,
+    };
+  }
+
+  /**
+   * 把「现在哪些 tab 被固定了」整张表写回 `config.json` 的 `tabBar.pinned`。
+   *
+   * **真相源是 `Tab.pinned`**，这里只是把它压平 ⇒ 不会出现「内存说固定了、盘上没有」。
+   *
+   * 🔴 **「没 `loadPinned` 过就不写」那道门不在这里，在 `togglePin`** —— 这是死值验逼出来的：
+   *   我原本在这里也放了一条 `if (!this.pinnedLoaded) return;`，**刀 9 实测它恒不承重**
+   *   （去掉之后一格都不红）。原因是它没有任何可区分的输入：本函数只有两个调用方，
+   *   `togglePin` 自己那道门已经挡在前面，而 `closeTab` 只在 `tab.pinned` 为真时才调，
+   *   `tab.pinned` 又只能由 `loadPinned`（与 `pinnedLoaded = true` 同一个微任务）
+   *   或 `togglePin` 置起来。
+   * ⇒ 照 `sanitizeCollections` 那条逐字先例删掉：「留一道任何输入都区分不出的守卫，
+   *   就是一条假绿的防线」。真正在承重的那道由死值验刀 10 钉着。
+   */
+  private async persistPinned(): Promise<void> {
+    const next: PinnedTab[] = [];
+    for (const sid of this.orderedIds) {
+      const tab = this.tabs.get(sid);
+      if (tab?.pinned) next.push(this.pinRecordFor(tab));
+    }
+    this.pinnedRecords = new Map(next.map((p) => [p.sid, p]));
+    try {
+      await setPinned(next);
+    } catch (e) {
+      console.warn("[tab-bar] 固定落盘失败:", e);
+    }
+  }
+
+  /**
+   * 右键菜单那一项：翻转固定。**先改内存再落盘**（照 `commitCollections` 的形状）。
+   *
+   * ⚠ 不做自动固定（`§B.7` 逐字「照 `tab-collections.ts` 那条『手动建，不要自动』的先例」）——
+   *   这是唯一的入口。
+   */
+  togglePin(sid: string): void {
+    const tab = this.tabs.get(sid);
+    if (!tab || !this.pinnedLoaded) return;
+    tab.pinned = !tab.pinned;
+    this.refreshTabBar();
+    void this.persistPinned();
+  }
+
+  /**
+   * `§B.6` 第一格：这条固定记录**点进去也没有东西可看**（`jsonlPath` 为空 ——
+   * 骨架 tab 从没收到过带路径的行就被固定了）。
+   *
+   * 🔴 用途是**不许留一个点了没反应的 tab**：点它的时候要说人话（见点击处的提示）。
+   * ⚠ 两个条件都要：盘上那条是降级的 **且** 到现在也没有行回填过 `parentPath`
+   *   （真来了行就不再降级 —— 那条 tab 已经有记录可读了）。
+   */
+  private pinIsDegraded(sid: string): boolean {
+    const rec = this.pinnedRecords.get(sid);
+    if (!rec || !isDegradedPin(rec)) return false;
+    return (this.tabs.get(sid)?.parentPath ?? "") === "";
   }
 
 
@@ -3477,6 +4041,15 @@ export class TabManager {
     badge.className = "tab-badge";
     root.appendChild(badge);
 
+    // 〔步 17·B〕📌 固定角标。默认不显（CSS `.tab:not(.pinned) .tab-pin { display:none }`），
+    // `updateTabButton` 只翻 `.pinned` 这一个类 —— 与其它 5 个子元素同一套「一次性 append、
+    // 可见性交给 class」的形状（见 `.tab .tab-badge` 那条注释）。
+    const pinBadge = document.createElement("span");
+    pinBadge.className = "tab-pin";
+    pinBadge.textContent = "📌";
+    pinBadge.title = "已固定：关掉 app 再打开它还在";
+    root.appendChild(pinBadge);
+
     // 📂 打开工作目录（cwd）—— 系统默认文件管理器
     const cwdBtn = document.createElement("span");
     cwdBtn.className = "tab-cwd";
@@ -3575,6 +4148,17 @@ export class TabManager {
         },
       });
       if (this.collectionsLoaded) items.push({ label: "加入集合", submenu: joinItems });
+      // 〔步 17·B · `§B.7`〕固定 —— 与「加入集合」同级。**这是唯一的入口**（不做自动固定）。
+      // ⚠ `pinnedLoaded` 那道门与集合同一条理由：没读过盘就改，等于把用户上次固定的清空。
+      if (t && this.pinnedLoaded) {
+        items.push({
+          label: t.pinned ? "取消固定" : "📌 固定此标签",
+          title: t.pinned
+            ? "取消后：这个会话变灰之后，关掉 app 再打开就没了"
+            : "固定后：关掉 app 再打开它还在（灰着，可 resume）。位置不变 —— pin 管的是「别丢」，不是「排前面」",
+          onClick: () => this.togglePin(sid),
+        });
+      }
       if (here) {
         items.push({
           label: `移出「${here.name}」`,
@@ -3744,12 +4328,15 @@ export class TabManager {
       }
     });
 
-    return { root, label, badge, acctBadge, cwdBtn };
+    return { root, label, badge, acctBadge, cwdBtn, pinBadge };
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
     refs.root.classList.toggle("active", sid === this.activeId);
     refs.root.classList.toggle("archived", tab.status === "archived");
+    // 〔步 17·B〕固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
+    // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
+    refs.root.classList.toggle("pinned", tab.pinned);
     refs.root.classList.toggle("has-cwd", !!tab.cwd);
     // FIX 5 / Feature ②（issue #15）：远端 Tab（origin 非 null）的 cwd 是 Pi 上的路径，
     // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
