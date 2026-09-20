@@ -65,6 +65,7 @@ import {
   setCollections,
   type TabCollection,
 } from "./tab-collections";
+import { getTabOrder, setTabOrder } from "./tab-bar-state";
 import {
   runRemoteResume,
   runRemoteResumeTmux,
@@ -2275,6 +2276,39 @@ export class TabManager {
     if (next.length !== this.orderedIds.length) return; // 防御：块算错了就什么都不做
     if (next.every((x, i) => x === this.orderedIds[i])) return; // 没变化
     this.orderedIds = next;
+    this.refreshTabBar();
+    // 🔴 〔步 17·C · 2026-09-19〕**拖动的结果要落盘** —— `设计/30 §C` 逐字「今天拖了白拖」。
+    //   在这之前 `orderedIds` 的 8 个写入点零持久化，而集合（`tabCollections`）是落盘的
+    //   ⇒ 同一个栏里两种寿命：**你建的分组活过重启，你拖的顺序活不过**。
+    //   `tab-collections.ts` 立集合落盘的理由是「用户手写的真相，不是能重算的缓存」，
+    //   而拖动排序**完全符合那条判据** ⇒ 不给它同样的待遇，那条理由就是选择性适用的。
+    // ⚠ 形状照 `commitCollections`：**先改内存再落盘**（上面两行已做完），
+    //   落盘失败只记日志 —— 顺序丢一次远好过拖动卡一下。
+    void this.persistOrder();
+  }
+
+  /** 把当前顺序写进 `config.json` 的 `tabBar.order`。失败只记日志，不打断交互。 */
+  private async persistOrder(): Promise<void> {
+    try {
+      await setTabOrder(this.orderedIds);
+    } catch (e) {
+      console.warn("[tab-bar] 顺序落盘失败:", e);
+    }
+  }
+
+  /**
+   * 启动时把落盘的顺序拉回来。**宿主在 `loadCollections` 之后调一次。**
+   *
+   * ⚠ 它**只重排已经存在的 tab，不凭空造 tab** —— 盘上的顺序里会有已经不存在的 sid
+   *   （上次那个会话被删了），`sanitizeOrder` 的 `alive` 参数摘掉它们（`§C.3` 逐字）。
+   * ⚠ **盘上没提到的 tab 排在后面**，保持它们此刻的相对次序 ——
+   *   否则「启动后新建的 tab」会被一份旧顺序挤到看不见的地方。
+   */
+  async loadOrder(): Promise<void> {
+    const saved = await getTabOrder(new Set(this.orderedIds));
+    if (saved.length === 0) return;
+    const rest = this.orderedIds.filter((sid) => !saved.includes(sid));
+    this.orderedIds = [...saved, ...rest];
     this.refreshTabBar();
   }
 

@@ -207,6 +207,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   // P7a-3（#61）：启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
   // `tab-collections.ts` 头注：集合名是用户手写的真相，必须活过一次清缓存）。
   void tabs.loadCollections();
+  // 〔步 17·C〕顺序也要拉回来。排在集合之后：两者都只改内存 + 重画，互不依赖，
+  // 但集合决定分组容器、顺序决定容器内次序 —— 先有容器再排，少一次无谓重画。
+  void tabs.loadOrder();
 
   // A3：状态栏「当前账号」chip（多账号 cc-acct-iso）。绑第一台可用远端的默认账号；
   // 未连远端 / 未启用多账号 各自安静降级（不报错）。点击弹选单切默认账号。
