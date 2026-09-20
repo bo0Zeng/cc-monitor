@@ -584,6 +584,37 @@ for suite, anchor in [
 #     `gate.sh` 里再出现这一格而登记没跟，`got - want` 当场点名。
 
 
+# ── 第 25 格 `worktree-clean`（09-19）：门禁的**前置条件** ────────────────────
+# 它买的是「仓里没有第二份工作副本」。本仓一族判据的人群是「走文件系统」，
+# 仓内一出现 worktree / 变异副本，它们的人群就静默膨胀 —— 恒等那几条红得响，
+# **而用地板的那几条一声不吭地过去**。本格让这个条件先出声。
+cell(
+    "worktree-clean",
+    anchor="run_gate worktree-clean '判过的条数",
+    cwd="仓根",
+    cmd="python3 tests/evidence/K-W25-worktree-clean.py",
+    **{
+        # 🔴 它**走遍整棵树**（那正是它的活），但它**不读任何文件的内容** ——
+        #    只数「这个扩展名有几份」。⇒ 对每一棵树都是「部」，不是「全」。
+        "src/backend/": (PART, "〔现打 09-19〕只数 `.rs` 的份数，一行内容都不读"),
+        VENDOR: (PART, "同上。⚠ vendor 里的 `.rs` **算进 git 那一侧**（它们被跟踪）⇒ 两侧同口径"),
+        "src/bridge/": (PART, "同上"),
+        "src/shared/": (PART, "只数 `.sh`/`.ts` 的份数"),
+        "src/": (PART, "只数 `.ts` 的份数"),
+        "src/generated/": (PART, "同上 —— 生成物也在 git 里，两侧同口径"),
+        "tests/e2e/": (PART, "只数 `.sh` 的份数"),
+        "tests/evidence/": (PART, "只数 `.sh`/`.ts`/`.rs` 的份数（这棵树三种都有）"),
+        "tests/scripts/": (PART, "只数 `.sh` 的份数"),
+        "tests/hooks/": (PART, "同上"),
+        "tests/": (PART, "只数 `.rs`/`.ts` 的份数"),
+        ROOTFILES: (NONE, "抽样的四个扩展名在仓根一份都没有（现打：仓根 14 份全是 "
+                          "`.md`/`.json`/`.js`/`.html`/`.ts` 里的配置那几份，"
+                          "而 `.ts` 那两份 —— `vite.config.ts`/`vitest.config.ts` —— "
+                          "**两侧都数得到**，不构成差额）"),
+    },
+)
+
+
 # ── 第 23、24 格 `muslbuild` / `platform`（`G4`，09-19）──────────────────────
 # `设计/01 §7.3` 要的「每一个我们发布的平台都编得过」＋「两个壳都要编得过」。
 # 行数由条 63 定：承诺三格（本机 Windows x86_64 · 远端 Linux · 本机 Linux），
@@ -1351,7 +1382,7 @@ def main():
     # ⚠ 这张顺序表**只管印，不管判** —— `c in REGISTRY` 那道过滤会让写错的名字**静静消失**
     #   （步 8 把 `fmt-daemon`/`winchk-daemon`/`daemon` 改名之后，这里三行陈了一个月没人响）。
     #   ⇒ 下面那条 `missing` 把「登记里有、这张表没点到」当场印出来，不让它再静默。
-    order = [c for c in ("hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
+    order = [c for c in ("worktree-clean", "hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
                          "gate-selfdesc", "platform",
                          "installface", "fmt", "fmt-backend", "winchk", "winchk-backend",
                          "muslbuild", "cargo", "deadcode", "generated", "backend", "tsc", "npm")
