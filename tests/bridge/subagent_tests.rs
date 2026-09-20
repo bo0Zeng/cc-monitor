@@ -76,7 +76,12 @@ async fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() 
         parent.to_string_lossy().into_owned(),
         "找它".to_string(),
         "2026-09-12T10:30:00.000Z".to_string(),
-        None,
+        // 🔴 〔`设计/05 §8` 步 2 09-20〕这一行原先是 `None`（那时 `origin: Option<String>`，
+        //    `None` 与 `""` 都被当成本机）。本条判的是**本机**那条路 ⇒ 逐字送
+        //    `Origin::local()`（线上 `"<local>"`）。
+        //    ⚠ **不许送一个空白名** —— 那会被 `Origin::route` 在**问后端之前**拒掉，
+        //      于是本条会因为「参数不对」而绿，而不是因为「候选是后端给的」。
+        crate::origin::Origin::local(),
     )
     .await;
     let _ = std::fs::remove_dir_all(&tmp);

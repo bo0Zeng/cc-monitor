@@ -10,6 +10,9 @@
  */
 
 import { commands } from "../ipc/commands";
+// 〔`设计/05 §8` 步 2〕本机那个 origin 的**唯一住址**（Rust 侧是 `origin::LOCAL`，
+// 三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
+import { LOCAL_ORIGIN } from "../backend-policy";
 import { AGENT_PROFILE } from "../agent-profile";
 import type { JsonlRecord, RenderContext, RenderResult } from "./index";
 
@@ -85,7 +88,12 @@ export function buildAgentCard(
         parentJsonlPath: ctx.parentPath,
         description: desc,
         toolUseTimestamp: timestamp,
-        origin: ctx.origin ?? null,
+        // 🔴 **〔步 2〕本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `null`。**
+        // `ctx.origin` 是**前端自己**的表示（`null` = 本机，那一半没动）；
+        // 这里是**线上边界**，`null` 到这儿就得换成本机那个名字。
+        // ⚠ 别把 `?? LOCAL_ORIGIN` 读成「补一个默认」—— 它是一次**表示法转换**：
+        //   `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」⇒ 本机本来就有名字。
+        origin: ctx.origin ?? LOCAL_ORIGIN,
       });
       bodyEl.replaceChildren();
       renderSubagentBody(bodyEl, result, renderChild);
