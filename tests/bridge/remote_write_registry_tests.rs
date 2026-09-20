@@ -107,6 +107,20 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "sftp_pool.rs",
+        "copy_remote_path",
+        "远端",
+        "★〔步 23b · 09-20〕**零流量复制的核心** —— 写面在退路那一支上：\
+             逐块 `read` → `write` 中转（快路那一支一个字节都不经过这里，\
+             服务端自己搬，所以它在本表里的写面是**条件性**的）。\
+             另有一条 `rename`：先写 `<to>.part`（**EXCLUDE** 创建）再换名上位，同 \
+             `upload_inner` 那条纪律。**路径由用户选**（面板里点的源与目标），\
+             围栏在入口 `sftp_copy` 的两次 `guard_write`（`from` 与 `to` **各过一次**）。\
+             ⚠ 本函数自己**不设围栏** —— 它的语料是一个裸会话 ＋ 两个路径字符串，\
+             刻意做成这样好让秤 F3 两个方向都喂得进去（`tests/bridge/sftp_copy_f3_tests.rs`）；\
+             围栏在命令入口上，与 `upload_atomic` 那一条同形。",
+    ),
+    (
+        "sftp_pool.rs",
         "download_inner",
         "本机",
         "★ **这是超集里唯一的本机项**，也正是「机器分不清 handle 来历」的实例：\
@@ -221,7 +235,7 @@ fn every_write_primitive_in_a_capability_holder_is_classified() {
     let sites = write_sites();
     assert!(
         sites.len() >= 8,
-        "只抠到 {} 处写点（08-10 实测 10）—— 抽取器坏了，本条此刻是空转的",
+        "只抠到 {} 处写点（08-10 实测 10；〔步 23b 09-20〕+1 = **11**）—— 抽取器坏了，本条此刻是空转的",
         sites.len()
     );
     let missing: Vec<String> = sites
@@ -303,7 +317,8 @@ fn fn_body_end(lines: &[&str], start: usize) -> usize {
 /// **SFTP 写命令拒碰 Claude 数据源文件**（往正被 Claude 打开的 jsonl 写会损坏会话）」。
 ///
 /// 08-10 实测：那句话今天**是真的** —— `sftp_write_text` / `sftp_upload` / `sftp_mkdir` /
-/// `sftp_rename` / `sftp_delete` 五个入口全都调了 `guard_write`。
+/// `sftp_rename` / `sftp_delete` 五个入口全都调了 `guard_write`
+/// （〔步 23b 09-20〕**+ `sftp_copy` = 六个**，同样两个参数各过一次）。
 /// ⚠ 但**在本条之前没有任何判据钉着它**：删掉任一处 `guard_write?`，
 /// 全仓判据一条不红，而那台远端机上正被 Claude 打开的 jsonl 就能被面板删掉。
 ///
@@ -316,15 +331,22 @@ fn a_user_chosen_remote_write_passes_the_claude_data_fence() {
     let raw = std::fs::read_to_string(root.join("src/bridge/src/sftp_pool.rs"))
         .expect("sftp_pool.rs 读不到");
     let prod = guard_core::production_code(&raw);
-    // 用户选路径的写入口 = 那五条 `#[tauri::command]` 写命令。
+    // 用户选路径的写入口 = 那六条 `#[tauri::command]` 写命令。
     // ⚠ 人群写死在这里是**刻意的**：「哪些路径是用户选的」没有语法特征，
-    //   而这五条是 F47 文件面板的全部写口。第五条判据盯着这个前提别变。
+    //   而这几条是 F47 文件面板的全部写口。第五条判据盯着这个前提别变。
+    // 🔴 〔步 23b · 09-20〕**五 → 六**：`sftp_copy`（零流量复制）。它的 `from` 与 `to`
+    //   **各过一次** `guard_write`，照 `sftp_rename` 的先例 —— 既不许把 Claude 的会话文件
+    //   复制走，也不许复制成一个 Claude 数据源名（往正被 Claude 打开的 jsonl 上盖一份
+    //   复制品，与覆写它一样会损坏会话）。
+    //   ⚠ **本条只钉「函数体里出现 `guard_write`」这个形态**（头注里那条失效模式），
+    //   所以「两个参数各过一次」这件事在 `sftp_copy` 上同样**不是机检**，是登记说明。
     const USER_CHOSEN_ENTRIES: &[&str] = &[
         "sftp_write_text",
         "sftp_upload",
         "sftp_mkdir",
         "sftp_rename",
         "sftp_delete",
+        "sftp_copy",
     ];
     let lines: Vec<&str> = prod.lines().collect();
     let mut unfenced = Vec::new();
@@ -373,6 +395,88 @@ fn a_user_chosen_remote_write_passes_the_claude_data_fence() {
     );
 }
 
+/// ★ 正题三·下半：**两个路径参数的写入口，两个参数各自过一次围栏。**
+///
+/// # 🔴 它补的洞是死值验现打出来的，不是想出来的
+///
+/// 上面那一条的头注逐字登记了自己的失效模式：
+///
+/// > 本条钉的是「函数体里出现 `guard_write`」这个**形态**，钉不了「围栏用对了路径」
+/// > （比如过的是 `from` 而写的是 `to`）。`sftp_rename` 那处「两个参数各过一次」
+/// > 是靠**登记说明**写清的，不是机检。
+///
+/// 〔步 23b 死值验 `M7` 现打〕把 `sftp_copy` 里的 `guard_write(&to)?` **整行删掉**
+/// ⇒ 上面那一条 **rc=0、5 passed，一条没红**。后果是具体的：
+/// 用户可以把任意文件**复制成** `<远端>/projects/<proj>/<sid>.jsonl`，
+/// 盖掉那台机器上**正被 Claude 打开**的会话文件 —— 与覆写它一样会损坏会话，
+/// 而那正是 `guard_write` 存在的全部理由。
+///
+/// ⇒ 那条登记说明从此**有牙**：人群是「签名里有两个路径参数」的那几条写入口，
+/// 逐条要求它们的函数体里**两个参数名各自**出现在一次 `guard_write(` 里。
+///
+/// ⚠ **它仍然钉不了什么**（如实登记，不假装覆盖）：
+/// ① 参数名换了（`from`/`to` → `src`/`dst`）要回来改这张表 —— 人群按参数名取样，
+///    没有别的可机判特征；改名会让本条**红**（`panic!` 点名），不会静默；
+/// ② 它判「那个名字出现在 `guard_write(` 这一行里」，判不了**求值顺序**
+///    （先写后判那种写法它看不见）。那一维要的是数据流分析，本仓没有。
+#[test]
+fn a_two_path_write_entry_fences_both_of_its_paths() {
+    let root = repo_root();
+    let raw = std::fs::read_to_string(root.join("src/bridge/src/sftp_pool.rs"))
+        .expect("sftp_pool.rs 读不到");
+    let prod = guard_core::production_code(&raw);
+    let lines: Vec<&str> = prod.lines().collect();
+    // `(入口名, 那两个路径参数)`。**两条都是「源与目标」那一形**：
+    // 既不许把 Claude 的会话文件搬走/复制走，也不许搬成/复制成一个 Claude 数据源名。
+    const TWO_PATH_ENTRIES: &[(&str, [&str; 2])] = &[
+        ("sftp_rename", ["from", "to"]),
+        ("sftp_copy", ["from", "to"]),
+    ];
+    let mut checked = 0usize;
+    let mut bad = Vec::new();
+    for (entry, params) in TWO_PATH_ENTRIES {
+        let Some(start) = lines.iter().position(|l| {
+            let t = l.trim_start();
+            t.starts_with(&format!("pub async fn {entry}("))
+                || t.starts_with(&format!("pub fn {entry}("))
+        }) else {
+            panic!(
+                "找不到写入口 `{entry}` —— 它改名或搬走了。\
+                 人群与参数名都写死在本条里（见头注失效模式①），改名就得把这里一起改。"
+            );
+        };
+        checked += 1;
+        let end = fn_body_end(&lines, start);
+        let body = lines[start..end].join("\n");
+        for p in params {
+            // 必须是**调用**，不是定义行（同上面那一条踩过的坑）。
+            let fenced = body.lines().any(|l| {
+                !l.trim_start().starts_with("fn ")
+                    && l.contains("guard_write(")
+                    && l.contains(&format!("&{p}"))
+            });
+            if !fenced {
+                bad.push(format!("  sftp_pool.rs::{entry} 的 `{p}`"));
+            }
+        }
+    }
+    assert_eq!(
+        checked,
+        TWO_PATH_ENTRIES.len(),
+        "只找到 {checked} 个双路径写入口 —— 抽取器坏了"
+    );
+    assert!(
+        bad.is_empty(),
+        "这几个路径参数**没有各自**过一次 `guard_write`：\n{}\n\n\
+         ★ 「函数体里有 `guard_write`」不等于「每一条路径都过了」。\n\
+         少的那一侧的后果是具体的：`to` 没过 ⇒ 能把任意文件改名/复制成\n\
+         `<远端>/projects/<proj>/<sid>.jsonl`，盖掉那台机器上**正被 Claude 打开**的会话；\n\
+         `from` 没过 ⇒ 能把正在用的会话文件从 Claude 底下搬走。\n\
+         ⚠ 这一条是死值验 `M7` 逼出来的：在它之前，删掉 `guard_write(&to)?` **全仓一条不红**。",
+        bad.join("\n")
+    );
+}
+
 /// ★ 正题四：**接线层** —— 对外 IPC 入口必须真的转发到一个已登记的原语点。
 ///
 /// # 为什么单列
@@ -408,6 +512,10 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
             "ensure_dir_all",
         ),
         ("sftp.rs", "uninstall_remote_ccm_helper", "upload_atomic"),
+        // ★〔步 23b · 09-20〕零流量复制。**为了这条边，`sftp_copy` 刻意没抽 `copy_inner`** ——
+        // 本表是**一跳**的，中间垫一层，「按钮 ↔ 真实写点」这条边就表达不出来；
+        // 理由逐字写在 `sftp_pool.rs::sftp_copy` 的头注上。
+        ("sftp_pool.rs", "sftp_copy", "copy_remote_path"),
     ];
     for (file, entry, target) in ROUTES {
         // 转发目标必须是本表登记过的写点 —— 否则这条边指向账外。

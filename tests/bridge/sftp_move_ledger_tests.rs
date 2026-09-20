@@ -59,7 +59,8 @@ fn corpus() -> Vec<(&'static str, String)> {
 
 /// `connect_sftp(` 的调用点普查：`(文件, 处数, 它属哪一类 · 是什么)`。
 ///
-/// 🔴 **PM 派工单里那句「9 处 / 4 文件」现打是错的** —— 实打 **14 处 / 4 文件**。
+/// 🔴 **PM 派工单里那句「9 处 / 4 文件」现打是错的** —— 实打 **15 处 / 4 文件**
+/// （立表那天 14 处；〔步 23b · 09-20〕零流量复制那一路 +1，逐条见 `sftp_pool.rs` 那一行）。
 /// 差在两处：派工单那张分类表自己加起来是 5 ＋ 4 ＋ 3 = 12，而 `sftp.rs` 里
 /// 另有 **2 处**它一类都没归（`ensure_backend_deployed` 自动部署 ·
 /// `remove_remote_file` 删远端会话 jsonl）。
@@ -74,8 +75,11 @@ const DIAL_CENSUS: &[(&str, usize, &str)] = &[
     ),
     (
         "sftp_pool.rs",
-        4,
-        "乙 —— 池化文件操作。4 处里有 2 对是同一个函数的「首次建」与「死连重建」",
+        5,
+        "乙 —— 池化文件操作。前 4 处里有 2 对是同一个函数的「首次建」与「死连重建」；\
+             **〔步 23b +1〕`copy_inner`** —— 零流量复制那一路自己拿池槽（同 \
+             `download_inner`/`upload_inner`：不走 `with_sftp` 的重试，半途失败不静默从头来），\
+             然后在**同一条** SSH 连接上另起裸通道发 `copy-data`",
     ),
     ("mcp.rs", 3, "丙 —— 读/写远端项目 `.mcp.json`"),
     (
@@ -88,7 +92,14 @@ const DIAL_CENSUS: &[(&str, usize, &str)] = &[
 /// 乙今天的形状：`(几个 `#[tauri::command]`, 几处拨号)`。
 ///
 /// 这两个数是 `KR78D2` 要的「读数」本体。
-const POOL_SHAPE: (usize, usize) = (11, 4);
+///
+/// 🔴 **〔步 23b · 09-20〕`(11, 4)` → `(12, 5)`，涨的那一条逐条记在这里**（本表要求
+/// 「要么这一处真的长出来了（改表，并在件里交代），要么这张表已经腐了」）：
+/// 零流量复制那一路落地 ⇒ 多一条命令 `sftp_copy`、多一处拨号 `copy_inner`。
+/// ⚠ 它**没有**让乙更接近「搬进后端」—— 恰恰相反，`copy-data` 这条能力压根**搬不过去**：
+/// 它要的是一个**裸** SFTP 会话上的句柄，而 backend 那棵树连 `russh-sftp` 都没有
+/// （本表 `REGISTERED` 里那一条现打过）。这两个数往上走，是那条判词的又一份证据。
+const POOL_SHAPE: (usize, usize) = (12, 5);
 
 // ── 登记表 ───────────────────────────────────────────────────────────────
 
@@ -266,9 +277,10 @@ fn census(corpus: &[(&str, String)]) -> Result<usize, String> {
 fn every_reading_this_ledger_quotes_is_derived_from_the_tree() {
     let total = census(&corpus()).expect("普查");
     assert_eq!(
-        total, 14,
-        "`connect_sftp` 的调用点合计应当是 14 处（4 份文件）—— 实得 {total}。\n\
-             ⚠ 派工单写的「9 处」现打是错的，来历见 `DIAL_CENSUS` 头注。"
+        total, 15,
+        "`connect_sftp` 的调用点合计应当是 15 处（4 份文件）—— 实得 {total}。\n\
+             ⚠ 派工单写的「9 处」现打是错的，来历见 `DIAL_CENSUS` 头注。\n\
+             ⚠ 〔步 23b · 09-20〕**14 → 15**：零流量复制那一路的 `copy_inner` 自己拿池槽。"
     );
 }
 
@@ -366,7 +378,7 @@ fn a_pool_missing_any_one_of_the_three_is_caught_and_named() {
 ///
 /// 🔴 本条**不改**记分牌，只读它（`K-R74` 立的那两条不在本件写区）。
 /// 它买到的那件事是：**「算搬完了」这句话从此要付代价** ——
-/// 谁把那一格翻成 `true`，就得先让界面里那 14 处 `connect_sftp` 真的没了。
+/// 谁把那一格翻成 `true`，就得先让界面里那 15 处 `connect_sftp` 真的没了。
 ///
 /// 死值验（`M4`）：把 `DIAL_SITES` 里 `sftp.rs` 那一行的第三栏改成 `true` ⇒ 本条红。
 #[test]
