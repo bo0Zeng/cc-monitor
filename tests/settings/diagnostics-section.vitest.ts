@@ -66,7 +66,8 @@ describe("诊断分节 → 「需重启」常驻条", () => {
     restartHint.value = "needs_restart";
     await toggleLogEnabled();
     expect(setDiag, "先确认 save 真的发出去了（否则下面断言是空转）").toHaveBeenCalled();
-    expect(restartReasons()).toContain("诊断日志开关");
+    // `70 §10.3` 改名：块叫「日志」、那一项叫「日志文件」⇒ 条子上的理由跟着改。
+    expect(restartReasons()).toContain("日志文件开关");
   });
 
   it("★ 反向自检：后端说 none 时**不许**点亮条子（恒亮 = 背景噪音）", async () => {

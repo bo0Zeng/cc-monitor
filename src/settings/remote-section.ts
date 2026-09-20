@@ -127,6 +127,16 @@ export interface MachinePagesHost {
   ): void;
   removeMachinePage(id: string): void;
   navigateToMachinePage(id: string): void;
+  /**
+   * 🔴 步 3（`设计/70 §1.3 C`）：**这一趟「同步机器页」收尾了**（成或败都叫一次）。
+   *
+   * 宿主要它是为了分开两件在屏幕上长得一样的事：
+   * 「还在加载」与「一个机器页都注册不出来」。没有这个回调，宿主只能靠定时器猜 ——
+   * 而猜错的方向正好是本件要治的那一个（让兜底态提前露脸）。
+   *
+   * ⚠ 可选：不带路由器的宿主（既有单测）不必实现它。
+   */
+  machinePagesSettled?(): void;
 }
 
 export interface RemoteSectionOptions {
@@ -235,11 +245,19 @@ export class RemoteSection {
 
   /** 设置面板每次 open 时调，确保展示的是 config.json 里的最新值。 */
   async refresh(): Promise<void> {
-    this.original = await readRemoteConfig();
-    this.enabledCheckbox.checked = this.original.enabled;
-    this.rebuildCards(this.original.hosts);
-    this.hideBanner();
-    void this.populateAliases();
+    // 步 3：**成也好败也好，收尾时告诉宿主一声。**
+    // `readRemoteConfig()` reject 时这个方法是 `void this.refresh()` 掉的一个
+    // 未捕获 rejection ⇒ 一个机器页都不会注册，而宿主那边只看得到「什么都没来」。
+    // `finally` 让两条路都经过这里。
+    try {
+      this.original = await readRemoteConfig();
+      this.enabledCheckbox.checked = this.original.enabled;
+      this.rebuildCards(this.original.hosts);
+      this.hideBanner();
+      void this.populateAliases();
+    } finally {
+      this.pages?.machinePagesSettled?.();
+    }
   }
 
   /**
