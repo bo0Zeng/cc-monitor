@@ -133,7 +133,25 @@ fn local_and_remote_are_exactly_complementary() {
 //   两者人群不同（普查含注释与测试段、不含 `src/backend` 的一部分）。
 //   🔴 **这正是「抄一个别处的数当分母」的典型** —— 本仓反复治的那一形。
 //   ⇒ 用本条自己现打的数，并把口径写在上面。
-const ORIGIN_MIGRATION_CEILING: usize = 93;
+// 🔴 **〔步 12·C 2026-09-20〕93 → 88，降的 5 处逐处记在这里**（本条自己要求
+//    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
+//
+//    五处全部出自「同义双份命令合成一条带 origin 的」那一刀 —— 被合掉的那 5 条
+//    远端命令，签名从 `origin: String` 变成了 `host: &str`：
+//      · `remote_branch.rs::create_remote_branch_session`
+//      · `remote_history.rs::delete_remote_history_session`
+//      · `remote_history.rs::stream_remote_history_sessions`
+//      · `remote_history.rs::stream_read_remote_session`
+//      · `mcp.rs::list_remote_mcp_project_dirs`
+//
+// 🔴 **为什么参数名从 `origin` 改成 `host`，而不是原样留着**：
+//    这五个函数今天拿到的是**已经分过本机**的机器名（分本机那一步住合并后那条命令里）。
+//    继续叫 `origin` 是句假话 —— `origin` 的取值域含 `"<local>"`，而这五处
+//    **结构上收不到它**。⇒ 改名是「名字说真话」，顺带这个数跟着降，不是为了降它才改名。
+//
+// ⚠ **这个数是跑出来的**：把上限临时改成 0、让本条印出现打的 88，再照它写。
+//    93 − 5 = 88 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
+const ORIGIN_MIGRATION_CEILING: usize = 88;
 
 #[test]
 fn no_new_raw_string_origin_parameters() {

@@ -257,7 +257,14 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     await Promise.resolve();
     const call = invokeMock.mock.calls.find((c) => c[0] === "delete_history_session");
     expect(call).toBeTruthy();
+    // 🔴 〔步 12·C 09-20〕`origin` 是**新加的必填项**，而且本机要逐字送 `"<local>"`。
+    //    ⚠ `toMatchObject` 是**子集**匹配 ⇒ 光靠它，调用点漏送 origin 这一条照样绿。
+    //      所以下面那格单独把 origin 断死（这一条正是本仓治过的「子集匹配假绿」那一形）。
     expect(call![1]).toMatchObject({ sessionId: "s1", jsonlPath: "/p/s1.jsonl" });
+    expect(
+      (call![1] as { origin?: unknown }).origin,
+      "本机删除没送 `<local>` —— Rust 侧 `Origin::route` 会拒（`null`/缺省都不是本机）",
+    ).toBe("<local>");
     confirmSpy.mockRestore();
   });
 
@@ -273,7 +280,9 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(inner.isOpen).toBe(true); // 视图没被误关
   });
 
-  it("删除远端项目最后一个会话 → delete_remote_history_session + remoteCache 同步移除（F76 护栏）", async () => {
+  // 🔴 〔步 12·C 09-20〕标题里的命令名跟上：`delete_remote_history_session` 已退役，
+  //    远端删除走的是**同一条** `delete_history_session`，只是 `origin` 是那台机器。
+  it("删除远端项目最后一个会话 → delete_history_session(origin=hostA) + remoteCache 同步移除（F76 护栏）", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const view = new HistoryView();
     // 远端项目、仅 1 个会话 → 删掉即空 → 触发 this.projects + remoteCache 同步移除
@@ -289,7 +298,23 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     await Promise.resolve();
     // 远端删除走 SFTP 命令 + 二次确认
     expect(confirmSpy).toHaveBeenCalledTimes(2);
-    expect(invokeMock.mock.calls.some((c) => c[0] === "delete_remote_history_session")).toBe(true);
+    // 🔴 判的是「**带着那台机器的 origin** 调了那条命令」——只判命令名不够：
+    //    合并之后本机与远端**同名**，光判名字的话「远端删除误走了本机那条路」不会红。
+    const remoteCall = invokeMock.mock.calls.find(
+      (c) => c[0] === "delete_history_session" && (c[1] as { origin?: unknown })?.origin === "hostA",
+    );
+    expect(
+      remoteCall,
+      "没有一趟 `delete_history_session` 带着 `origin: \"hostA\"` —— " +
+        "要么命令没发，要么 origin 丢了（丢了就会去删**本机**的同名路径）",
+    ).toBeTruthy();
+    // 反向：这一趟**不许**同时冒出一条本机的删除。
+    expect(
+      invokeMock.mock.calls.filter(
+        (c) => c[0] === "delete_history_session" && (c[1] as { origin?: unknown })?.origin === "<local>",
+      ),
+      "远端删除顺手也发了一条本机删除",
+    ).toEqual([]);
     // F76 承重不变式：删空的远端项目从 remoteCache 同步移除，否则 TTL 内重开会拼回幽灵
     const cache = (view as unknown as { remoteCache: { projects: unknown[] } }).remoteCache;
     expect(cache.projects.length).toBe(0);
