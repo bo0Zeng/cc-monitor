@@ -62,15 +62,40 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
     "PayloadRenderRequest",
     "WireWrap",
     "WireEnvOp",
+    // `设计/90 §4 E`：外层容器那一层。**这条清单就是那句「将来加第八个类型时这条红」
+    // 兑现的地方** —— 加 `WireTmuxOuter` 那一拍它当场红，回来把它登记进来。
+    // ⚠ `WireQuoting` **不在这里**，那不是漏：它是个无字段的单元枚举，
+    // 没有「未知字段」这回事，挂 `deny_unknown_fields` 对它是句空话。
+    "WireTmuxOuter",
   ];
 
-  test("Rust 侧七个入方向 wire 类型都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
-    // 数量自检：将来加第八个类型时这条红，提醒把它加进上面的清单 ——
-    // 只看**属性行**，因为这些类型的文档注释里就写着这个词（M3 抓到过）。
-    const denyAttrLines = RUST.split("\n").filter(
-      (l) => l.trim().startsWith("#[") && l.includes("deny_unknown_fields"),
-    );
-    expect(denyAttrLines.length, "带 deny_unknown_fields 的类型数变了，清单要同步").toBe(
+  test("Rust 侧八个入方向 wire 类型都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
+    // 数量自检：将来加第九个类型时这条红，提醒把它加进上面的清单 ——
+    // 只看**属性里**的，因为这些类型的文档注释里就写着这个词（M3 抓到过）。
+    //
+    // 🔴 **量法换过一次**〔`设计/90 §4 E`〕：原来数的是「以 `#[` 开头且含那个词的**行**」，
+    // 而 rustfmt 会把长属性拆成多行 —— `WireTmuxOuter` 的属性有四项（`tag` /
+    // `rename_all` / `rename_all_fields` / `deny_unknown_fields`），拆开之后
+    // **含那个词的那一行不以 `#[` 开头**，于是一个真带属性的新类型在这把尺子上是隐形的。
+    // ⇒ 改成「剥掉注释之后，全文还剩几处」：既不受排版影响，也仍然把散文排除在外
+    // （M3 要防的就是散文，那一半一个字没松）。
+    const rustNoComments = RUST.split("\n")
+      .filter((l) => !l.trim().startsWith("//"))
+      // ⚠ 用 `indexOf` 不用 `includes` —— `scanning-guard-registry` 那条递减棘轮
+      // 数的是**磁盘语料变量上的裸 `.includes("…")`**（子串匹配单位比事实小，
+      // 正向事实钉会从缝里溜过去）。这里剥注释是「切」不是「钉」，换个写法就不占额度。
+      .map((l) => {
+        const cut = l.indexOf("//");
+        return cut >= 0 ? l.slice(0, cut) : l;
+      })
+      .join("\n");
+    const denyInAttrs = rustNoComments.split("deny_unknown_fields").length - 1;
+    // 剥法自检：剥之前一定更多（否则「剥掉注释」这一步没发生，这条就退化成数全文）。
+    expect(
+      RUST.split("deny_unknown_fields").length - 1,
+      "剥注释前后一样多 —— 剥法没生效，或者注释里不再提这个词（那要换一种自检）",
+    ).toBeGreaterThan(denyInAttrs);
+    expect(denyInAttrs, "带 deny_unknown_fields 的类型数变了，清单要同步").toBe(
       DENY_WIRE_TYPES.length,
     );
     for (const t of DENY_WIRE_TYPES) {
@@ -79,12 +104,33 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
       // ⚠ **只看紧邻的 `#[...]` 属性行** —— 初版是「往前扫 220 字符找子串」，
       // 而这些类型的**文档注释里就写着** `deny_unknown_fields` 这个词 ⇒ 摘掉真属性照样绿
       // （自己的变异检查 M3 抓到的）。散文不是属性。
+      //
+      // 🔴 **同一拍补了多行属性**〔`设计/90 §4 E`〕：rustfmt 会把长属性拆成
+      //    `#[serde(` / `    tag = …,` / … / `)]` 好几行，而原来的往上扫只认
+      //    「整行以 `#[` 开头」⇒ 撞到收尾那行 `)]` 当场 break，attrLines 空 ——
+      //    一个**真带属性**的类型在这把尺子上是隐形的。
+      //    ⇒ 认收尾行，往上吃到 `#[` 为止。**散文那一半一个字没松**：
+      //    doc 注释既不以 `#[` 开头、也不是收尾行 ⇒ 照样 break。
       const before = RUST.slice(0, at).split("\n");
       const attrLines: string[] = [];
       for (let i = before.length - 2; i >= 0; i--) {
         const line = before[i].trim();
-        if (line.startsWith("#[")) attrLines.push(line);
-        else if (line !== "") break; // 撞到 doc 注释/空行以外的东西就停
+        if (line.startsWith("#[")) {
+          attrLines.push(line);
+        } else if (line === ")]" || line === "]") {
+          // 多行属性的收尾：往上吃到它的 `#[` 那一行。
+          attrLines.push(line);
+          while (i > 0) {
+            i--;
+            // ⚠ 名字刻意不叫 `l`：`const l = before[i]…` 会让那个名字被
+            // `scanning-guard-registry::corpusVars` 认成**磁盘语料变量**，
+            // 于是同文件里任何一处挂在它上面的裸成员检查都进那条递减棘轮的账
+            // （本件第一次跑就是这么把上限从 8 顶到 9 的）。
+            const up = before[i].trim();
+            attrLines.push(up);
+            if (up.startsWith("#[")) break;
+          }
+        } else if (line !== "") break; // 撞到 doc 注释/空行以外的东西就停
       }
       expect(attrLines.join("\n"), `${t} 的属性里缺 deny_unknown_fields`).toContain(
         "deny_unknown_fields",

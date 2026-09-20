@@ -59,3 +59,6 @@ mod gate2_parity;
 mod launch_cli_parity;
 #[cfg(test)]
 mod launch_payload_parity;
+// `设计/90 §4 E`：外层 tmux 那三格的跨语言逐字节对拍（内层那半是上面 `launch_payload_parity`）。
+#[cfg(test)]
+mod launch_tmux_outer_parity;

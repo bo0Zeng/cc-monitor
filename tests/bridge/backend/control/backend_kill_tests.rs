@@ -69,6 +69,19 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
         CreationVerdict::UpstreamValidated,
         "它只是**渲染器**：名字由上游 `mintTmuxName` 产、由 `src/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",
     ),
+    (
+        // 🔴 〔`设计/90 §4 E` 2026-09-19〕**上面那条 TS 渲染器在 Rust 侧的对侧**
+        //    （逐字节对拍住 `launch_tmux_outer_parity.rs`）。两条都在表里**不是重复登记**：
+        //    今天生产走的仍是 TS 那条，Rust 这条只产得出、还没接上 ——
+        //    两份实现同时在盘上，就得两份都表态。`设计/00 §2.5 ④` 收官那天删的是上面那条。
+        "src/bridge/src/backend/control/payload.rs",
+        CreationVerdict::ValidatesItselfByAllowlist,
+        "与 TS 那条**姿态相反，这是刻意的**：座收的是调用方 quote 好的片段、自陈「不做校验/转义」，\
+             而本侧收生料 ⇒ 自己把门。`TmuxTarget::check` 对 `Raw` 只放行 `[A-Za-z0-9_-]`\
+             （构造上产不出 `:` `=` `*` `?` `.` 与控制字符），对 `Quoted` 拒控制符与视觉欺骗字符；\
+             `@ccm_sid` 另过 `ccm_sid_safe`（它是**裸拼**的）。三条都由 \
+             `launch_tmux_outer_parity::tests::the_rust_side_refuses_what_the_typescript_seat_would_have_concatenated` 钉住",
+    ),
 ];
 
 /// **校验器**登记表：`(路径, 它是谁)`。
@@ -118,8 +131,19 @@ const VALIDATORS: &[(&str, &str, &str)] = &[
 #[cfg(test)]
 #[derive(PartialEq, Eq, Debug)]
 enum CreationVerdict {
-    /// 这条路径**自己**校验禁字集。
+    /// 这条路径**自己**校验禁字集。⇒ 必须在 [`VALIDATORS`] 里，且那张表的第二列
+    /// （禁字集表达式的字面量）要逐字出现在它的源码里。
     ValidatesItself,
+    /// 🔴 〔`设计/90 §4 E` 09-19〕**它自己校验，但用的是放行集、不是禁字集。**
+    ///
+    /// 放行集比禁字集**严格更强**（`[A-Za-z0-9_-]` 在构造上就产不出那几个禁字，
+    /// 连控制符和视觉欺骗字符一起挡了），**但它在盘上没有一个禁字集字面量可钉**
+    /// ⇒ [`VALIDATORS`] 那张表的第二列对它是空的，硬塞进去只能写一个假字面量。
+    ///
+    /// ⇒ 换一种钉法：**把那几个禁字真的喂进去，看它拒不拒**（行为对拍，比文本对拍更硬 ——
+    /// 文本那条挡的是「表达式被改了」，这条挡的是「它真的放过了某个字符」）。
+    /// 落点在本判据 ③c 那一段，带正控。
+    ValidatesItselfByAllowlist,
     /// 名字来自已校验的上游 ⇒ 本路径不必再校验，但**必须说清上游是谁**。
     UpstreamValidated,
 }
@@ -268,6 +292,52 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
                      那下面那条「真的拒了那些字符」就不会查它"
             );
         }
+    }
+
+    // ── ③c 🔴 **放行集那一族：把禁字真的喂进去** 〔`设计/90 §4 E` 09-19〕───────
+    //
+    // 上面 ③ 要求「自己校验」的必须在 `VALIDATORS` 里，而那张表钉的是**禁字集字面量**。
+    // 放行集写法在盘上根本没有那样一个字面量（它说的是「只放行这些」，不是「拒这些」），
+    // 硬塞一行进去只能编一个假字面量 —— 那是**为了让尺子读得到而改被测物**，方向反了。
+    //
+    // ⇒ 这一族改成**行为对拍**：逐个禁字喂进去，必须拒；再喂一个合法名字，必须过。
+    // 正控是必需的 —— 只测「该拒的拒了」，渲染器整个坏掉（永远 `Err`）时它也全绿。
+    let allowlist_rows: Vec<&str> = CREATION_PATHS
+        .iter()
+        .filter(|(_, v, _)| *v == CreationVerdict::ValidatesItselfByAllowlist)
+        .map(|(f, ..)| *f)
+        .collect();
+    assert_eq!(
+        allowlist_rows,
+        vec!["src/bridge/src/backend/control/payload.rs"],
+        "\n放行集那一族的成员变了。本段是**按人群逐个手接**的（喂字符要拿到那个入口函数），\n         多一个成员就得在这里给它接上一段 —— 否则它会**静默地一条都不被喂**。"
+    );
+    {
+        use crate::backend::control::payload::{render_tmux_outer, TmuxOuter, TmuxTarget};
+        for c in &forbidden {
+            let name = format!("cc{c}1");
+            let got = render_tmux_outer(
+                &TmuxOuter::Attach {
+                    target: TmuxTarget::Raw(&name),
+                },
+                None,
+            );
+            assert!(
+                got.is_err(),
+                "`payload.rs` 的放行集放过了禁字 `{c}`（名字 {name:?} 渲染成了 {got:?}）——\n                 backend 的 kill 形状门拒它，而这条创建路径能铸出它 ⇒ 建得出来、主路杀不掉。"
+            );
+        }
+        // ★ 正控：合法名字必须过（否则上面那一圈在渲染器坏掉时也全绿）。
+        assert!(
+            render_tmux_outer(
+                &TmuxOuter::Attach {
+                    target: TmuxTarget::Raw("cc-1")
+                },
+                None
+            )
+            .is_ok(),
+            "合法名字 `cc-1` 也渲不出来 —— 上面那一圈「拒了」说明不了任何事"
+        );
     }
 
     // ── ③b 🔴 **反方向**：每条校验器都得有一条创建路径指着它 ────────────

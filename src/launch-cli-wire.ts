@@ -73,6 +73,28 @@ export interface SendIntoResponse {
   mayFallBack: boolean;
 }
 
+/** `设计/90 §4 E`：**外层容器那一层**的上线形状。Rust 对侧是 `launch_wire.rs::WireTmuxOuter`
+ *  （带 `deny_unknown_fields`）。
+ *
+ *  ⚠ `quoting` 不是「要不要加引号」，是「**这个名字过的是哪道校验**」——
+ *  `"raw"` = 已证明只含 `[A-Za-z0-9_-]`；`"quoted"` = 校验时允许空格等自由字符。
+ *  怎么拼由 Rust 那侧按它决定，前端不许替它决定（F03 在 TS 侧消灭掉的就是那种嗅探）。
+ *
+ *  ⚠ `attach` 那一格**不带载荷**：同一个请求里的 `env`/`args`/`launcher` 必须是空的，
+ *  否则后端 fail-closed 拒（那说明调用方把格搞错了，不该静默把载荷丢掉）。 */
+export type WireTmuxOuter =
+  | {
+      mode: "create";
+      name: string;
+      quoting: "raw" | "quoted";
+      /** `new-session -c <目录>`。⚠ 与顶层 `cwd` **只许有一个非空** ——
+       *  tmux 那两格的内层没有 `cd`，两个都送后端会拒。 */
+      cwd: string | null;
+      ccmSid: string | null;
+    }
+  | { mode: "send-into"; name: string; quoting: "raw" | "quoted" }
+  | { mode: "attach"; name: string; quoting: "raw" | "quoted" };
+
 export interface PayloadRenderRequest {
   env: WireEnvOp[];
   cwd: string | null;
@@ -84,4 +106,7 @@ export interface PayloadRenderRequest {
   /** `( <prelude>; exec <inner> )` 包裹（§39 给 F04 rbind 留的槽）。今天恒空。
    *  ⚠ 复盘补的：初版 wire 没有它 ⇒ 后端静默丢。 */
   wrap: { order: number; prelude: string }[];
+  /** 缺席 = `container:"none"` 那一格（本命令原本的唯一形态，字节一个都没变）。
+   *  Rust 侧是 `#[serde(default)] pub outer: Option<WireTmuxOuter>`。 */
+  outer?: WireTmuxOuter;
 }
