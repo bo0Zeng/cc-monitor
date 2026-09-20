@@ -52,6 +52,30 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../shared/cc-bus/scripts/cc-broadcast"),
     ),
     (
+        "scripts/cc-bus-adapt.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-adapt.sh"),
+    ),
+    (
+        "scripts/cc-bus-adapt-posix.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-adapt-posix.sh"),
+    ),
+    (
+        "scripts/cc-bus-adapt-windows.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-adapt-windows.sh"),
+    ),
+    (
+        "scripts/cc-bus-agent-claude.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-agent-claude.sh"),
+    ),
+    (
+        "scripts/cc-commit",
+        include_bytes!("../../shared/cc-bus/scripts/cc-commit"),
+    ),
+    (
+        "scripts/cc-peek",
+        include_bytes!("../../shared/cc-bus/scripts/cc-peek"),
+    ),
+    (
         "scripts/cc-bus-install.sh",
         include_bytes!("../../shared/cc-bus/scripts/cc-bus-install.sh"),
     ),
