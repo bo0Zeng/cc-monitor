@@ -495,6 +495,15 @@ export const commands = {
     onProgress: Channel<TransferProgress>;
   }) => invoke<string | null>("sftp_copy", args),
 
+  /**
+   * 改远端文件/目录的权限位（`SSH_FXP_SETSTAT`）。**桶①**。
+   *
+   * 〔`设计/60 §5.4c`〕`mode` 是 unix 权限位（八进制那四位，如 `0o644`）——
+   * 高位的文件类型位由 Rust 侧掩掉，别指望用它改文件类型。
+   */
+  sftp_chmod: (args: { cfg: unknown; path: string; mode: number }) =>
+    invoke<void>("sftp_chmod", args),
+
   /** 删远端文件/目录。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   sftp_delete: (args: { cfg: unknown; path: string; isDir: boolean }) =>
     invoke<void>("sftp_delete", args),
@@ -657,13 +666,15 @@ export const commands = {
   read_remote_project_mcp: (args: { origin: string; projectDir: string }) =>
     invoke<McpServerEntry[]>("read_remote_project_mcp", args),
 
-  /** 删本机项目 `.mcp.json` 里的一个 server。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  remove_project_mcp_server: (args: { projectDir: string; name: string }) =>
+  /**
+   * 删项目 `.mcp.json` 里的一个 server。Rust 返回 `Result<(), String>` ⇒ **桶①**。
+   *
+   * 🔴 **〔步 12·C 收尾〕`remove_remote_mcp_server` 已退役，两条收成这一条。**
+   * 本机要**逐字**送 `LOCAL_ORIGIN`（`"<local>"`）—— 省掉它就是线上 `null`，
+   * 而 `null` ≠ 本机，Rust 侧 `Origin::route` 当场拒。
+   */
+  remove_project_mcp_server: (args: { origin: Origin; projectDir: string; name: string }) =>
     invoke<void>("remove_project_mcp_server", args),
-
-  /** 删远端项目 `.mcp.json` 里的一个 server。**桶①**。 */
-  remove_remote_mcp_server: (args: { origin: string; projectDir: string; name: string }) =>
-    invoke<void>("remove_remote_mcp_server", args),
 
   /** 把某 sid 的历史定向重放到当前窗口（viewer 用，不发 frontend-ready）。**桶①**。 */
   replay_session_to_window: (args: { sessionId: string }) =>
@@ -1011,17 +1022,16 @@ export const commands = {
   }) => invoke<EntryMetadata>("update_history_metadata", args),
 
   /**
-   * 写本机项目 `.mcp.json` 的一个 server。**桶①**。
+   * 写项目 `.mcp.json` 的一个 server。**桶①**。
    * `server` 是不透明 JSON（Rust 侧 `serde_json::Value`）⇒ `unknown`，与生成物一致。
+   *
+   * 🔴 **〔步 12·C 收尾〕`write_remote_mcp_server` 已退役，两条收成这一条。**
+   * 本机同样要逐字送 `LOCAL_ORIGIN`，理由见上面 `remove_project_mcp_server`。
    */
-  write_project_mcp_server: (args: { projectDir: string; name: string; server: unknown }) =>
-    invoke<void>("write_project_mcp_server", args),
-
-  /** 写远端项目 `.mcp.json` 的一个 server。**桶①**。 */
-  write_remote_mcp_server: (args: {
-    origin: string;
+  write_project_mcp_server: (args: {
+    origin: Origin;
     projectDir: string;
     name: string;
     server: unknown;
-  }) => invoke<void>("write_remote_mcp_server", args),
+  }) => invoke<void>("write_project_mcp_server", args),
 } as const;

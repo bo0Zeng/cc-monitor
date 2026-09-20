@@ -1252,8 +1252,9 @@ pub fn run() {
             mcp::read_remote_mcp_servers,
             mcp::list_remote_mcp_origins,
             mcp::read_remote_project_mcp,
-            mcp::write_remote_mcp_server,
-            mcp::remove_remote_mcp_server,
+            // 〔步 12·C 收尾 09-20〕`write_remote_mcp_server` / `remove_remote_mcp_server`
+            // **已退役**（不留别名）—— 并进了下面那两条吃 `origin` 的，它们是那两个函数
+            // 今天唯一的调用点。理由住 `mcp.rs` 那两条命令的头注。
             mcp::list_mcp_project_dirs,
             mcp::write_project_mcp_server,
             mcp::remove_project_mcp_server,
@@ -1336,6 +1337,7 @@ pub fn run() {
             sftp_pool::sftp_rename,
             sftp_pool::sftp_delete,
             sftp_pool::sftp_copy, // 步 23b：零流量复制（`copy-data`），退不了路要出声
+            sftp_pool::sftp_chmod, // `设计/60 §5.4c`：`SETSTAT` 改权限（属性块不带 size）
             sftp_pool::sftp_read_text_for_edit,
             sftp_pool::sftp_write_text,
             pubkey::push_public_key,
