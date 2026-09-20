@@ -47,9 +47,21 @@ pub struct SftpConn {
     pub sftp: SftpSession,
 }
 
-/// 打开到远端的 SFTP 会话（复用 connect_session 全套指纹/鉴权）。
-pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
-    let (session, _fp) = connect_session(cfg, None, None).await?;
+/// 在一条**已鉴权**的 SSH 连接上开一个 sftp 子系统通道，把它的字节流交出来。
+///
+/// ★ **三处共用这一段**，刻意不各抄一遍：`connect_sftp`（第 1 条通道）·
+/// [`SftpConn::open_sftp_channel`]（池借第 2、3、… 条）· [`SftpConn::open_raw_sftp`]
+/// （复制那一路的裸通道）。抄三遍的话，「远端 sshd 没开 sftp」这句诊断会长出三份
+/// 不同的措辞，而用户看到哪一份取决于他点了哪个按钮。
+///
+/// ⚠ **每调一次就占远端一格 `MaxSessions`**（`man 5 sshd_config` 逐字：
+/// 「the maximum number of open shell, login or **subsystem (e.g. sftp)** sessions
+/// permitted per network connection … The default is 10」；本机 `OpenSSH_10.2p1`
+/// 现打 `sshd -T` 印 `maxsessions 10`）⇒ 谁来调它要自己守预算，
+/// 见 [`crate::sftp_pool::SESSION_CHANNEL_CAP`]。
+async fn open_sftp_stream(
+    session: &client::Handle<ClientHandler>,
+) -> Result<russh::ChannelStream<client::Msg>, String> {
     let channel = session
         .channel_open_session()
         .await
@@ -58,7 +70,14 @@ pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
         .request_subsystem(true, "sftp")
         .await
         .map_err(|e| format!("请求 sftp 子系统失败（远端 sshd 未开 sftp?）: {e}"))?;
-    let sftp = SftpSession::new(channel.into_stream())
+    Ok(channel.into_stream())
+}
+
+/// 打开到远端的 SFTP 会话（复用 connect_session 全套指纹/鉴权）。
+pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
+    let (session, _fp) = connect_session(cfg, None, None).await?;
+    let stream = open_sftp_stream(&session).await?;
+    let sftp = SftpSession::new(stream)
         .await
         .map_err(|e| format!("初始化 sftp 会话失败: {e}"))?;
     Ok(SftpConn { session, sftp })
@@ -174,16 +193,8 @@ impl SftpConn {
     /// 塞进 `connect_sftp` 等于让每一次部署 / 每一次读 `.mcp.json` 都多付一个通道
     /// ＋ 一趟扩展协商。**代价如实记**：每次复制多开一条通道、多一趟 `SSH_FXP_INIT`。
     pub async fn open_raw_sftp(&self) -> Result<RawSftp, String> {
-        let channel = self
-            .session
-            .channel_open_session()
-            .await
-            .map_err(|e| format!("打开复制用 SFTP channel 失败: {e}"))?;
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|e| format!("请求 sftp 子系统失败（远端 sshd 未开 sftp?）: {e}"))?;
-        let raw = RawSftpSession::new(channel.into_stream());
+        let stream = open_sftp_stream(&self.session).await?;
+        let raw = RawSftpSession::new(stream);
         let version = raw
             .init()
             .await
@@ -193,6 +204,27 @@ impl SftpConn {
             .get(COPY_DATA)
             .is_some_and(|v| v == COPY_DATA_VERSION);
         Ok(RawSftp { raw, copy_data })
+    }
+
+    /// 在**同一条已鉴权的 SSH 连接**上另起一个 sftp 子系统通道，拿一个**高层**会话。
+    ///
+    /// ★ 这是 `设计/60 §2 档③` 第一条（「边传边浏览」）的整个技术内容：
+    /// SFTP 协议本来就允许一条 SSH 连接上并存多个子系统会话、每个会话里多个未完成请求，
+    /// 缺的只是**我们**去开第二条。此前 `sftp_pool` 一个 origin 只有 `connect_sftp`
+    /// 建的那一条，外加一把 per-origin 锁把所有操作串起来。
+    ///
+    /// ⚠ **它不自带预算** —— 每调一次占远端一格 `MaxSessions`（见 [`open_sftp_stream`]）。
+    /// 预算由调用方守：[`crate::sftp_pool::ChannelSet`] 是今天唯一的调用方，
+    /// 上限 [`crate::sftp_pool::SESSION_CHANNEL_CAP`]。
+    ///
+    /// ⚠ **代价如实记**（同 [`SftpConn::open_raw_sftp`] 那段）：每条新通道要一趟
+    /// `channel_open_session` ＋ 一趟 `request_subsystem` ＋ 一趟 `SSH_FXP_INIT` 握手。
+    /// 那是**三个往返**，所以池子要复用通道而不是每次操作开一条。
+    pub async fn open_sftp_channel(&self) -> Result<SftpSession, String> {
+        let stream = open_sftp_stream(&self.session).await?;
+        SftpSession::new(stream)
+            .await
+            .map_err(|e| format!("初始化 sftp 会话失败: {e}"))
     }
 }
 
