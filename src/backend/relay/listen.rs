@@ -12,38 +12,28 @@
 //! 边界用注释标着；真正的搬家归 `99 §4` 的步 **13c**（「后端 `bind`/`listen`，
 //! 把 `accept` 到的连接交给面 B」）—— 那一步自己就写着「它不挡 14」。
 //!
-//! # ⚠ `apply_downstream_deadline` 为什么**没**跟着搬过来
+//! # ⚠ 有三样东西**职责在这里、代码还在 `server.rs`** —— 逐条给现打的理由
 //!
-//! 它与 `DOWNSTREAM_DEADLINE` 都留在 `server.rs`，**不是**因为职责，是因为一条
-//! **写区外的登记**：`tests/backend/no_timer_guard.rs::REGISTERED_DURATION_USES`
-//! 里那一行的住址栏逐字是 `"server.rs"`（配 `Duration::from_millis(30_000)`），
-//! 而那张表按文件名后缀匹配、**不在本拍的写区里**。搬了它当场红。
-//! ⇒ 如实登记：这一格是**被判据的住址钉住的**，不是设计这么要的。
+//! 它们**不是**按职责留在那儿的，是被**写区外的住址登记**钉住的：搬一步就当场红，
+//! 而那几处登记都不在本拍的写区里。如实列，别读成设计要它们分开：
+//!
+//! | 留在 `server.rs` 的 | 钉住它的登记（都在写区外） |
+//! |---|---|
+//! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | `tests/backend/no_timer_guard.rs::REGISTERED_DURATION_USES` 那一行的住址栏逐字 `"server.rs"`（配 `Duration::from_millis(30_000)`），按文件名后缀匹配 |
+//! | `DEFAULT_PORT` | `src/bridge/src/backend/control/payload.rs` 的散文逐字点着 `src/backend/relay/server.rs::DEFAULT_PORT`，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` **真的判得了那条住址**（现打：搬走之后它当场红，诊断逐字「符号还在，但**搬家了**」） |
+//! | `INFLIGHT_CONNECTIONS` | 同上，钉它的是 `src/bridge/src/local_backend_host.rs` 那句散文 |
+//! | `LOOPBACK` | 同上，钉它的是 **`src/backend/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
+//!
+//! ⇒ 本文件 `use` 它们，注释里点符号（不点文件）。真要把它们挪过来，得与
+//! `src/bridge/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。
 
-use super::server::{self, Relay};
+use super::server::{self, Relay, DEFAULT_PORT, INFLIGHT_CONNECTIONS, LOOPBACK};
 use super::{accounts, tee::TeeSink, upstream::Base};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
+use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 
-/// 只听回环。**这是一个字面量常量，不是拼出来的** —— 拼出来的地址源码扫描看不见
-/// （`DoD-4` 那条 acceptor 的第一个瞎法就是这个）。行为那半由 `DoD-4㈡` 兜底。
-pub(super) const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
-
-/// 默认端口。形状抄 `control/cc_bus.rs` 的 `timeout_secs()`：**写死一个默认 + 环境变量能盖**。
-/// 端口被占怎么办本仓零先例 ⇒ 本刀的处置是**起不来就退出并出声**，不自己换端口。
-pub(super) const DEFAULT_PORT: u16 = 8788;
 pub(super) const ENV_PORT: &str = "CCM_RELAY_PORT";
-
-/// 同时在途的下游连接数上限〔回修轮之五 08-25，D3 `阻-3(D3)` 的**做得到的那一半**〕。
-///
-/// ⚠ **是条数不是体量**，所以名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`
-/// —— 那几个词是 `byte_cap_registry` 的钩子，带了会让它把一个**连接数**当成字节上限收进人群。
-///
-/// 超了怎么办：**回 `503 Service Unavailable` 并关连接**，不是静默 FIN。
-/// 先前 `serve()` 是每连接无条件 spawn、且 `let _ = …spawn(…)` 把失败**整个吞掉**
-/// ⇒ 线程顶满之后下游拿到的是一个**没有任何 HTTP 响应**的 FIN，而 `serve` 一个字都不印。
-pub(super) const INFLIGHT_CONNECTIONS: usize = 256;
 
 /// 起监听。返回真实绑定的地址（端口给 0 时由内核选，测试用）。
 pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
