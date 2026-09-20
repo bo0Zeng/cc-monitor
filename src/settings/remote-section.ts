@@ -236,7 +236,10 @@ export class RemoteSection {
     this.headless = opts.headless ?? false;
     this.pages = opts.pages;
     this.root = this.build();
-    void this.refresh();
+    // 步 4：`refresh()` 自己会把失败画到这一块的 banner 上（见它的 catch），
+    // 这里再收一次是为了**不产生未捕获 rejection** —— 那条路的终点是状态栏，
+    // 而状态栏不是这一块的错误该去的地方。
+    void this.refresh().catch(() => {});
   }
 
   get element(): HTMLElement {
@@ -255,6 +258,18 @@ export class RemoteSection {
       this.rebuildCards(this.original.hosts);
       this.hideBanner();
       void this.populateAliases();
+    } catch (e) {
+      // 🔴 步 4（`设计/70 §1.3 D`）：**异步失败落在这一块上**，不再只打到状态栏。
+      //
+      // 这个方法的两个调用点都是 `void this.refresh()`（本类构造器 ＋ `panel.open()`），
+      // 而 `void` 掉的 Promise 其 reject 是**未捕获 rejection** ⇒ 今天它一路走到
+      // `main.ts` 那条全局兜底，变成状态栏上一行 `REJ: …`
+      //（`70 §1.3 D` 逐字：截图里那句 `REJ: Command plugin:dialog|confirm not allowed
+      //   by ACL` 就是这条路出来的）。状态栏离出事的那一块十万八千里，用户看不出
+      //   「机器列表为什么是空的」。
+      // ⇒ 就地说一句，并把异常继续往外抛（调用方要判成不成功，本行只负责说出口）。
+      this.showBanner(`读远端配置失败：${String(e)} —— 机器列表这一趟没读出来。`);
+      throw e;
     } finally {
       this.pages?.machinePagesSettled?.();
     }

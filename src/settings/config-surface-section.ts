@@ -42,6 +42,7 @@ import { GAP_HEAD, type GapKind } from "./readiness";
 import { makeInfoIcon } from "./info-icon";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
+import { withPending } from "./pending";
 
 /**
  * 一态 → 它在「还差什么」那套口径里算哪一种缺口。`present` 不是缺口 ⇒ `null`。
@@ -286,7 +287,9 @@ export class ConfigSurfaceSection {
     rescan.type = "button";
     rescan.className = "btn";
     rescan.textContent = "重新扫描";
-    rescan.addEventListener("click", () => void this.refresh());
+    // 步 4·E（`70 §1.3 E`）：扫一趟是一次真往返 —— 期间按住这个按钮，
+    // 否则连点两下就是两趟，而第二趟的结果会盖掉第一趟、屏幕上看不出来。
+    rescan.addEventListener("click", () => void withPending(rescan, "扫描中…", () => this.refresh()));
     bar.appendChild(rescan);
 
     this.copyBtn = document.createElement("button");
@@ -294,7 +297,9 @@ export class ConfigSurfaceSection {
     this.copyBtn.className = "btn";
     this.copyBtn.textContent = "复制诊断文本";
     this.copyBtn.disabled = true;
-    this.copyBtn.addEventListener("click", () => void this.copy());
+    this.copyBtn.addEventListener("click", () =>
+      void withPending(this.copyBtn, "复制中…", () => this.copy()),
+    );
     bar.appendChild(this.copyBtn);
     host.appendChild(bar);
 

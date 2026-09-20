@@ -12,7 +12,11 @@ import { describe, it, expect, vi } from "vitest";
 // refresh spy 守 F82b 段移动没丢 this.remoteSection/this.dataSection 字段（丢了 open() 的
 // `?.refresh()` 会静默 no-op）。vi.hoisted 让 spy 在被提升的 vi.mock 工厂里可见。
 const { remoteRefresh, dataRefresh, dataLoadNow, ccIntegrationBuilds } = vi.hoisted(() => ({
-  remoteRefresh: vi.fn(),
+  // ⚠ 必须**真的回一个 Promise**：`RemoteSection.refresh()` 的签名是 `Promise<void>`，
+  //   而 `panel.open()` 在它上面接了 `.catch()`（步 4·D：失败要落在那一块上，
+  //   不许再多产一条走状态栏的未捕获 rejection）。回 `undefined` 的 stub 会让
+  //   `open()` 当场 TypeError —— 那不是生产代码的 bug，是 stub 没履行它替身的契约。
+  remoteRefresh: vi.fn().mockResolvedValue(undefined),
   dataRefresh: vi.fn(),
   dataLoadNow: vi.fn(),
   // S9：数**构造**次数，不是数 DOM。真 CcIntegrationSection 的构造函数会发两次
