@@ -11,9 +11,14 @@ import { describe, it, expect, vi } from "vitest";
 
 // refresh spy 守 F82b 段移动没丢 this.remoteSection/this.dataSection 字段（丢了 open() 的
 // `?.refresh()` 会静默 no-op）。vi.hoisted 让 spy 在被提升的 vi.mock 工厂里可见。
-const { remoteRefresh, dataRefresh, ccIntegrationBuilds } = vi.hoisted(() => ({
-  remoteRefresh: vi.fn(),
+const { remoteRefresh, dataRefresh, dataLoadNow, ccIntegrationBuilds } = vi.hoisted(() => ({
+  // ⚠ 必须**真的回一个 Promise**：`RemoteSection.refresh()` 的签名是 `Promise<void>`，
+  //   而 `panel.open()` 在它上面接了 `.catch()`（步 4·D：失败要落在那一块上，
+  //   不许再多产一条走状态栏的未捕获 rejection）。回 `undefined` 的 stub 会让
+  //   `open()` 当场 TypeError —— 那不是生产代码的 bug，是 stub 没履行它替身的契约。
+  remoteRefresh: vi.fn().mockResolvedValue(undefined),
   dataRefresh: vi.fn(),
+  dataLoadNow: vi.fn(),
   // S9：数**构造**次数，不是数 DOM。真 CcIntegrationSection 的构造函数会发两次
   // Windows 专用 IPC，所以门必须开在「建不建」这一层 ——「建了再 hidden」也能让
   // DOM 断言通过，只有构造计数分得开这两者。
@@ -65,11 +70,16 @@ vi.mock("../../src/settings/data-section", () => ({
   DataSection: class {
     element = document.createElement("div");
     refresh = dataRefresh;
+    // `设计/70 §1.3 B`（步 2）：真 DataSection 的第一发 I/O 由宿主在
+    // 「这一页首次可见」时通过 `loadNow()` 放行 —— stub 必须履行同一份契约，
+    // 否则这条护栏守的是一个盘上不存在的接口。
+    loadNow = dataLoadNow;
   },
 }));
 vi.mock("../../src/settings/diagnostics-section", () => ({
   DiagnosticsSection: class {
     element = document.createElement("div");
+    loadNow = vi.fn();
   },
 }));
 vi.mock("../../src/settings/cc_integration", () => ({
@@ -196,8 +206,10 @@ describe("S2 设置面板分页结构", () => {
       "颜色",
       "日志与数据", // 折叠组
       "Claude 数据目录",
-      "诊断",
-      "数据存储",
+      // `70 §10.3`：「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）。
+      "日志",
+      // `70 §10.2`：同组里已经有一块叫「Claude 数据目录」，两个「数据」并排 ⇒ 改「数据位置」。
+      "数据位置",
     ]);
     // ★ S4b-2：那四块**已从列表页搬到机器详情页**。
     // ★ P2s：「backend 开关」是这一页的新成员，且**排在「连接（远端）」之前** ——
@@ -212,8 +224,12 @@ describe("S2 设置面板分页结构", () => {
       // （欠账记在 `parity_ledger::plugins.marketplaces`），挂到远端就是个恒失败的块。
       "插件（marketplace）",
       "cc-bus 钩子",
+      // 🔴 `70 §10.1`（步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
+      "足迹",
     ]);
-    expect(pageTitles("footprint")).toEqual(["配置面审计", "数据面漂移记账"]);
+    // `70 §10.1`（步 14a）：「配置面审计」→ 改名「足迹」并搬进机器子页 ⇒ 这一页只剩一块。
+    // ⚠ `§10.5` #1 **判不了**：这个顶层页还留不留（剩下那块也没有 origin）——本件不定。
+    expect(pageTitles("footprint")).toEqual(["数据面漂移记账"]);
     // cc-bus 已不在设置里（S6）—— 连页都不该存在。
     expect(
       document.querySelector('.settings-page[data-route-id="cc-bus"]'),
@@ -236,6 +252,11 @@ describe("S2 设置面板分页结构", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();
+    // 🔴 步 2（`70 §1.3 B`）：这两块的 I/O 在它们的**建造函数体里**，从外面推不后
+    // ⇒ 门只能开在「建不建」这一层（形态同 `CC_INTEGRATION_HOST_OS` 那一格）。
+    // 所以这条断言要先点进「应用」—— 它买的仍是**接线**（那一块真被挂上去了、顺序对），
+    // 只是接线现在发生在「这一页第一次被看见」那一刻，不在构造那一刻。
+    document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
     const page = document.querySelector<HTMLElement>(
       '.settings-page[data-route-id="app"]',
     );
@@ -294,10 +315,19 @@ describe("S2 设置面板分页结构", () => {
     document.body.replaceChildren();
     remoteRefresh.mockClear();
     dataRefresh.mockClear();
+    dataLoadNow.mockClear();
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     expect(remoteRefresh).toHaveBeenCalled();
-    expect(dataRefresh).toHaveBeenCalled();
+    // 🔴 步 2（`70 §1.3 B`）：`open()` **不再**无条件 `dataSection.refresh()` ——
+    // 那一发在落地页是「机器」的时候是白发的（`§8` 判据 #3 今天正是被它这一族打破的）。
+    // 字段还在、契约还在，只是放行的时机换成了「这一页首次可见」。
+    expect(dataRefresh, "落地页是「机器」⇒ 打开设置不许碰「应用」页的 I/O").not.toHaveBeenCalled();
+    expect(dataLoadNow, "还没点进「应用」⇒ 连第一发都不许放").not.toHaveBeenCalled();
+    // 点进「应用」——这一刻才放行。**相等断言的反向锚**：上面那两条若因为
+    // 字段被漏赋值（`this.dataSection` 是 undefined）而绿，这一条会红。
+    document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
+    expect(dataLoadNow, "点进「应用」之后第一发必须真的放出去").toHaveBeenCalled();
   });
 
   it("★ 本机页上不出现只对远端有意义的块（S4a 那个半截状态的解药）", async () => {
@@ -337,13 +367,27 @@ describe("S2 设置面板分页结构", () => {
     expect(visibleTitles).toContain("cc-bus 钩子");
   });
 
-  it("★ RemoteSection 挂掉时那四块仍在（隔离不能因为它们依赖机器页而被打破）", async () => {
-    // 审计时真造它抛才发现的：没有机器页 ⇒ slot 无处安放 ⇒ 四块一起消失，
-    // 那就是「一块坏，五块没」。兜底落点让最坏情况只是它们留在列表页上。
-    // 这里用「本机页没注册」来代表那个场景（stub 不注册 = RemoteSection 没跑起来）。
+  it("🔴 步 3：机器页还没注册上来时，列表页上是**骨架**，不是兜底态", async () => {
+    // 🔴 这条**换了判据，不是放宽了判据**。
+    //
+    // 旧版逐字写着「不等 tick：此刻本机页还没注册，**等价于 RemoteSection 挂掉的处境**」
+    // —— 那句「等价」正是 `设计/70 §1.1` 判掉的那个错：**加载中**与**真失败**在屏幕上
+    // 本来就不该等价。而因为机器列表是异步加载的，那个「RemoteSection 抛异常时的最坏
+    // 情况」变成了**每次打开的前 3 秒的默认视图**（用户截图 1 里那一屏就是它）。
+    //
+    // ⇒ 现在：没注册上来 = 加载中 ⇒ slot 藏着、屏上是骨架；
+    //   真失败那一档由 `panel-block-isolation.vitest.ts` 那条（**真让 RemoteSection 抛**）钉。
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
-    // **不等** tick：此刻本机页还没注册，等价于 RemoteSection 挂掉的处境。
+    const page = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machines"]',
+    )!;
+    const slot = page.querySelector<HTMLElement>(".machine-page-sections")!;
+    expect(slot.hidden, "加载中不许把兜底态摆出来").toBe(true);
+    const sk = page.querySelector<HTMLElement>("[data-skeleton]");
+    expect(sk, "加载中要有骨架（不是空的，也不是兜底态）").not.toBeNull();
+    expect(sk!.getAttribute("aria-busy")).toBe("true");
+    // 隔离没有因此被打破：那几块**都还在 DOM 里**，只是先藏着、等机器页来了就搬走。
     expect(pageTitles("machines")).toEqual([
       "backend 开关",
       "连接（远端）",
@@ -352,7 +396,22 @@ describe("S2 设置面板分页结构", () => {
       "MCP",
       "插件（marketplace）",
       "cc-bus 钩子",
+      "足迹",
     ]);
+  });
+
+  it("🔴 步 3 的另一半：机器页注册上来了 ⇒ 骨架撤掉、slot 不再藏着", async () => {
+    // 反向锚：上一条若因为「slot 永远藏着」而绿，这一条会红。
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    const slot = document.querySelector<HTMLElement>(".machine-page-sections")!;
+    expect(slot.hidden).toBe(false);
+    const page = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machines"]',
+    )!;
+    const sk = page.querySelector<HTMLElement>("[data-skeleton]");
+    expect(sk?.hidden ?? true, "机器页来了，列表页上那块骨架就该收起来").toBe(true);
   });
 
   it("★ 远端机器页拆成横向四栏（连接/组件/账号/工具），本机页不拆", async () => {
@@ -374,7 +433,7 @@ describe("S2 设置面板分页结构", () => {
     expect(strip, "远端机器页必须分栏").not.toBeNull();
     expect(
       [...strip!.querySelectorAll(".settings-nav-item")].map((b) => b.textContent),
-    ).toEqual(["连接", "组件", "账号", "工具"]);
+    ).toEqual(["连接", "组件", "账号", "工具", "足迹"]);
     // 「连接」是落地栏，同一时刻只有它可见
     const visible = [...strip!.querySelectorAll<HTMLElement>(".settings-page")].filter(
       (e) => !e.hidden,

@@ -1,19 +1,21 @@
 /**
- * 设置面板「诊断」区（v2.0.0 落地 issue #4）。
+ * 设置面板「日志」区（v2.0.0 落地 issue #4；`70 §10.3` 09-19 改名）。
  *
  * 给用户：
- * - 看到 log 文件路径 + 当前大小
+ * - 看到日志文件路径 + 当前大小
  * - 切日志级别（trace/debug/info/warn/error/off），立即生效不用重启
  * - 切错误 toast 开关
- * - 切是否写 log 文件（需要重启）
- * - 一键打开 log 文件 / log 目录
+ * - 切是否写日志文件（需要重启）
+ * - 一键打开日志文件 / 日志目录
  *
- * 之所以独立 section 不混进字体/颜色：诊断是「出问题才用」的工具，跟外观无关。
+ * 之所以独立 section 不混进字体/颜色：它是「出问题才用」的工具，跟外观无关。
  * 参照 cc_integration.ts 的 section 范式。
  */
 
 import { commands } from "../ipc/commands";
 import { makeInfoIcon } from "./info-icon";
+import { holdSkeletonHeight } from "./skeleton";
+import { withPending } from "./pending";
 import { showActionFailureToast } from "../error-toast";
 import { formatBytes } from "../format";
 import { markRestartNeeded } from "./restart-notice"; // S7：待生效改动的唯一去处
@@ -37,16 +39,21 @@ const LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "off"] as const;
 export interface DiagnosticsSectionOptions {
   /**
    * v2.x (issue #7)：被 CollapsibleGroup 包起来时传 `headless: true` —— 不渲染
-   * 自己的「诊断」小标题（用 collapsible header 那一行即可，避免重复）。
+   * 自己的「日志」小标题（用 collapsible header 那一行即可，避免重复）。
    */
   headless?: boolean;
 }
 
 /** 给 collapsible header 复用的 i 图标说明文字。headless 模式丢失了内嵌图标 → 让外面挂一下。 */
+// 🔴 `70 §10.3` 差项 2/3：原文逐字是「monitor 是 GUI 应用（`windows_subsystem=windows`），
+//    没有 stderr 控制台」＋三处 `tracing` / `tracing layer` / `tracing::error!`。
+//    前者正是 `§2.4` 那条纪律逐字禁的「**文件路径以外的源码住址**」，
+//    后者是 `91 §2.1` 那一族的**内部标识符外泄** —— 用户不需要知道我们用的是哪个日志库。
+//    ⇒ 说**用户看得见的事实**（日志写到哪、什么时候弹提示），不说我们是怎么实现的。
 const DIAGNOSTICS_INFO_TEXT =
-  "monitor 是 GUI 应用（windows_subsystem=windows），没有 stderr 控制台。\n" +
-  "所有后端 tracing 输出写到 ~/.claude/work/logs/monitor.YYYY-MM-DD.log。\n" +
-  "ERROR 级别同时弹右下角红色 toast，点击 toast 直接跳到 log 文件。";
+  "monitor 没有可以看的控制台窗口，所以后端的输出都写进日志文件：\n" +
+  "~/.claude/work/logs/monitor.YYYY-MM-DD.log。\n" +
+  "出错时同时在右下角弹一条提示，点它直接打开日志文件。";
 
 export class DiagnosticsSection {
   private root: HTMLElement;
@@ -68,11 +75,23 @@ export class DiagnosticsSection {
   constructor(opts: DiagnosticsSectionOptions = {}) {
     this.headless = opts.headless ?? false;
     this.root = this.build();
-    void this.refresh();
+    // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
+    // 原来这里是 `void this.refresh()`，而它一次发 **2 发** IPC
+    // （`get_diagnostics_config` + `get_log_file_info`），且这一块住「应用」页、
+    // 落地页是「机器」⇒ 那 2 发在用户还没点进「应用」之前就打出去了。
+    // 现在由宿主（`panel.ts`）在该页首次可见时调 `loadNow()`。
   }
 
   get element(): HTMLElement {
     return this.root;
+  }
+
+  /**
+   * 步 2：宿主在「这一页首次可见」时调它。
+   * ⚠ **幂等由宿主保证**（`panel.ts::pagesLoaded`）——两处都判会挡住 `open()` 的重读。
+   */
+  loadNow(): void {
+    void this.refresh();
   }
 
   private build(): HTMLElement {
@@ -84,7 +103,16 @@ export class DiagnosticsSection {
       // 标题 + 信息图标
       const heading = document.createElement("div");
       heading.className = "settings-group-title";
-      heading.textContent = "诊断";
+      // 🔴 `70 §10.3`「名字」：**「诊断」→「日志」**。
+      // 理由是**重名**，不是 R5：`§5.3` 把机器列表页那块「还差什么（诊断汇总）」
+      // 改名成「诊断」，那一落地设置面板里就会同时有两个「诊断」——
+      // 一个是「这台机器还缺什么」，一个是「monitor 的日志开关」，两者毫无关系。
+      // ⇒ 这一块让名。它的全部内容（写不写日志文件 / 级别 / 错误提示 / 路径 / 大小 / 打开）
+      //   都是日志的事。
+      // ⚠ `§10.3` 逐字要求这次改名与 `§5.3` 那个改名**同拍**，怕的是中间有一段时间
+      //   两个「诊断」并存。**本拍先改这一个**：先让名不会造出那一档，后改反而会
+      //   —— 顺序上这是安全的那一半，另一半（`§5.3` 那个改名）还没落地。
+      heading.textContent = "日志";
       heading.appendChild(makeInfoIcon(DIAGNOSTICS_INFO_TEXT));
       group.appendChild(heading);
     }
@@ -99,13 +127,19 @@ export class DiagnosticsSection {
     logRow.appendChild(this.logEnabledCheckbox);
     const logLabel = document.createElement("span");
     logLabel.className = "settings-checkbox-label";
-    logLabel.textContent = "启用 log 文件";
+    // `70 §10.3` 差项 4（中英混写）＋ 那条「R5 规矩文字命中、检法抓不到」的建议：
+    // 「启用 log 文件」是**动宾**且中英混写 ⇒ 改成名词短语「日志文件」，
+    // 「启用不启用」由复选框这个控件本身表达。
+    // ⚠ **「复选框标签要不要给 R5 开豁免」这件事本篇判不了**（`§10.5` #3：规矩禁祈使、
+    //   检法只扫问号与口语词，两者不一致，是 `91 §4` 的洞）—— 这里只按建议改措辞，
+    //   **不动 R5 的检法**，也不声称这一格已决。
+    logLabel.textContent = "日志文件";
     logRow.appendChild(logLabel);
     logRow.appendChild(
       makeInfoIcon(
         "按天滚动写入 monitor.YYYY-MM-DD.log，保留最近 3 天。\n" +
-          "关闭后已存在的 log 文件不会被删除，但不再写新内容。\n" +
-          "切换此项需重启 monitor 才生效（tracing layer 启动时定型）。",
+          "关闭后已存在的日志文件不会被删除，但不再写新内容。\n" +
+          "改这一项要重启 monitor 才生效。",
       ),
     );
     group.appendChild(logRow);
@@ -130,7 +164,7 @@ export class DiagnosticsSection {
     levelRow.appendChild(
       makeInfoIcon(
         "info（默认）：每个 IPC / watcher 关键步骤都记一行。\n" +
-          "debug：加细节，约 10× 体积。诊断疑难时短期开启用。\n" +
+          "debug：加细节，约 10× 体积。查疑难问题时短期开启用。\n" +
           "warn / error：只记问题。\n" +
           "off：完全不记。\n" +
           "✓ 切换立即生效，无需重启。",
@@ -148,13 +182,13 @@ export class DiagnosticsSection {
     toastRow.appendChild(this.errorToastCheckbox);
     const toastLabel = document.createElement("span");
     toastLabel.className = "settings-checkbox-label";
-    toastLabel.textContent = "后端 ERROR 时显示右下角 toast";
+    toastLabel.textContent = "错误提示";
     toastRow.appendChild(toastLabel);
     toastRow.appendChild(
       makeInfoIcon(
-        "勾选后：tracing::error! 触发右下角红色 toast，6 秒自动消失，点击直接打开 log 文件。\n" +
-          "限频 60s 内最多 20 条，避免错误风暴时屏幕被刷满。\n" +
-          "✓ 切换立即生效，无需重启。",
+        "勾选后：后端报错时右下角弹一条红色提示，6 秒自动消失，点它直接打开日志文件。\n" +
+          "限频 60 秒内最多 20 条，避免错误风暴时屏幕被刷满。\n" +
+          "改这一项立即生效，不用重启。",
       ),
     );
     group.appendChild(toastRow);
@@ -164,13 +198,18 @@ export class DiagnosticsSection {
     pathRow.className = "settings-row settings-row-stack";
     const pathLabel = document.createElement("span");
     pathLabel.className = "settings-label";
-    pathLabel.textContent = "log 文件";
+    pathLabel.textContent = "文件位置";
     pathRow.appendChild(pathLabel);
     this.pathSpan = document.createElement("span");
     this.pathSpan.className = "settings-cc-autolaunch-path-value";
     this.pathSpan.style.fontFamily = "var(--font-mono, monospace)";
     this.pathSpan.style.fontSize = "11px";
     this.pathSpan.style.wordBreak = "break-all";
+    // 步 1（`70 §10.3` 差项 5）：**这一块骨架基本不欠** —— 结构在 `build()` 里就搭齐、
+    // 刷新只改文本。唯一会长高的是这条 `word-break: break-all` 的路径：
+    // 从 `—` 变成一条可换行的长路径 ⇒ 它下面的东西往下掉。
+    // ⇒ 只钉这一行的高度，别的不动（不欠的地方不假装补）。
+    holdSkeletonHeight(pathRow, "logs");
     this.pathSpan.textContent = "—";
     pathRow.appendChild(this.pathSpan);
     group.appendChild(pathRow);
@@ -192,23 +231,30 @@ export class DiagnosticsSection {
     this.openFileBtn = document.createElement("button");
     this.openFileBtn.type = "button";
     this.openFileBtn.className = "settings-btn settings-btn-secondary";
-    this.openFileBtn.textContent = "打开 log 文件";
-    this.openFileBtn.addEventListener("click", () => void this.openFile());
+    this.openFileBtn.textContent = "打开日志文件";
+    // 步 4·E（`70 §1.3 E`）：这三个都会走一次 IPC，期间按住对应的按钮。
+    this.openFileBtn.addEventListener("click", () =>
+      void withPending(this.openFileBtn, "打开中…", () => this.openFile()),
+    );
     btnRow.appendChild(this.openFileBtn);
 
     const openDirBtn = document.createElement("button");
     openDirBtn.type = "button";
     openDirBtn.className = "settings-btn settings-btn-secondary";
-    openDirBtn.textContent = "打开 log 目录";
-    openDirBtn.addEventListener("click", () => void this.openDir());
+    openDirBtn.textContent = "打开日志目录";
+    openDirBtn.addEventListener("click", () =>
+      void withPending(openDirBtn, "打开中…", () => this.openDir()),
+    );
     btnRow.appendChild(openDirBtn);
 
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
     refreshBtn.className = "settings-btn settings-btn-secondary";
     refreshBtn.textContent = "刷新信息";
-    refreshBtn.title = "重新读 log 目录看当前文件大小";
-    refreshBtn.addEventListener("click", () => void this.refresh());
+    refreshBtn.title = "重新读日志目录看当前文件大小";
+    refreshBtn.addEventListener("click", () =>
+      void withPending(refreshBtn, "读取中…", () => this.refresh()),
+    );
     btnRow.appendChild(refreshBtn);
     group.appendChild(btnRow);
 
@@ -234,13 +280,13 @@ export class DiagnosticsSection {
         this.sizeSpan.textContent = formatBytes(info.current_size_bytes);
         this.openFileBtn.disabled = false;
       } else {
-        this.pathSpan.textContent = `（log 目录: ${info.dir} —— 还没产生 log 文件）`;
+        this.pathSpan.textContent = `（日志目录：${info.dir} —— 还没产生日志文件）`;
         this.sizeSpan.textContent = "—";
         this.openFileBtn.disabled = true;
       }
     } catch (e) {
       console.warn("get_log_file_info failed:", e);
-      this.pathSpan.textContent = `(无法读取 log 目录: ${String(e)})`;
+      this.pathSpan.textContent = `（读不到日志目录：${String(e)}）`;
     }
   }
 
@@ -265,10 +311,10 @@ export class DiagnosticsSection {
         //
         // 两者并存是刻意的：toast 是「刚刚这一下的回执」（事件），
         // 条子是「还欠着没生效」（状态）—— S7 的判据表分的正是这两类。
-        markRestartNeeded("诊断日志开关");
+        markRestartNeeded("日志文件开关");
         showActionFailureToast(
           "设置已保存",
-          "切换「启用 log 文件」需重启 monitor 才生效。",
+          "改「日志文件」这一项要重启 monitor 才生效。",
           { level: "info", durationMs: 6000 },
         );
       }
