@@ -207,13 +207,19 @@ impl TeeSink {
     ///
     /// ⚠ `K-H2` 加了 `account` 这一格 —— 路由键有三段，tee 行就该有三格。
     /// **不合并进 `key`**：那正是「一个值装了两件事」，本工作区最贵的那族病。
-    pub(crate) fn open(&self, agent: &str, account: &str, key: &str) -> u64 {
+    /// ⚠⚠ 🔴 **条 48：参数用位置名，线上那三个字段名一个字节都不动。**
+    ///
+    /// 收的是一个 [`super::StreamId`]（`{ key: RouteKey{seg1,seg2}, stream }`），
+    /// 而写出去的仍然是 `"agent"` / `"account"` / `"key"` 三个字段 ——
+    /// **那是线契约**（`src/doc/IPC-PROTOCOL.md` 那一行 ＋ tee 的下游消费者），
+    /// 改它就是改行为。⇒ 改的只有**这一层的类型**，线上零变化。
+    pub(crate) fn open(&self, id: super::StreamId<'_>) -> u64 {
         let seq = self.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let line = format!(
             "{{\"__meta__\":{{\"source\":\"relay\",\"proto\":\"passthrough-v0\",\"agent\":{},\"account\":{},\"key\":{},\"seq\":{}}}}}\n",
-            json_str(agent),
-            json_str(account),
-            json_str(key),
+            json_str(&id.key.seg1),
+            json_str(&id.key.seg2),
+            json_str(id.stream),
             seq
         );
         self.write_line(&line);
@@ -229,12 +235,12 @@ impl TeeSink {
     /// `json.loads` 两侧解重复键都是 **last-wins** ⇒ **这一行的路由键被上游改写**；
     /// 上游发一段不是 JSON 的文本 ⇒ 整行**不可解析**，而 `DoD-3㈠` 的 acceptor
     /// 逐字要「其后每行可解析」。判据见 `an_upstream_payload_cannot_break_out_of_the_event_field`。
-    pub(crate) fn event(&self, agent: &str, account: &str, key: &str, payload: &str) {
+    pub(crate) fn event(&self, id: super::StreamId<'_>, payload: &str) {
         let line = format!(
             "{{\"agent\":{},\"account\":{},\"key\":{},\"event\":{}}}\n",
-            json_str(agent),
-            json_str(account),
-            json_str(key),
+            json_str(&id.key.seg1),
+            json_str(&id.key.seg2),
+            json_str(id.stream),
             json_str(payload)
         );
         self.write_line(&line);
