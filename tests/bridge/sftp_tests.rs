@@ -1418,3 +1418,110 @@ fn safe_backend_path_accepts_convention_rejects_suspicious() {
         "/home/pi/.cc-monitor/../../../etc/x"
     )); // 含 ..
 }
+
+/// ★★〔步 23b · 2026-09-19〕**SFTP 那条依赖真的换成了 `russh-sftp` 3.x，而且钉住了。**
+///
+/// `设计/60 §6.5.3` 现打核过 5 个候选（crates.io / GitHub / docs.rs 三处 API），
+/// 结论逐字是「选定的库是 **`russh-sftp` 3.0.0**」。而本仓此前钉的是 `russh-sftp = "2"`
+/// —— 本件把它抬到 `"3"`，本条判据就是那一刀的钉子。
+///
+/// # 为什么要一条判据，而不是「改完就算」
+///
+/// `Cargo.toml` 里的一个版本区间**掉回去是无声的**：一次 `cargo update` 的误操作、
+/// 一次 merge 取错边，都能把 `"3"` 变回 `"2"` 而全仓一条不红 ——
+/// 而 `§6.5.3` 那张候选表里全部的论证（传输泛型 `new<S>` · `tokio` 没开 `net` feature
+/// 所以它结构上开不了 socket · 扩展集）都是**对着 3.0.0** 做的。
+///
+/// # 量法：**两侧各读一遍，再互相对账**
+///
+/// 只钉声明面（`Cargo.toml`），锁定面掉了无声；只钉锁定面，声明面放宽了也无声。
+/// ⇒ 两侧都现打抠出来，各自要求**恰好命中一次**（抽取器坏了会零命中地绿），
+/// 再断言两边的主版本号相等。
+///
+/// # 🔴 它买到的与**买不到**的（逐字，不许含糊）
+///
+/// - **买到**：盘上这两份文本都说「3.x」，且互相对得上。加上 `cargo test` 本身
+///   （本条判据要跑起来，整棵树就得先用这一版**编过**），
+///   ⇒ 「3.x 编得过、API 形状对得上」这件事是**本条所在的这一趟**顺带证明的。
+/// - 🔴 **买不到：「连上一台真远端跑过一次 SFTP」。** 本仓**没有真远端** ——
+///   本条只读盘上两份文本，**一个字节都没过网**。`设计/60 §7` 那条「未实测」照旧成立。
+/// - 🔴 **买不到：3.x 与 2.x 的行为差异有没有被消化。**（比如 3.0.0 给
+///   `read` / `write` 各补了一次收尾、`io::ErrorKind::TimedOut` 现在会映射成超时错。）
+///   那几条要真跑才量得出来，本条**不出声**。
+/// - 🔴 **买不到：许可。** `russh-sftp` 3.0.0 是 Apache-2.0（本件现打核过它那份
+///   `Cargo.toml` 与 `LICENSE`），但**本条判据不读许可** —— 它只读版本号。
+///
+/// # ⚠ 死值验的覆盖面，如实登记（09-19 现打）
+///
+/// **声明面那条断言死值验过**：把 `russh-sftp = "3"` 改回 `"2"` ＋ `cargo update --precise 2.3.0`
+/// ⇒ 本条当场红，报「声明面掉版本了」。逐字节还原后 sha256 对上。
+///
+/// 🔴 **锁定面那两条（包块版本 · 两侧主版本对账）没能单独死值验**，理由写清楚：
+/// 门禁跑的是 `--locked`，**声明面与锁定面不一致时 cargo 自己就先失败了**
+/// ⇒ 构造不出「声明面还是 3、锁定面掉到 2」这个状态。
+/// ⇒ 那两条今天是**加固**，不是被验过的牙。**别把它们读成「验过了」。**
+#[test]
+fn the_sftp_dependency_is_really_on_russh_sftp_three() {
+    const CRATE: &str = "russh-sftp";
+    // ── 声明面：`src/bridge/Cargo.toml` 里那一行 ──────────────────────
+    let manifest = include_str!("../../src/bridge/Cargo.toml");
+    let declared: Vec<&str> = manifest
+        .lines()
+        .filter_map(|l| l.strip_prefix(&format!("{CRATE} = ")))
+        .collect();
+    assert_eq!(
+        declared.len(),
+        1,
+        "在 `src/bridge/Cargo.toml` 里抠到 {} 行 `{CRATE} = …`（要恰好 1 行）—— \
+         抽取器坏了或者那条依赖没了，本条会零命中地绿",
+        declared.len()
+    );
+    let declared = declared[0].trim().trim_matches('"');
+    assert!(
+        declared.starts_with('3'),
+        "声明面掉版本了：`{CRATE} = {declared}` —— `设计/60 §6.5.3` 选定的是 **3.0.0**，\
+         那张候选表里全部的论证都是对着 3.x 做的"
+    );
+
+    // ── 锁定面：`src/bridge/Cargo.lock` 里那个包块 ────────────────────
+    let lock = include_str!("../../src/bridge/Cargo.lock");
+    let name_line = format!("name = \"{CRATE}\"");
+    let locked: Vec<&str> = lock
+        .split(&name_line)
+        .skip(1)
+        .filter_map(|after| {
+            after
+                .lines()
+                .find_map(|l| l.strip_prefix("version = "))
+                .map(|v| v.trim().trim_matches('"'))
+        })
+        .collect();
+    assert_eq!(
+        locked.len(),
+        1,
+        "在 `src/bridge/Cargo.lock` 里抠到 {} 个 `{CRATE}` 包块（要恰好 1 个）：{locked:?} —— \
+         两份说明两个版本同时在树上，那正是 `lockfile_conflict_guard` 那一族要治的病",
+        locked.len()
+    );
+    let locked = locked[0];
+    assert!(
+        locked.starts_with("3."),
+        "锁定面掉版本了：lock 里是 `{CRATE} {locked}`，而声明面写着 `{declared}` —— \
+         声明放宽 / lock 没跟上，两者任一单独看都像没事"
+    );
+
+    // ── 两侧对账：主版本号必须相等 ──────────────────────────────────
+    let major = |v: &str| {
+        v.trim_start_matches(['^', '=', '~'])
+            .split('.')
+            .next()
+            .unwrap_or("")
+            .to_string()
+    };
+    assert_eq!(
+        major(declared),
+        major(locked),
+        "声明面（{declared}）与锁定面（{locked}）的主版本对不上 —— \
+         只钉一侧的话，另一侧掉下去是无声的"
+    );
+}
