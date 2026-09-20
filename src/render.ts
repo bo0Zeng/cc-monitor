@@ -180,6 +180,51 @@ export interface RenderMarkdownOptions {
  * "from $$5 to $$10"）会误判为公式——与既有 `nonStandard:true` 对单 `$` 的误判同源、不新增暴露面。
  */
 export function preprocessMath(md: string): string {
+  // `设计/17 §2.6` 前置闸。见 `needsMathPreprocess` 头注。
+  if (!needsMathPreprocess(md)) return md;
+  return preprocessMathUnguarded(md);
+}
+
+/**
+ * `设计/17 §2.6`：**六遍全文正则的前置闸**。
+ *
+ * 为什么值：`render.ts` 自己在上面写着「多数消息不含 LaTeX」，而
+ * `preprocessMathUnguarded` 里那六遍 `replace` 是**无条件**从头扫到尾的。
+ * 【现打】44 万字符 **5.81 ms**（`设计/17 §2.6`）⇒ 绝大多数调用从六遍全文正则
+ * 降到最多五次 `indexOf`。读数见 `tests/evidence/W2-17s7-readings.md`。
+ *
+ * 闸认的记号 = 下面那六遍**唯一可能改到东西**的入口，逐条对得上：
+ *  - `\r` ⇒ 第 1 遍（CRLF/CR 归一）
+ *  - `\[` / `\(` ⇒ 第 2 遍（翻译成 `$$`/`$`）
+ *  - `$` ⇒ 第 3 遍（块级 `$$` 规整）
+ *  - 第 2a/2b 遍（代码围栏 / 行内 code 打 stub）与第 4 遍（还原）是**一对**：
+ *    中间那两遍没东西可改时，打 stub 再原样还原**净效果是恒等** ⇒ 代码记号
+ *    （``` ``` ``` / `~~~` / 反引号）**不必**进闸。
+ *  - 🔴 `\u0000` ⇒ **规格那 4 条之外、本轮现打补的第 5 条**。第 4 遍的还原正则认的是
+ *    `\u0000M<数字>\u0000`；正文里若**本来就**带着这个串，慢路会把它替换成
+ *    `stash[i]`（多半是 `undefined`，或者错位成别人的代码块）。那是一条**既存**缺陷，
+ *    本轮**不修**（它与本条改动无关，修它要改语义）。把它放进闸里，只是为了让
+ *    「**走快路 ⇒ 逐字节等于走慢路**」这句话**无条件成立** —— 判据钉的就是这句，
+ *    留个例外它就只能钉一半。
+ *
+ * 导出仅为单测：判据要能**独立**数出「语料里几条走了快路」，不能拿被测函数自己的
+ * 返回值反推（那样恒等两侧同源，会恒真）。
+ */
+export function needsMathPreprocess(md: string): boolean {
+  return (
+    md.indexOf("$") >= 0 ||
+    md.indexOf("\\[") >= 0 ||
+    md.indexOf("\\(") >= 0 ||
+    md.indexOf("\r") >= 0 ||
+    md.indexOf("\u0000") >= 0
+  );
+}
+
+/**
+ * 闸之前的**原样实现**（`设计/17 §2.6` 只加闸、一个字节都没动这里面）。
+ * 导出仅为单测：判据拿它当「慢路」的对照组，逐条对拍快路的返回值。
+ */
+export function preprocessMathUnguarded(md: string): string {
   // #42:先把 CRLF/CR 归一成 LF——preprocessMath 跑在 marked 内部换行归一**之前**,下面所有基于 `\n`
   // 的块规则/代码保护才对 Windows(`\r\n`)行尾可靠(否则 `$$\r\n…` 的块识别不出、露字面 `$$`)。
   md = md.replace(/\r\n?/g, "\n");
