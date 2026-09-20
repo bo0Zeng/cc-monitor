@@ -20,15 +20,17 @@
 //!   并把它写在这里，免得下一个人以为条 49 已经落地。
 //! - **`DEFAULT_UPSTREAM` 还是一个进程级的默认**，不是每 agent 一格（条 59）。同上，14-ii。
 
-mod policy;
+pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（层 2 搬家带过来的）
+mod policy; // 热重载（`20 §4`：`accounts/policy.rs`）
+pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**
 
 pub(crate) use policy::Reload;
 
-use super::table::{self, RoutingTable, Row};
 use super::upstream::Base;
 use super::{Destination, Destinations, Mode, RouteKey};
 use creds_core::store::AuthStyle;
 use std::io::Write;
+use table::{RoutingTable, Row};
 
 /// 上游基址的环境变量名。**它住层 2** —— `20 §4`「常量跟着职责走」那一条。
 ///
@@ -112,7 +114,7 @@ impl Accounts {
         if r.seen_is(&now) {
             return;
         }
-        let mut loaded = super::creds::load(r.path());
+        let mut loaded = creds::load(r.path());
         // ★★ `D2 阻-2`：**解析坏了就不换表。**
         //
         // `creds::load` 在「读不动 / 不是合法 JSON」时回的是 `accounts: 空 + problem: Some(_)`
@@ -132,7 +134,7 @@ impl Accounts {
         // ⚠ `K-R1`：`notes` 也要跟着走这一趟 —— 一次重载把某一行改成非默认行为
         //   （加了路径前缀 / 换了鉴权头形状）而**只有第一次启动才说**的话，
         //   那句话就成了「说过一次的历史」，而不是「现在盘上是这样」。
-        super::creds::announce(
+        creds::announce(
             &loaded,
             table.len(),
             &rejected,
@@ -256,17 +258,17 @@ pub(crate) fn load_credentials(
     std::path::PathBuf,
     Option<(std::time::SystemTime, u64)>,
 ) {
-    let path = super::creds::resolve_path(get, home);
+    let path = creds::resolve_path(get, home);
     // `D1 阻-2`：把**这一刻**那份文件的 mtime 一起记下来 —— 重载靠它判「动过没有」。
     // ⚠ 顺序：**先 stat 再读**。反过来的话，「读完到 stat 之间那次写」会被记成「已经读过了」，
     //   那一次修改就永远不会被重载看见（一个会留下来的错，不是一次抖动）。
     let stamp = policy::stamp_of(&path);
-    let mut loaded = super::creds::load(&path);
+    let mut loaded = creds::load(&path);
     // ★ 装表这一步（`K-H2`）**在出声之前**：`announce` 要印的「有几行进得了表」
     //   与「哪几行进不去、为什么」都是它算出来的。
     //   ⚠ `take` 是因为 `AccountEntry` 里装着 `SecretKey`，而那个类型**刻意不给 `Clone`**
     //     （`K-H2a`：少一条能复制明文的路就少一个出口）⇒ 只能把所有权交出去。
     let (table, rejected, notes) = table::build(std::mem::take(&mut loaded.accounts), default_base);
-    super::creds::announce(&loaded, table.len(), &rejected, &notes, out);
+    creds::announce(&loaded, table.len(), &rejected, &notes, out);
     (table, path, stamp)
 }

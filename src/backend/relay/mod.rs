@@ -32,10 +32,12 @@
 //! 见 `payload.rs` 那句逐字）· `relay-credentials.json`（用户家目录里已经存在的文件）。
 //! 读数与判词住 `调研/真相源/94-步8改名-判据影响面地图.md` 的 `A2` / `A3`。
 //!
-//! ⚠ 本层（`relay/`）里**真正属于层 2 的住户**是 `creds.rs` 与 `table.rs`
-//! （`设计/90 §0.5.3` 目标树把它们点名搬去后端）。**本轮不搬**，只把名字上的错层治掉：
-//! `payload.rs` 那个判「要不要改写端点」的函数已改名 `apikey_endpoint_for`，
-//! 「中转表」这个说法已换成「apikey 表」。
+//! ⚠ **〔`设计/20 §7` 步 2，本轮搬了〕** 上一版这里逐字写着「本层里真正属于层 2 的住户
+//! 是 `creds.rs` 与 `table.rs`……**本轮不搬**」。今天它们住 `relay/accounts/`，
+//! 与 `impl Destinations`（那张决策表的唯一实现）、热重载同一层。
+//! ⚠ 它们**仍在 `relay/` 这棵目录树下** —— 那是写区边界（本拍写区逐字是
+//! 「`src/backend/relay/` 及它下面新建的目录」），不是设计终点：
+//! `90 §0.5.3` 的目标树要它们**出 `relay/`**，那一步归改名/归属那一路。
 //!
 //! # 它做四件事（`K9` 裁定二那四条硬要求，逐字）
 //!
@@ -198,31 +200,32 @@
 //!   伸手进 `relay::table::…` 这一形，**今天没有判据挡着**（`mod relay;` 声明在 `main.rs`，
 //!   它写的是**裸** `relay::…`，锚点对不上）。如实登记，别读成「全体没有」。
 
-mod accounts; // 层 2 · 账号层：`resolve` 那张决策表的**唯一**住址（`设计/20 §3.1`）
+// ── 层 2（`设计/20 §7` 步 2：`table.rs`/`creds.rs` 都搬进去了）────────────────
+mod accounts; // 账号层：`resolve` 那张决策表的**唯一**住址（`20 §3.1`）＋ 表 ＋ 凭据 ＋ 热重载
+              // ── 层 1 · 搬字节那半 ────────────────────────────────────────────────────────
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/bind_guard.rs"]
 mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它的头注）
-mod creds; // `K-H2a`：中转从哪儿拿 key（**只读**）+ 读之前查一次权限
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/creds_guard.rs"]
 mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
 mod http1;
+mod listen; // `20 §4`：监听面 —— bind / accept / 在途上界 / 起监听之前的接线
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/nodelay_guard.rs"]
 mod nodelay_guard; // `重要-5`：Nagle 零命中守卫，同样单住一个文件
 mod route;
-mod server;
-mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**（`Row` 住私有 `mod sealed`）
+mod server; // `20 §4` 要的名字是 `exchange.rs`；改不了名的理由整段写在它的头注里
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/table_guard.rs"]
-mod table_guard; // `K-H2` `KH1`：决定点三条腿里的两条（焊接点 · 开上游连接点），整体 #[cfg(test)]
+mod table_guard; // `K-H2` `KH1`：决定点那几条腿（焊接点 · 开上游连接点 · 层 1 无默认上游）
 mod tee;
 mod upstream;
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/wire_golden.rs"]
 mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节金标准（三条线各一份手写期望）
 
-pub use server::run;
+pub use listen::run;
 
 // ══════════════════════════════════════════════════════════════════════════
 //  层间契约（`设计/20 §2`）—— 层 1 问一句，层 2 答一句，**层 1 不做任何判断**

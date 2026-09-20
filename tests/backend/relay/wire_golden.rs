@@ -35,9 +35,10 @@
 //!   **必须有 `Some(...)` 那几格垫着** —— 由 [`GOLDEN_CASES_REACHING_UPSTREAM`]
 //!   再做一次相等断言：真到上游的格数少了，同样红。
 
+use super::accounts::table::RoutingTable;
 use super::accounts::Accounts;
-use super::server::{listen, serve, Relay};
-use super::table::RoutingTable;
+use super::listen::{listen, serve};
+use super::server::Relay;
 use super::tee::TeeSink;
 use super::upstream::Base;
 use creds_core::store::AuthStyle;
