@@ -1,0 +1,791 @@
+//! 〔步 24f〕**`files-read` 能力声明的护栏** —— `设计/96 §2.9` 三条硬边界的机器形态。
+//!
+//! # `K-G6` `KG62`：性质与人群，两行逐字（各自只许有一句）
+//!
+//! - **它守的性质是**：这一族**声明出去的东西**与**实现真的在做的事**对得上 —— 副作用档（只读）· 能力集在每个 target 上相等 · 保鲜机制逐 target 如实分开声明 · 重走周期可查询。
+//! - **它扫的人群是**：`src/backend/files/` 下递归全部 `.rs` 的**整份源码文本**（含注释，fail-closed，与 `readonly_guard` 默认层同一条口径），外加 `files::CAPABILITIES` / `files::FRESHNESS` 两张声明表本身。
+//!
+//! # 🔴 为什么是这一份，而不是靠 `readonly_guard` 兜底
+//!
+//! `设计/96 §2.9` 边界① 逐字：
+//!
+//! > 这一条要进 `CAPABILITIES` 的语义，**不是注释**：将来谁往这一族里加一个写操作，
+//! > **能力声明这一侧就该先红**，而不是靠 `readonly_guard` 兜底 ——
+//! > 两道都要，但声明那道更早。
+//!
+//! ⇒ 本份就是「声明那道」。它与 `readonly_guard` 的关系写清楚，免得被当成重复：
+//!
+//! | | `readonly_guard` | 本份 |
+//! |---|---|---|
+//! | 人群 | **整个后端** crate 的生产段 | **只有这一族** |
+//! | 判的是 | 「有没有写盘的形状」——一条全局禁令 | 「**声明**的副作用档 == 从实现**派生**的副作用档」 |
+//! | 红的时候在说 | 「你违反了那条铁律」 | 「你的**声明是假的**」 |
+//! | 加一条写操作时 | 红（默认层当场） | 红（本份的相等断言），**而且它指的是声明那一侧** |
+//!
+//! 两道都会红，这是刻意的（`设计/96 §2.9` 逐字「两道都要」）。
+//!
+//! # ⚠ 它**买不到**什么（逐条，别读宽）
+//!
+//! 1. **派生用的是 needle 表，是黑名单不是白名单。** 列不全 ——
+//!    换一个命名空间的写法（`std::os::…` 那一族）本份看不见。
+//!    那一半由 `readonly_guard` 的**白名单**层接着（它按动词收人、默认拒绝），
+//!    而本份买的是「**声明这一侧先出声**」，不是完备性。
+//! 2. **它不判那几行 `what` / `gap` 说得对不对**（同 `spawn_registry` 那条已登记的边界）：
+//!    钉的是「说得出来」＋「说的不是三份一样的话」，不是「真的想过」。
+//! 3. **`targets` 那一栏是声明，不是编译结果。** 「这四个 target 上都编得过」的真判据是
+//!    门禁的 `muslbuild` / `winchk-backend` 那两格，本份钉不到。
+//!    ⚠ 而 macOS 那一格**两道都没有**（本仓没有 darwin 的编译门禁），如实登记。
+
+use super::*;
+
+use crate::files::index::tests::resident_lock;
+
+/// `设计/96 §2.9`「这一族有哪些」那张表里的四个名字，**逐字抄**。
+///
+/// 🔴 抄一份在这里是刻意的：它与 [`CAPABILITIES`] 构成**两向**对拍 ——
+/// 一向治「设计里有而实现没声明」（能力漏了），一向治「实现声明了而设计里没有」
+/// （偷偷长出一条没人裁过的能力）。只判一向，另一向那种失效永远逃得掉。
+const REGISTERED: &[&str] = &["files.find", "files.index.status", "files.ls", "files.stat"];
+
+/// 「改动盘上东西」的动词 —— **派生副作用档用的 needle**。
+///
+/// ⚠ 它不是登记表，是一张 needle 表（`scanning_guard_registry` 那边的
+/// `NOT_A_REGISTRY_TABLE` 把这两类分开过）。
+///
+/// 🔴 **运行时拼**：直接写成字面量的话，本表自己就在本族目录之外，本来不会自伤；
+/// 但同一批字面量也在 `readonly_guard` 的禁词表上，而那条判据**连注释一起扫** ——
+/// 把它们原样写进任何一份住 `src/backend/` 的文件里都会当场红。
+/// 本文件住 `tests/backend/`（在那条判据的人群之外），所以这里可以写字面量；
+/// **拼**的理由只有一个：让「为什么这几个词危险」有地方写，而不是留一排裸串。
+fn write_verbs() -> Vec<String> {
+    [
+        ("fs::", "write"),           // 覆盖写既有文件
+        ("fs::", "create_dir"),      // 建目录
+        ("fs::", "remove_file"),     // 删
+        ("fs::", "remove_dir"),      // 删目录
+        ("fs::", "rename"),          // 改名
+        ("fs::", "copy"),            // 复制
+        ("fs::", "hard_link"),       // 建硬链
+        ("fs::", "soft_link"),       // 建软链（已废弃的那个名字）
+        ("fs::", "symlink"),         // 建软链（今天的名字）
+        ("fs::", "set_permissions"), // 事后改权限
+        ("File::", "create"),        // 无 O_EXCL 的建（已存在会被截断）
+        ("File::", "options"),       // 拿一个可写句柄
+        ("Open", "Options"),         // 同上
+        (".", "write_all("),         // 往一个句柄里写
+        (".", "set_len("),           // 截断 / 扩长
+        ("truncate", "(true)"),      // 截断
+        ("append", "(true)"),        // 追加
+    ]
+    .iter()
+    .map(|(a, b)| format!("{a}{b}"))
+    .collect()
+}
+
+/// 从一段源码**派生**出它的副作用档。
+///
+/// 🔴 **不剥注释，fail-closed** —— 与 `readonly_guard` 默认层逐字同一条口径。
+/// 代价如实写：往本族的文档里写一个写盘动词的名字会**误红**。
+/// 那正是 `readonly_guard` 自己踩过四次、并因此在 `control/files_write.rs` 头注里
+/// 留了一整段「要改就改措辞，别去放宽护栏」的那件事。**本份照抄那条处置。**
+fn derive_effect(src: &str) -> Effect {
+    if write_verbs().iter().any(|v| src.contains(v.as_str())) {
+        Effect::TouchesDisk
+    } else {
+        Effect::ReadsOnly
+    }
+}
+
+/// 本族目录下的 `(文件名, 整份源码)`。
+///
+/// 走 `guard_core::scan_tree!`（按构造摘除调用者自己那一份 —— 而本文件住
+/// `tests/backend/files/`、根本不在被扫的那棵树里，是**两重**保险）。
+fn family_sources() -> Vec<(String, String)> {
+    let dir = crate::guard_support::src_root().join("files");
+    let mut out: Vec<(String, String)> = guard_core::scan_tree!(&dir, &["rs"])
+        .into_iter()
+        .map(|(p, src)| {
+            (
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                src,
+            )
+        })
+        .collect();
+    out.sort();
+    // ★ 反空真：扫不到东西时下面每一条都会「对空集全称成立」，恒绿。
+    assert!(
+        out.len() >= 4,
+        "本族目录下只扫到 {} 份 `.rs` —— 采集坏了（本件落地时是 4 份：\
+         mod / index / raw / browse_watch）。\n\
+         🔴 「扫不到」与「都干净」在断言上一模一样，所以这一条必须在。",
+        out.len()
+    );
+    let bytes: usize = out.iter().map(|(_, s)| s.len()).sum();
+    assert!(
+        bytes >= 20_000,
+        "本族源码只扫到 {bytes} 字节 —— 采集到的不是真代码"
+    );
+    out
+}
+
+// ══════════════════════ 边界① 副作用档 ══════════════════════
+
+/// 🔴🔴 **正题**：声明的副作用档 == 从实现派生出来的副作用档。
+///
+/// 这就是 `设计/96 §2.9` 边界① 要的那条「声明那一侧先红」。
+#[test]
+fn the_declared_effect_equals_the_effect_derived_from_the_implementation() {
+    let sources = family_sources();
+    let mut declared: Vec<(&str, Effect)> = Vec::new();
+    let mut derived: Vec<(&str, Effect)> = Vec::new();
+    for cap in CAPABILITIES {
+        declared.push((cap.name, cap.effect));
+        let mut eff = Effect::ReadsOnly;
+        let mut seen = 0usize;
+        for f in cap.impl_files {
+            let (_, src) = sources
+                .iter()
+                .find(|(name, _)| name == f)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "能力 `{}` 声明它的实现住 `{f}`，而本族目录下没有这份文件。\n\
+                         ⇒ 登记挂空号：派生就会在**那一份**上瞎掉，而瞎掉与干净长得一样。",
+                        cap.name
+                    )
+                });
+            seen += 1;
+            if derive_effect(src) == Effect::TouchesDisk {
+                eff = Effect::TouchesDisk;
+            }
+        }
+        assert_eq!(
+            seen,
+            cap.impl_files.len(),
+            "能力 `{}` 的实现清单有条目没被读到",
+            cap.name
+        );
+        derived.push((cap.name, eff));
+    }
+    assert_eq!(
+        derived, declared,
+        "🔴 **声明与实现对不上。**\n\
+         左边是从 `src/backend/files/` 的源码里**派生**出来的副作用档，\n\
+         右边是 `files::CAPABILITIES` 里**声明**的那一栏。\n\n\
+         `设计/96 §2.9` 边界① 逐字：「整族一个字节都不写……\n\
+         将来谁往这一族里加一个写操作，**能力声明这一侧就该先红**，\n\
+         而不是靠 `readonly_guard` 兜底 —— 两道都要，但声明那道更早。」\n\n\
+         ⇒ 两条出路，**没有第三条**：\n\
+         ① 把那处写操作去掉（这一族的存在理由是搜索，而搜索纯读）；\n\
+         ② 真要给这一族写能力 ⇒ 回 `设计/60 §3.2` / `§6.6` 重裁，\n\
+            并且同轮去 `readonly_guard::WRITE_WHITELIST_MODULES` 上签字。\n\
+         🚫 **不许**把这里的 `effect` 改成 `TouchesDisk` 来对付这条红 ——\n\
+            那是在把一条「实现越界了」的红改写成「我本来就打算越界」，\n\
+            而 `readonly_guard` 的默认层会在下一格接着红。"
+    );
+}
+
+/// ★★ **反空真**：上面那条相等，两侧必须**可能不相等**。
+///
+/// [`Effect`] 要是只有一个成员，`derived == declared` 就是 `x == x` —— 恒真。
+/// 本仓对这一形的说法逐字：「恒等两侧同源会恒真」。
+#[test]
+fn the_effect_enum_can_actually_express_a_write() {
+    assert_ne!(
+        Effect::ReadsOnly,
+        Effect::TouchesDisk,
+        "副作用档只有一个成员 —— 那条相等断言退化成恒真"
+    );
+    assert_eq!(
+        derive_effect("let _ = 1;"),
+        Effect::ReadsOnly,
+        "一段什么都没干的代码被派生成了「会动盘」"
+    );
+}
+
+/// **阳性对照的语料** —— 一排**独立写出来**的、真的会动盘的代码片段。
+///
+/// 🔴🔴 **它为什么必须独立写，而不是从 [`write_verbs`] 拼出来** —— 这是本轮死值验
+/// 当场逮到的一个真缺陷，记在这里别再犯：
+///
+/// 第一版的阳性对照是 `format!("let _ = {needle}")` —— **样本由针自己拼出来的**。
+/// 于是把针拼错（`fs::rename` → `fs::rneame`）之后，那条判据**照样绿**：
+/// 它拿错针去搜一段含着同一个错针的样本，当然搜得到。
+/// 本仓对这一形的说法逐字：**「恒等两侧同源会恒真」**。
+///
+/// ⇒ 改成两侧异源：**语料在这里逐条手写**，针在 [`write_verbs`] 里。
+/// 针拼错 ⇒ 对应那条语料没人认得 ⇒ 当场红（本轮实打：刀 7 从 GREEN 变 RED）。
+const WRITE_SAMPLES: &[&str] = &[
+    "std::fs::write(&p, b\"x\").unwrap();",
+    "std::fs::create_dir(&p).unwrap();",
+    "std::fs::create_dir_all(&p).unwrap();",
+    "std::fs::remove_file(&p).unwrap();",
+    "std::fs::remove_dir_all(&p).unwrap();",
+    "std::fs::rename(&a, &b).unwrap();",
+    "std::fs::copy(&a, &b).unwrap();",
+    "std::fs::hard_link(&a, &b).unwrap();",
+    "std::fs::soft_link(&a, &b).unwrap();",
+    "std::fs::symlink(&a, &b).unwrap();",
+    "std::fs::set_permissions(&p, perm).unwrap();",
+    "let f = std::fs::File::create(&p).unwrap();",
+    "let f = std::fs::File::options().write(true).open(&p).unwrap();",
+    "let f = std::fs::OpenOptions::new().read(true).open(&p).unwrap();",
+    "f.write_all(b\"x\").unwrap();",
+    "f.set_len(0).unwrap();",
+    "let o = OpenOptions::new().truncate(true);",
+    "let o = OpenOptions::new().append(true);",
+    "let o = OpenOptions::new().create(true);",
+];
+
+/// **阴性对照的语料** —— 一排本族真的在用、而且真的只读的写法。
+///
+/// 🔴 **为什么这一份是函数而不是 `const`，理由值钱，别顺手改回去**：
+/// 头一版写成了一排字面量，其中一条逐字是「列一个目录」那个调用 ——
+/// 而 `scanning_guard_registry::RAW_WALKS` 的第一根针恰好就是它（带左括号那一形）。
+/// 结果：**本文件被那条元判据判成「在测试段里裸遍历目录」**，门禁当场红。
+/// 它没有瞎报 —— 它的针真的在本文件里出现了；只是出现的位置是**一份阴性对照语料**，
+/// 不是一次真的遍历。
+/// ⇒ 处置照本仓已有的那一条（`no_timer_guard::periodic_wake_patterns` 的头注逐字：
+///   「判据**运行时拼**：直接写字面量的话，本文件自己就会被下面的扫描命中」）：
+///   **拼**出来，让那个字面量不在源码里。
+/// 🚫 **不许**改成「往 `PENDING` 里加一行」—— 那张清单逐字「只许变短」。
+fn read_samples() -> Vec<String> {
+    [
+        ("let rd = std::fs::read", "_dir(&dir)?;"),
+        ("let md = std::fs::meta", "data(&p)?;"),
+        ("let b = p.as_os_str().as_encoded", "_bytes();"),
+        ("let t = e.file_type().map(|t| t.is", "_dir());"),
+        ("let s = std::str::from", "_utf8(&bytes);"),
+    ]
+    .iter()
+    .map(|(a, b)| format!("{a}{b}"))
+    .collect()
+}
+
+/// ★★ **阳性对照**：每一段真的会动盘的代码，派生出来必须是「会动盘」。
+///
+/// 🔴 不钉这一格会怎样：`write_verbs()` 里拼错一个字之后，上面那条正题**照样绿** ——
+/// 而它绿的原因从「实现是干净的」悄悄变成「针不认字」。
+/// 本仓对这一族的说法逐字：**默认结局是恒绿**，五次里没有一次是被判据变红发现的。
+#[test]
+fn every_write_verb_needle_really_bites_on_an_independently_written_sample() {
+    assert_eq!(
+        write_verbs().len(),
+        17,
+        "needle 表的条数变了 —— 变了就回来把这个数改对，并说清加/减的是哪一条"
+    );
+    for s in WRITE_SAMPLES {
+        assert_eq!(
+            derive_effect(s),
+            Effect::TouchesDisk,
+            "这一段真的会动盘，而派生说它只读：\n  {s}\n\
+             ⇒ needle 表里少了它那一条，或者对应那根针拼错了。\n\
+             🔴 别把这条红改成「把样本删掉」—— 那是在把一个瞎掉的针藏起来。"
+        );
+    }
+    // ★ 反向那半：needle 表里每一根针，都得**至少有一条**语料在行使它。
+    //   没人行使的针 = 一根从来没被验过的针，它明天拼错了也不会有人知道。
+    let unexercised: Vec<String> = write_verbs()
+        .into_iter()
+        .filter(|v| !WRITE_SAMPLES.iter().any(|s| s.contains(v.as_str())))
+        .collect();
+    assert_eq!(
+        unexercised,
+        Vec::<String>::new(),
+        "这几根针没有任何一条阳性语料在行使它们 —— 它们没被验过"
+    );
+}
+
+/// ★★ **阴性对照**：本族真的在用的那几种只读写法，不许被派生成「会动盘」。
+///
+/// 没有这一格的话，把 `derive_effect` 写成「恒返回 `TouchesDisk`」也能让
+/// 上面那条阳性对照全绿，而正题会当场大红一片 —— 人的第一反应是去删正题。
+#[test]
+fn the_read_only_shapes_this_family_really_uses_are_not_flagged() {
+    for s in read_samples() {
+        assert_eq!(
+            derive_effect(&s),
+            Effect::ReadsOnly,
+            "这一段是只读的，却被派生成了「会动盘」：\n  {s}\n\
+             ⇒ 有一根针太宽了。宽到误红的针会被人绕开，那时它就不再守着什么。"
+        );
+    }
+}
+
+/// 🔴 **人群闭合**：四张 `impl_files` 的并集 == 本族目录下现打的全部 `.rs`。
+///
+/// 它治的是上面那条正题盖不到的那一形：**新加一份文件、不往任何一条能力的
+/// 实现清单里登记** ⇒ 派生读不到它 ⇒ 往那一份里写盘，正题一声不吭。
+#[test]
+fn the_impl_file_tables_partition_the_family_directory() {
+    let on_tree: std::collections::BTreeSet<String> =
+        family_sources().into_iter().map(|(name, _)| name).collect();
+    let declared: std::collections::BTreeSet<String> = CAPABILITIES
+        .iter()
+        .flat_map(|c| c.impl_files.iter().map(|f| f.to_string()))
+        .collect();
+    assert_eq!(
+        declared, on_tree,
+        "本族的实现清单与目录里现打的文件对不上。\n\
+         盘上有而清单没有 ⇒ 🔴 **那一份不受派生管** —— 往它里面写盘，上面那条正题不会红。\n\
+         清单有而盘上没有 ⇒ 登记挂空号。\n\
+         ⚠ 写成**集合相等**而不是「份数相等」：份数相等在「搬走一份、又冒出一份」上是瞎的。"
+    );
+}
+
+/// 这一族今天**一条写能力都没声明**。
+#[test]
+fn not_one_capability_in_this_family_declares_a_write() {
+    let effects: Vec<Effect> = CAPABILITIES.iter().map(|c| c.effect).collect();
+    let all_read: Vec<Effect> = CAPABILITIES.iter().map(|_| Effect::ReadsOnly).collect();
+    assert_eq!(
+        effects, all_read,
+        "有能力声明了写副作用。这一族的存在理由是**搜索**（`设计/60 §2 档①` 只有那一行），\n\
+         而写那一侧整个留在 SFTP（`设计/60 §6.6 ①`）—— 那正是 `readonly_guard` 4259 行\n\
+         一行都不用改的原因。"
+    );
+}
+
+// ══════════════════════ 声明 ↔ 设计 ↔ 分派，三向 ══════════════════════
+
+#[test]
+fn the_capability_names_match_the_design_registry_in_both_directions() {
+    let declared: std::collections::BTreeSet<&str> = capability_names().into_iter().collect();
+    let designed: std::collections::BTreeSet<&str> = REGISTERED.iter().copied().collect();
+    assert_eq!(
+        declared, designed,
+        "能力名与 `设计/96 §2.9` 那张表对不上。\n\
+         设计有而实现没声明 ⇒ 能力漏了；实现声明了而设计没有 ⇒ 长出了一条没人裁过的能力。"
+    );
+}
+
+/// 🔴 **表里有、分派没有** 这一形必须红。
+///
+/// 本仓对它有一次真 bug 的记录（`p1t-removal-cause`：一条命令实现完整、
+/// `match` 漏列它 ⇒ 回 `unknown argument`，而界面真的在发那条命令）。
+#[test]
+fn every_declared_capability_is_reachable_through_the_single_entry_point() {
+    let _lock = resident_lock();
+    let mut unreachable: Vec<&str> = Vec::new();
+    for name in capability_names() {
+        // 刻意不给参数：我们要分的是「这条能力压根没接线」与「参数不对」。
+        if let Err(("unknown_capability", _)) = answer(name, &serde_json::json!({})) {
+            unreachable.push(name);
+        }
+    }
+    assert_eq!(
+        unreachable,
+        Vec::<&str>::new(),
+        "这几条能力声明了却没接进那个唯一入口 —— 调用方会拿到「不是这一族的能力」"
+    );
+    // 反向那半：没声明的名字必须**被拒**（否则这条判据对一切都绿）。
+    assert!(
+        matches!(
+            answer("files.delete", &serde_json::json!({})),
+            Err(("unknown_capability", _))
+        ),
+        "一个没声明的能力名被接受了 —— 那上面那一半就不是在证明什么"
+    );
+}
+
+/// 每条能力的契约面（参数 / 字段 / 错误码）写成数据之后，**不许是空壳**。
+#[test]
+fn every_capability_states_its_contract_surface() {
+    for cap in CAPABILITIES {
+        assert!(
+            cap.what.chars().count() >= 8,
+            "能力 `{}` 的 `what` 太短 —— 写得出来才登记",
+            cap.name
+        );
+        assert!(
+            !cap.fields.is_empty(),
+            "能力 `{}` 一个出方向字段都没有 —— 那它答什么？",
+            cap.name
+        );
+        let mut sorted = cap.fields.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(
+            cap.fields.to_vec(),
+            sorted,
+            "能力 `{}` 的字段表没排序 —— 排序是为了让 diff 读得出「加了哪一个」",
+            cap.name
+        );
+        let mut args = cap.args.to_vec();
+        args.sort_unstable();
+        assert_eq!(
+            cap.args.to_vec(),
+            args,
+            "能力 `{}` 的参数表没排序",
+            cap.name
+        );
+    }
+}
+
+/// 出方向字段表与**真的回出去的那个 JSON** 对拍。
+///
+/// ⚠ 用一个手写清单去证明另一个手写清单是没有意义的（`inbound::CommandSpec::fields`
+/// 那段头注逐字）—— 所以这里拿**真的调用一次**的输出去比。
+#[test]
+fn the_status_fields_match_what_the_call_really_returns() {
+    let _lock = resident_lock();
+    let v = answer("files.index.status", &serde_json::json!({})).expect("status 不该失败");
+    let got: std::collections::BTreeSet<String> = v
+        .as_object()
+        .expect("status 回的该是一个对象")
+        .keys()
+        .cloned()
+        .collect();
+    let declared: std::collections::BTreeSet<String> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.index.status")
+        .expect("这条能力必须在表里")
+        .fields
+        .iter()
+        .map(|f| f.to_string())
+        .collect();
+    assert_eq!(
+        got, declared,
+        "`files.index.status` 真的回出去的字段与声明的那张表对不上"
+    );
+}
+
+#[test]
+fn the_find_fields_match_what_the_call_really_returns() {
+    let _lock = resident_lock();
+    let v = answer(
+        "files.find",
+        &serde_json::json!({"needle": "nothing-matches-this"}),
+    )
+    .expect("find 不该失败");
+    let got: std::collections::BTreeSet<String> = v
+        .as_object()
+        .expect("find 回的该是一个对象")
+        .keys()
+        .cloned()
+        .collect();
+    let declared: std::collections::BTreeSet<String> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.find")
+        .expect("这条能力必须在表里")
+        .fields
+        .iter()
+        .map(|f| f.to_string())
+        .collect();
+    assert_eq!(
+        got, declared,
+        "`files.find` 真的回出去的字段与声明的那张表对不上"
+    );
+}
+
+// ══════════════════════ 边界② 跨 target ══════════════════════
+
+/// 🔴 **判的是「能力在不在」，不是「新鲜度一样」**（`设计/96 §2.9` 边界② 逐字）。
+#[test]
+fn the_capability_set_is_equal_across_every_target() {
+    assert!(
+        TARGETS.len() >= 3,
+        "target 全集只有 {} 个 —— 「跨 target 相等」在这个人群上没有内容",
+        TARGETS.len()
+    );
+    let all: std::collections::BTreeSet<&str> = capability_names().into_iter().collect();
+    for t in TARGETS {
+        let here: std::collections::BTreeSet<&str> = CAPABILITIES
+            .iter()
+            .filter(|c| c.targets.contains(t))
+            .map(|c| c.name)
+            .collect();
+        assert_eq!(
+            here, all,
+            "`{t:?}` 上的能力集与全体不相等。\n\
+             🔴 这一格判的是**能力在不在** —— 那件事在三个平台上必须是同一个答案。\n\
+             真有一条只能在某个平台上有 ⇒ 那是 `设计/96 §2` 那条「豁免必须存在但要贵」，\n\
+             要回那一篇立一张豁免表并逐条写明为什么不可能对等，**不是在这里放宽**。"
+        );
+    }
+}
+
+/// 🔴🔴 **边界② 最容易出错的那一格**：保鲜机制**刻意不判相等**，
+/// 而且**不许三行抄成一样**。
+///
+/// `设计/96 §2.9` 逐字：「把它们判成相等会**逼人写假声明**。
+/// 这一格是本族最容易出错的地方。」
+#[test]
+fn freshness_is_declared_per_target_and_is_deliberately_not_judged_equal() {
+    // ① 每个 target 恰好一行 —— 漏一个平台就是「那一格没人声明」。
+    let declared: std::collections::BTreeSet<Target> = FRESHNESS.iter().map(|f| f.target).collect();
+    let all: std::collections::BTreeSet<Target> = TARGETS.iter().copied().collect();
+    assert_eq!(
+        declared, all,
+        "保鲜声明漏了 target（或者多了一个不在全集里的）"
+    );
+    assert_eq!(
+        FRESHNESS.len(),
+        TARGETS.len(),
+        "有 target 被声明了两次 —— 那会让「这个平台怎么保鲜」有两个答案"
+    );
+
+    // ② 每一行都要说清它**没**买到什么。空的一律红。
+    for f in FRESHNESS {
+        assert!(
+            f.how.chars().count() >= 10,
+            "`{:?}` 那一行没说清保鲜怎么做",
+            f.target
+        );
+        assert!(
+            f.gap.chars().count() >= 20,
+            "🔴 `{:?}` 那一行的 `gap` 是空的或者太短。\n\
+             这一栏就是「判不了 ＋ 缺什么证据」的住址 —— 留空等于把一句没有读数的\n\
+             声明当成事实。",
+            f.target
+        );
+    }
+
+    // ③ 🔴 **反向那半**：不许三行填成同一个机制串。
+    //    那就是「为了让某条对拍变绿，把几行抄成一样」的长相，
+    //    也就是 `设计/96 §2.9` 说的那句「假声明」。
+    let mechanisms: std::collections::BTreeSet<&str> = FRESHNESS.iter().map(|f| f.how).collect();
+    assert!(
+        mechanisms.len() >= 3,
+        "{} 个 target 只给出了 {} 种保鲜机制的说法。\n\
+         🔴 `设计/96 §2.9` 边界② 逐字：保鲜机制**逐平台不同**，\n\
+         把它们说成一件事**就是那句「假声明」**。\n\
+         （Linux 的 `inotify` · Windows 的 `ReadDirectoryChangesW` · macOS 的 `FSEvents`\n\
+          在合并语义、延迟、丢事件的条件上都不是同一件事。）",
+        TARGETS.len(),
+        mechanisms.len()
+    );
+
+    // ④ 证据档不许全部自称现打 —— 本轮只有一台 Linux 机器。
+    let measured = FRESHNESS
+        .iter()
+        .filter(|f| f.evidence == Evidence::Measured)
+        .count();
+    assert_eq!(
+        measured, 1,
+        "自称「本机现打」的 target 有 {measured} 个。\n\
+         🔴 本轮只有一台机器（Linux）。多了就是把文献读数写成了实测；\n\
+         少了就是连那一台都没量。⇒ 哪天真有了第二个平台的读数，\n\
+         **连着那份读数的住址**一起改这个数。"
+    );
+    // 反向那半：那唯一一格必须**真的是** Linux 那一格（不许把标签挪到一个没机器的平台上）。
+    assert_eq!(
+        FRESHNESS
+            .iter()
+            .find(|f| f.evidence == Evidence::Measured)
+            .map(|f| f.target),
+        Some(Target::LinuxGnu),
+        "自称现打的那一格不是本机那个 target"
+    );
+}
+
+// ══════════════════════ 边界③ 周期可查询 ══════════════════════
+
+/// 🔴 `设计/96 §2.9` 边界③：「『定期重走』的周期……**必须可查询**，不许只活在代码里」。
+#[test]
+fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable() {
+    let _lock = resident_lock();
+    // ① 它在 `files.index.status` 的**声明**字段表里。
+    let status_cap = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.index.status")
+        .expect("这条能力必须在表里");
+    assert!(
+        status_cap.fields.contains(&"rewalk_interval_secs"),
+        "重走周期不在 `files.index.status` 的字段表里 —— 那它就只活在代码里了"
+    );
+    // ② 它在**真的回出去**的那个 JSON 里，而且等于声明的那个常量。
+    let v = answer("files.index.status", &serde_json::json!({})).expect("status 不该失败");
+    assert_eq!(
+        v.get("rewalk_interval_secs").and_then(|x| x.as_u64()),
+        Some(crate::files::index::REWALK_INTERVAL_SECS),
+        "线上回的那个周期与声明的常量不是同一个数"
+    );
+    // ③ 界面要显示的那个「多久前更新的」也必须在同一个答案里
+    //    （`设计/60 §3.5.3`：不许让用户猜为什么搜不到）。
+    assert!(
+        status_cap.fields.contains(&"age_secs"),
+        "新鲜度那个数不在字段表里"
+    );
+    assert!(v.get("age_secs").is_some(), "新鲜度那个数没有真的回出去");
+    // ④ 周期是个**有意义的正数**。0 会让 `stale` 恒真、界面永远显示「该重走了」。
+    assert!(
+        crate::files::index::REWALK_INTERVAL_SECS > 0,
+        "重走周期是 0 —— 那个声明没有内容"
+    );
+}
+
+// ══════════════════════ 原始字节那一条 ══════════════════════
+
+/// 有损解码的那几个调用 —— 运行时拼，理由同 [`write_verbs`]。
+fn lossy_calls() -> Vec<String> {
+    [
+        ("to_string", "_lossy"), // `OsStr`/`Path` → String，非法字节变替换字符
+        ("from_utf8", "_lossy"), // 同上，字节那一侧
+        ("to_str", "_lossy"),    // 同族的第三个写法
+        (".dis", "play()"),      // `Path` 的 Display 也是有损的
+    ]
+    .iter()
+    .map(|(a, b)| format!("{a}{b}"))
+    .collect()
+}
+
+/// 一段源码里的有损解码命中 —— **抬成纯函数**，好让下面那条正题与
+/// 它的阳性对照量**同一把尺子**（尺子一分叉，红灯就开始骗人）。
+fn lossy_hits(label: &str, src: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for n in lossy_calls() {
+        if src.contains(n.as_str()) {
+            out.push(format!("  {label}: {n}"));
+        }
+    }
+    out
+}
+
+/// 🔴 本族**一处有损解码都没有**（`设计/60 §2 档②`）。
+#[test]
+fn no_lossy_decode_anywhere_in_the_family() {
+    let mut bad: Vec<String> = Vec::new();
+    for (name, src) in family_sources() {
+        bad.extend(lossy_hits(&format!("files/{name}"), &src));
+    }
+    assert_eq!(
+        bad,
+        Vec::<String>::new(),
+        "本族里出现了有损解码：\n{}\n\n\
+         🔴 `设计/60 §2 档②` 逐字：非 UTF-8 文件名「库层有损解码，**寻址不到**」。\n\
+         「寻址不到」不是显示难看 —— 解过一次之后，回程拿着那串替换字符去找的\n\
+         是一个**不存在的名字**。\n\
+         ⇒ 要把路径变成人话，那件事归**界面**；后端这一侧一路走字节\n\
+           （`files::raw::to_json` 给的两种形都是双向无损的）。",
+        bad.join("\n")
+    );
+}
+
+/// **阳性对照的语料** —— 逐条**独立写出来**的有损解码调用。
+///
+/// 🔴 与 [`WRITE_SAMPLES`] 同一条理由（那里有整段说明）：样本**不许**由针拼出来。
+/// 针拼错时，自拼的样本会跟着错，两侧同源 ⇒ 恒真。
+const LOSSY_SAMPLES: &[&str] = &[
+    "let s = p.to_string_lossy().to_string();",
+    "let s = String::from_utf8_lossy(&bytes);",
+    "let s = os.to_str_lossy();",
+    "eprintln!(\"{}\", p.display());",
+];
+
+/// ★★ **阳性对照**：每一段真的有损的代码，必须被那几根针咬住。
+#[test]
+fn every_lossy_needle_really_bites_on_an_independently_written_sample() {
+    assert_eq!(
+        lossy_calls().len(),
+        4,
+        "有损解码的 needle 条数变了 —— 回来把这个数改对，并说清加/减的是哪一条"
+    );
+    for s in LOSSY_SAMPLES {
+        assert!(
+            !lossy_hits("sample", s).is_empty(),
+            "这一段是有损解码，针却没咬住：\n  {s}\n\
+             ⇒ 对应那根针拼错了，或者表里少了它那一条。"
+        );
+    }
+    // ★ 反向那半：每一根针都得**至少有一条**语料在行使它。
+    let unexercised: Vec<String> = lossy_calls()
+        .into_iter()
+        .filter(|n| !LOSSY_SAMPLES.iter().any(|s| s.contains(n.as_str())))
+        .collect();
+    assert_eq!(
+        unexercised,
+        Vec::<String>::new(),
+        "这几根针没有任何一条阳性语料在行使它们 —— 它们没被验过"
+    );
+    // ★ 阴性对照：走原始字节的代码不许被判成有损。
+    assert_eq!(
+        lossy_hits("clean", "let b = p.as_os_str().as_encoded_bytes();"),
+        Vec::<String>::new(),
+        "一段走原始字节的代码被判成了有损解码 —— 那会逼人绕开这条判据"
+    );
+}
+
+/// 类型名是个**闭集**，而 [`crate::files::KINDS`] 就是它的住址。
+#[test]
+fn the_kind_names_are_a_closed_set_with_one_home() {
+    let _lock = resident_lock();
+    let mut sorted = KINDS.to_vec();
+    sorted.sort_unstable();
+    assert_eq!(KINDS.to_vec(), sorted, "类型名表没排序");
+    let fx = crate::files::index::tests::make_tree("kinds", 1, 1, 0);
+    let v = answer(
+        "files.ls",
+        &serde_json::json!({"path": fx.root.to_str().expect("夹具路径是 ASCII")}),
+    )
+    .expect("ls 不该失败");
+    let rows = v
+        .get("entries")
+        .and_then(|e| e.as_array())
+        .expect("entries 该是数组");
+    assert_eq!(rows.len(), 1, "夹具根下只有一个子目录");
+    let kind = rows[0]
+        .get("kind")
+        .and_then(|k| k.as_str())
+        .expect("每行都要有 kind");
+    assert!(
+        KINDS.contains(&kind),
+        "真的回出去的类型名 `{kind}` 不在那个闭集里"
+    );
+    assert_eq!(kind, "dir", "夹具根下那一项是个目录");
+}
+
+/// `files.stat` / `files.ls` 的路径参数**坏了就拒**，不猜。
+#[test]
+fn a_malformed_path_argument_is_refused_with_its_own_code() {
+    let _lock = resident_lock();
+    for (cap, args) in [
+        ("files.stat", serde_json::json!({})),
+        ("files.stat", serde_json::json!({"path": 7})),
+        ("files.stat", serde_json::json!({"path": ""})),
+        ("files.ls", serde_json::json!({"path": {"b16": "zz"}})),
+    ] {
+        let got = answer(cap, &args);
+        assert!(
+            matches!(got, Err(("bad_path", _))),
+            "`{cap}` 对 {args:?} 没有回 `bad_path`，回的是 {got:?}"
+        );
+    }
+    // `find` 那一侧是另一个码 —— 两条路的诊断不许混成一句。
+    assert!(
+        matches!(
+            answer("files.find", &serde_json::json!({})),
+            Err(("bad_args", _))
+        ),
+        "`files.find` 少了 `needle` 却没回 `bad_args`"
+    );
+}
+
+/// 每条能力声明的错误码，都得**真的出得来**（幽灵码检查）。
+///
+/// ⚠ 它只覆盖今天造得出触发条件的那几个；`unreadable` 那一档要一个读不了的路径，
+/// 用一个不存在的路径造（`io::ErrorKind` 不同，但走的是同一条出口）。
+#[test]
+fn the_declared_error_codes_are_not_ghosts() {
+    let _lock = resident_lock();
+    let nowhere = std::env::temp_dir().join(format!("ccm-24f-ghost-{}", std::process::id()));
+    std::fs::remove_dir_all(&nowhere).ok();
+    let arg = serde_json::json!({"path": nowhere.to_str().expect("ASCII")});
+    for cap in ["files.ls", "files.stat"] {
+        let got = answer(cap, &arg);
+        assert!(
+            matches!(got, Err(("unreadable", _))),
+            "`{cap}` 对一个不存在的路径没有回 `unreadable`，回的是 {got:?}"
+        );
+        let declared = CAPABILITIES
+            .iter()
+            .find(|c| c.name == cap)
+            .expect("在表里")
+            .codes;
+        assert!(
+            declared.contains(&"unreadable") && declared.contains(&"bad_path"),
+            "`{cap}` 的错误码表漏了它真的会回的那几个"
+        );
+    }
+}
