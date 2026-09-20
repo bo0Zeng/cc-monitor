@@ -24,6 +24,41 @@ fn strips_the_prefix_and_keeps_the_rest_verbatim() {
     assert_eq!(r.rest, "/v1/messages?beta=true");
 }
 
+/// ★★★ 🔴 〔`设计/20 §7` 步 3〕**两个前缀切出**同样的四个槽位，**只有模式不同**。
+///
+/// # 它钉的是哪一句
+///
+/// `20 §0` 逐字：「路由的线格式已经是对的，四个槽位不用动 —— 要动的只是层 1 怎么称呼
+/// 它们」。⇒ 加 `/t/` **不许**顺手换段序、不许多剥一段、不许对某一段放宽白名单。
+///
+/// # ⚠ 分母：本条量的是**这两条**（`/s/` 与 `/t/`），不是「所有前缀」
+///
+/// 「别的前缀一律不认」由下面那条 `rejects_everything_that_is_not_the_shape` 的
+/// `/x/…` 那一形兜。
+#[test]
+fn both_prefixes_cut_the_same_four_slots_and_differ_only_in_the_mode() {
+    let s = parse("/s/agentA/acctA/sid-AAA/v1/messages?beta=true").expect("`/s/` 应当解析成功");
+    let t = parse("/t/agentA/acctA/sid-AAA/v1/messages?beta=true").expect("`/t/` 应当解析成功");
+
+    // ★ 模式那一格：期望值是**手写字面量**，两边不同。
+    assert_eq!(s.mode, super::super::Mode::Substitute);
+    assert_eq!(t.mode, super::super::Mode::Passthrough);
+    assert_ne!(
+        s.mode, t.mode,
+        "两个前缀必须切出两种模式 —— 一样就等于只有一条路"
+    );
+
+    // ★ 四个槽位：**逐格相同**。
+    assert_eq!(s.key, t.key, "前两段必须一模一样");
+    assert_eq!(s.stream, t.stream, "流标签必须一模一样");
+    assert_eq!(s.rest, t.rest, "真路径必须一模一样");
+    // 手写字面量（不拿被测函数算）。
+    assert_eq!(t.key.seg1, "agentA");
+    assert_eq!(t.key.seg2, "acctA");
+    assert_eq!(t.stream, "sid-AAA");
+    assert_eq!(t.rest, "/v1/messages?beta=true");
+}
+
 #[test]
 fn two_keys_do_not_collide() {
     let a = parse("/s/agentA/acctA/sid-AAA/v1/messages").expect("A");
@@ -62,8 +97,13 @@ fn rejects_everything_that_is_not_the_shape() {
         parse("/s/agentA/acctA/sid-AAA/v1").is_some(),
         "这把尺子是瞎的"
     );
+    assert!(
+        parse("/t/agentA/acctA/sid-AAA/v1").is_some(),
+        "这把尺子对 `/t/` 是瞎的 —— 下面那几条 `/t/` 的否定就成了空真"
+    );
 
-    // 分母 = 我列出的这 9 形；不是「所有不合法输入」。
+    // 分母 = 我列出的这 12 形；不是「所有不合法输入」。
+    // 〔`设计/20 §7` 步 3 加了后 3 形：`/t/` 少一段照样不认 ＋ **第三个前缀一律不认**。〕
     for bad in [
         "/v1/messages",
         "/s/agentA",
@@ -74,6 +114,9 @@ fn rejects_everything_that_is_not_the_shape() {
         "/s/agentA//sid-AAA/v1",
         "/s/agentA/acctA//v1",
         "/s/../../../etc/v1",
+        "/t/agentA/acctA/sid-AAA",
+        "/t/agentA//sid-AAA/v1",
+        "/x/agentA/acctA/sid-AAA/v1",
     ] {
         assert!(parse(bad).is_none(), "这一形不该被接受：{bad}");
     }

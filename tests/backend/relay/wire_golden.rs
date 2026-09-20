@@ -93,11 +93,14 @@ struct Golden {
 }
 
 /// 登记的格数。**手写的数**，与下面真跑过的格数做相等断言（反空真）。
-const GOLDEN_CASES: usize = 4;
-/// 其中**真的把字节送到上游**的格数。垫住 `upstream_head: None` 那两格的空真。
-const GOLDEN_CASES_REACHING_UPSTREAM: usize = 2;
+///
+/// ⚠ 〔`设计/20 §7` 步 3〕**4 → 6**：加的两格全是 `/t/` 那条新路
+/// （⑤⑥）。前四格的期望值**一个字节都没动**，那正是「零行为变化」这句话的量点。
+const GOLDEN_CASES: usize = 6;
+/// 其中**真的把字节送到上游**的格数。垫住 `upstream_head: None` 那几格的空真。
+const GOLDEN_CASES_REACHING_UPSTREAM: usize = 3;
 
-/// 四格金标准。**每一串都是手写的**。
+/// 六格金标准。**每一串都是手写的**。
 const GOLDEN: &[Golden] = &[
     // ① 代入模式 ＋ 表里那一行有 key ⇒ 下游那份 auth 头被**整条丢掉**，换成这一行自己的。
     Golden {
@@ -183,6 +186,57 @@ const GOLDEN: &[Golden] = &[
             "Connection: close\r\n",
             "\r\n",
             "404 Not Found\n",
+        ),
+        tee: "",
+    },
+    // ⑤ 🔴 **直通模式 ＋ 表里那一行有 key ⇒ 绝不代入**（`20 §3.1` 第 3 行）。
+    //    与 ① **同一个账号段**（`acctA`，表里配着 `KEY-A`），只有前缀不同 ⇒
+    //    量到的差别只能来自模式那一格。`/t/` 逐字是「层 1 永不代入 auth」：
+    //    上游收到的必须是**客户端那把**（`CLIENT-TOKEN`），`KEY-A` 一个字节都不许出现。
+    Golden {
+        target: "/t/agentA/acctA/sid-TTT/v1/messages",
+        upstream_head: Some(concat!(
+            "POST /v1/messages HTTP/1.1\r\n",
+            "Host: 127.0.0.1:UPSTREAM\r\n",
+            "Accept-Encoding: identity\r\n",
+            "Connection: close\r\n",
+            "Authorization: Bearer CLIENT-TOKEN\r\n",
+            "Content-Length: 7\r\n",
+            "\r\n",
+        )),
+        downstream: concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/event-stream\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "Connection: close\r\n",
+            "\r\n",
+            "f\r\n",
+            "data: {\"n\":1}\n\n",
+            "\r\n",
+            "0\r\n\r\n",
+        ),
+        tee: concat!(
+            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctA","key":"sid-TTT","seq":0}}"#,
+            "\n",
+            r#"{"agent":"agentA","account":"acctA","key":"sid-TTT","event":"{\"n\":1}"}"#,
+            "\n",
+        ),
+    },
+    // ⑥ 直通模式 ＋ 表里**没有这一行** ⇒ **502**，一个字节都不到上游。
+    //    🔴 `20 §3.1` 第 4 行逐字「不许回落到某一个写死的常量」：那一格要「按 `seg1`
+    //    取该 agent 的默认上游」，而那张表（条 59，住 `agents/`）**今天还不存在**
+    //    ⇒ 每一个 `seg1` 都算未登记，本格恒 502。理由整段住 `accounts::decide`。
+    //    ⚠ 它与 ③ 的 404 **刻意不同码**：404 答的是「代入模式要求表里有这一行」，
+    //    502 答的是「这个 agent 没有登记上游」——两件事，两个码。
+    Golden {
+        target: "/t/agentA/nosuch/sid-UUU/v1/messages",
+        upstream_head: None,
+        downstream: concat!(
+            "HTTP/1.1 502 Bad Gateway\r\n",
+            "Content-Length: 16\r\n",
+            "Connection: close\r\n",
+            "\r\n",
+            "502 Bad Gateway\n",
         ),
         tee: "",
     },
