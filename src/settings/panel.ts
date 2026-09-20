@@ -390,7 +390,10 @@ export class SettingsPanel {
     // 正是 `§8` 判据 #3（非落地页零 I/O）今天被打破的那一处。
     this.pagesLoaded.clear();
     // issue #15 (S6): 每次打开重拉 config.json 的 remote 子对象，跟外部改动对齐
-    void this.remoteSection?.refresh();
+    // 步 4（`70 §1.3 D`）：`refresh()` 失败时会把原因画到那一块自己的 banner 上；
+    // 这里 `catch` 掉是为了不再多产一条走状态栏的未捕获 rejection（同一件事说两遍，
+    // 而其中一遍说在了离现场十万八千里的地方）。
+    void this.remoteSection?.refresh().catch(() => {});
     // P2s：状态是**运行期**的东西，每次打开都要重拉 —— 缓存住等于给用户看一张旧照片。
     // ⚠ 它住**落地页**（「机器」），所以它不在延后那一档里：打开就该是新的。
     void this.backendSection?.refresh();

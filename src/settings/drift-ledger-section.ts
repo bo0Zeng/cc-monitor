@@ -21,6 +21,7 @@
 // 否则用户会把它当成历史统计。
 import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
+import { withPending } from "./pending";
 import type { DriftEntry } from "../generated/DriftEntry";
 import type { DriftFace } from "../generated/DriftFace";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
@@ -119,13 +120,18 @@ export class DriftLedgerSection {
     const refreshBtn = document.createElement("button");
     refreshBtn.className = "btn";
     refreshBtn.textContent = "重新读取";
-    refreshBtn.addEventListener("click", () => void this.refresh());
+    // 步 4·E（`70 §1.3 E`）：读一趟账本是一次真往返，期间按住。
+    refreshBtn.addEventListener("click", () =>
+      void withPending(refreshBtn, "读取中…", () => this.refresh()),
+    );
     bar.appendChild(refreshBtn);
 
     this.copyBtn = document.createElement("button");
     this.copyBtn.className = "btn";
     this.copyBtn.textContent = "复制诊断文本";
-    this.copyBtn.addEventListener("click", () => void this.copy());
+    this.copyBtn.addEventListener("click", () =>
+      void withPending(this.copyBtn, "复制中…", () => this.copy()),
+    );
     bar.appendChild(this.copyBtn);
     root.appendChild(bar);
 

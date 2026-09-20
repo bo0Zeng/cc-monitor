@@ -15,6 +15,7 @@
 import { commands } from "../ipc/commands";
 import { makeInfoIcon } from "./info-icon";
 import { holdSkeletonHeight } from "./skeleton";
+import { withPending } from "./pending";
 import { showActionFailureToast } from "../error-toast";
 import { formatBytes } from "../format";
 import { markRestartNeeded } from "./restart-notice"; // S7：待生效改动的唯一去处
@@ -231,14 +232,19 @@ export class DiagnosticsSection {
     this.openFileBtn.type = "button";
     this.openFileBtn.className = "settings-btn settings-btn-secondary";
     this.openFileBtn.textContent = "打开日志文件";
-    this.openFileBtn.addEventListener("click", () => void this.openFile());
+    // 步 4·E（`70 §1.3 E`）：这三个都会走一次 IPC，期间按住对应的按钮。
+    this.openFileBtn.addEventListener("click", () =>
+      void withPending(this.openFileBtn, "打开中…", () => this.openFile()),
+    );
     btnRow.appendChild(this.openFileBtn);
 
     const openDirBtn = document.createElement("button");
     openDirBtn.type = "button";
     openDirBtn.className = "settings-btn settings-btn-secondary";
     openDirBtn.textContent = "打开日志目录";
-    openDirBtn.addEventListener("click", () => void this.openDir());
+    openDirBtn.addEventListener("click", () =>
+      void withPending(openDirBtn, "打开中…", () => this.openDir()),
+    );
     btnRow.appendChild(openDirBtn);
 
     const refreshBtn = document.createElement("button");
@@ -246,7 +252,9 @@ export class DiagnosticsSection {
     refreshBtn.className = "settings-btn settings-btn-secondary";
     refreshBtn.textContent = "刷新信息";
     refreshBtn.title = "重新读日志目录看当前文件大小";
-    refreshBtn.addEventListener("click", () => void this.refresh());
+    refreshBtn.addEventListener("click", () =>
+      void withPending(refreshBtn, "读取中…", () => this.refresh()),
+    );
     btnRow.appendChild(refreshBtn);
     group.appendChild(btnRow);
 
