@@ -275,9 +275,15 @@ describe("P6b MCP 工作目录清单", () => {
     //（本机 mock 立即 resolve，根本没有可切走的窗口）。
     // 而本机那条今天也是 `await`，共用 store 是别处也能改的 ⇒ 窗口真实存在。
     let releaseLocal: (v: string[]) => void = () => {};
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    // 🔴 **〔步 12·C 2026-09-20〕本机与远端是**同一条命令**了，分它们的是 `origin`。**
+    //    这份 mock 从前按**命令名**分本机/远端，今天按 `args.origin` 分 ——
+    //    ⚠ 判的性质一个字没变（那条竞态守卫仍然承重），变的只是「怎么认出这一趟问的是谁」。
+    //    ⚠ `<local>` 是**逐字**的：调用点要是漏了补默认值（送 `undefined`/`null`），
+    //      这里就落不进本机那一支 ⇒ 当场红。那正是要的。
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      const origin = (args as { origin?: string } | undefined)?.origin;
       if (cmd === "list_remote_mcp_origins") return ["devbox"];
-      if (cmd === "list_remote_mcp_project_dirs") return ["/remote/dir"];
+      if (cmd === "list_mcp_project_dirs" && origin !== "<local>") return ["/remote/dir"];
       if (cmd === "list_mcp_project_dirs")
         return new Promise<string[]>((r) => {
           releaseLocal = r;
@@ -300,10 +306,10 @@ describe("P6b MCP 工作目录清单", () => {
   it("★ P6b-E：读不到清单 ⇒ 说「读不到」，不许说成「没用过」，更不许永远停在「读取中」", async () => {
     document.body.replaceChildren();
     // 两件事的下一步完全不同：「没用过」⇒ 手填一个新路径；「没读到」⇒ 去看那台机器连没连上。
+    // 〔步 12·C〕合并之后两侧同名 ⇒ 这里不必再按名字分谁炸，一条就够。
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["devbox"];
-      if (cmd === "list_mcp_project_dirs") throw new Error("boom-local");
-      if (cmd === "list_remote_mcp_project_dirs") throw new Error("boom-remote");
+      if (cmd === "list_mcp_project_dirs") throw new Error("boom");
       return [];
     });
     const section = new McpSection();
@@ -326,10 +332,16 @@ describe("P6b MCP 工作目录清单", () => {
     // 它清了输入框，却没清候选。改之前那是不可见的 datalist；P6b 把它变成了
     // **可见且可点**的清单 ⇒ 切到 B 机后仍展示 A 机的路径，点一下就是拿 A 的路径去读 B。
     let releaseRemote: (v: string[]) => void = () => {};
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    // 🔴 **〔步 12·C 2026-09-20〕本机与远端是**同一条命令**了，分它们的是 `origin`。**
+    //    这份 mock 从前按**命令名**分本机/远端，今天按 `args.origin` 分 ——
+    //    ⚠ 判的性质一个字没变（那条竞态守卫仍然承重），变的只是「怎么认出这一趟问的是谁」。
+    //    ⚠ `<local>` 是**逐字**的：调用点要是漏了补默认值（送 `undefined`/`null`），
+    //      这里就落不进本机那一支 ⇒ 当场红。那正是要的。
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      const origin = (args as { origin?: string } | undefined)?.origin;
       if (cmd === "list_remote_mcp_origins") return ["devbox"];
-      if (cmd === "list_mcp_project_dirs") return ["/local/a", "/local/b"];
-      if (cmd === "list_remote_mcp_project_dirs")
+      if (cmd === "list_mcp_project_dirs" && origin === "<local>") return ["/local/a", "/local/b"];
+      if (cmd === "list_mcp_project_dirs")
         return new Promise<string[]>((r) => {
           releaseRemote = r;
         });
@@ -356,10 +368,16 @@ describe("P6b MCP 工作目录清单", () => {
     // 让**远端**那次枚举挂住，好复现真实形状：那是一整趟 SSH（30s 超时），
     // 在这期间切机器是完全正常的操作。本机那条是本地读文件，测不出这个竞态。
     let releaseRemote: (v: string[]) => void = () => {};
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    // 🔴 **〔步 12·C 2026-09-20〕本机与远端是**同一条命令**了，分它们的是 `origin`。**
+    //    这份 mock 从前按**命令名**分本机/远端，今天按 `args.origin` 分 ——
+    //    ⚠ 判的性质一个字没变（那条竞态守卫仍然承重），变的只是「怎么认出这一趟问的是谁」。
+    //    ⚠ `<local>` 是**逐字**的：调用点要是漏了补默认值（送 `undefined`/`null`），
+    //      这里就落不进本机那一支 ⇒ 当场红。那正是要的。
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      const origin = (args as { origin?: string } | undefined)?.origin;
       if (cmd === "list_remote_mcp_origins") return ["devbox"];
-      if (cmd === "list_mcp_project_dirs") return ["/local/only"];
-      if (cmd === "list_remote_mcp_project_dirs")
+      if (cmd === "list_mcp_project_dirs" && origin === "<local>") return ["/local/only"];
+      if (cmd === "list_mcp_project_dirs")
         return new Promise<string[]>((r) => {
           releaseRemote = r;
         });
