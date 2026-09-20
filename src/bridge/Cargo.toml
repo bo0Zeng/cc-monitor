@@ -127,6 +127,37 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
 tracing-appender = "0.2"
 
+# 🔴〔步 24e · 2026-09-20〕**原生文件管理窗口**（`设计/60 §4 戊` · `§5` 第三段）。
+# 框架定案 egui 的读数住 `真相源/99`；许可 `MIT OR Apache-2.0`，与「不要 GPL」不冲突。
+#
+# ⚠ **为什么这两条依赖挂在 `monitor` 上，而不是一个新 crate** —— 两条独立的理由，
+#    都不是省事（详细论证与现打依据住 `src/filewin/mod.rs` 的头注）：
+#  ① **进程形态定的是「同进程」**：窗口要直接调 `sftp_pool` 的那些函数，
+#     而那个池是 `sftp_pool.rs:539` 的**进程级 `OnceLock`** ⇒ 换进程 = 换一份池
+#     = 同一台远端第二条 SSH 连接，秤 F4 钉的「6 通道 − 4 车道 = 2」会被悄悄变成两份预算。
+#  ② **门禁 `cargo` 那一格把 workspace 包数**恒等**钉在 9**（`tests/scripts/gate.sh:1351`
+#     的 `run_gate_sum cargo 9`）。新增一个 workspace 成员 ⇒ 那一格当场红，
+#     而那个 `9` 住 `gate.sh`，**不在 24e 的写区** ⇒ 不许为了塞一个 crate 去动判据。
+#     ⇒ 落成 `monitor` 自己的一个模块，包数不动。
+#
+# ⚠ **代价如实记**：这两条把依赖树从 679 个包推到约 1080 个（winit / wgpu / naga / accesskit
+#    一大片）。现打核过它编得过的三档（`cargo check`）：
+#      · 宿主 `x86_64-unknown-linux-gnu`     ✅
+#      · `x86_64-pc-windows-gnu`（门禁 winchk 那一格用的 target）✅ 31.97 秒
+#      · `x86_64-unknown-linux-musl`          ✅（只是 `check`，不是静态链接）
+#    ⚠ `muslbuild` 那一格的射程是 `src/backend`（`gate.sh:1117` 逐字 `cd src/backend`）
+#      ⇒ 本条依赖**碰不到它**；「GUI crate 能不能 musl 静态链接」这个设计题**没被本刀回答**。
+egui = "0.36"
+eframe = "0.36"
+# `winit` 是 `eframe` 的传递依赖，这里**提升为直接依赖**，只为一件事：
+# `EventLoopBuilderExtX11` / `ExtWayland` / `ExtWindows` 这三个**平台扩展 trait**
+# —— `eframe` 只 re-export 了 `EventLoopBuilder` 本体（`epi.rs:26`），没 re-export 它们，
+# 而「egui 窗口跑在次线程」全靠它们的 `with_any_thread(true)`（见 `src/filewin/mod.rs` 头注）。
+# ★ **版本漂了会怎样：编译器当场报错，不需要额外判据。**
+#   若本条与 `eframe` 解析到两个不同的 winit 大版本，那三个 trait 就不再实现在
+#   `eframe::EventLoopBuilder` 上 ⇒ `filewin::shell` 的 hook 编不过。
+winit = "0.30"
+
 [dev-dependencies]
 # C01（rust-ts-boundary）：**故意只在 dev 侧**。`ts-rs` 是 codegen 工具，
 # 导出本来就走 `cargo test`（`#[ts(export)]` 生成的是一个测试），
