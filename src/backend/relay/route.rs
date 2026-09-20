@@ -1,7 +1,26 @@
 //! 路由：从请求路径里切出**路由键**，把其余部分原样交给上游。
 //!
-//! 形状 `/s/<agent>/<account>/<key>/<真路径>` —— 三段都是**不透明串**。
-//! 中转不认识任何 agent 叫什么，也不解释 `<key>` 是会话 id 还是别的什么。
+//! 形状 `/<前缀>/<seg1>/<seg2>/<seg3>/<真路径>` —— 三段都是**不透明串**。
+//! 中转不认识任何 agent 叫什么，也不解释 `<seg3>` 是会话 id 还是别的什么。
+//!
+//! # 🔴 两个前缀 = 两种模式（`设计/20 §2`「为什么用两个前缀而不是一个哨兵段」）
+//!
+//! ```text
+//! /s/…  代入模式：表里必须有这一行，没有 ⇒ 404（`K-H2` `KH2` 那条语义，一字不改）
+//! /t/…  直通模式：层 1 **永不**代入 auth；`seg2` 只当标签
+//! ```
+//!
+//! **意图写在线上**，两条路不可能互相静默降级。如果用一个前缀 ＋「查不到就直通」，
+//! 那么**一次 `seg2` 打字错误**就会从「该代入却没代入（loud 404）」变成
+//! 「**静默用了下游自己的凭据**」—— 那正是 `KH2` 在治的病的镜像。
+//! 两个前缀把这件事变成**构造上不可能**：`/s/` 永远 fail-closed，`/t/` 从来不代入。
+//!
+//! ⚠ **四个槽位一格没动** ⇒ [`segment_is_safe`] 一字不改，`parse` 只多剥一次前缀
+//! （`20 §0`：线格式本来就是对的，要动的只是层 1 怎么称呼它们）。
+//!
+//! ⚠ **今天没有任何人往 `/t/` 上发流量** —— 注入侧仍然只拼 `/s/`
+//! （`payload.rs::RELAY_ROUTE_SAMPLE`，本文件那条跨半边对拍判据现读它）。
+//! 打开注入是 `99 §4` 的 **14-ii**，而且逐字要求「**必须带开关，默认关**」。
 //!
 //! # ⚠ `<account>` 那一段是 `K-H2` 加的，理由与代价逐条记这里
 //!
@@ -22,13 +41,32 @@
 //! （`K-H2` `KH2`：不许回落到别的账号的 key，也不许回落到默认上游）。
 
 /// 切出来的路由。`rest` 逐字保留原请求的 `路径 + 查询串`，中转不重写它。
+///
+/// # 🔴 条 48（2026-09-18 拍板 (a)）：这几个字段**用位置名，不用业务名**
+///
+/// 先前它是 `{ agent, account, key }` 三个业务名。今天是
+/// `{ mode, key: RouteKey{seg1,seg2}, stream }` —— 层 1 只知道「第 1/2/3 段」，
+/// 把前两段整包交给层 2 当键、把第 3 段当自己那条流的名字。
+/// 谁是 agent、谁是账号，**只在 `accounts/` 那一层才有这两个词**。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Route {
-    pub(crate) agent: String,
-    /// 路由表的**索引键**（`K-H2`）。中转不解释它，只拿它去查表。
-    pub(crate) account: String,
-    pub(crate) key: String,
+    /// 哪个前缀进来的 —— `/s/` 代入 · `/t/` 直通。层 1 只转交，不解释。
+    pub(crate) mode: super::Mode,
+    /// 前两段，整包交给层 2 当键。层 1 **不解释**它们。
+    pub(crate) key: super::RouteKey,
+    /// 第 3 段 —— 层 1 自己那条流的名字（它是 sid，但层 1 不需要知道）。
+    pub(crate) stream: String,
     pub(crate) rest: String,
+}
+
+impl Route {
+    /// 这一条请求在 tee 上的身份。**三个标签收成一个**（`20 §4`）。
+    pub(crate) fn stream_id(&self) -> super::StreamId<'_> {
+        super::StreamId {
+            key: &self.key,
+            stream: &self.stream,
+        }
+    }
 }
 
 /// 一段路由键里允许的字符 —— 白名单，不是黑名单。
@@ -49,19 +87,34 @@ pub(crate) fn segment_is_safe(seg: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-/// 解析 `/s/<agent>/<account>/<key>/<rest>`。不是这个形状就返回 `None`（调用方回 404）。
+/// 两个前缀 ＋ 它们各自的模式。**闭集，唯一住址** —— 散文里不许再抄一份
+/// （`brief` 13b）。要印出来就现算这张表。
+const PREFIXES: &[(&str, super::Mode)] = &[
+    ("/s/", super::Mode::Substitute),
+    ("/t/", super::Mode::Passthrough),
+];
+
+/// 解析 `/<前缀>/<seg1>/<seg2>/<seg3>/<rest>`。不是这个形状就返回 `None`（调用方回 404）。
+///
+/// ⚠ 四个槽位**一格没动**（`20 §0`：线格式本来就是对的），动的只是层 1 怎么称呼它们。
+/// ⇒ `segment_is_safe` 一字不动，`parse` 只是多认一个前缀、并把模式一起交出去。
 pub(crate) fn parse(target: &str) -> Option<Route> {
-    let after = target.strip_prefix("/s/")?;
-    let (agent, after) = after.split_once('/')?;
-    let (account, after) = after.split_once('/')?;
-    let (key, rest) = after.split_once('/')?;
-    if !segment_is_safe(agent) || !segment_is_safe(account) || !segment_is_safe(key) {
+    let (mode, after) = PREFIXES
+        .iter()
+        .find_map(|(p, m)| target.strip_prefix(p).map(|rest| (*m, rest)))?;
+    let (seg1, after) = after.split_once('/')?;
+    let (seg2, after) = after.split_once('/')?;
+    let (seg3, rest) = after.split_once('/')?;
+    if !segment_is_safe(seg1) || !segment_is_safe(seg2) || !segment_is_safe(seg3) {
         return None;
     }
     Some(Route {
-        agent: agent.to_string(),
-        account: account.to_string(),
-        key: key.to_string(),
+        mode,
+        key: super::RouteKey {
+            seg1: seg1.to_string(),
+            seg2: seg2.to_string(),
+        },
+        stream: seg3.to_string(),
         rest: format!("/{rest}"),
     })
 }
