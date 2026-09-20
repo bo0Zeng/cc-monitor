@@ -9,6 +9,7 @@
 //! `~/.claude.json` 路径有变体（`CLAUDE_CONFIG_DIR` vs `$HOME`），故 `claude_json_candidates` 取多候选、
 //! 读第一个存在的——防御式，schema 真机可能变，不硬假设完整。
 
+use crate::origin::{Origin, Route};
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 
@@ -159,11 +160,28 @@ fn list_mcp_project_dirs_impl() -> Vec<String> {
 
 /// F87 读命令：候选项目目录（`~/.claude.json` 的 `projects` 键，排序）——前端 datalist 自动补全用。
 /// 设置窗独立于主窗口、拿不到活跃会话 cwd，故让用户从「用过的项目」里选/补全。宽容：缺/坏 → 空。§10 spawn_blocking。
+///
+/// 🔴 **〔步 12·C 2026-09-20〕这里原先是两条命令**（`list_mcp_project_dirs` ＋
+/// `list_remote_mcp_project_dirs`），今天是一条带 `origin` 的。`设计/00 §2.5 ①` 逐字
+/// 「同义双份命令合成一条带 origin 参数的」。
+///
+/// **凭什么说这一对是同一件事**（不是按名字判的，按 `真相源/97 §二b` 那两条判据判的）：
+/// 两侧问的是**同一份文件的同一个键**（`~/.claude.json` 的 `projects`），
+/// 而且**算它的那一份代码本来就只有一份** —— [`project_dirs_from`]。
+/// 两侧的差别只在「那个文件的字节从哪来」：本机 `read_json_lenient` 直接读盘，
+/// 远端 `fetch_remote_claude_json` 走 SSH `cat`。⇒ 这正是 `INVARIANTS §40`
+/// 「本地 ＝ 不走 ssh 的远端」那一句在命令面上的样子。
+///
+/// ⚠ **本机是 `Origin::local()`（线上 `"<local>"`），不是 `null`** ——
+/// 「没说」那一支由 [`Origin::route`] 当场拒掉，理由见它的头注。
 #[tauri::command]
-pub async fn list_mcp_project_dirs() -> Result<Vec<String>, String> {
-    tokio::task::spawn_blocking(list_mcp_project_dirs_impl)
-        .await
-        .map_err(|e| format!("spawn_blocking: {e}"))
+pub async fn list_mcp_project_dirs(origin: Origin) -> Result<Vec<String>, String> {
+    match origin.route("list_mcp_project_dirs")? {
+        Route::Local => tokio::task::spawn_blocking(list_mcp_project_dirs_impl)
+            .await
+            .map_err(|e| format!("spawn_blocking: {e}")),
+        Route::Remote(host) => list_remote_mcp_project_dirs(host).await,
+    }
 }
 
 /// F87b③：跨机读远端 MCP。**只读**（守 §1：SSH exec `cat` 远端**用户自己**的 `~/.claude.json`，
@@ -229,10 +247,14 @@ async fn fetch_remote_claude_json(
 }
 
 /// F89a：列远端项目目录（`~/.claude.json` 的 `projects` 键，排序）——前端远端项目选择器 datalist 用。**只读**。
-#[tauri::command]
-pub async fn list_remote_mcp_project_dirs(origin: String) -> Result<Vec<String>, String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+///
+/// 🔴 **〔步 12·C〕它不再是一条 Tauri 命令** —— 上线的那一条是
+/// [`list_mcp_project_dirs`]，本函数是它的远端那一支。名字**刻意没改**：
+/// `local_origin_registry::TRIAGE_DEBT` 按「文件::函数」登记着这一处，
+/// 改名会让那张表静默失配（那条判据的 `stale` 断言逐字治这件事）。
+pub(crate) async fn list_remote_mcp_project_dirs(host: &str) -> Result<Vec<String>, String> {
+    let cfg = crate::load_remote_config_by_label(host)
+        .ok_or_else(|| format!("远端 '{host}' 未配置或未启用"))?;
     let claude_json = fetch_remote_claude_json(&cfg).await?;
     Ok(claude_json
         .map(|v| project_dirs_from(&v))

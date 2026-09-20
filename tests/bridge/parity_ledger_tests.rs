@@ -105,6 +105,28 @@ const LEDGER: &[(&str, &str, Side)] = &[
         "hooks.diagnose",
         Side::Remote,
     ),
+    // 🔴🔴 **〔步 12·C 2026-09-20〕这一对**不合**，并且它不是漏了。**
+    //
+    // 派工单点名要合的 8 对里有它，读到底之后判**不合**，判词逐条在这里
+    //（先例：`§2.5 P8` 的第 10 对 —— `list_remote_tmux` 那一行上面那句注释）：
+    //
+    // ① **远端那条根本不收 `origin`** —— 它的签名是 `list_remote_history_projects()`，
+    //    体里 `load_remote_configs()` **fan-out 全部已配置远端**。
+    //    ⇒ 本机那条是「一台机器」，远端那条是「N 台机器」。**不是同一个基数。**
+    // ② **返回类型两侧不同形**：本机 `Vec<HistoryProject>`，远端
+    //    `RemoteProjectsResult { projects, failed_hosts }` —— 后者那半是
+    //    **fan-out 才有的概念**（「哪几台没答上来」），一台机器的查询说不出这句话。
+    // ③ **前端的失败语义与缓存策略也是两套**（`views/history.ts::refresh`）：
+    //    本机失败 ⇒ 整体失败（本地都读不了没得显示）；远端部分失败 ⇒ 不冻结缓存、
+    //    渲染已拿到的台、下次重试。远端那份还有一条 TTL 缓存（`HISTORY_REMOTE_TTL_MS`），
+    //    本机那份**每次重扫**。
+    //
+    // ⇒ 要合它，得先裁一个**设计题**：「项目列表的 fan-out 住哪一层」。
+    //    合成 `list_history_projects(origin)` 就等于把 fan-out 搬到前端（N 次 IPC），
+    //    并重写那条 TTL 缓存与 `failed_hosts` 的语义。**那是补/搬能力，不是归一命令名**,
+    //    性质同 `§2.5 P8`：不许夹在一次机械合并里顺手做。
+    // ⚠ **别读成「远端那条该退役」** —— 它今天承载的 fan-out 是真需求（多机 #30）。
+    //    判的是「这一对不是双份，是一台 vs N 台」，**不是**「其中一条多余」。
     (
         "list_history_projects",
         "history.list-projects",
@@ -115,45 +137,75 @@ const LEDGER: &[(&str, &str, Side)] = &[
         "history.list-projects",
         Side::Remote,
     ),
+    // 🔴 **〔步 12·C 2026-09-20〕下面这五行是「一条命令自己办两侧」，不是「两条命令各办一侧」。**
+    //
+    // `设计/00 §2.5 ①` 逐字「同义双份命令合成一条带 origin 参数的」。合并之后
+    // **能力总数与不对称数都不动** —— 那五条能力从前是 `{Local, Remote}`（各有一条命令
+    // ⇒ 已对称），今天是 `{Both}`（一条命令办两侧 ⇒ 同样对称）。
+    // ⚠ **这一点要读准**：合并**不改善平价**，平价本来就有；它改善的是
+    // 「同一件事有几条路」。两者别混着读。
     (
         "stream_history_sessions_in_project",
         "history.list-sessions",
-        Side::Local,
-    ),
-    (
-        "stream_remote_history_sessions",
-        "history.list-sessions",
-        Side::Remote,
+        Side::Both,
     ),
     (
         "stream_read_session_jsonl",
         "history.read-session",
-        Side::Local,
+        Side::Both,
     ),
-    (
-        "stream_read_remote_session",
-        "history.read-session",
-        Side::Remote,
-    ),
-    ("delete_history_session", "history.delete", Side::Local),
-    (
-        "delete_remote_history_session",
-        "history.delete",
-        Side::Remote,
-    ),
+    ("delete_history_session", "history.delete", Side::Both),
+    // 🔴🔴 **〔步 12·C 2026-09-20〕这一格是三份，不是两份 —— 判**不合**，判词在这里。**
+    //
+    // 派工单要求「先答『这两条远端命令到底差在哪』，读到底再决定合成几条」。读到底了，
+    // 差**五处**，而其中两处是结构性的：
+    //
+    // | | `read_remote_mcp_servers` | `read_remote_project_mcp` |
+    // |---|---|---|
+    // | 读哪个文件 | 远端 `~/.claude.json` | 远端 `<dir>/.mcp.json` |
+    // | 走哪条传输 | SSH exec `cat` | **SFTP** |
+    // | 回哪个 scope | `user` | `project` |
+    // | 缺 / 坏文件 | 32MB 超限 ⇒ **拒收回错** | 宽容 ⇒ **空** |
+    // | 🔴 SS-14 读写分界 | 读的是**绝不写**的那份 | 读的是**唯一可写**的那份 |
+    //
+    // ⇒ 本机 `read_mcp_servers` 是这两条的**并集**（它一趟回 `user`＋`local`＋`project`
+    //   三个 scope），所以「本机 1 : 远端 2」不是命名问题，是**分叉轴不是 origin**：
+    //   真正的轴是 **scope × 传输 × SS-14 读写分界**。
+    //
+    // **合成一条要付的三笔账**（每一笔都不是机械合并）：
+    // ① 远端那一侧要**新增能力**：一趟里做两种传输（SSH exec ＋ SFTP）并并集，
+    //    还要补上**今天谁都不覆盖的远端 `local` scope**
+    //    （`read_remote_mcp_servers` 已经 cat 了远端 `~/.claude.json`，
+    //     却给 `collect_entries` 传了 `project_dir = None` ⇒ 那一档直接被跳过。
+    //     **这是一处真缺口，如实登记，本步不补** —— 补它是加能力）。
+    // ② **失败语义会变**：今天 SFTP 坏了照样读得到 user scope；合成一条之后
+    //    一次调用要么部分静默失败、要么整趟硬失败，两者都要重裁。
+    // ③ 前端那三格 UI 状态要塌（`mcp-section.ts::refresh` 按 (机器, 目录) **三态分发**，
+    //    三条路各有自己的 loading 文案 / 错误重试盒 / 「仅 user scope」说明头）。
+    //
+    // ⇒ **不合。** 同 `§2.5 P8` 的处置：判成「两个能力」并把理由写在旁边，
+    //   免得下一个人再来合一次。⚠ 这不是「远端欠一条命令」，
+    //   是**这一格的归一要先裁 scope 与传输怎么摆**，那是设计题。
     ("read_mcp_servers", "mcp.read", Side::Local),
     ("read_remote_mcp_servers", "mcp.read", Side::Remote),
     ("read_remote_project_mcp", "mcp.read", Side::Remote),
-    (
-        "list_mcp_project_dirs",
-        "mcp.list-project-dirs",
-        Side::Local,
-    ),
-    (
-        "list_remote_mcp_project_dirs",
-        "mcp.list-project-dirs",
-        Side::Remote,
-    ),
+    // 〔步 12·C〕合成一条（同上那五行的第四条）。
+    ("list_mcp_project_dirs", "mcp.list-project-dirs", Side::Both),
+    // 🔴🔴 **〔步 12·C 2026-09-20〕这两对**该合、但本步合不了** —— 卡的是工作边界，不是判据。**
+    //
+    // 判定：**它们是真双份**（同一个动作、同一个写面 `<dir>/.mcp.json`、
+    // 同一条 SS-14 铁律的两端），合并在技术上是机械的。
+    //
+    // **卡点**（现打，不是猜的）：`installface` 那一格的尺子
+    // `tests/evidence/K-R117-ruler.py` 的 `SPLIT_GROUPS["S5"]` 是一张**字面量名单**，
+    // 里面逐字列着 `write_remote_mcp_server` 与 `remove_remote_mcp_server`；
+    // 而它的 `R8a` 是「名单 ↔ 现打人群」的**两向集合相等**，人群从 `LEDGER` 现打派生。
+    // ⇒ 这里一退役两条，`R8a` 当场两向红（那把尺子自己的头注第 513 行就逐字预告了这一形）。
+    // 而 `tests/evidence/` 在本步的边界里是**不许碰**的（另有 agent 在那里工作）。
+    //
+    // ⇒ **登记成欠账、并写清出路**：合这两对要与
+    //   `K-R117-ruler.py::SPLIT_GROUPS["S5"]`（7 条 → 5 条）**同拍**改。
+    //   ⚠ 别把它读成「判不了」—— 判过了，是**做不了**，差的是一次跨边界的许可。
     ("write_project_mcp_server", "mcp.write", Side::Local),
     ("write_remote_mcp_server", "mcp.write", Side::Remote),
     ("remove_project_mcp_server", "mcp.remove", Side::Local),
@@ -179,14 +231,11 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("ccm_user_path_remove", "ccm.user-path", Side::Local),
     ("cc_integration_preview", "ccm.install-ui", Side::Local),
     ("cc_integration_scan_path", "ccm.install-ui", Side::Local),
-    ("create_branch_session", "history.branch", Side::Local),
     // G6：远端分叉落地 ⇒ `history.branch` 从 ParityDebt 变成两侧都有（该行的
     // 不对称理由已从 `ASYMMETRY_REASONS` 删除——留着就是宣称一条已经补上的欠账）。
-    (
-        "create_remote_branch_session",
-        "history.branch",
-        Side::Remote,
-    ),
+    // 〔步 12·C 2026-09-20〕**两条并成一条**（上面那五行的第五条）——
+    // 被并掉的那条命令自己的头注逐字写着「差异今天只剩一处：活儿在远端干」。
+    ("create_branch_session", "history.branch", Side::Both),
     ("panorama_index", "panorama.code-graph", Side::Local),
     ("panorama_reindex", "panorama.code-graph", Side::Local),
     ("panorama_status", "panorama.code-graph", Side::Local),
@@ -651,6 +700,50 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
              ⚠ 这是本表里**第一条写面的 `Both`**：读面三条 08-12 就转了，写面等的是\
              用户 08-12 那句「先把确切的命令组件做出来，然后 cc-bus 可以去调用」。",
     ),
+    // 🔴 **〔步 12·C 2026-09-20〕下面五条是同一刀落下来的** ——
+    //    `设计/00 §2.5 ①` 那句「合成一条带 origin 参数的」。
+    //    五条的理由同一句、只是被合的那一对不同，所以逐条写「凭什么说这一对是同一件事」
+    //    （**判据不是名字** —— `真相源/97 §二b` 逐字：按名字数分叉会系统性高估）。
+    (
+        "create_branch_session",
+        "步 12·C：被合掉的那条（`remote_branch::create_remote_branch_session`）\
+             自己的头注逐字写着「与本地那条的差异**今天只剩一处：活儿在远端干**」。\
+             命令体对 origin 不做远端假设 —— 它只用 origin 决定「活儿在哪台机器上干」，\
+             记录变换两侧共用 `branch_core::build_branch_records`，\
+             「按 sid 找那份源文件」两侧共用 `branch_core::find_session_file`（`K-R88`）。",
+    ),
+    (
+        "delete_history_session",
+        "步 12·C：两侧都是「删掉一份会话 jsonl ＋ 清掉本机按 sid 存的那份注解」。\
+             后半句**本来就只有一份实现**（`history::remove_metadata_entry` 的头注逐字\
+             「本地删除与远端删除共用」——注解是 monitor 本机的东西，与会话本体在哪台机器上无关）。\
+             命令体对 origin 不做远端假设：它只用 origin 选「哪一道路径守卫」\
+             （本机 `validate_delete_target` / 远端 `sftp::remove_remote_file`）。",
+    ),
+    (
+        "stream_history_sessions_in_project",
+        "步 12·C：`真相源/97 §二 丙`「措辞不同」那一档 —— 两个名字里一个共同的词都没有，\
+             认出它靠的是远端那一支头注里逐字的「**对齐本地 \
+             `stream_history_sessions_in_project`**」：同一个 `HistorySessionEntry`、\
+             同一种 `tauri::ipc::Channel`、同一套取消语义（前端 drop ⇒ `send` 返 Err ⇒ 停）。\
+             `project_dir` 两侧早已同形（`K-R97`：都是编码目录名）。",
+    ),
+    (
+        "stream_read_session_jsonl",
+        "步 12·C：同上一条，也是 `真相源/97 §二 丙` 那一档。判据是 **chunk 口径逐字对齐**\
+             （每 100 条一发、同一个 `crate::bridge::JsonlLinePayload`、同一套 per-file `seq`），\
+             以及前端 `views/session-viewer.ts` 对两条路共用同一段消费代码。\
+             ⚠ 如实记一处**没合掉**的不对称：载荷里的 `origin` 字段本机侧填 `None`、\
+             远端侧填 `Some(label)` —— 那是载荷层的事，本步不动。",
+    ),
+    (
+        "list_mcp_project_dirs",
+        "步 12·C：两侧问的是**同一份文件的同一个键**（`~/.claude.json` 的 `projects`），\
+             而**算它的那份代码本来就只有一份** —— `mcp::project_dirs_from`。\
+             差别只在那份文件的字节从哪来（本机 `read_json_lenient` 读盘 /\
+             远端 `fetch_remote_claude_json` 走 SSH `cat`）⇒ 这正是 `INVARIANTS §40`\
+             「本地 ＝ 不走 ssh 的远端」在命令面上的样子。",
+    ),
     (
         "set_backend_kill_on_exit",
         "P2s：backend 策略是 per-host 的，本机的 origin 就是 `<local>`。\
@@ -985,7 +1078,7 @@ fn ledger_shape_is_pinned() {
     // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
     // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
     // 归属错了就不如没有。**
-    assert_eq!(LEDGER.len(), 148, "命令总数变了"); // **`设计/50` −4（`aggregate_usage_all` / `aggregate_remote_usage_all` / `account_usage` / `account_usage_local`：用量 ②③ 两轴整轴退役）** // **K-R109 +1（render_local_attach，Local；归已有能力 `session.launch` ⇒ 能力数与不对称数都不动，理由逐条写在那一行旁边）** // **K-R69 +1（local_ccm_entry_status，Local；归已有能力 `ccm.status` ⇒ 能力数与不对称数都不动）** // **K-R49 +1（write_account_aliases，Local-only；新能力 `alias.account-commands`，`ParityDebt`）** // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（backend_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_backend_kill_on_exit / backend_status / backend_start / backend_stop / backend_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）** // **K-H2b +1（relay_routing_for，Local-only；新能力 `relay.routing`，`NaturallyAsymmetric`）** // **`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove，都 Local；新能力 `ccm.user-path`，`NaturallyAsymmetric` —— 理由见 ASYMMETRY_REASONS 那一行）** // **〔步 23b · 09-20〕+1（sftp_copy，Remote；归已有能力 `sftp.file-panel` ⇒ 能力数与不对称数都不动，理由逐条写在那一行旁边）**  〔散文墓碑〕
+    assert_eq!(LEDGER.len(), 143, "命令总数变了"); // **〔步 12·C · 09-20〕−5（`origin` 归一：5 对同义双份各合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。**能力总数与不对称数都不动** —— 那五条能力从前是 `{Local, Remote}`＝已对称，今天是 `{Both}`＝同样对称；逐条理由在 `LEDGER` 那五行旁边与 `ORIGIN_TAKING_BOTH` 里）** // **`设计/50` −4（`aggregate_usage_all` / `aggregate_remote_usage_all` / `account_usage` / `account_usage_local`：用量 ②③ 两轴整轴退役）** // **K-R109 +1（render_local_attach，Local；归已有能力 `session.launch` ⇒ 能力数与不对称数都不动，理由逐条写在那一行旁边）** // **K-R69 +1（local_ccm_entry_status，Local；归已有能力 `ccm.status` ⇒ 能力数与不对称数都不动）** // **K-R49 +1（write_account_aliases，Local-only；新能力 `alias.account-commands`，`ParityDebt`）** // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（backend_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_backend_kill_on_exit / backend_status / backend_start / backend_stop / backend_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）** // **K-H2b +1（relay_routing_for，Local-only；新能力 `relay.routing`，`NaturallyAsymmetric`）** // **`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove，都 Local；新能力 `ccm.user-path`，`NaturallyAsymmetric` —— 理由见 ASYMMETRY_REASONS 那一行）** // **〔步 23b · 09-20〕+1（sftp_copy，Remote；归已有能力 `sftp.file-panel` ⇒ 能力数与不对称数都不动，理由逐条写在那一行旁边）**  〔散文墓碑〕
     let sides = capability_sides();
     assert_eq!(sides.len(), 65, "能力总数变了"); // **`设计/50` −2（`usage.aggregate` 与 `usage.per-account` 两条能力整条退役 —— 两条**原本都对称**，所以不对称数不动）** // **K-R109 +1（launch.render-attach，Local-only；⚠ 派工单猜的是「能力数 65 不动」，实打不成立 —— 两个「归已有能力」的归法各被一条判据顶回来了，逐条见 `LEDGER` 里那一行旁边）** // **K-R49 +1（alias.account-commands，Local-only）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.backend-policy / backend.status / backend.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（relay.routing，Local-only）**；**`K-R135` +1（ccm.user-path，Local-only：`R85` 那一格「加/撤/现在状态」；远端那一侧同一件事由 rc 围栏块办，而「用户级 PATH」这一档是 Windows 独有的 ⇒ `NaturallyAsymmetric`）**
     let asym = asymmetric_capabilities();
@@ -1269,7 +1362,14 @@ fn command_dispatch_class() -> BTreeMap<String, Derived> {
 ///
 /// 〔量于 09-14，本工作树 `track/k-r115`，`command_dispatch_class()` 现打〕
 const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
-    (Derived::RemoteOnly, 39), // `设计/50` −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **〔步 23b · 09-20〕+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
+    // 🔴 **〔步 12·C · 09-20〕39 → 34。** `origin` 归一退役了 5 条 `Side::Remote` 的命令
+    //    （并进了本机那条）。**现打确认这 5 条全部落在 `RemoteOnly` 这一档**，
+    //    所以只有这一格动、另外三格一个都不动 —— 那是意料之中的：五条的体里都有
+    //    `load_remote_config_by_label(` / `require_cfg_by_label(` 这类 `REMOTE_ONLY_MARKS`，
+    //    而一条 `FRAME_PLANE_MARKS`（`client_for(` / `backend_route::`）都没有。
+    //    ⚠ 这个数是**跑出来的**，不是 39−5 算出来的：先把总数改对、让 `hist == want`
+    //      那一比去印现打，再照它写。（算出来的那个恰好也是 34，但「恰好相等」不是判据。）
+    (Derived::RemoteOnly, 34), // `设计/50` −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **〔步 23b · 09-20〕+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
     (Derived::FramePlane, 5),  // `设计/50` −1（`account_usage`）
     (Derived::Mixed, 0),
     (Derived::Unclassified, 10),
@@ -1343,8 +1443,9 @@ const FRAME_PLANE_VERDICTS: &[(&str, FrameVerdict, &str)] = &[
 fn the_remote_side_column_is_signed_off() {
     let derived = command_dispatch_class();
     // 反向自检①：派生器扫不到东西的时候，下面每一条都会**空真地**成立。
+    // 🔴 **〔步 12·C · 09-20〕地板 140 → 135**：合并退役了 5 条 `#[tauri::command]`。
     assert!(
-        derived.len() >= 140,
+        derived.len() >= 135,
         "派生器只认出 {} 条命令的派发跳（`LEDGER` 现打 {} 行）—— **扫描面塌了**，\n\
              不是「命令变少了」。先修 `command_dispatch_class`，别信下面任何一条绿。",
         derived.len(),
@@ -1357,8 +1458,12 @@ fn the_remote_side_column_is_signed_off() {
         .map(|(c, _, _)| *c)
         .collect();
     // 反向自检②：`Side::Remote` 那一栏本身不许塌成空集。
+    // 🔴 **〔步 12·C · 09-20〕地板 50 → 45。** `origin` 归一退役了 5 条 `Side::Remote`
+    //    的命令（它们并进了本机那条）⇒ 这一栏**真的少了 5 个成员**。
+    //    ⚠ 按本仓纪律，人群真的变少时不跟着改地板，才是让地板替真判据挡枪（`K-G8`）。
+    //    ⚠ 地板只守「这一栏没塌成空集」；**有牙的是下面那条直方图相等**，不是这个数。
     assert!(
-        remote_rows.len() >= 50,
+        remote_rows.len() >= 45,
         "`Side::Remote` 现打只有 {} 行 —— 本条的人群塌了，下面几条会空真地绿",
         remote_rows.len()
     );

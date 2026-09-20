@@ -2282,8 +2282,14 @@ const FENCE_CHILD: &str = "CCM_TEST_DELETE_FENCE_CHILD";
 ///
 /// ⚠ **反空真**：过滤器一条都没命中时 libtest 的退出码**也是 0**（「0 passed」）——
 /// 那会是一次干净的假绿。所以父进程除了看退出码，还断子进程真的报了 `1 passed`。
-#[test]
-fn the_delete_entry_point_actually_goes_through_the_fence() {
+// 🔴 〔步 12·C 09-20〕`delete_history_session` 合并之后是 `async`（远端那一支要 `.await`），
+//    而且**第一个入参是 `origin`**。本条判的是**本机**那一侧的围栏 ⇒ 逐字送
+//    `Origin::local()`（线上 `"<local>"`）。
+//    ⚠ **不许送 `Origin::Unspecified`** —— 那会被 `Origin::route` 在**围栏之前**拒掉，
+//      于是本条会因为「参数不对」而绿，而不是因为围栏接上了。那正是本条自己警告过的
+//      「在一个根本没跑到围栏的环境里假绿」。
+#[tokio::test]
+async fn the_delete_entry_point_actually_goes_through_the_fence() {
     // ═══ 父进程那一半：造夹具 · 起子进程 · 把子进程的正文转发出来，然后 `return` ═══
     //
     // ⚠ 两半**刻意写在同一个 `#[test]` 里**〔09-10 第二拍〕。
@@ -2374,7 +2380,12 @@ fn the_delete_entry_point_actually_goes_through_the_fence() {
     let canon_victim = victim.canonicalize().expect("靶子打不开");
     let outside = !canon_victim.starts_with(&canon_projects);
 
-    let r = delete_history_session("sid".into(), victim.to_string_lossy().into_owned());
+    let r = delete_history_session(
+        crate::origin::Origin::local(),
+        "sid".into(),
+        victim.to_string_lossy().into_owned(),
+    )
+    .await;
     let still_there = victim.exists();
     let _ = std::fs::remove_dir_all(&dir);
 
@@ -2696,7 +2707,9 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
     };
     let local_path = format!(
         "{}\n{}",
-        r88_fn_body(&mine, "pub fn create_branch_session("),
+        // 〔步 12·C 09-20〕`pub fn` → `pub async fn`：合并之后这条命令要 `.await`
+        // 远端那一支。**只是签名字面量跟上，人群一个字没动** —— 切出来的仍是同一个函数。
+        r88_fn_body(&mine, "pub async fn create_branch_session("),
         r88_fn_body(&mine, "fn branch_impl(")
     );
     // 反向自检：尺子够得着 —— 把针塞进一份副本，量具必须数得出来。
@@ -2775,38 +2788,73 @@ fn an_unknown_session_id_is_refused_not_silently_substituted() {
     std::fs::remove_dir_all(projects.parent().unwrap()).ok();
 }
 
-/// ★ `KR88D2`：**两条命令的入参形状一致 —— 都收 sid，都不收路径。**
+/// ★ `KR88D2`：**两侧的入参形状一致 —— 都收 sid，都不收路径。**
 ///
-/// 判的是两个 `#[tauri::command]` 的签名本身（生产段现读）：
-/// 本机那条一旦退回收路径，本条当场红。
+/// 🔴 **〔步 12·C 09-20〕本条的人群从「两条命令」变成「一条命令 ＋ 它的远端那一支」。**
+///
+/// 判的性质**一个字没放松**，改的只是人群的住址：`create_remote_branch_session`
+/// 不再是 `#[tauri::command]`，它是合并后那条命令的远端分支。
+/// ⚠ **为什么不干脆只判那一条命令**：那会让本条的牙掉一半 ——
+/// `K-R88` 收的是「**同一件事两个入参形状**」，而「两个形状」今天仍然存在
+/// （一个在 Tauri 命令上、一个在它调的那个函数上）。少判一侧，
+/// 远端那一支哪天退回收路径，本条一声不响。
+///
+/// ⚠ **入参类型两侧今天不同**（命令那条收 `String`、内部那支收 `&str`）——
+/// 那是所有权，不是形状。所以判的是**参数名**（`source_session_id`），不是类型。
 #[test]
 fn both_branch_commands_take_a_session_id_not_a_path() {
     let local = guard_core::production_code(include_str!("../../src/bridge/src/history.rs"));
     let remote = guard_core::production_code(include_str!("../../src/bridge/src/remote_branch.rs"));
     for (who, src, sig) in [
-        ("本机", &local, "pub fn create_branch_session("),
         (
-            "远端",
+            "本机（合并后那条命令）",
+            &local,
+            "pub async fn create_branch_session(",
+        ),
+        (
+            "远端（那条命令的远端分支）",
             &remote,
-            "pub async fn create_remote_branch_session(",
+            "pub(crate) async fn create_remote_branch_session(",
         ),
     ] {
+        // 🔴 **收尾括号必须从签名**之后**找起。**〔步 12·C 09-20 实打踩到〕
+        //    原来是 `src[at..].find(')')` —— 而 `pub(crate) async fn …(` 这个签名
+        //    **自己就含一个 `)`**（`pub(crate)` 那个），于是切出来的区间起点大于终点，
+        //    当场 panic 在一条与本条要判的东西毫无关系的地方。
         let at = src
             .find(sig)
-            .unwrap_or_else(|| panic!("{who}那条命令的签名找不到（`{sig}`）—— 先修尺子"));
-        let close = src[at..].find(')').expect("签名没有收尾括号");
-        let params = &src[at + sig.len()..at + close];
+            .unwrap_or_else(|| panic!("{who}的签名找不到（`{sig}`）—— 先修尺子"));
+        let after = at + sig.len();
+        let close = src[after..].find(')').expect("签名没有收尾括号");
+        let params = &src[after..after + close];
         assert!(
-            params.contains("session_id: String"),
-            "{who}那条命令的入参里没有 sid：{params:?}"
+            params.contains("source_session_id:"),
+            "{who}的入参里没有 sid：{params:?}"
         );
         assert!(
             !params.contains("path"),
-            "{who}那条命令又收路径了：{params:?}\n\
+            "{who}又收路径了：{params:?}\n\
                  ⇒ `K-R88` 收的就是「同一件事两个入参形状」，\n\
                  而多一个可被构造的路径入参就多一条路径穿越面。"
         );
     }
+    // 🔴 **〔步 12·C〕本条新增的那一半：`origin` 只许住在命令那一侧。**
+    //    合并之后「哪台机器」是命令的参数；远端那一支拿到的是**已经分过本机**的机器名。
+    //    要是有人把 `Origin` 往内部那支里塞，本机那条路就会第二次去分本机 ——
+    //    而两处分本机正是 `local_origin_registry` 整篇在治的那一形。
+    let remote_sig_at = remote
+        .find("pub(crate) async fn create_remote_branch_session(")
+        .expect("切不到远端那一支");
+    let remote_after = remote_sig_at + "pub(crate) async fn create_remote_branch_session(".len();
+    let remote_close = remote[remote_after..]
+        .find(')')
+        .expect("远端那一支的签名没有收尾括号");
+    let remote_params = &remote[remote_after..remote_after + remote_close];
+    assert!(
+        !remote_params.contains("Origin"),
+        "远端那一支收了 `Origin` —— 它拿到的应当是**已经分过本机**的机器名（`host: &str`）。\n\
+             收 `Origin` 就意味着它要自己再分一次本机，而那正是「同一个判断有两个住址」。"
+    );
 }
 
 // ─────────────────── `KR92D1`：线上那一格分得开「不知道」和「真的是 0」 ───────────────────

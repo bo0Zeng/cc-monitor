@@ -25,6 +25,9 @@
 import { resolveResumeCommand } from "../remote-config";
 import { Channel } from "@tauri-apps/api/core";
 import { commands } from "../ipc/commands";
+// 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
+// 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
+import { LOCAL_ORIGIN } from "../backend-policy";
 // `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
 import { mintLocalTmuxName } from "../ipc/local-tmux-name";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
@@ -459,31 +462,21 @@ export class HistoryView {
       this.scheduleRender();
     };
 
-    // issue #16：远端项目走 stream_remote_history_sessions（独立 SSH 连接一次性
-    // exec backend --list-sessions），本地走原 IPC。entry 结构两端一致。
+    // 🔴 **〔步 12·C 2026-09-20〕两条命令收成了一条**（同拍的还有两个 `stream_read_*`）。
     //
-    // **C04d 批 6c：这里原来是「动态派发口」，现在不是了**（同批 6a 的两个 `stream_read_*`）。
-    // 原形态 `const ipc = origin ? "A" : "B"` + `invoke(ipc, 超集args)` 是 C04a 记的
-    // 「7 个命令 TS 静态看不见」盲区的**最后两个**。它从来不是任意字符串，只是在两个
-    // 字面量之间选 ⇒ 改成两次静态调用后：盲区**归零**（119 个命令全部静态可见），
-    // 且两条命令各拿精确签名——**远端那条 `origin` 必填、本地那条根本没有 origin 参数**。
+    // 这一段原先记着 C04d 批 6c 把「动态派发口」拆成两次静态调用、让盲区归零那件事。
+    // 那件事没白做（命令名从此是 TS 侧的字面量），但它治的是**症状**：
+    // 病根是同一件事有两条命令，而 `设计/00 §2.5 ①` 治的是病根。
+    // ⚠ 那句「本地 `proj.origin=undefined` → JSON 省略，本地命令无感」**从此不成立**：
+    //   本机要逐字送 `LOCAL_ORIGIN`，送 `null`/省略会被 Rust 侧 `Origin::route` 当场拒。
 
     const p = (async () => {
       try {
-        // 多机 #30：远端项目带 origin（= 该台 label）让后端按 label 选连哪台；
-        // 本地 proj.origin=undefined → JSON 省略，本地命令无感。
-        if (proj.origin) {
-          await commands.stream_remote_history_sessions({
-            projectDir: proj.projectDir,
-            origin: proj.origin,
-            onEntry: channel,
-          });
-        } else {
-          await commands.stream_history_sessions_in_project({
-            projectDir: proj.projectDir,
-            onEntry: channel,
-          });
-        }
+        await commands.stream_history_sessions_in_project({
+          origin: proj.origin ?? LOCAL_ORIGIN,
+          projectDir: proj.projectDir,
+          onEntry: channel,
+        });
         // 完成后再画一次（兜底最后一帧没触发 rAF 的边界）
         if (this.isOpen) this.renderList();
       } catch (e) {
@@ -1805,8 +1798,10 @@ export class HistoryView {
       );
       if (!ok2) return;
       try {
-        await commands.delete_remote_history_session({
+        // 〔步 12·C〕与本机那条是**同一条命令**了，只是 origin 不同。
+        await commands.delete_history_session({
           origin: e.origin,
+          sessionId: e.sessionId,
           jsonlPath: e.jsonlPath,
         });
       } catch (err) {
@@ -1820,6 +1815,7 @@ export class HistoryView {
       if (!ok) return;
       try {
         await commands.delete_history_session({
+          origin: LOCAL_ORIGIN,
           sessionId: e.sessionId,
           jsonlPath: e.jsonlPath,
         });
