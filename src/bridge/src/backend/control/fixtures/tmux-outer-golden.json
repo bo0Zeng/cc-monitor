@@ -1,0 +1,354 @@
+{
+  "_": "由 src/launch-tmux-outer-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
+  "nestedEnvKeys": [
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION"
+  ],
+  "cases": [
+    {
+      "name": "create：裸的（无 cwd、无身份标记）",
+      "mode": "create",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw",
+          "cwd": null,
+          "ccmSid": null
+        }
+      },
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "create：带 cwd（-c 落在 new-session 上，内层没有 cd）",
+      "mode": "create",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw",
+          "cwd": "/w",
+          "ccmSid": null
+        }
+      },
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/w' && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "create：带 @ccm_sid（setSid + setTitle 两段一起出现）",
+      "mode": "create",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw",
+          "cwd": null,
+          "ccmSid": "0f1e2d3c"
+        }
+      },
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "create：cwd + @ccm_sid + 具名账号 + 嵌套 env 清理",
+      "mode": "create",
+      "req": {
+        "env": [
+          {
+            "kind": "export-config-dir",
+            "value": "/home/u/.claude-accts/z"
+          },
+          {
+            "kind": "unset-nested-env"
+          }
+        ],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw",
+          "cwd": "/w",
+          "ccmSid": "0f1e2d3c"
+        }
+      },
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'export CLAUDE_CONFIG_DIR='\\''/home/u/.claude-accts/z'\\''; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude' Enter && tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "create：账号 0（显式 unset）+ 模型偏好",
+      "mode": "create",
+      "req": {
+        "env": [
+          {
+            "kind": "unset-config-dir"
+          },
+          {
+            "kind": "export-model",
+            "value": "opus"
+          }
+        ],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw",
+          "cwd": "/w",
+          "ccmSid": null
+        }
+      },
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/w' && tmux send-keys -t =cc-0f1e2d3c: 'unset CLAUDE_CONFIG_DIR; export ANTHROPIC_MODEL='\\''opus'\\''; claude' Enter && tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "create：quoted 名字（=name: 整段被单引号包住）",
+      "mode": "create",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "开新 Claude",
+          "quoting": "quoted",
+          "cwd": null,
+          "ccmSid": "0f1e2d3c"
+        }
+      },
+      "cmd": "tmux new-session -d -s '开新 Claude' && (tmux set-option -t '=开新 Claude:' @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t '=开新 Claude:' set-titles on 2>/dev/null || true) && (tmux set-option -t '=开新 Claude:' set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t '=开新 Claude:' 'claude' Enter && tmux attach -t '=开新 Claude:'"
+    },
+    {
+      "name": "create：cwd 带空格与中文（单引号包裹）",
+      "mode": "create",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw",
+          "cwd": "/home/用户/带 空格/proj",
+          "ccmSid": null
+        }
+      },
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/home/用户/带 空格/proj' && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "create：cwd 里有单引号（POSIX 断开转义）",
+      "mode": "create",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw",
+          "cwd": "/tmp/it's here",
+          "ccmSid": null
+        }
+      },
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/tmp/it'\\''s here' && tmux send-keys -t =cc-0f1e2d3c: 'claude' Enter && tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "create：resume（flag 已展开进 argv）",
+      "mode": "create",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [
+          "--resume",
+          "abc-123"
+        ],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw",
+          "cwd": "/w",
+          "ccmSid": "0f1e2d3c"
+        }
+      },
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'claude --resume abc-123' Enter && tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "send-into：无 new-session、无短路（治 #76 那一格）",
+      "mode": "send-into",
+      "req": {
+        "env": [
+          {
+            "kind": "unset-nested-env"
+          }
+        ],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [
+          "--resume",
+          "abc-123"
+        ],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "send-into",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw"
+        }
+      },
+      "cmd": "tmux send-keys -t =cc-0f1e2d3c: 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude --resume abc-123' Enter; tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "send-into：quoted 名字",
+      "mode": "send-into",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "send-into",
+          "name": "开新 Claude",
+          "quoting": "quoted"
+        }
+      },
+      "cmd": "tmux send-keys -t '=开新 Claude:' 'claude' Enter; tmux attach -t '=开新 Claude:'"
+    },
+    {
+      "name": "attach：raw 名字，不带载荷",
+      "mode": "attach",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "attach",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw"
+        }
+      },
+      "cmd": "tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
+      "name": "attach：quoted 名字，不带载荷",
+      "mode": "attach",
+      "req": {
+        "env": [],
+        "cwd": null,
+        "launcher": "",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "attach",
+          "name": "开新 Claude",
+          "quoting": "quoted"
+        }
+      },
+      "cmd": "tmux attach -t '=开新 Claude:'"
+    }
+  ]
+}
