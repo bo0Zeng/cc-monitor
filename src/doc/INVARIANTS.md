@@ -25,7 +25,7 @@
 **例外（穷举，各自路径白名单防越界）**：
 1. **本地删除**：`history::delete_history_session` —— 用户**显式**点删除二次确认后才执行；白名单 `starts_with(<claude_dir>/projects)`。
 2. **远端后端自部署（issue #29，`sftp::ensure_backend_deployed`）**：经 SFTP 写远端 `~/.cc-monitor/bin/`（后端二进制 + `.build_id` 标记）—— **非用户数据、幂等、版本门控**；只写 cc-monitor 自己的 bin 目录，**绝不碰** `~/.claude/`。
-3. **远端历史删除（issue F11，`remote_history::delete_remote_history_session` → `sftp::remove_remote_file`）**：用户**主动**点删除 + 前端**二次确认**后，经 SFTP 移除远端 `~/.claude/projects/` 下的 jsonl；**双重路径守卫**（`is_safe_remote_jsonl`：须 `.jsonl` + 含 `/projects/` + 无 `..`；并 SFTP `canonicalize` 解 symlink 后再校验）。**注**：标星 / 重命名 / 隐藏是 **monitor 本地元数据**（`history-metadata.json` 按 sid），**不写远端**——唯一写远端的用户数据操作就是删除 jsonl。
+3. **远端历史删除（issue F11，`history::delete_history_session` 带远端 `origin` → 远端分支 `remote_history::delete_remote_history_session` → `sftp::remove_remote_file`；〔步 12·C 09-20〕本机与远端已合成一条命令）**：用户**主动**点删除 + 前端**二次确认**后，经 SFTP 移除远端 `~/.claude/projects/` 下的 jsonl；**双重路径守卫**（`is_safe_remote_jsonl`：须 `.jsonl` + 含 `/projects/` + 无 `..`；并 SFTP `canonicalize` 解 symlink 后再校验）。**注**：标星 / 重命名 / 隐藏是 **monitor 本地元数据**（`history-metadata.json` 按 sid），**不写远端**——唯一写远端的用户数据操作就是删除 jsonl。
 4. **profile 写（F10，本机 `profile_installer` cc 集成 + 远端 `sftp::install_remote_ccm_helper`/`uninstall_remote_ccm_helper`）**：写用户自己的 shell profile（本机 `~/.bashrc` / **远端 `~/.bashrc`** via SFTP）装/卸 cc(m) 助手——用户显式触发、BEGIN/END 块 + 备份 + 写后校验回滚。**注（batch20 审计修）**：F10 **含远端 `~/.bashrc` 写**（原 `sftp.rs` 头「非远端」措辞已订正）。
 5. **MCP 项目配置写（F87 本机 / F89a 远端，`mcp::write_project_mcp_server` / `write_remote_mcp_server` / `remove_*`）**：用户**显式**点「添加/更新」或「删除」（删带二次确认）后，写**项目** `.mcp.json`（本机 `mcp_json_path` 硬编码 / 远端 `is_safe_remote_mcp_json` 守卫：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；远端经 `sftp::upload_atomic` 原子 tmp+备份+rename）。**SS-14**：写面**只** `.mcp.json`，**绝不**写 `~/.claude.json`/settings.json。`.mcp.json` 是**用户项目配置**（决定项目用哪些 MCP server），**非** Claude 会话数据（jsonl/pidfile）——与本约正交（同 F47 SFTP 面板性质），非驱动运行中会话。
 6. **公钥推送（F50，`pubkey::push_public_key`）**：用户显式点推送后，经 SSH-exec 把本地公钥**追加**到远端 `~/.ssh/authorized_keys`（`build_authorized_keys_cmd`：key 经 `shell_quote` 防注入、`grep -qxF` 幂等去重、只 append 不删）——用户自己的免密配置、非 Claude 数据。
@@ -77,7 +77,9 @@
 
 **G6 远端分叉：本约的写面从「monitor 写远端」扩到「后端在远端写」，故单列一段（澄清 + 收窄，用户 2026-07-30 拍板「要对远端也 branch」）**：
 远端会话的 jsonl 在另一台机器上，monitor 够不着 ⇒ 分叉这件事由 **后端自己在那台机器上做**
-（`src/backend/control/fork_write.rs`，monitor 侧入口 `remote_branch::create_remote_branch_session`）。
+（`src/backend/control/fork_write.rs`）。monitor 侧入口〔步 12·C 09-20〕**已与本机那条合并**：
+一条 `history::create_branch_session` 吃 `origin`，远端那一支是 `remote_branch::create_remote_branch_session`
+（**不再是 IPC 命令**，是那条命令的远端分支）。
 它与上面 F62 那段是**同一件事的远端形态**（用户显式点 `⑂` → 复制 `[根…该消息]` 前缀成一个全新
 `<new-sid>.jsonl`，**原会话一字节不改**），但因为写的人从 monitor 变成了后端，多出三条收窄：
 
