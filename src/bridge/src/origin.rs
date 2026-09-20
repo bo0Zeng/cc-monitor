@@ -107,6 +107,42 @@ impl Origin {
             Origin::Unspecified(()) => None,
         }
     }
+
+    /// **合并后的命令唯一的入口分派**（步 12·C）。
+    ///
+    /// # 为什么它是一个方法，而不是每条命令自己写一个 `if origin.is_local()`
+    ///
+    /// 合并 N 对命令就会有 N 处「先分本机」。那 N 处里只要有一处把 `Unspecified`
+    /// 顺手归进本机，`INVARIANTS §40`（「本地 ＝ 不走 ssh 的远端」）在那一条命令上
+    /// 就悄悄破了 —— 而**那种破法不报错**：调用方送 `null`，命令去动了本机的文件。
+    /// ⇒ 三态在这里一次穷尽（`match` 没有 `_` 臂），调用方拿到的是一个
+    /// **只有两个可能**的值，「没说」那一支在类型上就到不了它手里。
+    ///
+    /// ⚠ 它**不判**那台远端今天连不连得上（那是 `inbound_client` 的事），
+    /// 也**不判**本机那条路该不该做这件事（那是各命令自己的守卫）。
+    pub fn route(&self, command: &str) -> Result<Route<'_>, String> {
+        match self {
+            Origin::Named(s) if s == LOCAL => Ok(Route::Local),
+            Origin::Named(s) => Ok(Route::Remote(s)),
+            Origin::Unspecified(()) => Err(format!(
+                "`{command}` 没收到 origin（线上 `null`）。\
+                 「没说」不是「本机」—— `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」，\
+                 本机是一个**具名**的 origin，要逐字送 `\"{LOCAL}\"`。"
+            )),
+        }
+    }
+}
+
+/// [`Origin::route`] 的产出：**分过本机之后，只剩两种可能**。
+///
+/// 🔴 刻意没有第三个变体。「调用方没说」在 [`Origin::route`] 那一步就变成了 `Err`，
+/// 所以拿到 `Route` 的代码**没有办法**把「没说」误当本机或误当某台远端。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Route<'a> {
+    /// 本机那一条路（不走 ssh）。
+    Local,
+    /// 某台远端，带着它的机器名（`RemoteConfig` 那个 label）。
+    Remote(&'a str),
 }
 
 #[cfg(test)]
