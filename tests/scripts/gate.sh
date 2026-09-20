@@ -880,7 +880,22 @@ run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里�
 # ⚠ 射程与买不到的东西逐条写在那份文件的头注里，这里不复述一份（复述就会漂 ——
 #   与上面 `ci-e2e-prereq` 那一格同一条取法）。放在那儿也是为了能对着变异过的副本跑死值验
 #   （`K_R124_ROOT=<副本>` / `RELEASE_WORKFLOW=<某份 release.yml>`），不必去动真工作树。
-run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：三条地板 ＋ ①触发得了 ②手工默认不发布 ③`env.PUBLISH` 字面 ④两处发布步骤的闸 ⑤CI 门的闸 ⑥两处发布步骤各自的正文来源 ⑦生成器排在发布步骤前面 ⑧生成器吐得出本版正文）。⚠ 它**不执行 GitHub 的表达式求值器**，也**不跑那条流水线** ⇒ 「盘上这份文本满足这几条」不等于「云端那一趟会绿」；⚠ 「往 Release 上写」只认两种形状（`softprops/action-gh-release` 的 `uses:` · `run:` 里的 `gh release`/`gh api …/releases`），换第三种路子上传它看不见；⚠ 正文**写得对不对**它一个字都不判' \
+#
+# ── 🔴 `19b`（09-19）：本格**多买了第三件事 —— 产字节那条路** ────────────────────
+#
+# 条 63 承诺三格平台，`G4`（上面 `platform` 那一格）已经把「**门禁盖到了哪几格**」对上了。
+# 但那一格读的是**本文件**，它答不了另一半：「**发版那趟真的为那几格产字节吗**」。
+# 两半必须分开，理由是硬的（`设计/96 §7.1.2` 现打）：三个落点全部 gitignore ⇒ **字节不进仓**，
+# 三条产线**只由 `release.yml` 一个文件驱动** ⇒ 这张表的门禁**只能建在 `release.yml` 上**。
+# ⇒ 本格从 `19b` 起同时判：⑨ 承诺的平台 ↔ 产线两向相等、本文件里「编后端」的步骤 ↔ 登记
+#   两向相等、target triple 两向相等、runner 标签逐字；⑩ 每一处抠 `const BUILD_ID` /
+#   身份戳界标的住址**实打读那份文件**、抠不出恰好一行就红；⑪ `build.rs` 那一侧
+#   「抠不到」是一条**所有构建形态都响**的失败（`"unknown"` 兜底从类型上消失）；
+#   ⑫ 本格 `muslbuild` 裁词里点名的工具链版本 == `release.yml` 真装的那两个。
+# 🔴 ⑩ 有现物：步 9 把 `BUILD_ID` 搬进 `lib.rs` 时，`release.yml` 里**两处**抽取只改了一处，
+#   另一处留在 `main.rs`（那里今天没有那个 const）⇒ 真发版会死在抽取上。本拍两件事一起做：
+#   住址收进 `env.CCM_BACKEND_IDENTITY_SRC`（一处），并让判据每趟实打核它指得到真东西。
+run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：三条地板 ＋ ①触发得了 ②手工默认不发布 ③`env.PUBLISH` 字面 ④两处发布步骤的闸 ⑤CI 门的闸 ⑥两处发布步骤各自的正文来源 ⑦生成器排在发布步骤前面 ⑧生成器吐得出本版正文 ＋〔19b〕⑨产字节那条路（承诺的平台 ↔ 产线 · 编后端的步骤 ↔ 登记 · target triple ↔ 登记，三条都是**两向集合相等**；每条产线步骤在那个 job 里 count()==1；runner 标签逐字）⑩每一处抠 `const BUILD_ID`／身份戳界标的住址，逐处计数相等 ＋ **实打去读那份源码**、抠不出恰好一行就红 ⑪`build.rs` 那一侧「抠不到」是所有构建形态都响的失败（`unknown` 兜底从类型上消失）⑫本文件 `muslbuild` 裁词点名的工具链版本 == `release.yml` 真装的那两个）。⚠ 它**不执行 GitHub 的表达式求值器**，也**不跑那条流水线** ⇒ 「盘上这几份文本满足这几条」不等于「云端那一趟会绿」——⑨ 尤其如此：「登记的那一步在文件里」≠「那一步在 runner 上编得出字节」，更不等于「那份字节在目标机器上跑得起来」，真机那一维仍是**判不了**；⚠ 「往 Release 上写」只认两种形状（`softprops/action-gh-release` 的 `uses:` · `run:` 里的 `gh release`/`gh api …/releases`），换第三种路子上传它看不见；⚠ 正文**写得对不对**它一个字都不判' \
          python3 tests/evidence/K-R124-ruler.py
 
 # ── `gate-selfdesc`：**门禁自述 ↔ 门禁现状的对拍**（09-19，第 22 格）───────────
@@ -908,8 +923,13 @@ run_gate gate-selfdesc '判过的条数（逐项分母由判据本体每趟现�
 #    承诺平台之一**，而它在每次提交上一个字节都没人验 —— 坏了要等推 tag 那天才知道。
 #
 # 🔴 **用 `cargo zigbuild`、版本跟 `release.yml` 对齐，这不是洁癖**：
-#    zig **0.14.0**（`release.yml:168` 逐字）＋ cargo-zigbuild **0.23.0**（`:173`）。
+#    zig **0.14.0** ＋ cargo-zigbuild **0.23.0**。
 #    版本不同 ⇒ 本格的绿**不代表发版那趟会绿**，而那正是这一格要买的东西。
+#    🔴 〔`19b` 09-19〕**这句话从此有人核了**：上面 `release-gate` 那一格的 ⑫ 把
+#      「本格裁词里点名的版本」与「`release.yml` 里真装的那两个」**两向对拍** ——
+#      在那之前这是两处手抄的数，漂了没有任何东西会说话。
+#    ⚠ 原文这里写着 `release.yml:168` / `:173` 两个**行号**，`19b` 删掉了：
+#      行号会随那份文件的每一次改动而漂（本拍就漂了 20 多行），而它指的东西已经由 ⑫ 核着。
 #    ⚠ 现打一条差异如实记：**宿主上装的是 zig 0.16.0**；沙箱镜像刻意钉 0.14.0 ——
 #      门禁要代理的是**发版那条路**，不是这台开发机。
 #
@@ -1550,7 +1570,7 @@ run_e2e ccm-contract-parity   45
 #   把真正要看的诊断顶下去。
 GATE_BLIND=(
   "windows-runner|Windows runner 上才犯的那一族 —— 本门禁的 npm / tsc / e2e 全跑在 Linux 上，路径分隔符恒是 /。K-R119 那趟云端 vitest 的唯一一条红（1 failed / 1725 passed）就是这一形，本机在构造上红不了"
-  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。⚠ 这一条已经被收窄过两次，两次都只割走一个切片：ci-e2e-prereq 判 ci.yml 里 e2e 步骤的 build 前置齐不齐（K-R122）；release-gate 判 release.yml 的触发器、env.PUBLISH 字面、两处发布步骤与 CI 门那一步的 if、以及两处发布步骤的正文来源（K-R124）。**其余全部仍然没人看** —— 包括 ci.yml 那 8 个 job 的 runner/工具链/needs/缓存，和 release.yml 里除上面点名那几处以外的每一步"
+  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。⚠ 这一条已经被收窄过三次，每次只割走一个切片：ci-e2e-prereq 判 ci.yml 里 e2e 步骤的 build 前置齐不齐（K-R122）；release-gate 判 release.yml 的触发器、env.PUBLISH 字面、两处发布步骤与 CI 门那一步的 if、以及两处发布步骤的正文来源（K-R124）；〔19b 09-19〕release-gate 又割走**产字节那条路**——release.yml 里「跑 cargo build/zigbuild」的步骤 ↔ 条 63 承诺的三格（两向）、出现的 target triple（两向）、三个 job 的 runs-on 逐字、每一处抠 const BUILD_ID 的住址实打指得到真东西、setup-zig 与 install-action 那两个版本。**其余全部仍然没人看** —— 包括 ci.yml 那 8 个 job 的 runner/工具链/needs/缓存，和 release.yml 里除上面点名那几处以外的每一步（打包 · 校验和 · 上传清单 · artifact 传递）。⚠ 而且那几个切片买的都只是「盘上这份文本满足这几条」——**云端那一趟会不会绿，见下面 did-ci-actually-run 那一条**"
   "msvc-abi|MSVC ABI 专属的那一类跨平台编译问题 —— 两格 Windows 交叉检查用的都是 -gnu（沙箱里没有 zig，ring 的 build script 缺 lib.exe）。只在 msvc 上才犯的毛病本门禁盖不到"
   "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁断网跑（--network none），它一次 gh run view 都做不到。GATE: OK 说的是这棵树在本机这几格上的样子（几格由裁决行现算，这里刻意不写死一个数——上一版这里写着 18 而盘上已经是 19），不是它在云端的样子"
 )
