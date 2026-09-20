@@ -3078,6 +3078,34 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("tests/backend/readonly_guard.rs", "strip_cfg_test", 2),
+        // 🔴 〔步 `19c` 2026-09-19〕`build.rs::embed_backends` 里那个按 arch 分岔的
+        //    `c_cross_note` 局部变量**删了** —— 它是半 bump panic 文案里那条**手抄的
+        //    第二条产字节配方**的附注，而那整段配方在本拍撤掉了（出路收成一条命令
+        //    `tests/scripts/re-embed.sh`，与 `release.yml` 逐字同源）。
+        //    ⚠ **那段 08-25 的实测读数一个字没丢**：它搬进了那条命令自己的头注
+        //    （`ring` 的 C 要 `zig cc`，`rust-lld` 替不了，aarch64 不给就 rc=101）——
+        //    写在**跑那条命令的地方**，而不是一段没人会照着敲的 panic 文案里。
+        //    留在 `build.rs` 里的那一句逐字引用旧变量名，说的正是「那段话原先长什么样、
+        //    它搬去哪了」⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+        //
+        // 🔴 **这个 `2` 不是笔误，而它背后是本函数自己的一处双计** —— 如实记，别读成
+        //    「盘上写了两遍」：`src/bridge/build.rs` 里 `c_cross_note` **只出现一次**
+        //    〔现打 `grep -o … | wc -l` ＝ 1〕，而本条报的是 2。
+        //    根在 `dead_name_corpus()`：它先走 `"src"` 那棵树（`build.rs` 今天**就在
+        //    `src/` 底下**），走完之后又 `out.push(root.join("src/bridge/build.rs"))`
+        //    **再收一遍** ⇒ 这一份文件的每一个散文名字都被数两遍。
+        //    〔现打验法：往 `build.rs` 末尾加一行只出现一次的
+        //     `// probe \`zz_probe_unique_name\``，本条当场报「盘上 2 处」。〕
+        //    ⚠ 那句显式 `push` 是搬树之前留下的（当年 `build.rs` 住 `src-tauri/`，
+        //    在所有根之外，非补不可）。**这正是本函数头注 09-18 那段话说的同一形**
+        //    ——「那些文件被数两遍…… 教训：发现一个形状之后，要把同形的全找一遍」——
+        //    那一拍改对了四个**目录**根，**漏了这一处单文件的显式 push**。
+        //    🔴 **本拍不改它**：动它就是动一条判据的人群，而且是往**变少**的方向动
+        //    （本仓纪律：地板在「变少」方向上是瞎的，这种改要单独一拍、带自己的死值验），
+        //    与 `19c` 的写区也不沾边。⇒ 按盘上现打的数登记，并把读数留在这里；
+        //    真要修，同拍要核的还有 `:1463` 那处**同形**的显式 push 与它那条
+        //    「四个根下 186 + build.rs 1」的分母自述（那句今天也已经陈了）。
+        ("src/bridge/build.rs", "c_cross_note", 2),
     ];
 
     let corpus = dead_name_corpus();

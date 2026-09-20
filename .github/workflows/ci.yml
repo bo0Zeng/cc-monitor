@@ -622,7 +622,15 @@ jobs:
           # 今天实测构成（逐组现打，不倒推）：
           # **75 = tests/e2e/*.sh 30 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
           #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 3 + vendored 4 + fake-claude 1 + pre-commit 1**。
-          [ "$N" -ge 75 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 75）"; exit 1; }
+          # **2026-09-19 步 `19c` 棘到 76** —— 新增 `tests/scripts/re-embed.sh`：
+          # `BUILD_ID` bump 的**同拍步骤**（重编两份内嵌 musl 字节并铺回落点，
+          # 配方与 `release.yml` 产字节那一步同源）。★ 与前几次同形：**不是地板落后**，
+          # 是同一拍加文件、同一拍棘。⚠ 它**是**该被 lint 的那一类 —— 它会在开发者机器上
+          # 真跑 `cargo zigbuild` 并往两个目录里写二十多 MB，不是一段说明文字。
+          # 今天实测构成（逐组现打，不倒推）：
+          # **76 = tests/e2e/*.sh 30 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
+          #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + pre-commit 1**。
+          [ "$N" -ge 76 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 76）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
