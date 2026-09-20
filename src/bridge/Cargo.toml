@@ -96,9 +96,16 @@ walkdir = "2"
 russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 # SFTP 写（issue #29 自动部署 / #28 后续）：russh-sftp 是 transport-agnostic（吃 channel
 # 的 AsyncRead+AsyncWrite 流），与 russh 版本解耦——只需 request_subsystem("sftp") 后把
-# channel.into_stream() 交给它。注意 v2.3.0 **无** posix-rename@openssh 扩展，故 sftp.rs
-# 的近似原子写走「写 .tmp → 删旧 → rename」（见 sftp.rs 模块文档「原子写」）。
-russh-sftp = "2"
+# channel.into_stream() 交给它。
+# 🔴〔步 23b · 2026-09-19〕**2 → 3**：`设计/60 §6.5.3` 现打核过 5 个候选，选定的是
+# `russh-sftp` **3.0.0**（Apache-2.0，非 GPL —— 用户 2026-09-19 的「不要 GPL」这一条现打核过）。
+# 那一节里全部的论证都是对着 3.x 做的（传输泛型 `new<S>` · `tokio` 不开 `net` feature
+# ⇒ 它结构上开不了 socket，传输只能由调用方喂）。换版本掉回去会被
+# `tests/bridge/sftp_tests.rs::the_sftp_dependency_is_really_on_russh_sftp_three` 逮住。
+# ⚠ **现打复核过一条不变的事实**：3.0.0 **仍然无** posix-rename@openssh 扩展
+# （2.3.0 与 3.0.0 两份源码里 `posix-rename` 零命中）⇒ sftp.rs 的近似原子写
+# 「写 .tmp → 旧目标 rename 成 .bak → rename → 清 .bak」**这一版照旧成立，不许当成已解决**。
+russh-sftp = "3"
 # 版本钉死规避 pre-release 解析地雷：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
 # 它们要 primefield 0.14.0-rc.9。但 cargo 默认会在 0.14.0-rc.* 区间内取最新
 # = primefield 0.14.0-rc.10（2026-06-04 刚发），rc.10 改了 ff trait 拆分

@@ -282,6 +282,15 @@ mod tests {
     /// 本表只装「**该被压到零**」的那一类，`S6` 的靶子就是它的总数。
     const ADAPTER_CALL_SITES: &[(&str, usize, &str)] = &[
         (
+            "control/files_write.rs",
+            1,
+            "〔步 23b · 09-19〕一行 `use` 取两件知识：**配置根怎么解析**（`resolve_home`）＋\
+             **一个路径在不在那几棵树里**（`is_inside_tree`）。\
+             ⚠ 这一处是**刻意留在通用层的**：写围栏的是 `control/`，而「哪几棵树」是布局知识\
+             ⇒ 知识搬进适配层、调用留在这里。接第三个 agent 时这一处要跟着改 —— \
+             真正的出路是 `L2`/`S6` 那个接口（「这个 agent 的私有树有哪些」），不是在这里加分支",
+        ),
+        (
             "control/fork_write.rs",
             2,
             "会话记录根 + 会话文件命名。〔`K-R88` 09-13〕**3 → 2**：\
@@ -365,6 +374,7 @@ mod tests {
     /// **静默零输出** · **报错但用的是 Claude 的措辞** · **静默按 Claude 跑**（最坏的一种）。
     /// 把它写进表里，是为了让「收接口」那轮的人知道**每一处该补的错误出口长什么样**。
     const NEW_AGENT_BLOCKERS: &[(&str, &str, usize, &str)] = &[
+        ("解析本机 home", "control/files_write.rs", 1, "〔步 23b · 09-19〕文件管理面的写围栏只问得出 **Claude** 的配置根 ⇒ 换一家 agent，它的私有树**一棵都不在围栏里**：用户拿文件管理面往那家的会话目录里新建文件，后端**照写不误**。⚠ 这一形不是「静默少看见东西」，是**围栏本身对第二家失效**。🔴 **同一行还取了第二样知识**（`is_inside_tree` —— 「一个路径算不算这家的私有树」）：它今天**不是**一种登记过的能力，`agents::fake::CAPABILITIES` 里没有对应项，`FakeCaps` 里也没有对应字段 ⇒ 反向夹具**挖不掉它**，这一维本轮**判不了**。补它要动 `agents/fake/` 与那条走查夹具，**在本轮写区之外，如实留账**"),
         ("会话记录根", "control/fork_write.rs", 1, "fork 落盘时用 Claude 的 `projects/` 拼路径 ⇒ 写到一个这家根本不用的目录下"),
         ("会话记录根", "observe/history_query.rs", 1, "报错，但措辞是 Claude 的布局（`read_dir <home>/projects failed`）—— 说得出话，说的是别人的话"),
         ("会话记录根", "observe/search_query.rs", 1, "**静默**：rc=0、零输出"),
