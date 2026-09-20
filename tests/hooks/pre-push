@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# 推送前跑一趟**全量**门禁，并且**验它真跑过**。
+#
+# ⚠⚠⚠ **本文件今天触发不了。两层，各一条，都如实写 —— 别把「装上了」读成「有用了」。**
+#
+#   ① `core.hooksPath` **没设** ⇒ 它不在 git 的钩子路径上。
+#      与旁边那份 `pre-commit` 同因，理由也同：装钩子会改你本地的 git 配置，
+#      而 `core.hooksPath` 一设，你放进 `.git/hooks/` 的东西会全部失效 ——
+#      那是你的环境决定，不该由别人替你做。这里只把机制备好。
+#      现打得出来：`git config --get core.hooksPath` ⇒ 空。
+#      🔴 这一层**有机检钉着**：`tests/evidence/K-R80-gate-cell-coverage.py` 的 `C8e`
+#      拿这条现打去对拍那张登记 —— 登记里敢写「触发得了」就当场红。
+#
+#   ② **就算把 `core.hooksPath` 设上，它今天仍然一次都不会跑** ——
+#      本仓红线是**不推送**（用户 2026-09-20 明确裁定）。没有 push 就没有 pre-push。
+#      🚫 这一层**机检买不到**（要读用户的裁定，不是读盘上的东西）⇒ 只能写在这儿，
+#      并且在 `C8e` 那张登记的 `why` 里逐字重复一遍。
+#
+# ⇒ **它是一份备好的机制，不是一道在跑的闸。** `G4` 空洞③ 因此**没有被这份文件填掉**，
+#   只是把「哪天允许推送，当天就是活的」这条路铺好了。这句话不许被读成别的。
+#
+# ## 为什么是 pre-push 而不是 pre-commit
+#
+# 全量门禁含**两趟 musl 交叉编译** ＋ 全量 cargo workspace test ＋ npm ＋ tsc ＋ 四套 e2e，
+# 墙钟以分钟计。挂到**每一次提交**上，人会在第三次 `--no-verify` 之后就一直带着它 ——
+# 而 **`--no-verify` 关掉了** 与 **它过了** 在终端上一模一样。
+# ⇒ 一道会被关掉的闸比没有闸更坏（那正是本仓反复记的那一族）。
+#   `pre-commit` 保持它今天那一条轻量判定（`C7`：`[profile.dev]` 不许进提交）。
+#
+# ## 🔴 两步，第二步才是重点
+#
+# 第一步跑门禁；**第二步验那一趟真的跑过**。
+# 只有第一步是不够的 —— 一条 `bash tests/scripts/gate.sh` 可以因为
+# 「文件不在」「解释器不在」「被人加了 `|| true`」而**什么都没干还回 0**，
+# 而那几种在终端上与「跑过了」长得一模一样。
+# 第二步读的是门禁自己落的收据（`.build/gate-receipt.json`）：
+# 它记着这份 `gate.sh` 的 sha256 · 这棵树的 tree oid · **真判过哪几格**。
+# `--require-all` ⇒ 要求**盘上每一格**都在 `ran` 里，格名从 `gate.sh` **现算**，
+# 这儿刻意不抄一份 26 个名字的清单（抄了就是又一份会腐的住址）。
+#
+# ## 启用法（要用的人自己开，本仓默认不开）
+#
+#     git config core.hooksPath tests/hooks     # 开
+#     git config --unset core.hooksPath         # 关
+#
+# ⚠ **fail-closed**：下面两步任何一步非零，本钩子就非零 ⇒ push 被挡。
+#   不许加「找不到就跳过」的口子 —— 「跳过」与「查过了」在输出上一模一样。
+
+set -uo pipefail
+
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  echo "✗ pre-push：不在 git 仓里，判不了 —— 一律按红记（不许静默放行）" >&2
+  exit 1
+}
+cd "$root" || exit 1
+
+echo "── pre-push ①/② 全量门禁（不带 GATE_ONLY：GATE: OK 只许在每一格都跑过时出现）──"
+if ! bash tests/scripts/gate.sh; then
+  echo "✗ pre-push：门禁没过 —— 别推。先修，再重跑 bash tests/scripts/gate.sh" >&2
+  exit 1
+fi
+
+echo "── pre-push ②/② 那一趟真跑过吗（收据对拍，--require-all 现算格名）──"
+if ! python3 tests/evidence/K-G4C-gate-receipt.py --require-all; then
+  echo "✗ pre-push：门禁印了绿，而**收据证不了那一趟真跑全了** —— 这一形正是本钩子存在的理由" >&2
+  exit 1
+fi
