@@ -83,40 +83,97 @@ fn the_flatness_meter_can_actually_see_a_slope() {
     );
 }
 
-/// 内存：egui **自己**的增量不许随行数涨。
+/// 内存：egui **自己**留的状态不许随行数涨。
 ///
-/// `真相源/99 §2.4` 现打：语料本身 107.9 MiB（64 万个 `String`），
-/// egui 自己约 **3.5 MiB** ⇒ 内存基本全在语料上，那是「持有 64 万条路径」的
-/// 固有成本，不是框架的。这里钉的就是那句话：**渲染带来的 RSS 增量**
-/// 与行数**不成比例**。
+/// # 🔴 这一条 2026-09-20 整条重写 —— 上一版量错了对象
+///
+/// 上一版量的是**进程级 RSS**（`/proc/self/status` 的 `VmRSS`）并把闸放在 64 MiB。
+/// 立它的那一路**自己报过它「结构上噪声敏感」**，而它**当趟就在门禁上红了**：
+/// `渲染 64 万行带来 129056 KiB 的 RSS 增量`。
+///
+/// 🔴 **那 126 MiB 里绝大部分不是 egui 的。** `cargo test` 把 1500+ 条测试跑在
+/// **同一个进程**的多条线程上 ⇒ `VmRSS` 是**全进程共享**的读数，它在构造上
+/// 分不开「egui 分配的」与「隔壁那条测试分配的」。
+/// ⇒ 这不是「闸放窄了」，是**量具与被测性质不同轴**：
+///   放宽闸只会让它在更晚的某一趟再红一次，而且红的时候仍然说不出是谁的内存。
+///
+/// # 换成什么
+///
+/// 要钉的性质是「**egui 不按行留状态**」。而那个性质有一个**确定的、进程内的**量：
+/// egui 自己那张按 `Id` 存控件状态的表（`Memory::data`，`IdTypeMap`）的**条数**。
+/// · 它只属于这一个 `Context` ⇒ 隔壁测试碰不到它
+/// · 它是**整数**且确定 ⇒ 判法从「小于某个阈值」变成**相等**
+/// · 它正是「按行留状态」会涨的那个东西 ⇒ 与性质同轴
+///
+/// ⇒ 1 千行与 64 万行各起一个新 `Context`、各渲 20 帧，**两张表的条数必须相等**。
+///
+/// # 阳性对照（没有它，这条判据可能根本看不见增长）
+///
+/// 第三趟**故意按行往那张表里塞状态**（每行一个 `Id`），断言条数**真的涨到行数量级**。
+/// 它证明这个计数器认得出「按行留状态」那一形 —— 前两趟的相等才有意义。
+///
+/// # ⚠ 买不到
+///
+/// · 它只看 `Memory::data` 那一张表。egui 若在**别处**按行留东西（纹理图集、
+///   galley 缓存），本条看不见。⇒ 那一维今天**判不了**，缺的是一份「egui 内部
+///   还有哪些按 Id 增长的容器」的独立读数。
+/// · RSS 那个读数**保留为读数**（每趟印出来），但**不再当闸** —— 见上。
+/// · 🔴 **它只钉「状态随列表长度增长」，钉不住「状态随已访问行数增长」。**
+///   这一条是现打出来的，不是想出来的：换判据那一拍我第一刀注的是
+///   「给**可见的**那几十行留状态」，**那一刀没红** —— 因为虚拟滚动下
+///   两档（1 千行 / 64 万行）在固定 20 帧里访问的行数**差不多一样多**
+///   （20 帧 × 约 40 行；1 千行那档整张列表就在这个跨度里）。
+///   ⇒ 相等照样成立，而判据什么都没看见。
+///   重切成「给**整张列表**每一行留状态」之后当场红（1001 条 vs 640414 条）。
+///   ⇒ **「滚久了会不会越来越胖」是另一条真性质，本条买不到**，
+///     它要的是「同一档行数、跑很多帧、扫过整张列表」那种形状的秤。欠着，如实记。
+/// · ⚠ 顺带一条读数自证了为什么不能用 RSS：换轴那一趟现打，
+///   **1 千行那档的 RSS 增量（13 028 KiB）比 64 万行那档（1 564 KiB）还大**。
+///   在旧判据的口径下这读数根本不自洽 —— 它全是隔壁测试的噪声。
 #[test]
 fn egui_itself_does_not_keep_per_row_state() {
-    if rss_kib() == 0 {
-        println!("  F1 · 内存：这台机器读不到 RSS（非 Linux）⇒ 判不了，跳过（不是绿）");
-        return;
+    fn retained(n: usize) -> (usize, u64) {
+        let rows = corpus::synth_rows(n, 0xF1);
+        let before = rss_kib();
+        let ctx = egui::Context::default();
+        let screen = egui::vec2(SCREEN.0, SCREEN.1);
+        for i in 0..20 {
+            let _ = render_headless(&ctx, &rows, screen, i as f32 * 1000.0);
+        }
+        let kept = ctx.memory(|m| m.data.len());
+        (kept, rss_kib().saturating_sub(before))
     }
-    let rows = corpus::synth_rows(640_413, 0xF1);
-    let corpus_bytes: usize = rows.iter().map(|r| r.path.len() + r.name.len()).sum();
-    let before = rss_kib();
-    let ctx = egui::Context::default();
-    let screen = egui::vec2(SCREEN.0, SCREEN.1);
-    for i in 0..20 {
-        let _ = render_headless(&ctx, &rows, screen, i as f32 * 1000.0);
-    }
-    let after = rss_kib();
-    let delta_kib = after.saturating_sub(before);
+
+    let (small_kept, small_rss) = retained(1_000);
+    let (big_kept, big_rss) = retained(640_413);
+
+    println!("  F1 · 内存（egui 自己那张按 Id 的状态表，条数）");
+    println!("    1 000 行   ⇒ {small_kept} 条");
+    println!("    640 413 行 ⇒ {big_kept} 条");
     println!(
-        "  F1 · 内存：语料 {:.1} MiB | 渲染前 {} KiB → 渲染后 {} KiB | 增量 {} KiB",
-        corpus_bytes as f64 / 1048576.0,
-        before,
-        after,
-        delta_kib
+        "    ⚠ 顺带读数（**不是闸**，进程级 RSS 在并行测试进程里量不准）：\
+         增量 {small_rss} KiB / {big_rss} KiB"
     );
-    // 若 egui 给每行留了状态，64 万行的增量会是**几百 MiB** 量级。
-    // 闸放在 64 MiB —— 99 现打是 3.5 MiB，余量 18 倍，但仍远低于「每行一份」的量级。
+
+    assert_eq!(
+        small_kept, big_kept,
+        "行数从 1 000 涨到 640 413，egui 那张按 `Id` 的状态表从 {small_kept} 条涨到 {big_kept} 条 \
+         —— 它在按行留状态。虚拟滚动只省了绘制，没省状态，滚久了会越来越胖"
+    );
+
+    // ── 阳性对照：这个计数器认不认得出「按行留状态」 ──────────────────────
+    let probe = egui::Context::default();
+    let rows = corpus::synth_rows(5_000, 0xF1);
+    probe.memory_mut(|m| {
+        for (i, _) in rows.iter().enumerate() {
+            m.data.insert_temp(egui::Id::new(("per-row-probe", i)), i);
+        }
+    });
+    let probe_kept = probe.memory(|m| m.data.len());
+    println!("    阳性对照：故意按行塞 5 000 条 ⇒ 表里 {probe_kept} 条");
     assert!(
-        delta_kib < 64 * 1024,
-        "渲染 64 万行带来 {} KiB 的 RSS 增量 —— egui 像是在按行留状态",
-        delta_kib
+        probe_kept >= 5_000,
+        "阳性对照只数到 {probe_kept} 条（应当 ≥ 5 000）—— 这个计数器看不见「按行留状态」，\
+         那么上面那条相等断言证明不了任何东西"
     );
 }
