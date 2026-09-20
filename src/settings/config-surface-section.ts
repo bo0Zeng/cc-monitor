@@ -39,6 +39,9 @@ export type { ConfigSurfaceReport, EnvTier, SettingsScope, SurfaceRow, SurfaceSt
 // 件计划 `KR65D1` 逐字：「`readiness.ts` 那条 `missing` vs `unknown` 的分法**是现成的，
 // 别再造一套**」。⇒ 这一页把 `absent`／`undetermined` 映到那两个 kind 上，措辞跟着它走。
 import { GAP_HEAD, type GapKind } from "./readiness";
+import { makeInfoIcon } from "./info-icon";
+import { getCurrentMachine, subscribeMachine } from "./machine-context";
+import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 
 /**
  * 一态 → 它在「还差什么」那套口径里算哪一种缺口。`present` 不是缺口 ⇒ `null`。
@@ -207,31 +210,75 @@ export class ConfigSurfaceSection {
   /** `KR65D2`：「app 该自带而还没有装口」那一格的计数行。空时整行不显示。 */
   private owed!: HTMLElement;
   private copyBtn!: HTMLButtonElement;
+  /**
+   * 本机那一整套（工具栏 / 概览 / 表 / 作用域）的包装。
+   * **刻意不挂类名**：它只负责显隐，不需要任何样式；挂了类就得在 CSS 里给它写规则，
+   * 而 `css-ledger` 会要求每个类说得出谁在用它、每处类引用都有规则。
+   */
+  private localOnly!: HTMLElement;
+  /** 远端子页上那一句「这台机器还查不了，为什么」。本机页上是空的。 */
+  private notForThisMachine!: HTMLElement;
   private last: ConfigSurfaceReport | null = null;
+  private unsubscribeMachine?: () => void;
 
   constructor() {
     this.element = this.build();
-    void this.refresh();
+    // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
+    // 原来这里是 `void this.refresh()`，而这一块住的页**不是落地页**
+    //（落地页是 `machines`）⇒ 每次打开设置都白发一趟 `config_surface_report`。
+    // 现在由宿主（`panel.ts`）在这一块**真正被搬到用户正在看的那一页上**时调 `loadNow()`。
+    //
+    // 🔴 步 14a（`70 §10.1`）：这一块已从顶层「改动足迹」页搬进**机器子页的第五栏「足迹」**。
+    // ⇒ 「哪台机器」这件事从此由页面上下文回答，所以这里订阅 `machine-context`。
+    this.unsubscribeMachine = subscribeMachine((origin) => this.onMachineChanged(origin));
+    this.applyOriginGate();
   }
 
   private build(): HTMLElement {
     const root = document.createElement("div");
     root.className = "settings-group settings-headless config-surface-section";
 
+    // 🔴 `70 §10.1` 差项 3：原来这里第二句逐字是「这一页只读：不会写任何东西，
+    //    也不后台轮询——每次打开或点「重新扫描」才读一次」——那是**我们的设计承诺**，
+    //    写给评审看的，不是用户要的信息（用户不需要知道我们承诺了不轮询）。
+    // ⇒ 只留「这一页是什么」，承诺收进 ⓘ。
     const hint = document.createElement("div");
     hint.className = "settings-hint";
-    hint.textContent =
-      "这一页列出 cc-monitor 会碰你哪些文件、对它做什么、现在什么状态。" +
-      "这一页只读：不会写任何东西，也不后台轮询——每次打开或点「重新扫描」才读一次。";
+    hint.textContent = "cc-monitor 会碰你哪些文件、对它做什么、现在什么状态、还能不能撤。";
+    hint.appendChild(
+      makeInfoIcon(
+        "只读：这一页不会写任何东西，也不在后台轮询——每次打开或点「重新扫描」才读一次。",
+      ),
+    );
     root.appendChild(hint);
 
+    // 🔴 `70 §10.1` 那条 ⚠ 逐字：**这一段不许跟着一起扫掉。**
+    // 它属于 `§2.2` 那一档 ——「查不了」与「没有」的**区分本身是对的**
+    //（`readiness.ts` 的 `GAP_HEAD` 是这对词的唯一住址，本页是它的第二个读者）。
+    // ⇒ 按 `§2.3` 的形状办：**区分保留，换成界面状态** —— 每一行今天各自已经带着
+    //   自己的 `why` 与 host 徽章，所以这里这段**通用免责**收进 ⓘ，不占正文一整段。
     const honesty = document.createElement("div");
     honesty.className = "settings-hint config-surface-honesty";
-    honesty.textContent =
-      "查不了的会写成「未确定」并说明原因，不会画成红叉。远端路径要 SSH（请到部署向导里查）、" +
-      "项目里的 .mcp.json 得先知道是哪个项目、Windows 的 $PROFILE 由 PowerShell 决定——" +
-      "这三类本机无从判断，报成「缺失」会是假警报。";
+    honesty.textContent = "查不了的写成「未确定」并说明原因，不画成红叉。";
+    honesty.appendChild(
+      makeInfoIcon(
+        "远端路径要 SSH（请到部署向导里查）、项目里的 .mcp.json 得先知道是哪个项目、" +
+          "Windows 的 $PROFILE 由 PowerShell 决定——这三类本机无从判断，" +
+          "报成「缺失」会是假警报。",
+      ),
+    );
     root.appendChild(honesty);
+
+    // 步 14a：远端子页上那一句「这台机器还查不了，为什么」（见 `applyOriginGate` 头注）。
+    this.notForThisMachine = document.createElement("div");
+    this.notForThisMachine.className = "settings-hint";
+    this.notForThisMachine.hidden = true;
+    root.appendChild(this.notForThisMachine);
+
+    // 本机那一整套装在这个包装里（见 `localOnly` 字段的头注：为什么不挂类名）。
+    this.localOnly = document.createElement("div");
+    root.appendChild(this.localOnly);
+    const host = this.localOnly;
 
     const bar = document.createElement("div");
     bar.className = "settings-row config-surface-bar";
@@ -249,40 +296,102 @@ export class ConfigSurfaceSection {
     this.copyBtn.disabled = true;
     this.copyBtn.addEventListener("click", () => void this.copy());
     bar.appendChild(this.copyBtn);
-    root.appendChild(bar);
+    host.appendChild(bar);
 
     this.meta = document.createElement("div");
     this.meta.className = "settings-hint config-surface-meta";
-    root.appendChild(this.meta);
+    host.appendChild(this.meta);
 
     this.owed = document.createElement("div");
     this.owed.className = "settings-hint config-surface-owed";
     this.owed.hidden = true;
-    root.appendChild(this.owed);
+    host.appendChild(this.owed);
 
     this.body = document.createElement("div");
     this.body.className = "config-surface-body";
-    root.appendChild(this.body);
+    // 步 1（`70 §10.1` 差项 2）：加载态原来是**会长高**的一行字（「扫描中…」→ 整张表）
+    // ⇒ 数据回来时这一页往下窜一屏。现在容器与骨架钉在同一个高度下限上。
+    holdSkeletonHeight(this.body, "footprint");
+    host.appendChild(this.body);
 
     const scopesT = document.createElement("div");
     scopesT.className = "settings-subtitle";
     scopesT.textContent = "settings.json 的各作用域";
-    root.appendChild(scopesT);
+    host.appendChild(scopesT);
     const scopesHint = document.createElement("div");
     scopesHint.className = "settings-hint";
     scopesHint.textContent =
       "钩子可以写在多个作用域里，优先级从低到高。钩子诊断读的是「用户级」那一份——" +
       "所以如果你把钩子写在了别处，那边报的「未装」可能是错的。";
-    root.appendChild(scopesHint);
+    host.appendChild(scopesHint);
     this.scopesBox = document.createElement("div");
     this.scopesBox.className = "config-surface-scopes";
-    root.appendChild(this.scopesBox);
+    host.appendChild(this.scopesBox);
 
     return root;
   }
 
+  /** 宿主拆掉这一块时要调 —— 不退订的话 store 里会留一个指向死节点的闭包。 */
+  dispose(): void {
+    this.unsubscribeMachine?.();
+    this.unsubscribeMachine = undefined;
+  }
+
+  /**
+   * 步 2：宿主在「这一块所在的那一页首次可见」时调它。**幂等**。
+   *
+   * ⚠ 它只在**本机**那一页上真发 I/O —— 见 `applyOriginGate` 的头注。
+   */
+  loadNow(): void {
+    if (getCurrentMachine() !== null) return;
+    void this.refresh();
+  }
+
+  /**
+   * 🔴 `70 §10.1` ②：**今天这一页结构性地只答得了本机。**
+   *
+   * 现打的三条（都在写区之外，本件不改它们，只如实把话说出来）：
+   * - `config_surface_report()` **不收 origin 参数**（`ipc/commands.ts` · `config_surface.rs`）；
+   * - 远端那一族**一律**落成「未确定」，理由逐字「远端路径（…）——本页不连 SSH」；
+   * - 行上那个「远端」徽章是**静态的档**（`HostScope`），不是某一台机器。
+   *
+   * ⇒ 搬进机器子页之后，**在一台远端机器的子页上照原样画这张表就是骗人**：
+   * 用户点的是 aya 的「足迹」，看到的却是本机的那一张。
+   * `70 §10.1` 把这件事拆成两步、并且逐字写明「① 搬页」与「② 让远端行真查出来」
+   * **不许捆成一步**，而 ② 要后端先有 per-origin 读口 —— 今天没有。
+   *
+   * ⇒ 本件只做 ①。远端子页上这一块**不画表、不放按钮**，只说一句为什么答不出来
+   *（`设计/70 §2.3` 的形状：**区分保留，用界面状态表达，不用散文表达**；
+   *  同 `readiness.ts` 那对「缺」vs「未测过」的分法：**答不出来 ≠ 没有**）。
+   * ⚠ 这一格**不许**被读成「判据 #12 绿了」——`§10.1` 逐字：「只做 ① 不许声称它绿了」。
+   */
+  private applyOriginGate(): void {
+    const remote = getCurrentMachine();
+    this.notForThisMachine.textContent =
+      remote === null
+        ? ""
+        : `这台机器（${remote}）的足迹还查不了：读配置面那条命令今天不收「哪台机器」这个参数，` +
+          `本页也不连 SSH。——「答不出来」不等于「它没动过你的文件」。`;
+    // ⚠ 只切**两个**节点的显隐，不逐块切。
+    // 理由是一条实打出来的判据：`css-conventions.vitest.ts` 的 S30 ⑦ ——
+    // 「会被 `hidden` 切的元素，CSS 不许在它自己身上裸写 `display`」。
+    // 那条工具栏挂的是 `settings-row`，而 `.settings-row { display: flex }`
+    // ⇒ 直接把 `hidden` 写到那条工具栏上是一句**空写**（作者样式压过 UA 的 `[hidden]`），
+    //   ⚠ 这一句**刻意不写出那个赋值的字面形状** —— 那把尺子是词法的，
+    //     散文里出现一次同形的字面量就会被它当成第 N 处真调用点（它自己的头注也栽过）。
+    //   屏幕上它照样在。所以本机那一整套装进一个**不挂任何类**的包装里，切包装。
+    this.notForThisMachine.hidden = remote === null;
+    this.localOnly.hidden = remote !== null;
+  }
+
+  private onMachineChanged(_origin: string | null): void {
+    // 只管**这一页现在该长什么样**。「要不要现在去读」由宿主的「这一页首次可见」
+    // 那张登记表决定（`panel.ts::flushPage`）—— 两处都决定就会重复发。
+    this.applyOriginGate();
+  }
+
   async refresh(): Promise<void> {
-    this.body.textContent = "扫描中…";
+    this.body.replaceChildren(makeSkeleton("footprint", "正在扫这台机器上的足迹…"));
     try {
       const r = await commands.config_surface_report();
       // **校验自己 IPC 的返回形状**（B03 的真 bug：`invoke` 可能 resolve 成 undefined，

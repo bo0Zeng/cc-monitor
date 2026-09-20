@@ -98,6 +98,9 @@ describe("DriftLedgerSection（DOM）", () => {
     }));
     const { DriftLedgerSection } = await import("../../src/settings/drift-ledger-section");
     const s = new DriftLedgerSection();
+    // `设计/70 §1.3 B`（步 2）：构造期**不再**发 I/O —— 这一块住「改动足迹」页，
+    // 而落地页是「机器」。第一发由宿主在「这一页首次可见」时放行 ⇒ 这里显式叫一声。
+    s.loadNow();
     document.body.appendChild(s.element);
     await new Promise((r) => setTimeout(r, 0));
     const text = s.element.textContent ?? "";
@@ -122,6 +125,9 @@ describe("DriftLedgerSection（DOM）", () => {
     }));
     const { DriftLedgerSection } = await import("../../src/settings/drift-ledger-section");
     const s = new DriftLedgerSection();
+    // `设计/70 §1.3 B`（步 2）：构造期**不再**发 I/O —— 这一块住「改动足迹」页，
+    // 而落地页是「机器」。第一发由宿主在「这一页首次可见」时放行 ⇒ 这里显式叫一声。
+    s.loadNow();
     document.body.appendChild(s.element);
     await new Promise((r) => setTimeout(r, 0));
     const text = s.element.textContent ?? "";

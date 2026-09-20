@@ -87,6 +87,18 @@ export class DriftLedgerSection {
 
   constructor() {
     this.element = this.build();
+    // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
+    // 这一块住「改动足迹」页，而落地页是「机器」⇒ 原来那句 `void this.refresh()`
+    // 是每次打开设置都白发的一趟 `drift_ledger_report`。
+    // `§10.4` 那一行逐字点了它：判据 #3「非落地页零 I/O」今天正是被那三块
+    // **外加 `drift-ledger`** 打破的。
+  }
+
+  /**
+   * 步 2：宿主在「这一页首次可见」时调它。
+   * ⚠ **幂等由宿主保证**（`panel.ts::pagesLoaded`）。
+   */
+  loadNow(): void {
     void this.refresh();
   }
 
