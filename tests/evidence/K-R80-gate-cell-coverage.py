@@ -523,6 +523,46 @@ cell(
     },
 )
 
+
+# ── `13b` 步 1（09-20）：第 27 格 `comm-boundary` ───────────────────────────────
+#
+# 🔴 **它比 `f3-copy` 更需要一个自己的名字，理由是它的人群今天是空集。**
+#   那一族（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 元判据，共 15 条）登记着 **0 份**成员，
+#   绿的理由是 `0 == 0`。⇒ 模块从 `lib.rs` 摘掉时**十五条连同元判据一起消失**，
+#   而 `cargo` 那一格只会合计小 15 —— **「摘掉了」与「全绿」在终端上分不开**。
+# ⚠ 同 `f3-copy`：相等断言里那个写死的 `pin=15` 是刻意的第三条腿 ——
+#   「真删掉一条判据」会让 `declared` 与 `ran` 一起掉（两侧同源），只有 pin 认得出来。
+cell(
+    "comm-boundary",
+    anchor="run_gate comm-boundary '判过的条数 = 通信层那一族",
+    cwd="仓根（内层 cd src/bridge）",
+    cmd="cargo test -p monitor --lib comm_boundary_registry::tests::（＋ 三方对拍 ＋ 两条锚点）",
+    **{
+        "tests/": (PART, "〔现打 09-20〕两种碰法要分开：**跑**的只有 "
+                         "`tests/bridge/comm_boundary_registry_tests.rs` 这一份（1400 行、15 条），"
+                         "本格还**读它的文本**数 `#[test]` 条数（三方对拍的 `declared` 那一边）；"
+                         "而那一族的判据自己会**扫过这棵树的绝大部分**（后缀 `rs`/`ts`/`toml`，"
+                         "明写排掉 `tests/evidence/`）去找那枚成员标记。"
+                         "⚠ 扫过 ≠ 判过：对没盖标记的文件，扫描的结论只有「它不是成员」"),
+        "src/bridge/": (PART, "〔现打 09-20〕**编的是 `-p monitor` 一个包**；"
+                              "判据另**读** `src/bridge/src/comm_boundary_registry.rs`（`#[path]` 挂载 ＋ "
+                              "那句「登记在册的通信层成员：N 份」的散文，三方相等的一条腿）。"
+                              "这棵树的其余每一份被**扫**（找标记），不被判"),
+        "src/": (PART, "〔现打 09-20〕前端 TS 被**扫**（`.ts` 也在后缀面里，`§3.2` 那条"
+                       "「前端不知道 transport」要靠它）。今天一份成员都没有 ⇒ 扫的结论全是「不是成员」"),
+        "src/backend/": (PART, "〔现打 09-20〕被**扫**（找标记）。语料见证里逐字钉着 "
+                               "`src/backend/wire.rs` 必须在这一趟扫描面里 —— 那是防「扫描面被改窄」的钉子"),
+        "src/shared/": (PART, "〔现打 09-20〕被**扫**，同上"),
+        "src/doc/": (PART, "〔现打 09-20〕被**扫**（`.md` 不在后缀面里 ⇒ 实际命中为 0，"
+                           "但它在根之下、不在排除名单里，如实记成「扫过」而不是「不碰」）"),
+        "src/generated/": (PART, "〔现打 09-20〕被**扫**（生成物同样可能被人盖标记，"
+                                 "不给它开口子）"),
+        ROOTFILES: (PART, "〔现打 09-20〕`src/bridge/Cargo.toml` 那一份是语料见证之一"
+                          "（每个后缀各一个逐字住址，`toml` 那个落在这里）。⚠ 真正的仓根文件"
+                          "（`package.json` 等）不在 `src`/`tests` 两个根之下 ⇒ 本格不碰"),
+    },
+)
+
 cell(
     "generated",
     anchor="git diff --quiet --exit-code -- src/generated/",
@@ -1269,6 +1309,14 @@ invoke("f3-copy", ELSEWHERE,
        "云端只是合计小 9，而「小一点」与「有测试没跑」在那边的输出上一模一样。"
        "⇒ 这一维**只有本机这一格买得到**，如实记着",
        anchor="cargo test --workspace --exclude code-picture-core")
+invoke("comm-boundary", ELSEWHERE,
+       "那 15 条靠 `#[path]` 挂在 `monitor` 的 lib 上 ⇒ 云端那两趟 workspace test **会跑到它们**。"
+       "🔴 **但云端没有本格的三方对拍与那两条逐字锚点** —— 整个模块被摘掉时，"
+       "云端只是合计小 15，而「小一点」与「有判据没跑」在那边的输出上一模一样。"
+       "⚠ 这一条对本格尤其要命：那一族的人群今天是**空集**，"
+       "一个人群为空、又没人看它还在不在的判据族，买到的是零。"
+       "⇒ 这一维**只有本机这一格买得到**，如实记着",
+       anchor="cargo test --workspace --exclude code-picture-core")
 invoke("backend", ELSEWHERE,
        "`backend` 那个 job 在 `src/backend` 上跑单包 `cargo test`",
        anchor="name: Remote backend (Linux) lint + test")
@@ -1781,7 +1829,7 @@ def main():
     order = [c for c in ("worktree-clean", "hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
                          "gate-selfdesc", "platform",
                          "installface", "fmt", "fmt-backend", "winchk", "winchk-backend",
-                         "muslbuild", "cargo", "f3-copy", "deadcode", "generated", "backend", "tsc", "npm")
+                         "muslbuild", "cargo", "f3-copy", "comm-boundary", "deadcode", "generated", "backend", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
     missing = sorted(set(REGISTRY) - set(order))
     if missing:
