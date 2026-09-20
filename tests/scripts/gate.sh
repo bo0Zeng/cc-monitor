@@ -1316,16 +1316,28 @@ deadcode_t0=$(date +%s)
 # `observe/usage_query.rs` · `agents/codex/usage.rs` 等整删，它们里面那 8 条死代码**随文件一起消失**，
 # 不是有人去修的。⇒ 这是「真清掉了」那一支，不是「cargo 没重编」那一支 —— 证据：现打 33 条里
 # **一条都不含用量相关符号**（逐条核过）。
-# ⚠ `codex_record.rs` 的 `token_usage_last` / `turn_context_model` **仍在这 33 条里**，那是
+# ⚠ `codex_record.rs` 的 `token_usage_last` / `turn_context_model` **仍在这 36 条里**，那是
 # 「codex 后面单独做」（用户 2026-09-18 拍板）的**已知代价**，不是删漏 —— 别顺手清掉。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 33，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+#
+# 🔴 **2026-09-20：33 → 36，涨的 3 条逐条记在这里**（本格自己要求「说清为什么留着」）。
+# 三条**全部出自 `src/bridge/src/origin.rs`**，是步 12（`origin` 归一）第一刀的**预期状态**：
+#   · `src/origin.rs` 的 `LOCAL` 常量 · `Origin` 这个 enum ·
+#     `Origin` 的五个方法（`local` / `is_local` / `is_remote` / `host_name` / `as_wire_str`）
+# 这一刀刻意**只定类型、不换调用点**（线上形状与今天逐字节相同、零协议变更），
+# 所以「类型在、还没人用」是它落地那一拍的**正确**样子，不是漏。
+# ⚠ **本格是恒等不是上限，这里有一条刻意的耦合**：等迁移真的开始吃 `Origin`，
+#   这三条会自己消失 ⇒ 本格当场红，逼人回来把这个数改小。**那正是要的。**
+# ⚠ 🔴 顺带修一条本格自己的腐坏：这个数原先在下面的内联脚本里**手抄了五遍**
+#   （3 处写 33、**2 处还写着更早的 41**）⇒ 终端上印出来的「恒等钉在 41」是假话，
+#   而没有任何东西会因此变红。现在它只住 `pin=` 一处。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 36，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=36; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
-if [ "$n" -gt 33 ]; then printf "deadcode: never used %s 条，钉的是 33 —— 有人写了新的死代码；修掉它，或者说清为什么留着、再来改这个数\n" "$n"; exit 1; fi; \
-if [ "$n" -lt 33 ]; then printf "deadcode: never used 只数到 %s 条，钉的是 33 —— 要么真清掉了几条（好事：回来把 41 改小，并写清降的是哪几条），要么这一趟 cargo 根本没重编 / 没重放警告。两者在终端上一模一样，所以一律按红记\n" "$n"; exit 1; fi; \
-printf "deadcode: %s passed（never used %s 条，恒等钉在 41）\n" "$n" "$n"'
+if [ "$n" -gt "$pin" ]; then printf "deadcode: never used %s 条，钉的是 %s —— 有人写了新的死代码；修掉它，或者说清为什么留着、再来改这个数\n" "$n" "$pin"; exit 1; fi; \
+if [ "$n" -lt "$pin" ]; then printf "deadcode: never used 只数到 %s 条，钉的是 %s —— 要么真清掉了几条（好事：回来把这个数改小，并写清降的是哪几条），要么这一趟 cargo 根本没重编 / 没重放警告。两者在终端上一模一样，所以一律按红记\n" "$n" "$pin"; exit 1; fi; \
+printf "deadcode: %s passed（never used %s 条，恒等钉在 %s）\n" "$n" "$n" "$pin"'
 printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode_t0 )) 秒（现打，与门禁基线相减就是加这一格的代价）"
 
 run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
