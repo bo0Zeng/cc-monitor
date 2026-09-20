@@ -148,28 +148,47 @@ tracing-appender = "0.2"
 #    ⚠ `muslbuild` 那一格的射程是 `src/backend`（`gate.sh:1117` 逐字 `cd src/backend`）
 #      ⇒ 本条依赖**碰不到它**；「GUI crate 能不能 musl 静态链接」这个设计题**没被本刀回答**。
 egui = "0.36"
-# 🔴 **它今天让门禁 `cargo` 那一格红着，红在 `lockfile_conflict_guard` 上 —— 如实留着，没绕。**
+# 🔴 **渲染后端必须是 `glow`，不能用 eframe 默认的 `wgpu`** —— 理由是现打出来的编译失败，
+#    不是口味。**这一条别顺手改回默认。**
 #
-# 现象：`tests/bridge/lockfile_conflict_guard_tests.rs` 要求**后端那份 lock 解析出的版本
-# 必须落在 monitor 的集合里**（它是 `ci.yml` 自称「平台线唯一真判据」那条跨 target check 的前提）。
-# 加上 eframe 之后：`cfg_aliases` 在 monitor 是 **0.2.2**，在 `src/backend/Cargo.lock` 是 **0.2.1** ⇒ 红。
+# ## 为什么：`wgpu` 那条路在本仓交叉编译到 Windows 时**编不过**
 #
-# 谁在要它（逐个 manifest 现打）：`winit` 与 `glutin` 都只要 `^0.2.1`，**只有 `wgpu` 要 `^0.2.2`**。
+# 门禁 `winchk` 那一格跑 `cargo check --locked --all-targets -p monitor
+# --target x86_64-pc-windows-gnu`。带默认 feature（`wgpu`）时它**红**，10 条类型错全在
+# `wgpu-hal` 的 DX12 后端上（`expected ID3D12Device, found Direct3D12::ID3D12Device` 这一形）。
 #
-# ⚠ **试过的退路，以及它为什么不成立（现打，别再走一遍）：**
-# 把渲染后端从 `wgpu` 换成 `glow` —— `cargo tree -i wgpu` 确认 wgpu **真的离开了构建图**，
-# 但 `cargo update -p cfg_aliases --precise 0.2.1` **照样失败**：
-# **`Cargo.lock` 记的是所有 feature 的并集**，`egui-wgpu` 作为 eframe 的可选依赖仍在 lock 里，
-# 它带着 `wgpu` 的 `^0.2.2` 一起留下 ⇒ 换后端**解决不了这条冲突**（总包数只从 871 降到 857）。
+# 病根不在 wgpu，在**本仓已经钉着两个 `windows` 大版本**：
+#   · `gpu-allocator 0.28` 的 spec 是 `windows = ">=0.53, <=0.62"`（**很宽**）
+#     ⇒ cargo 拿本仓现成的 **`windows 0.56`** 就把它满足了；
+#   · 而 `wgpu-hal 30.0.1` 自己用 **`windows 0.62`**。
+#   ⇒ 同一段 D3D12 代码里 `ID3D12Device` / `ID3D12Heap` 来自**两个不同的 `windows` crate** ⇒ E0308/E0277。
+# ⚠ 这个组合在一个干净的独立工程里**不出现**（那里没有 0.56/0.61，gpu-allocator 直接拿 0.62）
+#   —— 它是**本仓特有**的，因为 `windows 0.56`（项目自用）与 `windows 0.61`（`windows-wv2`）已经在树上。
 #
-# ⇒ 今天只有两条真出路，**两条都不在 24e 的写区，所以停下报备、不自作主张**：
+# ⇒ 换 `glow`：`cargo tree -i wgpu` 确认 `wgpu` 整棵离开**构建图**，`winchk` 现打 **rc=0**。
+# ⚠ 代价：OpenGL 而非 Vulkan/D3D12。对一个文件列表够用。**没在真 GPU 上比过两者**。
+#
+# ## ⚠ 它**没有**顺带解决的那条（别把两件事混起来）
+#
+# 门禁 `cargo` 那一格仍然红，红在 `lockfile_conflict_guard` 上：
+# `cfg_aliases` 在 monitor 是 **0.2.2**、在 `src/backend/Cargo.lock` 是 **0.2.1**。
+# 逐个 manifest 现打：`winit` 与 `glutin` 都只要 `^0.2.1`，**只有 `wgpu` 要 `^0.2.2`**——
+# 而 **`Cargo.lock` 记的是所有 feature 的并集**，`egui-wgpu` 作为 eframe 的可选依赖仍留在 lock 里，
+# 把 `^0.2.2` 一起带着 ⇒ 换后端**改不了 lock**，`cargo update -p cfg_aliases --precise 0.2.1` 照样失败。
+# ⇒ 那条只有两条真出路，**都不在 24e 的写区，所以停下报备、不自作主张**：
 #   ① 把 `src/backend/Cargo.lock` 的 `cfg_aliases` 抬到 0.2.2（它只是 `nix` 的 build-dependency，
 #      纯构建期、零运行时面）——**改的是 `src/backend/`**；
-#   ② 不用 `eframe`，改成直接拼 `egui-winit` ＋ `egui_glow` ＋ `glutin`
-#      （scratchpad 现打过：那样 `wgpu` 从 lock 里彻底消失，`cfg_aliases` 钉得回 0.2.1，
-#      总包数 308）——但那是**为了躲一行 lockfile 而自己重写一遍 eframe 的集成层**，
-#      是「硬绕」，得先有人拍板。
-eframe = "0.36"
+#   ② 不用 `eframe`，自己拼 `egui-winit` ＋ `egui_glow` ＋ `glutin`（scratchpad 现打：
+#      那样 `wgpu` 从 lock 里彻底消失、`cfg_aliases` 钉得回 0.2.1、总包数 308）——
+#      但那是为了躲一行 lockfile 自己重写一遍 eframe 的集成层，是「硬绕」，得先有人拍板。
+eframe = { version = "0.36", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+    "links",
+    "wayland",
+    "x11",
+] }
 # `winit` 是 `eframe` 的传递依赖，这里**提升为直接依赖**，只为一件事：
 # `EventLoopBuilderExtX11` / `ExtWayland` / `ExtWindows` 这三个**平台扩展 trait**
 # —— `eframe` 只 re-export 了 `EventLoopBuilder` 本体（`epi.rs:26`），没 re-export 它们，

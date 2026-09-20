@@ -13,6 +13,29 @@
 //! `eframe::NativeOptions::event_loop_builder` 交给 eframe，
 //! eframe 在 `native::run::create_event_loop` 里于 `builder.build()` **之前**调用它。
 //!
+//! # 🔴 同进程特有的一条风险：Windows 上**进程级** DPI 感知有两个主人
+//!
+//! 这条不是「两个事件循环」那一类，它是**同进程**才会有的：
+//! `tao` 与 `winit` **各自**有一个 `become_dpi_aware()`，各自用一个自己的 `Once` 守着，
+//! 而它们调的是**同一个进程级** Win32 接口（`SetProcessDpiAwarenessContext`）。
+//! ⇒ 一个进程里两个库都想设这块全局状态，而谁也不知道对方存在。
+//!
+//! **现打核过两边的源码，今天不会出事，理由要说准**：
+//! 两边设的**是同一个值**（`PER_MONITOR_AWARE_V2`，设不上就退 V1），
+//! 且 Windows 对「已经设过」返回 FALSE、两边都忽略这个返回值
+//! ⇒ 先跑的那个赢，而先跑的必然是 Tauri（主窗在 app 启动时就建了，
+//! 这个文件窗口只能由已经跑起来的 app 开）。
+//!
+//! ⚠ **但那是靠顺序碰巧对上的，不是靠设计**。真出事的形状是：
+//! 哪天 egui 窗口比 Tauri 主窗先建（或 winit 换了默认值），
+//! WebView2 那侧的 DPI 行为会跟着变 —— 而本仓在 Windows DPI/WebView 上
+//! 已经吃过亏（`真相源/70` 那一族、以及 `F12 nudge` 那处 WebView2 bounds 修正）。
+//!
+//! ⇒ **建议（本刀没做，留给拍板）**：给 [`any_thread_hook`] 的 Windows 分支加一句
+//! `with_dpi_aware(false)`，把「进程 DPI 归谁管」明确判给 Tauri。
+//! **没直接做的理由**：手上没有 Windows 机器，改了也验不了，
+//! 而在一个验不了的平台上动全局状态的默认值，比留着这条注记更危险。
+//!
 //! # ⚠ 没做到的，写在这儿而不是藏着
 //!
 //! - **本机跑不了真窗口**（`XDG_SESSION_TYPE=tty`，无图形会话）⇒ [`open_detached`]
