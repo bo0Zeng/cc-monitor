@@ -33,13 +33,13 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕26 格
+# │ 〔自述·格数〕27 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
-# │   winchk · winchk-backend · cargo · f3-copy · deadcode · generated · backend · tsc · npm ·
+# │   winchk · winchk-backend · cargo · f3-copy · comm-boundary · deadcode · generated · backend · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity
 # │ 〔自述·现物〕四套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
@@ -64,6 +64,11 @@
 # │   死值验住 `tests/evidence/W24C-deathvalue.md`。
 # │ 〔自述·现物〕`f3-copy` 那一格没有独立的判据文件 —— 它的**被测对象**是
 # │   `src/bridge/src/sftp_pool.rs` 里那条 `copy_remote_path`，**判据本体**是
+# │   `tests/bridge/comm_boundary_registry_tests.rs`（通信层那一族，`13b` 步 1 09-20 第 27 格）：
+# │   `comm-boundary` 那一格没有独立的判据文件 —— 被测对象就是这一份（C1–C5 ＋ X1–X6
+# │   ＋ 锚 ＋ 元判据，15 条），判定（三方对拍 ＋ 元判据/「说得出今天是空的」两条逐字锚点）
+# │   逐字写在下面那一行 `run_gate comm-boundary` 的内联脚本里。
+# │   🔴 它的人群今天是**空集**（登记 0 份成员）⇒ 本格买的正是「这一族还在不在」。
 # │   `tests/bridge/sftp_copy_f3_tests.rs`（秤 F3，`23b·B` 09-20 第 26 格）：
 # │   那份文件自带一台合成 SFTP 服务端 ＋ 一层按字节数包的计数流，两种人格各一个。
 # │   判定（三方对拍 ＋ 两个方向的逐字函数名）逐字写在下面那一行 `run_gate f3-copy`
@@ -1780,6 +1785,40 @@ if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "f3-copy: �
 for t in "$fwd" "$rev"; do n=$(printf "%s\n" "$out" | grep -c "copy_f3_tests::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "f3-copy: 方向锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 秤 F3 那两向里有一向没跑，或它改了名\n" "$t" "$n"; exit 1; fi; done; \
 printf "f3-copy: %s passed（秤 F3 两向；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
 
+# ── `comm-boundary`：通信层那十五条独立成格（`13b` 步 1 落地，本拍第 27 格）──────
+#
+# 🔴 **题面与 `f3-copy` 同形，但这一格更要紧 —— 因为它的人群今天是空集。**
+#   `tests/bridge/comm_boundary_registry_tests.rs`（1400 行）是 `设计/05 §2`/`§3.3.6`
+#   那 C1–C5 ＋ X1–X6 的本体。它今天登记着 **0 份**成员，绿的理由是 `0 == 0`。
+#   ⇒ 整个模块被从 `lib.rs` 摘掉时，**十五条一条都不跑，连那条元判据也不跑**，
+#     而 `cargo` 那一格只会合计小一点 —— **「摘掉了」与「全绿」在终端上一模一样**。
+#   🔴 一个人群为空的判据族，如果连「它自己还在不在」都没人看，那它买到的是零。
+#   立本格的那一路自己停下报备了这件事（写区不含本文件），这一拍补上。
+#
+# ★ 取法照 `f3-copy`：**三方对拍**（本行 `pin=15` · 那份文件现打的 `#[test]` 条数 ·
+#   `cargo test` 真跑出的 passed），三个数必须相等。
+# ★ 两个逐字锚点选的是**最承重的两条**，不是随便挑两个名字：
+#   ① `every_criterion_is_on_the_execution_chain` —— 元判据本身（判据清单 ↔ 真实 `#[test]`
+#      两向集合相等）。它没跑，等于这一族的自述没人核。
+#   ② `the_boundary_registry_says_out_loud_how_big_it_is_today` —— 「说得出今天是空的」那条。
+#      它没跑，「空集」就退回成「扫不到」。
+#   ⚠ 两侧不同源：名字写死在本文件里，命中数来自 `cargo` 的运行时输出。
+# ⚠ 本格**不买**「没盖标记的文件不是通信层」—— 那是那张表自己最大的诚实边界
+#   （一份真在做传输的代码不盖标记，它一个字都看不见）。本格只买「这十五条没有静默消失」。
+run_gate comm-boundary '判过的条数 = 通信层那一族（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 元判据）这一趟真跑过的条数。**三方对拍**：本行钉的 15 · 那份文件里现打的 `#[test]` 条数 · `cargo test` 真跑出来的 passed，三个数必须**相等** ＋ 两条逐字锚点（元判据 · 「说得出今天是空的」那条）各命中**恰好 1 次**。⚠ **本格存在的唯一理由是那一族的人群今天是空集** —— 模块被摘掉时十五条与元判据一起消失，而 `cargo` 那一格只会合计小一点，「摘掉了」与「全绿」在终端上分不开。⚠ 本格买的是「这十五条没有静默消失」，**不买**它们判得对（那由它们各自的头注与死值验负责），更**不买**「没盖标记的文件不是通信层」（那张表自己写死的最大边界）；⚠ 这 15 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加' \
+         bash -c 'pin=15; f=tests/bridge/comm_boundary_registry_tests.rs; \
+meta=every_criterion_is_on_the_execution_chain; \
+empty=the_boundary_registry_says_out_loud_how_big_it_is_today; \
+[ -r "$f" ] || { printf "comm-boundary: 那一族的判据本体 %s 盘上读不到 —— 住址改了就回来改本格，不许静默跳过\n" "$f"; exit 1; }; \
+declared=$(grep -cE "^[[:space:]]*#\[(tokio::)?test\]" "$f"); \
+out=$(cd src/bridge && cargo test -p monitor --lib comm_boundary_registry::tests:: 2>&1); rc=$?; \
+if [ "$rc" -ne 0 ]; then printf "%s\n" "$out" | tail -25; printf "comm-boundary: cargo test 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
+ran=$(printf "%s\n" "$out" | grep -oE "^test result: ok\. [0-9]+ passed" | grep -oE "[0-9]+" | head -1); \
+if [ -z "$ran" ]; then printf "%s\n" "$out" | tail -25; printf "comm-boundary: 那趟输出里抠不出「test result: ok. N passed」—— 读法与 cargo 的输出面对不上，本格判不了（不许当成绿）\n"; exit 1; fi; \
+if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "comm-boundary: 三方对拍分叉 —— 本行钉 %s · %s 里现打声明 %s 条 · cargo 真跑 %s 条；三个数必须相等。真加/删了一条判据，就回来改本行那个 pin（别去动另外两边）\n" "$pin" "$f" "$declared" "$ran"; exit 1; fi; \
+for t in "$meta" "$empty"; do n=$(printf "%s\n" "$out" | grep -c "comm_boundary_registry::tests::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "comm-boundary: 锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 它没跑，或者它改了名\n" "$t" "$n"; exit 1; fi; done; \
+printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 元判据；三方对拍 pin %s == 声明 %s == 真跑 %s；登记成员今天 0 份）\n" "$ran" "$pin" "$declared" "$ran"'
+
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
 #
 # ★★ `K-R10`（09-01）：**查哪个计划工作区，由调用方用环境变量 `PB_WS` 给** ——
@@ -1914,7 +1953,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
   #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
-  echo "GATE: OK —— 26 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · f3-copy · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity），可以出货"
+  echo "GATE: OK —— 27 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · f3-copy · comm-boundary · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity），可以出货"
   gate_print_blind
   exit 0
 fi
