@@ -23,11 +23,13 @@ mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
 mod auto_launch;
-mod backend_policy; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
-                    // 🔴 〔步 8 · 归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
-                    //    the_supervisor_itself_never_records_a_death` 逐字：「`backend/` 的生产段里
-                    //    出现了 `record_death(` ⇒ 判与记该在**宿主层**，`backend/` 那半**只搬证据**」。
-                    //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
+// 🔴 〔步 12 · 09-19〕`origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
+mod backend_policy;
+mod origin; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
+            // 🔴 〔步 8 · 归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
+            //    the_supervisor_itself_never_records_a_death` 逐字：「`backend/` 的生产段里
+            //    出现了 `record_death(` ⇒ 判与记该在**宿主层**，`backend/` 那半**只搬证据**」。
+            //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
 mod bridge;
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
