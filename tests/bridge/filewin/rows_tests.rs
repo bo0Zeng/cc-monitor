@@ -1,4 +1,4 @@
-use super::testing::render_headless_nonvirtual;
+use super::testing::{click_at, render_headless_nonvirtual, render_headless_with_events};
 use super::*;
 use crate::filewin::corpus;
 
@@ -103,6 +103,75 @@ fn scrolling_moves_the_materialized_window_without_widening_it() {
     );
 }
 
+/// 🔴 **第二刀：那一行真的接得住双击** —— 而且点的是**哪一行**要对。
+///
+/// 这一条走的是真 egui 输入（`RawInput::events`）＋ **生产那个**画行函数
+/// ⇒ 把 `paint_one_row` 里那个 `interact` 摘掉、或者把双击改成别的手势，当场红。
+///
+/// ⚠ 双击判定要 `input.time` 真的往前走（egui 靠两次 click 的时间差认双击）
+/// ⇒ 三帧：移进去 → 第一次 click → 第二次 click。
+/// ⚠ 买不到「鼠标在真窗口上按下去是什么手感」；买的是「事件进来之后哪一行被认出来」。
+#[test]
+fn a_double_click_on_a_row_comes_back_as_that_rows_index() {
+    let ctx = egui::Context::default();
+    let rows = rows(200);
+    // 先跑一帧把布局/字体建起来，行的矩形才有位置。
+    let warm = render_headless_with_events(&ctx, &rows, screen(), 0.0, Vec::new());
+    assert!(warm.rows_materialized > 3, "一屏连 4 行都没有，下面按坐标点就没意义");
+
+    // 第 2 行的中心：列表从 y≈0 起，行高 ROW_HEIGHT ＋ item spacing。
+    let want = 2usize;
+    let y = (want as f32 + 0.5) * (ROW_HEIGHT + 4.0);
+    let pos = egui::pos2(60.0, y);
+
+    let _ = render_headless_with_events(
+        &ctx,
+        &rows,
+        screen(),
+        0.10,
+        vec![egui::Event::PointerMoved(pos)],
+    );
+    let _ = render_headless_with_events(&ctx, &rows, screen(), 0.20, click_at(pos));
+    let second = render_headless_with_events(&ctx, &rows, screen(), 0.30, click_at(pos));
+
+    let got = second.clicked.expect(
+        "双击之后 `RenderTally::clicked` 还是 `None` —— \
+         那一行不接点击（`paint_one_row` 里那个 `interact` 没了？），\
+         于是「双击目录进去」这条链断在最前面",
+    );
+    // 允许 ±1 行的取整误差（行高与 spacing 的取整由 egui 定），但不许差得更多。
+    assert!(
+        got.abs_diff(want) <= 1,
+        "点在第 {want} 行的位置上，认出来的是第 {got} 行 —— 差了 {} 行",
+        got.abs_diff(want)
+    );
+}
+
+/// 反空真：**没人点的时候它必须是 `None`。**
+/// 没有这一条，上面那条可能只是「每帧都报第某行被点了」。
+#[test]
+fn a_frame_with_no_input_reports_no_click() {
+    let ctx = egui::Context::default();
+    let rows = rows(200);
+    for t in 0..3 {
+        let t = render_headless_with_events(&ctx, &rows, screen(), t as f64 * 0.1, Vec::new());
+        assert_eq!(t.clicked, None, "没有任何输入，却报了一次点击");
+    }
+    // 单击一次（不是双击）也不许算 —— 双击才进目录（同旧面板 `panel.ts` 的口径）。
+    let _ = render_headless_with_events(
+        &ctx,
+        &rows,
+        screen(),
+        1.0,
+        vec![egui::Event::PointerMoved(egui::pos2(60.0, 30.0))],
+    );
+    let one = render_headless_with_events(&ctx, &rows, screen(), 1.1, click_at(egui::pos2(60.0, 30.0)));
+    assert_eq!(
+        one.clicked, None,
+        "单击就进目录了 —— 旧面板是双击进（`panel.ts` 的 `dblclick`），别让两个面板两套手感"
+    );
+}
+
 #[test]
 fn human_size_is_short_enough_for_a_column() {
     assert_eq!(human_size(0), "0 B");
@@ -111,3 +180,4 @@ fn human_size_is_short_enough_for_a_column() {
     assert_eq!(human_size(1024 * 1024), "1.0 M");
     assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 G");
 }
+

@@ -44,6 +44,12 @@ pub struct RenderTally {
     pub first_row: usize,
     pub last_row: usize,
     pub total_rows: usize,
+    /// 🔴 这一帧被点开的那一行的**下标**（`None` = 没人点）。
+    ///
+    /// **点击要从这里出来，不许在生产里另画一遍列表** —— [`show_file_rows`] 是
+    /// 唯一一条画列表的路（见它的头注），所以「谁被点了」也只能从它带出来。
+    /// 上一刀差点栽在同一形上：判据自己抄了一份 `ScrollArea`，于是它钉的是副本。
+    pub clicked: Option<usize>,
 }
 
 /// 画一屏文件行。**这里是 `show_rows`，改成 `show` 会被判据当场逮住。**
@@ -73,15 +79,21 @@ pub fn show_file_rows(
         for i in range {
             let r = &rows[i];
             tally.rows_materialized += 1;
-            paint_one_row(ui, r);
+            if paint_one_row(ui, r) {
+                tally.clicked = Some(i);
+            }
         }
     });
 }
 
 /// 一行的长相。**刻意抽出来**：虚拟与不虚拟两条路要画的是同一样东西，
 /// 否则对照组比的就不是「虚不虚拟」而是「画得多不多」。
-fn paint_one_row(ui: &mut Ui, r: &Row) {
-    ui.horizontal(|ui| {
+///
+/// 回值 = 这一帧这一行被点了。⚠ **刻意不在这里做「点了之后干什么」** ——
+/// 那是窗口状态机的事（[`super::shell::FileWindow::activate`]），
+/// 画一行的函数不许知道「换目录」这回事。
+fn paint_one_row(ui: &mut Ui, r: &Row) -> bool {
+    let inner = ui.horizontal(|ui| {
         ui.label(if r.is_dir { "📁" } else { "📄" });
         ui.label(&r.name);
         if !r.is_dir {
@@ -93,6 +105,14 @@ fn paint_one_row(ui: &mut Ui, r: &Row) {
             ui.label("⚠");
         }
     });
+    // ⚠ 整行都可点（不是只有名字那几个像素）—— 文件管理器的常规手感。
+    //   `interact` 只是把这块矩形按 click 语义再登记一次，**不往 `Memory::data` 里
+    //   按行存状态** ⇒ `scale_tests::egui_itself_does_not_keep_per_row_state` 那条
+    //   相等断言仍然成立（落地时现打核过：两档都仍是 1 条）。
+    inner
+        .response
+        .interact(egui::Sense::click())
+        .double_clicked()
 }
 
 /// 人读的大小。**不是** `format!("{size}")` —— 列表里一列宽度有限。
