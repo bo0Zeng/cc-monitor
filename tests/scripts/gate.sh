@@ -1327,11 +1327,21 @@ deadcode_t0=$(date +%s)
 # 所以「类型在、还没人用」是它落地那一拍的**正确**样子，不是漏。
 # ⚠ **本格是恒等不是上限，这里有一条刻意的耦合**：等迁移真的开始吃 `Origin`，
 #   这三条会自己消失 ⇒ 本格当场红，逼人回来把这个数改小。**那正是要的。**
+# 🔴 **2026-09-20（同日第二次）：36 → 34，降的 2 条逐条记在这里。**
+# **这不是有人去清的，是那条刻意的耦合按设计开火了。** 上面那段逐字预告过：
+# 「等迁移真的开始吃 `Origin`，这三条会自己消失 ⇒ 本格当场红，逼人回来把这个数改小。**那正是要的。**」
+# 步 12·C（`origin` 归一第二刀）合掉 5 对双份命令、`Origin::route()` 上线
+# ⇒ `LOCAL` 常量与 `Origin` 这个 enum **真的有了生产段调用方** ⇒ 两条出列。
+# ⚠ 剩下的第 3 条**仍在**：`Origin` 的五个方法（`local` / `is_local` / `is_remote` /
+#   `host_name` / `as_wire_str`）今天只在测试段用 ⇒ 仍算死代码，**不是漏清**。
+#   等调用点真的吃这几个方法，本格会再红一次 —— 那一次同样是对的。
+# ⚠ 这个数是**现打**的（`cargo check -p monitor --message-format=short | grep -c "never used"`），
+#   不是 36−2 算的。
 # ⚠ 🔴 顺带修一条本格自己的腐坏：这个数原先在下面的内联脚本里**手抄了五遍**
 #   （3 处写 33、**2 处还写着更早的 41**）⇒ 终端上印出来的「恒等钉在 41」是假话，
 #   而没有任何东西会因此变红。现在它只住 `pin=` 一处。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 36，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=36; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
