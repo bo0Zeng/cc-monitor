@@ -41,6 +41,14 @@ mod data_paths;
 mod drift_ledger;
 mod event_replay;
 mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profile 共用最强那一档）
+                  // 🔴〔步 24e · 2026-09-20〕原生文件管理窗口（`设计/60 §4 戊`）。进程形态＝**同进程**、
+                  // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
+                  // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
+                  // ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
+                  //   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 34**。
+                  //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
+                  //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
+pub mod filewin;
 mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
