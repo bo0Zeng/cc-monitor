@@ -633,6 +633,38 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
             true,
             "`bash tests/e2e/weak-net/assert-floor.sh 26` —— 要 docker 与 `NET_ADMIN`，实测 `PASS=26`",
         ),
+        // ── job local-gate〔`G4` 空洞③ 09-20，**写区外的随动**，同上面 weak-net 那两条的性质〕
+        // 🔴 做那件事的那一路 agent 的写区是
+        //   `tests/scripts/gate.sh` · `tests/evidence/` · `.github/workflows/` · `tests/hooks/` · `.cargo/`
+        //   ——**本文件不在里面**。而本条判据要求「新 CI 步骤同拍登记」，且它在那一拍的
+        //   `cargo` 那一格**当场红**（逐字：「`ci.yml` 里这些步骤没人回答「本地跑不跑」」）。
+        //   ⇒ 照 09-05 `W-F1` 那次立的先例处理：**这两行是登记家务，不是功能代码**，
+        //   只登记事实（本地跑不跑得动、怎么跑），不裁定任何东西。
+        //   ⚠ 已在交回件里逐字报备为**唯一一处跨写区改动**，两行删掉即可回退。
+        // ⚠ 名字不带 `[local-gate]` 前缀 —— 同 weak-net 那条注释里记的坑：判据比对的只有步骤名。
+        (
+            "跑本地门禁的云端子集（GATE_ONLY，裁决行只会是 PARTIAL）",
+            true,
+            "`GATE_ONLY=\"hooks copy2 shellcheck ci-e2e-prereq release-gate gate-selfdesc platform installface\" \
+                 bash tests/scripts/gate.sh` —— 就是本地门禁自己，只是用 `GATE_ONLY` 取了个 8 格子集。\
+                 那 8 格全是读盘上文本的静态判据，只要 git/bash/python3/node/shellcheck，不装任何工具链。\
+                 ⚠ 取子集时裁决行是 `GATE: PARTIAL` 而**不是** `GATE: OK` —— 后者只许有一个意思：\
+                 盘上每一格都跑过了。⚠ 哪几格不进云端逐格登记在 \
+                 `tests/evidence/K-R80-gate-cell-coverage.py` 的 `INVOCATION` 里，\
+                 它与 `ci.yml` 那一行 `GATE_ONLY:` 由 `C8d` **两向集合相等**地对拍。\
+                 ⚠⚠ 它**从没在云端跑过**（本仓红线是不推送，这条流水线不触发）⇒ \
+                 「配置写对了」≠「验过了」—— 与上面 `rust-linux` 那条同一笔账",
+        ),
+        (
+            "这一趟到底跑没跑门禁（收据对拍，该跑的那几格从 INVOCATION 现取）",
+            true,
+            "`python3 tests/evidence/K-G4C-gate-receipt.py` —— 读上一步落的收据 \
+                 （`.build/gate-receipt.json`）：这份 `gate.sh` 的 sha256 · 这棵树的 tree oid · \
+                 真判过哪几格。🔴 它治的是「**装了钩子不等于它跑过**」：上一步那条 `run:` \
+                 可以因为 `if:` 求值成 false / 被 `continue-on-error` 洗绿 / 被注释掉而\
+                 什么都没干还回 0，那几种在流水线的绿勾上一模一样。\
+                 反空真锚是它的 `R6`：`ran ∪ skipped` 与 `gate.sh` 现打的格名**两向集合相等**",
+        ),
     ];
 
     // ── 解析：(job, 步骤标识)
