@@ -25,8 +25,6 @@ export interface ThemeConfig {
   card?: string;
   text?: string;
   "text-2"?: string;
-  user?: string;
-  assistant?: string;
   success?: string;
   warn?: string;
   error?: string;
@@ -43,8 +41,8 @@ const TOKENS: ReadonlyArray<{ key: keyof ThemeConfig; cssVar: string; unit?: "px
   { key: "card", cssVar: "--card" },
   { key: "text", cssVar: "--text" },
   { key: "text-2", cssVar: "--text-2" },
-  { key: "user", cssVar: "--user" },
-  { key: "assistant", cssVar: "--assistant" },
+  // 〔2026-09-19 用户裁定：撤掉〕`--user` / `--assistant` 两条摘掉 ——
+  // 它们是两个**零消费者**的旋钮，理由整段写在 `settings/panel.ts` 那两格的原处。
   { key: "success", cssVar: "--success" },
   { key: "warn", cssVar: "--warn" },
   { key: "error", cssVar: "--error" },

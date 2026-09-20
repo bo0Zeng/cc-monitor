@@ -117,8 +117,16 @@ const FIELDS: ReadonlyArray<FieldSpec> = [
   { key: "card", label: "卡片", type: "color", group: "color" },
   { key: "text", label: "主文本", type: "color", group: "color" },
   { key: "text-2", label: "次文本", type: "color", group: "color" },
-  { key: "user", label: "用户色", type: "color", group: "color" },
-  { key: "assistant", label: "Claude 色", type: "color", group: "color" },
+  // 🔴 〔2026-09-19 用户裁定：撤掉〕这里原先有「用户色」「Claude 色」两个取色器。
+  //    它们**拖了界面不会有任何变化** —— 链子是通的（一路走到 `theme.ts` 真的把值
+  //    写进 DOM 的那一步），但**全仓没有一条 CSS 读这两个变量**
+  //    ⚠ 这句话**刻意不写出那个调用的字面形状**：`css-conventions` 的扫描器
+  //      按字面认「TS 侧设了哪些自定义属性」，注释里写全了会被它当成一处真调用点
+  //      （我第一版就这么写的，当场被那条恒等断言逮住）。
+  //    （剥注释后 `var(--user)`/`var(--assistant)` 合计 0 处，`main` 上同样 0，一直如此）。
+  //    两条路：接上（让哪些元素跟着走）／撤掉。用户逐字「取色器撤掉」。
+  //    ⚠ 撤的是**旋钮**，不是「配色可调」这件事 —— 另外七格（主背景/卡片/主文本/
+  //      成功/警告/错误/次文本）都有真消费者，一个没动。
   { key: "success", label: "成功", type: "color", group: "color" },
   { key: "warn", label: "警告", type: "color", group: "color" },
   { key: "error", label: "错误", type: "color", group: "color" },
