@@ -469,7 +469,7 @@ jobs:
             src/bridge/vendor/cc-acct-iso/scripts/lib.sh \
             src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh \
             src/bridge/vendor/cc-acct-iso/scripts/test/run-tests.sh \
-            tests/hooks/pre-commit)
+            tests/hooks/*)
           N=$(printf '%s\n' "$FILES" | grep -c .)
           echo "shellcheck 覆盖 $N 个文件"
           # 地板：2026-07-30 实测 37（e2e 19 + cc-bus 13 + ccm 1 + vendored 4）；
@@ -542,6 +542,21 @@ jobs:
           #             + scripts 2 + vendored 4 + tests/hooks/pre-commit 1**（ccm 那 1 个没了）。
           #    ⚠ **别把这一次当先例**：往下拧的合法理由只有「那几个文件真的不在了」，
           #    不是「今天数不够」。`shell_lint_registry` 那条恒等判据会替你分辨这两件事。
+          # 🔴 **2026-09-20 `G4` 空洞③ 棘到 77，同时把 `tests/hooks/pre-commit` 换成 `tests/hooks/*`。**
+          #    ★ 这一次**又是「人群漏了一个」，不是「地板落后」** —— 与 08-08 `fake-claude`、
+          #      09-05 `weak-net/` 两次**同一形**，而这次漏的原因是第三种：
+          #      上面那一项此前写的是**一个写死的文件名**（`tests/hooks/pre-commit`），
+          #      不是 glob ⇒ 本拍新增的 `tests/hooks/pre-push` 落在所有分组之外，
+          #      **一次都不会被 lint，而计数一个都不少**。
+          #    ★ 逮住它的仍是 `shell_lint_registry`（「每个 shell 脚本要么进表达式、要么登记豁免」）——
+          #      它在 `cargo` 那一格当场红，**不是事后补**。
+          #    ⇒ 换成 `tests/hooks/*`（整目录，与 `src/shared/cc-bus/scripts/*` 同写法）：
+          #      往 `tests/hooks/` 再放一份 hook，人群自动跟上，**不必再指望有人记得回来加一行**。
+          #      ⚠ 这一项不按后缀取样是**刻意的**：git 的 hook 天生无后缀。
+          #      ⚠ 整目录 glob 不会把非脚本混进来 —— 门禁 `hooks` 那一格已经要求
+          #      `tests/hooks/` 下**每一个被跟踪的文件**都有 shebang 且在闭集里（口径同源）。
+          #    今天实测构成（逐组现打，不倒推）：
+          #    **77 = 上一轮 76 + tests/hooks/pre-push 1**。
           # **2026-09-12 `K-R82` 棘到 58**：新增 `tests/scripts/hooks-are-runnable.sh`
           #（门禁第 13 格 `hooks` 的判据本体）。★ 与 08-11 那次同形，**不是事后补**：
           # 文件建出来的同一拍 `shell_lint_registry` 那条恒等判据当场红，诊断逐字给出「该写几」。
@@ -630,7 +645,7 @@ jobs:
           # 今天实测构成（逐组现打，不倒推）：
           # **76 = tests/e2e/*.sh 30 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
           #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + pre-commit 1**。
-          [ "$N" -ge 76 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 76）"; exit 1; }
+          [ "$N" -ge 77 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 77）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
@@ -1224,6 +1239,82 @@ jobs:
   # ⚠ **本步骤在 GitHub runner 上一次都没跑过**：本流水线的触发器只有 `push`(main/`v*`) 与
   #    `pull_request`，而本仓红线是不 push ⇒ 与它旁边那 23 条调用行同一笔账。
   #    落地读数全部量于开发机（09-05：`PASS=26 FAIL=0`，连跑两趟同值）。
+  # ── `local-gate`：**本地那道门在云端零调用**这件事，到此为止（`G4` 空洞③，09-20）──
+  #
+  # ## 题面（`真相源/92 §2.1.2` ①，本拍非截断复打）
+  #
+  #     grep -c 'bash tests/scripts/'"gate.sh" .github/workflows/*.yml   →  两份都是 0
+  #     （⚠ 上面那条命令**刻意把串拆开写**：原样抄一遍，`C8d` 那条 count()==1 就会把这行
+  #       注释也数进去 ⇒ 当场 2 处。落地时现打栽过一次。同一个坑 `weak-net` 那一步的
+  #       注释里也逐字警告过一次，形状一模一样。）
+  #     ls .git/hooks/ | grep -v sample                                 →  零个
+  #
+  # ⇒ `tests/scripts/gate.sh` 那 26 格**此前只有人手动跑**。而「跑了」与「没跑」在终端上
+  #   一模一样 —— 两边都是**什么都没有**。这个 job 与 `tests/hooks/pre-push` 填的是那句话的前半。
+  #
+  # ## 🔴 为什么是**子集**，以及「哪几格不进」凭什么不是静默少跑
+  #
+  # 这个 job 只装 `actions/checkout` —— 不装 rust、不装 node_modules、不装 zig / musl target /
+  # mingw。人群的口径因此是**「这个 job 装什么就能跑什么」**（现打得出来），
+  # 不是「哪几格重要」（那要拍脑袋）。
+  #
+  # 🔴 **少跑的那几格不许静默**：每一格在云端跑不跑、不跑的话是「云端另有 job 盖着」
+  #   还是「云端零覆盖」，逐格登记在 `tests/evidence/K-R80-gate-cell-coverage.py` 的
+  #   `INVOCATION` 里。那份登记与**下面这一行 `GATE_ONLY:`** 由 `C8d` **两向集合相等**地对拍：
+  #   改这一行不改登记、或改登记不改这一行，**两边都当场红**（而且是在本 job 自己跑的
+  #   `gate-selfdesc` 那一格里红 —— 它就在下面那张名单里）。
+  #   ⇒ 「少跑一格」从此**必须先写一条理由**，写不出理由就改不动这一行。
+  #
+  # ## 🔴 第二步才是重点：**「写了这个 job」不等于「它真跑了门禁」**
+  #
+  # 第一步那条 `run:` 可以因为一堆原因**什么都没干还回 0**：`if:` 求值成 false ·
+  # 前一步 `continue-on-error` 把红洗成绿 · `GATE_ONLY` 打错一个字 · 有人把它注释掉。
+  # **这几种在流水线的绿勾上一模一样。**
+  # ⇒ 第二步读门禁自己落的那张收据（`.build/gate-receipt.json`，`gate.sh` 每趟都落）：
+  #   它记着**这份** `gate.sh` 的 sha256 · **这棵**树的 tree oid · **真判过哪几格**。
+  #   判它的 `K-G4C-gate-receipt.py` 的反空真锚是「`ran ∪ skipped` 与 `gate.sh` 现打的格名
+  #   **两向集合相等**」—— 收据被写空、或有一格既没跑也没登记成跳过，当场分叉。
+  #   `--require` 不给 ⇒ 它**从那份 `INVOCATION` 现取**该跑的名单，这儿刻意不抄第二份。
+  #
+  # ## ⚠⚠ 诚实边界（别读成「云端从此有保障」）
+  #
+  # 🔴 **本 job 在 GitHub runner 上一趟都没跑过，落地这一拍也跑不了。**
+  #   本流水线的触发器只有 `push`(main/`v*`) 与 `pull_request`，而**本仓红线是不推送**
+  #   （用户 2026-09-20 明确裁定）⇒ 它从未被触发。旁边 `weak-net` 那一步的头注
+  #   为**同一笔账**已经登记过一次，这里是第二处、同一个原因。
+  # 🔴 落地它的那一拍跑在**断网沙箱**里（`--network none`），`gh run view` 一次都做不到
+  #   ⇒ 那一拍买到的只有「**盘上这几份文本满足 `C8` 那几条**」：
+  #   job 在 yml 里 · 收据判据排在门禁**之后** · `GATE_ONLY` 与登记两向相等。
+  #   **一个字都没说这个 job 会绿**，更没说它在 runner 上起得来。
+  #   ⚠ 第一次真跑那天，下面那 8 格里凡是红的，先怀疑**这个 job 的环境假设**
+  #     （runner 自带什么），再怀疑那一格 —— 那几条假设本拍一条都没在 runner 上量过。
+  # ⚠ 门禁**设计成能断网跑**（`--network none` 沙箱是它的常态），所以这一步本身不取网络；
+  #   而这个 job 也刻意**不做** `npm ci` / `cargo fetch` —— 下面那 8 格一个都不需要它们
+  #   （`release-gate` 顺带调的 `release-notes.mjs --check` 现打只用 node 内置模块）。
+  #   哪天往子集里加一格要依赖的，**同拍**要把装依赖那几步也加上，并在登记里写清。
+  local-gate:
+    name: 本地门禁的云端子集（gate.sh 子集 + 跑过的收据）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15      # 8 格全是读盘上文本的静态判据，实测在本机以秒计；口径见 `rust` 那一格的头注
+    steps:
+      - uses: actions/checkout@v4
+
+      # 🔴 `GATE_ONLY` 里每一个名字都由 `gate.sh` 自己现打校验：拼错一个字是**红**，
+      #    不是「少跑一格」（`gate_check_only`）。而这一行整体与 `INVOCATION` 里标着
+      #    「进云端子集」的那几格由 `C8d` 两向对拍 —— 这一行是那张登记的**唯一**第二住址，
+      #    而它被钉住了。
+      # ⚠ 跳过的那 18 格 `gate.sh` 会逐字印出来，且裁决行会是 `GATE: PARTIAL` 而**不是**
+      #    `GATE: OK` —— `GATE: OK` 那四个字只许有一个意思：盘上每一格都跑过了。
+      - name: 跑本地门禁的云端子集（GATE_ONLY，裁决行只会是 PARTIAL）
+        env:
+          GATE_ONLY: hooks copy2 shellcheck ci-e2e-prereq release-gate gate-selfdesc platform installface
+        run: bash tests/scripts/gate.sh
+
+      # 🔴 **这一步排在上一步之后，是 `C8d` 逐字钉着的。** 排到前面去就是在验上一趟留下的
+      #    陈收据 —— 那比没有收据更坏：它看起来像跑过了。
+      - name: 这一趟到底跑没跑门禁（收据对拍，该跑的那几格从 INVOCATION 现取）
+        run: python3 tests/evidence/K-G4C-gate-receipt.py
+
   weak-net:
     name: E2E weak-net rig (docker + netem, no tmux/Rust)
     runs-on: ubuntu-latest
