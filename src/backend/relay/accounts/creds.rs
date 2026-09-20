@@ -224,5 +224,5 @@ pub(crate) fn announce(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/creds_tests.rs"]
+#[path = "../../../../tests/backend/relay/creds_tests.rs"]
 mod tests;

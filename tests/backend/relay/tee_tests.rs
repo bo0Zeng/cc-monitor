@@ -4,6 +4,25 @@ use super::*;
 /// （理由同 `http1.rs` 那份 `NO_CAP`：期望值不许拿被测常量算）。
 const NO_CAP: usize = usize::MAX;
 
+/// 造一条流的身份。
+///
+/// ⚠⚠ 🔴 〔条 48 · `设计/20 §7` 步 1〕`open`/`event` 先前收**三个字符串**
+/// （`agent` / `account` / `key`），今天收一个 [`super::super::StreamId`]
+/// ——「路径第 1/2 段 ＋ 一个流标签」。**线上那三个字段名一个字节都没动**
+/// （`tee::open` 的头注逐字写着为什么：那是线契约），
+/// 所以下面每一条断言里的期望字面量与改动前**完全相同**。
+fn key_of(seg1: &str, seg2: &str) -> super::super::RouteKey {
+    super::super::RouteKey {
+        seg1: seg1.to_string(),
+        seg2: seg2.to_string(),
+    }
+}
+
+/// 把一个路由键 ＋ 一个流标签拼成 `open`/`event` 要的那个身份。
+fn id<'a>(key: &'a super::super::RouteKey, stream: &'a str) -> super::super::StreamId<'a> {
+    super::super::StreamId { key, stream }
+}
+
 #[test]
 fn splits_sse_data_lines_across_arbitrary_split_points() {
     let wire = b"event: message_start\ndata: {\"a\":1}\n\ndata: {\"b\":2}\n\ndata: [DONE]\n\n";
@@ -117,9 +136,10 @@ fn wait_lines(rx: &std::sync::mpsc::Receiver<()>, n: usize) {
 #[test]
 fn meta_line_then_event_lines() {
     let (sink, buf, rx) = waitable_sink();
-    let seq = sink.open("agentA", "acctA", "sid-AAA");
+    let ka = key_of("agentA", "acctA");
+    let seq = sink.open(id(&ka, "sid-AAA"));
     assert_eq!(seq, 0);
-    sink.event("agentA", "acctA", "sid-AAA", "{\"type\":\"x\"}");
+    sink.event(id(&ka, "sid-AAA"), "{\"type\":\"x\"}");
     wait_lines(&rx, 2);
     let raw = buf.lock().expect("lock").clone();
     let text = String::from_utf8(raw).expect("utf8");
@@ -146,9 +166,11 @@ fn meta_line_then_event_lines() {
 #[test]
 fn seq_is_monotonic_within_one_sink() {
     let (sink, _buf, _rx) = waitable_sink();
-    assert_eq!(sink.open("a", "acctA", "k1"), 0);
-    assert_eq!(sink.open("b", "acctB", "k2"), 1);
-    assert_eq!(sink.open("a", "acctA", "k1"), 2);
+    let ka = key_of("a", "acctA");
+    let kb = key_of("b", "acctB");
+    assert_eq!(sink.open(id(&ka, "k1")), 0);
+    assert_eq!(sink.open(id(&kb, "k2")), 1);
+    assert_eq!(sink.open(id(&ka, "k1")), 2);
 }
 
 /// ★★ **上游内容是敌手可控的** —— `data:` 后面那一段原样进这一行。
@@ -180,7 +202,8 @@ fn an_upstream_payload_cannot_break_out_of_the_event_field() {
     ];
     for payload in hostile {
         let (sink, buf, rx) = waitable_sink();
-        sink.event("realA", "realAcct", "sid-AAA", payload);
+        let k = key_of("realA", "realAcct");
+        sink.event(id(&k, "sid-AAA"), payload);
         wait_lines(&rx, 1);
         let raw = buf.lock().expect("lock").clone();
         let text = String::from_utf8(raw).expect("utf8");
@@ -240,8 +263,9 @@ fn a_full_queue_drops_lines_but_says_so() {
     }));
 
     // 灌到必然溢出。**期望值不拿 `TEE_QUEUE_LINES` 算**，只断「丢了 > 0 行」。
+    let ka = key_of("agentA", "acctA");
     for i in 0..(TEE_QUEUE_LINES + 64) {
-        sink.event("agentA", "acctA", "sid-AAA", &format!("{{\"i\":{i}}}"));
+        sink.event(id(&ka, "sid-AAA"), &format!("{{\"i\":{i}}}"));
     }
     gate_tx.send(()).expect("放行");
     // 等到那行补报出来（等不到就红，不许把「还没写完」读成「没有报」）。

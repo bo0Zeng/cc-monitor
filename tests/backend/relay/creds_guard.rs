@@ -96,96 +96,102 @@ mod tests {
     /// 加一处日志就要来加一行，那正是要的 —— 逼你说清「这一行记的是什么」。
     const LOG_SITES: &[(&str, &str, &str)] = &[
         (
-            "server.rs",
+            "listen.rs",
             "[relay] cannot set connection deadline",
             "装期限失败",
         ),
-        ("server.rs", "[relay] refusing", "在途连接顶满，回 503"),
+        ("listen.rs", "[relay] refusing", "在途连接顶满，回 503"),
         (
-            "server.rs",
+            "listen.rs",
             "[relay] connection ended",
             "一条连接以错误收尾",
         ),
         (
-            "server.rs",
+            "listen.rs",
             "[relay] cannot spawn connection thread",
             "起线程失败",
         ),
         ("server.rs", "[relay] upstream connect failed", "连不上上游"),
         (
-            "server.rs",
+            "listen.rs",
             "[relay] bad upstream base url",
             "上游基址解析不了",
         ),
         (
-            "server.rs",
+            "listen.rs",
             "[relay] cannot bind loopback port",
             "端口起不来",
         ),
-        ("server.rs", "[relay] listening on", "起来了，监听在哪"),
+        ("listen.rs", "[relay] listening on", "起来了，监听在哪"),
         (
-            "server.rs",
+            "listen.rs",
             "[relay] listening (addr unknown",
             "起来了但问不到地址",
         ),
         (
-            "server.rs",
+            // ⚠ 〔`设计/20 §7` 步 1〕它**搬家了**：热重载整块归层 2，住址从
+            //   `server.rs` 变成 `accounts/mod.rs`。话一个字没改。
+            "accounts/mod.rs",
             "[relay] 凭据文件读不成表，**保留上一张表不动**",
             "`D2 阻-2`：重载时解析失败 —— **不把表换成空**（空表 = 全部 404），\
              留住上一张能用的、只出声。这一形是「表可重载」之后新长出来的",
         ),
         (
-            "creds.rs",
+            "accounts/creds.rs",
             "[relay] credentials file:",
             "凭据文件在哪（`KS9` 路径文档化）",
         ),
         (
-            "creds.rs",
+            "accounts/creds.rs",
             "[relay] credentials problem:",
             "文件读不动 / 解析不了",
         ),
         (
-            "creds.rs",
+            "accounts/creds.rs",
             "[relay] credentials permissions too wide:",
             "权限过宽（`KS11`）",
         ),
         (
-            "creds.rs",
+            "accounts/creds.rs",
             "[relay] how to fix:",
             "怎么修（`KS11` 要求两样都有）",
         ),
         (
-            "creds.rs",
+            "accounts/creds.rs",
             "[relay] credentials permissions unknown:",
             "查不出权限，也要出声",
         ),
         (
-            "creds.rs",
+            "accounts/creds.rs",
             "[relay] credentials: this account cannot be used:",
             "一条账号进不了路由表（id 当不了路由段 / `base_url` 解析不了）—— \
              `K-H2`：静默丢一行的症状是「我明明配了，中转永远 404」",
         ),
         (
-            "creds.rs",
+            "accounts/creds.rs",
             "[relay] credentials: configured",
             "配了 —— **只印这个布尔与进得了表的条数**，不印长度、不印掩码",
         ),
         (
-            "creds.rs",
+            "accounts/creds.rs",
             "[relay] credentials: auth_style must be one of:",
             "有一条的 `auth_style` 认不出时，把认得的那几个**现算**着印出来（`K-R1`）——\
              它是给正在排错的人看的最后一句话，所以不许是一份会变旧的字面量清单",
         ),
         (
-            "creds.rs",
+            "accounts/creds.rs",
             "[relay] credentials: this account is not on the default path:",
             "一条**进了表、但行为与默认不同**的账号（`K-R1`：带了路径前缀 / 换了鉴权头形状）。\
              它与上面那条「cannot be used」是两件事：这一条**照发**，只是发出去的字节不同 ⇒ \
              它错了的症状是上游的 404 / 401，与「上游挂了」同形，必须在启动时说出来",
         ),
-        ("creds.rs", "[relay] credentials: not configured", "没配"),
         (
-            "creds.rs",
+            "accounts/creds.rs",
+            "[relay] credentials: not configured",
+            "没配",
+        ),
+        (
+            "accounts/creds.rs",
             "[relay] create that file to configure one",
             "没配时印模板",
         ),
@@ -416,10 +422,16 @@ mod tests {
         let mut found: Vec<(String, String)> = Vec::new();
         let mut bad: Vec<String> = Vec::new();
         for (path, raw) in &files {
+            // ⚠⚠ 〔`设计/20 §7` 步 1〕先前这里取的是 `file_name()`（**只有文件名**）。
+            //    层 2 搬进 `relay/accounts/` 之后那样取会得出 `mod.rs` —— 一个
+            //    **指不准是谁**的住址（`relay/mod.rs` 与 `relay/accounts/mod.rs` 同名）。
+            //    ⇒ 改成**相对 `relay/` 的路径**。这是**收紧**：登记表里那一栏从此
+            //    点得到唯一一份文件，改不改都不会让一条日志悄悄换个家。
             let name = path
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
+                .strip_prefix(relay_dir())
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
             let prod = production_code(raw);
             // ⚠⚠ **针不许互相包含** —— 这一行是改过一次的，经过记这里，因为它正是
             //    本工作区那族病的第一形（**针拼错**），而且是**相等断言逮住的**：

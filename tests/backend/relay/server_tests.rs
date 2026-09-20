@@ -1,11 +1,62 @@
 use super::*;
-// ⚠ `upstream` 这一整个模块只有**判据段**才用得到（生产段今天只经 `Row::connect` 走它，
-//    而那一处在 `table.rs`）⇒ 这条 `use` 放在测试模块里，不放在文件顶上：
-//    放上面会在非测试构建里变成一条 unused import。
+// ⚠ 下面这几条 `use` 是**判据段自己的**，不放在 `server.rs` 文件顶上：放上面会在
+//    非测试构建里变成 unused import。
+//    ⚠⚠ 〔`设计/20 §7` 步 1〕`table` / `creds` 这两条先前是**跟着 `super::*` 蹭进来的**
+//    —— 那时 `server.rs` 自己引着它们。层 2 搬走之后层 1 不再认识那两个模块，
+//    判据要用就得自己写明白：**判据的人群从哪来，要看得见**。
+use super::super::accounts::creds;
+use super::super::accounts::{self, table::RoutingTable, Accounts};
+use super::super::listen::{listen, resolve_config, run, run_reading, run_with, serve, RelayExec};
 use super::super::upstream;
 use creds_core::SecretKey;
 use std::io::BufRead;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
+
+/// 判据里把一张表包成层 2、再交给层 1 的那一步。
+///
+/// ⚠ 走的是**生产段那条真实的层 2**（`Accounts`），不是判据自己造的一个假 `Destinations`
+/// —— 造一个假的就等于「量的不是生产段那张决策表」。
+fn dest_of(table: RoutingTable) -> Arc<dyn super::super::Destinations> {
+    Arc::new(Accounts::new(table))
+}
+
+/// 拿**生产段那张决策表**（`accounts::decide`，与 `Accounts::resolve` 同一份实现）
+/// 问一次，再把答案交给生产段那个渲染函数，返回它吐出来的那串字节。
+///
+/// ⚠⚠ 判据**不自己判**「这一行该不该换头 / 要不要丢掉客户端那份」——
+/// 那是层 2 的活（`设计/20 §7` 步 1 之后它整条搬过去了）。判据自己再判一遍，
+/// 量到的就是判据里那份副本，不是生产段那一份。
+fn render_via_layer_two(
+    t: &RoutingTable,
+    account: &str,
+    head: &RequestHead,
+    rest: &str,
+    body_len: usize,
+) -> String {
+    let key = super::super::RouteKey {
+        // `seg1` 今天不参与查表（条 49 / 14-ii 才让它承重）⇒ 这里随便给一个。
+        seg1: "a".to_string(),
+        seg2: account.to_string(),
+    };
+    let mut out = None;
+    accounts::decide(t, super::super::Mode::Substitute, &key, &mut |d| {
+        out = Some(match d {
+            Destination::Refuse { status, .. } => {
+                panic!("{account} 那一行该在表里，层 2 却答了 Refuse {status}")
+            }
+            Destination::Passthrough { upstream } => {
+                render_upstream_request(head, rest, upstream, None, body_len)
+            }
+            Destination::Substitute {
+                upstream,
+                key,
+                style,
+            } => render_upstream_request(head, rest, upstream, Some((key, style)), body_len),
+        });
+    });
+    String::from_utf8(out.expect("层 2 一次都没答")).expect("utf8")
+}
 
 /// 假上游发几个事件块。终止块另算 ⇒ 一条响应的**块数** = `UPSTREAM_EVENTS + 1`。
 const UPSTREAM_EVENTS: usize = 3;
@@ -588,7 +639,10 @@ fn spawn_relay_with_sink(
     let w: Box<dyn Write + Send> =
         custom.unwrap_or_else(|| Box::new(Shared(Arc::clone(&buf), tick)));
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
-    let relay = Arc::new(Relay::new(two_accounts_no_key(&base), TeeSink::new(w)));
+    let relay = Arc::new(Relay::new(
+        dest_of(two_accounts_no_key(&base)),
+        TeeSink::new(w),
+    ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
     let r2 = Arc::clone(&relay);
@@ -1668,7 +1722,10 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
 
 /// 起一个中转，**表由调用方给**。tee 丢进黑洞（本族判据量的不是 tee）。
 fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
-    let relay = Arc::new(Relay::new(table, TeeSink::new(Box::new(std::io::sink()))));
+    let relay = Arc::new(Relay::new(
+        dest_of(table),
+        TeeSink::new(Box::new(std::io::sink())),
+    ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
     std::thread::spawn(move || serve(listener, relay));
@@ -1998,13 +2055,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
     // 两行：一行配了 key，一行没配。**同一张表**里取，走的是生产段那条真实的路。
     let t = table_of(&[("with", &base, Some(MINE)), ("without", &base, None)]);
 
-    let with = String::from_utf8(render_upstream_request(
-        &head,
-        "/v1/x",
-        t.lookup("with").expect("配了 key 的那一行"),
-        3,
-    ))
-    .expect("utf8");
+    let with = render_via_layer_two(&t, "with", &head, "/v1/x", 3);
     // ★ **恰好一个** `Authorization` —— 追加一条会让上游看见两个，那是未定义行为。
     assert_eq!(
         with.matches("Authorization:").count(),
@@ -2018,13 +2069,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
     );
 
     // 非空对照：**这一行没配** key 时是原样转发（不是恒替换）。
-    let without = String::from_utf8(render_upstream_request(
-        &head,
-        "/v1/x",
-        t.lookup("without").expect("没配 key 的那一行"),
-        3,
-    ))
-    .expect("utf8");
+    let without = render_via_layer_two(&t, "without", &head, "/v1/x", 3);
     assert!(without.contains("Authorization: Bearer THEIRS\r\n"));
     assert!(!without.contains(MINE));
 }
@@ -2061,15 +2106,7 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
         ("xapikey", &base, Some(MINE), AuthStyle::XApiKey),
         ("noauth", &base, None, AuthStyle::NoAuth),
     ]);
-    let render = |id: &str| {
-        String::from_utf8(render_upstream_request(
-            &head,
-            "/v1/x",
-            t.lookup(id).unwrap_or_else(|| panic!("{id} 那一行该在")),
-            3,
-        ))
-        .expect("utf8")
-    };
+    let render = |id: &str| render_via_layer_two(&t, id, &head, "/v1/x", 3);
 
     let b = render("bearer");
     let x = render("xapikey");
@@ -2175,15 +2212,7 @@ fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
     let prefixed = Base::parse("https://gw.example.com/anthropic").expect("带前缀那一形");
     let bare = Base::parse("https://gw.example.com").expect("不带前缀那一形");
     let t = table_of(&[("with-prefix", &prefixed, None), ("no-prefix", &bare, None)]);
-    let render = |id: &str, rest: &str| {
-        String::from_utf8(render_upstream_request(
-            &head,
-            rest,
-            t.lookup(id).unwrap_or_else(|| panic!("{id} 那一行该在")),
-            0,
-        ))
-        .expect("utf8")
-    };
+    let render = |id: &str, rest: &str| render_via_layer_two(&t, id, &head, rest, 0);
 
     // ★★ 承重的那一格排最前：期望值是**手写字面量**的整条请求行。
     let with = render("with-prefix", "/v1/messages");
@@ -2494,13 +2523,7 @@ fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
     let base = Base::parse("https://api.example.com").expect("base");
     // 这一行**没配 key** ⇒ 原样转发那一支（`K-H1` 甲半的形状）。换头那一支见下一条判据。
     let t = table_of(&[("acct", &base, None)]);
-    let out = String::from_utf8(render_upstream_request(
-        &head,
-        "/v1/x",
-        t.lookup("acct").expect("行应当在"),
-        3,
-    ))
-    .expect("utf8");
+    let out = render_via_layer_two(&t, "acct", &head, "/v1/x", 3);
     assert!(out.starts_with("POST /v1/x HTTP/1.1\r\n"));
     assert!(out.contains("Host: api.example.com\r\n"));
     assert!(out.contains("Accept-Encoding: identity\r\n"));
@@ -2572,7 +2595,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     );
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
-        two_accounts_no_key(&base),
+        dest_of(two_accounts_no_key(&base)),
         TeeSink::new(Box::new(std::io::sink())),
     );
     handle(down, &relay).expect("handle 必须走完一条转发");
@@ -2666,7 +2689,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     );
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
     let relay = Relay::new(
-        two_accounts_no_key(&base),
+        dest_of(two_accounts_no_key(&base)),
         TeeSink::new(Box::new(std::io::sink())),
     );
     handle(down, &relay).expect("handle 必须走完一条转发");
