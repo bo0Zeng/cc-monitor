@@ -18,13 +18,16 @@
 //! 「**编译器**买的」。`D1` 逐条编出反例，**本模块那三条腿 + 那条棘轮一条都没红**。
 //! 下面是**重打之后**的表 —— 每一格要么给读数，要么写「判不了」。
 //!
+//! ⚠⚠ 🔴 **〔`设计/20 §7` 步 1–2〕下面这张表是 `D1` 那一拍的读数，三行今天已经过期了，
+//! 逐行标着「今天」。旧读数**刻意不删** —— 它记着「读着像买断 ≠ 买断了」那一课是怎么打出来的。**
+//!
 //! | 性质 | 今天真正由谁守 | 实测出来的洞（**分母 = `D1` 编出来的这几形**） |
 //! |---|---|---|
-//! | **从一个 `Row` 里拿不到 `&Base`** | ⭐ **编译器**（字段私有 · 住 `mod sealed` · 无 `base()` 访问器） | 这是编译器**真正**买到的**唯一**一条 |
+//! | **从一个 `Row` 里拿不到 `&Base`** | ⚠ **这条今天不成立了**：`Row::base()` 存在（层间契约要它），但**收成了 `pub(super)`** ⇒ 层 1 够不到整个 `Row`。旧话：⭐ 编译器（字段私有 · 住 `mod sealed` · 无 `base()` 访问器） | 这是编译器**真正**买到的**唯一**一条 |
 //! | ⚠ **另一半（`&SecretKey`）根本不在这张表的保护面里** | **没有人** —— [`Row::key`] 就是一个 `pub(crate)` 访问器 | 〔`D2` `§五-2`，`C-补` 08-28 补的话，**不是新缺陷**〕`Row` 两个半边**不对称**：`base` 那半没访问器（要「有意重建」，见 `D1-M1`），`key` 那半**一个方法调用**就够 ⇒ 「拿 B 的 key」不需要重建任何东西。⚠ 它下游那一跳另有人守：把 `&SecretKey` 变成明文的地方由 `creds_guard` ㈢（`expose_for_auth_header(` 恰好 1 处）钉着 —— 但那守的是**明文出口**，**不是**「谁拿得到这个值」 |
 //! | 上游与 key「只能同源」 | **只有行为判据** | `D1-M2`：两行同时在作用域、A 连 B 渲染 ⇒ **编译通过**（我复打过）。`D1-M1`：换签名收 `host: &str` + 用 `row.host_header()` **重建 `Base`** 去连 ⇒ **488 passed / 0 failed** |
-//! | 进程里「没有默认上游可回落」 | **只有一条文本棘轮**（禁 `Relay` 里出现 `base:` / `key:` 字面） | **假**：`DEFAULT_UPSTREAM` 是 `server.rs:24` 的 crate 常量，`Base` 三个字段全 `pub(crate)`、`Base::parse` 也是 ⇒ 一行就能造一个 |
-//! | 装表**只有一处**做 | **文本判据**（`table_guard.rs` 两条相等断言） | `D1-M4`：㈠ 那根针在它自称「真正的人群」（`sealed` 里面）**恰恰最弱** —— **一个字面量能焊出任意多行**，数字面量数不出「焊了几行、每行装了什么」。实测多行焊接 + 把回落整个加回来 ⇒ `table_guard` 单跑 **10 passed / 0 failed** |
+//! | 进程里「没有默认上游可回落」 | ⚠ **今天换人守了**：`DEFAULT_UPSTREAM` 搬进层 2（`accounts/mod.rs`），`table_guard::layer_one_has_no_default_upstream_to_fall_back_to` 两向相等断言钉着「层 1 零处 · 层 2 恰好登记那几处」。旧话：只有一条文本棘轮（禁 `Relay` 里出现 `base:` / `key:` 字面） | **假**（那一拍）：`DEFAULT_UPSTREAM` 是 `server.rs` 的 crate 常量，`Base` 三个字段全 `pub(crate)`、`Base::parse` 也是 ⇒ 一行就能造一个。⚠ **后半句今天仍成立** —— 层 1 有意去 `Base::parse` 现造一个，没人拦得住 |
+//! | 装表**只有一处**做 | **文本判据**（`table_guard.rs` 那几条相等断言；⚠ 「`sealed` 里面」那一格今天改成「`accounts/` 里面」） | `D1-M4`：㈠ 那根针在它自称「真正的人群」（`sealed` 里面）**恰恰最弱** —— **一个字面量能焊出任意多行**，数字面量数不出「焊了几行、每行装了什么」。实测多行焊接 + 把回落整个加回来 ⇒ `table_guard` 单跑 **10 passed / 0 failed** |
 //!
 //! ⇒ **准确的说法只有一句**：换成这个形状**比先前那版强**（它把「顺手拆开」变成要**有意重建**），
 //! 但它**不是买断**。真正拦住上面那几形的是**行为判据**（`KH2`/`KH4` 那几条走真子进程、真转发的），
@@ -42,158 +45,156 @@
 //!
 //! 这两句读起来像，差别正是 `KH2` 要守的全部。
 
-use super::route;
-use super::upstream::Base;
+use super::super::route;
+use super::super::upstream::Base;
 use creds_core::store::{AccountEntry, AuthStyle, AuthStyleSetting};
 
-/// `Row` 与整张表都住这里。**外面够不到它的字段** —— 这是本模块全部意义所在。
+// ★★ 🔴 〔`设计/20 §7` 步 2〕**`mod sealed` 删掉了** —— 换来的东西写在这里
+//
+// 先前 `Row`/`RoutingTable` 住一个私有 `mod sealed`，买的是「`table.rs` 自己那半
+// 也够不到 `Row` 的字段」。`20 §6` 逐字判过这一格：那道墙挡的只是「顺手」，
+// 而本模块头注那张表里两条实测（`D1-M1`/`D1-M2`）记着它挡不住「有意」。
+//
+// **换到手里的是两样更硬的**：
+// 1. **一次请求只拿到一个 `Destination`**（`§6` 第 1 行）—— 跨行拼装在这条路上凑不出来；
+// 2. **访问器从 `pub(crate)` 收成 `pub(super)`** —— `Row` 的那几个方法今天
+//    **只有 `accounts/` 里面看得见**。层 1 连 `Row` 这个类型都点不到，
+//    那是**编译器**买的，不是一条文本判据。⚠ 先前是 `pub(crate)`：整个 crate 都能调。
+//
+// ⇒ 净账是**收紧**：少了一道只挡「顺手」的墙，多了一道挡住整层的墙。
+use creds_core::SecretKey;
+use std::collections::BTreeMap;
+
+/// 表里的一行：**这条路由发到哪儿 + 用哪把 key**。
 ///
-/// 形状抄 `creds_core` 的 `mod sealed`（`K-H2a` 七轮之后落定的那一版）：
-/// 那一件的经过逐字记着，同一条性质**换了四版人群**（某个字面 → 返回类型 →
-/// 函数体碰没碰字段 → **换形状交给编译器**），**前三版逐版被打穿**。
-/// ⇒ 这里直接上第四版。
-mod sealed {
-    use super::super::upstream::Base;
-    use creds_core::SecretKey;
-    use std::collections::BTreeMap;
+/// # ⚠ 谁拿得到它 —— 这一段 `设计/20 §7` 步 2 重写过，**旧话与新话都留着**
+///
+/// **今天**：字段私有；三个访问器（[`Row::base`] · [`Row::key`] · [`Row::auth_style`]）
+/// 全是 `pub(super)` ⇒ **只有 `accounts/` 里面够得到这一行的任何一格**。
+/// 层 1（`server.rs` / `listen.rs` / `http1.rs` / `tee.rs`）连 `Row` 这个类型都点不到，
+/// 它手里只有 `resolve` 递过来的**一个** `Destination`。**这一格是编译器买的。**
+///
+/// **先前**（`K-H2` 到 `20 §7` 步 1 之间）：`Row` 住一个私有 `mod sealed`，
+/// 没有 `base()` 访问器，而三个方法是 `pub(crate)`。那一版的读数逐条留着，
+/// 因为它是本仓最值钱的一课（「读着像买断 ≠ 买断了」）：
+/// - `D1-M2`：**根本不用 `base()`** —— 两行同时在作用域里，`a.connect()` 配
+///   `render_upstream_request(&head, …, b, …)`，**编译通过、跑得通**。
+/// - `D1-M1`：连 `connect()` 都能绕 —— `host_header()` 返回的那个 `String`
+///   足够把 `Base` **重建**出来 ⇒ 实测 **488 passed / 0 failed**。
+/// - `D2 §五-2`：两个半边**不对称** —— `base` 那半要「有意重建」，
+///   而 `key` 那半**一个方法调用**就够。
+///
+/// ⇒ 那一版挡的只是「顺手」。今天挡住「A 的端点配 B 的 key」的是
+/// **一次请求只拿到一个 `Destination`**（`20 §6` 第 1 行）＋ 上面那条可见性，
+/// 而**量它的**仍然是 `KH2`/`KH4` 那几条走真转发的行为判据 ＋ `wire_golden` 的字节金标准。
+///
+/// ⚠ **刻意没有 `derive(Debug)`**：同 `Relay`（`KS1` 的第二道）。
+/// `SecretKey` 自己的 `Debug` 是遮蔽形，但少一个能顺手把整行印出来的入口就少一个出口。
+pub(crate) struct Row {
+    base: Base,
+    key: Option<SecretKey>,
+    /// 这一把 key **用哪种鉴权头**交给上游〔`K-R1`〕。
+    ///
+    /// ★ 它焊在这里而**不是**一个进程级设置，理由与 `base`/`key` 逐字同一条：
+    /// 上游、key、鉴权头形状是**同一个决定的三个面**。分开取就写得出
+    /// 「A 的端点 + B 的 key + C 的头风格」，而那一形的症状是**401**
+    /// ——与「key 打错了」同形，查不出来。
+    ///
+    /// ⚠ 它**不是**方言（见 `creds_core::store::AUTH_STYLE_FIELD` 的头注）：
+    /// 中转对 body 零解析，这一格一个字节的请求体都管不到。
+    auth_style: AuthStyle,
+}
 
-    /// 表里的一行：**这条路由发到哪儿 + 用哪把 key**。
+impl Row {
+    /// 这一行发到哪儿。
     ///
-    /// # ⚠ 字段是私有的，而且**刻意不给 `base()` 访问器** —— 它买到的**比读起来少**
+    /// # ⚠⚠ 🔴 **它是 `设计/20 §7` 步 1 新开的一个口，代价要认下来**
     ///
-    /// 外面拿得到的只有 [`Row::connect`]（这一行自己连自己的上游）与
-    /// [`Row::host_header`]（这一行自己的 `Host:`）⇒ **`&Base` 这个值不出这个边界**。
+    /// 先前这里**刻意没有** `base()`，而外面拿得到的只有 `connect()` 与 `host_header()`
+    /// ⇒ `&Base` 这个值不出这个边界。今天它出得去了，因为**层间契约要求它出去**：
+    /// `Destination::{Passthrough,Substitute}` 逐字带着 `upstream`，而「连上游」
+    /// 是层 1 的活（`20 §4`：`exchange` 那一行是「resolve → 连上游 → pump → tee」）。
     ///
-    /// ⚠⚠ **订正〔`D1` 阻-1 回修，08-28〕**：先前这里逐字写着「给了 `base()`，
-    /// **跨行拼装就又写得出来了**」—— 那句话的**逆否**读起来像「不给就写不出来」，
-    /// 而那是假的，两条实测：
-    /// - `D1-M2`：**根本不用 `base()`** —— 两行同时在作用域里，`a.connect()` 配
-    ///   `render_upstream_request(&head, …, b, …)`，**编译通过、跑得通**（我自己复打过）。
-    /// - `D1-M1`：连 `connect()` 都能绕 —— [`Row::host_header`] 返回的那个 `String`
-    ///   足够把 `Base` **重建**出来（`Base::parse` 是 `pub(crate)`，三个字段也是），
-    ///   换个签名收 `host: &str` 就行 ⇒ 实测 **488 passed / 0 failed**。
+    /// **换到手里的是 `20 §6` 第 1 行那一格**：先前那道墙挡的只是「顺手」
+    /// （本模块头注两条实测 `D1-M1`/`D1-M2` 逐字记着它挡不住「有意」）；
+    /// 今天挡住「A 的端点配 B 的 key」的是**一次请求只拿到一个 `Destination`**
+    /// —— 上游与 key 是同一个变体的两个字段，要拼错得先有两个 `Destination`
+    /// 同时在作用域里，而 `resolve` 只给一个。
     ///
-    /// ⇒ 准确的说法：**不给 `base()` 挡住的是「顺手」，挡不住「有意」。**
-    /// 真正拦住那两形的是 `KH2`/`KH4` 那几条**走真转发的行为判据**（它们量的是
-    /// 「哪个端点收到了哪把 key」，与这里写不写得出来无关）。
-    ///
-    /// ⚠⚠ **而上面那句只对 `base` 那一侧成立 —— `key` 那半连「有意」都不用**
-    /// 〔`D2` `§五-2`，`C-补` 08-28 补的话；**不是新缺陷**，`D1-M2` 的读数里本来就含着它〕。
-    /// 本结构体两个半边**不对称**：`base` 没有访问器，**`key` 有**（[`Row::key`]，`pub(crate)`）。
-    /// ⇒ 「拿 B 的 key」是**一个方法调用**，不需要重建任何东西。
-    /// 别把上面那句读成「两半都要重建才拿得到」—— 那会把这里说得比它实际强。
-    /// （`&SecretKey` 那一侧今天由谁守、守到哪一格，见**模块头注**那张表新增的那一格。）
-    ///
-    /// ⚠ **刻意没有 `derive(Debug)`**：同 `Relay`（`KS1` 的第二道）。
-    /// `SecretKey` 自己的 `Debug` 是遮蔽形，但少一个能顺手把整行印出来的入口就少一个出口。
-    pub(crate) struct Row {
-        base: Base,
-        key: Option<SecretKey>,
-        /// 这一把 key **用哪种鉴权头**交给上游〔`K-R1`〕。
-        ///
-        /// ★ 它焊在这里而**不是**一个进程级设置，理由与 `base`/`key` 逐字同一条：
-        /// 上游、key、鉴权头形状是**同一个决定的三个面**。分开取就写得出
-        /// 「A 的端点 + B 的 key + C 的头风格」，而那一形的症状是**401**
-        /// ——与「key 打错了」同形，查不出来。
-        ///
-        /// ⚠ 它**不是**方言（见 `creds_core::store::AUTH_STYLE_FIELD` 的头注）：
-        /// 中转对 body 零解析，这一格一个字节的请求体都管不到。
-        auth_style: super::AuthStyle,
+    /// ⚠ 步 1 那一拍它是 `pub(crate)`（整个 crate 都能调）；**步 2 收成了 `pub(super)`**
+    /// —— 只有 `accounts/` 看得见。「层 1 够不到 `Row`」从此是编译器买的。
+    pub(super) fn base(&self) -> &Base {
+        &self.base
     }
 
-    impl Row {
-        /// 这一行发到哪儿。
-        ///
-        /// # ⚠⚠ 🔴 **它是本拍（`设计/20 §7` 步 1）新开的一个口，代价要认下来**
-        ///
-        /// 先前这里**刻意没有** `base()`，而外面拿得到的只有 `connect()` 与 `host_header()`
-        /// ⇒ `&Base` 这个值不出这个边界。今天它出得去了，因为**层间契约要求它出去**：
-        /// `Destination::{Passthrough,Substitute}` 逐字带着 `upstream`，而「连上游」
-        /// 是层 1 的活（`20 §4`：`exchange` 那一行是「resolve → 连上游 → pump → tee」）。
-        ///
-        /// **换到手里的是 `20 §6` 第 1 行那一格**：先前那道墙挡的只是「顺手」
-        /// （本模块头注两条实测 `D1-M1`/`D1-M2` 逐字记着它挡不住「有意」）；
-        /// 今天挡住「A 的端点配 B 的 key」的是**一次请求只拿到一个 `Destination`**
-        /// —— 上游与 key 是同一个变体的两个字段，要拼错得先有两个 `Destination`
-        /// 同时在作用域里，而 `resolve` 只给一个。
-        ///
-        /// ⚠ 它今天是 `pub(crate)`。**步 2 把 `table.rs` 搬进 `accounts/` 之后要收成
-        /// `pub(super)`** —— 那时「层 1 够不到 `Row`」才是编译器买的。
-        pub(crate) fn base(&self) -> &Base {
-            &self.base
-        }
-
-        /// 这一行的鉴权头形状。**不是**方言。
-        pub(crate) fn auth_style(&self) -> super::AuthStyle {
-            self.auth_style
-        }
-
-        /// 这一行的 key。`None` = **原样转发下游那份鉴权头**。
-        ///
-        /// ⚠⚠ **`None` 不是「这一行不存在」** —— 它是一个**合法状态**：
-        /// 订阅登录那一档（`acct_core::AUTH_KIND_SUBSCRIPTION`）本来就不该换头。
-        /// 「行不在表里」与「行在但没 key」要两条判据，**不许合成一条**
-        /// （合了会把一个合法状态判成错误）。
-        pub(crate) fn key(&self) -> Option<&SecretKey> {
-            self.key.as_ref()
-        }
+    /// 这一行的鉴权头形状。**不是**方言。
+    pub(super) fn auth_style(&self) -> AuthStyle {
+        self.auth_style
     }
 
-    /// 账号 id → [`Row`]。**一个进程一张**，跨连接共享。
-    pub(crate) struct RoutingTable {
-        rows: BTreeMap<String, Row>,
-    }
-
-    impl RoutingTable {
-        /// **整个后端生产段里唯一一处造 `Row` 的地方**
-        /// （`table_guard::the_only_place_that_welds_an_upstream_to_a_key_is_inside_the_sealed_module`
-        /// 那条相等断言钉着）。
-        ///
-        /// 收的是**分开的四样**（id / 上游 / key / 鉴权头形状），出的是**焊死的一样**。
-        /// 焊接这一步只此一次 ⇒ 「哪个上游配哪把 key、用哪种头」这个决定只有一个地方做得了。
-        ///
-        /// ⚠ `K-R1` 把第四样加进来，形状照前三样：**跟着行走，不做进程级设置**。
-        pub(crate) fn build(
-            entries: impl IntoIterator<Item = (String, Base, Option<SecretKey>, super::AuthStyle)>,
-        ) -> Self {
-            let mut rows = BTreeMap::new();
-            for (id, base, key, auth_style) in entries {
-                // ⚠ **排版随便拆，形状不能改。** `table_guard` 那条相等断言 09-09 起走
-                //   `sites_layout_blind`：**先把生产段的空白全删干净**，再找无空白形的针
-                //   `Row{base`（`table_guard::WELD`）⇒ 换行 / 缩进 / `cargo fmt` 一格都不影响它。
-                //   仍然会让它数出 0 处、当场红的是**内容**上的改法：`base` 不再紧跟 `Row {`
-                //   （字段反序，或中间插进别的字段）、`base` 改名、改用 `Row::new(…)` 或 `..`
-                //   更新语法，以及把这处焊接搬出 `table.rs` / 搬出 `mod sealed`。反方向也钉着：
-                //   生产段里再出现第二处同形字面量 ⇒ 2 处 ⇒ 红（要求**恰好 1**）。
-                //   ⇒ 真要写成那些形状，**改的是判据里那根针**，不是把这里的排版扭回去迁就它。
-                //   〔原注写着「这一行必须留在一行上」：那是 09-09 `cargo fmt` 拆开它、老那把
-                //   逐行尺子数出 0 处留下的化石，今天双重失效 —— 而它真正的害处，是在教
-                //   下一个人拿生产代码的排版去迁就判据。〕
-                rows.insert(
-                    id,
-                    Row {
-                        base,
-                        key,
-                        auth_style,
-                    },
-                );
-            }
-            Self { rows }
-        }
-
-        /// 查一条。**查不到就是 `None`** —— 调用方回 404，不许拿别的行顶上。
-        pub(crate) fn lookup(&self, account: &str) -> Option<&Row> {
-            self.rows.get(account)
-        }
-
-        /// 表里有几行。只给日志与判据用。
-        pub(crate) fn len(&self) -> usize {
-            self.rows.len()
-        }
+    /// 这一行的 key。`None` = **原样转发下游那份鉴权头**。
+    ///
+    /// ⚠⚠ **`None` 不是「这一行不存在」** —— 它是一个**合法状态**：
+    /// 订阅登录那一档（`acct_core::AUTH_KIND_SUBSCRIPTION`）本来就不该换头。
+    /// 「行不在表里」与「行在但没 key」要两条判据，**不许合成一条**
+    /// （合了会把一个合法状态判成错误）。
+    pub(super) fn key(&self) -> Option<&SecretKey> {
+        self.key.as_ref()
     }
 }
 
-pub(crate) use sealed::{RoutingTable, Row};
+/// 账号 id → [`Row`]。**一个进程一张**，跨连接共享。
+pub(crate) struct RoutingTable {
+    rows: BTreeMap<String, Row>,
+}
+
+impl RoutingTable {
+    /// **整个后端生产段里唯一一处造 `Row` 的地方**
+    /// （`table_guard::the_only_place_that_welds_an_upstream_to_a_key_is_inside_layer_two`
+    /// 那条相等断言钉着）。
+    ///
+    /// 收的是**分开的四样**（id / 上游 / key / 鉴权头形状），出的是**焊死的一样**。
+    /// 焊接这一步只此一次 ⇒ 「哪个上游配哪把 key、用哪种头」这个决定只有一个地方做得了。
+    ///
+    /// ⚠ `K-R1` 把第四样加进来，形状照前三样：**跟着行走，不做进程级设置**。
+    pub(crate) fn build(
+        entries: impl IntoIterator<Item = (String, Base, Option<SecretKey>, AuthStyle)>,
+    ) -> Self {
+        let mut rows = BTreeMap::new();
+        for (id, base, key, auth_style) in entries {
+            // ⚠ **排版随便拆，形状不能改。** `table_guard` 那条相等断言 09-09 起走
+            //   `sites_layout_blind`：**先把生产段的空白全删干净**，再找无空白形的针
+            //   `Row{base`（`table_guard::WELD`）⇒ 换行 / 缩进 / `cargo fmt` 一格都不影响它。
+            //   仍然会让它数出 0 处、当场红的是**内容**上的改法：`base` 不再紧跟 `Row {`
+            //   （字段反序，或中间插进别的字段）、`base` 改名、改用 `Row::new(…)` 或 `..`
+            //   更新语法，以及把这处焊接搬出 `accounts/table.rs`。反方向也钉着：
+            //   生产段里再出现第二处同形字面量 ⇒ 2 处 ⇒ 红（要求**恰好 1**）。
+            //   ⇒ 真要写成那些形状，**改的是判据里那根针**，不是把这里的排版扭回去迁就它。
+            //   〔原注写着「这一行必须留在一行上」：那是 09-09 `cargo fmt` 拆开它、老那把
+            //   逐行尺子数出 0 处留下的化石，今天双重失效 —— 而它真正的害处，是在教
+            //   下一个人拿生产代码的排版去迁就判据。〕
+            rows.insert(
+                id,
+                Row {
+                    base,
+                    key,
+                    auth_style,
+                },
+            );
+        }
+        Self { rows }
+    }
+
+    /// 查一条。**查不到就是 `None`** —— 调用方回 404，不许拿别的行顶上。
+    pub(super) fn lookup(&self, account: &str) -> Option<&Row> {
+        self.rows.get(account)
+    }
+
+    /// 表里有几行。只给日志与判据用。
+    pub(crate) fn len(&self) -> usize {
+        self.rows.len()
+    }
+}
 
 /// 一条**进不了表**的账号，以及它为什么进不了。
 ///
@@ -396,5 +397,5 @@ pub(crate) fn build(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/table_tests.rs"]
+#[path = "../../../../tests/backend/relay/table_tests.rs"]
 mod tests;

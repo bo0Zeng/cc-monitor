@@ -176,26 +176,6 @@ mod tests {
     /// `SessionRow{base` 显式挡在外面，见 [`sites_layout_blind`] 头注末段）。
     const WELD: &str = "Row{base";
 
-    /// `table.rs` 的生产段里 `mod sealed` 那一块。
-    ///
-    /// **切不出来 ⇒ 按红处理，不是绿**（`K-H2a` 那一件逐字定下的纪律）。
-    fn sealed_block(prod: &str) -> String {
-        let at = guard_core::find_pinned(prod, "mod sealed {")
-            .expect("切不出 `mod sealed` —— 本条按红处理，不是绿");
-        let block = brace_block(prod, at).expect("`mod sealed` 的花括号没配平 —— 按红处理");
-        // 反空真自检：真的切到了那一块（它里面必须有 `Row` 的声明），
-        // 而且**没有跨进下一个 item**（`pub(crate) use sealed::` 在 `mod sealed` 之后）。
-        assert!(
-            block.contains("pub(crate) struct Row {"),
-            "切出来的窗口里没有 `Row` 的声明 —— 取法坏了，下面的断言在空转"
-        );
-        assert!(
-            !block.contains("pub(crate) use sealed::"),
-            "`mod sealed` 的窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
-        );
-        block.to_string()
-    }
-
     fn table_production() -> String {
         let files = crate_production();
         let (_, prod) = files
@@ -206,7 +186,13 @@ mod tests {
     }
 
     /// ★★★ **㈠ 焊接那一步只有一处**：把「一个上游」与「一把 key」焊成同一个值，
-    /// 整个后端生产段里**恰好 1 处**，而且在 `table.rs` 的 `mod sealed` 里。
+    /// 整个后端生产段里**恰好 1 处**，而且在**层 2**（`accounts/table.rs`）里。
+    ///
+    /// ⚠ 〔`设计/20 §7` 步 2〕先前这句话的后半截是「在 `table.rs` 的 `mod sealed` 里」。
+    /// `mod sealed` 那一格拆掉了（`§7` 步 2 逐字要求），换来的是**访问器收成
+    /// `pub(super)`** —— 层 1 连 `Row` 这个类型都点不到，**那是编译器买的**。
+    /// 本条的判定因此从「在 `sealed` 里面」改成「在 `accounts/` 里面」；
+    /// 处数那一格（恰好 1）**一个字节没动**。
     ///
     /// # 它守的性质，与它的人群
     ///
@@ -254,7 +240,7 @@ mod tests {
     /// **后者今天由 `KH2`/`KH4` 那几条行为判据守**（它们量的是真转发落到哪个端点、带了哪把 key），
     /// 不由本条守。别把「恰好 1 处」读成「表一定是对的」。
     #[test]
-    fn the_only_place_that_welds_an_upstream_to_a_key_is_inside_the_sealed_module() {
+    fn the_only_place_that_welds_an_upstream_to_a_key_is_inside_layer_two() {
         let files = crate_production();
         // 采集面自检：整个 crate 的 .rs 不止几个（相等地板会误伤，这里用有理由的下界）。
         assert!(
@@ -282,21 +268,21 @@ mod tests {
             welds.len()
         );
         assert!(
-            welds[0].contains("table.rs"),
-            "唯一那一处不在 `table.rs` 而在 {} —— 靶子挪了",
+            welds[0].contains("accounts/table.rs") || welds[0].contains("accounts\\table.rs"),
+            "唯一那一处不在 `accounts/table.rs` 而在 {} —— 靶子挪了",
             welds[0]
         );
 
-        // ★ 它必须在 `mod sealed` **里面**：在外面就等于字段不再私有，整件事作废。
-        //   ⚠ 这里走**同一把尺子**（`sites_layout_blind`），不另开一份数法 ——
-        //   两把尺子迟早在同一段代码上给出两个答案。
-        let sealed = sealed_block(&table_production());
-        let inside = sites_layout_blind(&[("mod sealed".to_string(), sealed)], WELD);
+        // ★ 它必须落在**层 2 里面**。`mod sealed` 那一格 `设计/20 §7` 步 2 拆掉了
+        //   （理由整段住 `accounts/table.rs` 里那条 `★★ 🔴` 注释），换来的是
+        //   **访问器收成 `pub(super)`** —— 那是编译器买的，不是本条买的。
+        //   本条今天断的是「焊接点没有溜出层 2」。
+        let table = table_production();
+        let inside = sites_layout_blind(&[("accounts/table.rs".to_string(), table)], WELD);
         assert_eq!(
             inside.len(),
             1,
-            "`mod sealed` 里的焊接点不是恰好一处（实得 {} 处）—— 编译器管得住外面，管不住里面，\n\
-             `sealed` 里面这一格只有本条守着。",
+            "`accounts/table.rs` 里的焊接点不是恰好一处（实得 {} 处）。",
             inside.len()
         );
     }

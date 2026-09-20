@@ -4,12 +4,16 @@ use super::*;
 //    ⚠⚠ 〔`设计/20 §7` 步 1〕`table` / `creds` 这两条先前是**跟着 `super::*` 蹭进来的**
 //    —— 那时 `server.rs` 自己引着它们。层 2 搬走之后层 1 不再认识那两个模块，
 //    判据要用就得自己写明白：**判据的人群从哪来，要看得见**。
-use super::super::accounts::Accounts;
-use super::super::creds;
-use super::super::table::RoutingTable;
+use super::super::accounts::creds;
+use super::super::accounts::{self, table::RoutingTable, Accounts};
+use super::super::listen::{
+    listen, resolve_config, run, run_reading, run_with, serve, RelayExec, INFLIGHT_CONNECTIONS,
+    LOOPBACK,
+};
 use super::super::upstream;
 use creds_core::SecretKey;
 use std::io::BufRead;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
 
 /// 判据里把一张表包成层 2、再交给层 1 的那一步。

@@ -1,6 +1,27 @@
-//! 中转本体：**一个进程**、只听回环、按路径前缀分流、逐块透传、同时 tee。
+//! 层 1 · **交换面**：一条请求从读头到收尾的全程 —— 读头 → 问层 2（`resolve`）
+//! → 连上游 → 逐块透传 + tee。
+//!
+//! # ⚠⚠ 🔴 它的**名字**与 `设计/20 §4` 对不上，理由现打，别当成漏了
+//!
+//! `20 §4` 那张拆分表要的名字是 **`relay/exchange.rs`**。今天它仍叫 `server.rs`，
+//! 挡着改名的是**三处写区外的登记**，每一处都拿这个路径当住址、改名当场红：
+//!
+//! | 登记 | 它钉着什么 |
+//! |---|---|
+//! | `tests/bridge/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | `expose_for_auth_header(` **恰好 1 处，且在 `src/backend/relay/server.rs`** |
+//! | `tests/bridge/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
+//! | `tests/bridge/structural_scan_tests.rs` | `("src/backend/relay/server.rs", "handle_alloc_error", 1)` |
+//!
+//! 三处都在 `tests/bridge/` 下，**不在本拍的写区里**（写区逐字是
+//! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
+//! ⇒ 本拍**只搬职责、不改文件名**：监听那半已经挪进 `listen.rs`，
+//! 这里剩下的就是 `20 §4` 说的 `exchange`。改名要与那三处同拍，留给下一件。
+//!
+//! # 层 1 与层 2 的分界就在这一层里的一句话上
+//!
+//! `handle` 里那一句 `relay.dest.resolve(r.mode, &r.key, …)` —— 递过去的是两个
+//! **不透明段**（条 48），拿回来的是一个 `Destination`，**照做，不做任何判断**。
 
-use super::accounts::{self, Accounts, Reload};
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
 use super::tee::{SseSplitter, TeeSink};
@@ -9,19 +30,10 @@ use super::{Destination, Destinations};
 use creds_core::store::AuthStyle;
 use creds_core::SecretKey;
 use std::io::{BufReader, Read, Write};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-/// 只听回环。**这是一个字面量常量，不是拼出来的** —— 拼出来的地址源码扫描看不见
-/// （`DoD-4` 那条 acceptor 的第一个瞎法就是这个）。行为那半由 `DoD-4㈡` 兜底。
-const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
-
-/// 默认端口。形状抄 `control/cc_bus.rs` 的 `timeout_secs()`：**写死一个默认 + 环境变量能盖**。
-/// 端口被占怎么办本仓零先例 ⇒ 本刀的处置是**起不来就退出并出声**，不自己换端口。
-const DEFAULT_PORT: u16 = 8788;
-
-const ENV_PORT: &str = "CCM_RELAY_PORT";
 // ⚠ `ENV_UPSTREAM` 与 `DEFAULT_UPSTREAM` **搬去层 2 了**（`20 §4`「常量跟着职责走」）：
 //   住址 `accounts/mod.rs`。搬完之后层 1 里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
@@ -53,16 +65,6 @@ const TEE_DECODE_CAP: usize = 8 * 1024 * 1024;
 /// 每次从上游读多少 —— **上限**，不是「要凑满这么多」。
 /// `std::io::Read::read` 本来就是「有多少给多少」，不循环凑满。
 const READ_CHUNK: usize = 64 * 1024;
-
-/// 同时在途的下游连接数上限〔回修轮之五 08-25，D3 `阻-3(D3)` 的**做得到的那一半**〕。
-///
-/// ⚠ **是条数不是体量**，所以名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`
-/// —— 那几个词是 `byte_cap_registry` 的钩子，带了会让它把一个**连接数**当成字节上限收进人群。
-///
-/// 超了怎么办：**回 `503 Service Unavailable` 并关连接**，不是静默 FIN。
-/// 先前 `serve()` 是每连接无条件 spawn、且 `let _ = …spawn(…)` 把失败**整个吞掉**
-/// ⇒ 线程顶满之后下游拿到的是一个**没有任何 HTTP 响应**的 FIN，而 `serve` 一个字都不印。
-const INFLIGHT_CONNECTIONS: usize = 256;
 
 /// **下游**那条 socket 的读写期限〔回修轮之六 08-25，D3 `阻-3(D3)` 的**后半段**〕。
 ///
@@ -122,7 +124,7 @@ const DOWNSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_milli
 ///    **每一条 `accept` 出来的 socket 从第一刻起就带着期限，不管它接下来走哪个分支**
 ///    —— 明天有人往拒绝路径上加一次阻塞读写时，这条不变式已经在那儿了。
 ///    ⚙ **本轮 `MU6` 实测：把这一块整个删掉，410 条判据零红。** 这个格子没有牙，别报成有。
-fn apply_downstream_deadline(s: &TcpStream) -> std::io::Result<()> {
+pub(super) fn apply_downstream_deadline(s: &TcpStream) -> std::io::Result<()> {
     s.set_read_timeout(Some(DOWNSTREAM_DEADLINE))?;
     s.set_write_timeout(Some(DOWNSTREAM_DEADLINE))
 }
@@ -218,6 +220,14 @@ impl Relay {
         }
     }
 
+    /// 在途连接数 —— **监听面**（`listen.rs::serve`）进出各动一次。
+    ///
+    /// ⚠ 它是 `pub(super)` 的**访问器**而不是 `pub(super)` 的字段：字段一旦开出去，
+    /// 「谁能改这个数」就没有边界了。访问器只交出那个 `Arc`，改法还是原子操作那几下。
+    pub(super) fn inflight(&self) -> &Arc<std::sync::atomic::AtomicUsize> {
+        &self.inflight
+    }
+
     /// 透传收尾账。**只给判据用** —— 生产路径不读它。
     #[cfg(test)]
     pub(crate) fn pumps(&self) -> Vec<Option<u64>> {
@@ -232,87 +242,7 @@ impl Relay {
     }
 }
 
-/// 起监听。返回真实绑定的地址（端口给 0 时由内核选，测试用）。
-pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
-    let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, port))?;
-    Ok(listener)
-}
-
-/// 接受循环。**阻塞在 `accept()` 上** —— 那是内核事件，不是定时器。
-///
-/// # ★ 在途连接数有上界，且拒绝是**出声**的〔回修轮之五 08-25，D3 `阻-3(D3)`〕
-///
-/// 先前这里是「每连接无条件 spawn」+ `let _ = …spawn(…)`：
-/// - **无上界** —— 64 条半开连接（只发半个请求头、永不发结尾空行、不关连接）
-///   就钉住 64 条线程（D3 实测 `半开 64 条之前线程 4 · 1.5s 之后线程 68`）；
-/// - **spawn 失败被整个吞掉** —— 线程顶满之后 `stream` 当场 drop，下游拿到一个
-///   **没有任何 HTTP 响应**的 FIN，而 `serve` 一个字都不印 ⇒ **静默拒绝**，不是 503。
-///
-/// 今天：超过 `INFLIGHT_CONNECTIONS` 就回 **503** 并关连接；spawn 失败同样回 503 并**出声**。
-///
-/// # ★★ 另一半也补上了〔回修轮之六 08-26〕：**顶住的那些会自己散**
-///
-/// ⚠ 订正：这里先前逐字写着「**这只是那条阻塞的一半，另一半我做不到**」——
-/// 那句话在回修轮之五是真的（`no_timer_guard.rs` 当时不在写区，交回见件文件 §8.20.4），
-/// **PM 收 R5 时扩了写区一格并派了 R6**（§8.21.3），今天它**已经不成立了**。
-///
-/// 补的是读写期限：`apply_downstream_deadline` 在**两个**调用点装 `DOWNSTREAM_DEADLINE`
-/// —— ㈠ 这里，`accept` 出来那一刻（覆盖 503 那条支，它跑在 **accept 线程**上）；
-/// ㈡ `handle()` 开头（转发路径真正阻塞的地方，也是 D3 §2.3 逐字点名的住址）。
-/// 上游那条 socket 由 `upstream::connect` 装 `upstream::UPSTREAM_DEADLINE`。
-///
-/// ⇒ 三样齐了：**顶不满**（上界）· **拒绝有声**（503 而不是静默 FIN）· **顶住的会自己散**（期限）。
-pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
-    use std::sync::atomic::Ordering::SeqCst;
-    for stream in listener.incoming() {
-        let Ok(mut stream) = stream else {
-            continue;
-        };
-        // 期限**先装上，在分流之前** —— 这一处是**纵深**：不变式是「每条 accept 出来的
-        //    socket 从第一刻起就带期限，不管它接下来走哪个分支」。
-        //    ⚙ 别把它读成「治了一个实测过的挂死」：下面那条 503 支只写 ~90 字节、
-        //    排字节那步又是非阻塞的，我**没构造出**它阻塞的形状（理由全文见
-        //    `apply_downstream_deadline` 头注㈡；本轮 `MU6` 实测删掉它**零红**）。
-        //    装不上仍然**关连接并出声**：宁可拒绝，也不放一条来路不明的进来。
-        if let Err(e) = apply_downstream_deadline(&stream) {
-            eprintln!("[relay] cannot set connection deadline: {e}");
-            continue;
-        }
-        if relay.inflight.load(SeqCst) >= INFLIGHT_CONNECTIONS {
-            // ⚠ 只印数字与上限，**永不印请求头**（`K9` 裁定四第 1 条）——
-            // 这一支根本还没读过一个字节，连请求头都还不存在。
-            eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight");
-            let _ = respond_and_drain(&mut stream, "503 Service Unavailable");
-            continue;
-        }
-        // ★ 先留一份 fd 副本：`spawn` 失败时 `stream` 已经被 move 进那个闭包、拿不回来，
-        //   没有副本就只能眼看着它 drop 成一个**没有任何 HTTP 响应**的 FIN。
-        //   `try_clone` 是一次 `dup`，成功那条路上它立刻 drop（dup 出来的 fd 关掉不关 socket）。
-        let spare = stream.try_clone().ok();
-        let relay = Arc::clone(&relay);
-        let inflight = Arc::clone(&relay.inflight);
-        inflight.fetch_add(1, SeqCst);
-        // 每连接一个线程。与参考实现同形（它用 ThreadingHTTPServer）。
-        let spawned = std::thread::Builder::new()
-            .name("ccm-relay-conn".to_string())
-            .spawn(move || {
-                if let Err(e) = handle(stream, &relay) {
-                    // ⚠ 只印错误本身，**永不印请求头**（`K9` 裁定四第 1 条）。
-                    eprintln!("[relay] connection ended: {e}");
-                }
-                relay.inflight.fetch_sub(1, SeqCst);
-            });
-        if let Err(e) = spawned {
-            inflight.fetch_sub(1, SeqCst);
-            eprintln!("[relay] cannot spawn connection thread: {e}");
-            if let Some(mut s) = spare {
-                let _ = respond_and_drain(&mut s, "503 Service Unavailable");
-            }
-        }
-    }
-}
-
-fn respond_status(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
+pub(super) fn respond_status(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
     let body = format!("{status}\n");
     let head = format!(
         "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -341,7 +271,7 @@ fn respond_status(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
 ///
 /// **诚实边界**：下游的字节要是**在我们排完之后**才到，`close` 照样发 RST。
 /// 这一支不追求「一定送达」，只把常见那一形（请求已经整条发出来了）从静默变成有声。
-fn respond_and_drain(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
+pub(super) fn respond_and_drain(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
     let r = respond_status(down, status);
     let _ = down.set_nonblocking(true);
     let mut sink = [0u8; 4096];
@@ -418,7 +348,7 @@ fn send_upstream(
 }
 
 /// 处理一条下游连接：解析 → 问层 2 → 连上游 → 逐块透传 + tee。
-fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
+pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     down.set_nodelay(true)?;
     // ★★ `阻-3(D3)` 后半段的正主：没有这一句，一条半开连接（只发半个请求头就不动了）
     //    会把这条线程**永久**钉在下面 `read_head` 的读上。
@@ -817,104 +747,6 @@ fn rewrite_response_head(raw: &[u8]) -> Vec<u8> {
     }
     out.push_str("Connection: close\r\n\r\n");
     out.into_bytes()
-}
-
-/// `--relay` 的**配置面** —— 纯函数：不读环境、不起监听、不碰网络。
-///
-/// ★ 它为什么被抽出来（回修轮 08-25，D1 `重要-6`）：先前这一段整个长在 `run()` 里，
-/// 而 `run()` 尾巴上是**永不返回**的 `serve()` ⇒ 没有任何判据调得动它。
-/// 实测：把 `run()` 的函数体整个换成 `2`，384 条判据**全绿**（审计 `CG1`）——
-/// `CCM_RELAY_PORT`/`CCM_RELAY_UPSTREAM` 的解析、两个默认值，**一样都没被量过**。
-fn resolve_config(port_env: Option<&str>, upstream_env: Option<&str>) -> Option<(u16, Base)> {
-    let port = port_env
-        .and_then(|v| v.parse::<u16>().ok())
-        .unwrap_or(DEFAULT_PORT);
-    // ⚠ `K-R1`：`Base::parse` 现在带着**一句为什么**回来，而这里把它丢掉了
-    //   —— 如实登记为射程外，不是漏掉：这一支的调用方（`run_with`）只印一句
-    //   `[relay] bad upstream base url` 就退 2，而那条路上**还没有任何日志出口**能带这句话。
-    //   真要带上，改的是 `run_with` 的报文与 `creds_guard::LOG_SITES` 那张表 ⇒ 另一拍。
-    //   ★ 而**每一行**账号的 `base_url` 那句为什么，今天是真的印出去了（`table::build`）。
-    //
-    // ⚠⚠ **上游那一半住层 2 了**（`20 §4`「常量跟着职责走」）：`ENV_UPSTREAM` 与
-    //    `DEFAULT_UPSTREAM` 都在 `accounts/`，本函数只是把环境里那个串**递过去**，
-    //    自己**认不出**默认值是什么。⇒ 层 1 里没有任何可以回落的默认上游。
-    let base = accounts::upstream_default(upstream_env)?;
-    Some((port, base))
-}
-
-/// `run()` 剥掉「读环境变量」之后的那一半。
-///
-/// **起监听之前的处置全在这里** ⇒ 判据打得到「基址不认识就退 2」与
-/// 「端口起不来就退出并出声」（`:16-17` 头注承诺的那条）两条。
-/// 成功那一条尾巴上是永不返回的 `serve()` ⇒ 判据够不到，登记为 `判不了`。
-///
-/// ⚠ 「读一次凭据、装表、把该说的话说出去」那一段**搬去层 2 了**
-/// （`accounts::load_credentials`）—— 那三件事一件都不属于搬字节这一层。
-fn run_with(
-    port_env: Option<&str>,
-    upstream_env: Option<&str>,
-    creds_get: &dyn Fn(&str) -> Option<String>,
-    home: &std::path::Path,
-) -> i32 {
-    let Some((port, base)) = resolve_config(port_env, upstream_env) else {
-        eprintln!("[relay] bad upstream base url");
-        return 2;
-    };
-    let listener = match listen(port) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("[relay] cannot bind loopback port {port}: {e}");
-            return 2;
-        }
-    };
-    match listener.local_addr() {
-        Ok(a) => eprintln!("[relay] listening on {a}"),
-        Err(e) => eprintln!("[relay] listening (addr unknown: {e})"),
-    }
-    // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
-    //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
-    let (table, creds_path, stamp) =
-        accounts::load_credentials(creds_get, home, &base, &mut std::io::stderr());
-    // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
-    // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
-    let dest = Accounts::new(table).reloading_from(Reload::new(creds_path, base.clone(), stamp));
-    let relay = Relay::new(Arc::new(dest), TeeSink::to_stdout());
-    serve(listener, Arc::new(relay));
-    0
-}
-
-/// `run()` 的**接线面**：哪个环境变量喂给哪个配置位。取值器与执行体都是**注入的**
-/// ⇒ 判据打得到这条接线本身，而**不必去改进程环境**（`std::env::set_var` 与并行跑的
-/// 别的判据是竞态 —— 那不是判据该有的形状）。
-///
-/// ★ 它为什么被抽出来（回修轮之四 08-25，D2 `重要-3(D2)`）：
-/// `重要-6` 那一轮把 `resolve_config`（纯函数）与 `run_with`（退 2 两条）抽了出来，
-/// **最外面那一层 `run()` 自己仍然零判据**。实测把那两行 `std::env::var(...)` **对调**，
-/// **389 条判据全绿**（D2 `D2RUN`），而真机后果是 `--relay` **整个起不来**：
-/// 端口读不懂 ⇒ 回默认 8788、上游解析失败 ⇒ 退 2。
-/// 判据见 `each_env_var_name_goes_into_its_own_config_slot`。
-type RelayExec<'a> = dyn Fn(Option<&str>, Option<&str>, &dyn Fn(&str) -> Option<String>, &std::path::Path) -> i32
-    + 'a;
-
-fn run_reading(
-    get: &dyn Fn(&str) -> Option<String>,
-    home: &std::path::Path,
-    exec: &RelayExec<'_>,
-) -> i32 {
-    let port = get(ENV_PORT);
-    let upstream = get(accounts::ENV_UPSTREAM);
-    // ⚠ `get` 原样往下传：凭据那条路的取值器**必须与端口/上游是同一个**，
-    //   否则判据喂进去的环境和生产段读的环境是两套（那正是「量具的作用域对不上事实」）。
-    exec(port.as_deref(), upstream.as_deref(), get, home)
-}
-
-/// `--relay` 的入口。配置面只有环境变量（backend 今天没有配置文件面）。
-///
-/// 本函数今天**只剩一件事**：把「真取值器」与 `run_with` 接上。接线本身（哪个变量
-/// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了
-/// —— 本函数这一行今天是**判不了**的那一格，登记住址件文件 §8.18.3。
-pub fn run(home: &std::path::Path, _args: &[String]) -> i32 {
-    run_reading(&|k| std::env::var(k).ok(), home, &run_with)
 }
 
 #[cfg(test)]
