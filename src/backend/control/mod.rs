@@ -3,7 +3,14 @@
 //! §1.1 第二条解耦线的另一半。三个模块各自改变的东西不同：
 //!
 //! - [`fork_write`]：**写文件系统**（`O_EXCL` 新建一个 `<new-sid>.jsonl`）。
-//!   全 crate **唯一**的写盘白名单模块，红线 I7 的那个洞口。
+//!   红线 I7 的第一个洞口。⚠ 〔步 23b · 09-19〕本行原先写着「全 crate **唯一**的
+//!   写盘白名单模块」—— 那句话今天不成立了，见下面 [`files_write`]。
+//!   白名单从来就是**一张表**（`K-W2D` 09-10 起），唯一的真相在
+//!   `readonly_guard::WRITE_WHITELIST_MODULES`，**别在散文里再抄一份数**。
+//! - [`files_write`]（步 23b，09-19）：**写文件系统**（`O_EXCL` 在用户指定的文件管理目标下
+//!   新建一份此前不存在的文件）。红线 I7 的第二个洞口，`设计/60 §6.5.2 A` 拍板的那个
+//!   「带围栏的模块」。⚠ 它**今天还没有调用方** —— 本轮只落「模块 ＋ 围栏 ＋ 判据」，
+//!   接命令面要 bump `BUILD_ID`＋re-embed（`99 §4` 条 19c），在那一轮的写区里。
 //! - [`tmux_hook`]：**改 tmux server 状态**（`tmux set-hook -g`）+ **发信号**（`SIGUSR1`）。
 //! - [`gate`]（F03）：**§34 Gate 2（identity）在本侧的承载** —— 探一次 tmux 拿回
 //!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在共享的 `gate-core`（定框 C1）。
@@ -53,6 +60,7 @@ pub mod capture_pane;
 pub(crate) mod cc_bus;
 pub mod ccm;
 pub mod cli_control;
+pub mod files_write;
 pub mod fork_write;
 pub(crate) mod gate;
 pub(crate) mod identity_tag;

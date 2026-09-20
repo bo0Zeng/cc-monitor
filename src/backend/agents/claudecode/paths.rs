@@ -46,3 +46,35 @@ pub(crate) fn projects_root(home: &Path) -> PathBuf {
 pub(crate) fn sessions_root(home: &Path) -> PathBuf {
     home.join("sessions")
 }
+
+/// 一个路径**在不在 Claude 的那几棵树里** —— `~/.claude*` 那个星号的**唯一住址**。
+///
+/// 〔步 23b · 2026-09-19〕`设计/60 §6.5.2 A` 给新的写模块定的围栏逐字是
+/// 「写点……**不许**落进 `~/.claude*` 那几棵树」。这句话里的**布局知识**
+/// （根叫什么、星号包含哪些）归本层 —— `control/` 是通用层，
+/// 它不该知道这个目录叫什么（`agent_locality_guard` 的针就钉在这上面）。
+///
+/// 两条各治一形，任一命中即真：
+///
+/// 1. **在配置根之下**（含它自己）。根由 [`resolve_home`] 现打解析，所以账号隔离
+///    把根切到一个**不带这个名字**的地方时（`cc-acct-iso` 每天在做的事），
+///    这一条仍然认得出来。
+/// 2. **任何一段以 [`HOME_DIR_NAME`] 开头**。它兜的是第 1 条够不着的那些树：
+///    此刻**没有被选中**的那几个账号目录、同名的备份文件、工程里的那一份。
+///
+/// ⚠ [`Path::starts_with`] 是**按段**比的 ⇒ 同前缀的兄弟目录不会被第 1 条误判；
+/// 而它会被第 2 条拦下 —— 这是刻意的，星号逐字包含它。
+///
+/// ⚠ **它不解 symlink**：入参是什么就判什么。要挡「目录里藏一条指过去的链接」，
+/// 得由调用方先把路径解成真路径再来问（`control/files_write.rs` 的围栏② 就是那么做的）。
+pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
+    if target.starts_with(home) {
+        return true;
+    }
+    target.components().any(|c| match c {
+        std::path::Component::Normal(seg) => {
+            seg.to_str().is_some_and(|s| s.starts_with(HOME_DIR_NAME))
+        }
+        _ => false,
+    })
+}
