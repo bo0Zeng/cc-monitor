@@ -103,10 +103,19 @@ import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 import type { BranchResult } from "../generated/BranchResult";
-// 〔步 12·C〕合并后的命令一律收 `origin`。**`Origin` 是生成物**（`Origin.ts` = `null | string`）
+// 〔步 12·C〕合并后的命令一律收 `origin`。**`Origin` 是生成物**
 // ⇒ 这里不许手写 `string | null`：手写的那一份与 Rust 的 `origin::Origin` 之间没有任何东西钉着。
-// ⚠ 生成物允许 `null`（那是「调用方没说」的线上形状），而**合并后的命令一条都不接受 `null`**
-//   —— Rust 侧 `Origin::route` 当场拒。本机要逐字送 `LOCAL_ORIGIN`（`"<local>"`）。
+//
+// 🔴 **〔`设计/05 §8` 步 2 · 09-20〕`Origin.ts` 现在是 `string`，不再是 `null | string`。**
+// 上一版这里逐字写着「生成物允许 `null`（那是「调用方没说」的线上形状），而合并后的命令
+// 一条都不接受 `null` —— Rust 侧 `Origin::route` 当场拒」。那句话描述的是一道**运行时**闸：
+// 类型上装得下 `null`，靠 Rust 在运行时挡。步 2 把它换成了**类型上装不下** ——
+// `Origin::Unspecified` 那个变体退役，`null` 连反序列化都过不去
+// ⇒ `§8` 承诺的「**`tsc` 就能验**」从这一行开始成立：给任何一个 origin 参数传 `null`
+// 现在是**编译错**，不是一次运行时报错。
+// ⚠ 本机要逐字送 `LOCAL_ORIGIN`（`"<local>"`，住 `../backend-policy.ts`）。
+// ⚠ 射程：这一条只管**入方向**。出方向那一半（`JsonlRecord` / `RemoteHealthPayload` 一族的
+//   `origin: string | null`）今天仍有 `null`，不在步 2 的写区里 —— 别读成「全仓没有 `null` 了」。
 import type { Origin } from "../generated/Origin";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
@@ -866,8 +875,16 @@ export const commands = {
     parentJsonlPath: string;
     description: string;
     toolUseTimestamp: string;
-    /** P7c-1：远端会话的 subagent 记录在远端机器上 —— 后端按它分流。`null` = 本机。 */
-    origin: string | null;
+    /**
+     * P7c-1：远端会话的 subagent 记录在远端机器上 —— 后端按它分流。
+     *
+     * 🔴 **〔`设计/05 §8` 步 2 · 09-20〕这一行原先是 `origin: string | null`，`null` = 本机。**
+     * 那是全仓最后一处**在入方向的线上**用 `null` 表示本机的命令参数。
+     * 步 2 逐字「`origin` 去 `null` 化 —— 本机也带 origin」⇒ 本机逐字送 `LOCAL_ORIGIN`
+     * （`"<local>"`，住 `backend-policy.ts`）。Rust 那一侧同拍换成了 `origin::Origin`，
+     * 而 `Origin` 里**已经没有**「没说」这一档（`null` 连反序列化都过不去）。
+     */
+    origin: Origin;
   }) => invoke<SubagentLoadResult>("load_subagent", args),
 
   /**
