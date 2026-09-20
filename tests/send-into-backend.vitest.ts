@@ -24,6 +24,8 @@ vi.mock("../src/behavior", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { runRemoteResumeIntoExistingTmux } from "../src/remote-launch-run";
+import { renderLaunchPayloadStub } from "./test-support/launch-render-ipc-stub.ts";
+import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -43,8 +45,21 @@ function route(): void {
       // send-into 恒 `ok:false`，#76 防线）。
       case "probe_ccm_cli":
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
-      case "render_launch_payload":
-        return Promise.resolve(PAYLOAD);
+      // 🔴 〔步 22b·B 2026-09-20〕**这一格原来恒返回常量 `PAYLOAD`。**
+      // `设计/90 §4 E` 收官之后，`send-into` 与 `attach` 两格的**外层 tmux 命令**
+      // 也从这条命令出来 ⇒ 恒返回内层载荷等于把外层那一层从桩里抹掉，
+      // 于是本文件 ①② 那三条（「终端串里只 attach」「逐字回落到 send-keys + attach」）
+      // 会一律读到一条没有 tmux 的串 —— 而它们要判的正是那一层。
+      // ⇒ 带 `outer` 的请求交给镜像拼（唯一的家：`test-support/launch-render-ipc-stub.ts`）。
+      // ⚠ **不带 `outer` 的那一格仍然恒返回 `PAYLOAD`** —— ③ 那条
+      //   「发给后端的载荷 == `render_launch_payload` 的产物」拿它当期望值，
+      //   换成现渲的串就变成「桩自己和桩自己比」，那条当场失去意义。
+      case "render_launch_payload": {
+        const req = (args as { req: PayloadRenderRequest }).req;
+        return Promise.resolve(
+          req.outer === undefined ? PAYLOAD : renderLaunchPayloadStub(req),
+        );
+      }
       case "backend_send_into":
         return sendIntoThrows
           ? Promise.reject(new Error("控制通道炸了"))
