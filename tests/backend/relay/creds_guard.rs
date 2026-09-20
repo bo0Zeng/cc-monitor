@@ -129,7 +129,9 @@ mod tests {
             "起来了但问不到地址",
         ),
         (
-            "server.rs",
+            // ⚠ 〔`设计/20 §7` 步 1〕它**搬家了**：热重载整块归层 2，住址从
+            //   `server.rs` 变成 `accounts/mod.rs`。话一个字没改。
+            "accounts/mod.rs",
             "[relay] 凭据文件读不成表，**保留上一张表不动**",
             "`D2 阻-2`：重载时解析失败 —— **不把表换成空**（空表 = 全部 404），\
              留住上一张能用的、只出声。这一形是「表可重载」之后新长出来的",
@@ -416,10 +418,16 @@ mod tests {
         let mut found: Vec<(String, String)> = Vec::new();
         let mut bad: Vec<String> = Vec::new();
         for (path, raw) in &files {
+            // ⚠⚠ 〔`设计/20 §7` 步 1〕先前这里取的是 `file_name()`（**只有文件名**）。
+            //    层 2 搬进 `relay/accounts/` 之后那样取会得出 `mod.rs` —— 一个
+            //    **指不准是谁**的住址（`relay/mod.rs` 与 `relay/accounts/mod.rs` 同名）。
+            //    ⇒ 改成**相对 `relay/` 的路径**。这是**收紧**：登记表里那一栏从此
+            //    点得到唯一一份文件，改不改都不会让一条日志悄悄换个家。
             let name = path
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
+                .strip_prefix(relay_dir())
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
             let prod = production_code(raw);
             // ⚠⚠ **针不许互相包含** —— 这一行是改过一次的，经过记这里，因为它正是
             //    本工作区那族病的第一形（**针拼错**），而且是**相等断言逮住的**：

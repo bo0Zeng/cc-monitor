@@ -53,7 +53,7 @@ use creds_core::store::{AccountEntry, AuthStyle, AuthStyleSetting};
 /// 函数体碰没碰字段 → **换形状交给编译器**），**前三版逐版被打穿**。
 /// ⇒ 这里直接上第四版。
 mod sealed {
-    use super::super::upstream::{self, Base, Conn};
+    use super::super::upstream::Base;
     use creds_core::SecretKey;
     use std::collections::BTreeMap;
 
@@ -102,49 +102,25 @@ mod sealed {
     }
 
     impl Row {
-        /// 这一行自己连自己的上游。
+        /// 这一行发到哪儿。
         ///
-        /// ★ 它是**整个后端生产段里唯一一处** `upstream::connect(` 的调用点
-        /// （`table_guard::the_only_place_that_opens_an_upstream_connection_is_a_table_row`
-        /// 那条相等断言钉着）⇒ **没有第二条路能绕过表把请求发出去**。
-        pub(crate) fn connect(&self) -> std::io::Result<Conn> {
-            upstream::connect(&self.base)
-        }
-
-        /// 这一行的 `Host:` 头该写什么。
-        pub(crate) fn host_header(&self) -> String {
-            self.base.host_header()
-        }
-
-        /// 这一行的**上游请求行目标** = 这一行的路径前缀 + 客户端那份真路径〔`K-R1`〕。
+        /// # ⚠⚠ 🔴 **它是本拍（`设计/20 §7` 步 1）新开的一个口，代价要认下来**
         ///
-        /// # ⚠⚠ 它是本件**两处**会改变发出去的字节的地方之一，射程逐条写清
+        /// 先前这里**刻意没有** `base()`，而外面拿得到的只有 `connect()` 与 `host_header()`
+        /// ⇒ `&Base` 这个值不出这个边界。今天它出得去了，因为**层间契约要求它出去**：
+        /// `Destination::{Passthrough,Substitute}` 逐字带着 `upstream`，而「连上游」
+        /// 是层 1 的活（`20 §4`：`exchange` 那一行是「resolve → 连上游 → pump → tee」）。
         ///
-        /// 另一处是 `server.rs` 换头那一行（`auth_header_of` 那一支）。
-        /// ⚠ **这一句是订正**：本节初稿逐字写的是「本件**唯一**一处会改变发出去的字节的地方」，
-        /// 而那是一句**假的全称** —— 换头那一处也在改字节，而且就是本件另一半的正主。
-        /// 〔`brief` 12：写「唯一 / 全部」这类话也是在报一个数，同句给分母。自查逮到，09-04。〕
+        /// **换到手里的是 `20 §6` 第 1 行那一格**：先前那道墙挡的只是「顺手」
+        /// （本模块头注两条实测 `D1-M1`/`D1-M2` 逐字记着它挡不住「有意」）；
+        /// 今天挡住「A 的端点配 B 的 key」的是**一次请求只拿到一个 `Destination`**
+        /// —— 上游与 key 是同一个变体的两个字段，要拼错得先有两个 `Destination`
+        /// 同时在作用域里，而 `resolve` 只给一个。
         ///
-        /// - `rest` 是**下游原样**的「真路径 + 查询串」（`route::parse` 保证它以 `/` 打头）。
-        ///   本函数**一个字节都不改它**，只在**前面**接上这一行自己的前缀。
-        /// - 前缀是 `""` 时，返回值与 `rest` **逐字节相同** ⇒ 没配前缀的那一路**零字节改动**。
-        ///   ⚠ **这里刻意不写「盘上有几条字面量是这一路」那个数**：初稿抄了摸底那一拍的
-        ///   「全部 9 条」，而**本件自己新加的判据里就有带路径的字面量** ⇒ 那个数在
-        ///   写下它的同一个 commit 里就馊了。要现打就跑
-        ///   `tests/evidence/K-R1-B1-auth-style-and-base-path-census.py` 的第 ⑦c/⑦d 格
-        ///   （它自己印两个分母：生产段 / 含测试段）。〔`brief` 13：别抄快照，指住址。〕
-        /// - 🔴 **它不查重、不合并重复的段**：配 `https://h/v1` 而客户端发 `/v1/messages`
-        ///   的人会得到 `/v1/v1/messages`。**这是有意的** —— 「顺手把重复的段合掉」
-        ///   要先猜出「哪一段是重复」，而猜错的症状是**静默打到另一个地方**。
-        ///   ⇒ 处置是**出声**（装表时给这一行记一条 `Note`，见 `NOTE_PATH_PREFIX`），
-        ///   不是替人重写他写下的东西。
-        /// - ⚠ **改前那一版这个函数不存在**，前缀在 `Base::parse` 里就被丢掉了
-        ///   ⇒ `https://h/v1` **碰巧是对的**。本件把「碰巧对」换成「照写的做 + 出声」。
-        ///
-        /// ★ 它是 `Row` 的方法而不是一个收 `&Base` 的自由函数：`&Base` 这个值
-        /// **不出这个边界**（本模块头注那条编译器真正买到的性质），拼接也不许把它带出去。
-        pub(crate) fn upstream_target(&self, rest: &str) -> String {
-            format!("{}{}", self.base.path, rest)
+        /// ⚠ 它今天是 `pub(crate)`。**步 2 把 `table.rs` 搬进 `accounts/` 之后要收成
+        /// `pub(super)`** —— 那时「层 1 够不到 `Row`」才是编译器买的。
+        pub(crate) fn base(&self) -> &Base {
+            &self.base
         }
 
         /// 这一行的鉴权头形状。**不是**方言。

@@ -35,15 +35,15 @@ fn two_accounts_land_in_two_rows_each_with_its_own_upstream_and_key() {
     );
     // ★ 同理：两行的**端点**也必须不同（本件题目就是每行端点不一样）。
     assert_ne!(
-        a.host_header(),
-        b.host_header(),
+        a.base().host_header(),
+        b.base().host_header(),
         "两行的端点一样 —— 「端点跟着行走」那一向量不到"
     );
     // 期望值全是**手写字面量**。
-    assert_eq!(a.host_header(), "a.invalid");
+    assert_eq!(a.base().host_header(), "a.invalid");
     assert_eq!(a.key().expect("A 有 key").expose_for_auth_header(), "KEY-A");
     // 没写 `base_url` 的那条用**默认上游** —— 这不是回落，是这一行的字段取默认值。
-    assert_eq!(b.host_header(), "default.invalid");
+    assert_eq!(b.base().host_header(), "default.invalid");
     assert_eq!(b.key().expect("B 有 key").expose_for_auth_header(), "KEY-B");
 }
 
@@ -116,7 +116,7 @@ fn the_legacy_single_key_file_becomes_exactly_one_reachable_row() {
     let row = t
         .lookup(store::LEGACY_ACCOUNT_ID)
         .expect("default 应当查得到");
-    assert_eq!(row.host_header(), "api.example.invalid");
+    assert_eq!(row.base().host_header(), "api.example.invalid");
     assert_eq!(
         row.key().expect("有 key").expose_for_auth_header(),
         "LEGACY"
@@ -136,7 +136,7 @@ fn a_row_can_exist_and_still_have_no_key_of_its_own() {
     assert!(bad.is_empty());
     let row = t.lookup("sub-only").expect("行应当在");
     assert!(row.key().is_none(), "这一行不该有 key");
-    assert_eq!(row.host_header(), "sub.invalid");
+    assert_eq!(row.base().host_header(), "sub.invalid");
     // ★ `K-R1`：没写 `auth_style` 的那一行落到默认 ⇒ 一份旧文件的行为一个字节不变。
     assert_eq!(row.auth_style(), AuthStyle::DEFAULT);
 }
@@ -174,8 +174,8 @@ fn each_row_carries_its_own_auth_style_and_a_missing_one_means_the_default() {
     assert_eq!(l.auth_style(), AuthStyle::NoAuth);
     // ★ 本地那一行的三样**同时**成立：无鉴权 · 自定义 host:port/path · 明文回环。
     assert!(l.key().is_none(), "本地那一行不该有 key");
-    assert_eq!(l.host_header(), "127.0.0.1:11434");
-    assert_eq!(l.upstream_target("/v1/messages"), "/v1/v1/messages");
+    assert_eq!(l.base().host_header(), "127.0.0.1:11434");
+    assert_eq!(l.base().upstream_target("/v1/messages"), "/v1/v1/messages");
 }
 
 /// ★★★ `K-R1`：**认不出的 `auth_style` 不许被悄悄当成默认**，

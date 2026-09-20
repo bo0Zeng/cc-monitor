@@ -301,12 +301,25 @@ mod tests {
         );
     }
 
-    /// ★★★ **㈡ 开上游连接的地方只有一处**，而且它是 `Row` 自己的方法。
+    /// ★★★ **㈡ 开上游连接的地方只有一处**，而且它在**交换面**上（`server.rs::send_upstream`）。
+    ///
+    /// # ⚠⚠ 🔴 〔`设计/20 §7` 步 1〕**靶子搬了一次家，经过写在这里**
+    ///
+    /// 先前那唯一一处是 `table::Row::connect`（层 2），本条的名字与判定都点着 `table.rs`。
+    /// 两层解耦之后「连上游」**归层 1**（`20 §4`：`exchange` 那一行逐字是
+    /// 「resolve → **连上游** → pump → tee」），层 1 手里拿到的是 `Destination`
+    /// 里那个 `&Base` ⇒ 调用点必然在 `server.rs`。
+    ///
+    /// **性质一格没松，换了个说法**：先前是「只有表里那一行连得出去」，
+    /// 今天是「**只有层 2 答的那一个目的地连得出去**」——
+    /// 而「层 1 自己造不出一个 `Base` 来连」由隔壁那条
+    /// [`layer_one_has_no_default_upstream_to_fall_back_to`] 的两向相等断言兜。
+    /// ⇒ 本条 ＋ 那条，合起来才等于先前那一句。**单看本条会把它读得比实际强。**
     ///
     /// # 没有这一条会漏掉什么（这就是它不是冗余的理由）
     ///
-    /// 只钉㈠的话，有人完全可以在 `handle` 里再写一句 `upstream::connect(&some_base)`，
-    /// **绕过整张表**把请求发出去 —— 那时㈠仍然是 1，而「路由表说了算」已经不成立。
+    /// 只钉㈠的话，有人完全可以在别处再写一句 `upstream::connect(&some_base)`，
+    /// **绕过 `resolve`** 把请求发出去 —— 那时㈠仍然是 1，而「层 2 说了算」已经不成立。
     ///
     /// ⚠ 分母：针是 `upstream::connect(`。`upstream.rs` 里那个**定义**
     /// （`pub(crate) fn connect(`）不带模块前缀 ⇒ 不进人群，这是有意的。
@@ -336,7 +349,7 @@ mod tests {
     /// ⇒ **本条守的是「有没有第二个显眼的调用点」，不是「有没有第二条连出去的路」。**
     /// 后一句今天**没有任何东西守着** —— 如实登记，别把它读进本条的名字里。
     #[test]
-    fn the_only_place_that_opens_an_upstream_connection_is_a_table_row() {
+    fn the_only_place_that_opens_an_upstream_connection_is_the_exchange() {
         let files = crate_production();
         assert!(
             files.len() >= 30,
@@ -349,20 +362,14 @@ mod tests {
             calls.len(),
             1,
             "开上游连接的地方有 {} 处，应当**恰好 1** 处：{calls:?}\n\
-             ⚠ 第二处就是一条**绕过路由表**的路：它决定了请求实际连到哪儿，\n\
-             而那正是本件要收进表里的那个决定。",
+             ⚠ 第二处就是一条**绕过 `resolve`** 的路：它决定了请求实际连到哪儿，\n\
+             而那正是两层解耦要收进层 2 的那个决定。",
             calls.len()
         );
         assert!(
-            calls[0].contains("table.rs"),
-            "唯一那一处不在 `table.rs` 而在 {} —— 靶子挪了",
+            calls[0].contains("server.rs"),
+            "唯一那一处不在交换面（`server.rs`）而在 {} —— 靶子挪了",
             calls[0]
-        );
-        let sealed = sealed_block(&table_production());
-        assert_eq!(
-            sealed.matches("upstream::connect(").count(),
-            1,
-            "`mod sealed` 里开上游连接的地方不是恰好一处"
         );
 
         // 非空对照：同一把尺子**数得到**别的东西（证明它不是恒返回一条）。
@@ -371,6 +378,72 @@ mod tests {
             !lookups.is_empty(),
             "非空对照失败：同一把尺子连 `table.lookup(` 都数不到 —— 这把尺子是瞎的"
         );
+    }
+
+    /// ★★★ **层 1 里没有任何可以回落的默认上游**（`设计/20 §4`「常量跟着职责走」）。
+    ///
+    /// # 它买的是什么 —— 与它买不到什么
+    ///
+    /// `table.rs` 头注那张表里有一行今天**自陈是假的**，逐字：
+    /// 「进程里『没有默认上游可回落』| 只有一条文本棘轮 | **假**：`DEFAULT_UPSTREAM`
+    /// 是 `server.rs:24` 的 crate 常量」。把那个常量挪过层边界之后，
+    /// **层 1 那几份文件里再也没有一个上游字面量** —— 「查不到就回落到它」这句代码
+    /// 在层 1 里**写不出来**，因为那个值不在它的作用域里。
+    ///
+    /// ⚠⚠ **诚实边界，别读成买断**：`Base` 三个字段与 `Base::parse` 仍是 `pub(crate)`
+    /// ⇒ 层 1 **有意**去 `Base::parse("https://…")` 现造一个，本条**抓不住**（针是那个
+    /// 常量名与那条 URL 字面量，不是「有没有第二条造 `Base` 的路」）。
+    /// 本条守的是「**顺手回落**」那一形，与它同族的
+    /// [`the_only_place_that_opens_an_upstream_connection_is_the_exchange`] 一起看才完整。
+    ///
+    /// # 反空真：**两向都断**，不是「扫不到就绿」
+    ///
+    /// 「层 1 里零处」单独立着是典型的空真（针拼错、人群取空，一样绿）。
+    /// ⇒ 同一把尺子在**层 2** 里必须数到**恰好 1 处**：数不到就说明尺子瞎了，当场红。
+    #[test]
+    fn layer_one_has_no_default_upstream_to_fall_back_to() {
+        let files = crate_production();
+        // 层 2 的人群：`relay/accounts/` 底下那几份。层 1 = `relay/` 里**除它之外**的。
+        let is_layer_two = |p: &str| p.contains("accounts/") || p.contains("accounts\\");
+        let in_relay = |p: &str| p.contains("relay/") || p.contains("relay\\");
+
+        // 两根针：常量名 ＋ 它的值。**两根都数**，免得有人只搬走名字、把字面量留在原地。
+        // 期望处数是**显式登记的**（不是「>0 就算」）—— 多一处就要来加一行，说清它是什么。
+        const LAYER_TWO_SITES: &[(&str, usize, &str)] = &[
+            (
+                "DEFAULT_UPSTREAM",
+                2,
+                "①常量声明本身 ②`upstream_default` 里那一次 `unwrap_or`",
+            ),
+            (
+                "https://api.anthropic.com",
+                1,
+                "那条 URL 字面量只出现在常量声明那一处",
+            ),
+        ];
+        for (needle, want, why) in LAYER_TWO_SITES {
+            let hits = sites(&files, needle);
+            let layer_two: Vec<&String> = hits.iter().filter(|p| is_layer_two(p)).collect();
+            let layer_one: Vec<&String> = hits
+                .iter()
+                .filter(|p| in_relay(p) && !is_layer_two(p))
+                .collect();
+            // ★ 非空对照（这一条**先断**）：尺子在层 2 里数得到，它才不是瞎的。
+            assert_eq!(
+                layer_two.len(),
+                *want,
+                "`{needle}` 在层 2（`relay/accounts/`）里应当**恰好 {want} 处**（{why}），\
+                 实得 {}：{layer_two:?}\n\
+                 数不到 ⇒ 这把尺子是瞎的，下面那条「层 1 零处」就是空真。",
+                layer_two.len()
+            );
+            assert!(
+                layer_one.is_empty(),
+                "层 1（`relay/` 里 `accounts/` 之外）出现了 `{needle}`：{layer_one:?}\n\
+                 ⚠ 有那个值，「查不到就回落到它」就又写得出来了，而最坏的失效形态是\n\
+                 **codex 的请求被发给 Anthropic**（`设计/20 §3.1` 拍板 (b) 甲逐字点名）。",
+            );
+        }
     }
 
     /// ★★ `K-H2b` `D2 阻-4`：**那张表的读锁不许跨 `pump`。**
@@ -391,54 +464,76 @@ mod tests {
     /// 照绿了**（那个 `};` 在提出去之后仍在）。函数体当场就换成了钉**绑定的形状**，
     /// 而这段头注没跟着改 ⇒ 「改了事实没改说它的那句话」，这一次长在**判据自己身上**。
     ///
-    /// **今天这一版钉的是一个确切的绑定形状**（逐字，含缩进）：
-    /// `let mut up = {\n        let table = relay.table.read()` 在 `server.rs`
-    /// 的生产段里**恰好 1 处**。⇒ 谁把守卫从那个块里提出去（让它活到函数结尾、跨整条
-    /// `pump`），这个形状就不再命中，本条红。
+    /// # 🔴 〔`设计/20 §7` 步 1〕**第三版：锁换了持有者，判法也跟着换**
     ///
-    /// # ⚠ 射程（`D4 §G1`：它挡得住什么、挡不住什么，一起写）
+    /// 第二版钉的是一串含缩进的源码字面
+    /// （`let mut up = {\n        let table = relay.table.read()`），
+    /// 而两层解耦之后 **`server.rs` 里根本没有 `relay.table` 这个东西了** ——
+    /// 那把锁归层 2，由 `accounts::Accounts::resolve` 自己持有，活到它返回为止。
     ///
-    /// - **挡得住**：把绑定提到块外（`M32`，实测 `1 failed / 492 passed`）。
-    /// - **挡不住**：把 `pump(` 搬进那个块里 —— 形状串照样命中 1、`relay.table.read()`
-    ///   照样 1 处 ⇒ **本条绿，而性质已破**。⚠ 这一形**没实测**（要一次不小的重排），
-    ///   如实记着，别把它读成「已排除」。
-    /// - **误红的方向**：它钉的是**一串带 8 个空格缩进的源码字面**，一次**无害的重命名**
-    ///   就会把它打红 —— `D4` 刀 F2 实测：块内局部变量 `table` 纯改名成 `tbl`
-    ///   ⇒ **2 条红**（本条 + `the_only_place_that_opens_an_upstream_connection_is_a_table_row`
-    ///   的非空对照连带）。**它不是最小面。**
-    ///   ⚠ 那时的合法出路只有 `testing.md` 三.12 那两条（**重新裁定** 或 **补登记**）——
-    ///   **不许把形状串放宽**（放宽不可逆）。真要改名，同一拍把这里的形状串一起改，
-    ///   并在件文件里记一笔「这一刀是重命名，不是把守卫提出去」。
+    /// ⇒ 性质换了一个说法，**一格没松**：
+    /// 「读锁不跨 `pump`」 ⇔ **层 1 交给 `resolve` 的那个闭包里不许出现 `pump(`**
+    /// （锁在 `resolve` 返回时就放了，而 `pump` 在它之后）。
+    /// 本条因此改成**切窗口**：把 `relay.dest.resolve(` 那一整个实参块切出来，断它不含 `pump(`。
+    /// ⚠ 这一版**比第二版好一格**：`D4 §G1` 逐字登记过第二版「挡不住把 `pump(` 搬进块里」
+    /// 那一形 —— **今天挡得住了**，那正是本条现在唯一在断的事。
+    ///
+    /// # ⚠ 射程（它挡得住什么、挡不住什么，一起写）
+    ///
+    /// - **挡得住**：把 `pump(` 搬进 `resolve` 的闭包里（`D4 §G1` 记着的那一形）。
+    /// - **挡不住**：层 2 自己把读锁的生命周期拉长（比如把守卫 `Box::leak` 出去、
+    ///   或换成一个跨请求持有的守卫）—— 那不在本条的窗口里。**没实测，如实登记。**
+    /// - **误红的方向**：它钉的是 `relay.dest.resolve(` 这一串字面，
+    ///   给 `dest` 改个名字就会打红。合法出路是**同一拍把这里一起改**，
+    ///   不许把针放宽（放宽不可逆）。
     #[test]
-    fn the_routing_table_read_guard_does_not_outlive_the_streaming_pump() {
+    fn the_layer_two_lock_does_not_outlive_the_streaming_pump() {
         let files = crate_production();
         let (_, server) = files
             .iter()
             .find(|(p, _)| p.ends_with("server.rs"))
             .expect("扫不到 `server.rs` —— 取法坏了，本条按红处理");
 
-        // ⚠ **不做位置比较**（`structural_scan` 那条纪律：位置比较要么切段、要么核唯一性，
-        //    而这一格根本不需要位置 —— 它要的是**一个确切的绑定形状**）。
-        //    第一版写成「`read()` 在 `pump(` 之前，且两者之间有个 `};`」，
-        //    被一次「把绑定提到块外」的变异**照绿**（`M32` 实测）⇒ 换成钉那个形状本身。
-        let shape = "let mut up = {\n        let table = relay.table.read()";
-        assert_eq!(
-            server.matches(shape).count(),
-            1,
-            "读锁的守卫不再**绑在那个块里**（实得 {} 处该形状）—— \n\
-             它会活到函数结尾、跨整条 `pump`。`RwLock` 写优先 ⇒ \n\
-             用户配一次 key 会被堵在**最长那条在飞流**后面。",
-            server.matches(shape).count()
+        let at = guard_core::find_pinned(server, "relay.dest.resolve(")
+            .expect("切不出层 1 那一问（`relay.dest.resolve(`）—— 本条按红处理，不是绿");
+        let block =
+            brace_block(server, at).expect("`resolve` 那个实参块的花括号没配平 —— 按红处理");
+
+        // 反空真自检㈠：真的切到了那个闭包（它里面必须有三支里的两支）。
+        assert!(
+            block.contains("Destination::Refuse") && block.contains("Destination::Substitute"),
+            "切出来的窗口里没有 `Destination` 的分支 —— 取法坏了，下面的断言在空转。窗口：{block}"
         );
-        // 反空真：`pump(` 与 `read()` 都真的在这份生产段里（否则上面那条可能只是巧合成立）。
-        assert_eq!(
-            server.matches("relay.table.read()").count(),
-            1,
-            "取读锁的地方不是恰好一处 —— 锚点不唯一，本条的结论不算数"
+        // 反空真自检㈡：窗口没有跨进下一个 item（`pump` 那一段在它之后，不许被吃进来）。
+        assert!(
+            !block.contains("let outcome = pump("),
+            "`resolve` 的实参块窗口跨进了后面那一段 —— 窗口无界，本条的结论不算数"
         );
+
+        // ★ 正题：闭包里一处 `pump(` 都不许有。
+        assert_eq!(
+            block.matches("pump(").count(),
+            0,
+            "层 2 的读锁活到 `resolve` 返回为止，而这个闭包里出现了 `pump(`：\n\
+             ⇒ 一条 SSE 长流会把那把读锁按住几分钟。`RwLock` 写优先 ⇒ \n\
+             用户配一次 key 会被堵在**最长那条在飞流**后面。窗口：{block}"
+        );
+        // 反空真：`pump(` 真的在这份生产段里（只是在窗口**外面**）——
+        // 否则上面那条 `== 0` 可能只是因为这份文件里压根没有 `pump`。
         assert!(
             server.contains("let outcome = pump("),
             "扫到的 `server.rs` 里没有 `pump(` —— 取法坏了，本条按红处理"
+        );
+
+        // ★ 另一半在层 2：那把读锁**恰好一处**取，而且就在 `resolve` 里。
+        let (_, accounts) = files
+            .iter()
+            .find(|(p, _)| p.ends_with("accounts/mod.rs") || p.ends_with("accounts\\mod.rs"))
+            .expect("扫不到 `accounts/mod.rs` —— 取法坏了，本条按红处理");
+        assert_eq!(
+            accounts.matches("self.table.read()").count(),
+            1,
+            "层 2 取读锁的地方不是恰好一处 —— 锚点不唯一，本条的结论不算数"
         );
     }
 

@@ -35,6 +35,7 @@
 //!   **必须有 `Some(...)` 那几格垫着** —— 由 [`GOLDEN_CASES_REACHING_UPSTREAM`]
 //!   再做一次相等断言：真到上游的格数少了，同样红。
 
+use super::accounts::Accounts;
 use super::server::{listen, serve, Relay};
 use super::table::RoutingTable;
 use super::tee::TeeSink;
@@ -296,8 +297,9 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
         ]
         .into_iter(),
     );
+    // ⚠ 走的是**生产段那条真实的层 2**（`Accounts`），不是判据自己造的一个假 `Destinations`。
     let relay = Arc::new(Relay::new(
-        table,
+        Arc::new(Accounts::new(table)),
         TeeSink::new(Box::new(Sink(Arc::clone(&buf), tick))),
     ));
     let listener = listen(0).expect("listen");

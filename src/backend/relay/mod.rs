@@ -198,6 +198,7 @@
 //!   伸手进 `relay::table::…` 这一形，**今天没有判据挡着**（`mod relay;` 声明在 `main.rs`，
 //!   它写的是**裸** `relay::…`，锚点对不上）。如实登记，别读成「全体没有」。
 
+mod accounts; // 层 2 · 账号层：`resolve` 那张决策表的**唯一**住址（`设计/20 §3.1`）
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/bind_guard.rs"]
 mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它的头注）
@@ -222,3 +223,114 @@ mod upstream;
 mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节金标准（三条线各一份手写期望）
 
 pub use server::run;
+
+// ══════════════════════════════════════════════════════════════════════════
+//  层间契约（`设计/20 §2`）—— 层 1 问一句，层 2 答一句，**层 1 不做任何判断**
+// ══════════════════════════════════════════════════════════════════════════
+
+use creds_core::store::AuthStyle;
+use creds_core::SecretKey;
+use upstream::Base;
+
+/// 两个前缀 = 两种模式（`20 §2`「为什么用两个前缀而不是一个哨兵段」）。
+///
+/// **意图写在线上**，两条路不可能互相静默降级：`/s/` 永远 fail-closed（表里没这一行
+/// 就是 404），`/t/` 从来不代入 auth。用一个前缀 ＋「查不到就直通」的话，
+/// **一次账号段打字错误**就会从「该代入却没代入（loud 404）」变成
+/// 「静默用了下游自己的凭据」—— 那正是 `KH2` 在治的病的镜像。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Mode {
+    /// `/s/` —— 代入模式：表里必须有这一行，没有就是 404。
+    Substitute,
+    /// `/t/` —— 直通模式：层 1 **永不**代入 auth。
+    Passthrough,
+}
+
+/// 层 1 手里的键：两个**不透明**段，层 1 不知道它们是什么意思。
+///
+/// # 🔴 条 48：为什么叫 `seg1`/`seg2` 而不是 `agent`/`account`
+///
+/// 用户 2026-09-18 拍板 (a)：**层 1 的类型里不出现业务名。** 它要的只是
+/// 「路径的第 1/2 段」，原样交给策略那半 —— 那两个业务词**只出现在层 2 的实现里**
+/// （`accounts/`，它自己把 `seg1`/`seg2` 读成 agent 与账号）。
+/// ⇒ `01 §2.1 C1`（搬字节那层不许出现业务词）**一字不改、豁免仍为零、能力零损失**。
+/// 原先那个签名 `resolve(mode, agent, account)` 必然命中 `C1`。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RouteKey {
+    pub(crate) seg1: String,
+    pub(crate) seg2: String,
+}
+
+/// tee 那条流的身份：**路由键 ＋ 一个流标签**（`20 §4`：`open`/`event` 原先那三个
+/// 标签收成这一个）。同样**不用业务名** —— `stream` 就是路径第 3 段，
+/// 它是 sid，但层 1 不需要知道。
+///
+/// 借用形（不是 `String`）：它是从 [`route::Route`] 上现取的一个视图，
+/// 每条请求两次调用都不该为此多分配一次。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StreamId<'a> {
+    pub(crate) key: &'a RouteKey,
+    pub(crate) stream: &'a str,
+}
+
+/// 层 2 给层 1 的答案。**层 1 拿到就照做**。
+///
+/// ⚠ 借用形（`&Base` / `&SecretKey`）而不是按值 —— 理由整段写在
+/// [`Destinations::resolve`] 的头注里（`SecretKey` 刻意没有 `Clone`）。
+pub(crate) enum Destination<'a> {
+    /// 发到这个上游，**下游送来的 auth 头原样转发**。层 1 手里没有任何 key。
+    Passthrough { upstream: &'a Base },
+    /// 发到这个上游，**剥掉下游 auth、代入这一把**。
+    ///
+    /// ★★ `20 §6` 第 1 行买到的那一格就在这里：上游与 key 是**同一个变体的两个字段**，
+    /// 一次请求只拿到一个 `Destination` ⇒ 「A 的端点配 B 的 key」**在这条路上凑不出来**
+    /// （要凑得先有两个 `Destination` 同时在作用域里，而 `resolve` 只给一个）。
+    ///
+    /// # 🔴 与 `20 §2` 那段伪码的**第二处形状差异**：`key` 是 `Option`
+    ///
+    /// 规格那个枚举有**两**种鉴权处置（原样转发 / 代入一把），而**今天盘上有三种** ——
+    /// 第三种是 `AuthStyle::NoAuth`（`K-R1` 的「本地部署那一格」）：
+    /// **把下游那几份鉴权头丢掉，而且一个头都不写**。它不是 `Passthrough`
+    /// （那一支逐字是「原样转发」），也没有 key 可代入。
+    /// 两个变体装不下三种处置，而丢掉一种就是**行为变化** ⇒ 把 `Substitute` 的含义写准：
+    /// 「**这一行的鉴权由表说了算**（先把下游那份剥掉）」，`key` 给 `None` 表示
+    /// 「剥掉之后什么都不写」。整张对照表住 `accounts::Accounts::resolve` 的头注。
+    Substitute {
+        upstream: &'a Base,
+        key: Option<&'a SecretKey>,
+        style: AuthStyle,
+    },
+    /// 这条路由不成立 ⇒ 层 1 回这个状态码，**一个字节都不发上游**。
+    Refuse {
+        status: &'static str,
+        /// 为什么拒。⚠ **今天层 1 不把它印出去** —— `20 §3.1a` 要的那句人话要新开一个
+        /// 日志出口，而那会改 stderr（`creds_guard::LOG_SITES` 那张相等断言的另一半）
+        /// ⇒ 不属于「零行为变化」这一拍。留着这一格是让下一拍有地方接。
+        why: &'static str,
+    },
+}
+
+/// 层 2 对层 1 的**唯一**一个口。
+pub(crate) trait Destinations: Send + Sync {
+    /// 层 2 自己把 `seg1`/`seg2` 读成 agent 与账号 —— 那两个词只出现在它的实现里。
+    ///
+    /// # ⚠ 与 `20 §2` 那段伪码的**一处形状差异**，理由写死在这里
+    ///
+    /// 规格写的是 `fn resolve(&self, mode: Mode, key: &RouteKey) -> Destination;`
+    /// ——**按值返回**。今天做不到，挡着的是一条**刻意的**性质：`Substitute` 要带那把 key，
+    /// 而 `creds_core::SecretKey` **刻意没有 `Clone`**（`K-H2a`：少一条能复制明文的路
+    /// 就少一个出口）。按值返回就得先克隆一把明文出来 —— 那是**放宽**，不是搬家。
+    ///
+    /// ⇒ 改成**借用 ＋ 一次性访问者**。买到的东西一样：答案仍是同一个枚举、
+    /// 仍然是**一次请求只拿到一个**（`§6` 第 1 行要的正是这一句），
+    /// 只是层 2 在自己的锁里把它递过去一次。
+    ///
+    /// # 实现方的两条硬约束
+    ///
+    /// 1. **`act` 恰好被调用一次**（三支各一次）。少调 = 层 1 既没连上游也没回状态码，
+    ///    下游会拿到一个没有任何 HTTP 响应的 FIN —— 那正是 `阻-3(D3)` 点名的静默拒绝。
+    /// 2. **`act` 里不许做流式转发**。层 2 的锁（`RwLock` 写优先）活到 `act` 返回为止；
+    ///    把 `pump` 搬进来 = 「配一次 key」会被堵在最长那条在飞流后面（`D2 阻-4`）。
+    ///    钉这一条的判据：`table_guard::the_layer_two_lock_does_not_outlive_the_streaming_pump`。
+    fn resolve(&self, mode: Mode, key: &RouteKey, act: &mut dyn FnMut(Destination<'_>));
+}

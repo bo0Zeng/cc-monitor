@@ -1,11 +1,25 @@
+//! ⚠⚠ 🔴 **条 48（`设计/20 §7` 步 1）之后，本文件里的字段名换了一遍，逐条对照**：
+//!
+//! | 先前 | 今天 | 它是什么 |
+//! |---|---|---|
+//! | `r.agent` | `r.key.seg1` | 路径第 1 段 —— 层 1 不解释它 |
+//! | `r.account` | `r.key.seg2` | 路径第 2 段 —— 层 1 不解释它 |
+//! | `r.key` | `r.stream` | 路径第 3 段 —— 层 1 那条流的名字 |
+//! | （没有） | `r.mode` | 哪个前缀进来的 |
+//!
+//! **断言的内容一条没改** —— 改的只是怎么称呼那几个槽位。下面散文里仍然出现
+//! 「agent」「账号」这两个词：那是**在说槽位里装的是什么**（规格的语言），
+//! 不是在说层 1 的类型里有这两个名字。〔条 61：`C1` 的人群不含注释。〕
+
 use super::*;
 
 #[test]
 fn strips_the_prefix_and_keeps_the_rest_verbatim() {
     let r = parse("/s/agentA/acctA/sid-AAA/v1/messages?beta=true").expect("应当解析成功");
-    assert_eq!(r.agent, "agentA");
-    assert_eq!(r.account, "acctA");
-    assert_eq!(r.key, "sid-AAA");
+    assert_eq!(r.mode, super::super::Mode::Substitute, "`/s/` 是代入模式");
+    assert_eq!(r.key.seg1, "agentA");
+    assert_eq!(r.key.seg2, "acctA");
+    assert_eq!(r.stream, "sid-AAA");
     // ★ 期望值是**手写字面量**，不是拿被测函数算出来的（否则本断言自证、恒绿）。
     assert_eq!(r.rest, "/v1/messages?beta=true");
 }
@@ -14,9 +28,9 @@ fn strips_the_prefix_and_keeps_the_rest_verbatim() {
 fn two_keys_do_not_collide() {
     let a = parse("/s/agentA/acctA/sid-AAA/v1/messages").expect("A");
     let b = parse("/s/agentB/acctB/sid-BBB/v1/messages").expect("B");
-    assert_ne!(a.key, b.key);
-    assert_ne!(a.agent, b.agent);
-    assert_ne!(a.account, b.account);
+    assert_ne!(a.stream, b.stream);
+    assert_ne!(a.key.seg1, b.key.seg1);
+    assert_ne!(a.key.seg2, b.key.seg2);
     assert_eq!(a.rest, b.rest, "两条路由的真路径相同，区别只在键");
 }
 
@@ -28,13 +42,13 @@ fn two_keys_do_not_collide() {
 fn the_account_segment_is_its_own_dimension() {
     let a = parse("/s/agentA/acct-one/sid-SAME/v1/messages").expect("one");
     let b = parse("/s/agentA/acct-two/sid-SAME/v1/messages").expect("two");
-    assert_ne!(a.account, b.account, "账号段没被切出来");
+    assert_ne!(a.key.seg2, b.key.seg2, "账号段没被切出来");
     // 期望值是手写字面量。
-    assert_eq!(a.account, "acct-one");
-    assert_eq!(b.account, "acct-two");
+    assert_eq!(a.key.seg2, "acct-one");
+    assert_eq!(b.key.seg2, "acct-two");
     // 另外两段与真路径**完全相同** —— 账号身份没有渗进它们。
-    assert_eq!(a.agent, b.agent);
-    assert_eq!(a.key, b.key);
+    assert_eq!(a.key.seg1, b.key.seg1);
+    assert_eq!(a.stream, b.stream);
     assert_eq!(a.rest, b.rest);
     assert_eq!(a.rest, "/v1/messages");
 }
@@ -84,9 +98,9 @@ fn rejects_everything_that_is_not_the_shape() {
 fn the_old_three_segment_shape_is_not_rejected_here_it_is_reread_as_a_different_route() {
     let r = parse("/s/agentA/sid-AAA/v1/messages").expect("老形状在**本层**照样解析得了");
     // 期望值全是手写字面量。
-    assert_eq!(r.agent, "agentA");
-    assert_eq!(r.account, "sid-AAA", "老形状的会话 id 被读成了账号段");
-    assert_eq!(r.key, "v1");
+    assert_eq!(r.key.seg1, "agentA");
+    assert_eq!(r.key.seg2, "sid-AAA", "老形状的会话 id 被读成了账号段");
+    assert_eq!(r.stream, "v1");
     assert_eq!(r.rest, "/messages");
     // ⇒ 它与真正想访问的那条路**不是同一条**：真路径被切掉了一截。
     assert_ne!(r.rest, "/v1/messages");
@@ -164,27 +178,30 @@ fn the_shape_the_injection_side_builds_lands_in_the_slots_this_parser_expects() 
     });
     // 期望值全是**手写字面量**（不是拿被测函数算的，否则自证恒绿）。
     // ⚠ 它们同时是「monitor 那边不许偷偷换段序」的那道闸：换了，下面三条里必有一条红。
-    assert_eq!(r.agent, "claude-code", "第 2 段不是 agent 了 —— 两半漂开");
-    assert_eq!(r.account, "acct-a", "账号段没落在第 3 段 —— 表就查错行了");
     assert_eq!(
-        r.key, "k-0123456789abcdef",
+        r.key.seg1, "claude-code",
+        "第 2 段不是 agent 了 —— 两半漂开"
+    );
+    assert_eq!(r.key.seg2, "acct-a", "账号段没落在第 3 段 —— 表就查错行了");
+    assert_eq!(
+        r.stream, "k-0123456789abcdef",
         "第 4 段不是 key 了 —— 两半漂开"
     );
     assert_eq!(r.rest, "/v1/messages", "真路径没被原样透传");
 
     // ★ 同一条样例，把**账号段**换掉 ⇒ 切出来的 account 必须跟着变（它是自己一维）。
     let other = parse("/s/claude-code/acct-b/k-0123456789abcdef/v1/messages").expect("另一行");
-    assert_ne!(r.account, other.account);
-    assert_eq!(other.account, "acct-b");
+    assert_ne!(r.key.seg2, other.key.seg2);
+    assert_eq!(other.key.seg2, "acct-b");
     // ★ 段序对调（`<account>` 与 `<key>` 换位）**照样解析得了** ——
     //   这正是「拼错一段只表现成 404」的机制，本断言把它钉成明文。
     let swapped =
         parse("/s/claude-code/k-0123456789abcdef/acct-a/v1/messages").expect("对调也解析得了");
     assert_eq!(
-        swapped.account, "k-0123456789abcdef",
+        swapped.key.seg2, "k-0123456789abcdef",
         "对调之后被当成账号的是那个 key —— 解析器拦不住它，只有表能"
     );
-    assert_ne!(swapped.account, r.account);
+    assert_ne!(swapped.key.seg2, r.key.seg2);
 }
 
 /// ★ **同一条性质只许有一个实现**：装路由表时判「这个账号 id 当得了路由段吗」

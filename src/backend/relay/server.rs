@@ -1,11 +1,13 @@
 //! 中转本体：**一个进程**、只听回环、按路径前缀分流、逐块透传、同时 tee。
 
-use super::creds;
+use super::accounts::{self, Accounts, Reload};
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
-use super::table::{self, RoutingTable, Row};
 use super::tee::{SseSplitter, TeeSink};
-use super::upstream::Base;
+use super::upstream::{self, Base, Conn};
+use super::{Destination, Destinations};
+use creds_core::store::AuthStyle;
+use creds_core::SecretKey;
 use std::io::{BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,8 +22,10 @@ const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 const DEFAULT_PORT: u16 = 8788;
 
 const ENV_PORT: &str = "CCM_RELAY_PORT";
-const ENV_UPSTREAM: &str = "CCM_RELAY_UPSTREAM";
-const DEFAULT_UPSTREAM: &str = "https://api.anthropic.com";
+// ⚠ `ENV_UPSTREAM` 与 `DEFAULT_UPSTREAM` **搬去层 2 了**（`20 §4`「常量跟着职责走」）：
+//   住址 `accounts/mod.rs`。搬完之后层 1 里**没有任何可以回落的默认上游**
+//   —— 这一句由 `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
+//   的**两向相等断言**钉着（层 1 零处 ＋ 层 2 恰好一处），不是一条散文。
 
 /// 请求头部字节上限。
 const HEAD_CAP: usize = 64 * 1024;
@@ -160,54 +164,18 @@ const INTERIM_RESPONSES_ALLOWED: usize = 8;
 /// **那是文本判据，不是编译器。**它认不出：换个字段名（`endpoint:` / `fallback:`）·
 /// 把值藏进别的结构体再放进 `Relay` · 干脆用一个 `static`。
 /// ⚠ **这几条我没有逐条实测**（`D1` 实测的是上表那两形）⇒ 它们是**读源码得出的形状，不是读数**。
-/// 那份凭据文件**这一刻**的印记：(mtime, 字节数)。读不到就是 `None`。
 ///
-/// ⚠ 两样一起取是有意的，理由见 [`Relay::refresh_if_changed`] 的「它买不到什么」。
-fn stamp_of(path: &std::path::Path) -> Option<(std::time::SystemTime, u64)> {
-    let m = std::fs::metadata(path).ok()?;
-    Some((m.modified().ok()?, m.len()))
-}
-
-/// `D1 阻-2`：那张表从哪儿重读。
-///
-/// ⚠ **`upstream_default` 不是「可回落的默认上游」**（那条棘轮禁的东西）——
-/// 它是 `table::build` 的**入参**：表里某一行**没写 `base_url`** 时那一行取它。
-/// 「行不在表里」仍然是 404，一个字节都不发上游。两件事别混。
-pub(crate) struct Reload {
-    path: std::path::PathBuf,
-    upstream_default: Base,
-    /// 上次读到的 mtime。`None` = 那时读不到（文件不在 / stat 失败）。
-    seen: std::sync::Mutex<Option<(std::time::SystemTime, u64)>>,
-}
-
-impl Reload {
-    pub(crate) fn new(
-        path: std::path::PathBuf,
-        upstream_default: Base,
-        seen: Option<(std::time::SystemTime, u64)>,
-    ) -> Self {
-        Self {
-            path,
-            upstream_default,
-            seen: std::sync::Mutex::new(seen),
-        }
-    }
-}
-
+/// ⚠⚠ **`设计/20 §7` 步 1 之后，上面这一整段的后半截要重读**：`table` / `reload`
+/// 两个字段**已经不在本结构体里了**，它们随热重载一起搬进了 `accounts/`（层 2）。
+/// 今天 `Relay` 手里只剩一个 `dyn Destinations` —— 层 2 整块藏在它后面。
+/// 那条文本棘轮**仍然留着**（它守的是「别把那两个字段加回来」），只是它守的窗口更小了。
 pub(crate) struct Relay {
-    /// 账号段 → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
+    /// 层 2 整块藏在这后面（`20 §4` 那张「之后」的图）。
     ///
-    /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
-    /// 而本结构体**整个没有** `derive(Debug)`（`KS1` 的第二道）。
-    ///
-    /// ⚠⚠ `K-H2b` `D1 阻-2`：它**从启动快照变成了可重载的**。
-    /// 先前 `load_credentials` 只在 `run_with` 里跑一次、且在**永不返回**的 `serve()` 之前
-    /// ⇒ 用户在界面上配完 key **必须重启**才生效，而不重启的症状是
-    /// **一个静默的 404**（与「账号 id 打错」同形，指不向原因）。
-    /// ⇒ 换成 `RwLock` + [`Reload`]：每条请求进来先看那份文件的 mtime 变没变，变了就重读。
-    table: std::sync::RwLock<RoutingTable>,
-    /// 重载源。`None` = 判据自己造的表（不从文件来）⇒ 永不重载。
-    reload: Option<Reload>,
+    /// ★★ 层 1 对它**只会问一句** `resolve(mode, &RouteKey, …)`，拿到一个
+    /// `Destination` 就照做。它**问不出**「表里有几行」「那一行的 key 是什么」
+    /// 「有没有默认上游」—— 那些词在这一层根本不存在。
+    dest: Arc<dyn Destinations>,
     tee: TeeSink,
     /// 本进程服务过的请求数 —— `DoD-1㈢`「两个键由同一个中转进程服务」量的就是它。
     served: AtomicU64,
@@ -230,80 +198,17 @@ impl Relay {
     ///
     /// ⚠ 先前有两个入口（`new` / `with_key`），`K-H2` 之后只剩一个：
     /// 「带不带 key」不再是**中转**的属性，而是**表里某一行**的属性。
-    pub(crate) fn new(table: RoutingTable, tee: TeeSink) -> Self {
+    ///
+    /// ⚠⚠ `设计/20 §7` 步 1：入参从一张**路由表**换成了一个 `dyn Destinations`
+    /// —— 层 1 从此不认识「表」这个东西。
+    pub(crate) fn new(dest: Arc<dyn Destinations>, tee: TeeSink) -> Self {
         Self {
-            table: std::sync::RwLock::new(table),
-            reload: None,
+            dest,
             tee,
             served: AtomicU64::new(0),
             inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             pumps: std::sync::Mutex::new(Vec::new()),
         }
-    }
-
-    /// `D1 阻-2`：把「从哪儿重读那张表」接上。**只有 `run_with` 那条真路走它。**
-    pub(crate) fn reloading_from(mut self, r: Reload) -> Self {
-        self.reload = Some(r);
-        self
-    }
-
-    /// 每条请求进来先问一次：那份凭据文件动过没有？动过就重读。
-    ///
-    /// # 为什么按 mtime 而不是「每次都读」
-    ///
-    /// 「每次都读」也对，但那是**每条请求一次磁盘读 + 一次 JSON 解析**；
-    /// 按 mtime 只在**真的改过**之后付一次。
-    /// ⚠ **它不是定时器**：没有任何线程自己醒来，读的是「这条请求进来的这一刻」的元数据。
-    ///
-    /// # 它买不到什么（照实写）
-    ///
-    /// 印记是 **(mtime, 字节数)** 两样，不是只有 mtime —— 因为 mtime 的粒度在某些文件系统上
-    /// 是秒级，**同一秒内改两次**时它可能不动，而那一形的症状是「这一发还用旧表」
-    /// 并且**会留下来**（文件不再变 ⇒ 永远不再重载），不是一次抖动。
-    /// ⚠ 加上字节数**只是把那个窗口收窄，没有关掉它**：同一秒内改成**同样长**的另一份内容
-    /// （比如把一把 key 换成等长的另一把）仍然看不见。**这一形我没量** —— 如实登记。
-    fn refresh_if_changed(&self) {
-        let Some(r) = self.reload.as_ref() else {
-            return;
-        };
-        let now = stamp_of(&r.path);
-        {
-            let seen = r.seen.lock().expect("lock");
-            if *seen == now {
-                return;
-            }
-        }
-        let mut loaded = creds::load(&r.path);
-        // ★★ `D2 阻-2`：**解析坏了就不换表。**
-        //
-        // `creds::load` 在「读不动 / 不是合法 JSON」时回的是 `accounts: 空 + problem: Some(_)`
-        // ⇒ 照着装表就是**把整张表换成空**，而空表的行为是**全部 404**。
-        // 用户那一侧看到的是「我明明配好了、刚才还能用，现在每一发都 404」——
-        // 而成因是他刚才手编那份 JSON 少了一个逗号。
-        // ⚠ **换表之前这一形不存在**（表是启动快照，坏文件只影响下一次启动）⇒
-        //   它是**本轮改动新长出来的**，处置写在这里：**留住上一张能用的表，只出声**。
-        // ⚠ 「一条都没配」与「读坏了」是两回事：前者 `problem` 是 `None`、accounts 空，
-        //   那是一个**合法**状态（谁都不走中转），照换不误。
-        if let Some(why) = loaded.problem.as_deref() {
-            eprintln!("[relay] 凭据文件读不成表，**保留上一张表不动**（不是换成空表）：{why}");
-            // 印记也**不更新** —— 下次请求进来还会再试一次，人把文件改回来就自动恢复。
-            return;
-        }
-        let (table, rejected, notes) =
-            table::build(std::mem::take(&mut loaded.accounts), &r.upstream_default);
-        // 重载也要**出声**：静默换掉一张表，与静默丢掉一行是同一族。
-        // ⚠ `K-R1`：`notes` 也要跟着走这一趟 —— 一次重载把某一行改成非默认行为
-        //   （加了路径前缀 / 换了鉴权头形状）而**只有第一次启动才说**的话，
-        //   那句话就成了「说过一次的历史」，而不是「现在盘上是这样」。
-        creds::announce(
-            &loaded,
-            table.len(),
-            &rejected,
-            &notes,
-            &mut std::io::stderr(),
-        );
-        *self.table.write().expect("lock") = table;
-        *r.seen.lock().expect("lock") = now;
     }
 
     /// 消费 `pump` 的返回值。**生产段唯一的落点** —— 没有它，返回值就又成了死值。
@@ -454,7 +359,65 @@ fn respond_and_drain(down: &mut TcpStream, status: &str) -> std::io::Result<()> 
     r
 }
 
-/// 处理一条下游连接：解析 → 分流 → 连上游 → 逐块透传 + tee。
+/// 层 2 答完那一刻，层 1 手里的**四种**结局。
+///
+/// # 为什么是四种而不是「成功 / 失败」两种
+///
+/// 四条路的**下游看到的字节各不相同**，合并任意两条都是一次行为变化：
+///
+/// | 结局 | 下游看到 | 上游收到过字节吗 |
+/// |---|---|---|
+/// | `Sent` | 上游那条响应，逐块透传 | 是 |
+/// | `Refused` | 我们自己造的那句状态行（今天只有 `404 Not Found`） | **否** |
+/// | `Unreachable` | `502 Bad Gateway` | 否（连都没连上） |
+/// | `WriteFailed` | **什么都没有**（连接以错误收尾，`serve` 印一句） | **是**（已经发过一截） |
+///
+/// ⚠ 最后两条**刻意分开**：`WriteFailed` 那一路我们已经往上游发过字节了，
+/// 这条连接的结局不由我们编 —— 回一个 502 等于替上游说它没收到。
+enum Answered {
+    Sent(Conn),
+    Refused(&'static str),
+    Unreachable(std::io::Error),
+    WriteFailed(std::io::Error),
+}
+
+/// 把一个**成立**的目的地兑现成一条「已连上、请求已写完」的上游连接。
+///
+/// ★★ **`upstream::connect(` 全后端生产段恰好一处，就是这里**
+/// （`table_guard::the_only_place_that_opens_an_upstream_connection_is_the_exchange`
+/// 那条相等断言钉着）⇒ 没有第二条路能绕过 `resolve` 把请求发出去。
+///
+/// ⚠⚠ **它先前住 `table::Row::connect`**（`设计/20 §7` 步 1 搬到这里）。搬的理由：
+/// `20 §4` 逐字把「连上游」划给层 1 的 `exchange`，而层 1 手里只有 `Destination`
+/// 里那个 `&Base`。**换到手里的东西**写在 `table::Row::base` 的头注里。
+///
+/// ⚠ `auth` 那一格**只能从调用方那一个 `Destination` 里解构出来**，
+/// 不许由调用方自己凑 —— 凑得出来就等于「A 的端点配 B 的 key」又写得出来了。
+fn send_upstream(
+    base: &Base,
+    auth: Option<(Option<&SecretKey>, AuthStyle)>,
+    head: &RequestHead,
+    rest: &str,
+    body: &[u8],
+) -> Answered {
+    let mut up = match upstream::connect(base) {
+        Ok(c) => c,
+        Err(e) => return Answered::Unreachable(e),
+    };
+    let wrote = (|| -> std::io::Result<()> {
+        up.write_all(&render_upstream_request(head, rest, base, auth, body.len()))?;
+        if !body.is_empty() {
+            up.write_all(body)?;
+        }
+        up.flush()
+    })();
+    match wrote {
+        Ok(()) => Answered::Sent(up),
+        Err(e) => Answered::WriteFailed(e),
+    }
+}
+
+/// 处理一条下游连接：解析 → 问层 2 → 连上游 → 逐块透传 + tee。
 fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     down.set_nodelay(true)?;
     // ★★ `阻-3(D3)` 后半段的正主：没有这一句，一条半开连接（只发半个请求头就不动了）
@@ -476,39 +439,13 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let Some(r) = route::parse(&head.target) else {
         return respond_and_drain(&mut down_w, "404 Not Found");
     };
-    // ★★★ **`K-H2` `KH2` 的正主**：路由键里那一段账号在表里查不到 ⇒ **404**。
-    //
-    //   ⚠ 位置是承重的：**排在读请求体之前、连上游之前**（`upstream` 那一跳在几十行之下）
-    //   ⇒ 查不到的时候**一个字节都不会到上游**。这比「没发 Authorization」强，也更好断。
-    //
-    //   ⚠⚠ 三条**不许**做的，逐条写死（`KH2` 逐字点名的最坏失效形态就在这里）：
-    //     · 不许回落到别的账号的 key —— 那是**拿 A 的 key 发 B 的请求**；
-    //     · 不许回落到默认上游 —— 「配错了」与「没配」会变成同一个结果；
-    //     · 不许在这里「顺手补一行」。
-    //   今天这三条**不是靠这条注释守的**：`Relay` 里根本没有可回落的那个值（编译器兜），
-    //   而「表里有几行」是文件说了算。这条注释只解释为什么这一支必须是 404。
-    //
-    //   ⚠ 与它**同族但不同**的一格：行**在**表里、只是那一行没配 key ⇒
-    //   **原样转发下游那份鉴权头**（订阅登录那一档是合法状态）。那一格在
-    //   `render_upstream_request` 里，**两条判据分开钉，不许合成一条**。
-    // `D1 阻-2`：查表**之前**先看那份文件动过没有 —— 不然「界面上配完 key」要重启才生效，
-    // 而不重启的症状是一个静默的 404（与「账号 id 打错」同形）。
-    relay.refresh_if_changed();
-    // ★★ `D2 阻-4`：**读锁的活法是承重的，写下来。**
-    //
-    // 这个守卫**只活到「请求头 + 请求体已经写给上游」为止**（下面那个 `}` 就是它的尽头），
-    // **不跨 `pump`**。理由：`std::sync::RwLock` 是**写优先**的 —— 一个在等的写者
-    // （= 用户刚配完一把 key，下一条请求触发重载）会挡住后面所有读者；
-    // 而 `pump` 是**流式转发**，一条 SSE 长流可以跑几分钟。
-    // ⇒ 守卫跨 `pump` 的话，「配一次 key」会把中转堵在**最长那条在飞流**后面。
-    // ⚠ **挂起时长我没实测**（那要造一条长流再去配 key）—— 这是读源码得出的形状。
-    // ⇒ 现在的写法让锁只覆盖「查表 → 连上游 → 写请求」这一小段，`pump` 在守卫之外跑。
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
     //   ② 长度**读不懂**（`7abc`）与「没有这个头」挤在同一个 `None` 里 ⇒ 请求体被静默丢掉、
     //      上游收到空体、下游拿到一条正常的 200。中转搬的正是 `POST /v1/messages` 的载荷。
-    // ⚠ 顺序：它排在**取读锁之前**（`D2 阻-4`）—— 读下游是一次可能很慢的 IO，
-    //   握着表的读锁去等它，等于让「配一次 key」跟着它一起慢。
+    // ⚠ 顺序：它排在**问层 2 之前**（`D2 阻-4`）—— 读下游是一次可能很慢的 IO，
+    //   而层 2 在 `resolve` 里握着自己那张表的读锁；握着锁去等下游，
+    //   等于让「配一次 key」跟着它一起慢。
     let body = match head.content_length() {
         http1::BodyLen::Exact(n) => match http1::read_exact_body(&mut down_r, n, BODY_CAP)? {
             Some(b) => b,
@@ -522,38 +459,57 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 
     relay.served.fetch_add(1, Ordering::SeqCst);
 
-    // ★★ `D2 阻-4`：**读锁的活法是承重的，写下来。**
+    // ★★★ **层间那一问就在这里**（`设计/20 §2`）：层 1 问一句，层 2 答一句，
+    //      **层 1 不做任何判断，照答案做**。
     //
-    // 这个守卫只活到**这个块结束**（请求头 + 请求体已经写给上游），**不跨 `pump`**。
-    // 理由：`std::sync::RwLock` 是**写优先**的 —— 一个在等的写者（= 用户刚配完一把 key，
-    // 下一条请求触发重载）会挡住后面所有读者；而 `pump` 是**流式转发**，
-    // 一条 SSE 长流可以跑几分钟 ⇒ 守卫跨 `pump` 的话，「配一次 key」会被堵在
-    // **最长那条在飞流**后面。⚠ **挂起时长我没实测** —— 这是读源码得出的形状，不是读数。
-    let mut up = {
-        let table = relay.table.read().expect("lock");
-        let Some(row) = table.lookup(&r.account) else {
-            return respond_and_drain(&mut down_w, "404 Not Found");
-        };
-        // ★ 连的是**这一行自己的**上游。
-        //   ⚠ 订正〔`D1` 阻-1，08-28〕：先前这里逐字写着「所以『拿 A 的端点』这件事在这里
-        //   **根本写不出来**」——**那句是假的**。`D1-M2` 实测：两行同时在作用域里、
-        //   `a.connect()` 配 `render_upstream_request(…, b, …)`，**编译通过、跑得通**。
-        //   今天这一行之所以对，靠的是**这个作用域里只有一行**这个事实，**不是类型**。
-        //   真正量它的是 `KH2`/`KH4` 那几条走真转发的行为判据。
-        let mut up = match row.connect() {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[relay] upstream connect failed: {e}");
-                return respond_status(&mut down_w, "502 Bad Gateway");
+    //  ⚠ 递过去的是 `r.key`（`RouteKey{seg1,seg2}`）—— 两个**不透明段**。
+    //    「谁是 agent、谁是账号」这两个词在本文件里一次都不出现（条 48）。
+    //
+    //  ⚠⚠ `D2 阻-4`：**层 2 的读锁活到 `act` 返回为止，所以 `act` 里不许有 `pump`。**
+    //    `std::sync::RwLock` 是写优先的：一个在等的写者（= 用户刚配完一把 key，
+    //    下一条请求触发重载）会挡住其后所有读者；而 `pump` 是流式转发，
+    //    一条 SSE 长流可以跑几分钟 ⇒ `pump` 搬进来，「配一次 key」就会被堵在
+    //    **最长那条在飞流**后面。⚠ 挂起时长**没实测**，这是读源码得出的形状。
+    //    钉这一条的判据：`table_guard::the_layer_two_lock_does_not_outlive_the_streaming_pump`。
+    let mut answered: Option<Answered> = None;
+    relay.dest.resolve(r.mode, &r.key, &mut |d| {
+        answered = Some(match d {
+            // 路由不成立 ⇒ 回这个码，**一个字节都不发上游**。
+            // ⚠ `why` 今天不印（见 `Destination::Refuse` 那一格的头注）；`debug_assert`
+            //   只保证层 2 说得出理由，不产生任何生产段的输出。
+            Destination::Refuse { status, why } => {
+                debug_assert!(!why.is_empty(), "每一条 Refuse 都要说得出为什么");
+                Answered::Refused(status)
             }
-        };
-        // ★★ 上游与 key **同源**：这里递的是**同一个** `row`，不是两个各自取的值。
-        up.write_all(&render_upstream_request(&head, &r.rest, row, body.len()))?;
-        if !body.is_empty() {
-            up.write_all(&body)?;
+            // 下游那份 auth 头**原样转发**。层 1 手里没有任何 key。
+            Destination::Passthrough { upstream } => {
+                send_upstream(upstream, None, &head, &r.rest, &body)
+            }
+            // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
+            // 那是 `AuthStyle::NoAuth` 那一档，理由整段住 `accounts::Accounts::resolve`）。
+            // ★★ 上游与 key 取自**同一个变体**，不是两个各自取的值。
+            Destination::Substitute {
+                upstream,
+                key,
+                style,
+            } => send_upstream(upstream, Some((key, style)), &head, &r.rest, &body),
+        });
+    });
+    // 层 2 必须**恰好答一次**（契约写在 `Destinations::resolve` 头注里）。
+    // 一次都不答 ＝ 下游会拿到一个没有任何 HTTP 响应的 FIN，那正是 `阻-3(D3)`
+    // 点名的静默拒绝 ⇒ 宁可在这里当场炸，也不静默。
+    let mut up = match answered.expect("层 2 一次都没答 —— `Destinations::resolve` 的契约被破了")
+    {
+        Answered::Sent(up) => up,
+        Answered::Refused(status) => return respond_and_drain(&mut down_w, status),
+        Answered::Unreachable(e) => {
+            eprintln!("[relay] upstream connect failed: {e}");
+            return respond_status(&mut down_w, "502 Bad Gateway");
         }
-        up.flush()?;
-        up
+        // 写的过程中断了（上游中途关连接那一路）⇒ **原样往上传**，
+        // 由 `serve()` 那句 `[relay] connection ended` 收尾。⚠ 这一支**不回状态码**：
+        // 我们已经往上游发过字节了，这条连接的结局不由我们编。
+        Answered::WriteFailed(e) => return Err(e),
     };
 
     // ★★ `重要-1(D3)`：**1xx 是中间响应，不是最终响应**。
@@ -597,13 +553,16 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 
     let mut view = BodyView::for_response(&headers);
     let mut splitter = SseSplitter::default();
-    relay.tee.open(&r.agent, &r.account, &r.key);
+    // ★ 三个标签收成一个 `StreamId`（`20 §4`）—— 层 1 这一侧**没有业务名**，
+    //   写到线上的仍然是 `agent`/`account`/`key` 三个字段（那是线契约，见 `tee::open`）。
+    let id = r.stream_id();
+    relay.tee.open(id);
     // ★ 返回值**必须落地**：它是 `DoD-2㈡`「块数对账」的唯一量点。
     // 写成 `pump(...)?;` 就等于把它丢掉 —— 那正是审计 `K4` 能全绿的原因。
     let outcome = pump(&mut up, &mut down_w, &mut |raw| {
         let decoded = view.feed(raw, TEE_DECODE_CAP);
         for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
-            relay.tee.event(&r.agent, &r.account, &r.key, &payload);
+            relay.tee.event(id, &payload);
         }
         // 解码那一路超上限丢掉的字节要**报出去**，不许静默（见 `TEE_DECODE_CAP` 头注）。
         relay
@@ -722,28 +681,45 @@ fn pump<R: Read, W: Write>(
 /// 3. **这一行没有 key 时，一个字节都不动**（`Authorization` / `x-api-key` 全照旧转发）
 ///    —— 订阅登录那一档要的正是这条透传路。
 ///    ⚠ 例外是 `AuthStyle::NoAuth`：它逐字说的就是「一个鉴权头都不发」⇒ 客户端那份也不转发。
-fn render_upstream_request(head: &RequestHead, rest: &str, row: &Row, body_len: usize) -> Vec<u8> {
-    // ★★ **`K-H2`：签名从 `(&Base, Option<&SecretKey>)` 收成了一个 `&Row`。**
-    //    先前那个签名让「A 的端点 + B 的 key」**写得出来** —— 调用方各取各的，
-    //    没有任何东西说它俩必须同源。今天它们是同一个值的两个方法，
-    //    要拼错得先有两行同时在作用域里（`handle` 里只有一行）。
-    let key = row.key();
-    let style = row.auth_style();
-    // ★★★ **`K-R1`：请求行的目标由那一行自己算**（前缀 + 客户端的真路径）。
+fn render_upstream_request(
+    head: &RequestHead,
+    rest: &str,
+    base: &Base,
+    auth: Option<(Option<&SecretKey>, AuthStyle)>,
+    body_len: usize,
+) -> Vec<u8> {
+    // ★★ **签名变迁记两拍，别读成放宽**：
+    //    · `K-H2`：从 `(&Base, Option<&SecretKey>)` 收成一个 `&Row` —— 那时「上游」与
+    //      「key」是两个各取各的参数，「A 的端点 + B 的 key」**写得出来**；
+    //    · `设计/20 §7` 步 1：从 `&Row` 换成 `(&Base, auth)` **两个参数**，
+    //      而两个参数**只能从同一个 `Destination` 变体里解构出来**（`send_upstream`
+    //      是唯一调用方，它自己也只从层 2 那一个答案里取）⇒ 同源这件事从
+    //      「一个值的两个方法」换成了「一个变体的两个字段」，**没有变松**。
+    //
+    //  `auth` 的三态与它们各自的字节，整张表住 `accounts::Accounts::resolve` 的头注：
+    //    `None`               ⇒ 下游那份鉴权头**原样转发**
+    //    `Some((Some(k), s))` ⇒ 丢掉下游那几份，按 `s` 写 `k`
+    //    `Some((None, s))`    ⇒ 丢掉下游那几份，**一个头都不写**（`s` 是 `NoAuth` 那一档）
+    let (key, style) = match auth {
+        Some((k, s)) => (k, s),
+        None => (None, AuthStyle::DEFAULT),
+    };
+    // ★★★ **`K-R1`：请求行的目标由那个基址自己算**（前缀 + 客户端的真路径）。
     //    ⚠ 参数名从 `target` 改成 `rest` 是有意的：进来的是**下游那一段**，
     //      发出去的目标是**算出来的**。留着旧名字会让下一个人以为它已经是最终目标。
-    //    ⚠ 拼接刻意**不在这里做** —— `&Base` 那个值不出 `Row` 的边界（见 `table.rs` 头注），
-    //      而且「忘了拼前缀」这件事在这个签名上写不出来（`rest` 只有一条去处）。
-    let target = row.upstream_target(rest);
+    //    ⚠ 拼接刻意**不在这里做**（实现只有一份，住 `upstream::Base::upstream_target`）——
+    //      「忘了拼前缀」这件事在这个签名上写不出来（`rest` 只有一条去处）。
+    let target = base.upstream_target(rest);
     let mut out = format!("{} {} HTTP/1.1\r\n", head.method, target);
-    out.push_str(&format!("Host: {}\r\n", row.host_header()));
+    out.push_str(&format!("Host: {}\r\n", base.host_header()));
     out.push_str("Accept-Encoding: identity\r\n");
     out.push_str("Connection: close\r\n");
-    // ★ 这一趟要不要把客户端自带的鉴权头收掉：**我自己要发一个** 或 **这一行声明不发任何头**。
-    //   ⚠ 两个条件都要，缺一格就漏一形：只看前者的话 `NoAuth` 那一行会把客户端的
-    //     真 key 原样送给一个声明了不校验凭据的本地端点。
-    let drop_client_auth = (key.is_some() && auth_header_of(style).is_some())
-        || style == creds_core::store::AuthStyle::NoAuth;
+    // ★ 这一趟要不要把客户端自带的鉴权头收掉 —— **答案就是「层 2 答的是不是 `Substitute`」**。
+    //   ⚠⚠ 这一行先前是个复合条件 `(key.is_some() && auth_header_of(style).is_some())
+    //      || style == NoAuth`，头注逐字警告过「两个条件都要，缺一格就漏一形」。
+    //      那个判断**整条搬进层 2 的那一个 `match`** 了（`accounts::Accounts::resolve`），
+    //      层 1 这边因此再也没有第二处可以判错 —— 少一处能判错的地方，不是少一条判断。
+    let drop_client_auth = auth.is_some();
     for (k, v) in &head.headers {
         if http1::is_hop_by_hop(k)
             || k.eq_ignore_ascii_case("host")
@@ -858,7 +834,11 @@ fn resolve_config(port_env: Option<&str>, upstream_env: Option<&str>) -> Option<
     //   `[relay] bad upstream base url` 就退 2，而那条路上**还没有任何日志出口**能带这句话。
     //   真要带上，改的是 `run_with` 的报文与 `creds_guard::LOG_SITES` 那张表 ⇒ 另一拍。
     //   ★ 而**每一行**账号的 `base_url` 那句为什么，今天是真的印出去了（`table::build`）。
-    let base = Base::parse(upstream_env.unwrap_or(DEFAULT_UPSTREAM)).ok()?;
+    //
+    // ⚠⚠ **上游那一半住层 2 了**（`20 §4`「常量跟着职责走」）：`ENV_UPSTREAM` 与
+    //    `DEFAULT_UPSTREAM` 都在 `accounts/`，本函数只是把环境里那个串**递过去**，
+    //    自己**认不出**默认值是什么。⇒ 层 1 里没有任何可以回落的默认上游。
+    let base = accounts::upstream_default(upstream_env)?;
     Some((port, base))
 }
 
@@ -867,38 +847,9 @@ fn resolve_config(port_env: Option<&str>, upstream_env: Option<&str>) -> Option<
 /// **起监听之前的处置全在这里** ⇒ 判据打得到「基址不认识就退 2」与
 /// 「端口起不来就退出并出声」（`:16-17` 头注承诺的那条）两条。
 /// 成功那一条尾巴上是永不返回的 `serve()` ⇒ 判据够不到，登记为 `判不了`。
-/// 读一次凭据并**把该说的话说出去**，返回拿到的 key。
 ///
-/// ★ 它为什么被抽成一个有名字的函数（同 `resolve_config` / `run_reading` 那两次的理由）：
-/// `run_with` 的尾巴是**永不返回**的 `serve()` ⇒ 长在里面的东西没有任何判据够得着。
-/// 这里抽出来之后，`KS9②`（只放一份文件、一次界面都不开）与 `KS11`（过宽出声）
-/// 打的都是**生产段真正跑的那一份**，不是一个同构的副本。
-fn load_credentials(
-    get: &dyn Fn(&str) -> Option<String>,
-    home: &std::path::Path,
-    default_base: &Base,
-    out: &mut dyn Write,
-) -> (
-    RoutingTable,
-    std::path::PathBuf,
-    Option<(std::time::SystemTime, u64)>,
-) {
-    let path = creds::resolve_path(get, home);
-    // `D1 阻-2`：把**这一刻**那份文件的 mtime 一起记下来 —— 重载靠它判「动过没有」。
-    // ⚠ 顺序：**先 stat 再读**。反过来的话，「读完到 stat 之间那次写」会被记成「已经读过了」，
-    //   那一次修改就永远不会被重载看见（一个会留下来的错，不是一次抖动）。
-    let stamp = stamp_of(&path);
-    let mut loaded = creds::load(&path);
-    // ★ 装表这一步（`K-H2`）**在出声之前**：`announce` 要印的「有几行进得了表」
-    //   与「哪几行进不去、为什么」都是它算出来的。
-    //   ⚠ `take` 是因为 `AccountEntry` 里装着 `SecretKey`，而那个类型**刻意不给 `Clone`**
-    //     （`K-H2a`：少一条能复制明文的路就少一个出口）⇒ 只能把所有权交出去。
-    //     `announce` 不读 `accounts` 这一格，它读的是路径 / 权限 / 问题，外加下面这两个参数。
-    let (table, rejected, notes) = table::build(std::mem::take(&mut loaded.accounts), default_base);
-    creds::announce(&loaded, table.len(), &rejected, &notes, out);
-    (table, path, stamp)
-}
-
+/// ⚠ 「读一次凭据、装表、把该说的话说出去」那一段**搬去层 2 了**
+/// （`accounts::load_credentials`）—— 那三件事一件都不属于搬字节这一层。
 fn run_with(
     port_env: Option<&str>,
     upstream_env: Option<&str>,
@@ -923,14 +874,11 @@ fn run_with(
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
     let (table, creds_path, stamp) =
-        load_credentials(creds_get, home, &base, &mut std::io::stderr());
+        accounts::load_credentials(creds_get, home, &base, &mut std::io::stderr());
     // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
     // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
-    let relay = Relay::new(table, TeeSink::to_stdout()).reloading_from(Reload::new(
-        creds_path,
-        base.clone(),
-        stamp,
-    ));
+    let dest = Accounts::new(table).reloading_from(Reload::new(creds_path, base.clone(), stamp));
+    let relay = Relay::new(Arc::new(dest), TeeSink::to_stdout());
     serve(listener, Arc::new(relay));
     0
 }
@@ -954,7 +902,7 @@ fn run_reading(
     exec: &RelayExec<'_>,
 ) -> i32 {
     let port = get(ENV_PORT);
-    let upstream = get(ENV_UPSTREAM);
+    let upstream = get(accounts::ENV_UPSTREAM);
     // ⚠ `get` 原样往下传：凭据那条路的取值器**必须与端口/上游是同一个**，
     //   否则判据喂进去的环境和生产段读的环境是两套（那正是「量具的作用域对不上事实」）。
     exec(port.as_deref(), upstream.as_deref(), get, home)

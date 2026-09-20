@@ -22,13 +22,32 @@
 //! （`K-H2` `KH2`：不许回落到别的账号的 key，也不许回落到默认上游）。
 
 /// 切出来的路由。`rest` 逐字保留原请求的 `路径 + 查询串`，中转不重写它。
+///
+/// # 🔴 条 48（2026-09-18 拍板 (a)）：这几个字段**用位置名，不用业务名**
+///
+/// 先前它是 `{ agent, account, key }` 三个业务名。今天是
+/// `{ mode, key: RouteKey{seg1,seg2}, stream }` —— 层 1 只知道「第 1/2/3 段」，
+/// 把前两段整包交给层 2 当键、把第 3 段当自己那条流的名字。
+/// 谁是 agent、谁是账号，**只在 `accounts/` 那一层才有这两个词**。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Route {
-    pub(crate) agent: String,
-    /// 路由表的**索引键**（`K-H2`）。中转不解释它，只拿它去查表。
-    pub(crate) account: String,
-    pub(crate) key: String,
+    /// 哪个前缀进来的 —— `/s/` 代入 · `/t/` 直通。层 1 只转交，不解释。
+    pub(crate) mode: super::Mode,
+    /// 前两段，整包交给层 2 当键。层 1 **不解释**它们。
+    pub(crate) key: super::RouteKey,
+    /// 第 3 段 —— 层 1 自己那条流的名字（它是 sid，但层 1 不需要知道）。
+    pub(crate) stream: String,
     pub(crate) rest: String,
+}
+
+impl Route {
+    /// 这一条请求在 tee 上的身份。**三个标签收成一个**（`20 §4`）。
+    pub(crate) fn stream_id(&self) -> super::StreamId<'_> {
+        super::StreamId {
+            key: &self.key,
+            stream: &self.stream,
+        }
+    }
 }
 
 /// 一段路由键里允许的字符 —— 白名单，不是黑名单。
@@ -49,19 +68,26 @@ pub(crate) fn segment_is_safe(seg: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-/// 解析 `/s/<agent>/<account>/<key>/<rest>`。不是这个形状就返回 `None`（调用方回 404）。
+/// 解析 `/s/<seg1>/<seg2>/<seg3>/<rest>`。不是这个形状就返回 `None`（调用方回 404）。
+///
+/// ⚠ 四个槽位**一格没动**（`20 §0`：线格式本来就是对的），动的只是层 1 怎么称呼它们。
+/// ⇒ `segment_is_safe` 一字不动，`parse` 只是把切出来的三段装进新名字。
 pub(crate) fn parse(target: &str) -> Option<Route> {
     let after = target.strip_prefix("/s/")?;
-    let (agent, after) = after.split_once('/')?;
-    let (account, after) = after.split_once('/')?;
-    let (key, rest) = after.split_once('/')?;
-    if !segment_is_safe(agent) || !segment_is_safe(account) || !segment_is_safe(key) {
+    let mode = super::Mode::Substitute;
+    let (seg1, after) = after.split_once('/')?;
+    let (seg2, after) = after.split_once('/')?;
+    let (seg3, rest) = after.split_once('/')?;
+    if !segment_is_safe(seg1) || !segment_is_safe(seg2) || !segment_is_safe(seg3) {
         return None;
     }
     Some(Route {
-        agent: agent.to_string(),
-        account: account.to_string(),
-        key: key.to_string(),
+        mode,
+        key: super::RouteKey {
+            seg1: seg1.to_string(),
+            seg2: seg2.to_string(),
+        },
+        stream: seg3.to_string(),
         rest: format!("/{rest}"),
     })
 }
