@@ -148,23 +148,28 @@ fn interpret_fork_exec(ex: &RemoteExec) -> Result<BranchResult, String> {
     }
 }
 
-/// G6 IPC：在远端从某条消息分叉出新会话。前端点远端会话卡上的 `⑂` 时调。
+/// G6：在远端从某条消息分叉出新会话。
 ///
-/// 与本地那条（`history::create_branch_session`）的差异**今天只剩一处：活儿在远端干**。
-/// 〔`K-R88` 09-13〕原先还有一处「收 sid 不收路径」—— 本机那条已经跟着收成 sid 了。
-/// 返回体同形，所以前端两条路共用同一段成功处理。
-#[tauri::command]
-pub async fn create_remote_branch_session(
-    origin: String,
-    source_session_id: String,
-    message_uuid: String,
+/// 🔴 **〔步 12·C 2026-09-20〕它不再是一条 Tauri 命令。**
+/// 上线的那一条是 [`crate::history::create_branch_session`]，本函数是它的远端那一支。
+/// 这一行原先逐字写着「与本地那条的差异**今天只剩一处：活儿在远端干**」——
+/// 那句话正是合并的判据：**差别只剩一处，而那一处就是 `origin` 本身。**
+/// 〔`K-R88` 09-13〕入参形状两侧早已统一成 sid；返回体同形（`G6`），
+/// 所以前端两条路本来就共用同一段成功处理。
+///
+/// ⚠ 名字**刻意没改**：`local_origin_registry` 按「文件::函数」登记着这一处，
+/// 改名会让那张表静默失配。
+pub(crate) async fn create_remote_branch_session(
+    host: &str,
+    source_session_id: &str,
+    message_uuid: &str,
 ) -> Result<BranchResult, String> {
-    validate_fork_id("源会话 id", &source_session_id)?;
-    validate_fork_id("消息 uuid", &message_uuid)?;
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    validate_fork_id("源会话 id", source_session_id)?;
+    validate_fork_id("消息 uuid", message_uuid)?;
+    let cfg = crate::load_remote_config_by_label(host)
+        .ok_or_else(|| format!("远端 '{host}' 未配置或未启用"))?;
 
-    let cmd = build_fork_cmd(&cfg.backend_path, &source_session_id, &message_uuid);
+    let cmd = build_fork_cmd(&cfg.backend_path, source_session_id, message_uuid);
     let ex = tokio::time::timeout(
         FORK_TIMEOUT,
         ssh_source::connect_and_exec_capture(&cfg, &cmd, Some(HELLO_MARKER)),
@@ -174,7 +179,7 @@ pub async fn create_remote_branch_session(
 
     let res = interpret_fork_exec(&ex)?;
     tracing::info!(
-        "remote_branch: [{origin}] 分叉 {source_session_id}@{message_uuid} → {}",
+        "remote_branch: [{host}] 分叉 {source_session_id}@{message_uuid} → {}",
         res.session_id
     );
     Ok(res)

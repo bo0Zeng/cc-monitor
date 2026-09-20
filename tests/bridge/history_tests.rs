@@ -2282,8 +2282,14 @@ const FENCE_CHILD: &str = "CCM_TEST_DELETE_FENCE_CHILD";
 ///
 /// ⚠ **反空真**：过滤器一条都没命中时 libtest 的退出码**也是 0**（「0 passed」）——
 /// 那会是一次干净的假绿。所以父进程除了看退出码，还断子进程真的报了 `1 passed`。
-#[test]
-fn the_delete_entry_point_actually_goes_through_the_fence() {
+// 🔴 〔步 12·C 09-20〕`delete_history_session` 合并之后是 `async`（远端那一支要 `.await`），
+//    而且**第一个入参是 `origin`**。本条判的是**本机**那一侧的围栏 ⇒ 逐字送
+//    `Origin::local()`（线上 `"<local>"`）。
+//    ⚠ **不许送 `Origin::Unspecified`** —— 那会被 `Origin::route` 在**围栏之前**拒掉，
+//      于是本条会因为「参数不对」而绿，而不是因为围栏接上了。那正是本条自己警告过的
+//      「在一个根本没跑到围栏的环境里假绿」。
+#[tokio::test]
+async fn the_delete_entry_point_actually_goes_through_the_fence() {
     // ═══ 父进程那一半：造夹具 · 起子进程 · 把子进程的正文转发出来，然后 `return` ═══
     //
     // ⚠ 两半**刻意写在同一个 `#[test]` 里**〔09-10 第二拍〕。
@@ -2374,7 +2380,12 @@ fn the_delete_entry_point_actually_goes_through_the_fence() {
     let canon_victim = victim.canonicalize().expect("靶子打不开");
     let outside = !canon_victim.starts_with(&canon_projects);
 
-    let r = delete_history_session("sid".into(), victim.to_string_lossy().into_owned());
+    let r = delete_history_session(
+        crate::origin::Origin::local(),
+        "sid".into(),
+        victim.to_string_lossy().into_owned(),
+    )
+    .await;
     let still_there = victim.exists();
     let _ = std::fs::remove_dir_all(&dir);
 

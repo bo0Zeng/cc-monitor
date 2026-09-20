@@ -103,6 +103,11 @@ import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 import type { BranchResult } from "../generated/BranchResult";
+// 〔步 12·C〕合并后的命令一律收 `origin`。**`Origin` 是生成物**（`Origin.ts` = `null | string`）
+// ⇒ 这里不许手写 `string | null`：手写的那一份与 Rust 的 `origin::Origin` 之间没有任何东西钉着。
+// ⚠ 生成物允许 `null`（那是「调用方没说」的线上形状），而**合并后的命令一条都不接受 `null`**
+//   —— Rust 侧 `Origin::route` 当场拒。本机要逐字送 `LOCAL_ORIGIN`（`"<local>"`）。
+import type { Origin } from "../generated/Origin";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -563,37 +568,33 @@ export const commands = {
     invoke<ConnTestResult>("test_remote_connection", args),
 
   /**
-   * 流式读**远端**会话 jsonl（issue #16，SSH 拉取）。Rust 返回 `Result<u32, String>`（条数）。
+   * 流式读会话 jsonl。Rust 返回 `Result<u32, String>`（条数）。
    *
-   * **注意它与 `stream_read_session_jsonl` 的签名刻意不同**：远端这条 `origin: String` 是
-   * **必填**，本地那条**根本没有 origin**。此前 TS 侧用一个三元选命令名 + 给两边传同一个
-   * 超集 args（本地传 `origin: undefined` 靠 Tauri 丢掉）——包装层收成两条精确签名后，
-   * 「给本地命令传 origin」变成**编译期错误**。
+   * 🔴 **〔步 12·C 2026-09-20〕`stream_read_remote_session` 已退役，两条收成这一条。**
+   *
+   * 这一行原先逐字写着「**注意它与 `stream_read_session_jsonl` 的签名刻意不同**：
+   * 远端这条 `origin: String` 是**必填**，本地那条**根本没有 origin**」——
+   * 那句「刻意不同」正是 `设计/00 §2.5 ①` 要治的东西：**两侧走的不是同一条路，
+   * 而让它们不同的只是一个参数**。
+   *
+   * ⚠ 它原先买到的那条编译期保护（「给本地命令传 origin」是编译错）**没有丢，是换了形状**：
+   * 现在是「**不传** origin」编译错（`origin` 必填、且类型不是 `string | undefined`）。
+   * ⇒ 本机要逐字送 `LOCAL_ORIGIN`，不许省。
    */
-  stream_read_remote_session: (args: {
-    jsonlPath: string;
-    origin: string;
-    onChunk: Channel<JsonlLinePayload[]>;
-  }) => invoke<number>("stream_read_remote_session", args),
-
-  /** 流式读**本地**会话 jsonl。**无 origin 参数**（见上条）。 */
   stream_read_session_jsonl: (args: {
+    origin: Origin;
     jsonlPath: string;
     onChunk: Channel<JsonlLinePayload[]>;
   }) => invoke<number>("stream_read_session_jsonl", args),
 
   /**
-   * 流式列**远端**某项目的会话（issue #16）。**`origin` 必填**——与下面本地那条的
-   * Rust 签名不同（同批 6a 的两个 `stream_read_*`）。
+   * 流式列某项目的会话。
+   *
+   * 🔴 **〔步 12·C〕`stream_remote_history_sessions` 已退役，两条收成这一条。**
+   * `projectDir` 两侧早已同形（`K-R97`：都是**编码目录名**，不是绝对路径）。
    */
-  stream_remote_history_sessions: (args: {
-    projectDir: string;
-    origin: string;
-    onEntry: Channel<HistorySessionEntry>;
-  }) => invoke<number>("stream_remote_history_sessions", args),
-
-  /** 流式列**本机**某项目的会话。**无 origin 参数**（见上条）。 */
   stream_history_sessions_in_project: (args: {
+    origin: Origin;
     projectDir: string;
     onEntry: Channel<HistorySessionEntry>;
   }) => invoke<number>("stream_history_sessions_in_project", args),
@@ -763,13 +764,12 @@ export const commands = {
    * 〔`K-R88` 09-13〕入参从 `sourceJsonlPath` 收成 `sourceSessionId` ——
    * 与下面远端那条**形状一致**，两侧后端走的也是同一份「按 sid 找那份文件」。
    */
-  create_branch_session: (args: { sourceSessionId: string; messageUuid: string }) =>
-    invoke<BranchResult>("create_branch_session", args),
+  create_branch_session: (args: {
+    origin: Origin;
+    sourceSessionId: string;
+    messageUuid: string;
+  }) => invoke<BranchResult>("create_branch_session", args),
 
-  /**
-   * G6：**远端**分叉——经 ssh 让后端在那台机器上分叉。返回体与本地那条同形（桶③）。
-   * 参数刻意收 `sourceSessionId` 而**不是**路径：backend 只认 sid（少一个可构造的路径入参）。
-   */
   /**
    * E79：**本机**版「某会话现在跑在哪个账号下」——远端 `--session-accounts` 的对侧。
    * **Linux 才有**（要读 `/proc/<pid>/environ`）；别的平台返回 `available:false` + 原因，
@@ -778,15 +778,18 @@ export const commands = {
   list_local_session_accounts: () =>
     invoke<SessionAccountsResult>("list_local_session_accounts"),
 
-  create_remote_branch_session: (args: {
-    origin: string;
-    sourceSessionId: string;
-    messageUuid: string;
-  }) => invoke<BranchResult>("create_remote_branch_session", args),
-
-  /** 删本机历史会话（带 projects 目录内的路径守卫）。**桶①**。 */
-  delete_history_session: (args: { sessionId: string; jsonlPath: string }) =>
-    invoke<void>("delete_history_session", args),
+  /**
+   * 删历史会话。**桶①**。
+   *
+   * 🔴 **〔步 12·C〕`delete_remote_history_session` 已退役，两条收成这一条。**
+   * 本机那一侧带 projects 目录内的路径守卫，远端那一侧走 `sftp::remove_remote_file`
+   * 的双重守卫 —— **同一个动作、两种介质**，不是两件能力。
+   */
+  delete_history_session: (args: {
+    origin: Origin;
+    sessionId: string;
+    jsonlPath: string;
+  }) => invoke<void>("delete_history_session", args),
 
   /**
    * G6：列远端 tmux 会话。`null` = 那台机器上没装 tmux（前端据此隐藏 attach 类操作）。
@@ -794,10 +797,6 @@ export const commands = {
    */
   list_remote_tmux: (args: { origin: string }) =>
     invoke<TmuxSession[] | null>("list_remote_tmux", args),
-
-  /** 删远端历史会话。**桶①**。 */
-  delete_remote_history_session: (args: { origin: string; jsonlPath: string }) =>
-    invoke<void>("delete_remote_history_session", args),
 
   /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
@@ -872,8 +871,15 @@ export const commands = {
   /** 本机历史项目列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   list_history_projects: () => invoke<HistoryProject[]>("list_history_projects"),
 
-  /** 本机有 `.mcp.json` 的项目目录候选。Rust 签名**无 `Result` 包装**（`-> Vec<String>`）。 */
-  list_mcp_project_dirs: () => invoke<string[]>("list_mcp_project_dirs"),
+  /**
+   * 有 `.mcp.json` 的项目目录候选（`~/.claude.json` 的 `projects` 键）。
+   *
+   * 🔴 **〔步 12·C〕`list_remote_mcp_project_dirs` 已退役，两条收成这一条。**
+   * 两侧算它的那一份代码本来就只有一份（Rust `project_dirs_from`），
+   * 差别只在「那份 `~/.claude.json` 的字节从哪来」。
+   */
+  list_mcp_project_dirs: (args: { origin: Origin }) =>
+    invoke<string[]>("list_mcp_project_dirs", args),
 
   /**
    * 每个 sid 最近一次用的账号（sid → 账号名）。Rust 返回 `HashMap<String, String>`
@@ -883,10 +889,6 @@ export const commands = {
 
   /** 远端历史项目列表（含失败主机名单）。 */
   list_remote_history_projects: () => invoke<RemoteProjectsResult>("list_remote_history_projects"),
-
-  /** 远端有 `.mcp.json` 的项目目录候选。 */
-  list_remote_mcp_project_dirs: (args: { origin: string }) =>
-    invoke<string[]>("list_remote_mcp_project_dirs", args),
 
   /** 批量导入 `~/.ssh/config` 的预览分组（F57）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   import_ssh_hosts: () => invoke<ImportGroup[]>("import_ssh_hosts"),

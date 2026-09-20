@@ -30,6 +30,9 @@
  */
 
 import { commands } from "./ipc/commands";
+// 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
+// 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
+import { LOCAL_ORIGIN } from "./backend-policy";
 import { showActionFailureToast } from "./error-toast";
 import type { BranchResult } from "./generated/BranchResult";
 
@@ -96,19 +99,19 @@ export function attachBranchButton(
     btn.dataset.busy = "1";
     void (async () => {
       try {
-        // G6：本机与远端仍是**两条不同的 IPC**（活儿在哪台机器上干不一样，远端那条还要
-        // 一个 origin），但〔`K-R88` 09-13〕**入参形状已经一致：两条都收 sid，都不收路径。**
-        // 路径入参是可被构造的，少一个就少一条路径穿越面。
-        const res = opts.origin
-          ? await commands.create_remote_branch_session({
-              origin: opts.origin,
-              sourceSessionId: opts.sourceSessionId,
-              messageUuid: opts.uuid,
-            })
-          : await commands.create_branch_session({
-              sourceSessionId: opts.sourceSessionId,
-              messageUuid: opts.uuid,
-            });
+        // 🔴 **〔步 12·C 2026-09-20〕本机与远端不再是两条 IPC。**
+        // 这里原先逐字写着「本机与远端仍是**两条不同的 IPC**（活儿在哪台机器上干不一样，
+        // 远端那条还要一个 origin）」——`设计/00 §2.5 ①` 要治的正是那个「还要一个 origin」：
+        // 那不该是**另一条命令**，那该是**同一条命令的一个参数**。
+        // 〔`K-R88` 09-13〕入参形状两侧早已一致（都收 sid、都不收路径），所以这一步只剩
+        // 把「哪台机器」从命令名里搬到参数里。
+        // ⚠ **本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `undefined`、不是 `null`** ——
+        //   `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」，它是一个**具名**的 origin。
+        const res = await commands.create_branch_session({
+          origin: opts.origin ?? LOCAL_ORIGIN,
+          sourceSessionId: opts.sourceSessionId,
+          messageUuid: opts.uuid,
+        });
         btn.textContent = "✓";
         window.setTimeout(() => (btn.textContent = "⑂"), 2000);
         opts.onForked(res);
