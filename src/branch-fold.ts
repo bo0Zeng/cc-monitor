@@ -238,13 +238,21 @@ export class BranchFolder {
     if (!t || this.queuedContents.has(t)) return;
     this.queuedContents.add(t);
     // 已渲染状态下追加豁免可能改变折叠结果（queue-operation 行可能晚于 user 行到达）
-    if (!this.batchMode) {
-      const next = this.computeMain("queued-content");
-      if (!setsEqual(next, this.lastMainBranch)) {
-        this.lastMainBranch = next;
-        this.rebuild();
-      }
-    }
+    //
+    // `设计/17 §2.7` 档 3「`addQueuedContent` 接上合批」：这里原先**同步**跑一次
+    // 全量 `computeMain()`（`computeMainBranch` 是扫全部 records 的 Kahn 拓扑 ⇒ O(N)，
+    // 变了还要再走一次 O(N) 的 DOM `rebuild()`），而它由 `tabs.ts` 的 `onQueueOperation`
+    // **每条 enqueue 记录喂一次** ⇒ 与 F15 修掉之前的 `recordAdded` 是**同一个形状**：
+    // M 条 enqueue × O(N) = O(M·N)，而且与同一帧里 `recordAdded` 排的那次**各算各的**。
+    //
+    // ⇒ 排进**同一个**帧末合批（`scheduleLiveRecompute`）：一帧内来多少条
+    // （enqueue ＋ 新记录混着）都只算一次。**live 契约不变** —— 本类头注写的是
+    // 「每条 **1 帧内**反映 fold 状态」，帧内算一次就满足它，逐条同步算只是它最贵的一种实现。
+    //
+    // ⚠ 行为上唯一的差别：豁免生效从「本次调用返回时」推到「本帧末」。需要立刻看到
+    // 最终态的调用方走 `rebuildNow()` / `flushPending()`（两者都会清 `pendingLive`，
+    // 不会再白算一遍），要问还欠不欠走 `hasPendingLiveRecompute()`。
+    if (!this.batchMode) this.scheduleLiveRecompute();
   }
 
   /**
@@ -555,9 +563,16 @@ export class BranchFolder {
 /** 账本里三组样本的条数上限。**超出只丢样本、不丢计数**（计数是独立累加的）。 */
 const LEDGER_SAMPLE_CAP = 5000;
 
-/** 一次 `computeMain()` 是被谁叫起来的。只是账本的一列，计算本身不看。 */
-export type BranchComputeVia =
-  "live-frame" | "flush" | "set-records" | "rebuild-now" | "queued-content";
+/**
+ * 一次 `computeMain()` 是被谁叫起来的。只是账本的一列，计算本身不看。
+ *
+ * 🔴 **`"queued-content"` 这一档 2026-09-19 随 `设计/17 §2.7` 档 3 一起删掉**：
+ * `addQueuedContent` 改成排帧末合批之后，它产生的那次真算就是普通的 `"live-frame"`，
+ * **再没有任何一处产得出这个值** ⇒ 留着就是一条挂空号的登记（本仓判据一族专治这个形状）。
+ * ⚠ 历史读数 `tests/evidence/S4-frame-ledger.md` 里那份 `via` 枚举照旧写着它
+ * （那是当时的实况，读数不回改）—— 以本处为准。
+ */
+export type BranchComputeVia = "live-frame" | "flush" | "set-records" | "rebuild-now";
 
 /** 影子快路的未命中原因，四问的顺序即优先级（见 `noteFastPathShadow` 头注）。 */
 export type FastPathMissReason = "noParent" | "parentUnknown" | "parentHasChild" | "parentOffMain";
