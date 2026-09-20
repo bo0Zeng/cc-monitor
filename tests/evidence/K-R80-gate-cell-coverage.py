@@ -409,20 +409,44 @@ cell(
         ".github/": (PART, "只判 `release.yml` **一份文件里点名的那几处**：触发器解析得出来 · "
                            "`workflow_dispatch` 在不在 · `inputs.publish` 的 type/default · "
                            "`env.PUBLISH` 的**字面** · 两处「往 Release 上写」与 CI 门那一步的 `if:` · "
-                           "两处发布步骤各自的正文来源。⚠ 这份文件的其余每一步"
-                           "（四个 job 的 runner / 工具链 / needs / 缓存 / 构建那几步）本格一个字不问；"
+                           "两处发布步骤各自的正文来源。"
+                           "〔`19b` 09-19 加〕再加**产字节那条路**：条 63 承诺的三格 ↔ 产线两向相等 · "
+                           "本文件里「跑 `cargo build`/`zigbuild`」的步骤 ↔ 登记两向相等 · "
+                           "出现的 target triple ↔ 登记两向相等 · 三个 job 的 `runs-on` 逐字 · "
+                           "每一处抠 `const BUILD_ID`／身份戳界标的 `-Path` 解出来的住址逐处计数相等 · "
+                           "`mlugg/setup-zig` 与 `taiki-e/install-action` 那两个版本。"
+                           "⚠ 这份文件的其余每一步（needs / 缓存 / 打包 / 校验和 / 上传清单）本格一个字不问；"
                            "⚠ `ci.yml` 整份**不在本格射程里**（那棵树的切片由 `shellcheck` 与 "
                            "`ci-e2e-prereq` 两格各判一块）；⚠ 它**不跑那条流水线**，"
-                           "「盘上这份文本满足这几条」≠「云端那一趟会绿」"),
-        "tests/scripts/": (PART, "只判 `scripts/release-notes.mjs` **两件事**：它在不在盘上、"
-                           "`--check` 跑不跑得出一段非空的正文。那份文件里的任何一行逻辑"
-                           "（段落切法 · 拼装 · 写文件那一半）本格都不看"),
+                           "「盘上这份文本满足这几条」≠「云端那一趟会绿」——"
+                           "「登记的那一步在文件里」也**不等于**「那一步在 runner 上编得出字节」"),
+        "tests/scripts/": (PART, "两份，各只判一点点：① `release-notes.mjs` —— 它在不在盘上、"
+                           "`--check` 跑不跑得出一段非空的正文（那份文件里的段落切法 · 拼装 · "
+                           "写文件那一半本格都不看）；② 〔`19b` 09-19 加〕`gate.sh` —— **只读**"
+                           "`run_gate muslbuild '…'` 那一条裁词里点名的工具链版本，与 `release.yml` "
+                           "真装的那两个两向对拍。`gate.sh` 的其余每一行本格一个字不看"
+                           "（那是 `gate-selfdesc` 那一格的事）"),
+        "src/bridge/": (PART, "〔`19b` 09-19 加〕**只读 `build.rs` 里那两个取身份的函数**"
+                           "（`backend_source_build_id` / `backend_stamp_marks` ＋ "
+                           "`emit_backend_build_id` 调不调前者）：函数体里不许再有兜底值"
+                           "（`\"unknown\"` / `unwrap_or_default()`），且「抠不到」那一支必须 `panic!`。"
+                           "⚠ 买的是**源码形状**，不是行为 —— 它不编也不跑 `build.rs`；"
+                           "这棵树的其余 156 份本格一个字不碰"),
+        "src/backend/": (PART, "〔`19b` 09-19 加〕**只读 `lib.rs` 里那三行 `const`**"
+                           "（`BUILD_ID` · `BUILD_STAMP_OPEN` · `BUILD_STAMP_CLOSE`），"
+                           "各要求**恰好 1 行**命中 —— 这是「`release.yml` 里那几处抽取住址"
+                           "指不指得到真东西」的实打那一半（步 9 漏改一处的现物就是这一格逮的）。"
+                           "⚠ 常量的**值**对不对本格不判，这棵树的其余每一份也不碰"),
         ROOTFILES: (PART, "经生成器 `--check` 读进去的那两份：`package.json` 的 `version`、"
                           "以及 `CHANGELOG.md` 里 `## [<version>]` 那一段**在不在、非不非空**。"
                           "⚠ 这是**分母**不是依赖（本格真的在判它们：版本号没有对应段 ⇒ 本格红）；"
                           "⚠ 那一段**写得对不对**本格一个字不判"),
         "tests/evidence/": blind("本格的尺子自己就住在这棵树上 —— 把量具算进它自己的覆盖，"
-                           "正是本区最高频那族病（与上面 `ci-e2e-prereq` 同一条理由）"),
+                           "正是本区最高频那族病（与上面 `ci-e2e-prereq` 同一条理由）。"
+                           "〔`19b` 09-19 补一句〕它还 **import** 同树的 `K-G4-platform-ledger.py` "
+                           "取条 63 的承诺面（那是全仓唯一一份，不许抄第二份）—— "
+                           "**那是取值，不是覆盖**：本格对那份账本的内容一个字都不判，"
+                           "判它的是 `platform` 那一格"),
     },
 )
 

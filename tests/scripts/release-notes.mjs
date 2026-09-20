@@ -24,8 +24,8 @@
 //
 // # 跑法
 //
-//     node scripts/release-notes.mjs <输出文件>   // 写正文，`release.yml` 两个 job 各跑一次
-//     node scripts/release-notes.mjs --check      // 只验 + 印读数（本地门禁那一格用）
+//     node tests/scripts/release-notes.mjs <输出文件>   // 写正文，`release.yml` 两个 job 各跑一次
+//     node tests/scripts/release-notes.mjs --check      // 只验 + 印读数（本地门禁那一格用）
 //
 // 退出码 0 = 过；1 = 这一版在 CHANGELOG 里没有段 / 段太短 / 读不到文件。
 // **不回落**：拿不到正文就红，不许静默让 Release 去用自动生成那份。
@@ -109,7 +109,7 @@ function main(argv) {
     );
     return;
   }
-  if (!target) die("没给输出文件 —— 用法 `node scripts/release-notes.mjs <输出文件>`");
+  if (!target) die("没给输出文件 —— 用法 `node tests/scripts/release-notes.mjs <输出文件>`");
   writeFileSync(target, out, "utf8");
   console.log(
     `release-notes: 写出 ${target}（v${version}，${out.split("\n").length} 行 / ${solid} 个非空行）`,

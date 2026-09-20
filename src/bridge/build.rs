@@ -17,8 +17,12 @@ fn main() {
 /// 🔴 〔步 9 · 09-19〕**从 `main.rs` 改成 `lib.rs`。** `BUILD_ID` / `BUILD_STAMP_*` /
 /// `CAPABILITIES` 这一族已按 `设计/00 §1.5.4` 前置 2 搬进后端的库面 —— 理由是
 /// in-process 那条路**没有那个 `main.rs`**，身份会跟着它一起消失。
-/// ⚠ 本函数**没有回退到 `main.rs` 的分支**，这是刻意的：抠不到时上面那几个消费者
-/// 各自落到「`unknown` / 空界标」那一支并把失败逐字印出来，**比悄悄读到一份旧住址好**。
+/// ⚠ 本函数**没有回退到 `main.rs` 的分支**，这是刻意的：读一份旧住址会悄悄给出一个
+/// 过期的身份，而**抠不到必须是一条响亮的失败**（住址见 [`backend_source_build_id`]）。
+/// 〔墓碑，本行原话逐字：「抠不到时上面那几个消费者各自落到「`unknown` / 空界标」那一支
+///  并把失败逐字印出来」。**那半句在 `19b` 之前是真的，而它正是病灶** ——「落到 `unknown`」
+///  只在**恰好铺了字节**的构建里才有人 panic，平常每一次 `cargo build` 都静静地把
+///  `BACKEND_BUILD_ID="unknown"` 烤进 exe（射程外的账住 `设计/96 §7.2.5` 那张表）。〕
 fn backend_lib_rs() -> PathBuf {
     // build.rs 的 cwd 是本包根（`src/bridge/`）⇒ `..` 是 `src/`。
     // 2026-09-18：仓库重组把后端树从 `remote-daemon-proto/src/` 搬到 `src/backend/`，
@@ -33,10 +37,43 @@ fn backend_main_rs() -> PathBuf {
 }
 
 /// backend 源码里那个 `const BUILD_ID`。**这是本机与远端两条内嵌路共用的期望值。**
-fn backend_source_build_id() -> Option<String> {
-    std::fs::read_to_string(backend_lib_rs())
+///
+/// # 🔴 `19b`（09-19）：**抠不到 ＝ 构建当场失败，没有兜底值**（`设计/96 §7.2.5`）
+///
+/// 规格逐字：「事故的形状不是『读失败』，是**读失败被换成了一个会参与比较的字符串**——
+/// `"unknown"` 必然不等于任何真 `BUILD_ID` ⇒ 必然判 StaleBuild ⇒ 必然重装 ⇒ 装完还是不等。」
+/// 事故本体住 `设计/16 §5.4a`：抠不到就 `unwrap_or_else(|| "unknown")`，
+/// 装出去**每台远端无限重装**。
+///
+/// **为什么住在这里（一个住址），而不是三个消费者各写一次**：本函数在 `19b` 之前返回
+/// `Option`，三个消费者里只有 `embed_backends` / `embed_native_backend` 会 panic，
+/// 而那两条 panic **都在 `src.exists()` 的里面** —— 平常每一次 `cargo build`（没铺字节）
+/// 走的是上面那条 `cargo:warning` 分支，**panic 一次都不触发**，`BACKEND_BUILD_ID`
+/// 就这么带着 `"unknown"` 被烤进 exe。⇒ 把「响」挪到**取值这一跳**，
+/// 它在**所有**构建形态下都响（`设计/16 §5.4a` 的元教训逐字：
+/// 「『有一条能跑的检查』和『那条检查的人群是全的』是两件事」）。
+///
+/// ⚠ **`Option` 没有消失，消失的是兜底字符串**：抽取那一层仍是
+/// [`extract_build_id`] `-> Option<String>`，`None` 不会被换成任何「看起来像身份」的值，
+/// 它只通向下面这条 panic。
+fn backend_source_build_id() -> String {
+    let p = backend_lib_rs();
+    std::fs::read_to_string(&p)
         .ok()
         .and_then(|s| extract_build_id(&s))
+        .unwrap_or_else(|| {
+            panic!(
+                "抠不到后端源码的 `const BUILD_ID` —— 读的是 `src/bridge/{}`\
+                 （路径失效 / crate 改名 / 身份又搬家了 / `const` 写法变了）。\n\
+                 🔴 **这一步刻意没有兜底值**：给它一个 `\"unknown\"` 之类的字符串，\
+                 它会照样参与 `reported_build_id != EXPECTED_BACKEND_BUILD_ID` 那个比较，\
+                 于是装出去的每一台远端都被判 StaleBuild 并**无限重装**\
+                 （真事故，账住 `设计/16 §5.4a`）。\n\
+                 出路：把身份搬回 `src/backend/lib.rs` 的 `pub const BUILD_ID: &str = \"…\";`，\
+                 或同拍改本文件的 `backend_lib_rs()`（那是全仓唯一的住址）。",
+                p.display()
+            )
+        })
 }
 
 /// F5：vendored cc-acct-iso 过期软检查（SS-10「过期看得见」）。从 `VENDOR.md` 抠上游仓路径
@@ -185,19 +222,18 @@ fn extract_backtick_after(text: &str, label: &str) -> Option<String> {
     Some(after[start..start + rel_end].to_string())
 }
 
-/// 从后端源码（`src/backend/main.rs`）提取 `const BUILD_ID`，emit 成编译期
-/// env `BACKEND_BUILD_ID`，让 monitor 的 `EXPECTED_BACKEND_BUILD_ID` 与内嵌二进制的 build_id
-/// **单一事实源**（SS-B：消除 F06 时的手工同步）。
+/// 从后端源码（[`backend_lib_rs`]，现打 `src/backend/lib.rs`）提取 `const BUILD_ID`，
+/// emit 成编译期 env `BACKEND_BUILD_ID`，让 monitor 的 `EXPECTED_BACKEND_BUILD_ID`
+/// 与内嵌二进制的 build_id **单一事实源**（SS-B：消除 F06 时的手工同步）。
+///
+/// 🔴 `19b`（09-19）：抠不到**不再退化成 `"unknown"`**，理由全文住
+/// [`backend_source_build_id`]（一句话：那条退化只在恰好铺了字节的构建里才有人拦）。
 fn emit_backend_build_id() {
-    let main_rs = backend_lib_rs();
-    println!("cargo:rerun-if-changed={}", main_rs.display());
+    println!("cargo:rerun-if-changed={}", backend_lib_rs().display());
     // 🔴 〔步 9 · 09-19〕分派那一半也要登记 —— 否则改 `main.rs` 不触发重跑本 build 脚本，
     //    上面那条 mtime 安全网拿到的是**缓存过的旧值**，它就不响了。
     println!("cargo:rerun-if-changed={}", backend_main_rs().display());
-    let build_id = std::fs::read_to_string(&main_rs)
-        .ok()
-        .and_then(|s| extract_build_id(&s))
-        .unwrap_or_else(|| "unknown".to_string());
+    let build_id = backend_source_build_id();
     println!("cargo:rustc-env=BACKEND_BUILD_ID={build_id}");
     // 🔴 `K-R70`：身份戳的两个界标，**闭集的唯一住址在后端源码里** —— 这里只是把它
     // 搬过来（同上面那条 `BUILD_ID` 的既有机制），monitor 生产段一律 `env!` 取，不许再抄字面量。
@@ -234,14 +270,44 @@ fn extract_str_const(src: &str, name: &str) -> Option<String> {
 /// 这边**扫不到戳**⇒ 下面那两条内嵌路会以「这份二进制没有身份」panic ——
 /// 那是一次响亮的假报警，而真病是量具与被测对象脱钩。抠源码则结构上不会脱钩。
 ///
-/// 抠不到时给一对**空串**：`bytes_build_id` 见空串直接答 `None`，于是内嵌路走
-/// 「扫不出身份」那一支并把这里的失败逐字印进 panic 文案（比静默用一个错界标去扫好）。
+/// # 🔴 `19b`（09-19）：抠不到 ＝ **构建当场失败**，与 [`backend_source_build_id`] 同一条理由
+///
+/// 〔墓碑，本段原话逐字：「抠不到时给一对**空串**：`bytes_build_id` 见空串直接答 `None`，
+///  于是内嵌路走「扫不出身份」那一支并把这里的失败逐字印进 panic 文案（比静默用一个错界标
+///  去扫好）」。**它对『恰好铺了字节』那种构建是真的，对别的构建是假的** —— 平常每一次
+///  `cargo build` 既不铺字节也不 panic，两个界标就这么带着**空串**被 emit 成
+///  `BACKEND_STAMP_OPEN` / `BACKEND_STAMP_CLOSE`，而运行期那一侧
+///  （`sftp::bytes_carry_build_stamp`）拿空界标去扫，**对任何字节都答不出身份**。
+///  ⇒ 与 `"unknown"` 同族：一个不会参与比较、却让每一次判定都落空的兜底值。〕
+///
+/// ⚠ 这里 panic 的代价说清楚：后端源码读不到 / 界标改名，**整个 monitor 编不过**。
+/// 那是刻意的方向 —— 编不过是一条响亮的失败，而「编过了但发出去的东西问不出身份」
+/// 是 `v2.19–v2.22` 那批安装包的形状。
 fn backend_stamp_marks() -> (String, String) {
-    let src = std::fs::read_to_string(backend_lib_rs()).unwrap_or_default();
-    (
-        extract_str_const(&src, "BUILD_STAMP_OPEN").unwrap_or_default(),
-        extract_str_const(&src, "BUILD_STAMP_CLOSE").unwrap_or_default(),
-    )
+    let p = backend_lib_rs();
+    // ⚠ 读不到也是**响亮的失败**，不给空串 —— 空串会让下面两条抽取各自 panic，
+    //   诊断却指向「界标不见了」，而真病是「这份源码根本读不到」。归因错了比失败本身贵。
+    let src = std::fs::read_to_string(&p).unwrap_or_else(|e| {
+        panic!(
+            "读不到后端源码 `src/bridge/{}`（{e}）—— 身份戳界标与 `BUILD_ID` 都没有来源了。\
+             住址是本文件的 `backend_lib_rs()`（全仓唯一一处）。",
+            p.display()
+        )
+    });
+    let mark = |name: &str| {
+        extract_str_const(&src, name).unwrap_or_else(|| {
+            panic!(
+                "抠不到后端源码的 `const {name}` —— 读的是 `src/bridge/{}`。\n\
+                 🔴 **这一步刻意没有兜底值**：给它一个空串，`bytes_build_id` 会对**任何**\
+                 字节都答「问不出身份」，而那条失败只在恰好铺了字节的构建里才有人拦 ——\
+                 平常的 `cargo build` 会把一对空界标烤进 exe，运行期的身份判定从此恒假。\n\
+                 出路：界标的唯一住址是 `src/backend/lib.rs` 的 `BUILD_STAMP_OPEN` /\
+                 `BUILD_STAMP_CLOSE`，改了名就同拍改本函数。",
+                p.display()
+            )
+        })
+    };
+    (mark("BUILD_STAMP_OPEN"), mark("BUILD_STAMP_CLOSE"))
 }
 
 /// 🔴 `K-R70`：**从一份二进制的字节里问出它是谁** —— 不看它旁边任何文件。
@@ -324,9 +390,11 @@ fn emit_backend_capabilities() {
 /// 测试抓出）。
 ///
 /// 🔴 **射程写清楚，别让下一个人读宽**〔`K-R61` 09-11 现打〕：本函数只喂
-/// [`backend_main_rs`] 那一个文件，抠的是 backend **流模式**那个 `CAPABILITIES`
-/// （现打逐字 `const CAPABILITIES: &[&str] = &["bg", "tail-only"];`，`main.rs` 里
+/// [`backend_lib_rs`] 那一个文件，抠的是 backend **流模式**那个 `CAPABILITIES`
+/// （现打逐字 `const CAPABILITIES: &[&str] = &["bg", "tail-only"];`，`lib.rs` 里
 /// 含这个串的行**恰好 1 行**）。
+/// 〔订正 `19b` 09-19：这两处原写 `main.rs` —— 步 9 把这一族搬进库面时漏改了这段头注，
+///  而它点名的是**本函数真读的那份文件**，指错就等于把读者引到一份抠不出东西的住址。〕
 ///
 /// ⚠ 仓里**还有两个同名常量**，本函数一个都盖不到：
 /// `src/backend/control/ccm/mod.rs`（`ccm` 的能力 token）与
@@ -421,23 +489,22 @@ fn embed_backends() {
             // 而且是最危险的场景（有人手工塞了个陈旧二进制）恰好绕开校验。
             // 〔`K-R70` 订正这一段的后半句：原话是「`sftp.rs` 运行时对 x86_64 的身份识别
             //  **只能靠清单**」——今天不是了，运行期那一侧同样扫字节（`sftp::bytes_carry_build_stamp`）。〕
-            let expected = source_build_id.as_deref().unwrap_or_else(|| {
-                // 抠不到源码 build_id ⇒ 单源链条已断，`BACKEND_BUILD_ID` 此刻是 "unknown"，
-                // 装出去每台远端都会被判 StaleBuild。比 mismatch 更该拦。
-                panic!(
-                    "抠不到后端源码的 `const BUILD_ID`（路径失效 / crate 改名 / const 写法变了）——\
-                     单源链条已断，`BACKEND_BUILD_ID` 会静默退化成 \"unknown\"，\
-                     装出去每台远端都会被判 StaleBuild 并无限重装。先修 build.rs 的提取逻辑。"
-                )
-            });
+            // 🔴 `19b`（09-19）：这里原本还有一条 `unwrap_or_else(panic!)` ——
+            // 〔墓碑，原话逐字：「抠不到源码 build_id ⇒ 单源链条已断，`BACKEND_BUILD_ID`
+            //  此刻是 "unknown"，装出去每台远端都会被判 StaleBuild。比 mismatch 更该拦。」〕
+            // 它说的是对的，**但它站错了地方**：它在 `src.exists()` 的里面，
+            // 而「抠不到」与「铺没铺字节」毫无关系 ⇒ 没铺字节的构建它一次都不响。
+            // 今天那条 panic 搬进了 `backend_source_build_id()`（取值那一跳，所有构建形态都过它）
+            // ⇒ 走到这里时 `expected` 在构造上已经是一个真身份，本处不再重复一遍。
+            let expected = source_build_id.as_str();
             if embedded_id.is_empty() {
                 panic!(
                     "内嵌 backend {arch}（src/bridge/{}）**问不出身份** —— \
                      在它的字节里找不到恰好一个 `{stamp_open}…{stamp_close}` 身份戳。\n\
                      可能是：① 它不是这套源码编出来的（太旧 —— `p2f-build-stamp` 之前的\
-                     backend 根本没有戳）；② 它被改过 / 截断了；③ 界标抠错了\
-                     （现打读到 open=`{stamp_open}` close=`{stamp_close}`，空串 = 从\
-                     `src/backend/main.rs` 抠失败，先修 `build.rs` 那一处）。\n\
+                     backend 根本没有戳）；② 它被改过 / 截断了。\n\
+                     ⚠ **不会是「界标抠错了」**：`19b` 起 `backend_stamp_marks()` 抠不到就当场 panic\
+                     ⇒ 走到这里时界标必然非空（现打 open=`{stamp_open}` close=`{stamp_close}`）。\n\
                      🔴 **别去写一个 `.build_id` 旁文件来糊它** —— `K-R70` 之后没有任何东西\
                      读那个文件了，写一份只是把标签换个地方抄。\n\
                      出路：重跑 `cargo zigbuild --target {arch}-unknown-linux-musl` 重编，\
@@ -637,12 +704,9 @@ fn embed_native_backend() {
         );
     }
     // ── ② 它的 build_id 与后端源码对得上吗 ─────────────────────────────
-    let expected = backend_source_build_id().unwrap_or_else(|| {
-        panic!(
-            "抠不到后端源码的 `const BUILD_ID`（路径失效 / crate 改名 / const 写法变了）——\
-             内嵌进去的那份就没有可信身份了。先修 build.rs 的提取逻辑。"
-        )
-    });
+    // 🔴 `19b`：同 `embed_backends` 那一处 —— 「抠不到」那条 panic 已经搬进
+    // `backend_source_build_id()`（取值那一跳），本处不再抄一份射程更窄的副本。
+    let expected = backend_source_build_id();
     if embedded_id.is_empty() {
         panic!(
             "本机内嵌后端（src/bridge/{}）**问不出身份** —— \

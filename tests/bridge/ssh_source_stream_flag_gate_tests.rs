@@ -118,10 +118,20 @@ fn embedded_capabilities_single_source_wired() {
 
 /// U-1（2026-08-01）：**`build_id` 那半单源管道一直没有等价断言。**
 ///
-/// `build.rs::emit_backend_build_id` 抠不到就 `unwrap_or_else(|| "unknown")` —— **静默退化**。
-/// 一旦 backend crate 改名 / `BUILD_ID` 挪出 `main.rs` / `const` 写法换行，
-/// `EXPECTED_BACKEND_BUILD_ID` 会变成 `"unknown"`，而**编译通过、测试全绿**，
-/// 运行期把每台远端后端都判成 `StaleBuild` → 无限重装。
+/// 〔墓碑 —— 本段原话逐字：「`build.rs::emit_backend_build_id` 抠不到就
+///  `unwrap_or_else(|| "unknown")` —— **静默退化**。一旦 backend crate 改名 /
+///  `BUILD_ID` 挪出 `main.rs` / `const` 写法换行，`EXPECTED_BACKEND_BUILD_ID` 会变成
+///  `"unknown"`，而**编译通过、测试全绿**，运行期把每台远端后端都判成 `StaleBuild`
+///  → 无限重装。」**那段描述在 `19b`（09-19）之前逐字为真。**〕
+///
+/// 🔴 **今天那条兜底没了**：`build.rs::backend_source_build_id()` 抠不到就**当场 panic**
+/// （`设计/96 §7.2.5`）⇒ 这一形在**所有**构建形态下都编不过，轮不到测试来发现。
+/// ⇒ 本条断言的**人群因此变小了**：它今天只逮得住「有人在 `lib.rs` 里把 `BUILD_ID`
+/// 真的写成 `"unknown"`」这一种（那是一次故意的手滑，不是路径漂）。
+/// ⚠ **留着它不是留一条恒真断言** —— 下面那两条形状检查（非空 / ≤64 / 字符集）
+/// 是它今天真正在买的东西；`"unknown"` 这一条降级为**便宜的第二道**。
+/// ⚠ 「路径漂」那一维今天由两处接住，都不在这里：`build.rs` 那条 panic（构建期）与
+/// `tests/evidence/K-R124-ruler.py` 的 ⑩（`release.yml` 里每一处抽取住址实打指得到真东西）。
 ///
 /// capabilities 那半有 `embedded_capabilities_single_source_wired` 兜着，这半没有。
 /// U13 的仓库级重命名**必须**先有这条，否则那次重命名是静默失败。

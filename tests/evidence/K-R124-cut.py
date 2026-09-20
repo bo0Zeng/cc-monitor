@@ -19,7 +19,9 @@
 
 副本落 `$K_R124_WORK`（缺省 `<仓根>/../k-r124-cuts`，**不进仓**）。
 """
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -29,21 +31,44 @@ ROOT = Path(__file__).resolve().parents[2]
 WORK = Path(os.environ.get("K_R124_WORK") or (ROOT.parent / "k-r124-cuts"))
 
 #: 副本里要有的那几份 —— 判据本体 ＋ 它的全部被测对象。
+#: 🔴 〔`19b` 订正 09-19〕**这张表在本拍之前整张指空**：仓库重组（09-18）把
+#:   `scripts/` · `evidence/` · `e2e/` 全并进了 `tests/`，而本工具一份都没跟
+#:   ⇒ `fresh()` 第一个 `read_bytes()` 就 `FileNotFoundError`，**这把刀具自己跑不起来**。
+#:   坏的不是某一刀，是**整套死值验**：`release-gate` 那一格从重组那天起没法再切一刀验有没有牙。
+#:   〔这正是本仓那句「坏尺子会把真缺陷一起藏起来」的又一例 —— 量具坏在**路径**上，
+#:    不在判定上，所以它一声不吭。〕
+#: ⚠ `19b` 起还多了四份被测对象（账本 · `gate.sh` · `build.rs` · 后端 `lib.rs`），
+#:   因为那一拍给判据加了 ⑨⑩⑪⑫ 四组，它们读的就是这几份。
 FILES = [
     ".github/workflows/release.yml",
     ".github/workflows/ci.yml",
     "package.json",
     "CHANGELOG.md",
-    "scripts/release-notes.mjs",
-    "evidence/K-R124-ruler.py",
-    "evidence/K-R122-ruler.py",
+    "tests/scripts/release-notes.mjs",
+    "tests/scripts/gate.sh",
+    "tests/evidence/K-R124-ruler.py",
+    "tests/evidence/K-R122-ruler.py",
+    "tests/evidence/K-G4-platform-ledger.py",
+    "src/bridge/build.rs",
+    "src/backend/lib.rs",
 ]
-#: 阴性对照那一刀要跑本仓**另一格**也读 `.github/` 的尺子（`K-R122`），它还要 `e2e/` 那些 `.sh`。
-DIRS = ["e2e"]
+#: 阴性对照那一刀要跑本仓**另一格**也读 `.github/` 的尺子（`K-R122`），它还要 `tests/e2e/` 那些 `.sh`。
+DIRS = ["tests/e2e"]
+
+#: 🔴 **本版版本号从 `package.json` 现读，不写死** —— 见 `d7` 那一刀的头注（原来写死成 `3.8.0`，
+#: 版本走到 3.8.1 之后那一刀就切不动了，而它在表上仍然显示为「一刀」）。
+CUR_VERSION = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+_m = re.search(r"^## \[%s\].*$" % re.escape(CUR_VERSION),
+               (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), re.M)
+#: 本版那一段的标题行逐字；抠不到就留空 ⇒ `d7` 会以「锚点不符」整刀记，**不会静默变成一刀假绿**。
+CUR_HEADING = _m.group(0) if _m else "<CHANGELOG.md 里没有 ## [%s] 这一段>" % CUR_VERSION
 
 RELEASE = ".github/workflows/release.yml"
-RULER = "evidence/K-R124-ruler.py"
-RENDERER = "scripts/release-notes.mjs"
+RULER = "tests/evidence/K-R124-ruler.py"
+RENDERER = "tests/scripts/release-notes.mjs"
+GATE = "tests/scripts/gate.sh"
+LEDGER = "tests/evidence/K-G4-platform-ledger.py"
+BUILD_RS = "src/bridge/build.rs"
 
 ENV_LINE = "  PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}"
 CANON_LINE = 'CANON_ENV = "${{ github.event_name == \'push\' || inputs.publish == true }}"'
@@ -64,12 +89,12 @@ MARK6 = '    # ── ⑥ 每一处发布步骤都带正文来源（`KR124D2`）
 
 WIN_RENDER = """      - name: Render the Release body (CHANGELOG section for this version)
         if: env.PUBLISH == 'true'
-        run: node scripts/release-notes.mjs RELEASE_BODY.md
+        run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
 
       # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之一**"""
 LNX_RENDER = """      - name: Render the Release body (CHANGELOG section for this version)
         if: env.PUBLISH == 'true'
-        run: node scripts/release-notes.mjs RELEASE_BODY.md
+        run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
 
       # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之二**"""
 
@@ -144,9 +169,12 @@ CUTS = {
         "ruler",
     ),
     "d7": (
-        "`CHANGELOG.md` 里本版那一段掏空（`KR124D3` 死值：造一处它该逮的东西）",
-        [sub("CHANGELOG.md", "## [3.8.0] — 2026-09-14",
-             "## [3.8.0] — 2026-09-14\n\n（待写）\n\n## [3.7.9] — 2026-09-14", 1)],
+        "`CHANGELOG.md` 里**本版**那一段掏空（`KR124D3` 死值：造一处它该逮的东西）。"
+        "🔴 〔`19b` 订正 09-19〕原来这一刀把版本号**写死成 `3.8.0`**，而 `package.json` "
+        "早已走到 `%s` ⇒ 它割的是**别的版本**那一段，判据一个字不动、rc=0 —— "
+        "**一把切不动的刀在死值验表上长得和一把好刀一模一样**。"
+        "今天版本从 `package.json` 现读，刀跟着版本走。" % CUR_VERSION,
+        [sub("CHANGELOG.md", CUR_HEADING, CUR_HEADING + "\n\n（待写）\n\n## [0.0.0-cut] — 掏空", 1)],
         "ruler",
     ),
     "d8": (
@@ -164,6 +192,89 @@ CUTS = {
         "阴性对照：**本件新加的那几条判据（⑥⑦⑧）整块摘掉** ＋ 刀 `d4w`",
         [sub(RULER, MARK6, "    return (1 if fails else 0), passes[0], fails\n" + MARK6, 1),
          sub(RELEASE, WIN_PUB, WIN_PUB.replace("RELEASE_BODY.md", "RELEASE_NOTES_ABSENT.md"), 1)],
+        "ruler",
+    ),
+    # ══ `19b`（09-19）：产字节那条路 —— 六刀 ══════════════════════════════════
+    "b1": (
+        "🔴 **把身份住址指回 `main.rs`** —— 逐字重演步 9 那次漏改（`release.yml` 两处抽取"
+        "只改了一处）。它该红在 ⑩b「住址实打」上，而**不是**红在别的地方",
+        [sub(RELEASE, "  CCM_BACKEND_IDENTITY_SRC: src/backend/lib.rs",
+             "  CCM_BACKEND_IDENTITY_SRC: src/backend/main.rs", 1)],
+        "ruler",
+    ),
+    "b2": (
+        "**摘掉一条产线** —— 把 `build-windows` 那步 `Build local backend (native)` 改个名"
+        "（＝本机 Windows 那一格的字节没人产了）",
+        [sub(RELEASE, "      - name: Build local backend (native)\n"
+                      "        working-directory: src/backend\n"
+                      "        run: cargo build --release --locked\n"
+                      "      - name: Stage local backend for externalBin\n"
+                      "        shell: pwsh",
+             "      - name: Build local backend (renamed)\n"
+                      "        working-directory: src/backend\n"
+                      "        run: cargo build --release --locked\n"
+                      "      - name: Stage local backend for externalBin\n"
+                      "        shell: pwsh", 1)],
+        "ruler",
+    ),
+    "b3": (
+        "**给一个没承诺的格子悄悄开一条产线** —— musl 那步多编一个 macOS target"
+        "（条 63 里 macOS 逐字是「目标里有，现在不做」）。该红在 ⑨b ＋ ⑨e",
+        [sub(RELEASE, "          cargo zigbuild --release --locked --target aarch64-unknown-linux-musl",
+             "          cargo zigbuild --release --locked --target aarch64-unknown-linux-musl\n"
+             "          cargo zigbuild --release --locked --target x86_64-apple-darwin", 1)],
+        "ruler",
+    ),
+    "b4": (
+        "**把 `\"unknown\"` 兜底加回 `build.rs`** —— 逐字重演 `设计/16 §5.4a` 那次事故的形状",
+        [sub(BUILD_RS, "    let build_id = backend_source_build_id();",
+             "    let build_id = std::fs::read_to_string(backend_lib_rs())\n"
+             "        .ok()\n"
+             "        .and_then(|s| extract_build_id(&s))\n"
+             "        .unwrap_or_else(|| \"unknown\".to_string());", 1)],
+        "ruler",
+    ),
+    "b4b": (
+        "**兜底值直接塞进 `backend_source_build_id` 里** —— 与 `b4` 的区别："
+        "那一刀是**绕过**那个住址，这一刀是**污染**它。该红在 ⑪「没有兜底值」",
+        [sub(BUILD_RS,
+             '        .and_then(|s| extract_build_id(&s))\n        .unwrap_or_else(|| {',
+             '        .and_then(|s| extract_build_id(&s))\n'
+             '        .or_else(|| Some("unknown".to_string()))\n'
+             '        .unwrap_or_else(|| {', 1)],
+        "ruler",
+    ),
+    "b4c": (
+        "**空串兜底塞回 `backend_stamp_marks`** —— 与 `unknown` 同族的那一形"
+        "（运行期拿空界标去扫，对任何字节都答不出身份）",
+        [sub(BUILD_RS,
+             '    (mark("BUILD_STAMP_OPEN"), mark("BUILD_STAMP_CLOSE"))',
+             '    let _ = &mark;\n'
+             '    (\n'
+             '        extract_str_const(&src, "BUILD_STAMP_OPEN").unwrap_or_default(),\n'
+             '        extract_str_const(&src, "BUILD_STAMP_CLOSE").unwrap_or_default(),\n'
+             '    )', 1)],
+        "ruler",
+    ),
+    "b5": (
+        "**门禁那一格的 zig 版本漂走** —— `muslbuild` 裁词改成跟宿主那版（0.16.0）。"
+        "该红在 ⑫：本格的绿从此不代表发版那趟会绿",
+        [sub(GATE, "（zig 0.14.0 / cargo-zigbuild 0.23.0）", "（zig 0.16.0 / cargo-zigbuild 0.23.0）", 1)],
+        "ruler",
+    ),
+    "b6": (
+        "**承诺面少一格** —— 账本里把「本机 Linux」那两行摘掉。该红在 ⑨a（两向集合相等）",
+        [sub(LEDGER, '    ("本机 Linux", "cargo", "run_gate_sum cargo ",', '    ("XX 已摘", "cargo", "run_gate_sum cargo ",', 1),
+         sub(LEDGER, '    ("本机 Linux", "backend", "run_gate backend ",', '    ("XX 已摘", "backend", "run_gate backend ",', 1)],
+        "ruler",
+    ),
+    "b7n": (
+        "阴性对照：**`19b` 新加的 ⑨⑩⑪⑫ 整块摘掉** ＋ 刀 `b1` —— 摘了就不该红",
+        [sub(RULER, "    # ══ `19b`（09-19）：产字节那条路 ═══════════════════════════════════════════",
+             "    return (1 if fails else 0), passes[0], fails\n"
+             "    # ══ `19b`（09-19）：产字节那条路 ═══════════════════════════════════════════", 1),
+         sub(RELEASE, "  CCM_BACKEND_IDENTITY_SRC: src/backend/lib.rs",
+             "  CCM_BACKEND_IDENTITY_SRC: src/backend/main.rs", 1)],
         "ruler",
     ),
     "d0": (
@@ -230,7 +341,7 @@ def measure(d, which):
         cmd = ["python3", str(d / RULER)]
     else:
         env["K_R122_ROOT"] = str(d)
-        cmd = ["python3", str(d / "evidence/K-R122-ruler.py")]
+        cmd = ["python3", str(d / "tests/evidence/K-R122-ruler.py")]
     proc = subprocess.run(cmd, cwd=str(d), env=env, capture_output=True, text=True)
     return proc.returncode, (proc.stdout + proc.stderr)
 
