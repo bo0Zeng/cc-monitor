@@ -29,6 +29,55 @@ description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消
 
 > 敲门只发"去 cc-recv"不带正文——正文一律 `cc-recv` 拿。**广播**(class=broadcast)按约定**不必逐一回复**,除非被点名。
 
+## 两阶段读口:`cc-peek`(纯读) ＋ `cc-commit`(确认推进)
+
+`cc-recv` 一条命令同时做两件事:**渲染消息** ＋ **推进已读位置**。中间任何一步失败,
+消息就被消费掉却没人看见(实测:40 条 ×4KB 累计 160KB 撞 `MAX_ARG_STRLEN`,
+钩子 rc=126、stdout 空,而位置已经推到 40 ⇒ 那 40 条再也读不到)。
+
+⇒ 两阶段口把它从「推进了再退回」换成「**没确认就不推进**」:
+
+```bash
+tok=$(cc-peek 2>&1 >/dev/null)      # 第一跳:纯读。令牌走 stderr(或 --token-file <路径>)
+cc-peek                             # 正文走 stdout,与 cc-recv 同一套渲染
+cc-commit "$(cc-whoami)" "$tok"     # 第二跳:确认。只有它写 .pos
+cc-peek --max-lines 20              # 分段读:积压太大时一轮只吃 20 条,分若干轮排空
+```
+
+令牌 = `<from>.<to>.<anchor>`,**不落盘**、自包含:`from` 是 peek 那一刻的已读位置,
+`to` 是这一段的末行,`anchor` 是第 `to` 行现算的 `cksum`。它**不防篡改**(能造令牌的人
+本来就能直接写 `.pos`),它防的是漂移与手滑。**令牌没有 TTL** —— 有效性完全由两条状态
+比较决定,没 commit 就没推进,下一次 peek 还会拿到同一段。
+
+**退出码**(`cc-commit`):
+
+| rc | 含义 | 你该怎么办 |
+|---|---|---|
+| 0 | 推进成功 | —— |
+| 2 | 令牌/参数非法 | 修调用,不要重试 |
+| **11** | **STALE**:别人已经推过了 | 🔴 **照常处理你手上那段,不重试、不报错** —— 你输掉的只是"谁来推位置",不是内容 |
+| **12** | **CHANGED**:收件箱在两跳之间变了 | 位置没推,下一轮会再读一次 |
+| 13 | 适配层办不到(这一侧没做 / trait 没装齐) | 看 `~/.cc-bus/log/bus.log` 里的 `ADAPT` 行 |
+
+⇒ cc-bus 的投递语义因此是 **at-least-once:可能重复,绝不吞掉**。把 rc=11 当失败去重试
+会转成一个循环 —— 它不是错,是"有人替你读过了"。
+
+⚠ `cc-recv` **一字未改**,继续用它完全可以;它语义上 ≡ `cc-peek` 之后立刻 `cc-commit`。
+Stop 钩子已经换成两阶段(喂回成功才推进),`CCBUS_PEEK_MAX_LINES` 可让它分段喂。
+
+## 三个适配面(agent / OS / 存储)
+
+cc-bus 是**额外的东西,解耦清楚**:它不住在 monitor 后端里,缝切在 shell 这一层。
+
+| 面 | 契约(函数名) | POSIX | Windows |
+|---|---|---|---|
+| ① agent | `agent_caps` · `agent_block_reason` · `agent_submit_enter` | claude 词典:有 Stop 钩子、能敲门、能读回 | 同一份词典 |
+| ② OS | `os_caps` · `os_send_keys` · `os_pane_fingerprint` | tmux send-keys / `pane_pid` | ❌ **没做**(ConPTY 那条路一行都没写)⇒ 显式 rc=13,不假装投递 |
+| ③ 存储 | `store_caps` · `store_lock_shared` · `store_lock_exclusive` · `store_append_line` · `store_now` · `store_path_real` | `flock`(含 `-s` 共享读锁) | 有 `flock` 就用(MSYS2);**没有共享读锁** ⇒ peek 退化成排他并记一行 `DEGRADE`;连 `flock` 都没有就 rc=13 |
+
+`kinds.tsv` 里配的行为在 agent 不支持时**按能力降级,不硬失败**:
+拦停 ⇒ 敲门 ⇒ 只入收件箱 ⇒ 都不支持就**投递前拒**(别让消息烂在收件箱里)。
+
 ## 发信 / 广播(主动)
 ```bash
 cc-list                         # 看谁在线、各自积压(队列深度看 cc-busd status)
@@ -94,7 +143,7 @@ bash ~/.claude/skills/cc-bus/scripts/cc-bus-install.sh
 send-keys 投递的内容 = 对方 CC 的**用户级输入**(auto 权限基本不弹确认)。**只在你信任的 pane 间用**,别把 `cc-send` 接不可信来源。
 
 ## 命令一览
-`cc-whoami`(查/认领身份) · `cc-send`(单播/`--new`/`--broadcast`) · `cc-broadcast`(广播) · `cc-recv`(收) · `cc-register`(登记,无参自动认领) · `cc-list`(看在线/积压) · `cc-spawn`(在某目录开独立 cct 会话) · `cc-kill`(收掉会话) · `cc-agents`(列 spawn 的会话) · `cc-busd`(守护 start/stop/status) · `cc-bus-stop-hook`(Stop 钩子) · `cc-bus-lib.sh`(路由管线库,被 source) · `cc-bus-install.sh`(安装)。
+`cc-whoami`(查/认领身份) · `cc-send`(单播/`--new`/`--broadcast`) · `cc-broadcast`(广播) · `cc-recv`(收) · `cc-peek`(纯读,吐令牌) · `cc-commit`(确认推进) · `cc-register`(登记,无参自动认领) · `cc-list`(看在线/积压) · `cc-spawn`(在某目录开独立 cct 会话) · `cc-kill`(收掉会话) · `cc-agents`(列 spawn 的会话) · `cc-busd`(守护 start/stop/status) · `cc-bus-stop-hook`(Stop 钩子) · `cc-bus-lib.sh`(路由管线库,被 source) · `cc-bus-adapt.sh`＋`cc-bus-adapt-posix.sh`/`cc-bus-adapt-windows.sh`/`cc-bus-agent-claude.sh`(三个适配面,被 source) · `cc-bus-install.sh`(安装)。
 
 ## 排障
 - 敲门没反应:`cat ~/.cc-bus/agents.tsv` 看地址;对方在忙靠 Stop 钩子;`cc-list` 看积压。

@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# cc-commit <id> <令牌>
+#   两阶段读口的**第二跳:唯一的副作用**。校验通过 ⇒ 把已读位置推到令牌里的 `to`,
+#   并补写 `lastread-*`(那段副作用跟着从 cc-recv 搬到第二跳)。校验不过 ⇒ **一个字节都不写**。
+#
+# ## 它是一次 CAS(比较后写),不是"覆盖"
+#
+# 两个读者同时 peek 到同一段、各自 commit:**先到的赢**。后到的拿 rc=11,
+# 而**它手上那段文本照常处理** —— 输掉的只是"谁来推位置",不是内容。
+# 🔴 调用方必须把 rc=11 当成「有人替我推过了」:**不重试、不报错给用户**。
+#    重试会转成一个循环;而把它当失败会把 cc-bus 的投递语义读反。
+# ⇒ 这等于把语义写死成 **at-least-once(可能重复,绝不吞掉)**,
+#   与 `cc-bus-stop-hook` 早就选的那一边同向(逐字:「宁可下轮再读一次,也不能吞掉」)。
+#
+# ## 三条校验,全在锁内做(设计 95 §3ter.2)
+#
+#   ① 格式   `^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$`           不合 ⇒ rc=2
+#   ② from == 当前 `.pos`?                               不等 ⇒ rc=11 STALE(别人已经推过了)
+#   ③ 第 to 行现算 cksum == anchor?                      不等 ⇒ rc=12 CHANGED(收件箱变了)
+#
+# ## 退出码(11/12 刻意选在 10 那一族)
+#
+#   0  推进成功
+#   2  令牌/参数格式非法,或令牌自相矛盾(`to ≤ from` 而收件箱并没有被截短)
+#   11 STALE   别人已经推过了     ┐ `route_process` 里 10 ＝「被阀门拦截(已消费,不投递不重试)」
+#   12 CHANGED 收件箱变了         ┘ ⇒ 11/12 与它同族:**不是错,是被规则挡下**(1/2/3 已被占)
+#   13 适配层办不到(锁这一侧没做 / trait 没装齐)
+# ⚠ 新增的码要同拍登记进 cc-bus 自己那张「退出码 → 语义码」映射表(`control/cc_bus.rs` 头注
+#   逐字:那张表**刻意不上收**,同一个码在不同插件里语义互斥)⇒ 加码就要改那一处。
+#   〔本轮那一处在写区外(`src/backend/`),已在交件里登记,没有偷偷改。〕
+#
+# ## 单调性:只许前进,唯一的例外逐条登记
+#
+# 已读位置只许**变大**。唯一允许变小的是「收件箱被外部清空/截短,而 `.pos` 仍高」——
+# 与 `cc-recv:17` 那条归零自愈是同一格(不让它自愈就永远收不到新消息)。
+# 本脚本把它认成 `cur > total`,写之前记一行日志;除此之外 `to ≤ cur` 一律 rc=2。
+set -euo pipefail
+BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
+SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+# shellcheck source=cc-bus-adapt.sh
+. "$SELFDIR/cc-bus-adapt.sh"
+ccbus_adapt_load || exit 13        # 三个 trait 装不齐就不干活(fail-closed,不退化成裸 flock)
+# shellcheck source=cc-bus-lib.sh
+. "$SELFDIR/cc-bus-lib.sh"
+
+id="${1:-}"; token="${2:-}"
+[ -n "$id" ] && [ -n "$token" ] || { echo "用法: cc-commit <id> <令牌>" >&2; exit 2; }
+[ $# -le 2 ] || { echo "cc-commit: 多余的参数" >&2; exit 2; }
+case "$id" in *[!A-Za-z0-9_-]*) echo "cc-commit: 非法 id '$id'" >&2; exit 2;; esac
+[[ "$token" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]] || { echo "cc-commit: 令牌格式非法 '$token'" >&2; exit 2; }
+
+from=${token%%.*}
+rest=${token#*.}
+to=${rest%%.*}
+anchor=${rest#*.}
+
+inbox="$BUS/inbox/$id.jsonl"
+posf="$BUS/state/$id.pos"
+[ -f "$inbox" ] || { echo "cc-commit: 没有收件箱 $inbox —— 它在 peek 之后被删了" >&2; exit 12; }
+
+# ★ 锁:**排他,锁文件仍是 `<inbox>.lock`**(95 §3ter.5)。
+#   `.pos` 与 inbox 第 `to` 行必须是**同一个快照** ⇒ 两份状态一把锁罩住。
+#   ❌ 不另开 `<id>.pos.lock`:两把锁保同一个不变式 ⇒ 有锁序 ⇒ 有死锁(`D1`)。
+(
+  store_lock_exclusive 9 || exit 13           # 锁失败要**显式**退出,不靠 errexit
+  mkdir -p "$BUS/state"
+  total=$(awk 'END{print NR}' "$inbox")
+  cur=$(cat "$posf" 2>/dev/null || echo 0)
+  [[ "$cur" =~ ^[0-9]+$ ]] || cur=0            # 与 cc-peek 同一条消毒(两边必须逐字同口径)
+  [ "$cur" = "$from" ] || {
+    printf 'cc-commit: STALE —— 令牌说 from=%s,盘上已经是 %s。有人替你推过了:照常处理你手上那段,别重试\n' \
+      "$from" "$cur" >&2
+    exit 11
+  }
+  now=$(twophase_anchor "$inbox" "$to")
+  [ "$now" = "$anchor" ] || {
+    printf 'cc-commit: CHANGED —— 第 %s 行现算 %s,令牌里是 %s。收件箱在两跳之间变了,不推进\n' \
+      "$to" "$now" "$anchor" >&2
+    exit 12
+  }
+  if [ "$to" -le "$cur" ]; then
+    if [ "$cur" -gt "$total" ]; then
+      route_log "POS heal $id $cur→$to(收件箱只剩 $total 行,按 cc-recv:17 同一条自愈)"
+    else
+      printf 'cc-commit: 令牌自相矛盾 —— to=%s 不大于 from=%s,而收件箱有 %s 行(没被截短)\n' \
+        "$to" "$cur" "$total" >&2
+      exit 2
+    fi
+  fi
+  # 逐条记录 lastread-<self>__<from>=id\thops\ttrace(供 F03 因果链);坏行/非法 from 跳过。
+  # 🔴 这段副作用**从 cc-recv 搬到第二跳**:它与"推进位置"必须同生共死,
+  #    留在第一跳就等于 peek 有了写面。
+  seg_from=$cur
+  [ "$cur" -le "$total" ] || seg_from=0        # 截短自愈:这一段是从头读的
+  new=$(sed -n "$((seg_from+1)),${to}p" "$inbox")
+  printf '%s\n' "$new" | while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    obj=$(printf '%s' "$line" | jq -Rc 'fromjson? // empty')
+    [ -n "$obj" ] || continue                  # 非法 JSON 行跳过
+    f=$(printf '%s' "$obj" | jq -r '.from // "?"')
+    case "$f" in *[!A-Za-z0-9_-]*|'') continue;; esac   # 非法发件人不写路径
+    mid=$(printf '%s' "$obj" | jq -r '.id // "-"')
+    hp=$(printf '%s' "$obj" | jq -r '.hops // 0')
+    tr=$(printf '%s' "$obj" | jq -r '.trace // .from // "?"')
+    lrf="$BUS/state/lastread-${id}__${f}"      # 原子写(tmp+mv),避免 cc-send 读侧无锁读到半截
+    printf '%s\t%s\t%s\n' "$mid" "$hp" "$tr" > "$lrf.tmp.$$" && mv "$lrf.tmp.$$" "$lrf"
+  done
+  echo "$to" > "$posf"                         # ★ 全仓第二处、也是两阶段口唯一的一处 .pos 推进
+) 9>>"$inbox.lock"

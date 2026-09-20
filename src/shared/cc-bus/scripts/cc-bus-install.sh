@@ -17,7 +17,7 @@ miss=""; for c in jq tmux flock; do command -v "$c" >/dev/null 2>&1 || miss="$mi
 # 软链可执行脚本(cc-bus-lib.sh 不链:各脚本用 readlink -f 定位真身目录再 source 它)
 # 不静默覆盖用户已有同名命令:仅刷新指向本仓库 scripts/ 的旧软链,其余跳过并告警。
 skipped=""
-for s in cc-whoami cc-register cc-send cc-recv cc-list cc-broadcast cc-bus-stop-hook cc-busd cc-spawn cc-kill cc-agents; do
+for s in cc-whoami cc-register cc-send cc-recv cc-peek cc-commit cc-list cc-broadcast cc-bus-stop-hook cc-busd cc-spawn cc-kill cc-agents; do
   chmod +x "$SRC/$s"
   dst="$BINDIR/$s"
   if [ -e "$dst" ] || [ -L "$dst" ]; then
@@ -29,14 +29,17 @@ for s in cc-whoami cc-register cc-send cc-recv cc-list cc-broadcast cc-bus-stop-
   fi
   ln -sf "$SRC/$s" "$dst"
 done
-chmod +x "$SRC/cc-bus-lib.sh"
+# 三个适配面与路由库都是**被 source 的**,不进 PATH(各脚本用 readlink -f 定位真身目录再 source)
+for s in cc-bus-lib.sh cc-bus-adapt.sh cc-bus-adapt-posix.sh cc-bus-adapt-windows.sh cc-bus-agent-claude.sh; do
+  chmod +x "$SRC/$s"
+done
 [ -n "$skipped" ] && echo "⚠ 跳过(PATH 已有同名命令,未覆盖):$skipped —— 确认要用本版本请先手动移除再重装"
 
 # 放示例配置(不覆盖已有;默认不激活任何阀门/ACL)
 [ -f "$BUSHOME/config.example" ]     || cp "$SKILLDIR/examples/config"     "$BUSHOME/config.example"
 [ -f "$BUSHOME/policy.tsv.example" ] || cp "$SKILLDIR/examples/policy.tsv" "$BUSHOME/policy.tsv.example"
 
-echo "✅ 已安装:11 个命令 → $BINDIR;运行时根 → $BUSHOME"
+echo "✅ 已安装:13 个命令 → $BINDIR;运行时根 → $BUSHOME"
 case ":$PATH:" in *":$BINDIR:"*) :;; *) echo "⚠ $BINDIR 不在 PATH,请加入";; esac
 
 cat <<EOF

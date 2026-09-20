@@ -761,6 +761,29 @@ CATCH_ALL = {"*", "**", "*.*", "?*", "*?", "*/*"}                      # 全域�
 MIN_BUCKET_WHY = 24   # 一档的理由比整棵树的短，量级不同，阈值也不同
 
 
+# ── `w24c`（09-19）：第 24 格 `ccbus-twophase` ────────────────────────────────
+# 步 24c：cc-bus 的两阶段读口（`cc-peek` ＋ `cc-commit`）· 三个适配 trait · Windows 那一侧。
+# ⚠ 这一格是本门禁里**唯一会真跑 cc-bus 那几条命令**的格（在一次性 `CC_BUS_HOME` 里）。
+cell(
+    "ccbus-twophase",
+    anchor="run_gate ccbus-twophase '判过的条数",
+    cwd="仓根",
+    cmd="python3 tests/evidence/W24C-ccbus-twophase-ruler.py",
+    **{
+        "src/shared/": (PART, "只有 `src/shared/cc-bus/` 那一棵：`scripts/` **整目录**被扫两遍"
+                        "（`.pos` 的写点 · 锁文件表达式），另有 7 份被逐字读"
+                        "（`cc-peek` · `cc-commit` · `cc-bus-adapt.sh` ＋ 两份实现 ＋ "
+                        "`cc-bus-agent-claude.sh` · `cc-recv` 的 sha256）＋ `SKILL.md` 那几句。"
+                        "⚠ 这棵树的其余部分（`src/shared/cc-bus/examples/` · `ccm-aliases.sh` 之类）"
+                        "本格一个字都不问；⚠ `cc-spawn`/`cc-kill`/`cc-busd` 只在那两条全目录扫里"
+                        "被**数到**，它们自己干得对不对本格问不出来"),
+        "tests/evidence/": blind("本格的**尺子**就住这棵树（`evidence/W24C-ccbus-twophase-ruler.py`）"
+                                 "—— 尺子不是分母。把量具算进它自己的覆盖，正是本区最高频那族病"
+                                 "⇒ 这里刻意判「无」，与 `hooks` / `copy2` / `gate-selfdesc` 三格"
+                                 "对自己那棵树的判法一致"),
+    },
+)
+
 # ── 现打：`git ls-files` ────────────────────────────────────────────────────
 # 🔴 **必须走 `-z`。** 第一版用的是裸 `ls-files` + 按换行切，而本仓有中文文件名 ——
 #   git 默认会把它们**加引号并转义**（`"doc/\350\256\241…"`），于是顶层目录被切成 `"doc/`
