@@ -887,7 +887,7 @@ run_gate worktree-clean '判过的条数（抽样的 4 个扩展名 `.sh`/`.mjs`
 #   不必去动真工作树。
 # ⚠ 本格的数是**数出来的**（每个 hook 文件 3 条 ＋ 8 条阳性对照），跟 `fmt` 那几格的
 #   「只有绿/红两态」不同 —— 往 `hooks/` 里加一份 hook，这个数会涨，那是对的。
-run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照；现打 hooks/ 下 1 个文件 ⇒ 11。hooks/ 之外的任何一棵树本行都盖不到' \
+run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照。⚠〔09-20 订正〕本行原先写着「现打 hooks/ 下 1 个文件 ⇒ 11」——那是个**手抄的份数**，而本拍加了 `tests/hooks/pre-push` 之后盘上是 2 份 ⇒ 14。同 `copy2` 那一拍的订正：**摘掉抄来的数**，份数以判据本体自己印的那一行为准（它每趟从 `git ls-files tests/hooks/` 现算）。hooks/ 之外的任何一棵树本行都盖不到' \
          bash tests/scripts/hooks-are-runnable.sh
 
 # ── 量具的**还原那一跳**有没有把旧 mtime 搬回被测树（`K-R115` `KR115D1`，09-14，第 14 格）──
@@ -1855,7 +1855,7 @@ GATE_BLIND=(
   "windows-runner|Windows runner 上才犯的那一族 —— 本门禁的 npm / tsc / e2e 全跑在 Linux 上，路径分隔符恒是 /。K-R119 那趟云端 vitest 的唯一一条红（1 failed / 1725 passed）就是这一形，本机在构造上红不了"
   "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。⚠ 这一条已经被收窄过三次，每次只割走一个切片：ci-e2e-prereq 判 ci.yml 里 e2e 步骤的 build 前置齐不齐（K-R122）；release-gate 判 release.yml 的触发器、env.PUBLISH 字面、两处发布步骤与 CI 门那一步的 if、以及两处发布步骤的正文来源（K-R124）；〔19b 09-19〕release-gate 又割走**产字节那条路**——release.yml 里「跑 cargo build/zigbuild」的步骤 ↔ 条 63 承诺的三格（两向）、出现的 target triple（两向）、三个 job 的 runs-on 逐字、每一处抠 const BUILD_ID 的住址实打指得到真东西、setup-zig 与 install-action 那两个版本。**其余全部仍然没人看** —— 包括 ci.yml 那 8 个 job 的 runner/工具链/needs/缓存，和 release.yml 里除上面点名那几处以外的每一步（打包 · 校验和 · 上传清单 · artifact 传递）。⚠ 而且那几个切片买的都只是「盘上这份文本满足这几条」——**云端那一趟会不会绿，见下面 did-ci-actually-run 那一条**"
   "msvc-abi|MSVC ABI 专属的那一类跨平台编译问题 —— 两格 Windows 交叉检查用的都是 -gnu（沙箱里没有 zig，ring 的 build script 缺 lib.exe）。只在 msvc 上才犯的毛病本门禁盖不到"
-  "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁断网跑（--network none），它一次 gh run view 都做不到。GATE: OK 说的是这棵树在本机这几格上的样子（几格由裁决行现算，这里刻意不写死一个数——上一版这里写着 18 而盘上已经是 19），不是它在云端的样子"
+  "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁断网跑（--network none），它一次 gh run view 都做不到。GATE: OK 说的是这棵树在本机这几格上的样子，不是它在云端的样子。⚠〔09-20 收窄一刀，不摘〕本文件此刻已经**被调用方接住了**：.github/workflows/ci.yml 的 local-gate 那个 job 与 tests/hooks/pre-push 都在门禁之后跑 tests/evidence/K-G4C-gate-receipt.py（「这一趟到底跑没跑门禁」从此有判据）。**但那两条路今天一趟都没在云端真跑过** —— 本仓红线是不推送，而 ci.yml 的触发器只有 push(main/v*) 与 pull_request ⇒ 那个 job 在 GitHub runner 上从未起过；pre-push 同理（没有 push 就没有 pre-push）。⇒ 盘上那几份文本满足那几条判据，**不等于**云端那一趟会绿，这一条因此不摘。⚠ 本条刻意不写第二个格数：那个数是**写死在裁决行那一句里的字面量**，由 K-R80 的 C5（数）· C5b（自述节三方对拍）· C5d（裁决行那串点名与盘上两向集合相等）三处钉着。上一版这里逐字声称那个数是门禁自己算出来的 —— **那是假话**（裁决行是字面量，C5 那条正则正是靠它是字面量才钉得住），而说明栏 C5c 逐字声明「一个字都不判」⇒ 那句假话没人守，腐着。C5d 第二半从此把它焊住"
 )
 gate_print_blind() {
   printf 'GATE: 射程 —— 上面那行只对它自己那几格负责；下面这 %s 件事**本门禁不看**：\n' "${#GATE_BLIND[@]}"
