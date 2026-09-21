@@ -874,6 +874,9 @@ fn real_pointer_events_reach_egui_and_the_double_click_side_is_still_unjudgeable
 /// 往 `/tmp` 里种 30 个假锁会**砸掉同时并行跑的别的格**。
 /// ⇒ 把判定抽成纯函数（内容 ＋ 一个「这个 pid 活着吗」的判定），
 /// 两个方向都用合成输入打，**一个字节都不碰文件系统**。
+// 台架整份是 `#[cfg(not(windows))]` ⇒ 本条在 Windows target 上导入解析不了。
+// 〔现打：`winchk` 那一格交叉编到 `x86_64-pc-windows-gnu` 时 E0432〕
+#[cfg(not(windows))]
 #[test]
 fn a_stale_lock_and_a_live_lock_are_told_apart() {
     use crate::filewin::rows::testing::xvfb::{classify_lock, Slot};
@@ -909,6 +912,9 @@ fn a_stale_lock_and_a_live_lock_are_told_apart() {
 /// ⚠ 它买的是**行为**：真起一台 Xvfb、真析构、再看盘上。
 /// 上面那条纯函数判据**买不到这一条**（它不碰文件系统）——
 /// 两条各买一半，合起来才是「号能还回去」。
+// 台架整份是 `#[cfg(not(windows))]` ⇒ 本条在 Windows target 上导入解析不了。
+// 〔现打：`winchk` 那一格交叉编到 `x86_64-pc-windows-gnu` 时 E0432〕
+#[cfg(not(windows))]
 #[test]
 fn the_rig_leaves_no_lock_behind_when_it_is_dropped() {
     use crate::filewin::rows::testing::xvfb;

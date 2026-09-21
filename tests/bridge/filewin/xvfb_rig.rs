@@ -230,7 +230,11 @@ impl Drop for Screen {
         //
         // ⚠ **只删记着我们自己这个 pid 的那一份** —— 不许见锁就删：
         //    别人（另一条并行的格、或机器上真的 X 会话）的锁不归我们管。
-        if let Some(num) = self.display.strip_prefix(':').and_then(|n| n.parse::<u32>().ok()) {
+        if let Some(num) = self
+            .display
+            .strip_prefix(':')
+            .and_then(|n| n.parse::<u32>().ok())
+        {
             if lock_records_pid(num, pid) {
                 let _ = std::fs::remove_file(lock_path(num));
                 let _ = std::fs::remove_file(format!("/tmp/.X11-unix/X{num}"));
@@ -294,7 +298,10 @@ fn pid_alive(pid: u32) -> bool {
 
 /// 读盘那一层：把 `classify_lock` 接到真的 `/tmp` 上。
 fn slot(num: u32) -> Slot {
-    classify_lock(std::fs::read_to_string(lock_path(num)).ok().as_deref(), pid_alive)
+    classify_lock(
+        std::fs::read_to_string(lock_path(num)).ok().as_deref(),
+        pid_alive,
+    )
 }
 
 /// 这个号的锁**记的是不是我们这个 pid**。
