@@ -33,6 +33,7 @@ mod origin; // P2s（C8）：每台机一份后端策略（生效值住内存，
 mod bind;
 mod bridge;
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
+mod claude_data_fence; // 步 H2：Claude 自己的数据不许我们写 —— `INVARIANTS §1` 的 F47/F03b 两段澄清共用的那一个判定（用户 09-21 裁「拆」）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
 mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）

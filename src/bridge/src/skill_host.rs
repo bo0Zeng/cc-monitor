@@ -37,7 +37,7 @@
 //! # 本模块**不做**什么
 //!
 //! 不做 IPC、不做 UI、**不落盘**。[`editable_paths`] 只**算出**允许写的路径集合；
-//! 「写必须过这个集合 + 过 `sftp_pool::is_protected_claude_data_path` + 过
+//! 「写必须过这个集合 + 过 `claude_data_fence::is_protected_claude_data_path` + 过
 //! `verified_write`」那条围栏归 **F03**。⇒ 本模块是纯函数层，**它算得对不等于没人绕过它**。
 
 use std::path::{Path, PathBuf};
@@ -292,8 +292,9 @@ pub fn editable_paths(spec: &SkillSpec, cwd: &Path) -> Vec<PathBuf> {
 ///    `<root>/../../etc/passwd` 在字符串上「以 root 开头」，解析后就不是了。
 /// 2. **集合判定**，不是一串 `if` —— 集合来自声明（[`editable_paths`]），
 ///    所以「能写哪些」这件事的真相源只有声明表一处。
-/// 3. **过 `is_protected_claude_data_path`** —— 纵深防御。即使声明写歪了，
-///    也不许碰 Claude 的 jsonl/pidfile（`src/doc/INVARIANTS.md:11` 那条只读铁律的对象）。
+/// 3. **过 [`crate::claude_data_fence::is_protected_claude_data_path`]** —— 纵深防御。
+///    即使声明写歪了，也不许碰 Claude 的 jsonl/pidfile（`src/doc/INVARIANTS.md` `§1`
+///    那条只读铁律的对象，本道对应它底下的 **F03b** 澄清段）。
 ///
 /// ⚠ 目标文件**必须已存在**才让写：本功能是「编辑收件箱」，不是「创建任意文件」。
 /// 不存在就拒 —— 那让写面严格等于「声明里那几个真实文件」，而不是「那几个路径名」。
@@ -324,7 +325,7 @@ pub fn resolve_editable(spec: &SkillSpec, cwd: &Path, requested: &Path) -> Resul
 
     // 纵深防御：即使上面放行，也不许碰 Claude 的数据文件。
     let as_str = real.to_string_lossy();
-    if crate::sftp_pool::is_protected_claude_data_path(&as_str) {
+    if crate::claude_data_fence::is_protected_claude_data_path(&as_str) {
         return Err(format!(
             "拒绝写入：{} 是 Claude 的数据文件（jsonl/pidfile）。\n\
              那是 `src/doc/INVARIANTS.md` 只读铁律的对象 —— 声明表把它列进 editable 也不行。",

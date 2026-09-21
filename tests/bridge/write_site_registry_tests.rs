@@ -94,11 +94,13 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("skill_host.rs", "write_skill_file", None,
      "写用户**自己项目里**的 `.claude/planned-build/INBOX.txt`（planned-build skill 的\
           「结构化注入」进件口）。**不碰 Claude 的数据、不碰用户环境、不装任何东西。**\n\
-          分界沿用 `src/doc/INVARIANTS.md:23` 那条 F47 澄清的口径：用户亲自驱动、\
+          分界沿用 `src/doc/INVARIANTS.md` `§1` 那条 F47 澄清的口径：用户亲自驱动、\
           每次写都是面板内一次直接手势、写的不是 Claude 的 jsonl/pidfile。\n\
           三道围栏（`skill_host::resolve_editable`）：① 路径 `canonicalize` **之后**\
           做集合判定（集合来自声明表的 `editable`，不是一串 if）② 过\
-          `sftp_pool::is_protected_claude_data_path` 纵深③ 目标必须**已存在**\
+          `claude_data_fence::is_protected_claude_data_path` 纵深〔步 H2 09-21：\
+          这道判定已从 `sftp_pool` 搬成独立一族，F47 与 F03b 两段澄清共用它这一个〕\
+          ③ 目标必须**已存在**\
           （本功能是「编辑收件箱」不是「创建任意文件」）。\n\
           写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回逐字节比对 →\
           不符即回滚），**没有自造第四份写入实现** —— 那个模块头注记着本仓曾有 4 处\

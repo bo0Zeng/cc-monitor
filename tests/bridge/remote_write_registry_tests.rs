@@ -66,10 +66,15 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
         "remove_remote_file",
         "远端",
         "删一份远端会话 jsonl。★ 它有**自己的**围栏 `is_safe_remote_jsonl`\
-             （`projects/` 前缀 + `.jsonl` 后缀 + 无 `..`），而**不是** `is_protected_claude_data_path` ——\
+             （`projects/` 前缀 + `.jsonl` 后缀 + 无 `..`），而**不是** \
+             `claude_data_fence::is_protected_claude_data_path` ——\
              因为它的正题恰恰是「删 Claude 的会话文件」，那是历史浏览器的功能。\
              **路径由用户选**（在历史浏览器里点某一份会话），但选的范围被那道围栏收在\
-             `projects/**/*.jsonl` 之内。⚠ 两道围栏方向相反，别互相替代。",
+             `projects/**/*.jsonl` 之内。⚠ **两道围栏方向相反，别互相替代、也别合并** ——\
+             〔步 H2 09-21〕这件事从此有牙了：\
+             `claude_data_fence_tests::the_protected_path_judgement_has_exactly_one_home` \
+             把「全仓谁在读 Claude 的数据布局」钉成相等断言，本文件这一份与那一份\
+             逐条对得上（它那张 `LAYOUT_READERS` 里这一道单列一行）。",
     ),
     (
         "sftp.rs",
@@ -326,6 +331,51 @@ fn a_registered_write_says_where_it_lands_and_who_picks_the_path() {
     }
 }
 
+/// `sftp_pool.rs` 今天对外开了哪几条 `#[tauri::command]`（已排序）。
+///
+/// 🔴 **这个数本身就是一条现打订正**，所以它只许有一个住址：
+/// `设计/99 §4.6.4` 写的是 14，而那第 14 个匹配住在 `sftp_chmod` 的头注里
+/// —— 「错的 grep 与截断的 grep 是同一种失败」。
+///
+/// 〔步 H2 09-21〕从 [`the_file_window_uses_exactly_the_pool_commands_it_registers`]
+/// 的函数体里提出来，**一行逻辑没改**。提出来的唯一理由：
+/// [`every_pool_command_is_either_a_registered_write_or_a_registered_read`] 要拿
+/// **同一份**人群去做「写 / 读 两分」那条相等断言，而一个闭集只许有一个住址。
+fn pool_commands() -> Vec<String> {
+    let pool = std::fs::read_to_string(repo_root().join("src/bridge/src/sftp_pool.rs"))
+        .expect("sftp_pool.rs 读不到");
+    let pool_prod = guard_core::production_code(&pool);
+    let attr = format!("#[tauri::{}]", "command");
+    let mut commands: Vec<String> = Vec::new();
+    let lines: Vec<&str> = pool_prod.lines().collect();
+    for (i, l) in lines.iter().enumerate() {
+        if l.trim() != attr {
+            continue;
+        }
+        // 属性的下一行就是那条命令的签名（rustfmt 下如此）。
+        let Some(sig) = lines.get(i + 1) else {
+            continue;
+        };
+        let Some((_, rest)) = sig.split_once("fn ") else {
+            continue;
+        };
+        if let Some(name) = rest.split(['(', '<']).next() {
+            commands.push(name.trim().to_string());
+        }
+    }
+    commands.sort();
+    // 抽取器自检：`sftp_pool.rs` 到底有几条对外命令。
+    assert_eq!(
+        commands.len(),
+        13,
+        "`sftp_pool.rs` 现打 {} 条 `#[tauri::command]`（2026-09-21 现打 **13**；\
+         `设计/99 §4.6.4` 写的是 14，而含注释的 grep 数出来正是 14 —— \
+         「错的 grep 与截断的 grep 是同一种失败」）。实得：{commands:?}",
+        commands.len()
+    );
+    commands
+}
+
 /// 一个顶层 `fn` 的函数体到哪一行为止。
 ///
 /// ★ 用**第一行行首的 `}`** 判 —— 那是 rustfmt 下顶层项的真实收尾。
@@ -348,8 +398,12 @@ fn fn_body_end(lines: &[&str], start: usize) -> usize {
 ///
 /// # 它补的洞
 ///
-/// `sftp_pool.rs` 头注逐字写着「防误伤守卫见 `is_protected_claude_data_path`：
-/// **SFTP 写命令拒碰 Claude 数据源文件**（往正被 Claude 打开的 jsonl 写会损坏会话）」。
+/// `sftp_pool.rs` 头注逐字承诺「**SFTP 写命令拒碰 Claude 数据源文件**
+/// （往正被 Claude 打开的 jsonl 写会损坏会话）」。
+/// 〔步 H2 09-21〕那句话里的**住址**变了（守卫搬去了 `crate::claude_data_fence`，
+/// 池子这边只剩一行 `pub use`），而**承诺一个字没动** —— 本条钉的也一直是那个承诺，
+/// 不是那个住址：它判的是「函数体里出现 `guard_write`」这个形态，
+/// 而 `guard_write` 现在是一行 `use` 引进来的同一个函数。
 ///
 /// 08-10 实测：那句话今天**是真的** —— `sftp_write_text` / `sftp_upload` / `sftp_mkdir` /
 /// `sftp_rename` / `sftp_delete` 五个入口全都调了 `guard_write`
@@ -758,9 +812,14 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
             "is_protected_claude_data_path",
             "函数",
             "🔴 **那道围栏的判定本身。** 窗口拿它在发往返**之前**就把踩线的挑出去并出声。\
-             ⚠ 它是**用**、不是**改** —— 「要不要把这道围栏拆成独立一族」是\
-             `设计/99 §2 Q2`，用户还没拍板。\
-             ⚠ 两道围栏问的是这**一个**函数 ⇒ 判定不会漂；漂得动的只有文案",
+             ⚠ 〔步 H2 09-21〕`设计/99 §2 Q2` **用户拍了「拆」** ⇒ 判定的家已经搬去\
+             `crate::claude_data_fence`，池子这边只剩一行 `pub use`（转出住址，不是第二个家）。\
+             窗口那棵树本轮不在写区里 ⇒ 它这一处仍写着旧写法，而那是**唯一**还这么写的一处，\
+             由 `claude_data_fence_tests::the_old_address_is_down_to_its_last_consumer` \
+             钉成相等断言（改过来的那天连那行 `pub use` 一起删）。\
+             ⚠ 两道围栏问的仍是这**一个**函数 ⇒ 判定不会漂；漂得动的只有文案。\
+             ★ 本条的针是 `sftp_pool::` 前缀 ⇒ 它数的正是「还在走旧住址的那一处」，\
+             与那条棘轮同一个事实、两个方向",
         ),
     ];
     /// 「它是什么」那一栏的**封闭集合**。多出第五种就得回来论证。
@@ -855,39 +914,8 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         );
     }
 
-    // 🔴 「它是什么」那一栏**由机器核**，不是人说了算。
-    let pool = std::fs::read_to_string(root.join("src/bridge/src/sftp_pool.rs"))
-        .expect("sftp_pool.rs 读不到");
-    let pool_prod = guard_core::production_code(&pool);
-    let attr = format!("#[tauri::{}]", "command");
-    let mut commands: Vec<String> = Vec::new();
-    let lines: Vec<&str> = pool_prod.lines().collect();
-    for (i, l) in lines.iter().enumerate() {
-        if l.trim() != attr {
-            continue;
-        }
-        // 属性的下一行就是那条命令的签名（rustfmt 下如此）。
-        let Some(sig) = lines.get(i + 1) else {
-            continue;
-        };
-        let Some((_, rest)) = sig.split_once("fn ") else {
-            continue;
-        };
-        if let Some(name) = rest.split(['(', '<']).next() {
-            commands.push(name.trim().to_string());
-        }
-    }
-    commands.sort();
-    // 抽取器自检③：`sftp_pool.rs` 到底有几条对外命令 —— 这个数本身就是一条现打订正
-    // （`设计/99 §4.6.4` 写的是 14，而那第 14 个匹配住一句散文里）。
-    assert_eq!(
-        commands.len(),
-        13,
-        "`sftp_pool.rs` 现打 {} 条 `#[tauri::command]`（2026-09-21 现打 **13**；\
-         `设计/99 §4.6.4` 写的是 14，而含注释的 grep 数出来正是 14 —— \
-         「错的 grep 与截断的 grep 是同一种失败」）。实得：{commands:?}",
-        commands.len()
-    );
+    // 🔴 「它是什么」那一栏**由机器核**，不是人说了算。住址唯一源：[`pool_commands`]。
+    let commands = pool_commands();
     let declared_cmds: Vec<String> = SITES
         .iter()
         .filter(|(_, k, _)| *k == "命令")
@@ -951,4 +979,253 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     where_of.sort();
     where_of.dedup();
     println!("窗口 ↔ 池子的接线（{} 处）：{where_of:?}", where_of.len());
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔步 H2 · 2026-09-21〕围栏拆成独立一族那一刀留下的两条
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 池子里**不写任何路径**的那几条命令 —— `(命令, 它做什么, 为什么不需要围栏)`。
+///
+/// 🔴 **它是「默认拒绝」的另一半。** 上面第三条判据的人群
+/// （`USER_CHOSEN_ENTRIES`，七条）是**写死**的 —— 那是刻意的（「哪些路径是用户选的」
+/// 没有语法特征），但它单独存在时有一个洞：
+/// **往 `sftp_pool.rs` 加第 14 条命令、而它是一条写命令，那七个名字里没有它 ⇒ 一条不红。**
+///
+/// ⇒ 本表把那个洞封上：命令的全集由 [`pool_commands`] 从文件里现打，
+/// 而全集必须**恰好**分成「已登记的写」与「已登记的读」两堆，一条都不许落在外面。
+const NON_WRITING_COMMANDS: &[(&str, &str, &str)] = &[
+    (
+        "sftp_realpath",
+        "把一条相对路径解成绝对路径",
+        "纯读 —— 它问远端「这是哪儿」，一个字节都不落盘",
+    ),
+    (
+        "sftp_list_dir",
+        "列一个远端目录",
+        "纯读。窗口与老面板的正题",
+    ),
+    (
+        "sftp_stat",
+        "一条路径的 stat",
+        "纯读 —— 上传与复制共用的那一问（「远端已经有这条路径了吗」），它不落任何字节",
+    ),
+    (
+        "sftp_download",
+        "把远端文件拉到本机",
+        "🔴 它**确实写盘**，但写的是**本机**（`download_inner`，`REMOTE_WRITES` 里\
+         唯一那一项「本机」）⇒ 不需要 Claude 数据围栏（那道围栏管的是远端那台机器上\
+         正被 Claude 打开的文件）。⚠ 本机落点那一半归 `write_site_registry` 的管辖面",
+    ),
+    (
+        "sftp_read_text_for_edit",
+        "小文件读成可编辑文本",
+        "纯读（F49 三防护：>256KB / 含 NUL / 非 UTF-8 一律拒编而非截断）",
+    ),
+    (
+        "sftp_cancel_transfer",
+        "取消一趟在飞的传输",
+        "翻一个 `AtomicBool`，**它自己不写任何路径**（同 `SITES` 里那一行）",
+    ),
+];
+
+/// 🔴 **池子里每一条命令，要么是已登记的写、要么是已登记的读 —— 相等断言，两向。**
+///
+/// # 它补的洞：「现打有几处写操作」此前是**写死**的
+///
+/// 第三条判据（`a_user_chosen_remote_write_passes_the_claude_data_fence`）的人群是
+/// 七个写死的名字。它钉得住「这七条各自有围栏」，钉不住「今天恰好就是这七条」。
+/// ⇒ 加第 14 条命令而它是写命令 ⇒ 那七个名字里没有它 ⇒ **全仓一条不红**，
+/// 而它写的是用户选的远端路径。
+///
+/// 本条把两个数对起来：
+///
+/// ```text
+/// 从文件现打的命令全集（13）  ==  带围栏的写（7）  +  已登记的读（6）
+/// ```
+///
+/// 三个数**都不是人手填的**：全集来自 [`pool_commands`]，
+/// 「写」那一堆从函数体里现打（带 `guard_write(` 调用的那几条），
+/// 「读」那一堆来自 [`NON_WRITING_COMMANDS`]（每一行要写清**为什么不需要围栏**）。
+///
+/// ⚠ 它钉不了什么（如实登记）：**一条新命令被归进「读」那一堆而其实它写**。
+/// 那一栏是人的答案（同 `REMOTE_WRITES` 的「落地何方」）—— 挡这一形的是
+/// 第一条判据（写原语调用点默认拒绝）与第四条判据（IPC 入口必须转发到已登记的写点）。
+/// 本条挡的是**落在两堆之外**那一形，那是「加了一条命令而没人回来读它的围栏」的痕迹。
+#[test]
+fn every_pool_command_is_either_a_registered_write_or_a_registered_read() {
+    let pool = std::fs::read_to_string(repo_root().join("src/bridge/src/sftp_pool.rs"))
+        .expect("sftp_pool.rs 读不到");
+    let prod = guard_core::production_code(&pool);
+    let lines: Vec<&str> = prod.lines().collect();
+    let all = pool_commands();
+    // 「写」那一堆**从函数体里现打**，不抄第三条判据那七个名字 ——
+    // 抄一份的话，「人群少一个」与「登记少一行」会被同一次编辑一起改掉 ⇒ 恒真。
+    let mut fenced: Vec<String> = Vec::new();
+    for cmd in &all {
+        let Some(start) = lines.iter().position(|l| {
+            let t = l.trim_start();
+            t.starts_with(&format!("pub async fn {cmd}("))
+                || t.starts_with(&format!("pub fn {cmd}("))
+        }) else {
+            panic!("命令 `{cmd}` 的签名找不到 —— 抽取器坏了");
+        };
+        let end = fn_body_end(&lines, start);
+        let body = lines[start..end].join("\n");
+        if body
+            .lines()
+            .any(|l| l.contains("guard_write(") && !l.trim_start().starts_with("fn "))
+        {
+            fenced.push(cmd.clone());
+        }
+    }
+    let mut readers: Vec<String> = NON_WRITING_COMMANDS
+        .iter()
+        .map(|(n, ..)| n.to_string())
+        .collect();
+    readers.sort();
+    fenced.sort();
+
+    // 🔴 两个数相等 —— 全集 = 写 + 读，一条都不许落在两堆之外。
+    let mut covered: Vec<String> = fenced.iter().chain(readers.iter()).cloned().collect();
+    covered.sort();
+    assert_eq!(
+        covered,
+        all,
+        "`sftp_pool.rs` 的命令全集与「写 / 读」两堆对不上。\n  \
+         全集里没归档的（🔴 **最贵的就是这一格**）：{:?}\n  \
+         归档了而全集里没有（改名 / 退役了 ⇒ 把登记一起改）：{:?}\n\n\
+         ★ 落在两堆之外意味着：它要么是一条**没人回来读它围栏**的写命令\n\
+         （后果：那台远端机上正被 Claude 打开的 jsonl 能被它删掉 / 改走 / 改成不可读），\n\
+         要么是一条读命令而没人写下「为什么它不需要围栏」。\n\
+         ⇒ 处置：写命令 ⇒ 加进 `a_user_chosen_remote_write_passes_the_claude_data_fence`\n\
+         的 `USER_CHOSEN_ENTRIES` 并在函数第一行加 `guard_write`（两个路径参数的加两次）；\n\
+         读命令 ⇒ 加进 `NON_WRITING_COMMANDS` 并写清理由。",
+        all.iter()
+            .filter(|c| !covered.contains(c))
+            .collect::<Vec<_>>(),
+        covered
+            .iter()
+            .filter(|c| !all.contains(c))
+            .collect::<Vec<_>>()
+    );
+    // 两堆不许重叠（一条命令不能既是写又是读 —— 那说明有一栏是假的）。
+    let both: Vec<&String> = fenced.iter().filter(|f| readers.contains(f)).collect();
+    assert!(
+        both.is_empty(),
+        "这几条命令同时出现在两堆里：{both:?} —— \
+         `NON_WRITING_COMMANDS` 说它不写，可它函数体里有 `guard_write`。哪一栏是假的？"
+    );
+    // 现打读数：两个数各自钉住，别只钉和。
+    assert_eq!(
+        (fenced.len(), readers.len()),
+        (7, 6),
+        "现打：写 {} 条 · 读 {} 条（2026-09-21 现打 7 ＋ 6 = 13）。\
+         实得写 {fenced:?} · 读 {readers:?}",
+        fenced.len(),
+        readers.len()
+    );
+    for (n, what, why) in NON_WRITING_COMMANDS {
+        assert!(
+            why.chars().count() > 10,
+            "`{n}`（{what}）没写清为什么不需要围栏，像是占位：「{why}」"
+        );
+    }
+}
+
+/// 🔴 **围栏在「发往返之前」就出声 —— 这一条判的是顺序，不是存在。**
+///
+/// # 它补的洞
+///
+/// 第三条判据的头注逐字登记着它自己的失效模式，其中一条是：
+///
+/// > 它判「那个名字出现在 `guard_write(` 这一行里」，判不了**求值顺序**
+/// > （先写后判那种写法它看不见）。那一维要的是数据流分析，本仓没有。
+///
+/// 完整的数据流分析本仓确实没有，而**这一刀要的那一维不需要它**：
+/// 围栏要的是「拒绝发生在**拿到连接之前**」，而「拿连接」在这个文件里只有两个出处
+/// （`pool_for` 自己拨/取那条 SSH 连接 · `with_sftp` 从池里借）——
+/// 那是 `sftp_pool.rs` 头注写着的结构事实，不是一张按名字列的白名单。
+/// ⇒ 逐条比**行号**：`guard_write` 第一次出现必须早于它俩第一次出现。
+///
+/// # 为什么这一维值钱
+///
+/// 把 `guard_write(&path)?` 挪到拿连接那一行之后，第三条判据**照样绿**
+/// （那一行还在函数体里），而行为变了：连接拨出去了、通道借走了、
+/// 甚至 `metadata` 那一问已经上过线了，踩线的那条路径才被拒。
+/// `src/doc/INVARIANTS.md` `§1` 的 F47 澄清段逐字要的是「绝无自动/后台写」——
+/// 一条已经上了线的请求，事后再说「我拒绝」不是同一件事。
+///
+/// ⚠ 它钉不了什么：① 同一行里的求值顺序；
+/// ② 围栏与拿连接**之间**新插进来的别的网络动作（本条只比这两个锚点的先后）。
+/// ⇒ 两条都是「行号锚点」这个量具的上限，不是漏掉。
+#[test]
+fn a_fenced_write_refuses_before_it_touches_the_wire() {
+    let pool = std::fs::read_to_string(repo_root().join("src/bridge/src/sftp_pool.rs"))
+        .expect("sftp_pool.rs 读不到");
+    let prod = guard_core::production_code(&pool);
+    let lines: Vec<&str> = prod.lines().collect();
+    // 「拿连接」的两个出处（运行时拼，免得命中本文件自己的说明）。
+    let wire: Vec<String> = [("with_", "sftp("), ("pool_", "for(")]
+        .iter()
+        .map(|(a, b)| format!("{a}{b}"))
+        .collect();
+    let mut checked = 0usize;
+    let mut late = Vec::new();
+    let mut unreached = Vec::new();
+    for cmd in pool_commands() {
+        let Some(start) = lines.iter().position(|l| {
+            let t = l.trim_start();
+            t.starts_with(&format!("pub async fn {cmd}("))
+                || t.starts_with(&format!("pub fn {cmd}("))
+        }) else {
+            panic!("命令 `{cmd}` 的签名找不到 —— 抽取器坏了");
+        };
+        let end = fn_body_end(&lines, start);
+        let body: Vec<&str> = lines[start..end].to_vec();
+        let at_guard = body
+            .iter()
+            .position(|l| l.contains("guard_write(") && !l.trim_start().starts_with("fn "));
+        let at_wire = body
+            .iter()
+            .position(|l| wire.iter().any(|w| l.contains(w.as_str())));
+        let Some(g) = at_guard else {
+            continue; // 不带围栏的是读命令，归上面那条两分判据
+        };
+        checked += 1;
+        match at_wire {
+            None => unreached.push(format!("  sftp_pool.rs::{cmd}")),
+            Some(w) if g >= w => late.push(format!(
+                "  sftp_pool.rs::{cmd} —— 围栏在函数体第 {} 行，拿连接在第 {} 行",
+                g + 1,
+                w + 1
+            )),
+            Some(_) => {}
+        }
+    }
+    // 抽取器自检：人群必须恰好是那七条带围栏的写命令（与两分那条判据同一个数）。
+    assert_eq!(
+        checked, 7,
+        "只找到 {checked} 条带围栏的命令（2026-09-21 现打 7）—— 抽取器坏了，本条此刻在空转"
+    );
+    // 反空真：「拿连接」那个锚点必须真的在每一条里命中，否则 `g < w` 恒真地过。
+    assert!(
+        unreached.is_empty(),
+        "这几条写命令的函数体里**找不到「拿连接」那个锚点**：\n{}\n\n\
+         ★ 那不是「它不上网」，更可能是本条的锚点过期了 —— \n\
+         池子换了拿连接的写法之后，本条会对**每一条**都恒真地绿。\n\
+         ⇒ 先读 `sftp_pool.rs` 头注那一节（连接分离 + 通道预算），再改锚点。",
+        unreached.join("\n")
+    );
+    assert!(
+        late.is_empty(),
+        "这几条写命令**先拨了线才判围栏**：\n{}\n\n\
+         ★ 第三条判据对这一形是**瞎的**（`guard_write` 那一行还在函数体里，它照样绿）。\n\
+         而行为变了：连接拨出去了、通道借走了、甚至已经问过一次 `metadata`，\n\
+         踩线的那条路径才被拒。\n\
+         ⚠ `src/doc/INVARIANTS.md` `§1` 的 F47 澄清段逐字要的是「绝无自动/后台写」——\n\
+         一条已经上了线的请求，事后再说「我拒绝」不是同一件事。\n\
+         ⇒ 处置：把 `guard_write` 放回函数第一行（两个路径参数的两行都放前面）。",
+        late.join("\n")
+    );
 }
