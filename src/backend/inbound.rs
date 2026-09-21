@@ -7,7 +7,11 @@
 //! - **传输层**（本文件）：读行、解析信封、长度上限、回显 `id`、管取消登记表。
 //!   它跟 `wire.rs` 是同一类东西（协议管道），**不属于读也不属于做**，所以放顶层。
 //!   塞进 `control/` 会让「control = 做事」那条线变浑。
-//! - **每条命令的处理器**属于 `control/`。本文件只持有命令表、调过去。
+//! - **每条命令的处理器**都**不在本文件里**。本文件只持有命令表、调过去。
+//!   今天它们住两处：会改变世界的那些住 `control/`；
+//!   ⚠〔步 `24f` 第二刀 09-20〕`files-read` 那四条住顶层 `files/` ——
+//!   它们整族纯读，塞进 `control/`（=「做事」）会把那条线弄浑，
+//!   而 `observe/` 又被下面那条硬约束挡着。理由全文在 `REGISTRY` 上它们那一段。
 //!
 //! ⇒ 依赖方向 `inbound → control`，与既有的 `observe → control` 同向，
 //! `layering_guard` 的判据不需要放宽。本文件**不许出现任何 `observe::`**（读面的事不归它）。
@@ -82,6 +86,10 @@ pub const COMMANDS: &[&str] = &[
     "bus-state",
     "cancel",
     "capture-pane",
+    "files-find",
+    "files-index-status",
+    "files-ls",
+    "files-stat",
     "kill",
     "launch",
     "ping",
@@ -478,6 +486,105 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::capture_pane::capture_for_inbound(&r.args).map(Some)
+        }),
+    },
+    // ── 〔步 `24f` 第二刀 09-20〕`files-read` 这一族上线 ────────────────────────────
+    //
+    // 🔴 **处理器不住 `control/`，这是本仓第一条** —— 而且它必须不住那里：
+    //   `control/` 的定义是「**会改变世界**」（`§1.1` 第二条线），而这一族整族纯读
+    //   （`设计/96 §2.9` 边界①，`readonly_guard` 4259 行一行没动）；
+    //   而读面 `observe/` 又被本文件头注那条硬约束挡着（`inbound` 不许出现 `observe::`，
+    //   `inbound_structure_guards::inbound_never_reaches_into_the_observe_layer` 在钉）。
+    //   ⇒ 它住顶层 `files/`（`lib.rs` 一条 `pub mod`，`readonly_guard::BACKEND_CORE_MODULES`
+    //   里也是一条独立登记）。本文件头注那句「每条命令的处理器属于 `control/`」
+    //   由此收窄成「**不在本文件里实现**」——那才是它真正保的东西。
+    //
+    // 🔴 **四条的 `run` 长得一模一样，那是刻意的**：命令名从 `r.cmd` 来，
+    //   而 `r.cmd` 正是 `lookup()` 用来选中这条 spec 的那个串
+    //   （CLI 面同理，`cli_control` 拿 `spec.name` 填它）⇒ 「登记的名字」与
+    //   「真正被调的能力」**在类型上是同一个值**，抄错一条能力名这件事不可表示。
+    //   翻译（`-` → `.`）只有 `files::answer_wire` 一处，理由整段在那个函数的头注。
+    //
+    // ⚠ 四条全在 `Run::Blocking`：`files::answer` 是**同步**函数，前两条真的做文件系统
+    //   I/O，`files-find` 在 64 万条量纲上的现打外推是 20–50 ms（`设计/60 §3.5.3`）——
+    //   那是不该占住 worker 的时长；而把「哪条够快可以走 `Run::Async`」拆成两档，
+    //   等于给同一个同步入口记两份账。⇒ 一族一档。
+    //   代价如实写：它们因此**取消不掉**，`cancel` 命中时回 `not_cancellable`（不撒谎）。
+    CommandSpec {
+        name: "files-find",
+        doc_anchor: Some("#### `files-find`"),
+        codes: &["bad_args"],
+        fields: &[
+            "hits",
+            "ignore_ascii_case",
+            "index_age_secs",
+            "index_missing",
+            "limit",
+            "needle",
+            "scanned",
+            "total_hits",
+            "truncated",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-index-status",
+        doc_anchor: Some("#### `files-index-status`"),
+        codes: &[],
+        fields: &[
+            "age_secs",
+            "browse_watch_cap",
+            "browse_watches",
+            "entries",
+            "index_missing",
+            "resident_bytes",
+            "rewalk_interval_secs",
+            "stale",
+            "truncated",
+            "unreadable_dirs",
+        ],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-ls",
+        doc_anchor: Some("#### `files-ls`"),
+        codes: &["bad_path", "unreadable"],
+        fields: &[
+            "entries",
+            "kind",
+            "limit",
+            "mtime_secs",
+            "path",
+            "size",
+            "truncated",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-stat",
+        doc_anchor: Some("#### `files-stat`"),
+        codes: &["bad_path", "unreadable"],
+        fields: &["kind", "mtime_secs", "path", "readonly", "size"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，

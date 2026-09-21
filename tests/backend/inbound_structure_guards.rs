@@ -115,9 +115,22 @@ fn every_registered_command_declares_its_run_kind() {
         // F04a：`kill` 也是阻塞档 —— 它要起 tmux 子进程（探测 + kill-session）。
         // P4f：`bus-list` / `bus-send` 同样是阻塞档 —— 它们要起 cc-bus 子进程并等它退出。
         // `K-R104`：`capture-pane` / `oneshot-session` 起 tmux 子进程并等它退出。
+        // 〔步 `24f` 第二刀〕`files-read` 四条同为阻塞档：`files::answer` 是**同步**函数，
+        // 前两条真做文件系统 I/O，`files-find` 在 64 万条量纲上外推 20–50 ms。
+        // 理由整段在 `inbound::REGISTRY` 上它们那一段（含「为什么不拆两档」）。
         let expected_blocking = matches!(
             spec.name,
-            "launch" | "kill" | "bus-list" | "bus-send" | "bus-kill" | "bus-state" | "capture-pane"
+            "launch"
+                | "kill"
+                | "bus-list"
+                | "bus-send"
+                | "bus-kill"
+                | "bus-state"
+                | "capture-pane"
+                | "files-ls"
+                | "files-stat"
+                | "files-find"
+                | "files-index-status"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -147,6 +160,10 @@ fn every_registered_command_declares_its_run_kind() {
         "bus-kill",
         "bus-state",
         "capture-pane",
+        "files-ls",
+        "files-stat",
+        "files-find",
+        "files-index-status",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()
@@ -284,6 +301,114 @@ fn declaring_zero_fields_needs_a_reason() {
             spec.fields.len()
         );
     }
+}
+
+/// ★★ 〔步 `24f` 第二刀 09-20〕**`files-read` 上线的那四条，登记的就是它声明的那四条。**
+///
+/// # 它治的是哪一形
+///
+/// 这一族的能力声明住 `files::CAPABILITIES`（`设计/96 §2.9` 那张表，由
+/// `files::tests::the_capability_names_match_the_design_registry_in_both_directions`
+/// 两向钉着），而线上那一面是**第二张表**（本文件的 `REGISTRY`）。
+/// 两张手写表之间没有判据 = 「上线少接一条」「契约面抄漏一个字段」都静默 ——
+/// 而那正是 `p1t-removal-cause` 那次真 bug 的形状（表里有、分派没有）。
+///
+/// ⇒ 本条把两张表**判相等**，三向都判：
+/// ① 命令名集合（经 `-`↔`.` 那一条翻译）**两向相等**；
+/// ② 每条的 `codes` 逐字相等；
+/// ③ 每条的 `fields` == 那条能力的 `args` ∪ `fields`（排序去重后**相等**）。
+///
+/// ⚠ 它**买不到**「文档写得对」（那是 `protocol_doc_guard` 那几条的活），
+/// 也买不到「`files::CAPABILITIES` 自己说的是实话」——
+/// 那一侧由 `tests/backend/files/capability_guard.rs` 的实打对拍钉着
+/// （出方向字段是**真调一次**比出来的）。本条只钉「两张表没有分叉」。
+#[test]
+fn the_files_read_family_is_online_exactly_as_it_is_declared() {
+    // ① 名字：能力名把 `.` 换成 `-` 就是线上名（反向那一半住 `files::answer_wire`）。
+    let declared: std::collections::BTreeSet<String> = crate::files::capability_names()
+        .into_iter()
+        .map(|n| n.replace('.', "-"))
+        .collect();
+    assert!(
+        declared.len() >= 4,
+        "`files::CAPABILITIES` 只声明了 {} 条 —— 本条在空转",
+        declared.len()
+    );
+    // 反向替换够用的前提：能力名里**没有** `-`。它一旦被破坏，`answer_wire` 会静默地
+    // 去查一个不存在的能力名，而上面那个映射照样对得上。
+    for n in crate::files::capability_names() {
+        assert!(
+            !n.contains('-'),
+            "能力名 `{n}` 里有 `-` —— `files::answer_wire` 的反向替换从此会翻错，\n\
+             而名字集合那一半照样绿。要么换能力名，要么把翻译改成一张显式的表。"
+        );
+    }
+    let wired: std::collections::BTreeSet<String> = super::REGISTRY
+        .iter()
+        .map(|s| s.name)
+        .filter(|n| n.starts_with("files-"))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        wired, declared,
+        "\n`files-read` 上线的那一组与 `files::CAPABILITIES` 声明的那一组对不上。\n\
+         少接一条的后果是静默的：能力在、判据在，而调用方发过去只会拿到 `unknown_command`。"
+    );
+
+    // ② ③ 逐条：错误码逐字相等 · 载荷字段 == `args` ∪ `fields`。
+    let mut checked = 0usize;
+    for cap in crate::files::CAPABILITIES {
+        let online = cap.name.replace('.', "-");
+        let spec = super::REGISTRY
+            .iter()
+            .find(|s| s.name == online)
+            .unwrap_or_else(|| panic!("`{online}` 不在 REGISTRY 上 —— 上面那条应该先红"));
+        let mut want_codes: Vec<&str> = cap.codes.to_vec();
+        want_codes.sort_unstable();
+        let mut got_codes: Vec<&str> = spec.codes.to_vec();
+        got_codes.sort_unstable();
+        assert_eq!(
+            got_codes, want_codes,
+            "`{online}` 登记的 code 与能力 `{}` 声明的对不上",
+            cap.name
+        );
+
+        let mut want_fields: Vec<&str> =
+            cap.args.iter().chain(cap.fields.iter()).copied().collect();
+        want_fields.sort_unstable();
+        want_fields.dedup();
+        let mut got_fields: Vec<&str> = spec.fields.to_vec();
+        got_fields.sort_unstable();
+        got_fields.dedup();
+        assert_eq!(
+            got_fields, want_fields,
+            "\n`{online}` 的 `fields` 与能力 `{}` 的 `args` ∪ `fields` 对不上。\n\
+             `CommandSpec::fields` 是拿去钉 `IPC-PROTOCOL.md §10` 那一小节的镜子 ——\n\
+             它自己先漂了，钉出来的文档就是假的（那段头注逐字）。",
+            cap.name
+        );
+        checked += 1;
+
+        // ④ 真的调一次：`run` 必须**够得到**那条能力。
+        //    喂空 `args` ⇒ 要么成功，要么落在这条能力自己声明的 code 上；
+        //    落到 `unknown_capability` 就说明翻译或名字接错了。
+        let out = crate::files::answer_wire(&online, &serde_json::json!({}));
+        if let Err((code, msg)) = out {
+            assert_ne!(
+                code, "unknown_capability",
+                "`{online}` 经 `answer_wire` 够不到任何能力（{msg}）—— 线上那一跳是断的"
+            );
+            assert!(
+                cap.codes.contains(&code),
+                "`{online}` 回了一个它没登记的 code `{code}`（{msg}）"
+            );
+        }
+    }
+    assert_eq!(
+        checked,
+        crate::files::CAPABILITIES.len(),
+        "只逐条判过 {checked} 条 —— 本条在空转"
+    );
 }
 
 /// ★ **有 `fields` 就必须有自己的文档小节。**
