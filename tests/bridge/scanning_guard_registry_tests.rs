@@ -1462,40 +1462,19 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
     /// 表要起成 [`TABLE_DECLS`] 里已有的名字之一）—— 起对了，
     /// [`every_registry_guard_keeps_its_reverse_half`] 就判得到本条。
     const REGISTERED: &[(&str, &str, &str)] = &[
-        (
-            "src/bridge/src/panorama_seam_registry.rs",
-            "本文件自己不在语料里",
-            "它逐字登记了一个**并不存在的射程缺口**（「代价是本文件的生产段没人扫」——\
-             而那条判据的语料根逐字是 `src/bridge/src`，本文件就在里面；\
-             头注那几处提及不进人群靠的是 `production_code` 剥注释，不是自摘）。\
-             `P4` 的写区只到 `tests/` 两棵与 `guard-core`，这一份住生产树 ⇒ 登记，不代修",
-        ),
-        (
-            "src/bridge/src/plugin_class_registry.rs",
-            "扫树一律走 `guard_core::scan_tree!`（按构造摘除调用者）",
-            "同上：这是一条纪律行，而括号里那半今天不成立 ——\
-             它住生产树，在 `P4` 的写区之外 ⇒ 登记，不代修",
-        ),
-        (
-            "src/bridge/src/scanning_guard_registry.rs",
-            "按构造摘除调用者自己那一份（用 `file!()`，调用方改不错）",
-            "**本模块自己的头注**就是那句话的发源地之一：它把「用 `file!()`，调用方改不错」\
-             当成现状写着，而那一刀在这一处不生效。它住生产树（剖分把这条判据的散文\
-             劈成了两个住址，抬头留在了 `src/`），在 `P4` 的写区之外 ⇒ 登记，不代修",
-        ),
-        (
-            "src/bridge/src/scanning_guard_registry.rs",
-            "摘掉自己那份之后，",
-            "四类表底下那一段：它把 `K-R31` 那条判据描述成「`scan_tree!` 摘掉自己那份之后，\
-             又用 `include_str` 把自己那一份显式加回来」—— 前半不成立（那一刀**不生效**），\
-             所以那条判据今天是「本来就在人群里，又加了一份冗余的」。同上，住生产树 ⇒ 登记，不代修",
-        ),
-        (
-            "src/bridge/src/scanning_guard_registry.rs",
-            "与「取自己那一份的 `include_str`」",
-            "紧接着那一段的诚实边界：它数的那把「文件级尺子」把「摘掉自己又加回来」\
-             当成一种真实形态在数，而前半在本仓不成立。同上，住生产树 ⇒ 登记，不代修",
-        ),
+        // 🔴 **空了 —— 而空是对的那一种空**〔2026-09-21〕
+        //
+        // `P4` 收工时这里有 5 行：3 份生产树文件（`panorama_seam_registry.rs` ·
+        // `plugin_class_registry.rs` · `scanning_guard_registry.rs`，后者 3 段）
+        // 在 `P4` 的写区之外 ⇒ 当时登记、不代修。
+        // 同日随后逐段改对了 ⇒ 幽灵检查当场把这 5 行逼成了空号，按它给的出路删掉。
+        //
+        // ⚠ **空集不等于本条没牙** —— 本条的正题是那个 `== 0` 的相等断言，
+        // 它扫五棵互不包含的树；这张表只是「写区之外的存量」那一档。
+        // 存量清零之后，往这里加行的门槛就是 `P4` 定的那一句：
+        // 每一行都要写「**为什么本轮不修**」，而且**改对了就得删**
+        // （留着的后果不是多一行没用的字 —— 一张挂着空号的豁免表会让下一段同形散文
+        //  自动带上一张谁也没签过的免检章）。
     ];
 
     let (live, scanned) = live_self_exclusion_claims();
