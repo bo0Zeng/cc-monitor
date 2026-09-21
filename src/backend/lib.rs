@@ -300,7 +300,26 @@ pub const PROTO_VERSION: u32 = 1;
 ///   本工作树没铺 `src/bridge/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的是「这棵树上没有一份对不上的字节」，
 ///   **不是**「字节是对的」（那条边界是它自己头注里逐字写的）。
-pub const BUILD_ID: &str = "p2m-files-read-online";
+///
+/// - p2n-files-rebuild-and-browse〔步 `24f` **第三刀** · `设计/96 §2.9`（PM 2026-09-21 裁）〕：
+///   **同族第五、第六条上线** —— `files-index-rebuild`（`index::rebuild_once` 的线上面）
+///   与 `files-browse`（`browse_watch::set_browsing` 的线上面），两条**仍然纯读**、
+///   两个命令面同拍（[`SUBCOMMANDS`] 29 → 31；`inbound::REGISTRY` 与
+///   `inbound::COMMANDS` 14 → 16）。这是本谱系里第三次两面一起变（前两次是 p2j / p2m）。
+///   ⚠ **必须 bump**，失效形状与 p2m 逐字相同（① 旧后端上这两个 flag 落进
+///   `unknown argument` + exit 2；② 旧后端的 `hello.commands` 里没有它们 ⇒ monitor 的
+///   `InboundClient::accepts` 判 `Unsupported`、一个字节都不发），两条都止于
+///   「调用方判 stale 只看 build_id」。
+///   🔴 **别把它读成「`设计/60 §3.5.2a` 那个缺口填上了」** —— 补的只是**机制的线上面**：
+///   节拍仍归调用方（`no_timer_guard` 那条铁律一个字没动），而「调用方到底发不发那条
+///   命令」后端这棵树的判据钉不住 ⇒ 没人发的时候 `files-find` 照旧恒回 `index_missing`。
+///   🔴 另一条如实登记：`files::browse_watch::BrowseWatcher`（真把 `inotify` 挂上去那一跳）
+///   **仍然零生产调用方** ⇒ `files-browse` 买到的是「发命令那一刻那几个目录是新的」，
+///   不是「此后一有动静就跟着新」。
+///   ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
+///   本轮**没做** —— 本工作树没铺 `src/bridge/embedded-backends/`，现打
+///   `bash tests/scripts/re-embed.sh --check` 答的仍是「这棵树上没有一份对不上的字节」。
+pub const BUILD_ID: &str = "p2n-files-rebuild-and-browse";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -419,7 +438,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 线上名用 `-` 不用 `.`（能力名仍是 `files.ls` 那一套）：理由整段在
     // `files::answer_wire` 的头注 —— 一句话是 `"--files.ls"` 会被本仓两个 token
     // 取词器**静默丢弃**，那等于把这四条从三条判据底下同时抽走而三条都照常报绿。
+    // 〔步 `24f` 第三刀 09-21〕同族的第五、第六条（`设计/96 §2.9` 裁）。登记在这里的理由
+    // 与上面那四条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
+    "--files-browse",
     "--files-find",
+    "--files-index-rebuild",
     "--files-index-status",
     "--files-ls",
     "--files-stat",

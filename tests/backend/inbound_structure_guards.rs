@@ -118,6 +118,11 @@ fn every_registered_command_declares_its_run_kind() {
         // 〔步 `24f` 第二刀〕`files-read` 四条同为阻塞档：`files::answer` 是**同步**函数，
         // 前两条真做文件系统 I/O，`files-find` 在 64 万条量纲上外推 20–50 ms。
         // 理由整段在 `inbound::REGISTRY` 上它们那一段（含「为什么不拆两档」）。
+        // 〔步 `24f` 第三刀〕新那两条同档，而且这一档对它们**更承重**：
+        // `files-index-rebuild` 是**走一整棵树**（64 万条现打 0.99 秒，热缓存；冷缓存没量过），
+        // `files-browse` 要把名单上那几个目录各 `read_dir` 一遍。
+        // 放 `Run::Async` 就是拿 tokio worker 去跑一趟秒级遍历 —— 单核机上会把
+        // 出方向 writer 与入方向 reader 所在的那条 runtime 一起占住。
         let expected_blocking = matches!(
             spec.name,
             "launch"
@@ -127,9 +132,11 @@ fn every_registered_command_declares_its_run_kind() {
                 | "bus-kill"
                 | "bus-state"
                 | "capture-pane"
+                | "files-browse"
                 | "files-ls"
                 | "files-stat"
                 | "files-find"
+                | "files-index-rebuild"
                 | "files-index-status"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
@@ -160,9 +167,11 @@ fn every_registered_command_declares_its_run_kind() {
         "bus-kill",
         "bus-state",
         "capture-pane",
+        "files-browse",
         "files-ls",
         "files-stat",
         "files-find",
+        "files-index-rebuild",
         "files-index-status",
     ];
     let missing: Vec<&str> = super::REGISTRY

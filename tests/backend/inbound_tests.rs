@@ -373,7 +373,18 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     //（worker 数 = 可用并行度）⇒ 单核机上一条查询就占住唯一的 worker，
     // 而出方向 writer 与入方向 reader 都在同一个 runtime 上。
     // 代价如实写：这一档**开跑之后打不断** ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
-    for c in ["files-ls", "files-stat", "files-find", "files-index-status"] {
+    // 〔步 `24f` 第三刀〕新那两条同档，而且这一档对它们**更承重**：
+    // `files-index-rebuild` 走一整棵树（64 万条现打 0.99 秒，**热缓存**；冷缓存没量过），
+    // `files-browse` 把名单上那几个目录各 `read_dir` 一遍。
+    // 放 tokio worker 上就是拿唯一那条 runtime 去跑一趟秒级遍历。
+    for c in [
+        "files-ls",
+        "files-stat",
+        "files-find",
+        "files-index-status",
+        "files-index-rebuild",
+        "files-browse",
+    ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
             "`{c}` 不在阻塞档上 —— 它是同步处理器，放 tokio worker 上会把读循环那条 runtime 占住"
@@ -396,6 +407,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-stat",
         "files-find",
         "files-index-status",
+        "files-index-rebuild",
+        "files-browse",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(
