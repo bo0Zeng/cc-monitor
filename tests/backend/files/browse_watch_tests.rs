@@ -137,6 +137,8 @@ fn a_file_created_after_the_walk_is_found_because_its_directory_is_being_watched
     let dir = fx.root.join("d0000");
 
     // ① 先建索引 —— 此刻那个文件还不存在。
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     crate::files::index::rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let before = crate::files::index::find(&crate::files::index::FindArgs {
@@ -190,6 +192,8 @@ fn an_entry_deleted_on_disk_stops_being_returned_once_its_directory_is_relisted(
     let doomed = dir.join("about-to-be-deleted");
     std::fs::File::create(&doomed).expect("造那个待删的文件");
 
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     crate::files::index::rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let needle = b"about-to-be-deleted".to_vec();
@@ -284,6 +288,8 @@ fn the_real_watcher_arms_and_delivers() {
     );
     assert_eq!(armed, 1, "名单上一个目录，挂上的个数不是 1");
 
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     crate::files::index::rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     std::fs::File::create(dir.join("pushed-by-the-kernel")).expect("造那个文件");

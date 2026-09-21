@@ -172,6 +172,8 @@ fn a_symlink_is_indexed_but_not_followed() {
 fn the_declared_rewalk_interval_is_what_status_reports() {
     let _lock = resident_lock();
     let fx = make_tree("status", 2, 3, 0);
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let s = status();
@@ -239,6 +241,8 @@ fn a_query_hands_back_the_hits_and_nothing_else() {
     let fx = make_tree("find", 4, 6, 0);
     let one = fx.root.join("d0002").join("needle-here-and-nowhere-else");
     std::fs::File::create(&one).expect("造那一条命中");
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
 
@@ -278,6 +282,8 @@ fn a_query_hands_back_the_hits_and_nothing_else() {
 fn the_limit_truncates_the_payload_but_never_the_count() {
     let _lock = resident_lock();
     let fx = make_tree("limit", 3, 10, 0);
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     rebuild_once(&fx.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let all = find(&FindArgs {
@@ -339,6 +345,8 @@ fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
         let target = super::super::raw::to_path_buf(&full);
         std::fs::File::create(&target).expect("造非 UTF-8 名字的文件");
 
+        // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+        let _serial = crate::files::index::testing::serial();
         rebuild_once(&fx.root)
             .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
         let r = find(&FindArgs {
@@ -400,6 +408,8 @@ fn a_second_rebuild_is_refused_while_one_is_running_and_says_so() {
 
     // ── 阴性对照：**没人在跑的时候它必须能跑** ──────────────────
     //    没有这一条，下面那条「第二趟被拒」可以靠「它永远拒」全绿。
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     let first = rebuild_once(&fx.root);
     assert!(
         first.is_some(),

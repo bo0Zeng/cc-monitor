@@ -241,6 +241,8 @@ fn f2_the_three_costs_of_the_search_family() {
     //   分成两趟的话 ③ 那一段量的是另一次遍历的产物，而两趟之间语料没变、
     //   代价却白付一次 —— 门禁上那一次是几千个 inode 的重读。
     let t_build = std::time::Instant::now();
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     let stats = crate::files::index::rebuild_once(&corpus.root)
         .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let build_ms = t_build.elapsed().as_millis().max(1);
