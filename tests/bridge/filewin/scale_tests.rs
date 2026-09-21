@@ -57,7 +57,7 @@ fn the_flatness_meter_can_actually_see_a_slope() {
     use super::super::rows::testing::render_headless_nonvirtual;
     let screen = egui::vec2(SCREEN.0, SCREEN.1);
 
-    let mut t = |n: usize| -> f64 {
+    let t = |n: usize| -> f64 {
         let rows = corpus::synth_rows(n, 0xF1);
         let ctx = egui::Context::default();
         let _ = render_headless_nonvirtual(&ctx, &rows[..64.min(rows.len())], screen);
@@ -175,5 +175,114 @@ fn egui_itself_does_not_keep_per_row_state() {
         probe_kept >= 5_000,
         "阳性对照只数到 {probe_kept} 条（应当 ≥ 5 000）—— 这个计数器看不见「按行留状态」，\
          那么上面那条相等断言证明不了任何东西"
+    );
+}
+
+/// 🔴 **第二刀补上那条欠账：「滚久了会不会越来越胖」。**
+///
+/// # 上一条为什么买不到它（原文逐字留在它的头注里）
+///
+/// `egui_itself_does_not_keep_per_row_state` 比的是**两档行数**（1 千 / 64 万），
+/// 而两档在固定 20 帧里**访问的行数差不多一样多**（20 帧 × 约 40 行）
+/// ⇒ 「状态随已访问行数增长」这一维在那条判据里**是恒等的**，它看不见。
+/// 那是现打出来的：换轴那一拍第一刀注的就是「给可见的那几十行留状态」，**没红**。
+///
+/// # 本条换的那一轴
+///
+/// **行数固定、帧数固定，只改「扫过多少行」**：
+/// · 甲：偏移**钉死**在顶上 ⇒ 每帧访问同一批约 40 行；
+/// · 乙：偏移**扫过整张列表** ⇒ 把 20 000 行全访问一遍。
+/// 两边**同一档行数、同一个帧数** ⇒ 两张状态表的条数必须**相等**。
+///
+/// 这才是「滚久了会不会越来越胖」那个形状：唯一的自变量是已访问行数。
+///
+/// # 阳性对照（没有它这条同样可能恒真）
+///
+/// 第三趟**照乙的偏移序列**跑，但每访问一行就往那张表里按 `Id` 塞一条
+/// ⇒ 条数必须涨到**已访问行数**的量级。它证明这把尺子认得出「按已访问行留状态」。
+///
+/// # ⚠ 买不到
+///
+/// · 仍然只看 `Memory::data` 那一张表（同上一条的边界）：galley 缓存 / 纹理图集
+///   若按行涨，本条看不见。⚠ 那一维**还是欠着**，缺的是一份「egui 内部还有哪些
+///   按行增长的容器」的独立读数。
+/// · 不是「跑一整天不会胖」：帧数是 40，扫过的是 2 万行。它买的是**斜率为 0**，
+///   不是「绝对值有上限」。
+#[test]
+fn egui_does_not_keep_state_per_row_we_have_scrolled_past() {
+    const ROWS: usize = 20_000;
+    const FRAMES: usize = 40;
+    let rows = corpus::synth_rows(ROWS, 0xF1);
+    let screen = egui::vec2(SCREEN.0, SCREEN.1);
+    let total_h = ROWS as f32 * (super::super::rows::ROW_HEIGHT + 4.0);
+    let span = (total_h - SCREEN.1).max(1.0);
+
+    // 偏移序列：甲恒 0，乙扫全程。**帧数一模一样。**
+    let pinned: Vec<f32> = vec![0.0; FRAMES];
+    let sweeping: Vec<f32> = (0..FRAMES)
+        .map(|i| span * (i as f32 / (FRAMES - 1) as f32))
+        .collect();
+
+    // 跑一趟并回 (状态表条数, 这一趟一共访问了多少行)。
+    let run = |offsets: &[f32]| -> (usize, usize) {
+        let ctx = egui::Context::default();
+        let mut visited = 0usize;
+        for off in offsets {
+            let t = render_headless(&ctx, &rows, screen, *off);
+            visited += t.rows_materialized;
+        }
+        (ctx.memory(|m| m.data.len()), visited)
+    };
+
+    let (kept_pinned, seen_pinned) = run(&pinned);
+    let (kept_sweep, seen_sweep) = run(&sweeping);
+
+    println!("  F1 · 内存（换轴：行数固定 {ROWS}、帧数固定 {FRAMES}，只改扫过多少行）");
+    println!("    偏移钉死 ⇒ 访问 {seen_pinned} 行次 · 状态表 {kept_pinned} 条");
+    println!("    扫过全程 ⇒ 访问 {seen_sweep} 行次 · 状态表 {kept_sweep} 条");
+
+    // 反空真：两趟访问的行数必须**真的**差开，否则「相等」什么都没说。
+    // 钉死那趟访问的是同一批约 40 行；扫全程那趟每帧都是新行。
+    assert!(
+        seen_sweep >= seen_pinned,
+        "扫全程访问的行次（{seen_sweep}）不该少于钉死那趟（{seen_pinned}）"
+    );
+    let distinct_pinned = seen_pinned / FRAMES; // 每帧同一批 ⇒ 不同行数就是一帧的量
+    assert!(
+        seen_sweep >= distinct_pinned * 20,
+        "扫全程只访问了 {seen_sweep} 行次，而钉死那趟每帧约 {distinct_pinned} 行 —— \
+         两趟的「已访问行数」没差开，这条判据此刻在空转（那正是上一条栽过的形状）"
+    );
+
+    assert_eq!(
+        kept_pinned, kept_sweep,
+        "同一档 {ROWS} 行、同样 {FRAMES} 帧：偏移钉死时状态表 {kept_pinned} 条，\
+         扫过整张列表之后 {kept_sweep} 条 —— egui 在按**已访问的行**留状态，\
+         也就是说滚久了会越来越胖。虚拟滚动省的是绘制，不是这个。"
+    );
+
+    // ── 阳性对照：照乙的偏移跑，但每访问一行就按 `Id` 塞一条 ────────────────
+    let probe = egui::Context::default();
+    let mut planted = 0usize;
+    for off in &sweeping {
+        let t = render_headless(&probe, &rows, screen, *off);
+        probe.memory_mut(|m| {
+            for i in t.first_row..t.last_row {
+                m.data.insert_temp(egui::Id::new(("per-visited-row", i)), i);
+                planted += 1;
+            }
+        });
+    }
+    let probe_kept = probe.memory(|m| m.data.len());
+    println!("    阳性对照：按**已访问行**塞（塞了 {planted} 次）⇒ 表里 {probe_kept} 条");
+    assert!(
+        probe_kept >= seen_sweep / 2,
+        "阳性对照只数到 {probe_kept} 条，而这一趟访问了 {seen_sweep} 行次 —— \
+         这个计数器看不见「按已访问行留状态」，那么上面那条相等断言证明不了任何东西"
+    );
+    // 而且它必须比「钉死」那趟明显多 —— 否则对照组与被测组分不开。
+    assert!(
+        probe_kept > kept_pinned * 10,
+        "阳性对照 {probe_kept} 条 vs 钉死那趟 {kept_pinned} 条 —— 差得不够，尺子可疑"
     );
 }

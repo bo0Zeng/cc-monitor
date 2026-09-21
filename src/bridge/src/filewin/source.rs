@@ -51,6 +51,40 @@ impl Source {
             Source::Remote(cfg) => cfg.origin_label(),
         }
     }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self, Source::Remote(_))
+    }
+}
+
+/// 上一级目录。
+///
+/// 🔴 **两侧不是同一个算法，所以它吃 `Source` 而不是只吃一个字符串**：
+/// 远端路径**恒用 `/`**（SFTP 协议就是这么定的，对面是 Windows 也一样），
+/// 本机路径用**本机分隔符**。拿 `std::path` 去切远端路径，在 Windows 上会把
+/// `\` 也当分隔符 ⇒ 远端一个名字里含反斜杠的目录会被切成两级。
+///
+/// ⚠ 到顶了就**返回原值**（不是空串、不是 `None`）—— 调用方靠「回来的和给出去的相等」
+/// 判断「已经在顶上了」，这样「到顶」这件事不需要第二个返回通道。
+pub fn parent_dir(source: &Source, cwd: &str) -> String {
+    match source {
+        Source::Remote(_) => {
+            let trimmed = cwd.trim_end_matches('/');
+            if trimmed.is_empty() {
+                // `/` 或空串：都已经在根上。
+                return "/".to_string();
+            }
+            match trimmed.rfind('/') {
+                Some(0) | None => "/".to_string(),
+                Some(i) => trimmed[..i].to_string(),
+            }
+        }
+        Source::Local => std::path::Path::new(cwd)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| cwd.to_string()),
+    }
 }
 
 /// 目录在前，再按名称小写排序。契约与 `sftp_pool::sort_entries` 同。

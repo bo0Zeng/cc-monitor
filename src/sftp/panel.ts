@@ -114,6 +114,10 @@ export class SftpPanel implements OverlayHandle {
     header.appendChild(newFile);
     const term = mkBtn("在此打开终端", () => this.openTerminalHere());
     header.appendChild(term);
+    // 🔴 `24e` 第二刀：原生文件管理窗口的**用户入口**。理由见 `openNativeWindow`。
+    const native = mkBtn("在原生窗口打开", () => void this.openNativeWindow());
+    native.classList.add("sftp-open-native");
+    header.appendChild(native);
     const pin = mkBtn("★ Pin", () => this.toggleBookmark());
     header.appendChild(pin);
     const refresh = mkBtn("刷新", () => void this.reload());
@@ -649,6 +653,40 @@ export class SftpPanel implements OverlayHandle {
   }
 
   /** 在此目录打开终端:wt.exe 起 ssh -t 落到当前 cwd(复用 F41 launch_remote_terminal)。 */
+  /**
+   * `24e` 第二刀：把**当前这台远端 ＋ 当前这个目录**在原生窗口（egui）里打开。
+   *
+   * ## 🔴 入口为什么长在这块面板的表头上（三条，都不是「顺手」）
+   *
+   * ① **这里已经有那两样东西了**：哪一台远端（`this.cfg`）与哪一个目录（`this.cwd`）。
+   *    顶栏那个 SFTP 入口的选机器流程（0 台提示 / 1 台直开 / 多台选单，
+   *    `main.ts::openSftpFromTopbar`）**原封不动就能用** ——
+   *    用户走的还是「选一台远端」那条老路，只是终点多了一个。
+   *    另起一颗「打开原生文件窗口」的顶栏按钮，就得把选机器那一套再写一遍。
+   * ② **它把「新窗口能不能替代旧面板」变成一个可比的问题**。`设计/60 §6.6 C` 裁的
+   *    「只有一个文件管理面板」是**终局**，而退役的前提是「新的真能替代旧的」。
+   *    入口放在旧面板上 ⇒ 同一台远端、同一个目录，两个界面并排看得见差在哪。
+   *    这一刀**刻意不删** `panel.ts`：在替代品长成之前删掉旧的，等于把功能拿走。
+   * ③ **`src/sftp/` 是这一刀的写区，`src/main.ts` / `src/tabs.ts` / `src/settings/` 不是。**
+   *    把入口塞进顶栏要动 `main.ts`，那是越界。⇒ 入口先落在这里；
+   *    等旧面板退役那一刀，顶栏那颗按钮的落点会跟着一起改。
+   *
+   * ## 失败要出声
+   *
+   * Rust 侧**先列一趟目录再开窗**，列不出来就 reject ⇒ 这里 `await` 得到的错是真错。
+   * ⚠ 成功那一支也只敢说「列到了 N 项」：本机没有图形会话时窗口根本起不来，
+   * 而那一格命令看不见（逐条边界写在 `filewin/entry.rs` 头注里）。
+   */
+  private async openNativeWindow(): Promise<void> {
+    if (!this.cfg) return;
+    try {
+      const n = await commands.open_file_window({ cfg: this.cfg, path: this.cwd });
+      showActionFailureToast("已在原生窗口打开", `${this.cwd}（${n} 项）`, { level: "info" });
+    } catch (e) {
+      showActionFailureToast("原生窗口打开失败", String(e));
+    }
+  }
+
   private openTerminalHere(): void {
     if (!this.cfg) return;
     const remoteCmd = buildOpenTerminalCmd(this.cwd);

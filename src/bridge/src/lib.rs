@@ -1350,6 +1350,13 @@ pub fn run() {
             sftp_pool::sftp_chmod, // `设计/60 §5.4c`：`SETSTAT` 改权限（属性块不带 size）
             sftp_pool::sftp_read_text_for_edit,
             sftp_pool::sftp_write_text,
+            // 🔴 `24e` 第二刀（`设计/60 §4 戊` / `§5` 第三段）：**原生文件管理窗口的入口。**
+            //    它不是「又一条 sftp 命令」—— 它开的是那个 egui 窗口（同进程、次线程，
+            //    进程形态见 `filewin/mod.rs` 头注）。先真的列一趟目录，列不出来就带原文报错，
+            //    **不静默开一个空窗**（理由逐条住 `filewin/entry.rs` 头注）。
+            //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
+            //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
+            filewin::entry::open_file_window,
             pubkey::push_public_key,
             backend::control::tmux::list_remote_tmux,
             backend::control::tmux::list_local_tmux,
