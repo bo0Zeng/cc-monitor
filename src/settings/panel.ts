@@ -35,6 +35,7 @@ import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
 // E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
+import { createUnknownKeysBar } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { hostOsAllows, type HostOs } from "./host-os"; // S9：本机 OS 门
 import { setCurrentMachine } from "./machine-context";
 import {
@@ -305,9 +306,10 @@ export class SettingsPanel {
   private resumeRemotePresets: string[] = [];
   private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private bringFrontCheckbox!: HTMLInputElement;
-  /** F03（unify-launch）：`forceLegacyLaunchRenderer` 无 UI 暴露（手改 config.json 的逃生口），
-   *  但 `onBehaviorToggle` 每次都要交一份完整 `BehaviorConfig`——缓存 open() 时读到的值原样带回，
-   *  防止面板任何一个勾选框变动都把它悄悄重置成 DEFAULTS 里的 false。 */
+  /** F03（unify-launch）：载荷渲染器那个逃生口（落盘键 `forceLaunchPayloadRenderer`）
+   *  无 UI 暴露（手改 config.json），但 `onBehaviorToggle` 每次都要交一份完整
+   *  `BehaviorConfig`——缓存 open() 时读到的值原样带回，防止面板任何一个勾选框变动
+   *  都把它悄悄重置成 DEFAULTS 里的 false。 */
   private forceLegacyLaunchRenderer = false;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** F82a：见 SettingsPanelOptions.windowMode。 */
@@ -620,6 +622,10 @@ export class SettingsPanel {
     root.className = "settings-panel";
 
     root.appendChild(this.buildHeader());
+    // 🔴 P12：「配置里有 app 不认识的键」常驻条。**放在最上面、任何一页之前** ——
+    // 它说的是「你写下的某个设置根本没生效」，比面板里任何一格都更该先被看见。
+    // 同 S7 那条：它是状态不是事件，所以不属于任何一页，也刻意没有关闭按钮。
+    root.appendChild(createUnknownKeysBar());
     root.appendChild(this.buildBody());
     // ★ S7：「有改动待重启」常驻条。**放在 footer 之上、面板底部** —— 它是状态，
     // 不是某一页的事（改远端配置和改诊断开关都会点亮它），所以不属于任何一页。
