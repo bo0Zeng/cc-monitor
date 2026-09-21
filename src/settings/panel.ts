@@ -310,7 +310,7 @@ export class SettingsPanel {
    *  无 UI 暴露（手改 config.json），但 `onBehaviorToggle` 每次都要交一份完整
    *  `BehaviorConfig`——缓存 open() 时读到的值原样带回，防止面板任何一个勾选框变动
    *  都把它悄悄重置成 DEFAULTS 里的 false。 */
-  private forceLegacyLaunchRenderer = false;
+  private forceLaunchPayloadRenderer = false;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** F82a：见 SettingsPanelOptions.windowMode。 */
   private readonly windowMode: boolean;
@@ -381,7 +381,7 @@ export class SettingsPanel {
     this.resumeRemotePresets = behavior.resumeCommandRemotePresets ?? [];
     this.renderResumePresets();
     this.updateRemoteLauncherWarning();
-    this.forceLegacyLaunchRenderer = behavior.forceLegacyLaunchRenderer;
+    this.forceLaunchPayloadRenderer = behavior.forceLaunchPayloadRenderer;
     this.updateBringFrontEnabled();
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
@@ -509,7 +509,7 @@ export class SettingsPanel {
         this.resumeRemoteInput.value,
       ),
       notifyTurnEnd: this.notifyTurnEndCheckbox.checked,
-      forceLegacyLaunchRenderer: this.forceLegacyLaunchRenderer,
+      forceLaunchPayloadRenderer: this.forceLaunchPayloadRenderer,
     };
     try {
       await setBehavior(next);

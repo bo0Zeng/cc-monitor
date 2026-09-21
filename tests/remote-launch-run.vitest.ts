@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../src/behavior", () => ({ getBehavior: vi.fn().mockResolvedValue({ forceLegacyLaunchRenderer: false }) }));
+vi.mock("../src/behavior", () => ({ getBehavior: vi.fn().mockResolvedValue({ forceLaunchPayloadRenderer: false }) }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { showActionFailureToast } from "../src/error-toast";
