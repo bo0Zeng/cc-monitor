@@ -552,81 +552,13 @@ pub fn encode_request(id: &str, cmd: &str, args: &Value) -> String {
     s
 }
 
-/// U8a-2b：`launch` 命令的**参数构造器**（monitor 这一侧的契约面）。
-///
-/// # 它今天有没有生产调用方 —— 没有，如实说
-///
-/// 生产路径还没切过来：tauri 命令 `launch_remote_terminal(origin, remote_cmd)` 收到的
-/// 已经是一条**渲染好的 shell 串**，拆不回结构化计划。切换要等前端改成发结构化请求
-/// （U8c 的两个 TS 渲染器 + IR 退役），登记为 **U8a-2c**。
-///
-/// 那为什么现在就写：**它是契约**。字段名一旦与后端的解析器漂开，症状是
-/// 「命令发出去了、backend 回 `bad_request` 说缺字段」，而两边各自看都「对」。
-/// `launch_args_field_names_match_the_backend_parser` 把这件事变成编译期就会红的对拍。
-///
-/// `mode` 只有两种取值 —— **没有 `attach-only`**：attach 是平面 ③，backend 在远端，
-/// 开不了你面前的窗（见 backend `control/launch.rs` 头注）。
-// U8a-2c-1：**它有生产调用方了** —— `backend::control::backend_launch::backend_send_into`。
-// 在那之前这里挂着 `#[allow(dead_code)]`（编码器早写好、零调用方，正是复盘点名的「方向偏移」形状）。
-pub fn launch_args(
-    mode: &str,
-    name: &str,
-    payload: &str,
-    cwd: Option<&str>,
-    ccm_sid: Option<&str>,
-    extras: LaunchExtras<'_>,
-) -> Value {
-    let mut m = serde_json::Map::new();
-    m.insert("mode".into(), Value::String(mode.to_string()));
-    m.insert("name".into(), Value::String(name.to_string()));
-    m.insert("payload".into(), Value::String(payload.to_string()));
-    if let Some(c) = cwd {
-        m.insert("cwd".into(), Value::String(c.to_string()));
-    }
-    if let Some(s) = ccm_sid {
-        m.insert("ccm_sid".into(), Value::String(s.to_string()));
-    }
-    if let Some(a) = extras.agent {
-        m.insert("agent".into(), Value::String(a.to_string()));
-    }
-    if let (Some(w), Some(h)) = (extras.width, extras.height) {
-        m.insert("width".into(), Value::String(w.to_string()));
-        m.insert("height".into(), Value::String(h.to_string()));
-    }
-    Value::Object(m)
-}
-
-/// `K-R104`：`capture-pane` 命令的**参数构造器**（monitor 这一侧的契约面）。
-///
-/// 与 [`launch_args`] 同一条理由：字段名一旦与后端的解析器漂开，症状是
-/// 「命令发出去了、backend 回 `invalid_args` 说缺字段」，而两边各自看都「对」。
-/// 由 [`tests::the_tmux_primitive_arg_builder_matches_the_backend_parser`] 对拍。
-pub fn capture_pane_args(name: &str) -> Value {
-    let mut m = serde_json::Map::new();
-    m.insert("name".into(), Value::String(name.to_string()));
-    Value::Object(m)
-}
-
-/// `create-or-attach` **专有**的那三个可选字段〔`K-P2` `D3` 09-03〕。
-///
-/// # 为什么是一个结构体，不是再挂三个位置参数
-///
-/// 挂上去就是**连着五个 `Option<&str>`** —— `width` 与 `height` 同型同类，
-/// 调换两个实参编译器一个字都不会说，而症状是「窗口尺寸反了」这种没人会怀疑到调用点的事。
-/// 具名字段让那类错**在源码上就看得见**。
-///
-/// ⚠ `send-into` / `send-keys-raw` 那两个 mode 用 [`LaunchExtras::default`]：
-/// 这三个字段**只对新建会话有意义**（backend 侧也只在 `CreateOrAttach` 那条臂上读它们）。
-#[derive(Debug, Clone, Copy, Default)]
-pub struct LaunchExtras<'a> {
-    /// 哪个 AI —— 落成 tmux 的 `@ccm_agent` 标记。
-    pub agent: Option<&'a str>,
-    /// 新建窗口宽（十进制串）。**与 `height` 成对**：只给一半时这里直接两个都不发，
-    /// 让「半个尺寸」在**发出去之前**就不存在，而不是等后端回 `invalid_args`。
-    pub width: Option<&'a str>,
-    /// 新建窗口高（十进制串）。见 `width`。
-    pub height: Option<&'a str>,
-}
+// 🔴 〔`设计/05 §8.1` 步 3.5，2026-09-21〕**`launch` / `capture-pane` 的参数构造器
+//    与 `LaunchExtras` 搬走了** —— 新家 `backend/control/command_args.rs`。
+//    搬的理由不是整理：`C1`（`设计/05 §2` 零业务语义）在本文件上咬到 `sid` 与 `agent`
+//    两个词，**两处都在那三样身上**（`ccm_sid` 参数 · `extras.agent` 字段）。
+//    「一条命令要带哪几个业务字段」是**载荷的内容**，而本文件只该管载荷的搬运。
+//    ⚠ 那三样的单元判据**没有跟着搬**（跨半边 include 被别人的登记表按文件路径钉着）——
+//    理由逐字写在新家的头注里，不在这里抄第二份。
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
