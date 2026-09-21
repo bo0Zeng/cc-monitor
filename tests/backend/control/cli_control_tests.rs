@@ -171,7 +171,13 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     ///
     /// 〔`K-R113` 09-13〕`bus-state` 是第三条：它与 `bus-list` 同族 —— **无输入、有输出字段**，
     /// 正是当年那个 `!fields.is_empty()` 代用品会判错的形状。
-    const NO_INPUT_TODAY: &[&str] = &["bus-list", "bus-state", "ping"];
+    ///
+    /// 〔步 `24f` 第二刀 09-20〕`files-index-status` 是第四条，**同一形**：
+    /// 它一个入参都没有（`files::CAPABILITIES` 里那条 `args` 就是空的），
+    /// 出方向却有十个字段。声明成收输入 ⇒ `--files-index-status` 会挂在那儿等 EOF，
+    /// 而它恰恰是「这台机器上的索引新鲜不新鲜」那条**探活式**问话。
+    /// ⚠ 同族另外三条（`files-ls` / `files-stat` / `files-find`）**要**输入，不在这张表里。
+    const NO_INPUT_TODAY: &[&str] = &["bus-list", "bus-state", "files-index-status", "ping"];
     let declared: Vec<&str> = REGISTRY
         .iter()
         .filter(|s| !s.takes_input)

@@ -73,15 +73,22 @@
 //!    那一处的语义今天是「**会在一次性查询判定前剥离对应 flag** 的流能力」
 //!   （`§26` 死循环护栏逐字，`main_stream_flag_tests` 在钉），本族四条**都不是那种东西**，
 //!    硬塞进去会当场红，而且会是**红对了**。⇒ 汇总要先有第 2 层那个派生机制，那是另一件活。
-//! 2. **线上那一跳没接**：本族没有进 `inbound::REGISTRY` / `main::SUBCOMMANDS`，
-//!    也没有进 `src/doc/IPC-PROTOCOL.md §10`。那三处都**不在本件的写区**
-//!   （写区逐字只有「`src/backend/` 下的**新**模块 ＋ `lib.rs` 的声明 ＋ `tests/backend/`
-//!    下的新判据 ＋ 能力声明那一处」）。
-//!    ⇒ 本族今天的形状与 `control/files_write.rs` 同一档：**能力在、判据在、消费者还没有**
-//!   （`设计/60 §6.6` 对那一份的处置逐字「留着但今天无消费者，如实登记，
-//!    **不假装它在用**」）。这里照同一条写法登记。
-//!    ⚠ [`answer`] 的签名是**照着 `inbound::CommandSpec` 的处理器形状**做的
-//!   （一进一出、`(code, message)` 的错误信封），所以接线那一拍是加四行、不是重写。
+//! 2. ✅〔`24f` 第二刀 · 2026-09-20〕**线上那一跳已经接上**：四条能力同拍进了
+//!    `inbound::REGISTRY` / `inbound::COMMANDS`（帧面）· `lib::SUBCOMMANDS`（CLI 面）·
+//!    `src/doc/IPC-PROTOCOL.md §10`（四个小节 ＋ CLI 那一半那一段），并 bump 了 `BUILD_ID`。
+//!    [`answer`] 一个字节没改 —— 它的签名本来就是照着 `inbound::CommandSpec` 的处理器形状
+//!    做的（一进一出、`(code, message)` 的错误信封），接线那一拍加的是四条登记，不是重写。
+//!    线上名与能力名的翻译**只有一处**：[`answer_wire`]。
+//!    🔴 **但这不等于「搜索能用了」，两条如实登记：**
+//!    ① **索引今天没有任何线上办法叫它建。** `设计/60 §3.5.2a` 把节拍留给调用方，
+//!       而「重走」那条命令**不在** `设计/96 §2.9` 那张四条的表里
+//!       ⇒ [`index::rebuild_once`] 与 [`browse_watch::set_browsing`] 至今**零生产调用方**
+//!       ⇒ 真机上 `files.find` 恒回 `index_missing: true`（那**不是**「没搜到」）。
+//!       这是设计面的一个缺口，不是接线漏了一条：要补它得先在 `设计/96 §2.9` 那张表上
+//!       裁出第五条能力。**报备，不在本刀里自己长出来。**
+//!    ② **消费侧还没有**：`src/bridge` 那一头一个字节都没动（`files.index.status`
+//!       回的 `age_secs` / `rewalk_interval_secs` / `stale` 还没显示在界面上 ——
+//!       `设计/60 §3.5.3` 那条 ⬜ 仍然是 ⬜）。
 //! 3. **按内容搜 / 模糊匹配 / 排序** —— `设计/60 §3.5.3` 逐字「一条都没设计」，本件也没做。
 
 pub mod browse_watch;
@@ -165,7 +172,13 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["ignore_ascii_case", "limit", "path"],
+        // 🔴 〔`24f` 第二刀 09-20 订正〕这里原先还有一条 `"ignore_ascii_case"` ——
+        //    **[`answer_ls`] 一次都没读它**（现打：它只调 [`path_arg`] 与 [`limit_of`]）。
+        //    那是从下面 `files.find` 那条抄过来的一个鬼影：本表没有任何判据拿 `args`
+        //    去对真解析器，所以它一直没红。接线那一拍必须先把它摘掉 ——
+        //    不然 `src/doc/IPC-PROTOCOL.md §10` 那份**冻结的线上契约**里就会多出一个
+        //    「写了也不起作用」的参数，而那份文档的读者在仓外。
+        args: &["limit", "path"],
         fields: &["entries", "kind", "mtime_secs", "path", "size", "truncated"],
         codes: &["bad_path", "unreadable"],
     },
@@ -498,6 +511,30 @@ pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
 /// 本族声明的能力名。
 pub fn capability_names() -> Vec<&'static str> {
     CAPABILITIES.iter().map(|c| c.name).collect()
+}
+
+/// **线上命令名 → 能力名**（`files-index-status` → `files.index.status`）。
+/// 这一族上线之后，两个命名空间之间的翻译**只有这一处**。
+///
+/// # 🔴 为什么线上那一面不能直接叫 `files.ls`（不是排版偏好，是两条判据的射程）
+///
+/// 能力名带 `.`，而命令面那一侧**两个取词器都不认这个字符**，现打：
+///
+/// - `protocol_doc_guard::code_span_identifiers` 按「字母数字 / `_` / `-`」切词
+///   ⇒ 文档里写多全，`documented.contains("files.ls")` 都**恒假**
+///   （`bus-list` 当年是因为少了 `-` 才被补进去的，同一条射程问题）；
+/// - `protocol_doc_guard::dispatched_subcommands` 与
+///   `main_argv_table_guard::dispatched` 收 token 的字符集同样是那一套
+///   ⇒ `"--files.ls"` 这个字面量会被**静默丢弃**：不是「查过觉得没问题」，是**没看见**。
+///
+/// ⇒ 用 `.` 的代价是把四条命令从三条判据底下同时抽走，而三条都照常报绿 ——
+/// 那正是本仓反复治的那一形。⇒ 线上一律 `-`，能力名一个字不动
+/// （`设计/96 §2.9` 那张表逐字钉着它），两者之间只留这一个函数。
+///
+/// ⚠ 反向替换之所以够用：本族**没有一条能力名里带 `-`**，
+/// 由 `inbound_structure_guards` 那条两向集合相等钉住。
+pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
+    answer(&wire_name.replace('-', "."), args)
 }
 
 #[cfg(test)]
