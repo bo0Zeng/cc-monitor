@@ -1492,11 +1492,24 @@ deadcode_t0=$(date +%s)
 #   等调用点真的吃这几个方法，本格会再红一次 —— 那一次同样是对的。
 # ⚠ 这个数是**现打**的（`cargo check -p monitor --message-format=short | grep -c "never used"`），
 #   不是 36−2 算的。
-# ⚠ 🔴 顺带修一条本格自己的腐坏：这个数原先在下面的内联脚本里**手抄了五遍**
+# 🔴 **2026-09-21（步 `24f` 第四刀）：34 → 33，降的 1 条逐条记在这里。**
+# **又是那条刻意的耦合按设计开火了，而且这一次上面那段逐字预告过它**：
+#   「剩下的第 3 条**仍在**：`Origin` 的五个方法……等调用点真的吃这几个方法，
+#    本格会再红一次 —— **那一次同样是对的**。」
+# 吃它的是 `src/bridge/src/filewin/find.rs`（原生文件窗口那一侧的搜索）＋
+#   `filewin/source.rs::Source::origin`：前者调 `Origin::as_wire_str()`，后者调 `Origin::local()`
+#   ⇒ 那一条「associated items 从来没用过」的合并警告整条出列。
+# ⚠ **`is_local` / `is_remote` / `host_name` 今天仍然没有生产调用方** —— 现打核过
+#   （全树 `.is_local()` / `.host_name()` 只命中 `origin.rs` 自己头注里那一句散文）。
+#   那三个方法没有单独再报一条，是 rustc 把同一个 impl 块的未用项**合并成一条**警告的结果
+#   ⇒ **别把「警告没了」读成「五个方法都有人用了」。**
+# ⚠ 这个数同样是**现打**的（同一条命令，两趟：`touch src/lib.rs` 与
+#   `touch src/origin.rs` 各一趟，都是 33），不是 34−1 算的。
+# ⚠ 🔴 顺带修一条本格自己的腑坏：这个数原先在下面的内联脚本里**手抄了五遍**
 #   （3 处写 33、**2 处还写着更早的 41**）⇒ 终端上印出来的「恒等钉在 41」是假话，
 #   而没有任何东西会因此变红。现在它只住 `pin=` 一处。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 33，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=33; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
