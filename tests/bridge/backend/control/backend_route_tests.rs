@@ -128,6 +128,17 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⚠ 它回的是 `Result<String, Routed>` —— 「拿到了那一屏」与「三态里的另外两态」
     //   在类型上分得开，怎么对用户说由调用方 `capture_remote_pane` 决定。
     ("tmux.rs", Verdict::UsesRouter),
+    // ★ 〔步 `24f` 第四刀 09-21〕**第七个发送端** —— 原生文件窗口那一侧的搜索
+    //   （`filewin/find.rs`，`files-find` / `files-index-status` /
+    //   `files-index-rebuild` / `files-browse` 四条）。
+    //   它**没有第二条路可回落**，而且这一次那句话是硬的：`设计/60 §2 档①` 逐字
+    //   「SFTP 只能递归 `READDIR`，N 次往返；而且**协议里没有「放一份常驻索引」这个概念**」
+    //   ⇒ 搜索在 SFTP 那一侧**结构上不存在**，不是「今天还没做」。
+    //   但**照样走分流器**，理由与 `cc_bus.rs` / `tmux.rs` 那两条逐字相同：
+    //   分流规则一有第二份实现，「被门拒绝」就会在某一份里被洗成「换条路重做」。
+    //   ⚠ 它回的是 `Result<Value, Routed>`（同 `tmux.rs` 那一处的形状）——
+    //   「拿到了那一份 data」与「三态里的另外两态」在类型上分得开。
+    ("find.rs", Verdict::UsesRouter),
 ];
 
 #[cfg(test)]

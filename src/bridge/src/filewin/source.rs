@@ -55,6 +55,26 @@ impl Source {
     pub fn is_remote(&self) -> bool {
         matches!(self, Source::Remote(_))
     }
+
+    /// 这一趟问的是**哪台机器** —— 走 [`crate::origin::Origin`]，全仓那一个类型。
+    ///
+    /// 🔴 它与 [`Source::label`] **刻意分开两个函数**：`label` 是给人看的
+    /// （本机那一格逐字是「本机」两个中文字），而这一个是**寻址用的**。
+    /// 合成一个就得让「本机」去当入方向登记表的键，而那张表的本机键是
+    /// `origin::LOCAL`（`"<local>"`）。
+    ///
+    /// ⚠ **刻意不回 `String`**：`origin_tests::no_new_raw_string_origin_parameters`
+    /// 是一条递减棘轮 —— `设计/00 §2.5 ①` 逐字「origin 归一 —— 这是地基」，
+    /// 新代码一律用这个类型，不许再给这个概念造一种表达。
+    /// ⚠ 远端那一支用 `origin_label()`，与 `ssh_source` 的 `stream_loop` 登记时
+    /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
+    /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
+    pub fn origin(&self) -> crate::origin::Origin {
+        match self {
+            Source::Local => crate::origin::Origin::local(),
+            Source::Remote(cfg) => crate::origin::Origin(cfg.origin_label()),
+        }
+    }
 }
 
 /// 上一级目录。

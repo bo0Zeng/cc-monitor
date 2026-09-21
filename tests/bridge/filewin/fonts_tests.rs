@@ -273,18 +273,19 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let files = drawn_files();
     assert_eq!(
         files.len(),
-        8,
-        "人群应当是 8 份（2026-09-20 现打：copy · corpus · entry · rows · scale · shell · source · \
-         transfer；`fonts.rs` 与 `mod.rs` 摘掉了。⚠ `corpus.rs` 的非 ASCII 字面量是 0，\
-         按字符数统计时看不见它 —— 人群按**文件**数，别按有没有贡献字符数）\
+        9,
+        "人群应当是 9 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
+         shell · source · transfer；`fonts.rs` 与 `mod.rs` 摘掉了。⚠ `corpus.rs` 的非 ASCII \
+         字面量是 0，按字符数统计时看不见它 —— 人群按**文件**数，别按有没有贡献字符数）\
+         〔`24f` 第四刀 09-21：8 → 9，多的是 `find.rs`（搜索那一侧的命令面与新鲜度那一行）〕\
          —— 现在是 {}，人群变了就重新论证一遍",
         files.len()
     );
     let scanned = label_chars();
     assert_eq!(
         scanned.len(),
-        130,
-        "现扫出 {} 个不同的非 ASCII 字符（2026-09-20 现打 130）。\
+        205,
+        "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 205；`24f` 第四刀之前是 130）。\
          这个数本身没有对错，但它变了说明标签动过 —— 连着下面那条一起看",
         scanned.len()
     );
@@ -314,7 +315,7 @@ fn the_probe_excludes_the_two_chars_the_ruler_cannot_judge() {
 // 🔴 反空真的锚
 // ═══════════════════════════════════════════════════════════════════
 
-/// 🔴 **不装字体时，探针里画不出的字数恰好是 121（比例）／ 120（等宽）。**
+/// 🔴 **不装字体时，探针里画不出的字数恰好是 194（比例）／ 193（等宽）。**
 ///
 /// 这是这一摞的**反空真锚**：它同时钉住两件事 ——
 /// ① 量具**能**说「画不出」（不是恒说「都能画」）；
@@ -335,14 +336,16 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &prop(), PROBE).len(),
-        121,
-        "比例字体下画不出的字数变了（2026-09-20 现打 121 / 探针 {} 字）",
+        194,
+        "比例字体下画不出的字数变了（2026-09-21 现打 194 / 探针 {} 字；\
+         `24f` 第四刀之前是 121 / 130）",
         PROBE.chars().count()
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        120,
-        "等宽字体下画不出的字数变了（2026-09-20 现打 120 —— 比比例少一个 `→`）"
+        193,
+        "等宽字体下画不出的字数变了（2026-09-21 现打 193 —— 比比例少一个 `→`；\
+         `24f` 第四刀之前是 120）"
     );
 }
 

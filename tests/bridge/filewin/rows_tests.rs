@@ -53,6 +53,49 @@ fn the_row_count_we_materialize_does_not_depend_on_how_many_rows_there_are() {
     assert_eq!(big.total_rows, 640_413);
 }
 
+/// 🔴〔第四刀〕**命中那一摞也得是虚拟的。**
+///
+/// 形状照上面那条办（**恒等**断言，不是地板）：50 条与 20 000 条，
+/// 物化行数必须一模一样。
+///
+/// ⚠ 为什么不能靠「`limit` 默认 1000 所以条数有界」偷懒用 `show`：
+/// 那个上界住 `src/doc/IPC-PROTOCOL.md §10`（**后端那一侧的默认值**），
+/// 不是这一侧给的 —— 哪天调用方开始发一个大 `limit`，这一格就当场变成
+/// `真相源/99 §2.3` 那张表里 100 000 行 / 83.6 ms 那一格。
+#[test]
+fn the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits() {
+    let ctx = egui::Context::default();
+    let hits = |n: usize| -> Vec<String> { corpus::synth_paths(n, 0x24F4).into_iter().collect() };
+    let run = |hs: &[String]| -> RenderTally {
+        let mut t = RenderTally::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen())),
+            ..Default::default()
+        };
+        // 🔴 调的是**生产那个函数**，不是它的副本（同 `show_file_rows` 那条理由）。
+        let out = ctx.run_ui(input, |ui| show_hit_rows(ui, hs, &mut t));
+        out.drop_without_applying_deltas();
+        t
+    };
+    let _ = run(&hits(64)); // 字体图集先建起来
+    let small = run(&hits(50));
+    let big = run(&hits(20_000));
+    assert_eq!(
+        small.rows_materialized, big.rows_materialized,
+        "50 条命中与 20 000 条命中物化的行数必须相等 —— 不相等就说明命中那一摞没走虚拟滚动"
+    );
+    assert!(
+        small.rows_materialized > 0,
+        "一行命中都没画 —— 0 不是绿（那也会让上面那条恒等成立）"
+    );
+    assert!(
+        big.rows_materialized < 20_000 / 100,
+        "物化了 {} 行命中；虚拟滚动应当只物化一屏的量级",
+        big.rows_materialized
+    );
+    assert_eq!(big.total_rows, 20_000, "总条数没喂进去");
+}
+
 /// 🔴 **对照组**：证明上面那把尺子量得出差别。
 ///
 /// 同一个视口、同一份语料、同一个 `paint_one_row`，只把 `show_rows` 换成 `show`
