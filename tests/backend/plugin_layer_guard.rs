@@ -251,10 +251,12 @@ fn env_call_census(files: &[(String, String)]) -> Vec<(String, String, usize)> {
 /// - **别处零处**：本层其余文件里一处都没有；
 /// - **调用面登记**：动子进程环境的调用形逐处对账 —— 多一处就得有人来回答一句。
 ///
-/// ⚠ **射程**（[`plugin_sources`] 的构造性缺口，这里不重复理由）：采集面里**没有
-/// `mod.rs`**（`scan_tree!` 按构造摘掉调用者自己）⇒ 有人把第二份白名单写进 `mod.rs`
-/// 的生产段，本条看不见。今天 `mod.rs` 的生产段就是那几行 `mod` 声明，藏不进东西，
-/// 但那是**事实**不是**判据**。
+/// ⚠ **射程订正**〔`P4` 2026-09-21〕：先前这里写着「采集面里**没有 `mod.rs`**
+/// （`scan_tree!` 按构造摘掉调用者自己）⇒ 有人把第二份白名单写进 `mod.rs` 的生产段，
+/// 本条看不见」。**那个缺口今天不存在**：自摘那一刀在这一处不生效，而 [`plugin_sources`]
+/// 已经改成 `scan_tree_excluding(.., &[])`（明写「一份都不排除」）
+/// ⇒ `mod.rs` 的生产段**在人群里**，这一格是真的判得到的。
+/// ⇒ 别再照那段旧话以为这里有个洞 —— 洞随 [`plugin_sources`] 那一轮一起关掉了。
 #[test]
 fn the_child_environment_allowlist_has_exactly_one_home() {
     let files = plugin_sources();

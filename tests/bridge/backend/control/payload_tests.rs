@@ -219,14 +219,15 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     let mut sites: Vec<String> = Vec::new();
     // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**这里不再有任何自摘，也不需要补回**。
     //
-    // 上一版：`scan_tree!` 靠 `file!()` 摘掉调用者，而当年调用者**就是** `payload.rs`
+    // 上一版：`scan_tree!` 靠 `file!()` 摘掉调用者（那一刀今天**不生效**，见下面第三段），
+    // 而当年调用者**就是** `payload.rs`
     // 本身（判据住在它的 `#[cfg(test)]` 段里）⇒ 被测那一份会被摘走 ⇒ 底下手工 `push`
     // 一份补回来。剖分之后判据搬来 `tests/`，`payload.rs` 走普通遍历**本来就进人群**，
     // 那一份手工补回的于是**变成重复** —— 读数逐字「出现了 2 处，应恰好 1」，
     // 两行一模一样。⇒ 删掉补回那一份。
     //
     // ⚠ 走 `scan_tree_excluding(.., &[])` 而不是 `scan_tree!`：**明写「一份都不排除」**。
-    // `scan_tree!` 在这里已经是空转的（`file!()` 给的折返路径后缀比恒不命中），
+    // `scan_tree!` 在这里已经是空转的（`file!()` 给的折返路径后缀比不命中），
     // 而一个空转的自摘和一个真在工作的自摘**长得一模一样** —— 那正是条 73 禁的那一形。
     let files: Vec<(std::path::PathBuf, String)> =
         guard_core::scan_tree_excluding(&root, &["rs"], &[]);
@@ -1349,9 +1350,14 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
 ///
 /// - 人群 = `src/bridge/src` **整棵树**的 `.rs`（`guard_core::scan_tree!` 目录扫描，
 ///   **不是手写名单**），逐份剥成生产段。
-/// - `scan_tree!` **按构造摘除调用者自己那份** ⇒ 本文件（`payload.rs`）不在人群里。
-///   本文件今天不提那几个符号；真要在这里绕缝，本条看不见 —— **登记，不假装钉住了**。
-///   （这也是本条**不住 `history.rs`** 的理由：住在那里等于把缝自己那一份摘出人群。）
+/// - ⚠ 〔`P4` 2026-09-21〕**这一条先前登记了一个并不存在的缺口**：原文是
+///   「`scan_tree!` **按构造摘除调用者自己那份** ⇒ 本文件（`payload.rs`）不在人群里…
+///   真要在这里绕缝，本条看不见」。那一刀**在这一处不生效**（判据由 `#[path]`
+///   挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中），而且判据已经搬到 `tests/bridge/`
+///   ⇒ `payload.rs` 走普通遍历**本来就在人群里**，这个缺口今天**没有**。
+///   （本条**不住 `history.rs`** 那条理由也随之只剩一半：住在那里的话，判据会写在
+///   `history.rs` 自己的 `#[cfg(test)]` 段里 —— 那种**不经 `#[path]`** 的测试模块
+///   `file!()` 会命中，缝自己那一份真会被摘出人群。⇒ 结论照旧，成因要说准。）
 /// - 它只看 Rust 侧。别的 crate（backend）够不着这几个符号（单向依赖）。
 /// - `let f = crate::history::relay_rows; f()` 这一形由裸标识符那一半接住（会变成 3）。
 #[test]

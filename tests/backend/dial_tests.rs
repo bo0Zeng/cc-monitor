@@ -96,11 +96,17 @@ fn dial_locality(corpus: &[(String, String)]) -> Result<usize, String> {
 /// 裸 `read_dir` 的扫描型判据会**在自己的登记表 / 注释 / 常量里找到自己** ⇒ 恒绿，
 /// `audit-0805` 实测过五次，五次都不是被判据自己逮到的。
 ///
-/// ⚠⚠ **代价必须知道**：`scan_tree!` 按构造**摘除调用者自己那一份** ——
-/// 也就是 `dial/mod.rs` 不在它返回的人群里。而拨号锚点恰恰全住这一份 ⇒
-/// 光靠它，判据的「至少有一处」永远为 0。
-/// ⇒ 本函数把自己那一份**显式**用 `include_str!` 补回来，两半各司其职：
-/// **树扫描管「别处有没有」**（它摘掉自己正好），**`include_str!` 管「自己有没有」**。
+/// ⚠⚠ **那个「代价」今天不存在，而这一段先前把它当现状写着**〔`P4` 2026-09-21〕。
+/// 先前逐字：「`scan_tree!` 按构造摘除调用者自己那一份 —— 也就是 `dial/mod.rs`
+/// 不在它返回的人群里」。两处都假：
+/// ① 自摘那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..`
+///    的折返路径 ⇒ 后缀比不命中，
+///    `the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）；
+/// ② 今天的调用者是 `tests/backend/dial_tests.rs`，**根本不是** `dial/mod.rs` ——
+///    后者走普通遍历本来就在人群里。
+/// ⇒ 下面那句 `include_str!` 的补回**今天是冗余的**（同一份被数两遍，靠尾部那句
+/// `dedup_by` 收掉），而**刻意不删**：它把「被测那一份一定在人群里」钉成一件
+/// **不依赖扫描面**的事 —— 扫描面哪天被改窄（只扫某个子目录），少扫不会红，而它还在。
 fn crate_sources() -> Vec<(String, String)> {
     let root = crate::guard_support::src_root();
     let mut out: Vec<(String, String)> = Vec::new();
@@ -112,7 +118,8 @@ fn crate_sources() -> Vec<(String, String)> {
             .replace('\\', "/");
         out.push((rel, crate::guard_support::production_code(&src)));
     }
-    // 自己那一份 —— `scan_tree!` 摘掉了它，而它正是被测对象。
+    // 被测那一份。它走普通遍历**本来就在**人群里（自摘不生效，理由见本函数头注）；
+    // 这一份是**冗余但刻意保留**的第二个来源，尾部 `dedup_by` 收掉重复。
     out.push((
         "dial/mod.rs".to_string(),
         crate::guard_support::production_code(include_str!("../../src/backend/dial/mod.rs")),

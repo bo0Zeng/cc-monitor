@@ -542,9 +542,17 @@ fn every_registry_guard_keeps_its_reverse_half() {
     /// 三列：**住址**（`路径::判据名`）· 为什么今天不补 · **解锁条件**。
     /// 起名 `REGISTERED` 是照本模块头注那条纪律（新写的「扫描面 ＋ 常量表」型判据，
     /// 表要起成 `TABLE_DECLS` 里已有的名字之一）。
-    /// ⚠ **诚实边界**：本文件被 `scan_tree!` 按构造摘除 ⇒ 这条元判据**看不见自己这张表**，
-    /// 起对名字在这里买到的只是**纪律的一致性**，不是「它真被判到了」。
-    /// 真正接住这张表腐烂的是紧跟着的那条**幽灵检查**。
+    /// ⚠ **诚实边界订正**〔`P4` 2026-09-21〕：先前这里写着「本文件被 `scan_tree!`
+    /// 按构造摘除 ⇒ 这条元判据**看不见自己这张表**，起对名字在这里买到的只是纪律的
+    /// 一致性，不是『它真被判到了』」。**那句话是假的。**
+    /// ① 自摘那一刀在这一处不生效（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的
+    ///    折返路径 ⇒ 后缀比不命中）；② 上面那个 `for sub` 里逐字含 `"tests"`
+    ///    ⇒ **本文件在人群里**。
+    /// 现打（`P4` 往本条里插一刀量的）：`seen` 与 `population` 都含本文件，判据级那一层
+    /// 采到了本文件的**两条** —— `every_registry_guard_keeps_its_reverse_half` 与
+    /// `the_per_guard_split_does_not_hand_every_guard_the_whole_file`。
+    /// ⇒ 这条元判据**判得到自己**（它俩都带 `assert_eq!(`，所以今天不缺反向那半）。
+    /// 这张表自己那半腐烂仍然由紧跟着的那条**幽灵检查**接着。
     const REGISTERED: &[(&str, &str, &str)] = &[(
         // 〔搬树 2026-09-18〕住址订正：那条判据住 `tests/bridge/`，不在 `src/bridge/src/`。
         "tests/bridge/structural_scan_tests.rs::comment_stripping_has_exactly_one_shared_implementation",
@@ -744,7 +752,7 @@ fn raw_walkers() -> Vec<String> {
         // `!regs.contains("scan_tree!")`」—— **那句话已经过期了**：F23 第二刀
         // 就把 `!regs.contains("scan_tree!")` 那半删掉了（理由写在下面）。
         // 于是今天**只剩摘除在挡**，而 `file!()` 那条路在剖分之后是空转的
-        // （本文件被 `#[path]` 引进来 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比恒不命中）。
+        // （本文件被 `#[path]` 引进来 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比不命中）。
         // 现打后果：本文件的测试段里写着 `RAW_WALKS` 那四个字面量当语料，
         // 于是它**把自己算进了裸遍历人群**（`newcomers` 里多出一条
         // `tests/bridge/scanning_guard_registry_tests.rs`）。
@@ -801,7 +809,11 @@ fn no_new_guard_walks_the_tree_without_excluding_itself() {
     assert!(
         newcomers.is_empty(),
         "有扫描型判据在测试段里**裸遍历目录**，且不在存量清单里：\n{}\n\n\
-             ⇒ 改走 `guard_core::scan_tree!(&root, &[\"rs\"])` —— 它按构造摘除调用者自己那份。\n\
+             ⇒ 改走 `guard_core::scan_tree!(&root, &[\"rs\"])`，要明写排除就走\n\
+             `guard_core::scan_tree_excluding`（摘不到就 panic）。\n\
+             ⚠ **别指望宏替你摘掉自己** —— 那一刀在这一处不生效（判据由 `#[path]`\n\
+             挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。走它买到的是「遍历口径只有\n\
+             一份」＋「住址错时当场 panic」；「摘掉我自己」只有两条路：**住址**或**明写名单**。\n\
              ★ 为什么非要这条：判据在自己的登记表/注释/常量里找到自己 ⇒ **恒绿**，\n\
              audit-0805 实测五次，**五次都不是被判据变红发现的**（四次靠变异、一次靠 clippy）。\n\
              「以后小心点」对这一族无效，所以修法是**让它写不出来**。",
@@ -1199,4 +1211,418 @@ fn the_ratchet_reader_can_tell_a_raise_from_a_drop() {
         None,
         "找不到表就回 None"
     );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// `P4`（2026-09-21）：**「`scan_tree!` 的自摘生效」这句话，全仓散文里必须是 0 段**
+// （那一刀在这一处不生效 —— 成因逐字住 `guard_core::scan_tree_excluding_self` 头注）
+// ══════════════════════════════════════════════════════════════════════════
+
+/// 「提到了那个机制」的三个词 —— 一段散文不提机制，就不在本条的人群里。
+const SELF_EXCL_MECHANISM: &[&str] = &["scan_tree!", "scan_tree_excluding_self", "file!()"];
+
+/// 「说的是**调用者自己那一份**」的那一侧。
+///
+/// ⚠ 这一栏刻意收得宽（`本条`/`自己` 这种代词也收）：本条判的是**主语 × 动词的共现**，
+/// 宽的那一侧由另外两栏兜着，而「宽一点」在这里是偏紧的方向 —— 多报比漏报好。
+const SELF_EXCL_SUBJECT: &[&str] = &[
+    "调用者",
+    "本文件",
+    "本模块",
+    "本护栏",
+    "本条",
+    "自己",
+    "自摘",
+    "自排除",
+    "caller",
+];
+
+/// 「说它被拿走了」的那一侧。`摘` 一个字覆盖 摘掉/摘除/摘出/自摘 的全部变形。
+const SELF_EXCL_VERB: &[&str] = &["摘", "排除", "不在人群", "进不了"];
+
+/// **失效标记**：一段散文只要带上其中任意一个，就算已经把那句话标成「今天不成立」。
+///
+/// 本条要的不是「不许提自摘」，而是：**凡是把「自摘」和「调用者自己」写在一起的段落，
+/// 都必须在同一段里说清它今天不生效**。这一栏就是那句「说清」的机检形态。
+const SELF_EXCL_DEFUSED: &[&str] = &[
+    "空转",
+    "恒不命中",
+    "不再命中",
+    "落空",
+    "不生效",
+    "没生效",
+    "失效",
+    "no-op",
+    // 「号称」是一个**语气**标记：它把那句话标成「它自己这么说」，而不是「事实如此」。
+    // 收它进来是 `P4` 现打逼的：`shared_crate_registry_tests` 里那两段逐字写着
+    // 「它号称『按构造摘除调用者自己那份』，而死值验……仍然绿」—— 那是本条要的那种写法，
+    // 不该被报成假阳。
+    "号称",
+];
+
+/// 主语与动词必须落在**几行之内**才算同一句话。
+///
+/// 1 行太紧（本仓的散文一句话常跨两行），整段太松（一段里讲三件事时会把不相干的两个词
+/// 凑成一次「共现」—— 现打试过：整段那一档会把「Windows 分隔符没归一」那段误报）。
+const SELF_EXCL_WINDOW: usize = 2;
+
+/// 散文树：**判据树两棵 ＋ 生产树三棵**，逐棵给地板。
+///
+/// ⚠ 五棵**互不包含**（`设计/16 §5.4b` 纪律 1）。为什么生产树也要扫：那几句话有一半
+/// 住在**生产文件的 `//!` 头注**里（剖分把一条判据的散文劈成了两个住址），
+/// 只扫 `tests/` 会漏掉它们，而**少扫不会红**。
+const PROSE_TREES: &[(&str, usize)] = &[
+    ("src/bridge/src", 100),
+    ("src/bridge/crates", 8),
+    ("src/backend", 58),
+    ("tests/bridge", 140),
+    ("tests/backend", 65),
+];
+
+/// 一行算不算**散文行**：注释行，或**续行字符串**（`"…\` 那种多行失败文案）的一部分。
+///
+/// 🔴 为什么不按「这一行有没有中文」取：那样一张中文词表（`&["调用者", "摘"]` 那种）
+/// 会被当成散文，于是本条会把自己的词表读成一次命中 —— 判据在自己的登记表里找到自己，
+/// 本模块头注治的正是这一族。按「注释 / 续行字符串」取是**语法**事实，词表一行都进不来。
+///
+/// 代价如实写：**单行**的中文失败文案（不带 `\` 续行）本条看不见。
+fn is_prose_line(lines: &[&str], i: usize) -> bool {
+    let t = lines[i].trim_start();
+    if t.starts_with("//") || t.starts_with('*') {
+        return true;
+    }
+    let cont = |k: usize| lines[k].trim_end().ends_with('\\');
+    cont(i) || (i > 0 && cont(i - 1))
+}
+
+/// 一行散文是不是**段界**：把注释标记剥掉之后什么都不剩（`///` / `//!` / `//` 空行，
+/// 或多行字符串里那种 `\n\` 空行）。
+fn is_prose_break(line: &str) -> bool {
+    let t = line.trim();
+    let mut rest = t;
+    for m in ["///", "//!", "//", "*"] {
+        if let Some(r) = rest.strip_prefix(m) {
+            rest = r;
+            break;
+        }
+    }
+    rest.chars()
+        .all(|c| c.is_whitespace() || c == '\\' || c == 'n' || c == '"')
+}
+
+/// 把一份源码切成**散文小段**：连续的散文行成一段，**一行空注释就断开**。
+///
+/// 🔴 为什么断在空注释行上，而不是只断在代码行上〔`P4` 现打逼出来的〕：
+/// 本仓的 `//!` 模块头注常常是**几十行连在一起**的一整块。只在代码行上断段的话，
+/// 整份头注是**一段** ⇒ 头注里任何一处失效标记会把**整份头注**都豁免掉。
+/// 死值验实打：往一份已经订正过的头注最前面插一句「人群里没有本文件自己」，
+/// 粗段那一档**照样绿**（K1 第一趟）。⇒ 段界必须细到「一句话」这个量级。
+fn prose_paragraphs(src: &str) -> Vec<Vec<&str>> {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut out: Vec<Vec<&str>> = Vec::new();
+    let mut cur: Vec<&str> = Vec::new();
+    for i in 0..lines.len() {
+        if is_prose_line(&lines, i) && !is_prose_break(lines[i]) {
+            cur.push(lines[i]);
+        } else if !cur.is_empty() {
+            out.push(std::mem::take(&mut cur));
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// 这一段散文里有没有**还没标成失效**的「自摘生效」断言 —— 有就回那一行逐字。
+///
+/// 三个条件缺一不算：① 段里提到了机制；② 段里没有任何失效标记；
+/// ③ 某个 [`SELF_EXCL_WINDOW`] 行的窗口里，主语与动词**同时**出现。
+fn live_self_exclusion_claim(para: &[&str]) -> Option<String> {
+    let whole = para.join("\n");
+    if !SELF_EXCL_MECHANISM.iter().any(|m| whole.contains(*m)) {
+        return None;
+    }
+    if SELF_EXCL_DEFUSED.iter().any(|d| whole.contains(*d)) {
+        return None;
+    }
+    for i in 0..para.len() {
+        let end = (i + SELF_EXCL_WINDOW).min(para.len());
+        let w = para[i..end].join("\n");
+        if SELF_EXCL_SUBJECT.iter().any(|s| w.contains(*s))
+            && SELF_EXCL_VERB.iter().any(|v| w.contains(*v))
+        {
+            return Some(para[i].trim().to_string());
+        }
+    }
+    None
+}
+
+/// 全仓散文里今天还活着的那些「自摘生效」断言：`(仓根相对路径, 段内那一行逐字, 整段)`，
+/// 外带逐棵树的采集量。
+fn live_self_exclusion_claims() -> (Vec<(String, String, String)>, Vec<(&'static str, usize)>) {
+    let root = repo_root();
+    let mut out: Vec<(String, String, String)> = Vec::new();
+    let mut scanned: Vec<(&'static str, usize)> = Vec::new();
+    for (sub, _) in PROSE_TREES {
+        // 🔴 走 `scan_tree_excluding` 而不是 `scan_tree!`，而名单**明写成空的**。
+        //
+        // 本条治的就是「靠 `file!()` 自摘」那句话（它在这一处恒空转），
+        // 所以它自己一个字都不许靠那一刀
+        //（`设计/16 §5.4b` 纪律 2：把靠位置的排除换成明写的排除）。
+        //
+        // ⚠ **为什么名单是空的、不把本文件摘出去**：本条是一条 `== 0` 的断言
+        // ⇒ 把自己收进语料只可能让它**变红**，不可能让它静默变绿
+        //（自指在这个方向上正好落在安全的那一侧）。
+        // 而把自己摘出去会挖出 `P4` 正在治的那个洞：本文件也是那几十份判据之一，
+        // 它的抬头里就有过一句这样的话。⇒ 收进来，让本条也管着本文件。
+        let files = guard_core::scan_tree_excluding(&root.join(sub), &["rs"], &[]);
+        scanned.push((sub, files.len()));
+        for (path, src) in files {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            for para in prose_paragraphs(&src) {
+                if let Some(line) = live_self_exclusion_claim(&para) {
+                    out.push((rel.clone(), line, para.join("\n")));
+                }
+            }
+        }
+    }
+    out.sort();
+    (out, scanned)
+}
+
+/// 🔴 **相等断言：散文里还把「`scan_tree!` 自摘生效」（而它几乎处处不生效）
+/// 当现状写着的段落数 == 0。**
+///
+/// ⚠ 「那一刀不生效」这句话本身**不是全称** —— 它命不命中只取决于扫描根的字符串里
+/// 有没有和 `file!()` 同一段 `..`；逐侧读数与唯一那一处真会落刀的调用点，
+/// 逐字住 `guard_core::scan_tree_excluding_self` 头注那张表。本条判的是**散文**，
+/// 不是那个事实：它只要求「把自摘当现状写着」的段落**同一段里带上时态标记**。
+///
+/// # 它治的病逐字是 `every_dead_name_named_in_the_prose_is_declared_dead` 那一条
+///
+/// 散文说「由 `X` 钉住」，然后 `X` 变了 —— 那句话不会跟着改，也**没有任何东西会因此变红**
+/// ⇒ 读的人以为「这件事有人守着」。`scan_tree!` 的自摘正是那个病的一个实例，
+/// 而且规模是几十份：判据一律由 `#[path]` 挂载 ⇒ `file!()` 给的是带 `..` 的折返路径，
+/// 而扫描根（monitor 那半边一律过 `repo_root()` 的 `.parent().parent()`）里没有 `..`
+/// ⇒ 后缀比不命中 ⇒ 那一刀在那些调用点上**不生效**、什么都没摘掉，
+/// 而几十份判据的抬头把它当前提写着。
+/// `P4`（2026-09-21）逐份清过一遍，本条是那一轮留下的闸。
+///
+/// 反方向那一半（自摘哪天重新生效）由
+/// `the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 那条绿绊线接着 ——
+/// 两条合起来才闭合：一条守「话别再说假」，一条守「事实别悄悄变回来」。
+///
+/// # 匹配单位：**散文段 × 两行窗口**，不是关键词黑名单
+///
+/// 判的是**三者共现**：段里提到机制（[`SELF_EXCL_MECHANISM`]）· 两行之内主语
+/// （[`SELF_EXCL_SUBJECT`]）与动词（[`SELF_EXCL_VERB`]）同时出现 · 段里**没有**
+/// 任何失效标记（[`SELF_EXCL_DEFUSED`]）。
+///
+/// 因此它认得出**换了说法的同一句话**。`P4` 立本条时全仓 49 段命中，逐段订正后归零；
+/// 那 49 段里至少有这六种写法：「按构造摘掉调用者自己」·「摘除调用者自己那一份」·
+/// 「人群里没有本文件自己」·「本文件按构造被摘除」·「自排除仍然成立」·「进不了语料」。
+///
+/// # ⚠ 它认不出什么（逐条写明，别把绿读宽）
+///
+/// - **单行的失败文案**：多行文案靠 `\` 续行才被当成散文；写成一行的中文 `assert!`
+///   消息进不了人群。
+/// - **主语与动词隔开三行以上**：窗口是两行。拉长到整段会误报（现打试过整段那一档的假阳）。
+/// - **只说结论、不提机制**：「本模块自己不在分母里」这种句子本条看不见。
+///   `P4` 手工补过一处这一形（`single_stream_guard` 头注里那个分母的括号），
+///   而**机检覆盖不到它**。
+/// - **同一段里的失效标记讲的是别的事**：一段既讲自摘、又讲别的东西「失效」了，
+///   会被误放过。`P4` 手工逮到并订正过一处这一形（`parity_ledger_tests` 里那段讲
+///   「写死文件名的跳过改名即静默失效」的注）。
+/// - **失效标记讲的是别处时也算数**：全仓唯一那处自摘**真的**落刀的调用点
+///   （`plugin_walk_fixture` 扫 backend 测试树那一趟）为了通过本条，段里必须同时
+///   写一句「别处不生效」。⇒ 一个真心想写「自摘在这里生效」的人，顺手带上那半句
+///   也能过。**本条买的是留痕**（那句话必须同时说出它不成立的那一面），**不是不可能**。
+/// - **它不判那句话对不对**，只判「有没有把自摘当现状写着」。
+///   ⚠ `P4` 现打逮到的最贵一笔正是这一形的反面：仓里原有的散文（连同那条绿绊线的
+///   抬头）逐字写着「自摘在本仓恒空转 / 一处都不生效」，而**那句话本身是过宽的** ——
+///   有一处真的在落刀。本条读不出这种「订正话说过头」，它只读「有没有标时态」。
+///
+/// # 生产树里那几段：**登记，不代修**
+///
+/// 下面那张 `REGISTERED` 逐条点名 `P4` 写区之外的同形散文（`P4` 的写区只到 `tests/`
+/// 两棵与 `guard-core`），并带一条**幽灵检查**：哪天那句话被改对了，本条会逼着把
+/// 那一行删掉 —— 这张豁免不会静默长草。
+#[test]
+fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
+    /// `P4` 写区之外、今天**仍然**把自摘当现状写着的那几段：
+    /// `(仓根相对路径, 段内一句逐字片段, 为什么本轮不修)`。
+    ///
+    /// ⚠ 片段是**住址**：它一改，下面那条幽灵检查就逼着有人回来看一眼。
+    /// 起名 `REGISTERED` 是照本模块头注那条纪律（新写的「扫描面 ＋ 常量表」型判据，
+    /// 表要起成 [`TABLE_DECLS`] 里已有的名字之一）—— 起对了，
+    /// [`every_registry_guard_keeps_its_reverse_half`] 就判得到本条。
+    const REGISTERED: &[(&str, &str, &str)] = &[
+        (
+            "src/bridge/src/panorama_seam_registry.rs",
+            "本文件自己不在语料里",
+            "它逐字登记了一个**并不存在的射程缺口**（「代价是本文件的生产段没人扫」——\
+             而那条判据的语料根逐字是 `src/bridge/src`，本文件就在里面；\
+             头注那几处提及不进人群靠的是 `production_code` 剥注释，不是自摘）。\
+             `P4` 的写区只到 `tests/` 两棵与 `guard-core`，这一份住生产树 ⇒ 登记，不代修",
+        ),
+        (
+            "src/bridge/src/plugin_class_registry.rs",
+            "扫树一律走 `guard_core::scan_tree!`（按构造摘除调用者）",
+            "同上：这是一条纪律行，而括号里那半今天不成立 ——\
+             它住生产树，在 `P4` 的写区之外 ⇒ 登记，不代修",
+        ),
+        (
+            "src/bridge/src/scanning_guard_registry.rs",
+            "按构造摘除调用者自己那一份（用 `file!()`，调用方改不错）",
+            "**本模块自己的头注**就是那句话的发源地之一：它把「用 `file!()`，调用方改不错」\
+             当成现状写着，而那一刀在这一处不生效。它住生产树（剖分把这条判据的散文\
+             劈成了两个住址，抬头留在了 `src/`），在 `P4` 的写区之外 ⇒ 登记，不代修",
+        ),
+        (
+            "src/bridge/src/scanning_guard_registry.rs",
+            "摘掉自己那份之后，",
+            "四类表底下那一段：它把 `K-R31` 那条判据描述成「`scan_tree!` 摘掉自己那份之后，\
+             又用 `include_str` 把自己那一份显式加回来」—— 前半不成立（那一刀**不生效**），\
+             所以那条判据今天是「本来就在人群里，又加了一份冗余的」。同上，住生产树 ⇒ 登记，不代修",
+        ),
+        (
+            "src/bridge/src/scanning_guard_registry.rs",
+            "与「取自己那一份的 `include_str`」",
+            "紧接着那一段的诚实边界：它数的那把「文件级尺子」把「摘掉自己又加回来」\
+             当成一种真实形态在数，而前半在本仓不成立。同上，住生产树 ⇒ 登记，不代修",
+        ),
+    ];
+
+    let (live, scanned) = live_self_exclusion_claims();
+
+    // ★ 抽取器自检①：**逐棵树各一条地板**。一个总数管五棵挡不住「一棵指错了」——
+    //   本模块 `K-R37` 那一节逐字记过这个形状（一棵树对人群的贡献是 0 时，
+    //   把它的实参改坏，一条断言都不会红，而总数地板顶得过去）。
+    let starved: Vec<String> = PROSE_TREES
+        .iter()
+        .filter_map(|(sub, floor)| {
+            let got = scanned.iter().find(|(s, _)| s == sub).map(|(_, n)| *n)?;
+            if got < *floor {
+                Some(format!("  {sub} —— 只采到 {got} 份（地板 {floor}）"))
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(
+        starved.is_empty(),
+        "这几棵散文树的采集量低于它自己那条地板：\n{}\n\
+         ⇒ 那个实参此刻几乎什么都没采到，而本条对它「全绿」—— 那正是「没红」与「没看」\n\
+         在输出上一模一样的那一格。先核实参（路径拼对了吗），别调地板让今天好过。\n\
+         （本趟逐棵读数：{scanned:?}）",
+        starved.join("\n")
+    );
+
+    // ★ 抽取器自检②：**段切分真的在切段**。
+    //   全切成一行一段 ⇒ 两行窗口退化成一行，认不出跨行的那句话；
+    //   全并成一段 ⇒ 共现退化成「一份文件里任意两个词」。
+    let me = include_str!("scanning_guard_registry_tests.rs");
+    let paras = prose_paragraphs(me);
+    let longest = paras.iter().map(|p| p.len()).max().unwrap_or(0);
+    assert!(
+        paras.len() >= 30 && longest >= 5 && longest < paras.iter().map(|p| p.len()).sum::<usize>(),
+        "段切分坏了：本文件切出 {} 段、最长 {longest} 行 —— 本条此刻不携带信息",
+        paras.len()
+    );
+
+    // ★ 抽取器自检③：**阳性对照** —— 造一段真的该被咬住的散文，量具必须咬住。
+    //   针一律**运行期拼**（本模块头注那条纪律）：写成整串字面量的话，
+    //   这几行自己就会被上面那一趟扫描读成一次真命中。
+    let mech = format!("`scan_tree{}`", "!");
+    let positive_owned = vec![
+        format!("/// 整棵 `src/` 的生产段。{mech} 按构造摘掉调用者"),
+        "/// 自己那一份 ⇒ 人群里没有它。".to_string(),
+    ];
+    let positive: Vec<&str> = positive_owned.iter().map(|s| s.as_str()).collect();
+    assert!(
+        live_self_exclusion_claim(&positive).is_some(),
+        "阳性对照没被咬住 —— 量具此刻是死的，上面那条「0 段」是空真"
+    );
+
+    // ★ 抽取器自检④：**阴性对照两格**，各挡一种「什么都算命中」的退化。
+    let mut defused_owned = positive_owned.clone();
+    defused_owned.push("/// ⚠ 而那一刀今天不生效。".to_string());
+    let defused: Vec<&str> = defused_owned.iter().map(|s| s.as_str()).collect();
+    assert!(
+        live_self_exclusion_claim(&defused).is_none(),
+        "带了失效标记的那一段还被算成命中 —— 标记那条路没在起作用，\
+         于是本条会把每一段已经订正过的散文都报成假阳"
+    );
+    let unrelated_owned = vec![
+        "// 针写的是正斜杠 ⇒ `ends_with` 恒 false，本条在 Windows 上必红。".to_string(),
+        "//   同一族逮到两条：覆盖率地板脚本的键写死正斜杠 · guard-core 的".to_string(),
+        format!("//   {mech} 那一处 —— 两条都是草垛归一了、针没归一。"),
+    ];
+    let unrelated: Vec<&str> = unrelated_owned.iter().map(|s| s.as_str()).collect();
+    assert!(
+        live_self_exclusion_claim(&unrelated).is_none(),
+        "一段只是**提到**那个机制、并没有断言「摘掉了调用者自己」的散文被算成命中 ——\
+         窗口或词表松了，而假阳会训练人绕过判据"
+    );
+
+    // ── 正题 ─────────────────────────────────────────────────────────────
+    let exempt = |rel: &str, para: &str| -> bool {
+        REGISTERED
+            .iter()
+            .any(|(p, frag, _)| *p == rel && para.contains(*frag))
+    };
+    let unregistered: Vec<String> = live
+        .iter()
+        .filter(|(rel, _, para)| !exempt(rel, para))
+        .map(|(rel, line, _)| format!("  {rel}\n    ▸ {line}"))
+        .collect();
+    assert!(
+        unregistered.is_empty(),
+        "这几段散文把「`scan_tree!` 按 `file!()` 摘掉调用者自己」当**现状**写着，\n\
+         而那一刀**在这一处不生效**（判据一律由 `#[path]` 挂载 ⇒ `file!()` 给的是\n\
+         带 `..` 的折返路径 ⇒ 后缀比不命中）：\n{}\n\n\
+         🔴 **这不是注释风格问题。** 散文说「这件事有人守着」而其实没有，是本仓最贵的\n\
+         一种腐（`every_dead_name_named_in_the_prose_is_declared_dead` 守的就是这个病）。\n\
+         ⇒ 三条出路，**没有第四条**：\n\
+           ① 那一段其实在讲历史 ⇒ 在**同一段**里写清它今天不生效（标记见 `SELF_EXCL_DEFUSED`），\n\
+              并说清今天真正承重的是什么（住址？明写名单？剥生产段？运行期拼针？）；\n\
+           ② 那条判据真需要摘掉自己 ⇒ 改走 `guard_core::scan_tree_excluding` 的明写名单\n\
+              （摘不到就 panic），然后照 ① 把抬头写对；\n\
+           ③ 那句话本来就该删 ⇒ 删掉。\n\
+         ⚠ **不许**把新写的那一段登记进上面那张 `REGISTERED` 了事 —— 那张表只给 `P4`\n\
+         写区之外的存量，每一行都写着「为什么本轮不修」。",
+        unregistered.join("\n")
+    );
+
+    // ── 豁免表自己那半：**幽灵检查**（登记了而盘上已经没有 ⇒ 红）──────────
+    let ghosts: Vec<String> = REGISTERED
+        .iter()
+        .filter(|(p, frag, _)| {
+            !live
+                .iter()
+                .any(|(rel, _, para)| rel == p && para.contains(*frag))
+        })
+        .map(|(p, frag, _)| format!("  {p}\n    ▸ 片段：{frag}"))
+        .collect();
+    assert!(
+        ghosts.is_empty(),
+        "上面那张 `REGISTERED` 里这几行在盘上已经没有对应物了：\n{}\n\n\
+         ⇒ 多半是有人把那句话改对了（那是好事）—— **把这一行删掉**。\n\
+         留着的后果不是多一行没用的字：一张挂着空号的豁免表会让下一段同形散文\n\
+         自动带上一张谁也没签过的免检章。",
+        ghosts.join("\n")
+    );
+    // 每条豁免都要说清「为什么本轮不修」—— 这一列的读者是下一个想再加一行的人。
+    for (p, _, why) in REGISTERED {
+        assert!(
+            why.trim().chars().count() >= 30,
+            "`{p}` 那条豁免的理由太短（实得 {} 字）—— 写清它凭什么不修",
+            why.trim().chars().count()
+        );
+    }
 }
