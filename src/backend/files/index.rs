@@ -260,13 +260,12 @@ static REBUILD_SKIPPED: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomic
 /// 而不是「两条线程谁先」。起线程去撞它会让判据的读数依赖调度 ⇒ 变飘。
 /// ⇒ 把那个位直接按住，是同一件事的**可判形态**。
 /// ⚠ 代价如实记：这样就**买不到**「两条真线程同时打进来」那一格。
+///
+/// ⚠ **体住 `tests/`，这里只留桩**（`设计/16 §3.1` 的形状）——
+/// 我第一版把它内联写在这儿，`structural_scan` 那条「剖分不许回来」当场红了，**红对了**。
 #[cfg(test)]
-pub mod testing {
-    /// 把「正在重走」那个位按成给定值。
-    pub fn hold_rebuilding(on: bool) {
-        super::REBUILDING.store(on, std::sync::atomic::Ordering::Release);
-    }
-}
+#[path = "../../../tests/backend/files/index_testing.rs"]
+pub mod testing;
 
 /// 被抢占过几趟。判据与 `status` 用它。
 pub fn rebuild_skipped() -> u64 {
