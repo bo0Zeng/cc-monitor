@@ -40,12 +40,25 @@ use super::*;
 
 use crate::files::index::tests::resident_lock;
 
-/// `设计/96 §2.9`「这一族有哪些」那张表里的四个名字，**逐字抄**。
+/// `设计/96 §2.9`「这一族有哪些」那张表里的名字，**逐字抄**。
 ///
 /// 🔴 抄一份在这里是刻意的：它与 [`CAPABILITIES`] 构成**两向**对拍 ——
 /// 一向治「设计里有而实现没声明」（能力漏了），一向治「实现声明了而设计里没有」
 /// （偷偷长出一条没人裁过的能力）。只判一向，另一向那种失效永远逃得掉。
-const REGISTERED: &[&str] = &["files.find", "files.index.status", "files.ls", "files.stat"];
+///
+/// 🔴 **这张表跟着设计走，不是反过来**〔`24f` 第三刀 09-21〕：`设计/96 §2.9` 那一节
+/// 裁出第五、第六条（`files.index.rebuild` / `files.browse`）之后，本表**先改**、
+/// 本条判据跟着绿 —— 那一节就是本条的真相源。
+/// ⚠ **不许**为了让某一侧变绿而从这张表里摘一个名字：摘掉就等于宣布
+/// 「设计里从来没有那条能力」，而那正是本条两向对拍要挡的另一向。
+const REGISTERED: &[&str] = &[
+    "files.browse",
+    "files.find",
+    "files.index.rebuild",
+    "files.index.status",
+    "files.ls",
+    "files.stat",
+];
 
 /// 「改动盘上东西」的动词 —— **派生副作用档用的 needle**。
 ///
@@ -476,6 +489,383 @@ fn the_find_fields_match_what_the_call_really_returns() {
     assert_eq!(
         got, declared,
         "`files.find` 真的回出去的字段与声明的那张表对不上"
+    );
+}
+
+/// 〔`24f` 第三刀〕`files.index.rebuild` 的出方向字段与**真的回出去的那个 JSON** 对拍，
+/// 而且顺手把「条目数」钉成一条**相等**断言（夹具按构造知道自己有多少条）。
+///
+/// ⚠ 同族那两条（`status` / `find`）为什么也是这么写的：用一个手写清单去证明另一个
+/// 手写清单没有意义（`inbound::CommandSpec::fields` 那段头注逐字）。
+#[test]
+fn the_index_rebuild_fields_match_what_the_call_really_returns() {
+    let _lock = resident_lock();
+    let fx = crate::files::index::tests::make_tree("rebuild-fields", 2, 3, 0);
+    let v = answer(
+        "files.index.rebuild",
+        &serde_json::json!({"path": fx.root.to_str().expect("夹具路径是 ASCII")}),
+    )
+    .expect("rebuild 不该失败");
+    let got: std::collections::BTreeSet<String> = v
+        .as_object()
+        .expect("rebuild 回的该是一个对象")
+        .keys()
+        .cloned()
+        .collect();
+    let declared: std::collections::BTreeSet<String> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.index.rebuild")
+        .expect("这条能力必须在表里")
+        .fields
+        .iter()
+        .map(|f| f.to_string())
+        .collect();
+    assert_eq!(
+        got, declared,
+        "`files.index.rebuild` 真的回出去的字段与声明的那张表对不上"
+    );
+    // ★ 主锚是**相等**，不是「> 0」：地板在「少走了一半」这个方向上是瞎的。
+    assert_eq!(
+        v.get("entries").and_then(serde_json::Value::as_u64),
+        Some(fx.entries as u64),
+        "走出来的条目数与夹具**按构造**造的条数不等 —— 那一趟没走完整棵树"
+    );
+    // ★ 而且它真的把常驻那一份换上去了（不然这条命令只是个回参好看的空转）。
+    assert_eq!(
+        index::status().entries,
+        fx.entries,
+        "`rebuild` 回参说走了这么多条，而常驻那一份不是这个数 —— 它没换上去"
+    );
+}
+
+/// 🔴🔴 〔`24f` 第三刀〕**根读不进去 ⇒ 拒，而且常驻那一份一个字节不动。**
+///
+/// # 它治的那一形（现打逼出来的，不是假想）
+///
+/// `index::build` 对一个打不开的根**不会失败**：只把 `unreadable_dirs` 加一，
+/// 然后交一份**空快照**；而 `index::rebuild_once` 会把常驻那一份**整份换掉**。
+/// ⇒ 调用方路径打错一个字母，手上那份好索引就被一份空的顶掉，
+/// 而回参看起来像成功（`entries: 0` 与「这台机器上真的没文件」同形）。
+///
+/// ⇒ 主锚写成**相等**：被拒之前的条目数 == 被拒之后的条目数。
+/// 「回了个错」这一半是必要不充分的 —— 回错的同时把索引清了，本仓就又多一次静默缩水。
+#[test]
+fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_index() {
+    let _lock = resident_lock();
+    let fx = crate::files::index::tests::make_tree("rebuild-keep", 2, 2, 0);
+    answer(
+        "files.index.rebuild",
+        &serde_json::json!({"path": fx.root.to_str().expect("夹具路径是 ASCII")}),
+    )
+    .expect("先建一份好的");
+    let before = index::status().entries;
+    assert_eq!(before, fx.entries, "起跑状态就不对，下面那条比不了");
+
+    let nowhere = std::env::temp_dir().join(format!("ccm-24f-noroot-{}", std::process::id()));
+    std::fs::remove_dir_all(&nowhere).ok();
+    let got = answer(
+        "files.index.rebuild",
+        &serde_json::json!({"path": nowhere.to_str().expect("ASCII")}),
+    );
+    assert!(
+        matches!(got, Err(("unreadable", _))),
+        "对一个打不开的根没有回 `unreadable`，回的是 {got:?}"
+    );
+    assert_eq!(
+        index::status().entries,
+        before,
+        "🔴 被拒的那一趟把常驻索引换掉了 —— 一次打错的路径不许把好索引清成空的"
+    );
+}
+
+/// 〔`24f` 第三刀〕`files.browse` 的出方向字段与真的回出去的那个 JSON 对拍。
+///
+/// ⚠ 顺手钉住**空数组是合法的**那一格：它的语义是「现在什么都没在看」⇒ 全卸。
+/// 「少了 `dirs`」是另一件事（`bad_args`），由下面那条错误码判据行使。
+#[test]
+fn the_browse_fields_match_what_the_call_really_returns() {
+    let _lock = resident_lock();
+    let fx = crate::files::index::tests::make_tree("browse-fields", 2, 1, 0);
+    let one = fx.root.join("d0000");
+    let v = answer(
+        "files.browse",
+        &serde_json::json!({"dirs": [one.to_str().expect("夹具路径是 ASCII")]}),
+    )
+    .expect("browse 不该失败");
+    let got: std::collections::BTreeSet<String> = v
+        .as_object()
+        .expect("browse 回的该是一个对象")
+        .keys()
+        .cloned()
+        .collect();
+    let declared: std::collections::BTreeSet<String> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.browse")
+        .expect("这条能力必须在表里")
+        .fields
+        .iter()
+        .map(|f| f.to_string())
+        .collect();
+    assert_eq!(
+        got, declared,
+        "`files.browse` 真的回出去的字段与声明的那张表对不上"
+    );
+    // ★ 相等断言，不是地板：一个目录进去 ⇒ 挂上 1 个、卸掉 0 个、拒掉 0 个。
+    assert_eq!(
+        (
+            v.get("added").and_then(serde_json::Value::as_u64),
+            v.get("removed").and_then(serde_json::Value::as_u64),
+            v.get("rejected").and_then(serde_json::Value::as_u64),
+        ),
+        (Some(1), Some(0), Some(0)),
+        "一个目录的那一趟差分算错了"
+    );
+    assert_eq!(
+        v.get("browse_watch_cap")
+            .and_then(serde_json::Value::as_u64),
+        Some(crate::files::browse_watch::MAX_BROWSE_WATCHES as u64),
+        "回参里那个上限不是后端真用的那个 —— 调用方按它决定该少送几个"
+    );
+    // ★ 空数组：**全卸**，而且它不是「少了 `dirs`」。
+    let v2 = answer("files.browse", &serde_json::json!({"dirs": []})).expect("空数组是合法的");
+    assert_eq!(
+        (
+            v2.get("added").and_then(serde_json::Value::as_u64),
+            v2.get("removed").and_then(serde_json::Value::as_u64),
+        ),
+        (Some(0), Some(1)),
+        "空数组没有把上一趟那一个卸掉 —— 那 watch 会一直留着，而用户已经不看它了"
+    );
+}
+
+/// 〔`24f` 第三刀〕新那两条自己声明的错误码，**都得真的出得来**（幽灵码检查）。
+///
+/// ⚠ `unreadable` 那一档由上面那条
+/// [`a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_index`]
+/// 行使（那条同时钉着「不许清索引」），这里只补形状类的那几个。
+#[test]
+fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
+    let _lock = resident_lock();
+    for (cap, args, want) in [
+        // `path` 那一族与同族其余两条逐字同一条路（`path_arg`）。
+        ("files.index.rebuild", serde_json::json!({}), "bad_path"),
+        (
+            "files.index.rebuild",
+            serde_json::json!({"path": 7}),
+            "bad_path",
+        ),
+        // `dirs` **自己**的形状不对 ⇒ `bad_args`（少了它 / 不是数组）。
+        ("files.browse", serde_json::json!({}), "bad_args"),
+        (
+            "files.browse",
+            serde_json::json!({"dirs": "/tmp"}),
+            "bad_args",
+        ),
+        // 数组里**某一项**不是路径 ⇒ `bad_path`。两个码刻意分得开。
+        ("files.browse", serde_json::json!({"dirs": [7]}), "bad_path"),
+        (
+            "files.browse",
+            serde_json::json!({"dirs": [{"b16": "zz"}]}),
+            "bad_path",
+        ),
+        (
+            "files.browse",
+            serde_json::json!({"dirs": [""]}),
+            "bad_path",
+        ),
+    ] {
+        let got = answer(cap, &args);
+        assert!(
+            matches!(got, Err((c, _)) if c == want),
+            "`{cap}` 对 {args:?} 该回 `{want}`，回的是 {got:?}"
+        );
+        let declared = CAPABILITIES
+            .iter()
+            .find(|c| c.name == cap)
+            .expect("在表里")
+            .codes;
+        assert!(
+            declared.contains(&want),
+            "`{cap}` 的错误码表里没有 `{want}` —— 它真的会回这个码"
+        );
+    }
+}
+
+/// 🔴🔴 **`args` 那一侧终于也去对真解析器了**〔`24f` 第三刀补，`设计/96 §2.9` 登记的那条欠账〕。
+///
+/// # 它补的是哪一格
+///
+/// 出方向那一侧早就有实打对拍（[`the_status_fields_match_what_the_call_really_returns`]
+/// 那几条 —— **真调一次**，拿回来的键与声明的 `fields` 判相等）。
+/// 而**入方向的 `args` 从来没有任何东西拿它去对真解析器** ——
+/// `设计/96 §2.9` 逐字登记过这条欠账，而且它已经出过一次事：
+/// `files.ls` 的 `args` 里写着 `ignore_ascii_case`，**而 `answer_ls` 一次都没读它**
+///（从 `files.find` 抄过来的鬼影，`24f` 第二刀现打逮到、已摘）。
+///
+/// 🔴 **这比「少声明一个参数」更坏**：`src/doc/IPC-PROTOCOL.md §10` 是**冻结的线上契约**、
+/// 读者在仓外，一个「写了也不起作用」的参数就是在那份文档里**撒谎** ——
+/// 而调用方发了它、以为生效了，行为却一个字没变。
+///
+/// # 怎么判：**差分**，不是「名字出现在源码里」
+///
+/// 「`answer_ls` 里有没有 `ignore_ascii_case` 这个串」是**源码扫描**，
+/// 而那个鬼影恰恰是**被声明、没被读** —— 扫描在它身上是瞎的（表自己就在被扫的树里）。
+/// ⇒ 本条判的是**行为**：每个声明的参数都配一对只差**那一个键**的入参，
+/// 两趟**真的调进去**，答案必须**不同**。答案相同 = 这个参数没被读 = 声明在撒谎。
+///
+/// 三条各自独立，缺一条本条就会退化：
+/// ① **分区恒等** —— 探针表里每条能力的参数集 **==** 它 `args` 声明的那一套（**两向**）。
+///    ⇒ 往声明里加一个参数而不写探针，当场红（那正是鬼影混进来的路）。
+/// ② **一次只差一个键** —— 两份入参的键集对称差必须**恰好**是被测的那个参数。
+///    ⇒ 不许拿「顺手把 path 也换了」的两趟去冒充「limit 被读了」。
+/// ③ **阴性对照** —— 喂一个**没声明**的参数进去，答案必须**相同**。
+///    没有它，一把「什么都说不同」的坏尺子照样全绿。这一格用的正是当年那个鬼影
+///    （`files.ls` + `ignore_ascii_case`），它今天必须**不起作用**。
+///
+/// # ⚠ 它买不到什么（如实登记）
+///
+/// - 只买「**这个参数被读了**」，**不买**「读得对」：语义对不对仍然是各条命令自己的判据。
+/// - 只覆盖**今天造得出差分**的参数。将来若有一个参数在任何输入下都不改变可观测答案
+///   （纯旁路的开关），本条写不出探针 ⇒ 分区恒等会逼那个人在这里**当面交代**，
+///   而不是让它静默进契约文档。**那是刻意的。**
+#[test]
+fn every_declared_arg_is_really_read_by_the_parser() {
+    let _lock = resident_lock();
+
+    // 语料：一棵合成树 ＋ 它的一个子目录（`设计/17 §6` 的数据源纪律 —— 全合成，不碰真目录）。
+    let fx = crate::files::index::tests::make_tree("args-probe", 3, 4, 0);
+    let sub = fx.root.join("d0000");
+    let p = |x: &std::path::Path| {
+        serde_json::Value::String(x.to_str().expect("夹具路径是 ASCII").to_string())
+    };
+
+    // `files.find` 那几条要有一份**真的**常驻索引才谈得上差分。
+    crate::files::index::rebuild_once(&fx.root);
+
+    // 🔴 探针表：`(能力, 被测参数, 甲, 乙)` —— 甲乙只差那一个键，答案必须不同。
+    //   ⚠ 顺序承重：`files.browse` 会往 overlay 里加东西、`files.index.rebuild` 会把
+    //   常驻那一份整份换掉 ⇒ 两者都排在 `files.find` 之后，免得前一条把后一条的地基抽了。
+    let probes: Vec<(&str, &str, serde_json::Value, serde_json::Value)> = vec![
+        (
+            "files.ls",
+            "path",
+            serde_json::json!({ "path": p(&fx.root) }),
+            serde_json::json!({ "path": p(&sub) }),
+        ),
+        (
+            "files.ls",
+            "limit",
+            serde_json::json!({ "path": p(&fx.root), "limit": 1000 }),
+            serde_json::json!({ "path": p(&fx.root), "limit": 1 }),
+        ),
+        (
+            "files.stat",
+            "path",
+            serde_json::json!({ "path": p(&fx.root) }),
+            serde_json::json!({ "path": p(&sub) }),
+        ),
+        (
+            "files.find",
+            "needle",
+            serde_json::json!({ "needle": "f0000" }),
+            serde_json::json!({ "needle": "d0000" }),
+        ),
+        (
+            // 当年那个鬼影的**正主**：这一条上它是真被读的。
+            "files.find",
+            "ignore_ascii_case",
+            serde_json::json!({ "needle": "F0000", "ignore_ascii_case": true }),
+            serde_json::json!({ "needle": "F0000", "ignore_ascii_case": false }),
+        ),
+        (
+            "files.find",
+            "limit",
+            serde_json::json!({ "needle": "f0000", "limit": 1000 }),
+            serde_json::json!({ "needle": "f0000", "limit": 1 }),
+        ),
+        (
+            "files.browse",
+            "dirs",
+            serde_json::json!({ "dirs": [] }),
+            serde_json::json!({ "dirs": [p(&sub)] }),
+        ),
+        (
+            "files.index.rebuild",
+            "path",
+            serde_json::json!({ "path": p(&fx.root) }),
+            serde_json::json!({ "path": p(&sub) }),
+        ),
+    ];
+
+    // ── ① 分区恒等：探针表 ↔ `args` 声明，逐条能力**两向相等** ─────────────
+    for cap in CAPABILITIES {
+        let probed: std::collections::BTreeSet<&str> = probes
+            .iter()
+            .filter(|(c, ..)| *c == cap.name)
+            .map(|(_, a, ..)| *a)
+            .collect();
+        let declared: std::collections::BTreeSet<&str> = cap.args.iter().copied().collect();
+        assert_eq!(
+            probed, declared,
+            "\n能力 `{}` 的**入参探针**与它声明的 `args` 对不上。\n\
+             声明里有而探针没有 ⇒ 🔴 那个参数**没有任何东西证明它真被读了** —— \n\
+             `files.ls` 的 `ignore_ascii_case` 当年就是这么在契约文档里躺了一版。\n\
+             探针有而声明没有 ⇒ 探针表腐了（登记表腐烂比没有登记更糟）。",
+            cap.name
+        );
+    }
+
+    // ── ② 逐条：只差一个键 · 答案必须不同 ──────────────────────────────────
+    let keys = |v: &serde_json::Value| -> std::collections::BTreeSet<String> {
+        v.as_object()
+            .expect("入参该是一个对象")
+            .keys()
+            .cloned()
+            .collect()
+    };
+    let mut checked = 0usize;
+    for (cap, arg, a, b) in &probes {
+        let (ka, kb) = (keys(a), keys(b));
+        let diff: Vec<&String> = ka.symmetric_difference(&kb).collect();
+        assert!(
+            ka == kb || (diff.len() == 1 && diff[0] == arg),
+            "`{cap}` / `{arg}` 那一对入参差的不止那一个键：{diff:?}\n\
+             ⇒ 答案不同可能是**别的键**造成的，这一对证不了 `{arg}` 被读了"
+        );
+        let ra = format!("{:?}", answer(cap, a));
+        let rb = format!("{:?}", answer(cap, b));
+        assert_ne!(
+            ra, rb,
+            "\n🔴 `{cap}` 的参数 `{arg}` **改了也不起作用** —— 两趟只差这一个键，答案却一模一样。\n\
+             那就是「声明了、解析器没读」，而 `src/doc/IPC-PROTOCOL.md §10` 是**冻结的\n\
+             线上契约**、读者在仓外 ⇒ 这一条等于在那份文档里撒谎。\n\
+             两条出路：把它真读起来，或者把它从 `args` 与 `§10` 里一起摘掉\n\
+             （`files.ls` 的 `ignore_ascii_case` 走的是后一条）。"
+        );
+        checked += 1;
+    }
+    assert!(checked >= 7, "只行使了 {checked} 对探针 —— 本条在空转");
+
+    // ── ③ 阴性对照：**没声明**的参数必须不起作用 ───────────────────────────
+    //
+    // 🔴 没有这一格，一把「什么都判不同」的坏尺子照样全绿。
+    //    用的正是当年那个鬼影：`files.ls` + `ignore_ascii_case`。
+    assert!(
+        !CAPABILITIES
+            .iter()
+            .find(|c| c.name == "files.ls")
+            .expect("在表里")
+            .args
+            .contains(&"ignore_ascii_case"),
+        "`files.ls` 又声明了 `ignore_ascii_case` —— 那下面这条阴性对照就不是对照了"
+    );
+    let base = serde_json::json!({ "path": p(&fx.root) });
+    let with_ghost = serde_json::json!({ "path": p(&fx.root), "ignore_ascii_case": true });
+    assert_eq!(
+        format!("{:?}", answer("files.ls", &base)),
+        format!("{:?}", answer("files.ls", &with_ghost)),
+        "喂一个**没声明**的参数进去，答案居然变了 —— 那上面那一批「不同」证不了任何事\n\
+         （要么这把尺子坏了，要么 `files.ls` 偷偷长出了一个没登记的参数）"
     );
 }
 
