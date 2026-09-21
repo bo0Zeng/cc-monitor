@@ -57,14 +57,29 @@ enum Backend {
 }
 
 impl Backend {
-    /// `origin` 缺省 / 空串 = 本机；否则按 label 取那台远端的配置。
-    fn for_origin(origin: Option<&str>) -> Result<Self, String> {
-        match origin.filter(|o| !o.is_empty()) {
-            Some(o) => {
-                let cfg = crate::remote_history::require_cfg_by_label(o)?;
+    /// 分过本机之后选后端：本机走本机后端，远端按 label 取那台远端的配置。
+    ///
+    /// # 🔴 〔`设计/05 §8` 步 2，2026-09-20〕入参从 `Option<&str>` 换成 `Route`
+    ///
+    /// 上一拍这里逐字写着「`origin` 缺省 / **空串** = 本机」—— 两个「没说」的值
+    /// 都被**悄悄**归进了本机，而 `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」
+    /// ⇒ 本机是一个**具名**的 origin，「没说」不是它。
+    /// 那种归法不报错：调用方什么都不送，命令去动了本机的文件。
+    ///
+    /// ⇒ 「没说」从此在到这里**之前**就被拦掉，两道闸各一处：
+    /// 线上 `null` 由 `Origin` 的 `Deserialize` 拒（构造不出来）·
+    /// 空白名由 [`crate::origin::Origin::route`] 拒（拒的那句话点名命令）。
+    /// 本函数因此只收**已经分过本机**的 [`crate::origin::Route`] —— 它只有两个变体，
+    /// 「没说」在类型上到不了这里。
+    ///
+    /// ⚠ 分流点仍然**恰好一处**（`subagent_tests.rs` 钉着 `fn for_origin(` 的处数）。
+    fn for_origin(route: crate::origin::Route<'_>) -> Result<Self, String> {
+        match route {
+            crate::origin::Route::Local => Ok(Backend::Local),
+            crate::origin::Route::Remote(host) => {
+                let cfg = crate::remote_history::require_cfg_by_label(host)?;
                 Ok(Backend::Remote(Box::new(cfg)))
             }
-            None => Ok(Backend::Local),
         }
     }
 
@@ -127,14 +142,20 @@ fn nonempty_lines(stdout: &str) -> Vec<String> {
         .collect()
 }
 
+/// ⚠ 本机 ＝ `Origin::local()`（线上 `"<local>"`），**不是 `null`、不是空串**
+/// 〔`设计/05 §8` 步 2〕：上一拍这一条收 `Option<String>`，`None` 与 `""` 都被当成本机
+/// ⇒ 「省掉 origin」与「本机」在线上长得一模一样。现在它收 `Origin`，
+/// 而「没说」在 `Origin` 里已经没有任何表示（理由逐条写在 `origin.rs` 头注）。
 #[tauri::command]
 pub async fn load_subagent(
     parent_jsonl_path: String,
     description: String,
     tool_use_timestamp: String,
-    origin: Option<String>,
+    origin: crate::origin::Origin,
 ) -> Result<SubagentLoadResult, String> {
-    let backend = Backend::for_origin(origin.as_deref())?;
+    // 分本机这一步**只有一个住址**（`origin_tests.rs` 的 `F` 组两向钉着：
+    // 吃 `Origin` 的命令 == 体里经 `.route(` 分本机的命令）。
+    let backend = Backend::for_origin(origin.route("load_subagent")?)?;
     // 深度防御（与 `stream_read_remote_session` 同一条纪律）：路径来自前端，本侧先做廉价校验；
     // 真正的越权读由后端的 `fence_under_projects` 兜底。
     // ⚠ `K-R94` 起这道校验**两条路都过** —— 改前只有远端那条有，而「同一个入参、两种把关」
