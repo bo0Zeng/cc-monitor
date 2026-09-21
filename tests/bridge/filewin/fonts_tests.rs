@@ -1,0 +1,506 @@
+//! [`super`] 的判据 —— **窗口上的字画不画得出来**。
+//!
+//! 设计住 `调研/设计/60 §5.4g`；读数住 `调研/真相源/102`。
+//!
+//! # 🔴 这一摞里哪一条是**反空真**的锚
+//!
+//! [`without_a_cjk_font_the_probe_is_almost_entirely_unrenderable`] ——
+//! 它钉的是「**不装字体时画不出的字数恰好等于 121 / 120**」。
+//! 没有它，剩下那几条（「装上之后一个都不缺」）可以靠**量具永远说「不缺」**来全绿：
+//! 量具翻向过一次（§三，拿 U+FFFD 当基准那一版），不是假想。
+//!
+//! # ⚠ 这一摞买不到什么
+//!
+//! 探针只有**我们自己写的标签**。文件名是任意的（日文 · 韩文 · 生僻字 · emoji），
+//! 没有任何判据覆盖得了。**「探针全绿」≠「任何文件名都画得出来」。**
+
+use super::{Attempt, FontState, PROBE};
+
+/// 一个**字体已经就绪**的 `Context`。
+///
+/// ⚠ 必须先跑一帧 —— 之前碰 `fonts_mut` 会 panic（`fonts.rs §四`）。
+/// `textures_delta` 必须清掉，否则 `TexturesDelta` 的 `Drop` 自己会 panic。
+fn ready(ctx: &egui::Context) {
+    let mut out = ctx.run_ui(egui::RawInput::default(), |_| {});
+    out.textures_delta.clear();
+}
+
+fn prop() -> egui::FontId {
+    egui::FontId::proportional(14.0)
+}
+fn mono() -> egui::FontId {
+    egui::FontId::monospace(14.0)
+}
+
+/// 从一份 Rust 源码里取出**普通字符串字面量的内容**。
+///
+/// 🔴 为什么要一台状态机、不能用「按引号切」：`filewin/` 那几份文件的注释里
+/// **满是中文**，漏进来就把判据变成恒真（注释里的字当然「用不着画」）。
+/// ⇒ 跳行注释 · 跳块注释（可嵌套）· 跳裸字符串 · 认转义。
+///
+/// ⚠ 本函数自己由 [`the_literal_scanner_finds_exactly_what_it_should`] 钉着。
+fn string_literals(src: &str) -> Vec<String> {
+    let b: Vec<char> = src.chars().collect();
+    let n = b.len();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < n {
+        if b[i] == '/' && i + 1 < n && b[i + 1] == '/' {
+            while i < n && b[i] != '\n' {
+                i += 1;
+            }
+        } else if b[i] == '/' && i + 1 < n && b[i + 1] == '*' {
+            let mut depth = 1usize;
+            i += 2;
+            while i < n && depth > 0 {
+                if b[i] == '/' && i + 1 < n && b[i + 1] == '*' {
+                    depth += 1;
+                    i += 2;
+                } else if b[i] == '*' && i + 1 < n && b[i + 1] == '/' {
+                    depth -= 1;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+        } else if b[i] == 'r' && i + 1 < n && (b[i + 1] == '"' || b[i + 1] == '#') {
+            let mut j = i + 1;
+            let mut hashes = 0usize;
+            while j < n && b[j] == '#' {
+                hashes += 1;
+                j += 1;
+            }
+            if j < n && b[j] == '"' {
+                // 裸字符串：跳到 `"###…`（井号个数相同）
+                let mut k = j + 1;
+                loop {
+                    if k >= n {
+                        i = n;
+                        break;
+                    }
+                    if b[k] == '"' && (k + 1..=k + hashes).all(|m| m < n && b[m] == '#') {
+                        i = k + 1 + hashes;
+                        break;
+                    }
+                    k += 1;
+                }
+            } else {
+                i += 1;
+            }
+        } else if b[i] == '"' {
+            let mut buf = String::new();
+            i += 1;
+            while i < n && b[i] != '"' {
+                if b[i] == '\\' {
+                    i += 2;
+                } else {
+                    buf.push(b[i]);
+                    i += 1;
+                }
+            }
+            out.push(buf);
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// `filewin/` 里**会被画出去**的那些文件。
+///
+/// 🔴 **`fonts.rs` 自己不在人群里** —— [`PROBE`] 就住那儿，
+/// 让它进人群等于**恒等两侧同源**：`PROBE` 里随手多一个字，扫描也照样「找到」它。
+/// 这条排除的正当性由 [`fonts_rs_draws_nothing_at_all`] 买。
+fn drawn_files() -> Vec<(String, String)> {
+    let dir = crate::guard_support::crate_src_root().join("filewin");
+    // 🔴 走 `guard_core` 而不是裸 `read_dir` —— `scanning_guard_registry` 那条判据
+    //    钉着「扫描型判据不许自己遍历」，理由是一个不摘掉自己的扫描判据会
+    //    **在自己的语料里找到自己 ⇒ 恒绿**。
+    //
+    // ⚠ 但用的是**显式排除**那一支，**不是** `scan_tree!` 的自摘。理由是现打出来的：
+    //   `scan_tree!` 展开成 `scan_tree_excluding_self(.., file!())`，靠**后缀比对**摘除
+    //   调用者；而本仓所有判据都由 `#[path]` 挂载 ⇒ `file!()` 给的是
+    //   `src/../../../tests/…` 这种**折返路径**，后缀恒不命中。
+    //   ⇒ **它在本仓一处都不生效，而且失效时是安静的**（那条读数住 `guard-core` 的判据抬头）。
+    //   本条要摘的也不是调用者自己（调用者不在被扫的那棵树里），而是 `fonts.rs`——
+    //   `PROBE` 就住那儿，让它进人群等于**恒等两侧同源**。
+    let mut out: Vec<(String, String)> =
+        guard_core::scan_tree_excluding(&dir, &["rs"], &["fonts.rs", "mod.rs"])
+            .into_iter()
+            .map(|(path, src)| {
+                let name = path
+                    .file_name()
+                    .expect("扫到的每一项都是文件")
+                    .to_string_lossy()
+                    .to_string();
+                (name, src)
+            })
+            .collect();
+    out.sort();
+    out
+}
+
+/// 人群里每一份文件的字面量里出现过的非 ASCII 字符。
+fn label_chars() -> std::collections::BTreeSet<char> {
+    let mut set = std::collections::BTreeSet::new();
+    for (_, src) in drawn_files() {
+        for s in string_literals(&src) {
+            set.extend(s.chars().filter(|c| !c.is_ascii()));
+        }
+    }
+    set
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 量具自己
+// ═══════════════════════════════════════════════════════════════════
+
+/// 🔴 扫描器自己得先对 —— 它是下面每一条的**量具**。
+///
+/// 喂一份**自带正确答案**的源码：注释里放中文（不许收）、字面量里放中文（必须收）、
+/// 裸字符串里放中文（不许收 —— 裸字符串在本模块里只用来写 Windows 路径，全 ASCII）。
+#[test]
+fn the_literal_scanner_finds_exactly_what_it_should() {
+    let fixture = r###"
+// 行注释里的中文：甲乙丙
+/* 块注释里的：丁戊
+   /* 嵌套的：己庚 */ 还是注释：辛 */
+fn f() {
+    ui.label("要收的一");          // 尾注释里的：壬癸
+    let p = r"C:\Windows\不收这个";
+    let q = r#"也不收：子丑"#;
+    println!("要收的二 {}", "要收的三");
+    let esc = "带转义 \" 的：寅";
+}
+"###;
+    let got: std::collections::BTreeSet<char> = string_literals(fixture)
+        .iter()
+        .flat_map(|s| s.chars())
+        .filter(|c| !c.is_ascii())
+        .collect();
+    let want: std::collections::BTreeSet<char> =
+        "要收的一要收的二要收的三带转义的：寅".chars().collect();
+    assert_eq!(
+        got,
+        want,
+        "字面量扫描器跑偏了。多收了 {:?}，漏收了 {:?}",
+        got.difference(&want).collect::<Vec<_>>(),
+        want.difference(&got).collect::<Vec<_>>()
+    );
+}
+
+/// 排除 `fonts.rs` 的正当性：**它一个控件都不画**。
+///
+/// ⇒ 把它摘出人群不会藏掉任何一个真标签。哪天它开始画东西，本条红。
+#[test]
+fn fonts_rs_draws_nothing_at_all() {
+    let src =
+        std::fs::read_to_string(crate::guard_support::crate_src_root().join("filewin/fonts.rs"))
+            .expect("fonts.rs 读不动");
+    // 只看代码，不看注释 —— 注释里当然会提到这些名字
+    let code: String = {
+        let mut keep = String::new();
+        let mut in_line = false;
+        let mut prev = '\0';
+        for c in src.chars() {
+            if in_line {
+                if c == '\n' {
+                    in_line = false;
+                    keep.push(c);
+                }
+            } else if prev == '/' && c == '/' {
+                keep.pop();
+                in_line = true;
+            } else {
+                keep.push(c);
+            }
+            prev = c;
+        }
+        keep
+    };
+    for needle in [
+        "ui.label(",
+        "ui.button(",
+        "ui.heading(",
+        "colored_label(",
+        "ui.strong(",
+    ] {
+        assert!(
+            !code.contains(needle),
+            "`fonts.rs` 里出现了 `{needle}` —— 它开始画东西了。\
+             那么 `drawn_files()` 把它摘出去就会藏掉真标签：\
+             要么把画的部分搬走，要么改人群并重新论证。"
+        );
+    }
+}
+
+/// 量具在**窗口今天的实况**（只有 egui 自带四份字体）下过两个方向的对照。
+#[test]
+fn the_ruler_passes_both_controls_on_the_bundled_fonts() {
+    let ctx = egui::Context::default();
+    ready(&ctx);
+    for fid in [prop(), mono()] {
+        assert_eq!(
+            super::ruler_self_check(&ctx, &fid),
+            None,
+            "量具自检没过（字族 {:?}）—— 下面每一条的读数都不许用",
+            fid.family
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 探针与源码对账
+// ═══════════════════════════════════════════════════════════════════
+
+/// 🔴 [`PROBE`] **恰好**等于窗口会画出去的那些非 ASCII 字符。
+///
+/// 两侧不同源：这一侧现扫 `filewin/` 的源码树，那一侧是 `fonts.rs` 里手写的常量。
+/// ⇒ 加了新标签忘了加进探针 ⇒ 红；探针里留了个用不着的字 ⇒ 也红。
+#[test]
+fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
+    let files = drawn_files();
+    assert_eq!(
+        files.len(),
+        8,
+        "人群应当是 8 份（2026-09-20 现打：copy · corpus · entry · rows · scale · shell · source · \
+         transfer；`fonts.rs` 与 `mod.rs` 摘掉了。⚠ `corpus.rs` 的非 ASCII 字面量是 0，\
+         按字符数统计时看不见它 —— 人群按**文件**数，别按有没有贡献字符数）\
+         —— 现在是 {}，人群变了就重新论证一遍",
+        files.len()
+    );
+    let scanned = label_chars();
+    assert_eq!(
+        scanned.len(),
+        130,
+        "现扫出 {} 个不同的非 ASCII 字符（2026-09-20 现打 130）。\
+         这个数本身没有对错，但它变了说明标签动过 —— 连着下面那条一起看",
+        scanned.len()
+    );
+    let declared: std::collections::BTreeSet<char> = PROBE.chars().collect();
+    assert_eq!(
+        declared, scanned,
+        "探针与真标签对不上。\n  探针里多出来（界面上没有）：{:?}\n  探针里漏了（界面上有、画不出也没人知道）：{:?}",
+        declared.difference(&scanned).collect::<Vec<_>>(),
+        scanned.difference(&declared).collect::<Vec<_>>()
+    );
+}
+
+/// 量具**判不了** `'◻'` 与 `'?'` 这两个字（它们就是替换字形本身）。
+/// ⇒ 探针里不许有它们，否则那两个字会永远报「画不出」。
+#[test]
+fn the_probe_excludes_the_two_chars_the_ruler_cannot_judge() {
+    for c in ['◻', '?'] {
+        assert!(
+            !PROBE.contains(c),
+            "探针里有 `{c}` —— 它是替换字形本身，量具对它永远报「画不出」\
+             ⇒ `verify` 会永远出声。要么别在界面上用它，要么给量具换一条判法。"
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🔴 反空真的锚
+// ═══════════════════════════════════════════════════════════════════
+
+/// 🔴 **不装字体时，探针里画不出的字数恰好是 121（比例）／ 120（等宽）。**
+///
+/// 这是这一摞的**反空真锚**：它同时钉住两件事 ——
+/// ① 量具**能**说「画不出」（不是恒说「都能画」）；
+/// ② 这个缺陷是**真的**，数是量出来的。
+///
+/// 等宽比比例多认一个字：`→`（U+2192）住 `Hack`，而 `Hack` 只在等宽那条链上。
+///
+/// ⚠ 这个数会随标签增减而动。动了就重新量、连理由一起改，**不许为了绿把它算出来**
+/// （两侧同源就退化成恒真）。
+#[test]
+fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
+    let ctx = egui::Context::default();
+    ready(&ctx);
+    assert_eq!(
+        super::ruler_self_check(&ctx, &prop()),
+        None,
+        "量具先得是好的"
+    );
+    assert_eq!(
+        super::unrenderable(&ctx, &prop(), PROBE).len(),
+        121,
+        "比例字体下画不出的字数变了（2026-09-20 现打 121 / 探针 {} 字）",
+        PROBE.chars().count()
+    );
+    assert_eq!(
+        super::unrenderable(&ctx, &mono(), PROBE).len(),
+        120,
+        "等宽字体下画不出的字数变了（2026-09-20 现打 120 —— 比比例少一个 `→`）"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 装上之后
+// ═══════════════════════════════════════════════════════════════════
+
+/// 本机上第一个存在的候选字体。`None` = 这台机器一份 CJK 字体都没有。
+fn first_available_font() -> Option<String> {
+    super::candidates()
+        .into_iter()
+        .find(|p| std::path::Path::new(p).is_file())
+}
+
+/// 装上系统字体之后，探针里**一个字都不缺**，而且 [`super::verify`] 回 `None`。
+#[test]
+fn installing_a_system_font_makes_the_whole_probe_renderable() {
+    let Some(path) = first_available_font() else {
+        // 🔴 不许静默跳过 —— 「跳过」和「过了」在终端上长得一样。
+        panic!(
+            "这台机器一份 CJK 字体都没有，候选表试过：{:?}\n\
+             这是**环境缺件**，不是代码缺陷：装一份（Debian/Ubuntu: `apt install fonts-noto-cjk`）\
+             或者设 `CCM_CJK_FONT=/path/to/font.ttc` 再跑。",
+            super::candidates()
+        );
+    };
+    let ctx = egui::Context::default();
+    let attempt = super::install_from(&ctx, &[path.clone()]);
+    assert!(
+        matches!(attempt, Attempt::Loaded { .. }),
+        "装 {path} 没成功：{attempt:?}"
+    );
+    ready(&ctx);
+    assert_eq!(
+        super::ruler_self_check(&ctx, &prop()),
+        None,
+        "量具先得是好的"
+    );
+    for fid in [prop(), mono()] {
+        let miss = super::unrenderable(&ctx, &fid, PROBE);
+        assert_eq!(
+            miss.len(),
+            0,
+            "装了 {path} 之后 {:?} 字族还缺 {} 个字：{:?}",
+            fid.family,
+            miss.len(),
+            &miss[..miss.len().min(12)]
+        );
+    }
+    assert_eq!(
+        super::verify(&ctx, &attempt),
+        None,
+        "探针一个字不缺，`verify` 却还在出声 —— 那两条对不上"
+    );
+}
+
+/// 装字体是**追加在链尾当兜底**，不是插在链首 ⇒ 拉丁字仍旧由原来那份字体画。
+///
+/// 量的是 `'A'` 的字宽：换字体画就会变（CJK 字体的拉丁部分宽度不一样）。
+/// **不钉具体数字 —— 钉的是「装前装后相等」**，两侧同源不了。
+#[test]
+fn installing_appends_as_fallback_so_latin_keeps_its_own_font() {
+    let Some(path) = first_available_font() else {
+        panic!("这台机器没有 CJK 字体 —— 同上一条，先装字体再跑");
+    };
+    let before = {
+        let ctx = egui::Context::default();
+        ready(&ctx);
+        ctx.fonts_mut(|f| (f.glyph_width(&prop(), 'A'), f.glyph_width(&mono(), 'A')))
+    };
+    let after = {
+        let ctx = egui::Context::default();
+        super::install_from(&ctx, &[path]);
+        ready(&ctx);
+        ctx.fonts_mut(|f| (f.glyph_width(&prop(), 'A'), f.glyph_width(&mono(), 'A')))
+    };
+    assert_eq!(
+        before, after,
+        "装 CJK 字体之后 `'A'` 的字宽变了（比例/等宽 {before:?} -> {after:?}）\
+         —— 说明它被插在了链首、把拉丁字也抢走了。等宽被抢走就不再等宽。"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 出声
+// ═══════════════════════════════════════════════════════════════════
+
+/// 一份字体都找不到时 [`super::verify`] **必须出声**，而且说清试过哪些路径。
+#[test]
+fn verify_says_out_loud_when_no_font_was_found() {
+    let ctx = egui::Context::default();
+    let attempt = super::install_from(&ctx, &[]);
+    assert_eq!(attempt, Attempt::NoneFound { tried: Vec::new() });
+    ready(&ctx);
+    let note = super::verify(&ctx, &attempt).expect("一个字体都没装上，居然不出声");
+    for needle in ["no CJK font found", "CCM_CJK_FONT", "boxes"] {
+        assert!(
+            note.contains(needle),
+            "出声那句话里没有 `{needle}`，用户看了不知道该干什么：{note}"
+        );
+    }
+}
+
+/// 🔴 出声那句话**必须是纯 ASCII** —— 字体坏了的时候它是唯一还画得出来的东西。
+#[test]
+fn every_notice_this_module_can_produce_is_pure_ascii() {
+    let ctx = egui::Context::default();
+    let attempt = super::install_from(&ctx, &[]);
+    ready(&ctx);
+    let mut notes: Vec<String> = vec![
+        super::NOTICE_PREFIX.to_string(),
+        super::verify(&ctx, &attempt).expect("这一趟该出声"),
+    ];
+    for st in [
+        FontState::NotInstalled,
+        FontState::Pending(attempt.clone()),
+        FontState::Pending(Attempt::ReadFailed {
+            path: "/nope".into(),
+            err: "boom".into(),
+        }),
+    ] {
+        notes.push(st.notice().expect("这三态都该出声").to_string());
+    }
+    for n in &notes {
+        assert!(
+            n.is_ascii(),
+            "出声的话里有非 ASCII 字符 —— 字体坏了的时候它自己也会变成豆腐块：{n:?}"
+        );
+    }
+}
+
+/// 三态**分得开**：没装过 · 装了没复核 · 复核过没问题。
+///
+/// 🔴 前两态都出声。合成两态的话，「这一步根本没接上」就长得跟「一切正常」一样。
+#[test]
+fn the_three_font_states_are_distinguishable() {
+    assert!(
+        FontState::NotInstalled.notice().is_some(),
+        "「没装过」必须出声 —— 否则装字体那一步被谁摘了都没人知道"
+    );
+    assert!(
+        FontState::Pending(Attempt::NoneFound { tried: Vec::new() })
+            .notice()
+            .is_some(),
+        "「装了没复核」必须出声"
+    );
+    assert_eq!(
+        FontState::Checked(None).notice(),
+        None,
+        "「复核过、没问题」才是唯一一个不出声的态"
+    );
+    assert_eq!(
+        FontState::Checked(Some("[font] x".into())).notice(),
+        Some("[font] x"),
+        "复核出问题时出声的就是复核那句话本身"
+    );
+}
+
+/// `settle` **只走一次** `Pending -> Checked`，回值说清有没有走。
+#[test]
+fn settle_moves_pending_to_checked_exactly_once() {
+    let ctx = egui::Context::default();
+    ready(&ctx);
+    let mut st = FontState::Pending(Attempt::NoneFound { tried: Vec::new() });
+    assert!(st.settle(&ctx), "第一趟该定下来");
+    assert!(matches!(st, FontState::Checked(_)), "定完了该是 Checked");
+    assert!(!st.settle(&ctx), "第二趟不该再动 —— 否则每帧都去抢那把锁");
+    let mut n = FontState::NotInstalled;
+    assert!(!n.settle(&ctx), "没装过的不该被 settle 蒙成「复核过」");
+    assert_eq!(n, FontState::NotInstalled);
+}

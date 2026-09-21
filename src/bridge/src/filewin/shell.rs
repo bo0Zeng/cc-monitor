@@ -83,6 +83,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
+use super::fonts::{self, FontState};
 use super::rows::{show_file_rows, RenderTally};
 use super::source::{list_local, list_remote, parent_dir, Row, Source};
 use super::transfer::{DropBoard, Pending};
@@ -101,6 +102,17 @@ static WINDOWS_OPENED: AtomicU64 = AtomicU64::new(0);
 /// 要么这个数的语义被悄悄改成「请求过」而名字还叫「开过」。
 /// ⇒ 一个值装一件事：请求面用这个，线程面用上面那个。
 static OPEN_REQUESTED: AtomicU64 = AtomicU64::new(0);
+
+/// 最近一个窗口在**第一帧**上复核字体的结果。`None` = 还没有任何窗口复核过。
+///
+/// 🔴 判据拿它买的是「装字体这一步**真的接在开窗那条路上**」——
+/// **扫源码买不到这个**（本仓 09-20 栽过一次：源码扫描那条与行为那条买的不是同一样东西，
+/// 前者看不见「按钮接没接到方法上」）。⇒ 由 Xvfb 那条真开窗的判据读它。
+static FONT_VERDICT: Mutex<Option<FontState>> = Mutex::new(None);
+
+pub fn font_verdict() -> Option<FontState> {
+    FONT_VERDICT.lock().unwrap().clone()
+}
 
 pub fn windows_opened() -> u64 {
     WINDOWS_OPENED.load(Ordering::SeqCst)
@@ -251,6 +263,12 @@ pub struct FileWindow {
     copy_prompt: Option<CopyPrompt>,
     /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
     seen_copy_rounds: u64,
+    /// `fonts.rs`：这个窗口的字体装没装上、复核没复核过。
+    ///
+    /// 🔴 默认是 `NotInstalled` 而**不是**「一切正常」——
+    /// 判据直接 `FileWindow::new(...)` 建出来的窗口就是这一态，而它**会在界面上出声**。
+    /// 「装字体那一步被谁摘了」因此不可能安静地过去。
+    pub font: FontState,
 }
 
 impl FileWindow {
@@ -283,6 +301,7 @@ impl FileWindow {
             copy_board: CopyBoard::default(),
             copy_prompt: None,
             seen_copy_rounds: 0,
+            font: FontState::NotInstalled,
         }
     }
 
@@ -647,6 +666,17 @@ impl FileWindow {
 
 impl eframe::App for FileWindow {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // 🔴 **第一帧**才复核得了字体 —— 之前碰 `fonts_mut` 会 panic，
+        //    而本仓 release 是 `panic = "abort"`（理由逐条住 `fonts.rs §四`）。
+        if self.font.settle(ui.ctx()) {
+            *FONT_VERDICT.lock().unwrap() = Some(self.font.clone());
+        }
+        // 字体出问题就**一直**摆在这儿，不自动消失：
+        // 它是一个「到你改掉为止都成立的状态」，不是一次性事件
+        // （同 `INVARIANTS §12` 对「设置没生效」那条的判法）。
+        if let Some(note) = self.font.notice() {
+            ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), note);
+        }
         let mut go_local: Option<String> = None;
         ui.horizontal(|ui| {
             if ui.button("⬆ 上一级").clicked() {
@@ -726,7 +756,12 @@ pub fn open_detached_seeded(
         eframe::run_native(
             &title,
             opts,
-            Box::new(move |_cc| Ok(Box::new(FileWindow::seeded(source, cwd, rt, rows)))),
+            Box::new(move |cc| {
+                let mut w = FileWindow::seeded(source, cwd, rt, rows);
+                // 第一拍：读文件 ＋ `set_fonts`。**这里复核不了**（`fonts.rs §四`）。
+                w.font = FontState::Pending(fonts::install(&cc.egui_ctx));
+                Ok(Box::new(w) as Box<dyn eframe::App>)
+            }),
         )
         .map_err(|e| format!("开窗失败: {e}"))
     })

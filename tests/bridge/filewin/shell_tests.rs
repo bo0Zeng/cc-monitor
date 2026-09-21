@@ -598,6 +598,21 @@ fn xvfb_worker_opens_a_real_window() {
     xvfb::emit("a.reason_len", why.chars().count());
     xvfb::emit("a.reason", why.replace('\n', " "));
 
+    // ── 字体：**装字体那一步真的接在开窗这条路上吗** ────────────────
+    // 🔴 扫源码买不到这一条。09-20 栽过的那一形逐字：源码扫描那条与行为那条
+    //    买的不是同一样东西 —— 前者看不见「按钮接没接到方法上」。
+    //    这里读的是**真窗口在自己第一帧上**写下的那份裁决。
+    match font_verdict() {
+        None => xvfb::emit("a.font_state", "never-checked"),
+        Some(FontState::NotInstalled) => xvfb::emit("a.font_state", "not-installed"),
+        Some(FontState::Pending(_)) => xvfb::emit("a.font_state", "pending"),
+        Some(FontState::Checked(None)) => xvfb::emit("a.font_state", "checked-ok"),
+        Some(FontState::Checked(Some(note))) => {
+            xvfb::emit("a.font_state", "checked-note");
+            xvfb::emit("a.font_note", note.replace('\n', " "));
+        }
+    }
+
     // ── 第二趟：**同一个进程、换一条线程** ────────────────────────────
     // 台架头注第四节论证过它必然走另一条路；这里把它**量出来**而不是推出来。
     let h2 = open_detached_seeded(Source::Local, cwd, None, rows);
@@ -733,6 +748,26 @@ fn the_native_window_really_comes_up_on_a_real_graphics_session() {
     // 反空真：喂进去的那一屏真的有行（否则上面全是在量一个空窗）。
     let seed: usize = run.reading("a.seed_rows").parse().unwrap_or(0);
     assert!(seed > 0, "喂给窗口的那一屏是空的 —— 这一趟量的是一个空窗");
+
+    // 🔴 **字体**：真窗口在它自己的第一帧上复核过，而且没有话要说。
+    //    这一条买的是「装字体那一步**接在了 `open_detached_seeded` 上**」——
+    //    `fonts_tests.rs` 那一摞全在自己造的 `Context` 上跑，**看不见接没接上**。
+    assert_eq!(
+        run.reading("a.font_state"),
+        "checked-ok",
+        "真窗口的字体裁决是 `{}`{} —— `checked-ok` 之外每一形都意味着窗口上的中文是豆腐块：\
+         `never-checked` / `not-installed` = 装字体那一步没接在开窗路上；\
+         `pending` = 接上了但第一帧没复核；`checked-note` = 复核过、真有缺字",
+        run.reading("a.font_state"),
+        {
+            let n = run.reading("a.font_note");
+            if n.is_empty() {
+                String::new()
+            } else {
+                format!("（{n}）")
+            }
+        }
+    );
 }
 
 /// 🔴 **阴性对照**：起不来的时候，那条路回的是一句**非空的原因**。
