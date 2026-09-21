@@ -83,8 +83,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
+use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
-use super::rows::{show_file_rows, RenderTally};
+use super::rows::{show_file_rows, show_hit_rows, RenderTally};
 use super::source::{list_local, list_remote, parent_dir, Row, Source};
 use super::transfer::{DropBoard, Pending};
 
@@ -269,6 +270,11 @@ pub struct FileWindow {
     /// 判据直接 `FileWindow::new(...)` 建出来的窗口就是这一态，而它**会在界面上出声**。
     /// 「装字体那一步被谁摘了」因此不可能安静地过去。
     pub font: FontState,
+    /// 〔第四刀〕`设计/60 §3.5`：搜索那一趟的共享落点（UI 线程读，tokio 那条写）。
+    pub search: SearchBoard,
+    /// 搜索框里那几个字。**UI 线程自己的**（同 [`Self::copy_prompt`] 的理由：
+    /// 它是一个正在被编辑的草稿，不该出现在两条线程共享的那份状态里）。
+    query: String,
 }
 
 impl FileWindow {
@@ -302,6 +308,8 @@ impl FileWindow {
             copy_prompt: None,
             seen_copy_rounds: 0,
             font: FontState::NotInstalled,
+            search: SearchBoard::default(),
+            query: String::new(),
         }
     }
 
@@ -378,6 +386,58 @@ impl FileWindow {
         self.cwd = home;
         self.listing.invalidate();
         self.reload();
+    }
+
+    /// 🔴〔第四刀〕**发一趟搜索** —— `设计/60 §3.5` 那一件在窗口上的落点。
+    ///
+    /// 回值 = 真的发出去了一趟（子串是空的、或这个窗口没有 tokio 运行时 ⇒ `false`）。
+    ///
+    /// # 本机与远端**同一条路**
+    ///
+    /// 两侧都走那条长连接上的 `files-find`（[`Source::origin`] 给的是登记表里的键）。
+    /// ⚠ 与列目录**刻意不同**：列目录本机走文件系统、远端走 SFTP（[`Self::reload`]），
+    /// 而搜索**只有后端那一条**（`设计/60 §2 档①`：SFTP 给不了搜索）。
+    /// ⇒ 本机没起后端时这里拿到的是「没有可用的控制通道」那句话，而**不是**
+    /// 悄悄退回一趟 `walkdir` —— 那会是第二份搜索实现，而且它没有常驻索引。
+    ///
+    /// # `force_rebuild` 是那颗按钮，不是一个周期
+    ///
+    /// `true` 只由界面上那颗「重建索引」来（用户明说「现在就重走」）。
+    /// 平时是 `false`，要不要重走由**后端报的** `index_missing` / `stale` 决定
+    /// （`设计/60 §3.5.2a`；周期那个数不在这一侧，见 [`super::find`] 头注 §四）。
+    pub fn fire_search(&mut self, ctx: Option<egui::Context>, force_rebuild: bool) -> bool {
+        let needle = self.query.trim().to_string();
+        self.search.attach(ctx);
+        self.search.invalidate(&needle);
+        if needle.is_empty() && !force_rebuild {
+            return false;
+        }
+        let Some(h) = self.rt.clone() else {
+            self.search.say("搜索要一个 tokio 运行时，这个窗口没拿到");
+            return false;
+        };
+        let mine = self.search.start();
+        let board = self.search.clone();
+        let origin = self.source.origin();
+        let root = self.cwd.clone();
+        h.spawn(async move {
+            find::run_search(board, origin, root, needle, mine, force_rebuild).await;
+        });
+        true
+    }
+
+    /// 这一帧该画命中，还是画当前目录。**纯函数**（判据直接喂它两侧）。
+    ///
+    /// 🔴 判准是**搜索框里有没有字**，不是「有没有拿到命中」——
+    /// 后者会让「搜了、一条都没中」退回目录列表，而那和「没搜」在屏幕上分不开
+    /// （用户会以为搜索没生效）。
+    pub fn showing_hits(&self) -> bool {
+        !self.query.trim().is_empty()
+    }
+
+    /// 搜索框里现在是什么（判据用；生产那一侧直接改 [`Self::query`]）。
+    pub fn query(&self) -> &str {
+        &self.query
     }
 
     /// 拖进来的那几个本机文件 → 待传清单（**目标目录 = 当前目录**）。
@@ -664,8 +724,19 @@ impl FileWindow {
     }
 }
 
-impl eframe::App for FileWindow {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+impl FileWindow {
+    /// 🔴〔第四刀〕**每一帧的正文。** 从 `eframe::App::ui` 里剥出来的，
+    /// 剥的理由只有一个：**让它进得了执行链**。
+    ///
+    /// `eframe::App::ui` 的签名逐字要一个 `&mut eframe::Frame`
+    /// （`eframe-0.36.2/src/epi.rs` 的 `trait App`），而那个类型在判据里**造不出来**
+    /// ⇒ 剥出来之前，这个窗口**每一帧真正画的那段代码一条判据都没有**
+    /// （现打：第一~三刀的判据全在零件上 —— `CopyBoard::ui` / `show_file_rows` /
+    ///  `outcome_notice` —— 而把这几个零件从这个函数里摘掉，那些判据一条都不会红）。
+    /// 这正是本仓那条「判据不在执行链上就等于不存在」。
+    ///
+    /// ⇒ 从此 `eframe::App::ui` 只剩一句委派，判据直接喂本函数。
+    pub fn frame_body(&mut self, ui: &mut egui::Ui) {
         // 🔴 **第一帧**才复核得了字体 —— 之前碰 `fonts_mut` 会 panic，
         //    而本仓 release 是 `panic = "abort"`（理由逐条住 `fonts.rs §四`）。
         if self.font.settle(ui.ctx()) {
@@ -702,6 +773,8 @@ impl eframe::App for FileWindow {
         if let Some(e) = self.listing.error.lock().unwrap().clone() {
             ui.colored_label(egui::Color32::RED, e);
         }
+        // 🔴〔第四刀〕搜索那一行 ＋ **新鲜度那一行**（`设计/60 §3.5.3` 那条 ⬜）。
+        self.search_row(ui);
         // `§5.4d` 那一摞：确认框 ／ 进度。**画在列表之前** —— 它是模态的。
         self.board.ui(ui);
         // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
@@ -714,12 +787,67 @@ impl eframe::App for FileWindow {
         ui.separator();
         // 每帧从零数起 —— 这个数是「这一帧物化了多少行」，不是累计。
         self.tally = RenderTally::default();
-        {
+        // 🔴〔第四刀〕搜索框里有字 ⇒ 画命中，否则画当前目录。**二选一，不并排** ——
+        //    并排会让「你现在看的是哪一摞」变成一个要靠标题猜的问题。
+        if self.showing_hits() {
+            let hits: Vec<String> = self
+                .search
+                .shown()
+                .outcome
+                .map(|o| o.hits.iter().map(|h| h.display()).collect())
+                .unwrap_or_default();
+            show_hit_rows(ui, &hits, &mut self.tally);
+        } else {
             let rows = self.listing.rows.lock().unwrap();
             show_file_rows(ui, &rows, &mut self.tally, None);
         }
+        // ⚠ 这两条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
+        //   命中那一摞一个可点控件都没有 ⇒ `tally.clicked` / `copy_clicked` 恒 `None`，
+        //   理由与「为什么命中行不经 `show_file_rows`」一起写在
+        //   [`super::rows::show_hit_rows`] 的头注里。
         self.apply_click();
         self.apply_copy_click();
+    }
+
+    /// 搜索那一行：输入框 ＋「重建索引」＋ 在飞指示，接着是新鲜度那一行。
+    ///
+    /// 🔴 **`changed()` 就发** —— `设计/60 §3.5` 要的形状逐字是「打字即出结果，不等」。
+    /// ⚠ 代价如实记：**没有去抖** ⇒ 每敲一个字一趟往返。去抖要一个定时器，
+    ///   而 monitor 侧每一个定时器都要进 `rust_timer_registry` 并说清谁退役它
+    ///   ⇒ 那是一件独立的活。在飞的那几趟由 [`super::find::SearchBoard`] 的号作废掉，
+    ///   所以**结果不会错**，贵的是往返次数（64 万条量纲上没量过）。
+    fn search_row(&mut self, ui: &mut egui::Ui) {
+        let mut fire = false;
+        let mut rebuild = false;
+        ui.horizontal(|ui| {
+            ui.label("搜索");
+            let r = ui.add(
+                egui::TextEdit::singleline(&mut self.query)
+                    .desired_width(220.0)
+                    .hint_text("文件名里的一段"),
+            );
+            if r.changed() {
+                fire = true;
+            }
+            if ui.button("重建索引").clicked() {
+                rebuild = true;
+            }
+            if self.search.is_running() {
+                ui.spinner();
+                ui.label("正在搜…");
+            }
+        });
+        self.search.ui(ui);
+        if fire || rebuild {
+            let ctx = ui.ctx().clone();
+            self.fire_search(Some(ctx), rebuild);
+        }
+    }
+}
+
+impl eframe::App for FileWindow {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.frame_body(ui);
     }
 }
 

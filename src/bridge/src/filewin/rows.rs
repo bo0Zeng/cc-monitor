@@ -109,6 +109,48 @@ pub fn show_file_rows(
     });
 }
 
+/// 〔第四刀〕画一屏**命中**。`files-find` 回来的那一摞路径。
+///
+/// # 🔴 为什么它不是 [`show_file_rows`]，而这一条又为什么不算「第二条画列表的路」
+///
+/// 本模块头注那条纪律（**画列表的路只许有一条**）管的是**带点击与写动作的文件行**：
+/// 那条路上有「双击进目录」与行上那颗「复制」，两者都要有一个明确的归属 ——
+/// 而命中行两者**都归不了**：
+///
+/// - **双击进目录**：命中是一条**任意深度的路径**，不是当前目录里的一项；
+///   把它塞进 [`RenderTally::clicked`] 之后，`FileWindow::activate` 会拿这个下标
+///   去索引 `listing.rows`（另一摞东西）⇒ **点第 3 条命中，进的是当前目录第 3 行**。
+/// - **那颗「复制」**：`FileWindow::begin_copy` 拿 `self.cwd` 当目标目录，
+///   而命中可能在别的目录下 ⇒ **复制到错的地方**，而且它是本窗口唯一的写动作。
+///
+/// ⇒ 这一刀的裁法是：命中行**一个可点控件都不画**（只有 `ui.label`），
+/// 于是「点了之后干什么」这个问题在结构上不存在，不用靠纪律守。
+/// ⚠ **如实登记为未做**：「点一条命中跳到它所在的目录」是个该有的功能，这一刀没做。
+///
+/// # 它与 [`show_file_rows`] 共享的那一条性质
+///
+/// 同一个 `show_rows`（**虚拟滚动**）、同一个 [`ROW_HEIGHT`]。
+/// `limit` 默认 1000（`src/doc/IPC-PROTOCOL.md §10`）给了条数一个上界，
+/// 但**那个上界不是这一侧给的** ⇒ 不许靠它偷懒用 `show`。
+/// 由 `tests::the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits`
+/// 钉成一条**相等**断言（同本模块那条虚拟滚动判据的形状）。
+pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut RenderTally) {
+    tally.total_rows = hits.len();
+    ScrollArea::vertical()
+        .auto_shrink([false; 2])
+        // 同一帧里可能还有那条目录列表的 `ScrollArea`（切换时两者不同时在），
+        // 给它一撮自己的盐，免得两块区域抢同一个 id。
+        .id_salt("filewin-hits")
+        .show_rows(ui, ROW_HEIGHT, hits.len(), |ui, range| {
+            tally.first_row = range.start;
+            tally.last_row = range.end;
+            for i in range {
+                tally.rows_materialized += 1;
+                ui.label(&hits[i]);
+            }
+        });
+}
+
 /// 一行的长相。**刻意抽出来**：虚拟与不虚拟两条路要画的是同一样东西，
 /// 否则对照组比的就不是「虚不虚拟」而是「画得多不多」。
 ///
