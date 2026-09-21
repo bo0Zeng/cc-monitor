@@ -997,6 +997,23 @@ export const commands = {
     account?: { kind: "base" } | { kind: "named"; configDir: string; name?: string };
   }) => invoke<string>("new_local_session", args),
 
+  /**
+   * `24e` 第二刀（`设计/60 §4 戊` / `§5` 第三段）：在**原生窗口**（egui，同进程、次线程）
+   * 里打开远端 `path` 这个目录。
+   *
+   * 回的是**这一趟列到的行数** ⇒ 桶③那一支里的「原始类型」（`number`，不用生成物）。
+   *
+   * 🔴 **它为什么不是「发个请求就回」**：Rust 侧**先真的把那个目录列出来**，
+   * 列不出来就带着 `sftp_pool` 那边的原文 reject ⇒ 这一条 `await` 真的能失败，
+   * 调用方该接住它并出声（`src/sftp/panel.ts::openNativeWindow`）。
+   * 没有这一层的话「点了按钮什么都没发生」与「开成功了」在界面上分不开
+   * —— 本机没有图形会话时那正是必然发生的事。
+   *
+   * ⚠ 它**不**保证「窗口出现在屏幕上」：那要一个图形会话，命令这一侧看不到。
+   */
+  open_file_window: (args: { cfg: unknown; path: string }) =>
+    invoke<number>("open_file_window", args),
+
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: () => invoke<void>("open_settings_window"),
 
