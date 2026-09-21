@@ -103,8 +103,18 @@ export function sanitizeOrder(raw: unknown, alive: ReadonlySet<string> | null): 
  *
  * ⚠ 读失败**不阻断启动**（照 `loadCollections` 的 try/catch 形状，`§4` 逐字）——
  *   一份坏掉的配置不该让 tab 栏起不来，最坏也就是顺序退回默认。
+ *
+ * 🔴 **`alive` 收 `null`（2026-09-21 修步 17·C 那个 no-op 时加的）** —— 理由不是图省事：
+ *   **「按存活过滤」这件事不能在读的这一刻做。** 读发生在启动那一拍，而 tab 是随后由
+ *   `session_added` / 首行**陆续**建出来的（`main.ts` 那个启动窗口期给到 30s）。
+ *   ⇒ 在那一刻，「已经被删掉的会话」与「还没到的会话」**长得一模一样**，
+ *   拿当时的存活集去过滤 = 把整张顺序当成死 sid 摘掉（那正是原来那个 bug 的机制）。
+ *   ⇒ 过滤挪到**应用**那一刻做（`TabManager.applySavedOrder` 按 `orderedIds` 里
+ *   此刻真的在的 sid 筛），读这一侧只负责如实把盘上那份意图交出来。
+ *   传 `Set` 那一路仍然守着（`sanitizeOrder` 的 `alive` 两档各有判据），
+ *   但**生产今天只走 `null` 这一档** —— 如实记在这里，别当它还有别的消费者。
  */
-export async function getTabOrder(alive: ReadonlySet<string>): Promise<string[]> {
+export async function getTabOrder(alive: ReadonlySet<string> | null): Promise<string[]> {
   try {
     return sanitizeOrder(await readSegKey("order"), alive);
   } catch (e) {
