@@ -28,6 +28,7 @@
 
 use egui::{ScrollArea, Ui};
 
+use super::copy::{is_copyable, COPY_LABEL};
 use super::source::Row;
 
 /// 一行的高度（不含 item spacing）。与 `真相源/99` 那趟原型同值，
@@ -50,6 +51,24 @@ pub struct RenderTally {
     /// 唯一一条画列表的路（见它的头注），所以「谁被点了」也只能从它带出来。
     /// 上一刀差点栽在同一形上：判据自己抄了一份 `ScrollArea`，于是它钉的是副本。
     pub clicked: Option<usize>,
+    /// 🔴〔第三刀〕这一帧哪一行的**「复制」**被点了（`None` = 没人点）。
+    ///
+    /// 与 [`Self::clicked`] **刻意分开两个值**：一个装「双击这一行」，一个装
+    /// 「点这一行上那颗按钮」。合成一个就得再编一个「点的是什么」的枚举，
+    /// 而那个枚举的两支在窗口那侧走的是两条完全不同的路（换目录 / 摆命名框）。
+    pub copy_clicked: Option<usize>,
+}
+
+/// [`paint_one_row`] 这一帧从一行上收到的东西。
+///
+/// 🔴 **回的是一个结构而不是 `bool`**：这一行现在有两处可点（整行 ＋ 那颗「复制」），
+/// 而 `bool` 只装得下一处 —— 第二处要么被挤掉，要么靠一个 out 参数偷偷带出去。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RowHit {
+    /// 这一行被**双击**了（＝ 目录进去）。
+    pub activated: bool,
+    /// 这一行的「复制」被**单击**了。
+    pub copy: bool,
 }
 
 /// 画一屏文件行。**这里是 `show_rows`，改成 `show` 会被判据当场逮住。**
@@ -79,8 +98,12 @@ pub fn show_file_rows(
         for i in range {
             let r = &rows[i];
             tally.rows_materialized += 1;
-            if paint_one_row(ui, i, r) {
+            let hit = paint_one_row(ui, i, r);
+            if hit.activated {
                 tally.clicked = Some(i);
+            }
+            if hit.copy {
+                tally.copy_clicked = Some(i);
             }
         }
     });
@@ -89,10 +112,27 @@ pub fn show_file_rows(
 /// 一行的长相。**刻意抽出来**：虚拟与不虚拟两条路要画的是同一样东西，
 /// 否则对照组比的就不是「虚不虚拟」而是「画得多不多」。
 ///
-/// 回值 = 这一帧这一行被**双击**了（同旧面板 `panel.ts` 的 `dblclick`，别让两个面板两套手感）。
+/// 回值见 [`RowHit`]：整行被**双击**（同旧面板 `panel.ts` 的 `dblclick`，
+/// 别让两个面板两套手感）· 那颗「复制」被**单击**。
 ///
 /// ⚠ **刻意不在这里做「点了之后干什么」** —— 那是窗口状态机的事
-/// （[`super::shell::FileWindow::activate`]），画一行的函数不许知道「换目录」这回事。
+/// （[`super::shell::FileWindow::activate`] / [`super::shell::FileWindow::begin_copy`]），
+/// 画一行的函数不许知道「换目录」「起一趟复制」这回事。
+///
+/// # 🔴〔第三刀〕那颗「复制」与整行那块命中矩形**会打架**，而且是按钮输
+///
+/// 直觉写法是「按钮照画，整行那块矩形照旧拉满整行宽」。**那样按钮是死的。**
+/// egui 的命中测试在距离平手（两块矩形都盖着指针）时逐字
+/// 「In case of a tie, take the last one = the one on top」
+/// （那句话住 `egui-0.36.2/src/hit_test.rs`，在它挑「最近那个可点控件」的私有
+/// 辅助函数里；⚠ 本仓刻意**不点那个函数的名字** —— 它是仓外符号，
+/// 而散文里的裸符号名由 `structural_scan` 那两条判据管着，点了就得进登记表），
+/// 而整行那块矩形是在 `ui.horizontal(…)` **之后**登记的 ⇒ 它永远赢。
+/// ⇒ 按钮编得过、画得出、`clicked()` **恒 false**。
+///
+/// ⇒ 整行那块矩形的右边界**停在按钮左侧**（让开一个 `item_spacing.x`）。
+/// 判据两侧都钉：点按钮要回按钮（[`RowHit::copy`]）、点名字那一段双击要回那一行
+/// （[`RowHit::activated`]）—— 只钉一侧的话，把矩形改回拉满整行不会红。
 ///
 /// # 🔴 为什么是 `ui.interact(rect, 自己造的 Id, …)`，而不是 `响应.interact(…)`
 ///
@@ -111,7 +151,7 @@ pub fn show_file_rows(
 /// ⚠ 买不到的那一半照旧写在这儿：**真机上鼠标双击能不能触发，本机判不了**
 /// （`XDG_SESSION_TYPE=tty`，没有图形会话，也就没有真事件源）。
 /// 这里买到的是「**egui 收到这样一串事件之后，认出来的是哪一行**」。
-fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> bool {
+fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
     let inner = ui.horizontal(|ui| {
         ui.label(if r.is_dir { "📁" } else { "📄" });
         ui.label(&r.name);
@@ -120,25 +160,44 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> bool {
         }
         if r.lossy_name {
             // 非 UTF-8 名：SFTP 那侧寻址不到真字节 ⇒ 写操作要灰置。
-            // 这一刀只做标记，灰置逻辑等有写操作那一刀。
+            // 「复制」是写操作 ⇒ 这一档下面那颗按钮**压根不画**（`is_copyable`）。
             ui.label("⚠");
         }
+        // 〔第三刀〕「复制」——**只对能复制的那一档画**。`is_copyable` 是唯一住址，
+        // 窗口状态机那一侧（`begin_copy`）问的是同一个函数。
+        // ⚠ `small_button`：普通 `Button` 的最小高度是 `interact_size.y`（默认 18），
+        //   一行只有 `ROW_HEIGHT` 高，撑高了行与行会叠在一起（下一行就点不准了）。
+        if is_copyable(r) {
+            Some(ui.small_button(COPY_LABEL))
+        } else {
+            None
+        }
     });
-    // 整行都可点（不是只有名字那几个像素）—— 文件管理器的常规手感
-    // ⇒ 命中矩形在横向拉满整行宽。
+    let copy = inner.inner;
+    // 整行都可点（不是只有名字那几个像素）—— 文件管理器的常规手感。
+    // 🔴 **但右边界要停在那颗按钮左侧** —— 拉满整行宽的话，egui 在平手时取
+    //    「最后登记的那个」，而这块矩形是后登记的 ⇒ 按钮永远点不到（见上面头注）。
     let band = inner.response.rect;
+    let left = ui.max_rect().left();
+    let right = match &copy {
+        Some(b) => b.rect.left() - ui.spacing().item_spacing.x,
+        None => ui.max_rect().right().max(band.right()),
+    };
     let full = egui::Rect::from_min_max(
-        egui::pos2(ui.max_rect().left(), band.top()),
-        egui::pos2(ui.max_rect().right().max(band.right()), band.bottom()),
+        egui::pos2(left, band.top()),
+        egui::pos2(right.max(left), band.bottom()),
     );
     // ⚠ `Id` 按**行下标**造（不是按名字）：下标随滚动是绝对的、且同一行跨帧稳定，
     //   而名字会重（同名文件在不同目录、或列表里刚好两行同名）。
-    ui.interact(
+    let row = ui.interact(
         full,
         ui.id().with(("filewin-row", index)),
         egui::Sense::click(),
-    )
-    .double_clicked()
+    );
+    RowHit {
+        activated: row.double_clicked(),
+        copy: copy.is_some_and(|b| b.clicked()),
+    }
 }
 
 /// 人读的大小。**不是** `format!("{size}")` —— 列表里一列宽度有限。
