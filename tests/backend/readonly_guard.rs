@@ -191,6 +191,10 @@ mod tests {
         ),
         ("build_id_guard", "守卫：加了子命令必须 bump BUILD_ID"),
         (
+            "capability_ledger_guard",
+            "守卫：`设计/96 §2` 第 2 层那份汇总清单与各能力面的声明对得上",
+        ),
+        (
             "cc_bus_boundary_guard",
             "守卫：backend 不许碰 cc-bus 的数据布局",
         ),
