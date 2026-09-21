@@ -640,7 +640,7 @@ async fn capture_via_backend(
     let reply = client
         .call(
             CAPTURE_PANE,
-            crate::backend::control::inbound_client::capture_pane_args(target),
+            crate::backend::control::command_args::capture_pane_args(target),
             std::time::Duration::from_secs(20),
         )
         .await

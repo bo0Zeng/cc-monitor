@@ -585,10 +585,70 @@ const BUSINESS_WORDS: &[&str] = &[
     "session", "sid", "account", "skill", "mcp", "tmux", "claude", "jsonl", "agent",
 ];
 
+/// 一个标识符 ⇒ 它的**子词**（按 `_` / `-` 与驼峰拆，逐块小写），塞进 `out`。
+///
+/// 驼峰带一条缩写规则：`HTTPServer` ⇒ `http` ＋ `server`。没有它的话，
+/// 一串大写会被整块吞成一个子词，`SSHSession` 这种写法就又躲过去了。
+fn push_subwords(ident: &str, out: &mut BTreeSet<String>) {
+    for part in ident.split(['_', '-']) {
+        let chars: Vec<char> = part.chars().collect();
+        if chars.is_empty() {
+            continue;
+        }
+        let mut start = 0usize;
+        for i in 1..chars.len() {
+            let (prev, cur) = (chars[i - 1], chars[i]);
+            // ① 驼峰的峰：非大写后面跟大写 —— `sessionId` ⇒ `session` | `Id`。
+            let hump = !prev.is_uppercase() && cur.is_uppercase();
+            // ② 缩写收尾：大写 + 大写 + 小写 —— `HTTPServer` ⇒ `HTTP` | `Server`。
+            let acronym_end = prev.is_uppercase()
+                && cur.is_uppercase()
+                && chars.get(i + 1).is_some_and(|n| n.is_lowercase());
+            if hump || acronym_end {
+                out.insert(chars[start..i].iter().collect::<String>().to_lowercase());
+                start = i;
+            }
+        }
+        out.insert(chars[start..].iter().collect::<String>().to_lowercase());
+    }
+}
+
+/// `C1` 的**匹配单位**：把一段文本切成标识符子词（小写、去重）〔`设计/05 §8.1.2`，09-21〕。
+///
+/// 两刀，顺序固定：
+/// 1. 切**标识符** —— 连续的标识符字符（字母 / 数字 / `_` / `-`）算一个，其余一律是分隔。
+///    ⇒ `path.ends_with(".jsonl")` 里那个 `jsonl` 也进得来：**字符串字面量里的业务词算数**，
+///    它照样是这一层认识了业务（`设计/05 §2` 的铁律说的是「不知道」，不是「不直接命名」）。
+/// 2. 每个标识符走 [`push_subwords`]。
+///
+/// # 为什么这一刀不住 `guard_core`
+///
+/// 今天它只有一个用户（`C1`）。共享原语的住址纪律（`E3`）治的是「同一个事实两份实现」，
+/// 而这里还没有第二份 —— 真出现第二个用户时再提升，别先把一个单用户的取舍摊给全仓。
+/// ⚠ 它**不是** [`guard_core::contains_word`] 的替代品：那个答「有没有这个词」，
+/// 本函数答「这段文本由哪些子词构成」，两者射程不同，别互相顶替。
+fn identifier_subwords(text: &str) -> BTreeSet<String> {
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    let mut ident = String::new();
+    for c in text.chars() {
+        if c.is_alphanumeric() || c == '_' || c == '-' {
+            ident.push(c);
+        } else if !ident.is_empty() {
+            push_subwords(&ident, &mut out);
+            ident.clear();
+        }
+    }
+    if !ident.is_empty() {
+        push_subwords(&ident, &mut out);
+    }
+    out
+}
+
 fn business_words_in(text: &str) -> Vec<&'static str> {
+    let subwords = identifier_subwords(text);
     BUSINESS_WORDS
         .iter()
-        .filter(|w| guard_core::contains_word(text, w))
+        .filter(|w| subwords.contains(**w))
         .copied()
         .collect()
 }
@@ -598,29 +658,39 @@ fn business_words_in(text: &str) -> Vec<&'static str> {
 /// `设计/05 §2` 逐字：「⚠ **`C1` 的豁免必须为零。** 一旦开始豁免，它就变成第三个业务的家」
 /// ⇒ 本条**没有白名单，也不给一个**。要留口子，先去改设计。
 ///
-/// **买到**：登记成员的生产段里，那九个词**作为独立的词**一个都不许出现
-/// （`guard_core::contains_word` 带边界匹配 ⇒ `sessionize` / `accounting`
-/// 这种更长的标识符**不会被误当成命中**，本条不制造那一族假红）。
+/// # ★★ 匹配单位是**标识符子词**，不是「词」〔`设计/05 §8.1.2` 裁定，09-21 改〕
+///
+/// 上一版走 `guard_core::contains_word`（词边界），而 `_` 是标识符字符
+/// ⇒ `session_id` / `agent_name` / `mcp_path` 这一族**一个都看不见**
+/// （〔步 3 09-20〕死值验现打：注 `fn touch(&self, session: u8)` **当场红**；
+/// 换成 `fn touch(&self, session_id: u8)` **十五条全绿**）。
+/// 那一版的射程说明里还写着这两种写法「也不会被它蒙混」——**那半句是假的**，
+/// 上面那一刀就是反例，已随本改一起删掉。
+///
+/// 现在走 [`identifier_subwords`]：先切标识符，再按 `_`/`-` 与驼峰拆成子词。
+/// · `session_id` ⇒ `[session, id]` **咬得住** · `SshSession` ⇒ `[ssh, session]` **咬得住**
+/// · `considered` ⇒ `[considered]` ≠ `sid` **不假红** · `sessionize` ⇒ `[sessionize]` ≠ `session` **不假红**
+///
+/// 🔴 **裸 `contains` 那条路是被否掉的，别退回去**：它会让 `sid` 命中
+/// `considered`/`residual`、`session` 命中 `sessionize` ⇒ 一族假红，
+/// 而本仓逐字记过「假红比不查更坏（它会训练人绕过判据）」。
+/// 下面那条阴性对照就钉着这件事，退回裸 `contains` **当场红**。
+///
+/// **买到**：登记成员的生产段里，那九个词**作为标识符子词**一个都不许出现 ——
+/// 蛇形（`session_id`）· 驼峰（`SshSession`）· 全大写（`SESSION_CHANNEL_CAP`）·
+/// 字符串字面量里的（`".jsonl"`）全部算数。
 ///
 /// **买不到**：
 /// ① 注释里的业务词（本条只看生产段，理由见 [`production_of`]）；
-/// ② **换了名字的业务** —— 把 `session_id` 改叫 `handle_id` 照样过；
-/// ③ 🔴 **业务词被包在更长的标识符里** —— `session_id` / `agent_name` / `mcp_path`
-///    这一族**本条一个都看不见**，因为词尾紧跟 `_` 是标识符字符、不构成边界。
-///
-/// ⚠ ③ 是〔步 3 09-20〕死值验现打出来的，不是推出来的：同一处注
-/// `fn touch(&self, session: u8)` ⇒ **当场红**（`["session"]`）；换成
-/// `fn touch(&self, session_id: u8)` ⇒ **十五条全绿**。
-/// 🔴 本行上一版逐字写着那两种写法「**也不会被它蒙混**」—— **那半句是假的**，
-/// 上面那一刀就是反例。假话留在射程说明里比没有说明更坏（读的人会以为这一格有人守着），
-/// 所以逐字改掉。
-///
-/// ⚠ **这不是「顺手把匹配单位放宽」的理由。** 放宽成裸 `contains` 会让
-/// `session` 命中 `sessionize`、`sid` 命中 `considered`/`residual` ⇒ 一族假红，
-/// 而本仓逐字记过「假红比不查更坏（它会训练人绕过判据）」。
-/// **该不该把 `C1` 的匹配单位从「词」改成「标识符里含这个词」是一道设计题**
-/// （要连着答「传输自己的 `session`（russh 的那个）怎么办」），
-/// 归 `设计/05 §2` 那张表的主人拍 —— **本件只把洞登记出来，不擅自改判据。**
+/// ② **换了名字的业务** —— 把 `session_id` 改叫 `handle_id` 照样过。
+///    ⚠ 本改把 ② 的诱惑变大了（判据咬得更狠 ⇒ 改名是最便宜的躲法）。
+///    改名不是剥；**剥是把业务语义搬出这一层**，搬完那份文件才圈得进来。
+/// ③ 🔴 **既没有分隔符、也没有驼峰的连写** —— `sessionid` / `session2` / `sidfoo`
+///    这一族拆不出子词 ⇒ 本条看不见。裁定逐字只给了「`_` 与驼峰」两刀，
+///    **数字边界不在裁定里，本件没有擅自加**（要加是改 `设计/05 §8.1.2`，不是改这里）。
+/// ④ 🔴 **同名而不同义分不出来** —— `russh` 的 `SshSession`/`SftpSession` 是**传输自己的**
+///    词汇，本条照咬。那不是 bug，是 `设计/05 §8.1.1` 那道设计题的现物：
+///    **分不出来时不许开口子**（`§2` 逐字「豁免必须为零」）。逐份处置写在 `真相源/100`。
 ///
 /// 词表守的是「别把已知的业务词搬进来」，不是「这一层真的零业务语义」。
 #[test]
@@ -642,18 +712,51 @@ fn c1_no_business_vocabulary_inside_the_boundary() {
         offenders.join("\n")
     );
     // 阳性对照：人群为空的日子里，这才是本条真正跑过的东西。
+    // ★ 三种写法各喂一遍 —— 独立成词 · 蛇形 · 驼峰。后两种是 09-21 这一改买到的，
+    //   上一版（词边界）在它们身上**全绿**，那正是 `设计/05 §8.1.2` 点名的盲区。
     for w in BUSINESS_WORDS {
-        // ⚠ 词要**独立成词**：写成 `let _{w}` 的话前一个字符是 `_`（标识符字符）
-        //   ⇒ `contains_word` 判它没有边界、不算命中，这条对照会在自己身上栽一次。
-        let synthetic = format!("pub fn route(id: &str) -> u8 {{ let {w} = id; 0 }}\n");
-        assert!(
-            business_words_in(&synthetic).contains(w),
-            "词表里写着 `{w}`，识别器却认不出它 —— 词表与识别器脱钩了"
-        );
+        let camel = {
+            let mut c = w.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        };
+        for (shape, synthetic) in [
+            (
+                "独立成词",
+                format!("pub fn route(id: &str) -> u8 {{ let {w} = id; 0 }}\n"),
+            ),
+            (
+                "蛇形",
+                format!("pub fn route(id: &str) -> u8 {{ let {w}_id = id; 0 }}\n"),
+            ),
+            ("驼峰", format!("pub struct Wrap{camel}Handle;\n")),
+        ] {
+            assert!(
+                business_words_in(&synthetic).contains(w),
+                "词表里写着 `{w}`，识别器在**{shape}**这一形上认不出它 —— \
+                 匹配单位比事实小（那正是 09-21 这一改要治的病）。喂的是：{synthetic:?}"
+            );
+        }
     }
     assert!(
         business_words_in("pub fn route(origin: &str, op: &str, payload: &[u8]) {}\n").is_empty(),
         "一段**只用位置词**的干净代码被判成有业务词 —— 假红比不查更坏"
+    );
+    // ★★ 阴性对照：**被撑大的那一族不许命中**。
+    // 这一条钉的是「匹配单位没有放宽成裸 `contains`」——`设计/05 §8.1.2` 逐字否掉了那条路。
+    // 谁哪天把 [`identifier_subwords`] 换回 `text.contains(w)`，这里当场红。
+    let stretched = "pub fn route(n: u8) -> u8 { \
+         let considered = n; let residual = n; let sessionize = n; let accounting = n; \
+         let skillet = n; let claudette = n; let mcpx = n; let agentic = n; \
+         considered + residual + sessionize + accounting + skillet + claudette + mcpx + agentic }\n";
+    assert!(
+        business_words_in(stretched).is_empty(),
+        "被撑大的标识符（`considered` / `sessionize` / `accounting` / `agentic` …）被判成业务词 —— \
+         匹配单位放宽过头了（裸 `contains` 那条路 `设计/05 §8.1.2` 逐字否掉过）。\
+         假红比不查更坏：它会训练人绕过判据。实际命中：{:?}",
+        business_words_in(stretched)
     );
     assert_eq!(
         pop.len(),

@@ -15,6 +15,10 @@ pub mod backend_kill;
 pub mod backend_launch;
 pub mod backend_route;
 pub mod backend_send_keys;
+// 🔴 〔`设计/05 §8.1` 步 3.5，2026-09-21〕从 `inbound_client.rs`（传输面）**剥出来**的
+//    业务契约：一条命令的 `args` 长什么样。为什么它不能留在传输面 ——
+//    理由写在它自己的头注里（`C1` 在那一份上咬到的 `sid` / `agent` 两处全在它身上）。
+pub mod command_args;
 // 🔴 〔步 8 · 归属 2026-09-19〕从 `lib.rs` 顶层搬进来的三份 —— 它们干的全是控制面的活：
 //    `backend_control`（每台机一个开关的命令层）· `cc_bus`（起 / 杀 / 发）·
 //    `inbound_client`（流通道的 wire 客户端）。

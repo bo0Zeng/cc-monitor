@@ -76,7 +76,7 @@ pub(crate) async fn backend_send_keys(
     };
     // ⚠ `LaunchExtras::default()`：这条路发的是 `send-into` / `send-keys-raw`，
     //   而 `agent` / `width` / `height` 只对**新建会话**有意义（`K-P2` `D3`）。
-    let args = crate::backend::control::inbound_client::launch_args(
+    let args = crate::backend::control::command_args::launch_args(
         mode_for(enter),
         name,
         keys,

@@ -6,7 +6,7 @@ use super::*;
 /// 那正是 issue #76 的失管会话形态（本条与 CLI 渲染器的 #76 防线是同一条纪律的两侧）。
 #[test]
 fn the_only_mode_this_channel_can_speak_is_send_into() {
-    let args = crate::backend::control::inbound_client::launch_args(
+    let args = crate::backend::control::command_args::launch_args(
         "send-into",
         "cc-x",
         "true",
@@ -93,7 +93,8 @@ fn typed_is_read_out_of_three_states_not_two() {
 
 /// ★ 跨轨：本模块发的字段名必须是 **backend 那条命令声明过**的。
 ///
-/// `inbound_client::launch_args_field_names_match_the_backend_parser` 钉的是编码器 ↔ 解析器；
+/// `inbound_client_tests::launch_args_field_names_match_the_backend_parser` 钉的是编码器 ↔ 解析器
+/// （〔步 3.5 09-21〕编码器本体已搬去 `command_args`，那条判据仍住原处 —— 理由见 `command_args` 头注）；
 /// 这条钉的是**本模块用到的那三个**在后端的 `REGISTRY` 里真有登记 ——
 /// backend 改字段名或把 launch 摘掉，这条红。
 #[test]

@@ -1,4 +1,9 @@
 use super::*;
+// 〔`设计/05 §8.1` 步 3.5，2026-09-21〕三样参数构造器搬去了 `command_args`
+// （`C1` 在 `inbound_client.rs` 上咬的 `sid` / `agent` 两处全在它们身上）。
+// 下面那三条判据**刻意留在这里** —— 理由（跨半边 include 被别人的登记表按文件路径钉着）
+// 写在 `command_args` 的头注里，不在这里抄第二份。
+use crate::backend::control::command_args::{capture_pane_args, launch_args, LaunchExtras};
 use tokio::io::AsyncBufReadExt;
 
 fn hello_frame(commands: &[&str]) -> InboundFrame {
