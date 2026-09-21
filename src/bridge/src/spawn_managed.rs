@@ -552,3 +552,12 @@ fn attach_lifetime_tokio(
 #[cfg(test)]
 #[path = "../../../tests/bridge/spawn_managed_tests.rs"]
 mod tests;
+
+/// 「谁还自己造一个 `Command`」的逐处普查（处数相等 ＋ 理由逐条 ＋ 第三列说出交给哪个入口）。
+///
+/// ⚠ 与 [`tests::the_spawn_verbs_and_platform_primitives_live_only_here`] **不同源、不同粒度**：
+/// 那一条问「谁绕开了出口」（文件粒度、零容忍），这一条问「今天还有几处自己装 `Command`、
+/// 各把它交给谁」（**落点**粒度、相等）。两条接住的族不重叠，理由写在那份文件的头注里。
+#[cfg(test)]
+#[path = "../../../tests/bridge/spawn_managed_exit_sites.rs"]
+mod exit_sites;
