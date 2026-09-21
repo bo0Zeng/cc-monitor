@@ -58,6 +58,38 @@ const LIVE_KEY = "forceLaunchPayloadRenderer";
 
 const sorted = (xs: readonly string[]): string[] => [...xs].sort();
 
+/**
+ * 🔴 **config.json 顶层键的第二份普查 —— 刻意手写，刻意不从 `config.ts` 派生。**
+ *
+ * 它存在的唯一理由是**不让那条相等变成恒真**：如果这一份也从 `KNOWN_CONFIG_KEYS`
+ * 生成，那么「登记表缩水」时两边会一起缩，判据照样绿 ——
+ * 本工作区吃过这个亏（「恒等两侧同源会恒真」）。
+ *
+ * 这一份的来源是**现打的反向全扫**（2026-09-21）：`src/` 下每个 `import … from "./config"`
+ * 的模块，逐个读它对 `cfg[…]` / `cfg.…` 的顶层存取。Rust 侧另读三个
+ *（`claudeDir` / `showBgSessions` / `remote`），都已在列。
+ */
+const CENSUS: readonly string[] = [
+  "theme", // src/theme.ts
+  "claudeDir", // src/paths.ts
+  "keybindings", // src/keybindings/store.ts
+  "accounts", // src/accounts.ts
+  "backendPolicy", // src/backend-policy.ts
+  "remote", // src/remote-config.ts
+  "tabBar", // src/tab-bar-state.ts
+  "tabCollections", // src/tab-collections.ts
+  "contextLimits", // src/usage-hud.ts（只读）
+  "autoFollowUserActive", // ── src/behavior.ts 那一族 ──
+  "bringMonitorToFrontOnUserActive",
+  "showBgSessions",
+  "resumeCommandLocal",
+  "resumeCommandRemote",
+  "resumeCommandLocalPresets",
+  "resumeCommandRemotePresets",
+  "notifyTurnEnd",
+  "forceLaunchPayloadRenderer",
+];
+
 beforeEach(() => {
   store.cfg = {};
   store.saved = [];
@@ -132,12 +164,13 @@ describe("P12 ② 未知键要被数出来（`unknownKeysIn` / `loadConfig` 那�
     ).toEqual([RETIRED_KEY]);
   });
 
-  it("★ 反空真正控：**全部**登记在册的键都在盘上 ⇒ 一个未知键都不许报", () => {
+  it("★ 反空真正控：把 [`CENSUS`] 那 18 个键整份喂进去 ⇒ 一个未知键都不许报", () => {
     const full: Record<string, unknown> = {};
-    for (const k of KNOWN_CONFIG_KEYS) full[k] = true;
+    for (const k of CENSUS) full[k] = true;
     expect(
       unknownKeysIn(full),
-      "把登记表整份喂进去还报未知 —— 这把尺子是「见键就喊」，那它喊什么都没有信息量",
+      "真实用户会写的那 18 个键里，有的被当成了未知键 —— 这把尺子会对着正常配置喊，" +
+        "而一把乱喊的尺子用不了几天就会被关掉",
     ).toEqual([]);
   });
 
@@ -157,13 +190,19 @@ describe("P12 ② 未知键要被数出来（`unknownKeysIn` / `loadConfig` 那�
 });
 
 describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿一张假名单对拍）", () => {
-  it("分母：登记了多少个顶层键、多少个主人", () => {
-    const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
+  it("★★ 登记表 == [`CENSUS`]（两向集合相等，**两份各自手写**）", () => {
     expect(
-      KNOWN_CONFIG_KEYS.length,
-      `登记表只有 ${KNOWN_CONFIG_KEYS.length} 个键（现打 18）—— 表缩水了，` +
-        "而表一缩水，缩掉的那些键就会被当成未知键喊出来（吵，但不瞎）",
-    ).toBe(18);
+      sorted(KNOWN_CONFIG_KEYS),
+      "`src/config.ts` 的登记表与本文件这份独立普查对不上。\n" +
+        "少了 ⇒ 那个键从今天起会被当成未知键，对着一份正常配置喊；\n" +
+        "多了 ⇒ 表上挂着一个谁都不写也不读的名字，而它会让真正的错字蒙混过去。\n" +
+        "⚠ 这两份**必须各自手写**：从同一个来源派生出来的「相等」恒真，" +
+        "而恒真与真绿在终端上一模一样。",
+    ).toEqual(sorted(CENSUS));
+  });
+
+  it("分母：登记了多少个主人", () => {
+    const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
     expect(owners.size, `主人只剩 ${owners.size} 个（现打 10）`).toBe(10);
   });
 
