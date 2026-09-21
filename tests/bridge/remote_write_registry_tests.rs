@@ -90,20 +90,35 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
         "sftp_pool.rs",
         "sftp_mkdir",
         "远端",
-        "新建远端目录。**路径由用户选**，`guard_write` 在函数第一行。",
+        "新建远端目录。**路径由用户选**，`guard_write` 在函数第一行。\
+             〔第五刀 09-21〕**调用方从「只有老面板」变成「老面板 ＋ 原生文件窗口」**：\
+             窗口那一侧经 `filewin::writeops::apply_remote` 调它，而那条接线由本文件\
+             `the_file_window_uses_exactly_the_pool_commands_it_registers` 钉成相等断言。\
+             ⚠ 窗口那一侧**另有一道**同判定的围栏（发往返之前就出声），\
+             但承重的仍然是这条命令第一行那道 —— 本层被绕过时只剩它。",
     ),
     (
         "sftp_pool.rs",
         "sftp_rename",
         "远端",
         "重命名远端文件。**路径由用户选**，且 `from` 与 `to` **各过一次** `guard_write`\
-             （既不许把 Claude 文件改走，也不许改成 Claude 数据源名）。",
+             （既不许把 Claude 文件改走，也不许改成 Claude 数据源名）。\
+             〔第五刀 09-21〕**调用方从「只有老面板」变成「老面板 ＋ 原生文件窗口」**：\
+             窗口那一侧经 `filewin::writeops::apply_remote` 调它，而那条接线由本文件\
+             `the_file_window_uses_exactly_the_pool_commands_it_registers` 钉成相等断言。\
+             ⚠ 窗口那一侧**另有一道**同判定的围栏（发往返之前就出声），\
+             但承重的仍然是这条命令第一行那道 —— 本层被绕过时只剩它。",
     ),
     (
         "sftp_pool.rs",
         "sftp_delete",
         "远端",
-        "删远端文件/目录。**路径由用户选**，`guard_write` 在函数第一行。",
+        "删远端文件/目录。**路径由用户选**，`guard_write` 在函数第一行。\
+             〔第五刀 09-21〕**调用方从「只有老面板」变成「老面板 ＋ 原生文件窗口」**：\
+             窗口那一侧经 `filewin::writeops::apply_remote` 调它，而那条接线由本文件\
+             `the_file_window_uses_exactly_the_pool_commands_it_registers` 钉成相等断言。\
+             ⚠ 窗口那一侧**另有一道**同判定的围栏（发往返之前就出声），\
+             但承重的仍然是这条命令第一行那道 —— 本层被绕过时只剩它。",
     ),
     (
         "sftp_pool.rs",
@@ -118,7 +133,11 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
              ⚠ 它的写原语是 `.set_metadata(`，而本仓被这一个咬过一口：\
              `sftp.rs::upload_atomic` 尾注记着带 size 的 setstat 会把文件截断成 0 字节。\
              ⇒ 属性块的线上形状另有一条逐字节相等的判据钉着\
-             （`sftp_pool_tests::the_chmod_attrs_never_put_a_size_on_the_wire`）。",
+             （`sftp_pool_tests::the_chmod_attrs_never_put_a_size_on_the_wire`）。\
+             〔第五刀 09-21〕**它头上那句「前端没有入口」的欠账结了**：\
+             原生文件窗口行上那颗「权限」经 `filewin::writeops::apply_remote` 调它，\
+             而且它归「问一次」那一族（改权限一样能弄坏一场会话，却不像删除那样显眼）。\
+             接线由本文件 `the_file_window_uses_exactly_the_pool_commands_it_registers` 钉着。",
     ),
     (
         "sftp_pool.rs",
@@ -610,4 +629,326 @@ fn the_remote_write_capability_is_still_confined_to_three_files() {
                         在登记里写明这一点 —— 「持有能力但不用它写」本身是个值得记的事实。\n\
                      ⚠ 少一个也红：那说明某处远端写退役了，登记要跟着删（别留僵尸账）。"
     );
+}
+
+/// ★ 正题六：🔴 **原生文件窗口用了池子哪几条 —— 逐条登记，两向相等。**
+///
+/// # 它补的洞
+///
+/// 前五条判据管的是「**池子**那一侧每一处写盘有没有申报、有没有围栏」。
+/// 它们**一条都不管「谁按得下去」**：`filewin/` 那棵树把哪几条命令接到了界面上，
+/// 在本条之前**零判据**。后果有两个方向，都出现过：
+///
+/// - **变多**：往窗口上接一条新的写命令而不申报 ⇒ 没人回来读一遍
+///   「它的路径由谁定 · 什么围栏着」（第三条判据只看池子那一侧的入口，
+///   看不见窗口新长出来的按钮）。
+/// - 🔴 **变少**：某条命令的接线被顺手删掉 ⇒ 用户当场少一件事，而**一条判据都不会红**。
+///   `设计/99 §4.6.5` 逐字记着这一形的代价：老面板先退役就会「用户这六件事当场没了」。
+///
+/// ⇒ 本条是一条**相等**断言（两向差集空 ＋ 处数相等）。**地板不行** ——
+/// 地板在「变少」那个方向上是瞎的，而那正是贵的那个方向。
+///
+/// # 🔴 现打订正了 `设计/99 §4.6.4` 那张表两处（2026-09-21，接线前现打）
+///
+/// 那一节写着「池子 **14** 条命令，窗口只接了 **6** 条」，接上了那一栏点名
+/// `sftp_list_dir` · `sftp_stat` · **`sftp_realpath`** · `sftp_upload` · `sftp_copy` ·
+/// **`copy_remote_path`**。逐条现打：
+///
+/// | 那张表 | 现打 | 差在哪 |
+/// |---|---|---|
+/// | 池子 14 条 | **13** 条 | 第 14 个匹配是 `sftp_chmod` 头注里提到 `#[tauri::command]` 那句**散文** |
+/// | 窗口接了 6 条 | **4** 条 | `sftp_realpath` 在 `filewin/` 里**零处**（只有老面板 `panel.ts` 在用）；`copy_remote_path` **不是命令**，而且 `filewin/` 被判据明禁调它（理由住 `copy.rs` 头注：它的第一个参数是一条裸会话，绕过 `sftp_copy` 就同时丢掉围栏 ＋ 取消登记 ＋ 车道预算） |
+///
+/// ⇒ 那张表的「6 → 11」这个算式两侧都错。**真实读数是 4 → 9**，而本条就是那个数的住址。
+/// ⚠ `设计/` 是唯一真相源、不是 git 仓 ⇒ 这条订正只落在本判据的诊断里，
+/// 由本条的相等断言替它保鲜。
+#[test]
+fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
+    /// `(池子里的名字, 它是什么, 窗口为什么要它)`。
+    ///
+    /// ⚠ 「它是什么」那一栏**不是人的答案** —— 下面按 `sftp_pool.rs` 里
+    /// 有没有那个属性逐条核（写错了当场红）。
+    const SITES: &[(&str, &str, &str)] = &[
+        // ── 只读那一族（第一~四刀）─────────────────────────────────────
+        (
+            "sftp_list_dir",
+            "命令",
+            "列一个远端目录 —— 窗口的正题。经 `filewin::source::list_remote` 走，\
+             全树恰好一处（`source_tests` 那条相等断言钉着）",
+        ),
+        (
+            "sftp_stat",
+            "命令",
+            "「远端已经有这条路径了吗」—— 上传与复制**共用**这一问，\
+             口径（`stat` 失败算不存在）只许有一份，住 `transfer::probe_remote`",
+        ),
+        (
+            "SftpEntry",
+            "类型",
+            "列目录回来的那一行，映射成窗口自己那个更窄的 `Row`",
+        ),
+        // ── 传输那一族（第二~三刀）─────────────────────────────────────
+        (
+            "sftp_upload",
+            "命令",
+            "拖入上传（`设计/60 §5.4d`）。走它而不是自己分块写 ⇒ 4 条传输车道、\
+             断点续传、取消登记全部照旧",
+        ),
+        (
+            "sftp_copy",
+            "命令",
+            "零流量复制（`设计/60 §5` 第二段）。走它而不是 `copy_remote_path` ⇒ \
+             两次 `guard_write`（`from` / `to` 各一次）＋ 取消登记 ＋ 车道预算",
+        ),
+        (
+            "CopyVerdict",
+            "类型",
+            "复制那一趟的裁决（`None` = 零流量走通了；`Some(说明)` = 退了路，\
+             含实际过网字节数）。**刻意不压成 `bool`** —— 压了就等于允许静默退化成 2× 流量",
+        ),
+        (
+            "TRANSFER_LANE_CAP",
+            "常量",
+            "一趟拖入同时起几件。**取的就是池里那个数**，不另写一个字面量\
+             （`设计/60 §5.4a` 的 `6 − 4 = 2` 格永远留给浏览）",
+        ),
+        // ── 🔴〔第五刀 2026-09-21〕`设计/99 §4.6.4` 那五条 ─────────────
+        (
+            "sftp_mkdir",
+            "命令",
+            "新建远端目录。**路径由用户选**（当前目录 ＋ 框里那个名字）⇒ \
+             要过 Claude 数据围栏；那道围栏在这条命令的第一行。\
+             ⚠ 本层**另有一道**（`writeops::fenced_path`），两道问的是同一个判定函数",
+        ),
+        (
+            "sftp_delete",
+            "命令",
+            "删远端文件/目录。**路径由用户选**（点的那一行）⇒ 要过围栏 —— \
+             少了它，那台机器上正被 Claude 打开的 jsonl 能被这个窗口删掉。\
+             这条命令是本刀里窗口第一次能**不可撤销地**破坏用户数据的那一条 ⇒ \
+             它归「问一次」那一族（`WriteOp::needs_confirm`）",
+        ),
+        (
+            "sftp_rename",
+            "命令",
+            "改远端文件名。**路径由用户选，而且有两条** ⇒ `from` 与 `to` \
+             **各过一遍**围栏（既不许把 Claude 的会话文件改走，也不许改成 Claude 数据源名）。\
+             那道围栏当初立起来时逮到的就是这条命令自己少一道 —— 见本文件\
+             `a_two_path_write_entry_fences_both_of_its_paths`；\
+             本层同形的那一条住 `writeops_tests.rs::a_rename_is_fenced_on_both_of_its_paths`",
+        ),
+        (
+            "sftp_chmod",
+            "命令",
+            "改远端权限位。**路径由用户选**（点的那一行）⇒ 要过围栏：\
+             把一份正在写的 jsonl 改成不可读，一样会弄坏那场会话，\
+             **而它不像删除那样显眼** ⇒ 它同样归「问一次」那一族。\
+             〔`设计/60 §5.4c` 留的欠账逐字是「**前端没有入口**」—— 本刀就是那一格〕",
+        ),
+        (
+            "sftp_cancel_transfer",
+            "命令",
+            "取消一趟在飞的传输。**它自己不写任何路径**（翻一个 `AtomicBool`）⇒ \
+             不进 `REMOTE_WRITES`，也不需要围栏。\
+             〔`设计/99 §4.6.4` 单记它：「池子里有取消登记，窗口上没有取消按钮」。\
+             病根是那个 `transfer_id` 造在适配器的栈上 ⇒ 窗口说不出要取消哪一趟；\
+             造键的落点搬到了 `filewin::transfer::CancelDesk::mint`〕",
+        ),
+        (
+            "is_protected_claude_data_path",
+            "函数",
+            "🔴 **那道围栏的判定本身。** 窗口拿它在发往返**之前**就把踩线的挑出去并出声。\
+             ⚠ 它是**用**、不是**改** —— 「要不要把这道围栏拆成独立一族」是\
+             `设计/99 §2 Q2`，用户还没拍板。\
+             ⚠ 两道围栏问的是这**一个**函数 ⇒ 判定不会漂；漂得动的只有文案",
+        ),
+    ];
+    /// 「它是什么」那一栏的**封闭集合**。多出第五种就得回来论证。
+    const KINDS: &[&str] = &["命令", "类型", "常量", "函数"];
+
+    let root = repo_root();
+    let dir = root.join("src/bridge/src/filewin");
+    // 🔴 走 `guard_core` 而不是裸 `read_dir`（`scanning_guard_registry` 那条纪律：
+    //    扫描型判据不许自己遍历）。本条不需要摘掉自己 —— 调用者住
+    //    `tests/bridge/`，压根不在被扫的那棵树里。
+    let files = guard_core::scan_tree!(&dir, &["rs"]);
+    // 抽取器自检①：**采集量**。射程被改窄在本条上是静默的（少扫一份 ⇒ 那一份
+    // 接的命令从 `used` 里消失 ⇒ 差集非空 ⇒ 会红；但少扫**全部**就两边都空了）。
+    assert_eq!(
+        files.len(),
+        12,
+        "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-21 现打 12：copy · corpus · entry · \
+         find · fonts · mod · rows · scale · shell · source · transfer · writeops）—— \
+         不等就是射程变了，先查扫描面再改这个数",
+        files.len()
+    );
+    let mut used: Vec<String> = Vec::new();
+    let mut where_of: Vec<(String, String)> = Vec::new();
+    // 拼出来的针，免得命中本文件自己的说明（同 `capability_holders` 那条手法）。
+    let needle = format!("sftp_{}::", "pool");
+    for (path, src) in &files {
+        let prod = guard_core::production_code(src);
+        let rel = path
+            .file_name()
+            .expect("扫到的每一项都是文件")
+            .to_string_lossy()
+            .to_string();
+        let mut from = 0usize;
+        while let Some(k) = prod[from..].find(needle.as_str()) {
+            let at = from + k + needle.len();
+            let end = prod[at..]
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .map_or(prod.len(), |d| at + d);
+            let name = prod[at..end].to_string();
+            if !name.is_empty() {
+                if !used.contains(&name) {
+                    used.push(name.clone());
+                }
+                where_of.push((name, rel.clone()));
+            }
+            from = at;
+        }
+    }
+    used.sort();
+    // 抽取器自检②：**处数地板**。剥法把生产段剥没了 ⇒ 两边都空 ⇒ 相等断言恒真。
+    assert!(
+        used.len() >= 10,
+        "只抠到 {} 处 `sftp_pool::…` 引用 —— 抽取器坏了，本条此刻是空转的（实得 {used:?}）",
+        used.len()
+    );
+
+    let mut declared: Vec<String> = SITES.iter().map(|(n, ..)| n.to_string()).collect();
+    declared.sort();
+    // 🔴 **相等断言，两向**（处数相等 ＋ 双向差集空，由 `assert_eq!` 一并给出）。
+    assert_eq!(
+        declared,
+        used,
+        "「窗口那棵树用到的池子那几样」与登记表对不上。\n  \
+         登记了而树上没有（接线被删了？那用户当场少一件事）：{:?}\n  \
+         树上有而没登记（新接了一条却没人回来读它的围栏与路径归属）：{:?}\n\n\
+         ★ 这一条**不是地板**：在「变少」那个方向上地板是瞎的，\n\
+         而 `设计/99 §4.6.5` 逐字记着那个方向的代价。",
+        declared
+            .iter()
+            .filter(|d| !used.contains(d))
+            .collect::<Vec<_>>(),
+        used.iter()
+            .filter(|u| !declared.contains(u))
+            .collect::<Vec<_>>()
+    );
+
+    // 说明不许是占位，落地分类在封闭集合里。
+    for (name, kind, why) in SITES {
+        assert!(
+            KINDS.contains(kind),
+            "`{name}` 的分类写的是「{kind}」，不在 {KINDS:?} 里"
+        );
+        assert!(
+            why.chars().count() > 20,
+            "`{name}` 的说明太短，像是占位：「{why}」"
+        );
+    }
+    for k in KINDS {
+        assert!(
+            SITES.iter().any(|(_, x, _)| x == k),
+            "分类集合里的「{k}」今天一处都没人用 —— 删掉它"
+        );
+    }
+
+    // 🔴 「它是什么」那一栏**由机器核**，不是人说了算。
+    let pool = std::fs::read_to_string(root.join("src/bridge/src/sftp_pool.rs"))
+        .expect("sftp_pool.rs 读不到");
+    let pool_prod = guard_core::production_code(&pool);
+    let attr = format!("#[tauri::{}]", "command");
+    let mut commands: Vec<String> = Vec::new();
+    let lines: Vec<&str> = pool_prod.lines().collect();
+    for (i, l) in lines.iter().enumerate() {
+        if l.trim() != attr {
+            continue;
+        }
+        // 属性的下一行就是那条命令的签名（rustfmt 下如此）。
+        let Some(sig) = lines.get(i + 1) else {
+            continue;
+        };
+        let Some((_, rest)) = sig.split_once("fn ") else {
+            continue;
+        };
+        if let Some(name) = rest.split(['(', '<']).next() {
+            commands.push(name.trim().to_string());
+        }
+    }
+    commands.sort();
+    // 抽取器自检③：`sftp_pool.rs` 到底有几条对外命令 —— 这个数本身就是一条现打订正
+    // （`设计/99 §4.6.4` 写的是 14，而那第 14 个匹配住一句散文里）。
+    assert_eq!(
+        commands.len(),
+        13,
+        "`sftp_pool.rs` 现打 {} 条 `#[tauri::command]`（2026-09-21 现打 **13**；\
+         `设计/99 §4.6.4` 写的是 14，而含注释的 grep 数出来正是 14 —— \
+         「错的 grep 与截断的 grep 是同一种失败」）。实得：{commands:?}",
+        commands.len()
+    );
+    let declared_cmds: Vec<String> = SITES
+        .iter()
+        .filter(|(_, k, _)| *k == "命令")
+        .map(|(n, ..)| n.to_string())
+        .collect();
+    for n in &declared_cmds {
+        assert!(
+            commands.contains(n),
+            "登记表说 `{n}` 是一条命令，可 `sftp_pool.rs` 里没有这么一条 \
+             `#[tauri::command]` —— 那这一栏是假的"
+        );
+    }
+    for (n, k, _) in SITES.iter().filter(|(_, k, _)| *k != "命令") {
+        assert!(
+            !commands.contains(&n.to_string()),
+            "登记表说 `{n}` 是「{k}」，可它其实是一条 `#[tauri::command]`"
+        );
+    }
+    assert_eq!(
+        declared_cmds.len(),
+        9,
+        "窗口今天接了 {} 条池子命令（2026-09-21 现打：第五刀之前 **4**、之后 **9**）。\n\
+         ⚠ `设计/99 §4.6.4` 写的是「6 → 11」，**两侧都错**：那张表把\n\
+         `sftp_realpath`（`filewin/` 里零处，只有老面板在用）与 `copy_remote_path`\n\
+         （不是命令，而且 `filewin/` 被判据明禁调它）算进了「接上了」那一栏。",
+        declared_cmds.len()
+    );
+    // 🔴 还差哪几条 —— 把「没买到什么」也钉成读数，而不是散文。
+    let missing: Vec<&String> = commands
+        .iter()
+        .filter(|c| !declared_cmds.contains(c))
+        .collect();
+    assert_eq!(
+        missing.len(),
+        4,
+        "窗口还差 {} 条没接（2026-09-21 现打 4：`sftp_realpath` · `sftp_download` · \
+         `sftp_read_text_for_edit` · `sftp_write_text`）。实得：{missing:?}\n\
+         ⚠ 这个数**只许往下走**：后三条各自是一件独立的活（往外拖是另一个交互题；\n\
+         文本编辑要一个编辑器面，而 `设计/60 §5.4b` 大文件编辑改流式至今没做、形状没定）。\n\
+         🔴 **`sftp_realpath` 那一条值得单记，而它不是「不需要」**：窗口今天\n\
+         **连「自己开在远端 home」都做不到** —— 它那条入口命令吃的是一条**绝对路径**，\n\
+         而现打那条路径的唯一来源是老面板（`src/sftp/panel.ts` 里 `sftp_realpath(cfg, \".\")`\n\
+         解出 home、存进它自己的 `cwd`、再拿它调 `open_file_window`）。\n\
+         ⇒ 窗口**寄生在老面板的寻址上**。\n\
+         🔴 **那四条全在老面板手上** ⇒ `设计/99 §4.6.5` 那条顺序不但仍然成立，\n\
+         而且比那一节写的更强：它只数了「窗口缺的那 8 条里老面板有 6 条」，\n\
+         **没数到「窗口的起点路径也是老面板给的」这一条**。",
+        missing.len()
+    );
+    // 反空真：`sftp_realpath` 与 `copy_remote_path` 真的**不在**窗口那棵树上
+    //（这两个名字正是上面那条订正点掉的两处，钉住它别悄悄回来）。
+    for gone in ["sftp_realpath", "copy_remote_path"] {
+        assert!(
+            !used.iter().any(|u| u == gone),
+            "`{gone}` 出现在窗口那棵树上了 —— 它是上面那条现打订正点名的两处之一，\
+             要真接上就把登记与那条订正一起改"
+        );
+    }
+    // 🔴 把「谁在哪儿用」印出来（`--nocapture` 下可见）——
+    //    本条对「采到了它而它过了」与「压根没扫到」原本输出相同，那正是静默的绿。
+    where_of.sort();
+    where_of.dedup();
+    println!("窗口 ↔ 池子的接线（{} 处）：{where_of:?}", where_of.len());
 }
