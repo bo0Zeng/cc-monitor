@@ -260,6 +260,12 @@ pub struct DropBoard {
     inner: Arc<Mutex<Board>>,
     /// 已经跑完的趟数 —— 给判据与诊断一个可观测的数。
     rounds: Arc<AtomicU64>,
+    /// 🔴 **拿来敲窗口的那只手。**
+    ///
+    /// 进度是从 tokio 那条线程写进来的，而 egui **只在有事发生时才画下一帧** ——
+    /// 不敲一下，进度条要等到用户下次动鼠标才跳一格（看起来就是「卡住了」）。
+    /// ⚠ `Option`：判据里没有窗口，那时它就是 `None`，`progress` 照常记数。
+    ctx: Arc<Mutex<Option<egui::Context>>>,
 }
 
 #[derive(Default)]
@@ -280,10 +286,13 @@ impl DropBoard {
     /// 摆出问题，并交出「答复送哪儿」那一头。
     pub fn ask(&self, items: Vec<Pending>) -> tokio::sync::oneshot::Receiver<Vec<Pending>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let mut b = self.inner.lock().unwrap();
-        b.ticks = vec![true; items.len()]; // 缺省勾上：用户拖过来就是想传
-        b.asking = items;
-        b.answer = Some(tx);
+        {
+            let mut b = self.inner.lock().unwrap();
+            b.ticks = vec![true; items.len()]; // 缺省勾上：用户拖过来就是想传
+            b.asking = items;
+            b.answer = Some(tx);
+        }
+        self.poke(); // 问题要立刻画出来，别等下一次鼠标动
         rx
     }
 
@@ -291,15 +300,32 @@ impl DropBoard {
         !self.inner.lock().unwrap().asking.is_empty()
     }
 
-    pub fn progress(&self, name: &str, got: u64, total: u64) {
-        let mut b = self.inner.lock().unwrap();
-        match b.progress.iter_mut().find(|(n, ..)| n == name) {
-            Some(slot) => {
-                slot.1 = got;
-                slot.2 = total;
-            }
-            None => b.progress.push((name.to_string(), got, total)),
+    /// 把窗口交给它，好让它在进度动的时候敲一下。
+    pub fn attach(&self, ctx: Option<egui::Context>) {
+        *self.ctx.lock().unwrap() = ctx;
+    }
+
+    /// 敲一下窗口：「有新东西了，画下一帧」。没有窗口就什么都不做。
+    pub fn poke(&self) {
+        if let Some(c) = self.ctx.lock().unwrap().as_ref() {
+            c.request_repaint();
         }
+    }
+
+    pub fn progress(&self, name: &str, got: u64, total: u64) {
+        {
+            let mut b = self.inner.lock().unwrap();
+            match b.progress.iter_mut().find(|(n, ..)| n == name) {
+                Some(slot) => {
+                    slot.1 = got;
+                    slot.2 = total;
+                }
+                None => b.progress.push((name.to_string(), got, total)),
+            }
+        }
+        // ⚠ 锁放掉之后才敲 —— `request_repaint` 会走进 egui 自己的锁，
+        //   两把锁嵌着拿是死锁的常规做法。
+        self.poke();
     }
 
     pub fn finish(&self, outcome: DropOutcome) {
@@ -308,6 +334,7 @@ impl DropBoard {
         b.last = Some(outcome);
         drop(b);
         self.rounds.fetch_add(1, Ordering::SeqCst);
+        self.poke();
     }
 
     pub fn rounds(&self) -> u64 {

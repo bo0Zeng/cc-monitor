@@ -354,6 +354,81 @@ async fn the_probe_answers_stay_glued_to_the_item_that_asked() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// 看板：**有事发生就得敲窗口一下**
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 egui **只在有事发生时才画下一帧**。进度是从 tokio 那条线程写进来的
+/// ⇒ 不敲一下，进度条要等到用户下次动鼠标才跳一格 —— 看起来就是「卡住了」，
+/// 而「卡住了」与「真的没在传」在屏幕上分不开。
+///
+/// 三个时刻都要敲：**有问题要问** · **进度动了** · **跑完了**。
+/// ⚠ 判的是 `Context::has_requested_repaint()`（egui 自己那个标志），
+/// 不是「我们调了 `request_repaint`」—— 后者是判源码，前者是判行为。
+#[test]
+fn the_board_pokes_the_window_whenever_something_happened() {
+    for (what, act) in [
+        (
+            "有问题要问",
+            Box::new(|b: &DropBoard| {
+                b.ask(vec![p("a")]);
+            }) as Box<dyn Fn(&DropBoard)>,
+        ),
+        (
+            "进度动了",
+            Box::new(|b: &DropBoard| b.progress("a", 1, 2)) as Box<dyn Fn(&DropBoard)>,
+        ),
+        (
+            "跑完了",
+            Box::new(|b: &DropBoard| b.finish(DropOutcome::default())) as Box<dyn Fn(&DropBoard)>,
+        ),
+    ] {
+        let ctx = egui::Context::default();
+        // 🔴 **先把那个标志跑静**。新建的 `Context` 头几帧自己就在要求重画
+        //    （建字体图集、动画那一族），不跑静的话下面那条断言恒真 ⇒ 空真。
+        //    ⚠ 现打：第 1 帧之后仍然是 true，跑到第 3 帧才静下来。
+        let mut settled = 0usize;
+        for f in 1..=16 {
+            ctx.run_ui(egui::RawInput::default(), |_ui| {})
+                .drop_without_applying_deltas();
+            if !ctx.has_requested_repaint() {
+                settled = f;
+                break;
+            }
+        }
+        println!("  `{what}`：跑静那个标志用了 {settled} 帧");
+        let settled = settled > 0;
+        assert!(
+            settled,
+            "跑了 16 帧那个「要求重画」的标志还没静下来 —— \
+             这把尺子在这台机器上量不了「是不是我们敲的」（`{what}` 这一格判不了，不是过了）"
+        );
+
+        let board = DropBoard::default();
+        board.attach(Some(ctx.clone()));
+        act(&board);
+        assert!(
+            ctx.has_requested_repaint(),
+            "`{what}` 之后没敲窗口 —— 那一格在屏幕上要等用户动鼠标才更新"
+        );
+    }
+}
+
+/// 反空真：**没有窗口的时候它照常记数、不炸**（判据里就是这个形状）。
+#[test]
+fn a_board_with_no_window_still_records_and_does_not_panic() {
+    let board = DropBoard::default();
+    board.progress("a", 3, 9);
+    board.finish(DropOutcome {
+        asked: 0,
+        skipped: 0,
+        ok: 1,
+        failed: Vec::new(),
+    });
+    assert_eq!(board.rounds(), 1);
+    assert_eq!(board.last().map(|o| o.ok), Some(1));
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // 路径拼法
 // ════════════════════════════════════════════════════════════════════════
 

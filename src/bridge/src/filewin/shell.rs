@@ -357,6 +357,9 @@ impl FileWindow {
         };
         let cfg = cfg.clone();
         let board = self.board.clone();
+        // 🔴 **把窗口交给看板**，它自己会在「有问题要问 / 进度动了 / 跑完了」时敲一下。
+        //   不交的话：进度条要等用户下次动鼠标才跳一格（egui 只在有事发生时才画下一帧）。
+        board.attach(ctx);
         h.spawn(async move {
             let probe_cfg = cfg.clone();
             let up_cfg = cfg.clone();
@@ -369,15 +372,9 @@ impl FileWindow {
                     let cfg = probe_cfg.clone();
                     async move { super::transfer::probe_remote(&cfg, &p.remote_path).await }
                 },
-                {
-                    let ctx = ctx.clone();
-                    move |clashes| {
-                        let rx = ask_board.ask(clashes);
-                        if let Some(c) = ctx.as_ref() {
-                            c.request_repaint(); // 问题要立刻画出来，别等下一次鼠标动
-                        }
-                        async move { rx.await.unwrap_or_default() }
-                    }
+                move |clashes| {
+                    let rx = ask_board.ask(clashes);
+                    async move { rx.await.unwrap_or_default() }
                 },
                 move |p| {
                     let cfg = up_cfg.clone();
@@ -387,9 +384,6 @@ impl FileWindow {
             )
             .await;
             board.finish(out);
-            if let Some(c) = ctx.as_ref() {
-                c.request_repaint();
-            }
         });
         true
     }
