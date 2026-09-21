@@ -43,7 +43,9 @@
 //!    （「target 答每个平台编不编得过」）。对上那两个轴是步 `8b` 的活，登记在
 //!    `设计/99 §4.8.3 P12`，**挡在步 3.5 上**。
 
-use super::{capability_ledger, CapabilityKind, CAPABILITIES, CAPABILITY_FACES, TARGETS};
+use super::{
+    capability_ledger, CapabilityKind, Target, CAPABILITIES, CAPABILITY_FACES, TARGETS, TARGET_GAPS,
+};
 
 /// 🔴 **被逐条看过一遍的那份名单** —— `(族名, 能力名)`，**逐字点名**。
 ///
@@ -448,4 +450,121 @@ fn the_stream_flag_list_keeps_its_own_narrow_semantics() {
          塞一条没有 flag 的进去 ⇒ `every_capability_token_is_strippable` 当场红，\n\
          **而且是红对了**。汇总的正确接法是给它加一个**面**，不是往它里面塞。"
     );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 逐能力豁免表（`TARGET_GAPS`）—— 2026-09-21 用户把本轴改判成「做得到」之后新立
+// ═══════════════════════════════════════════════════════════════════
+
+/// 🔴 **豁免表里不许有幽灵** —— 每一条都要指着一个**真声明过**的能力。
+///
+/// 没有这一条，一张写错名字的豁免会**永远命中不了**，而它看起来像「这件事登记过了」。
+/// 那正是本仓「不许留用不上的豁免」那条纪律要挡的形。
+#[test]
+fn every_target_gap_names_a_capability_that_really_exists() {
+    let ledger = capability_ledger();
+    let mut bad = Vec::new();
+    for gap in TARGET_GAPS {
+        let found = ledger
+            .iter()
+            .any(|(family, name)| *family == gap.family && *name == gap.capability);
+        if !found {
+            bad.push(format!("{} / {}", gap.family, gap.capability));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "豁免表里这几条指着**不存在**的能力：{bad:?}\n\
+         ⇒ 一条指空的豁免永远命中不了，而它看起来像「这件事登记过了」。\n\
+         改法：要么把名字改对，要么把那一行删掉（能力没了，豁免也该没）。"
+    );
+}
+
+/// 🔴 每一条豁免都要答两件：**今天为什么做不到** ＋ **将来怎么办**。
+///
+/// 「暂时不做」是合法答复（用户 2026-09-21 逐字「**除非暂时不做**」），
+/// 但**必须写出来** —— 不写就分不清「想过了、决定推后」与「压根没想」。
+#[test]
+fn every_target_gap_says_why_and_what_happens_next() {
+    for gap in TARGET_GAPS {
+        let why = gap.why;
+        assert!(
+            why.chars().count() >= 24,
+            "`{} / {}` 那条豁免的理由只有 {} 个字 —— 太短，答不出「为什么」＋「将来怎么办」两件事。\n\
+             原文：{why:?}",
+            gap.family,
+            gap.capability,
+            why.chars().count()
+        );
+        // 「将来怎么办」那一半要有形状：要么指出替代方案，要么明写推后。
+        let answers_future = ["暂时不做", "不该跨过去", "将来", "等那个", "后面"]
+            .iter()
+            .any(|k| why.contains(*k));
+        assert!(
+            answers_future,
+            "`{} / {}` 那条豁免只说了「做不到」，没说**将来怎么办**。\n\
+             ⇒ 「暂时不做」也算答复，但要写出来 —— 不写就分不清\
+             「想过了、决定推后」与「压根没想」。原文：{why:?}",
+            gap.family, gap.capability
+        );
+    }
+}
+
+/// 🔴 **反空真的锚：一张「什么都豁免」的表等于没有表。**
+///
+/// 被豁免的那一面，**必须还有真做得到的能力留在那个 target 上**。
+/// 否则正确的做法是把整面从那个 target 上摘掉，而不是逐条豁免 ——
+/// 那两件事在读数上长得一样（都是「这个 target 上做不到」），
+/// 而**逐条豁免**这个形状之所以成立，靠的就是「有一部分真的做得到」。
+///
+/// ⚠ 同时钉住条数（现打 **6**）。这个数会随裁决动，动了就重新量、连理由一起改，
+/// **不许为了绿把它算出来**（两侧同源就退化成恒真）。
+#[test]
+fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
+    let ledger = capability_ledger();
+    let gaps = TARGET_GAPS;
+
+    assert_eq!(
+        gaps.len(),
+        6,
+        "逐能力豁免现打 {} 条（2026-09-21 现打 6：`ccm-launcher` 的 tmux 那一族 × Windows）。\n\
+         这个数本身没有对错，但它变了说明有裁决动过 —— 连理由一起看。",
+        gaps.len()
+    );
+
+    // 🔴 反空真：逐（面, target）看，被豁免的那一格必须还留着真做得到的能力。
+    let mut faces: std::collections::BTreeSet<(&str, Target)> = Default::default();
+    for g in gaps {
+        faces.insert((g.family, g.target));
+    }
+    assert!(
+        !faces.is_empty(),
+        "豁免表是空的，而本条正题是「不许整面豁免」⇒ 它会零命中地绿。\n\
+         今天不该是空的（`ccm-launcher` × Windows 那一族）—— 真清零了就连本条一起重判。"
+    );
+    for (family, target) in faces {
+        let all: Vec<&str> = ledger
+            .iter()
+            .filter(|(f, _)| *f == family)
+            .map(|(_, n)| *n)
+            .collect();
+        let gapped: Vec<&str> = gaps
+            .iter()
+            .filter(|g| g.family == family && g.target == target)
+            .map(|g| g.capability)
+            .collect();
+        let left = all.len() - gapped.len();
+        assert!(
+            left > 0,
+            "`{family}` 在 {target:?} 上**每一条**能力都被豁免了（{} 条全中）。\n\
+             ⇒ 那不是「逐条豁免」，那是「整面在这个 target 上做不到」——\
+             正确的写法是把 {target:?} 从那一面的 `targets` 里摘掉，而不是列满一张豁免表。\n\
+             **两者在读数上长得一样，而只有一个说的是真话。**",
+            all.len()
+        );
+        assert!(
+            left < all.len(),
+            "`{family}` × {target:?} 一条都没豁免，却出现在上面那个集合里 —— 本条的取集合那一步坏了"
+        );
+    }
 }
