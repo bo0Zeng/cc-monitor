@@ -3015,6 +3015,21 @@ body.settings-window-mode .grid-monitor-trigger {
   display: none;
 }
 
+/* P12：「配置里有 app 不认识的键」常驻条。空时 `hidden`，不占位。
+   比重启条**更重**一档（左侧实心色条 + 告警色边），理由是它说的不是「等一下就好」，
+   而是「你写下的某个设置**根本没生效**」—— 而用户在别处得不到任何反馈。
+   同样刻意**没有关闭按钮**：点一下不会让那个键变得生效。 */
+.settings-unknown-keys-bar {
+  background: var(--bg-2);
+  border-left: 4px solid var(--warn, var(--text-2));
+  color: var(--text);
+  font-size: var(--font-size-small);
+  padding: 8px 14px;
+}
+.settings-unknown-keys-bar[hidden] {
+  display: none;
+}
+
 /* S6：cc-bus 驾驶舱顶层视图的外壳（照 grid-monitor 的 overlay 形态）。 */
 .cc-bus-view {
   background: var(--bg);
