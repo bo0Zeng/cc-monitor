@@ -172,7 +172,8 @@ fn a_symlink_is_indexed_but_not_followed() {
 fn the_declared_rewalk_interval_is_what_status_reports() {
     let _lock = resident_lock();
     let fx = make_tree("status", 2, 3, 0);
-    rebuild_once(&fx.root);
+    rebuild_once(&fx.root)
+        .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let s = status();
     assert_eq!(
         s.rewalk_interval_secs, REWALK_INTERVAL_SECS,
@@ -238,7 +239,8 @@ fn a_query_hands_back_the_hits_and_nothing_else() {
     let fx = make_tree("find", 4, 6, 0);
     let one = fx.root.join("d0002").join("needle-here-and-nowhere-else");
     std::fs::File::create(&one).expect("造那一条命中");
-    rebuild_once(&fx.root);
+    rebuild_once(&fx.root)
+        .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
 
     let r = find(&FindArgs {
         needle: b"needle-here-and-nowhere-else".to_vec(),
@@ -276,7 +278,8 @@ fn a_query_hands_back_the_hits_and_nothing_else() {
 fn the_limit_truncates_the_payload_but_never_the_count() {
     let _lock = resident_lock();
     let fx = make_tree("limit", 3, 10, 0);
-    rebuild_once(&fx.root);
+    rebuild_once(&fx.root)
+        .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
     let all = find(&FindArgs {
         needle: b"f000".to_vec(),
         ignore_ascii_case: false,
@@ -336,7 +339,8 @@ fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
         let target = super::super::raw::to_path_buf(&full);
         std::fs::File::create(&target).expect("造非 UTF-8 名字的文件");
 
-        rebuild_once(&fx.root);
+        rebuild_once(&fx.root)
+            .expect("本格独占跑，抢不到那个位就是并发保护写错了 —— 不许静默当成走过了");
         let r = find(&FindArgs {
             needle: name.clone(),
             ignore_ascii_case: false,
@@ -364,4 +368,72 @@ fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
             "[24f] 非 UTF-8 文件名那一格在本 target 上判不了：缺一台真机 ＋ 一个能造出来的名字"
         );
     }
+}
+
+/// 🔴 **两趟重走不许重叠** —— 第二趟当场被拒，而且**拒得出声**。
+///
+/// # 它治的是什么（2026-09-21 现打逼出来的）
+///
+/// `rebuild_once` 走的是**一整棵树**，而在这一拍之前它**零并发保护** ——
+/// 两趟同时调就是两趟都走整棵树。调用方（界面那一侧）恰恰是「用户一点就发」那种节奏
+/// ⇒ 连点两下就双倍开销，而且没有任何东西会出声。
+///
+/// # 为什么是「互斥」而不是「周期 ≥ 耗时 × N」
+///
+/// `真相源/104 §4` 现打：「周期 = 单次耗时 × N」这种形式的推荐值**业界没有公认值**
+/// （六个方向各自查完都没有）。而**互斥不重叠**是那一类周期性任务真正的工业做法，
+/// 四家一致：`plocate`/`mlocate` 的 `flock --nonblock` ·
+/// Kubernetes CronJob 的 `concurrencyPolicy: Forbid` ·
+/// Prometheus 把「单次预算 > 周期」判成配置错误 · rclone 硬规定 poll < cache。
+///
+/// # ⚠ 它买不到什么
+///
+/// - **不买「两条真线程同时打进来」** —— 本条是**同一条线程**上连着调两次
+///   （第一趟没结束时第二趟进不来，是靠那个位，不是靠调度）。
+///   真并发那一格要起线程，而那会让判据变飘；**这一条如实登记为未买**。
+/// - **不买「那个位在 panic 之后会被清掉」** —— `rebuild_once` 里那一段之间没有 RAII 守卫，
+///   它靠的是「`build` 不 panic」这个事实（`build` 把 IO 错误收成计数）。
+///   **哪天 `build` 会 panic 了，这一格就得换成守卫，而本条看不见那一天。**
+#[test]
+fn a_second_rebuild_is_refused_while_one_is_running_and_says_so() {
+    let fx = make_tree("rebuild-mutex", 3, 4, 8);
+
+    // ── 阴性对照：**没人在跑的时候它必须能跑** ──────────────────
+    //    没有这一条，下面那条「第二趟被拒」可以靠「它永远拒」全绿。
+    let first = rebuild_once(&fx.root);
+    assert!(
+        first.is_some(),
+        "没有任何一趟在跑，第一趟却被拒了 —— 那个位没被清掉，或者它初值就是 true。\n\
+         ⇒ 那样这条能力**永远**走不了，而线上看起来只是「已经在跑」。"
+    );
+
+    // ── 正题：把那个位按住，再调一次 ────────────────────────────
+    //    ⚠ 这里**刻意不起线程**：起线程会让这条判据的读数依赖调度。
+    //      按住那个位是同一件事的**可判形态** —— 被测的性质是
+    //      「那个位是 true 的时候第二趟进不来」，而不是「两条线程谁先」。
+    crate::files::index::testing::hold_rebuilding(true);
+    let before = crate::files::index::rebuild_skipped();
+    let second = rebuild_once(&fx.root);
+    let after = crate::files::index::rebuild_skipped();
+    crate::files::index::testing::hold_rebuilding(false);
+
+    assert!(
+        second.is_none(),
+        "有一趟正在跑，第二趟却走了 —— 互斥没生效，两趟会各走一遍整棵树。"
+    );
+    // 🔴 **相等断言，不是「至少多了一个」** —— 被抢占的次数要恰好多一。
+    assert_eq!(
+        after,
+        before + 1,
+        "被抢占的计数没有恰好加一（{before} → {after}）。\n\
+         ⇒ 那个数是「只报不禁」那一栏唯一的读数来源（`scale_f2` 在印它），\n\
+         数不准的话占空比那一行印出来的是假话。"
+    );
+
+    // ── 收场：那个位真的还回去了，下一趟走得了 ──────────────────
+    //    这一格买的是「互斥不是一次性的闸」。
+    assert!(
+        rebuild_once(&fx.root).is_some(),
+        "上一趟走完了，那个位却没还回去 ⇒ 这条能力从此永久被拒。"
+    );
 }

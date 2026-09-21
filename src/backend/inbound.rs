@@ -542,7 +542,8 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-index-rebuild",
         doc_anchor: Some("#### `files-index-rebuild`"),
-        codes: &["bad_path", "unreadable"],
+        // `already_rebuilding`〔2026-09-21〕：非阻塞互斥抢不到那个位。
+        codes: &["already_rebuilding", "bad_path", "unreadable"],
         fields: &[
             "entries",
             "path",

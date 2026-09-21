@@ -744,7 +744,7 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     };
 
     // `files.find` 那几条要有一份**真的**常驻索引才谈得上差分。
-    crate::files::index::rebuild_once(&fx.root);
+    crate::files::index::rebuild_once(&fx.root).expect("本格独占跑，抢不到就是并发保护写错了");
 
     // 🔴 探针表：`(能力, 被测参数, 甲, 乙)` —— 甲乙只差那一个键，答案必须不同。
     //   ⚠ 顺序承重：`files.browse` 会往 overlay 里加东西、`files.index.rebuild` 会把

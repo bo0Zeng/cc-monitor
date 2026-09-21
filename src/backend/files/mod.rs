@@ -293,7 +293,9 @@ pub const CAPABILITIES: &[Capability] = &[
             "truncated",
             "unreadable_dirs",
         ],
-        codes: &["bad_path", "unreadable"],
+        // 🔴 `already_rebuilding`〔2026-09-21〕：非阻塞互斥抢不到那个位。
+        //    它**刻意是一个码而不是回参里的一个布尔** —— 理由住 `answer_index_rebuild`。
+        codes: &["already_rebuilding", "bad_path", "unreadable"],
     },
     Capability {
         name: "files.browse",
@@ -630,7 +632,26 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
     // 只要「打不打得开」这一个答案 —— 句柄拿到就丢，一条目录项都不读。
     std::fs::read_dir(&root)
         .map_err(|e| ("unreadable", format!("这个根打不开：{:?}", e.kind())))?;
-    let stats = index::rebuild_once(&root);
+    // 🔴 **「有一趟已经在跑」走错误码那条路，不走成功回参。**
+    //
+    // 2026-09-21 起 `rebuild_once` 是非阻塞互斥的（理由与业界对照住它的头注）。
+    // 抢不到时它回 `None`，而这里**刻意不把它做成一个带 `skipped: true` 的成功回参** ——
+    // 那样「没走」与「走完了但树是空的」就都是一个成功答复，只差一个布尔，
+    // 而本文件下面那段头注逐字警告过同一形：
+    // 「回参看起来像一次成功的重走（`entries: 0` 与『这台机器上真的没文件』同形）」。
+    //
+    // ⇒ 走错误码：`already_rebuilding`。这样两形在**结构上**就不可能混
+    //   （一个是 `Ok(fields)`、一个是 `Err(code)`），而且它用的是这条能力
+    //   **声明表里已有的那一栏**（`codes`）—— 不新造机械。
+    let stats = index::rebuild_once(&root).ok_or_else(|| {
+        (
+            "already_rebuilding",
+            format!(
+                "已经有一趟重走在跑，这一趟没走（至今被抢占 {} 趟）",
+                index::rebuild_skipped()
+            ),
+        )
+    })?;
     Ok(serde_json::json!({
         "path": raw::to_json(raw::path_bytes(&root)),
         "entries": stats.entries,
