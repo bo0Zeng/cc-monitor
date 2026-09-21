@@ -1150,10 +1150,16 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///
 /// # ⚠ 本文件自己在面里（`K-R31` 那一形，`scanning_guard_registry` 登记为「第五形」）
 ///
-/// `scan_tree!` 按构造摘掉调用者那一份 —— 而调用者恰恰是**闭集的家**，
-/// 摘掉等于在最该看的那一份上瞎掉 ⇒ 用 `include_str!` 把自己显式加回来。
-/// 对价是本文件的针**全部运行期拼**（见 [`old_name_counts`]），
-/// 否则量具自己会被自己数进去。
+/// ⚠ 〔`P4` 2026-09-21〕先前这里写着「`scan_tree!` 按构造摘掉调用者那一份 —— 而调用者
+/// 恰恰是**闭集的家**，摘掉等于在最该看的那一份上瞎掉」。那一刀**在这一处不生效**
+/// （判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比不命中），
+/// 而且今天的调用者是本判据文件、**不是**闭集的家 `tool_registry.rs`。
+/// ⇒ 下面那句 `include_str!` 的 `push` 今天是**冗余**的第二份（`src/` 那棵已经收过它，
+/// 而 `got` 是按 `(住址, Why)` 入 `BTreeMap`，同键覆盖 ⇒ 不会数两遍）；**刻意不删**：
+/// 它把「闭集的家一定在面里」钉成一件不依赖根清单的事。
+/// ⇒ 而「本文件自己在面里」这句**今天是真的**：第三棵根逐字是 `tests/bridge`，
+/// 本文件在里面，并且在 [`SITES`] 里有自己那一行（按等号认）。
+/// 对价是本文件的针**全部运行期拼**（见 [`old_name_counts`]），否则量具自己会被自己数进去。
 #[test]
 fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     use std::collections::BTreeMap;

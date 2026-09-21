@@ -41,17 +41,24 @@
 //!
 //! # 为什么它单住一个文件
 //!
-//! 与 `bind_guard` 同一条理由：`guard_core::scan_tree!` **按构造摘掉调用者自己那份**，
-//! 治的是「判据在自己的源码里找到自己 ⇒ 恒绿」那一族。判据与被扫的代码不能同住一个文件。
+//! 与 `bind_guard` 同一条理由：`guard_core::scan_tree!` 治的是「判据在自己的源码里
+//! 找到自己 ⇒ 恒绿」那一族。判据与被扫的代码不能同住一个文件 ——
 //! 而它要扫的正是 `server.rs` 与 `upstream.rs` 两个文件 ⇒ 只能住第三个。
+//!
+//! ⚠ 〔`P4` 2026-09-21〕先前这里跟着抄了「**按构造摘掉调用者自己那份**」——
+//! **那一刀在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒
+//! 后缀比不命中）。上面那条结论今天只对「判据写在被扫文件自己的 `#[cfg(test)]` 段里」
+//! 那一形成立；本文件不在人群里靠的是住址（它住 `tests/backend/relay/`）。
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn no_relay_production_code_turns_nagle_back_on() {
         let dir = crate::guard_support::src_root().join("relay");
-        // 针**运行时拼**：直接写字面量的话本文件自己就是命中源
-        //（`scan_tree!` 已经摘掉了本文件 —— 两道保险，别只靠一道）。
+        // 针**运行时拼**：直接写字面量的话本文件自己就是命中源。
+        // ⚠ 〔`P4` 2026-09-21〕先前这里写着「`scan_tree!` 已经摘掉了本文件 ——
+        //   两道保险，别只靠一道」。**那一道今天不生效**（自摘在这一处恒空转，见模块头注），
+        //   运行时拼针是**唯一**承重的那一道。
         let off = format!("set_nodelay({})", false);
         let files = guard_core::scan_tree!(&dir, &["rs"]);
         assert!(

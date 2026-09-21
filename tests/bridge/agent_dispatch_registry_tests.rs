@@ -180,7 +180,10 @@ const KIND_ERASING_FACADES: &[(&str, &str)] = &[
     ),
 ];
 
-/// 人群下界：`src/bridge/src` 今天 105 份 `.rs`（`scan_tree!` 摘掉本文件 ⇒ 104 进扫描）。
+/// 人群下界：`src/bridge/src` 今天 105 份 `.rs`，**105 份全部进扫描**。
+///
+/// ⚠ 〔`P4` 2026-09-21〕先前这一行写着「`scan_tree!` 摘掉本文件 ⇒ 104 进扫描」——
+/// 那一刀**在这一处不生效**，而且本文件住 `tests/bridge/`、根本不在这棵树里。
 ///
 /// 低于它说明**遍历坏了**，不是代码变干净了 —— 那是最坏的一种绿。
 const TREE_FLOOR: usize = 90;
@@ -210,8 +213,15 @@ fn facade_needles() -> Vec<String> {
 
 /// 整棵 `src/bridge/src` 的 `(相对路径, 生产段)`。
 ///
-/// `scan_tree!` **按构造摘掉调用者自己**（`scanning_guard_registry` 的递减棘轮
-/// 逐字禁止新写的扫描型判据裸遍历 —— 那族病的默认结局是恒绿）。
+/// 走 `scan_tree!` 是 `scanning_guard_registry` 那条递减棘轮逼的（它逐字禁止新写的
+/// 扫描型判据裸遍历 —— 那族病的默认结局是恒绿）。
+///
+/// ⚠ 〔`P4` 2026-09-21〕先前这里写着「`scan_tree!` **按构造摘掉调用者自己**」——
+/// 那一刀**在这一处不生效**（判据一律由 `#[path]` 挂载 ⇒ `file!()` 给的是带 `..`
+/// 的折返路径 ⇒ 后缀比不命中，
+/// `the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）。
+/// 本条不在自己的语料里靠两样：**住址**（判据住 `tests/bridge/`，扫的是 `src/bridge/src`）
+/// ＋ 三根**运行时拼**的针。
 fn sources() -> Vec<(String, String)> {
     let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_dir, &["rs"]);

@@ -61,7 +61,10 @@ fn anchors() -> Vec<String> {
 /// 🔴 这条与下面那条文件数地板一起，接的是本模块**唯一**一种会静默的坏法：
 /// 家里今天恰好没有违例 ⇒ 「扫过了、干净」与「压根没扫」在输出上一模一样。
 const CORPUS_FLOOR_BYTES: usize = 400_000;
-/// 文件数地板：`src/bridge/src` 09-12 现打 100+ 份 `.rs`（`scan_tree!` 摘掉本文件）。
+/// 文件数地板：`src/bridge/src` 09-12 现打 100+ 份 `.rs`。
+///
+/// ⚠ 〔`P4` 2026-09-21〕先前括号里写着「`scan_tree!` 摘掉本文件」—— 那一刀**在本仓
+/// 一处都不生效**，而且本文件住 `tests/bridge/`、根本不在这棵树里。
 const CORPUS_FLOOR_FILES: usize = 80;
 
 /// **住址判据本体。纯函数** —— 语料与家都由调用方给 ⇒ 阳性/阴性两个方向都切得动。
@@ -129,10 +132,12 @@ fn dial_locality(corpus: &[(String, String)], home: &[(&str, usize)]) -> Result<
 /// 🔴 **必须走 `guard_core::scan_tree!`**（`scanning_guard_registry` 那条判据钉着）：
 /// 裸 `read_dir` 的扫描型判据会在自己的登记表 / 注释里找到自己 ⇒ 恒绿。
 ///
-/// ⚠ `scan_tree!` **按构造摘除调用者自己那一份**（本文件）。backend 那侧必须把自己
-/// `include_str!` 补回来（锚点恰恰住在它自己那份里），**本侧刻意不补** ——
-/// 本文件里一处锚点字面量都没有（[`anchors`] 是运行时拼的），补回来只会把
-/// 「判据在自己身上找到自己」那一族重新请进门。
+/// ⚠ 〔`P4` 2026-09-21〕先前这里写着「`scan_tree!` **按构造摘除调用者自己那一份**
+/// （本文件）」—— 那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是
+/// 折返路径 ⇒ 后缀比不命中），而且本文件住 `tests/bridge/`、不在这棵树里。
+/// backend 那侧把被测那一份 `include_str!` 补回来是因为**锚点恰恰住在那一份里**，
+/// **本侧刻意不补**：本文件里一处锚点字面量都没有（[`anchors`] 是运行时拼的），
+/// 补回来只会把「判据在自己身上找到自己」那一族重新请进门。
 fn crate_sources() -> Vec<(String, String)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut out: Vec<(String, String)> = Vec::new();
