@@ -104,7 +104,12 @@ async fn every_overwrite_question_is_asked_once_and_before_any_transfer_starts()
     // ③ 顺序：最后一次 confirm 之后才有第一次 launch。
     let confirm_at = *tape.seqs_of("confirm").first().expect("一次都没问");
     let launches = tape.seqs_of("launch:");
-    assert_eq!(launches.len(), 4, "四件都准传了，却只起了 {} 趟", launches.len());
+    assert_eq!(
+        launches.len(),
+        4,
+        "四件都准传了，却只起了 {} 趟",
+        launches.len()
+    );
     let first_launch = *launches.iter().min().unwrap();
     assert!(
         first_launch > confirm_at,
@@ -137,7 +142,7 @@ async fn answering_no_skips_exactly_the_clashing_items() {
     let out = run_drop(
         vec![p("a"), p("b"), p("c")],
         4,
-        |it| async move { it.name != "b" }, // a / c 冲突
+        |it| async move { it.name != "b" },   // a / c 冲突
         |_clashes| async move { Vec::new() }, // 全都不覆盖
         |it| {
             let l = &launched;
@@ -282,7 +287,10 @@ async fn failures_come_back_named_and_with_their_own_message() {
     )
     .await;
     assert_eq!(out.ok, 1);
-    assert_eq!(out.failed, vec![("a".to_string(), "对面盘满了".to_string())]);
+    assert_eq!(
+        out.failed,
+        vec![("a".to_string(), "对面盘满了".to_string())]
+    );
 }
 
 /// 空拖入 ⇒ 空结果，一个探测都不发。
@@ -428,7 +436,8 @@ fn the_real_adapters_delegate_to_the_shared_pool() {
 #[test]
 fn our_concurrency_cap_is_the_pools_own_lane_count() {
     assert_eq!(
-        crate::sftp_pool::TRANSFER_LANE_CAP, 4,
+        crate::sftp_pool::TRANSFER_LANE_CAP,
+        4,
         "池里的车道数变了 —— 本层跟着它走，但这个数变了要回 `设计/60 §5.4a` 重读一遍理由"
     );
     // 本层那个落点回的就是池里那个数（相等，不是「注释里说是 4」）。

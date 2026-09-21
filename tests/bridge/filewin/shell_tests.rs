@@ -72,7 +72,11 @@ fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
 /// 反空真：错误目录必须留下错误，不是一个空列表。
 #[test]
 fn a_bad_local_path_surfaces_an_error() {
-    let w = FileWindow::new(Source::Local, "/definitely/not/a/real/path/9f3a".into(), None);
+    let w = FileWindow::new(
+        Source::Local,
+        "/definitely/not/a/real/path/9f3a".into(),
+        None,
+    );
     assert!(w.listing.rows.lock().unwrap().is_empty());
     assert!(w.listing.error.lock().unwrap().is_some());
 }
@@ -278,10 +282,7 @@ fn dropped_paths_become_pending_uploads_into_the_current_directory() {
         "/srv/data".into(),
         None,
     );
-    let got = w.pending_for(&[
-        "/home/u/a.txt".to_string(),
-        "/home/u/dir/b.bin".to_string(),
-    ]);
+    let got = w.pending_for(&["/home/u/a.txt".to_string(), "/home/u/dir/b.bin".to_string()]);
     assert_eq!(
         got.iter()
             .map(|p| p.remote_path.clone())

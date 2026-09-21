@@ -117,7 +117,10 @@ fn a_double_click_on_a_row_comes_back_as_that_rows_index() {
     let rows = rows(200);
     // 先跑一帧把布局/字体建起来，行的矩形才有位置。
     let warm = render_headless_with_events(&ctx, &rows, screen(), 0.0, Vec::new());
-    assert!(warm.rows_materialized > 3, "一屏连 4 行都没有，下面按坐标点就没意义");
+    assert!(
+        warm.rows_materialized > 3,
+        "一屏连 4 行都没有，下面按坐标点就没意义"
+    );
 
     // 第 2 行的中心：列表从 y≈0 起，行高 ROW_HEIGHT ＋ item spacing。
     let want = 2usize;
@@ -165,7 +168,8 @@ fn a_frame_with_no_input_reports_no_click() {
         1.0,
         vec![egui::Event::PointerMoved(egui::pos2(60.0, 30.0))],
     );
-    let one = render_headless_with_events(&ctx, &rows, screen(), 1.1, click_at(egui::pos2(60.0, 30.0)));
+    let one =
+        render_headless_with_events(&ctx, &rows, screen(), 1.1, click_at(egui::pos2(60.0, 30.0)));
     assert_eq!(
         one.clicked, None,
         "单击就进目录了 —— 旧面板是双击进（`panel.ts` 的 `dblclick`），别让两个面板两套手感"
@@ -180,4 +184,3 @@ fn human_size_is_short_enough_for_a_column() {
     assert_eq!(human_size(1024 * 1024), "1.0 M");
     assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.0 G");
 }
-

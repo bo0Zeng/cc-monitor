@@ -195,7 +195,12 @@ fn the_whole_filewin_tree_has_exactly_one_way_to_list_a_remote_directory() {
 
     // 反空真③：这把尺子认得出「多一处」。
     let fake = format!("fn x() {{ {needle} }}\n{needle}");
-    assert_eq!(guard_core::production_code(&fake).matches(needle.as_str()).count(), 2);
+    assert_eq!(
+        guard_core::production_code(&fake)
+            .matches(needle.as_str())
+            .count(),
+        2
+    );
 }
 
 /// 上一级目录：**远端与本机不是同一个算法。**

@@ -381,6 +381,67 @@ describe("F54 open(revealPath) 定位高亮", () => {
     }
   });
 
+  /**
+   * 🔴 `24e` 第二刀：**原生文件管理窗口的用户入口真的点得到。**
+   *
+   * # 为什么这条判据非有不可
+   *
+   * 同一篇设计上一拍（`设计/60 §5.4c` 的 `sftp_chmod`）交回时留了一句欠账，逐字是
+   * 「**前端没有入口**」—— 命令做完了、包装层有了，界面上没有任何地方调它。
+   * 那条欠账**没有任何判据在看**，所以它能安静地欠着。
+   * ⇒ 这一条就是不让同一件事再发生一次：真点那颗按钮，看它**带着什么参数**调下去。
+   *
+   * # 它买什么 / 不买什么
+   *
+   * - **买**：按钮在表头上 · 点它会调 `open_file_window` · 参数是**当前这台远端 ＋
+   *   当前这个目录**（不是 home、不是硬编码的 `/`）· 失败会出声。
+   * - **不买**：那个原生窗口真的出现在屏幕上。那要一个图形会话，
+   *   而且它整个在 Rust 那一侧（判据住 `tests/bridge/filewin/`，边界写在
+   *   `filewin/entry.rs` 头注里）。
+   */
+  it("★ 24e-2：表头「在原生窗口打开」带着当前 host + 当前目录调下去", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_realpath") return Promise.resolve("/home/u");
+      if (cmd === "sftp_list_dir") return Promise.resolve([ent("sub", true)]);
+      if (cmd === "open_file_window") return Promise.resolve(7);
+      return Promise.resolve();
+    });
+    const p = new SftpPanel();
+    await p.open(CFG, undefined, "/srv/data");
+
+    const btn = panelEl().querySelector(".sftp-open-native") as HTMLButtonElement;
+    expect(btn, "表头上没有「在原生窗口打开」那颗按钮 —— 用户点不开那个窗口").toBeTruthy();
+    expect(btn.textContent).toBe("在原生窗口打开");
+
+    invokeMock.mockClear(); // 只看点击之后发了什么
+    btn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const calls = invokeMock.mock.calls.filter((c) => c[0] === "open_file_window");
+    // 相等断言：恰好一次，参数逐字对。
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toEqual({ cfg: CFG, path: "/srv/data" });
+  });
+
+  /** 反空真：命令失败时要出声，不是静默什么都没发生。 */
+  it("★ 24e-2：原生窗口开不起来要出声", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_list_dir") return Promise.resolve([]);
+      if (cmd === "open_file_window") return Promise.reject(new Error("连不上"));
+      return Promise.resolve();
+    });
+    const { showActionFailureToast } = await import("../../src/error-toast");
+    const p = new SftpPanel();
+    await p.open(CFG, undefined, "/srv/data");
+    vi.mocked(showActionFailureToast).mockClear();
+
+    (panelEl().querySelector(".sftp-open-native") as HTMLButtonElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const titles = vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0]);
+    expect(titles).toContain("原生窗口打开失败");
+  });
+
   it("revealName 一次性:重排(renderList 再跑)不再高亮", async () => {
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "sftp_list_dir" ? Promise.resolve([ent("b.txt", false)]) : Promise.resolve(),
