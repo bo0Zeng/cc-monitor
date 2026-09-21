@@ -3,13 +3,19 @@
 //! ## 与既有 SFTP 写的关系（INVARIANT §1）
 //! §1「monitor 零侵入 Claude 数据源」管的是 **monitor 作为监视器**不改坏 Claude 的
 //! jsonl/pidfile。本模块是**用户亲自驱动**的通用文件传输面板,与数据源只读契约**正交**
-//! （2026-07-10 用户拍板:SFTP 属独立文件传输功能,不算 monitor 写)。防误伤守卫见
-//! [`is_protected_claude_data_path`]:SFTP 写命令拒碰 Claude 数据源文件(往正被 Claude
+//! （2026-07-10 用户拍板:SFTP 属独立文件传输功能,不算 monitor 写)。防误伤守卫**已经
+//! 不住这儿了** —— 它是一族，住 [`crate::claude_data_fence`]
+//! （〔`设计/99 §2 Q2`〕用户 2026-09-21 裁「拆」；理由与它买到的东西写在那个模块的头注里）。
+//! 本模块**只是它的第一个消费者**：SFTP 写命令拒碰 Claude 数据源文件(往正被 Claude
 //! 打开的 jsonl 写会损坏会话)——这是防手滑,不是合规。
 //! ★〔devbench F10c〕这条承诺**现在有牙了**：**七个**写入口都过 `guard_write` 这件事由
 //! `remote_write_registry::a_user_chosen_remote_write_passes_the_claude_data_fence` 钉着
 //! 〔`设计/60 §5.4c` 09-20：`sftp_chmod` 是第七个〕。
 //! 在那之前它零判据 —— 删掉任一处 `guard_write?`，全仓一条不红。
+//! ★〔步 H2 09-21〕另加两条：`remote_write_registry` 的
+//! `every_pool_command_is_either_a_registered_write_or_a_registered_read` 把「今天有几条写命令」
+//! 从写死的人群换成**从本文件现打 ＋ 默认拒绝**（新增一条命令不归档当场红），
+//! `a_fenced_write_refuses_before_it_touches_the_wire` 钉住 `guard_write` 出现在拿连接**之前**。
 //!
 //! ## 连接分离 + 已知取舍
 //! SFTP 面板连接走**独立 utility 池**,与后端数据源流连接(`ssh_source` 长连接)
@@ -33,8 +39,22 @@ use std::sync::Arc;
 use serde::Serialize;
 use tokio::sync::Mutex;
 
+use crate::claude_data_fence::guard_write;
 use crate::sftp::{connect_sftp, SftpConn};
 use crate::ssh_source::RemoteConfig;
+
+/// 🔴 **转出住址，不是第二个家。**
+///
+/// 判定的家是 [`crate::claude_data_fence`]（`pub fn` 全仓恰一处，由
+/// `claude_data_fence_tests::the_protected_path_judgement_has_exactly_one_home` 钉着）。
+/// 这一行只为**一个**还没改过来的消费者存在：`filewin::writeops::fenced_path`
+/// 逐字写着 `sftp_pool::is_protected_claude_data_path`，而 `filewin/` 本轮在别人的写区里
+/// （第五刀刚落地）⇒ 本轮不碰它，改用这一行把它接住。
+///
+/// ⚠ 它是一条**递减棘轮**：还在用旧住址的文件**恰好一份**，
+/// 由 `claude_data_fence_tests::the_old_address_is_down_to_its_last_consumer` 钉成相等断言。
+/// 那一份改过来的那天，**连这一行一起删** —— 别让它留成一个用不上的豁免。
+pub use crate::claude_data_fence::is_protected_claude_data_path;
 
 /// 目录项（前端渲染 + 排序用）。
 #[derive(Serialize, Clone, Debug)]
@@ -64,28 +84,6 @@ pub struct SftpStat {
     pub path: String,
     pub is_dir: bool,
     pub size: u64,
-}
-
-/// F47 防误伤守卫:该远端路径是否 Claude 数据源文件(jsonl / pidfile)。
-/// SFTP 写命令拒碰这些——往正被 Claude 打开的会话文件写会损坏会话;要管这些用历史浏览器
-/// （F11 删除带确认),不走文件面板。**结构判定**(与 sftp::is_safe_remote_jsonl 同风格,batch20 起不靠 `.claude` 字面,闭 CLAUDE_CONFIG_DIR 缺口)。
-pub fn is_protected_claude_data_path(path: &str) -> bool {
-    let p = path.replace('\\', "/");
-    // batch20 审计修：**结构判定**，不靠 `/.claude/` 字面——Claude 数据文件结构为 `<任意>/projects/<proj>/<sid>.jsonl`
-    // （projects 下恰 2 段）或 `<任意>/sessions/<x>.json`（sessions 下 1 段）。**闭 `CLAUDE_CONFIG_DIR` 重定位缺口**：
-    // 重定位后路径成 `<CFGDIR>/projects/.../*.jsonl`，原字面 `/.claude/` 判定会漏、SFTP 面板可覆写 live jsonl。
-    let jsonl_protected = p.rfind("/projects/").is_some_and(|i| {
-        let parts: Vec<&str> = p[i + "/projects/".len()..].split('/').collect();
-        parts.len() == 2
-            && !parts[0].is_empty()
-            && parts[1].len() > ".jsonl".len()
-            && parts[1].ends_with(".jsonl")
-    });
-    let json_protected = p.rfind("/sessions/").is_some_and(|i| {
-        let rest = &p[i + "/sessions/".len()..];
-        !rest.contains('/') && rest.len() > ".json".len() && rest.ends_with(".json")
-    });
-    jsonl_protected || json_protected
 }
 
 /// 判定文件名是否含非 UTF-8 有损替换字符（russh-sftp 已把无效字节转成 U+FFFD）。
@@ -1504,16 +1502,6 @@ pub async fn sftp_write_text(
 }
 
 // === 写命令:mkdir / rename / delete（走 with_sftp,过写守卫）===
-
-/// 拒 Claude 数据源路径的写守卫(返回 Err 便于 `?`)。
-fn guard_write(path: &str) -> Result<(), String> {
-    if is_protected_claude_data_path(path) {
-        return Err(format!(
-            "拒绝写 Claude 数据源文件({path})——管理会话文件请用历史浏览器"
-        ));
-    }
-    Ok(())
-}
 
 #[tauri::command]
 pub async fn sftp_mkdir(cfg: RemoteConfig, path: String) -> Result<(), String> {

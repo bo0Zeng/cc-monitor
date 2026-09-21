@@ -1,12 +1,10 @@
 use super::*;
 
-#[test]
-fn guard_write_rejects_claude_data_allows_normal() {
-    assert!(guard_write("/home/pi/.claude/projects/-x/s.jsonl").is_err());
-    assert!(guard_write("/home/pi/.claude/sessions/1.json").is_err());
-    assert!(guard_write("/home/pi/proj/main.rs").is_ok());
-    assert!(guard_write("/home/pi/.claude/settings.json").is_ok()); // 非受保护
-}
+// 🔴 **围栏那一族的判据已经不在本文件了**〔步 H2 09-21，用户裁「拆」〕。
+// `guard_write` 与 `is_protected_claude_data_path` 搬去了 `crate::claude_data_fence`，
+// 它们的判据跟着搬进 `tests/bridge/claude_data_fence_tests.rs`（两条原样保留、并各自
+// 补了相等断言那一半）。本文件从此只放**池子自己**那几件事：可编辑性 · 有损名 ·
+// 死连分类 · 排序 · 取消登记 · 改权限的线上形状。
 
 // F49：编辑护栏(数据安全红线)——拒编优于截断/乱码。
 #[test]
@@ -25,41 +23,6 @@ fn decode_editable_guards() {
                                                       // >256KB → 拒编(不截断)
     assert_eq!(decode_editable(&vec![b'x'; MAX_EDIT_BYTES + 1]), None);
     assert!(decode_editable(&vec![b'x'; MAX_EDIT_BYTES]).is_some()); // 恰好上限可编辑
-}
-
-#[test]
-fn protected_path_guard() {
-    assert!(is_protected_claude_data_path(
-        "/home/pi/.claude/projects/-x/abc.jsonl"
-    ));
-    assert!(is_protected_claude_data_path(
-        "/home/u/.claude/sessions/123.json"
-    ));
-    // 普通用户文件不受守卫
-    assert!(!is_protected_claude_data_path("/home/pi/proj/main.rs"));
-    assert!(!is_protected_claude_data_path(
-        "/home/pi/.claude/settings.json"
-    )); // 非 sessions/ 下
-    assert!(!is_protected_claude_data_path(
-        "/home/pi/notclaude/projects/x.jsonl"
-    )); // 非 /.claude/projects/
-        // 反斜杠归一
-    assert!(is_protected_claude_data_path(
-        "C:\\Users\\me\\.claude\\projects\\p\\s.jsonl"
-    ));
-    // batch20 审计修：CLAUDE_CONFIG_DIR 重定位（.claude 挪到 ~/mydata）后仍受保护（结构判定，闭字面缺口）
-    assert!(is_protected_claude_data_path(
-        "/home/pi/mydata/projects/-x/abc.jsonl"
-    ));
-    assert!(is_protected_claude_data_path(
-        "/home/u/mydata/sessions/123.json"
-    ));
-    // 但 projects 下只 1 段（非 <proj>/<sid>.jsonl 结构）不误伤普通文件
-    assert!(!is_protected_claude_data_path(
-        "/home/pi/x/projects/a.jsonl"
-    ));
-    // sessions 下再嵌目录（非 Claude 单层结构）不误伤
-    assert!(!is_protected_claude_data_path("/x/sessions/sub/y.json"));
 }
 
 #[test]
