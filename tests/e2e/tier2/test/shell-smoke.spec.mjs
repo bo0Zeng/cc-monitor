@@ -4,7 +4,7 @@
 //   1. 壳元素存在：#app / #tab-bar / #message-stream / #status-bar
 //   2. 状态栏文案：.status-msg 含「等待活跃」、.status-count 含「活跃 0」、
 //      .empty-state 可见含「暂无活跃会话」
-//   3. 6 顶栏钮 + .status-cmdk 存在且可点（isClickable，不实际点——避免开窗/弹层副作用）
+//   3. 5 顶栏钮 + .status-cmdk 存在且可点（isClickable，不实际点——避免开窗/弹层副作用）
 //   4. overlay 快捷键（物理码，dispatcher 按 KeyboardEvent.code 归一）：
 //        KeyH → 历史 overlay 出现；Escape → 关；
 //        KeyG → 全景 overlay 显示；Escape → 隐；
@@ -17,11 +17,22 @@ import { browser, $, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
 
 const SHELL = ["#app", "#tab-bar", "#message-stream", "#status-bar"];
+// 🔴 **这张表是手写的，而它腐过一次** —— 2026-09-21 现打逮到：
+// `.usage-trigger` 在 `设计/50 删用量`（09-18）里随那个入口整删，生产里 **0 处**，
+// 而本表还列着它并断言 `isClickable` ⇒ 一条**必然失败**的断言。
+//
+// 它为什么能静默活三天：**tier-2 这一档要真 Windows ＋ WebView2 ＋ session-1 hop**
+// ⇒ 不在 `npm test`、不在 `cargo test`、不在 `tests/scripts/gate.sh` 里
+// ⇒ **没有任何门禁跑得到它**。对照：姊妹判据 `tests/topbar-icons.vitest.ts`
+// 那条地板同拍就 6 → 5 改对了 —— 因为**它的人群是从 `main.ts` 现场派生的**，腐不了。
+//
+// ⇒ 处置不只是删那一行：`tests/topbar-list-parity.vitest.ts` 现在把**本表**与
+// 从 `main.ts` 派生出来的那一份做**双向相等**。那条判据跑在本地门禁里
+// ⇒ **这一档跑不到，但这张表的前提从此有人看着。**
 const TOPBAR = [
   ".settings-trigger",
   ".history-trigger",
   ".panorama-trigger",
-  ".usage-trigger",
   ".grid-monitor-trigger",
   ".sftp-trigger",
   ".status-cmdk",
@@ -86,7 +97,7 @@ describe("F-E5a cc-monitor 裸壳 DOM 冒烟", () => {
     expect(emptyText).toContain("暂无活跃会话");
   });
 
-  it("3) 6 顶栏钮 + status-cmdk 存在且可点", async () => {
+  it("3) 5 顶栏钮 + status-cmdk 存在且可点", async () => {
     for (const sel of TOPBAR) {
       const el = $(sel);
       const exists = await el.isExisting();
