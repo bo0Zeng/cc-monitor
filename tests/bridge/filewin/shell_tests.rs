@@ -833,3 +833,32 @@ fn the_second_window_in_one_process_is_never_a_silent_success() {
         ),
     }
 }
+/// 🔴 **进程 DPI 归属：`any_thread_hook` 的 Windows 分支必须把 winit 关掉。**
+///
+/// 论证与四格现打读数住 `shell.rs` 头注（2026-09-20，本机那台 Win11 虚拟机的真桌面）。
+/// 那四格里承重的是两对：
+/// - 「没有 `tao`、`dpi_aware=true`」⇒ `UNAWARE` → `PER_MONITOR_AWARE_V2`
+///   ⇒ **winit 自己确实会设进程级那块状态**（「两个主人」不是推测）；
+/// - 「没有 `tao`、`dpi_aware=false`」⇒ 全程 `UNAWARE`
+///   ⇒ **这个开关是活的**，关掉之后 winit 真的不去碰它。
+///
+/// ⚠ **这条只扫得动源码，扫不动行为** —— Windows 那个分支在本机（Linux）
+/// 被 `cfg` 掉了，`cargo test` 永远执行不到它。能进执行链的只有「那一句在不在」。
+/// ⇒ 所以它钉**两侧**：`false` 要在，且不许有人把它改回 `true`
+/// （只钉「含 `with_dpi_aware`」的话，改成 `true` 不会红 —— 那就是一把恒绿的尺）。
+#[test]
+fn the_windows_branch_hands_process_dpi_to_tauri() {
+    let shell =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/shell.rs"));
+    assert_eq!(
+        shell.matches("with_dpi_aware(builder, false)").count(),
+        1,
+        "`any_thread_hook` 的 Windows 分支没有把 winit 的 DPI 设置关掉 —— \
+         那个进程里就又有两个人在设 `SetProcessDpiAwarenessContext` 了"
+    );
+    assert!(
+        !shell.contains("with_dpi_aware(builder, true)"),
+        "有人把它改回 `true` 了 —— 现打读数说这一句是活的开关，\
+         改回 `true` 就是把「两个主人」那条风险重新请回来"
+    );
+}
