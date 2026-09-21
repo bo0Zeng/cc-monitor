@@ -20,21 +20,46 @@
 //! 而它们调的是**同一个进程级** Win32 接口（`SetProcessDpiAwarenessContext`）。
 //! ⇒ 一个进程里两个库都想设这块全局状态，而谁也不知道对方存在。
 //!
-//! **现打核过两边的源码，今天不会出事，理由要说准**：
-//! 两边设的**是同一个值**（`PER_MONITOR_AWARE_V2`，设不上就退 V1），
-//! 且 Windows 对「已经设过」返回 FALSE、两边都忽略这个返回值
-//! ⇒ 先跑的那个赢，而先跑的必然是 Tauri（主窗在 app 启动时就建了，
-//! 这个文件窗口只能由已经跑起来的 app 开）。
+//! ## ✅ 2026-09-20：**在一台真 Windows 11 桌面上量过了，然后才改的**
 //!
-//! ⚠ **但那是靠顺序碰巧对上的，不是靠设计**。真出事的形状是：
-//! 哪天 egui 窗口比 Tauri 主窗先建（或 winit 换了默认值），
+//! 之前这一节的结论是读源码推出来的，处置写着「建议，本刀没做 —— 没有 Windows 机器，
+//! 改了验不了」。那个理由现在不成立了：本机那台 Win11 虚拟机有活的交互桌面（session 1），
+//! 一个 scratchpad 探针（`tao` ＋ `eframe`，与本仓同版本、同 `glow` 后端、
+//! 清单与 `monitor.exe` 逐字同形 ⇒ 进程起来时是 `UNAWARE`）在那上面跑出四格：
+//!
+//! | 起 `tao` | winit `with_dpi_aware` | 进程起来时 | 建完 `tao` 事件循环 | 建完 eframe 之后 |
+//! |---|---|---|---|---|
+//! | 否 | **true**（默认） | `UNAWARE` | — | **`PER_MONITOR_AWARE_V2`** |
+//! | 否 | **false** | `UNAWARE` | — | **`UNAWARE`** |
+//! | 是 | true | `UNAWARE` | `PER_MONITOR_AWARE_V2` | `PER_MONITOR_AWARE_V2` |
+//! | 是 | false | `UNAWARE` | `PER_MONITOR_AWARE_V2` | `PER_MONITOR_AWARE_V2` |
+//!
+//! 四格逐条买到的东西：
+//!
+//! 1. **「两个主人」是真的，不是读源码读出来的担心** —— 第 1 行里**根本没有 `tao`**，
+//!    进程照样从 `UNAWARE` 变成 `PER_MONITOR_AWARE_V2` ⇒ **winit 自己确实会设这块进程级状态**。
+//! 2. **两边设的确实是同一个值** —— `tao`（第 3/4 行的中间一格）与 winit（第 1 行）
+//!    量出来都是 `PER_MONITOR_AWARE_V2`。⚠ `GetProcessDpiAwareness` 对 V1/V2 都回 `2`，
+//!    分得开是因为另读了一次线程的 awareness context。
+//! 3. **先跑的赢、后跑的是空操作** —— 第 3 行：`tao` 先设成 V2，之后 winit 带着
+//!    `dpi_aware=true` 再设一次，**结果没变、也没报错**。
+//! 4. 🔴 **`with_dpi_aware(false)` 是活的开关，不是一个装饰** —— 第 1 行对第 2 行，
+//!    只差这一个参数，结果一个 V2 一个 `UNAWARE`。
+//! 5. 🔴 **所以这一改在今天的生产顺序下是零行为变化** —— 第 3 行与第 4 行**逐格相同**。
+//!    改掉的只有一件事：**这个进程里不再有第二个人去设那块全局状态**。
+//!
+//! ⇒ 于是 [`any_thread_hook`] 的 Windows 分支加了 `with_dpi_aware(false)`，
+//! 把「进程 DPI 归谁管」明确判给 Tauri。判据住 [`tests`]。
+//!
+//! ⚠ **这一格虚拟机够用，可以说「验过了」** —— 它问的是**调用顺序与全局状态归属**，
+//! 是逻辑题，不是显卡题。⚠ 但**别把它读宽**：`设计/99 §4.0 G2a` 逐字记着
+//! KVM 虚拟机不是物理机 ⇒ **「真机上 DPI 缩放长什么样」那一格仍然没有读数**
+//! （那台机器 DPI 缩放 100%、单显示器、QXL 虚拟显卡）。
+//!
+//! 出事的形状仍然照记：哪天 egui 窗口比 Tauri 主窗先建（或 winit 换了默认值），
 //! WebView2 那侧的 DPI 行为会跟着变 —— 而本仓在 Windows DPI/WebView 上
 //! 已经吃过亏（`真相源/70` 那一族、以及 `F12 nudge` 那处 WebView2 bounds 修正）。
-//!
-//! ⇒ **建议（本刀没做，留给拍板）**：给 [`any_thread_hook`] 的 Windows 分支加一句
-//! `with_dpi_aware(false)`，把「进程 DPI 归谁管」明确判给 Tauri。
-//! **没直接做的理由**：手上没有 Windows 机器，改了也验不了，
-//! 而在一个验不了的平台上动全局状态的默认值，比留着这条注记更危险。
+//! 这一改正是把那个形状从「靠顺序碰巧对上」变成「只有一个人设它」。
 //!
 //! # ⚠ 没做到的，写在这儿而不是藏着〔第二刀 2026-09-20 订正〕
 //!
@@ -101,6 +126,11 @@ pub fn any_thread_hook(builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>
     {
         use winit::platform::windows::EventLoopBuilderExtWindows;
         EventLoopBuilderExtWindows::with_any_thread(builder, true);
+        // 🔴 **进程 DPI 归 Tauri 管** —— winit 不要再去设那块进程级状态。
+        // 四格现打读数与逐条论证住本模块头注（2026-09-20，真 Win11 桌面）。
+        // ⚠ 今天这一句是零行为变化（Tauri 必然先跑、已经设成 V2）；
+        //   它买的是「一个进程里只有一个人设它」。
+        EventLoopBuilderExtWindows::with_dpi_aware(builder, false);
     }
     #[cfg(target_os = "macos")]
     {
