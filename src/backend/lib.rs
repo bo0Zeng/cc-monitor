@@ -277,7 +277,30 @@ pub const PROTO_VERSION: u32 = 1;
 ///   而护栏照样绿（当前指纹与快照一起说了谎）。历史证据不是待同步的副本。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j / p2k 如实登记：这一半是**源码半**，
 ///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**。
-pub const BUILD_ID: &str = "p2l-rename-daemon-to-backend";
+///
+/// - p2m-files-read-online〔步 `24f` **第二刀** · `设计/96 §2.9` · `设计/60 §3.5`〕：
+///   **`files-read` 这一族上线** —— 四条**纯读**能力同拍进两个命令面
+///   （[`SUBCOMMANDS`] 25 → 29：`--files-ls` / `--files-stat` / `--files-find` /
+///   `--files-index-status`；`inbound::REGISTRY` 与 `inbound::COMMANDS` 10 → 14）。
+///   这是本谱系里第二次两面一起变（上一次是 p2j）。
+///   ⚠ **必须 bump**，而这一次 p2j 那两个失效形状**同时**成立：
+///   ① CLI 面 —— 旧后端上这四个 flag 落进 `unknown argument` + exit 2；
+///   ② 帧面 —— 旧后端的 `hello.commands` 里没有它们 ⇒ monitor 的
+///      `InboundClient::accepts` 当场判 `CallError::Unsupported`、一个字节都不发。
+///   两条都止于「调用方判 stale 只看 build_id」⇒ 不 bump 就不重装，能力在远端休眠。
+///   🔴 **别把它读成「文件管理器的搜索能用了」**，两条如实登记（全文在 `files/mod.rs` 头注）：
+///   ① **索引今天没有任何线上办法叫它建** —— `设计/60 §3.5.2a` 把节拍留在调用方，
+///      而那条「重走」命令**不在** `设计/96 §2.9` 那张四条的表里
+///      ⇒ `files::index::rebuild_once` 与 `files::browse_watch::set_browsing` 至今
+///      零生产调用方 ⇒ 真机上 `files-find` 恒回 `index_missing: true`。
+///      这是设计面的缺口（要补得先在那张表上裁第五条），**不在本刀里自己长出来**。
+///   ② **消费侧还没有** —— `src/bridge` 那一头一个字节没动。
+///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j / p2k / p2l 如实登记：这一半是**源码半**，
+///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做** ——
+///   本工作树没铺 `src/bridge/embedded-backends/`，现打
+///   `bash tests/scripts/re-embed.sh --check` 答的是「这棵树上没有一份对不上的字节」，
+///   **不是**「字节是对的」（那条边界是它自己头注里逐字写的）。
+pub const BUILD_ID: &str = "p2m-files-read-online";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -390,6 +413,16 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 它住这张表里的理由与 `--relay` 逐字相同：`is_query_mode` 那道闸门读的是本表，
     // 不登记就会被当成未知 flag 静默进流模式。
     "--dial",
+    // 〔步 `24f` 第二刀 09-20〕`files-read` 这一族的 CLI 面。登记在这里的理由与上面
+    // 那几条逐字相同 —— `is_query_mode` 那道**闸门**读的就是本表；不在表里 ⇒ 当未知 flag
+    // ⇒ 打一行 warn 之后照常进流模式，调用方拿到的是一堆 jsonl 行而不是它要的应答。
+    // ⚠ 线上名用 `-` 不用 `.`（能力名仍是 `files.ls` 那一套）：理由整段在
+    // `files::answer_wire` 的头注 —— 一句话是 `"--files.ls"` 会被本仓两个 token
+    // 取词器**静默丢弃**，那等于把这四条从三条判据底下同时抽走而三条都照常报绿。
+    "--files-find",
+    "--files-index-status",
+    "--files-ls",
+    "--files-stat",
     "--fork-session",
     "--kill",
     "--launch",
