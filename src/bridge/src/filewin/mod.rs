@@ -151,6 +151,7 @@
 pub mod copy;
 pub mod corpus;
 pub mod entry;
+pub mod fonts;
 pub mod rows;
 pub mod scale;
 pub mod shell;

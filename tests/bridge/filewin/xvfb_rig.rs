@@ -144,14 +144,41 @@ impl Screen {
         //   立本台架那一拍因为「叫停不许跑门禁」而没跑全量 ⇒ 撞车在那一拍看不见。
         //   **教训：并行安全的东西，单独跑绿不算验过。**
         //
-        // ⇒ 起点由一个进程级原子计数器发，**每次 `start()` 拿到不同的基点**；
-        //   锁文件那一跳留着当便宜的预筛（它省掉大多数无谓 spawn），但**不再是正确性依赖**。
+        // ⇒ 起点由一个进程级原子计数器发，**每次 `start()` 拿到不同的基点**。
+        //
+        // 🔴 **〔2026-09-21 再修 —— 上一版那句「不再是正确性依赖」是假的〕**
+        //
+        // 上一版逐字写着「锁文件那一跳留着当便宜的预筛……**不再是正确性依赖**」。
+        // **那句话错了，而且错得会让这两格永久红。** 现打出来的形状：
+        //   · `Drop` 只 `kill` 掉 Xvfb，**没有删 `/tmp/.X<n>-lock`** ——
+        //     SIGKILL 之下 X 服务器不会自己收尾 ⇒ **每跑一趟漏一个锁**。
+        //   · 而这一跳看到锁就 `continue` ⇒ 30 个号全是陈旧锁时，
+        //     30 次全 `continue`，`start()` 回的是初值「一个候选号都没试到」。
+        //   ⇒ **号池只减不增，跑够 30 趟就永久红。** 那不是抖动，是棘轮。
+        // 现打（2026-09-21）：`:90`–`:119` **30/30 全被锁**，而这些锁记的 PID **全死了**，
+        // 当时机器上真在跑的 `Xvfb` 是 **0 个**。四趟里红两趟，正是池子在那一刻见底。
+        // ⚠ 而那一版的注释还写着「`screen` 在这里析构 ⇒ 那台 Xvfb 被杀掉，**号也就还回去了**」——
+        //   **也是假的**：进程死了，锁还在，号并没有还回去。
+        //
+        // ⇒ 两头都修：**这一跳改成看「锁里那个 PID 还活着没有」**（见 [`classify_lock`]），
+        //   陈旧锁当场回收；**`Drop` 把自己那个锁删掉**（见 `impl Drop`）。
         static NEXT_BASE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let base = NEXT_BASE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         for step in 0..30u32 {
             let num = 90 + (base + step) % 30;
-            if std::path::Path::new(&format!("/tmp/.X{num}-lock")).exists() {
-                continue;
+            match slot(num) {
+                Slot::Live(pid) => {
+                    last = format!("`:{num}` 上有个活着的 X 服务器（pid {pid}）");
+                    continue;
+                }
+                Slot::Stale(pid) => {
+                    // 🔴 **陈旧锁当场回收** —— 不回收就等于把这个号永久报废。
+                    //    只在本台架自己的号段（90–119）里做，且只在 PID 已死时做。
+                    let _ = std::fs::remove_file(lock_path(num));
+                    let _ = std::fs::remove_file(format!("/tmp/.X11-unix/X{num}"));
+                    eprintln!("  〔台架〕回收陈旧锁 :{num}（记的 pid {pid} 已不在）");
+                }
+                Slot::Free => {}
             }
             let display = format!(":{num}");
             let child = Command::new("Xvfb")
@@ -195,9 +222,87 @@ impl Screen {
 
 impl Drop for Screen {
     fn drop(&mut self) {
+        let pid = self.child.id();
         let _ = self.child.kill();
         let _ = self.child.wait();
+        // 🔴 **把自己那个锁删掉。** SIGKILL 之下 X 服务器不会自己收尾 ⇒
+        //    不删就是漏一个号，而号池只有 30 个（理由逐条住 `start()` 里那段）。
+        //
+        // ⚠ **只删记着我们自己这个 pid 的那一份** —— 不许见锁就删：
+        //    别人（另一条并行的格、或机器上真的 X 会话）的锁不归我们管。
+        if let Some(num) = self.display.strip_prefix(':').and_then(|n| n.parse::<u32>().ok()) {
+            if lock_records_pid(num, pid) {
+                let _ = std::fs::remove_file(lock_path(num));
+                let _ = std::fs::remove_file(format!("/tmp/.X11-unix/X{num}"));
+            }
+        }
     }
+}
+
+/// 一个候选显示号的占用状况。
+///
+/// 🔴 **三态，不是「锁在不在」两态** —— 「有人在用」与「有人留了个死锁」
+/// 必须分得开，否则一个死锁就把那个号永久报废（那正是 2026-09-21 逮到的病）。
+#[derive(Debug, PartialEq, Eq)]
+pub enum Slot {
+    /// 没有锁文件。
+    Free,
+    /// 锁在，记的进程**还活着** ⇒ 真有人在用，别碰。
+    Live(u32),
+    /// 锁在，记的进程**已经不在** ⇒ 可回收。
+    Stale(u32),
+}
+
+/// `/tmp/.X<n>-lock` 的住址。抽成函数是为了让判据能指着它说话。
+fn lock_path(num: u32) -> String {
+    format!("/tmp/.X{num}-lock")
+}
+
+/// **纯函数**：由锁文件的内容与一个「这个 pid 活着吗」的判定，算出占用状况。
+///
+/// 🔴 抽成纯函数的理由是**可判**：判据能拿合成输入把两个方向都打一遍
+/// （活 pid ⇒ `Live`、死 pid ⇒ `Stale`），**不用去动 `/tmp`**（动它会砸掉并行跑的别的格）。
+///
+/// ⚠ **读不懂的内容一律判 `Live`（保守）** —— 宁可放弃一个号，
+/// 也不要把别人正在用的屏当成垃圾回收掉。
+pub fn classify_lock(contents: Option<&str>, alive: impl Fn(u32) -> bool) -> Slot {
+    let Some(body) = contents else {
+        return Slot::Free;
+    };
+    // X11 的约定：锁里是十进制 pid（左侧空格补到 10 位）＋ 换行。
+    match body.trim().parse::<u32>() {
+        Ok(pid) if pid > 0 => {
+            if alive(pid) {
+                Slot::Live(pid)
+            } else {
+                Slot::Stale(pid)
+            }
+        }
+        // 解不出 pid ⇒ 不知道是谁的 ⇒ 当成有人在用。
+        _ => Slot::Live(0),
+    }
+}
+
+/// 这个 pid 还活着吗。
+///
+/// ⚠ 走 `/proc` —— **Linux 专有**。本台架本来就只在有 `Xvfb`／`xdotool` 的
+/// Unix 上跑（整份文件 `#[cfg(not(windows))]`），而那两样在实践中就是 Linux。
+/// 哪天要上别的 Unix，这一处要重判。
+fn pid_alive(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{pid}")).exists()
+}
+
+/// 读盘那一层：把 `classify_lock` 接到真的 `/tmp` 上。
+fn slot(num: u32) -> Slot {
+    classify_lock(std::fs::read_to_string(lock_path(num)).ok().as_deref(), pid_alive)
+}
+
+/// 这个号的锁**记的是不是我们这个 pid**。
+fn lock_records_pid(num: u32, pid: u32) -> bool {
+    std::fs::read_to_string(lock_path(num))
+        .ok()
+        .and_then(|b| b.trim().parse::<u32>().ok())
+        == Some(pid)
 }
 
 /// 在 `display` 那台屏上跑一条 `xdotool`。

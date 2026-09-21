@@ -851,3 +851,88 @@ fn real_pointer_events_reach_egui_and_the_double_click_side_is_still_unjudgeable
         run.reading("b.row_row")
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Xvfb 台架自己的两条 —— 🔴 **量具会自己烂掉，所以量具也要有人看着**
+// ═══════════════════════════════════════════════════════════════════
+
+/// 🔴 **占用判定必须分得清「有人在用」与「有人留了个死锁」。**
+///
+/// # 它治的是一条真发生过的病（2026-09-21 现打）
+///
+/// 上一版的判定是「`/tmp/.X<n>-lock` 在不在」两态。而台架的 `Drop` 只 `kill`
+/// 掉 Xvfb、**没删那个锁**（SIGKILL 之下 X 服务器不自己收尾）⇒ **每跑一趟漏一个号**。
+/// 号池只有 30 个 ⇒ **跑够 30 趟，那两格永久红**。
+/// 现打当时：`:90`–`:119` **30/30 全被锁**，这些锁记的 pid **全死了**，机器上真在跑的
+/// `Xvfb` 是 **0 个**。四趟里红两趟 —— 那不是抖动，是号池在那一刻见底。
+///
+/// 🔴 更贵的一层：**它红的样子是「这一格判不了」，而那与「这一格过了」在终端上分不开**
+/// ⇒ 上一次门禁「27 格全绿」是在号池还没见底时取的读数。
+///
+/// # 为什么判纯函数而不判 `/tmp`
+///
+/// 往 `/tmp` 里种 30 个假锁会**砸掉同时并行跑的别的格**。
+/// ⇒ 把判定抽成纯函数（内容 ＋ 一个「这个 pid 活着吗」的判定），
+/// 两个方向都用合成输入打，**一个字节都不碰文件系统**。
+#[test]
+fn a_stale_lock_and_a_live_lock_are_told_apart() {
+    use crate::filewin::rows::testing::xvfb::{classify_lock, Slot};
+
+    // 阳性方向：pid 活着 ⇒ 别碰
+    assert_eq!(
+        classify_lock(Some("      1234\n"), |p| p == 1234),
+        Slot::Live(1234),
+        "锁记的 pid 活着，却没判成「有人在用」—— 会把别人正在用的屏回收掉"
+    );
+    // 🔴 阴性方向：pid 已死 ⇒ 可回收。**没有这一条，整条判据就是上一版那个恒「别碰」**
+    assert_eq!(
+        classify_lock(Some("      1234\n"), |_| false),
+        Slot::Stale(1234),
+        "锁记的 pid 已经不在，却没判成「可回收」—— 这个号从此永久报废，\
+         而它报废的样子是「这一格判不了」，与「过了」在终端上分不开"
+    );
+    // 没有锁
+    assert_eq!(classify_lock(None, |_| true), Slot::Free);
+    // 🔴 读不懂的内容**一律保守判「有人在用」** —— 宁可放弃一个号，
+    //    也不要把别人的屏当垃圾回收。
+    for junk in ["", "  \n", "not-a-pid", "0", "-7"] {
+        assert_eq!(
+            classify_lock(Some(junk), |_| false),
+            Slot::Live(0),
+            "锁内容 {junk:?} 解不出 pid，却没保守判成「有人在用」"
+        );
+    }
+}
+
+/// 🔴 **台架收场之后不许留下锁文件** —— 这是「号池只减不增」那条病的另一头。
+///
+/// ⚠ 它买的是**行为**：真起一台 Xvfb、真析构、再看盘上。
+/// 上面那条纯函数判据**买不到这一条**（它不碰文件系统）——
+/// 两条各买一半，合起来才是「号能还回去」。
+#[test]
+fn the_rig_leaves_no_lock_behind_when_it_is_dropped() {
+    use crate::filewin::rows::testing::xvfb;
+    xvfb::require_toolbox("「台架收场不漏锁」");
+
+    let (display, lock) = {
+        let screen = xvfb::Screen::start()
+            .unwrap_or_else(|e| panic!("起不了 Xvfb ⇒ 这一格判不了，不是过了：{e}"));
+        let d = screen.display().to_string();
+        let num: u32 = d.trim_start_matches(':').parse().expect("显示号该是个数");
+        let lock = format!("/tmp/.X{num}-lock");
+        // 反空真：**这一趟真的产生过那个锁**，否则下面「锁没了」是句空话。
+        assert!(
+            std::path::Path::new(&lock).exists(),
+            "Xvfb 起在 {d} 上，却没有 {lock} —— 那么下面那条「收场后锁没了」\
+             会在一个从来不存在的东西上恒真"
+        );
+        (d, lock)
+    }; // ← `screen` 在这里析构
+
+    assert!(
+        !std::path::Path::new(&lock).exists(),
+        "台架在 {display} 上收场了，{lock} 还在 —— 这个号从此还不回去。\
+         号池只有 30 个（`:90`–`:119`），漏够 30 次这一族判据就永久红，\
+         而它红的样子是「判不了」，与「过了」在终端上长得一样"
+    );
+}
