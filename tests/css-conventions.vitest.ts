@@ -296,7 +296,11 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //      如实记在这里，等哪一轮真动这张表时一并收。
   // ⚠ 〔步 20 · 2026-09-19〕`614 → 662`：又漂了一次，原因同上（本轮在 `panel.ts`
   //    上游加了字段与注释）。**住址没变、内容没变**，只是行号跟着挪。
-  "src/settings/panel.ts:662":
+  // ⚠ 〔`P12` · 2026-09-21〕`662 → 668` / `1085 → 1091` / `1092 → 1098`：**又漂了一次**，
+  //    原因同上 —— 本轮在 `panel.ts` 上游加了一行 import ＋ 建面板时多挂了一条常驻条
+  //    （「配置里有不认识的键」那条）。**住址没变、内容没变**，只是行号跟着挪；
+  //    三处逐处现打核过（`b.el` / 两处 `perMachineFallbackHint`），语义一字未动。
+  "src/settings/panel.ts:668":
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -304,9 +308,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1085":
+  "src/settings/panel.ts:1091":
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1092":
+  "src/settings/panel.ts:1098":
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
