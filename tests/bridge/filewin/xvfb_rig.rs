@@ -133,7 +133,11 @@ impl Screen {
         // —— **那是 TOCTOU**：`cargo test` 把这些格**并行**跑在同一个进程里，
         // 两格同时看到 `:90` 没锁、同时 `spawn Xvfb :90`，一个赢、另一个的窗口
         // 当场变成别人屏上的野窗口 ⇒ winit 抛 `BadWindow`
-        // （`x11/util/geometry.rs:188` 逐字 `Failed to translate window coordinates`）
+        // （winit 的 `x11/util/geometry.rs` 抛的，逐字 `Failed to translate window coordinates`
+        //   ＋ `X11Error { error_kind: Window, error_code: 3 }`。
+        //   ⚠ **刻意不写行号** —— 那是**仓外**位置，行号随 winit 版本走；
+        //   而点仓外符号名会被 `structural_scan` 判红（22b·B 那一拍现打踩过一次）
+        //   ⇒ 照它给的出路：指文件 ＋ 逐字引那句话。）
         // ⇒ 子进程被信号打死、退出码 `None`。
         //
         // ⚠ **这一形只在完整门禁里出现**：单独跑任一格都是绿的（一次只有一台 Xvfb）。
