@@ -4,7 +4,7 @@
 //!
 //! backend 的 `control/launch.rs` 从 U8a-2b 起就完整了：argv 直传不过 shell、`send-into`
 //! 一等模式、真进程 + 真 tmux 的 e2e（`inbound-backend-frames.sh` 四个 launch 场景）。
-//! monitor 侧的编码器（`inbound_client::launch_args`）也早就写好了 ——
+//! monitor 侧的编码器（`command_args::launch_args`，〔步 3.5 09-21〕从 `inbound_client` 剥出来的）也早就写好了 ——
 //! 但它带着 `#[allow(dead_code)]`：**零生产调用方**。
 //!
 //! 三视角复盘（2026-08-03）点破的「方向偏移」就是这个形状：九个 commit 完成的是
@@ -175,7 +175,7 @@ pub async fn backend_send_into(req: SendIntoRequest) -> SendIntoResponse {
     };
     // ⚠ `LaunchExtras::default()`：`agent` / `width` / `height` 是 `create-or-attach` 专有的
     //   （`K-P2` `D3` 加的），这条路**只发 `send-into`** ⇒ 一个都不该带。
-    let args = crate::backend::control::inbound_client::launch_args(
+    let args = crate::backend::control::command_args::launch_args(
         "send-into",
         &req.name,
         &req.payload,

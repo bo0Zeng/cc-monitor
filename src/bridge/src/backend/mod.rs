@@ -174,6 +174,18 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "U8a-2c-1：backend `launch` 的发送端（`send-into` 那半边；attach 留在用户终端）",
     ),
     (
+        "control/command_args.rs",
+        "control",
+        "🔴 〔`设计/05 §8.1` 步 3.5 · 2026-09-21〕**从 `control/inbound_client.rs` 剥出来的业务契约** —— \
+         `launch` / `capture-pane` 的**参数构造器**（`launch_args` / `capture_pane_args` / `LaunchExtras`）。\
+         剥的理由不是整理：`设计/05 §2` 的 `C1`（零业务语义）在 `inbound_client.rs` 上咬到 \
+         `sid` 与 `agent` 两个词，**两处都在这三样身上**（`ccm_sid` 参数 · `extras.agent` 字段）。\
+         「一条命令要带哪几个业务字段」是**载荷的内容**，而 `inbound_client.rs` 只该管载荷的搬运 —— \
+         它是 `§8` 步 3 点名要圈进通信层的传输面之一。\
+         ⇒ 剥完现打：那一份从 `C1 · X4`（13/2）变成 `X4` 独咬（14/1）。\
+         ⚠ 它自己**不是**通信层成员，也不该是：这里就是那些业务词的家。",
+    ),
+    (
         "control/backend_route.rs",
         "control",
         "F04c：「这条命令能不能回落」的**唯一**判定（`kill` 与 `send-keys` 共用）。\
