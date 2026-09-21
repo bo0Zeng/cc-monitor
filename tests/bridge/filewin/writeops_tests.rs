@@ -1,0 +1,838 @@
+//! [`super`] 的判据 —— **那四条写操作**（`设计/99 §4.6.4` 的前半）。
+//!
+//! # 🔴 这一摞里哪几条是承重的
+//!
+//! | 判据 | 它钉的那一形 | 少了它会怎样 |
+//! |---|---|---|
+//! | [`a_protected_path_is_blocked_before_anything_is_asked_or_done`] | 围栏在**问与做之前**：踩线的既不进问答也不进 `apply` | 用户会被问「要删这个吗」，答「删」之后才被拒 —— 而那一问已经教他「这是可以删的」 |
+//! | [`a_rename_is_fenced_on_both_of_its_paths`] | **两路径各过一遍** | 能把任意文件改名**成** `<远端>/projects/<proj>/<sid>.jsonl`，盖掉正被 Claude 打开的会话 |
+//! | [`an_ordinary_path_really_gets_through_the_fence`] | 🔴 **阴性对照** —— 围栏不是「什么都挡」 | 上面两条可以靠「一律拒」全绿，而那时窗口一件事都干不了 |
+//! | [`the_pools_own_fence_still_refuses_a_protected_path`] | **第二道**（池子入口那道 `guard_write`）今天是活的 | 本层被绕过就没人挡了 |
+//! | [`the_question_is_asked_exactly_once_for_the_whole_batch`] | N 件只问一次，且顺序是 问 → 做 | 每件弹一次（旧面板 `uploadDropped` 那一形） |
+//! | [`nothing_is_touched_when_the_answer_is_no`] | 「问过了」与「做了」分得开 | 「问了但照做」在读数上看不出来 |
+//!
+//! # ⚠ 这一摞买不到什么（逐条）
+//!
+//! - **一趟真操作的读数买不到**（本仓红线不许起真连接）⇒ `apply` 那一侧
+//!   除了 [`the_pools_own_fence_still_refuses_a_protected_path`] 那一条**刻意不过网**
+//!   的以外，全部喂的是合成适配器。
+//! - **生产那一侧递不进 `N > 1`**（窗口还没有多选）—— 逐字登记在 `super` 头注。
+//!   这一摞按 `N > 1` 喂的是 [`super::run_writes`] 本体，也就是生产那个函数。
+
+use std::sync::atomic::{AtomicUsize, Ordering as O};
+
+use super::*;
+
+/// 一条**受保护**的路径（`is_protected_claude_data_path` 的结构判定：
+/// `projects/` 下恰两段、以 `.jsonl` 收尾）。
+fn protected() -> String {
+    "/home/u/.claude/projects/dash-proj/abc-123.jsonl".to_string()
+}
+
+/// 一条普通路径（同一棵树下，但**不是**那个结构）。
+fn ordinary() -> String {
+    "/home/u/.claude/projects/dash-proj/notes.md".to_string()
+}
+
+fn row(name: &str, is_dir: bool, lossy: bool) -> Row {
+    Row {
+        name: name.to_string(),
+        path: format!("/srv/data/{name}"),
+        is_dir,
+        size: 7,
+        lossy_name: lossy,
+    }
+}
+
+/// 一台**时序台架**（形状照 `copy_tests::Tape` 与 `transfer_tests::Tape`）。
+#[derive(Default)]
+struct Tape {
+    seq: AtomicUsize,
+    events: std::sync::Mutex<Vec<(usize, String)>>,
+}
+
+impl Tape {
+    fn mark(&self, what: &str) -> usize {
+        let n = self.seq.fetch_add(1, O::SeqCst);
+        self.events.lock().unwrap().push((n, what.to_string()));
+        n
+    }
+    fn seq_of(&self, what: &str) -> Option<usize> {
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(_, w)| w == what)
+            .map(|(n, _)| *n)
+    }
+}
+
+/// 一个记账的 `apply`：把每一件真做过的操作按顺序记下来。
+#[derive(Default)]
+struct Applied(std::sync::Mutex<Vec<WriteOp>>);
+
+impl Applied {
+    fn seen(&self) -> Vec<WriteOp> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴 正题一：围栏 —— **两个方向都有判据**
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 受保护路径上的删除 / 改名 / 改权限 ⇒ **一件都不做，一句都不问，而且出声**。
+///
+/// 三件一起喂：漏掉任何一种操作的那一形，只喂一种是看不见的。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_protected_path_is_blocked_before_anything_is_asked_or_done() {
+    let asked = AtomicUsize::new(0);
+    let applied = Applied::default();
+    let ops = vec![
+        WriteOp::Delete {
+            path: protected(),
+            is_dir: false,
+        },
+        WriteOp::Chmod {
+            path: protected(),
+            mode: 0o000,
+        },
+        WriteOp::Rename {
+            from: protected(),
+            to: "/home/u/gone.jsonl".to_string(),
+        },
+    ];
+    let out = run_writes(
+        ops.clone(),
+        |a| {
+            asked.fetch_add(a.len(), O::SeqCst);
+            async move { a } // 就算有人答「全做」也不该有东西做
+        },
+        |op| {
+            applied.0.lock().unwrap().push(op);
+            async move { Ok(()) }
+        },
+    )
+    .await;
+
+    assert_eq!(
+        applied.seen(),
+        Vec::new(),
+        "受保护路径上竟然真的动了手：{:?}",
+        applied.seen()
+    );
+    assert_eq!(
+        asked.load(O::SeqCst),
+        0,
+        "受保护的那几件被摆到人面前问了 —— 那一问会教用户「这是可以删的」，\
+         而答完之后它照样做不了"
+    );
+    assert_eq!(out.blocked.len(), 3, "三件都该被挡，实得 {:?}", out.blocked);
+    assert_eq!(out.ok, 0);
+    assert_eq!(out.asked, 0);
+    // **出声**：每一句都点名那条路径，而且带着那个前缀（界面按它画成警告色）。
+    for line in &out.blocked {
+        assert!(
+            line.starts_with(FENCE_PREFIX),
+            "被挡那句话没有前缀 `{FENCE_PREFIX}`：{line}"
+        );
+        assert!(
+            line.contains(&protected()),
+            "被挡那句话没点名是哪条路径：{line}"
+        );
+    }
+}
+
+/// 🔴 **改名那一形：两个参数各过一遍围栏。**
+///
+/// 这一条对着 `remote_write_registry::a_two_path_write_entry_fences_both_of_its_paths`
+/// 的同一个洞 —— 那一条是死值验 `M7` 逼出来的（删掉 `guard_write(&to)?`
+/// 全仓一条不红）。本层要是只看 `paths()` 的第一条，就能把任意文件
+/// **改名成**一个 Claude 数据源名，盖掉正被打开的会话。
+#[test]
+fn a_rename_is_fenced_on_both_of_its_paths() {
+    let into = WriteOp::Rename {
+        from: "/srv/data/x.bin".to_string(),
+        to: protected(),
+    };
+    let outof = WriteOp::Rename {
+        from: protected(),
+        to: "/srv/data/x.bin".to_string(),
+    };
+    assert_eq!(
+        fenced_path(&into),
+        Some(protected().as_str()),
+        "把普通文件**改名成**一个 Claude 数据源名没被挡 —— \
+         那与覆写那份 jsonl 一样会损坏会话"
+    );
+    assert_eq!(
+        fenced_path(&outof),
+        Some(protected().as_str()),
+        "把正在用的会话文件**改名走**没被挡"
+    );
+    // 两侧都干净 ⇒ 过。反空真：这把尺子不是恒回 `Some`。
+    assert_eq!(
+        fenced_path(&WriteOp::Rename {
+            from: "/srv/data/x.bin".to_string(),
+            to: "/srv/data/y.bin".to_string(),
+        }),
+        None
+    );
+    // **处数自检**：改名真的问了两条路径，不是一条。
+    assert_eq!(
+        into.paths().len(),
+        2,
+        "改名只交出一条路径 —— 围栏就只问得到一半"
+    );
+    assert_eq!(
+        WriteOp::Delete {
+            path: protected(),
+            is_dir: true
+        }
+        .paths()
+        .len(),
+        1
+    );
+}
+
+/// 🔴 **阴性对照**：普通路径必须**真的过**，而且 `apply` 真的收到了它。
+///
+/// 没有这一条，上面两条可以靠「一律拒」全绿 —— 而那时这个窗口一件事都干不了，
+/// 屏幕上却只有一句「挡住了」。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_ordinary_path_really_gets_through_the_fence() {
+    let applied = Applied::default();
+    let ops = vec![
+        WriteOp::Mkdir {
+            path: "/srv/data/newdir".to_string(),
+        },
+        WriteOp::Delete {
+            path: ordinary(),
+            is_dir: false,
+        },
+        WriteOp::Chmod {
+            path: ordinary(),
+            mode: 0o644,
+        },
+        WriteOp::Rename {
+            from: ordinary(),
+            to: "/home/u/.claude/projects/dash-proj/notes2.md".to_string(),
+        },
+    ];
+    for op in &ops {
+        assert_eq!(
+            fenced_path(op),
+            None,
+            "普通路径被围栏挡了：{}（那条围栏的判定是**结构**判定，\
+             `projects/` 下恰两段 ＋ `.jsonl` 收尾 —— 同一棵树下的普通文件不该中）",
+            op.label()
+        );
+    }
+    let out = run_writes(
+        ops.clone(),
+        |a| async move { a }, // 全答「做」
+        |op| {
+            applied.0.lock().unwrap().push(op);
+            async move { Ok(()) }
+        },
+    )
+    .await;
+    assert_eq!(
+        applied.seen(),
+        ops,
+        "过了围栏的那几件没有原样交到 `apply` 手上"
+    );
+    assert_eq!(out.ok, 4);
+    assert!(out.blocked.is_empty(), "实得 {:?}", out.blocked);
+}
+
+/// 🔴 **第二道围栏今天是活的** —— 池子入口那道 `guard_write`。
+///
+/// # 为什么这一条不需要连接，而它仍然是真读数
+///
+/// 那四条命令的**第一行**就是 `guard_write(&path)?` ⇒ 受保护路径上它在
+/// `with_sftp` **之前**就返回 `Err`，一个 packet 都不发。
+/// ⇒ 这一条在一台没有远端的机器上跑得动，而它买到的是
+/// 「**本层被绕过时还有人挡**」（有人直接调 [`super::apply_remote`]，
+/// 或者路径在两步之间才变成受保护的）。
+///
+/// ⚠ **阴性对照这一条只走到围栏那一步，不往下走**：普通路径上这四条命令会去
+/// `with_sftp` 拨一条真连接，而本仓红线不许（而且那是一趟 DNS 往返，判据会变慢变飘）。
+/// ⇒ 阴性那一侧判的是**那道围栏的判定本身**：`guard_write` 的函数体逐字是
+/// 「`is_protected_claude_data_path(path)` 为真才拒」⇒ 判定为假 ⇒ 它必定放过。
+/// 那个判定与本层[`super::fenced_path`]问的是**同一个函数**（本模块头注 §二）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_pools_own_fence_still_refuses_a_protected_path() {
+    let cfg = crate::ssh_source::RemoteConfig {
+        host: "example.invalid".into(),
+        label: "writeops-fence".into(),
+        port: 22,
+        user: "nobody".into(),
+        key_path: None,
+        backend_path: "/nonexistent".into(),
+        host_key_fingerprint: None,
+        addresses: Vec::new(),
+        jump: None,
+    };
+    let ops = vec![
+        WriteOp::Mkdir { path: protected() },
+        WriteOp::Delete {
+            path: protected(),
+            is_dir: false,
+        },
+        WriteOp::Chmod {
+            path: protected(),
+            mode: 0o600,
+        },
+        WriteOp::Rename {
+            from: "/srv/data/x.bin".to_string(),
+            to: protected(),
+        },
+    ];
+    for op in &ops {
+        let e = super::apply_remote(&cfg, op)
+            .await
+            .expect_err("池子那一侧竟然放过了一条受保护路径");
+        assert!(
+            e.contains("Claude"),
+            "报的不是围栏那句话，而是 `{e}` —— 那说明它没在围栏上被拒，\
+             而是走到了连接那一步（围栏被谁摘了）"
+        );
+    }
+    // 🔴 阴性对照：同一个判定在普通路径上必须为**假** ⇒ 那道围栏必定放过。
+    //    （为什么不真调一趟：理由住本条头注最后一段。）
+    for p in [
+        "/srv/data/newdir",
+        &ordinary(),
+        "/home/u/.claude/projects/dash-proj/sub/deep/abc.jsonl", // `projects/` 下不是恰两段
+        "/home/u/notes/abc.jsonl",                               // 不在 `projects/` 下
+    ] {
+        assert!(
+            !crate::sftp_pool::is_protected_claude_data_path(p),
+            "`{p}` 被那道围栏当成 Claude 数据源了 —— 它在拒一切，\
+             而那时这个窗口一件事都干不了"
+        );
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴 正题二：一次问完（照 `run_drop` 的形状办）
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 **N 件只问一次**，而且那一问拿到的是**全部**要问的那几件（相等断言），
+/// 并且它排在任何一次动手**之前**（时序号相比）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
+    let tape = Tape::default();
+    let times = AtomicUsize::new(0);
+    let seen: std::sync::Mutex<Vec<WriteOp>> = std::sync::Mutex::new(Vec::new());
+    // 五件：三件要问（删 ×2 · 改权限 ×1）、两件不问（新建目录 · 改名）。
+    let dels: Vec<WriteOp> = (0..2)
+        .map(|i| WriteOp::Delete {
+            path: format!("/srv/data/d{i}"),
+            is_dir: false,
+        })
+        .collect();
+    let mut ops = dels.clone();
+    ops.push(WriteOp::Chmod {
+        path: "/srv/data/c".into(),
+        mode: 0o755,
+    });
+    ops.push(WriteOp::Mkdir {
+        path: "/srv/data/m".into(),
+    });
+    ops.push(WriteOp::Rename {
+        from: "/srv/data/a".into(),
+        to: "/srv/data/b".into(),
+    });
+
+    let out = run_writes(
+        ops.clone(),
+        |a| {
+            times.fetch_add(1, O::SeqCst);
+            tape.mark("confirm");
+            *seen.lock().unwrap() = a.clone();
+            async move { a } // 全答「做」
+        },
+        |_op| {
+            let t = &tape;
+            async move {
+                t.mark("apply");
+                Ok::<(), String>(())
+            }
+        },
+    )
+    .await;
+
+    assert_eq!(
+        times.load(O::SeqCst),
+        1,
+        "问了 {} 次 —— 要的是**一次问完**（旧面板那一形是每件弹一次）",
+        times.load(O::SeqCst)
+    );
+    let want: Vec<WriteOp> = ops.iter().filter(|o| o.needs_confirm()).cloned().collect();
+    assert_eq!(
+        *seen.lock().unwrap(),
+        want,
+        "那一问摆出来的不是**全部**要问的那几件"
+    );
+    assert_eq!(out.asked, 3, "该问的件数不对");
+    let (c, a) = (
+        tape.seq_of("confirm").expect("一次都没问"),
+        tape.seq_of("apply").expect("一件都没做"),
+    );
+    assert!(
+        c < a,
+        "问的号是 {c}、第一次动手是 {a} —— 先问完再动手这句话破了"
+    );
+    assert_eq!(out.ok, 5);
+    assert_eq!(out.skipped, 0);
+}
+
+/// 🔴 **「问过了」与「做了」分得开**：答「都别做」⇒ 要问的那几件一件都不做，
+/// 而**不用问**的那几件照旧做（它们从来不在那一问的射程里）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nothing_is_touched_when_the_answer_is_no() {
+    let applied = Applied::default();
+    let mkdir = WriteOp::Mkdir {
+        path: "/srv/data/m".into(),
+    };
+    let del = WriteOp::Delete {
+        path: "/srv/data/d".into(),
+        is_dir: false,
+    };
+    let out = run_writes(
+        vec![del.clone(), mkdir.clone()],
+        |_| async move { Vec::new() }, // 「都别做」
+        |op| {
+            applied.0.lock().unwrap().push(op);
+            async move { Ok(()) }
+        },
+    )
+    .await;
+    assert_eq!(
+        applied.seen(),
+        vec![mkdir],
+        "答「都别做」之后动手的那几件不对 —— 删除必须没做，新建目录该照旧做"
+    );
+    assert_eq!(out.asked, 1);
+    assert_eq!(out.skipped, 1);
+    assert_eq!(out.ok, 1);
+}
+
+/// 一件要问的都没有 ⇒ **不问**。弹一个空框是噪音，不是慎重（同 `run_drop`）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_batch_with_nothing_dangerous_asks_nobody() {
+    let asked = AtomicUsize::new(0);
+    let applied = Applied::default();
+    let out = run_writes(
+        vec![
+            WriteOp::Mkdir {
+                path: "/srv/data/m".into(),
+            },
+            WriteOp::Rename {
+                from: "/srv/data/a".into(),
+                to: "/srv/data/b".into(),
+            },
+        ],
+        |_| {
+            asked.fetch_add(1, O::SeqCst);
+            async move { Vec::new() }
+        },
+        |op| {
+            applied.0.lock().unwrap().push(op);
+            async move { Ok(()) }
+        },
+    )
+    .await;
+    assert_eq!(asked.load(O::SeqCst), 0, "没有危险件却弹了一个框");
+    assert_eq!(out.ok, 2);
+    assert_eq!(applied.seen().len(), 2);
+}
+
+/// 🔴 那一问回来的东西**只起「准不准」的作用** —— 它没法凭空塞进一件新操作。
+///
+/// 少了这条过滤，一个坏掉（或被改坏）的看板就能把一件**没过围栏**的操作
+/// 递进 `apply`，而围栏那一段已经跑完了。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_answer_cannot_smuggle_in_an_operation_nobody_fenced() {
+    let applied = Applied::default();
+    let smuggled = WriteOp::Delete {
+        path: protected(),
+        is_dir: false,
+    };
+    let out = run_writes(
+        vec![WriteOp::Delete {
+            path: "/srv/data/d".into(),
+            is_dir: false,
+        }],
+        move |_| async move { vec![smuggled] }, // 答复里换了一件别的
+        |op| {
+            applied.0.lock().unwrap().push(op);
+            async move { Ok(()) }
+        },
+    )
+    .await;
+    assert_eq!(
+        applied.seen(),
+        Vec::new(),
+        "答复里塞进来的那一件竟然被做了：{:?}",
+        applied.seen()
+    );
+    assert_eq!(out.ok, 0);
+    assert_eq!(out.skipped, 1, "原来那一件既没被准、也没被记成跳过");
+}
+
+/// 失败的那几件带着**池子给的原文**回来（不改写、不摘要）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failure_comes_back_with_the_message_the_pool_gave() {
+    let out = run_writes(
+        vec![WriteOp::Mkdir {
+            path: "/srv/data/m".into(),
+        }],
+        |a| async move { a },
+        |_| async move { Err("新建目录失败: permission denied".to_string()) },
+    )
+    .await;
+    assert_eq!(out.ok, 0);
+    assert_eq!(out.failed.len(), 1);
+    assert_eq!(out.failed[0].1, "新建目录失败: permission denied");
+    assert!(
+        out.failed[0].0.contains("/srv/data/m"),
+        "失败那一行没说是哪一件：{:?}",
+        out.failed[0]
+    );
+}
+
+/// 空的一摞 ⇒ 什么都不做、不问、不记数。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_empty_batch_does_nothing_at_all() {
+    let asked = AtomicUsize::new(0);
+    let out = run_writes(
+        Vec::new(),
+        |_| {
+            asked.fetch_add(1, O::SeqCst);
+            async move { Vec::new() }
+        },
+        |_| async move { Ok(()) },
+    )
+    .await;
+    assert_eq!(out, WriteOutcome::default());
+    assert_eq!(asked.load(O::SeqCst), 0);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 谁要问、谁不要 —— 那张表得有人数
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 **相等断言**：要问的恰好是删除与改权限那两档。
+///
+/// 逐条的理由住 `super` 头注 §四那张表。写成「至少删除要问」是地板，
+/// 而地板在「变少」方向上是瞎的 —— 有人把改权限那一档改成不问，地板不会红。
+#[test]
+fn exactly_delete_and_chmod_ask_first() {
+    let all = vec![
+        WriteOp::Mkdir { path: "/a".into() },
+        WriteOp::Rename {
+            from: "/a".into(),
+            to: "/b".into(),
+        },
+        WriteOp::Delete {
+            path: "/a".into(),
+            is_dir: false,
+        },
+        WriteOp::Delete {
+            path: "/a".into(),
+            is_dir: true,
+        },
+        WriteOp::Chmod {
+            path: "/a".into(),
+            mode: 0o644,
+        },
+    ];
+    let asking: Vec<String> = all
+        .iter()
+        .filter(|o| o.needs_confirm())
+        .map(|o| o.label())
+        .collect();
+    assert_eq!(
+        asking,
+        vec![
+            "删除文件 /a".to_string(),
+            "删除目录 /a".to_string(),
+            "改权限 /a → 644".to_string()
+        ],
+        "要问的那几档变了 —— 连着 `super` 头注 §四那张表一起改，别只改代码"
+    );
+}
+
+/// 每一件都说得出自己是什么（确认框上摆的就是这几句话）。
+#[test]
+fn every_op_can_say_what_it_is() {
+    assert_eq!(
+        WriteOp::Mkdir {
+            path: "/srv/d".into()
+        }
+        .label(),
+        "新建目录 /srv/d"
+    );
+    assert_eq!(
+        WriteOp::Rename {
+            from: "/srv/a".into(),
+            to: "/srv/b".into()
+        }
+        .label(),
+        "改名 /srv/a → /srv/b"
+    );
+    // 权限**按八进制**说 —— 说成十进制（`420`）用户读不出那是 `644`。
+    assert_eq!(
+        WriteOp::Chmod {
+            path: "/srv/a".into(),
+            mode: 0o644
+        }
+        .label(),
+        "改权限 /srv/a → 644"
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 那个框：框里那几个字 → 一件真操作
+// ════════════════════════════════════════════════════════════════════════
+
+/// 三个框各自把字变成**同一个目录里**的一件操作。
+#[test]
+fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
+    let r = row("a.bin", false, false);
+    let mut p = WritePrompt::for_mkdir("/srv/data");
+    p.text = "  sub  ".into(); // 两头的空白要被吃掉
+    assert_eq!(
+        p.to_op().unwrap(),
+        WriteOp::Mkdir {
+            path: "/srv/data/sub".into()
+        }
+    );
+
+    let mut p = WritePrompt::for_rename("/srv/data", &r);
+    assert_eq!(
+        p.text, "a.bin",
+        "改名那个框没预填原名（旧面板预填的是原名）"
+    );
+    p.text = "b.bin".into();
+    assert_eq!(
+        p.to_op().unwrap(),
+        WriteOp::Rename {
+            from: "/srv/data/a.bin".into(),
+            to: "/srv/data/b.bin".into()
+        }
+    );
+
+    let mut p = WritePrompt::for_chmod("/srv/data", &r);
+    assert_eq!(
+        p.text, "",
+        "改权限那个框预填了东西 —— 列表里读不到 mode，预填的必然是猜的，\
+         而用户直接点确认就是静默改坏权限"
+    );
+    p.text = "755".into();
+    assert_eq!(
+        p.to_op().unwrap(),
+        WriteOp::Chmod {
+            path: "/srv/data/a.bin".into(),
+            mode: 0o755
+        }
+    );
+}
+
+/// 🔴 **拒得掉的那几档，一档都不许兜底编一个出来。**
+///
+/// 逐档的理由住 `super::clean_name` 与 `super::parse_mode`：
+/// 带 `/` = 把文件放到他没在看的目录里；`..` = 让服务端对着父目录动手；
+/// 权限超范围 = 把文件类型位也一起改（服务端行为未定义）。
+#[test]
+fn an_impossible_input_is_refused_with_a_reason_instead_of_a_guess() {
+    let r = row("a.bin", false, false);
+    for bad in ["", "   ", "sub/x", "/abs", ".", ".."] {
+        let mut p = WritePrompt::for_mkdir("/srv/data");
+        p.text = bad.into();
+        let why = p.to_op().expect_err(&format!("「{bad}」这个名字竟然过了"));
+        assert!(!why.is_empty(), "拒了却没说为什么");
+
+        let mut p = WritePrompt::for_rename("/srv/data", &r);
+        p.text = bad.into();
+        assert!(p.to_op().is_err(), "改名接受了「{bad}」");
+    }
+    // 改名成原名 ⇒ 拒（没有要改的东西，而 SFTP 那侧会当成一次真 rename）。
+    let mut p = WritePrompt::for_rename("/srv/data", &r);
+    p.text = " a.bin ".into();
+    assert!(p.to_op().is_err(), "改名成原名竟然过了");
+
+    for bad in ["", "  ", "abc", "899", "10000", "-1", "0x644"] {
+        let mut p = WritePrompt::for_chmod("/srv/data", &r);
+        p.text = bad.into();
+        assert!(p.to_op().is_err(), "权限位接受了「{bad}」");
+    }
+    // 反空真：合法的那几个真的过。
+    for good in ["644", "0755", "7777", "0"] {
+        let mut p = WritePrompt::for_chmod("/srv/data", &r);
+        p.text = good.into();
+        assert!(p.to_op().is_ok(), "权限位拒了合法的「{good}」");
+    }
+}
+
+/// 每个框都说得出自己在问什么（那一行字真的摆在框上）。
+#[test]
+fn every_box_says_what_it_is_asking() {
+    let r = row("a.bin", false, false);
+    assert!(WritePrompt::for_mkdir("/srv").heading().contains("新建"));
+    assert!(WritePrompt::for_rename("/srv", &r)
+        .heading()
+        .contains("a.bin"));
+    assert!(WritePrompt::for_chmod("/srv", &r)
+        .heading()
+        .contains("八进制"));
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 哪几行能写
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 **目录能写、不能复制** —— 两个判准刻意不是同一个函数。
+///
+/// 合成一个的后果是具体的：要么目录上长出一颗点了必失败的「复制」
+/// （`copy-data` 吃文件句柄），要么目录上少了「删除」和「改名」——
+/// 而那正是这一刀要补的东西。
+#[test]
+fn a_directory_can_be_written_but_not_copied() {
+    let dir = row("adir", true, false);
+    let file = row("a.bin", false, false);
+    let lossy = row("\u{FFFD}odd", false, true);
+
+    assert!(is_writable(&dir), "目录不能改名/删除/改权限？");
+    assert!(is_writable(&file));
+    assert!(
+        !is_writable(&lossy),
+        "有损名能写 —— 那个名字寻址不到真字节，删中的是另一个文件"
+    );
+
+    assert!(
+        !crate::filewin::copy::is_copyable(&dir),
+        "目录能零流量复制？`copy-data` 吃的是文件句柄"
+    );
+    assert!(crate::filewin::copy::is_copyable(&file));
+    // 两个判准**真的不等价**（否则上面那几条在一个函数上也全绿）。
+    assert_ne!(
+        is_writable(&dir),
+        crate::filewin::copy::is_copyable(&dir),
+        "两个判准在目录这一档上给了同一个答案 —— 那它们就该合成一个，\
+         或者其中一个错了"
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 看板
+// ════════════════════════════════════════════════════════════════════════
+
+/// 看板把答复真的送回去，且**只送一次**。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_board_answers_once_and_only_once() {
+    let b = WriteBoard::default();
+    let ops = vec![
+        WriteOp::Delete {
+            path: "/a".into(),
+            is_dir: false,
+        },
+        WriteOp::Chmod {
+            path: "/b".into(),
+            mode: 0o600,
+        },
+    ];
+    let rx = b.ask(ops.clone());
+    assert!(b.is_asking());
+    assert_eq!(b.asking(), ops, "摆出来的不是那几件");
+    assert!(b.settle(true), "答复没送出去");
+    assert!(!b.settle(true), "同一问送了第二次答复");
+    assert_eq!(rx.await.unwrap(), ops, "缺省该是全勾上的");
+    assert!(!b.is_asking());
+}
+
+/// 「都别做」⇒ 送回去的是**空**（不是「全做」）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn saying_no_sends_back_an_empty_list() {
+    let b = WriteBoard::default();
+    let rx = b.ask(vec![WriteOp::Delete {
+        path: "/a".into(),
+        is_dir: true,
+    }]);
+    assert!(b.settle(false));
+    assert_eq!(rx.await.unwrap(), Vec::new());
+}
+
+/// 一趟跑完 ⇒ `rounds` 涨一格、结果留在板上（**画在窗口上**，不是 `println!`）。
+#[test]
+fn a_finished_round_is_observable_and_keeps_its_words() {
+    let b = WriteBoard::default();
+    assert_eq!(b.rounds(), 0);
+    assert!(b.last().is_none());
+    let out = WriteOutcome {
+        asked: 1,
+        skipped: 0,
+        blocked: vec!["挡了一件".into()],
+        ok: 1,
+        failed: vec![("删除文件 /a".into(), "boom".into())],
+    };
+    b.finish(out.clone());
+    assert_eq!(b.rounds(), 1);
+    assert_eq!(b.last(), Some(out));
+}
+
+/// 没有窗口也不 panic（判据里就没有窗口）。
+#[test]
+fn a_board_with_no_window_still_records_and_does_not_panic() {
+    let b = WriteBoard::default();
+    b.attach(None);
+    b.poke();
+    b.finish(WriteOutcome::default());
+    assert_eq!(b.rounds(), 1);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴 委派：这一层**一行自己的写代码都没有**
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 [`super::apply_remote`] 调的是池子那四条既有命令，**不自己借会话**。
+///
+/// 自己借的后果逐条住 `super` 头注那张表（围栏 · 通道预算 · 第二条 SSH）。
+///
+/// ⚠ 本条扫的是**生产段**（`production_code` 剥掉注释），
+/// 所以头注里提到那几个名字不算数。
+#[test]
+fn the_real_adapter_delegates_to_the_pools_own_four_commands() {
+    let src =
+        std::fs::read_to_string(crate::guard_support::crate_src_root().join("filewin/writeops.rs"))
+            .expect("writeops.rs 读不动");
+    let prod = guard_core::production_code(&src);
+    for needle in [
+        "sftp_pool::sftp_mkdir(",
+        "sftp_pool::sftp_delete(",
+        "sftp_pool::sftp_rename(",
+        "sftp_pool::sftp_chmod(",
+        "sftp_pool::is_protected_claude_data_path",
+    ] {
+        assert!(
+            prod.contains(needle),
+            "生产段里找不到 `{needle}` —— 这一层要么自己借了会话（那就丢了围栏与通道预算），\
+             要么那条命令的落点被挪走了"
+        );
+    }
+    // 🔴 **不许自己借会话**：这几个名字一个都不许出现在本模块的生产段里。
+    for forbidden in ["with_sftp(", "connect_sftp(", "russh_sftp"] {
+        assert!(
+            !prod.contains(forbidden),
+            "本模块生产段里出现了 `{forbidden}` —— 那会让 `filewin/` 变成\
+             `remote_write_registry::capability_holders` 的人群成员，\
+             而那张表的第五条判据（人群只许是那四个文件）会当场红。\
+             围栏与通道预算也就跟着一起丢了。"
+        );
+    }
+    // 反空真：这把尺子认得出「不在」。
+    assert!(!prod.contains("sftp_pool::sftp_no_such_command("));
+}

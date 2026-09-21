@@ -66,8 +66,11 @@ fn the_row_count_we_materialize_does_not_depend_on_how_many_rows_there_are() {
 fn the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits() {
     let ctx = egui::Context::default();
     let hits = |n: usize| -> Vec<String> { corpus::synth_paths(n, 0x24F4).into_iter().collect() };
-    let run = |hs: &[String]| -> RenderTally {
-        let mut t = RenderTally::default();
+    // 🔴〔第五刀〕收数口是 `HitTally`，**不是** `RenderTally` —— 那个类型里
+    //    连一个「谁被点了」的字段都没有，理由逐条住它的头注（命中行上那个
+    //    下标索引的是另一摞东西，而第五刀把代价从「复制错地方」升级成「删错东西」）。
+    let run = |hs: &[String]| -> HitTally {
+        let mut t = HitTally::default();
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen())),
             ..Default::default()
@@ -984,4 +987,169 @@ fn the_rig_leaves_no_lock_behind_when_it_is_dropped() {
          号池只有 30 个（`:90`–`:119`），漏够 30 次这一族判据就永久红，\
          而它红的样子是「判不了」，与「过了」在终端上长得一样"
     );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第五刀 2026-09-21〕行上那三颗**写**按钮
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 **相等断言**：三颗写按钮各自的处数 == `is_writable` 说的行数。
+///
+/// ⚠ 与「复制」那一条**刻意分开**：两个判准不同（目录能写、不能复制），
+/// 合起来判会让「目录上少了删除」与「目录上多了复制」互相抵消。
+#[test]
+fn only_the_writable_rows_get_the_three_write_buttons_painted() {
+    use crate::filewin::writeops::{is_writable, CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
+    let ctx = egui::Context::default();
+    let rows = mixed_rows();
+    let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
+    let (tally, painted) =
+        render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
+    assert_eq!(tally.rows_materialized, 4, "四行没画全，下面的数就没意义");
+    assert!(
+        !painted.is_empty(),
+        "这一帧一个字都没画出来 —— 量具塌了，下面那一比在空转"
+    );
+
+    let want = rows.iter().filter(|r| is_writable(r)).count();
+    assert_eq!(want, 3, "语料自己变了：能写的行数应当是 3（目录也能写）");
+    for label in [RENAME_LABEL, DELETE_LABEL, CHMOD_LABEL] {
+        let got = rects_of(&painted, label);
+        assert_eq!(
+            got.len(),
+            want,
+            "画出来 {} 颗「{label}」，而 `is_writable` 说有 {want} 行能写 —— \
+             有损名那一档上长出了一颗不该有的按钮（或者能写的那几行少了一颗）",
+            got.len()
+        );
+        // 反空真：它们在三行不同的位置上（不是同一颗被数了三遍）。
+        assert!(got[0].center().y < got[1].center().y);
+        assert!(got[1].center().y < got[2].center().y);
+    }
+    // 🔴 目录那一行：三颗写按钮**有**，而「复制」**没有**。两个判准真的不一样。
+    let copies = rects_of(&painted, COPY_LABEL);
+    assert_eq!(copies.len(), 2, "能复制的行数应当是 2");
+    let renames = rects_of(&painted, RENAME_LABEL);
+    assert!(
+        renames[0].center().y < copies[0].center().y,
+        "第 0 行（目录）上没有「{RENAME_LABEL}」，或者它上面竟然有「{COPY_LABEL}」—— \
+         目录能改名/删除/改权限，但 `copy-data` 吃的是文件句柄"
+    );
+}
+
+/// 🔴 **这一刀最要紧的判据**：点那三颗写按钮，回来的各是**那一行**的下标。
+///
+/// # 它同时钉着第三刀那条真缺陷的第五刀版本
+///
+/// 整行那块命中矩形是**后**登记的，egui 在平手时逐字「take the last one」
+/// ⇒ 它盖住的按钮**永远点不到**。第三刀让开了「复制」那一颗；第五刀一行上有四颗，
+/// **只让开一颗的话另外三颗照旧是死的** —— 而它们是写操作。
+/// ⇒ `paint_one_row` 取的是那几颗里**最左**那个左边界（`RowButtons::leftmost_left`），
+/// 而本条逐颗点一遍。少了它，把那个 `min` 写成「让开复制那一颗」不会红。
+#[test]
+fn clicking_each_write_button_comes_back_as_that_rows_index() {
+    use crate::filewin::writeops::{CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
+    let rows = mixed_rows();
+    // 🔴🔴 **两行都要点，而「目录那一行」是承重的那一行。**
+    //
+    // 〔死值验 `M7` 现打逼出来的〕第一版只点第 2 行（`two.bin`，一个**文件**）。
+    // 把 `RowButtons::leftmost_left` 改成「只看复制那一颗」⇒ **一条判据都没红**，
+    // 而那个改动是有后果的：文件行上「复制」按布局本来就是最左那一颗
+    // ⇒ 在**有复制**的那几行上，那个 `min` 取谁都一样，那一版是个恒真的判据。
+    // 真正会坏的是**目录那一行** —— 它没有「复制」（`copy-data` 吃文件句柄）
+    // ⇒ `leftmost_left` 回 `None` ⇒ 整行那块矩形拉满整行宽 ⇒ 它那三颗写按钮
+    // **全成了死的**：目录点得到「删除」这件事悄悄没了，而目录删除是不可撤销的。
+    // ⇒ 本条现在逐行点：第 0 行（目录，**没有**复制）＋ 第 2 行（文件，有复制）。
+    for (row_index, button_slot) in [(0usize, 0usize), (2usize, 2usize)] {
+        for (label, pick) in [
+            (
+                RENAME_LABEL,
+                (|t: &RenderTally| t.rename_clicked) as fn(&RenderTally) -> Option<usize>,
+            ),
+            (DELETE_LABEL, |t: &RenderTally| t.delete_clicked),
+            (CHMOD_LABEL, |t: &RenderTally| t.chmod_clicked),
+        ] {
+            let ctx = egui::Context::default();
+            let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
+            let (_, painted) =
+                render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
+            let buttons = rects_of(&painted, label);
+            assert_eq!(
+                buttons.len(),
+                3,
+                "没找到那三颗「{label}」，下面按坐标点没意义"
+            );
+            // 那三颗按出现顺序对应第 0 / 1 / 2 行（第 3 行是有损名，不画）。
+            let pos = buttons[button_slot].center();
+            let _ = render_headless_with_events(
+                &ctx,
+                &rows,
+                screen(),
+                0.2,
+                vec![egui::Event::PointerMoved(pos)],
+            );
+            let hit = render_headless_with_events(&ctx, &rows, screen(), 0.3, click_at(pos));
+            assert_eq!(
+                pick(&hit),
+                Some(row_index),
+                "点在第 {row_index} 行那颗「{label}」上，回来的却是 {:?} —— \
+                 `None` 多半是整行那块命中矩形把它盖住了（它是后登记的，平手时它赢）；\
+                 这一颗是**写**操作，点不到就等于这条功能没接上。\
+                 ⚠ 第 0 行是**目录**（没有「复制」那一颗）—— 死值验 `M7` 证明\
+                 只让开「复制」时坏的正是这一行",
+                pick(&hit)
+            );
+            // 点一颗按钮不许同时被读成「双击进目录」，也不许串到别的那几颗上。
+            assert_eq!(hit.clicked, None, "点一颗按钮竟然还顺手进了目录");
+            let others: Vec<Option<usize>> = [
+                hit.copy_clicked,
+                hit.rename_clicked,
+                hit.delete_clicked,
+                hit.chmod_clicked,
+            ]
+            .into_iter()
+            .filter(|x| *x == Some(row_index))
+            .collect();
+            assert_eq!(
+                others.len(),
+                1,
+                "点一颗「{label}」，却有 {} 个格子同时报了第 {row_index} 行 —— 四颗按钮串了线",
+                others.len()
+            );
+        }
+    }
+}
+
+/// 🔴 **另一侧**：让开四颗之后，名字那一段**照旧**双击进目录。
+///
+/// 没有这一条，「让开」可以退化成「整行那块矩形干脆不要了」——
+/// 那样上面那几条照样绿，而双击进目录悄悄没了（同第三刀那条的形状）。
+#[test]
+fn making_way_for_four_buttons_does_not_kill_the_rest_of_the_row() {
+    let ctx = egui::Context::default();
+    let rows = mixed_rows();
+    let _ = render_headless_with_events(&ctx, &rows, screen(), 0.0, Vec::new());
+    // 第 1 行（`one.bin`，四颗按钮都有）名字那一段：x=60 远在最左那颗按钮左边。
+    let y = 1.5 * (ROW_HEIGHT + 4.0);
+    let pos = egui::pos2(60.0, y);
+    let _ = render_headless_with_events(
+        &ctx,
+        &rows,
+        screen(),
+        0.1,
+        vec![egui::Event::PointerMoved(pos)],
+    );
+    let _ = render_headless_with_events(&ctx, &rows, screen(), 0.2, click_at(pos));
+    let second = render_headless_with_events(&ctx, &rows, screen(), 0.3, click_at(pos));
+    let got = second
+        .clicked
+        .expect("名字那一段双击不回任何行 —— 整行那块命中矩形被让没了");
+    assert!(
+        got.abs_diff(1) <= 1,
+        "点在第 1 行的名字上，认出来的是第 {got} 行"
+    );
+    assert_eq!(second.copy_clicked, None, "点名字竟然算成点了「复制」");
+    assert_eq!(second.rename_clicked, None, "点名字竟然算成点了「改名」");
+    assert_eq!(second.delete_clicked, None, "点名字竟然算成点了「删除」");
+    assert_eq!(second.chmod_clicked, None, "点名字竟然算成点了「权限」");
 }

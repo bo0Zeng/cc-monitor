@@ -5,7 +5,8 @@
 //! # 🔴 这一摞里哪一条是**反空真**的锚
 //!
 //! [`without_a_cjk_font_the_probe_is_almost_entirely_unrenderable`] ——
-//! 它钉的是「**不装字体时画不出的字数恰好等于 121 / 120**」。
+//! 它钉的是「**不装字体时画不出的字数恰好等于 238 / 237**」
+//! （`24f` 第四刀之前那句写的是 121 / 120，第五刀之前是 194 / 193）。
 //! 没有它，剩下那几条（「装上之后一个都不缺」）可以靠**量具永远说「不缺」**来全绿：
 //! 量具翻向过一次（§三，拿 U+FFFD 当基准那一版），不是假想。
 //!
@@ -273,19 +274,22 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let files = drawn_files();
     assert_eq!(
         files.len(),
-        9,
-        "人群应当是 9 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
-         shell · source · transfer；`fonts.rs` 与 `mod.rs` 摘掉了。⚠ `corpus.rs` 的非 ASCII \
-         字面量是 0，按字符数统计时看不见它 —— 人群按**文件**数，别按有没有贡献字符数）\
+        10,
+        "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
+         shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
+         ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
+         人群按**文件**数，别按有没有贡献字符数）\
          〔`24f` 第四刀 09-21：8 → 9，多的是 `find.rs`（搜索那一侧的命令面与新鲜度那一行）〕\
+         〔`24e` 第五刀 09-21：9 → 10，多的是 `writeops.rs`（那四条写操作的按钮与确认框）〕\
          —— 现在是 {}，人群变了就重新论证一遍",
         files.len()
     );
     let scanned = label_chars();
     assert_eq!(
         scanned.len(),
-        205,
-        "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 205；`24f` 第四刀之前是 130）。\
+        249,
+        "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
+         `24f` 第四刀之前是 130）。\
          这个数本身没有对错，但它变了说明标签动过 —— 连着下面那条一起看",
         scanned.len()
     );
@@ -336,16 +340,16 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &prop(), PROBE).len(),
-        194,
-        "比例字体下画不出的字数变了（2026-09-21 现打 194 / 探针 {} 字；\
-         `24f` 第四刀之前是 121 / 130）",
+        238,
+        "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
+         第五刀之前是 194 / 205、`24f` 第四刀之前是 121 / 130）",
         PROBE.chars().count()
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        193,
-        "等宽字体下画不出的字数变了（2026-09-21 现打 193 —— 比比例少一个 `→`；\
-         `24f` 第四刀之前是 120）"
+        237,
+        "等宽字体下画不出的字数变了（2026-09-21 现打 237 —— 比比例少一个 `→`；\
+         第五刀之前是 193、`24f` 第四刀之前是 120）"
     );
 }
 
