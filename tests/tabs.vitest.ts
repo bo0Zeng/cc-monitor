@@ -4172,3 +4172,189 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
     expect(peek(tm).collections, "更不该无中生有地建组").toEqual([]);
   });
 });
+
+// ==========================================================================
+// 步 17·C 顺序落盘 —— **「读回来」那一半**（`设计/30 §C` · `99 §4` 步 17 那行的 🟡）
+//
+// 落盘那一侧（`tab-bar-state.ts` 的 `sanitizeOrder` / `getTabOrder` / `setTabOrder`）
+// 已经有 `tests/tab-bar-state.vitest.ts` 10 格盯着，**那一段是好的**。
+// 这一组只量一件事：**`TabManager.loadOrder` 有没有真的把盘上那份顺序装回栏里。**
+//
+// 🔴 **为什么必须照「真实启动时序」摆**（这一组全部判据的承重）：
+//   `src/main.ts` 里那一行是 `loadPinned().finally(() => loadOrder())` ——
+//   `loadOrder` 跑在**会话还没到**的那一刻，tab 是随后由 `session_added` / 首行**陆续**
+//   建出来的。⇒ 把 tab 先造好再调 `loadOrder` 的判据**买不到这条性质**：
+//   它在那种摆法下是绿的，而在真实时序下整张顺序会被摘掉。
+//   ⚠ 这也正是 `tab-bar-state.vitest.ts` 那条「往返」格量不到的面 ——
+//     它 `setTabOrder(["x","y"])` 之后拿 `getTabOrder(new Set(["x","y"]))` 读，
+//     **`alive` 两侧同源 ⇒ 恒真**（`01 §7.4` 点名的那一形）。
+//
+// 🔴 反空真：这一组的 config 是**一份真的在内存里的盘**（走已被 mock 的 `invoke`,
+//   `load_config`/`save_config`），所以「顺序落没落上」是**读盘对拍**，不是数调用次数。
+//   全部断言是**逐位相等**（`toEqual` 整张数组），没有「至少有几个 tab」那种地板。
+// ==========================================================================
+describe("步 17·C 顺序落盘：读回来那一半", () => {
+  let tm: TabManager;
+  let disk: Record<string, unknown>;
+  /** 落盘是 fire-and-forget（`先改内存再落盘`）⇒ 读盘前把那条链子跑完。 */
+  const flushDisk = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+  const orderOnDisk = (): unknown => (disk.tabBar as Record<string, unknown> | undefined)?.order;
+
+  /** 往「盘」上摆一份顺序（模拟上次关 app 前落下的那份）。 */
+  const putOrderOnDisk = (order: string[]): void => {
+    disk = { tabBar: { order } };
+  };
+
+  /**
+   * **真实启动时序**（逐行对着 `src/main.ts` 那三句摆）：
+   *   `new TabManager` → `loadPinned()` → `loadOrder()` → 会话**随后**陆续到。
+   * @param arriving 会话到达的次序（＝后端清单/事件流给的次序，通常不等于用户拖出来的次序）
+   */
+  const startupThenSessionsArrive = async (arriving: string[]): Promise<void> => {
+    await tm.loadPinned();
+    await tm.loadOrder();
+    for (const sid of arriving) {
+      // 每个 sid 一个自己的 cwd：避开 `placeInOrder` 的树状锚定（bg 挂宿主后面），
+      // 这一组量的是「盘上那份顺序」，不是那棵树。
+      tm.ensureTab(sid, `/proj/${sid}`, `/p/${sid}.jsonl`, 0, null, "interactive", null);
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    disk = {};
+    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
+      if (cmd === "save_config") {
+        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    tm = makeTM();
+  });
+
+  // --- ① 量具自检：先证明这一组的「盘」和 `loadOrder` 这条路真的在动 ---------
+  it("🔴 量具自检：tab **先在**、再调 `loadOrder` ⇒ 顺序真的会被重排（不过这格，下面全是空转）", async () => {
+    // 这一格**刻意**用「先造 tab 再读盘」那种摆法 —— 它证明的是
+    // 「读盘 + 重排 + 重画」这套机件本身是通的，从而把下面那格的红**钉在时序上**，
+    // 而不是钉在「读不出来」或「键不对」上。
+    tm.ensureTab("a", "/proj/a", "/p/a.jsonl", 0, null, "interactive", null);
+    tm.ensureTab("b", "/proj/b", "/p/b.jsonl", 0, null, "interactive", null);
+    tm.ensureTab("c", "/proj/c", "/p/c.jsonl", 0, null, "interactive", null);
+    expect(peek(tm).orderedIds, "到达序就是建出来的序").toEqual(["a", "b", "c"]);
+
+    putOrderOnDisk(["c", "b", "a"]);
+    await tm.loadOrder();
+    expect(
+      peek(tm).orderedIds,
+      "🔴 连「tab 已经在了」这种最宽松的摆法都排不回来 ⇒ 成因不是时序，是读/用那一段本身坏了",
+    ).toEqual(["c", "b", "a"]);
+  });
+
+  // --- ② 正题：真实启动时序下的「存 → 读回来」--------------------------------
+  it("🔴 顺序跨重启（`设计/30 §6` 验证钩子 9）：盘上一份非默认顺序 ⇒ 会话到齐后**逐位**对上", async () => {
+    // 用户上次把顺序拖成了 c,b,a（非默认 —— 后端清单给的是 a,b,c）。
+    putOrderOnDisk(["c", "b", "a"]);
+    await startupThenSessionsArrive(["a", "b", "c"]);
+    expect(
+      peek(tm).orderedIds,
+      "🔴 盘上的顺序没装回来 —— 用户拖的顺序活不过一次重启（`§C` 逐字「今天拖了白拖」）",
+    ).toEqual(["c", "b", "a"]);
+  });
+
+  // --- ③ 阴性对照：证明这条判据**不是**在「两侧同源」上恒真 --------------------
+  it("🔴 阴性对照 a：读回来的那张**不许**等于到达序（否则上一格只是在量「会话是怎么到的」）", async () => {
+    putOrderOnDisk(["c", "b", "a"]);
+    await startupThenSessionsArrive(["a", "b", "c"]);
+    expect(
+      peek(tm).orderedIds,
+      "🔴 读回来的顺序 == 到达序 ⇒ 上一格是恒真的（盘根本没参与）",
+    ).not.toEqual(["a", "b", "c"]);
+  });
+
+  it("🔴 阴性对照 b：**只**换盘上那份、到达序一个字不动 ⇒ 结果必须跟着盘变（盘是唯一自变量）", async () => {
+    putOrderOnDisk(["b", "a", "c"]);
+    await startupThenSessionsArrive(["a", "b", "c"]);
+    expect(peek(tm).orderedIds, "第一份盘没生效").toEqual(["b", "a", "c"]);
+
+    // 同一套到达序，换一份盘 ⇒ 必须得到**另一张**顺序。
+    tm = makeTM();
+    putOrderOnDisk(["c", "a", "b"]);
+    await startupThenSessionsArrive(["a", "b", "c"]);
+    expect(
+      peek(tm).orderedIds,
+      "🔴 换了盘上那份，结果没跟着变 ⇒ 这条判据量的不是盘，是别的东西",
+    ).toEqual(["c", "a", "b"]);
+  });
+
+  it("🔴 阴性对照 c：盘上**故意存错**（存成一份用户从没拖过的序）⇒ 正题那张断言必须红", async () => {
+    // 这一格把「存盘那一侧存错」显式演一遍：盘上是 a,c,b，而正题期望的是 c,b,a。
+    // 它绿 == 读回来的东西**真的跟着盘走**；它一旦连这个都绿不了，正题那格就是空转。
+    putOrderOnDisk(["a", "c", "b"]);
+    await startupThenSessionsArrive(["a", "b", "c"]);
+    const got = peek(tm).orderedIds;
+    expect(got, "存错的那份也要如实装回来（读回来那一半不许自己纠正盘上的内容）").toEqual([
+      "a",
+      "c",
+      "b",
+    ]);
+    expect(got, "🔴 存错的盘却读出了正题那张 ⇒ 结果与盘无关，判据恒真").not.toEqual([
+      "c",
+      "b",
+      "a",
+    ]);
+  });
+
+  // --- ④ 边界：盘上有一个今天已经不存在的 sid --------------------------------
+  it("🔴 边界：盘上的顺序里有一个今天**不存在**的 sid ⇒ 不凭空造 tab，其余**照原样**排好", async () => {
+    // `§C.3` 逐字：「顺序里会有已经不存在的 sid（上次固定的会话被删了）⇒ 读的时候要过滤」。
+    // 明确行为 = **丢掉它**（不进 `orderedIds`、不造 tab），并且它的存在
+    // **不许**打乱其余几个的相对次序。
+    putOrderOnDisk(["c", "上次那条被删了", "b", "a"]);
+    await startupThenSessionsArrive(["a", "b", "c"]);
+    expect(
+      peek(tm).orderedIds,
+      "🔴 死 sid 把整张顺序带坏了（或者它自己混进了 orderedIds）",
+    ).toEqual(["c", "b", "a"]);
+    expect(
+      peek(tm).tabs.has("上次那条被删了"),
+      "🔴 凭空造出了一个 tab —— `loadOrder` 逐字「只重排已存在的 tab，不凭空造 tab」",
+    ).toBe(false);
+  });
+
+  it("盘上**没提到**的 tab 排在后面（`loadOrder` 头注逐字），不许被旧顺序挤没", async () => {
+    putOrderOnDisk(["c", "a"]);
+    await startupThenSessionsArrive(["a", "b", "c"]);
+    expect(peek(tm).orderedIds, "🔴 新 tab 没排到后面 / 被旧顺序挤掉了").toEqual(["c", "a", "b"]);
+  });
+
+  it("盘上**没有** `tabBar.order`（第一次用）⇒ 到达序原样留着，不许被清空", async () => {
+    disk = {};
+    await startupThenSessionsArrive(["a", "b", "c"]);
+    expect(peek(tm).orderedIds, "🔴 空盘把到达序弄坏了").toEqual(["a", "b", "c"]);
+  });
+
+  // --- ⑤ 别把用户刚拖的那一下又按回旧顺序 ------------------------------------
+  it("🔴 启动后用户又拖了一下 ⇒ 随后到的 tab **不许**把盘上那份旧顺序重新按上来", async () => {
+    // 这一格盯的是「记住盘上那份」这个改法自带的风险：顺序一旦被用户改过，
+    // 那份旧的就**过期**了，再拿它去排后到的 tab 等于把用户刚拖的一下撤销。
+    putOrderOnDisk(["c", "b", "a"]);
+    await startupThenSessionsArrive(["a", "b", "c"]);
+    expect(peek(tm).orderedIds).toEqual(["c", "b", "a"]);
+
+    // 用户把 a 拖到最前面。
+    peek(tm).applyDrop("a", { kind: "before", sid: "c" });
+    expect(peek(tm).orderedIds, "拖动本身没生效，这一格后面就没意义了").toEqual(["a", "c", "b"]);
+    await flushDisk();
+    expect(orderOnDisk(), "拖完要落盘（`§C.3`：applyReorder 之后提交）").toEqual(["a", "c", "b"]);
+
+    // 又来一条新会话。
+    tm.ensureTab("d", "/proj/d", "/p/d.jsonl", 0, null, "interactive", null);
+    expect(
+      peek(tm).orderedIds,
+      "🔴 后到的 tab 把用户刚拖的顺序撤销了（拿一份过期的盘去排）",
+    ).toEqual(["a", "c", "b", "d"]);
+  });
+});

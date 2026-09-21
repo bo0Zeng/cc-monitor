@@ -621,6 +621,19 @@ export class TabManager {
   private tmuxCache = new Map<string, { ts: number; sessions: TmuxSession[] | null }>();
   /** 按插入顺序的 sessionId 数组，与 this.tabs.keys() 顺序一致但避免每次 Array.from */
   private orderedIds: string[] = [];
+  /**
+   * 〔步 17·C · 2026-09-21〕**盘上那份顺序（`tabBar.order`），启动读一次之后留着。**
+   *
+   * 🔴 **它是「一份意图」，不是一次性的动作** —— 这就是那个 no-op 的修法所在
+   *   （成因与现打见 `loadOrder` 头注）。tab 是**陆续**到的，所以这份顺序必须活过
+   *   整个启动窗口期，每来一个 tab 就再应用一次（`placeInOrder` → `applySavedOrder`）。
+   * ⚠ 里面**允许有今天不存在的 sid**（被删的 / 还没宣告到的）——
+   *   它们进不了 `orderedIds`（`applySavedOrder` 按 `present` 筛），所以不会造出假 tab；
+   *   上界由 `ORDER_CAP` 在读的那一侧管。
+   * ⚠ 用户一拖，盘上那份就**过期**了 ⇒ `persistOrder` 落盘的同时把这里同步成新的那张，
+   *   否则后到的 tab 会拿一份旧顺序把用户刚拖的一下撤销。
+   */
+  private savedOrder: string[] = [];
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   private tabButtons = new Map<string, TabButtonRefs>();
   /** A3：远端 live 探测的会话账号归属（sid → 探测行）。main.ts 定期喂。 */
@@ -1391,7 +1404,23 @@ export class TabManager {
    * bg tab 拉到自己身后（骨架清单里 bg 可能先于宿主出现）。父子判定 v1 = cwd
    * 归属（pidfile 无 parentSessionId 字段，精确父子留 backlog）。
    */
+  /**
+   * 〔步 17·C · 2026-09-21〕新 tab 落位 = **先按树摆（`placeInTree`），再按盘上那份顺序摆**。
+   *
+   * 🔴 **这一层是那个 no-op 的第二半修法**：tab 是陆续到的，而 `loadOrder` 只跑一次
+   *   ⇒ 只在 `loadOrder` 里应用一次，**后到的每一个 tab 都会落到末尾**，
+   *   盘上给它留的那一格永远用不上（现打：会话到齐后顺序 == 到达序）。
+   * ⚠ 包成两层而不是往 `placeInTree` 里塞一句：它有 3 个 `return` 出口，
+   *   逐个补一句就是下一次「补漏了一个出口」。
+   * ⚠ 这里**只动 `orderedIds`、不碰 DOM** —— 拖拽期间的重画抑制（★ 6d）由
+   *   `refreshTabBar` 那道守卫管，与本函数无关（今天 `placeInTree` 也是这个形状）。
+   */
   private placeInOrder(tab: Tab): void {
+    this.placeInTree(tab);
+    this.applySavedOrder();
+  }
+
+  private placeInTree(tab: Tab): void {
     const isBg = tab.kind !== null && tab.kind !== "interactive";
     const sameHost = (t: Tab | undefined): boolean =>
       !!t && t.cwd !== null && t.cwd === tab.cwd && t.origin === tab.origin;
@@ -2670,6 +2699,11 @@ export class TabManager {
 
   /** 把当前顺序写进 `config.json` 的 `tabBar.order`。失败只记日志，不打断交互。 */
   private async persistOrder(): Promise<void> {
+    // 🔴 **先把内存里那份意图同步掉，再去写盘** —— 用户刚拖出来的这张就是最新的意图。
+    //   不同步的话，`savedOrder` 还是启动时读到的那份**旧**顺序，而它每来一个新 tab
+    //   就会被再应用一次（`placeInOrder`）⇒ **后到的一个 tab 能把用户刚拖的一下整张撤销**。
+    //   放在 `await` 之前：落盘失败也照样同步 —— 内存里那张已经是用户看见的事实了。
+    this.savedOrder = [...this.orderedIds];
     try {
       await setTabOrder(this.orderedIds);
     } catch (e) {
@@ -2680,17 +2714,63 @@ export class TabManager {
   /**
    * 启动时把落盘的顺序拉回来。**宿主在 `loadCollections` 之后调一次。**
    *
-   * ⚠ 它**只重排已经存在的 tab，不凭空造 tab** —— 盘上的顺序里会有已经不存在的 sid
-   *   （上次那个会话被删了），`sanitizeOrder` 的 `alive` 参数摘掉它们（`§C.3` 逐字）。
+   * ⚠ 它**只重排已经存在的 tab，不凭空造 tab**（`§C.3` 逐字）——
+   *   盘上的顺序里会有已经不存在的 sid（上次那个会话被删了）。
    * ⚠ **盘上没提到的 tab 排在后面**，保持它们此刻的相对次序 ——
    *   否则「启动后新建的 tab」会被一份旧顺序挤到看不见的地方。
+   *
+   * # 🔴 2026-09-21：修掉「结构性 no-op」（`99 §4` 步 17 那行的 🟡）
+   *
+   * 在这之前它是这么写的：
+   * ```ts
+   * const saved = await getTabOrder(new Set(this.orderedIds));  // ← alive = 此刻的 tab 集
+   * if (saved.length === 0) return;
+   * ```
+   * **它在唯一那个调用点上恒等于 no-op。** `main.ts` 里那一行是
+   * `loadPinned().finally(() => loadOrder())` ⇒ 跑到这儿的时候会话**还没到**
+   * （tab 由随后的 `session_added` / 首行陆续建出来，启动窗口期 30s）⇒
+   * `orderedIds` 是空的（顶多只有几个复活出来的 pinned）⇒ `alive` 是空集 ⇒
+   * `sanitizeOrder` 把盘上那张**整张**当成死 sid 摘掉 ⇒ 空表 ⇒ 上面那句直接 `return`。
+   * 现打：`sanitizeOrder(["c","b","a"], new Set())` == `[]`，而 `alive` 传 `null`
+   * 时原样是 `["c","b","a"]` —— **数据一直读得出来，是被自己那道过滤删掉的。**
+   *
+   * 🔴 **所以这不是「调用点排早了」，挪一挪就好** —— 前端**没有任何一刻**知道
+   *   「会话到齐了」（它们从几台远端陆续宣告，还能中途掉线重连）。
+   *   「已删的会话」与「还没到的会话」在任何单一时刻都**不可区分**
+   *   ⇒ 只要过滤发生在读的那一拍，这个 bug 就还在。
+   *
+   * ⇒ 改法：把盘上那份顺序**留着**（`savedOrder`，一份意图，不是一次性的动作），
+   *   读的时候**不按存活过滤**，过滤改在**每次应用**时按「此刻真的在的 tab」做
+   *   （`applySavedOrder`）；tab 陆续到达时由 `placeInOrder` 再应用一次。
    */
   async loadOrder(): Promise<void> {
-    const saved = await getTabOrder(new Set(this.orderedIds));
-    if (saved.length === 0) return;
-    const rest = this.orderedIds.filter((sid) => !saved.includes(sid));
-    this.orderedIds = [...saved, ...rest];
-    this.refreshTabBar();
+    // `null` = 这一趟不按存活过滤（理由见 `getTabOrder` 头注与上面那段）。
+    this.savedOrder = await getTabOrder(null);
+    if (this.applySavedOrder()) this.refreshTabBar();
+  }
+
+  /**
+   * 把 `savedOrder`（盘上那份意图）应用到**此刻真的存在**的 tab 上。
+   * 返回「顺序有没有真的变」—— 没变就别让调用方白重画一次栏。
+   *
+   * 🔴 **`present` 这道过滤是「不凭空造 tab」那条的落点**：盘上提到而今天不在的 sid
+   *   （被删的会话 / **还没宣告到的会话**）在这里被跳过 —— 它**留在 `savedOrder` 里**，
+   *   等它真的到了，`placeInOrder` 再应用一次就会把它放回自己那一格。
+   *   ⚠ 这正是它不能在读的那一刻被摘掉的原因：摘掉就再也等不到了。
+   * ⚠ **盘上没提到的排在后面**、且保持它们此刻的相对次序（`loadOrder` 头注逐字）。
+   */
+  private applySavedOrder(): boolean {
+    if (this.savedOrder.length === 0) return false;
+    const present = new Set(this.orderedIds);
+    const head = this.savedOrder.filter((sid) => present.has(sid));
+    if (head.length === 0) return false;
+    const inHead = new Set(head);
+    const next = [...head, ...this.orderedIds.filter((sid) => !inHead.has(sid))];
+    // 恒等就早退。`next` 与 `orderedIds` 必然同长（两边都是 `orderedIds` 的重排），
+    // 所以逐位比一遍就够。
+    if (next.every((x, i) => x === this.orderedIds[i])) return false;
+    this.orderedIds = next;
+    return true;
   }
 
   /** 收尾：拆 document listener、清 ghost / 源 Tab 变暗、清空拖拽状态。 */
@@ -3737,10 +3817,15 @@ export class TabManager {
   // ===== 〔步 17·B · `设计/30 §B`〕固定（pinned）=====
 
   /**
-   * 启动时把固定的 tab **复活**出来。宿主在 `loadCollections` 之后、`loadOrder` **之前**调一次。
+   * 启动时把固定的 tab **复活**出来。宿主在 `loadCollections` 之后调一次。
    *
-   * 🔴 **顺序不是随口排的**：`loadOrder` 用 `getTabOrder(new Set(this.orderedIds))`
-   * 按「今天真的存在的 sid」过滤，复活的 tab 得**先存在**，它的位置才排得回来。
+   * ⚠ **2026-09-21 订正**：这儿原先写着「必须在 `loadOrder` **之前**」，理由是
+   *   「`loadOrder` 用 `getTabOrder(new Set(this.orderedIds))` 按今天真的存在的 sid 过滤，
+   *   复活的 tab 得先存在，位置才排得回来」。**那个理由连着那道读时过滤一起没了**
+   *   （`loadOrder` 头注记着为什么它是个 no-op）：顺序现在是一份**留着的意图**
+   *   （`savedOrder`），复活出来的 tab 走 `createSkeletonTab` → `placeInOrder` 时
+   *   会**再应用一次** ⇒ 两者谁先谁后都排得回来。
+   * ⚠ `main.ts` 今天仍然是「pinned 先、order 后」那个次序 —— 不改它，但那**不再是承重的**。
    *
    * # 复活流程（`§B.5` 逐字）
    * ```
