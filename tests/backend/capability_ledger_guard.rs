@@ -43,9 +43,7 @@
 //!    （「target 答每个平台编不编得过」）。对上那两个轴是步 `8b` 的活，登记在
 //!    `设计/99 §4.8.3 P12`，**挡在步 3.5 上**。
 
-use super::{
-    capability_ledger, CapabilityKind, CAPABILITIES, CAPABILITY_FACES, TARGETS,
-};
+use super::{capability_ledger, CapabilityKind, CAPABILITIES, CAPABILITY_FACES, TARGETS};
 
 /// 🔴 **被逐条看过一遍的那份名单** —— `(族名, 能力名)`，**逐字点名**。
 ///
@@ -348,7 +346,10 @@ fn both_halves_of_the_declared_reach_have_a_real_member() {
             .filter(|f| f.kind == want)
             .map(|f| (f.declares)().len())
             .sum();
-        assert!(n > 0, "射程里的 `{want:?}` 这一类下面 {faces:?} 一条能力都没声明");
+        assert!(
+            n > 0,
+            "射程里的 `{want:?}` 这一类下面 {faces:?} 一条能力都没声明"
+        );
     }
 }
 
