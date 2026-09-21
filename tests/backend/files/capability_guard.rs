@@ -744,6 +744,8 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     };
 
     // `files.find` 那几条要有一份**真的**常驻索引才谈得上差分。
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     crate::files::index::rebuild_once(&fx.root).expect("本格独占跑，抢不到就是并发保护写错了");
 
     // 🔴 探针表：`(能力, 被测参数, 甲, 乙)` —— 甲乙只差那一个键，答案必须不同。
