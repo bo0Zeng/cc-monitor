@@ -65,14 +65,32 @@
 //! 由 `files.index.status` 交出去（[`index::Status::rewalk_interval_secs`]）。
 //! `设计/60 §3.5.3` 逐字要求那个延迟**显示在界面上**，不许让用户猜为什么搜不到。
 //!
-//! # ⚠ 本件**没有**做到的（`设计/96 §2` 那三层里的第 2、3 层，以及线上那一跳）
+//! # ⚠ 本件**没有**做到的（`设计/96 §2` 那三层里的第 3 层，以及线上那一跳）
 //!
-//! 1. **`CAPABILITIES` 的汇总没接**。`设计/96 §2` 第 2 层要求「能力清单从实现派生，
-//!    `CAPABILITIES` 由它们汇总而来」。本族把自己那一份声明成了**数据**
-//!   （下面这张表），但**没有**把它汇进 `lib.rs::CAPABILITIES` ——
-//!    那一处的语义今天是「**会在一次性查询判定前剥离对应 flag** 的流能力」
-//!   （`§26` 死循环护栏逐字，`main_stream_flag_tests` 在钉），本族四条**都不是那种东西**，
-//!    硬塞进去会当场红，而且会是**红对了**。⇒ 汇总要先有第 2 层那个派生机制，那是另一件活。
+//! 1. ✅〔步 `8a` · 2026-09-21 · `设计/99 §4.8.3 P12`〕**汇总接上了，而且不是靠硬塞。**
+//!
+//!    先前这一条逐字写着「`CAPABILITIES` 的汇总没接 …… 硬塞进 `lib.rs::CAPABILITIES`
+//!    会当场红，而且会是**红对了**。⇒ 汇总要先有第 2 层那个派生机制，那是另一件活」。
+//!    那件活就是步 `8a`，已落地：
+//!
+//!    - 🔴 **「硬塞会红」那句话现打核过，成立** —— 把 `"files.ls"` 加进
+//!      `lib.rs::CAPABILITIES` 之后 backend 套 `769 passed / 1 failed`，**只红一条**，
+//!      逐字点名 `main_stream_flag_tests::every_capability_token_is_strippable`
+//!      「无 flag 映射……否则埋 §26 死循环」。⇒ **那一处一个字都没动。**
+//!    - 汇总的住址是 [`crate::capability_ledger`]（`设计/96 §2` 第 2 层那份
+//!      「由它们汇总而来」），人群是 [`crate::CAPABILITY_FACES`]。
+//!      本族在里面是**一个面**（`files-read`，六条，射程那一类是
+//!      [`crate::CapabilityKind::Asset`]）；`lib.rs::CAPABILITIES` 也是**一个面**
+//!      （`stream-flags`，两条，[`crate::CapabilityKind::Protocol`]）——
+//!      **接法是并列成面，不是往那张表里塞。**
+//!    - 本族的声明表[`CAPABILITIES`]一个字节没改，`Capability` 那八栏一栏没动。
+//!      唯一的变动是 target 轴的**住址**升到了汇总那一层（`files::Target` 原样可用，
+//!      理由写在下面 [`Target`] 那条再导出上）。
+//!    - 判据住 `tests/backend/capability_ledger_guard.rs`（七条），
+//!      两侧刻意异源：汇总侧是纯函数、被对的那侧是住测试树的点名表 ＋ 源码树现打。
+//!
+//!    ⚠ **别把它读宽成「§2 做完了」**：接上的只有第 2 层。第 3 层（跨 target 的
+//!    **对等断言** ＋ 逐条登记的豁免表）**没做**，见下面第 5 条。
 //! 2. ✅〔`24f` 第二刀 · 2026-09-20〕**线上那一跳已经接上**：四条能力同拍进了
 //!    `inbound::REGISTRY` / `inbound::COMMANDS`（帧面）· `lib::SUBCOMMANDS`（CLI 面）·
 //!    `src/doc/IPC-PROTOCOL.md §10`（四个小节 ＋ CLI 那一半那一段），并 bump 了 `BUILD_ID`。
@@ -106,6 +124,18 @@
 //!    **仍然零生产调用方** ⇒ `files.browse` 今天买到的是「这几个目录的子项在你发命令
 //!    那一刻是新的」，**不是**「此后一有动静就跟着新」。理由与出路见 [`answer_browse`]。
 //! 4. **按内容搜 / 模糊匹配 / 排序** —— `设计/60 §3.5.3` 逐字「一条都没设计」，本件也没做。
+//! 5. **`设计/96 §2` 第 3 层没做，而且它缺的不止一样**〔步 `8a` 如实留账〕：
+//!    - **跨 target 的对等断言**（「所有 target 的能力集**完全相等**，不相等就红，
+//!      并**逐条登记豁免理由**」）——今天各面只是**各自声明**了自己的 `targets`，
+//!      没有一条判据把它们横着对起来，豁免表也还不存在。
+//!    - 🔴 **而「在这台机器上做不到」那个轴与本轴还没对上**，两件事别混：
+//!      本轴（`设计/96 §2` 的 target 轴）逐字答「每个平台**编不编得过**」，是**编译期**的；
+//!      [`crate::wire::Unavailable`] 那个轴答「这条命令我接得下，但**在这台机器上**做不到」，
+//!      是**运行期逐机器**的。后者今天还**恒空**（`main.rs` 硬写 `Vec::new()`，
+//!      `main_fourth_face_tests::production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen`
+//!      钉着）⇒ 那一侧**根本还没有清单可以对**，而真填它是一次**跨仓契约变更**
+//!      （仓外 aterm 按精确字节读 hello）。
+//!    ⇒ 这两样都在步 `8a` 的射程之外，登记在 `设计/99 §4.8.3 P12`。
 
 pub mod browse_watch;
 pub mod index;
@@ -128,30 +158,20 @@ pub enum Effect {
     TouchesDisk,
 }
 
-/// 编译 target —— `设计/96 §2` 那条跨 target 对拍的人群。
+/// 编译 target 轴 —— **住址已经搬到 [`crate::Target`]**〔步 `8a` · 2026-09-21〕。
+///
+/// # 为什么搬走（不是整理，是「一个数只有一个住址」）
+///
+/// 这个轴原先定义在本族里，那在**只有本族一个能力面**的时候是对的。
+/// 步 `8a` 接上 `设计/96 §2` 第 2 层那条汇总之后，**声明 target 的面不止一个**
+///（[`crate::CAPABILITY_FACES`] 现打三个）—— 轴要是留在本族，另外两个面就得
+/// 从一个**兄弟**那里引它，或者各写一份。后者是两个住址，前者是层序颠倒。
+/// ⇒ 轴升到 `lib.rs`（汇总那一层），本族**再导出**它，本族的散文与判据一个字不用改。
 ///
 /// ⚠ 与 `设计/01 §7.2` 那条「两个壳」的对等断言**不是同一条断言**
 ///（`设计/96 §2` 开头逐字分过这两个轴：壳答「折进去会不会改变它能干什么」，
 /// target 答「每个平台编不编得过」）。本族登记的是后者。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Target {
-    /// `x86_64-unknown-linux-gnu`（本机原生构建，也是 in-process 那条路的宿主）。
-    LinuxGnu,
-    /// `*-unknown-linux-musl`（部署到被观测机器的那份静态字节，两个 arch）。
-    LinuxMusl,
-    /// `x86_64-pc-windows-*`。
-    Windows,
-    /// `*-apple-darwin`。
-    MacOs,
-}
-
-/// 全体 target。**这一族的能力集在它们之上必须相等**（边界②）。
-pub const TARGETS: &[Target] = &[
-    Target::LinuxGnu,
-    Target::LinuxMusl,
-    Target::Windows,
-    Target::MacOs,
-];
+pub use crate::{Target, TARGETS};
 
 /// 一条能力的登记。
 ///
