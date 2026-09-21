@@ -995,6 +995,40 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              跑法写在自己的头注里，属于「改 F63 解析时人工重算的台账」",
     )];
 
+    // ── 🔴 第三档触发器：**由同一个 crate 里的判据 spawn 子进程去跑**〔2026-09-21 加〕
+    //
+    // # 为什么不能塞进 `MANUAL`
+    //
+    // `MANUAL` 那一档的语义是「**没有自动触发器**，靠人按清单跑」。而这几条不是 ——
+    // 它们**每趟门禁都跑**，只是触发器不是 e2e 脚本，而是**同一个 crate 里的判据**：
+    // 判据起一个子进程（`cargo test -- --ignored <名>`），在那个子进程里真开窗、
+    // 读完再把子进程输出整段带回来（winit 全进程只许一个事件循环 ⇒ 实景只能落子进程）。
+    // ⇒ 登记成「手动」是**说假话**：它会让人以为这几条平时不跑。
+    //
+    // # 而这一档比 `MANUAL` **严**，不是更松
+    //
+    // `MANUAL` 只要求写一句理由，**没有任何东西核那句理由是不是真的**。
+    // 本档要求：这个名字**必须作为字面量出现在判据树里**（不算它自己的 `fn` 定义行）。
+    // 🔴 钉的正是本条判据自己的报错逐字警告过的那一形：
+    //    「改测试名 ⇒ 过滤串一个都匹配不上，而 `cargo test` 跑零条测试**退出码是 0**
+    //      ⇒ 两边都绿，测试其实再没执行过。」
+    // ⇒ 改了工作面的名字而没同拍改 spawn 处那个字面量，**当场红**。
+    const SPAWNED_BY_JUDGE: &[(&str, &str)] = &[
+        (
+            "xvfb_worker_opens_a_real_window",
+            "实景开窗那一趟：由 `shell_tests.rs` 的 `scenario_a()` spawn 子进程跑",
+        ),
+        (
+            "xvfb_worker_opens_with_no_x_server_at_all",
+            "阴性对照（没有 X 服务器 ⇒ 必须回原因不是静默成功）：\
+             由 `a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok` spawn",
+        ),
+        (
+            "xvfb_worker_real_pointer_events_on_a_row",
+            "真 X 鼠标事件那一趟：由 `rows_tests.rs` 的 `scenario_b()` spawn 子进程跑",
+        ),
+    ];
+
     let repo = crate::guard_support::repo_root().to_path_buf();
     // ── 收 `#[ignore]` 测试：(文件名 stem, fn 名)
     let mut ignored: Vec<(String, String)> = Vec::new();
@@ -1103,9 +1137,79 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         );
     }
 
+    // ★ 自检 4（本档专有，`MANUAL` 没有的那一格）：**名字真的被字面点名**。
+    {
+        // 🔴 **本文件必须从语料里摘掉，而 `scan_tree!` 的自动摘除在这里没生效。**
+        //
+        // 现打逼出来的：第一版直接用 `scan_tree!`（它号称「按构造摘除调用者自己那份」），
+        // 而死值验把 spawn 处的字面量改坏之后**仍然绿** —— 命中的是**本文件里
+        // `SPAWNED_BY_JUDGE` 那张表自己的那一行**。
+        // ⇒ 典型的「**判据在自己的登记表里找到自己 ⇒ 恒绿**」
+        //   （`scanning_guard_registry` 头注逐字：audit-0805 实测五次，**五次都不是被判据变红发现的**）。
+        //
+        // ⚠ **为什么宏的自动摘除没生效**（这一条值得单独记，别处可能同病）：
+        //   本文件是 `#[path]` 挂进 `src/` 那一侧的 ⇒ `file!()` 给的是
+        //   `src/../../../tests/bridge/shared_crate_registry_tests.rs`，
+        //   而扫出来的是绝对路径 `/…/tests/bridge/shared_crate_registry_tests.rs`
+        //   —— 宏按**后缀**比对，那个 `src/../../../` 前缀让后缀永远对不上
+        //   ⇒ **摘除静默空转**，而「摘了」与「没摘」在输出上一模一样。
+        // ⇒ 这里**明写**排除，不依赖那个宏的自摘。
+        let me = "shared_crate_registry_tests.rs";
+        let judge_corpus: Vec<_> = guard_core::scan_tree!(&repo.join("tests").join("bridge"), &["rs"])
+            .into_iter()
+            .filter(|(path, _)| !path.to_string_lossy().ends_with(me))
+            .collect();
+        assert!(
+            !judge_corpus.is_empty(),
+            "判据语料排掉本文件之后成了空集 —— 树的住址错了，本条在空转"
+        );
+        for (face, why) in SPAWNED_BY_JUDGE {
+            assert!(
+                ignored.iter().any(|(_, n)| n == face),
+                "登记成「判据 spawn」的 `{face}` 已经不是 `#[ignore]` 测试了 —— 删掉这一行。（理由：{why}）"
+            );
+            // 点名处：把它自己的 `fn <名>` 定义行排掉，剩下的命中才算「有人点它」。
+            // 🔴 **按标识符边界认，不许用裸子串** —— 这一条是现打逼出来的：
+            //    本条第一版写的是 `l.contains(face)`，而死值验把 spawn 处那个字面量
+            //    改成 `<原名>_TYPO` 之后**没红** —— 因为改坏的那串**仍然包含原名作为子串**。
+            //    ⇒ 「在名字后面接东西」这一形它整个看不见，而那正是改名最常见的走法。
+            //    （同一形今天在 `comm_boundary_registry` 的 C1 上也修过一次：匹配单位太松。）
+            let named_with_boundary = |l: &str| -> bool {
+                let b = l.as_bytes();
+                let mut from = 0usize;
+                while let Some(hit) = l[from..].find(face) {
+                    let i = from + hit;
+                    let after = i + face.len();
+                    // 后面不许紧跟标识符字符；否则那是**另一个**名字。
+                    let tail_ok = b
+                        .get(after)
+                        .is_none_or(|c| !(c.is_ascii_alphanumeric() || *c == b'_'));
+                    if tail_ok {
+                        return true;
+                    }
+                    from = after;
+                }
+                false
+            };
+            let named = judge_corpus.iter().any(|(_, src)| {
+                src.lines()
+                    .filter(|l| !l.trim_start().starts_with(&format!("fn {face}")))
+                    .any(named_with_boundary)
+            });
+            assert!(
+                named,
+                "工作面 `{face}` 在判据树里**没有任何地方点名它** —— \n\
+                 那意味着没人会 spawn 它，而 `cargo test --ignored <不存在的名>` \n\
+                 **跑零条测试、退出码 0** ⇒ 两边都绿而它再没执行过。\n\
+                 改名了就同拍改 spawn 处那个字面量。（登记的理由：{why}）"
+            );
+        }
+    }
+
     let orphan: Vec<String> = ignored
         .iter()
         .filter(|(_, n)| !MANUAL.iter().any(|(m, _)| m == n))
+        .filter(|(_, n)| !SPAWNED_BY_JUDGE.iter().any(|(m, _)| m == n))
         .filter(|(s, n)| covered(s, n).is_none())
         .map(|(s, n)| format!("  {s}.rs::{n}"))
         .collect();

@@ -127,8 +127,25 @@ impl Screen {
     pub fn start() -> Result<Self, String> {
         require_toolbox("Xvfb 台架自己");
         let mut last = String::from("一个候选号都没试到");
-        // 号段挑高位，避开真会话（`:0`）与别人的临时屏。
-        for num in 90..=119u32 {
+        // 🔴 **号段挑高位（避开真会话 `:0` 与别人的临时屏），而起点必须每格不同。**
+        //
+        // 〔2026-09-21 修〕上一版从固定的 `:90` 开始扫、靠 `/tmp/.X<n>-lock` 在不在来跳号
+        // —— **那是 TOCTOU**：`cargo test` 把这些格**并行**跑在同一个进程里，
+        // 两格同时看到 `:90` 没锁、同时 `spawn Xvfb :90`，一个赢、另一个的窗口
+        // 当场变成别人屏上的野窗口 ⇒ winit 抛 `BadWindow`
+        // （`x11/util/geometry.rs:188` 逐字 `Failed to translate window coordinates`）
+        // ⇒ 子进程被信号打死、退出码 `None`。
+        //
+        // ⚠ **这一形只在完整门禁里出现**：单独跑任一格都是绿的（一次只有一台 Xvfb）。
+        //   立本台架那一拍因为「叫停不许跑门禁」而没跑全量 ⇒ 撞车在那一拍看不见。
+        //   **教训：并行安全的东西，单独跑绿不算验过。**
+        //
+        // ⇒ 起点由一个进程级原子计数器发，**每次 `start()` 拿到不同的基点**；
+        //   锁文件那一跳留着当便宜的预筛（它省掉大多数无谓 spawn），但**不再是正确性依赖**。
+        static NEXT_BASE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let base = NEXT_BASE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        for step in 0..30u32 {
+            let num = 90 + (base + step) % 30;
             if std::path::Path::new(&format!("/tmp/.X{num}-lock")).exists() {
                 continue;
             }
