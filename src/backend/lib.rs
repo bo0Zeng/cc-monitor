@@ -565,16 +565,27 @@ pub enum CapabilityKind {
 /// 就不止一个 ⇒ 轴留在任何**一个**面里，其余的面都得从一个兄弟那里引它。
 /// ⇒ 轴住汇总这一层，`files` 再导出（`files::Target` 原样可用，那一族一个字没改）。
 ///
-/// ⚠ 与 `设计/01 §7.2` 那条「两个壳」的对等断言**不是同一条断言**
-///（`设计/96 §2` 开头逐字分过这两个轴：壳答「折进去会不会改变它能干什么」，
-/// target 答「**每个平台编不编得过**」）。本轴是后者。
+/// # 🔴 **本轴判「做得到」，不判「编得过」**〔用户 2026-09-21 拍板，逐字「**做得到**」〕
 ///
-/// 🔴 **别把它读成「在这台机器上做不到」** —— 那是**另一个轴**，住 `wire.rs` 的
-/// [`wire::Unavailable`]（「这条命令我接得下，但在这台机器上做不到，以及为什么」）。
-/// 两个轴的时态都不同：本轴是**编译期**的，那个轴是**运行期逐机器**的。
-/// 把它们混成一件事会得出「ccm 声明了 `tmux` 却在 Windows 上做不到 ⇒ target 声明是假的」
-/// 这种错结论 —— 而 ccm 在 Windows 上**编得过**（两处 `#[cfg(unix)]` 各自带
-/// `#[cfg(not(unix))]` 回退分支，本轮现打），它只是在那台机器上**做不到**。
+/// 上一版本轴判的是「编不编得过」，并逐字论证过「ccm 声明了 `tmux` 却在 Windows 上
+/// 做不到」**不算假声明**，因为它编得过。**用户把这条判法推翻了。**
+///
+/// 他那一拍是三句，合起来是一条完整裁决：
+/// ① 判「**做得到**」；② 「**除非暂时不做**」；③ 「**Windows 用 Windows 自己的后台服务，后面再做**」。
+///
+/// ⇒ 于是本轴的形状变了三处：
+/// 1. `targets` 那一栏的意思从「编得过」变成「**这一面在这个 target 上真的做得到**」；
+/// 2. 做不到的那几条要**逐条登记**成 [`TARGET_GAPS`]，每条写明**为什么做不到**
+///    与**将来怎么办**（「暂时不做」也是一种答复，但必须写出来）；
+/// 3. 「编不编得过」**仍然是一条真性质**，但它不再由本轴承担 —— 它由跨 target
+///    编译门禁（`设计/96 §2` 第 1 层）承担，而那一层**本仓今天只有两格**（两条 `-gnu`），
+///    macOS 那一格**两道都没有**。
+///
+/// ⚠ **`wire::Unavailable` 那个轴仍然是另一个轴，别合并** —— 它是**运行期逐机器**的
+/// 「这条命令我接得下，但在这台机器上做不到，以及为什么」。
+/// 两个轴的区别现在不是「编译期 vs 运行期」了（本轴也谈做得到），而是**粒度**：
+/// 本轴谈**一个 target 上普遍做不做得到**（进得了源码树的常量），
+/// 那个轴谈**这一台机器上此刻做不做得到**（要连上去才知道，比如 tmux 装没装）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Target {
     /// `x86_64-unknown-linux-gnu`（本机原生构建，也是 in-process 那条路的宿主）。
@@ -650,10 +661,85 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
         declares: ccm_capability_names,
         declared_in: "control/ccm/mod.rs",
         targets: TARGETS,
-        target_basis: "两处平台分叉（`exec_or_spawn` / `is_exec`）**各自带 \
-                       `#[cfg(not(unix))]` 回退分支** ⇒ 四个 target 都编得过，本轴成立。\
-                       🔴 **而「Windows 上没有 tmux」不在本轴上** —— 那是 \
-                       `wire::Unavailable` 那个**运行期逐机器**的轴，两件事别合并。",
+        target_basis: "四个 target 上**这一面都做得到**（起会话 · 认账号 · 选模型 · 传 cwd \
+                       那几条不依赖任何 Unix 专有设施）。⚠ **但不是每一条都做得到** —— \
+                       tmux 那一族 6 条在 Windows 上做不到，逐条登记在 `TARGET_GAPS`。\
+                       〔2026-09-21 改判：上一版这一栏写的是「四个 target 都编得过」，\
+                        而用户把本轴从「编得过」改成了「做得到」⇒ 那句依据不再回答本轴的问题。\
+                        「编得过」仍然是真的（两处平台分叉各带 `#[cfg(not(unix))]` 回退分支），\
+                        但它归第 1 层那个跨 target 编译门禁。〕",
+    },
+];
+
+/// 一条**逐能力**的豁免：这一面在这个 target 上**做不到**这一条能力。
+///
+/// # 🔴 它为什么必须存在（而上一版没有它）
+///
+/// 本轴一旦从「编得过」改成「**做得到**」（用户 2026-09-21 拍板），
+/// `ccm-launcher` 那一面就**不可能**再对四个 target 整面成立 —— Windows 上没有 tmux。
+/// ⇒ 要么把整面从 Windows 上摘掉（**那会连 12 条真做得到的一起摘掉，是假的**），
+/// 要么逐条登记豁免。**只有后者说的是真话。**
+///
+/// ⚠ **「暂时不做」是一种合法答复，但必须写出来** —— 用户那一拍逐字
+/// 「**做得到. 除非暂时不做. windows用windows自己的后台服务. 后面在做**」。
+/// ⇒ [`TargetGap::why`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TargetGap {
+    /// 哪一面。必须是 [`CAPABILITY_FACES`] 里真有的族名。
+    pub family: &'static str,
+    /// 哪一条能力。必须是那一面**真的声明过**的名字（判据拦幽灵）。
+    pub capability: &'static str,
+    /// 哪个 target 上做不到。
+    pub target: Target,
+    /// 🔴 **为什么做不到 ＋ 将来怎么办。** 不许留空（判据有长度地板）。
+    pub why: &'static str,
+}
+
+/// 🔴 **全部逐能力豁免 —— 唯一住址。**
+///
+/// 今天只有一族：`ccm-launcher` 的 tmux 那一族在 Windows 上做不到。
+pub const TARGET_GAPS: &[TargetGap] = &[
+    // ── `ccm-launcher` × Windows：tmux 那一族 6 条 ─────────────────
+    //
+    // 🔴 **将来的答复是用户给的，不是我们挑的**：他 2026-09-21 逐字
+    //    「**windows用windows自己的后台服务. 后面在做**」
+    //    ⇒ 方向已定（**不是**去 Windows 上装个 tmux，也**不是**自己写一个终端复用器），
+    //      落地时间**明确推后**。这六条的 `why` 都指着同一句裁决。
+    TargetGap {
+        family: "ccm-launcher",
+        capability: "tmux",
+        target: Target::Windows,
+        why: "Windows 上没有 tmux（也不打算装）。将来由 **Windows 自己的后台服务**               承担「会话活在前端之外」这件事〔用户 2026-09-21 拍板〕，**暂时不做**。",
+    },
+    TargetGap {
+        family: "ccm-launcher",
+        capability: "attach",
+        target: Target::Windows,
+        why: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在               ⇒ 等那个后台服务落地时一并给出等价物〔同上裁决〕，**暂时不做**。",
+    },
+    TargetGap {
+        family: "ccm-launcher",
+        capability: "detach",
+        target: Target::Windows,
+        why: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等那个后台服务，**暂时不做**。",
+    },
+    TargetGap {
+        family: "ccm-launcher",
+        capability: "tmux-size",
+        target: Target::Windows,
+        why: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条**。**暂时不做**。",
+    },
+    TargetGap {
+        family: "ccm-launcher",
+        capability: "tmux-base",
+        target: Target::Windows,
+        why: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**。",
+    },
+    TargetGap {
+        family: "ccm-launcher",
+        capability: "base-url-across-tmux",
+        target: Target::Windows,
+        why: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；              将来那个后台服务要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
     },
 ];
 
