@@ -366,6 +366,20 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         );
     }
 
+    // 〔步 `24f` 第二刀〕`files-read` 四条**不起子进程**，但同样在阻塞档上：
+    // `files::answer` 是**同步**函数 —— 前两条真做文件系统 I/O（`read_dir` / 取元数据），
+    // `files-find` 在 64 万条量纲上的现打外推是 20–50 ms（`设计/60 §3.5.3`）。
+    // 走 `Run::Async` 就是把这些跑在 tokio worker 上，而 `main` 是裸 `#[tokio::main]`
+    //（worker 数 = 可用并行度）⇒ 单核机上一条查询就占住唯一的 worker，
+    // 而出方向 writer 与入方向 reader 都在同一个 runtime 上。
+    // 代价如实写：这一档**开跑之后打不断** ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
+    for c in ["files-ls", "files-stat", "files-find", "files-index-status"] {
+        assert!(
+            matches!(d(c), Disposition::SpawnBlocking(..)),
+            "`{c}` 不在阻塞档上 —— 它是同步处理器，放 tokio worker 上会把读循环那条 runtime 占住"
+        );
+    }
+
     // 计数自检：每条已声明的命令都被上面覆盖到了（新增命令必须来这里表态）。
     let covered = [
         "launch",
@@ -378,6 +392,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-kill",
         "bus-state",
         "capture-pane",
+        "files-ls",
+        "files-stat",
+        "files-find",
+        "files-index-status",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(
