@@ -691,6 +691,184 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
     }
 }
 
+/// 🔴🔴 **`args` 那一侧终于也去对真解析器了**〔`24f` 第三刀补，`设计/96 §2.9` 登记的那条欠账〕。
+///
+/// # 它补的是哪一格
+///
+/// 出方向那一侧早就有实打对拍（[`the_status_fields_match_what_the_call_really_returns`]
+/// 那几条 —— **真调一次**，拿回来的键与声明的 `fields` 判相等）。
+/// 而**入方向的 `args` 从来没有任何东西拿它去对真解析器** ——
+/// `设计/96 §2.9` 逐字登记过这条欠账，而且它已经出过一次事：
+/// `files.ls` 的 `args` 里写着 `ignore_ascii_case`，**而 `answer_ls` 一次都没读它**
+///（从 `files.find` 抄过来的鬼影，`24f` 第二刀现打逮到、已摘）。
+///
+/// 🔴 **这比「少声明一个参数」更坏**：`src/doc/IPC-PROTOCOL.md §10` 是**冻结的线上契约**、
+/// 读者在仓外，一个「写了也不起作用」的参数就是在那份文档里**撒谎** ——
+/// 而调用方发了它、以为生效了，行为却一个字没变。
+///
+/// # 怎么判：**差分**，不是「名字出现在源码里」
+///
+/// 「`answer_ls` 里有没有 `ignore_ascii_case` 这个串」是**源码扫描**，
+/// 而那个鬼影恰恰是**被声明、没被读** —— 扫描在它身上是瞎的（表自己就在被扫的树里）。
+/// ⇒ 本条判的是**行为**：每个声明的参数都配一对只差**那一个键**的入参，
+/// 两趟**真的调进去**，答案必须**不同**。答案相同 = 这个参数没被读 = 声明在撒谎。
+///
+/// 三条各自独立，缺一条本条就会退化：
+/// ① **分区恒等** —— 探针表里每条能力的参数集 **==** 它 `args` 声明的那一套（**两向**）。
+///    ⇒ 往声明里加一个参数而不写探针，当场红（那正是鬼影混进来的路）。
+/// ② **一次只差一个键** —— 两份入参的键集对称差必须**恰好**是被测的那个参数。
+///    ⇒ 不许拿「顺手把 path 也换了」的两趟去冒充「limit 被读了」。
+/// ③ **阴性对照** —— 喂一个**没声明**的参数进去，答案必须**相同**。
+///    没有它，一把「什么都说不同」的坏尺子照样全绿。这一格用的正是当年那个鬼影
+///    （`files.ls` + `ignore_ascii_case`），它今天必须**不起作用**。
+///
+/// # ⚠ 它买不到什么（如实登记）
+///
+/// - 只买「**这个参数被读了**」，**不买**「读得对」：语义对不对仍然是各条命令自己的判据。
+/// - 只覆盖**今天造得出差分**的参数。将来若有一个参数在任何输入下都不改变可观测答案
+///   （纯旁路的开关），本条写不出探针 ⇒ 分区恒等会逼那个人在这里**当面交代**，
+///   而不是让它静默进契约文档。**那是刻意的。**
+#[test]
+fn every_declared_arg_is_really_read_by_the_parser() {
+    let _lock = resident_lock();
+
+    // 语料：一棵合成树 ＋ 它的一个子目录（`设计/17 §6` 的数据源纪律 —— 全合成，不碰真目录）。
+    let fx = crate::files::index::tests::make_tree("args-probe", 3, 4, 0);
+    let sub = fx.root.join("d0000");
+    let p = |x: &std::path::Path| {
+        serde_json::Value::String(x.to_str().expect("夹具路径是 ASCII").to_string())
+    };
+
+    // `files.find` 那几条要有一份**真的**常驻索引才谈得上差分。
+    crate::files::index::rebuild_once(&fx.root);
+
+    // 🔴 探针表：`(能力, 被测参数, 甲, 乙)` —— 甲乙只差那一个键，答案必须不同。
+    //   ⚠ 顺序承重：`files.browse` 会往 overlay 里加东西、`files.index.rebuild` 会把
+    //   常驻那一份整份换掉 ⇒ 两者都排在 `files.find` 之后，免得前一条把后一条的地基抽了。
+    let probes: Vec<(&str, &str, serde_json::Value, serde_json::Value)> = vec![
+        (
+            "files.ls",
+            "path",
+            serde_json::json!({ "path": p(&fx.root) }),
+            serde_json::json!({ "path": p(&sub) }),
+        ),
+        (
+            "files.ls",
+            "limit",
+            serde_json::json!({ "path": p(&fx.root), "limit": 1000 }),
+            serde_json::json!({ "path": p(&fx.root), "limit": 1 }),
+        ),
+        (
+            "files.stat",
+            "path",
+            serde_json::json!({ "path": p(&fx.root) }),
+            serde_json::json!({ "path": p(&sub) }),
+        ),
+        (
+            "files.find",
+            "needle",
+            serde_json::json!({ "needle": "f0000" }),
+            serde_json::json!({ "needle": "d0000" }),
+        ),
+        (
+            // 当年那个鬼影的**正主**：这一条上它是真被读的。
+            "files.find",
+            "ignore_ascii_case",
+            serde_json::json!({ "needle": "F0000", "ignore_ascii_case": true }),
+            serde_json::json!({ "needle": "F0000", "ignore_ascii_case": false }),
+        ),
+        (
+            "files.find",
+            "limit",
+            serde_json::json!({ "needle": "f0000", "limit": 1000 }),
+            serde_json::json!({ "needle": "f0000", "limit": 1 }),
+        ),
+        (
+            "files.browse",
+            "dirs",
+            serde_json::json!({ "dirs": [] }),
+            serde_json::json!({ "dirs": [p(&sub)] }),
+        ),
+        (
+            "files.index.rebuild",
+            "path",
+            serde_json::json!({ "path": p(&fx.root) }),
+            serde_json::json!({ "path": p(&sub) }),
+        ),
+    ];
+
+    // ── ① 分区恒等：探针表 ↔ `args` 声明，逐条能力**两向相等** ─────────────
+    for cap in CAPABILITIES {
+        let probed: std::collections::BTreeSet<&str> = probes
+            .iter()
+            .filter(|(c, ..)| *c == cap.name)
+            .map(|(_, a, ..)| *a)
+            .collect();
+        let declared: std::collections::BTreeSet<&str> = cap.args.iter().copied().collect();
+        assert_eq!(
+            probed, declared,
+            "\n能力 `{}` 的**入参探针**与它声明的 `args` 对不上。\n\
+             声明里有而探针没有 ⇒ 🔴 那个参数**没有任何东西证明它真被读了** —— \n\
+             `files.ls` 的 `ignore_ascii_case` 当年就是这么在契约文档里躺了一版。\n\
+             探针有而声明没有 ⇒ 探针表腐了（登记表腐烂比没有登记更糟）。",
+            cap.name
+        );
+    }
+
+    // ── ② 逐条：只差一个键 · 答案必须不同 ──────────────────────────────────
+    let keys = |v: &serde_json::Value| -> std::collections::BTreeSet<String> {
+        v.as_object()
+            .expect("入参该是一个对象")
+            .keys()
+            .cloned()
+            .collect()
+    };
+    let mut checked = 0usize;
+    for (cap, arg, a, b) in &probes {
+        let (ka, kb) = (keys(a), keys(b));
+        let diff: Vec<&String> = ka.symmetric_difference(&kb).collect();
+        assert!(
+            ka == kb || (diff.len() == 1 && diff[0] == arg),
+            "`{cap}` / `{arg}` 那一对入参差的不止那一个键：{diff:?}\n\
+             ⇒ 答案不同可能是**别的键**造成的，这一对证不了 `{arg}` 被读了"
+        );
+        let ra = format!("{:?}", answer(cap, a));
+        let rb = format!("{:?}", answer(cap, b));
+        assert_ne!(
+            ra, rb,
+            "\n🔴 `{cap}` 的参数 `{arg}` **改了也不起作用** —— 两趟只差这一个键，答案却一模一样。\n\
+             那就是「声明了、解析器没读」，而 `src/doc/IPC-PROTOCOL.md §10` 是**冻结的\n\
+             线上契约**、读者在仓外 ⇒ 这一条等于在那份文档里撒谎。\n\
+             两条出路：把它真读起来，或者把它从 `args` 与 `§10` 里一起摘掉\n\
+             （`files.ls` 的 `ignore_ascii_case` 走的是后一条）。"
+        );
+        checked += 1;
+    }
+    assert!(checked >= 7, "只行使了 {checked} 对探针 —— 本条在空转");
+
+    // ── ③ 阴性对照：**没声明**的参数必须不起作用 ───────────────────────────
+    //
+    // 🔴 没有这一格，一把「什么都判不同」的坏尺子照样全绿。
+    //    用的正是当年那个鬼影：`files.ls` + `ignore_ascii_case`。
+    assert!(
+        !CAPABILITIES
+            .iter()
+            .find(|c| c.name == "files.ls")
+            .expect("在表里")
+            .args
+            .contains(&"ignore_ascii_case"),
+        "`files.ls` 又声明了 `ignore_ascii_case` —— 那下面这条阴性对照就不是对照了"
+    );
+    let base = serde_json::json!({ "path": p(&fx.root) });
+    let with_ghost = serde_json::json!({ "path": p(&fx.root), "ignore_ascii_case": true });
+    assert_eq!(
+        format!("{:?}", answer("files.ls", &base)),
+        format!("{:?}", answer("files.ls", &with_ghost)),
+        "喂一个**没声明**的参数进去，答案居然变了 —— 那上面那一批「不同」证不了任何事\n\
+         （要么这把尺子坏了，要么 `files.ls` 偷偷长出了一个没登记的参数）"
+    );
+}
+
 // ══════════════════════ 边界② 跨 target ══════════════════════
 
 /// 🔴 **判的是「能力在不在」，不是「新鲜度一样」**（`设计/96 §2.9` 边界② 逐字）。
