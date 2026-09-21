@@ -496,6 +496,201 @@ pub const SUBCOMMANDS: &[&str] = &[
 /// **此硬约束由 `every_capability_token_is_strippable` 测试代码强制**（不再只是约定）。
 pub const CAPABILITIES: &[&str] = &["bg", "tail-only"];
 
+// ══════════════════ 步 `8a`：能力清单的**汇总** —— `设计/96 §2` 第 2 层 ══════════════════
+//
+// 🔴 **这一段填的是 `files/mod.rs` 头注自己登记的那个缺口**，逐字：
+//   「`CAPABILITIES` 的汇总没接。`设计/96 §2` 第 2 层要求『能力清单从实现派生，
+//    `CAPABILITIES` 由它们汇总而来』。本族把自己那一份声明成了**数据**，但**没有**
+//    把它汇进 `lib.rs::CAPABILITIES` —— 那一处的语义今天是『会在一次性查询判定前
+//    剥离对应 flag 的**流**能力』，本族六条都不是那种东西，硬塞进去会当场红，
+//    **而且会是红对了**。⇒ 汇总要先有第 2 层那个派生机制，那是另一件活。」
+//
+// 🔴 **「硬塞进去会当场红」这句话本轮现打过，成立**：把 `"files.ls"` 加进上面那个
+//   [`CAPABILITIES`] 之后 `backend` 套 `769 passed / 1 failed`，**只红一条**，
+//   而且是 `main_stream_flag_tests::every_capability_token_is_strippable` 逐字点名
+//   「无 flag 映射 …… 否则埋 §26 死循环」。⇒ 那一处的语义**保持不动**，
+//   它在本汇总里是**一个面**（`stream-flags`），不是汇总本身。
+//
+// # 这一层买到什么 · 买不到什么（`设计/96 §2` 那张三层表逐字）
+//
+// | 层 | 做什么 | 本段 |
+// |---|---|---|
+// | 1 | 跨 target 编译门禁 | ❌ 不是本段（门禁的 `muslbuild` / `winchk-backend` 那两格） |
+// | 2 | **能力清单从实现派生，`CAPABILITIES` 由它们汇总而来，不许手写** | ✅ **本段** |
+// | 3 | 一条对等判据：所有 target 的能力集**完全相等**，不相等要逐条登记豁免 | ❌ 不是本段（见下面「没买到」） |
+//
+// 🔴 **第 2 层那一栏「买到什么」逐字是「声明与实现不可能不一致（类型层保证）」** ——
+//   注意它说的是**不可能**，不是「不一致会被逮到」。⇒ [`capability_ledger`] 刻意写成
+//   一个对 [`CAPABILITY_FACES`] 的**纯函数**：汇总侧没有第二份可以漂开的名单，
+//   一个能力名**只有一个住址**（它自己那一族的声明表）。
+//   而「某一族整个没被登记进来」那一形函数拦不住 —— 那一格由
+//   `tests/backend/capability_ledger_guard.rs` 的**源码树点名**接着（两侧异源）。
+
+/// 一个能力**属于哪一类**。`设计/96 §2` 那条射程要求的兑现处。
+///
+/// # 🔴 为什么这个枚举必须有两个成员（不是分类癖）
+///
+/// `设计/96 §2` 逐字：
+///
+/// > **清单的射程要能装下「协议级能力」** —— 不只是「能管哪几类资产」。
+/// > ⇒ **清单的条目 ＝「我能管哪几类资产」＋「我认不认这条协议帧」两类**，
+/// > 第 2 层那条派生要把后者也派生进来；否则 `05 §8` 步 8 接上来的时候，
+/// > 它要协商的东西在清单里找不到住址。
+///
+/// ⇒ 两个成员就是那两类。**而且两类今天都有真成员**（不是「留着以后用」）：
+/// `files-read` 那六条是 [`CapabilityKind::Asset`]，`stream-flags` 那两条是
+/// [`CapabilityKind::Protocol`] —— 后者正是 `05 §3.3.3`「对面认不认这条」那一形。
+/// 「两个成员各有人用」由 `capability_ledger_guard` 钉住：只剩一类时这条射程就是空话。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CapabilityKind {
+    /// **我能管哪几类资产** —— 文件 / 会话 / 插件那一轴。
+    Asset,
+    /// **我认不认这条协议上的东西** —— 流 flag / 帧 / 命令那一轴（`05 §3.3.3`）。
+    Protocol,
+}
+
+/// 编译 target —— `设计/96 §2` 那条跨 target 对拍的人群。
+///
+/// # 🔴 它为什么住在这一层（`设计/96 §2` 第 2 层逐字「**每个能力面**声明自己在哪些
+/// target 上有实现」）
+///
+/// 这个轴原先住 `files/mod.rs`（那时只有一个能力面）。汇总一接上，声明 target 的面
+/// 就不止一个 ⇒ 轴留在任何**一个**面里，其余的面都得从一个兄弟那里引它。
+/// ⇒ 轴住汇总这一层，`files` 再导出（`files::Target` 原样可用，那一族一个字没改）。
+///
+/// ⚠ 与 `设计/01 §7.2` 那条「两个壳」的对等断言**不是同一条断言**
+///（`设计/96 §2` 开头逐字分过这两个轴：壳答「折进去会不会改变它能干什么」，
+/// target 答「**每个平台编不编得过**」）。本轴是后者。
+///
+/// 🔴 **别把它读成「在这台机器上做不到」** —— 那是**另一个轴**，住 `wire.rs` 的
+/// [`wire::Unavailable`]（「这条命令我接得下，但在这台机器上做不到，以及为什么」）。
+/// 两个轴的时态都不同：本轴是**编译期**的，那个轴是**运行期逐机器**的。
+/// 把它们混成一件事会得出「ccm 声明了 `tmux` 却在 Windows 上做不到 ⇒ target 声明是假的」
+/// 这种错结论 —— 而 ccm 在 Windows 上**编得过**（两处 `#[cfg(unix)]` 各自带
+/// `#[cfg(not(unix))]` 回退分支，本轮现打），它只是在那台机器上**做不到**。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Target {
+    /// `x86_64-unknown-linux-gnu`（本机原生构建，也是 in-process 那条路的宿主）。
+    LinuxGnu,
+    /// `*-unknown-linux-musl`（部署到被观测机器的那份静态字节，两个 arch）。
+    LinuxMusl,
+    /// `x86_64-pc-windows-*`。
+    Windows,
+    /// `*-apple-darwin`。
+    MacOs,
+}
+
+/// 全体 target。
+pub const TARGETS: &[Target] = &[
+    Target::LinuxGnu,
+    Target::LinuxMusl,
+    Target::Windows,
+    Target::MacOs,
+];
+
+/// 一个**能力面**的登记 —— `设计/96 §2` 第 2 层那条派生的**人群**。
+///
+/// ⚠ [`CapabilityFace::declares`] 是一个**函数指针**，不是又抄一份名单。
+/// 那是本结构最要紧的一栏：它让「这一面有哪些能力」**只有一个住址**
+///（那一族自己的声明表），汇总侧连一个可以漂开的副本都没有。
+pub struct CapabilityFace {
+    /// 这一面的族名。`设计/96 §2.9` 那种标题。
+    pub family: &'static str,
+    /// 它属于射程里的哪一类。
+    pub kind: CapabilityKind,
+    /// 🔴 **这一面的能力名从哪里来** —— 指向那一族**自己**的声明表，不是副本。
+    pub declares: fn() -> Vec<&'static str>,
+    /// 🔴 **声明表住哪一份文件**（本 crate 源码树内的相对路径）。
+    /// `capability_ledger_guard` 拿它与源码树**现打**出来的那一组对拍 ——
+    /// 那是「新长出一族却没汇进来」唯一拦得住的地方。
+    pub declared_in: &'static str,
+    /// 它在哪些 target 上**有实现**（第 2 层逐字要求每个面自己说）。
+    pub targets: &'static [Target],
+    /// 🔴 上一栏的**依据**，一句话。**不许留空**（判据有长度地板）。
+    /// 空着等于「抄了个 `TARGETS` 上去」，而 `设计/96 §2.9` 逐字管那叫**假声明**。
+    pub target_basis: &'static str,
+}
+
+/// 🔴 **全部能力面 —— 汇总的人群，唯一住址。**
+///
+/// 加一族能力面 = 往这张表加一行。**漏加**那一形由
+/// `capability_ledger_guard::every_capability_table_in_the_tree_is_a_registered_face`
+/// 拦住（它从源码树上现打，不问这张表）。
+pub const CAPABILITY_FACES: &[CapabilityFace] = &[
+    CapabilityFace {
+        family: "files-read",
+        kind: CapabilityKind::Asset,
+        declares: files::capability_names,
+        declared_in: "files/mod.rs",
+        targets: TARGETS,
+        target_basis: "本族目录下**零**平台 `cfg`（本轮现打：`src/backend/files/` 递归 \
+                       `grep cfg(target_os|windows|unix|target_family` 零命中）\
+                       ⇒ 四个 target 同一份源码。另有本族自己那条更强的：每条能力的 \
+                       `Capability::targets` 与 `TARGETS` 做**集合相等**（边界②）。",
+    },
+    CapabilityFace {
+        family: "stream-flags",
+        kind: CapabilityKind::Protocol,
+        declares: stream_flag_capability_names,
+        declared_in: "lib.rs",
+        targets: TARGETS,
+        target_basis: "`split_stream_flags` 是对 argv 的**纯函数**（`retain` + 两次 \
+                       `iter().any`），整份实现零平台 `cfg` ⇒ 四个 target 上逐字同一份。",
+    },
+    CapabilityFace {
+        family: "ccm-launcher",
+        kind: CapabilityKind::Asset,
+        declares: ccm_capability_names,
+        declared_in: "control/ccm/mod.rs",
+        targets: TARGETS,
+        target_basis: "两处平台分叉（`exec_or_spawn` / `is_exec`）**各自带 \
+                       `#[cfg(not(unix))]` 回退分支** ⇒ 四个 target 都编得过，本轴成立。\
+                       🔴 **而「Windows 上没有 tmux」不在本轴上** —— 那是 \
+                       `wire::Unavailable` 那个**运行期逐机器**的轴，两件事别合并。",
+    },
+];
+
+/// [`CAPABILITIES`] 的名单，包成 [`CapabilityFace::declares`] 要的形状。
+///
+/// ⚠ 它**不是**第二份名单，是同一个 const 的一次借用：这一族的能力名住址仍然只有
+/// [`CAPABILITIES`] 那一行。
+fn stream_flag_capability_names() -> Vec<&'static str> {
+    CAPABILITIES.to_vec()
+}
+
+/// `control::ccm::CAPABILITIES` 的名单，同 [`stream_flag_capability_names`] 的理由。
+fn ccm_capability_names() -> Vec<&'static str> {
+    control::ccm::CAPABILITIES.to_vec()
+}
+
+/// 🔴🔴 **汇总本体** —— `设计/96 §2` 第 2 层那份「由它们汇总而来」的清单。
+///
+/// 交出去的是 `(族名, 能力名)` 的**有序**表。
+///
+/// # 为什么是一个函数，而不是一张 `const`
+///
+/// 第 2 层那一栏「买到什么」逐字是「**声明与实现不可能不一致（类型层保证）**」。
+/// 一张 `const` 汇总表会是**第二个住址** ⇒ 它与各族的声明之间又要一条判据，
+/// 而那条判据只能在**漂开之后**出声。写成纯函数之后那一类漂开**不可表示**。
+///
+/// ⇒ 代价如实写：**本函数与各族的声明是同源的**，「汇总 == 各族的并集」拿本函数
+/// 去对各族的声明会是恒真（本仓逐字「恒等两侧同源会恒真」）。所以那条相等断言的
+/// 另一侧**不在本 crate 的源码里** —— 它是 `capability_ledger_guard` 里那张住
+/// `tests/backend/` 的点名表，两侧**不会被同一次编辑改到**。
+pub fn capability_ledger() -> Vec<(&'static str, &'static str)> {
+    let mut out: Vec<(&'static str, &'static str)> = CAPABILITY_FACES
+        .iter()
+        .flat_map(|f| (f.declares)().into_iter().map(|n| (f.family, n)))
+        .collect();
+    out.sort_unstable();
+    out
+}
+
+#[allow(clippy::items_after_test_module)]
+#[cfg(test)]
+#[path = "../../tests/backend/capability_ledger_guard.rs"]
+mod capability_ledger_guard;
+
 /// phase②（backend-08）：本 backend **会发射的帧 kind 集**（snake_case），填进 `Hello.emits`——
 /// aterm 门控消费（emits 含 kind → 依赖该帧；不含 → 回退 β/watchdog）。**与 `CAPABILITIES` 正交**：
 /// emits 是纯发射声明、无对应流 flag、不受 §26 护栏（见 `wire.rs` Hello.emits）。`turn_end` 待其帧
