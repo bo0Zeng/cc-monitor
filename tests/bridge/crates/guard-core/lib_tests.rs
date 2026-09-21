@@ -1,6 +1,7 @@
 use super::*;
 
-/// 🔴 **`scan_tree!` 这个宏的自摘，剖分之后在本仓已经没有一个能生效的调用者了。**
+/// 🔴 **`scan_tree!` 这个宏的自摘，在本 crate 这棵树上不生效** ——
+/// 剖分之后没有一个调用者能在这里让那一刀落下。
 ///
 /// # 它换掉了谁、为什么〔步 7c 2026-09-19 · `设计/16 §6.2` **D 类**〕
 ///
@@ -14,15 +15,30 @@ use super::*;
 ///
 /// `scan_tree!` 展开成 `scan_tree_excluding_self($root, $exts, file!())`，
 /// 而本仓**所有**测试模块今天都是 `#[path]` 引进来的 ⇒ `file!()` 一律是带 `..`
-/// 的折返路径 ⇒ 后缀比恒不命中 ⇒ **自摘在本仓恒空转**。
-/// 本条就断言这件事，因此：
+/// 的折返路径；本 crate 这棵树的根（`CARGO_MANIFEST_DIR/src`）里**没有** `..`
+/// ⇒ 后缀比不命中 ⇒ **自摘在这一处恒空转**。本条就断言这件事，因此：
+///
+/// 🔴 **⚠ 别把本条读成「自摘在本仓一处都不生效」**〔`P4` 2026-09-21 订正〕。
+/// 这一段先前逐字就是那么写的，而**那句话是过宽的**：后缀比命不命中只取决于
+/// 扫描根的字符串里有没有和 `file!()` 同一段 `..`。现打：backend 的
+/// `guard_support::tests_root()` 逐字是 `CARGO_MANIFEST_DIR.join("../../tests/backend")`
+/// —— 根自己带着那段 `..` ⇒ 在那棵树上自摘**真的落刀**（`plugin_walk_fixture` 那一趟，
+/// `P4` 当轮已改成明写名单）。**本条钉的是本 crate 这一棵，钉不住那一棵。**
+/// 逐侧读数见 [`scan_tree_excluding_self`] 头注那张表。
 ///
 /// · 它是 [`a_path_attribute_caller_file_silently_fails_to_exclude`] 的**加强版** ——
 ///   那条喂的是手写的折返串（依赖「我猜 `file!()` 长这样」），
 ///   本条喂的是**真的 `file!()`**，不依赖任何猜测；
 /// · 哪天有人给 `scan_tree!` 加上路径规范化（让自摘重新生效），**本条当场红**，
 ///   而红了该干什么写在下面的文案里 —— 那时要回去重读 `§5.4b` 纪律 4：
-///   自摘一旦重新生效，94 处 `scan_tree!` 的语料面会**静默缩小一份**。
+///   自摘一旦在**这一棵**上重新生效（它今天在这里**不生效**），
+///   几十处 `scan_tree!` 的语料面会**静默缩小一份**。
+///   〔`P4` 2026-09-21 复核那个数：`tests/` 下 `scan_tree!(` 的**调用点**现打 **81** 处
+///   （口径：去掉注释行与字符串里的那几处）—— 先前散文里那个 `94` 数的是**注释行**，
+///   不是调用点，而且它没带日期。注释行那个数不写在这里：它一改注释就变，
+///   写下来就是又下一个会腐的数。
+///   而真正会缩一份的只有「语料根含判据自己那棵树」的那些判据，现打 **6 份**；
+///   其中 `plugin_walk_fixture` 那一趟 `P4` 已改成明写名单，余下 5 份仍走 `scan_tree!`。〕
 #[test]
 fn the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -35,13 +51,17 @@ fn the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split() {
     let files = scan_tree!(&root, &["rs"]);
     assert!(
         files.iter().any(|(p, _)| p.ends_with("lib.rs")),
-        "🟢 `scan_tree!` 的自摘**重新生效了**（`lib.rs` 被摘掉了）。\n\
+        "🟢 `scan_tree!` 的自摘**重新生效了**（`lib.rs` 被摘掉了）——\n\
+         而它在本仓本来是**不生效**的，本条就是钉住那件事的。\n\
          \n\
          本条不是在报故障，是在报一个**纪律要重读**的信号：\n\
          `设计/16 §5.4b` 纪律 4 说「摘掉我自己」不许靠 `file!()`，理由之一是\n\
-         它失效时**安静**。它一旦重新生效，本仓 94 处 `scan_tree!` 的语料面会\n\
+         它失效时**安静**。它一旦重新生效，本仓那 80 余处 `scan_tree!(` 调用点的语料面会\n\
          各自**静默少一份文件**，而少扫不会红。\n\
-         ⇒ 先去核这 94 处里有几处的语料根含判据自己那棵树（`tests/`），\n\
+         ⇒ 先去核那些调用点里有几处的语料根含判据自己那棵树（`tests/`）——\n\
+         `P4` 2026-09-21 现打是 **6 处**（`scanning_guard_registry_tests` ·\n\
+         `structural_scan_tests` · `doc_claim_registry_tests` ·\n\
+         `shared_crate_registry_tests` · `tool_registry_tests` · `plugin_walk_fixture`），\n\
          再决定是把它们改成 `scan_tree_excluding` 的明写名单，还是收掉本条。"
     );
 }
@@ -121,7 +141,7 @@ fn an_exclusion_that_matches_nothing_is_a_hard_error() {
 /// ★ 回归钉〔09-09 Windows CI 现打〕：`file!()` 在 Windows 上给的是**反斜杠**形。
 ///
 /// 云端 windows-latest 的 panic 位置逐字是 `crates\guard-core\src\lib.rs`。
-/// 归一化此前只做在扫出来的那一边 ⇒ 针和草垛不同形 ⇒ 后缀比恒不命中、摘除空转。
+/// 归一化此前只做在扫出来的那一边 ⇒ 针和草垛不同形 ⇒ 后缀比不命中、摘除空转。
 ///
 /// ⚠ **为什么不能只靠上面那条**：上面那条只在 Windows 上红，而本仓的 `cargo test`
 /// 在 Windows 上今天才第一次跑起来（此前先卡 fmt、再卡 clippy）——

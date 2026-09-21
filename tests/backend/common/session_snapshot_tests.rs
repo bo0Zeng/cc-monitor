@@ -80,9 +80,12 @@ fn the_taken_name_table_is_also_refreshed_by_the_asking() {
 /// 漏进生产段就等于把 `R52` 的前提拆了，所以在这里数一遍。
 #[test]
 fn the_stale_read_door_never_appears_in_production_code() {
-    // ⚠ **必须走 `scan_tree!`，不许自己 `read_dir`** —— 它按构造摘掉调用者自己那一份。
-    //   裸遍历会让判据在**自己的语料**里找到自己 ⇒ 恒绿；
-    //   那条纪律由 monitor 侧 `scanning_guard_registry` 机检（本条第一版就是这么红的）。
+    // ⚠ **必须走 `scan_tree!`，不许自己 `read_dir`** —— 裸遍历会让判据在**自己的语料**
+    //   里找到自己 ⇒ 恒绿；那条纪律由 monitor 侧 `scanning_guard_registry` 机检
+    //   （本条第一版就是这么红的）。
+    // ⚠ 〔`P4` 2026-09-21〕宏自称的「摘掉调用者自己那一份」**在这一处不生效**
+    //   （判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
+    //   本条不在自己的语料里靠的是**住址**：它住 `tests/backend/common/`，扫的是 `src/backend`。
     let src_dir = crate::guard_support::src_root();
     let mut checked = 0usize;
     let mut hits: Vec<String> = Vec::new();

@@ -684,8 +684,12 @@ mod tests {
     ///
     /// ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir`：`scanning_guard_registry`
     /// 那条递减棘轮逐字要求新写的扫描型判据都走它。
-    /// **代价如实写**：它按构造摘掉调用者自己那一份，而本文件不在 `plugin/` 下，
-    /// 所以这里**没有**构造性缺口 —— `plugin/mod.rs` 那边有（它的调用者就在层内）。
+    /// ⚠ 〔`P4` 2026-09-21〕先前这里写着「它按构造摘掉调用者自己那一份…
+    /// `plugin/mod.rs` 那边有（它的调用者就在层内）」。两句都要订正：
+    /// ① 自摘那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ 折返路径 ⇒ 后缀比
+    ///    恒不命中）；② `plugin/mod.rs` 那边的缺口也没了（`plugin_layer_guard` 那一轮
+    ///    改走明写排除，`mod.rs` 回到了人群里）。
+    /// ⇒ 这里没有构造性缺口，靠的是**住址**：本文件不在 `plugin/` 下。
     fn generic_port_production() -> Vec<(String, String)> {
         let root = src_root().join("plugin");
         let mut out: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
@@ -1457,19 +1461,29 @@ mod tests {
             guard_core::scan_tree!(&src_root(), &["rs"])
                 .into_iter()
                 .collect();
-        pop.extend(guard_core::scan_tree!(
+        // 🔴 〔`P4` 2026-09-21 现打〕**这一趟原来是 `scan_tree!`，而它的自摘在这儿
+        //    是全仓唯一一处真的会落下的刀**（别处一律**不生效**）—— 现在换成明写名单。
+        //
+        //    成因（别处推不出来，所以记在这里）：`scan_tree_excluding_self` 拿 `file!()`
+        //    做**后缀比**。本文件的 `file!()` 逐字是 `../../tests/backend/plugin_walk_fixture.rs`，
+        //    而 backend 的 `guard_support::tests_root()` 逐字是
+        //    `CARGO_MANIFEST_DIR.join("../../tests/backend")` —— **那个根自己带着同一段 `..`**
+        //    ⇒ 扫出来的路径串正好以那个折返形结尾 ⇒ 后缀比**命中** ⇒ 自摘真的把本文件摘走了。
+        //    （monitor 那半边的根一律过 `repo_root()` 的 `.parent().parent()`，串里没有 `..`
+        //     ⇒ 那半边一处都**不生效**。两侧的差别只在这一个字符串上。）
+        //
+        //    ⇒ 两个后果：① 原先那句「宏认不出它是调用者 ⇒ 把本文件也收了进来」**是假的**；
+        //    ② 它下面那把 `retain` 今天**一份都摘不到**（死值验 `K8`：整刀拿掉，本条照样绿）。
+        //    ⇒ 不留一把摘不到东西的刀，也不把「摘掉我自己」压在那个字符串的巧合上：
+        //    改走 `scan_tree_excluding` 的明写名单 —— 它**摘不到就 panic**，
+        //    所以「`tests_root()` 哪天被规范化、自摘随之不再命中」会当场出声，
+        //    而不是安静地把本文件收进自己的语料（上面第一条断言刚刚证明过
+        //    「本文件的测试段含这个 needle」⇒ 真收进来就会多出一项）。
+        pop.extend(guard_core::scan_tree_excluding(
             &crate::guard_support::tests_root(),
-            &["rs"]
+            &["rs"],
+            &["plugin_walk_fixture.rs"],
         ));
-        // 🔴 `scan_tree!` **按构造摘掉调用者自己** —— 而本文件搬去第二棵树之后，
-        //    扫 `tests_root()` 那一趟宏认不出它是调用者 ⇒ 把本文件也收了进来，
-        //    而上面第一条断言刚刚证明过「本文件的测试段含这个 needle」⇒ 必然多出一项。
-        //    ⇒ 显式摘掉自己。住址由 `file!()` 给，改名了它自己会说不出话。
-        let own_name = std::path::Path::new(file!())
-            .file_name()
-            .expect("file!() 没有文件名")
-            .to_owned();
-        pop.retain(|(p, _)| p.file_name() != Some(own_name.as_os_str()));
         for (p, raw) in pop {
             if guard_core::test_source(&raw).contains(needle.as_str()) {
                 others.push(
