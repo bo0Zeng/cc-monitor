@@ -124,7 +124,7 @@ mod bus_identity_registry; // cc-bus：拿 id 点名 tmux 前必须核身份（�
 mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 + 超限怎么办 + 跨 crate 对拍）
 mod capability_registry;
 #[cfg(test)]
-mod comm_boundary_registry; // 设计/05 §8 步 1：通信层的边界登记表 ＋ C1–C5 / X1–X6 十一条判据（人群今天是空集，绿的理由是 0 == 登记的 0；整体 #[cfg(test)]）
+mod comm_boundary_registry; // 设计/05 §8 步 1：通信层的边界登记表 ＋ C1–C5 / X1–X6 十一条判据（人群非空之后绿的理由是三方相等，不是「扫不到」；份数的唯一住址在那个模块的头注里，这里刻意不抄第二份；整体 #[cfg(test)]）
 #[cfg(test)]
 mod dial_home_registry; // K-R74：「解耦干净」改述成三样可判的东西 —— 终点二值旗（russh 在不在界面 manifest 里）+ 过程递减棘轮（还没搬走的拨号处数）+ 拨号锚点的唯一住址（整体 #[cfg(test)]）
 #[cfg(test)]
