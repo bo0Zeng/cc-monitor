@@ -1,0 +1,386 @@
+//! 台架：**本机那个图形会话** —— `Xvfb` ＋ `xdotool`。
+//!
+//! # 🔴 一、它存在的理由：三格「判不了」此前被框大了一格
+//!
+//! `真相源/99 §9.1`／`§9.4`／`§10.1` 里那几句「**判不了 —— 缺一台有图形会话的机器**」
+//! 逐字写着，而 `设计/60 §4.8.3` 也逐字登记「主线程那侧是裸 tao、不是真 Tauri」。
+//! 那几句话对**真显示器**这一半是对的，但它们把射程写宽了一格：
+//! 本机装着 `Xvfb`（`真相源/99 §八` 那四趟读数本身就是在 Xvfb 上打的 ——
+//! 17 945 帧/29 秒），**「有画面的机器」这件事一直在手上**。
+//!
+//! ⇒ 本台架把那三格里**Xvfb 买得到的那一片**变成判据；买不到的那一片
+//! **原样留在「判不了」里**，逐格写在下面。
+//!
+//! # 🔴 二、Xvfb 买得到什么、买不到什么（逐格，别读宽）
+//!
+//! | 维 | Xvfb 买得到吗 | 为什么 |
+//! |---|---|---|
+//! | 窗口真的被 X 服务器映射出来了 | ✅ | 它是一台真 X 服务器，窗口真的进窗口树，`xdotool` 找得到 |
+//! | 真事件到得了控件 | ✅ | XTEST 注进去的是**真 X 事件**，走 winit → egui 的整条真路 |
+//! | 两个事件循环共存 | ✅ | 两个循环真的在同一个进程里跑 |
+//! | 真 GPU | ❌ | 软渲染（无硬件 GL）。**帧时不许拿这里的数去替换 `§2`／`§8.4`** |
+//! | 字体回落 | ❌ | 字体面由本机 fontconfig 决定，不由 Xvfb 决定；换机器就换读数 |
+//! | DPI / 缩放 | ❌ | Xvfb 恒 96 dpi、无缩放。真机上的 DPI 那一形照旧判不了 |
+//! | 合成器（窗口特效 / 透明 / vsync） | ❌ | Xvfb 下**没有窗口管理器、没有合成器** |
+//! | Windows | ❌ | 这一族整条 `cfg(not(windows))`，Windows 上照旧一趟没跑过 |
+//!
+//! 🔴 **最要紧的一条边界**：`真相源/99` 里那些**帧时与内存**读数
+//! （`§2`／`§8.4`／`§8.6`）**不许**用 Xvfb 这边的数去替换或「订正」——
+//! 那边量的是 CPU 段／release 档／`Memory::data` 条数，这边是软渲染下的一趟实景，
+//! **两个分母**。本台架一个帧时数都不产出，就是为了不诱惑人去相减。
+//!
+//! # 🔴 三、缺件时它**红**，不是「跳过」
+//!
+//! 本仓头号病形逐字：「**跳过**」与「**过了**」在终端上长得一样。
+//! ⇒ [`require_toolbox`] 在缺 `Xvfb`／`xdotool` 时**panic**，
+//! 红的那句话换成「这一格判不了，缺什么」，而**不是**悄悄回一个绿。
+//! 打法与本仓既有的那条前提闸同形（`launch_tests` 里那三态 spawn：
+//! 「上限到了**照样红**，只是红的那句话换成『前提不成立』」）。
+//!
+//! ⚠ 后果如实写明：**没装这两件的机器上，这几格会红**。那是刻意的 ——
+//! 备选是「悄悄绿」，而那正是这条纪律在禁的事。要在断网沙箱里跑门禁，
+//! 就得把 `xvfb` 与 `xdotool` 装进镜像（两个都在发行版仓库里，无需网络之外的东西）。
+//!
+//! # 🔴 四、为什么每一格都要**另起一个进程**（这一条是承重的，不是洁癖）
+//!
+//! winit 全进程只许建**一个**事件循环：它有一个进程级的「已经建过了」标志，
+//! 建第二个直接回一个「事件循环不能重建」的错，而那个标志**只在 web 平台**
+//! 会被清回去（现打核过 winit 0.30.13 那个构造器）。
+//! 而 eframe 把建好的那一个缓存在**线程局部**里（现打核过 eframe 0.36.2 那个
+//! 包一层的函数）—— 于是：
+//!
+//! - 同一条线程上第二趟开窗：命中线程局部缓存 ⇒ 成。
+//! - **换一条线程**第二趟开窗：缓存是空的 ⇒ 去建 ⇒ 撞上那个进程级标志 ⇒ **必败**。
+//!
+//! 而 `open_detached_seeded` 每趟都 `std::thread::spawn` 一条**新线程**。
+//! ⇒ 一个测试进程里只量得到**一趟**实景开窗。
+//! ⇒ 本台架把每一格塞进**它自己的一个子进程**（[`run_scenario`] 重新拉起
+//! 这个测试二进制自己，只跑那一格）。顺带还买到两样：`cargo test` 的并行
+//! 与这一族彻底隔开 · 那一格真挂了也只挂它自己那个进程。
+//!
+//! ⚠ 这件事**本身就是一条读数**，不只是台架的实现细节 ——
+//! `the_second_window_in_one_process_is_never_a_silent_success` 那一条就钉在它上面。
+
+use std::io::Read as _;
+use std::process::{Child, Command, Stdio};
+
+/// 这一族判据要的两件外部现物。**名字逐字**，缺件那句话直接引它。
+pub const NEEDS: [&str; 2] = ["Xvfb", "xdotool"];
+
+/// 子进程输出里那条读数的**哨兵前缀**。
+///
+/// 🔴 为什么要哨兵：子进程什么都没印、与印了而且对，在断言上**必须分得开**。
+/// [`reading`] 抠不到就 panic，所以「子进程静默」不会变成一条空真的绿。
+pub const MARK: &str = "XVFB| ";
+
+/// 在 `PATH` 上找一个可执行文件。
+///
+/// 刻意**不调 `which`** —— 那是第三件外部依赖，而它缺的时候报出来的话会是
+/// 「Xvfb 没装」（假归因）。这里只读 `PATH`，自己看文件在不在。
+pub fn on_path(bin: &str) -> Option<std::path::PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|d| d.join(bin))
+        .find(|p| p.is_file())
+}
+
+/// 缺了哪几件（顺序照 [`NEEDS`]）。全齐就是空。
+pub fn missing() -> Vec<&'static str> {
+    NEEDS
+        .iter()
+        .copied()
+        .filter(|b| on_path(b).is_none())
+        .collect()
+}
+
+/// 🔴 前提不成立就**红**。`cell` 是那一格的人话名字，会进那句话里。
+///
+/// ⚠ 它**不返回 bool** —— 返回 bool 就会有人写 `if !ok { return; }`，
+/// 而那正是「跳过与过了长得一样」那一形。
+pub fn require_toolbox(cell: &str) {
+    let miss = missing();
+    assert!(
+        miss.is_empty(),
+        "这一格判不了，**不是过了**：{cell} 要一个真图形会话，而本机 `PATH` 上缺 {miss:?}\n\
+         ⇒ 缺的是**环境**不是证据：装上 {:?} 这一格就量得到（发行版仓库里都有）。\n\
+         ⚠ 刻意让它红而不是悄悄跳过 —— 「跳过」与「过了」在终端上长得一样。",
+        NEEDS
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 一台 Xvfb
+// ════════════════════════════════════════════════════════════════════════
+
+/// 一台跑着的 `Xvfb`。**离开作用域就杀掉**（不留孤儿 X 服务器）。
+pub struct Screen {
+    child: Child,
+    display: String,
+}
+
+impl Screen {
+    /// 起一台 Xvfb，等到它**真的答得出屏幕尺寸**才回。
+    ///
+    /// 🔴 就绪判据不是「`spawn` 成功」也不是「睡 N 毫秒」——
+    /// 是拿 `xdotool` 去**真问一次**屏幕几何。`spawn` 成功只证明 fork 成了；
+    /// 那之后 X 服务器还要绑 socket，而「还没绑上」与「起不来」在下一步长得一样。
+    pub fn start() -> Result<Self, String> {
+        require_toolbox("Xvfb 台架自己");
+        let mut last = String::from("一个候选号都没试到");
+        // 号段挑高位，避开真会话（`:0`）与别人的临时屏。
+        for num in 90..=119u32 {
+            if std::path::Path::new(&format!("/tmp/.X{num}-lock")).exists() {
+                continue;
+            }
+            let display = format!(":{num}");
+            let child = Command::new("Xvfb")
+                .args([&display, "-screen", "0", "1600x1200x24", "-nolisten", "tcp"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+            let child = match child {
+                Ok(c) => c,
+                Err(e) => {
+                    last = format!("起 Xvfb {display} 失败：{e}");
+                    continue;
+                }
+            };
+            let mut screen = Screen { child, display };
+            // 最多等 5 秒（30 × 167ms）—— 就绪由「答得出几何」说了算。
+            for _ in 0..30 {
+                if let Ok(out) = screen.xdotool(&["getdisplaygeometry"]) {
+                    if out.split_whitespace().count() == 2 {
+                        return Ok(screen);
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(167));
+            }
+            last = format!("Xvfb {} 起了但 5 秒内答不出屏幕几何", screen.display);
+            // `screen` 在这里析构 ⇒ 那台 Xvfb 被杀掉，号也就还回去了。
+        }
+        Err(last)
+    }
+
+    /// 这台屏的 `DISPLAY` 值（形如 `:90`）。
+    pub fn display(&self) -> &str {
+        &self.display
+    }
+
+    /// 在这台屏上跑一条 `xdotool`。回它的标准输出（已 `trim`）。
+    pub fn xdotool(&self, args: &[&str]) -> Result<String, String> {
+        xdotool_on(&self.display, args)
+    }
+}
+
+impl Drop for Screen {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// 在 `display` 那台屏上跑一条 `xdotool`。
+pub fn xdotool_on(display: &str, args: &[&str]) -> Result<String, String> {
+    let out = Command::new("xdotool")
+        .args(args)
+        .env("DISPLAY", display)
+        .output()
+        .map_err(|e| format!("起 xdotool 失败（{args:?}）：{e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "xdotool {args:?} 退出码 {:?}；stderr={}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// 等一个标题含 `needle` 的窗口出现。回**所有**命中的窗口 id。
+///
+/// ⚠ 回的是**全部**而不是第一个：数得出「恰好一个」才谈得上相等断言，
+/// 而「找到了一个」在多出一个窗口时照样成立。
+///
+/// 🔴 带 `--onlyvisible`：只认**真的映射到屏幕上**的那一档。
+/// 不带的话一个建了却没 map 的窗口照样数得到 ——
+/// 而「建了」与「摆到屏幕上了」正是这一格要分开的两件事。
+pub fn wait_for_windows(display: &str, needle: &str, budget_ms: u64) -> Vec<String> {
+    let step = 100;
+    let mut waited = 0;
+    loop {
+        if let Ok(out) = xdotool_on(display, &["search", "--onlyvisible", "--name", needle]) {
+            let ids: Vec<String> = out
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_string)
+                .collect();
+            if !ids.is_empty() {
+                return ids;
+            }
+        }
+        if waited >= budget_ms {
+            return Vec::new();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(step));
+        waited += step;
+    }
+}
+
+/// 一个窗口在**根坐标**里的位置与尺寸（都是物理像素）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Geometry {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+}
+
+/// 问一个窗口的几何。走 `--shell` 那一档（`KEY=值`，好解析）。
+pub fn geometry(display: &str, id: &str) -> Result<Geometry, String> {
+    let out = xdotool_on(display, &["getwindowgeometry", "--shell", id])?;
+    let get = |k: &str| -> Result<i64, String> {
+        out.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .ok_or_else(|| format!("几何里没有 {k}=：{out}"))?
+            .trim()
+            .parse::<i64>()
+            .map_err(|e| format!("{k} 不是整数：{e}"))
+    };
+    Ok(Geometry {
+        x: get("X")? as i32,
+        y: get("Y")? as i32,
+        w: get("WIDTH")? as u32,
+        h: get("HEIGHT")? as u32,
+    })
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 一格 ＝ 一个子进程
+// ════════════════════════════════════════════════════════════════════════
+
+/// 一趟子进程跑完之后的全部现物。
+pub struct ChildRun {
+    pub ok: bool,
+    pub code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl ChildRun {
+    /// 子进程没跑成就红，并把它自己印的东西**整段带出来**
+    /// （门禁那一侧只看得见这一段 —— 藏起来等于红了也说不出原因）。
+    pub fn must_have_passed(&self, cell: &str) {
+        assert!(
+            self.ok,
+            "{cell}：实景子进程退出码 {:?}\n───── 子进程 stdout ─────\n{}\n\
+             ───── 子进程 stderr ─────\n{}",
+            self.code,
+            self.stdout.trim(),
+            self.stderr.trim()
+        );
+    }
+
+    /// 抠一条读数；抠不到就红。见 [`reading`]。
+    pub fn reading(&self, key: &str) -> String {
+        reading(&self.stdout, key)
+    }
+}
+
+/// 从子进程的输出里抠 `key=` 那一条读数。
+///
+/// 🔴 **抠不到就 panic**：子进程什么都没印（那一格静默没跑）与
+/// 印了而且对，在断言上必须分得开 —— 否则父进程那几条相等断言在空转。
+/// ⚠ 同一个 key 出现多次就取**最后一条**（一格里同一个量可能量两趟）。
+///
+/// ⚠ 🔴 **哨兵在行内任意位置都算**，不是只认行首 —— 现打栽过一次：
+/// libtest 在 `--nocapture` 下把测试自己印的第一行**接在**
+/// `test 某某 ... ` 后面，于是第一条读数永远不在行首。
+/// 只认行首的话，「一格真的量到了」会被读成「什么都没印」。
+/// ⚠ 认的是 `哨兵 + key + =` 整串 ⇒ `n.reason` 不会误吃 `n.reason_len`。
+pub fn reading(out: &str, key: &str) -> String {
+    let want = format!("{MARK}{key}=");
+    let got = out
+        .lines()
+        .filter_map(|l| l.find(&want).map(|i| &l[i + want.len()..]))
+        .last();
+    match got {
+        Some(v) => v.trim().to_string(),
+        None => panic!(
+            "子进程没印 `{key}` 这条读数 —— 这一格**没量到**，不是过了。\n\
+             ───── 子进程印了这些 ─────\n{}",
+            out.lines()
+                .filter(|l| l.contains(MARK))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
+    }
+}
+
+/// 印一条读数（子进程那一侧用）。
+pub fn emit(key: &str, value: impl std::fmt::Display) {
+    println!("{MARK}{key}={value}");
+}
+
+/// 在**自己一个进程**里跑一格实景判据。
+///
+/// `test_path` 是那个工作面测试的**全路径**（`filewin::shell::tests::某某`）。
+/// 那几个工作面都挂着 `#[ignore]`，所以：
+/// - 平时 `cargo test` 里它们是 `ignored`（终端上看得见，不会冒充一条绿）；
+/// - 这里带 `--ignored --exact` 把它们**逐个**点起来。
+///
+/// 为什么必须另起进程见本模块头注第四节（winit 一个进程只许一个事件循环）。
+pub fn run_scenario(display: &str, test_path: &str) -> ChildRun {
+    let exe = std::env::current_exe().expect("拿不到这个测试二进制自己的路径");
+    let mut child = Command::new(&exe)
+        .args([
+            "--exact",
+            test_path,
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env("DISPLAY", display)
+        // 子进程再去起子进程会无穷递归 —— 用它挡住（工作面自己也查一遍）。
+        .env("CCM_FILEWIN_XVFB_CHILD", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("拉不起实景子进程 {exe:?}：{e}"));
+
+    // 两条管子各一条线程 —— 只读一条会在另一条写满管子时死锁。
+    let mut so = child.stdout.take().expect("stdout 管子");
+    let mut se = child.stderr.take().expect("stderr 管子");
+    let t_out = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = so.read_to_string(&mut s);
+        s
+    });
+    let t_err = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = se.read_to_string(&mut s);
+        s
+    });
+    let status = child.wait().expect("等实景子进程");
+    let stdout = t_out.join().unwrap_or_default();
+    let stderr = t_err.join().unwrap_or_default();
+    ChildRun {
+        ok: status.success(),
+        code: status.code(),
+        stdout,
+        stderr,
+    }
+}
+
+/// 工作面那一侧：**父进程没给 `DISPLAY` 就红**。
+///
+/// ⚠ 它不许退化成「没有 DISPLAY 就当过了」—— 那一形是本族在防的那件事。
+pub fn child_display() -> String {
+    assert_eq!(
+        std::env::var("CCM_FILEWIN_XVFB_CHILD").ok().as_deref(),
+        Some("1"),
+        "这是一个**工作面**，只许由它的父判据在自己的进程里点起来（见台架头注第四节）"
+    );
+    std::env::var("DISPLAY").expect("父进程没把 DISPLAY 传下来 —— 这一格判不了，不是过了")
+}
