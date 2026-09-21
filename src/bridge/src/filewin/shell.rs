@@ -57,6 +57,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
 use super::rows::{show_file_rows, RenderTally};
 use super::source::{list_local, list_remote, parent_dir, Row, Source};
 use super::transfer::{DropBoard, Pending};
@@ -214,6 +215,12 @@ pub struct FileWindow {
     /// 而把 `cwd` 也塞进 `Arc` 只为了让它能读，是把窗口状态搬到共享内存里去。
     /// ⇒ 换个方向：任务只记「我跑完了」，**换目录这件事一直留在 UI 线程手上**。
     seen_rounds: u64,
+    /// `设计/60 §5` 第二段：零流量复制那一趟的状态机（**问覆盖 · 进度 · 裁决**）。
+    pub copy_board: CopyBoard,
+    /// 「复制为」那个框。`None` = 没在问名字。**UI 线程自己的**（理由见 [`CopyPrompt`]）。
+    copy_prompt: Option<CopyPrompt>,
+    /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
+    seen_copy_rounds: u64,
 }
 
 impl FileWindow {
@@ -243,6 +250,9 @@ impl FileWindow {
             rt,
             board: DropBoard::default(),
             seen_rounds: 0,
+            copy_board: CopyBoard::default(),
+            copy_prompt: None,
+            seen_copy_rounds: 0,
         }
     }
 
@@ -393,7 +403,9 @@ impl FileWindow {
     /// ⚠ **上一问还没答完就不接新的** —— 两摞问题叠在一个模态框上，
     /// 「一次问完」就变成「两次问完」。
     fn take_drops(&mut self, ctx: &egui::Context) {
-        if self.board.is_asking() {
+        // ⚠〔第三刀〕复制那一摞也在问的时候同样不接 —— 两个模态框叠起来，
+        //   「一次问完」就变成「答错了哪一个都不知道」。
+        if self.board.is_asking() || self.copy_board.is_asking() || self.copy_prompt.is_some() {
             return;
         }
         let dropped: Vec<String> = ctx.input(|i| {
@@ -443,6 +455,164 @@ impl FileWindow {
         self.reload();
         true
     }
+
+    // ════════════════════════════════════════════════════════════════════
+    // 〔第三刀〕`设计/60 §5` 第二段：**零流量复制**接到这一侧
+    // ════════════════════════════════════════════════════════════════════
+
+    /// 正摆着的那个「复制为」框（判据与 [`Self::copy_ui`] 用）。
+    pub fn copy_prompt(&self) -> Option<&CopyPrompt> {
+        self.copy_prompt.as_ref()
+    }
+
+    /// 🔴 **胶水**：列表说「第 `i` 行的复制被点了」→ 窗口摆出「复制为」那个框。
+    ///
+    /// 抽成一个函数的理由与 [`Self::apply_click`] 逐字相同：它只有两行，
+    /// 而那两行正是「列表带出来的那个下标」与「窗口状态机」之间的**唯一**连接。
+    /// 写在 `ui()` 里的话，`show_file_rows` 有判据、`begin_copy` 有判据，
+    /// **中间这一跳谁都没在看** —— 那正是第一刀栽过的那一形。
+    ///
+    /// 回值 = 真的摆出来了。
+    pub fn apply_copy_click(&mut self) -> bool {
+        match self.tally.copy_clicked {
+            Some(i) => self.begin_copy(i),
+            None => false,
+        }
+    }
+
+    /// 摆出「把第 `i` 行复制成什么名字」那个框。回值 = 真的摆出来了。
+    ///
+    /// ⚠ **两道闸，刻意重复**：
+    /// - `super::copy::is_copyable` —— 目录与有损名一律不接。列表上那两档压根不画
+    ///   那颗按钮，这里是第二道，防的是「按钮没了、调用还在」（那正是死值验刀 2 那一形）。
+    /// - **远端才有** —— `copy-data` 是 SFTP 协议的扩展，本机复制压根不经 SFTP
+    ///   （同 `parity_ledger` 里 `sftp_copy` 那一行旁边的理由）。本机源上**出声**，不静默。
+    pub fn begin_copy(&mut self, i: usize) -> bool {
+        if !self.source.is_remote() {
+            *self.listing.error.lock().unwrap() =
+                Some("这个窗口现在看的是本机，零流量复制只在远端那一侧成立".into());
+            return false;
+        }
+        let row = {
+            let rows = self.listing.rows.lock().unwrap();
+            match rows.get(i) {
+                Some(r) if is_copyable(r) => r.clone(),
+                _ => return false,
+            }
+        };
+        self.copy_prompt = Some(CopyPrompt::for_row(&self.cwd, &row));
+        true
+    }
+
+    /// 收掉那个框，什么都不做。
+    pub fn cancel_copy(&mut self) {
+        self.copy_prompt = None;
+    }
+
+    /// 框里那个名字 → 一趟真复制。回值 = 真的起来了。
+    ///
+    /// ⚠ 名字不合法（空 / 带 `/` / 复制成自己）⇒ **框留着、出声**，不静默收掉
+    /// —— 收掉的话用户点了「复制」什么都没发生，与成功长得一模一样。
+    pub fn confirm_copy(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(p) = self.copy_prompt.clone() else {
+            return false;
+        };
+        let Some(job) = p.to_job() else {
+            *self.listing.error.lock().unwrap() = Some(format!(
+                "「{}」不是一个能用的新名字 —— 只能在同一个目录里改名，不许为空、不许带 `/`、不许和原名相同",
+                p.new_name
+            ));
+            return false;
+        };
+        if !self.start_copy(job, ctx) {
+            return false;
+        }
+        self.copy_prompt = None;
+        true
+    }
+
+    /// 起一趟 `§5` 第二段：**先问会不会覆盖，再动手，回来把裁决摆出来。**
+    ///
+    /// 🔴 三段的顺序不在这里，在 [`super::copy::run_copy`] 的结构里 ——
+    /// 这里只负责把「问谁 · 怎么问 · 怎么起」三个口接上去（同 [`Self::start_drop`]）。
+    /// 而本函数接不上（没运行时 / 本机源）要**出声**，判据见 `shell_tests`。
+    pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
+        let Source::Remote(cfg) = &self.source else {
+            *self.listing.error.lock().unwrap() =
+                Some("这个窗口现在看的是本机，零流量复制只在远端那一侧成立".into());
+            return false;
+        };
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
+            return false;
+        };
+        let cfg = cfg.clone();
+        let board = self.copy_board.clone();
+        // 🔴 把窗口交给看板（同 `start_drop`）：进度与裁决都是从 tokio 那条线程写进来的，
+        //    不敲一下，屏幕要等用户下次动鼠标才更新。
+        board.attach(ctx);
+        h.spawn(async move {
+            let probe_cfg = cfg.clone();
+            let copy_cfg = cfg.clone();
+            let ask_board = board.clone();
+            let run_board = board.clone();
+            let out = super::copy::run_copy(
+                job,
+                move |j| async move { super::copy::probe_target(&probe_cfg, &j).await },
+                move |j| {
+                    let rx = ask_board.ask(j);
+                    async move { rx.await.unwrap_or(false) }
+                },
+                move |j| async move { super::copy::copy_remote(&copy_cfg, &j, &run_board).await },
+            )
+            .await;
+            board.finish(out);
+        });
+        true
+    }
+
+    /// 复制跑完一趟就重列当前目录（新文件要出现在列表里）。同 [`Self::settle_finished_drops`]。
+    pub fn settle_finished_copies(&mut self) -> bool {
+        let now = self.copy_board.rounds();
+        if now == self.seen_copy_rounds {
+            return false;
+        }
+        self.seen_copy_rounds = now;
+        self.reload();
+        true
+    }
+
+    /// 画「复制为」那个框。**模态** —— 名字没定下来之前不接别的。
+    ///
+    /// ⚠ 与 [`super::copy::CopyBoard::ui`] 分开两处，因为它们的状态住在两个地方：
+    /// 这个框是 UI 线程自己的，那一摞（问覆盖 / 进度 / 裁决）是跨线程的。
+    fn copy_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(mut p) = self.copy_prompt.clone() else {
+            return;
+        };
+        let (mut go, mut cancel) = (false, false);
+        egui::Modal::new(egui::Id::new("filewin-copy-as")).show(ui.ctx(), |ui| {
+            ui.heading(format!("复制 {} 为：", p.src_name));
+            ui.text_edit_singleline(&mut p.new_name);
+            ui.label("⚠ 只在同一个目录里改名 —— 名字里不许带 `/`。");
+            ui.horizontal(|ui| {
+                if ui.button(super::copy::COPY_LABEL).clicked() {
+                    go = true;
+                }
+                if ui.button("取消").clicked() {
+                    cancel = true;
+                }
+            });
+        });
+        self.copy_prompt = Some(p);
+        if cancel {
+            self.cancel_copy();
+        } else if go {
+            let ctx = ui.ctx().clone();
+            self.confirm_copy(Some(ctx));
+        }
+    }
 }
 
 impl eframe::App for FileWindow {
@@ -474,9 +644,13 @@ impl eframe::App for FileWindow {
         }
         // `§5.4d` 那一摞：确认框 ／ 进度。**画在列表之前** —— 它是模态的。
         self.board.ui(ui);
+        // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
+        self.copy_board.ui(ui);
+        self.copy_ui(ui);
         let ctx = ui.ctx().clone();
         self.take_drops(&ctx);
         self.settle_finished_drops();
+        self.settle_finished_copies();
         ui.separator();
         // 每帧从零数起 —— 这个数是「这一帧物化了多少行」，不是累计。
         self.tally = RenderTally::default();
@@ -485,6 +659,7 @@ impl eframe::App for FileWindow {
             show_file_rows(ui, &rows, &mut self.tally, None);
         }
         self.apply_click();
+        self.apply_copy_click();
     }
 }
 

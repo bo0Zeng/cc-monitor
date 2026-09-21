@@ -48,6 +48,24 @@ pub fn render_headless_with_events(
     time: f64,
     events: Vec<egui::Event>,
 ) -> RenderTally {
+    render_headless_with_events_and_text(ctx, rows, screen, time, events).0
+}
+
+/// 同 [`render_headless_with_events`]，**另外**把这一帧真的画出来的文字带回来。
+///
+/// 🔴〔第三刀〕它存在的理由只有一个：行上那颗「复制」按钮在屏幕上的位置，
+/// 判据自己算不出来（由字体宽度与布局决定）。⇒ 从**画出来的东西**里找它 ——
+/// 内容正好是 `copy::COPY_LABEL` 的那一段文字，它的矩形就是那颗按钮的位置。
+///
+/// ⚠ 这样判据就**不需要**在生产里开一个「把按钮矩形吐出来」的测试专用出口
+/// （那正是「把测试形状写进生产签名」那一形）。
+pub fn render_headless_with_events_and_text(
+    ctx: &egui::Context,
+    rows: &[Row],
+    screen: egui::Vec2,
+    time: f64,
+    events: Vec<egui::Event>,
+) -> (RenderTally, Vec<crate::filewin::copy::testing::PaintedText>) {
     let mut tally = RenderTally::default();
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)),
@@ -60,8 +78,9 @@ pub fn render_headless_with_events(
         show_file_rows(ui, rows, &mut t, Some(0.0));
         tally = t;
     });
+    let painted = crate::filewin::copy::testing::text_in_frame(&out);
     out.drop_without_applying_deltas();
-    tally
+    (tally, painted)
 }
 
 /// 在 `pos` 按一下再松开（一次 click 的事件序列）。
