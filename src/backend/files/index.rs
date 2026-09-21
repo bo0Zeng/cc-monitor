@@ -224,20 +224,84 @@ pub fn build(root: &Path) -> Snapshot {
 /// 常驻索引。**进程里只有这一份** —— 「常驻」就是它的全部意思。
 ///
 /// ⚠ **只在内存里，重启重建**（`设计/96 §2.9` 末尾那一问今天的答案）。
-/// 那一问（要不要落盘）**本件没答**：它要的证据是**冷缓存**下重建要多久，
-/// 而 `drop_caches` 要 root ⇒ 秤 `F2` 的冷档今天量不了。**别把这句读成答了。**
+///
+/// 🔴 **〔2026-09-21 订正：上一版那句「今天量不了」已经假了〕**
+/// 原文写着「它要的证据是**冷缓存**下重建要多久，而 `drop_caches` 要 root
+/// ⇒ 秤 `F2` 的冷档今天量不了」。**那一格量到了**（`真相源/103 §P10`）：
+/// 冷 **8.88 / 9.44 / 9.63 秒**（739 782 条 · NVMe · ext4），同日热基线 **0.56–0.73 秒**
+/// ⇒ **缓存效应 13–17 倍**。
+/// ⇒ 「要不要落盘」那一问现在**有证据可依**了，但**本件仍然没答它** ——
+/// 它是一道取舍题（省 9 秒的首建 vs 多一份要保鲜的盘上状态），归设计。
+/// ⚠ 另记一条外部对照（`真相源/104 §1`）：Everything 在**拿不到变更流**的那一档
+/// （网络共享 / 任意目录 ＝ **我们这一档**）也是**索引全在内存、只在退出时落盘**。
 static RESIDENT: std::sync::RwLock<Option<Snapshot>> = std::sync::RwLock::new(None);
+
+/// 🔴 **有没有一趟重走正在跑。** 非阻塞互斥用的那一个位。
+///
+/// # 为什么要它（2026-09-21 外部调研逼出来的）
+///
+/// 本函数走的是**一整棵树**。在它之前**零并发保护** —— 两趟同时调就是两趟都走整棵树，
+/// 而调用方（界面那一侧）恰恰是「用户一点就发」那种节奏 ⇒ 连点两下就双倍开销。
+///
+/// 而「**互斥、不重叠**」正是这一类周期性后台任务在业界**唯一被代码硬校验**的那条约束
+///（`真相源/104 §4` 现打：`plocate`/`mlocate` 用 `flock --nonblock` ·
+/// Kubernetes CronJob 的 `concurrencyPolicy: Forbid` ·
+/// Prometheus 直接把「单次预算 > 周期」判成配置错误）。
+/// ⚠ 那一篇同时查实：**「周期 = 单次耗时 × N」这种形式的推荐值，业界没有公认值**
+///（六个方向各自查完都没有）⇒ 所以本族**不再**拿那个比值当闸，见 `scale_f2` 里那三条。
+static REBUILDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 被抢占过几趟 —— **只报不禁**（同上，占空比这一类是读数不是闸）。
+static REBUILD_SKIPPED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 判据专用的那个口 —— **只在 `cfg(test)` 下存在**。
+///
+/// 🔴 为什么要它：被测的性质是「**那个位是 true 的时候第二趟进不来**」，
+/// 而不是「两条线程谁先」。起线程去撞它会让判据的读数依赖调度 ⇒ 变飘。
+/// ⇒ 把那个位直接按住，是同一件事的**可判形态**。
+/// ⚠ 代价如实记：这样就**买不到**「两条真线程同时打进来」那一格。
+#[cfg(test)]
+pub mod testing {
+    /// 把「正在重走」那个位按成给定值。
+    pub fn hold_rebuilding(on: bool) {
+        super::REBUILDING.store(on, std::sync::atomic::Ordering::Release);
+    }
+}
+
+/// 被抢占过几趟。判据与 `status` 用它。
+pub fn rebuild_skipped() -> u64 {
+    REBUILD_SKIPPED.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// 走一遍，把常驻那一份整份换掉。**就走一遍，做完返回。**
 ///
 /// 节拍由调用方给（理由整段住本文件头注那个 🔴）。
-pub fn rebuild_once(root: &Path) -> Stats {
+///
+/// # 🔴 回值刻意是 `Option`：**「有一趟已经在跑」与「走完了」必须分得开**
+///
+/// `None` = 有一趟正在跑，这一趟**没走**（计入 [`rebuild_skipped`]）。
+/// 做成 `Stats::default()` 之类的「空结果」会让**没走**与**走完了但树是空的**
+/// 在类型上分不开 —— 那正是本仓反复禁的那一形（「跳过」与「过了」长得一样）。
+pub fn rebuild_once(root: &Path) -> Option<Stats> {
+    use std::sync::atomic::Ordering;
+    // 非阻塞：抢不到就**当场返回**，不排队、不阻塞调用方那一帧。
+    if REBUILDING
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        REBUILD_SKIPPED.fetch_add(1, Ordering::Relaxed);
+        return None;
+    }
+    // ⚠ 从这里到清掉那个位之间**不许提前返回** —— `build` 会 panic 的话那个位就漏了。
+    //   `build` 本身不 panic（它自己把 IO 错误收成计数），而这一条靠的是那个事实，
+    //   不是靠这里加一层守卫。哪天 `build` 会 panic 了，这里要改成 RAII 守卫。
     let snap = build(root);
     let stats = snap.stats();
     if let Ok(mut g) = RESIDENT.write() {
         *g = Some(snap);
     }
-    stats
+    REBUILDING.store(false, Ordering::Release);
+    Some(stats)
 }
 
 /// 「该重走了」——**一条纯函数**，声明的周期是它唯一的参数。
