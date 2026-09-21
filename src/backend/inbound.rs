@@ -86,7 +86,9 @@ pub const COMMANDS: &[&str] = &[
     "bus-state",
     "cancel",
     "capture-pane",
+    "files-browse",
     "files-find",
+    "files-index-rebuild",
     "files-index-status",
     "files-ls",
     "files-stat",
@@ -510,6 +512,51 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   那是不该占住 worker 的时长；而把「哪条够快可以走 `Run::Async`」拆成两档，
     //   等于给同一个同步入口记两份账。⇒ 一族一档。
     //   代价如实写：它们因此**取消不掉**，`cancel` 命中时回 `not_cancellable`（不撒谎）。
+    // ── 〔步 `24f` 第三刀 09-21〕`设计/96 §2.9` 裁出来的第五、第六条 ──────────────
+    //
+    // 🔴 **它们补的是那两段「机制」的线上面** —— `设计/60 §3.5.2` 那张三段表
+    //   （建索引 / 保鲜 / 查询）里，第二刀只把「查」那一段接上了线。
+    //   在这两条之前，`files::index::rebuild_once` 与 `files::browse_watch::set_browsing`
+    //   **零生产调用方** ⇒ 真机上 `files-find` 恒回 `index_missing: true`。
+    //
+    // 🔴 **节拍仍然不归后端**，一个字没松：这两条与 `capture-pane` 那两条**同一形** ——
+    //   「**只做一次**……『隔多久再做一次』留在调用方」（`K37`：后端只给机制，不给偏好），
+    //   `no_timer_guard` 在后端侧零容忍地钉着。
+    //   ⚠ **别把这一刀读成「`设计/60 §3.5.2a` 那个缺口填上了」**：调用方不发这条命令，
+    //   索引照旧永远不会自己变新，而「调用方到底发不发」后端这棵树的判据钉不住。
+    //
+    // ⚠ 两条的 `run` 与同族那四条逐字同形，理由同上一段（名字从 `r.cmd` 来 ⇒
+    //   「登记的名字」与「真被调的能力」在类型上是同一个值）。
+    CommandSpec {
+        name: "files-browse",
+        doc_anchor: Some("#### `files-browse`"),
+        codes: &["bad_args", "bad_path"],
+        fields: &["added", "browse_watch_cap", "dirs", "rejected", "removed"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-index-rebuild",
+        doc_anchor: Some("#### `files-index-rebuild`"),
+        codes: &["bad_path", "unreadable"],
+        fields: &[
+            "entries",
+            "path",
+            "resident_bytes",
+            "truncated",
+            "unreadable_dirs",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-find",
         doc_anchor: Some("#### `files-find`"),
