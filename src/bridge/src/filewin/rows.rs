@@ -100,7 +100,7 @@ pub fn show_file_rows(
 /// **那一版在 headless 下现打是死的**：同一趟里、同一个位置上，
 /// `ui.button()` 拿得到 `hovered/clicked`，而 `ui.horizontal(…)` 那个**布局作用域
 /// 响应**上再 `interact` 出来的那一份 `hovered` 恒 `false`
-/// （逐帧读数见 `真相源/99 §8.10`）——
+/// （逐帧读数见 `真相源/99 §9.1`）——
 /// 命中测试在 `begin_pass` 时按上一帧的 widget 表做，而那条路上那个 id 没进到能被命中的那一档。
 ///
 /// ⇒ 换成**给这一行自己造一个 `Id`、用 `ui.interact` 正经登记一个 widget**，
@@ -133,8 +133,12 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> bool {
     );
     // ⚠ `Id` 按**行下标**造（不是按名字）：下标随滚动是绝对的、且同一行跨帧稳定，
     //   而名字会重（同名文件在不同目录、或列表里刚好两行同名）。
-    ui.interact(full, ui.id().with(("filewin-row", index)), egui::Sense::click())
-        .double_clicked()
+    ui.interact(
+        full,
+        ui.id().with(("filewin-row", index)),
+        egui::Sense::click(),
+    )
+    .double_clicked()
 }
 
 /// 人读的大小。**不是** `format!("{size}")` —— 列表里一列宽度有限。

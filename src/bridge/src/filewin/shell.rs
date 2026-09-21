@@ -36,15 +36,23 @@
 //! **没直接做的理由**：手上没有 Windows 机器，改了也验不了，
 //! 而在一个验不了的平台上动全局状态的默认值，比留着这条注记更危险。
 //!
-//! # ⚠ 没做到的，写在这儿而不是藏着
+//! # ⚠ 没做到的，写在这儿而不是藏着〔第二刀 2026-09-20 订正〕
 //!
 //! - **本机跑不了真窗口**（`XDG_SESSION_TYPE=tty`，无图形会话）⇒ [`open_detached`]
 //!   这条路在本机**没有端到端读数**；有的是 scratchpad 那个 `tao ＋ eframe` 原型的
 //!   三趟读数（见 `super` 头注）与编译期的三档 `cargo check`。
+//!   ⚠ 第二刀在这条上多欠一句：**鼠标真的双击一下那一行会怎样，本机判不了**
+//!   （没有图形会话就没有真事件源）。判据喂的是**合成事件**，
+//!   它买的是「egui 收到这串事件之后认出来的是哪一行」——
+//!   逐条与那次现打的读数写在 [`super::rows`] 的 `paint_one_row` 头注里。
 //! - **Windows 上一次都没跑过。**
-//! - 多选 · 拖放 · 预览 · 双栏 · 右键菜单 **一个都没有**（`设计/60 §4 戊` 代价第 2 条）。
-//! - `设计/60 §5.4b`（大文件编辑改流式）与 `§5.4d`（拖入多文件先一次问完再并行）
-//!   这两条转成本窗口需求的东西，**本刀都没做** —— 它们要写面，而这一刀只有读面。
+//! - 多选 · 预览 · 双栏 · 右键菜单 **仍然一个都没有**（`设计/60 §4 戊` 代价第 2 条）。
+//!   ⚠ **拖放从这一条里划出去了**：第二刀做了「拖入本机文件 → 上传到当前远端目录」
+//!   那一半（见 [`FileWindow::start_drop`] 与 [`super::transfer`]）；
+//!   **往外拖（下载）没做**，窗口之间互拖也没做。
+//! - `设计/60 §5.4b`（大文件编辑改流式）**仍然没做** —— 这一刀没有编辑面。
+//! - `设计/60 §5.4d`（拖入多文件先一次问完再并行）**第二刀做了**，
+//!   住 [`super::transfer::run_drop`]；三段的顺序就是那个函数的结构，判据钉的是顺序与并行度。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -99,6 +107,21 @@ pub fn any_thread_hook(builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>
         // 免得哪天上了 macOS 还以为这条路是通的。
         let _ = builder;
     }
+}
+
+/// 「本机」那颗按钮的落脚点 —— 用户的 home。
+///
+/// 🔴 **抽成一个具名函数不是风格，是登记要求**：`local_read_surface_registry::HOME_REACHES`
+/// 按「上一处 `fn 名字`」给每一处 `home_dir()` 归属，写在 `ui()` 里的话那一行会被登记成
+/// `("shell.rs", "ui")` —— 一个说不出自己在干什么的名字。
+///
+/// ⚠ 它**只把 home 当一个起点路径**，不去读 home 里的任何东西
+/// （真正列目录的是 [`list_local`]，而它列的是用户之后走到哪就是哪）。
+/// 拿不到 home 就退到 `.`（当前工作目录），**不猜一个路径出来**。
+pub fn local_home() -> String {
+    dirs::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string())
 }
 
 /// 列目录这件事的**共享落点** —— 一次列目录要写的东西全在这儿。
@@ -441,11 +464,7 @@ impl eframe::App for FileWindow {
             if !self.source.is_remote() {
                 ui.label("本机");
             } else if ui.button("本机").clicked() {
-                go_local = Some(
-                    dirs::home_dir()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_else(|| ".".to_string()),
-                );
+                go_local = Some(local_home());
             }
             ui.label(format!("{} : {}", self.source.label(), self.cwd));
             if self.listing.is_loading() {

@@ -69,9 +69,8 @@ fn this_command_is_wired_all_the_way_to_the_frontend_wrapper() {
     let name = "open_file_window";
 
     // ① 属性在盘上（needle 运行时拼，免得命中本文件自己的说明）。
-    let mine = guard_core::production_code(include_str!(
-        "../../../src/bridge/src/filewin/entry.rs"
-    ));
+    let mine =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/entry.rs"));
     let attr = format!("#[{}::command]", "tauri");
     assert_eq!(
         mine.matches(attr.as_str()).count(),

@@ -448,6 +448,20 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "它不是「伸手拿东西」，是**拿 home 来划界** —— 第 86 件加的那道围栏",
     ),
     (
+        // 〔`设计/60 §5.4e` · `24e` 第二刀 · 09-20〕原生文件管理窗口那颗「本机」按钮的落脚点。
+        "shell.rs",
+        "local_home",
+        "home 本身（当**起点路径**）",
+        "它不是「伸手拿东西」，是给那个窗口一个开始浏览的地方 —— \
+             之后列哪个目录**由用户走到哪决定**，而列目录那一条是 \
+             `filewin::source::list_local`（只读 `read_dir` ＋ `metadata`，不落盘）。\
+             ⚠ 与 `profile_installer.rs::fence_profile_path` 那一行**不是同一类**：\
+             那一条拿 home 划界（围栏），这一条只是起点，**它不围任何东西** —— \
+             也就是说「用户能在这个窗口里浏览到 home 之外」是设计如此，不是漏了围栏。\
+             写侧归 `filewin::transfer`（上传走 `sftp_pool::sftp_upload`，\
+             那条命令自己过 `guard_write`，已在写点表里）",
+    ),
+    (
         "ssh_source.rs",
         "list_ssh_host_aliases",
         "`~/.ssh/config`",
