@@ -67,7 +67,24 @@ function readPresets(raw: unknown): string[] {
 
 const KEY_NOTIFY_TURN_END = "notifyTurnEnd";
 
-const KEY_FORCE_LEGACY_LAUNCH_RENDERER = "forceLegacyLaunchRenderer";
+/**
+ * 🔴 〔`设计/99 §2.5 P12` 2026-09-21〕**这个落盘键改名了**：
+ * `forceLegacyLaunchRenderer` → `forceLaunchPayloadRenderer`。
+ *
+ * 旧名字说的是「强制走 legacy 渲染器」，而 `22b·B`（`设计/90 §4 E`）把 launch 渲染链
+ * 整条切到后端之后，**两条分支今天都在 Rust 里**：`render_ccm_invocation`（`ccm …` 调用行）
+ * 与 `render_launch_payload`（裸载荷 ＋ 外层 tmux 编排串）。它短路掉的不再是
+ * 「Rust 渲染器 → TS 渲染器」，是「`ccm` 调用行 → 裸载荷/tmux 编排串」
+ * ⇒ 旧名字是一句**住在住址上的假话**。新名字指着它真正逼出来的那个渲染器。
+ *
+ * **不留别名**（`no-legacy-compat`：只有一个用户）。旧名字从今天起是个**未知键** ——
+ * 而未知键不再被静默忽略：`config.ts` 每次读盘都会把它数出来，设置里那条常驻条
+ * 指名道姓地把它喊出来。「退役」的意思是**它出现时出声**，不是「静默当不存在」。
+ *
+ * ⚠ 改名当天盘上**没有** config.json（现打：`~/.claude/claudecode-frontend/` 下只有
+ * `auto-launch.json` / `logs` / `ps-await` / `ps-registry`）⇒ 零迁移风险。
+ */
+const KEY_FORCE_LAUNCH_PAYLOAD_RENDERER = "forceLaunchPayloadRenderer";
 
 export interface BehaviorConfig {
   /** 用户在 claude 里敲键发送消息时自动切到对应 monitor tab。默认 true。 */
@@ -105,9 +122,18 @@ export interface BehaviorConfig {
    */
   notifyTurnEnd: boolean;
   /**
-   * F03（unify-launch）：手动兜底开关——强制远端启动走裸 shell 兜底渲染器，绕开 ccm CLI 探测/
-   * 渲染路径。默认 false（自动探测：探测失败/未装/能力不足已自动 fail-open 到兜底，本开关只是
-   * "even if 探测说能，我也不想走" 的人工逃生口，见 MASTERPLAN R2）。无 UI 暴露，需手改 config.json。
+   * F03（unify-launch）：手动逃生口 —— 强制远端启动走**载荷渲染器**
+   *（`render_launch_payload`：裸载荷 ＋ 外层 tmux 编排串），绕开 ccm 探测与
+   * `ccm …` 调用行那条路。默认 false（探测失败/未装/能力不足本来就会自动降级到它，
+   * 本开关只是 "even if 探测说能，我也不想走" 的人工逃生口，见 MASTERPLAN R2）。
+   * 无 UI 暴露，需手改 config.json。落盘键名 = `forceLaunchPayloadRenderer`。
+   *
+   * 🔴 **这个 TS 字段名还没跟着落盘键一起改，是本件的一笔明账。**
+   * 唯一挡路的是它的生产消费者 `src/remote-launch-run.ts`（那里逐字写着
+   * `behavior.forceLegacyLaunchRenderer`），而那个文件**不在 `P12` 的写区**
+   *（`P12` 写区逐字只有 `src/behavior.ts` 与 `src/settings/panel.ts`）
+   * ⇒ 按「写区外停下报备」办：改名只落在**落盘键**上，字段名连同那一处消费点
+   * 一起留给拿得到那个写区的人。**用户看得见的那一半（config.json 里写什么）今天已经是真的。**
    */
   forceLegacyLaunchRenderer: boolean;
 }
@@ -156,8 +182,8 @@ export async function getBehavior(): Promise<BehaviorConfig> {
           ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
           : DEFAULTS.notifyTurnEnd,
       forceLegacyLaunchRenderer:
-        typeof cfg[KEY_FORCE_LEGACY_LAUNCH_RENDERER] === "boolean"
-          ? (cfg[KEY_FORCE_LEGACY_LAUNCH_RENDERER] as boolean)
+        typeof cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] === "boolean"
+          ? (cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] as boolean)
           : DEFAULTS.forceLegacyLaunchRenderer,
     };
   } catch (e) {
@@ -177,6 +203,6 @@ export async function setBehavior(next: BehaviorConfig): Promise<void> {
   cfg[KEY_RESUME_LOCAL_PRESETS] = next.resumeCommandLocalPresets;
   cfg[KEY_RESUME_REMOTE_PRESETS] = next.resumeCommandRemotePresets;
   cfg[KEY_NOTIFY_TURN_END] = next.notifyTurnEnd;
-  cfg[KEY_FORCE_LEGACY_LAUNCH_RENDERER] = next.forceLegacyLaunchRenderer;
+  cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] = next.forceLegacyLaunchRenderer;
   await saveConfig(cfg);
 }
