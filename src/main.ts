@@ -42,6 +42,7 @@ import { readRemoteConfig, sftpEligibleHosts, hostKey } from "./remote-config";
 import { FirstRunHint } from "./first-run-hint";
 import { LOCAL_MACHINE_KEY, readStatus } from "./settings/machine-status";
 import { hostOs } from "./settings/host-os";
+import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import {
   collectAccountRows,
   createGatedPoller,
@@ -622,6 +623,27 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 补齐了自己就消失、又缺了自己就回来。两者的值一个都不共用，见 first-run-hint.ts 头注。
   //
   // ⚠ 只在主窗口这条路上挂：`?viewer=` 与 `?settings=1` 两个精简 bootstrap 在上面就 return 了。
+  // 🔴 〔`P12` 收尾 2026-09-21〕**「配置里有个键没生效」这句话要在主窗口也说得出来。**
+  //
+  // `P12` 那一刀把它做在了设置面板顶上，而做那一刀的人自己报备了剩下的缺口，逐字：
+  // 「**从没打开过设置的用户今天仍然看不到**」——`SettingsPanel` 只在设置窗构造。
+  //
+  // 这一形本仓治过一次，而且理由写在 `first-run-hint.ts` 头注里：
+  // 「一个刚装完、还没打开过设置的人，一个字都看不到」⇒ `N-F3` 的解法是
+  // **主窗口状态栏上一条非模态的指路**。这里照那条先例办，不另发明一个 UI。
+  //
+  // ⚠ **同一个组件、两个挂点** —— 那句话只有一个住址（`unknown-keys-notice.ts`），
+  //   不在主窗口再写第二份文案。`createUnknownKeysBar()` 自己先用快照渲、
+  //   再拿盘上那份重渲 ⇒ 不用额外接线。
+  //
+  // ⚠ **判据强度如实说**：设置面板那一侧有一条**真渲染面板、去 DOM 里找那个键名**的判据
+  //   （`tests/settings/unknown-keys-notice.vitest.ts`）；主窗口这一侧**没有同等的**
+  //   ——`main.ts` 今天没有 DOM 判据台架，本处只由源码扫描盯着。
+  //   而 `P12` 的死值验刀 1 现打证明过：**源码扫描看不见「挂没挂上」**
+  //   （组件在、函数在、只是不 appendChild ⇒ 扫描照样绿）。
+  //   ⇒ 这一挂点的失效形状今天**判不了**，缺的是 `main.ts` 的 DOM 台架。**登记，不假装。**
+  status.appendChild(createUnknownKeysBar());
+
   {
     // `origins` 要读远端配置（异步），所以先拿一份快照，
     // 由 `reload()` 刷新；`FirstRunHint` 自己不碰 IO（照 readiness.ts 的注入范式）。

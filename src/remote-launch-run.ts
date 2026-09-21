@@ -66,17 +66,19 @@ const REFUSE_TAG = "REFUSE:";
  *
  *  🔴 〔步 22b·B 2026-09-20〕**两条分支今天都在 Rust 里**（`设计/90 §4 E` 收官）：
  *  `render_ccm_launch`（`ccm …` 调用行）与 `render_launch_payload`（内层载荷 ＋ 外层 tmux 三格）。
- *  ⚠ `forceLegacyLaunchRenderer` 这个键名从此**名不副实** —— 它短路掉的不再是「Rust → TS」，
- *  是「`ccm` 调用行 → 裸载荷/tmux 编排串」。改名要动 `src/behavior.ts`（落盘键名，改了会把
- *  用户手写的 `true` 静默当未知键忽略 —— `evidence/S29-readings.md` 那条登记）与
- *  `src/settings/panel.ts`，**两处都不在步 22b 的写区** ⇒ 如实登记，交回报给 PM。 */
+ *  ✅ 〔`P12` 2026-09-21 收完〕那个键此前叫 `forceLegacyLaunchRenderer`，而**名字里没有一个词是真的**
+ *  （legacy 那一头在 `22b·B` 之后已经不存在）⇒ 改成 `forceLaunchPayloadRenderer`：
+ *  保留「强制挑哪个渲染器」这个语义槽位，把宾语换成一个**真住址**（`render_launch_payload`）。
+ *  🔴 那一拍顺带治了一个**比改名值钱得多**的毛病：config.json 里**未知键此前是静默忽略的**
+ *  ——「关掉了」与「过了」在终端上一模一样。现在旧键出现会在设置面板顶上**指名喊出来**，
+ *  并有会红的判据钉着（`tests/config-unknown-keys.vitest.ts`）。裁定住 `设计/99 §2.5 P12`。 */
 async function renderLaunchCommand(
   origin: string,
   ctx: LaunchContext,
   plan: LaunchPlan,
 ): Promise<string> {
   const behavior = await getBehavior();
-  if (!behavior.forceLegacyLaunchRenderer && ctx.transport.kind === "ssh") {
+  if (!behavior.forceLaunchPayloadRenderer && ctx.transport.kind === "ssh") {
     const probe = await probeCcm(origin);
     // R04①：一次调用同时回答"能不能"与"渲染成什么"。拿不到 `ok:true` 就走兜底——
     // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（改造前 `renderCli` 对 `cliFlags` 返回

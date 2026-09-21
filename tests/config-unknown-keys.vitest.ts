@@ -100,7 +100,7 @@ describe("P12 ① 落盘键改名：`forceLegacyLaunchRenderer` → `forceLaunch
   it("★ 新名字读得出来（盘上写 true ⇒ 逃生口真的开）", async () => {
     store.cfg = { [LIVE_KEY]: true };
     expect(
-      (await getBehavior()).forceLegacyLaunchRenderer,
+      (await getBehavior()).forceLaunchPayloadRenderer,
       "新落盘键读不出来 —— 改名把这个逃生口改没了",
     ).toBe(true);
   });
@@ -108,7 +108,7 @@ describe("P12 ① 落盘键改名：`forceLegacyLaunchRenderer` → `forceLaunch
   it("★★ 旧名字**不留别名**：盘上写 true 也不驱动任何行为", async () => {
     store.cfg = { [RETIRED_KEY]: true };
     expect(
-      (await getBehavior()).forceLegacyLaunchRenderer,
+      (await getBehavior()).forceLaunchPayloadRenderer,
       "旧键还在被当成开关读 —— `no-legacy-compat` 要的是**退役**，不是双名并存。\n" +
         "（留别名等于这个名字永远改不完：两个住址都能开同一个开关，下一个人不知道该改哪个。）",
     ).toBe(false);

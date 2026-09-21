@@ -128,14 +128,14 @@ export interface BehaviorConfig {
    * 本开关只是 "even if 探测说能，我也不想走" 的人工逃生口，见 MASTERPLAN R2）。
    * 无 UI 暴露，需手改 config.json。落盘键名 = `forceLaunchPayloadRenderer`。
    *
-   * 🔴 **这个 TS 字段名还没跟着落盘键一起改，是本件的一笔明账。**
-   * 唯一挡路的是它的生产消费者 `src/remote-launch-run.ts`（那里逐字写着
-   * `behavior.forceLegacyLaunchRenderer`），而那个文件**不在 `P12` 的写区**
-   *（`P12` 写区逐字只有 `src/behavior.ts` 与 `src/settings/panel.ts`）
-   * ⇒ 按「写区外停下报备」办：改名只落在**落盘键**上，字段名连同那一处消费点
-   * 一起留给拿得到那个写区的人。**用户看得见的那一半（config.json 里写什么）今天已经是真的。**
+   * ✅ 〔2026-09-21 收账〕**TS 字段名已跟着落盘键一起改完** —— 落盘键与字段名
+   * 从此是同一个词，没有「两个名字指同一件事」这种住址。
+   * ⚠ 收的过程如实记：`P12` 那一刀的写区逐字只有 `src/behavior.ts` 与
+   * `src/settings/panel.ts`，而唯一的生产消费者住 `src/remote-launch-run.ts`
+   * ⇒ 做那一刀的人按「写区外停下报备」办、只改了落盘键；字段名这一半由
+   * 拿得到那个写区的人（同拍的 PM）在它交回后立刻收，**没有攒成欠账**。
    */
-  forceLegacyLaunchRenderer: boolean;
+  forceLaunchPayloadRenderer: boolean;
 }
 
 const DEFAULTS: BehaviorConfig = {
@@ -147,7 +147,7 @@ const DEFAULTS: BehaviorConfig = {
   resumeCommandLocalPresets: [],
   resumeCommandRemotePresets: [],
   notifyTurnEnd: true,
-  forceLegacyLaunchRenderer: false,
+  forceLaunchPayloadRenderer: false,
 };
 
 /** 读行为字段；缺失 / 类型不对走默认值，永不抛。 */
@@ -181,10 +181,10 @@ export async function getBehavior(): Promise<BehaviorConfig> {
         typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
           ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
           : DEFAULTS.notifyTurnEnd,
-      forceLegacyLaunchRenderer:
+      forceLaunchPayloadRenderer:
         typeof cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] === "boolean"
           ? (cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] as boolean)
-          : DEFAULTS.forceLegacyLaunchRenderer,
+          : DEFAULTS.forceLaunchPayloadRenderer,
     };
   } catch (e) {
     console.warn("getBehavior failed:", e);
@@ -203,6 +203,6 @@ export async function setBehavior(next: BehaviorConfig): Promise<void> {
   cfg[KEY_RESUME_LOCAL_PRESETS] = next.resumeCommandLocalPresets;
   cfg[KEY_RESUME_REMOTE_PRESETS] = next.resumeCommandRemotePresets;
   cfg[KEY_NOTIFY_TURN_END] = next.notifyTurnEnd;
-  cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] = next.forceLegacyLaunchRenderer;
+  cfg[KEY_FORCE_LAUNCH_PAYLOAD_RENDERER] = next.forceLaunchPayloadRenderer;
   await saveConfig(cfg);
 }
