@@ -66,7 +66,7 @@
 # │   `src/bridge/src/sftp_pool.rs` 里那条 `copy_remote_path`，**判据本体**是
 # │   `tests/bridge/comm_boundary_registry_tests.rs`（通信层那一族，`13b` 步 1 09-20 第 27 格）：
 # │   `comm-boundary` 那一格没有独立的判据文件 —— 被测对象就是这一份（C1–C5 ＋ X1–X6
-# │   ＋ 锚 ＋ 元判据，15 条），判定（三方对拍 ＋ 元判据/「说得出今天是空的」两条逐字锚点）
+# │   ＋ 锚 ＋ 余下五份 ＋ 元判据，16 条），判定（三方对拍 ＋ 元判据/「说得出今天是空的」两条逐字锚点）
 # │   逐字写在下面那一行 `run_gate comm-boundary` 的内联脚本里。
 # │   🔴 本格买的是「这一族还在不在」。⚠ **这里刻意不写人群有几份** —— 那个数
 # │   有唯一住址（该族自己那条三方相等 ＋ 模块头注那句，两处都是被判的），
@@ -1801,18 +1801,18 @@ if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "f3-copy: �
 for t in "$fwd" "$rev"; do n=$(printf "%s\n" "$out" | grep -c "copy_f3_tests::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "f3-copy: 方向锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 秤 F3 那两向里有一向没跑，或它改了名\n" "$t" "$n"; exit 1; fi; done; \
 printf "f3-copy: %s passed（秤 F3 两向；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
 
-# ── `comm-boundary`：通信层那十五条独立成格（`13b` 步 1 落地，本拍第 27 格）──────
+# ── `comm-boundary`：通信层那十六条独立成格（`13b` 步 1 落地，本拍第 27 格）──────
 #
 # 🔴 **题面与 `f3-copy` 同形，但这一格更要紧 —— 因为那一族的人群可能是空集。**
 #   `tests/bridge/comm_boundary_registry_tests.rs`（1400 行）是 `设计/05 §2`/`§3.3.6`
 #   那 C1–C5 ＋ X1–X6 的本体。人群为空时，绿的理由是 `0 == 0` 而不是「扫不到」。
 #   ⚠ **本文件不写人群有几份** —— 见 `〔自述·现物〕` 那一段的理由。
-#   ⇒ 整个模块被从 `lib.rs` 摘掉时，**十五条一条都不跑，连那条元判据也不跑**，
+#   ⇒ 整个模块被从 `lib.rs` 摘掉时，**十六条一条都不跑，连那条元判据也不跑**，
 #     而 `cargo` 那一格只会合计小一点 —— **「摘掉了」与「全绿」在终端上一模一样**。
 #   🔴 一个人群为空的判据族，如果连「它自己还在不在」都没人看，那它买到的是零。
 #   立本格的那一路自己停下报备了这件事（写区不含本文件），这一拍补上。
 #
-# ★ 取法照 `f3-copy`：**三方对拍**（本行 `pin=15` · 那份文件现打的 `#[test]` 条数 ·
+# ★ 取法照 `f3-copy`：**三方对拍**（本行 `pin=16` · 那份文件现打的 `#[test]` 条数 ·
 #   `cargo test` 真跑出的 passed），三个数必须相等。
 # ★ 两个逐字锚点选的是**最承重的两条**，不是随便挑两个名字：
 #   ① `every_criterion_is_on_the_execution_chain` —— 元判据本身（判据清单 ↔ 真实 `#[test]`
@@ -1821,9 +1821,20 @@ printf "f3-copy: %s passed（秤 F3 两向；三方对拍 pin %s == 声明 %s ==
 #      它没跑，「人群为空」就退回成「扫不到」。
 #   ⚠ 两侧不同源：名字写死在本文件里，命中数来自 `cargo` 的运行时输出。
 # ⚠ 本格**不买**「没盖标记的文件不是通信层」—— 那是那张表自己最大的诚实边界
-#   （一份真在做传输的代码不盖标记，它一个字都看不见）。本格只买「这十五条没有静默消失」。
-run_gate comm-boundary '判过的条数 = 通信层那一族（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 元判据）这一趟真跑过的条数。**三方对拍**：本行钉的 15 · 那份文件里现打的 `#[test]` 条数 · `cargo test` 真跑出来的 passed，三个数必须**相等** ＋ 两条逐字锚点（元判据 · 「说得出今天是空的」那条）各命中**恰好 1 次**。⚠ **本格存在的唯一理由是那一族的人群可能是空集** —— 模块被摘掉时十五条与元判据一起消失，而 `cargo` 那一格只会合计小一点，「摘掉了」与「全绿」在终端上分不开。⚠ 本格买的是「这十五条没有静默消失」，**不买**它们判得对（那由它们各自的头注与死值验负责），更**不买**「没盖标记的文件不是通信层」（那张表自己写死的最大边界）；⚠ 这 15 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加' \
-         bash -c 'pin=15; f=tests/bridge/comm_boundary_registry_tests.rs; \
+#   （一份真在做传输的代码不盖标记，它一个字都看不见）。本格只买「这十六条没有静默消失」。
+#
+# ★ 〔2026-09-21〕**这一格的三方对拍逐腿砍过**（`pin` 从 15 抬到 16 那一拍，
+#   还原一律 `cp` 覆盖 ＋ `sha256` 对账，**不搬 mtime**）：
+#   · **`pin` 那条腿** —— 把本行的 `pin=16` 改回 `15` ⇒ 当场红，逐字
+#     「三方对拍分叉 —— 本行钉 15 · … 声明 16 条 · cargo 真跑 16 条」；
+#   · **「真跑」那条腿** —— 给那份文件里任一条判据加 `#[ignore]` ⇒ 当场红，逐字
+#     「本行钉 16 · … 声明 16 条 · cargo 真跑 15 条」。
+#   ⇒ 三个数里**改动任何一个**都会分叉，不存在「两边一起改掉」的安静路径
+#     （`pin` 在本文件、`declared` 在那份判据文件、`ran` 来自 cargo 的运行时输出，**三侧异源**）。
+#   ⚠ 「声明」那条腿与「真跑」那条腿会被**同一次编辑**一起改掉（真删一条判据 ⇒ 两个都变 15），
+#     而那时 `pin` 还是 16 ⇒ 照样红。**本格的反空真锚是那个三方相等，不是任何单独一条腿。**
+run_gate comm-boundary '判过的条数 = 通信层那一族（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 ＋ 元判据）这一趟真跑过的条数。**三方对拍**：本行钉的 16 · 那份文件里现打的 `#[test]` 条数 · `cargo test` 真跑出来的 passed，三个数必须**相等** ＋ 两条逐字锚点（元判据 · 「说得出今天是空的」那条）各命中**恰好 1 次**。⚠ **本格存在的唯一理由是那一族的人群可能是空集** —— 模块被摘掉时十六条与元判据一起消失，而 `cargo` 那一格只会合计小一点，「摘掉了」与「全绿」在终端上分不开。⚠ 本格买的是「这十六条没有静默消失」，**不买**它们判得对（那由它们各自的头注与死值验负责），更**不买**「没盖标记的文件不是通信层」（那张表自己写死的最大边界）；⚠ 这 16 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加' \
+         bash -c 'pin=16; f=tests/bridge/comm_boundary_registry_tests.rs; \
 meta=every_criterion_is_on_the_execution_chain; \
 empty=the_boundary_registry_says_out_loud_how_big_it_is_today; \
 [ -r "$f" ] || { printf "comm-boundary: 那一族的判据本体 %s 盘上读不到 —— 住址改了就回来改本格，不许静默跳过\n" "$f"; exit 1; }; \
@@ -1834,7 +1845,7 @@ ran=$(printf "%s\n" "$out" | grep -oE "^test result: ok\. [0-9]+ passed" | grep 
 if [ -z "$ran" ]; then printf "%s\n" "$out" | tail -25; printf "comm-boundary: 那趟输出里抠不出「test result: ok. N passed」—— 读法与 cargo 的输出面对不上，本格判不了（不许当成绿）\n"; exit 1; fi; \
 if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "comm-boundary: 三方对拍分叉 —— 本行钉 %s · %s 里现打声明 %s 条 · cargo 真跑 %s 条；三个数必须相等。真加/删了一条判据，就回来改本行那个 pin（别去动另外两边）\n" "$pin" "$f" "$declared" "$ran"; exit 1; fi; \
 for t in "$meta" "$empty"; do n=$(printf "%s\n" "$out" | grep -c "comm_boundary_registry::tests::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "comm-boundary: 锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 它没跑，或者它改了名\n" "$t" "$n"; exit 1; fi; done; \
-printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 元判据；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
+printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 ＋ 元判据；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
 #

@@ -23,9 +23,12 @@ fn repo_root() -> PathBuf {
 ///
 /// `§8` 步 3 逐字：「把传输面（SSH / SFTP / 池 / 重连）从 `monitor` 的 Rust 半
 /// **圈出来**，业务先不动」。现打的结论是：**那三份今天一份都圈不进来** ——
-/// `ssh_source.rs` / `sftp.rs` / `sftp_pool.rs` 的**生产段**里都有业务词，
+/// `ssh_source.rs` / `sftp.rs` / `sftp_pool.rs` 的**公开面**上都命名了业务概念，
 /// 而 `设计/05 §2` 逐字「**`C1` 的豁免必须为零**」⇒ 不许开口子，只能不圈 ＋ 写清。
-/// 逐份咬在哪（词 · 处数 · 判词）写在 `真相源/` 那份读数里，**不在这里抄第二份**。
+/// 逐份咬在哪（名字 · 处数 · 判词）写在 `真相源/` 那份读数里，**不在这里抄第二份**。
+/// ⚠ 〔2026-09-21 换射程后现打〕**三份一份都没掉到零** —— 处数掉了约 91%，
+/// 而剩下的那些是它们自己起的公开名字（`is_safe_remote_jsonl` · `SESSION_CHANNEL_CAP` ·
+/// `InboundFrame` 的会话/tmux 变体一族…），**改得了，所以它是账不是命**。
 ///
 /// ⇒ 下面**头两份**是**通信层自己的词汇**那一档（`§2` 逐字四样里的「地址」与
 /// `§4.5.2` 的「失败语义」），不是传输面。**别把非空读成「传输面进来了」。**
@@ -42,12 +45,15 @@ fn repo_root() -> PathBuf {
 ///    它成立在一个不含被它点名的那个东西的人群上。这一拍补的就是那一半。
 ///
 /// ⚠ **只进得来两份，不是整层。** `设计/05 §4.3` 把 `relay/` 按 `C4` 切开、归通信层那一列
-/// 点了六份，而拿这十一条的识别器逐份现打（取法同 `真相源/100`）：
-/// `mod.rs` 与 `server.rs` 还引着 `creds-core`（**`C2`**）· `server.rs` 与 `upstream.rs`
-/// 各写着一个期限常量（**`X2`**；而 `设计/01 §2.1` 逐字把「**期限值**」也算进 `C4` 那句话）·
-/// `tee.rs` 带业务词并 `try_send`（**`C1` ＋ `X4`**）· `listen.rs` 自己 `bind` 端口、
-/// 读环境变量（**`C4` ＋ `C5`**，而按 `§2.1 C5` 括号里那条，端口与端口号本来就归后端）。
-/// ⇒ 七份里只有 `route.rs` 与 `http1.rs` 十一条全绿。**豁免仍为零** —— 变的是人群，不是例外。
+/// 点了六份，加上后来的 `listen.rs` 共七份，而只有 `route.rs` 与 `http1.rs` 十一条全绿。
+///
+/// 🔴 **余下那五份各被哪几条咬，从 2026-09-21 起不再写在这段散文里** ——
+/// 它有了自己的判据（`the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names`，
+/// 逐份**两向集合相等**），编号与逐份理由住 [`RELAY_LEFT_OUTSIDE`]。
+/// 先前这里逐字写着那五份的编号，而**没有任何东西在看它** —— 本拍就抓到一处已经假了的：
+/// 那句「`tee.rs` 带业务词并 `try_send`（`C1` ＋ `X4`）」在新射程下只剩 `X4`。
+/// ⇒ 一个事实一个住址（`E12`），而这个住址现在是**机检的**那一侧。
+/// **豁免仍为零** —— 变的是人群与射程，不是例外。
 ///
 /// ⚠ 另有一格是**全绿而不该圈**（`真相源/100 §二` 那一形的第二例）：
 /// `accounts/policy.rs` 十一条一条不咬，而它是**层 2** —— 那份凭据文件的热重载，
@@ -399,8 +405,8 @@ const CRITERIA: &[(&str, &str, &str)] = &[
     ),
     (
         "C1",
-        "c1_no_business_vocabulary_inside_the_boundary",
-        "源码不许出现业务词表（`设计/05 §2`，豁免必须为零）",
+        "c1_no_business_concept_is_named_on_the_public_surface",
+        "公开面上不许命名业务概念（`设计/05 §2` ＋ `§8.1.4`，豁免必须为零）",
     ),
     (
         "C2",
@@ -451,6 +457,11 @@ const CRITERIA: &[(&str, &str, &str)] = &[
         "X6",
         "x6_every_frontend_call_site_passes_an_explicit_budget",
         "前端对入口的调用点一律显式给 `Budget`",
+    ),
+    (
+        "余下五份",
+        "the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names",
+        "`relay/` 进不来的那五份，逐份**被哪几条咬**与散文两向相等",
     ),
     (
         "元",
@@ -623,9 +634,74 @@ fn the_membership_scanner_would_see_a_new_member_and_ignore_a_bystander() {
 //  六、C1–C5：`设计/05 §2` 的铁律
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 业务词表 —— `设计/05 §2` 的 `C1` 逐字九个词。
-const BUSINESS_WORDS: &[&str] = &[
-    "session", "sid", "account", "skill", "mcp", "tmux", "claude", "jsonl", "agent",
+/// 业务词表 —— `设计/05 §2` 的 `C1` 逐字九个概念，**每个带它的复数形**
+/// 〔用户 2026-09-21：「看怎么加」；`设计/05 §8.1.5`〕。
+///
+/// # 为什么是 `(单数, 复数)` 的**对**，不是一张摊平的十八词表
+///
+/// `真相源/103 §P5.3 ③` 现打了一个洞：词表全是单数，而匹配单位是标识符子词
+/// ⇒ `tmux_sessions` 切出 `[tmux, sessions]`，而 `sessions ≠ session`。
+/// 那一篇数出**十处真业务 `C1` 完全看不见**，含 `"/sessions/"`（那道 Claude 数据围栏
+/// 自己的路径串）与 `reaper_tracked` 的形参 `announced_sids`（七行纯业务，一个词都不咬）。
+///
+/// 写成**对**买的是一件事：**加一个概念时不可能只加单数**。摊平的话
+/// 「漏了复数」与「刻意只要单数」在盘上一模一样 —— 而那正是 `103` 逮到的那个洞的成因。
+///
+/// ⚠ `tmuxes` / `claudes` / `mcps` 这三个复数形**本拍现打全仓零命中**（`src/` 233 份 `.rs`
+/// 的生产段）。留着是对的，理由同 [`BUSINESS_CRATES`] 那一条逐字：**本表是禁入名单，
+/// 不是现存清单**。🔴 它**不是**本仓明禁的「留着用不上的豁免」—— 豁免是给违例**放行**的口子，
+/// 这里是**禁**的那一侧，多一条只会更严，不会更松。
+const BUSINESS_WORDS: &[(&str, &str)] = &[
+    ("session", "sessions"),
+    ("sid", "sids"),
+    ("account", "accounts"),
+    ("skill", "skills"),
+    ("mcp", "mcps"),
+    ("tmux", "tmuxes"),
+    ("claude", "claudes"),
+    ("jsonl", "jsonls"),
+    ("agent", "agents"),
+];
+
+/// 词表摊平成「要拿去比子词的那些形」 —— 单数与复数一视同仁。
+fn business_word_forms() -> Vec<&'static str> {
+    BUSINESS_WORDS.iter().flat_map(|(s, p)| [*s, *p]).collect()
+}
+
+/// ★★ **加复数买到了什么** —— `(标识符, 靠哪个复数形咬住, 它是什么)`〔本拍现打，`设计/05 §8.1.5`〕。
+///
+/// 🔴 **这张表是「加复数前后」那个读数唯一活着的住址，而它刻意不记处数。**
+/// 处数（本拍：整个传输面 365 ⇒ 375 处，新增 10 处）会随任何一次编辑腐掉，
+/// 而**标识符不会** —— 表里每一行都被两条断言夹着：
+/// ① 今天的词表靠那个复数形真的咬住它 · ② **只拿单数去比抓不到它**
+/// （⇐ 这一条就是「加复数之前它完全看不见」，做成了可机检的形状）。
+///
+/// ⚠ `tmux_sessions` / `TmuxSessions` **刻意不在表里**：它们本来就被 `tmux` 咬住，
+/// 复数只是多给了一个判词，不是新咬住。`真相源/103 §P5.3 ③` 那十处里，
+/// 这一族占 5 处 —— 把它们混进来就是把「多一个判词」读成「补了一个洞」。
+///
+/// ⚠ **假红那一侧本拍量过**：`src/` 233 份 `.rs` 的生产段上，加复数**新增的命中一处假红都没有**
+/// —— 全是 `accounts` / `sessions` / `agents` / `skills` / `sids` / `jsonls` 那几族真业务。
+/// 最像假红的候选是 OpenSSH 的 `MaxSessions`（传输概念，不是 Claude 会话），
+/// 而它**全部住在文档注释里** ⇒ 本条只看生产段，一处都不碰。
+const PLURALS_NEWLY_CAUGHT: &[(&str, &str, &str)] = &[
+    (
+        "sessions",
+        "sessions",
+        "那条 `/sessions/` 路径串 —— **那道 Claude 数据围栏自己的一半**",
+    ),
+    (
+        "load_show_bg_sessions",
+        "sessions",
+        "读「显示后台会话」那个业务设置",
+    ),
+    ("sids", "sids", "tmux 账本里按 origin 存的那批会话 id"),
+    (
+        "announced_sids",
+        "sids",
+        "`reaper_tracked` 的形参 —— 收割器要对账「哪些 sid 该在 tmux 后端里」。\
+         那个函数**七行纯业务**而 `C1` 一个词都不咬，是 `真相源/103 §P5.3 ③` 最值钱的一格",
+    ),
 ];
 
 /// 一个标识符 ⇒ 它的**子词**（按 `_` / `-` 与驼峰拆，逐块小写），塞进 `out`。
@@ -689,118 +765,524 @@ fn identifier_subwords(text: &str) -> BTreeSet<String> {
 
 fn business_words_in(text: &str) -> Vec<&'static str> {
     let subwords = identifier_subwords(text);
-    BUSINESS_WORDS
-        .iter()
-        .filter(|w| subwords.contains(**w))
-        .copied()
+    business_word_forms()
+        .into_iter()
+        .filter(|w| subwords.contains(*w))
         .collect()
 }
 
-/// ★ `C1` —— 源码不许出现业务词表。
+// ── `C1` 的射程：**公开面上的声明名字**〔用户 2026-09-21 拍板，`设计/05 §8.1.4`〕 ──────
+
+/// 一段文本切成标识符记号 `(起, 止, 文本)`（下标按 `char`，不按字节）。
+fn ident_tokens(line: &str) -> Vec<(usize, usize, String)> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        if chars[i].is_alphanumeric() || chars[i] == '_' {
+            let s = i;
+            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                i += 1;
+            }
+            out.push((s, i, chars[s..i].iter().collect()));
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// 声明关键字 —— 它们后面紧跟的那个标识符是**我们在这里起的名字**。
+const DECL_KEYWORDS: &[&str] = &[
+    "fn", "struct", "enum", "trait", "type", "mod", "const", "static", "union",
+];
+
+/// 带花括号体的 item —— 体内的可见性规矩各不相同，见 [`public_surface_names`]。
+const BRACED_ITEMS: &[&str] = &["struct", "enum", "trait", "union"];
+
+/// 一段声明文本上处在**绑定位置**的标识符 —— 即「我们在这里起的名字」。
+///
+/// 🔴 **这一刀是新射程的全部机关，而它是纯语法的**：它只问「这个标识符出现在
+/// 起名字的位置，还是指向别人的位置」，**从不问这个名字是谁的**。
+///
+/// | 位置 | 例 | 算不算我们起的名字 |
+/// |---|---|---|
+/// | 声明关键字之后 | `pub type SshSession = …` | ✅ 算（`SshSession`） |
+/// | 形参 / 字段的**左侧** | `pub fn f(sid: &str)` · `pub agent_kind: String` | ✅ 算（`sid` · `agent_kind`） |
+/// | 类型引用（`:` 右侧 · `->` 之后） | `-> Result<SftpSession, E>` | ❌ 不算 |
+/// | 带 `::` 的路径段 | `russh_sftp::client::SftpSession` | ❌ 不算 |
+///
+/// ⇒ `真相源/103 §P5.3 ①` 那条反驳（「要放过第三方名字就得解析类型」）在这个射程下
+/// **不需要回答**：第三方的名字之所以过得去，不是因为判据认出它是第三方的，
+/// 而是因为它出现在**引用位**。同一份文件里我们自己起的 `SshSession` 照样咬住
+/// （`103 §P5.4` 订正 4 逐字：它是我们自己的 `type` 别名，**改得了**）。
+///
+/// ⚠ `use` 那一档单独走：`pub use a::b::C;` 把 `C` 绑进我们的公开命名空间
+/// ⇒ 末段算我们起的名字，前面的路径段不算。
+fn declared_names(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let toks = ident_tokens(text);
+    let mut out: Vec<String> = Vec::new();
+    let char_at = |k: usize| -> Option<char> { chars.get(k).copied() };
+    let path_before = |start: usize| -> bool {
+        let mut k = start;
+        while k > 0 && chars[k - 1].is_whitespace() {
+            k -= 1;
+        }
+        k >= 2 && chars[k - 1] == ':' && chars[k - 2] == ':'
+    };
+    // 记号之后第一个非空白字符的下标。
+    let next_at = |end: usize| -> usize {
+        let mut k = end;
+        while k < chars.len() && chars[k].is_whitespace() {
+            k += 1;
+        }
+        k
+    };
+
+    if toks.iter().any(|(_, _, t)| t == "use") {
+        for (s, e, t) in &toks {
+            if matches!(
+                t.as_str(),
+                "use" | "as" | "crate" | "self" | "super" | "pub"
+            ) {
+                continue;
+            }
+            let k = next_at(*e);
+            let followed_by_path = char_at(k) == Some(':') && char_at(k + 1) == Some(':');
+            if !followed_by_path {
+                let _ = path_before(*s); // 末段无论前面有没有路径都算（`a::b::C` 的 `C`）
+                out.push(t.clone());
+            }
+        }
+        return out;
+    }
+
+    for (i, (s, e, t)) in toks.iter().enumerate() {
+        if DECL_KEYWORDS.contains(&t.as_str()) {
+            if let Some((_, _, n)) = toks.get(i + 1) {
+                out.push(n.clone());
+            }
+            continue;
+        }
+        let k = next_at(*e);
+        let single_colon = char_at(k) == Some(':') && char_at(k + 1) != Some(':');
+        if single_colon && !path_before(*s) {
+            out.push(t.clone());
+        }
+    }
+    out
+}
+
+/// 一段 `enum` 体内的文本 ⇒ 变体名 ＋ 它的具名字段名。
+///
+/// 变体随它的 `enum` 公开（Rust 不给变体独立的可见性）⇒ `pub enum` 的体整块是公开面。
+/// 这与**结构体**相反：结构体字段默认私有，要自己带 `pub`。
+fn variant_names(seg: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some((_, _, first)) = ident_tokens(seg).first() {
+        if first.chars().next().is_some_and(|c| c.is_uppercase()) {
+            out.push(first.clone());
+        }
+    }
+    out.extend(declared_names(seg));
+    out
+}
+
+/// 一行的圆括号净增量。
+fn paren_delta(line: &str) -> i32 {
+    line.matches('(').count() as i32 - line.matches(')').count() as i32
+}
+
+/// 折行的签名最多往后拼几行（rustfmt 下一个签名不会比这更长；拼不完就原样退回）。
+const SIG_JOIN_MAX: usize = 40;
+
+fn is_pub(trimmed: &str) -> bool {
+    guard_core::strip_visibility(trimmed) != trimmed
+}
+
+/// ★★ **公开面** —— 一份生产段上「我们在公开声明里起的那些名字」，`(名字, 它出自的那行)`。
+///
+/// 三档进公开面，逐档的可见性规矩不同（这是 Rust 的规矩，不是我们定的）：
+///
+/// | 档 | 什么算公开面 | 依据 |
+/// |---|---|---|
+/// | 带 `pub` 的 item 行 | 它起的名字 ＋ 形参名 ＋ 带 `pub` 的字段名 | 有 `pub` 就是对外的脸 |
+/// | `pub enum` 的体 | 变体名 ＋ 变体的具名字段名 | 变体没有独立可见性，随 `enum` 公开 |
+/// | `pub trait` 的体 | 方法签名 | trait 成员随 trait 公开 |
+///
+/// 🔴 **折行的签名要先拼回来**：rustfmt 把长签名折成多行，而续行**不带 `pub`**
+/// ⇒ 只看物理行的话 `pub(crate) async fn connect_session(` 后面那几行形参会**整批漏掉**。
+/// 本函数按圆括号配平往后拼（[`paren_delta`]），只从**声明头**那一行开始拼
+/// —— 从任意一行开始拼的话，一条括号不配平的函数体会把后面那个 `pub fn` 吞进去，
+/// 而那是**假绿**方向的错（漏掉一个公开声明）。
+///
+/// # ⚠ 它认不出的那几格（如实登记，本件已知的洞）
+///
+/// 1. **私有类型上的 `pub fn`** —— `impl` 的接收者是不是公开的，本函数不看
+///    ⇒ 私有类型的 `pub fn` 也当公开面判。方向是**收紧**（不会漏判），如实记着。
+/// 2. **`pub(crate)` 与 `pub` 一视同仁** —— 两者对「模块外看得见」都成立，而
+///    `C1` 守的是层与层之间那道边界，不是 crate 的导出面。同样是收紧方向。
+/// 3. **宏生成的公开面** —— `macro_rules!` 展开出来的 `pub` 项本函数看不见。
+///    挡这一形要展开宏，那不是文本判据干的事。
+fn public_surface_names(prod: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = prod.lines().collect();
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut depth: i32 = 0;
+    // 公开 `enum` / `trait` 的体：`(进去之前的 depth, 哪一档)`
+    let mut open_pub: Vec<(i32, &'static str)> = Vec::new();
+    let mut i = 0usize;
+    while i < lines.len() {
+        let first = lines[i].trim();
+        let pubbed = is_pub(first);
+        let inside = open_pub.last().and_then(|(d, k)| match *k {
+            "enum" if depth > *d => Some("enum"),
+            "trait" if depth == *d + 1 => Some("trait"),
+            _ => None,
+        });
+
+        // 折行的声明头往后拼到圆括号配平。
+        let mut consumed = 1usize;
+        let mut text = first.to_string();
+        if pubbed || inside.is_some() {
+            let mut d = paren_delta(first);
+            while d > 0 && i + consumed < lines.len() && consumed < SIG_JOIN_MAX {
+                let nxt = lines[i + consumed].trim();
+                text.push(' ');
+                text.push_str(nxt);
+                d += paren_delta(nxt);
+                consumed += 1;
+            }
+        }
+
+        let after = guard_core::strip_visibility(text.trim());
+        let kind = after
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(|c: char| !c.is_alphanumeric());
+
+        let mut names: Vec<String> = Vec::new();
+        if pubbed {
+            if BRACED_ITEMS.contains(&kind) && after.contains('{') {
+                // 同一行就开了体（内联形）：头部走声明名，体内按档分派。
+                let (head, tail) = after.split_once('{').unwrap_or((after, ""));
+                names.extend(declared_names(head));
+                let tail = tail.trim_end().trim_end_matches('}');
+                for seg in tail.split(',') {
+                    let s = seg.trim();
+                    if kind == "enum" {
+                        names.extend(variant_names(s));
+                    } else if kind == "trait" || is_pub(s) {
+                        names.extend(declared_names(guard_core::strip_visibility(s)));
+                    }
+                }
+            } else {
+                names.extend(declared_names(after));
+            }
+        } else if inside == Some("enum") {
+            names.extend(variant_names(&text));
+        } else if inside == Some("trait")
+            && (text.trim_start().starts_with("fn ") || text.trim_start().starts_with("async fn "))
+        {
+            names.extend(declared_names(&text));
+        }
+
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        for n in names {
+            if !n.is_empty() && seen.insert(n.clone()) {
+                out.push((n, first.to_string()));
+            }
+        }
+
+        let opens = text.matches('{').count() as i32 - text.matches('}').count() as i32;
+        if pubbed && (kind == "enum" || kind == "trait") && opens > 0 {
+            open_pub.push((depth, if kind == "enum" { "enum" } else { "trait" }));
+        }
+        depth += opens;
+        while open_pub.last().is_some_and(|(d, _)| depth <= *d) {
+            open_pub.pop();
+        }
+        i += consumed;
+    }
+    out
+}
+
+/// 一份成员的**公开面**上被咬住的那些处 —— `(名字, 判词, 出处那行)`。
+fn public_surface_offences(prod: &str) -> Vec<(String, Vec<&'static str>, String)> {
+    public_surface_names(prod)
+        .into_iter()
+        .filter_map(|(name, line)| {
+            let hits = business_words_in(&name);
+            (!hits.is_empty()).then_some((name, hits, line))
+        })
+        .collect()
+}
+
+/// ★ `C1` —— **公开面上不许命名业务概念**〔用户 2026-09-21 拍板，`设计/05 §8.1.4`〕。
 ///
 /// `设计/05 §2` 逐字：「⚠ **`C1` 的豁免必须为零。** 一旦开始豁免，它就变成第三个业务的家」
 /// ⇒ 本条**没有白名单，也不给一个**。要留口子，先去改设计。
 ///
-/// # ★★ 匹配单位是**标识符子词**，不是「词」〔`设计/05 §8.1.2` 裁定，09-21 改〕
+/// # ★★ 用户的裁决：「零业务判断」，不是「零业务语义」
 ///
-/// 上一版走 `guard_core::contains_word`（词边界），而 `_` 是标识符字符
-/// ⇒ `session_id` / `agent_name` / `mcp_path` 这一族**一个都看不见**
-/// （〔步 3 09-20〕死值验现打：注 `fn touch(&self, session: u8)` **当场红**；
-/// 换成 `fn touch(&self, session_id: u8)` **十五条全绿**）。
-/// 那一版的射程说明里还写着这两种写法「也不会被它蒙混」——**那半句是假的**，
-/// 上面那一刀就是反例，已随本改一起删掉。
+/// 用户 2026-09-21 逐字：「**理论上可以懂业务, 不然他怎么把流量分流成我们想要的样子**」。
+/// 现打的支撑：中转层 1 手里是一个 `RouteKey{ seg1, seg2 }` ＋ 一个 `stream`，
+/// `route.rs` 的注释逐字「**它是 sid，但层 1 不需要知道**」，而「谁是 agent、谁是账号」
+/// 只在层 2（`accounts/`）才有名字 ⇒ 分流是「层 1 只切、层 2 才决定」。
+/// **但层 1 的形状本身**（前两段当键、第三段当流名）**就是一条业务事实** ——
+/// 它「知道」一个请求长成账号/agent/会话那个样子，只是管它们叫 `seg1`/`seg2`。
+/// ⇒ 它真正做到的是**零业务判断**，不是零业务语义。
 ///
-/// 现在走 [`identifier_subwords`]：先切标识符，再按 `_`/`-` 与驼峰拆成子词。
-/// · `session_id` ⇒ `[session, id]` **咬得住** · `SshSession` ⇒ `[ssh, session]` **咬得住**
-/// · `considered` ⇒ `[considered]` ≠ `sid` **不假红** · `sessionize` ⇒ `[sessionize]` ≠ `session` **不假红**
+/// # ★★ 于是射程从「出现」换成「在公开面上命名」
 ///
-/// 🔴 **裸 `contains` 那条路是被否掉的，别退回去**：它会让 `sid` 命中
-/// `considered`/`residual`、`session` 命中 `sessionize` ⇒ 一族假红，
-/// 而本仓逐字记过「假红比不查更坏（它会训练人绕过判据）」。
-/// 下面那条阴性对照就钉着这件事，退回裸 `contains` **当场红**。
+/// | | 上一版 | 本版 |
+/// |---|---|---|
+/// | 禁的是 | 生产段里**出现**业务词 | 在**公开面**（[`public_surface_names`] 那三档）上**命名**业务概念 |
+/// | 放过的 | 无 | **内部提到** —— 类型引用（`-> SftpSession`）· 私有字段/局部名 · 报错文案串 |
+/// | 守住的还是 | 「不许有第三个业务家」 | **同一条** —— 业务**判断**靠的是公开面上的类型，不是内部提到谁 |
 ///
-/// **买到**：登记成员的生产段里，那九个词**作为标识符子词**一个都不许出现 ——
-/// 蛇形（`session_id`）· 驼峰（`SshSession`）· 全大写（`SESSION_CHANNEL_CAP`）·
-/// 字符串字面量里的（`".jsonl"`）全部算数。
+/// 🔴 **豁免仍为零，变的是射程，不是例外。** 这与 2026-09-18 那次「人群不含注释」
+/// 是同一个动作，`设计/01 §2.1` 那一次的措辞逐字就是这一句。
+///
+/// # 🔴 它为什么绕得开 `真相源/103 §P5.3` 那三条结构性反驳
+///
+/// `103` 否掉的是**另一条**候选（`设计/05 §8.1.1` 那个「第三方 crate 的导入名不算」），
+/// 三条理由逐条对照本射程：
+///
+/// | `103` 的反驳 | 本射程怎么绕开 | 现打的证据 |
+/// |---|---|---|
+/// | ① A 类要**类型解析**才认得出（第三方固有方法 `channel_open_session` 全仓零定义） | 本射程**不问名字是谁的**，只问它在**声明位**还是**引用位** —— 纯语法 | 传输面上 `channel_open_session` 4 处 · `SftpSession` 17 处 · `RawSftpSession` 3 处，**全部落在引用位 ⇒ 一处不咬**；而我们自己的 `pub(crate) type SshSession` 在声明位 ⇒ **照咬** |
+/// | ② A 与 C 在语法上**同形**（报错文案里的 `ssh-agent` 是传输、`tmux` 是业务） | 本射程**不需要分开它们**：串里没有任何声明位 ⇒ 两者一起出射程 | `103` 那 14 处「凑绿」全在报错文案里 ⇒ 新射程 **0 处** |
+/// | ③ B 改完 C 搬完之后仍有 14 处咬着 | 同 ②，那 14 处出射程 | 同上 |
+///
+/// ⚠ **代价要认下来，它不小**：② 那条是靠「把 A 与 C 一起放过」绕开的
+/// ⇒ **写在串里的业务名从此本条看不见**。现打的活样本是 `relay/tee.rs`：
+/// 它那 4 处 `agent`/`account` 是 tee 输出的 **JSON 字段名**，写成格式串
+/// ⇒ 上一版咬（`C1` ＋ `X4`），本版只剩 `X4`。那不是报错文案，是一条线上契约，
+/// 而**本射程分不出这两者** —— `103 §P5.3 ②` 那个形状换了个位置又出现了一次。
+/// 🔴 这一格**今天判不了**，缺的证据是一份「线上契约的字段名住哪」的独立读数。
+/// 挡它的不是本条，是 `X1` 那一族（线上类型必须穷尽）与金标准逐字节对拍。
+///
+/// # 匹配单位仍是**标识符子词**〔`设计/05 §8.1.2`〕，词表本拍加了复数〔`§8.1.5`〕
+///
+/// 走 [`identifier_subwords`]：先切标识符，再按 `_`/`-` 与驼峰拆。
+/// · `sid` 当形参名 ⇒ 咬 · `SshSession` ⇒ `[ssh, session]` 咬 · `tmux_sessions` ⇒ `[tmux, sessions]` 咬
+/// · `considered` ⇒ `[considered]` ≠ `sid` **不假红**
+///
+/// 🔴 **裸 `contains` 那条路是被否掉的，别退回去**（`设计/05 §8.1.2` 逐字）。
+/// 下面那条阴性对照钉着它，退回去**当场红**。
+///
+/// **买到**：登记成员的公开面上，那九个概念（单数与复数两形）一个都不许出现 ——
+/// `pub` 类型名 · `pub fn` 签名（含折行的续行）· 带 `pub` 的字段名 ·
+/// `pub enum` 的变体名 · `pub trait` 的方法名，全部算数。
 ///
 /// **买不到**：
 /// ① 注释里的业务词（本条只看生产段，理由见 [`production_of`]）；
-/// ② **换了名字的业务** —— 把 `session_id` 改叫 `handle_id` 照样过。
-///    ⚠ 本改把 ② 的诱惑变大了（判据咬得更狠 ⇒ 改名是最便宜的躲法）。
-///    改名不是剥；**剥是把业务语义搬出这一层**，搬完那份文件才圈得进来。
-/// ③ 🔴 **既没有分隔符、也没有驼峰的连写** —— `sessionid` / `session2` / `sidfoo`
-///    这一族拆不出子词 ⇒ 本条看不见。裁定逐字只给了「`_` 与驼峰」两刀，
-///    **数字边界不在裁定里，本件没有擅自加**（要加是改 `设计/05 §8.1.2`，不是改这里）。
-/// ④ 🔴 **同名而不同义分不出来** —— `russh` 的 `SshSession`/`SftpSession` 是**传输自己的**
-///    词汇，本条照咬。那不是 bug，是 `设计/05 §8.1.1` 那道设计题的现物：
-///    **分不出来时不许开口子**（`§2` 逐字「豁免必须为零」）。逐份处置写在 `真相源/100`。
+/// ② **换了名字的业务** —— 把 `sid` 改叫 `handle` 照样过。改名不是剥；
+///    **剥是把业务语义搬出这一层**。本射程让这条诱惑更便宜了：只要别写在公开面上。
+/// ③ 🔴 **实现里的业务判断** —— `真相源/103 §P5.3 ③` 那个 `reaper_tracked`
+///    （七行纯业务：收割器要对账的 sid 集合）是个**私有** `fn`
+///    ⇒ 上一版看不见它（复数），本版**照样看不见**（不在公开面）。
+///    加复数买到的是它那两个形参在**别处**被数出来，不是这一条咬住了它。
+/// ④ 🔴 **既没有分隔符、也没有驼峰的连写** —— `sessionid` / `session2` / `sidfoo`
+///    拆不出子词 ⇒ 看不见。`设计/05 §8.1.2` 裁定逐字只给了「`_` 与驼峰」两刀，
+///    **数字边界不在裁定里，本件没有擅自加**。
+/// ⑤ 宏展开出来的公开面、私有类型上的 `pub fn` —— 逐格记在 [`public_surface_names`] 里。
 ///
-/// 词表守的是「别把已知的业务词搬进来」，不是「这一层真的零业务语义」。
+/// # 🔴 **换射程这件事，今天的人群一个字都证明不了**（这一格必须写出来）
+///
+/// 现打：登记在册那几份成员在**新旧两个射程下都是 0 处**
+/// ⇒ 那条相等断言在换射程前后**一模一样地绿**，它分不出这两个射程。
+/// ⇒ **唯一在为新射程作证的是下面那两组对照**（公开面七形必须红 · 实现六形必须不红），
+/// 以及模块头注里记的 `D1`–`D4`／`D9` 那几刀。
+/// 🔴 谁哪天觉得那两组对照「啰嗦」把它删了，这一改就当场退化成
+/// **「把规矩放宽了」而不是「换了射程」**，而那是用户拍这一板时**没有**授权的东西。
+/// **不许删。**
 #[test]
-fn c1_no_business_vocabulary_inside_the_boundary() {
+fn c1_no_business_concept_is_named_on_the_public_surface() {
     let pop = boundary();
     let offenders: Vec<String> = pop
         .iter()
-        .filter_map(|m| {
-            let hits = business_words_in(&m.prod);
-            (!hits.is_empty()).then(|| format!("  {} —— {hits:?}", m.rel))
+        .flat_map(|m| {
+            public_surface_offences(&m.prod)
+                .into_iter()
+                .map(move |(name, hits, line)| {
+                    format!("  {} —— `{name}` {hits:?}   ← {line}", m.rel)
+                })
         })
         .collect();
     assert!(
         offenders.is_empty(),
-        "通信层成员的生产段里出现了业务词：\n{}\n\n\
+        "通信层成员的**公开面**上命名了业务概念：\n{}\n\n\
          `设计/05 §2` 铁律：**通信层不知道什么是会话、账号、skill、agent。**\n\
          它只知道地址（`origin` / 路由键）· 操作名 · 载荷 · 流的订阅与分发。\n\
-         ⚠ **豁免必须为零** —— 本条没有白名单，别来加。",
+         ⚠ **豁免必须为零** —— 本条没有白名单，别来加。\n\
+         ⚠ 处置不是「把名字挪进实现」那种凑绿：`设计/01 §2.1` 逐字给的是\n\
+         **用位置称呼它搬的东西**（`RouteKey{{ seg1, seg2 }}`），业务名只出现在后端那一半。",
         offenders.join("\n")
     );
-    // 阳性对照：人群为空的日子里，这才是本条真正跑过的东西。
-    // ★ 三种写法各喂一遍 —— 独立成词 · 蛇形 · 驼峰。后两种是 09-21 这一改买到的，
-    //   上一版（词边界）在它们身上**全绿**，那正是 `设计/05 §8.1.2` 点名的盲区。
-    for w in BUSINESS_WORDS {
-        let camel = {
-            let mut c = w.chars();
-            match c.next() {
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                None => String::new(),
+
+    // ── 阳性对照：公开面那三档，每个词的单数与复数各喂一遍 ──────────────────
+    // ★ 人群为空 / 人群全绿的日子里，这才是本条真正跑过的东西。
+    for (singular, plural) in BUSINESS_WORDS {
+        for w in [singular, plural] {
+            let camel = {
+                let mut c = w.chars();
+                match c.next() {
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                    None => String::new(),
+                }
+            };
+            for (shape, synthetic) in [
+                ("pub 函数名", format!("pub fn route_{w}(id: &str) -> u8 {{ 0 }}\n")),
+                (
+                    "pub 签名里的形参名",
+                    format!("pub fn route(origin: &str, {w}: &str) -> u8 {{ 0 }}\n"),
+                ),
+                (
+                    "折行的 pub 签名",
+                    format!("pub(crate) async fn route(\n    origin: &str,\n    {w}: &str,\n) -> u8 {{\n    0\n}}\n"),
+                ),
+                ("pub 类型名", format!("pub struct Wrap{camel}Handle;\n")),
+                (
+                    "pub 字段名",
+                    format!("pub struct Wire {{\n    pub {w}_of: String,\n}}\n"),
+                ),
+                (
+                    "pub enum 的变体名",
+                    format!("pub enum Frame {{\n    {camel}Added {{ raw: String }},\n}}\n"),
+                ),
+                (
+                    "pub use 的末段",
+                    format!("pub use crate::wire::{camel}Handle;\n"),
+                ),
+            ] {
+                let got: Vec<String> = public_surface_offences(&synthetic)
+                    .into_iter()
+                    .flat_map(|(_, h, _)| h.into_iter().map(|s| s.to_string()))
+                    .collect();
+                assert!(
+                    got.iter().any(|g| g == w),
+                    "词表里写着 `{w}`，识别器在**{shape}**这一形上认不出它 —— \
+                     射程比事实小。喂的是：{synthetic:?}，抓到：{got:?}"
+                );
             }
-        };
-        for (shape, synthetic) in [
-            (
-                "独立成词",
-                format!("pub fn route(id: &str) -> u8 {{ let {w} = id; 0 }}\n"),
-            ),
-            (
-                "蛇形",
-                format!("pub fn route(id: &str) -> u8 {{ let {w}_id = id; 0 }}\n"),
-            ),
-            ("驼峰", format!("pub struct Wrap{camel}Handle;\n")),
-        ] {
-            assert!(
-                business_words_in(&synthetic).contains(w),
-                "词表里写着 `{w}`，识别器在**{shape}**这一形上认不出它 —— \
-                 匹配单位比事实小（那正是 09-21 这一改要治的病）。喂的是：{synthetic:?}"
-            );
         }
     }
+
+    // ── 🔴 阴性对照一：**同一个词注在实现里必须不红**。两个方向都要，否则这一改
+    //    就退化成「把规矩放宽了」而不是「换了射程」。
+    for (singular, plural) in BUSINESS_WORDS {
+        for w in [singular, plural] {
+            let camel = {
+                let mut c = w.chars();
+                match c.next() {
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                    None => String::new(),
+                }
+            };
+            for (shape, synthetic) in [
+                (
+                    "局部名",
+                    format!("pub fn route(id: &str) -> u8 {{\n    let {w} = id;\n    0\n}}\n"),
+                ),
+                (
+                    "私有字段",
+                    format!("pub struct Wire {{\n    {w}_of: String,\n}}\n"),
+                ),
+                (
+                    "私有函数名与它的形参",
+                    format!("fn helper_{w}({w}_of: &str) -> u8 {{ 0 }}\n"),
+                ),
+                (
+                    "报错文案串",
+                    format!("pub fn route() -> u8 {{\n    panic!(\"打开 {w} 失败\");\n}}\n"),
+                ),
+                (
+                    "第三方类型路径（引用位）",
+                    format!("pub fn route() -> russh_x::client::{camel}Thing {{\n    todo!()\n}}\n"),
+                ),
+                (
+                    "返回类型里的第三方名",
+                    format!("pub(crate) fn dial(&self) -> Result<{camel}Session, Error> {{\n    todo!()\n}}\n"),
+                ),
+            ] {
+                let got = public_surface_offences(&synthetic);
+                assert!(
+                    got.is_empty(),
+                    "**{shape}**里的 `{w}` 被判成违例 —— 那是**内部提到**，\
+                     用户 2026-09-21 的裁决逐字把它放过了（射程只覆盖公开面）。\n\
+                     没有这一条，这一改就退化成「把规矩放宽了」而不是「换了射程」。\n\
+                     喂的是：{synthetic:?}，抓到：{got:?}"
+                );
+            }
+        }
+    }
+
+    // ── 🔴 阴性对照二：**被撑大的那一族不许命中**（匹配单位没有放宽成裸 `contains`）。
+    //    `设计/05 §8.1.2` 逐字否掉了那条路。谁把 [`identifier_subwords`] 换回
+    //    `text.contains(w)`，这里当场红。
+    let stretched = "pub fn route(considered: u8, residual: u8, sessionize: u8, accounting: u8, \
+         skillet: u8, claudette: u8, mcpx: u8, agentic: u8, sideline: u8) -> u8 { 0 }\n";
     assert!(
-        business_words_in("pub fn route(origin: &str, op: &str, payload: &[u8]) {}\n").is_empty(),
-        "一段**只用位置词**的干净代码被判成有业务词 —— 假红比不查更坏"
-    );
-    // ★★ 阴性对照：**被撑大的那一族不许命中**。
-    // 这一条钉的是「匹配单位没有放宽成裸 `contains`」——`设计/05 §8.1.2` 逐字否掉了那条路。
-    // 谁哪天把 [`identifier_subwords`] 换回 `text.contains(w)`，这里当场红。
-    let stretched = "pub fn route(n: u8) -> u8 { \
-         let considered = n; let residual = n; let sessionize = n; let accounting = n; \
-         let skillet = n; let claudette = n; let mcpx = n; let agentic = n; \
-         considered + residual + sessionize + accounting + skillet + claudette + mcpx + agentic }\n";
-    assert!(
-        business_words_in(stretched).is_empty(),
-        "被撑大的标识符（`considered` / `sessionize` / `accounting` / `agentic` …）被判成业务词 —— \
-         匹配单位放宽过头了（裸 `contains` 那条路 `设计/05 §8.1.2` 逐字否掉过）。\
+        public_surface_offences(stretched).is_empty(),
+        "被撑大的标识符（`considered` / `sessionize` / `accounting` / `agentic` / `sideline` …）\
+         被判成业务词 —— 匹配单位放宽过头了（裸 `contains` 那条路 `设计/05 §8.1.2` 逐字否掉过）。\
          假红比不查更坏：它会训练人绕过判据。实际命中：{:?}",
-        business_words_in(stretched)
+        public_surface_offences(stretched)
     );
+    assert!(
+        public_surface_offences("pub fn route(origin: &str, op: &str, payload: &[u8]) {}\n")
+            .is_empty(),
+        "一段**只用位置词**的干净公开面被判成有业务词 —— 假红比不查更坏"
+    );
+
+    // ── 🔴 提取器自检：**每一份成员**的公开面都非空（不是合计非空）。
+    //    射程收窄之后最阴的失效形是「一个名字都抠不出来」—— 那时上面那条相等断言
+    //    会拿两个空集比出绿。合计式的地板挡不住「其中一份掉到 0」，而本仓正是栽在地板上。
+    let mute: Vec<String> = pop
+        .iter()
+        .filter(|m| public_surface_names(&m.prod).is_empty())
+        .map(|m| format!("  {}", m.rel))
+        .collect();
+    assert!(
+        mute.is_empty(),
+        "这几份成员的公开面上**一个名字都抠不出来**：\n{}\n\n\
+         ⇒ 提取器坏了 / 剥法把整段剥空了 / 那份文件真的一个 `pub` 都没有。\n\
+         前两种情形下，上面那条断言是在两个空集之间比对（恒绿）。\n\
+         第三种情形也得有人看一眼：一份**对外零公开面**的文件，`C1` 在它身上买到的是零。",
+        mute.join("\n")
+    );
+
+    // ── 🔴 复数那一改补上的那个洞，逐个标识符钉住〔`设计/05 §8.1.5`〕。
+    //    这一段是「加复数前后」那个读数**唯一活着的住址**：处数会腐，标识符不会。
+    for (ident, plural, what) in PLURALS_NEWLY_CAUGHT {
+        let now = business_words_in(ident);
+        assert!(
+            now.contains(plural),
+            "登记表说 `{ident}`（{what}）靠复数形 `{plural}` 才咬得住，\
+             而识别器在它身上抓到的是 {now:?} —— 词表与登记脱钩了"
+        );
+        let singular_only: Vec<&str> = BUSINESS_WORDS
+            .iter()
+            .map(|(s, _)| *s)
+            .filter(|s| identifier_subwords(ident).contains(*s))
+            .collect();
+        assert!(
+            singular_only.is_empty(),
+            "登记表把 `{ident}`（{what}）记成「加复数之前完全看不见」，\
+             而只拿单数去比也抓到了 {singular_only:?} —— 那这一行买到的不是复数这一改，\
+             登记错了（`真相源/103 §P5.3 ③` 那十处里，`tmux_sessions` 一族正是靠 `tmux` 咬住的，\
+             它们**不该**进这张表）"
+        );
+    }
+    // 反向控制：单数那一侧还活着（否则上面那条「只拿单数抓不到」恒真）。
+    assert!(
+        !business_words_in("session_id").is_empty(),
+        "连 `session_id` 都抓不到了 —— 单数那一侧整批瞎了，上面那组断言会恒真"
+    );
+
     assert_eq!(
         pop.len(),
         REGISTERED.len(),
@@ -1505,7 +1987,219 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  八、元判据：这十五条真的在跑
+//  七b、`relay/` 进不来的那五份：逐份被哪几条咬（散文 ⇒ 机检）
+// ════════════════════════════════════════════════════════════════════════════
+
+/// `relay/` 里**进不来**的那几份 —— `(仓根相对路径, 咬它的判据编号, 为什么它今天圈不进来)`。
+///
+/// 🔴 **这张表是把一段散文搬成机检的。** `REGISTERED` 上方那段头注先前逐字写着
+/// 「余下五份各被哪几条咬（`C2` / `X2` / `C1` ＋ `X4` / `C4` ＋ `C5`）」——
+/// 那是**散文**：判据一条都没在看它，谁哪天把 `tee.rs` 的 `try_send` 换成 `send().await`、
+/// 或者往 `upstream.rs` 里再塞一个期限常量，那句话就悄悄假了而**没有任何东西会红**。
+/// 本条把它换成**逐份两向集合相等**：盘上现扫的咬人判据集合 == 本表这一行。
+///
+/// # 它治什么（而这不是「人群扩大」）
+///
+/// ⚠ **这五份不是通信层成员** —— 它们没盖 [`MARK`]，`C1`–`C5`/`X1`–`X6` 不管它们。
+/// 本条判的是**另一件事**：那段解释「为什么它们还进不来」的散文有没有腐。
+/// ⇒ 一份文件的阻塞清空了（表里那一行变成空集）⇒ 本条当场红，
+/// 而那时该做的是**把它圈进来**（盖标记 ＋ 加进 `REGISTERED` ＋ 改散文那个 N），
+/// 不是回来把这一行删掉了事。
+///
+/// ⚠ **它不买「圈进来就对了」** —— `真相源/100 §二` 那一形（十一条全绿而语义上不该圈）
+/// 本条一个字都不说。归属判断永远是人做的，本表只保证那段理由不是假的。
+const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &str)] = &[
+    (
+        "src/backend/relay/mod.rs",
+        &["C2"],
+        "还 `use creds_core::{store::AuthStyle, SecretKey}` —— 凭据类型直接进了这一层的签名。\
+         `设计/05 §4.3` 把 `creds.rs` 归后端的理由逐字是「算路径＝账号语义」⇒ 引它就是引账号层。",
+    ),
+    (
+        "src/backend/relay/server.rs",
+        &["C2", "X2"],
+        "同上引着 `creds_core`（`C2`）；另有一个下游期限常量写在本层
+         （`X2`；`设计/01 §2.1` 逐字把「**期限值**」也算进 `C4` 那句话 ⇒ 值归后端、执行归本层）。",
+    ),
+    (
+        "src/backend/relay/upstream.rs",
+        &["X2"],
+        "一个上游期限常量写在本层。它比 `server.rs` 那份干净得多 —— \
+         `C2` 已经不咬它了 ⇒ 这一份是余下五份里**最接近进得来**的那一格。",
+    ),
+    (
+        "src/backend/relay/tee.rs",
+        &["X4"],
+        "两处 `try_send`（`X4`：丢弃只能经 `Item::Gap` 说出来）。\
+         🔴 **本拍它的 `C1` 掉出去了**：那 4 处 `agent`/`account` 是 tee 输出的 JSON 字段名、\
+         写在格式串里 ⇒ 新射程（公开面）看不见它们。那一格的代价逐字记在 \
+         `c1_no_business_concept_is_named_on_the_public_surface` 的头注里，**不在这里抄第二份**。",
+    ),
+    (
+        "src/backend/relay/listen.rs",
+        &["C4", "C5"],
+        "自己 `TcpListener::bind` 端口（`C5`）、自己 `std::env::var` 读环境（`C4`）。\
+         按 `设计/05 §2.1` `C5` 括号里那条，端口与端口号本来就归后端 ⇒ \
+         这一份**语义上就该在外面**，不是「等它变干净」。",
+    ),
+];
+
+/// 拿十一条判据的识别器扫一份文本，返回**咬它的那些编号**。
+///
+/// 🔴 **一行识别器都不自己写** —— 全部调 `C1`–`C5` / `X1`–`X6` 各自那一个
+/// （`E3`：一个事实一个权威源）。自己近似重写一份的话，本条会与那十一条各自漂。
+fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
+    let mut out: BTreeSet<&'static str> = BTreeSet::new();
+    if !public_surface_offences(prod).is_empty() {
+        out.insert("C1");
+    }
+    if !business_crates_in(prod).is_empty() {
+        out.insert("C2");
+    }
+    let c3 = if rel.ends_with(".ts") {
+        guard_core::contains_word(prod, "transport")
+    } else {
+        prod.lines().any(public_line_leaks_transport)
+    };
+    if c3 {
+        out.insert("C3");
+    }
+    if disk_and_env_needles()
+        .iter()
+        .any(|(n, _)| prod.contains(n.as_str()))
+    {
+        out.insert("C4");
+    }
+    if spawn_and_bind_needles()
+        .iter()
+        .any(|(n, _)| prod.contains(n.as_str()))
+    {
+        out.insert("C5");
+    }
+    if !inexhaustive_wire_matches(prod).is_empty() {
+        out.insert("X1");
+    }
+    if !deadline_literals(prod).is_empty() {
+        out.insert("X2");
+    }
+    if !hop_sites_without_reach(prod).is_empty() {
+        out.insert("X3");
+    }
+    if !silent_drop_sites(prod).is_empty() {
+        out.insert("X4");
+    }
+    if !loose_until_derivations(prod).is_empty() {
+        out.insert("X5");
+    }
+    if ENTRIES
+        .iter()
+        .any(|(e, _)| !call_sites_without_budget(prod, e).is_empty())
+    {
+        out.insert("X6");
+    }
+    out
+}
+
+/// ★ **余下五份** —— `relay/` 进不来的那几份，逐份**被哪几条咬**与 [`RELAY_LEFT_OUTSIDE`] 两向相等。
+///
+/// `设计/05 §4.3` 把 `relay/` 按 `C4` 切开、归通信层那一列点了六份，加上后来的 `listen.rs`
+/// 共七份，而只有 `route.rs` 与 `http1.rs` 圈进来了。**为什么其余五份进不来**先前只是散文。
+///
+/// # 反空真：三样各自钉着
+///
+/// 1. **两向集合相等**（逐份）—— 不是「表里那几条确实咬」（那是地板，在「多咬了一条」
+///    方向瞎），是**恰好这几条**。
+/// 2. **人群非空 ＋ 每份都真读到了** —— 路径漂了当场 panic，不许退化成「那就少判一份」。
+/// 3. **识别器不是恒红** —— 一段干净的合成文本喂进去必须零命中。
+///    没有这一条，全咬也是绿。
+///
+/// # 买不到
+///
+/// - **不买「这五份该不该进来」** —— 见 [`RELAY_LEFT_OUTSIDE`] 头注。
+/// - **不买「`relay/` 就是这七份」** —— 人群是 `设计/05 §4.3` 那张表给的，本条不去数目录。
+///   哪天 `relay/` 多一份文件，本条**一个字都不说**（挡那一形的是 `BACKEND_FILES` 那张表）。
+#[test]
+fn the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
+    let root = repo_root();
+    // 表里的编号必须都是真判据（拼错一个 ⇒ 那一行从此恒不命中）。
+    let known: BTreeSet<&str> = CRITERIA.iter().map(|(id, _, _)| *id).collect();
+    for (rel, ids, _) in RELAY_LEFT_OUTSIDE {
+        for id in *ids {
+            assert!(
+                known.contains(id),
+                "`{rel}` 那一行写着判据 `{id}`，而 `CRITERIA` 里没有这个编号 —— \
+                 编号拼错了 / 判据改名了。那一行会从此恒不命中。"
+            );
+        }
+    }
+
+    let mut all: BTreeSet<&'static str> = BTreeSet::new();
+    let mut diverged: Vec<String> = Vec::new();
+    for (rel, ids, why) in RELAY_LEFT_OUTSIDE {
+        let p = root.join(rel);
+        let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
+            panic!(
+                "表里写着 `{rel}`（理由：{why}），而它读不出来：{e}\n\
+                 ⇒ 路径漂了 / 文件搬走了。**不许当成「那就少判一份」** ——\n\
+                 人群缩水与「全都合规」在终端上一模一样。"
+            )
+        });
+        let prod = production_of(rel, &raw);
+        assert!(
+            !prod.trim().is_empty(),
+            "`{rel}` 的生产段剥完是空的 —— 剥法坏了，下面那条会在两个空集之间比对（恒绿）"
+        );
+        let got = criteria_biting(rel, &prod);
+        all.extend(got.iter().copied());
+        let want: BTreeSet<&str> = ids.iter().copied().collect();
+        let got_str: BTreeSet<&str> = got.iter().copied().collect();
+        if got_str != want {
+            let extra: Vec<&&str> = got_str.difference(&want).collect();
+            let gone: Vec<&&str> = want.difference(&got_str).collect();
+            diverged.push(format!(
+                "  {rel}\n    表里写着：{want:?}\n    盘上现扫：{got_str:?}\n    \
+                 多出来的（表没写）：{extra:?}\n    不见了的（表写了而不咬）：{gone:?}"
+            ));
+        }
+    }
+    assert!(
+        diverged.is_empty(),
+        "`relay/` 余下那几份「被哪几条咬」与登记的对不上：\n{}\n\n\
+         两个方向各有一种处置，别混：\n\
+         ① **多出来一条** ⇒ 有人往那份文件里加了新的违例。补进表里那一行，并写清它是什么。\n\
+         ② **少了一条**（表写了而不咬）⇒ 那条阻塞被清掉了。\n\
+            🔴 处置**不是**把这一行改小了事 —— 该问的是「它现在圈得进来了吗」：\n\
+            阻塞清空 ⇒ 盖 [`MARK`] ＋ 往 `REGISTERED` 加一行 ＋ 改模块头注那个份数 N。\n\
+            ⚠ 而「十一条全绿」不等于「该圈」（`真相源/100 §二` 那一形），归属判断仍是人做的。",
+        diverged.join("\n")
+    );
+
+    // 反空真①：人群非空，且至少真咬到过东西（否则「识别器全瞎」与「五份都干净」同形）。
+    assert_eq!(
+        RELAY_LEFT_OUTSIDE.len(),
+        5,
+        "这张表登记的是「余下五份」，而盘上是 {} 行 —— 份数变了就回来改这句话（它是散文那一侧）",
+        RELAY_LEFT_OUTSIDE.len()
+    );
+    assert!(
+        !all.is_empty(),
+        "五份文件一条判据都没咬住 —— 识别器整批瞎了，而那时上面那条相等断言\
+         是在两个空集之间比对（恒绿）"
+    );
+
+    // 反空真②：识别器不是恒红 —— 一段干净的合成文本喂进去必须零命中。
+    let clean = "pub fn relay(origin: &str, op: &str, payload: &[u8]) -> u8 {\n    \
+         let _ = (origin, op, payload);\n    0\n}\n";
+    let on_clean = criteria_biting("synthetic.rs", clean);
+    assert!(
+        on_clean.is_empty(),
+        "一段只用位置词、不读盘、不起进程、无期限字面量的干净代码被判成有 {on_clean:?} —— \
+         那么上面那五格的绿不携带任何信息（识别器恒红）"
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  八、元判据：这十六条真的在跑
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 一份 Rust 源码里所有 `#[test] fn <名字>` 的名字。
