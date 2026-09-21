@@ -291,6 +291,25 @@ mod tests {
             "p2m-files-read-online",
             "--account-trust\n--account-trust-zero\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--dial\n--files-find\n--files-index-status\n--files-ls\n--files-stat\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:files-find\nch:files-index-status\nch:files-ls\nch:files-stat\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2n（步 `24f` **第三刀** 09-21，`设计/96 §2.9` PM 裁）：**同族第五、第六条上线** ——
+        //   `files-index-rebuild`（`index::rebuild_once` 的线上面）与 `files-browse`
+        //   （`browse_watch::set_browsing` 的线上面）**两个命令面同拍都动**
+        //   （`SUBCOMMANDS` 29 → 31；`inbound::COMMANDS` 14 → 16）。本表第三次两半一起变。
+        //
+        // ⚠ **必须 bump**，失效形状与 p2m 逐字相同：
+        //   ① CLI 面 —— 旧后端上这两个 flag 落进 `unknown argument` + exit 2；
+        //   ② 帧面 —— 旧后端的 `hello.commands` 里没有它们 ⇒ `InboundClient::accepts`
+        //      判 `Unsupported`、一个字节都不发。两条都止于「判 stale 只看 build_id」。
+        // 🔴 **上面 15 行快照一个字节没改**（同 p2l / p2m 那条：历史证据不是待同步的副本）。
+        // 🔴 **别把它读成「`设计/60 §3.5.2a` 那个缺口填上了」**：补的只是**机制的线上面**，
+        //   节拍仍归调用方（`no_timer_guard` 一个字没动），而「调用方到底发不发」
+        //   后端这棵树的判据钉不住 ⇒ 没人发的时候 `files-find` 照旧恒回 `index_missing`。
+        // ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed 归发版那一拍，本轮**没做**
+        //   （本工作树没铺 `src/bridge/embedded-backends/`）；本护栏对「半 bump」是瞎的。
+        (
+            "p2n-files-rebuild-and-browse",
+            "--account-trust\n--account-trust-zero\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--dial\n--files-browse\n--files-find\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-stat\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:files-browse\nch:files-find\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-stat\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};

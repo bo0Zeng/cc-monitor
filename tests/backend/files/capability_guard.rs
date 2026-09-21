@@ -40,12 +40,25 @@ use super::*;
 
 use crate::files::index::tests::resident_lock;
 
-/// `设计/96 §2.9`「这一族有哪些」那张表里的四个名字，**逐字抄**。
+/// `设计/96 §2.9`「这一族有哪些」那张表里的名字，**逐字抄**。
 ///
 /// 🔴 抄一份在这里是刻意的：它与 [`CAPABILITIES`] 构成**两向**对拍 ——
 /// 一向治「设计里有而实现没声明」（能力漏了），一向治「实现声明了而设计里没有」
 /// （偷偷长出一条没人裁过的能力）。只判一向，另一向那种失效永远逃得掉。
-const REGISTERED: &[&str] = &["files.find", "files.index.status", "files.ls", "files.stat"];
+///
+/// 🔴 **这张表跟着设计走，不是反过来**〔`24f` 第三刀 09-21〕：`设计/96 §2.9` 那一节
+/// 裁出第五、第六条（`files.index.rebuild` / `files.browse`）之后，本表**先改**、
+/// 本条判据跟着绿 —— 那一节就是本条的真相源。
+/// ⚠ **不许**为了让某一侧变绿而从这张表里摘一个名字：摘掉就等于宣布
+/// 「设计里从来没有那条能力」，而那正是本条两向对拍要挡的另一向。
+const REGISTERED: &[&str] = &[
+    "files.browse",
+    "files.find",
+    "files.index.rebuild",
+    "files.index.status",
+    "files.ls",
+    "files.stat",
+];
 
 /// 「改动盘上东西」的动词 —— **派生副作用档用的 needle**。
 ///
@@ -477,6 +490,205 @@ fn the_find_fields_match_what_the_call_really_returns() {
         got, declared,
         "`files.find` 真的回出去的字段与声明的那张表对不上"
     );
+}
+
+/// 〔`24f` 第三刀〕`files.index.rebuild` 的出方向字段与**真的回出去的那个 JSON** 对拍，
+/// 而且顺手把「条目数」钉成一条**相等**断言（夹具按构造知道自己有多少条）。
+///
+/// ⚠ 同族那两条（`status` / `find`）为什么也是这么写的：用一个手写清单去证明另一个
+/// 手写清单没有意义（`inbound::CommandSpec::fields` 那段头注逐字）。
+#[test]
+fn the_index_rebuild_fields_match_what_the_call_really_returns() {
+    let _lock = resident_lock();
+    let fx = crate::files::index::tests::make_tree("rebuild-fields", 2, 3, 0);
+    let v = answer(
+        "files.index.rebuild",
+        &serde_json::json!({"path": fx.root.to_str().expect("夹具路径是 ASCII")}),
+    )
+    .expect("rebuild 不该失败");
+    let got: std::collections::BTreeSet<String> = v
+        .as_object()
+        .expect("rebuild 回的该是一个对象")
+        .keys()
+        .cloned()
+        .collect();
+    let declared: std::collections::BTreeSet<String> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.index.rebuild")
+        .expect("这条能力必须在表里")
+        .fields
+        .iter()
+        .map(|f| f.to_string())
+        .collect();
+    assert_eq!(
+        got, declared,
+        "`files.index.rebuild` 真的回出去的字段与声明的那张表对不上"
+    );
+    // ★ 主锚是**相等**，不是「> 0」：地板在「少走了一半」这个方向上是瞎的。
+    assert_eq!(
+        v.get("entries").and_then(serde_json::Value::as_u64),
+        Some(fx.entries as u64),
+        "走出来的条目数与夹具**按构造**造的条数不等 —— 那一趟没走完整棵树"
+    );
+    // ★ 而且它真的把常驻那一份换上去了（不然这条命令只是个回参好看的空转）。
+    assert_eq!(
+        index::status().entries,
+        fx.entries,
+        "`rebuild` 回参说走了这么多条，而常驻那一份不是这个数 —— 它没换上去"
+    );
+}
+
+/// 🔴🔴 〔`24f` 第三刀〕**根读不进去 ⇒ 拒，而且常驻那一份一个字节不动。**
+///
+/// # 它治的那一形（现打逼出来的，不是假想）
+///
+/// `index::build` 对一个打不开的根**不会失败**：只把 `unreadable_dirs` 加一，
+/// 然后交一份**空快照**；而 `index::rebuild_once` 会把常驻那一份**整份换掉**。
+/// ⇒ 调用方路径打错一个字母，手上那份好索引就被一份空的顶掉，
+/// 而回参看起来像成功（`entries: 0` 与「这台机器上真的没文件」同形）。
+///
+/// ⇒ 主锚写成**相等**：被拒之前的条目数 == 被拒之后的条目数。
+/// 「回了个错」这一半是必要不充分的 —— 回错的同时把索引清了，本仓就又多一次静默缩水。
+#[test]
+fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_index() {
+    let _lock = resident_lock();
+    let fx = crate::files::index::tests::make_tree("rebuild-keep", 2, 2, 0);
+    answer(
+        "files.index.rebuild",
+        &serde_json::json!({"path": fx.root.to_str().expect("夹具路径是 ASCII")}),
+    )
+    .expect("先建一份好的");
+    let before = index::status().entries;
+    assert_eq!(before, fx.entries, "起跑状态就不对，下面那条比不了");
+
+    let nowhere = std::env::temp_dir().join(format!("ccm-24f-noroot-{}", std::process::id()));
+    std::fs::remove_dir_all(&nowhere).ok();
+    let got = answer(
+        "files.index.rebuild",
+        &serde_json::json!({"path": nowhere.to_str().expect("ASCII")}),
+    );
+    assert!(
+        matches!(got, Err(("unreadable", _))),
+        "对一个打不开的根没有回 `unreadable`，回的是 {got:?}"
+    );
+    assert_eq!(
+        index::status().entries,
+        before,
+        "🔴 被拒的那一趟把常驻索引换掉了 —— 一次打错的路径不许把好索引清成空的"
+    );
+}
+
+/// 〔`24f` 第三刀〕`files.browse` 的出方向字段与真的回出去的那个 JSON 对拍。
+///
+/// ⚠ 顺手钉住**空数组是合法的**那一格：它的语义是「现在什么都没在看」⇒ 全卸。
+/// 「少了 `dirs`」是另一件事（`bad_args`），由下面那条错误码判据行使。
+#[test]
+fn the_browse_fields_match_what_the_call_really_returns() {
+    let _lock = resident_lock();
+    let fx = crate::files::index::tests::make_tree("browse-fields", 2, 1, 0);
+    let one = fx.root.join("d0000");
+    let v = answer(
+        "files.browse",
+        &serde_json::json!({"dirs": [one.to_str().expect("夹具路径是 ASCII")]}),
+    )
+    .expect("browse 不该失败");
+    let got: std::collections::BTreeSet<String> = v
+        .as_object()
+        .expect("browse 回的该是一个对象")
+        .keys()
+        .cloned()
+        .collect();
+    let declared: std::collections::BTreeSet<String> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.browse")
+        .expect("这条能力必须在表里")
+        .fields
+        .iter()
+        .map(|f| f.to_string())
+        .collect();
+    assert_eq!(
+        got, declared,
+        "`files.browse` 真的回出去的字段与声明的那张表对不上"
+    );
+    // ★ 相等断言，不是地板：一个目录进去 ⇒ 挂上 1 个、卸掉 0 个、拒掉 0 个。
+    assert_eq!(
+        (
+            v.get("added").and_then(serde_json::Value::as_u64),
+            v.get("removed").and_then(serde_json::Value::as_u64),
+            v.get("rejected").and_then(serde_json::Value::as_u64),
+        ),
+        (Some(1), Some(0), Some(0)),
+        "一个目录的那一趟差分算错了"
+    );
+    assert_eq!(
+        v.get("browse_watch_cap")
+            .and_then(serde_json::Value::as_u64),
+        Some(crate::files::browse_watch::MAX_BROWSE_WATCHES as u64),
+        "回参里那个上限不是后端真用的那个 —— 调用方按它决定该少送几个"
+    );
+    // ★ 空数组：**全卸**，而且它不是「少了 `dirs`」。
+    let v2 = answer("files.browse", &serde_json::json!({"dirs": []})).expect("空数组是合法的");
+    assert_eq!(
+        (
+            v2.get("added").and_then(serde_json::Value::as_u64),
+            v2.get("removed").and_then(serde_json::Value::as_u64),
+        ),
+        (Some(0), Some(1)),
+        "空数组没有把上一趟那一个卸掉 —— 那 watch 会一直留着，而用户已经不看它了"
+    );
+}
+
+/// 〔`24f` 第三刀〕新那两条自己声明的错误码，**都得真的出得来**（幽灵码检查）。
+///
+/// ⚠ `unreadable` 那一档由上面那条
+/// [`a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_index`]
+/// 行使（那条同时钉着「不许清索引」），这里只补形状类的那几个。
+#[test]
+fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
+    let _lock = resident_lock();
+    for (cap, args, want) in [
+        // `path` 那一族与同族其余两条逐字同一条路（`path_arg`）。
+        ("files.index.rebuild", serde_json::json!({}), "bad_path"),
+        (
+            "files.index.rebuild",
+            serde_json::json!({"path": 7}),
+            "bad_path",
+        ),
+        // `dirs` **自己**的形状不对 ⇒ `bad_args`（少了它 / 不是数组）。
+        ("files.browse", serde_json::json!({}), "bad_args"),
+        (
+            "files.browse",
+            serde_json::json!({"dirs": "/tmp"}),
+            "bad_args",
+        ),
+        // 数组里**某一项**不是路径 ⇒ `bad_path`。两个码刻意分得开。
+        ("files.browse", serde_json::json!({"dirs": [7]}), "bad_path"),
+        (
+            "files.browse",
+            serde_json::json!({"dirs": [{"b16": "zz"}]}),
+            "bad_path",
+        ),
+        (
+            "files.browse",
+            serde_json::json!({"dirs": [""]}),
+            "bad_path",
+        ),
+    ] {
+        let got = answer(cap, &args);
+        assert!(
+            matches!(got, Err((c, _)) if c == want),
+            "`{cap}` 对 {args:?} 该回 `{want}`，回的是 {got:?}"
+        );
+        let declared = CAPABILITIES
+            .iter()
+            .find(|c| c.name == cap)
+            .expect("在表里")
+            .codes;
+        assert!(
+            declared.contains(&want),
+            "`{cap}` 的错误码表里没有 `{want}` —— 它真的会回这个码"
+        );
+    }
 }
 
 // ══════════════════════ 边界② 跨 target ══════════════════════

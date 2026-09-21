@@ -80,16 +80,32 @@
 //!    做的（一进一出、`(code, message)` 的错误信封），接线那一拍加的是四条登记，不是重写。
 //!    线上名与能力名的翻译**只有一处**：[`answer_wire`]。
 //!    🔴 **但这不等于「搜索能用了」，两条如实登记：**
-//!    ① **索引今天没有任何线上办法叫它建。** `设计/60 §3.5.2a` 把节拍留给调用方，
-//!       而「重走」那条命令**不在** `设计/96 §2.9` 那张四条的表里
-//!       ⇒ [`index::rebuild_once`] 与 [`browse_watch::set_browsing`] 至今**零生产调用方**
-//!       ⇒ 真机上 `files.find` 恒回 `index_missing: true`（那**不是**「没搜到」）。
-//!       这是设计面的一个缺口，不是接线漏了一条：要补它得先在 `设计/96 §2.9` 那张表上
-//!       裁出第五条能力。**报备，不在本刀里自己长出来。**
+//!    ① **索引今天没有任何线上办法叫它建。** 〔✅ 已由第三刀补上，见下面第 3 条〕
 //!    ② **消费侧还没有**：`src/bridge` 那一头一个字节都没动（`files.index.status`
 //!       回的 `age_secs` / `rewalk_interval_secs` / `stale` 还没显示在界面上 ——
 //!       `设计/60 §3.5.3` 那条 ⬜ 仍然是 ⬜）。
-//! 3. **按内容搜 / 模糊匹配 / 排序** —— `设计/60 §3.5.3` 逐字「一条都没设计」，本件也没做。
+//! 3. ✅〔`24f` **第三刀** · 2026-09-21 · `设计/96 §2.9` PM 裁〕**那两个机制各有了一个线上面**：
+//!    `files.index.rebuild`（线上名 `files-index-rebuild`）＝ [`index::rebuild_once`] 的线上面 ·
+//!    `files.browse`（线上名 `files-browse`）＝ [`browse_watch::set_browsing`] 的线上面。
+//!    两条同拍进了 `inbound::REGISTRY` / `inbound::COMMANDS`（帧面）· `lib::SUBCOMMANDS`
+//!   （CLI 面）· `src/doc/IPC-PROTOCOL.md §10`，并 bump 了 `BUILD_ID`。
+//!    🔴 **节拍仍然不归后端**（`no_timer_guard` 那条铁律一个字没动）：这两条只是**机制**的
+//!    线上面，「隔多久叫一次」仍然是调用方的事（`K37` 逐字「后端只给机制，不给偏好」）。
+//!    🔴 **所以 `设计/60 §3.5.2a` 登记的那个缺口没被填掉，只是换了形**：
+//!    调用方不发那条命令，索引就永远不会自己变新，而「调用方到底发不发」
+//!    本 crate 的判据钉不住（它在另一棵树上）⇒ **没人发的时候 `files.find` 照旧恒回
+//!    `index_missing: true`**。**别把「命令存在了」读成「缺口填上了」。**
+//!    ⚠ **还有一条边界，现打出来的，别读宽**：常驻那一份是**进程级**的 static
+//!    ⇒ 这两条与 `files.find` **必须在同一条连接上**才配得起来（帧面：一条长连接、
+//!    多次往返）。**CLI 面配不起来** —— 一次 exec 是「1 请求 1 响应 1 退出」，
+//!    `--files-index-rebuild` 建好的索引随那个进程一起没了，紧接着的 `--files-find`
+//!    那一 exec 照旧回 `index_missing: true`（本机 debug 档现打过这两趟）。
+//!    ⇒ CLI 面这两条的用处是**量一趟遍历** ／ 在一个常驻后端进程里换名单，
+//!    不是给下一个 exec 预热。
+//!    ⚠ 另一条如实登记：[`browse_watch::BrowseWatcher`]（真把 `inotify` 挂上去那一跳）
+//!    **仍然零生产调用方** ⇒ `files.browse` 今天买到的是「这几个目录的子项在你发命令
+//!    那一刻是新的」，**不是**「此后一有动静就跟着新」。理由与出路见 [`answer_browse`]。
+//! 4. **按内容搜 / 模糊匹配 / 排序** —— `设计/60 §3.5.3` 逐字「一条都没设计」，本件也没做。
 
 pub mod browse_watch;
 pub mod index;
@@ -163,8 +179,8 @@ pub struct Capability {
 
 /// 🔴 **这一族的能力声明 —— 唯一住址。**
 ///
-/// 四条，与 `设计/96 §2.9`「这一族有哪些」那张表**逐字同名**
-///（判据按名字两向对拍，改一边不改另一边当场红）。
+/// 六条，与 `设计/96 §2.9`「这一族有哪些」那张表 ＋ 它下面那张「第五、第六条」的表
+/// **逐字同名**（判据按名字两向对拍，改一边不改另一边当场红）。
 pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "files.ls",
@@ -229,6 +245,40 @@ pub const CAPABILITIES: &[Capability] = &[
             "unreadable_dirs",
         ],
         codes: &[],
+    },
+    // ── 〔`24f` 第三刀 09-21〕`设计/96 §2.9` 裁出来的第五、第六条 ────────────────
+    //
+    // 🔴 **它们补的是「机制的线上面」，不是节拍**：`设计/60 §3.5.2a` 那条裁定逐字
+    //   「机制在后端 · 偏好由后端声明 · 节拍归调用方」——`§3.5.2` 那三段各该有一条命令，
+    //   而第二刀只接了「查」那一段。这两条把「建索引」与「保鲜」那两段补齐。
+    // ⚠ 两条都在边界① 之内，逐条核过：`rebuild_once` 是遍历 ＋ 换掉内存里那一份，
+    //   `set_browsing` 是登记名单 ＋ 重列一遍 —— **都不往盘上写一个字节**
+    //   ⇒ 整族仍然纯读，`readonly_guard` 那 4259 行照旧一行不用改。
+    Capability {
+        name: "files.index.rebuild",
+        what: "🔴 **走一遍，就一遍，做完返回** —— `index::rebuild_once` 的线上面（只有机制，没有节拍）",
+        effect: Effect::ReadsOnly,
+        impl_files: &["index.rs", "mod.rs", "raw.rs"],
+        targets: TARGETS,
+        args: &["path"],
+        fields: &[
+            "entries",
+            "path",
+            "resident_bytes",
+            "truncated",
+            "unreadable_dirs",
+        ],
+        codes: &["bad_path", "unreadable"],
+    },
+    Capability {
+        name: "files.browse",
+        what: "告诉后端「用户现在在看哪几个目录」—— `browse_watch::set_browsing` 的线上面（保鲜的另一半）",
+        effect: Effect::ReadsOnly,
+        impl_files: &["browse_watch.rs", "mod.rs", "raw.rs"],
+        targets: TARGETS,
+        args: &["dirs"],
+        fields: &["added", "browse_watch_cap", "rejected", "removed"],
+        codes: &["bad_args", "bad_path"],
     },
 ];
 
@@ -341,6 +391,47 @@ fn path_arg(args: &serde_json::Value) -> Result<std::path::PathBuf, (&'static st
         return Err(("bad_path", "`path` 是空的".to_string()));
     }
     Ok(raw::to_path_buf(&bytes))
+}
+
+/// `files.browse` 的 `dirs` —— 一个数组，每项与 [`path_arg`] 同那两种形。
+///
+/// # 🔴 两个码刻意分得开
+///
+/// `dirs` **自己**的形状不对（少了它 / 不是数组）是 `bad_args`；数组里**某一项**
+/// 不是一个路径是 `bad_path`（与 `files.ls` / `files.stat` 同一个码、同一条
+/// 「刻意不尽力而为地猜」的理由）。压成一句会让调用方分不清该改哪一头。
+///
+/// ⚠ **空数组是合法的**，语义是「用户现在什么都没在看」⇒ 名单清空。
+/// 「少了 `dirs`」与「`dirs` 是空的」**是两件事**：前者是调用方漏了参数，
+/// 后者是它真的要卸掉全部 —— 静默地把前者当后者办，就是悄悄把 watch 全拆了。
+fn dirs_arg(args: &serde_json::Value) -> Result<Vec<std::path::PathBuf>, (&'static str, String)> {
+    let v = args.get("dirs").ok_or((
+        "bad_args",
+        "少了 `dirs` —— 它是一个数组，每项要么是字符串，要么是 `{\"b16\": \"<十六进制>\"}`；\
+         空数组合法（意思是「现在什么都没在看」），但**不给**这个参数不是"
+            .to_string(),
+    ))?;
+    let arr = v.as_array().ok_or((
+        "bad_args",
+        "`dirs` 不是一个数组 —— 只看一个目录也要放在数组里：\
+         这条命令收的是「此刻的整份名单」，不是「再加一个」（差分由后端算）"
+            .to_string(),
+    ))?;
+    let mut out: Vec<std::path::PathBuf> = Vec::new();
+    for (i, item) in arr.iter().enumerate() {
+        let bytes = raw::from_json(item).ok_or((
+            "bad_path",
+            format!(
+                "`dirs[{i}]` 的形状不对 —— 只认字符串或 `{{\"b16\": \"<十六进制>\"}}`；\
+                 这里刻意不「尽力而为」地猜，猜错一个字节就是去盯另一个目录"
+            ),
+        ))?;
+        if bytes.is_empty() {
+            return Err(("bad_path", format!("`dirs[{i}]` 是空的")));
+        }
+        out.push(raw::to_path_buf(&bytes));
+    }
+    Ok(out)
 }
 
 /// 一个时刻换成 Unix 纪元秒。
@@ -490,6 +581,67 @@ fn answer_status() -> Answer {
     }))
 }
 
+/// `files.index.rebuild` —— **走一遍，就一遍，做完返回。**
+///
+/// # 🔴 根读不进去 ⇒ **拒**，常驻那一份一个字节不动
+///
+/// 这一格是本刀现打逼出来的：[`index::build`] 对一个打不开的根**不会失败** ——
+/// 它只把 `unreadable_dirs` 加一，然后交一份**空快照**；而 [`index::rebuild_once`]
+/// 会把常驻那一份**整份换掉**。
+/// ⇒ 调用方把路径打错一个字母，手上那份好索引就被一份空的顶掉，
+/// 而回参看起来像一次成功的重走（`entries: 0` 与「这台机器上真的没文件」同形）。
+/// 那正是本仓反复治的**静默缩水**（`设计/17 §6.9` 逐字：地板在「变少」方向上是瞎的）。
+///
+/// ⇒ 本层在换之前**先探一次根**：打不开就回 `unreadable`，**不调 `rebuild_once`**。
+/// 判据那一侧是一条**相等**断言（换之前的条目数 == 被拒之后的条目数），
+/// 不是「回了个错就算过」。
+///
+/// ⚠ 这一档加在**命令面**，[`index::rebuild_once`] 的语义**一个字没动** ——
+/// 机制那一侧仍然逐字是「走一遍，就一遍」。
+/// ⚠ 它**不判**根底下那些子目录：那些读不进去的照旧落在 `unreadable_dirs` 里
+///（`设计/60 §3.5.3` 逐字「不是 0 就说明这份索引有洞」）。
+fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
+    let root = path_arg(args)?;
+    // 只要「打不打得开」这一个答案 —— 句柄拿到就丢，一条目录项都不读。
+    std::fs::read_dir(&root)
+        .map_err(|e| ("unreadable", format!("这个根打不开：{:?}", e.kind())))?;
+    let stats = index::rebuild_once(&root);
+    Ok(serde_json::json!({
+        "path": raw::to_json(raw::path_bytes(&root)),
+        "entries": stats.entries,
+        "resident_bytes": stats.resident_bytes,
+        "unreadable_dirs": stats.unreadable_dirs,
+        "truncated": stats.truncated,
+    }))
+}
+
+/// `files.browse` —— 告诉后端「用户现在在看哪几个目录」。
+///
+/// # ⚠ 它买到的比「那几个目录此后实时」小，**别读宽**
+///
+/// [`browse_watch::set_browsing`] 做的是两件事：**登记名单** ＋ **当场把那几个目录
+/// 各重列一遍**（结果进 overlay，查询时盖掉大索引里的对应条目）。
+/// 而真把 `inotify` 挂上去的是 [`browse_watch::BrowseWatcher`]，
+/// **它至今零生产调用方** —— 要有人在后端进程里**长期持有**那个监听器才谈得上
+/// 事件驱动，而「谁持有它、活多久」是生命周期那一维的活，不在本刀里。
+/// ⇒ 今天这条命令买到的是「**这几个目录的子项在你发命令那一刻是新的**」，
+/// **不是**「此后一有动静就跟着新」。如实登记为未做。
+///
+/// ⚠ `rejected` 必须跟着回去（[`browse_watch::Applied::rejected`] 头注逐字）：
+/// 静默截断会让「我明明在看这个目录、新建的文件却要等重走」变成一个查不出原因的现象。
+/// 回参里同拍带上 `browse_watch_cap` —— 只回一个 `rejected` 的数、不说上限是多少，
+/// 调用方没法判「该少送几个」。
+fn answer_browse(args: &serde_json::Value) -> Answer {
+    let dirs = dirs_arg(args)?;
+    let applied = browse_watch::set_browsing(&dirs);
+    Ok(serde_json::json!({
+        "added": applied.added,
+        "removed": applied.removed,
+        "rejected": applied.rejected,
+        "browse_watch_cap": browse_watch::MAX_BROWSE_WATCHES,
+    }))
+}
+
 /// 这一族的**唯一入口**。
 ///
 /// 🔴 「一条命令、一个往返」（`设计/60 §3.5.2` 的第三段）就是这个函数的形状：
@@ -504,6 +656,8 @@ pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
         "files.stat" => answer_stat(args),
         "files.find" => answer_find(args),
         "files.index.status" => answer_status(),
+        "files.index.rebuild" => answer_index_rebuild(args),
+        "files.browse" => answer_browse(args),
         other => Err(("unknown_capability", format!("`{other}` 不是这一族的能力"))),
     }
 }
