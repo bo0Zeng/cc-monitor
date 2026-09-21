@@ -2285,7 +2285,9 @@ const FENCE_CHILD: &str = "CCM_TEST_DELETE_FENCE_CHILD";
 // 🔴 〔步 12·C 09-20〕`delete_history_session` 合并之后是 `async`（远端那一支要 `.await`），
 //    而且**第一个入参是 `origin`**。本条判的是**本机**那一侧的围栏 ⇒ 逐字送
 //    `Origin::local()`（线上 `"<local>"`）。
-//    ⚠ **不许送 `Origin::Unspecified`** —— 那会被 `Origin::route` 在**围栏之前**拒掉，
+//    ⚠ **不许送一个空白名的 `Origin`**〔`设计/05 §8` 步 2 订正：`Origin::Unspecified`
+//      那个变体已退役，「没说」在线上不再存在；今天还能表达它的只剩空白名〕——
+//      那会被 `Origin::route` 在**围栏之前**拒掉，
 //      于是本条会因为「参数不对」而绿，而不是因为围栏接上了。那正是本条自己警告过的
 //      「在一个根本没跑到围栏的环境里假绿」。
 #[tokio::test]

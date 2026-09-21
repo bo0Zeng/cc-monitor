@@ -9,7 +9,9 @@
  * 另持有启动 perf 测量（`window.__ccmPerf`，与后端 lib.rs 的 t0 互补看完整启动管线）。
  * HMR 走 full reload（不引框架，原生 DOM，强制整页重载简化心智模型）。
  */
-import { initBackendPolicy } from "./backend-policy";
+// `LOCAL_ORIGIN`〔`设计/05 §8` 步 2〕：本机那个 origin 的**唯一住址**（Rust 侧是
+// `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
+import { initBackendPolicy, LOCAL_ORIGIN } from "./backend-policy";
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
@@ -321,7 +323,9 @@ window.addEventListener("DOMContentLoaded", async () => {
           description: entry.desc, // ★ 用 trim 后的原始 desc（非展示 label）——load_subagent 精确匹配
           toolUseTimestamp: entry.timestamp,
           // P7c-1：远端会话也能展开了（backend `--list-subagents` 只列候选，挑选留后端本侧）。
-          origin: actx.origin ?? null,
+          // 🔴 **〔步 2〕本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `null`** ——
+          // `actx.origin` 是前端自己的表示（`null` = 本机），这里是线上边界，得换过去。
+          origin: actx.origin ?? LOCAL_ORIGIN,
         });
         closeAgentViewer(); // 关掉上一个（单例语义）
         agentViewerMount = document.createElement("div");

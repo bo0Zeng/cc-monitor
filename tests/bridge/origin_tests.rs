@@ -1,12 +1,26 @@
-//! `Origin` 的判据。`设计/00 §2.5 ①` 的第一刀。
+//! `Origin` 的判据。`设计/00 §2.5 ①` 的第一刀，`设计/05 §8` 步 2 的那一刀在 `A`/`C`/`E` 三组。
 //!
 //! # 🔴 反空真：绿从哪来
 //!
 //! 四组各是**相等断言**，不是「没抛就绿」：
-//! · `A` 线上形状**逐字节**与今天相同（三种值双向 round-trip，字面量写死）
+//! · `A` 线上形状**逐字节**与今天相同（**两个**幸存值双向 round-trip，字面量写死）
+//!   ＋ 线上 `null` **被拒**，而拒的那句话逐字带着出路
 //! · `B` 三处哨兵住址**两向**相等（少一处、改一个字都红）
-//! · `C` 三个变体的语义**逐个点名**（`Unspecified` 不等于 `Local` 那一条单独一格）
+//! · `C` 语义**逐个点名**（「没给名字」不等于 `Local` 那一条单独一格）
 //! · `D` 迁移进度是一条**递减棘轮**（现打还在用裸 `&str`/`String` 的处数，只许变少）
+//!
+//! # 🔴 〔`设计/05 §8` 步 2，2026-09-20〕`Unspecified(())` 退役之后，这几组怎么改的
+//!
+//! 变体退役了，而它守的那条性质（「**「没说」不许被悄悄当成本机**」）**一条判据都没少**，
+//! 只是各自换了被钉的那个值 —— 处置与理由逐条写在 `src/bridge/src/origin.rs` 头注里，
+//! 这里只记「哪一条钉到哪儿去了」，免得下一个人以为是删了判据换绿：
+//!
+//! | 上一拍钉的 | 这一拍钉的 | 住在哪一条 |
+//! |---|---|---|
+//! | 线上 `null` 解得出 `Unspecified` | 线上 `null` **解不出来**，报错里逐字有 `"<local>"` | `A` 组 `an_unknown_shape_is_refused_not_guessed` |
+//! | `Unspecified.is_local() == false` | `Origin("").is_local() == false`（空白名既不是本机也不是远端）| `C` 组 `a_blank_name_is_neither_local_nor_remote` |
+//! | `route(null)` ⇒ `Err`，点名命令 ＋ 逐字 `"<local>"` | `route("")` ⇒ `Err`，**同样**点名命令 ＋ 逐字 `"<local>"` | `E` 组 `route_names_both_wire_values_and_refuses_the_one_that_says_nothing` |
+//! | 本机与「没说」序列化出来不同 | **没有任何 `Origin` 序列化成 `null`**（换成对线上形状的全集断言）| `E` 组 `route_is_exactly_two_outcomes_and_local_is_not_a_missing_value` |
 //!
 //! `D` 那一格尤其要说清：它**不是**「都换完了」的判据，是「**别再新增**」的判据。
 //! 头注里写着现打的数与口径，改小了要连着改那个数、被人看见一次。
@@ -33,12 +47,13 @@ use super::*;
 //   前端今天送 `null` / `"<local>"` / `"aya"` 三种值，后端今天读得懂。
 //   若 `serde` 形状变了，这个类型就不能替换任何一处签名（换了就是改协议）。
 #[test]
-fn the_wire_shape_is_byte_identical() {
+fn the_two_surviving_wire_values_are_byte_identical() {
     // 写死的字面量，不从代码里取 —— 从代码里取就成了「它跟自己一致」。
+    // ⚠ 表里**只剩两行**：`null` 那一行搬去了下面那条「被拒」的判据。
+    //   两件事刻意不合在一处 —— 「这两个值没变」与「那一个值没了」是两个事实。
     for (wire, want) in [
-        ("null", Origin::Unspecified(())),
         ("\"<local>\"", Origin::local()),
-        ("\"aya\"", Origin::Named("aya".into())),
+        ("\"aya\"", Origin("aya".into())),
     ] {
         let got: Origin =
             serde_json::from_str(wire).unwrap_or_else(|e| panic!("读不进 {wire}：{e}"));
@@ -55,12 +70,31 @@ fn the_wire_shape_is_byte_identical() {
 fn an_unknown_shape_is_refused_not_guessed() {
     // 🔴 数字 / 数组 / 对象都不是 origin。不许有一种「猜」的路 ——
     //   猜出来的那一趟会去操作一台不存在的机器，而且不报错。
-    for bad in ["3", "[]", "{}", "true"] {
+    //
+    // 🔴 **〔步 2〕`null` 从「解得出一个变体」变成了「解不出来」** —— 这一格就是
+    //   `Unspecified(())` 退役之后那条性质的新住址：「没说」不再有**任何**类型表示，
+    //   于是命令的代码**结构上**见不到那一档。
+    for bad in ["null", "3", "[]", "{}", "true"] {
         assert!(
             serde_json::from_str::<Origin>(bad).is_err(),
             "线上 {bad} 被解成了一个 Origin —— 那是在猜"
         );
     }
+    // ★ 拒得掉不够，**拒的那句话要带着出路**。
+    //   serde 的 stock 报错只会说「invalid type: null, expected a string」——
+    //   那句话是对的，但它把调用方留在原地。本文件手写 `Deserialize` 的**全部理由**
+    //   就是这一句：`expecting()` 里逐字有 `"<local>"`。
+    //   ⚠ 这一格与 `E` 组那条 `route` 的拒绝词**不是同一个事实**：
+    //     一个是「线上送了 null」（边界拒），一个是「线上送了空白名」（漏斗拒）。
+    let err = serde_json::from_str::<Origin>("null")
+        .expect_err("线上 null 被解成了一个 Origin")
+        .to_string();
+    assert!(
+        err.contains(LOCAL),
+        "拒 `null` 那句话没告诉调用方本机该送 `{LOCAL}`：{err}\n\
+         ⇒ `Deserialize` 被换回 `derive` 了（stock 报错不含这个串），\n\
+            或者 `expecting()` 那句话被改写了。"
+    );
 }
 
 // ── B：三处哨兵住址两向相等 ────────────────────────────────────────────────
@@ -93,22 +127,32 @@ fn the_sentinel_agrees_with_the_two_existing_homes() {
     );
 }
 
-// ── C：三个变体的语义逐个点名 ──────────────────────────────────────────────
+// ── C：语义逐个点名 ────────────────────────────────────────────────────────
 #[test]
-fn unspecified_is_not_local() {
+fn a_blank_name_is_neither_local_nor_remote() {
     // 🔴 **这一格单独立，因为它是最容易被写错的那一条。**
     //   `INVARIANTS §40`「本地 ＝ 不走 ssh 的远端」⇒「没说」要么被拒、
     //   要么由调用点补默认，**不许在类型这一层悄悄当成本机**。
-    //   今天那 8 处 `Option<String>` 的歧义正在这里：`None` 到底是哪个意思，
-    //   要读每一处的上下文才知道。
-    let u = Origin::Unspecified(());
-    assert!(
-        !u.is_local(),
-        "`Unspecified` 被判成了本机 —— 那是在替调用方做决定"
-    );
-    assert!(!u.is_remote(), "`Unspecified` 被判成了远端");
-    assert_eq!(u.host_name(), None);
-    assert_eq!(u.as_wire_str(), None, "「没说」不该有线上字符串");
+    //
+    // 🔴 **〔步 2〕它钉的值换了：`Unspecified` → 空白名。**
+    //   `null` 已经在反序列化那一层被拒（`A` 组那一格），构造不出来；
+    //   而空串是它退役之后线上**唯一**还能表达「没说」的值 —— 而且它在盘上
+    //   **真的**被当过本机：`subagent.rs::Backend::for_origin` 上一拍逐字写着
+    //   「`origin` 缺省 / **空串** = 本机」。⇒ 只删 `null` 不管空串，
+    //   等于把同一个洞从一个值搬到另一个值。
+    for blank in ["", " ", "\t", "\n  "] {
+        let u = Origin(blank.to_string());
+        assert!(
+            !u.is_local(),
+            "空白名 {blank:?} 被判成了本机 —— 那是在替调用方做决定"
+        );
+        assert!(!u.is_remote(), "空白名 {blank:?} 被判成了远端");
+        assert_eq!(u.host_name(), None, "空白名 {blank:?} 不该答出一个机器名");
+    }
+    // ⚠ 射程边界，写出来：空白名**仍然构造得出来**（`Origin` 的字段是 `pub` 的），
+    //   也仍然有线上字符串。挡它的是 `route` 那道闸（`E` 组），不是类型本身。
+    //   这一格买的只是「那三个判定不会把它当成一台机器」。
+    assert_eq!(Origin(String::new()).as_wire_str(), "");
 }
 
 #[test]
@@ -120,12 +164,12 @@ fn local_and_remote_are_exactly_complementary() {
         None,
         "🔴 `host_name` 只答远端 —— 本机回 None 是刻意的"
     );
-    assert_eq!(l.as_wire_str(), Some(LOCAL));
+    assert_eq!(l.as_wire_str(), LOCAL);
 
-    let r = Origin::Named("aya".into());
+    let r = Origin("aya".into());
     assert!(r.is_remote() && !r.is_local(), "远端那一个的两个判定不互补");
     assert_eq!(r.host_name(), Some("aya"));
-    assert_eq!(r.as_wire_str(), Some("aya"));
+    assert_eq!(r.as_wire_str(), "aya");
 }
 
 // ── D：迁移进度 —— 递减棘轮 ───────────────────────────────────────────────
@@ -182,7 +226,23 @@ fn local_and_remote_are_exactly_complementary() {
 //   88 − 2 = 86 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
 // ⚠ 这一拍**没有**新增一条吃 `Origin` 的命令却让这个数不动的情形：
 //   新落地的 `sftp_pool::sftp_chmod` 收的是 `RemoteConfig` 不是 origin，不进本条人群。
-const ORIGIN_MIGRATION_CEILING: usize = 86;
+//
+// 🔴 **〔`设计/05 §8` 步 2 · 2026-09-20〕86 → 85，降的 1 处记在这里**（本条自己要求
+//    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
+//
+//    那一处是**全仓最后一条在入方向收 `Option<String>` origin 的命令**：
+//      · `subagent.rs::load_subagent`（`origin: Option<String>` → `origin: crate::origin::Origin`）
+//
+//    🔴 **它与上两拍那七处不是同一件事，别读成同一形**：上两拍是「远端那条命令拿到的
+//    已经是分过本机的机器名 ⇒ 改叫 `host`」（名字说真话）；这一拍是「这条命令**本来**
+//    就在自己心里把两个『没说』的值（`None` 与 `""`）悄悄当本机 ⇒ 让它收 `Origin`，
+//    并把分本机那一步交给唯一的漏斗 `route`」。前者是**改名**，后者是**去 `null` 化**。
+//    ⇒ 这个数跟着降只是副产物；步 2 买的是「线上那个 `null` 没了」。
+//
+// ⚠ **这个数是跑出来的**：把上限临时改成 0、让本条印出现打的 85，再照它写
+//   （现打那一行逐字「裸字符串 origin 参数现打 85 处，上限 0」）。
+//   86 − 1 = 85 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
+const ORIGIN_MIGRATION_CEILING: usize = 85;
 
 #[test]
 fn no_new_raw_string_origin_parameters() {
@@ -238,11 +298,13 @@ fn no_new_raw_string_origin_parameters() {
 //   「它跟自己一致」，那是本文件 `A` 组头注已经写过的那条纪律）。
 
 #[test]
-fn route_names_all_three_wire_values_and_refuses_the_one_that_says_nothing() {
-    // 线上那三种值，逐个从**字面量**解出来再路由 —— 走的是真正的 `serde` 那条路。
+fn route_names_both_wire_values_and_refuses_the_one_that_says_nothing() {
+    // 线上那两种值，逐个从**字面量**解出来再路由 —— 走的是真正的 `serde` 那条路。
     let local: Origin = serde_json::from_str("\"<local>\"").expect("读不进 <local>");
     let remote: Origin = serde_json::from_str("\"aya\"").expect("读不进 aya");
-    let unsaid: Origin = serde_json::from_str("null").expect("读不进 null");
+    // 🔴 **「没说」这一档也从线上字面量解出来** —— `null` 已经解不进来了（`A` 组钉着），
+    //   而空串**解得进来**，这正是它今天还需要一道闸的理由。
+    let unsaid: Origin = serde_json::from_str("\"\"").expect("读不进空串");
 
     assert_eq!(
         local.route("t"),
@@ -258,7 +320,7 @@ fn route_names_all_three_wire_values_and_refuses_the_one_that_says_nothing() {
     // 🔴 **这一格是本组的全部力气所在。**
     let err = unsaid
         .route("某条命令")
-        .expect_err("线上 `null` 被路由出去了 —— 「没说」被当成了一台机器");
+        .expect_err("线上空串被路由出去了 —— 「没给名字」被当成了一台机器");
     assert!(
         err.contains("某条命令"),
         "拒绝的那句话没点名是哪条命令，排障时无从下手：{err}"
@@ -268,6 +330,18 @@ fn route_names_all_three_wire_values_and_refuses_the_one_that_says_nothing() {
         err.contains(LOCAL),
         "拒绝的那句话没告诉调用方本机该送 `{LOCAL}`：{err}"
     );
+    // ⚠ 全空白也算「没给名字」—— 只挡 `""` 等于给 `" "` 留门。
+    assert!(
+        Origin(" \t ".into()).route("t").is_err(),
+        "全空白的名字被路由出去了 —— 只挡空串就是给它留门"
+    );
+    // ★ 反向：非空白的名字**不许**被这道闸误杀（假红比不查更坏）。
+    assert_eq!(
+        Origin(" aya ".into()).route("t"),
+        Ok(Route::Remote(" aya ")),
+        "带空格的机器名被误当成「没给名字」，而且 `route` 不许 trim（trim 会让\n\
+         今天找不到配置的 label 突然找得到 —— 那是行为变更，不归本步）"
+    );
 }
 
 #[test]
@@ -276,10 +350,7 @@ fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
     // 拿到 `Route` 的代码**没有办法**把它误当本机。
     // 这一格用**穷尽 match**（没有 `_` 臂）把这件事钉在类型上：
     // 哪天有人给 `Route` 加第三个变体，这里编译不过。
-    for (o, want_local) in [
-        (Origin::local(), true),
-        (Origin::Named("aya".into()), false),
-    ] {
+    for (o, want_local) in [(Origin::local(), true), (Origin("aya".into()), false)] {
         let got = o.route("t").expect("具名的 origin 不该被拒");
         let is_local = match got {
             Route::Local => true,
@@ -288,21 +359,39 @@ fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
         assert_eq!(is_local, want_local, "{o:?} 路由错了边");
     }
 
-    // 🔴 **「本机」与「没说」在线上是两个不同的字节串** —— 这一条不是废话：
-    //    合并之前本机那几条命令**根本没有 origin 参数**，前端省掉它就对了；
-    //    合并之后省掉它就是 `null`，而 `null` ≠ 本机。两者在 UI 上都长成「没填」。
-    assert_ne!(
-        serde_json::to_string(&Origin::local()).unwrap(),
-        serde_json::to_string(&Origin::Unspecified(())).unwrap(),
-        "本机与「没说」序列化成了同一个东西 —— 那两者就再也分不开了"
-    );
+    // 🔴 **〔步 2〕这一条换成了对线上形状的全集断言。**
+    //
+    //    上一拍它逐字是「本机与『没说』序列化出来不是同一个东西」—— 那条断言以
+    //    `Unspecified` 存在为前提，变体退役之后它连编译都过不去。
+    //    **但那件事本身没了**：今天**没有任何 `Origin` 序列化成 `null`** ——
+    //    比「两者不相等」更强的一条，而且它不需要第二个变体才说得出口。
+    //
+    //    为什么这一条不是废话：合并之前本机那几条命令**根本没有 origin 参数**，
+    //    前端省掉它就对了；合并之后省掉它就是 `null`，而 `null` ≠ 本机。
+    //    两者在 UI 上都长成「没填」—— 所以线上必须**一个字节**都装不下「没填」。
+    for o in [
+        Origin::local(),
+        Origin("aya".into()),
+        Origin(String::new()),
+        Origin(" ".into()),
+    ] {
+        let wire = serde_json::to_string(&o).expect("写不出去");
+        assert_ne!(
+            wire, "null",
+            "{o:?} 序列化成了 `null` —— 「没填」又回到线上了"
+        );
+        assert!(
+            wire.starts_with('"') && wire.ends_with('"'),
+            "{o:?} 的线上形状不是字符串（实得 {wire}）—— `serde(transparent)` 被拿掉了？"
+        );
+    }
 }
 
 // ── F：合并后的命令**一律**经 `route` 分本机 ──────────────────────────────
 //
 // 🔴 **它治的是一种不报错的失败**：一条吃 `Origin` 的命令自己手写
 // `if origin.is_local() { 本机 } else { 远端 }` —— 编译得过、测试多半也绿，
-// 而 `Unspecified` 会掉进 `else` 那一臂，拿着一个 `None` 的机器名去连远端，
+// 而一个**空白名**会掉进 `else` 那一臂，拿着一个空的机器名去连远端，
 // 报出来的话与真实原因毫无关系（`local_origin_registry` 整篇治的正是这一形）。
 //
 // ⚠ **判法是两向集合相等，不是「有几处」**：
@@ -411,7 +500,7 @@ fn every_origin_taking_command_splits_local_through_route() {
         takes_origin, calls_route,
         "**吃 `Origin` 的命令 与 经 `route` 分本机的命令，两边对不上。**\n\
          · 只在左边（吃了 `Origin` 却没走 `route`）＝ 有人手写了分本机那一步。\n\
-           手写的那一版会把线上 `null`（`Origin::Unspecified`）掉进「远端」那一臂，\n\
+           手写的那一版会把线上的**空白名**掉进「远端」那一臂，\n\
            然后拿着一个 `None` 的机器名去连 —— 报出来的话与真实原因毫无关系，\n\
            而且**不报错的那一半更贵**：掉进「本机」那一臂就是替调用方做了决定。\n\
          · 只在右边（走了 `route` 却不吃 `Origin`）＝ 签名退回裸字符串了，\n\
