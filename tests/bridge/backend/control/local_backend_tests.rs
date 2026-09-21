@@ -240,9 +240,16 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
 /// 而本条是那一族的第 N 个：不剥注释的话，**本文件上面那段头注自己就是第一处命中**
 /// （`K-R30` 自查逮到过一次，提交 `494ad4c`）。
 ///
-/// 🔴 `scan_tree!` 按构造**摘除调用者自己那一份**，而最可能长出这种写法的恰恰是本文件
-/// （生产段起进程那一跳就在这儿）⇒ 本文件另走 `include_str!` **单独喂一遍**。
-/// **别把那一份删了** —— 删了之后本条看起来和没删一模一样。
+/// 🔴 最可能长出这种写法的恰恰是 `backend/control/local_backend.rs`
+/// （生产段起进程那一跳就在那儿）⇒ 它另走 `include_str!` **单独喂一遍**。
+///
+/// ⚠ 〔`P4` 2026-09-21〕先前这一段的理由是「`scan_tree!` 按构造**摘除调用者自己那一份**」——
+/// 那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径
+/// ⇒ 后缀比不命中），而且今天的调用者是本判据文件、**不是** `local_backend.rs`：
+/// 后者走普通遍历本来就在人群里，那句 `include_str!` 喂的是**第二份**。
+/// 重复在这里无害（`hit_lines` 必须为空，份数/字节数只有下限），
+/// 而它**刻意不删** —— 变异实测那一格（`R31M2`）读的就是它：把扫描面的扩展名换成
+/// 一个不存在的，本条当场红并读到「1 份」，那 1 份正是它。
 ///
 /// ⚠ **形态表是枚举，不是全称**：表外的写法（自己 `clone(2)` · 换一个装 fd 的 crate ·
 /// 走 `nix`）**本条一个都看不见**。这条边界也写进失败文案，别读成「这一族已经封死」。
@@ -315,7 +322,8 @@ fn nothing_in_the_production_path_runs_code_between_fork_and_exec() {
     );
 
     let root = crate::guard_support::repo_root();
-    // 🔴 `scan_tree!` 摘掉调用者自己那份，而**最该被扫的就是本文件** ⇒ 单独喂一遍。
+    // 🔴 **最该被扫的就是 `local_backend.rs`** ⇒ 单独喂一遍。它走普通遍历本来就在人群里
+    //    （自摘在这一处不生效，理由见本条头注），这一份是冗余但刻意保留的第二个来源。
     let self_rel = "src/bridge/src/backend/control/local_backend.rs";
     let me = include_str!("../../../../src/bridge/src/backend/control/local_backend.rs");
     // ④ 剥法自检：剥完还残留测试属性 ⇒ 上面那张 `FORMS` 表自己就进了扫描面。

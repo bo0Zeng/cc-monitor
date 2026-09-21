@@ -4,10 +4,15 @@
 //!
 //! 判据要扫的**最要紧的那个文件正是 `control/cc_bus.rs`** —— 真有人绕到 cc-bus 背后
 //! 读文件，第一个下手的地方就是那儿。而 `scanning_guard_registry` 要求扫描型判据走
-//! `guard_core::scan_tree!`，它**按构造摘掉调用者自己**（治「判据在自己的语料里
-//! 找到自己 ⇒ 恒绿」那一族，audit-0805 实测五次）。
+//! `guard_core::scan_tree!`，那条纪律治的是「判据在自己的语料里找到自己 ⇒ 恒绿」
+//! 那一族（audit-0805 实测五次）。
 //!
-//! 两条要求撞在一起 ⇒ 判据搬来这里：自排除仍然成立，而覆盖面**反而全了**。
+//! ⚠ 〔`P4` 2026-09-21〕先前这里写着「它**按构造摘掉调用者自己**…自排除仍然成立」。
+//! 那一刀**在这一处不生效**：判据一律由 `#[path]` 挂进生产树 ⇒ `file!()` 是带 `..`
+//! 的折返路径 ⇒ 后缀比不命中
+//! （`the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）。
+//! ⇒ 判据搬来这里买到的**不是**「自排除仍然成立」，而是一件更硬的事：本文件住
+//! `tests/backend/`、**根本不在被扫的那棵树里**，而覆盖面同时全了。
 //!
 //! # 允许什么、禁什么
 //!
@@ -21,9 +26,12 @@
 mod tests {
     #[test]
     fn no_cc_bus_data_layout_leaks_into_the_backend() {
-        // ★ `scan_tree!` 而不是自己 `read_dir`：它按构造摘除**调用者自己**那一份
-        //（`scanning_guard_registry` 逼的，治「判据在自己的语料里找到自己 ⇒ 恒绿」那族）。
-        // ⇒ 本判据因此**不能**住在 `control/cc_bus.rs` 里 —— 那正是最该被扫的文件。
+        // ★ `scan_tree!` 而不是自己 `read_dir`：`scanning_guard_registry` 逼的
+        //（治「判据在自己的语料里找到自己 ⇒ 恒绿」那族）。
+        // ⚠ 宏自称的那一刀「摘除**调用者自己**那一份」今天**不生效**（理由见模块头注）。
+        // ⇒ 但下面这条结论**仍然成立**：本判据不能住在 `control/cc_bus.rs` 的
+        //   `#[cfg(test)]` 段里 —— 那种**不经 `#[path]`** 的测试模块，`file!()` 给的
+        //   就是 `control/cc_bus.rs` 本身，后缀比**会命中** ⇒ 最该被扫的那份被摘走。
         let src_dir = crate::guard_support::src_root();
         let files: Vec<(String, String)> = guard_core::scan_tree!(&src_dir, &["rs"])
             .into_iter()

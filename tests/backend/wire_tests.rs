@@ -45,10 +45,15 @@ fn the_outbound_stream_has_exactly_one_writer() {
     let root = crate::guard_support::src_root();
     let verb = format!("write_{}(", "all");
     let mut found: Vec<(String, usize)> = Vec::new();
-    // ⚠ `scan_tree!` **刻意摘除调用者自己**（那是它防「守卫扫不到自己」的设计），
-    //   而本条的人群里**必须有 `wire.rs`** —— 握手帧就写在这里。
-    //   第一版直接用它，于是反向锚点当场报「登记的写者 wire.rs 找不到」：
+    // ⚠ 本条的人群里**必须有 `wire.rs`** —— 握手帧就写在这里。
+    //   第一版（判据还住在 `wire.rs` 自己的 `#[cfg(test)]` 段里那会儿）直接用
+    //   `scan_tree!`，于是反向锚点当场报「登记的写者 wire.rs 找不到」：
     //   **摘除自己这件事，在「我自己也是被测对象」时会反过来咬人。**
+    // ⚠ 〔`P4` 2026-09-21〕**那一刀今天不生效**：判据搬来 `tests/backend/` 之后由
+    //   `#[path]` 挂载 ⇒ `file!()` 是带 `..` 的折返路径 ⇒ 后缀比不命中
+    //   ⇒ `wire.rs` 走普通遍历**本来就在**人群里，下面那句 `files.push` 补的是**第二份**。
+    //   同一份被数两遍在这里**无害**（下面按文件名分别断「恰好 1 处」，不做跨文件累加），
+    //   而它**刻意不删**：它把「被测那一份一定在人群里」钉成一件不依赖扫描面的事。
     let mut files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
     files.push((
         std::path::PathBuf::from("wire.rs"),

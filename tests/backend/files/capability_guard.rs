@@ -111,8 +111,12 @@ fn derive_effect(src: &str) -> Effect {
 
 /// 本族目录下的 `(文件名, 整份源码)`。
 ///
-/// 走 `guard_core::scan_tree!`（按构造摘除调用者自己那一份 —— 而本文件住
-/// `tests/backend/files/`、根本不在被扫的那棵树里，是**两重**保险）。
+/// 走 `guard_core::scan_tree!`。
+///
+/// ⚠ 〔`P4` 2026-09-21〕先前这里写着「两重保险」，而**第一重今天不生效**：
+/// 宏自称按 `file!()` 摘除调用者自己那一份，判据由 `#[path]` 挂载之后 `file!()`
+/// 是折返路径 ⇒ 后缀比不命中。承重的只剩第二重：本文件住 `tests/backend/files/`、
+/// **根本不在被扫的那棵树里**。
 fn family_sources() -> Vec<(String, String)> {
     let dir = crate::guard_support::src_root().join("files");
     let mut out: Vec<(String, String)> = guard_core::scan_tree!(&dir, &["rs"])

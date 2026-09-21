@@ -3823,8 +3823,11 @@ mod remote_write_layer {
 
     /// 本 crate `src/` 递归全部 `.rs` 的**生产段**：`(相对 src 的路径, 正文)`。
     ///
-    /// ⚠ **`scan_tree!` 按构造摘掉调用者自己那一份**（就是本护栏文件）——
-    /// 这里**刻意不补回来**，理由与 `super::tests::scan` 跳过本文件逐字同一条：
+    /// ⚠ 〔`P4` 2026-09-21〕先前这里写着「**`scan_tree!` 按构造摘掉调用者自己那一份**
+    /// （就是本护栏文件）—— 这里刻意不补回来」。**那一刀在这一处不生效**
+    /// （判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中），
+    /// 而且本护栏文件住 `tests/backend/`、本来就不在这里扫的 `src/backend` 那棵树里。
+    /// ⇒ **不补回来这件事照旧**，理由与 `super::tests::scan` 跳过本文件逐字同一条：
     /// 本文件整体在 `#[cfg(test)]` 内、生产段是空的，而它的锚点表本身就是一串会自匹配的字面量。
     fn production_tree() -> Vec<(String, String)> {
         let root = crate::guard_support::src_root();
