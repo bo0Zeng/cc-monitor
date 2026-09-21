@@ -30,6 +30,7 @@ use egui::{ScrollArea, Ui};
 
 use super::copy::{is_copyable, COPY_LABEL};
 use super::source::Row;
+use super::writeops::{is_writable, CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
 
 /// 一行的高度（不含 item spacing）。与 `真相源/99` 那趟原型同值，
 /// 那趟的「一屏约 44 行 @ 1280×800」就是按这个数算的。
@@ -57,18 +58,55 @@ pub struct RenderTally {
     /// 「点这一行上那颗按钮」。合成一个就得再编一个「点的是什么」的枚举，
     /// 而那个枚举的两支在窗口那侧走的是两条完全不同的路（换目录 / 摆命名框）。
     pub copy_clicked: Option<usize>,
+    /// 🔴〔第五刀〕这一帧哪一行的**「改名」**被点了。
+    pub rename_clicked: Option<usize>,
+    /// 🔴〔第五刀〕这一帧哪一行的**「删除」**被点了。
+    pub delete_clicked: Option<usize>,
+    /// 🔴〔第五刀〕这一帧哪一行的**「权限」**被点了。
+    pub chmod_clicked: Option<usize>,
+}
+
+/// 命中那一摞这一趟画了什么。
+///
+/// # 🔴 它**刻意不是** [`RenderTally`]，而这一条是承重的
+///
+/// [`show_hit_rows`] 的头注写着「命中行一个可点控件都不画」，理由是那个下标
+/// 索引的是**另一摞东西**（`listing.rows`）。在第五刀之前那句话**靠纪律守**：
+/// 两条路共用 [`RenderTally`]，谁哪天在命中行上加一颗按钮、把下标塞进
+/// `clicked`，编译器一声不吭，而后果是「点第 3 条命中 ⇒ 对当前目录第 3 行动手」。
+///
+/// 🔴 **第五刀把那个代价从「复制错地方」升级成「删错东西」**（行上多了三颗写按钮）
+/// ⇒ 不许再靠纪律。本类型**连一个「谁被点了」的字段都没有**，于是
+/// 「点一条命中之后干什么」这个问题**在类型上不存在** ——
+/// 同 `run_drop` 那个 `FnOnce` 的先例：一半由编译器守。
+///
+/// ⚠ **如实登记为未做**：「点一条命中跳到它所在的目录」是个该有的功能，
+/// 第四刀没做，第五刀也没做。它要的是「把命中那条路径解成 `(目录, 名字)`
+/// 再换目录」，而不是把下标塞进另一摞的索引里。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HitTally {
+    pub rows_materialized: usize,
+    pub first_row: usize,
+    pub last_row: usize,
+    pub total_rows: usize,
 }
 
 /// [`paint_one_row`] 这一帧从一行上收到的东西。
 ///
-/// 🔴 **回的是一个结构而不是 `bool`**：这一行现在有两处可点（整行 ＋ 那颗「复制」），
-/// 而 `bool` 只装得下一处 —— 第二处要么被挤掉，要么靠一个 out 参数偷偷带出去。
+/// 🔴 **回的是一个结构而不是 `bool`**：这一行现在有五处可点（整行 ＋ 四颗按钮），
+/// 而 `bool` 只装得下一处 —— 其余要么被挤掉，要么靠 out 参数偷偷带出去。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RowHit {
     /// 这一行被**双击**了（＝ 目录进去）。
     pub activated: bool,
     /// 这一行的「复制」被**单击**了。
     pub copy: bool,
+    /// 〔第五刀〕这一行的「改名」被**单击**了。
+    pub rename: bool,
+    /// 〔第五刀〕这一行的「删除」被**单击**了。
+    pub delete: bool,
+    /// 〔第五刀〕这一行的「权限」被**单击**了。
+    pub chmod: bool,
 }
 
 /// 画一屏文件行。**这里是 `show_rows`，改成 `show` 会被判据当场逮住。**
@@ -105,6 +143,15 @@ pub fn show_file_rows(
             if hit.copy {
                 tally.copy_clicked = Some(i);
             }
+            if hit.rename {
+                tally.rename_clicked = Some(i);
+            }
+            if hit.delete {
+                tally.delete_clicked = Some(i);
+            }
+            if hit.chmod {
+                tally.chmod_clicked = Some(i);
+            }
         }
     });
 }
@@ -127,6 +174,13 @@ pub fn show_file_rows(
 /// 于是「点了之后干什么」这个问题在结构上不存在，不用靠纪律守。
 /// ⚠ **如实登记为未做**：「点一条命中跳到它所在的目录」是个该有的功能，这一刀没做。
 ///
+/// 🔴〔第五刀 2026-09-21〕**上面那句「不用靠纪律守」当初只有一半是真的。**
+/// 两条路共用 [`RenderTally`] ⇒ 在这儿加一颗按钮、把下标塞进 `clicked`
+/// 编译器一声不吭。第五刀在行上加了三颗**写**按钮（改名 · 删除 · 权限）
+/// ⇒ 那个代价从「复制到错的地方」升级成「**删错东西**」。
+/// ⇒ 本函数的收数口换成了 [`HitTally`]（**连一个「谁被点了」的字段都没有**），
+/// 于是那句话从此**由编译器守**。逐条理由住那个类型的头注。
+///
 /// # 它与 [`show_file_rows`] 共享的那一条性质
 ///
 /// 同一个 `show_rows`（**虚拟滚动**）、同一个 [`ROW_HEIGHT`]。
@@ -134,7 +188,7 @@ pub fn show_file_rows(
 /// 但**那个上界不是这一侧给的** ⇒ 不许靠它偷懒用 `show`。
 /// 由 `tests::the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits`
 /// 钉成一条**相等**断言（同本模块那条虚拟滚动判据的形状）。
-pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut RenderTally) {
+pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut HitTally) {
     tally.total_rows = hits.len();
     ScrollArea::vertical()
         .auto_shrink([false; 2])
@@ -202,27 +256,49 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
         }
         if r.lossy_name {
             // 非 UTF-8 名：SFTP 那侧寻址不到真字节 ⇒ 写操作要灰置。
-            // 「复制」是写操作 ⇒ 这一档下面那颗按钮**压根不画**（`is_copyable`）。
+            // 这一档下面**四颗按钮一颗都不画**（`is_copyable` / `is_writable`）。
             ui.label("⚠");
         }
         // 〔第三刀〕「复制」——**只对能复制的那一档画**。`is_copyable` 是唯一住址，
         // 窗口状态机那一侧（`begin_copy`）问的是同一个函数。
         // ⚠ `small_button`：普通 `Button` 的最小高度是 `interact_size.y`（默认 18），
         //   一行只有 `ROW_HEIGHT` 高，撑高了行与行会叠在一起（下一行就点不准了）。
-        if is_copyable(r) {
+        let copy = if is_copyable(r) {
             Some(ui.small_button(COPY_LABEL))
         } else {
             None
+        };
+        // 🔴〔第五刀〕改名 · 删除 · 权限 —— **三颗都是写操作**。
+        //   判准是 `is_writable`（有损名一律不画），而它与 `is_copyable`
+        //   **刻意不是同一个函数**：目录能改名/删除/改权限，但不能零流量复制。
+        let (rename, delete, chmod) = if is_writable(r) {
+            (
+                Some(ui.small_button(RENAME_LABEL)),
+                Some(ui.small_button(DELETE_LABEL)),
+                Some(ui.small_button(CHMOD_LABEL)),
+            )
+        } else {
+            (None, None, None)
+        };
+        RowButtons {
+            copy,
+            rename,
+            delete,
+            chmod,
         }
     });
-    let copy = inner.inner;
+    let btns = inner.inner;
     // 整行都可点（不是只有名字那几个像素）—— 文件管理器的常规手感。
-    // 🔴 **但右边界要停在那颗按钮左侧** —— 拉满整行宽的话，egui 在平手时取
-    //    「最后登记的那个」，而这块矩形是后登记的 ⇒ 按钮永远点不到（见上面头注）。
+    // 🔴 **但右边界要停在那几颗按钮里**最左**那一颗**的左侧 —— 拉满整行宽的话，
+    //    egui 在平手时取「最后登记的那个」，而这块矩形是后登记的
+    //    ⇒ 按钮永远点不到（见上面头注）。
+    //    ⚠〔第五刀〕这里原先只让开「复制」那一颗。第五刀之后一行上有四颗，
+    //      只让开一颗 = 另外三颗**照旧点不到**，而它们是写操作
+    //      ⇒ 取的是**最小**的那个左边界，而不是某一颗的。
     let band = inner.response.rect;
     let left = ui.max_rect().left();
-    let right = match &copy {
-        Some(b) => b.rect.left() - ui.spacing().item_spacing.x,
+    let right = match btns.leftmost_left() {
+        Some(x) => x - ui.spacing().item_spacing.x,
         None => ui.max_rect().right().max(band.right()),
     };
     let full = egui::Rect::from_min_max(
@@ -238,7 +314,36 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
     );
     RowHit {
         activated: row.double_clicked(),
-        copy: copy.is_some_and(|b| b.clicked()),
+        copy: btns.copy.is_some_and(|b| b.clicked()),
+        rename: btns.rename.is_some_and(|b| b.clicked()),
+        delete: btns.delete.is_some_and(|b| b.clicked()),
+        chmod: btns.chmod.is_some_and(|b| b.clicked()),
+    }
+}
+
+/// 这一行上真的画出来的那几颗按钮的响应（`None` = 这一档不画那一颗）。
+///
+/// 🔴 抽成一个结构是为了让 [`RowButtons::leftmost_left`] 有一个**唯一**的落点 ——
+/// 「整行那块矩形让开到哪儿」这件事只许有一个算法。散着四个 `Option` 时，
+/// 那个 `min` 写在 `paint_one_row` 里，而漏掉一颗**不会红**（漏掉的那颗
+/// 只是点不到，它照样画得出来、编得过 —— 第三刀实测过这一形）。
+struct RowButtons {
+    copy: Option<egui::Response>,
+    rename: Option<egui::Response>,
+    delete: Option<egui::Response>,
+    chmod: Option<egui::Response>,
+}
+
+impl RowButtons {
+    /// 这几颗按钮里最靠左的那个左边界（`None` = 一颗都没画）。
+    fn leftmost_left(&self) -> Option<f32> {
+        [&self.copy, &self.rename, &self.delete, &self.chmod]
+            .into_iter()
+            .flatten()
+            .map(|b| b.rect.left())
+            .fold(None, |acc: Option<f32>, x| {
+                Some(acc.map_or(x, |a| a.min(x)))
+            })
     }
 }
 

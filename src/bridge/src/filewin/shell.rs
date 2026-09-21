@@ -85,9 +85,10 @@ use std::sync::{Arc, Mutex};
 use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
-use super::rows::{show_file_rows, show_hit_rows, RenderTally};
+use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
 use super::source::{list_local, list_remote, parent_dir, Row, Source};
 use super::transfer::{DropBoard, Pending};
+use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
 /// 开过几个窗口 —— **egui 那条线程真的跑起来了**几次。
 ///
@@ -248,6 +249,9 @@ pub struct FileWindow {
     pub cwd: String,
     pub listing: Listing,
     pub tally: RenderTally,
+    /// 〔第五刀〕命中那一摞这一帧画了什么。**与 [`Self::tally`] 刻意是两个类型** ——
+    /// [`HitTally`] 里没有「谁被点了」这个概念，逐条理由住那个类型的头注。
+    pub hits_tally: HitTally,
     /// 远端要在 tokio 上跑；本机不需要，所以是 `Option`。
     pub rt: Option<tokio::runtime::Handle>,
     /// `设计/60 §5.4d`：拖入那一摞的状态机（**先一次问完，再并行传**）。
@@ -275,6 +279,13 @@ pub struct FileWindow {
     /// 搜索框里那几个字。**UI 线程自己的**（同 [`Self::copy_prompt`] 的理由：
     /// 它是一个正在被编辑的草稿，不该出现在两条线程共享的那份状态里）。
     query: String,
+    /// 🔴〔第五刀〕`设计/99 §4.6.4`：那四条写操作的状态机（**围栏 · 一次问完 · 结果**）。
+    pub write_board: WriteBoard,
+    /// 「叫什么名字 / 改成什么权限」那个框。`None` = 没在问。
+    /// **UI 线程自己的**（理由见 [`WritePrompt`]）。
+    write_prompt: Option<WritePrompt>,
+    /// 已经消化过几摞写操作（同 [`Self::seen_rounds`]，每条路各一个数）。
+    seen_write_rounds: u64,
 }
 
 impl FileWindow {
@@ -301,6 +312,7 @@ impl FileWindow {
             cwd,
             listing,
             tally: RenderTally::default(),
+            hits_tally: HitTally::default(),
             rt,
             board: DropBoard::default(),
             seen_rounds: 0,
@@ -310,6 +322,9 @@ impl FileWindow {
             font: FontState::NotInstalled,
             search: SearchBoard::default(),
             query: String::new(),
+            write_board: WriteBoard::default(),
+            write_prompt: None,
+            seen_write_rounds: 0,
         }
     }
 
@@ -479,6 +494,9 @@ impl FileWindow {
         // 🔴 **把窗口交给看板**，它自己会在「有问题要问 / 进度动了 / 跑完了」时敲一下。
         //   不交的话：进度条要等用户下次动鼠标才跳一格（egui 只在有事发生时才画下一帧）。
         board.attach(ctx);
+        // 🔴〔第五刀〕新的一摞 ⇒ 取消台复位。不复位的后果是具体的：
+        //    上一摞按过取消 ⇒ 这一摞一件都起不来，而屏幕上看起来是「拖进去没反应」。
+        board.cancels().reset();
         h.spawn(async move {
             let probe_cfg = cfg.clone();
             let up_cfg = cfg.clone();
@@ -498,7 +516,17 @@ impl FileWindow {
                 move |p| {
                     let cfg = up_cfg.clone();
                     let b = up_board.clone();
-                    async move { super::transfer::upload_remote(&cfg, &p, &b).await }
+                    // 🔴〔第五刀〕**取消那道闸在这儿**：按过取消之后，还没起的那几件
+                    //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
+                    //   （两件事一个落点，理由住 `launch_unless_cancelled`）。
+                    async move {
+                        let desk = b.cancels();
+                        let name = p.name.clone();
+                        super::transfer::launch_unless_cancelled(&desk, &name, |id| async move {
+                            super::transfer::upload_remote(&cfg, &p, &b, &id).await
+                        })
+                        .await
+                    }
                 },
             )
             .await;
@@ -514,7 +542,14 @@ impl FileWindow {
     fn take_drops(&mut self, ctx: &egui::Context) {
         // ⚠〔第三刀〕复制那一摞也在问的时候同样不接 —— 两个模态框叠起来，
         //   「一次问完」就变成「答错了哪一个都不知道」。
-        if self.board.is_asking() || self.copy_board.is_asking() || self.copy_prompt.is_some() {
+        // ⚠〔第五刀〕写操作那一摞同理，而它的代价更大：那个框上「都别做」与
+        //   上传那个框上「全都不覆盖」叠在一起，答错一个就是删错东西。
+        if self.board.is_asking()
+            || self.copy_board.is_asking()
+            || self.copy_prompt.is_some()
+            || self.write_board.is_asking()
+            || self.write_prompt.is_some()
+        {
             return;
         }
         let dropped: Vec<String> = ctx.input(|i| {
@@ -661,6 +696,8 @@ impl FileWindow {
         // 🔴 把窗口交给看板（同 `start_drop`）：进度与裁决都是从 tokio 那条线程写进来的，
         //    不敲一下，屏幕要等用户下次动鼠标才更新。
         board.attach(ctx);
+        // 🔴〔第五刀〕新的一趟 ⇒ 取消台复位（同 [`Self::start_drop`] 那条理由）。
+        board.cancels().reset();
         h.spawn(async move {
             let probe_cfg = cfg.clone();
             let copy_cfg = cfg.clone();
@@ -673,7 +710,18 @@ impl FileWindow {
                     let rx = ask_board.ask(j);
                     async move { rx.await.unwrap_or(false) }
                 },
-                move |j| async move { super::copy::copy_remote(&copy_cfg, &j, &run_board).await },
+                // 🔴〔第五刀〕同上：取消那道闸 ＋ 造键，都在 `launch_unless_cancelled` 里。
+                //   ⚠ 复制那一路的 `launch` 回的是 `Result<CopyVerdict, String>`，
+                //   而那道闸回 `Result<(), String>` ⇒ 裁决经 `verdict` 这个格子带出来
+                //   （**不许**把它压成 `bool`，理由住 `copy::CopyOutcome`）。
+                move |j| async move {
+                    let desk = run_board.cancels();
+                    let name = j.name.clone();
+                    super::transfer::launch_unless_cancelled(&desk, &name, |id| async move {
+                        super::copy::copy_remote(&copy_cfg, &j, &run_board, &id).await
+                    })
+                    .await
+                },
             )
             .await;
             board.finish(out);
@@ -722,6 +770,223 @@ impl FileWindow {
             self.confirm_copy(Some(ctx));
         }
     }
+
+    // ════════════════════════════════════════════════════════════════════
+    // 🔴〔第五刀〕`设计/99 §4.6.4`：**新建目录 · 改名 · 删除 · 改权限**
+    // ════════════════════════════════════════════════════════════════════
+
+    /// 正摆着的那个框（判据与 [`Self::write_ui`] 用）。
+    pub fn write_prompt(&self) -> Option<&WritePrompt> {
+        self.write_prompt.as_ref()
+    }
+
+    /// 这四条写操作只在**远端**那一侧成立 —— 本机源上**出声**，不静默。
+    ///
+    /// 🔴 抽成一个函数是为了让那句话只有一个住址：四个入口（新建目录 · 改名 ·
+    /// 删除 · 权限）都问它，而它们都要在本机源上说同一句话。
+    /// ⚠ 为什么本机不做：这四条走的是 `sftp_pool` 那四条命令，**它们全要一条 SFTP 会话**。
+    /// 本机改文件是另一件事（另一套原语、另一套围栏），本刀不做，也不假装做了。
+    fn remote_only(&self) -> bool {
+        if self.source.is_remote() {
+            return true;
+        }
+        *self.listing.error.lock().unwrap() = Some(
+            "这个窗口现在看的是本机 —— 新建目录 / 改名 / 删除 / 改权限走的是远端那四条 SFTP 命令"
+                .into(),
+        );
+        false
+    }
+
+    /// 摆出「新建目录」那个框。回值 = 真的摆出来了。
+    pub fn begin_mkdir(&mut self) -> bool {
+        if !self.remote_only() {
+            return false;
+        }
+        self.write_prompt = Some(WritePrompt::for_mkdir(&self.cwd));
+        true
+    }
+
+    /// 摆出「把第 `i` 行改名为」那个框。回值 = 真的摆出来了。
+    ///
+    /// ⚠ **两道闸，刻意重复**（同 [`Self::begin_copy`] 那一条逐字的理由）：
+    /// `super::writeops::is_writable` —— 有损名一律不接。列表上那一档压根不画
+    /// 那颗按钮，这里是第二道，防的是「按钮没了、调用还在」。
+    pub fn begin_rename(&mut self, i: usize) -> bool {
+        let Some(row) = self.writable_row(i) else {
+            return false;
+        };
+        self.write_prompt = Some(WritePrompt::for_rename(&self.cwd, &row));
+        true
+    }
+
+    /// 摆出「把第 `i` 行的权限改成」那个框。回值 = 真的摆出来了。
+    pub fn begin_chmod(&mut self, i: usize) -> bool {
+        let Some(row) = self.writable_row(i) else {
+            return false;
+        };
+        self.write_prompt = Some(WritePrompt::for_chmod(&self.cwd, &row));
+        true
+    }
+
+    /// 🔴 **删除不经那个框** —— 它不向用户要任何输入，它要的是一次**确认**，
+    /// 而确认那一步归 [`super::writeops::run_writes`] 的第二段（一次问完）。
+    ///
+    /// 回值 = 真的起了一摞（`false` = 这一行不能写 / 本机源 / 没有运行时，**且已出声**）。
+    pub fn begin_delete(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
+        let Some(row) = self.writable_row(i) else {
+            return false;
+        };
+        self.start_writes(
+            vec![WriteOp::Delete {
+                path: row.path,
+                is_dir: row.is_dir,
+            }],
+            ctx,
+        )
+    }
+
+    /// 第 `i` 行，且它**能被写**。`None` ⇒ 不接（越界 / 有损名 / 本机源，已出声）。
+    fn writable_row(&mut self, i: usize) -> Option<Row> {
+        if !self.remote_only() {
+            return None;
+        }
+        let rows = self.listing.rows.lock().unwrap();
+        match rows.get(i) {
+            Some(r) if is_writable(r) => Some(r.clone()),
+            _ => None,
+        }
+    }
+
+    /// 收掉那个框，什么都不做。
+    pub fn cancel_write(&mut self) {
+        self.write_prompt = None;
+    }
+
+    /// 框里那几个字 → 一摞真操作。回值 = 真的起来了。
+    ///
+    /// ⚠ 输入不合法 ⇒ **框留着、出声**，不静默收掉（同 [`Self::confirm_copy`]：
+    /// 收掉的话用户点了确认什么都没发生，与成功长得一模一样）。
+    pub fn confirm_write(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(p) = self.write_prompt.clone() else {
+            return false;
+        };
+        let op = match p.to_op() {
+            Ok(op) => op,
+            Err(why) => {
+                *self.listing.error.lock().unwrap() = Some(why);
+                return false;
+            }
+        };
+        if !self.start_writes(vec![op], ctx) {
+            return false;
+        }
+        self.write_prompt = None;
+        true
+    }
+
+    /// 起一摞 `§4.6.4`：**先过围栏，再一次问完，才动手。**
+    ///
+    /// 🔴 三段的顺序不在这里，在 [`super::writeops::run_writes`] 的结构里 ——
+    /// 这里只负责把「怎么问 · 怎么做」两个口接上去（同 [`Self::start_drop`]）。
+    /// 而本函数接不上（没运行时 / 本机源）要**出声**，判据见 `shell_tests`。
+    pub fn start_writes(&mut self, ops: Vec<WriteOp>, ctx: Option<egui::Context>) -> bool {
+        if ops.is_empty() {
+            return false;
+        }
+        let Source::Remote(cfg) = &self.source else {
+            self.remote_only();
+            return false;
+        };
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some("这几件写操作要一个 tokio 运行时，这个窗口没拿到".into());
+            return false;
+        };
+        let cfg = cfg.clone();
+        let board = self.write_board.clone();
+        board.attach(ctx);
+        h.spawn(async move {
+            let ask_board = board.clone();
+            let run_cfg = cfg.clone();
+            let out = super::writeops::run_writes(
+                ops,
+                move |asking| {
+                    let rx = ask_board.ask(asking);
+                    async move { rx.await.unwrap_or_default() }
+                },
+                move |op| {
+                    let cfg = run_cfg.clone();
+                    async move { super::writeops::apply_remote(&cfg, &op).await }
+                },
+            )
+            .await;
+            board.finish(out);
+        });
+        true
+    }
+
+    /// 一摞写操作跑完就重列当前目录（新目录要出现、删掉的要消失）。
+    /// 同 [`Self::settle_finished_drops`]。
+    pub fn settle_finished_writes(&mut self) -> bool {
+        let now = self.write_board.rounds();
+        if now == self.seen_write_rounds {
+            return false;
+        }
+        self.seen_write_rounds = now;
+        self.reload();
+        true
+    }
+
+    /// 🔴 **胶水三条**：列表说「第 `i` 行的改名 / 删除 / 权限被点了」→ 窗口接上去。
+    ///
+    /// 抽成函数的理由与 [`Self::apply_click`] / [`Self::apply_copy_click`] 逐字相同：
+    /// 两头各自都有判据，而**中间这一跳写在 `frame_body` 里的话谁都没在看**
+    /// （第一刀栽过的那一形）。
+    ///
+    /// 回值 = 这一帧真的接上了一跳。
+    pub fn apply_write_clicks(&mut self, ctx: Option<egui::Context>) -> bool {
+        if let Some(i) = self.tally.rename_clicked {
+            return self.begin_rename(i);
+        }
+        if let Some(i) = self.tally.chmod_clicked {
+            return self.begin_chmod(i);
+        }
+        if let Some(i) = self.tally.delete_clicked {
+            return self.begin_delete(i, ctx);
+        }
+        false
+    }
+
+    /// 画「叫什么名字 / 改成什么权限」那个框。**模态** —— 定下来之前不接别的。
+    ///
+    /// ⚠ 与 [`super::writeops::WriteBoard::ui`] 分开两处，因为它们的状态住在两个地方：
+    /// 这个框是 UI 线程自己的，那一摞（确认 / 结果）是跨线程的。
+    fn write_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(mut p) = self.write_prompt.clone() else {
+            return;
+        };
+        let (mut go, mut cancel) = (false, false);
+        egui::Modal::new(egui::Id::new("filewin-write-prompt")).show(ui.ctx(), |ui| {
+            ui.heading(p.heading());
+            ui.text_edit_singleline(&mut p.text);
+            ui.label("⚠ 只在这一个目录里 —— 不许带 `/`。");
+            ui.horizontal(|ui| {
+                if ui.button("确定").clicked() {
+                    go = true;
+                }
+                if ui.button("取消").clicked() {
+                    cancel = true;
+                }
+            });
+        });
+        self.write_prompt = Some(p);
+        if cancel {
+            self.cancel_write();
+        } else if go {
+            let ctx = ui.ctx().clone();
+            self.confirm_write(Some(ctx));
+        }
+    }
 }
 
 impl FileWindow {
@@ -749,12 +1014,18 @@ impl FileWindow {
             ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), note);
         }
         let mut go_local: Option<String> = None;
+        let mut mkdir = false;
         ui.horizontal(|ui| {
             if ui.button("⬆ 上一级").clicked() {
                 self.navigate_up();
             }
             if ui.button("刷新").clicked() {
                 self.reload();
+            }
+            // 🔴〔第五刀〕「新建目录」—— 它是四条写操作里**唯一**不针对某一行的那条
+            //    （另外三条在行上），所以它的落点是工具栏。
+            if ui.button(MKDIR_LABEL).clicked() {
+                mkdir = true;
             }
             if !self.source.is_remote() {
                 ui.label("本机");
@@ -767,6 +1038,9 @@ impl FileWindow {
                 ui.label("正在列…");
             }
         });
+        if mkdir {
+            self.begin_mkdir();
+        }
         if let Some(home) = go_local {
             self.go_local(home);
         }
@@ -780,13 +1054,19 @@ impl FileWindow {
         // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
         self.copy_board.ui(ui);
         self.copy_ui(ui);
+        // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ **被围栏挡住那几句话** ／ 结果。
+        //    同样模态、同样画在列表之前。
+        self.write_board.ui(ui);
+        self.write_ui(ui);
         let ctx = ui.ctx().clone();
         self.take_drops(&ctx);
         self.settle_finished_drops();
         self.settle_finished_copies();
+        self.settle_finished_writes();
         ui.separator();
-        // 每帧从零数起 —— 这个数是「这一帧物化了多少行」，不是累计。
+        // 每帧从零数起 —— 这两个数是「这一帧物化了多少行」，不是累计。
         self.tally = RenderTally::default();
+        self.hits_tally = HitTally::default();
         // 🔴〔第四刀〕搜索框里有字 ⇒ 画命中，否则画当前目录。**二选一，不并排** ——
         //    并排会让「你现在看的是哪一摞」变成一个要靠标题猜的问题。
         if self.showing_hits() {
@@ -796,17 +1076,20 @@ impl FileWindow {
                 .outcome
                 .map(|o| o.hits.iter().map(|h| h.display()).collect())
                 .unwrap_or_default();
-            show_hit_rows(ui, &hits, &mut self.tally);
+            // 🔴〔第五刀〕收数口是 [`HitTally`]，**不是** `self.tally` ——
+            //    于是命中那一摞**在类型上**交不出任何一个下标，而下面那三条胶水
+            //    索引的是 `listing.rows`（另一摞东西）。逐条理由住那个类型的头注。
+            show_hit_rows(ui, &hits, &mut self.hits_tally);
         } else {
             let rows = self.listing.rows.lock().unwrap();
             show_file_rows(ui, &rows, &mut self.tally, None);
         }
-        // ⚠ 这两条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
-        //   命中那一摞一个可点控件都没有 ⇒ `tally.clicked` / `copy_clicked` 恒 `None`，
-        //   理由与「为什么命中行不经 `show_file_rows`」一起写在
-        //   [`super::rows::show_hit_rows`] 的头注里。
+        // ⚠ 这三条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
+        //   命中那一摞交不出下标 —— 第四刀靠的是「那个函数不画可点控件」这条纪律，
+        //   第五刀换成了**类型**（上面那一段）。
         self.apply_click();
         self.apply_copy_click();
+        self.apply_write_clicks(Some(ctx));
     }
 
     /// 搜索那一行：输入框 ＋「重建索引」＋ 在飞指示，接着是新鲜度那一行。
