@@ -47,9 +47,31 @@
 //!   本模块这个数只为「别把一万个 future 一起堆起来」，所以它**取的就是池里那个常量**
 //!   （[`crate::sftp_pool::TRANSFER_LANE_CAP`]），不另写一个字面量。
 //! - **不做断点续传的判断**：那在 `sftp_upload` 里面（尾块逐字节对账），本模块看不见也不该看见。
+//!
+//! # 🔴〔第五刀 2026-09-21〕取消那一条（`设计/99 §4.6.4` 单记的那一格）
+//!
+//! 那一节逐字：「`sftp_cancel_transfer` 那一条值得单记：池子里有取消登记，
+//! **窗口上没有取消按钮** ⇒ 一趟传输起来了就只能等它自己完。」
+//!
+//! ## 病根不是「少画一颗按钮」，是**那个键窗口说不出来**
+//!
+//! 池子的取消登记表以 `transfer_id` 为键（`sftp_pool::sftp_cancel_transfer` 吃的就是它），
+//! 而这一刀之前那个 id 是在 [`upload_remote`] 里 `uuid::Uuid::new_v4()` **现造的**
+//! ⇒ 它从没离开过那个函数的栈 ⇒ 窗口**根本说不出要取消哪一趟**。
+//! 画一颗按钮解决不了这个：按钮手上没有键。
+//!
+//! ⇒ 把造键这一步搬到 [`CancelDesk::mint`]（**登记表与键同一个落点**），
+//! [`upload_remote`] 改成**吃**一个 id。
+//!
+//! ## 取消有两半，各自买到什么**分开记**
+//!
+//! | 半 | 落点 | 买到 | 买不到 |
+//! |---|---|---|---|
+//! | **还没起的那几件一件都不起** | [`launch_unless_cancelled`] | 行为：`N` 件里按下取消之后，`go` 再也不被调（相等断言 ＋ 阴性对照） | —— |
+//! | **已经在飞的那一趟停下来** | [`forward_cancel`] → `sftp_pool::sftp_cancel_transfer` | **委派**：那几个 id 真的被送进池子那条命令 | 🔴 **一趟真传输在池子里真的停了** —— 那要一趟真连接（本仓红线不许），而池子那一侧的取消旗由它自己的判据与秤 F4 钉着 |
 
 use std::future::Future;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// 一趟拖入同时起几件。
@@ -199,6 +221,158 @@ where
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// 🔴〔第五刀〕取消：**那个键 ＋ 那道闸**
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 一件被取消掉之后交回来的那句话。
+///
+/// 🔴 **回 `Err` 而不是静默跳过**：静默跳过的话 `DropOutcome` 上
+/// 「取消了 3 件」与「传完了 3 件」分不开（`ok` 与 `skipped` 都装不下它），
+/// 而那正是这一格要买的读数。
+pub const CANCELLED: &str = "这一趟被取消了";
+
+/// 界面上那颗取消按钮的字面。**唯一住址**（判据按同一个常量去找它画出来的字）。
+///
+/// ⚠ 刻意不叫「取消」两个字：那三个字在「复制为」那个框上已经有一颗
+/// （`super::shell::FileWindow::copy_ui` 里那颗，意思是「别复制了」），
+/// 而按内容找控件的判据分不开同名的两颗。
+pub const CANCEL_LABEL: &str = "取消传输";
+
+/// **取消台**：一摞传输的 `transfer_id` 登记 ＋ 那面「用户按过取消了」的旗。
+///
+/// 🔴 为什么键要在这儿造、不在适配器里造：理由逐字住本模块头注那一节
+/// （造在适配器里 ⇒ 窗口说不出要取消哪一趟）。
+///
+/// ⚠ 它**跨线程**（UI 线程按取消，tokio 那条起传输）⇒ `Arc` + `Mutex`，
+/// 与两块看板同形。刻意做成一个独立的 `Clone` 件，好让上传与复制两条路
+/// **共用同一份实现**（两份实现会在「取消之后还起不起」这一档上分岔）。
+#[derive(Clone, Default)]
+pub struct CancelDesk {
+    /// 在飞的那几趟：`(显示名, transfer_id)`。
+    in_flight: Arc<Mutex<Vec<(String, String)>>>,
+    /// 用户按过取消了。**一旦按下就不复位** —— 复位归下一摞（`reset`）。
+    requested: Arc<AtomicBool>,
+    /// 一共造过几个键 —— 给判据一个可观测的数（键唯一性靠它对账）。
+    minted: Arc<AtomicU64>,
+}
+
+impl CancelDesk {
+    /// 造一个这一趟的 `transfer_id` 并登记进在飞表。
+    ///
+    /// ⚠ 每趟现造：它是池子取消登记表的键，两趟用同一个键会互相摘掉对方的登记
+    /// （`sftp_pool::register_cancel` 的注释逐字记着这一条）。
+    pub fn mint(&self, name: &str) -> String {
+        let id = format!("filewin-{}", uuid::Uuid::new_v4());
+        self.in_flight
+            .lock()
+            .unwrap()
+            .push((name.to_string(), id.clone()));
+        self.minted.fetch_add(1, Ordering::SeqCst);
+        id
+    }
+
+    /// 这一趟收场了，从在飞表里摘掉。
+    pub fn done(&self, id: &str) {
+        self.in_flight.lock().unwrap().retain(|(_, i)| i != id);
+    }
+
+    /// 还在飞的那几个键（按登记顺序）。
+    pub fn in_flight_ids(&self) -> Vec<String> {
+        self.in_flight
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, i)| i.clone())
+            .collect()
+    }
+
+    /// 还在飞的那几趟叫什么（画在按钮旁边）。
+    pub fn in_flight_names(&self) -> Vec<String> {
+        self.in_flight
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(n, _)| n.clone())
+            .collect()
+    }
+
+    /// 一共造过几个键。
+    pub fn minted(&self) -> u64 {
+        self.minted.load(Ordering::SeqCst)
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.requested.load(Ordering::SeqCst)
+    }
+
+    /// 🔴 **按下取消**：立旗 ＋ 把在飞的那几个键**真的送进池子**。
+    ///
+    /// 回值 = 送出去的那几个键（判据按它做相等断言）。
+    pub fn request(&self) -> Vec<String> {
+        self.requested.store(true, Ordering::SeqCst);
+        let ids = self.in_flight_ids();
+        forward_cancel(&ids);
+        ids
+    }
+
+    /// 下一摞开始：旗放下、在飞表清空。
+    ///
+    /// ⚠ **不清旗就起下一摞**的后果是具体的：上一摞按过取消 ⇒ 下一摞
+    /// 一件都起不来，而界面上看起来是「拖进去没反应」。
+    pub fn reset(&self) {
+        self.requested.store(false, Ordering::SeqCst);
+        self.in_flight.lock().unwrap().clear();
+    }
+}
+
+/// 把取消**真的送到池子里** —— 调既有命令 `sftp_pool::sftp_cancel_transfer`。
+///
+/// 🔴 **为什么可以在 UI 线程上同步跑完一个 `async fn`**：那条命令的函数体里
+/// **一个 `await` 都没有**（它只锁一次取消登记表、翻一个 `AtomicBool`）
+/// ⇒ `block_on` 立刻返回，不阻塞画帧。
+/// ⚠ 换成「往看板里塞一个 tokio `Handle`」的话，**画一帧就依赖一个运行时**，
+/// 而本机那一侧（`Source::Local`）压根没有运行时（`FileWindow::rt` 是 `Option`）。
+///
+/// ⚠ 没注册过的 id 在池子那侧是 no-op（那条命令的注释逐字）⇒ 重复按取消无害。
+pub fn forward_cancel(ids: &[String]) {
+    for id in ids {
+        futures::executor::block_on(crate::sftp_pool::sftp_cancel_transfer(id.clone()));
+    }
+}
+
+/// 🔴 **那道闸**：取消按下之后，**还没起的那几件一件都不起**。
+///
+/// 它同时是**造键的唯一落点** —— 两件事合在一个函数里是刻意的：
+/// 「这一趟该不该起」与「这一趟的键叫什么」分在两处的话，会长出
+/// 「键造了但闸没看」（起了一趟取消不掉的）或「闸看了但键没登记」
+/// （按了取消而这一趟不在表里）两种半成品，而两种在屏幕上都像「取消不管用」。
+///
+/// - 取消过 ⇒ `go` **一次都不调**，回 `Err(CANCELLED)`。
+/// - 没取消过 ⇒ 造键、登记、调 `go`、收场时摘掉登记。
+///
+/// ⚠ 回值对 `T` 泛型是**刻意的**：上传那一路的 `T = ()`（成没成），
+/// 复制那一路的 `T = CopyVerdict`（成没成 ＋ **走的是哪条路**）。
+/// 写死成 `()` 的话，复制那一路就得另想办法把裁决带出来，
+/// 而「静默退化成 2× 流量」是 `设计/60 §5` 第二段逐字禁止的那一形。
+pub async fn launch_unless_cancelled<T, F, Fut>(
+    desk: &CancelDesk,
+    name: &str,
+    go: F,
+) -> Result<T, String>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: Future<Output = Result<T, String>>,
+{
+    if desk.is_cancelled() {
+        return Err(CANCELLED.to_string());
+    }
+    let id = desk.mint(name);
+    let r = go(id.clone()).await;
+    desk.done(&id);
+    r
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // 生产适配器：**一行自己的传输代码都没有**
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -222,10 +396,16 @@ pub async fn probe_remote(cfg: &crate::ssh_source::RemoteConfig, remote_path: &s
 /// 🔴 **进度通道是在本进程里现造的**（`tauri::ipc::Channel::new`）：
 /// 那个类型不只为 webview 服务，`new` 收一个普通回调。
 /// ⇒ 进度直接落进 `board`，不绕一圈 webview。
+///
+/// 🔴〔第五刀〕`transfer_id` **由调用方给**，不在这儿造。
+/// 它是池子取消登记表的键 —— 造在这儿的话它从没离开过这个栈，
+/// 窗口就说不出要取消哪一趟（理由逐字住本模块头注那一节，
+/// 唯一的造键落点是 [`CancelDesk::mint`]）。
 pub async fn upload_remote(
     cfg: &crate::ssh_source::RemoteConfig,
     p: &Pending,
     board: &DropBoard,
+    transfer_id: &str,
 ) -> Result<(), String> {
     let name = p.name.clone();
     let sink = board.clone();
@@ -244,7 +424,7 @@ pub async fn upload_remote(
         cfg.clone(),
         p.local_path.clone(),
         p.remote_path.clone(),
-        format!("filewin-{}", uuid::Uuid::new_v4()),
+        transfer_id.to_string(),
         chan,
     )
     .await
@@ -266,6 +446,8 @@ pub struct DropBoard {
     /// 不敲一下，进度条要等到用户下次动鼠标才跳一格（看起来就是「卡住了」）。
     /// ⚠ `Option`：判据里没有窗口，那时它就是 `None`，`progress` 照常记数。
     ctx: Arc<Mutex<Option<egui::Context>>>,
+    /// 🔴〔第五刀〕这一摞的取消台（键 ＋ 旗）。理由住本模块头注那一节。
+    desk: CancelDesk,
 }
 
 #[derive(Default)]
@@ -298,6 +480,11 @@ impl DropBoard {
 
     pub fn is_asking(&self) -> bool {
         !self.inner.lock().unwrap().asking.is_empty()
+    }
+
+    /// 这一摞的取消台。**同一份**（`CancelDesk` 内部全是 `Arc`）。
+    pub fn cancels(&self) -> CancelDesk {
+        self.desk.clone()
     }
 
     /// 把窗口交给它，好让它在进度动的时候敲一下。
@@ -416,6 +603,18 @@ impl DropBoard {
                 0.0
             };
             ui.add(egui::ProgressBar::new(frac).text(format!("{name} {got}/{total}")));
+        }
+        // 🔴〔第五刀〕**那颗取消按钮**（`设计/99 §4.6.4` 单记的那一格）。
+        //    有东西在飞才画 —— 一颗常驻的、按下去什么都不取消的按钮比没有更坏。
+        if !self.desk.in_flight_ids().is_empty() {
+            ui.horizontal(|ui| {
+                if ui.button(CANCEL_LABEL).clicked() {
+                    self.desk.request();
+                }
+                if self.desk.is_cancelled() {
+                    ui.label("已经按过取消了，还没起的那几件不会再起");
+                }
+            });
         }
         if let Some(o) = last {
             if !o.failed.is_empty() {

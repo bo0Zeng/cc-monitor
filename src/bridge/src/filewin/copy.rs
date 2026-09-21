@@ -278,11 +278,15 @@ pub async fn probe_target(cfg: &crate::ssh_source::RemoteConfig, job: &CopyJob) 
 /// 🔴 **进度通道在本进程里现造**（`tauri::ipc::Channel::new` 收一个普通回调），
 /// 同 [`super::transfer::upload_remote`] —— 进度直接落进 `board`，不绕一圈 webview。
 ///
-/// ⚠ `transfer_id` 每趟现造：它是取消登记表的键，两趟用同一个键会互相摘掉对方的登记。
+/// 🔴〔第五刀〕`transfer_id` **由调用方给**，不在这儿造。它是取消登记表的键，
+/// 造在这儿的话它从没离开过这个栈 ⇒ 窗口说不出要取消哪一趟
+/// （逐字理由住 `super::transfer` 头注那一节；唯一的造键落点是
+/// [`super::transfer::CancelDesk::mint`]，它同时保证「两趟不用同一个键」）。
 pub async fn copy_remote(
     cfg: &crate::ssh_source::RemoteConfig,
     job: &CopyJob,
     board: &CopyBoard,
+    transfer_id: &str,
 ) -> Result<CopyVerdict, String> {
     let name = job.name.clone();
     let sink = board.clone();
@@ -301,7 +305,7 @@ pub async fn copy_remote(
         cfg.clone(),
         job.from.clone(),
         job.to.clone(),
-        format!("filewin-copy-{}", uuid::Uuid::new_v4()),
+        transfer_id.to_string(),
         chan,
     )
     .await
@@ -361,6 +365,11 @@ pub struct CopyBoard {
     /// 已经跑完的趟数 —— 给判据与「跑完要重列目录」一个可观测的数。
     rounds: Arc<AtomicU64>,
     ctx: Arc<Mutex<Option<egui::Context>>>,
+    /// 🔴〔第五刀〕这一趟的取消台（键 ＋ 旗）。
+    ///
+    /// ⚠ **与上传那一摞共用同一个类型**（[`super::transfer::CancelDesk`]），不另写一份：
+    /// 两份实现会在「取消之后还起不起」这一档上分岔，而那一档正是这一格的全部内容。
+    desk: super::transfer::CancelDesk,
 }
 
 #[derive(Default)]
@@ -390,6 +399,11 @@ impl CopyBoard {
 
     pub fn is_asking(&self) -> bool {
         self.inner.lock().unwrap().asking.is_some()
+    }
+
+    /// 这一趟的取消台。**同一份**（内部全是 `Arc`）。
+    pub fn cancels(&self) -> super::transfer::CancelDesk {
+        self.desk.clone()
     }
 
     /// 把窗口交给它，好让它在有事发生时敲一下。
@@ -477,6 +491,17 @@ impl CopyBoard {
                 0.0
             };
             ui.add(egui::ProgressBar::new(frac).text(format!("复制 {name} {got}/{total}")));
+        }
+        // 🔴〔第五刀〕取消那一颗 —— 有东西在飞才画（同 `DropBoard::ui` 那条理由）。
+        if !self.desk.in_flight_ids().is_empty() {
+            ui.horizontal(|ui| {
+                if ui.button(super::transfer::CANCEL_LABEL).clicked() {
+                    self.desk.request();
+                }
+                if self.desk.is_cancelled() {
+                    ui.label("已经按过取消了");
+                }
+            });
         }
         if let Some(o) = &last {
             let n = outcome_notice(o);

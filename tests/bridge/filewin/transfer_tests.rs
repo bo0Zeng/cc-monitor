@@ -531,3 +531,192 @@ fn our_concurrency_cap_is_the_pools_own_lane_count() {
          而两个地方一定会漂"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第五刀〕取消 —— `设计/99 §4.6.4` 单记的那一格
+// ════════════════════════════════════════════════════════════════════════
+//
+// # 这一摞分成四条，各钉一件
+//
+// | 判据 | 它钉的那一形 | 少了它会怎样 |
+// |---|---|---|
+// | `pressing_cancel_stops_every_transfer_that_had_not_started_yet` | **行为**：按下取消之后，还没起的那几件一件都不起 | 「UI 上标成停了」而字节照旧在走 |
+// | `a_run_that_is_never_cancelled_launches_every_single_item` | 🔴 **阴性对照** | 上一条可以靠「一件都不起」全绿 —— 那时这个窗口传不了任何东西 |
+// | `the_transfer_id_the_pool_gets_is_the_one_the_window_can_name` | 那个键**离开了适配器的栈** | 窗口说不出要取消哪一趟，画一颗按钮也没用（这一格正是第五刀之前的实况） |
+// | `cancelling_really_goes_through_the_pools_own_cancel_command` | **委派**给池子那条既有命令 | 自己另造一套取消（而池子里那面旗谁都不翻） |
+
+/// 🔴 **按下取消 ⇒ 还没起的那几件一件都不起**，而且整趟**真的收场**（不挂住）。
+///
+/// 台架：`lanes = 1` ⇒ 一件一件来。第 2 件起来的时候按取消
+/// ⇒ 后面那 8 件一件都不该进 `go`。
+///
+/// ⚠ 判的是 `go` 被调过几次（**相等**断言），不是看板上那句话 ——
+/// 「UI 上标成停了」与「真的停了」正是这一格要分开的两件事。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pressing_cancel_stops_every_transfer_that_had_not_started_yet() {
+    let board = DropBoard::default();
+    let desk = board.cancels();
+    let started = AtomicUsize::new(0);
+    let items: Vec<Pending> = (0..10).map(|i| p(&format!("f{i}"))).collect();
+
+    let out = run_drop(
+        items.clone(),
+        1,                        // 一件一件来，好让「第几件之后按取消」是确定的
+        |_| async move { false }, // 都不冲突 ⇒ 不问
+        |_| async move { Vec::new() },
+        |item| {
+            let d = desk.clone();
+            let inner = desk.clone();
+            let n = &started;
+            async move {
+                super::launch_unless_cancelled(&d, &item.name, |id| async move {
+                    let k = n.fetch_add(1, O::SeqCst) + 1;
+                    // 第 2 件起来之后按取消（＝ 用户点那颗按钮）。
+                    if k == 2 {
+                        let sent = inner.request();
+                        assert!(
+                            sent.contains(&id),
+                            "按取消时在飞的那几个键里没有这一趟自己的 `{id}` —— \
+                             那这一趟在池子那侧取消不掉"
+                        );
+                    }
+                    Ok(())
+                })
+                .await
+            }
+        },
+    )
+    .await;
+
+    assert_eq!(
+        started.load(O::SeqCst),
+        2,
+        "起过 {} 件 —— 按下取消之后还没起的那几件竟然照旧起了",
+        started.load(O::SeqCst)
+    );
+    assert_eq!(out.ok, 2, "成了的件数不对");
+    assert_eq!(
+        out.failed.len(),
+        8,
+        "被取消的那 8 件没有各自交回一句话 —— 静默跳过的话，\
+         `DropOutcome` 上「取消了」与「传完了」分不开"
+    );
+    for (_, why) in &out.failed {
+        assert_eq!(why, super::CANCELLED, "被取消那一件报的不是取消");
+    }
+    // 收场之后在飞表是空的（每一趟都摘掉了自己的登记）。
+    assert_eq!(board.cancels().in_flight_ids(), Vec::<String>::new());
+}
+
+/// 🔴 **阴性对照**：没人按取消 ⇒ **每一件都起**。
+///
+/// 没有这一条，上面那条可以靠「`launch_unless_cancelled` 一律拒」全绿 ——
+/// 而那时这个窗口一个文件都传不上去。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_run_that_is_never_cancelled_launches_every_single_item() {
+    let board = DropBoard::default();
+    let desk = board.cancels();
+    let started = AtomicUsize::new(0);
+    let items: Vec<Pending> = (0..10).map(|i| p(&format!("f{i}"))).collect();
+    let out = run_drop(
+        items,
+        1,
+        |_| async move { false },
+        |_| async move { Vec::new() },
+        |item| {
+            let d = desk.clone();
+            let n = &started;
+            async move {
+                super::launch_unless_cancelled(&d, &item.name, |_id| async move {
+                    n.fetch_add(1, O::SeqCst);
+                    Ok(())
+                })
+                .await
+            }
+        },
+    )
+    .await;
+    assert_eq!(started.load(O::SeqCst), 10);
+    assert_eq!(out.ok, 10);
+    assert!(out.failed.is_empty());
+}
+
+/// 🔴 **那个键离开了适配器的栈** —— 窗口说得出它是谁。
+///
+/// 第五刀之前 `upload_remote` 自己 `Uuid::new_v4()` 造键 ⇒ 那个键从没离开过
+/// 那个函数的栈 ⇒ 池子的取消登记表以它为键，而窗口手上没有它。
+/// 这一条钉的是「造键的落点只有一个，而且它在看板上」。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_transfer_id_the_pool_gets_is_the_one_the_window_can_name() {
+    let desk = super::CancelDesk::default();
+    let seen: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    for name in ["a", "b", "c"] {
+        // 起一趟：闸里造键、登记，`go` 收到的就是那个键。
+        let r = super::launch_unless_cancelled(&desk, name, |id| {
+            // 在飞的时候，看板上**看得见**这一趟。
+            assert_eq!(
+                desk.in_flight_ids(),
+                vec![id.clone()],
+                "在飞的那一趟不在看板上 —— 窗口就说不出要取消哪一趟"
+            );
+            assert_eq!(desk.in_flight_names(), vec![name.to_string()]);
+            seen.lock().unwrap().push(id);
+            async move { Ok(()) }
+        })
+        .await;
+        assert!(r.is_ok());
+    }
+    let ids = seen.lock().unwrap().clone();
+    assert_eq!(ids.len(), 3);
+    assert_eq!(desk.minted(), 3, "造键的处数与真起过的趟数不等");
+    // 🔴 **三个键互不相同** —— 同一个键会让两趟互相摘掉对方在池子里的登记
+    //    （`sftp_pool::register_cancel` 的注释逐字记着这一条）。
+    let uniq: std::collections::BTreeSet<&String> = ids.iter().collect();
+    assert_eq!(uniq.len(), 3, "造出了重复的 `transfer_id`：{ids:?}");
+    // 收场之后表是空的；而**取消照旧送得出去**（送的是当时在飞的那几个，此刻 0 个）。
+    assert_eq!(desk.in_flight_ids(), Vec::<String>::new());
+    assert_eq!(desk.request(), Vec::<String>::new());
+    assert!(desk.is_cancelled(), "按过取消，旗却没立起来");
+    // 复位 ⇒ 下一摞照旧起得来（不复位的话下一摞一件都起不来，而屏幕上像「没反应」）。
+    desk.reset();
+    assert!(!desk.is_cancelled());
+}
+
+/// 取消这一趟真的落到池子那条命令上 —— **委派**。
+///
+/// ⚠ 与本文件那条 `the_real_adapters_delegate_to_the_shared_pool` 同族、同边界：
+/// 判的是源码（代理），买的是「走的是池子那条既有命令」；
+/// **买不到**「一趟真传输在池子里真的停了」—— 那要一趟真连接。
+#[test]
+fn cancelling_really_goes_through_the_pools_own_cancel_command() {
+    let prod =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/transfer.rs"));
+    assert_eq!(
+        prod.matches("sftp_pool::sftp_cancel_transfer(").count(),
+        1,
+        "`sftp_pool::sftp_cancel_transfer(` 在生产段里不是恰好一处 —— \
+         多了就是长出了第二条取消路，少了就是这一条没接上"
+    );
+    // 造键的落点也只许有一个（否则会有一趟的键谁都不知道）。
+    assert_eq!(
+        prod.matches("Uuid::new_v4()").count(),
+        1,
+        "造 `transfer_id` 的地方不是恰好一处 —— 第五刀之前那一处在 `upload_remote` 里，\
+         而那正是「窗口说不出要取消哪一趟」的病根"
+    );
+    let copy = guard_core::production_code(include_str!("../../../src/bridge/src/filewin/copy.rs"));
+    assert!(
+        !copy.contains("Uuid::new_v4()"),
+        "`copy.rs` 又自己造了一个 `transfer_id` —— 那一趟复制的键就不在看板上了"
+    );
+}
+
+/// 取消台没有窗口也不 panic，而且 `forward_cancel` 对没注册过的 id 是 no-op。
+#[test]
+fn forwarding_a_cancel_for_an_unknown_id_is_harmless() {
+    // 没注册过的 id：池子那侧逐字是 no-op ⇒ 重复按取消无害。
+    super::forward_cancel(&["filewin-not-a-real-transfer".to_string()]);
+    let desk = super::CancelDesk::default();
+    assert_eq!(desk.request(), Vec::<String>::new());
+    assert_eq!(desk.minted(), 0);
+}

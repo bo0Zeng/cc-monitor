@@ -922,3 +922,415 @@ fn the_windows_branch_hands_process_dpi_to_tauri() {
          改回 `true` 就是把「两个主人」那条风险重新请回来"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第五刀 2026-09-21〕`设计/99 §4.6.4`：那四条写操作接在这一侧
+// ════════════════════════════════════════════════════════════════════════
+
+/// 一行**目录**（第五刀起目录也能改名/删除/改权限，只是不能复制）。
+fn dir_row(name: &str) -> Row {
+    Row {
+        name: name.to_string(),
+        path: format!("/srv/data/{name}"),
+        is_dir: true,
+        size: 0,
+        lossy_name: false,
+    }
+}
+
+fn lossy_row() -> Row {
+    Row {
+        name: "\u{FFFD}odd".into(),
+        path: "/srv/data/\u{FFFD}odd".into(),
+        is_dir: false,
+        size: 1,
+        lossy_name: true,
+    }
+}
+
+/// 🔴 **胶水三跳有判据了**：列表说「第 i 行的改名 / 权限 / 删除被点了」→ 窗口接上去。
+///
+/// 与 `a_copy_click_from_the_list_puts_up_the_rename_box_for_that_row` 逐字同一个理由：
+/// 两头各自都有判据，而这三跳写在 `frame_body` 里的话**谁都没在看**。
+#[test]
+fn a_write_click_from_the_list_reaches_the_right_row() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin"), dir_row("sub")]);
+    assert!(w.write_prompt().is_none(), "什么都没点就摆出了框");
+    assert!(!w.apply_write_clicks(None), "没人点却说接上了一跳");
+
+    // 改名：点第 1 行（那是个**目录** —— 目录也能改名）。
+    w.tally.rename_clicked = Some(1);
+    assert!(
+        w.apply_write_clicks(None),
+        "第 1 行的改名被点了，框却没摆出来"
+    );
+    let p = w.write_prompt().expect("框不见了").clone();
+    assert_eq!(p.src_name, "sub");
+    assert_eq!(p.dir, "/srv/data");
+    assert_eq!(p.text, "sub", "改名那个框没预填原名");
+    assert_eq!(
+        p.to_op().unwrap_err().is_empty(),
+        false,
+        "预填原名之后直接确定应当被拒（没有要改的东西）"
+    );
+
+    // 权限：点第 0 行。
+    w.tally = crate::filewin::rows::RenderTally::default();
+    w.cancel_write();
+    w.tally.chmod_clicked = Some(0);
+    assert!(w.apply_write_clicks(None));
+    let p = w.write_prompt().expect("框不见了").clone();
+    assert_eq!(p.src_name, "a.bin");
+    assert_eq!(p.text, "", "权限那个框预填了东西 —— 那必然是猜的");
+}
+
+/// 🔴 **删除不经那个框** —— 它直接起一摞，确认那一步归「一次问完」。
+///
+/// 这个窗口没有运行时 ⇒ 它起不来，而它必须**出声**（不许静默吞掉一次删除）。
+#[test]
+fn a_delete_click_goes_straight_to_the_batch_and_says_so_when_it_cannot_run() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    w.tally.delete_clicked = Some(0);
+    assert!(!w.apply_write_clicks(None), "没有运行时却说起得来");
+    assert!(
+        w.write_prompt().is_none(),
+        "删除竟然摆出了一个「叫什么名字」的框"
+    );
+    let e = w
+        .listing
+        .error
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("一次删除被吞了，屏幕上一句话都没有");
+    assert!(e.contains("运行时"), "报的不是「没有运行时」：{e}");
+}
+
+/// 有损名 · 越界下标 —— **两档都不接**（第二道闸，防「按钮没了、调用还在」）。
+#[test]
+fn a_lossy_name_or_an_out_of_range_row_is_refused_by_the_second_gate() {
+    let mut w = remote_window_with_rows("/srv/data", vec![lossy_row()]);
+    for i in [0usize, 99] {
+        assert!(!w.begin_rename(i), "第 {i} 行竟然摆出了改名框");
+        assert!(!w.begin_chmod(i), "第 {i} 行竟然摆出了权限框");
+        assert!(!w.begin_delete(i, None), "第 {i} 行竟然起了一摞删除");
+    }
+    assert!(w.write_prompt().is_none());
+}
+
+/// 本机那一侧**四条都拒，而且出声** —— 它们走的是远端那四条 SFTP 命令。
+#[test]
+fn the_local_side_refuses_all_four_write_ops_and_says_why() {
+    let (root, _) = synth_tree("writelocal");
+    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    for (what, refused) in [
+        ("新建目录", {
+            *w.listing.error.lock().unwrap() = None;
+            !w.begin_mkdir()
+        }),
+        ("改名", {
+            *w.listing.error.lock().unwrap() = None;
+            !w.begin_rename(0)
+        }),
+        ("权限", {
+            *w.listing.error.lock().unwrap() = None;
+            !w.begin_chmod(0)
+        }),
+        ("删除", {
+            *w.listing.error.lock().unwrap() = None;
+            !w.begin_delete(0, None)
+        }),
+    ] {
+        assert!(refused, "本机那一侧竟然接了「{what}」");
+        assert!(
+            w.listing.error.lock().unwrap().is_some(),
+            "本机那一侧点了「{what}」，屏幕上一句话都没有 —— 与「点了没反应」分不开"
+        );
+    }
+    assert!(w.write_prompt().is_none());
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 🔴 输入不合法 ⇒ **框留着 ＋ 出声**，不静默收掉（同 `confirm_copy` 那一条）。
+#[test]
+fn an_impossible_input_keeps_the_write_box_up_and_says_why() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    assert!(w.begin_mkdir());
+    for bad in ["", "   ", "sub/x", "..", "."] {
+        *w.listing.error.lock().unwrap() = None;
+        w.write_prompt.as_mut().unwrap().text = bad.to_string();
+        assert!(!w.confirm_write(None), "「{bad}」这个名字竟然起得来");
+        assert!(
+            w.write_prompt().is_some(),
+            "「{bad}」被拒了，框却收掉了 —— 用户会以为它做了"
+        );
+        assert!(
+            w.listing.error.lock().unwrap().is_some(),
+            "「{bad}」被拒了却一句话都没说"
+        );
+    }
+    // 反空真：换一个能用的名字，它就不再卡在「名字不合法」这一支上
+    //（这个窗口没有运行时 ⇒ 它卡在下一支，而那一支说的是另一件事）。
+    *w.listing.error.lock().unwrap() = None;
+    w.write_prompt.as_mut().unwrap().text = "newdir".to_string();
+    assert!(!w.confirm_write(None), "没有运行时却说起得来");
+    let e = w.listing.error.lock().unwrap().clone().unwrap();
+    assert!(
+        e.contains("运行时"),
+        "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「输入」这一维"
+    );
+    w.cancel_write();
+    assert!(w.write_prompt().is_none());
+}
+
+/// 一摞写操作跑完要重列目录（新目录要出现、删掉的要消失），而且**只重列一次**。
+#[test]
+fn finishing_a_write_round_triggers_exactly_one_reload() {
+    let (root, _) = synth_tree("writeround");
+    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    assert!(!w.settle_finished_writes(), "一摞都没跑却说要重列");
+    w.write_board
+        .finish(crate::filewin::writeops::WriteOutcome::default());
+    assert!(w.settle_finished_writes(), "跑完一摞却不重列");
+    assert!(!w.settle_finished_writes(), "同一摞重列了第二次");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 🔴 **被围栏挡住那句话真的被画在窗口上**（不是 `tracing`）。
+///
+/// 判据从 egui 这一帧真的交出去的 galley 里把那句话读回来 ——
+/// 一条 `assert!(src.contains("colored_label"))` 在那一行被 `if false` 包住时照样绿
+/// （量具与它买不到什么住 `copy::testing`）。
+///
+/// ⚠ 这一条是完成判据「围栏那一条要有阴性对照 …… 而且窗口上**要出声**」的那半。
+#[test]
+fn the_fence_line_really_gets_painted_on_the_window() {
+    let (root, _) = synth_tree("writefence");
+    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    let ctx = egui::Context::default();
+    let blocked = crate::filewin::writeops::fence_notice(
+        &crate::filewin::writeops::WriteOp::Delete {
+            path: "/home/u/.claude/projects/p/s.jsonl".into(),
+            is_dir: false,
+        },
+        "/home/u/.claude/projects/p/s.jsonl",
+    );
+    // 先跑一帧把字体图集建起来（同 `rows_tests` 那条口径）。
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    w.write_board
+        .finish(crate::filewin::writeops::WriteOutcome {
+            blocked: vec![blocked.clone()],
+            ..Default::default()
+        });
+    let painted = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    assert!(
+        painted.iter().any(|t| t == &blocked),
+        "这一帧上没有被挡那句话。画出来的是：{painted:?}"
+    );
+    // 反空真：这把尺子不是「凡什么话都说画出来了」。
+    assert!(
+        !painted.iter().any(|t| t.contains("这句话根本没人画过它")),
+        "量具在乱认"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 🔴 **命中那一摞交不出任何一个下标** —— 那三条写胶水索引的是另一摞东西。
+///
+/// # 它接的是 `rows::show_hit_rows` 头注那条纪律
+///
+/// 第四刀靠的是「那个函数不画可点控件」；第五刀行上多了三颗**写**按钮
+/// ⇒ 代价从「复制到错的地方」升级成「**删错东西**」，于是换成了**类型**
+/// （命中那一摞的收数口是 `HitTally`，里面没有「谁被点了」这个字段）。
+///
+/// 本条真跑一帧**生产那个** `frame_body`（搜索框里有字 ⇒ 走命中那一支），
+/// 断言两件事：① 命中真的画出来了（行数 > 0，不是空转）；
+/// ② `tally` 逐字节等于默认值 ⇒ 那三条胶水这一帧接不到任何东西。
+#[test]
+fn the_hit_list_can_never_hand_the_window_a_row_index() {
+    let ctx = egui::Context::default();
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin"), dir_row("sub")]);
+    // 先在搜索框里打一段字 ⇒ `showing_hits()` 为真。
+    crate::filewin::find::testing::type_into_search(&ctx, &mut w, "bin");
+    assert!(w.showing_hits(), "搜索框里没字，下面判的就是目录列表那一支");
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    // 命中那一摞这一帧画了几行（喂一份合成命中）。
+    let hits: Vec<String> = (0..5).map(|i| format!("/deep/dir/h{i}.bin")).collect();
+    let mut t = crate::filewin::rows::HitTally::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 800.0),
+        )),
+        ..Default::default()
+    };
+    let out = ctx.run_ui(input, |ui| {
+        crate::filewin::rows::show_hit_rows(ui, &hits, &mut t)
+    });
+    out.drop_without_applying_deltas();
+    assert_eq!(t.rows_materialized, 5, "命中一行都没画 —— 下面那一比在空转");
+    // ⇒ 而这一趟**一个下标都没交出来**：`HitTally` 里压根没有那种字段。
+    //   与目录列表那一支对照（那一支交得出来）—— 那正是这一条要分开的两件事。
+    let mut rt = crate::filewin::rows::RenderTally::default();
+    let rows = vec![file_row("a.bin")];
+    let out = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 800.0),
+            )),
+            ..Default::default()
+        },
+        |ui| crate::filewin::rows::show_file_rows(ui, &rows, &mut rt, Some(0.0)),
+    );
+    out.drop_without_applying_deltas();
+    assert_eq!(rt.rows_materialized, 1);
+    // 🔴 生产那一帧走命中那一支时，`tally` 逐字节就是默认值。
+    assert_eq!(
+        w.tally,
+        crate::filewin::rows::RenderTally::default(),
+        "走命中那一支的那一帧，`tally` 里竟然有东西 —— 那三条写胶水就会拿那个下标\
+         去索引 `listing.rows`（另一摞东西）"
+    );
+    assert!(
+        w.hits_tally.rows_materialized > 0 || w.hits_tally.total_rows == 0,
+        "命中那一摞的收数口没接上"
+    );
+}
+
+/// 起一摞真的走 `writeops::run_writes`，而**不是**在窗口里另写一套确认流。
+///
+/// ⚠ 判源码是代理（同族先例：`transfer_tests::the_real_adapters_delegate_to_the_shared_pool`）。
+/// 买的是：多选长出来那天，它自动落在「一次问完」那条路上。
+#[test]
+fn the_window_starts_a_batch_through_the_shared_three_step_function() {
+    let prod =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/shell.rs"));
+    assert_eq!(
+        prod.matches("writeops::run_writes(").count(),
+        1,
+        "`writeops::run_writes(` 在 `shell.rs` 生产段里不是恰好一处 —— \
+         多了就是长出了第二条确认流，少了就是这一条被绕过了"
+    );
+    assert_eq!(
+        prod.matches("writeops::apply_remote(").count(),
+        1,
+        "做一件的落点不是恰好一处"
+    );
+    // 🔴 窗口自己**不许**直接调那四条池命令 —— 它们只许经 `apply_remote` 走。
+    for banned in [
+        "sftp_pool::sftp_mkdir",
+        "sftp_pool::sftp_delete",
+        "sftp_pool::sftp_rename",
+        "sftp_pool::sftp_chmod",
+    ] {
+        assert!(
+            !prod.contains(banned),
+            "`shell.rs` 直接调了 `{banned}` —— 那条路绕开了 `run_writes` 的围栏与「一次问完」"
+        );
+    }
+}
+
+/// 🔴🔴 **整条链一趟走完**：真点一下行上那颗「删除」→ 围栏挡住 → 屏幕上有话。
+///
+/// # 它是这一摞里唯一一条**不跳任何一跳**的判据
+///
+/// 别的几条各钉一段：`rows_tests` 钉「点得到」、`shell_tests` 钉那三条胶水、
+/// `writeops_tests` 钉三段的顺序。**而「它们真的串在一起」此前谁都没在看** ——
+/// 那正是本仓那条「判据不在执行链上就等于不存在」（波 β 现打：`frame_body`
+/// 被剥出来之前，这个窗口每一帧真正画的那段代码一条判据都没有）。
+///
+/// 本条走的是生产那一条：
+/// `frame_body` → `show_file_rows`（真合成事件）→ `RenderTally::delete_clicked`
+/// → `apply_write_clicks` → `begin_delete` → `start_writes` → `run_writes`
+/// → 围栏 → `WriteBoard::finish`。
+///
+/// # 🔴 为什么它不需要一条连接（而仍然是真读数）
+///
+/// 喂的那一行是一条**受保护路径**（`projects/<proj>/<sid>.jsonl`）⇒ `run_writes`
+/// 的第一段在本地就把它挡了，`apply` 一次都不被调 ⇒ **一个 packet 都不发**。
+/// ⇒ 这一条同时是完成判据里「对一个受保护路径发删除 ⇒ 必须被挡」的**端到端**那一版。
+///
+/// ⚠ 买不到：真机上鼠标点得到（本机无图形会话，喂的是合成事件）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
+    use crate::filewin::writeops::{DELETE_LABEL, FENCE_PREFIX};
+    let jsonl = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("e2e-fence"))),
+        "/home/u/.claude/projects/dash-proj".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![Row {
+            name: "abc-123.jsonl".into(),
+            path: jsonl.into(),
+            is_dir: false,
+            size: 12,
+            lossy_name: false,
+        }],
+    );
+    assert!(w.rt.is_some(), "这一条要一个运行时，否则它卡在另一支上");
+    let ctx = egui::Context::default();
+
+    // 第一帧：建字体图集 ＋ 让上一帧的 widget 表有内容（命中测试按上一帧做）。
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let painted = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, DELETE_LABEL);
+    assert_eq!(
+        buttons.len(),
+        1,
+        "这一帧上没有那颗「{DELETE_LABEL}」—— 行上那三颗写按钮没画出来，\
+         或者 `frame_body` 走的是命中那一支"
+    );
+    let pos = buttons[0].center();
+
+    // 第二帧：移到按钮上；第三帧：真点下去 ⇒ 整条链在这一帧里跑完前半。
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.2,
+        vec![egui::Event::PointerMoved(pos)],
+        |ui| w.frame_body(ui),
+    );
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.3,
+        crate::filewin::rows::testing::click_at(pos),
+        |ui| w.frame_body(ui),
+    );
+
+    // 那一摞是异步跑的 ⇒ 等它落地（**不靠睡一个猜出来的时长**：等那个可观测的数）。
+    for _ in 0..200 {
+        if w.write_board.rounds() > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let out = w.write_board.last().expect(
+        "点了「删除」，那一摞一趟都没跑完 —— 胶水那一跳断了（`apply_write_clicks` 没接上），\
+                 或者 `frame_body` 没调它",
+    );
+    assert_eq!(
+        out.blocked.len(),
+        1,
+        "受保护路径上那一件没被挡，实得 {out:?} —— \
+         围栏那一段要么被绕过了，要么它没看这条路径"
+    );
+    assert!(
+        out.blocked[0].starts_with(FENCE_PREFIX) && out.blocked[0].contains(jsonl),
+        "被挡那句话不对：{}",
+        out.blocked[0]
+    );
+    // 🔴 一个字节都没动过对面的盘：`apply` 一次都没被调 ⇒ 既没成功也没失败。
+    assert_eq!(out.ok, 0);
+    assert!(out.failed.is_empty(), "实得 {:?}", out.failed);
+    // 而且**没问过人**：那一问会教用户「这是可以删的」，答完了它照样做不了。
+    assert_eq!(out.asked, 0, "受保护的那一件被摆到人面前问了");
+    assert!(!w.write_board.is_asking());
+}
