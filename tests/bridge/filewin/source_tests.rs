@@ -146,13 +146,21 @@ fn the_remote_path_delegates_to_the_shared_pool_instead_of_rolling_its_own() {
 fn the_whole_filewin_tree_has_exactly_one_way_to_list_a_remote_directory() {
     let root = crate::guard_support::crate_src_root().join("filewin");
     let files = guard_core::files_by_extension(&root, "rs");
-    // 反空真①：扫描面没塌。这棵树今天 7 份（corpus/entry/mod/rows/scale/shell/source/transfer）。
+    // 反空真①：扫描面没塌。这棵树今天 **9** 份
+    //（copy/corpus/entry/mod/rows/scale/shell/source/transfer）——
+    //〔第三刀 09-20〕`copy.rs` 进来之后从 8 变 9，这个地板跟着抬。
     assert!(
-        files.len() >= 7,
+        files.len() >= 9,
         "`filewin/` 下只扫到 {} 份 `.rs`（{files:?}）—— 扫描面塌了，下面几条在空转",
         files.len()
     );
-    for must in ["source.rs", "shell.rs", "entry.rs", "transfer.rs"] {
+    for must in [
+        "source.rs",
+        "shell.rs",
+        "entry.rs",
+        "transfer.rs",
+        "copy.rs",
+    ] {
         assert!(
             files.iter().any(|f| f == must),
             "扫描面里没有 `{must}` —— 抽取器坏了"

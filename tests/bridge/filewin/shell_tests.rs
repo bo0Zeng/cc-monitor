@@ -337,3 +337,157 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
     assert!(!w.settle_finished_drops(), "同一趟重列了第二次");
     std::fs::remove_dir_all(&root).ok();
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 第三刀 · 零流量复制在窗口这一侧接得上吗
+// ════════════════════════════════════════════════════════════════════════
+
+/// 造一个「看着某个远端目录、列表里有几行」的窗口。**不起连接**
+/// （`host` 是 `.invalid`，而且这几条一次 `reload` 都不触发远端那一支）。
+fn remote_window_with_rows(cwd: &str, rows: Vec<Row>) -> FileWindow {
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("r"))),
+        cwd.to_string(),
+        None,
+        rows,
+    );
+    *w.listing.error.lock().unwrap() = None;
+    w.tally = crate::filewin::rows::RenderTally::default();
+    w
+}
+
+fn file_row(name: &str) -> Row {
+    Row {
+        name: name.to_string(),
+        path: format!("/srv/data/{name}"),
+        is_dir: false,
+        size: 9,
+        lossy_name: false,
+    }
+}
+
+/// 🔴 **胶水那一跳有判据了**：列表说「第 i 行的复制被点了」→ 窗口摆出「复制为」框。
+///
+/// ⚠ 它判的正是 `show_file_rows` 与 `begin_copy` **中间**那一跳 ——
+/// 两头各自都有判据，而这一跳写在 `ui()` 里的话谁都没在看
+/// （第一刀栽过的那一形：判据钉的是副本，生产那一份没人管）。
+#[test]
+fn a_copy_click_from_the_list_puts_up_the_rename_box_for_that_row() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin"), file_row("b.bin")]);
+    assert!(w.copy_prompt().is_none(), "什么都没点就摆出了框");
+    assert!(!w.apply_copy_click(), "没人点却说摆出来了");
+
+    w.tally.copy_clicked = Some(1);
+    assert!(w.apply_copy_click(), "第 1 行的复制被点了，框却没摆出来");
+    let p = w.copy_prompt().expect("框不见了");
+    // 相等断言，逐项：摆的是**那一行**、目标落在**当前目录**、缺省名同旧面板。
+    assert_eq!(p.from, "/srv/data/b.bin");
+    assert_eq!(p.src_name, "b.bin");
+    assert_eq!(p.dir, "/srv/data");
+    assert_eq!(p.new_name, "b.bin.copy");
+}
+
+/// 目录 · 有损名 · 越界下标 —— 三档都**不摆框**（第二道闸，防「按钮没了、调用还在」）。
+#[test]
+fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
+    let dir = Row {
+        name: "adir".into(),
+        path: "/srv/data/adir".into(),
+        is_dir: true,
+        size: 0,
+        lossy_name: false,
+    };
+    let lossy = Row {
+        name: "\u{FFFD}odd".into(),
+        path: "/srv/data/\u{FFFD}odd".into(),
+        is_dir: false,
+        size: 1,
+        lossy_name: true,
+    };
+    let mut w = remote_window_with_rows("/srv/data", vec![dir, lossy]);
+    assert!(!w.begin_copy(0), "目录也摆出了「复制为」框");
+    assert!(!w.begin_copy(1), "有损名也摆出了「复制为」框");
+    assert!(!w.begin_copy(99), "越界下标也摆出了框（或者 panic 了）");
+    assert!(w.copy_prompt().is_none());
+}
+
+/// 本机那一侧**出声**：`copy-data` 是 SFTP 协议的扩展，本机复制压根不经 SFTP。
+#[test]
+fn the_local_side_refuses_to_copy_and_says_why() {
+    let (root, _) = synth_tree("copylocal");
+    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    *w.listing.error.lock().unwrap() = None;
+    assert!(!w.begin_copy(1), "本机那一侧竟然摆出了「复制为」框");
+    assert!(
+        w.listing.error.lock().unwrap().is_some(),
+        "本机那一侧点了复制，屏幕上一句话都没有 —— 那与「点了没反应」分不开"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 接不上就**出声**：远端源 ＋ 没有运行时 ⇒ 不许静默吞掉一趟复制。
+#[test]
+fn a_copy_with_no_runtime_says_so_instead_of_doing_nothing() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    let job = crate::filewin::copy::CopyJob::beside("/srv/data/a.bin", "/srv/data", "a.bin.copy")
+        .expect("这个名字应当是合法的");
+    assert!(!w.start_copy(job, None), "没有运行时却说起得来");
+    assert!(
+        w.listing.error.lock().unwrap().is_some(),
+        "一趟复制被吞了，屏幕上一句话都没有"
+    );
+}
+
+/// 🔴 名字不合法 ⇒ **框留着 ＋ 出声**，不静默收掉。
+///
+/// 收掉的话用户点了「复制」什么都没发生，与「已经开始复制了」长得一模一样。
+#[test]
+fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    w.tally.copy_clicked = Some(0);
+    assert!(w.apply_copy_click());
+
+    for bad in ["", "   ", "sub/a.bin", "a.bin"] {
+        *w.listing.error.lock().unwrap() = None;
+        w.copy_prompt.as_mut().unwrap().new_name = bad.to_string();
+        assert!(!w.confirm_copy(None), "「{bad}」这个名字竟然起得来");
+        assert!(
+            w.copy_prompt().is_some(),
+            "「{bad}」被拒了，框却收掉了 —— 用户会以为复制开始了"
+        );
+        assert!(
+            w.listing.error.lock().unwrap().is_some(),
+            "「{bad}」被拒了却一句话都没说"
+        );
+    }
+    // 反空真：换一个能用的名字，它就不再卡在「名字不合法」这一支上
+    //（这个窗口没有运行时 ⇒ 它会卡在下一支，而那一支说的是另一件事）。
+    *w.listing.error.lock().unwrap() = None;
+    w.copy_prompt.as_mut().unwrap().new_name = "a.bin.copy".to_string();
+    assert!(!w.confirm_copy(None), "没有运行时却说起得来");
+    let e = w.listing.error.lock().unwrap().clone().unwrap();
+    assert!(
+        e.contains("运行时"),
+        "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「名字」这一维"
+    );
+    // 取消把框收掉。
+    w.cancel_copy();
+    assert!(w.copy_prompt().is_none());
+}
+
+/// 复制跑完一趟要重列目录（复制出来的那份得出现），而且**只重列一次**。
+#[test]
+fn finishing_a_copy_round_triggers_exactly_one_reload() {
+    let (root, _) = synth_tree("copyround");
+    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    assert!(!w.settle_finished_copies(), "一趟都没跑却说要重列");
+
+    w.copy_board
+        .finish(crate::filewin::copy::CopyOutcome::Done {
+            asked: false,
+            verdict: None,
+        });
+    assert!(w.settle_finished_copies(), "跑完一趟却不重列");
+    assert!(!w.settle_finished_copies(), "同一趟重列了第二次");
+    std::fs::remove_dir_all(&root).ok();
+}

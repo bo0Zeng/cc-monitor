@@ -1,5 +1,10 @@
-use super::testing::{click_at, render_headless_nonvirtual, render_headless_with_events};
+use super::testing::{
+    click_at, render_headless_nonvirtual, render_headless_with_events,
+    render_headless_with_events_and_text,
+};
 use super::*;
+use crate::filewin::copy::testing::rects_of;
+use crate::filewin::copy::{is_copyable, COPY_LABEL};
 use crate::filewin::corpus;
 
 /// 1280×800，与 `真相源/99` 那趟原型同一个视口。
@@ -174,6 +179,132 @@ fn a_frame_with_no_input_reports_no_click() {
         one.clicked, None,
         "单击就进目录了 —— 旧面板是双击进（`panel.ts` 的 `dblclick`），别让两个面板两套手感"
     );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 第三刀：行上那颗「复制」—— 点得到，而且**没被整行那块矩形吞掉**
+// ════════════════════════════════════════════════════════════════════════
+
+/// 四行，四档齐：目录 · 两个普通文件 · 一个有损名。
+fn mixed_rows() -> Vec<Row> {
+    let mk = |name: &str, is_dir: bool, lossy: bool, size: u64| Row {
+        name: name.to_string(),
+        path: format!("/srv/{name}"),
+        is_dir,
+        size,
+        lossy_name: lossy,
+    };
+    vec![
+        mk("adir", true, false, 0),
+        mk("one.bin", false, false, 10),
+        mk("two.bin", false, false, 20),
+        mk("\u{FFFD}odd", false, true, 30),
+    ]
+}
+
+/// 🔴 **只有能复制的那几行才有那颗按钮** —— 相等断言，两侧都从同一个地方来：
+/// 画出来的「复制」几个 · `is_copyable` 说有几个。
+///
+/// ⚠ 判的是**画出来的东西**，不是「源码里有个 `if is_copyable`」。
+#[test]
+fn only_the_copyable_rows_get_a_copy_button_painted() {
+    let ctx = egui::Context::default();
+    let rows = mixed_rows();
+    let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
+    let (tally, painted) =
+        render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
+    assert_eq!(tally.rows_materialized, 4, "四行没画全，下面的数就没意义");
+    assert!(
+        !painted.is_empty(),
+        "这一帧一个字都没画出来 —— 量具塌了，下面那一比在空转"
+    );
+
+    let want = rows.iter().filter(|r| is_copyable(r)).count();
+    assert_eq!(want, 2, "语料自己变了：能复制的行数应当是 2");
+    let got = rects_of(&painted, COPY_LABEL);
+    assert_eq!(
+        got.len(),
+        want,
+        "画出来 {} 颗「{COPY_LABEL}」，而 `is_copyable` 说有 {want} 行能复制 —— \
+         目录或有损名那两档上长出了一颗不该有的按钮（或者能复制的那几行少了一颗）",
+        got.len()
+    );
+    // 反空真：它们在两行不同的位置上（不是同一颗被数了两遍）。
+    assert!(got[0].center().y < got[1].center().y);
+}
+
+/// 🔴 **这一刀的核心判据**：点那颗「复制」，回来的是**那一行**的下标。
+///
+/// 它同时是那条真缺陷的钉子：整行那块命中矩形要是拉满整行宽，
+/// egui 在平手时取**后登记**的那一个（`egui-0.36.2/src/hit_test.rs` 逐字
+/// 「In case of a tie, take the last one = the one on top」）⇒ 按钮恒 false，本条当场红。
+///
+/// ⚠ 买的是「egui 收到这样一串事件之后认出来的是哪一个控件」；
+/// **买不到**「真机上鼠标点得到」（本机 `XDG_SESSION_TYPE=tty`，没有真事件源）。
+#[test]
+fn clicking_the_copy_button_comes_back_as_that_rows_index() {
+    let ctx = egui::Context::default();
+    let rows = mixed_rows();
+    // 先跑两帧：建字体图集 ＋ 让上一帧的 widget 表有内容（命中测试按上一帧做）。
+    let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
+    let (_, painted) = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
+
+    let buttons = rects_of(&painted, COPY_LABEL);
+    assert_eq!(buttons.len(), 2, "没找到那两颗按钮，下面按坐标点没意义");
+
+    // 第二颗 = 第 2 行（`two.bin`；第 0 行是目录、第 1 行是 `one.bin`）。
+    let pos = buttons[1].center();
+    let _ = render_headless_with_events(
+        &ctx,
+        &rows,
+        screen(),
+        0.2,
+        vec![egui::Event::PointerMoved(pos)],
+    );
+    let hit = render_headless_with_events(&ctx, &rows, screen(), 0.3, click_at(pos));
+
+    assert_eq!(
+        hit.copy_clicked,
+        Some(2),
+        "点在第 2 行那颗「{COPY_LABEL}」上，`copy_clicked` 却是 {:?} —— \
+         `None` 多半是整行那块命中矩形把按钮盖住了（它是后登记的，平手时它赢）",
+        hit.copy_clicked
+    );
+    // 点按钮**不许**同时被读成「双击进目录」。
+    assert_eq!(hit.clicked, None, "点一颗按钮竟然还顺手进了目录");
+}
+
+/// 🔴 **另一侧**：让开按钮之后，名字那一段**照旧**双击进目录。
+///
+/// 没有这一条，「让开」可以退化成「整行那块矩形干脆不要了」——
+/// 那样上面那条照样绿，而双击进目录悄悄没了。
+#[test]
+fn making_way_for_the_button_does_not_kill_the_rest_of_the_row() {
+    let ctx = egui::Context::default();
+    let rows = mixed_rows();
+    let _ = render_headless_with_events(&ctx, &rows, screen(), 0.0, Vec::new());
+
+    // 第 1 行（`one.bin`，有按钮）名字那一段：x=60 在图标/名字上，远在按钮左边。
+    let y = 1.5 * (ROW_HEIGHT + 4.0);
+    let pos = egui::pos2(60.0, y);
+    let _ = render_headless_with_events(
+        &ctx,
+        &rows,
+        screen(),
+        0.1,
+        vec![egui::Event::PointerMoved(pos)],
+    );
+    let _ = render_headless_with_events(&ctx, &rows, screen(), 0.2, click_at(pos));
+    let second = render_headless_with_events(&ctx, &rows, screen(), 0.3, click_at(pos));
+
+    let got = second
+        .clicked
+        .expect("名字那一段双击不回任何行 —— 整行那块命中矩形被让没了");
+    assert!(
+        got.abs_diff(1) <= 1,
+        "点在第 1 行的名字上，认出来的是第 {got} 行"
+    );
+    assert_eq!(second.copy_clicked, None, "点名字竟然算成点了「复制」");
 }
 
 #[test]
