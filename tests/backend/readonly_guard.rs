@@ -2759,6 +2759,12 @@ mod g6_dependency_signoff {
             "分叉的记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
         ),
         (
+            "claude-fence-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "Claude 数据围栏那**一个**判定（`is_protected_claude_data_path` ＋ `guard_write`），             与 monitor 共用同一份。仓内 crate、**零依赖**、语料只有一个路径字符串 ——              没有连接、没有 IO、没有 async，现打 0 处写面。             🔴 它进后端是因为用户 2026-09-22 裁定「允许」后端在用户显式操作下写用户选的路径             （`设计/60 §8.3`）⇒ 那道围栏要由**拥有那份数据的那台机器**执行。             ⚠ 它自己**不写**任何东西 —— 它只回答「这条路径能不能写」。真正写的那一面             是另一件事，落在后端自己那个写模块上，由本文件的白名单层单独管",
+        ),
+        (
             GATED_CRATE,
             DEPS,
             MEASURED_WRITES,

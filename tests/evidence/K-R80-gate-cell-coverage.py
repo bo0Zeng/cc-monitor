@@ -467,7 +467,7 @@ cell(
     #   而 `gate.sh` 现打是 `run_gate_sum cargo 9`（workspace 长到 9 个成员那天没人回来改）。
     #   ⇒ 本尺子在**本件动它之前**就红着一条 `C2`（现打读数住
     #   `evidence/K-R115-deathvalue.md#§E`）。这不是本件弄红的，是本件顺手量到的。
-    anchor="run_gate_sum cargo 9 bash -c",
+    anchor="run_gate_sum cargo 10 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --exclude code-picture-core --lib",
     **{

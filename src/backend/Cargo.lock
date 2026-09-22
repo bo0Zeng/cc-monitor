@@ -223,6 +223,7 @@ version = "0.0.0"
 dependencies = [
  "acct-core",
  "branch-core",
+ "claude-fence-core",
  "codex-token-core",
  "creds-core",
  "gate-core",
@@ -292,6 +293,10 @@ dependencies = [
  "inout 0.2.2",
  "zeroize",
 ]
+
+[[package]]
+name = "claude-fence-core"
+version = "0.1.0"
 
 [[package]]
 name = "cmov"
