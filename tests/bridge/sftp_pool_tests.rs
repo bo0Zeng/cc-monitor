@@ -176,3 +176,97 @@ fn the_chmod_mode_is_masked_down_to_permission_bits() {
         "setuid/setgid/sticky 被掩掉了 —— 掩码收得过紧"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔2026-09-21〕下载的**本机落点**也过那道围栏 —— 而这一格此前是空的
+// ════════════════════════════════════════════════════════════════════════
+//
+// # 洞是怎么活下来的：三张账首尾相接地推诿，链子末端一句假话
+//
+// | 站 | 它说什么 | 真假 |
+// |---|---|---|
+// | `remote_write_registry::NON_WRITING_COMMANDS` | 「写的是本机 ⇒ 不需要 Claude 数据围栏（那道围栏管的是**远端**那台机器上的文件）」 | 🔴 **假** —— `claude_data_fence` 头注写着 F03b 那一路用它判的正是一条**本机**路径 |
+// | `remote_write_registry::REMOTE_WRITES` | 「本机侧那个问题属 `write_site_registry` 的管辖面，不在本表」 | 转手 |
+// | `write_site_registry` | 「把远端文件落到**本地缓存**；写的**不是用户既有环境**」 | 🔴 **假** —— `local_path` 由用户在保存对话框里给，指哪写哪 |
+//
+// ⇒ 实况：把一个远端文件下载到 `~/.claude/projects/<proj>/<sid>.jsonl`，
+// `download_inner` 先写 `.part` 再 `rename`，**原子地盖掉**那条会话记录。
+// 老面板与原生窗口两条路都走它 ⇒ 围栏补在池子那一层，两条路一起修。
+//
+// ⚠ **这一摞不起任何连接**：`host` 是 `.invalid`（RFC 2606 保留域），DNS 就解不出来。
+
+/// 🔴 踩线的本机落点 ⇒ 回的是**围栏那句话**，不是连接失败那句话。
+///
+/// # 为什么要判「是哪一句」而不只判「报错了」
+///
+/// 只判「报错了」买不到东西：在这台合成远端上**任何**下载都会失败（DNS 解不出来）
+/// ⇒ 一个完全没有围栏的实现照样绿。判**那一句**才能分开两件事，
+/// 而那正是「围栏排在拨线之前」这条性质在行为侧的唯一抓手。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_download_onto_a_live_session_file_is_refused_by_the_fence_not_by_the_network() {
+    let cfg = crate::ssh_source::RemoteConfig {
+        host: "example.invalid".into(),
+        label: "fence-dl".into(),
+        port: 22,
+        user: "nobody".into(),
+        key_path: None,
+        backend_path: "/nonexistent".into(),
+        host_key_fingerprint: None,
+        addresses: Vec::new(),
+        jump: None,
+    };
+    // 同进程现造一条进度通道（同 `filewin::transfer::upload_remote` 那个写法）。
+    let chan = || tauri::ipc::Channel::new(|_body| Ok(()));
+
+    // 夹具自证：这条路径**真的**被那道判定认作受保护（否则本条在量别的东西）。
+    let protected = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
+    assert!(
+        crate::claude_data_fence::is_protected_claude_data_path(protected),
+        "夹具那条路径不被判定为受保护 —— 本条此刻在量别的东西"
+    );
+
+    let e = crate::sftp_pool::sftp_download(
+        cfg.clone(),
+        "/srv/whatever.txt".into(),
+        protected.into(),
+        "t-fence-1".into(),
+        chan(),
+    )
+    .await
+    .expect_err("往一条正被 Claude 打开的会话文件上下载，竟然没被拒");
+    assert!(
+        e.contains("拒绝写 Claude 数据源文件"),
+        "拒的不是围栏那一句 —— 那说明它先去拨线了，围栏（如果有）在后面：{e}"
+    );
+    assert!(
+        e.contains(protected),
+        "拒绝那句话没带上是哪条路径，用户不知道该改什么：{e}"
+    );
+
+    // 🔴 阴性对照：同一台机器、一条**不踩线**的落点 ⇒ 报的是**连接**失败。
+    // 少了它，上面两比可以靠「恒回围栏那句话」全绿 —— 那时一次下载都做不成。
+    let ok_dest = std::env::temp_dir().join("ccm-fence-dl-control.txt");
+    let e2 = crate::sftp_pool::sftp_download(
+        cfg,
+        "/srv/whatever.txt".into(),
+        ok_dest.to_string_lossy().to_string(),
+        "t-fence-2".into(),
+        chan(),
+    )
+    .await
+    .expect_err("连不上的远端竟然下载成功了");
+    assert!(
+        !e2.contains("拒绝写 Claude 数据源文件"),
+        "一条不踩线的落点也被围栏拒了 —— 那道判定的射程宽了：{e2}"
+    );
+    // 而且它**真的走到了拨线那一步**（这半证明上面那条阴性对照不是空真）。
+    assert!(
+        e2.contains("example.invalid") || e2.contains("连接"),
+        "既不是围栏、也不像连接失败 —— 第三种失败，回头读它：{e2}"
+    );
+    // 阴性对照那条路径**一个字节都不该落地**（连接就没建起来）。
+    assert!(
+        !ok_dest.exists() && !std::path::Path::new(&format!("{}.part", ok_dest.display())).exists(),
+        "连接都没建起来，盘上却出现了文件"
+    );
+}

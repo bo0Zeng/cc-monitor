@@ -165,8 +165,13 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
         "★ **这是超集里唯一的本机项**，也正是「机器分不清 handle 来历」的实例：\
              它和 `upload_inner` 在同一个文件、用同一个方法名 `.write_all(`，\
              但 handle 来自 `tokio::fs::File`（下载落地）而不是 `sftp.create` ⇒ 写的是**本机**。\
-             ⇒ 不需要远端围栏。⚠ 它另有一个**本机**侧的问题（用户选的本机落点由前端对话框给），\
-             那属 `write_site_registry` 的管辖面，不在本表。",
+             ⇒ 不需要**远端**围栏。\
+             🔴〔订正 2026-09-21〕这里原先接着写「它另有一个本机侧的问题（用户选的本机落点\
+             由前端对话框给），那属 `write_site_registry` 的管辖面，不在本表」——\
+             **那是这条推诿链的第二站**（第一站在 `NON_WRITING_COMMANDS` 的墓碑里，\
+             第三站是 `write_site_registry` 里那句「本地缓存 / 不是用户既有环境」，假的）。\
+             ⇒ 本机落点现在**真的有围栏**了：`sftp_download` 第一行 `guard_write(&local_path)`，\
+             与远端那七条同一个家、同一道判定。本表这一行说的仍然只是「它写本机」这个事实。",
     ),
 ];
 
@@ -437,6 +442,15 @@ fn a_user_chosen_remote_write_passes_the_claude_data_fence() {
     //   把它塞进去会让那一条去找一个叫 `from`/`to` 的参数、当场 `panic!` ——
     //   那是**误伤**，不是覆盖。两条判据各管各的那一半，这里写死，免得下一个人来「补全」。
     const USER_CHOSEN_ENTRIES: &[&str] = &[
+        // 🔴〔2026-09-21〕`sftp_download` 是这张表里**唯一落点在本机**的一条，
+        //    而它此前不在这张表里 —— 逐条来历见 `sftp_pool.rs::sftp_download` 那段注释
+        //    （三张账首尾相接地互相指，链子末端那句是假的）。
+        //    ⚠ 本条判据的**名字**说的是 `remote_write`，而这一条的落点是本机。
+        //      刻意不改名（改名会连带动 `structural_scan` 的散文判据与别处引用）——
+        //      它判的机制一个字没变：`guard_write` 在函数体里、且排在拿连接之前。
+        //      围栏本身从来不是远端专用的（`claude_data_fence` 头注：F03b 那一路
+        //      用它判的正是一条**本机**路径）。
+        "sftp_download",
         "sftp_write_text",
         "sftp_upload",
         "sftp_mkdir",
@@ -1032,13 +1046,17 @@ const NON_WRITING_COMMANDS: &[(&str, &str, &str)] = &[
         "一条路径的 stat",
         "纯读 —— 上传与复制共用的那一问（「远端已经有这条路径了吗」），它不落任何字节",
     ),
-    (
-        "sftp_download",
-        "把远端文件拉到本机",
-        "🔴 它**确实写盘**，但写的是**本机**（`download_inner`，`REMOTE_WRITES` 里\
-         唯一那一项「本机」）⇒ 不需要 Claude 数据围栏（那道围栏管的是远端那台机器上\
-         正被 Claude 打开的文件）。⚠ 本机落点那一半归 `write_site_registry` 的管辖面",
-    ),
+    // 🔴〔散文墓碑 2026-09-21〕`sftp_download` **从这张「不写路径」的表上搬走了**。
+    //    它原先在这儿，理由逐字是：「它确实写盘，但写的是本机 ⇒ 不需要 Claude 数据围栏
+    //    （那道围栏管的是远端那台机器上正被 Claude 打开的文件）。⚠ 本机落点那一半归
+    //    `write_site_registry` 的管辖面」。
+    //    **括号里那句是假的**：`claude_data_fence` 自己的头注写着 F03b 那一路用它判的
+    //    正是「一个写**本机** `INBOX.txt` 的模块…关于**本机路径**的问题」。
+    //    而它指过去的那一站（`write_site_registry` 里 `download_inner` 那一行）
+    //    当时逐字写着「把远端文件落到**本地缓存**；写的**不是用户既有环境**」——
+    //    **也是假的**（`local_path` 来自老面板那个 `saveDialog`，用户指哪写哪）。
+    //    ⇒ 三张账首尾相接，而链子末端是一句假话 ⇒ 那个洞就这么活着。
+    //    现在它进了 `USER_CHOSEN_ENTRIES`，围栏在 `sftp_download` 第一行。
     (
         "sftp_read_text_for_edit",
         "小文件读成可编辑文本",
@@ -1141,8 +1159,11 @@ fn every_pool_command_is_either_a_registered_write_or_a_registered_read() {
     // 现打读数：两个数各自钉住，别只钉和。
     assert_eq!(
         (fenced.len(), readers.len()),
-        (7, 6),
-        "现打：写 {} 条 · 读 {} 条（2026-09-21 现打 7 ＋ 6 = 13）。\
+        (8, 5),
+        "现打：写 {} 条 · 读 {} 条（2026-09-21 现打 **8 ＋ 5 = 13**；\
+         当日早先是 7 ＋ 6 —— `sftp_download` 从「读」那一堆搬到了「写」那一堆，\
+         它一直在写盘，只是写的是**用户选的本机路径**而没人守，逐条来历见\
+         `NON_WRITING_COMMANDS` 上方那段墓碑）。\
          实得写 {fenced:?} · 读 {readers:?}",
         fenced.len(),
         readers.len()
@@ -1227,8 +1248,10 @@ fn a_fenced_write_refuses_before_it_touches_the_wire() {
     }
     // 抽取器自检：人群必须恰好是那七条带围栏的写命令（与两分那条判据同一个数）。
     assert_eq!(
-        checked, 7,
-        "只找到 {checked} 条带围栏的命令（2026-09-21 现打 7）—— 抽取器坏了，本条此刻在空转"
+        checked, 8,
+        "只找到 {checked} 条带围栏的命令（2026-09-21 现打 **8**：远端那七条 ＋ `sftp_download`\n\
+         那一条**本机**落点〔当日补，来历见它的函数注释：三张账首尾相接推诿，末端一句假话〕）\n\
+         —— 抽取器坏了，本条此刻在空转"
     );
     // 反空真：「拿连接」那个锚点必须真的在每一条里命中，否则 `g < w` 恒真地过。
     assert!(
