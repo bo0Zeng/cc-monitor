@@ -82,6 +82,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::ssh_source::RemoteConfig;
+
 use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
@@ -244,6 +246,17 @@ impl Listing {
 }
 
 /// 窗口的全部状态。
+/// 点「本机」之前这个窗口在哪儿 —— **一台远端 ＋ 那台上的一个目录**。
+///
+/// ⚠ 刻意是两个字段而不是一条字符串：远端路径恒用 `/`，而「哪台机器」这件事
+/// 全仓只有 `RemoteConfig` 一种表达（`super::source::Source::origin` 头注那条纪律）。
+#[derive(Clone, Debug)]
+pub struct RemoteReturn {
+    pub cfg: Box<RemoteConfig>,
+    /// 用户**离开时**在看的那个远端目录（不是 home —— 理由见 [`FileWindow::away`]）。
+    pub cwd: String,
+}
+
 pub struct FileWindow {
     pub source: Source,
     pub cwd: String,
@@ -286,6 +299,22 @@ pub struct FileWindow {
     write_prompt: Option<WritePrompt>,
     /// 已经消化过几摞写操作（同 [`Self::seen_rounds`]，每条路各一个数）。
     seen_write_rounds: u64,
+    /// 🔴〔第六刀〕这个窗口**从哪台远端上走开的** —— 与「此刻在看哪一侧」
+    /// （[`Self::source`]）**刻意分成两个字段**。
+    ///
+    /// # 少了它是一扇单向门（这一条是承重的）
+    ///
+    /// [`Self::go_local`] 会把 `source` 换成 [`Source::Local`]，而 `Source::Remote`
+    /// 里那个 `RemoteConfig` 就在同一个枚举格子上 ⇒ **那一下把它盖掉了**。
+    /// 窗口上没有第二条路能把它拿回来（没有第二条 `#[tauri::command]`、
+    /// 没有 `go_remote`、界面上本机态那一格只是个 `ui.label("本机")`）
+    /// ⇒ 第六刀之前的实况是：**用户点一下「本机」，这个窗口就再也回不到远端**，
+    /// 只能关掉、回老面板重开一个。
+    ///
+    /// ⚠ 记的是**来处**，不是「远端 home」：回去要落在**用户离开时那儿**。
+    /// 「窗口自己开在远端 home」是另一件事（那要 `sftp_realpath`，是入口那条命令的题），
+    /// 登记在 `mod.rs` 那一节里，**本字段买不到它，别读宽**。
+    away: Option<RemoteReturn>,
 }
 
 impl FileWindow {
@@ -325,6 +354,7 @@ impl FileWindow {
             write_board: WriteBoard::default(),
             write_prompt: None,
             seen_write_rounds: 0,
+            away: None,
         }
     }
 
@@ -397,10 +427,46 @@ impl FileWindow {
     /// 🔴 它是 [`list_local`] 今天**唯一的用户可达入口**。没有它，本机那半是
     /// 「盘上有 ≠ 被走到」（`K-R18` 语料八）—— 有判据、没有人走得到。
     pub fn go_local(&mut self, home: String) {
+        // 🔴 **先记来处，再盖 `source`** —— 顺序反了就等于没记
+        //    （`self.source` 已经是 `Local` 了，那个 `if let` 不会命中），
+        //    而那正是这条缺陷原本的形状：一扇单向门，且安安静静。
+        if let Source::Remote(cfg) = &self.source {
+            self.away = Some(RemoteReturn {
+                cfg: cfg.clone(),
+                cwd: self.cwd.clone(),
+            });
+        }
         self.source = Source::Local;
         self.cwd = home;
         self.listing.invalidate();
         self.reload();
+    }
+
+    /// 回到点「本机」之前那台远端的那个目录。
+    ///
+    /// 回值 = **真的回去了**。没有来处（这个窗口一开始就是本机侧的）⇒ `false`，
+    /// 而那时界面上那颗按钮也不该在（两处看的是同一个 [`Self::return_label`]）。
+    ///
+    /// ⚠ 它**不重新解析远端 home**，也不起任何 IO：来处是离开时就记下的
+    /// ⇒ 这一跳是**同步**的，换目录这件事照旧留在 UI 线程手上
+    /// （同 [`Self::seen_rounds`] 头注那条理由）。
+    pub fn go_remote(&mut self) -> bool {
+        let Some(back) = self.away.take() else {
+            return false;
+        };
+        self.source = Source::Remote(back.cfg);
+        self.cwd = back.cwd;
+        self.listing.invalidate();
+        self.reload();
+        true
+    }
+
+    /// 「回去」那颗按钮上写哪台机器 —— `None` = 没有来处，那颗按钮不画。
+    ///
+    /// 🔴 抽成一个函数是为了让**按钮在不在**与**跳得成不成**看同一个判据：
+    /// 两处各写一份条件时，「按钮画了但点了没反应」是个静默态。
+    pub fn return_label(&self) -> Option<String> {
+        self.away.as_ref().map(|b| b.cfg.origin_label())
     }
 
     /// 🔴〔第四刀〕**发一趟搜索** —— `设计/60 §3.5` 那一件在窗口上的落点。
@@ -1014,6 +1080,9 @@ impl FileWindow {
             ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), note);
         }
         let mut go_local: Option<String> = None;
+        // 〔第六刀〕本机态下那颗「回 <机器名>」—— 与 `go_local` 同一个理由收在帧尾：
+        // 按钮在 `ui.horizontal` 的闭包里，那里借着 `&mut self` 的一部分。
+        let mut go_remote = false;
         let mut mkdir = false;
         ui.horizontal(|ui| {
             if ui.button("⬆ 上一级").clicked() {
@@ -1029,6 +1098,16 @@ impl FileWindow {
             }
             if !self.source.is_remote() {
                 ui.label("本机");
+                // 🔴〔第六刀〕**回远端那颗按钮** —— 没有它，上面那颗「本机」是一扇
+                //    单向门（逐条理由住 [`Self::away`]）。标签上带着那台机器的名字，
+                //    因为一个窗口只可能有一个来处，写「远端」两个字说不出是哪台。
+                //    ⚠ 只用中文＋ASCII，不用箭头字形：那一族要看装没装上字体
+                //    （`fonts.rs`），而这颗按钮在本机态下必须画得出来。
+                if let Some(back) = self.return_label() {
+                    if ui.button(format!("回 {back}")).clicked() {
+                        go_remote = true;
+                    }
+                }
             } else if ui.button("本机").clicked() {
                 go_local = Some(local_home());
             }
@@ -1043,6 +1122,11 @@ impl FileWindow {
         }
         if let Some(home) = go_local {
             self.go_local(home);
+        }
+        // ⚠ 与上面那一跳**互斥**：`go_local` 只在远端态画得出来、`go_remote` 只在本机态
+        //    ⇒ 同一帧里不可能两个都真。这里照旧按顺序消化，不额外写一条 `else`。
+        if go_remote {
+            self.go_remote();
         }
         if let Some(e) = self.listing.error.lock().unwrap().clone() {
             ui.colored_label(egui::Color32::RED, e);
