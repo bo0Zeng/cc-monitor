@@ -740,7 +740,7 @@ fn tempdir() -> String {
 }
 
 fn table(rows: &[(&str, Option<&str>, bool)]) -> AccountTable {
-    AccountTable(
+    AccountTable::from_accounts(
         rows.iter()
             .map(|(n, c, d)| Account {
                 name: (*n).to_string(),
@@ -762,12 +762,12 @@ fn the_account_table_has_exactly_one_source() {
     )
     .expect("造夹具");
     let t = AccountTable::load(&m);
-    assert_eq!(t.0.len(), 1);
+    assert_eq!(t.accounts.len(), 1);
     assert_eq!(t.default_name(), Some("z"));
     assert_eq!(t.config_dir_of("z"), Some(d.clone()));
     // manifest 不在 ⇒ **空表**，不是失败（那台机器就是没有账号库）
     assert!(AccountTable::load("/nonexistent/accounts.json")
-        .0
+        .accounts
         .is_empty());
     // manifest 里写着、盘上没有 ⇒ 当作不可用（目录存在性自己判）
     let m2 = format!("{d}/a2.json");
@@ -777,4 +777,125 @@ fn the_account_table_has_exactly_one_source() {
     )
     .expect("造夹具");
     assert_eq!(AccountTable::load(&m2).config_dir_of("g"), None);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔2026-09-21 真机现打〕那份 manifest 带 UTF-8 BOM ⇒ **整张账号库被静默吃掉**
+// ════════════════════════════════════════════════════════════════════════
+//
+// # 怎么量到的
+//
+// 在本机那台 Win11 虚拟机上跑 `ccm.exe --account …`：报「账号不可用（不在
+// …accounts.json）」，而那份文件里明明写着那个号。根因是它带 **UTF-8 BOM**
+//（`EF BB BF` —— **PowerShell 5.1 `-Encoding UTF8` 的默认值**），`serde_json`
+// 在第 1 列就失手（独立复算逐字：`expected value at line 1 column 1`），
+// 而 `load` 那句 `unwrap_or_default()` 把失手**吞成空表**。
+//
+// ⇒ **用户拿 PowerShell 碰过这份文件，他的号全消失，还被告知本来就没有。**
+//
+// ⚠ 这一形本机（Linux）在构造上量不到：没人会用 PowerShell 写这份文件。
+// 判据这一侧**不需要真 Windows** —— BOM 是三个字节，造得出来。
+// ⇒ 平台专有的**触发条件**与平台专有的**行为**是两件事，别把前者当成「判不了」。
+
+/// 🔴 带 BOM 的 manifest 照样读得出来（BOM 不是错误，是字节序标记）。
+#[test]
+fn a_manifest_with_a_utf8_bom_is_read_not_silently_eaten() {
+    let d = tempdir();
+    let m = format!("{d}/bom.json");
+    let body = format!(r#"{{"accounts":[{{"name":"work","configDir":"{d}","isDefault":true}}]}}"#);
+    // PowerShell 5.1 `-Encoding UTF8` 就是这么写的：正文前面三个字节 EF BB BF。
+    std::fs::write(&m, format!("\u{FEFF}{body}")).expect("造夹具");
+    // 夹具本身先自证：那三个字节真的在盘上（否则这条判据在量一个没有 BOM 的文件）。
+    let raw = std::fs::read(&m).expect("读夹具");
+    assert_eq!(
+        &raw[..3],
+        &[0xEF, 0xBB, 0xBF],
+        "夹具没写出 BOM —— 这条判据此刻在量别的东西"
+    );
+
+    let t = AccountTable::load(&m);
+    assert_eq!(
+        t.accounts.len(),
+        1,
+        "带 BOM 的账号库被吃掉了 —— 实得 {} 个号",
+        t.accounts.len()
+    );
+    assert_eq!(t.default_name(), Some("work"));
+    assert_eq!(t.config_dir_of("work"), Some(d.clone()));
+    // 而且**不许**被报成「解析不动」：它解析得动，只是带了 BOM。
+    assert!(
+        !t.names().contains("解析不动"),
+        "一份合法的（只是带 BOM 的）账号库被报成了坏文件：{}",
+        t.names()
+    );
+}
+
+/// 🔴 真解析不动的那一份 ⇒ 照旧空表，**但那句话不许谎称「没有账号库」**。
+///
+/// # 少了它会怎样
+///
+/// 上一条只买「BOM 这一种」。而 `unwrap_or_default()` 那个形状的毛病不是 BOM ——
+/// 是**把所有解析失败都说成「这台机器没有账号库」**。手写坏一个逗号是同一形，
+/// 而那时用户会去找一个不存在的原因。
+#[test]
+fn a_manifest_we_cannot_parse_says_so_instead_of_claiming_there_is_no_library() {
+    let d = tempdir();
+    let m = format!("{d}/broken.json");
+    std::fs::write(&m, r#"{"accounts":[{"name":"work",]}"#).expect("造夹具");
+    let t = AccountTable::load(&m);
+    assert!(t.accounts.is_empty(), "坏 JSON 竟然读出了号");
+    let said = t.names();
+    assert!(
+        said.contains("解析不动"),
+        "坏掉的账号库被报成了别的东西：{said}"
+    );
+    assert!(
+        !said.contains("无账号库"),
+        "坏掉的账号库被谎称成「没有账号库」—— 用户会去找一个不存在的原因：{said}"
+    );
+
+    // 🔴 阴性对照：**真的**没有账号库时，那句话仍然是「无账号库」
+    //（少了这一半，上面那两比可以靠「恒说解析不动」全绿，
+    //  那时没装过账号库的用户会收到一句「你的文件坏了」）。
+    let none = AccountTable::load("/nonexistent/accounts.json");
+    assert!(none.names().contains("无账号库"), "实得 {}", none.names());
+    assert!(!none.names().contains("解析不动"), "实得 {}", none.names());
+
+    // 空文件 == 没有账号库（**不是**坏文件）。
+    let e = format!("{d}/empty.json");
+    std::fs::write(&e, "   \n").expect("造夹具");
+    assert!(
+        AccountTable::load(&e).names().contains("无账号库"),
+        "空文件被报成了坏文件"
+    );
+}
+
+/// 用户看得见的那句话里**真的**带上了这个说法 —— 不是只有 `names()` 自己知道。
+///
+/// ⚠ 本条走 `resolve_account` 那条真路（`--account` 指名一个不存在的号），
+/// 因为 `names()` 今天唯一的消费点就在那句报错里；只判 `names()` 的话，
+/// 哪天那句报错不再喊它，这件事会静默失效。
+#[test]
+fn the_message_the_user_actually_sees_carries_the_reason() {
+    let d = tempdir();
+    let m = format!("{d}/broken2.json");
+    std::fs::write(&m, "{oops").expect("造夹具");
+    let mut e = env();
+    e.accts_manifest = m;
+    // 走**真 argv 解析**拿 `Opts`（本仓判据的惯例，见上方 `--account nope` 那条）——
+    // 手搓一个 `Opts` 会绕开解析那一段，而那一段也在用户那条路上。
+    let a: Vec<String> = ["--cwd", "/p", "--account", "work"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let o = match parse(&a).expect("解析得动") {
+        Parsed::Opts(o) => o,
+        other => panic!("{other:?}"),
+    };
+    let Die(msg) = resolve_account(&o, &e, &AccountTable::load(&e.accts_manifest))
+        .expect_err("指名一个读不出来的号竟然成功了");
+    assert!(
+        msg.contains("解析不动"),
+        "用户看到的那句话里没有原因：{msg}"
+    );
 }
