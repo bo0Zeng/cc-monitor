@@ -13,10 +13,25 @@ import path from "node:path";
 
 let tauriDriver;
 
-// 被测 app 产物 exe（KVM_cc build 出的 debug monitor.exe）。可用 APP_EXE 覆盖。
-const APP =
-  process.env.APP_EXE ||
-  "C:/Users/vm260726/cc-monitor/src/bridge/target/debug/monitor.exe";
+// 被测 app 产物 exe。**必须由 APP_EXE 给**。
+//
+// 🔴〔2026-09-21 订正〕这里原先兜着一个默认值
+// `C:/Users/vm260726/cc-monitor/src/bridge/target/debug/monitor.exe` —— **三段全错**：
+// 用户名（真机是 `user`）· 构建目录（本仓是 `.build/bridge/debug/`，不是 `src/bridge/target/`）·
+// 以及**那台机器上压根没有这个仓**（现打：没有 git/cargo/node）。
+// 而 `run-in-session1.ps1` 里**抄着同一个错值** ⇒ 一个错的默认值有两处住址。
+//
+// ⚠ 错的默认值比没有默认值更坏：它让这一档先印一句 `APP_EXE exists? False`，
+// 然后死在 msedgedriver 那一层（`DevToolsActivePort file doesn't exist`），
+// 而那句话指向的是完全另一个原因。⇒ **说不出被测对象在哪就当场停，别猜。**
+const APP = process.env.APP_EXE;
+if (!APP) {
+  throw new Error(
+    "APP_EXE 没给 —— 这一档必须被告知被测的 monitor.exe 在哪（不猜默认值）。\n" +
+      "  ⚠ 它还要求同目录下有 WebView2Loader.dll：那是**普通导入**不是 delay-load，\n" +
+      "    少了它进程会立刻自退，且 stdout/stderr/日志三处全空（2026-09-21 真机现打）。",
+  );
+}
 
 // `cargo install tauri-driver` 默认落 %USERPROFILE%\.cargo\bin\tauri-driver.exe
 const TAURI_DRIVER =
