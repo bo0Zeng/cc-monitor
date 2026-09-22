@@ -1334,3 +1334,197 @@ async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
     assert_eq!(out.asked, 0, "受保护的那一件被摆到人面前问了");
     assert!(!w.write_board.is_asking());
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第六刀 2026-09-21〕「本机」那颗按钮原本是**一扇单向门**
+// ════════════════════════════════════════════════════════════════════════
+//
+// # 缺陷的形状（现打，不是推测）
+//
+// `go_local` 那一句 `self.source = Source::Local;` 把 `Source::Remote` 那个枚举格
+// **盖掉了** —— 而 `RemoteConfig` 就住在那个格子里。窗口上没有第二条路能把它拿回来：
+// 没有第二条 `#[tauri::command]`（`entry_tests` 钉着「恰好 1 条」）、没有 `go_remote`、
+// 界面上本机态那一格只是个 `ui.label("本机")`。
+// ⇒ **用户点一下「本机」，这个窗口就再也回不到远端**，只能关掉、回老面板重开一个。
+//
+// ⚠ 而它此前**一条判据都没有** —— 不是「判据红了没人管」，是那件事没人在看。
+// 同一形在本会话里已经出现过一次（标签页顺序存盘那条，也是零判据）。
+//
+// # 这一摞分四条，各钉一件（少一条会怎样，逐条写在各自头上）
+//
+// # 这一摞是 **3 条**，不是 4 条 —— 而那是量出来的
+//
+// 先写了 4 条，然后拿**六把刀**挨个验「这一条有没有只有它才红的那一格」：
+//
+// | 刀（各改坏一处） | 阴性对照 | 同真同假 ＋ 落点 | 执行链 |
+// |---|---|---|---|
+// | ① `go_local` 不记来处（＝**原本那条缺陷**） | ok | 🔴 | 🔴 |
+// | ② 回到 `/` 而不是离开时那儿 | ok | 🔴 | 🔴 |
+// | ③ `return_label` 恒回 `Some`（按钮恒画） | 🔴 | 🔴 | ok |
+// | ④ **只摘掉界面那颗按钮，函数留着** | ok | ok | 🔴 |
+// | ⑤ 没有来处也报「回去成功了」 | 🔴 | ok | ok |
+// | ⑥ 目录回对了，但回到了另一台机器 | ok | 🔴 | ok |
+//
+// 🔴 原先还有第 4 条（`..._lands_on_the_very_directory_we_left`，单判「回去落在离开时那儿」）——
+// **六把刀里它一格独占都没有**，能红它的 ①②⑥ 全被「同真同假」那条覆盖。
+// ⇒ 按「判据该变少」那条裁决，把它那两句独特断言（第一趟就判相等 · 回来那一侧的机器身份）
+// 并进了第 ③ 步，然后删掉它。**检出力一格没丢**（同一套刀复验过）。
+//
+// ⚠ 方法本身是这一摞的产出：「这条判据挣不挣得到它的位子」= **有没有只有它才红的那一刀**。
+// 光看「它绿着」或「它红了」都答不了这个问题。
+//
+// | 留下的 3 条 | 它钉的那一形 | 它独占的那一刀 |
+// |---|---|---|
+// | `a_window_that_started_local_has_nowhere_to_go_back_to` | 🔴 **阴性对照**：没有来处时那条路不该通 | ⑤ |
+// | `the_button_shows_up_exactly_when_the_jump_would_work` | 「按钮画了但点了没反应」这个静默态不成立 ＋ 回去的落点与机器身份 | ③⑥ |
+// | `a_real_click_on_the_go_back_button_walks_the_whole_chain` | 🔴 **不跳任何一跳**：真合成一次点击 | ④ |
+
+/// 🔴 **阴性对照**：一开始就是本机侧的窗口，**没有来处**。
+///
+/// 少了它，上一条可以靠一个「恒有来处」的实现全绿 —— 那时本机侧的窗口上会画出
+/// 一颗回不去任何地方的按钮（点下去什么都不发生，或者跳到一份空配置上）。
+#[test]
+fn a_window_that_started_local_has_nowhere_to_go_back_to() {
+    let (root, _) = synth_tree("nowhere");
+    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    assert!(w.return_label().is_none(), "本机侧开的窗口凭空有了一个来处");
+    assert!(
+        !w.go_remote(),
+        "没有来处却「回去」成功了 —— 那它回到哪儿去了？"
+    );
+    assert!(!w.source.is_remote(), "没有来处的那一跳把侧改了");
+    assert_eq!(w.cwd, root.to_string_lossy(), "没有来处的那一跳把路径改了");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 🔴 **按钮在不在** 与 **跳得成不成** 是同一个条件。
+///
+/// 失效形状是个静默态：两处各写一份条件 ⇒ 「按钮画出来了，点了没反应」。
+/// ⇒ 本条把 `return_label()`（界面看的那一个）与 `go_remote()`（真跳的那一个）
+/// 在**四种状态**上对拍成同真同假。
+#[test]
+fn the_button_shows_up_exactly_when_the_jump_would_work() {
+    let (root, _) = synth_tree("iff");
+    let local = root.to_string_lossy().to_string();
+    // ① 远端态：按钮不该在（那时画的是「本机」那颗），跳也不该成。
+    let mut w = FileWindow::new(
+        Source::Remote(Box::new(synth_cfg("m1"))),
+        "/a/b".into(),
+        None,
+    );
+    assert_eq!(w.return_label().is_some(), false, "远端态就已经有来处了");
+    // ② 走开：按钮该在，标签**就是那台机器的名字**（相等，不是「非空」）。
+    w.go_local(local.clone());
+    assert_eq!(w.return_label().as_deref(), Some("m1"));
+    assert_eq!(
+        w.return_label().unwrap(),
+        synth_cfg("m1").origin_label(),
+        "按钮上那个名字不是 `origin_label()` —— 那就是给「哪台机器」造了第二种表达"
+    );
+    // ③ 跳成之后：**第一趟就要落在离开时那个目录上**（相等，不是「是远端就行」——
+    //    一个把 `cwd` 设成 `/` 的实现对用户是「你刚翻到的那一层没了」），
+    //    而且要回到**同一台机器**；来处用掉了，按钮该没了。
+    assert!(w.go_remote(), "回不去 —— 那就是那扇单向门还在");
+    assert!(w.source.is_remote(), "回来了但侧没换回远端");
+    assert_eq!(
+        w.cwd, "/a/b",
+        "回来了，但不是离开时那个目录 —— 用户刚翻到的那一层被扔了"
+    );
+    assert_eq!(
+        match &w.source {
+            Source::Remote(cfg) => cfg.origin_label(),
+            Source::Local => "本机".into(),
+        },
+        "m1",
+        "回到了另一台机器上 —— 来处那份 `cfg` 没被原样放回去"
+    );
+    assert!(w.return_label().is_none(), "回来了，来处却还挂着");
+    // ④ 再走开一次：这件事可重复（不是一次性的）。
+    w.go_local(local);
+    assert_eq!(
+        w.return_label().as_deref(),
+        Some("m1"),
+        "第二次走开就记不住了"
+    );
+    assert!(w.go_remote(), "第二次回不去");
+    assert_eq!(w.cwd, "/a/b");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 🔴🔴 **整条链一趟走完**：真点一下那颗「回 <机器名>」→ 窗口真回到远端那个目录。
+///
+/// # 为什么上面三条不够
+///
+/// 那三条调的是 `go_remote()` 这个**函数**。而「`frame_body` 里那颗按钮真的画出来了、
+/// 真的接到这个函数上」是**另一件事** —— 本仓那条「判据不在执行链上就等于不存在」
+/// 在本会话里已经抓到过同一形（波 β：`frame_body` 那三跳两头都有判据、中间没人看）。
+/// ⇒ 本条在真 `egui::Context` 上合成一次指针点击，不跳任何一跳。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_real_click_on_the_go_back_button_walks_the_whole_chain() {
+    let (root, _) = synth_tree("chain");
+    let deep = "/srv/deep/where-i-was";
+    let mut w = FileWindow::new(
+        Source::Remote(Box::new(synth_cfg("clickbox"))),
+        deep.into(),
+        tokio::runtime::Handle::try_current().ok(),
+    );
+    w.go_local(root.to_string_lossy().to_string());
+    let label = format!("回 {}", w.return_label().expect("走开之后没有来处"));
+
+    let ctx = egui::Context::default();
+    // 第一帧：建字体图集 ＋ 让上一帧的 widget 表有内容（egui 的命中测试按上一帧做）。
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let painted = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    let hits = crate::filewin::copy::testing::rects_of(&painted, &label);
+    assert_eq!(
+        hits.len(),
+        1,
+        "这一帧上没有那颗「{label}」（实得 {} 处）—— 工具栏那一格没画它，\
+         或者它的标签与 `return_label()` 拼出来的不是同一个串",
+        hits.len()
+    );
+    let pos = hits[0].center();
+
+    // 第二帧：移上去；第三帧：真按下去。
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.2,
+        vec![egui::Event::PointerMoved(pos)],
+        |ui| w.frame_body(ui),
+    );
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.3,
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            },
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            },
+        ],
+        |ui| w.frame_body(ui),
+    );
+
+    assert!(
+        w.source.is_remote(),
+        "真点了那颗按钮，窗口还在本机侧 —— 那一跳没接到 `go_remote` 上"
+    );
+    assert_eq!(w.cwd, deep, "点回去了，但落错了目录");
+    let _ = std::fs::remove_dir_all(&root);
+}
