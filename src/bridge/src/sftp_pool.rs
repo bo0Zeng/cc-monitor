@@ -786,6 +786,26 @@ pub async fn sftp_download(
     transfer_id: String,
     on_progress: tauri::ipc::Channel<TransferProgress>,
 ) -> Result<(), String> {
+    // 🔴〔2026-09-21〕**本机落点也要过那道围栏。** 必须排在拿连接之前
+    //（`remote_write_registry_tests::a_fenced_write_refuses_before_it_touches_the_wire`
+    // 逐条要求这个顺序）。
+    //
+    // # 为什么此前没有它 —— 两张账各自以为对方盖住了
+    //
+    // ① `NON_WRITING_COMMANDS` 里这一条逐字写着「写的是**本机** ⇒ **不需要** Claude
+    //    数据围栏（那道围栏管的是远端那台机器上正被 Claude 打开的文件）」。
+    //    **那句括号是假的**：`claude_data_fence` 自己的头注写着 F03b 那一路用它判的正是
+    //    「一个写**本机** `INBOX.txt` 的模块…关于**本机路径**的问题」⇒ 它从来不是远端专用的。
+    // ② 同一条又说「本机落点那一半归 `write_site_registry` 的管辖面」，而那张表里这一行
+    //    逐字是「把远端文件落到**本地缓存**；写的**不是用户既有环境**」——
+    //    **也是假的**：`local_path` 来自老面板那个 `saveDialog`，**用户指哪写哪**。
+    //    那是申报，不是守卫。
+    //
+    // ⇒ 实况：把一个远端文件下载到 `~/.claude/projects/<proj>/<sid>.jsonl`，
+    //    `download_inner` 会先写 `.part` 再 `rename` **原子地盖掉**那条会话记录，
+    //    而 `INVARIANTS §1` 的 F47 澄清段逐字要的是「绝无自动/后台写」。
+    //    这一条**同时**修掉老面板与原生窗口两条路（围栏只有这一个家）。
+    guard_write(&local_path)?;
     let (cancel, _guard) = register_cancel(&transfer_id); // _guard 摘除注册项(含 abort)
     let r = async {
         let pool = pool_for(&cfg.origin_label()).await;

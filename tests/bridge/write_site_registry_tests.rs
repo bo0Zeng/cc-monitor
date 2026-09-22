@@ -151,7 +151,15 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("logging.rs", "write_diagnostics_to_config", None, "把诊断信息写进 monitor 自己的配置"),
     ("logging.rs", "atomic_replace", None, "原子替换原语的本地副本（头注自陈是从 config.rs 复制的）"),
     ("session_map.rs", "run_watcher", None, "monitor 自己的会话映射状态"),
-    ("sftp_pool.rs", "download_inner", None, "把远端文件落到本地缓存；写的不是用户既有环境"),
+    // 🔴〔订正 2026-09-21〕这一行原先逐字写着「把远端文件落到**本地缓存**；
+    //    写的**不是用户既有环境**」—— **两句都是假的**：`local_path` 由用户在保存
+    //    对话框（老面板）或那个落点框（原生窗口）里给，**用户指哪写哪**，那按定义
+    //    就是用户既有环境，不是缓存。
+    //    而它是一条**推诿链的末端**：`remote_write_registry` 的两张表各自把「本机落点
+    //    那一半」指到本表，本表这一行又说「不是用户既有环境」⇒ 没人守，洞活着。
+    //    ⇒ 围栏已补在 `sftp_pool::sftp_download` 第一行（`guard_write(&local_path)`）。
+    //    ⚠ 本表仍然只是**申报**，不是守卫 —— 别再把它当挡箭牌。
+    ("sftp_pool.rs", "download_inner", None, "把远端文件落到**用户选的本机路径**（保存对话框 / 落点框）；围栏在入口 `sftp_download` 第一行"),
     ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
     ("utils.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
     // ── `K-P1`：常驻那条路要写两样东西。**都不是安装动作** —— 写的是 monitor 自己的目录。
