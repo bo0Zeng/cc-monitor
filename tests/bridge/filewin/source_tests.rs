@@ -260,3 +260,90 @@ fn a_missing_dir_is_an_error_not_an_empty_list() {
     let r = list_local(&missing);
     assert!(r.is_err(), "不存在的目录必须报错，不许静默返回空列表");
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第七刀 2026-09-21〕远端 home 那一跳 —— `sftp_realpath` 在窗口这侧的落点
+// ════════════════════════════════════════════════════════════════════════
+//
+// `resolve_remote_home` 整条路要真远端（红线不许起真连接）⇒ 它自己**没有逻辑**，
+// 有逻辑的那一段抽成了 `start_dir_from_realpath`，判据全落在它身上。
+// 失败路径那一半（问不到就别开窗）住 `entry_tests` 那条。
+
+/// 规矩的服务端回一条绝对路径 ⇒ 原样当起点。
+#[test]
+fn an_absolute_answer_becomes_the_start_directory() {
+    assert_eq!(start_dir_from_realpath("/home/user").unwrap(), "/home/user");
+    // 周围的空白不算内容（SFTP 的实现里见过带尾换行的）。
+    assert_eq!(
+        start_dir_from_realpath("  /srv/data\n").unwrap(),
+        "/srv/data"
+    );
+    // 根自己是合法起点。
+    assert_eq!(start_dir_from_realpath("/").unwrap(), "/");
+}
+
+/// 末尾那个 `/` 剥掉 —— **一个规范形**，而它**不是**承重的。
+///
+/// # 🔴〔散文墓碑 2026-09-21〕我第一版给的理由是**假的**
+///
+/// 我原先在这儿写着（逐字）：「`parent_dir` 靠「回来的和给出去的相等」判「已经在顶上了」，
+/// 而 `/srv/` 与 `/srv` 在那个算法里是两个不同的输入 ⇒ 起点带尾斜杠时，
+/// 「上一级」那颗按钮第一下会原地不动（看起来像卡住了）」。
+///
+/// **那是错的。** `parent_dir` 的远端那一支**第一句**就是 `cwd.trim_end_matches('/')`
+/// ⇒ `/srv/data/` 与 `/srv/data` 都回 `/srv`，那颗按钮从来没有过这个毛病。
+///
+/// ⚠ 逮到它的是本条自己那半**阴性对照**（我顺手写的「不剥的话那一下真的不动」）——
+/// 它红了，红的是**我的前提**，不是生产代码。⇒ **阴性对照也在守判据自己说的话。**
+/// 墓碑不删：下一个人会想把这条判据「加强」成那个假理由。
+///
+/// ⇒ 那这一步还剥不剥？**剥** —— 但买到的只有「路径在窗口里只有一种写法」
+/// （工具栏那行 `{label} : {cwd}` 与 `navigate_to` 的相等判定看同一个串），
+/// **不是**「否则某个功能会坏」。本条断的就是这一件，不多说。
+#[test]
+fn a_trailing_slash_is_normalised_away_into_one_canonical_form() {
+    assert_eq!(start_dir_from_realpath("/srv/data/").unwrap(), "/srv/data");
+    // 根那一格**不能**被剥成空串。
+    assert_eq!(start_dir_from_realpath("///").unwrap(), "/");
+    // 两种写法归一（这就是「一种写法」那句话的相等断言）。
+    assert_eq!(
+        start_dir_from_realpath("/srv/data/").unwrap(),
+        start_dir_from_realpath("/srv/data").unwrap()
+    );
+
+    // 🔴 把那个假前提**钉成读数**：`parent_dir` 自己就吃得下尾斜杠
+    //    ⇒ 哪天它不吃了，本条会红，而那时才轮到「剥这一步变承重了」这句话。
+    let remote = Source::Remote(Box::new(crate::ssh_source::RemoteConfig {
+        host: "example.invalid".into(),
+        label: "r".into(),
+        port: 22,
+        user: "nobody".into(),
+        key_path: None,
+        backend_path: "/nonexistent".into(),
+        host_key_fingerprint: None,
+        addresses: Vec::new(),
+        jump: None,
+    }));
+    assert_eq!(
+        parent_dir(&remote, "/srv/data/"),
+        parent_dir(&remote, "/srv/data"),
+        "`parent_dir` 不再自己吃尾斜杠了 —— 那么 `start_dir_from_realpath` 里剥那一步\
+         就从「规范形」升级成「承重」，回头把上面那段墓碑重写"
+    );
+}
+
+/// 🔴 对面答得不像话 ⇒ **报错，不拿它去开窗**。
+///
+/// 少了这一条，一个空串或相对路径会被原样当成起点 ⇒ 窗口出来了、里面是空的，
+/// 而那正是 `entry.rs` 头注花一整节要避免的那一形。
+#[test]
+fn an_answer_we_cannot_use_as_a_start_is_an_error_not_a_blank_window() {
+    for bad in ["", "   ", "\n", "home/user", "./x", "C:\\Users\\user"] {
+        let e = start_dir_from_realpath(bad).expect_err(&format!("`{bad:?}` 竟然被当成了合法起点"));
+        assert!(!e.trim().is_empty(), "`{bad:?}` 的报错是空串");
+        // 报错里要带上对面那句原文（否则用户不知道是谁答错了）。
+        if !bad.trim().is_empty() {
+            assert!(e.contains(bad.trim()), "报错没带上对面答的那句原文：{e}");
+        }
+    }
+}

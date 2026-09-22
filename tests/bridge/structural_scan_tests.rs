@@ -2694,6 +2694,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_extra_backend_files_are_not_ghosts",
             1,
         ),
+        // 🔴 〔`24e` 第七刀 09-21〕`entry_tests` 那条判据**改了措辞**（不是删了）：
+        //    旧名断的是「空路径 ⇒ 报错里含『路径是空的』」——**那钉的是机制不是性质**。
+        //    第七刀把空路径的意思改成「开在远端 home」（去问 `sftp_realpath` 那个唯一权威，
+        //    不在入口里猜），于是它改名成 `..._asks_the_remote_for_home_and_opens_nothing_when_it_cannot`，
+        //    断的换成更强的一件。**旧名逐字留着**是为了说清「那条理由被满足了，不是被推翻了」
+        //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+        (
+            "tests/bridge/filewin/entry_tests.rs",
+            "an_empty_path_is_refused_without_opening_a_window",
+            1,
+        ),
         // 🔴 〔`K-R48` 第二拍 09-11〕下面这 9 行全是同一件事的账：`shared/ccm` 那个 bash
         //    脚本与它那一族判据删了（`K33`：「不要有什么 bash 脚本」），而**散文里那几处
         //    点名它们的句子留着是有用的**（它们说的正是「这个东西为什么不在了」）
