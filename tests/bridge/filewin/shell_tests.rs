@@ -2226,3 +2226,74 @@ async fn navigating_away_drops_the_highlight() {
     assert!(w.reveal_name().is_none(), "回远端高亮还挂着");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第十一刀 2026-09-22〕「那条线程当场就死了」不再被报成成功
+// ════════════════════════════════════════════════════════════════════════
+
+/// 当场就失败的那条线程，`early_failure` 认得出来。
+#[test]
+fn a_thread_that_dies_at_once_is_recognised_as_a_failure() {
+    let h: std::thread::JoinHandle<Result<(), String>> =
+        std::thread::spawn(|| Err("开窗失败: 事件循环不能重建".into()));
+    assert!(
+        crate::filewin::shell::early_failure(&h, std::time::Duration::from_millis(500)),
+        "一条立刻就回 Err 的线程没被认出来 —— 那一形会被报成「窗口起来了」"
+    );
+    // 原因拿得回来（上层要把它交给用户）。
+    match h.join() {
+        Ok(Err(e)) => assert!(e.contains("事件循环"), "{e}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// 🔴 **阴性对照**：还在跑的那条线程**不许**被当成失败。
+///
+/// 少了它，一个「恒回 true」的实现照样绿 —— 而那时**每一次**开窗都会被报成失败，
+/// 连真起来的那次也是。
+#[test]
+fn a_thread_still_running_is_not_mistaken_for_a_failure() {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let h: std::thread::JoinHandle<Result<(), String>> = std::thread::spawn(move || {
+        // 一直占着这条线程，直到判据放它走 —— 这就是「窗口起来了」那一形的形状
+        //（`run_native` 占着线程直到窗口关闭）。
+        let _ = rx.recv();
+        Ok(())
+    });
+    assert!(
+        !crate::filewin::shell::early_failure(&h, std::time::Duration::from_millis(120)),
+        "还占着线程的那一条被当成了失败 —— 那会让每一次真开窗都报错"
+    );
+    let _ = tx.send(());
+    let _ = h.join();
+}
+
+/// 入口那条命令**真的**经它走，而且排在开窗之后。
+///
+/// ⚠ 判源码是代理（同族先例住 `entry_tests` 那条「空路径那一支」）。
+/// 买的是：那个句柄不再被 `let _ = …` 丢掉。
+#[test]
+fn the_entry_command_no_longer_throws_the_window_handle_away() {
+    let prod =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/entry.rs"));
+    assert_eq!(
+        prod.matches("early_failure(").count(),
+        1,
+        "`entry.rs` 生产段里 `early_failure(` 不是恰好一处"
+    );
+    // 🔴 那个句柄**不许**再被丢掉 —— 这一比钉的正是上一版那行字面。
+    assert!(
+        !prod.contains("let _ = open_detached_seeded("),
+        "开窗的句柄又被 `let _ = …` 丢掉了 —— 那就回到了「静默成功」那一形"
+    );
+    let at_open = prod
+        .find("open_detached_seeded(")
+        .expect("`open_detached_seeded(` 不在生产段里 —— 抽取器坏了");
+    let at_check = prod
+        .find("early_failure(")
+        .expect("上一比已经保证它在，这里拿不到位置说明抽取器坏了");
+    assert!(
+        at_open < at_check,
+        "那一跳排在开窗**之前** —— 那时还没有句柄可看"
+    );
+}

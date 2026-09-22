@@ -173,13 +173,34 @@ pub async fn open_file_window(
     let n = rows.len();
     // ② 拿着这一屏开窗。⚠ 不 `join` 那个句柄：`run_native` 要阻塞到窗口关闭，
     //    等它就等于把 Tauri 的 async 运行时挂在一个窗口的寿命上。
-    let _ = open_detached_seeded(
+    let h = open_detached_seeded(
         Source::Remote(Box::new(cfg)),
         path,
         tokio::runtime::Handle::try_current().ok(),
         rows,
         reveal,
     );
+    // ③ 🔴〔第十一刀〕**那条线程当场就死了的话，别报成功。**
+    //
+    //    上一版这里是 `let _ = open_detached_seeded(…)`，句柄直接丢掉
+    //    ⇒ 窗口起没起来，webview 那侧看到的都是 `Ok(行数)`。
+    //    而有一条路**今天必然走到那里**：同一个进程里第二次开窗必然失败
+    //    （winit 的进程级事件循环标志，逐条理由住 `shell::early_failure`）
+    //    ⇒ 用户关掉窗口再点一次，屏幕上什么都没有、界面却说「成功」。
+    //
+    //    ⚠ 这一跳**不等窗口关闭**（那会把这条命令挂在一个窗口的寿命上，
+    //      正是上面②那条注释说的那件事）—— 它只等一个很短的预算，
+    //      分开「早失败」与「起来了」。买不到什么逐条写在 `early_failure` 头注里。
+    if super::shell::early_failure(&h, super::shell::EARLY_FAILURE_BUDGET) {
+        let why = match h.join() {
+            Ok(Err(e)) => e,
+            Ok(Ok(())) => "那条线程回了成功，但它在开窗预算内就结束了 —— \
+                           窗口没能立起来（这一形此前是静默的）"
+                .to_string(),
+            Err(_) => "开窗那条线程炸了（panic），原因只落在它自己的 stderr 上".to_string(),
+        };
+        return Err(format!("窗口没起来：{why}"));
+    }
     Ok(n)
 }
 
