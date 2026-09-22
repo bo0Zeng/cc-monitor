@@ -187,6 +187,16 @@ pub struct Listing {
     pub epoch: Arc<AtomicU64>,
     /// 还有几趟列目录在飞。0 = 列完了。
     pub inflight: Arc<AtomicU64>,
+    /// 🔴〔第十二刀〕上一趟**走没走成主路**（问后端）。`None` = 走成了。
+    ///
+    /// 退了路要**出声** —— 逐条理由住 `source::ListVerdict`。
+    /// 一次静默降级与一次成功在屏幕上长得一样，而代价（分层退回前端）是真的。
+    pub verdict: Arc<Mutex<super::source::ListVerdict>>,
+    /// 🔴 上一趟**被后端截断了吗**。
+    ///
+    /// 它必须画出来：「这个目录里就这么多」与「后端只给了前 N 条」
+    /// 在屏幕上长得一样，而用户会据此以为某个文件不存在。
+    pub truncated: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for Listing {
@@ -196,7 +206,33 @@ impl Default for Listing {
             error: Arc::new(Mutex::new(None)),
             epoch: Arc::new(AtomicU64::new(0)),
             inflight: Arc::new(AtomicU64::new(0)),
+            verdict: Arc::new(Mutex::new(None)),
+            truncated: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
+    }
+}
+
+/// 落一趟**经后端**的列目录（比 [`store_if_current`] 多两格：裁决与截断）。
+///
+/// 🔴 与它**刻意是两个函数**：旧那条路（退路 / 无运行时）交不出这两格，
+/// 而给它们编一个「不知道」的第三态，只会让「没问过」与「问了没被截断」混在一起。
+pub fn store_listed_if_current(
+    l: &Listing,
+    mine: u64,
+    r: Result<(Vec<Row>, bool, super::source::ListVerdict), String>,
+) -> bool {
+    match r {
+        Ok((rows, truncated, verdict)) => {
+            // ⚠ 先写这两格再落行：落行那一步会判号并可能整份丢掉，
+            //   而这两格描述的是**同一趟**，不许一半落一半不落。
+            let kept = store_if_current(l, mine, Ok(rows));
+            if kept {
+                *l.verdict.lock().unwrap() = verdict;
+                l.truncated.store(truncated, Ordering::SeqCst);
+            }
+            kept
+        }
+        Err(e) => store_if_current(l, mine, Err(e)),
     }
 }
 
@@ -402,29 +438,38 @@ impl FileWindow {
         let l = self.listing.clone();
         let mine = l.start();
         let cwd = self.cwd.clone();
-        match &self.source {
-            Source::Local => {
-                let r = list_local(std::path::Path::new(&cwd));
-                store_if_current(&l, mine, r);
+        // 🔴〔第十二刀 2026-09-22〕**先问后端，问不到才退回旧路** ——
+        //    用户指令的第 1 步，逐条理由住 `source.rs` 那一段头注。
+        match &self.rt {
+            // ── 有运行时 ⇒ 主路（两侧走**同一条**：`files-ls` on 这个 origin）──
+            Some(h) => {
+                let source = self.source.clone();
+                h.spawn(async move {
+                    let r = super::source::list_dir(&source, &cwd).await;
+                    store_listed_if_current(&l, mine, r);
+                });
             }
-            Source::Remote(cfg) => {
-                let cfg = cfg.clone();
-                match &self.rt {
-                    Some(h) => {
-                        h.spawn(async move {
-                            let r = list_remote(&cfg, &cwd).await;
-                            store_if_current(&l, mine, r);
-                        });
-                    }
-                    None => {
-                        store_if_current(
-                            &l,
-                            mine,
-                            Err("远端目录要一个 tokio 运行时，这个窗口没拿到".into()),
+            // ── 没有运行时 ⇒ 问不了后端。**这也是一条退路，而它要出声。**
+            //    （判据里大量 `FileWindow::new(Source::Local, …, None)` 走这一支）
+            None => match &self.source {
+                Source::Local => {
+                    let r = list_local(std::path::Path::new(&cwd));
+                    let kept = store_if_current(&l, mine, r);
+                    if kept {
+                        *l.verdict.lock().unwrap() = Some(
+                            "这个窗口没有 tokio 运行时 ⇒ 问不了后端，这一屏是 monitor 自己列的"
+                                .into(),
                         );
                     }
                 }
-            }
+                Source::Remote(_) => {
+                    store_if_current(
+                        &l,
+                        mine,
+                        Err("远端目录要一个 tokio 运行时，这个窗口没拿到".into()),
+                    );
+                }
+            },
         }
     }
 
@@ -1751,6 +1796,26 @@ impl FileWindow {
         }
         if let Some(e) = self.listing.error.lock().unwrap().clone() {
             ui.colored_label(egui::Color32::RED, e);
+        }
+        // 🔴〔第十二刀〕**退了路要出声。** 一次静默降级与一次成功在屏幕上长得一样，
+        //    而代价是真的：这一屏不是后端列的，是 monitor 自己列的
+        //    ⇒ 没有 `kind`（分不出符号链接）、没有截断读数、也不是「后端做前端拿结果」。
+        if let Some(why) = self.listing.verdict.lock().unwrap().clone() {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
+                format!("这一屏没走后端：{why}"),
+            );
+        }
+        // 🔴 截断也要出声 —— 「这个目录里就这么多」与「后端只给了前 N 条」
+        //    在屏幕上长得一样，而用户会据此以为某个文件不存在。
+        if self.listing.truncated.load(Ordering::SeqCst) {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
+                format!(
+                    "这个目录条目太多，只拿到了前 {} 条 —— 没看见的文件不代表它不在",
+                    super::source::LS_LIMIT
+                ),
+            );
         }
         // 🔴〔第四刀〕搜索那一行 ＋ **新鲜度那一行**（`设计/60 §3.5.3` 那条 ⬜）。
         self.search_row(ui);

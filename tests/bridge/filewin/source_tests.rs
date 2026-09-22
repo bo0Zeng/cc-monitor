@@ -367,3 +367,203 @@ fn a_remote_basename_only_ever_splits_on_slashes() {
         "反斜杠被当成分隔符了 —— 那会把一个名字里含 `\\` 的文件切成两级"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第十二刀 2026-09-22〕后端做，前端拿结果 —— 只读那一侧
+// ════════════════════════════════════════════════════════════════════════
+
+/// 一条正常的 `files-ls` entry → 一行。
+#[test]
+fn a_backend_entry_becomes_a_row() {
+    let v = serde_json::json!({
+        "path": "/srv/data/报表.csv",
+        "kind": "file",
+        "size": 4096u64,
+        "mtime_secs": 1_700_000_000u64,
+    });
+    let r = row_from_ls_entry(&v).expect("这条 entry 应当解得出来");
+    assert_eq!(r.path, "/srv/data/报表.csv");
+    assert_eq!(r.name, "报表.csv", "名字是从路径尾段取的");
+    assert!(!r.is_dir);
+    assert_eq!(r.size, 4096);
+    assert!(!r.lossy_name);
+}
+
+/// `kind` 是**四值**，而窗口今天只认 `dir` 一档。
+///
+/// ⚠ 后端分得出符号链接而窗口分不出 —— 那一格**本刀没接**，这里把它钉成读数：
+/// 哪天窗口要在行上画链接标记，改的是这一条。
+#[test]
+fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
+    for (kind, want_dir) in [
+        ("dir", true),
+        ("file", false),
+        ("symlink", false),
+        ("other", false),
+    ] {
+        let v = serde_json::json!({ "path": format!("/a/{kind}"), "kind": kind });
+        let r = row_from_ls_entry(&v).unwrap();
+        assert_eq!(r.is_dir, want_dir, "`kind={kind}` 判错了");
+    }
+    // `size` 缺了不整条失败（同本机那条：读不到 stat 也照样给一行）。
+    let v = serde_json::json!({ "path": "/a/x", "kind": "file" });
+    assert_eq!(row_from_ls_entry(&v).unwrap().size, 0);
+}
+
+/// 🔴 **`lossy_name` 这一格当场变准了 —— 而旧那份是一个猜。**
+///
+/// 旧写法是 `name.contains('\u{FFFD}')`（`list_local` 里那一行，今天还在退路上）：
+/// 它把「转换时产生了替换字符」与「这个文件真叫这个名字」混成一件事
+/// ⇒ 一个**真叫** `\u{FFFD}` 的文件会被误判成有损，于是复制/改名/删除三颗按钮
+/// 对它一颗都不画（`is_copyable` / `is_writable` 都看这一格）。
+///
+/// 新写法看的是**字节**：`files-ls` 的 `path` 走原始字节
+/// （字符串 或 `{"b16":…}`）⇒ 有损与否是**事实**不是猜。
+#[test]
+fn lossiness_is_a_fact_about_the_bytes_not_a_guess_about_the_string() {
+    // ① 真叫 U+FFFD 的文件：**合法 UTF-8**，不该判成有损。
+    let v = serde_json::json!({ "path": "/a/\u{FFFD}怪名", "kind": "file" });
+    let r = row_from_ls_entry(&v).unwrap();
+    assert!(
+        !r.lossy_name,
+        "一个**真叫**替换字符的文件被判成了有损 —— 那正是旧那份 `contains('\\u{{FFFD}}')` 的错法。\n\
+         后果具体：复制 / 改名 / 删除三颗按钮对它一颗都不画"
+    );
+    // 阴性对照：旧那份写法在同一条输入上**确实**会判错（证明上面那一比不是空真）。
+    assert!(
+        r.name.contains('\u{FFFD}'),
+        "夹具没造出那个字符 —— 本条此刻在量别的东西"
+    );
+
+    // ② 真的非 UTF-8 字节（走 `{"b16":…}`）⇒ 判成有损。
+    //    `/a/` ＋ 一个孤立的 0xFF（任何 UTF-8 序列里都不合法）。
+    let hex = "2f612fff";
+    let v2 = serde_json::json!({ "path": { "b16": hex }, "kind": "file" });
+    let r2 = row_from_ls_entry(&v2).unwrap();
+    assert!(r2.lossy_name, "非 UTF-8 字节没被判成有损");
+    assert!(
+        r2.name.contains('\u{FFFD}'),
+        "画出来那一份该是有损的：{}",
+        r2.name
+    );
+}
+
+/// 形状不对的 entry ⇒ **报错，不悄悄跳过那一行**。
+///
+/// 悄悄跳过的后果：目录里少一个文件，而屏幕上没有任何提示 ——
+/// 与「这个文件不存在」分不开。
+#[test]
+fn an_entry_we_cannot_read_is_an_error_not_a_skipped_row() {
+    for bad in [
+        serde_json::json!({ "kind": "file" }),
+        serde_json::json!({ "path": 42, "kind": "file" }),
+        serde_json::json!({ "path": { "b16": "zz" }, "kind": "file" }),
+    ] {
+        let e = row_from_ls_entry(&bad).expect_err(&format!("`{bad}` 竟然解出来了"));
+        assert!(!e.trim().is_empty(), "报错是空串");
+    }
+    // 阴性对照：正常那条解得出来（否则上面可以靠「什么都报错」全绿）。
+    assert!(row_from_ls_entry(&serde_json::json!({ "path": "/a", "kind": "dir" })).is_ok());
+}
+
+/// 🔴 **一屏回来就是排好序的** —— 而这是**行为**判据，不是源码代理。
+///
+/// 后端不排（它答的是目录项不是一屏）。「目录在前、名称小写排」这个**显示序**契约，
+/// 主路上只经 `sort_rows` 这一处 —— 本条喂一份乱序的 `data`，看它出来是不是序对的。
+#[test]
+fn a_screenful_comes_back_already_sorted() {
+    let d = serde_json::json!({
+        "entries": [
+            { "path": "/a/zebra.txt", "kind": "file" },
+            { "path": "/a/Apple",     "kind": "dir"  },
+            { "path": "/a/beta.txt",  "kind": "file" },
+            { "path": "/a/yak",       "kind": "dir"  },
+        ],
+        "truncated": false,
+    });
+    let (rows, truncated) = rows_from_ls_data(&d).expect("这一份该解得出来");
+    let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["Apple", "yak", "beta.txt", "zebra.txt"],
+        "序不对 —— 契约是「目录在前，再按名称**小写**排」（`Apple` 要排在 `yak` 前）"
+    );
+    assert!(!truncated);
+    // 反空真：喂进去的就是乱序的（否则「出来有序」可能只是原样）。
+    assert_ne!(
+        names,
+        vec!["zebra.txt", "Apple", "beta.txt", "yak"],
+        "本条喂的语料没被重排过 —— 它此刻在量一个恒真"
+    );
+}
+
+/// 🔴 **解不出的一行 ⇒ 整趟报错，不悄悄跳过。**
+///
+/// # 这一条是死值验逼出来的
+///
+/// 第一版只抽了 `row_from_ls_entry`，而 `list_via_backend` 里那个 `?` 没人钉
+/// ⇒ 死值验把它换成 `if let Ok(r) = … { out.push(r) }`（悄悄跳过）时
+/// **一条判据都不红**。而悄悄跳过的后果是：目录里少一个文件、屏幕上没有提示，
+/// 与「这个文件不存在」分不开。
+#[test]
+fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
+    let d = serde_json::json!({
+        "entries": [
+            { "path": "/a/good.txt", "kind": "file" },
+            { "kind": "file" },                       // 没有 path
+            { "path": "/a/also-good", "kind": "dir" },
+        ],
+    });
+    let e = rows_from_ls_data(&d).expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
+    assert!(e.contains("第 1 条"), "报错没说是第几条：{e}");
+    // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
+    let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ] });
+    assert_eq!(rows_from_ls_data(&ok).unwrap().0.len(), 1);
+}
+
+/// `truncated` 带得回来（缺了就当没截断）。
+#[test]
+fn truncation_is_carried_back_not_dropped() {
+    let d = serde_json::json!({ "entries": [], "truncated": true });
+    assert!(rows_from_ls_data(&d).unwrap().1, "截断那一格被丢了");
+    let d2 = serde_json::json!({ "entries": [] });
+    assert!(!rows_from_ls_data(&d2).unwrap().1, "缺了就该当没截断");
+}
+
+/// 🔴 **退路在，而且排在问后端之后。**
+///
+/// ⚠ 同上，判源码是代理：`list_dir` 那条路要一条真后端通道才走得完，
+/// 而判据不许在进程级登记表上种一个 `<local>` 通道
+///（那张表是**进程内全局**的，`inbound_client` 自己的头注记着两条判据在同一个键上
+/// 起真后端会互相看见对方登记的通道 ⇒ 种它就是给别的判据下毒）。
+#[test]
+fn the_fallback_exists_and_comes_after_asking_the_backend() {
+    let prod =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/source.rs"));
+    let at_fn = prod
+        .find("pub async fn list_dir(")
+        .expect("`list_dir` 不在生产段里");
+    let body = &prod[at_fn..];
+    let at_ask = body
+        .find("list_via_backend(")
+        .expect("`list_dir` 里没有问后端那一跳 —— 那它就不是主路了");
+    // 退路两支各一处。
+    for (needle, what) in [
+        ("list_local(", "本机那条退路"),
+        ("list_remote(", "远端那条退路"),
+    ] {
+        let at = body
+            .find(needle)
+            .unwrap_or_else(|| panic!("`list_dir` 里没有{what}"));
+        assert!(
+            at_ask < at,
+            "{what}排在问后端**之前** —— 那后端那条主路就永远走不到"
+        );
+    }
+    // 🔴 退路必须**交出一句话**（`ListVerdict` 是 `Some`）——
+    //    静默降级与成功在屏幕上长得一样。
+    assert!(
+        body.contains("Some(why)"),
+        "退路没把原因交出去 —— 那就是一次静默降级"
+    );
+}

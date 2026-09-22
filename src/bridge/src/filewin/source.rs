@@ -228,6 +228,171 @@ pub async fn resolve_remote_home(cfg: &RemoteConfig) -> Result<String, String> {
     start_dir_from_realpath(&answer)
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// 🔴〔第十二刀 2026-09-22〕**后端做，前端拿结果** —— 用户指令的第一步
+// ═══════════════════════════════════════════════════════════════════════
+//
+// 用户 2026-09-22 逐字：「文件管理器不应该全部依赖前端 / 应该像我们现在一样的架构 /
+// **即后端做, 前端拿结果, 这样才能 0 流量**」。
+// 设计稿住 `设计/60 §8`；本段是它的**第 1 步**（只读那一侧，无裁决前置）。
+//
+// # 为什么这一步不需要任何裁决
+//
+// 后端**已经有** `files.ls`（`src/backend/files/mod.rs::CAPABILITIES`），而它
+// **今天零消费者**。接上去是纯增量，`readonly_guard` 那 4259 行一行不动
+//（`files.ls` 的 `effect` 是 `ReadsOnly`）。
+//
+// # 🔴 为什么是「主路 ＋ 申报过的退路」而不是「把旧路删掉」
+//
+// 后端**不是恒在的**，两侧各有一条现打的理由：
+// - **本机**：`build.rs` 那句警告逐字「没有本机内嵌后端 ⇒ **裸可执行文件起不了
+//   本机后端**，只有安装包那份带本机后端的能起。开发构建里这是正常的」。
+// - **远端**：后端没推上去 / 没起来，而 SSH 本身是通的。
+// - 还有一条形状上的：窗口**可能没有 tokio 运行时**（判据里大量
+//   `FileWindow::new(Source::Local, …, None)`）⇒ 问不了后端。
+//
+// ⇒ 形状照本仓现成的那个（`sftp_pool::CopyVerdict`：走了快路回 `None`，
+//   **退了路回一句话**）：[`ListVerdict`]。**退路不许静默** —— 那正是
+//   「零流量退化成 2× 流量」当初要出声的同一条纪律。
+//
+// # ⚠ 这一步**没有**做到什么（别读宽）
+//
+// - **两份实现还在**，只是降级成了退路。「两份变一份」要等到后端恒在那天
+//   （那是另一件事，不是这一刀）。
+// - **写那一族一条都没搬**（`设计/60 §8.3` 那道政策题还没拍）。
+// - **`Row` 仍然持字符串不持字节** —— 后端那一侧已经走原始字节了
+//   （`files.ls` 的 `path` 是 `{"b16":…}` 或字符串），而这一侧还在入口处
+//   有损转一次。改 `Row` 会动到六个模块与四十来条判据 ⇒ 单独一刀。
+//   ⚠ 但 [`Row::lossy_name`] 这一格**当场变准了**：从前是
+//   「名字里含 U+FFFD」（一个**猜**，真叫这个名字的文件会被误判），
+//   现在是「那串字节不是合法 UTF-8」（**事实**）。
+
+/// 那条线上命令的名字。⚠ 能力名是 `files.ls`，线上名是 `files-ls`
+/// （两者刻意不同形，同 `find.rs` 头注那条）。
+pub const CMD_LS: &str = "files-ls";
+
+/// 一趟列目录**走没走成主路**。`None` = 后端答的；`Some(说明)` = 退了路。
+///
+/// 🔴 与 `sftp_pool::CopyVerdict` 同形、同理由：一次静默降级与一次成功
+/// 在屏幕上长得一样，而代价（这里是「分层退回前端」，那里是「2× 流量」）是真的。
+pub type ListVerdict = Option<String>;
+
+/// 一趟 `files-ls` 回来的 `entries` 里的**一条** → [`Row`]。
+///
+/// 🔴 **抽成具名函数是为了让它可判**（同 [`row_from_sftp_entry`] 的理由）：
+/// [`list_via_backend`] 整条路要一条真后端通道才跑得起来，
+/// 而那条路上**唯一有逻辑的一段**就是这里。
+///
+/// # 逐格说明（后端给的与窗口要的不是同一张表）
+///
+/// | 后端 | 窗口 | 怎么来的 |
+/// |---|---|---|
+/// | `path`（字符串 或 `{"b16":…}`） | `path` · `name` · `lossy_name` | 先解成**字节**，再取尾段作名字；有损与否看那串字节 |
+/// | `kind`（`dir`/`file`/`symlink`/`other`） | `is_dir` | 只有 `dir` 算目录 |
+/// | `size`（可能缺） | `size` | 缺就是 0（同本机那条：读不到 stat 不整趟失败） |
+/// | `mtime_secs` | —— | 窗口今天不画它 |
+///
+/// ⚠ **`kind` 比 `is_dir` 细** —— 后端分得出符号链接，而窗口今天分不出。
+/// 那一格**本刀没接**（要在行上多画一种标记），如实登记。
+pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Row, String> {
+    let raw = v
+        .get("path")
+        .ok_or_else(|| "`files-ls` 的一条 entry 里没有 `path`".to_string())?;
+    let bytes = super::find::decode_path(raw)
+        .ok_or_else(|| "`path` 的形状不对 —— 只认字符串或 `{\"b16\": …}`".to_string())?;
+    // 🔴 有损与否看**字节**，不看转出来的那个串里有没有 U+FFFD。
+    //    后者是一个猜：真叫 `\u{FFFD}` 的文件会被误判成有损。
+    let lossy_name = std::str::from_utf8(&bytes).is_err();
+    let path = String::from_utf8_lossy(&bytes).to_string();
+    let name = remote_basename(&path).to_string();
+    let is_dir = v.get("kind").and_then(|k| k.as_str()) == Some("dir");
+    let size = v
+        .get("size")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    Ok(Row {
+        name,
+        path,
+        is_dir,
+        size,
+        lossy_name,
+    })
+}
+
+/// 问**那台机器上的后端**要一个目录。
+///
+/// 回 `(行, 被截断了吗)`。⚠ 截断要**画出来** —— 「目录里就这么多」与
+/// 「后端截断了」在屏幕上长得一样，而那正是本仓的头号病形。
+///
+/// ⚠ 本函数**自己没有逻辑**，判的那一段住 [`row_from_ls_entry`]。
+pub async fn list_via_backend(
+    origin: &crate::origin::Origin,
+    dir: &str,
+    limit: usize,
+) -> Result<(Vec<Row>, bool), String> {
+    let args = serde_json::json!({ "path": dir, "limit": limit });
+    let d = super::find::call_one(origin, CMD_LS, args, std::time::Duration::from_secs(20))
+        .await
+        .map_err(super::find::routed_text)?;
+    rows_from_ls_data(&d)
+}
+
+/// 一趟 `files-ls` 的整份 `data` → **一屏**。
+///
+/// 🔴 **把整段抽出来（而不是只抽一条 entry）是为了让这三件都变成行为可判的**：
+/// ① 排序真的做了；② 解不出的一行**整趟报错**而不是被悄悄跳过；③ 截断那一格带回来。
+/// 第一版只抽了 `row_from_ls_entry`，于是 ②③ 只能靠源码代理钉 ——
+/// 而死值验当场量到 ② **一条判据都不红**（把 `?` 换成 `if let Ok` 静悄悄地过）。
+///
+/// # ⚠ 为什么「解不出一行」要整趟失败
+///
+/// 悄悄跳过的后果：目录里少一个文件，屏幕上没有任何提示
+/// ⇒ 与「这个文件不存在」**分不开**。而用户会据此以为文件丢了。
+pub fn rows_from_ls_data(d: &serde_json::Value) -> Result<(Vec<Row>, bool), String> {
+    let arr = d
+        .get("entries")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "`files-ls` 的 `entries` 不是一个数组".to_string())?;
+    let mut out = Vec::with_capacity(arr.len());
+    for (i, one) in arr.iter().enumerate() {
+        out.push(row_from_ls_entry(one).map_err(|e| format!("第 {i} 条 entry：{e}"))?);
+    }
+    // 🔴 **排序在这一侧，而且主路上只有这一份** —— 后端不排（它答的是目录项，不是一屏）。
+    //    「目录在前、名称小写排」是**显示序**，那是前端的活；
+    //    这一步让那个契约从「两份实现对拍」变成「主路上只有一份」。
+    sort_rows(&mut out);
+    let truncated = d
+        .get("truncated")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    Ok((out, truncated))
+}
+
+/// 一屏最多要多少行。
+///
+/// ⚠ 后端那侧有自己的默认值（`files/mod.rs::DEFAULT_LIMIT`）；这里**显式给**，
+/// 因为「一屏多少」是调用方的事（同 `设计/60 §3.5.2a` 那条「机制在后端 ·
+/// 节拍归调用方」的形）。取这个数是因为窗口是**虚拟滚动**的
+/// （`ScrollArea::show_rows`），一次拿多少不影响帧时，只影响一次往返的大小。
+pub const LS_LIMIT: usize = 50_000;
+
+/// 列一个目录 —— **先问后端，问不到就退回旧路并出声**。
+///
+/// 回 `(行, 截断了吗, 走没走成主路)`。逐条理由住本段上方那一节。
+pub async fn list_dir(source: &Source, dir: &str) -> Result<(Vec<Row>, bool, ListVerdict), String> {
+    match list_via_backend(&source.origin(), dir, LS_LIMIT).await {
+        Ok((rows, truncated)) => Ok((rows, truncated, None)),
+        Err(why) => {
+            // ── 退路：旧那两条路，各自原样 ──────────────────────────
+            let rows = match source {
+                Source::Local => list_local(std::path::Path::new(dir))?,
+                Source::Remote(cfg) => list_remote(cfg, dir).await?,
+            };
+            Ok((rows, false, Some(why)))
+        }
+    }
+}
+
 /// 列一个**远端**目录 —— 直接调 `sftp_pool`，同进程、无 IPC。
 pub async fn list_remote(cfg: &RemoteConfig, dir: &str) -> Result<Vec<Row>, String> {
     let entries = crate::sftp_pool::sftp_list_dir(cfg.clone(), dir.to_string()).await?;

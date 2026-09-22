@@ -615,7 +615,7 @@ pub struct Round {
 /// ⇒ 这里不做回落决策，但**照样走共用那个分流器**（同
 /// `backend::control::cc_bus` 与 `tmux.rs` 那两处的理由）：
 /// 分流规则一有第二份实现，「被门拒绝」就会在某一份里被洗成「换条路重做」。
-fn routed_text(r: Routed) -> String {
+pub(super) fn routed_text(r: Routed) -> String {
     match r {
         Routed::Done => "后端说做完了，但没给答案 —— 那不是这条命令的契约".to_string(),
         Routed::NoChannel(why) | Routed::Refused(why) => why,
@@ -624,9 +624,20 @@ fn routed_text(r: Routed) -> String {
 
 /// 发一条命令、拿它的 `data`。
 ///
+/// 🔴〔2026-09-22〕**它现在有两个消费者**：搜索那一摞（本模块）与
+/// **列目录**（[`super::source::list_via_backend`]）。
+/// ⚠ 「怎么跟后端说话」这件事因此横跨两个模块了 —— 如实登记：
+/// **再出现第三个消费者就把这三样（本函数 · [`refusal`] · [`routed_text`]）
+/// 抽到一个自己的落点去**，别让它一直挂在「搜索」这个名字下面。
+///
 /// ⚠ 吃的是 [`Origin`]（全仓那一个「哪台机器」的类型），不是一个裸字符串 ——
 /// `origin_tests::no_new_raw_string_origin_parameters` 那条递减棘轮逐字要求新代码这么写。
-async fn call_one(origin: &Origin, cmd: &str, args: Value, t: Duration) -> Result<Value, Routed> {
+pub(super) async fn call_one(
+    origin: &Origin,
+    cmd: &str,
+    args: Value,
+    t: Duration,
+) -> Result<Value, Routed> {
     let wire = origin.as_wire_str();
     let Some(client) = client_for(wire) else {
         return Err(no_channel(wire));
@@ -643,7 +654,7 @@ async fn call_one(origin: &Origin, cmd: &str, args: Value, t: Duration) -> Resul
 }
 
 /// 后端拒绝时那句话。**逐档对着 `src/doc/IPC-PROTOCOL.md §10` 的错误码写。**
-fn refusal(cmd: &str, code: &str, message: &str) -> String {
+pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
     let hint = match code {
         "bad_args" => "这条命令的参数形状不对（多半是两侧契约漂了）",
         "bad_path" => "这个路径后端不认",
