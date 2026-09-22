@@ -27,22 +27,7 @@ fn repo_root() -> PathBuf {
 }
 
 /// 判定这一族的**唯一住址**（仓相对）。别处再写一份 `pub fn` 就是第二个家。
-/// 判定的家。
-///
-/// 🔴〔2026-09-22〕**从 `src/bridge/src/claude_data_fence.rs` 搬到了共享 crate。**
-/// 来历：用户裁定「允许」后端在用户显式操作下写用户选的路径（`设计/60 §8.3`）
-/// ⇒ 围栏要由**拥有那份数据的那台机器**执行，而远端的 Claude 数据只有远端那个后端
-/// 够得着 ⇒ 判定必须在**两棵树都够得着**的地方，而且**仍然只有一个家**。
-///
-/// ⚠ `src/bridge/src/claude_data_fence.rs` **还在**，而且它那份头注一个字没删 ——
-/// 它现在是一行 `pub use` ＋ 那份「为什么有这道围栏、它管不着什么」的说明。
-/// 本族因此多了一条要钉的：**那个文件里不许再有判定的定义**（见下面那条）。
-const FENCE_HOME: &str = "src/bridge/crates/claude-fence-core/src/lib.rs";
-
-/// 🔴 判定**搬走之后**留在桥那一侧的转出住址。
-///
-/// 它只许是一行 `pub use` —— 有第二份定义就是两个家，而那正是本族在挡的事。
-const FENCE_REEXPORT: &str = "src/bridge/src/claude_data_fence.rs";
+const FENCE_HOME: &str = "src/bridge/src/claude_data_fence.rs";
 
 // ════════════════════════════════════════════════════════════════════════════
 //  一、围栏两个方向 —— 成对的样本，两条都是相等断言
@@ -272,15 +257,7 @@ fn the_protected_path_judgement_has_exactly_one_home() {
     // 🔴 走 `guard_core::scan_tree!` 而不是自己遍历（`scanning_guard_registry` 那条
     //    递减棘轮明禁裸遍历）。**本文件不在被扫的那两棵树里** —— 它住 `tests/bridge/`，
     //    而下面扫的是 `src/bridge/src` 与 `src/backend` 两棵生产树。
-    // 🔴〔2026-09-22〕扫描面从两棵树变**三棵** —— 判定搬进 `crates/` 之后，
-    //    只扫那两棵生产树的话，`defs` 会变成空集而这条判据**静默变空真**
-    //    （「定义恰好一处」在零处时也成立不了，但「谁在读布局」那一比会两边一起塌）。
-    //    ⇒ 把 crate 那棵一起扫进来。
-    for sub in [
-        "src/bridge/src",
-        "src/backend",
-        "src/bridge/crates/claude-fence-core/src",
-    ] {
+    for sub in ["src/bridge/src", "src/backend"] {
         let files = guard_core::scan_tree!(&root.join(sub), &["rs"]);
         scanned += files.len();
         for (path, src) in files {
@@ -576,60 +553,4 @@ fn every_uncovered_shape_is_still_uncovered_today() {
             "`{p}`（{what}）那一行没写清为什么没被挡，像是占位：「{why}」"
         );
     }
-}
-
-/// 🔴〔2026-09-22〕**转出那一侧只许是一行 `pub use`，不许长出第二份定义。**
-///
-/// # 搬家之后才买得到的那一格
-///
-/// 判定从 `src/bridge/src/claude_data_fence.rs` 搬进了共享 crate
-///（用户裁定「允许」后端写 ⇒ 围栏要由拥有数据的那台机器执行）。
-/// 而那个文件**还在**：它留着那份「为什么有这道围栏、它管不着什么」的头注，
-/// 因为 monitor 这一侧的读者会先找到它。
-///
-/// ⇒ 于是多出一条新风险：**有人在那儿顺手又写一份**（比如「桥这边要一个稍微不同的判法」）。
-/// 那正是本族一直在挡的「两份会分叉」，只是换了个住处。
-/// ⇒ 本条把它钉死：那个文件的生产段里
-/// ① 有那一行 `pub use`；② **一个 `fn` 都没有**。
-#[test]
-fn the_bridge_side_is_a_re_export_and_never_a_second_copy() {
-    let raw = std::fs::read_to_string(repo_root().join(FENCE_REEXPORT))
-        .unwrap_or_else(|e| panic!("{FENCE_REEXPORT} 读不到：{e} —— 文件搬了就把这里一起改"));
-    let prod = guard_core::production_code(&raw);
-
-    // ① 那一行转出在。
-    let use_line = format!("pub use claude_fence_{}::", "core");
-    assert!(
-        prod.contains(use_line.as_str()),
-        "{FENCE_REEXPORT} 里没有那行 `pub use` —— 桥这一侧的消费者会当场断"
-    );
-
-    // ② 🔴 **一个 `fn` 都没有。** 有了就是第二份判定的入口。
-    //    ⚠ 只数生产段：头注里提到函数名不算（同 `installface` 那一格的口径）。
-    let fns = prod.matches("fn ").count();
-    assert_eq!(
-        fns, 0,
-        "{FENCE_REEXPORT} 的生产段里出现了 {fns} 个 `fn` —— \n\
-         ★ 这个文件搬走判定之后只许是**一行转出 ＋ 那份说明**。\n\
-           在这儿写一个函数，就是在「拥有数据的那台机器执行围栏」这条之外\n\
-           又开了一个**桥专用的判法** —— 而两份一定会分叉：\n\
-           修了一份、另一份照旧放行，**而两份都「看起来在挡」**。\n\
-         ⇒ 真要一道新的（比如方向相反的白名单），往 `LAYOUT_READERS` 加一行\n\
-           并写清**为什么它不是第二份**。"
-    );
-
-    // 反空真：这把尺子认得出「有 fn」—— 拿一份合成源码两个方向各打一遍。
-    assert_eq!(
-        guard_core::production_code("pub use a::b;\n")
-            .matches("fn ")
-            .count(),
-        0
-    );
-    assert_eq!(
-        guard_core::production_code("pub fn x() {}\n")
-            .matches("fn ")
-            .count(),
-        1,
-        "剥法把 `fn` 也剥掉了 —— 那上面那一比是恒真的"
-    );
 }
