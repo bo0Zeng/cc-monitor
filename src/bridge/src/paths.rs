@@ -15,6 +15,14 @@
 //!   - `claudeDir` 字段只决定 monitor 去哪里找 `projects/` 和 `sessions/`
 //!
 //! 文档化为"monitor 设置永远在默认位置，'Claude 数据目录'只影响数据源指向"。
+//!
+//! ## 🔴 那句「永远在默认位置」有一个出口〔2026-09-22 `P17`〕
+//!
+//! `CCM_DATA_DIR`（[`DATA_DIR_ENV`]）**只为「把这个进程整体挪到别处跑」而存在** ——
+//! 跑自动化测试、跑一次性复算。它**不是**给用户搬家用的设置面
+//! （用户那一侧的「数据位置」是只读展示）。
+//! 给了但不是绝对路径 ⇒ 回 `None`，**不退回用户真 profile**，
+//! 逐条理由住 [`resolve_monitor_data_dir`]。
 
 use std::path::PathBuf;
 
@@ -47,14 +55,76 @@ pub fn resolve_claude_dir() -> Option<PathBuf> {
     Some(default_path)
 }
 
-/// Monitor 自己的 user-data 目录：始终在 `~/.claude/work/`，
-/// 不跟随 `claudeDir` 变化（避免循环依赖、且保留用户设置在切换数据目录后仍存在）。
+/// 那个 env 出口的名字。
+///
+/// 🔴 它**只为「把这个进程整体挪到别处跑」而存在**（跑自动化测试、跑一次性复算），
+/// **不是**给用户搬家用的设置面。用户那一侧的「数据位置」是只读展示
+/// （`data_paths.rs` → 设置面板那一块）。
+pub const DATA_DIR_ENV: &str = "CCM_DATA_DIR";
+
+/// Monitor 自己的 user-data 目录。
+///
+/// 默认 `~/.claude/work/` —— **不跟随 `claudeDir` 变化**
+/// （避免循环依赖、且保留用户设置在切换数据目录后仍存在）。
+///
+/// # 🔴 那个 env 出口为什么必须有（`设计/99 §4.9.7 P17`）
+///
+/// 这个目录是**用户手写的真相**的家：`config.json` · tab 集合名 · 固定了哪些 tab
+/// · 凭据库 · 历史元数据 · 全景引擎。`设计/30 §B.4` 逐字的理由是
+/// 「**集合名是用户手写的真相，不是能重算的缓存 ⇒ 它必须活过一次清缓存**」。
+///
+/// ⇒ 而在这之前它**没有任何出口** ⇒ 任何一趟「把 monitor 跑起来量点东西」
+/// 都会**写进用户真 profile**。2026-09-21 在那台 Win11 虚拟机上跑 tier-2 时
+/// 现打到这一形：`auto-launch.json` 从 87 字节被改成 133 字节，
+/// 那一路只能靠**跑前备份、跑后还原**做到零残留 ——
+/// 而「靠每次记得备份」不是一个机制，是一次运气。
+///
+/// # 🔴 给了但不合法 ⇒ 回 `None`，**不退回用户真 profile**
+///
+/// 这一条是本函数唯一有争议的地方，所以写清：
+/// 退回真 profile 看起来「更稳」，实际是**这个出口存在的理由的反面** ——
+/// 那一趟自动化会以为自己被隔离了，而它正在写用户的东西，**而且没有一句话**。
+/// ⇒ 宁可让各个消费者**可见地降级**（凭据库拿不到、全景落回被动、
+/// 设置面板那一块显示拿不到路径），也不要静默写对家。
+///
+/// ⚠ 只认**绝对路径**：相对路径会按进程 cwd 解，而这个进程的 cwd 不是它自己定的。
+///
+/// ⚠ 它**不建目录、不判存在** —— 首次启动时它本来就不存在（建目录是各消费者的事）。
 pub fn resolve_monitor_data_dir() -> Option<PathBuf> {
-    Some(
-        dirs::home_dir()?
-            .join(".claude")
-            .join("work"),
+    monitor_data_dir_from(
+        std::env::var(DATA_DIR_ENV).ok().as_deref(),
+        dirs::home_dir(),
     )
+}
+
+/// [`resolve_monitor_data_dir`] 里**有逻辑的那一段**，抽出来所以判得到。
+///
+/// 🔴 **抽出来的理由不是风格，是本仓踩过的一条**：`lib_env_scrub_tests` 那条判据
+/// 头注逐字「**绝不能在测试里 set/remove 真实的 `CLAUDE_*` 变量
+/// （会干扰并发测试与宿主环境）**」—— cargo test 多线程跑、进程级 env 共享，
+/// 而 `resolve_monitor_data_dir` 有 8 处消费者。
+/// ⇒ 判据**不许**去动那个 env；它把值当参数喂进来。
+/// （同族先例：`filewin::download::judge_dest` 把「那儿有没有东西」注进来。）
+pub fn monitor_data_dir_from(env_val: Option<&str>, home: Option<PathBuf>) -> Option<PathBuf> {
+    if let Some(raw) = env_val {
+        let t = raw.trim();
+        // 设成空串 == 没设（shell 里 `CCM_DATA_DIR=` 是最常见的「取消」写法）。
+        if !t.is_empty() {
+            let p = PathBuf::from(t);
+            if p.is_absolute() {
+                tracing::info!("monitor_data_dir from {}: {}", DATA_DIR_ENV, p.display());
+                return Some(p);
+            }
+            // 🔴 **不退回真 profile** —— 逐条理由住上面那一节。
+            tracing::warn!(
+                "{} 不是绝对路径（{}）—— 拒绝使用，也**不**退回 ~/.claude/work：                 那会让一趟以为自己被隔离了的自动化去写用户的东西",
+                DATA_DIR_ENV,
+                t
+            );
+            return None;
+        }
+    }
+    Some(home?.join(".claude").join("work"))
 }
 
 /// Monitor 配置文件：`<monitor_data_dir>/config.json`
@@ -76,3 +146,7 @@ fn read_user_override() -> Option<PathBuf> {
     }
     Some(PathBuf::from(dir_str))
 }
+
+#[cfg(test)]
+#[path = "../../../tests/bridge/paths_tests.rs"]
+mod tests;
