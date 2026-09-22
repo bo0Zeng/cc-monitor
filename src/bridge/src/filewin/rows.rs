@@ -29,6 +29,7 @@
 use egui::{ScrollArea, Ui};
 
 use super::copy::{is_copyable, COPY_LABEL};
+use super::download::{is_downloadable, DOWNLOAD_LABEL};
 use super::source::Row;
 use super::writeops::{is_writable, CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
 
@@ -64,6 +65,13 @@ pub struct RenderTally {
     pub delete_clicked: Option<usize>,
     /// 🔴〔第五刀〕这一帧哪一行的**「权限」**被点了。
     pub chmod_clicked: Option<usize>,
+    /// 🔴〔第八刀〕这一帧哪一行的**「下载」**被点了。
+    ///
+    /// ⚠ 它与那三颗写按钮**刻意不共用一个值**（同 [`Self::copy_clicked`] 的理由）：
+    /// 那三颗在窗口那侧走 `writeops::run_writes` 那条路（远端写），
+    /// 这一颗走 `download` 那两问（**本机**落点）。合成一个就得再编一个
+    /// 「点的是什么」的枚举，而两支的下一跳完全不同。
+    pub download_clicked: Option<usize>,
 }
 
 /// 命中那一摞这一趟画了什么。
@@ -93,7 +101,7 @@ pub struct HitTally {
 
 /// [`paint_one_row`] 这一帧从一行上收到的东西。
 ///
-/// 🔴 **回的是一个结构而不是 `bool`**：这一行现在有五处可点（整行 ＋ 四颗按钮），
+/// 🔴 **回的是一个结构而不是 `bool`**：这一行现在有六处可点（整行 ＋ 五颗按钮），
 /// 而 `bool` 只装得下一处 —— 其余要么被挤掉，要么靠 out 参数偷偷带出去。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RowHit {
@@ -107,6 +115,8 @@ pub struct RowHit {
     pub delete: bool,
     /// 〔第五刀〕这一行的「权限」被**单击**了。
     pub chmod: bool,
+    /// 〔第八刀〕这一行的「下载」被**单击**了。
+    pub download: bool,
 }
 
 /// 画一屏文件行。**这里是 `show_rows`，改成 `show` 会被判据当场逮住。**
@@ -151,6 +161,9 @@ pub fn show_file_rows(
             }
             if hit.chmod {
                 tally.chmod_clicked = Some(i);
+            }
+            if hit.download {
+                tally.download_clicked = Some(i);
             }
         }
     });
@@ -256,7 +269,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
         }
         if r.lossy_name {
             // 非 UTF-8 名：SFTP 那侧寻址不到真字节 ⇒ 写操作要灰置。
-            // 这一档下面**四颗按钮一颗都不画**（`is_copyable` / `is_writable`）。
+            // 这一档下面**五颗按钮一颗都不画**（`is_copyable` / `is_writable` / `is_downloadable`）。
             ui.label("⚠");
         }
         // 〔第三刀〕「复制」——**只对能复制的那一档画**。`is_copyable` 是唯一住址，
@@ -280,11 +293,20 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
         } else {
             (None, None, None)
         };
+        // 🔴〔第八刀〕「下载」—— 判准是 `is_downloadable`，它与 `is_copyable`
+        //   今天逐行相同但**刻意是两个函数**（理由住 `download::is_downloadable` 头注，
+        //   「它们今天一致」由 `download_tests` 那条相等断言钉着）。
+        let download = if is_downloadable(r) {
+            Some(ui.small_button(DOWNLOAD_LABEL))
+        } else {
+            None
+        };
         RowButtons {
             copy,
             rename,
             delete,
             chmod,
+            download,
         }
     });
     let btns = inner.inner;
@@ -318,6 +340,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
         rename: btns.rename.is_some_and(|b| b.clicked()),
         delete: btns.delete.is_some_and(|b| b.clicked()),
         chmod: btns.chmod.is_some_and(|b| b.clicked()),
+        download: btns.download.is_some_and(|b| b.clicked()),
     }
 }
 
@@ -332,18 +355,41 @@ struct RowButtons {
     rename: Option<egui::Response>,
     delete: Option<egui::Response>,
     chmod: Option<egui::Response>,
+    /// 〔第八刀〕「下载」。
+    download: Option<egui::Response>,
 }
 
 impl RowButtons {
     /// 这几颗按钮里最靠左的那个左边界（`None` = 一颗都没画）。
+    ///
+    /// # 🔴〔第八刀现打〕把「下载」算进来，**今天是防御性的，明天才承重**
+    ///
+    /// 死值验：把 `&self.download` 从下面这个数组里摘掉 ⇒ **一条判据都不红**。
+    /// 原因不是判据软 —— 是那颗按钮**今天画在最右**，而本函数取的是 `min`
+    /// ⇒ 摘掉它不改变结果。
+    ///
+    /// 同一刀换个姿势就红了：把「下载」改成**最左**那一颗、再摘掉它
+    /// ⇒ `shell_tests::a_real_click_on_download_opens_the_destination_question`
+    /// 当场红（真合成一次点击，点不到）。
+    ///
+    /// ⇒ 如实登记：**本行的价值在于「下一颗按钮加在它左边那天」**。
+    /// 别把它读成「今天有判据守着」，也别因为「摘了不红」就删掉它 ——
+    /// 本模块头注那句「漏掉一颗**不会红**（第三刀实测过）」说的正是这一形。
+
     fn leftmost_left(&self) -> Option<f32> {
-        [&self.copy, &self.rename, &self.delete, &self.chmod]
-            .into_iter()
-            .flatten()
-            .map(|b| b.rect.left())
-            .fold(None, |acc: Option<f32>, x| {
-                Some(acc.map_or(x, |a| a.min(x)))
-            })
+        [
+            &self.copy,
+            &self.rename,
+            &self.delete,
+            &self.chmod,
+            &self.download,
+        ]
+        .into_iter()
+        .flatten()
+        .map(|b| b.rect.left())
+        .fold(None, |acc: Option<f32>, x| {
+            Some(acc.map_or(x, |a| a.min(x)))
+        })
     }
 }
 

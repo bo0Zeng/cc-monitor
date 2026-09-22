@@ -761,6 +761,19 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
             "列目录回来的那一行，映射成窗口自己那个更窄的 `Row`",
         ),
         (
+            "sftp_download",
+            "命令",
+            "🔴 **往外拖** —— 把远端那一行拉到本机。落点 `filewin::download::pull_one`，\
+             全树恰好一处。\
+             〔`24e` 第八刀：`设计/60 §5` 第 6 步那条欠账逐字「往外拖（下载）没做」〕\
+             ⚠ 它是这张表里**唯一落点在本机**的一条 ⇒ 那道 Claude 数据围标守的是\
+             `local_path`，而那一句 `guard_write(&local_path)` 是**当日补的**\
+             （此前三张账首尾相接推诺、链子末端一句假话，逐条来历住\
+             `sftp_pool.rs::sftp_download` 那段注释）。\
+             ⚠ 不静默覆盖那一半在**窗口这一层**（`download::Ask` 那两问），\
+             因为「那儿有没有东西」是一次**本机** IO，池子那边看不见也不该看见。",
+        ),
+        (
             "sftp_realpath",
             "命令",
             "🔴 **窗口开在哪儿** —— `canonicalize(\".\")` 解出那台机器的 home 绝对路径。\
@@ -867,8 +880,8 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     // 接的命令从 `used` 里消失 ⇒ 差集非空 ⇒ 会红；但少扫**全部**就两边都空了）。
     assert_eq!(
         files.len(),
-        12,
-        "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-21 现打 12：copy · corpus · entry · \
+        13,
+        "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 13：copy · corpus · **download** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）—— \
          不等就是射程变了，先查扫描面再改这个数",
         files.len()
@@ -968,9 +981,9 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     }
     assert_eq!(
         declared_cmds.len(),
-        10,
+        11,
         "窗口今天接了 {} 条池子命令（2026-09-21 现打：第五刀之前 **4**、之后 **9**、\n\
-         第七刀接上 `sftp_realpath` 之后 **10**）。\n\
+         第七刀接上 `sftp_realpath` 之后 **10**、第八刀接上 `sftp_download` 之后 **11**）。\n\
          ⚠ `设计/99 §4.6.4` 写的是「6 → 11」，**两侧都错**：那张表把\n\
          `sftp_realpath`（`filewin/` 里零处，只有老面板在用）与 `copy_remote_path`\n\
          （不是命令，而且 `filewin/` 被判据明禁调它）算进了「接上了」那一栏。",
@@ -983,9 +996,10 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         .collect();
     assert_eq!(
         missing.len(),
-        3,
-        "窗口还差 {} 条没接（2026-09-21 现打 3：`sftp_download` · \
-         `sftp_read_text_for_edit` · `sftp_write_text`）。实得：{missing:?}\n\
+        2,
+        "窗口还差 {} 条没接（2026-09-22 现打 2：`sftp_read_text_for_edit` · \
+         `sftp_write_text` —— 文本编辑那两条，它们是**一件**活）。实得：{missing:?}\n\
+         ✅ 〔第八刀〕**`sftp_download` 从这张缺件表上下来了**（往外拖）。\n\
          ⚠ 这个数**只许往下走**：这三条各自是一件独立的活（往外拖是另一个交互题；\n\
          文本编辑要一个编辑器面，而 `设计/60 §5.4b` 大文件编辑改流式至今没做、形状没定）。\n\
          ✅ 〔第七刀 09-21〕**`sftp_realpath` 从这张缺件表上下来了。** 它此前值得单记，\n\
