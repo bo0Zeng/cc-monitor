@@ -526,8 +526,12 @@ fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
 
     assert_eq!(
         gaps.len(),
-        6,
-        "逐能力豁免现打 {} 条（2026-09-21 现打 6：`ccm-launcher` 的 tmux 那一族 × Windows）。\n\
+        9,
+        "逐能力豁免现打 {} 条（2026-09-21 现打 9，全在 `ccm-launcher` × Windows：\n\
+          · 前 6 条 = tmux 那一族，**读源码**推出来的；\n\
+          · 后 3 条 = `bus-register` / `ccm-sid` / `agent`，**真机现打**补的\n\
+            —— 上一版的账把那三条记成「做得到」，那三格是**错的**不是缺的，\n\
+            逐条读数住 `真相源/106`）。\n\
          这个数本身没有对错，但它变了说明有裁决动过 —— 连理由一起看。",
         gaps.len()
     );

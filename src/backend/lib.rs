@@ -697,7 +697,10 @@ pub struct TargetGap {
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
 ///
-/// 今天只有一族：`ccm-launcher` 的 tmux 那一族在 Windows 上做不到。
+/// 今天全部 9 条都在 `ccm-launcher` × Windows 这一格上：
+/// **前 6 条**是读源码推出来的（tmux 那一族），**后 3 条是真机现打补的**
+/// （`bus-register` / `ccm-sid` / `agent`）—— 上一版的账把那三条记成「做得到」，
+/// 🔴 **那三格是错的，不是缺的**。逐条读数住 `真相源/106`。
 pub const TARGET_GAPS: &[TargetGap] = &[
     // ── `ccm-launcher` × Windows：tmux 那一族 6 条 ─────────────────
     //
@@ -734,6 +737,55 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "tmux-base",
         target: Target::Windows,
         why: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**。",
+    },
+    // ── `ccm-launcher` × Windows：**真机现打补上的三条**〔2026-09-21〕 ───────
+    //
+    // 🔴 上面那六条是**读源码**推出来的（「Windows 上没有 tmux」）。
+    //    这三条不是 —— 它们是在本机那台 Win11 虚拟机上**真跑 `ccm.exe`** 量出来的，
+    //    而上一版的账把它们记成「做得到」。⇒ **那三格是错的，不是缺的。**
+    //
+    // ⚠ 如实写清本表买不到什么：`why` 里那几句是**读数的转述**，
+    //    而「这条能力在 Windows 上做不到」这件事**本 crate 的判据买不到**
+    //    （要真机）。判据能守的只有「名字真存在」「答了将来怎么办」「不是整面豁免」。
+    //    真机那一维的住址是 `真相源/106`（跑法、命令、读数逐条在那儿）。
+    TargetGap {
+        family: "ccm-launcher",
+        capability: "bus-register",
+        target: Target::Windows,
+        why: "**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \
+              `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\
+              真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\
+              仍然 `EXIT=4 no_tmux` ⇒ **唯一闸门就是 tmux**。\
+              ⇒ 等那个 Windows 后台服务落地时，「把会话登记到总线上」要重新回答一次\
+              〔用户 2026-09-21 拍板〕，**暂时不做**。",
+    },
+    TargetGap {
+        family: "ccm-launcher",
+        capability: "ccm-sid",
+        target: Target::Windows,
+        why: "**被接受、零效果、而且不出声** —— 这一条比别的几条更该单记。\
+              `--ccm-sid` 解析进 `Opts` 之后只在**容器（tmux）那条路**上被消费\
+              （`Container.ccm_sid` → `tmux set-option @ccm_sid_expect`），\
+              而 `Plan::Direct` 里**根本没有这个字段**（现打 0 次）⇒ Windows 上只有直路，\
+              于是这个旗标进得来、什么都不做、一个字不说。真机现打：`--print` 带与不带 \
+              `--ccm-sid` 输出**逐字节相等**。\
+              🔴 而它的三个兄弟旗标（`--detach` / `--tmux-size` / `--bus-register`）**都有闸**，\
+              只有它没有 ⇒ 这不只是 Windows 的缺口，是那一排校验漏了一格。\
+              ⚠ **刻意不在这里顺手加闸**：`--ccm-sid` 是一条**已声明的启动维度**\
+              （`launch-dimensions.ts` 的 `cliFlags` ＋ `launch-cli-golden.ts` 那张 `ALL_CAPS` \
+              金标准矩阵）⇒ 加闸会动到那张矩阵的契约，那是设计题不是一行修复。\
+              **将来**：先裁「这个旗标在没有 tmux 时该报错还是该有直路语义」，再改。",
+    },
+    TargetGap {
+        family: "ccm-launcher",
+        capability: "agent",
+        target: Target::Windows,
+        why: "**只有一半做得到**：`claude` 那支真机 `EXIT=0`，`codex` 那支 `EXIT=4 program not found`。\
+              根因不在 agent 本身 —— `needs_bus_id(\"codex\")` 恒真 ⇒ 那一趟整条改走 \
+              `exec_shell` ⇒ `sh -c`，而 Windows 上没有 `sh`。\
+              ⇒ 顺带订正一句账：本轴那句「不依赖任何 Unix 专有设施」**对 codex 这一支不成立**。\
+              **将来**：要给 codex 的 cc-bus 身份配方一条**不经 shell** 的路，\
+              与那个 Windows 后台服务同一拍做，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
