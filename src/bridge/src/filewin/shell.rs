@@ -299,6 +299,11 @@ pub struct FileWindow {
     write_prompt: Option<WritePrompt>,
     /// 已经消化过几摞写操作（同 [`Self::seen_rounds`]，每条路各一个数）。
     seen_write_rounds: u64,
+    /// 🔴〔第八刀〕**往外拖**那一趟的共享落点（进度 · 结局）。
+    pub pull: super::download::DownloadBoard,
+    /// 「存到哪儿 / 盖掉它吗」那两问。`None` = 没在问。
+    /// **UI 线程自己的**（同 [`Self::write_prompt`] 的理由：它是一个正在被编辑的草稿）。
+    pull_ask: Option<super::download::Ask>,
     /// 🔴〔第六刀〕这个窗口**从哪台远端上走开的** —— 与「此刻在看哪一侧」
     /// （[`Self::source`]）**刻意分成两个字段**。
     ///
@@ -354,6 +359,8 @@ impl FileWindow {
             write_board: WriteBoard::default(),
             write_prompt: None,
             seen_write_rounds: 0,
+            pull: super::download::DownloadBoard::default(),
+            pull_ask: None,
             away: None,
         }
     }
@@ -615,6 +622,7 @@ impl FileWindow {
             || self.copy_prompt.is_some()
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
+            || self.pull_ask.is_some()
         {
             return;
         }
@@ -1003,6 +1011,158 @@ impl FileWindow {
         true
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // 🔴〔第八刀〕往外拖：**两问，然后拉**
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 现在在问什么（`None` = 没在问）。判据与界面看同一个值。
+    pub fn pull_ask(&self) -> Option<&super::download::Ask> {
+        self.pull_ask.as_ref()
+    }
+
+    /// 第一问那个框里正在编辑的那几个字（`None` = 现在问的不是落点）。
+    ///
+    /// 🔴 **它是生产代码，不是测试钩子** —— [`Self::pull_ui`] 要一个 `&mut String`
+    /// 去喂 `text_edit_singleline`，而那个 `&mut` 只能从这儿出来。
+    ///
+    /// ⚠ 一开始我给判据单写了一个 `#[cfg(test)]` 的句柄，**门禁当场拒了**：
+    /// `structural_scan::the_split_stays_done_...` 里那条「`src/bridge/src` 的
+    /// 测试专用支撑项」是一条**递减棘轮**（上限 15，逐字「不许把上限调上去让今天好过」）。
+    /// ⇒ 换成这一个具名访问器之后，**界面与判据走的是同一条路**，而那比一个测试钩子更强：
+    /// 判据改的那几个字，正是用户敲进去的那几个字。
+    pub fn pull_dest_mut(&mut self) -> Option<&mut String> {
+        match self.pull_ask.as_mut() {
+            Some(super::download::Ask::Dest { text, .. }) => Some(text),
+            _ => None,
+        }
+    }
+
+    /// 摆出第一问（「存到哪儿」，缺省填 `<本机 home>/<原名>`）。回值 = 真的摆出来了。
+    ///
+    /// ⚠ 本机那一侧**出声拒**，不静默 —— 同 [`Self::begin_copy`] 的理由与口径。
+    pub fn begin_pull(&mut self, i: usize) -> bool {
+        if !self.source.is_remote() {
+            *self.listing.error.lock().unwrap() =
+                Some("这个窗口现在看的是本机，没有什么可往外拖的".into());
+            return false;
+        }
+        let row = {
+            let rows = self.listing.rows.lock().unwrap();
+            match rows.get(i) {
+                Some(r) if super::download::is_downloadable(r) => r.clone(),
+                _ => return false,
+            }
+        };
+        self.pull_ask = Some(super::download::Ask::for_row(&row));
+        true
+    }
+
+    /// 收掉那个框，什么都不做。
+    pub fn cancel_pull(&mut self) {
+        self.pull_ask = None;
+    }
+
+    /// 答完当前这一问 → 下一步。回值 = **这一下真的推进了**。
+    ///
+    /// 🔴 三支各自的下一跳完全不同（理由住 `download::DestVerdict` 的头注）：
+    /// 不合法 ⇒ **框留着 ＋ 出声**（收掉的话「点了确认什么都没发生」与成功同形）；
+    /// 要确认 ⇒ 换成第二问；可以做 ⇒ 起那一趟并收掉框。
+    pub fn confirm_pull(&mut self, ctx: Option<egui::Context>) -> bool {
+        use super::download::{Ask, DestVerdict};
+        let Some(ask) = self.pull_ask.clone() else {
+            return false;
+        };
+        match ask {
+            // 第二问答了「盖」⇒ 直接做（存在性已经问过，不再判一遍）。
+            Ask::Overwrite { src_path, dest, .. } => {
+                if !self.start_pull(&src_path, &dest, ctx) {
+                    return false;
+                }
+                self.pull_ask = None;
+                true
+            }
+            Ask::Dest { .. } => {
+                match super::download::judge_dest(&ask, super::download::dest_exists) {
+                    DestVerdict::Rejected(why) => {
+                        *self.listing.error.lock().unwrap() = Some(why);
+                        false
+                    }
+                    DestVerdict::NeedsOverwrite(next) => {
+                        self.pull_ask = Some(next);
+                        true
+                    }
+                    DestVerdict::Go { src_path, dest } => {
+                        if !self.start_pull(&src_path, &dest, ctx) {
+                            return false;
+                        }
+                        self.pull_ask = None;
+                        true
+                    }
+                }
+            }
+        }
+    }
+
+    /// 真起一趟 —— 扔给 tokio，**不堵住 UI 线程**。
+    ///
+    /// 🔴 `transfer_id` 经 [`super::transfer::launch_unless_cancelled`] 造
+    /// （那是池子取消登记表的唯一造键落点）⇒ 这一趟从此**取消得掉**，
+    /// 与上传/复制两条路共用同一张在飞表。
+    pub fn start_pull(&mut self, src_path: &str, dest: &str, ctx: Option<egui::Context>) -> bool {
+        let Source::Remote(cfg) = &self.source else {
+            *self.listing.error.lock().unwrap() =
+                Some("这个窗口现在看的是本机，没有什么可往外拖的".into());
+            return false;
+        };
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some("往外拖要一个 tokio 运行时，这个窗口没拿到".into());
+            return false;
+        };
+        let cfg = cfg.clone();
+        let board = self.pull.clone();
+        board.attach(ctx);
+        let src = src_path.to_string();
+        let to = dest.to_string();
+        let name = src.rsplit('/').next().unwrap_or(&src).to_string();
+        board.begin(&name);
+        h.spawn(async move {
+            let desk = board.cancels();
+            let run = super::transfer::launch_unless_cancelled(&desk, &name, |id| {
+                let b = board.clone();
+                let cfg = cfg.clone();
+                let src = src.clone();
+                let to = to.clone();
+                async move { super::download::pull_one(&cfg, &src, &to, &id, &b).await }
+            })
+            .await;
+            let (got, total) = board.seen();
+            board.finish(match run {
+                // ⚠ 字节数报**真读数**（进度那一格最后一个值），不报「应该是多少」。
+                Ok(()) => super::download::Outcome::Done {
+                    dest: to.clone(),
+                    bytes: if got > 0 { got } else { total },
+                },
+                Err(why) => super::download::Outcome::Failed {
+                    dest: to.clone(),
+                    why,
+                },
+            });
+        });
+        true
+    }
+
+    /// 🔴 **胶水一条**：列表说「第 `i` 行的下载被点了」→ 窗口接上去。
+    ///
+    /// 抽成函数的理由与 [`Self::apply_click`] 逐字相同：两头各自都有判据，
+    /// 而**中间这一跳写在 `frame_body` 里的话谁都没在看**。
+    pub fn apply_pull_click(&mut self) -> bool {
+        match self.tally.download_clicked {
+            Some(i) => self.begin_pull(i),
+            None => false,
+        }
+    }
+
     /// 🔴 **胶水三条**：列表说「第 `i` 行的改名 / 删除 / 权限被点了」→ 窗口接上去。
     ///
     /// 抽成函数的理由与 [`Self::apply_click`] / [`Self::apply_copy_click`] 逐字相同：
@@ -1021,6 +1181,88 @@ impl FileWindow {
             return self.begin_delete(i, ctx);
         }
         false
+    }
+
+    /// 🔴〔第八刀〕画**往外拖**那一摞：两问（模态）＋ 进度 ＋ 上一趟的结局。
+    ///
+    /// ⚠ 与 [`Self::write_ui`] 同一个结构，但两问的第二问**没有输入框** ——
+    /// 它是一个是非题（「盖掉它？」），给一个框反而让用户以为还能改路径。
+    fn pull_ui(&mut self, ui: &mut egui::Ui) {
+        use super::download::{Ask, Outcome};
+        // ── 进度：在飞的时候一直画着（`DownloadBoard` 会敲窗口，所以它会动）──
+        if let Some(name) = self.pull.in_flight() {
+            let (got, total) = self.pull.seen();
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(format!(
+                    "正在拖出 {name}：{} / {}",
+                    super::rows::human_size(got),
+                    super::rows::human_size(total)
+                ));
+            });
+        }
+        // ── 上一趟的结局：**成功也出声** ──
+        //    只在失败时说话的话，「拖完了」与「点了没反应」在屏幕上长得一样。
+        if let Some(o) = self.pull.last() {
+            match o {
+                Outcome::Done { dest, bytes } => ui.colored_label(
+                    egui::Color32::from_rgb(0x3C, 0xB3, 0x71),
+                    format!("已存到 {dest}（{}）", super::rows::human_size(bytes)),
+                ),
+                // 🔴 原话原样画出去（围栏那句、连接失败那句 …）——
+                //    改写它就等于让用户看不到下层到底说了什么。
+                Outcome::Failed { dest, why } => {
+                    ui.colored_label(egui::Color32::RED, format!("拖到 {dest} 没成：{why}"))
+                }
+            };
+        }
+        // ── 那两问 ──
+        let Some(ask) = self.pull_ask.clone() else {
+            return;
+        };
+        let (mut go, mut cancel) = (false, false);
+        egui::Modal::new(egui::Id::new("filewin-pull-prompt")).show(ui.ctx(), |ui| match ask {
+            Ask::Dest { .. } => {
+                ui.heading(format!("把「{}」存到哪儿？", ask.src_name()));
+                let Some(text) = self.pull_dest_mut() else {
+                    return;
+                };
+                ui.text_edit_singleline(text);
+                ui.label("⚠ 以 `/` 结尾 = 当成目录，原名接上去。");
+                ui.horizontal(|ui| {
+                    if ui.button("确定").clicked() {
+                        go = true;
+                    }
+                    if ui.button("取消").clicked() {
+                        cancel = true;
+                    }
+                });
+            }
+            Ask::Overwrite { ref dest, .. } => {
+                ui.heading("那儿已经有东西了");
+                ui.label(format!("{dest}"));
+                // 🔴 说清代价：`download_inner` 是 `.part` → `rename` 上位，
+                //    原处那个文件没有备份、盖了就回不来。
+                ui.colored_label(
+                    egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
+                    "盖掉它就没有备份了，不可撤销。",
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("盖掉").clicked() {
+                        go = true;
+                    }
+                    if ui.button("取消").clicked() {
+                        cancel = true;
+                    }
+                });
+            }
+        });
+        if cancel {
+            self.cancel_pull();
+        } else if go {
+            let ctx = ui.ctx().clone();
+            self.confirm_pull(Some(ctx));
+        }
     }
 
     /// 画「叫什么名字 / 改成什么权限」那个框。**模态** —— 定下来之前不接别的。
@@ -1142,6 +1384,8 @@ impl FileWindow {
         //    同样模态、同样画在列表之前。
         self.write_board.ui(ui);
         self.write_ui(ui);
+        // 🔴〔第八刀〕往外拖那一摞：两问 ／ 进度 ／ 结局。同样模态、同样在前。
+        self.pull_ui(ui);
         let ctx = ui.ctx().clone();
         self.take_drops(&ctx);
         self.settle_finished_drops();
@@ -1174,6 +1418,8 @@ impl FileWindow {
         self.apply_click();
         self.apply_copy_click();
         self.apply_write_clicks(Some(ctx));
+        // 🔴〔第八刀〕第四条胶水。**不许写在这行之外** —— 理由住 `apply_pull_click`。
+        self.apply_pull_click();
     }
 
     /// 搜索那一行：输入框 ＋「重建索引」＋ 在飞指示，接着是新鲜度那一行。

@@ -274,20 +274,23 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let files = drawn_files();
     assert_eq!(
         files.len(),
-        10,
+        11,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
          人群按**文件**数，别按有没有贡献字符数）\
          〔`24f` 第四刀 09-21：8 → 9，多的是 `find.rs`（搜索那一侧的命令面与新鲜度那一行）〕\
          〔`24e` 第五刀 09-21：9 → 10，多的是 `writeops.rs`（那四条写操作的按钮与确认框）〕\
+         〔`24e` 第八刀 09-21：10 → 11，多的是 `download.rs`（往外拖那两问的标题与\
+          那句「盖掉它就没有备份了，不可撤销」）。🔴 那句话是这一批里最要紧的：\
+          它是「这一下不可撤销」的唯一出口，变成豆腐块的时候用户会照点〕\
          —— 现在是 {}，人群变了就重新论证一遍",
         files.len()
     );
     let scanned = label_chars();
     assert_eq!(
         scanned.len(),
-        253,
+        270,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
          `24f` 第四刀之前是 130）。\
          这个数本身没有对错，但它变了说明标签动过 —— 连着下面那条一起看。\
@@ -344,15 +347,15 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &prop(), PROBE).len(),
-        242,
+        259,
         "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
          第五刀之前是 194 / 205、`24f` 第四刀之前是 121 / 130）",
         PROBE.chars().count()
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        241,
-        "等宽字体下画不出的字数变了（2026-09-21 现打 241 —— 比比例少一个 `→`（第七刀：237 → 241，同上 `−1 +5`）；\
+        258,
+        "等宽字体下画不出的字数变了（2026-09-21 现打 258 —— 比比例少一个 `→`（第七刀 237→241、第八刀 241→258）；\
          第五刀之前是 193、`24f` 第四刀之前是 120）"
     );
 }

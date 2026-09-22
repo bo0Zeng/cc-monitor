@@ -1528,3 +1528,258 @@ async fn a_real_click_on_the_go_back_button_walks_the_whole_chain() {
     assert_eq!(w.cwd, deep, "点回去了，但落错了目录");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第八刀 2026-09-22〕往外拖 —— 行上那颗「下载」到窗口那两问
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴🔴 **整条链一趟走完**：真点一下行上那颗「下载」→ 第一问摆出来了。
+///
+/// # 它与 `download_tests` 那 11 条各买什么（别读重）
+///
+/// 那 11 条判的是 `download.rs` 里的**纯逻辑**（落点怎么算、三支裁决、那一格状态）。
+/// 本条判的是**它们真的被接上了**：`frame_body` → `show_file_rows` →
+/// `RenderTally::download_clicked` → `apply_pull_click` → `begin_pull`，五跳一跳不跳。
+/// 本仓那条「判据不在执行链上就等于不存在」在本会话里已经抓到过两次同一形。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_real_click_on_download_opens_the_destination_question() {
+    use crate::filewin::download::{Ask, DOWNLOAD_LABEL};
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("pull-e2e"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![Row {
+            name: "报表.csv".into(),
+            path: "/srv/data/报表.csv".into(),
+            is_dir: false,
+            size: 4096,
+            lossy_name: false,
+        }],
+    );
+    assert!(w.pull_ask().is_none(), "什么都没点就摆出了框");
+    let ctx = egui::Context::default();
+
+    // 第一帧：建字体图集 ＋ 让上一帧的 widget 表有内容（命中测试按上一帧做）。
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let painted = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL);
+    assert_eq!(
+        buttons.len(),
+        1,
+        "这一帧上没有那颗「{DOWNLOAD_LABEL}」（实得 {} 处）—— \
+         行上那颗按钮没画出来，或者 `frame_body` 走的是命中那一支",
+        buttons.len()
+    );
+    let pos = buttons[0].center();
+
+    // 第二帧：移上去；第三帧：真按下去。
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.2,
+        vec![egui::Event::PointerMoved(pos)],
+        |ui| w.frame_body(ui),
+    );
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.3,
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            },
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            },
+        ],
+        |ui| w.frame_body(ui),
+    );
+
+    match w.pull_ask() {
+        Some(Ask::Dest {
+            src_path,
+            src_name,
+            text,
+            ..
+        }) => {
+            assert_eq!(src_path, "/srv/data/报表.csv", "问的不是被点那一行");
+            assert_eq!(src_name, "报表.csv");
+            assert!(text.ends_with("/报表.csv"), "缺省落点没带上原名：{text}");
+        }
+        other => panic!("真点了「下载」，第一问却没摆出来：{other:?}"),
+    }
+    // 🔴 **一个字节都没动**：还在问，传输一趟都没起。
+    assert_eq!(w.pull.rounds(), 0, "还在问，传输就起来了");
+    assert!(w.pull.in_flight().is_none());
+}
+
+/// 落点已经有东西 ⇒ 窗口**换到第二问**，而不是直接起传输。
+///
+/// ⚠ 本条走 `confirm_pull` 那条真路（它内部调的是生产那个 `dest_exists`，
+/// 真碰盘）⇒ 夹具在临时目录里摆一个**真文件**。
+/// 那是刻意的：注入式的那一半已经由 `download_tests` 判过，
+/// 本条要的正是「生产那条路真的会去看盘」。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn confirming_onto_an_existing_file_switches_to_the_overwrite_question() {
+    use crate::filewin::download::Ask;
+    let (root, _) = synth_tree("pull-ow");
+    let occupied = root.join("f.txt"); // `synth_tree` 造的时候就写了内容
+    assert!(
+        occupied.exists(),
+        "夹具没造出那个文件 —— 本条此刻在量别的东西"
+    );
+
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("pull-ow"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![Row {
+            name: "f.txt".into(),
+            path: "/srv/data/f.txt".into(),
+            is_dir: false,
+            size: 3,
+            lossy_name: false,
+        }],
+    );
+    assert!(w.begin_pull(0), "第一问没摆出来");
+    // 把落点改成那个**真的存在**的路径。
+    // 🔴 走的是生产那个访问器（`pull_dest_mut`）—— 界面上 `text_edit_singleline`
+    //    拿的是同一个 `&mut`，所以本条改的那几个字正是用户敲进去的那几个字。
+    *w.pull_dest_mut().expect("现在问的不是落点") = occupied.to_string_lossy().to_string();
+
+    assert!(w.confirm_pull(None), "答完第一问却什么都没推进");
+    match w.pull_ask() {
+        Some(Ask::Overwrite { dest, src_name, .. }) => {
+            assert_eq!(dest, &occupied.to_string_lossy().to_string());
+            assert_eq!(src_name, "f.txt");
+        }
+        other => panic!("落点上有东西，却没换到第二问：{other:?}"),
+    }
+    // 🔴 **还没动手**：第二问摆着，传输一趟都没起。
+    assert_eq!(w.pull.rounds(), 0, "还在问要不要盖，就已经开始拉了");
+    assert!(w.pull.in_flight().is_none());
+
+    // 取消 ⇒ 框收掉，**仍然一趟都没起**（「取消」不许等于「做」）。
+    w.cancel_pull();
+    assert!(w.pull_ask().is_none());
+    assert_eq!(w.pull.rounds(), 0);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 本机那一侧**出声拒**，不静默 —— 同 `the_local_side_refuses_to_copy_and_says_why` 的口径。
+#[test]
+fn the_local_side_has_nothing_to_drag_out_and_says_so() {
+    let (root, _) = synth_tree("pull-local");
+    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    // 本机侧列得出真行（否则下面那一比是空真的）。
+    assert!(!names(&w).is_empty(), "本机侧一行都没列出来");
+    assert!(!w.begin_pull(0), "本机侧竟然摆出了落点框");
+    let e = w
+        .listing
+        .error
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("本机侧拒了却一个字都没说 —— 那与「点了没反应」同形");
+    assert!(e.contains("本机"), "那句话没说清为什么：{e}");
+    assert!(w.pull_ask().is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 🔴 目录与有损名那两行上**一颗「下载」都不画**。
+///
+/// # 它补的洞是量出来的（刀③）
+///
+/// 死值验：把 `rows.rs` 里那道 `is_downloadable` 闸拆掉（对每一行都画）
+/// ⇒ **一条判据都不红**。而后果是一颗**死按钮**：点它 `begin_pull` 会再判一次
+/// 然后什么都不做 ⇒ 屏幕上「点了没反应」，与「这个功能坏了」同形。
+///
+/// ⚠ `download_tests::only_a_plain_addressable_file_can_be_pulled` 判的是**那个谓词**，
+/// 买不到「画不画」—— 两件事差着一跳，而那一跳正是这条要钉的。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
+    use crate::filewin::download::DOWNLOAD_LABEL;
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("pull-gate"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![
+            Row {
+                name: "sub".into(),
+                path: "/srv/data/sub".into(),
+                is_dir: true,
+                size: 0,
+                lossy_name: false,
+            },
+            Row {
+                name: "bad\u{FFFD}name".into(),
+                path: "/srv/data/bad\u{FFFD}name".into(),
+                is_dir: false,
+                size: 10,
+                lossy_name: true,
+            },
+        ],
+    );
+    let ctx = egui::Context::default();
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let painted = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    // 反空真：这一帧**真的**画了那两行（否则下面那一比是空真的）。
+    assert!(
+        crate::filewin::copy::testing::painted_contains(&painted, "sub"),
+        "这一帧连那两行都没画出来 —— 本条此刻是空真的"
+    );
+    assert_eq!(
+        crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL).len(),
+        0,
+        "目录 / 有损名那两行上画出了「{DOWNLOAD_LABEL}」—— 那是一颗死按钮：\
+         点它 `begin_pull` 会再判一次然后什么都不做，屏幕上「点了没反应」"
+    );
+
+    // 🔴 阴性对照：**能拉的那一行上它必须画出来** ——
+    //    少了这一半，上面那一比可以靠「哪一行都不画」全绿（那时这个功能根本不存在）。
+    let mut w2 = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("pull-gate-ok"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![Row {
+            name: "ok.txt".into(),
+            path: "/srv/data/ok.txt".into(),
+            is_dir: false,
+            size: 10,
+            lossy_name: false,
+        }],
+    );
+    let ctx2 = egui::Context::default();
+    let _ = crate::filewin::find::testing::frame_text(&ctx2, &mut w2, Vec::new());
+    let p2 = crate::filewin::copy::testing::painted_text(
+        &ctx2,
+        egui::vec2(1280.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| w2.frame_body(ui),
+    );
+    assert_eq!(
+        crate::filewin::copy::testing::rects_of(&p2, DOWNLOAD_LABEL).len(),
+        1,
+        "能拉的那一行上没画「{DOWNLOAD_LABEL}」"
+    );
+}
