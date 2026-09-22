@@ -30,6 +30,7 @@ use egui::{ScrollArea, Ui};
 
 use super::copy::{is_copyable, COPY_LABEL};
 use super::download::{is_downloadable, DOWNLOAD_LABEL};
+use super::editor::{is_editable, EDIT_LABEL};
 use super::source::Row;
 use super::writeops::{is_writable, CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
 
@@ -65,6 +66,8 @@ pub struct RenderTally {
     pub delete_clicked: Option<usize>,
     /// 🔴〔第五刀〕这一帧哪一行的**「权限」**被点了。
     pub chmod_clicked: Option<usize>,
+    /// 🔴〔第九刀〕这一帧哪一行的**「编辑」**被点了。
+    pub edit_clicked: Option<usize>,
     /// 🔴〔第八刀〕这一帧哪一行的**「下载」**被点了。
     ///
     /// ⚠ 它与那三颗写按钮**刻意不共用一个值**（同 [`Self::copy_clicked`] 的理由）：
@@ -101,7 +104,7 @@ pub struct HitTally {
 
 /// [`paint_one_row`] 这一帧从一行上收到的东西。
 ///
-/// 🔴 **回的是一个结构而不是 `bool`**：这一行现在有六处可点（整行 ＋ 五颗按钮），
+/// 🔴 **回的是一个结构而不是 `bool`**：这一行现在有七处可点（整行 ＋ 六颗按钮），
 /// 而 `bool` 只装得下一处 —— 其余要么被挤掉，要么靠 out 参数偷偷带出去。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RowHit {
@@ -117,6 +120,8 @@ pub struct RowHit {
     pub chmod: bool,
     /// 〔第八刀〕这一行的「下载」被**单击**了。
     pub download: bool,
+    /// 〔第九刀〕这一行的「编辑」被**单击**了。
+    pub edit: bool,
 }
 
 /// 画一屏文件行。**这里是 `show_rows`，改成 `show` 会被判据当场逮住。**
@@ -164,6 +169,9 @@ pub fn show_file_rows(
             }
             if hit.download {
                 tally.download_clicked = Some(i);
+            }
+            if hit.edit {
+                tally.edit_clicked = Some(i);
             }
         }
     });
@@ -269,7 +277,8 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
         }
         if r.lossy_name {
             // 非 UTF-8 名：SFTP 那侧寻址不到真字节 ⇒ 写操作要灰置。
-            // 这一档下面**五颗按钮一颗都不画**（`is_copyable` / `is_writable` / `is_downloadable`）。
+            // 这一档下面**六颗按钮一颗都不画**（`is_copyable` / `is_writable` /
+            // `is_downloadable` / `is_editable`）。
             ui.label("⚠");
         }
         // 〔第三刀〕「复制」——**只对能复制的那一档画**。`is_copyable` 是唯一住址，
@@ -301,12 +310,22 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
         } else {
             None
         };
+        // 🔴〔第九刀〕「编辑」—— 判准是 `is_editable`，而它就是 `why_not_editable`
+        //   的 `is_none()`（**刻意不另写一套条件**：那正是「按钮画了但点了没反应」
+        //   那个静默态的来源）。⚠ 超上限那一档在这儿就不画了，
+        //   而**为什么**不画由那一行被点时的那句话给（`begin_edit` 会说）。
+        let edit = if is_editable(r) {
+            Some(ui.small_button(EDIT_LABEL))
+        } else {
+            None
+        };
         RowButtons {
             copy,
             rename,
             delete,
             chmod,
             download,
+            edit,
         }
     });
     let btns = inner.inner;
@@ -341,6 +360,7 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
         delete: btns.delete.is_some_and(|b| b.clicked()),
         chmod: btns.chmod.is_some_and(|b| b.clicked()),
         download: btns.download.is_some_and(|b| b.clicked()),
+        edit: btns.edit.is_some_and(|b| b.clicked()),
     }
 }
 
@@ -357,6 +377,8 @@ struct RowButtons {
     chmod: Option<egui::Response>,
     /// 〔第八刀〕「下载」。
     download: Option<egui::Response>,
+    /// 〔第九刀〕「编辑」。
+    edit: Option<egui::Response>,
 }
 
 impl RowButtons {
@@ -383,6 +405,7 @@ impl RowButtons {
             &self.delete,
             &self.chmod,
             &self.download,
+            &self.edit,
         ]
         .into_iter()
         .flatten()

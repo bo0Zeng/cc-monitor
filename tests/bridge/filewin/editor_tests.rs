@@ -1,0 +1,275 @@
+use super::*;
+
+fn row(name: &str, is_dir: bool, lossy: bool, size: u64) -> Row {
+    Row {
+        name: name.to_string(),
+        path: format!("/srv/data/{name}"),
+        is_dir,
+        size,
+        lossy_name: lossy,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 「超了怎么办」—— `设计/60 §5.4b` 指名留给这一刀的第二问
+// ═══════════════════════════════════════════════════════════════════
+
+/// 普通小文本 ⇒ 改得了，而且**一句话都不用说**。
+#[test]
+fn a_small_text_file_is_editable_with_nothing_to_explain() {
+    let r = row("a.txt", false, false, 1024);
+    assert_eq!(why_not_editable(&r), None);
+    assert!(is_editable(&r));
+}
+
+/// 🔴 **太大那一档在本地就判得出来，而且那句话里带着两个真数。**
+///
+/// # 它买到什么（这一条是这一刀的正题）
+///
+/// 池子那条命令回的 `Option<String>` 把三件事压成一件（太大 / 含 NUL / 非 UTF-8）
+/// ⇒ 谁拿到 `None` 都说不出为什么，老面板的做法是把那一行灰置。
+/// 而**列目录回来的每一行都带着 `size`** ⇒ 最常见的那一档在这儿就答完了，
+/// **连那趟往返都不发**。
+#[test]
+fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
+    let over = row(
+        "big.log",
+        false,
+        false,
+        crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1,
+    );
+    let why = why_not_editable(&over).expect("超上限却说改得了");
+    // 上限那个数要在那句话里。
+    assert!(why.contains("256.0 K"), "那句话里没有上限那个数：{why}");
+    // 🔴 **「多了多少」必须在，而且不许退化。**
+    //
+    // 第一版这里判的是「两个 `human_size` 都在」，而生产那一版正是那么写的
+    // ⇒ 判据当场逮到它退化成「这份 **256.0 K** 超过 **256.0 K** 的编辑上限」
+    //（`256 KiB + 1` 被四舍成 `256.0 K`）。那句话读出来什么都没说。
+    // ⇒ 现在判的是「多了 1 字节」这个**永不退化**的数，
+    //   它直接答「我该把文件弄小多少」。
+    assert!(
+        why.contains("多了 1 字节"),
+        "那句话没说超出多少 —— 在边界附近两个 `human_size` 会一模一样：{why}"
+    );
+    // 精确字节数也要在（`human_size` 在边界上分不开两个值）。
+    assert!(
+        why.contains(&format!("{} 字节", crate::sftp_pool::MAX_EDIT_BYTES + 1)),
+        "那句话里没有这份文件的精确字节数：{why}"
+    );
+    // 而「拒编而非截断」这条契约要说出来（`sftp_pool::MAX_EDIT_BYTES` 头注逐字）。
+    assert!(
+        why.contains("拒编"),
+        "没说清为什么不是「截断给你看」：{why}"
+    );
+    assert!(!is_editable(&over));
+
+    // 🔴 边界：**正好等于上限**的那一份是改得了的（`>` 不是 `>=`）。
+    //    这一比不是洁癖 —— 池子那边 `decode_editable` 用的正是 `>`，
+    //    两侧用不同的比较符会造出「这边说能改、那边拒」的静默态。
+    let exact = row(
+        "exact",
+        false,
+        false,
+        crate::sftp_pool::MAX_EDIT_BYTES as u64,
+    );
+    assert_eq!(why_not_editable(&exact), None, "正好到上限那一份被拒了");
+}
+
+/// 目录与有损名各有自己那句话（**不是同一句**）。
+#[test]
+fn a_directory_and_a_lossy_name_each_get_their_own_sentence() {
+    let d = why_not_editable(&row("sub", true, false, 0)).expect("目录竟然可编辑");
+    let l = why_not_editable(&row("bad", false, true, 10)).expect("有损名竟然可编辑");
+    assert!(d.contains("目录"), "{d}");
+    assert!(l.contains("UTF-8"), "{l}");
+    assert_ne!(d, l, "两种拒绝说的是同一句话 —— 那用户分不清是哪一种");
+}
+
+/// 🔴 「画不画那颗按钮」与「为什么不画」是**同一个判定**。
+///
+/// 两处各写一份条件时的失效形状是个静默态：按钮画出来了、点了没反应。
+#[test]
+fn the_button_and_the_reason_are_one_judgement() {
+    let corpus = [
+        row("a.txt", false, false, 10),
+        row("sub", true, false, 0),
+        row("bad", false, true, 10),
+        row(
+            "big",
+            false,
+            false,
+            crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1,
+        ),
+    ];
+    // 反空真：两种答案都要出现。
+    assert!(corpus.iter().any(|r| is_editable(r)));
+    assert!(corpus.iter().any(|r| !is_editable(r)));
+    for r in &corpus {
+        assert_eq!(
+            is_editable(r),
+            why_not_editable(r).is_none(),
+            "`{}` 上两个判定不一致 —— 那就是「按钮画了但点了没反应」那一形",
+            r.name
+        );
+    }
+}
+
+/// 池子回 `None` 之后那句话里**没有**「太大」，而且提了那个竞态。
+#[test]
+fn the_not_text_notice_covers_what_is_left_after_the_size_check() {
+    let n = not_text_notice("/srv/data/x.bin");
+    assert!(n.contains("/srv/data/x.bin"), "没说是哪个文件：{n}");
+    assert!(
+        n.contains("NUL") && n.contains("UTF-8"),
+        "没说清剩下那两种：{n}"
+    );
+    // 🔴 「太大」这一档**不在这句话里** —— 它在发往返之前就被挡掉了。
+    //    写进来的话，用户会对着一个 1 KB 的二进制文件读到「超过编辑上限」。
+    assert!(!n.contains("上限"), "把「太大」也塞进这句话了：{n}");
+    // 竞态那一形要提 —— 否则用户会对着一个刚变大的文件反复点。
+    assert!(n.contains("刷新"), "没给出下一步：{n}");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 改了没存就关掉 —— 这一刀的「不静默丢弃」
+// ═══════════════════════════════════════════════════════════════════
+
+/// 🔴 `dirty` 是**相等断言**，不是「敲过键」那个标志位。
+///
+/// 敲进去又改回来**不算改过** —— 一个标志位会把那一形报成「有未保存改动」，
+/// 于是用户每次都要答一遍一个假问题，而假问题答多了他就不看了。
+#[test]
+fn dirty_is_an_equality_not_a_keystroke_flag() {
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "hello".into());
+    assert!(!p.dirty(), "刚读回来就说改过了");
+    assert_eq!(judge_close(&p), Close::Now);
+
+    p.text.push_str(" world");
+    assert!(p.dirty());
+    assert_eq!(judge_close(&p), Close::NeedsConfirm, "改了没存却直接关");
+
+    // 改回去 ⇒ 不算改过（这一比正是「相等断言 vs 标志位」的分界）。
+    p.text = "hello".into();
+    assert!(!p.dirty(), "改回原样之后还说有未保存改动");
+    assert_eq!(judge_close(&p), Close::Now);
+}
+
+/// 存成功 ⇒ 基准线跟上；存失败 ⇒ **一个字都不碰用户敲的东西**。
+#[test]
+fn a_failed_save_keeps_every_character_the_user_typed() {
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into());
+    p.text = "new".into();
+
+    // 失败：`text` 与 `dirty` 都不许变（那些字是用户唯一的一份）。
+    let why = "拒绝写 Claude 数据源文件(/x/projects/p/s.jsonl)——管理会话文件请用历史浏览器";
+    p.mark_failed(why.to_string());
+    assert_eq!(p.text, "new", "存失败把用户敲的东西弄掉了");
+    assert!(p.dirty(), "存失败之后却说已经存好了");
+    match p.last_save.clone() {
+        Some(Err(got)) => assert_eq!(got, why, "拒绝那句原话被改写了"),
+        other => panic!("{other:?}"),
+    }
+    // 还要能再存一次（失败不是终态）。
+    p.mark_saved();
+    assert!(!p.dirty(), "存成功之后基准线没跟上");
+    assert_eq!(p.last_save, Some(Ok(())));
+    assert_eq!(p.text, "new");
+}
+
+/// 敲超上限 ⇒ **屏幕上先说**，不等存的时候才失败。
+#[test]
+fn typing_past_the_cap_is_visible_before_the_save_fails() {
+    let cap = crate::sftp_pool::MAX_EDIT_BYTES;
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "x".into());
+    assert!(!p.over_cap());
+    assert_eq!(p.headroom(), cap as i64 - 1);
+
+    p.text = "y".repeat(cap);
+    assert!(!p.over_cap(), "正好到上限就说超了（`>` 不是 `>=`）");
+    assert_eq!(p.headroom(), 0);
+
+    p.text.push('z');
+    assert!(p.over_cap(), "超了却不出声 —— 那要等存的时候才被池子拒");
+    assert_eq!(p.headroom(), -1);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 「这个量该多大」—— 本刀的答复是「保持 256 KiB」，而这一条是它的现打依据
+// ═══════════════════════════════════════════════════════════════════
+
+/// 🔴 **一整个上限的文字，在一帧里排得动。**
+///
+/// # 它是「上限该多大」那一问在**原生文本控件语境**里的约束
+///
+/// `设计/60 §5.4b` 逐字把那一问留给「原生窗口的文本控件」这个语境。
+/// 而在这个语境里，上限的真实约束不是内存（256 KiB 的 2× 是 512 KiB，
+/// 那一节自己算过「不值一改」），是 **egui 的 `TextEdit` 每帧要把整段文字排一次版**
+/// ⇒ 上限决定「打字卡不卡」。
+///
+/// ⇒ 本条把满上限的一段文字喂进**真 egui 帧**，量它排得出来。
+/// 有读数之后，「保持 256 KiB」才是一个结论，而不是「没人动它」。
+///
+/// ⚠ 它**买不到**「在用户那台机器上手感如何」 —— 本机没有图形会话
+/// （`XDG_SESSION_TYPE=tty`），量到的是 CPU 排版那一段，不含 GPU 上屏。
+/// ⚠ 它**刻意不钉一个毫秒数**：那会变成一条随机器快慢红的判据（本仓那条
+/// 「金标准把开发机烤进去只有它永远绿」的反面）。钉的是「它跑完了、
+/// 而且真的排了那么多字」。
+#[test]
+fn a_full_cap_worth_of_text_still_lays_out_in_one_frame() {
+    let cap = crate::sftp_pool::MAX_EDIT_BYTES;
+    // 造一段**满上限**的文字，带换行（单行 256 KiB 与多行的排版代价不是一回事，
+    // 而真实文本是多行的）。
+    let line = "远端配置的一行 abcdefghijklmnopqrstuvwxyz 0123456789\n";
+    let mut text = String::with_capacity(cap + line.len());
+    while text.len() < cap {
+        text.push_str(line);
+    }
+    // ⚠ `truncate` 要落在字符边界上（这一行里有中文，`cap` 未必是边界）——
+    //    第一版直接 `truncate(cap)` 当场 panic（`is_char_boundary`）。
+    //    往下找最近的边界：差几个字节不影响这一格量的是什么。
+    let mut cut = cap;
+    while !text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    text.truncate(cut);
+    assert!(
+        text.len() > cap - 8,
+        "夹具没造到满上限附近（实得 {} / {cap}）",
+        text.len()
+    );
+
+    let ctx = egui::Context::default();
+    let t0 = std::time::Instant::now();
+    let painted = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| {
+            let mut t = text.clone();
+            ui.add(egui::TextEdit::multiline(&mut t).desired_rows(30));
+        },
+    );
+    let dt = t0.elapsed();
+
+    // 反空真：那一帧**真的**排了字（否则这个读数是在量一个空框）。
+    let drawn: usize = painted.iter().map(|(s, _)| s.len()).sum();
+    assert!(
+        drawn > 1000,
+        "这一帧只画出了 {drawn} 字节的文字 —— 那不是在量满上限那一段"
+    );
+    // 只报读数，不钉毫秒（理由见头注）。
+    println!(
+        "〔现打〕{} 字节（上限 {cap}）的 `TextEdit::multiline` 排一帧：{:?}（这一帧画出 {drawn} 字节文字）",
+        text.len(),
+        dt
+    );
+    // 唯一的硬闸：它**跑完了**（不是挂住）。给一个极宽的上界，
+    // 宽到任何一台能跑本仓门禁的机器都过得了，而「排到死」会撞它。
+    assert!(
+        dt < std::time::Duration::from_secs(10),
+        "满上限那一段排一帧用了 {dt:?} —— 那不是「上限可以再大」，是**它已经太大了**，\
+         回 `editor.rs` 头注重读「这个量该多大」那一节"
+    );
+}

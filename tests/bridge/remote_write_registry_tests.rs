@@ -774,6 +774,38 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
              因为「那儿有没有东西」是一次**本机** IO，池子那边看不见也不该看见。",
         ),
         (
+            "MAX_EDIT_BYTES",
+            "常量",
+            "🔴 **编辑上限（256 KiB）** —— 窗口拿它在**本地**判「太大」，\
+             而那正是 `设计/60 §5.4b` 指名留给 `24e` 的「超了怎么办」那一问的答案：\
+             `sftp_read_text_for_edit` 回的 `None` 把三件事压成一件，而列目录回来的\
+             每一行都带着 `size` ⇒ 最常见的那一档**连那趟往返都不发**就答完了。\
+             ⚠ **两处不是两个真相源**：窗口那一侧是同一个常量的一次借用，\
+             不许在那边另写一个数（`byte_cap_registry` 按源码文本钉这一个的值）。\
+             ⚠ 它是**一句话的来源，不是一道围标** —— 读 `size` 与真去读之间文件\
+             被换大了这一形，仍由池子那边 `decode_editable` 的冗余复核守着。",
+        ),
+        (
+            "sftp_read_text_for_edit",
+            "命令",
+            "读一份远端小文本供编辑。落点 `filewin::editor::read_text`，全树恰好一处。\
+             🔴 它回的 `Option<String>` 把**三件事压成一件**（太大 / 含 NUL / 非 UTF-8）\
+             ⇒ 拿到 `None` 说不出为什么。第九刀的答复是**不改签名**：\
+             窗口手上已经有那一行的 `size` ⇒ 「太大」那一档在**发往返之前**\
+             就答完了（`editor::why_not_editable`），剩下两种本来就是同一句人话。\
+             逐条理由住 `editor.rs` 头注「超了怎么办」那一节。\
+             ⚠ 它**不写任何路径**（纯读）⇒ 不进 `REMOTE_WRITES`。",
+        ),
+        (
+            "sftp_write_text",
+            "命令",
+            "🔴 **存回编辑后的文本**。落点 `filewin::editor::write_text`，全树恰好一处。\
+             围标在池子那一层（它第一行 `guard_write`）⇒ 窗口**不自己判一遍**，\
+             踩线时那句拒绝原样落进 `editor::Pane::last_save` 并画在编辑面上。\
+             ⚠ 存失败时**`text` 一个字都不碰** —— 用户敲的那些东西是他唯一的一份\
+             （远端那份还是旧的），这一条由 `editor_tests` 那条钉着。",
+        ),
+        (
             "sftp_realpath",
             "命令",
             "🔴 **窗口开在哪儿** —— `canonicalize(\".\")` 解出那台机器的 home 绝对路径。\
@@ -880,8 +912,8 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     // 接的命令从 `used` 里消失 ⇒ 差集非空 ⇒ 会红；但少扫**全部**就两边都空了）。
     assert_eq!(
         files.len(),
-        13,
-        "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 13：copy · corpus · **download** · entry · \
+        14,
+        "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）—— \
          不等就是射程变了，先查扫描面再改这个数",
         files.len()
@@ -981,9 +1013,10 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     }
     assert_eq!(
         declared_cmds.len(),
-        11,
+        13,
         "窗口今天接了 {} 条池子命令（2026-09-21 现打：第五刀之前 **4**、之后 **9**、\n\
-         第七刀接上 `sftp_realpath` 之后 **10**、第八刀接上 `sftp_download` 之后 **11**）。\n\
+         第七刀接上 `sftp_realpath` 之后 **10**、第八刀接上 `sftp_download` 之后 **11**、\n\
+         🔴 第九刀接上文本编辑那两条之后 **13 —— 全部接完了**）。\n\
          ⚠ `设计/99 §4.6.4` 写的是「6 → 11」，**两侧都错**：那张表把\n\
          `sftp_realpath`（`filewin/` 里零处，只有老面板在用）与 `copy_remote_path`\n\
          （不是命令，而且 `filewin/` 被判据明禁调它）算进了「接上了」那一栏。",
@@ -996,9 +1029,14 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         .collect();
     assert_eq!(
         missing.len(),
-        2,
-        "窗口还差 {} 条没接（2026-09-22 现打 2：`sftp_read_text_for_edit` · \
-         `sftp_write_text` —— 文本编辑那两条，它们是**一件**活）。实得：{missing:?}\n\
+        0,
+        "窗口还差 {} 条没接（2026-09-22 现打 **0** —— 池子那 13 条全接上了）。\n\
+         实得：{missing:?}\n\
+         🔴 **这一条从「还差几条」变成了「一条都不许掉队」** —— 方向反了：\n\
+         从前它守的是「剩下那几条没惄惄被当成做完了」，现在守的是\n\
+         「**已经接上的那些没惄惄掉队**」。一条接线被删 ⇒ `declared` 掉1，\n\
+         上面那条相等断言当场红；而本条会同时红（`missing` 变 1）\n\
+         ⇒ **两个方向都有人看**。\n\
          ✅ 〔第八刀〕**`sftp_download` 从这张缺件表上下来了**（往外拖）。\n\
          ⚠ 这个数**只许往下走**：这三条各自是一件独立的活（往外拖是另一个交互题；\n\
          文本编辑要一个编辑器面，而 `设计/60 §5.4b` 大文件编辑改流式至今没做、形状没定）。\n\
