@@ -11,6 +11,10 @@
 //!
 //! 调用点一行不用改：下面三条 `pub(crate) use` 让 `crate::guard_support::production_code`
 //! 等路径原样可用。
+//!
+//! # ⚠ 它服务哪条要求：**没有，它是量具不是判据**〔`P20` 第二刀 2026-09-22〕
+//!
+//! 同 `guard_core` 那份头注的同名一节 —— 不在这里抄第二份。依据住 `设计/99 §4.11.4`。
 
 pub(crate) use guard_core::{assert_no_test_code, production_code, production_source};
 
