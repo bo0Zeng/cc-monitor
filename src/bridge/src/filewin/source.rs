@@ -107,6 +107,25 @@ pub fn parent_dir(source: &Source, cwd: &str) -> String {
     }
 }
 
+/// 远端路径的**最后一段**（basename）。
+///
+/// 🔴 抽成具名函数是因为盘上已经有**三处** `rsplit('/')` 各写了一份
+/// （`corpus.rs` · `shell.rs` 那两处），而这一刀要的是第四处。
+/// ⇒ 不再加第四份。它与 [`parent_dir`] 是**一对**（一个给前缀、一个给尾段），
+/// 所以住同一处。
+///
+/// ⚠ **只用 `/`**，理由与 [`parent_dir`] 逐字相同：SFTP 协议恒用 `/`，
+/// 拿 `std::path` 去切远端路径在 Windows 上会把 `\` 也当分隔符。
+/// ⚠ 那三处旧写法**本刀不动**（它们各在自己的语境里，改它们是另一件活）——
+/// 如实登记在这儿，别以为这个概念只有一个住址。
+pub fn remote_basename(path: &str) -> &str {
+    let t = path.trim_end_matches('/');
+    match t.rfind('/') {
+        Some(i) => &t[i + 1..],
+        None => t,
+    }
+}
+
 /// 目录在前，再按名称小写排序。契约与 `sftp_pool::sort_entries` 同。
 pub fn sort_rows(v: &mut [Row]) {
     v.sort_by(|a, b| {

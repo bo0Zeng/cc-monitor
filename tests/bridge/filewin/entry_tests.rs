@@ -35,7 +35,7 @@ fn synth_cfg() -> RemoteConfig {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot() {
     let before = crate::filewin::shell::open_requested();
-    let e = open_file_window(synth_cfg(), "   ".into())
+    let e = open_file_window(synth_cfg(), "   ".into(), None)
         .await
         .expect_err("问不到 home 竟然过了");
     // 🔴〔订正 2026-09-21〕这里原先断的是「报错里含 `realpath`」，**那买不到**：
@@ -63,7 +63,7 @@ async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_directory_we_cannot_list_is_an_error_not_a_blank_window() {
     let before = crate::filewin::shell::open_requested();
-    let e = open_file_window(synth_cfg(), "/srv/whatever".into())
+    let e = open_file_window(synth_cfg(), "/srv/whatever".into(), None)
         .await
         .expect_err("连不上的远端竟然列出了目录");
     assert!(
@@ -211,4 +211,81 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
     );
     // 反空真：这把尺子认得出「不在」。
     assert!(!prod.contains("resolve_remote_home_that_does_not_exist"));
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第十刀 2026-09-22〕三者优先级 —— `P3` 的最后一格功能前置
+// ════════════════════════════════════════════════════════════════════════
+//
+// 老面板 `open()` 有三种入口模式，窗口此前只覆盖两种。差的那一格是 **F54**：
+// 远端**文件**路径 ⇒ 进它父目录 ＋ 高亮那一行。而那条路是**活的**
+//（`src/cards/index.ts::openRemoteFileInSftp` 里那个可点元素）
+// ⇒ 先退役老面板 = 那颗「跳到这个文件」当场失效。
+
+/// `path` 非空 ⇒ 它赢，**`reveal_file` 一起给也不管用**。
+///
+/// ⚠ 那个优先级是**照抄老面板**的（`initialDir > revealPath > home`），
+/// 理由住 `plan_target` 头注：前端那几条调用点今天就是按它写的。
+#[test]
+fn an_explicit_directory_beats_a_reveal_request() {
+    assert_eq!(
+        plan_target("/srv/data", None).unwrap(),
+        Target::Dir("/srv/data".into())
+    );
+    // 两个都给 ⇒ 目录赢。
+    assert_eq!(
+        plan_target("/srv/data", Some("/other/place/x.txt")).unwrap(),
+        Target::Dir("/srv/data".into())
+    );
+}
+
+/// 🔴 只给文件路径 ⇒ **进父目录 ＋ 高亮尾段**，而那两半都在这一侧算。
+#[test]
+fn a_file_path_becomes_its_parent_plus_the_name_to_highlight() {
+    assert_eq!(
+        plan_target("", Some("/srv/data/2026/报表.csv")).unwrap(),
+        Target::Reveal {
+            dir: "/srv/data/2026".into(),
+            name: "报表.csv".into()
+        }
+    );
+    // 周围空白不算内容。
+    assert_eq!(
+        plan_target("  ", Some("  /a/b.txt ")).unwrap(),
+        Target::Reveal {
+            dir: "/a".into(),
+            name: "b.txt".into()
+        }
+    );
+    // 根下那一层：父目录是 `/`。
+    assert_eq!(
+        plan_target("", Some("/top.txt")).unwrap(),
+        Target::Reveal {
+            dir: "/".into(),
+            name: "top.txt".into()
+        }
+    );
+}
+
+/// 都没说 ⇒ 问 home（第七刀那一支，**只有它要 IO**）。
+#[test]
+fn nothing_given_falls_through_to_home() {
+    assert_eq!(plan_target("", None).unwrap(), Target::Home);
+    assert_eq!(plan_target("   ", Some("")).unwrap(), Target::Home);
+    assert_eq!(plan_target("", Some("   ")).unwrap(), Target::Home);
+}
+
+/// 🔴 切不出名字 ⇒ **报错，不静默退回 home**。
+///
+/// 静默退回的后果具体：用户点了「跳到这个文件」，窗口开在他 home、
+/// 什么都没高亮、**而且一句话都没有** —— 与「那个文件不见了」分不开。
+#[test]
+fn a_reveal_request_we_cannot_split_is_an_error_not_a_silent_home() {
+    for bad in ["/", "//", "///"] {
+        let e = plan_target("", Some(bad)).expect_err(&format!("`{bad}` 竟然切出了名字"));
+        assert!(e.contains(bad), "报错没带上是哪条路径：{e}");
+    }
+    // 阴性对照：一条**正常**的文件路径不会走这一支
+    //（少了这一半，上面那一比可以靠「什么都报错」全绿）。
+    assert!(plan_target("", Some("/a/b.txt")).is_ok());
 }

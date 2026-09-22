@@ -1011,8 +1011,22 @@ export const commands = {
    *
    * ⚠ 它**不**保证「窗口出现在屏幕上」：那要一个图形会话，命令这一侧看不到。
    */
-  open_file_window: (args: { cfg: unknown; path: string }) =>
-    invoke<number>("open_file_window", args),
+  open_file_window: (args: {
+    cfg: unknown;
+    path: string;
+    /**
+     * 🔴〔第十刀 2026-09-22〕**三者优先级与老面板逐字相同**：
+     * `path`（非空）> `revealFile` > 远端 home。
+     *
+     * - `path` 非空 ⇒ 直接进那个**目录**（老面板 `initialDir`，F78）。
+     * - `path` 空 ＋ `revealFile` = 一条远端**文件**绝对路径 ⇒ 进它父目录
+     *   **并高亮那一行、滚进视野**（老面板 `revealPath`，F54）。
+     *   ⚠ 父目录与尾段**由 Rust 侧算**（`filewin::source::parent_dir` /
+     *   `remote_basename`）—— 前端不许自己切远端路径（那会长出第二份路径逻辑）。
+     * - 两个都空 ⇒ 问远端 `realpath('.')`（第七刀）。
+     */
+    revealFile?: string | null;
+  }) => invoke<number>("open_file_window", args),
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: () => invoke<void>("open_settings_window"),

@@ -290,7 +290,7 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let scanned = label_chars();
     assert_eq!(
         scanned.len(),
-        295,
+        297,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
          `24f` 第四刀之前是 130）。\
          这个数本身没有对错，但它变了说明标签动过 —— 连着下面那条一起看。\
@@ -347,15 +347,15 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &prop(), PROBE).len(),
-        284,
+        286,
         "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
          第五刀之前是 194 / 205、`24f` 第四刀之前是 121 / 130）",
         PROBE.chars().count()
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        283,
-        "等宽字体下画不出的字数变了（2026-09-22 现打 283 —— 比比例少一个 `→`（第七刀 237→241、第八刀 →258、第九刀 →283）；\
+        285,
+        "等宽字体下画不出的字数变了（2026-09-22 现打 285 —— 比比例少一个 `→`（第七刀 237→241、第八刀 →258、第九刀 →283、第十刀 →285）；\
          第五刀之前是 193、`24f` 第四刀之前是 120）"
     );
 }

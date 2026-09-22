@@ -246,6 +246,19 @@ impl Listing {
 }
 
 /// 窗口的全部状态。
+/// 🔴〔第十刀〕**「就是这个文件」** —— 一次 reveal 的两半。
+///
+/// ⚠ 刻意是一个结构而不是 `Option<String>` ＋ 一个 `bool`：那两个散着放的时候
+/// 「滚过了但名字清空了」与「名字还在但忘了滚」两种半态都可表示，
+/// 而它们在屏幕上一个是「没高亮」、一个是「高亮了但在视野外」。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reveal {
+    /// 要高亮那一行的**名字**（不是下标 —— 下标会随目录内容移位）。
+    pub name: String,
+    /// 滚过去了没有。**只滚一次**（每帧都滚就把用户自己的滚动按住了）。
+    pub scrolled: bool,
+}
+
 /// 点「本机」之前这个窗口在哪儿 —— **一台远端 ＋ 那台上的一个目录**。
 ///
 /// ⚠ 刻意是两个字段而不是一条字符串：远端路径恒用 `/`，而「哪台机器」这件事
@@ -310,6 +323,15 @@ pub struct FileWindow {
     editing: Option<super::editor::Pane>,
     /// 关窗那一问正摆着吗（改了没存）。
     asking_discard: bool,
+    /// 🔴〔第十刀〕**「就是这个文件」** —— 要高亮的那一行的名字 ＋ 滚过去了没有。
+    ///
+    /// 它是 `P3`（老面板退役）的最后一格功能前置：老面板 `open(revealPath)`
+    /// 那一形（会话工具卡 → 文件跳转，`src/cards/index.ts::openRemoteFileInSftp`）
+    /// 在这之前窗口**一处都没有**。
+    ///
+    /// ⚠ 两个字段刻意分开：**高亮要一直留着**（一帧的高亮在连续重绘的窗口上等于看不见），
+    /// 而**滚只滚一次**（每帧都滚就把用户自己的滚动按住了）。
+    reveal: Option<Reveal>,
     /// 🔴〔第六刀〕这个窗口**从哪台远端上走开的** —— 与「此刻在看哪一侧」
     /// （[`Self::source`]）**刻意分成两个字段**。
     ///
@@ -370,6 +392,7 @@ impl FileWindow {
             edits: super::editor::EditBoard::default(),
             editing: None,
             asking_discard: false,
+            reveal: None,
             away: None,
         }
     }
@@ -410,6 +433,10 @@ impl FileWindow {
         if path == self.cwd {
             return;
         }
+        // 🔴〔第十刀〕换了目录，那一行就不在这儿了 ⇒ 高亮清掉。
+        //    留着的话，新目录里**恰好同名**的另一个文件会被高亮 ——
+        //    而用户会以为那就是他要找的那个。
+        self.reveal = None;
         self.cwd = path;
         self.listing.invalidate();
         self.reload();
@@ -454,6 +481,7 @@ impl FileWindow {
         }
         self.source = Source::Local;
         self.cwd = home;
+        self.reveal = None; // 同 `navigate_to`：换了机器那一行就不在这儿了
         self.listing.invalidate();
         self.reload();
     }
@@ -472,9 +500,68 @@ impl FileWindow {
         };
         self.source = Source::Remote(back.cfg);
         self.cwd = back.cwd;
+        self.reveal = None; // 同上
         self.listing.invalidate();
         self.reload();
         true
+    }
+
+    /// 现在高亮着哪一行的名字（`None` = 没有）。判据与界面看同一个值。
+    pub fn reveal_name(&self) -> Option<&str> {
+        self.reveal.as_ref().map(|r| r.name.as_str())
+    }
+
+    /// 摆一次 reveal：「进这个目录，并且高亮 `name` 那一行」。
+    ///
+    /// ⚠ 它**不判那一行在不在** —— 那要等目录列回来（异步）。
+    /// 「列回来了却没有那一行」这一形由 [`Self::take_reveal_offset`] 说出来。
+    pub fn set_reveal(&mut self, name: &str) {
+        self.reveal = Some(Reveal {
+            name: name.to_string(),
+            scrolled: false,
+        });
+    }
+
+    /// 这一帧要不要滚、滚到哪儿。**只在第一次调用时给值**（之后回 `None`）。
+    ///
+    /// 🔴 回值里那个 `Err` 是**「那一行不在这一摞里」** —— 文件刚被删了 / 改名了。
+    /// 调用方要把它说出来：静默什么都不做与「跳过去了」在屏幕上同形。
+    /// ⚠ **它自己拿那把锁，而且只握到扫完为止** —— 第一版我让它吃一个 `&[Row]`，
+    /// 于是调用方得先 `rows.lock().unwrap().clone()` 才借得出 `&mut self`（E0502）
+    /// ⇒ **那会每帧克隆整摞行**。编得过，但在 64 万条量纲上正是
+    /// `设计/60 §4 戊` 那条纪律的反面。⇒ 锁与扫描都收进来，一次克隆都没有。
+    pub fn take_reveal_offset(&mut self, pitch: f32) -> Option<Result<f32, String>> {
+        // ① 先取出要找的名字（只读借用，随即放掉）。
+        let want = match self.reveal.as_ref() {
+            Some(r) if !r.scrolled => r.name.clone(),
+            _ => return None,
+        };
+        // ② 握锁扫一遍（**只扫一遍，只在这一次 reveal 里**，不是每帧）。
+        let found = {
+            let rows = self.listing.rows.lock().unwrap();
+            // ⚠ 列表还没到货 ⇒ **这一帧不算「滚过了」**，下一帧再来
+            //   （不然会在空列表上判成「那一行不在」）。
+            if rows.is_empty() {
+                return None;
+            }
+            super::rows::reveal_index(&rows, &want)
+        };
+        // ③ 锁放掉了，这里才改自己。
+        if let Some(r) = self.reveal.as_mut() {
+            r.scrolled = true;
+        }
+        match found {
+            // 🔴 像素那一步在这儿，用的是那**唯一住址**的步距（`rows::row_pitch`）——
+            //    第一版这里乘的是 `ROW_HEIGHT`，漏了行间距，滚偏 14%。
+            Some(i) => Some(Ok(i as f32 * pitch)),
+            None => {
+                // 找不到就把高亮也撤掉 —— 留着等于在屏幕上标一个不存在的东西。
+                self.reveal = None;
+                Some(Err(format!(
+                    "这个目录里没有 {want} —— 它可能刚被删掉或改了名"
+                )))
+            }
+        }
     }
 
     /// 「回去」那颗按钮上写哪台机器 —— `None` = 没有来处，那颗按钮不画。
@@ -1706,8 +1793,21 @@ impl FileWindow {
             //    索引的是 `listing.rows`（另一摞东西）。逐条理由住那个类型的头注。
             show_hit_rows(ui, &hits, &mut self.hits_tally);
         } else {
+            // 🔴〔第十刀〕reveal 的两半在这里落地：**算**出偏移（只算一次）＋ 高亮那个名字。
+            //    ⚠ 偏移是算的不是找的 —— `设计/60 §4 戊` 那条纪律（`show_rows` 才是主语）。
+            // ⚠ **先问 reveal（它自己拿锁），再拿锁画** —— 顺序反了就要克隆整摞行。
+            let pitch = super::rows::row_pitch(ui);
+            let jump = match self.take_reveal_offset(pitch) {
+                Some(Ok(y)) => Some(y),
+                Some(Err(why)) => {
+                    *self.listing.error.lock().unwrap() = Some(why);
+                    None
+                }
+                None => None,
+            };
+            let want = self.reveal.as_ref().map(|r| r.name.clone());
             let rows = self.listing.rows.lock().unwrap();
-            show_file_rows(ui, &rows, &mut self.tally, None);
+            show_file_rows(ui, &rows, &mut self.tally, jump, want.as_deref());
         }
         // ⚠ 这三条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
         //   命中那一摞交不出下标 —— 第四刀靠的是「那个函数不画可点控件」这条纪律，
@@ -1772,7 +1872,7 @@ pub fn open_detached(
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
-    open_detached_seeded(source, cwd, rt, Vec::new())
+    open_detached_seeded(source, cwd, rt, Vec::new(), None)
 }
 
 /// 同 [`open_detached`]，但**带着已经列好的那一屏**开窗。
@@ -1784,6 +1884,9 @@ pub fn open_detached_seeded(
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
     rows: Vec<Row>,
+    // 🔴〔第十刀〕`reveal` = 开窗就高亮这一行（`None` = 不高亮）。
+    //    那是老面板 `open(revealPath)` 那一形（会话工具卡 → 文件跳转）。
+    reveal: Option<String>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
@@ -1798,6 +1901,11 @@ pub fn open_detached_seeded(
             opts,
             Box::new(move |cc| {
                 let mut w = FileWindow::seeded(source, cwd, rt, rows);
+                // 🔴〔第十刀〕开窗就高亮那一行。**在这里设而不是进 `seeded` 的签名** ——
+                //    `seeded` 有 5 处调用点（判据 4 处），而 reveal 只有开窗那一条路用得上。
+                if let Some(name) = reveal {
+                    w.set_reveal(&name);
+                }
                 // 第一拍：读文件 ＋ `set_fonts`。**这里复核不了**（`fonts.rs §四`）。
                 w.font = FontState::Pending(fonts::install(&cc.egui_ctx));
                 Ok(Box::new(w) as Box<dyn eframe::App>)

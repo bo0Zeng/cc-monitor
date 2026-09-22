@@ -66,6 +66,16 @@ pub struct RenderTally {
     pub delete_clicked: Option<usize>,
     /// 🔴〔第五刀〕这一帧哪一行的**「权限」**被点了。
     pub chmod_clicked: Option<usize>,
+    /// 🔴〔第十刀〕这一帧哪一行被画成了**「就是这个文件」**（`None` = 没有）。
+    ///
+    /// # 为什么高亮这件事要有一个收数口
+    ///
+    /// 高亮本身是一块背景色，而 `painted_text` 那套量具只收**文字** ⇒ 判据看不见颜色。
+    /// ⇒ 这一格是那件事的**可判读出**，而它与那块背景色在**同一处**写下
+    /// （`paint_one_row` 里同一个 `if`）⇒ 两者不可能漂开。
+    ///
+    /// ⚠ 它**买不到**「那一行在屏幕上真的看起来是高亮的」—— 那要人看。
+    pub revealed_row: Option<usize>,
     /// 🔴〔第九刀〕这一帧哪一行的**「编辑」**被点了。
     pub edit_clicked: Option<usize>,
     /// 🔴〔第八刀〕这一帧哪一行的**「下载」**被点了。
@@ -139,6 +149,7 @@ pub fn show_file_rows(
     rows: &[Row],
     tally: &mut RenderTally,
     scroll_offset_y: Option<f32>,
+    reveal: Option<&str>,
 ) {
     tally.total_rows = rows.len();
     let mut area = ScrollArea::vertical().auto_shrink([false; 2]);
@@ -151,7 +162,13 @@ pub fn show_file_rows(
         for i in range {
             let r = &rows[i];
             tally.rows_materialized += 1;
-            let hit = paint_one_row(ui, i, r);
+            // 🔴〔第十刀〕高亮判定按**名字**（同一个目录里名字唯一），
+            //    而不是按下标 —— 下标会随「刚好有人新建了一个文件」整摞移位。
+            let revealed = reveal.is_some_and(|want| want == r.name);
+            if revealed {
+                tally.revealed_row = Some(i);
+            }
+            let hit = paint_one_row(ui, i, r, revealed);
             if hit.activated {
                 tally.clicked = Some(i);
             }
@@ -268,7 +285,17 @@ pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut HitTally) {
 /// ⚠ 买不到的那一半照旧写在这儿：**真机上鼠标双击能不能触发，本机判不了**
 /// （`XDG_SESSION_TYPE=tty`，没有图形会话，也就没有真事件源）。
 /// 这里买到的是「**egui 收到这样一串事件之后，认出来的是哪一行**」。
-fn paint_one_row(ui: &mut Ui, index: usize, r: &Row) -> RowHit {
+fn paint_one_row(ui: &mut Ui, index: usize, r: &Row, revealed: bool) -> RowHit {
+    // 🔴〔第十刀〕**就是这个文件** —— 一块背景色。
+    //    与 `RenderTally::revealed_row` 在同一处写下（见那个字段的头注）。
+    if revealed {
+        let vis = ui.visuals().selection.bg_fill;
+        let band = egui::Rect::from_min_size(
+            ui.cursor().min,
+            egui::vec2(ui.available_width(), ROW_HEIGHT),
+        );
+        ui.painter().rect_filled(band, 2.0, vis);
+    }
     let inner = ui.horizontal(|ui| {
         ui.label(if r.is_dir { "📁" } else { "📄" });
         ui.label(&r.name);
@@ -416,6 +443,40 @@ impl RowButtons {
     }
 }
 
+/// 🔴〔第十刀〕`name` 那一行在这一摞里的**下标**（`None` = 不在）。
+///
+/// # 为什么回下标而不是回像素偏移
+///
+/// 第一版它回的是 `下标 × ROW_HEIGHT`，而**那个算式是错的** —— 判据当场量到：
+/// 要滚到第 17 777 行，实际落在第 **15 237** 行（差 14%，在 2 万行上是 2500 行远）。
+/// 病根是 `ScrollArea::show_rows` 的第二个参数是「**不含间距**的行高」，
+/// 它内部用的步距是 `行高 + item_spacing.y`（现打比值 `15237/17777 ≈ 18/21`）。
+///
+/// ⇒ 像素那一步交给 [`row_pitch`]（它要 `ui` 才拿得到间距），
+/// 本函数只答**下标** —— 那一半是纯的、零 UI 依赖、判得到。
+///
+/// ⚠ 找下标那一趟是 O(n)，但它**只在一次 reveal 里跑一遍，不是每帧** ——
+/// 谁把它挪进每帧就撞上 `设计/60 §4 戊` 那条纪律
+/// （「「egui 扛得住」的主语是 `show_rows`」，对照组 10 万行 83.6 ms/帧）。
+pub fn reveal_index(rows: &[Row], name: &str) -> Option<usize> {
+    rows.iter().position(|r| r.name == name)
+}
+
+/// 一行占多少像素 —— **`ScrollArea::show_rows` 内部用的那个步距，唯一住址**。
+///
+/// 🔴 它不是 `ROW_HEIGHT`：那个常量是喂给 `show_rows` 的「不含间距的行高」，
+/// 而 `show_rows` 把 `offset / (row_height + spacing)` 当下标。
+/// ⇒ 谁要把「第 N 行」换成像素，必须经这一个函数
+/// （第一版漏了间距，判据逮到的就是那一形）。
+///
+/// ⚠ 它**买不到**「这个公式与 egui 内部那一份永远一致」——
+/// 那一格由行为判据守：滚过去之后那一行必须落在这一帧的物化区间里
+/// （`shell_tests::revealing_a_deep_row_scrolls_by_arithmetic_without_materialising_everything`
+/// 的第 ③ 比）。egui 换算法那天，那一条会红。
+pub fn row_pitch(ui: &Ui) -> f32 {
+    ROW_HEIGHT + ui.spacing().item_spacing.y
+}
+
 /// 人读的大小。**不是** `format!("{size}")` —— 列表里一列宽度有限。
 pub fn human_size(n: u64) -> String {
     const UNITS: [&str; 5] = ["B", "K", "M", "G", "T"];
@@ -452,7 +513,7 @@ pub fn render_headless(
     let out = ctx.run_ui(input, |ui| {
         // 🔴 调的是**生产那个函数**，不是它的副本 —— 见 `show_file_rows` 的注释。
         let mut t = RenderTally::default();
-        show_file_rows(ui, rows, &mut t, Some(scroll_offset_y));
+        show_file_rows(ui, rows, &mut t, Some(scroll_offset_y), None);
         tally = t;
     });
     out.drop_without_applying_deltas();

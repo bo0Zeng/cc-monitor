@@ -50,6 +50,81 @@ use crate::ssh_source::RemoteConfig;
 use super::shell::open_detached_seeded;
 use super::source::{list_remote, Source};
 
+/// 这一趟要落在哪儿。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Target {
+    /// 直接进这个目录（老面板 `initialDir`，F78）。
+    Dir(String),
+    /// 进 `dir` 并高亮 `name` 那一行（老面板 `revealPath`，F54）。
+    Reveal { dir: String, name: String },
+    /// 都没说 ⇒ 问远端 `realpath('.')`（第七刀）。**只有这一支要 IO。**
+    Home,
+}
+
+/// 🔴〔第十刀〕**三者的优先级** —— 与老面板逐字相同：
+/// `path`（非空）> `reveal_file` > home。
+///
+/// # 为什么抽成纯函数
+///
+/// 它埋在那条 `async fn` 里的时候**判不了**：那条路第一步就要连远端
+/// （本仓红线不许起真连接）⇒ 优先级选错了哪一支，在失败路径上**看不出来**
+/// （两支回的是同一句池错误 —— 第七刀那条判据栽过同一形）。
+/// 抽出来之后它零 IO、三支都判得到。
+/// ⇒ 同 `source::row_from_sftp_entry` / `start_dir_from_realpath` 那条方法学。
+///
+/// # 为什么照抄老面板那个优先级
+///
+/// **不是省事** —— 前端那几条调用点今天就是按它写的
+/// （`src/sftp/panel.ts::open` 的 `initialDir > revealPath > home`）。
+/// 换一个优先级就得同时改那几处，而那是另一件活。
+///
+/// # 🔴 父目录与尾段**在这一侧算**
+///
+/// 前端不许自己切远端路径：老面板那侧是 TS 的 `parentPath` / `basename` 各一份，
+/// 而窗口这条路只有 [`super::source::parent_dir`] / [`super::source::remote_basename`]
+/// 这**一对**。多一份就多一种「Windows 上 `\` 被当分隔符」的机会。
+///
+/// # Errors
+///
+/// `reveal_file` 给了但切不出名字（比如它就是 `"/"`）⇒ 报错。
+/// **不静默退回 home** —— 那样用户点了「跳到这个文件」，窗口开在别处，而且没有一句话。
+pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, String> {
+    if !path.trim().is_empty() {
+        return Ok(Target::Dir(path.to_string()));
+    }
+    let Some(f) = reveal_file.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(Target::Home);
+    };
+    let name = super::source::remote_basename(f).to_string();
+    if name.is_empty() {
+        return Err(format!("`{f}` 看不出要高亮哪个文件"));
+    }
+    // ⚠ `parent_dir` 的远端那一支一个 cfg 字段都不看 ⇒ 这里不需要真配置。
+    let dir = super::source::parent_dir(&Source::Remote(Box::new(synthetic_remote())), f);
+    Ok(Target::Reveal { dir, name })
+}
+
+/// [`plan_target`] 里那一处占位配置。
+///
+/// 🔴 它存在只因为 [`super::source::parent_dir`] 的签名吃 `&Source`，
+/// 而**远端那一支一个 cfg 字段都不看**（它只用 `Source::Remote` 这个判别式选算法）。
+/// ⚠ 刻意不把 `parent_dir` 改成吃一个 `bool` —— 那个签名今天挡住了
+/// 「拿 `std::path` 切远端路径」那一形（`parent_dir` 头注逐字），
+/// 换成 `bool` 之后调用方就能随手传错。⇒ 宁可在这儿多一个占位。
+fn synthetic_remote() -> RemoteConfig {
+    RemoteConfig {
+        host: String::new(),
+        label: String::new(),
+        port: 0,
+        user: String::new(),
+        key_path: None,
+        backend_path: String::new(),
+        host_key_fingerprint: None,
+        addresses: Vec::new(),
+        jump: None,
+    }
+}
+
 /// 在**原生窗口**里打开远端 `path` 这个目录。
 ///
 /// 回值 = 这一趟列到的行数。⚠ 它是「开窗那一刻那个目录有多少项」，
@@ -81,12 +156,17 @@ use super::source::{list_remote, Source};
 /// - `path` 是空的、且远端 home 问不出来 ⇒ 带着原文回错，不开窗。
 /// - 目录列不出来（连不上 / 没权限 / 不是目录）⇒ 把 `sftp_pool` 那边的原文带回去。
 #[tauri::command]
-pub async fn open_file_window(cfg: RemoteConfig, path: String) -> Result<usize, String> {
-    // ⓪ 没说要看哪儿 ⇒ 问那台机器自己（**不在这里猜**）。
-    let path = if path.trim().is_empty() {
-        super::source::resolve_remote_home(&cfg).await?
-    } else {
-        path
+pub async fn open_file_window(
+    cfg: RemoteConfig,
+    path: String,
+    reveal_file: Option<String>,
+) -> Result<usize, String> {
+    // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
+    let (path, reveal) = match plan_target(&path, reveal_file.as_deref())? {
+        Target::Dir(d) => (d, None),
+        Target::Reveal { dir, name } => (dir, Some(name)),
+        // 只有这一支要 IO ⇒ 它留在 async 这一侧。
+        Target::Home => (super::source::resolve_remote_home(&cfg).await?, None),
     };
     // ① 先真的列一趟 —— 走共用那条池（同进程、无 IPC）。列不出来就别开窗。
     let rows = list_remote(&cfg, &path).await?;
@@ -98,6 +178,7 @@ pub async fn open_file_window(cfg: RemoteConfig, path: String) -> Result<usize, 
         path,
         tokio::runtime::Handle::try_current().ok(),
         rows,
+        reveal,
     );
     Ok(n)
 }
