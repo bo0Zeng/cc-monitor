@@ -274,7 +274,7 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let files = drawn_files();
     assert_eq!(
         files.len(),
-        11,
+        12,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
@@ -290,7 +290,7 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let scanned = label_chars();
     assert_eq!(
         scanned.len(),
-        270,
+        295,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
          `24f` 第四刀之前是 130）。\
          这个数本身没有对错，但它变了说明标签动过 —— 连着下面那条一起看。\
@@ -347,15 +347,15 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &prop(), PROBE).len(),
-        259,
+        284,
         "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
          第五刀之前是 194 / 205、`24f` 第四刀之前是 121 / 130）",
         PROBE.chars().count()
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        258,
-        "等宽字体下画不出的字数变了（2026-09-21 现打 258 —— 比比例少一个 `→`（第七刀 237→241、第八刀 241→258）；\
+        283,
+        "等宽字体下画不出的字数变了（2026-09-22 现打 283 —— 比比例少一个 `→`（第七刀 237→241、第八刀 →258、第九刀 →283）；\
          第五刀之前是 193、`24f` 第四刀之前是 120）"
     );
 }

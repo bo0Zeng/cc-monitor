@@ -1783,3 +1783,234 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
         "能拉的那一行上没画「{DOWNLOAD_LABEL}」"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第九刀 2026-09-22〕改一份远端文本 —— 行上那颗「编辑」到编辑面
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴🔴 **整条链一趟走完**：真点一下行上那颗「编辑」→ 那趟读真的发出去了。
+///
+/// 五跳：`frame_body` → `show_file_rows` → `RenderTally::edit_clicked` →
+/// `apply_edit_click` → `begin_edit`。⚠ 读本身连不上（`.invalid`），
+/// 本条买的是「那一趟**发出去了**」（`edits.opening()` 有值），不是「读到了」。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_real_click_on_edit_fires_the_read() {
+    use crate::filewin::editor::EDIT_LABEL;
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("edit-e2e"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![Row {
+            name: "app.conf".into(),
+            path: "/srv/data/app.conf".into(),
+            is_dir: false,
+            size: 2048,
+            lossy_name: false,
+        }],
+    );
+    assert!(w.editing().is_none(), "什么都没点就有编辑面了");
+    assert_eq!(w.edits.opens(), 0);
+    let ctx = egui::Context::default();
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let painted = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1600.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL);
+    assert_eq!(
+        buttons.len(),
+        1,
+        "这一帧上没有那颗「{EDIT_LABEL}」（实得 {} 处）",
+        buttons.len()
+    );
+    let pos = buttons[0].center();
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1600.0, 800.0),
+        0.2,
+        vec![egui::Event::PointerMoved(pos)],
+        |ui| w.frame_body(ui),
+    );
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1600.0, 800.0),
+        0.3,
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            },
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            },
+        ],
+        |ui| w.frame_body(ui),
+    );
+    // 那一趟**发出去了** —— 要么还在飞，要么已经到货（`.invalid` 解析很快就失败）。
+    for _ in 0..200 {
+        if w.edits.opens() > 0 || w.edits.opening().is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(
+        w.edits.opens() > 0 || w.edits.opening().is_some(),
+        "真点了「{EDIT_LABEL}」，那趟读一次都没发出去 —— 胶水那一跳断了"
+    );
+}
+
+/// 🔴 **太大的那一行：一颗按钮都不画，而点这一行也不会发往返 —— 但会出声。**
+///
+/// 这是 `设计/60 §5.4b` 那一问（「超了怎么办」）在窗口上的落点判据。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
+    use crate::filewin::editor::EDIT_LABEL;
+    let big = crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1;
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("edit-big"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![Row {
+            name: "huge.log".into(),
+            path: "/srv/data/huge.log".into(),
+            is_dir: false,
+            size: big,
+            lossy_name: false,
+        }],
+    );
+    let ctx = egui::Context::default();
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let painted = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1600.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    // 反空真：这一帧真的画了那一行。
+    assert!(
+        crate::filewin::copy::testing::painted_contains(&painted, "huge.log"),
+        "这一帧连那一行都没画 —— 本条此刻是空真的"
+    );
+    assert_eq!(
+        crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL).len(),
+        0,
+        "超上限那一行上画出了「{EDIT_LABEL}」—— 那是一颗死按钮"
+    );
+
+    // 而**直接调那条路**（多选长出来那天会走到）也要：不发往返 ＋ 出声。
+    assert!(!w.begin_edit(0, None), "超上限那一行竟然发了那趟读");
+    assert_eq!(w.edits.opens(), 0, "一趟都不该发");
+    assert!(w.edits.opening().is_none());
+    let e = w
+        .listing
+        .error
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("拒了却一个字都没说 —— 那与「点了没反应」同形");
+    assert!(e.contains("多了 1 字节"), "那句话没说超出多少：{e}");
+    assert!(e.contains("huge.log"), "没说是哪一行：{e}");
+}
+
+/// 🔴 **改了没存就关 ⇒ 先问。** 这一刀的「不静默丢弃」。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("edit-dirty"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        Vec::new(),
+    );
+    // 直接把编辑面立起来（读那一跳由上面那条判据钉）。
+    w.edits.deliver(crate::filewin::editor::Arrived::Text {
+        path: "/srv/data/app.conf".into(),
+        name: "app.conf".into(),
+        text: "a=1\n".into(),
+    });
+    assert!(w.settle_opened_edits(), "到货了却没立起编辑面");
+    assert!(w.editing().is_some());
+    assert!(!w.editing().unwrap().dirty());
+
+    // 没改过 ⇒ 直接关得掉。
+    assert!(w.close_edit(), "没改过却关不掉");
+    assert!(w.editing().is_none());
+    assert!(!w.asking_discard());
+
+    // 再开一次、改一改 ⇒ 关不掉，那一问摆出来。
+    w.edits.deliver(crate::filewin::editor::Arrived::Text {
+        path: "/srv/data/app.conf".into(),
+        name: "app.conf".into(),
+        text: "a=1\n".into(),
+    });
+    assert!(w.settle_opened_edits());
+    *w.editing_text_mut().expect("编辑面不见了") = "a=2\n".into();
+    assert!(w.editing().unwrap().dirty());
+    assert!(!w.close_edit(), "改了没存却直接关掉了 —— 用户敲的东西没了");
+    assert!(w.asking_discard(), "关不掉，却也没问");
+    assert!(w.editing().is_some(), "问着的时候编辑面就没了");
+
+    // 答「先别关」⇒ 问收掉、面留着、那些字还在。
+    w.keep_editing();
+    assert!(!w.asking_discard());
+    assert_eq!(
+        w.editing().unwrap().text,
+        "a=2\n",
+        "答了「先别关」却把字弄丢了"
+    );
+
+    // 答「丢掉」⇒ 真关掉。
+    assert!(!w.close_edit());
+    w.discard_edit();
+    assert!(w.editing().is_none());
+    assert!(!w.asking_discard());
+}
+
+/// 存失败 ⇒ 那句原话画在编辑面上，**而用户敲的东西一个字都不少**。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("edit-fence"))),
+        "/home/u/.claude/projects/p".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        Vec::new(),
+    );
+    let jsonl = "/home/u/.claude/projects/p/s.jsonl";
+    w.edits.deliver(crate::filewin::editor::Arrived::Text {
+        path: jsonl.into(),
+        name: "s.jsonl".into(),
+        text: "{}\n".into(),
+    });
+    assert!(w.settle_opened_edits());
+    *w.editing_text_mut().unwrap() = "改坏它\n".into();
+
+    // 真发一趟存 —— 那条路会被池子第一行的 `guard_write` 当场拒（不碰线）。
+    assert!(w.save_edit(None), "那趟存一次都没发出去");
+    for _ in 0..200 {
+        if w.edits.saves() > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(w.settle_saved_edits(), "存的结局到货了却没落进那一份上");
+    let p = w.editing().expect("存失败之后编辑面不见了");
+    match p.last_save.clone() {
+        Some(Err(why)) => assert!(
+            why.contains("拒绝写 Claude 数据源文件"),
+            "拒的不是围栏那一句（那说明它先去拨线了）：{why}"
+        ),
+        other => panic!("往一条受保护路径上存，结局却是 {other:?}"),
+    }
+    // 🔴 一个字都不少，而且**还是 dirty**（远端那份没变）。
+    assert_eq!(p.text, "改坏它\n", "存失败把用户敲的东西弄掉了");
+    assert!(p.dirty(), "存失败之后却说已经存好了");
+}

@@ -1454,7 +1454,19 @@ pub async fn sftp_copy(
 // === 小文件编辑(F49):read_text_for_edit / write_text ===
 
 /// F49 编辑上限。aterm 契约:超上限**拒编而非截断**(截断标记当编辑源会写坏文件)。
-const MAX_EDIT_BYTES: usize = 256 * 1024;
+///
+/// 🔴〔第九刀 2026-09-22〕**提级成 `pub`，因为「超了怎么办」的答案要在窗口那一侧**。
+///
+/// `sftp_read_text_for_edit` 回的 `Option<String>` 把**三件事压成了一件**
+///（太大 / 含 NUL / 非 UTF-8 都是 `None`）⇒ 谁拿到 `None` 都说不出为什么。
+/// 而窗口手上**已经有那一行的 `size`**（列目录回来的）⇒ 「太大」这一档
+/// **根本不用发那趟往返就判得出来**，而且能把那个数说给用户听。
+///
+/// ⇒ 窗口读它做**本地**预判（`filewin::editor::why_not_editable`），
+/// 池子这边照旧做最终护栏（`decode_editable` 冗余复核大小，防 stat 与 read 间竞态）。
+/// ⚠ **两处不是两个真相源**：窗口那一侧是同一个常量的一次借用，
+/// 不许在那边另写一个数（`byte_cap_registry` 按源码文本钉这一个的值）。
+pub const MAX_EDIT_BYTES: usize = 256 * 1024;
 
 /// 字节 → 可编辑文本;不可编辑(>256KB / 含 NUL 疑二进制 / 非 UTF-8)→ None。
 /// 纯函数,护栏核心(数据安全红线),便于单测。

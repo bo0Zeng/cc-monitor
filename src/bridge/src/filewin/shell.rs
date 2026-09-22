@@ -304,6 +304,12 @@ pub struct FileWindow {
     /// 「存到哪儿 / 盖掉它吗」那两问。`None` = 没在问。
     /// **UI 线程自己的**（同 [`Self::write_prompt`] 的理由：它是一个正在被编辑的草稿）。
     pull_ask: Option<super::download::Ask>,
+    /// 🔴〔第九刀〕编辑那一趟的共享落点（读到货 · 存结局）。
+    pub edits: super::editor::EditBoard,
+    /// 打开着的那一份文本。`None` = 没在编辑。**UI 线程自己的**。
+    editing: Option<super::editor::Pane>,
+    /// 关窗那一问正摆着吗（改了没存）。
+    asking_discard: bool,
     /// 🔴〔第六刀〕这个窗口**从哪台远端上走开的** —— 与「此刻在看哪一侧」
     /// （[`Self::source`]）**刻意分成两个字段**。
     ///
@@ -361,6 +367,9 @@ impl FileWindow {
             seen_write_rounds: 0,
             pull: super::download::DownloadBoard::default(),
             pull_ask: None,
+            edits: super::editor::EditBoard::default(),
+            editing: None,
+            asking_discard: false,
             away: None,
         }
     }
@@ -623,6 +632,7 @@ impl FileWindow {
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
             || self.pull_ask.is_some()
+            || self.editing.is_some()
         {
             return;
         }
@@ -1152,6 +1162,191 @@ impl FileWindow {
         true
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // 🔴〔第九刀〕改一份远端文本
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 打开着的那一份（`None` = 没在编辑）。判据与界面看同一个值。
+    pub fn editing(&self) -> Option<&super::editor::Pane> {
+        self.editing.as_ref()
+    }
+
+    /// 编辑框里那些字（生产那个 `TextEdit` 要的 `&mut String` 从这儿出来）。
+    ///
+    /// ⚠ 同 [`Self::pull_dest_mut`]：**它是生产代码，不是测试钩子**
+    /// （那条递减棘轮的来历逐字住那一处）。
+    pub fn editing_text_mut(&mut self) -> Option<&mut String> {
+        self.editing.as_mut().map(|p| &mut p.text)
+    }
+
+    /// 关窗那一问摆着吗。
+    pub fn asking_discard(&self) -> bool {
+        self.asking_discard
+    }
+
+    /// 起一趟「打开第 `i` 行」。回值 = **真的发出去了**。
+    ///
+    /// 🔴 改不了的那几档在这儿就答完了（[`super::editor::why_not_editable`]），
+    /// **连那趟往返都不发** —— 而且把**为什么**说出来。
+    /// 逐条理由住 `editor.rs` 头注「超了怎么办」那一节。
+    pub fn begin_edit(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
+        let Source::Remote(cfg) = &self.source else {
+            *self.listing.error.lock().unwrap() =
+                Some("这个窗口现在看的是本机，这两条命令是远端的".into());
+            return false;
+        };
+        let row = {
+            let rows = self.listing.rows.lock().unwrap();
+            match rows.get(i) {
+                Some(r) => r.clone(),
+                None => return false,
+            }
+        };
+        // 🔴 本地预判 —— 出声，不灰置。
+        if let Some(why) = super::editor::why_not_editable(&row) {
+            *self.listing.error.lock().unwrap() = Some(format!("{} 改不了：{why}", row.name));
+            return false;
+        }
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some("读远端文本要一个 tokio 运行时，这个窗口没拿到".into());
+            return false;
+        };
+        let cfg = cfg.clone();
+        let board = self.edits.clone();
+        board.attach(ctx);
+        board.begin_open(&row.path);
+        h.spawn(async move {
+            use super::editor::Arrived;
+            let got = super::editor::read_text(&cfg, &row.path).await;
+            board.deliver(match got {
+                Ok(Some(text)) => Arrived::Text {
+                    path: row.path.clone(),
+                    name: row.name.clone(),
+                    text,
+                },
+                Ok(None) => Arrived::NotText { path: row.path },
+                Err(why) => Arrived::Failed {
+                    path: row.path,
+                    why,
+                },
+            });
+        });
+        true
+    }
+
+    /// 到货了就把编辑面立起来 / 把那句话摆出来。回值 = 这一帧真的消化了一趟。
+    ///
+    /// ⚠ 到货是**一次性事件**（`take_arrived`）—— 留着的话下一帧会再建一次编辑面，
+    /// 把用户已经敲的东西盖掉。
+    pub fn settle_opened_edits(&mut self) -> bool {
+        use super::editor::Arrived;
+        let Some(a) = self.edits.take_arrived() else {
+            return false;
+        };
+        match a {
+            Arrived::Text { path, name, text } => {
+                self.editing = Some(super::editor::Pane::opened(&path, &name, text));
+            }
+            Arrived::NotText { path } => {
+                *self.listing.error.lock().unwrap() = Some(super::editor::not_text_notice(&path));
+            }
+            Arrived::Failed { path, why } => {
+                *self.listing.error.lock().unwrap() = Some(format!("{path} 读不出来：{why}"));
+            }
+        }
+        true
+    }
+
+    /// 存回去。回值 = **真的发出去了**。
+    pub fn save_edit(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(p) = self.editing.clone() else {
+            return false;
+        };
+        // 🔴 敲超上限 ⇒ 屏幕上先说，不发那趟注定被池子拒的往返。
+        if p.over_cap() {
+            *self.listing.error.lock().unwrap() = Some(format!(
+                "改完之后有 {} 字节，超过 {} 的上限 —— 存不回去（超限**拒编而非截断**）",
+                p.text.len(),
+                super::rows::human_size(crate::sftp_pool::MAX_EDIT_BYTES as u64)
+            ));
+            return false;
+        }
+        let Source::Remote(cfg) = &self.source else {
+            return false;
+        };
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some("存远端文本要一个 tokio 运行时，这个窗口没拿到".into());
+            return false;
+        };
+        let cfg = cfg.clone();
+        let board = self.edits.clone();
+        board.attach(ctx);
+        board.begin_save(&p.path);
+        h.spawn(async move {
+            let r = super::editor::write_text(&cfg, &p.path, &p.text).await;
+            board.deliver_save(r);
+        });
+        true
+    }
+
+    /// 存的结局到货了就落进那一份上。回值 = 这一帧真的消化了一趟。
+    ///
+    /// 🔴 失败时 **`text` 一个字都不碰**（那是用户唯一的一份）——
+    /// 逐条理由住 `editor::Pane::mark_failed`。
+    pub fn settle_saved_edits(&mut self) -> bool {
+        let Some(r) = self.edits.take_saved() else {
+            return false;
+        };
+        let Some(p) = self.editing.as_mut() else {
+            return false;
+        };
+        match r {
+            Ok(()) => p.mark_saved(),
+            Err(why) => p.mark_failed(why),
+        }
+        true
+    }
+
+    /// 关掉编辑面这一下。回值 = **真的关掉了**（改了没存 ⇒ 先摆出那一问，回 `false`）。
+    pub fn close_edit(&mut self) -> bool {
+        use super::editor::Close;
+        let Some(p) = self.editing.as_ref() else {
+            return false;
+        };
+        match super::editor::judge_close(p) {
+            Close::Now => {
+                self.editing = None;
+                self.asking_discard = false;
+                true
+            }
+            Close::NeedsConfirm => {
+                self.asking_discard = true;
+                false
+            }
+        }
+    }
+
+    /// 那一问答了「丢掉」⇒ 真的关掉。
+    pub fn discard_edit(&mut self) {
+        self.editing = None;
+        self.asking_discard = false;
+    }
+
+    /// 那一问答了「不丢」⇒ 收掉问，编辑面留着。
+    pub fn keep_editing(&mut self) {
+        self.asking_discard = false;
+    }
+
+    /// 🔴 **胶水一条**：列表说「第 `i` 行的编辑被点了」→ 窗口接上去。
+    pub fn apply_edit_click(&mut self, ctx: Option<egui::Context>) -> bool {
+        match self.tally.edit_clicked {
+            Some(i) => self.begin_edit(i, ctx),
+            None => false,
+        }
+    }
+
     /// 🔴 **胶水一条**：列表说「第 `i` 行的下载被点了」→ 窗口接上去。
     ///
     /// 抽成函数的理由与 [`Self::apply_click`] 逐字相同：两头各自都有判据，
@@ -1181,6 +1376,103 @@ impl FileWindow {
             return self.begin_delete(i, ctx);
         }
         false
+    }
+
+    /// 🔴〔第九刀〕画**编辑面**：在飞指示 ＋ 那一份文本 ＋ 存的结局 ＋ 关窗那一问。
+    ///
+    /// ⚠ 它是模态的（同别的几摞）：一份文本改着的时候不该同时去改目录结构。
+    fn editor_ui(&mut self, ui: &mut egui::Ui) {
+        // ── 在飞指示（读 / 存都要出声，否则「点了没反应」）──
+        if let Some(p) = self.edits.opening() {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(format!("正在读 {p}…"));
+            });
+        }
+        if let Some(p) = self.edits.saving() {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(format!("正在存 {p}…"));
+            });
+        }
+        let Some(pane) = self.editing.clone() else {
+            return;
+        };
+        // ── 关窗那一问（改了没存）。**它排在编辑面之前** —— 两个模态叠着时
+        //    egui 画后一个，而这一问是更要紧的那一个。
+        if self.asking_discard {
+            let (mut discard, mut keep) = (false, false);
+            egui::Modal::new(egui::Id::new("filewin-edit-discard")).show(ui.ctx(), |ui| {
+                ui.heading(format!("{} 改了还没存", pane.name));
+                ui.colored_label(
+                    egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
+                    "关掉就丢掉你敲的那些东西了 —— 远端那份还是旧的。",
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("丢掉，关").clicked() {
+                        discard = true;
+                    }
+                    if ui.button("先别关").clicked() {
+                        keep = true;
+                    }
+                });
+            });
+            if discard {
+                self.discard_edit();
+            } else if keep {
+                self.keep_editing();
+            }
+            return;
+        }
+        let (mut save, mut close) = (false, false);
+        egui::Modal::new(egui::Id::new("filewin-editor")).show(ui.ctx(), |ui| {
+            ui.heading(format!(
+                "{}{}",
+                pane.name,
+                if pane.dirty() { " *" } else { "" }
+            ));
+            ui.label(&pane.path);
+            // 🔴 敲超上限 ⇒ 这一行**一直**摆着（它是一个到你改掉为止都成立的状态）。
+            if pane.over_cap() {
+                ui.colored_label(
+                    egui::Color32::RED,
+                    format!(
+                        "已经超过 {} 的上限 {} 字节 —— 存不回去",
+                        super::rows::human_size(crate::sftp_pool::MAX_EDIT_BYTES as u64),
+                        -pane.headroom()
+                    ),
+                );
+            }
+            if let Some(r) = pane.last_save.clone() {
+                match r {
+                    Ok(()) => ui.colored_label(egui::Color32::from_rgb(0x3C, 0xB3, 0x71), "已存"),
+                    // 原话原样画出去（围栏那句 / 连接失败那句 …）。
+                    Err(why) => ui.colored_label(egui::Color32::RED, format!("存不回去：{why}")),
+                };
+            }
+            if let Some(text) = self.editing_text_mut() {
+                ui.add(
+                    egui::TextEdit::multiline(text)
+                        .desired_rows(24)
+                        .desired_width(f32::INFINITY)
+                        .code_editor(),
+                );
+            }
+            ui.horizontal(|ui| {
+                if ui.button("保存").clicked() {
+                    save = true;
+                }
+                if ui.button("关闭").clicked() {
+                    close = true;
+                }
+            });
+        });
+        if save {
+            let ctx = ui.ctx().clone();
+            self.save_edit(Some(ctx));
+        } else if close {
+            self.close_edit();
+        }
     }
 
     /// 🔴〔第八刀〕画**往外拖**那一摞：两问（模态）＋ 进度 ＋ 上一趟的结局。
@@ -1386,6 +1678,11 @@ impl FileWindow {
         self.write_ui(ui);
         // 🔴〔第八刀〕往外拖那一摞：两问 ／ 进度 ／ 结局。同样模态、同样在前。
         self.pull_ui(ui);
+        // 🔴〔第九刀〕编辑那一摞：**先消化到货，再画** ——
+        //    反了的话这一帧画的是上一帧的状态（读完了却还显示「正在读」）。
+        self.settle_opened_edits();
+        self.settle_saved_edits();
+        self.editor_ui(ui);
         let ctx = ui.ctx().clone();
         self.take_drops(&ctx);
         self.settle_finished_drops();
@@ -1417,9 +1714,11 @@ impl FileWindow {
         //   第五刀换成了**类型**（上面那一段）。
         self.apply_click();
         self.apply_copy_click();
-        self.apply_write_clicks(Some(ctx));
+        self.apply_write_clicks(Some(ctx.clone()));
         // 🔴〔第八刀〕第四条胶水。**不许写在这行之外** —— 理由住 `apply_pull_click`。
         self.apply_pull_click();
+        // 🔴〔第九刀〕第五条胶水。
+        self.apply_edit_click(Some(ctx));
     }
 
     /// 搜索那一行：输入框 ＋「重建索引」＋ 在飞指示，接着是新鲜度那一行。
