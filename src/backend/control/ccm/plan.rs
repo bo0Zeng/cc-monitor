@@ -179,39 +179,97 @@ struct Manifest {
 /// 才拿得到它（`--list-accounts --accts-dir`），那一整段是 bash 与后端说话的**税**，
 /// 不是功能。同一个二进制之下它整块消失。
 #[derive(Debug, Clone, Default)]
-pub(crate) struct AccountTable(pub(crate) Vec<Account>);
+pub(crate) struct AccountTable {
+    pub(crate) accounts: Vec<Account>,
+    /// 🔴 那份 manifest **在盘上、有内容，却解析不动** —— 与「这台机器没有账号库」
+    /// 是**两个状态**，而从前它们在输出上一模一样。
+    unreadable: bool,
+}
 
 impl AccountTable {
-    /// 读那份 manifest。读不到 / 解析不动 ⇒ **空表**，不是失败
-    ///（「这台机器没有账号库」是一个合法状态：退化为基座启动器，一个字不说）。
+    /// 现成的一摞号建一张表（判据夹具用；生产侧只经 [`Self::load`] 进来）。
+    pub(crate) fn from_accounts(accounts: Vec<Account>) -> Self {
+        Self {
+            accounts,
+            unreadable: false,
+        }
+    }
+
+    /// 读那份 manifest。
+    ///
+    /// # 三个状态，不是两个（这一条是承重的）
+    ///
+    /// | 盘上是什么 | 从前 | 现在 |
+    /// |---|---|---|
+    /// | 没有这份文件 | 空表，一个字不说 | 同 —— 「这台机器没有账号库」是合法状态 |
+    /// | 有，解析得动 | 用它 | 同 |
+    /// | **有、有内容、解析不动** | 🔴 **空表，一个字不说** | 空表，**但说得出来** |
+    ///
+    /// ## 🔴 第三格是真机量到的，不是假想
+    ///
+    /// 2026-09-21 在本机那台 Win11 虚拟机上：`accounts.json` 带 **UTF-8 BOM**
+    ///（`EF BB BF` —— **PowerShell 5.1 `-Encoding UTF8` 的默认值**）⇒ `serde_json`
+    /// 在第 1 列就失手（现打逐字：`expected value at line 1 column 1`）
+    /// ⇒ 从前那句 `unwrap_or_default()` 把**整张账号库静默吃掉**，
+    /// 而给用户的话是 [`Self::names`] 那句「(无账号库)」。
+    /// ⇒ **用户拿 PowerShell 碰过这份文件，他的号全消失，还被告知本来就没有。**
+    ///
+    /// ## 两件事各修一半（刻意不合成一件）
+    ///
+    /// ① **BOM 剥掉** —— 那是真正的缺陷：那份文件是**合法的**，只是前面带了三个
+    ///    字节序标记。剥掉之后它照常解析得动，用户什么都不用改。
+    /// ② 剩下那些**真的**解析不动的（手写坏了 JSON），**不许再静默** ——
+    ///    [`Self::names`] 会把「解析不动」这件事说出来，而不是谎称「没有账号库」。
+    ///
+    /// ⚠ 刻意**不**在这里报错退出：「读不到账号库」照旧是合法的降级路径
+    /// （退化为基座启动器）。改的只是**那句话的真假**。
     pub(crate) fn load(manifest_path: &str) -> Self {
         let raw = match std::fs::read_to_string(manifest_path) {
             Ok(s) => s,
             Err(_) => return Self::default(),
         };
-        let m: Manifest = serde_json::from_str(&raw).unwrap_or_default();
-        Self(
-            m.accounts
-                .into_iter()
-                .filter(|a| !a.name.is_empty())
-                .collect(),
-        )
+        // ① BOM：`read_to_string` 不剥它，`serde_json` 也不吃它。
+        let body = raw.trim_start_matches('\u{FEFF}');
+        if body.trim().is_empty() {
+            // 空文件 == 没有账号库（**不是**「解析不动」，别报成坏文件）。
+            return Self::default();
+        }
+        match serde_json::from_str::<Manifest>(body) {
+            Ok(m) => Self::from_accounts(
+                m.accounts
+                    .into_iter()
+                    .filter(|a| !a.name.is_empty())
+                    .collect(),
+            ),
+            // ② 有内容却解析不动 ⇒ 空表，**但这件事说得出来**。
+            Err(_) => Self {
+                accounts: Vec::new(),
+                unreadable: true,
+            },
+        }
     }
 
     /// 名字 → 存在的 configDir。**目录不存在 ⇒ 当作不可用**
     ///（「manifest 里写着」与「盘上真有」是两件事）。
     fn config_dir_of(&self, want: &str) -> Option<String> {
-        let a = self.0.iter().find(|a| a.name == want)?;
+        let a = self.accounts.iter().find(|a| a.name == want)?;
         let c = a.config_dir.as_deref().filter(|c| !c.is_empty())?;
         std::path::Path::new(c).is_dir().then(|| c.to_string())
     }
 
     /// 报「不可用」必须同时告诉用户有哪些可用。⚠ 无尾空格。
     fn names(&self) -> String {
-        if self.0.is_empty() {
+        // 🔴 「解析不动」优先于「是空的」—— 反了就又谎称「没有账号库」。
+        if self.unreadable {
+            return format!(
+                "(那份 manifest 解析不动：它在盘上、有内容，但不是合法 JSON{})",
+                "；⚠ 若是在 Windows 上用 PowerShell 存的，先看看有没有 UTF-8 BOM"
+            );
+        }
+        if self.accounts.is_empty() {
             return "(无账号库)".to_string();
         }
-        self.0
+        self.accounts
             .iter()
             .map(|a| a.name.as_str())
             .collect::<Vec<_>>()
@@ -220,7 +278,7 @@ impl AccountTable {
 
     /// `isDefault: true` 的第一个。
     fn default_name(&self) -> Option<&str> {
-        self.0
+        self.accounts
             .iter()
             .find(|a| a.is_default)
             .map(|a| a.name.as_str())
