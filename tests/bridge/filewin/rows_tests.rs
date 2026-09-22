@@ -1153,3 +1153,73 @@ fn making_way_for_four_buttons_does_not_kill_the_rest_of_the_row() {
     assert_eq!(second.delete_clicked, None, "点名字竟然算成点了「删除」");
     assert_eq!(second.chmod_clicked, None, "点名字竟然算成点了「权限」");
 }
+
+/// 🔴〔`P25` 2026-09-22〕**号被别人抢走时，台架不许拿着别人的屏回来。**
+///
+/// # 这一条钉的是残余那条 flake 的病根
+///
+/// `slot(num)` 与「Xvfb 真建锁」之间有一段 TOCTOU；`NEXT_BASE` 只错开**起点**，
+/// 两格的扫描路径照样会在下一步汇到同一个号。两格同时 spawn `Xvfb :N` 时，
+/// **X 服务器自己的锁是仲裁者**：输的那台当场退出，stderr 逐字
+/// `Cannot establish any listening sockets`＋`exit=1`（2026-09-22 现打）。
+///
+/// 🔴 **而「问几何」那一跳会成功** —— 答话的是赢家那台。
+/// ⇒ 两个观测量**同时成立**，顺序一反（或者干脆不看第一个，那正是修之前的样子）
+/// 就会返回一个「子进程已死、屏是别人的」`Screen`
+/// ⇒ 两格窗口挤在一台屏上 ⇒ 数窗口那条判据数出 2 个，或赢家 `Drop` 杀屏 ⇒ `BadWindow`。
+///
+/// ⚠ 本条是**纯**的：不起任何 Xvfb、不撞号（同 `classify_lock` 那条的理由）。
+/// 它买不到「真并发下确实不撞」—— 那要两台真服务器，而那一格由
+/// `the_toolbox_hands_out_a_different_display_to_each_screen` 顶着。
+#[test]
+#[cfg(not(windows))]
+fn a_display_number_won_by_someone_else_is_never_reported_as_ours() {
+    use crate::filewin::rows::testing::xvfb::{judge_claim, Claim};
+    // 🔴 承重的那一格：**我们那台死了，而几何答得出**（赢家在答话）。
+    assert_eq!(
+        judge_claim(true, true),
+        Claim::TakenByAnother,
+        "我们那台 Xvfb 已经退出，却因为「屏答得出几何」被当成了我们的 —— \
+         那台答话的是赢家，两格的窗口会挤在一起"
+    );
+    // 死了、几何也答不出 ⇒ 同样不是我们的。
+    assert_eq!(judge_claim(true, false), Claim::TakenByAnother);
+    // 活着、答得出 ⇒ 是我们的。
+    assert_eq!(judge_claim(false, true), Claim::Ours);
+    // 活着、还没答得出 ⇒ 再等等（**不是**失败 —— Xvfb 要一会儿才就绪）。
+    assert_eq!(judge_claim(false, false), Claim::NotReadyYet);
+}
+
+/// 🔴 **真并发**：两台 `Screen` 同时起，拿到的号必须是两个。
+///
+/// ⚠ 这一条真起两台 Xvfb（所以它要那两件现物，缺件照旧**红**不跳过）。
+/// 它买的是上一条纯判据买不到的那一半：**修完之后真的不撞了**。
+#[test]
+#[cfg(not(windows))]
+fn the_toolbox_hands_out_a_different_display_to_each_screen() {
+    use crate::filewin::rows::testing::xvfb::{exclusive, require_toolbox, Screen};
+    // 🔴 拿独占闸：本条**在它自己内部**真并发（一次起两台），
+    //    但它不与那几格实景开窗重叠（逐条理由住 `xvfb::exclusive`）。
+    let _guard = exclusive();
+    require_toolbox("两台屏各拿一个号");
+    // 同一条线程上连起两台 —— 号池那个原子计数器与「服务器自己的锁」两道都在射程里。
+    let a = Screen::start().expect("第一台起不来");
+    let b = Screen::start().expect("第二台起不来");
+    assert_ne!(
+        a.display(),
+        b.display(),
+        "两台屏拿到了同一个号 —— 那正是两格窗口挤在一起那一形"
+    );
+    // 两台都真的答得出几何（否则上面那一比可以靠「两个都是空串」成立）。
+    for s in [&a, &b] {
+        let g = s
+            .xdotool(&["getdisplaygeometry"])
+            .unwrap_or_else(|e| panic!("{} 答不出几何：{e}", s.display()));
+        assert_eq!(
+            g.split_whitespace().count(),
+            2,
+            "{} 的几何不是两个数：{g}",
+            s.display()
+        );
+    }
+}

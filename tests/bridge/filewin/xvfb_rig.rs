@@ -195,16 +195,54 @@ impl Screen {
             };
             let mut screen = Screen { child, display };
             // 最多等 5 秒（30 × 167ms）—— 就绪由「答得出几何」说了算。
+            let mut taken_by_someone_else = false;
             for _ in 0..30 {
-                if let Ok(out) = screen.xdotool(&["getdisplaygeometry"]) {
-                    if out.split_whitespace().count() == 2 {
-                        return Ok(screen);
+                // 🔴🔴 **先看我们自己那台还活着没有** 〔2026-09-22 修，`P25`〕
+                //
+                // 上一版没有这一跳，而那正是残余那条 flake 的机制：
+                //   · 上面 `slot(num)` 与 Xvfb 真建锁之间有一段 TOCTOU；
+                //     `NEXT_BASE` 只错开**起点**，两格的扫描路径照样会在下一步汇到同一个号。
+                //   · 两格同时 spawn `Xvfb :N` ⇒ **X 服务器自己的锁是仲裁者**，
+                //     输的那台当场退出，stderr 逐字
+                //     `(EE) Cannot establish any listening sockets - Make sure an X server isn't already running`
+                //     ＋ `exit=1`（2026-09-22 现打，三个并发里两个是这一形）。
+                //   · 🔴 **而下面那一跳会「成功」** —— `xdotool` 去问 `:N` 的几何时，
+                //     答话的是**赢家那台服务器**。于是 `start()` 返回一个
+                //     「子进程已死、屏是别人的」`Screen`。
+                //   ⇒ 两格的窗口挤在同一台屏上：数窗口那条判据数出 2 个（期望 1 个），
+                //     或者赢家 `Drop` 时把屏杀掉 ⇒ winit 抛 `BadWindow`。
+                //     **那正是本模块上面那段注释描述的症状，只是病根还剩这一段。**
+                //
+                // ⚠ 顺带订正一条现打：`Xvfb :90 -displayfd <fd>` **不会**从 `:90` 起扫
+                //   （给了显式号就只试那一个，被占即退）。`-displayfd` 只在**不给号**时
+                //   才自己扫，而那会从 `:0` 起 —— 撞本台架「避开低位号」那条策略。
+                //   ⇒ 不走 `-displayfd`，改成把**服务器自己的锁**当仲裁者：
+                //     它活着 = 这个号是我们的；它退了 = 别人的，换下一个。
+                let exited = screen.child.try_wait().ok().flatten();
+                let geometry_ok = screen
+                    .xdotool(&["getdisplaygeometry"])
+                    .is_ok_and(|out| out.split_whitespace().count() == 2);
+                // ⚠ 两个观测量都取到了才裁决 —— 裁决本身住 [`judge_claim`]（纯，可判）。
+                match judge_claim(exited.is_some(), geometry_ok) {
+                    Claim::TakenByAnother => {
+                        last = format!(
+                            "`:{num}` 被别人占了 —— 我们那台 Xvfb 当场退出（{:?}）。\
+                             并行的另一格赢了这个号",
+                            exited
+                        );
+                        taken_by_someone_else = true;
+                        break;
                     }
+                    Claim::Ours => return Ok(screen),
+                    Claim::NotReadyYet => {}
                 }
                 std::thread::sleep(std::time::Duration::from_millis(167));
             }
-            last = format!("Xvfb {} 起了但 5 秒内答不出屏幕几何", screen.display);
-            // `screen` 在这里析构 ⇒ 那台 Xvfb 被杀掉，号也就还回去了。
+            if !taken_by_someone_else {
+                last = format!("Xvfb {} 起了但 5 秒内答不出屏幕几何", screen.display);
+            }
+            // `screen` 在这里析构 ⇒ 那台 Xvfb 被杀掉（已经死了就是 no-op），
+            // 而锁**只在它记着我们自己这个 pid 时**才删 ⇒ 不会误删赢家的锁。
         }
         Err(last)
     }
@@ -302,6 +340,71 @@ fn slot(num: u32) -> Slot {
         std::fs::read_to_string(lock_path(num)).ok().as_deref(),
         pid_alive,
     )
+}
+
+/// 🔴 **这一族的独占闸** —— 任何要起真 Xvfb 的格，先拿它。
+///
+/// # 为什么要它（2026-09-22，`P25`）
+///
+/// 这一族此前**事实上是串的**：只有 `scenario_a` 那一处起屏，而它用 `OnceLock`
+/// 保证只跑一趟。⇒「并行」这件事在这一族里没有被真正行使过。
+///
+/// 而本拍新加的 `the_toolbox_hands_out_a_different_display_to_each_screen`
+/// 要**同时**起两台屏 ⇒ 它与 `scenario_a` 之间第一次出现了真竞争，
+/// 而这一族正是本仓已知最脆的那一族（`真相源`／`设计/99 P25` 记着约 6–10 趟咬 1 次）。
+///
+/// 🔴 **我没有证据说那条新判据就是病根**（现打 6 趟全绿，而这个频率下 6 趟证明不了
+/// 任何一侧）。⇒ 处置按「**不给已知脆的地方加拥挤**」来，而不是按「它无罪」来：
+/// 两处都经这一个闸 ⇒ 它们从不重叠，而那条并发判据**在它自己内部**照样真并发
+/// （它一次起两台），买到的东西一点没少。
+///
+/// ⚠ 毒化容忍：一条格 panic 了不该让后面每一格都跟着 panic
+/// （同 `index_testing::serial` 那条的理由）。
+pub fn exclusive() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    match LOCK.lock() {
+        Ok(g) => g,
+        Err(p) => {
+            eprintln!("  〔台架〕上一格在持有独占闸时 panic 了 —— 毒化容忍，继续");
+            p.into_inner()
+        }
+    }
+}
+
+/// spawn 之后那一步的裁决：**这个号到底是不是我们的**。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Claim {
+    /// 是我们的 —— 我们那台还活着，而且屏答得出几何。
+    Ours,
+    /// 🔴 **别人的** —— 我们那台当场退出了（X 服务器自己的锁把它挡回来了）。
+    TakenByAnother,
+    /// 还没就绪 —— 我们那台活着，但屏还没答得出几何。再等等。
+    NotReadyYet,
+}
+
+/// **纯函数**：由两个观测量定夺（同 [`classify_lock`] 的理由 —— 判得到，
+/// 而且不用真起两台 Xvfb 去撞号）。
+///
+/// # 🔴 承重的是第一行的**顺序**
+///
+/// 「我们那台死了没有」要排在「几何答不答得出」**前面**，因为两者可以**同时成立**：
+/// 并行的另一格赢了这个号之后，`xdotool` 去问 `:N` 的几何，
+/// **答话的是赢家那台服务器** ⇒ `geometry_ok == true`，而我们那台已经 `exit 1`。
+///
+/// 顺序反了（或者干脆不看 `child_exited`，那正是 2026-09-22 之前的样子）的后果：
+/// `start()` 返回一个「子进程已死、屏是别人的」`Screen`
+/// ⇒ 两格的窗口挤在同一台屏上 ⇒ 数窗口那条判据数出 2 个（期望 1 个），
+/// 或者赢家 `Drop` 时把屏杀掉 ⇒ winit 抛 `BadWindow`。
+pub fn judge_claim(child_exited: bool, geometry_ok: bool) -> Claim {
+    if child_exited {
+        // 🔴 **即使 `geometry_ok` 也走这一支** —— 那台答话的不是我们的。
+        return Claim::TakenByAnother;
+    }
+    if geometry_ok {
+        Claim::Ours
+    } else {
+        Claim::NotReadyYet
+    }
 }
 
 /// 这个号的锁**记的是不是我们这个 pid**。

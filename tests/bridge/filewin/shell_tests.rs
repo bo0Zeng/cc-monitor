@@ -688,6 +688,8 @@ fn scenario_a() -> &'static crate::filewin::rows::testing::xvfb::ChildRun {
     use crate::filewin::rows::testing::xvfb;
     static RUN: std::sync::OnceLock<xvfb::ChildRun> = std::sync::OnceLock::new();
     RUN.get_or_init(|| {
+        // 🔴〔`P25` 2026-09-22〕拿独占闸 —— 逐条理由住 `xvfb::exclusive`。
+        let _guard = xvfb::exclusive();
         xvfb::require_toolbox("「点了那颗按钮之后窗口真的起来了」");
         let screen = xvfb::Screen::start()
             .unwrap_or_else(|e| panic!("起不了 Xvfb ⇒ 这一格判不了，不是过了：{e}"));
