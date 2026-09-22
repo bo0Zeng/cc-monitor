@@ -1736,11 +1736,55 @@ fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
 ///
 /// ⚠ 严格说这是一个 TOCTOU（放掉之后到用之前，内核可能把它分给别人）——
 /// 本机跑一趟判据的那几毫秒里这概率可以忽略，**但它不是零**，如实记着。
+/// 临时端口段的下界。**低于它的端口，内核永远不会分配给 `bind(port 0)`。**
+///
+/// Linux 默认 `32768 60999`（`/proc/sys/net/ipv4/ip_local_port_range`，本机现打一致）。
+/// ⚠ 这里写死一个**保守**的常量而不是去读 `/proc`：读 `/proc` 是 Linux 专有，
+/// 而本条要的只是「够低」。真实下界比它高时本常量照样安全（更保守）；
+/// 真实下界比它低的机器上，下面那条判据会红并印出真值。
+const EPHEMERAL_FLOOR: u16 = 32768;
+
+/// 一个**没人监听、而且不可能被临时端口分配撞上**的回环端口。
+///
+/// # 🔴 上一版是一条 TOCTOU，而它会让这一族间歇性红
+///
+/// 上一版逐字是「`bind(port 0)` 拿一个号 → `drop(l)` 放掉 → 把号交出去」。
+/// **放掉的那一刻起，那个号就回到了临时端口池里** —— 而 `cargo test` 并行跑，
+/// 同一个进程里别的判据（假上游、中转子进程）全都在 `bind(port 0)`
+/// ⇒ 内核完全可能把**刚放掉的那个号**分给它们。
+///
+/// 后果具体：`acct-dead` 那一行的 `base_url` 指着的不再是「没人听」，
+/// 而是**另一个真在听的进程**。若那个进程恰好是**中转自己**，
+/// 它会收到一条没有 `/s/` 前缀的 `GET /v1/messages`
+/// ⇒ `route::parse` 回 `None` ⇒ **404**，而期望是 502。
+///
+/// 🔴 2026-09-22 门禁现打抓到过一次这一形（`each_account_gets_its_own_key_…`
+/// 实得 `HTTP/1.1 404 Not Found` ＋ `Content-Length: 14`）。
+/// ⚠ **那一次到底是不是这条路径，分不出来** —— 中转的两处 404
+/// （表里没这一行 / 路由键解析不了）走的是同一个 `respond_status`，
+/// **回的字节逐字节相同**。⇒ 本拍把这条 TOCTOU 结构性地消掉（它本来就是错的），
+/// 同时把那条断言的诊断加强到下次能分辨（见它自己那一处）。
+///
+/// # 修法：挑一个**低于临时端口段下界**的号
+///
+/// 低于 [`EPHEMERAL_FLOOR`] 的端口内核永远不会分配给 `bind(0)`
+/// ⇒ 本族任何一条判据都**抢不走**它。剩下的只是「此刻确实没人监听」，
+/// 现探一遍（连上去被拒才算数）。
 fn a_port_nobody_listens_on() -> u16 {
-    let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
-    let p = l.local_addr().expect("addr").port();
-    drop(l);
-    p
+    // 从一个不常用的低段往上找。1024 以下要 root 才 bind 得了 ⇒ 更安全，
+    // 但有些环境里 1–1023 会被别的服务占，所以直接从 1024 往上探。
+    for p in 1024u16..EPHEMERAL_FLOOR {
+        // 连得上 = 有人在听 ⇒ 换下一个。连不上（拒绝 / 超时）= 就是它。
+        let refused = std::net::TcpStream::connect_timeout(
+            &SocketAddr::new(LOOPBACK, p),
+            std::time::Duration::from_millis(50),
+        )
+        .is_err();
+        if refused {
+            return p;
+        }
+    }
+    panic!("1024..{EPHEMERAL_FLOOR} 之间一个没人监听的回环端口都找不到 —— 这台机器不对劲");
 }
 
 /// ★★★ **`KH2` 的正主**：一条路由键在表里**找不到** ⇒ **404，且一个字节都不到上游**。
@@ -1965,7 +2009,16 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     );
     assert!(
         bad_gateway.starts_with("HTTP/1.1 502"),
-        "上游连不上那一支该回 502：{bad_gateway:?}"
+        "上游连不上那一支该回 502：{bad_gateway:?}\n\
+         ★ 实得 404 时**先分辨是哪一种** —— 中转的两处 404 回的字节逐字节相同：\n\
+           ① 表里没有 `acct-dead`（`decide` 的 `Refuse`，`why` 是「代入模式要求表里有这一行」）；\n\
+           ② 那条「没人听」的端口上**其实有人听**，而那个人回了 404\n\
+              （最坏的一种：它就是中转自己 ⇒ 收到没有 `/s/` 前缀的路径 ⇒ `route::parse` 回 `None`）。\n\
+         ⇒ 现打这一趟的三个号，按它们判：dead={dead_port} relay={} a={port_a} b={port_b}。\n\
+           **dead 与其中任何一个相等 = 第 ② 种**（2026-09-22 之前 `a_port_nobody_listens_on`\n\
+           是 `bind(0)` 拿号再放掉，那个号会回到临时端口池 ⇒ 被并行的别人抢走）。\n\
+           三个都不等 ⇒ 第 ① 种，去看中转子进程 stderr 上有没有「被拒的行」。",
+        relay.addr.port()
     );
 
     // ── 非空对照：两条采集面都是活的 ───────────────────────────
@@ -3543,5 +3596,60 @@ fn first_non_loopback_v4() -> Option<Ipv4Addr> {
     match s.local_addr().ok()?.ip() {
         IpAddr::V4(v) if !v.is_loopback() => Some(v),
         _ => None,
+    }
+}
+
+/// 🔴〔`P25` 2026-09-22〕**那个「没人听」的端口，抢不走。**
+///
+/// # 它钉的是一条 TOCTOU 的结构性消除
+///
+/// 上一版 `a_port_nobody_listens_on` 是 `bind(0)` 拿号再 `drop` 放掉 ——
+/// 放掉的那一刻那个号就回到临时端口池，而 `cargo test` 并行跑、同一个进程里
+/// 别的判据（假上游 · 中转子进程）全在 `bind(0)` ⇒ 内核可能把它分出去。
+/// 那时 `acct-dead` 指着的不再是「没人听」，而是另一个真在听的进程
+/// ⇒ 502 那一支变成别人回的 404。
+///
+/// ⇒ 修法是挑一个**低于临时端口段下界**的号：内核永远不会把它分配给 `bind(0)`。
+/// 本条钉那个性质本身（不是钉某个具体端口号）。
+#[test]
+fn the_dead_port_is_one_the_kernel_can_never_hand_out() {
+    let p = a_port_nobody_listens_on();
+    assert!(
+        p < EPHEMERAL_FLOOR,
+        "挑到的号 {p} 落在临时端口段里（下界 {EPHEMERAL_FLOOR}）—— \
+         并行的 `bind(0)` 随时会抢走它"
+    );
+    // 真的没人听（否则这个「死端口」是活的，502 那一支量的就不是它该量的东西）。
+    assert!(
+        std::net::TcpStream::connect_timeout(
+            &SocketAddr::new(LOOPBACK, p),
+            std::time::Duration::from_millis(100),
+        )
+        .is_err(),
+        "{p} 上有人在听 —— 它不是一个「连不上」的上游"
+    );
+
+    // 🔴 本机那个下界**真的**不比我们这个常量低（低了的话上面那一比是假的安全感）。
+    // ⚠ 只在读得到的时候判（`/proc` 是 Linux 专有）；读不到就把这一格如实跳过**并说出来**。
+    match std::fs::read_to_string("/proc/sys/net/ipv4/ip_local_port_range") {
+        Ok(raw) => {
+            let low: u16 = raw
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_else(|| panic!("读不懂临时端口段：{raw:?}"));
+            assert!(
+                low >= EPHEMERAL_FLOOR,
+                "本机临时端口段下界是 {low}，比我们那个常量 {EPHEMERAL_FLOOR} **还低** \
+                 ⇒ 上面那一比给的是假的安全感。现打原文：{raw:?}"
+            );
+        }
+        Err(e) => {
+            // 不是「跳过」—— 把判不了这件事印出来（本仓那条：跳过与过了长得一样）。
+            println!(
+                "〔读数〕读不到 /proc/sys/net/ipv4/ip_local_port_range（{e}）\
+                 ⇒ 「本机下界不低于 {EPHEMERAL_FLOOR}」这一格本趟**判不了**"
+            );
+        }
     }
 }
