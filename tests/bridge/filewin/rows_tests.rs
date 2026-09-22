@@ -455,7 +455,7 @@ impl eframe::App for RowProbeApp {
         // 🔴 这一行与 `render_headless_with_events_and_text` 里那一行**逐字相同**，
         //    被测对象因此是同一个。
         let mut t = RenderTally::default();
-        show_file_rows(ui, &self.rows, &mut t, Some(0.0));
+        show_file_rows(ui, &self.rows, &mut t, Some(0.0), None);
 
         let ctx = ui.ctx().clone();
         let mut p = self.shared.lock().unwrap();

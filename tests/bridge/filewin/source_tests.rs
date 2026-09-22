@@ -347,3 +347,23 @@ fn an_answer_we_cannot_use_as_a_start_is_an_error_not_a_blank_window() {
         }
     }
 }
+
+/// 🔴〔第十刀〕远端 basename —— **只按 `/` 切**。
+///
+/// 盘上此前已有**三处** `rsplit('/')` 各写一份，这一条钉的是第四处不要再长出来
+/// （逐条理由住 `remote_basename` 头注）。
+#[test]
+fn a_remote_basename_only_ever_splits_on_slashes() {
+    assert_eq!(remote_basename("/a/b/c.txt"), "c.txt");
+    assert_eq!(remote_basename("/a/b/"), "b", "尾斜杠该被先剥掉");
+    assert_eq!(remote_basename("top.txt"), "top.txt", "没有分隔符就是整条");
+    assert_eq!(remote_basename("/"), "", "根切不出名字");
+    assert_eq!(remote_basename(""), "");
+    // 🔴 **反斜杠不是分隔符** —— SFTP 协议恒用 `/`，对面是 Windows 也一样。
+    //    拿 `std::path` 切的话，这一条在 Windows 上会回 `b.txt`。
+    assert_eq!(
+        remote_basename("/srv/a\\b.txt"),
+        "a\\b.txt",
+        "反斜杠被当成分隔符了 —— 那会把一个名字里含 `\\` 的文件切成两级"
+    );
+}

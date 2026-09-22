@@ -571,7 +571,7 @@ fn xvfb_worker_opens_a_real_window() {
 
     let req0 = open_requested();
     let opened0 = windows_opened();
-    let h = open_detached_seeded(Source::Local, cwd.clone(), None, rows.clone());
+    let h = open_detached_seeded(Source::Local, cwd.clone(), None, rows.clone(), None);
 
     let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 20_000);
     xvfb::emit("a.window_count", ids.len());
@@ -640,7 +640,7 @@ fn xvfb_worker_opens_a_real_window() {
 
     // ── 第二趟：**同一个进程、换一条线程** ────────────────────────────
     // 台架头注第四节论证过它必然走另一条路；这里把它**量出来**而不是推出来。
-    let h2 = open_detached_seeded(Source::Local, cwd, None, rows);
+    let h2 = open_detached_seeded(Source::Local, cwd, None, rows, None);
     let ids2 = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 6_000);
     xvfb::emit("a.second_window_count", ids2.len());
     for id in &ids2 {
@@ -673,6 +673,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         root.to_string_lossy().to_string(),
         None,
         rows,
+        None,
     );
     let (verdict, why) = join_verdict(h, 30_000);
     xvfb::emit("n.run_native", verdict);
@@ -1181,7 +1182,7 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
             )),
             ..Default::default()
         },
-        |ui| crate::filewin::rows::show_file_rows(ui, &rows, &mut rt, Some(0.0)),
+        |ui| crate::filewin::rows::show_file_rows(ui, &rows, &mut rt, Some(0.0), None),
     );
     out.drop_without_applying_deltas();
     assert_eq!(rt.rows_materialized, 1);
@@ -2013,4 +2014,213 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
     // 🔴 一个字都不少，而且**还是 dirty**（远端那份没变）。
     assert_eq!(p.text, "改坏它\n", "存失败把用户敲的东西弄掉了");
     assert!(p.dirty(), "存失败之后却说已经存好了");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔第十刀 2026-09-22〕「就是这个文件」—— 高亮 ＋ 滚进视野
+// ════════════════════════════════════════════════════════════════════════
+
+fn many_rows(n: usize) -> Vec<Row> {
+    (0..n)
+        .map(|i| Row {
+            name: format!("f{i:06}.txt"),
+            path: format!("/srv/data/f{i:06}.txt"),
+            is_dir: false,
+            size: 10,
+            lossy_name: false,
+        })
+        .collect()
+}
+
+/// 🔴🔴 **偏移是算出来的，而虚拟滚动没塌。**
+///
+/// # 它钉的是 `设计/60 §4 戊` 立的那条纪律
+///
+/// 那一节逐字：「**「egui 扛得住」这句话的主语是 `show_rows`，不是 egui**」——
+/// 对照组是不虚拟的 `ScrollArea::show` 在 10 万行上 **83.6 ms/帧（12 fps）**。
+///
+/// 「滚到第 N 行」最直观的写法是 `scroll_to_rect`，而它要**那一行这一帧真的被画出来**
+/// ⇒ 虚拟滚动下只能先把全部行都画出来 —— 那正是那条纪律禁的事。
+/// ⇒ 偏移 = `下标 × ROW_HEIGHT`，O(1)。
+///
+/// **本条同时钉两件**：① 那个偏移对；② 这一帧**物化的行数远小于总数**
+/// （虚拟滚动还活着）。少了 ② 这一条会在有人改成 `scroll_to_rect` 那天照样绿。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn revealing_a_deep_row_scrolls_by_arithmetic_without_materialising_everything() {
+    let n = 20_000usize;
+    let target = 17_777usize;
+    let rows = many_rows(n);
+    let want = rows[target].name.clone();
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("reveal-deep"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        rows,
+    );
+    // 下标那一半是纯的：现扫出来就是 `target`。
+    let got = crate::filewin::rows::reveal_index(&w.listing.rows.lock().unwrap(), &want)
+        .expect("那一行明明在这一摞里");
+    assert_eq!(got, target, "下标不对");
+
+    let ctx = egui::Context::default();
+    // 🔴 **热身帧要排在 `set_reveal` 之前**，而这一条是量具的性质、不是生产的：
+    //    `find::testing::frame_text` 末尾调 `out.drop_without_applying_deltas()`
+    //    ⇒ 那一帧的状态增量被丢掉，`ScrollArea` 记住的偏移**不会传到下一帧**。
+    //    热身排在前面的话，那唯一一次「滚」就在热身帧里被消化掉，
+    //    而下一帧的滚动位置回到 0 ⇒ 第 17 777 行没被物化、也就不会高亮
+    //    （现打：实得 `revealed_row = None`）。
+    //    ⚠ 生产里 egui 正常应用增量 ⇒ 偏移会留着。**这是量具的边界，别读成缺陷。**
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    w.set_reveal(&want);
+    assert_eq!(w.reveal_name(), Some(want.as_str()));
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1600.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+
+    // 只报读数（同 `scale_f2` 那套「report-only」先例）：它是「虚拟滚动还活着」
+    // 这件事的具体数，比一句散文有用。现打：total=20000 materialized=35。
+    println!(
+        "〔现打〕total={} materialized={} first={} last={} revealed={:?}",
+        w.tally.total_rows,
+        w.tally.rows_materialized,
+        w.tally.first_row,
+        w.tally.last_row,
+        w.tally.revealed_row
+    );
+    // ① 高亮落在**那一行**上。
+    assert_eq!(
+        w.tally.revealed_row,
+        Some(target),
+        "高亮没落在第 {target} 行（实得 {:?}）",
+        w.tally.revealed_row
+    );
+    // ② 🔴 虚拟滚动还活着 —— 这一帧物化的行数远小于 20 000。
+    assert_eq!(w.tally.total_rows, n);
+    assert!(
+        w.tally.rows_materialized < 200,
+        "这一帧物化了 {} 行（共 {n}）—— 虚拟滚动塌了。\n\
+         ★ 那不是「慢一点」：`设计/60 §4 戊` 现打，不虚拟的 `ScrollArea::show` \
+         在 10 万行上是 83.6 ms/帧（12 fps）。\n\
+         ⇒ 检查有没有人把「滚到某一行」改成了 `scroll_to_rect`（它要那一行先被画出来）",
+        w.tally.rows_materialized
+    );
+    // ③ 那一行真的在物化区间里（否则「高亮了」是在一个没画的行上）。
+    assert!(
+        w.tally.first_row <= target && target < w.tally.last_row,
+        "第 {target} 行不在这一帧的物化区间 [{}, {}) 里 —— 滚过去了吗？",
+        w.tally.first_row,
+        w.tally.last_row
+    );
+}
+
+/// 🔴 **阴性对照**：没给 reveal ⇒ 哪一行都不高亮。
+///
+/// 少了它，上一条可以靠「恒高亮第一行」之类的实现全绿。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn with_no_reveal_no_row_is_highlighted() {
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("reveal-none"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        many_rows(50),
+    );
+    assert!(w.reveal_name().is_none());
+    let ctx = egui::Context::default();
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let _ = crate::filewin::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1600.0, 800.0),
+        0.1,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    assert_eq!(w.tally.revealed_row, None, "没给 reveal 却高亮了某一行");
+    // 反空真：这一帧真的画了行（否则上面那一比是空真的）。
+    assert!(w.tally.rows_materialized > 0);
+}
+
+/// **只滚一次。** 每帧都滚等于把用户自己的滚动按住了。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_jump_happens_once_not_every_frame() {
+    let rows = many_rows(100);
+    let want = rows[42].name.clone();
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("reveal-once"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        rows,
+    );
+    w.set_reveal(&want);
+    // 🔴 步距**由调用方给**（它要 `ui` 才拿得到行间距，理由住 `rows::row_pitch`）。
+    //    这里喂一个合成步距，判的是「乘对了」而不是「间距是多少」。
+    let pitch = 21.0f32;
+    match w.take_reveal_offset(pitch) {
+        Some(Ok(y)) => assert_eq!(y, 42.0 * pitch, "偏移不是「下标 × 步距」"),
+        other => panic!("第一次就该给出偏移，实得 {other:?}"),
+    }
+    // 第二次起不再给 —— 而**高亮还在**（两半刻意分开，见 `Reveal` 头注）。
+    assert!(w.take_reveal_offset(pitch).is_none(), "每帧都在滚");
+    assert!(w.take_reveal_offset(pitch).is_none());
+    assert_eq!(w.reveal_name(), Some(want.as_str()), "滚过之后高亮也没了");
+}
+
+/// 🔴 那一行**不在这个目录里** ⇒ 出声，而且**把高亮撤掉**。
+///
+/// 两半都要：静默什么都不做与「跳过去了」在屏幕上同形；
+/// 而留着高亮等于在屏幕上标一个不存在的东西（下一次重列时它会去命中一个同名的别人）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_reveal_target_that_is_gone_says_so_and_drops_the_highlight() {
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("reveal-gone"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        many_rows(10),
+    );
+    w.set_reveal("这个文件不在这儿.txt");
+    match w.take_reveal_offset(21.0) {
+        Some(Err(why)) => {
+            assert!(
+                why.contains("这个文件不在这儿.txt"),
+                "没说是哪个文件：{why}"
+            );
+            assert!(
+                why.contains("删") || why.contains("改"),
+                "没给出可能的原因：{why}"
+            );
+        }
+        other => panic!("那一行不在这一摞里，却没出声：{other:?}"),
+    }
+    assert!(w.reveal_name().is_none(), "找不到那一行，高亮却还挂着");
+}
+
+/// 换目录 / 换机器 ⇒ 高亮清掉。
+///
+/// 🔴 留着的后果具体：新目录里**恰好同名**的另一个文件会被高亮，
+/// 而用户会以为那就是他要找的那个。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn navigating_away_drops_the_highlight() {
+    let (root, _) = synth_tree("reveal-nav");
+    let mut w = FileWindow::seeded(
+        Source::Remote(Box::new(synth_cfg("reveal-nav"))),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        many_rows(10),
+    );
+    w.set_reveal("f000003.txt");
+    assert!(w.reveal_name().is_some());
+    w.navigate_to("/srv/other".into());
+    assert!(w.reveal_name().is_none(), "换了目录高亮还挂着");
+
+    // 换机器那两条路同样。
+    w.set_reveal("f000003.txt");
+    w.go_local(root.to_string_lossy().to_string());
+    assert!(w.reveal_name().is_none(), "切到本机高亮还挂着");
+    w.set_reveal("f000003.txt");
+    assert!(w.go_remote(), "回不去远端 —— 本条的前提变了");
+    assert!(w.reveal_name().is_none(), "回远端高亮还挂着");
+    let _ = std::fs::remove_dir_all(&root);
 }
