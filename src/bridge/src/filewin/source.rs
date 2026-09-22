@@ -161,6 +161,54 @@ pub fn row_from_sftp_entry(e: crate::sftp_pool::SftpEntry) -> Row {
     }
 }
 
+/// 远端 `.` 解出来的那条路径能不能当**起点**用。
+///
+/// # 🔴 抽成纯函数的理由与 [`row_from_sftp_entry`] 同一条
+///
+/// [`resolve_remote_home`] 整条路要真远端才跑得起来（本仓红线不许起真连接）
+/// ⇒ 那条路上**唯一有逻辑的一段**就是这里，把它抽出来，它就有判据了。
+///
+/// # 为什么要判一道，而不是把回值直接拿去开窗
+///
+/// 入口那条命令吃的是一条**绝对路径**。`canonicalize(".")` 在规矩的 SFTP 服务端上
+/// 回的就是绝对路径，但那是**对面的承诺**，不是我们的不变量 ——
+/// 空串 / 相对路径 / 一串空白，任一种直接拿去开窗都是「窗口出来了、里面是空的」，
+/// 而那正是 [`super::entry::open_file_window`] 头注花一整节要避免的那一形。
+/// ⇒ 不合格就**带着原文回错**，让 webview 那侧照旧弹它的失败提示。
+///
+/// ⚠ 末尾的 `/` 会被剥掉（根 `/` 除外）—— 那不是洁癖：
+/// [`parent_dir`] 靠「回来的和给出去的相等」判「已经在顶上了」，
+/// 而 `/srv/` 与 `/srv` 在那个算法里是两个不同的输入。
+pub fn start_dir_from_realpath(answer: &str) -> Result<String, String> {
+    let t = answer.trim();
+    if t.is_empty() {
+        return Err("远端把 home 解成了空路径 —— 没有起点可以开窗".into());
+    }
+    if !t.starts_with('/') {
+        return Err(format!(
+            "远端把 home 解成了一条相对路径 `{t}` —— 起点必须是绝对路径"
+        ));
+    }
+    let trimmed = t.trim_end_matches('/');
+    Ok(if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        trimmed.to_string()
+    })
+}
+
+/// 问远端「`.` 是哪儿」—— 也就是那台机器上的 home 绝对路径。
+///
+/// 🔴 **这是 `sftp_realpath` 在窗口这一侧的唯一落点。** 在这之前，那条路径的
+/// 唯一来源是老面板 `src/sftp/panel.ts` 那处 `sftp_realpath(cfg, ".")`
+/// ⇒ 窗口连「自己开在远端 home」都做不到，而 `P3`（老面板退役）因此排不动。
+///
+/// ⚠ 本函数**自己没有逻辑** —— 判的那一道住 [`start_dir_from_realpath`]。
+pub async fn resolve_remote_home(cfg: &RemoteConfig) -> Result<String, String> {
+    let answer = crate::sftp_pool::sftp_realpath(cfg.clone(), ".".to_string()).await?;
+    start_dir_from_realpath(&answer)
+}
+
 /// 列一个**远端**目录 —— 直接调 `sftp_pool`，同进程、无 IPC。
 pub async fn list_remote(cfg: &RemoteConfig, dir: &str) -> Result<Vec<Row>, String> {
     let entries = crate::sftp_pool::sftp_list_dir(cfg.clone(), dir.to_string()).await?;

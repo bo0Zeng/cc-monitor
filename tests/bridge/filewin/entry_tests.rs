@@ -14,21 +14,44 @@ fn synth_cfg() -> RemoteConfig {
     }
 }
 
-/// 空路径 ⇒ 立刻报错，**而且一个窗口都不开**。
+/// 空路径 ⇒ **去问远端 home**；问不到就报错，**而且一个窗口都不开**。
 ///
-/// 🔴 「一个窗口都不开」是这条的第二半，也是更要紧的那一半：
+/// # 🔴〔第七刀 2026-09-21〕这一条改过措辞，性质没松
+///
+/// 上一版它叫〔散文墓碑〕`an_empty_path_is_refused_without_opening_a_window`，断的是
+/// 报错里含「路径是空的」。**那钉的是机制，不是性质** —— 真性质是
+/// 「**说不出要看哪儿就别开一个空窗**」，而「空路径一律回错」只是当时唯一可选的实现
+/// （见 `entry.rs` 那一节：在入口里猜一个默认值 vs 去问那个说得上话的）。
+///
+/// ⇒ 现在空路径的意思是「开在远端 home」，而本条断的换成**更强**的一件：
+/// 报错里要出现 `realpath` ——**那证明我们真的去问了**。
+/// 只断「报错非空」的话，一个把空路径原样丢给 `list_remote` 的实现也能全绿。
+///
+/// 🔴 「一个窗口都不开」照旧是这条的第二半，也是更要紧的那一半：
 /// 早退的实现很容易先 `spawn` 了线程再检查参数，那样用户会看到一个空窗 ＋ 一条报错。
+///
+/// ⚠ 本条走的是**失败路径**（`host` 是 `.invalid`，DNS 保留域 ⇒ 解析就失败了，
+/// 一个 TCP 包都没出去）。「问得到 home 时它真的开在那儿」本机买不到 —— 要真远端。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_empty_path_is_refused_without_opening_a_window() {
+async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot() {
     let before = crate::filewin::shell::open_requested();
     let e = open_file_window(synth_cfg(), "   ".into())
         .await
-        .expect_err("空路径竟然过了");
-    assert!(e.contains("路径是空的"), "报错没说清是什么问题：{e}");
+        .expect_err("问不到 home 竟然过了");
+    // 🔴〔订正 2026-09-21〕这里原先断的是「报错里含 `realpath`」，**那买不到**：
+    //    `.invalid` 上失败发生在**连接**阶段，`canonicalize` 一次都没跑到
+    //    ⇒ `sftp_realpath` 那句 `realpath 失败:` 不会出现，而问 home 与列目录
+    //      在这台机器上回的是**同一句**池错误（现打逐字「所有地址连接失败: …」）。
+    //    ⇒ 「是哪一跳失败的」在失败路径上**文本分不开**。如实降级成断得住的两件，
+    //      「真的去问了」那一件交给下面那条源码代理。
+    assert!(
+        !e.trim().is_empty(),
+        "报错是空串 —— webview 那侧会弹一个没有内容的失败提示"
+    );
     assert_eq!(
         crate::filewin::shell::open_requested(),
         before,
-        "参数不合法却已经请求开窗了"
+        "说不出要看哪儿，却已经请求开窗了 —— 那就是个空窗"
     );
 }
 
@@ -151,4 +174,41 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
         "整个 `src/` 里没有一处**调用** `open_file_window` —— \
          那就又是一条「命令有了、前端没有入口」的欠账（`设计/60 §5.4c` 补记那一形）"
     );
+}
+
+/// 🔴 **空路径那一支真的走 `resolve_remote_home`，而且排在列目录前面。**
+///
+/// # 为什么要这条源码代理
+///
+/// 上面那条行为判据**买不到**「是哪一跳失败的」：在 `.invalid` 这台合成远端上，
+/// 问 home 与列目录回的是同一句池错误（连接阶段就失败了）⇒ 文本分不开。
+/// 而「问得到 home 时它真的开在那儿」要真远端，本机永远量不到。
+///
+/// ⇒ 剩下能确定地钉住的是**结构**：那一跳在不在、在不在前面。
+/// 同族先例：`transfer_tests::the_real_adapters_delegate_to_the_shared_pool`
+/// （那条头注逐字「判源码是代理」）。
+///
+/// ⚠ **它买不到那一跳是对的**，只买到它在。别读宽。
+#[test]
+fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
+    let prod =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/entry.rs"));
+    assert_eq!(
+        prod.matches("resolve_remote_home(").count(),
+        1,
+        "`entry.rs` 生产段里 `resolve_remote_home(` 不是恰好一处 —— \
+         少了就是空路径又被原样丢下去，多了就是这件事长出了第二个住址"
+    );
+    let at_home = prod
+        .find("resolve_remote_home(")
+        .expect("上一比已经保证它在，这里拿不到位置说明抽取器坏了");
+    let at_list = prod
+        .find("list_remote(")
+        .expect("`list_remote(` 不在生产段里 —— 那条「先列一趟再开窗」的纪律没了");
+    assert!(
+        at_home < at_list,
+        "问 home 那一跳排在列目录后面 —— 那就是先拿空路径去列了一趟"
+    );
+    // 反空真：这把尺子认得出「不在」。
+    assert!(!prod.contains("resolve_remote_home_that_does_not_exist"));
 }

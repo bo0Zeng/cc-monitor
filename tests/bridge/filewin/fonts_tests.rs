@@ -287,10 +287,14 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let scanned = label_chars();
     assert_eq!(
         scanned.len(),
-        249,
+        253,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
          `24f` 第四刀之前是 130）。\
-         这个数本身没有对错，但它变了说明标签动过 —— 连着下面那条一起看",
+         这个数本身没有对错，但它变了说明标签动过 —— 连着下面那条一起看。\
+         〔第七刀 09-21：249 → 253，而它是 `−1 +5` ——「哪」随 `entry.rs` 那句\
+          「要打开哪个目录？路径是空的」一起没了，「以必绝解须」来自 `source.rs`\
+          那两句「对面把 home 解成了空串/相对路径」。🔴 只钉字数的话，`−1 +1`\
+          那种改动会安安静静地过去；出声的是下面那条两向差集。〕",
         scanned.len()
     );
     let declared: std::collections::BTreeSet<char> = PROBE.chars().collect();
@@ -340,15 +344,15 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &prop(), PROBE).len(),
-        238,
+        242,
         "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
          第五刀之前是 194 / 205、`24f` 第四刀之前是 121 / 130）",
         PROBE.chars().count()
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        237,
-        "等宽字体下画不出的字数变了（2026-09-21 现打 237 —— 比比例少一个 `→`；\
+        241,
+        "等宽字体下画不出的字数变了（2026-09-21 现打 241 —— 比比例少一个 `→`（第七刀：237 → 241，同上 `−1 +5`）；\
          第五刀之前是 193、`24f` 第四刀之前是 120）"
     );
 }

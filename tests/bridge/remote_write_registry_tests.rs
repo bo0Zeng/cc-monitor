@@ -713,7 +713,12 @@ fn the_remote_write_capability_is_still_confined_to_three_files() {
 /// | 池子 14 条 | **13** 条 | 第 14 个匹配是 `sftp_chmod` 头注里提到 `#[tauri::command]` 那句**散文** |
 /// | 窗口接了 6 条 | **4** 条 | `sftp_realpath` 在 `filewin/` 里**零处**（只有老面板 `panel.ts` 在用）；`copy_remote_path` **不是命令**，而且 `filewin/` 被判据明禁调它（理由住 `copy.rs` 头注：它的第一个参数是一条裸会话，绕过 `sftp_copy` 就同时丢掉围栏 ＋ 取消登记 ＋ 车道预算） |
 ///
-/// ⇒ 那张表的「6 → 11」这个算式两侧都错。**真实读数是 4 → 9**，而本条就是那个数的住址。
+/// ⇒ 那张表的「6 → 11」这个算式两侧都错。**真实读数是 4 → 9**（第七刀之后 **10**），
+/// 而本条就是那个数的住址。
+/// 🔴 〔第七刀 09-21 补记〕上面那张表里「`sftp_realpath` 在 `filewin/` 里**零处**」
+/// 这句**已经不是实况了** —— 那一格正是第七刀补上的（落点 `source::resolve_remote_home`）。
+/// 那句话留着是因为它说清了**当时为什么是零**（窗口寄生在老面板的寻址上），
+/// 而它今天的真伪由本条的相等断言替它保鲜。
 /// ⚠ `设计/` 是唯一真相源、不是 git 仓 ⇒ 这条订正只落在本判据的诊断里，
 /// 由本条的相等断言替它保鲜。
 #[test]
@@ -740,6 +745,19 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
             "SftpEntry",
             "类型",
             "列目录回来的那一行，映射成窗口自己那个更窄的 `Row`",
+        ),
+        (
+            "sftp_realpath",
+            "命令",
+            "🔴 **窗口开在哪儿** —— `canonicalize(\".\")` 解出那台机器的 home 绝对路径。\
+             〔`24e` 第七刀 09-21：**这一条此前在 `filewin/` 里是零处**，而那不是\
+             「不需要」—— 窗口那条入口命令吃的是一条**绝对路径**，唯一来源是老面板\
+             （`src/sftp/panel.ts` 解出 home 再拿它调 `open_file_window`）\
+             ⇒ 窗口**寄生在老面板的寻址上**，`P3`（退役）因此排不动。\
+             现在的落点是 `filewin::source::resolve_remote_home`，全树恰好一处；\
+             `entry.rs` 里空路径那一支走它，且**排在列目录前面**\
+             （`entry_tests::the_empty_path_branch_goes_through_the_one_home_resolver_before_listing`\
+             钉着这两件）。⚠ 它**自己不写任何路径**（只读）⇒ 不进 `REMOTE_WRITES`〕",
         ),
         // ── 传输那一族（第二~三刀）─────────────────────────────────────
         (
@@ -936,8 +954,9 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     }
     assert_eq!(
         declared_cmds.len(),
-        9,
-        "窗口今天接了 {} 条池子命令（2026-09-21 现打：第五刀之前 **4**、之后 **9**）。\n\
+        10,
+        "窗口今天接了 {} 条池子命令（2026-09-21 现打：第五刀之前 **4**、之后 **9**、\n\
+         第七刀接上 `sftp_realpath` 之后 **10**）。\n\
          ⚠ `设计/99 §4.6.4` 写的是「6 → 11」，**两侧都错**：那张表把\n\
          `sftp_realpath`（`filewin/` 里零处，只有老面板在用）与 `copy_remote_path`\n\
          （不是命令，而且 `filewin/` 被判据明禁调它）算进了「接上了」那一栏。",
@@ -950,24 +969,27 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         .collect();
     assert_eq!(
         missing.len(),
-        4,
-        "窗口还差 {} 条没接（2026-09-21 现打 4：`sftp_realpath` · `sftp_download` · \
+        3,
+        "窗口还差 {} 条没接（2026-09-21 现打 3：`sftp_download` · \
          `sftp_read_text_for_edit` · `sftp_write_text`）。实得：{missing:?}\n\
-         ⚠ 这个数**只许往下走**：后三条各自是一件独立的活（往外拖是另一个交互题；\n\
+         ⚠ 这个数**只许往下走**：这三条各自是一件独立的活（往外拖是另一个交互题；\n\
          文本编辑要一个编辑器面，而 `设计/60 §5.4b` 大文件编辑改流式至今没做、形状没定）。\n\
-         🔴 **`sftp_realpath` 那一条值得单记，而它不是「不需要」**：窗口今天\n\
-         **连「自己开在远端 home」都做不到** —— 它那条入口命令吃的是一条**绝对路径**，\n\
-         而现打那条路径的唯一来源是老面板（`src/sftp/panel.ts` 里 `sftp_realpath(cfg, \".\")`\n\
-         解出 home、存进它自己的 `cwd`、再拿它调 `open_file_window`）。\n\
-         ⇒ 窗口**寄生在老面板的寻址上**。\n\
-         🔴 **那四条全在老面板手上** ⇒ `设计/99 §4.6.5` 那条顺序不但仍然成立，\n\
-         而且比那一节写的更强：它只数了「窗口缺的那 8 条里老面板有 6 条」，\n\
-         **没数到「窗口的起点路径也是老面板给的」这一条**。",
+         ✅ 〔第七刀 09-21〕**`sftp_realpath` 从这张缺件表上下来了。** 它此前值得单记，\n\
+         因为窗口**连「自己开在远端 home」都做不到** —— 那条入口命令吃的是一条绝对路径，\n\
+         而那条路径的唯一来源是老面板（`src/sftp/panel.ts` 里 `sftp_realpath(cfg, \".\")`\n\
+         解出 home、存进它自己的 `cwd`、再拿它调 `open_file_window`）\n\
+         ⇒ 窗口**寄生在老面板的寻址上**。现在它自己问得到了。\n\
+         🔴 **剩下这三条仍然全在老面板手上** ⇒ `设计/99 §4.6.5` 那条顺序**仍然成立**，\n\
+         只是它挡住 `P3` 的那一道理由少了一条（起点路径那一条已经解开）。",
         missing.len()
     );
-    // 反空真：`sftp_realpath` 与 `copy_remote_path` 真的**不在**窗口那棵树上
-    //（这两个名字正是上面那条订正点掉的两处，钉住它别悄悄回来）。
-    for gone in ["sftp_realpath", "copy_remote_path"] {
+    // 反空真：`copy_remote_path` 真的**不在**窗口那棵树上。
+    // 🔴 〔第七刀 09-21〕这一圈原先还含 `sftp_realpath` —— 它现在**真的接上了**
+    //（落点 `source::resolve_remote_home`）⇒ 从这一圈里拿掉，并进了上面 `SITES`。
+    //    ⚠ 那不是把一条判据放松了：它换了方向 —— 从「钉住它别悄悄回来」变成
+    //      「钉住它恰好一处、且排在列目录前面」（住 `entry_tests` 那条）。
+    //    `copy_remote_path` 留着，理由没变（`filewin/` 被判据明禁调它）。
+    for gone in ["copy_remote_path"] {
         assert!(
             !used.iter().any(|u| u == gone),
             "`{gone}` 出现在窗口那棵树上了 —— 它是上面那条现打订正点名的两处之一，\
