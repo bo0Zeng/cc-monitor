@@ -1182,3 +1182,85 @@ fn the_tree_walk_floor_actually_bites() {
     let r = std::panic::catch_unwind(|| assert_tree_strips_clean(&root, 9_999));
     assert!(r.is_err(), "地板远高于实际文件数却没红 —— 计数自检是空转的");
 }
+
+// ── P28D1-selftest：`assert_stripper_keeps` 的行为自检 ──
+
+/// 一份**照 `ssh_source.rs` 形状**造的夹具：第一个测试模块在中段，
+/// 真正要扫的生产代码在它**后面**。锚点表里的针必须住在后半段。
+fn p28_fixture() -> &'static str {
+    "fn early() {}\n\
+     #[cfg(test)]\n\
+     mod early_tests {\n\
+     \x20   #[test]\n\
+     \x20   fn t() {}\n\
+     }\n\
+     fn parse_frame() {}\n\
+     async fn stream_loop() {}\n"
+}
+
+/// ★ 正题：针住在第一个测试模块之后 ⇒ 三件都成立 ⇒ 不许红。
+#[test]
+fn the_stripper_control_passes_when_the_anchor_lives_after_the_first_test_module() {
+    assert_stripper_keeps(
+        "夹具",
+        p28_fixture(),
+        &["fn parse_frame", "async fn stream_loop"],
+    );
+}
+
+/// ★ 过剥那一半：针压根不在生产段里 ⇒ 必须红，且红在「剥过头」上。
+#[test]
+fn the_stripper_control_reds_when_the_anchor_is_gone() {
+    let r = std::panic::catch_unwind(|| {
+        assert_stripper_keeps("夹具", p28_fixture(), &["fn nowhere_to_be_found"])
+    })
+    .expect_err("针不在生产段里却没红 —— 过剥那一半是空转的");
+    let msg = r
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .unwrap_or_default();
+    assert!(msg.contains("剥过头"), "诊断没说「剥过头」：{msg}");
+}
+
+/// 🔴 **最要紧的一格**：针住在第一个测试模块**之前** ⇒ 便宜近似也留得住它
+/// ⇒ 这条对照不再有判别力 ⇒ 必须红，而**不是**静默当成通过。
+///
+/// 没有这一格，[`assert_stripper_keeps`] 就会退化成一句普通的存在性断言：
+/// 谁把守卫的剥法换回便宜近似，它照样绿。
+#[test]
+fn the_stripper_control_reds_when_the_anchor_cannot_tell_the_two_strippers_apart() {
+    let r = std::panic::catch_unwind(|| {
+        // `fn early` 在第一个测试模块之前 —— 便宜近似留得住它。
+        assert_stripper_keeps("夹具", p28_fixture(), &["fn early"])
+    })
+    .expect_err("针在第一个测试模块之前却没红 —— 这条对照可以被填成恒真的");
+    let msg = r
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .unwrap_or_default();
+    assert!(msg.contains("对照失去意义"), "诊断没说这一格的性质：{msg}");
+}
+
+/// 空锚点表是**恒真**，比没有这条对照更坏（它看起来像覆盖）⇒ 必须红。
+#[test]
+fn an_empty_anchor_list_is_rejected_rather_than_silently_passing() {
+    let r = std::panic::catch_unwind(|| assert_stripper_keeps("夹具", p28_fixture(), &[]));
+    assert!(r.is_err(), "空锚点表被放过了 —— 那是一条恒真的判据");
+}
+
+/// 夹具自检：上面四条全靠「第一个测试模块之后真的还有生产代码」这个前提。
+/// 夹具形状漂了的话，那几条会**一起**变成空真 —— 所以这个前提自己也要有判据。
+#[test]
+fn the_p28_fixture_really_has_production_code_after_its_first_test_module() {
+    let src = p28_fixture();
+    let cheap = src.split("\n#[cfg(test)]").next().unwrap_or(src);
+    assert!(
+        cheap.contains("fn early"),
+        "夹具的第一个测试模块前面没有生产代码了：{cheap:?}"
+    );
+    assert!(
+        !cheap.contains("fn parse_frame"),
+        "夹具的第一个测试模块**后面**没有生产代码了 ⇒ 上面那几条对照全部空真：{cheap:?}"
+    );
+}
+// ── /P28D1-selftest ──

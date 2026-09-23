@@ -894,3 +894,34 @@ fn unregister_never_removes_someone_elses_client() {
     unregister(origin, &new);
     assert!(client_for(origin).is_none(), "自己的条目没摘掉");
 }
+
+// ── P28：给这条源码扫描型守卫立**负对照** ──
+//
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
+// 被扫的 `src/bridge/src/backend/control/inbound_client.rs` 今天 649 行，第一个 `#[cfg(test)]` 在 **192** 行
+// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 191 行，
+// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
+//
+// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
+// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+
+/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+#[test]
+fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
+    // 🔴 本文件抬头（`each_type_…` 那条判据上面）已经把这条负对照**写成了散文**：
+    //    「第一版取『第一个 `#[cfg(test)]`』—— 而 `park()` 本身就挂着那个属性、
+    //     且住在 `into_client` **之前** ⇒ 那样切会把构造点整个切掉」。
+    //    那段话写下来了，**而没有任何断言去核它** —— 本仓「写下来的边界不是判据」
+    //    那一族的又一处。⇒ 这一条就是那句散文的机检形态。
+    //
+    // 逐针：`impl<W> ParkedWriter<W>`（232）· `pub fn into_client(`（239）·
+    // 唯一构造点 `InboundClient {`（286）—— 都在 192 之后。
+    // ⚠ 刻意**不**填 `pub struct BackendHello`（132）与 `impl BackendHello {`（136）：
+    //    那两个在 192 **之前**，便宜近似也留得住 ⇒ 填进去这条对照会被
+    //    `assert_stripper_keeps` 当场判成「失去意义」（它正是为此而红，不是静默放过）。
+    guard_core::assert_stripper_keeps(
+        "inbound_client_tests",
+        include_str!("../../../../src/bridge/src/backend/control/inbound_client.rs"),
+        &["impl<W> ParkedWriter<W>", "pub fn into_client("],
+    );
+}

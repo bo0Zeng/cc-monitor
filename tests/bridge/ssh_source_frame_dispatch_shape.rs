@@ -95,3 +95,30 @@ fn the_backend_frame_dispatch_has_no_catch_all_arm() {
              新增帧请写成具名臂；确实不处理也请显式写出来并加一句为什么。"
     );
 }
+
+// ── P28：给这条源码扫描型守卫立**负对照** ──
+//
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
+// 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
+// 「第一个测试模块之后再没有生产代码」时才对。`ssh_source.rs` 今天 4490 行，
+// 第一个测试模块在 **909** 行 ⇒ 那个近似把扫描面砍到前 908 行，
+// 而本文件要扫的东西全在它**后面**（逐针行号写在下面）。
+// ⇒ 扫描面一旦静默缩水，本文件的判据会**零命中地绿**。
+//
+// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
+// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+
+/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+#[test]
+fn the_shared_stripper_keeps_the_dispatch_this_guard_must_scan() {
+    // 本文件抬头逐字记着这条病的现场：「第一版就是这么写的，抽取器自检当场报
+    // 『只扫到 0 条臂』」。那个 `arms >= 8` 的地板**这一次恰好承重**（缩水到 908 行
+    // 之后臂数归零），但它是**地板** —— 只在归零方向上咬人。
+    // ⇒ 这条把「那条分派与它的豁免函数都还在扫描面里」钉成逐针的事：
+    //    第一条 `Some(InboundFrame::` 臂在 2553 行、`fn route_inbound_frame(` 在 2761 行。
+    guard_core::assert_stripper_keeps(
+        "ssh_source_frame_dispatch_shape",
+        include_str!("../../src/bridge/src/ssh_source.rs"),
+        &["Some(InboundFrame::", "fn route_inbound_frame("],
+    );
+}
