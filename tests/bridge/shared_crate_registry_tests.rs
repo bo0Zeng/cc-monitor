@@ -229,10 +229,29 @@ fn every_shared_crate_is_a_workspace_member() {
 #[test]
 fn every_path_dependency_is_actually_committed() {
     let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
-    // 抽 `path = "…"` 的值。
+    // 抽 `path = "…"` 的值 —— **只认内联表里那一个**（`x = { path = "…" }`）。
+    //
+    // 🔴〔第十三刀 2026-09-23〕**这一刀是现打逼出来的，不是洁癖。**
+    // 上一版抽的是文件里**每一处** `path = "`，而 `[[bin]]` / `[[example]]` /
+    // `[[test]]` 这种**目标**声明里那个顶格的 `path = "src/…"` 指的是**一个入口文件**，
+    // 不是一棵 crate 树 ⇒ 它会被拼成 `src/bridge/src/main.rs/Cargo.toml` 去问 git，
+    // 而那个东西按构造永远不存在 ⇒ **本条当场假红**。
+    // 现打：本包加第二个 `[[bin]]` 那一刻，这一条报的是「`src/main.rs/Cargo.toml`
+    // 没被 git 跟踪」—— 一条**讲错了成因**的红灯（本仓记过：讲错成因的红比不红更坏）。
+    //
+    // ⚠ 判准是**形状**不是白名单：依赖声明恒是内联表（`{ path = … }`），
+    // 目标声明恒是表里的一个顶格键。同一条口径 `panorama_seam_registry` 那一族
+    // 早就写死过（逐字「只认依赖段：`[[bin]]` 那条 `path` 指的是入口文件，不是一棵树」）。
     let mut paths: Vec<String> = Vec::new();
-    for (i, _) in toml.match_indices("path = \"") {
-        let rest = &toml[i + "path = \"".len()..];
+    for line in toml.lines() {
+        let Some(i) = line.find("path = \"") else {
+            continue;
+        };
+        // 顶格的 `path =`（目标声明）⇒ 不是依赖。内联表那一形前面一定有 `{`。
+        if !line[..i].contains('{') {
+            continue;
+        }
+        let rest = &line[i + "path = \"".len()..];
         if let Some(end) = rest.find('"') {
             paths.push(rest[..end].to_string());
         }

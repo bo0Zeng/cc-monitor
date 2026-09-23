@@ -174,6 +174,30 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           按源码派生地钉住（`.spawn()` / `creation_flags` / `process_group` / `kill_on_drop`\
           在别处出现一次就红）。",
      "—— **它就是那个出口本身**，没有「它选了哪三条」这回事"),
+    // 🔴 〔第十三刀 2026-09-23〕**文件管理窗口的独立进程。** 这一行是新的**一整面**，
+    //    不是搬家：此前那个窗口跑在 monitor 自己的进程里（次线程 ＋ `run_native`）。
+    ("proc.rs", "spawn_window", "`cc-monitor-filewin`（本包的第二个 `[[bin]]`，一个窗口一个）",
+     "用户 2026-09-22 逐字裁「**窗口生命周期就是销毁**」，而 winit **一个进程只许一个事件循环** \
+          ⇒ 「关掉就销毁」与「关掉之后还能再打开」在同进程形态下**不可同时成立** \
+          ⇒ 只剩「一个窗口一个进程」这条路。必须起进程的理由就是这一条，**它不是为了隔离**。\
+          顺带解掉的三条已量到的缺陷（关窗的拆卸竞态可能 abort 整个 app · 第二趟开窗必然失败 · \
+          那 165 MiB 关掉就真还给系统）逐条住 `filewin/proc.rs` 头注 §二。\
+          ⚠ **argv 上一个字都没有**：种子（那一屏行 ＋ 源 ＋ cwd ＋ reveal）走 **stdin**。\
+          两条硬理由 —— ① 环境变量装不下（一屏上限 5 万条，JSON 是兆字节级，\
+          而 Linux 一条环境变量的上限是 32 页 ⇒ `execve` 直接 `E2BIG`）；\
+          ② argv 是世界可读的（`/proc/<pid>/cmdline`），而种子里带着 `RemoteConfig`\
+          （主机名 · 用户名 · 私钥**路径**）—— 同一条理由 `ssh_source::spawn_dial_proxy` 用过一次。\
+          ⚠ 二进制的来路只有两处（环境变量 `CCM_FILEWIN_BIN` · exe 旁那份），\
+          都不在就**出声**（`D11`：不留退路），由 `filewin::proc::tests` 那一摞钉住。\
+          ⚠ 收尸归本落点自己（`Detached` 不改父子关系）：一条阻塞在 `waitpid` 上的线程，\
+          零 CPU、零唤醒 —— 刻意**不**用「隔一会儿看一眼」，那是一个新节拍
+          ★ 三条策略为什么是这三格：`Hidden` —— Windows 上不带它系统会**替子进程新开一个可关的控制台**，\
+          用户一关 `CTRL_CLOSE_EVENT` 就把文件窗口杀了；egui 那个窗口自己会出来，它不需要控制台。\
+          `Detached` 是**承重的**，与 `lib.rs::open_with_os` 逐字同形：这条 Tauri 命令一返回句柄就丢，\
+          `JobKillOnClose` 会在那一瞬间把刚开出来的窗口收掉；顺带买到「关掉 monitor 不带走已开的文件窗口」。\
+          `Inherit` 与 `spawn_dial_proxy` 同形：它 stderr 上只有「窗口为什么没立起来」那一句，\
+          接管它要再起一条泵。⚠ 代价如实记：装机那份 GUI app 没有 stderr 控制台 ⇒ 那句话今天会丢。",
+     "Hidden · Detached · Inherit"),
     ("local_backend_host.rs", "signal_term", "`kill -TERM <pid>`",
      "停掉一个**不是本 monitor 起的**常驻实例（上一次 monitor 脱离起的那个）。\
           必须起进程的理由是：monitor 今天**没有 `libc` 这条直接依赖**（它只在依赖树里），\
@@ -354,8 +378,9 @@ fn the_three_policies_each_site_declares_match_the_code() {
              多一处 = 有人给自己开了豁免；少一处 = 构建期那两条被并进来了（那是好事，改这个数）。"
     );
     assert!(
-        checked >= 13,
-        "只对拍到 {checked} 个带策略的落点 —— 09-18 现打 14 个。本条此刻在空转"
+        checked >= 14,
+        "只对拍到 {checked} 个带策略的落点 —— 09-18 现打 14 个，\
+         〔第十三刀 09-23〕加了文件管理窗口那个独立进程之后 15 个。本条此刻在空转"
     );
 }
 
