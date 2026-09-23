@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""P27：一条判据点不点得出「它服务哪条业务要求」—— 三层口径，可复算。
+
+为什么有这把尺子
+================
+`真相源/105`（换轴普查）给了一个数：**4 668 条 Rust+TS 里 3 874 条（82%）
+一个业务要求住址都点不出**。`P20` 按那个数开工，而开工第一天量出一件事：
+**那个数只算「判据自己那段散文」，不认本仓的头注约定。**
+
+本仓的约定是明文写着的 —— `comm_boundary_registry_tests.rs` 第一行逐字：
+「模块头注（这张表为什么存在 · 成员怎么认 · 买到什么买不到什么）住
+`src/bridge/src/comm_boundary_registry.rs`，**不在这里抄第二份**」。
+⇒ 判据文件由生产模块 `#[path]` 收留，住址按约定住生产侧。只读判据自己那几行
+去问「它服务哪条要求」，对这一族**在构造上答不出**。
+
+所以本尺子分三层各出一个数，**不合并**：
+  ① 判据自己（紧邻注释 ＋ 函数体）里有住址
+  ② 它所在判据文件的 `//!` 头注里有
+  ③ 收留它的生产模块的 `//!` 头注里有
+三层都没有 ⇒ 真的点不出。
+
+⚠ 它买到什么、买不到什么
+========================
+**买到**：一个每趟现算、可复算的四元组（①②③ ＋ 三层都没有）。
+**买不到**：
+  · 「有住址」不等于**住址对**。本尺子只认形状（`条 N` / `§N` / `F47` / `D1` /
+    `铁律` / `INVARIANTS`），一个指错地方的住址它照样算命中 ——
+    指得对不对要人逐条核原文（`设计/99 §4.10`/`§4.11` 就是那个动作）。
+  · **③ 命中的指导力随族的大小衰减**：一个 80 条判据共用一个模块头注的文件，
+    那个住址对其中任一条的指导力接近零。本尺子不度量这件事，只把族的大小印出来。
+  · TS 侧**不在射程内**（`105` 的 4 668 含 TS）⇒ 本尺子的数与 `105` 的数
+    **不可直接相减**，射程不同。
+
+🔴 自检（它自己坏过两次，都在 2026-09-22 当天）
+==============================================
+一、`grep -rn '#[path = "'` 里的 `[` 会被当成**字符类** ⇒ 映射悄悄变成 0 对，
+    而 ③ 会印一个看起来正常的 `0`。⇒ 本尺子用 `-F`，并且**映射为空就拒绝出数**。
+二、扫「头注」时漏了 `F47` / `铁律` / `D1` 这几种住址写法 ⇒ 读数虚高 20 个百分点。
+    ⇒ 住址形状写在 `PAT` 一处，改它就是改口径，不许在别处再拼一份。
+"""
+import io, os, re, subprocess, sys
+
+# 住址形状的**唯一住址**。改这里就是改口径。
+PAT = re.compile(r'INVARIANTS|条 ?\d+|§\d+|\bF\d+[a-z]?\b|铁律|\bD\d+\b')
+TESTATTR = re.compile(r'#\[(?:tokio::)?test\b')
+FN = re.compile(r'\s*(?:async\s+)?fn\s+([a-zA-Z0-9_]+)')
+
+
+def run(*args):
+    return subprocess.run(args, capture_output=True, text=True).stdout
+
+
+def homes():
+    """判据文件 → 收留它的生产模块。⚠ 必须 `-F`，理由见模块头注自检一。"""
+    out = {}
+    for line in run("grep", "-rnF", '#[path = "', "src", "--include=*.rs").splitlines():
+        if "tests/" not in line:
+            continue
+        prod, rest = line.split(":", 1)
+        m = re.search(r'#\[path = "([^"]+)"', rest)
+        if not m:
+            continue
+        t = os.path.normpath(os.path.join(os.path.dirname(prod), m.group(1)))
+        out.setdefault(t, []).append(prod)
+    return out
+
+
+def header(p):
+    try:
+        s = io.open(p, encoding="utf-8").read()
+    except OSError:
+        return ""
+    return "\n".join(l for l in s.split("\n") if l.startswith("//!"))
+
+
+def prose_around(lines, i, j):
+    """一条判据自己那几行：`#[test]` 往上的连续注释 ＋ 整个函数体。"""
+    own, k = [], i - 1
+    while k >= 0 and lines[k].lstrip().startswith(("///", "//", "#[")):
+        own.append(lines[k])
+        k -= 1
+    depth, started, b = 0, False, j
+    while b < len(lines):
+        depth += lines[b].count("{") - lines[b].count("}")
+        if "{" in lines[b]:
+            started = True
+        own.append(lines[b])
+        if started and depth <= 0:
+            break
+        b += 1
+    return "\n".join(own)
+
+
+def main():
+    pairs = homes()
+    # 🔴 反空真：映射空了就是尺子坏了，**不许出数**。
+    if len(pairs) < 100:
+        sys.exit("FAIL 映射只有 %d 对 —— 尺子坏了（见头注自检一），拒绝出数" % len(pairs))
+
+    files = run("find", "tests", "-name", "*.rs").split()
+    if not files:
+        sys.exit("FAIL 判据文件全集是空的 —— 拒绝出数")
+
+    tally = {"own": 0, "file": 0, "home": 0, "none": 0}
+    none_by_file, size_by_file = {}, {}
+    for t in sorted(files):
+        lines = io.open(t, encoding="utf-8").read().split("\n")
+        fh = PAT.search(header(t)) is not None
+        hh = any(PAT.search(header(p)) for p in pairs.get(t, []))
+        for i, l in enumerate(lines):
+            if not TESTATTR.search(l):
+                continue
+            j = i
+            while j < len(lines) and not FN.match(lines[j]):
+                j += 1
+            if j >= len(lines):
+                continue
+            size_by_file[t] = size_by_file.get(t, 0) + 1
+            if PAT.search(prose_around(lines, i, j)):
+                tally["own"] += 1
+            elif fh:
+                tally["file"] += 1
+            elif hh:
+                tally["home"] += 1
+            else:
+                tally["none"] += 1
+                none_by_file[t] = none_by_file.get(t, 0) + 1
+
+    tot = sum(tally.values())
+    if tot == 0:
+        sys.exit("FAIL 一条判据都没数到 —— 抽取器坏了，拒绝出数")
+
+    print("判据函数全集（Rust，TS 不在射程内）：%d" % tot)
+    for k, label in (("own", "① 判据自己那几行"),
+                     ("file", "② 判据文件的头注"),
+                     ("home", "③ 生产侧模块的头注"),
+                     ("none", "── 三层都点不出")):
+        print("  %s %5d  %4.1f%%" % (label, tally[k], 100.0 * tally[k] / tot))
+    print()
+    print("⚠ 与 `105` 那个 82% 的对照：`105` 只算 ①（且它的分母含 TS）")
+    print("   本尺子 ① 这一层的「点不出」= %.0f%%" % (100.0 * (tot - tally["own"]) / tot))
+    print()
+    print("三层都点不出，最集中的 10 份（括号里是那一族总条数 —— ③ 的指导力随它衰减）：")
+    for f, n in sorted(none_by_file.items(), key=lambda kv: -kv[1])[:10]:
+        print("  %4d 条 / 族内 %-4d  %s" % (n, size_by_file[f], f))
+
+
+if __name__ == "__main__":
+    main()
