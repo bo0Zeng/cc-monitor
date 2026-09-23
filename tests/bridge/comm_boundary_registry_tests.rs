@@ -383,7 +383,7 @@ fn assert_the_two_sides_agree() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  四、判据清单（元判据用它对拍「这十五条真的在跑」）
+//  四、判据清单（元判据用它对拍「这十七条真的在跑」）
 // ════════════════════════════════════════════════════════════════════════════
 
 /// `(编号, 判据函数名, 它钉什么)`。**闭集**，与本文件里真实的 `#[test]` 两向相等。
@@ -461,7 +461,12 @@ const CRITERIA: &[(&str, &str, &str)] = &[
     (
         "余下五份",
         "the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names",
-        "`relay/` 进不来的那五份，逐份**被哪几条咬**与散文两向相等",
+        "面 B（`relay/`）进不来的那五份，逐份**被哪几条咬**与散文两向相等",
+    ),
+    (
+        "传输面四份",
+        "the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names",
+        "面 A（传输面）进不来的那四份，逐份**被哪几条咬**与散文两向相等",
     ),
     (
         "元",
@@ -1432,15 +1437,39 @@ fn c3_the_word_transport_never_crosses_the_boundary() {
 /// 而「换个写法就过」在本仓有记录（`readonly_guard` 的前身栽过）。
 /// 🔴 **串一律运行时拼**：写成字面量的话，本文件自己就是一处「读盘点」，
 /// 而 `local_read_surface_registry` / `write_site_registry` 那几张表会把它数进去。
-fn disk_and_env_needles() -> Vec<(String, &'static str)> {
+fn disk_and_env_needles() -> Vec<(&'static str, String, &'static str)> {
     vec![
-        (format!("read_to_{}(", "string"), "§2 C4 逐字"),
-        (format!("File::{}(", "open"), "§2 C4 逐字"),
-        (format!("env::{}(", "var"), "§2 C4 逐字"),
-        (format!("env::{}_os(", "var"), "同族别名（本件补）"),
-        (format!("OpenOptions::{}", "new"), "同族别名（本件补）"),
-        (format!("fs::{}(", "read"), "同族别名（本件补）"),
+        ("读文本", format!("read_to_{}(", "string"), "§2 C4 逐字"),
+        ("开文件", format!("File::{}(", "open"), "§2 C4 逐字"),
+        ("读环境", format!("env::{}(", "var"), "§2 C4 逐字"),
+        (
+            "读环境OS",
+            format!("env::{}_os(", "var"),
+            "同族别名（本件补）",
+        ),
+        (
+            "以选项开",
+            format!("OpenOptions::{}", "new"),
+            "同族别名（本件补）",
+        ),
+        ("读字节", format!("fs::{}(", "read"), "同族别名（本件补）"),
     ]
+}
+
+/// 一份文本里**咬得上的那几个 `C4` 判词**，按**标签**返回。
+///
+/// 🔴 **为什么登记表用标签而不用那个串本身**：串写成字面量的话，本文件自己就成了一处
+/// 「读盘点」，`local_read_surface_registry` / `write_site_registry` 那几张表会把它数进去
+/// —— 那正是 [`disk_and_env_needles`] 头注里「串一律运行时拼」在治的事。
+/// 标签是中文短名 ⇒ 任何按代码形状扫的判据都不可能命中它。
+/// ⚠ 标签拼错 ⇒ 那一行从此**恒不命中**；挡这一形的是 [`assert_left_outside`] 里那条
+/// 「表里每个标签都必须是真判词」的自检。
+fn disk_and_env_tags_in(prod: &str) -> BTreeSet<&'static str> {
+    disk_and_env_needles()
+        .into_iter()
+        .filter(|(_, n, _)| prod.contains(n.as_str()))
+        .map(|(tag, _, _)| tag)
+        .collect()
 }
 
 /// ★ `C4` —— 不许读盘、不许读环境变量。
@@ -1450,6 +1479,29 @@ fn disk_and_env_needles() -> Vec<(String, &'static str)> {
 ///
 /// **买不到**：① `include_str!` 那种**编译期**读盘；② 经由别的 crate 间接读盘；
 /// ③ 「它拿到的那张表对不对」。本条只买「这一层自己不伸手」。
+///
+/// # 🔴 ④〔步 4 剩余那一路现打，2026-09-22〕**从一条流里读也会被咬** —— 一个已登记的假阳类
+///
+/// `read_to_string(` 是个**形状**，它认不出左边那个接收者是盘还是一条已经拿到手的流。
+/// 活样本：`pubkey.rs` 整份文件**只被本条咬住**，而它那个判词下面的两处命中里
+/// **只有一处是读盘**（本机 `.pub`）；另一处是 `reader.read_to_string(&mut out)`，
+/// 读的是 `connect_and_exec_cmd` 交回来的那条 SSH 流 —— 也就是 `设计/05 §2.1 C5` 逐字
+/// 「**只使用别人交给它的通道**」正要它干的那件事。
+/// ⇒ **「本条咬了几处」不等于「这一层伸手拿了几次东西」**，报数时别把两者读成一个。
+///
+/// ⚠ **今天刻意不收窄**：`设计/05 §2` 那三条判词是**逐字**点名的，收窄成
+/// `fs::read_to_string(` 会漏掉 `std::fs` 之外的写法。要动它是改 `§2` 那张表，
+/// 不是在这里放宽。下面有一条**钉住这个假阳类**的断言 —— 谁把形状表收窄了那一条当场红，
+/// 逼他回来改这一段话（而不是让这段话安静地变成假的）。
+///
+/// # 🔴 ⑤〔同拍现打〕**「传输载荷」与「凭据/配置」在这张形状表上分不开**
+///
+/// `C4` 的句子逐字点的是「**凭据、配置、路由表、期限值**」，而 `sftp_pool.rs` 那两个判词
+/// 打开的是**用户亲自按下的那一次传输的本地那一头**（上传源 · 下载的 `.part`）——
+/// 那是**载荷**，不是句子里那四样。**本条分不出来。**
+/// ⚠ 这一格**今天判不了**，缺的证据是一道裁定：「本层该不该连**本地文件句柄**也由调用方交给它」
+/// —— `C5` 那句「只使用别人交给它的通道」照字面是**该**，而 `§2` 没写到文件这一头。
+/// ⇒ 不许拿本条的处数当那道题的答案。
 #[test]
 fn c4_nothing_inside_the_boundary_reads_disk_or_environment() {
     let pop = boundary();
@@ -1459,8 +1511,8 @@ fn c4_nothing_inside_the_boundary_reads_disk_or_environment() {
         .flat_map(|m| {
             needles
                 .iter()
-                .filter(|(n, _)| m.prod.contains(n.as_str()))
-                .map(|(n, why)| format!("  {} —— `{n}`（{why}）", m.rel))
+                .filter(|(_, n, _)| m.prod.contains(n.as_str()))
+                .map(|(tag, n, why)| format!("  {} —— `{n}`〔{tag}〕（{why}）", m.rel))
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -1472,18 +1524,36 @@ fn c4_nothing_inside_the_boundary_reads_disk_or_environment() {
          ⇒ 凭据、配置、账号映射全部由后端**交给它**（步 4：`creds.rs` ＋ `table.rs` 搬去后端）。",
         offenders.join("\n")
     );
-    for (n, why) in &needles {
+    for (tag, n, why) in &needles {
         let synthetic = format!("pub fn boot() {{ let _ = {n}\"x\"); }}\n");
         assert!(
-            needles.iter().any(|(m, _)| synthetic.contains(m.as_str())),
-            "形状表里写着 `{n}`（{why}），识别器却认不出自己造的那处 —— 表与识别器脱钩了"
+            disk_and_env_tags_in(&synthetic).contains(tag),
+            "形状表里写着 `{n}`〔{tag}〕（{why}），识别器却认不出自己造的那处 —— 表与识别器脱钩了"
         );
     }
     assert!(
-        !needles
-            .iter()
-            .any(|(n, _)| "pub fn feed(table: Table) { use_it(table) }\n".contains(n.as_str())),
+        disk_and_env_tags_in("pub fn feed(table: Table) { use_it(table) }\n").is_empty(),
         "一段**由后端喂进来**的干净代码被判成读盘 —— 假红比不查更坏"
+    );
+    // 标签面的自检：六个判词六个**互不相同**的标签（撞一个 ⇒ 登记表那一侧会少一格而不出声）。
+    assert_eq!(
+        needles.len(),
+        needles
+            .iter()
+            .map(|(tag, _, _)| *tag)
+            .collect::<BTreeSet<_>>()
+            .len(),
+        "判词的标签有重名 —— 两个判词会在登记表那一侧被数成一个"
+    );
+    // ★ 钉住头注 ④ 那个**已登记的假阳类**：从一条**已经交到手里**的流里读，形状表照咬。
+    //   这一条**不是**在说那样很好 —— 它是在说「这段话与识别器今天是一致的」。
+    //   谁把形状表收窄（那样这一条当场红），处置是回去改头注 ④，不是把本条删掉。
+    let from_a_stream = "pub async fn drain(io: &mut R) { let mut s = String::new(); \
+                         io.read_to_string(&mut s).await.ok(); }\n";
+    assert!(
+        !disk_and_env_tags_in(from_a_stream).is_empty(),
+        "头注 ④ 说「从一条流里读也会被咬」，而形状表今天认不出这一形 —— \
+         那句话已经假了（或者有人把判词收窄了而没回来改它）"
     );
 }
 
@@ -1987,10 +2057,15 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  七b、`relay/` 进不来的那五份：逐份被哪几条咬（散文 ⇒ 机检）
+//  七b、进不来的那几份：逐份被哪几条咬（散文 ⇒ 机检）—— 面 B 五份 ＋ 面 A 四份
 // ════════════════════════════════════════════════════════════════════════════
 
-/// `relay/` 里**进不来**的那几份 —— `(仓根相对路径, 咬它的判据编号, 为什么它今天圈不进来)`。
+/// `relay/` 里**进不来**的那几份 ——
+/// `(仓根相对路径, 咬它的判据编号, 它的 `C4` 判词标签, 为什么它今天圈不进来)`。
+///
+/// ⚠ 第三列〔`C4` 判词标签〕是 2026-09-22 加的，理由住 [`assert_left_outside`] ——
+/// 只比判据编号的话，「一份文件少了一处读盘」在盘上看不出来。标签的住址是
+/// [`disk_and_env_needles`]（本表**不写那个串本身**，理由见 [`disk_and_env_tags_in`]）。
 ///
 /// 🔴 **这张表是把一段散文搬成机检的。** `REGISTERED` 上方那段头注先前逐字写着
 /// 「余下五份各被哪几条咬（`C2` / `X2` / `C1` ＋ `X4` / `C4` ＋ `C5`）」——
@@ -2008,28 +2083,32 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
 ///
 /// ⚠ **它不买「圈进来就对了」** —— `真相源/100 §二` 那一形（十一条全绿而语义上不该圈）
 /// 本条一个字都不说。归属判断永远是人做的，本表只保证那段理由不是假的。
-const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &str)] = &[
+const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
     (
         "src/backend/relay/mod.rs",
         &["C2"],
+        &[],
         "还 `use creds_core::{store::AuthStyle, SecretKey}` —— 凭据类型直接进了这一层的签名。\
          `设计/05 §4.3` 把 `creds.rs` 归后端的理由逐字是「算路径＝账号语义」⇒ 引它就是引账号层。",
     ),
     (
         "src/backend/relay/server.rs",
         &["C2", "X2"],
+        &[],
         "同上引着 `creds_core`（`C2`）；另有一个下游期限常量写在本层
          （`X2`；`设计/01 §2.1` 逐字把「**期限值**」也算进 `C4` 那句话 ⇒ 值归后端、执行归本层）。",
     ),
     (
         "src/backend/relay/upstream.rs",
         &["X2"],
+        &[],
         "一个上游期限常量写在本层。它比 `server.rs` 那份干净得多 —— \
          `C2` 已经不咬它了 ⇒ 这一份是余下五份里**最接近进得来**的那一格。",
     ),
     (
         "src/backend/relay/tee.rs",
         &["X4"],
+        &[],
         "两处 `try_send`（`X4`：丢弃只能经 `Item::Gap` 说出来）。\
          🔴 **本拍它的 `C1` 掉出去了**：那 4 处 `agent`/`account` 是 tee 输出的 JSON 字段名、\
          写在格式串里 ⇒ 新射程（公开面）看不见它们。那一格的代价逐字记在 \
@@ -2038,9 +2117,99 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &str)] = &[
     (
         "src/backend/relay/listen.rs",
         &["C4", "C5"],
+        &["读环境"],
         "自己 `TcpListener::bind` 端口（`C5`）、自己 `std::env::var` 读环境（`C4`）。\
          按 `设计/05 §2.1` `C5` 括号里那条，端口与端口号本来就归后端 ⇒ \
          这一份**语义上就该在外面**，不是「等它变干净」。",
+    ),
+];
+
+/// **面 A 的传输面候选**里进不来的那几份 ——
+/// `(仓根相对路径, 咬它的判据编号, 它的 `C4` 判词标签, 为什么它今天圈不进来)`。
+///
+/// 🔴 **这张表治的病与 [`RELAY_LEFT_OUTSIDE`] 逐字相同，只是换了一个面。**
+/// 那一拍（2026-09-21）给**面 B** 把「为什么进不来」从散文换成了机检，而**面 A 一直没有** ——
+/// 它那几份的判词只住 `真相源/100`，也就是一份**会腐的读数**。
+///
+/// # 🔴 它不是「多一张表」，它补的是一个现打出来的洞
+///
+/// 〔步 4 剩余那一路，2026-09-22〕死值验：把 `ssh_source.rs` 那处读环境变量**摘掉**
+/// ⇒ 这一族当时那十六条**一条都没红**（那几份不是成员、也不在任何一张表里）。
+/// ⇒ 「面 A 还剩几处读盘」这件事**此前完全不在执行链上**：清掉一处、或者再长出一处，
+/// 都没有任何东西会说话。本条就是那条缺掉的腿。
+/// （同一刀真红的是**另一族** `ssh_source_dial_move_judge`，而它是**正着**钉住那处
+/// 环境变量必须在 ⇒ 清它是改设计，不是做清理。这一格的判词写在下面 `ssh_source.rs` 那一行。）
+///
+/// # 人群从哪来（**不是**「扫哪个目录」）
+///
+/// `设计/05 §8.1.4` 那张「传输面在新射程下还咬」的表点了四份，**减去** `sftp_move_ledger.rs`
+/// （它今天一条都不咬），**加上** `pubkey.rs`（`真相源/100 §一` 逐份试圈的第 5 行，
+/// 也是 `设计/99 §4 P16` 完成判据里点名的三份之一）。
+///
+/// ⚠ **`sftp_move_ledger.rs` 为什么不列进来**：它是 `真相源/100 §二` 那一形的第三例
+/// —— 十一条一条不咬，**而它仍然不该圈**。列进来的话这张表第一天就红，
+/// 而那条红指向的处置（「阻塞清空了 ⇒ 把它圈进来」）**恰好是错的**。
+/// 归属判断永远是人做的 ⇒ 照 [`RELAY_LEFT_OUTSIDE`] 对 `accounts/policy.rs` 的处置办：
+/// **不列，理由写在这里而不是等人来问。**
+///
+/// # 🔴 `设计/99 §4 P16` 那个「**5 处读盘**」，机检住址就在这张表的第三列
+///
+/// 那个数**不写在任何一句散文里** —— 它是这张表第三列的**处数合计**，
+/// 由下面那条判据与 `expected_c4_sites` 做**相等**断言（不是地板）。
+/// ⇒ 清掉一处、或者再多长一处，两个方向都当场红。
+/// 〔本拍死值验：摘掉 `ssh_source.rs` 那处读环境变量 ⇒ 逐字
+///  「不见了的（表写了而不咬）：["读环境OS"]」；往 `sftp.rs` 注一处 ⇒ 逐字
+///  「多出来的（表没写）：["读字节"]」。〕
+///
+/// # 往里加/减一行要同拍做两件事
+///
+/// 1. 改这张表（判据编号与判词两列**都是机检的**，写错当场红，两列还互相自检）；
+/// 2. 改下面那条判据里的**份数**与**判词处数**（两个都是相等断言，不是地板）。
+/// ⚠ 这张表**不是**豁免清单，也**不是**待办清单：它只保证「为什么进不来」这段理由**不是假的**。
+const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
+    (
+        "src/bridge/src/ssh_source.rs",
+        &["C1", "C4", "C5", "X2"],
+        &["读文本", "读环境OS"],
+        "四条一起咬，而**每一条都指着一件真该搬走的东西**，它们分别归不同的步\
+         （`真相源/100 §四` 那张分类表）：`C1` 在公开面上命名了会话/tmux/claude/agent/sid 一族\
+         · `C4` 读 `~/.ssh/config` ＋ 读一个环境变量 · `C5` 自己起进程 · `X2` 期限的**值**写在本层。\
+         🔴 `C4` 那处读环境变量**另有一条判据正着钉住它必须在**\
+         （`ssh_source_dial_move_judge::the_proxy_is_resolved_from_exactly_two_places_and_never_from_home`，\
+         它钉的是「解析口只认两处」这条设计）⇒ **清它是改设计，不是做清理**，\
+         而那条设计题今天没人拍。别把这一行读成「顺手能清」。",
+    ),
+    (
+        "src/bridge/src/sftp.rs",
+        &["C1"],
+        &[],
+        "**只差 `C1` 一条**，也因此是最像「差一点就进来了」的那一份 —— 而 `设计/05 §8.1.3` \
+         已经逐字裁过「**今天剥不动**」：要清掉那个词得连 `remove_remote_file` 一起搬，\
+         而它是 `sftp_move_ledger` 那张拨号处普查表里的一处读数，\
+         那张表自己写着「别顺手把校验位改成新的原文」。**照先例停下**，\
+         那是一件要连着 6 条互锁登记表同拍交的活。",
+    ),
+    (
+        "src/bridge/src/sftp_pool.rs",
+        &["C1", "C4", "X4"],
+        &["开文件", "以选项开"],
+        "`C1` 两处都在公开面上，其中一处是**搬走实现之后留下的再导出** —— \
+         `设计/05 §8.1.4` 逐字「**搬实现不等于收回公开面**」，那不是判据太严，正是它该说的话。\
+         `C4` 那两个判词打开的是**用户按下的那次传输的本地那一头**（载荷，不是 `C4` 句子点名的\
+         凭据/配置/路由表/期限值）⇒ **那道设计题今天没拍**，判词见 \
+         `c4_nothing_inside_the_boundary_reads_disk_or_environment` 头注 ⑤。\
+         `X4` 一处把进度静默丢掉。",
+    ),
+    (
+        "src/bridge/src/pubkey.rs",
+        &["C4"],
+        &["读文本"],
+        "🔴 **整份文件只被这一条咬**，所以它最容易被读成「清掉就进来了」——\
+         而 `真相源/100 §一` 第 5 行逐字裁的是「**不圈**：它是**凭据面**，\
+         `§2.1` 逐字『key 什么的这些应该要归后端管』⇒ 归步 4」。\
+         ⇒ 它的正解是**搬去后端**，不是等它变干净。\
+         ⚠ 而这一个判词底下的两处命中里**只有一处是读盘** —— 另一处是从交到手里的那条 SSH 流里读，\
+         正是 `C5` 要它干的事（同上，头注 ④）。**别拿这一行的处数当「伸手拿了几次东西」。**",
     ),
 ];
 
@@ -2064,10 +2233,7 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
     if c3 {
         out.insert("C3");
     }
-    if disk_and_env_needles()
-        .iter()
-        .any(|(n, _)| prod.contains(n.as_str()))
-    {
+    if !disk_and_env_tags_in(prod).is_empty() {
         out.insert("C4");
     }
     if spawn_and_bind_needles()
@@ -2100,30 +2266,49 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
     out
 }
 
-/// ★ **余下五份** —— `relay/` 进不来的那几份，逐份**被哪几条咬**与 [`RELAY_LEFT_OUTSIDE`] 两向相等。
+/// ★★ 两张「进不来的逐份理由」表**共用的那一条断言** —— `D1`：一个判定只有一个家。
 ///
-/// `设计/05 §4.3` 把 `relay/` 按 `C4` 切开、归通信层那一列点了六份，加上后来的 `listen.rs`
-/// 共七份，而只有 `route.rs` 与 `http1.rs` 圈进来了。**为什么其余五份进不来**先前只是散文。
+/// [`RELAY_LEFT_OUTSIDE`]（面 B）与 [`TRANSPORT_LEFT_OUTSIDE`]（面 A）形状逐字相同，
+/// 而它们**只许有一份实现**：各写一份的话两份会各自漂，而「漂开了」在终端上一个字都看不出来
+/// —— 那正是 `D1` 在治的那一族（同 [`criteria_biting`] 一行识别器都不自己写的理由）。
 ///
 /// # 反空真：三样各自钉着
 ///
-/// 1. **两向集合相等**（逐份）—— 不是「表里那几条确实咬」（那是地板，在「多咬了一条」
+/// 1. **两向集合相等**（逐份）—— 不是「表里那几条确实咬」（那是**地板**，在「多咬了一条」
 ///    方向瞎），是**恰好这几条**。
-/// 2. **人群非空 ＋ 每份都真读到了** —— 路径漂了当场 panic，不许退化成「那就少判一份」。
-/// 3. **识别器不是恒红** —— 一段干净的合成文本喂进去必须零命中。
-///    没有这一条，全咬也是绿。
+/// 2. **份数相等 ＋ 每份都真读到了** —— 份数用**相等**不用地板；路径漂了当场 panic，
+///    不许退化成「那就少判一份」（人群缩水与「全都合规」在终端上一模一样）。
+/// 3. **识别器不是恒红** —— 一段干净的合成文本喂进去必须零命中。没有这一条，全咬也是绿。
 ///
-/// # 买不到
+/// # 🔴 为什么还要**判词那一层**（2026-09-22 被死值验逼出来的一格）
 ///
-/// - **不买「这五份该不该进来」** —— 见 [`RELAY_LEFT_OUTSIDE`] 头注。
-/// - **不买「`relay/` 就是这七份」** —— 人群是 `设计/05 §4.3` 那张表给的，本条不去数目录。
-///   哪天 `relay/` 多一份文件，本条**一个字都不说**（挡那一形的是 `BACKEND_FILES` 那张表）。
-#[test]
-fn the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
+/// 第一版只比**判据编号**的集合。死值验第一刀当场证否：`ssh_source.rs` 有两个 `C4` 判词，
+/// 摘掉其中一个之后编号那个集合**一个字都不变** ⇒ 十七条**全绿**。
+/// ⇒ 「集合粒度」在「少了一处」那个方向与**地板**一样瞎，而本仓正是反复栽在那上面。
+/// 本条因此多两层：逐份的 `C4` **判词**两向集合相等 ＋ 全表判词**处数**相等，
+/// 另有一条两列互相的自检（写了 `C4` 就必须逐个判词点出来，反之也不许凭空多一列）。
+///
+/// # 买不到（如实登记）
+///
+/// - **只有 `C4` 收到了判词那一层。** `C2`（业务 crate 名）· `C5`（起进程/绑端口）·
+///   `X1`–`X6` 今天仍**只比编号集合** ⇒ 那几条各自「少了一处」的方向**照样瞎**。
+///   这一格是有意的：`设计/99 §4 P16` 的完成判据点名的是「那 5 处读盘」，
+///   把六条判据的判词全立起来会变成一张没人读的大表。**要补是另一件活，不是这一件的漏。**
+/// - **不买「表里那几份该不该进来」** —— 归属判断永远是人做的，见两张表各自的头注。
+fn assert_left_outside(
+    table: &[(&str, &[&str], &[&str], &str)],
+    label: &str,
+    expected_len: usize,
+    expected_c4_sites: usize,
+) {
     let root = repo_root();
     // 表里的编号必须都是真判据（拼错一个 ⇒ 那一行从此恒不命中）。
     let known: BTreeSet<&str> = CRITERIA.iter().map(|(id, _, _)| *id).collect();
-    for (rel, ids, _) in RELAY_LEFT_OUTSIDE {
+    let known_tags: BTreeSet<&str> = disk_and_env_needles()
+        .iter()
+        .map(|(tag, _, _)| *tag)
+        .collect();
+    for (rel, ids, c4, _) in table {
         for id in *ids {
             assert!(
                 known.contains(id),
@@ -2131,11 +2316,28 @@ fn the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_pro
                  编号拼错了 / 判据改名了。那一行会从此恒不命中。"
             );
         }
+        for tag in *c4 {
+            assert!(
+                known_tags.contains(tag),
+                "`{rel}` 那一行写着 `C4` 判词〔{tag}〕，而形状表里没有这个标签 —— \
+                 标签拼错了 / 判词改名了。那一格会从此恒不命中。"
+            );
+        }
+        // 两列之间的自检：写了 `C4` 就必须逐个判词点出来，反之也不许凭空多一列。
+        assert_eq!(
+            ids.contains(&"C4"),
+            !c4.is_empty(),
+            "`{rel}`：判据那一列{}写 `C4`，而判词那一列{}空 —— 两列必须同进同退，\
+             否则「几处读盘」那个数会从一侧悄悄漂掉",
+            if ids.contains(&"C4") { "" } else { "没" },
+            if c4.is_empty() { "是" } else { "不是" }
+        );
     }
 
     let mut all: BTreeSet<&'static str> = BTreeSet::new();
+    let mut c4_sites = 0usize;
     let mut diverged: Vec<String> = Vec::new();
-    for (rel, ids, why) in RELAY_LEFT_OUTSIDE {
+    for (rel, ids, c4, why) in table {
         let p = root.join(rel);
         let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
             panic!(
@@ -2161,10 +2363,26 @@ fn the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_pro
                  多出来的（表没写）：{extra:?}\n    不见了的（表写了而不咬）：{gone:?}"
             ));
         }
+        // 🔴 **判词那一层也要两向相等** —— 只比判据编号的话，一份文件有两个 `C4` 判词时
+        //    摘掉其中一个，编号那个集合**一个字都不变** ⇒ 「少了一处读盘」在盘上看不出来。
+        //    〔本拍死值验第一刀逮到的正是这一形：摘掉 `ssh_source` 那处读环境变量，
+        //     只比编号时十七条全绿。地板在「变少」方向是瞎的，集合粒度在这里也是。〕
+        let want_c4: BTreeSet<&str> = c4.iter().copied().collect();
+        let got_c4 = disk_and_env_tags_in(&prod);
+        c4_sites += got_c4.len();
+        if got_c4 != want_c4 {
+            let extra: Vec<&&str> = got_c4.difference(&want_c4).collect();
+            let gone: Vec<&&str> = want_c4.difference(&got_c4).collect();
+            diverged.push(format!(
+                "  {rel}〔`C4` 判词那一层〕\n    表里写着：{want_c4:?}\n    \
+                 盘上现扫：{got_c4:?}\n    多出来的（表没写）：{extra:?}\n    \
+                 不见了的（表写了而不咬）：{gone:?}"
+            ));
+        }
     }
     assert!(
         diverged.is_empty(),
-        "`relay/` 余下那几份「被哪几条咬」与登记的对不上：\n{}\n\n\
+        "{label}「被哪几条咬」与登记的对不上：\n{}\n\n\
          两个方向各有一种处置，别混：\n\
          ① **多出来一条** ⇒ 有人往那份文件里加了新的违例。补进表里那一行，并写清它是什么。\n\
          ② **少了一条**（表写了而不咬）⇒ 那条阻塞被清掉了。\n\
@@ -2174,17 +2392,26 @@ fn the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_pro
         diverged.join("\n")
     );
 
-    // 反空真①：人群非空，且至少真咬到过东西（否则「识别器全瞎」与「五份都干净」同形）。
+    // 反空真①：份数**相等**，且至少真咬到过东西（否则「识别器全瞎」与「全都干净」同形）。
     assert_eq!(
-        RELAY_LEFT_OUTSIDE.len(),
-        5,
-        "这张表登记的是「余下五份」，而盘上是 {} 行 —— 份数变了就回来改这句话（它是散文那一侧）",
-        RELAY_LEFT_OUTSIDE.len()
+        table.len(),
+        expected_len,
+        "{label}：判据里写的份数是 {expected_len}，而盘上这张表是 {} 行 —— \
+         真加/减了一份就回来同拍改这个数（它是散文那一侧，且是相等不是地板）",
+        table.len()
     );
     assert!(
         !all.is_empty(),
-        "五份文件一条判据都没咬住 —— 识别器整批瞎了，而那时上面那条相等断言\
-         是在两个空集之间比对（恒绿）"
+        "{label}：一条判据都没咬住 —— 识别器整批瞎了，\
+         而那时上面那条相等断言是在两个空集之间比对（恒绿）"
+    );
+    // 🔴 **「还剩几处读盘」那个数的机检住址** —— 相等，不是地板。
+    assert_eq!(
+        c4_sites, expected_c4_sites,
+        "{label}：判据里写的 `C4` 判词处数是 {expected_c4_sites}，而盘上现扫是 {c4_sites} —— \
+         真清掉/真多长一处就回来同拍改这个数。\n\
+         🔴 变**少**那个方向尤其要停一下：该问的不是「把这个数改小」，\
+         是「那一份现在圈得进来了吗」（阻塞清空 ⇒ 盖标记 ＋ 进 `REGISTERED` ＋ 改份数 N）。"
     );
 
     // 反空真②：识别器不是恒红 —— 一段干净的合成文本喂进去必须零命中。
@@ -2194,12 +2421,50 @@ fn the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_pro
     assert!(
         on_clean.is_empty(),
         "一段只用位置词、不读盘、不起进程、无期限字面量的干净代码被判成有 {on_clean:?} —— \
-         那么上面那五格的绿不携带任何信息（识别器恒红）"
+         那么上面每一格的绿都不携带任何信息（识别器恒红）"
     );
 }
 
+/// ★ **余下五份** —— `relay/` 进不来的那几份，逐份**被哪几条咬**与 [`RELAY_LEFT_OUTSIDE`] 两向相等。
+///
+/// `设计/05 §4.3` 把 `relay/` 按 `C4` 切开、归通信层那一列点了六份，加上后来的 `listen.rs`
+/// 共七份，而只有 `route.rs` 与 `http1.rs` 圈进来了。**为什么其余五份进不来**先前只是散文。
+///
+/// 反空真那三样与面 A 那条**共用同一份实现**（[`assert_left_outside`]，`D1`）。
+///
+/// # 买不到
+///
+/// - **不买「这五份该不该进来」** —— 见 [`RELAY_LEFT_OUTSIDE`] 头注。
+/// - **不买「`relay/` 就是这七份」** —— 人群是 `设计/05 §4.3` 那张表给的，本条不去数目录。
+///   哪天 `relay/` 多一份文件，本条**一个字都不说**（挡那一形的是 `BACKEND_FILES` 那张表）。
+#[test]
+fn the_five_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
+    assert_left_outside(RELAY_LEFT_OUTSIDE, "`relay/` 余下那五份（面 B）", 5, 1);
+}
+
+/// ★ **传输面那四份** —— 面 A 的候选逐份**被哪几条咬**与 [`TRANSPORT_LEFT_OUTSIDE`] 两向相等。
+///
+/// 〔`设计/99 §4 P16`「步 4 的剩余」，2026-09-22 立〕面 B 那张表 2026-09-21 就有了，
+/// **面 A 一直没有** ⇒ 「面 A 还剩几处读盘」这件事此前**完全不在执行链上**
+/// （死值验：摘掉一处读环境变量，这一族当时那十六条一条都没红）。人群与逐份理由住
+/// [`TRANSPORT_LEFT_OUTSIDE`]，反空真那三样与面 B 那条共用 [`assert_left_outside`]。
+///
+/// # 买不到（别读大了）
+///
+/// - **不买「这四份该不该进来」** —— 见 [`TRANSPORT_LEFT_OUTSIDE`] 头注；
+///   其中 `pubkey.rs` 与 `sftp_move_ledger.rs` 两格的正解都**不是**「圈进来」。
+/// - **不买「传输面就是这四份」** —— 人群是 `设计/05 §8.1.4` 那张表 ＋ `真相源/100 §一` 给的，
+///   本条**不去数目录**。哪天传输面多一份文件，本条一个字都不说。
+/// - **不买「这几处读盘清得掉」** —— 它只买「那段解释为什么清不掉的理由不是假的」。
+///   逐处的写区外前置（另一族判据正着钉住那处环境变量 · 6 条互锁登记表 · 一道未拍的设计题）
+///   写在表里各自那一行。
+#[test]
+fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
+    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 5);
+}
+
 // ════════════════════════════════════════════════════════════════════════════
-//  八、元判据：这十六条真的在跑
+//  八、元判据：这十七条真的在跑
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 一份 Rust 源码里所有 `#[test] fn <名字>` 的名字。
@@ -2241,8 +2506,9 @@ fn test_fn_names(src: &str) -> BTreeSet<String> {
 ///
 /// **整个模块被从 `lib.rs` 摘掉**。那时本文件一条都不跑，本条也不跑 ——
 /// 「摘掉了」与「全绿」在终端上一模一样。挡这一形要在 `tests/scripts/gate.sh` 上
-/// 给这十五条开一个**自己的格**（形状照 `f3-copy`：pin · declared · ran 三方相等），
-/// 而那份文件**不在本件写区** ⇒ 已在交回里点名报备，不在这里偷偷改。
+/// 给这一族开一个**自己的格**（形状照 `f3-copy`：pin · declared · ran 三方相等）。
+/// ⚠ 〔2026-09-22〕**那一格今天已经在了** —— `tests/scripts/gate.sh` 的 `comm-boundary`，
+/// 它的 `pin` 与本表条数是一条**恒等**腿（不是上限）⇒ 真加/删一条判据，`pin` 必须**同拍**抬。
 #[test]
 fn every_criterion_is_on_the_execution_chain() {
     let me = include_str!("comm_boundary_registry_tests.rs");
