@@ -526,12 +526,16 @@ fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
 
     assert_eq!(
         gaps.len(),
-        9,
-        "逐能力豁免现打 {} 条（2026-09-21 现打 9，全在 `ccm-launcher` × Windows：\n\
-          · 前 6 条 = tmux 那一族，**读源码**推出来的；\n\
-          · 后 3 条 = `bus-register` / `ccm-sid` / `agent`，**真机现打**补的\n\
-            —— 上一版的账把那三条记成「做得到」，那三格是**错的**不是缺的，\n\
+        8,
+        "逐能力豁免现打 {} 条（2026-09-22 现打 8，全在 `ccm-launcher` × Windows：\n\
+          · 6 条 = tmux 那一族，**读源码**推出来的；\n\
+          · 2 条 = `bus-register` / `ccm-sid`，**真机现打**补的\n\
+            —— 上一版的账把它们记成「做得到」，那两格是**错的**不是缺的，\n\
             逐条读数住 `真相源/106`）。\n\
+         🔴 `P19`（09-22）把这个数从 **9** 减到 8：`agent` 那一条删了 —— 它那句「做不到」\n\
+         的根因（`needs_bus_id(\"codex\")` 恒真 ⇒ 整条改走 `sh -c`）在源码里没了。\n\
+         ⚠ **那一减不是真机复验来的**（Win11 虚拟机本轮没动）：对价是 `CAPABILITY_FACES`\n\
+         那一栏 `target_basis` 里逐字写着的「🚫 买不到的那一维」，删那一行之前先读它。\n\
          这个数本身没有对错，但它变了说明有裁决动过 —— 连理由一起看。",
         gaps.len()
     );
