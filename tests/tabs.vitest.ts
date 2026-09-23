@@ -680,6 +680,17 @@ describe("TabManager 生命周期", () => {
   });
 
   // === Batch13-F40a：尾部优先门控 / 物化（D 审计 C-3 补测） ===
+  //
+  // 🔴 **它服务哪条业务要求：`INVARIANTS.md` 条 21 第 3 项**〔`P21` 2026-09-22 现打补写〕。
+  //    条 21（启动重放滚动稳定性·贴底不抖）第 3 项逐字：「重放期「视口上方」旧内容不建 DOM
+  //    —— `TabManager.onLine` 按 seq 门控，`seq < tab.window.floorSeq` 的旧记录只进
+  //    `TailWindow` 账本，**根本不建卡不挂 DOM**；后台 virgin tab 在 `onBatchEnd` 空闲物化
+  //    尾段 / `switchTo` 时同步物化」——**下面这一组（F40a 门控矩阵 → F40b fill）就是它。**
+  //    `真相源/105 §1.4` 把条 21 记成「全树零命中」并推出「所以它没人守」：读数对
+  //    （没人在散文里点出条号），推论错（第 3 项这一组等值断言一直在守）。
+  //    ⚠ 条 21 的第 1/2 项（守卫式 `snap()` · 不手动补偿 scrollTop）**不在这里** ——
+  //    那是 `MessageStream` 的性质，本文件把它整个 mock 掉了（见文件抬头）。
+  //    住址：`tests/invariants-frontend-guard.vitest.ts` 的 ④⑤ 两格。
 
   const mkContent = (sid: string, seq: number, uuid: string) =>
     ({
