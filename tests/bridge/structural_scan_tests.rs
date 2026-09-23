@@ -3366,6 +3366,10 @@ fn every_prose_tombstone_mark_is_registered() {
         //   逐份是：本模块生产侧那份（标记的定义处）· 本文件（那一处带标记的墓碑，
         //   而本文件按构造被摘出了死名语料）· `byte_cap_registry_tests` ·
         //   `tests/evidence/` 两份量具脚本（针，不是墓碑）。合 15 处。
+        // 🔴 〔波 1 合并时补〕`P19` 那一拍删 `TARGET_GAPS` 的 `agent` 豁免时留了墓碑
+        //   正文、也写了那四个字，**却没把标记挂上** ⇒ 本条当场红在「挂歪了」那一格。
+        //   那是这条判据落地后第一次真逮到东西，而逮到的是**同一波另一路**的产出。
+        ("src/backend/lib.rs", 1),
         ("src/backend/wire.rs", 1),
         ("src/bridge/README.md", 1),
         ("src/bridge/build.rs", 1),
