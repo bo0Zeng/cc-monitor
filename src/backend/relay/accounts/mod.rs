@@ -41,7 +41,7 @@ pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key
 pub(crate) use policy::Reload;
 
 use super::upstream::Base;
-use super::{Destination, Destinations, Mode, RouteKey};
+use super::{AuthSwap, Destination, Destinations, Mode, RouteKey};
 use creds_core::store::AuthStyle;
 use std::io::Write;
 use table::{RoutingTable, Row};
@@ -170,7 +170,7 @@ impl Destinations for Accounts {
     ///
     /// # 表里有那一行时答什么
     ///
-    /// 那一格**不在这里**，在 [`auth_disposition_of`] —— 三种鉴权处置与
+    /// 那一格**不在这里**，在 [`dispatch_auth`] —— 三种鉴权处置与
     /// 「为什么 `Substitute` 的 key 是 `Option`」整段写在它头上。**一个事实一个住址。**
     fn resolve(&self, mode: Mode, key: &RouteKey, act: &mut dyn FnMut(Destination<'_>)) {
         // `D1 阻-2`：查表**之前**先看那份文件动过没有 —— 不然「界面上配完 key」要重启才生效，
@@ -196,8 +196,8 @@ pub(crate) fn decide(
 ) {
     let account = key.seg2.as_str();
     match (mode, table.lookup(account)) {
-        // ── `/s/` 有行 ⇒ 鉴权由这一行说了算（三种处置见 `auth_disposition_of`）─────
-        (Mode::Substitute, Some(row)) => act(auth_disposition_of(row)),
+        // ── `/s/` 有行 ⇒ 鉴权由这一行说了算（三种处置见 `dispatch_auth`）─────
+        (Mode::Substitute, Some(row)) => dispatch_auth(row, act),
 
         // ── `/s/` 无行 ⇒ **404**（`§3.1` 第 2 行，今天的行为，一字不改）──────────
         (Mode::Substitute, None) => {
@@ -217,7 +217,7 @@ pub(crate) fn decide(
 
         // ── `/t/` 有行 ⇒ **只取上游，绝不取 key**（`§3.1` 第 3 行）────────────────
         (Mode::Passthrough, Some(row)) => {
-            // ⚠⚠ **这一支刻意不走 [`auth_disposition_of`]**，而那正是它的全部意义：
+            // ⚠⚠ **这一支刻意不走 [`dispatch_auth`]**，而那正是它的全部意义：
             //   那个函数会在「这一行有 key」时答 `Substitute`（代入）。
             //   `/t/` 逐字是「**层 1 永不代入 auth**」⇒ 同一行在 `/s/` 与 `/t/` 下
             //   发出去的字节**必须不同**，下游那份鉴权头在这里逐字节原样上去。
@@ -262,37 +262,109 @@ pub(crate) fn decide(
 ///
 /// | 这一行 | 今天发给上游的字节 | 落到哪个变体 |
 /// |---|---|---|
-/// | 有 key | 丢掉下游那几个 auth 头，写这一行自己的（按 `style`） | `Substitute { key: Some(_) }` |
+/// | 有 key，`style` 要写头 | 丢掉下游那几个 auth 头，写这一行自己的（按 `style`） | `Substitute { auth.write: Some(_) }` |
 /// | 没 key，`style` 不是 `NoAuth` | 下游那份 auth 头**逐字节原样**上去（订阅登录那一档） | `Passthrough` |
-/// | 没 key，`style` 是 `NoAuth` | **丢掉**下游那几个 auth 头，而且一个头都不写 | `Substitute { key: None, style: NoAuth }` |
+/// | `style` 是 `NoAuth`（有没有 key 都一样） | **丢掉**下游那几个 auth 头，而且一个头都不写 | `Substitute { auth.write: None }` |
 ///
 /// 第三行是 `K-R1` 的「本地部署那一格」（本机推理服务不校验凭据 ⇒ 把一把真 key
 /// 发过去就是白送）。它**不是** `Passthrough`：`Passthrough` 逐字是「下游送来的 auth 头
 /// 原样转发」。⇒ 两个变体装不下三种处置，而丢掉一种就是**行为变化**。
 ///
 /// ⇒ 处置是把 `Substitute` 的含义写准：「**这一行的鉴权由表说了算**（先把下游那份剥掉）」，
-/// key 给 `None` 表示「剥掉之后什么都不写」。`Passthrough` 仍然逐字是「原样转发」。
+/// [`AuthSwap::write`] 给 `None` 表示「剥掉之后什么都不写」。`Passthrough` 仍然逐字是「原样转发」。
 /// 层 1 那边因此简化成一句话：`drop_client_auth == 这是不是 Substitute`
 /// —— 先前那个 `(key.is_some() && …) || style == NoAuth` 的复合条件（`K-R1` 头注
 /// 逐字警告过「只看前者的话 `NoAuth` 那一行会把客户端的真 key 原样送给一个声明了
 /// 不校验凭据的本地端点」）**整条搬到了这里**，层 1 再也没有第二处可以判错。
-fn auth_disposition_of(row: &Row) -> Destination<'_> {
+fn dispatch_auth(row: &Row, act: &mut dyn FnMut(Destination<'_>)) {
     let style = row.auth_style();
-    match row.key() {
-        Some(k) => Destination::Substitute {
+    let clear = headers_to_clear();
+    match (row.key(), auth_header_of(style)) {
+        // ① 有 key，而这个形状**要写一个头** ⇒ 丢掉下游那几份，写这一行自己的。
+        (Some(k), Some((name, prefix))) => {
+            // ★★ **这是整个后端生产段里唯一一处把明文取出来的地方**（`KS2`）。
+            //    它就在「拼这一行要写的那个鉴权头值」这一句上。
+            //    ⚠⚠ 〔`P16` 2026-09-22〕它**从层 1 搬到了这里**，而搬的是**住址不是处数**：
+            //      `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`
+            //      那条「恰好 1 处」的相等断言**一个字节都没动**（它扫整个 crate，不写死文件名），
+            //      `creds_store_tests::PLAINTEXT_EXIT_SITES` 那一行只改了住址栏。
+            //      加第二处仍然是**放宽**，不许在实现里顺手把那条断言改大。
+            //    ⚠ 为什么搬：层 1 的类型面上不许再出现 `creds-core` 的类型（`C2`）
+            //      ⇒ 「把 `AuthStyle` 翻成 HTTP」与「把 key 拼成头值」**同属层 2 的判断**，
+            //      层 1 只拿到一个 `(头名, 完整头值)` 照写。
+            let value = format!("{prefix}{}", k.expose_for_auth_header());
+            act(Destination::Substitute {
+                upstream: row.base(),
+                auth: AuthSwap {
+                    clear,
+                    write: Some((name, value.as_str())),
+                },
+            });
+        }
+        // ② 这个形状**不写任何头**（`AuthStyle::NoAuth`，`K-R1` 的「本地部署那一格」）
+        //    ⇒ 仍然要丢掉下游那几份：把一把真 key 发给一个声明了不校验凭据的端点就是白送。
+        //    ⚠ 两支合在一条臂上是**有意的**：有没有 key 在这一格不改变字节（都是「丢掉、不写」）。
+        (_, None) => act(Destination::Substitute {
             upstream: row.base(),
-            key: Some(k),
-            style,
-        },
-        None if style == AuthStyle::NoAuth => Destination::Substitute {
+            auth: AuthSwap { clear, write: None },
+        }),
+        // ③ 没 key，而这个形状本来要写头 ⇒ 没东西可代入 ⇒ **原样转发**（订阅登录那一档）。
+        (None, Some(_)) => act(Destination::Passthrough {
             upstream: row.base(),
-            key: None,
-            style,
-        },
-        None => Destination::Passthrough {
-            upstream: row.base(),
-        },
+        }),
     }
+}
+
+/// 一种鉴权头形状 → `(头名, 值前缀)`；`None` = **不发鉴权头**。
+///
+/// # ★ 它是 `AuthStyle` → HTTP 的映射，而它今天住**层 2**〔`P16` 2026-09-22 搬过来的〕
+///
+/// 先前它住 `server.rs`（层 1），理由是「`creds-core` 那一侧刻意不认识 HTTP ⇒ 头名与前缀
+/// 不许写在那边」。**那条理由今天仍然成立，而它并不推出「所以该住层 1」** ——
+/// `creds-core` 与层 1 之间还有层 2，而层 2 正是「认识账号、也认识这一行要什么鉴权形状」
+/// 的那一层。它收 `AuthStyle`（一个 `creds-core` 的类型）⇒ 按 `C2` 它**不可能**住层 1。
+///
+/// ⇒ 今天的分工是三段而不是两段：`creds-core` 管**格式**（文件里那个词是什么）·
+/// 本层管**翻译**（那个词对应哪个头、值前面加什么）· 层 1 管**照写**（它只看见一个串）。
+///
+/// ⚠ 穷尽 `match`：加一个成员**编译不过** —— 这一格是编译器买的，不是一条文本判据买的。
+pub(super) fn auth_header_of(style: AuthStyle) -> Option<(&'static str, &'static str)> {
+    match style {
+        AuthStyle::Bearer => Some(("Authorization", "Bearer ")),
+        AuthStyle::XApiKey => Some(("x-api-key", "")),
+        AuthStyle::NoAuth => None,
+    }
+}
+
+/// 换头前要整条丢掉的下游鉴权头名 —— **从 [`auth_header_of`] 现算**。
+///
+/// # 🔴 它为什么不是一份手写名单（这一条是硬的）
+///
+/// 先前层 1 有一个手写的 `AUTH_HEADER_NAMES = ["authorization", "x-api-key"]`，
+/// 靠一条判据与 [`auth_header_of`] 焊在一起。`P16` 把头材料改成由层 2 交下来之后，
+/// 那条焊缝的两端会**分居两层**（集合在层 1、映射在层 2）——
+/// 而缺焊的症状是**同名鉴权头出现两次，上游谁赢没有定义**。
+/// ⇒ 处置不是把焊缝拉长，是**取消焊缝**：名单由映射**派生**，天然只有一个家（`D1`）。
+///
+/// # ⚠ 射程：它是**全集**，不是「这一趟要写的那一个」
+///
+/// 走的是 `AuthStyle::ALL`（`creds-core` 现算的那个闭集）⇒ 任何形状**可能**写出来的头名
+/// 全在里面。所以配了 `x-api-key` 的那一行也会把客户端的 `Authorization` 丢掉 ——
+/// **那是安全性质，不是顺手**。缩成「只丢要写的那一个」是行为变更。
+/// 钉这一条的判据住 `creds_guard`（它自己独立地从 `AuthStyle::ALL` 派生一遍去比对）。
+///
+/// ⚠ 大小写：本表原样返回 [`auth_header_of`] 给的名字（有大写），比对一律
+/// `eq_ignore_ascii_case`。先前那份手写名单要求全小写，理由是「表里混大小写会让读的人
+/// 以为它区分大小写」—— **派生之后没有那张给人读的表了**，那条要求随之失效。
+fn headers_to_clear() -> &'static [&'static str] {
+    static CLEAR: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    CLEAR.get_or_init(|| {
+        AuthStyle::ALL
+            .iter()
+            .filter_map(|s| auth_header_of(*s))
+            .map(|(name, _)| name)
+            .collect()
+    })
 }
 
 /// 读一次凭据并**把该说的话说出去**，返回装好的表 ＋ 那份文件的路径与印记。

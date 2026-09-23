@@ -19,7 +19,7 @@
 //!
 //! | 留在 `server.rs` 的 | 钉住它的登记（都在写区外） |
 //! |---|---|
-//! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | `tests/backend/no_timer_guard.rs::REGISTERED_DURATION_USES` 那一行的住址栏逐字 `"server.rs"`（配 `Duration::from_millis(30_000)`），按文件名后缀匹配 |
+//! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | 〔`P16` 订正〕那个**值**今天住本文件，`REGISTERED_DURATION_USES` 那两行的住址栏逐字 `"listen.rs"`；装它的那一手仍在 `server.rs`（改成收入参） |
 //! | `DEFAULT_PORT` | `src/bridge/src/backend/control/payload.rs` 的散文逐字点着 `src/backend/relay/server.rs::DEFAULT_PORT`，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` **真的判得了那条住址**（现打：搬走之后它当场红，诊断逐字「符号还在，但**搬家了**」） |
 //! | `INFLIGHT_CONNECTIONS` | 同上，钉它的是 `src/bridge/src/local_backend_host.rs` 那句散文 |
 //! | `LOOPBACK` | 同上，钉它的是 **`src/backend/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
@@ -34,6 +34,109 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 
 pub(super) const ENV_PORT: &str = "CCM_RELAY_PORT";
+
+// ══════════════════════════════════════════════════════════════════════════
+//  期限的**值**住这一层〔`设计/99 §4 P16`，2026-09-22〕
+// ══════════════════════════════════════════════════════════════════════════
+//
+// `设计/01 §2.1` 的 `C4` 逐字：「凭据、配置、路由表、**期限值**全部由后端**交给它**
+// ⇒ 期限（超时）与端口号同是**策略值**……通信层自己**没有任何期限常量**」。
+// `设计/05 §3.3.2` 把分工写成三段：**值归后端 · 执行归通信层 · 说法归调用方**。
+//
+// 🔴 **这两个值先前住层 1**（`server.rs` 与 `upstream.rs`）—— 那正是 `P16` 完成判据里
+// 点名的「两个期限常量（`X2`）」。搬来这里的理由不是品味：本文件自己就是**监听面**，
+// 按 `C5` 括号里那条「端口号是策略值，从配置来 ⇒ 按 `C4` 本就归后端」它**语义上就在
+// 边界外**（`comm_boundary_registry` 那张表里它逐字登记为「这一份**语义上就该在外面**，
+// 不是等它变干净」）。⇒ 期限值与端口号是同一类东西，它们该住同一层。
+//
+// ⚠ **搬走的只有值**：装它们的那两手还在层 1（`server::apply_downstream_deadline`
+// 与 `upstream::connect`），只是改成收入参 —— **执行仍归通信层**，这一条没变。
+// ⚠ 这两条在 `no_timer_guard::REGISTERED_DURATION_USES` 里各占一行，住址栏跟着改成
+// 本文件。那张表是**恰好相等**的断言 ⇒ 住址改错/漏改当场红。
+// ⚠ 本段刻意**不写出通信层那枚成员标记的字面**：它是**裸子串扫描、不剥注释**
+// （与 `relay/mod.rs ㈠` 那一节记的只读护栏同一族坑）—— 在散文里提它一次，
+// 这份文件当场就「自称成员」了。本拍第一版正是这么红的，逐字
+// 「这几份文件**自称**通信层成员，却不在登记表里」。**要改就改措辞。**
+// ⚠ **不许把值搬回层 1**：`upstream.rs` 今天盖着那枚成员标记，`X2`（生产段
+// 零期限字面量）对它当场成立；搬回去它立刻掉出边界。
+
+/// **下游**那条 socket 的读写期限〔回修轮之六 08-25，D3 `阻-3(D3)` 的**后半段**〕。
+///
+/// # 它治的是什么（别读成「限流已经够了」）
+///
+/// `INFLIGHT_CONNECTIONS` 买的是「**顶不满、拒绝有声**」；这一条买的是
+/// 「**顶住的那些会自己散**」。没有它，256 条半开连接能把中转**永久**钉死，
+/// 而它会礼貌地回 503 —— **那一屏读起来像正常限流**。
+/// （D3 实测：64 条半开 ⇒ 线程 4 → 68，全卡在 `read_head` 的 `r.read(&mut one)?` 上永不返回。
+///  **这个数我没重打，住址 `audits/K-H1-D3.md` §2.3**。）
+///
+/// # 它不是定时器 —— 这句话就是 `no_timer_guard::REGISTERED_DURATION_USES` 里登记的那一行
+///
+/// ⚠ 〔`P16` 2026-09-22〕那张表里这一行的住址栏从 `"server.rs"` 改成了 `"listen.rs"` ——
+/// **值搬了、性质没变**。装它的那一手仍在 `server::apply_downstream_deadline`。
+///
+/// `SO_RCVTIMEO` / `SO_SNDTIMEO` 说的是「**这一次**阻塞的读/写最多等多久」：
+/// 有字节就**立刻**返回，没字节就**报错**返回。它不让任何线程**自己醒来**、不产生任何节拍。
+/// ⭐ 配套硬约束：**期限到了就把这条连接结掉，任何一层都不许重试** ——
+/// 一重试它就从「阻塞有上限」变成「轮询」，而轮询正是零定时器护栏要防的东西。
+/// 今天靠的是：`pump` 与 `http1` 的读循环**只**对 `Interrupted`（EINTR）`continue`，其余一律 `return Err`。
+///
+/// # 值为什么是 30 秒（分母写在这里）
+///
+/// 对端**就在本机** —— `listen()` 绑的是 `LOOPBACK` 常量，`DoD-4㈡` 那条判据钉着它。
+/// 分母是「回环上搬完一条**最大**请求体要多久」：`BODY_CAP` = 64 MiB，回环带宽是 GB/s 量级
+/// ⇒ 零点零几秒。30 秒比它高**两到三个量级**。
+/// ⚙ 那个「零点零几秒」是**按量级推的，我没实测本机回环吞吐** ⇒ 数量级论证，不是读数。
+///
+/// ⚙ **设错会怎样**（两个方向都坏，坏法不同）：
+/// - **设长**（比如照抄上游那 600 秒）：半开连接确实会自己散，但要散 10 分钟
+///   ⇒ 上界从 ∞ 降到 600 秒是真收益，但那个数**读起来仍像挂死**。
+/// - **设短**（比如 1 秒）：一台负载高的机器上，一条**合法**的大请求体会被中转自己掐掉，
+///   客户端看到「网络错误」而中转日志上是一条正常的连接结束 ⇒ **打断正常流量、且不好查**。
+///
+/// # 为什么**不**跟上游用同一个数
+///
+/// 「这个对端合法地可以多久不吭声」是**对端的属性**，不是方向的属性。
+/// 下游是本机、请求在它内存里已经拼好了 ⇒ 慢是**异常**；
+/// 上游是「模型在想」⇒ 慢是**正常**（见 [`UPSTREAM_DEADLINE`]）。
+pub(super) const DOWNSTREAM_DEADLINE: std::time::Duration =
+    std::time::Duration::from_millis(30_000);
+
+/// 上游那条 socket 的**读写期限**〔回修轮之六 08-25，D3 `阻-3(D3)` 的**后半段**〕。
+///
+/// # 它不是定时器（这句话就是 `no_timer_guard` 那张表里登记的那一行）
+///
+/// ⚠ 〔`P16` 2026-09-22〕那张表里这一行的住址栏从 `"upstream.rs"` 改成了 `"listen.rs"`。
+/// 装它的那一手仍在 `upstream::connect`（收入参）。
+///
+/// `SO_RCVTIMEO` / `SO_SNDTIMEO` 说的是「**这一次**阻塞的读/写最多等多久」：
+/// 有字节就**立刻**返回，没字节就**报错**返回。它不会让任何线程**自己醒来**，
+/// 也不产生任何节拍 —— 这正是零定时器护栏禁的那一类与它的分界。
+/// ⭐ 配套的硬约束：**期限到了就把连接结掉，不允许任何一层重试** ——
+/// 一重试它就从「阻塞有上限」变成「轮询」，而轮询正是护栏要防的东西。
+/// 今天这一条靠的是：`pump` 与 `http1` 里的读循环**只**对 `Interrupted`（EINTR）`continue`，
+/// 其余错误一律 `return Err`；`rustls` 的 `complete_io` 同形（只重试 `Interrupted`）。
+///
+/// # 值为什么是 600 秒，而不是下游那个数
+///
+/// 这一跳等的是**模型在想** —— 上游几十秒不发一个字节是 **SSE 长流的正常形态**，
+/// 不是卡死。600 秒这个数**不是我拍的**：`super` 头注逐字记着「参考实现给上游 600 秒」，
+/// 说的正是同一跳。
+///
+/// ⚙ **设错会怎样**：把它改小（比如照抄下游那 30 秒）会把一条**正在正常吐字、
+/// 只是中间想了 40 秒**的长流从中间提断，客户端拿到半条回答
+/// ⇒ **比不设期限更坏**（不设的话那条流是能走完的）。这是本格最贵的一种错。
+/// 改大则是：一条死掉但没发 FIN 的上游（NAT/conntrack 丢连接）会多钉住一条线程那么久。
+///
+/// ⚙ **我刻意不拿「Anthropic 的 SSE 会周期发 `ping`」当依据**：那要打真 API 才量得到，
+/// 而 `C7` 逐字禁「绝不起真 claude」⇒ 这个数必须在「上游合法地整段沉默」的前提下也站得住。
+///
+/// # 它**没**盖住的那一步：`connect` 本身
+///
+/// 下面 `TcpStream::connect` **没有**连接期限。本轮故意不做：读写是**真无界**
+/// （对端不发就永远不返回），而 connect 那一步有内核 SYN 重试上限与解析器自己的上限兜着。
+/// ⚙ **那个上限具体多少我没量** ⇒ 只敢说「不是无界」，不敢说「够小」。
+pub(super) const UPSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_millis(600_000);
 
 /// 起监听。返回真实绑定的地址（端口给 0 时由内核选，测试用）。
 pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
@@ -62,7 +165,7 @@ pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
 /// 补的是读写期限：`apply_downstream_deadline` 在**两个**调用点装 `DOWNSTREAM_DEADLINE`
 /// —— ㈠ 这里，`accept` 出来那一刻（覆盖 503 那条支，它跑在 **accept 线程**上）；
 /// ㈡ `handle()` 开头（转发路径真正阻塞的地方，也是 D3 §2.3 逐字点名的住址）。
-/// 上游那条 socket 由 `upstream::connect` 装 `upstream::UPSTREAM_DEADLINE`。
+/// 上游那条 socket 由 `upstream::connect` 装 [`UPSTREAM_DEADLINE`]（本文件交下去的）。
 ///
 /// ⇒ 三样齐了：**顶不满**（上界）· **拒绝有声**（503 而不是静默 FIN）· **顶住的会自己散**（期限）。
 pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
@@ -76,7 +179,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
         //    排字节那步又是非阻塞的，我**没构造出**它阻塞的形状（理由全文见
         //    `apply_downstream_deadline` 头注㈡；本轮 `MU6` 实测删掉它**零红**）。
         //    装不上仍然**关连接并出声**：宁可拒绝，也不放一条来路不明的进来。
-        if let Err(e) = server::apply_downstream_deadline(&stream) {
+        if let Err(e) = server::apply_downstream_deadline(&stream, DOWNSTREAM_DEADLINE) {
             eprintln!("[relay] cannot set connection deadline: {e}");
             continue;
         }
@@ -180,7 +283,12 @@ pub(super) fn run_with(
         base.clone(),
         stamp,
     ));
-    let relay = Relay::new(Arc::new(dest), TeeSink::to_stdout());
+    let relay = Relay::new(
+        Arc::new(dest),
+        TeeSink::to_stdout(),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
+    );
     serve(listener, Arc::new(relay));
     0
 }
