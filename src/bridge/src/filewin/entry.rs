@@ -16,8 +16,14 @@
 //!
 //! ⚠ **它买不到「窗口真的出现在屏幕上」**。那一格要一个图形会话，本机
 //! `XDG_SESSION_TYPE=tty`（`真相源/99 §一`）⇒ 本机永远量不到。
-//! 能确定地量到的是「开窗请求发出去了」（[`super::shell::open_requested`]），
+//! 能确定地量到的是「那个窗口进程起来了、而且没有在开窗预算内就退」，
 //! 与「这个目录此刻列得出来」（回值那个行数）。**两件都不是「窗口在屏幕上」，别读宽。**
+//!
+//! 🔴〔第十三刀 2026-09-23〕**开窗 ＝ 起一个独立进程。** 上一版这一节的①逐字写着
+//! 「走 [`super::source::list_remote`]，也就是**共用那条池**」——**那半句今天只对一半**：
+//! 列这一趟仍然在 monitor 进程里走共用池（所以「列不出来就别开窗」一个字没变），
+//! 但**窗口自己那一侧换了进程** ⇒ 它之后的每一次列目录走的是它自己那份池。
+//! 代价与买到的东西逐条住 [`super::proc`] 头注 §二 / §四，别在这里读第二遍。
 //!
 //! # 二、为什么回一个行数，而不是 `()`
 //!
@@ -47,7 +53,7 @@
 
 use crate::ssh_source::RemoteConfig;
 
-use super::shell::open_detached_seeded;
+use super::proc::{open_in_new_process, OpenRequest};
 use super::source::{list_remote, Source};
 
 /// 这一趟要落在哪儿。
@@ -171,36 +177,24 @@ pub async fn open_file_window(
     // ① 先真的列一趟 —— 走共用那条池（同进程、无 IPC）。列不出来就别开窗。
     let rows = list_remote(&cfg, &path).await?;
     let n = rows.len();
-    // ② 拿着这一屏开窗。⚠ 不 `join` 那个句柄：`run_native` 要阻塞到窗口关闭，
-    //    等它就等于把 Tauri 的 async 运行时挂在一个窗口的寿命上。
-    let h = open_detached_seeded(
-        Source::Remote(Box::new(cfg)),
-        path,
-        tokio::runtime::Handle::try_current().ok(),
+    // ② 🔴〔第十三刀 2026-09-23〕**拿着这一屏起一个独立进程。**
+    //
+    //    逐条理由住 `proc` 头注（用户「窗口生命周期就是销毁」那条裁决 ＋
+    //    「winit 一个进程只许一个事件循环」那条现打事实 ⇒ 同进程形态下
+    //    「关掉就销毁」与「还能再打开」不可同时成立）。
+    //
+    //    ⚠ 这里**不等窗口关闭**，理由一个字没变：那会把这条 Tauri 命令挂在一个
+    //      窗口的寿命上。变的是它在等什么 —— 从「那条线程」变成「那个进程」。
+    //    🔴 `D11`：一条退路都没有。起不了独立进程就是错，照实报（`proc` 里那几档
+    //      各自带着自己的原因），**不许**退回同进程开一个。
+    let pid = open_in_new_process(&OpenRequest {
+        source: Source::Remote(Box::new(cfg)),
+        cwd: path,
         rows,
         reveal,
-    );
-    // ③ 🔴〔第十一刀〕**那条线程当场就死了的话，别报成功。**
-    //
-    //    上一版这里是 `let _ = open_detached_seeded(…)`，句柄直接丢掉
-    //    ⇒ 窗口起没起来，webview 那侧看到的都是 `Ok(行数)`。
-    //    而有一条路**今天必然走到那里**：同一个进程里第二次开窗必然失败
-    //    （winit 的进程级事件循环标志，逐条理由住 `shell::early_failure`）
-    //    ⇒ 用户关掉窗口再点一次，屏幕上什么都没有、界面却说「成功」。
-    //
-    //    ⚠ 这一跳**不等窗口关闭**（那会把这条命令挂在一个窗口的寿命上，
-    //      正是上面②那条注释说的那件事）—— 它只等一个很短的预算，
-    //      分开「早失败」与「起来了」。买不到什么逐条写在 `early_failure` 头注里。
-    if super::shell::early_failure(&h, super::shell::EARLY_FAILURE_BUDGET) {
-        let why = match h.join() {
-            Ok(Err(e)) => e,
-            Ok(Ok(())) => "那条线程回了成功，但它在开窗预算内就结束了 —— \
-                           窗口没能立起来（这一形此前是静默的）"
-                .to_string(),
-            Err(_) => "开窗那条线程炸了（panic），原因只落在它自己的 stderr 上".to_string(),
-        };
-        return Err(format!("窗口没起来：{why}"));
-    }
+    })
+    .map_err(|why| format!("窗口没起来：{why}"))?;
+    tracing::info!("文件窗口起在进程 {pid} 上（{n} 行已经交给它了）");
     Ok(n)
 }
 

@@ -136,18 +136,36 @@ fn drawn_files() -> Vec<(String, String)> {
     // ⇒ 于是本条为什么仍旧走显式排除：**本条要摘的压根不是调用者自己**
     //   （调用者住 `tests/bridge/filewin/`，不在被扫的那棵树里），而是 `fonts.rs` ——
     //   `PROBE` 就住那儿，让它进人群等于**恒等两侧同源**。自摘那一刀在这里落不落都无关。
-    let mut out: Vec<(String, String)> =
-        guard_core::scan_tree_excluding(&dir, &["rs"], &["fonts.rs", "mod.rs"])
-            .into_iter()
-            .map(|(path, src)| {
-                let name = path
-                    .file_name()
-                    .expect("扫到的每一项都是文件")
-                    .to_string_lossy()
-                    .to_string();
-                (name, src)
-            })
-            .collect();
+    //
+    // 🔴〔第十三刀 2026-09-23〕**排除名单多了两份，理由与 `fonts.rs` 那一份不同：**
+    //   `proc.rs`（窗口改独立进程那一侧）与 `win_main.rs`（那个 `[[bin]]` 的入口）
+    //   **一个字都不画在 egui 上**：
+    //   · `proc.rs` 的中文串两个去处 —— monitor 那条 Tauri 命令的返回值（走 **webview**，
+    //     字体归浏览器）与窗口进程的 **stderr**（终端，字体归终端）；
+    //   · `win_main.rs` 只有头注与一行 `main`。
+    //   ⇒ 收进人群的后果是**现打**出来的，不是推的：非 ASCII 字符从 249 涨到 **355**
+    //   ⇒ 要往 `PROBE` 里塞 106 个**永远不会出现在窗口上**的字，而 `PROBE` 是
+    //   「窗口上会不会出豆腐块」那把尺子 —— 掺进去只会让它对真问题更钝。
+    //   ⚠ 这条排除**与 `fonts.rs` 那条不同源**：那一条防的是恒等两侧同源，
+    //   这一条防的是**人群定义漂了**（「会被画出去」被读成「在 `filewin/` 里」）。
+    //   ⚠ 它买不到「`proc.rs` 以后也不会画东西」—— 哪天它真往 `ui.label` 上写字，
+    //   这条排除就成了一个洞。如实记；补它要一条「哪些字面量会走到 `ui` 上」的判准，
+    //   而那正是本条今天刻意不判的东西。
+    let mut out: Vec<(String, String)> = guard_core::scan_tree_excluding(
+        &dir,
+        &["rs"],
+        &["fonts.rs", "mod.rs", "proc.rs", "win_main.rs"],
+    )
+    .into_iter()
+    .map(|(path, src)| {
+        let name = path
+            .file_name()
+            .expect("扫到的每一项都是文件")
+            .to_string_lossy()
+            .to_string();
+        (name, src)
+    })
+    .collect();
     out.sort();
     out
 }
@@ -284,13 +302,16 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
          〔`24e` 第八刀 09-21：10 → 11，多的是 `download.rs`（往外拖那两问的标题与\
           那句「盖掉它就没有备份了，不可撤销」）。🔴 那句话是这一批里最要紧的：\
           它是「这一下不可撤销」的唯一出口，变成豆腐块的时候用户会照点〕\
+         〔第十三刀 09-23：**这个数一格没动，而 `filewin/` 多了两份文件** ——\
+          `proc.rs` 与 `win_main.rs` 进了排除名单（它们一个字都不画在 egui 上，\
+          逐条理由与那条现打读数「收进来 249 → 355」住 `drawn_files`）〕\
          —— 现在是 {}，人群变了就重新论证一遍",
         files.len()
     );
     let scanned = label_chars();
     assert_eq!(
         scanned.len(),
-        313,
+        304,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
          `24f` 第四刀之前是 130）。\
          这个数本身没有对错，但它变了说明标签动过 —— 连着下面那条一起看。\
@@ -347,16 +368,24 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &prop(), PROBE).len(),
-        302,
+        293,
         "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
-         第五刀之前是 194 / 205、`24f` 第四刀之前是 121 / 130）",
+         第五刀之前是 194 / 205、`24f` 第四刀之前是 121 / 130）\
+         〔第十三刀 09-23：302 → 293，探针 313 → 304 字 —— **差额恰好是 −9**\
+          （`−10 +1`，逐笔理由住 `fonts.rs` 的 `PROBE` 上方）。\
+          🔴 换句话说：掉出探针的那 10 个字与新进来的那 1 个字**全都是本来画不出的** ——\
+          画得出的那 11 个（拉丁标点与两个 emoji 之外的那几个）一个没动。\
+          这个数**不许**由上面那个 304 算出来（两侧同源就退化成恒真），\
+          它是现打的：`cargo test -p monitor --lib filewin::fonts::` 那一趟自己印的〕",
         PROBE.chars().count()
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        300,
+        291,
         "等宽字体下画不出的字数变了（2026-09-22 现打 300 —— 比比例少**两**个（`→` 与第十二刀新进来的 `⇒`）；\
-         第五刀之前是 193、`24f` 第四刀之前是 120）"
+         第五刀之前是 193、`24f` 第四刀之前是 120）\
+         〔第十三刀 09-23：300 → 291，与比例那一格**同一个 −9**，\
+          而「比比例少两个」这条关系一格没动〕"
     );
 }
 

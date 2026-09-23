@@ -39,6 +39,30 @@ categories = ["development-tools", "visualization"]
 name = "monitor_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# 主二进制。🔴 **明写出来**：下面多了第二个 `[[bin]]`，而「自动发现 + 明写混用」
+# 是一个读起来要去查 cargo 文档才知道答案的形状 —— 两个都写死，谁都不用猜。
+[[bin]]
+name = "monitor"
+path = "src/main.rs"
+
+# 🔴〔第十三刀 2026-09-23〕**文件管理窗口的独立进程**（`设计/60 §4.8` 作废重写 · `§8.5`）。
+#
+# 为什么它是**本包的第二个 bin** 而不是一个新 crate：与 `filewin` 当初落成模块
+# 同一条理由 —— 门禁 `cargo` 那一格把 workspace 包数**恒等**钉在 9
+# （`tests/scripts/gate.sh` 里那句 `run_gate_sum cargo 9`），而那个 `9` 不在本刀写区。
+# 第二个 `[[bin]]` 不动包数，而且它要的每一样（egui/eframe/winit/tokio/sftp 那条池）
+# 本包已经全有 ⇒ **零新增依赖**。
+#
+# ⚠ **代价如实记，两条**：
+# ① 它把整个 `monitor_lib` 链进第二份产物 ⇒ `cargo build` 多一次链接（体积翻一份）。
+# ② **发版包里今天还没有它**：Tauri 的安装包只装主二进制与 `externalBin` 那几个 sidecar。
+#    ⇒ 装机那份上 `filewin::proc::resolve_window_bin` 会找不到它**并出声**
+#    （`D11`：不留退路）。补它要动 `tauri.sidecar.conf.json` 与发版流水线，
+#    **两处都不在本刀写区** ⇒ 已报备，别在这里偷偷加一条回落。
+[[bin]]
+name = "cc-monitor-filewin"
+path = "src/filewin/win_main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
