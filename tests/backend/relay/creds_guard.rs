@@ -289,6 +289,119 @@ mod tests {
         );
     }
 
+    /// ★★ **焊缝：我可能自己写出来的每一个头名，都在「先丢掉」那个集合里。**
+    ///
+    /// 〔`P16` 2026-09-22 从 `server_tests.rs` **搬到这一侧**〕缺这一焊的症状是
+    /// **同名鉴权头出现两次** —— HTTP 允许同名头出现多次，上游谁赢**没有定义**，
+    /// 而一把不属于这一行的客户端凭据就这样被多送出去一次。
+    ///
+    /// # 为什么它今天住层 2 这一侧
+    ///
+    /// 焊的两端先前都住层 1（`AUTH_HEADER_NAMES` ＋ `auth_header_of`）。`P16` 把映射
+    /// 按 `C2` 搬去层 2、把名单改成**由映射派生**之后，两端都在层 2
+    /// ⇒ 判据跟着搬，焊缝不跨层（一条跨层焊缝正是 `D1` 警告的形状）。
+    ///
+    /// # 🔴 它判的是**产物**，不是两个定义 —— 否则它就是恒真
+    ///
+    /// 名单既然是从映射派生的，「名单 ⊇ 映射写得出的头名」在**定义**那一层已经
+    /// 按构造成立 ⇒ 拿两个定义对拍就是**两侧同源的恒等 = 恒真**，本仓逐字禁过。
+    /// ⇒ 本条改判**真走一遍层 2 拿到的那个 `AuthSwap`**：
+    ///
+    /// 1. 每一种 `AuthStyle` 各配一行，过**生产段那条真实的** `accounts::decide`；
+    /// 2. 它说要写的那个头名，必须在它**自己那一份** `clear` 里；
+    /// 3. 🔴 **射程不许缩**：`clear` 必须是**全集** —— 判据自己独立地从
+    ///    `AuthStyle::ALL` ＋ `auth_header_of` 派生一遍期望值去比。
+    ///    ⇒ 配了 `x-api-key` 的那一行也必须把客户端的 `Authorization` 丢掉。
+    ///    有人把 `dispatch_auth` 改成「只丢这一趟要写的那一个」⇒ 本条当场红。
+    ///
+    /// 两侧异源：期望值是**判据这边**从闭集算的，实际值是**生产段** `dispatch_auth`
+    /// 塞进 `AuthSwap` 的。中间那一步（`headers_to_clear()` 有没有被真的传下去）
+    /// 正是本条唯一判得动、也唯一判不了别的东西。
+    ///
+    /// # 反空真
+    ///
+    /// · 至少两种形状**真的写了头**（全是 `None` 的话 2 与 3 空转）；
+    /// · `clear` 非空；· 期望全集非空且至少两项。
+    ///
+    /// # 买不到
+    ///
+    /// - **不买「所有鉴权头都被丢掉」** —— 那个分母没人给得出（`Cookie` / 各家自定义 /
+    ///   `Proxy-Authorization`…）。本条是**白名单方向**：只保证「我可能写的那几个」
+    ///   在丢掉之列，别的原样转发。`Proxy-Authorization` 仍然照旧转发，已登记为射程外。
+    /// - **不买「层 1 真的照着 `clear` 丢了」** —— 那由 `server_tests` 那一族的字节判据
+    ///   （`the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess`）钉着。
+    #[test]
+    fn every_header_this_relay_may_write_is_in_the_set_it_clears_first() {
+        use creds_core::store::AuthStyle;
+        use creds_core::SecretKey;
+
+        // 期望的全集：**判据这边自己**从闭集派生一遍（与生产段那一份异源）。
+        let want_clear: std::collections::BTreeSet<String> = AuthStyle::ALL
+            .iter()
+            .filter_map(|s| crate::relay::accounts::auth_header_of(*s))
+            .map(|(n, _)| n.to_ascii_lowercase())
+            .collect();
+        assert!(
+            want_clear.len() >= 2,
+            "会写头的形状只有 {} 种 —— 本条在空转（射程那一格无从判起）",
+            want_clear.len()
+        );
+
+        let base = crate::relay::upstream::Base::parse("https://api.example.com").expect("base");
+        let mut wrote = 0usize;
+        for style in AuthStyle::ALL.iter().copied() {
+            let table = crate::relay::accounts::table::RoutingTable::build(std::iter::once((
+                "acct".to_string(),
+                base.clone(),
+                Some(SecretKey::new("sk-WELD-PROBE")),
+                style,
+            )));
+            let key = crate::relay::RouteKey {
+                seg1: "a".to_string(),
+                seg2: "acct".to_string(),
+            };
+            let mut seen: Option<(Option<&'static str>, Vec<String>)> = None;
+            crate::relay::accounts::decide(
+                &table,
+                crate::relay::Mode::Substitute,
+                &key,
+                &mut |d| {
+                    if let crate::relay::Destination::Substitute { auth, .. } = d {
+                        seen = Some((
+                            auth.write.map(|(n, _)| n),
+                            auth.clear.iter().map(|n| n.to_ascii_lowercase()).collect(),
+                        ));
+                    }
+                },
+            );
+            let (written, clear) = seen.unwrap_or_else(|| {
+                panic!("{style:?}：配了 key 的那一行在 `/s/` 下没答 `Substitute`")
+            });
+            assert!(!clear.is_empty(), "{style:?}：`clear` 是空的 —— 本条在空转");
+            // ㈡ 它要写的那个头名必须在它自己那份 `clear` 里。
+            if let Some(name) = written {
+                wrote += 1;
+                assert!(
+                    clear.iter().any(|n| n.eq_ignore_ascii_case(name)),
+                    "`{name}` 是本中转会写出去的头，却不在它自己交下来的「先丢掉」\
+                     那个集合里 ⇒ 客户端也带一个同名的时候，上游会看见两个"
+                );
+            }
+            // ㈢ 🔴 射程不许缩：交下来的必须是**全集**，不只这一趟要写的那一个。
+            let got: std::collections::BTreeSet<String> = clear.into_iter().collect();
+            assert_eq!(
+                got, want_clear,
+                "{style:?} 那一行交给层 1 的「先丢掉」集合与全集对不上。\n\
+                 🔴 **缩了是行为变更，不是优化**：配了 `x-api-key` 的那一行若不丢掉\
+                 客户端的 `Authorization`，那把不属于这一行的凭据就被一起送给上游了。"
+            );
+        }
+        assert!(
+            wrote >= 2,
+            "只有 {wrote} 种形状写了头 —— 上面 ㈡ 那一格空转了"
+        );
+    }
+
     /// ★★ `KS2`：**取明文的地方恰好一处**，而且就是换头那一行。
     #[test]
     fn the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate() {
@@ -321,9 +434,15 @@ mod tests {
              **必须先在件计划里说清那一处是什么**，不许在实现里顺手把这个数改大。",
             header_sites.len()
         );
+        // ⚠ 〔`P16` 2026-09-22〕住址从 `server.rs`（层 1）换成 `accounts/mod.rs`（层 2）——
+        //    **换的是住址，不是处数**：上面那条「恰好 1」的相等断言一个字节都没动。
+        //    搬的理由：层 1 的类型面上不许再出现 `creds-core` 的类型（`C2`），
+        //    而「把 key 拼成头值」必须拿着 `SecretKey` ⇒ 它只能在层 2。
+        //    ⇒ 层 1 从此**碰不到明文**。这一格因此比先前**更紧**，不是搬松了。
         assert!(
-            header_sites[0].ends_with(".rs:0") || header_sites[0].contains("server.rs"),
-            "唯一那处不在 `server.rs`（换头那一行）而在 {} —— 靶子挪了",
+            header_sites[0].ends_with(".rs:0") || header_sites[0].contains("accounts/mod.rs"),
+            "唯一那处不在 `accounts/mod.rs`（层 2 拼头值那一行）而在 {} —— 靶子挪了。\n\
+             ⚠ 它**不许**回到层 1：那会让 `creds-core` 的类型重新爬上层 1 的类型面（`C2`）。",
             header_sites[0]
         );
         // ★ 另一半：**落盘那个出口在本 crate 里应当一次都没有**（`K-H2a` 裁四：backend 只读）。

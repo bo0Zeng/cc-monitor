@@ -26,9 +26,7 @@ use super::http1::{self, BodyView, RequestHead};
 use super::route;
 use super::tee::{SseSplitter, TeeSink};
 use super::upstream::{self, Base, Conn};
-use super::{Destination, Destinations};
-use creds_core::store::AuthStyle;
-use creds_core::SecretKey;
+use super::{AuthSwap, Destination, Destinations};
 use std::io::{BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -90,45 +88,16 @@ const TEE_DECODE_CAP: usize = 8 * 1024 * 1024;
 /// `std::io::Read::read` 本来就是「有多少给多少」，不循环凑满。
 const READ_CHUNK: usize = 64 * 1024;
 
-/// **下游**那条 socket 的读写期限〔回修轮之六 08-25，D3 `阻-3(D3)` 的**后半段**〕。
+/// 〔`P16` 2026-09-22〕**`DOWNSTREAM_DEADLINE` 的那个值搬去 `listen.rs` 了** —— 墓碑。
 ///
-/// # 它治的是什么（别读成「限流已经够了」）
+/// `设计/01 §2.1 C4` 逐字把「**期限值**」也算进那句「凭据、配置、路由表、期限值
+/// 全部由后端**交给它**」⇒ `设计/05 §3.3.2` 的分工是「**值归后端 · 执行归通信层**」。
+/// 搬走的只有**值**：装它的那一手（[`apply_downstream_deadline`]）**还在这一层**，
+/// 只是改成收一个入参。⚠ 别把它读成「期限没人管了」—— 它换了个人交下来，
+/// 而「两个调用点必须用同一个数」这件事今天由 [`Relay`] 那一格字段保证。
 ///
-/// `INFLIGHT_CONNECTIONS` 买的是「**顶不满、拒绝有声**」；这一条买的是
-/// 「**顶住的那些会自己散**」。没有它，256 条半开连接能把中转**永久**钉死，
-/// 而它会礼貌地回 503 —— **那一屏读起来像正常限流**。
-/// （D3 实测：64 条半开 ⇒ 线程 4 → 68，全卡在 `read_head` 的 `r.read(&mut one)?` 上永不返回。
-///  **这个数我没重打，住址 `audits/K-H1-D3.md` §2.3**。）
-///
-/// # 它不是定时器 —— 这句话就是 `no_timer_guard::REGISTERED_DURATION_USES` 里登记的那一行
-///
-/// `SO_RCVTIMEO` / `SO_SNDTIMEO` 说的是「**这一次**阻塞的读/写最多等多久」：
-/// 有字节就**立刻**返回，没字节就**报错**返回。它不让任何线程**自己醒来**、不产生任何节拍。
-/// ⭐ 配套硬约束：**期限到了就把这条连接结掉，任何一层都不许重试** ——
-/// 一重试它就从「阻塞有上限」变成「轮询」，而轮询正是零定时器护栏要防的东西。
-/// 今天靠的是：`pump` 与 `http1` 的读循环**只**对 `Interrupted`（EINTR）`continue`，其余一律 `return Err`。
-///
-/// # 值为什么是 30 秒（分母写在这里）
-///
-/// 对端**就在本机** —— `listen()` 绑的是 `LOOPBACK` 常量，`DoD-4㈡` 那条判据钉着它。
-/// 分母是「回环上搬完一条**最大**请求体要多久」：`BODY_CAP` = 64 MiB，回环带宽是 GB/s 量级
-/// ⇒ 零点零几秒。30 秒比它高**两到三个量级**。
-/// ⚙ 那个「零点零几秒」是**按量级推的，我没实测本机回环吞吐** ⇒ 数量级论证，不是读数。
-///
-/// ⚙ **设错会怎样**（两个方向都坏，坏法不同）：
-/// - **设长**（比如照抄上游那 600 秒）：半开连接确实会自己散，但要散 10 分钟
-///   ⇒ 上界从 ∞ 降到 600 秒是真收益，但那个数**读起来仍像挂死**。
-/// - **设短**（比如 1 秒）：一台负载高的机器上，一条**合法**的大请求体会被中转自己掐掉，
-///   客户端看到「网络错误」而中转日志上是一条正常的连接结束 ⇒ **打断正常流量、且不好查**。
-///
-/// # 为什么**不**跟上游用同一个数
-///
-/// 「这个对端合法地可以多久不吭声」是**对端的属性**，不是方向的属性。
-/// 下游是本机、请求在它内存里已经拼好了 ⇒ 慢是**异常**；
-/// 上游是「模型在想」⇒ 慢是**正常**（见 `upstream::UPSTREAM_DEADLINE`）。
-const DOWNSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_millis(30_000);
 
-/// 把 `DOWNSTREAM_DEADLINE` 装到一条下游 socket 的**两个方向**上。
+/// 把**后端交下来的**下游期限装到一条 socket 的**两个方向**上（`C4`：值归后端 · 执行归本层）。
 ///
 /// 抽成函数是因为它有**两个调用点**，而它们必须用同一个数。
 /// ⚠ 两个调用点**买的东西不一样，别当成一件事**：
@@ -148,9 +117,12 @@ const DOWNSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_milli
 ///    **每一条 `accept` 出来的 socket 从第一刻起就带着期限，不管它接下来走哪个分支**
 ///    —— 明天有人往拒绝路径上加一次阻塞读写时，这条不变式已经在那儿了。
 ///    ⚙ **本轮 `MU6` 实测：把这一块整个删掉，410 条判据零红。** 这个格子没有牙，别报成有。
-pub(super) fn apply_downstream_deadline(s: &TcpStream) -> std::io::Result<()> {
-    s.set_read_timeout(Some(DOWNSTREAM_DEADLINE))?;
-    s.set_write_timeout(Some(DOWNSTREAM_DEADLINE))
+pub(super) fn apply_downstream_deadline(
+    s: &TcpStream,
+    deadline: std::time::Duration,
+) -> std::io::Result<()> {
+    s.set_read_timeout(Some(deadline))?;
+    s.set_write_timeout(Some(deadline))
 }
 
 /// 上游**中间响应**（1xx）最多容忍几条〔回修轮之五 08-25，D3 `重要-1(D3)`〕。
@@ -203,6 +175,14 @@ pub(crate) struct Relay {
     /// 「有没有默认上游」—— 那些词在这一层根本不存在。
     dest: Arc<dyn Destinations>,
     tee: TeeSink,
+    /// 下游那条 socket 的读写期限。**由后端交下来**（`C4`：值归后端 · 执行归本层）。
+    ///
+    /// ⚠ 它是**一个字段**而不是两处各写一次 —— [`apply_downstream_deadline`] 有两个
+    /// 调用点，而它们**必须用同一个数**（先前那件事由「都引同一个 `const`」保证，
+    /// 值搬走之后由这一格保证）。
+    downstream_deadline: std::time::Duration,
+    /// 上游那条 socket 的读写期限。同上，由后端交下来。
+    upstream_deadline: std::time::Duration,
     /// 本进程服务过的请求数 —— `DoD-1㈢`「两个键由同一个中转进程服务」量的就是它。
     served: AtomicU64,
     /// 每条连接透传收尾时落一笔 —— `DoD-2` acceptor ㈡「下游读到的块数 ≈ 上游发出的块数」量的就是它。
@@ -227,10 +207,17 @@ impl Relay {
     ///
     /// ⚠⚠ `设计/20 §7` 步 1：入参从一张**路由表**换成了一个 `dyn Destinations`
     /// —— 层 1 从此不认识「表」这个东西。
-    pub(crate) fn new(dest: Arc<dyn Destinations>, tee: TeeSink) -> Self {
+    pub(crate) fn new(
+        dest: Arc<dyn Destinations>,
+        tee: TeeSink,
+        downstream_deadline: std::time::Duration,
+        upstream_deadline: std::time::Duration,
+    ) -> Self {
         Self {
             dest,
             tee,
+            downstream_deadline,
+            upstream_deadline,
             served: AtomicU64::new(0),
             inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             pumps: std::sync::Mutex::new(Vec::new()),
@@ -349,12 +336,13 @@ enum Answered {
 /// 不许由调用方自己凑 —— 凑得出来就等于「A 的端点配 B 的 key」又写得出来了。
 fn send_upstream(
     base: &Base,
-    auth: Option<(Option<&SecretKey>, AuthStyle)>,
+    auth: Option<&AuthSwap<'_>>,
     head: &RequestHead,
     rest: &str,
     body: &[u8],
+    deadline: std::time::Duration,
 ) -> Answered {
-    let mut up = match upstream::connect(base) {
+    let mut up = match upstream::connect(base, deadline) {
         Ok(c) => c,
         Err(e) => return Answered::Unreachable(e),
     };
@@ -377,7 +365,7 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // ★★ `阻-3(D3)` 后半段的正主：没有这一句，一条半开连接（只发半个请求头就不动了）
     //    会把这条线程**永久**钉在下面 `read_head` 的读上。
     //    `try_clone` 是 `dup` ⇒ 下面 `down_w` 与 `down_r` 共用同一条 socket、同一份期限。
-    apply_downstream_deadline(&down)?;
+    apply_downstream_deadline(&down, relay.downstream_deadline)?;
     let mut down_w = down.try_clone()?;
     let mut down_r = BufReader::new(down);
 
@@ -436,17 +424,25 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
                 Answered::Refused(status)
             }
             // 下游那份 auth 头**原样转发**。层 1 手里没有任何 key。
-            Destination::Passthrough { upstream } => {
-                send_upstream(upstream, None, &head, &r.rest, &body)
-            }
-            // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
-            // 那是 `AuthStyle::NoAuth` 那一档，理由整段住 `accounts::Accounts::resolve`）。
-            // ★★ 上游与 key 取自**同一个变体**，不是两个各自取的值。
-            Destination::Substitute {
+            Destination::Passthrough { upstream } => send_upstream(
                 upstream,
-                key,
-                style,
-            } => send_upstream(upstream, Some((key, style)), &head, &r.rest, &body),
+                None,
+                &head,
+                &r.rest,
+                &body,
+                relay.upstream_deadline,
+            ),
+            // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
+            // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::dispatch_auth`）。
+            // ★★ 上游与 key 取自**同一个变体**，不是两个各自取的值。
+            Destination::Substitute { upstream, auth } => send_upstream(
+                upstream,
+                Some(&auth),
+                &head,
+                &r.rest,
+                &body,
+                relay.upstream_deadline,
+            ),
         });
     });
     // 层 2 必须**恰好答一次**（契约写在 `Destinations::resolve` 头注里）。
@@ -621,11 +617,11 @@ fn pump<R: Read, W: Write>(
 /// 并把后者登记成射程外、说那是 `K-H2` 正文的活。**`K-H2` 已签收，那一格没人接。**
 ///
 /// **今天盘上的真话**：
-/// 1. **换哪个头由那一行的 `auth_style` 定**（见 [`auth_header_of`]）——
+/// 1. **换哪个头由那一行的 `auth_style` 定**（见 `accounts::auth_header_of`，`P16` 搬去层 2 了）——
 ///    〔用 09-04〕逐字要「api做成通用的」⇒ 只押一种鉴权头 = 只接得上一半的上游，
 ///    而押错的症状是 **401**，与「key 打错了」同形。
 /// 2. **这一行有自己的 key 时，客户端那份鉴权头一律不转发** ——
-///    人群是 [`AUTH_HEADER_NAMES`] 那个闭集，不只 `Authorization` 那一个。
+///    人群是 `AuthSwap::clear` 那个**由层 2 交下来**的闭集，不只 `Authorization` 那一个。
 ///    ⚠ 这是**行为改变**，理由两条：㈠ 我这一趟要写的那个头名可能正是客户端也带着的
 ///    （`x-api-key` 那一档），同名头出现两次是未定义行为 —— 那正是先前丢掉
 ///    `Authorization` 的理由，逐字同一条；㈡ 把客户端的凭据**连带**送给一个第三方上游，
@@ -639,7 +635,7 @@ fn render_upstream_request(
     head: &RequestHead,
     rest: &str,
     base: &Base,
-    auth: Option<(Option<&SecretKey>, AuthStyle)>,
+    auth: Option<&AuthSwap<'_>>,
     body_len: usize,
 ) -> Vec<u8> {
     // ★★ **签名变迁记两拍，别读成放宽**：
@@ -650,14 +646,15 @@ fn render_upstream_request(
     //      是唯一调用方，它自己也只从层 2 那一个答案里取）⇒ 同源这件事从
     //      「一个值的两个方法」换成了「一个变体的两个字段」，**没有变松**。
     //
-    //  `auth` 的三态与它们各自的字节，整张表住 `accounts::Accounts::resolve` 的头注：
-    //    `None`               ⇒ 下游那份鉴权头**原样转发**
-    //    `Some((Some(k), s))` ⇒ 丢掉下游那几份，按 `s` 写 `k`
-    //    `Some((None, s))`    ⇒ 丢掉下游那几份，**一个头都不写**（`s` 是 `NoAuth` 那一档）
-    let (key, style) = match auth {
-        Some((k, s)) => (k, s),
-        None => (None, AuthStyle::DEFAULT),
-    };
+    //    · 〔`P16` 2026-09-22〕从 `(Option<&SecretKey>, AuthStyle)` 换成一个
+    //      `&AuthSwap` —— **两个 `creds-core` 类型退出层 1 的类型面**（`C2`），
+    //      而同源那件事**更紧了一格**：先前是「一个变体的两个字段」，今天是
+    //      「一个变体的**一个**字段」⇒ 连「从同一个变体里取两个、但取错搭配」都写不出来。
+    //
+    //  `auth` 的三态与它们各自的字节，整张表住 `accounts::dispatch_auth` 的头注：
+    //    `None`                            ⇒ 下游那份鉴权头**原样转发**
+    //    `Some(AuthSwap{ write: Some(_) })` ⇒ 丢掉 `clear` 那几份，写层 2 算好的那一条
+    //    `Some(AuthSwap{ write: None })`    ⇒ 丢掉 `clear` 那几份，**一个头都不写**
     // ★★★ **`K-R1`：请求行的目标由那个基址自己算**（前缀 + 客户端的真路径）。
     //    ⚠ 参数名从 `target` 改成 `rest` 是有意的：进来的是**下游那一段**，
     //      发出去的目标是**算出来的**。留着旧名字会让下一个人以为它已经是最终目标。
@@ -671,9 +668,10 @@ fn render_upstream_request(
     // ★ 这一趟要不要把客户端自带的鉴权头收掉 —— **答案就是「层 2 答的是不是 `Substitute`」**。
     //   ⚠⚠ 这一行先前是个复合条件 `(key.is_some() && auth_header_of(style).is_some())
     //      || style == NoAuth`，头注逐字警告过「两个条件都要，缺一格就漏一形」。
-    //      那个判断**整条搬进层 2 的那一个 `match`** 了（`accounts::Accounts::resolve`），
+    //      那个判断**整条搬进层 2 的那一个 `match`** 了（`accounts::dispatch_auth`），
     //      层 1 这边因此再也没有第二处可以判错 —— 少一处能判错的地方，不是少一条判断。
-    let drop_client_auth = auth.is_some();
+    //   ⚠ 〔`P16`〕**丢哪几个头**也跟着搬走了（`AuthSwap::clear`）：层 1 从此
+    //      连那份名单都没有 ⇒ 它也不可能自己凑一份缩水的。
     for (k, v) in &head.headers {
         if http1::is_hop_by_hop(k)
             || k.eq_ignore_ascii_case("host")
@@ -685,23 +683,19 @@ fn render_upstream_request(
         // ★ 换头那一支：把下游那几份鉴权头**整条丢掉**。
         //   丢在这里而不是在下面覆盖，是因为 HTTP 允许同名头出现多次 ——
         //   「追加一条」会让上游看见**两个**同名鉴权头，那是未定义行为。
-        if drop_client_auth && AUTH_HEADER_NAMES.iter().any(|n| k.eq_ignore_ascii_case(n)) {
+        if auth.is_some_and(|a| a.clear.iter().any(|n| k.eq_ignore_ascii_case(n))) {
             continue;
         }
         out.push_str(&format!("{k}: {v}\r\n"));
     }
-    // ★★ **这是整个后端生产段里唯一一处把明文取出来的地方**（`KS2`）。
-    //    它就在「往上游请求写鉴权头」这一行上，与 `KS2` 的字面逐字对应。
-    //    ⚠ 加第二处是**放宽**：必须先在件计划里说清那一处是什么，
-    //      不许在实现里顺手把 `creds_guard` 那条相等断言改大。
-    //    ⚠⚠ `K-R1` 把**头名与值前缀**变成了变量，而 `expose_for_auth_header(`
-    //      这个调用点**仍然恰好一处** —— 那条相等断言一个字节都没动。
-    //      〔这是有意的设计约束：一种新鉴权头形状不该换来一个新的明文出口。〕
-    if let (Some(k), Some((name, prefix))) = (key, auth_header_of(style)) {
-        out.push_str(&format!(
-            "{name}: {prefix}{}\r\n",
-            k.expose_for_auth_header()
-        ));
+    // ★★ **层 1 只照写。** 头名与**完整**头值都是层 2 算好的（`AuthSwap::write`）——
+    //    层 1 不知道那个串里有没有前缀、是不是一把 key，它只看见一个串。
+    //    ⚠⚠ 〔`P16` 2026-09-22〕把明文取出来的那一句**搬去层 2 了**（`accounts::dispatch_auth`）。
+    //      搬的是住址不是处数：`creds_guard` 那条「恰好 1 处」的相等断言一个字节没动
+    //      （它扫整个 crate，不写死文件名），`PLAINTEXT_EXIT_SITES` 只改了住址栏。
+    //      ⇒ 层 1 从此**碰不到明文**，这是 `C2` 买到的一格实质东西，不只是类型好看。
+    if let Some((name, value)) = auth.and_then(|a| a.write) {
+        out.push_str(&format!("{name}: {value}\r\n"));
     }
     if body_len > 0 {
         out.push_str(&format!("Content-Length: {body_len}\r\n"));
@@ -710,47 +704,18 @@ fn render_upstream_request(
     out.into_bytes()
 }
 
-/// 中转**认得的鉴权头名**（小写）。**闭集，一个住址**〔`brief` 13b〕。
+/// 〔`P16` 2026-09-22〕**这里先前住着两样东西，两样都搬去层 2 了** —— 墓碑，别捡回来。
 ///
-/// # 它是什么，不是什么
+/// | 搬走的 | 新家 | 为什么不能留在这一层 |
+/// |---|---|---|
+/// | `const AUTH_HEADER_NAMES`（换头前先丢掉哪几个头） | `accounts::headers_to_clear()`，**由映射派生**，不再是手写名单 | 它与那个映射之间原本靠一条判据焊着，而映射按 `C2` 必须去层 2 ⇒ 焊缝会**跨层**，而缺焊的症状是同名鉴权头出现两次、上游谁赢没有定义 |
+/// | `fn auth_header_of`（`AuthStyle` → `(头名, 前缀)`） | `accounts::auth_header_of` | 它的入参是 `creds_core::store::AuthStyle` ⇒ 按 `C2`（不许依赖业务 crate）它**不可能**住这一层 |
 ///
-/// 它是「换头时要先丢掉的下游头」的人群 —— 也就是 [`auth_header_of`] **可能写出来**的
-/// 那几个头名的全集。两者必须对得上，由
-/// `every_header_this_relay_may_write_is_in_the_set_it_clears_first` 钉住
-/// （否则会出现「我写了一个头，而同名的客户端那份没被丢掉」= 同名头出现两次）。
+/// ⚠ **不许在这一层重建任何一个。** 层 1 今天连「有哪几个鉴权头」都不知道 ——
+/// 那正是 `P16` 买到的东西：它拿到 `AuthSwap` 就照丢照写，没有第二处可以判错、
+/// 也没有第二处可以把那份名单凑窄。射程（`clear` 是全集而不是「这一趟要写的那一个」）
+/// 由层 2 那侧的判据钉着，住 `creds_guard`。
 ///
-/// ⚠ **它不是「所有鉴权头」的枚举** —— 那个分母没人给得出（`Cookie` / 各家自定义 /
-/// `Proxy-Authorization`…）。`creds_guard` 头注为同一件事逐字论证过为什么日志那边
-/// 只能用白名单而不能用「除了 X 之外全记」。这里是**白名单方向**：
-/// 只丢我可能自己写的那几个，别的原样转发。
-const AUTH_HEADER_NAMES: &[&str] = &["authorization", "x-api-key"];
-
-/// 一种鉴权头形状 → `(头名, 值前缀)`；`None` = **不发鉴权头**。
-///
-/// # ★ 这是 `AuthStyle` → HTTP 的映射，而它刻意住在这一侧
-///
-/// `creds-core` 那一侧**刻意不认识 HTTP**（`table.rs` 头注逐字：「本 crate 刻意不认识
-/// HTTP」）⇒ 头名与前缀不许写在那边。那边只管**格式**（文件里那个词是什么），
-/// 这边只管**协议**（那个词对应哪个头）。
-///
-/// ⚠ **诚实边界（自查订正，09-04）**：本节初稿逐字写「**唯一**一处映射」，而
-/// **今天没有任何判据在数这个 1** —— 隔壁 `expose_for_auth_header(` 那个 1 有
-/// `creds_guard` 的相等断言钉着，这一处**没有**。它靠的只是「加一个成员这里编译不过」，
-/// 而那一格保证的是**这一处不漏支**，**不保证**别处不再写第二处映射。
-/// ⇒ 准确的说法是「今天只有这一处，而这件事没人看着」。〔`brief` 12：给不出分母就别写全称。〕
-///
-/// ⚠ 穷尽 `match`：加一个成员**编译不过** —— 这一格是编译器买的，
-/// 不是一条文本判据买的。〔`table.rs` 头注那张表逐条记着「读着像买断 ≠ 买断了」，
-/// 这一处是真的那一档：新成员漏了这里，`cargo` 当场不过。〕
-fn auth_header_of(style: creds_core::store::AuthStyle) -> Option<(&'static str, &'static str)> {
-    use creds_core::store::AuthStyle;
-    match style {
-        AuthStyle::Bearer => Some(("Authorization", "Bearer ")),
-        AuthStyle::XApiKey => Some(("x-api-key", "")),
-        AuthStyle::NoAuth => None,
-    }
-}
-
 /// 响应头**逐字节原样**回给下游，只把连接管理那一条换成 `close`。
 /// 保留 `Transfer-Encoding` 是有意的：响应体是原样透传的，分帧不能丢。
 fn rewrite_response_head(raw: &[u8]) -> Vec<u8> {
