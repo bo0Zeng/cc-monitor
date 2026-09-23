@@ -373,3 +373,195 @@ fn the_name_taken_message_says_which_name() {
         "译回真换行之后它是**一行**（末尾一个换行），不是两行"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// `P19`（09-22）· codex 那一支不经 shell 的那条路
+// 题面：`--agent codex` 在 Windows 上不再 `program not found`。
+// 真机读数（那一跳到底在哪）住 `真相源/106 §3.3`。
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 造一份**直路计划**，`tmux` 那一格由调用方给 —— 走的是生产那条链
+/// （`argv::parse` → `plan::build`），不是手搓一个 `Direct`。
+fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
+    let e = Env {
+        home: "/home/pi".into(),
+        pwd: "/p".into(),
+        accts_manifest: "/nonexistent/accounts.json".into(),
+        account_env: "CLAUDE_CONFIG_DIR".into(),
+        self_path: "/usr/local/bin/ccm".into(),
+        tmux: tmux.map(str::to_string),
+        ..Default::default()
+    };
+    let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let o = match argv::parse(&a).expect("该解析得动") {
+        Parsed::Opts(o) => o,
+        other => panic!("{other:?}"),
+    };
+    match plan::build(&o, &e, &AccountTable::default(), None).expect("该算得出计划") {
+        Plan::Direct(d) => d,
+        other => panic!("直路测试却算出 {other:?}"),
+    }
+}
+
+/// ★★ **`P19` 的承重前提：那段配方整段裹在 `$TMUX` 的守卫里。**
+///
+/// [`needs_shell`] 敢在「不在 tmux 里」时跳过 `sh -c`，靠的**只有**这一条事实 ——
+/// 守卫为假 ⇒ 那段串在 `exec` 之前一个字都不做 ⇒ 省掉的是一个空转的中间进程。
+/// 🔴 谁把配方改成「无条件先做点什么」（哪怕只是 `export CC_BUS_ID=`），
+/// 那条等价当场不成立，而 [`needs_shell`] 会**静默地少做一件事** ——
+/// 本条就是为了让那一刻响，而不是让它安静。
+#[test]
+fn the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact() {
+    let r = BUS_ID_RECIPE;
+    assert!(
+        r.starts_with("if [ -n \"${TMUX:-}\" ]; then "),
+        "配方不再以 `$TMUX` 守卫开头 ⇒ `needs_shell` 跳过 shell 的那条等价不成立了：{r:?}"
+    );
+    assert!(
+        r.ends_with("fi;"),
+        "配方守卫之后还跟着别的东西 ⇒ 那部分在跳过 shell 时会被悄悄丢掉：{r:?}"
+    );
+    // 恰好一对 `if … fi` ⇒ 守卫**罩住全身**，中途没有再关一次再做别的事。
+    assert_eq!(
+        r.matches("fi;").count(),
+        1,
+        "配方里有不止一处 `fi;` —— 守卫在半路关过，后面那段是无条件的：{r:?}"
+    );
+    assert_eq!(
+        r.matches("if ").count(),
+        1,
+        "配方里有不止一个 `if` —— 重新数一遍哪一段是无条件的：{r:?}"
+    );
+    // 反向自检：这几针不是靠「配方恰好是个空串」空转的。
+    assert!(
+        r.len() > 80 && r.contains("CC_BUS_ID"),
+        "配方短得不像话或者不再设 `CC_BUS_ID` —— 本条在空转：{r:?}"
+    );
+}
+
+/// ★★ **`P19` 正题：还非得要 POSIX shell 的只剩三件，codex 的配方不是其中之一。**
+///
+/// 🔴 **上一版的条件是 `!ccm_env.is_empty() || bus_id_recipe || resolved.is_some()`**
+/// —— `bus_id_recipe` 单独成闸，而 `needs_bus_id("codex")` 恒真 ⇒ **每一趟**
+/// `--agent codex` 都要一个 `sh`。真机现打（Win11，`真相源/106 §3.3`）：
+/// `--agent codex --launcher hostname` → `EXIT=4 program not found`，
+/// 同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`。
+///
+/// ⚠ **本条买不到的那一维**：它判的是「这一趟要不要请 shell 进来」这个**判定**，
+/// **不是**「在真 Windows 上真的起来了」。后者要那台 Win11 虚拟机，本路没去动它。
+#[test]
+fn only_three_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_them() {
+    // ── 🔴 P19 买的就是这一格：codex + 不在 tmux（Windows 上 `$TMUX` 恒空）────
+    let codex_bare = direct_of(&["--agent", "codex", "--cwd", "/p"], None);
+    // 反空真自检：`None` 必须是**因为守卫为假**得来的，不许是因为配方那一格自己没了。
+    assert!(
+        codex_bare.bus_id_recipe,
+        "codex 这一趟连 `bus_id_recipe` 都是假的 —— 下面那条 `None` 会因为错的理由绿"
+    );
+    assert!(!codex_bare.inside_tmux, "夹具没把 `$TMUX` 置空，本格白测");
+    assert_eq!(
+        needs_shell(&codex_bare, None),
+        None,
+        "codex 不在 tmux 里还要请一个 `sh` 进来 —— 那正是 Windows 上那句 `program not found`"
+    );
+
+    // ── 在 tmux 里：配方真有事可做 ⇒ 照旧经 shell，且**说得出为什么** ─────────
+    let codex_in_tmux = direct_of(
+        &["--agent", "codex", "--cwd", "/p"],
+        Some("/faux/socket,1,0"),
+    );
+    assert!(codex_in_tmux.inside_tmux, "夹具没把 `$TMUX` 置上，本格白测");
+    assert_eq!(
+        needs_shell(&codex_in_tmux, None),
+        Some(WHY_SHELL_BUS_ID),
+        "在 tmux 里那段配方要现问一次 tmux ⇒ 这一趟**必须**经 shell（`INVARIANTS §33a` 那条实测例）"
+    );
+
+    // ── claude 两态都不要 shell（它压根没有那段配方）──────────────────────
+    for tmux in [None, Some("/faux/socket,1,0")] {
+        let d = direct_of(&["--agent", "claude", "--cwd", "/p"], tmux);
+        assert!(!d.bus_id_recipe, "claude 不该有 cc-bus 配方");
+        assert_eq!(
+            needs_shell(&d, None),
+            None,
+            "claude 这一趟不该要 shell（tmux={tmux:?}）"
+        );
+    }
+
+    // ── 另两件**是真的要 shell**，本轮一件都没假装它们不要 ──────────────────
+    let mut with_env = direct_of(&["--agent", "codex", "--cwd", "/p"], None);
+    with_env.ccm_env = "export HTTPS_PROXY=http://x:1".into();
+    assert_eq!(
+        needs_shell(&with_env, None),
+        Some(WHY_SHELL_CCM_ENV),
+        "`CCM_ENV` 是一段任意 shell，只有 shell 解释得了 —— 这一条不许被收窄掉"
+    );
+    assert_eq!(
+        needs_shell(&codex_bare, Some("claude --resume x")),
+        Some(WHY_SHELL_RESOLVED),
+        "后端答出的是一整条命令串，要 shell 拆词（`set -f; exec $cmd`）—— 这一条也不许被收窄掉"
+    );
+    // 优先级：`CCM_ENV` 先答（它是最外那一段），与 `render_direct` 的拼串顺序同向。
+    assert_eq!(
+        needs_shell(&with_env, Some("claude --resume x")),
+        Some(WHY_SHELL_CCM_ENV),
+        "两件都在时该先说最外那一段"
+    );
+}
+
+/// ★ **每一条「为什么非得经 shell」都真有人用，而且只有一处用**（`D7` ＋ `D1`）。
+///
+/// 🔴 这几句话不是装饰：`sh` 不在这台机器上时，它们就是用户唯一看得到的**原因**。
+/// 真机读数（`真相源/106 §3.3`）为此只能靠「同一个 launcher 在 claude 那趟 `EXIT=0`」
+/// 反推出「找不到的是 `sh` 不是 `hostname`」—— **错的归因比失败本身更贵**。
+///
+/// 人群从源码派生（生产段里每一处 `WHY_SHELL_` 的出现），**相等**断言：
+/// 声明一处 ＋ 取用一处 = 2。多了 ⇒ 同一句归因有第二处住址；少了 ⇒ 留了条用不上的话。
+#[test]
+fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/ccm/mod.rs"
+    ));
+    crate::guard_support::assert_no_test_code("control/ccm/mod.rs", &prod);
+
+    let reasons: &[(&str, &str)] = &[
+        ("WHY_SHELL_CCM_ENV", WHY_SHELL_CCM_ENV),
+        ("WHY_SHELL_RESOLVED", WHY_SHELL_RESOLVED),
+        ("WHY_SHELL_BUS_ID", WHY_SHELL_BUS_ID),
+        ("WHY_SHELL_ATTACH", WHY_SHELL_ATTACH),
+        ("WHY_SHELL_CONTAINER_TAIL", WHY_SHELL_CONTAINER_TAIL),
+    ];
+    for (name, text) in reasons {
+        assert_eq!(
+            prod.matches(name).count(),
+            2,
+            "`{name}` 在生产段出现 {} 次（该是 2：声明一处 ＋ 取用一处）。\n\
+             多了 ⇒ 同一句归因有了第二处住址；少了 ⇒ 这是一条没人用的话。",
+            prod.matches(name).count()
+        );
+        assert!(
+            text.chars().count() >= 12,
+            "`{name}` 那句话只有 {} 个字 —— 太短，答不出「为什么非得经它」",
+            text.chars().count()
+        );
+    }
+    // 五句话两两不同：同一句话贴在两处出口上等于没有归因。
+    let mut seen: std::collections::BTreeSet<&str> = Default::default();
+    for (_, text) in reasons {
+        assert!(seen.insert(text), "有两条出口贴着同一句归因：{text:?}");
+    }
+    // 🔴 `sh` 起不来时那句话要带得出机器可认的 code（同 `no_tmux:` 那一形）。
+    assert_eq!(NO_SHELL, "no_shell");
+    assert_eq!(
+        prod.matches("NO_SHELL").count(),
+        2,
+        "`NO_SHELL` 在生产段出现 {} 次（该是 2：声明一处 ＋ 那句话里取用一处）",
+        prod.matches("NO_SHELL").count()
+    );
+    // 反向自检：抽取没坏（生产段里真有那两处起进程口）。
+    assert_eq!(
+        prod.matches("Command::new(").count(),
+        2,
+        "本文件生产段的起进程口不是 2 处了 —— `readonly_guard::spawn_registry` 那个数要一起看"
+    );
+}
