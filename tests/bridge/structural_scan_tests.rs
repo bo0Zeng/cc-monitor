@@ -3313,6 +3313,309 @@ fn the_dead_name_scanner_really_sees_each_shape() {
     assert!(json_rows[0].2.is_empty() && json_rows[0].1.contains(n.as_str()));
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// `P14`：**[`PROSE_NAME_TOMBSTONE`] 这个标记本身有没有账**（`α3` 刀 C 那个没红的读数）
+// ══════════════════════════════════════════════════════════════════════
+
+/// 本条的语料面：**两棵互不包含的根**（`src` ＋ `tests`），`(仓根相对路径, 原文)`。
+///
+/// # 🔴 为什么**刻意不与** [`dead_name_corpus`] 共用
+///
+/// 那一份为了让**死名**人群成立，按构造做了四件事：摘掉 `tests/evidence/`、
+/// 摘掉 vendored 代码、摘掉判词自己那一份、再把 `src/bridge/build.rs` 显式收第二遍。
+/// 本条数的是**标记的处数** —— 上面每一条摘除都会让某几处标记**掉出人群**，
+/// 而「掉出人群」在本条正是要逮的那件事（掉出去 ⇒ 删掉它不红 ⇒ 静默可删）。
+/// ⇒ 这里**一处都不摘，也不重复收任何文件**：人群就是文件系统全集。
+///
+/// ⚠ **它按构造看不见的那一格，如实写明**：[`guard_core::scan_tree_excluding`]
+/// 收的是**文本**语料，非 UTF-8 的字节流它跳过（那个原语的头注逐字写着理由）。
+/// 一处标记按定义是 UTF-8 文本，所以这一刀在本条上零损失 —— 但别把它读成
+/// 「本函数看得见这两棵树下的每一个文件」。
+fn tombstone_mark_corpus() -> Vec<(String, String)> {
+    let root = addr_repo_root();
+    let mut out: Vec<(String, String)> = Vec::new();
+    for sub in ["src", "tests"] {
+        for (p, src) in guard_core::scan_tree_excluding(&root.join(sub), &[] as &[&str], &[]) {
+            out.push((dead_name_rel(&root, &p), src));
+        }
+    }
+    out
+}
+
+/// ★★ **每一处 [`PROSE_NAME_TOMBSTONE`] 标记都有账；想挂却挂歪了的也有账。**
+///
+/// 头注（买到什么 · 买不到什么 · 为什么人群必须是全集 · 为什么 `P14` 的第一个出口
+/// 做不得）住生产侧模块那三个抽取器上（[`prose_tombstone_core`] ·
+/// [`prose_tombstone_marks`] · [`prose_tombstone_near_misses`]），
+/// 以及 [`PROSE_NAME_TOMBSTONE`] 头注那段订正。**这里不抄第二份。**
+#[test]
+fn every_prose_tombstone_mark_is_registered() {
+    /// **标记普查**：`(仓根相对路径, 标记处数)`。人群 = 文件系统全集，**逐格相等**。
+    ///
+    /// ⚠ **表名叫 `REGISTERED` 不是随手起的。** `scanning_guard_registry` 那条纪律逐字：
+    /// 「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成 `TABLE_DECLS` 里已有的
+    /// 名字之一」—— 起了别的名字，`every_registry_guard_keeps_its_reverse_half`
+    /// **看不见本条**，而「它看过了、过了」与「它压根没去看」在输出上一模一样。
+    ///
+    /// ⚠ 加行/改数之前先问一遍：**这一处是一块真墓碑吗？** 是 ⇒ 挂标记、在这里记一笔；
+    /// 不是（量具脚本里的针、讲机制的散文）⇒ 同样记一笔，并在旁边写清它是哪一类。
+    /// **不许**为了让本条变绿就把标记删掉 —— 删掉的是账，不是病。
+    const REGISTERED: &[(&str, usize)] = &[
+        // ▸ 下面这 5 份是 `P14` 立件的**直接证据**：它们在 `TOMBSTONED` 里一行都没有
+        //   ⇒ 它们的标记**没有一处**落在死名人群上 ⇒ 在本条之前按构造零判据。
+        //   逐份是：本模块生产侧那份（标记的定义处）· 本文件（那一处带标记的墓碑，
+        //   而本文件按构造被摘出了死名语料）· `byte_cap_registry_tests` ·
+        //   `tests/evidence/` 两份量具脚本（针，不是墓碑）。合 15 处。
+        ("src/backend/wire.rs", 1),
+        ("src/bridge/README.md", 1),
+        ("src/bridge/build.rs", 1),
+        ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
+        ("src/bridge/src/backend/control/cc_bus.rs", 6),
+        ("src/bridge/src/backend/control/local_backend.rs", 1),
+        ("src/bridge/src/backend/control/payload.rs", 1),
+        ("src/bridge/src/backend/control/tmux.rs", 7),
+        ("src/bridge/src/ccm_cli_contract.rs", 1),
+        ("src/bridge/src/history.rs", 1),
+        ("src/bridge/src/launch.rs", 1),
+        ("src/bridge/src/lib.rs", 1),
+        ("src/bridge/src/local_backend_host.rs", 1),
+        ("src/bridge/src/local_origin_registry.rs", 1),
+        ("src/bridge/src/spawn_managed.rs", 2),
+        ("src/bridge/src/structural_scan.rs", 1),
+        ("src/doc/ARCHITECTURE.md", 1),
+        ("src/doc/INVARIANTS.md", 4),
+        ("src/doc/IPC-PROTOCOL.md", 4),
+        ("src/settings/accounts-section.ts", 1),
+        ("tests/backend/control/gate_tests.rs", 1),
+        ("tests/backend/no_timer_guard.rs", 1),
+        ("tests/backend/readonly_guard.rs", 2),
+        ("tests/bridge/backend/control/backend_kill_tests.rs", 1),
+        ("tests/bridge/backend/control/backend_send_keys_tests.rs", 1),
+        ("tests/bridge/backend/control/cc_bus_tests.rs", 2),
+        ("tests/bridge/backend/control/inbound_client_tests.rs", 1),
+        (
+            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
+            4,
+        ),
+        ("tests/bridge/backend/control/tmux_tests.rs", 3),
+        ("tests/bridge/backend_tests.rs", 1),
+        ("tests/bridge/byte_cap_registry_tests.rs", 1),
+        ("tests/bridge/capability_registry_tests.rs", 1),
+        ("tests/bridge/ccm_cli_contract_tests.rs", 1),
+        ("tests/bridge/crates/guard-core/lib_tests.rs", 1),
+        ("tests/bridge/doc_claim_registry_tests.rs", 1),
+        ("tests/bridge/filewin/entry_tests.rs", 1),
+        ("tests/bridge/parity_ledger_tests.rs", 5),
+        ("tests/bridge/plugin_class_registry_tests.rs", 2),
+        ("tests/bridge/polling_registry_tests.rs", 1),
+        ("tests/bridge/sftp_tests.rs", 3),
+        ("tests/bridge/shared_crate_registry_tests.rs", 1),
+        ("tests/bridge/structural_scan_tests.rs", 1),
+        ("tests/bridge/subagent_tests.rs", 1),
+        ("tests/bridge/tmux_backend_gate_guard_tests.rs", 3),
+        ("tests/bridge/tool_registry_environment_tests.rs", 1),
+        ("tests/evidence/K-R20-C-deadname-census.py", 1),
+        ("tests/evidence/S29-legacy-compat-census.py", 11),
+        ("tests/ipc/commands.vitest.ts", 2),
+    ];
+
+    /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。
+    ///
+    /// 口径与人群见 [`prose_tombstone_near_misses`] 头注。今天 5 行，两类：
+    ///
+    /// · ㈠ **真的挂歪了（三处，全是往定界符里塞了一个日期）** ——
+    ///   `plan.rs` 那一处连定界符都没写；另两处（`remote_write_registry_tests` ·
+    ///   `filewin/source_tests`）写成了「定界符里带日期」形 ⇒ 完整标记比不上
+    ///   ⇒ 它们的记账**整个落空**，而贴的人以为贴上了。
+    ///   🔴 **本拍刻意不改它们**：那三份文件都在本拍写区之外，而「哪儿红就往哪儿改」
+    ///   与本仓「存量走棘轮、新写的一律红」那条纪律相反。⇒ 登记，让**新增**的红。
+    /// · ㈡ **在谈机制本身（两处，合法）** —— 一份死值验记录的叙述，
+    ///   与 `tests/scripts/gate.sh` 里那段「立项理由已不成立、原话照留」的头注。
+    const SITES: &[(&str, usize)] = &[
+        ("src/backend/control/ccm/plan.rs", 1),
+        ("tests/bridge/filewin/source_tests.rs", 1),
+        ("tests/bridge/remote_write_registry_tests.rs", 1),
+        ("tests/evidence/K-R112-deathvalue.md", 1),
+        ("tests/scripts/gate.sh", 1),
+    ];
+
+    // ★ 抽取器自检 0：内芯真的是从标记**拆**出来的。
+    //   拆成空串 ⇒ 「挂歪」人群命中每一行；拆成整串 ⇒ 那个人群恒空。
+    //   两个方向都会让下面第 ③ 条在一个假人群上成立，所以这一格放在最前面。
+    let core = prose_tombstone_core();
+    assert!(
+        !core.is_empty()
+            && core.len() < PROSE_NAME_TOMBSTONE.len()
+            && PROSE_NAME_TOMBSTONE.contains(core),
+        "内芯拆坏了（实得 {core:?}）—— 空串会命中每一行，等于整串会让「挂歪」人群恒空"
+    );
+
+    let corpus = tombstone_mark_corpus();
+    // ★ 抽取器自检 1：语料面塌了 ⇒ 下面三条相等会在「两边都空」上成立。
+    assert!(
+        corpus.len() >= 1300,
+        "标记普查只收到 {} 份文本文件 —— 语料面坏了（2026-09-22 现打 1413 份：`src` ＋ `tests` 两棵根）",
+        corpus.len()
+    );
+
+    let mut marks: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut near: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for (rel, src) in &corpus {
+        let n = prose_tombstone_marks(src);
+        if n > 0 {
+            marks.insert(rel.clone(), n);
+        }
+        let nm = prose_tombstone_near_misses(src).len();
+        if nm > 0 {
+            near.insert(rel.clone(), nm);
+        }
+    }
+    let total: usize = marks.values().sum();
+    // ★ 抽取器自检 2：命中面塌了 ⇒ 第 ① 条会在空集上相等。
+    assert!(
+        total >= 80,
+        "全树只抽到 {total} 处标记 —— 抽取器坏了（2026-09-22 现打 93 处 / 48 份）"
+    );
+
+    let want: std::collections::BTreeMap<String, usize> = REGISTERED
+        .iter()
+        .map(|(p, n)| ((*p).to_string(), *n))
+        .collect();
+    assert_eq!(
+        want.len(),
+        REGISTERED.len(),
+        "`REGISTERED` 里有重复路径 —— 后一行会静默吃掉前一行"
+    );
+
+    // ① **逐格相等**，两个方向一起报：多一处 / 少一处 / 多一份 / 少一份都红。
+    //   🔴 地板在这里是**瞎的**：标记被删掉是「变少」方向，而那正是 `α3` 刀 C。
+    let keys: std::collections::BTreeSet<&String> = marks.keys().chain(want.keys()).collect();
+    let drift: Vec<String> = keys
+        .into_iter()
+        .filter_map(|k| {
+            let d = marks.get(k).copied().unwrap_or(0);
+            let w = want.get(k).copied().unwrap_or(0);
+            (d != w).then(|| format!("  {k}  盘上 {d} 处，登记表写 {w} 处"))
+        })
+        .collect();
+    assert!(
+        drift.is_empty(),
+        "标记普查对不上盘面：\n{}\n\n\
+         ⇒ 三条出路，按优先级：\n\
+         ① **新贴了一处标记** ⇒ 在 `REGISTERED` 里加一行（+1）。贴标记是一次\
+         **会被看见的记账**，这一行就是那笔账；\n\
+         ② **那一处不在了** ⇒ 先问「那块墓碑为什么被删掉」。墓碑留的是**线索**\
+         （某个东西为什么不在了），删掉它删的是账 ⇒ 多半该把它加回来，\
+         而不是把这一行减掉；真该没有（被守的那件事整轴退役）就减掉，并在旁边写清理由；\n\
+         ③ **那份文件改名/搬家了** ⇒ 改这一行的住址。\n\
+         ⚠ 本条与 `TOMBSTONED` **单位不同、不可互相替代**：那张表数的是\
+         「落在死名人群上的标记」，本条数的是「标记」。两个数对不上是常态，不是缺陷。",
+        drift.join("\n")
+    );
+
+    // ② 第二把尺：**总数**。上面那一比万一在键的归一上错位（`\\` vs `/`、
+    //   前缀没剥干净），两边会**同时**失真而逐格比照样空；总数不吃那种错位。
+    assert_eq!(
+        total,
+        want.values().sum::<usize>(),
+        "标记总处数与登记表的和对不上 —— 逐格那一比此刻不可信（多半是键归一错位）"
+    );
+
+    // ③ **挂歪了**那一格，同样逐格相等（人群见 `SITES` 头注）。
+    let want_near: std::collections::BTreeMap<String, usize> =
+        SITES.iter().map(|(p, n)| ((*p).to_string(), *n)).collect();
+    let near_keys: std::collections::BTreeSet<&String> =
+        near.keys().chain(want_near.keys()).collect();
+    let near_drift: Vec<String> = near_keys
+        .into_iter()
+        .filter_map(|k| {
+            let d = near.get(k).copied().unwrap_or(0);
+            let w = want_near.get(k).copied().unwrap_or(0);
+            (d != w).then(|| format!("  {k}  盘上 {d} 行，登记表写 {w} 行"))
+        })
+        .collect();
+    assert!(
+        near_drift.is_empty(),
+        "「提了这件事却没把标记挂上」那一格对不上盘面：\n{}\n\n\
+         ⇒ 先分清是哪一类（口径在 `prose_tombstone_near_misses` 头注里）：\n\
+         ㈠ **想挂标记却挂歪了**（定界符里塞了日期 / 只写了内芯）⇒ **把标记挂对**，\
+         并按上面第 ① 条在 `REGISTERED` 里 +1。\n\
+         🔴 这是本格最值钱的一格：挂歪的那一处**以为自己受保护，其实零判据** ——\
+         它既不进 `TOMBSTONED`，也不进本条的标记普查。\n\
+         ㈡ **在谈这件机制本身**（量具里的针 / 记录里的叙述）⇒ 在 `SITES` 里记一行，\
+         并写清它属哪一类。\n\
+         ⚠ **不许**靠删掉那句话变绿。",
+        near_drift.join("\n")
+    );
+}
+
+/// 上面那条判据的**活体夹具** —— 它在真树上今天是绿的（三格逐格对上），
+/// 而「今天该对上」那种格是**空真**：抽取器死了照样对得上。
+/// ⇒ 这里造合成文本，把三个抽取器逐格切开验，**正反各喂一遍**。
+///
+/// 文本一律**现拼**（标记从 [`PROSE_NAME_TOMBSTONE`] 取、内芯从
+/// [`prose_tombstone_core`] 取），一个字面量都不写 —— 否则本文件自己
+/// 就会进真树上那两个人群，而那正是本模块从头到尾在治的那件事。
+#[test]
+fn the_tombstone_mark_scanner_really_sees_each_shape() {
+    let mark = PROSE_NAME_TOMBSTONE;
+    let core = prose_tombstone_core();
+
+    // ① 处数口径是「处」不是「行」：一行挂两处就算两处。
+    let two = format!("/// 旧名{mark} 与 旧名{mark}\n");
+    assert_eq!(prose_tombstone_marks(&two), 2, "一行两处标记被数成了一处");
+    assert_eq!(prose_tombstone_marks("/// 什么都没挂\n"), 0);
+
+    // ② 挂对了的那一行**不许**进「挂歪」人群（否则本族会永远红，
+    //    而一条永远红的闸第一天就会被调松 —— 那是本族最坏的结局）。
+    assert_eq!(
+        prose_tombstone_near_misses(&two),
+        Vec::<usize>::new(),
+        "挂对了的行进了「挂歪」人群 ⇒ 本条会在合法文本上误红"
+    );
+
+    // ③ 🔴 **挂歪了的那两形真的被看见。**
+    //
+    //    形甲「定界符里多塞了一个日期」—— 这就是现打逮到的那三处里两处的形状：
+    //    完整标记比不上 ⇒ 那一处的记账整个落空，而贴的人以为贴上了。
+    //    定界符**运行期从标记切**（切最后一个字符），不写第二份字面量。
+    let close_len = mark.chars().last().map_or(0, |c| c.len_utf8());
+    let (mark_head, mark_tail) = mark.split_at(mark.len() - close_len);
+    let dated = format!("/// 行一\n/// {mark_head} 2026-09-21{mark_tail} 旧名已删\n");
+    assert!(
+        !dated.contains(mark),
+        "抽取器的前提塌了：往定界符里塞了东西之后它竟然还包含完整标记 —— 那一形不存在"
+    );
+    assert_eq!(
+        prose_tombstone_near_misses(&dated),
+        vec![2],
+        "「定界符里带日期」这一形没被看见 ⇒ 现打那两处挂歪的就永远没人管"
+    );
+
+    //    形乙「只写了内芯、定界符都没写」—— 现打那三处里的第三处。
+    let bare = format!("/// 行一\n/// {core} 留在这里\n");
+    assert_eq!(
+        prose_tombstone_near_misses(&bare),
+        vec![2],
+        "「只写了内芯」这一形没被看见"
+    );
+
+    // ④ 同一行**既有完整标记又有裸内芯**时，本条**偏向不红** ——
+    //    口径如实写明：判定是「这一行有没有完整标记」，不是「有几处裸内芯」。
+    let mixed = format!("/// {core} 讲机制，又挂了 {mark}\n");
+    assert_eq!(
+        prose_tombstone_near_misses(&mixed),
+        Vec::<usize>::new(),
+        "混合行的口径变了 —— 本条明写偏向不红，改口径要连头注一起改"
+    );
+
+    // ⑤ 内芯必须是标记的**真子串**（拆法坏了，上面四格全部失真）。
+    assert!(
+        mark.contains(core) && core.len() < mark.len() && !core.is_empty(),
+        "内芯拆坏了：mark={mark:?} core={core:?}"
+    );
+}
+
 // ── `99 §2.5 P9` 的前提闸 ────────────────────────────────────────────────────
 
 /// 两棵**生产树**的仓根相对住址。`P9` 剩下两件的前提说的就是这两棵树。
