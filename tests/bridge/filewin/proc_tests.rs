@@ -349,14 +349,14 @@ fn the_window_binary_target_really_hosts_the_body() {
     let toml = std::fs::read_to_string(&manifest).expect("读不到本包的 Cargo.toml");
     // ① 那个 bin 的名字与本模块持有的主干**是同一个串**（抄第二份必漂）。
     assert!(
-        toml.contains(&format!("name = \"{BIN_STEM}\"")),
+        guard_core::pin_line(&toml, &format!("name = \"{BIN_STEM}\"")).is_ok(),
         "`Cargo.toml` 里没有一个叫 `{BIN_STEM}` 的目标 —— \
          而生产那条路正是按这个名字去 exe 旁边找它的"
     );
     // ② 它的入口文件是那一份，而且那一份在盘上。
     let rel = "src/filewin/win_main.rs";
     assert!(
-        toml.contains(&format!("path = \"{rel}\"")),
+        guard_core::pin_line(&toml, &format!("path = \"{rel}\"")).is_ok(),
         "`Cargo.toml` 里那个 bin 的 `path` 不是 `{rel}` —— 入口搬家了，本条的第 ③ 比跟着失效"
     );
     let entry = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
@@ -365,7 +365,7 @@ fn the_window_binary_target_really_hosts_the_body() {
     // ③ 🔴 它真的调那个躯体。**这一比是本条的全部价值**：
     //    一个空 `main` 会让上面两比照样绿，而窗口永远不出来。
     assert!(
-        body.contains("child_main()"),
+        guard_core::find_pinned(&body, "child_main()").is_ok(),
         "`{rel}` 里没有调 `child_main()` —— 那个二进制编得过、也产得出，\
          但起它之后什么都不会发生（窗口永远不出来）。\n它是这样的：{body}"
     );
@@ -412,7 +412,7 @@ fn the_entry_command_has_no_in_process_fallback_left() {
     let prod = guard_core::production_code(&src);
     // ★ 反向自检：剥完之后生产段**不是空的**，否则下面那条零命中恒真。
     assert!(
-        prod.contains("pub async fn open_file_window"),
+        guard_core::find_pinned(&prod, "pub async fn open_file_window").is_ok(),
         "剥生产段把入口那条命令一起剥掉了 —— 下面那条零命中此刻恒真"
     );
     // 运行时拼，免得命中本行自己。

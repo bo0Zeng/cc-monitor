@@ -1731,6 +1731,46 @@ fn ident_char(c: char) -> bool {
 ///
 /// `Ok(字节偏移)`，或 `Err(诊断)` —— 诊断带上实际看到的上下文，照 F01 Phase D 的教训：
 /// **变异要连诊断文案一起读**，只写「不匹配」的判据在变异时看不出落地没落地。
+/// 从一份 `Cargo.toml` 的正文里，抠出**依赖声明**里那些 `path = "…"`。
+///
+/// # 为什么这件事要有一个家
+///
+/// 一份 manifest 里 `path = "…"` 有**两种**完全不同的意思：
+/// **依赖**（`foo = { path = "../bar" }` —— 指一棵有自己 `Cargo.toml` 的树）与
+/// **目标声明**（`[[bin]]` / `[[example]]` / `[[test]]` 底下顶格的 `path = "src/x.rs"`
+/// —— 指一个**入口文件**）。把后者当成前者，就会拼出
+/// `<入口文件>/Cargo.toml` 去问 git，得到一条**讲错成因的假红**。
+///
+/// 🔴 这一形不是假想：2026-09-23 往 `monitor` 包里加第二个 `[[bin]]` 时当场撞上了，
+/// 而它对**任何人**加第二个 bin/example/test 都会犯，不是某一次的手滑。
+/// 同一条口径 `panorama_seam_registry` 那一族早就写死过（逐字「只认依赖段：
+/// `[[bin]]` 那条 `path` 指的是入口文件，不是一棵树」）⇒ 在它搬进来之前，
+/// 这条口径有**两个家**（`D1`）。
+///
+/// # 判准是**形状**，不是白名单
+///
+/// 依赖声明恒是**内联表**（同一行上 `path =` 之前有 `{`）；目标声明恒是**表里的一个顶格键**。
+/// ⇒ 不需要枚举「哪些段是目标段」，也就不会在上游多出一种目标类型的那天悄悄失效。
+///
+/// ⚠ 它**买不到**什么：多行写法（`[dependencies.foo]` 段底下单独一行 `path = "…"`）
+/// 认不出 —— 那一形今天全仓零处，登记为已知欠算，**不是已守**。
+pub fn inline_table_paths(toml: &str) -> Vec<String> {
+    let key = "path = \"";
+    let mut out = Vec::new();
+    for line in toml.lines() {
+        let Some(i) = line.find(key) else { continue };
+        // 顶格的 `path =`（目标声明）⇒ 不是依赖。内联表那一形前面一定有 `{`。
+        if !line[..i].contains('{') {
+            continue;
+        }
+        let rest = &line[i + key.len()..];
+        if let Some(end) = rest.find('"') {
+            out.push(rest[..end].to_string());
+        }
+    }
+    out
+}
+
 pub fn find_pinned(hay: &str, needle: &str) -> Result<usize, String> {
     if needle.is_empty() {
         return Err("needle 为空 —— 那会匹配到任何地方，等于关掉判据".into());
