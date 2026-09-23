@@ -625,9 +625,11 @@ mod tests {
          带超时的等待线程，形状逐字落在禁用表上而人群够不着 —— 见 `g6_reach`。",
     ),
         (
-        "server.rs",
+        "listen.rs",
         "Duration::from_millis(30_000)",
-        "中转**下游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（`relay/server.rs::DOWNSTREAM_DEADLINE`）：\
+        "中转**下游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（〔`P16` 2026-09-22〕那个**值**\
+         今天住 `relay/listen.rs::DOWNSTREAM_DEADLINE` —— 按 `设计/01 §2.1 C4`「期限值全部由后端\
+         交给它」搬出层 1；装它的那一手仍在 `relay/server.rs::apply_downstream_deadline`，收入参）：\
          它说的是「**这一次**阻塞的读/写最多等多久」——有字节就立刻返回，没字节就**报错**返回。\
          它**不让任何线程自己醒来**、不产生节拍、不驱动任何循环：期限一到那条连接就被结掉，\
          `pump` 与 `http1` 的读循环只对 `Interrupted` 重试、其余一律 `return Err`。\
@@ -638,9 +640,10 @@ mod tests {
          **`K-G6` 摸底没有重打**（登记在件文件 `§0b-7②`），要摘这一条之前先把它核实。",
     ),
         (
-        "upstream.rs",
+        "listen.rs",
         "Duration::from_millis(600_000)",
-        "中转**上游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（`relay/upstream.rs::UPSTREAM_DEADLINE`）：\
+        "中转**上游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（〔`P16`〕同上，那个**值**今天住\
+         `relay/listen.rs::UPSTREAM_DEADLINE`；装它的那一手仍在 `relay/upstream::connect`，收入参）：\
          性质同上一条（一次阻塞的上限，不是唤醒），值不同是因为这一跳等的是**模型在想** ——\
          SSE 长流上游几十秒不发字节是正常形态，所以它必须比下游那条宽得多。\
          同样不驱动任何循环：到点即结连接，没有任何一层重试。不是定时器。",

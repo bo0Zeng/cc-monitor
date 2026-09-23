@@ -496,7 +496,11 @@ fn a_config_dir_that_names_no_account_is_refused_instead_of_falling_back() {
 ///
 /// `(方法名, 期望总处数, 期望它住在哪个文件的路径尾巴)`。**默认拒绝**：对不上就红。
 const PLAINTEXT_EXIT_SITES: &[(&str, usize, &str)] = &[
-    ("expose_for_auth_header(", 1, "src/backend/relay/server.rs"),
+    (
+        "expose_for_auth_header(",
+        1,
+        "src/backend/relay/accounts/mod.rs",
+    ),
     (
         "expose_for_persisting(",
         1,

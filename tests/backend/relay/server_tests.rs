@@ -6,7 +6,10 @@ use super::*;
 //    判据要用就得自己写明白：**判据的人群从哪来，要看得见**。
 use super::super::accounts::creds;
 use super::super::accounts::{self, table::RoutingTable, Accounts};
-use super::super::listen::{listen, resolve_config, run, run_reading, run_with, serve, RelayExec};
+use super::super::listen::{
+    listen, resolve_config, run, run_reading, run_with, serve, RelayExec, DOWNSTREAM_DEADLINE,
+    UPSTREAM_DEADLINE,
+};
 use super::super::upstream;
 use creds_core::SecretKey;
 use std::io::BufRead;
@@ -48,11 +51,11 @@ fn render_via_layer_two(
             Destination::Passthrough { upstream } => {
                 render_upstream_request(head, rest, upstream, None, body_len)
             }
-            Destination::Substitute {
-                upstream,
-                key,
-                style,
-            } => render_upstream_request(head, rest, upstream, Some((key, style)), body_len),
+            // 〔`P16` 2026-09-22〕层 2 交下来的是一个 `AuthSwap`（头名 ＋ 完整头值 ＋
+            // 要丢的头名全集），层 1 照写 ⇒ 这里原样把它递进渲染，**不许在判据里自己凑一份**。
+            Destination::Substitute { upstream, auth } => {
+                render_upstream_request(head, rest, upstream, Some(&auth), body_len)
+            }
         });
     });
     String::from_utf8(out.expect("层 2 一次都没答")).expect("utf8")
@@ -642,6 +645,8 @@ fn spawn_relay_with_sink(
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
         TeeSink::new(w),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
@@ -1725,6 +1730,8 @@ fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         dest_of(table),
         TeeSink::new(Box::new(std::io::sink())),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
@@ -2132,7 +2139,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
 ///
 /// # 死值验落在哪一格
 ///
-/// 把 [`auth_header_of`] 里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
+/// 把 `accounts::auth_header_of`（`P16` 之后住层 2）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
 /// （形状对、恒答默认那张脸）⇒ 本条的 `x-api-key` 那几格当场红，
 /// 而**默认那一行**那几格仍绿 ⇒ 这一刀是**单断**，不是目录级塌陷。
 ///
@@ -2211,41 +2218,14 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
     }
 }
 
-/// ★★ `K-R1`：**我可能自己写出来的每一个头名，都在「先丢掉」那个集合里**。
+/// 〔`P16` 2026-09-22〕**`every_header_this_relay_may_write_is_in_the_set_it_clears_first`
+/// 搬去 `creds_guard` 了** —— 墓碑，别在这里重建一份。
 ///
-/// 缺一格的症状是同名鉴权头出现**两次**（上游谁赢没有定义）——
-/// 那正是先前丢掉 `Authorization` 的理由，而新加一种形状很容易只加一半。
-/// ⇒ 这一条把两个集合焊在一起：它们各自的住址只有一个，本条核它们对得上。
-#[test]
-fn every_header_this_relay_may_write_is_in_the_set_it_clears_first() {
-    use creds_core::store::AuthStyle;
-    // 反空真：`AUTH_HEADER_NAMES` 非空，而且**全是小写**
-    //（比对走 `eq_ignore_ascii_case`，但表里混大小写会让读的人以为它区分大小写）。
-    assert!(
-        !AUTH_HEADER_NAMES.is_empty(),
-        "那个集合是空的 —— 本条在空转"
-    );
-    for n in AUTH_HEADER_NAMES {
-        assert_eq!(*n, n.to_ascii_lowercase(), "表里这一项不是小写：{n}");
-    }
-    let mut written = 0usize;
-    for s in AuthStyle::ALL.iter().copied() {
-        let Some((name, _)) = auth_header_of(s) else {
-            continue;
-        };
-        written += 1;
-        assert!(
-            AUTH_HEADER_NAMES
-                .iter()
-                .any(|n| n.eq_ignore_ascii_case(name)),
-            "`{name}` 是本中转会写出去的头，却不在「换头前先丢掉」那个集合里 \
-                 ⇒ 客户端也带一个同名的时候，上游会看见两个"
-        );
-    }
-    // 反空真：真的走过至少两种「会写头」的形状（全是 `None` 的话上面循环空转）。
-    assert!(written >= 2, "只有 {written} 种形状会写头 —— 本条在空转");
-}
-
+/// 它焊的两端（「我可能写出来的头名」＝ `auth_header_of` · 「先丢掉哪几个」＝那份名单）
+/// 本来都住层 1。`P16` 把映射按 `C2` 搬去层 2、名单改成由映射**派生**之后，
+/// 两端都在层 2 ⇒ 判据跟着搬到层 2 那侧（`creds_guard`），**正题一个字没松**，
+/// 而且多买了一格：它现在还断言那个集合是**全集**（射程不许缩）。
+///
 /// ★★★ **`K-R1` 的正主之二**：`base_url` 里那一段路径前缀
 /// **真的到了发给上游的请求行上**。
 ///
@@ -2650,6 +2630,8 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
         TeeSink::new(Box::new(std::io::sink())),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
     );
     handle(down, &relay).expect("handle 必须走完一条转发");
     assert!(
@@ -2669,7 +2651,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
     let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
-    match upstream::connect(&base2).expect("connect upstream") {
+    match upstream::connect(&base2, UPSTREAM_DEADLINE).expect("connect upstream") {
         upstream::Conn::Plain(s) => {
             assert!(
                 s.nodelay().expect("getsockopt"),
@@ -2744,6 +2726,8 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
         TeeSink::new(Box::new(std::io::sink())),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
     );
     handle(down, &relay).expect("handle 必须走完一条转发");
     assert_eq!(
@@ -2770,16 +2754,16 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
     let a = peer.local_addr().expect("addr");
     let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
-    match upstream::connect(&base2).expect("connect upstream") {
+    match upstream::connect(&base2, UPSTREAM_DEADLINE).expect("connect upstream") {
         upstream::Conn::Plain(s) => {
             assert_eq!(
                 s.read_timeout().expect("getsockopt"),
-                Some(upstream::UPSTREAM_DEADLINE),
+                Some(UPSTREAM_DEADLINE),
                 "上游方向：`upstream::connect()` 必须装上**读**期限"
             );
             assert_eq!(
                 s.write_timeout().expect("getsockopt"),
-                Some(upstream::UPSTREAM_DEADLINE),
+                Some(UPSTREAM_DEADLINE),
                 "上游方向：`upstream::connect()` 必须装上**写**期限 ——\
                      写那半钉的是 `up.write_all(&body)`（请求体最大 `BODY_CAP` = 64 MiB）"
             );
@@ -2903,10 +2887,10 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
 #[test]
 fn the_upstream_deadline_is_the_wider_one_because_a_silently_thinking_model_is_normal() {
     assert!(
-        upstream::UPSTREAM_DEADLINE > DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE > DOWNSTREAM_DEADLINE,
         "上游期限（{:?}）必须比下游（{:?}）宽：下游对端就在本机、慢是**异常**；\
              上游等的是模型在想、慢是**正常**。两个数写成一样就会掐断正常的长流。",
-        upstream::UPSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
         DOWNSTREAM_DEADLINE
     );
 }
