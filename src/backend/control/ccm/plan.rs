@@ -342,6 +342,17 @@ pub(crate) struct Direct {
     pub(crate) ccm_env: String,
     /// codex 要的 cc-bus 身份配方（claude 不要 —— 会盖掉 `@cc_id` 细分）。
     pub(crate) bus_id_recipe: bool,
+    /// 🔴 〔`P19` 09-22〕这一趟**真的在 tmux 里**吗（`$TMUX` 非空）。
+    ///
+    /// 上一行那段配方（[`super::BUS_ID_RECIPE`]）**整段裹在 `if [ -n "${TMUX:-}" ]` 里** ⇒
+    /// 这一格为假时它**一个字都不做**。真跑那一侧靠这一格判断「还要不要请一个 shell 进来」
+    /// （[`super::needs_shell`]）—— 而那正是 `--agent codex` 在 Windows 上
+    /// `program not found` 的那一跳（读数住 `真相源/106 §3.3`）。
+    ///
+    /// ⚠ **只有真跑那一侧读它；[`render`] 一个字不看** —— `--print` 必须对宿主环境
+    /// 逐字节稳定（`INVARIANTS §33a` 铁律 2：不查实时 tmux 状态，**值不知道就打印配方**）。
+    /// 把这一格接进 `render` 会让同一条计划在 tmux 内外吐出两种输出，那正是 `§33a` 的原病。
+    pub(crate) inside_tmux: bool,
     /// 账号维度的载体（环境变量名）—— 见 [`Env::account_env`]。
     pub(crate) account_env: String,
     /// 要 export 的账号目录。
@@ -717,6 +728,9 @@ pub(crate) fn build(
     Ok(Plan::Direct(Direct {
         ccm_env: env.ccm_env.clone(),
         bus_id_recipe: super::needs_bus_id(&o.agent),
+        // 与那段配方的 `if [ -n "${TMUX:-}" ]` **同一个判准**：`Env::tmux` 就是
+        // `var("TMUX").ok().filter(|v| !v.is_empty())` ⇒ 两侧逐字等价，不是近似。
+        inside_tmux: env.tmux.is_some(),
         account_env: env.account_env.clone(),
         config_dir,
         unset_config_dir: o.use_base,

@@ -205,6 +205,18 @@ pub(crate) fn nested_env(agent: &str) -> Vec<String> {
 }
 
 /// 这个 agent 够不着 tmux socket、要把会话名经 env 透进去吗。
+///
+/// # ⚠ 〔`P19` 09-22〕它答的是「**要不要**」，不是「**能不能**」—— 两者别混
+///
+/// 这一格为真只说明「codex 要一个 `CC_BUS_ID`」。**值从哪来**是另一件事：
+/// 来源恒是 tmux 的会话名（[`BUS_ID_RECIPE`] 里那句 `display-message -p "#S"`）
+/// ⇒ **没有 tmux 就没有这个值**，而这不是「codex 这一支做不到」，是**载体没了**
+///（与 `base-url-across-tmux` 同一形，`lib.rs::TARGET_GAPS` 里 tmux 那一族 6 条已覆盖）。
+///
+/// 🔴 这两件事混在一起过一次，代价是一年的账：从前 `exec_direct` 拿本函数当
+/// 「要不要请一个 `sh` 进来」的闸 ⇒ `--agent codex` **每一趟**都要 `sh`，
+/// Windows 上因此 `EXIT=4 program not found`（真机现打住 `真相源/106 §3.3`）。
+/// 今天那个闸在 [`needs_shell`]，而且它多问一句「配方**真有事可做**吗」。
 pub(crate) fn needs_bus_id(agent: &str) -> bool {
     agent == "codex"
 }
@@ -365,7 +377,7 @@ fn execute(plan: Plan) -> i32 {
     match &plan {
         // attach / 容器路的收尾都是一条**已经渲好的命令串** ⇒ 交给 `sh -c`。
         // 它与 `--print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
-        Plan::Attach { .. } => exec_shell(&plan::render(&plan, None)),
+        Plan::Attach { .. } => exec_shell(&plan::render(&plan, None), WHY_SHELL_ATTACH),
         Plan::Container(c) => {
             // 🔴 〔`K-R96` 09-12〕**这里从前有一段退让** —— 它只发生在真跑这条路上，
             //    于是 `--print` 吐的名字与真跑起出来的名字**可以不一样**。
@@ -410,7 +422,7 @@ fn execute(plan: Plan) -> i32 {
             } else {
                 // 收尾片段以 ` && ` / `; ` 开头（它在 `--print` 里是接在建会话那段后面的）
                 // ⇒ 单独跑时前面补一个 `:`，**不重写一份**（重写就是第二处住址）。
-                exec_shell(&format!(":{tail}"))
+                exec_shell(&format!(":{tail}"), WHY_SHELL_CONTAINER_TAIL)
             }
         }
         Plan::Direct(d) => exec_direct(d, resolved(&plan).as_deref()),
@@ -440,23 +452,93 @@ fn launch_args(c: &plan::Container) -> serde_json::Value {
     serde_json::Value::Object(m)
 }
 
-/// 把一条渲好的命令串交给 `sh -c` 并**替换掉自己**。
+/// 「这一趟非得经 POSIX shell」的**归因**——五句，一句一处，**都在 [`needs_shell`] /
+/// [`execute`] 的判定旁边取用**，不许在别处另写一句
+///（「一句只许一处用」由 [`tests::every_reason_for_needing_a_shell_is_declared_once_and_used_once`]
+/// 机检，人群从本文件生产段现打）。
+///
+/// 🔴 它们的用处不是好看：`sh` 不在这台机器上时，这句话就是用户唯一看得到的**原因**
+///（`D7`：失败要显式、归因要准确）。从前那条路只吐 `ccm: 起不来 —— program not found`，
+/// 于是真机读数（`真相源/106 §3.3`）**只能靠对比 `claude` 那趟 `EXIT=0` 反推**
+/// 「找不到的不是 `hostname`，是 `sh`」—— 错的归因比失败本身更贵。
+pub(crate) const WHY_SHELL_CCM_ENV: &str =
+    "CCM_ENV 非空，而它是一段任意 shell，只有 shell 解释得了";
+/// 同上：后端答出了 `resume` 那一问。
+pub(crate) const WHY_SHELL_RESOLVED: &str =
+    "后端答出的是一整条命令串，要靠 shell 拆成词才跑得了（`set -f; exec $cmd`）";
+/// 同上：codex 的 cc-bus 身份配方，**而且这一趟真在 tmux 里**。
+pub(crate) const WHY_SHELL_BUS_ID: &str =
+    "codex 的 cc-bus 身份配方要现问一次 tmux（`display-message -p '#S'`），而这一趟真在 tmux 里";
+/// 同上：`attach`。
+pub(crate) const WHY_SHELL_ATTACH: &str = "attach 的实现就是一条渲好的 `tmux attach` 命令串";
+/// 同上：容器路的收尾片段。
+pub(crate) const WHY_SHELL_CONTAINER_TAIL: &str =
+    "容器路的收尾是一段自带节拍的 shell 串（兜底轮询 / attach / cc-bus 登记）";
+
+/// 🔴 **`P19`：直路这一趟非得经 `sh -c` 吗** —— 这个判定**只有这一处住址**。
+///
+/// 返回 `Some(why)` 时 `why` 就是报错时要说的那句归因（见上面那几条常量）。
+///
+/// # 从前这里有一条多余的闸，而它是 Windows 上 `--agent codex` 那句 `program not found`
+///
+/// 上一版的条件逐字是 `!d.ccm_env.is_empty() || d.bus_id_recipe || resolved.is_some()`
+/// —— **`bus_id_recipe` 单独就把整条改走 `sh -c`**。而 `needs_bus_id("codex")` 恒真
+/// ⇒ 每一趟 `--agent codex` 都要一个 `sh`，Windows 上没有 ⇒ `EXIT=4 program not found`
+///（真机现打住 `真相源/106 §3.3` 的 `agent` 那一行）。
+///
+/// 🔴 **收窄靠的是一条等价，不是一条近似**（`INVARIANTS §33` 那条「不得近似」）：
+/// [`BUS_ID_RECIPE`] **整段**裹在 `if [ -n "${TMUX:-}" ]; then … fi;` 里，
+/// 而 [`plan::Direct::inside_tmux`] 就是 `var("TMUX").ok().filter(|v| !v.is_empty()).is_some()`
+/// ⇒ 这一格为假时，那个 shell 进来之后**在 `exec` 之前一个字都不做**：
+/// 剩下的几件（`export` 账号目录 / `unset` / `cd` / `exec argv`）本函数下面那段
+/// 逐条都有原生对应物。⇒ **省掉的是一个什么都不做的中间进程，不是一件功能。**
+/// 这条等价由 [`tests::the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact`]
+/// 钉着 —— 谁把配方改成「无条件做点什么」，那条当场红。
+///
+/// # 它**没有**买到什么
+///
+/// 另两条（`CCM_ENV` / `resume` 被后端答出来）**是真的要 shell**，本函数不假装它们不要
+/// ⇒ 在没有 `sh` 的机器上它们照旧做不到，只是从今天起**说得出口**（`no_shell:`）。
+fn needs_shell(d: &plan::Direct, resolved: Option<&str>) -> Option<&'static str> {
+    if !d.ccm_env.is_empty() {
+        return Some(WHY_SHELL_CCM_ENV);
+    }
+    if resolved.is_some() {
+        return Some(WHY_SHELL_RESOLVED);
+    }
+    if d.bus_id_recipe && d.inside_tmux {
+        return Some(WHY_SHELL_BUS_ID);
+    }
+    None
+}
+
+/// 把一条渲好的命令串交给 `sh -c` 并**替换掉自己**。`why` = 这一趟为什么非得经 shell。
 ///
 /// 起进程点，已登记进 `readonly_guard::spawn_registry::ALLOWED`。
-fn exec_shell(line: &str) -> i32 {
+fn exec_shell(line: &str, why: &str) -> i32 {
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c").arg(line);
-    exec_or_spawn(cmd)
+    exec_or_spawn(
+        cmd,
+        &format!("{NO_SHELL}: 这一趟非得经 POSIX shell（sh -c）—— {why}"),
+    )
 }
+
+/// 命令级 code —— **「这台机器上没有 POSIX shell」**。
+///
+/// ⚠ 与 `crate::NO_TMUX` 同形（`ccm: 起不来 —— <code>: <话>`），但**不是**一条 wire code：
+/// 它只出现在 `ccm` 这条用户终端命令的 stderr 上，`inbound::REGISTRY` 里没有它、
+/// 也不该有 —— 那张表登记的是 monitor↔backend 帧面上的 code，而这里是一次性模式的出口。
+pub(crate) const NO_SHELL: &str = "no_shell";
 
 /// 在**本进程**里设好最终环境、`cd`，然后 `exec` 掉自己。
 ///
 /// 🔴 这几步必须发生在**调用者那个进程**里：env 要落在最终 `exec` 的那个 shell 上，
 /// 否则穿不过 tmux 的进程边界（旧 `cct` 正是死在这一步）。
 fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {
-    // 机器级 env（代理等）：它是一段 shell，只有 shell 解释得了 ⇒ 有它就整条走 `sh -c`。
-    if !d.ccm_env.is_empty() || d.bus_id_recipe || resolved.is_some() {
-        return exec_shell(&plan::render(&Plan::Direct(d.clone()), resolved));
+    // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`。
+    if let Some(why) = needs_shell(d, resolved) {
+        return exec_shell(&plan::render(&Plan::Direct(d.clone()), resolved), why);
     }
     for k in &d.nested {
         std::env::remove_var(k);
@@ -479,19 +561,25 @@ fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {
     };
     let mut cmd = std::process::Command::new(prog);
     cmd.args(rest);
-    exec_or_spawn(cmd)
+    exec_or_spawn(cmd, &format!("起 '{prog}'"))
 }
 
 /// POSIX 上就地 `exec`（不多一层进程）；其余平台退成「起它 + 等它 + 透传退出码」。
 ///
 /// ⚠ **Windows 没有 `exec` 原语** —— `K26` 那句「就地 `exec`」在 POSIX 上成立、
 /// 在 Windows 上不成立。这里不假装它成立，而是明确退成另一种形状。
-fn exec_or_spawn(mut cmd: std::process::Command) -> i32 {
+///
+/// `subject` = **起不来的是什么**。🔴 它不是装饰（`D7`）：从前这里只吐
+/// `ccm: 起不来 —— {e}`，而 `{e}` 在 Windows 上逐字是 `program not found`
+/// ⇒ 那句话**指不出是哪个 program**。真机读数（`真相源/106 §3.3`）为此只能靠
+/// 「同一个 launcher 在 `claude` 那趟 `EXIT=0`」反推出「找不到的是 `sh`」。
+/// ⇒ 现在两处调用点各自把主语带进来（`sh -c` 那条还带上「为什么非得经它」）。
+fn exec_or_spawn(mut cmd: std::process::Command, subject: &str) -> i32 {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         let e = cmd.exec();
-        eprintln!("ccm: 起不来 —— {e}");
+        eprintln!("ccm: 起不来 —— {subject}：{e}");
         return 4;
     }
     #[cfg(not(unix))]
@@ -499,7 +587,7 @@ fn exec_or_spawn(mut cmd: std::process::Command) -> i32 {
         match cmd.status() {
             Ok(s) => s.code().unwrap_or(1),
             Err(e) => {
-                eprintln!("ccm: 起不来 —— {e}");
+                eprintln!("ccm: 起不来 —— {subject}：{e}");
                 4
             }
         }
