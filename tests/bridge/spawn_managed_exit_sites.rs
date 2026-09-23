@@ -68,6 +68,18 @@ use std::path::PathBuf;
 /// ＋「为什么非它自己造不可」（本列，逐条）一起说清。一句总述盖不住十四处。
 const SITES: &[(&str, &str, &str, &str)] = &[
     (
+        "filewin/proc.rs",
+        "spawn_window",
+        "spawn_managed_cmd",
+        "🔴〔第十三刀 2026-09-23〕文件管理窗口的独立进程。**它非自己造 `Command` 不可，\
+         唯一的理由是 stdin**：那一屏（＋ 源 ＋ cwd ＋ reveal）走 stdin 递过去，\
+         而出口只回答三条策略、不回答「跑什么」。\
+         ⚠ 为什么不走环境变量（那样就能用出口最简那个形态）：一屏上限 5 万条，\
+         JSON 是兆字节级，而 Linux 一条环境变量的上限是 32 页 ⇒ `execve` 直接 `E2BIG`；\
+         argv 更不行（世界可读，而种子里带主机名 / 用户名 / 私钥路径）。\
+         ⚠ **stdout 刻意不接**：接成管子而没人读，对面一写满就卡死。",
+    ),
+    (
         "ccm_probe.rs",
         "probe_with",
         "spawn_managed_cmd",

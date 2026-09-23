@@ -566,31 +566,142 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
     }
 }
 
-/// 🔴 **零命中型**：这一侧**没有**任何一个重走周期的字面量。
+/// 🔴 **零命中型 ＋ 唯一住址**：重走周期那个数在客户端这一侧**一处都没有**，
+/// 而它在后端**恰好一处**。
 ///
-/// `设计/99 §2 Q4` 逐字：周期该定多少**还没拍板** ⇒ 这一侧不许有第二个家。
-/// 后端今天声明的是 `300`，所以 `300` 出现在生产段里就是一个假的第二住址。
+/// # 🔴〔第十三刀 2026-09-23〕用户拍板了，而这一条要买的东西**没变**
+///
+/// 上一版这段头注逐字写着「`设计/99 §2 Q4` 逐字：周期该定多少**还没拍板**」。
+/// **那句话今天过期了**：用户 2026-09-22 同一轮裁「按推荐来」，而推荐原文逐字是
+/// 「先按现值 **300 秒**发，界面上把它**显示出来**」⇒ 那个数**定了**。
+///
+/// 而「定了」并**不**削弱本条 —— 恰恰相反：`设计/01 §5 D2` 逐字不许前后端各写一份，
+/// 一个**已经定下来的**数比一个待定的数更容易被人顺手抄到界面这一侧
+/// （「反正就是 300」）。⇒ 本条这一刀**加宽**了，见下面 §射程。
+///
+/// # 射程：从一份文件扩到**整棵客户端树**，另加一条后端侧的唯一性
+///
+/// 上一版只扫 `filewin/find.rs`。那是个洞：把 `300` 写进 `shell.rs` / `source.rs`
+/// 的任何一处，上一版**看不见**。今天扫的是 `filewin/` 整棵树的生产段。
+///
+/// 加宽之后撞到一个**真的、合法的** `300`，逐条登记在 [`MILLIS_NOT_SECONDS`] 里：
+/// `shell.rs` 的 `EARLY_FAILURE_BUDGET` 是 **300 毫秒**（开窗那一跳的预算）——
+/// 与重走周期**不同单位、不同量纲、不同用途**。
+/// ⚠ 本仓为「裸数字不是一把尺子」栽过（`13247 字节` 里有 `13`）⇒ 例外**明写**，
+/// 而且那张表自己也被两向钉着：登记了而盘上没有 ⇒ 也红。
+///
+/// # ⚠ 它买不到什么
+///
+/// - **买不到「界面上显示的就是后端报的那个数」** —— 那由
+///   [`the_freshness_numbers_the_backend_reports_really_reach_the_frame`] 买
+///   （真跑一帧、从 galley 里读回来、而且喂两组不同的数）。
+/// - **买不到那个值是多少对不对**（那是产品判断，用户已裁）。本条刻意**不**断言
+///   后端那个常量等于 300 —— 断言它就等于**在这一侧又造了一个知道那个值的地方**，
+///   而那正是 `D2` 禁的事。本条只数「住址有几个」。
+/// - **买不到「后端那一处真的被送上线」**（那由 `files-index-status` 的契约判据买：
+///   `STATUS_FIELDS` 里有它、少了它就解析失败）。
 #[test]
 fn no_rewalk_period_literal_lives_on_this_side() {
-    let src =
-        std::fs::read_to_string(crate::guard_support::crate_src_root().join("filewin/find.rs"))
-            .expect("find.rs 读不动");
-    let prod = guard_core::production_code(&src);
+    /// 客户端树里**合法**的那几处 `300`：`(文件, 它是什么)`。
+    ///
+    /// 🔴 默认拒绝：不在这张表里的一处 `300` 就是红。
+    /// 而这张表**反向也钉**：登记了而盘上没有 ⇒ 说明那一处改了/没了，得回来看一眼。
+    const MILLIS_NOT_SECONDS: &[(&str, &str)] = &[(
+        "shell.rs",
+        "`EARLY_FAILURE_BUDGET` = 300 **毫秒** —— 开窗那一跳的预算（人感觉不到 /          毫秒级失败一定抓得到之间的取值）。与重走周期不同单位、不同量纲、不同用途。",
+    )];
+
     // 运行时拼，免得命中本行自己。
     let needle = format!("{}{}", 30, 0);
-    for line in prod.lines() {
-        // 只看代码，不看注释（注释里当然会提到那个数）。
-        let code = line.trim_start();
-        if code.starts_with("//") {
-            continue;
+    let dir = crate::guard_support::crate_src_root().join("filewin");
+    // 🔴 走 `guard_core` 而不是裸 `read_dir`（`scanning_guard_registry` 那条纪律）。
+    let files = guard_core::scan_tree!(&dir, &["rs"]);
+    // ★ 抽取器自检①：语料塌了 ⇒ 下面那条零命中恒真。
+    assert!(
+        files.len() >= 14,
+        "`filewin/` 只扫到 {} 份 `.rs` —— 语料面坏了，本条此刻是空转的",
+        files.len()
+    );
+    let mut hits: Vec<String> = Vec::new();
+    let mut scanned = 0usize;
+    for (path, raw) in &files {
+        let stem = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let prod = guard_core::production_code(raw);
+        scanned += prod.len();
+        for line in prod.lines() {
+            // 只看代码，不看注释（注释里当然会提到那个数）。
+            let code = line.trim_start();
+            if code.starts_with("//") || !code.contains(needle.as_str()) {
+                continue;
+            }
+            if MILLIS_NOT_SECONDS.iter().any(|(f, _)| *f == stem) {
+                continue;
+            }
+            hits.push(format!("  {stem}: {}", code.trim()));
         }
+    }
+    // ★ 抽取器自检②：剥完还得有东西可扫。
+    assert!(
+        scanned > 100_000,
+        "剥掉测试段之后只剩 {scanned} 字节可扫 —— 本条此刻是空转的"
+    );
+    assert!(
+        hits.is_empty(),
+        "客户端这一侧出现了 `{needle}`：\n{}\n\n\
+         ⚠ 那是后端声明的重走周期（用户 2026-09-22 裁「先按现值 300 秒发」）——\n\
+         `D2`：它只许有一个家，而那个家在后端。\n\
+         这一侧要用它，走 `IndexStatus::rewalk_interval_secs`（后端报过来的那一份）。\n\
+         真的是另一个意思的 `300`（比如毫秒）⇒ 往 `MILLIS_NOT_SECONDS` 里加一行并写清它是什么。",
+        hits.join("\n")
+    );
+    // ★ 例外表的**反向**那一半：登记了而盘上没有 ⇒ 也红。
+    for (f, what) in MILLIS_NOT_SECONDS {
+        let raw = files
+            .iter()
+            .find(|(p, _)| p.file_name().and_then(|s| s.to_str()) == Some(*f))
+            .map(|(_, raw)| guard_core::production_code(raw))
+            .unwrap_or_else(|| panic!("例外表点着 `{f}`，而语料里没有这份文件"));
         assert!(
-            !code.contains(needle.as_str()),
-            "`find.rs` 的生产段里出现了 `{needle}`：{line:?}\n\
-             ⚠ 那是后端今天声明的重走周期 —— 它只许有一个家，而那个家在后端。\n\
-             这一侧要用它，走 `IndexStatus::rewalk_interval_secs`（后端报过来的那一份）。"
+            raw.contains(needle.as_str()),
+            "例外表给 `{f}` 开了口子（{what}），而它的生产段里**没有** `{needle}` ——\n\
+             那一处改了或没了 ⇒ 回来把这一行删掉（留着就是一个白开的口子）"
         );
     }
+
+    // ══════════════════════════════════════════════════════════════
+    // 🔴 另一半：那个数在**后端恰好一个住址**
+    // ══════════════════════════════════════════════════════════════
+    //
+    // 只数「零命中」是半条：客户端一处都没有，而后端长出第二份（比如
+    // `browse_watch.rs` 自己也写一个）时，本条照旧全绿 —— 而那时那个数就有两个家了。
+    let backend = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend");
+    let btree = guard_core::scan_tree!(&backend, &["rs"]);
+    assert!(
+        btree.len() >= 40,
+        "后端树只扫到 {} 份 `.rs` —— 语料面坏了，下面那条相等此刻不可信",
+        btree.len()
+    );
+    let decl = format!("pub const {}", "REWALK_INTERVAL_SECS");
+    let homes: Vec<String> = btree
+        .iter()
+        .filter(|(_, raw)| guard_core::production_code(raw).contains(&decl))
+        .map(|(p, _)| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(
+        homes,
+        vec!["index.rs".to_string()],
+        "重走周期那个数的住址现打是 {homes:?}，而它只许有一个（`files/index.rs`）。\n\
+         多一处 = `D2` 破了；少一处 = 它改名/搬家了，而这一侧那条零命中随之变成空转。"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════

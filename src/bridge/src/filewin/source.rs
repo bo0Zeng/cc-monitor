@@ -25,7 +25,13 @@ use std::path::Path;
 use crate::ssh_source::RemoteConfig;
 
 /// 文件列表里的一行。**故意比 `SftpEntry` 窄** —— 列表只画得下这些。
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// 🔴〔第十三刀 2026-09-23〕**它现在要过一次进程边界**，所以多了 serde 那一对。
+/// 开窗改成起一个独立进程之后，入口那条命令先列好的那一屏得**交给另一个进程**
+/// （逐条理由住 [`super::proc`]）。⚠ 这一对 derive **不是** rust↔TS 那条边界上的
+/// （没有 `#[ts(export)]`，前端一个字段都不消费它）—— 它只走
+/// 「monitor → 窗口进程」这一跳，两头是**同一份代码**编出来的。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Row {
     pub name: String,
     /// 绝对路径。远端恒用 `/`；本机用本机分隔符。
@@ -37,7 +43,9 @@ pub struct Row {
 }
 
 /// 这个窗口现在在看哪儿。
-#[derive(Clone, Debug)]
+///
+/// 🔴〔第十三刀〕serde 那一对的理由同 [`Row`]：开窗那一跳要把它交给另一个进程。
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Source {
     Local,
     Remote(Box<RemoteConfig>),
