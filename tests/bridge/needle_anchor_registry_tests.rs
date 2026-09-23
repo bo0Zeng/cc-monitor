@@ -11,9 +11,88 @@ fn repo_root() -> PathBuf {
 /// 刻意**不含** `production_code(` / `production_source(` —— 那两个也常拿字面量夹具当输入
 /// （`guard-core` 与 `profile_installer` 的单测就是），把它们当种子会把纯夹具断言也算进来。
 /// 摸底实测（收窄到 34 个扫描型判据文件时）：含它们 73 处，只留磁盘种子 59 处。
-const CORPUS_SEEDS: &[&str] = &["read_to_string(", "scan_tree!"];
+///
+/// # 🔴 〔`P28` 2026-09-22〕这张表**漏掉了剖分之后本仓钦定的那个遍历原语**
+///
+/// 原文逐字只有 `["read_to_string(", "scan_tree!"]`。而 `scan_tree!` 只是一个宏，
+/// 它展开成 `scan_tree_excluding_self(` —— 那个函数**号称**按 `file!()` 摘掉调用者自己，
+/// 而那一刀在本仓的判据上**一处都不生效**（判据一律由 `#[path]` 挂载 ⇒ `file!()` 给的是
+/// 带 `..` 的折返路径 ⇒ 后缀比**恒不命中**；逐字读数住 `scanning_guard_registry` 头注）。
+/// **`设计/99` 条 73 因此把「摘掉自己」换成了明写名单**，于是新写的遍历一律是
+/// `guard_core::scan_tree_excluding(`（现打：`tests/bridge` 29 处 · `tests/backend` 12 处 ·
+/// `src/bridge/crates` 1 处），而那个字面量**这张表一个都不含** ——
+/// `scan_tree_excluding(` 里没有 `scan_tree!`，也没有 `read_to_string(`。
+/// ⇒ 每一条改用新原语的判据，都**按构造**从这条棘轮的人群里掉了出去，而掉出去是静默的。
+///
+/// ★ 这正是本模块头注那一族的**镜像**（`scanning_guard_registry` 里逐字记过）：
+/// 那一族是「判据在自己的登记表里找到了自己」，这一格是「**登记表根本没去找它**」。
+/// 两边的默认结局都是恒绿。
+///
+/// ⚠ **仍然刻意不含的两个**，连理由一起写出来（这不是遗漏）：
+/// · `files_by_extension(` / `shell_scripts(` —— 它们返回的是**路径**，不是文本语料
+///   （`guard-core` 那两处头注逐字写着「这个只要路径」）。路径上的裸后缀匹配正是
+///   [`needle_is_a_file_extension`] 已登记的那条豁免那一形，不是本区治的「needle 被撑大」。
+/// · `include_str!` —— 它**是**真磁盘语料（编译期读文件），本区漏了它是**第三个洞**，
+///   而它的人群比上面那一个大一个量级（现打：`tests/bridge` 362 处 · `tests/backend` 158 处）。
+///   🔴 **本拍刻意不补**：补它要连着逐处处置，那是另一件；读数与处置建议
+///   写在 `P28` 的交付报告里，**别把这一行读成「那条路安全」**。
+const CORPUS_SEEDS: &[&str] = &[
+    "read_to_string(",
+    "scan_tree!",
+    "scan_tree_excluding(",
+    "scan_tree_excluding_self(",
+];
 
-/// ★ **递减棘轮的上限**（08-06 全树实测 **33** 处）。
+/// ★ **递减棘轮的上限**（`P28` 2026-09-22 全树重测 **96** 处；旧值 33 / 旧实测 29）。
+///
+/// # 🔴 这个数从 33 变成 96 —— **人群变了，标准一格没松**〔`P28` 2026-09-22〕
+///
+/// 上一段（63 → 35）记的是「**量准了**所以降」。这一拍是同一件事的**反方向**：
+/// [`CORPUS_SEEDS`] 漏了 `scan_tree_excluding(`、[`corpus_vars`] 不认 `for` 模式绑定
+/// （两个洞**互相独立**，理由各写在那两处），补完之后原先**按构造进不了人群**的那些
+/// 判据一次性全进来了。
+///
+/// ★ **它不是「把上限调上去让今天好过」，判准有两条，都可现打复核**：
+///
+/// 1. **新上限一格富余都没有** —— 逐个原语钉的就是当天实测值本身
+///    （旧的 `.contains(` 上限 33 / 实测 29 ⇒ **有 4 格富余**；今天 96 / 96 ⇒ **0 格**）。
+///    ⇒ 在**旧人群**那一侧，今天比昨天**更紧**：昨天还能白加 4 处，今天加 1 处就红。
+/// 2. **总数 44 → 178 那 134 处的增量，一处都不是新写的代码** —— 基线树一个字没动
+///    （`P28` 只改了本文件与它的生产侧头注）。增量全部来自「本来就在那儿、而尺子够不着」。
+///
+/// # 逐原语新旧两个数（`P28` 现打，诊断里 `by_file` 逐处点名可复核）
+///
+/// | 原语 | 旧上限 | 旧实测 | **新实测＝新上限** |
+/// |---|---|---|---|
+/// | `.contains(` | 33 | 29 | **96** |
+/// | `.starts_with(` | 0 | 0 | **30** |
+/// | `.strip_prefix(` | 0 | 0 | **20** |
+/// | `.find(` | 8 | 8 | **16** |
+/// | `.matches(` | 13 | 6 | **7** |
+/// | `.ends_with(` | 0 | 0 | **6** |
+/// | `.rfind(` | 0 | 0 | **2** |
+/// | `.split(` | 1 | 1 | **1** |
+/// | **合计** | — | **44** | **178** |
+///
+/// # 🔴 那 134 处**没有逐条判过真伪** —— 这一格是账，别读成「已分类的存量」
+///
+/// 头注那张四类表（存在性/自检 vs 正向事实钉）只过了 08-06 那 34 处。
+/// 新进来的这 134 处**一条都没过**，而且**逐处处置这一拍做不完**：
+/// 它们里有相当一批住在 `P28` 的禁区（`structural_scan` 的判据 27 处 ·
+/// `comm_boundary_registry` 的判据 1 处），改不了。
+/// ⇒ 已按交付纪律**停下来报备**，处置另开一件。
+///
+/// ⚠ 尤其要点名一处**被这一拍软化了的承诺**：`.ends_with(` 的上限是
+/// 〔步 7c 2026-09-19〕刻意从 2 拧到 0 的，那一段逐字写着「任何**非**扩展名的裸
+/// `ends_with` 从此当场红」。人群补全之后它实测 **6** 处 ——
+/// 逐处的住址刻意**用那一行的代码本身**报，不用行号（行号每一轮都变，
+/// 写下去下一轮自动变成假话；`structural_scan` 那条行号判据逐字禁这件事）：
+/// `payload_tests.rs` 的 `rel.ends_with(` 取 `/launch.rs` 那一处 ·
+/// `structural_scan_tests.rs` 的行形解析 **4** 处（一处取 `() {`，
+/// 三处在同一行上取 ` < types,` / ` < scan_at,` / ` < act,`）·
+/// `readonly_guard.rs` 的 `entry.ends_with(` 取 `dependencies]` 那一处 ——
+/// 六处里**五处在禁区**，一处都动不了。⇒ 这条上限今天只能写 6，
+/// **而那句「从此当场红」现在是一句半真的话**，如实记在这里。
 ///
 /// ⚠⚠ **它从 63 降到 35 不是因为还了债，是因为量准了。**
 /// 原来的传递闭包按「RHS 里**提及**了语料变量」传，会跑飞（见 `is_direct_derivation`）；
@@ -26,7 +105,7 @@ const CORPUS_SEEDS: &[&str] = &["read_to_string(", "scan_tree!"];
 /// 新增一处仍然会越界。逐条判真伪归下一轮，见 `ROADMAP §5` 诚实边界。
 ///
 /// 只许降。修一处就把这个数调下来，**不许调上去让今天好过**。
-const BARE_CONTAINS_CEILING: usize = 33;
+const BARE_CONTAINS_CEILING: usize = 96;
 
 /// 「匹配单位比事实小」这一族的**全部**原语，各带各的递减棘轮上限。
 ///
@@ -37,18 +116,24 @@ const BARE_CONTAINS_CEILING: usize = 33;
 /// 棘轮的意义在此刻就是「别再长」；分类是后补的活，不是立棘轮的前提。
 const MATCHER_CEILINGS: &[(&str, usize)] = &[
     (".contains(", BARE_CONTAINS_CEILING),
-    (".matches(", 13),
-    (".find(", 8),
-    (".rfind(", 0),
-    (".starts_with(", 0),
+    // 🔴 〔`P28` 2026-09-22〕**下面这七个数全部重测过**，理由与新旧对照表
+    // 逐字住 [`BARE_CONTAINS_CEILING`] 的头注 —— **别在这里再写第二份**（本区 E12：
+    // 一个数字出现在两个地方就会漂）。一句话：人群补全了，**上限一格富余都没留**。
+    (".matches(", 7),
+    (".find(", 16),
+    (".rfind(", 2),
+    (".starts_with(", 30),
     // 🔴 〔步 7c 2026-09-19〕**2 → 0（往下拧）。** 原来那 2 处是
     //    `path.ends_with(".rs")` / `.ends_with(".ts")` 这一形 —— 已登记豁免
     //    （[`needle_is_a_file_extension`]：后缀 + 扩展名撑不大，没有更严的写法可换）。
     //    摘掉那一形之后全仓真欠账是 0 ⇒ 上限就写 0：从此任何**非**扩展名的
     //    裸 `ends_with` 当场红。
-    (".ends_with(", 0),
+    // 🔴 〔`P28` 2026-09-22〕**0 → 6，而上面那句「从此当场红」因此只剩半真** ——
+    //    人群补全之后露出 6 处非扩展名形，其中 5 处在 `P28` 禁区里动不了。
+    //    逐处住址与判词在 [`BARE_CONTAINS_CEILING`] 头注最后一段，**这是账不是分类**。
+    (".ends_with(", 6),
     (".split(", 1),
-    (".strip_prefix(", 0),
+    (".strip_prefix(", 20),
 ];
 
 /// 一个 `let` 绑定的名字与右侧表达式（右侧只取本行，多行 `let` 的首行足够判种子）。
@@ -94,18 +179,74 @@ fn let_binding(line: &str) -> Option<(&str, &str)> {
 /// 表现却和真红一模一样。宁可欠算。
 const DERIVE_DEPTH: usize = 2;
 
+/// 一个 `for` 头部的**模式绑定名**与被迭代的表达式（右侧只取本行）。
+///
+/// # 🔴 〔`P28` 2026-09-22〕[`let_binding`] 只认 `let`，而本仓取语料的主流写法不是 `let`
+///
+/// 逐字：`let_binding` 第一句是 `strip_prefix("let ")` ⇒ 一条
+/// `for (path, src) in guard_core::scan_tree_excluding(…)` 里的 `src`
+/// **永远进不了语料变量集**，于是它上面的裸 `contains("…")` 一处都不算。
+/// 现打全仓这一形有 **46 处**（`for (…, …) in <取语料的原语>`）。
+///
+/// ⚠ 要紧的是它**不只漏新原语**：`scan_tree!` 本来就在 [`CORPUS_SEEDS`] 里，
+/// 可只要它写在 `for` 头上而不是 `let` 右边，这条棘轮照样看不见 ——
+/// ⇒ 这两个洞是**独立的两个**，补一个不会顺带补掉另一个。
+///
+/// # 射程边界（两侧都写出来）
+///
+/// - **接得住**：`for (p, src) in …` · `for src in …` · `for (mut a, b) in …` ·
+///   `for (p, src) in &files`（`files` 是语料变量 ⇒ 走 [`is_direct_derivation`]）·
+///   多行调用（右侧只取本行，而种子字面量就在 `for` 那一行上）。
+/// - **接不住**：`for` 头跨行写（`for (p, src) in\n    guard_core::scan_tree…`）——
+///   那时本行右侧没有种子。现打全仓 0 处，**登记为已知欠算**，不是已守。
+/// - **`_` 不算变量**，同 [`let_binding`] 那条语言事实（否则 `|_|` 遍地都是，闭包会跑飞）。
+///
+/// ⚠ 元组里**每一个**名字都登记，包括拿到路径的那个（`path` / `p` / `f`）。
+/// 那是刻意的**从严**：`PathBuf` 上压根没有 `contains`，
+/// 而它真会命中的 `path.ends_with(".rs")` 恰好是 [`needle_is_a_file_extension`]
+/// 已登记的那条豁免 ⇒ 多登记一个名字不会造出假账。
+fn for_pattern_bindings(line: &str) -> Option<(Vec<&str>, &str)> {
+    let rest = line.trim_start().strip_prefix("for ")?;
+    // `in` 取**第一个**独立的词形（两侧带空格）：`for i in 0..n` 与 `for (a, b) in xs` 同形。
+    let at = rest.find(" in ")?;
+    let (pat, rhs) = (&rest[..at], &rest[at + " in ".len()..]);
+    let names: Vec<&str> = pat
+        .trim()
+        .trim_start_matches('(')
+        .trim_end_matches(')')
+        .split(',')
+        .filter_map(|raw| {
+            let t = raw.trim().trim_start_matches(['&', '*']).trim();
+            let t = t.strip_prefix("mut ").unwrap_or(t).trim();
+            let ok = !t.is_empty()
+                && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !t.chars().all(|c| c == '_');
+            ok.then_some(t)
+        })
+        .collect();
+    (!names.is_empty()).then_some((names, rhs))
+}
+
 fn corpus_vars(test_src: &str) -> BTreeSet<String> {
     let mut vars: BTreeSet<String> = BTreeSet::new();
     for _ in 0..DERIVE_DEPTH {
         let before = vars.len();
         for line in test_src.lines() {
-            let Some((name, rhs)) = let_binding(line) else {
-                continue;
+            // 一行要么是 `let`、要么是 `for` 头，两条路同一个判准：
+            // 右侧命中种子，或右侧是某个语料变量的**直接派生**。
+            let bound: Vec<(&str, &str)> = match let_binding(line) {
+                Some((name, rhs)) => vec![(name, rhs)],
+                None => match for_pattern_bindings(line) {
+                    Some((names, rhs)) => names.into_iter().map(|n| (n, rhs)).collect(),
+                    None => continue,
+                },
             };
-            let seeded = CORPUS_SEEDS.iter().any(|s| rhs.contains(s));
-            let derived = vars.iter().any(|v| is_direct_derivation(rhs, v));
-            if seeded || derived {
-                vars.insert(name.to_string());
+            for (name, rhs) in bound {
+                let seeded = CORPUS_SEEDS.iter().any(|s| rhs.contains(s));
+                let derived = vars.iter().any(|v| is_direct_derivation(rhs, v));
+                if seeded || derived {
+                    vars.insert(name.to_string());
+                }
             }
         }
         if vars.len() == before {
@@ -455,6 +596,84 @@ fn the_extractor_counts_only_disk_corpora() {
         2,
         "该数的是 `disk.contains(\"a\")` 与 `derived.contains(\"b\")` 两处：\
              字面量夹具那处不算，`contains(&other)`（needle 不是字面量）也不算"
+    );
+}
+
+/// ★ **负对照**：`P28` 补的这两个洞，**旧口径在同一份夹具上是零命中**。
+///
+/// 形态照 `ssh_source_write_half_guard::the_shared_stripper_keeps_the_part_this_guard_must_scan`
+/// —— 判的不是产品性质，是「**这把尺子够得着我说它够得着的那一段**」。
+///
+/// 🔴 **为什么不能只断言「语料变量集非空」**：旧口径在下面这两份夹具上，
+/// 语料变量集**就是空集** ⇒ 一条非空型的地板在这个方向上**恒不响**。
+/// 所以两半都用**相等**（`assert_eq!` 到具体处数）＋ 对旧口径的**零命中**断言。
+#[test]
+fn the_extractor_sees_the_for_pattern_and_the_designated_tree_primitive() {
+    // ── 洞 ①：种子表漏了剖分之后钦定的那个遍历原语 ──
+    let by_let = "\
+            let files = guard_core::scan_tree_excluding(&root, &[\"rs\"], &[]);\n\
+            assert!(files.contains(\"needle\"));\n";
+    assert_eq!(
+        bare_matcher_on_corpus(by_let, ".contains("),
+        1,
+        "`scan_tree_excluding(` 没被当成语料种子 —— 用这个原语取语料的判据**整批**掉出人群"
+    );
+    // 负对照：**旧的那张种子表**在这一行上够不着。旧的两个种子逐字写在这里 ——
+    // 本文件已在 [`bare_contains_on_disk_corpora_only_goes_down`] 的排除名单上
+    // （摘不到就 panic），写出来不会自匹配。
+    let seed_line = by_let.lines().next().expect("夹具第一行");
+    for old_seed in ["read_to_string(", "scan_tree!"] {
+        assert!(
+            !seed_line.contains(old_seed),
+            "旧种子 `{old_seed}` 居然命中了这一行 —— 这条对照失去意义，重新确认原语拼写"
+        );
+    }
+
+    // ── 洞 ②：只认 `let`，不认 `for` 模式绑定 ──
+    // ⚠ 与洞 ① **独立**：这里用的 `scan_tree!` 本来就在种子表里，
+    //   只因为它写在 `for` 头上而不是 `let` 右边，旧口径照样一处都看不见。
+    let by_for = "\
+            for (path, src) in guard_core::scan_tree!(&root, &[\"rs\"]) {\n\
+                assert!(src.contains(\"needle\"));\n\
+                assert!(path.starts_with(\"x\"));\n\
+            }\n";
+    assert_eq!(
+        bare_matcher_on_corpus(by_for, ".contains("),
+        1,
+        "`for (path, src) in …` 里的 `src` 没进语料变量集"
+    );
+    assert_eq!(
+        bare_matcher_on_corpus(by_for, ".starts_with("),
+        1,
+        "元组里拿到路径的那个名字也该登记 —— 刻意从严，理由见 [`for_pattern_bindings`] 头注"
+    );
+    // 负对照：旧口径的入口是 [`let_binding`]，拿它**现打**这一行，必须是 `None`。
+    let for_head = by_for.lines().next().expect("夹具第一行");
+    assert!(
+        let_binding(for_head).is_none(),
+        "`let_binding` 居然认了 `for` 头 —— 这条对照失去意义，旧口径没有瞎过"
+    );
+
+    // ── 边界：`_` 不是变量，两条路共用那条语言事实 ──
+    //
+    // 🔴 **这一格的第一版是空真的，死值验刀 3 当场逮到** ——
+    // 原文断的是「`bare_matcher_on_corpus(夹具, ".contains(") == 0`」，而夹具里的接收者
+    // 叫 `whatever`：把 `_` 登记成变量之后，`whatever` 照样不在集合里 ⇒ 那个 0 **本来就成立**，
+    // 刀砍下去一声不响（`5 passed`）。⇒ 断言换成直接落在被判的那个函数上。
+    let anon = "\
+            for (_, _) in guard_core::scan_tree_excluding(&root, &[\"rs\"], &[]) {\n\
+                assert!(whatever.contains(\"needle\"));\n\
+            }\n";
+    let anon_head = anon.lines().next().expect("夹具第一行");
+    assert!(
+        for_pattern_bindings(anon_head).is_none(),
+        "`for (_, _)` 把 `_` 登记成了变量 —— 那正是让闭包跑飞的那一形\
+         （[`let_binding`] 头注逐字记过 0 → 166 那一次）"
+    );
+    assert!(
+        corpus_vars(anon).is_empty(),
+        "整份夹具里只有 `_` 被绑定，语料变量集却非空：{:?}",
+        corpus_vars(anon)
     );
 }
 

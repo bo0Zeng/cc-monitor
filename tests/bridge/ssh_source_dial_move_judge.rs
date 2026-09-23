@@ -528,3 +528,32 @@ fn the_proxy_is_resolved_from_exactly_two_places_and_never_from_home() {
              真要加，先去那张表上登记。"
     );
 }
+
+// ── P28：给这条源码扫描型守卫立**负对照** ──
+//
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
+// 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
+// 「第一个测试模块之后再没有生产代码」时才对。`ssh_source.rs` 今天 4490 行，
+// 第一个测试模块在 **909** 行 ⇒ 那个近似把扫描面砍到前 908 行，
+// 而本文件要扫的东西全在它**后面**（逐针行号写在下面）。
+// ⇒ 扫描面一旦静默缩水，本文件的判据会**零命中地绿**。
+//
+// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
+// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+
+/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+#[test]
+fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
+    // ⚠ **不能拿 `fn connect_session(` 当锚点**：它今天在 **695** 行 —— 在第一个测试模块
+    //    （909 行）**之前** ⇒ 便宜近似也留得住它 ⇒ 那样这条对照会被填成恒真的
+    //    （`assert_stripper_keeps` 会为此当场红，而不是静默放过）。
+    //    本条真正会缩水的那一段是入口函数体：`pub async fn connect_and_exec(` 在 1236 行。
+    guard_core::assert_stripper_keeps(
+        "ssh_source_dial_move_judge · ssh_source.rs",
+        include_str!("../../src/bridge/src/ssh_source.rs"),
+        &["pub async fn connect_and_exec("],
+    );
+    // ⚠ 本判据的语料是**三份**文件，这里只立了 `ssh_source.rs` 那一份的对照 ——
+    //    另两份（`sftp.rs` / `port_forward.rs`）的针在它们各自第一个测试模块**之前**，
+    //    便宜近似留得住 ⇒ 立对照会恒真。**那不是「已守住」，是「这一形在那两份上不成立」。**
+}
