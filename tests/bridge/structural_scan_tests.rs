@@ -3406,6 +3406,11 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/byte_cap_registry_tests.rs", 1),
         ("tests/bridge/capability_registry_tests.rs", 1),
         ("tests/bridge/ccm_cli_contract_tests.rs", 1),
+        // 🔴 〔波 1/2 合并时补〕`P16㈢` 那一拍把「十一条全绿而归属待裁」那张表退役了，
+        //   并在原位留了一块墓碑（三句齐：为什么有 · 谁裁的 · 所以它走了）。
+        //   ⚠ 那块墓碑**刻意没点任何死符号的名字** ⇒ 它不需要 `TOMBSTONED` 加行，
+        //   只需要本表这一行 —— 两张表守的是两件事，别混。
+        ("tests/bridge/comm_boundary_registry_tests.rs", 1),
         ("tests/bridge/crates/guard-core/lib_tests.rs", 1),
         ("tests/bridge/doc_claim_registry_tests.rs", 1),
         ("tests/bridge/filewin/entry_tests.rs", 1),
