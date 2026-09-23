@@ -37,7 +37,7 @@
 
 use super::accounts::table::RoutingTable;
 use super::accounts::Accounts;
-use super::listen::{listen, serve};
+use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
 use super::server::Relay;
 use super::tee::TeeSink;
 use super::upstream::Base;
@@ -356,6 +356,8 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     let relay = Arc::new(Relay::new(
         Arc::new(Accounts::new(table)),
         TeeSink::new(Box::new(Sink(Arc::clone(&buf), tick))),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("中转地址");
