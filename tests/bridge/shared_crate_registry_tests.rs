@@ -242,20 +242,10 @@ fn every_path_dependency_is_actually_committed() {
     // ⚠ 判准是**形状**不是白名单：依赖声明恒是内联表（`{ path = … }`），
     // 目标声明恒是表里的一个顶格键。同一条口径 `panorama_seam_registry` 那一族
     // 早就写死过（逐字「只认依赖段：`[[bin]]` 那条 `path` 指的是入口文件，不是一棵树」）。
-    let mut paths: Vec<String> = Vec::new();
-    for line in toml.lines() {
-        let Some(i) = line.find("path = \"") else {
-            continue;
-        };
-        // 顶格的 `path =`（目标声明）⇒ 不是依赖。内联表那一形前面一定有 `{`。
-        if !line[..i].contains('{') {
-            continue;
-        }
-        let rest = &line[i + "path = \"".len()..];
-        if let Some(end) = rest.find('"') {
-            paths.push(rest[..end].to_string());
-        }
-    }
+    // 🔴 解析那一段搬进了 `guard_core::inline_table_paths`（同拍，2026-09-23）——
+    //    理由与「它买不到什么」住那个原语的头注，不在这里抄第二份。
+    //    顺带兑现 `D1`：这条口径先前在 `panorama_seam_registry` 那一族里已经有一个家。
+    let paths: Vec<String> = guard_core::inline_table_paths(&toml);
     // 抽取器自检：至少要抽到那 6 个共享 crate + vendor = 7 条（按实测）。
     assert!(
         paths.len() >= 7,
