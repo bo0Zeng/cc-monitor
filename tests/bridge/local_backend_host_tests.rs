@@ -4173,3 +4173,33 @@ fn three_fake_backends_land_in_three_different_cells() {
              三次之后整个进程周期不再起来，日志写「崩了 3 次」。"
     );
 }
+
+// ── P28：给这条源码扫描型守卫立**负对照** ──
+//
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
+// 被扫的 `src/bridge/src/lib.rs` 今天 2458 行，第一个 `#[cfg(test)]` 在 **59** 行
+// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 58 行，
+// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
+//
+// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
+// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+
+/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+#[test]
+fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
+    // 本文件对 `lib.rs` 的两条判据取的针：`shutdown_detached_ways_on_exit(`（298 / 1476）·
+    // `start_local_backend()`（568）· `take_start_refusal()`（602）—— 都在 59 之后。
+    //
+    // ⚠ 本文件另有一条 `the_strip_rule_this_file_leans_on_is_still_on_disk`，它是剥法的
+    //    **住址钉**，头注自己逐字声明「买不到剥法对不对」——**那条与本条不重叠**：
+    //    住址钉判「那一行还在 guard-core 里」，本条判「剥完之后我要扫的那一段还在」。
+    guard_core::assert_stripper_keeps(
+        "local_backend_host_tests · lib.rs",
+        include_str!("../../src/bridge/src/lib.rs"),
+        &[
+            "shutdown_detached_ways_on_exit(",
+            "start_local_backend()",
+            "take_start_refusal()",
+        ],
+    );
+}

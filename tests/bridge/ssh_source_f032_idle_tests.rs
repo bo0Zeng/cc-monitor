@@ -350,3 +350,30 @@ fn reaper_tracked_empty_idle_is_just_announced() {
         std::collections::HashSet::from(["live-a".to_string()])
     );
 }
+
+// ── P28：给这条源码扫描型守卫立**负对照** ──
+//
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
+// 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
+// 「第一个测试模块之后再没有生产代码」时才对。`ssh_source.rs` 今天 4490 行，
+// 第一个测试模块在 **909** 行 ⇒ 那个近似把扫描面砍到前 908 行，
+// 而本文件要扫的东西全在它**后面**（逐针行号写在下面）。
+// ⇒ 扫描面一旦静默缩水，本文件的判据会**零命中地绿**。
+//
+// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
+// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+
+/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+#[test]
+fn the_shared_stripper_keeps_the_registry_writes_this_guard_must_scan() {
+    // 本文件的抽取器自检数的是 `tmux_raw_registry()`（要求 >= 3 处）。
+    // 那 7 处里有 6 处在 1374–1472 行、1 处在 3664 行 —— 都在 909 之后
+    // ⇒ 换成便宜近似之后那个 >= 3 的地板**也会红**，但地板只在「归零」时红；
+    //    写口那一处（`record_tmux_raw(` @ 3684 / 3776）少一处它就不红了。
+    //    ⇒ 逐针钉住，别指望地板。
+    guard_core::assert_stripper_keeps(
+        "ssh_source_f032_idle_tests · ssh_source.rs",
+        include_str!("../../src/bridge/src/ssh_source.rs"),
+        &["tmux_raw_registry()", "record_tmux_raw("],
+    );
+}
