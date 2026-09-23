@@ -419,7 +419,7 @@ pub(crate) enum Probe {
 ///
 /// 它**不是定时器**：`SO_RCVTIMEO`/`SO_SNDTIMEO` 说的是「**这一次**阻塞的读写最多等多久」，
 /// 有字节就立刻返回、没字节就报错返回，不让任何线程自己醒来、不驱动任何循环。
-/// 形状与理由与 `relay/server.rs::DOWNSTREAM_DEADLINE` 逐字同源。
+/// 形状与理由与 `relay/listen.rs::DOWNSTREAM_DEADLINE` 逐字同源。
 /// 值给 3 秒：对端**就在本机**，一行 ~1 KB 的 hello 在回环上是微秒级的事；
 /// 3 秒比它高五六个量级，而它同时保证「起 monitor 时不会被一个哑口卡住」。
 const HANDSHAKE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(3_000);
