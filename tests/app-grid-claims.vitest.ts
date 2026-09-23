@@ -51,6 +51,29 @@
  *   不保证那个区域的位置好看 —— 那一格靠 `tests/evidence/S24-css-readings.md` 的真引擎读数。
  * - ⚠ 不管 `position: absolute` 的那几个画在哪：它们不是 grid item，不开隐式行，
  *   到此为止。
+ *
+ * # 🔴 它服务哪条业务要求：**`INVARIANTS.md` 条 22 第 4 项**〔`P21` 2026-09-22 现打补写〕
+ *
+ * 本文件原先只点得出 `设计/40 §7 步 9 ③` 与 `设计/41 §5`（**两处都在仓外**），
+ * 于是 `真相源/105 §1.4` 那趟普查把**条 22** 记成「全树零命中」，并由此推出
+ * 「所以它没人守」。**那句推论不成立** —— 它守的正是条 22 第 4 项，逐字：
+ *
+ * > **精简模式 CSS 不能塌 grid 行**（viewer + settings 都适用，解法不同）：`display:none`
+ * > 一个 grid **item**（如 viewer 的 `#tab-bar`）会把它从 grid 移除、剩余 item 前移落行
+ * > ⇒ viewer 必须只为剩余 item 定义对应行数（`auto 1fr 24px`）。
+ *
+ * 下面 `模式 viewer` 那一组就是它 —— 而且形态比条文的字面写法**更强**：条文说「只定义
+ * 对应行数」（要人回来数行），这里钉的是「隐式行数 == 0」（不用谁记得数）。
+ *
+ * ⚠ **`settings` 那一半在本文件里是 N/A，而那是设计使然、不是漏**：条 22 第 4 项
+ * 自己写着 settings「换了个更稳的解法」——`body.settings-window-mode` 直接 `display:none`
+ * 隐藏 grid **容器** `#app` 整块（非其内 item，无前移塌缩），面板 `position:fixed` 脱流铺满。
+ * 没有 item 前移 ⇒ 没有隐式行 ⇒ 本文件那三把尺子在那个模式下无对象。
+ * ⇒ 下面 `BOTH` 刻意只有 `default` / `viewer` 两档。
+ *
+ * ⚠ **条 22 的另外五项不在这里**（开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 ·
+ * listen 先注册再 emit · `core:window:allow-close` 能力 · 独立窗自调 `dispatcher.start()`）。
+ * 逐项今天谁在守，写在 `tests/invariants-frontend-guard.vitest.ts` 抬头那张表里。
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -629,7 +652,9 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
 
   for (const mode of BOTH) {
     describe(`模式 ${mode}`, () => {
-      it("模板自洽：具名区域的行/列数 == 声明的轨道数（隐式行数因此被钉在 0）", () => {
+      // ★ `mode === "viewer"` 这一档 = `INVARIANTS.md` **条 22 第 4 项**（精简模式 CSS
+      //   不能塌 grid 行）今天唯一的机检住址。理由与射程见本文件抬头那一节。
+      it("模板自洽：具名区域的行/列数 == 声明的轨道数（隐式行数因此被钉在 0；viewer 档 = 条 22 第 4 项）", () => {
         const tpl = templateOf(RULES, mode);
         expect(tpl.rows, "grid-template-areas 的行数 != grid-template-rows 的轨道数").toBe(
           tpl.declaredRows,
@@ -640,7 +665,7 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
         expect(tpl.areas.size).toBeGreaterThan(0);
       });
 
-      it("每个 in-flow 直接子元素都认领了一个本模板里声明过的格子", () => {
+      it("每个 in-flow 直接子元素都认领了一个本模板里声明过的格子（viewer 档 = 条 22 第 4 项）", () => {
         const tpl = templateOf(RULES, mode);
         const unclaimed: string[] = [];
         for (const c of ALL_CHILDREN) {
