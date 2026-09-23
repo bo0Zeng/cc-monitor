@@ -1559,3 +1559,37 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
              量的正是那条缝上的字符串 ⇒ 绕过去的那条路，前缀拼没拼上没有任何判据看得见。"
     );
 }
+
+// ── P28：给这条源码扫描型守卫立**负对照** ──
+//
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
+// 被扫的 `src/bridge/src/history.rs` 今天 2907 行，第一个 `#[cfg(test)]` 在 **1558** 行
+// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 1557 行，
+// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
+//
+// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
+// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+
+/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+#[test]
+fn the_shared_stripper_keeps_the_relay_seam_this_guard_must_scan() {
+    // 🔴 **这条判据的针表被 `assert_stripper_keeps` 砍掉过一半，读数如实留在这里。**
+    //
+    // 第一版填了本文件真正用的两个针：`let relay = relay_prefix_for_launch(…)`（1829）
+    // 与 `fn launch_identity_env_prefix(`（2308）。前者**当场被判成「对照失去意义」**。
+    // 原因是本文件抬头那个 1558 并**不是**便宜近似的切点：
+    // 便宜近似切的是**逐字**的 `\n#[cfg(test)]`，而 `history.rs` 的 1558 行写的是
+    // `#[cfg(all(test, not(windows)))]` —— **匹配不上**（那正是 `guard-core` 头注记的
+    // 「坑 1 的变种」）。它真正的切点在**第一个逐字列 0 `#[cfg(test)]`＝2196 行**
+    // ⇒ 1829 那个针在便宜近似下**照样留得住**，拿它当对照是恒真的。
+    // ⇒ 只留 2308 那个（现打：`good` 有它、`cheap` 没有）。
+    //
+    // ⚠ 本文件已有一条**字节数地板**（`hist.len() > 30_000`）。它在这个方向上**不够**：
+    //    `history.rs` 剥到 2195 行还有 123_670 字节（现打）⇒ 地板照样绿，而 2308 那个针没了。
+    //    这正是「地板挡不住静默缩水」那一族。
+    guard_core::assert_stripper_keeps(
+        "payload_tests · history.rs",
+        include_str!("../../../../src/bridge/src/history.rs"),
+        &["fn launch_identity_env_prefix("],
+    );
+}

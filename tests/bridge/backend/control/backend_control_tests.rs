@@ -136,3 +136,27 @@ fn an_unknown_remote_origin_says_so_instead_of_pretending() {
         "对不认识的 origin 应当明说没有把手，而不是返回一句像成功的话：{e}"
     );
 }
+
+// ── P28：给这条源码扫描型守卫立**负对照** ──
+//
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
+// 被扫的 `src/bridge/src/lib.rs` 今天 2458 行，第一个 `#[cfg(test)]` 在 **59** 行
+// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 58 行，
+// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
+//
+// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
+// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+
+/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+#[test]
+fn the_shared_stripper_keeps_the_registration_this_guard_must_scan() {
+    // ⚠ `lib.rs` 的第一个 `#[cfg(test)]` 是 **59** 行那句 `mod guard_support;` ——
+    //    便宜近似只留 58 行 ⇒ 本文件那条 `find_pinned` 会报 0 处，
+    //    而它的诊断说的是「远端那侧的起/停只会回一句没有这台机的把手」——
+    //    **一句指向错地方的假诊断**。⇒ 逐针钉住扫描面本身。
+    guard_core::assert_stripper_keeps(
+        "backend_control_tests · lib.rs",
+        include_str!("../../../../src/bridge/src/lib.rs"),
+        &["backend_control::register_remote("],
+    );
+}

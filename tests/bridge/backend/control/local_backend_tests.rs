@@ -3186,3 +3186,25 @@ fn the_consumer_reports_what_it_observed_not_a_default() {
         });
     }
 }
+
+// ── P28：给这条源码扫描型守卫立**负对照** ──
+//
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
+// 被扫的 `src/bridge/src/lib.rs` 今天 2458 行，第一个 `#[cfg(test)]` 在 **59** 行
+// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 58 行，
+// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
+//
+// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
+// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+
+/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+#[test]
+fn the_shared_stripper_keeps_the_exit_arm_this_guard_must_scan() {
+    // 本文件对 `lib.rs` 的两条判据取的针：`RunEvent::Exit`（245 / 274 / 1428）·
+    // `LOCAL_BACKEND`（259 / 1425 / 1443 / 1455）—— 都在 59 之后。
+    guard_core::assert_stripper_keeps(
+        "local_backend_tests · lib.rs",
+        include_str!("../../../../src/bridge/src/lib.rs"),
+        &["RunEvent::Exit", "LOCAL_BACKEND"],
+    );
+}

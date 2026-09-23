@@ -282,3 +282,33 @@ async fn an_empty_line_is_a_line_not_an_eof() {
     ));
     assert!(buf.is_empty());
 }
+
+// ── P28：给这条源码扫描型守卫立**负对照** ──
+//
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
+// 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
+// 「第一个测试模块之后再没有生产代码」时才对。`ssh_source.rs` 今天 4490 行，
+// 第一个测试模块在 **909** 行 ⇒ 那个近似把扫描面砍到前 908 行，
+// 而本文件要扫的东西全在它**后面**（逐针行号写在下面）。
+// ⇒ 扫描面一旦静默缩水，本文件的判据会**零命中地绿**。
+//
+// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
+// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+
+/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+#[test]
+fn the_shared_stripper_keeps_the_arms_this_guard_must_scan() {
+    // 三条臂的日志/账本针，今天分别在 3515 / 3605 / 3684 行 —— 都在 909 之后。
+    // ⚠ 刻意用**整句**日志格式串而不是 `session-added`：本文件的判据本来就走
+    //    `find_pinned`（恰好一处 + 两侧有边界），针的大小要和它一致。
+    guard_core::assert_stripper_keeps(
+        "ssh_source_capped_line_tests",
+        include_str!("../../src/bridge/src/ssh_source.rs"),
+        &[
+            "session-added: [{host_label}] sid={sid}",
+            "session-removed: [{host_label}] sid={sid}",
+            "record_tmux_raw(&host_label, remove_tmux_line(raw, &name))",
+            "removed: vec![RemovedSid::gone(sid)]",
+        ],
+    );
+}
