@@ -512,10 +512,12 @@ fn finishing_a_copy_round_triggers_exactly_one_reload() {
 // |---|---|---|
 // | `the_native_window_really_comes_up_on_a_real_graphics_session` | 有画面的机器上，那条路真的把一个窗口摆到屏幕上，而且事件循环干净退出 | 「起不来」与「起来了」分不开 |
 // | `a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok` | **阴性对照**：没有 X 服务器时那条路回的是一句**非空的原因** | 上一条可能恒真（一条永远回 `Ok` 的假实现照样绿） |
-// | `the_second_window_in_one_process_is_never_a_silent_success` | 「说自己成了」与「屏幕上真有一个窗口」**必须一致** | 静默成功那一形没人看着（而它今天就活着，见那条判据的头注） |
+// | `opening_a_window_again_is_a_new_process_and_it_really_comes_up` | 🔴〔第十三刀 09-23〕**第二趟、第三趟开窗都成功**（一趟一个进程，pid 互不相同） | 那正是旧形态的病：第二趟被一个**进程级**标志挡回去，而且此前是静默的 |
 //
-// ⚠ 前两条各跑一趟自己的子进程，第三条与第一条**共用同一趟**（`scenario_a`）——
-// 理由是 winit 一个进程只许一个事件循环，一趟子进程只量得到一趟实景开窗。
+// ⚠ 前两条各跑一趟自己的子进程；第三条要**三趟**，而第一条用的就是那三趟里的头一趟
+// （`scenario_trips` / `scenario_a`）—— 理由是 winit 一个进程只许一个事件循环，
+// 一趟子进程只量得到一趟实景开窗 ⇒ 「第二趟开窗」在实景里的量法只能是再起一个进程。
+// 🔴 那一条的头注里留着旧那条性质（「同进程第二趟不许是静默成功」）为什么退役。
 
 /// 这个窗口在窗口树里的认法：标题里那几个字。
 ///
@@ -569,6 +571,10 @@ fn xvfb_worker_opens_a_real_window() {
     let rows = list_local(&root).expect("列那棵临时目录树 —— 这一格的前提");
     xvfb::emit("a.seed_rows", rows.len());
 
+    // 🔴〔第十三刀〕**印出自己的 pid**：「一趟一个进程」那条判据靠它做反空真锚
+    //    （三趟的 pid 互不相同 ⇒ 那三份读数真是三个进程各自量的，
+    //     不是同一趟输出被读了三遍）。
+    xvfb::emit("a.pid", std::process::id());
     let req0 = open_requested();
     let opened0 = windows_opened();
     let h = open_detached_seeded(Source::Local, cwd.clone(), None, rows.clone(), None);
@@ -638,19 +644,35 @@ fn xvfb_worker_opens_a_real_window() {
         }
     }
 
-    // ── 第二趟：**同一个进程、换一条线程** ────────────────────────────
-    // 台架头注第四节论证过它必然走另一条路；这里把它**量出来**而不是推出来。
-    let h2 = open_detached_seeded(Source::Local, cwd, None, rows, None);
-    let ids2 = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 6_000);
-    xvfb::emit("a.second_window_count", ids2.len());
-    for id in &ids2 {
-        let _ = xvfb::xdotool_on(&display, &["windowclose", id]);
-    }
-    let (v2, why2) = join_verdict(h2, 30_000);
-    xvfb::emit("a.second_run_native", v2);
-    xvfb::emit("a.second_reason_len", why2.chars().count());
-    xvfb::emit("a.second_reason", why2.replace('\n', " "));
-
+    // ══════════════════════════════════════════════════════════════════
+    // 🪦〔墓碑 · 第十三刀 2026-09-23〕**「同一个进程、换一条线程再开一趟」那一段删了。**
+    // ══════════════════════════════════════════════════════════════════
+    //
+    // 原话逐字：「台架头注第四节论证过它必然走另一条路；这里把它**量出来**
+    // 而不是推出来」，它印的是 `a.second_window_count` / `a.second_run_native` /
+    // `a.second_reason_len` / `a.second_reason` 四条读数，现打的结论是
+    // **第二趟裁决 `err`、窗口数 0**。
+    //
+    // 🔴 **为什么删**：那一段量的是一个**生产里已经不存在的形状**。
+    // 用户 2026-09-22 逐字裁「窗口生命周期就是销毁」，而「同进程第二趟必然失败」
+    // 这条现打事实使得「关掉就销毁」与「还能再打开」**不可同时成立**
+    // ⇒ 开窗改成了「一个窗口一个进程」（住 `crate::filewin::proc`）。
+    // 生产那条路上**再也不会**在一个进程里开第二个窗口 ⇒ 继续量它，
+    // 量的是台架自己造出来的一个形状，而不是产品的行为。
+    //
+    // ⚠ **那条现打读数没有被推翻，也没有过期** —— 它今天正是这条裁决的**依据**
+    // （逐条写在 `filewin/proc.rs` 头注 §一）。变的不是那个事实，是它还管不管这道题。
+    //
+    // ⇒ 新的正题是「**第二趟、第三趟开窗都成功**」，它量法只能是**三个进程**：
+    // 由 `scenario_trips` 把本工作面在同一台 Xvfb 上跑三趟，判据住
+    // `opening_a_window_again_is_a_new_process_and_it_really_comes_up`。
+    // 那一条与本段的关系是「**同一件事换了单位**」：从「同进程第二条线程」
+    // 换成「第二个进程」。
+    //
+    // ⚠ 上一版那四条读数里有一条**没有**新住址：「第二趟失败时那句原因非空」。
+    // 它在新形态下由 `proc_tests` 那两条买（当场死掉的进程回一句非空的原因），
+    // 而**不是**由实景台架买 —— 如实登记，别以为它跟着搬过去了。
+    let _ = (cwd, rows);
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -682,22 +704,53 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 这一趟实景子进程的读数（**只跑一趟**，两条判据共用）。
+/// 实景子进程的读数 —— 🔴〔第十三刀 2026-09-23〕**一趟变三趟。**
+///
+/// # 为什么是三趟，而且是三个**进程**
+///
+/// 上一版这里只跑一趟，另用「同一个进程里换一条线程再开一趟」去量第二趟
+/// （那一段的墓碑留在工作面里）。今天生产那条路是**一个窗口一个进程**
+/// ⇒ 「第二趟开窗」这件事在实景里的量法只能是**再起一个进程**。
+/// 而这台架本来就是这么起进程的（`run_scenario` 每趟一个新进程）
+/// ⇒ 把同一个工作面在**同一台 Xvfb** 上跑三趟，就是那道题的读数。
+///
+/// ⚠ **它与生产的差别，如实写清**：生产起的是 `cc-monitor-filewin`
+/// （本包第二个 `[[bin]]`），台架里起的是**判据自己这个测试二进制**。
+/// 两者跑的是**同一个函数**（`open_detached_seeded`，那也是
+/// `filewin::proc::child_main` 唯一调的东西）⇒ 「窗口那一侧」是同一份代码；
+/// 不同的是**谁在托管它**。为什么不直接起那份 `[[bin]]`：门禁那一格逐字跑
+/// `cargo test --workspace --exclude code-picture-core --lib` ——**`--lib` 不构建 bin**
+/// ⇒ 那份二进制在门禁里根本不存在，照它写的判据会在门禁上恒红。
+/// ⇒ 「那份 bin 真的托管了窗口进程的躯体」由 `proc_tests` 的源码型判据买，
+///   「一趟一个进程、pid 互不相同」由 `proc_tests` 真起进程买（拿一个替身二进制），
+///   「第二、第三趟窗口真的摆上屏幕」由本台架买。**三格分开，各自说清买到什么。**
+///
+/// ⚠ 三趟**顺序跑、共用一台 Xvfb**：并行起三个 egui 进程会让窗口树里同时有三个
+/// 命中标题的窗口，而 `wait_for_windows` 回的是**全部**命中 ⇒ 相等断言当场没法写。
 #[cfg(not(windows))]
-fn scenario_a() -> &'static crate::filewin::rows::testing::xvfb::ChildRun {
+fn scenario_trips() -> &'static [crate::filewin::rows::testing::xvfb::ChildRun; 3] {
     use crate::filewin::rows::testing::xvfb;
-    static RUN: std::sync::OnceLock<xvfb::ChildRun> = std::sync::OnceLock::new();
-    RUN.get_or_init(|| {
+    static RUNS: std::sync::OnceLock<[xvfb::ChildRun; 3]> = std::sync::OnceLock::new();
+    RUNS.get_or_init(|| {
         // 🔴〔`P25` 2026-09-22〕拿独占闸 —— 逐条理由住 `xvfb::exclusive`。
         let _guard = xvfb::exclusive();
         xvfb::require_toolbox("「点了那颗按钮之后窗口真的起来了」");
         let screen = xvfb::Screen::start()
             .unwrap_or_else(|e| panic!("起不了 Xvfb ⇒ 这一格判不了，不是过了：{e}"));
-        xvfb::run_scenario(
-            screen.display(),
-            "filewin::shell::tests::xvfb_worker_opens_a_real_window",
-        )
+        let mut go = || {
+            xvfb::run_scenario(
+                screen.display(),
+                "filewin::shell::tests::xvfb_worker_opens_a_real_window",
+            )
+        };
+        [go(), go(), go()]
     })
+}
+
+/// **第一趟**那份读数 —— 原有那两条判据（正题 ＋ 字体）按它写的，一个字没动。
+#[cfg(not(windows))]
+fn scenario_a() -> &'static crate::filewin::rows::testing::xvfb::ChildRun {
+    &scenario_trips()[0]
 }
 
 /// 🔴 **「点了那颗按钮之后，窗口真的起来了」—— 这一格从此有人看着了。**
@@ -839,63 +892,119 @@ fn a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok() {
     );
 }
 
-/// 🔴 **「说自己成了」与「屏幕上真有一个窗口」必须一致。**
+/// 🔴🔴 **第二趟、第三趟开窗都成功** —— 一趟一个进程。
 ///
-/// # 这一条是 Xvfb 逮出来的一条**真东西**，如实写在这儿
+/// ══════════════════════════════════════════════════════════════════════
+/// # 🪦 这一格先前买的是**另一条性质**，它为什么退役（原话逐字留在这儿）
+/// ══════════════════════════════════════════════════════════════════════
 ///
-/// winit 全进程只许建一个事件循环（那个「已经建过了」的进程级标志只在
-/// web 平台会被清回去），而 eframe 把建好的那个缓存在**线程局部**里。
-/// `open_detached_seeded` 每趟 `std::thread::spawn` 一条**新线程**
-/// ⇒ **同一个进程里第二次开窗，必然失败。**
-/// 现打读数（本判据每趟自己印出来）：第二趟裁决 `err`、窗口数 `0`。
-/// ⇒ **用户把这个文件窗口关掉之后，这个 app 活着的时候再也开不起来了。**
+/// 上一版这条判据叫「同一个进程里第二次开窗不许是一条静默成功」，头注逐字写着：
 ///
-/// ⚠ 而它今天是**静默**的：入口那条命令把 `open_detached_seeded` 的句柄丢掉
-/// （`let _ = …`），命令照旧回 `Ok(行数)` ⇒ webview 那侧看到的是「成功」。
-/// 这正是 `真相源/99 §9.4` 逐字留下的那一句：
-/// 「**列得出来、窗口却起不来**那一支仍然没人看着」。
-/// 🔴 **修它要动生产那棵树（本刀只许调不许改）⇒ 已交回报备，本刀不改。**
+/// > winit 全进程只许建一个事件循环（那个「已经建过了」的进程级标志只在
+/// > web 平台会被清回去），而 eframe 把建好的那个缓存在**线程局部**里。
+/// > `open_detached_seeded` 每趟 `std::thread::spawn` 一条**新线程**
+/// > ⇒ **同一个进程里第二次开窗，必然失败。**
+/// > 现打读数（本判据每趟自己印出来）：第二趟裁决 `err`、窗口数 `0`。
+/// > ⇒ **用户把这个文件窗口关掉之后，这个 app 活着的时候再也开不起来了。**
 ///
-/// # 这条判据刻意写成「两支都绿、静默那一支红」
+/// 而它**刻意不断言「第二趟必须失败」**，原话同样逐字：
 ///
-/// 它**不**断言「第二趟必须失败」—— 那样就把一个缺陷钉成了期望值，
-/// 哪天有人真把它修好（复用那条线程／那个事件循环）这条判据会反过来拦住修复。
-/// 它断言的是两支**各自自洽**：
+/// > 它**不**断言「第二趟必须失败」—— 那样就把一个缺陷钉成了期望值，
+/// > 哪天有人真把它修好（复用那条线程／那个事件循环）这条判据会反过来拦住修复。
+/// > 它断言的是两支**各自自洽**：回 `ok` ⇒ 屏幕上必须真有一个窗口；
+/// > 回 `err`／`panic` ⇒ 必须带着一句非空的原因。
 ///
-/// - 回 `ok` ⇒ 屏幕上**必须**真有一个窗口（否则就是静默成功）；
-/// - 回 `err`／`panic` ⇒ **必须**带着一句非空的原因。
+/// 🔴 **那句「哪天有人真把它修好」就是今天，而修法不是它设想的那一种。**
+/// 用户 2026-09-22 逐字裁「**窗口生命周期就是销毁**」。而「同进程第二趟必然失败」
+/// 这条**现打事实**使得「关掉就销毁」与「关掉之后还能再打开」**不可同时成立**
+/// ⇒ 裁「销毁」之后只剩一条路：**每开一个窗口起一个独立进程**
+/// （逐条推理链与它顺带解掉的三条缺陷住 `crate::filewin::proc` 头注）。
 ///
-/// ⇒ 今天走第二支（绿）；修好之后走第一支（还是绿）；
-/// 变成「回 `ok` 而窗口没起来」⇒ **红**。
+/// ⇒ 旧那条性质**在新形态下没有被推翻，是失去了指称对象**：生产那条路上
+/// 再也不会有「同一个进程里的第二个窗口」。继续钉它，钉的是台架自己造的形状。
+/// ⚠ 它那两支里有一支**没有**跟着搬过来：「失败时那句原因非空」。
+/// 那一支今天由 `proc_tests` 买（当场死掉的**进程**回一句非空的原因）——
+/// 本条不买它，别以为它跟着搬过去了。
+///
+/// ══════════════════════════════════════════════════════════════════════
+/// # 它买到什么（逐条）
+/// ══════════════════════════════════════════════════════════════════════
+///
+/// - **三趟各自把恰好一个窗口摆到屏幕上**（相等断言，`--onlyvisible` 那一档）。
+///   🔴 **第二趟与第三趟是这一条的全部价值**：旧形态下它们恒是 0。
+/// - **三趟是三个进程**（pid 互不相同）—— 反空真锚：少了它，同一份输出被读三遍
+///   也会让上面三条一起绿。
+/// - **三趟各自的计数器都是 +1**（`windows_opened_delta`）—— 它说明那三趟
+///   **不共享进程级状态**：旧形态里第二趟的这个数也是 1，而窗口数是 0，
+///   两个数分叉正是那个进程级标志的指纹；今天两个数在每一趟里都对得上。
+///
+/// ══════════════════════════════════════════════════════════════════════
+/// # ⚠ 它买不到什么（逐条，别读宽）
+/// ══════════════════════════════════════════════════════════════════════
+///
+/// - **台架里托管窗口的是判据自己这个二进制，不是 `cc-monitor-filewin`**
+///   （理由住 `scenario_trips`：门禁那一格 `--lib`，不构建 bin）。
+///   ⇒ 它买的是「**一个进程一个窗口这件事成立**」，不是「那份发版二进制跑得起来」。
+/// - **真 GPU / 字体回落 / DPI / 合成器四样一个都买不到**（台架头注逐条）。
+/// - 🔴 **它刻意不要求那三趟「干净退出」。** 那不是偷懒，是一条已登记的抖动：
+///   关窗那一下的拆卸竞态（winit 在析构里 panic ⇒ 非 unwind 的 abort）
+///   现打在满盘里约 1/4 的趟数上让实景子进程退出码变成 `None`，归因未定，
+///   登记在 `P25`。它发生在**读数印出来之后**（`emit` 走 `println!`，行缓冲、
+///   每行即刷）⇒ 把「退出码」并进本条只会让本条跟着抖，而本条要买的那件事
+///   在读数那一刻已经成立。
+///   ⚠ **这不是把抖动压下去** —— 那条竞态本身正是换进程要解的三条缺陷之一
+///   （`真相源/107 §2`），它今天只崩台架自己那个进程，而那正是换进程买到的东西。
 #[cfg(not(windows))]
 #[test]
-fn the_second_window_in_one_process_is_never_a_silent_success() {
-    let run = scenario_a();
-    run.must_have_passed("「第二趟开窗不许是静默成功」");
-    let verdict = run.reading("a.second_run_native");
-    let count = run.reading("a.second_window_count");
-    let reason_len: usize = run.reading("a.second_reason_len").parse().unwrap_or(0);
+fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
+    let trips = scenario_trips();
+    let counts: Vec<String> = trips.iter().map(|r| r.reading("a.window_count")).collect();
+    let pids: Vec<String> = trips.iter().map(|r| r.reading("a.pid")).collect();
+    let opened: Vec<String> = trips
+        .iter()
+        .map(|r| r.reading("a.windows_opened_delta"))
+        .collect();
+    let codes: Vec<Option<i32>> = trips.iter().map(|r| r.code).collect();
     println!(
-        "  第二趟开窗（同一个进程、换一条线程）：裁决 {verdict} · 窗口数 {count} · \
-         原因 {reason_len} 字 · 原文 {}",
-        run.reading("a.second_reason")
+        "  三趟现打：窗口数 {counts:?} · pid {pids:?} · \
+         本进程开窗计数 {opened:?} · 退出码 {codes:?}（退出码**不判**，见头注）"
     );
-    match verdict.as_str() {
-        "ok" => assert_eq!(
-            count, "1",
-            "第二趟回了 `Ok(())`，而窗口树里有 {count} 个窗口 —— **静默成功**：\
-             上层（入口那条命令）会把它当成功报给 webview，而屏幕上什么都没有"
-        ),
-        "err" | "panic" => assert!(
-            reason_len > 0,
-            "第二趟裁决是 {verdict} 而原因是空的 —— 上层连「为什么没起来」都拿不到"
-        ),
-        other => panic!(
-            "第二趟裁决是 {other:?} —— 超时那一形意味着那条线程既没成也没回错，\
-             它在上层眼里与成功一模一样"
-        ),
+
+    // ① 反空真锚**排在最前**：三趟真是三个进程。
+    //    塌了的话（同一份输出读三遍 / `OnceLock` 只跑了一趟），下面三条会一起假绿。
+    let uniq: std::collections::BTreeSet<&String> = pids.iter().collect();
+    assert_eq!(
+        uniq.len(),
+        3,
+        "三趟只来自 {} 个不同的进程（pid {pids:?}）—— 下面那几条此刻在空转",
+        uniq.len()
+    );
+
+    // ② 🔴 正题：**每一趟都恰好一个窗口，第二趟第三趟也是。**
+    for (i, c) in counts.iter().enumerate() {
+        assert_eq!(
+            c,
+            "1",
+            "第 {} 趟开窗，窗口树里数到 {c} 个标题含 `{WINDOW_NEEDLE}` 的窗口。\n\
+             0 = 那一趟**没起来**。🔴 第二／第三趟是 0 就说明「一趟一个进程」没成立：\
+             那正是旧形态的病（winit 的进程级事件循环标志把第二趟挡回去）。\n\
+             三趟读数：{counts:?}",
+            i + 1
+        );
+    }
+
+    // ③ 每一趟自己那个计数器都是 +1 —— 三趟不共享进程级状态。
+    for (i, o) in opened.iter().enumerate() {
+        assert_eq!(
+            o,
+            "1",
+            "第 {} 趟里 `windows_opened` 只涨了 {o} —— 那个计数器是**进程级**的，\
+             每个窗口进程里都该恰好涨一次。三趟读数：{opened:?}",
+            i + 1
+        );
     }
 }
+
 /// 🔴 **进程 DPI 归属：`any_thread_hook` 的 Windows 分支必须把 winit 关掉。**
 ///
 /// 论证与四格现打读数住 `shell.rs` 头注（2026-09-20，本机那台 Win11 虚拟机的真桌面）。
@@ -2228,7 +2337,13 @@ async fn navigating_away_drops_the_highlight() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第十一刀 2026-09-22〕「那条线程当场就死了」不再被报成成功
+// 🔴〔第十一刀 2026-09-22〕「当场就死了」不再被报成成功
+//    〔第十三刀 2026-09-23 补记〕**被判的东西换了，这一跳没换。**
+//    开窗改成起一个独立进程之后，`early_failure` 的生产调用方是
+//    `filewin::proc::open_in_new_process`（判「那个**进程**是不是当场就退了」）。
+//    下面这两条**照旧喂线程** —— 那是**刻意的**：它们钉的是那条轮询本身的两个方向
+//    （「结束了」认得出 · 「还在跑」不误判），而线程是这两个方向最便宜的合成输入。
+//    进程那一侧的行为判据住 `proc_tests`（那边不合成，真起进程）。
 // ════════════════════════════════════════════════════════════════════════
 
 /// 当场就失败的那条线程，`early_failure` 认得出来。
@@ -2237,7 +2352,10 @@ fn a_thread_that_dies_at_once_is_recognised_as_a_failure() {
     let h: std::thread::JoinHandle<Result<(), String>> =
         std::thread::spawn(|| Err("开窗失败: 事件循环不能重建".into()));
     assert!(
-        crate::filewin::shell::early_failure(&h, std::time::Duration::from_millis(500)),
+        crate::filewin::shell::early_failure(
+            || h.is_finished(),
+            std::time::Duration::from_millis(500)
+        ),
         "一条立刻就回 Err 的线程没被认出来 —— 那一形会被报成「窗口起来了」"
     );
     // 原因拿得回来（上层要把它交给用户）。
@@ -2261,39 +2379,70 @@ fn a_thread_still_running_is_not_mistaken_for_a_failure() {
         Ok(())
     });
     assert!(
-        !crate::filewin::shell::early_failure(&h, std::time::Duration::from_millis(120)),
+        !crate::filewin::shell::early_failure(
+            || h.is_finished(),
+            std::time::Duration::from_millis(120)
+        ),
         "还占着线程的那一条被当成了失败 —— 那会让每一次真开窗都报错"
     );
     let _ = tx.send(());
     let _ = h.join();
 }
 
-/// 入口那条命令**真的**经它走，而且排在开窗之后。
+/// 开窗那条路**真的**经这一跳走，而且排在起进程之后。
 ///
 /// ⚠ 判源码是代理（同族先例住 `entry_tests` 那条「空路径那一支」）。
-/// 买的是：那个句柄不再被 `let _ = …` 丢掉。
+/// 买的是：起进程的结果不再被 `let _ = …` 丢掉，而且那一跳有东西可看时才跑。
+///
+/// 🔴〔第十三刀 2026-09-23〕**射程从 `entry.rs` 换到了 `proc.rs`。**
+/// 上一版这一条扫的是 `entry.rs`，因为那时「起线程 ＋ 看它死没死」两步都写在入口里。
+/// 今天入口只剩一句 `open_in_new_process(…)?`，那两步整块搬进了 `filewin::proc`
+/// ⇒ 继续扫 `entry.rs` 的话，这一条会在一个**恒为零**的人群上报绿。
+/// ⚠ 入口那一侧**没有失去判据**：`proc_tests` 里那条零命中型盯着
+/// 「入口那条路上不许再有『同进程开一个』的写法」（`D11`）。
 #[test]
-fn the_entry_command_no_longer_throws_the_window_handle_away() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/entry.rs"));
+fn the_spawn_result_is_never_thrown_away() {
+    let prod = guard_core::production_code(include_str!("../../../src/bridge/src/filewin/proc.rs"));
+    // ★ 反向自检：剥完不是空的，否则下面几比全在空人群上。
+    assert!(
+        prod.contains("pub fn open_in_new_process"),
+        "剥生产段把那条路一起剥掉了 —— 下面几比此刻不可信"
+    );
     assert_eq!(
         prod.matches("early_failure(").count(),
         1,
-        "`entry.rs` 生产段里 `early_failure(` 不是恰好一处"
+        "`proc.rs` 生产段里 `early_failure(` 不是恰好一处 —— \
+         这一族轮询全仓只许一处（`rust_timer_registry` 登记的就是它）"
     );
-    // 🔴 那个句柄**不许**再被丢掉 —— 这一比钉的正是上一版那行字面。
+    let spawn_needle = format!("{}_window(", "spawn");
     assert!(
-        !prod.contains("let _ = open_detached_seeded("),
-        "开窗的句柄又被 `let _ = …` 丢掉了 —— 那就回到了「静默成功」那一形"
+        !prod.contains(&format!("let _ = {spawn_needle}")),
+        "起进程的结果又被 `let _ = …` 丢掉了 —— 那就回到了「静默成功」那一形"
     );
-    let at_open = prod
-        .find("open_detached_seeded(")
-        .expect("`open_detached_seeded(` 不在生产段里 —— 抽取器坏了");
-    let at_check = prod
+    // 🔴 **先把那个函数项切出来，再比先后** —— 而这一刀是死值验逼出来的，不是洁癖。
+    //
+    // 上一版在**整份生产段**上比 `find(spawn_window()` 与 `find(early_failure()`。
+    // 死值验现打：把那一跳原地挪到起进程**之前**，这一条**照旧报绿**。
+    // 病根是 `spawn_window` 的**定义**（`pub fn spawn_window(`）就在文件里更靠前的位置
+    // ⇒ `at_spawn` 拿到的是定义的偏移，恒小于任何一处调用 ⇒ **那一比恒真**。
+    // ⇒ 人群必须收到「`open_in_new_process` 这一个函数项」里面。
+    let at_fn = prod
+        .find("pub fn open_in_new_process")
+        .expect("`open_in_new_process` 不在生产段里 —— 抽取器坏了");
+    let rest = &prod[at_fn..];
+    let body_end = rest
+        .find("\n}\n")
+        .expect("`open_in_new_process` 的花括号没收口 —— 抽取器看不懂它了");
+    let body = &rest[..body_end];
+    // ★ 反向自检：切出来的那一段里**两者都在**。任一缺席 ⇒ 下面那一比是空转的。
+    let at_spawn = body
+        .find(spawn_needle.as_str())
+        .expect("切出来的那个函数项里没有起进程那一句 —— 切法坏了，下面那一比此刻恒真");
+    let at_check = body
         .find("early_failure(")
-        .expect("上一比已经保证它在，这里拿不到位置说明抽取器坏了");
+        .expect("切出来的那个函数项里没有那一跳 —— 切法坏了");
     assert!(
-        at_open < at_check,
-        "那一跳排在开窗**之前** —— 那时还没有句柄可看"
+        at_spawn < at_check,
+        "那一跳排在起进程**之前** —— 那时还没有进程可看"
     );
 }
