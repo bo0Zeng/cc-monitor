@@ -725,6 +725,57 @@ fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
     assert_eq!(d.argv, vec!["claude".to_string()]);
 }
 
+/// ★★ 〔`P19` 09-22〕**`inside_tmux` 是真跑那一侧独用的一格，[`render`] 一个字不看。**
+///
+/// `INVARIANTS §33a` 铁律 2 逐字：`--print` 必须是**纯的** —— 不查实时 tmux 状态、
+/// 输出对宿主环境**逐字节稳定**；值不知道就**打印配方**。
+/// 🔴 那一条自己就有过反面教材（`§33a` 记着）：第一版让 `--print` 直接查 tmux 把值烘进去，
+/// 于是同一条命令在开发者的 tmux 里与 CI 上吐得不一样，而当时的「修法」是给判据加
+/// `env -u TMUX` —— **那是为实现让路去改判据**。
+/// ⇒ 本条就是那条反面教材的防线：谁把 `inside_tmux` 接进 [`render`]，同一条计划立刻
+/// 在 tmux 内外吐出两种输出，本条当场红。
+#[test]
+fn whether_we_are_inside_tmux_never_reaches_the_print_side() {
+    let outside = Env {
+        tmux: None,
+        ..env()
+    };
+    let inside = Env {
+        tmux: Some("/faux/socket,1,0".into()),
+        ..env()
+    };
+    let args = &["--agent", "codex", "--cwd", "/p"];
+    let po = plan_of(args, &outside, &AccountTable::default());
+    let pi = plan_of(args, &inside, &AccountTable::default());
+
+    // 反空真①：两份计划**真的不同** —— 否则下面那条相等是恒真。
+    assert_ne!(
+        po, pi,
+        "`$TMUX` 变了而计划一个字节没变 —— `inside_tmux` 没接上，本条在空转"
+    );
+    let (Plan::Direct(dout), Plan::Direct(din)) = (&po, &pi) else {
+        panic!("该是两条直路")
+    };
+    assert!(!dout.inside_tmux && din.inside_tmux, "夹具没把那一格拨动");
+    // 反空真②：这一趟真带着那段配方 —— 否则「渲染不变」是因为压根没有可变的东西。
+    assert!(
+        dout.bus_id_recipe && din.bus_id_recipe,
+        "codex 该带 cc-bus 配方"
+    );
+
+    // 正题：渲染**逐字节相等**。
+    assert_eq!(
+        render(&po, None),
+        render(&pi, None),
+        "`--print` 随 `$TMUX` 变了 —— 平价预言机不再是纯的（`§33a` 铁律 2）"
+    );
+    // 而且两边都**说出了**那段配方（`§33a` 铁律 1：exec 路会设的 env，print 必须说）。
+    assert!(
+        render(&po, None).contains(super::super::BUS_ID_RECIPE),
+        "`--print` 没说出 cc-bus 那段配方 —— 那正是 `§33a` 开张时抓到的第一例"
+    );
+}
+
 // ── 夹具 ────────────────────────────────────────────────────────────
 fn tempdir() -> String {
     let p = std::env::temp_dir().join(format!(

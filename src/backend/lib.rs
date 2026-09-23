@@ -662,12 +662,42 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
         declared_in: "control/ccm/mod.rs",
         targets: TARGETS,
         target_basis: "四个 target 上**这一面都做得到**（起会话 · 认账号 · 选模型 · 传 cwd \
-                       那几条不依赖任何 Unix 专有设施）。⚠ **但不是每一条都做得到** —— \
+                       那几条在直路上是**原生动作**：`set_var` / `set_current_dir` / \
+                       `Command::new` ＋ `#[cfg(not(unix))]` 那条「起它 · 等它 · 透传退出码」\
+                       的回退，一步都不经 shell）。⚠ **但不是每一条都做得到** —— \
                        tmux 那一族 6 条在 Windows 上做不到，逐条登记在 `TARGET_GAPS`。\
                        〔2026-09-21 改判：上一版这一栏写的是「四个 target 都编得过」，\
                         而用户把本轴从「编得过」改成了「做得到」⇒ 那句依据不再回答本轴的问题。\
                         「编得过」仍然是真的（两处平台分叉各带 `#[cfg(not(unix))]` 回退分支），\
-                        但它归第 1 层那个跨 target 编译门禁。〕",
+                        但它归第 1 层那个跨 target 编译门禁。〕\
+                       🔴 **〔`P19` 09-22 订正一句账〕** \
+                       上一版括号里那句「**不依赖任何 Unix 专有设施**」，\
+                        在写下的那一刻对 `codex` 那一支就是假的。\
+                        〔⚠ 这句被订正的原话**刻意在源码里连着写**：本轮差点栽在自己的 grep 上 —— \
+                         初稿把它断在了 Unix 与「专有设施」之间（Rust 的续行反斜杠），\
+                         于是拿「Unix 空格 专有」当针去 grep 全仓**零命中**，\
+                         而零命中看起来和「这句话仓里没有」一模一样。\
+                         下一个人要找这笔账，靠的就是它在源码里连着。〕\
+                        `control/ccm/mod.rs::exec_direct` 从前只要 `needs_bus_id(agent)` 为真\
+                        就把**整条**改走 `sh -c`，而它对 codex 恒真 ⇒ 真机现打 \
+                        `--agent codex --launcher hostname` → `EXIT=4 program not found`\
+                        （`真相源/106 §3.3`；同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`）。\
+                        `P19` 把那道闸收窄成「那段配方**真有事可做**时」—— 配方整段裹在 \
+                        `if [ -n \"${TMUX:-}\" ]` 里，`$TMUX` 空则它一个字不做 ⇒ \
+                        Windows 上（`$TMUX` 恒空）直路不再请 shell 进来，**那句话才开始成立**。\
+                        ⚠ **今天仍然非得要 POSIX shell 的两条，它们不在上面那四条里，逐条写明**：\
+                        ① `CCM_ENV` 非空（那是一段任意 shell，只有 shell 解释得了）；\
+                        ② `resume` 且后端答出一整条命令串（要 shell 拆词：`set -f; exec $cmd`）。\
+                        两条都**不假装做得到** —— 只是从今天起说得出口（`no_shell:` ＋ 逐条归因，\
+                        `D7`）。\
+                        🚫 **这一栏买不到的那一维（别读成已验证）**：\
+                        `cargo check --all-targets --target x86_64-pc-windows-gnu` ＋ \
+                        `needs_shell` 那张判定表买到的是「**源码里没有那条 Unix 依赖了**」；\
+                        「在真 Win11 上 `--agent codex` 真的 `EXIT=0`」**没买到** —— \
+                        那要那台独占的 Win11 虚拟机，`P19` 一个字节都没去动它。\
+                        能接上的只有一条推理（写出来，别当读数）：claude 那一支的 `EXIT=0` 是 \
+                        09-21 真机现打的，而 codex 今天走的是**同一段原生代码、动作还更少**\
+                        （`nested_env(\"codex\")` 是空的）。",
     },
 ];
 
@@ -697,10 +727,16 @@ pub struct TargetGap {
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
 ///
-/// 今天全部 9 条都在 `ccm-launcher` × Windows 这一格上：
-/// **前 6 条**是读源码推出来的（tmux 那一族），**后 3 条是真机现打补的**
-/// （`bus-register` / `ccm-sid` / `agent`）—— 上一版的账把那三条记成「做得到」，
-/// 🔴 **那三格是错的，不是缺的**。逐条读数住 `真相源/106`。
+/// 今天全部 8 条都在 `ccm-launcher` × Windows 这一格上：
+/// **6 条**是读源码推出来的（tmux 那一族），**另 2 条是真机现打补的**
+/// （`bus-register` / `ccm-sid`）—— 上一版的账把它们记成「做得到」，
+/// 🔴 **那两格是错的，不是缺的**。逐条读数住 `真相源/106`。
+///
+/// 🔴 〔`P19` 09-22〕**9 → 8：`agent` 那一条删了，而它是这张表里第一条被「做掉」的。**
+/// 前两次改这张表都是**往里加**（读源码推的 6 条 → 真机现打补 3 条），本轮第一次**往外减**
+/// ⇒ 减法的判准与加法不同，写在那一行的墓碑里（`capability` 那一栏搜 `P19`）：
+/// 加一条要的是「现打出它做不到」，**减一条要的是「那条『做不到』的根因在源码里没了」＋
+/// 一句如实登记「真机那一维这次买不到」**。别把它读成「真机上复验过了」。
 pub const TARGET_GAPS: &[TargetGap] = &[
     // ── `ccm-launcher` × Windows：tmux 那一族 6 条 ─────────────────
     //
@@ -776,17 +812,37 @@ pub const TARGET_GAPS: &[TargetGap] = &[
               金标准矩阵）⇒ 加闸会动到那张矩阵的契约，那是设计题不是一行修复。\
               **将来**：先裁「这个旗标在没有 tmux 时该报错还是该有直路语义」，再改。",
     },
-    TargetGap {
-        family: "ccm-launcher",
-        capability: "agent",
-        target: Target::Windows,
-        why: "**只有一半做得到**：`claude` 那支真机 `EXIT=0`，`codex` 那支 `EXIT=4 program not found`。\
-              根因不在 agent 本身 —— `needs_bus_id(\"codex\")` 恒真 ⇒ 那一趟整条改走 \
-              `exec_shell` ⇒ `sh -c`，而 Windows 上没有 `sh`。\
-              ⇒ 顺带订正一句账：本轴那句「不依赖任何 Unix 专有设施」**对 codex 这一支不成立**。\
-              **将来**：要给 codex 的 cc-bus 身份配方一条**不经 shell** 的路，\
-              与那个 Windows 后台服务同一拍做，**暂时不做**。",
-    },
+    // ── 🔴 〔`P19` 09-22〕**`agent` 那一条豁免删了 —— 散文墓碑留在这里** ──────────
+    //
+    // 它从前逐字写着：
+    //   「**只有一半做得到**：`claude` 那支真机 `EXIT=0`，`codex` 那支 `EXIT=4 program not
+    //     found`。根因不在 agent 本身 —— `needs_bus_id("codex")` 恒真 ⇒ 那一趟整条改走
+    //     `exec_shell` ⇒ `sh -c`，而 Windows 上没有 `sh`。……**将来**：要给 codex 的 cc-bus
+    //     身份配方一条**不经 shell** 的路，与那个 Windows 后台服务同一拍做，**暂时不做**。」
+    //
+    // ⇒ **那条「将来」今天做了，而且它不用等那个 Windows 后台服务**（当初把两件事绑在一拍
+    //   是估错了）：`control/ccm/mod.rs::needs_shell` 把闸从「codex 就要 shell」收窄成
+    //   「codex **且** `$TMUX` 非空」。收窄靠的是一条**等价**不是近似 ——
+    //   `BUS_ID_RECIPE` 整段裹在 `if [ -n "${TMUX:-}" ]` 里，守卫为假时它在 `exec` 之前
+    //   一个字都不做（那条前提由
+    //   `control::ccm::tests::the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact`
+    //   钉着）。Windows 上 `$TMUX` 恒空 ⇒ 那一跳没了。
+    //
+    // 🚫 **删它买到的与买不到的，分开记（别读成「真机复验过」）**：
+    //   · 买到：`cargo check --all-targets --target x86_64-pc-windows-gnu` 过 ＋
+    //     `needs_shell` 那张判定表（codex × 在/不在 tmux 四格逐个相等断言）＋
+    //     `--print` 逐字节没动（`§33a` 铁律 2）。
+    //   · **没买到**：在真 Win11 上 `--agent codex --launcher hostname` 真的 `EXIT=0`。
+    //     那台虚拟机是独占资源，`P19` 一个字节都没去动它。
+    //   ⇒ 于是这一条的处置只有两种，两种都有代价：**留着**（断言一件已经被源码否掉的
+    //     「做不到」，账当天开始撒谎）或**删掉**（把「做得到」建在源码 ＋ 判据 ＋ 一条
+    //     推理上，而不是建在真机读数上）。选后者，理由写在 `CAPABILITY_FACES` 那一栏的
+    //     `🚫 买不到的那一维` 里 —— **那句话就是这一行的对价，不许连它一起删。**
+    //
+    // ⚠ **一件真的残留，它不归本条**：Windows 上没有 tmux ⇒ codex 永远拿不到
+    //   `CC_BUS_ID`。那不是 `agent` 这条能力做不到，是**载体没了**（与
+    //   `base-url-across-tmux` 同一形），已由 tmux 那一族 6 条豁免覆盖；
+    //   判准住 `control/ccm/mod.rs::needs_bus_id` 的头注。
     TargetGap {
         family: "ccm-launcher",
         capability: "base-url-across-tmux",
