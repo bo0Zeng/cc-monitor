@@ -383,6 +383,7 @@ src/bridge/src/filewin/find.rs:441	 · 后端说该重走了	改·§2.1	[对外]
 src/bridge/src/filewin/find.rs:445	 · 有 {} 个目录读不进去，这份索引有洞	保留	[对外] 新鲜度行拼接段，说清后果（有目录读不到、索引不全）
 src/bridge/src/filewin/find.rs:450	 · 上一趟撞到条目上限没走完，这份索引不完整	保留	[对外] 新鲜度行拼接段，结果清楚（索引不完整）
 src/bridge/src/filewin/find.rs:453	 · 浏览中的目录挂着 {} 个监听（上限 {}）	改·§2.1	[对外] 新鲜度行拼接段；监听数/上限是内部资源读数，用户用不上 新词:监听 →（删去这段）
+src/bridge/src/filewin/find.rs:469	正在建索引（首次约 {cold_first_build_secs} 秒）	保留	[对外] 〔S4 · Q5〕冷启动首建那一趟正在走时顶替新鲜度行的一句（橙色）；先说在干什么，括号只给大约要等多久（用户裁「单列一个数并在搜索界面显示」的原话），数由后端报
 src/bridge/src/filewin/find.rs:463	这台机器上的索引还没建过 —— 那不是「没搜到」	保留	[对外] 命中行，一个破折号接一句防误读的话
 src/bridge/src/filewin/find.rs:466	命中 {} 条（这一趟扫了 {} 条，索引 {} 秒前建的）	保留	[对外] 命中行，括号补充只一个信号
 src/bridge/src/filewin/find.rs:470	 · 只回送了 {} 条，还有更多	保留	[对外] 命中行拼接段

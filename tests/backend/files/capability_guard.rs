@@ -1044,6 +1044,39 @@ fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable()
     );
 }
 
+/// 〔第四波 S4 · `设计/99 §2 Q5`〕**冷启动首建那个数**与重走周期**分开钉**，而且同样可查询。
+///
+/// 用户裁「单列一个数并在搜索界面显示」⇒ 它必须在 `files.index.status` 的**声明**字段表里、
+/// 真的回出去、等于那个常量；而且它不能被周期那一格顶替（两个数各是各的）。
+#[test]
+fn the_cold_first_build_estimate_is_its_own_declared_and_queryable_number() {
+    let _lock = resident_lock();
+    let status_cap = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.index.status")
+        .expect("这条能力必须在表里");
+    assert!(
+        status_cap.fields.contains(&"cold_first_build_secs"),
+        "冷启动首建那个数不在 `files.index.status` 的字段表里 —— 那它就只活在代码里了"
+    );
+    let v = answer("files.index.status", &serde_json::json!({})).expect("status 不该失败");
+    assert_eq!(
+        v.get("cold_first_build_secs").and_then(|x| x.as_u64()),
+        Some(crate::files::index::COLD_FIRST_BUILD_SECS),
+        "线上回的那个首建估计与声明的常量不是同一个数"
+    );
+    // 「单列」：它不是周期那个数换了个名字（两个数都从同一个答案里取，各对各的常量）。
+    assert_ne!(
+        crate::files::index::COLD_FIRST_BUILD_SECS,
+        crate::files::index::REWALK_INTERVAL_SECS,
+        "首建估计与重走周期是同一个数 —— 那就不是「单列」，是同一个数报了两遍"
+    );
+    assert!(
+        crate::files::index::COLD_FIRST_BUILD_SECS > 0,
+        "首建估计是 0 —— 界面上会说「约 0 秒」，那句话没有内容"
+    );
+}
+
 // ══════════════════════ 原始字节那一条 ══════════════════════
 
 /// 有损解码的那几个调用 —— 运行时拼，理由同 [`write_verbs`]。
