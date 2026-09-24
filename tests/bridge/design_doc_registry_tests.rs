@@ -182,7 +182,7 @@ fn every_doc_that_declares_itself_dead_is_marked_dead_in_the_index() {
 //
 // 设计与读数住 `调研/第四波记录/D0b.md`（主会话并入设计篇之前的唯一住址）。
 // 下面分两半：**纯函数的判官**（吃文本、不碰盘，合成夹具在它上面验牙）与
-// **对真 `调研/` 的三条**（其中恰好一条 `#[ignore]`，解锁条件写在它自己头上）。
+// **对真 `调研/` 的三条**（全部在执行链上；最后一条曾挂 `#[ignore]` 等对账，已摘）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// 索引状态栏的三档。**按状态格剥掉强调之后的首个符号**分档 —— 后缀
@@ -419,7 +419,7 @@ fn every_index_row_falls_into_exactly_one_tier() {
 
 /// 真 `调研/`：三档与正文**两向**一致 —— 标 ⚠ 的篇篇内必须真有作废块，标 ✅ 的篇篇内不许有。
 ///
-/// 🔴 **本仓唯一一条为「等别人做完」而 `#[ignore]` 的判据**（第四波 D0b 题面授权的那一条）。
+/// 〔已解锁 · 2026-09-24〕D0 六路对账 ＋ D0-G 收尾合进之后，`--include-ignored` 8/8 绿 ⇒ 主会话摘掉了 `#[ignore]` 与 `MANUAL` 那一行，本条从此在执行链上。下面是当时为什么先挂着的记录。
 ///
 /// **为什么现在不上链**：`调研/设计/` 此刻正被第四波 D0 那几路全面对账（改抬头、删订正块），
 /// 两个方向都在它们手里：设计时（15:5x）现打 ✅ 那一向红 8 篇、⚠ 那一向零漏；
@@ -433,7 +433,6 @@ fn every_index_row_falls_into_exactly_one_tier() {
 /// 删掉下面那行 `#[ignore]`，并同拍删 `shared_crate_registry_tests.rs` 里 `MANUAL`
 /// 登记的这一行（那张表的自检会逼着删：「已经不是 `#[ignore]` 测试了」）。
 #[test]
-#[ignore = "D0b：等第四波 D0 对账完 `调研/设计/` 由主会话摘；解锁条件见本条文档注释"]
 fn the_real_index_tiers_agree_with_the_void_blocks_both_ways() {
     let rows = index_rows();
     let v = judge_tiers(&rows, read_design_doc);
