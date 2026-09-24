@@ -644,7 +644,8 @@ fn the_health_reading_branches_are_wired_into_the_typescript() {
     for line in [
         "export function describeBackendHealth(h: BackendHealth): string {",
         "if (seen === 0) return HEALTH_UNKNOWN;",
-        "if (h.crashed === 0) return HEALTH_CLEAN.replace(\"{misread}\", String(h.misread));",
+        // 〔ST2 · 步 6〕读坏了几次挪进 `[详情]`，这一档不再带占位符。
+        "if (h.crashed === 0) return HEALTH_CLEAN;",
     ] {
         guard_core::pin_line(ts, line).unwrap_or_else(|why| {
             panic!(
