@@ -1,16 +1,17 @@
 /**
- * 〔U2 · 拆 `tabs.ts` ⑤〕**对一个会话做的动作** —— 以及 tab 这一层**唯一的 IPC 出口**。
+ * 〔U2 · 拆 `tabs.ts` ⑤〕**对一个会话做的动作** —— 以及 tab 这一层**唯一直呼 `invoke` 的一份**。
  *
  * resume（直连 / tmux / 就地）· 换号重启（等 compact · 等退出）· 杀 tmux 会话 · 打开工作目录 ·
  * 在新窗口打开 · 切到终端窗口；外加 tab 层那几条零散的后端调用（忘掉会话 · 把 monitor 拉到前面 ·
  * 红绿灯快照 · DEV 探针日志）。
  *
- * # 为什么 IPC 收在这一份
+ * # 为什么直呼 `invoke` 收在这一份
  *
  * 「直接 `import { invoke }` 的生产文件」是一个**恒等计数**（`generated-boundary-guard.vitest.ts`，
  * 主计划 §0.1 成功标准 4 的度量）：拆之前 `tabs.ts` 是其中一个。拆成几份之后若每份各自 import，
  * 那个数就会涨 ⇒ 这里把 tab 层用到的每一条 `invoke` 都收进本文件，`tabs.ts` 与其余几份一条都不直呼 ——
- * 计数不变，只是名单里的 `tabs.ts` 换成了本文件。
+ * 计数不变，只是名单里的 `tabs.ts` 换成了本文件。经 `ipc/commands.ts` 包装层的调用（流视图的骨架索引 /
+ * 按偏移取正文、本文件的 `list_local_tmux`）不算直呼，照旧走包装层。
  *
  * # 它要宿主给什么
  *
@@ -38,7 +39,10 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "./remote-launch-run";
-// ⚠ 要的是 `backend-policy` 那个（`"<local>"`），不是 `accounts.ts` 里同名的 `"__local__"`（理由见 `tabs.ts` 那条注释）。
+// ⚠ **两个同名常量**：本文件要的是 `backend-policy` 那个（`"<local>"`，与 Rust
+// `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
+// `"__local__"`，是账号面自己的标记，**不是 backend origin**。导错一个不会红，只会静默查不到。
+// 〔U2〕这条原住 `tabs.ts`，随 `LOCAL_ORIGIN` 的用处一起搬来；`tab-menu.ts` / `tab-stream-view.ts` 指向这里。
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
 import { mintSessionTmuxName } from "./remote-launch";
