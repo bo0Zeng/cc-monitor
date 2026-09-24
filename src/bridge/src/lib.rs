@@ -114,6 +114,8 @@ mod arch_doc_shape_guard; // F19：顶层架构文档的结构性存在钉（必
 #[cfg(test)]
 mod ccm_cli_contract;
 mod cross_half_edge_registry; // F20：两半之间的编译期边（跨半边 include_str! 逐条登记 + ★ 一条都不许长在生产段）
+#[cfg(test)]
+mod design_doc_registry; // `99 §4.17` · `Q9` 乙：设计篇索引不许与各篇自己的作废声明漂（整体 cfg(test)）
 mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与代码对拍（状态列逐格登记 + ★ 判据从文档里读那个数，代码里不留第二份）
 #[cfg(test)]
 mod fixture_guard; // `99 §4.8.3 P15`：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
