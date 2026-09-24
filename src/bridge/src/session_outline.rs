@@ -39,7 +39,29 @@ pub struct UserInputEntry {
     pub timestamp: String,
 }
 
-/// 清单的回包。`available == false` 时 `entries` 为空、`reason` 说清为什么（**不是错误**）。
+/// 〔SE1 回修〕**要不到清单的种类** —— 前端据它决定「还要不要再要」，**只 match 它，不解析 `reason` 的文字**。
+///
+/// | 种类 | 是什么 | 前端怎么办 |
+/// |---|---|---|
+/// | `oldBackend` | 对面回的第一行不是 `user_inputs` 头（老后端 0 字节退出 / 回了 hello / 回了别的形状） | **结构性**：再要一定还是这样 ⇒ 不再要，灰掉说原因 |
+/// | `truncated` | 有头，但没尾 / 尾行条数对不上 / 中间一行坏了 | **瞬时**：下一次触发再要 |
+/// | `transport` | 查询本身失败（起不了本机后端进程、ssh 连不上、超时、后端退出码非 0 —— 含「越过 EOF」） | **瞬时**：下一次触发再要 |
+///
+/// ⚠ 如实登记两处**分错档**的（都是往「瞬时」那边错，代价是多试几次、到上限就停，不会一直试）：
+/// ① 远端**很老**的后端进流模式回 hello，`run_list_query` 在它那一层就报了错 ⇒ 到这里是 `transport`；
+/// ② 本机后端过旧（开发树里常见）不认这条子命令 ⇒ 退出 2 ⇒ `transport`。
+///   两者要分对得让 `subagent::Backend::query` 把错误分类带出来 —— 那是它的共用签名，本路不改。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub enum OutlineFailure {
+    OldBackend,
+    Truncated,
+    Transport,
+}
+
+/// 清单的回包。`available == false` 时 `entries` 为空、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
@@ -49,6 +71,10 @@ pub struct UserInputsResult {
     #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// 要不到时的种类（`available == true` 时缺席）。
+    #[cfg_attr(test, ts(optional))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<OutlineFailure>,
     /// 这份清单从哪个字节起（= 请求的 `from_offset`）。
     #[cfg_attr(test, ts(type = "number"))]
     pub from: u64,
@@ -69,6 +95,13 @@ pub(crate) enum OutlineUnavailable {
 }
 
 impl OutlineUnavailable {
+    fn kind(&self) -> OutlineFailure {
+        match self {
+            Self::OldBackend => OutlineFailure::OldBackend,
+            Self::Truncated { .. } => OutlineFailure::Truncated,
+        }
+    }
+
     fn reason(&self) -> String {
         match self {
             Self::OldBackend => "这台机器上的后端版本旧，还列不出大纲（重装后端之后就有）".into(),
@@ -138,6 +171,40 @@ fn precheck(jsonl_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 一趟查询的结果 → 回包。**纯函数**：分类（[`OutlineFailure`]）只有这一个住址。
+///
+/// 查询本身失败（`Err`）一律 `transport`；查询成功但输出不对，按 [`parse_user_inputs_output`] 的判定分档。
+pub(crate) fn outline_result(
+    queried: Result<Vec<String>, String>,
+    from_offset: u64,
+) -> UserInputsResult {
+    let unavailable = |failure: OutlineFailure, reason: String| UserInputsResult {
+        available: false,
+        reason: Some(reason),
+        failure: Some(failure),
+        from: from_offset,
+        end: from_offset,
+        entries: Vec::new(),
+    };
+    // 「后端不在 / 查询失败（含越过 EOF：文件被截断重写）」：这一趟没有清单，原因原样带给前端
+    // （增量失败时前端从 0 重要一次）。
+    let lines = match queried {
+        Ok(l) => l,
+        Err(e) => return unavailable(OutlineFailure::Transport, e),
+    };
+    match parse_user_inputs_output(&lines) {
+        Ok((from, end, entries)) => UserInputsResult {
+            available: true,
+            reason: None,
+            failure: None,
+            from,
+            end,
+            entries,
+        },
+        Err(u) => unavailable(u.kind(), u.reason()),
+    }
+}
+
 /// **「你说过的话」清单**：从字节 `from_offset` 起（冷启动 0 / 增量传上次的 `end`）。
 #[tauri::command]
 pub async fn list_user_inputs(
@@ -147,39 +214,18 @@ pub async fn list_user_inputs(
 ) -> Result<UserInputsResult, String> {
     let route = origin.route("list_user_inputs")?;
     precheck(&jsonl_path)?;
-    let unavailable = |reason: String| UserInputsResult {
-        available: false,
-        reason: Some(reason),
-        from: from_offset,
-        end: from_offset,
-        entries: Vec::new(),
-    };
     let backend = Backend::for_origin(route)?;
     let argv = user_inputs_argv(&jsonl_path, from_offset);
     let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
-    // 「后端不在 / 查询失败（含越过 EOF：文件被截断重写）」对大纲来说同一个处置：
-    // 这一趟没有清单 —— 原因原样带给前端（增量失败时前端从 0 重要一次）。
-    let lines = match backend.query(&argv).await {
-        Ok(l) => l,
-        Err(e) => return Ok(unavailable(e)),
-    };
-    Ok(match parse_user_inputs_output(&lines) {
-        Ok((from, end, entries)) => UserInputsResult {
-            available: true,
-            reason: None,
-            from,
-            end,
-            entries,
-        },
-        Err(u) => {
-            tracing::info!(
-                "list_user_inputs({jsonl_path}): {} 没有大纲：{}",
-                backend.whose(),
-                u.reason()
-            );
-            unavailable(u.reason())
-        }
-    })
+    let res = outline_result(backend.query(&argv).await, from_offset);
+    if let Some(f) = res.failure {
+        tracing::info!(
+            "list_user_inputs({jsonl_path}): {} 没有大纲（{f:?}）：{}",
+            backend.whose(),
+            res.reason.as_deref().unwrap_or("")
+        );
+    }
+    Ok(res)
 }
 
 #[cfg(test)]

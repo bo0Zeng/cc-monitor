@@ -63,6 +63,7 @@ import {
 } from "../test-support/session-viewer-rig";
 import { REPO_ROOT } from "../test-support/repo-root";
 import { TabManager, type Tab } from "../../src/tabs";
+import { MAX_TRANSIENT_FAILURES } from "../../src/views/outline-source";
 
 /** 这一趟里发了哪些 `list_user_inputs`（只看参数）。 */
 const outlineCalls = (): unknown[] =>
@@ -196,7 +197,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["x", "u1", "u100", "y"]);
   });
 
-  it("老后端 / 本机后端不在 ⇒ 灰掉、原因挂提示上；此后不再要（不白起进程）", async () => {
+  it("🔴 结构性（oldBackend）⇒ 灰掉、原因挂提示上；**只要一次**，此后触发也不再要（不白起进程）", async () => {
     outlineBackend.available = false;
     outlineBackend.reason = "这台机器上的后端版本旧";
     replayTailFirst();
@@ -204,8 +205,88 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
     expect(toggleOf().title).toContain("这台机器上的后端版本旧");
+    expect(outlineCalls().length, "结构性失败只该要一次").toBe(1);
     vi.mocked(invoke).mockClear();
     feed(userLine(101, "u101", "又说一句"));
+    tm.onBatchStart();
+    tm.onBatchEnd();
+    await settleOutline();
+    expect(outlineCalls()).toEqual([]);
+  });
+
+  it("🔴 瞬时（transport）⇒ 灰着但**下一次触发再要**；要到了就恢复、计数清零", async () => {
+    outlineBackend.failNext = 1; // ssh 抖一下
+    replayTailFirst();
+    await settleOutline();
+    expect(outlineCalls().length).toBe(1);
+    expect(rowsOf().length).toBe(0);
+    expect(toggleOf().disabled).toBe(true);
+    expect(toggleOf().title).toContain("连不上");
+    // 下一次触发（真用户输入上屏）⇒ 再要一次，这次通了
+    outlineBackend.entries.push(outlineEntry("u101", "刚说的"));
+    feed(userLine(101, "u101", "刚说的"));
+    await settleOutline();
+    expect(outlineCalls().length, "瞬时失败之后下一次触发没再要").toBe(2);
+    expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100", "u101"]);
+    expect(toggleOf().title).toBe("按你的输入跳转");
+  });
+
+  it("瞬时失败时手上已有清单 ⇒ 不动它（行与续点都不动），下一次从原续点接着要", async () => {
+    replayTailFirst();
+    await settleOutline();
+    const first = rowsOf()[0];
+    vi.mocked(invoke).mockClear();
+    outlineBackend.failNext = 2; // 增量那一趟 ＋ 从 0 重要那一趟都失败
+    feed(userLine(101, "u101", "刚说的"));
+    await settleOutline();
+    expect(rowsOf()[0], "瞬时失败把已有清单抹了").toBe(first);
+    expect(rowsOf().length).toBe(2);
+    expect(toggleOf().disabled).toBe(false);
+    vi.mocked(invoke).mockClear();
+    outlineBackend.entries.push(outlineEntry("u102"));
+    feed(userLine(102, "u102", "又一句"));
+    await settleOutline();
+    expect(outlineCalls().map((a) => (a as { fromOffset: number }).fromOffset)).toEqual([2]);
+    expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100", "u102"]);
+  });
+
+  it("数的是**连续**：中间成功一次就清零（失败累计过上限但不连续 ⇒ 照样再要）", async () => {
+    outlineBackend.failNext = MAX_TRANSIENT_FAILURES - 1;
+    replayTailFirst(); // 失败
+    await settleOutline();
+    for (let i = 2; i < MAX_TRANSIENT_FAILURES; i++) {
+      feed(userLine(100 + i, `x${i}`, "又一句")); // 失败……
+      await settleOutline();
+    }
+    feed(userLine(150, "ok", "这次通了")); // 成功 ⇒ 清零
+    await settleOutline();
+    expect(rowsOf().length).toBeGreaterThan(0);
+    outlineBackend.failNext = MAX_TRANSIENT_FAILURES - 1;
+    for (let i = 0; i < MAX_TRANSIENT_FAILURES - 1; i++) {
+      feed(userLine(160 + i, `y${i}`, "又一句"));
+      await settleOutline();
+    }
+    vi.mocked(invoke).mockClear();
+    outlineBackend.entries.push(outlineEntry("z"));
+    feed(userLine(170, "z", "还在要吗"));
+    await settleOutline();
+    expect(outlineCalls().length, "累计而非连续地数 ⇒ 这里已经停了").toBeGreaterThan(0);
+  });
+
+  it(`🔴 连续瞬时失败到上限（${MAX_TRANSIENT_FAILURES} 次）⇒ 按结构性处理：此后不再要`, async () => {
+    outlineBackend.failNext = 99;
+    replayTailFirst(); // 第 1 次
+    await settleOutline();
+    for (let i = 2; i <= MAX_TRANSIENT_FAILURES + 2; i++) {
+      feed(userLine(100 + i, `x${i}`, "又一句")); // 每句都是一次触发
+      await settleOutline();
+    }
+    expect(outlineCalls().length, "到了上限还在要 / 没到上限就停了").toBe(MAX_TRANSIENT_FAILURES);
+    // 切走再切回（有新行）也不要
+    feed(withSession(userLine(1, "w1", "别的会话"), "s2"));
+    await settleOutline();
+    vi.mocked(invoke).mockClear();
+    tm.switchTo("s1");
     await settleOutline();
     expect(outlineCalls()).toEqual([]);
   });

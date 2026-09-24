@@ -17,8 +17,12 @@
  * - `refresh()`：从 `end` 接着要一截，追加到面板上。在途时再叫 ⇒ 这一趟回来后**只补一趟**（合并）。
  * - 增量要不到（后端报「越过 EOF」= 文件被截断/重写）或增量里冒出**已有的** uuid（被重写但更长）
  *   ⇒ 从 0 重要一份、整表换掉。
- * - 要不到清单（老后端 / 本机后端不在 / 截断）⇒ 面板灰掉、原因挂在开关的提示上（**不是错误**），
- *   本宿主此后不再要（`gaveUp`；关 tab / 换会话 `reset` 才再试）。
+ * - 要不到清单：**只看 monitor 回的种类**（`OutlineFailure`），不解析原因文字 ——
+ *   · **结构性**（`oldBackend`：对面不认这条命令 / 回的形状不对）⇒ 再要一定还是这样 ⇒ 灰掉说原因、此后不再要；
+ *   · **瞬时**（`transport` / `truncated`：进程或连接出错、超时、输出断在半路）⇒ **下一次触发时再要**
+ *     （沿用现有触发点，不起定时器）；**连续** [`MAX_TRANSIENT_FAILURES`] 次都是瞬时 ⇒ 按结构性处理。
+ *     手上已经有清单时，瞬时失败**不动它**（续点不动、行不动）；一条都还没有时灰掉并挂原因。
+ *   `reset`（关 tab / 换会话）清掉这两样状态。
  *
  * # 什么时候要（由宿主决定，本类不自己起定时器）
  *
@@ -29,10 +33,30 @@
 import { commands } from "../ipc/commands";
 import type { Origin } from "../generated/Origin";
 import type { UserInputsResult } from "../generated/UserInputsResult";
+import type { OutlineFailure } from "../generated/OutlineFailure";
 import type { UserInputPanel } from "./user-input-panel";
 
 /** 这份清单问的是哪台机器上的哪份会话。拿不到（tab 还没收到路径）⇒ `null`，这一趟不要。 */
 export type OutlineWhere = () => { origin: Origin; jsonlPath: string } | null;
+
+/**
+ * 连续几次**瞬时**失败之后按结构性处理（不再要）。
+ *
+ * 取 **3**，理由：
+ * - 触发点全是**事件**（批结束 · 切进来且有新行 · 真用户输入上屏），不是定时器 ⇒ 3 次失败摊在
+ *   3 个用户看得见的时刻上，不是一秒内连打三下 —— ssh 抖一下、本机后端刚被换掉，下一次多半就好了；
+ * - 能扛住**连着两次**抖动（一次重连期间正好碰上两个触发点）而不灰；
+ * - 又给「真坏了但被分进瞬时档」的那两形（`OutlineFailure` 头注登记的：远端很老的后端回 hello、
+ *   本机后端过旧退出 2）封了顶：每个宿主最多白起 3 次本机进程 / 3 次 ssh exec
+ *   （远端每次最坏占满 `LIST_TIMEOUT` 30 s，3 次即 90 s 的后台等待，不挡界面）。
+ * 成功一次就清零 —— 数的是**连续**。
+ */
+export const MAX_TRANSIENT_FAILURES = 3;
+
+/** 结构性失败：再要一定还是这样。只有这一种；其余（含缺席 = 调用本身抛了）都按瞬时。 */
+function isStructural(f: OutlineFailure | undefined): boolean {
+  return f === "oldBackend";
+}
 
 export class OutlineSource {
   private end = 0;
@@ -45,10 +69,12 @@ export class OutlineSource {
   private stale = false;
   private rows = 0;
   /**
-   * 上一趟**要不到**（老后端 / 本机后端不在 / 截断）⇒ 本宿主这一辈子不再要（`reset` 才清）。
-   * 同骨架索引「成不成都不重拉」：不然每次切 tab、每句输入都起一次注定失败的本机进程 / ssh exec。
+   * 结构性失败（或连续瞬时失败到上限）⇒ 本宿主不再要（`reset` 才清）：
+   * 不然每次切 tab、每句输入都起一次注定失败的本机进程 / ssh exec。
    */
   private gaveUp = false;
+  /** 连续瞬时失败的次数（成功一次清零）。 */
+  private transientFailures = 0;
 
   constructor(
     private readonly panel: UserInputPanel,
@@ -99,6 +125,7 @@ export class OutlineSource {
     this.uuids.clear();
     this.rows = 0;
     this.gaveUp = false;
+    this.transientFailures = 0;
     this.again = false;
     this.fetched = false;
     this.stale = false;
@@ -111,36 +138,56 @@ export class OutlineSource {
     const gen = this.gen;
     this.stale = false;
     let res: UserInputsResult;
+    let base = this.end;
     try {
       res = await commands.list_user_inputs({ ...where, fromOffset: this.end });
       if (gen !== this.gen) return;
       if (!res) throw new Error("没有回包");
-      const rewritten =
-        this.end > 0 && (!res.available || res.entries.some((e) => this.uuids.has(e.uuid)));
-      if (rewritten) {
+      // 增量要不到（多半是越过 EOF = 截断/重写）或冒出已有的 uuid（重写但更长）⇒ 从 0 重要一份
+      if (this.end > 0 && (!res.available || res.entries.some((e) => this.uuids.has(e.uuid)))) {
         res = await commands.list_user_inputs({ ...where, fromOffset: 0 });
         if (gen !== this.gen) return;
-        this.end = 0;
-        this.uuids.clear();
-        this.rows = 0;
+        if (!res) throw new Error("没有回包");
+        base = 0;
       }
     } catch (e) {
       if (gen !== this.gen) return;
+      // 调用本身抛了（IPC / 预检）⇒ 没有种类 ⇒ 按瞬时
       res = { available: false, reason: String(e), from: this.end, end: this.end, entries: [] };
     }
     this.fetched = true;
     if (!res.available) {
-      this.end = 0;
-      this.uuids.clear();
-      this.rows = 0;
-      this.gaveUp = true;
-      this.panel.setUnavailable(res.reason ?? "");
+      this.failed(res.failure, res.reason ?? "");
       return;
     }
-    if (this.end === 0) this.panel.setEntries(res.entries);
-    else this.panel.appendEntries(res.entries);
+    this.transientFailures = 0;
+    if (base === 0) {
+      this.uuids.clear();
+      this.rows = 0;
+      this.panel.setEntries(res.entries);
+    } else {
+      this.panel.appendEntries(res.entries);
+    }
     for (const e of res.entries) this.uuids.add(e.uuid);
     this.rows += res.entries.length;
     this.end = res.end;
+  }
+
+  /** 要不到：结构性 ⇒ 灰掉、不再要；瞬时 ⇒ 记一次、下一次触发再要（到上限按结构性）。 */
+  private failed(failure: OutlineFailure | undefined, reason: string): void {
+    if (!isStructural(failure)) {
+      this.transientFailures++;
+      if (this.transientFailures < MAX_TRANSIENT_FAILURES) {
+        this.stale = true; // 下一次「切进来」也算触发点（`needsFetch`）
+        // 手上已经有清单 ⇒ 不动它（续点、行、标记都不动）；一条都没有 ⇒ 灰着，原因挂提示上
+        if (this.rows === 0) this.panel.setUnavailable(reason);
+        return;
+      }
+    }
+    this.end = 0;
+    this.uuids.clear();
+    this.rows = 0;
+    this.gaveUp = true;
+    this.panel.setUnavailable(reason);
   }
 }
