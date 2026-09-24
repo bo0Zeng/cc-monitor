@@ -539,10 +539,11 @@ pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
 //
 // # ⚠ 这一步**没有**做到什么（别读宽）
 //
-// - **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消 · 读一份文本进编辑器）：`设计/60 §8.4` 未拍，
+// - **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消）：`设计/60 §8.4` 未拍，
 //   题面逐字「上传/跨机传输不做」。逐条登记在 `boundary_tests::Kind::Transfer`。
-// - **同机复制仍走 SFTP**：后端今天没有 `files-copy` 这条命令（写面是那六条），
-//   窗口一侧补不出来 ⇒ 登记在 `boundary_tests::Kind::BackendLacks`，交主会话。
+//   ✅〔F7a · 第三波 2026-09-24〕「读一份文本进编辑器」那一条已换成后端 `files-read-text`。
+// - ✅〔F7a · 第三波 2026-09-24〕**同机复制**此前仍走 SFTP（后端没有 `files-copy`，
+//   登记在 `boundary_tests` 那一类「后端缺命令」里）—— 现在问后端 `files-copy`，那一类清零删了。
 // - ✅〔F7a · 第三波 2026-09-24〕**开窗时解 home** 此前仍走 SFTP（住 monitor 那一侧，
 //   后端没有这一问）—— 现在问后端 `files-home`（[`home_from_reply`]），monitor 那一侧
 //   开窗一个 SFTP 都不拨了。

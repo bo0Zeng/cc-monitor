@@ -415,7 +415,7 @@ fn finishing_a_copy_round_triggers_exactly_one_reload() {
     w.copy_board
         .finish(crate::filewin::copy::CopyOutcome::Done {
             asked: false,
-            verdict: None,
+            bytes: 0,
         });
     assert!(w.settle_finished_copies(), "跑完一趟却不重列");
     assert!(!w.settle_finished_copies(), "同一趟重列了第二次");

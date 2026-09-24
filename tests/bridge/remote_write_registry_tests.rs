@@ -799,18 +799,6 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
              断点续传、取消登记全部照旧",
         ),
         (
-            "sftp_copy",
-            "命令",
-            "零流量复制（`设计/60 §5` 第二段）。走它而不是 `copy_remote_path` ⇒ \
-             两次 `guard_write`（`from` / `to` 各一次）＋ 取消登记 ＋ 车道预算",
-        ),
-        (
-            "CopyVerdict",
-            "类型",
-            "复制那一趟的裁决（`None` = 零流量走通了；`Some(说明)` = 退了路，\
-             含实际过网字节数）。**刻意不压成 `bool`** —— 压了就等于允许静默退化成 2× 流量",
-        ),
-        (
             "TRANSFER_LANE_CAP",
             "常量",
             "一趟拖入同时起几件。**取的就是池里那个数**，不另写一个字面量\
@@ -840,8 +828,10 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
              与那条棘轮同一个事实、两个方向",
         ),
     ];
-    /// 「它是什么」那一栏的**封闭集合**。多出第五种就得回来论证。
-    const KINDS: &[&str] = &["命令", "类型", "常量", "函数"];
+    /// 「它是什么」那一栏的**封闭集合**。多出第四种就得回来论证。
+    /// 〔F7a · 第三波 09-24〕原来还有「类型」一档（唯一一条是复制那一趟的裁决类型），
+    /// 复制换到后端之后那一条走了 ⇒ 这一档没人用，删掉（下面那条「每一档都有人用」逐字要求）。
+    const KINDS: &[&str] = &["命令", "常量", "函数"];
 
     let root = repo_root();
     let dir = root.join("src/bridge/src/filewin");
@@ -893,10 +883,11 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     used.sort();
     // 抽取器自检②：**处数地板**。剥法把生产段剥没了 ⇒ 两边都空 ⇒ 相等断言恒真。
     // 〔F7a · 第三波 09-24〕地板改成相等：10 → 9（少了 `sftp_realpath`：开窗前解 home 换成后端 `files-home`）
-    //   → 7（少了读文本那条命令与它的上限常量：换成后端 `files-read-text`，常量搬回 `editor.rs`）。
+    //   → 7（少了读文本那条命令与它的上限常量：换成后端 `files-read-text`，常量搬回 `editor.rs`）
+    //   → 5（少了复制那条命令与它的裁决类型：换成后端 `files-copy`）。
     assert_eq!(
         used.len(),
-        7,
+        5,
         "抠到 {} 处 `sftp_pool::…` 引用 —— 与现打的条数不等：抽取器坏了，或接线变了（实得 {used:?}）",
         used.len()
     );
@@ -975,13 +966,15 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         ("sftp_realpath", "files-home"),
         // 〔F7a · 第三波 09-24〕编辑器读一份文本（此前 SFTP 把字节整份搬过来；上限常量随之搬回窗口）。
         ("sftp_read_text_for_edit", "files-read-text"),
+        // 〔F7a · 第三波 09-24〕同机复制（此前走池子那条零流量复制；窗口进程里「后端缺命令」那一类清零）。
+        ("sftp_copy", "files-copy"),
     ];
     assert_eq!(
         declared_cmds.len(),
-        4,
+        3,
         "窗口今天接了 {} 条池子命令（〔F2 09-24〕13 → 6：上传 · 往外拖 · 取消 · 读文本进编辑器 ·\
          同机复制 · 开窗前解 home；〔F7a 09-24〕6 → 5：开窗前解 home 换成后端 `files-home`；\
-         5 → 4：读文本进编辑器换成后端 `files-read-text`）",
+         5 → 4：读文本进编辑器换成后端 `files-read-text`；4 → 3：同机复制换成后端 `files-copy`）",
         declared_cmds.len()
     );
     let missing: std::collections::BTreeSet<&str> = commands

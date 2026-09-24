@@ -238,9 +238,9 @@ enum Kind {
     /// `files-read-text`）—— `设计/60 §8.4` 未拍，
     /// 题面逐字「上传/跨机传输不做」。⚠ 这一类在，窗口进程就仍然拨第二条 SSH（只在真搬字节时）。
     Transfer,
-    /// 🔴 **后端今天没有这条命令**：同机复制（写面那六条里没有 `files-copy`）。
-    /// 窗口一侧补不出来（后端不在本路写区）⇒ 交主会话。
-    BackendLacks,
+    // 〔F7a · 第三波 09-24〕这里原来还有一类「后端今天没有这条命令」（同机复制：池子那条复制命令 ＋
+    //   它的裁决类型，2 条）。后端有了 `files-copy` 之后两条都换走了通道 ⇒ 这一类清零，随之删掉
+    //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
     /// 本地预判的那道围栏（踩线的那一件**一个字节都不上线**）。权威在后端写面那一侧；
     /// 本地这一份的去留钉在写区外那条「旧住址最后一个消费者」判据上，交主会话。
     Fence,
@@ -271,7 +271,7 @@ const MONITOR_FILES: &[&str] = &["entry.rs"];
 /// ★ **窗口进程**够得到的 app 侧符号，逐条。
 ///
 /// 🔴 题面判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
-/// 其余四类每一条都是一笔带住址的欠账（见 [`Kind`]）。
+/// 其余三类每一条都是一笔带住址的欠账（见 [`Kind`]；〔F7a 09-24〕「后端缺命令」那一类清零删了）。
 const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
     ("chan::client::Client", Kind::Channel),
@@ -295,9 +295,6 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("sftp_pool::sftp_download", Kind::Transfer),
     ("sftp_pool::sftp_upload", Kind::Transfer),
     ("ssh_source::RemoteConfig", Kind::Transfer),
-    // ── 后端缺命令 ──
-    ("sftp_pool::CopyVerdict", Kind::BackendLacks),
-    ("sftp_pool::sftp_copy", Kind::BackendLacks),
     // ── 本地预判围栏 ──
     ("sftp_pool::is_protected_claude_data_path", Kind::Fence),
     // ── 本机动作 ──
@@ -494,7 +491,6 @@ fn every_declared_edge_falls_in_a_live_category() {
         (Channel, WINDOW_SIDE),
         (Wire, WINDOW_SIDE),
         (Transfer, WINDOW_SIDE),
-        (BackendLacks, WINDOW_SIDE),
         (Fence, WINDOW_SIDE),
         (Terminal, WINDOW_SIDE),
         (Host, MONITOR_SIDE),
@@ -520,16 +516,12 @@ fn every_declared_edge_falls_in_a_live_category() {
     //    变少 ＝ 有一笔欠账还了 —— 好事，但要同拍改这里并写清是哪一笔。
     let debt = |k: Kind| WINDOW_SIDE.iter().filter(|(_, kk)| *kk == k).count();
     assert_eq!(
-        (
-            debt(Transfer),
-            debt(BackendLacks),
-            debt(Fence),
-            debt(Terminal)
-        ),
-        (5, 2, 1, 1),
-        "窗口进程里「还不是通道」的那几类条数变了（传输 · 后端缺命令 · 本地围栏 · 本机动作）\
+        (debt(Transfer), debt(Fence), debt(Terminal)),
+        (5, 1, 1),
+        "窗口进程里「还不是通道」的那几类条数变了（传输 · 本地围栏 · 本机动作）\
          〔F7a 09-24〕传输 7 → 5：编辑器读文本那两条（池子那条读文本命令 ＋ 它的上限常量）换成后端 \
-         `files-read-text`，上限常量搬回窗口（`editor::MAX_EDIT_BYTES`）"
+         `files-read-text`，上限常量搬回窗口（`editor::MAX_EDIT_BYTES`）；\
+         后端缺命令 2 → 0（类别删了）：同机复制那两条换成后端 `files-copy`"
     );
 }
 

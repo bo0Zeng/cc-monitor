@@ -1,77 +1,45 @@
-//! `24e` 第三刀：**把零流量复制接到原生窗口上**（`设计/60 §5` 第二段 ＋ `§5` 第三段第 7 步）。
+//! `24e` 第三刀：**把复制接到原生窗口上**（`设计/60 §5` 第二段 ＋ `§5` 第三段第 7 步）。
 //!
-//! # 🔴 一、这一层**没有**复制逻辑，一行都没有
+//! # 🔴〔F7a · 第三波 2026-09-24〕复制换走通道：**在那台机器上复制，字节不过网**
 //!
-//! 零流量复制那一路（`copy-data` 扩展 · 协商不到就退回中转 · 退路那句话带上实际过网
-//! 字节数）**在步 23b 就落地了**，住 `sftp_pool::copy_remote_path`，秤 F3 两个方向钉着它
-//! （`tests/bridge/sftp_copy_f3_tests.rs`，门禁 `f3-copy` 那一格 9 条）。
-//! **这一刀只做一件事：让窗口上点得到它，并且让它的裁决被人看见。**
+//! 第三刀那一版走的是 SFTP 池子那条零流量复制命令（`copy-data` 扩展，协商不到就退回中转、
+//! 字节经过用户这台机器一去一回）。窗口成了只经通道说话的独立前端之后，那一条是
+//! 「后端缺命令」那一类欠账（`设计/60 §12.3`）。现在后端有了 `files-copy`
+//! （写面第七条：三条路径各过会话数据围栏、缺省 `O_EXCL` 不覆盖、显式 `overwrite` 才经暂存旁名原子顶掉）
+//! ⇒ 本层只剩三件：**问一次 · 起一趟 · 把结局摆出来**，一行复制逻辑都没有。
 //!
-//! ## ⚠ 为什么是经 `sftp_copy` 调下去，而不是直接调 `copy_remote_path`
+//! 🔴 **「退路必须在界面上出声」那一格因此不在了 —— 不是被删了，是那一形不存在了。**
+//! 第三刀那条硬要求（`设计/60 §5` 第二段逐字「不许静默退化成 2× 流量」）防的是
+//! 「协商不到零流量、悄悄改走中转」。后端在那台机器上本地复制，**没有第二条路**可退：
+//! 字节从来不过网 ⇒ 没有「慢路」可喊。那一行警告色字随它的起因一起走了。
 //!
-//! `copy_remote_path` 的第一个参数是一条**裸会话**（`crate::sftp::RawSftp`），
-//! 而那条会话只能从池里借（`OriginPool::lease_raw`），拿它要先 `pool_for(origin)` ——
-//! 那个函数是 `sftp_pool` **模块私有**的 ⇒ 本模块**够不着**。
-//!
-//! 🔴 **而这正好是对的，不是绕路。** `sftp_copy` 在 `copy_remote_path` 外面套了三样
-//! 缺一不可的东西，自己拼一遍等于把三样一起丢掉：
-//!
-//! | 套着的 | 丢了会怎样 |
-//! |---|---|
-//! | `guard_write(&from)` ＋ `guard_write(&to)` **各一次** | Claude 数据源围栏没了 —— 能把正被 Claude 打开的 `jsonl` 复制走、或盖一份复制品上去 |
-//! | `register_cancel(&transfer_id)` | 这一趟复制**取消不掉**（`copy_remote_path` 里那个 `cancel` 就永远是 false） |
-//! | `pool.lease_raw(&cfg)`（一格车道 ＋ 一格通道预算） | `设计/60 §5.4a` 那条「6 − 4 = 2 格永远留给浏览」被拆成两份预算 |
-//!
-//! ⇒ **`sftp_copy` 就是那条池的入口**，而它的函数体里**直接点名** `copy_remote_path`
-//! （`remote_write_registry` 那张一跳路由表逐字钉着 `("sftp_pool.rs", "sftp_copy",
-//! "copy_remote_path")`，为了那条边它刻意没抽 `copy_inner`）。
-//! ⇒ 本模块**禁止**出现 `copy_remote_path(` 的调用形状，判据钉着
-//! （[`tests::the_real_adapter_delegates_to_the_pools_own_copy_command`]）。
-//!
-//! # 🔴 二、三段的顺序**就是 [`run_copy`] 的结构** —— 照 [`super::transfer::run_drop`] 办
+//! # 🔴 一、三段的顺序**就是 [`run_copy`] 的结构** —— 照 [`super::transfer::run_drop`] 办
 //!
 //! ```text
-//! ① probe    —— 「远端已经有这个目标名了吗」
+//! ① probe    —— 「那儿已经有这个目标名了吗」（借 `transfer::probe_remote`，问后端 `files-stat`）
 //! ② confirm  —— 要覆盖吗，**问一次**（`FnOnce` ⇒ 一半由编译器守）
-//! ③ launch   —— 才动手，并把**裁决原样带回来**
+//! ③ launch   —— 才动手；**覆盖策略由这一问的答案决定**（问过且答了「覆盖」⇒ `overwrite: true`，
+//!               没问过 ⇒ `false`，后端 `O_EXCL`：探完之后才冒出来的同名文件照样不会被盖掉）
 //! ```
 //!
 //! ⚠ 与 `run_drop` **刻意不合成一个函数**，理由是**回值类型**不同，不是风格：
-//! 上传那一路的 `launch` 回 `Result<(), String>`（成没成），复制这一路回
-//! `Result<CopyVerdict, String>`（**成没成 ＋ 走的是哪条路**）。
-//! 把它们并成一个泛型函数，要么让上传那一侧背一个永远是 `None` 的字段，
-//! 要么把 `DropOutcome` 那四个字段整个换掉 —— 而 `DropOutcome` 上钉着
-//! `transfer_tests` 五条相等断言。**顺序与「一次问完」这两件事照它的形状办，回值各归各。**
-//!
-//! # 🔴 三、退路必须在界面上出声 —— 这是**承重**的，不是锦上添花
-//!
-//! `设计/60 §5` 第二段逐字：「**不许静默退化成 2× 流量** —— 用户看得见『这一趟走的是慢路』」。
-//! `copy_remote_path` 刻意**不回 `bool`** 而回 `CopyVerdict = Option<String>`，
-//! 并把「为什么退 ＋ 实际过网了多少字节」拼进那一句话 ⇒ **静默退化在类型上就做不到**。
-//!
-//! 这一层于是只剩一件活：**把那句话原样摆到人眼前**，一个字都不改写、不摘要。
-//! 落点是 [`outcome_notice`]（纯函数，判得动）＋ [`CopyBoard::ui`]（真画出来）。
-//! ⚠ 旧面板那一侧是一条 12 秒的 info toast（`src/sftp/panel.ts::copyFile`）；
-//! 窗口这一侧没有 toast，换成**画在窗口上、一直留到下一趟**的一行警告色字
-//! —— 比 toast 更不容易错过，代价是它占一行。
+//! 上传那一路的 `launch` 回 `Result<(), String>`，复制这一路回 `Result<u64, String>`
+//! （复制了几个字节 —— 结局那句话里要说）。
 //!
 //! # ⚠ 这一刀**买不到**什么（逐条，别读宽）
 //!
-//! - **一趟真复制的端到端读数买不到。** 本仓红线不许起真连接
-//!   ⇒ [`copy_remote`] 本机跑不到。它买得到的是**委派**（调的是池那条既有命令）。
-//! - **「那句话在屏幕上没被裁掉」买不到。** 判据读的是 egui 这一帧真的交出去的
-//!   galley 文本（`Galley::text()` 逐字「the full, non-elided text」）——
-//!   它证明「这一帧真的把这句话拿去排版了」，**不证明**「那几个像素没被列宽切掉」。
-//! - **真机上鼠标点那颗「复制」会不会触发买不到**（本机 `XDG_SESSION_TYPE=tty`，
-//!   没有图形会话就没有真事件源）。判据喂的是合成事件 —— 同 `真相源/99 §9.1` 那条口径。
-//! - **目录复制没做**（`copy-data` 吃的是文件句柄）· **多选复制没做**（还没有多选）
-//!   · **复制到别的目录没做**（那个框只改名字，名字里不许带 `/`）。
+//! - **一趟真远端上的复制买不到。** 判据里那台后端是合成的（真回环口、真钥匙、真 `dial`，
+//!   答话照冻结契约）；后端那一侧的真复制在本机临时目录上真跑过（`files_write_tests`），
+//!   两段都真，**连起来经一台真远端**没有读数。
+//! - **取消没有了。** 后端那条命令在阻塞档上、开跑之后打不断（`cancel` 回 `not_cancellable`）
+//!   ⇒ 窗口上**不画**取消那颗按钮（画了就是一颗按了没用的按钮）。大文件复制因此停不下来 —— 如实登记。
+//! - **进度没有了。** 后端一趟做完才回话 ⇒ 窗口上只有「正在复制 …」一行，没有进度条。
+//! - **真机上鼠标点那颗「复制」会不会触发买不到**（本机没有图形会话）。判据喂的是合成事件。
+//! - **目录复制没做** · **多选复制没做** · **复制到别的目录没做**（那个框只改名字，名字里不许带 `/`）。
 
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-
-use crate::sftp_pool::CopyVerdict;
 
 use super::source::Row;
 
@@ -84,9 +52,8 @@ pub const COPY_LABEL: &str = "复制";
 ///
 /// 两档不能，理由各不相同：
 ///
-/// - **目录** —— `copy-data` 吃的是**文件句柄**，目录递归不在这一层
-///   （`sftp_pool::copy_remote_path` 头注逐条写着它不守什么；本机 `sftp` 客户端
-///   现打同样拒：`Cannot copy non-regular file`）。
+/// - **目录** —— 后端 `files-copy` 只复制普通文件（目录递归没做，理由同删除不递归：
+///   围栏的射程是一条路径）；第三刀那一版的 SFTP `copy-data` 同样只吃文件句柄。
 /// - **有损名** —— 非 UTF-8 文件名经库有损解码之后**寻址不到真字节**，
 ///   一切写操作灰置（同旧面板 `panel.ts::mkRowBtn` 的 `disabled = e.lossyName`）。
 pub fn is_copyable(r: &Row) -> bool {
@@ -112,8 +79,8 @@ impl CopyJob {
     /// - 空名字；
     /// - 名字里带 `/` —— 那是「复制到别处」，本刀不做，更不许让人在一个
     ///   「改个名」的框里不小心写出一条别的路径（那会把文件放到他没在看的目录里）；
-    /// - 目标算出来**就是源自己** —— `copy_remote_path` 会先写 `<to>.part`、
-    ///   再删 `to`、再换名上位，`to == from` 就是「把源删了再换个名字回来」。
+    /// - 目标算出来**就是源自己** —— 覆盖那一形是「写旁名、再换名顶掉目标」，
+    ///   `to == from` 就是拿一份复制品顶掉源自己（后端那一侧也拒，这里先不发）。
     pub fn beside(from: &str, dir: &str, new_name: &str) -> Option<Self> {
         let new_name = new_name.trim();
         if new_name.is_empty() || new_name.contains('/') {
@@ -145,19 +112,18 @@ impl CopyJob {
 
 /// 一趟复制跑完之后的读数。
 ///
-/// 🔴 **`Done` 那一支把 [`CopyVerdict`] 原样背上来，不压成 `bool`。**
-/// 压成 `bool` 就等于把「为什么退 ＋ 过了多少字节」在这一层丢掉，
-/// 而那一句话只有 `sftp_pool` 那一层答得出（`copy_remote_path` 头注逐条写着理由）。
+/// 〔F7a · 第三波 2026-09-24〕`Done` 那一支此前背着 SFTP 那一层的裁决（走没走上零流量、
+/// 退路过了多少字节）；复制换到后端之后那一问不存在了（见模块头注），背的换成**复制了几个字节**。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CopyOutcome {
     /// 问过「要覆盖吗」，人答了「不覆盖」⇒ **一个字节都没动**。
     Skipped,
     /// 跑完了。
     Done {
-        /// 这一趟问过人没有（＝ 目标本来就在）。
+        /// 这一趟问过人没有（＝ 目标本来就在，而且人答了「覆盖」）。
         asked: bool,
-        /// `None` = 零流量走通了；`Some(说明)` = **退了路**，那句话已含实际过网字节数。
-        verdict: CopyVerdict,
+        /// 后端报的复制字节数。
+        bytes: u64,
     },
     /// 起不来 / 半途失败，带原文。
     Failed(String),
@@ -167,7 +133,9 @@ pub enum CopyOutcome {
 ///
 /// - `probe`：「远端已经有这个目标名了吗」。回 `true` = 已经有了（会覆盖）。
 /// - `confirm`：**一次**把「要覆盖吗」交给人。⚠ 它是 `FnOnce` —— 类型上就不许被调第二次。
-/// - `launch`：真起那一趟，回 `sftp_pool` 那一层的裁决。
+/// - `launch`：真起那一趟。第二个参数是**覆盖策略**：问过且人答了「覆盖」⇒ `true`；
+///   没问过 ⇒ `false`（后端 `O_EXCL`：探完之后才冒出来的同名文件照样不会被盖掉，那一趟回错）。
+///   回复制了几个字节。
 ///
 /// ⚠ **不冲突就不问**（弹一个空框是噪音，不是慎重）—— 同 [`super::transfer::run_drop`]。
 pub async fn run_copy<P, PFut, C, CFut, L, LFut>(
@@ -181,8 +149,8 @@ where
     PFut: Future<Output = bool>,
     C: FnOnce(CopyJob) -> CFut,
     CFut: Future<Output = bool>,
-    L: FnOnce(CopyJob) -> LFut,
-    LFut: Future<Output = Result<CopyVerdict, String>>,
+    L: FnOnce(CopyJob, bool) -> LFut,
+    LFut: Future<Output = Result<u64, String>>,
 {
     // ── ① 问「会不会覆盖」────────────────────────────────────────────────
     let clash = probe(job.clone()).await;
@@ -192,11 +160,11 @@ where
         return CopyOutcome::Skipped;
     }
 
-    // ── ③ 才动手，并把裁决原样带回来 ──────────────────────────────────────
-    match launch(job).await {
-        Ok(verdict) => CopyOutcome::Done {
+    // ── ③ 才动手：走到这里 `clash` 为真 ⇔ 人答了「覆盖」⇒ 它就是覆盖策略 ─────────
+    match launch(job, clash).await {
+        Ok(bytes) => CopyOutcome::Done {
             asked: clash,
-            verdict,
+            bytes,
         },
         Err(e) => CopyOutcome::Failed(e),
     }
@@ -210,19 +178,14 @@ pub struct Notice {
     pub loud: bool,
 }
 
-/// 逐字出现在**退路**那一句里的前缀 —— 判据按它去找那句话。
-///
-/// ⚠ 后面跟的是 `copy_remote_path` 交上来的**原文**（含实际过网字节数），
-/// 这一层一个字都不改写。
-pub const SLOW_PATH_PREFIX: &str = "⚠ 这一趟走的是慢路：";
-
 /// 🔴 **上一趟要摆到用户眼前的那句话。**
 ///
 /// 抽成纯函数不是风格：`CopyBoard::ui` 里那几行 egui 调用判不动「说了什么」，
 /// 而这一条**是**能按相等断言判的 —— 而且 [`CopyBoard::ui`] 真的走它
 /// （判据一头喂这个函数、一头去 egui 这一帧画出来的文字里找同一句话）。
 ///
-/// ⚠ **快路刻意不喊** —— 零流量是它该有的样子，不是成就（同旧面板 `copyFile` 那句注释）。
+/// 〔F7a〕成功那一句说出**复制了几个字节**、**在哪儿复制的**（那台机器上，字节不过网）——
+/// 此前那一句是「服务端自己搬的字节，零流量」，意思一样，只是那时还有一条会过网的退路要分开说。
 pub fn outcome_notice(o: &CopyOutcome) -> Notice {
     match o {
         CopyOutcome::Skipped => Notice {
@@ -233,20 +196,9 @@ pub fn outcome_notice(o: &CopyOutcome) -> Notice {
             text: format!("复制失败：{e}"),
             loud: true,
         },
-        CopyOutcome::Done {
-            verdict: None,
-            asked: _,
-        } => Notice {
-            text: "复制完成：服务端自己搬的字节，零流量".to_string(),
+        CopyOutcome::Done { bytes, asked: _ } => Notice {
+            text: format!("复制完成：{bytes} 字节，在那台机器上复制的，没经过你这台机器"),
             loud: false,
-        },
-        // 🔴 承重的那一支：`why` **原样**带出来（它已经含了过网字节数）。
-        CopyOutcome::Done {
-            verdict: Some(why),
-            asked: _,
-        } => Notice {
-            text: format!("{SLOW_PATH_PREFIX}{why}"),
-            loud: true,
         },
     }
 }
@@ -272,47 +224,57 @@ pub async fn probe_target(
     super::transfer::probe_remote(line, origin, job.overwrite_target()).await
 }
 
-/// 真起一趟复制 —— 调既有命令 `sftp_pool::sftp_copy`。
+/// 复制那条线上命令的名字（后端写面第七条）。
+pub const CMD_COPY: &str = "files-copy";
+
+/// 一趟复制的往返上限（调用方给的期限，`05 §3.3.2`）。
 ///
-/// 🔴 **为什么可以直接调一个 `#[tauri::command]`**：同进程（`super` 头注），
-/// 它同时就是一个普通 `pub async fn` ⇒ 这里不过 IPC、不过 serde，
-/// 走的是同一个进程级连接池 ⇒ 围栏、取消登记、车道/通道预算全部照旧生效
-/// （逐条见本模块头注那张表）。
+/// ⚠ 比写面其余几条（[`super::writeops::WRITE_BUDGET`]）宽：复制一份大文件在那台机器上
+/// 要搬满它的字节，而这一趟**取消不掉**（后端阻塞档）——期限就是它唯一的上界。
+pub const COPY_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// 一件复制 → `files-copy` 的参数。**纯函数**（判得动）。
 ///
-/// 🔴 **进度通道在本进程里现造**（`tauri::ipc::Channel::new` 收一个普通回调），
-/// 同 [`super::transfer::upload_remote`] —— 进度直接落进 `board`，不绕一圈 webview。
+/// 路径切成 `(root, rel)` 与写面其余几条同形（[`super::writeops::apply_remote`] 头注）：
+/// `root` = 源的上一级，`from` / `to` = 两个尾段。
 ///
-/// 🔴〔第五刀〕`transfer_id` **由调用方给**，不在这儿造。它是取消登记表的键，
-/// 造在这儿的话它从没离开过这个栈 ⇒ 窗口说不出要取消哪一趟
-/// （逐字理由住 `super::transfer` 头注那一节；唯一的造键落点是
-/// [`super::transfer::CancelDesk::mint`]，它同时保证「两趟不用同一个键」）。
+/// 🔴 **目标不在源的同一个目录里 ⇒ 报错，不发。** [`CopyJob::beside`] 造出来的都是同目录的；
+/// 这一道防的是「当前目录」与「那一行的路径」写法不一致（尾斜杠之类）时，
+/// 拼出一条落到别处的路径 —— 那是把文件放到了他没在看的目录里。
+pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
+    let root = super::source::parent_dir(&job.from);
+    if super::source::parent_dir(&job.to) != root {
+        return Err(format!(
+            "复制只在同一个目录里做：{} 与 {} 不在同一个目录",
+            job.from, job.to
+        ));
+    }
+    Ok(serde_json::json!({
+        "root": root,
+        "from": super::source::remote_basename(&job.from),
+        "to": super::source::remote_basename(&job.to),
+        "overwrite": overwrite,
+    }))
+}
+
+/// 真起一趟复制 —— 〔F7a · 第三波 2026-09-24〕经通道问后端 `files-copy`。
+///
+/// 回复制了几个字节。**围栏在后端**（三条路径各过一次会话数据围栏），本层不自己判一遍
+/// （判定只有一个家）；踩线时那句拒绝原样变成 [`CopyOutcome::Failed`]。
+///
+/// ⚠ 上一版这里调的是 SFTP 池子那条零流量复制命令（同进程直调一个 Tauri 命令，
+/// 带进度通道与取消键）；那两样随它一起没了（后端这一趟没有进度、取消不掉，见模块头注）。
 pub async fn copy_remote(
-    cfg: &crate::ssh_source::RemoteConfig,
+    line: &super::source::Line,
+    origin: &super::source::Origin,
     job: &CopyJob,
-    board: &CopyBoard,
-    transfer_id: &str,
-) -> Result<CopyVerdict, String> {
-    let name = job.name.clone();
-    let sink = board.clone();
-    let chan = tauri::ipc::Channel::new(move |body| {
-        // `InvokeResponseBody` 在同进程里就是那段 JSON 文本。
-        if let tauri::ipc::InvokeResponseBody::Json(s) = &body {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
-                let got = v.get("transferred").and_then(|x| x.as_u64()).unwrap_or(0);
-                let total = v.get("total").and_then(|x| x.as_u64()).unwrap_or(0);
-                sink.progress(&name, got, total);
-            }
-        }
-        Ok(())
-    });
-    crate::sftp_pool::sftp_copy(
-        cfg.clone(),
-        job.from.clone(),
-        job.to.clone(),
-        transfer_id.to_string(),
-        chan,
-    )
-    .await
+    overwrite: bool,
+) -> Result<u64, String> {
+    let args = copy_args(job, overwrite)?;
+    let d = super::source::ask(line, origin, CMD_COPY, &args, COPY_BUDGET).await?;
+    d.get("bytes")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| format!("`{CMD_COPY}` 的应答里没有 `bytes`，和约定的不一样"))
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -369,11 +331,8 @@ pub struct CopyBoard {
     /// 已经跑完的趟数 —— 给判据与「跑完要重列目录」一个可观测的数。
     rounds: Arc<AtomicU64>,
     ctx: Arc<Mutex<Option<egui::Context>>>,
-    /// 🔴〔第五刀〕这一趟的取消台（键 ＋ 旗）。
-    ///
-    /// ⚠ **与上传那一摞共用同一个类型**（[`super::transfer::CancelDesk`]），不另写一份：
-    /// 两份实现会在「取消之后还起不起」这一档上分岔，而那一档正是这一格的全部内容。
-    desk: super::transfer::CancelDesk,
+    // 〔F7a · 第三波 2026-09-24〕这里原来还有一张取消台（第五刀）：复制换到后端之后那一趟
+    //   **取消不掉**（阻塞档），留着它就是一颗按了没用的按钮 ⇒ 随 SFTP 那条路一起摘了。
 }
 
 #[derive(Default)]
@@ -382,8 +341,8 @@ struct Board {
     asking: Option<CopyJob>,
     /// 答复往哪儿送。
     answer: Option<tokio::sync::oneshot::Sender<bool>>,
-    /// 在跑的那一件：(名字, 已传, 总共)。
-    progress: Option<(String, u64, u64)>,
+    /// 在跑的那一件（名字）。〔F7a〕后端一趟做完才回话 ⇒ 没有进度，只有「在跑」。
+    running: Option<String>,
     /// 上一趟的裁决（**画在窗口上**，不是 `println!`）。
     last: Option<CopyOutcome>,
 }
@@ -405,11 +364,6 @@ impl CopyBoard {
         self.inner.lock().unwrap().asking.is_some()
     }
 
-    /// 这一趟的取消台。**同一份**（内部全是 `Arc`）。
-    pub fn cancels(&self) -> super::transfer::CancelDesk {
-        self.desk.clone()
-    }
-
     /// 把窗口交给它，好让它在有事发生时敲一下。
     pub fn attach(&self, ctx: Option<egui::Context>) {
         *self.ctx.lock().unwrap() = ctx;
@@ -422,16 +376,22 @@ impl CopyBoard {
         }
     }
 
-    pub fn progress(&self, name: &str, got: u64, total: u64) {
-        self.inner.lock().unwrap().progress = Some((name.to_string(), got, total));
+    /// 这一趟真起了（问完了、要发了）。
+    pub fn begin(&self, name: &str) {
+        self.inner.lock().unwrap().running = Some(name.to_string());
         // ⚠ 锁放掉之后才敲 —— `request_repaint` 会走进 egui 自己的锁。
         self.poke();
+    }
+
+    /// 在跑的那一件（`None` = 没在跑）。
+    pub fn running(&self) -> Option<String> {
+        self.inner.lock().unwrap().running.clone()
     }
 
     pub fn finish(&self, outcome: CopyOutcome) {
         {
             let mut b = self.inner.lock().unwrap();
-            b.progress = None;
+            b.running = None;
             b.asking = None;
             b.last = Some(outcome);
         }
@@ -460,15 +420,11 @@ impl CopyBoard {
         tx.send(overwrite).is_ok()
     }
 
-    /// 画覆盖确认框 · 进度 · **上一趟的裁决**。
-    ///
-    /// 🔴 最后那一段是这一刀的承重墙：退路那句话从 [`outcome_notice`] 出来，
-    /// **原样**画上去。删掉它 ⇒ 复制在不支持 `copy-data` 的服务端上会静默花掉
-    /// 2× 带宽，而界面上一切正常（`设计/60 §5` 第二段逐字禁止）。
+    /// 画覆盖确认框 · 「正在复制」· **上一趟的结局**（从 [`outcome_notice`] 出来，原样画上去）。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let (asking, progress, last) = {
+        let (asking, running, last) = {
             let b = self.inner.lock().unwrap();
-            (b.asking.clone(), b.progress.clone(), b.last.clone())
+            (b.asking.clone(), b.running.clone(), b.last.clone())
         };
         if let Some(job) = asking {
             let mut answer: Option<bool> = None;
@@ -488,23 +444,10 @@ impl CopyBoard {
                 self.settle(ok);
             }
         }
-        if let Some((name, got, total)) = &progress {
-            let frac = if *total > 0 {
-                *got as f32 / *total as f32
-            } else {
-                0.0
-            };
-            ui.add(egui::ProgressBar::new(frac).text(format!("复制 {name} {got}/{total}")));
-        }
-        // 🔴〔第五刀〕取消那一颗 —— 有东西在飞才画（同 `DropBoard::ui` 那条理由）。
-        if !self.desk.in_flight_ids().is_empty() {
+        if let Some(name) = &running {
             ui.horizontal(|ui| {
-                if ui.button(super::transfer::CANCEL_LABEL).clicked() {
-                    self.desk.request();
-                }
-                if self.desk.is_cancelled() {
-                    ui.label("已经按过取消了");
-                }
+                ui.spinner();
+                ui.label(format!("正在那台机器上复制 {name} …"));
             });
         }
         if let Some(o) = &last {
