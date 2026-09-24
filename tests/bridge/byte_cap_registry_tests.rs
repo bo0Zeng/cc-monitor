@@ -315,17 +315,9 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         // 这是唯一一处调用方**明确**依赖宽容降级的地方。
         "截断+说清",
     ),
-    (
-        "src/bridge/src/backend/control/cc_bus.rs",
-        "CONTROL_REPLY_CAP",
-        64 * 1024,
-        "发消息 / spawn 的回显（是一句确认，不是数据）",
-        // ★★〔G 审计改档〕原登记「拒收+回错」，那是**危险的行为回归**：
-        // 这两条命令**有副作用**（agent 已经起来了 / 消息已经投递了），
-        // 此时因回显太长回 Err，用户看到「失败」会重试 ⇒ **起两个 agent 在真烧额度**。
-        // ⇒ 分界不是「哪个更严格」，是**截断有没有毒**：回显的截断从来不影响副作用。
-        "截断+说清",
-    ),
+    // 〔BS1b 09-24〕这里原先登记着 `cc_bus.rs` 的控制类回显上限（发消息 / spawn 的回显，64 KiB，截断+说清）。
+    //   发消息 `K-R98`、派生 BS1b 先后改走后端原语，那两条回显不再经 SSH 读 ⇒ 常量随最后一个用户删了。
+    //   「截断没毒、回 Err 有毒（用户会重试、再起一个 agent）」那条理由今天住在 `OnOverflow::Truncate` 的头注里。
     (
         "src/bridge/src/mcp.rs",
         "REMOTE_CLAUDE_JSON_CAP",
@@ -1000,8 +992,8 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
     (
         "src/bridge/src/backend/control/cc_bus.rs",
         "cap + 1",
-        "`exec_read` 是三条命令共用的助手，上限是入参。三个调用点给的都是具名常量\
-             （`INBOX_READ_CAP` / `CONTROL_REPLY_CAP` ×2），那三个已在 `CAPS` 里。",
+        "`exec_read` 是远端读的助手，上限是入参。〔BS1b 09-24〕今天只剩一个调用点（读 inbox），\
+             给的是具名常量 `INBOX_READ_CAP`，已在 `CAPS` 里。",
     ),
     (
         "src/backend/common/fs.rs",

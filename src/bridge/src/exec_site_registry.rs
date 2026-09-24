@@ -4,7 +4,8 @@
 //!
 //! 引用原语这一侧钉得很密：`shell_quote` 的**实现**只有一个家
 //! （`quote_singleton_guard`），逃逸形态四种写法都认。个别调用点也有自己的行为判据
-//! （`cc_bus::spawn_cmd_whitelists_tool_and_quotes_paths` / `hooks_diag` 钉自己那处用常量）。
+//! （`hooks_diag` 钉自己那处用常量；〔BS1b 09-24〕原先这里还点了 `cc_bus` 派生那条 SSH 构造器的行为判据 ——
+//! 派生改走后端原语 `bus-spawn`，那条路连同判据一起删了）。
 //! ⚠〔`K-R98` 09-13〕这里原先点的是发消息那条（`cc_bus` 里那个 send 构造器的行为判据）——
 //! **它连同那条 shell 路一起删净了**（发消息改走后端的 `bus-send` 原语）
 //! ⇒ 换成点今天真的还在的那一条，别留一个指向空处的名字。

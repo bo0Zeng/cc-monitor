@@ -374,16 +374,12 @@ export class CcBusSection {
 
   /** 取该远端的可选账号。**拿不到就只留「基座」**——宁可少一个选项，
    *  也不能让用户以为选了某个号而其实没生效。 */
-  /** P4a：本机只有**读**面。写面（派生 / 发消息）在本机没有对侧，归 `P4b`。
-   *
-   *  ⚠ 与其让用户点下去再吃一个后端错误，不如**当场说清为什么点不了** ——
-   *  后端那句拒绝仍然留着（它是结构，不是文案），这里只是别把人引过去。 */
+  /** 〔BS1b 09-24〕本机派生今天走后端原语 `bus-spawn`，与远端**同一条路** ⇒ 不再按本机禁用。
+   *  （原先这里对本机禁用派生按钮并挂一句「本机还不能派生」—— 那句话等的原语长出来了。）
+   *  三处切机器的调用点仍调它：哪天真有「这台机器做不了」的东西，写在这里。 */
   private syncLocalAffordances(): void {
-    const isLocal = this.originSel.value === LOCAL_ORIGIN;
-    this.spawnBtn.disabled = isLocal;
-    this.spawnBtn.title = isLocal
-      ? "本机还不能派生 agent：cc-bus 的写面在本机没有对侧（归 P4b）。读面（清单 / 在线 / inbox）可以用。"
-      : "";
+    this.spawnBtn.disabled = false;
+    this.spawnBtn.title = "";
   }
 
   private async loadAccounts(origin: string): Promise<void> {

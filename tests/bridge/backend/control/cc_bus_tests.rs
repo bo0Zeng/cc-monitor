@@ -418,65 +418,65 @@ fn inbox_cmd_is_readonly_and_bounded() {
     }
 }
 
-#[test]
-fn spawn_cmd_whitelists_tool_and_quotes_paths() {
-    for bad in ["bash", "claude; id", "", "CLAUDE"] {
-        assert!(
-            build_spawn_cmd(bad, "/tmp", "", None).is_err(),
-            "tool {bad:?} 应被拒"
-        );
-    }
-    let dir = "/tmp/has space/and'quote";
-    let task = "分析; whoami";
-    let c = build_spawn_cmd("codex", dir, task, None).unwrap();
-    // `--` 结束选项：dir 若是 `--new` 这类词，不加它会被 cc-spawn 的旗标循环吃掉
-    assert!(c.starts_with("cc-spawn --tool codex --base -- '"));
-    let rest = &c["cc-spawn --tool codex --base -- ".len()..c.len() - " 2>&1".len()];
-    let (qd, qt) = rest.split_at(crate::ssh_source::shell_quote(dir).len());
-    assert_eq!(unquote_posix(qd).as_deref(), Some(dir));
-    assert_eq!(unquote_posix(qt.trim_start()).as_deref(), Some(task));
-    // 无任务时不得留下空参数
-    let c2 = build_spawn_cmd("claude", "/tmp", "", None).unwrap();
-    assert_eq!(c2, "cc-spawn --tool claude --base -- '/tmp' 2>&1");
-    assert!(
-        build_spawn_cmd("claude", "  ", "t", None).is_err(),
-        "空目录应被拒"
-    );
-}
+// 〔BS1b 09-24〕这里原先三条钉的是派生那条 SSH 主路的命令构造器（白名单 tool · 引用路径 ·
+//   账号必须表态 · 账号名字符集）。构造器随那条路一起删了；四件事的新住址：
+//   `--` 与账号表态 → 后端 `control::cc_bus::tests` 的 `bus_spawn_*` 那几条；
+//   账号名字符集 → 下面 `spawn_shape_is_checked_on_this_side_before_the_backend`；
+//   tool 白名单 → **删了**（认不认归 cc-spawn，后端那条判据钉着「后端不许再白名单」）。
 
-// ===== L2：spawn 必须显式表态用哪个账号（B03 审计重要-5）=====
-
-/// **不传账号 = 显式用基座**，而不是"什么都不说、让 ccm 落默认号"。
-/// 原实现就是后者：从驾驶舱点两下就在 manifest 默认账号上起真 agent 烧额度，
-/// 用户既没选过也不知道用了哪个号。
+/// 账号名来自 manifest（我们自己维护），但**仍要过字符集**—— B03 审计的 `--help` 教训：
+/// 盘上真会出现没人预料的 id，「这是我们自己的数据」不是免检理由。
+/// 〔BS1b〕从「拼进命令之前」挪到「交给后端之前」：注入面没了，「调用方不能靠对端校验」没作废。
 #[test]
-fn spawn_always_states_an_account_choice() {
-    let c = build_spawn_cmd("claude", "/d", "", None).unwrap();
-    assert!(c.contains(" --base "), "不选账号必须显式 --base，实得: {c}");
-    let c2 = build_spawn_cmd("claude", "/d", "", Some("acctz")).unwrap();
-    assert!(c2.contains(" --account acctz "), "选了号要转发，实得: {c2}");
-    // 两者互斥：命令里不得同时出现
-    assert!(!c2.contains("--base"));
-    assert!(!c.contains("--account"));
-}
-
-/// 账号名来自 manifest（我们自己维护），但**仍要过字符集**——
-/// B03 审计的 `--help` 教训：盘上真会出现没人预料的 id，
-/// "这是我们自己的数据"不是免检理由。
-#[test]
-fn account_name_is_validated_before_joining_the_command() {
+fn spawn_shape_is_checked_on_this_side_before_the_backend() {
     for bad in ["--base", "-x", "a b", "a;id", "", "a'b", "a/b", "$(id)"] {
         assert!(
-            build_spawn_cmd("claude", "/d", "", Some(bad)).is_err(),
+            check_spawn_shape("claude", "/d", Some(bad)).is_err(),
             "账号名 {bad:?} 必须被拒"
         );
     }
     for ok in ["z", "acct_b", "team-1", "A9"] {
         assert!(
-            build_spawn_cmd("claude", "/d", "", Some(ok)).is_ok(),
+            check_spawn_shape("claude", "/d", Some(ok)).is_ok(),
             "{ok} 应合法"
         );
     }
+    assert!(
+        check_spawn_shape("claude", "/d", None).is_ok(),
+        "不选号 = 基座，合法"
+    );
+    assert!(
+        check_spawn_shape("claude", "  ", None).is_err(),
+        "空目录应被拒"
+    );
+    assert!(
+        check_spawn_shape(" ", "/d", None).is_err(),
+        "没说起哪种 agent 应被拒"
+    );
+    assert!(
+        check_spawn_shape("not-an-agent", "/d", None).is_ok(),
+        "这一侧又开始白名单 agent 种类了 —— 认不认归 cc-spawn"
+    );
+}
+
+/// `bus-spawn` 回值讲成人话：`id` 认不出**不许**说成「没起来」；形状不认识 ⇒ 说「不知道起没起」。
+#[test]
+fn spawn_reply_never_turns_an_unrecognised_name_into_a_failure() {
+    let ok = describe_spawn_reply(Some(
+        &serde_json::json!({"spawned":true,"id":"p_cc-2","said":"已 spawn: p_cc-2"}),
+    ));
+    assert!(ok.starts_with("已派生 p_cc-2"), "{ok}");
+    let noid = describe_spawn_reply(Some(
+        &serde_json::json!({"spawned":true,"id":null,"said":"x"}),
+    ));
+    assert!(
+        noid.contains("已派生") && noid.contains("不要重试"),
+        "认不出名字那档必须说「已派生、不要重试」：{noid}"
+    );
+    let odd = describe_spawn_reply(Some(&serde_json::json!({"hello":1})));
+    assert!(odd.contains("不确定会话有没有起来"), "{odd}");
+    assert_ne!(ok, noid);
+    assert_ne!(noid, odd);
 }
 
 // ===== inbox 解析同样守"坏行跳过并计数" =====
@@ -602,7 +602,7 @@ fn longest_static_run(lit: &str) -> String {
 
 /// 取 `fn <name>` 的函数体：从签名那行起，**到下一个顶格行为止**。
 ///
-/// ⚠ 第一版写成「到下一个顶格 `fn ` 为止」，于是 `build_spawn_cmd` 的体一路吃到了
+/// ⚠ 第一版写成「到下一个顶格 `fn ` 为止」，于是 `build_spawn_cmd` 的体一路吃到了 〔散文墓碑〕
 /// 它下面那个 struct 的属性里，把 `"../../../../src/generated"` 当成了命令模板（出现 4 次）。
 /// **同一族的错第 N 次**：我以为的那个对象，与切片实际圈住的那个对象不是同一个。
 /// 顶格行 = 函数自己的收尾行，或下一个顶层项 —— 两者都是正确的边界。
@@ -616,7 +616,7 @@ fn fn_body(code: &str, name: &str) -> String {
     let mut out = Vec::new();
     for (i, line) in code[start..].lines().enumerate() {
         // ⚠ 多行签名的收尾行 `) -> Result<…> {` 也顶格 —— 它是**头的一部分**，
-        // 不是边界。第一版漏了这条，`build_spawn_cmd` 的体被切在签名处、抠出空串
+        // 不是边界。第一版漏了这条，`build_spawn_cmd` 的体被切在签名处、抠出空串 〔散文墓碑〕
         // （长度自检当场报出来了 —— 自检存在的意义就在这里）。
         let top_level =
             !line.is_empty() && !line.starts_with(char::is_whitespace) && !line.starts_with(')');
@@ -667,13 +667,15 @@ fn every_remote_command_template_is_built_in_exactly_one_place() {
         })
         .collect();
     // ★ 抽取器自检：抓不到构造器时下面整条空转。
-    assert!(
-        names.len() >= 2,
-        "生产段只找到 {} 个 `build_*_cmd`（**`K-R112` 09-13 现打 2：inbox / spawn**；\
-             此前是 5，online/broadcast/kill 三个随本件那三条改走后端原语整块删了；\
+    // 〔BS1b 09-24〕由地板改成**相等**：`K-R112` 之后是 2（inbox / spawn），派生改走后端原语、
+    //   它的构造器整块删了 ⇒ 今天恰好 1 个。地板在「变少」方向上是瞎的，相等两个方向都看得见。
+    assert_eq!(
+        names,
+        vec!["build_inbox_cmd".to_string()],
+        "生产段的 `build_*_cmd` 变了（**BS1b 09-24 现打 1：inbox**；`K-R112` 时是 2：inbox / spawn；\
+             此前是 5，online/broadcast/kill 三个随那三条改走后端原语整块删了；\
              再往前 08-07 是 4，发消息那个由 `K-R98` 删净）\
-             —— 抽取器坏了或构造器改名了，本条此刻无效：{names:?}",
-        names.len()
+             —— 少了 ⇒ 抽取器坏了或构造器改名了；多了 ⇒ 又长出一条拼 shell 串的远端路"
     );
 
     for name in &names {
@@ -1544,12 +1546,12 @@ fn the_delivery_wording_keeps_the_three_states_apart() {
 /// 钉**位置**而不是「有没有这句话」：本机分支必须在 `cfg_of` 之前，
 /// 否则用户拿到的是 `cfg_of` 那句通用话，而不是这条路真实的说法。
 ///
-/// ⚠⚠ **08-13 P4f 改过一次口径**：本条原来钉的是 `refuse_local_write(` 这个**写法**。
+/// ⚠⚠ **08-13 P4f 改过一次口径**：本条原来钉的是 `refuse_local_write(` 这个**写法**。 〔散文墓碑〕
 /// 而 `cc_bus_send` 的本机路当时**不再是拒绝** —— 它走后端的 `bus-send` 原语
 /// （拒绝理由逐字写着「等命令组件做出来」，那些组件做出来了）。
 /// ⇒ 钉的东西从「有没有那句拒绝」改成**「本机分支在不在 `cfg_of` 前面」**：
 /// 前者是实现，后者才是这条判据真正要保的性质。
-/// **两种形态都算数**：`refuse_local_write(` 或 `== LOCAL_ORIGIN` 的早返回。
+/// **两种形态都算数**：`refuse_local_write(` 或 `== LOCAL_ORIGIN` 的早返回。 〔散文墓碑〕
 ///
 /// ⚠⚠⚠ **09-13 `K-R98` 又改一次人群 —— 而这一次是把 `cc_bus_send` 挪出去，
 /// 不是把它豁免掉。** 它今天**整条路只有一份**（远端那半也改走 `bus-send`），
@@ -1602,10 +1604,12 @@ fn the_write_face_branches_on_local_before_it_asks_for_a_remote_config() {
     //   `check_cc_bus_agent_online` 与下一个 `pub async fn` 之间隔着一大段非 pub 代码
     //   （构造器 / `exec_read` / `cfg_of` / `local_shell_read` 的**定义**），
     //   `body_of` 的窗口会把它们整段读进来 ⇒ 下面那三个 needle 恒命中 = 一次假红。
+    // 〔BS1b 09-24〕`cc_bus_spawn` 也进了这一段（改走 `bus-spawn` 原语）。
     for name in [
         "cc_bus_kill",
         "cc_bus_broadcast",
         "check_cc_bus_agent_online",
+        "cc_bus_spawn",
     ] {
         let b = fn_body(&code, name);
         assert!(
@@ -1621,50 +1625,11 @@ fn the_write_face_branches_on_local_before_it_asks_for_a_remote_config() {
         }
     }
 
-    // ── ② 仍然「本机分支必须排在 `cfg_of` 前面」的那些 ────────────────────────
-    let mut checked = 0usize;
-    for (name, what) in [
-        // ⚠ 这里的"说清在做什么"必须是**代码里**的词（`non_test_code` 剥注释）：
-        //   `cc_bus_spawn` 仍是拒绝，说清的是拒绝文案里那句。
-        ("pub async fn cc_bus_spawn(", "spawn 一个 agent"),
-    ] {
-        // ⚠⚠ **窗口要按函数边界截**〔08-13 当场撞到〕：原来是「从函数名起取 1400 字」，
-        //   而 `cc_bus_send` 比 1400 字短 ⇒ 窗口**越进了下一个函数**
-        //  （`cc_bus_broadcast`），把邻居的 `refuse_local_write(` 当成了自己的，
-        //   于是位置比较拿到的是**别人的**那处，判据当场误红。
-        //   ★ 这正是本判据头注自己警告过的「块粒度」病 —— 而它发生在判据脚下。
-        let body: String = body_of(name);
-        // 本机分支有**两种形态**（早返回走 backend / 拒绝），取**先出现**的那个位置。
-        let refuse = [
-            body.find("refuse_local_write(&origin, \""),
-            body.find("origin == crate::backend::control::inbound_client::LOCAL_ORIGIN"),
-        ]
-        .into_iter()
-        .flatten()
-        .min()
-        .unwrap_or_else(|| {
-            panic!("{name} 没有本机分支 —— `<local>` 会掉进 `cfg_of` 拿到一句通用话")
-        });
-        let cfg = body
-            .find("cfg_of(&origin)")
-            .unwrap_or_else(|| panic!("{name} 里找不到 `cfg_of(&origin)` —— 判据的参照物没了"));
-        assert!(
-            refuse < cfg,
-            "{name} 的本机拒绝排在 `cfg_of` **后面** —— 那就永远走不到，\n\
-                 用户看到的仍是「远端 `<local>` 未配置或未启用」。"
-        );
-        assert!(
-            body[refuse..].contains(what),
-            "{name} 的本机分支没说清它在做什么（应含 {what:?}）——\n\
-                 一句不说清是哪件事的错误，与那句「未找到远端配置」是同一族。"
-        );
-        checked += 1;
-    }
-    assert_eq!(
-        checked, 1,
-        "只核到 {checked} 条「要排在 `cfg_of` 前面」的写面命令 —— 本断言在空转。\n\
-             ⚠ 09-13 起这个数是 **1**（`cc_bus_send` 挪进上面那一段，它没有 `cfg_of` 可排）。"
-    );
+    // ── ② 〔BS1b 09-24〕原来这里逐条核「写面命令的本机分支排在 `cfg_of` 前面」，
+    //     最后一个成员是派生；它改走原语之后**写面里一条问远端配置的都没有了** ——
+    //     这件事不在这里靠「人群变空」表达（空循环是空转），而由上面 ①/①b 逐条钉住
+    //     「写面四条函数体里没有 `cfg_of(` / `exec_read(` / `local_shell_read(`」，
+    //     读面那一条（`read_cc_bus_inbox`）由 `whoever_still_asks_for_a_remote_config_branches_on_local_first` 接着判。
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1905,7 +1870,12 @@ fn an_old_backend_on_the_send_path_is_told_apart_from_a_timeout() {
     //   （它判的是「本文件生产段里有没有自己 match 那个错误枚举」），不在这里重复一份。
 }
 
-/// ★★ `KR112D1`（**纪律 ⑱**，形状抄 `KR98D3`）：本件放行**三条**，`spawn` 仍旧拒。
+/// ★★ `KR112D1`（**纪律 ⑱**，形状抄 `KR98D3`）→〔BS1b 09-24〕**写面四条全走原语**。
+///
+/// 🪦 本条原名 `letting_kill_broadcast_and_online_through_did_not_let_spawn_through` 〔散文墓碑〕：
+/// 那时放行三条、钉住 `spawn` 仍拒（它的拒绝理由等的是「后端先长出那条原语」）。
+/// 原语长出来了（`bus-spawn`）⇒ 派生并进「放行」那一组，「仍拒」那一半删掉 —— 名字跟着改，
+/// 留旧名就是一个说反话的判据。
 ///
 /// 「被放行」在这里有确切的意思：那条命令的路**离开了 shell 串**，
 /// 而且它对 `<local>` 不再有一句「本机做不了」。两样都发生才算放行。
@@ -1914,7 +1884,7 @@ fn an_old_backend_on_the_send_path_is_told_apart_from_a_timeout() {
 /// 里所有 `cc_bus_*` / `check_cc_bus_*` / `read_cc_bus_*` 命令。
 /// 手写名单看不见新长出来的第五条 —— 那正是本仓在三个模块上栽过的同一个坑。
 #[test]
-fn letting_kill_broadcast_and_online_through_did_not_let_spawn_through() {
+fn every_write_command_goes_through_a_backend_primitive() {
     let code = non_test_code();
     // ── 人群派生：本模块所有 tauri 命令 ──────────────────────────────
     let mut cmds: Vec<String> = Vec::new();
@@ -1944,6 +1914,7 @@ fn letting_kill_broadcast_and_online_through_did_not_let_spawn_through() {
         "cc_bus_broadcast",
         "cc_bus_kill",
         "check_cc_bus_agent_online",
+        "cc_bus_spawn",
     ];
     for name in freed {
         let body = fn_body(&code, name);
@@ -1958,34 +1929,16 @@ fn letting_kill_broadcast_and_online_through_did_not_let_spawn_through() {
             "`{name}` 这条路上还有命令串的痕迹 {hits:?} —— 它没有真的改走原语"
         );
         assert!(
-            !body.contains("refuse_local_write("),
+            !body.contains("本机还不能"),
             "`{name}` 还在对 `<local>` 说「本机做不了」—— 而它今天两侧同一条路"
         );
     }
-    // ── ② `spawn` **仍旧拒**，而且拒得有自己的话 ────────────────────────
-    let spawn = fn_body(&code, "cc_bus_spawn");
+    // 〔BS1b〕那句「本机做不了」的**公共造句处**整个删了 —— 生产段里一处都不许再有。
+    //   针拼开写：写成整词的话，本文件那几处订正注释与这句断言自己都会被读成「又长回来了」。
+    let refuse_fn = format!("fn {}_local_write(", "refuse");
     assert!(
-        spawn.contains("build_spawn_cmd(") && spawn.contains("exec_read("),
-        "`cc_bus_spawn` 的远端路不再是「构造器 + exec_read」了 —— \n\
-             backend 帧面 10 条里**没有 spawn**（`K-R111 §C3` 现打），本件不许把它一起放行。\n\
-             真要放行就单独开一件，把后端那条原语先做出来。"
-    );
-    let head = format!("refuse_local_write(&origin, {}", "\"");
-    let at = spawn
-        .find(&head)
-        .expect("`cc_bus_spawn` 不再对 `<local>` 说话了 —— 那是把它一起放行了");
-    let reason: String = spawn[at + head.len()..]
-        .chars()
-        .take_while(|c| *c != '"')
-        .collect();
-    assert!(
-        reason.chars().count() >= 3,
-        "`cc_bus_spawn` 对本机说的那句话只抠出 {reason:?} —— 抽取器坏了，本条在空转"
-    );
-    // ── ③ 那句公共文案必须**把各自那件事填进去** ────────────────────────
-    assert!(
-        fn_body(&code, "refuse_local_write").contains("{what}"),
-        "`refuse_local_write` 不再把「在做哪件事」填进那句话 —— 逐条就名存实亡了"
+        !code.contains(&refuse_fn),
+        "对 `<local>` 的公共拒绝又长回来了 —— 写面今天没有一条需要它"
     );
     // ── ④ 反向自检：`read_cc_bus_inbox` 那条**确实**还在老路上 ──────────
     //     （它是「不是接线」那一档：backend 侧没有 inbox 读口，`K-R111 §C3` 现打）
@@ -2075,28 +2028,22 @@ fn whoever_still_asks_for_a_remote_config_branches_on_local_first() {
         }
     }
     askers.sort();
+    // 〔BS1b 09-24〕`cc_bus_spawn` 挪出去了（改走 `bus-spawn` 原语，函数体里没有 `cfg_of`）。
     assert_eq!(
         askers,
-        vec!["cc_bus_spawn".to_string(), "read_cc_bus_inbox".to_string()],
+        vec!["read_cc_bus_inbox".to_string()],
         "还在问远端配置的 cc-bus 命令变了。\n\
              **少了** ⇒ 有人把它改走了原语（好事）：把它从这条判据的期望里挪掉，\n\
              并去 `tests/evidence/K-R111-ruler.py` 把那条的刻度一起拧下来。\n\
              **多了** ⇒ 新长出一条远端专属的路，它必须先分本机。"
     );
     // 逐条：本机分支要排在 `cfg_of` 之前，而且要说清在做哪件事。
-    for (name, what) in [
-        ("cc_bus_spawn", "spawn 一个 agent"),
-        ("read_cc_bus_inbox", "LOCAL_ORIGIN"),
-    ] {
+    for (name, what) in [("read_cc_bus_inbox", "LOCAL_ORIGIN")] {
         let body = fn_body(&code, name);
-        let refuse = [
-            body.find("refuse_local_write(&origin, \""),
-            body.find("origin == crate::backend::control::inbound_client::LOCAL_ORIGIN"),
-        ]
-        .into_iter()
-        .flatten()
-        .min()
-        .unwrap_or_else(|| panic!("{name} 没有本机分支 —— `<local>` 会掉进 `cfg_of`"));
+        // 〔BS1b〕本机分支今天只剩「早返回」这一种形态（公共拒绝那一形随派生改走原语删了）。
+        let refuse = body
+            .find("origin == crate::backend::control::inbound_client::LOCAL_ORIGIN")
+            .unwrap_or_else(|| panic!("{name} 没有本机分支 —— `<local>` 会掉进 `cfg_of`"));
         let cfg = body
             .find("cfg_of(&origin)")
             .unwrap_or_else(|| panic!("{name} 里找不到 `cfg_of(&origin)`"));
