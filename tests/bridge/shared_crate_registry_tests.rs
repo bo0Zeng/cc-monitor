@@ -1021,6 +1021,13 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              跑法写在它自己的头注里；它产出的两个数落在 `bigfile::LINE_READING` / `TOTAL_READING`，\
              由 `the_two_thresholds_are_what_the_readings_derive` 每趟钉住「推算式 == 常量」。",
         ),
+        (
+            "loopback_roundtrip_through_the_proxy",
+            "〔C2 09-24〕不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd）＋ 一份编好的本机后端当拨号代理。\
+             触发器是读数脚本 `tests/evidence/C2-dial-loopback.py --monitor`（它起 sshd、设好 `CCM_DIAL_PROXY` 与 \
+             `C2_LOOPBACK` 再按名字跑这一条，并核输出里那句 `C2-LOOPBACK-MONITOR ok`）。门禁沙箱里起不了 sshd ⇒ 进不了门禁。\
+             谁什么时候跑：改 `dial_host` / `ssh_link` / 后端 `dial/` 的那一拍，交付前跑一趟、把输出贴进报告。",
+        ),
     ];
 
     // ── 🔴 第三档触发器：**由同一个 crate 里的判据 spawn 子进程去跑**〔2026-09-21 加〕

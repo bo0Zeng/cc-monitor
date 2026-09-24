@@ -5,6 +5,6 @@
  */
 export type ForwardStatus = { id: string, origin: string, localPort: number, remoteHost: string, remotePort: number, 
 /**
- * "running"（accept 循环存活）| "error"（循环退出）。v1 = accept 循环存活性,非 session 健康。
+ * "running"（代理那条链路还在）| "error"（代理收工了）。
  */
 state: string, error: string | null, connCount: number, };

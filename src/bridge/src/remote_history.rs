@@ -68,16 +68,22 @@ const OLD_BACKEND_MSG: &str =
 /// 🔴 〔`C1` · 2026-09-24〕**它从此只是「还在逐次拨号的那几条」的路**：题面那八条只读查询
 /// 已上长连接（`backend::control::frame_query`），这里**只放行** `frame_query::STILL_DIALED`
 /// 登记的子命令 —— 八条里任何一条从这里漏出去都会被当场拒掉，而不是悄悄再拨一次 SSH。
-pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, String> {
+pub(crate) async fn run_list_query(
+    cfg: &RemoteConfig,
+    args: &str,
+) -> Result<Vec<String>, crate::subagent::QueryError> {
+    use crate::subagent::QueryError;
     let sub = args.split_whitespace().next().unwrap_or_default();
     if !crate::backend::control::frame_query::dial_allowed(sub) {
-        return Err(format!(
+        return Err(QueryError::transport(format!(
             "`{sub}` 已经走长连接了，不许再为它单拨一条 SSH（这是本程序的 bug，不是远端的问题）"
-        ));
+        )));
     }
     let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.backend_path), args);
     let collect = async {
-        let stream = ssh_source::connect_and_exec_cmd(cfg, &cmd).await?;
+        let stream = ssh_source::connect_and_exec_cmd(cfg, &cmd)
+            .await
+            .map_err(QueryError::transport)?;
         let mut reader = BufReader::new(stream);
         let mut lines = Vec::new();
         // ★〔G 审计〕原来是无界 `read_line` —— 与 F10b 修掉的那三处**同一个量**
@@ -92,16 +98,16 @@ pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec
                 ssh_source::BACKEND_FRAME_LINE_CAP,
             )
             .await
-            .map_err(|e| format!("读取远端输出失败: {e}"))?
+            .map_err(|e| QueryError::transport(format!("读取远端输出失败: {e}")))?
             {
                 ssh_source::CappedLine::Eof => break, // EOF = 命令结束
                 // 一次性查询的输出行是 JSON 记录，超上限说明对端不对劲。
                 // **拒收+回错**：这条路有调用方接得住错，不像帧读那样只能横向报告。
                 ssh_source::CappedLine::TooLong(bytes) => {
-                    return Err(format!(
+                    return Err(QueryError::truncated(format!(
                         "远端输出的单行 {bytes} 字节，超过上限 {} —— 拒收，不拿截断的结果当完整的用",
                         ssh_source::BACKEND_FRAME_LINE_CAP
-                    ));
+                    )));
                 }
                 ssh_source::CappedLine::Line => String::from_utf8_lossy(&buf).into_owned(),
             };
@@ -110,7 +116,7 @@ pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec
                 continue;
             }
             if lines.is_empty() && is_old_backend_hello(line) {
-                return Err(OLD_BACKEND_MSG.to_string());
+                return Err(QueryError::old_backend(OLD_BACKEND_MSG.to_string()));
             }
             lines.push(line.to_string());
         }
@@ -118,7 +124,12 @@ pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec
     };
     tokio::time::timeout(LIST_TIMEOUT, collect)
         .await
-        .map_err(|_| format!("远端查询超时（{}s）: {args}", LIST_TIMEOUT.as_secs()))?
+        .map_err(|_| {
+            QueryError::transport(format!(
+                "远端查询超时（{}s）: {args}",
+                LIST_TIMEOUT.as_secs()
+            ))
+        })?
 }
 
 /// 远端全文搜索 fan-out（issue #28）：对所有已配置远端各 exec 一次 `<backend> --search`，

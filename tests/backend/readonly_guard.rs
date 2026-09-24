@@ -4853,19 +4853,22 @@ mod remote_write_layer {
             .filter(|(_, c)| c.contains(needle.as_str()))
             .map(|(rel, _)| rel.as_str())
             .collect();
+        // 〔C2 09-24〕住址 `dial/mod.rs` → `dial/uses.rs`：拨号代理拆成三份，开 channel 之后那一段
+        //   住 `uses.rs`。处数仍是**一份文件**；它里面多了 `capture` 那一臂（同一条 exec，收全输出）——
+        //   那一臂此前在界面进程里（`ssh_source::connect_and_exec_capture`），是搬家，不是新长的能力。
         assert_eq!(
             sites,
-            vec!["dial/mod.rs"],
+            vec!["dial/uses.rs"],
             "远端 session channel 的处数 / 住址变了：{sites:?}\n\
              它是本层**认不出的那一格**的活体标本 —— 变了就回来重读这条登记，\
              别只改这个断言。（`dial_locality` 管的是「跑不跑传输层握手」，是另一维。）"
         );
         for (rel, prod) in &tree {
-            if rel == "dial/mod.rs" {
+            if rel == "dial/uses.rs" {
                 assert_eq!(
                     violates_remote_write_layer(prod),
                     None,
-                    "反例 `dial/mod.rs` 今天**红了** —— 那说明本层的射程变了，\
+                    "反例 `dial/uses.rs` 今天**红了** —— 那说明本层的射程变了，\
                      这条登记说的话已经不成立，回来重判"
                 );
             }

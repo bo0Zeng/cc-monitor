@@ -97,7 +97,20 @@ src/backend/control/cli_control.rs:168	args JSON 超过 {MAX_CLI_STDIN} 字节�
 src/backend/control/cli_control.rs:190	这条命令只在帧面可用	内部词→只能经常驻后端用（帧面）	[可达存疑] 同上一路 新词:帧面
 src/backend/control/identity_tag.rs:299	tmux set-option 退出码 {st}	保留	[不对外] Outcome::Failed 的载荷；Outcome 头注逐字「调用方今天丢弃它，但日志与测试要看得见」
 src/backend/control/identity_tag.rs:300	起不来 tmux：{e}	保留	[不对外] Outcome::Failed 的载荷；Outcome 头注逐字「调用方今天丢弃它，但日志与测试要看得见」
-src/backend/dial/mod.rs:287	{"ok":false,"error":"ack 序列化失败","fingerprint":null}	改·§2.1	[可达存疑] 拨号握手 ack 的兜底 JSON，error 字段回给对面（bridge）可能进连接失败提示；「ack 序列化失败」全是实现 新词:ack →「后端握手出错」
+src/backend/dial/connect.rs:90	超时	保留	[不对外] 〔C2〕dial::connect::classify_stage 的匹配关键词（搬自 ssh_source.rs 同一函数），不上界面
+src/backend/dial/connect.rs:92	指纹	保留	[不对外] 〔C2〕dial::connect::classify_stage 的匹配关键词（搬自 ssh_source.rs:442 同句同裁），不上界面
+src/backend/dial/connect.rs:181	拨号任务异常: {je}	改·§2.1	[可达存疑] 〔C2〕搬自 ssh_source.rs:602 同句同裁：收进拨号错误列表、可能拼进连接失败报错；「拨号任务异常」是 tokio JoinError 的实现话 →「连接中断：{je}」
+src/backend/dial/connect.rs:250	agent 身份被拒（user={user}）	改·§2.1	[可达存疑] 〔C2〕搬自 ssh_source.rs:845 同句同裁：鉴权失败原因进 last_err 最终上报；`user={user}` 是日志行格式 →「ssh-agent 里的密钥被拒（用户 {user}）」
+src/backend/dial/connect.rs:251	agent 签名鉴权出错: {e}	保留	[可达存疑] 〔C2〕搬自 ssh_source.rs:846 同句同裁：鉴权失败原因，ssh-agent 是用户认得的词（R1b 语境内）
+src/backend/dial/connect.rs:284	跳板 {hop_name}	保留	[对外] 〔C2〕搬自 ssh_source.rs:655 同裁：连接阶段显示的端点名；跳板是用户自己配的 ssh 跳板
+src/backend/dial/connect.rs:316	{}:{}（经跳板）	保留	[对外] 〔C2〕搬自 ssh_source.rs:679 同裁：连接阶段显示的端点
+src/backend/dial/mod.rs:328	请求解析失败: {e}	改·§2.1	[可达存疑] 〔C2〕拨号代理读不懂界面交来的请求（两端版本错配）时 ack 的 error，界面原样冒泡进连接失败报错；整句在讲实现 →「本机后端与界面版本不一致，重装后再试」
+src/backend/dial/uses.rs:39	打开 session channel 失败: {e}	改·§2.1	[可达存疑] 〔C2〕拨号代理 ack 的 error，界面原样冒泡进连接失败报错；session channel 是 SSH 实现词 →「连上了，但远端不让开新通道：{e}」
+src/backend/dial/uses.rs:84	请求里 use=capture 却没给 capture 参数	改·§2.1	[可达存疑] 〔C2〕两端契约坏了的兜底话（按构造走不到），ack 的 error 会冒泡；use=capture 是线上字段名 →「本机后端与界面版本不一致」
+src/backend/dial/uses.rs:95	打开 session channel 失败: {e}	改·§2.1	[可达存疑] 〔C2〕拨号代理 ack 的 error，界面原样冒泡进连接失败报错；session channel 是 SSH 实现词 →「连上了，但远端不让开新通道：{e}」
+src/backend/dial/uses.rs:105	exec {} 失败: {e}	改·§2.1	[可达存疑] 〔C2〕拨号代理 ack 的 error，界面原样冒泡；exec 是实现词、{} 是整条命令行 →「远端命令没能启动：{e}」
+src/backend/dial/uses.rs:127	请求里 use=forward 却没给 forward 参数	改·§2.1	[可达存疑] 〔C2〕两端契约坏了的兜底话（按构造走不到），ack 的 error 会冒泡；use=forward 是线上字段名 →「本机后端与界面版本不一致」
+src/backend/dial/uses.rs:141	绑定本地端口 127.0.0.1:{} 失败: {e}	保留	[对外] 〔C2〕端口转发起不来的原因，toast 直接给用户；本地端口是用户自己填的，无内部词（搬自 port_forward.rs 同句）
 src/backend/files/mod.rs:344	定期重走（周期由调用方出节拍）＋ 浏览目录挂 inotify，一个 watch 一个目录	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:347	**不是实时**。要全文件系统监听就得 root：`man 2 fanotify_init` 一手逐字 —— \n              非特权不许 `FAN_MARK_MOUNT` / `FAN_MARK_FILESYSTEM`。\n              而 watch 上限本机现打 262144、home 下 640413 条目（`真相源/98 §3.2`）⇒ 全挂挂不住。\n              另：**冷缓存下走一遍要多久没量过**（`drop_caches` 要 root）。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:354	同 gnu 那一格（同一份源码、同一个内核接口），差别只在链接方式	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
@@ -596,14 +609,19 @@ src/bridge/src/sftp_pool.rs:1560	这一趟传输的状态丢了	保留	[可达�
 src/bridge/src/skill_host.rs:147	planned-build 今天不在 tool_registry 那张表里（那张表收哪几条，\n             唯一住址是 `tool_registry::TOOLS`）。把它变成可装归 devbench F06。	改·§2.1	[对外] skill 不支持安装的说明（源码注释自己写着「这一句是用户看得见的」）：露出 tool_registry::TOOLS 源码住址与内部工单 devbench F06 兼§2.2 →「planned-build 暂不支持在这里安装」
 src/bridge/src/skill_host.rs:213	在场	保留	[对外] skill 存在性的短状态（「在场」偏书面，CP2 可换「已找到」）
 src/bridge/src/skill_host.rs:215	{skill} 的前提没满足：找不到 {}	保留	[对外] 缺前提的说明，先说结果再给路径
-src/bridge/src/ssh_source.rs:440	超时	保留	[不对外] classify_stage 的匹配关键词（对报错原文做 contains），不上界面
-src/bridge/src/ssh_source.rs:442	指纹	保留	[不对外] classify_stage 的匹配关键词，不上界面
-src/bridge/src/ssh_source.rs:602	拨号任务异常: {je}	改·§2.1	[可达存疑] 收进拨号错误列表、可能拼进连接失败报错；「拨号任务异常」是 tokio JoinError 的实现话 新词:拨号任务 →「连接中断：{je}」
-src/bridge/src/ssh_source.rs:655	跳板 {}	保留	[对外] 连接阶段显示的端点名；跳板是用户自己配的 ssh 跳板
-src/bridge/src/ssh_source.rs:679	{}:{}（经跳板）	保留	[对外] 连接阶段显示的端点
-src/bridge/src/ssh_source.rs:845	agent 身份被拒（user={user}）	改·§2.1	[可达存疑] 鉴权失败原因进 last_err 最终上报；`user={user}` 是日志行格式 →「ssh-agent 里的密钥被拒（用户 {user}）」
-src/bridge/src/ssh_source.rs:846	agent 签名鉴权出错: {e}	保留	[可达存疑] 鉴权失败原因，ssh-agent 是用户认得的词（R1b 语境内）
-src/bridge/src/ssh_source.rs:1221	(代理没说原因)	保留	[可达存疑] 拼进「拨号代理拨不通: {why}」的兜底原因，短
+src/bridge/src/inproc_dial.rs:142	超时	保留	[不对外] classify_stage 的匹配关键词（对报错原文做 contains），不上界面 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:144	指纹	保留	[不对外] classify_stage 的匹配关键词，不上界面 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:252	拨号任务异常: {je}	改·§2.1	[可达存疑] 收进拨号错误列表、可能拼进连接失败报错；「拨号任务异常」是 tokio JoinError 的实现话 新词:拨号任务 →「连接中断：{je}」 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:305	跳板 {}	保留	[对外] 连接阶段显示的端点名；跳板是用户自己配的 ssh 跳板 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:329	{}:{}（经跳板）	保留	[对外] 连接阶段显示的端点 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:495	agent 身份被拒（user={user}）	改·§2.1	[可达存疑] 鉴权失败原因进 last_err 最终上报；`user={user}` 是日志行格式 →「ssh-agent 里的密钥被拒（用户 {user}）」 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:496	agent 签名鉴权出错: {e}	保留	[可达存疑] 鉴权失败原因，ssh-agent 是用户认得的词（R1b 语境内） 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/ssh_link.rs:103	拨号代理一个字节都没回就走了（它自己的 stderr 上有原因）	改·§2.1	[可达存疑] 〔C2〕拨号代理没回应答时的报错，原样进连接失败提示；「拨号代理」「stderr」是实现词 →「本机后端没能替你连上远端（它自己的日志里有原因）」 新词:拨号代理
+src/bridge/src/ssh_link.rs:105	拨号代理拨不通: {why}	改·§2.1	[可达存疑] 〔C2〕代理 ack 说拨不通，{why} 是 SSH 那一层的原因；「拨号代理」是实现词 →「连不上：{why}」 新词:拨号代理
+src/bridge/src/ssh_link.rs:108	本机后端太旧（拨号应答 v{v}，不认 `{wanted}`）—— 重装本机后端后再试	改·§2.1	[对外] 〔C2〕代理比界面老时的提示；「拨号应答 v{v}」「`{wanted}`」是协议细节 →「本机后端版本太旧，重装后再试」
+src/bridge/src/ssh_link.rs:110	拨号代理回的不是约定的形状: {s}	改·§2.1	[可达存疑] 〔C2〕代理回了读不懂的东西（对面不是我们的代理 / 坏了）；整句讲实现 →「本机后端回了看不懂的东西，重装后再试」 新词:拨号代理
+src/bridge/src/ssh_link.rs:112	拨号代理回了一行 {n} 字节，超过上限 —— 拒收	改·§2.1	[可达存疑] 〔C2〕对面一行超上限被拒收；讲实现 →「本机后端回的数据不对劲，已拒收」 新词:拨号代理
+src/bridge/src/ssh_link.rs:114	读拨号代理失败: {e}	改·§2.1	[可达存疑] 〔C2〕读代理管子出错；「拨号代理」是实现词 →「和本机后端的连接断了：{e}」 新词:拨号代理
 src/bridge/src/ssh_source.rs:2219	远端 [{host_label}] 发来一行 {bytes} 字节，超过单行上限 {BACKEND_FRAME_LINE_CAP} 字节，\n         这一行**已整行丢弃**。这不是网络拥塞 —— 要么该会话里有异常巨大的一条记录，\n         要么对端不是本工具的后端。重开该会话可看完整历史。	改·§2.4	[对外] 健康提示：markdown ** ＋破折号＋首句长，一段塞结果、排除项、两种归因、处方 兼§2.2 →「远端 [{host_label}] 有一条记录过大（{bytes} 字节），已跳过。重开会话可看完整历史」
 src/bridge/src/ssh_source.rs:2465	远端 [{host_label}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。	保留	[对外] 健康提示，结果＋可行处方两句
 src/bridge/src/ssh_source.rs:2478	；受影响清单**不全**，建议刷新该来源	改·§2.4	[对外] 拼接段带 markdown ** 兼§2.3（「建议刷新」）→「；受影响的会话没列全」
@@ -1105,6 +1123,7 @@ src/backend/read_face.rs:149	结果超过 {LINES_CAP_BYTES} 字节上限，没�
 src/bridge/src/backend/control/frame_query.rs:49	换号前的信任预检：不在题面八条里；用户点一次换号才发一次，不在任何轮询上	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
 src/bridge/src/backend/control/frame_query.rs:51	同上一行（账号 0 那一形）	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
 src/bridge/src/backend/control/frame_query.rs:54	只剩 `--index` 那一形（会话骨架索引）：不在题面八条里、帧面没有对应命令。\n         同一个子命令的 `--until` 那一形（按区间取正文）已经走 `history-read`，不在这里拨	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
+src/bridge/src/backend/control/frame_query.rs:60	〔C2 · 补第二波的集成缝〕会话大纲（SE1）：与本表同波落地，既不在题面八条里、帧面也没有对应命令 \n         ⇒ 此前在这里被当场拒，远端大纲**每次**都拿到「这是本程序的 bug」。上帧面要加一条帧命令 \n         （= 后端子命令面 ＋1，要 bump），另拍；今天先让它照旧拨	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
 src/bridge/src/backend/control/frame_query.rs:93	查询出了内部错误，没有拿到结果	保留	[可达存疑] 只读查询分流器落到「已完成」那一档时的兜底话（按构造走不到）；平白说出了事、没拿到结果，无内部词
 src/panorama/agent-clip.ts:81	分不清：本符号 {…} 条直接边里 {…} 条按名字凑	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「分不清」行，只计数
 src/panorama/agent-clip.ts:82	（启发 {…} · 动态猜测 {…}），动态派发 {…} 条，确定 {…} 条	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；「分不清」的分项计数，动态派发单列（候选完整，不算分不清）

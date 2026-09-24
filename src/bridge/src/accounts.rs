@@ -503,7 +503,7 @@ pub async fn check_account_trust(
     match run_list_query(&cfg, &args).await {
         Err(e) => {
             tracing::warn!("远端 [{origin}] --account-trust 失败: {e}");
-            Ok(unavailable(e))
+            Ok(unavailable(e.message))
         }
         // backend 的硬错误走 stderr + exit 2，stdout 无行 → 视为不可用（不阻断编排，
         // 由调用方按"未知信任状态"处理：只警告不拦截）

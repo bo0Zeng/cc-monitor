@@ -152,8 +152,9 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          · `-Command <我们自己 render 出来的脚本>`。stdout 要 piped：它是返回值。",
     ),
     (
-        "ssh_source.rs",
-        "spawn_dial_proxy",
+        // 〔C2 09-24〕住址从 `ssh_source.rs` 搬到 `dial_host.rs::open`（拨号代理的宿主，形状不变；原来那个函数名随之退役）。
+        "dial_host.rs",
+        "open",
         "spawn_managed_tokio",
         "tokio 那一侧（`ManagedTokioChild`）。argv 只有一个常量 flag，\
          主机名/用户名/私钥路径**刻意走 env 不走 argv**（`argv` 是世界可读的，\

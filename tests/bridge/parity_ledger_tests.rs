@@ -1488,10 +1488,14 @@ const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
     //      （34−2+1 恰好也是 33，但「算出来恰好相等」不是判据。）
     // 〔BS1b 09-24〕RemoteOnly 34 → 33、FramePlane 5 → 6：`cc_bus_spawn` 改走 `bus-spawn` 原语，
     //   派生器从 `RemoteOnly` 挪到 `FramePlane`（跑出来的：`hist == want` 那一比现打 {RemoteOnly: 33, FramePlane: 6}）。
-    (Derived::RemoteOnly, 21), // **〔F7c 收尾 09-24〕32 → 21，Unclassified 10 → 9**（池子那十二条删了：十一条带 `RemoteConfig` 的归 `RemoteOnly`，`sftp_cancel_transfer` 签名里没有它、归 `Unclassified`；跑出来核过）。 // **〔合并 A3＋BS1b〕33 → 32**（A3 的 check_account_trust Remote→Both 与 BS1b 的 cc_bus_spawn RemoteOnly→FramePlane 各 −1；跑出来核过）。 // **〔`24e` 第二刀 · 09-20〕33 → 34**（`open_file_window`：签名里带 `RemoteConfig`、体里点名 `list_remote`，派生器现打归 `RemoteOnly`；另外三格一个都不动）。⚠ 这个数照旧是**跑出来的**，不是 33+1 算出来的：先让 `signed_total` 那一比印出现打的 `Side::Remote` 行数，再让 `hist == want` 印出现打的直方图，照它写。 // `设计/50` −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **〔步 23b · 09-20〕+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
+    // 〔C2 · 09-24〕RemoteOnly 32 → 31、Unclassified 10 → 11：`start_forward` 查配置那一下搬进了宿主
+    //   `dial_host.rs::forward`（端口转发进了通信层，读配置是宿主的事）⇒ 它的体里再没有 `REMOTE_ONLY_MARKS`，
+    //   而派生器只跟同一份文件里的调用 ⇒ 落 `Unclassified`（「这把尺子够不着」，不是「安全」；它照旧只对远端）。
+    //   跑出来的：`hist == want` 那一比现打 {RemoteOnly: 31, Unclassified: 11}。
+    (Derived::RemoteOnly, 20), // **〔合并 F7c＋C2〕F7c 21 与 C2 −1 相加 ⇒ 20；Unclassified F7c 9 与 C2 ＋1 ⇒ 10（跑出来核过）** // **〔F7c 收尾 09-24〕32 → 21，Unclassified 10 → 9**（池子那十二条删了：十一条带 `RemoteConfig` 的归 `RemoteOnly`，`sftp_cancel_transfer` 签名里没有它、归 `Unclassified`；跑出来核过）。 // **〔合并 A3＋BS1b〕33 → 32**（A3 的 check_account_trust Remote→Both 与 BS1b 的 cc_bus_spawn RemoteOnly→FramePlane 各 −1；跑出来核过）。 // **〔`24e` 第二刀 · 09-20〕33 → 34**（`open_file_window`：签名里带 `RemoteConfig`、体里点名 `list_remote`，派生器现打归 `RemoteOnly`；另外三格一个都不动）。⚠ 这个数照旧是**跑出来的**，不是 33+1 算出来的：先让 `signed_total` 那一比印出现打的 `Side::Remote` 行数，再让 `hist == want` 印出现打的直方图，照它写。 // `设计/50` −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **〔步 23b · 09-20〕+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
     (Derived::FramePlane, 6),  // `设计/50` −1（`account_usage`）；BS1b +1（`cc_bus_spawn`）
     (Derived::Mixed, 0),
-    (Derived::Unclassified, 9),
+    (Derived::Unclassified, 10),
 ];
 
 /// **候选（派生 = `FramePlane`）的人裁** —— 闭集见 [`FrameVerdict`]，理由必须可追问。

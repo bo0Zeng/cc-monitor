@@ -102,6 +102,12 @@ mod sftp;
 // remote off（默认）时本模块不被调用，本地路径 bit-for-bit 不变。
 mod ccm_probe;
 mod ssh_source;
+// 〔C2 · `设计/05 §13`〕拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
+mod ssh_link;
+// 〔C2〕界面进程里最后一份 russh 拨号 —— 只剩 SFTP（`F7c`）一个用户，换走即删。
+mod inproc_dial;
+// 〔C2〕拨号代理的宿主：定位本机后端 · 配置 → 请求 · 起 `--dial` · 管子交给 `ssh_link`。
+mod dial_host;
 // T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）。
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
@@ -181,6 +187,8 @@ mod subagent;
 mod session_skeleton;
 // 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源：问后端要「你说过的话」清单。
 mod session_outline;
+// 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
+mod snapshot_resume;
 mod tasks;
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
 mod tmux_reconcile;
