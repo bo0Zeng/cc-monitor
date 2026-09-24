@@ -591,6 +591,54 @@ export function buildAliasManager(opts: {
 }
 
 /**
+ * 〔MC1 · 2026-09-24〕远端机器卡上 ②「别名」的那一半：**把本机那份清单生成出来，复制去那台机器贴**。
+ *
+ * 为什么只给「手贴」：`71 §12.6` 的②有两种模式 ——「app 代写」与「用户手贴」。远端的 app 代写
+ * 要**叫那台机器的后端自己写**（`71 §12.6.3`），那是把写挪进后端，本路停下报备没做；
+ * 也**不走** monitor 这一侧的 SFTP 再长一条写路（那正是 `71 §12.5` 要收掉的第三份）。
+ * 渲染这一跳是纯的，本机算出来的 POSIX 文本拿去远端一样能用。
+ *
+ * 构造零 I/O：第一次展开才读本机清单、问一次渲染。
+ */
+export function buildRemoteAliasPaste(): HTMLElement {
+  const wrap = el("details", "ccm-alias-gen");
+  wrap.appendChild(el("summary", "", "把本机的别名清单复制过去"));
+  const status = el("div", "settings-hint");
+  wrap.appendChild(status);
+  let code = "";
+  let bad = "";
+  const paste = buildPasteBlock({
+    text: () => code,
+    target: "这台机器的 ~/.bashrc（或它实际用的 shell 配置文件）",
+    mergeNote: "整段贴到文件末尾；以后本机的清单改了，再贴一次换掉上一次那段。",
+    activation: "在那台机器上 source 它，或重连一次 ssh。",
+    invalidReason: () => bad || (code ? null : "还没生成。"),
+    multiline: true,
+    rows: 6,
+    className: "ccm-alias-gen-out",
+  });
+  wrap.appendChild(paste.element);
+  let loaded = false;
+  wrap.addEventListener("toggle", () => {
+    if (!wrap.open || loaded) return;
+    loaded = true;
+    void (async () => {
+      try {
+        const got = await commands.aliases_read();
+        const r = await commands.aliases_render({ aliases: got.aliases });
+        code = r.code;
+        bad = r.problems.length ? "本机那份清单里有不合格的，先在「本机 → 工具 → 别名」里改好。" : "";
+        status.textContent = `本机那份清单：${got.aliases.length} 条。`;
+      } catch (e) {
+        status.textContent = `读不了本机的别名清单：${String(e)}`;
+      }
+      paste.refresh();
+    })();
+  });
+  return wrap;
+}
+
+/**
  * 🔴 `K-R135`（`R85`）：**用户级 PATH 那一格** —— 现在状态 · 一个按钮加 · 一个按钮撤。
  *
  * 用户逐字：「只把那个目录塞进进程内 `$env:PATH` 这是怎么做的，**删除能清干净吗？

@@ -47,7 +47,7 @@
 //!
 //! **不守**：① **exec 那条路**（`connect_and_exec_cmd` 发一条会写的 shell 命令）——
 //!    判「一条 shell 命令会不会写」**没有可靠语法特征**：`2>/dev/null` 就带 `>`，
-//!    而 `install_remote_ccm_helper` 真正的写又是走 SFTP 的。那条路的扼流点是
+//!    而 `install_remote_alias_block` 真正的写又是走 SFTP 的。那条路的扼流点是
 //!    `exec_site_registry`（它数着每一处执行、每条命令的来历），
 //!    **在那张表上加一格「这条命令写不写远端」是另一件事**。如实登记，不假装覆盖。
 //! ② 写的**内容**对不对（各模块自己的行为判据）；

@@ -1161,7 +1161,7 @@ pub fn extract_embedded_to(
 //
 // 立件时现打（量于 `79bf97d`）：闭集 `tool_registry::TOOLS` 里落点是 `…/ccm` 的**只有一条**，
 // 而它是 `RemoteHomeRelative(".local/bin/ccm")` ⇒ **本机侧 0 条**；装口也只有远端那一个
-// （`sftp::install_remote_ccm_helper`）。⇒ 用户 `K34` 逐字要的「装了新版后
+// （`sftp::install_remote_ccm_helper`〔散文墓碑〕，〔MC1〕今天那一半在 `sftp::deploy_remote_backend`）。⇒ 用户 `K34` 逐字要的「装了新版后
 // `~/.local/bin/ccm` 可以干净退役」**今天没有承接方** —— 不是「没验过旧的能不能退役」，
 // 是**本机压根没有新的那一份**。
 //

@@ -533,14 +533,16 @@ src/bridge/src/sftp.rs:967	已安装后端（{}，{arch}）到 {path}（{reason}
 src/bridge/src/sftp.rs:1000	没有可删的后端文件（{path} 及其 .build_id 都不在，可能已卸载）。	内部词→「版本文件」	[对外] 卸载结果；`.build_id` 是我们的标记文件名 新词:.build_id
 src/bridge/src/sftp.rs:1004	已删除 {} 个文件：{}。注意：若本机器仍勾选「启用」，自动部署会在下次连接时把后端装回——彻底移除请取消该机器启用 / 删除该机器后重启 monitor。	改·§2.4	[对外] 结果＋注意＋处方塞在一段，破折号＋首句长 兼§2.3 →「已删除 {} 个文件。这台机器仍是启用状态，下次连接会自动装回」
 src/bridge/src/sftp.rs:1272	远端 ~/{profile}	保留	[对外] 拼进报错的对象名（远端 profile 路径）
-src/bridge/src/sftp.rs:1276	远端 {profile} 不存在，没有 ccm 块可卸载。	保留	[对外] 卸载结果；ccm 是用户自己敲的命令名（R1b 语境内）
-src/bridge/src/sftp.rs:1280	远端 {profile} 里没有 ccm 块，无需卸载。	保留	[对外] 卸载结果
 src/bridge/src/sftp.rs:1406	远端 ~/{profile}	保留	[对外] 拼进报错的对象名
-src/bridge/src/sftp.rs:1417	ccm CLI 已部署到远端 ~/{CCM_CLI_REMOTE_PATH}；{profile} 的别名块已是最新，无需改动。	保留	[对外] 部署结果
-src/bridge/src/sftp.rs:1469	已部署 ccm CLI 到 ~/{CCM_CLI_REMOTE_PATH}，别名块已写入 {profile}{backup_note}。\n         重连远端 ssh 终端后可用：`ccm`（起会话）/ `ccm --tmux`（tmux 里起）/ \n         `ccm --account <名>`（指定账号）。`ccm --help` 看全部修饰。	保留	[对外] 部署结果＋用法，括号是命令释义，可操作
-src/bridge/src/sftp.rs:1323	已从远端 {profile} 删除 ccm 块（原文件已备份为 {b}）。	保留	[对外] 卸载结果，括号给备份路径
-src/bridge/src/sftp.rs:1324	已从远端 {profile} 删除 ccm 块。	保留	[对外] 卸载结果（原文件为空时没有备份）
-src/bridge/src/sftp.rs:1381	（原文件已备份为 {b}）	保留	[对外] 部署结果的拼接段（备份路径）
+src/bridge/src/sftp.rs:967	终端里的 ccm 入口已就位。	保留	[对外] 部署后端结果的后半句（入口没变，没写）；ccm 是用户自己敲的命令（R1b）
+src/bridge/src/sftp.rs:969	终端里的 ccm 入口已放好（~/.local/bin/ccm）。	保留	[对外] 部署后端结果的后半句，括号给落点
+src/bridge/src/sftp.rs:1332	远端 {profile} 不存在，没有别名块可卸载。	保留	[对外] 卸载别名块结果，先说结果
+src/bridge/src/sftp.rs:1334	远端 {profile} 里没有别名块，不用卸载。	保留	[对外] 卸载别名块结果
+src/bridge/src/sftp.rs:1339	已从远端 {profile} 删掉别名块（原文件备份在 {b}）。	保留	[对外] 卸载别名块结果，括号给备份路径
+src/bridge/src/sftp.rs:1340	已从远端 {profile} 删掉别名块。	保留	[对外] 卸载别名块结果（原文件为空时没有备份）
+src/bridge/src/sftp.rs:1376	{profile} 里的别名块已是最新，没有改动。	保留	[对外] 装别名块结果（没写）
+src/bridge/src/sftp.rs:1379	（原文件备份在 {b}）	保留	[对外] 装别名块结果的拼接段（备份路径）
+src/bridge/src/sftp.rs:1383	别名块已写进 {profile}{backup_note}。重连 ssh 之后，终端里就有 cc / cct，\n         以及「别名」里生成的那几条。	保留	[对外] 装别名块结果：先说结果，再说生效之后能用什么；ssh 是用户自己也这么叫的词（R1b）
 src/bridge/src/sftp_pool.rs:1286	远端的 sftp-server 握手时没报 `copy-data` 扩展（或修订号不是 1）	改·§2.1	[对外] CopyVerdict 经 copy.rs 慢路前缀画在窗口上；sftp-server 握手/copy-data 扩展/修订号是协议细节 新词:copy-data 新词:sftp-server →「远端不支持服务器端直接复制」
 src/bridge/src/sftp_pool.rs:1294	远端给的 SFTP 句柄含非 UTF-8 字节，库已有损解码 ⇒ 不敢照原样发回去	改·§2.1	[对外] 同上；句柄/有损解码讲实现 兼§2.2 新词:SFTP句柄 →「远端不支持服务器端直接复制」
 src/bridge/src/sftp_pool.rs:1387	{why} ⇒ 退回中转：{relayed} 字节经过了你这台机器（零流量复制没走上）	改·§2.1	[对外] 同上；「退回中转」「零流量复制没走上」讲内部路径 兼§2.4 新词:中转 新词:零流量复制 →「{why}，数据经本机转了一次（{relayed} 字节）」
@@ -754,13 +756,16 @@ src/settings/machine-card.ts:789	公钥	保留	[对外] 文件类型过滤名
 src/settings/machine-card.ts:794	推送公钥中	保留	[对外] 按钮忙碌态
 src/settings/machine-card.ts:797	公钥已推送（ADDED）：{…}	内部词→「公钥已推送：…」	[对外] 括号里是后端返回的原始枚举 ADDED 新词:ADDED
 src/settings/machine-card.ts:798	公钥已存在，无需重复（ALREADY）：{…}	内部词→「公钥已存在，无需重复推送：…」	[对外] 括号里是后端返回的原始枚举 ALREADY 新词:ALREADY
-src/settings/machine-card.ts:1025	安装后端中	保留	[对外] 按钮忙碌态
 src/settings/machine-card.ts:1027	已装	保留	[对外] 组件状态小标
 src/settings/machine-card.ts:1027	装失败	保留	[对外] 组件状态小标
 src/settings/machine-card.ts:1047	卸载后端中	保留	[对外] 按钮忙碌态
-src/settings/machine-card.ts:1069	卸载 ccm 中	判不了	[对外] ccm 被 91 §2.1 点名为内部名，但机器卡上它是用户要装/卸的组件、按钮就叫它；换成什么对外词需要产品拍板（术语对照表 91 §5.2④ 还没有）
 src/settings/machine-card.ts:1152	backend 响应正常{…}	内部词→「后端响应正常」	[对外] 英文 backend，91 §3.1 定对外说「后端」新词:backend（英文）
 src/settings/machine-card.ts:1153	backend 未响应 / 未部署	内部词→「后端未响应或未安装」	[对外] 英文 backend 新词:backend（英文）
+src/settings/machine-card.ts:758	装别名块中	保留	[对外] 按钮进度态
+src/settings/machine-card.ts:1028	部署中	保留	[对外] 按钮进度态
+src/settings/machine-card.ts:1030	装失败	保留	[对外] 机器列表行状态格的结论词
+src/settings/machine-card.ts:1030	已装	保留	[对外] 机器列表行状态格的结论词
+src/settings/machine-card.ts:1079	卸载别名块中	保留	[对外] 按钮进度态
 src/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
 src/settings/machine-status.ts:53	连接	保留	[对外] 状态格标签
 src/settings/machine-status.ts:57	账号	保留	[对外] 状态格标签
@@ -1011,3 +1016,6 @@ src/settings/machine-aliases.ts:501	{…} 还不存在	保留	[对外] 状态行
 src/settings/machine-aliases.ts:502	认不出这一行，写入时它会被去掉：{…}	保留	[对外] 读回口认不出的行：先说结果、再说后果，原文跟在后面
 src/settings/machine-aliases.ts:550	装	保留	[对外] 动词碎片，拼成「装别名块中…」「装失败：…」
 src/settings/machine-aliases.ts:550	卸	保留	[对外] 动词碎片，拼成「卸别名块中…」「卸失败：…」
+src/settings/machine-aliases.ts:605	把本机的别名清单复制过去	保留	[对外] 远端机器卡 ② 别名里那个折叠标题
+src/settings/machine-aliases.ts:615	还没生成。	保留	[对外] 复制门的理由，短
+src/settings/machine-aliases.ts:630	本机那份清单里有不合格的，先在「本机 → 工具 → 别名」里改好。	保留	[对外] 复制门的理由：派的事用户做得到（改他自己的清单），并指明在哪改（同一个设置窗里的一页）

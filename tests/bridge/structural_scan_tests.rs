@@ -2778,10 +2778,51 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    （它是 `…_matches_what_actually_happened` 的前缀），标记只记在 `REGISTERED` 里。
         ("src/bridge/src/fenced_block.rs", "find_block_range", 1),
         // 〔AL1 · 2026-09-24 · 子步 4〕`write_account_aliases`（`lines` ＋ `dryRun`）退役，拆成两跳 ＋ 读回口。
-        ("tests/bridge/parity_ledger_tests.rs", "write_account_aliases", 2),
-        ("tests/bridge/account_aliases_tests.rs", "validate_alias_line", 1),
-        ("tests/generated-boundary-guard.vitest.ts", "write_account_aliases", 1),
-        ("tests/settings/panel-deferred-io.vitest.ts", "write_account_aliases", 1),
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "write_account_aliases",
+            2,
+        ),
+        (
+            "tests/bridge/account_aliases_tests.rs",
+            "validate_alias_line",
+            1,
+        ),
+        (
+            "tests/generated-boundary-guard.vitest.ts",
+            "write_account_aliases",
+            1,
+        ),
+        (
+            "tests/settings/panel-deferred-io.vitest.ts",
+            "write_account_aliases",
+            1,
+        ),
+        // 〔MC1 · 2026-09-24〕远端「装/卸 ccm 助手」两条命令改名成 `install_remote_alias_block` /
+        //    `uninstall_remote_alias_block`（推入口那一半并进 `deploy_remote_backend`，`设计/71 §13.3`）。
+        ("src/bridge/README.md", "install_remote_ccm_helper", 2),
+        (
+            "src/bridge/src/backend/control/local_backend.rs",
+            "install_remote_ccm_helper",
+            1,
+        ),
+        (
+            "src/bridge/src/profile_installer.rs",
+            "install_remote_ccm_helper",
+            1,
+        ),
+        ("src/bridge/src/sftp.rs", "install_remote_ccm_helper", 2),
+        ("src/bridge/src/sftp.rs", "uninstall_remote_ccm_helper", 1),
+        (
+            "src/bridge/src/verified_write.rs",
+            "install_remote_ccm_helper",
+            2,
+        ),
+        (
+            "tests/bridge/remote_write_registry_tests.rs",
+            "install_remote_ccm_helper",
+            1,
+        ),
         (
             "tests/bridge/sftp_tests.rs",
             "rollback_note_matches_what_actually_happened",
@@ -3424,7 +3465,11 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/lib.rs", 1),
         // 〔AL1 · 2026-09-24〕规则收成一份那一拍新贴的两块墓碑（本机配对 helper · 远端回滚措辞 helper）。
         ("src/bridge/src/fenced_block.rs", 1),
-        ("src/bridge/src/sftp.rs", 1),
+        // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
+        ("src/bridge/src/sftp.rs", 4),
+        ("src/bridge/src/profile_installer.rs", 1),
+        ("src/bridge/src/verified_write.rs", 2),
+        ("tests/bridge/remote_write_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
         // 测试里「形状围栏」那一条（`validate_alias_line`）· 生成物表里退役的 `AccountAliasReport.ts` ·
         // 延后 I/O 登记表里退役的 `write_account_aliases`，各一块。
@@ -3433,11 +3478,13 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/generated-boundary-guard.vitest.ts", 1),
         ("tests/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/wire.rs", 1),
-        ("src/bridge/README.md", 1),
+        // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
+        ("src/bridge/README.md", 3),
         ("src/bridge/build.rs", 1),
         ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
         ("src/bridge/src/backend/control/cc_bus.rs", 6),
-        ("src/bridge/src/backend/control/local_backend.rs", 1),
+        // 〔MC1〕+1：`install_remote_ccm_helper` 改名。
+        ("src/bridge/src/backend/control/local_backend.rs", 2),
         ("src/bridge/src/backend/control/payload.rs", 1),
         ("src/bridge/src/backend/control/tmux.rs", 7),
         ("src/bridge/src/cc_bus_deploy.rs", 1),
