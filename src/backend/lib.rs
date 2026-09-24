@@ -1168,30 +1168,16 @@ fn wire_commands_unavailable_on(t: Target) -> Vec<String> {
         .collect()
 }
 
-/// `ccm-launcher` 那一面里，**载体是 tmux** 的那几条能力 —— 一条一条的依据：
-///
-/// ⚠ 这是一条关于**机制**的声明（「它靠什么活着」），不是差异登记：差异 = 本表 × 平台那一维，
-/// 由本段现推；理由与档住 [`TARGET_GAPS`]。两张表回答的不是同一个问题。
-/// ⚠ 它**该住** `control/ccm/mod.rs` 那张 `CAPABILITIES` 旁边（一条能力一个住址）——
-/// 那份文件不在 PR1 的写区里，先住在汇总这一层、紧挨着那一面的适配函数，已报备。
-const CCM_TMUX_CARRIED: &[&str] = &[
-    "attach",               // 实现就是 `tmux attach`
-    "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
-    "bus-register",         // `argv.rs`：要 `--detach`，而 `--detach` 要 `--tmux`
-    "ccm-sid",              // 只在容器（tmux）那条路上被消费，`Plan::Direct` 里没有这个字段
-    "detach",               // 实现就是 `tmux detach`
-    "tmux",                 // 它本身
-    "tmux-base",            // tmux 的 `base-index`
-    "tmux-size",            // tmux 窗格尺寸
-];
-
 /// `ccm-launcher`：载体是 tmux 的那几条，在平台确证没有 tmux 的 target 上摘掉。
+///
+/// 「哪几条载体是 tmux」住 `control::ccm::CCM_TMUX_CARRIED`（紧挨着那一面的 `CAPABILITIES`，
+/// 一条能力一个住址）；这里只做「× 平台档」那一步。
 fn ccm_launcher_on(t: Target) -> Vec<&'static str> {
     let no_tmux = tmux_by_platform(t) == Some(false);
     control::ccm::CAPABILITIES
         .iter()
         .copied()
-        .filter(|c| !(no_tmux && CCM_TMUX_CARRIED.contains(c)))
+        .filter(|c| !(no_tmux && control::ccm::CCM_TMUX_CARRIED.contains(c)))
         .collect()
 }
 
