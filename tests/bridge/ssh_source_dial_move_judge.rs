@@ -452,3 +452,50 @@ fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
     //    另三份（`sftp.rs` / `port_forward.rs` / `inproc_dial.rs`）的针在它们各自第一个测试模块**之前**，
     //    便宜近似留得住 ⇒ 立对照会恒真。**那不是「已守住」，是「这一形在那两份上不成立」。**
 }
+
+/// 〔C2 · `设计/05 §13.8 ①`〕**界面 crate 里还在用 `russh` 的文件 == {SFTP 那一家}**（两向）。
+///
+/// 这是「`russh` 出界面 crate」那一面旗在**过程**上的样子：旗今天还倒不下（`Cargo.toml` 里那一行
+/// 因 SFTP 留着，理由住 `inproc_dial.rs` 头注），但**谁还在用它**是一个闭集，多一份少一份都红。
+/// ⚠ 数的是**代码里点名 `russh::` / `use russh`**（`russh_sftp` 不算 —— 它不依赖 `russh`，传输由调用方喂）。
+/// 买不到：经宏或别名间接用到它；「依赖树里有没有它」那面旗（归 `dial_home_registry::russh_deps_in`）。
+#[test]
+fn russh_lives_only_where_sftp_still_needs_it() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut users: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut scanned = 0usize;
+    for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
+        scanned += 1;
+        let prod = production_code(&raw);
+        let hits = prod
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .any(|l| {
+                l.contains("russh::")
+                    || l.trim_start().starts_with("use russh::")
+                    || l.contains("use russh;")
+            });
+        if hits {
+            users.insert(
+                path.strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+    assert!(
+        scanned >= 100,
+        "只扫到 {scanned} 份 `.rs` —— 遍历坏了，本条在空转"
+    );
+    let want: std::collections::BTreeSet<String> = ["inproc_dial.rs", "sftp.rs"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        users, want,
+        "界面 crate 里点名 `russh` 的文件变了。\n\
+         多出来的 ⇒ 有人在界面进程里又拨起 SSH 来了 —— 拨号归后端（`设计/05 §13`），走 `dial_host`；\n\
+         少了的 ⇒ SFTP 换走了？那就把 `inproc_dial.rs` 整份删掉、`Cargo.toml` 的 `russh` 一起删，本条改成零命中。"
+    );
+}
