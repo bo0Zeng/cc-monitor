@@ -285,7 +285,7 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
 }
 
 /// ★★★ **跨半边对拍**：「凭据文件那些行属于哪一家」在后端（层 2 的
-/// `accounts::CREDENTIALS_FILE_AGENT`）与 monitor（起会话时判「要不要改写 apikey 端点」那一格，
+/// `accounts::apikey::CREDENTIALS_FILE_AGENT`）与 monitor（起会话时判「要不要改写 apikey 端点」那一格，
 /// `payload.rs::APIKEY_TABLE_AGENT`）**是同一个值**〔条 49〕。
 ///
 /// 两侧**异源**：本侧是后端那个常量，那一侧是 `payload.rs` 源码里那一行的**字面量**
@@ -314,7 +314,7 @@ fn the_credentials_file_agent_is_the_same_on_both_halves() {
     let tail = &MONITOR_PAYLOAD_RS[at + needle.len()..];
     let theirs = &tail[..tail.find('"').expect("那个字面量没有收尾的引号")];
     assert!(!theirs.is_empty(), "抠出来的是空串 —— 抽取器坏了");
-    let ours = crate::accounts::CREDENTIALS_FILE_AGENT;
+    let ours = crate::accounts::apikey::CREDENTIALS_FILE_AGENT;
     assert_eq!(
         theirs, ours,
         "monitor 认为凭据文件的行属于 `{theirs}`，后端把它们挂在 `{ours}` 名下"

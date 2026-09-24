@@ -118,8 +118,8 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     ),
     // 〔`A3` 第二波〕`--acct-iso-status` / `--acct-iso-shellinit` 的分派住这里。
     (
-        "accounts/acct_iso.rs",
-        include_str!("../../src/backend/accounts/acct_iso.rs"),
+        "accounts/iso.rs",
+        include_str!("../../src/backend/accounts/iso.rs"),
     ),
     (
         "observe/accounts_query.rs",

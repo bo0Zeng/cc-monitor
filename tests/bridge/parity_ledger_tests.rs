@@ -442,7 +442,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
         Side::Remote,
     ),
     // 〔`A3` 第二波〕上面两条的本机对侧：问本机后端的 `--acct-iso-status` / `--acct-iso-shellinit`
-    // （住后端账号层 `accounts/acct_iso.rs`），出参类型与远端那条逐字相同 ⇒ 两条能力从此对称，
+    // （住后端账号层 `accounts/iso.rs`），出参类型与远端那条逐字相同 ⇒ 两条能力从此对称，
     // `acct-iso.check` / `acct-iso.shellinit` 两笔 `ParityDebt` 结清（理由表那两行已删）。
     ("check_local_acct_iso", "acct-iso.check", Side::Local),
     (

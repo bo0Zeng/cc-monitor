@@ -9,8 +9,8 @@ use super::super::listen::{
     UPSTREAM_DEADLINE,
 };
 use super::super::upstream;
-use crate::accounts::creds;
-use crate::accounts::{self, table::RoutingTable, Accounts};
+use crate::accounts::apikey::creds;
+use crate::accounts::apikey::{self as accounts, table::RoutingTable, Accounts};
 use creds_core::SecretKey;
 use std::io::BufRead;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
@@ -38,7 +38,7 @@ const TEST_AGENT: &str = "agentA";
 /// 第二家（`routes_two_keys…` 用它证「两个键走同一个进程」）。
 const TEST_AGENT_B: &str = "agentB";
 
-/// 拿**生产段那张决策表**（`accounts::decide`，与 `Accounts::resolve` 同一份实现）
+/// 拿**生产段那张决策表**（`accounts::apikey::decide`，与 `Accounts::resolve` 同一份实现）
 /// 问一次，再把答案交给生产段那个渲染函数，返回它吐出来的那串字节。
 ///
 /// ⚠⚠ 判据**不自己判**「这一行该不该换头 / 要不要丢掉客户端那份」——
@@ -1411,9 +1411,9 @@ fn relay_child_process_entry_point() {
     //   而凭据那份文件的位置由 `CCM_RELAY_CREDENTIALS` 覆盖，父进程一定会设它
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
     // ⚠ 〔层 2 搬出 `relay/` 那一拍〕走的是 `main.rs` 的 `--relay` 那一臂**真调的那一个**
-    //   （`accounts::run_relay` = 层 1 的 `run` ＋ 层 2 那只手），不是层 1 的 `run` 本身 ——
+    //   （`accounts::apikey::run_relay` = 层 1 的 `run` ＋ 层 2 那只手），不是层 1 的 `run` 本身 ——
     //   后者今天要调用方递一个 `Startup` 进来，判据自己递就不是生产段那条接线了。
-    std::process::exit(crate::accounts::run_relay(
+    std::process::exit(crate::accounts::apikey::run_relay(
         &crate::agents::claudecode::paths::resolve_home(),
         &[],
     ));
@@ -2195,7 +2195,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
 ///
 /// # 死值验落在哪一格
 ///
-/// 把 `accounts::auth_header_of`（`P16` 之后住层 2）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
+/// 把 `accounts::apikey::auth_header_of`（`P16` 之后住层 2）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
 /// （形状对、恒答默认那张脸）⇒ 本条的 `x-api-key` 那几格当场红，
 /// 而**默认那一行**那几格仍绿 ⇒ 这一刀是**单断**，不是目录级塌陷。
 ///

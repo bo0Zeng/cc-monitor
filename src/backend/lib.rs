@@ -429,7 +429,7 @@ pub static CC_MONITOR_BUILD_STAMP: [u8; BUILD_STAMP_LEN] = build_stamp();
 pub const SUBCOMMANDS: &[&str] = &[
     "--account-trust",
     "--account-trust-zero",
-    // 〔`A3` 第二波〕本机 `cc-acct-iso` 的两问（`accounts/acct_iso.rs`）。登记理由同下面那几条：
+    // 〔`A3` 第二波〕本机 `cc-acct-iso` 的两问（`accounts/iso.rs`）。登记理由同下面那几条：
     // `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--acct-iso-shellinit",

@@ -20,7 +20,7 @@
 //! 留一张空表等于给「往里加一行」留了一个看起来合法的口子。
 //! ⇒ 今天谁让层 1 认识层 2 一样东西、或往 `relay/` 下放回一份层 2 文件，本条当场红，
 //!   而改法只有一条：**把那件事交给层 2**（请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，
-//!   进程装配在 `accounts::run_relay`）。
+//!   进程装配在 `accounts::apikey::run_relay`）。
 //!
 //! # 买不到什么（照实写）
 //!
@@ -36,7 +36,7 @@
 //! - 四条都**不买**「层 2 做得对」：那张决策表答得对不对由 `table_tests` 与 `wire_golden` 负责。
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use crate::guard_support::production_code;
     use std::collections::BTreeSet;
 
@@ -44,8 +44,15 @@ mod tests {
     const RELAY_DIR: &str = "relay";
 
     /// ㈠ 层 2 那棵树里的文件（相对**层 2 的根**）。**相等，不是地板**。
-    const ACCOUNT_LAYER_FILES: &[&str] =
-        &["acct_iso.rs", "creds.rs", "mod.rs", "policy.rs", "table.rs"]; // 〔`A3` 第二波〕+`acct_iso.rs`（本机 `cc-acct-iso` 两问：账号的事归账号层）
+    // 〔`A3` 第二波〕根从 `accounts/` 收窄到 `accounts/apikey/`（现推，不是写死）；
+    // 账号隔离工具的查询（`accounts/iso.rs`）**不是**层 2，不进本表 —— 它登记在 [`ACCOUNT_DOMAIN_OTHER_FILES`]。
+    const ACCOUNT_LAYER_FILES: &[&str] = &["creds.rs", "mod.rs", "policy.rs", "table.rs"];
+
+    /// 〔`A3` 第二波〕账号**域**里、层 2 **之外**的那几份（相对账号域根）。
+    ///
+    /// 账号域根 = 层 2 根的上一级（现推）。域根自己那份 `mod.rs` 只声明两块、不放代码，
+    /// 不算任何一块（由 [`the_two_halves_of_the_account_domain_do_not_reference_each_other`] 钉着）。
+    const ACCOUNT_DOMAIN_OTHER_FILES: &[&str] = &["iso.rs"];
 
     /// ㈣ 层 2 用到的层 1 的东西（相对 `crate::relay::` 的路径）—— **接口面就这么宽**。
     ///
@@ -53,7 +60,7 @@ mod tests {
     /// |---|---|
     /// | `Destinations` · `Destination` · `AuthSwap` · `Mode` · `RouteKey` | 请求路径上那一问一答（`设计/20 §2`）|
     /// | `Startup` · `Ready` | 启动路径上那两步（起监听前验配置 · 起监听后交出 `Destinations`）|
-    /// | `run` | `--relay` 进程的装配（`accounts::run_relay` 把 `Boot` 递进层 1 的入口）。依赖方向只许层 2 → 层 1，所以装配住这一侧 |
+    /// | `run` | `--relay` 进程的装配（`accounts::apikey::run_relay` 把 `Boot` 递进层 1 的入口）。依赖方向只许层 2 → 层 1，所以装配住这一侧 |
     /// | `Base` | 一行的上游是什么 —— 层 1 的**传输原语**，层 2 解析它、焊进行里、原样交回 |
     /// | `segment_is_safe` | 「这个账号 id 当得了路由段吗」与层 1 切键用的是**同一个谓词**（`route.rs` 头注逐字论证过为什么不许各写一份）|
     ///
@@ -122,6 +129,12 @@ mod tests {
     }
 
     /// 层 2 的模块路径（`crate::` 之后的段），由它的根目录现算。
+    /// 〔`A3` 第二波〕层 2 的根（盘上现推）交给兄弟判据用 —— `creds_guard` 拿它核
+    /// 「中转日志白名单圈的账号那棵，恰好是层 2 这棵子树」，不自己再写第二把推法。
+    pub(in crate::relay) fn layer_two_root_from_disk() -> String {
+        account_layer_root(&crate_production())
+    }
+
     fn module_of_dir(dir: &str) -> Vec<String> {
         dir.trim_end_matches('/')
             .split('/')
@@ -181,6 +194,8 @@ mod tests {
     fn layer_two_vocabulary(layer_two: &[&(String, String)]) -> BTreeSet<String> {
         let mut out: BTreeSet<String> = BTreeSet::new();
         out.insert("accounts".to_string());
+        // 〔`A3` 第二波〕层 2 今天住 `accounts/apikey/` ⇒ 它自己的模块名也是层 2 的名字。
+        out.insert("apikey".to_string());
         for (_, prod) in layer_two {
             for line in prod.lines() {
                 let t = guard_core::strip_visibility(line.trim_start());
@@ -389,7 +404,7 @@ mod tests {
         // 自己的生产段里被**同一把尺子**数到 —— 数不到就是尺子瞎了，下面的零命中是空真。
         let unseen: Vec<&String> = vocab
             .iter()
-            .filter(|w| *w != "accounts")
+            .filter(|w| *w != "accounts" && *w != "apikey")
             .filter(|w| !layer_two.iter().any(|(_, prod)| count_word(prod, w) > 0))
             .collect();
         assert!(
@@ -409,7 +424,7 @@ mod tests {
             named.is_empty(),
             "🔴 中转层（`relay/` 的生产段）点名了账号层：\n  {}\n\
              **别加例外** —— 把那件事交给层 2：请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，\
-             进程装配在 `accounts::run_relay`。",
+             进程装配在 `accounts::apikey::run_relay`。",
             named.join("\n  ")
         );
 
@@ -471,5 +486,158 @@ mod tests {
             "use creds_core::store::AuthStyle;\n"
         )
         .is_empty());
+    }
+
+    // ── 〔`A3` 第二波〕账号域的两块互不引用 ─────────────────────────────────
+
+    /// `from` 这批文件里，指向 `to_mod` 那棵模块树的路径 ＋ 点名 `to_vocab` 里那些词的地方。
+    /// **纯函数**：正控喂合成文本，本体喂盘上的两块。
+    fn cross_refs(
+        from: &[&(String, String)],
+        to_mods: &[Vec<String>],
+        to_vocab: &BTreeSet<String>,
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        for (rel, prod) in from {
+            for abs in paths_in(rel, prod) {
+                if to_mods.iter().any(|m| abs.starts_with(m)) {
+                    out.push(format!("{rel}: 路径 `{}`", abs.join("::")));
+                }
+            }
+            for w in to_vocab {
+                let n = count_word(prod, w);
+                if n > 0 {
+                    out.push(format!("{rel}: `{w}` ×{n}"));
+                }
+            }
+        }
+        out
+    }
+
+    /// ★★ 「账号就账号, 中转就中转」在账号域**内部**的那一半：给中转当层 2 的 `apikey/`
+    /// 与账号隔离工具的查询（`iso`）**两向零引用**。
+    ///
+    /// | 格 | 断言 | 反空真 |
+    /// |---|---|---|
+    /// | 人群 | 域根 = 层 2 根的上一级（现推）；层 2 之外那几份 ⇔ [`ACCOUNT_DOMAIN_OTHER_FILES`]，两向相等 | 两块各自非空 |
+    /// | 域根 `mod.rs` | 生产段每一行都是 `pub mod …;`，条数 = 两块的模块数 | —— |
+    /// | iso → 层 2 | 零命中（路径 ＋ 层 2 词表） | 同一个 `cross_refs` 喂合成文本必须命中 |
+    /// | 层 2 → iso | 零命中（路径 ＋ iso 词表） | 同上 |
+    ///
+    /// ⚠ 买不到：经第三处（比如 `main.rs`）把两块的值接到一起 —— 那是装配，不是互相认识。
+    #[test]
+    fn the_two_halves_of_the_account_domain_do_not_reference_each_other() {
+        let files = crate_production();
+        let l2_root = account_layer_root(&files);
+        let l2_mod = module_of_dir(&l2_root);
+        let domain_root = {
+            let mut segs = l2_mod.clone();
+            segs.pop();
+            assert!(
+                !segs.is_empty(),
+                "层 2 根 `{l2_root}` 没有上一级 —— 它不在任何账号域底下"
+            );
+            format!("{}/", segs.join("/"))
+        };
+        let domain_mod_rs = format!("{domain_root}mod.rs");
+        let layer_two: Vec<&(String, String)> = files
+            .iter()
+            .filter(|(rel, _)| rel.starts_with(&l2_root))
+            .collect();
+        let others: Vec<&(String, String)> = files
+            .iter()
+            .filter(|(rel, _)| {
+                rel.starts_with(&domain_root) && !rel.starts_with(&l2_root) && *rel != domain_mod_rs
+            })
+            .collect();
+
+        // 人群：两向相等 ＋ 两块各自非空。
+        let on_disk: BTreeSet<String> = others
+            .iter()
+            .map(|(rel, _)| rel[domain_root.len()..].to_string())
+            .collect();
+        let registered: BTreeSet<String> = ACCOUNT_DOMAIN_OTHER_FILES
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        assert_eq!(
+            on_disk, registered,
+            "账号域（根 `{domain_root}`）里层 2 之外的文件对不上登记 —— 加/减了就回来改 \
+             `ACCOUNT_DOMAIN_OTHER_FILES`，并想清楚它属于哪一块"
+        );
+        assert!(
+            !layer_two.is_empty() && !others.is_empty(),
+            "有一块是空的 —— 下面的零命中在空转"
+        );
+
+        // 域根 `mod.rs` 只声明两块、不放代码。
+        let hub = files
+            .iter()
+            .find(|(rel, _)| *rel == domain_mod_rs)
+            .unwrap_or_else(|| panic!("扫不到账号域根 `{domain_mod_rs}`"));
+        let hub_lines: Vec<&str> = hub
+            .1
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        let want_mods = 1 + others.len();
+        assert!(
+            hub_lines.len() == want_mods && hub_lines.iter().all(|l| l.starts_with("pub mod ") && l.ends_with(';')),
+            "账号域根 `{domain_mod_rs}` 的生产段应当恰好是 {want_mods} 行 `pub mod …;`，实得 {hub_lines:?} —— \
+             放了代码它就成了两块共用的第三处"
+        );
+
+        // 两块的名字。`accounts` 是域名，两块都住在它底下 ⇒ 不作判据词（路径那一半已经分得开）。
+        let mut l2_vocab = layer_two_vocabulary(&layer_two);
+        l2_vocab.remove("accounts");
+        let mut iso_vocab = layer_two_vocabulary(&others);
+        iso_vocab.remove("accounts");
+        iso_vocab.remove("apikey");
+        let iso_mods: Vec<Vec<String>> =
+            others.iter().map(|(rel, _)| module_of_file(rel)).collect();
+        for (rel, _) in &others {
+            if let Some(stem) = module_of_file(rel).last() {
+                iso_vocab.insert(stem.clone());
+            }
+        }
+        assert!(
+            l2_vocab.contains("apikey")
+                && l2_vocab.contains("Accounts")
+                && iso_vocab.contains("iso"),
+            "词表推空了：层 2 {l2_vocab:?} · iso {iso_vocab:?}"
+        );
+
+        // 正控：同一个 `cross_refs` 对合成文本必须命中（两个方向各一刀）。
+        let fake_iso = (
+            "accounts/iso.rs".to_string(),
+            "use crate::accounts::apikey::Accounts;\n".to_string(),
+        );
+        let fake_l2 = (
+            "accounts/apikey/mod.rs".to_string(),
+            "fn f() { super::super::iso::answer(&[]); }\n".to_string(),
+        );
+        assert!(
+            !cross_refs(&[&fake_iso], &[l2_mod.clone()], &l2_vocab).is_empty(),
+            "正控：iso 引层 2 没被认出来"
+        );
+        assert!(
+            !cross_refs(&[&fake_l2], &iso_mods, &iso_vocab).is_empty(),
+            "正控：层 2 引 iso 没被认出来"
+        );
+
+        let fwd = cross_refs(&others, &[l2_mod.clone()], &l2_vocab);
+        assert!(
+            fwd.is_empty(),
+            "🔴 账号隔离那一块（iso）引用了中转的层 2：\n  {}\n\
+             用户逐字「账号就账号, 中转就中转」—— 账号域里给中转当层 2 的那一块，别的块不许认识它。",
+            fwd.join("\n  ")
+        );
+        let back = cross_refs(&layer_two, &iso_mods, &iso_vocab);
+        assert!(
+            back.is_empty(),
+            "🔴 中转的层 2 引用了账号隔离那一块（iso）：\n  {}",
+            back.join("\n  ")
+        );
     }
 }
