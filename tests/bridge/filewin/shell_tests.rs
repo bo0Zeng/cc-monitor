@@ -713,15 +713,11 @@ fn scenario_a() -> &'static crate::filewin::rows::testing::xvfb::ChildRun {
 /// - **「用户在旧面板上点那颗按钮」那一跳不在这一格里** —— 那一跳由
 ///   jsdom 那条与包装层那两条钉着（`真相源/99 §9.5` 刀 1／刀 2）。
 ///   这一格接的是它下游那一段：命令进来之后窗口起没起来。
-/// - 🔴 **「用户点窗口那个关闭按钮，事件循环干净退出」—— 仍然判不了。**
-///   缺的证据很具体：**一个窗口管理器**。本台架手上唯一那把锤子
-///   （`xdotool` 那条关窗）走的是**硬销毁**，不是「请你关掉」那条窗口协议消息；
-///   而生产那个窗口自己没有关闭入口（没有一颗「关闭」按钮），
-///   本刀又**只许调不许改**生产那棵树 ⇒ 这一维今天没有第二条路。
-///   现打读数（本判据每趟自己印出来）：硬销毁之后 `run_native` 不是回一个 `Err`，
-///   而是在下一次几何查询上 **panic**（X11 `Drawable` 那一族的错）。
-///   ⚠ 那条读数**不是**这一格的裁决，它是一条**登记**：见交回件里那条
-///   「release 档 `panic = "abort"`」的跟进。
+/// - ⚠ **「用户点窗口那个关闭按钮，事件循环干净退出」只买到 Xvfb 那一半**〔X1 2026-09-24〕：
+///   台架今天替窗口管理器发那条 `WM_DELETE_WINDOW`（`xvfb::close_like_a_wm`），
+///   本判据判 `a.run_native == ok`（上一版这里只印不判，因为那把锤子是硬销毁）。
+///   **买不到**真窗口管理器那一层：真桌面上窗口会被 reparent 进一层框，
+///   winit 算位置走的是另一种几何 ⇒ 真桌面上关窗干不干净，本机仍然判不了。
 /// - **窗口里面的交互这一格买不到**：生产那个窗口没有可观测出口（判据读不到它的
 ///   `tally`），而生产那棵树不许改。那一维由 `rows` 那一格买 ——
 ///   同一条 `run_native` 路、同一个生产行画函数，见
@@ -755,10 +751,22 @@ fn the_native_window_really_comes_up_on_a_real_graphics_session() {
             .unwrap_or_else(|_| panic!("{what}读不出整数：{}", run.reading(k)));
         assert!(v > 0, "窗口{what}是 {v} —— 一个 0 像素的窗口照样能被数到");
     }
-    // 🔴 关窗那一维**仍然判不了**，理由与缺的证据逐字写在本判据头注里；
-    //    这里只把读数印出来，**不判**（判它就得把今天这一形钉成期望值）。
-    println!(
-        "  〔登记·判不了〕硬销毁那个窗口之后 `run_native` 的裁决：{} —— {}",
+    // 🔴〔X1 2026-09-24〕关窗那一维**从「只印不判」变成判据**。
+    //    上一版不判的理由是「那把锤子是硬销毁，判它就得把 panic 钉成期望值」；
+    //    锤子换成了窗口管理器那一条请求（`xvfb::close_like_a_wm`）⇒ 期望值就是干净收场。
+    //    ⚠ 先判「消息送到了」再判「收场干净」：前者不成立时后者红的原因会被读错。
+    assert_eq!(
+        run.reading("a.close_sent"),
+        "ok",
+        "那条 `WM_DELETE_WINDOW` 没送到 X 服务器 —— 下面那条「干净收场」此刻判的不是关窗"
+    );
+    assert_eq!(
+        run.reading("a.run_native"),
+        "ok",
+        "窗口管理器请它关之后，事件循环没有干净收场：裁决 `{}`（{}）。\n\
+         `panic` 且原因含 `BadWindow`／`TranslateCoordinates` = 有人又在它还活着时把窗口硬拆了\
+         （`xdotool windowclose` 在本机那一版就是 `XDestroyWindow`，逐条住 `设计/60`「Xvfb 抖动」）；\
+         `timeout` = 那条消息 winit 没认（原子或事件布局不对，先看 `x11_wire_tests`）",
         run.reading("a.run_native"),
         run.reading("a.reason")
     );
@@ -884,14 +892,11 @@ fn a_window_that_cannot_come_up_comes_back_as_a_reason_not_a_silent_ok() {
 ///   （理由住 `scenario_trips`：门禁那一格 `--lib`，不构建 bin）。
 ///   ⇒ 它买的是「**一个进程一个窗口这件事成立**」，不是「那份发版二进制跑得起来」。
 /// - **真 GPU / 字体回落 / DPI / 合成器四样一个都买不到**（台架头注逐条）。
-/// - 🔴 **它刻意不要求那三趟「干净退出」。** 那不是偷懒，是一条已登记的抖动：
-///   关窗那一下的拆卸竞态（winit 在析构里 panic ⇒ 非 unwind 的 abort）
-///   现打在满盘里约 1/4 的趟数上让实景子进程退出码变成 `None`，归因未定，
-///   登记在 `P25`。它发生在**读数印出来之后**（`emit` 走 `println!`，行缓冲、
-///   每行即刷）⇒ 把「退出码」并进本条只会让本条跟着抖，而本条要买的那件事
-///   在读数那一刻已经成立。
-///   ⚠ **这不是把抖动压下去** —— 那条竞态本身正是换进程要解的三条缺陷之一
-///   （`真相源/107 §2`），它今天只崩台架自己那个进程，而那正是换进程买到的东西。
+/// - 🪦〔X1 2026-09-24 结案〕上一版这里写着「**刻意不要求那三趟干净退出**」——
+///   理由是关窗那一下的拆卸竞态让约 1/4 的趟数退出码变成 `None`、「归因未定」。
+///   **归因定了**：那不是产品的拆卸竞态，是台架那一锤（`xdotool windowclose`
+///   = `XDestroyWindow`）替 winit 把窗口拆了，winit 每趟都 panic、约一成落在持锁段升级成 abort。
+///   锤子换成窗口管理器那一条请求之后，**三趟都判退出码 0 ＋ 收场 `ok`**（④）。
 #[cfg(not(windows))]
 #[test]
 fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
@@ -905,7 +910,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
     let codes: Vec<Option<i32>> = trips.iter().map(|r| r.code).collect();
     println!(
         "  三趟现打：窗口数 {counts:?} · pid {pids:?} · \
-         本进程开窗计数 {opened:?} · 退出码 {codes:?}（退出码**不判**，见头注）"
+         本进程开窗计数 {opened:?} · 退出码 {codes:?}"
     );
 
     // ① 反空真锚**排在最前**：三趟真是三个进程。
@@ -930,6 +935,19 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
             i + 1
         );
     }
+
+    // ④〔X1 2026-09-24〕三趟都**干净收场**：退出码 0 ＋ `run_native == ok`。
+    //    上一版刻意不判它（「归因未定的抖动」）；归因定了、锤子换了 ⇒ 判。
+    //    ⚠ 排在 ③ 前面：abort 那一形（退出码 `None`）下 ③ 的读数照样印得出来，
+    //    先判它才不会让一个崩掉的进程冒充「计数器对得上」。
+    let verdicts: Vec<String> = trips.iter().map(|r| r.reading("a.run_native")).collect();
+    assert_eq!(
+        (codes.clone(), verdicts.clone()),
+        (vec![Some(0); 3], vec!["ok".to_string(); 3]),
+        "三趟里有一趟没有干净收场。退出码 {codes:?} · 裁决 {verdicts:?}。\n\
+         `None` = 进程被信号打死（winit 在析构里二次 panic ⇒ abort）；\
+         `panic` = 窗口被人硬拆了。逐条住 `设计/60`「Xvfb 抖动」"
+    );
 
     // ③ 每一趟自己那个计数器都是 +1 —— 三趟不共享进程级状态。
     for (i, o) in opened.iter().enumerate() {
