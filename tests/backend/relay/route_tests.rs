@@ -283,3 +283,40 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
         "这一形**确实**解析得了 —— 上面那段说明不是假设"
     );
 }
+
+/// ★★★ **跨半边对拍**：「凭据文件那些行属于哪一家」在后端（层 2 的
+/// `accounts::CREDENTIALS_FILE_AGENT`）与 monitor（起会话时判「要不要改写 apikey 端点」那一格，
+/// `payload.rs::APIKEY_TABLE_AGENT`）**是同一个值**〔条 49〕。
+///
+/// 两侧**异源**：本侧是后端那个常量，那一侧是 `payload.rs` 源码里那一行的**字面量**
+/// （`include_str!` 现抠，不是 `use`）。漂开的症状：monitor 给 A 家注入 `/s/A/…`，
+/// 而后端把那些行挂在 B 家名下 ⇒ **每一发 404**。
+///
+/// # ⚠ 它为什么住在**层 1** 的判据文件里（照实写）
+///
+/// 它钉的是层 2 的一个事实，本该住 `table_tests.rs`。挪过来只为一件事：
+/// **跨半边的编译期边**有一张默认拒绝的登记表（`src/bridge/src/cross_half_edge_registry.rs`），
+/// 而 `route_tests.rs → payload.rs` 这条边**已经登记着**（上面那条对拍用的就是它）。
+/// 在 `table_tests.rs` 里再开一条 = 新登记一条边，而那张表不在本拍的写区。
+/// ⇒ 复用这一条，**边的集合一格不变**。它只读层 2 那一个常量，层 1 的生产段不因此多认识层 2 一个字
+/// （`account_layer_guard` 只扫生产段，判据段不在它的人群里）。
+///
+/// ⚠ 买不到：monitor 那一侧**真的拿它去判了**。那一格由 monitor 自己的判据量
+/// （`payload_tests::another_agent_with_the_same_account_id_is_not_routed_to_that_row`）。
+#[test]
+fn the_credentials_file_agent_is_the_same_on_both_halves() {
+    const MONITOR_PAYLOAD_RS: &str =
+        include_str!("../../../src/bridge/src/backend/control/payload.rs");
+    let needle = "pub const APIKEY_TABLE_AGENT: &str = \"";
+    let at = guard_core::find_pinned(MONITOR_PAYLOAD_RS, needle).unwrap_or_else(|e| {
+        panic!("在 monitor 侧 `payload.rs` 里钉不住 `APIKEY_TABLE_AGENT` 那一行：{e}")
+    });
+    let tail = &MONITOR_PAYLOAD_RS[at + needle.len()..];
+    let theirs = &tail[..tail.find('"').expect("那个字面量没有收尾的引号")];
+    assert!(!theirs.is_empty(), "抠出来的是空串 —— 抽取器坏了");
+    let ours = crate::relay::accounts::CREDENTIALS_FILE_AGENT;
+    assert_eq!(
+        theirs, ours,
+        "monitor 认为凭据文件的行属于 `{theirs}`，后端把它们挂在 `{ours}` 名下"
+    );
+}

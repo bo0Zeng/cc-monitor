@@ -28,7 +28,7 @@
 //! `src/bridge/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。
 
 use super::server::{self, Relay, DEFAULT_PORT, INFLIGHT_CONNECTIONS, LOOPBACK};
-use super::{accounts, tee::TeeSink};
+use super::{tee::TeeSink, Startup};
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
@@ -217,50 +217,42 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
     }
 }
 
-/// `--relay` 的**配置面** —— 纯函数：不读环境、不起监听、不碰网络。
+/// `--relay` 的**端口**那一格 —— 纯函数：不读环境、不起监听、不碰网络。
 ///
 /// ★ 它为什么被抽出来（回修轮 08-25，D1 `重要-6`）：先前这一段整个长在 `run()` 里，
 /// 而 `run()` 尾巴上是**永不返回**的 `serve()` ⇒ 没有任何判据调得动它。
 /// 实测：把 `run()` 的函数体整个换成 `2`，384 条判据**全绿**（审计 `CG1`）——
 /// `CCM_RELAY_PORT`/`CCM_RELAY_UPSTREAM` 的解析、两个默认值，**一样都没被量过**。
 ///
-/// ⚠ 〔条 59/60〕它收的第二样从「一个上游串」换成了**取值器本身**：默认上游改成每 agent 一行、
-/// 每家一个环境旋钮之后，「该读哪几个变量」是**层 2 的表**说了算（`accounts::AGENT_UPSTREAMS`），
-/// 层 1 连那几个变量叫什么都不知道 —— 它只把取值器原样递过去。
-pub(super) fn resolve_config(
-    port_env: Option<&str>,
-    get: &dyn Fn(&str) -> Option<String>,
-) -> Option<(u16, accounts::Upstreams)> {
-    let port = port_env
+/// ⚠ 〔「中转层里没有账号」那一刀的前置〕它先前还顺手解析上游 —— 那是**层 2 的配置**
+/// （每 agent 一行的默认上游，`设计/20 §3.1`）。今天那一半归 [`Startup::check`]，
+/// 本函数只剩层 1 自己的那一格：端口（`C5`：端口是后端交给通信层的策略值）。
+pub(super) fn resolve_port(port_env: Option<&str>) -> u16 {
+    port_env
         .and_then(|v| v.parse::<u16>().ok())
-        .unwrap_or(DEFAULT_PORT);
-    // ⚠ `K-R1`：`Base::parse` 现在带着**一句为什么**回来，而这里把它丢掉了
-    //   —— 如实登记为射程外，不是漏掉：这一支的调用方（`run_with`）只印一句
-    //   `[relay] bad upstream base url` 就退 2，而那条路上**还没有任何日志出口**能带这句话。
-    //   真要带上，改的是 `run_with` 的报文与 `creds_guard::LOG_SITES` 那张表 ⇒ 另一拍。
-    //   ★ 而**每一行**账号的 `base_url` 那句为什么，今天是真的印出去了（`table::build`）。
-    //
-    // ⚠⚠ **上游那一半住层 2**（`20 §4`「常量跟着职责走」）：每一家的环境旋钮与内置默认
-    //    都在 `accounts/` 那张表里，本函数**认不出**任何一家的默认值是什么。
-    //    ⇒ 层 1 里没有任何可以回落的默认上游。
-    let upstreams = accounts::Upstreams::from_env(get)?;
-    Some((port, upstreams))
+        .unwrap_or(DEFAULT_PORT)
 }
 
 /// `run()` 剥掉「读环境变量」之后的那一半。
 ///
-/// **起监听之前的处置全在这里** ⇒ 判据打得到「基址不认识就退 2」与
+/// **起监听之前的处置全在这里** ⇒ 判据打得到「配置认不出就退 2」与
 /// 「端口起不来就退出并出声」（`:16-17` 头注承诺的那条）两条。
 /// 成功那一条尾巴上是永不返回的 `serve()` ⇒ 判据够不到，登记为 `判不了`。
 ///
-/// ⚠ 「读一次凭据、装表、把该说的话说出去」那一段**搬去层 2 了**
-/// （`accounts::load_credentials`）—— 那三件事一件都不属于搬字节这一层。
+/// ⚠ 「读一次凭据、装表、把该说的话说出去、接热重载」那一段**是层 2 的**，
+/// 本函数只经 `startup` 那两步够到它（[`Startup`] / [`Ready`]）—— 它**叫不出**层 2 的任何一个名字。
 pub(super) fn run_with(
     port_env: Option<&str>,
     get: &dyn Fn(&str) -> Option<String>,
     home: &std::path::Path,
+    startup: &dyn Startup,
 ) -> i32 {
-    let Some((port, upstreams)) = resolve_config(port_env, get) else {
+    let port = resolve_port(port_env);
+    // ⚠ `K-R1`：层 2 认不出时**为什么**认不出，这里拿不到 —— 如实登记为射程外：
+    //   这一支只印一句 `[relay] bad upstream base url` 就退 2，而改那句报文要同拍改
+    //   `creds_guard::LOG_SITES` 那张表 ⇒ 另一拍。★ 而**每一行**账号的 `base_url`
+    //   那句为什么，今天是真的印出去了（层 2 装表时）。
+    let Some(ready) = startup.check(get) else {
         eprintln!("[relay] bad upstream base url");
         return 2;
     };
@@ -277,14 +269,9 @@ pub(super) fn run_with(
     }
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
-    let (table, creds_path, stamp) =
-        accounts::load_credentials(get, home, &upstreams, &mut std::io::stderr());
-    // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
-    // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
-    let dest = accounts::Accounts::new(table, upstreams)
-        .reloading_from(accounts::Reload::new(creds_path, stamp));
+    let dest = ready.into_destinations(get, home, &mut std::io::stderr());
     let relay = Relay::new(
-        Arc::new(dest),
+        dest,
         TeeSink::to_stdout(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -325,5 +312,9 @@ pub(super) fn run_reading(
 /// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了
 /// —— 本函数这一行今天是**判不了**的那一格，登记住址件文件 §8.18.3。
 pub fn run(home: &std::path::Path, _args: &[String]) -> i32 {
-    run_reading(&|k| std::env::var(k).ok(), home, &run_with)
+    // ★ **层 1 点名层 2 的唯一一处**（外加 `relay/mod.rs` 那行模块声明）：把它的启动那只手递进去。
+    //   搬家那天这一行跟着走 —— 它是「起进程时把两层接起来」那件事，不是搬字节。
+    run_reading(&|k| std::env::var(k).ok(), home, &|p, get, h| {
+        run_with(p, get, h, &super::accounts::Boot)
+    })
 }

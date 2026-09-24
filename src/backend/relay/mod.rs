@@ -229,7 +229,10 @@
 //!   它写的是**裸** `relay::…`，锚点对不上）。如实登记，别读成「全体没有」。
 
 // ── 层 2（`设计/20 §7` 步 2：`table.rs`/`creds.rs` 都搬进去了）────────────────
-mod accounts; // 账号层：`resolve` 那张决策表的**唯一**住址（`20 §3.1`）＋ 表 ＋ 凭据 ＋ 热重载
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/account_layer_guard.rs"]
+mod account_layer_guard;
+mod accounts; // 账号层：`resolve` 那张决策表的**唯一**住址（`20 §3.1`）＋ 表 ＋ 凭据 ＋ 热重载 // 「中转层里不要有账号」：四条两向集合相等（今天的残留逐条登记，搬家那天清空）
               // ── 层 1 · 搬字节那半 ────────────────────────────────────────────────────────
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/bind_guard.rs"]
@@ -397,4 +400,35 @@ pub(crate) trait Destinations: Send + Sync {
     ///    把 `pump` 搬进来 = 「配一次 key」会被堵在最长那条在飞流后面（`D2 阻-4`）。
     ///    钉这一条的判据：`table_guard::the_layer_two_lock_does_not_outlive_the_streaming_pump`。
     fn resolve(&self, mode: Mode, key: &RouteKey, act: &mut dyn FnMut(Destination<'_>));
+}
+
+/// 进程起来那一刻，层 2 交给层 1 的**另一只手**（`--relay` 的启动路径）。
+///
+/// # 它为什么存在（「中转层里没有账号」那一刀的前置）
+///
+/// 先前 `listen.rs` 在启动路径上**直呼**层 2 的五个名字（读哪个上游旋钮 · 解析默认上游 ·
+/// 读凭据装表 · 起账号层 · 接热重载）—— 请求路径上层 1 只认 [`Destinations`] 一个口，
+/// 启动路径上它却认识层 2 的整套装配。⇒ 把那五个名字收成这两步：层 1 只知道
+/// 「起监听**之前**问一次行不行」与「起监听**之后**要一个 [`Destinations`]」，
+/// 至于那里面是账号、凭据还是别的什么，**它不知道**。
+///
+/// ⚠ 两步而不是一步，是**顺序**逼的（`listen::run_with` 头注那两条退 2）：
+/// 配置读不懂要在**绑端口之前**就退（一个字节都不监听）；而装表要在**绑端口之后**
+/// （否则端口起不来那条支会先把与它不相干的东西印出来）。
+pub(crate) trait Startup: Sync {
+    /// 起监听**之前**：拿这份取值器验层 2 自己的配置。认不出 ⇒ `None` ⇒ 层 1 出声并退 2。
+    ///
+    /// ⚠ 取值器是**注入的**，层 1 原样递过来：层 2 要读哪几个变量，层 1 连名字都不知道。
+    fn check(&self, get: &dyn Fn(&str) -> Option<String>) -> Option<Box<dyn Ready>>;
+}
+
+/// [`Startup::check`] 过了之后手里那一份。
+pub(crate) trait Ready {
+    /// 起监听**之后**、进接受循环**之前**：装好、把该说的话说到 `out`，交出 [`Destinations`]。
+    fn into_destinations(
+        self: Box<Self>,
+        get: &dyn Fn(&str) -> Option<String>,
+        home: &std::path::Path,
+        out: &mut dyn std::io::Write,
+    ) -> std::sync::Arc<dyn Destinations>;
 }
