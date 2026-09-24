@@ -146,7 +146,34 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⇒ 登记成 `PureRouterNoFallbackDecision`，牙见那一档的判法：它连
     //   `inbound_client` 这个名字都不许碰 —— 碰了就说明它不再「只转交」了。
     ("router.rs", Verdict::PureRouterNoFallbackDecision),
+    // ★ 〔面 A 通道，2026-09-24〕**第八个发送端** —— 通道的生产句柄（`chan/host.rs`），
+    //   外部前端经路由器转来的 `call` 在这里走 `inbound_client`。
+    //   它要的不是三态而是 `05 §3.3.1` 的分层结果（层 × `reach` × `why`），
+    //   ⇒ 走分流器的**第二个出口** `layer_call_error`（三态正是从它收拢出来的，同出一源），
+    //   「没有控制通道」走 `layer_no_channel`。它自己**不** match inbound 的错误枚举。
+    ("host.rs", Verdict::UsesRouter),
 ];
+
+/// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。
+/// `UsesRouter` 认其中之一；两个名字在整棵源码树里都必须**恰好一处定义**、就在 `backend_route.rs`。
+#[cfg(test)]
+const ROUTER_EXITS: &[&str] = &["layer_call_error", "route_call_error"];
+
+/// 一份生产段里 `fn <name>` 这一形（定义）出现了几处 —— 名字两侧有边界（`fn route_call_error2` 不算）。
+#[cfg(test)]
+fn definitions_of(prod: &str, name: &str) -> usize {
+    let head = format!("fn {name}");
+    prod.match_indices(head.as_str())
+        .filter(|(i, _)| {
+            let before_ok = prod[..*i]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+            let after = prod[i + head.len()..].chars().next();
+            before_ok && matches!(after, Some('(') | Some('<'))
+        })
+        .count()
+}
 
 #[cfg(test)]
 #[derive(PartialEq, Eq, Debug)]
@@ -180,16 +207,23 @@ enum Verdict {
 /// `PureRouterNoFallbackDecision` 那一档的牙：生产段里**不许出现**的名字（有边界匹配）。
 /// 它们是「够得到本机/远端后端发送端」的全部入口：模块名、客户端类型名、取客户端的函数名。
 #[cfg(test)]
-const PURE_ROUTER_MUST_NOT_NAME: &[&str] = &["inbound_client", "InboundClient", "client_for"];
+const PURE_ROUTER_MUST_NOT_NAME: &[&str] = &[
+    "inbound_client",
+    "InboundClient",
+    "client_for",
+    "layer_no_channel",
+];
 
 /// 一份生产段是不是「纯路由器」—— 返回违反的那几条（空 = 过）。
 #[cfg(test)]
 fn pure_router_violations(prod: &str) -> Vec<String> {
     let mut out = Vec::new();
-    if guard_core::contains_word(prod, "route_call_error") {
-        out.push(
-            "用了 `route_call_error`（它其实有回落决策 ⇒ 登记该改成 `UsesRouter`）".to_string(),
-        );
+    for exit in ROUTER_EXITS {
+        if guard_core::contains_word(prod, exit) {
+            out.push(format!(
+                "用了分流器出口 `{exit}`（它其实在走后端 ⇒ 登记该改成 `UsesRouter`）"
+            ));
+        }
     }
     for n in PURE_ROUTER_MUST_NOT_NAME {
         if guard_core::contains_word(prod, n) {
@@ -215,8 +249,10 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     //   扩面之后 `dir` 是整棵 `src/`，而发送端散在子目录里（第一版就栽在这，
     //   报「backend_kill.rs 生产段却没有 route_call_error」—— 其实是文件根本没读到）。
     let mut by_name: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut all_prod: Vec<(String, String)> = Vec::new();
     for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
         let prod = guard_core::production_code(&src);
+        all_prod.push((p.to_string_lossy().replace('\\', "/"), prod.clone()));
         if prod.contains(verb.as_str()) {
             senders.push(p.file_name().unwrap().to_string_lossy().to_string());
             by_name.insert(
@@ -242,11 +278,28 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
              要么写成带理由的刻意例外。**手写清单看不见新文件** —— 那正是 F12 的\n\
              `/full-audit` 在本守卫身上逮到的东西（第三个发送端整个逃出了扫描面）。"
     );
+    // ★ 两个出口**各恰好一处定义**，就在 `backend_route.rs`：有人在别处另起一份同名函数
+    //   （分流规则的第二份实现换个住址），`UsesRouter` 那条「认名字」就会被它骗过去。
+    for exit in ROUTER_EXITS {
+        let homes: Vec<(String, usize)> = all_prod
+            .iter()
+            .map(|(p, prod)| (p.clone(), definitions_of(prod, exit)))
+            .filter(|(_, n)| *n > 0)
+            .collect();
+        assert!(
+            homes.len() == 1
+                && homes[0].1 == 1
+                && homes[0].0.ends_with("backend/control/backend_route.rs"),
+            "分流器出口 `{exit}` 的定义应当**恰好一处、住 `backend_route.rs`**，实得 {homes:?}"
+        );
+    }
     for (name, verdict) in SENDERS {
         let prod = by_name
             .get(*name)
             .unwrap_or_else(|| panic!("`{name}` 在登记表里但发现阶段没扫到 —— 上面那条已保证不会"));
-        let uses = prod.contains("route_call_error");
+        let uses = ROUTER_EXITS
+            .iter()
+            .any(|x| guard_core::contains_word(prod, x));
         // 运行时拼，免得命中本行自己。
         let needle = format!("CallError::{}", "");
         let own = prod.contains(needle.as_str());
@@ -320,6 +373,8 @@ fn the_pure_router_verdict_has_teeth() {
         ),
         ("fn f(c: Arc<InboundClient>) {}\n", "InboundClient"),
         ("let c = client_for(&o);\n", "client_for"),
+        ("let l = layer_call_error(&e, 1);\n", "layer_call_error"),
+        ("let l = layer_no_channel(1);\n", "layer_no_channel"),
     ] {
         let hits = pure_router_violations(bad);
         assert_eq!(
@@ -409,4 +464,98 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             "`{e:?}` 收拢出来的三态（或那句话）变了 —— 旧三态一个字节都不许变"
         );
     }
+}
+
+/// `definitions_of` 认得出定义、不把调用与被撑大的名字算进去。
+#[test]
+fn the_exit_definition_counter_sees_definitions_only() {
+    let src = "pub(crate) fn route_call_error(e: &E) {}\n\
+               fn layer_call_error<T>(x: T) {}\n\
+               let r = route_call_error(&e, f);\n\
+               fn route_call_error2() {}\n\
+               fn my_route_call_error() {}\n";
+    assert_eq!(definitions_of(src, "route_call_error"), 1);
+    assert_eq!(definitions_of(src, "layer_call_error"), 1);
+}
+
+/// ★★ **分层表逐档穷举** —— `layer_call_error` 对 `inbound_client::CallError` 每一个变体的
+/// `05 §3.3.1` 形状（层 · `reach` · `why` · 跳号标签 · 不透明 body）逐格钉死。
+///
+/// 期望值是**字面量**（与 `layer_call_error` 头注那张分层表逐行对应），不调任何映射函数去算。
+/// 收拢那一侧由 `the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering` 管；
+/// 两张字面表各钉一层，改错哪一层红哪一张。
+#[test]
+fn the_layering_table_is_pinned_cell_by_cell() {
+    use crate::chan::wire as w;
+    fn witness(e: &CallError) {
+        match e {
+            CallError::Unsupported { .. }
+            | CallError::TooManyPending
+            | CallError::Disconnected
+            | CallError::Cancelled
+            | CallError::Timeout { .. }
+            | CallError::Remote { .. } => {}
+        }
+    }
+    let hop = |tag: &'static str, reach: w::Reach, why: w::HopFault| w::CallError::Hop {
+        at: w::HopId { idx: 7, tag },
+        reach,
+        why,
+    };
+    let table: Vec<(CallError, w::CallError)> = vec![
+        (
+            CallError::Unsupported {
+                cmd: "kill".into(),
+                offered: vec![],
+            },
+            w::CallError::Peer {
+                why: w::PeerFault::Unsupported,
+            },
+        ),
+        (
+            CallError::TooManyPending,
+            hop("write", w::Reach::NotSent, w::HopFault::Overrun),
+        ),
+        (
+            CallError::Disconnected,
+            hop("read", w::Reach::Unknown, w::HopFault::Dropped),
+        ),
+        (
+            CallError::Timeout {
+                after: Duration::from_millis(5),
+            },
+            hop("wait", w::Reach::Unknown, w::HopFault::Overrun),
+        ),
+        (
+            CallError::Cancelled,
+            w::CallError::Ours {
+                why: w::OursFault::Cancelled,
+            },
+        ),
+        (
+            CallError::Remote {
+                code: "wrong_owner".into(),
+                message: "x\u{0}y".into(),
+            },
+            w::CallError::Peer {
+                why: w::PeerFault::Refused {
+                    body: w::Body(br#"{"code":"wrong_owner","message":"x\u0000y"}"#.to_vec()),
+                },
+            },
+        ),
+    ];
+    assert_eq!(table.len(), 6, "分层表的行数与穷尽见证的变体数对不上");
+    for (e, want) in table {
+        witness(&e);
+        assert_eq!(
+            layer_call_error(&e, 7).error,
+            want,
+            "`{e:?}` 的分层结果不是那张表那一格"
+        );
+    }
+    assert_eq!(
+        layer_no_channel(7),
+        hop("open", w::Reach::NotSent, w::HopFault::Unreachable),
+        "「没有控制通道」那一格不是 `Hop{{open, NotSent, Unreachable}}`"
+    );
 }
