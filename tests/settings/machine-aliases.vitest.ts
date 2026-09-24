@@ -158,6 +158,17 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
           seen.push({ cmd: "cc_integration_install", args: a });
           return Promise.resolve();
         },
+        ccm_user_path_status: () => {
+          seen.push({ cmd: "ccm_user_path_status" });
+          return Promise.resolve({
+            supported: true,
+            onUserPath: false,
+            dir: "C:\\Users\\u\\.cc-monitor\\bin",
+            error: null,
+            addCommand: "（加的那段）",
+            removeCommand: null,
+          });
+        },
       },
     }));
   });
@@ -292,11 +303,19 @@ describe("buildAliasManager：两跳 ＋ 读回口 ＋ 默认不动用户配置"
     });
   });
 
-  it("Windows 本机 ⇒ 一句说明、一个表单都没有、一发 IPC 都没有", async () => {
+  it("Windows 本机 ⇒ 一句说明、没有别名表单；构造零 I/O，展开才建「用户级 PATH」那一格（`K-R135`）", async () => {
     const el = await mount("windows");
+    expect(seen, "还没展开就发了 IPC").toEqual([]);
     await open(el);
-    expect(seen).toEqual([]);
-    expect(el.querySelector("input")).toBeNull();
+    expect(el.querySelector(".machine-aliases-list"), "Windows 上不该有 POSIX 别名清单").toBeNull();
     expect(el.textContent).toContain("PowerShell 写法的别名还没做");
+    // 那一格就是 Windows 上「让终端找到 ccm」的那条路；它的读数只问这一发。
+    expect(seen.map((c) => c.cmd)).toEqual(["ccm_user_path_status"]);
+    expect(el.querySelector(".ccm-user-path-block")).toBeTruthy();
+    // 再展开不再建第二份。
+    el.open = false;
+    el.dispatchEvent(new Event("toggle"));
+    await open(el);
+    expect(el.querySelectorAll(".ccm-user-path-block").length).toBe(1);
   });
 });
