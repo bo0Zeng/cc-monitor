@@ -7,7 +7,7 @@ fn env() -> Env {
         pwd: "/p".into(),
         accts_manifest: "/nonexistent/accounts.json".into(),
         account_env: "CLAUDE_CONFIG_DIR".into(),
-        self_path: "/usr/local/bin/ccm".into(),
+        self_argv: vec!["/usr/local/bin/ccm".into()],
         ..Default::default()
     }
 }

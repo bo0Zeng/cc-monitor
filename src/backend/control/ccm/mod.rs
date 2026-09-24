@@ -260,6 +260,32 @@ pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
     None
 }
 
+/// 「我是被怎么叫进 `ccm` 模式的」—— 进程 argv 里**排在 ccm 参数前面**的那一段。
+///
+/// 入口① ⇒ `[argv0]`；入口② ⇒ `[argv0, "ccm"]`。容器路要在 pane 里**把自己再叫一次**，
+/// 叫法就是这一段 ＋ 内层参数（`plan::build` 那条 `inner`）。
+///
+/// # 🔴 〔CC1 · BS1b 现打〕这一段从前只取 `argv0`，丢了入口② 的那个子命令词
+///
+/// ⇒ 经 `cc-monitor-backend ccm …` 起的会话，pane 里逐字是 `cc-monitor-backend --cwd …`
+/// ⇒ 被当后端直连口解析，当场「unknown argument: --cwd」，pane 退回空 bash，
+/// 而 cc-spawn 照报成功、还登记上了总线（假成功）。
+///
+/// ⚠ **判「走的是哪个入口」只有 [`intercept`] 一处** —— 本函数不另判一次，只取
+/// 「`intercept` 吃掉了 argv 的哪一段」：`argv` 总长减去它交出去的参数个数。
+/// 往后 `intercept` 多认一种入口，这里**一个字不用改**就跟着对。
+pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
+    let Some((argv0, rest)) = argv.split_first() else {
+        return Vec::new();
+    };
+    let consumed = match intercept(argv0, rest) {
+        Some(args) => argv.len() - args.len(),
+        // 不在 ccm 模式（只有单测会这么问）⇒ 只剩 argv0 可说。
+        None => 1,
+    };
+    argv[..consumed].to_vec()
+}
+
 /// 一次性模式的入口。返回**退出码**。
 ///
 /// 退出码的四档（与旧实现逐字同义，消费者按码分支）：
@@ -280,7 +306,14 @@ pub fn run(args: &[String]) -> i32 {
             0
         }
         Parsed::Early(Early::Probe) => {
-            print!("{}", probe_output(&env.self_path));
+            // `self=` 答的是「怎么叫我」—— 入口② 下那是两个词，一起报（只报 argv0 就是同一个缺陷的另一张脸）。
+            let me = env
+                .self_argv
+                .iter()
+                .map(|a| plan::qarg(a))
+                .collect::<Vec<_>>()
+                .join(" ");
+            print!("{}", probe_output(&me));
             0
         }
         Parsed::Opts(o) => {
