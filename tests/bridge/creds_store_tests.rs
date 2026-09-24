@@ -3,7 +3,7 @@ use super::*;
 /// ★★ **跨 crate 契约对拍**：monitor 与后端算出来的是**同一份文件**。
 ///
 /// 两边各写一份路径字面量的话，漂开的那天没有任何东西会说，
-/// 而症状是「界面上配好了，中转说没配」——查不出来的那一类。
+/// 而症状是「界面上配好了，账号层说没配」——查不出来的那一类。
 #[test]
 fn the_two_sides_resolve_the_same_file() {
     let home = dirs::home_dir().expect("这台机器得有 home");
@@ -22,7 +22,7 @@ fn the_two_sides_resolve_the_same_file() {
     // 钉不住「两侧的**根**会不会算到两个地方去」。而那正是阻-3 的病：
     // backend 侧的根走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**；
     // monitor 这一侧**刻意不跟随**（本模块头注逐字）⇒ 中转一旦继承到那个变量，
-    // 两侧读写的就是两份文件，而症状是「界面上配好了，中转说没配」。
+    // 两侧读写的就是两份文件，而症状是「界面上配好了，账号层说没配」。
     //
     // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
     // `local_backend_host::start_local_relay` 用 `CCM_APIKEY_CREDENTIALS` 把
@@ -232,7 +232,7 @@ fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
         "写侧给没写过 auth_style 的那一条**凭空加**了一格：{back}"
     );
 
-    // ★★ 而这份文件**装回中转那一侧**之后，那两格真的被读了出来
+    // ★★ 而这份文件**装回账号层那一侧**之后，那两格真的被读了出来
     //    —— 只断「JSON 里还在」的话，一个读侧的回落（比如把 `auth_style` 忽略掉）
     //    在本条上**看不见**。
     let doc = store::parse(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
@@ -358,13 +358,13 @@ fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
     assert_eq!(
         crate::history::apikey_routed_subset(&[one.to_string()], &rows, "claude-code"),
         vec![one.to_string()],
-        "界面写下的那一行，起会话那一侧找不到 —— 「设置里说走中转、起会话时没走」\n\
+        "界面写下的那一行，起会话那一侧找不到 —— 「设置里说走 apikey 端点改写、起会话时没走」\n\
              正是 `apikey_account_id_of_dir` 头注逐字点名的那一形。表里现在是：{rows:?}"
     );
     // 只配了一个号 ⇒ 另一个号**不许**被顺带配上（「拿 A 的 key 发 B 的请求」的反面）。
     assert!(
         crate::history::apikey_routed_subset(&[two.to_string()], &rows, "claude-code").is_empty(),
-        "只配了一个号，另一个号也说走中转了：{rows:?}"
+        "只配了一个号，另一个号也说在 apikey 表里有行了：{rows:?}"
     );
     // ⚠ 而且它落的**不是** `default` 那一行 —— 那一行谁的会话都命中得了。
     assert!(
@@ -406,7 +406,7 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
             0,
             "写侧出现了 `{needle}` —— 那是在长第二份「取末段名」的规则。\n\
                  ⚠ `apikey_account_id_of_dir` 的头注逐字写着它被抽出来的理由：\n\
-                 「两边各写一个 basename 规则，漂开的那天症状是『设置里说走中转、起会话时没走』，\n\
+                 「两边各写一个 basename 规则，漂开的那天症状是『设置里说走 apikey 端点改写、起会话时没走』，\n\
                  而两边看起来都没错」。"
         );
     }

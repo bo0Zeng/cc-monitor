@@ -329,7 +329,7 @@ let localLaunchSnapshot: { state: AccountsState; pins: Record<string, string> } 
  *
  * 🔴 **上一拍这里读的是 `a.isDefault`（manifest 字段），而头注写的是 `currentWorkingAccount`
  * （优先 config.json 的 `defaultName`）—— 两者在「用户切过号」之后就不是同一个答案。**
- * 后果是**切过号之后新会话静默串号**，而且中转会按错的 id 换上别人那一行的 key。
+ * 后果是**切过号之后新会话静默串号**，而且账号层会按错的 id 换上别人那一行的 key。
  * ⇒ 快照现在整份存 `AccountsState`（`defaultName` 在里面），这里直接调那条唯一的规则。
  */
 export function localLaunchAccountNameSync(sid: string | null): string | null {
@@ -483,8 +483,8 @@ export function accountStatusBadge(
         warn: false,
         title:
           "这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
-          "ANTHROPIC_BASE_URL 指向本机中转，由中转按账号换上这一行的 key。\n" +
-          "⚠ 它保证的是「请求发得到中转、中转按这一行转发」；" +
+          "ANTHROPIC_BASE_URL 指向本机中转；请求经过中转时，账号层按这一行换上它的 key。\n" +
+          "⚠ 它保证的是「请求发得到中转、账号层按这一行换 key」；" +
           "那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。",
       };
     }

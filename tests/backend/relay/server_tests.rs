@@ -1648,7 +1648,7 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 ///
 /// `a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_stdout`
 /// 喂进去的是**客户端发来的**那个头 —— 它证的是「**进来的**东西没被记下来」。
-/// 本条喂的是**中转自己从那份文件里读出来、替客户端换上去的那把 key**，
+/// 本条喂的是**中转进程的账号层从那份文件里读出来、替客户端换上去的那把 key**，
 /// 那是**另一个值、从另一条路进来**。件计划 `§0` 逐字：**判据守的是前门，key 从后门进**，
 /// 而那一形「同时骗过了 PM 与一路审计」。⇒ **两条缺一都不成立。**
 ///
@@ -3496,7 +3496,7 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
 /// # 它治的是什么
 ///
 /// 先前 `load_credentials` 只在 `run_with` 里跑一次，而且在**永不返回**的 `serve()` 之前
-/// ⇒ 用户在界面上按下「保存 key」之后，中转手上还是启动那一刻的表 ⇒
+/// ⇒ 用户在界面上按下「保存 key」之后，中转进程里的账号层手上还是启动那一刻的表 ⇒
 /// 那个账号**每一发都是 404**。而 404 与「账号 id 打错」**同形**，指不向原因。
 ///
 /// # 这一趟真到什么程度

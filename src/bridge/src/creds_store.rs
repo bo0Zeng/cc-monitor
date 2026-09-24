@@ -31,7 +31,7 @@ use std::path::PathBuf;
 ///
 /// ★ **与后端那侧是同一个契约**：相对路径住 `creds_core::store`，两边各自 join 自己的家目录。
 /// 由 `the_two_sides_resolve_the_same_file` 对拍 —— 两边各写一份字面量，
-/// 漂开的那天没有任何东西会说，而症状是「界面上配好了，中转说没配」这种查不出来的形状。
+/// 漂开的那天没有任何东西会说，而症状是「界面上配好了，账号层说没配」这种查不出来的形状。
 ///
 /// ⚠ 它**不跟随** `claudeDir` 覆盖：`config.rs` 头注逐字「monitor 自己的设置永远在默认
 /// `~/.claude/work/` 下，不跟随 `claudeDir` 字段变化」。
