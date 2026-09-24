@@ -118,6 +118,7 @@ import type { BranchResult } from "../generated/BranchResult";
 //   `origin: string | null`）今天仍有 `null`，不在步 2 的写区里 —— 别读成「全仓没有 `null` 了」。
 import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
+import type { UserInputsResult } from "../generated/UserInputsResult";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -908,6 +909,14 @@ export const commands = {
     seqBase: number;
     lineCount: number;
   }) => invoke<JsonlLinePayload[]>("read_session_range", args),
+
+  /**
+   * 〔SE1 · `设计/10 §2.2b ⑥`〕**大纲的数据源**：「你说过的话」清单，从字节 `fromOffset` 起
+   * （冷启动 0 / 增量传上次的 `end`）。跑的是后端 `--list-user-inputs`（`IPC-PROTOCOL.md §10.4`）。
+   * 判定只住后端。`available: false` **不是错误**：老后端 / 本机后端不在 / 输出被截断 ⇒ 大纲灰掉、原因挂提示上。
+   */
+  list_user_inputs: (args: { origin: Origin; jsonlPath: string; fromOffset: number }) =>
+    invoke<UserInputsResult>("list_user_inputs", args),
 
   /**
    * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。
