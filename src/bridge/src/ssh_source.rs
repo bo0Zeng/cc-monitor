@@ -1955,12 +1955,29 @@ async fn fetch_snapshot(
     let path = &item.path;
     let origin = crate::origin::Origin(host_label.to_string());
     let plan = frame_query::tail(&origin, path, SNAPSHOT_TAIL_LINES as u64).await?;
-    let mut arrived: u64 = 0;
+    // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
+    let how = crate::snapshot_resume::plan_read(
+        crate::snapshot_resume::cursor_of(&origin, sid).as_ref(),
+        path,
+        &plan,
+    );
+    if let crate::snapshot_resume::Read::Resume {
+        from_byte,
+        upto,
+        first_seq,
+        skip_below,
+    } = &how
+    {
+        tracing::info!(
+            "snapshot [{host_label}] {sid}: 续传 —— 从字节 {from_byte}（第 {first_seq} 行）读到 {upto}，\
+             第 {skip_below} 行之前的已发过、不再发"
+        );
+    }
+    let mut walk = crate::snapshot_resume::Walk::new(&how, &plan);
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
-    // 尾段先到（最新 N 行先就位），头段回填。
-    'read: for (from, upto) in [(plan.split_at, plan.end), (0, plan.split_at)] {
+    'read: for (from, upto) in walk.segments().to_vec() {
         let mut offset = from;
         while offset < upto {
             let page = frame_query::read_page(&origin, path, offset, Some(upto)).await?;
@@ -1977,13 +1994,15 @@ async fn fetch_snapshot(
                 if !snapshot_line_countable(line) {
                     continue;
                 }
+                let Some(seq) = walk.step() else {
+                    continue; // 续传：锚到续点之间的行前端已有，数掉不发
+                };
                 chunk.push(JsonlLine {
                     session_id: sid.to_string(),
                     path: std::path::PathBuf::from(path),
-                    seq: tail_seq(arrived, plan.total, plan.tail_from),
+                    seq,
                     raw: line.to_string(),
                 });
-                arrived += 1;
                 if chunk.len() >= SNAPSHOT_CHUNK_LINES {
                     if q.is_cancelled(sid) {
                         cancelled = true;
@@ -2011,28 +2030,31 @@ async fn fetch_snapshot(
     if !chunk.is_empty() {
         flush_lines(replay, app, host_label, chunk).await;
     }
-    // 完整性校验：`total` 精确对账（F30）。
-    if arrived != plan.total {
+    // 完整性校验：`total` 精确对账（F30）—— 续传时对的是「锚之后那一截」。
+    let (arrived, want) = (walk.arrived(), walk.want());
+    if arrived != want {
         return Err(format!(
-            "快照不完整：{arrived}/{} 行（连接中断或后端报错）",
-            plan.total
+            "快照不完整：{arrived}/{want} 行（连接中断或后端报错）"
         ));
     }
     // 下界：宣告时 prime 的行数 L（`session_added.lines`）—— 文件在宣告之后被截短才会撞上。
     if let Some(expected) = item.expected_lines {
-        if arrived < expected {
+        if plan.total < expected {
             return Err(format!(
-                "快照不完整：{arrived}/{expected} 行（连接中断或后端报错）"
+                "快照不完整：{}/{expected} 行（连接中断或后端报错）",
+                plan.total
             ));
         }
     }
+    // `[0, total)` 全到了（整份：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。
+    crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
     Ok(FetchOutcome::Done(arrived))
 }
 
 /// 两段编号映射（纯函数，与测试共用——审计 D：原测试在测试体内重实现映射，
 /// 锤不到生产代码）：到达序 → 行号。前 total-tail_from 行是尾段（最新），
 /// 其余是头段回填。调用方保证 tail_from <= total（`frame_query::tail` 校验）。
-fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
+pub(crate) fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
     let seg1 = total.saturating_sub(tail_from);
     if arrived < seg1 {
         tail_from + arrived
@@ -3105,8 +3127,17 @@ async fn flush_lines(
     host_label: &str,
     lines: Vec<JsonlLine>,
 ) {
+    let flushed: Vec<(String, u64)> = lines
+        .iter()
+        .map(|l| (l.session_id.clone(), l.seq))
+        .collect();
     let payloads = crate::batch_to_payloads(lines, Some(host_label.to_string()));
     replay.on_line_batch_awaited(app, payloads).await;
+    // 〔C2〕发出去了才推续点（连续才推，见 `snapshot_resume::note_flushed`）。
+    crate::snapshot_resume::note_flushed(
+        &crate::origin::Origin(host_label.to_string()),
+        flushed.iter().map(|(s, q)| (s.as_str(), *q)),
+    );
 }
 
 /// [`run`] 的内层流循环：connect → exec backend → 逐帧 dispatch。**所有**提前返回
@@ -3664,6 +3695,8 @@ async fn stream_loop(
                 // Batch8 D-B1：摘除排队中的快照 + 标记 inflight 取消——归档后
                 // 迟到的快照行会经"见行复活"造出关不掉的僵尸 live tab。
                 snapshots.cancel(&sid);
+                // 〔C2〕会话真结束 ⇒ 续点作废（再宣告时整份拉，与今天同）。
+                crate::snapshot_resume::forget(&crate::origin::Origin(host_label.clone()), &sid);
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![],
                     // ★ S0：cause 由后端说了算，monitor 不猜（原先靠查会陈旧的 tmux 快照）。
