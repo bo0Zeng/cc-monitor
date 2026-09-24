@@ -2336,12 +2336,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    ⇒ 散文里这三处（README 1 · `ssh_source.rs` 2）全是**病史与墓碑**，该留；
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
-        // 🔴 〔波 4 合并时补〕`set_char_range` 是 **egui 上游的 API**（`builder.rs` 里
-        //   调它把光标写回去），本仓代码里当然没有这个名字。`filewin/editor.rs` 那一段点它，
-        //   是为了说清「在 layouter 里只排 40 行会让光标下标被当成全文绝对下标用、
-        //   **每帧毁一次**」—— 那是「假的只排视口内」里最坏的一种。
-        //   ⇒ 按本条第 ③ 条出路（仓外名字）登记。
-        ("src/bridge/src/filewin/editor.rs", "set_char_range", 1),
         ("src/bridge/README.md", "daemonless_stream_loop", 1),
         ("src/bridge/src/ssh_source.rs", "daemonless_stream_loop", 2),
         (
