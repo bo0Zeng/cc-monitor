@@ -135,6 +135,23 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              它的溢出语义是「丢这一行并计数、其后补一行 `__dropped__` 说清楚」，\
              住 `relay/tee.rs::TeeSink::write_line`，**不是**本表管的那种「用户数据被截断」。",
     ),
+    // ── 〔F9 · 2026-09-24〕大文件模式（`filewin/bigfile.rs`）带进来的三个 ──
+    (
+        "BIG_LINE_BYTES",
+        "**进大文件模式的门槛**，不是上限：最长一行超过它，编辑面就换成「只排视口内的行、\
+             长行只排可见段」那一面。**没有任何东西被拒、被截** —— 越过它的文件照样整份打开、\
+             照样能改能存；编辑的真上限仍是 `sftp_pool::MAX_EDIT_BYTES`（上面 `CAPS` 那一行）。\
+             数由 `bigfile::derive_threshold(LINE_READING)` 推出，判据钉「推算式 == 常量」。",
+    ),
+    (
+        "BIG_TOTAL_BYTES",
+        "同上，全文那一维的门槛（全文超过它进大文件模式）。⚠ 今天它在生产上**够不到**：\
+             读上限 `MAX_EDIT_BYTES` 是 256 KiB < 1 MiB ⇒ 只有最长一行那条会真的开火。",
+    ),
+    (
+        "FRAME_BUDGET_US",
+        "**时间**（一帧的预算，微秒），不是字节。两个门槛从它推出来。",
+    ),
     // ⚠ `MIN_SCANNED_CODE_BYTES` 那条已删（08-06）：它是**测试段里的地板**，
     //    本表原来扫整份文件才需要排它；扫描面收窄到生产段之后它成了死规则，
     //    而本表自己的 `the_exclusion_list_is_not_dead_wood` 当场要求删。

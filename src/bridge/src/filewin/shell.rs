@@ -1658,14 +1658,7 @@ impl FileWindow {
                     Err(why) => ui.colored_label(egui::Color32::RED, format!("存不回去：{why}")),
                 };
             }
-            if let Some(text) = self.editing_text_mut() {
-                ui.add(
-                    egui::TextEdit::multiline(text)
-                        .desired_rows(24)
-                        .desired_width(f32::INFINITY)
-                        .code_editor(),
-                );
-            }
+            super::bigfile::show(ui, self.editing.as_mut());
             ui.horizontal(|ui| {
                 if ui.button("保存").clicked() {
                     save = true;
