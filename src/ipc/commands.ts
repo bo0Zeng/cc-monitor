@@ -1064,7 +1064,7 @@ export const commands = {
    *
    * 🔴 **它为什么不是「发个请求就回」**：Rust 侧**先真的把那个目录列出来**，
    * 列不出来就带着 `sftp_pool` 那边的原文 reject ⇒ 这一条 `await` 真的能失败，
-   * 调用方该接住它并出声（`src/sftp/panel.ts::openNativeWindow`）。
+   * 调用方该接住它并出声（`src/file-window.ts::openFileWindow`，全仓唯一调用点）。
    * 没有这一层的话「点了按钮什么都没发生」与「开成功了」在界面上分不开
    * —— 本机没有图形会话时那正是必然发生的事。
    *
