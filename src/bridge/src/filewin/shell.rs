@@ -444,6 +444,9 @@ pub struct FileWindow {
     key_notice: Option<String>,
     /// 〔F7b〕「新建空文件叫什么」那个框。`None` = 没在问。逻辑住 [`super::create`]。
     pub(super) new_file: Option<super::create::NewFilePrompt>,
+    /// 〔FW34〕书签（一个窗口一份，所有标签页 / 两栏共用；逻辑住 [`super::bookmarks`]）。
+    /// `None` ＝ 没接上（判据里直接建的窗口）⇒ 书签栏不画。生产那条开窗路恒是 `Some`。
+    pub shelf: Option<super::bookmarks::Shelf>,
 }
 
 /// 〔FW2〕一个摆着的右键菜单：**在哪儿 · 列哪几项 · 对几项说话**。
@@ -535,6 +538,7 @@ impl FileWindow {
             menus_opened: 0,
             key_notice: None,
             new_file: None,
+            shelf: None,
         }
     }
 
@@ -599,6 +603,10 @@ impl FileWindow {
         self.cwd = path;
         self.listing.invalidate();
         self.reload();
+        // 〔FW34〕换目录时现读一次书签：别的窗口刚加的那几条从这里进来（小文件一次读，不是每帧）。
+        if let Some(s) = &self.shelf {
+            s.refresh();
+        }
     }
 
     /// 上一级。已经在顶上就什么都不做（[`parent_dir`] 到顶回原值）。
@@ -2259,6 +2267,12 @@ impl FileWindow {
                 }
             }
         });
+        // 〔FW34〕书签栏（★ 切换当前目录 ＋ 一排书签）。点了哪一条也收在帧尾跳（同面包屑）。
+        if let Some(shelf) = self.shelf.clone() {
+            if let Some(d) = shelf.bar_ui(ui, &self.cwd) {
+                go = Some(d);
+            }
+        }
         if mkdir {
             self.begin_mkdir();
         }
@@ -2509,7 +2523,7 @@ pub fn open_detached(
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
-    open_detached_seeded(source, cwd, rt, None, Vec::new(), None)
+    open_detached_seeded(source, cwd, rt, None, Vec::new(), None, None)
 }
 
 /// 同 [`open_detached`]，但**带着已经列好的那一屏**开窗。
@@ -2535,6 +2549,8 @@ pub fn open_detached_seeded(
     // 🔴〔第十刀〕`reveal` = 开窗就高亮这一行（`None` = 不高亮）。
     //    那是老面板 `open(revealPath)` 那一形（会话工具卡 → 文件跳转）。
     reveal: Option<String>,
+    // 〔FW34〕书签文件（monitor 算好交过来；`None` ＝ 数据目录解不出来，书签栏上出声）。
+    bookmarks: Option<std::path::PathBuf>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
@@ -2557,6 +2573,8 @@ pub fn open_detached_seeded(
                 if let Some(name) = reveal {
                     w.set_reveal(&name);
                 }
+                // 〔FW34〕书签：按这台机器的 origin 读一次。
+                w.shelf = Some(super::bookmarks::Shelf::open(bookmarks, &w.source.origin()));
                 // 第一拍：读文件 ＋ `set_fonts`。**这里复核不了**（`fonts.rs §四`）。
                 w.font = FontState::Pending(fonts::install(&cc.egui_ctx));
                 Ok(Box::new(w) as Box<dyn eframe::App>)

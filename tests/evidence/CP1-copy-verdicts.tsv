@@ -402,6 +402,7 @@ src/bridge/src/filewin/fonts.rs:257	用的监盖目相看真着确秒称程空�
 src/bridge/src/filewin/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:271	么反变号控收斜杠至	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
+src/bridge/src/filewin/fonts.rs:277	×★☆书加懂找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕书签栏那几个字）
 src/bridge/src/filewin/proc.rs:297	那个进程在开窗预算内就退了（{st}）	改·§2.1	[对外] open_in_new_process 的 Err 回给打开文件窗口的调用方；「开窗预算」是内部参数 新词:开窗预算 →「文件窗口没能打开（进程退出：{st}）」
 src/bridge/src/filewin/proc.rs:298	那个进程既没退也没在跑 —— 这一形说明上面那一跳的判法坏了	改·§2.2	[对外] 同上 Err；「这一形说明上面那一跳的判法坏了」是内部推理 →「文件窗口没能打开」
 src/bridge/src/filewin/proc.rs:299	问不到那个进程的死活：{e}	改·§2.1	[对外] 同上 Err；「问不到进程的死活」讲实现 →「文件窗口没能打开：{e}」
@@ -1181,6 +1182,11 @@ src/bridge/src/filewin/create.rs:153	新建不了，请重开这个窗口	保留
 src/bridge/src/filewin/create.rs:191	⚠ 只在这一个目录里 —— 不许带 `/`。已有同名的就不建，不会盖掉它。	保留	[对外] 输入提示：前半与「新建目录」框逐字同，后半说清「新建不是覆盖」
 src/bridge/src/filewin/create.rs:193	确定	保留	[对外] 按钮
 src/bridge/src/filewin/create.rs:196	取消	保留	[对外] 按钮
+src/bridge/src/filewin/bookmarks.rs:188	书签存不了：找不到本程序的数据目录	保留	[对外] 〔FW34〕书签栏上那一句：结果（存不了）＋ 原因（数据目录解不出来）；「本程序」不说内部名
+src/bridge/src/filewin/bookmarks.rs:191	☆ 加书签	保留	[对外] 〔FW34〕书签栏按钮：当前目录不在书签里时（空心星＝还没加）
+src/bridge/src/filewin/bookmarks.rs:193	★ 取消书签	保留	[对外] 〔FW34〕同一颗按钮的另一态：当前目录已在书签里（实心星＝已加）
+src/bridge/src/filewin/bookmarks.rs:296	跳到这个目录	保留	[对外] 〔FW34〕书签那一条的悬停提示（老面板「跳到 <路径>」的对应物，路径就是按钮本身）
+src/bridge/src/filewin/bookmarks.rs:299	移出书签	保留	[对外] 〔FW34〕书签后面那颗「×」的悬停提示（老面板逐字同）
 src/backend-policy.ts:74	那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过	保留	[对外] 〔B2 · 条 66〕EXIT_UNREADABLE：措辞是 `设计/01 §3.3b ⑤` 逐字定下的那一句；说清会怎样（按默认不结束）与它不是什么（不是谁选的），与 HEALTH_UNKNOWN 同形
 src/bridge/src/backend_policy.rs:70	那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过	保留	[对外] 同上 EXIT_UNREADABLE 的 Rust 镜像，只为逐字对拍存在
 src/bridge/src/backend_policy.rs:161	问退出策略出了内部错误，没有拿到结果	保留	[可达存疑] 分流器三态里走不到的那一档（Done）的兜底话；真到了用户眼前也只说「没拿到」，不带实现词
