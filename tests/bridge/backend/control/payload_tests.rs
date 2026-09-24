@@ -247,6 +247,19 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
             }
         }
     }
+    // 〔F5 · 2026-09-24 · 主会话已裁：登记成已知的第二处，不搬进 `launch.rs`〕
+    //   文件窗口「在此打开终端」那一串（`filewin/shell.rs::build_open_terminal_cmd`）也拼 `cd <目录> && `。
+    //   ① 它**不是会话载荷**：不经 `send-keys` 键进任何一场会话，而是整串交给
+    //      `launch::launch_remote_terminal` 在一个**新终端**里跑（`ssh -t … '<这一串>'`）；
+    //      引号那一格走的是 Rust 侧唯一那份 `shell_quote_core::posix_quote`，与本模块同一个引用规则。
+    //   ② 它**进不了 `render_payload`**：那个函数对每个 arg 过 `arg_is_join_safe` 白名单，
+    //      而这一串的尾巴 `exec ${SHELL:-bash} -l` 里 `$` `{` `}` 都不在放行集 ⇒ 当场 `Err`；
+    //      为它放宽白名单等于给真正的载荷开同一扇门。
+    //   ③ 它与旧面板 TS 那一份 `buildOpenTerminalCmd` 逐字节相同（`shell_tests` 现读 TS 黄金样例对拍）。
+    //   ⇒ 那一处单独登记、**条数恒等 1**；载荷这一族照旧恰好一处。
+    let terminal: Vec<&String> = sites.iter().filter(|l| l.starts_with("shell.rs: ")).collect();
+    assert_eq!(terminal.len(), 1, "「在此打开终端」那一处不再恰好一处：{sites:?}");
+    let sites: Vec<String> = sites.iter().filter(|l| !l.starts_with("shell.rs: ")).cloned().collect();
     assert_eq!(
         sites.len(),
         1,
