@@ -45,8 +45,9 @@ pub(crate) struct Env {
     /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
     pub(crate) account_env: String,
-    /// 这一趟的 `argv[0]`（内层载荷要用它把自己再叫一次）。
-    pub(crate) self_path: String,
+    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：入口① `[argv0]` · 入口② `[argv0, "ccm"]`
+    /// · 设了 `CCM_SELF` 就是 `[那个值]`。取法住 [`super::self_invocation`]。
+    pub(crate) self_argv: Vec<String>,
     /// `CCM_NO_PRETRUST=1`。
     pub(crate) no_pretrust: bool,
     /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
@@ -99,8 +100,12 @@ impl Env {
             // 🔴 `CCM_SELF` 优先于 `argv[0]`：内层载荷要用**「我是被当作什么叫的」**那个名字。
             //   `argv[0]` 在「一个二进制多个名字」下拿到的可能是真身路径，而内层要的是
             //   用户 `PATH` 上那个入口 —— 两者在软链 / 别名下不是同一个东西。
-            self_path: get("CCM_SELF")
-                .unwrap_or_else(|| std::env::args().next().unwrap_or_default()),
+            //   `CCM_SELF` 是**一个**入口名（远端 shim 传 `$0`、判据传 `/usr/local/bin/ccm`）；
+            //   没设就是这个进程**自己被怎么叫的那一段**（入口② 下带着 `ccm` 那个词，CC1）。
+            self_argv: match get("CCM_SELF") {
+                Some(s) => vec![s],
+                None => super::self_invocation(&std::env::args().collect::<Vec<_>>()),
+            },
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             home,
@@ -617,7 +622,7 @@ pub(crate) fn build(
             _ => base,
         };
         // 内层：同一条命令去掉 `--tmux`，并把**继承来的**那几个变量显式化。
-        let mut inner: Vec<String> = vec![env.self_path.clone()];
+        let mut inner: Vec<String> = env.self_argv.clone();
         if o.action == Action::Resume {
             inner.push("resume".into());
             inner.push(o.sid.clone());
