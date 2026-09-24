@@ -17,6 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
+// ↗ 只在 Windows 上渲（`terminal-front.ts`）；这里要把它那一条委托路也走一遍 ⇒ 让它渲出来。
+vi.mock("../src/terminal-front", () => ({ terminalFrontAvailable: () => true }));
 
 import { TabBarView, type TabBarViewHost } from "../src/tab-bar-view";
 import { TabBarDrag } from "../src/tab-bar-drag";
@@ -331,5 +333,149 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
       spy.mockRestore();
     }
     expect(r.bar.querySelectorAll(".drop-before").length, "任何时刻只有一个落点标记").toBe(1);
+  });
+});
+
+describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒 3 个", () => {
+  it("建 TabBarView 挂 3 个（都在 barEl 上）；之后新建 M 个 tab 的整刷里 `addEventListener` 0 次（M = 5 与 M = 40）", () => {
+    for (const m of [5, 40]) {
+      const spy = vi.spyOn(EventTarget.prototype, "addEventListener");
+      try {
+        const r = make(0);
+        expect(spy.mock.calls.map((c) => c[0]).sort(), "构造：恰好三个委托").toEqual(["click", "contextmenu", "mousedown"]);
+        expect(spy.mock.contexts.every((ctx) => ctx === r.bar), "三个都挂在 barEl 上").toBe(true);
+        spy.mockClear();
+        for (let i = 0; i < m; i++) {
+          r.store.tabs.set(`n${i}`, fakeTab(`n${i}`));
+          r.store.orderedIds.push(`n${i}`);
+        }
+        r.view.refresh();
+        expect(r.view.tabButtons.size).toBe(m);
+        expect(spy).toHaveBeenCalledTimes(0);
+      } finally {
+        spy.mockRestore();
+      }
+    }
+  });
+
+  describe("委托之后每条手势路的行为（原先 10 个监听器各管的那一件）", () => {
+    const btn = (r: Rig, sid: string): HTMLElement => r.view.tabButtons.get(sid)!.root;
+    const sub = (r: Rig, sid: string, cls: string): HTMLElement =>
+      btn(r, sid).querySelector(`.${cls}`) as HTMLElement;
+    /** 冒到 document 的事件（验「子按钮上的事件不往上冒」那半）。 */
+    const seenAtDoc = (type: string): { n: number; off: () => void } => {
+      const c = { n: 0, off: () => {} };
+      const f = (): void => {
+        c.n += 1;
+      };
+      document.addEventListener(type, f);
+      c.off = () => document.removeEventListener(type, f);
+      return c;
+    };
+
+    it("点按钮 ⇒ 切过去；拖完那一下的 click 被吞 ⇒ 不切", () => {
+      const r = make(3);
+      btn(r, "s1").click();
+      expect(r.host.switchTo).toHaveBeenCalledWith("s1");
+      (r.host.takeSuppressedClick as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+      btn(r, "s2").click();
+      expect(r.host.switchTo).toHaveBeenCalledTimes(1);
+    });
+
+    it("📂 / ↗ / × ⇒ 各自的动作、不切 tab、click 不冒到 document", () => {
+      const r = make(4); // s1 / s3 是远端
+      const doc = seenAtDoc("click");
+      try {
+        sub(r, "s0", "tab-cwd").click();
+        expect(r.host.openTabCwd).toHaveBeenCalledWith("s0");
+        sub(r, "s0", "tab-focus").click();
+        expect(r.host.bringTerminalToFront).toHaveBeenCalledWith("s0");
+        sub(r, "s1", "tab-focus").click();
+        expect(r.host.bringRemoteTerminalToFront).toHaveBeenCalledWith("s1");
+        sub(r, "s2", "tab-close").click();
+        expect(r.host.closeTab).toHaveBeenCalledWith("s2");
+        expect(r.host.switchTo).not.toHaveBeenCalled();
+        expect(doc.n).toBe(0);
+        // 正控：点按钮本体的 click 照常冒到 document
+        btn(r, "s0").click();
+        expect(doc.n).toBe(1);
+      } finally {
+        doc.off();
+      }
+    });
+
+    it("↗ 在已结束的 tab 上 ⇒ 什么都不做", () => {
+      const r = make(2);
+      (r.store.tabs.get("s0") as { status: string }).status = "archived";
+      sub(r, "s0", "tab-focus").click();
+      expect(r.host.bringTerminalToFront).not.toHaveBeenCalled();
+      expect(r.host.bringRemoteTerminalToFront).not.toHaveBeenCalled();
+    });
+
+    it("左键按下按钮 ⇒ 起拖（带上 sid 与按钮根）；按在子按钮上 ⇒ 不起拖、不冒到 document", () => {
+      const r = make(2);
+      const doc = seenAtDoc("mousedown");
+      try {
+        const e = new MouseEvent("mousedown", { button: 0, bubbles: true });
+        btn(r, "s1").dispatchEvent(e);
+        expect(r.host.beginDrag).toHaveBeenCalledWith(e, "s1", btn(r, "s1"));
+        expect(doc.n).toBe(1);
+        for (const cls of ["tab-cwd", "tab-focus", "tab-close"]) {
+          sub(r, "s1", cls).dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }));
+        }
+        expect(r.host.beginDrag).toHaveBeenCalledTimes(1);
+        expect(doc.n).toBe(1);
+      } finally {
+        doc.off();
+      }
+    });
+
+    it("中键：已结束的 ⇒ 关掉并 preventDefault；活着的 ⇒ 不关；按在 × 上 ⇒ 不关（原先 × 吞掉了 mousedown）", () => {
+      const r = make(3);
+      (r.store.tabs.get("s0") as { status: string }).status = "archived";
+      (r.store.tabs.get("s2") as { status: string }).status = "archived";
+      const e = new MouseEvent("mousedown", { button: 1, bubbles: true, cancelable: true });
+      btn(r, "s0").dispatchEvent(e);
+      expect(r.host.closeTab).toHaveBeenCalledWith("s0");
+      expect(e.defaultPrevented).toBe(true);
+      btn(r, "s1").dispatchEvent(new MouseEvent("mousedown", { button: 1, bubbles: true, cancelable: true }));
+      sub(r, "s2", "tab-close").dispatchEvent(new MouseEvent("mousedown", { button: 1, bubbles: true, cancelable: true }));
+      expect(r.host.closeTab).toHaveBeenCalledTimes(1);
+      expect(r.host.beginDrag).not.toHaveBeenCalled();
+    });
+
+    it("右键（按钮本体或子按钮上）⇒ 开这个 tab 的菜单并 preventDefault", () => {
+      const r = make(2);
+      const e1 = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+      btn(r, "s0").dispatchEvent(e1);
+      const e2 = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+      sub(r, "s1", "tab-cwd").dispatchEvent(e2);
+      expect((r.host.openMenu as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[1])).toEqual(["s0", "s1"]);
+      expect([e1.defaultPrevented, e2.defaultPrevented]).toEqual([true, true]);
+    });
+
+    it("组头上的点击不当成 tab 手势（委托只认 tab 按钮）", () => {
+      const r = make(3, 2);
+      (r.bar.querySelector(".tab-group-del") as HTMLElement).dispatchEvent(
+        new MouseEvent("mousedown", { button: 0, bubbles: true }),
+      );
+      r.bar.querySelector(".tab-group-head")!.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+      );
+      expect(r.host.beginDrag).not.toHaveBeenCalled();
+      expect(r.host.openMenu).not.toHaveBeenCalled();
+      expect(r.host.switchTo).not.toHaveBeenCalled();
+    });
+
+    it("barEl 里一个不是本视图建的 `.tab` 元素上的手势 ⇒ 不分派（sid 只从本视图那张表里认）", () => {
+      const r = make(2);
+      const foreign = document.createElement("button");
+      foreign.className = "tab";
+      r.bar.appendChild(foreign);
+      foreign.click();
+      foreign.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }));
+      expect(r.host.switchTo).not.toHaveBeenCalled();
+      expect(r.host.beginDrag).not.toHaveBeenCalled();
+    });
   });
 });

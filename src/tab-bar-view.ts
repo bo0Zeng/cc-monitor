@@ -101,12 +101,104 @@ export class TabBarView {
   //   **留在原位灰着**（`.tab.archived` 那条 CSS 本来就有，`§A.3` 逐字「不用新写」）。
   //   用户 2026-09-19 逐字：「没有归档这个东西，不要归档，就是灰 tab。」
 
+  /**
+   * 〔UP1 · `设计/30 §3` P8〕按钮根 → sid。事件委托靠它从 `closest(".tab")` 找回 sid（不往 DOM 上加属性）。
+   * `WeakMap`：按钮被摘掉之后这一条跟着它一起被回收，不用另外清。
+   */
+  private readonly sidOf = new WeakMap<Element, string>();
+
   constructor(
     private readonly store: TabStore,
     private readonly prefs: TabBarPrefs,
     private readonly barEl: HTMLElement,
     private readonly host: TabBarViewHost,
-  ) {}
+  ) {
+    // 〔UP1 · `设计/30 §3` P8〕**事件委托**：整条栏只在 `barEl` 上挂三个监听器，不再每个 tab 挂 10 个
+    // （原先 📂 / ↗ / × 各 click ＋ mousedown，根上 click ＋ 两个 mousedown ＋ contextmenu）。
+    //
+    // 原先三颗子按钮上的 `stopPropagation` 有两层意思，这里都保住：
+    // ① 子按钮上按下**不起拖、不触发中键关** ⇒ mousedown 先看目标在不在子按钮里；
+    // ② 子按钮的 click / mousedown **不往上冒到 `document`** ⇒ 这里照样 `stopPropagation()`
+    //   （`barEl` 与按钮之间只隔组容器，组容器上没有 click / mousedown 监听）。
+    barEl.addEventListener("click", (e) => this.onBarClick(e));
+    barEl.addEventListener("mousedown", (e) => this.onBarMouseDown(e));
+    barEl.addEventListener("contextmenu", (e) => this.onBarContextMenu(e));
+  }
+
+  /** 这个事件落在哪颗 tab 按钮上、是不是落在它的某颗子按钮（📂 / ↗ / ×）上。不是 tab 按钮 ⇒ `null`。 */
+  private hitOf(e: Event): { sid: string; root: HTMLElement; sub: Element | null } | null {
+    const t = e.target as Element | null;
+    if (!t || typeof t.closest !== "function") return null;
+    const root = t.closest(".tab");
+    if (!root) return null;
+    const sid = this.sidOf.get(root);
+    if (sid === undefined) return null;
+    const sub = t.closest(".tab-cwd, .tab-focus, .tab-close");
+    return { sid, root: root as HTMLElement, sub: sub && root.contains(sub) ? sub : null };
+  }
+
+  private onBarClick(e: MouseEvent): void {
+    const hit = this.hitOf(e);
+    if (!hit) return;
+    const { sid, sub } = hit;
+    if (sub) {
+      e.stopPropagation();
+      if (sub.classList.contains("tab-cwd")) {
+        // 📂 打开工作目录（cwd）—— 系统默认文件管理器
+        void this.host.openTabCwd(sid);
+      } else if (sub.classList.contains("tab-focus")) {
+        // ↗ 拉对应终端窗口。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
+        const t = this.store.tabs.get(sid);
+        if (!t || t.status === "archived") return;
+        // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
+        // 本地 Tab → 走原 sid_hwnd_cache 路径。
+        if (t.origin !== null) {
+          void this.host.bringRemoteTerminalToFront(sid);
+        } else {
+          void this.host.bringTerminalToFront(sid);
+        }
+      } else {
+        this.host.closeTab(sid);
+      }
+      return;
+    }
+    // 拖拽刚结束的那次 click 不切 Tab（drag-then-release ≠ 选中）。一次性消费。
+    if (this.host.takeSuppressedClick(sid)) return;
+    this.host.switchTo(sid);
+  }
+
+  private onBarMouseDown(e: MouseEvent): void {
+    const hit = this.hitOf(e);
+    if (!hit) return;
+    // 子动作按钮自己处理点击：吞掉 mousedown 避免在它们身上起 Tab 拖拽（也不触发下面的中键关）。
+    if (hit.sub) {
+      e.stopPropagation();
+      return;
+    }
+    if (e.button === 0) {
+      // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
+      // 〔步 17·A〕原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
+      // 抽屉没了，那条例外自动不需要（`§A.3` 逐字「净收益」）。
+      this.host.beginDrag(e, hit.sid, hit.root);
+      return;
+    }
+    // 中键点击归档 Tab 也关闭（常见 UX）
+    if (e.button === 1) {
+      const t = this.store.tabs.get(hit.sid);
+      if (t?.status === "archived") {
+        e.preventDefault();
+        this.host.closeTab(hit.sid);
+      }
+    }
+  }
+
+  /** issue #10：右键菜单「在新窗口打开」（双屏 / 并排）。〔U2〕菜单里放哪几项住 `tab-menu.ts`。 */
+  private onBarContextMenu(e: MouseEvent): void {
+    const hit = this.hitOf(e);
+    if (!hit) return;
+    e.preventDefault();
+    this.host.openMenu(e, hit.sid);
+  }
 
   /**
    * 局部更新策略（避免每次 onLine 都 replaceChildren）：
@@ -297,21 +389,23 @@ export class TabBarView {
     const ghost = b.source === "last";
     const current = tab.origin ? this.store.currentByOrigin.get(tab.origin) ?? null : null;
     const mismatch = detectAccountMismatch(b.account, current);
-    const title = mismatch ? `${b.tooltip} · 与当前账号「${current}」不一致` : b.tooltip;
-    // 头像是 `(账号名, 幽灵态)` 的纯函数（`account-color.ts::accountAvatarEl`），再加上提示文字 ⇒ 这三样就是全部输出。
-    const drawn = `${b.account}\u0000${ghost ? 1 : 0}\u0000${title}`;
+    // 头像是 `(账号名, 幽灵态)` 的纯函数（`account-color.ts::accountAvatarEl`）；提示文字是
+    // `(b.tooltip, 不一致时的当前账号)` 的纯函数（下面那一行）⇒ 这几样就是全部输出。
+    const drawn = `${b.account}\u0000${ghost ? 1 : 0}\u0000${b.tooltip}\u0000${mismatch ? current : ""}`;
     if (refs.acctDrawn === drawn) return;
     refs.acctDrawn = drawn;
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
     refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost }));
-    refs.acctBadge.title = title;
+    refs.acctBadge.title = mismatch ? `${b.tooltip} · 与当前账号「${current}」不一致` : b.tooltip;
     refs.acctBadge.style.display = "";
   }
 
   private createTabButton(sid: string): TabButtonRefs {
+    // 〔UP1 · P8〕按钮本身**一个监听器都不挂** —— 手势全在 `barEl` 上委托（见构造体）。
     const root = document.createElement("button");
     root.className = "tab";
+    this.sidOf.set(root, sid);
 
     const dot = document.createElement("span");
     dot.className = "live-dot";
@@ -345,71 +439,22 @@ export class TabBarView {
     cwdBtn.className = "tab-cwd";
     cwdBtn.textContent = "📂";
     cwdBtn.title = "打开工作目录 (E)";
-    cwdBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void this.host.openTabCwd(sid);
-    });
-    // 子动作按钮自己处理点击：吞掉 mousedown 避免在它们身上起 Tab 拖拽。
-    cwdBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     root.appendChild(cwdBtn);
 
     // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）。
-    const focusBtn = document.createElement("span");
-    focusBtn.className = "tab-focus";
-    focusBtn.textContent = "↗";
-    focusBtn.title = "调出对应终端 (`)";
-    focusBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const t = this.store.tabs.get(sid);
-      if (!t || t.status === "archived") return;
-      // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
-      // 本地 Tab → 走原 sid_hwnd_cache 路径。
-      if (t.origin !== null) {
-        void this.host.bringRemoteTerminalToFront(sid);
-      } else {
-        void this.host.bringTerminalToFront(sid);
-      }
-    });
-    focusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    if (terminalFrontAvailable()) root.appendChild(focusBtn);
+    if (terminalFrontAvailable()) {
+      const focusBtn = document.createElement("span");
+      focusBtn.className = "tab-focus";
+      focusBtn.textContent = "↗";
+      focusBtn.title = "调出对应终端 (`)";
+      root.appendChild(focusBtn);
+    }
 
     const closeBtn = document.createElement("span");
     closeBtn.className = "tab-close";
     closeBtn.textContent = "×";
     closeBtn.title = "关闭 Tab";
-    closeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.host.closeTab(sid);
-    });
-    closeBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     root.appendChild(closeBtn);
-
-    root.addEventListener("click", () => {
-      // 拖拽刚结束的那次 click 不切 Tab（drag-then-release ≠ 选中）。一次性消费。
-      if (this.host.takeSuppressedClick(sid)) return;
-      this.host.switchTo(sid);
-    });
-    // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
-    root.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
-      // 〔步 17·A〕原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
-      // 抽屉没了，那条例外自动不需要（`§A.3` 逐字「净收益」）。
-      this.host.beginDrag(e, sid, root);
-    });
-    // 中键点击归档 Tab 也关闭（常见 UX）
-    root.addEventListener("mousedown", (e) => {
-      if (e.button !== 1) return;
-      const t = this.store.tabs.get(sid);
-      if (t?.status === "archived") {
-        e.preventDefault();
-        this.host.closeTab(sid);
-      }
-    });
-    // issue #10：右键菜单「在新窗口打开」（双屏 / 并排）。〔U2〕菜单里放哪几项住 `tab-menu.ts`。
-    root.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      this.host.openMenu(e, sid);
-    });
 
     return { root, label, badge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
   }
