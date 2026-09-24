@@ -202,7 +202,7 @@ fn the_relay_has_a_named_starter_and_it_runs_before_the_detached_branch_returns(
     );
     assert_eq!(
         envs.iter()
-            .find(|(k, _)| k == "CCM_RELAY_CREDENTIALS")
+            .find(|(k, _)| k == "CCM_APIKEY_CREDENTIALS")
             .map(|(_, v)| v.clone()),
         crate::creds_store::resolve_path().map(|p| p.display().to_string()),
         "凭据路径不是从 monitor 写它的那条路（`creds_store::resolve_path`）来的 ——\

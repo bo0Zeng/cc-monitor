@@ -5,7 +5,7 @@
 //! 本模块只做三件事：算出路径 · 读那个文件 · 解析。
 //! 它不依赖任何 IPC / 界面 / 帧 —— 所以「**只放一份文件进去、一次界面都不开**」
 //! 这句话在这里是**结构上成立**的，不是靠一条测试证的。
-//! 判据 `a_relay_started_with_only_a_file_on_disk_gets_the_key` 走的就是这条真实的路。
+//! 判据 `the_apikey_layer_loads_the_key_from_a_hand_written_file_alone` 走的就是这条真实的路。
 //!
 //! # `KS11`：读之前查权限，**过宽出声、不拒绝**
 //!
@@ -29,7 +29,7 @@ use creds_core::store::{self, AccountEntry, AuthStyle};
 use std::path::{Path, PathBuf};
 
 /// 覆盖那份文件的位置。给判据与「一台机器上跑两个中转」用。
-pub(crate) const ENV_CREDENTIALS: &str = "CCM_RELAY_CREDENTIALS";
+pub(crate) const ENV_CREDENTIALS: &str = "CCM_APIKEY_CREDENTIALS";
 
 /// 读一次的结果。**三样都要带出去**，因为调用方要把它们分别印出来。
 pub(crate) struct Loaded {

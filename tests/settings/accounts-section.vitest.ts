@@ -563,7 +563,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     return {
       configured: true,
       masked: "sk-a**********WXYZ",
-      path: "/h/.claude/work/relay-credentials.json",
+      path: "/h/.claude/work/apikey-credentials.json",
       notice: null,
       problem: null,
       ...p,
@@ -629,7 +629,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
 
   it("KS9：那份文件的路径要显出来 —— 能手编但没人知道在哪 = 不能手编", () => {
     const el = renderApikeyFileBlock(status());
-    expect(el.textContent).toContain("relay-credentials.json");
+    expect(el.textContent).toContain("apikey-credentials.json");
     expect(el.querySelector(".relay-key-path")?.getAttribute("title")).toContain("编辑器");
   });
 
@@ -725,7 +725,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(editors[1].textContent).toContain("n2");
     // 表外还挂着文件那一块（路径 / 顶层那一把）。
     expect(el.querySelector(".relay-key-block .relay-key-path")?.textContent).toContain(
-      "relay-credentials.json",
+      "apikey-credentials.json",
     );
   });
 

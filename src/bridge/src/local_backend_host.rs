@@ -1612,7 +1612,7 @@ pub(crate) fn relay_child_envs() -> Vec<(String, String)> {
         crate::backend::control::payload::RELAY_PORT.to_string(),
     )];
     if let Some(p) = crate::creds_store::resolve_path() {
-        envs.push(("CCM_RELAY_CREDENTIALS".into(), p.display().to_string()));
+        envs.push(("CCM_APIKEY_CREDENTIALS".into(), p.display().to_string()));
     }
     envs
 }

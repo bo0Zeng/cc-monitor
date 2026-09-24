@@ -18,18 +18,18 @@ fn the_two_sides_resolve_the_same_file() {
     );
 
     // ★★ `K-H2b` `D1 阻-3`：**上面那个 `home.join(".claude")` 是手写的根** ——
-    // 它钉住的只有**相对段**（`work/relay-credentials.json` 这一截），
+    // 它钉住的只有**相对段**（`work/apikey-credentials.json` 这一截），
     // 钉不住「两侧的**根**会不会算到两个地方去」。而那正是阻-3 的病：
     // backend 侧的根走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**；
     // monitor 这一侧**刻意不跟随**（本模块头注逐字）⇒ 中转一旦继承到那个变量，
     // 两侧读写的就是两份文件，而症状是「界面上配好了，中转说没配」。
     //
     // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
-    // `local_backend_host::start_local_relay` 用 `CCM_RELAY_CREDENTIALS` 把
+    // `local_backend_host::start_local_relay` 用 `CCM_APIKEY_CREDENTIALS` 把
     // **本函数算出来的这一个**交给中转。
     //
     // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_backend_host.rs` 的生产段里有没有
-    // `crate::creds_store::resolve_path()` / `"CCM_RELAY_CREDENTIALS".into()` 这两段文本」——
+    // `crate::creds_store::resolve_path()` / `"CCM_APIKEY_CREDENTIALS".into()` 这两段文本」——
     // **同一族的病**（文本留住、行为摘掉：把那两段文本留在一处用不到的地方，
     // 真正交出去的换成别的路径 ⇒ 两条照绿）。
     // ⇒ 换成读 `local_backend_host::relay_child_envs()` **产出来的那一份**：
@@ -37,7 +37,7 @@ fn the_two_sides_resolve_the_same_file() {
     let envs = crate::local_backend_host::relay_child_envs();
     assert_eq!(
         envs.iter()
-            .find(|(k, _)| k == "CCM_RELAY_CREDENTIALS")
+            .find(|(k, _)| k == "CCM_APIKEY_CREDENTIALS")
             .map(|(_, v)| v.clone()),
         Some(mine.display().to_string()),
         "起中转那一侧交出去的凭据路径不是**本函数**算出来的这一个 —— 它会退回去读 \
@@ -117,7 +117,7 @@ fn tmpdir(tag: &str) -> PathBuf {
 #[test]
 fn a_program_write_keeps_everything_the_human_put_there() {
     let dir = tmpdir("interleave");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
 
     // ① 人先手写了一份（裸 `fs::write` = 拿编辑器写的）。
     std::fs::write(
@@ -192,7 +192,7 @@ fn a_program_write_keeps_everything_the_human_put_there() {
 #[test]
 fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
     let dir = tmpdir("keep-row-fields");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
 
     // ① 人手编：这一条账号指着一个第三方端点、用非默认的鉴权头形状。
     //    ⚠ 期望值全是**手写字面量**，不是拿被测代码算出来的。
@@ -259,7 +259,7 @@ fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
 fn a_written_file_is_owner_only_and_a_widened_one_is_called_out() {
     use std::os::unix::fs::PermissionsExt;
     let dir = tmpdir("perm");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
 
     write_key_at(&p, "/h/.claude-alt/acct-perm", "sk-ant-JUST-WRITTEN").expect("写");
     let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
@@ -289,7 +289,7 @@ fn a_written_file_is_owner_only_and_a_widened_one_is_called_out() {
 #[test]
 fn a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
     let dir = tmpdir("three-states");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
 
     // ① 文件不存在 ⇒ 没配、无问题、无提醒。
     let s0 = read_status_at(&p).expect("读");
@@ -334,7 +334,7 @@ fn a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
 #[test]
 fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
     let dir = tmpdir("same-source");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
     // ⚠ 目录名取中性名：断言里用的是**它派生出来的那个 id**，
     //   而 `brief` 12 逐字点名过「断言用的子串取自夹具的名字」那一形。
     let one = "/h/.claude-alt/acct-one";
@@ -454,7 +454,7 @@ fn the_write_side_no_longer_targets_the_legacy_top_level_slot() {
 
     // 行为那一维：全新文件写一次，顶层那一格不许被创建。
     let dir = tmpdir("legacy-slot");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
     write_key_at(&p, "/h/.claude-alt/acct-fresh", "KEY-FRESH").expect("写");
     let back: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
@@ -478,7 +478,7 @@ fn the_write_side_no_longer_targets_the_legacy_top_level_slot() {
 #[test]
 fn a_config_dir_that_names_no_account_is_refused_instead_of_falling_back() {
     let dir = tmpdir("no-id");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
     for bad in ["", "   ", "/"] {
         let e = write_key_at(&p, bad, "KEY-SHOULD-NOT-LAND")
             .expect_err("说不出账号却写成功了 —— 那一把落到哪儿了？");
@@ -869,7 +869,7 @@ fn the_status_type_cannot_carry_the_plaintext() {
     let s = RelayCredentialsStatus {
         configured: true,
         masked: SecretKey::new("sk-ant-PLAINTEXT-NEVER-ECHOED").masked(),
-        path: "/somewhere/relay-credentials.json".to_string(),
+        path: "/somewhere/apikey-credentials.json".to_string(),
         notice: None,
         problem: None,
     };

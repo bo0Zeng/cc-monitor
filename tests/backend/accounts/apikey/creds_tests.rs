@@ -38,7 +38,7 @@ fn tmpdir(tag: &str) -> PathBuf {
 /// 走的是**生产段那条真实的路**（`resolve_path` → `load`），
 /// 文件是用**裸 `fs::write` 写的**（不是本仓的写入器）—— 那正是「人拿编辑器写了一份」。
 #[test]
-fn a_relay_started_with_only_a_file_on_disk_gets_the_key() {
+fn the_apikey_layer_loads_the_key_from_a_hand_written_file_alone() {
     let home = tmpdir("only-file");
     let p = store::path_under_claude_home(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");

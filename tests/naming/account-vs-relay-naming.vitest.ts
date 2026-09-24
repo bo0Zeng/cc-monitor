@@ -83,7 +83,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("CCM_APIKEY_CREDENTIALS"),
     kind: "环境变量",
     why: "盖的是 apikey 凭据文件的路径 —— 读它的是层 2（`accounts::apikey::creds`），层 1 一个字节都不读",
-    state: "pending",
+    state: "done",
   },
   {
     old: "relay-credentials.json",
@@ -92,7 +92,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: lit("apikey-credentials.json"),
     kind: "文件名",
     why: "apikey 表（每个账号的第三方 key ＋ 端点）落盘那一份；`creds_core::store::FILE_NAME`",
-    state: "pending",
+    state: "done",
   },
   {
     old: "CCM_RELAY_UPSTREAM",
@@ -101,7 +101,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("CCM_AGENT_UPSTREAM_CLAUDE_CODE"),
     kind: "环境变量",
     why: "层 2 每 agent 默认上游表（`accounts::apikey::AGENT_UPSTREAMS`）里 claude-code 那一行的旋钮；层 1 没有默认上游",
-    state: "pending",
+    state: "done",
   },
   // ── 命令面（前端 ↔ monitor；不上后端的线）─────────────────────────────────────
   {
@@ -221,7 +221,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("accounts::apikey::table"),
     kind: "过期住址",
     why: "路由表住 `src/backend/accounts/apikey/table.rs`",
-    state: "pending",
+    state: "done",
   },
   {
     old: "relay::creds",
@@ -230,7 +230,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("accounts::apikey::creds"),
     kind: "过期住址",
     why: "读凭据文件住 `src/backend/accounts/apikey/creds.rs`（`relay::creds_guard` 是另一个名字，不在此列）",
-    state: "pending",
+    state: "done",
   },
   // ── 判据名 ─────────────────────────────────────────────────────────────────
   {
@@ -240,7 +240,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix"),
     kind: "判据名",
     why: "「那张表」是 apikey 表",
-    state: "pending",
+    state: "done",
   },
   {
     old: "a_relay_started_with_only_a_file_on_disk_gets_the_key",
@@ -249,7 +249,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("the_apikey_layer_loads_the_key_from_a_hand_written_file_alone"),
     kind: "判据名",
     why: "它量的是层 2 的 `creds::load`，一个中转进程都没起；拿到 key 的也不是层 1",
-    state: "pending",
+    state: "done",
   },
   {
     old: "a_launch_command_carrying_the_relay_env_prefix_reaches_the_relay_with_that_accounts_key",
@@ -258,7 +258,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_accounts_key"),
     kind: "判据名",
     why: "「带着那个号的 key」的是到上游的那一发（层 2 换的头），不是中转",
-    state: "pending",
+    state: "done",
   },
   // ── 散文词组（中转被说成了账号那一层的东西）──────────────────────────────────────
   {
