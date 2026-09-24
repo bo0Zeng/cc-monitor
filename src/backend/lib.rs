@@ -34,6 +34,7 @@ mod cc_bus_boundary_guard; // P4f-Y2：backend 不许碰 cc-bus 的数据布局�
 pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 pub mod dial; // K-P6b：`--dial` 代理进程 —— backend 那条长连接流的 SSH 握手住这里（**只此一处**，判据在它自己的测块）
+pub mod feature_face; // 〔RM1b · 第四波〕功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力（`设计/96 §2.9`）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
@@ -586,6 +587,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resolve",
     "--search",
     "--session-accounts",
+    // 〔RM1b · 第四波〕`tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
+    // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--tasks-list",
     "--tmux-notify",
 ];
 

@@ -168,6 +168,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
                 | "exit-policy-set"
+                // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
+                | "tasks-list"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -224,6 +226,7 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-sessions",
         "exit-policy-read",
         "exit-policy-set",
+        "tasks-list",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()
