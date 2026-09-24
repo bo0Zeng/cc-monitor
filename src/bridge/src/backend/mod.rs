@@ -174,6 +174,14 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "U8a-2c-1：backend `launch` 的发送端（`send-into` 那半边；attach 留在用户终端）",
     ),
     (
+        "control/frame_query.rs",
+        "control",
+        "〔`C1` · 2026-09-24〕**只读查询走已有长连接的发送端**（`history-*` / `accounts-*` 八条帧命令）。\
+         归 `control/` 而不是 `observe/`：它不产观测帧，是一问一答的发送端 —— 与 `tmux.rs` 抓屏、\
+         `cc_bus.rs` 查名单同一形，走 `backend_route` 的分流器、登记在 `SENDERS`；\
+         住 `observe/` 会凭空造出 `observe → control` 的边（它要 `inbound_client` 与 `backend_route`）",
+    ),
+    (
         "control/command_args.rs",
         "control",
         "🔴 〔`设计/05 §8.1` 步 3.5 · 2026-09-21〕**从 `control/inbound_client.rs` 剥出来的业务契约** —— \

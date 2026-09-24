@@ -1953,16 +1953,17 @@ async fn fetch_snapshot(
     use crate::backend::control::frame_query;
     let sid = &item.sid;
     let path = &item.path;
-    let plan = frame_query::tail(host_label, path, SNAPSHOT_TAIL_LINES as u64).await?;
+    let origin = crate::origin::Origin(host_label.to_string());
+    let plan = frame_query::tail(&origin, path, SNAPSHOT_TAIL_LINES as u64).await?;
     let mut arrived: u64 = 0;
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
     // 尾段先到（最新 N 行先就位），头段回填。
-    'read: for (from, until) in [(plan.split_at, plan.end), (0, plan.split_at)] {
+    'read: for (from, upto) in [(plan.split_at, plan.end), (0, plan.split_at)] {
         let mut offset = from;
-        while offset < until {
-            let page = frame_query::read_page(host_label, path, offset, Some(until)).await?;
+        while offset < upto {
+            let page = frame_query::read_page(&origin, path, offset, Some(upto)).await?;
             total_bytes += page.next - offset;
             if total_bytes > SNAPSHOT_MAX_BYTES {
                 // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。

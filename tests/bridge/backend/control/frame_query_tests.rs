@@ -102,8 +102,8 @@ fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
     let range = crate::session_skeleton::range_argv("/p/s.jsonl", 10, 99);
     let range: Vec<&str> = range.iter().map(String::as_str).collect();
     match route_argv(&range) {
-        Some(ArgvRoute::Read { path, from, until }) => {
-            assert_eq!((path.as_str(), from, until), ("/p/s.jsonl", 10, Some(99)))
+        Some(ArgvRoute::Read { path, from, upto }) => {
+            assert_eq!((path.as_str(), from, upto), ("/p/s.jsonl", 10, Some(99)))
         }
         _ => panic!("按区间取正文那一形没走帧面"),
     }
@@ -122,7 +122,7 @@ fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
         route_argv(&["--read-session", "/p/a.jsonl"]),
         Some(ArgvRoute::Read {
             from: 0,
-            until: None,
+            upto: None,
             ..
         })
     ));

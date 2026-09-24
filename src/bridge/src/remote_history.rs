@@ -156,7 +156,7 @@ pub async fn search_remote_all(
     // 逐台错误仍隔离。〔`C1`〕每台走它自己那条长连接，不再各拨一条 SSH。
     let results =
         futures::future::join_all(cfgs.iter().map(|cfg| {
-            let origin = cfg.origin_label();
+            let origin = crate::origin::Origin(cfg.origin_label());
             let args = args.clone();
             async move {
                 crate::backend::control::frame_query::lines(&origin, "history-search", args).await
@@ -568,7 +568,7 @@ pub async fn list_remote_history_projects() -> Result<RemoteProjectsResult, Stri
         &NoLivenessOracleYet,
         |cfg: RemoteConfig| async move {
             crate::backend::control::frame_query::lines(
-                &cfg.origin_label(),
+                &crate::origin::Origin(cfg.origin_label()),
                 "history-projects",
                 serde_json::json!({}),
             )
@@ -752,7 +752,7 @@ pub(crate) async fn stream_remote_history_sessions(
     }
     // 〔`C1`〕走长连接的 `history-sessions`（不再为展开一个项目单拨一条 SSH）。
     let lines = crate::backend::control::frame_query::lines(
-        &cfg.origin_label(),
+        &crate::origin::Origin(cfg.origin_label()),
         "history-sessions",
         serde_json::json!({ "project_dir": project_dir }),
     )
@@ -818,6 +818,7 @@ pub(crate) async fn stream_read_remote_session(
     // 〔`C1` · 2026-09-24〕走长连接的 `history-read`，按字节分页（一页 ≤1 MiB、切在行尾），
     // 不再为读一份会话单拨一条 SSH。总量上限（F06）与逐行口径一个字没动。
     let origin = cfg.origin_label();
+    let wire_origin = crate::origin::Origin(origin.clone());
     let mut read_bytes: u64 = 0;
     let mut cwd_seen: Option<String> = None;
     let mut chunk: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
@@ -825,9 +826,13 @@ pub(crate) async fn stream_read_remote_session(
     let mut next_seq: u64 = 0;
     let mut offset: u64 = 0;
     loop {
-        let page =
-            crate::backend::control::frame_query::read_page(&origin, &jsonl_path, offset, None)
-                .await?;
+        let page = crate::backend::control::frame_query::read_page(
+            &wire_origin,
+            &jsonl_path,
+            offset,
+            None,
+        )
+        .await?;
         read_bytes += page.next - offset;
         if read_bytes > MAX_SESSION_BYTES {
             // F06：**不许静默截断**。同一份数据走后端的 `--fork-session` 会硬报错，
