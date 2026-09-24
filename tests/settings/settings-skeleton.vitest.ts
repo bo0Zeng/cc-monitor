@@ -98,12 +98,12 @@ import {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const sorted = (xs: Iterable<string>) => [...new Set(xs)].sort();
 
-/** 把面板整个走一遍（三个顶层页 + 本机子页），让每一块都至少渲染过一次骨架。 */
+/** 把面板整个走一遍（两个顶层页 + 本机子页；〔ST2〕顶层「改动足迹」已删），让每一块都至少渲染过一次骨架。 */
 async function openAllPages(): Promise<HTMLElement> {
   const p = new SettingsPanel({ windowMode: true });
   await p.open();
   await tick();
-  for (const id of ["app", "footprint", "machine:（本机）", "machines"]) {
+  for (const id of ["app", "machine:（本机）", "machines"]) {
     document.querySelector<HTMLButtonElement>(`[id="settings-tab-${id}"]`)?.click();
     await tick();
   }

@@ -869,7 +869,6 @@ src/settings/panel.ts:795	应用	保留	[对外] 页面名
 src/settings/panel.ts:989	正在列这台机器上的账号 / 工具…	保留	[对外] 加载骨架文案
 src/settings/panel.ts:998	机器列表这一块没能建起来	改·§2.1	[对外] 兜底提示的原因在讲界面构件没建起来（实现层失败），拼进兜底句后更长 →「机器列表加载失败」
 src/settings/panel.ts:1001	机器	保留	[对外] 页面名
-src/settings/panel.ts:1015	改动足迹	保留	[对外] 页面名
 src/settings/panel.ts:1109	这台机器上的机器列表没读出来	保留	[对外] 兜底提示的原因，说结果
 src/settings/panel.ts:1458	终端集成	保留	[不对外] 写进 dataset.naBlock 的数据属性，只供选择器/测试定位，不渲染
 src/settings/plugins-section.ts:41	（没说原因 —— 那是个 bug）	改·§2.2	[对外] 把我们的缺陷判断（「那是个 bug」）当文案说给用户，还带破折号 兼§2.4 →「（原因未知）」
