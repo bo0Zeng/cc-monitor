@@ -1415,6 +1415,8 @@ pub fn run() {
             panorama::panorama_list_annotations,
             panorama::panorama_write_doc_link,
             panorama::panorama_remove_doc_link,
+            panorama::panorama_diagram_kinds,
+            panorama::panorama_diagram,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,

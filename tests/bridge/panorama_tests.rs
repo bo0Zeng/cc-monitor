@@ -360,3 +360,73 @@ fn proposed_annotations_stay_invisible_to_agents_until_approved() {
     std::fs::remove_dir_all(&repo).ok();
     std::fs::remove_dir_all(&store).ok();
 }
+
+/// PN1b（`设计/97 §7`）：两条选图命令**原样透出**上游 —— 本侧不改名、不重排、不丢字段。
+///
+/// 在真引擎上把注册表里的**每一种**图画一遍，经本侧的 `PanoramaDiagram` 序列化后：
+/// ① 线上 `diagram.kind` == 注册表 id；② `diagram.body.shape` == 注册表声明的形状；
+/// ③ `mermaid` == 上游 `to_mermaid` 逐字相等（本侧没有第二个渲染器）。
+/// 另：注册表原样透出（`panorama_diagram_kinds` 的 JSON == 上游 `kinds()` 的 JSON）。
+/// 买不到：前端怎么画 —— 那一半在 `tests/views/panorama-diagram*.vitest.ts`。
+#[test]
+fn the_diagram_commands_pass_the_upstream_through_untouched() {
+    let base = std::env::temp_dir();
+    let repo = base.join("cc-monitor-pn1b-diagram-repo");
+    let store = base.join("cc-monitor-pn1b-diagram-store");
+    std::fs::remove_dir_all(&repo).ok();
+    std::fs::remove_dir_all(&store).ok();
+    std::fs::create_dir_all(repo.join("src/a")).unwrap();
+    std::fs::create_dir_all(repo.join("src/b")).unwrap();
+    std::fs::write(
+        repo.join("src/a/x.rs"),
+        "pub struct S { t: T }\npub fn f() { crate::b::y::g(); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        repo.join("src/b/y.rs"),
+        "pub struct T;\nimpl T { pub fn m(&self) {} }\npub fn g() {}\n",
+    )
+    .unwrap();
+    let arc = engine_for_with_store(repo.to_str().unwrap(), Some(store.clone())).expect("open");
+    let kinds_json = serde_json::to_value(
+        tauri::async_runtime::block_on(panorama_diagram_kinds()).expect("注册表"),
+    )
+    .unwrap();
+    assert_eq!(kinds_json, serde_json::to_value(diagram::kinds()).unwrap());
+    {
+        let mut g = arc.lock().unwrap();
+        g.index().expect("index");
+        for info in diagram::kinds() {
+            let req = DiagramRequest {
+                symbol: info.kind.needs_symbol().then(|| "src/a/x.rs#f".to_string()),
+                ..Default::default()
+            };
+            // 走本侧那条路（`draw_view`），与直调上游的结果逐项比。
+            let want_mermaid = diagram::to_mermaid(&g.draw(info.kind, &req).expect("画图"));
+            let v = serde_json::to_value(draw_view(&g, info.kind.id(), &req).expect("本侧画图"))
+                .unwrap();
+            assert_eq!(v["diagram"]["kind"], serde_json::json!(info.kind.id()));
+            assert_eq!(
+                v["diagram"]["body"]["shape"],
+                serde_json::to_value(info.shape).unwrap()
+            );
+            assert_eq!(v["mermaid"], serde_json::json!(want_mermaid));
+            let keys: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+            assert_eq!(
+                keys,
+                vec!["diagram", "mermaid"],
+                "线上字段名变了，前端 types.ts 要跟"
+            );
+        }
+        // 认不出的图种：上游的原话透出来，不回落
+        let err = draw_view(&g, "modul", &DiagramRequest::default())
+            .err()
+            .expect("认不出的图种该报错");
+        assert!(
+            guard_core::contains_word(&err, "modul"),
+            "错误里该说出是哪个：{err}"
+        );
+    }
+    std::fs::remove_dir_all(&repo).ok();
+    std::fs::remove_dir_all(&store).ok();
+}
