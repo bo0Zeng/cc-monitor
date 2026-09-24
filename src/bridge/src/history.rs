@@ -2062,19 +2062,30 @@ pub(crate) fn relay_rows_at(path: &std::path::Path) -> Vec<String> {
     }
 }
 
-/// 纯函数半：给定「账号 id / 表里有哪几行 / 中转在不在」，产出要拼上去的前缀。
+/// 纯函数半：给定「账号 id / `/t/` 标签 / 表里有哪几行 / 中转在不在 / 全量注入开关」，产出要拼上去的前缀。
 ///
 /// 空串 = **不走中转**（逐字节旧路）。`Err` = 该走但走不了（`KH2B2`②，出声不静默）。
+/// 判断本身住 `payload::relay_endpoint_for`（`设计/20 §3.2` 那张表）；本函数只挑平台形态。
 fn relay_prefix_for(
     account_id: Option<&str>,
+    passthrough_label: Option<&str>,
     rows: &[String],
     running: bool,
     sid: Option<&str>,
     windows: bool,
+    all_sessions: bool,
 ) -> Result<String, String> {
     let agent = crate::adapter::active().id();
-    let url = crate::backend::control::payload::apikey_endpoint_for(
-        account_id, rows, running, sid, agent,
+    let url = crate::backend::control::payload::relay_endpoint_for(
+        &crate::backend::control::payload::RelayAsk {
+            account_id,
+            passthrough_label,
+            rows,
+            running,
+            sid,
+            agent,
+            all_sessions,
+        },
     )?;
     Ok(match url {
         None => String::new(),
@@ -2175,7 +2186,28 @@ pub(crate) struct RelayFactSources {
     /// **Windows 上中转前缀渲染成 POSIX 形态**（`export …` 塞进 PowerShell 串）⇒ 注入整个失效。
     /// ⇒ 收进本结构之后它成了**可翻的一维**：判据喂 `|| true` 就该拿到 PowerShell 形态。
     pub(crate) windows: fn() -> bool,
+    /// 🔴 「全量注入开关开没开」——生产恒指 [`relay_all_sessions_switch`]〔`设计/20 §7` 步 4〕。
+    ///
+    /// 进缝的理由与 `windows` 那一格同一条：它在生产上是一次环境读取，写在调用点上
+    /// 判据就翻不动它 ⇒ 「开关关着时一个字节都不变 / 开着时订阅号走 `/t/`」两格都量不到。
+    pub(crate) all_sessions: fn() -> bool,
 }
+
+/// 全量注入开关的生产取值口：环境变量 [`RELAY_ALL_SESSIONS_ENV`] 恰好是 `1` 才算开。
+///
+/// # 为什么是一个环境变量、为什么默认关（`设计/20 §7` 步 4 逐字「必须带开关，默认关；真机验过再默认开」）
+///
+/// - **默认关**：没设 / 设成别的值 ⇒ 关 ⇒ 起会话的命令逐字节与本件之前相同。
+/// - **环境变量**：真机验证那一趟要能不重编就翻（`CCM_NO_DEVTOOLS` / `CCM_CJK_FONT` 同形）；
+///   它在 monitor 进程起来时读一次环境（每次拉起都读，不缓存 —— 读一次环境的钱可以忽略）。
+/// - ⚠ 它**不是**设置页上的一个开关：那一页不在本件的写区，而「真机验过再默认开」那一天
+///   要做的是把默认值翻过来，不是加一个界面。
+pub(crate) fn relay_all_sessions_switch() -> bool {
+    std::env::var(RELAY_ALL_SESSIONS_ENV).is_ok_and(|v| v == "1")
+}
+
+/// 全量注入开关的环境变量名。
+pub(crate) const RELAY_ALL_SESSIONS_ENV: &str = "CCM_RELAY_ALL_SESSIONS";
 
 /// 「这台机是不是 Windows」的生产取值口。**只有这一处**说得出这句话。
 ///
@@ -2191,6 +2223,7 @@ pub(crate) const PRODUCTION_RELAY_FACTS: RelayFactSources = RelayFactSources {
     rows: relay_rows,
     running: crate::local_backend_host::relay_running,
     windows: platform_is_windows,
+    all_sessions: relay_all_sessions_switch,
 };
 
 #[cfg(test)]
@@ -2234,6 +2267,13 @@ fn relay_prefix_for_launch(
     account: Option<&LaunchAccount>,
 ) -> Result<String, String> {
     let id = relay_account_id(account);
+    // `/t/` 那一格的账号标签：`Named` ⇒ 同 id；账号 0 ⇒ 固定标签；没表态 ⇒ 说不出就不走 `/t/`。
+    let label = match account {
+        Some(LaunchAccount::Base) => {
+            Some(crate::backend::control::payload::BASE_ACCOUNT_SEGMENT.to_string())
+        }
+        _ => id.clone(),
+    };
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
@@ -2246,10 +2286,12 @@ fn relay_prefix_for_launch(
     let facts = relay_facts();
     relay_prefix_for(
         id.as_deref(),
+        label.as_deref(),
         &(facts.rows)(),
         (facts.running)(),
         sid,
         (facts.windows)(),
+        (facts.all_sessions)(),
     )
 }
 

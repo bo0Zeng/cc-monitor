@@ -881,6 +881,7 @@ fn observe_one_cell(name: &str) -> CellToday {
                 rows,
                 running,
                 windows: not_win,
+                all_sessions: all_sessions_off,
             });
             fn a_current_ccm() -> crate::ccm_probe::CcmProbeResult {
                 crate::ccm_probe::CcmProbeResult {
@@ -1070,6 +1071,7 @@ fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
         rows: rows_with_only_acct_a,
         running: relay_is_running,
         windows: not_windows,
+        all_sessions: all_sessions_off,
     });
 
     // 「这台机器装没装 ccm」也由替身给 —— 本条**不问跑它的那台机器**
@@ -3475,7 +3477,16 @@ fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() 
     // ① 表里有行 ⇒ 前缀在（非空对照：证明这把尺子不是恒空串）。
     let id = relay_account_id(Some(&named("/home/u/.claude-alt/acct-a")));
     assert_eq!(id.as_deref(), Some("acct-a"), "账号 id 是从末段目录名推的");
-    let p = relay_prefix_for(id.as_deref(), &rows, true, Some("sid-1"), false).unwrap();
+    let p = relay_prefix_for(
+        id.as_deref(),
+        id.as_deref(),
+        &rows,
+        true,
+        Some("sid-1"),
+        false,
+        false,
+    )
+    .unwrap();
     assert_eq!(
         p, "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; ",
         "api-key 号的命令没带上中转 base URL —— 那条线还是没接"
@@ -3483,7 +3494,16 @@ fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() 
     // ② 表里没有这一行（订阅号）⇒ **空串**，命令逐字节与本件之前相同。
     let other = relay_account_id(Some(&named("/home/u/.claude-alt/acct-b")));
     assert_eq!(
-        relay_prefix_for(other.as_deref(), &rows, true, Some("sid-1"), false).unwrap(),
+        relay_prefix_for(
+            other.as_deref(),
+            other.as_deref(),
+            &rows,
+            true,
+            Some("sid-1"),
+            false,
+            false
+        )
+        .unwrap(),
         "",
         "没配第三方 key 的号被接进了中转 —— `§0e` 裁一逐字禁这一形"
     );
@@ -3491,11 +3511,20 @@ fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() 
     assert_eq!(relay_account_id(Some(&LaunchAccount::Base)), None);
     assert_eq!(relay_account_id(None), None);
     assert_eq!(
-        relay_prefix_for(None, &rows, true, None, false).unwrap(),
+        relay_prefix_for(None, None, &rows, true, None, false, false).unwrap(),
         ""
     );
     // ④ Windows 那一侧渲的是 PowerShell 形态（**只到「编得过」**，运行时没量过）。
-    let ps = relay_prefix_for(id.as_deref(), &rows, true, Some("sid-1"), true).unwrap();
+    let ps = relay_prefix_for(
+        id.as_deref(),
+        id.as_deref(),
+        &rows,
+        true,
+        Some("sid-1"),
+        true,
+        false,
+    )
+    .unwrap();
     assert_eq!(
         ps,
         "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
@@ -3599,15 +3628,18 @@ fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
         rows: spy_rows,
         running: spy_running,
         windows: spy_windows,
+        all_sessions: all_sessions_off,
     });
 
     // ① 表里有这一行 + 中转在跑 ⇒ 前缀 = 纯函数在**替身给的那几个答案**上算出来的那一份。
     answer(&["acct-a", "acct-b"], true, false);
     let want = relay_prefix_for(
         Some("acct-a"),
+        Some("acct-a"),
         &["acct-a".to_string(), "acct-b".to_string()],
         true,
         Some("sid-1"),
+        false,
         false,
     )
     .expect("纯函数在这组输入上不该报错");
@@ -3798,6 +3830,7 @@ fn the_ui_status_side_asks_those_two_take_points_and_uses_their_answers() {
         running: spy_running,
         // 界面那一侧不看平台（徽章文案两个平台同一份）⇒ 这一格照生产那个取值口，不装替身。
         windows: platform_is_windows,
+        all_sessions: all_sessions_off,
     });
 
     // ① 表里只有 `acct-a` + 中转在跑 ⇒ 只有那一个 configDir 被判「走中转」，`running` 为真。
@@ -3897,6 +3930,16 @@ fn the_production_relay_facts_are_those_two_take_points() {
         "生产上「这台机是不是 Windows」不再由 `platform_is_windows` 答 ——\n\
              换成一个恒假的东西，Windows 上前缀渲成 POSIX 形态、注入整个失效，\n\
              而 Windows 运行时在本件的「判不了」里 ⇒ 这一格只有判据这一个守卫"
+    );
+    // 🔴 〔`设计/20 §7` 步 4〕第四格（全量注入开关）同样按地址对拍，两跳都拍。
+    //    换成恒真 ⇒ 开关形同虚设（默认就全量注入）；换成恒假 ⇒ 开关打不开。两形行为判据都看不见。
+    assert!(
+        std::ptr::fn_addr_eq(live.all_sessions, relay_all_sessions_switch as fn() -> bool)
+            && std::ptr::fn_addr_eq(
+                PRODUCTION_RELAY_FACTS.all_sessions,
+                relay_all_sessions_switch as fn() -> bool
+            ),
+        "生产上「全量注入开关开没开」不再由 `relay_all_sessions_switch` 答"
     );
 
     // ★★ `D6 阻-1`：**送出去**那条缝同样按地址对拍（同样两跳：`const` 与没装替身的那一跳）。
@@ -4055,11 +4098,28 @@ fn the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule() {
 #[test]
 fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
     let rows = vec!["acct-a".to_string()];
-    let e = relay_prefix_for(Some("acct-a"), &rows, false, Some("sid-1"), false)
-        .expect_err("中转没起来却照旧渲染 —— 症状会与网络故障同形");
+    let e = relay_prefix_for(
+        Some("acct-a"),
+        Some("acct-a"),
+        &rows,
+        false,
+        Some("sid-1"),
+        false,
+        false,
+    )
+    .expect_err("中转没起来却照旧渲染 —— 症状会与网络故障同形");
     assert!(e.contains("中转没在跑"), "错误得说出真正的原因：{e}");
     // 非空对照：只把「中转在跑」翻过来，同一条路径就不再报错。
-    assert!(relay_prefix_for(Some("acct-a"), &rows, true, Some("sid-1"), false).is_ok());
+    assert!(relay_prefix_for(
+        Some("acct-a"),
+        Some("acct-a"),
+        &rows,
+        true,
+        Some("sid-1"),
+        false,
+        false
+    )
+    .is_ok());
 }
 
 /// ★★★ **接线判据**：`launch_local` **真正交出去的那一串**以中转前缀打头。
@@ -4138,6 +4198,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
         running: spy_running,
         // 平台那一格照生产那个取值口（本条不翻它 —— 翻它的是上面那条判据的第 ④ 格）。
         windows: platform_is_windows,
+        all_sessions: all_sessions_off,
     });
 
     let action = LocalPsAction::Resume("sid-1".to_string());
@@ -4171,10 +4232,12 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
         answer(&["acct-a", "acct-b"], true);
         let prefix = relay_prefix_for(
             Some(id),
+            Some(id),
             &["acct-a".to_string(), "acct-b".to_string()],
             true,
             Some("sid-1"),
             cfg!(windows),
+            false,
         )
         .expect("纯函数在这组输入上不该报错");
         // 反空真：期望的前缀本来就该是非空的，否则下面那条相等断言是「x == x」。
@@ -4351,6 +4414,7 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
         rows: no_rows,
         running: relay_up,
         windows: spy_windows,
+        all_sessions: all_sessions_off,
     });
     let account = LaunchAccount::Named {
         config_dir: "/h/.claude-alt/acct-a".to_string(),
@@ -4561,6 +4625,7 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
         rows: no_rows,
         running: relay_up,
         windows: not_windows,
+        all_sessions: all_sessions_off,
     });
     let account = LaunchAccount::Named {
         config_dir: "/h/.claude-alt/acct-a".to_string(),
@@ -4737,6 +4802,7 @@ fn entry_stage() -> (LaunchSinkGuard, RelayFactsGuard) {
             running: entry_running,
             // 平台那一格照生产那个取值口（翻它的是别处那条判据的第 ④ 格）。
             windows: platform_is_windows,
+            all_sessions: all_sessions_off,
         }),
     )
 }
@@ -4979,3 +5045,85 @@ fn the_new_session_command_the_frontend_calls_carries_the_account_and_the_cwd_th
 // 「剥法过剥」的别的走法（词法掩码认错、区间收尾挪晚）本条一个字都不管。
 // ⚠ 也别为了让这一格有东西就换一批「好过的针」—— 那是拿一条恒真的判据冒充覆盖，
 // `assert_stripper_keeps` 正是为此在第一版上当场红的（读数见 `payload_tests` 那条的注释）。
+
+/// 全量注入开关**关着**（生产默认值）的替身。缝上那一格要一个函数指针。
+fn all_sessions_off() -> bool {
+    false
+}
+
+/// ★★★ 〔`设计/20 §7` 步 4〕**开关由环境变量那一个值说了算，默认关。**
+///
+/// 本条只量取值口自己（缝上那一格由上面按地址对拍）。⚠ 它**不去改进程环境**：
+/// `cargo test` 多线程跑，改 `std::env` 会串到别的判据。⇒ 只断「今天这个进程里没设它 ⇒ 关」
+/// 这一向，并把「设成 1 ⇒ 开」那一向交给**名字与比较值**的字面量对拍（取值口只有一行）。
+#[test]
+fn the_all_sessions_switch_is_off_unless_that_one_variable_says_1() {
+    assert_eq!(RELAY_ALL_SESSIONS_ENV, "CCM_RELAY_ALL_SESSIONS");
+    if std::env::var_os(RELAY_ALL_SESSIONS_ENV).is_none() {
+        assert!(
+            !relay_all_sessions_switch(),
+            "环境里没有这个变量，开关却是开的 —— 默认关那一格破了"
+        );
+    } else {
+        // 跑判据的人自己设了它：这一向判不了，照实说出来（不是「过了」）。
+        println!(
+            "〔读数〕本进程环境里设了 {RELAY_ALL_SESSIONS_ENV} ⇒ 「没设就关」这一向本趟判不了"
+        );
+    }
+}
+
+/// ★★★ 〔`设计/20 §7` 步 4〕**起会话那一侧真的问了开关、并且用了它的答案**（接线判据）。
+///
+/// 同一个账号（表里没它这一行，即订阅号）、同一个「中转在跑」，只把开关翻过来：
+/// 关 ⇒ 前缀空串（逐字节与本件之前相同）；开 ⇒ `/t/claude-code/<账号>/…`。
+/// ⇒ 谁把 `(facts.all_sessions)()` 换成一个常量，两格里必有一格红。
+#[test]
+fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
+    fn no_rows() -> Vec<String> {
+        Vec::new()
+    }
+    fn up() -> bool {
+        true
+    }
+    fn not_win() -> bool {
+        false
+    }
+    fn on() -> bool {
+        true
+    }
+    let action = LocalPsAction::Resume("sid-1".to_string());
+    let named = LaunchAccount::Named {
+        config_dir: "/h/.claude-alt/acct-sub".to_string(),
+        name: None,
+    };
+    {
+        let _f = override_relay_facts(RelayFactSources {
+            rows: no_rows,
+            running: up,
+            windows: not_win,
+            all_sessions: all_sessions_off,
+        });
+        assert_eq!(
+            relay_prefix_for_launch(&action, Some(&named)).unwrap(),
+            "",
+            "开关关着，订阅号却被注入了 —— 默认关那一格破了"
+        );
+    }
+    let _f = override_relay_facts(RelayFactSources {
+        rows: no_rows,
+        running: up,
+        windows: not_win,
+        all_sessions: on,
+    });
+    assert_eq!(
+        relay_prefix_for_launch(&action, Some(&named)).unwrap(),
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/t/claude-code/acct-sub/sid-1'; ",
+        "开关开着，订阅号该走 `/t/`"
+    );
+    // 账号 0 走固定标签；调用方没表态 ⇒ 说不出是哪个号 ⇒ 不注入。
+    assert_eq!(
+        relay_prefix_for_launch(&action, Some(&LaunchAccount::Base)).unwrap(),
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/t/claude-code/0/sid-1'; "
+    );
+    assert_eq!(relay_prefix_for_launch(&action, None).unwrap(), "");
+}
