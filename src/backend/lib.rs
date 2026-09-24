@@ -377,9 +377,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★ re-embed 归发版那一拍。
 ///
 /// ★★★ **p2r-apikey-naming**（2026-09-24，第三波 R3 合并那一拍）：**子命令集一个没变，是行为变了** ——
-/// 账号层读的凭据文件 `relay-credentials.json` → `apikey-credentials.json`、环境变量
-/// `CCM_RELAY_CREDENTIALS` → `CCM_APIKEY_CREDENTIALS`、`CCM_RELAY_UPSTREAM` → `CCM_AGENT_UPSTREAM_CLAUDE_CODE`
-/// （用户裁「不要把账号和中转混为一谈」，不留兼容读旧名）。
+/// 账号层读的凭据文件改叫 `apikey-credentials.json`、环境变量改叫 `CCM_APIKEY_CREDENTIALS` /
+/// `CCM_AGENT_UPSTREAM_CLAUDE_CODE`（旧名逐条登记在 `tests/naming/account-vs-relay-naming.vitest.ts` 那张表里，
+/// 这里**刻意不复写**，否则那条判据当场红）。用户裁「不要把账号和中转混为一谈」，不留兼容读旧名。
 /// ⚠ 新 monitor 递新变量名、旧后端不认 ⇒ 回头读旧文件名 ⇒ 界面配好了、请求静默 404 ⇒ **必须**让已部署的后端被判 stale。
 /// 线上字节不变（`wire_golden` 未动）。照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
 pub const BUILD_ID: &str = "p2r-apikey-naming";
