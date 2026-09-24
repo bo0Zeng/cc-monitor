@@ -123,16 +123,92 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// 编辑上限（256 KiB）。**超上限拒编而非截断**（截断过的文本当编辑源会写坏文件）。
+/// 编辑上限 ＝ **后端入方向一行的上限**（1 MiB）。**超上限拒编而非截断**（截断过的文本当编辑源会写坏文件）。
 ///
-/// 🔴〔F7a · 第三波 2026-09-24〕**住址从池子搬到了窗口这里，而这是它该住的地方**：
-/// `设计/60 §5.4b` 逐字「那个上限该是多少、超了怎么办，要在**原生窗口的文本控件**这个语境里答」
-/// —— 它答的是「这个编辑框打字卡不卡」，是窗口的偏好，不是后端的机制。
-/// ⇒ 每趟经 `max_bytes` 送给后端 `files-read-text`（后端按它拒、不截断；后端另有自己的
-/// 一趟天花板，那是另一个数、另一件事）。这个数经第九刀复核过，理由住本模块头注「这个量该多大」。
-/// ⚠ 池子那边 `sftp_pool.rs` 里还有一份同值的常量 —— 那是老面板那条读文本命令自己的，
-/// 窗口不再借它（`boundary_tests` 窗口那张表里它那一行这一拍删了）；那条命令随 SFTP 收成只做传输一起走。
-pub const MAX_EDIT_BYTES: usize = 256 * 1024;
+/// 🔴〔F9 续 · 2026-09-24〕**256 KiB → 1 MiB，而且这个数从此答的是「存不存得回去」**（`设计/60 §9c 续`）：
+/// 存盘把整份内容装在**一条**请求行里（`files-write-text`），后端读请求那一侧一行最多收
+/// `src/backend/inbound.rs::MAX_LINE_BYTES` 字节（审计加的防 OOM 线，所有命令共用），多一个字节整行丢弃。
+/// ⇒ 原文比一行还长的文件**无论如何存不回去**（转义只会更长、信封还要占几十字节）⇒ 连读都不必去读。
+/// ⇒ 本常量**就是**那一行的上限，一个数两处用：打开前按大小拒（[`why_not_editable`]）·
+///   存之前按真序列化出来的那一行拒（[`save_fits`]）。
+/// ⚠ 两个 crate 之间引不到对方（后端有自己的 `Cargo.lock`）⇒ 它与后端那一处由
+///   `byte_cap_registry::the_cross_crate_twins_are_machine_checked_not_hand_copied` 读两侧源码**对拍相等**。
+/// ⚠ 打开之后还要再判一次：大小装得下、转义之后装不下的（控制字符一个字节写成六个）
+///   在打开那一刻就进只读并说清楚（[`Pane::read_only`]），不等用户改完才告诉他。
+/// ⚠ 读那一趟经 `max_bytes` 送给后端 `files-read-text`（后端一趟天花板 8 MiB，另一件事）。
+pub const MAX_EDIT_BYTES: usize = 1 << 20;
+
+/// 存盘那条线上命令的名字。量的与发的必须是**同一条**命令同一份参数（[`save_args`]）。
+pub const CMD_WRITE_TEXT: &str = "files-write-text";
+
+/// 请求行里 `id` 最长能占多少字节 —— monitor 那一侧 `inbound_client` 发号的形状是
+/// `m{毫秒:x}.{连接号}-{序号}`：`m` ＋ u128 十六进制最多 32 ＋ `.` ＋ u64 十进制最多 20 ＋ `-` ＋ 20 ＝ 75。
+/// 窗口量的时候按这个最长的 id 算 ⇒ **只会比真发出去的那一行长、不会短**（最多保守 75 字节）。
+pub const REQUEST_ID_ROOM: usize = 1 + 32 + 1 + 20 + 1 + 20;
+
+/// 存盘那一趟的参数（路径切成 `(root, rel)` 与写面其余四条同形）。
+pub fn save_args(path: &str, content: &str) -> serde_json::Value {
+    serde_json::json!({
+        "root": super::source::parent_dir(path),
+        "rel": super::source::remote_basename(path),
+        "content": content,
+    })
+}
+
+/// 请求行的形状（字段顺序与 monitor 那一侧 `inbound_client::encode_request` 的 `RequestLine` 相同；
+/// 两者逐字节相等由判据对拍）。
+#[derive(serde::Serialize)]
+struct RequestLine<'a> {
+    id: &'a str,
+    cmd: &'a str,
+    args: &'a serde_json::Value,
+}
+
+/// 🔴 **真序列化一次**：这条命令发到后端时那一行有多少字节（**不含**行尾 `\n` ——
+/// 后端的上限数的就是换行之前那一段）。`id` 按最长的算（[`REQUEST_ID_ROOM`]）。
+pub fn request_line_len(cmd: &str, args: &serde_json::Value) -> usize {
+    let id = "0".repeat(REQUEST_ID_ROOM);
+    serde_json::to_vec(&RequestLine { id: &id, cmd, args }).map_or(usize::MAX, |v| v.len())
+}
+
+/// 存不回去：那一行多大、上限多少。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TooBig {
+    pub line: usize,
+    pub cap: usize,
+}
+
+/// 这一份存得回去吗（`Ok(那一行的字节数)`）。
+pub fn save_fits(path: &str, content: &str) -> Result<usize, TooBig> {
+    let line = request_line_len(CMD_WRITE_TEXT, &save_args(path, content));
+    if line > MAX_EDIT_BYTES {
+        Err(TooBig {
+            line,
+            cap: MAX_EDIT_BYTES,
+        })
+    } else {
+        Ok(line)
+    }
+}
+
+/// 存的时候本地拒掉那句话。
+pub fn too_big_to_save(t: &TooBig) -> String {
+    format!(
+        "这份存回去要发 {} 字节，后端一次最多收 {} 字节，多了 {} 字节，没有发出去。\
+         引号、反斜杠和控制字符在发送时会变长，删掉至少这么多再存。",
+        t.line,
+        t.cap,
+        t.line - t.cap
+    )
+}
+
+/// 打开那一刻就判定存不回时，编辑面顶上那句话。
+pub fn read_only_notice(t: &TooBig) -> String {
+    format!(
+        "只读：这份存回去要发 {} 字节，后端一次最多收 {} 字节。可以看、可以复制，不能改。",
+        t.line, t.cap
+    )
+}
 
 use super::source::Row;
 
@@ -218,11 +294,16 @@ pub struct Pane {
     pub last_save: Option<Result<(), String>>,
     /// 〔F9〕大文件模式那一格（`None` 在里面 ＝ 普通路径）。逐条住 [`super::bigfile`] 头注。
     pub(crate) big: super::bigfile::BigSlot,
+    /// 🔴〔F9 续〕打开那一刻就判定存不回（[`save_fits`]）⇒ 只读，里面是给用户的那句话。
+    /// 编辑面据此不收任何改动（普通路径与大文件模式两支都守）。
+    pub read_only: Option<String>,
 }
 
 impl Pane {
     pub fn opened(path: &str, name: &str, text: String) -> Self {
+        let read_only = save_fits(path, &text).err().map(|t| read_only_notice(&t));
         Self {
+            read_only,
             path: path.to_string(),
             name: name.to_string(),
             original: text.clone(),
@@ -457,15 +538,20 @@ pub async fn write_text(
     path: &str,
     content: &str,
 ) -> Result<(), String> {
-    let args = serde_json::json!({
-        "root": super::source::parent_dir(path),
-        "rel": super::source::remote_basename(path),
-        "content": content,
-    });
+    let args = save_args(path, content);
+    // 🔴〔F9 续〕先把要发的那一行真序列化一次量长度：后端一行装不下 ⇒ **当场说清、不发**。
+    //    发出去的话后端整行丢弃、回一条不带 id 的错，窗口要熬满写预算才超时（`设计/60 §9c`）。
+    let len = request_line_len(CMD_WRITE_TEXT, &args);
+    if len > MAX_EDIT_BYTES {
+        return Err(too_big_to_save(&TooBig {
+            line: len,
+            cap: MAX_EDIT_BYTES,
+        }));
+    }
     super::source::ask(
         line,
         origin,
-        "files-write-text",
+        CMD_WRITE_TEXT,
         &args,
         super::writeops::WRITE_BUDGET,
     )
