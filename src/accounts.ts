@@ -221,7 +221,7 @@ export interface AccountStatusBadge {
  * 的那些号，cc-monitor **真的**会替它配）。⇒ 按「这个号属于哪一半 / 那两个前置成不成立」
  * 分别说各自的话。
  *
- * | `relay` | 用户看到 | 那句话为什么是真的 |
+ * | `endpoint` | 用户看到 | 那句话为什么是真的 |
  * |---|---|---|
  * | `{scope:"local",hasRow:true,running:true}` | 「api-key（经本机中转）」 | 两个前置都成立 |
  * | `{scope:"local",hasRow:true,running:false}` | 「api-key（中转未运行）」 | 起会话那一侧会**当场拒**（`KH2B2`②） |
@@ -240,7 +240,7 @@ export interface AccountStatusBadge {
  * 「远端就 `{scope:"remote"}`、本机就缺席」（chip）。
  * **这是「本机那三档有实现、没接线」，别读成「接上了」。** 经过住件文件 `§4`。
  */
-export type AccountRelayState =
+export type ApikeyEndpointState =
   /** 远端那一半：`K-H2b` `§0e` 裁四明写不做 ⇒ 对它确实没人配端点。 */
   | { scope: "remote" }
   /** 本机那一半：两个前置各自成不成立。 */
@@ -254,7 +254,7 @@ export type AccountRelayState =
  * 中转是**每台机器自己的一个进程**，注入的又是回环地址（自指）⇒ 「本机这台的中转
  * 在不在跑」这个问题，本机这一侧**在结构上答不了远端那台**。往账号列表里加字段，
  * 就是让远端那些行也带上两个这一侧答不出来的值。
- * 命令面的登记（`relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
+ * 命令面的登记（`apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
  *
  * ★〔第四拍〕**取数那一跳接上了**：走包装层 `commands.apikey_routing_for`。
  * ⚠ 经过如实记：第三拍它退回过一次 —— 注册一条命令会同时动两个钉死计数
@@ -329,7 +329,7 @@ let localLaunchSnapshot: { state: AccountsState; pins: Record<string, string> } 
  *
  * 🔴 **上一拍这里读的是 `a.isDefault`（manifest 字段），而头注写的是 `currentWorkingAccount`
  * （优先 config.json 的 `defaultName`）—— 两者在「用户切过号」之后就不是同一个答案。**
- * 后果是**切过号之后新会话静默串号**，而且中转会按错的 id 换上别人那一行的 key。
+ * 后果是**切过号之后新会话静默串号**，而且账号层会按错的 id 换上别人那一行的 key。
  * ⇒ 快照现在整份存 `AccountsState`（`defaultName` 在里面），这里直接调那条唯一的规则。
  */
 export function localLaunchAccountNameSync(sid: string | null): string | null {
@@ -446,7 +446,7 @@ export function __setLocalLaunchSnapshotForTests(
   localLaunchSnapshot = { state, pins };
 }
 
-export async function fetchLocalRelayRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
+export async function fetchLocalApikeyRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
   return await commands.apikey_routing_for({ configDirs });
 }
 
@@ -456,17 +456,17 @@ export async function fetchLocalRelayRouting(configDirs: string[]): Promise<Apik
  * `configDir` 缺席（账号 0）⇒ `null`：账号 0 在 manifest 里没有目录名，
  * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `apikey_account_id` 的三态同形）。
  */
-export function localRelayStateFor(
+export function localApikeyEndpointStateFor(
   a: Account,
   routing: ApikeyRoutingView,
-): AccountRelayState | undefined {
+): ApikeyEndpointState | undefined {
   if (!a.configDir) return undefined;
   return { scope: "local", hasRow: routing.routed.includes(a.configDir), running: routing.running };
 }
 
 export function accountStatusBadge(
   a: Account,
-  relay?: AccountRelayState,
+  endpoint?: ApikeyEndpointState,
 ): AccountStatusBadge {
   if (a.mode === "in-place") {
     return {
@@ -476,15 +476,15 @@ export function accountStatusBadge(
     };
   }
   if (a.authKind === "api-key") {
-    const local = relay?.scope === "local" ? relay : null;
+    const local = endpoint?.scope === "local" ? endpoint : null;
     if (local?.hasRow && local.running) {
       return {
         text: "api-key（经本机中转）",
         warn: false,
         title:
           "这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
-          "ANTHROPIC_BASE_URL 指向本机中转，由中转按账号换上这一行的 key。\n" +
-          "⚠ 它保证的是「请求发得到中转、中转按这一行转发」；" +
+          "ANTHROPIC_BASE_URL 指向本机中转；请求经过中转时，账号层按这一行换上它的 key。\n" +
+          "⚠ 它保证的是「请求发得到中转、账号层按这一行换 key」；" +
           "那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。",
       };
     }
@@ -504,7 +504,7 @@ export function accountStatusBadge(
         ? "apikey 凭据文件里没有这个账号的一行 ⇒ cc-monitor 不会替它配 base URL。" +
           "要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 " +
           "shell 环境里配好第三方端点。"
-        : relay?.scope === "remote"
+        : endpoint?.scope === "remote"
           ? "cc-monitor 今天只给本机会话配 base URL；远端这一半还不做" +
             "（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上" +
             "自己配好第三方端点。"

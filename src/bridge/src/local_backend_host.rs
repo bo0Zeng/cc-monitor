@@ -1596,15 +1596,15 @@ pub(crate) fn relay_child_args() -> Vec<String> {
 /// ★ 端口**显式传**：注入侧（`payload::RELAY_PORT`）与中转侧用同一个值。
 /// ★★ `D1 阻-3`：**凭据路径也显式传**，同一条理由。
 ///
-/// 不传的话，中转走它自己那条 `resolve_path` → `resolve_home()`，而那一条**认
+/// 不传的话，中转进程里的账号层走它自己那条 `resolve_path` → `resolve_home()`，而那一条**认
 /// `CLAUDE_CONFIG_DIR`** ⇒ monitor 是从一个**被监护进程继承来的环境变量**里
-/// 决定「中转去读哪份凭据」的。而 monitor 自己写的那份**不跟随** `claudeDir`
+/// 决定「层 2 去读哪份凭据」的。而 monitor 自己写的那份**不跟随** `claudeDir`
 /// （`creds_store::resolve_path` 头注逐字）⇒ 两侧读写的是两份文件，
-/// 症状是「界面上配好了，中转说没配」——**一个静默的 404**。
+/// 症状是「界面上配好了，账号层说没配」——**一个静默的 404**。
 /// ⇒ 由**写那份文件的那一侧**把路径说出来，别让它从环境里猜。
 ///
 /// ⚠ 它**读一次真实家目录**（`creds_store::resolve_path()` 走 `dirs::home_dir()`）——
-/// 只读，不写。拿不到家目录时那一格**缺席**（不是空串）：中转那时退回它自己那条
+/// 只读，不写。拿不到家目录时那一格**缺席**（不是空串）：账号层那时退回它自己那条
 /// `resolve_home()`，而那正是上面这段话说的那个静默 404 的成因 ⇒ 缺席这一格不许被读成「安全」。
 pub(crate) fn relay_child_envs() -> Vec<(String, String)> {
     let mut envs = vec![(
@@ -1612,7 +1612,7 @@ pub(crate) fn relay_child_envs() -> Vec<(String, String)> {
         crate::backend::control::payload::RELAY_PORT.to_string(),
     )];
     if let Some(p) = crate::creds_store::resolve_path() {
-        envs.push(("CCM_RELAY_CREDENTIALS".into(), p.display().to_string()));
+        envs.push(("CCM_APIKEY_CREDENTIALS".into(), p.display().to_string()));
     }
     envs
 }

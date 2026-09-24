@@ -8,7 +8,7 @@
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
-import { commands, type RelayCredentialsStatus } from "../ipc/commands";
+import { commands, type ApikeyCredentialsStatus } from "../ipc/commands";
 import {
   fetchAccounts,
   // `N-F1b`：本机那条路。**读口与文案都不是本件新造的** —— `fetchLocalAccounts` 自
@@ -22,9 +22,9 @@ import {
   accountLoginActionLabel,
   setDefaultName,
   // K-H2c：「这几个号在不在apikey 表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
-  fetchLocalRelayRouting,
-  localRelayStateFor,
-  type AccountRelayState,
+  fetchLocalApikeyRouting,
+  localApikeyEndpointStateFor,
+  type ApikeyEndpointState,
   type ApikeyRoutingView,
   getModelForAccount,
   setModelForAccount,
@@ -74,7 +74,7 @@ import {
  * 真正钉这件事的是一条**中文标题**的 `it`，它本来就没有 snake_case 名字，
  * 而这两处一直**当现状在说**。
  */
-export interface RelayKeyAccount {
+export interface ApikeyEditorAccount {
   /** 显示用的名字（**只用来显示**，绝不当成 id 递给后端）。 */
   name: string;
   /** 递给后端那条命令的不透明串。 */
@@ -98,18 +98,18 @@ export interface RelayKeyAccount {
  * - 文件读坏了**不许静默当成「没配」**。
  * - `KH2C3`：**顶层那一把**（历史格式那一行）单独一行显 —— 它说的不是任何一个账号。
  */
-export function renderApikeyFileBlock(status: RelayCredentialsStatus): HTMLElement {
+export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElement {
   const box = document.createElement("div");
-  box.className = "relay-key-block";
+  box.className = "apikey-file-block";
 
   const title = document.createElement("div");
-  title.className = "relay-key-title";
+  title.className = "apikey-file-title";
   title.textContent = "第三方 API key";
   box.appendChild(title);
 
   // `KS9`：路径要能被找到，人才改得动它。
   const where = document.createElement("div");
-  where.className = "relay-key-path";
+  where.className = "apikey-file-path";
   where.textContent = `文件：${status.path}`;
   where.title = "这份文件是明文 JSON，可以直接用编辑器改，改完下次读就生效";
   box.appendChild(where);
@@ -117,14 +117,14 @@ export function renderApikeyFileBlock(status: RelayCredentialsStatus): HTMLEleme
   // `KS11`：过宽 / 查不出来要**在界面上显出来**。
   if (status.notice) {
     const warn = document.createElement("div");
-    warn.className = "relay-key-notice";
+    warn.className = "apikey-file-notice";
     warn.textContent = status.notice;
     box.appendChild(warn);
   }
   // 文件读坏了（人手编打错一个逗号）——**不许静默当成「没配」**。
   if (status.problem) {
     const bad = document.createElement("div");
-    bad.className = "relay-key-problem";
+    bad.className = "apikey-file-problem";
     bad.textContent = status.problem;
     box.appendChild(bad);
   }
@@ -132,7 +132,7 @@ export function renderApikeyFileBlock(status: RelayCredentialsStatus): HTMLEleme
   //   但界面不再往那儿写 —— 与每一行上「这个号配没配」是**两件事**，不许合成一行。
   if (status.configured) {
     const legacy = document.createElement("div");
-    legacy.className = "relay-key-legacy";
+    legacy.className = "apikey-file-legacy";
     legacy.textContent = `顶层那一把（历史格式）：已配置 ${status.masked}。它照常还能用，但界面不再往那一格写。`;
     box.appendChild(legacy);
   }
@@ -148,12 +148,12 @@ export function renderApikeyFileBlock(status: RelayCredentialsStatus): HTMLEleme
  *
  * 「配好之后，后端**永远**不把明文回给前端；界面只显示掩码或『已配置』。**要改就重新输。**」
  * ⇒ 结构上做不到回显，两道：
- *   ① 入参里**没有明文那个字段**（[`RelayKeyAccount`] 只有 name / configDir / routed）；
+ *   ① 入参里**没有明文那个字段**（[`ApikeyEditorAccount`] 只有 name / configDir / routed）；
  *   ② 输入框**从不预填**（`value` 一次都不被赋非空值），存之前先清空。
  * 由 `accounts-section.vitest.ts` 里 `KS6` 那一族钉住，含一条**源码扫描**。
  */
 export function renderApikeyEditor(
-  a: RelayKeyAccount,
+  a: ApikeyEditorAccount,
   onSave: (key: string, configDir: string) => void | Promise<void>,
 ): { editor: HTMLElement; toggle: HTMLButtonElement } {
   const box = document.createElement("div");
@@ -172,7 +172,7 @@ export function renderApikeyEditor(
   });
 
   const state = document.createElement("div");
-  state.className = "relay-key-state";
+  state.className = "accounts-row-apikey-state";
   state.textContent = a.routed
     ? `${a.name}：apikey 表里已经有它那一行。再存一次会替换它那一把 key。`
     : `${a.name}：apikey 表里还没有它那一行 —— 它的会话今天走官方直连。`;
@@ -180,14 +180,14 @@ export function renderApikeyEditor(
 
   const input = document.createElement("input");
   input.type = "password";
-  input.className = "relay-key-input";
+  input.className = "accounts-row-apikey-input";
   input.autocomplete = "off";
   // ★★ **这里刻意什么都不做** —— 不预填、不 placeholder 回显掩码。
   input.placeholder = a.routed ? "输入新的 key 以替换" : "粘贴 key";
   box.appendChild(input);
 
   const save = mkBtn("保存");
-  save.className = "relay-key-save";
+  save.className = "accounts-row-apikey-save";
   save.addEventListener("click", () => {
     const v = input.value.trim();
     if (!v) return;
@@ -424,8 +424,8 @@ export class AccountsSection {
    *
    * 远端那张表带着一整套只对远端成立的东西：维护区那几个按钮会**动远端目录**、
    * 「去登录」会去拉一个**远端终端**（`accountLoginActionLabel` 的两句文案都逐字带「远端」）、
-   * 中转那一块问的是「这几个 configDir 走不走**本机**中转」而表里显的是远端的号
-   *（`mountRelayKeyBlock` 头注口径③ 自己记着这笔账）。把本机接进那条路，
+   * apikey 那一块问的是「这几个 configDir 在**本机**的 apikey 表里有没有行」而表里显的是远端的号
+   *（那一块当年的头注口径③ 自己记着这笔账；它今天拆成 `renderApikeyFileBlock` ＋ `renderApikeyEditor`）。把本机接进那条路，
    * 等于把「一台远端机器」这个概念套到本机头上 —— 那正是 `N2` 排除的那件事，
    * 也正是 `control-parity` 那个区花 41 件治过的病。
    * ⇒ 本机这一支只做它今天真做得到的事：**把清单列出来**。
@@ -521,7 +521,7 @@ export class AccountsSection {
     const routing = await this.readLocalRouting(state.accounts);
     for (const a of state.accounts) {
       table.appendChild(
-        AccountsSection.localRow(a, cur?.name === a.name, routing ? localRelayStateFor(a, routing) : undefined),
+        AccountsSection.localRow(a, cur?.name === a.name, routing ? localApikeyEndpointStateFor(a, routing) : undefined),
       );
     }
     box.appendChild(table);
@@ -665,7 +665,7 @@ export class AccountsSection {
     const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
     if (dirs.length === 0) return null;
     try {
-      const r = await fetchLocalRelayRouting(dirs);
+      const r = await fetchLocalApikeyRouting(dirs);
       return Array.isArray(r?.routed) && typeof r?.running === "boolean" ? r : null;
     } catch {
       return null;
@@ -675,14 +675,14 @@ export class AccountsSection {
   /**
    * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
    *
-   * 〔第三波 S3〕徽章的 `relay` 从这一拍起**传本机那一半**（`{ scope: "local", … }`，
-   * 由 `localRelayStateFor` 从后端答的两格事实摊出来）。原先这里不传，理由是「那要多一条 IPC，属下一件」
+   * 〔第三波 S3〕徽章的 `endpoint` 从这一拍起**传本机那一半**（`{ scope: "local", … }`，
+   * 由 `localApikeyEndpointStateFor` 从后端答的两格事实摊出来）。原先这里不传，理由是「那要多一条 IPC，属下一件」
    * —— 那条命令（`apikey_routing_for`）早在盘上了，只是这一支没去问。
    * 问不到 / 账号 0（没有 configDir）⇒ 仍然不传，徽章照旧「不替它下判断」。
    * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
    * 文案里当场出现「远端」两个字；`NF1bD2` 那条判据正是钉这个的。
    */
-  private static localRow(a: Account, isCurrent: boolean, relay?: AccountRelayState): HTMLElement {
+  private static localRow(a: Account, isCurrent: boolean, relay?: ApikeyEndpointState): HTMLElement {
     const row = document.createElement("div");
     row.className = isCurrent ? "accounts-local-row current" : "accounts-local-row";
     row.appendChild(accountAvatarEl(a.name, { size: 16, ghost: !isSelectable(a) }));
@@ -1188,7 +1188,7 @@ export class AccountsSection {
   /** 唯一那一处把 key 交给后端的地方（行上的「保存」与表单的「建好后写」都走它）。 */
   private async writeApikey(key: string, configDir: string, name: string): Promise<void> {
     try {
-      await commands.write_relay_credentials_key({ key, configDir });
+      await commands.write_apikey_credentials_key({ key, configDir });
       showActionFailureToast("已写入 apikey", `${name} 的 apikey 已写进 apikey 表。`, {
         level: "info",
         durationMs: 3000,
@@ -1213,30 +1213,30 @@ export class AccountsSection {
    * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
    *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
    * ③ ⚠⚠ **如实记一条今天没买到的**：这一页显的是 `this.origin` 那台机器的账号，
-   *    而 `read_relay_credentials_status` / `write_relay_credentials_key` / `apikey_routing_for`
+   *    而 `read_apikey_credentials_status` / `write_apikey_credentials_key` / `apikey_routing_for`
    *    **全是本机**的（那三条命令自己的头注逐字都写着「只答本机」）。
    *    在 `cc-acct-iso` 的布局下两边的目录末段名同名 ⇒ 实际用起来对得上，
    *    但**这一格没有任何东西钉着**。这是 `K-H2a` 起就有的形状，本轮没有把它变好也没有变坏。
    */
   private async readApikeyState(
     accounts: Account[],
-  ): Promise<{ entries: RelayKeyAccount[]; fileBlock: HTMLElement }> {
+  ): Promise<{ entries: ApikeyEditorAccount[]; fileBlock: HTMLElement }> {
     const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
     let routed: string[] = [];
     try {
-      routed = dirs.length ? (await fetchLocalRelayRouting(dirs)).routed : [];
+      routed = dirs.length ? (await fetchLocalApikeyRouting(dirs)).routed : [];
     } catch {
       // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
     }
-    const entries: RelayKeyAccount[] = accounts
+    const entries: ApikeyEditorAccount[] = accounts
       .filter((a): a is Account & { configDir: string } => !!a.configDir)
       .map((a) => ({ name: a.name, configDir: a.configDir, routed: routed.includes(a.configDir) }));
     let fileBlock: HTMLElement;
     try {
-      fileBlock = renderApikeyFileBlock(await commands.read_relay_credentials_status());
+      fileBlock = renderApikeyFileBlock(await commands.read_apikey_credentials_status());
     } catch (e) {
       fileBlock = document.createElement("div");
-      fileBlock.className = "relay-key-problem";
+      fileBlock.className = "apikey-file-problem";
       fileBlock.textContent = `读不到第三方 API key 的状态：${String(e)}`;
     }
     return { entries, fileBlock };
@@ -1363,7 +1363,7 @@ export class AccountsSection {
   private async accountRow(
     a: Account,
     isCurrent: boolean,
-    apikey: RelayKeyAccount | null = null,
+    apikey: ApikeyEditorAccount | null = null,
   ): Promise<{ row: HTMLElement; editor: HTMLElement | null }> {
     const model = await getModelForAccount(a.name); // F07：每账号默认模型偏好
     const row = document.createElement("div");
