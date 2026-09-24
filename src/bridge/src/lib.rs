@@ -174,6 +174,8 @@ mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shel
 #[cfg(test)]
 mod structural_scan;
 mod subagent;
+// 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」：骨架索引 ＋ 按偏移取一段正文。
+mod session_skeleton;
 mod tasks;
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
 mod tmux_reconcile;
@@ -1312,6 +1314,9 @@ pub fn run() {
             history::list_history_projects,
             history::stream_history_sessions_in_project,
             history::stream_read_session_jsonl,
+            // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的两个调用点。
+            session_skeleton::read_session_index,
+            session_skeleton::read_session_range,
             remote_history::list_remote_history_projects,
             // F10：一键装 / 卸远端 ccm 助手到 ~/.bashrc（SFTP 写 profile，SS-H）
             sftp::install_remote_ccm_helper,
