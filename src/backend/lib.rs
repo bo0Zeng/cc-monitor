@@ -1003,6 +1003,220 @@ pub fn capability_ledger() -> Vec<(&'static str, &'static str)> {
     out
 }
 
+// ══════════════ PR1：`设计/96 §2` 第 3 层的**人群** —— 每个 target 上做得到的那一份 ══════════════
+//
+// 🔴 **这一段只许从声明现推，一个能力名都不许手抄。** 本波另有几路在往命令表 / 能力表里加行
+//   （`inbound::REGISTRY` · `SUBCOMMANDS` · 各族 `CAPABILITIES`）；这里要是抄一份清单，
+//   合并那天必然分叉。⇒ 下面每一个名字都来自它那一族**自己**的声明表。
+//
+// 🔴🔴 **这一段刻意一个字都不读 [`TARGET_GAPS`]。** 对等断言的两侧是：
+//   ① 本段**现推**出来的「每个 target 上各有哪些」（读实现侧的声明：面的 `targets` ·
+//      `ccm-launcher` 那几条的载体 · 命令的 `codes` 里有没有 `no_tmux` × 平台那一维的编译期结论）；
+//   ② [`TARGET_GAPS`] 那张**差异登记表**（理由 ＋ 档）。
+//   本段要是从 ② 减出 ①，「差异 == 登记表」就是 `x == x`（本仓逐字「恒等两侧同源会恒真」）。
+//   ⇒ 由 `target_parity_guard::the_derivation_never_reads_the_gap_table` 从源码上钉零命中。
+//
+// ⚠ **本段是声明层，不是产物层。** 「每个 `[[bin]]` 都有一条入包路线」那一层是
+//   `tests/evidence/K-R124-ruler.py` ⑭ 的事（两向相等，已在门禁上）；本段不复制它。
+//   而 `设计/96 §7` 那句「没有字节的 target，第 3 层是在对空集断言」对本段**如实成立**：
+//   macOS 今天两道编译门禁都没有、也没有产线（`§7.1.1b` 第 5、6 行）⇒ 本段对 [`Target::MacOs`]
+//   那一列判的只是「**声明上**与别的 target 一样」，不是「那边真跑得起来」。
+
+/// 编译 target → 那一格在「tmux 在不在」这件事上**平台这一维**给的档（[`TmuxPlatform`]）。
+///
+/// # 为什么它是本段的一根柱子
+///
+/// 本仓今天所有「这个 target 上做不到」的声明，归根到底只有一种机制：**载体是 tmux，
+/// 而那个 target 没有 tmux**。[`TmuxPlatform`] 已经把「Windows 上确证没有」这句话
+/// 做成了编译期的值（`K-P4` 那一拍，头注逐字「这一句在**编译期**就成立，不需要探针去证」）。
+/// ⇒ 本函数只把 [`Target`] 这根轴接到那根轴上，**不另立一份平台知识**。
+///
+/// ⚠ 两根轴对不对得上，由 `target_parity_guard::the_target_axis_agrees_with_the_host_tmux_platform`
+/// （本机那一格，运行期）与下面那条 `#[cfg(windows)]` 编译期断言（Windows 那一格）各钉一半。
+pub const fn tmux_platform_of(t: Target) -> TmuxPlatform {
+    match t {
+        Target::Windows => TmuxPlatform::AbsentUnlessExeOnPath,
+        Target::LinuxGnu | Target::LinuxMusl | Target::MacOs => TmuxPlatform::AskThePath,
+    }
+}
+
+/// ★ 只在 Windows 编译时存在：[`tmux_platform_of`] 给 Windows 的档 == 那份二进制真编进去的 [`TMUX_PLATFORM`]。
+///
+/// 同 `TMUX_PLATFORM` 旁边那条：本机（Linux）门禁上它**不存在**，开口的时刻是
+/// `winchk-backend` 那一格的 Windows 编译。
+#[cfg(windows)]
+const _: () = assert!(
+    tmux_platform_of(Target::Windows) as u8 == TMUX_PLATFORM as u8,
+    "Target 轴说 Windows 是一档，TMUX_PLATFORM 说是另一档 —— 两根平台轴分叉了"
+);
+
+/// 在 target `t` 上，**不看任何一台机器**、只凭平台就成立的 tmux 结论。
+///
+/// 入参 `PATH` 刻意给 `None`：unix 那几档因此答「不知道」（`None`）——
+/// 按 [`unavailable_from`] 头注那条三态处置，「不知道」**不许**压成「做不到」；
+/// Windows 那一档答「确证没有」（`Some(false)`）—— 那是它的平台默认，不靠探针。
+fn tmux_by_platform(t: Target) -> Option<bool> {
+    tmux_present(tmux_platform_of(t), None)
+}
+
+/// 帧面命令里，在 target `t` 上**平台默认做不到**的那几条（`codes` 里声明了 `no_tmux` 的）。
+///
+/// 读的就是生产里填 `hello.unavailable` 的那一个函数（[`unavailable_from`]），不另写判准。
+fn wire_commands_unavailable_on(t: Target) -> Vec<String> {
+    unavailable_from(tmux_by_platform(t))
+        .into_iter()
+        .map(|u| u.command)
+        .collect()
+}
+
+/// `ccm-launcher` 那一面里，**载体是 tmux** 的那几条能力 —— 一条一条的依据：
+///
+/// ⚠ 这是一条关于**机制**的声明（「它靠什么活着」），不是差异登记：差异 = 本表 × 平台那一维，
+/// 由本段现推；理由与档住 [`TARGET_GAPS`]。两张表回答的不是同一个问题。
+/// ⚠ 它**该住** `control/ccm/mod.rs` 那张 `CAPABILITIES` 旁边（一条能力一个住址）——
+/// 那份文件不在 PR1 的写区里，先住在汇总这一层、紧挨着那一面的适配函数，已报备。
+const CCM_TMUX_CARRIED: &[&str] = &[
+    "attach",               // 实现就是 `tmux attach`
+    "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
+    "bus-register",         // `argv.rs`：要 `--detach`，而 `--detach` 要 `--tmux`
+    "ccm-sid",              // 只在容器（tmux）那条路上被消费，`Plan::Direct` 里没有这个字段
+    "detach",               // 实现就是 `tmux detach`
+    "tmux",                 // 它本身
+    "tmux-base",            // tmux 的 `base-index`
+    "tmux-size",            // tmux 窗格尺寸
+];
+
+/// `ccm-launcher`：载体是 tmux 的那几条，在平台确证没有 tmux 的 target 上摘掉。
+fn ccm_launcher_on(t: Target) -> Vec<&'static str> {
+    let no_tmux = tmux_by_platform(t) == Some(false);
+    control::ccm::CAPABILITIES
+        .iter()
+        .copied()
+        .filter(|c| !(no_tmux && CCM_TMUX_CARRIED.contains(c)))
+        .collect()
+}
+
+/// 帧面命令：`inbound::REGISTRY` 减去这个 target 上平台默认做不到的那几条。
+fn wire_commands_on(t: Target) -> Vec<&'static str> {
+    let gone = wire_commands_unavailable_on(t);
+    inbound::REGISTRY
+        .iter()
+        .map(|s| s.name)
+        .filter(|n| !gone.iter().any(|g| g == n))
+        .collect()
+}
+
+/// CLI 面：`SUBCOMMANDS` 里**经 `REGISTRY` 派生**的那几条，跟着它的帧面那一条走；
+/// CLI 独有的那几条没有任何逐 target 声明 ⇒ 处处都在（本断言对它们**看不见**差异，如实登记在
+/// `target_parity_guard` 头注的「买不到」里）。
+fn cli_subcommands_on(t: Target) -> Vec<&'static str> {
+    let gone = wire_commands_unavailable_on(t);
+    SUBCOMMANDS
+        .iter()
+        .copied()
+        .filter(|flag| {
+            control::cli_control::spec_for(flag).is_none_or(|s| !gone.iter().any(|g| g == s.name))
+        })
+        .collect()
+}
+
+fn wire_command_names() -> Vec<&'static str> {
+    inbound::REGISTRY.iter().map(|s| s.name).collect()
+}
+
+fn cli_subcommand_names() -> Vec<&'static str> {
+    SUBCOMMANDS.to_vec()
+}
+
+/// 🔴 **命令面** —— 第 3 层人群里、**不进**第 2 层汇总（[`capability_ledger`]）的那两面。
+///
+/// # 为什么不直接加进 [`CAPABILITY_FACES`]
+///
+/// 加进去它们就进了 `capability_ledger_guard::ROSTER` 那张**逐条点名表**的射程 ——
+/// 那张表是手写的，而本波正有好几路在往这两张命令表里加行 ⇒ 每一路合并都得回来补点名，
+/// 漏补就红。那正是「手抄一份清单，合并那天必分叉」。
+/// 而这两张表的名字**另有裁决处**：帧面每一条要在 `IPC-PROTOCOL.md §10` 有小节
+/// （`protocol_doc_guard`）、CLI 面每一条逼一次 `BUILD_ID` bump（`build_id_guard`）。
+/// ⇒ 它们只进第 3 层那条横向对等，不进第 2 层那张点名表。**并不并进汇总是一个待拍的设计题**，已报备。
+pub const COMMAND_FACES: &[CapabilityFace] = &[
+    CapabilityFace {
+        family: "wire-commands",
+        kind: CapabilityKind::Protocol,
+        declares: wire_command_names,
+        declared_in: "inbound.rs",
+        targets: TARGETS,
+        target_basis: "帧面每一条命令四个 target 上**都编得进去**（`inbound::REGISTRY` 零平台 `cfg`）；\
+                       做不做得到按它**自己声明的码**分：`codes` 里有 `no_tmux` 的，在平台确证没有 tmux 的 \
+                       target 上做不到 —— 与生产里填 `hello.unavailable` 的是同一个函数（`unavailable_from`）。",
+    },
+    CapabilityFace {
+        family: "cli-subcommands",
+        kind: CapabilityKind::Protocol,
+        declares: cli_subcommand_names,
+        declared_in: "lib.rs",
+        targets: TARGETS,
+        target_basis: "`SUBCOMMANDS` 四个 target 上逐字同一张表；经 `cli_control::spec_for` 派生到 \
+                       `REGISTRY` 的那几条，做不做得到跟着帧面那一条走。CLI 独有的那几条**没有任何逐 target \
+                       声明**（例：`--tmux-notify` 在 Windows 上没人会调它，但声明里说不出来）⇒ 判成处处都在。",
+    },
+];
+
+/// 一面在某个 target 上的**收窄** —— 这一面自己的声明里有逐 target 的信息时，从哪里读。
+///
+/// 没登记收窄的面 ⇒ 在它 `targets` 里的每个 target 上，整面都在。
+pub struct TargetNarrowing {
+    /// 哪一面（[`CAPABILITY_FACES`] 或 [`COMMAND_FACES`] 里的族名）。
+    pub family: &'static str,
+    /// 这一面在 `t` 上做得到的名字。**只许是 `declares()` 的子集**（判据钉）。
+    pub on: fn(Target) -> Vec<&'static str>,
+}
+
+/// 🔴 **全部收窄 —— 唯一住址。**
+///
+/// ⚠ **`files-read` 刻意不在这里**，理由是两条，都如实写：
+/// ① 那一族逐条能力的 `Capability::targets` 被它**自己的**边界②钉成了 `TARGETS` 全体
+///   （`files/capability_guard.rs::the_capability_set_is_equal_across_every_target`，集合相等）⇒ 今天读它与不读它交出来的是同一份；
+/// ② 读它要从这一层伸手进 `files::CAPABILITIES` —— 那是 `files/module_boundary_guard.rs`
+///   登记的门之外的**第三扇门**（PR1 落地时现打：那条两向相等当场红，逐字点名 `files::CAPABILITIES`）。
+///   开门要改那份门表与 `files` 那一族，不在 PR1 写区里。
+/// ⇒ 代价：边界②哪天放宽（某条 files 能力不在某个 target 上），本段**看不见**那一格，
+///   要同拍在 `files` 那边开一扇 `capability_names_on(t)` 的门、再在这里登记收窄。
+pub const TARGET_NARROWINGS: &[TargetNarrowing] = &[
+    TargetNarrowing {
+        family: "ccm-launcher",
+        on: ccm_launcher_on,
+    },
+    TargetNarrowing {
+        family: "wire-commands",
+        on: wire_commands_on,
+    },
+    TargetNarrowing {
+        family: "cli-subcommands",
+        on: cli_subcommands_on,
+    },
+];
+
+/// 第 3 层的人群：两张面表连起来。
+pub fn parity_faces() -> impl Iterator<Item = &'static CapabilityFace> {
+    CAPABILITY_FACES.iter().chain(COMMAND_FACES.iter())
+}
+
+/// 🔴🔴 **在 target `t` 上做得到的 `(面, 名)`，有序** —— 全部从声明现推。
+pub fn capabilities_on(t: Target) -> Vec<(&'static str, &'static str)> {
+    let mut out: Vec<(&'static str, &'static str)> = parity_faces()
+        .filter(|f| f.targets.contains(&t))
+        .flat_map(|f| {
+            let names = match TARGET_NARROWINGS.iter().find(|n| n.family == f.family) {
+                Some(n) => (n.on)(t),
+                None => (f.declares)(),
+            };
+            names.into_iter().map(move |n| (f.family, n))
+        })
+        .collect();
+    out.sort_unstable();
+    out
+}
+
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 #[path = "../../tests/backend/capability_ledger_guard.rs"]
