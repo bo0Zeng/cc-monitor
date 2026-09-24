@@ -484,11 +484,37 @@ jobs:
       - name: tauri build
         run: npx tauri build --config src/bridge/tauri.sidecar.conf.json --bundles nsis,msi
 
+      # ── 🔴〔2026-09-23 现打修〕**产物根不是 `src/bridge/target/`，是 `.build/bridge/`** ────
+      #
+      # 仓根有一份**进 git 的** `.cargo/config.toml`（`[build] target-dir = ".build/bridge"`；
+      # 理由住它自己的头注：构建输出不许落在 `src/` 里，否则一族「走一遍源码树」的判据
+      # 会被 `target/` 下成千上万份生成 `.rs` 淹没）。cargo 从 cwd 往上找配置
+      # ⇒ **CI 上一样生效**。现打核过（`cd src/bridge && cargo metadata --no-deps`）：
+      # `target_directory = <仓根>/.build/bridge`；`npx tauri bundle` 现打也落在那里
+      # （`.build/bridge/release/bundle/deb/cc-monitor_3.8.1_amd64.deb`）。
+      #
+      # 〔墓碑，本步与下面上传那一步原来逐字写的是 `src/bridge/target/release/…`。**那是
+      #  09-17 搬树（两个 cargo 工程搬进 `src/`、并加了上面那份配置）之后指空的路径**，
+      #  而最后一次发版是 v3.6.0（08-01）—— 在那之前 ⇒ **一次都没人踩到过**。
+      #  它坏得**完全静默**：三个 glob 全空 → 本步原来那个 `-ErrorAction SilentlyContinue`
+      #  吞掉「路径不存在」→ `SHA256SUMS.txt` 空着照发；下面 `action-gh-release` 的
+      #  `files:` 一条都不匹配，而 `fail_on_unmatched_files` 默认 `false` ⇒ 只打 warning
+      #  ⇒ **Release 建得出来，上面一个安装包都没有。**〕
+      # ⇒ 两件同拍改：① 路径改对；② 把「一条都没匹配」从静默变成硬失败（下面那个**恒等**）。
+      # 🔴 判据那一侧同拍钉住：`tests/evidence/K-R124-ruler.py` 的 ⑮ 把本文件里每一处
+      #   cargo 产物路径的**根**与那两份 `.cargo/config.toml` 声明的 `target-dir`
+      #   做**两向集合相等** —— 再搬一次树、再改一次 `target-dir` 而这里不跟，当场红。
       - name: Compute SHA256 checksums
         shell: pwsh
         run: |
-          $bundleDir = "src/bridge\target\release\bundle"
-          Get-ChildItem -Path "$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", "src/bridge\target\release\monitor.exe" -ErrorAction SilentlyContinue |
+          $bundleDir = ".build\bridge\release\bundle"
+          $want = @("$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", ".build\bridge\release\monitor.exe")
+          $got = @(Get-ChildItem -Path $want -ErrorAction SilentlyContinue)
+          if ($got.Count -ne $want.Count) {
+            Write-Error "产物份数对不上：要 $($want.Count) 份（nsis setup · msi · 裸 exe），现打 $($got.Count) 份（$($got.Name -join ', ')）—— 这一形就是 2026-09-23 逮到的那条：产物根搬去了 .build/bridge/ 而这里还写着 src/bridge/target/ ⇒ 全空，却一声不响"
+            exit 1
+          }
+          $got |
             Get-FileHash -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } |
             Out-File -FilePath "SHA256SUMS.txt" -Encoding utf8
@@ -512,9 +538,9 @@ jobs:
         with:
           body_path: RELEASE_BODY.md
           files: |
-            src/bridge/target/release/monitor.exe
-            src/bridge/target/release/bundle/nsis/*-setup.exe
-            src/bridge/target/release/bundle/msi/*.msi
+            .build/bridge/release/monitor.exe
+            .build/bridge/release/bundle/nsis/*-setup.exe
+            .build/bridge/release/bundle/msi/*.msi
             SHA256SUMS.txt
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -619,19 +645,71 @@ jobs:
       - name: tauri build (deb)
         run: npx tauri build --config src/bridge/tauri.sidecar.conf.json --bundles deb
 
+      # ⚠ 路径的理由与 Windows 那一步**同一条**（产物根是 `.build/bridge/`，不是
+      #   `src/bridge/target/`）—— 逐字住那一步的头注，这里不抄第二份。
+      #   `[ -f ] || continue` 同拍换成硬失败：它是那条静默的另一半。
       - name: Compute SHA256 checksums (Linux)
         run: |
           set -euo pipefail
           : > SHA256SUMS-linux.txt
+          n=0
           # 二进制名是 cargo 包名 `monitor`（不是 productName `cc-monitor`）——
-          # 与 build-windows 里的 `monitor.exe` 同源，本地 `target/debug/monitor` 已核实。
-          for f in src/bridge/target/release/bundle/deb/*.deb src/bridge/target/release/monitor; do
-            [ -f "$f" ] || continue
+          # 与 build-windows 里的 `monitor.exe` 同源；`installer.nsi` 现打的
+          # `!define MAINBINARYNAME "monitor"` 也是这个名字。
+          for f in .build/bridge/release/bundle/deb/*.deb .build/bridge/release/monitor; do
+            [ -f "$f" ] || { echo "::error::产物不在盘上：$f —— 产物根搬过一次（见 build-windows 那一步的头注）"; exit 1; }
             # 只把**路径**收成 basename，别顺手把 hash 也剥了
             #（`sed 's#.*/##'` 是贪婪的，会把 "hash  path/to/" 整段吃掉）。
             sha256sum "$f" | awk '{n = split($2, p, "/"); print $1 "  " p[n]}' >> SHA256SUMS-linux.txt
+            n=$((n + 1))
           done
+          [ "$n" -eq 2 ] || { echo "::error::产物份数对不上：要 2（deb ＋ 裸二进制），现打 $n"; exit 1; }
           cat SHA256SUMS-linux.txt
+
+      # ── 🔴〔2026-09-23〕**安装包的二进制清单 ↔ 本包声明的那几个，两向集合相等** ────────
+      #
+      # ## 它买的是什么（这是全仓**唯一**一处对着真产物核这件事的地方）
+      #
+      # 门禁那一侧（`K-R124-ruler.py` ⑭）只读**盘上的文本**：Cargo.toml 的 `[[bin]]` ↔ 登记 ↔
+      # `externalBin`。它**买不到**「打包器真把它们装进去了」。本步对着**真 `.deb` 的字节**问
+      # 那一句：解出来的 `usr/bin/` 里到底有哪几个文件。
+      #
+      # ## 为什么两侧都**现算**，不写第三份清单
+      #
+      # 左边从 `src/bridge/Cargo.toml` 的 `[[bin]]` ＋ `tauri.sidecar.conf.json` 的
+      # `externalBin` 现算（那是**唯一住址**，同一份也是判据 ⑭ 读的那两份）；右边从 `.deb`
+      # 现打。手抄一份「应该有这三个」进本文件 = 又一个会漂的副本（本仓最贵那族病）。
+      #
+      # ## 🔴 它同时是「非主 `[[bin]]` 会被打包器自动装」这条机制的**探针**
+      #
+      # `cc-monitor-filewin` 进安装包**不靠本仓任何配置**：`tauri-cli::get_binaries` 把
+      # Cargo.toml 里每一个 `[[bin]]` 都交给打包器（`name == 包名` 的算主二进制、其余
+      # `!bin.main()`），而 nsis / msi / deb 三个打包器都把非主 bin 装到主二进制旁边。
+      # ⇒ 那条机制哪天变了（升级 CLI、上游改行为），**本步会在 deb 上先红**，而它与
+      #   Windows 那两个安装包是**同一个机制** ⇒ 这一格红就是「Windows 那份也别信了」。
+      # ⚠ 反过来**不成立**：本步绿只代表 deb 里有它。Windows 那两份安装包本刀**没买到**
+      #   （没有 Windows 机器、也不跑 NSIS/WiX）—— 如实登记，别读宽。
+      - name: The .deb really ships every binary this package declares
+        run: |
+          set -euo pipefail
+          # ⚠ 恰好一份才判得动（多一份 = 下面 `dpkg-deb -c "$deb"` 会拿到一串路径）。
+          debs=(.build/bridge/release/bundle/deb/*.deb)
+          [ "${#debs[@]}" -eq 1 ] && [ -f "${debs[0]}" ] \
+            || { echo "::error::deb 不是恰好一份（现打 ${#debs[@]}：${debs[*]}）—— 判不了，按红记"; exit 1; }
+          deb="${debs[0]}"
+          # 🔴 两侧的排序必须同口径：`LC_ALL=C sort` = 码点序 = python 的 `sorted()`。
+          #   跟着环境的 locale 走，`diff` 会在「两边其实是同一个集合」时报差异。
+          # ⚠ **刻意写成 `python3 -c` 一行，不用 heredoc**：`run: |` 是 YAML 的块标量，
+          #   heredoc 的正文要顶到第 0 列才收得住终止符，而那**破掉块标量的缩进**
+          #   ⇒ 整份 `release.yml` 解不动（现打栽过一次，`K-R124` 的 ④ 地板当场红）。
+          want="$(python3 -c 'import json,tomllib; bins={b["name"] for b in tomllib.load(open("src/bridge/Cargo.toml","rb"))["bin"]}; ext={p.rsplit("/",1)[-1] for p in json.load(open("src/bridge/tauri.sidecar.conf.json"))["bundle"]["externalBin"]}; print("\n".join(sorted(bins|ext)))')"
+          got="$(dpkg-deb -c "$deb" | awk '{print $NF}' | sed -nE 's#^(\./)?usr/bin/##p' | LC_ALL=C sort)"
+          printf '想要：\n%s\n现打（%s 的 usr/bin/）：\n%s\n' "$want" "$deb" "$got"
+          # 🔴 两向：`diff` 对**两个方向**都出声。少一个 = 安装包里没有它（用户点那个按钮会
+          #   拿到一条响亮的失败，`filewin::proc::resolve_window_bin` 那一形）；
+          #   多一个 = 装了一份没人登记的二进制。
+          diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") \
+            || { echo "::error::安装包的二进制清单与本包声明的对不上（上面 < 是声明了没装、> 是装了没登记）"; exit 1; }
 
       # DN-8（aterm 2026-07-31 请求）：backend 的 **musl 二进制也挂成 Release 资产**。
       # 此前它们只作为 CI artifact 传给 build-windows 内嵌 ⇒ 外部项目（aterm 走自部署）
@@ -667,8 +745,8 @@ jobs:
         with:
           body_path: RELEASE_BODY.md
           files: |
-            src/bridge/target/release/bundle/deb/*.deb
-            src/bridge/target/release/monitor
+            .build/bridge/release/bundle/deb/*.deb
+            .build/bridge/release/monitor
             SHA256SUMS-linux.txt
             backend-artifacts/cc-monitor-backend-x86_64
             backend-artifacts/cc-monitor-backend-aarch64
