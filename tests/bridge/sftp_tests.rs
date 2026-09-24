@@ -1246,30 +1246,40 @@ fn bytes_on_disk_but_read_empty_is_refused() {
     );
 }
 
-/// **结构性守卫**：两处 profile 读-改-写的**初始读取**必须走 fail-safe 读取器。
+/// **结构性守卫**：远端 profile 读-改-写的**初始读取**必须走 fail-safe 读取器。
 ///
-/// 范围**只覆盖「喂给文本变换的那一次读取」**，即函数体开头到
-/// `merge_profile_block`/`strip_profile_block` 之间那一段。
-///
-/// 第一版写成"整个函数体不许出现 `read_optional(sftp, &profile)`"，**当场被自己抓红**：
-/// 同一函数里的**写后读回校验**正当地用它，而且那处用 lossy 也是安全的——写进去的一定是
-/// 合法 UTF-8，传输损坏会变成 U+FFFD → 与期望不符 → Mismatch → 回滚，方向 fail-safe。
-/// 收窄了**两次**才对上，两次都是自己抓自己：
-/// ① 初版扫整个函数体 → 撞上写后读回校验那处正当的 `read_optional(sftp, &profile)`；
-/// ② 收到"变换之前"后仍假红 → `install` 的读取段里还有一处正当的 `read_optional`，
-///    读的是刚部署的 **ccm CLI 脚本**（`CCM_CLI_REMOTE_PATH`），不是 profile。
-/// 所以禁的必须是**读 profile 那一次**的确切形态，不是"任何 `read_optional`"。
-/// 守卫范围必须等于性质范围；本会话第三次栽在同一形状上，故把订正过程留在注释里。
+/// 〔AL1 · 2026-09-24〕**形状变了，性质没变。** 从前两个命令各自在函数体里先读、再变换，
+/// 本条就去截「函数开头到 `merge/strip_profile_block` 之间」那一段；那一段的订正史
+/// （初版扫整个体撞上写后回读 · 收窄后又撞上 CLI 那一次读）说的是同一条：
+/// **禁的必须是「喂给变换的那一次读取」的确切形态**。
+/// 今天那一次读取只有一个住址 —— `SftpFile` 的 `read`（序列 `fenced_block::apply` 先调它、
+/// 把结果交给变换），写后回读也是它（同一份 fail-closed 读取，没有第二条 lossy 的路）。
+/// ⇒ 本条钉三件：`read` 走 `read_profile_text`、不走裸 `read_optional`；
+/// 两个命令都把 profile 交给 `SftpFile` ＋ `fenced_block::apply`（不在函数体里自己读）。
 #[test]
 fn profile_read_modify_write_goes_through_the_failsafe_reader() {
-    fn body<'a>(src: &'a str, sig: &str) -> &'a str {
+    let raw = include_str!("../../src/bridge/src/sftp.rs");
+    let src = guard_core::production_code(raw);
+    let body = |sig: &str| -> String {
         let i = src
             .find(sig)
             .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
-        &src[i..j]
-    }
-    let src = include_str!("../../src/bridge/src/sftp.rs");
+        let j = src[i..]
+            .find("\n    }\n")
+            .map(|k| i + k)
+            .unwrap_or(src.len());
+        src[i..j].to_string()
+    };
+    let read = body("async fn read(&self) -> Result<Option<String>, String> {");
+    assert!(
+        read.contains("read_profile_text(self.sftp, &self.path"),
+        "SftpFile::read 没走 fail-safe 读取器：{read}"
+    );
+    assert!(
+        !read.contains("read_optional("),
+        "SftpFile::read 又直接拿 read_optional 读了——那会把「读不出来」当成空文件，\
+             于是跳过备份 + 整份覆盖 / 谎报无需卸载"
+    );
     let mut checked = 0usize;
     for (sig, transform) in [
         (
@@ -1281,46 +1291,29 @@ fn profile_read_modify_write_goes_through_the_failsafe_reader() {
             "merge_profile_block(",
         ),
     ] {
-        let code = body(src, sig)
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        // 反向自检①：真取到函数体了（不是空串在空转）
-        assert!(code.contains("upload_atomic("), "{sig}: 取到的体里没有上传");
-        let cut = code
-            .find(transform)
-            .unwrap_or_else(|| panic!("{sig}: 找不到 {transform}——守卫失效了"));
-        let before = &code[..cut];
-        // 反向自检②：截出来的前半段非空，且确实是读取段
+        let i = src.find(sig).unwrap_or_else(|| panic!("找不到 {sig}"));
+        let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+        let code = &src[i..j];
         assert!(
-            before.len() > 40 && before.contains("profile"),
-            "{sig}: 截出的读取段不像读取段（{} 字节）",
-            before.len()
+            code.contains(transform),
+            "{sig}: 找不到 {transform}——守卫失效了"
         );
         assert!(
-            before.contains("read_profile_text(sftp, &profile"),
-            "{sig}: 喂给 {transform} 的 profile 读取没走 fail-safe 读取器"
+            code.contains("SftpFile {") && code.contains("crate::fenced_block::apply(&rc"),
+            "{sig}: profile 没交给 SftpFile ＋ fenced_block::apply"
         );
         assert!(
-            !before.contains("read_optional(sftp, &profile)"),
-            "{sig}: 又直接拿 read_optional 读 profile 了——那会把「读不出来」当成空文件，\
-                 于是跳过备份 + 整份覆盖 / 谎报无需卸载"
+            !code.contains("read_optional(") && !code.contains("read_profile_text("),
+            "{sig}: 又在函数体里自己读 profile 了 —— 读取只许有 SftpFile::read 那一个住址"
         );
         checked += 1;
     }
     assert_eq!(checked, 2, "期望恰好两个 profile 命令，实得 {checked}");
 }
 
-/// Phase G：回滚措辞必须与实际发生的事一致（机制不许声称做了它没做的事）。
-#[test]
-fn rollback_note_matches_what_actually_happened() {
-    assert!(rollback_note(false).contains("已尝试回滚"));
-    let n = rollback_note(true);
-    assert!(n.contains("没有可回滚的内容"), "{n}");
-    assert!(!n.contains("已尝试回滚"), "空 existing 时不许说回滚过：{n}");
-    assert!(n.contains("请手动清理"), "要给出恢复路径：{n}");
-}
+// 〔AL1 · 2026-09-24〕`rollback_note_matches_what_actually_happened` 搬走了〔散文墓碑〕
+// —— 措辞的住址从远端独有的那一份换成了本机远端共用的 `fenced_block::undo_note`，
+// 判据跟着住到 `fenced_block_tests.rs::the_undo_note_says_only_what_really_happened`。
 
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
 ///

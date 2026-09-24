@@ -76,12 +76,23 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
              把「全仓谁在读 Claude 的数据布局」钉成相等断言，本文件这一份与那一份\
              逐条对得上（它那张 `LAYOUT_READERS` 里这一道单列一行）。",
     ),
+    // 〔AL1 · 2026-09-24〕从前这里是 `install_remote_ccm_helper` 一行（它自己逐级 `create_dir`）。
+    // 「备份 → 原子写 → 回读 → 回滚」收成 `fenced_block::apply` 一份之后，远端 rc / 入口的
+    // 写盘只剩 `SftpFile` 的两个原语 —— 装/卸两个命令一个裸写原语都不再有。
     (
         "sftp.rs",
-        "install_remote_ccm_helper",
+        "replace",
         "远端",
-        "建 helper 目录（`create_dir`）；真正写文件走 `upload_atomic`。\
-             路径**由代码定**（helper 的固定安装位）。",
+        "`SftpFile` 的原子替换：逐级 `create_dir` 上级目录（相对远端 home，已存在就忽略）\
+             ＋ `upload_atomic`。**路径由代码定**：远端 rc（`.bashrc` 这类，只许 home 下的一个文件名，\
+             `remote_profile_name` 拒 `/`、`\\`、`..`）或入口的固定落点。回滚也走它（把原文写回）。",
+    ),
+    (
+        "sftp.rs",
+        "remove",
+        "远端",
+        "`SftpFile` 的删除：只在「这份文件原本不存在、这一次新建的、写完读回来不对」时删掉刚建的那份。\
+             **路径由代码定**（同上两种落点）。",
     ),
     // ---- sftp_pool.rs：文件面板，路径**由用户选** ⇒ 全部要过 Claude 数据围栏 ----
     (
@@ -632,16 +643,34 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
             "deploy_remote_acct_iso",
             "ensure_dir_all",
         ),
-        ("sftp.rs", "uninstall_remote_ccm_helper", "upload_atomic"),
+        // 〔AL1 · 2026-09-24〕装 / 卸远端 rc 两条命令今天**不直调写原语**：它们造一个 `SftpFile`
+        // 交给 `fenced_block::apply`，写落在 `SftpFile` 的原语上。那一格用「落点类型」表达
+        // （见下面 `STORES`），而不是在中间垫一层函数名 —— 本表仍是一跳。
+        ("sftp.rs", "uninstall_remote_ccm_helper", "SftpFile"),
+        ("sftp.rs", "install_remote_ccm_helper", "SftpFile"),
         // ★〔步 23b · 09-20〕零流量复制。**为了这条边，`sftp_copy` 刻意没抽 `copy_inner`** ——
         // 本表是**一跳**的，中间垫一层，「按钮 ↔ 真实写点」这条边就表达不出来；
         // 理由逐字写在 `sftp_pool.rs::sftp_copy` 的头注上。
         ("sftp_pool.rs", "sftp_copy", "copy_remote_path"),
     ];
+    // 〔AL1〕**落点类型**：一个 `fenced_block::Store` 的远端实现，它的写原语方法全在 `REMOTE_WRITES` 里。
+    // 入口「造了它」＝ 入口把写交给了它（序列 `fenced_block::apply` 不认识任何落点）。
+    const STORES: &[(&str, &[&str])] = &[("SftpFile", &["replace", "remove"])];
+    for (ty, methods) in STORES {
+        for m in *methods {
+            assert!(
+                REMOTE_WRITES
+                    .iter()
+                    .any(|(f, n, ..)| *f == "sftp.rs" && n == m),
+                "落点类型 `{ty}` 的写原语 `{m}` 不在 `REMOTE_WRITES` 里 —— 这条边指向账外"
+            );
+        }
+    }
     for (file, entry, target) in ROUTES {
-        // 转发目标必须是本表登记过的写点 —— 否则这条边指向账外。
+        // 转发目标必须是本表登记过的写点（或登记过的落点类型）—— 否则这条边指向账外。
         assert!(
-            REMOTE_WRITES.iter().any(|(_, n, ..)| n == target),
+            REMOTE_WRITES.iter().any(|(_, n, ..)| n == target)
+                || STORES.iter().any(|(t, _)| t == target),
             "路由表说 `{entry}` 转发到 `{target}`，可 `{target}` 不在 `REMOTE_WRITES` 里 —— \
                  那这条边指向账外，等于没连"
         );

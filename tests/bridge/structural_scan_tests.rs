@@ -2544,11 +2544,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_per_second_identity_poller_spawns_nothing_per_tick",
             1,
         ),
-        (
-            "src/bridge/src/profile_installer.rs",
-            "repro_local_eats_user_content_on_damaged_fence",
-            1,
-        ),
+        // 〔AL1 · 2026-09-24〕-1：`profile_installer.rs` 里点这个名字的那段话随
+        //    `find_block_range` 一起走了（拼接收成 `fenced_block::splice_in/out` 一份）。
         (
             // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/bridge/rust_timer_registry_tests.rs",
@@ -2771,6 +2768,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/bridge/polling_registry_tests.rs",
             "ccm_fails_loudly_when_no_backend_can_be_found",
+            1,
+        ),
+        // 🔴 〔AL1 · 2026-09-24〕`设计/71 §12.5` 那一拍：「备份 → 写 → 回读 → 回滚」收成
+        //    `fenced_block::apply` 一份，拼接收成 `fenced_block::splice_in/out` 一份 ⇒
+        //    本机那份配对 helper 与远端那份回滚措辞 helper 连同它的判据一起走了。
+        //    散文留着说「它们为什么不在了」（措辞的新住址 `fenced_block::undo_note`）。
+        //    ⚠ `sftp.rs` 那块墓碑点的 `rollback_note` 不进本表：死名普查不把它算作死名
+        //    （它是 `…_matches_what_actually_happened` 的前缀），标记只记在 `REGISTERED` 里。
+        ("src/bridge/src/fenced_block.rs", "find_block_range", 1),
+        (
+            "tests/bridge/sftp_tests.rs",
+            "rollback_note_matches_what_actually_happened",
             1,
         ),
         (
@@ -3408,6 +3417,9 @@ fn every_prose_tombstone_mark_is_registered() {
         //   正文、也写了那四个字，**却没把标记挂上** ⇒ 本条当场红在「挂歪了」那一格。
         //   那是这条判据落地后第一次真逮到东西，而逮到的是**同一波另一路**的产出。
         ("src/backend/lib.rs", 1),
+        // 〔AL1 · 2026-09-24〕规则收成一份那一拍新贴的两块墓碑（本机配对 helper · 远端回滚措辞 helper）。
+        ("src/bridge/src/fenced_block.rs", 1),
+        ("src/bridge/src/sftp.rs", 1),
         ("src/backend/wire.rs", 1),
         ("src/bridge/README.md", 1),
         ("src/bridge/build.rs", 1),
@@ -3469,7 +3481,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/parity_ledger_tests.rs", 5),
         ("tests/bridge/plugin_class_registry_tests.rs", 2),
         ("tests/bridge/polling_registry_tests.rs", 1),
-        ("tests/bridge/sftp_tests.rs", 3),
+        // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
+        ("tests/bridge/sftp_tests.rs", 4),
         ("tests/bridge/shared_crate_registry_tests.rs", 1),
         ("tests/bridge/structural_scan_tests.rs", 1),
         ("tests/bridge/subagent_tests.rs", 1),

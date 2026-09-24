@@ -458,21 +458,10 @@ pub(crate) fn interpret_profile_read(
     })
 }
 
-/// **回滚措辞必须与实际发生的事一致**（Phase G 审阅修复）：install 的两个失败分支都写
-/// `if !existing.is_empty() { 回滚 }`，但错误文案是无条件的「已尝试回滚原文件」——
-/// `existing` 为空（首次安装 / 原文件是空文件）时那个 `if` 一条也不执行，用户却被告知
-/// 回滚过了，而一份校验不通过的 profile 正留在远端等着下次开终端时执行。
-/// 这与两条阻塞是同一类病：**机制声称做了它没做的事**。
-///
-/// 本函数只负责措辞。真正的"首次安装失败就删掉新建的文件"是行为新增（要在远端 `remove`），
-/// 已登记为未收项，不在验收轮里做。
-pub(crate) fn rollback_note(existing_was_empty: bool) -> &'static str {
-    if existing_was_empty {
-        "原文件此前不存在或为空，没有可回滚的内容；刚写入的内容仍在远端，请手动清理后重试。"
-    } else {
-        "已尝试回滚原文件。"
-    }
-}
+// 〔AL1 · 2026-09-24〕这里原来是 `rollback_note`〔散文墓碑〕（「回滚措辞必须与实际发生的事一致」）。
+// 它记的那条未收项 ——「首次安装失败就删掉新建的文件是行为新增（要在远端 `remove`），不在验收轮里做」——
+// 在 `fenced_block::apply` 里收了：原本不存在的文件写坏了就 `Store::remove`，措辞由
+// `fenced_block::undo_note` 按**真发生了的事**说，本机远端同一份。
 
 /// [`interpret_profile_read`] 的异步取样：read 成功就直接判，**只在需要时**才补问
 /// `try_exists`（区分"真不存在"与"读不出来"）/ `metadata`（区分"真空文件"与"有字节读到空"），
@@ -1190,32 +1179,20 @@ pub fn merge_profile_block(existing: &str, snippet: &str, what: &str) -> Result<
     // 原实现是自己 `find(BEGIN)` 再在其后 `find(END)`——
     // 但本机侧漏了同一道保护，于是两侧对"围栏损坏"处置不一致、本机那边会**吃掉用户内容**。
     // 现在两侧同一个函数，判定不可能再漂移。
+    // 〔AL1 · 2026-09-24〕配对之后怎么拼，**也只剩一份**：`fenced_block::splice_in`（`71 §12.5`）。
+    //   本函数只答「POSIX rc 里这一块长什么样」（方言的内容与围栏），不再自己切行拼接。
     let block = format!(
         "{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n",
         snippet.trim()
     );
-    match crate::fenced_block::find_pair(existing, CCM_PROFILE_BEGIN, CCM_PROFILE_END, what)? {
-        Some((begin_line, end_line)) => {
-            // 行下标 → 字节切片：`split_inclusive('\n')` 与 `.lines()` 索引一致
-            let lines: Vec<&str> = existing.split_inclusive('\n').collect();
-            let before: String = lines[..begin_line].concat();
-            let after: String = if end_line + 1 < lines.len() {
-                lines[(end_line + 1)..].concat()
-            } else {
-                String::new()
-            };
-            Ok(format!("{before}{block}{after}"))
-        }
-        None => {
-            // 无块 → 追加（原内容不以换行结尾则补一个，保证块独占起行）。
-            let mut out = existing.to_string();
-            if !out.is_empty() && !out.ends_with('\n') {
-                out.push('\n');
-            }
-            out.push_str(&block);
-            Ok(out)
-        }
-    }
+    crate::fenced_block::splice_in(
+        existing,
+        CCM_PROFILE_BEGIN,
+        CCM_PROFILE_END,
+        &block,
+        what,
+        crate::fenced_block::Layout::Posix,
+    )
 }
 
 /// 纯函数：从 profile 内容删掉 cc-monitor 的 BEGIN/END 块（可单测）。
@@ -1231,100 +1208,129 @@ pub fn strip_profile_block(existing: &str, what: &str) -> Result<String, String>
     // `af21ffb` 之后本机 Err、远端静默 no-op（不一致）。我 commit 里那句
     // 「两侧不可能再漂移」**只对 install 半边成立，对 uninstall 半边方向相反**。
     // 现在两侧的装与卸四条路全走 `find_pair`。
-    let Some((begin_line, end_line)) =
-        crate::fenced_block::find_pair(existing, CCM_PROFILE_BEGIN, CCM_PROFILE_END, what)?
-    else {
-        return Ok(existing.to_string());
-    };
-    let lines: Vec<&str> = existing.split_inclusive('\n').collect();
-    let before: String = lines[..begin_line].concat();
-    let after: String = if end_line + 1 < lines.len() {
-        lines[(end_line + 1)..].concat()
-    } else {
-        String::new()
-    };
-    Ok(format!("{before}{after}"))
+    // 〔AL1〕拼接走 `fenced_block::splice_out`（与装那一半同一份，`71 §12.5`）。
+    crate::fenced_block::splice_out(
+        existing,
+        CCM_PROFILE_BEGIN,
+        CCM_PROFILE_END,
+        what,
+        crate::fenced_block::Layout::Posix,
+    )
+}
+
+/// 〔AL1 · 2026-09-24〕远端那一份原语（`fenced_block::Store`）。**规则不住这里** ——
+/// 「读 → 备份 → 原子替换 → 回读比对 → 回滚」那一个序列是 `fenced_block::apply`，
+/// 本机那一份原语是 `fenced_block::LocalFile`。这里只回答「这台远端上怎么做这四件事」。
+///
+/// 路径是 SFTP 会话起点（远端 home）下的相对路径。读走 [`read_profile_text`]（fail-closed：
+/// 读不出 / 非 UTF-8 / 有字节却读到空 一律 `Err`，理由在 [`interpret_profile_read`] 头注）。
+pub(crate) struct SftpFile<'a> {
+    pub sftp: &'a SftpSession,
+    pub path: String,
+    /// 新写入时的权限位（rc 是 `0o644`，可执行的入口是 `0o755`）。
+    pub mode: u32,
+    /// 给人看的名字（报错用），如「远端 ~/.bashrc」。
+    pub what: String,
+}
+
+impl crate::fenced_block::Store for SftpFile<'_> {
+    fn label(&self) -> String {
+        self.what.clone()
+    }
+
+    async fn read(&self) -> Result<Option<String>, String> {
+        read_profile_text(self.sftp, &self.path, &self.what).await
+    }
+
+    async fn backup(&self, original: &str) -> Result<String, String> {
+        let ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let backup = format!("{}.ccm-backup-{ms}", self.path);
+        upload_atomic(self.sftp, &backup, original.as_bytes(), 0o600).await?;
+        Ok(backup)
+    }
+
+    async fn replace(&self, content: &str) -> Result<(), String> {
+        // 上级目录逐级建（相对 home）。已存在时 `create_dir` 会失败 —— 容忍，
+        // 真正的失败由下面那一次上传报出来。
+        let comps: Vec<&str> = self.path.split('/').filter(|c| !c.is_empty()).collect();
+        let mut cur = String::new();
+        for comp in comps.iter().take(comps.len().saturating_sub(1)) {
+            if !cur.is_empty() {
+                cur.push('/');
+            }
+            cur.push_str(comp);
+            let _ = self.sftp.create_dir(cur.clone()).await;
+        }
+        upload_atomic(self.sftp, &self.path, content.as_bytes(), self.mode).await
+    }
+
+    async fn remove(&self) -> Result<(), String> {
+        self.sftp
+            .remove_file(self.path.clone())
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// `profile` 只许是远端 home 下的一个文件名。空 ⇒ `.bashrc`。
+fn remote_profile_name(profile: &str) -> Result<String, String> {
+    let p = profile.trim();
+    let p = if p.is_empty() { ".bashrc" } else { p };
+    if p.contains('/') || p.contains('\\') || p.contains("..") {
+        return Err("profile 只能是 home 下的文件名（如 .bashrc / .zshrc）".to_string());
+    }
+    Ok(p.to_string())
 }
 
 /// 卸载远端 ccm 助手（设置面板「卸载 ccm」按钮）：从 profile 删 BEGIN/END 块。
-/// 镜像 [`install_remote_ccm_helper`]：read → `strip_profile_block` → 无变化 no-op；否则
-/// **先备份**（timestamped `.ccm-backup-<ms>`）→ 写 → **读回精确比对**，不符则回滚。
+/// 序列走 `fenced_block::apply`（与本机同一份）：没有块 ⇒ 一个字节都不写；否则
+/// **先备份**（`.ccm-backup-<ms>`）→ 写 → **读回逐字比对**，不符则回滚。
 #[tauri::command]
 pub async fn uninstall_remote_ccm_helper(
     cfg: RemoteConfig,
     profile: String,
 ) -> Result<String, String> {
-    let profile = {
-        let p = profile.trim();
-        if p.is_empty() {
-            ".bashrc".to_string()
-        } else {
-            p.to_string()
-        }
-    };
-    if profile.contains('/') || profile.contains('\\') || profile.contains("..") {
-        return Err("profile 只能是 home 下的文件名（如 .bashrc / .zshrc）".to_string());
-    }
-
+    let profile = remote_profile_name(&profile)?;
     let conn = connect_sftp(&cfg).await?;
-    let sftp = &conn.sftp;
-
     let what = format!("远端 ~/{profile}");
-    // fail-safe 读取（见 `interpret_profile_read`）：读不出来 → `?` 中止，**不再**回
-    // 「没有 ccm 块，无需卸载」。
-    let Some(existing) = read_profile_text(sftp, &profile, &what).await? else {
-        return Ok(format!("远端 {profile} 不存在，没有 ccm 块可卸载。"));
+    let rc = SftpFile {
+        sftp: &conn.sftp,
+        path: profile.clone(),
+        mode: 0o644,
+        what: what.clone(),
     };
-    let stripped = strip_profile_block(&existing, &what)?;
-    if stripped == existing {
-        return Ok(format!("远端 {profile} 里没有 ccm 块，无需卸载。"));
-    }
-
-    let ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let backup = format!("{profile}.ccm-backup-{ms}");
-    upload_atomic(sftp, &backup, existing.as_bytes(), 0o600)
-        .await
-        .map_err(|e| format!("备份远端 {profile} 失败（未改动原文件）: {e}"))?;
-
-    upload_atomic(sftp, &profile, stripped.as_bytes(), 0o644)
-        .await
-        .map_err(|e| format!("写远端 {profile} 失败: {e}"))?;
-
-    // T01：判定走统一的 `verify_readback`（与本机侧同一套语义与措辞）。
-    // **「读不回来」与「内容不符」要分开报**：原先 `unwrap_or_default()` 把读失败变成空串，
-    // 于是 SSH 抖一下会被报成"内容与期望不符"，把用户往错误方向引。
-    let verify = read_optional(sftp, &profile)
-        .await
-        .map(|b| String::from_utf8_lossy(&b).into_owned());
-    let Some(verify) = verify else {
-        let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
-        return Err(format!(
-            "写后读不回 {profile}（无法确认写对了），已尝试回滚原文件。"
-        ));
+    let mut missing = false;
+    let applied = crate::fenced_block::apply(&rc, true, |existing| match existing {
+        None => {
+            missing = true;
+            Ok(None)
+        }
+        Some(t) => strip_profile_block(t, &what).map(Some),
+    })
+    .await?;
+    let crate::fenced_block::Applied::Written { backup, .. } = applied else {
+        return Ok(if missing {
+            format!("远端 {profile} 不存在，没有 ccm 块可卸载。")
+        } else {
+            format!("远端 {profile} 里没有 ccm 块，无需卸载。")
+        });
     };
-    if let crate::verified_write::WriteVerdict::Mismatch { detail } =
-        crate::verified_write::verify_readback(&stripped, &verify)
-    {
-        let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
-        return Err(format!("写后校验失败：{detail} 已尝试回滚原文件。"));
-    }
-
     tracing::info!("远端 [{}] 已卸载 ccm 助手（{profile}）", cfg.origin_label());
-    Ok(format!(
-        "已从远端 {profile} 删除 ccm 块（原文件已备份为 {backup}）。"
-    ))
+    Ok(match backup {
+        Some(b) => format!("已从远端 {profile} 删除 ccm 块（原文件已备份为 {b}）。"),
+        None => format!("已从远端 {profile} 删除 ccm 块。"),
+    })
 }
 
 /// 一键把 `ccm` wrapper 装进远端 bash profile（F10，SS-H）。
 ///
 /// `profile` 默认 `.bashrc`（SFTP 相对路径解析到 home；拒 `/`、`\`、`..` 防写 home 外）。
 /// 写入的 snippet 是**后端拥有**的 [`CCM_WRAPPER_SNIPPET`]（审计 S-1：不接受前端传入可执行
-/// bash）。安全范式镜像本地 `profile_installer`：read → `merge_profile_block`（损坏块 → Err
-/// 中止，绝不吞内容）→ 相同则 no-op；否则**先备份**（timestamped `.ccm-backup-<ms>`）→ 写 →
-/// **读回精确比对**（== merged，比仅查 BEGIN 强，兼防传输损坏）→ 失败**回滚**原文件。
+/// bash）。两次写都走 `fenced_block::apply`（与本机同一个序列）：相同则不写；否则
+/// 备份（rc 才备份）→ 原子写 → 读回逐字比对 → 不符回滚。
 ///
 /// 注：profile 统一写 `0o644`（.bashrc 惯例）；若用户原本 `chmod 600`，重装会归一到 644。
 #[tauri::command]
@@ -1332,134 +1338,48 @@ pub async fn install_remote_ccm_helper(
     cfg: RemoteConfig,
     profile: String,
 ) -> Result<String, String> {
-    let profile = {
-        let p = profile.trim();
-        if p.is_empty() {
-            ".bashrc".to_string()
-        } else {
-            p.to_string()
-        }
-    };
-    if profile.contains('/') || profile.contains('\\') || profile.contains("..") {
-        return Err("profile 只能是 home 下的文件名（如 .bashrc / .zshrc）".to_string());
-    }
-
+    let profile = remote_profile_name(&profile)?;
     let conn = connect_sftp(&cfg).await?;
     let sftp = &conn.sftp;
 
-    // ① 先部署 CLI 本体（0755 可执行文件）。**先于写 profile**——别名块引用 `ccm`，
+    // ① 先部署入口（0755 可执行文件）。**先于写 profile**——别名块引用 `ccm`，
     //    若先写块再部署失败，用户会拿到一堆指向不存在命令的别名。
-    //    逐级建目录（相对 home；`ensure_dir_all` 走绝对路径，这里用相对，故手动逐级）。
-    //    已存在时 create_dir 失败——容忍，真正的失败由下面的 upload 报出来。
-    {
-        let mut cur = String::new();
-        for comp in CCM_CLI_REMOTE_PATH
-            .split('/')
-            .filter(|c| !c.is_empty())
-            .take(
-                CCM_CLI_REMOTE_PATH
-                    .split('/')
-                    .filter(|c| !c.is_empty())
-                    .count()
-                    - 1,
-            )
-        {
-            if !cur.is_empty() {
-                cur.push('/');
-            }
-            cur.push_str(comp);
-            let _ = sftp.create_dir(cur.clone()).await;
-        }
-    }
     // 🔴 `K-R48` 第二拍：推的不再是那个 1592 行的 bash 启动器，是 [`ccm_entry_shim`]
     //    —— 三行、零实现，只把 argv 转给**已经部署好的后端**（`ensure_backend_deployed`
     //    把它推到 `cfg.backend_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-backend`）。
-    // ⚠ **入口与后端本体的部署是两条路，这里刻意不合并**：本函数是「装 shell 便捷层」，
-    //   后端本体由连接流程自己保证；合并就等于在这条路上再造一次部署逻辑（第二处实现）。
+    // 〔AL1〕它从前写完只比对、**不回滚**（坏的入口会留在远端）；走同一个序列之后，
+    //    比对不上就恢复成原来那份（原来没有就删掉）。
     let shim = ccm_entry_shim(&cfg.backend_path);
-    upload_atomic(sftp, CCM_CLI_REMOTE_PATH, shim.as_bytes(), 0o755)
-        .await
-        .map_err(|e| format!("部署 ccm 入口到远端 ~/{CCM_CLI_REMOTE_PATH} 失败: {e}"))?;
-    // 读回精确比对（兼防传输损坏）——CLI 是可执行文件，写坏比 profile 写坏更危险。
-    let cli_back = read_optional(sftp, CCM_CLI_REMOTE_PATH)
-        .await
-        .map(|b| String::from_utf8_lossy(&b).into_owned());
-    let Some(cli_back) = cli_back else {
-        return Err(format!(
-            "写后读不回 ~/{CCM_CLI_REMOTE_PATH}（无法确认写对了）。未改动 {profile}。"
-        ));
+    let entry = SftpFile {
+        sftp,
+        path: CCM_CLI_REMOTE_PATH.to_string(),
+        mode: 0o755,
+        what: format!("远端 ~/{CCM_CLI_REMOTE_PATH}"),
     };
-    // **登记未改**（T01 §5 P5）：这一处**不回滚**，而另两处回滚。原因是部署前没有取旧 CLI 的
-    // 备份，想回滚得先多一次读往返。留着不动是因为：加备份是这条部署路径上的行为变更，
-    // 而它被 12 条 print-parity + 15 条 acceptance 真机断言盯着，风险/收益不划算。
-    // 但要如实说清后果——见下方错误措辞：**损坏的 CLI 会留在远端**。
-    if let crate::verified_write::WriteVerdict::Mismatch { detail } =
-        crate::verified_write::verify_readback(&shim, &cli_back)
-    {
-        return Err(format!(
-            "ccm 入口写后校验失败：{detail} 未改动 {profile}；\
-             但 ~/{CCM_CLI_REMOTE_PATH} 已被写入且内容不对，请手动删除或重新部署。"
-        ));
-    }
+    crate::fenced_block::apply(&entry, false, |_| Ok(Some(shim)))
+        .await
+        .map_err(|e| format!("{e} 没动 {profile}。"))?;
 
-    // ② 再把别名块合进 profile。
+    // ② 再把别名块合进 profile（损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件）。
     let what = format!("远端 ~/{profile}");
-    // fail-safe 读取（见 `interpret_profile_read`）：读不出来 → `?` 中止。**这一处最要紧**——
-    // 原先读失败会变成 `existing = ""`，于是下方 `if !existing.is_empty()` 跳过备份、
-    // `merged`（= 只有 ccm 块）整份覆盖用户 `.bashrc`，无任何可恢复副本。
-    let existing = read_profile_text(sftp, &profile, &what)
-        .await?
-        .unwrap_or_default();
-    // 损坏块（BEGIN 无 END）→ merge 返回 Err，直接中止，不动原文件。
-    let merged = merge_profile_block(&existing, CCM_WRAPPER_SNIPPET, &what)?;
-    if merged == existing {
+    let rc = SftpFile {
+        sftp,
+        path: profile.clone(),
+        mode: 0o644,
+        what: what.clone(),
+    };
+    let applied = crate::fenced_block::apply(&rc, true, |existing| {
+        merge_profile_block(existing.unwrap_or(""), CCM_WRAPPER_SNIPPET, &what).map(Some)
+    })
+    .await?;
+    let crate::fenced_block::Applied::Written { backup, .. } = applied else {
         return Ok(format!(
             "ccm CLI 已部署到远端 ~/{CCM_CLI_REMOTE_PATH}；{profile} 的别名块已是最新，无需改动。"
         ));
-    }
-
-    // 备份原文件（非空才备份），失败则不动原文件直接返回。
-    let mut backup_note = String::new();
-    if !existing.is_empty() {
-        let ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        let backup = format!("{profile}.ccm-backup-{ms}");
-        upload_atomic(sftp, &backup, existing.as_bytes(), 0o600)
-            .await
-            .map_err(|e| format!("备份远端 {profile} 失败（未改动原文件）: {e}"))?;
-        backup_note = format!("（原文件已备份为 {backup}）");
-    }
-
-    upload_atomic(sftp, &profile, merged.as_bytes(), 0o644)
-        .await
-        .map_err(|e| format!("写远端 {profile} 失败: {e}"))?;
-
-    // 读回比对：不等于期望内容（写坏 / 传输损坏）→ 回滚原文件。判定同上走 `verify_readback`。
-    let verify = read_optional(sftp, &profile)
-        .await
-        .map(|b| String::from_utf8_lossy(&b).into_owned());
-    let Some(verify) = verify else {
-        if !existing.is_empty() {
-            let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
-        }
-        return Err(format!(
-            "写后读不回 {profile}（无法确认写对了）。{}",
-            rollback_note(existing.is_empty())
-        ));
     };
-    if let crate::verified_write::WriteVerdict::Mismatch { detail } =
-        crate::verified_write::verify_readback(&merged, &verify)
-    {
-        if !existing.is_empty() {
-            let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
-        }
-        return Err(format!(
-            "写后校验失败：{detail} {}",
-            rollback_note(existing.is_empty())
-        ));
-    }
+    let backup_note = backup
+        .map(|b| format!("（原文件已备份为 {b}）"))
+        .unwrap_or_default();
 
     tracing::info!(
         "远端 [{}] 已装 ccm CLI + 别名块到 {profile}",
