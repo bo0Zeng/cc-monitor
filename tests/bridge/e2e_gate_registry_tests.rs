@@ -3,6 +3,20 @@
 /// 默认拒绝：不在这里、又没有地板行、又没被直接跑的套，正题判据会点名。
 const EXEMPT: &[(&str, &str)] = &[
     (
+        "backend-rbind-token",
+        "〔第二波 T4 09-24〕**进的是本机门禁 `tests/scripts/gate.sh`**（`run_e2e backend-rbind-token 11`，\
+             `assert-pass-floor.sh … exact`，与 `ccm-*` 四套同形），不是没进门禁。\
+             它不在 `ci.yml` 的计数地板里，是因为那一行是 `设计/80 §8.7` 步 2 落地时\
+             **报备待拍板**的另一件事（`ci.yml` 那段注释逐字「也没有加 `assert-pass-floor` 那一行 …… 待拍板」）；\
+             本条登记的是「这件事有人在管、管在哪」，不是替它拍板。拍了加进 `ci.yml` 的那一拍，本行删掉",
+    ),
+    (
+        "rbind-token-endtoend",
+        "〔第二波 T4 09-24〕同上一条：**进的是本机门禁 `tests/scripts/gate.sh`**\
+             （`run_e2e rbind-token-endtoend 9`，exact）。`ci.yml` 计数地板那一行是 `§8.7` 步 3 落地时\
+             报备待拍板的（`ci.yml` 同段注释逐字）。拍了加进 `ci.yml` 的那一拍，本行删掉",
+    ),
+    (
         "graylight",
         "全链级：断言源是 Xvfb 上**正在跑的 dev app**（`npx tauri dev`）写的 monitor 日志，\
              无头 CI 里没有那个 app；论证写在 `tests/e2e/README.md`「`graylight-suite`（全链级）不在上表那些套件里」",
@@ -210,6 +224,48 @@ fn every_exemption_still_points_at_a_real_ungated_suite() {
                  「暂时没接」这种可克服的话不算理由。"
         );
     }
+}
+
+/// 〔第二波 T4 09-24〕**自称「进的是本机门禁」的豁免，本机门禁里真得跑它** —— 两向集合相等。
+///
+/// 左 = `EXEMPT` 里理由写着 `本机门禁 \`tests/scripts/gate.sh\`` 的那几套；
+/// 右 = `tests/scripts/gate.sh` 里**行首** `run_e2e <套名> <数>` 的套名，减去 `ci.yml` 已有地板行的那几套。
+/// 两侧**异源**：左边是本文件的登记，右边是门禁脚本的现物。
+///
+/// 它逮两形：① 有人把 `gate.sh` 那一行删了/改了名，豁免还挂着「进了本机门禁」⇒ 左多右少；
+/// ② 有人往 `gate.sh` 里挂了一套 `ci.yml` 没地板的新 e2e，本文件没登记 ⇒ 右多左少
+/// （那一形正题判据 `every_e2e_suite_is_either_gated_or_registered_as_exempt` 也会红，
+/// 但它说的是「没进任何门禁」，而事实是「进了本机门禁、没说」）。
+/// ⚠ 反空真：右边读不到 `gate.sh` ⇒ 右空、左 2 ⇒ 当场分叉；左边的两条是手写的，不从右边派生。
+#[test]
+fn an_exemption_that_claims_the_local_gate_is_really_run_there() {
+    let gate = std::fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
+        .expect("读不到 tests/scripts/gate.sh");
+    let floored = floored();
+    let mut right: Vec<String> = gate
+        .lines()
+        .filter_map(|l| l.strip_prefix("run_e2e "))
+        .filter_map(|rest| {
+            let mut it = rest.split_whitespace();
+            match (it.next(), it.next()) {
+                (Some(n), Some(k)) if k.chars().all(|c| c.is_ascii_digit()) => Some(n.to_string()),
+                _ => None,
+            }
+        })
+        .filter(|n| !floored.contains(n))
+        .collect();
+    right.sort();
+    let mut left: Vec<String> = EXEMPT
+        .iter()
+        .filter(|(_, why)| why.contains("本机门禁 `tests/scripts/gate.sh`"))
+        .map(|(n, _)| n.to_string())
+        .collect();
+    left.sort();
+    assert_eq!(
+        left, right,
+        "「自称进了本机门禁的豁免」与「`gate.sh` 真在跑、`ci.yml` 没地板的套」对不上。\n\
+             左（本文件登记）：{left:?}\n右（`gate.sh` 现物）：{right:?}"
+    );
 }
 
 /// `P0b`：全链台架的「没有孤儿后端」那一格，**人群要覆盖两族**。
