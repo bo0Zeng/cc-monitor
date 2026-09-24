@@ -1696,3 +1696,109 @@ fn the_shared_stripper_keeps_the_relay_seam_this_guard_must_scan() {
         &["fn launch_identity_env_prefix("],
     );
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔴 `设计/80 §8.7` 步 3：**启动期令牌那个变量名的双写点** —— 写侧 × 读侧焊死
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// # 步 2 那一路点名留下的那条判据，就是这一条
+//
+// 读侧（`src/backend/control/identity_tag.rs::RBIND_TOKEN_ENV`）的头注逐字留话：
+//
+// > ⚠ 双写点的失效方向**极其安静**：两侧漂开 ⇒ 读侧恒 `None` ⇒ 而 `None` 在本查询里
+// > 是**合法值**（「这条会话没有令牌」）⇒ **不会有任何东西报错**，↗ 只是永远降级。
+// > 那正是 `K-P5f` 在 `CCM_LAUNCH_ID` 上栽过的同一个坑。
+// > ⇒ 载荷侧落地之后**要补一条同型的双写点判据**（本刀买不到：那侧还在另一棵树上）。
+//
+// 载荷侧现在落地了（步 1 的渲染器 ＋ 步 3 的铸币口），所以这一条补在这里。
+//
+// # 🔴 怎么避开「两侧同源恒真」（本波栽过一次的那一形）
+//
+// 步 2 那一路的夹具用**同一个常量**去注、又用它去读 ⇒ 第一次只红 2/3。
+// 本条的两侧刻意**不同源**：
+//
+// | 侧 | 这一条从哪儿拿 | 它是什么 |
+// |---|---|---|
+// | **读侧** | `include_str!` 后端那份源码，`sed` 式抠 `RBIND_TOKEN_ENV` 那一行 | **解析出来的**，跟着那个文件动 |
+// | **写侧** | 跑一遍**生产渲染器** `render_payload`，看它真的吐出什么字节 | **真产物**，跟着渲染器动 |
+//
+// 再加一条**手写字面量**的锚（`assert_eq!(env_name, "CCM_RBIND_TOKEN")`）——
+// 它挡的是「抠取器坏了、抠出个空串、于是 `contains("export =")` 恒真」那一形。
+// ⇒ 改**任一侧**都会红，而且红的地方指得准。
+
+/// 从后端那份源码里把 `RBIND_TOKEN_ENV` 的值抠出来。抠不到就当场 panic ——
+/// 「抠不到」与「两侧一致」在终端上一模一样，这一刀把它们分开。
+fn rbind_env_name_on_the_read_side() -> String {
+    const READER: &str = include_str!("../../../../src/backend/control/identity_tag.rs");
+    // 反向自检：真读到了那个文件，而且它确实是读侧所在的那个文件。
+    assert!(
+        READER.len() > 4000,
+        "没读到后端的 identity_tag.rs（只有 {} 字节）",
+        READER.len()
+    );
+    assert!(
+        READER.contains("pub(crate) fn rbind_token_of("),
+        "后端侧的令牌读函数不在预期文件里 —— 双写点锚点已失效，本条此刻无效"
+    );
+    let line = READER
+        .lines()
+        .find(|l| l.trim_start().starts_with("const RBIND_TOKEN_ENV: &str ="))
+        .expect("抠不到 `const RBIND_TOKEN_ENV: &str = …` 那一行（写法变了？）");
+    let v = line
+        .split_once('"')
+        .and_then(|(_, r)| r.split_once('"'))
+        .map(|(v, _)| v.to_string())
+        .expect("那一行里没有带引号的字面量");
+    assert!(!v.is_empty(), "抠出来是空串 —— 抠取器坏了，本条此刻在空转");
+    v
+}
+
+/// 🔴 ★ **载荷侧真的 export 的那个变量名，就是后端真的去读的那一个。**
+///
+/// ⚠ 本条**不是**「两个常量相等」那种判据 —— 写侧那一头是**生产渲染器的真产物**，
+/// 所以下面这些变异它都逮得住：把 `write!` 里的键名敲错一个字母 ·
+/// 把 `export ` 前缀丢掉 · 把那一格整个短路掉（渲成空串）。
+#[test]
+fn the_launch_token_env_var_has_the_same_name_on_both_halves() {
+    let env_name = rbind_env_name_on_the_read_side();
+    // ① 手写字面量锚：抠取器活着、而且抠到的是我们说的那个名字。
+    //    （少了这一条，抠出个意外的值也会让下面那句 `contains` 恒真。）
+    assert_eq!(
+        env_name, "CCM_RBIND_TOKEN",
+        "后端读的变量名变了 —— 载荷侧（本文件所在的那一族）必须**同拍**跟着改"
+    );
+
+    // ② 写侧：跑**生产渲染器**，看它真的吐出什么字节。
+    const TOK: &str = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
+    let rendered = render_payload(&PayloadSpec {
+        env: &[EnvOp::ExportRbindToken { value: TOK }],
+        cwd: None,
+        launcher: "claude",
+        args: &[],
+        wrap: &[],
+    })
+    .expect("生产渲染器拒了一个形状合法的令牌 —— 那本身是个 bug");
+
+    // ③ 焊接：读侧抠出来的那个名字，必须真的出现在写侧的产物里。
+    assert!(
+        rendered.contains(&format!("export {env_name}=")),
+        "载荷里 export 的变量名与后端读的那个不一致。\n\
+         后端读（现抠自 identity_tag.rs）：{env_name}\n\
+         载荷渲染器真的吐出来的：{rendered}\n\
+         🔴 这一漂的失效方向**极安静**：读侧恒 `None`，而 `None` 是合法值\
+         （「这条会话没有令牌」）⇒ 没有任何东西会报错，↗ 只是永远降级回标题路。"
+    );
+    // ④ 值也真的在里面（只验名字的话，「渲出 `export CCM_RBIND_TOKEN=''`」也会绿）。
+    assert!(
+        rendered.contains(&format!("export {env_name}='{TOK}'; ")),
+        "变量名对了但值不对：{rendered}"
+    );
+
+    // ⑤ 反向自检 —— 本条**有牙**：把读侧那个名字改掉一个字节，上面那句必须挂。
+    //    （这一段跑的是同一条断言逻辑，只是喂一个故意错的名字。）
+    let wrong = format!("{env_name}X");
+    assert!(
+        !rendered.contains(&format!("export {wrong}=")),
+        "喂一个错名字居然也命中了 —— `contains` 这把尺子在这里量不出东西"
+    );
+}

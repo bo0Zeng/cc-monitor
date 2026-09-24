@@ -654,7 +654,16 @@ jobs:
           # 今天实测构成（逐组现打，不倒推）：
           # **78 = tests/e2e/*.sh 31 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
           #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + tests/hooks/* 2**。
-          [ "$N" -ge 78 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 78）"; exit 1; }
+          # **2026-09-24 `设计/80 §8.7` 步 3 棘到 79** —— 新增 `tests/e2e/rbind-token-endtoend.sh`：
+          # 生产载荷字节（取自 `payload-golden.json`）在真 bash 里跑 → 真后端从进程环境读回令牌 → wire。
+          # ★ 同步 2 那一拍同形：**不是地板落后**，是同一拍加文件、同一拍棘，`shell_lint_registry`
+          #   那条**恒等**判据当场红并直接给出「该写几」。
+          # ⚠ 本拍**只动了这一个数**：那套 e2e 与步 2 那套一样**没有**登记成 `package.json` 的 `test:*`、
+          #   也没有加 `assert-pass-floor` 那一行 —— 两条都是计数地板，**待拍板**，已报备。
+          # 今天实测构成（逐组现打，不倒推）：
+          # **79 = tests/e2e/*.sh 32 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
+          #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + tests/hooks/* 2**。
+          [ "$N" -ge 79 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 79）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 

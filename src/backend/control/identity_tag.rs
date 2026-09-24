@@ -218,7 +218,8 @@ const TMUX_PANE_ENV: &str = "TMUX_PANE";
 /// 是**合法值**（「这条会话没有令牌」）⇒ **不会有任何东西报错**，↗ 只是永远降级。
 /// 那正是 `K-P5f` 在 `CCM_LAUNCH_ID` 上栽过的同一个坑
 /// （`accounts_query_tests.rs` 那条双写点判据的诊断逐字记着）。
-/// ⇒ 载荷侧落地之后**要补一条同型的双写点判据**（本刀买不到：那侧还在另一棵树上）。
+/// ⇒ 〔订正 · 令牌步 3〕那条同型的双写点判据**已补**：
+/// `payload_tests.rs::the_launch_token_env_var_has_the_same_name_on_both_halves`（两侧异源：读侧抠本行、写侧真跑渲染器）。
 const RBIND_TOKEN_ENV: &str = "CCM_RBIND_TOKEN";
 
 /// 令牌的形状：**恰好** 32 个小写十六进制字符（`[0-9a-f]{32}`）。两路共用的契约。

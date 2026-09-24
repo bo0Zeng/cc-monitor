@@ -310,6 +310,18 @@ mod tests {
             "p2n-files-rebuild-and-browse",
             "--account-trust\n--account-trust-zero\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--dial\n--files-browse\n--files-find\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-stat\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:files-browse\nch:files-find\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-stat\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2o（2026-09-24 第一波合并那一拍，F1 ＋ T3 同拍）：**两件一起上线，一次 bump**。
+        //   ① F1 写面：`files-create/-mkdir/-rename/-delete/-chmod/-write-text` 六条，
+        //      **两个命令面同拍都动**（`SUBCOMMANDS` ＋6；`inbound::COMMANDS` ＋6）；
+        //   ② `设计/80 §8.7` 步 2 欠着的那笔（`rbind-token` 能力 ＋ `--with-rbind-token` ＋
+        //      `session_added.rbind_token`）—— 步 1/3 已落、monitor 已发那条 flag ⇒ 解锁条件满足。
+        // ⚠ 失效形状同 p2m/p2n：旧后端 CLI 面 `unknown argument`、帧面 `Unsupported`，
+        //   两条都止于「判 stale 只看 build_id」。
+        // 🔴 上面各行快照一个字节没改。
+        (
+            "p2o-files-write-and-rbind-token",
+            "--account-trust\n--account-trust-zero\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--dial\n--files-browse\n--files-chmod\n--files-create\n--files-delete\n--files-find\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-mkdir\n--files-rename\n--files-stat\n--files-write-text\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:files-browse\nch:files-chmod\nch:files-create\nch:files-delete\nch:files-find\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-mkdir\nch:files-rename\nch:files-stat\nch:files-write-text\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};

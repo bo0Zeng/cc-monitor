@@ -370,6 +370,7 @@ fn known_kind_with_extra_fields_still_parses() {
             lines: None,
             status: None,
             waiting_for: None,
+            rbind_token: None,
         }
     );
 }
@@ -392,6 +393,7 @@ fn session_added_metadata_parses() {
             lines: Some(42),
             status: None,
             waiting_for: None,
+            rbind_token: None,
         }
     );
 }
@@ -556,4 +558,157 @@ fn dispatch_over_a_frame_sequence() {
         parsed[5],
         Some(InboundFrame::SessionRemoved { .. })
     ));
+}
+
+// ══════ `设计/80 §8.7` 步 4 的读侧：wire 上那个 `rbind_token` 读回来了 ══════
+//
+// 这一组守的是**方案 E 的远端那一半**：`sid ──wire──→ token`。
+// 另一半（`token ──→ HWND`）在 `bind_tests.rs` 那一组。
+// ⚠ **两半今天还没有被任何分派串起来** —— `↗` 改走 join 是 `§8.7` 的步 4，
+//   而它逐字警告「不要先做 4」。本组买的是「键到手了」，不是「↗ 已经不依赖 tmux」。
+
+/// 形状合法的令牌：恰好 32 个小写十六进制字符。
+const PF_TOK: &str = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
+
+fn added_token(line: &str) -> Option<String> {
+    match parse_frame(line).expect("这一帧本身应当解析得出来") {
+        InboundFrame::SessionAdded { rbind_token, .. } => rbind_token,
+        other => panic!("解出来不是 session_added：{other:?}"),
+    }
+}
+
+/// ★ 正题：帧上带令牌 ⇒ 读回来；**不带** ⇒ `None`（旧后端 / 没索要 / 真的没有）。
+///
+/// ⚠ 对照组（`None` 那一半）**必须在**：只验「带的时候读得到」的话，
+///   「把这个字段读成一个常量」这种变异会照样绿。
+#[test]
+fn the_launch_token_rides_back_on_the_session_added_frame() {
+    let with = format!(r#"{{"kind":"session_added","sid":"s-1","rbind_token":"{PF_TOK}"}}"#);
+    assert_eq!(
+        added_token(&with),
+        Some(PF_TOK.to_string()),
+        "帧上有令牌却读不回来 —— `sid → token` 这一半断了"
+    );
+    // 旧后端 / 客户端没索要 / 这条会话真的没令牌 —— wire 上三者同形，都是缺席。
+    assert_eq!(added_token(r#"{"kind":"session_added","sid":"s-1"}"#), None);
+}
+
+/// ★ fail closed：形状不对**一律当没有**，不是「原样报出去」。
+///
+/// 为什么这一条非要有：`§8.5 ②` 买的是「这个会话有没有令牌」这**一个布尔**，
+/// 用来取代今天那四档猜。而那个布尔只有在「有 ⇒ 形状确定对」时才说得准 ——
+/// 放一个形状可疑的串进去，`↗` 会拿它去 join、命中不了，
+/// 于是「拉错了/拉不到」这两件事又被压回同一个读数。
+///
+/// ⚠ 这一条与**后端读侧**（`identity_tag::rbind_token_of`）是**同向的两道闸**：
+///   后端不该报出形状不对的值，而 monitor 也不许因此就信任上游。
+#[test]
+fn a_malformed_launch_token_on_the_wire_is_read_as_no_token() {
+    let bad = [
+        ("少一位", r#""0f1e2d3c4b5a69788796a5b4c3d2e1f""#),
+        ("多一位", r#""0f1e2d3c4b5a69788796a5b4c3d2e1f00""#),
+        ("有大写", r#""0F1E2D3C4B5A69788796A5B4C3D2E1F0""#),
+        ("两侧空白", r#"" 0f1e2d3c4b5a69788796a5b4c3d2e1f0 ""#),
+        ("空串", r#""""#),
+        ("不是字符串", "12345"),
+        ("null", "null"),
+    ];
+    for (why, raw) in bad {
+        let line = format!(r#"{{"kind":"session_added","sid":"s-1","rbind_token":{raw}}}"#);
+        assert_eq!(
+            added_token(&line),
+            None,
+            "「{why}」这一形被读成了合法令牌：{line}"
+        );
+    }
+    // ★ 反向自检：上面那些之所以 None，不是因为整帧解析挂了 —— 那一帧照样解得出来。
+    let line = format!(r#"{{"kind":"session_added","sid":"s-1","rbind_token":" {PF_TOK} "}}"#);
+    match parse_frame(&line).expect("整帧必须仍然解析得出来") {
+        InboundFrame::SessionAdded { sid, .. } => assert_eq!(sid, "s-1"),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// ★ **形状那一条不许在这里再写一遍** —— 它与本地那张 `token → HWND` 表用的
+/// 必须是同一条（`bind::rbind_token_shape_ok`）。
+///
+/// 两处各写一遍的后果：join 在某些取值上**静默失配**，而失配与「没有令牌」
+/// 在界面上同形。本条按**源文本**钉接线（行为那半由上面两条买）。
+#[test]
+fn the_wire_side_shape_check_is_the_same_one_the_local_table_uses() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    assert!(
+        prod.len() > 20000,
+        "抽出来的生产段太小，本条在空转：{}",
+        prod.len()
+    );
+    assert!(
+        prod.contains("crate::bind::rbind_token_shape_ok"),
+        "`parse_frame` 没在用 `bind::rbind_token_shape_ok` —— 形状多了一份副本"
+    );
+    // 反向：本文件（判据）里那条形状是**手写字面量**，生产段里不许再出现第二份。
+    assert!(
+        !prod.contains("[0-9a-f]{32}\") "),
+        "生产段里出现了第二份形状实现"
+    );
+    // 恒等的另一头：那个函数真的按 32 位小写十六进制判（不是恒真）。
+    assert!(crate::bind::rbind_token_shape_ok(PF_TOK));
+    assert!(!crate::bind::rbind_token_shape_ok(
+        "0F1E2D3C4B5A69788796A5B4C3D2E1F0"
+    ));
+    assert!(!crate::bind::rbind_token_shape_ok("0f1e2d3c"));
+}
+
+/// 🔴 ★ 令牌的**值**不许进日志（`设计/80 §8.6 ③`）。
+///
+/// 消费点今天只打一句 `has_rbind_token={bool}` —— 那个布尔正是 `§8.5 ②` 要的东西，
+/// 而它不泄露值。本条按源文本钉住：凡是把 `rbind_token` 交给 `tracing!` 的地方，
+/// 交出去的必须是 `.is_some()`，不是那个串。
+#[test]
+fn the_token_value_never_reaches_a_log_macro() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    let mut calls: Vec<String> = Vec::new();
+    let mut cur: Option<String> = None;
+    for line in prod.lines() {
+        let t = line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        if cur.is_none() && t.contains("tracing::") {
+            cur = Some(String::new());
+        }
+        if let Some(buf) = cur.as_mut() {
+            buf.push_str(line);
+            buf.push('\n');
+            if t.ends_with(");") {
+                calls.push(cur.take().unwrap());
+            }
+        }
+    }
+    assert!(
+        calls.len() >= 30,
+        "只切出 {} 处 tracing —— 切法坏了",
+        calls.len()
+    );
+    let touching: Vec<&String> = calls.iter().filter(|c| c.contains("rbind_token")).collect();
+    assert_eq!(
+        touching.len(),
+        2,
+        "碰到 `rbind_token` 的日志调用不是 2 处（起流那句的 flag 布尔 ＋ 宣告那句的          `has_rbind_token`）—— 要么多了一处、要么其中一处搬家了：{touching:#?}"
+    );
+    // 判法：把**两种允许的形态**抹掉，剩下的任何 `rbind_token` 都是裸着交出去的值。
+    //   · `with_rbind_token` —— 起流那句打的是**这一轮发没发那条 flag**（一个布尔）；
+    //   · `rbind_token.is_some()` —— 宣告那句打的是**这条会话有没有令牌**（`§8.5 ②` 那个布尔）。
+    // ⚠ 刻意不写成「必须含 `.is_some()`」：那种写法对
+    //   `tracing!("… {} {}", rbind_token.is_some(), rbind_token.unwrap())` 是**瞎的**。
+    for c in &touching {
+        let scrubbed = c
+            .replace("with_rbind_token", "•")
+            .replace("rbind_token.is_some()", "•")
+            .replace("has_rbind_token", "•");
+        assert!(
+            !scrubbed.contains("rbind_token"),
+            "有日志把令牌**本身**交出去了（只许打布尔）：{c}"
+        );
+    }
 }

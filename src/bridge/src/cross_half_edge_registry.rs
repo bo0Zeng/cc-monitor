@@ -132,6 +132,18 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/backend/control/payload_tests.rs",
+        "src/backend/control/identity_tag.rs",
+        "★★〔`设计/80 §8.7` 步 3 · 09-23 新增，**由步 2 那一路点名留下**〕         **启动期令牌那个环境变量名的双写点** ——          `the_launch_token_env_var_has_the_same_name_on_both_halves`。         写侧是 monitor 的载荷渲染器（`payload::render_env_ops` 里那句 `export …=`），         读侧是后端的 `identity_tag::RBIND_TOKEN_ENV`（从 `/proc/<pid>/environ` 取它）。         读侧那段头注逐字留话：**失效方向极其安静** —— 两侧漂开 ⇒ 读侧恒 `None`，         而 `None` 在那个查询里是**合法值**（「这条会话没有令牌」）⇒          **不会有任何东西报错**，↗ 只是永远降级回标题路。         （同一个坑 `K-P5f` 在**拉起身份那个变量**上栽过一次 —— 那个名字刻意不在这里复写：`launcher_identity_registry` 有一条**计数**判据要求它在 `src/bridge/src` 生产段里**恰好 1 处**，散文里提一句就会把它顶红；本轮实打撞上过，如实记下。）         ⇒ 只有同时读两侧才验得了。         ⚠ 如实写它怎么避开「两侧同源恒真」：读侧是**现抠源码**、         写侧是**跑一遍生产渲染器看真产物**，再加一条手写字面量的锚。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
+        "src/backend/lib.rs",
+        "★★〔`设计/80 §8.7` 步 3 · 09-23 新增〕**monitor 发的每一条流模式 flag，         后端都必须认得并剥离** —— `the_stream_flags_monitor_sends_are_all_strippable`。         失效方向是本仓栽过的 §26：老后端把**不认识**的 `--flag` 当成一次性查询、         处理完就退出 ⇒ 无 hello ⇒ monitor 重连 ⇒ **死循环**。         而「monitor 拼进命令行的那几个字面量」住 `ssh_source::connect_and_exec`、         「后端认得哪几个」住 `backend::STREAM_FLAGS` —— 两处各写一份，         只有同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**（从生产函数体里抠 `push_str` 的那几个串），         不是真起一个老后端看它会不会退出。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/local_backend_host_tests.rs",
         "src/backend/listen.rs",
         "★〔`K-P1` 08-26〕**跨 crate 字面量对拍**：常驻监听口那两个 env 名\

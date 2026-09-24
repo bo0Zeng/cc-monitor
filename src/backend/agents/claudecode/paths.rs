@@ -78,3 +78,70 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
         _ => false,
     })
 }
+
+/// 🔴 **一条路径是不是 Claude 的「会话数据」那几份具体文件** —— 写侧围栏的判定。
+///
+/// 〔波 5 ㈢ · 2026-09-23 · 用户 2026-09-23 逐字裁「文件管理器该不该能改 `~/.claude`
+/// 里的东西. **可以.**」〕
+///
+/// # 它换掉了什么，以及为什么
+///
+/// `设计/60 §8.7` 现打过一件事：同一次「往 `~/.claude/skills/` 里写」的操作，
+/// 在两条路上会得到**两种结果** —— 后端那条问 [`is_inside_tree`]（拒**整棵树**），
+/// 桥／SFTP 那条问 `claude_data_fence::is_protected_claude_data_path`
+/// （只拒**那几份具体的会话文件**）。那一节自陈「丙（统一成同一个判定）才是真正的解，
+/// 但它是一道产品题不是工程题」。**用户 09-23 把那道产品题裁了**：往窄的那一档统一
+/// ⇒ skills / 配置 / 账号库**改得动**，正在跑的那场会话的记录**照旧改不动**。
+///
+/// # 🔴 它是那个判定的**逐字副本**，而不是第二个判定
+///
+/// 两个 crate 之间没有共享落点：`src/backend` **刻意不在** monitor 那个 workspace 里
+/// （它有自己的 `Cargo.lock`，那条隔离是真架构约束，见它 `Cargo.toml` 头注），
+/// 而新立一个共享 crate 会动门禁那句 `run_gate_sum cargo 9`（本刀写区之外），
+/// 并且 `设计/60 §8.8` 记着上一次「把围栏搬成共享 crate」当天就被撤回。
+/// ⇒ 处置：**函数体逐字节相同**，并由判据把这件事钉成相等断言 ——
+/// 两侧任何一处改动、另一处不跟，当场红。判据两棵树各一份：
+/// `tests/backend/agents_tests.rs` 与 `tests/bridge/claude_data_fence_tests.rs`。
+///
+/// ⚠ **方向相反的那一道不在这儿，也不许合并**：`sftp::is_safe_remote_jsonl` 的正题恰恰是
+/// 「**只许**删 `projects/**/*.jsonl`」（`INVARIANTS §1` 例外 3，历史浏览器删远端会话）。
+/// 两道都读 Claude 的目录结构、方向相反，合成一个之后「哪些不许写」与「哪些才许删」
+/// 会共用一个真相，而它们要的恰好是补集。
+///
+/// # ⚠ 它**不**管什么（如实登记，别读宽）
+///
+/// - **只看路径的形状**，不看那场会话是不是真的活着（要那个得问 pidfile / session_map，
+///   而那在写路径上会变成一次多余的 IO）。
+/// - **不认非会话的那些东西**：`settings.json` · `skills/**` · 账号库 · `.credentials.json`
+///   —— 全部**放行**，那正是用户这一裁要买的东西。谁要收回这一格，那是下一道产品题。
+/// - 它管不着的那几类路径**与桥那一侧逐字同一张表**
+///   （`claude_data_fence_tests::THE_SHAPES_THIS_FENCE_DOES_NOT_COVER`）——
+///   本处刻意不抄第二份，抄了就是第二个会漂的住址。
+pub fn is_protected_session_file(path: &str) -> bool {
+    let p = path.replace('\\', "/");
+    // batch20 审计修：**结构判定**，不靠 `/.claude/` 字面——Claude 数据文件结构为 `<任意>/projects/<proj>/<sid>.jsonl`
+    // （projects 下恰 2 段）或 `<任意>/sessions/<x>.json`（sessions 下 1 段）。**闭 `CLAUDE_CONFIG_DIR` 重定位缺口**：
+    // 重定位后路径成 `<CFGDIR>/projects/.../*.jsonl`，原字面 `/.claude/` 判定会漏、SFTP 面板可覆写 live jsonl。
+    let jsonl_protected = p.rfind("/projects/").is_some_and(|i| {
+        let parts: Vec<&str> = p[i + "/projects/".len()..].split('/').collect();
+        parts.len() == 2
+            && !parts[0].is_empty()
+            && parts[1].len() > ".jsonl".len()
+            && parts[1].ends_with(".jsonl")
+    });
+    let json_protected = p.rfind("/sessions/").is_some_and(|i| {
+        let rest = &p[i + "/sessions/".len()..];
+        !rest.contains('/') && rest.len() > ".json".len() && rest.ends_with(".json")
+    });
+    jsonl_protected || json_protected
+}
+
+/// [`is_protected_session_file`] 的 `&Path` 门面。
+///
+/// ⚠ **有损转换如实登记**：非 UTF-8 的路径字节经 `to_string_lossy` 变成 U+FFFD。
+/// 那**不会**造成漏判（受保护那两形要的是段数 ＋ `.jsonl` / `.json` 后缀，
+/// 而替换字符只出现在段**内部**，段数与后缀都活着），但它确实让「那一段原本是什么字节」
+/// 在这一问里不可知。⇒ 判定的语料是**字符串**，这条围栏从此与那一事实对齐。
+pub fn is_protected_session_path(target: &Path) -> bool {
+    is_protected_session_file(&target.to_string_lossy())
+}
