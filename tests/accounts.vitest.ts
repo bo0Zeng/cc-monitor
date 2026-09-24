@@ -37,8 +37,8 @@ import {
   localLaunchAccountNameSync,
   __setLocalLaunchSnapshotForTests,
   __resetLocalLaunchSnapshotForTests,
-  fetchLocalRelayRouting,
-  localRelayStateFor,
+  fetchLocalApikeyRouting,
+  localApikeyEndpointStateFor,
   accountLoginActionLabel,
   restartLocateFailureMessage,
   sidOfLaunch,
@@ -1036,14 +1036,14 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   // ★★★ 规则那一段：一份**后端读数**（`ApikeyRoutingView`）怎么落到某一个账号上，
   // 以及三档**真的分得开**。喂进来的是读数的形状，**不是**直接喂 `{scope:"local",…}`
-  // —— 后者会把 `localRelayStateFor` 那一格整个绕过去。
+  // —— 后者会把 `localApikeyEndpointStateFor` 那一格整个绕过去。
   //
   // ⚠ **取数那一跳（`invoke`）今天还没接上**，卡点写在 `accounts.ts` 那段头注里
   // （`tests/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
   // 不是「界面上真的显出来了」。
   it("★ 产出方：问的是 `apikey_routing_for`，入参是那几个 configDir", async () => {
     invokeMock.mockResolvedValue({ routed: ["/h/.claude-alt/acct-a"], running: true });
-    const got = await fetchLocalRelayRouting(["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"]);
+    const got = await fetchLocalApikeyRouting(["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"]);
     // 命令名打错在生产上是**运行时** `invoke` reject（不是编译错）⇒ 在这里钉死它。
     expect(invokeMock).toHaveBeenCalledWith("apikey_routing_for", {
       configDirs: ["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"],
@@ -1052,10 +1052,10 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
   });
 
   it("★★ 走真产出方 → 三档：读数从那条命令来，三个账号落到三个不同的徽章上", async () => {
-    // ⚠ 与下面那条的差别就是**这一格**：这里的 routing 是 `fetchLocalRelayRouting` 的返回值
+    // ⚠ 与下面那条的差别就是**这一格**：这里的 routing 是 `fetchLocalApikeyRouting` 的返回值
     //（即那条命令的产物），不是判据手写的字面量 ⇒ 命令名 / 入参 / 字段名任一处坏掉，这里就散。
     invokeMock.mockResolvedValue({ routed: ["/h/.claude-alt/acct-a"], running: true });
-    const routing = await fetchLocalRelayRouting([
+    const routing = await fetchLocalApikeyRouting([
       "/h/.claude-alt/acct-a",
       "/h/.claude-alt/acct-b",
     ]);
@@ -1063,14 +1063,14 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
       acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
     const a = withDir("acct-a", "/h/.claude-alt/acct-a");
     const b = withDir("acct-b", "/h/.claude-alt/acct-b");
-    expect(accountStatusBadge(a, localRelayStateFor(a, routing)).text).toBe("api-key（经本机中转）");
-    expect(accountStatusBadge(b, localRelayStateFor(b, routing)).text).toBe(
+    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, routing)).text).toBe("api-key（经本机中转）");
+    expect(accountStatusBadge(b, localApikeyEndpointStateFor(b, routing)).text).toBe(
       "api-key（未配置端点）",
     );
     // 非空对照：同一条产出方、只把 `running` 翻过来 ⇒ 第三档真的分得开。
     invokeMock.mockResolvedValue({ routed: ["/h/.claude-alt/acct-a"], running: false });
-    const stopped = await fetchLocalRelayRouting(["/h/.claude-alt/acct-a"]);
-    expect(accountStatusBadge(a, localRelayStateFor(a, stopped)).text).toBe(
+    const stopped = await fetchLocalApikeyRouting(["/h/.claude-alt/acct-a"]);
+    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, stopped)).text).toBe(
       "api-key（中转未运行）",
     );
   });
@@ -1082,19 +1082,19 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
     // ① 表里有这一行 + 中转在跑 ⇒ 「经本机中转」。
     const a = withDir("acct-a", "/h/.claude-alt/acct-a");
-    expect(accountStatusBadge(a, localRelayStateFor(a, routing)).text).toBe("api-key（经本机中转）");
+    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, routing)).text).toBe("api-key（经本机中转）");
     // ② 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出为什么。
     const b = withDir("acct-b", "/h/.claude-alt/acct-b");
-    const bb = accountStatusBadge(b, localRelayStateFor(b, routing));
+    const bb = accountStatusBadge(b, localApikeyEndpointStateFor(b, routing));
     expect(bb.text).toBe("api-key（未配置端点）");
     expect(bb.title).toContain("没有这个账号的一行");
     // ③ 同一个账号、只把「中转在不在跑」翻过来 ⇒ 第三档（非空对照：两档真的分得开）。
     const stopped = { routed: ["/h/.claude-alt/acct-a"], running: false };
-    expect(accountStatusBadge(a, localRelayStateFor(a, stopped)).text).toBe("api-key（中转未运行）");
+    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, stopped)).text).toBe("api-key（中转未运行）");
     // ④ 账号 0（没有 configDir）⇒ 推不出 id ⇒ **不表态**，回落到缺席那一档。
     const zero = withDir("0", null);
-    expect(localRelayStateFor(zero, routing)).toBeUndefined();
-    expect(accountStatusBadge(zero, localRelayStateFor(zero, routing)).title).toContain(
+    expect(localApikeyEndpointStateFor(zero, routing)).toBeUndefined();
+    expect(accountStatusBadge(zero, localApikeyEndpointStateFor(zero, routing)).title).toContain(
       "不替它下判断",
     );
   });

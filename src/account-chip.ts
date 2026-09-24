@@ -18,8 +18,8 @@
 import {
   fetchAccounts,
   fetchLocalAccounts,
-  fetchLocalRelayRouting,
-  localRelayStateFor,
+  fetchLocalApikeyRouting,
+  localApikeyEndpointStateFor,
   type ApikeyRoutingView,
   deriveUi,
   currentWorkingAccount,
@@ -79,7 +79,7 @@ export class AccountChip {
   /** `D1 阻-5`：这一拍渲染的是**本机**账号吗（没有远端时回落）。 */
   private local = false;
   /** `D1 阻-5`：本机那几个 configDir 走不走 apikey 端点改写。`null` = 没问到（远端那半恒 `null`）。 */
-  private relayRouting: ApikeyRoutingView | null = null;
+  private apikeyRouting: ApikeyRoutingView | null = null;
   private state: AccountsState | null = null;
   private menu: HTMLElement | null = null;
   private menuClose: ((e: Event) => void) | null = null;
@@ -115,7 +115,7 @@ export class AccountChip {
     //   一直在，只是此前没有任何界面渲染它（`fetchLocalAccounts` 全仓生产调用方只有
     //   fork 那个小窗）。⇒ 回落到本机那一份，并把「走不走 apikey 端点改写」一起问出来。
     this.local = !this.origin;
-    this.relayRouting = null;
+    this.apikeyRouting = null;
     this.state = this.local
       ? await fetchLocalAccounts(force)
       : await fetchAccounts(this.origin as string, force);
@@ -127,7 +127,7 @@ export class AccountChip {
     // 不该**改**「什么都没有时看不见」。
     if (this.local && (!this.state || deriveUi(this.state).kind !== "ready")) {
       this.state = null;
-      this.relayRouting = null;
+      this.apikeyRouting = null;
       this.element.style.display = "none";
       return;
     }
@@ -137,10 +137,10 @@ export class AccountChip {
         .map((a) => a.configDir)
         .filter((d): d is string => typeof d === "string" && d.length > 0);
       try {
-        this.relayRouting = dirs.length ? await fetchLocalRelayRouting(dirs) : null;
+        this.apikeyRouting = dirs.length ? await fetchLocalApikeyRouting(dirs) : null;
       } catch {
         // 问不到就**不表态** —— 徽章回落到「只说条件、不下判断」那一档，不猜。
-        this.relayRouting = null;
+        this.apikeyRouting = null;
       }
     }
     const text = chipLabel(this.state);
@@ -288,8 +288,8 @@ export class AccountChip {
     const s = accountStatusBadge(
       a,
       this.local
-        ? this.relayRouting
-          ? localRelayStateFor(a, this.relayRouting)
+        ? this.apikeyRouting
+          ? localApikeyEndpointStateFor(a, this.apikeyRouting)
           : undefined
         : { scope: "remote" },
     );

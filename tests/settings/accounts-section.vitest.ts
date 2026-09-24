@@ -580,7 +580,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
 
   it("KS6：输入框**从不预填** —— 已配置时也一样，要改就重新输", () => {
     const el = renderApikeyEditor(ACCTS[0], () => {}).editor;
-    const input = el.querySelector<HTMLInputElement>("input.relay-key-input");
+    const input = el.querySelector<HTMLInputElement>("input.accounts-row-apikey-input");
     expect(input, "那个输入框不见了 —— 下面的断言会零命中地绿").toBeTruthy();
     expect(input!.value).toBe("");
     // 它是密码框（截图 / 录屏那两个出口）。
@@ -621,24 +621,24 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     const warned = renderApikeyFileBlock(
       status({ notice: "同机器上的别人也读得到它（mode 是 0644…）。怎么修：跑 `chmod 600 …`" }),
     );
-    const n = warned.querySelector(".relay-key-notice");
+    const n = warned.querySelector(".apikey-file-notice");
     expect(n, "过宽了却没在界面上显出来").toBeTruthy();
     expect(n!.textContent).toContain("chmod 600");
-    expect(renderApikeyFileBlock(status()).querySelector(".relay-key-notice")).toBeNull();
+    expect(renderApikeyFileBlock(status()).querySelector(".apikey-file-notice")).toBeNull();
   });
 
   it("KS9：那份文件的路径要显出来 —— 能手编但没人知道在哪 = 不能手编", () => {
     const el = renderApikeyFileBlock(status());
     expect(el.textContent).toContain("apikey-credentials.json");
-    expect(el.querySelector(".relay-key-path")?.getAttribute("title")).toContain("编辑器");
+    expect(el.querySelector(".apikey-file-path")?.getAttribute("title")).toContain("编辑器");
   });
 
   it("文件读坏了要说出来，**不许静默当成「没配」**", () => {
     const el = renderApikeyFileBlock(
       status({ configured: false, masked: "", problem: "凭据文件不是合法 JSON（…）" }),
     );
-    expect(el.querySelector(".relay-key-problem")?.textContent).toContain("不是合法 JSON");
-    expect(renderApikeyFileBlock(status()).querySelector(".relay-key-problem")).toBeNull();
+    expect(el.querySelector(".apikey-file-problem")?.textContent).toContain("不是合法 JSON");
+    expect(renderApikeyFileBlock(status()).querySelector(".apikey-file-problem")).toBeNull();
   });
 
   it("存一次：明文原样交给回调，交完输入框**立刻清空**", () => {
@@ -646,13 +646,13 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     const el = renderApikeyEditor(ACCTS[1], (k: string) => {
       seen.push(k);
     }).editor;
-    const input = el.querySelector<HTMLInputElement>("input.relay-key-input")!;
+    const input = el.querySelector<HTMLInputElement>("input.accounts-row-apikey-input")!;
     input.value = "  sk-ant-TYPED-BY-HAND  ";
-    el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
+    el.querySelector<HTMLButtonElement>("button.accounts-row-apikey-save")!.click();
     expect(seen).toEqual(["sk-ant-TYPED-BY-HAND"]);
     expect(input.value, "存完输入框没清空 —— 明文在 DOM 里留着").toBe("");
     // 空输入不触发（否则会把 key 存成空串，等于悄悄清掉用户的配置）。
-    el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
+    el.querySelector<HTMLButtonElement>("button.accounts-row-apikey-save")!.click();
     expect(seen).toEqual(["sk-ant-TYPED-BY-HAND"]);
   });
 
@@ -672,8 +672,8 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
       [one, "sk-ant-FOR-ONE"],
       [two, "sk-ant-FOR-TWO"],
     ] as const) {
-      el.querySelector<HTMLInputElement>("input.relay-key-input")!.value = key;
-      el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
+      el.querySelector<HTMLInputElement>("input.accounts-row-apikey-input")!.value = key;
+      el.querySelector<HTMLButtonElement>("button.accounts-row-apikey-save")!.click();
     }
     expect(seen).toEqual([
       ["sk-ant-FOR-ONE", "/h/.claude-alt/dir-one"],
@@ -685,7 +685,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(renderApikeyEditor(ACCTS[0], () => {}).editor.textContent).toContain("n1：apikey 表里已经有它那一行");
     // 非空对照：routed=false 那个必须翻面（这把尺子分得出两种结局）。
     expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).toContain("n2：apikey 表里还没有它那一行");
-    const legacy = renderApikeyFileBlock(status()).querySelector(".relay-key-legacy");
+    const legacy = renderApikeyFileBlock(status()).querySelector(".apikey-file-legacy");
     expect(legacy?.textContent, "顶层那一把没有单独显").toContain("sk-a**********WXYZ");
     expect(legacy!.textContent).toContain("不再往那一格写");
     // 编辑格里**不许**出现顶层那一把 —— 那会被读成这个号的状态。
@@ -724,7 +724,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(editors[1].hidden).toBe(false);
     expect(editors[1].textContent).toContain("n2");
     // 表外还挂着文件那一块（路径 / 顶层那一把）。
-    expect(el.querySelector(".relay-key-block .relay-key-path")?.textContent).toContain(
+    expect(el.querySelector(".apikey-file-block .apikey-file-path")?.textContent).toContain(
       "apikey-credentials.json",
     );
   });

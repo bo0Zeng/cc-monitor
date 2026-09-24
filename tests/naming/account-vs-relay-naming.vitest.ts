@@ -157,7 +157,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("fetchLocalApikeyRouting"),
     kind: "函数",
     why: "`apikey_routing_for` 的前端取数口",
-    state: "pending",
+    state: "done",
   },
   {
     old: "localRelayStateFor",
@@ -166,7 +166,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("localApikeyEndpointStateFor"),
     kind: "函数",
     why: "把上一条的读数落到一个账号上：这个号的端点改写成不成（有没有行 ＋ 中转在不在跑）",
-    state: "pending",
+    state: "done",
   },
   {
     old: "AccountRelayState",
@@ -175,7 +175,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("ApikeyEndpointState"),
     kind: "类型",
     why: "api-key 号徽章那几档的入参：说的是「cc-monitor 能不能替这个号改写端点」",
-    state: "pending",
+    state: "done",
   },
   {
     old: "relayRouting",
@@ -184,7 +184,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("apikeyRouting"),
     kind: "字段",
     why: "账号 chip 缓存的那份 `ApikeyRoutingView`",
-    state: "pending",
+    state: "done",
   },
   {
     old: "RelayKeyAccount",
@@ -193,7 +193,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("ApikeyEditorAccount"),
     kind: "类型",
     why: "账号那一行「配 apikey」编辑格的入参",
-    state: "pending",
+    state: "done",
   },
   {
     old: "mountRelayKeyBlock",
@@ -202,7 +202,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("renderApikeyFileBlock"),
     kind: "函数",
     why: "散文里点着的旧住址（那个函数早已拆成 `renderApikeyFileBlock` ＋ `renderApikeyEditor`）",
-    state: "pending",
+    state: "done",
   },
   {
     old: "relay-key-*",
@@ -211,7 +211,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: lit("apikey-file-block"),
     kind: "CSS 类",
     why: "设置页 apikey 凭据文件那一块 ＋ 账号行里配 key 那一格的类名",
-    state: "pending",
+    state: "done",
   },
   // ── 后端里过期的住址（层 2 早已搬出 `relay/`）──────────────────────────────────
   {
