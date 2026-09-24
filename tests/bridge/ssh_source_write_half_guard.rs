@@ -256,7 +256,8 @@ fn ssh_source_never_writes_to_a_stream_itself() {
         "use tokio::io::{AsyncBufReadExt, BufReader};",
         // 〔`C1` · 09-24〕`use tokio::io::AsyncBufReadExt;` 这一行随 `fetch_snapshot` 改走长连接出去了
         // （它读的那条 SSH 流没了）。反向锚点当场逮住它 —— 放行清单不许留死行。
-        "use tokio::io::AsyncReadExt;",
+        // 〔C2 · 09-24〕`use tokio::io::AsyncReadExt;` 也出去了：它只服务读拨号代理 ack 的那一段
+        // （`.take(` 有界读），那一段搬进了通信层成员 `ssh_link.rs`。反向锚点同一刀逮住它。
     ];
     let io_imports: Vec<&str> = prod
         .lines()

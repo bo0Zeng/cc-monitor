@@ -13,6 +13,15 @@
 //!
 //! 上述三个 `#[tauri::command]` 在 lib.rs 的 invoke_handler! 里注册。
 //!
+//! ## 🔴〔C2 · 2026-09-24，`设计/05 §13`〕本模块**不再拨 SSH**
+//!
+//! 上面第一条里的「russh client 数据源」今天是个旧名字：连远端、鉴权、开通道全在后端的拨号代理
+//! （`src/backend/dial/`）；本模块拿链路只经宿主 `dial_host`（`connect_and_exec_cmd` /
+//! `connect_and_exec_capture` / 测试连接），读代理应答的是通信层成员 `ssh_link`。
+//! 本模块留下的是**业务**：远端流的帧解析与分派、会话 / tmux / idle 账本、旁路快照（续传见 `snapshot_resume`）、
+//! ssh config 导入 —— 所以它不登记为通信层成员（理由住 `comm_boundary_registry_tests::TRANSPORT_LEFT_OUTSIDE`）。
+//! 下面那段 crypto backend 的说明今天说的是后端拨号代理与 `inproc_dial.rs`（SFTP 那一份）用的 `russh`。
+//!
 //! ## Crypto backend 选择（S3 的核心风险点）
 //!
 //! russh 0.61 默认 crypto backend 是 `aws-lc-rs`，它在 windows-msvc 上构建需要
@@ -31,13 +40,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use russh::client;
-use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::event_replay::EventReplay;
+use crate::ssh_link::ConnectStage;
+// 〔C2〕`sftp.rs`（`F7c` 独占，本拍不许动）从本模块取这两个名字 —— 它们今天住 `inproc_dial.rs`
+// （界面进程里最后一份 russh 拨号，唯一调用方就是 SFTP）。`F7c` 换走那天这一行随那份文件一起删。
+pub(crate) use crate::inproc_dial::{connect_session, ClientHandler};
 use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
 
 /// S0 **跨语言双写点**：backend 那侧 `RemovalCause::Superseded` 的 serde 线上名。
@@ -295,167 +306,6 @@ where
     Ok(opt.filter(|s| !s.is_empty()))
 }
 
-/// russh client handler：负责 host key 校验（check_server_key）。
-///
-/// 持有期望指纹，`check_server_key` 据此决定接受 / 拒绝（见该方法注释）。
-/// 另持有一个共享 cell（`observed_fingerprint`），**无论接受 / 拒绝**都把实际看到的
-/// server key 指纹写进去 —— Tier 1（issue #15）的「测试连接」据此向用户展示指纹、
-/// 供 TOFU→严格校验固化（known_hosts 式）。
-/// F58：已鉴权的 SSH 客户端会话句柄别名（端口转发把它存注册表保活 + 开 direct-tcpip channel）。
-pub(crate) type SshSession = client::Handle<ClientHandler>;
-
-pub(crate) struct ClientHandler {
-    expected_fingerprint: Option<String>,
-    /// check_server_key 观察到的实际指纹回传通道（与调用方共享）。
-    observed_fingerprint: Arc<Mutex<Option<String>>>,
-    /// F46：分阶段事件 emitter（仅测试连接路径 Some）。check_server_key 命中 emit HostKey。
-    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
-    /// F46：本 handler 对应的拨号地址（`host:port`），emit 时标注泳道。
-    endpoint: Option<String>,
-}
-
-impl client::Handler for ClientHandler {
-    type Error = russh::Error;
-
-    /// host key 校验（russh 0.61 签名：`&mut self, &PublicKey -> Result<bool, Error>`，async）。
-    ///
-    /// 返回 `Ok(true)` = 接受该 host key，`Ok(false)` = 拒绝（russh 会中止握手）。
-    ///
-    /// 策略：
-    /// - `expected_fingerprint = Some(fp)`：计算 server key 的 SHA256 指纹，**仅**在
-    ///   匹配时返回 `Ok(true)`，否则 `Ok(false)` 拒绝（防 MITM / key 轮换未同步）。
-    /// - `expected_fingerprint = None`：trust-on-first-use 暂行接受，但发一条**显眼**的
-    ///   `tracing::warn!` 说明这是未经验证的 host key（S5 应把首次拿到的指纹固化回 config，
-    ///   之后转入严格校验）。**绝不**静默接受任意 key。
-    async fn check_server_key(
-        &mut self,
-        server_public_key: &PublicKey,
-    ) -> Result<bool, Self::Error> {
-        let actual = server_public_key.fingerprint(HashAlg::Sha256).to_string();
-        // 无论后续接受 / 拒绝，都先把实际指纹写回共享 cell（测试连接据此展示 + 固化）。
-        if let Ok(mut slot) = self.observed_fingerprint.lock() {
-            *slot = Some(actual.clone());
-        }
-        // F46：到 host key 校验 = 该地址 TCP+KEX 已过,emit HostKey 泳道事件。
-        if let Some(ep) = &self.endpoint {
-            emit_stage(
-                &self.stage_emitter,
-                ConnectStage::HostKey {
-                    endpoint: ep.clone(),
-                    fingerprint: actual.clone(),
-                },
-            );
-        }
-        match &self.expected_fingerprint {
-            Some(expected) => {
-                // FIX 7：比对前 trim 掉存储指纹两侧的换行/空白，否则配置里残留的尾随
-                // 空白会让一个本应匹配的指纹永远被拒（误判 MITM）。
-                if actual == expected.trim() {
-                    tracing::info!("ssh host key fingerprint verified: {actual}");
-                    Ok(true)
-                } else {
-                    // F43：失配时附上实际 key 的算法——诊断里区分「合法换 key 类型」
-                    // （如 ed25519→rsa，算法不同）与「同类型 key 被换（真 MITM 疑点）」;
-                    // 措辞指向重置入口（服务器合法轮换 host key 后走它解锁，而非误判永锁）。
-                    let alg = server_public_key.algorithm();
-                    tracing::error!(
-                        "ssh host key MISMATCH: expected {expected}, got {actual} (alg={alg}); \
-                         rejecting connection. 若确系服务器合法更换过 host key（重装/轮换），\
-                         请在设置里「重置为 TOFU」后重连;否则可能是中间人攻击。"
-                    );
-                    Ok(false)
-                }
-            }
-            None => {
-                // 明确标注的 TOFU stopgap：接受但大声 warn，不静默。
-                tracing::warn!(
-                    "ssh host key NOT verified (trust-on-first-use): accepting unverified key {actual}; \
-                     S5 应把该指纹固化进 config 并转严格校验"
-                );
-                Ok(true)
-            }
-        }
-    }
-}
-
-/// `default_ssh_agent_pipe` —— Windows OpenSSH agent 的命名管道路径。
-///
-/// Win10+/Win11 自带的 OpenSSH agent 监听 `\\.\pipe\openssh-ssh-agent`（SSH_AUTH_SOCK
-/// 在 Windows 上不是标准；OpenSSH-for-Windows 用固定命名管道）。非 Windows 留 `None`
-/// （Tier 1 的 agent 仅在 Windows 上尝试；Unix 走 key_path 即可，本 app 也只发 Windows）。
-#[cfg(windows)]
-fn default_ssh_agent_pipe() -> Option<&'static str> {
-    Some(r"\\.\pipe\openssh-ssh-agent")
-}
-
-/// 连接 + 鉴权的共享实现：被 [`connect_and_exec`]（长连接数据源）和
-/// [`test_remote_connection`]（一次性探活）复用。
-///
-/// 返回已鉴权的 session + 共享的 `observed_fingerprint` cell（握手时 check_server_key 已
-/// 把实际 server key 指纹写进去，调用方可读出展示 / 固化）。
-///
-/// 鉴权策略（Tier 1, issue #15）：
-/// - `cfg.key_path = Some(path)`：publickey 鉴权（既有默认路径，最稳）。
-/// - `cfg.key_path = None`：尝试 ssh-agent（Windows 命名管道），枚举 agent 身份逐个
-///   `authenticate_publickey_with`。agent 不可用 / 无匹配身份 → 返回清晰 Err。
-/// Batch14-F45：happy-eyeballs 竞发阶梯（第 i 个地址延迟 i*STAGGER 起拨，首个成功者胜后
-/// 其余在飞连接被 abort）。250ms 是 RFC 8305 常用值。
-const RACE_STAGGER: Duration = Duration::from_millis(250);
-/// 握手看门狗默认上限（长连接 inactivity_timeout=None 时用）——黑洞地址 TCP 连上后
-/// 握手无限阻塞时兜底,到点整批 abort（drop 关 socket）。
-const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);
-
-/// Batch14-F46：连接分阶段事件（测试连接时经 Tauri Channel 流给前端做泳道日志）。
-/// 只在 `test_remote_connection` 路径 emit（emitter=Some）;backend 流/exec/SFTP 传 None,
-/// 零开销零事件。阶段取 russh 能干净观测的粒度——不含 KEX（russh 不暴露 KEX 回调,
-/// HostKey 触发即隐含 TCP+KEX 已过）。
-#[derive(Serialize, Clone, Debug)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum ConnectStage {
-    /// 某地址开始拨号（TCP+握手）。
-    Dialing { endpoint: String },
-    /// 某地址握手到 host key 校验（带指纹;隐含 TCP+KEX 已过）。
-    HostKey {
-        endpoint: String,
-        fingerprint: String,
-    },
-    /// 某地址连接失败（reason = 粗分类 + 原始错误）。
-    Failed { endpoint: String, reason: String },
-    /// 竞发胜出地址（其余在飞已 abort）。
-    Won { endpoint: String },
-    /// 鉴权结果。
-    Auth { ok: bool, detail: Option<String> },
-    /// 连接就绪（握手+鉴权全过）。
-    Established,
-}
-
-/// F46：把 russh 连接错误串粗分类成阶段标签（前端泳道用不同图标/文案）。
-/// 保守分类:命中关键词才归类,否则 `other`。
-pub fn classify_stage(err: &str) -> &'static str {
-    let e = err.to_ascii_lowercase();
-    if e.contains("refused") || e.contains("no route") || e.contains("unreachable") {
-        "tcp" // TCP 层拒绝/不可达
-    } else if e.contains("timeout") || e.contains("超时") || e.contains("timed out") {
-        "timeout"
-    } else if e.contains("key") || e.contains("mismatch") || e.contains("指纹") {
-        // host key 校验失败/不匹配（russh 拒绝 host key 报 "Unknown server key"）。
-        "hostkey"
-    } else {
-        "other"
-    }
-}
-
-/// F46：安全 emit（emitter=None 直接 no-op;send 失败仅 warn 不阻断连接）。
-fn emit_stage(emitter: &Option<tauri::ipc::Channel<ConnectStage>>, stage: ConnectStage) {
-    if let Some(ch) = emitter {
-        if let Err(e) = ch.send(stage) {
-            tracing::warn!("connect stage emit failed: {e}");
-        }
-    }
-}
-
 /// F45：per-origin「上次成功地址」——竞发时排首（下次大概率同一条路最快），赢家更新。
 /// 进程内软状态,丢了只是少一次优化,不影响正确性。
 fn last_good_store() -> &'static Mutex<std::collections::HashMap<String, Endpoint>> {
@@ -464,11 +314,11 @@ fn last_good_store() -> &'static Mutex<std::collections::HashMap<String, Endpoin
     STORE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
 }
 
-fn last_good_for(origin: &str) -> Option<Endpoint> {
+pub(crate) fn last_good_for(origin: &str) -> Option<Endpoint> {
     last_good_store().lock().ok()?.get(origin).cloned()
 }
 
-fn record_last_good(origin: &str, ep: &Endpoint) {
+pub(crate) fn record_last_good(origin: &str, ep: &Endpoint) {
     if let Ok(mut m) = last_good_store().lock() {
         m.insert(origin.to_string(), ep.clone());
     }
@@ -492,7 +342,10 @@ pub fn winner_address(cfg: &RemoteConfig) -> Endpoint {
 }
 
 /// F45：竞发拨号顺序 = last-good 排首（若它仍在 endpoints 里），其余保序。纯函数,可测。
-fn winner_order(endpoints: Vec<Endpoint>, last_good: Option<&Endpoint>) -> Vec<Endpoint> {
+pub(crate) fn winner_order(
+    endpoints: Vec<Endpoint>,
+    last_good: Option<&Endpoint>,
+) -> Vec<Endpoint> {
     let Some(lg) = last_good else {
         return endpoints;
     };
@@ -507,357 +360,6 @@ fn winner_order(endpoints: Vec<Endpoint>, last_good: Option<&Endpoint>) -> Vec<E
         }
     }
     out
-}
-
-/// F45：happy-eyeballs 竞发——按 `order` 阶梯并发拨号（每个 `client::connect` = TCP+SSH
-/// 握手+host key 校验,各自独立 handler+cell）,首个握手成功者胜、立即 abort 其余在飞
-/// （drop 关 socket,trap #6/#8）,鉴权留给调用方只对胜者做一次。整体 `deadline` 看门狗兜
-/// 黑洞地址。全部失败 → 聚合各地址错误（trap #3）;被 abort 的输家不计入错误（trap #2）。
-///
-/// aterm F20 陷阱 #1(disconnect 不清 configs/sessions 致 map 无界增长)与 #5(在飞重连
-/// 被 disconnect 后完成的纪元幽灵)对本实现**不适用**:每次 connect 自建一个局部 JoinSet、
-/// 无跨调用持久竞发态或共享 channel(晚到 task 随 set drop 弃),唯一跨调用状态 `last_good_store`
-/// 按 origin 键、有界,既非无界 disconnect map 也无纪元计数器。
-async fn race_connect(
-    config: Arc<client::Config>,
-    expected_fp: Option<String>,
-    order: Vec<Endpoint>,
-    deadline: Duration,
-    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
-) -> Result<
-    (
-        client::Handle<ClientHandler>,
-        Arc<Mutex<Option<String>>>,
-        Endpoint,
-    ),
-    String,
-> {
-    use tokio::task::JoinSet;
-
-    let addr_list = order
-        .iter()
-        .map(|e| format!("{}:{}", e.host, e.port))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let race = async move {
-        let mut set: JoinSet<Result<_, String>> = JoinSet::new();
-        for (i, ep) in order.into_iter().enumerate() {
-            let config = Arc::clone(&config);
-            let fp = expected_fp.clone();
-            let emitter = stage_emitter.clone();
-            set.spawn(async move {
-                if i > 0 {
-                    tokio::time::sleep(RACE_STAGGER * i as u32).await;
-                }
-                let ep_label = format!("{}:{}", ep.host, ep.port);
-                emit_stage(
-                    &emitter,
-                    ConnectStage::Dialing {
-                        endpoint: ep_label.clone(),
-                    },
-                );
-                let cell: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-                let handler = ClientHandler {
-                    expected_fingerprint: fp,
-                    observed_fingerprint: Arc::clone(&cell),
-                    stage_emitter: emitter.clone(),
-                    endpoint: Some(ep_label.clone()),
-                };
-                match client::connect(config, (ep.host.as_str(), ep.port), handler).await {
-                    Ok(h) => Ok((h, cell, ep)),
-                    Err(e) => {
-                        emit_stage(
-                            &emitter,
-                            ConnectStage::Failed {
-                                endpoint: ep_label.clone(),
-                                reason: format!("[{}] {e}", classify_stage(&e.to_string())),
-                            },
-                        );
-                        Err(format!("{ep_label} {e}"))
-                    }
-                }
-            });
-        }
-
-        let mut errors: Vec<String> = Vec::new();
-        while let Some(joined) = set.join_next().await {
-            match joined {
-                Ok(Ok(winner)) => {
-                    // 首个成功者胜；drop set → abort 其余在飞（关 socket，不等死地址超时）。
-                    set.abort_all();
-                    emit_stage(
-                        &stage_emitter,
-                        ConnectStage::Won {
-                            endpoint: format!("{}:{}", winner.2.host, winner.2.port),
-                        },
-                    );
-                    return Ok(winner);
-                }
-                Ok(Err(e)) => errors.push(e),
-                // trap #2 的真正实现是「首个 Ok 即 return、根本不收集输家错误」；此分支
-                // 防御性存在(当前控制流下不可达:abort_all 后立即 return,不再 join_next),
-                // 显式声明取消不算错误、防未来重构改动早返回结构时回归。
-                Err(je) if je.is_cancelled() => {}
-                Err(je) => errors.push(format!("拨号任务异常: {je}")),
-            }
-        }
-        Err(if errors.is_empty() {
-            "无可用地址".to_string()
-        } else {
-            format!("所有地址连接失败: {}", errors.join("; "))
-        })
-    };
-
-    match tokio::time::timeout(deadline, race).await {
-        Ok(r) => r,
-        Err(_) => Err(format!("所有地址握手超时（{addr_list}）")),
-    }
-}
-
-/// F56：持有跳板机 session,让 direct-tcpip 隧道在目标连接存活期间不被 drop 关闭
-/// （drop 跳板 Handle → russh 关跳板连接 → 隧道 channel 死 → 目标断）。按**目标 origin** 键——
-/// 每次经跳板重连替换旧 holder（drop 旧跳板连接），按配置的被跳板目标数有界。
-fn jump_holders() -> &'static Mutex<std::collections::HashMap<String, client::Handle<ClientHandler>>>
-{
-    static STORE: std::sync::OnceLock<
-        Mutex<std::collections::HashMap<String, client::Handle<ClientHandler>>>,
-    > = std::sync::OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
-}
-
-/// F56：经跳板机隧道连目标。连+鉴权跳板（复用 `connect_session`，白嫖跳板多地址竞速+指纹校验+
-/// 鉴权）→ `channel_open_direct_tcpip` 到目标主地址 → `connect_stream` 在隧道流上跑目标 SSH 握手
-/// （同 `ClientHandler` 验目标指纹）→ 跳板 session 存 `jump_holders` 保活。**fail-closed**：
-/// 环/查无/连不上 → Err（绝不回退直连目标）。v1 单跳（忽略跳板自身的 jump）。
-async fn connect_via_jump(
-    jump_label: &str,
-    target: &RemoteConfig,
-    config: Arc<client::Config>,
-    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
-) -> Result<
-    (
-        client::Handle<ClientHandler>,
-        Arc<Mutex<Option<String>>>,
-        Endpoint,
-    ),
-    String,
-> {
-    if jump_label == target.origin_label() {
-        return Err("跳板配置指向自己（环）".to_string());
-    }
-    let mut jump_cfg = crate::load_remote_config_by_label(jump_label)
-        .ok_or_else(|| format!("跳板配置未找到: {jump_label}"))?;
-    jump_cfg.jump = None; // v1 单跳：忽略跳板自身的 jump，防链式递归/环
-    emit_stage(
-        &stage_emitter,
-        ConnectStage::Dialing {
-            endpoint: format!("跳板 {}", jump_cfg.origin_label()),
-        },
-    );
-    // 复用 connect_session 连+鉴权跳板。Box::pin：递归 async 需装箱定尺寸。
-    let (jump_session, _jump_fp) = Box::pin(connect_session(&jump_cfg, None, None))
-        .await
-        .map_err(|e| format!("跳板 {} 连接失败: {e}", jump_cfg.origin_label()))?;
-    // 经跳板开 direct-tcpip 到目标主地址（v1 单地址，不经跳板对目标多地址竞速）。
-    let channel = jump_session
-        .channel_open_direct_tcpip(
-            target.host.clone(),
-            target.port as u32,
-            "127.0.0.1".to_string(),
-            0,
-        )
-        .await
-        .map_err(|e| format!("经跳板开隧道到 {}:{} 失败: {e}", target.host, target.port))?;
-    let stream = channel.into_stream();
-    // 隧道流上跑目标 SSH 握手（同 ClientHandler 验目标指纹）。
-    let cell: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let handler = ClientHandler {
-        expected_fingerprint: target.host_key_fingerprint.clone(),
-        observed_fingerprint: Arc::clone(&cell),
-        stage_emitter: stage_emitter.clone(),
-        endpoint: Some(format!("{}:{}（经跳板）", target.host, target.port)),
-    };
-    let session = client::connect_stream(config, stream, handler)
-        .await
-        .map_err(|e| format!("目标 SSH 握手失败（经跳板）: {e}"))?;
-    // 跳板 session 保活（否则 drop 关连接 → 隧道死）。按目标 origin 键，替换旧的。
-    if let Ok(mut m) = jump_holders().lock() {
-        m.insert(target.origin_label(), jump_session);
-    }
-    let winner = Endpoint {
-        host: target.host.clone(),
-        port: target.port,
-    };
-    Ok((session, cell, winner))
-}
-
-pub(crate) async fn connect_session(
-    cfg: &RemoteConfig,
-    inactivity_timeout: Option<Duration>,
-    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
-) -> Result<(client::Handle<ClientHandler>, Arc<Mutex<Option<String>>>), String> {
-    // FIX 1（issue #15 review）：长连接数据源**绝不**靠 inactivity_timeout 兜底死链——
-    // russh 0.61 的 inactivity timer 在没有 keepalive 时会在到点直接拆掉一条**健康的**
-    // 空闲连接（idle 1h 的 Claude 会话很常见）。改用 SSH 层 keepalive：每 30s 无收包就
-    // 发一个 keepalive，连发 keepalive_max(默认 3) 次无回应才判死（≈90s 探活）。死链由
-    // keepalive 超时 + backend EOF 检出，inactivity_timeout 对长连接置 None。
-    // 测试连接（短命探活）仍可传 Some(短超时)，故 keepalive 与 inactivity 同时支持。
-    let keepalive_interval = inactivity_timeout
-        .is_none()
-        .then(|| Duration::from_secs(30));
-    let config = Arc::new(client::Config {
-        inactivity_timeout,
-        keepalive_interval,
-        ..Default::default()
-    });
-
-    // F45：多地址 happy-eyeballs 竞发（单地址时退化为一次直连，行为等价老实现）。
-    // 竞发只到 TCP+握手+host key 校验；鉴权只对胜者做一次（防 agent 并发 MaxAuthTries）。
-    // 同一 host_key_fingerprint 跨地址钉身份：错连别机的 endpoint 因指纹失配自 reject 出局。
-    // F56：cfg.jump 有值 → 经跳板隧道连（fail-closed，不回退直连）；否则 → 多地址竞速直连。
-    // 两路都产出 (session, observed_fingerprint, winner)，汇合到下方同一鉴权块。
-    let origin = cfg.origin_label();
-    // ★ F05 下半：**SSH 握手这一段**（TCP + 握手 + host key 校验 + 鉴权）。
-    // 它被 `connect_and_exec` 那条埋点整个包在里面 —— 分开量才知道
-    //「起流慢」到底慢在登录还是慢在后端起来。
-    let t_handshake = std::time::Instant::now();
-    let (mut session, observed_fingerprint, winner) =
-        match cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            Some(jump_label) => {
-                connect_via_jump(jump_label, cfg, Arc::clone(&config), stage_emitter.clone())
-                    .await?
-            }
-            None => {
-                let order = winner_order(cfg.endpoints(), last_good_for(&origin).as_ref());
-                let deadline = inactivity_timeout.unwrap_or(HANDSHAKE_DEADLINE);
-                race_connect(
-                    Arc::clone(&config),
-                    cfg.host_key_fingerprint.clone(),
-                    order,
-                    deadline,
-                    stage_emitter.clone(),
-                )
-                .await?
-            }
-        };
-
-    // RSA key 需要协商出 server 支持的 hash alg；非 RSA key 时 flatten 成 None。
-    let best_hash = session
-        .best_supported_rsa_hash()
-        .await
-        .map_err(|e| format!("协商 rsa hash 失败: {e}"))?
-        .flatten();
-
-    // F46：鉴权阶段——失败时 emit Auth{ok:false}+错误,便于泳道定位「卡在鉴权」。
-    let auth_result: Result<(), String> = async {
-        match cfg.key_path.as_ref() {
-            Some(key_path) => {
-                let key_pair = load_secret_key(key_path, None)
-                    .map_err(|e| format!("加载私钥 {key_path} 失败: {e}"))?;
-                let authenticated = session
-                    .authenticate_publickey(
-                        &cfg.user,
-                        PrivateKeyWithHashAlg::new(Arc::new(key_pair), best_hash),
-                    )
-                    .await
-                    .map_err(|e| format!("publickey 鉴权失败: {e}"))?;
-                if !authenticated.success() {
-                    return Err(format!("publickey 鉴权被拒（user={}）", cfg.user));
-                }
-                Ok(())
-            }
-            None => authenticate_via_agent(&mut session, &cfg.user, best_hash).await,
-        }
-    }
-    .await;
-    if let Err(e) = auth_result {
-        emit_stage(
-            &stage_emitter,
-            ConnectStage::Auth {
-                ok: false,
-                detail: Some(e.clone()),
-            },
-        );
-        return Err(e);
-    }
-    emit_stage(
-        &stage_emitter,
-        ConnectStage::Auth {
-            ok: true,
-            detail: None,
-        },
-    );
-
-    // D 审计建议-1：last-good = 上次**完整成功**（握手+鉴权）的地址。放在鉴权成功后,
-    // 避免 TOFU×异机误配时「粘住」一个连得上但认证失败的地址（下次仍先拨它、仍失败,
-    // 真机永不被试）。正常固化下 A/B 同机同 key,放前放后等价;此处取更严谨语义。
-    record_last_good(&origin, &winner);
-    emit_stage(&stage_emitter, ConnectStage::Established);
-
-    tracing::info!(
-        "[perf] ssh_source [{origin}] SSH 握手+鉴权 {}ms（TCP+握手+指纹校验+auth；\
-         winner={winner:?}）",
-        t_handshake.elapsed().as_millis()
-    );
-    Ok((session, observed_fingerprint))
-}
-
-/// ssh-agent 鉴权（Tier 1 便利路径，issue #15 Part 3）。
-///
-/// 连到 Windows OpenSSH agent 命名管道，`request_identities` 枚举身份，逐个
-/// `authenticate_publickey_with`（签名委托给 agent）。任一成功即返回 Ok。
-///
-/// 全程 best-effort：agent 连不上 / 没身份 / 全被拒 → 返回带原因的 Err（测试连接会把它
-/// 映射成可读的 message，不 panic）。
-#[cfg(windows)]
-async fn authenticate_via_agent(
-    session: &mut client::Handle<ClientHandler>,
-    user: &str,
-    best_hash: Option<HashAlg>,
-) -> Result<(), String> {
-    use russh::keys::agent::client::AgentClient;
-
-    let pipe = default_ssh_agent_pipe()
-        .ok_or_else(|| "未配置私钥路径，且本平台无 ssh-agent 支持".to_string())?;
-    let mut agent = AgentClient::connect_named_pipe(pipe).await.map_err(|e| {
-        format!(
-            "未配置私钥路径(keyPath)，尝试 ssh-agent 失败：连不上 {pipe}（agent 未运行？）: {e}"
-        )
-    })?;
-
-    let identities = agent
-        .request_identities()
-        .await
-        .map_err(|e| format!("ssh-agent 枚举身份失败: {e}"))?;
-    if identities.is_empty() {
-        return Err("ssh-agent 没有任何身份（ssh-add 了吗？），且未配置 keyPath".to_string());
-    }
-
-    let mut last_err: Option<String> = None;
-    for id in identities {
-        let pubkey = id.public_key().into_owned();
-        match session
-            .authenticate_publickey_with(user, pubkey, best_hash, &mut agent)
-            .await
-        {
-            Ok(res) if res.success() => return Ok(()),
-            Ok(_) => last_err = Some(format!("agent 身份被拒（user={user}）")),
-            Err(e) => last_err = Some(format!("agent 签名鉴权出错: {e}")),
-        }
-    }
-    Err(last_err.unwrap_or_else(|| "ssh-agent 所有身份均鉴权失败".to_string()))
-}
-
-/// 非 Windows：本 app 只发 Windows，且 Unix 走 key_path 即可。无 agent 时直接报缺 keyPath。
-#[cfg(not(windows))]
-async fn authenticate_via_agent(
-    _session: &mut client::Handle<ClientHandler>,
-    _user: &str,
-    _best_hash: Option<HashAlg>,
-) -> Result<(), String> {
-    // TODO(Phase 1): 非 Windows 的 ssh-agent（SSH_AUTH_SOCK / UnixStream）。
-    Err("未配置私钥路径(keyPath)，且本平台暂不支持 ssh-agent".to_string())
 }
 
 /// 连接远端、鉴权、开 session channel、exec `cfg.backend_path`，
@@ -943,332 +445,28 @@ mod coldstart_perf_guard;
 #[path = "../../../tests/bridge/ssh_source_stream_flag_gate_tests.rs"]
 mod stream_flag_gate_tests;
 
-// ═══════════ `K-P6b`：backend 那条长连接流的拨号，搬进一个由界面起的子进程 ═══════════
+// ═══════════ 〔C2 · `设计/05 §13`〕拨号归后端：backend 那条长连接流也只经拨号代理 ═══════════
 //
-// # 🔴 先写死它买到了多少（`D2` 改窄后的原话，别读大）
+// 〔墓碑 —— `K-P6b` 那一段原话的要点逐字：「买到的是：**`backend 那条长连接流` 的那一跳 SSH 握手，
+//  可以不发生在界面进程里**」「**界面进程仍然自己拨号 —— 7 处里搬走的是 1 处**」「回落有两条……
+//  ① 拿不到代理二进制 ② 配置里没填 `keyPath`」。〕
 //
-// 买到的是：**`backend 那条长连接流` 的那一跳 SSH 握手，可以不发生在界面进程里。**
-//
-// **没买到的，同段写死**：
-//
-// - 🔴 **界面进程仍然自己拨号 —— 7 处里搬走的是 1 处。**
-//   `connect_session` 的生产调用点 **7 处 / 3 份**，逐处登记在
-//   [`dial_move_judge::DIAL_SITES`]（**机检**，不是散文）：本条覆盖后端长连接流那 1 处，
-//   SFTP · 端口转发 · 跳板 · 其余一次性 exec 与测试连接**一处都没动**。
-//   ⇒ **任何地方都不许把它写成「拨号搬出去了」。**
-// - ⚠ **回落有两条，都登记在 `dial_move_judge::FALLBACKS` 里（机检），不是散文**：
-//   ① **拿不到代理二进制**。`resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY`
-//      与 exe 旁的本机后端。
-//      🔴 **这一条的射程是「开发树」，不是「默认装机」——我第一版判错过。**
-//      现打四环（逐份读的原文，**点符号不点行号**）：`local_backend.rs::LOCAL_BACKEND_STEM`
-//      逐字 `"cc-monitor-backend"`
-//      · `src/bridge/tauri.sidecar.conf.json` 的 `"externalBin": ["binaries/cc-monitor-backend"]`
-//      · `.github/workflows/release.yml` 的 `build-windows` 三步（Windows 原生编 backend → 拷成
-//      `cc-monitor-backend-<triple>.exe` → `tauri build --config …local_backend.conf.json`）
-//      · Linux job 同形（`:270/:273/:283`）⇒ **发版包里本机后端就在 exe 旁边，命中。**
-//      而 `externalBin` **不住 `tauri.conf.json`**、只在发版那一步注入 ⇒ **开发树上恒空**。
-//      ⇒ 「查开发树得到一个只在开发树为真的答案」正是 `local_accounts.rs` 里那条登记
-//      （`externalBin` 在开发树现打零命中）说的同一个病。
-//   ② **配置里没填 `keyPath`**。代理只会 publickey 一种鉴权（`ssh-agent` 那条界面侧
-//      只在 Windows 有实现、且是命名管道）⇒ 走 agent 的用户**必须**留在进程内那条路，
-//      否则本件就把一批今天能用的人弄坏了。**这不是懒，是射程。**
-// - 🔴 **`D3③`：Windows 上关掉界面，那个代理进程跟着走。** 它是界面起的子进程、
-//   `kill_on_drop(true)`，而且那条管子一断它自己也收工。
-//   **别让下一个人以为「搬出去了」就等于「它独立跑着」** —— 用户对这一格知情、押后。
-// - **`K-P7` 定的那三样原样继承**：**界面仍解帧**（代理只搬字节）· **凭据面 `K11` 挡着**
-//   （给代理的是私钥**路径**，不是私钥）· **`ConnectStage` 那 6 格过不去**
-//   （代理不发分阶段事件 ⇒ 走代理这条路时那 6 格是空的，与走进程内那条**不等价**）。
-// - **musl 交叉编译没验**：代理二进制由 `src/backend` 出，CI 要把它 `zigbuild`
-//   到两个 musl target，而沙箱门禁只做本机 gnu 构建 ⇒ **门禁全绿证不出那两个 target 编得过**。
-
-/// 拨号代理二进制的**显式住址**（环境变量名）。
-///
-/// 🔴 **「没有它这条路一台机器上都走不到」—— 2026-09-10 起判不了，别当它还有答案。**
-///
-/// 〔墓碑，原话逐字：「为什么要有它：今天安装包里没有本机后端（F05b），没有这个变量的话
-///  这条路**一台机器上都走不到**，那就成了一份「编得过但永远不跑」的代码。」〕
-///
-/// **前提翻了（这一格有读数）**：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
-/// 各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
-/// **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 「安装包里没有本机后端」不成立
-/// （`externalBin` 住 `src/bridge/tauri.sidecar.conf.json`，发版那一步 `--config` 注入，
-/// **刻意不进基础 `tauri.conf.json`** ⇒「基础配置里没有」≠「没配」）。
-/// ⇒ 在装出来那份上，`resolve_dial_proxy` 的**第二处**（exe 旁那份）本来就有东西可认，
-/// 这个变量**不是**唯一入口。
-///
-/// 🔴 **但「那条路到底走没走得到」不跟着翻，本注也不替它下一个新结论。**
-/// 解析到二进制只是两个条件里的一个，另一个是这一行**配了 `keyPath`**
-/// （代理只会 publickey）—— 而「装完之后配了 `keyPath` 的那台到底走没走代理」，
-/// 今天**一台机器上都没人跑出过读数**。**要什么才测得了**逐条写在
-/// `src/doc/IPC-PROTOCOL.md` §10 那一格，**这里刻意不抄第二份**。
-///
-/// ⇒ 今天还说得死的只有一句：**开发树上 `resolve_beside_this_exe` 恒空**
-/// （`externalBin` 不进基础配置 ⇒ `cargo run` / `npm run tauri dev` 两处都空），
-/// 所以在**开发树**上，这个变量仍然是走到这条路的**唯一**入口。
-pub(crate) const DIAL_PROXY_ENV: &str = "CCM_DIAL_PROXY";
-
-/// 解析拨号代理二进制。**只读、只认两处、不写盘、不伸手进家目录。**
-///
-/// ⚠ **刻意不去 `~/.cc-monitor/bin/` 找那份已释放的本机后端** —— 那要一次
-/// `dirs::home_dir()`，而本机读面是 `local_read_surface_registry` 按「生产段里的
-/// `home_dir()`」取人群的一张表，本轮写区里没有它。**少买一格，不去动别人的表。**
-pub(crate) fn resolve_dial_proxy() -> Option<std::path::PathBuf> {
-    if let Some(raw) = std::env::var_os(DIAL_PROXY_ENV) {
-        let p = std::path::PathBuf::from(raw);
-        if p.is_file() {
-            return Some(p);
-        }
-        tracing::warn!(
-            "{DIAL_PROXY_ENV} 指向 {} —— 那不是一个文件。**不猜别的路径**，本轮回落到进程内拨号。",
-            p.display()
-        );
-        return None;
-    }
-    match crate::backend::control::local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"))
-    {
-        crate::backend::control::local_backend::Resolved::Found(p) => Some(p),
-        crate::backend::control::local_backend::Resolved::Missing { .. } => None,
-    }
-}
-
-/// 一条**跑在别的进程里**的后端流：读写两半都是那个子进程的管子。
-///
-/// `Lifetime::JobKillOnClose`（`kill_on_drop` ＋ Windows 上的 Job）在 [`spawn_dial_proxy`]
-/// 里声明，本结构只负责把那个句柄一起持有着 —— 丢掉这个结构 = 丢掉那个句柄 =
-/// 代理进程被收掉。**`D3③` 那一句的落点就在这里。**
-pub struct ProxyStream {
-    /// 只为持有生命周期；`Lifetime::JobKillOnClose` 让「界面走了代理跟着走」成为
-    /// 类型层面的事，不是一条要人记得去调的清理。
-    _child: crate::spawn_managed::ManagedTokioChild,
-    w: tokio::process::ChildStdin,
-    /// ⚠ **必须是 `BufReader` 本体**：握手那一行是 `read_line` 读的，它很可能已经
-    /// 把后面的字节预读进缓冲里了。把裸 `ChildStdout` 交出去 = 丢掉那一段。
-    r: tokio::io::BufReader<tokio::process::ChildStdout>,
-}
-
-impl tokio::io::AsyncRead for ProxyStream {
-    fn poll_read(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        tokio::io::AsyncRead::poll_read(std::pin::Pin::new(&mut self.r), cx, buf)
-    }
-}
-
-impl tokio::io::AsyncWrite for ProxyStream {
-    fn poll_write(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<std::io::Result<usize>> {
-        tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(&mut self.w), cx, buf)
-    }
-    fn poll_flush(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(&mut self.w), cx)
-    }
-    fn poll_shutdown(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(&mut self.w), cx)
-    }
-}
-
-/// backend 那条长连接流的两种承载。**上层一个字都不用改** ——
-/// `inbound_client::split_and_park` 本来就是泛型的（`S: AsyncRead + AsyncWrite + Send`）。
-pub enum BackendStream {
-    /// 拨号发生在**界面进程里**（今天的回落路径）。
-    InProcess(russh::ChannelStream<client::Msg>),
-    /// 拨号发生在**代理进程里**（`K-P6b` 买到的那一格）。
-    Proxied(ProxyStream),
-}
-
-impl tokio::io::AsyncRead for BackendStream {
-    fn poll_read(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        match self.get_mut() {
-            BackendStream::InProcess(s) => {
-                tokio::io::AsyncRead::poll_read(std::pin::Pin::new(s), cx, buf)
-            }
-            BackendStream::Proxied(s) => {
-                tokio::io::AsyncRead::poll_read(std::pin::Pin::new(s), cx, buf)
-            }
-        }
-    }
-}
-
-impl tokio::io::AsyncWrite for BackendStream {
-    fn poll_write(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<std::io::Result<usize>> {
-        match self.get_mut() {
-            BackendStream::InProcess(s) => {
-                tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(s), cx, buf)
-            }
-            BackendStream::Proxied(s) => {
-                tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(s), cx, buf)
-            }
-        }
-    }
-    fn poll_flush(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        match self.get_mut() {
-            BackendStream::InProcess(s) => {
-                tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(s), cx)
-            }
-            BackendStream::Proxied(s) => {
-                tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(s), cx)
-            }
-        }
-    }
-    fn poll_shutdown(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        match self.get_mut() {
-            BackendStream::InProcess(s) => {
-                tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(s), cx)
-            }
-            BackendStream::Proxied(s) => {
-                tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(s), cx)
-            }
-        }
-    }
-}
-
-/// 装那份请求 JSON 的环境变量名 —— 与 `dial::REQUEST_ENV` 逐字相同。
-///
-/// **为什么走环境变量**：`argv` 在同机**任何**用户的 `ps` 里都看得见，而
-/// `/proc/<pid>/environ` 只有本人读得到。**也不走 stdin 第一行** ——
-/// 那要求本文件往一条流里写，而 `write_half_guard` 逐字禁止它自己写流
-/// （写的能力在 `U8a-2a` 整个交给了 `inbound_client`）。
-/// ⇒ 换成环境变量之后子进程的 `stdin` **纯粹**是后端那条通道，一个字节带外数据都没有。
-pub(crate) const DIAL_REQUEST_ENV: &str = "CCM_DIAL_REQUEST";
-
-/// 请求的键名 —— **蛇形**，与 `src/backend/dial/mod.rs::DialRequest` 对齐。
-///
-/// ⚠ 刻意不复用 `RemoteConfig` 的 serde（那套是 camelCase、是**给前端的**契约）：
-/// 这条管子两端都是我们自己，不该被前端字段名拴住。两侧各钉一半 ——
-/// 那边钉「按蛇形读得动」，这边钉「按蛇形写出去」。
-///
-/// 🔴 **只放路径，不放私钥本体**（凭据面 `K11` 挡着）—— 判据钉着这一句。
-fn dial_request_json(cfg: &RemoteConfig, cmd: &str) -> String {
-    serde_json::json!({
-        "host": cfg.host,
-        "port": cfg.port,
-        "user": cfg.user,
-        "key_path": cfg.key_path,
-        "host_key_fingerprint": cfg.host_key_fingerprint,
-        "command": cmd,
-    })
-    .to_string()
-}
-
-/// 起代理进程、把请求行递进去、等它那一行 ack。**回 `Ok` 就是这条流真的通了。**
-///
-/// 为什么要等 ack：`connect_and_exec` 的契约是「回 `Ok` = 流建起来了」。没有 ack 的话，
-/// 「连不上」与「连上了但远端还没说话」在管子上一模一样 —— 那正是本仓治过很多次的
-/// 「两件事在终端上同形」。
-async fn spawn_dial_proxy(
-    bin: &std::path::Path,
-    cfg: &RemoteConfig,
-    cmd: &str,
-) -> Result<ProxyStream, String> {
-    let mut c = tokio::process::Command::new(bin);
-    c.arg("--dial")
-        .env(DIAL_REQUEST_ENV, dial_request_json(cfg, cmd))
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped());
-    // ★★ 三条策略（`00 §1.5.2`）：
-    // · `Hidden` —— 拨号代理是个后台进程，绝不该在用户桌面上开窗。
-    // · `JobKillOnClose` —— 先前那句 `kill_on_drop(true)` 就是这一条
-    //   （「界面退出 = 句柄 drop = 代理跟着走」）。走唯一出口之后它**多买一样**：
-    //   Windows 上还进一个 `KILL_ON_JOB_CLOSE` 的 Job ⇒ monitor 被强杀 / 崩溃时
-    //   （句柄由内核关）代理也跟着走，而 `kill_on_drop` 覆盖不到那一格。
-    // · `Inherit` —— **代理的 stderr 刻意不接管**：它的诊断（拨号失败原因、TOFU 警告）
-    //   就该跟着界面进程的 stderr 走同一个地方。接管它就得再起一条泵，而那是又一条要看住的路。
-    let mut child = crate::spawn_managed::spawn_managed_tokio(
-        &mut c,
-        crate::spawn_managed::ConsolePolicy::Hidden,
-        crate::spawn_managed::Lifetime::JobKillOnClose,
-        crate::spawn_managed::StderrSink::Inherit,
-    )
-    .map_err(|e| format!("起拨号代理 {} 失败: {e}", bin.display()))?;
-
-    let w = child
-        .stdin
-        .take()
-        .ok_or_else(|| "拨号代理没有 stdin 管子".to_string())?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "拨号代理没有 stdout 管子".to_string())?;
-    let mut r = BufReader::new(stdout);
-
-    // ★ **有上限的一行读**。对端是另一个进程 —— 它坏掉、或压根不是我们的代理，
-    //   一条没有换行的巨流会把无界读变成无界堆分配（backend 侧实测过：512 MiB 无换行
-    //   ⇒ RSS 6 MiB → 518 MiB，见 `src/backend/inbound.rs` 头注）。
-    //   ack 正常 < 200 字节，64 KiB 是五个数量级的余量。
-    //   ⚠ 上限写成字面量而不是具名常量：具名的尺寸常量要去 `byte_cap_registry` 那张表上
-    //   签字，而那张表不在本轮写区。**如实记，不装成风格选择。**
-    // ⚠ **必须写成 `.take(` 这个点调用**：`byte_cap_registry` 那条判据的窗口启发式
-    //   认的是 `.take(`，UFCS 写法（`AsyncReadExt::take(&mut r, …)`）它一个字看不见
-    //   ⇒ 上限**真的加了**而判据照旧报「无界读」。本轮实打撞到过这一格。
-    //   这条导入逐字在 `write_half_guard::ALLOWED_IO_IMPORTS` 里（它不带写能力）。
-    use tokio::io::AsyncReadExt;
-    let mut ack = String::new();
-    let mut limited = (&mut r).take(64 * 1024);
-    let n = limited
-        .read_line(&mut ack)
-        .await
-        .map_err(|e| format!("读拨号代理 ack 失败: {e}"))?;
-    drop(limited);
-    if n == 0 {
-        return Err("拨号代理一个字节都没回就走了（它自己的 stderr 上有原因）".to_string());
-    }
-    let v: serde_json::Value = serde_json::from_str(ack.trim())
-        .map_err(|e| format!("拨号代理的 ack 不是 JSON: {e}（原文 {ack:?}）"))?;
-    if v.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
-        let why = v
-            .get("error")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("(代理没说原因)");
-        return Err(format!("拨号代理拨不通: {why}"));
-    }
-    tracing::info!(
-        "K-P6b: backend 流的拨号跑在代理进程里（{}），指纹 {:?}",
-        bin.display(),
-        v.get("fingerprint").and_then(serde_json::Value::as_str)
-    );
-    Ok(ProxyStream {
-        _child: child,
-        w,
-        r,
-    })
-}
+// C2 之后这三句都不成立了：拨号**全部**在后端的拨号代理里（`src/backend/dial/`）；界面这一侧拿链路的
+// 唯一入口是宿主 `dial_host`，读应答的是通信层成员 `ssh_link`。两条回落都删了：
+// ② 的根因（代理不会 ssh-agent）在代理那侧补上了；① 按 `D11`「后端是给定的，不要退路」—— 找不到本机后端
+// 二进制就**报**，不再进程内拨。**唯一还在界面进程里拨的是 SFTP**（`F7c` 独占的 `sftp.rs`，
+// 用的是 `inproc_dial.rs` 那一份搬来的旧实现），登记在 `dial_move_judge::DIAL_SITES`。
 
 pub async fn connect_and_exec(
     cfg: &RemoteConfig,
     with_bg: bool,
     tail_only: bool,
     with_rbind_token: bool,
-) -> Result<BackendStream, String> {
-    // 与 jsonl-watcher 不同，backend 是长连接：inactivity_timeout=None → connect_session
-    // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。
+) -> Result<crate::dial_host::DialStream, String> {
+    // backend 是长连接：代理那一侧 inactivity_timeout=None、keepalive 30s，靠 keepalive + EOF 检死链。
     // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定
     // "部署确认为当前版本"，见该处注释）。tail_only=true → backend 不重放历史
-    // （历史由本侧旁路 --read-session 快照拉取），实时通道流量趋零。
+    // （历史由本侧旁路快照拉取），实时通道流量趋零。
     let mut cmd = shell_quote(&cfg.backend_path);
     if with_bg {
         cmd.push_str(" --with-bg");
@@ -1288,35 +486,9 @@ pub async fn connect_and_exec(
     if with_rbind_token {
         cmd.push_str(" --with-rbind-token");
     }
-    // ★ `K-P6b`：两个条件都满足才把这一跳交出去；否则**出声**回落。
-    //   两条路的差别只在「谁跑 SSH 握手」，交给上层的东西（一条双工字节流）一模一样。
-    let has_key = cfg
-        .key_path
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
-    // ⚠ **只解析一次**：判据钉着「走不走代理这个判断只许有一个地方做」，
-    //   而下面 `warn` 里要回显它 —— 再调一次就成了两次判断，两次之间还可能不一致。
-    let proxy = resolve_dial_proxy();
-    match proxy.as_ref().filter(|_| has_key) {
-        Some(bin) => spawn_dial_proxy(bin, cfg, &cmd)
-            .await
-            .map(BackendStream::Proxied),
-        None => {
-            // 🔴 **这一句是「这一台机器上拨号仍在界面进程里」的运行期证据。**
-            //    别把它降成 `info` —— 它是用户侧唯一看得见这一格的地方。
-            tracing::warn!(
-                "K-P6b: 不走拨号代理（有二进制={} · 配了 keyPath={has_key}）\
-                 ⇒ **backend 流的拨号仍然发生在界面进程里**。\
-                 前者为假多半是在开发树里跑（`externalBin` 只在发版那一步注入，\
-                 见 `tauri.sidecar.conf.json`），或 {DIAL_PROXY_ENV} 没设；\
-                 后者为假 = 这台走的是 ssh-agent，而代理今天只会 publickey。",
-                proxy.is_some()
-            );
-            connect_and_exec_cmd(cfg, &cmd)
-                .await
-                .map(BackendStream::InProcess)
-        }
-    }
+    // 〔C2〕`connect_and_exec_cmd` 从此只经拨号代理拿链路（它的函数体由 `dial_move_judge` 钉着）——
+    // 所以这一行**不再是**「进程内回落」，它就是唯一那条路。
+    connect_and_exec_cmd(cfg, &cmd).await
 }
 
 // 🔴 **这个模块的 `pub(crate)` 是 `K-R74` 的承重件，别顺手收回私有**〔09-12〕：
@@ -1955,12 +1127,29 @@ async fn fetch_snapshot(
     let path = &item.path;
     let origin = crate::origin::Origin(host_label.to_string());
     let plan = frame_query::tail(&origin, path, SNAPSHOT_TAIL_LINES as u64).await?;
-    let mut arrived: u64 = 0;
+    // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
+    let how = crate::snapshot_resume::plan_read(
+        crate::snapshot_resume::cursor_of(&origin, sid).as_ref(),
+        path,
+        &plan,
+    );
+    if let crate::snapshot_resume::Read::Resume {
+        from_byte,
+        upto,
+        first_seq,
+        skip_below,
+    } = &how
+    {
+        tracing::info!(
+            "snapshot [{host_label}] {sid}: 续传 —— 从字节 {from_byte}（第 {first_seq} 行）读到 {upto}，\
+             第 {skip_below} 行之前的已发过、不再发"
+        );
+    }
+    let mut walk = crate::snapshot_resume::Walk::new(&how, &plan);
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
-    // 尾段先到（最新 N 行先就位），头段回填。
-    'read: for (from, upto) in [(plan.split_at, plan.end), (0, plan.split_at)] {
+    'read: for (from, upto) in walk.segments().to_vec() {
         let mut offset = from;
         while offset < upto {
             let page = frame_query::read_page(&origin, path, offset, Some(upto)).await?;
@@ -1977,13 +1166,15 @@ async fn fetch_snapshot(
                 if !snapshot_line_countable(line) {
                     continue;
                 }
+                let Some(seq) = walk.step() else {
+                    continue; // 续传：锚到续点之间的行前端已有，数掉不发
+                };
                 chunk.push(JsonlLine {
                     session_id: sid.to_string(),
                     path: std::path::PathBuf::from(path),
-                    seq: tail_seq(arrived, plan.total, plan.tail_from),
+                    seq,
                     raw: line.to_string(),
                 });
-                arrived += 1;
                 if chunk.len() >= SNAPSHOT_CHUNK_LINES {
                     if q.is_cancelled(sid) {
                         cancelled = true;
@@ -2011,28 +1202,31 @@ async fn fetch_snapshot(
     if !chunk.is_empty() {
         flush_lines(replay, app, host_label, chunk).await;
     }
-    // 完整性校验：`total` 精确对账（F30）。
-    if arrived != plan.total {
+    // 完整性校验：`total` 精确对账（F30）—— 续传时对的是「锚之后那一截」。
+    let (arrived, want) = (walk.arrived(), walk.want());
+    if arrived != want {
         return Err(format!(
-            "快照不完整：{arrived}/{} 行（连接中断或后端报错）",
-            plan.total
+            "快照不完整：{arrived}/{want} 行（连接中断或后端报错）"
         ));
     }
     // 下界：宣告时 prime 的行数 L（`session_added.lines`）—— 文件在宣告之后被截短才会撞上。
     if let Some(expected) = item.expected_lines {
-        if arrived < expected {
+        if plan.total < expected {
             return Err(format!(
-                "快照不完整：{arrived}/{expected} 行（连接中断或后端报错）"
+                "快照不完整：{}/{expected} 行（连接中断或后端报错）",
+                plan.total
             ));
         }
     }
+    // `[0, total)` 全到了（整份：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。
+    crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
     Ok(FetchOutcome::Done(arrived))
 }
 
 /// 两段编号映射（纯函数，与测试共用——审计 D：原测试在测试体内重实现映射，
 /// 锤不到生产代码）：到达序 → 行号。前 total-tail_from 行是尾段（最新），
 /// 其余是头段回填。调用方保证 tail_from <= total（`frame_query::tail` 校验）。
-fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
+pub(crate) fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
     let seg1 = total.saturating_sub(tail_from);
     if arrived < seg1 {
         tail_from + arrived
@@ -2047,23 +1241,9 @@ fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
 pub async fn connect_and_exec_cmd(
     cfg: &RemoteConfig,
     cmd: &str,
-) -> Result<russh::ChannelStream<client::Msg>, String> {
-    // 长连接/exec 路径不 emit 分阶段事件（F46 仅测试连接路径,避免每次重连刷屏）。
-    let (session, _fp) = connect_session(cfg, None, None).await?;
-
-    let channel = session
-        .channel_open_session()
-        .await
-        .map_err(|e| format!("打开 session channel 失败: {e}"))?;
-
-    // want_reply = true：等远端确认 exec 成功再继续。
-    channel
-        .exec(true, cmd.as_bytes())
-        .await
-        .map_err(|e| format!("exec {cmd} 失败: {e}"))?;
-
-    // into_stream 把 channel 变成 AsyncRead+AsyncWrite；读端就是 backend stdout 流。
-    Ok(channel.into_stream())
+) -> Result<crate::dial_host::DialStream, String> {
+    // 〔C2〕拨号在后端的拨号代理里；这里拿到的是代理子进程那两根管子（读端 = 远端命令的 stdout）。
+    crate::dial_host::open_stream(cfg, cmd).await
 }
 
 /// 一次远端 exec 的**完整**结果：stdout、stderr、退出码。
@@ -2223,49 +1403,8 @@ pub async fn connect_and_exec_capture(
     cmd: &str,
     abort_marker: Option<&str>,
 ) -> Result<RemoteExec, String> {
-    let (session, _fp) = connect_session(cfg, None, None).await?;
-    let mut channel = session
-        .channel_open_session()
-        .await
-        .map_err(|e| format!("打开 session channel 失败: {e}"))?;
-    channel
-        .exec(true, cmd.as_bytes())
-        .await
-        .map_err(|e| format!("exec {cmd} 失败: {e}"))?;
-
-    let mut out: Vec<u8> = Vec::new();
-    let mut err: Vec<u8> = Vec::new();
-    let mut status: Option<u32> = None;
-    // EOF 之后服务端才送 exit-status，所以**不能见 Eof 就 break**；
-    // 收到 Close / 通道关闭（wait 返回 None）才算结束。
-    while let Some(msg) = channel.wait().await {
-        match msg {
-            russh::ChannelMsg::Data { data } => {
-                if out.len() < EXEC_CAPTURE_MAX_BYTES {
-                    out.extend_from_slice(&data);
-                }
-                if let Some(marker) = abort_marker {
-                    if String::from_utf8_lossy(&out).contains(marker) {
-                        break;
-                    }
-                }
-            }
-            russh::ChannelMsg::ExtendedData { data, .. } => {
-                if err.len() < EXEC_CAPTURE_MAX_BYTES {
-                    err.extend_from_slice(&data);
-                }
-            }
-            russh::ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
-            russh::ChannelMsg::Close => break,
-            _ => {}
-        }
-    }
-
-    Ok(RemoteExec {
-        stdout: String::from_utf8_lossy(&out).into_owned(),
-        stderr: String::from_utf8_lossy(&err).into_owned(),
-        exit_status: status,
-    })
+    // 〔C2〕收全三样的活在拨号代理里（`use: capture`）；stdout/stderr 各自的上限照旧由这里给。
+    crate::dial_host::capture(cfg, cmd, abort_marker, EXEC_CAPTURE_MAX_BYTES).await
 }
 
 /// POSIX shell 单引号转义（issue #16：历史查询的路径参数经远端 shell 解析，
@@ -3105,8 +2244,17 @@ async fn flush_lines(
     host_label: &str,
     lines: Vec<JsonlLine>,
 ) {
+    let flushed: Vec<(String, u64)> = lines
+        .iter()
+        .map(|l| (l.session_id.clone(), l.seq))
+        .collect();
     let payloads = crate::batch_to_payloads(lines, Some(host_label.to_string()));
     replay.on_line_batch_awaited(app, payloads).await;
+    // 〔C2〕发出去了才推续点（连续才推，见 `snapshot_resume::note_flushed`）。
+    crate::snapshot_resume::note_flushed(
+        &crate::origin::Origin(host_label.to_string()),
+        flushed.iter().map(|(s, q)| (s.as_str(), *q)),
+    );
 }
 
 /// [`run`] 的内层流循环：connect → exec backend → 逐帧 dispatch。**所有**提前返回
@@ -3664,6 +2812,8 @@ async fn stream_loop(
                 // Batch8 D-B1：摘除排队中的快照 + 标记 inflight 取消——归档后
                 // 迟到的快照行会经"见行复活"造出关不掉的僵尸 live tab。
                 snapshots.cancel(&sid);
+                // 〔C2〕会话真结束 ⇒ 续点作废（再宣告时整份拉，与今天同）。
+                crate::snapshot_resume::forget(&crate::origin::Origin(host_label.clone()), &sid);
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![],
                     // ★ S0：cause 由后端说了算，monitor 不猜（原先靠查会陈旧的 tmux 快照）。
@@ -4236,28 +3386,35 @@ pub async fn test_remote_connection(
         message: String::new(),
     };
 
-    // 1. 连接 + 鉴权（短 inactivity：测试连接不需要长保活）。F46：传 Some(on_stage) 让
-    //    竞发/握手/鉴权按地址泳道流式 emit 到前端「连接过程」日志。
-    let (session, observed) =
-        match connect_session(&cfg, Some(Duration::from_secs(30)), Some(on_stage)).await {
-            Ok(s) => s,
-            Err(e) => {
-                // 握手失败（含 host key 不匹配被拒）。check_server_key 可能已写过指纹，但
-                // connect_session 在 Err 路径不回传 cell，这里只报失败原因即可。
-                result.ssh_ok = false;
-                result.message = format!("SSH 连接/鉴权失败：{e}");
-                return Ok(result);
-            }
-        };
+    // 1. 连接 + 鉴权 + exec backend（短命探活：测试连接不需要长保活）。F46：阶段行由拨号代理逐行报，
+    //    这里原样转给前端「连接过程」日志（〔C2〕此前只有进程内那条路有阶段；拨号搬进后端之后只有这一个来源）。
+    let mut to_ui = |s: ConnectStage| {
+        if let Err(e) = on_stage.send(s) {
+            tracing::warn!("connect stage emit failed: {e}");
+        }
+    };
+    let (link, ack) = match crate::dial_host::probe(&cfg, &cfg.backend_path, &mut to_ui).await {
+        Ok(v) => v,
+        Err((e, _seen_fingerprint)) => {
+            // 握手失败（含 host key 不匹配被拒）。代理那侧看到过的指纹**刻意不回给前端**：
+            // 失败时给一个指纹，前端那条「固化指纹」的路就可能把一把失配的 key 固化进去（与改动前同一个取舍）。
+            result.ssh_ok = false;
+            result.message = format!("SSH 连接/鉴权失败：{e}");
+            return Ok(result);
+        }
+    };
     result.ssh_ok = true;
-    result.fingerprint = observed.lock().ok().and_then(|g| g.clone());
-    // 连接成功 → last-good 已记为胜者;回传给前端展示「你正连上/将固化哪个地址」。
+    result.fingerprint = ack.fingerprint.clone();
+    // 竞速胜出的地址（代理 ack 带回来，宿主已记成 last-good）：回传给前端展示「你正连上/将固化哪个地址」。
     let win = winner_address(&cfg);
-    result.endpoint = Some(format!("{}:{}", win.host, win.port));
+    result.endpoint = Some(
+        ack.endpoint
+            .clone()
+            .unwrap_or_else(|| format!("{}:{}", win.host, win.port)),
+    );
 
-    // 3. exec backend 并等首行 hello。
-    let backend_path = cfg.backend_path.clone();
-    match probe_backend(&session, &backend_path).await {
+    // 2. 读后端首行 hello ＋ 探一次控制通道（链路里跑的就是 `backend_path`）。
+    match probe_backend(link).await {
         Ok(Some(probe)) => {
             result.backend_ok = true;
             result.message = if probe.control_ok {
@@ -4282,10 +3439,7 @@ pub async fn test_remote_connection(
         }
     }
 
-    // 礼貌关闭 session（best-effort，忽略错误）。
-    let _ = session
-        .disconnect(russh::Disconnect::ByApplication, "", "")
-        .await;
+    // 链路（连同代理子进程）在 `probe_backend` 里用完即丢 ⇒ 代理收工、SSH 连接随之关。
     Ok(result)
 }
 
@@ -4317,22 +3471,9 @@ struct BackendProbe {
 /// - `Ok(Some(probe))` —— 读到并解析成 hello（`probe.control_*` 说明控制通道结论）。
 /// - `Ok(None)`        —— 超时 / EOF / 非 hello（backend 未正常响应）。
 /// - `Err(_)`          —— channel/exec/IO 硬错误。
-async fn probe_backend(
-    session: &client::Handle<ClientHandler>,
-    backend_path: &str,
-) -> Result<Option<BackendProbe>, String> {
-    let channel = session
-        .channel_open_session()
-        .await
-        .map_err(|e| format!("打开 session channel 失败: {e}"))?;
-    channel
-        .exec(true, backend_path.as_bytes())
-        .await
-        .map_err(|e| format!("exec {backend_path} 失败: {e}"))?;
-
+async fn probe_backend(link: crate::dial_host::DialStream) -> Result<Option<BackendProbe>, String> {
     // U8a-2a：切成两半，写半边同一步停住（见 `inbound_client::split_and_park`）。
-    let (rh, parked) =
-        crate::backend::control::inbound_client::split_and_park(channel.into_stream());
+    let (rh, parked) = crate::backend::control::inbound_client::split_and_park(link);
     let mut reader = BufReader::new(rh);
 
     // ★ F10b：与主帧读同一个量（backend 出方向单行）⇒ 同一个上限、同一个机制。

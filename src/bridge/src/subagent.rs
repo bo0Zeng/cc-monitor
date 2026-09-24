@@ -99,18 +99,30 @@ impl Backend {
     ///
     /// 出的是**逐行、已 trim、已剔空行**的输出 —— 两条路形状一致
     /// （远端那条由 `run_list_query` 保证，本机这条在 [`run_local_query`] 里对齐）。
-    pub(crate) async fn query(&self, argv: &[&str]) -> Result<Vec<String>, String> {
+    ///
+    /// 〔C2 · SE1 欠账〕失败带**种类**（[`QueryFailure`]）：调用方据种类决定「还要不要再要」，
+    /// 不解析 `message` 的文字。种类**在失败发生的那一层当场定**，不事后按文字猜：
+    /// 本机那条看退出码与后端自己印的那句 `unknown argument` · 远端拨号那条看首行是不是 hello ·
+    /// 帧面那条先问长连接认不认这条命令。
+    pub(crate) async fn query(&self, argv: &[&str]) -> Result<Vec<String>, QueryError> {
         match self {
             Backend::Local => run_local_query(argv),
             Backend::Remote(cfg) => {
                 // 〔`C1` · 09-24〕认得的形状走长连接（`frame_query::route_argv`）；
                 // 认不出的落到拨号那条路 —— 而那条路只放行 `STILL_DIALED` 登记的子命令。
                 if let Some(route) = crate::backend::control::frame_query::route_argv(argv) {
-                    return crate::backend::control::frame_query::run_routed(
-                        &crate::origin::Origin(cfg.origin_label()),
-                        route,
-                    )
-                    .await;
+                    let origin = crate::origin::Origin(cfg.origin_label());
+                    // 长连接在、却不认这条帧命令 ⇒ 对面的后端比这条查询老（结构性，再要也一样）。
+                    if crate::backend::control::frame_query::refuses(&origin, &route) {
+                        return Err(QueryError::old_backend(format!(
+                            "远端 [{}] 的后端还不认 `{}` —— 重装那台机器的后端就有了",
+                            cfg.origin_label(),
+                            route.frame_cmd()
+                        )));
+                    }
+                    return crate::backend::control::frame_query::run_routed(&origin, route)
+                        .await
+                        .map_err(QueryError::transport);
                 }
                 // 自由文本（路径）逐个过 `shell_quote`；子命令本身是字面量。
                 let mut args = argv[0].to_string();
@@ -124,11 +136,85 @@ impl Backend {
     }
 }
 
+/// 〔C2 · SE1 欠账〕一次性查询**要不到**的种类。
+///
+/// | 种类 | 在哪一层定 | 含义 |
+/// |---|---|---|
+/// | `OldBackend` | 本机：退出码 2 ＋ 后端自己印的 `unknown argument: <子命令>` · 远端拨号：首行是 hello（很老的后端掉进流模式）· 帧面：长连接不认这条命令 | **结构性**：同一台后端再要一次还是这样 |
+/// | `Truncated` | 远端拨号：单行超上限被整行拒收 | 输出没收全，不当全量用 |
+/// | `Transport` | 其余：起不了本机后端 · SSH 连不上 · 超时 · 没有控制通道 · 后端退出码非 0（非上面那一形） | **瞬时**：下一次触发再要 |
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QueryFailure {
+    OldBackend,
+    Truncated,
+    Transport,
+}
+
+/// 一次性查询的失败：种类 ＋ 给人看的原因。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct QueryError {
+    pub(crate) kind: QueryFailure,
+    pub(crate) message: String,
+}
+
+impl QueryError {
+    pub(crate) fn old_backend(message: String) -> Self {
+        Self {
+            kind: QueryFailure::OldBackend,
+            message,
+        }
+    }
+    pub(crate) fn truncated(message: String) -> Self {
+        Self {
+            kind: QueryFailure::Truncated,
+            message,
+        }
+    }
+    pub(crate) fn transport(message: String) -> Self {
+        Self {
+            kind: QueryFailure::Transport,
+            message,
+        }
+    }
+}
+
+impl std::fmt::Display for QueryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+/// 只要文字的调用方（`?` 进 `Result<_, String>`）照旧拿到原来那句话。
+impl From<QueryError> for String {
+    fn from(e: QueryError) -> String {
+        e.message
+    }
+}
+
+/// 本机后端对「不认的子命令」印的那一句的前缀（后端 `main.rs` 一次性查询臂：
+/// `cc-monitor-backend query error: unknown argument: <arg>` ＋ 退出 2）。
+/// 判据从后端源码里现抠这一串，对拍两侧（`subagent_tests.rs`）。
+pub(crate) const UNKNOWN_ARGUMENT: &str = "unknown argument: ";
+
+/// 本机退出码 ＋ stderr ⇒ 种类。**纯函数**，判据直接喂。
+pub(crate) fn local_failure_kind(
+    code: Option<i32>,
+    stderr: &str,
+    subcommand: &str,
+) -> QueryFailure {
+    let unknown = format!("{UNKNOWN_ARGUMENT}{subcommand}");
+    if code == Some(2) && stderr.lines().any(|l| l.trim_end().ends_with(&unknown)) {
+        QueryFailure::OldBackend
+    } else {
+        QueryFailure::Transport
+    }
+}
+
 /// 本机那条 transport：exec 一次本机后端拿 stdout。
 ///
 /// ⚠ 定框 §5：**「后端不在」与「查询失败」不许压成同一句话** ——
 /// 前者该提示用户装/起后端，后者该把原因原样端出来。
-fn run_local_query(argv: &[&str]) -> Result<Vec<String>, String> {
+fn run_local_query(argv: &[&str]) -> Result<Vec<String>, QueryError> {
     use crate::backend::observe::local_query::{run_query, QueryOutcome};
     match run_query(
         env!("CCM_TARGET_TRIPLE"),
@@ -136,11 +222,16 @@ fn run_local_query(argv: &[&str]) -> Result<Vec<String>, String> {
         &*crate::spawn_managed::local_backend_one_shot_query(),
     ) {
         QueryOutcome::Ok(stdout) => Ok(nonempty_lines(&stdout)),
-        QueryOutcome::NoBackend(reason) => Err(format!("本机后端不在：{reason}")),
+        QueryOutcome::NoBackend(reason) => {
+            Err(QueryError::transport(format!("本机后端不在：{reason}")))
+        }
         QueryOutcome::Failed { code, stderr } => {
             let sub = argv[0];
             let msg = stderr.trim();
-            Err(format!("本机后端 {sub} 查询失败（退出码 {code:?}）：{msg}"))
+            Err(QueryError {
+                kind: local_failure_kind(code, &stderr, sub),
+                message: format!("本机后端 {sub} 查询失败（退出码 {code:?}）：{msg}"),
+            })
         }
     }
 }

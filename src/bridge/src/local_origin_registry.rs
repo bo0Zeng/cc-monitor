@@ -58,7 +58,13 @@ const CALL: &str = "load_remote_config_by_label(";
 ///
 /// ⚠ 登记的是「够不到」，不是「还没做」。**「以后再说」不是理由** —— 那种进 [`TRIAGE_DEBT`]。
 #[cfg(test)]
-const REMOTE_ONLY: &[(&str, &str, &str)] = &[];
+const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
+    "dial_host.rs",
+    "request",
+    "〔C2 09-24〕它查的是**跳板那一台**（`cfg.jump` 那个标签），而入参 `cfg` 已经是一台远端的配置 —— \
+     本机没有「经跳板连本机」这一形（本机那条路不拨 SSH），`<local>` 结构上走不到这里：\
+     调它的只有 `dial_host` 那几个拿链路的入口，而它们的调用方全在「已经分过本机、确定是远端」之后。",
+)];
 
 /// ★★ **本轮没有逐条量过的存量**（`P4d-Y5` 08-12 立表 19 条；`P4a` 08-12 还掉 3 条 ⇒ 16；
 /// `K-R56` 09-11 还掉 1 条 —— `tmux.rs::tmux_send_keys`，它是 `K-R54` 逐处裁定表第 1 处
@@ -92,10 +98,13 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     ("mcp.rs", "read_remote_project_mcp"),
     ("mcp.rs", "remove_remote_mcp_server"),
     ("mcp.rs", "write_remote_mcp_server"),
-    ("port_forward.rs", "start_forward"),
+    // 〔C2 09-24〕住址 `port_forward.rs::start_forward` → `dial_host.rs::forward`：查配置搬进了宿主
+    //   （端口转发那一份进了通信层，读配置是宿主的事）。欠的那笔债一格没变 —— 本机那条路今天仍没有端口转发。
+    ("dial_host.rs", "forward"),
     ("remote_branch.rs", "create_remote_branch_session"),
     ("remote_history.rs", "require_cfg_by_label"),
-    ("ssh_source.rs", "connect_via_jump"),
+    // 〔C2 09-24〕住址 `ssh_source.rs` → `inproc_dial.rs`：函数原样搬过去（只服务 SFTP），欠的那笔债一格没变。
+    ("inproc_dial.rs", "connect_via_jump"),
     // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
     //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
     ("backend/control/tmux.rs", "list_remote_tmux"),

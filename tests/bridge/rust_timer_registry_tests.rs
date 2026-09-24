@@ -110,14 +110,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "`build_blocking` 起头让路一次：避开首屏 replay 的磁盘/CPU 争用。\
              索引不在关键路径，晚几秒就绪没关系（UI 那之前显示「索引中」）。**一次性**。",
     ),
-    (
-        "src/port_forward.rs",
-        "wait-for-condition",
-        1,
-        "`accept()` 拿到瞬时错误（ECONNABORTED / EMFILE）时 100ms backoff 再试 —— \
-             **避免忙等**用的。本地已 bound 的 listener 没有「永久失败」态，故不 break。\
-             它等的条件是「下一个连接」，由 `accept()` 本身阻塞驱动，sleep 只在错误分支。",
-    ),
+    // 〔C2 09-24〕`src/port_forward.rs` 那一行（accept 瞬时错误 100ms 退避）**删了**：accept 循环整个搬进了
+    //   后端的拨号代理（`src/backend/dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
     // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
     //    它是 `src/ssh_source.rs` 的 `BACKENDLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
     //    登记里逐字写着它「与**定框 C7 直接冲突**」「也与 **C8**（不许轮询）冲突」，
@@ -128,7 +122,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //    ★ 这一条与 `watcher.rs` 那条（F11）同形：**退役的验收证据就是本表先红在
     //      「少一处 = 退役了」上，删掉登记才绿。** 不是靠人说「我改好了」。
     (
-        "src/ssh_source.rs",
+        // 〔C2 09-24〕住址 `src/ssh_source.rs` → `src/inproc_dial.rs`：进程内那一份竞速原样搬过去（只服务 SFTP）。
+        "src/inproc_dial.rs",
         "throttle",
         1,
         "`RACE_STAGGER * i` —— 多端点竞速时按序号错开发起，避免同时打爆。\

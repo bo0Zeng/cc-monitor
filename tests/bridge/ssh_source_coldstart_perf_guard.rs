@@ -29,12 +29,25 @@ const PHASES: &[(&str, &str, &str)] = &[
         "async fn stream_loop",
         "[perf] ssh_source [{host_label}] 首个 hello T+{}ms（",
     ),
+    // 〔C2 09-24〕握手那一段搬进了拨号代理，量它的埋点跟着搬到宿主 `dial_host.rs::open`
+    //   （原住 `ssh_source.rs` 里的 `connect_session`；那个函数今天只剩 SFTP 那一份，住 `inproc_dial.rs::connect_session`）。
+    //   ⚠ 量的东西多了一次**起代理进程** —— 那是 `设计/05 §13.4` 认下来的代价，埋点让它看得见。
     (
         "SSH 握手+鉴权",
-        "pub(crate) async fn connect_session",
+        "async fn open",
         "[perf] ssh_source [{origin}] SSH 握手+鉴权 {}ms（",
     ),
 ];
+
+/// 〔C2〕埋点住两份文件：流循环在 `ssh_source.rs`，握手在拨号代理的宿主 `dial_host.rs`。
+/// 阶段表每一行按「它在哪个函数里」去对应的那一份里找。
+fn source_of(sig: &str) -> &'static str {
+    if sig == "async fn open" {
+        include_str!("../../src/bridge/src/dial_host.rs")
+    } else {
+        include_str!("../../src/bridge/src/ssh_source.rs")
+    }
+}
 
 /// 抠出某个函数的函数体。
 ///
@@ -64,7 +77,7 @@ fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
         src.len()
     );
     for (phase, sig, needle) in PHASES {
-        let body = body_of(src, sig);
+        let body = body_of(source_of(sig), sig);
         assert!(
             body.contains(needle),
             "冷启动阶段「{phase}」在 `{sig}` 里没有 `[perf]` 埋点（找的是 `{needle}`）。\n\
@@ -77,9 +90,14 @@ fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
 }
 
 /// 本文件的 `[perf]` 条数不许降（**递减棘轮**：埋点只许多不许少）。
+/// 〔C2〕「本文件」= `ssh_source.rs` ＋ 握手那一段搬去的 `dial_host.rs`（两份合起来数）。
 #[test]
 fn the_perf_probes_in_this_file_only_grow() {
-    let src = include_str!("../../src/bridge/src/ssh_source.rs");
+    let src = [
+        include_str!("../../src/bridge/src/ssh_source.rs"),
+        include_str!("../../src/bridge/src/dial_host.rs"),
+    ]
+    .concat();
     // ⚠ 只数**发射点所在的那一行**（trim 后以那个字面量开头）——
     // 本模块自己的源码里也有这串（`needle` 的 `format!`、以及这行 `starts_with` 的参数），
     // 直接 `src.matches(...)` 会**数到自己**：实测数到 6 而真实发射点只有 4。
