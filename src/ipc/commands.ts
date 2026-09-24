@@ -699,7 +699,8 @@ export const commands = {
   local_ccm_entry_status: () => invoke<LocalCcmEntry>("local_ccm_entry_status"),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
-  get_session_tasks: (args: { sessionId: string }) =>
+  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `tasks-list`（本机逐字 `LOCAL_ORIGIN`）。
+  get_session_tasks: (args: { origin: Origin; sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
 
   /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。
