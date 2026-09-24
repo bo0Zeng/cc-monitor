@@ -56,10 +56,12 @@
 //! `relay/tee.rs` 头注里那条 NDJSON 样例的 `"source":"relay"`，
 //! 那是**线上字段的值**，不是散文（改了它 tee 流的消费者就对不上）。
 //!
-//! ⚠ 三个**明写不许改**的 `relay` 字面量（它们落在用户机器上，不是我们的词）：
-//! `CCM_RELAY_PORT` · `CCM_RELAY_CREDENTIALS`（两个 workspace 间**今天不由任何东西对拍**，
-//! 见 `payload.rs` 那句逐字）· `relay-credentials.json`（用户家目录里已经存在的文件）。
-//! 读数与判词住 `调研/真相源/94-步8改名-判据影响面地图.md` 的 `A2` / `A3`。
+//! ⚠ 落在用户机器上的 `relay` 字面量今天只剩**一个**：`CCM_RELAY_PORT`（中转监听的端口 —— 层 1 的，
+//! 名字是对的；两个 workspace 间**今天不由任何东西对拍**，见 `payload.rs` 那句逐字）。
+//! 〔R3 · 2026-09-24〕先前这里还列着两个「明写不许改」的：凭据文件的路径旋钮与凭据文件名 ——
+//! 它们是**账号层**的（读那份文件的是层 2），用户裁「账号就账号中转就中转」、不留兼容读旧名，
+//! 今天叫 `CCM_APIKEY_CREDENTIALS` · `apikey-credentials.json`。盘上那份旧文件由用户一次性挪名。
+//! 读数与判词住 `调研/真相源/94-步8改名-判据影响面地图.md` 的 `A2` / `A3`（那两格记的是改名之前）。
 //!
 //! ⚠ **〔`设计/20 §7` 步 2，本轮搬了〕** 上一版这里逐字写着「本层里真正属于层 2 的住户
 //! 是 `creds.rs` 与 `table.rs`……**本轮不搬**」。它们先搬进 `relay/accounts/`，2026-09-24 再搬出中转层、住 `src/backend/accounts/`，
@@ -212,8 +214,9 @@
 //! ## 反过来：**别处不许伸手进来**
 //!
 //! 本层对外**只有一个口**，就是本文件末尾那一行 `pub(crate) use server::run;`。
-//! `crate::relay::table::…` / `crate::relay::upstream::…` 这类**一条都不许**：
-//! 一旦有人这么引，中转的内部结构就变成了公共契约，之后 `table.rs` 想换形状都得先问一圈。
+//! `crate::relay::server::…` / `crate::relay::upstream::…` 这类**一条都不许**：
+//! 一旦有人这么引，中转的内部结构就变成了公共契约，之后 `upstream.rs` 想换形状都得先问一圈。
+//! （路由表不在本层 —— 它是账号层的，住 `accounts::apikey::table`。）
 //! 真要新开口子 ⇒ 加在那一行旁边，并在 `layering_guard` 里配一张**非空**登记表。
 //!
 //! ## 🔴 诚实边界：这三条钉的是 **import 图**，不是**运行期调用图**
@@ -230,7 +233,7 @@
 //!   活标本就在本层：`server_tests.rs::relay_child_process_entry_point` 走
 //!   `crate::agents::claudecode::paths::resolve_home()` —— 那是子进程入口的夹具，**不算违规**。
 //! - 判据的人群是**层目录**：`src/` 顶层那几个文件（`main.rs` · `listen.rs` · `wire.rs`）
-//!   伸手进 `relay::table::…` 这一形，**今天没有判据挡着**（`mod relay;` 声明在 `main.rs`，
+//!   伸手进 `relay::upstream::…` 这一形，**今天没有判据挡着**（`mod relay;` 声明在 `main.rs`，
 //!   它写的是**裸** `relay::…`，锚点对不上）。如实登记，别读成「全体没有」。
 
 // ── 层 2 **不在这里**：它住 `src/backend/accounts/`（2026-09-24 搬出去的，用户逐字

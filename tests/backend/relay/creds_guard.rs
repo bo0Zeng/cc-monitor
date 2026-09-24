@@ -26,7 +26,8 @@
 //!
 //! # 它**认不出**什么（诚实边界，别读成「日志不可能泄漏」）
 //!
-//! 1. **只扫 `relay/`**。中转之外别处印了什么，本条不管（今天 key 也只住 `relay/`）。
+//! 1. **只扫 `LOG_ROOTS` 那两棵**（`relay/` 与 `accounts/apikey/` —— `--relay` 进程两层的生产段）。
+//!    这两棵之外别处印了什么，本条不管（key 也只经过这两棵：层 2 取明文算头材料，层 1 只拿算好的头）。
 //! 2. **只认 `{ident}` 内联捕获与逗号分隔的位置实参**。有人写
 //!    `let s = format!("{:?}", head.headers); eprintln!("{s}");` ⇒ 本条只看见 `s`，
 //!    而 `s` 要进白名单得有人写一行理由 —— 拦得住「顺手」，拦不住「刻意绕」。
@@ -191,7 +192,7 @@ mod tests {
             "accounts/apikey/creds.rs",
             "[apikey] credentials: this account cannot be used:",
             "一条账号进不了路由表（id 当不了路由段 / `base_url` 解析不了）—— \
-             `K-H2`：静默丢一行的症状是「我明明配了，中转永远 404」",
+             `K-H2`：静默丢一行的症状是「我明明配了，请求永远 404」",
         ),
         (
             "accounts/apikey/creds.rs",

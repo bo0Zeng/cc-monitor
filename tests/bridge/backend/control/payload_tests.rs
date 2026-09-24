@@ -859,7 +859,7 @@ fn the_key_segment_is_the_sid_when_resuming_and_a_nonce_when_starting_fresh() {
 //   诚实边界一起摘掉。新家：`src/backend/control/ccm/plan.rs` 的
 //   `tests::the_container_path_forwards_every_inherited_variable_inward`。
 // ⚠ 那段诚实边界里有一句**今天仍然成立、而且没有别处写着**，抬到这里别丢：
-//   本机中转这条路上**没有任何生产输入能走到它** —— 能推出中转 id 的只有
+//   本机中转这条路上**没有任何生产输入能走到它** —— 能推出 apikey 账号 id 的只有
 //   `LaunchAccount::Named`，而 ccm 渲染器对 `Named` 必然 §35 短路（只有 configDir、没有名字）
 //   ⇒ 两条路今天不相交。那个事实由 `history::tests::
 //   a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container` 逐格钉住。
@@ -1370,7 +1370,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
              钉着，与本条数的是两件事。";
     const NOT_WIRED_TS: &str =
         "TS 兜底渲染器服务的是**远端**那族（`tryRenderCli` 拒了之后的回落），\
-             而本件 `§0e` 裁四明写只保本机、远端那一半 `判不了`（要先给 `creds.relay-key` 找到主人）。";
+             而本件 `§0e` 裁四明写只保本机、远端那一半 `判不了`（要先给 `creds.apikey` 找到主人）。";
     const NOT_WIRED_WINDOW: &str =
         "开窗那一跳给的是**终端进程**的 env（`backend_bin_env_for_window`），\
              而 agent 进程的 env 由它里面那条命令串自己带 ⇒ 同一件事在 A/B 两处已经做了，\

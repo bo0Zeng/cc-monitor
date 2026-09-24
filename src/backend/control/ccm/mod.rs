@@ -110,6 +110,27 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "base-url-across-tmux",
 ];
 
+/// 上面那张 [`CAPABILITIES`] 里，**载体是 tmux** 的那几条 —— 一条一条的依据：
+///
+/// ⚠ 这是一条关于**机制**的声明（「它靠什么活着」），不是差异登记：差异 = 本表 × 平台那一维，
+/// 由汇总层 `lib.rs::capabilities_on` 现推；理由与档住 `lib.rs::TARGET_GAPS`。两张表回答的不是同一个问题。
+///
+/// 〔第三波 S3 · 2026-09-24〕它从汇总层（`lib.rs`，PR1 落地时的临时住址）搬回这里 ——
+/// 一条能力一个住址：往 [`CAPABILITIES`] 加一条靠 tmux 活着的能力的人，就在这张表的正上方。
+/// 「每一条都真在 `CAPABILITIES` 里」由 `target_parity_guard.rs` 的
+/// `every_tmux_carried_ccm_capability_really_exists` 钉着（不许有幽灵）；
+/// 反方向（漏登一条）今天没有判据，照旧记在那份文件头注「买不到」第 5 条。
+pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
+    "attach",               // 实现就是 `tmux attach`
+    "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
+    "bus-register",         // `argv.rs`：要 `--detach`，而 `--detach` 要 `--tmux`
+    "ccm-sid",              // 只在容器（tmux）那条路上被消费，`Plan::Direct` 里没有这个字段
+    "detach",               // 实现就是 `tmux detach`
+    "tmux",                 // 它本身
+    "tmux-base",            // tmux 的 `base-index`
+    "tmux-size",            // tmux 窗格尺寸
+];
+
 /// 撞名时那句话的**唯一格式串**。
 /// ⚠ 结尾那两个字符是**反斜杠 + n**，不是一个真换行 —— 它是一条 **`printf` 格式串**：
 /// 要被原样拼进 `--print` 吐的那条 shell 里（`printf '<本串>' '<名字>'`），

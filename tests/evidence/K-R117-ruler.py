@@ -180,7 +180,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("audit.config-surface", (NA, "—", "配置面审计页的**读**侧（它报告安装面，不改它）")),
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
     ("cc-bus.cockpit", (NA, "—", "cc-bus 驾驶舱的读 / 发消息，不是装 cc-bus")),
-    ("creds.relay-key", (NA, "—", "中转那把第三方 API key（monitor 自己的凭据文件）")),
+    ("creds.apikey", (NA, "—", "账号的第三方 API key（monitor 自己的 apikey 凭据文件）")),
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
     ("history.branch", (NA, "—", "会话历史")),
@@ -201,7 +201,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
     ("plugins.marketplaces", (NA, "—", "列插件市场 —— 只读枚举")),
     ("port-forward", (NA, "—", "端口转发")),
-    ("relay.routing", (NA, "—", "问这几个账号走不走中转")),
+    ("apikey.routing", (NA, "—", "问这几个本机账号在 apikey 表里有没有行（＋本机中转在不在跑）")),
     ("search.history", (NA, "—", "搜索")),
     ("search.index", (NA, "—", "搜索索引（app 自己的索引，不落用户环境）")),
     ("session.activity", (NA, "—", "会话")),
@@ -326,7 +326,9 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "check_remote_acct_iso",
         "deploy_remote_acct_iso",
         # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
-        # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。今天零界面调用点（接线排第三波）⇒ 前端落点不动。
+        # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
+        # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机空态问装没装），
+        # 那一份本来就在 `FRONTEND_PIN['S3']` 里 ⇒ 名单按实数现打**不变**（1 → 1，没有换份）。
         "check_local_acct_iso",
     ), "§3-3 第三行：后端写区 `acct_iso_deploy.rs` ＋ 本机装口新落点，收「2 条 ＋ 1 条欠口」。"
        "① 里住 `acct_iso_deploy.rs` 的恰好这两条（同文件的 `remote_acct_iso_shellinit` 归 ②）；"
@@ -339,7 +341,9 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "aliases_render",
         "remote_acct_iso_shellinit",
         # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
-        # `shellinit_fence_state` ⇒ 归 ② 同一件。零界面调用点 ⇒ 前端落点不动。
+        # `shellinit_fence_state` ⇒ 归 ② 同一件。
+        # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机那一块的
+        # 「生成 rc 片段」），那一份本来就在 `FRONTEND_PIN['S4']` 里 ⇒ 名单按实数现打**不变**（2 → 2）。
         "local_acct_iso_shellinit",
     ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处在 `K-R117` 现打时恰好 2 条命令"
        "（`§S5` 归处栏）；〔AL1〕那条 `write_account_aliases` 拆成三条、〔A3〕加了本机那条 shellinit 之后是 5 条。"

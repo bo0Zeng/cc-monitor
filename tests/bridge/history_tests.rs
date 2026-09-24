@@ -3468,7 +3468,7 @@ fn unified_builder_byte_identical_to_pre_f06_new_session_output() {
 /// 只有「这个号在不在apikey 表里」不同：
 /// api-key 号（表里有行）的命令**带**那个 env，官方号的命令里**一个字节都没有**。
 #[test]
-fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() {
+fn only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix() {
     let rows = vec!["acct-a".to_string()];
     let named = |d: &str| LaunchAccount::Named {
         config_dir: d.to_string(),
@@ -3558,7 +3558,7 @@ fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() 
 ///
 /// 第一版只喂**一个**账号（`acct-a`）⇒ `D6` 的刀 `E6` 把 [`apikey_account_id`] 的答案
 /// `.map(|_| "acct-a")` 写死（那段文本一字不动）⇒ **全绿、门禁四个数与干净树逐字相同**。
-/// 生产后果是**路由键的 `<account>` 段恒是一个号** ⇒ 中转按它取 key ⇒
+/// 生产后果是**路由键的 `<account>` 段恒是一个号** ⇒ 账号层按它取 key ⇒
 /// **acct-b 的会话拿着 acct-a 的那把 key 发请求，两边都显示成功** ——
 /// 正是整个多账号工作要防的最坏那一形。
 /// ⇒ 本条**至少喂两个不同的号**，并断言前缀里的 `<account>` 段跟着变。
@@ -3670,7 +3670,7 @@ fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
     assert_ne!(
         got, got_b,
         "\n换一个号，拼出来的前缀一个字节都没变 —— 「这次拉起是哪个号」这一维成了常量。\n\
-             生产后果：路由键的 `<account>` 段恒指一个号 ⇒ 中转按它取 key ⇒\n\
+             生产后果：路由键的 `<account>` 段恒指一个号 ⇒ 账号层按它取 key ⇒\n\
              **acct-b 的会话拿着 acct-a 的那把 key 发请求，而两边都显示成功。**"
     );
     assert!(
@@ -4021,7 +4021,7 @@ fn the_rows_really_come_from_that_file_not_from_a_constant() {
             .unwrap_or(0)
     ));
     std::fs::create_dir_all(&dir).expect("建临时目录");
-    let f = dir.join("relay-credentials.json");
+    let f = dir.join("apikey-credentials.json");
 
     // ① 文件不在 ⇒ 零条（**不是**报错：读不到与一条没配的正确行为都是「照旧直连」）。
     assert!(apikey_rows_at(&f).is_empty(), "文件不在却读出了行");
@@ -4038,7 +4038,7 @@ fn the_rows_really_come_from_that_file_not_from_a_constant() {
         vec!["acct-a".to_string(), "acct-b".to_string()],
         "没把那份文件里的行读出来 —— 这个取值口恒空的话，谁都不会走中转，而且全绿"
     );
-    // ③ 当不了路由段的 id **筛掉**（与中转装表那一侧同一条规则）。
+    // ③ 当不了路由段的 id **筛掉**（与账号层装表那一侧同一条规则）。
     std::fs::write(
         &f,
         b"{\n  \"accounts\": {\n    \"ok-1\": {},\n    \"has.dot\": {},\n    \"has/slash\": {}\n  }\n}\n",
@@ -4047,7 +4047,7 @@ fn the_rows_really_come_from_that_file_not_from_a_constant() {
     assert_eq!(
         apikey_rows_at(&f),
         vec!["ok-1".to_string()],
-        "界面这一侧收下了中转装表时会丢掉的行 —— 那会让界面说「经本机中转」而中转 404"
+        "界面这一侧收下了账号层装表时会丢掉的行 —— 那会让界面说「经本机中转」而账号层 404"
     );
     // ④ 文件坏了 ⇒ 零条 + 不 panic（人手编打错一个逗号是常态）。
     std::fs::write(&f, b"{ not json").expect("写夹具");
@@ -4057,7 +4057,7 @@ fn the_rows_really_come_from_that_file_not_from_a_constant() {
 
 /// ★★ `KH2B7` 的产出方：**界面问的那个「有没有行」，与起会话那一侧问的是同一个规则。**
 ///
-/// 两处各写一个 basename 规则，漂开的那天症状是「设置里说走中转、起会话时没走」，
+/// 两处各写一个 basename 规则，漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，
 /// 而两边看起来都没错。⇒ 本条把它钉成**同一个函数的两个调用方**。
 #[test]
 fn the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule() {
@@ -4085,7 +4085,7 @@ fn the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule() {
     assert_eq!(
         apikey_account_id(Some(&named)),
         apikey_account_id_of_dir("/home/u/.claude-accts/acct-a"),
-        "两个调用方推出来的账号 id 不一样 —— 那正是「设置里说走中转、起会话时没走」的形状"
+        "两个调用方推出来的账号 id 不一样 —— 那正是「设置里说走 apikey 端点改写、起会话时没走」的形状"
     );
     // 表里没有的行一个都不许混进来（`KL7` 第 2 条的界面侧倒影）。
     assert!(
