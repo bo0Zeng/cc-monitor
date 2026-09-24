@@ -31,8 +31,8 @@ import { showActionFailureToast } from "../../src/error-toast";
 import { PanoramaView } from "../../src/views/panorama";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-const ann = (id: string, status: string, author = "agent-x"): Annotation =>
-  ({ id, file: "src/lib.rs", symbol: "f", body: `正文 ${id}`, author, status }) as Annotation;
+const ann = (id: string, status: string, author = "agent-x", origin = "Agent"): Annotation =>
+  ({ id, file: "src/lib.rs", symbol: "f", body: `正文 ${id}`, author, status, origin }) as Annotation;
 type Probe = { repo: string | null; root: HTMLElement; sidebarEl: HTMLElement };
 const probe = (v: PanoramaView): Probe => v as unknown as Probe;
 const ids = (v: PanoramaView, which: "proposed" | "active"): string[] =>
@@ -141,5 +141,22 @@ describe("批注审批队列", () => {
     await openQueue(v);
     expect(api.listAnnotations).not.toHaveBeenCalled();
     expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toEqual(["无法列批注"]);
+  });
+
+  it("Q7 CP6：已生效那一节把「人写的」与「agent 提议、人批准的」分开写（数据来自上游 origin）", async () => {
+    vi.mocked(api.listAnnotations).mockResolvedValue([
+      ann("a1", "Active", "me", "Human"),
+      ann("a2", "Active", "bot", "Agent"),
+      ann("a3", "Active", "old", "Unrecorded"),
+    ]);
+    await openQueue(v);
+    const who = [
+      ...probe(v).sidebarEl.querySelectorAll('[data-pano="ann-queue-active"] .panorama-ann-author'),
+    ].map((e) => e.textContent);
+    expect(who).toEqual([
+      "me · 人写 · src/lib.rs#f",
+      "bot · agent 提议 · src/lib.rs#f",
+      "old · 来源未记录 · src/lib.rs#f",
+    ]);
   });
 });

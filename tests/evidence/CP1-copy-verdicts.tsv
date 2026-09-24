@@ -1023,3 +1023,6 @@ src/panorama/diagram-view.ts:311	{…} · {…} 个文件 · {…} 个符号	保
 src/panorama/diagram-view.ts:331	{…} 个字段 · {…} 个方法	保留	[对外] 选图那一块的界面文字；下钻侧栏的副标题
 src/views/panorama.ts:1117	复制给 agent	保留	[对外] 按钮名（CP7），与节点详情里的同名按钮一致
 src/views/panorama.ts:1459	复制给 agent	保留	[对外] 按钮名（CP7），与节点详情里的同名按钮一致
+src/views/panorama.ts:1789	人写	保留	[对外] 批注来源标签（CP6）：人亲手写的
+src/views/panorama.ts:1791	agent 提议	保留	[对外] 批注来源标签（CP6）：agent 提的，批准后仍是它，与人写的分开
+src/views/panorama.ts:1793	来源未记录	保留	[对外] 批注来源标签（CP6）：旧文件没记来源，如实说不猜
