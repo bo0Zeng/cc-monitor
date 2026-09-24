@@ -1,171 +1,72 @@
 /**
- * P2s-Y4（acceptor: 机检）：策略**存得住、每台机各记各的、先推后存**。
+ * 〔B2 · 条 66 · `设计/01 §3.3b`〕「退出行为」那个值**搬走了** —— 这一份钉「搬干净了」。
  *
- * ## 为什么不做成「起 app 改开关重启」的 e2e
+ * ## 搬家前这里钉的是什么（留档，别当成今天的形状）
  *
- * DoD 原写「改了开关 → 重启 monitor → 策略还在」。那要真起 app（C7f 的沙箱 HOME 那套），
- * 而它验的其实是三件可以分开验的事：① 落盘的形状对不对 ② 每台机各记各的
- * ③ 启动时把盘上的值推给 Rust。三件都是纯函数/纯调用序，用例里验得更准、更快。
+ * P2s-Y4：策略**存进 monitor 的 config.json、每台机各记各的、先推后存、写盘串行**，
+ * 外加一条接线钉「启动时真的推了一次」。那一整套的前提是「值住 monitor 这一侧」，
+ * 而 `§3.3b ①` 逐字给过它真会犯的错（C 拿自己那份默认值悄悄改掉 B 的行为）⇒ 条 66 把值搬到了
+ * **后端所在那台机器上**，只有后端写、决定那一刻现读。⇒ 那几条判据的对象整个不存在了，随之退役。
  *
- * ⚠ **拆开的代价如实登记**：没有任何一条用例覆盖「真的重启一次」。
- * 它们合起来**推不出**「重启后还在」——中间还隔着一个「启动时真的调了 initBackendPolicy」，
- * 那一条由接线钉（`the_boot_path_really_pushes_the_backend_policy`）管。
+ * ## 今天钉什么
+ *
+ * - **推送链与本地持久化零命中**（带正控）：前端源码里再也叫不出那条推送命令、
+ *   也不再有「把这个值存进 config.json」的那几个名字；而新的两条命令**真的在**包装层里。
+ * - 三态 / 壳 / 那几句话的逐格等号住 `settings/backend-section.vitest.ts`（`E3` / `E4`）。
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 
-import { srcDirOf } from "./test-support/repo-root";
-const ipc: { name: string; args: unknown }[] = [];
-let stored: Record<string, unknown> = {};
-/** 每次 `load_config` 的延迟（毫秒），按调用顺序取。空 = 0。 */
-let loadDelays: number[] = [];
-
-vi.mock("../src/ipc/commands", () => ({
-  commands: {
-    set_backend_kill_on_exit: (args: unknown) => {
-      ipc.push({ name: "set_backend_kill_on_exit", args });
-      return Promise.resolve();
-    },
-    // ⚠ **延迟是刻意的**：并发那条判据要复现「第一笔比第二笔慢」这个交错
-    // （审计给的时序里，正是先发的那笔最后落盘、用陈旧 cfg 覆盖回去）。
-    // 同步 resolve 的 mock 复现不出来 —— 判据第一版就是那样，去掉串行链它照样绿。
-    load_config: () => {
-      const d = loadDelays.shift() ?? 0;
-      return new Promise<Record<string, unknown>>((r) => setTimeout(() => r(stored), d));
-    },
-    save_config: (a: { value: Record<string, unknown> }) => {
-      stored = a.value;
-      return Promise.resolve();
-    },
-  },
-}));
-
+import { productionTsFiles } from "./test-support/production-sources";
+import { stripComments } from "./test-support/strip-comments";
 import {
-  readPolicy,
-  killOnExit,
-  setKillOnExit,
-  initBackendPolicy,
   describeBackendHealth,
   HEALTH_CLEAN,
   HEALTH_CRASHED,
   HEALTH_LAST_MISSING,
   HEALTH_UNKNOWN,
-  LOCAL_ORIGIN,
-  DEFAULT_KILL_ON_EXIT,
   type BackendHealth,
 } from "../src/backend-policy";
 
-beforeEach(() => {
-  ipc.length = 0;
-  stored = {};
-  loadDelays = [];
-});
+/** `src/` 下全部生产 `.ts`，剥掉注释 —— 只看代码（遍历住 `test-support`，本文件不另写一份）。 */
+function frontendCode(): { rel: string; code: string }[] {
+  return productionTsFiles("src").map((f) => ({
+    rel: f.file,
+    code: stripComments(f.text, "ts"),
+  }));
+}
 
-describe("P2s 每台机一份后端策略", () => {
-  it("缺省是「不结束」——用户什么都没设，就不该被杀 backend", () => {
-    expect(DEFAULT_KILL_ON_EXIT).toBe(false);
-    expect(killOnExit({}, LOCAL_ORIGIN)).toBe(false);
-  });
-
-  it("★ 每台机各记各的：改甲机不动乙机", async () => {
-    await setKillOnExit("甲机", true);
-    await setKillOnExit("乙机", false);
-    const p = readPolicy(stored);
-    expect(p["甲机"]).toBe(true);
-    expect(p["乙机"]).toBe(false);
-    await setKillOnExit("甲机", false);
-    expect(readPolicy(stored)["乙机"]).toBe(false);
-    expect(readPolicy(stored)["甲机"]).toBe(false);
-  });
-
-  it("★ 存盘不许把 config 里别人的键抹掉（整份读—改—写的经典事故）", async () => {
-    stored = { theme: "dark", remotes: [{ host: "a" }] };
-    await setKillOnExit(LOCAL_ORIGIN, true);
-    expect(stored.theme).toBe("dark");
-    expect(stored.remotes).toEqual([{ host: "a" }]);
-    expect(readPolicy(stored)[LOCAL_ORIGIN]).toBe(true);
-  });
-
-  it("★ 先推后存：推失败就不落盘（否则盘上写着 A 而运行中是 B）", async () => {
-    const mod = await import("../src/ipc/commands");
-    const spy = vi
-      .spyOn(mod.commands, "set_backend_kill_on_exit")
-      .mockRejectedValueOnce(new Error("IPC 挂了"));
-    await expect(setKillOnExit(LOCAL_ORIGIN, true)).rejects.toThrow("IPC 挂了");
-    expect(readPolicy(stored)[LOCAL_ORIGIN]).toBeUndefined();
-    spy.mockRestore();
-  });
-
-  it("★ 并发点击不会让 UI/运行时/盘上三方分叉（A3：读—改—写要串行）", async () => {
-    // 两笔并发：先 true 后 false，且**让先发的那笔更慢** —— 那正是审计给的时序：
-    // 后发的先落盘，先发的最后用陈旧 cfg 覆盖回去。
-    loadDelays = [20, 0];
-    const a = setKillOnExit("甲机", true);
-    const b = setKillOnExit("甲机", false);
-    await Promise.all([a, b]);
+describe("B2 · 「退出行为」那个值不住前端", () => {
+  it("★★ 推送链与本地持久化零命中 —— 两向带正控", () => {
+    const files = frontendCode();
     expect(
-      readPolicy(stored)["甲机"],
-      "盘上不是最后一笔的值 —— 前一笔用陈旧 cfg 把后一笔覆盖回去了。\n" +
-        "后果不是「少存一次」：下次启动 initBackendPolicy 会把盘上那个值推回去，开关自己翻过来。",
-    ).toBe(false);
-    // 推给 Rust 的顺序也要与落盘顺序一致（否则运行时与盘上仍会分叉）
-    const pushed = ipc
-      .filter((c) => c.name === "set_backend_kill_on_exit")
-      .map((c) => (c.args as { kill: boolean }).kill);
-    expect(pushed, "推送顺序与落盘顺序不一致").toEqual([true, false]);
-  });
-
-  it("启动时把盘上的每一台都推给后端", async () => {
-    stored = { backendPolicy: { [LOCAL_ORIGIN]: true, 甲机: false } };
-    const p = await initBackendPolicy();
-    expect(p[LOCAL_ORIGIN]).toBe(true);
-    const pushed = ipc.filter((c) => c.name === "set_backend_kill_on_exit");
-    expect(pushed).toHaveLength(2);
-    expect(pushed.map((c) => (c.args as { origin: string }).origin).sort()).toEqual(
-      [LOCAL_ORIGIN, "甲机"].sort(),
-    );
-  });
-
-  it("形状不对的配置退回空表，不抛——开关坏了不该拖垮设置页", () => {
-    expect(readPolicy({ backendPolicy: "不是对象" })).toEqual({});
-    expect(readPolicy({ backendPolicy: [1, 2] })).toEqual({});
-    expect(readPolicy({ backendPolicy: { 甲机: "true" } })).toEqual({});
-    expect(readPolicy({})).toEqual({});
-  });
-
-  it("空 origin 直接拒——放过它会造出一档谁都读不到的「全局」", async () => {
-    await expect(setKillOnExit("  ", true)).rejects.toThrow("不许为空");
-  });
-
-  /**
-   * ★ **接线钉**：启动路径**真的**推了一次。
-   *
-   * 上面那些用例全都直接调 `initBackendPolicy`，所以「没人在启动时调它」它们**一条都逮不到**
-   * ——而后果不是报错，是每台机静默退回缺省，用户设过的开关看起来还在、实际不生效。
-   * 这就是仓里 F03 那个坑：「模块存在 ≠ 模块被调用」。
-   *
-   * 顺带钉「失败不拦启动」：那一处必须有 catch，否则策略读不到会把主界面拖垮。
-   */
-  it("★ 启动路径真的调了 initBackendPolicy，且失败不拦启动", async () => {
-    const { readFileSync } = await import("node:fs");
-    const { resolve } = await import("node:path");
-    const src = readFileSync(resolve(srcDirOf(__dirname), "main.ts"), "utf8");
-    // ★ **整行钉**（`pin_line` 那一族）：一次钉住两件事 —— 启动时真的调了它、
-    // 且调用点带 `.catch`。
-    //
-    // ⚠ 刻意**不在整份源码上做裸子串匹配**（那个方法名不在这里写全 ——
-    // `scanning-guard-registry` 数的就是那个字面量，写在散文里也会被算成一处，
-    // 本轮已经被自己的注释绊倒三次了）。它在递减棘轮里，病也正是「匹配单位比事实小」：
-    // 子串匹配对 `initBackendPolicy().then(...)`（没有 catch）照样绿。
-    const PINNED = "void initBackendPolicy().catch((e) => {";
-    const hit = src.split("\n").filter((l) => l.trim() === PINNED).length;
-    expect(
-      hit,
-      `main.ts 里没有恰好一行是 \`${PINNED}\`（实得 ${hit} 行）。\n` +
-        "① 一行都没有 ⇒ 启动时不推策略，每台机静默退回缺省 —— " +
-        "用户设过的开关看起来还在、实际不生效，而且**不会报错**。\n" +
-        "② 有但形状变了（比如去掉了 .catch）⇒ 策略读不到会把主界面拖垮，它只是附加功能。\n" +
-        "改了那一行的写法，就来改这里的字面量 —— 这条摩擦是有意的。",
-    ).toBe(1);
+      files.length,
+      "只扫到这么几份前端源码 —— 遍历坏了，零命中在空人群上恒绿",
+    ).toBeGreaterThan(100);
+    // 名字**运行时拼**：本文件自己不在人群里（它住 tests/），但这样读者一眼看得出它们是「已退役的名字」。
+    const retired = [
+      ["set_backend_", "kill_on_exit"],
+      ["init", "BackendPolicy"],
+      ["push", "PolicyToBackend"],
+      ["set", "KillOnExit"],
+      ["backend", "Policy:"],
+    ].map((p) => p.join(""));
+    for (const name of retired) {
+      const hits = files.filter((f) => f.code.includes(name)).map((f) => f.rel);
+      expect(
+        hits,
+        `退役的名字 \`${name}\` 还在前端代码里：${hits.join(" / ")}\n` +
+          "`设计/01 §3.3b ②④`：monitor 的 config 里不许再留一份、那条推送随之退役 —— 留着就是第二个真相源。",
+      ).toEqual([]);
+    }
+    // ★ 正控：新的两条命令**真的**在包装层里（否则上面那几条零命中可能只是「整片都没了」）。
+    const cmds = files.find((f) => f.rel === "src/ipc/commands.ts");
+    expect(cmds, "找不到 ipc/commands.ts —— 人群坏了").toBeDefined();
+    for (const name of ["backend_exit_policy", "set_backend_exit_policy"]) {
+      expect(
+        cmds!.code.includes(`invoke<Record<string, unknown>>("${name}"`),
+        `包装层里没有 ${name}`,
+      ).toBe(true);
+    }
   });
 });
 

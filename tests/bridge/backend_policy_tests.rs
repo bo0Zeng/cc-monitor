@@ -1,22 +1,88 @@
 use super::*;
 
+/// 〔B2 · 条 66〕那个值**不在 monitor 进程里**：本模块生产段里唯一的 `static` 是死亡账那一张
+/// （`ledger()`），原来那张「推进来的生效值表」连同推它的命令一起没了。
+///
+/// ⚠ 这是 `E2` 的 monitor 那一半：退出臂那一问（`kill_on_exit_now` → `exit_policy_call`）的路径上
+/// 缓存点数 == 登记的 0。**带正控**：扫描器对死亡账那一张必须看得见（它是真 `static`），
+/// 否则下面那条「只有一个」是在一台瞎了的尺子上成立的。
 #[test]
-fn an_unknown_origin_defaults_to_not_killing() {
-    assert!(
-        !kill_on_exit("这台机从来没被推过策略"),
-        "缺省必须是「不主动结束」——`C8`③ 的前半句。\n\
-             缺省若是 true，用户什么都没设就会被杀后端，而开关默认关着。"
+fn the_monitor_keeps_no_copy_of_the_exit_value() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/backend_policy.rs"));
+    let statics: Vec<&str> = prod
+        .lines()
+        .map(str::trim_start)
+        .filter(|l| l.starts_with("static "))
+        .collect();
+    assert_eq!(
+        statics.len(),
+        1,
+        "`backend_policy.rs` 生产段的 `static` 不是恰好一个（死亡账那张）：{statics:?}\n\
+         多出来的多半是那个值的副本回来了 —— `设计/01 §3.3b ④`：不缓存、不在启动时读一次存内存。"
     );
+    assert!(
+        statics[0].contains("Health"),
+        "唯一那个 `static` 不是死亡账那张（正控失败）：{}",
+        statics[0]
+    );
+    for f in ["fn kill_on_exit_now(", "async fn exit_policy_call("] {
+        let at = guard_core::find_pinned(&prod, f).unwrap_or_else(|e| panic!("切不出 `{f}`：{e}"));
+        let body = &prod[at..at + prod[at..].find("\n}\n").expect("函数没有收尾")];
+        for c in [
+            "static ",
+            "OnceLock",
+            "OnceCell",
+            "Mutex",
+            "thread_local",
+            "Atomic",
+        ] {
+            assert!(
+                !body.contains(c),
+                "`{f}` 体内出现了 `{c}` —— 那一问的路径上有了记忆（E2 防的正是这个）"
+            );
+        }
+        assert!(
+            body.contains("exit-policy-read") || body.contains(".call("),
+            "`{f}` 体内既不发那条命令也不 `.call(` —— 它不再去问了，那它的答案从哪来？"
+        );
+    }
 }
 
 #[test]
-fn the_policy_is_per_origin_not_global() {
-    set_backend_kill_on_exit("甲机".into(), true).expect("设甲机");
-    assert!(kill_on_exit("甲机"), "甲机设了 true 却读不回来");
-    assert!(
-        !kill_on_exit("乙机"),
-        "改甲机把乙机也改了 —— 那就不是 per-host 而是全局一份（`C8`① 明说粒度是每台机各一个）"
+fn the_exit_answer_is_read_from_the_backend_shape_and_nothing_else() {
+    assert_eq!(
+        kill_from_answer(&json!({ "killOnExit": true, "state": "chosen" })),
+        Some(true)
     );
+    assert_eq!(
+        kill_from_answer(&json!({ "killOnExit": false, "state": "unreadable" })),
+        Some(false)
+    );
+    for bad in [json!({}), json!({ "killOnExit": "true" }), json!(null)] {
+        assert_eq!(
+            kill_from_answer(&bad),
+            None,
+            "形状不对的应答 {bad} 被读出了一个值 —— 退出臂会拿一个编的答案去收进程"
+        );
+    }
+}
+
+#[test]
+fn an_empty_origin_is_refused() {
+    let r = tauri::async_runtime::block_on(set_backend_exit_policy(Origin("  ".into()), true));
+    assert!(
+        r.is_err(),
+        "空 origin 必须拒。放过它等于悄悄造出一档「全局策略」，而那一档哪台机器都不是。"
+    );
+}
+
+/// 没有通道的那台机器：问与写都**明说**问不到，不编一个值。退出臂那一问按缺省（不结束）。
+#[test]
+fn without_a_channel_nothing_is_made_up() {
+    let o = Origin("这台机从来没连上过-b2".into());
+    let r = tauri::async_runtime::block_on(backend_exit_policy(o.clone()));
+    assert!(r.is_err(), "没通道却答出了一个值：{r:?}");
+    assert!(!kill_on_exit_now(&o), "问不到必须按缺省（不结束）办");
 }
 
 /// ★★ `K-P1 KPY6`：**那几句话不许只改一处** —— 跨语言逐字对拍。
@@ -64,9 +130,10 @@ fn the_exit_copy_is_the_same_string_on_both_sides() {
     let ts = include_str!("../../src/backend-policy.ts");
     compare_one_table(ts, "退出行为", EXIT_COPY);
     // 抽取器自检：条数变了也要红（少一条 = 上面的循环少跑一圈，那正是「空转」）。
+    // 〔B2 · 条 66〕3 → 4：多了「读不出来」那一句（`EXIT_UNREADABLE`，`设计/01 §3.3b ⑤`）。
     assert_eq!(
         EXIT_COPY.len(),
-        3,
+        4,
         "退出行为的档数变了 —— 回来重判，别让本条在少数几档上绿着"
     );
 }
@@ -100,11 +167,11 @@ fn every_cross_language_table_is_compared_on_both_sides() {
         compare_one_table(ts, what, table);
         compared += table.len();
     }
-    // 反空真：两张表合起来今天恰好 7 条（EXIT 3 + HEALTH 4）。
+    // 反空真：两张表合起来今天恰好 8 条（EXIT 4 + HEALTH 4）。〔B2〕7 → 8：`EXIT_UNREADABLE` 那一句。
     // 数变了就回来重判 —— 变小 = 有几条悄悄掉出了对拍面。
     assert_eq!(
-        compared, 7,
-        "两侧对拍的常量总数是 {compared}（今天应为 7 = EXIT 3 + HEALTH 4）"
+        compared, 8,
+        "两侧对拍的常量总数是 {compared}（今天应为 8 = EXIT 4 + HEALTH 4）"
     );
 }
 
@@ -666,15 +733,6 @@ fn the_unconditional_ban_is_gone_from_all_four_homes() {
              它的依据（「monitor 一退它 153ms 内自己走」）在 `K-P1` 之后**只对没脱离的那一支成立**。\n\
              ⇒ 留着它 = 下一个人会把 `K14` 背书的那半（如实说「继续跑，无人监护」）读成违规。\n\
              四处要**同一拍**改，这正是「不许只改一处」那条 DoD 的落点。"
-    );
-}
-
-#[test]
-fn an_empty_origin_is_refused() {
-    assert!(
-        set_backend_kill_on_exit("  ".into(), true).is_err(),
-        "空 origin 必须拒。放过它等于悄悄造出一档「全局策略」，\n\
-             而 `kill_on_exit(真 origin)` 永远读不到它 —— 设了没反应，且不报错。"
     );
 }
 

@@ -163,6 +163,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-tail"
                 | "accounts-list"
                 | "accounts-sessions"
+                // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
+                // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
+                | "exit-policy-read"
+                | "exit-policy-set"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -216,6 +220,8 @@ fn every_registered_command_declares_its_run_kind() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "exit-policy-read",
+        "exit-policy-set",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()

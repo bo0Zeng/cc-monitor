@@ -853,7 +853,7 @@ fn body_of(prod: &str, head: &str) -> String {
 
 /// 按**花括号配平**切一个块：从 `marker` 之后的第一个 `{` 起，到配平的那个 `}` 止。
 ///
-/// ⚠ **本文件只许有这一份切法**〔08-27 抽出来〕：`the_exit_path_covers_both_ways_…`
+/// ⚠ **本文件只许有这一份切法**〔08-27 抽出来〕：退出臂那条判据
 /// 原先内联了一份，`重-2` 那条又要一份 —— 而这个文件自己的注释逐字写着
 /// 「刻意不另造一种 —— 两种切法迟早在同一段代码上给出两个答案」。
 /// `lo` / `hi` 是这一块的字节数上下限，**逐条给**（反空真：切错了就红，别在空串上绿着）。
@@ -1035,178 +1035,100 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     );
 }
 
-/// ★★★ **退出路径要收的是「三条起法」，不是「新那条」——** 而且这一条**量的是行为**。
+/// ★★★ **退出路径要收的中转那一条** —— 而且这一条**量的是行为**。
 ///
 /// # 它治的是一个会骗人的开关
 ///
-/// 「monitor 退出时结束它」这个勾，在 `K-P1` 之前只对**被监护的那条路**生效
-/// （退出钩子读的是 `LOCAL_BACKEND` 里的 `SuperviseHandle`，而脱离那条路根本没有它）；
-/// `D2 阻-5` 又补上了第三条（**中转是另一个进程**）。
-/// ⇒ 用户勾了、退出、它没被结束 —— 而界面上一个字都不会说。
-/// **一个说谎的开关比「做不到但说出来」更坏**，所以这一格不是文案能补的。
+/// 「monitor 退出时结束它」这个勾，`D2 阻-5` 补上了第三个进程（**中转是另一个进程**）。
+/// 用户勾了、退出、它没被结束 —— 而界面上一个字都不会说。**一个说谎的开关比「做不到但说出来」更坏。**
 ///
-/// # 🔴🔴🔴 上一版是**文本判据**，而 `D7` 的刀 `T13` 把它打穿了
+/// # 上一版是文本判据，而 `D7` 的刀 `T13` 把它打穿过
 ///
-/// 上一版的形态是：`production_code(include_str!("../../src/bridge/src/lib.rs"))` → `braced_block(…, "RunEvent::Exit", …)`
-/// → `body.matches("kill_on_exit(").count() == 1` + `body.contains(needle)` **×4** + 两处位置序。
-/// **= 「那个窗口里有没有这几段文本」**，与本件病史里被打穿过四次的那一形逐字同族。
+/// 刀 `T13`（`if kill {` → `if kill && !kill {`，收口那段文本一字不动）⇒ 全绿，而**中转还在那儿听着那个口**。
+/// ⇒ 换成量行为：判据装一份**会记账的替身**，断言**两支**（勾了 ⇒ 恰好一次；没勾 ⇒ 零次），
+/// 第三格按**函数地址**对拍「生产上插进那条缝的就是那个口」。
 ///
-/// 刀 `T13`（只动 `lib.rs` 退出臂一处：`if kill {` → `if kill && !kill {`，
-/// **`stop_local_relay()` 那段文本一字不动**；四个锚点 6/20/9/34 逐个与干净树相同）
-/// ⇒ **`1229 passed; 0 failed` + `GATE: OK`，四个数与干净树逐字相同。**
-/// **生产后果**：用户勾了「退出时结束它」、退出，**本机中转还在那儿听着那个口** ——
-/// **正是本件自己往这条判据里加的那颗针逐字说要防的「说谎的开关」。**
+/// # 〔B2 · 条 66〕原来这里数的是**两个**收口点（常驻 ＋ 中转），常驻那一个退役了
 ///
-/// ⚠ **这一条当时不在那张「量文本的判据」全表里** —— 不是它不在写脚印里
-/// （`D2 阻-5` 那颗针就是本件加的），是那张表的尺子只看得见「diff 里出现原语的行」。
+/// 那个值搬到后端所在那台机器上之后，常驻的后端**自己**在最后一个客户走的那一刻现读、自己退
+/// （后端 `control/exit_policy.rs` ＋ `main.rs` 流结束那一臂，判据住后端 `exit_policy_tests.rs`）。
+/// monitor 再替它决定一次 = 两个决策处。⇒ 缝里只剩中转，本条的替身也只剩一个。
 ///
-/// # ⇒ 换成量行为：那两条**自己不会死**的起法进 [`crate::ExitShutdownSinks`] 那条缝
+/// # 它买不到什么
 ///
-/// 判据装一份**会记账的替身**，断言**两支**（`kill` 是这一格的分叉点，两支都买）：
-/// - **勾了** ⇒ 两个收口点**各被调恰好一次**；
-/// - **没勾** ⇒ **一个都没被调**（这一支上一版根本没有 —— 它只数文本在不在，
-///   而文本在不在与「没勾时会不会误收」无关）。
-///
-/// 第三格按**函数地址**对拍「生产上插进那条缝的就是那两个口」，不按文本
-///（形状照 `history::the_production_relay_facts_are_those_two_take_points`）。
-///
-/// # 🔴🔴 它买不到什么（射程边缘 —— **这一栏是写区拦出来的，不是我不想买**）
-///
-/// - **被监护那条起法（`LOCAL_BACKEND` 的 `.stop()`）不在这条缝里。**
-///   写区外的 `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
-///   逐条要求退出臂**体内**恰好一处 `.stop()`、恰好一处 `kill_on_exit(`、策略在前、
-///   中间那个 `if` 判的就是策略绑定名 ⇒ 抽走它那条判据当场红，
-///   **而那个文件不在本件登记的 27 项写区里**。
-///   ⚠ **残留的洞**：`if kill && !kill { h.stop(); }` 过得了那条判据
-///   （它断的是 `between.contains("if kill")`），**今天没有行为判据接住那一形**。
-///   **重新裁定的落点**：`crate::ExitShutdownSinks` 头注那一栏 + 本轮上报口。
-/// - **`RunEvent::Exit` 那个闭包本身驱动不了** —— 那要真跑一次 tauri app（红线内够不着）。
-///   ⇒ 臂里那几行由 [`the_exit_arm_hands_the_other_two_ways_to_the_seam`] 的零命中守卫看着。
-///   **那一行委托本身没有行为级判据，这是这条链上今天最后一跳** —— 登记，不假装钉住了。
-/// - **收口点自己收干净了没有**是它们各自的活（`stop_local_backend` /
-///   [`stop_local_relay`] 的头注与判据），本条只买「收不收 · 收哪几个」。
+/// - **被监护那条起法**（`LOCAL_BACKEND` 的 `.stop()`）留在退出臂里，由
+///   `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend` 看着。
+/// - **`RunEvent::Exit` 那个闭包本身驱动不了** —— 那要真跑一次 tauri app。
+///   ⇒ 臂里那几行由 [`the_exit_arm_hands_the_relay_to_the_seam`] 的零命中守卫看着。
+/// - **退出那一刻现问本机后端**（`backend_policy::kill_on_exit_now`）问不问得到，要真起一个后端，
+///   本条量不到；它问不到时按缺省（不结束）办，由 `backend_policy_tests.rs::without_a_channel_nothing_is_made_up` 钉。
 #[test]
-fn the_exit_path_covers_both_ways_of_starting_the_local_backend() {
+fn the_exit_path_stops_the_relay_only_when_asked_to() {
     use std::cell::Cell;
     thread_local! {
-        static DETACHED: Cell<u32> = const { Cell::new(0) };
         static RELAY: Cell<u32> = const { Cell::new(0) };
-    }
-    fn spy_detached() -> bool {
-        DETACHED.with(|c| c.set(c.get() + 1));
-        true
     }
     fn spy_relay() -> bool {
         RELAY.with(|c| c.set(c.get() + 1));
         true
     }
-    fn counts() -> (u32, u32) {
-        (DETACHED.with(Cell::get), RELAY.with(Cell::get))
-    }
+    let count = || RELAY.with(Cell::get);
     // ⚠ 归零写成闭包而不是 `fn`：`structural_scan` 那道闸把测试段里「无参无返回的
-    //   `fn 名()`」一律当成**忘了加 `#[test]` 的死判据**（08-11 全树逮到过三条）。
-    let zero = || {
-        DETACHED.with(|c| c.set(0));
-        RELAY.with(|c| c.set(0));
-    };
+    //   `fn 名()`」一律当成**忘了加 `#[test]` 的死判据**。
+    let zero = || RELAY.with(|c| c.set(0));
 
-    let spies = crate::ExitShutdownSinks {
-        detached: spy_detached,
-        relay: spy_relay,
-    };
+    let spies = crate::ExitShutdownSinks { relay: spy_relay };
 
-    // ── 支一：**勾了** ⇒ 那两条起法一个不漏 ────────────────────────
     zero();
-    crate::shutdown_detached_ways_on_exit(true, spies);
+    crate::shutdown_relay_on_exit(true, spies);
     assert_eq!(
-        counts(),
-        (1, 1),
-        "\n★★ **用户勾了「退出时结束它」，而那两条起法没有被逐个收掉。**\n\
-             这正是刀 `T13` 的形状：`if kill {{` → `if kill && !kill {{`，\n\
-             `stop_local_relay()` 那段文本一字不动 ⇒ 上一版那条数文本的判据照绿，\n\
-             而**中转还在那儿听着那个口**。\n\
-             读数是 (常驻, 中转)，期望 (1, 1)。"
+        count(),
+        1,
+        "\n★★ **用户勾了「退出时结束它」，而中转没有被收掉。**\n\
+             这正是刀 `T13` 的形状：`if kill {{` → `if kill && !kill {{`，收口那段文本一字不动。"
     );
 
-    // ── 支二：**没勾** ⇒ 一个都不收（上一版整支缺失）────────────────
     zero();
-    crate::shutdown_detached_ways_on_exit(false, spies);
+    crate::shutdown_relay_on_exit(false, spies);
     assert_eq!(
-        counts(),
-        (0, 0),
-        "\n★★ **用户没勾，而退出路上照样动手收了东西。**\n\
-             `P2s`（C8②③）逐字：缺省**不杀** —— 被监护的后端是纯 stdio 子进程，\n\
-             monitor 一退它自己就死；无条件收掉等于把这个勾变成一个装饰品，\n\
-             方向与「说谎的开关」相反、同样是骗人。\n\
-             ⚠ 这一支上一版**根本没有**：它只数「窗口里有没有那几段文本」，\n\
-             而文本在不在与「没勾时会不会误收」毫无关系。\n\
-             读数是 (常驻, 中转)，期望 (0, 0)。"
+        count(),
+        0,
+        "\n★★ **用户没勾，而退出路上照样收了中转。**\n\
+             缺省**不杀**（`P2s` C8②③）；无条件收掉等于把这个勾变成一个装饰品。"
     );
 
-    // ── ③ 生产上插进这条缝的**就是那两个口**（按函数地址对拍，不按文本）──
-    let p = crate::PRODUCTION_EXIT_SHUTDOWN;
-    for (got, want, who) in [
-        (
-            p.detached as usize,
-            stop_detached_backend_on_exit as usize,
-            "常驻（脱离）那条起法的收口",
-        ),
-        (
-            p.relay as usize,
-            stop_relay_on_exit as usize,
-            "🔴 中转那条起法的收口（第三个进程）",
-        ),
-    ] {
-        assert_eq!(
-            got, want,
-            "`PRODUCTION_EXIT_SHUTDOWN` 里「{who}」插的不是那个函数 —— \n\
-                 上面两支量的是**替身**，这一格才是「生产上插进去的就是它」。\n\
-                 两条合起来才等于「退出时真的会收那两条起法」。"
-        );
-    }
+    assert_eq!(
+        crate::PRODUCTION_EXIT_SHUTDOWN.relay as usize,
+        stop_relay_on_exit as usize,
+        "`PRODUCTION_EXIT_SHUTDOWN` 里插的不是中转那个收口 —— 上面两支量的是**替身**，\n\
+             这一格才是「生产上插进去的就是它」。"
+    );
 }
 
-/// ★★ 上一条的**射程边缘**：那两条起法在退出臂里只剩**一行委托**，由本条看着。
+/// ★★ 上一条的**射程边缘**：中转在退出臂里只剩**一行委托**，由本条看着。
 ///
-/// # 为什么还需要它
-///
-/// `RunEvent::Exit` 那个闭包驱动不了（要真跑一次 tauri app），
-/// ⇒ 上一条量到的只有 [`crate::shutdown_detached_ways_on_exit`] 往里那一段。
-/// **谁在那条臂里再就地收一样东西**（或者把委托那一行删掉），上一条一格都不动。
-/// ⇒ 本条钉三件：
 /// ① 那条臂里那行委托**恰好一处**；
-/// ② `stop_local_backend(` / `stop_local_relay(` 在臂里**零命中**
-///    （有一个就说明有人又把它们搬回臂里就地写了 —— 那正是刀 `T13` 打穿的那一版）；
-/// ③ 全文件里那条缝的**调用点恰好一个**（定义 1 + 调用 1 = 2 处），
-///    生产常量 `PRODUCTION_EXIT_SHUTDOWN` 同理 —— 第二个调用点意味着第二条退出路径。
+/// ② `stop_local_backend(` / `stop_local_relay(` 在臂里**零命中**（有一个就说明有人又在臂里就地收东西了）——
+///    〔B2〕`stop_local_backend(` 这一针今天更承重：常驻那条后端**自己**决定退不退，臂里再收它就是第二个决策处；
+/// ③ 全文件里那条缝的**调用点恰好一个**（定义 1 + 调用 1 = 2 处），生产常量同理。
 ///
-/// ⚠ **臂里那一处 `.stop()` 与那一处 `kill_on_exit(` 是刻意留着的**，不在禁针里：
-/// 被监护那条起法必须留在臂里（理由与残留的洞见 `crate::ExitShutdownSinks` 头注），
-/// 而写区外那条 `the_exit_path_really_stops_the_local_backend` 正是数它们的。
-///
-/// ⚠ **它是文本判据，如实登记**：本条量的是「有没有人在这条臂里另起炉灶」，
-/// 不是「退出时真的收了东西」（那是上一条的活）。
-/// **绕过形态**：把收口点包一层别的名字再在臂里调 —— 本条零命中地绿。
-/// ⇒ 那一形今天没实测，也没有第二道闸接住；重新裁定的落点就是这一栏。
-///
-/// ⚠ 切法与上一版**同一个**（按花括号配平切退出臂的体），刻意不另造一种 ——
-/// 两种切法迟早在同一段代码上给出两个答案。
+/// ⚠ **臂里那一处 `.stop()` 与那一处 `kill_on_exit_now(` 是刻意留着的**：被监护那条起法必须留在臂里，
+/// 而 `the_exit_path_really_stops_the_local_backend` 正是数它们的。
+/// ⚠ **它是文本判据，如实登记**：它量「有没有人在这条臂里另起炉灶」，不是「退出时真的收了东西」。
 #[test]
-fn the_exit_arm_hands_the_other_two_ways_to_the_seam() {
+fn the_exit_arm_hands_the_relay_to_the_seam() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/lib.rs"));
-    // 反空真在 `braced_block` 里（切错了就红，别在一个空串上绿着）。
     // ⚠ 找不到 `RunEvent::Exit` 就是整段钩子没了 —— 实测：删掉它，全仓判据一条不红。
     let body = braced_block(&prod, "RunEvent::Exit", 200, 3000);
     assert_eq!(
-        body.matches("shutdown_detached_ways_on_exit(").count(),
+        body.matches("shutdown_relay_on_exit(").count(),
         1,
-        "退出臂里那条委托不是恰好一处 —— 零处 = 常驻与中转两条起法退出时都不收\
-             （而上一条判据照绿，因为它量的是那条缝往里那一段）；多处 = 有第二条退出路径"
+        "退出臂里那条委托不是恰好一处 —— 零处 = 中转退出时不收；多处 = 有第二条退出路径"
     );
     for (needle, why) in [
         (
             "stop_local_backend(",
-            "常驻那条路的收口应当住 `stop_detached_backend_on_exit`，由那条缝调",
+            "〔B2〕常驻那条后端自己在最后一个客户走时现读、自己退 —— 臂里再收它就是第二个决策处",
         ),
         (
             "stop_local_relay(",
@@ -1217,16 +1139,13 @@ fn the_exit_arm_hands_the_other_two_ways_to_the_seam() {
         assert!(
             !body.contains(needle),
             "退出臂里出现了 `{needle}` —— 有人又开始在这条臂里就地收东西了。\n\
-                 说法：{why}\n\
-                 ★ 这两条起法只许经 `shutdown_detached_ways_on_exit(kill, PRODUCTION_EXIT_SHUTDOWN)` 走。\n\
-                 实得臂体：{body}"
+                 说法：{why}\n实得臂体：{body}"
         );
     }
     assert_eq!(
-        prod.matches("shutdown_detached_ways_on_exit(").count(),
+        prod.matches("shutdown_relay_on_exit(").count(),
         2,
-        "`lib.rs` 生产段里 `shutdown_detached_ways_on_exit(` 不是 2 处（定义 1 + 调用点 1）—— \
-             多出来的那处是第二条退出路径，它不在上面那条行为判据的射程里"
+        "`lib.rs` 生产段里 `shutdown_relay_on_exit(` 不是 2 处（定义 1 + 调用点 1）"
     );
     assert_eq!(
         prod.matches("PRODUCTION_EXIT_SHUTDOWN").count(),
@@ -4187,7 +4106,7 @@ fn three_fake_backends_land_in_three_different_cells() {
 /// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
 #[test]
 fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
-    // 本文件对 `lib.rs` 的两条判据取的针：`shutdown_detached_ways_on_exit(`（298 / 1476）·
+    // 本文件对 `lib.rs` 的两条判据取的针：`shutdown_relay_on_exit(`（〔B2〕缝改名后的那一个）·
     // `start_local_backend()`（568）· `take_start_refusal()`（602）—— 都在 59 之后。
     //
     // ⚠ 本文件另有一条 `the_strip_rule_this_file_leans_on_is_still_on_disk`，它是剥法的
@@ -4197,7 +4116,7 @@ fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
         "local_backend_host_tests · lib.rs",
         include_str!("../../src/bridge/src/lib.rs"),
         &[
-            "shutdown_detached_ways_on_exit(",
+            "shutdown_relay_on_exit(",
             "start_local_backend()",
             "take_start_refusal()",
         ],
