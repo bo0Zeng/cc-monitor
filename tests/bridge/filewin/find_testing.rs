@@ -192,6 +192,8 @@ pub struct Declared {
     pub truncated: bool,
     pub browse_watches: u64,
     pub browse_watch_cap: u64,
+    /// 〔第四波 S4 · Q5〕后端声明的冷启动首建估计。
+    pub cold_first_build_secs: u64,
 }
 
 impl Default for Declared {
@@ -206,6 +208,8 @@ impl Default for Declared {
             truncated: false,
             browse_watches: 0,
             browse_watch_cap: 64,
+            // 🔴 同上：**刻意不是 10**（后端今天声明的那个数）。
+            cold_first_build_secs: 4747,
         }
     }
 }
@@ -221,6 +225,10 @@ pub struct FakeBackend {
     /// 它声明自己认得哪几条命令（`hello.commands`）。
     pub offered: Vec<String>,
     pub log: WireLog,
+    /// 〔第四波 S4 · Q5〕给了 ⇒ `files-index-rebuild` 的**应答扣住**，等用例放行才回。
+    /// 索引照常当场建好（与后端「走完才回」的时序不同，但窗口只看应答什么时候到）——
+    /// 判据要在「重走还在飞」那一刻跑一帧，看首建那一行在不在。
+    hold_rebuild: Option<std::sync::Arc<tokio::sync::Notify>>,
 }
 
 impl FakeBackend {
@@ -230,7 +238,14 @@ impl FakeBackend {
             declared,
             offered: offered.iter().map(|s| s.to_string()).collect(),
             log: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            hold_rebuild: None,
         }
+    }
+
+    /// 把 `files-index-rebuild` 的应答扣到 `gate` 被 `notify_one` 为止（见 [`FakeBackend::hold_rebuild`]）。
+    pub fn holding_rebuild(mut self, gate: std::sync::Arc<tokio::sync::Notify>) -> Self {
+        self.hold_rebuild = Some(gate);
+        self
     }
 
     /// 让它开局就**已经**有一份索引（`files-index-rebuild` 那条阴性对照要它）。
@@ -540,6 +555,7 @@ impl FakeBackend {
             "stale": stale,
             "browse_watches": d.browse_watches,
             "browse_watch_cap": d.browse_watch_cap,
+            "cold_first_build_secs": d.cold_first_build_secs,
         })
     }
 }
@@ -650,6 +666,12 @@ impl crate::chan::router::Backends for Hosted {
             .unwrap()
             .push(serde_json::json!({ "cmd": op.0, "args": args }));
         let (ok, code, message, data) = be.answer(&op.0, &args);
+        let hold = if op.0 == "files-index-rebuild" {
+            be.hold_rebuild.clone()
+        } else {
+            None
+        };
+        drop(be);
         let r = if ok {
             Ok(Body(
                 serde_json::to_vec(&data.unwrap_or(serde_json::Value::Null)).unwrap_or_default(),
@@ -667,7 +689,12 @@ impl crate::chan::router::Backends for Hosted {
                 },
             })
         };
-        Box::pin(async move { r })
+        Box::pin(async move {
+            if let Some(g) = hold {
+                g.notified().await;
+            }
+            r
+        })
     }
 
     fn subscribe(

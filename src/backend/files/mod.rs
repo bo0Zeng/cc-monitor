@@ -261,6 +261,7 @@ pub const CAPABILITIES: &[Capability] = &[
             "age_secs",
             "browse_watch_cap",
             "browse_watches",
+            "cold_first_build_secs",
             "entries",
             "index_missing",
             "resident_bytes",
@@ -632,6 +633,7 @@ fn answer_status() -> Answer {
         "stale": s.stale,
         "browse_watches": s.browse_watches,
         "browse_watch_cap": s.browse_watch_cap,
+        "cold_first_build_secs": s.cold_first_build_secs,
     }))
 }
 
