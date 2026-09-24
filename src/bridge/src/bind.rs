@@ -180,17 +180,16 @@ impl BindRegistry {
     /// `process_await_file` 的覆盖写）。第二份索引最典型的病就是「主表清了、索引没清」，
     /// 那个 bug 在这里**在构造上不可能发生**：只有一张表。
     ///
-    /// # fail closed：形状不对的查询**一律不匹配**
+    /// # 形状：**入表时**就过了闸，查询这一侧刻意不再过一遍
     ///
-    /// 令牌只有一种写法（32 个小写十六进制字符，见 [`rbind_token_from_marker`]）。
-    /// 这里对**查询串**也过一遍同一道闸：不 `trim`、不认大写。
-    /// 理由与读侧（后端 `control::identity_tag::rbind_token_of`）逐字同一条 ——
-    /// `§8.5 ②` 买的那个布尔（「这个会话有没有令牌」）只有在
-    /// 「有 ⇒ 形状确定对」时才说得准；放宽一点点，「拉错窗口」就会伪装成「拉不到窗口」。
+    /// 表里的 `rbind_token` 只可能来自 [`rbind_token_from_marker`]（fail closed：
+    /// 不 `trim`、不认大写、必须恰好 32 位）⇒ 表里每个键形状都确定对，
+    /// 而这里是**逐字节相等**比较 ⇒ 形状不对的查询串**在构造上**命中不了任何一条。
+    /// 〔死值验 09-24〕初版这里还多一道查询侧形状闸；把它删掉之后 1792 条判据
+    /// **全绿** —— 它不可观测、没有判据能钉它，于是删了，而不是留一行没人守的代码。
+    /// 「形状不对的查询不命中」这件事本身仍有判据
+    /// （`the_launch_token_finds_its_window_handle_in_the_same_era2_table` 的 ④）。
     pub fn lookup_hwnd_for_token(&self, token: &str) -> Option<HwndEntry> {
-        if !rbind_token_shape_ok(token) {
-            return None;
-        }
         self.by_ps_pid
             .read()
             .values()

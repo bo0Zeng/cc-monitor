@@ -498,7 +498,7 @@ fn the_launch_token_finds_its_window_handle_in_the_same_era2_table() {
             .map(|e| e.hwnd),
         None
     );
-    // ④ 形状不对的查询串 fail closed（连扫都不该扫）
+    // ④ 形状不对的查询串命不中（靠「表里的键入表时就过了形状闸」＋ 逐字节相等）
     assert!(reg.lookup_hwnd_for_token("0F1E2D3C4B5A69788796A5B4C3D2E1F0").is_none());
     assert!(reg.lookup_hwnd_for_token("").is_none());
 }
