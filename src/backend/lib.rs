@@ -369,7 +369,13 @@ pub const PROTO_VERSION: u32 = 1;
 /// A3 `--acct-iso-status` / `--acct-iso-shellinit` · BS1b `bus-spawn`（两个命令面）；
 /// ＋ 一处**行为**变更（R2：中转层 1 传输失败回 504 并说清卡在哪一步）。
 /// ★ re-embed 归发版那一拍（同 p2d…p2o）。
-pub const BUILD_ID: &str = "p2p-readface-outline-acctiso-spawn-504";
+///
+/// ★★★ **p2q-no-ccm-self**（2026-09-24，第二波 MC1+AL1 合并那一拍）：**子命令集一个没变，是行为变了**
+/// —— 后端不再读 `CCM_SELF`，重起自己只认 `ccm::self_invocation`（CC1 那一刀之上）；远端 shim 回到一行裸 `exec`。
+/// ⚠ 旧后端配新 shim ⇒ 容器路内层缺 `ccm` 那个词（入口②的老病复发）⇒ **必须**让已部署的远端被判 stale。
+/// 照 p1v 的先例（只改行为/wire、不改子命令 ⇒ bump 但**不**往 `SUBCOMMAND_HISTORY` 加行）。
+/// ★ re-embed 归发版那一拍。
+pub const BUILD_ID: &str = "p2q-no-ccm-self";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
