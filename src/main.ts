@@ -42,6 +42,7 @@ import { FirstRunHint } from "./first-run-hint";
 import { LOCAL_MACHINE_KEY, readStatus } from "./settings/machine-status";
 import { hostOs } from "./settings/host-os";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
+import { openSettingsWindow } from "./settings/open-settings"; // ST1：点「设置」有反馈（不 import 设置面板）
 import {
   collectAccountRows,
   createGatedPoller,
@@ -210,7 +211,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // TDZ；但这条"届时早已初始化"的保证依赖"这中间没有 await 会提前执行到回调"这条隐式不变量，
   // 谁在中间插一个真会被调用的 await 就有踩 TDZ 的风险，需要留意。
   const accountChip = new AccountChip({
-    openSettings: () => void commands.open_settings_window(),
+    openSettings: () => void openSettingsWindow(),
     // 切号后立刻重算一次：currentByOrigin 只由下面这条 10s 轮询喂，不主动刷的话会有最长 10s 的
     // 反向窗口——chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
     onDefaultChanged: () => void refreshSessionAccounts(),
@@ -431,7 +432,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   settingsTrigger.title = "设置 (,)";
   settingsTrigger.setAttribute("aria-label", "打开设置");
   settingsTrigger.addEventListener("click", () => {
-    void commands.open_settings_window(); // F82a：开独立设置窗口（非浮层）
+    void openSettingsWindow(settingsTrigger); // F82a：开独立设置窗口（非浮层）· ST1：点了有反馈
   });
   document.getElementById("app")?.appendChild(settingsTrigger);
 
@@ -529,7 +530,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "open-inbox", title: "打开收件箱", keywords: "inbox 收件箱 计划 planned-build 注入", run: () => { if (!inboxView.isVisible()) void inboxView.open(); } },
       { id: "open-cc-bus", title: "打开 cc-bus 驾驶舱", keywords: "cc-bus bus agent 驾驶舱 通信", run: () => { if (!ccBusView.isVisible()) ccBusView.open(); } },
       { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
-      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void commands.open_settings_window() },
+      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
       { id: "open-sftp", title: "打开 SFTP 文件面板", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
       { id: "win-minimize", title: "最小化窗口", keywords: "minimize 最小化", hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
       { id: "win-fullscreen", title: "切换全屏", keywords: "fullscreen 全屏", hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
@@ -545,7 +546,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         snapshot: accountChip.snapshotReady(),
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
-        openSettings: () => void commands.open_settings_window(),
+        openSettings: () => void openSettingsWindow(),
       }),
     );
     // 切到会话（来自 F91 只读投影 snapshotSessions）
@@ -637,7 +638,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 「点得进那张清单」= 打开设置窗口（清单住在它的「远端」那一节）。
       // ⚠ 今天**只能到窗口这一格**：`open_settings_window` 不收参数，
       //   直达那一节要动 `src/bridge` 与 `settings/panel.ts`，都在本件写区外。
-      openList: () => void commands.open_settings_window(),
+      openList: () => void openSettingsWindow(),
     });
     const reload = async (): Promise<void> => {
       try {
@@ -669,7 +670,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
-  dispatcher.bind("app.open-settings", () => void commands.open_settings_window()); // F82a：开独立设置窗口
+  dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => {
     if (historyView.isVisible()) historyView.close();
     else void historyView.open();
