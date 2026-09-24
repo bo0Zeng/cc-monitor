@@ -556,11 +556,13 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       if (/\bmintSessionTmuxName\s*\(/.test(code)) inline.push(f.slice(REPO_ROOT.length + 1));
     }
     inline.sort();
+    // 〔U2 · 第三波〕那条 tab 栏 resume 随会话动作整块搬进了 `src/tab-session-actions.ts`，
+    //   六行内联逐字随行 ⇒ 名单里的住址换了，条数仍是 1（没收掉，也没多）。
     expect(
       inline,
       "本机铸名自己写了一遍的地方变了。算法口是 `src/ipc/local-tmux-name.ts`；\n" +
-        "`src/tabs.ts` 是 `K-R46` 收不进来的那一处（写区外），收掉它要另立一件。",
-    ).toEqual(["src/tabs.ts"]);
+        "`src/tab-session-actions.ts`（原 `src/tabs.ts` 那条 tab 栏 resume）是 `K-R46` 收不进来的那一处，收掉它要另立一件。",
+    ).toEqual(["src/tab-session-actions.ts"]);
   });
 
   it("★★ 本机 resume 那两条也往 pin 里写（`D3 阻-2`：写入口先前结构上只走远端）", () => {
@@ -569,7 +571,8 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // `restartWithAccount(` 的唯一调用点首行逐字 `if (tab.origin === null) return false;`。
     // ⇒ 本机的 `list_last_accounts` **恒空** ⇒ 取值口那条「pin 优先」在本机永远走不到，
     //   而那正是「参数位有、值恒空」那一形的另一半。
-    for (const f of ["src/tabs.ts", "src/views/history.ts"]) {
+    // 〔U2〕tab 栏那条本机 resume 从 `src/tabs.ts` 搬到了 `src/tab-session-actions.ts`（逐字随行）。
+    for (const f of ["src/tab-session-actions.ts", "src/views/history.ts"]) {
       const code = stripComments(readFileSync(resolve(REPO_ROOT, f), "utf8"), "ts");
       expect(
         (code.match(/recordLocalLaunchAccount\(/g) ?? []).length,
@@ -614,7 +617,8 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   it("★ 取值口只有一个（不许哪条路自己现算一个账号）", () => {
     // 三条主路走那个唯一取值口；fork 那条是**用户在小窗里显式选的**，
     // 它有自己的语义（选了账号 0 就要显式 `base`），所以不走这个口 —— 如实记，不强求。
-    for (const f of ["src/tabs.ts", "src/views/history.ts"]) {
+    // 〔U2〕tab 栏那条本机 resume 从 `src/tabs.ts` 搬到了 `src/tab-session-actions.ts`（逐字随行）。
+    for (const f of ["src/tab-session-actions.ts", "src/views/history.ts"]) {
       const code = readFileSync(resolve(REPO_ROOT, f), "utf8");
       expect(
         (code.match(/localLaunchAccountSync\(/g) ?? []).length,

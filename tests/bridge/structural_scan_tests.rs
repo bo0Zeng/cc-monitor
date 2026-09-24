@@ -2638,7 +2638,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_unattended_wording_is_actually_present",
             1,
         ),
-        ("src/tabs.ts", "local_tmux_names", 1),
+        // 〔U2 · 第三波〕住址从 `src/tabs.ts` 换过来：那条 tab 栏 resume（连同点这个死名的订正注释）随会话动作整块搬家。
+        ("src/tab-session-actions.ts", "local_tmux_names", 1),
         // 🔴 〔搬树 2026-09-18 新增四条〕**不是新长出来的债，是语料面变大了**：
         // 这份 README 原住 `src-tauri/README.md`，而本族的语料根里没有 `src-tauri`
         // ⇒ 它**按构造在射程外**。改名成 `src/bridge/README.md` 之后落进了 `"src"`

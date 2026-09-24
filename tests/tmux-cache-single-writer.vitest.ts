@@ -69,6 +69,13 @@ const EXEMPT: ReadonlyArray<readonly [file: string, why: string]> = [
   //   ↗ 的归因从此只住后端一处（`bind.rs::resolve_remote_front`），tmux 不在 ↗ 的前提链上。
 ] as const;
 
+/**
+ * 唯一取数点住哪个文件。〔U2 · 第三波〕`TabManager` 拆开之后，会话动作（连同 `tmuxCache` 与
+ * `fetchTmuxFresh`）搬进了 `tab-session-actions.ts` —— **住址换了，性质一字不变**：
+ * tab 层仍然恰好一个取数点，且它就是写缓存的那一个。原先这里写死的是 `"tabs.ts"`。
+ */
+const HOME = "tab-session-actions.ts";
+
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
@@ -117,7 +124,7 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
 
     const exemptFiles = new Set(EXEMPT.map(([f]) => f.split("::")[0]));
     const unregistered = sites.filter(
-      (s) => s.file !== "tabs.ts" && !exemptFiles.has(s.file),
+      (s) => s.file !== HOME && !exemptFiles.has(s.file),
     );
     expect(
       unregistered.map((s) => `${s.file}（${s.count} 处）`),
@@ -128,13 +135,13 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
   });
 
   it("★ TabManager 类内只剩一个取数点，且它就是写缓存的那一个", () => {
-    const src = stripLineComments(readFileSync(join(SRC, "tabs.ts"), "utf8"));
+    const src = stripLineComments(readFileSync(join(SRC, HOME), "utf8"));
     const fetches = (src.match(PATTERNS[0]) ?? []).length;
     const writes = (src.match(/this\.tmuxCache\.set\(/g) ?? []).length;
 
     expect(
       fetches,
-      `tabs.ts 里有 ${fetches} 个取数点。只允许一个：类内唯一的 \`fetchTmuxFresh\`。` +
+      `${HOME} 里有 ${fetches} 个取数点。只允许一个：类内唯一的 \`fetchTmuxFresh\`。` +
         "〔第二波 T4：2 → 1〕少掉的那一个是模块级 `explainBringFrontFailure`（↗ 失败后按 tmux 实况猜归因），" +
         "`设计/80 §8.7` 步 4 把它收进后端那一个布尔之后整个删了。" +
         "多出来的那个 —— 它是不是本来就该走 `fetchTmuxFresh`？" +
@@ -143,7 +150,7 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
 
     expect(
       writes,
-      `tabs.ts 里有 ${writes} 处写缓存。收成一处之后就该恒为 1 —— ` +
+      `${HOME} 里有 ${writes} 处写缓存。收成一处之后就该恒为 1 —— ` +
         "多出一处意味着又有人在取数点之外单独写缓存了，「取数即写缓存」这条就不再成立",
     ).toBe(1);
   });
