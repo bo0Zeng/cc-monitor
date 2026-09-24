@@ -2821,6 +2821,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("src/bridge/src/sftp.rs", "install_remote_ccm_helper", 2),
         ("src/bridge/src/sftp.rs", "uninstall_remote_ccm_helper", 1),
+        // 〔MC1 · 2026-09-24〕`CCM_SELF` 删掉（`设计/01 §6.7b`）⇒ 钉「shim 必须传它」的那条判据改成
+        //    「shim 一个环境变量都不设」（`remote_shim_sets_no_environment_of_its_own`）。
+        (
+            "tests/bridge/backend/control/local_backend_tests.rs",
+            "remote_shim_carries_the_entry_name_for_the_container_path",
+            1,
+        ),
         (
             "src/bridge/src/verified_write.rs",
             "install_remote_ccm_helper",
@@ -3490,6 +3497,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/profile_installer.rs", 2), // 〔AL1〕+1：`AccountAliasReport` 那一句
         ("src/bridge/src/verified_write.rs", 2),
         ("tests/bridge/remote_write_registry_tests.rs", 1),
+        // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
+        ("tests/bridge/backend/control/local_backend_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
         // 测试里「形状围栏」那一条（`validate_alias_line`）· 生成物表里退役的 `AccountAliasReport.ts` ·
         // 延后 I/O 登记表里退役的 `write_account_aliases`，各一块。
