@@ -191,7 +191,7 @@ describe("S2 设置面板分页结构", () => {
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  it("★ 逐页完整清单 —— 17 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））
+  it("★ 逐页完整清单 —— 18 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））；〔AL1〕+1（别名）
     // 这是本轮最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
     // 而它在 UI 上的表现只是「某个设置项找不到了」，不会报错。
     // 用**完整相等**而不是 `toContain`：后者对「多出一块」和「顺序乱了」都是瞎的。
@@ -219,6 +219,8 @@ describe("S2 设置面板分页结构", () => {
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
       "终端集成",
+      // 〔AL1 · 2026-09-24〕`设计/71 §13` ②：别名并进机器页（`70 §3.3`），从「应用 → 行为」搬来。
+      "别名",
       "MCP",
       // P8a：marketplace 只读枚举。**只在本机页**——远端今天没有这条口
       // （欠账记在 `parity_ledger::plugins.marketplaces`），挂到远端就是个恒失败的块。
@@ -237,37 +239,32 @@ describe("S2 设置面板分页结构", () => {
   });
 
   /**
-   * 🔴 `K-R49`：**「按账号生成命令」那一块真的挂在「行为」页上。**
+   * 🔴 〔AL1 · 2026-09-24〕**别名那一块挂在机器页「本机」上，「应用」页上不再有它。**
    *
-   * ⚠ 它买的是**接线**，不是那一块的行为（后者归 `launcher-diagnostics.vitest.ts`）——
-   * 这一格此前是真空：把 `panel.ts` 里那一行 `appendChild` 整个删掉，
-   * 别的判据一条都不红（那一块的单测直接 `buildAccountAliasBlock()`，
-   * **结构上绕过了「它有没有被挂上去」**）。而删掉它的后果正是用户 09-10 抱怨的原样：
-   * 加了账号之后界面上没有任何地方能一键生成那条命令。
-   *
-   * ⚠ 顺序也断：它要排在手工别名生成器**之前** —— 用户说的是「添加账号后添加对应命令」，
-   * 那条路该先被看见。
+   * ⚠ 它买的是**接线**，不是那一块的行为（后者归 `machine-aliases.vitest.ts`）——
+   * 那一块的单测直接 `buildAliasManager()`，结构上绕过了「它有没有被挂上去」。
+   * 两向：本机页上**有**（`.machine-aliases`），「应用」页上**没有**任何一块别名
+   * （从前那两块的类名 `.ccm-acct-alias` / `.ccm-alias-gen` 一个都不许剩在那一页）。
    */
-  it("★ K-R49：「行为」页上挂着「按账号生成命令」，且排在手工别名生成器之前", async () => {
+  it("★ AL1：本机页挂着「别名」，「应用」页上一块别名都没有", async () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();
-    // 🔴 步 2（`70 §1.3 B`）：这两块的 I/O 在它们的**建造函数体里**，从外面推不后
-    // ⇒ 门只能开在「建不建」这一层（形态同 `CC_INTEGRATION_HOST_OS` 那一格）。
-    // 所以这条断言要先点进「应用」—— 它买的仍是**接线**（那一块真被挂上去了、顺序对），
-    // 只是接线现在发生在「这一页第一次被看见」那一刻，不在构造那一刻。
     document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
-    const page = document.querySelector<HTMLElement>(
-      '.settings-page[data-route-id="app"]',
+    await tick();
+    const app = document.querySelector<HTMLElement>('.settings-page[data-route-id="app"]');
+    expect(app, "「应用」页不在 —— 这条断言量错了地方").toBeTruthy();
+    expect(app!.querySelector(".ccm-acct-alias, .ccm-alias-gen, .machine-aliases")).toBeNull();
+    const local = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machine:（本机）"]',
     );
-    const acct = page!.querySelector(".ccm-acct-alias");
-    expect(acct, "「行为」页上找不到「按账号生成命令」那一块").toBeTruthy();
-    const manual = page!.querySelector(".ccm-alias-gen");
-    expect(manual, "手工别名生成器也不在了 —— 那说明这条断言量错了地方").toBeTruthy();
-    expect(
-      acct!.compareDocumentPosition(manual!) & Node.DOCUMENT_POSITION_FOLLOWING,
-      "手工生成器排到了「按账号生成命令」前面",
-    ).toBeTruthy();
+    const block = local!.querySelector<HTMLElement>(".machine-aliases");
+    expect(block, "本机页上找不到「别名」那一块").toBeTruthy();
+    // ⚠ 「在 DOM 里」不等于「看得见」：per-machine 那几块是**单例 ＋ 按页 hidden**，
+    //   `appliesTo` 写错的那一块照样躺在本机页的 DOM 里，只是被藏起来了（死值验现打）。
+    for (let n: HTMLElement | null = block; n && n !== local; n = n.parentElement) {
+      expect(n.hidden, "「别名」那一块在本机页上被藏起来了（appliesTo 写错？）").toBe(false);
+    }
   });
 
   it("「账号」块真的挂着 AccountsSection（不是只有个标题）", async () => {
@@ -393,6 +390,7 @@ describe("S2 设置面板分页结构", () => {
       "连接（远端）",
       "账号",
       "终端集成",
+      "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点
       "MCP",
       "插件（marketplace）",
       "cc-bus 钩子",

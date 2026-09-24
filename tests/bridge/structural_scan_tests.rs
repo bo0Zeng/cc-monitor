@@ -2544,11 +2544,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_per_second_identity_poller_spawns_nothing_per_tick",
             1,
         ),
-        (
-            "src/bridge/src/profile_installer.rs",
-            "repro_local_eats_user_content_on_damaged_fence",
-            1,
-        ),
+        // 〔AL1 · 2026-09-24〕-1：`profile_installer.rs` 里点这个名字的那段话随
+        //    `find_block_range` 一起走了（拼接收成 `fenced_block::splice_in/out` 一份）。
         (
             // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/bridge/rust_timer_registry_tests.rs",
@@ -2779,6 +2776,71 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/bridge/polling_registry_tests.rs",
             "ccm_fails_loudly_when_no_backend_can_be_found",
+            1,
+        ),
+        // 🔴 〔AL1 · 2026-09-24〕`设计/71 §12.5` 那一拍：「备份 → 写 → 回读 → 回滚」收成
+        //    `fenced_block::apply` 一份，拼接收成 `fenced_block::splice_in/out` 一份 ⇒
+        //    本机那份配对 helper 与远端那份回滚措辞 helper 连同它的判据一起走了。
+        //    散文留着说「它们为什么不在了」（措辞的新住址 `fenced_block::undo_note`）。
+        //    ⚠ `sftp.rs` 那块墓碑点的 `rollback_note` 不进本表：死名普查不把它算作死名
+        //    （它是 `…_matches_what_actually_happened` 的前缀），标记只记在 `REGISTERED` 里。
+        ("src/bridge/src/fenced_block.rs", "find_block_range", 1),
+        // 〔AL1 · 2026-09-24 · 子步 4〕`write_account_aliases`（`lines` ＋ `dryRun`）退役，拆成两跳 ＋ 读回口。
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "write_account_aliases",
+            3,
+        ),
+        (
+            "tests/bridge/account_aliases_tests.rs",
+            "validate_alias_line",
+            1,
+        ),
+        (
+            "tests/generated-boundary-guard.vitest.ts",
+            "write_account_aliases",
+            1,
+        ),
+        (
+            "tests/settings/panel-deferred-io.vitest.ts",
+            "write_account_aliases",
+            1,
+        ),
+        // 〔MC1 · 2026-09-24〕远端「装/卸 ccm 助手」两条命令改名成 `install_remote_alias_block` /
+        //    `uninstall_remote_alias_block`（推入口那一半并进 `deploy_remote_backend`，`设计/71 §13.3`）。
+        ("src/bridge/README.md", "install_remote_ccm_helper", 2),
+        (
+            "src/bridge/src/backend/control/local_backend.rs",
+            "install_remote_ccm_helper",
+            1,
+        ),
+        (
+            "src/bridge/src/profile_installer.rs",
+            "install_remote_ccm_helper",
+            1,
+        ),
+        ("src/bridge/src/sftp.rs", "install_remote_ccm_helper", 2),
+        ("src/bridge/src/sftp.rs", "uninstall_remote_ccm_helper", 1),
+        // 〔MC1 · 2026-09-24〕`CCM_SELF` 删掉（`设计/01 §6.7b`）⇒ 钉「shim 必须传它」的那条判据改成
+        //    「shim 一个环境变量都不设」（`remote_shim_sets_no_environment_of_its_own`）。
+        (
+            "tests/bridge/backend/control/local_backend_tests.rs",
+            "remote_shim_carries_the_entry_name_for_the_container_path",
+            1,
+        ),
+        (
+            "src/bridge/src/verified_write.rs",
+            "install_remote_ccm_helper",
+            2,
+        ),
+        (
+            "tests/bridge/remote_write_registry_tests.rs",
+            "install_remote_ccm_helper",
+            1,
+        ),
+        (
+            "tests/bridge/sftp_tests.rs",
+            "rollback_note_matches_what_actually_happened",
             1,
         ),
         (
@@ -3428,14 +3490,32 @@ fn every_prose_tombstone_mark_is_registered() {
         //   正文、也写了那四个字，**却没把标记挂上** ⇒ 本条当场红在「挂歪了」那一格。
         //   那是这条判据落地后第一次真逮到东西，而逮到的是**同一波另一路**的产出。
         ("src/backend/lib.rs", 1),
+        // 〔AL1 · 2026-09-24〕规则收成一份那一拍新贴的两块墓碑（本机配对 helper · 远端回滚措辞 helper）。
+        ("src/bridge/src/fenced_block.rs", 1),
+        // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
+        ("src/bridge/src/sftp.rs", 4),
+        ("src/bridge/src/profile_installer.rs", 2), // 〔AL1〕+1：`AccountAliasReport` 那一句
+        ("src/bridge/src/verified_write.rs", 2),
+        ("tests/bridge/remote_write_registry_tests.rs", 1),
+        // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
+        ("tests/bridge/backend/control/local_backend_tests.rs", 1),
+        // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
+        // 测试里「形状围栏」那一条（`validate_alias_line`）· 生成物表里退役的 `AccountAliasReport.ts` ·
+        // 延后 I/O 登记表里退役的 `write_account_aliases`，各一块。
+        ("src/bridge/src/account_aliases.rs", 2), // 〔AL1〕+1：`ccmInvocation` 那一句
+        ("tests/bridge/account_aliases_tests.rs", 1),
+        ("tests/generated-boundary-guard.vitest.ts", 1),
+        ("tests/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/wire.rs", 1),
-        ("src/bridge/README.md", 1),
+        // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
+        ("src/bridge/README.md", 3),
         ("src/bridge/build.rs", 1),
         ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
         // 〔BS1b 09-24〕6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
         //   ⇒ 两块整段墓碑 ＋ 两处订正行（`cc_bus_send` 头注 · `kill_via_backend` 头注里那句旧拒绝）。
         ("src/bridge/src/backend/control/cc_bus.rs", 10),
-        ("src/bridge/src/backend/control/local_backend.rs", 1),
+        // 〔MC1〕+1：`install_remote_ccm_helper` 改名。
+        ("src/bridge/src/backend/control/local_backend.rs", 2),
         ("src/bridge/src/backend/control/payload.rs", 1),
         ("src/bridge/src/backend/control/tmux.rs", 7),
         ("src/bridge/src/cc_bus_deploy.rs", 1),
@@ -3455,7 +3535,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/doc/ARCHITECTURE.md", 1),
         ("src/doc/INVARIANTS.md", 4),
         ("src/doc/IPC-PROTOCOL.md", 4),
-        ("src/settings/accounts-section.ts", 1),
+        // 〔AL1 · 2026-09-24〕+1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
+        ("src/settings/accounts-section.ts", 2),
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),
         ("tests/backend/readonly_guard.rs", 2),
@@ -3490,10 +3571,13 @@ fn every_prose_tombstone_mark_is_registered() {
         // 🔴〔本机侧退役 2026-09-23〕`parent_dir` 只剩一个算法 ⇒ 那条判据改了名
         //   （旧名尾巴上那半判的是本机那一支）。旧名逐字留着说明「它为什么改了」。
         ("tests/bridge/filewin/source_tests.rs", 1),
-        ("tests/bridge/parity_ledger_tests.rs", 5),
+        // 〔AL1 · 2026-09-24〕+5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
+        //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
+        ("tests/bridge/parity_ledger_tests.rs", 10),
         ("tests/bridge/plugin_class_registry_tests.rs", 2),
         ("tests/bridge/polling_registry_tests.rs", 1),
-        ("tests/bridge/sftp_tests.rs", 3),
+        // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
+        ("tests/bridge/sftp_tests.rs", 4),
         ("tests/bridge/shared_crate_registry_tests.rs", 1),
         // 〔`C1` · 09-24〕快照那一格的墓碑（`parse_snapshot_meta` 随改走长连接删了）。
         ("tests/bridge/ssh_source_snapshot_tail_tests.rs", 1),
@@ -3503,7 +3587,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/tool_registry_environment_tests.rs", 1),
         ("tests/evidence/K-R20-C-deadname-census.py", 1),
         ("tests/evidence/S29-legacy-compat-census.py", 11),
-        ("tests/ipc/commands.vitest.ts", 2),
+        ("tests/ipc/commands.vitest.ts", 4), // 〔AL1〕+2：K-R49 增量账里 `write_account_aliases` 那两行
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

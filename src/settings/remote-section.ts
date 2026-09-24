@@ -1033,9 +1033,9 @@ export class RemoteSection {
         "用 `ccm` 起会话（而非直接 `claude`），远端会周期性把 ssh 窗口标题设成\n" +
           "`ccm-rbind-<sid>`，本地 monitor 扫到即绑定该窗口；同时给 tmux 打上 @ccm_sid，\n" +
           "于是终端起的会话 app 也认得出、能 attach、能换号重启。\n\n" +
-          "✅ 每台机器卡片上的「装 ccm 启动器」按钮一键装好（CLI 到 ~/.local/bin/ccm，\n" +
-          "别名块到 ~/.bashrc，先备份、幂等可重装）；下面片段是别名块，可手动复制\n" +
-          "（zsh / 自定义 profile 用；CLI 本体仍需用按钮部署）。\n\n" +
+          "✅ 每台机器页的「组件」栏：「部署后端」放好 ccm 入口（~/.local/bin/ccm），\n" +
+          "「装别名块」把别名块写进 ~/.bashrc（先备份、幂等可重装）；下面片段就是那个别名块，\n" +
+          "可手动复制（zsh / 自定义 profile 用；ccm 入口仍要用「部署后端」放）。\n\n" +
           "⚠ 限制：多个 ssh 会话若开在同一个 Windows Terminal 窗口的不同 tab 里，↗ 只能\n" +
           "拉起该窗口、无法切到具体 tab。建议每个远端会话单独开窗。",
       ),

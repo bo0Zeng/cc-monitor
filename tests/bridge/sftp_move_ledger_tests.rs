@@ -71,7 +71,7 @@ const DIAL_CENSUS: &[(&str, usize, &str)] = &[
         "sftp.rs",
         6,
         "甲 4 条命令（`deploy_remote_backend` · `uninstall_remote_backend` · \
-             `install_remote_ccm_helper` · `uninstall_remote_ccm_helper`）\
+             `install_remote_alias_block` · `uninstall_remote_alias_block`，〔MC1〕从前叫 `…_ccm_helper`）\
              ＋ **派工单没归类的 2 处**：`ensure_backend_deployed`（连接流程里的自动部署）\
              与 `remove_remote_file`（F11 删远端会话 jsonl）",
     ),
@@ -185,7 +185,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "甲",
         "backend 只读铁律 I7",
         "后端不许改动用户既有数据",
-        "甲里 `install_remote_ccm_helper` / `uninstall_remote_ccm_helper` 改的正是\
+        "甲里 `install_remote_alias_block` / `uninstall_remote_alias_block` 改的正是\
              **用户既有的** `~/.bashrc`（备份 → 覆盖写 → 读回校验 → 回滚）。\
              把它搬进后端 = **backend 进程自身**去改用户既有数据 ⇒ 与铁律 I7 正面撞。\
              🔴 **这是用户拍的红线，实现方不自批** —— `DECISIONS.md#R32` 通篇没有处置这一格。\
@@ -237,7 +237,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              `sftp.rs::CCM_WRAPPER_SNIPPET`；同文件 \
              `the_posix_arm_borrows_the_remote_implementation_instead_of_growing_a_second_one` \
              另断言**本机**那条 POSIX 路借的就是远端这一份（三个符号各恰好 1 次）。\
-             ⇒ 把 `install_remote_ccm_helper` 整条搬走：留下第二份 snippet ⇒ 前者红；\
+             ⇒ 把 `install_remote_alias_block` 整条搬走：留下第二份 snippet ⇒ 前者红；\
              把 snippet 一起搬走 ⇒ 本机那条路失去实现，后者红。\
              **出路只有一条**：先立一个两侧共用的 crate —— 而那要 `shared_crate_registry` 签字，\
              不在本件写区。",

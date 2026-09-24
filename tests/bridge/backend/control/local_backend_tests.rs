@@ -1410,43 +1410,30 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
     );
 }
 
-/// 远端 shim 必须把**入口名**传下去（`CCM_SELF`）——否则容器路的内层命令缺子命令词。
+/// 〔MC1 · 2026-09-24〕远端 shim **一个环境变量都不设**（`CCM_SELF` 那一行删了）。
 ///
-/// # 这条钉的是 09-15 真机逮到的那一格
+/// 这条从前叫 `remote_shim_carries_the_entry_name_for_the_container_path`〔散文墓碑〕，钉的是
+/// 09-15 真机逮到的那一格：容器路的内层命令缺 `ccm` 子命令词 ⇒ 要 shim 把 `$0` 塞进 `CCM_SELF`。
+/// CC1 之后后端自己从 argv 取「被 `intercept` 吃掉的那一段」（`control/ccm/mod.rs::self_invocation`），
+/// 入口② 自带那个词 ⇒ 那个补丁的前提没了，`设计/01 §6.7b` 要它删。
 ///
-/// `ccm::plan` 的内层载荷以 `self_path` 开头，取自 `CCM_SELF` → 兜底 `argv[0]`。
-/// 入口①（改名副本）的 `argv[0]` basename 本来就是 `ccm`；入口②（本 shim）`exec` 的是
-/// 二进制真身 ⇒ 不传 `CCM_SELF` 的话内层命令是 `<bin> --cwd …`，**没有 `ccm`**，
-/// 被当后端直连口解析 ⇒ `unknown argument: --cwd`。
-///
-/// ⚠ **为什么这条判据必须存在**：那个失败**不红在任何现有判据上** ——
-/// tmux 会话建得出来、`@ccm_agent` 打得上、`--print` 吐的是同一条坏命令，
-/// 只有真去读窗格才看得见。上面那条 `both_ccm_entries_…` 只看 ` ccm "$@"` 这个子串，
-/// 它在坏版本里**照样命中**（坏的恰恰是 `exec` 之前少了一段）。
+/// ⚠ **那一格的性质没丢，只是换了住址**：「经入口② 进来、内层命令仍带着 `ccm`」今天由后端
+/// `self_invocation` 的单测与 `tests/e2e/backend-cc-bus.sh` 的 `[17]`（两个入口 pane 那一跳逐字同形）钉。
+/// 本条钉的是删干净：shim 里不许再出现任何一处 `CCM_SELF`，也不许长出任何环境变量前缀。
 #[test]
-fn remote_shim_carries_the_entry_name_for_the_container_path() {
+fn remote_shim_sets_no_environment_of_its_own() {
     let shim = ccm_entry_shim("/x/cc-monitor-backend");
     assert!(
-        shim.contains("CCM_SELF="),
-        "远端 shim 没有把入口名传下去 ⇒ 容器路（--tmux）的内层命令会缺 `{CCM_ENTRY_WORD}` 子命令：\n{shim}"
+        !guard_core::contains_word(&shim, "CCM_SELF"),
+        "远端 shim 里还有 `CCM_SELF` —— 那个变量删了（设计/01 §6.7b）：\n{shim}"
     );
-    // 必须取自 `$0`（「我是被当作什么叫的」），而不是硬编码某个路径。
+    let exec_line = shim
+        .lines()
+        .find(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .expect("shim 里没有可执行行 —— 这条判据的前提没了");
     assert!(
-        shim.contains("$0"),
-        "`CCM_SELF` 不是取自 `$0` —— 换个落点就指错入口：\n{shim}"
-    );
-    // 外部已设时不许覆盖（`${CCM_SELF:-$0}` 这一形）。
-    assert!(
-        shim.contains("${CCM_SELF:-$0}"),
-        "`CCM_SELF` 覆盖了调用方已经设好的值：\n{shim}"
-    );
-    // 反向自检：赋值必须在 `exec` **之前**，否则它进不了被 exec 的那个进程的环境。
-    let (assign, exec_part) = shim
-        .split_once("exec ")
-        .expect("shim 里没有 `exec ` —— 这条判据的前提没了");
-    assert!(
-        assign.contains("CCM_SELF=") && !exec_part.contains("CCM_SELF="),
-        "`CCM_SELF` 没有落在 `exec` 之前 ⇒ 传不进后端进程：\n{shim}"
+        exec_line.starts_with("exec "),
+        "shim 那一行不是以 `exec` 打头（前面挂了环境变量赋值？）：{exec_line}"
     );
 }
 

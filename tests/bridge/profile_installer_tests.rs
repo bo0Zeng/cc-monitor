@@ -1387,7 +1387,7 @@ fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
 ///
 /// `src/shared/ccm-aliases.sh` 是**一份文件、两个消费者**：本机走
 /// [`plan_install`] 的 POSIX 方言合进用户选的那份 rc，远端走
-/// `sftp::install_remote_ccm_helper` 合进远端 rc —— **合进去的是逐字同一份文本**。
+/// `sftp::install_remote_alias_block` 合进远端 rc —— **合进去的是逐字同一份文本**。
 /// 而两边的 `ccm` 落点**不是同一个目录**（`tool_registry::TOOLS` 现算：
 /// 本机 `.cc-monitor/bin`、远端 `.local/bin`）。
 /// ⇒ 那一行只写一个目录时，**它只可能对其中一边是对的**。

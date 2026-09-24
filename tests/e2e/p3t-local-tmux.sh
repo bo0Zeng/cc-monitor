@@ -82,7 +82,8 @@ CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 ln -sf "$CCM_NATIVE" "$BIN/ccm"
 
 export PATH="$BIN:$PATH"
-export CCM_SELF="$BIN/ccm"
+# 〔MC1 · 2026-09-24〕这里从前 `export CCM_SELF="$BIN/ccm"`：那个环境变量删了（`设计/01 §6.7b`）——
+# 经 `$BIN/ccm` 这条软链进来，`argv[0]` 本来就是它（入口①），内层载荷取的就是这个名字。
 # ⚠ 〔`K-R48` 第二拍〕下面那份 `$TMP/ccm-config` **原生实现不读**（旧版是 source 一段 bash，
 #   没有等价物；它发现那个文件在会往 stderr 说一句然后照常跑）⇒ 那两个值改走环境变量。
 #   留着 `CCM_CONFIG` 指过去是有意的：它同时验「发现它存在会出声」这条行为没丢。

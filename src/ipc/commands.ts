@@ -98,7 +98,10 @@ import type {
   SendIntoResponse,
 } from "../launch-cli-wire.ts";
 
-import type { AccountAliasReport } from "../generated/AccountAliasReport";
+import type { Alias } from "../generated/Alias";
+import type { AliasInstallReport } from "../generated/AliasInstallReport";
+import type { AliasListing } from "../generated/AliasListing";
+import type { AliasRender } from "../generated/AliasRender";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
@@ -378,22 +381,21 @@ export const commands = {
     invoke<void>("write_skill_file", args),
 
   /**
-   * `K-R49`：**加了账号，那条命令也该跟着有。**
-   *
-   * `lines` 是 `buildAliasLine`（全仓唯一那份别名生成器）吐出来的那几行，后端只负责落盘：
-   * 整份重写 `~/.cc-monitor/account-aliases.sh`（**monitor 自己的文件**，不是用户的 rc）。
-   *
-   * ⚠ `rcPath` 是**可选**的，而且**没有默认值** —— 用户的 shell 配置是哪一份
-   * （`.bashrc` / `.zshrc` / …）只能由界面上的人选，猜一个写进去是最坏的那条路。
-   * 不给它就只写生成文件，用户的 shell 配置一个字节不动。
-   *
-   * ⚠ `dryRun: true` 时后端**一个字节都不写**，返回的是同一份报告 —— 界面拿它做预览。
+   * 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。
+   * 预览与「复制去手贴」都只调这一条，后端一个字节都不写。
    */
-  write_account_aliases: (args: {
-    lines: string[];
-    rcPath?: string | null;
-    dryRun: boolean;
-  }) => invoke<AccountAliasReport>("write_account_aliases", args),
+  aliases_render: (args: { aliases: Alias[] }) =>
+    invoke<AliasRender>("aliases_render", args),
+
+  /** 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。 */
+  aliases_read: () => invoke<AliasListing>("aliases_read"),
+
+  /**
+   * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
+   * ⚠ `rcPath` 可选且没有默认值：用户的 shell 配置是哪一份只能由界面上的人选。
+   */
+  aliases_install: (args: { aliases: Alias[]; rcPath?: string | null }) =>
+    invoke<AliasInstallReport>("aliases_install", args),
 
   /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
   panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>
@@ -791,6 +793,7 @@ export const commands = {
     invoke<boolean>("check_cc_bus_agent_online", args),
 
   /** 部署内嵌的后端到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
+  /** 部署远端后端（〔MC1〕连同 `ccm` 入口，一次）。 */
   deploy_remote_backend: (args: { cfg: unknown }) => invoke<string>("deploy_remote_backend", args),
 
   /**
@@ -977,9 +980,9 @@ export const commands = {
   /** 批量导入 `~/.ssh/config` 的预览分组（F57）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   import_ssh_hosts: () => invoke<ImportGroup[]>("import_ssh_hosts"),
 
-  /** 往远端 `~/.bashrc` 装 ccm wrapper。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  install_remote_ccm_helper: (args: { cfg: unknown; profile: string }) =>
-    invoke<string>("install_remote_ccm_helper", args),
+  /** 往远端 rc 里装别名块（〔MC1〕从前叫「装 ccm 助手」）。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
+  install_remote_alias_block: (args: { cfg: unknown; profile: string }) =>
+    invoke<string>("install_remote_alias_block", args),
 
   /** 搜索索引状态。Rust 签名**无 `Result` 包装**（`-> SearchIndexStatus`）。 */
   get_search_index_status: () => invoke<SearchIndexStatus>("get_search_index_status"),
@@ -1087,9 +1090,9 @@ export const commands = {
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: () => invoke<void>("open_settings_window"),
 
-  /** 从远端 `~/.bashrc` 卸 ccm wrapper。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  uninstall_remote_ccm_helper: (args: { cfg: unknown; profile: string }) =>
-    invoke<string>("uninstall_remote_ccm_helper", args),
+  /** 从远端 rc 里卸别名块。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
+  uninstall_remote_alias_block: (args: { cfg: unknown; profile: string }) =>
+    invoke<string>("uninstall_remote_alias_block", args),
 
   /** 卸远端后端。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
   uninstall_remote_backend: (args: { cfg: unknown }) =>

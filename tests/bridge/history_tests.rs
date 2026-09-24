@@ -754,7 +754,7 @@ pub(crate) const THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS: &[(&str, CellToday, &str,
         "`render_ccm_invocation` 的第一行 `if !installed { NotInstalled }`。\
              探测走 `CcmProbeSource` 那条缝（本判据喂确定值，**不问跑它的这台机器**）。",
         "**部署面，不是渲染器的欠账**（`K27`/`K34`：部署是产品的一部分，由客户端做）。\
-             远端那条装法 `sftp::install_remote_ccm_helper` 今天就在盘上；本机那条归部署向导。",
+             远端那条装法 `sftp::deploy_remote_backend`（〔MC1〕部署后端连同 `ccm` 入口）今天就在盘上；本机那条归部署向导。",
     ),
     (
         "Windows",

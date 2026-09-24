@@ -10,7 +10,7 @@ import {
   type NewAccountRequest,
 } from "../../src/settings/account-new-form";
 import { buildAcctIsoCmd } from "../../src/settings/acct-deploy";
-import { suggestAliasName } from "../../src/launcher-diagnostics";
+import { suggestAliasName } from "../../src/settings/machine-aliases"; // 〔AL1〕随别名那一块搬家
 
 function form() {
   const seen: NewAccountRequest[] = [];

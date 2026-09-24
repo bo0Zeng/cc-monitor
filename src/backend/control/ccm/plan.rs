@@ -45,8 +45,10 @@ pub(crate) struct Env {
     /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
     pub(crate) account_env: String,
-    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：入口① `[argv0]` · 入口② `[argv0, "ccm"]`
-    /// · 设了 `CCM_SELF` 就是 `[那个值]`。取法住 [`super::self_invocation`]。
+    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：入口① `[argv0]` · 入口② `[argv0, "ccm"]`。
+    /// 取法住 [`super::self_invocation`]。〔MC1 · 2026-09-24〕从前还有第三档「设了 `CCM_SELF`
+    /// 就用那个值」—— 那个环境变量删了（`设计/01 §6.7b`：它只为远端 shim 存在，而 CC1 之后
+    /// 入口② 自己就带得上那个词）。
     pub(crate) self_argv: Vec<String>,
     /// `CCM_NO_PRETRUST=1`。
     pub(crate) no_pretrust: bool,
@@ -97,15 +99,14 @@ impl Env {
             // 继承值与载体名一样，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
             inherited_config_dir: None,
             account_env: String::new(),
-            // 🔴 `CCM_SELF` 优先于 `argv[0]`：内层载荷要用**「我是被当作什么叫的」**那个名字。
-            //   `argv[0]` 在「一个二进制多个名字」下拿到的可能是真身路径，而内层要的是
-            //   用户 `PATH` 上那个入口 —— 两者在软链 / 别名下不是同一个东西。
-            //   `CCM_SELF` 是**一个**入口名（远端 shim 传 `$0`、判据传 `/usr/local/bin/ccm`）；
-            //   没设就是这个进程**自己被怎么叫的那一段**（入口② 下带着 `ccm` 那个词，CC1）。
-            self_argv: match get("CCM_SELF") {
-                Some(s) => vec![s],
-                None => super::self_invocation(&std::env::args().collect::<Vec<_>>()),
-            },
+            // 🔴 内层载荷要用**「我是被当作什么叫的」**那一段：这个进程**自己被怎么叫的**
+            //   （入口① `[argv0]` · 入口② `[argv0, "ccm"]`，CC1 的 `self_invocation`）。
+            // 〔MC1 · 2026-09-24〕这里从前先看环境变量 `CCM_SELF`、没设才落到 argv。
+            //   它存在的唯一理由是远端 shim：shim `exec <后端> ccm "$@"` 之后 `argv[0]` 是真身路径，
+            //   而当时这一段只取 `argv[0]`、丢了 `ccm` 那个词 ⇒ 要 shim 把 `$0` 塞进环境变量补回来。
+            //   CC1 之后入口② 自己就带得上那个词 ⇒ **shim 制造的那个问题没了，补丁也就不需要了**
+            //   （`设计/01 §6.7b` 逐字「`CCM_SELF` 这个环境变量随之删掉」）。
+            self_argv: super::self_invocation(&std::env::args().collect::<Vec<_>>()),
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             home,
@@ -843,7 +844,7 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // 不是一段时间 —— 零定时器、零轮询。它不过 ⇒ 把它自己的原话转给调用方、`exit 4`（起不来），
     // 后面的接进去与登记一段都不跑。
     //
-    // ⚠ 它**买到**的：入口路由（BS1b 那一形）· 参数解析 · 账号解析 · `CCM_SELF` 指着一份不认这套参数的入口。
+    // ⚠ 它**买到**的：入口路由（BS1b 那一形）· 参数解析 · 账号解析 · 被叫的那个入口（`argv[0]`）是一份不认这套参数的旧副本。
     // ⚠ 它**买不到**的（别读成做到了）：`--print` 不解析启动器 ⇒ 「启动器在 PATH 上找不到」仍会在 pane 里
     //   退回 shell 而这里照报成功；agent exec 起来之后自己当场退出，同样看不见。要看见这两类得有一个
     //   **exec 那一刻的正信号**（今天没有），登记在 `设计/95` 末尾。

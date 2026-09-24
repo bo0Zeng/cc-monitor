@@ -127,13 +127,18 @@ describe("C01 边界生成物", () => {
     expect(files, "生成目录内容变了——把新文件纳入本守卫再更新这个期望").toEqual([
       // **按字母序**（本条是 readdir + sort 的逐项对拍，不许按功能分组打乱顺序）。
       // 每项后面标它属于哪个功能，便于回溯。
-      // K-R49：按账号生成命令并落盘那一条命令的返回形状（报告 + 候选 rc）。
+      // K-R49：候选 rc（「那一行 source 加进哪份」）。〔AL1〕`AccountAliasReport.ts`〔散文墓碑〕随 `write_account_aliases` 退役。
       "AccountAliasRc.ts",
-      "AccountAliasReport.ts",
       // P8a：marketplace 只读枚举的两个载荷。
       // ⚠ 顺序按目录名排序，别按加入时间摆。
       "AcctIsoStatus.ts", //          C04d 批3（**抓到漂移**：TS 原来只认 1/3 个字段）
       "ActiveSessionPayload.ts", //   C04b
+      // 〔AL1 · 2026-09-24〕`设计/71`：一类别名（名字 ＋ 一组 ccm 参数）· 渲染（纯）· 读回 · 写入。
+      "Alias.ts",
+      "AliasInstallReport.ts",
+      "AliasListing.ts",
+      "AliasProblem.ts",
+      "AliasRender.ts",
       "ApiMessage.ts", //             C04c
       // K-A1：账号的**鉴权方式**（`subscription` | `api-key`）。
       // 加它之前 `RemoteAccount` 压根没有 ts_rs derive，两侧靠一行注释对齐 ⇒

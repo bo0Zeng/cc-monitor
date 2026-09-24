@@ -255,13 +255,10 @@ fn the_remote_ccm_entry_is_an_entry_not_an_implementation() {
     );
     // 唯一那一行必须**就是一次 exec**（不许起子进程再包一层：那会吃掉退出码与信号）。
     //
-    // 🔴 09-15 放宽了这一条的**形状**，没放宽它的**性质**：允许 `exec` 前挂
-    // POSIX 的「一次性环境变量赋值」前缀（`VAR=值 exec …`）。那一形仍然是
-    // 同一个进程被 `exec` 掉 —— 退出码与信号照样透传，`K33` 的「只许有一处实现」
-    // 也没破（赋值不是分支、不是第二处实现）。
-    // 为什么需要它：容器路要靠 `CCM_SELF` 知道「我是被当作什么叫的」，
-    // 而那个值**必须在 `exec` 之前**进环境，否则进不了后端进程。
-    // ⚠ 只放这一形：下面三条把「真正会吃掉退出码 / 长出第二处实现」的写法全挡住。
+    // 🔴 09-15 放宽过这一条的**形状**（允许 `exec` 前挂「一次性环境变量赋值」前缀），
+    // 为的是那一行 `CCM_SELF=…`。〔MC1 · 2026-09-24〕那个变量删了、shim 回到一行裸 `exec`；
+    // 放宽的那一格留着不收（它挡的「吃掉退出码 / 第二处实现」下面三条照挡），
+    // 「一个环境变量都不许设」由 `local_backend_tests.rs::remote_shim_sets_no_environment_of_its_own` 钉。
     let head = code[0];
     let after_assigns = head
         .split_whitespace()
@@ -1246,81 +1243,81 @@ fn bytes_on_disk_but_read_empty_is_refused() {
     );
 }
 
-/// **结构性守卫**：两处 profile 读-改-写的**初始读取**必须走 fail-safe 读取器。
+/// **结构性守卫**：远端 profile 读-改-写的**初始读取**必须走 fail-safe 读取器。
 ///
-/// 范围**只覆盖「喂给文本变换的那一次读取」**，即函数体开头到
-/// `merge_profile_block`/`strip_profile_block` 之间那一段。
-///
-/// 第一版写成"整个函数体不许出现 `read_optional(sftp, &profile)`"，**当场被自己抓红**：
-/// 同一函数里的**写后读回校验**正当地用它，而且那处用 lossy 也是安全的——写进去的一定是
-/// 合法 UTF-8，传输损坏会变成 U+FFFD → 与期望不符 → Mismatch → 回滚，方向 fail-safe。
-/// 收窄了**两次**才对上，两次都是自己抓自己：
-/// ① 初版扫整个函数体 → 撞上写后读回校验那处正当的 `read_optional(sftp, &profile)`；
-/// ② 收到"变换之前"后仍假红 → `install` 的读取段里还有一处正当的 `read_optional`，
-///    读的是刚部署的 **ccm CLI 脚本**（`CCM_CLI_REMOTE_PATH`），不是 profile。
-/// 所以禁的必须是**读 profile 那一次**的确切形态，不是"任何 `read_optional`"。
-/// 守卫范围必须等于性质范围；本会话第三次栽在同一形状上，故把订正过程留在注释里。
+/// 〔AL1 · 2026-09-24〕**形状变了，性质没变。** 从前两个命令各自在函数体里先读、再变换，
+/// 本条就去截「函数开头到 `merge/strip_profile_block` 之间」那一段；那一段的订正史
+/// （初版扫整个体撞上写后回读 · 收窄后又撞上 CLI 那一次读）说的是同一条：
+/// **禁的必须是「喂给变换的那一次读取」的确切形态**。
+/// 今天那一次读取只有一个住址 —— `SftpFile` 的 `read`（序列 `fenced_block::apply` 先调它、
+/// 把结果交给变换），写后回读也是它（同一份 fail-closed 读取，没有第二条 lossy 的路）。
+/// ⇒ 本条钉三件：`read` 走 `read_profile_text`、不走裸 `read_optional`；
+/// 两个命令都把 profile 交给 `SftpFile` ＋ `fenced_block::apply`（不在函数体里自己读）。
 #[test]
 fn profile_read_modify_write_goes_through_the_failsafe_reader() {
-    fn body<'a>(src: &'a str, sig: &str) -> &'a str {
-        let i = src
+    // ⚠ 刻意不用裸 `contains`：`needle_anchor_registry` 那条递减棘轮治的正是「匹配单位比事实小」。
+    //   针要么是完整的调用形（`find_pinned`：恰好一处 ＋ 两侧有边界），要么是一个词（`contains_word`）。
+    let sftp_prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let item = |sig: &str, end: &str| -> String {
+        let i = sftp_prod
             .find(sig)
             .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
-        &src[i..j]
-    }
-    let src = include_str!("../../src/bridge/src/sftp.rs");
+        let j = sftp_prod[i..]
+            .find(end)
+            .map(|k| i + k)
+            .unwrap_or(sftp_prod.len());
+        sftp_prod[i..j].to_string()
+    };
+    let reader = item(
+        "async fn read(&self) -> Result<Option<String>, String> {",
+        "\n    }\n",
+    );
+    guard_core::find_pinned(
+        &reader,
+        "read_profile_text(self.sftp, &self.path, &self.what)",
+    )
+    .unwrap_or_else(|e| panic!("SftpFile::read 没走 fail-safe 读取器（{e}）：{reader}"));
+    assert!(
+        !guard_core::contains_word(&reader, "read_optional"),
+        "SftpFile::read 又直接拿 read_optional 读了——那会把「读不出来」当成空文件，\
+             于是跳过备份 + 整份覆盖 / 谎报无需卸载"
+    );
     let mut checked = 0usize;
     for (sig, transform) in [
         (
-            "pub async fn uninstall_remote_ccm_helper(",
-            "strip_profile_block(",
+            "pub async fn uninstall_remote_alias_block(",
+            "strip_profile_block",
         ),
         (
-            "pub async fn install_remote_ccm_helper(",
-            "merge_profile_block(",
+            "pub async fn install_remote_alias_block(",
+            "merge_profile_block",
         ),
     ] {
-        let code = body(src, sig)
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        // 反向自检①：真取到函数体了（不是空串在空转）
-        assert!(code.contains("upload_atomic("), "{sig}: 取到的体里没有上传");
-        let cut = code
-            .find(transform)
-            .unwrap_or_else(|| panic!("{sig}: 找不到 {transform}——守卫失效了"));
-        let before = &code[..cut];
-        // 反向自检②：截出来的前半段非空，且确实是读取段
+        let cmd_body = item(sig, "\n}\n");
         assert!(
-            before.len() > 40 && before.contains("profile"),
-            "{sig}: 截出的读取段不像读取段（{} 字节）",
-            before.len()
+            guard_core::contains_word(&cmd_body, transform),
+            "{sig}: 找不到 {transform}——守卫失效了"
         );
+        guard_core::find_pinned(&cmd_body, "crate::fenced_block::apply(&rc,")
+            .unwrap_or_else(|e| panic!("{sig}: profile 没交给 fenced_block::apply（{e}）"));
         assert!(
-            before.contains("read_profile_text(sftp, &profile"),
-            "{sig}: 喂给 {transform} 的 profile 读取没走 fail-safe 读取器"
+            guard_core::contains_word(&cmd_body, "SftpFile"),
+            "{sig}: profile 没交给 SftpFile"
         );
-        assert!(
-            !before.contains("read_optional(sftp, &profile)"),
-            "{sig}: 又直接拿 read_optional 读 profile 了——那会把「读不出来」当成空文件，\
-                 于是跳过备份 + 整份覆盖 / 谎报无需卸载"
-        );
+        for reader_prim in ["read_optional", "read_profile_text"] {
+            assert!(
+                !guard_core::contains_word(&cmd_body, reader_prim),
+                "{sig}: 又在函数体里自己读 profile 了（{reader_prim}）—— 读取只许有 SftpFile::read 那一个住址"
+            );
+        }
         checked += 1;
     }
     assert_eq!(checked, 2, "期望恰好两个 profile 命令，实得 {checked}");
 }
 
-/// Phase G：回滚措辞必须与实际发生的事一致（机制不许声称做了它没做的事）。
-#[test]
-fn rollback_note_matches_what_actually_happened() {
-    assert!(rollback_note(false).contains("已尝试回滚"));
-    let n = rollback_note(true);
-    assert!(n.contains("没有可回滚的内容"), "{n}");
-    assert!(!n.contains("已尝试回滚"), "空 existing 时不许说回滚过：{n}");
-    assert!(n.contains("请手动清理"), "要给出恢复路径：{n}");
-}
+// 〔AL1 · 2026-09-24〕`rollback_note_matches_what_actually_happened` 搬走了〔散文墓碑〕
+// —— 措辞的住址从远端独有的那一份换成了本机远端共用的 `fenced_block::undo_note`，
+// 判据跟着住到 `fenced_block_tests.rs::the_undo_note_says_only_what_really_happened`。
 
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
 ///
@@ -1524,4 +1521,38 @@ fn the_sftp_dependency_is_really_on_russh_sftp_three() {
         "声明面（{declared}）与锁定面（{locked}）的主版本对不上 —— \
          只钉一侧的话，另一侧掉下去是无声的"
     );
+}
+
+/// 🔴 〔MC1 · 2026-09-24〕`设计/71 §13.3` ①：**「部署后端」只有一个动作** —— 后端本体 ＋ `ccm` 入口。
+///
+/// 两向：`deploy_remote_backend` 的函数体里**恰好一处** `put_ccm_entry(` 调用；
+/// 全文件生产段里推入口的原语（`ccm_entry_shim(`）**恰好一处**、就住 `put_ccm_entry` 里 ——
+/// 装别名块那条（`install_remote_alias_block`）**零命中**（从前它一次做两件事，`71 §13.1` 那个 ① ②）。
+///
+/// 死值验：把 `deploy_remote_backend` 里那一句 `put_ccm_entry(sftp, &path)` 摘掉 ⇒ 第一条红。
+#[test]
+fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let body_of = |sig: &str| -> String {
+        let i = prod
+            .find(sig)
+            .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+        let j = prod[i..].find("\n}\n").map(|k| i + k).unwrap_or(prod.len());
+        prod[i..j].to_string()
+    };
+    let deploy = body_of("pub async fn deploy_remote_backend(");
+    guard_core::find_pinned(&deploy, "put_ccm_entry(sftp, &path)")
+        .unwrap_or_else(|e| panic!("部署后端没有连同 ccm 入口一起放（{e}）"));
+    let block = body_of("pub async fn install_remote_alias_block(");
+    for prim in ["ccm_entry_shim", "put_ccm_entry", "CCM_CLI_REMOTE_PATH"] {
+        assert!(
+            !guard_core::contains_word(&block, prim),
+            "装别名块那条又在推入口了（{prim}）—— 那是「部署后端」的事"
+        );
+    }
+    let helper = body_of("async fn put_ccm_entry(");
+    guard_core::find_pinned(&helper, "ccm_entry_shim(backend_path)")
+        .unwrap_or_else(|e| panic!("put_ccm_entry 里推的不是那三行入口（{e}）"));
+    guard_core::find_pinned(&prod, "ccm_entry_shim(")
+        .unwrap_or_else(|e| panic!("推入口的原语不是恰好一处（{e}）"));
 }
