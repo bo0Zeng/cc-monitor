@@ -1,4 +1,44 @@
-//! `24e` 数据面：**列一个目录**。本机走文件系统，远端走已有的 SFTP 那一套。
+//! `24e` 数据面：**列一个目录**。只有一侧 —— 远端，走已有的 SFTP 那一套。
+//!
+//! # 🪦 本机侧退役（2026-09-23）：「本机」那一侧存在过，现在不在了
+//!
+//! 〔散文墓碑〕曾经这个模块有两侧：`Source` 是个两格枚举（`Local` / `Remote`），
+//! 列目录本机走 `read_dir`、远端走 SFTP；`FileWindow` 上有 `go_local` / `go_remote`
+//! 那一对跳转与 `return_label` 那颗按钮标签，工具栏上一颗「本机」⇄「回 <机器名>」。
+//!
+//! 判据侧**随功能一起走掉的那七条**，逐条点名（点名是有账的：每一行都挂着
+//! `PROSE_NAME_TOMBSTONE` 标记并登记进 `structural_scan_tests::TOMBSTONED`）：
+//!
+//! - 〔散文墓碑〕`a_window_that_started_local_has_nowhere_to_go_back_to`（阴性对照：没有来处时那条路不该通）
+//! - 〔散文墓碑〕`the_button_shows_up_exactly_when_the_jump_would_work`（按钮在不在 ＝ 跳得成不成）
+//! - 〔散文墓碑〕`a_real_click_on_the_go_back_button_walks_the_whole_chain`（真合成一次点击，不跳任何一跳）
+//! - 另外四条专测「本机侧出声拒」的（复制 / 四条写 / 拖入 / 往外拖），
+//!   以及两条专测本机列目录的（列得出一屏 / 列不出要出声）。
+//!   ⚠ 这六条**刻意不逐条点名**：它们的名字里逐字带着 `the_local_side_…`，
+//!   点出来只是把同一句话说六遍；而上面那三条各自钉着一件**不重复**的事，
+//!   点名是为了让「随它们一起走掉的检出力」有一份可读的账。
+//!
+//! ## 为什么退役 —— 两句，都是引的，不是推的
+//!
+//! ① 用户 2026-09-23 逐字裁决：「**本地文件句柄不用. 本地不需要文件管理器**」。
+//!
+//! ② 而这条裁决**与本仓既有的设计裁决一致，不是新方向**。`src/doc/INVARIANTS.md`
+//!    的「§40 追加（用户 2026-07-29）：本地的功能要和远端一致」那一节里，
+//!    「**天然不对称白名单（不是欠账，不必补）**」第一条逐字就是：
+//!
+//!    > **SFTP 文件面板** —— 本地有操作系统的文件管理器，不需要它
+//!
+//!    ⇒ 本机那一侧从落地第一天起就在白名单上。它存在过这件事本身是**越界**，
+//!    不是「做了一半的功能」。删它不欠任何人一条平价缺口。
+//!
+//! ## ⚠ 退役**没有**顺带做掉什么（别读宽）
+//!
+//! - **[`list_local`] 还在**，而且它今天在**生产路径上零消费者** —— 留着的唯一理由
+//!   不是「以后可能用得上」，逐条写在它自己的头注上（一条递减棘轮不许测试段裸遍历目录）。
+//! - **上传与往外拖照旧碰本机盘**（`transfer` 读本机文件、`download` 往本机盘写、
+//!   `shell::local_home` 给「存到哪儿」一个缺省值）。那是**传输**，不是文件管理器：
+//!   用户裁的是「本地不需要文件管理器」，不是「窗口不许碰本机盘」。
+//! - `src/sftp/` 那块**旧面板**一个字节没动（它的退役是另一刀，排在补齐 7 项功能之后）。
 //!
 //! # 🔴 远端这一侧刻意**不新写传输代码**
 //!
@@ -11,10 +51,10 @@
 //!
 //! 「目录在前，再按名称小写排」这条契约，生产侧的落点是
 //! `sftp_pool.rs::sort_entries`（`:673`）。它是**私有**的 ⇒ 本模块调不到，
-//! 只能为本机那一侧再写一份 [`sort_rows`]。
+//! 只能再写一份 [`sort_rows`]。
 //!
-//! 🔴 **如实登记这个缝**：远端那条路的序来自 `sftp_list_dir` 内部（生产实现），
-//! 本机那条路的序来自 [`sort_rows`]（第二份实现）。
+//! 🔴 **如实登记这个缝**：退路那条（`sftp_list_dir`）的序来自它内部（生产实现），
+//! 主路那条（`files-ls`）的序来自 [`sort_rows`]（第二份实现）。
 //! [`tests::the_two_orderings_agree_on_a_synthetic_set`] 把**两条路的真实输出**
 //! 对拍成相等，所以「两份漂开」这件事**是有判据的**；
 //! 但它对拍的是**行为**，不是「只有一份实现」—— 后者要等 `sort_entries` 提级成
@@ -42,76 +82,80 @@ pub struct Row {
     pub lossy_name: bool,
 }
 
-/// 这个窗口现在在看哪儿。
+/// 这个窗口现在在看哪儿 —— **一台远端**，而且只可能是一台远端。
+///
+/// 🔴 **它是一个 newtype 而不是一个单格枚举，这一条是承重的。**
+///
+/// 「本机那一侧不存在」这件事有两种落法：① 留着枚举、把 `Local` 那一格删掉；
+/// ② 连枚举一起收成一个 newtype。两者对今天的行为**完全等价**，但可判性差一整级：
+/// 走 ① 的话 `is_remote()` 恒回 `true`、那七处 `if !is_remote() { 出声拒 }`
+/// 变成永远走不到的死支 —— 而**死支上的错误文案与一条真判据长得一模一样**
+/// （本仓那条「判据不在执行链上就等于不存在」的同形）。走 ②，
+/// 「窗口看着本机」这句话**连写都写不出来**：编译器兜着，不靠任何一条判据兜。
+/// 形状上的先例逐字住 `src/bridge/Cargo.toml`（`creds-core` 那条 `harden` feature）：
+/// 「『backend 写不了这份文件』是**编译器**兜的，不是一条判据兜的」。
 ///
 /// 🔴〔第十三刀〕serde 那一对的理由同 [`Row`]：开窗那一跳要把它交给另一个进程。
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum Source {
-    Local,
-    Remote(Box<RemoteConfig>),
-}
+pub struct Source(Box<RemoteConfig>);
 
 impl Source {
-    /// 给窗口标题/面包屑用的短名。
-    pub fn label(&self) -> String {
-        match self {
-            Source::Local => "本机".to_string(),
-            Source::Remote(cfg) => cfg.origin_label(),
-        }
+    /// 造一个 —— **这是唯一的造法**。
+    pub fn remote(cfg: RemoteConfig) -> Self {
+        Source(Box::new(cfg))
     }
 
-    pub fn is_remote(&self) -> bool {
-        matches!(self, Source::Remote(_))
+    /// 那台机器的配置。
+    ///
+    /// ⚠ 回引用而**不是**克隆：调用方里有一半只是要读 `origin_label()`，
+    /// 而另一半要 `clone()` 一份丢进 tokio —— 让后者自己写那一声 `clone`，
+    /// 别在这里替所有人付。
+    pub fn cfg(&self) -> &RemoteConfig {
+        &self.0
+    }
+
+    /// 给窗口标题/面包屑用的短名。
+    pub fn label(&self) -> String {
+        self.0.origin_label()
     }
 
     /// 这一趟问的是**哪台机器** —— 走 [`crate::origin::Origin`]，全仓那一个类型。
     ///
-    /// 🔴 它与 [`Source::label`] **刻意分开两个函数**：`label` 是给人看的
-    /// （本机那一格逐字是「本机」两个中文字），而这一个是**寻址用的**。
-    /// 合成一个就得让「本机」去当入方向登记表的键，而那张表的本机键是
-    /// `origin::LOCAL`（`"<local>"`）。
+    /// 🔴 它与 [`Source::label`] **刻意分开两个函数**：`label` 是给人看的，
+    /// 而这一个是**寻址用的**。两者今天由同一个 `origin_label()` 喂
+    /// （本机那一侧退役之前不是这样：那时 `label` 回的是「本机」两个中文字，
+    /// 而寻址要的是 `origin::LOCAL` 那个 `"<local>"`）。
+    /// ⇒ **仍然不合并**：它们回的是同一个串是**今天的实况**，不是契约。
     ///
     /// ⚠ **刻意不回 `String`**：`origin_tests::no_new_raw_string_origin_parameters`
     /// 是一条递减棘轮 —— `设计/00 §2.5 ①` 逐字「origin 归一 —— 这是地基」，
     /// 新代码一律用这个类型，不许再给这个概念造一种表达。
-    /// ⚠ 远端那一支用 `origin_label()`，与 `ssh_source` 的 `stream_loop` 登记时
+    /// ⚠ 这里用 `origin_label()`，与 `ssh_source` 的 `stream_loop` 登记时
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
     /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
     pub fn origin(&self) -> crate::origin::Origin {
-        match self {
-            Source::Local => crate::origin::Origin::local(),
-            Source::Remote(cfg) => crate::origin::Origin(cfg.origin_label()),
-        }
+        crate::origin::Origin(self.0.origin_label())
     }
 }
 
 /// 上一级目录。
 ///
-/// 🔴 **两侧不是同一个算法，所以它吃 `Source` 而不是只吃一个字符串**：
-/// 远端路径**恒用 `/`**（SFTP 协议就是这么定的，对面是 Windows 也一样），
-/// 本机路径用**本机分隔符**。拿 `std::path` 去切远端路径，在 Windows 上会把
-/// `\` 也当分隔符 ⇒ 远端一个名字里含反斜杠的目录会被切成两级。
+/// 🔴 **它只吃一条字符串，不吃 [`Source`]** —— 而那是本机那一侧退役买到的东西之一：
+/// 远端路径**恒用 `/`**（SFTP 协议就是这么定的，对面是 Windows 也一样）
+/// ⇒ 只剩一个算法。⚠ 别为了「看起来通用」把 `std::path` 换回来：
+/// 它在 Windows 上会把 `\` 也当分隔符 ⇒ 远端一个名字里含反斜杠的目录会被切成两级。
 ///
 /// ⚠ 到顶了就**返回原值**（不是空串、不是 `None`）—— 调用方靠「回来的和给出去的相等」
 /// 判断「已经在顶上了」，这样「到顶」这件事不需要第二个返回通道。
-pub fn parent_dir(source: &Source, cwd: &str) -> String {
-    match source {
-        Source::Remote(_) => {
-            let trimmed = cwd.trim_end_matches('/');
-            if trimmed.is_empty() {
-                // `/` 或空串：都已经在根上。
-                return "/".to_string();
-            }
-            match trimmed.rfind('/') {
-                Some(0) | None => "/".to_string(),
-                Some(i) => trimmed[..i].to_string(),
-            }
-        }
-        Source::Local => std::path::Path::new(cwd)
-            .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .filter(|p| !p.is_empty())
-            .unwrap_or_else(|| cwd.to_string()),
+pub fn parent_dir(cwd: &str) -> String {
+    let trimmed = cwd.trim_end_matches('/');
+    if trimmed.is_empty() {
+        // `/` 或空串：都已经在根上。
+        return "/".to_string();
+    }
+    match trimmed.rfind('/') {
+        Some(0) | None => "/".to_string(),
+        Some(i) => trimmed[..i].to_string(),
     }
 }
 
@@ -144,6 +188,28 @@ pub fn sort_rows(v: &mut [Row]) {
 }
 
 /// 列一个**本机**目录。
+///
+/// # 🔴 它在生产路径上**零消费者**，而它还在盘上 —— 逐条理由，不是「以后可能用得上」
+///
+/// 本机那一侧退役（见本模块头注那块墓碑）之后，它唯一的消费者是
+/// `tests/bridge/filewin/find_testing.rs::walk` —— 搜索那一族判据用的**合成后端**
+/// 要一个「列一个目录」原语去走一棵临时目录树。
+///
+/// 为什么不把它搬进那份测试文件（那才是「该删就删」的写法）：
+/// `scanning_guard_registry::no_new_guard_walks_the_tree_without_excluding_itself`
+/// 的人群是 `tests/` 整棵树，而它的针里逐字有 `read_dir(`
+/// ⇒ 搬过去就是往那条**递减棘轮**的存量清单里**新加一个文件**，
+/// 而那张清单逐字「**只许变短**，不许往里加」，且
+/// `the_pending_ratchet_never_turns_backwards` 拿 git 历史当权威
+/// ——「抬上限让今天好过」提交了也不会绿。
+///
+/// ⇒ 三条路里选了代价最小的一条，**并且把代价写在这里**：
+/// ① 搬进测试文件 ⇒ 顶破棘轮（禁）；② 抽进 `guard-core` ⇒ 动共享 crate 登记表
+/// （不在本刀写区）；③ **留在原处、降级申报**（选它）。
+///
+/// ⚠ **它不是「本机文件管理器」的一部分了。** 「本机也能浏览」那条路径整条不在了：
+/// 没有 `Source` 的本机格、没有那颗按钮、[`list_dir`] 的退路里也不再提它。
+/// 谁要把它接回一条用户可达的路径上 —— 那是在推翻一条产品裁决，先去读那块墓碑。
 ///
 /// ⚠ 单个条目 `metadata()` 失败（权限 / 竞态删除）时**不整趟失败**：
 /// 那一行按「非目录、大小 0」记下来 —— 列目录的用处是「看得见有什么」，
@@ -252,12 +318,16 @@ pub async fn resolve_remote_home(cfg: &RemoteConfig) -> Result<String, String> {
 //
 // # 🔴 为什么是「主路 ＋ 申报过的退路」而不是「把旧路删掉」
 //
-// 后端**不是恒在的**，两侧各有一条现打的理由：
-// - **本机**：`build.rs` 那句警告逐字「没有本机内嵌后端 ⇒ **裸可执行文件起不了
-//   本机后端**，只有安装包那份带本机后端的能起。开发构建里这是正常的」。
-// - **远端**：后端没推上去 / 没起来，而 SSH 本身是通的。
+// 后端**不是恒在的**，两条现打的理由：
+// - **后端没推上去 / 没起来**，而 SSH 本身是通的。
 // - 还有一条形状上的：窗口**可能没有 tokio 运行时**（判据里大量
-//   `FileWindow::new(Source::Local, …, None)`）⇒ 问不了后端。
+//   `FileWindow::seeded(…, None, rows)`）⇒ 问不了后端。
+//   ⚠ 这一条的**后果**在本机侧退役之后变了：从前没有运行时还能退回本机 `read_dir`，
+//     今天它只剩一种结局 —— 出声（`shell::FileWindow::reload` 那一支）。
+//
+// ⚠ 从前这一节还有第三条理由，逐字「**本机**：`build.rs` 那句警告 ……
+//   裸可执行文件起不了本机后端」。那一条**随本机侧一起退役**：
+//   本机没有后端这件事仍然是真的，但这个窗口不再往本机看 ⇒ 它不是这里的退路理由了。
 //
 // ⇒ 形状照本仓现成的那个（`sftp_pool::CopyVerdict`：走了快路回 `None`，
 //   **退了路回一句话**）：[`ListVerdict`]。**退路不许静默** —— 那正是
@@ -391,11 +461,11 @@ pub async fn list_dir(source: &Source, dir: &str) -> Result<(Vec<Row>, bool, Lis
     match list_via_backend(&source.origin(), dir, LS_LIMIT).await {
         Ok((rows, truncated)) => Ok((rows, truncated, None)),
         Err(why) => {
-            // ── 退路：旧那两条路，各自原样 ──────────────────────────
-            let rows = match source {
-                Source::Local => list_local(std::path::Path::new(dir))?,
-                Source::Remote(cfg) => list_remote(cfg, dir).await?,
-            };
+            // ── 退路：旧那条路，原样 ────────────────────────────────
+            // ⚠ 本机那一侧退役之后这里**只剩一支**（从前是两支）。
+            //   `#[allow]` 一个字都不要：少一支不是少一个判据，
+            //   是那一支要判的东西整条不在了（头注那块墓碑）。
+            let rows = list_remote(source.cfg(), dir).await?;
             Ok((rows, false, Some(why)))
         }
     }
