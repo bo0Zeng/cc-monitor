@@ -891,8 +891,8 @@ src/tab-session-actions.ts:678	该机的远端配置缺 host / user（在设置 
 src/tab-session-actions.ts:679	未找到该机的远端配置（在设置 → 连接 添加后可用）	保留	[对外] toast 原因，括号里给出去哪加，可操作
 src/tab-menu.ts:112	取消后：这个会话变灰之后，关掉 app 再打开就没了	内部词→结束（变灰）	[对外] 菜单项 title；「变灰」正是设计/30 §3.5.2 禁的指代不明状态词 →「取消后：会话结束后关掉 app，它就不在了」
 src/tab-menu.ts:113	固定后：关掉 app 再打开它还在（灰着，可 resume）。位置不变 —— pin 管的是「别丢」，不是「排前面」	内部词→可重连（灰着）	[对外] 菜单项 title；「灰着」是 R1 禁用词 兼§2.4（括号＋破折号＋「pin 管的是别丢不是排前面」的解释腔）→「固定后：关掉 app 再打开它还在，可 resume。」
-src/tabs.ts:4444	等待操作：{…}	保留	[对外] 标签页 tooltip
-src/tabs.ts:4448	↳ 从 {…} fork 而来	保留	[对外] 标签页 tooltip；fork 是 CC 用户认得的词
+src/tab-bar-view.ts:416	等待操作：{…}	保留	[对外] 标签页 tooltip
+src/tab-bar-view.ts:420	↳ 从 {…} fork 而来	保留	[对外] 标签页 tooltip；fork 是 CC 用户认得的词
 src/tab-session-actions.ts:710	invoke 超时 {…}ms（后端 Win32 调用可能卡住）	改·§2.1	[可达存疑] 拉前超时的 Error，被 catch 后进「拉前失败」toast；invoke / Win32 调用是实现层，括号里是内部猜测 新词:invoke 新词:Win32 →「切到终端窗口超时」
 src/tab-session-actions.ts:743	invoke 超时 {…}ms（后端 Win32 调用可能卡住）	改·§2.1	[可达存疑] 同 4731：invoke / Win32 调用外泄 新词:invoke 新词:Win32 →「切到终端窗口超时」
 src/terminal-front.ts:34	本机不能切到终端窗口	保留	[对外] toast 标题：非 Windows 上按 ↗ 的快捷键 / 命令面板时说的实话（按钮本身不渲）；用的是术语表给「拉前」定的说法「切到终端窗口」
