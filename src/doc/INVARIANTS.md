@@ -472,6 +472,15 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 2. **「视口上方」插入不手动补偿 scrollTop**：`insertNode` 对 anchor≠null（插到中间/上方）的情况不调整 scrollTop，交给浏览器原生 CSS `overflow-anchor`（默认 auto，**禁止**给 `.stream` 设 `overflow-anchor: none`——补批在**同一同步任务内**的临时关闭是唯一豁免类——两个实现点：`tabs.fillAbove`（F40b）与 `session-viewer.maybeFillAbove`（F39），见第 3 条，且还原必须在 finally）维持视觉稳定。手动补偿 + anchoring 会 double-shift。
 3. **重放期「视口上方」旧内容不建 DOM（Batch13-F40a 尾部优先收纳）**：`TabManager.onLine` 按 seq 门控——`seq < tab.window.floorSeq` 的旧记录只进 `TailWindow` 账本（meta/branch 数据经 `routeMetaAndBranch` 照喂），**根本不建卡不挂 DOM**；后台 virgin tab 在 `onBatchEnd` 空闲物化尾段 / `switchTo` 时同步物化。**启动重放**的上方插入从源头消失——严格强于历史方案 deferMode（延后到一帧批量挂载，2026-07 F40a 退役）。**大增量批**（>600 行落已渲染 tab → 后端切块、末块先发）的老块中部插入由 F40b 关闭：批期「`seq ≥ floor` 且 `< timeline.maxSeq`」的记录进 per-tab `midBatchBuffer`，`onBatchEnd` 排序后一次 `batchInsert` 挂载——逐帧中部插入为 0。**上翻补批（F40b fillAbove）**：临时 `overflow-anchor:none`（防 WebView2 原生锚定与手动补偿 double-shift）、测量→渲染→`scrollTop += ΔscrollHeight` 回写必须在**同一同步任务**内完成（不许 await/rAF 打断）；选区进行中暂缓补批（unwrap/rebuild 会杀选区）。**物化/补批插卡前必须 `branchFolder.unwrapAll()` 摊平、插完 `rebuildNow()` 无条件重折**（`flushPending` 的 setsEqual 短路会把摊平永久化），批间孤儿 tool_result 由 `reconcilePendingToolResults` 回填——注意 fallback 单元是**组内实体**（timeline entry 是组 root），reconcile 摘单元后若组壳已空会连根摘壳并返回 root，**调用方必须对返回元素 `timeline.removeByElement` 出账**（否则账上挂已离场的组 root）；`MessageStream.insertNode` 对「anchor 不是 contentEl 直接子节点」有爬升/降级防御（防 NotFoundError 丢记录）。
 
+   **3b. 〔2026-09-24 · `设计/10` 骨架〕接上骨架的 tab / 查看器：「单洞后缀」不再成立，换成下面这组。** 上面第 3 条那句「已渲染集恒为按 seq 连续的尾后缀」只对**没接上骨架**的（拿不到索引：本机后端不在 / 老后端 / Codex / seq 对不上）逐字成立。接上之后：
+   - **已渲染集 = 尾后缀 ∪ 若干岛**；「哪些 seq 还没物化」的真相源是 `SkeletonView` 的**占位集**（`isPending`），不再是 `floor`。占位与已渲染卡**不相交**：占位 `[lo,hi)` 里一张卡都没有。
+   - **往占位里建卡只许经骨架**（`fillVisible` / `ensure`）—— 骨架先交给宿主建、再把占位切开。绕开它在占位中间直接 `renderRange` / `renderPayloadsBatch` ＝ 卡落进占位里、总高算两遍。
+   - **只物化与视口相交的那一段**（±0.5 屏，每轮 ≤300 行、≤4 轮）；一次滚动不从尾巴往上一批批补。
+   - 占位本身是 timeline 条目（`seq = lo − 0.5`、`kind: "card"`、无 `data-uuid`）⇒ 二分插入的锚照常、工具组不跨空洞合并、`BranchFolder` 把它当断 run。
+   - **视口稳定**：物化与 `attachGaps` 钉住**视口里最上面那张已渲染卡**的屏幕位置（占位可能同时插在它上下两侧，ΔscrollHeight 补偿只对「全在上方」成立）；视口整个落在占位里就不补偿。同一同步任务内测 → 改 → 回写、临时 `overflow-anchor:none`、`finally` 还原（与第 3 条同一豁免类）。
+   - **接之前对拍 seq 空间**（抽几条 uuid → 索引里必须同 seq），对不上就不接；接上之后再发生截断重读**不会被发现**（没有持续对拍）。
+   - **正文不再驻留**（`设计/10` 步 8）：接上之后前端账本只留离尾巴最近的 `FILL_BATCH` 条、monitor 重放缓冲只留尾巴 `REPLAY_TAIL_KEEP` 条；其余滚到时按偏移要回来（`read_session_range`）——**没见过**的行走 `onLine` 全套（按重放语义：不触发自动切 tab / 轮次通知），**见过**的只建卡（旁路账早记过、去重会拒）。岛里迟到的 live 行就地建卡，占位里的照旧收纳。
+
 **为什么不能松动**：根因实测定位 —— 末块先发的重放把旧消息逐条插到"贴底视口的上方"，持续约 60 帧；每次上方插入都触发浏览器重排 + 重做 scroll anchoring，而 HiDPI / 高刷屏分数像素下，整数 `scrollHeight` 与分数布局的舍入误差**每帧不同** → 整块内容逐帧 ±0.5px 高频重绘。deferMode 时代压成一帧后实测抖动帧数 66 → 1；F40a 后上方插入次数为 0。注意：`scrollTop` 本身并不震荡（单调增长），所以**只测 `scrollTop` 发现不了这个 bug**，要测可见元素 `getBoundingClientRect().top` 的逐帧反转。
 
 ---
