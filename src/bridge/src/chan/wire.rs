@@ -210,6 +210,13 @@ pub enum OursFault {
     Broken,
 }
 
+/// 「我们自己错」那一层的简写：`OursFault::Misuse.into()`。
+impl From<OursFault> for CallError {
+    fn from(why: OursFault) -> Self {
+        CallError::Ours { why }
+    }
+}
+
 impl std::fmt::Display for CallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
