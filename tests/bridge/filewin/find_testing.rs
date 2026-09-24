@@ -538,10 +538,12 @@ impl Wired {
 
 /// 一台不联网的窗口（远端那一侧，但**永不 `reload`**）。
 ///
-/// 🔴 用 `Source::Remote` 而不是 `Source::Local`：后者的 origin 是
-/// `inbound_client::LOCAL_ORIGIN`，那是一个**进程内全局**的键
-/// （`local_origin_test_lock` 的头注逐字讲过两条用例互相看见对方通道那一形）。
-/// 给每条用例一个自己的 label ⇒ 不用抢那把锁。
+/// 🔴 **每条用例一个自己的 label** —— 不是洁癖：入方向通道登记表是一张
+/// **进程内全局**表（`local_origin_test_lock` 的头注逐字讲过两条用例互相
+/// 看见对方通道那一形）⇒ 各用各的键就不用抢那把锁。
+/// ⚠〔2026-09-23〕从前这句话写的是「用 `Source::Remote` 而不是 `Source::Local`，
+/// 后者的 origin 是 `inbound_client::LOCAL_ORIGIN`（一个全局键）」——
+/// 本机侧退役之后**没有别的选择了**，但那条纪律本身照旧成立。
 ///
 /// ⚠ 用 [`crate::filewin::shell::FileWindow::seeded`] 而不是 `new`：后者会
 /// `reload()`，而远端那一支会去拨真 SFTP —— 本仓红线不许起真连接。
@@ -558,7 +560,7 @@ pub fn window_on(origin: &str, cwd: &str) -> crate::filewin::shell::FileWindow {
         jump: None,
     };
     crate::filewin::shell::FileWindow::seeded(
-        crate::filewin::source::Source::Remote(Box::new(cfg)),
+        crate::filewin::source::Source::remote(cfg),
         cwd.to_string(),
         tokio::runtime::Handle::try_current().ok(),
         Vec::new(),
