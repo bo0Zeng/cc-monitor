@@ -751,25 +751,35 @@ fn the_readings_behind_the_two_thresholds() {
         v.1 = v.1.max(d.1);
     };
     // 普通路径（不进模式时那个 `TextEdit`，与 `show` 里那一支逐项相同）每敲一个键那一帧。
+    //
+    // 🔴〔F9 续 · 09-24 订正〕**上一版量的不是「敲一个键」**：它在帧与帧之间 `s.push('x')`，控件那一帧
+    //    只是「文本变了、重排一次」。真敲键走的是控件自己的事件路径（有焦点 ⇒ `Event::Text`）：
+    //    撤销器前后各克隆一次全文、字下标换字节下标 O(n)、**改完再排一次**（一帧两次排版）。
+    //    现打（debug，512 KiB / 每行 64 字节）：push 那一形 ~19 ms、真敲键那一形 **~61 ms**，差三倍多。
+    //    ⇒ 两个门槛的读数要按真敲键重打（`设计/60 §9c 续`）；这里改成先给焦点、再每帧送一个字。
     let normal = |text: &str| -> (f64, f64) {
         let ctx = egui::Context::default();
         let mut s = text.to_string();
         let mut w = (0.0, 0.0);
         for i in 0..5 {
-            if i >= 2 {
-                s.push('x');
-            }
             let mut inp = screen();
             inp.time = Some(i as f64 * 0.016);
+            if i >= 2 {
+                inp.events = vec![egui::Event::Text("x".into())];
+            }
             let mut out = None;
             let d = timed(|| {
                 out = Some(ctx.run_ui(inp, |ui| {
-                    ui.add(
+                    let r = ui.add(
                         egui::TextEdit::multiline(&mut s)
+                            .id(egui::Id::new("filewin-editor-text"))
                             .desired_rows(VIEW_ROWS)
                             .desired_width(f32::INFINITY)
                             .code_editor(),
                     );
+                    if i == 1 {
+                        r.request_focus();
+                    }
                 }));
             });
             if let Some(o) = out {
@@ -779,6 +789,11 @@ fn the_readings_behind_the_two_thresholds() {
                 worst(&mut w, d);
             }
         }
+        assert_eq!(
+            s.len(),
+            text.len() + 3,
+            "送的三个字没落进去 —— 量的不是敲键"
+        );
         w
     };
     // 大文件模式：点一下拿焦点，再每帧送一个字。
@@ -822,14 +837,14 @@ fn the_readings_behind_the_two_thresholds() {
             v[2].1
         )
     };
-    for kib in [256usize, 512, 1024, 2048, 4096] {
+    for kib in [64usize, 128, 256, 512, 1024] {
         let text = lines_corpus(kib * 1024, 64);
         println!(
             "〔现打·{profile}〕全文 {kib} KiB / 每行 64 字节 ⇒ 普通路径打字帧 {}",
             three(&|| normal(&text))
         );
     }
-    for kib in [8usize, 16, 32, 64, 256] {
+    for kib in [2usize, 4, 8, 16, 32] {
         let text = one_line(kib * 1024);
         println!(
             "〔现打·{profile}〕一行 {kib} KiB ⇒ 普通路径打字帧 {}",
