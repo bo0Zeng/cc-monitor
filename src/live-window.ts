@@ -13,6 +13,13 @@
  * 若未来 live 出现深链跳转需求(跳到任意历史位置),本结构需升级为
  * UnrenderedRanges 语义(区间集,render-window.ts 已有现成实现)——单洞后缀
  * 不变量在"跳到中部"时不再成立,届时窗口=多区间、fill=按洞取段。
+ *
+ * 〔`设计/10` 骨架 · 2026-09-24〕**上面预言的那次升级发生了，但只在骨架接上的 tab 上。**
+ * 骨架（`skeleton-view.ts`）按可见区取**岛**（`takeRange`），于是已渲染集 = 尾后缀 ∪ 若干岛，
+ * 单洞后缀不变量**不再成立**；「哪些 seq 还没物化」的真相源换成骨架的占位集（`SkeletonView.isPending`），
+ * 本类退成「还没建卡的 payload 放哪」的账本。没接上骨架的 tab（没索引 / 老后端 / seq 对不上）
+ * 仍是原来的单洞后缀，行为逐字不变。⚠ `INVARIANTS.md §21.3` 与 `ARCHITECTURE.md` 那两处
+ * 「单洞后缀」的描述**还没同步**（不在本刀写区）。
  */
 import type { JsonlLinePayload } from "./events";
 import {
