@@ -257,9 +257,20 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     //      为它放宽白名单等于给真正的载荷开同一扇门。
     //   ③ 它与旧面板 TS 那一份 `buildOpenTerminalCmd` 逐字节相同（`shell_tests` 现读 TS 黄金样例对拍）。
     //   ⇒ 那一处单独登记、**条数恒等 1**；载荷这一族照旧恰好一处。
-    let terminal: Vec<&String> = sites.iter().filter(|l| l.starts_with("shell.rs: ")).collect();
-    assert_eq!(terminal.len(), 1, "「在此打开终端」那一处不再恰好一处：{sites:?}");
-    let sites: Vec<String> = sites.iter().filter(|l| !l.starts_with("shell.rs: ")).cloned().collect();
+    let terminal: Vec<&String> = sites
+        .iter()
+        .filter(|l| l.starts_with("shell.rs: "))
+        .collect();
+    assert_eq!(
+        terminal.len(),
+        1,
+        "「在此打开终端」那一处不再恰好一处：{sites:?}"
+    );
+    let sites: Vec<String> = sites
+        .iter()
+        .filter(|l| !l.starts_with("shell.rs: "))
+        .cloned()
+        .collect();
     assert_eq!(
         sites.len(),
         1,
