@@ -930,8 +930,6 @@ src/panorama/agent-clip.ts:51	 · ⚠ 索引已陈旧：源文件在这次索引
 src/panorama/agent-clip.ts:57	看不见：未取到全仓覆盖读数（全景没加载完）—— 漏了多少未知	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「看不见」行，没取到就明说
 src/panorama/agent-clip.ts:59	看不见：全仓 {…} 处调用未解析 · {…} 个文件解析失败	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「看不见」行，只计数
 src/panorama/agent-clip.ts:60	 · 全景图只画了 {…}/{…} 个文件	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4 画了几个文件 / 全仓几个
-src/panorama/agent-clip.ts:77	分不清：本符号 {…} 条直接边里 {…} 条不是确定的	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「分不清」行，只计数
-src/panorama/agent-clip.ts:78	（启发 {…} · 动态猜测 {…}），确定 {…} 条	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；「分不清」的分项计数
 src/panorama/agent-clip.ts:95	仓：{…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；字段标签
 src/panorama/agent-clip.ts:96	对象：符号 {…}（{…} · {…} · {…}:{…}-{…}）	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；字段标签
 src/panorama/agent-clip.ts:98	签名：{…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；字段标签
@@ -978,3 +976,7 @@ src/backend/accounts/table.rs:288	这一条用 Authorization: Bearer 头把 key 
 src/backend/accounts/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
+src/panorama/agent-clip.ts:81	分不清：本符号 {…} 条直接边里 {…} 条按名字凑	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「分不清」行，只计数
+src/panorama/agent-clip.ts:82	（启发 {…} · 动态猜测 {…}），动态派发 {…} 条，确定 {…} 条	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；「分不清」的分项计数，动态派发单列（候选完整，不算分不清）
+src/views/panorama.ts:1686	派发	保留	[对外] 置信度标签（动态派发），与「精确 / 启发 / 动态猜测」同列
+src/views/panorama.ts:1698	动态派发：候选是某个 trait / 接口在仓内的全部实现，运行时才定是哪一个	保留	[对外] 置信度 hint，说清派发与按名字凑的区别；trait / 接口是开发者自己的词

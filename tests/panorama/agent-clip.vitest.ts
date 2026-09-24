@@ -44,7 +44,7 @@ describe("CP7 复制给 agent", () => {
       sym(),
       [edge("src/b.rs#g", "src/a.rs#f", "Heuristic", 3)],
       [edge("src/a.rs#f", "src/c.rs#h", "Exact", 12), edge("src/a.rs#f", "x#y", "DynamicGuess", null)],
-      [{ id: "1", file: "src/a.rs", symbol: "f", body: "这里要改", author: "me", status: "Active" }],
+      [{ id: "1", file: "src/a.rs", symbol: "f", body: "这里要改", author: "me", status: "Active", origin: "Human" }],
     );
     expect(text.split("\n")).toEqual([
       CLIP_HEAD,
@@ -53,7 +53,7 @@ describe("CP7 复制给 agent", () => {
       "签名：fn f(x: u32) -> u32",
       "索引读数：2026-09-21T14:13:20.000Z（unix 1790000000）",
       "看不见：全仓 12 处调用未解析 · 1 个文件解析失败 · 全景图只画了 9/40 个文件",
-      "分不清：本符号 3 条直接边里 2 条不是确定的（启发 1 · 动态猜测 1），确定 1 条",
+      "分不清：本符号 3 条直接边里 2 条按名字凑（启发 1 · 动态猜测 1），动态派发 0 条，确定 1 条",
       "调用了（callees，2）：",
       "  - src/c.rs#h  [Exact]  L12",
       "  - x#y  [DynamicGuess]",
@@ -92,7 +92,9 @@ describe("CP7 复制给 agent", () => {
       "索引读数：2026-09-21T14:13:20.000Z（unix 1790000000） · ⚠ 索引已陈旧：源文件在这次索引之后改过",
     );
     expect(unseenLine(null)).toBe("看不见：未取到全仓覆盖读数（全景没加载完）—— 漏了多少未知");
-    expect(unsureLine([], [])).toBe("分不清：本符号 0 条直接边里 0 条不是确定的（启发 0 · 动态猜测 0），确定 0 条");
+    expect(unsureLine([], [])).toBe(
+      "分不清：本符号 0 条直接边里 0 条按名字凑（启发 0 · 动态猜测 0），动态派发 0 条，确定 0 条",
+    );
   });
 
   it("C4 反空真：任何缺值都不许漏成 undefined / NaN / null 字样（零命中）", () => {

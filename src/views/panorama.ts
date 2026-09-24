@@ -1682,6 +1682,8 @@ function confidenceLabel(c: Confidence): string {
   switch (c) {
     case "Exact":
       return "精确";
+    case "Dispatch":
+      return "派发";
     case "Heuristic":
       return "启发";
     case "DynamicGuess":
@@ -1692,6 +1694,8 @@ function confidenceHint(c: Confidence): string {
   switch (c) {
     case "Exact":
       return "Exact：全局唯一名匹配（不代表验证过 import/作用域）";
+    case "Dispatch":
+      return "动态派发：候选是某个 trait / 接口在仓内的全部实现，运行时才定是哪一个";
     case "Heuristic":
       return "Heuristic：多候选，启发式选定";
     case "DynamicGuess":

@@ -23,8 +23,13 @@ export type Lang =
   | "Cpp"
   | "CSharp";
 export type SymKind = "Function" | "Method" | "Class" | "Module";
-export type Confidence = "Exact" | "Heuristic" | "DynamicGuess";
-export type EdgeKind = "Calls" | "Imports";
+/**
+ * 〔PN1b re-vendor〕上游加了 `Dispatch`（动态派发：接收者是仓内 trait/接口，候选集**完整**，
+ * 只是运行时才知道是哪个）—— 与 `Heuristic`/`DynamicGuess`（按名字凑）是两种认知状态，别混。
+ */
+export type Confidence = "Exact" | "Dispatch" | "Heuristic" | "DynamicGuess";
+/** 〔PN1b〕`AmbiguousCall` = 「N 选 1 里的一个」，`to` 是妥协不是真相；`candidates` 记 N。 */
+export type EdgeKind = "Calls" | "Imports" | "AmbiguousCall";
 
 /**
  * 一个符号。`id` 是全限定：`"src/a.rs#foo"`（自由函数）或 `"src/a.rs#Type::method"`（方法）。
@@ -49,6 +54,8 @@ export interface Edge {
   kind: EdgeKind;
   call_site_line: number | null;
   confidence: Confidence;
+  /** 〔PN1b〕`AmbiguousCall` 专用：仓内同名候选数（缺省 = 不适用）。 */
+  candidates?: number;
 }
 
 /** 脊柱文件（按重要性排名）。`score` 越大越重要，`symbols` = 文件内符号数。 */
@@ -79,6 +86,10 @@ export interface Overview {
   unresolved_calls: number;
   /** ⭐ 覆盖信号：解析失败未产出符号的文件数。 */
   parse_errors: number;
+  /** 〔PN1b〕看得见但分不清的调用点数（仓内有同名候选、钉不死）。 */
+  ambiguous_calls?: number;
+  /** 〔PN1b〕读库出错记录；非空 = 这份全景不完整（空时上游省略这个字段）。 */
+  db_errors?: string[];
 }
 
 /** 覆盖某符号的 `.md` 文档链接。 */
@@ -89,7 +100,13 @@ export interface DocLink {
   source: "Colocation" | "Frontmatter" | "Inline";
 }
 
-/** 人写/agent 提议的批注（P2 不写，只可能在 NodeView 里读到）。 */
+/**
+ * 〔PN1b · CP6〕批注来源：人写 / agent 提议（批准后仍是 agent）/ 旧文件没记（不猜）。
+ * 与 `status`（审没审）是两件事。
+ */
+export type AnnotationOrigin = "Human" | "Agent" | "Unrecorded";
+
+/** 人写/agent 提议的批注。 */
 export interface Annotation {
   id: string;
   file: string;
@@ -97,6 +114,7 @@ export interface Annotation {
   body: string;
   author: string;
   status: "Active" | "Proposed";
+  origin: AnnotationOrigin;
 }
 
 /** 单符号详情（符号 + 直接 callers/callees + 关联文档 + 批注）。 */

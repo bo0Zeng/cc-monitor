@@ -63,19 +63,23 @@ export function unseenLine(cov: CoverageReading | null): string {
 
 /** 按后端标的 confidence 计数（只数，不判）。 */
 export function countConfidence(edges: Edge[]): Record<Confidence, number> {
-  const c: Record<Confidence, number> = { Exact: 0, Heuristic: 0, DynamicGuess: 0 };
+  const c: Record<Confidence, number> = { Exact: 0, Dispatch: 0, Heuristic: 0, DynamicGuess: 0 };
   for (const e of edges) c[e.confidence] = (c[e.confidence] ?? 0) + 1;
   return c;
 }
 
-/** CP4 后半：分不清多少（符号级）。 */
+/**
+ * CP4 后半：分不清多少（符号级）。「分不清」= 按名字凑的（`Heuristic` + `DynamicGuess`）；
+ * 动态派发（`Dispatch`）候选集完整、只是运行时才定 —— 上游说它与按名字凑是两种认知状态，
+ * 这里单列，不并进「分不清」。
+ */
 export function unsureLine(callers: Edge[], callees: Edge[]): string {
   const all = [...callers, ...callees];
   const c = countConfidence(all);
   const unsure = c.Heuristic + c.DynamicGuess;
   return (
-    `分不清：本符号 ${all.length} 条直接边里 ${unsure} 条不是确定的` +
-    `（启发 ${c.Heuristic} · 动态猜测 ${c.DynamicGuess}），确定 ${c.Exact} 条`
+    `分不清：本符号 ${all.length} 条直接边里 ${unsure} 条按名字凑` +
+    `（启发 ${c.Heuristic} · 动态猜测 ${c.DynamicGuess}），动态派发 ${c.Dispatch} 条，确定 ${c.Exact} 条`
   );
 }
 

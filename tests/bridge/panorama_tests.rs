@@ -26,10 +26,18 @@
 /// 同时拒**绝对路径**与 `..`。**只读 vendor，不改它一个字节。**
 #[test]
 fn the_doc_link_writes_still_go_through_the_vendor_guard() {
-    let vendor = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("vendor/code-picture-core/src/engine.rs");
-    let src = std::fs::read_to_string(&vendor)
-        .unwrap_or_else(|e| panic!("读不到 {vendor:?}：{e} —— vendor 布局变了就把本条一起改"));
+    // 〔PN1b 09-24 re-vendor〕上游把 `engine.rs` 按职责拆成了 `engine/` 目录：
+    // 两个写路径方法住 `docs_anchors.rs`，`guard_rel` 住 `mod.rs` ⇒ 两份拼起来读。
+    // 读不到任何一份都当场 panic（不许退成空串 —— 那会让下面每条都「找不到」而不是「判过」）。
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("vendor/code-picture-core/src/engine");
+    let src = ["docs_anchors.rs", "mod.rs"]
+        .map(|f| {
+            let p = dir.join(f);
+            std::fs::read_to_string(&p)
+                .unwrap_or_else(|e| panic!("读不到 {p:?}：{e} —— vendor 布局变了就把本条一起改"))
+        })
+        .join("\n");
     // 我们真正调到的**写路径**方法（`panorama.rs` 里各调一次）。
     for m in ["write_doc_link", "remove_doc_link"] {
         let at = src.find(&format!("pub fn {m}(")).unwrap_or_else(|| {
