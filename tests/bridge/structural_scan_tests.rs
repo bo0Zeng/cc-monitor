@@ -2623,11 +2623,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_gaps_are_named_not_forgotten",
             1,
         ),
-        (
-            "tests/backend-policy.vitest.ts",
-            "the_boot_path_really_pushes_the_backend_policy",
-            1,
-        ),
+        // 〔B2 · 条 66〕原来这里还有一行 `tests/backend-policy.vitest.ts` 点名的那条「启动时推送」接线钉
+        //   （1 处）—— 那条推送随值搬家退役，点名它的那段散文与那条判据一起删了 ⇒ 本行摘掉（存量 −1）。
         (
             "src/render-stream-record.ts",
             "queued_user_message_never_enters_the_branch_chain",

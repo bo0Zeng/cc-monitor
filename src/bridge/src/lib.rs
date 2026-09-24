@@ -280,75 +280,56 @@ pub(crate) fn windows_to_destroy_after<'a>(destroyed: &str, alive: &[&'a str]) -
 // `D7 阻-3`：**退出时收哪几个进程**，收成一条判据能替换的缝
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// 退出时**那两条自己不会死的起法**的收口点。
+/// 退出时**那一条自己不会死的起法**的收口点 —— 今天只剩本机中转。
 ///
-/// # 为什么非有这条缝不可（这是同一族病在**退出臂**上的落点）
+/// # 为什么非有这条缝不可
 ///
-/// 先前守着退出臂的是 `local_backend_host_tests.rs::the_exit_path_covers_both_ways_of_starting_the_local_backend`，
-/// 而它的形态是**「那个窗口里有没有这几段文本」**：
-/// `braced_block(prod, "RunEvent::Exit", 200, 6000)` → `kill_on_exit(` 恰好 1 处
-/// + `contains(needle)` ×4 + 两处位置序。
+/// 守着退出臂的判据原先是「那个窗口里有没有这几段文本」，`D7` 的刀 `T13`
+/// （`if kill {` → `if kill && !kill {`，收口那段文本一字不动）⇒ 全绿，而用户勾了「退出时结束它」、
+/// 退出，**本机中转还在那儿听着那个口**。⇒ 收口点进本结构，判据装一份**会记账的替身**，
+/// 断言**两支**：勾了 ⇒ 被调恰好一次；没勾 ⇒ 一次都没调。
 ///
-/// 🔴 `D7` 的刀 `T13`（`if kill {` → `if kill && !kill {`，**`stop_local_relay()` 那段文本一字不动**）
-/// ⇒ **`1229 passed; 0 failed` + `GATE: OK`，四个数与干净树逐字相同。**
-/// **生产后果**：用户勾了「退出时结束它」、退出，**本机中转还在那儿听着那个口** ——
-/// 正是本件自己往那条判据里加的那颗针**逐字说要防的「说谎的开关」**。
+/// # 〔B2 · 条 66〕原来这里有两个收口点，**常驻（脱离）那一个退役了**
 ///
-/// ⇒ 处置与本件前十层同一条：**不再量文本**。这两个收口点进本结构，
-/// 判据装一份**会记账的替身**，断言**两支**（分叉点是 `kill`，两支都买）：
-/// **勾了 ⇒ 两个收口点各被调恰好一次；没勾 ⇒ 一个都没被调**。
+/// 那个值搬到了后端所在那台机器上（`设计/01 §3.3b`），而**常驻那条起法的后端自己就是读它的人**：
+/// 最后一个客户（这个 monitor 的那条流）一断，它现读、选了「结束」就退（后端 `main.rs::serve_listening`）。
+/// monitor 再在退出臂里替它决定一次 = 两个决策处，而且 monitor 那一处违背 `§3.3b ⑥`
+/// （「不是『起我的那个 monitor 退了』」）。⇒ 那个收口点连同它的判据一起删掉。
 ///
-/// # 🔴🔴 为什么**第三个**收口点（被监护那条）不在本结构里 —— 写区拦住了，如实登记
-///
-/// 被监护那条的收口（`LOCAL_BACKEND` 里那个句柄的 `.stop()`）**必须留在退出臂里**：
-/// 写区外的 `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
-/// 逐条要求那一臂**体内**恰好一处 `.stop()`、恰好一处 `kill_on_exit(`、
-/// 策略在前、且中间那个 `if` 判的就是策略绑定名。
-/// 把它抽走 ⇒ 那条判据当场红，而**那个文件不在本件登记的 27 项写区里**。
-///
-/// ⚠ **残留的洞，写清楚**：`if kill { h.stop(); }` → `if kill && !kill { h.stop(); }`
-/// 能过那条判据（它断的是 `between.contains("if kill")`，而 `if kill && !kill` 含 `if kill`），
-/// **今天没有任何行为判据接住那一形**。**重新裁定的落点**：本栏 + 上报口那条
-/// 「要动写区外的 `local_backend.rs`」—— 归 PM 扩写区或立跟进件。
+/// 🔴 **中转为什么还归 monitor 收**：它的 stdin 是 null（`local_backend::supervise` 不接消费者），
+/// 它自己**感觉不到**宿主离开 ⇒ 它的去留只能由宿主决定；而宿主手里已经没有那个值 ⇒
+/// 退出臂在决定那一刻**现问**本机后端一次（`backend_policy::kill_on_exit_now`），两半共用那一个答案。
 ///
 /// # ⚠ 它还买不到什么（射程边缘，如实写）
 ///
-/// - 本结构管的是「**收不收 · 收哪几个**」。**收口点自己收干净了没有**是它们各自的活
-///   （`local_backend_host::stop_local_backend` / `stop_local_relay` 的头注与判据）。
+/// - 本结构管的是「**收不收**」。收口点自己收干净了没有是它自己的活（`stop_local_relay` 的头注与判据）。
 /// - 🔴 `RunEvent::Exit` 那个闭包**本身驱动不了** —— 那要真跑一次 tauri app（红线内够不着）。
-///   ⇒ 臂里那几行由 `local_backend_host_tests.rs::the_exit_arm_hands_the_other_two_ways_to_the_seam`
+///   ⇒ 臂里那几行由 `local_backend_host_tests.rs::the_exit_arm_hands_the_relay_to_the_seam`
 ///   的**零命中守卫**看着（谁在臂里另起一条收法就红）。
-///   **那一行委托本身没有行为级判据，它是这条链上今天最后一跳。**
 #[derive(Clone, Copy)]
 pub(crate) struct ExitShutdownSinks {
-    /// 常驻（脱离）那条起法的收口 —— 生产恒指 [`local_backend_host::stop_detached_backend_on_exit`]。
-    /// 返回「这一趟真的动手收了没有」（没脱离 ⇒ `false`）。
-    pub(crate) detached: fn() -> bool,
     /// 🔴 **第三个进程**：本机中转 —— 生产恒指 [`local_backend_host::stop_relay_on_exit`]。
     /// 返回「这一趟真的收到了一个在跑的中转没有」。
     pub(crate) relay: fn() -> bool,
 }
 
-/// 生产上这条缝里插的那两个口。**只有这一处**，判据按函数地址对拍它。
+/// 生产上这条缝里插的那个口。**只有这一处**，判据按函数地址对拍它。
 pub(crate) const PRODUCTION_EXIT_SHUTDOWN: ExitShutdownSinks = ExitShutdownSinks {
-    detached: local_backend_host::stop_detached_backend_on_exit,
     relay: local_backend_host::stop_relay_on_exit,
 };
 
-/// 退出臂的下半：**那两条自己不会死的起法**，勾了就逐个收掉。
+/// 退出臂的下半：**中转那条自己不会死的起法**，勾了就收掉。
 ///
-/// ⚠ `kill` 是**入参**，不是在这里再读一次策略 —— 退出臂读一次、两半共用同一个答案
-///（读两次 = 三条路可能拿到不同的答案，中间它是可以被改的）。
-pub(crate) fn shutdown_detached_ways_on_exit(kill: bool, sinks: ExitShutdownSinks) {
+/// ⚠ `kill` 是**入参**，不是在这里再问一次 —— 退出臂现问一次、两半共用同一个答案
+///（问两次 = 两条路可能拿到不同的答案，中间它是可以被别的 monitor 改的）。
+pub(crate) fn shutdown_relay_on_exit(kill: bool, sinks: ExitShutdownSinks) {
     if !kill {
-        // 缺省不杀（`P2s` C8②③）：被监护的后端是纯 stdio 子进程，monitor 一退它自己就死；
-        // 而**脱离**那条与**中转**那条不会 —— 那正是「勾了才收」这条策略的意义所在。
-        tracing::info!("退出：kill_on_exit=false —— 常驻后端与本机中转都不收");
+        // 缺省不杀（`P2s` C8②③）：中转不会自己死 —— 那正是「勾了才收」这条策略的意义所在。
+        tracing::info!("退出：kill_on_exit=false —— 本机中转不收");
         return;
     }
-    let detached = (sinks.detached)();
     let relay = (sinks.relay)();
-    tracing::info!("退出：常驻后端收了没={detached} · 本机中转收了没={relay}");
+    tracing::info!("退出：本机中转收了没={relay}");
 }
 
 pub fn run() {
@@ -1304,7 +1285,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            backend_policy::set_backend_kill_on_exit,
+            backend_policy::backend_exit_policy,
+            backend_policy::set_backend_exit_policy,
             backend::control::backend_control::backend_machines,
             backend::control::backend_control::backend_status,
             backend::control::backend_control::backend_start,
@@ -1518,31 +1500,21 @@ pub fn run() {
         // 而模块头注里逐字写着「不杀就成了游魂进程」。**注释说了、代码没做，靠一条告警才发现。**
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
-                // P2s（C8②③）：**杀不杀由这台机自己的策略说了算**，缺省不杀。
+                // P2s（C8②③）：**杀不杀由这台机自己的值说了算**，缺省不杀。
                 //
-                // ⚠ 原来这里是无条件 `stop()`，理由写着「不杀就成了游魂进程」。
-                // 那个理由**实测不成立**〔08-11，P2s §0a〕：backend 是纯 stdio 子进程，
-                // monitor 一退读端就断，它 **153 毫秒**内自己 broken-pipe 退出。
-                // ⇒ 不杀不会留游魂；那时这条策略的真实语义是「立刻杀」与「让它自己死」之差。
+                // 〔B2 · 条 66 · `设计/01 §3.3b ④`〕那个值住后端所在那台机器上 ⇒ 这里**在决定那一刻现问**
+                // 本机后端一次（`kill_on_exit_now`），不再读一张启动时推进来的表（那张表删了）。
+                // 问不到就按缺省（不结束）办并出声。**只问一次**，下面两半共用同一个答案。
                 //
-                // ★★ 〔`K-P1` 08-26〕**上面那句话今天只对一半的情况成立** ——
-                // 本机后端在 Linux 上会**真脱离**（`local_backend_host::start_detached`），
-                // 那一支上「不杀」就是真的继续跑；`D2 阻-5` 又补上了第三条（**中转是另一个进程**）。
-                // ⇒ 这个勾必须对**三条起法**都生效，否则用户勾了「退出时结束它」、退出、
-                // 而它没被结束 —— 一个说谎的开关。
-                // 策略**只读一次**，三条路共用同一个答案。
-                let kill = crate::backend_policy::kill_on_exit(crate::backend::control::inbound_client::LOCAL_ORIGIN);
+                // ⚠ 常驻（脱离）那条起法**不在这里收** —— 它自己就是读那个值的人：
+                //   这个 monitor 的那条流一断，它现读、选了「结束」就退（后端 `main.rs::serve_listening`）。
+                //   这里替它再决定一次 = 两个决策处，且违背 `§3.3b ⑥`「不是起我的那个 monitor 退了」。
+                let kill = crate::backend_policy::kill_on_exit_now(&crate::origin::Origin::local());
                 // ── 起法 ①：被监护的子进程，句柄在 `LOCAL_BACKEND` 里 ──
                 // ⚠ 锁在这里取、句柄不克隆：`SuperviseHandle` 刻意不是 `Clone`
                 // （克隆出去的那份 `stop()` 谁都能调，就没有「一个句柄一条命」这回事了）。
-                // ⚠ 这个块**必须收口**：下面那条路要取同一把锁（`stop_local_backend` 的第一件事）。
-                //
-                // 🔴🔴 **这一格为什么没跟着进缝〔`D7 阻-3`，08-29〕**：写区外的
-                // `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
-                // 逐条要求这一臂**体内**恰好一处 `.stop()` + 恰好一处 `kill_on_exit(` +
-                // 策略在前 + 中间那个 `if` 判的就是策略绑定名。抽走它那条判据当场红，
-                // 而那个文件不在本件登记的 27 项写区里 ⇒ **上报，不自己动**。
-                // ⚠ 残留的洞如实登记在 `ExitShutdownSinks` 头注里（`if kill && !kill` 过得去）。
+                // 🔴 它为什么留在臂里而不进缝：`backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
+                // 逐条要求这一臂**体内**恰好一处 `.stop()` + 恰好一处现问 + 问在前 + 中间那个 `if` 判的就是那个答案。
                 {
                     let guard = local_backend_host::LOCAL_BACKEND.lock();
                     if let Some(h) = guard.as_ref().ok().and_then(|g| g.as_ref()) {
@@ -1556,16 +1528,10 @@ pub fn run() {
                         }
                     }
                 }
-                // ── 起法 ②③：常驻那条（`K-P1`）+ 🔴 本机中转（`D2 阻-5`）走缝 ──
-                //
-                // 先前这两段是就地写在这条臂里的，而守着它们的是一条「那个窗口里有没有
-                // 这几段文本」的判据 ⇒ `D7` 的刀 `T13`（`if kill {` → `if kill && !kill {`，
-                // `stop_local_relay()` 那段文本一字不动）**`1229` 全绿 + `GATE: OK`**，
-                // 而中转还在那儿听着那个口 —— 正是那颗针自己说要防的「说谎的开关」。
-                // ⇒ 收进 [`ExitShutdownSinks`]，判据装记账替身量**行为**，两支都断。
+                // ── 🔴 本机中转（`D2 阻-5`）走缝 ──
                 // ⚠ **不许在这条臂里再就地收第二样东西** ——
-                //   `the_exit_arm_hands_the_other_two_ways_to_the_seam` 的零命中守卫数着这件事。
-                shutdown_detached_ways_on_exit(kill, PRODUCTION_EXIT_SHUTDOWN);
+                //   `the_exit_arm_hands_the_relay_to_the_seam` 的零命中守卫数着这件事。
+                shutdown_relay_on_exit(kill, PRODUCTION_EXIT_SHUTDOWN);
             }
         });
 }

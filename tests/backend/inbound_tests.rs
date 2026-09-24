@@ -407,6 +407,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
+        "exit-policy-read",
+        "exit-policy-set",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -450,6 +453,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "exit-policy-read",
+        "exit-policy-set",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(

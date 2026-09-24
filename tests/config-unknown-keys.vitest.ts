@@ -74,7 +74,7 @@ const CENSUS: readonly string[] = [
   "claudeDir", // src/paths.ts
   "keybindings", // src/keybindings/store.ts
   "accounts", // src/accounts.ts
-  "backendPolicy", // src/backend-policy.ts
+  // 〔B2 · 条 66〕`backendPolicy` 退役（值搬到后端那台机器上）⇒ 这一行删掉，两份普查恒等地各少一键。
   "remote", // src/remote-config.ts
   "tabBar", // src/tab-bar-state.ts
   "tabCollections", // src/tab-collections.ts
@@ -203,7 +203,9 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
 
   it("分母：登记了多少个主人", () => {
     const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
-    expect(owners.size, `主人只剩 ${owners.size} 个（现打 10）`).toBe(10);
+    // 〔B2 · 条 66〕10 → 9：`src/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
+    //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
+    expect(owners.size, `主人只剩 ${owners.size} 个（现打 9）`).toBe(9);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

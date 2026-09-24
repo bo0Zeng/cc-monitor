@@ -482,6 +482,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
     // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
     "--capture-pane",
+    // 〔B2 · 条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
+    // 登记理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
+    // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--exit-policy-read",
+    "--exit-policy-set",
     "--backend-probe",
     // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
     // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都
