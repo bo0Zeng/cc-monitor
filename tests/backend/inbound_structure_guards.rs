@@ -134,6 +134,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "bus-list"
                 | "bus-send"
                 | "bus-kill"
+                | "bus-spawn"
                 | "bus-state"
                 | "capture-pane"
                 | "files-browse"
@@ -175,6 +176,7 @@ fn every_registered_command_declares_its_run_kind() {
         "bus-list",
         "bus-send",
         "bus-kill",
+        "bus-spawn",
         "bus-state",
         "capture-pane",
         "files-browse",

@@ -194,7 +194,6 @@ src/bridge/src/backend/control/cc_bus.rs:325	不在	保留	[对外] 同一处 if
 src/bridge/src/backend/control/cc_bus.rs:376	读 ~/.cc-bus	保留	[对外] local_shell_read 的 what 参数，拼进超时/失败报错；~/.cc-bus 是用户自己机器上的路径，可说
 src/bridge/src/backend/control/cc_bus.rs:636	\n[cc-monitor] ⚠ 远端输出超过 {cap} 字节上限，以上内容已截断。\n             命令本身已经执行完毕，**不要重试**。	改·§2.4	[对外] 追加在读出的输出末尾给用户看（注释明写）；markdown `**不要重试**` ＋ `[cc-monitor]` 日志式前缀 兼§2.1（日志行格式） →「输出超过 {cap} 字节，后面截掉了。命令已执行完，不用重试。」
 src/bridge/src/backend/control/cc_bus.rs:777	这台机器上找不到可用的 `bash` —— cc-bus 的本机读面**跑不起来**。\n\n         ⚠ 这**不是**「一个 agent 都没有」：清单根本没去读，有没有是**不知道**。\n\n         已经找过（顺序即优先级）：\n{list}\n\n         ⚠ **刻意不去 `PATH` 上碰运气**：Windows 的进程创建把 `C:\\Windows\\System32`\n         排在 `PATH` 之前，而 WSL 功能开着却没装发行版时那里有一个 `bash.exe` 存根 ——\n         按裸名找到的多半正是它，跑起来什么都不做就退（那正是本件的病根）。\n\n         装一份 Git for Windows，或把 `{BASH_OVERRIDE_VAR}` 指向你要用的那个 `bash.exe`。	改·§2.2	[对外] 找不到 bash 的报错；「刻意不去 PATH 上碰运气…那正是本件的病根」是设计论证 兼§2.1（本机读面） 兼§2.4（markdown＋破折号＋多段） 新词:读面 →「找不到可用的 bash。已找过：{list}。装 Git for Windows，或设 {BASH_OVERRIDE_VAR} 指向 bash.exe。」
-src/bridge/src/backend/control/cc_bus.rs:986	本机还不能{what}：cc-bus 的这一面在本机没有对侧（backend 侧没有它的原语）。\n\n         读面（清单 / 在线 / inbox）与写面里的发消息 / 广播 / 收掉今天都通了；\n\n         剩下这一条等的是**后端先长出那条原语**，不是等谁记得接线。	改·§2.2	[对外] 「等的是后端先长出那条原语，不是等谁记得接线」是内部进度论证 兼§2.1（原语/对侧/读面/写面/backend） 兼§2.4（markdown） 新词:原语 新词:对侧 新词:读面 新词:写面 →「本机暂不支持{what}。」
 src/bridge/src/backend/control/cc_bus.rs:1017	{}上问不到 `{id}` 在不在线：{why}\n\n         ⚠ 这是**问不到**，不是**不在线** —— 别把它读成一盏灭灯。	改·§2.4	[对外] markdown ＋ 破折号 ＋ 「别把它读成一盏灭灯」自造比喻 兼§2.5 →「{机器}上查不到 {id} 是否在线：{why}」
 src/bridge/src/backend/control/cc_bus.rs:1185	已广播给 {ok} 个**已登记** agent（问不到谁在线，所以全发了）	改·§2.4	[对外] 广播结果；markdown `**已登记**` ＋ 括号里解释为什么 →「已广播给 {ok} 个已登记的 agent（无法确认谁在线）」
 src/bridge/src/backend/control/cc_bus.rs:1187	已广播给 {ok} 个**在线** agent	改·§2.4	[对外] markdown `**在线**` 会把星号原样显示（ui-copy-discipline 的 markdown 形状）→ 去星号即可
@@ -219,7 +218,6 @@ src/bridge/src/backend/control/cc_bus.rs:1465	{id} 的**登记摘掉了，会话
 src/bridge/src/backend/control/cc_bus.rs:1468	{id} 没有被收掉：backend 说它既没杀会话、也没摘登记（多半这个名字根本不在总线上）	内部词→后端（backend）	[对外] 英文 backend 夹在中文报错里；界面统一叫「后端」（91 §3.1）
 src/bridge/src/backend/control/cc_bus.rs:1471	收掉 {id} 的应答形状不认识（缺 `killed` / `stale_only`）—— 这一端与那一端的契约漂开了；\n             ⚠ **不知道它到底动没动**，别当成「没杀成」重来一次	改·§2.1	[对外] 字段名 `killed` / `stale_only` 与「契约漂开」外泄 兼§2.2 兼§2.4（markdown＋破折号＋括号） 新词:应答形状 新词:契约 →「不确定 {id} 有没有被收掉，先别重试。」
 src/bridge/src/backend/control/cc_bus.rs:1495	`{id}` **没有被收掉**	改·§2.4	[对外] outcome 片段；markdown `**没有被收掉**`
-src/bridge/src/backend/control/cc_bus.rs:1545	spawn 一个 agent	内部词→启动（spawn）	[对外] refuse_local_write 的 what 片段，拼成「本机还不能spawn 一个 agent」 新词:spawn
 src/bridge/src/backend/control/ccm_invocation.rs:57	远端未装 ccm	内部词→后端（ccm）	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；ccm 是我们的助手名（91 §2.1 原例「ccm 助手」） 新词:ccm 〔CP2a 据术语表改：原换法「后端助手」与 terms.json「ccm」相抵 —— 讲机器上装的那个程序时说「后端」，「ccm 助手」是禁词（设计/70 §5）〕
 src/bridge/src/backend/control/ccm_invocation.rs:67	本地路径不走 CLI 渲染器	改·§2.1	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；「CLI 渲染器」是实现名（注释自承今天产不出来） 新词:CLI渲染器
 src/bridge/src/backend/control/ccm_invocation.rs:68	远端 ccm 缺能力 {c}	改·§2.1	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；ccm ＋ 能力名 {c} 外泄 新词:ccm 新词:能力
@@ -961,14 +959,6 @@ src/bridge/src/chan/wire.rs:218	第 {} 跳卡在 `{}`：{why:?}（发出去了�
 src/bridge/src/chan/wire.rs:221	对端答「不行」：{why:?}	改·§2.1	[可达存疑] 同上；{why:?} 把枚举名原样上屏
 src/bridge/src/chan/wire.rs:222	本侧：{why:?}	改·§2.1	[可达存疑] 同上；「本侧」＋ 枚举名
 src/bridge/src/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
-src/bridge/src/cc_bus_deploy.rs:430	⚠ 查的是 **cc-monitor 装的那一份**，不是你 PATH 上那个 —— `cc-spawn` 在 bash 里调的是\n                       PATH 上的 `ccm`，而 Windows 上问 PATH 要走登录 shell，那条路这里没有（`KU22`）。	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；`KU22` 工单号上屏 ＋「问 PATH 要走登录 shell」是内部推理 兼§2.2 兼§2.4（markdown ** 原样）
-src/bridge/src/cc_bus_deploy.rs:434	本机还没有 cc-monitor 装的那份 `ccm`（`~/.cc-monitor/bin/`）—— 装出去的 `cc-spawn` \n             够不够新**查不了**。⚠ 「没有警告」**不等于「没问题」**：`cc-spawn` 开头仍会协商 {needs:?}，\n             缺一条就以「ccm 版本太旧」退出。先在设置页把本机后端装上（顺序：ccm 先、cc-bus 后）。	改·§2.4	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；markdown ** 原样 ＋ ⚠ ＋「没有警告不等于没问题」强调腔；{needs:?} 把数组 Debug 形上屏 兼§2.1
-src/bridge/src/cc_bus_deploy.rs:441	问了 cc-monitor 装的那份 `ccm`（{at}），它**没答出** `--ccm-probe` —— 版本与能力**查不了**。\n             ⚠ 这是「查不了」，不是「没问题」：`cc-spawn` 开头仍会协商 {needs:?}。	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；`--ccm-probe` 内部旗标 ＋ {needs:?} Debug 形上屏 兼§2.4
-src/bridge/src/cc_bus_deploy.rs:450	(没报 build)	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；build 缺席时的占位，短
-src/bridge/src/cc_bus_deploy.rs:453	cc-monitor 装的那份 `ccm`（{at}）**不是这一版**：它报 build={build}，这一版 monitor \n             期望 {want_build}。{}在设置页重装本机后端（顺序：ccm 先、cc-bus 后）。\n{path_caveat}	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；`build=` 版本标识串原样上屏 兼§2.4（markdown **）
-src/bridge/src/cc_bus_deploy.rs:458	它还缺能力 {missing:?}（装出去的 `cc-spawn` 会以「ccm 版本太旧」退出）。	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；{missing:?} 把数组 Debug 形上屏
-src/bridge/src/cc_bus_deploy.rs:464	cc-monitor 装的那份 `ccm`（{at}）是这一版（build={build}），却缺能力 {missing:?} ⇒ \n             装出去的 `cc-spawn` 会以「ccm 版本太旧」退出 —— 这不该发生，多半是两边的清单漂了。\n{path_caveat}	改·§2.2	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；「这不该发生，多半是两边的清单漂了」是内部推理 兼§2.1（{missing:?}、build=）
-src/bridge/src/cc_bus_deploy.rs:469	查过 cc-monitor 装的那份 `ccm`（{at}）：是这一版（build={build}），`cc-spawn` 要的 {needs:?} 都在。\n\n         {path_caveat}	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；{needs:?} Debug 形 ＋ build= 上屏
 src/bridge/src/session_skeleton.rs:67	对面后端不认 --index（老版本，需要重装后端才有骨架索引）	保留	[不对外] 只进 console.info（tabs.ts 骨架未接的原因），界面行为逐字不变
 src/bridge/src/session_skeleton.rs:69	索引输出被截断：实到 {got} 行，尾行声称 {claimed:?} —— 不当全量用	保留	[不对外] 同上，只进 console.info
 src/bridge/src/session_outline.rs:74	这台机器上的后端版本旧，还列不出大纲（重装后端之后就有）	保留	[对外] 〔SE1〕大纲开关灰掉时挂在提示上（前缀「大纲暂时用不了：」）；说清原因与出路，用词是术语表的「后端」
@@ -1011,3 +1001,16 @@ src/bridge/src/local_accounts.rs:553	本机信任查询没能跑完：{e}	保留
 src/accounts.ts:787	本机归档后的 Resume 沿用这条会话上次的账号，换号只对本工具在 tmux 里起的会话做得到。	保留	[对外] 换号重启定位失败时本机那一支的补救句（A3 第二波）；说清本机能做什么、做不到什么；tmux 属 R1b「用户自己也这么叫」
 src/accounts.ts:788	可先归档后用右键「把此会话切到账号 X」。	保留	[对外] 换号重启定位失败时远端那一支的补救句（原文逐字，A3 第二波只是把它抽成一个变量、本机那支换一句）
 src/backend/accounts/iso.rs:64	这台机器上还没装 cc-acct-iso。	保留	[可达存疑] 本机「找不到 cc-acct-iso」那句话的尾巴（前半「查过哪些地方」由 plugin::discover 拼）；进 --acct-iso-status 的 looked 与 --acct-iso-shellinit 的 not_installed 信封，短而直接
+src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
+src/bridge/src/backend/control/cc_bus.rs:1483	已派生 {id}\n{said}	保留	[对外] 设置页 cc-bus 区派生成功的回执：新会话名 ＋ cc-spawn 自己的回显，无病
+src/bridge/src/backend/control/cc_bus.rs:1485	已派生，但没认出新会话的名字。会话应该已经在运行，请不要重试，到 cc-bus 名单里找它。\n{said}	保留	[对外] 派生成功但没认出会话名：先说结果（已派生）、再说该做什么（不要重试、去名单里找），无星号无破折号
+src/bridge/src/backend/control/cc_bus.rs:1487	派生的回应格式认不出来，不确定会话有没有起来。请先看一眼 cc-bus 名单，不要直接重试。	保留	[对外] 派生回值形状认不出时的话：说清不确定起没起、给出下一步，无内部词
+src/bridge/src/backend/control/cc_bus.rs:1538	没有派生	保留	[对外] 派生失败时拼进「后端通道没起来 / 后端太旧」那两句的结局片段（describe_no_channel_for / describe_backend_too_old_for）；短、无星号
+src/bridge/src/cc_bus_deploy.rs:434	这里查的是 cc-monitor 自己装的那一份 ccm。cc-spawn 实际调用的是 PATH 上的 ccm，\n                       在 Windows 上查不到那一个是哪一份。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:438	本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。\n             cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:444	问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。\n             cc-spawn 启动时需要 ccm 支持：{needs}。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:453	未知	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；ccm 没报版本时的占位词，短
+src/bridge/src/cc_bus_deploy.rs:458	它还缺少：{}，cc-spawn 会因此退出。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:461	cc-monitor 装的 ccm（{at}）不是这一版：它的版本是 {build}，这一版需要 {want_build}。\n             {lack}请在设置页重装本机后端，再装 cc-bus。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:467	cc-monitor 装的 ccm（{at}）版本对，但缺少：{}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:471	cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么

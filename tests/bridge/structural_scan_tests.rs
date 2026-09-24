@@ -3165,6 +3165,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "windows_says_the_precheck_did_not_happen_instead_of_staying_silent",
             1,
         ),
+        // 〔BS1b 09-24〕派生改走后端原语 `bus-spawn`：SSH 那条命令构造器删了（`fn_body` 头注两处
+        //   逐字引它说明抽取器当年栽在哪），「spawn 仍拒」那条判据改名（头注引旧名说明为什么改）。
+        (
+            "tests/bridge/backend/control/cc_bus_tests.rs",
+            "build_spawn_cmd",
+            2,
+        ),
+        (
+            "tests/bridge/backend/control/cc_bus_tests.rs",
+            "letting_kill_broadcast_and_online_through_did_not_let_spawn_through",
+            1,
+        ),
     ];
 
     let corpus = dead_name_corpus();
@@ -3412,7 +3424,9 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/README.md", 1),
         ("src/bridge/build.rs", 1),
         ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
-        ("src/bridge/src/backend/control/cc_bus.rs", 6),
+        // 〔BS1b 09-24〕6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
+        //   ⇒ 两块整段墓碑 ＋ 两处订正行（`cc_bus_send` 头注 · `kill_via_backend` 头注里那句旧拒绝）。
+        ("src/bridge/src/backend/control/cc_bus.rs", 10),
         ("src/bridge/src/backend/control/local_backend.rs", 1),
         ("src/bridge/src/backend/control/payload.rs", 1),
         ("src/bridge/src/backend/control/tmux.rs", 7),
@@ -3440,7 +3454,9 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/backend/control/backend_kill_tests.rs", 1),
         ("tests/bridge/backend/control/backend_send_keys_tests.rs", 1),
         ("tests/bridge/backend/control/cc_bus_deploy_tests.rs", 1),
-        ("tests/bridge/backend/control/cc_bus_tests.rs", 2),
+        // 〔BS1b 09-24〕2 → 7：`fn_body` 头注两处点那个删了的构造器 · 写面判据头注两处点那句删了的拒绝 ·
+        //   改名那条判据头注里一处旧名。
+        ("tests/bridge/backend/control/cc_bus_tests.rs", 7),
         ("tests/bridge/backend/control/inbound_client_tests.rs", 1),
         (
             "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",

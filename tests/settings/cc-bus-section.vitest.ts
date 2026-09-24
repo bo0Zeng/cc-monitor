@@ -273,9 +273,11 @@ describe("B03 脏数据如实呈现", () => {
     // 唯一的可选项就是本机。
     const sel = s.element.querySelector(".cc-bus-origin") as HTMLSelectElement;
     expect([...sel.options].map((o) => o.value)).toEqual(["<local>"]);
-    // 写面仍然没有本机对侧 ⇒ 派生禁用且说明原因。
+    // 〔BS1b 09-24〕派生今天走后端原语 `bus-spawn`，本机与远端同一条路 ⇒ **本机不再禁用**，
+    //   也不再挂那句「本机还不能派生」（原先这一格钉的是「禁用且说明原因」）。
     const spawn = s.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement;
-    expect(spawn.disabled).toBe(true);
+    expect(spawn.disabled).toBe(false);
+    expect(spawn.title).toBe("");
   });
 
   it("spawn 派生与自行登记要区分开", async () => {

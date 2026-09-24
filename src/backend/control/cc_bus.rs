@@ -662,6 +662,191 @@ pub(crate) fn send_for_inbound(
     }))
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// `bus-spawn`：派生一个协作 agent（转调 `cc-spawn`）〔ccbus-spawn 09-24〕
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// # 它治的是什么
+//
+// 这条原语登记之前，monitor 侧派生对 `<local>` 一律拒绝，理由逐字：「cc-bus 的这一面在本机
+// 没有对侧（backend 侧没有它的原语）…剩下这一条等的是**后端先长出那条原语**，不是等谁记得接线」。
+// ⇒ **本节就是那条原语**。登记之后本机与远端都改走它（`K-R98` 给发消息、`K-R112` 给收掉
+// 做过的同一件事），远端那条拼 `cc-spawn …` shell 串走 SSH 的老路同轮删掉。
+//
+// # 登记与 `BUILD_ID`〔BS1b 09-24〕
+//
+// 登记 = `inbound::COMMANDS` / `REGISTRY` 各一行 ＋ `SUBCOMMANDS` 一行 `--bus-spawn`
+// ⇒ 子命令集指纹变了 ⇒ `build_id_guard::adding_a_subcommand_forces_a_build_id_bump` 红。
+// 那一条红是**预期的**：本波各路的新命令由主会话合并那一拍**合成一次** bump（各路各 bump
+// 会在合并时撞成一串互相覆盖的身份）。
+//
+// # 它**不**做的
+//
+// · **不重写起会话**：命名避让 / 总线登记 / 台账 / 预信任目录全在 `cc-spawn`（它内部再经 `ccm`），
+//   本模块只转调 —— 同本模块头注 ②「转调脚本，不在这里重实现」。
+// · **不替用户选账号**：`account` 与 `base` 必须二选一**显式**给（不传 ⇒ ccm 落 manifest 的
+//   默认号 ⇒ 点两下就在一个没人选过的号上烧额度，B03 审计重要-5 那条）。
+// · **不白名单 agent 种类**：`tool` 只判非空，认不认归 `cc-spawn`（见 [`parse_spawn`]）。
+// · 发给 `cc-spawn` 的旗标登记在 `protocol_doc_guard::CHILD_PROCESS_FLAGS`（它们不是后端 argv）。
+
+/// `bus-spawn` 的入参（形状校验过的）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SpawnArgs {
+    pub(crate) tool: String,
+    pub(crate) dir: String,
+    pub(crate) task: String,
+    /// `Some(名)` ⇒ `--account <名>`；`None` ⇒ `--base`（**显式**不注入）。
+    pub(crate) account: Option<String>,
+}
+
+/// 形状校验 —— 纯函数。
+///
+/// ⚠ 与 [`parse_send`] 同一条纪律：**这不是安全边界**（argv 直传不过 shell）。
+/// 它判的是「这组参数能不能构成一次**有意义且表过态**的调用」：
+/// `tool` 非空（**是哪几种 agent 不在这里判** —— 见下）· `dir` 非空 ·
+/// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）。
+pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
+    let obj = args
+        .as_object()
+        .ok_or(("invalid_args", "args 不是对象".to_string()))?;
+    let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).unwrap_or("").trim();
+    // ⚠ **不在后端白名单 agent 种类**〔BS1b 09-24〕：初版这里是 `matches!(tool, <两个字面量>)`，
+    //   `agent_locality_guard::kind_dispatch_sites_are_enumerated_one_by_one` 当场红 ——
+    //   通用层里又多一处「加 agent 要跟着改」的地方。合法性归 cc-spawn 自己
+    //   （它的 `case "$tool"` 不认就 rc=2 ⇒ 这里的 `invalid_args`），与 `P4f-Y5`
+    //   「收件人合法性归 cc-bus，后端不写第二份白名单」同一条。
+    let tool = s("tool");
+    if tool.is_empty() {
+        return Err(("invalid_args", "缺 `tool`".to_string()));
+    }
+    let dir = s("dir");
+    if dir.is_empty() {
+        return Err(("invalid_args", "缺 `dir`（工作目录）".to_string()));
+    }
+    let base = obj.get("base").and_then(|v| v.as_bool()).unwrap_or(false);
+    let account = s("account");
+    let account =
+        match (account.is_empty(), base) {
+            (false, false) => Some(account.to_string()),
+            (true, true) => None,
+            (false, true) => {
+                return Err((
+                    "invalid_args",
+                    "`account` 与 `base` 互斥 —— 要么选一个号，要么显式说就用基座".to_string(),
+                ))
+            }
+            (true, false) => return Err((
+                "invalid_args",
+                "`account` 与 `base:true` 必须给一个 —— 不表态的话 ccm 会落 manifest 的默认号，\
+                 等于替用户选了一个他没选过的号去烧额度"
+                    .to_string(),
+            )),
+        };
+    Ok(SpawnArgs {
+        tool: tool.to_string(),
+        dir: dir.to_string(),
+        task: s("task").to_string(),
+        account,
+    })
+}
+
+/// 拼给 `cc-spawn` 的 argv —— 纯函数。
+///
+/// **`--` 不能省**：`cc-spawn` 的旗标循环跑在取位置参数之前，`dir` 若是 `--new` 这类词会被它
+/// 自己吃成旗标（B03 审计建议那一条，当年记在 monitor 侧那条 SSH 构造器的头注里；那条路 BS1b 删了，
+/// 这件事搬到了这里）。任务为空就不传。
+pub(crate) fn spawn_argv(a: &SpawnArgs) -> Vec<String> {
+    let mut v = vec!["--tool".to_string(), a.tool.clone()];
+    match &a.account {
+        Some(acct) => {
+            v.push("--account".to_string());
+            v.push(acct.clone());
+        }
+        None => v.push("--base".to_string()),
+    }
+    v.push("--".to_string());
+    v.push(a.dir.clone());
+    if !a.task.is_empty() {
+        v.push(a.task.clone());
+    }
+    v
+}
+
+/// 从 `cc-spawn` 的回显里取新会话的 id —— 纯函数。
+///
+/// 今天的形状（`src/shared/cc-bus/scripts/cc-spawn` 末尾现打）：`已 spawn: <id>   (目录: …)`。
+/// ⚠ 拿输出当接口的代价（同 [`parse_list`]）：cc-bus 换个说法这里就认不出 ⇒ 回 `None`，
+/// **不猜**。调用方拿到 `None` 时要说「起了，但 id 没认出来」，而不是「没起来」。
+pub(crate) fn spawned_id_of(said: &str) -> Option<String> {
+    said.lines().find_map(|l| {
+        let rest = l.trim_start().strip_prefix("已 spawn:")?;
+        let id = rest.split_whitespace().next()?;
+        (!id.is_empty()
+            && !id.starts_with('-')
+            && id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+        .then(|| id.to_string())
+    })
+}
+
+/// `bus-spawn`：派生一个协作 agent。**会起一个真 agent 进程（烧额度）**。
+///
+/// # 退出码 → 语义码（这张表只在本模块，理由见 [`classify_send`] 头注）
+///
+/// | `cc-spawn` rc | 码 | 说法 |
+/// |---|---|---|
+/// | 0 | —— | 回 `{spawned:true, id, said}`；`id` 认不出是 `null`（**起了**，只是没认出名字） |
+/// | 2 | `invalid_args` | 它自己的参数校验（目录不存在 / 未知 tool / 账号互斥 / ccm 太旧）|
+/// | 124 | `timed_out` | 🔴 **会话可能已经起来了** —— 说法里明写「先看 `bus-state` 再决定要不要重来」|
+/// | 其它 / 信号 | `failed` | 原样带上它的诊断 |
+///
+/// ⚠ 期限仍住在子进程里（`timeout` 前缀，默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调），零定时器铁律不动。
+pub(crate) fn spawn_for_inbound(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (String, String)> {
+    let a = parse_spawn(args).map_err(|(c, m)| (c.to_string(), m))?;
+    let argv = spawn_argv(&a);
+    let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+    let out = run_as("cc-spawn", &refs, None).map_err(|(c, m)| (c.to_string(), m))?;
+    classify_spawn(out.code, &out.diagnosis())?;
+    let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok(serde_json::json!({
+        "spawned": true,
+        "id": spawned_id_of(&said),
+        "said": said,
+    }))
+}
+
+/// `cc-spawn` 的退出码 → 语义码 —— 纯函数（表在 [`spawn_for_inbound`] 头注）。
+pub(crate) fn classify_spawn(code: Option<i32>, detail: &str) -> Result<(), (String, String)> {
+    match code {
+        Some(0) => Ok(()),
+        Some(2) => Err((
+            "invalid_args".to_string(),
+            format!("cc-spawn 拒绝了这组参数：{detail}"),
+        )),
+        Some(TIMED_OUT_CODE) => {
+            let (c, m) = timed_out_err();
+            Err((
+                c,
+                format!(
+                    "{m}\n🔴 **会话可能已经起来了**（cc-spawn 是在建完会话之后才回显的）——\
+                     先看 `bus-state` 再决定要不要重来，别直接重试：重试会再起一个真 agent。"
+                ),
+            ))
+        }
+        Some(c) => Err((
+            "failed".to_string(),
+            format!("cc-spawn 退出码 {c}：{detail}"),
+        )),
+        None => Err((
+            "failed".to_string(),
+            format!("cc-spawn 被信号打断：{detail}"),
+        )),
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/control/cc_bus_tests.rs"]
 mod tests;
