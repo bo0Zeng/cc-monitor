@@ -101,35 +101,47 @@ mod tests {
     /// 加一处日志就要来加一行，那正是要的 —— 逼你说清「这一行记的是什么」。
     const LOG_SITES: &[(&str, &str, &str)] = &[
         (
-            "listen.rs",
+            "relay/listen.rs",
             "[relay] cannot set connection deadline",
             "装期限失败",
         ),
-        ("listen.rs", "[relay] refusing", "在途连接顶满，回 503"),
         (
-            "listen.rs",
+            "relay/listen.rs",
+            "[relay] refusing",
+            "在途连接顶满，回 503",
+        ),
+        (
+            "relay/listen.rs",
             "[relay] connection ended",
             "一条连接以错误收尾",
         ),
         (
-            "listen.rs",
+            "relay/listen.rs",
             "[relay] cannot spawn connection thread",
             "起线程失败",
         ),
-        ("server.rs", "[relay] upstream connect failed", "连不上上游"),
         (
-            "listen.rs",
+            "relay/server.rs",
+            "[relay] upstream connect failed",
+            "连不上上游",
+        ),
+        (
+            "relay/listen.rs",
             "[relay] bad upstream base url",
             "上游基址解析不了",
         ),
         (
-            "listen.rs",
+            "relay/listen.rs",
             "[relay] cannot bind loopback port",
             "端口起不来",
         ),
-        ("listen.rs", "[relay] listening on", "起来了，监听在哪"),
         (
-            "listen.rs",
+            "relay/listen.rs",
+            "[relay] listening on",
+            "起来了，监听在哪",
+        ),
+        (
+            "relay/listen.rs",
             "[relay] listening (addr unknown",
             "起来了但问不到地址",
         ),
@@ -137,74 +149,78 @@ mod tests {
             // ⚠ 〔`设计/20 §7` 步 1〕它**搬家了**：热重载整块归层 2，住址从
             //   `server.rs` 变成 `accounts/mod.rs`。话一个字没改。
             "accounts/mod.rs",
-            "[relay] 凭据文件读不成表，**保留上一张表不动**",
+            "[apikey] 凭据文件读不成表，**保留上一张表不动**",
             "`D2 阻-2`：重载时解析失败 —— **不把表换成空**（空表 = 全部 404），\
              留住上一张能用的、只出声。这一形是「表可重载」之后新长出来的",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials file:",
+            "[apikey] credentials file:",
             "凭据文件在哪（`KS9` 路径文档化）",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials problem:",
+            "[apikey] credentials problem:",
             "文件读不动 / 解析不了",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials permissions too wide:",
+            "[apikey] credentials permissions too wide:",
             "权限过宽（`KS11`）",
         ),
         (
             "accounts/creds.rs",
-            "[relay] how to fix:",
+            "[apikey] how to fix:",
             "怎么修（`KS11` 要求两样都有）",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials permissions unknown:",
+            "[apikey] credentials permissions unknown:",
             "查不出权限，也要出声",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: this account cannot be used:",
+            "[apikey] credentials: this account cannot be used:",
             "一条账号进不了路由表（id 当不了路由段 / `base_url` 解析不了）—— \
              `K-H2`：静默丢一行的症状是「我明明配了，中转永远 404」",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: configured",
+            "[apikey] credentials: configured",
             "配了 —— **只印这个布尔与进得了表的条数**，不印长度、不印掩码",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: auth_style must be one of:",
+            "[apikey] credentials: auth_style must be one of:",
             "有一条的 `auth_style` 认不出时，把认得的那几个**现算**着印出来（`K-R1`）——\
              它是给正在排错的人看的最后一句话，所以不许是一份会变旧的字面量清单",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: this account is not on the default path:",
+            "[apikey] credentials: this account is not on the default path:",
             "一条**进了表、但行为与默认不同**的账号（`K-R1`：带了路径前缀 / 换了鉴权头形状）。\
              它与上面那条「cannot be used」是两件事：这一条**照发**，只是发出去的字节不同 ⇒ \
              它错了的症状是上游的 404 / 401，与「上游挂了」同形，必须在启动时说出来",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: not configured",
+            "[apikey] credentials: not configured",
             "没配",
         ),
         (
             "accounts/creds.rs",
-            "[relay] create that file to configure one",
+            "[apikey] create that file to configure one",
             "没配时印模板",
         ),
     ];
 
-    fn relay_dir() -> std::path::PathBuf {
-        crate::guard_support::src_root().join("relay")
-    }
+    /// 日志白名单的人群：**两层都在** —— 层 1（`relay/`）与层 2（`accounts/`）。
+    ///
+    /// ⚠ 〔2026-09-24 层 2 搬出 `relay/`〕先前人群是 `relay/` 一棵树，层 2 住在它底下所以顺带被扫。
+    ///   搬走之后只扫 `relay/` 的话，层 2 那 12 行日志会**掉出扫描面** —— 它们记的恰恰是
+    ///   凭据文件那一侧的事，是 `KS4` 最该看着的那一批。⇒ 两棵根明写在这里，
+    ///   并由判据本体断言「盘上有日志的根 ⇔ 登记表里出现的根 ⇔ 本表」三方相等。
+    const LOG_ROOTS: &[&str] = &["relay", "accounts"];
 
     /// 整个 backend crate 的生产段（逐文件）。`KS2` 的人群是**整个 crate**，不是 `relay/` ——
     /// 「取明文的地方恰好一处」这句话的分母如果只到 `relay/`，
@@ -338,7 +354,7 @@ mod tests {
         // 期望的全集：**判据这边自己**从闭集派生一遍（与生产段那一份异源）。
         let want_clear: std::collections::BTreeSet<String> = AuthStyle::ALL
             .iter()
-            .filter_map(|s| crate::relay::accounts::auth_header_of(*s))
+            .filter_map(|s| crate::accounts::auth_header_of(*s))
             .map(|(n, _)| n.to_ascii_lowercase())
             .collect();
         assert!(
@@ -350,7 +366,8 @@ mod tests {
         let base = crate::relay::upstream::Base::parse("https://api.example.com").expect("base");
         let mut wrote = 0usize;
         for style in AuthStyle::ALL.iter().copied() {
-            let table = crate::relay::accounts::table::RoutingTable::build(std::iter::once((
+            let table = crate::accounts::table::RoutingTable::build(std::iter::once((
+                "a".to_string(),
                 "acct".to_string(),
                 base.clone(),
                 Some(SecretKey::new("sk-WELD-PROBE")),
@@ -361,8 +378,10 @@ mod tests {
                 seg2: "acct".to_string(),
             };
             let mut seen: Option<(Option<&'static str>, Vec<String>)> = None;
-            crate::relay::accounts::decide(
+            let upstreams = crate::accounts::Upstreams::from_env(&|_| None).expect("内置默认");
+            crate::accounts::decide(
                 &table,
+                &upstreams,
                 crate::relay::Mode::Substitute,
                 &key,
                 &mut |d| {
@@ -536,7 +555,13 @@ mod tests {
     /// ★★ `KS4`：中转记日志走**白名单**。
     #[test]
     fn every_log_line_in_the_relay_only_carries_registered_fields() {
-        let files = guard_core::scan_tree!(&relay_dir(), &["rs"]);
+        let root = crate::guard_support::src_root();
+        let mut files = Vec::new();
+        for r in LOG_ROOTS {
+            let got = guard_core::scan_tree!(&root.join(r), &["rs"]);
+            assert!(!got.is_empty(), "`{r}/` 一份文件都没扫到 —— 取法坏了");
+            files.extend(got);
+        }
         assert!(
             files.len() >= 8,
             "只扫到 {} 个文件 —— 取法坏了，本断言在空转",
@@ -549,10 +574,12 @@ mod tests {
             // ⚠⚠ 〔`设计/20 §7` 步 1〕先前这里取的是 `file_name()`（**只有文件名**）。
             //    层 2 搬进 `relay/accounts/` 之后那样取会得出 `mod.rs` —— 一个
             //    **指不准是谁**的住址（`relay/mod.rs` 与 `relay/accounts/mod.rs` 同名）。
-            //    ⇒ 改成**相对 `relay/` 的路径**。这是**收紧**：登记表里那一栏从此
+            //    ⇒ 改成**相对路径**。这是**收紧**：登记表里那一栏从此
             //    点得到唯一一份文件，改不改都不会让一条日志悄悄换个家。
+            //    〔2026-09-24〕层 2 搬到 `src/backend/accounts/` 之后，基准从 `relay/` 换成
+            //    `src/backend/`（两棵根都相对它），层 1 那几行的住址栏因此多了 `relay/` 前缀。
             let name = path
-                .strip_prefix(relay_dir())
+                .strip_prefix(&root)
                 .unwrap_or(path)
                 .to_string_lossy()
                 .replace('\\', "/");
@@ -609,6 +636,48 @@ mod tests {
             LOG_SITES.len(),
             found
         );
+        // ★ 〔层 2 搬出 `relay/` 那一拍〕**两层的日志都在扫描面里**：盘上扫到日志的根
+        //   ⇔ 登记表里出现的根 ⇔ `LOG_ROOTS`，三方相等。少了一棵 = 那一层的日志掉出白名单。
+        let root_of = |f: &str| f.split('/').next().unwrap_or("").to_string();
+        let on_disk_roots: std::collections::BTreeSet<String> =
+            found.iter().map(|(f, _)| root_of(f)).collect();
+        let registered_roots: std::collections::BTreeSet<String> =
+            LOG_SITES.iter().map(|(f, _, _)| root_of(f)).collect();
+        let want_roots: std::collections::BTreeSet<String> =
+            LOG_ROOTS.iter().map(|r| (*r).to_string()).collect();
+        assert_eq!(
+            on_disk_roots, want_roots,
+            "盘上扫到日志的根与 `LOG_ROOTS` 对不上 —— 某一层的日志掉出了扫描面（或多出一棵没登记的树）"
+        );
+        assert_eq!(
+            registered_roots, want_roots,
+            "登记表里出现的根与 `LOG_ROOTS` 对不上"
+        );
+        // ★ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕**前缀按层分，两向**：
+        //   住层 2（`accounts/`）的那几行 ⇔ 前缀是 `[apikey]`；其余（层 1）⇔ 前缀是 `[relay]`。
+        //   `--relay` 一个进程承载两层，先前两层共用 `[relay]` ⇒ 读日志的人判不出是哪一层出的事。
+        //   ⚠ 反空真：两边都得**非空**，否则「前缀按层分」在一个只剩一层的表上恒真。
+        //   ⚠ 本条量的是**登记表**；登记表与盘上逐条对上由下面那一段钉着（同一条判据里）。
+        let is_layer_two = |f: &str| f.starts_with("accounts/");
+        let two = LOG_SITES.iter().filter(|(f, _, _)| is_layer_two(f)).count();
+        let one = LOG_SITES.len() - two;
+        assert!(
+            two > 0 && one > 0,
+            "登记表里只剩一层的日志（层 2 {two} 行 · 层 1 {one} 行）—— 下面那条「前缀按层分」在空转"
+        );
+        for (file, head, _) in LOG_SITES {
+            assert_eq!(
+                head.starts_with("[apikey] "),
+                is_layer_two(file),
+                "{file} “{head}”：前缀与它住的那一层对不上。\n\
+                 层 2（apikey / 账号）的日志用 `[apikey]`，层 1（中转，搬字节）用 `[relay]` —— \
+                 **不许用中转的名字说账号层的事**（`设计/20 §6`）。"
+            );
+            assert!(
+                head.starts_with("[apikey] ") || head.starts_with("[relay] "),
+                "{file} “{head}”：前缀两个都不是"
+            );
+        }
         // 逐条对上（不是只对数量 —— 数量对得上而内容换了一批，那也是漂移）。
         for (file, head, _) in LOG_SITES {
             assert!(

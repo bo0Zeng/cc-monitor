@@ -162,6 +162,12 @@ mod tests {
     ///   一个说不出理由的模块，多半是该搬走而没搬的那种。
     const BACKEND_CORE_MODULES: &[(&str, &str)] = &[
         (
+            "accounts",
+            "账号层（apikey 端点改写）：那张 `(agent, 账号)` 表 · 每 agent 一行的默认上游 · \
+             **只读**那份凭据文件（`creds-core` 的 `harden` 不开，写不了）· 热重载。\
+             2026-09-24 从 `relay/` 底下搬出来（「中转层不要有账号」），在那之前它就在本护栏的人群里",
+        ),
+        (
             "agents",
             "每个 agent 一份适配层，装它专属的知识（codex + claudecode）",
         ),

@@ -15,6 +15,7 @@
 //!   · `tests/backend/build_id_guard.rs`（真身份住址的逐条核对）
 //! **别在第四处写它的住址。**
 
+pub mod accounts; // 账号层（apikey 端点改写）：`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载。**不是中转**，不住 relay/
 #[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
