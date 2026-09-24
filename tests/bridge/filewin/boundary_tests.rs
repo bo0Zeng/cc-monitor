@@ -297,7 +297,7 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 跨机传输 ──
     // 〔F7c · 第三波 09-24〕`§8.4` 拍了（「保留SFTP. 思考怎么干净」）：上传 / 下载经通道开单、订阅进度
     //   （`设计/60 §13`）⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行走掉；
-    //   `sftp_cancel_transfer` 随复制走后端（F7a，不可取消）一起走掉（`transfer::forward_cancel` 删了）。
+    //   `sftp_cancel_transfer`〔散文墓碑〕 随复制走后端（F7a，不可取消）一起走掉（`transfer::forward_cancel` 删了）。
     ("ssh_source::RemoteConfig", Kind::Transfer),
     // ── 本地预判围栏 ──
     ("sftp_pool::is_protected_claude_data_path", Kind::Fence),
@@ -521,7 +521,10 @@ fn every_declared_edge_falls_in_a_live_category() {
     let debt = |k: Kind| WINDOW_SIDE.iter().filter(|(_, kk)| *kk == k).count();
     assert_eq!(
         (debt(Transfer), debt(Fence), debt(Terminal)),
-        (5, 1, 1),
+        // 〔F7c · 合主线 ＋ 收尾 09-24〕传输 5 → 1：`sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP`
+        //   （上传下载经通道开单、订阅进度）· `sftp_cancel_transfer`〔散文墓碑〕（复制那一腿的取消，随复制走后端删了）走掉；
+        //   剩 `RemoteConfig`（窗口进程拿着那台机器的配置当种子）。
+        (1, 1, 1),
         "窗口进程里「还不是通道」的那几类条数变了（传输 · 本地围栏 · 本机动作）\
          〔F7a 09-24〕传输 7 → 5：编辑器读文本那两条（池子那条读文本命令 ＋ 它的上限常量）换成后端 \
          `files-read-text`，上限常量搬回窗口（`editor::MAX_EDIT_BYTES`）；\

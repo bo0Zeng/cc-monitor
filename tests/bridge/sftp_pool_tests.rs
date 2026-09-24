@@ -3,33 +3,13 @@ use super::*;
 // 🔴 **围栏那一族的判据已经不在本文件了**〔步 H2 09-21，用户裁「拆」〕。
 // `guard_write` 与 `is_protected_claude_data_path` 搬去了 `crate::claude_data_fence`，
 // 它们的判据跟着搬进 `tests/bridge/claude_data_fence_tests.rs`（两条原样保留、并各自
-// 补了相等断言那一半）。本文件从此只放**池子自己**那几件事：可编辑性 · 有损名 ·
-// 死连分类 · 排序 · 取消登记 · 改权限的线上形状。
-
-// F49：编辑护栏(数据安全红线)——拒编优于截断/乱码。
-#[test]
-fn decode_editable_guards() {
-    assert_eq!(
-        decode_editable(b"hello\nworld"),
-        Some("hello\nworld".into())
-    );
-    assert_eq!(
-        decode_editable("中文 UTF-8".as_bytes()).as_deref(),
-        Some("中文 UTF-8")
-    );
-    assert_eq!(decode_editable(&[]), Some(String::new())); // 空文件可编辑
-    assert_eq!(decode_editable(b"a\0b"), None); // 含 NUL → 疑二进制,拒编
-    assert_eq!(decode_editable(&[0xff, 0xfe]), None); // 非 UTF-8,拒编
-                                                      // >256KB → 拒编(不截断)
-    assert_eq!(decode_editable(&vec![b'x'; MAX_EDIT_BYTES + 1]), None);
-    assert!(decode_editable(&vec![b'x'; MAX_EDIT_BYTES]).is_some()); // 恰好上限可编辑
-}
-
-#[test]
-fn lossy_name_detection() {
-    assert!(is_lossy_name("bad\u{FFFD}name"));
-    assert!(!is_lossy_name("good_name.txt"));
-}
+// 补了相等断言那一半）。本文件从此只放**池子自己**那几件事：死连分类 · 取消登记 · 下载落点的围栏。
+//
+// 〔F7c 收尾 09-24〕可编辑性（`decode_editable_guards`〔散文墓碑〕）· 有损名（`lossy_name_detection`〔散文墓碑〕）·
+// 排序（`list_dir_sort_dirs_first_then_lowercase`〔散文墓碑〕）· 改权限的线上形状
+// （`the_chmod_attrs_never_put_a_size_on_the_wire`〔散文墓碑〕· `the_chmod_mode_is_masked_down_to_permission_bits`〔散文墓碑〕）
+// 那五条随它们测的那几条池子命令一起走了：读文本 / 列目录 / 改权限今天是后端 `files-*`，
+// 各自的判据住后端那棵树（`设计/60 §13b`）。
 
 #[test]
 fn dead_conn_classification() {
@@ -38,42 +18,6 @@ fn dead_conn_classification() {
     assert!(looks_like_dead_conn("connection reset"));
     assert!(!looks_like_dead_conn("No such file or directory"));
     assert!(!looks_like_dead_conn("permission denied"));
-}
-
-#[test]
-fn list_dir_sort_dirs_first_then_lowercase() {
-    // 直接测排序契约（不需真连接）。
-    let mut v = vec![
-        SftpEntry {
-            name: "Zebra".into(),
-            path: "/Zebra".into(),
-            is_dir: false,
-            is_symlink: false,
-            size: 0,
-            lossy_name: false,
-        },
-        SftpEntry {
-            name: "apple".into(),
-            path: "/apple".into(),
-            is_dir: false,
-            is_symlink: false,
-            size: 0,
-            lossy_name: false,
-        },
-        SftpEntry {
-            name: "src".into(),
-            path: "/src".into(),
-            is_dir: true,
-            is_symlink: false,
-            size: 0,
-            lossy_name: false,
-        },
-    ];
-    sort_entries(&mut v); // 用生产比较器,改它测试即跟着变(不再假信心)
-    assert_eq!(
-        v.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
-        vec!["src", "apple", "Zebra"]
-    );
 }
 
 #[test]
@@ -127,56 +71,6 @@ fn cancel_guard_ptr_eq_no_cross_delete() {
 // 那要一趟真机，本仓今天没有（`sftp.rs` 那条注释所依据的 e2e 是当时跑的，今天复现不了）。
 // ⇒ 本条排除的是**本仓那次事故的成因**（把 size 一起送上去），不是一个更大的声称。
 
-#[test]
-fn the_chmod_attrs_never_put_a_size_on_the_wire() {
-    let wire = russh_sftp::ser::to_bytes(&chmod_attrs(0o644)).expect("属性块序列化不出来");
-    // 期望的那 8 个字节，逐字写出来（不从被测对象那边算，否则就是它跟自己一致）：
-    //   前 4 字节 = attrs 标志位（大端 u32）= `SSH_FILEXFER_ATTR_PERMISSIONS`（0x4）**且仅有它**；
-    //   后 4 字节 = permissions（大端 u32）= 0o644 = 0x1A4。
-    let want: Vec<u8> = vec![0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x01, 0xA4];
-    assert_eq!(
-        wire.to_vec(),
-        want,
-        "`chmod_attrs` 发上线的 SETSTAT 属性块变了。\n\
-         ★ **最贵的那一种变法是多一个 `size`**：本仓真机 e2e 实证过，OpenSSH sftp-server\n\
-           收到带 size 的 setstat 会把文件**截断成 0 字节**（`sftp.rs::upload_atomic` 尾注）。\n\
-           那一口咬掉的是远端后端二进制，症状是「无限重部署」，而不是一句报错。\n\
-         ⇒ 如果是 `russh-sftp` 升版改了编码，回去重读一遍那一口再改这里的期望值；\n\
-           如果是有人给属性块加了字段，先回答「面板改权限为什么要动那个字段」。"
-    );
-    // 反向自检：把 size 放进去，线上那个包**一定**不一样 —— 否则上面那条对
-    // 「多一个 size」这一形是瞎的（而那正是它唯一真正在防的东西）。
-    let with_size = russh_sftp::protocol::FileAttributes {
-        size: Some(0),
-        permissions: Some(0o644),
-        ..Default::default()
-    };
-    let poisoned = russh_sftp::ser::to_bytes(&with_size).expect("属性块序列化不出来");
-    assert_ne!(
-        poisoned.to_vec(),
-        want,
-        "带 size 的属性块与不带的序列化成了同一串字节 —— 那上面那条相等断言对\n\
-         「有人补了一个 size」这一形是瞎的，本条此刻在空转"
-    );
-}
-
-/// `mode` 的高位（文件类型位）不许上线 —— 面板改权限不该能改文件类型。
-#[test]
-fn the_chmod_mode_is_masked_down_to_permission_bits() {
-    // `FileMode::REG`（0x8000）＋ 0o644：掩完必须只剩 0o644。
-    assert_eq!(
-        chmod_attrs(0o100644).permissions,
-        Some(0o644),
-        "文件类型位漏上线了 —— 那不是 chmod 的语义"
-    );
-    // 粘滞位/setuid 那一档（0o7000）**是** chmod 的语义，不许被掩掉。
-    assert_eq!(
-        chmod_attrs(0o4755).permissions,
-        Some(0o4755),
-        "setuid/setgid/sticky 被掩掉了 —— 掩码收得过紧"
-    );
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // 🔴〔2026-09-21〕下载的**本机落点**也过那道围栏 —— 而这一格此前是空的
 // ════════════════════════════════════════════════════════════════════════
@@ -199,8 +93,7 @@ fn the_chmod_mode_is_masked_down_to_permission_bits() {
 ///
 /// # 为什么要判「是哪一句」而不只判「报错了」
 ///
-/// 只判「报错了」买不到东西：在这台合成远端上**任何**下载都会失败（DNS 解不出来）
-/// ⇒ 一个完全没有围栏的实现照样绿。判**那一句**才能分开两件事，
+/// 只判「报错了」买不到东西 ⇒ 判**码与那一句**，外加一条阴性对照（不踩线的开得了单）。判**那一句**才能分开两件事，
 /// 而那正是「围栏排在拨线之前」这条性质在行为侧的唯一抓手。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_download_onto_a_live_session_file_is_refused_by_the_fence_not_by_the_network() {
@@ -215,9 +108,6 @@ async fn a_download_onto_a_live_session_file_is_refused_by_the_fence_not_by_the_
         addresses: Vec::new(),
         jump: None,
     };
-    // 同进程现造一条进度通道（同 `filewin::transfer::upload_remote` 那个写法）。
-    let chan = || tauri::ipc::Channel::new(|_body| Ok(()));
-
     // 夹具自证：这条路径**真的**被那道判定认作受保护（否则本条在量别的东西）。
     let protected = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
     assert!(
@@ -225,15 +115,16 @@ async fn a_download_onto_a_live_session_file_is_refused_by_the_fence_not_by_the_
         "夹具那条路径不被判定为受保护 —— 本条此刻在量别的东西"
     );
 
-    let e = crate::sftp_pool::sftp_download(
+    // 〔F7c 收尾 09-24〕老面板那条 Tauri 下载命令〔已删：`sftp_download`〕删了；今天下载只有一个入口 ——
+    //   传输台开单（窗口经通道说 `transfer-download`）。围栏在开单那一刻就过（起跑时 `download_inner` 前再过一次）。
+    let (code, e) = crate::sftp_pool::transfer_call(
         cfg.clone(),
-        "/srv/whatever.txt".into(),
-        protected.into(),
-        "t-fence-1".into(),
-        chan(),
+        crate::sftp_pool::TRANSFER_DOWNLOAD,
+        &serde_json::json!({ "remote_path": "/srv/whatever.txt", "local_path": protected }),
     )
     .await
-    .expect_err("往一条正被 Claude 打开的会话文件上下载，竟然没被拒");
+    .expect_err("往一条正被 Claude 打开的会话文件上下载，竟然开得了单");
+    assert_eq!(code, "refused");
     assert!(
         e.contains("拒绝写 Claude 数据源文件"),
         "拒的不是围栏那一句 —— 那说明它先去拨线了，围栏（如果有）在后面：{e}"
@@ -243,30 +134,28 @@ async fn a_download_onto_a_live_session_file_is_refused_by_the_fence_not_by_the_
         "拒绝那句话没带上是哪条路径，用户不知道该改什么：{e}"
     );
 
-    // 🔴 阴性对照：同一台机器、一条**不踩线**的落点 ⇒ 报的是**连接**失败。
-    // 少了它，上面两比可以靠「恒回围栏那句话」全绿 —— 那时一次下载都做不成。
+    // 🔴 阴性对照：同一台机器、一条**不踩线**的落点 ⇒ 开得了单（开单不拨线：起跑挂在订阅上）。
+    // 少了它，上面那几比可以靠「恒回围栏那句话」全绿 —— 那时一次下载都做不成。
     let ok_dest = std::env::temp_dir().join("ccm-fence-dl-control.txt");
-    let e2 = crate::sftp_pool::sftp_download(
+    let opened = crate::sftp_pool::transfer_call(
         cfg,
-        "/srv/whatever.txt".into(),
-        ok_dest.to_string_lossy().to_string(),
-        "t-fence-2".into(),
-        chan(),
+        crate::sftp_pool::TRANSFER_DOWNLOAD,
+        &serde_json::json!({
+            "remote_path": "/srv/whatever.txt",
+            "local_path": ok_dest.to_string_lossy(),
+        }),
     )
     .await
-    .expect_err("连不上的远端竟然下载成功了");
+    .expect("一条不踩线的落点也被拒了 —— 那道判定的射程宽了");
     assert!(
-        !e2.contains("拒绝写 Claude 数据源文件"),
-        "一条不踩线的落点也被围栏拒了 —— 那道判定的射程宽了：{e2}"
+        opened["id"]
+            .as_str()
+            .is_some_and(|i| i.starts_with("xfer-")),
+        "{opened}"
     );
-    // 而且它**真的走到了拨线那一步**（这半证明上面那条阴性对照不是空真）。
-    assert!(
-        e2.contains("example.invalid") || e2.contains("连接"),
-        "既不是围栏、也不像连接失败 —— 第三种失败，回头读它：{e2}"
-    );
-    // 阴性对照那条路径**一个字节都不该落地**（连接就没建起来）。
+    // 开单不起跑 ⇒ 那条路径**一个字节都不该落地**。
     assert!(
         !ok_dest.exists() && !std::path::Path::new(&format!("{}.part", ok_dest.display())).exists(),
-        "连接都没建起来，盘上却出现了文件"
+        "只开了单，盘上却出现了文件"
     );
 }

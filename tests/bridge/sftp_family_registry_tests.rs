@@ -31,112 +31,26 @@ use std::collections::BTreeSet;
 
 /// 🔴 **待收**：`(名字, 形态, 等哪一路, 消费者住址（仓相对）, 那根针)`。
 ///
-/// ⚠ 「等哪一路」写的是今天（`w3` 第三波）的派工：F7b = 删老面板；F7a = 后端补 `files-copy` /
-/// `files-read-text` / 问 home 并把窗口换走。**这张表只许变短** —— 变长 = SFTP 又长回一条非传输的命令。
+/// **这张表只许变短** —— 变长 = SFTP 又长回一条非传输的命令。
 pub(super) const PENDING: &[(&str, &str, &str, &str, &str)] = &[
-    (
-        "sftp_realpath",
-        "命令",
-        "F7a（问 home）",
-        "src/bridge/src/filewin/source.rs",
-        "sftp_pool::sftp_realpath(",
-    ),
-    (
-        "sftp_list_dir",
-        "命令",
-        "F7b（老面板）",
-        "src/sftp/panel.ts",
-        "sftp_list_dir",
-    ),
-    (
-        "sftp_stat",
-        "命令",
-        "F7b（老面板）",
-        "src/sftp/panel.ts",
-        "sftp_stat",
-    ),
-    (
-        "sftp_cancel_transfer",
-        "命令",
-        "F7a（复制那一腿的取消）＋ F7b（老面板）",
-        "src/bridge/src/filewin/transfer.rs",
-        "sftp_pool::sftp_cancel_transfer(",
-    ),
-    (
-        "sftp_download",
-        "命令",
-        "F7b（老面板；窗口那一侧已经走通道）",
-        "src/sftp/panel.ts",
-        "sftp_download",
-    ),
-    (
-        "sftp_upload",
-        "命令",
-        "F7b（老面板；窗口那一侧已经走通道 ＋ 暂存区 ＋ 后端提交）",
-        "src/sftp/panel.ts",
-        "sftp_upload",
-    ),
+    // 〔F7c 收尾 09-24〕F7a ＋ F7b 合进来之后这张表从 13 行收到 1 行 —— 删掉的十二条
+    //   〔已删：`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_download` ·
+    //   `sftp_upload` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_mkdir` · `sftp_rename` ·
+    //   `sftp_delete` · `sftp_chmod`〕连同它们的 Tauri 注册、`commands.ts` 包装、`parity_ledger` 行一起走了。
+    //   ⚠ 剩下这一条的消费者**不是代码**：门禁 `f3-copy` 那一格（秤 F3）量的是它的核心 `copy_remote_path`；
+    //   窗口的复制已经走后端 `files-copy`（F7a）。删它要连那一格一起退役（`gate.sh` 29 格 → 28），
+    //   而那一处不在本路授权里 ⇒ 等主会话。
     (
         "sftp_copy",
         "命令",
-        "F7a（files-copy）",
-        "src/bridge/src/filewin/copy.rs",
-        "sftp_pool::sftp_copy(",
-    ),
-    (
-        "sftp_read_text_for_edit",
-        "命令",
-        "F7a（files-read-text）",
-        "src/bridge/src/filewin/editor.rs",
-        "sftp_pool::sftp_read_text_for_edit(",
-    ),
-    (
-        "sftp_write_text",
-        "命令",
-        "F7b（老面板）",
-        "src/sftp/panel.ts",
-        "sftp_write_text",
-    ),
-    (
-        "sftp_mkdir",
-        "命令",
-        "F7b（老面板）",
-        "src/sftp/panel.ts",
-        "sftp_mkdir",
-    ),
-    (
-        "sftp_rename",
-        "命令",
-        "F7b（老面板）",
-        "src/sftp/panel.ts",
-        "sftp_rename",
-    ),
-    (
-        "sftp_delete",
-        "命令",
-        "F7b（老面板）",
-        "src/sftp/panel.ts",
-        "sftp_delete",
-    ),
-    (
-        "sftp_chmod",
-        "命令",
-        "F7b（老面板那层包装）",
-        "src/ipc/commands.ts",
-        "\"sftp_chmod\"",
+        "主会话（门禁 f3-copy 那一格退役）",
+        "tests/scripts/gate.sh",
+        "run_gate f3-copy",
     ),
 ];
 
 /// 碰远端写原语、而**不在**传输核心里的函数：`(函数, 它挂在哪条待收命令名下)`。
-pub(super) const PENDING_WRITERS: &[(&str, &str)] = &[
-    ("upload_inner", "sftp_upload"),
-    ("copy_remote_path", "sftp_copy"),
-    ("sftp_mkdir", "sftp_mkdir"),
-    ("sftp_rename", "sftp_rename"),
-    ("sftp_delete", "sftp_delete"),
-    ("sftp_chmod", "sftp_chmod"),
-    ("sftp_write_text", "sftp_write_text"),
-];
+pub(super) const PENDING_WRITERS: &[(&str, &str)] = &[("copy_remote_path", "sftp_copy")];
 
 /// 传输核心里**唯二**碰远端写原语的函数（都只写暂存区）。
 const STAGING_WRITERS: &[&str] = &["ensure_staging_dir", "upload_to_staging"];
@@ -219,10 +133,16 @@ fn tauri_commands(prod: &str) -> BTreeSet<String> {
 fn every_pool_tauri_command_is_pending_and_the_transfer_core_has_none() {
     let prod = pool_production();
     let got = tauri_commands(&prod);
-    assert!(
-        got.len() >= 2,
-        "只抠到 {} 条 Tauri 命令 —— 抽取器坏了",
-        got.len()
+    // 〔F7c 收尾 09-24〕地板 2 → 1：收尾之后池子只剩 `sftp_copy` 一条（下面那条相等才是判据，这个数只守抽取器）。
+    //   量具自检另喂一段合成语料，证明抽取器认得出不止一条。
+    assert!(!got.is_empty(), "一条 Tauri 命令都没抠到 —— 抽取器坏了");
+    assert_eq!(
+        tauri_commands(
+            "#[tauri::command]\npub async fn a() {}\n#[tauri::command]\npub fn b() {}\nfn c() {}\n"
+        )
+        .len(),
+        2,
+        "抽取器认不出合成语料里那两条"
     );
     let want: BTreeSet<String> = PENDING
         .iter()

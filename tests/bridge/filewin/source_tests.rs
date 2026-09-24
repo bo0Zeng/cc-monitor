@@ -36,7 +36,8 @@ fn listing_a_local_dir_yields_dirs_first_then_case_insensitive_name() {
 
 /// 🔴 上面头注那个「两份实现」的缝 —— 这条把**两条路的真实输出**对拍成相等。
 ///
-/// 远端那一侧的序由 `sftp_pool::sort_entries` 产生，它是私有的；
+/// 远端那一侧的序**曾经**由池子里那个私有排序函数产生（〔F7c 收尾 09-24〕`sort_entries`〔散文墓碑〕已随列目录命令删了，
+/// 这条对拍今天钉的是「生产契约的定义」与 [`sort_rows`] 相等）；
 /// 这里够不着它，但够得着**它排过的结果**在类型上等价的那个形状 ——
 /// 于是拿同一组合成名字，一边喂 [`sort_rows`]，一边按生产契约的定义重算，
 /// 断言**两个序列逐项相等**。任何一侧改了排序规则，这条当场红。
@@ -65,7 +66,7 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
     // ⚠ 缺省那一档 —— 它就是本刀之前那个写死的函数（逐字节相同那一条住下面）。
     sort_rows(&mut mine, SortBy::default());
 
-    // 生产契约逐字（`sftp_pool.rs::sort_entries`）：目录在前，再名称小写升序。
+    // 生产契约逐字（原住池子那个私有排序函数，〔F7c 收尾〕已删）：目录在前，再名称小写升序。
     let mut theirs: Vec<(String, bool)> =
         names.iter().map(|(n, d)| ((*n).to_string(), *d)).collect();
     theirs.sort_by(|a, b| {

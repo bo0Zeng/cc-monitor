@@ -95,66 +95,8 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
              **路径由代码定**（同上两种落点）。",
     ),
     // ---- sftp_pool.rs：文件面板，路径**由用户选** ⇒ 全部要过 Claude 数据围栏 ----
-    (
-        "sftp_pool.rs",
-        "upload_inner",
-        "远端",
-        "上传：写远端 `.tmp` → 删旧 → rename。**路径由用户选**（面板里点的目标目录），\
-             围栏在入口 `sftp_upload` 的 `guard_write`。",
-    ),
-    (
-        "sftp_pool.rs",
-        "sftp_mkdir",
-        "远端",
-        "新建远端目录。**路径由用户选**，`guard_write` 在函数第一行。\
-             〔第五刀 09-21〕**调用方从「只有老面板」变成「老面板 ＋ 原生文件窗口」**：\
-             窗口那一侧经 `filewin::writeops::apply_remote` 调它，而那条接线由本文件\
-             `the_file_window_uses_exactly_the_pool_commands_it_registers` 钉成相等断言。\
-             ⚠ 窗口那一侧**另有一道**同判定的围栏（发往返之前就出声），\
-             但承重的仍然是这条命令第一行那道 —— 本层被绕过时只剩它。",
-    ),
-    (
-        "sftp_pool.rs",
-        "sftp_rename",
-        "远端",
-        "重命名远端文件。**路径由用户选**，且 `from` 与 `to` **各过一次** `guard_write`\
-             （既不许把 Claude 文件改走，也不许改成 Claude 数据源名）。\
-             〔第五刀 09-21〕**调用方从「只有老面板」变成「老面板 ＋ 原生文件窗口」**：\
-             窗口那一侧经 `filewin::writeops::apply_remote` 调它，而那条接线由本文件\
-             `the_file_window_uses_exactly_the_pool_commands_it_registers` 钉成相等断言。\
-             ⚠ 窗口那一侧**另有一道**同判定的围栏（发往返之前就出声），\
-             但承重的仍然是这条命令第一行那道 —— 本层被绕过时只剩它。",
-    ),
-    (
-        "sftp_pool.rs",
-        "sftp_delete",
-        "远端",
-        "删远端文件/目录。**路径由用户选**，`guard_write` 在函数第一行。\
-             〔第五刀 09-21〕**调用方从「只有老面板」变成「老面板 ＋ 原生文件窗口」**：\
-             窗口那一侧经 `filewin::writeops::apply_remote` 调它，而那条接线由本文件\
-             `the_file_window_uses_exactly_the_pool_commands_it_registers` 钉成相等断言。\
-             ⚠ 窗口那一侧**另有一道**同判定的围栏（发往返之前就出声），\
-             但承重的仍然是这条命令第一行那道 —— 本层被绕过时只剩它。",
-    ),
-    (
-        "sftp_pool.rs",
-        "sftp_chmod",
-        "远端",
-        "★〔`设计/60 §5.4c` · 09-20〕改远端权限位（`SSH_FXP_SETSTAT`）。\
-             **路径由用户选**（面板里点的那一项），`guard_write` 在函数第一行 —— \
-             改权限一样能弄坏一场正在跑的会话（把 jsonl 改成不可读），\
-             而它不像删除那样显眼。⚠ 它只有**一个**路径参数 ⇒ 按构造不在\
-             `a_two_path_write_entry_fences_both_of_its_paths` 的人群里，不是漏掉；\
-             它归单路径那一条（`USER_CHOSEN_ENTRIES`，本条是第七个）。\
-             ⚠ 它的写原语是 `.set_metadata(`，而本仓被这一个咬过一口：\
-             `sftp.rs::upload_atomic` 尾注记着带 size 的 setstat 会把文件截断成 0 字节。\
-             ⇒ 属性块的线上形状另有一条逐字节相等的判据钉着\
-             （`sftp_pool_tests::the_chmod_attrs_never_put_a_size_on_the_wire`）。\
-             〔第五刀 09-21〕**它头上那句「前端没有入口」的欠账结了**：\
-             原生文件窗口行上那颗「权限」经 `filewin::writeops::apply_remote` 调它，\
-             而且它归「问一次」那一族（改权限一样能弄坏一场会话，却不像删除那样显眼）。\
-             接线由本文件 `the_file_window_uses_exactly_the_pool_commands_it_registers` 钉着。",
-    ),
+    // 〔F7c 收尾 09-24〕这一段走了五行：老上传核心〔已删：`upload_inner`〕与四条写命令
+    //   〔已删：`sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_chmod`〕（老面板删了、窗口改走后端写面）。
     (
         "sftp_pool.rs",
         "copy_remote_path",
@@ -402,8 +344,10 @@ fn pool_commands() -> Vec<String> {
     // 抽取器自检：`sftp_pool.rs` 到底有几条对外命令。
     assert_eq!(
         commands.len(),
-        13,
-        "`sftp_pool.rs` 现打 {} 条 `#[tauri::command]`（2026-09-21 现打 **13**；\
+        // 〔F7c 收尾 09-24〕13 → 1：只剩 `sftp_copy`（门禁 `f3-copy` 那一格还在量它的核心；
+        //   其余十二条随老面板与窗口改走通道删了，`设计/60 §13b`）。
+        1,
+        "`sftp_pool.rs` 现打 {} 条 `#[tauri::command]`（〔F7c 收尾〕现打 **1**；2026-09-21 现打 13；\
          `设计/99 §4.6.4` 写的是 14，而含注释的 grep 数出来正是 14 —— \
          「错的 grep 与截断的 grep 是同一种失败」）。实得：{commands:?}",
         commands.len()
@@ -472,22 +416,12 @@ fn a_user_chosen_remote_write_passes_the_claude_data_fence() {
     //   把它塞进去会让那一条去找一个叫 `from`/`to` 的参数、当场 `panic!` ——
     //   那是**误伤**，不是覆盖。两条判据各管各的那一半，这里写死，免得下一个人来「补全」。
     const USER_CHOSEN_ENTRIES: &[&str] = &[
-        // 🔴〔2026-09-21〕`sftp_download` 是这张表里**唯一落点在本机**的一条，
-        //    而它此前不在这张表里 —— 逐条来历见 `sftp_pool.rs::sftp_download` 那段注释
-        //    （三张账首尾相接地互相指，链子末端那句是假的）。
-        //    ⚠ 本条判据的**名字**说的是 `remote_write`，而这一条的落点是本机。
-        //      刻意不改名（改名会连带动 `structural_scan` 的散文判据与别处引用）——
-        //      它判的机制一个字没变：`guard_write` 在函数体里、且排在拿连接之前。
-        //      围栏本身从来不是远端专用的（`claude_data_fence` 头注：F03b 那一路
-        //      用它判的正是一条**本机**路径）。
-        "sftp_download",
-        "sftp_write_text",
-        "sftp_upload",
-        "sftp_mkdir",
-        "sftp_rename",
-        "sftp_delete",
+        // 〔F7c 收尾 09-24〕八 → 二。走掉的七条〔已删：`sftp_download` · `sftp_write_text` · `sftp_upload` ·
+        //   `sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_chmod`〕随老面板与窗口改走通道删了。
+        //   🔴 下载那道**本机落点**围栏没有跟着走：它今天住传输台的开单口 `transfer_call`
+        //   （窗口经通道说 `transfer-download`，开单时就过 `guard_write(&local)`），所以那一格换成它。
         "sftp_copy",
-        "sftp_chmod",
+        "transfer_call",
     ];
     let lines: Vec<&str> = prod.lines().collect();
     let mut unfenced = Vec::new();
@@ -570,7 +504,7 @@ fn a_two_path_write_entry_fences_both_of_its_paths() {
     // `(入口名, 那两个路径参数)`。**两条都是「源与目标」那一形**：
     // 既不许把 Claude 的会话文件搬走/复制走，也不许搬成/复制成一个 Claude 数据源名。
     const TWO_PATH_ENTRIES: &[(&str, [&str; 2])] = &[
-        ("sftp_rename", ["from", "to"]),
+        // 〔F7c 收尾 09-24〕`sftp_rename`〔散文墓碑〕那一行随它走了（改名今天是后端 `files-rename`）。
         ("sftp_copy", ["from", "to"]),
     ];
     let mut checked = 0usize;
@@ -645,8 +579,9 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
     let root = repo_root();
     // `(入口所在文件, 入口名, 它该转发到的已登记写点)`
     const ROUTES: &[(&str, &str, &str)] = &[
-        ("sftp_pool.rs", "sftp_write_text", "upload_atomic"),
-        ("sftp_pool.rs", "sftp_upload", "upload_inner"),
+        // 〔F7c 收尾 09-24〕池子那两条 IPC 写入口〔已删：`sftp_write_text` · `sftp_upload`〕删了；
+        //   上传今天的入口是传输台的开单口（窗口经通道说 `transfer-upload`），它转发到只写暂存区的那一个写点。
+        ("sftp_pool.rs", "transfer_call", "upload_to_staging"),
         ("sftp.rs", "deploy_remote_backend", "upload_atomic"),
         ("mcp.rs", "write_remote_mcp_server", "upload_atomic"),
         (
@@ -795,46 +730,13 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     //   `sftp_rename` / `sftp_chmod` / `sftp_write_text`（改走后端写面那五条）。留下的 10 行里 9 行是
     //   窗口进程那一侧**还不是通道**的欠账（跨机传输 §8.4 未拍 · 后端缺 `files-copy` · 本地预判围栏），
     //   逐条住 `tests/bridge/filewin/boundary_tests.rs::WINDOW_SIDE`；〔F7a 09-24〕`sftp_realpath` 那一行已搬去后端 `files-home`（见 `MOVED_TO_BACKEND`）。
-    const SITES: &[(&str, &str, &str)] = &[
-        // ── 只读那一族（第一~四刀）─────────────────────────────────────
-        (
-            "sftp_download",
-            "命令",
-            "🔴 **往外拖** —— 把远端那一行拉到本机。落点 `filewin::download::pull_one`，\
-             全树恰好一处。\
-             〔`24e` 第八刀：`设计/60 §5` 第 6 步那条欠账逐字「往外拖（下载）没做」〕\
-             ⚠ 它是这张表里**唯一落点在本机**的一条 ⇒ 那道 Claude 数据围标守的是\
-             `local_path`，而那一句 `guard_write(&local_path)` 是**当日补的**\
-             （此前三张账首尾相接推诺、链子末端一句假话，逐条来历住\
-             `sftp_pool.rs::sftp_download` 那段注释）。\
-             ⚠ 不静默覆盖那一半在**窗口这一层**（`download::Ask` 那两问），\
-             因为「那儿有没有东西」是一次**本机** IO，池子那边看不见也不该看见。",
-        ),
-        // ── 传输那一族（第二~三刀）─────────────────────────────────────
-        // 〔F7c 09-24〕`sftp_upload` 这一行走了：拖入上传经通道（开单 → 订阅 → 后端 `files-commit-upload` 提交），
-        //   窗口进程一行 SFTP 都不碰；传输只写暂存区。
-        (
-            "TRANSFER_LANE_CAP",
-            "常量",
-            "一趟拖入同时起几件。**取的就是池里那个数**，不另写一个字面量\
-             （`设计/60 §5.4a` 的 `6 − 4 = 2` 格永远留给浏览）",
-        ),
-        // ── 🔴〔第五刀 2026-09-21〕`设计/99 §4.6.4` 那五条 ─────────────
-        (
-            "sftp_cancel_transfer",
-            "命令",
-            "取消一趟在飞的传输。**它自己不写任何路径**（翻一个 `AtomicBool`）⇒ \
-             不进 `REMOTE_WRITES`，也不需要围栏。\
-             〔F7c 09-24〕**今天只剩复制那一腿**（上传 / 下载经通道，停订即撤）；\
-             F7a 把复制换成后端 `files-copy` 那天连它一起走。\
-             〔`设计/99 §4.6.4` 单记它：「池子里有取消登记，窗口上没有取消按钮」。\
-             病根是那个 `transfer_id` 造在适配器的栈上 ⇒ 窗口说不出要取消哪一趟；\
-             造键的落点搬到了 `filewin::transfer::CancelDesk::mint`〕",
-        ),
-        (
-            "is_protected_claude_data_path",
-            "函数",
-            "🔴 **那道围栏的判定本身。** 窗口拿它在发往返**之前**就把踩线的挑出去并出声。\
+    // 〔F7c 收尾 09-24〕走掉三行〔已删：`sftp_download` · `TRANSFER_LANE_CAP` · `sftp_cancel_transfer`〔散文墓碑〕〕：
+    //   上传 / 下载经通道开单、订阅进度（`设计/60 §13`），复制那一腿的取消随复制走后端一起删了。
+    //   ⇒ 窗口接的池子**命令**从此是 0；剩下这一行是那道围栏判定的旧住址（一条函数，不是命令）。
+    const SITES: &[(&str, &str, &str)] = &[(
+        "is_protected_claude_data_path",
+        "函数",
+        "🔴 **那道围栏的判定本身。** 窗口拿它在发往返**之前**就把踩线的挑出去并出声。\
              ⚠ 〔步 H2 09-21〕`设计/99 §2 Q2` **用户拍了「拆」** ⇒ 判定的家已经搬去\
              `crate::claude_data_fence`，池子这边只剩一行 `pub use`（转出住址，不是第二个家）。\
              窗口那棵树本轮不在写区里 ⇒ 它这一处仍写着旧写法，而那是**唯一**还这么写的一处，\
@@ -843,12 +745,12 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
              ⚠ 两道围栏问的仍是这**一个**函数 ⇒ 判定不会漂；漂得动的只有文案。\
              ★ 本条的针是 `sftp_pool::` 前缀 ⇒ 它数的正是「还在走旧住址的那一处」，\
              与那条棘轮同一个事实、两个方向",
-        ),
-    ];
+    )];
     /// 「它是什么」那一栏的**封闭集合**。多出第四种就得回来论证。
     /// 〔F7a · 第三波 09-24〕原来还有「类型」一档（唯一一条是复制那一趟的裁决类型），
     /// 复制换到后端之后那一条走了 ⇒ 这一档没人用，删掉（下面那条「每一档都有人用」逐字要求）。
-    const KINDS: &[&str] = &["命令", "常量", "函数"];
+    // 〔F7c 收尾 09-24〕「命令」「常量」两档今天都没人用了（窗口接的池子命令是 0）⇒ 只剩「函数」。
+    const KINDS: &[&str] = &["函数"];
 
     let root = repo_root();
     let dir = root.join("src/bridge/src/filewin");
@@ -911,7 +813,9 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     //   → 5（少了复制那条命令与它的裁决类型：换成后端 `files-copy`）。
     assert_eq!(
         used.len(),
-        5,
+        // 〔F7c · 合主线 ＋ 收尾 09-24〕5 → 1：`sftp_download` · `sftp_upload` · `TRANSFER_LANE_CAP`（经通道）·
+        //   `sftp_cancel_transfer`〔散文墓碑〕（复制那一腿的取消，随复制走后端删了）走掉；剩那道围栏判定的旧住址。
+        1,
         "抠到 {} 处 `sftp_pool::…` 引用 —— 与现打的条数不等：抽取器坏了，或接线变了（实得 {used:?}）",
         used.len()
     );
@@ -978,24 +882,19 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     //   窗口成了独立进程、只经通道说 `call` 之后，池子那 13 条里有 7 条在后端有了对应命令，
     //   窗口不再碰它们（`D11`：没有退路）。剩下 6 条是窗口进程那一侧**还不是通道**的欠账。
     //   ⇒ 两件事各一条**两向相等**：窗口还用的 == 6 条；搬走的 == 下表 7 条（逐条写清搬去了哪）。
+    // 〔F7c 收尾 09-24〕这张表的人群是「池子里**还在**、而窗口不再用」的命令 ⇒ 池子收到只剩 `sftp_copy` 之后
+    //   它只剩一行。搬走过的十二条〔已删：`sftp_list_dir`→`files-ls` · `sftp_stat`→`files-stat` ·
+    //   `sftp_mkdir` · `sftp_delete` · `sftp_rename` · `sftp_chmod` · `sftp_write_text`→写面 ·
+    //   `sftp_realpath`→`files-home` · `sftp_read_text_for_edit`〔散文墓碑〕→`files-read-text`（F7a）·
+    //   `sftp_upload` / `sftp_download`→通道后面的传输台 · `sftp_cancel_transfer`〔散文墓碑〕→停订（F7c）〕连本体一起删了。
     const MOVED_TO_BACKEND: &[(&str, &str)] = &[
-        ("sftp_list_dir", "files-ls"),
-        ("sftp_stat", "files-stat"),
-        ("sftp_mkdir", "files-mkdir"),
-        ("sftp_delete", "files-delete"),
-        ("sftp_rename", "files-rename"),
-        ("sftp_chmod", "files-chmod"),
-        ("sftp_write_text", "files-write-text"),
-        // 〔F7a · 第三波 09-24〕开窗前解 home（此前住 monitor 那一侧、单拨一条 SFTP）。
-        ("sftp_realpath", "files-home"),
-        // 〔F7a · 第三波 09-24〕编辑器读一份文本（此前 SFTP 把字节整份搬过来；上限常量随之搬回窗口）。
-        ("sftp_read_text_for_edit", "files-read-text"),
-        // 〔F7a · 第三波 09-24〕同机复制（此前走池子那条零流量复制；窗口进程里「后端缺命令」那一类清零）。
+        // 〔F7a · 第三波 09-24〕同机复制（此前走池子那条零流量复制）。池子那条命令还在，只剩门禁 `f3-copy` 在量它。
         ("sftp_copy", "files-copy"),
     ];
     assert_eq!(
         declared_cmds.len(),
-        3,
+        // 〔F7c 收尾 09-24〕3 → 0：窗口一条池子命令都不接了（上传 · 往外拖经通道；取消随复制走后端）。
+        0,
         "窗口今天接了 {} 条池子命令（〔F2 09-24〕13 → 6：上传 · 往外拖 · 取消 · 读文本进编辑器 ·\
          同机复制 · 开窗前解 home；〔F7a 09-24〕6 → 5：开窗前解 home 换成后端 `files-home`；\
          5 → 4：读文本进编辑器换成后端 `files-read-text`；4 → 3：同机复制换成后端 `files-copy`）",
@@ -1048,42 +947,9 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
 /// ⇒ 本表把那个洞封上：命令的全集由 [`pool_commands`] 从文件里现打，
 /// 而全集必须**恰好**分成「已登记的写」与「已登记的读」两堆，一条都不许落在外面。
 const NON_WRITING_COMMANDS: &[(&str, &str, &str)] = &[
-    (
-        "sftp_realpath",
-        "把一条相对路径解成绝对路径",
-        "纯读 —— 它问远端「这是哪儿」，一个字节都不落盘",
-    ),
-    (
-        "sftp_list_dir",
-        "列一个远端目录",
-        "纯读。窗口与老面板的正题",
-    ),
-    (
-        "sftp_stat",
-        "一条路径的 stat",
-        "纯读 —— 上传与复制共用的那一问（「远端已经有这条路径了吗」），它不落任何字节",
-    ),
-    // 🔴〔散文墓碑 2026-09-21〕`sftp_download` **从这张「不写路径」的表上搬走了**。
-    //    它原先在这儿，理由逐字是：「它确实写盘，但写的是本机 ⇒ 不需要 Claude 数据围栏
-    //    （那道围栏管的是远端那台机器上正被 Claude 打开的文件）。⚠ 本机落点那一半归
-    //    `write_site_registry` 的管辖面」。
-    //    **括号里那句是假的**：`claude_data_fence` 自己的头注写着 F03b 那一路用它判的
-    //    正是「一个写**本机** `INBOX.txt` 的模块…关于**本机路径**的问题」。
-    //    而它指过去的那一站（`write_site_registry` 里 `download_inner` 那一行）
-    //    当时逐字写着「把远端文件落到**本地缓存**；写的**不是用户既有环境**」——
-    //    **也是假的**（`local_path` 来自老面板那个 `saveDialog`，用户指哪写哪）。
-    //    ⇒ 三张账首尾相接，而链子末端是一句假话 ⇒ 那个洞就这么活着。
-    //    现在它进了 `USER_CHOSEN_ENTRIES`，围栏在 `sftp_download` 第一行。
-    (
-        "sftp_read_text_for_edit",
-        "小文件读成可编辑文本",
-        "纯读（F49 三防护：>256KB / 含 NUL / 非 UTF-8 一律拒编而非截断）",
-    ),
-    (
-        "sftp_cancel_transfer",
-        "取消一趟在飞的传输",
-        "翻一个 `AtomicBool`，**它自己不写任何路径**（同 `SITES` 里那一行）",
-    ),
+    // 〔F7c 收尾 09-24〕这一堆五行全走了〔已删：`sftp_realpath` · `sftp_list_dir` · `sftp_stat` ·
+    //   `sftp_read_text_for_edit` · `sftp_cancel_transfer`〔散文墓碑〕〕（读侧今天是后端 `files-*`；取消是停订）。
+    //   表留着、今天是空的：它是「默认拒绝」的另一半 —— 池子里哪天再长出一条读命令，它得来这里写清理由。
 ];
 
 /// 🔴 **池子里每一条命令，要么是已登记的写、要么是已登记的读 —— 相等断言，两向。**
@@ -1176,7 +1042,8 @@ fn every_pool_command_is_either_a_registered_write_or_a_registered_read() {
     // 现打读数：两个数各自钉住，别只钉和。
     assert_eq!(
         (fenced.len(), readers.len()),
-        (8, 5),
+        // 〔F7c 收尾 09-24〕(8, 5) → (1, 0)：池子只剩 `sftp_copy` 一条带围栏的写命令，读命令一条都不剩。
+        (1, 0),
         "现打：写 {} 条 · 读 {} 条（2026-09-21 现打 **8 ＋ 5 = 13**；\
          当日早先是 7 ＋ 6 —— `sftp_download` 从「读」那一堆搬到了「写」那一堆，\
          它一直在写盘，只是写的是**用户选的本机路径**而没人守，逐条来历见\
@@ -1265,7 +1132,9 @@ fn a_fenced_write_refuses_before_it_touches_the_wire() {
     }
     // 抽取器自检：人群必须恰好是那七条带围栏的写命令（与两分那条判据同一个数）。
     assert_eq!(
-        checked, 8,
+        // 〔F7c 收尾 09-24〕8 → 1：只剩 `sftp_copy`。
+        checked,
+        1,
         "只找到 {checked} 条带围栏的命令（2026-09-21 现打 **8**：远端那七条 ＋ `sftp_download`\n\
          那一条**本机**落点〔当日补，来历见它的函数注释：三张账首尾相接推诿，末端一句假话〕）\n\
          —— 抽取器坏了，本条此刻在空转"

@@ -3245,6 +3245,93 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "letting_kill_broadcast_and_online_through_did_not_let_spawn_through",
             1,
         ),
+        // 〔F7c 收尾 09-24〕池子那十二条 Tauri 命令 ＋ 挂在它们名下的函数 / 判据删了（`设计/60 §13b`）；
+        //   留下的散文说的正是「它们为什么不在了」⇒ 第②条出路：贴墓碑 ＋ 记账。
+        ("src/bridge/README.md", "sftp_cancel_transfer", 1),
+        ("src/bridge/README.md", "sftp_read_text_for_edit", 2),
+        (
+            "src/bridge/src/filewin/editor.rs",
+            "sftp_read_text_for_edit",
+            2,
+        ),
+        ("src/bridge/src/filewin/mod.rs", "sftp_cancel_transfer", 1),
+        (
+            "src/bridge/src/filewin/mod.rs",
+            "sftp_read_text_for_edit",
+            1,
+        ),
+        (
+            "src/bridge/src/filewin/transfer.rs",
+            "sftp_cancel_transfer",
+            1,
+        ),
+        (
+            "src/bridge/src/filewin/writeops.rs",
+            "sftp_read_text_for_edit",
+            1,
+        ),
+        (
+            "src/bridge/src/sftp.rs",
+            "the_chmod_attrs_never_put_a_size_on_the_wire",
+            1,
+        ),
+        ("src/bridge/src/sftp_pool.rs", "is_lossy_name", 1),
+        (
+            "tests/bridge/filewin/boundary_tests.rs",
+            "sftp_cancel_transfer",
+            2,
+        ),
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "sftp_cancel_transfer",
+            2,
+        ),
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "sftp_read_text_for_edit",
+            1,
+        ),
+        (
+            "tests/bridge/remote_write_registry_tests.rs",
+            "sftp_cancel_transfer",
+            4,
+        ),
+        (
+            "tests/bridge/remote_write_registry_tests.rs",
+            "sftp_read_text_for_edit",
+            2,
+        ),
+        (
+            "tests/bridge/sftp_family_registry_tests.rs",
+            "sftp_cancel_transfer",
+            1,
+        ),
+        (
+            "tests/bridge/sftp_family_registry_tests.rs",
+            "sftp_read_text_for_edit",
+            1,
+        ),
+        (
+            "tests/bridge/sftp_pool_tests.rs",
+            "decode_editable_guards",
+            1,
+        ),
+        (
+            "tests/bridge/sftp_pool_tests.rs",
+            "list_dir_sort_dirs_first_then_lowercase",
+            1,
+        ),
+        ("tests/bridge/sftp_pool_tests.rs", "lossy_name_detection", 1),
+        (
+            "tests/bridge/sftp_pool_tests.rs",
+            "the_chmod_attrs_never_put_a_size_on_the_wire",
+            1,
+        ),
+        (
+            "tests/bridge/sftp_pool_tests.rs",
+            "the_chmod_mode_is_masked_down_to_permission_bits",
+            1,
+        ),
     ];
 
     let corpus = dead_name_corpus();
@@ -3491,10 +3578,10 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔AL1 · 2026-09-24〕规则收成一份那一拍新贴的两块墓碑（本机配对 helper · 远端回滚措辞 helper）。
         ("src/bridge/src/fenced_block.rs", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
-        ("src/bridge/src/sftp.rs", 4),
+        ("src/bridge/src/sftp.rs", 6), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/profile_installer.rs", 2), // 〔AL1〕+1：`AccountAliasReport` 那一句
         ("src/bridge/src/verified_write.rs", 2),
-        ("tests/bridge/remote_write_registry_tests.rs", 1),
+        ("tests/bridge/remote_write_registry_tests.rs", 7), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
         ("tests/bridge/backend/control/local_backend_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
@@ -3506,7 +3593,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/wire.rs", 1),
         // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
-        ("src/bridge/README.md", 3),
+        ("src/bridge/README.md", 6), // 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/build.rs", 1),
         ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
         // 〔BS1b 09-24〕6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
@@ -3522,10 +3609,10 @@ fn every_prose_tombstone_mark_is_registered() {
         //   `source.rs` 的头注上留了一块墓碑：**4 处标记**（一处是墓碑正文那一句，
         //   另三处各挂在一条**随功能一起走掉的判据**的名字上 ——
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
-        ("src/bridge/src/filewin/source.rs", 4),
+        ("src/bridge/src/filewin/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/history.rs", 1),
         ("src/bridge/src/launch.rs", 1),
-        ("src/bridge/src/lib.rs", 1),
+        ("src/bridge/src/lib.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/local_backend_host.rs", 1),
         ("src/bridge/src/local_origin_registry.rs", 1),
         ("src/bridge/src/spawn_managed.rs", 2),
@@ -3561,17 +3648,17 @@ fn every_prose_tombstone_mark_is_registered() {
         // 🔴 〔波 4 合并时补〕`filewin/editor.rs` 那一段记的是**一个被现打证伪的旧读数**
         //   （「26 万字节排一帧 16.3 ms」是 debug 档 ＋ 全新 Context 的第一帧；release 是 2.5 ms）。
         //   按本表的口径它是墓碑：**不删那段话**，但挂上标记、登记在册。
-        ("src/bridge/src/filewin/editor.rs", 1),
+        ("src/bridge/src/filewin/editor.rs", 3), // 〔F7c 收尾 09-24〕1 → 3（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/bridge/comm_boundary_registry_tests.rs", 1),
         ("tests/bridge/crates/guard-core/lib_tests.rs", 1),
         ("tests/bridge/doc_claim_registry_tests.rs", 1),
         ("tests/bridge/filewin/entry_tests.rs", 1),
         // 🔴〔本机侧退役 2026-09-23〕`parent_dir` 只剩一个算法 ⇒ 那条判据改了名
         //   （旧名尾巴上那半判的是本机那一支）。旧名逐字留着说明「它为什么改了」。
-        ("tests/bridge/filewin/source_tests.rs", 1),
+        ("tests/bridge/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔AL1 · 2026-09-24〕+5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
-        ("tests/bridge/parity_ledger_tests.rs", 10),
+        ("tests/bridge/parity_ledger_tests.rs", 11), // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/bridge/plugin_class_registry_tests.rs", 2),
         ("tests/bridge/polling_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
@@ -3586,6 +3673,16 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/evidence/K-R20-C-deadname-census.py", 1),
         ("tests/evidence/S29-legacy-compat-census.py", 11),
         ("tests/ipc/commands.vitest.ts", 4), // 〔AL1〕+2：K-R49 增量账里 `write_account_aliases` 那两行
+        // 〔F7c 收尾 09-24〕SFTP 那一族收到只剩传输：删掉的命令 / 函数 / 判据名在这几份里逐处挂了墓碑。
+        ("src/bridge/src/filewin/mod.rs", 2),
+        ("src/bridge/src/filewin/transfer.rs", 4),
+        ("src/bridge/src/filewin/writeops.rs", 1),
+        ("src/bridge/src/sftp_pool.rs", 1),
+        ("tests/bridge/filewin/boundary_tests.rs", 2),
+        ("tests/bridge/filewin/transfer_tests.rs", 1),
+        ("tests/bridge/sftp_family_registry_tests.rs", 2),
+        ("tests/bridge/sftp_move_ledger_tests.rs", 1),
+        ("tests/bridge/sftp_pool_tests.rs", 5),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。
@@ -3603,7 +3700,9 @@ fn every_prose_tombstone_mark_is_registered() {
     const SITES: &[(&str, usize)] = &[
         ("src/backend/control/ccm/plan.rs", 1),
         ("tests/bridge/filewin/source_tests.rs", 1),
-        ("tests/bridge/remote_write_registry_tests.rs", 1),
+        // 〔F7c 收尾 09-24〕`remote_write_registry_tests.rs` 那一行走了：它挂在 `NON_WRITING_COMMANDS` 里
+        //   「`sftp_download` 从这张表搬走了」那段 09-21 的订正上，而那张表的全部五行连同它说的那条命令
+        //   整轴删了（池子收到只剩 `sftp_copy`）⇒ 被守的那件事不在了，按第②条出路减掉。
         ("tests/evidence/K-R112-deathvalue.md", 1),
         ("tests/scripts/gate.sh", 1),
     ];

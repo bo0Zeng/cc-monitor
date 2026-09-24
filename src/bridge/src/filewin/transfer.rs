@@ -63,12 +63,12 @@
 //!
 //! # 🔴〔第五刀 2026-09-21〕取消那一条（`设计/99 §4.6.4` 单记的那一格）
 //!
-//! 那一节逐字：「`sftp_cancel_transfer` 那一条值得单记：池子里有取消登记，
+//! 那一节逐字：「`sftp_cancel_transfer`〔散文墓碑〕 那一条值得单记：池子里有取消登记，
 //! **窗口上没有取消按钮** ⇒ 一趟传输起来了就只能等它自己完。」
 //!
 //! ## 病根不是「少画一颗按钮」，是**那个键窗口说不出来**
 //!
-//! 池子的取消登记表以 `transfer_id` 为键（`sftp_pool::sftp_cancel_transfer` 吃的就是它），
+//! 池子的取消登记表以 `transfer_id` 为键（`sftp_pool::sftp_cancel_transfer〔散文墓碑〕` 吃的就是它），
 //! 而这一刀之前那个 id 是在 [`upload_remote`] 里 `uuid::Uuid::new_v4()` **现造的**
 //! ⇒ 它从没离开过那个函数的栈 ⇒ 窗口**根本说不出要取消哪一趟**。
 //! 画一颗按钮解决不了这个：按钮手上没有键。
@@ -81,7 +81,7 @@
 //! | 半 | 落点 | 买到 | 买不到 |
 //! |---|---|---|---|
 //! | **还没起的那几件一件都不起** | [`launch_unless_cancelled`] | 行为：`N` 件里按下取消之后，`go` 再也不被调（相等断言 ＋ 阴性对照） | —— |
-//! | **已经在飞的那一趟停下来** | [`forward_cancel`] → `sftp_pool::sftp_cancel_transfer` | **委派**：那几个 id 真的被送进池子那条命令 | 🔴 **一趟真传输在池子里真的停了** —— 那要一趟真连接（本仓红线不许），而池子那一侧的取消旗由它自己的判据与秤 F4 钉着 |
+//! | **已经在飞的那一趟停下来** | 〔F7c 收尾〕[`CancelDesk::stop_token`] → 停订 → 传输台撤（从前那条 `forward_cancel`〔散文墓碑〕把 id 送进池子的取消命令，随复制走后端一起删了） | 行为：按取消 ⇒ 对端看见流被丢掉、不提交 | 🔴 **一趟真传输在真 sshd 上真的停了** —— 那要一趟真连接（本仓红线不许） |
 
 //!
 //! # 🔴〔F7c · 第三波 · 2026-09-24〕窗口进程**一行 SFTP 都不碰**了（`设计/60 §13`）
@@ -100,8 +100,8 @@
 //! - 覆盖不覆盖由这一侧**显式**交给后端（[`Pending::overwrite`]：人在那一问里点了「覆盖」的才是 `true`）；
 //!   人没被问过的那几件一律 `false` ⇒ 目标在两问之间冒出来了，后端拒，不静默盖掉。
 //! - 取消：窗口里那颗按钮 ⇒ [`CancelDesk::request`] 拨下这一摞的撤单令牌 ⇒ 每一趟的订阅停掉 ⇒
-//!   传输台那一侧「停订即撤」。⚠ [`forward_cancel`] 那一条旧路**只剩复制那一腿**
-//!   （`copy.rs` 仍在本进程里直调池子的 `sftp_copy`，等 F7a 的 `files-copy`）。
+//!   传输台那一侧「停订即撤」。〔F7c 收尾〕从前复制那一腿的池子取消（`forward_cancel`〔散文墓碑〕）
+//!   随复制走后端（F7a `files-copy`，不可取消）一起删了 ⇒ 窗口进程里一个 `sftp_pool` 符号都不剩。
 
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -367,9 +367,7 @@ impl CancelDesk {
     pub fn request(&self) -> Vec<String> {
         self.requested.store(true, Ordering::SeqCst);
         self.stop_token().cancel();
-        let ids = self.in_flight_ids();
-        forward_cancel(&ids);
-        ids
+        self.in_flight_ids()
     }
 
     /// 下一摞开始：旗放下、在飞表清空。
@@ -380,27 +378,6 @@ impl CancelDesk {
         self.requested.store(false, Ordering::SeqCst);
         self.in_flight.lock().unwrap().clear();
         *self.stop.lock().unwrap() = Default::default();
-    }
-}
-
-/// 把取消**真的送到池子里** —— 调既有命令 `sftp_pool::sftp_cancel_transfer`。
-///
-/// 🔴〔F7c 09-24〕**它今天只剩复制那一腿**：上传 / 下载经通道起，撤它们的是
-/// [`CancelDesk::stop_token`]（停订即撤）；而复制仍在本进程里直调池子的 `sftp_copy`
-/// （登记在本进程那张取消表里）⇒ 这一条在 F7a 把复制换成后端 `files-copy` 那天**整条删掉**
-/// （`boundary_tests::WINDOW_SIDE` 把它归在「后端缺命令」那一类，与 `sftp_copy` 同一行账）。
-///
-/// 🔴 **为什么可以在 UI 线程上同步跑完一个 `async fn`**：那条命令的函数体里
-/// **一个 `await` 都没有**（它只锁一次取消登记表、翻一个 `AtomicBool`）
-/// ⇒ `block_on` 立刻返回，不阻塞画帧。
-/// ⚠ 换成「往看板里塞一个 tokio `Handle`」的话，**画一帧就依赖一个运行时**，
-/// 而窗口手上**不一定有**一个（`FileWindow::rt` 是 `Option`，理由住它自己那一格；
-/// 从前那条理由是「本机那一侧压根没有运行时」，本机侧 2026-09-23 退役了）。
-///
-/// ⚠ 没注册过的 id 在池子那侧是 no-op（那条命令的注释逐字）⇒ 重复按取消无害。
-pub fn forward_cancel(ids: &[String]) {
-    for id in ids {
-        futures::executor::block_on(crate::sftp_pool::sftp_cancel_transfer(id.clone()));
     }
 }
 
