@@ -1031,6 +1031,12 @@ export const commands = {
      * - 两个都空 ⇒ 问远端 `realpath('.')`（第七刀）。
      */
     revealFile?: string | null;
+    /**
+     * 〔FW34〕〔待退役〕老 SFTP 面板留在 webview 里的目录书签（机器名 → 目录），开窗前并进
+     * 原生窗口的书签文件（Rust 侧 `filewin::entry::carry_legacy`）；并不进去整趟报错、不开窗。
+     * 没有旧书签就不带这一格。
+     */
+    carryBookmarks?: Record<string, string[]>;
   }) => invoke<number>("open_file_window", args),
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */

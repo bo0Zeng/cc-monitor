@@ -244,17 +244,19 @@ fn a_writer_waits_while_another_holds_the_lock() {
     let (tx, rx) = std::sync::mpsc::channel();
     let f2 = file.clone();
     let t = std::thread::spawn(move || {
-        mutate(&f2, |b| {
-            toggle_in(b.entry("devbox".into()).or_default(), "/x")
-        })
-        .unwrap();
+        mutate(&f2, |b| toggle_in(b.entry("devbox".into()).or_default(), "/x")).unwrap();
         tx.send(()).unwrap();
     });
     assert!(
-        rx.recv_timeout(std::time::Duration::from_millis(300)).is_err(),
+        rx.recv_timeout(std::time::Duration::from_millis(300))
+            .is_err(),
         "锁被别人拿着时，写照样进去了 —— 写口没上锁"
     );
-    assert_eq!(read_book(&file).unwrap(), Book::new(), "锁拿着的时候盘上就变了");
+    assert_eq!(
+        read_book(&file).unwrap(),
+        Book::new(),
+        "锁拿着的时候盘上就变了"
+    );
     drop(held);
     rx.recv_timeout(std::time::Duration::from_secs(10))
         .expect("锁放了还写不进去");
