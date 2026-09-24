@@ -1908,6 +1908,9 @@ webview 就**同时绕过上面每一张表** —— 而那三张表一条都不
 没登记的权限 · 登记了而清单里已没有的死行 · 继承这套权限的窗口模式逐字相等）＋
 `capability_registry_tests.rs::the_webview_execution_surface_stays_closed`（`withGlobalTauri` 为 `false` ·
 CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那条刻意允许的样式豁免必须在场，免得禁词在一份被整个换掉的 CSP 上空转）。
+`capability_registry_tests.rs::tauri_loads_capabilities_from_exactly_one_source`（**能力只有一个来源**：
+`capabilities/` 目录的文件集两向等于 `{default.json}` · 主配置与 sidecar 配置里 `capabilities` 键零处 ·
+会被合并进主配置的平台配置文件零存在 · 生产源码零运行期加能力 —— 没有它，前两条只守住了四个来源里的一个）。
 同一个文件里的 `the_build_time_execution_surface_stays_registered` 管的是**构建／安装期**的执行面，与本条是邻居、不是本条。
 
 **违反过几次**：**真违反 0 次**（清单今天干净）。但**「没人守」被量到过两次**，都在 08-08：
@@ -1916,10 +1919,9 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 （缺条的原账：`设计/99 §4.11.2` 甲类 ④）。
 
 ⚠ **它买不到的，如实登记**：
-- **只读 `capabilities/default.json` 一个文件。** Tauri 2 会加载 `capabilities/` 目录下的**全部**能力文件，
-  以及 `tauri.conf.json` 里 `app.security.capabilities` 的内联项 ⇒ **另放一份能力文件、或在配置里内联一份**，
-  今天一条都不红（登记表里 `core:window:allow-hide` 那一行的理由自己就写着「另开文件等于绕过它」）。
-  补一条「能力文件集合 == {`default.json`} 且配置里无内联能力」是否要做，交主会话（`调研/第四波记录/D0b.md §2.1`）。
+- **只认得今天现打到的四个来源**（`tauri-build` 默认目录模式 · `app.security.capabilities` · 平台配置合并 · 运行期加能力）。
+  上游再开第五条路（或 `build.rs` 改用自定义的能力目录模式），本条要跟着加一格 —— 它不会自己知道。
+  〔升格当天这一格原是个洞：判据只读 `default.json` 一个文件，另放一份能力文件一条都不红；同日补上。〕
 - **不判一条已登记的权限本身危不危险**（那要读语义）；`core:default` 在上游展开成了什么也不判 ——
   上游升级时由「默认拒绝」在登记表那里当场提问。
 - 文件管理器窗口是**独立进程、不是 webview**，拿不到这份清单 ⇒ 不在本条射程里；它碰得到什么由它自己那一族判据管，不由本条背书。
