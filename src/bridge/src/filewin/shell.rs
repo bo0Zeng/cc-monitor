@@ -983,7 +983,6 @@ impl FileWindow {
     /// 这里只负责把「问谁 · 怎么问 · 怎么起」三个口接上去（同 [`Self::start_drop`]）。
     /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
-        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
@@ -994,42 +993,32 @@ impl FileWindow {
             return false;
         };
         let origin = self.source.origin();
-        let cfg = cfg.clone();
         let board = self.copy_board.clone();
-        // 🔴 把窗口交给看板（同 `start_drop`）：进度与裁决都是从 tokio 那条线程写进来的，
+        // 🔴 把窗口交给看板（同 `start_drop`）：「在跑」与结局都是从 tokio 那条线程写进来的，
         //    不敲一下，屏幕要等用户下次动鼠标才更新。
         board.attach(ctx);
-        // 🔴〔第五刀〕新的一趟 ⇒ 取消台复位（同 [`Self::start_drop`] 那条理由）。
-        board.cancels().reset();
         h.spawn(async move {
-            let copy_cfg = cfg.clone();
+            let (probe_line, probe_origin) = (line.clone(), origin.clone());
             let ask_board = board.clone();
             let run_board = board.clone();
-            let out = super::copy::run_copy(
-                job,
-                move |j| {
-                    let line = line.clone();
-                    let origin = origin.clone();
-                    async move { super::copy::probe_target(&line, &origin, &j).await }
-                },
-                move |j| {
-                    let rx = ask_board.ask(j);
-                    async move { rx.await.unwrap_or(false) }
-                },
-                // 🔴〔第五刀〕同上：取消那道闸 ＋ 造键，都在 `launch_unless_cancelled` 里。
-                //   ⚠ 复制那一路的 `launch` 回的是 `Result<CopyVerdict, String>`，
-                //   而那道闸回 `Result<(), String>` ⇒ 裁决经 `verdict` 这个格子带出来
-                //   （**不许**把它压成 `bool`，理由住 `copy::CopyOutcome`）。
-                move |j| async move {
-                    let desk = run_board.cancels();
-                    let name = j.name.clone();
-                    super::transfer::launch_unless_cancelled(&desk, &name, |id| async move {
-                        super::copy::copy_remote(&copy_cfg, &j, &run_board, &id).await
-                    })
-                    .await
-                },
-            )
-            .await;
+            let out =
+                super::copy::run_copy(
+                    job,
+                    move |j| async move {
+                        super::copy::probe_target(&probe_line, &probe_origin, &j).await
+                    },
+                    move |j| {
+                        let rx = ask_board.ask(j);
+                        async move { rx.await.unwrap_or(false) }
+                    },
+                    // 〔F7a〕经通道问后端 `files-copy`；第二个参数是覆盖策略（问过且答了「覆盖」）。
+                    //   后端这一趟取消不掉 ⇒ 不再走取消那道闸（理由住 `copy.rs` 头注）。
+                    move |j, overwrite| async move {
+                        run_board.begin(&j.name);
+                        super::copy::copy_remote(&line, &origin, &j, overwrite).await
+                    },
+                )
+                .await;
             board.finish(out);
         });
         true
