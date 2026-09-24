@@ -695,11 +695,36 @@ fn the_file_window_really_goes_through_the_big_mode() {
 // 七、读数（只印，不钉）
 // ═══════════════════════════════════════════════════════════════════
 
+/// 本线程到现在一共在 CPU 上跑了多少纳秒（`/proc/thread-self/schedstat` 第一栏）。
+///
+/// 🔴 为什么要它：本机常被别的几路编译吃满（负载 40–55 / 24 核），墙钟读数会被**排队**
+/// 抬高一到两倍、趟与趟之间差十倍（现打过：同一档 2 MiB 16.81–183.17 ms）。
+/// 上 CPU 的时间只数这一帧真干的活，不数等调度的那段 ⇒ 门槛按它推。
+/// ⚠ 它仍会被缓存 / 超线程争用抬高一点，所以它是**偏保守**的数，不是下界。
+/// ⚠ 现打：本机上这个数**按 1 ms 取整**（正在跑的线程只在时钟节拍上记账）⇒ 它只够当
+///   「墙钟有没有被排队抬高」的粗对照，**门槛按低负载时的墙钟推**（`bigfile::LINE_READING` 头注）。
+fn on_cpu_ns() -> u64 {
+    std::fs::read_to_string("/proc/thread-self/schedstat")
+        .ok()
+        .and_then(|s| s.split_whitespace().next().and_then(|v| v.parse().ok()))
+        .unwrap_or(0)
+}
+
+/// 量一次：`(墙钟 ms, 上 CPU ms)`。
+fn timed(f: impl FnOnce()) -> (f64, f64) {
+    let (c0, t0) = (on_cpu_ns(), std::time::Instant::now());
+    f();
+    (
+        t0.elapsed().as_secs_f64() * 1000.0,
+        on_cpu_ns().saturating_sub(c0) as f64 / 1e6,
+    )
+}
+
 /// 两个阈值的**读数来源**（`LINE_READING` / `TOTAL_READING`），以及大文件模式自己的打字帧。
 ///
 /// 🔴 每档**三趟**，每趟一个全新 `Context`、先烤热两帧（不计）、再连打三帧取最坏；
-/// 印出档位（`debug_assertions`）与当时的负载 —— 同机其它进程在编译时读数会整体变慢。
-/// 跑法：`cargo test --release -p monitor --lib filewin::bigfile::tests::the_readings -- --nocapture --ignored`
+/// 印出档位（`debug_assertions`）与当时的负载，墙钟与上 CPU 两个数并排（理由见 [`on_cpu_ns`]）。
+/// 跑法：`cargo test --release -p monitor --lib filewin::bigfile::tests::the_readings -- --nocapture --ignored --test-threads=1`
 #[test]
 #[ignore = "读数，不是判据；要 release 档手动跑"]
 fn the_readings_behind_the_two_thresholds() {
@@ -715,36 +740,43 @@ fn the_readings_behind_the_two_thresholds() {
         screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN)),
         ..Default::default()
     };
+    let worst = |v: &mut (f64, f64), d: (f64, f64)| {
+        v.0 = v.0.max(d.0);
+        v.1 = v.1.max(d.1);
+    };
     // 普通路径（不进模式时那个 `TextEdit`，与 `show` 里那一支逐项相同）每敲一个键那一帧。
-    let normal = |text: &str| -> f64 {
+    let normal = |text: &str| -> (f64, f64) {
         let ctx = egui::Context::default();
         let mut s = text.to_string();
-        let mut worst: f64 = 0.0;
+        let mut w = (0.0, 0.0);
         for i in 0..5 {
             if i >= 2 {
                 s.push('x');
             }
             let mut inp = screen();
             inp.time = Some(i as f64 * 0.016);
-            let t0 = std::time::Instant::now();
-            let out = ctx.run_ui(inp, |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut s)
-                        .desired_rows(VIEW_ROWS)
-                        .desired_width(f32::INFINITY)
-                        .code_editor(),
-                );
+            let mut out = None;
+            let d = timed(|| {
+                out = Some(ctx.run_ui(inp, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut s)
+                            .desired_rows(VIEW_ROWS)
+                            .desired_width(f32::INFINITY)
+                            .code_editor(),
+                    );
+                }));
             });
-            let dt = t0.elapsed().as_secs_f64() * 1000.0;
-            out.drop_without_applying_deltas();
+            if let Some(o) = out {
+                o.drop_without_applying_deltas();
+            }
             if i >= 2 {
-                worst = worst.max(dt);
+                worst(&mut w, d);
             }
         }
-        worst
+        w
     };
     // 大文件模式：点一下拿焦点，再每帧送一个字。
-    let big = |text: &str| -> f64 {
+    let big = |text: &str| -> (f64, f64) {
         let mut p = pane(text.to_string());
         let ctx = egui::Context::default();
         let seen = frame(&ctx, 0.0, Vec::new(), &mut p);
@@ -758,22 +790,30 @@ fn the_readings_behind_the_two_thresholds() {
             frame(&ctx, tt, ev, &mut p);
             tt += 0.5;
         }
-        let mut worst: f64 = 0.0;
+        let mut w = (0.0, 0.0);
         for _ in 0..3 {
             tt += 0.5;
-            let t0 = std::time::Instant::now();
-            frame(&ctx, tt, vec![egui::Event::Text("x".into())], &mut p);
-            worst = worst.max(t0.elapsed().as_secs_f64() * 1000.0);
+            let d = timed(|| {
+                frame(&ctx, tt, vec![egui::Event::Text("x".into())], &mut p);
+            });
+            worst(&mut w, d);
         }
-        worst
+        w
     };
-    let three = |f: &dyn Fn() -> f64| -> String {
-        let v: Vec<f64> = (0..3).map(|_| f()).collect();
-        let lo = v.iter().copied().fold(f64::INFINITY, f64::min);
-        let hi = v.iter().copied().fold(0.0, f64::max);
+    let three = |f: &dyn Fn() -> (f64, f64)| -> String {
+        let v: Vec<(f64, f64)> = (0..3).map(|_| f()).collect();
+        let band = |g: &dyn Fn(&(f64, f64)) -> f64| {
+            let lo = v.iter().map(g).fold(f64::INFINITY, f64::min);
+            let hi = v.iter().map(g).fold(0.0, f64::max);
+            format!("{lo:.2}–{hi:.2}")
+        };
         format!(
-            "{lo:.2}–{hi:.2} ms（三趟：{:.2} / {:.2} / {:.2}）",
-            v[0], v[1], v[2]
+            "上 CPU {} ms｜墙钟 {} ms（三趟上 CPU：{:.2} / {:.2} / {:.2}）",
+            band(&|x| x.1),
+            band(&|x| x.0),
+            v[0].1,
+            v[1].1,
+            v[2].1
         )
     };
     for kib in [256usize, 512, 1024, 2048, 4096] {
