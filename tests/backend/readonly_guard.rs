@@ -424,15 +424,14 @@ mod tests {
         //   就被算进那条零富余的递减棘轮（现打：22 > 20，红在桥那一侧）。
         for fn_row in prod.split_inclusive('\n') {
             let fn_row_t = fn_row.trim_end();
-            if fn_row_t
+            let is_fn_head = fn_row_t
                 .split_whitespace()
                 .next()
                 .is_some_and(|w| w == "fn")
-                || fn_row_t.split_whitespace().take(2).collect::<Vec<_>>() == ["pub", "fn"]
-            {
-                if !fn_row.starts_with(' ') && !fn_row.starts_with('\t') {
-                    starts.push(at);
-                }
+                || fn_row_t.split_whitespace().take(2).collect::<Vec<_>>() == ["pub", "fn"];
+            let at_column_zero = !fn_row.starts_with(' ') && !fn_row.starts_with('\t');
+            if is_fn_head && at_column_zero {
+                starts.push(at);
             }
             at += fn_row.len();
         }
