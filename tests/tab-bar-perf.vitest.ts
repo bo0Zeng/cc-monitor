@@ -19,6 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null)
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
 
 import { TabBarView, type TabBarViewHost } from "../src/tab-bar-view";
+import { TabBarDrag } from "../src/tab-bar-drag";
 import { TabStore } from "../src/tab-store";
 import type { TabBarPrefs } from "../src/tab-bar-prefs";
 import type { Tab } from "../src/tab-model";
@@ -240,5 +241,95 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
     r.view.refresh();
     const kids = [...r.bar.children];
     expect(kids.map((e) => (e.classList.contains("tab-group") ? "G" : "t")).join("")).toBe("GGttt");
+  });
+});
+
+describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两个", () => {
+  /** 栏里 N 个 tab（全散着），每颗按钮一条 40px 的带；每量一次记一笔。 */
+  const dragRig = (n: number): { r: Rig; drag: TabBarDrag; reads: { n: number } } => {
+    const r = make(n);
+    const reads = { n: 0 };
+    r.store.orderedIds.forEach((sid, i) => {
+      r.view.tabButtons.get(sid)!.root.getBoundingClientRect = () => {
+        reads.n += 1;
+        return { top: i * 40, height: 40, bottom: i * 40 + 40, left: 0, right: 100 } as DOMRect;
+      };
+    });
+    const drag = new TabBarDrag(
+      r.store,
+      {
+        collections: [],
+        collectionsLoaded: false,
+        persistOrder: vi.fn().mockResolvedValue(undefined),
+      } as unknown as TabBarPrefs,
+      r.bar,
+      r.view.tabButtons,
+      { refreshTabBar: vi.fn(), openInNewWindow: vi.fn().mockResolvedValue(undefined) },
+    );
+    return { r, drag, reads };
+  };
+  const move = (y: number): void => {
+    document.dispatchEvent(new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: y, bubbles: true }));
+  };
+  const down = (r: Rig, drag: TabBarDrag, sid: string): void => {
+    const root = r.view.tabButtons.get(sid)!.root;
+    drag.begin(new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0 }), sid, root);
+  };
+  afterEach(() => {
+    document.dispatchEvent(new MouseEvent("mouseup", { clientX: 10, clientY: 0, bubbles: true }));
+  });
+
+  it("起拖后 12 次 mousemove ⇒ 矩形一共量 N 次（N = 8 与 N = 20 各一遍）", () => {
+    for (const n of [8, 20]) {
+      const { r, drag, reads } = dragRig(n);
+      down(r, drag, "s0");
+      for (let k = 0; k < 12; k++) move(30 + k * 25);
+      expect(reads.n, `N = ${n}`).toBe(n);
+      document.dispatchEvent(new MouseEvent("mouseup", { clientX: 10, clientY: 0, bubbles: true }));
+    }
+  });
+
+  it("tab 栏滚了 / 窗口尺寸变了 ⇒ 缓存作废，下一次 mousemove 再量 N 次（不是每次都量）", () => {
+    const n = 10;
+    const { r, drag, reads } = dragRig(n);
+    down(r, drag, "s0");
+    move(50);
+    move(60);
+    expect(reads.n).toBe(n);
+    r.bar.dispatchEvent(new Event("scroll"));
+    move(70);
+    move(80);
+    expect(reads.n).toBe(2 * n);
+    window.dispatchEvent(new Event("resize"));
+    move(90);
+    expect(reads.n).toBe(3 * n);
+  });
+
+  it("拖完再拖：上一轮的缓存不带进下一轮（新一轮起拖重量 N 次）", () => {
+    const n = 6;
+    const { r, drag, reads } = dragRig(n);
+    down(r, drag, "s0");
+    move(50);
+    document.dispatchEvent(new MouseEvent("mouseup", { clientX: 10, clientY: 50, bubbles: true }));
+    down(r, drag, "s1");
+    move(120);
+    expect(reads.n).toBe(2 * n);
+  });
+
+  it("落点没变的 mousemove ⇒ `classList.toggle` 0 次；换一个落点 ⇒ 恰好 2 次（清旧 ＋ 标新）", () => {
+    const { r, drag } = dragRig(20);
+    down(r, drag, "s0");
+    move(130); // 起拖 ＋ 第一次标（落在 s3 之前）
+    const spy = vi.spyOn(DOMTokenList.prototype, "toggle");
+    try {
+      move(131);
+      move(132);
+      expect(spy).toHaveBeenCalledTimes(0);
+      move(250); // 换到另一格
+      expect(spy).toHaveBeenCalledTimes(2);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(r.bar.querySelectorAll(".drop-before").length, "任何时刻只有一个落点标记").toBe(1);
   });
 });
