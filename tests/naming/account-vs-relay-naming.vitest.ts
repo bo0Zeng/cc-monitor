@@ -268,7 +268,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: null,
     kind: "散文词组",
     why: "key 是账号的一格，层 1 手里没有任何 key",
-    state: "pending",
+    state: "done",
   },
   {
     old: "中转表 / 中转的路由表",
@@ -277,7 +277,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: null,
     kind: "散文词组",
     why: "那张表是层 2 的",
-    state: "pending",
+    state: "done",
   },
   {
     old: "中转 id",
@@ -286,7 +286,16 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: null,
     kind: "散文词组",
     why: "账号 id",
-    state: "pending",
+    state: "done",
+  },
+  {
+    old: "设置里说走中转",
+    re: /说走中转/,
+    fresh: "设置里说走 apikey 端点改写",
+    freshRe: null,
+    kind: "散文词组",
+    why: "设置里说的是「这个号在 apikey 表里有行」—— 全量注入开关开着时，没有行的号也过中转",
+    state: "done",
   },
   {
     old: "中转去读哪份凭据 / 中转说没配",
@@ -295,7 +304,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: null,
     kind: "散文词组",
     why: "读凭据文件、判「这个号配没配」的是层 2",
-    state: "pending",
+    state: "done",
   },
 ];
 
@@ -381,12 +390,13 @@ function loadCorpus(): Corpus {
 }
 
 export function hitsIn(texts: Map<string, string>, re: RegExp): string[] {
-  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+  // 先整份判一次（快），命中了才逐行切 —— 全仓两千多份文件 × 几十条匹配式，逐行全切会超时。
+  const once = new RegExp(re.source, re.flags.replace("g", ""));
   const out: string[] = [];
   for (const [p, t] of texts) {
+    if (!once.test(t)) continue;
     for (const line of t.split("\n")) {
-      g.lastIndex = 0;
-      if (g.test(line)) out.push(`${p}: ${line.trim().slice(0, 160)}`);
+      if (once.test(line)) out.push(`${p}: ${line.trim().slice(0, 160)}`);
     }
   }
   return out;
@@ -413,7 +423,7 @@ describe("R3 · 账号 / 中转命名清账（`设计/20` 术语归属）", () =
   it("正控 ③：中转（层 1）那几个名字逐条看得见（同一个扫描器，表不腐）", () => {
     const blind = RELAY_NAMES.filter((r) => hitsIn(corpus.texts, r.re).length === 0).map((r) => r.name);
     expect(blind, "这几条登记为层 1 的名字全仓零命中 —— 表腐了或扫描器瞎了").toEqual([]);
-  });
+  }, 60_000);
 
   it("每条账号名的状态与盘面逐条相等：done ⇒ 旧名零命中且新名在；pending ⇒ 旧名还在", () => {
     const wrong: string[] = [];
@@ -427,5 +437,5 @@ describe("R3 · 账号 / 中转命名清账（`设计/20` 术语归属）", () =
       }
     }
     expect(wrong, wrong.join("\n")).toEqual([]);
-  });
+  }, 60_000);
 });

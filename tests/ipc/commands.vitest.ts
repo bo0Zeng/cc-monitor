@@ -911,7 +911,7 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
       "tab 栏那条本机 resume 没把**这条会话上次的账号**传下去 ——\n" +
         "`D5` 刀 `X3b` 正是把这一处换成 `localLaunchAccountSync(null)`（用当前号顶替 pin），\n" +
         "当时全仓 `1509 passed` 全绿。后果是**静默串号**：切过号之后 resume 落到当前号上，\n" +
-        "中转再按那个错的 id 换上**别人那一行的 key**。\n" +
+        "账号层再按那个错的 id 换上**别人那一行的 key**。\n" +
         "🔴 `K-R53`：名字也必须在里面 —— 后端那条 ccm 路只会 `--account <名字>`。",
     ).toEqual({ kind: "named", configDir: DIR_A, name: "acct-a" });
   });

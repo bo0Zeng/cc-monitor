@@ -859,7 +859,7 @@ fn the_key_segment_is_the_sid_when_resuming_and_a_nonce_when_starting_fresh() {
 //   诚实边界一起摘掉。新家：`src/backend/control/ccm/plan.rs` 的
 //   `tests::the_container_path_forwards_every_inherited_variable_inward`。
 // ⚠ 那段诚实边界里有一句**今天仍然成立、而且没有别处写着**，抬到这里别丢：
-//   本机中转这条路上**没有任何生产输入能走到它** —— 能推出中转 id 的只有
+//   本机中转这条路上**没有任何生产输入能走到它** —— 能推出 apikey 账号 id 的只有
 //   `LaunchAccount::Named`，而 ccm 渲染器对 `Named` 必然 §35 短路（只有 configDir、没有名字）
 //   ⇒ 两条路今天不相交。那个事实由 `history::tests::
 //   a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container` 逐格钉住。

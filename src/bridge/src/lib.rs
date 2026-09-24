@@ -1782,7 +1782,7 @@ fn read_apikey_credentials_status() -> Result<creds_store::ApikeyCredentialsStat
     creds_store::read_status()
 }
 
-/// `K-H2b` `KH2B7`：界面问「**这几个本机账号，起会话时会不会走本机中转**」。
+/// `K-H2b` `KH2B7`：界面问「**这几个本机账号在 apikey 表里有没有行、本机中转在不在跑**」。
 ///
 /// # 为什么是一条**只答本机**的命令，而不是往账号列表里加两个字段
 ///

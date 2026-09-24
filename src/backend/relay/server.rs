@@ -19,18 +19,18 @@
 //! # ⚠⚠ 🔴 它的**名字**与 `设计/20 §4` 对不上，理由现打，别当成漏了
 //!
 //! `20 §4` 那张拆分表要的名字是 **`relay/exchange.rs`**。今天它仍叫 `server.rs`，
-//! 挡着改名的是**三处写区外的登记**，每一处都拿这个路径当住址、改名当场红：
+//! 挡着改名的是**写区外的登记**，拿这个路径当住址、改名当场红（〔R3〕今天剩下两行，第一行已不挡）：
 //!
 //! | 登记 | 它钉着什么 |
 //! |---|---|
-//! | `tests/bridge/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | `expose_for_auth_header(` **恰好 1 处，且在 `src/backend/relay/server.rs`** |
+//! | `tests/bridge/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | 〔R3 订正〕**今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/apikey/mod.rs`（层 2 算好头材料交下来，本层碰不到明文）|
 //! | `tests/bridge/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
 //! | `tests/bridge/structural_scan_tests.rs` | `("src/backend/relay/server.rs", "handle_alloc_error", 1)` |
 //!
-//! 三处都在 `tests/bridge/` 下，**不在本拍的写区里**（写区逐字是
+//! 那几处都在 `tests/bridge/` 下，**不在本拍的写区里**（写区逐字是
 //! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
 //! ⇒ 本拍**只搬职责、不改文件名**：监听那半已经挪进 `listen.rs`，
-//! 这里剩下的就是 `20 §4` 说的 `exchange`。改名要与那三处同拍，留给下一件。
+//! 这里剩下的就是 `20 §4` 说的 `exchange`。改名要与那几处同拍，留给下一件。
 //!
 //! # 层 1 与层 2 的分界就在这一层里的一句话上
 //!
@@ -751,8 +751,9 @@ fn pump<R: Read, W: Write>(
 ///
 /// # ⚠⚠ 订正〔回修轮之五 08-25，D3 `重要-3(D3)`〕：上一行先前引 `K11 裁定一` 当依据，**那半句今天是假的**
 ///
-/// `K11 裁定一` 在 **08-25 被改判**，现行正文逐字是：「**端点与 key 都归中转的路由表；
-/// 中转在转发时替换 `Authorization` 头；客户端一个凭据都不配。**」
+/// `K11 裁定一` 在 **08-25 被改判**，现行正文三句：端点与 key 都归**按账号查的那张路由表**
+/// （原文把那张表记在中转名下 —— 它今天是账号层的 apikey 表）；转发时替换 `Authorization` 头；
+/// 客户端一个凭据都不配。
 /// ⇒ 那条裁定只支持上面的**后半句（不记录）**，**前半句（原样转发 auth 头）已被它的现行版推翻**。
 /// 08-24 那半（「key 归 `--settings` 覆盖层」）在 `MASTERPLAN` 里是**带删除线的来历段**，不是现行。
 ///
@@ -763,8 +764,9 @@ fn pump<R: Read, W: Write>(
 /// `parity_ledger` 里反复记的那一形（**改了行为没回来改理由，账本当天就开始撒谎**）。
 ///
 /// **今天盘上的真话，逐条重写**：
-/// 1. **配了 key ⇒ 换头**：下游那份 `Authorization` 被**丢掉**，换上中转自己那把。
-///    取明文的那一行就在下面，它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
+/// 1. **配了 key ⇒ 换头**：下游那份 `Authorization` 被**丢掉**，换上**层 2 交下来的那一格头**
+///    （层 2 按这一行的 key 算好的；本层手里没有 key）。〔R3 订正〕取明文的那一行今天住
+///    `accounts::apikey`（先前住本文件），它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
 ///    （`KS2`，由 `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate` 相等断言钉住）。
 /// 2. **这一行没配 key ⇒ 原样转发**（`K-H1` 甲半那个形状，一个字节不动）。
 ///
@@ -776,7 +778,7 @@ fn pump<R: Read, W: Write>(
 ///
 ///    **它没有被删掉，是被改成了显式的一条路**：在凭据文件里写一条空账号
 ///    （`{"accounts": {"passthrough": {}}}`）就得到一条 keyless 的透传行。
-///    ⇒ 今天准确的说法只有两句：①**没有配任何账号的中转，全部请求 404**；
+///    ⇒ 今天准确的说法只有两句：①**apikey 表里一个账号都没有 ⇒ `/s/` 请求全部 404**；
 ///    ②**透传要显式配一条**。判据分别在
 ///    `store::tests::an_unconfigured_file_yields_no_rows_at_all` 与
 ///    `store::tests::an_account_with_nothing_filled_in_is_still_a_row`。

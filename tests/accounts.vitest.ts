@@ -1150,7 +1150,7 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
 
   it("★★ 「当前账号」读的是 config.json 的 `defaultName`，不是 manifest 的 `isDefault`", () => {
     // 🔴 上一拍这里读的是 `a.isDefault` ⇒ **用户切过号之后新会话静默串号**，
-    //    而且中转会按错的 id 换上别人那一行的 key。这一条就是那个形状的反面：
+    //    而且账号层会按错的 id 换上别人那一行的 key。这一条就是那个形状的反面：
     //    manifest 说 A 是默认，而用户切到了 B ——必须听用户的。
     const manifestDefault = acct({
       name: "acct-a",
