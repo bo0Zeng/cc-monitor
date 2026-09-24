@@ -35,7 +35,9 @@ import { accountAvatarEl } from "./account-color";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { RecordTimeline } from "./record-timeline";
-import { TailWindow } from "./live-window";
+import { TailWindow, type SkeletonLedger } from "./live-window";
+// 〔`设计/10` 骨架 · 子步 4〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
+import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
 // K-R45 乙（`KR45D2`）：「我说过的 N 句」。挑句子 / 界面 / 跳，三段都与历史查看器共用同一份。
 import { toUserInputEntry, type UserInputEntry } from "./views/user-input-index";
 import { UserInputPanel } from "./views/user-input-panel";
@@ -478,6 +480,14 @@ export interface Tab {
    * 的后台 tab 在 onBatchEnd 空闲物化尾段 / switchTo 命中时同步物化。
    */
   window: TailWindow;
+  /**
+   * 〔`设计/10` 骨架 · 子步 4〕骨架层：`[0, floor)` 那段没物化的历史由占位顶住（总高与滚动条
+   * 一开始就是全会话的），滚到哪里只物化哪里。`null` = 没接上 —— 没拿到索引（老后端 /
+   * 本机后端不在 / seq 与索引对不上）⇒ 退回 `window` 的尾部窗口 + `fillAbove`，行为与之前逐字相同。
+   */
+  skeleton: SkeletonView | null;
+  /** 索引拉取：`idle` 没拉过 · `pending` 在途 · `done` 拉过（成不成都不重拉，免得每次切 tab 起一次进程） */
+  skeletonFetch: "idle" | "pending" | "done";
   /**
    * F40b R-1:批期「窗口内中部插入」缓冲——大增量批(>600 行切块,末块先发)落在
    * 已渲染 tab 上时,老块 seq≥floor 但 <timeline.maxSeq,逐条挂 DOM 会跨帧上方
@@ -925,6 +935,8 @@ export class TabManager {
     this.scheduleIdleMaterialize();
     // F40b:active tab 未走物化分支(尾块已可滚)时也要挂哨兵
     if (active) this.updateSentinel(active);
+    // 〔`设计/10` 骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
+    if (active) this.requestSkeleton(active);
     // F88b：批期 trackUsage 只更了 tab 字段没喂 chip，这里对活跃 tab 单次 flush 到 HUD
     // （批内多条 assistant 记录只刷一次，消视觉抖动）。
     this.onActiveUsageChanged?.(active?.latestModel ?? null, active?.latestPromptTokens ?? null);
@@ -973,6 +985,10 @@ export class TabManager {
    * 〔步 3〕停手条件从「滚得动」换成 `contentReachesBottom`——理由见它的头注。
    */
   private materializeUntilFilled(tab: Tab): void {
+    if (tab.skeleton) {
+      tab.skeleton.fillVisible(); // 〔`设计/10` 骨架〕同上
+      return;
+    }
     for (let round = 0; round < 4; round++) {
       if (tab.window.pendingCount === 0) return;
       if (round > 0 && this.contentReachesBottom(tab)) return;
@@ -1065,6 +1081,82 @@ export class TabManager {
   }
 
   /**
+   * 〔`设计/10` 骨架 · 子步 4〕向后端要这个会话的**骨架索引**，到了就接骨架。
+   *
+   * 只对**已经有渲染后缀**的 tab 要（`floor !== null`：骨架顶的是 `[0, floor)`）；
+   * 每个 tab 只要一次（`skeletonFetch`），成不成都不重拉 —— 免得每切一次 tab 起一次本机后端进程。
+   * 调用点只有两处：批结束时的 active tab、`switchTo` 切进来的那个 tab ⇒ 后台 tab 不花这一次。
+   */
+  private requestSkeleton(tab: Tab): void {
+    if (tab.skeletonFetch !== "idle" || !tab.parentPath) return;
+    if (tab.window.floorSeq === null) return;
+    tab.skeletonFetch = "pending";
+    const jsonlPath = tab.parentPath;
+    const origin = tab.origin ?? LOCAL_ORIGIN;
+    void commands
+      .read_session_index({ origin, jsonlPath, fromOffset: 0 })
+      .then(async (res) => {
+        if (this.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
+        tab.skeletonFetch = "done";
+        const got = ledgerFromIndex(res);
+        if (!got.ok) {
+          console.info(`[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：${got.reason}`);
+          return;
+        }
+        // 索引拉回来之前 tab 可能又长了：floor 之下还有索引没覆盖到的行 ⇒ **续传**（从上次的 end 接着要）
+        const floor = tab.window.floorSeq ?? 0;
+        if (floor > got.ledger.endSeq) {
+          const more = await commands.read_session_index({ origin, jsonlPath, fromOffset: got.end });
+          if (more.available) got.ledger.append(more.rows);
+        }
+        if (this.tabs.get(tab.sessionId) !== tab) return;
+        this.attachSkeleton(tab, got.ledger);
+      })
+      .catch((e: unknown) => {
+        tab.skeletonFetch = "done";
+        console.warn(`[tabs] 骨架索引拉取失败（${tab.sessionId.slice(0, 8)}）：`, e);
+      });
+  }
+
+  /**
+   * 接骨架：`[0, floor)` 画成占位。**接之前先对拍 seq 空间** —— 抽几条还在 pending 的记录，
+   * 它们的 uuid 在索引里必须落在同一个 seq 上；对不上（本地截断重读换过 seq，INVARIANTS §25）
+   * 就**不接**，退回尾部窗口（不许硬对）。
+   */
+  private attachSkeleton(tab: Tab, ledger: SkeletonLedger): void {
+    const floor = tab.window.floorSeq;
+    if (floor === null || tab.skeleton) return;
+    for (const p of tab.window.peek(8)) {
+      const u = (p.message as { uuid?: unknown }).uuid;
+      if (typeof u !== "string") continue;
+      const at = ledger.uuidToSeq.get(u);
+      if (at !== p.seq) {
+        console.warn(
+          `[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：seq ${p.seq} 在索引里是 ${String(at)} —— seq 空间对不上`,
+        );
+        return;
+      }
+    }
+    const view = new SkeletonView(ledger, tab.streamEl, tab.timeline, {
+      materialize: (lo, hi) => this.renderPayloadsBatch(tab, tab.window.takeRange(lo, hi)),
+    });
+    // 在视口上方插一块高占位：同 `fillAbove` 的纪律 —— 关原生锚定、同一个同步任务里按 ΔscrollHeight 补偿
+    const el = tab.streamEl;
+    const beforeH = el.scrollHeight;
+    const beforeTop = el.scrollTop;
+    try {
+      el.style.overflowAnchor = "none";
+      view.attach(floor);
+      el.scrollTop = beforeTop + (el.scrollHeight - beforeH);
+    } finally {
+      el.style.overflowAnchor = "";
+    }
+    tab.skeleton = view;
+    this.updateSentinel(tab);
+    if (this.activeId === tab.sessionId) view.fillVisible();
+  }
+
+  /**
    * F40b R-1:批期缓冲的「窗口内中部插入」(大增量批老块)一次性挂载。
    * 排序后走渲染内核(含 unwrapAll/rebuildNow——不能依赖随后 flushPending,
    * 它的 setsEqual 短路会把摊平永久化)。在 onBatchEnd 的 flushPending/reconcile
@@ -1088,6 +1180,11 @@ export class TabManager {
    * (F39-R1 场景),补完复检直到离开触发区或账尽。
    */
   private fillAbove(tab: Tab): void {
+    // 〔`设计/10` 骨架〕接上了 ⇒ 不再「从尾巴往上一批批补」，只物化与视口相交的那段占位
+    if (tab.skeleton) {
+      tab.skeleton.fillVisible();
+      return;
+    }
     if (this.renderingFill) return;
     if (tab.window.pendingCount === 0) return;
     const sel = document.getSelection();
@@ -1147,6 +1244,14 @@ export class TabManager {
       // ③ `Tab.userInputs` —— 每条一份**截断到 80 字**的摘要(字段头注里有分母)
       userInputs: tab.userInputs.length,
       midBuffer: tab.midBatchBuffer.length,
+      // 〔`设计/10` 骨架〕接上没有 · 索引总条数 · 还在占位里的行数 · 占位块数（`timeline` 里含占位条目）
+      skeleton: tab.skeleton
+        ? {
+            rows: tab.skeleton.ledger.count,
+            pendingRows: tab.skeleton.pendingRows,
+            gaps: tab.skeleton.gapCount,
+          }
+        : tab.skeletonFetch,
       timeline: tab.timeline.size,
       foldWraps: tab.stream.contentElement.querySelectorAll(":scope > .branch-fold-wrap").length,
       sentinel:
@@ -1165,7 +1270,8 @@ export class TabManager {
     const content = tab.stream.contentElement;
     let el = content.querySelector(":scope > .stream-more-above") as HTMLElement | null;
     const n = tab.window.pendingCount;
-    if (n === 0) {
+    // 〔`设计/10` 骨架〕接上了 ⇒ 占位本身就是「上面还有」，哨兵退场
+    if (n === 0 || tab.skeleton) {
       el?.remove();
       return;
     }
@@ -1328,6 +1434,8 @@ export class TabManager {
       if (render) tab.window.pinFloor(payload.seq);
     } else {
       render = tab.window.admit(payload.seq);
+      // 〔`设计/10` 骨架〕floor 之下、但已被物化过的那段（岛）里迟到的行 ⇒ 就地建卡，不收纳
+      if (!render && tab.skeleton && !tab.skeleton.isPending(payload.seq)) render = true;
     }
     // F40b R-1:批期落在渲染窗口内的**中部**插入(seq≥floor 且 <已渲染最高 seq
     // ——大增量批的老块)→ 缓冲,onBatchEnd 一次挂载,消逐帧上方插入(§21)。
@@ -1771,7 +1879,13 @@ export class TabManager {
     const inputsEl = document.createElement("div");
     inputsEl.className = "live-user-inputs";
     const inputsPanel = new UserInputPanel({
-      jumpTo: (uuid) => revealCard(streamEl, uuid),
+      // 〔`设计/10` 骨架 · 子步 4〕骨架接上之后，「还没加载」的那条先按 uuid→seq 物化出来再跳。
+      jumpTo: (uuid) => {
+        const sk = this.tabs.get(sessionId)?.skeleton;
+        const seq = sk?.ledger.uuidToSeq.get(uuid);
+        if (sk && seq !== undefined && sk.isPending(seq)) sk.ensure(seq);
+        return revealCard(streamEl, uuid);
+      },
       unjumpableHint: "这一条还没加载出来 —— 往上翻到更早的消息之后再点",
     });
     inputsEl.append(inputsPanel.toggle, inputsPanel.panel);
@@ -1817,6 +1931,8 @@ export class TabManager {
       pendingToolResults: new Map(),
       seenSeqs: new Set(),
       window: new TailWindow(),
+      skeleton: null,
+      skeletonFetch: "idle",
       midBatchBuffer: [],
       fillHandler: null,
       processedUuids: new Set(),
@@ -1853,6 +1969,11 @@ export class TabManager {
       if (this.activeId !== sessionId) return;
       const t = this.tabs.get(sessionId);
       if (!t || t.window.pendingCount === 0) return;
+      // 〔`设计/10` 骨架〕接上了 ⇒ 视口变大露出的是占位，只物化露出来的那段
+      if (t.skeleton) {
+        t.skeleton.fillVisible();
+        return;
+      }
       if (this.contentReachesBottom(t)) return;
       this.materializeUntilFilled(t);
       this.updateSentinel(t);
@@ -2240,6 +2361,8 @@ export class TabManager {
     tab.processedUuids.clear();
     // F40a/b:窗口账本与缓冲持整段历史 payload(大会话数十 MB 级),断引用;摘 fill listener
     tab.window.dispose();
+    tab.skeleton?.dispose(); // 〔`设计/10` 骨架〕
+    tab.skeleton = null;
     tab.midBatchBuffer = [];
     if (tab.fillHandler) tab.streamEl.removeEventListener("scroll", tab.fillHandler);
     tab.timeline.dispose();
@@ -3684,6 +3807,8 @@ export class TabManager {
     }
     // F40b:切入即刷新哨兵(非 virgin 但账本非空的 tab 也要见到「还有 N 条」)
     if (next) this.updateSentinel(next);
+    // 〔`设计/10` 骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）
+    if (next) this.requestSkeleton(next);
     // D 审计 R-2:非 virgin + 不可滚 + 账本有余的 tab 没有 fill 入口(不可滚元素
     // 不产生 scroll 事件,哨兵可见却"上翻物理不可达")——切入时踢一次,rAF 自链
     // 接管直到可滚或账尽。

@@ -82,6 +82,14 @@ export class TailWindow {
   }
 
   /**
+   * 〔`设计/10` 骨架 · 子步 4〕只读看几条 pending（**不出账**）—— 骨架接上之前用它对拍
+   * 「seq 与索引行号是不是同一个空间」（截断重读换过 seq 的会话对不上，不许硬接）。
+   */
+  peek(n: number): readonly JsonlLinePayload[] {
+    return this.pending.slice(0, Math.max(0, n));
+  }
+
+  /**
    * 〔`设计/10` 骨架 · 子步 3〕弹出 pending 里 seq ∈ `[lo, hi)` 的那些（升序、出账）。
    *
    * **不动 floor** —— 这是骨架「只物化可见区」取的**岛**，不是后缀；单洞后缀不变量从骨架接上那一刻起
