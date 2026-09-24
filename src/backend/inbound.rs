@@ -87,6 +87,7 @@ pub const COMMANDS: &[&str] = &[
     "cancel",
     "capture-pane",
     "files-browse",
+    "files-create",
     "files-find",
     "files-index-rebuild",
     "files-index-status",
@@ -527,6 +528,37 @@ pub const REGISTRY: &[CommandSpec] = &[
     //
     // ⚠ 两条的 `run` 与同族那四条逐字同形，理由同上一段（名字从 `r.cmd` 来 ⇒
     //   「登记的名字」与「真被调的能力」在类型上是同一个值）。
+    // ── 〔波 5 ㈠ · 2026-09-23〕`设计/60 §8.6` **第 2 步**：把那份零消费者的写原语接上 ──
+    //
+    // 🔴 **这一条是本族第一条会往盘上写的命令，而它不花用户那句「允许」**：
+    //   `control/files_write.rs` 自 09-19 起就在 `readonly_guard` 的写白名单上，
+    //   射程逐字是「`O_EXCL` 新建一份**此前不存在**的文件；不删、不改名、不覆盖、不建目录」
+    //   ⇒ 接上它**没有放宽任何一层判据**（`readonly_guard` 这一拍一行没动）。
+    //   它此前的形状与 `files.ls` 同一形：**能力在那儿，没人接**（那份文件头注逐字
+    //   「它今天没有调用方」）。本条就是那个调用方。
+    //
+    // 🔴 **处理器住 `control/`，与 `files-read` 那六条刻意不同层**：`control/` 的定义是
+    //   「**会改变世界**」（`§1.1` 第二条线）—— 这一条真的改变世界，所以它回到了那一层；
+    //   而 `files/` 那一族整族纯读（`设计/96 §2.9` 边界①），**一个字节都不许被这一条带脏**。
+    //   ⇒ 两面分家：`files-*` 这个线上前缀底下从此有两族，
+    //   由 `inbound_structure_guards` 那两条**互不相交**的相等断言各钉一族。
+    //
+    // ⚠ **CLI 面是自动来的，不是选的**：`cli_control::cli_exposed` = 非 `Run::Builtin`
+    //   ⇒ 这一条同拍上了 `lib.rs::SUBCOMMANDS`（不加就当未知 flag、静默进流模式）。
+    //   ⇒ 「入口窄」这件事不靠命令面，靠 `readonly_guard` 第三层那条
+    //   「**谁引用得到 `control/files_write`**」。理由整段在那个模块的命令面那一节。
+    CommandSpec {
+        name: "files-create",
+        doc_anchor: Some("#### `files-create`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["bytes", "content", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-browse",
         doc_anchor: Some("#### `files-browse`"),

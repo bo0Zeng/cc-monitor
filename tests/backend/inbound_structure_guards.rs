@@ -123,6 +123,10 @@ fn every_registered_command_declares_its_run_kind() {
         // `files-browse` 要把名单上那几个目录各 `read_dir` 一遍。
         // 放 `Run::Async` 就是拿 tokio worker 去跑一趟秒级遍历 —— 单核机上会把
         // 出方向 writer 与入方向 reader 所在的那条 runtime 一起占住。
+        // 〔波 5 ㈠ 09-23〕`files-create` 同为阻塞档，理由同形而且**更硬**：
+        // 它真的开一个文件句柄并 `write_all` 一遍（`control/files_write.rs`），
+        // 那是同步阻塞 I/O；而且它走的是围栏② 那条 `canonicalize`（一次真实的路径解析）。
+        // 代价如实写：这一档开跑之后打不断 ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
         let expected_blocking = matches!(
             spec.name,
             "launch"
@@ -133,6 +137,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "bus-state"
                 | "capture-pane"
                 | "files-browse"
+                | "files-create"
                 | "files-ls"
                 | "files-stat"
                 | "files-find"
@@ -168,6 +173,7 @@ fn every_registered_command_declares_its_run_kind() {
         "bus-state",
         "capture-pane",
         "files-browse",
+        "files-create",
         "files-ls",
         "files-stat",
         "files-find",
@@ -352,17 +358,94 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
              而名字集合那一半照样绿。要么换能力名，要么把翻译改成一张显式的表。"
         );
     }
-    let wired: std::collections::BTreeSet<String> = super::REGISTRY
+    // 🔴 〔波 5 ㈠ 09-23〕`files-` 这个线上前缀底下**从此有两族**，而它们**互不相交**：
+    //   读那一族的住址是 `files::CAPABILITIES`（`src/backend/files/`，整族纯读），
+    //   写那一面的住址是 `control::files_write::MANAGE_COMMANDS`（`control/`，会改变世界）。
+    //   ⇒ 本条的人群必须**先把写那一面减掉**，否则它会把写那一面当成「读族漏声明了一条」
+    //   （现打：不减的话逐字报 `files-create` 在 wired 里而不在 declared 里）。
+    //   ⚠ 减法是**按那张表**减，不是按名字手写一份 —— 手写第二份就是下一个漂移源。
+    let write_face: std::collections::BTreeSet<String> =
+        crate::control::files_write::manage_command_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+    assert!(
+        !write_face.is_empty(),
+        "写那一面的登记表是空的 —— 下面那个减法退化成恒等，本条的分家没在钉任何东西"
+    );
+    // 两族**不许有交集**：同一个线上名要是两边都声明，`inbound::REGISTRY` 上那一条
+    // 到底调哪一族就成了「谁先被 match 到」，而那不是契约。
+    let overlap: Vec<&String> = write_face.intersection(&declared).collect();
+    assert!(
+        overlap.is_empty(),
+        "这几个线上名同时被读族与写面声明了：{overlap:?}\n\
+         ⇒ 那一条命令调哪一族取决于分派的书写顺序，而不是声明 —— 必须改掉其中一侧的名字。"
+    );
+    let all_files_prefixed: std::collections::BTreeSet<String> = super::REGISTRY
         .iter()
         .map(|s| s.name)
         .filter(|n| n.starts_with("files-"))
         .map(str::to_string)
+        .collect();
+    let wired: std::collections::BTreeSet<String> = all_files_prefixed
+        .difference(&write_face)
+        .cloned()
         .collect();
     assert_eq!(
         wired, declared,
         "\n`files-read` 上线的那一组与 `files::CAPABILITIES` 声明的那一组对不上。\n\
          少接一条的后果是静默的：能力在、判据在，而调用方发过去只会拿到 `unknown_command`。"
     );
+    // ★ 写那一面的**同形相等断言**：登记表 ↔ `REGISTRY` 上真上线的那几条，两向。
+    let wired_write: std::collections::BTreeSet<String> = all_files_prefixed
+        .intersection(&write_face)
+        .cloned()
+        .collect();
+    assert_eq!(
+        wired_write, write_face,
+        "\n文件管理**写**面登记的那一组与 `inbound::REGISTRY` 上真上线的那一组对不上。\n\
+         登记了而没上线 ⇒ 调用方发过去拿到 `unknown_command`（静默不可用）；\n\
+         上线了而没登记 ⇒ 🔴 **写能力长出了一个没签字的命令** ——\n\
+         而 `readonly_guard` 第三层那条「只从声明过的那一面来」判的正是这张表。"
+    );
+    // ★ 写那一面的每条命令，`codes` / `fields` 与它自己的登记逐字对上（同读族那一半）。
+    for cap in crate::control::files_write::MANAGE_COMMANDS {
+        let spec = super::REGISTRY
+            .iter()
+            .find(|s| s.name == cap.name)
+            .unwrap_or_else(|| panic!("`{}` 不在 REGISTRY 上 —— 上面那条应该先红", cap.name));
+        let mut want_codes: Vec<&str> = cap.codes.to_vec();
+        want_codes.sort_unstable();
+        let mut got_codes: Vec<&str> = spec.codes.to_vec();
+        got_codes.sort_unstable();
+        assert_eq!(
+            got_codes, want_codes,
+            "`{}` 登记的 code 与写面声明的对不上",
+            cap.name
+        );
+        let mut want_fields: Vec<&str> =
+            cap.args.iter().chain(cap.fields.iter()).copied().collect();
+        want_fields.sort_unstable();
+        want_fields.dedup();
+        let mut got_fields: Vec<&str> = spec.fields.to_vec();
+        got_fields.sort_unstable();
+        got_fields.dedup();
+        assert_eq!(
+            got_fields, want_fields,
+            "`{}` 的 `fields` 与写面声明的 `args` ∪ `fields` 对不上 —— \
+             那份镜子是拿去钉 `IPC-PROTOCOL.md §10` 的，它自己先漂了钉出来的文档就是假的",
+            cap.name
+        );
+        // 真的调一次：分派必须够得到它（`unknown_command` / 不认的名字都算断线）。
+        let out = crate::control::files_write::answer_wire(cap.name, &serde_json::json!({}));
+        if let Err((code, msg)) = out {
+            assert!(
+                cap.codes.contains(&code),
+                "`{}` 回了一个它没登记的 code `{code}`（{msg}）",
+                cap.name
+            );
+        }
+    }
 
     // ② ③ 逐条：错误码逐字相等 · 载荷字段 == `args` ∪ `fields`。
     let mut checked = 0usize;

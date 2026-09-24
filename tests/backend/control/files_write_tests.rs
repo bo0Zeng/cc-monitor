@@ -240,7 +240,16 @@ fn the_write_entry_point_actually_goes_through_the_fence() {
 
     let err = create_new_file(&root, "../escape.txt", b"x")
         .expect_err("写入口放过了一个上跳段 —— 围栏没接上");
-    assert!(err.contains("refuse write"), "拒了，但不是围栏拒的：{err}");
+    assert_eq!(
+        err.code(),
+        "refused",
+        "拒是拒了，但档位不对（`refused` = 围栏拦的，`io_failed` = 盘上没成）：{err:?}"
+    );
+    assert!(
+        err.message().contains("refuse write"),
+        "拒了，但不是围栏拒的：{}",
+        err.message()
+    );
     assert!(
         !outside.exists(),
         "围栏说拒了，盘上却真的多出一份文件：{}",
@@ -258,9 +267,11 @@ fn the_write_entry_point_refuses_a_claude_tree_target() {
 
     let err = create_new_file(&root, "a.md", b"x")
         .expect_err("写点落在 `.claude` 段底下，写入口竟然放行了");
+    assert_eq!(err.code(), "refused", "档位不对：{err:?}");
     assert!(
-        err.contains("Claude 数据源"),
-        "拒了，但不是 Claude 围栏拒的：{err}"
+        err.message().contains("Claude 数据源"),
+        "拒了，但不是 Claude 围栏拒的：{}",
+        err.message()
     );
     assert!(!root.join("a.md").exists(), "说拒了，文件却落盘了");
     std::fs::remove_dir_all(&base).ok();
@@ -290,9 +301,19 @@ fn a_clean_write_lands_once_and_never_overwrites() {
     );
 
     let err = create_new_file(&root, "a.md", b"second").expect_err("同名第二次竟然成功了");
+    // 🔴 档位在这一格是**承重**的：同名第二次是 `O_EXCL` 在开文件那一步兜住的，
+    //    **不是**围栏拦的（围栏只判路径形状，它对「这条路径上已经有东西了」一无所知）。
+    //    ⇒ 码必须是 `io_failed`；写成 `refused` 就说明有人把两档混成了一档。
+    assert_eq!(
+        err.code(),
+        "io_failed",
+        "同名第二次应该是 `O_EXCL` 兜的（`io_failed`），实得 `{}`：{err:?}",
+        err.code()
+    );
     assert!(
-        err.contains("refuse write"),
-        "失败了，但不是我们的报错：{err}"
+        err.message().contains("refuse write"),
+        "失败了，但不是我们的报错：{}",
+        err.message()
     );
     assert_eq!(
         std::fs::read(&first).expect("读回第一份"),
@@ -333,9 +354,11 @@ fn the_write_entry_point_is_still_fenced_after_a_symlink_is_resolved() {
 
     let err = create_new_file(&root, "docs/a.md", b"x")
         .expect_err("词法上干净、解完却落进那棵树 —— 写入口竟然放行了");
+    assert_eq!(err.code(), "refused", "档位不对：{err:?}");
     assert!(
-        err.contains("Claude 数据源"),
-        "拒了，但不是围栏② 的 Claude 那一关拒的：{err}"
+        err.message().contains("Claude 数据源"),
+        "拒了，但不是围栏② 的 Claude 那一关拒的：{}",
+        err.message()
     );
     assert!(
         !tree.join("a.md").exists(),
@@ -362,6 +385,204 @@ fn a_symlink_that_stays_inside_the_target_root_still_writes() {
         got.starts_with(std::fs::canonicalize(&root).expect("解目标根")),
         "解出来的落点不在目标根里：{}",
         got.display()
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  命令面 ——〔波 5 ㈠ · 2026-09-23〕`设计/60 §8.6` **第 2 步**的验收
+// ════════════════════════════════════════════════════════════════════════════
+//
+// `§8.6` 第 2 步逐字要验两件：
+//   ① 那份原语从「**零消费者**」变成有；
+//   ② 它那两道围栏（词法 ＋ 解 symlink 后再判）**在命令面这一侧也走得到**。
+//
+// 🔴 ② 不是「上面那几条已经验过了」的重复：上面那几条打的是 `create_new_file`
+//   这个 Rust 函数，而命令面多了一层（取参 · 定 code · 拼回参）。
+//   那一层**有它自己的失效形状**：把围栏的 `Err` 吞成一个成功回参、
+//   或者把两档错误压成一个码 —— 两样都不会让上面任何一条红。
+
+/// ★★ **正题 ①：零消费者变成有了。**
+///
+/// # 为什么是「跨文件」而不是「有人调过」
+///
+/// 本模块自己的判据也在调 `create_new_file` —— 拿那个当消费者是**恒真**的
+///（判据永远在调它，那条零从来就不成立）。要问的是**生产段**里有没有人接。
+/// ⇒ 人群是后端生产树上**除本模块自己以外**的每一份 `.rs` 的生产段。
+///
+/// ⚠ 它**只判「有」，不判「只从那一面来」** —— 后者是第 3 步那条判准
+///（`readonly_guard` 第三层），本条刻意不替它作证。
+#[test]
+fn the_write_primitive_is_no_longer_a_zero_consumer_symbol() {
+    let root = crate::guard_support::src_root();
+    let needle = format!("files_{}::", "write");
+    let mut consumers: Vec<String> = Vec::new();
+    let mut scanned = 0usize;
+    for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        scanned += 1;
+        if rel == "control/files_write.rs" {
+            continue; // 它自己不是自己的消费者
+        }
+        if guard_core::production_code(&src).contains(needle.as_str()) {
+            consumers.push(rel);
+        }
+    }
+    // 反空真：扫不到东西 ⇒ 下面那条「非空」永远说明不了什么。
+    assert!(
+        scanned >= 60,
+        "后端生产树只扫到 {scanned} 份 `.rs` —— 采集坏了，本条此刻在空转"
+    );
+    consumers.sort();
+    assert!(
+        !consumers.is_empty(),
+        "`control/files_write.rs` 在生产段里**一个跨文件消费者都没有** —— \
+         那它还是 09-19 落地时那个「能力在、没人接」的状态，第 2 步没落成。\n\
+         ⚠ 本模块自己那几条判据不算消费者（它们永远在调它，拿它当证据是恒真的）。"
+    );
+}
+
+/// ★ 命令面这一侧走得到**围栏①（词法）**，而且盘上什么都不留。
+#[test]
+fn the_command_face_reaches_the_lexical_fence() {
+    let base = temp_root("cmdlex");
+    let root = base.join("target");
+    std::fs::create_dir_all(&root).expect("建目标根");
+    let outside = base.join("escape.txt");
+
+    let (code, msg) = answer_wire(
+        "files-create",
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "../escape.txt"}),
+    )
+    .expect_err("命令面放过了一个上跳段 —— 围栏① 在这一侧没接上");
+    assert_eq!(code, "refused", "档位不对（{msg}）");
+    assert!(msg.contains("上跳段"), "拒了，但不是词法那道拒的：{msg}");
+    assert!(
+        !outside.exists(),
+        "命令面说拒了，盘上却真的多出一份文件：{}",
+        outside.display()
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 命令面这一侧走得到**围栏②（解完 symlink 再判）**。
+#[test]
+#[cfg(unix)]
+fn the_command_face_reaches_the_resolved_fence() {
+    let base = temp_root("cmdres");
+    let root = base.join("target");
+    // 名字以那个前缀开头 ⇒ 不论环境变量指向哪，它都算 Claude 那几棵树里的一棵。
+    let tree = base.join(".claude-deadvalue");
+    std::fs::create_dir_all(&root).expect("建目标根");
+    std::fs::create_dir_all(&tree).expect("建假树");
+    std::os::unix::fs::symlink(&tree, root.join("docs")).expect("放 symlink");
+
+    let (code, msg) = answer_wire(
+        "files-create",
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "docs/a.md"}),
+    )
+    .expect_err("词法上干净、解完却落进那棵树 —— 命令面竟然放行了");
+    assert_eq!(code, "refused", "档位不对（{msg}）");
+    assert!(
+        msg.contains("Claude 数据源"),
+        "拒了，但不是围栏② 的 Claude 那一关拒的：{msg}"
+    );
+    assert!(
+        !tree.join("a.md").exists(),
+        "🔴 说拒了，文件却真的落进那棵树了：{}",
+        tree.join("a.md").display()
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★★ **阴性对照 ＋ 「新建空文件」那一件**：不给 `content` ⇒ 真落一份 0 字节的文件。
+///
+/// 没有这一格，一个「命令面永远回 `refused`」的实现能让上面两条全绿。
+#[test]
+fn the_command_face_creates_an_empty_file_when_no_content_is_given() {
+    let root = temp_root("cmdempty");
+    let out = answer_wire(
+        "files-create",
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "note/../a.md"}),
+    );
+    // 先把「当前目录段 / 上跳段一律拒」这条口径钉一下：上面那个 `..` 必须被拒，
+    // 哪怕它抵消回了根里 —— 围栏① 逐字是「一律拒，让调用方送干净的段进来」。
+    assert!(out.is_err(), "围栏① 的「不做规范化」那条口径松了");
+
+    let data = answer_wire(
+        "files-create",
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "a.md"}),
+    )
+    .expect("干净的一次新建被命令面误拒");
+    assert_eq!(data["bytes"], serde_json::json!(0), "空文件应回 0 字节");
+    let landed = data["path"].as_str().expect("回参里的 path 应是字符串形");
+    assert_eq!(
+        std::fs::read(landed).expect("读回刚建的"),
+        Vec::<u8>::new(),
+        "说是空文件，盘上却有内容"
+    );
+
+    // 给 `content` 的那一路也要真的写进去（否则「空」这件事说明不了什么）。
+    let data = answer_wire(
+        "files-create",
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "b.md", "content": "hi"}),
+    )
+    .expect("带内容的一次新建被误拒");
+    assert_eq!(data["bytes"], serde_json::json!(2));
+    assert_eq!(
+        std::fs::read(data["path"].as_str().expect("path")).expect("读回"),
+        b"hi",
+        "写进去的字节不对"
+    );
+
+    // ★ 两档 code 在命令面这一侧**真的分得开**：同名第二次是 `O_EXCL` 兜的 ⇒ `io_failed`。
+    let (code, msg) = answer_wire(
+        "files-create",
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "b.md"}),
+    )
+    .expect_err("同名第二次竟然成功了");
+    assert_eq!(
+        code, "io_failed",
+        "同名第二次应该是 `O_EXCL` 兜的（`io_failed`），实得 `{code}`：{msg}"
+    );
+    assert_eq!(
+        std::fs::read(root.join("b.md")).expect("读回第一份"),
+        b"hi",
+        "🔴 第二次把既有内容改了 —— 那就不是 `O_EXCL`，是覆盖"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// ★ 参数那一层自己的失效形状：少参数 / 形状不对，各自落在**声明过的**那个码上。
+#[test]
+fn the_command_face_says_which_argument_is_wrong() {
+    let root = temp_root("cmdargs");
+    let r = root.to_str().expect("utf8");
+    for (args, want) in [
+        (serde_json::json!({"rel": "a.md"}), "bad_path"),
+        (serde_json::json!({"root": "", "rel": "a.md"}), "bad_path"),
+        (serde_json::json!({"root": r}), "bad_args"),
+        (serde_json::json!({"root": r, "rel": 7}), "bad_args"),
+        (
+            serde_json::json!({"root": r, "rel": "a.md", "content": 7}),
+            "bad_args",
+        ),
+    ] {
+        let out = answer_wire("files-create", &args);
+        let (code, msg) = match out {
+            Err(e) => e,
+            Ok(v) => panic!("这一组参数本该被拒，却过了：{args} ⇒ {v}"),
+        };
+        assert_eq!(code, want, "`{args}` 的码不对（{msg}）");
+    }
+    // 不认的命令名要被拒（否则上面每一条都对着一个「什么都收」的入口在断言）。
+    assert!(
+        answer_wire("files-ls", &serde_json::json!({})).is_err(),
+        "写面的入口收下了一个不属于它的命令名"
     );
     std::fs::remove_dir_all(&root).ok();
 }
