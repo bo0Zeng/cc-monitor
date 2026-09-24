@@ -155,6 +155,9 @@ pub struct OpenRequest {
     pub reveal: Option<String>,
     /// 🔴〔F2〕窗口进程拿它拨回 monitor 那个通道口（`chan::dial::dial`）。
     pub handoff: crate::chan::host::Handoff,
+    /// 〔FW34〕书签文件的全路径（monitor 算好：它住 monitor 的数据目录）。
+    /// `None` ＝ 数据目录解不出来 ⇒ 窗口的书签栏上出声，不静默不画。
+    pub bookmarks: Option<std::path::PathBuf>,
 }
 
 /// 种子 → 字节。**纯函数**（判据两向对拍）。
@@ -454,6 +457,7 @@ pub fn child_main() -> i32 {
         Some(line),
         req.rows,
         req.reveal,
+        req.bookmarks,
     );
     match h.join() {
         Ok(Ok(())) => 0,

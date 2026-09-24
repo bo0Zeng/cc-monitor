@@ -184,6 +184,8 @@ pub async fn open_file_window(
         rows,
         reveal,
         handoff,
+        // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去。
+        bookmarks: crate::paths::resolve_monitor_data_dir().map(|d| super::bookmarks::file_in(&d)),
     })
     .map_err(|why| format!("窗口没起来：{why}"))?;
     tracing::info!("文件窗口起在进程 {pid} 上（{n} 行已经交给它了）");
