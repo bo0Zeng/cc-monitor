@@ -810,12 +810,13 @@ pub async fn sftp_download(
     let r = async {
         let pool = pool_for(&cfg.origin_label()).await;
         let lease = pool.lease_transfer(&cfg).await?; // 车道 ＋ 通道两道闸
+        let report_to = |done: u64, total: u64| report(&on_progress, done, total);
         download_inner(
             lease.get().sftp(),
             &remote_path,
             &local_path,
             &cancel,
-            &on_progress,
+            &report_to,
         )
         .await
     }
@@ -846,7 +847,7 @@ async fn download_inner(
     remote_path: &str,
     local_path: &str,
     cancel: &Arc<AtomicBool>,
-    on_progress: &tauri::ipc::Channel<TransferProgress>,
+    on_progress: &(dyn Fn(u64, u64) + Sync),
 ) -> Result<(), String> {
     let total = sftp
         .metadata(remote_path.to_string())
@@ -889,7 +890,7 @@ async fn download_inner(
         let mut buf = vec![0u8; CHUNK];
         let mut done: u64 = resume_from;
         let mut last_report: u64 = resume_from;
-        report(on_progress, done, total);
+        on_progress(done, total);
         loop {
             if cancel.load(Ordering::SeqCst) {
                 return Err("已取消".to_string());
@@ -907,7 +908,7 @@ async fn download_inner(
             done += n as u64;
             if done - last_report >= PROGRESS_EVERY {
                 last_report = done;
-                report(on_progress, done, total);
+                on_progress(done, total);
             }
         }
         lf.flush()
@@ -932,7 +933,7 @@ async fn download_inner(
         let _ = std::fs::remove_file(&tmp);
         format!("落地 {local_path} 失败: {e}")
     })?;
-    report(on_progress, done, total);
+    on_progress(done, total);
     Ok(())
 }
 
@@ -1061,12 +1062,13 @@ pub async fn sftp_upload(
     let r = async {
         let pool = pool_for(&cfg.origin_label()).await;
         let lease = pool.lease_transfer(&cfg).await?; // 车道 ＋ 通道两道闸
+        let report_to = |done: u64, total: u64| report(&on_progress, done, total);
         upload_inner(
             lease.get().sftp(),
             &local_path,
             &remote_path,
             &cancel,
-            &on_progress,
+            &report_to,
         )
         .await
     }
@@ -1091,7 +1093,7 @@ async fn upload_inner(
     local_path: &str,
     remote_path: &str,
     cancel: &Arc<AtomicBool>,
-    on_progress: &tauri::ipc::Channel<TransferProgress>,
+    on_progress: &(dyn Fn(u64, u64) + Sync),
 ) -> Result<(), String> {
     let total = tokio::fs::metadata(local_path)
         .await
@@ -1131,7 +1133,7 @@ async fn upload_inner(
         let mut buf = vec![0u8; CHUNK];
         let mut done: u64 = resume_from;
         let mut last_report: u64 = resume_from;
-        report(on_progress, done, total);
+        on_progress(done, total);
         loop {
             if cancel.load(Ordering::SeqCst) {
                 return Err("已取消".to_string());
@@ -1149,7 +1151,7 @@ async fn upload_inner(
             done += n as u64;
             if done - last_report >= PROGRESS_EVERY {
                 last_report = done;
-                report(on_progress, done, total);
+                on_progress(done, total);
             }
         }
         // 见 upload_atomic:flush 始终 drain 写队列 + 传播错误,shutdown 关闭。
@@ -1185,8 +1187,178 @@ async fn upload_inner(
     sftp.rename(tmp.clone(), remote_path.to_string())
         .await
         .map_err(|e| format!("rename 到 {remote_path} 失败: {e}"))?;
-    report(on_progress, done, total);
+    on_progress(done, total);
     Ok(())
+}
+
+// ═══ F7c：上传**只写暂存区**（`设计/60 §13`）═════════════════════════════════
+//
+// 用户逐字「保留SFTP. 思考怎么干净」＋「现在只允许后端的文件管理部分写文件」。
+// ⇒ SFTP 缩成只做传输；上传**不直接写到目标**，只写进我们自己的暂存区
+//    `~/.cc-monitor/staging/<key>.part`（相对 SFTP 的起始目录），传完由后端文件管理
+//    **提交**（`files-commit-upload`，住后端 `control/files_commit.rs`）。
+//    ⇒ 真正落进用户目录的那一下只有后端那一处。
+//
+// 🔴 本节的函数签名里**没有目标路径**：传输层连「最后要落到哪」都不知道 ——
+//    「暂存区之外零写」因此不是一条自律，是一个**写不出来**的形状（判据另有一刀行为读数）。
+//
+// ⚠ 与 [`upload_inner`]（老面板那条 `sftp_upload` 用的、直写目标）的存亡规矩**正好相反**：
+//    那边「撤留、报错删」—— 理由是半成品 `<目标>.tmp` 就摆在用户目录里；
+//    这边「**失败留、撤删**」—— 暂存区是我们自己的目录，那条理由没了，
+//    而续传最值钱的正是「断网失败」那一档（`设计/60 §13.3` 第 3 条）。
+
+/// 暂存区相对 SFTP 起始目录（＝ 远端 home）的那一段。
+///
+/// 🔴 **后端那一侧有一份逐字相同的**（`control/files_commit.rs` 里同名常量，提交时它按
+/// `$HOME` 拼同一个路径）。两个 crate 没有共享落点（`设计/60 §11.4` 同一条理由）⇒
+/// 「两份逐字副本 ＋ 相等断言」：`sftp_staging_tests` 现读后端那一份源码逐字比。
+pub const STAGING_DIR: &str = ".cc-monitor/staging";
+
+/// 暂存区的上一级 —— **后端的家**。它不在 ⇒ 那台机器上没有部署后端 ⇒ 照实报，**不顺手建**
+/// （`D11`：后端是给定的；而提交本来就要后端在）。
+pub const STAGING_PARENT: &str = ".cc-monitor";
+
+/// 暂存件的键长（十六进制位数）。后端 `files_commit::KEY_LEN` 同一个数（判据逐字比）。
+pub const STAGING_KEY_LEN: usize = 32;
+
+/// 一个键的暂存件路径（相对 SFTP 起始目录）。
+pub fn staging_part(key: &str) -> String {
+    format!("{STAGING_DIR}/{key}.part")
+}
+
+/// 由（本机路径 · 大小 · 修改时间）派生暂存件的键：**同一份文件重拖一次落到同一个暂存件上**，
+/// 断点续传的尾块对拍（[`remote_resume_offset`]，一个字节没改）因此照旧生效。
+///
+/// ⚠ 用的是标准库的默认散列（两个前缀各散一次拼成 128 位）：它**跨 Rust 版本不保证稳定**
+/// —— 那只意味着「升级之后第一次重拖不续传、从 0 来」，尾块对拍另有一道兜底，不会接错。
+pub fn staging_key(local_path: &str, size: u64, mtime_ns: u128) -> String {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let half = |salt: &str| {
+        let mut h = DefaultHasher::new();
+        (salt, local_path, size, mtime_ns).hash(&mut h);
+        h.finish()
+    };
+    format!(
+        "{:016x}{:016x}",
+        half("ccm-staging-a"),
+        half("ccm-staging-b")
+    )
+}
+
+/// 暂存区在不在；不在就建**最后那一段**（上一级 [`STAGING_PARENT`] 必须已经在）。
+async fn ensure_staging_dir(sftp: &russh_sftp::client::SftpSession) -> Result<(), String> {
+    if sftp.try_exists(STAGING_DIR).await.unwrap_or(false) {
+        return Ok(());
+    }
+    if !sftp.try_exists(STAGING_PARENT).await.unwrap_or(false) {
+        return Err(format!(
+            "那台机器上没有 ~/{STAGING_PARENT}（后端还没部署）—— 上传要先落进它底下的暂存区，\
+             而提交要那台机器上的后端来做"
+        ));
+    }
+    if let Err(e) = sftp.create_dir(STAGING_DIR).await {
+        // 并发的另一趟上传刚建好它 —— 那不算错。
+        if !sftp.try_exists(STAGING_DIR).await.unwrap_or(false) {
+            return Err(format!("建暂存区 ~/{STAGING_DIR} 失败: {e}"));
+        }
+    }
+    Ok(())
+}
+
+/// 🔴 **上传的唯一形状**：本机文件 → 暂存件 `staging/<key>.part`。回传完的字节数。
+///
+/// - 暂存区不在就建最后那一段（上一级不在 ⇒ 报错，不顺手建）；
+/// - 孤儿**不在这里扫**：那一扫住后端（`files_commit::sweep_stale`，每次提交成功时顺手扫）——
+///   「多久算孤儿」是一个期限的**值**，归后端（`设计/05 §3.3.2`；本文件是面 A 的传输面候选，
+///   `comm_boundary` 的 `X2` 当场咬过它一次）；而且修改时间与「此刻」要取**同一台机器的钟**，
+///   在这里比就是拿 monitor 的钟去比远端的时间戳；
+/// - 暂存件还在 ⇒ 尾块两侧对得上就从那里接着写（[`remote_resume_offset`]，与老路同一个函数）；
+/// - **撤 ⇒ 删暂存件**（用户说了不要）；**失败 ⇒ 留着**（下一趟重拖从尾块接上）。
+///
+/// ⚠ 语料是**一个 SFTP 会话**（借通道那一段在传输台里），好让判据拿合成服务端直接喂它。
+pub async fn upload_to_staging(
+    sftp: &russh_sftp::client::SftpSession,
+    local_path: &str,
+    key: &str,
+    cancel: &AtomicBool,
+    on_progress: &(dyn Fn(u64, u64) + Sync),
+) -> Result<u64, String> {
+    let total = tokio::fs::metadata(local_path)
+        .await
+        .map(|m| m.len())
+        .map_err(|e| format!("读本地 {local_path} 失败: {e}"))?;
+    let mut lf = tokio::fs::File::open(local_path)
+        .await
+        .map_err(|e| format!("打开本地 {local_path} 失败: {e}"))?;
+    ensure_staging_dir(sftp).await?;
+
+    let part = staging_part(key);
+    let resume_from = remote_resume_offset(sftp, &part, &mut lf, total).await;
+    let mut flags = russh_sftp::protocol::OpenFlags::CREATE
+        | russh_sftp::protocol::OpenFlags::WRITE
+        | russh_sftp::protocol::OpenFlags::READ;
+    if resume_from == 0 {
+        flags |= russh_sftp::protocol::OpenFlags::TRUNCATE;
+    }
+    let mut rf = sftp
+        .open_with_flags(part.clone(), flags)
+        .await
+        .map_err(|e| format!("开暂存件 ~/{part} 失败: {e}"))?;
+    // 两侧无条件 seek（同 [`upload_inner`] 那条理由：尾块对拍动过 `lf` 的游标）。
+    rf.seek(std::io::SeekFrom::Start(resume_from))
+        .await
+        .map_err(|e| format!("暂存件定位到 {resume_from} 失败: {e}"))?;
+    lf.seek(std::io::SeekFrom::Start(resume_from))
+        .await
+        .map_err(|e| format!("本地 {local_path} 定位到 {resume_from} 失败: {e}"))?;
+
+    let core = async {
+        let mut buf = vec![0u8; CHUNK];
+        let mut done: u64 = resume_from;
+        let mut last_report: u64 = resume_from;
+        on_progress(done, total);
+        loop {
+            if cancel.load(Ordering::SeqCst) {
+                return Err("已取消".to_string());
+            }
+            let n = lf
+                .read(&mut buf)
+                .await
+                .map_err(|e| format!("读本地失败: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            rf.write_all(&buf[..n])
+                .await
+                .map_err(|e| format!("写暂存件失败: {e}"))?;
+            done += n as u64;
+            if done - last_report >= PROGRESS_EVERY {
+                last_report = done;
+                on_progress(done, total);
+            }
+        }
+        rf.flush()
+            .await
+            .map_err(|e| format!("flush 暂存件失败（写未确认）: {e}"))?;
+        Ok(done)
+    }
+    .await;
+    let _ = rf.shutdown().await;
+    drop(rf);
+    match core {
+        Ok(done) => {
+            on_progress(done, total);
+            Ok(done)
+        }
+        Err(e) => {
+            // 🔴 撤 ⇒ 删（用户说了不要）；失败 ⇒ 留（续传的本钱，在我们自己的目录里）。
+            //    判的是**取消标志**，不是错误文案（同 [`download_inner`] 那条理由）。
+            if cancel.load(Ordering::SeqCst) {
+                let _ = sftp.remove_file(part.clone()).await;
+            }
+            Err(e)
+        }
+    }
 }
 
 // === 步 23b：远端内部复制 —— 零流量走 `copy-data`，协商不到就退路 **并出声** ===
@@ -1666,3 +1838,10 @@ mod copy_f3_tests;
 #[cfg(test)]
 #[path = "../../../tests/bridge/sftp_pool_f4_tests.rs"]
 mod pool_f4_tests;
+
+/// 〔F7c · 第三波 09-24〕**暂存区那一族**（`设计/60 §13`）：上传只写暂存区 · 撤删失败留 · 孤儿扫 ·
+/// 键 · 与后端那一份常量逐字比。自带一台**逐条记改动路径**的合成 SFTP 服务端（F4 那台不记路径、
+/// 不认建目录与列目录），所以另立一个模块。
+#[cfg(test)]
+#[path = "../../../tests/bridge/sftp_staging_tests.rs"]
+mod staging_tests;

@@ -146,6 +146,67 @@ pub fn commit_upload(
     Ok((dest, bytes))
 }
 
+/// 多久没动过的暂存件算**孤儿**（秒）。
+///
+/// 孤儿只有两种来路：上传失败之后再没重试的（失败**刻意留着**给续传）· 传完了窗口却没来得及提交的。
+/// 一趟正在传的件每写一块修改时间就刷新一次，永远不会被判成孤儿。
+/// ⚠ 7 天不是量出来的，是一个约定：一周没人回来续的件，那次续传已经不值得等了。
+///
+/// 🔴 **这个值住后端，不住传输那一侧**：它是一个期限的**值**（`设计/05 §3.3.2`「值归后端」），
+/// 而且「修改时间」与「此刻」必须取**同一台机器的钟** —— 放在 monitor 那边比，
+/// 就是拿 monitor 的钟去比远端的时间戳（两台机器差几个小时，判出来的「老」就差几个小时）。
+pub const STAGING_STALE_SECS: u64 = 7 * 24 * 3600;
+
+/// **孤儿扫**：暂存区里修改时间早于 `now - STAGING_STALE_SECS` 的暂存件删掉。回删掉的名字。
+///
+/// - 只认**我们自己的形状**：`<32 位十六进制>.part`；别的名字一个不碰（那不是我们放的）。
+/// - `keep` 那一个不碰（调用方此刻手上的那一份）。
+/// - 每一处删之前**先过围栏**（以暂存区为根的 [`fenced_target`]）—— 第三层 ③ 逐函数扫这个顺序；
+///   它在这里拦的是「暂存区里被人放了一条指出去的链接」那一形（解父目录之后跑出了暂存区 ⇒ 不删）。
+/// - 尽力而为：列不出、删不掉都不挡调用方（孤儿多留一轮不伤人）。
+///
+/// ⚠ **只在事件上跑**（提交成功那一刻，见 [`answer_commit`]），不是节拍器 —— 后端零定时器。
+pub fn sweep_stale(home: &Path, now_secs: u64, keep: &str) -> Vec<String> {
+    let dir = home.join(STAGING_DIR);
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut gone = Vec::new();
+    for entry in rd.flatten() {
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        let Some(key) = name.strip_suffix(PART_SUFFIX) else {
+            continue;
+        };
+        if !is_key(key) || key == keep {
+            continue;
+        }
+        let Ok(at) = fenced_target(&dir, &name) else {
+            continue;
+        };
+        let Ok(meta) = std::fs::symlink_metadata(&at) else {
+            continue;
+        };
+        if !meta.file_type().is_file() {
+            continue;
+        }
+        let Some(mtime) = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        else {
+            continue;
+        };
+        if now_secs.saturating_sub(mtime.as_secs()) > STAGING_STALE_SECS
+            && std::fs::remove_file(&at).is_ok()
+        {
+            gone.push(name);
+        }
+    }
+    gone
+}
+
 /// 取一个路径参数（字符串 或 `{"b16": …}`，与写面同一口径）。
 fn path_arg(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static str, String)> {
     let v = args.get(key).ok_or(("bad_path", format!("少了 `{key}`")))?;
@@ -167,6 +228,16 @@ fn str_arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, (&'sta
 }
 
 fn answer_commit(args: &serde_json::Value) -> Answer {
+    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or((
+        "io_failed",
+        "这台后端不知道自己的 home（没有 `HOME`）—— 暂存区拼不出来".to_string(),
+    ))?;
+    answer_commit_at(&home, args)
+}
+
+/// [`answer_commit`] 去掉「家在哪」那一问之后的全部 —— 判据从这里进（不改进程的 `HOME`：
+/// 那是全进程共享的，改了会波及同一进程里并发跑的别的判据）。
+fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
     let root = path_arg(args, "root")?;
     let rel = str_arg(args, "rel")?.to_string();
     let key = str_arg(args, "key")?.to_string();
@@ -178,12 +249,14 @@ fn answer_commit(args: &serde_json::Value) -> Answer {
             "bad_args",
             "少了 `overwrite`（true / false）—— 覆盖不覆盖不给默认值".to_string(),
         ))?;
-    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or((
-        "io_failed",
-        "这台后端不知道自己的 home（没有 `HOME`）—— 暂存区拼不出来".to_string(),
-    ))?;
-    let (landed, bytes) = commit_upload(&home, &key, &root, &rel, overwrite)
+    let (landed, bytes) = commit_upload(home, &key, &root, &rel, overwrite)
         .map_err(|e| (e.code(), e.message().to_string()))?;
+    // 暂存区清理「孤儿」那一格的事件：一次提交成功（`设计/60 §13.2 ④`）。
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    sweep_stale(home, now, &key);
     Ok(serde_json::json!({
         "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
         "bytes": bytes,
