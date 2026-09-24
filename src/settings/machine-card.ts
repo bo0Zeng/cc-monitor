@@ -18,6 +18,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openSftpPanel } from "../sftp/panel";
 import { invalidateCcmProbeCache } from "../ccm-probe";
+import { buildRemoteAliasPaste } from "./machine-aliases"; // 〔MC1〕② 别名：远端那一半只给手贴
 import { recordFacet, type MachineFacet } from "./machine-status";
 import { hostKey, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
@@ -200,6 +201,8 @@ export class MachineCard {
   private backendUninstallButton!: HTMLButtonElement;
   private ccmUninstallButton!: HTMLButtonElement;
   private testResult!: HTMLElement;
+  /** 〔MC1〕「组件」栏那几个动作的结果区（「连接」栏的结果仍在 `testResult`）。 */
+  private actionResult!: HTMLElement;
   /** 折叠时隐藏的字段 + 测试/安装区（legend 始终可见）。 */
   private body!: HTMLElement;
   /** S4b-3b-2：body 的两半 —— 详情页据此拆「连接 / 组件」两栏。 */
@@ -310,10 +313,10 @@ export class MachineCard {
     // ★ S4b-3b-2：body 内部再分成**两块**，供机器详情页拆成「连接 / 组件」两栏
     //（主计划 §2.3 / §2.4）。分界就在 resume 命令那一行：
     //   连接 = 怎么连上这台机（host/port/user/密钥/指纹/地址/跳板…）
-    //   组件 = 这台机上装了什么、怎么起（resume 命令 + 装卸 backend/ccm + 测试）
+    //   组件 = 这台机上装了什么、怎么起（resume 命令 + ① 部署后端 + ② 别名；〔MC1〕测试连接回了连接栏）
     //
     // **顺带把 S4b-3a 摆错的位置纠正了**：那轮我把 resume 命令插在那个降级开关之后，
-    // commit 里却说它「放在装/卸 ccm 按钮紧邻处」—— 实际隔着 installInfo 等约 120 行。
+    // commit 里却说它「放在装/卸 ccm 按钮紧邻处」—— 实际隔着那段安装位置说明等约 120 行。
     // §5-1 要的正是这两者相邻（装完 ccm 就该顺手改 resume 命令），现在真的相邻了。
     this.connectionPart = document.createElement("div");
     this.connectionPart.className = "machine-part machine-part-connection";
@@ -435,37 +438,15 @@ export class MachineCard {
     //    用户盘上那份旧 `true` 由 `remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY` 认出来，
     //    在「还差什么」清单上指名告知（`NO_BACKEND_GAP_CODE`），不静默吞掉。
 
-    // ★ S4b-3（主计划 §5-1）：**这台机器**的 resume 启动命令。
-    //
-    // 刻意紧挨着下面的「装/卸 ccm」按钮：此前 resume 命令是全局单值、住在
-    //「外观 → 行为」里，而装 ccm 是每台机器一个按钮 —— 两处隔着两个顶层组，
-    // 于是「装完 ccm 却忘了改 resume 命令」是个**结构性陷阱**，不是用户粗心。
-    // 空 = 沿用全局默认，所以没填过的机器行为一字不变。
-    // ↓↓ 从这里起归「组件」栏 ↓↓
-    body = this.componentsPart;
-
-    this.resumeCmdInput = buildTextRow(
-      body,
-      "resume 命令（这台机器）",
-      "留空 = 用全局默认",
-      onChange,
-    );
-
-    // 安装位置提示：明确告诉用户「在哪里装什么」。
-    const installInfo = document.createElement("div");
-    installInfo.className = "settings-hint remote-install-info";
-    installInfo.textContent =
-      "安装位置：① backend（远端数据源，必需）→ 上方「backend 路径」填的位置" +
-      "（默认 ~/.cc-monitor/bin/cc-monitor-backend）+ 同目录 .build_id；启用远端后连接时会自动安装，" +
-      "下面按钮供手动装 / 卸。② ccm 启动器（可选）→ 两部分：CLI 本体装到远端 " +
-      "~/.local/bin/ccm（可执行文件），别名块写进 ~/.bashrc 的 cc-monitor BEGIN/END 标记块" +
-      "（先备份原文件、只动标记块内）。装好后终端可用：ccm（起会话）/ ccm --tmux（tmux 里起）/ " +
-      "ccm --account <名>（指定账号），`ccm --help` 看全部修饰。别名（cc / cct）不覆盖你" +
-      "已有的同名函数。这条路径与 cc-monitor 自己起会话**是同一套实现**——终端起的会话 app 认得出、" +
-      "能 attach、能换号重启。";
-    body.appendChild(installInfo);
-
-    // 动作区：连接测试 + backend 装/卸 + ccm 装/卸。按钮多，行内可换行。
+    // 〔MC1 · 2026-09-24〕`设计/71 §13` · `设计/01 §6.7`：**机器卡上只有三个动作** ——
+    //   ① 部署后端 · ② 别名 · ③ 后端代管的资产。从前这里是**一行 8 颗按钮**全挤在「组件」栏：
+    //   测试连接 · 文件 · 推送公钥 · 开新 Claude · 安装 backend · 卸载 backend · 装 ccm 启动器 · 卸载 ccm。
+    //   ⇒ 按「它动的是什么」分回去：
+    //   · 前四颗动的是**这条连接**（验它 · 免密 · 用它看文件 / 起会话）⇒ 回「连接」栏，挨着它们用的那几格；
+    //   · 后四颗是两件事的四个开关（装后端 · 「ccm 助手」），而「ccm 助手」自己又是两件事
+    //     （`71 §13.1`：① 推入口 ② 写别名块）⇒ 推入口并进 ①（**一颗按钮**），写别名块归 ②；
+    //   · ③ 不是按钮：skill / MCP / 插件 / 账号在这一页的「账号」「工具」两栏。
+    //   「ccm 助手 / ccm 启动器」这个词整个删掉（用户 2026-09-17 逐字「装/卸 ccm 助手是假的」）。
     const mkBtn = (
       label: string,
       variant: string,
@@ -481,37 +462,16 @@ export class MachineCard {
       return b;
     };
 
-    const actionRow = document.createElement("div");
-    actionRow.className = "settings-row settings-row-actions";
-
+    // ── 连接栏的动作：测试 · 推公钥 · 文件 · 开新 Claude ──
+    const connRow = document.createElement("div");
+    connRow.className = "settings-row settings-row-actions";
     this.testButton = mkBtn(
       "测试连接",
       "settings-btn-primary",
-      "测试 SSH 连接 / 主机指纹 / backend 是否在线",
+      "测试 SSH 连接 / 主机指纹 / 后端是否在线",
       () => void this.onTestConnection(),
     );
-    actionRow.appendChild(this.testButton);
-
-    // F48：打开该台的 SFTP 文件面板（独立 overlay）。
-    actionRow.appendChild(
-      mkBtn(
-        "文件",
-        "",
-        "打开 SFTP 文件面板（浏览 / 上传 / 下载 / 管理远端文件）",
-        () => {
-          const cfg = this.collect();
-          if (!cfg.host || !cfg.user) {
-            this.renderTestResult(
-              null,
-              "请先填好 host / user 再打开文件面板。",
-            );
-            return;
-          }
-          openSftpPanel(cfg);
-        },
-      ),
-    );
-
+    connRow.appendChild(this.testButton);
     // F50：一键把本地公钥推到远端 authorized_keys（onboarding 免密）。
     const pushKeyBtn = mkBtn(
       "推送公钥",
@@ -519,10 +479,25 @@ export class MachineCard {
       "把本地公钥追加到远端 ~/.ssh/authorized_keys（免密登录）；已填私钥则取同名 .pub，否则弹框选文件",
       () => void this.onPushPubkey(pushKeyBtn),
     );
-    actionRow.appendChild(pushKeyBtn);
-
-    // F53：在这台机开新 Claude——填工作目录/tmux 名/命令,在远端 tmux 里启动全新会话。
-    actionRow.appendChild(
+    connRow.appendChild(pushKeyBtn);
+    // F48：打开该台的 SFTP 文件面板（独立 overlay）。
+    connRow.appendChild(
+      mkBtn(
+        "文件",
+        "",
+        "打开 SFTP 文件面板（浏览 / 上传 / 下载 / 管理远端文件）",
+        () => {
+          const cfg = this.collect();
+          if (!cfg.host || !cfg.user) {
+            this.renderTestResult(null, "请先填好 host / user 再打开文件面板。");
+            return;
+          }
+          openSftpPanel(cfg);
+        },
+      ),
+    );
+    // F53：在这台机开新 Claude——填工作目录/tmux 名/命令，在远端 tmux 里启动全新会话。
+    connRow.appendChild(
       mkBtn(
         "开新 Claude",
         "settings-btn-secondary",
@@ -530,50 +505,90 @@ export class MachineCard {
         () => this.openLauncherDialog(),
       ),
     );
-
-    // F08c：手动安装 / 卸载后端（两个独立按钮）。
-    this.backendInstallButton = mkBtn(
-      "安装 backend",
-      "settings-btn-secondary",
-      // K-W4 §0c：此前这句写「已是最新则跳过」，而「最新」当时只看同目录 .build_id
-      // 那个字符串 —— 落点那个文件被删/截成 0 字节时它照样跳过，且回「无需重装」。
-      // 判定改成两个事实各自说话之后，这句话跟着说清跳过的条件是两条。
-      "把内嵌的后端二进制按远端架构装到 backendPath（版本已是最新、且落点那个文件在，才跳过）",
-      () => void this.onDeployBackend(),
-    );
-    actionRow.appendChild(this.backendInstallButton);
-
-    this.backendUninstallButton = mkBtn(
-      "卸载 backend",
-      "settings-btn-secondary",
-      "删除远端后端二进制 + .build_id（若机器仍启用，下次连接会自动装回）",
-      () => void this.onUninstallBackend(),
-    );
-    actionRow.appendChild(this.backendUninstallButton);
-
-    // F10：装 / 卸 ccm 助手到 ~/.bashrc（↗ 拉前用）。
-    this.installButton = mkBtn(
-      "装 ccm 启动器",
-      "settings-btn-secondary",
-      "部署 ccm CLI 到远端 ~/.local/bin 并把别名块写进 ~/.bashrc；先备份原文件、幂等可重装",
-      () => void this.onInstallCcm(),
-    );
-    actionRow.appendChild(this.installButton);
-
-    this.ccmUninstallButton = mkBtn(
-      "卸载 ccm",
-      "settings-btn-secondary",
-      "从远端 ~/.bashrc 删掉 cc-monitor 的别名块（先备份；块外内容不动。CLI 本体 ~/.local/bin/ccm 需手动删）",
-      () => void this.onUninstallCcm(),
-    );
-    actionRow.appendChild(this.ccmUninstallButton);
-
-    body.appendChild(actionRow);
-
+    body.appendChild(connRow);
     this.testResult = document.createElement("div");
     this.testResult.className = "remote-test-result";
     this.testResult.style.display = "none";
     body.appendChild(this.testResult);
+
+    // ↓↓ 从这里起归「组件」栏 ↓↓
+    body = this.componentsPart;
+
+    // ★ S4b-3（主计划 §5-1）：**这台机器**的 resume 启动命令。
+    // 刻意挨着下面的动作：此前 resume 命令是全局单值、住在「外观 → 行为」里，而装东西是
+    // 每台机器一个按钮 —— 两处隔着两个顶层组，「装完却忘了改 resume 命令」是个结构性陷阱。
+    // 空 = 沿用全局默认，所以没填过的机器行为一字不变。
+    this.resumeCmdInput = buildTextRow(
+      body,
+      "resume 命令（这台机器）",
+      "留空 = 用全局默认",
+      onChange,
+    );
+
+    // ── ① 部署后端 ──
+    const deployTitle = document.createElement("div");
+    deployTitle.className = "settings-label";
+    deployTitle.textContent = "部署后端";
+    body.appendChild(deployTitle);
+    const deployHint = document.createElement("div");
+    deployHint.className = "settings-hint remote-install-info";
+    deployHint.textContent =
+      "把后端装到上面「backend 路径」那一格，终端里的 ccm 入口（~/.local/bin/ccm）一起放好。" +
+      "启用这台机器之后，连上时也会自动装后端；这里是手动的那一下。";
+    body.appendChild(deployHint);
+    const deployRow = document.createElement("div");
+    deployRow.className = "settings-row settings-row-actions";
+    this.backendInstallButton = mkBtn(
+      "部署后端",
+      "settings-btn-primary",
+      // K-W4 §0c：跳过的条件是两条（版本已是最新、且落点那个文件在），两个事实各自说话。
+      "按远端架构把内嵌的后端装到 backend 路径（版本已是最新、且那个文件在，才跳过），再放好 ccm 入口",
+      () => void this.onDeployBackend(),
+    );
+    deployRow.appendChild(this.backendInstallButton);
+    this.backendUninstallButton = mkBtn(
+      "卸载后端",
+      "settings-btn-secondary",
+      "删除远端后端二进制和它旁边的 .build_id（机器仍启用的话，下次连接会自动装回）",
+      () => void this.onUninstallBackend(),
+    );
+    deployRow.appendChild(this.backendUninstallButton);
+    body.appendChild(deployRow);
+
+    // ── ② 别名 ──
+    const aliasTitle = document.createElement("div");
+    aliasTitle.className = "settings-label";
+    aliasTitle.textContent = "别名";
+    body.appendChild(aliasTitle);
+    const aliasHint = document.createElement("div");
+    aliasHint.className = "settings-hint remote-install-info";
+    aliasHint.textContent =
+      "别名块把 cc / cct 和「接上别名文件」那一行装进这台机器的 ~/.bashrc：只动 cc-monitor 那一小块，" +
+      "写前先备份，写完回读比对。你自己的别名清单今天只能在本机写好、复制过来贴上。";
+    body.appendChild(aliasHint);
+    const aliasRow = document.createElement("div");
+    aliasRow.className = "settings-row settings-row-actions";
+    this.installButton = mkBtn(
+      "装别名块",
+      "settings-btn-secondary",
+      "把 cc / cct 那一块装进远端 ~/.bashrc（幂等，可重装）",
+      () => void this.onInstallAliasBlock(),
+    );
+    aliasRow.appendChild(this.installButton);
+    this.ccmUninstallButton = mkBtn(
+      "卸载别名块",
+      "settings-btn-secondary",
+      "从远端 ~/.bashrc 删掉 cc-monitor 那一块（先备份；块外内容不动）",
+      () => void this.onUninstallAliasBlock(),
+    );
+    aliasRow.appendChild(this.ccmUninstallButton);
+    body.appendChild(aliasRow);
+    body.appendChild(buildRemoteAliasPaste());
+
+    this.actionResult = document.createElement("div");
+    this.actionResult.className = "remote-test-result";
+    this.actionResult.style.display = "none";
+    body.appendChild(this.actionResult);
 
     return card;
   }
@@ -730,38 +745,22 @@ export class MachineCard {
     log.scrollTop = log.scrollHeight; // F46 建议 D：新事件自动滚到底,最新阶段始终可见
   }
 
-  /** F10：点「装 ccm 助手」——把 CCM_WRAPPER_SNIPPET 经 SFTP 装进这台远端的 ~/.bashrc。 */
-  private async onInstallCcm(): Promise<void> {
+  /** ②「装别名块」—— 把 `src/shared/ccm-aliases.sh` 经 SFTP 装进这台远端的 ~/.bashrc。 */
+  private async onInstallAliasBlock(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.testResult.style.display = "block";
-      this.testResult.textContent = "请先填好 host / user 再安装 ccm 启动器。";
+      this.showResultText("请先填好 host / user 再装别名块。", "comp");
       return;
     }
-    this.installButton.disabled = true;
-    const prev = this.installButton.textContent;
-    this.installButton.textContent = "安装中…";
-    this.testResult.style.display = "block";
-    this.testResult.textContent = "安装 ccm 启动器中…";
-    try {
-      // snippet 由后端拥有（写进 ~/.bashrc 的是被 shell 执行的代码，不让前端注入）；
-      // 前端 CCM_WRAPPER_SNIPPET 仅用于面板展示/手动复制，须与后端常量逐字一致。
-      const msg = await commands.install_remote_ccm_helper({
-        cfg,
-        profile: ".bashrc",
-      });
-      // F08：安装成功后立即失效探测缓存——免得用户装完还要等最多 5 分钟 TTL 才切到 CLI
-      // 渲染器（`ccm-probe.ts` 早就为这一步预留了 `invalidateCcmProbeCache`，只是从未被调用）。
-      invalidateCcmProbeCache(cfg.label);
-      this.testResult.textContent = `✓ ${msg}`;
-      this.recordFacet("ccm", { kind: "ok", detail: "已装" });
-    } catch (e) {
-      this.testResult.textContent = `✗ 安装失败：${String(e)}`;
-      this.recordFacet("ccm", { kind: "fail", detail: "装失败" });
-    } finally {
-      this.installButton.disabled = false;
-      this.installButton.textContent = prev;
-    }
+    // 别名块由后端拥有（写进 ~/.bashrc 的是被 shell 执行的代码，不让前端注入）。
+    await this.runRemoteAction(
+      this.installButton,
+      "装别名块中",
+      () => commands.install_remote_alias_block({ cfg, profile: ".bashrc" }),
+      { facet: "ccm", ok: "已装", fail: "装失败" },
+      "comp",
+    );
+    invalidateCcmProbeCache(cfg.label);
   }
 
   /** F50：一键推送本地公钥到远端 authorized_keys。已填私钥 → 取同名 .pub；否则弹框选 .pub。 */
@@ -968,9 +967,10 @@ export class MachineCard {
   }
 
   /** 在结果区显示一行提示（缺字段 / 取消等）。 */
-  private showResultText(text: string): void {
-    this.testResult.style.display = "block";
-    this.testResult.textContent = text;
+  private showResultText(text: string, where: "conn" | "comp" = "conn"): void {
+    const out = where === "comp" ? this.actionResult : this.testResult;
+    out.style.display = "block";
+    out.textContent = text;
   }
 
   /** 通用远端动作：禁用按钮 + 显示进度 → invoke → 结果写结果区 → 恢复按钮。 */
@@ -984,18 +984,21 @@ export class MachineCard {
      * 停在旧结论上，而 UI 上看不出来。
      */
     ledger?: { facet: MachineFacet; ok: string; fail: string },
+    /** 〔MC1〕结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`。 */
+    where: "conn" | "comp" = "conn",
   ): Promise<void> {
+    const out = where === "comp" ? this.actionResult : this.testResult;
     btn.disabled = true;
     const prev = btn.textContent;
     btn.textContent = `${busyLabel}…`;
-    this.testResult.style.display = "block";
-    this.testResult.textContent = `${busyLabel}…`;
+    out.style.display = "block";
+    out.textContent = `${busyLabel}…`;
     try {
       const msg = await fn();
-      this.testResult.textContent = `✓ ${msg}`;
+      out.textContent = `✓ ${msg}`;
       if (ledger) this.recordFacet(ledger.facet, { kind: "ok", detail: ledger.ok });
     } catch (e) {
-      this.testResult.textContent = `✗ ${String(e)}`;
+      out.textContent = `✗ ${String(e)}`;
       if (ledger)
         this.recordFacet(ledger.facet, { kind: "fail", detail: ledger.fail });
     } finally {
@@ -1013,26 +1016,29 @@ export class MachineCard {
     this.renderStatusStrip();
   }
 
-  /** F08c：点「安装后端」——把内嵌后端按远端架构装到 backendPath。 */
+  /** ①「部署后端」—— 后端本体 ＋ `ccm` 入口，一颗按钮、一次调用（〔MC1〕从前是两颗）。 */
   private async onDeployBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user || !cfg.backendPath) {
-      this.showResultText("请先填好 host / user / backendPath 再安装后端。");
+      this.showResultText("请先填好 host / user / backendPath 再部署后端。", "comp");
       return;
     }
     await this.runRemoteAction(
       this.backendInstallButton,
-      "安装后端中",
+      "部署中",
       () => commands.deploy_remote_backend({ cfg }),
       { facet: "backend", ok: "已装", fail: "装失败" },
+      "comp",
     );
+    // F08：入口放好之后立即失效探测缓存 —— 免得要等最多 5 分钟 TTL 才切到 CLI 渲染器。
+    invalidateCcmProbeCache(cfg.label);
   }
 
   /** F08c：点「卸载后端」——删远端后端二进制 + .build_id（二次确认）。 */
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user || !cfg.backendPath) {
-      this.showResultText("请先填好 host / user / backendPath 再卸载后端。");
+      this.showResultText("请先填好 host / user / backendPath 再卸载后端。", "comp");
       return;
     }
     if (
@@ -1048,29 +1054,32 @@ export class MachineCard {
       () => commands.uninstall_remote_backend({ cfg }),
       // 卸载**成功**意味着这台机器现在没有 backend —— 结论是 `fail`（缺组件），不是 `ok`。
       // 这里刻意不用 ledger 参数：它把「动作成功」映射成 `ok`，而本例正好相反。
+      undefined,
+      "comp",
     );
     this.recordFacet("backend", { kind: "fail", detail: "已卸载" });
   }
 
-  /** F10：点「卸载 ccm」——从远端 ~/.bashrc 删掉 ccm 块（二次确认）。 */
-  private async onUninstallCcm(): Promise<void> {
+  /** ②「卸载别名块」—— 从远端 ~/.bashrc 删掉 cc-monitor 那一块（二次确认）。 */
+  private async onUninstallAliasBlock(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.showResultText("请先填好 host / user 再卸载 ccm。");
+      this.showResultText("请先填好 host / user 再卸载别名块。", "comp");
       return;
     }
     if (
       !window.confirm(
-        `确认从 ${cfg.host} 的 ~/.bashrc 删除 ccm 块？\n（只删 cc-monitor BEGIN/END 标记块，块外内容不动，会先备份原文件。）`,
+        `确认从 ${cfg.host} 的 ~/.bashrc 删掉别名块？\n（只删 cc-monitor 那一小块，块外内容不动，会先备份原文件。）`,
       )
     ) {
       return;
     }
-    await this.runRemoteAction(this.ccmUninstallButton, "卸载 ccm 中", () =>
-      commands.uninstall_remote_ccm_helper({
-        cfg,
-        profile: ".bashrc",
-      }),
+    await this.runRemoteAction(
+      this.ccmUninstallButton,
+      "卸载别名块中",
+      () => commands.uninstall_remote_alias_block({ cfg, profile: ".bashrc" }),
+      undefined,
+      "comp",
     );
     // 同后端卸载：动作成功 = 组件不在了。
     this.recordFacet("ccm", { kind: "fail", detail: "已卸载" });

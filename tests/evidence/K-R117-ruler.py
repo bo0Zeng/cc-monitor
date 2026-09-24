@@ -141,9 +141,14 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("acct-iso.deploy", (B1, "R75〔用@09-14「account进后端」〕", "已裁：account 进后端 ⇒ 落 ①")),
     ("acct-iso.check", (B1, "R75", "同上，查装态那一半")),
     # ──────────────────── ② 生成 rc 片段让用户自己填 ────────────────────
-    ("alias.account-commands", (B2, "K33+K34",
-                                "「有需要动用户 alias 的就生成命令让用户自己填」；"
-                                "先例 `accounts-section.ts::renderRcSnippet`")),
+    # 〔AL1 · 2026-09-24〕`alias.account-commands` → `alias.manage`：那条能力 id 随
+    #   `write_account_aliases` 退役（`设计/71`：别名只有一类、两跳 ＋ 读回口）。本条红的时候
+    #   逐字写着「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
+    #   归处不变（②）：第①跳 `aliases_render` 就是「生成那段让用户自己填」；第②跳写的是 monitor
+    #   自己那份别名文件 ＋ 用户**自己选**的 rc 里一行 source，与从前那条同性质。
+    ("alias.manage", (B2, "K33+K34+设计/71",
+                      "「有需要动用户 alias 的就生成命令让用户自己填」：渲染（纯）→ 手贴或写入；"
+                      "先例 `accounts-section.ts::renderRcSnippet`")),
     ("acct-iso.shellinit", (B2, "K33",
                             "它产出的就是一段 rc 片段（`cc-acct-iso` 的 `cmd_shellinit` "
                             "只 `printf`、一个字节都不写盘）")),
@@ -230,12 +235,14 @@ SITE_ARCHIVE = {
         B1, "R64+K26", "放的就是「后端二进制自己的改名副本」"),
     "build.rs::embed_daemons": (
         B1, "K33", "把内嵌后端复制进 `OUT_DIR` —— 装后端那条链的构建期一环"),
-    "profile_installer.rs::install_to_profile": (
-        B2, "K33", "今天真写用户 profile；② 的目标形状是改成只生成待贴片段"),
-    "profile_installer.rs::uninstall_from_profile": (
-        B2, "K33", "同上，摘那一侧"),
+    # 〔AL1 · 2026-09-24〕`install_to_profile` / `uninstall_from_profile` 两行走了：它们今天
+    #   一个 `fs::` 都没有（`WRITE_SITES` 也随之摘掉），「备份 → 原子写 → 回读 → 回滚」收成了
+    #   `fenced_block::apply` 一份（`设计/71 §12.5`），真落盘那一跳是下面这一行。
+    "fenced_block.rs::put_atomic": (
+        B2, "K33", "今天真写用户 profile / rc 的那一跳（别名块 · PowerShell 块 · 那一行 source · "
+                   "monitor 自己那份别名文件）；② 的目标形状是改成只生成待贴片段"),
     "profile_installer.rs::atomic_write_string": (
-        B2, "K33", "上面两个动作唯一的落盘漏斗"),
+        B2, "K33", "上面那一跳的原语"),
     "profile_installer.rs::atomic_replace_path": (
         B2, "K33", "跨设备回退的 rename，同一条落盘链"),
     "cc_bus_deploy.rs::deploy_into": (
@@ -285,8 +292,11 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   `sftp.rs:743/796` 两个新名在盘上、`ipc/commands.ts:739/959` 两侧都跟上了。
         #   ⇒ 改表是**跟上真相**，不是凑绿。
         "deploy_remote_backend",
-        "install_remote_ccm_helper",
-        "uninstall_remote_ccm_helper",
+        # 〔MC1 · 2026-09-24〕`install_remote_ccm_helper` / `uninstall_remote_ccm_helper` 改名成
+        #   `…_remote_alias_block`（「ccm 助手」这个词删掉，`设计/71 §13`）。本条红的时候逐字
+        #   「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
+        "install_remote_alias_block",
+        "uninstall_remote_alias_block",
         "uninstall_remote_backend",
     ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
        "`ccm.install`/`ccm.uninstall` 的远端半」。现打这四条的住址恰好都在 `sftp.rs`")),
@@ -303,7 +313,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "probe_ccm_cli",
     ), "§3-3 第二行：后端写区 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
-       "⚠ 限定词承重：`lib.rs` 里还住着 `write_account_aliases`，那条归 S4。"
+       "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条（〔AL1〕从前是一条 `write_account_aliases`），那几条归 S4。"
        "🔴 〔`K-R135` 09-15〕那三条 `ccm_user_path_*`（用户级 PATH 那一格：现在状态 / 加 / 撤）"
        "是本轮新长出来的装口，归 S2 的理由有三条、且**没有第二个连贯的归属**："
        "① 它们归档在 `①装后端`（见 `CAP_ARCHIVE` 的 `ccm.user-path`）⇒ 只可能落 S1/S2/S3；"
@@ -322,13 +332,18 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "① 里住 `acct_iso_deploy.rs` 的恰好这两条（同文件的 `remote_acct_iso_shellinit` 归 ②）；"
        "那「1 条欠口」今天盘上还不存在 ⇒ 不进闭集")),
     ("S4", ("②生成 rc 片段", (
+        # 〔AL1 · 2026-09-24〕`write_account_aliases` 退役、拆成两跳 ＋ 读回口（`设计/71 §12.6`）。
+        # 本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（本路），改表是跟上真相。
+        "aliases_install",
+        "aliases_read",
+        "aliases_render",
         "remote_acct_iso_shellinit",
-        "write_account_aliases",
         # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
         # `shellinit_fence_state` ⇒ 归 ② 同一件。零界面调用点 ⇒ 前端落点不动。
         "local_acct_iso_shellinit",
-    ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处现打恰好 2 条命令"
-       "（`§S5` 归处栏）；那 4 处写盘落点不是命令，住 `SITE_ARCHIVE`，不进本闭集")),
+    ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处在 `K-R117` 现打时恰好 2 条命令"
+       "（`§S5` 归处栏）；〔AL1〕那条 `write_account_aliases` 拆成三条、〔A3〕加了本机那条 shellinit 之后是 5 条。"
+       "写盘落点不是命令，住 `SITE_ARCHIVE`，不进本闭集")),
     ("S5", ("③装 MCP/skill", (
         # 🔴 〔步 12·C 收尾 2026-09-20〕**7 条 → 5 条**：`write_remote_mcp_server` 与
         # `remove_remote_mcp_server` **退役了**（`设计/00 §2.5 ①` 那句「同义双份命令合成
@@ -377,9 +392,12 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
     ("S2", (("src/ccm-probe.ts",
-             "src/launcher-diagnostics.ts",
-             "src/settings/cc_integration.ts"),
-            "量于 09-15 · 同上",
+             "src/settings/cc_integration.ts",
+             "src/settings/machine-aliases.ts"),
+            "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/launcher-diagnostics.ts` → "
+            "`src/settings/machine-aliases.ts`：本机别名块的装 / 卸 / 扫（`cc_integration_*`）· "
+            "`local_ccm_entry_status` · 用户级 PATH 那三条（`ccm_user_path_*`）整块搬去了机器页「别名」。"
+            "**份数没变（3 → 3），是换了一份**：`launcher-diagnostics.ts` 今天一条 S2 调用都没有了",
             "S2 收完本机半那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S2']`。"
             "⚠ `src/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
@@ -391,9 +409,10 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
             "（`§3-3` 写「S3 今天 2」是把 `src/accounts.ts` 那条**注释里的提名**"
             "算成了落点，见 `§S5d` 第二档 —— 那一半仍然成立）")),
-    ("S4", (("src/launcher-diagnostics.ts",
-             "src/settings/accounts-section.ts"),
-            "量于 09-15 · 同上",
+    ("S4", (("src/settings/accounts-section.ts",
+             "src/settings/machine-aliases.ts"),
+            "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/launcher-diagnostics.ts` → "
+            "`src/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
             "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
     ("S5", (("src/settings/cc-bus-section.ts",
@@ -442,7 +461,11 @@ FRONTEND_GOAL_OVERALL: "OrderedDict[str, tuple]" = OrderedDict([
         "⚠ 现打 `remote-section.rebuild_cards` 只给远端建 `MachineCard`，本机页是一个"
         "空 div、只靠 per-machine 分节填 ⇒ **本机今天在结构上是二等公民**，"
         "而那正是 R63 点名的「按实现分」。补本机那一栏是 `S2` 的活。")),
-    ("src/launcher-diagnostics.ts", (
+    # 〔AL1 · 2026-09-24〕这一行的 key 从 `src/launcher-diagnostics.ts` 换成了
+    #   `src/settings/machine-aliases.ts`：`设计/70 §3.3` · `设计/71 §13` 把 ②（别名 ＝ 生成那段、
+    #   手贴或写入）并进**机器页**（别名是每台机器一份）⇒ ② 那一处今天住机器页「本机 → 工具 → 别名」。
+    #   下面那段理由是 `K-R131` 当时写的（那时这一处还是 `launcher-diagnostics.ts`），逐字留着。
+    ("src/settings/machine-aliases.ts", (
         "②一处「生成 bash/PowerShell 那段让用户自己填」",
         "R63裁定三+K33",
         "它今天**已经是**这一处：模块头注逐字记着 Phase D UX 审计把「诊断」与「别名生成器」"
@@ -477,9 +500,9 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
             "搬进组件栏。R63 裁定三逐字点名「不许再按『…装账号隔离』这样按实现分」，"
             "而今天它正是一个按实现分出来的独立装口。`R75`〔用@09-14「account 进后端」〕"
             "已把它归 ①。账号栏留一句指路（**不带命令调用** ⇒ 不算落点）。")),
-    ("S4", (("src/launcher-diagnostics.ts",),
+    ("S4", (("src/settings/machine-aliases.ts",),
             "`remote_acct_iso_shellinit` 那块待贴片段从 `accounts-section.ts` 搬到 ② 那一处，"
-            "与 `write_account_aliases` 同处。")),
+            "与 `aliases_*` 同处（〔AL1〕② 那一处今天是机器页的「别名」）。")),
     ("S5", (("src/settings/mcp-section.ts", "src/views/inbox-view.ts"),
             "`cc-bus` 的两条装口从驾驶舱搬进 ③；`src/views/inbox-view.ts` 留着，"
             "它不是装口（见 `FRONTEND_NON_ENTRY`）。")),

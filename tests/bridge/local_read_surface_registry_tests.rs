@@ -370,20 +370,20 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "cc-bus 钩子的安装位置",
         "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
     ),
+    // 〔AL1 · 2026-09-24〕`设计/71` 别名两跳里要落盘 / 读回的那两条。纯渲染那一条不碰 home。
     (
         "lib.rs",
-        "write_account_aliases",
-        "`~/.cc-monitor/account-aliases.sh`，以及**用户自己选的**那份 rc（`K-R49`）",
-        "**两个落点，性质不同，别混成一格**：\
-             ① 生成的那份别名文件在 `~/.cc-monitor` 下 —— 与 `local_backend_host.rs::cc_monitor_dir` \
-             同一个目录、同一个理由：monitor 自己的东西，用 `home_dir()` 只为「每个用户各一份」；\
-             ② 那一行 `source` 会写**用户既有的** shell 配置 —— 那一处**有围栏**：\
-             `profile_installer::fence_path_under`（只许落在 home 之内），而且路径由界面上的人\
-             从「盘上真实存在的那几份」里选，代码不猜。\
-             写侧两条登记在 `write_site_registry` 的 `account_aliases.rs::write_alias_file` 与 \
-             `account_aliases.rs::ensure_rc_source_line`。\
-             ⚠ `home_dir()` 出现在**这一处**而不是 `account_aliases.rs` 里，是刻意的：\
-             那个模块把 `home` 当参数收，于是它的测试拿临时目录当 home，结构上碰不到真实家目录。",
+        "aliases_read",
+        "`~/.cc-monitor/account-aliases.sh`（读回口：那份别名文件今天有哪几条）",
+        "只读。monitor 自己的目录，用 `home_dir()` 只为「每个用户各一份」；\
+             `home_dir()` 在这里而不在 `account_aliases.rs` 里 —— 那边把 `home` 当参数收，测试拿临时目录当 home。",
+    ),
+    (
+        "lib.rs",
+        "aliases_install",
+        "`~/.cc-monitor/account-aliases.sh`，以及**用户自己选的**那份 rc",
+        "**两个落点，性质不同**：① monitor 自己的那份别名文件；② 用户**自己选**的那份 rc 里一行 source —— 有围栏（`profile_installer::fence_path_under`，只许落在 home 之内，路径由界面上的人从盘上真实存在的那几份里选）。\
+             写侧今天只有一个序列 `fenced_block::apply`，本机原语登记在 `write_site_registry` 的 `fenced_block.rs` 三行。",
     ),
     (
         "ccm_probe.rs",

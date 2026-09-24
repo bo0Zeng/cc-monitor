@@ -1370,7 +1370,7 @@ fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
     );
     assert!(
         !remote.is_empty(),
-        "远端那条 `ccm` 落点没了 —— 那是 `sftp::install_remote_ccm_helper` 推过去的那份，\n\
+        "远端那条 `ccm` 落点没了 —— 那是 `sftp::deploy_remote_backend` 推过去的那份，\n\
              本件只**加**本机那条，不许把远端那条顺手弄丢（实得本机 {local:?}）"
     );
     // 两条不许是同一个路径：同一个串出现两次说明有人把 host 抄错了，
@@ -1526,12 +1526,13 @@ fn claims() -> Vec<Claim> {
             tool: "ccm",
             home: Some(sftp()),
             install: Some(ImplSite {
-                addr: "sftp.rs::install_remote_ccm_helper",
-                definition: "pub async fn install_remote_ccm_helper(\n    cfg: RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
+                // 〔MC1 · 2026-09-24〕改名：「装 ccm 助手」→ 装别名块（推入口那一半并进了部署后端）。
+                addr: "sftp.rs::install_remote_alias_block",
+                definition: "pub async fn install_remote_alias_block(\n    cfg: RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
             }),
             uninstall: Some(ImplSite {
-                addr: "sftp.rs::uninstall_remote_ccm_helper",
-                definition: "pub async fn uninstall_remote_ccm_helper(\n    cfg: RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
+                addr: "sftp.rs::uninstall_remote_alias_block",
+                definition: "pub async fn uninstall_remote_alias_block(\n    cfg: RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
             }),
         },
         Claim {

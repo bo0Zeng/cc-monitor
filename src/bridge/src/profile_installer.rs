@@ -18,7 +18,7 @@
 //!
 //! | 面 | 本机 Windows | 本机 POSIX（本件之前） | 远端 POSIX |
 //! |---|---|---|---|
-//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper` |
+//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（〔MC1〕今天 `sftp::install_remote_alias_block`） |
 //! | 查「你 rc 里那几行是旧的」 | [`scan_legacy_profiles`] | 🔴 **零口** | —— |
 //!
 //! 补法有两条硬边界，两条都是**这件事的一半价值**：
@@ -1023,7 +1023,7 @@ pub fn user_path_remove() -> Result<(), String> {
 ///
 /// ⚠ **`K-R132` 把「把 `cct` 从 Windows 文案里摘掉」随动到 `src/launcher-diagnostics.ts`
 /// 那一句上 —— 本轮现打，那个随动的前提是假的**：那一句只在 **POSIX rc** 那一臂印
-/// （它的下拉只遍历 `AccountAliasReport::rc_candidates`，而那张表现算自
+/// （它的下拉只遍历 `AccountAliasReport::rc_candidates`〔散文墓碑〕（〔AL1〕今天是 `AliasListing::rc_candidates`），而那张表现算自
 /// `account_aliases::RC_CANDIDATES`，**一份 PowerShell profile 都没有**），
 /// 而那一臂的 `cct` 是**真有**的（`src/shared/ccm-aliases.sh` 里就定义着）。
 /// PowerShell 那一臂是另一份文件（`src/settings/cc_integration.ts` 的 `renderScanResult`），
@@ -1051,171 +1051,39 @@ pub fn render_cc_code(command_name: &str, include_cc_function: bool) -> String {
 ///
 /// `include_cc_function = false` 时只装 `__ccm_bind` helper，不抢 cc function 名。
 ///
-/// v1.7.10 安全加固（修 v1.7.9 留下的"profile 写坏"事故）：
-///  1. 文件存在时**必先备份**到 `<path>.ccm-backup-<ms>` 再动笔
-///  2. 写入走 `MoveFileExW(REPLACE_EXISTING)` 真原子（之前是 remove + rename
-///     非原子，rename 失败会留下空文件 + 原内容丢失）
-///  3. 写完立即 read 回来校验长度 == 期望长度；不匹配从 backup 回滚
-///  4. 若 `path.exists()` 但 read 出空字符串（OneDrive placeholder / 文件锁等
-///     罕见情况），**直接 abort 不写**——避免 existing="" + 块追加 = 用户内容被冲掉
+/// v1.7.10 那四道安全加固（先备份 · 真原子替换 · 写后回读 · 盘上有字节却读到空就中止）
+/// 〔AL1 · 2026-09-24〕**不再住这里** —— 它们是「装一块东西进一份文件」的规则，
+/// 本机远端同一份：`fenced_block::apply`（序列）＋ `fenced_block::LocalFile`（本机原语，
+/// OneDrive 那一道在它的 `read` 里）。本函数只答方言那一半：[`plan_install`] ＋ [`encode_for_disk`]。
+/// ⚠ 行为差一处，如实写：内容与盘上逐字相同时**一个字节都不写**（从前照写一遍、照备份一份）。
 pub fn install_to_profile(
     path: &PathBuf,
     command_name: &str,
     include_cc_function: bool,
 ) -> Result<(), String> {
-    // 〔`K-R62`〕**写什么**按方言分岔（见 [`plan_install`]），
-    // **怎么落盘**这一整套（备份 → 原子替换 → 读回逐字比对 → 不符回滚）两种方言共用一份。
-    // ⇒ 补上 POSIX 那一格**没有**多出第四套安装器，只是这一台安装器学会了第二种方言。
     let flavor = flavor_of(path);
-
-    let (existing, did_exist) = if path.exists() {
-        let raw = std::fs::read_to_string(path)
-            .map_err(|e| format!("read existing profile failed: {e}"))?;
-        let on_disk_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-        // 防御：文件在磁盘上有内容但读到 "" —— 罕见但要拦下来。OneDrive / 杀软介入
-        // 可能让 read_to_string 在某些情况下返回 Ok("")。继续走会用 "" + new code
-        // 覆盖原内容（v1.7.9 事故的可能子原因之一）。
-        if on_disk_size > 0 && raw.is_empty() {
-            return Err(format!(
-                "profile 文件 {} 在磁盘上有 {} 字节但读到空内容（可能被 OneDrive/杀软锁定）。\
-                 取消安装。请先在文件资源管理器里确认文件可读后重试。",
-                path.display(),
-                on_disk_size
-            ));
-        }
-        // 〔`K-R132`〕BOM 剥在**最靠近读的那一跳**：往下所有判内容的东西
-        // （围栏、冲突函数、裸行扫描、合块）拿到的都是没有 BOM 的那一份。
-        (strip_bom(&raw).to_string(), true)
-    } else {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("create profile dir failed: {e}"))?;
-        }
-        (String::new(), false)
-    };
-
-    let updated = plan_install(
-        flavor,
-        &existing,
-        command_name,
-        include_cc_function,
-        &path.display().to_string(),
-    )?;
-
-    // 写之前先备份原文件（即使没动 BEGIN/END 块外的内容，也防 atomic_write 异常）
-    let backup_path = if did_exist && !existing.is_empty() {
-        let backup = backup_path_for(path);
-        std::fs::copy(path, &backup)
-            .map_err(|e| format!("backup profile to {} failed: {e}", backup.display()))?;
-        Some(backup)
-    } else {
-        None
-    };
-
-    // 〔`K-R132`〕落盘的那一份 ≠ 计划出来的那一份：PowerShell 方言前面多一个 BOM。
-    // **读回校验比的必须是落盘那一份** —— 比 `updated` 会恒差三个字节，当场回滚。
-    let on_disk_bytes = encode_for_disk(flavor, &updated);
-
-    if let Err(e) = atomic_write_string(path, &on_disk_bytes) {
-        // 写入失败：尝试从 backup 恢复
-        if let Some(b) = &backup_path {
-            let _ = std::fs::copy(b, path); // best-effort
-        }
-        return Err(format!(
-            "write profile failed: {e}\n备份保留在: {}",
-            backup_path
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "(无备份，原文件不存在)".into())
-        ));
-    }
-
-    // 写完读回来校验。**T01：从「只比长度」升级为「内容级比对」。**
-    // 旧实现是 `written.len() != updated.len()`——同长度的损坏（字节翻转 / 编码变形 /
-    // 行尾 LF↔CR 等长替换）会被静默放过，而这里写的是用户的 shell profile，
-    // 写坏的后果是下次开终端就炸。远端侧（`sftp.rs`）一直比的是内容，本机侧此前更弱。
-    // 写入（含备份与写失败时的恢复）在上面已做完——那一段各落点不同，不上提。
-    // 这里把「读回 → 比对 → 回滚」交给统一实现，与远端 SFTP 侧共用同一套判定语义。
-    crate::verified_write::verify_and_rollback(
-        &on_disk_bytes,
-        || {
-            std::fs::read_to_string(path)
-                .map_err(|e| format!("{e}（请检查 {} 内容）", path.display()))
-        },
-        || {
-            if let Some(b) = &backup_path {
-                let _ = std::fs::copy(b, path);
-            }
-        },
-    )?;
-
-    Ok(())
-}
-
-fn backup_path_for(path: &PathBuf) -> PathBuf {
-    let ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let mut p = path.clone();
-    let fname = p
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "profile".to_string());
-    p.set_file_name(format!("{fname}.ccm-backup-{ms}"));
-    p
+    let what = path.display().to_string();
+    crate::fenced_block::apply_local(path, true, |raw| {
+        // 〔`K-R132`〕BOM 剥在**最靠近读的那一跳**；落盘那一份按方言再编码回去 ——
+        // 读回比对比的是落盘那一份（比计划出来的那一份会恒差三个字节，当场回滚）。
+        let existing = strip_bom(raw.unwrap_or(""));
+        let updated = plan_install(flavor, existing, command_name, include_cc_function, &what)?;
+        Ok(Some(encode_for_disk(flavor, &updated)))
+    })
+    .map(|_| ())
 }
 
 /// 卸载：整块删除 BEGIN/END 之间的内容（含 marker 行）。块外内容不动。
-///
-/// v1.7.10：同 install 加 backup + 写后校验，避免卸载半途坏文件。
+/// 文件不存在 ⇒ 什么都不做。序列与 [`install_to_profile`] 同一份（`fenced_block::apply`）。
 pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
-    }
-    let raw =
-        std::fs::read_to_string(path).map_err(|e| format!("read existing profile failed: {e}"))?;
-    let on_disk_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    if on_disk_size > 0 && raw.is_empty() {
-        return Err(format!(
-            "profile 文件 {} 在磁盘上有 {} 字节但读到空内容，取消卸载。",
-            path.display(),
-            on_disk_size
-        ));
-    }
     let flavor = flavor_of(path);
-    // 〔`K-R132`〕同 [`install_to_profile`]：BOM 剥在最靠近读的那一跳。
-    let existing = strip_bom(&raw).to_string();
-    // 〔`K-R62`〕同 [`install_to_profile`]：剥哪一对围栏按方言分岔，落盘那一套共用。
-    let stripped = plan_uninstall(flavor, &existing, &path.display().to_string())?;
-    let on_disk_bytes = encode_for_disk(flavor, &stripped);
-    if on_disk_bytes == raw {
-        return Ok(()); // 没有块（而且编码也已经是对的），无需写
-    }
-
-    let backup = backup_path_for(path);
-    std::fs::copy(path, &backup)
-        .map_err(|e| format!("backup profile to {} failed: {e}", backup.display()))?;
-
-    if let Err(e) = atomic_write_string(path, &on_disk_bytes) {
-        let _ = std::fs::copy(&backup, path);
-        return Err(format!(
-            "write profile failed: {e}\n备份保留在: {}",
-            backup.display()
-        ));
-    }
-    // 同上走统一校验。卸载路径此前也只比长度——剥离别名块写坏同样弄坏用户的 shell 配置。
-    crate::verified_write::verify_and_rollback(
-        &on_disk_bytes,
-        || {
-            std::fs::read_to_string(path)
-                .map_err(|e| format!("{e}（请检查 {} 内容）", path.display()))
-        },
-        || {
-            let _ = std::fs::copy(&backup, path);
-        },
-    )?;
-    Ok(())
+    let what = path.display().to_string();
+    crate::fenced_block::apply_local(path, true, |raw| {
+        let Some(raw) = raw else { return Ok(None) };
+        let stripped = plan_uninstall(flavor, strip_bom(raw), &what)?;
+        Ok(Some(encode_for_disk(flavor, &stripped)))
+    })
+    .map(|_| ())
 }
 
 // === 内部 helpers ===
@@ -1298,127 +1166,34 @@ fn find_conflicting_functions(
 
 /// 找已有 cc-monitor 块的范围（line index, inclusive）。
 ///
-/// **T04 第二步：改走 `fenced_block::find_pair`，与远端 profile 共用同一条判定。**
-/// 原实现在「有 BEGIN 但其后没有 END」时返回 `None` → 调用方走**追加**分支，
-/// 而第二次安装时那个损坏的 BEGIN 会与新块的 END 配上对、**吃掉两者之间的用户代码**
-/// （实测见 `repro_local_eats_user_content_on_damaged_fence`）。
-/// 远端侧（`sftp::merge_profile_block`）当初被审计 B1 要求在同一情形 Err 中止，
-/// 本机侧漏了这道保护——写的都是"下次开终端就炸"级别的文件。
-fn find_block_range(content: &str, what: &str) -> Result<Option<(usize, usize)>, String> {
-    crate::fenced_block::find_pair(content, BEGIN_MARKER, END_MARKER, what)
-}
-
-/// 检测 existing 用的行尾风格。包含任何 `\r\n` 就视为 CRLF（Windows 用户 profile
-/// 默认值——notepad / VSCode / git autocrlf=true 三大来源都是 CRLF）。
-fn detect_eol(s: &str) -> &'static str {
-    if s.contains("\r\n") {
-        "\r\n"
-    } else {
-        "\n"
-    }
-}
-
-/// 把任意 EOL 风格的文本归一到指定 EOL：先全 → LF，再按需 → CRLF。
-fn rewrite_eol(content: &str, target: &str) -> String {
-    if target == "\n" {
-        content.replace("\r\n", "\n")
-    } else {
-        content.replace("\r\n", "\n").replace('\n', "\r\n")
-    }
-}
-
-/// `\n` / `\r\n` 都判 true（`\r\n` 的最后一个字符就是 `\n`）。
-fn ends_with_eol(s: &str) -> bool {
-    s.ends_with('\n')
-}
-
 /// 在 existing 中替换 ccm 块；若不存在则追加。
 ///
-/// **必须保留原文件的 EOL 风格**：Windows 用户 profile 默认 CRLF；早期版本用
-/// `existing.lines().join("\n")` 静默把 CRLF → LF，length 校验检不出（两边都已
-/// LF），用户用 notepad 看会被"行尾不一致"警告/ git diff 整文件标红。
-/// 改用 `split_inclusive('\n')` 保留终止符，新 block 按 detected EOL 重写。
+/// 〔AL1 · 2026-09-24〕配对之后怎么拼**只剩一份**：`fenced_block::splice_in`，
+/// PowerShell 那几处排版（保住原文件的 CRLF · 追加前空一行）是它的 `Layout::PowerShell` 那一臂。
+/// 那条「必须保留原文件的 EOL 风格」的来历（早期 `lines().join("\n")` 静默把 CRLF 换成 LF，
+/// 长度校验检不出、notepad 报行尾不一致）跟着搬过去了，判据仍是本文件的 CRLF 那几条。
 fn replace_or_append_block(existing: &str, new_block: &str, what: &str) -> Result<String, String> {
-    let eol = detect_eol(existing);
-    let block = rewrite_eol(new_block.trim_end_matches(|c| c == '\r' || c == '\n'), eol);
-    if let Some((begin, end)) = find_block_range(existing, what)? {
-        // split_inclusive('\n') 与 .lines() 索引一致：都按 '\n' 切，索引位置相同；
-        // 区别只是 split_inclusive 把 '\n'（及前一个 '\r'）保留在切片内部。
-        let lines: Vec<&str> = existing.split_inclusive('\n').collect();
-        let before: String = lines[..begin].concat();
-        let after: String = if end + 1 < lines.len() {
-            lines[(end + 1)..].concat()
-        } else {
-            String::new()
-        };
-        let mut out = String::new();
-        if !before.is_empty() {
-            out.push_str(&before);
-            if !ends_with_eol(&before) {
-                out.push_str(eol);
-            }
-        }
-        out.push_str(&block);
-        out.push_str(eol);
-        if !after.is_empty() {
-            out.push_str(&after);
-            if !ends_with_eol(&after) {
-                out.push_str(eol);
-            }
-        }
-        Ok(out)
-    } else {
-        // 追加
-        let mut out = existing.to_string();
-        if !out.is_empty() && !ends_with_eol(&out) {
-            out.push_str(eol);
-        }
-        if !out.is_empty() {
-            out.push_str(eol);
-        }
-        out.push_str(&block);
-        out.push_str(eol);
-        Ok(out)
-    }
+    crate::fenced_block::splice_in(
+        existing,
+        BEGIN_MARKER,
+        END_MARKER,
+        new_block,
+        what,
+        crate::fenced_block::Layout::PowerShell,
+    )
 }
 
-/// 删除 ccm 块（如果有）。
-///
-/// **卸载路径也走同一条配对判定**（T04 第二步）：围栏损坏时 `Err` 中止而不是
-/// "当作没有块、原样返回"。后者看着无害，实则让用户以为卸载干净了，
-/// 而那个悬空的 BEGIN 还留在文件里——下次安装就会吃掉它下面的内容。
+/// 删除 ccm 块（如果有）。围栏损坏时 `Err` 中止而不是「当作没有块、原样返回」——
+/// 后者让用户以为卸载干净了，而那个悬空的 BEGIN 下次安装就会吃掉它下面的内容。
+/// 拼接同上走 `fenced_block::splice_out`。
 fn strip_block(existing: &str, what: &str) -> Result<String, String> {
-    let eol = detect_eol(existing);
-    let Some((begin, end)) = find_block_range(existing, what)? else {
-        return Ok(existing.to_string());
-    };
-    let lines: Vec<&str> = existing.split_inclusive('\n').collect();
-    let before: String = lines[..begin].concat();
-    let after: String = if end + 1 < lines.len() {
-        lines[(end + 1)..].concat()
-    } else {
-        String::new()
-    };
-    let mut out = String::new();
-    if !before.is_empty() {
-        out.push_str(&before);
-        if !ends_with_eol(&before) {
-            out.push_str(eol);
-        }
-    }
-    if !after.is_empty() {
-        out.push_str(&after);
-        if !ends_with_eol(&after) {
-            out.push_str(eol);
-        }
-    }
-    // 防止文件结尾多空行：保留至多一个尾 EOL
-    let double = format!("{eol}{eol}");
-    while out.ends_with(&double) {
-        let new_len = out.len() - eol.len();
-        out.truncate(new_len);
-    }
-    Ok(out)
+    crate::fenced_block::splice_out(
+        existing,
+        BEGIN_MARKER,
+        END_MARKER,
+        what,
+        crate::fenced_block::Layout::PowerShell,
+    )
 }
 
 /// 命令名只允许字母数字下划线（防注入）。

@@ -32,7 +32,8 @@
  * 由 `accounts-section.vitest.ts` 里 `KS6` 那条源码扫描钉着（人群含本文件）。
  */
 import { buildAcctIsoCmd, validateAcctName } from "./acct-deploy";
-import { suggestAliasName } from "../launcher-diagnostics";
+// 〔AL1〕`suggestAliasName` 随别名那一块搬进了 `machine-aliases.ts`（机器页「别名」）。
+import { suggestAliasName } from "./machine-aliases";
 
 /** 接入方式 —— `§4.4` 那个岔口的两支。 */
 export type AccountAccess = "subscription" | "apikey";

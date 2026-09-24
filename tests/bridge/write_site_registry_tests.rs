@@ -105,33 +105,29 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回逐字节比对 →\
           不符即回滚），**没有自造第四份写入实现** —— 那个模块头注记着本仓曾有 4 处\
           独立实现且校验强度不一致（两处只比长度）。"),
-    // ── `K-R49`：加了账号就把 `alphacc` / `betacc` 那条命令落下来。**两个落点性质完全不同，分两行记。**
-    ("account_aliases.rs", "write_alias_file", None,
-     "整份重写 `~/.cc-monitor/account-aliases.sh`。**不是安装动作** —— 写的是 monitor \
-          自己的目录（与 `local_backend` 的 `bin/`、`local_backend_host` 的 `listen-token` 同一个），\
-          用户的 shell 配置一个字节都不碰。\
-          ★ 为什么是「整份重写」而不是往 `~/.bashrc` 追加：追加那条路上，加三个账号就追三次、\
-          删了账号那一行还留着指向一个不存在的号，而**弄坏的代价是 shell 起不来**。\
-          整份重写换来三条：幂等（内容一致时一个字节都不写）· 删了账号它那条当场消失 · \
-          删掉整份文件也只是少几个命令。落盘借 `profile_installer::atomic_write_string`，\
-          写完回读逐字比对，不符就把这份**我们自己的**文件删掉（半截的它比没有它更坏）。"),
-    ("account_aliases.rs", "ensure_rc_source_line", None,
-     "往用户**自己指定**的那份 rc 里装**一行** `source`（BEGIN/END 围栏内）。\
-          ⚠ 它确实写用户既有的环境，但**不是安装动作**：它不装任何 `TOOLS` 里的工具，\
-          只是让上面那份生成文件被 source 到 —— 真正的内容一个字节都不在这里。\
-          🔴 四道：① 路径过 `profile_installer::fence_profile_path`（只许落在 home 之内，\
-          而且那份 rc 由界面上的人**选**，代码不猜）；② 已经 source 过就一个字节都不写（幂等）；\
-          ③ 围栏损坏（有 BEGIN 没 END）**中止**，绝不用后面那个 END 去配对吃掉用户代码；\
-          ④ 先 `fs::copy` 备份、写完回读逐字比对、不符从备份回滚。\
-          ★ 多数人根本走不到这一行：`src/shared/ccm-aliases.sh` 自带那行 `[ -r … ] && . …`，\
-          装过 ccm 别名块的人加账号之后什么都不用做。"),
-    // ── 安装动作：写的是**用户既有的环境/配置**，且对应声明表里的一个工具
-    ("profile_installer.rs", "install_to_profile", Some("ccm"),
-     "往用户 shell profile 的 BEGIN/END 块里装 ccm 启动器（写前先备份）"),
-    ("profile_installer.rs", "uninstall_from_profile", Some("ccm"),
-     "从 profile 里摘掉那个块（同样先备份）"),
+    // ── 🔴 〔AL1 · 2026-09-24〕`设计/71 §12.5`：**「装一块东西进一份文件」的规则收成了一份。**
+    //    从前这里有四行：`account_aliases.rs::write_alias_file` / `::ensure_rc_source_line` ·
+    //    `profile_installer.rs::install_to_profile` / `::uninstall_from_profile` —— 四个函数体
+    //    各写一遍「备份 → 原子写 → 回读 → 回滚」。今天它们一行 `fs::` 都没有了，
+    //    全部经 `fenced_block::apply`（序列）落到下面这三个本机原语上 ⇒ 写盘这一跳只剩三处。
+    //    它们各自**写什么**（生成文件 / rc 里那一行 source / ccm 别名块 / PowerShell 块）
+    //    住在各自的 `plan` 闭包里，一个字节的落盘都不自己做。
+    ("fenced_block.rs", "put_atomic", Some("ccm"),
+     "`LocalFile` 的原子替换：`mkdir -p` 上级目录 ＋ `profile_installer::atomic_write_string`。\
+          它是本机这几件事**唯一**的落盘漏斗：ccm 别名块装/卸进用户选的 rc · PowerShell profile 的 cc 块 · \
+          `~/.cc-monitor/account-aliases.sh`（monitor 自己那份生成文件，整份重写）· rc 里那一行 source。\
+          点名 `ccm` 是因为前两件是那个工具的安装/卸载动作；后两件不装任何工具。\
+          路径由调用方给，围栏在调用方（`profile_installer::fence_path_under`：只许落在 home 之内，\
+          那份 rc 由界面上的人选）。回滚也走它：把内存里那份原文原样写回。"),
+    ("fenced_block.rs", "save_backup", None,
+     "给用户那份 rc / profile 另存一份原文（`<名>.ccm-backup-<ms>`，`fs::copy` 连权限位一起拷）。\
+          **不是安装动作**，是安装的可撤销那一格。只给**用户的、非空的**文件存；\
+          我们自己那份生成文件不存（回滚用内存里的原文）。"),
+    ("fenced_block.rs", "delete_created", None,
+     "只在一种情形下删：**这份文件原本不存在、是这一次新建的，而写完读回来不对** ⇒ 删掉刚建的那份\
+          （半截的 rc 比没有它更坏）。不是安装动作。"),
     ("profile_installer.rs", "atomic_write_string", Some("ccm"),
-     "上面两个动作唯一的落盘漏斗：临时文件 + rename"),
+     "临时文件 + rename 的原语（〔AL1〕本机 ccm 那几件今天都经 `fenced_block.rs::put_atomic` 调它；另一个直调者是 `mcp.rs::write_json_atomic`）"),
     ("profile_installer.rs", "atomic_replace_path", Some("ccm"),
      "跨设备回退的 rename。⚠ 这是**四份平台原语副本之一**，四份都已登记在 `atomic_replace_registry`（承接 C10）——本条不重复判它，只记它是个写点"),
     ("mcp.rs", "write_json_atomic", Some("project-mcp"),

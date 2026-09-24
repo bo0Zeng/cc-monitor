@@ -1161,7 +1161,7 @@ pub fn extract_embedded_to(
 //
 // 立件时现打（量于 `79bf97d`）：闭集 `tool_registry::TOOLS` 里落点是 `…/ccm` 的**只有一条**，
 // 而它是 `RemoteHomeRelative(".local/bin/ccm")` ⇒ **本机侧 0 条**；装口也只有远端那一个
-// （`sftp::install_remote_ccm_helper`）。⇒ 用户 `K34` 逐字要的「装了新版后
+// （`sftp::install_remote_ccm_helper`〔散文墓碑〕，〔MC1〕今天那一半在 `sftp::deploy_remote_backend`）。⇒ 用户 `K34` 逐字要的「装了新版后
 // `~/.local/bin/ccm` 可以干净退役」**今天没有承接方** —— 不是「没验过旧的能不能退役」，
 // 是**本机压根没有新的那一份**。
 //
@@ -1210,22 +1210,20 @@ pub fn local_ccm_entry_name() -> String {
 /// ⇒ 生成器与 [`CCM_ENTRY_WORD`] 一起住在后端层，`sftp.rs` 改成调它。
 /// ⚠ 搬过来**没有**把平台知识带进 `backend/`：它是个纯字符串生成器，
 /// 一处 `cfg`、一处平台原语都没有（`the_backend_half_stays_platform_agnostic` 照旧绿）。
-/// # 🔴 为什么 shim 必须自己传 `CCM_SELF`（09-15 真机逮到）
+/// # 〔MC1 · 2026-09-24〕它不再传 `CCM_SELF`（09-15 加的那一行删了）
 ///
-/// 容器路（`--tmux`）生成的**内层命令**以 `ccm::plan::Env::self_path` 开头，而那个值是
-/// `CCM_SELF` → 兜底 `argv[0]`。两条入口在这一格上**不对称**：
-/// · 入口①（本机改名副本）：`argv[0]` 的 basename 本来就是 `ccm` ⇒ 内层命令天然对。
-/// · 入口②（远端 shim）：shim `exec` 的是**二进制真身**，`argv[0]` 因此是 `<…>/cc-monitor-backend`
-///   ⇒ 内层命令变成 `cc-monitor-backend --cwd …`，**缺了 `ccm` 这个子命令词**，
-///   被当后端直连口解析，当场 `query error: unknown argument: --cwd`。
-///
-/// 失败长得**不像 shim 的错**：tmux 会话建得出来、`@ccm_agent` 也打上了，
-/// 只有窗格里那一行是红的 —— 而 `--print` 吐的是同一条坏命令，所以平价预言机也不会红。
-/// ⇒ 用 `$0`（`sh` 里就是「我是被当作什么叫的」那个路径，经 PATH 调用时也是绝对路径）
-/// 把入口名补回去，正是 `CCM_SELF` 那条注释写的语义。外部已设则不覆盖。
+/// 09-15 真机逮到过：容器路（`--tmux`）的**内层命令**以「我是被怎么叫的」开头，而那时它只取
+/// `argv[0]` ⇒ 经本 shim `exec <后端> ccm …` 进来时内层变成 `cc-monitor-backend --cwd …`，
+/// **缺了 `ccm` 这个子命令词**，当场 `unknown argument: --cwd`。补法是让 shim 先
+/// `CCM_SELF="${CCM_SELF:-$0}"` 再 exec。
+/// ⇒ CC1 把根治放进了后端：`control/ccm/mod.rs::self_invocation` 从进程 argv 里取「被 `intercept`
+/// 吃掉的那一段」，入口② 自己就带着那个词 ⇒ 那个环境变量没有要补的东西了，`设计/01 §6.7b`
+/// 逐字「`CCM_SELF` 这个环境变量随之删掉」—— **shim 制造了它自己要解决的那个问题**。
+/// 代价如实写：pane 里显示的是 `<后端真身> ccm …` 而不是用户 PATH 上那个 `ccm` 名字（行为一样）。
+/// 🔴 shim 本身还在：「`ccm` 就是后端二进制本身」卡在写区外（`tests/evidence/MC1-AL1-摸底.md` 第三节）。
 pub fn ccm_entry_shim(backend_path: &str) -> String {
     format!(
-        "#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\n# CCM_SELF：内层载荷要用「我是被当作什么叫的」那个名字，不是二进制真身（容器路靠它）。\nCCM_SELF=\"${{CCM_SELF:-$0}}\" exec {} {CCM_ENTRY_WORD} \"$@\"\n",
+        "#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} {CCM_ENTRY_WORD} \"$@\"\n",
         shell_quote_core::posix_quote(backend_path)
     )
 }

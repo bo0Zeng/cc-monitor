@@ -1298,10 +1298,11 @@ pub fn run() {
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             apikey_routing_for,
-            // K-R49：加了账号就把那条命令也落下来。写的是 monitor 自己那份别名文件
-            // （`~/.cc-monitor/account-aliases.sh`，整份重写）；用户的 rc 最多多一行 `source`，
-            // 而且那份 rc 由界面上的人**选**，本条不猜。
-            write_account_aliases,
+            // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
+            // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
+            aliases_render,
+            aliases_read,
+            aliases_install,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             backend::control::cc_bus::read_cc_bus_state,
@@ -1375,10 +1376,12 @@ pub fn run() {
             session_skeleton::replay_keep_tail_only,
             session_outline::list_user_inputs,
             remote_history::list_remote_history_projects,
-            // F10：一键装 / 卸远端 ccm 助手到 ~/.bashrc（SFTP 写 profile，SS-H）
-            sftp::install_remote_ccm_helper,
-            sftp::uninstall_remote_ccm_helper,
-            // F08c：手动安装 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）
+            // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
+            // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
+            sftp::install_remote_alias_block,
+            sftp::uninstall_remote_alias_block,
+            // F08c：部署 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）。
+            // 〔MC1〕部署那一条同时放 `ccm` 入口 —— 「部署后端」只有一个动作。
             sftp::deploy_remote_backend,
             sftp::uninstall_remote_backend,
             acct_iso_deploy::deploy_remote_acct_iso,
@@ -1868,25 +1871,30 @@ fn write_relay_credentials_key(key: String, config_dir: String) -> Result<(), St
     creds_store::write_key(&config_dir, &key)
 }
 
-/// `K-R49`：**加了账号，那条命令也该跟着有。**
-///
-/// 前端递过来的是 `buildAliasLine`（全仓唯一那份别名生成器）吐出来的那几行，
-/// 本条只负责**落盘**：整份重写 `~/.cc-monitor/account-aliases.sh`，
-/// 可选地把**一行** `source` 装进用户**自己指定**的那份 rc。
-///
-/// 🔴 三件事在 `account_aliases` 那一侧，别在这里重写：
-/// ① 每一行都要过形状围栏（写进去的是会被 shell 执行的代码）；
-/// ② `dry_run` 时一个字节都不写 —— 界面拿它做预览；
-/// ③ home 由这里解析、由那边当参数收 —— 那边的测试用临时目录当 home，
-///    结构上碰不到真实家目录。
+/// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。
+/// 预览与「复制去手贴」都只调这一条；`dry_run` 那个布尔从此不需要了（「只生成不写」就是只调这一跳）。
 #[tauri::command]
-fn write_account_aliases(
-    lines: Vec<String>,
+fn aliases_render(aliases: Vec<account_aliases::Alias>) -> account_aliases::AliasRender {
+    account_aliases::render(&aliases)
+}
+
+/// 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（`设计/70 §3.1` 「列出现在有哪些命令」）。
+#[tauri::command]
+fn aliases_read() -> Result<account_aliases::AliasListing, String> {
+    let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录".to_string())?;
+    account_aliases::read_in(&home)
+}
+
+/// 〔AL1〕第②跳：**唯一的副作用**。收的是清单不是代码 —— 写进 shell 的文本只由后端渲染
+/// （审计 S-1），而「写的就是预览的那一份」由两跳调同一个 `account_aliases::render` 保证。
+/// home 在这里解析、那边当参数收 ⇒ 那边的测试用临时目录当 home，结构上碰不到真实家目录。
+#[tauri::command]
+fn aliases_install(
+    aliases: Vec<account_aliases::Alias>,
     rc_path: Option<String>,
-    dry_run: bool,
-) -> Result<account_aliases::AccountAliasReport, String> {
+) -> Result<account_aliases::AliasInstallReport, String> {
     let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何文件".to_string())?;
-    account_aliases::apply(&home, &lines, rc_path.as_deref(), dry_run)
+    account_aliases::install_in(&home, &aliases, rc_path.as_deref())
 }
 
 #[tauri::command]

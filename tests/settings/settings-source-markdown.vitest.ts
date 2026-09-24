@@ -96,8 +96,8 @@ export function starsIn(file: string, src: string): string[] {
  * 两向相等：谁改掉了它，这里就得删一行；谁新加一处，这里就红。
  */
 const REGISTERED: Readonly<Record<string, string>> = {
-  "src/settings/machine-card.ts\t**是同一套实现**":
-    "机器页那几份归 MC1+AL1（第二波写区划分）；那一路在重写这块（8 颗按钮 → 3 个动作），本路不碰",
+  // 〔MC1 · 2026-09-24〕从前这里登着 `machine-card.ts` 的「**是同一套实现**」一行（机器页归 MC1+AL1）。
+  // 那段「安装位置」长说明随 8 颗按钮 → 3 个动作一起重写掉了 ⇒ 这一行删掉，表空了。
 };
 
 describe("ST1：设置窗屏幕上的字符串里零 markdown 星号", () => {
