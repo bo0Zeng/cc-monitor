@@ -34,20 +34,10 @@ import { LS_KEYS, safeSet } from "./local-storage";
 import {
   collectionOf,
   deleteCollection,
-  getCollections,
   newCollectionId,
   renameCollection,
-  setCollections,
   type TabCollection,
 } from "./tab-collections";
-import {
-  getPinned,
-  getTabOrder,
-  isDegradedPin,
-  setPinned,
-  setTabOrder,
-  type PinnedTab,
-} from "./tab-bar-state";
 import { turnEndNotifier } from "./turn-notify";
 import { activityLightClass, type GridSessionSnapshot, type SessionPeek } from "./session-status";
 import { contextPercent } from "./views/context-limit";
@@ -87,6 +77,7 @@ export type { DropTarget, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
 import { TabStore } from "./tab-store";
 import { TabStreamView } from "./tab-stream-view";
+import { TabBarPrefs } from "./tab-bar-prefs";
 import {
   abortRunningAgents,
   noteAgents,
@@ -246,47 +237,8 @@ export class TabManager {
    * 三个元素由本类自己建（不改构造签名：那有两个生产调用点 + 一批夹具），
    * 挂在 `barEl` 之后，作为它的兄弟。
    */
-  /** P7a-3（#61）：标签页集合。**零自动归组**〔用 08-11「纯手动」〕。 */
-  private collections: TabCollection[] = [];
-  /**
-   * P7a-3 E 阶段补审：**这个实例拉过集合没有。**
-   *
-   * 撕离出来的 viewer 窗口也用 `TabManager`（`main.ts:938`，tab 栏由 `.viewer-mode` 隐藏），
-   * 但它**从不 `loadCollections`** ⇒ `collections` 恒空。右键菜单里若还留着「新建集合…」，
-   * 点一下就把「只含这一个」的列表写回 `config.json` —— **用户已有的集合全没了**。
-   *
-   * 同族先例就在旁边一行：「viewer 窗口共享 localStorage，**禁写 last-active**（防污染主窗口记忆）」。
-   * ⇒ 没拉过就不给入口。这不是把功能藏起来，是**没有那份真相就没有资格改它**。
-   */
-  private collectionsLoaded = false;
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
   private groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
-  /**
-   * 〔步 17·B〕**这个实例拉过固定表没有** —— 与 `collectionsLoaded` 同一条理由，
-   * 而且这里更要命：`persistPinned` 是**按当前 tab 重算整张表**写回去的，
-   * 没拉过就写 ⇒ 用户上次固定的全没了。撕离出来的 viewer 窗口正是这种实例。
-   * ⇒ 没拉过就不给入口（右键菜单里那两项不出现），也不落盘。
-   */
-  private pinnedLoaded = false;
-  /**
-   * 〔步 17·B〕`loadPinned` 那一趟从盘上读到的记录（sid → 条目）。
-   *
-   * 🔴 **它不是「谁被固定了」的真相** —— 那件事的唯一住址是 `Tab.pinned`
-   * （一个事实一个住址）。这里存的是**盘上那份记录的内容**，只有两个用途：
-   * ① `§B.6` 第一格的降级判定（`jsonlPath` 为空的那些，点进去要说人话）；
-   * ② `lastActiveAt` 的沿用 —— 已经灰了的 tab 什么时候最后活动过，前端没有这个数，
-   *    不许在每次落盘时把它刷成 `Date.now()`（那是把「说不清」写成一句假话）。
-   */
-  private pinnedRecords = new Map<string, PinnedTab>();
-  /**
-   * 〔步 17·B〕复活出来的固定 tab 的**空态提示**（sid → 元素）。
-   *
-   * 🔴 它是「**不许留一个点了没反应的 tab**」这条纪律的落点：复活的 tab 里
-   * 一条内容都没有（`99 §2.5 P3` 裁定「已结束的会话点进去不能看内容，只能 resume」），
-   * 不放点东西进去，用户点它就是一片空白 —— 那与坏了没有区别。
-   * 复活成 live（真 resume 上了）时摘掉。
-   */
-  private pinHintEls = new Map<string, HTMLElement>();
 
 
   /**
@@ -315,6 +267,50 @@ export class TabManager {
       userActive: (sid) => this.userActive(sid),
       startForkedSession: (tab, res) => this.startForkedSession(tab, res),
     });
+  }
+
+  /**
+   * 〔U2 · ④〕tab 栏的三份落盘偏好（集合 · 固定 · 顺序）住 `tab-bar-prefs.ts`。
+   */
+  private readonly prefs = new TabBarPrefs(this.store, {
+    refreshTabBar: () => this.refreshTabBar(),
+    createSkeletonTab: (sid, cwd, origin, kind, name) =>
+      this.createSkeletonTab(sid, cwd, origin, kind, name),
+    resumeTab: (sid) => this.resumeTab(sid),
+  });
+
+  /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
+  loadCollections(): Promise<void> {
+    return this.prefs.loadCollections();
+  }
+  /** 〔步 17·B〕启动时把固定的 tab 复活出来（流程见 `tab-bar-prefs.ts` 那一份的头注）。 */
+  loadPinned(): Promise<void> {
+    return this.prefs.loadPinned();
+  }
+  /** 〔步 17·C〕启动时把落盘的顺序拉回来（为什么它曾是结构性 no-op 见 `tab-bar-prefs.ts` 那一份的头注）。 */
+  loadOrder(): Promise<void> {
+    return this.prefs.loadOrder();
+  }
+  /** 右键菜单那一项：翻转固定。 */
+  togglePin(sid: string): void {
+    this.prefs.togglePin(sid);
+  }
+
+  // ── 〔U2〕判据探针（落盘偏好那一份）：`tabs.vitest.ts` 直读 / 直写这三个旧私有名。
+  protected get collections(): TabCollection[] {
+    return this.prefs.collections;
+  }
+  protected set collections(v: TabCollection[]) {
+    this.prefs.collections = v;
+  }
+  protected get collectionsLoaded(): boolean {
+    return this.prefs.collectionsLoaded;
+  }
+  protected set collectionsLoaded(v: boolean) {
+    this.prefs.collectionsLoaded = v;
+  }
+  protected get pinnedLoaded(): boolean {
+    return this.prefs.pinnedLoaded;
   }
 
   // ── 〔U2〕判据探针（流视图那一份）：`tabs.vitest.ts` 按名字直调 `updateSentinel`、直读 `materializeQueue`。
@@ -348,10 +344,10 @@ export class TabManager {
     {
       tab: (sid) => this.store.tabs.get(sid),
       isAttachable: (sid) => this.isAttachable(sid),
-      collectionsLoaded: () => this.collectionsLoaded,
-      collections: () => this.collections,
-      commitCollections: (next) => this.commitCollections(next),
-      pinnedLoaded: () => this.pinnedLoaded,
+      collectionsLoaded: () => this.prefs.collectionsLoaded,
+      collections: () => this.prefs.collections,
+      commitCollections: (next) => this.prefs.commitCollections(next),
+      pinnedLoaded: () => this.prefs.pinnedLoaded,
       togglePin: (sid) => this.togglePin(sid),
       requestPanoramaHighlight: (sid) => this.requestPanoramaHighlight?.(sid),
     },
@@ -745,7 +741,7 @@ export class TabManager {
       // 翻转，避免会话退出时尾写把已归档的本地 Tab 误复活（远端掉线归档是连接驱动，无此风险）。
       if (tab.status === "archived" && tab.origin !== null) {
         tab.status = "live";
-        this.clearPinHint(sessionId); // 〔步 17·B〕远端复活：空态提示的对象没了
+        this.prefs.clearPinHint(sessionId); // 〔步 17·B〕远端复活：空态提示的对象没了
         this.refreshTabBar();
       }
       // audit-fixes F03.2（D 审计修）：远端 idle-tmux tab 又收到后端重宣告 / jsonl 行 = claude
@@ -961,7 +957,7 @@ export class TabManager {
     if (tab.origin !== null) return; // 仅本地；远端复活走 ensureTab 见行路径
     if (tab.status !== "archived") return;
     tab.status = "live";
-    this.clearPinHint(sessionId); // 〔步 17·B〕真接上了 ⇒ 那块「只能 resume」的空态该走了
+    this.prefs.clearPinHint(sessionId); // 〔步 17·B〕真接上了 ⇒ 那块「只能 resume」的空态该走了
     this.refreshTabBar();
     this.emitTabStateProbe(tab); // F-E1:本地复活(archived→live)
   }
@@ -1098,10 +1094,10 @@ export class TabManager {
     // ⚠ 只有真被固定过才写盘：没固定的 tab 关一下不该顺手改 `config.json`。
     if (tab.pinned) {
       tab.pinned = false;
-      this.pinnedRecords.delete(sessionId);
-      void this.persistPinned();
+      this.prefs.pinnedRecords.delete(sessionId);
+      void this.prefs.persistPinned();
     }
-    this.clearPinHint(sessionId);
+    this.prefs.clearPinHint(sessionId);
 
     // 让后端 event_replay 把这个 session 的历史也丢掉
     forgetSession(sessionId);
@@ -1469,23 +1465,23 @@ export class TabManager {
   private applyDrop(sid: string, target: DropTarget): void {
     const block = this.dragBlockOf(sid);
     // ① 集合归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则的两侧）。
-    if (this.collectionsLoaded) {
+    if (this.prefs.collectionsLoaded) {
       const other = target.kind === "end" ? null : this.store.tabs.get(target.sid);
       const nextCols = applyDropToCollections(
-        this.collections,
+        this.prefs.collections,
         block,
         target,
         defaultGroupName(
           this.store.tabs.get(sid)?.cwd ?? null,
           other?.cwd ?? null,
-          this.collections.map((c) => c.name),
+          this.prefs.collections.map((c) => c.name),
         ),
         newCollectionId(),
       );
       // 没变就不写盘：拖动是高频动作，每拖一下都改一次 `config.json` 是白写。
-      if (!collectionsEqual(this.collections, nextCols)) {
-        this.collections = nextCols; // 先改内存（下面统一重画一次），再落盘
-        void this.persistCollections(nextCols);
+      if (!collectionsEqual(this.prefs.collections, nextCols)) {
+        this.prefs.collections = nextCols; // 先改内存（下面统一重画一次），再落盘
+        void this.prefs.persistCollections(nextCols);
       }
     }
     // ② 顺序。`onto` 的落位 = 插到目标**之前**（组里成员的相对次序由 `orderedIds` 定，
@@ -1509,59 +1505,7 @@ export class TabManager {
     //   而拖动排序**完全符合那条判据** ⇒ 不给它同样的待遇，那条理由就是选择性适用的。
     // ⚠ 形状照 `commitCollections`：**先改内存再落盘**（上面两行已做完），
     //   落盘失败只记日志 —— 顺序丢一次远好过拖动卡一下。
-    void this.persistOrder();
-  }
-
-  /** 把当前顺序写进 `config.json` 的 `tabBar.order`。失败只记日志，不打断交互。 */
-  private async persistOrder(): Promise<void> {
-    // 🔴 **先把内存里那份意图同步掉，再去写盘** —— 用户刚拖出来的这张就是最新的意图。
-    //   不同步的话，`savedOrder` 还是启动时读到的那份**旧**顺序，而它每来一个新 tab
-    //   就会被再应用一次（`placeInOrder`）⇒ **后到的一个 tab 能把用户刚拖的一下整张撤销**。
-    //   放在 `await` 之前：落盘失败也照样同步 —— 内存里那张已经是用户看见的事实了。
-    this.store.savedOrder = [...this.store.orderedIds];
-    try {
-      await setTabOrder(this.store.orderedIds);
-    } catch (e) {
-      console.warn("[tab-bar] 顺序落盘失败:", e);
-    }
-  }
-
-  /**
-   * 启动时把落盘的顺序拉回来。**宿主在 `loadCollections` 之后调一次。**
-   *
-   * ⚠ 它**只重排已经存在的 tab，不凭空造 tab**（`§C.3` 逐字）——
-   *   盘上的顺序里会有已经不存在的 sid（上次那个会话被删了）。
-   * ⚠ **盘上没提到的 tab 排在后面**，保持它们此刻的相对次序 ——
-   *   否则「启动后新建的 tab」会被一份旧顺序挤到看不见的地方。
-   *
-   * # 🔴 2026-09-21：修掉「结构性 no-op」（`99 §4` 步 17 那行的 🟡）
-   *
-   * 在这之前它是这么写的：
-   * ```ts
-   * const saved = await getTabOrder(new Set(this.store.orderedIds));  // ← alive = 此刻的 tab 集
-   * if (saved.length === 0) return;
-   * ```
-   * **它在唯一那个调用点上恒等于 no-op。** `main.ts` 里那一行是
-   * `loadPinned().finally(() => loadOrder())` ⇒ 跑到这儿的时候会话**还没到**
-   * （tab 由随后的 `session_added` / 首行陆续建出来，启动窗口期 30s）⇒
-   * `orderedIds` 是空的（顶多只有几个复活出来的 pinned）⇒ `alive` 是空集 ⇒
-   * `sanitizeOrder` 把盘上那张**整张**当成死 sid 摘掉 ⇒ 空表 ⇒ 上面那句直接 `return`。
-   * 现打：`sanitizeOrder(["c","b","a"], new Set())` == `[]`，而 `alive` 传 `null`
-   * 时原样是 `["c","b","a"]` —— **数据一直读得出来，是被自己那道过滤删掉的。**
-   *
-   * 🔴 **所以这不是「调用点排早了」，挪一挪就好** —— 前端**没有任何一刻**知道
-   *   「会话到齐了」（它们从几台远端陆续宣告，还能中途掉线重连）。
-   *   「已删的会话」与「还没到的会话」在任何单一时刻都**不可区分**
-   *   ⇒ 只要过滤发生在读的那一拍，这个 bug 就还在。
-   *
-   * ⇒ 改法：把盘上那份顺序**留着**（`savedOrder`，一份意图，不是一次性的动作），
-   *   读的时候**不按存活过滤**，过滤改在**每次应用**时按「此刻真的在的 tab」做
-   *   （`applySavedOrder`）；tab 陆续到达时由 `placeInOrder` 再应用一次。
-   */
-  async loadOrder(): Promise<void> {
-    // `null` = 这一趟不按存活过滤（理由见 `getTabOrder` 头注与上面那段）。
-    this.store.savedOrder = await getTabOrder(null);
-    if (this.store.applySavedOrder()) this.refreshTabBar();
+    void this.prefs.persistOrder();
   }
 
   /** 收尾：拆 document listener、清 ghost / 源 Tab 变暗、清空拖拽状态。 */
@@ -1738,206 +1682,6 @@ export class TabManager {
   //   **留在原位灰着**（`.tab.archived` 那条 CSS 本来就有，`§A.3` 逐字「不用新写」）。
   //   用户 2026-09-19 逐字：「没有归档这个东西，不要归档，就是灰 tab。」
 
-  /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
-  async loadCollections(): Promise<void> {
-    this.collections = await getCollections();
-    this.collectionsLoaded = true;
-    this.refreshTabBar();
-  }
-
-  /** P7a-3：落盘 + 重画。**先改内存再落盘** —— 让 UI 立刻响应，落盘失败只记日志。 */
-  private async commitCollections(next: TabCollection[]): Promise<void> {
-    this.collections = next;
-    this.refreshTabBar();
-    await this.persistCollections(next);
-  }
-
-  /**
-   * 只落盘、不重画。〔步 17·D〕`applyDrop` 要在同一拍里改**顺序 ＋ 归属**，
-   * 由它统一重画一次 —— 这里再画一次就是白画（拖动结束那一拍本来就重。`§3 P3`）。
-   * ⚠ 「落盘失败只记日志」这句话只能有一个住址，所以 `commitCollections` 也走这里。
-   */
-  private async persistCollections(next: readonly TabCollection[]): Promise<void> {
-    try {
-      await setCollections(next);
-    } catch (e) {
-      console.warn("[tab-collections] 落盘失败:", e);
-    }
-  }
-
-  // ===== 〔步 17·B · `设计/30 §B`〕固定（pinned）=====
-
-  /**
-   * 启动时把固定的 tab **复活**出来。宿主在 `loadCollections` 之后调一次。
-   *
-   * ⚠ **2026-09-21 订正**：这儿原先写着「必须在 `loadOrder` **之前**」，理由是
-   *   「`loadOrder` 用 `getTabOrder(new Set(this.store.orderedIds))` 按今天真的存在的 sid 过滤，
-   *   复活的 tab 得先存在，位置才排得回来」。**那个理由连着那道读时过滤一起没了**
-   *   （`loadOrder` 头注记着为什么它是个 no-op）：顺序现在是一份**留着的意图**
-   *   （`savedOrder`），复活出来的 tab 走 `createSkeletonTab` → `placeInOrder` 时
-   *   会**再应用一次** ⇒ 两者谁先谁后都排得回来。
-   * ⚠ `main.ts` 今天仍然是「pinned 先、order 后」那个次序 —— 不改它，但那**不再是承重的**。
-   *
-   * # 复活流程（`§B.5` 逐字）
-   * ```
-   * 读 tabBar.pinned[] → 逐条 createSkeletonTab(sid, cwd, origin, kind, name)
-   *   ├ 标 pinned = true
-   *   ├ 标 status = "archived"（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回 live）
-   *   └ 标题直接用存下来的那份（不等读文件）
-   * ```
-   * 🔴 **不读内容** —— `99 §2.5 P3` 已裁定「已结束的会话点进去不能看内容，只能 resume」。
-   *   `replay_session_to_window` 那条路对 archived 本来就走不通（它的头注逐字：
-   *   「仅活跃 session 的历史在 buffer 里」）。
-   *
-   * ⚠ **已经存在的 sid 不重建**（后端 replay 可能已经先宣告了它）—— 只补一个 `pinned = true`，
-   *   `status` 一个字不碰：那条会话真活着的时候，把它按回 archived 是一句假话。
-   */
-  async loadPinned(): Promise<void> {
-    const list = await getPinned();
-    this.pinnedRecords = new Map(list.map((p) => [p.sid, p]));
-    for (const p of list) {
-      const existed = this.store.tabs.get(p.sid);
-      if (!existed) {
-        this.createSkeletonTab(p.sid, p.cwd, p.origin, p.kind, p.name);
-        const t = this.store.tabs.get(p.sid);
-        if (!t) continue;
-        // 没有活进程 ⇒ 灰着。`archiveTab` 那条路要求 tab 已在事件流里，这里是**凭空造**，
-        // 所以直接置位；两者最终形态一致（`.tab.archived` 那条 CSS 本来就有）。
-        t.status = "archived";
-        t.activity = null;
-        t.parentPath = p.jsonlPath; // `§B.5`：复活的必需品（resume 与「有没有记录」都靠它）
-        t.title = p.title; // 骨架期就显示正确标题，不等读文件
-        t.pinned = true;
-        this.mountPinHint(t);
-      } else {
-        existed.pinned = true;
-      }
-    }
-    this.pinnedLoaded = true;
-    this.refreshTabBar();
-  }
-
-  /**
-   * 复活出来的固定 tab 的空态：**说清它是什么 ＋ 给出那唯一的出口**。
-   *
-   * `§B.5` 复活流程最后一行逐字：「用户点进去那一刻，**出现 resume 入口**（🔴 不读内容）」。
-   * `§B.6` 第一格：`jsonlPath` 为空的那种要提示「这个会话没有留下记录」——
-   * **不要留一个点了没反应的 tab**。两种情形在这里分叉。
-   */
-  private mountPinHint(tab: Tab): void {
-    const sid = tab.sessionId;
-    const degraded = this.pinIsDegraded(sid);
-    const box = document.createElement("div");
-    box.className = "pin-revived-hint";
-    const head = document.createElement("strong");
-    head.textContent = degraded ? "这个会话没有留下记录" : "📌 固定下来的已结束会话";
-    const body = document.createElement("p");
-    body.textContent = degraded
-      ? "固定它的时候它还没写下任何一行，前端没有它的 jsonl 路径 —— 没有可以接回去的东西。右键 × 可以把它去掉。"
-      : "内容不在本地缓存里（已结束的会话只能 resume，不能回看）。resume 成功后 Claude 会续写同一份记录，这个 tab 会自己亮起来。";
-    box.append(head, body);
-    if (!degraded) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "pin-revived-hint-btn";
-      btn.textContent = "Resume 这个会话";
-      // 与右键菜单的「Resume」同一个动作、同一个住址 —— 这里只是把入口放在用户正看着的地方。
-      btn.addEventListener("click", () => void this.resumeTab(sid));
-      box.appendChild(btn);
-    }
-    tab.streamEl.appendChild(box);
-    this.pinHintEls.set(sid, box);
-  }
-
-  /** 复活成 live（resume 真的接上了）或 tab 关掉时，摘掉那块空态提示。 */
-  private clearPinHint(sid: string): void {
-    this.pinHintEls.get(sid)?.remove();
-    this.pinHintEls.delete(sid);
-  }
-
-  /**
-   * 把一个 tab 压成一条落盘记录。字段表逐条照 `§B.5`。
-   *
-   * ⚠ `lastActiveAt`：**live ⇒ 此刻**（「它现在还活着」是个真读数）；
-   *   **archived ⇒ 沿用盘上那份，没有就 `null`** —— 前端 `Tab` 上零时间戳字段（现打），
-   *   把它刷成 `Date.now()` 会让「最后活动时刻」变成「最后一次落盘时刻」，那是假话。
-   */
-  private pinRecordFor(tab: Tab): PinnedTab {
-    const prev = this.pinnedRecords.get(tab.sessionId);
-    return {
-      sid: tab.sessionId,
-      jsonlPath: tab.parentPath,
-      cwd: tab.cwd,
-      origin: tab.origin,
-      // `§3.5.7`：缺了 resume 会静默落到默认号。两个源都读不到 ⇒ `null`＝没记到，不是默认号。
-      account:
-        this.store.sessionAccountsByS.get(tab.sessionId)?.account ??
-        this.store.accountLastByS.get(tab.sessionId) ??
-        prev?.account ??
-        null,
-      lastActiveAt: tab.status === "live" ? Date.now() : prev?.lastActiveAt ?? null,
-      kind: tab.kind,
-      name: tab.bgName,
-      title: tab.title,
-    };
-  }
-
-  /**
-   * 把「现在哪些 tab 被固定了」整张表写回 `config.json` 的 `tabBar.pinned`。
-   *
-   * **真相源是 `Tab.pinned`**，这里只是把它压平 ⇒ 不会出现「内存说固定了、盘上没有」。
-   *
-   * 🔴 **「没 `loadPinned` 过就不写」那道门不在这里，在 `togglePin`** —— 这是死值验逼出来的：
-   *   我原本在这里也放了一条 `if (!this.pinnedLoaded) return;`，**刀 9 实测它恒不承重**
-   *   （去掉之后一格都不红）。原因是它没有任何可区分的输入：本函数只有两个调用方，
-   *   `togglePin` 自己那道门已经挡在前面，而 `closeTab` 只在 `tab.pinned` 为真时才调，
-   *   `tab.pinned` 又只能由 `loadPinned`（与 `pinnedLoaded = true` 同一个微任务）
-   *   或 `togglePin` 置起来。
-   * ⇒ 照 `sanitizeCollections` 那条逐字先例删掉：「留一道任何输入都区分不出的守卫，
-   *   就是一条假绿的防线」。真正在承重的那道由死值验刀 10 钉着。
-   */
-  private async persistPinned(): Promise<void> {
-    const next: PinnedTab[] = [];
-    for (const sid of this.store.orderedIds) {
-      const tab = this.store.tabs.get(sid);
-      if (tab?.pinned) next.push(this.pinRecordFor(tab));
-    }
-    this.pinnedRecords = new Map(next.map((p) => [p.sid, p]));
-    try {
-      await setPinned(next);
-    } catch (e) {
-      console.warn("[tab-bar] 固定落盘失败:", e);
-    }
-  }
-
-  /**
-   * 右键菜单那一项：翻转固定。**先改内存再落盘**（照 `commitCollections` 的形状）。
-   *
-   * ⚠ 不做自动固定（`§B.7` 逐字「照 `tab-collections.ts` 那条『手动建，不要自动』的先例」）——
-   *   这是唯一的入口。
-   */
-  togglePin(sid: string): void {
-    const tab = this.store.tabs.get(sid);
-    if (!tab || !this.pinnedLoaded) return;
-    tab.pinned = !tab.pinned;
-    this.refreshTabBar();
-    void this.persistPinned();
-  }
-
-  /**
-   * `§B.6` 第一格：这条固定记录**点进去也没有东西可看**（`jsonlPath` 为空 ——
-   * 骨架 tab 从没收到过带路径的行就被固定了）。
-   *
-   * 🔴 用途是**不许留一个点了没反应的 tab**：点它的时候要说人话（见点击处的提示）。
-   * ⚠ 两个条件都要：盘上那条是降级的 **且** 到现在也没有行回填过 `parentPath`
-   *   （真来了行就不再降级 —— 那条 tab 已经有记录可读了）。
-   */
-  private pinIsDegraded(sid: string): boolean {
-    const rec = this.pinnedRecords.get(sid);
-    if (!rec || !isDegradedPin(rec)) return false;
-    return (this.store.tabs.get(sid)?.parentPath ?? "") === "";
-  }
-
 
 
   /**
@@ -1957,10 +1701,10 @@ export class TabManager {
       name.type = "button";
       name.className = "tab-group-name";
       name.addEventListener("click", () => {
-        const cur = this.collections.find((x) => x.id === col.id);
+        const cur = this.prefs.collections.find((x) => x.id === col.id);
         const next = window.prompt("集合名:", cur?.name ?? "");
         if (next === null) return;
-        void this.commitCollections(renameCollection(this.collections, col.id, next));
+        void this.prefs.commitCollections(renameCollection(this.prefs.collections, col.id, next));
       });
       const del = document.createElement("button");
       del.type = "button";
@@ -1968,7 +1712,7 @@ export class TabManager {
       del.textContent = "×";
       del.title = "解散这个集合（只去掉分组，会话一个都不会关）";
       del.addEventListener("click", () => {
-        void this.commitCollections(deleteCollection(this.collections, col.id));
+        void this.prefs.commitCollections(deleteCollection(this.prefs.collections, col.id));
       });
       head.append(name, del);
       const list = document.createElement("div");
@@ -2013,12 +1757,12 @@ export class TabManager {
     // ⇒ 推广成「**每容器一个游标**」。
     // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
     for (const [id, g] of this.groupEls) {
-      if (!this.collections.some((x) => x.id === id)) {
+      if (!this.prefs.collections.some((x) => x.id === id)) {
         g.wrap.remove();
         this.groupEls.delete(id);
       }
     }
-    for (const col of this.collections) this.groupElFor(col);
+    for (const col of this.prefs.collections) this.groupElFor(col);
     const cursors = new Map<HTMLElement, ChildNode | null>();
     // ★ **未归组的排在所有组之后**〔D 阶段补审〕。
     //
@@ -2041,7 +1785,7 @@ export class TabManager {
       this.updateTabButton(refs, sid, tab);
       // 〔步 17·A〕分流从三路（抽屉 / 组 / 主栏）降到**两路**（组 / 主栏）。
       // 「归档优先于集合」那条判定整条消失 ⇒ **灰 tab 也能在组里**（`§A.3` 逐字）。
-      const col = collectionOf(this.collections, sid);
+      const col = collectionOf(this.prefs.collections, sid);
       const host = col ? this.groupElFor(col) : this.barEl;
       // 排序：希望此 button 出现在**同容器内**前一个之后。
       const prev = cursors.get(host) ?? null;
