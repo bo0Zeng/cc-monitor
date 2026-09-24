@@ -32,7 +32,8 @@ function accountOf(configDir?: string, name?: string): LaunchAccount {
  *
  *  🔴 **`设计/80 §8.4` 那张表里「今天做不到 ↗ 的那一档」就是这一格**（`container:{kind:"none"}`，
  *  `§6.1`/`§5 方案 A` 明确不覆盖它，因为它没有 tmux 可以挂 `@ccm_sid`）。
- *  步 1 之后它**自动**带上启动期令牌 —— 本函数为此**一行特殊处理都没有**：
+ *  步 1 之后它**自动**带上启动期令牌（步 3 起真的有人铸了，铸币口是
+ *  `remote-launch-run.ts::mintRbindToken`）—— 本函数为此**一行特殊处理都没有**：
  *  `rbindToken` 和其余修饰一样只是进 `ctx`，`RBIND_TOKEN_DIMENSION` 往 `plan.env` 推一条
  *  `EnvOp`，而 `EnvOp` 是容器无关的。**「自动」这件事本身有判据**
  *  （`tests/launch-requests.vitest.ts` 的「容器无关」那一组：两条起法各渲一次、

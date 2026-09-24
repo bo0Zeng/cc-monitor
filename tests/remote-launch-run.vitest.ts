@@ -17,6 +17,8 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteLauncher,
   runRemoteAttach, POSIX_NO_WINDOW_MARKER,
+  // 🔴 `设计/80 §8.7` 步 3：全仓唯一的启动期令牌铸币口。
+  mintRbindToken,
   // 🔴 `K-R109` `KR109D3`：wire 上那两态同形，是「兜底那条路走得到」的第一环。
   buildCliRenderRequest } from "../src/remote-launch-run";
 import { planAttach } from "../src/launch-requests";
@@ -784,15 +786,34 @@ describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用�
     return { cmds, launched };
   }
 
-  it("★ 对照组先立：不带令牌、ccm 齐全 ⇒ 真的走了 `render_ccm_launch`", async () => {
+  // 🔴 〔步 3 · 2026-09-23 改写〕**墓碑** —— 这一条原本是
+  //    `await runRemoteResume("aya","sid-t0","/w","claude")`（不传 `mods`），
+  //    断言它真的走了 `render_ccm_launch`。**步 3 之后那句话不成立了**：
+  //    `runRemoteResume` 现在自己铸一个令牌（`withMintedRbindToken`）⇒ 恒走载荷渲染。
+  //    ⚠ 但这一条**守的性质不许跟着消失** —— 它是本组的反空真锚：
+  //    少了它，「`render_ccm_launch` 这条路整个死了 / 这个 stub 压根没接上」
+  //    会让下面那两条读成一片绿。⇒ 换成**今天仍然不铸币的那一格**：`attach`。
+  it("★ 对照组先立：`attach` 那一格仍走 `ccm …` 调用行（本组的反空真锚）", async () => {
     const { cmds, launched } = routeWithCcmInstalled();
     stubClipboard(vi.fn().mockResolvedValue(undefined));
-    await runRemoteResume("aya", "sid-t0", "/w", "claude");
+    await runRemoteAttach("aya", "t0-cc");
     expect(
       cmds,
-      "连不带令牌的时候都不走 CLI 那条路 —— 那下面那条判据什么也没证明（空真）",
+      "连 `attach` 都不走 CLI 那条路了 —— 那下面那两条判据什么也没证明（空真）；" +
+        "也说明 `render_ccm_launch` 那条路在生产上已经一格不剩，那是一件该被看见的事",
     ).toContain("render_ccm_launch");
     expect(launched).toEqual(["<ccm-line-without-the-token>"]);
+  });
+
+  it("★★ `attach` 永不铸币（它一个 agent 进程都不起，令牌无人消费）", async () => {
+    const { launched } = routeWithCcmInstalled();
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteAttach("aya", "t0-cc");
+    expect(launched).toHaveLength(1);
+    expect(
+      launched[0],
+      "往 attach 里注了一个没人会读的令牌 —— 那只是白白多一处敏感值的落点（设计/80 §8.6 ③）",
+    ).not.toContain("CCM_RBIND_TOKEN");
   });
 
   it("★★ 带令牌 ⇒ 一次 `render_ccm_launch` 都不发，改走后端载荷渲染，且令牌真在串里", async () => {
@@ -823,5 +844,150 @@ describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用�
     // tmux 那一格整条内层载荷被 posix-quote 一层塞进 `send-keys` ⇒ 针跟着被 quote。
     expect(launched[0]).toContain(`export CCM_RBIND_TOKEN='\\''${TOK}'\\''; `);
     expect(launched[0]).toContain("tmux new-session -d -s t2-cc");
+  });
+});
+
+// ═══════ 🔴 `设计/80 §8.7` 步 3：**铸币口** —— 生产真的在产令牌了 ═══════════════
+//
+// 步 1 落地时**零生产铸币口**（那一刀的收尾话逐字如此）：载荷侧的槽位铺到底了，
+// 但没有任何生产代码给它赋值 ⇒ `RBIND_TOKEN_DIMENSION.applies` 恒假 ⇒ 载荷逐字节等于从前。
+// 本组守的是那一格被填上了，而且填得**不可猜**。
+//
+// ⚠ 本组**买不到**：「↗ 真的用这个令牌拉起了那个窗口」。那要图形会话 + Windows，
+//   而且还要 `§8.7` 的步 4（`↗` 改走 join）—— 那一步逐字被警告「不要先做」。
+describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** 拉起一次、把交出去的那一串抓回来。ccm 恒「未装」⇒ 走载荷渲染器（本组不关心分派）。 */
+  function routeLaunch(): { launched: string[] } {
+    const launched: string[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      if (cmd === "render_launch_payload")
+        return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
+      if (cmd === "backend_send_into") return Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" });
+      if (cmd === "list_remote_tmux") return Promise.resolve([]);
+      if (cmd === "launch_remote_terminal") {
+        launched.push((args as { remoteCmd: string }).remoteCmd);
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    return { launched };
+  }
+
+  /** 从交出去的那一串里把令牌抠出来（两种引号形态：裸载荷 / 被 send-keys 再 quote 一层）。 */
+  function tokenIn(cmd: string): string | null {
+    const m = /export CCM_RBIND_TOKEN='(?:\\'')?([0-9a-fA-F]*)/.exec(cmd);
+    return m ? m[1] : null;
+  }
+
+  // ─── ① 形状与熵 ───────────────────────────────────────────────────────────
+  //
+  // ⚠ 断言里那条正则是**手写字面量**，不是 `isValidRbindToken` ——
+  //   用生产那个校验器的话，两侧同源：把它放宽成 `/^[0-9a-f]*$/` 判据跟着放宽，恒真。
+  it("★ 铸出来的令牌是 32 个小写十六进制字符（判据里的形状是手写字面量，不共用生产校验器）", () => {
+    for (let i = 0; i < 64; i += 1) {
+      expect(mintRbindToken()).toMatch(/^[0-9a-f]{32}$/);
+    }
+  });
+
+  it("★★ 不可猜 ①：熵**真的**来自平台 CSPRNG（桩掉 getRandomValues，看产物随它变）", () => {
+    const real = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+    try {
+      // 桩成「全填 0xAB」⇒ 产物必须恰好是 "ab" × 16。
+      // 这一条逮的是**最致命的那个变异**：把熵源换成 `Math.random()` / 换成常量 /
+      // 换成时间戳 —— 那些改动全都**照样产出 32 个小写十六进制字符**，
+      // 只验形状的判据对它们一格都不响。
+      Object.defineProperty(globalThis.crypto, "getRandomValues", {
+        value: (b: Uint8Array) => {
+          b.fill(0xab);
+          return b;
+        },
+        configurable: true,
+      });
+      expect(mintRbindToken()).toBe("ab".repeat(16));
+      // 再换一个值，证明上一条不是碰巧（`0xab` 被写死在生产里也会过上一条）。
+      Object.defineProperty(globalThis.crypto, "getRandomValues", {
+        value: (b: Uint8Array) => {
+          b.forEach((_, i) => {
+            b[i] = i;
+          });
+          return b;
+        },
+        configurable: true,
+      });
+      expect(mintRbindToken()).toBe("000102030405060708090a0b0c0d0e0f");
+    } finally {
+      Object.defineProperty(globalThis.crypto, "getRandomValues", { value: real, configurable: true });
+    }
+  });
+
+  it("★★ 不可猜 ②：拿不到 CSPRNG ⇒ **throw**，绝不回落 Math.random", () => {
+    const real = globalThis.crypto;
+    try {
+      Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
+      expect(() => mintRbindToken()).toThrow(/CSPRNG/);
+    } finally {
+      Object.defineProperty(globalThis, "crypto", { value: real, configurable: true });
+    }
+    // 第二形：`crypto` 在但那个方法不在（老 jsdom / 裁过的 webview）。
+    try {
+      Object.defineProperty(globalThis, "crypto", { value: {}, configurable: true });
+      expect(() => mintRbindToken()).toThrow(/CSPRNG/);
+    } finally {
+      Object.defineProperty(globalThis, "crypto", { value: real, configurable: true });
+    }
+  });
+
+  it("★ 不可猜 ③：128 位 ⇒ 1000 次铸币零重复（弱熵源会在这里撞）", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 1000; i += 1) seen.add(mintRbindToken());
+    expect(seen.size).toBe(1000);
+  });
+
+  // ─── ② 接线：五条「起 agent 进程」的路真的都带上了 ────────────────────────
+  //
+  // ⚠ 判据读的是**真正交给后端去执行的那一串**（`launch_remote_terminal` 的实参），
+  //   不是 `ctx.rbindToken` —— 读中间态的判据看不见「维度没把它推进 plan」那一类回归。
+  it("★★ 五条起 agent 进程的路，每一条交出去的串里都有一个新铸的令牌", async () => {
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const got: Record<string, string | null> = {};
+    const runs: [string, () => Promise<unknown>][] = [
+      ["resume-direct", () => runRemoteResume("aya", "abc-123", "/w", "claude")],
+      ["resume-tmux", () => runRemoteResumeTmux("aya", "abc-123", "/w", "claude", "p-cc")],
+      ["send-into", () => runRemoteResumeIntoExistingTmux("aya", "abc-123", "p-cc", "claude")],
+      ["launcher", () => runRemoteLauncher("aya", "/w", "p-cc", "claude")],
+      ["new-session", () => runNewSessionRemote("aya", "/w", "claude")],
+    ];
+    for (const [label, run] of runs) {
+      const { launched } = routeLaunch();
+      await run();
+      expect(launched, `${label}：压根没交出去一条命令 —— 这一格的读数不可信`).toHaveLength(1);
+      got[label] = tokenIn(launched[0]);
+      expect(got[label], `${label}：交出去的串里没有启动期令牌`).toMatch(/^[0-9a-f]{32}$/);
+    }
+    // ★ 每一次拉起铸的是**新的**一个（同一个令牌复用到两个窗口上 ⇒ join 会拉错窗口）。
+    const vals = Object.values(got);
+    expect(new Set(vals).size, `五次拉起里有令牌重复：${JSON.stringify(got)}`).toBe(vals.length);
+  });
+
+  it("★ 调用方显式传的令牌优先（不被铸币口顶掉）", async () => {
+    const { launched } = routeLaunch();
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const given = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
+    await runRemoteResume("aya", "abc-123", "/w", "claude", { rbindToken: given });
+    expect(tokenIn(launched[0])).toBe(given);
+  });
+
+  it("★★ **空令牌 ≠ 没有令牌**：显式传 `\"\"` 不许被悄悄补一个，必须诚实失败", async () => {
+    const { launched } = routeLaunch();
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runRemoteResume("aya", "abc-123", "/w", "claude", { rbindToken: "" });
+    expect(ok, "空令牌被静默补成了一个新铸的 —— 那会把一次铸币 bug 藏起来（Z01 的支点）").toBe(false);
+    expect(launched, "空令牌居然拉起来了").toHaveLength(0);
+    expect(toastMock).toHaveBeenCalled();
   });
 });
