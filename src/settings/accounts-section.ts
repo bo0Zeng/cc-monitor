@@ -38,6 +38,10 @@ import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
 // 〔第三波 S3〕本机那一支新长的字全走文案表（`设计/91 §5.1`）：一处取文，判据按表逐条量。
 import { copyText } from "../copy-table";
+// 〔第三波 S3〕本机建号那一跳：后端那个本机串（与本文件经 `../accounts` 用的 `"__local__"` 不是同一个值），
+// 以及「本机刻意不开终端窗口」那句话的跨语言标记（唯一住址在 `remote-launch-run.ts`）。
+import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "../backend-policy";
+import { POSIX_NO_WINDOW_MARKER } from "../remote-launch-run";
 // 〔AL1 · 2026-09-24〕别名那一块与用户级 PATH 那一格都搬去了机器页「本机 → 工具 → 别名」
 // （`设计/70 §3.3` · `设计/71`）—— 两者是同一个问题（「这台机器的终端怎么找到 ccm」）的两条路。
 // A2（`设计/70 §4.4`）：新建账号那张表单。
@@ -521,8 +525,21 @@ export class AccountsSection {
       );
     }
     box.appendChild(table);
-    AccountsSection.line(box, "accounts-hint accounts-local-hint", LOCAL_ACCOUNTS_COPY.scopeHint);
+    // 〔第三波 S3〕原先这里是 `LOCAL_ACCOUNTS_COPY.scopeHint`（「只读；在这里改不了它们」）——
+    // 这一拍本机能新建账号了，那句话成了假话 ⇒ 换成文案表里本机那一句。
+    AccountsSection.line(box, "accounts-hint accounts-local-hint", copyText("accountsLocal.list.scope"));
     box.appendChild(this.renderLocalRcSnippetBlock());
+    // 〔第三波 S3〕本机也能新建账号：与远端同一张表单（同一套校验、同一条 `cc-acct-iso add` 命令），
+    // 只是跑命令的那一跳走本机（[`launchLocalStep`]）。apikey 那一支在本机**真的有用**：
+    // apikey 表与中转本来就是本机的，起本机会话时按账号换上那把 key。
+    box.appendChild(
+      renderNewAccountForm((req) => this.createAccount(req, "local"), {
+        subscription: copyText("accountsLocal.new.subscriptionHint"),
+        apikey: copyText("accountsLocal.new.apikeyHint"),
+      }),
+    );
+    this.renderPendingKeys();
+    await this.flushPendingKeys(state.accounts);
     // 〔AL1 · 2026-09-24〕这里原来挂着「按账号生成命令」那一块（`K-R49`）。它搬去了机器页
     // 「本机 → 工具 → 别名」，并且不再是「账号表的投影」—— 别名清单归用户（`设计/71 §8`）。
     // 〔AL1 · 2026-09-24〕`K-R135` 那一格（用户级 PATH）也跟着别名块搬去了机器页「别名」里
@@ -719,6 +736,57 @@ export class AccountsSection {
     } catch (e) {
       showActionFailureToast("拉起终端失败", String(e), { level: "error" });
       return false;
+    }
+  }
+
+  /**
+   * 〔第三波 S3〕在**本机**跑一个账号步骤（今天只有新建账号用它）。
+   *
+   * 走的是既有那条 `launch_remote_terminal`，`origin` 给后端那个本机串 —— 它本机那一支早就在
+   * （`launch.rs::launch_remote_terminal` 头一段：Windows 开一个 PowerShell 窗口；别的系统**刻意不开窗口**，
+   * 回一句带 `POSIX_NO_WINDOW_MARKER` 的话，让前端把命令交给用户在自己的 bash 里跑）。
+   * ⇒ 本机建号**不需要新命令**。
+   *
+   * 三个结局，返回值说「这条命令会不会被跑」（apikey 那一支据此决定留不留那把 key）：
+   * - 开了窗口 ⇒ `true`；
+   * - 刻意不开窗口（按后端自己的声明判，不按 OS 猜）⇒ 命令复制好，`true` —— 这一支就是 Linux 上的正路；
+   * - 真失败 ⇒ 命令照样复制给用户，但返回 `false`：与远端那条「终端没拉起来就不留 key」同一个口径。
+   */
+  private async launchLocalStep(step: AcctIsoStep): Promise<boolean> {
+    const built = buildAcctIsoCmd(step);
+    if (!built.ok) {
+      showActionFailureToast(copyText("accountsLocal.new.cmdInvalid"), built.reason, { level: "error" });
+      return false;
+    }
+    try {
+      await commands.launch_remote_terminal({ origin: BACKEND_LOCAL_ORIGIN, remoteCmd: built.cmd });
+      showActionFailureToast(
+        copyText("accountsLocal.new.launched"),
+        copyText("accountsLocal.new.launchedNext"),
+        { level: "info", durationMs: 5000 },
+      );
+      return true;
+    } catch (err) {
+      let copied = true;
+      try {
+        await navigator.clipboard.writeText(built.cmd);
+      } catch {
+        copied = false; // 命令在提示里照样看得见，可以手动复制
+      }
+      const byDesign = String(err).includes(POSIX_NO_WINDOW_MARKER);
+      const headline = byDesign
+        ? copied
+          ? copyText("accountsLocal.new.noWindowCopied")
+          : copyText("accountsLocal.new.noWindowNotCopied")
+        : copied
+          ? copyText("accountsLocal.new.failedCopied")
+          : copyText("accountsLocal.new.failedNotCopied");
+      showActionFailureToast(
+        headline,
+        copyText("accountsLocal.new.pasteBody", { reason: String(err), cmd: built.cmd }),
+        { level: byDesign ? "info" : "error", durationMs: 10000 },
+      );
+      return byDesign;
     }
   }
 
@@ -1048,12 +1116,17 @@ export class AccountsSection {
    *
    * ⚠ **终端没拉起来就不留 key** —— 那个号不会出现，留着就是一把在内存里永远等不到主人的明文。
    */
-  private async createAccount(req: NewAccountRequest): Promise<void> {
-    const launched = await this.launchStep({
+  private async createAccount(
+    req: NewAccountRequest,
+    where: "remote" | "local" = "remote",
+  ): Promise<void> {
+    const step: AcctIsoStep = {
       kind: "add-apply",
       name: req.name,
       credFile: req.access === "subscription" ? req.credFile : undefined,
-    });
+    };
+    const launched =
+      where === "local" ? await this.launchLocalStep(step) : await this.launchStep(step);
     if (launched && req.access === "apikey") this.pendingKeys.set(req.name, req.key);
     this.renderPendingKeys();
   }

@@ -96,6 +96,61 @@
       "kind": "error",
       "zh": "生成 rc 片段失败",
       "args": []
+    },
+    "accountsLocal.list.scope": {
+      "kind": "body",
+      "zh": "这一节列出这台机器上的账号，也可以在下面新建一个。",
+      "args": []
+    },
+    "accountsLocal.new.subscriptionHint": {
+      "kind": "body",
+      "zh": "创建后在这台机器的终端里跑建号命令；跑完在那个终端里用这个号 /login。",
+      "args": []
+    },
+    "accountsLocal.new.apikeyHint": {
+      "kind": "body",
+      "zh": "创建后在这台机器的终端里跑建号命令；这个号出现在上面的列表里时（跑完点「刷新」），这把 key 自动写进 API key 表。在那之前 key 只留在这个窗口里，关掉 cc-monitor 就没了。",
+      "args": []
+    },
+    "accountsLocal.new.cmdInvalid": {
+      "kind": "error",
+      "zh": "命令无法生成",
+      "args": []
+    },
+    "accountsLocal.new.launched": {
+      "kind": "body",
+      "zh": "已在终端里运行建号命令",
+      "args": []
+    },
+    "accountsLocal.new.launchedNext": {
+      "kind": "body",
+      "zh": "跑完点「刷新」，新账号就会出现在列表里。",
+      "args": []
+    },
+    "accountsLocal.new.noWindowCopied": {
+      "kind": "body",
+      "zh": "本机不开终端窗口，命令已复制",
+      "args": []
+    },
+    "accountsLocal.new.noWindowNotCopied": {
+      "kind": "body",
+      "zh": "本机不开终端窗口，请手动复制下面的命令",
+      "args": []
+    },
+    "accountsLocal.new.failedCopied": {
+      "kind": "error",
+      "zh": "没能打开终端，命令已复制",
+      "args": []
+    },
+    "accountsLocal.new.failedNotCopied": {
+      "kind": "error",
+      "zh": "没能打开终端，请手动复制下面的命令",
+      "args": []
+    },
+    "accountsLocal.new.pasteBody": {
+      "kind": "body",
+      "zh": "{reason}\n在这台机器的 bash 里执行：\n{cmd}",
+      "args": ["reason", "cmd"]
     }
   }
 }
