@@ -44,8 +44,16 @@
 //!    `设计/99 §4.8.3 P12`，**挡在步 3.5 上**。
 
 use super::{
-    capability_ledger, CapabilityKind, Target, CAPABILITIES, CAPABILITY_FACES, TARGETS, TARGET_GAPS,
+    capability_ledger, parity_faces, CapabilityKind, Target, CAPABILITIES, CAPABILITY_FACES,
+    TARGETS, TARGET_GAPS,
 };
+
+/// 〔PR1〕第 3 层人群里**声明过**的全部 `(面, 名)`（两张面表的 `declares()` 连起来，不收窄）。
+fn parity_declared() -> Vec<(&'static str, &'static str)> {
+    parity_faces()
+        .flat_map(|f| (f.declares)().into_iter().map(move |n| (f.family, n)))
+        .collect()
+}
 
 /// 🔴 **被逐条看过一遍的那份名单** —— `(族名, 能力名)`，**逐字点名**。
 ///
@@ -472,7 +480,8 @@ fn the_stream_flag_list_keeps_its_own_narrow_semantics() {
 /// 那正是本仓「不许留用不上的豁免」那条纪律要挡的形。
 #[test]
 fn every_target_gap_names_a_capability_that_really_exists() {
-    let ledger = capability_ledger();
+    // 〔PR1〕人群从第 2 层汇总扩到第 3 层那两张面表（命令面的豁免也在这张表里）。
+    let ledger = parity_declared();
     let mut bad = Vec::new();
     for gap in TARGET_GAPS {
         let found = ledger
@@ -531,13 +540,18 @@ fn every_target_gap_says_why_and_what_happens_next() {
 /// **不许为了绿把它算出来**（两侧同源就退化成恒真）。
 #[test]
 fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
-    let ledger = capability_ledger();
+    // 〔PR1〕同上：命令面的豁免也在表里，`all` 要从第 3 层那两张面表里取，
+    // 否则命令面那几族的 `all.len()` 是 0，下面那一减会下溢。
+    let ledger = parity_declared();
     let gaps = TARGET_GAPS;
 
     assert_eq!(
         gaps.len(),
-        8,
-        "逐能力豁免现打 {} 条（2026-09-22 现打 8，全在 `ccm-launcher` × Windows：\n\
+        14,
+        "逐能力豁免现打 {} 条（〔PR1 · 09-24〕**14** = 下面那 8 条 ＋ 命令面 6 条：\n\
+          · 帧面 `capture-pane` / `kill` / `launch` × Windows 3 条、CLI 面同名 3 条 ——\n\
+            不是新裁的，是命令面并进第 3 层之后被横向两向相等**现推出来**的，理由住 `lib.rs` 表尾。\n\
+         2026-09-22 现打 8，全在 `ccm-launcher` × Windows：\n\
           · 6 条 = tmux 那一族，**读源码**推出来的；\n\
           · 2 条 = `bus-register` / `ccm-sid`，**真机现打**补的\n\
             —— 上一版的账把它们记成「做得到」，那两格是**错的**不是缺的，\n\
@@ -586,3 +600,9 @@ fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
         );
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// 〔PR1 · 2026-09-24〕`设计/96 §2` 第 3 层：四个 target 横向对等 ＋ 差异两档 —— 住隔壁那份
+// ═══════════════════════════════════════════════════════════════════
+#[path = "target_parity_guard.rs"]
+mod target_parity_guard;

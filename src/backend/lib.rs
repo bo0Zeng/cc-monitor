@@ -779,6 +779,33 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
     },
 ];
 
+/// 一条 [`TargetGap`] 属于哪一档 —— 〔PR1 · 2026-09-24〕「差异」要分两档登记，**不许合成一档**。
+///
+/// # 为什么非分不可
+///
+/// 两档要的**下一步动作相反**：结构上没有的那一格，正确的结局是**永远留在表里**；
+/// 欠着的那一格，正确的结局是**有一天被删掉**（`P19` 删 `agent` 那一行就是这一形）。
+/// 混成一档 ⇒ 读表的人分不清「这一行该不该有人去还」，而「欠着」会被读成「本来就这样」——
+/// 那正是 `真相源/30` 与 `no_timer_guard` 各栽过一次的静默缩水。
+///
+/// ⚠ 与 `parity_ledger`（本机 ↔ 远端那条轴）的 `NaturallyAsymmetric` / `ParityDebt` 是**同一对**，
+/// 只是轴换成了编译 target。两张表不合并：轴不同，人群不同。
+///
+/// # 判准（写死在这里，判据按它查 `why` 的措辞）
+///
+/// - [`GapKind::Structural`]：这条能力的**名字与定义**就绑在一个那个 target 上不存在、也不打算补的
+///   机制上（例：tmux 的 `base-index`）。那边将来若长出等价物，它是**另一条能力、另立一行**，
+///   不是把这一条补上。⇒ `why` 要说出「不跨过去 / 不照搬」，**不许**再说「暂时不做」（那是对欠账的措辞）。
+/// - [`GapKind::Owed`]：这条能力本身与机制无关，那个 target **该有**而今天没有。
+///   ⇒ `why` 要说出谁来还、什么时候还（「暂时不做」也算答复，但要写出来）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum GapKind {
+    /// 这个 target **结构上**没有这条能力。
+    Structural,
+    /// **欠着**：该有、今天没有、写明将来怎么还。
+    Owed,
+}
+
 /// 一条**逐能力**的豁免：这一面在这个 target 上**做不到**这一条能力。
 ///
 /// # 🔴 它为什么必须存在（而上一版没有它）
@@ -793,19 +820,25 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
 /// ⇒ [`TargetGap::why`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetGap {
-    /// 哪一面。必须是 [`CAPABILITY_FACES`] 里真有的族名。
+    /// 哪一面。必须是 [`CAPABILITY_FACES`] 或 [`COMMAND_FACES`] 里真有的族名。
     pub family: &'static str,
     /// 哪一条能力。必须是那一面**真的声明过**的名字（判据拦幽灵）。
     pub capability: &'static str,
     /// 哪个 target 上做不到。
     pub target: Target,
+    /// 🔴 **哪一档**：结构上没有 · 欠着。两档不许合成一档（[`GapKind`] 头注）。
+    pub kind: GapKind,
     /// 🔴 **为什么做不到 ＋ 将来怎么办。** 不许留空（判据有长度地板）。
     pub why: &'static str,
 }
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
 ///
-/// 今天全部 8 条都在 `ccm-launcher` × Windows 这一格上：
+/// 〔PR1 · 09-24〕**8 → 14**：命令面并进第 3 层之后，帧面 3 条 ＋ CLI 面 3 条（`capture-pane` /
+/// `kill` / `launch` × Windows）被那条横向两向相等**现推出来**、逐条登记在表尾。下面那段账说的是
+/// `ccm-launcher` 那 8 条：
+///
+/// 那 8 条都在 `ccm-launcher` × Windows 这一格上：
 /// **6 条**是读源码推出来的（tmux 那一族），**另 2 条是真机现打补的**
 /// （`bus-register` / `ccm-sid`）—— 上一版的账把它们记成「做得到」，
 /// 🔴 **那两格是错的，不是缺的**。逐条读数住 `真相源/106`。
@@ -826,30 +859,36 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         family: "ccm-launcher",
         capability: "tmux",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "Windows 上没有 tmux（也不打算装）。将来由 **Windows 自己的后台服务**               承担「会话活在前端之外」这件事〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "attach",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在               ⇒ 等那个后台服务落地时一并给出等价物〔同上裁决〕，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "detach",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等那个后台服务，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux-size",
         target: Target::Windows,
-        why: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条**。**暂时不做**。",
+        kind: GapKind::Structural,
+        why: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
+              那个后台服务里的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux-base",
         target: Target::Windows,
+        kind: GapKind::Structural,
         why: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**。",
     },
     // ── `ccm-launcher` × Windows：**真机现打补上的三条**〔2026-09-21〕 ───────
@@ -866,6 +905,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         family: "ccm-launcher",
         capability: "bus-register",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \
               `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\
               真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\
@@ -877,6 +917,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         family: "ccm-launcher",
         capability: "ccm-sid",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "**被接受、零效果、而且不出声** —— 这一条比别的几条更该单记。\
               `--ccm-sid` 解析进 `Opts` 之后只在**容器（tmux）那条路**上被消费\
               （`Container.ccm_sid` → `tmux set-option @ccm_sid_expect`），\
@@ -925,7 +966,66 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         family: "ccm-launcher",
         capability: "base-url-across-tmux",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；              将来那个后台服务要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
+    },    // ── 〔PR1 · 2026-09-24〕命令面 × Windows：**不是新裁的，是第一次被看见** ────────────
+    //
+    // 这六行在 PR1 之前就是真的（`K-P4` 那一拍 `unavailable_from` 在 Windows 上就会列出这三条），
+    // 只是没有任何东西把命令面放进 target 这根轴里对 —— PR1 把帧面 / CLI 面并进第 3 层的人群，
+    // 那条两向相等当场点出它们，于是逐条登记。**差异是现推出来的**（命令自己声明的 `no_tmux` 码 ×
+    // Windows 平台档），这里只补理由与档。
+    // 档：六条都是**欠着** —— 「起会话 / 杀会话 / 看一眼画面」与 tmux 无关，是 Windows 该有的；
+    // 谁来还是用户 09-21 那一句（「Windows 用 Windows 自己的后台服务，后面再做」）。
+    TargetGap {
+        family: "wire-commands",
+        capability: "capture-pane",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务给出\
+              「看一眼会话画面」的等价物〔用户 2026-09-21 拍板〕，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
+        capability: "kill",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
+              管会话的生死〔用户 2026-09-21 拍板〕，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
+        capability: "launch",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
+              承担「会话活在前端之外」〔用户 2026-09-21 拍板〕，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--capture-pane",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--kill",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--launch",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
 ];
 
@@ -960,6 +1060,220 @@ pub fn capability_ledger() -> Vec<(&'static str, &'static str)> {
     let mut out: Vec<(&'static str, &'static str)> = CAPABILITY_FACES
         .iter()
         .flat_map(|f| (f.declares)().into_iter().map(|n| (f.family, n)))
+        .collect();
+    out.sort_unstable();
+    out
+}
+
+// ══════════════ PR1：`设计/96 §2` 第 3 层的**人群** —— 每个 target 上做得到的那一份 ══════════════
+//
+// 🔴 **这一段只许从声明现推，一个能力名都不许手抄。** 本波另有几路在往命令表 / 能力表里加行
+//   （`inbound::REGISTRY` · `SUBCOMMANDS` · 各族 `CAPABILITIES`）；这里要是抄一份清单，
+//   合并那天必然分叉。⇒ 下面每一个名字都来自它那一族**自己**的声明表。
+//
+// 🔴🔴 **这一段刻意一个字都不读 [`TARGET_GAPS`]。** 对等断言的两侧是：
+//   ① 本段**现推**出来的「每个 target 上各有哪些」（读实现侧的声明：面的 `targets` ·
+//      `ccm-launcher` 那几条的载体 · 命令的 `codes` 里有没有 `no_tmux` × 平台那一维的编译期结论）；
+//   ② [`TARGET_GAPS`] 那张**差异登记表**（理由 ＋ 档）。
+//   本段要是从 ② 减出 ①，「差异 == 登记表」就是 `x == x`（本仓逐字「恒等两侧同源会恒真」）。
+//   ⇒ 由 `target_parity_guard::the_derivation_never_reads_the_gap_table` 从源码上钉零命中。
+//
+// ⚠ **本段是声明层，不是产物层。** 「每个 `[[bin]]` 都有一条入包路线」那一层是
+//   `tests/evidence/K-R124-ruler.py` ⑭ 的事（两向相等，已在门禁上）；本段不复制它。
+//   而 `设计/96 §7` 那句「没有字节的 target，第 3 层是在对空集断言」对本段**如实成立**：
+//   macOS 今天两道编译门禁都没有、也没有产线（`§7.1.1b` 第 5、6 行）⇒ 本段对 [`Target::MacOs`]
+//   那一列判的只是「**声明上**与别的 target 一样」，不是「那边真跑得起来」。
+
+/// 编译 target → 那一格在「tmux 在不在」这件事上**平台这一维**给的档（[`TmuxPlatform`]）。
+///
+/// # 为什么它是本段的一根柱子
+///
+/// 本仓今天所有「这个 target 上做不到」的声明，归根到底只有一种机制：**载体是 tmux，
+/// 而那个 target 没有 tmux**。[`TmuxPlatform`] 已经把「Windows 上确证没有」这句话
+/// 做成了编译期的值（`K-P4` 那一拍，头注逐字「这一句在**编译期**就成立，不需要探针去证」）。
+/// ⇒ 本函数只把 [`Target`] 这根轴接到那根轴上，**不另立一份平台知识**。
+///
+/// ⚠ 两根轴对不对得上，由 `target_parity_guard::the_target_axis_agrees_with_the_host_tmux_platform`
+/// （本机那一格，运行期）与下面那条 `#[cfg(windows)]` 编译期断言（Windows 那一格）各钉一半。
+pub const fn tmux_platform_of(t: Target) -> TmuxPlatform {
+    match t {
+        Target::Windows => TmuxPlatform::AbsentUnlessExeOnPath,
+        Target::LinuxGnu | Target::LinuxMusl | Target::MacOs => TmuxPlatform::AskThePath,
+    }
+}
+
+/// ★ 只在 Windows 编译时存在：[`tmux_platform_of`] 给 Windows 的档 == 那份二进制真编进去的 [`TMUX_PLATFORM`]。
+///
+/// 同 `TMUX_PLATFORM` 旁边那条：本机（Linux）门禁上它**不存在**，开口的时刻是
+/// `winchk-backend` 那一格的 Windows 编译。
+#[cfg(windows)]
+const _: () = assert!(
+    tmux_platform_of(Target::Windows) as u8 == TMUX_PLATFORM as u8,
+    "Target 轴说 Windows 是一档，TMUX_PLATFORM 说是另一档 —— 两根平台轴分叉了"
+);
+
+/// 在 target `t` 上，**不看任何一台机器**、只凭平台就成立的 tmux 结论。
+///
+/// 入参 `PATH` 刻意给 `None`：unix 那几档因此答「不知道」（`None`）——
+/// 按 [`unavailable_from`] 头注那条三态处置，「不知道」**不许**压成「做不到」；
+/// Windows 那一档答「确证没有」（`Some(false)`）—— 那是它的平台默认，不靠探针。
+fn tmux_by_platform(t: Target) -> Option<bool> {
+    tmux_present(tmux_platform_of(t), None)
+}
+
+/// 帧面命令里，在 target `t` 上**平台默认做不到**的那几条（`codes` 里声明了 `no_tmux` 的）。
+///
+/// 读的就是生产里填 `hello.unavailable` 的那一个函数（[`unavailable_from`]），不另写判准。
+fn wire_commands_unavailable_on(t: Target) -> Vec<String> {
+    unavailable_from(tmux_by_platform(t))
+        .into_iter()
+        .map(|u| u.command)
+        .collect()
+}
+
+/// `ccm-launcher` 那一面里，**载体是 tmux** 的那几条能力 —— 一条一条的依据：
+///
+/// ⚠ 这是一条关于**机制**的声明（「它靠什么活着」），不是差异登记：差异 = 本表 × 平台那一维，
+/// 由本段现推；理由与档住 [`TARGET_GAPS`]。两张表回答的不是同一个问题。
+/// ⚠ 它**该住** `control/ccm/mod.rs` 那张 `CAPABILITIES` 旁边（一条能力一个住址）——
+/// 那份文件不在 PR1 的写区里，先住在汇总这一层、紧挨着那一面的适配函数，已报备。
+const CCM_TMUX_CARRIED: &[&str] = &[
+    "attach",               // 实现就是 `tmux attach`
+    "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
+    "bus-register",         // `argv.rs`：要 `--detach`，而 `--detach` 要 `--tmux`
+    "ccm-sid",              // 只在容器（tmux）那条路上被消费，`Plan::Direct` 里没有这个字段
+    "detach",               // 实现就是 `tmux detach`
+    "tmux",                 // 它本身
+    "tmux-base",            // tmux 的 `base-index`
+    "tmux-size",            // tmux 窗格尺寸
+];
+
+/// `ccm-launcher`：载体是 tmux 的那几条，在平台确证没有 tmux 的 target 上摘掉。
+fn ccm_launcher_on(t: Target) -> Vec<&'static str> {
+    let no_tmux = tmux_by_platform(t) == Some(false);
+    control::ccm::CAPABILITIES
+        .iter()
+        .copied()
+        .filter(|c| !(no_tmux && CCM_TMUX_CARRIED.contains(c)))
+        .collect()
+}
+
+/// 帧面命令：`inbound::REGISTRY` 减去这个 target 上平台默认做不到的那几条。
+fn wire_commands_on(t: Target) -> Vec<&'static str> {
+    let gone = wire_commands_unavailable_on(t);
+    inbound::REGISTRY
+        .iter()
+        .map(|s| s.name)
+        .filter(|n| !gone.iter().any(|g| g == n))
+        .collect()
+}
+
+/// CLI 面：`SUBCOMMANDS` 里**经 `REGISTRY` 派生**的那几条，跟着它的帧面那一条走；
+/// CLI 独有的那几条没有任何逐 target 声明 ⇒ 处处都在（本断言对它们**看不见**差异，如实登记在
+/// `target_parity_guard` 头注的「买不到」里）。
+fn cli_subcommands_on(t: Target) -> Vec<&'static str> {
+    let gone = wire_commands_unavailable_on(t);
+    SUBCOMMANDS
+        .iter()
+        .copied()
+        .filter(|flag| {
+            control::cli_control::spec_for(flag).is_none_or(|s| !gone.iter().any(|g| g == s.name))
+        })
+        .collect()
+}
+
+fn wire_command_names() -> Vec<&'static str> {
+    inbound::REGISTRY.iter().map(|s| s.name).collect()
+}
+
+fn cli_subcommand_names() -> Vec<&'static str> {
+    SUBCOMMANDS.to_vec()
+}
+
+/// 🔴 **命令面** —— 第 3 层人群里、**不进**第 2 层汇总（[`capability_ledger`]）的那两面。
+///
+/// # 为什么不直接加进 [`CAPABILITY_FACES`]
+///
+/// 加进去它们就进了 `capability_ledger_guard::ROSTER` 那张**逐条点名表**的射程 ——
+/// 那张表是手写的，而本波正有好几路在往这两张命令表里加行 ⇒ 每一路合并都得回来补点名，
+/// 漏补就红。那正是「手抄一份清单，合并那天必分叉」。
+/// 而这两张表的名字**另有裁决处**：帧面每一条要在 `IPC-PROTOCOL.md §10` 有小节
+/// （`protocol_doc_guard`）、CLI 面每一条逼一次 `BUILD_ID` bump（`build_id_guard`）。
+/// ⇒ 它们只进第 3 层那条横向对等，不进第 2 层那张点名表。**并不并进汇总是一个待拍的设计题**，已报备。
+pub const COMMAND_FACES: &[CapabilityFace] = &[
+    CapabilityFace {
+        family: "wire-commands",
+        kind: CapabilityKind::Protocol,
+        declares: wire_command_names,
+        declared_in: "inbound.rs",
+        targets: TARGETS,
+        target_basis: "帧面每一条命令四个 target 上**都编得进去**（`inbound::REGISTRY` 零平台 `cfg`）；\
+                       做不做得到按它**自己声明的码**分：`codes` 里有 `no_tmux` 的，在平台确证没有 tmux 的 \
+                       target 上做不到 —— 与生产里填 `hello.unavailable` 的是同一个函数（`unavailable_from`）。",
+    },
+    CapabilityFace {
+        family: "cli-subcommands",
+        kind: CapabilityKind::Protocol,
+        declares: cli_subcommand_names,
+        declared_in: "lib.rs",
+        targets: TARGETS,
+        target_basis: "`SUBCOMMANDS` 四个 target 上逐字同一张表；经 `cli_control::spec_for` 派生到 \
+                       `REGISTRY` 的那几条，做不做得到跟着帧面那一条走。CLI 独有的那几条**没有任何逐 target \
+                       声明**（例：`--tmux-notify` 在 Windows 上没人会调它，但声明里说不出来）⇒ 判成处处都在。",
+    },
+];
+
+/// 一面在某个 target 上的**收窄** —— 这一面自己的声明里有逐 target 的信息时，从哪里读。
+///
+/// 没登记收窄的面 ⇒ 在它 `targets` 里的每个 target 上，整面都在。
+pub struct TargetNarrowing {
+    /// 哪一面（[`CAPABILITY_FACES`] 或 [`COMMAND_FACES`] 里的族名）。
+    pub family: &'static str,
+    /// 这一面在 `t` 上做得到的名字。**只许是 `declares()` 的子集**（判据钉）。
+    pub on: fn(Target) -> Vec<&'static str>,
+}
+
+/// 🔴 **全部收窄 —— 唯一住址。**
+///
+/// ⚠ **`files-read` 刻意不在这里**，理由是两条，都如实写：
+/// ① 那一族逐条能力的 `Capability::targets` 被它**自己的**边界②钉成了 `TARGETS` 全体
+///   （`files/capability_guard.rs::the_capability_set_is_equal_across_every_target`，集合相等）⇒ 今天读它与不读它交出来的是同一份；
+/// ② 读它要从这一层伸手进 `files::CAPABILITIES` —— 那是 `files/module_boundary_guard.rs`
+///   登记的门之外的**第三扇门**（PR1 落地时现打：那条两向相等当场红，逐字点名 `files::CAPABILITIES`）。
+///   开门要改那份门表与 `files` 那一族，不在 PR1 写区里。
+/// ⇒ 代价：边界②哪天放宽（某条 files 能力不在某个 target 上），本段**看不见**那一格，
+///   要同拍在 `files` 那边开一扇 `capability_names_on(t)` 的门、再在这里登记收窄。
+pub const TARGET_NARROWINGS: &[TargetNarrowing] = &[
+    TargetNarrowing {
+        family: "ccm-launcher",
+        on: ccm_launcher_on,
+    },
+    TargetNarrowing {
+        family: "wire-commands",
+        on: wire_commands_on,
+    },
+    TargetNarrowing {
+        family: "cli-subcommands",
+        on: cli_subcommands_on,
+    },
+];
+
+/// 第 3 层的人群：两张面表连起来。
+pub fn parity_faces() -> impl Iterator<Item = &'static CapabilityFace> {
+    CAPABILITY_FACES.iter().chain(COMMAND_FACES.iter())
+}
+
+/// 🔴🔴 **在 target `t` 上做得到的 `(面, 名)`，有序** —— 全部从声明现推。
+pub fn capabilities_on(t: Target) -> Vec<(&'static str, &'static str)> {
+    let mut out: Vec<(&'static str, &'static str)> = parity_faces()
+        .filter(|f| f.targets.contains(&t))
+        .flat_map(|f| {
+            let names = match TARGET_NARROWINGS.iter().find(|n| n.family == f.family) {
+                Some(n) => (n.on)(t),
+                None => (f.declares)(),
+            };
+            names.into_iter().map(move |n| (f.family, n))
+        })
         .collect();
     out.sort_unstable();
     out
