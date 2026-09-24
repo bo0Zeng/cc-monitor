@@ -3848,8 +3848,16 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
         StatusGroup::Unreadable,
     ),
     ("relay/server.rs", "404 Not Found", StatusGroup::NoRoute),
-    ("accounts/apikey/mod.rs", "404 Not Found", StatusGroup::NoRoute),
-    ("accounts/apikey/mod.rs", "502 Bad Gateway", StatusGroup::NoRoute),
+    (
+        "accounts/apikey/mod.rs",
+        "404 Not Found",
+        StatusGroup::NoRoute,
+    ),
+    (
+        "accounts/apikey/mod.rs",
+        "502 Bad Gateway",
+        StatusGroup::NoRoute,
+    ),
     (
         "relay/server.rs",
         "503 Service Unavailable",
