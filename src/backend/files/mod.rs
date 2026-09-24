@@ -740,3 +740,10 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
 #[cfg(test)]
 #[path = "../../../tests/backend/files/capability_guard.rs"]
 mod tests;
+
+// 〔F1 · 波 5 · 2026-09-24〕**文件管理后端模块**与原生后端那条边界的判据
+// （用户逐字「后端要模块化, 即原生后端＋文件管理后端. 现在先解耦清楚」）。
+// 挂在这里而不是 `lib.rs`：那份文件的模块声明那几行归另一路（A1）。
+#[cfg(test)]
+#[path = "../../../tests/backend/files/module_boundary_guard.rs"]
+mod module_boundary_guard;
