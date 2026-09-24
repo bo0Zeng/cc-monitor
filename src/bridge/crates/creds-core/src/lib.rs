@@ -194,7 +194,7 @@ mod sealed {
         /// # 两个出口各自只许住在哪儿（**这一段是判据的转述，不是承诺** —— 住址逐条给）
         ///
         /// - [`SecretKey::expose_for_auth_header`]：**调用点恰好 1 处**，在
-        ///   `src/backend/relay/server.rs`（中转换头那一行）。
+        ///   `src/backend/accounts/apikey/mod.rs`（层 2 算鉴权头的值那一行；层 1 只拿算好的头材料）。
         /// - `expose_for_persisting`（本方法）：**调用点恰好 1 处**，在
         ///   `src/bridge/crates/creds-core/src/store.rs`（`merge_key`）。
         ///

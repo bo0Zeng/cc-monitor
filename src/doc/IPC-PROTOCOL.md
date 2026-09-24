@@ -1533,9 +1533,10 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 不是一次性查询，而是一个**常驻**进程，起来就不返回。
 
 - **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
-- 默认上游**每个 agent 一行**〔条 59 / 条 60，2026-09-24 订正；先前这里写的是「上游默认
-  `https://api.anthropic.com`，`CCM_RELAY_UPSTREAM` 可盖」—— 那是一个进程级的默认，已整删〕：
-  今天只登记了 `claude-code`（默认 `https://api.anthropic.com`，`CCM_RELAY_UPSTREAM` 只盖这一家）；
+- 默认上游**每个 agent 一行**〔条 59 / 条 60，2026-09-24 订正；先前这里写的是一个**进程级**的上游默认
+  （`https://api.anthropic.com`，由一个进程级环境变量盖）—— 已整删〕。它是**账号层（层 2）**的表，不是中转的配置：
+  今天只登记了 `claude-code`（默认 `https://api.anthropic.com`，`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 只盖这一家；
+  〔R3〕这个变量先前叫中转的名字，改名不留兼容读旧名）；
   **codex 刻意没登记**（它的默认上游本仓零证据）⇒ 它走 `/t/` 回 **502**，不回落到任何一家。
   表住 `accounts::AGENT_UPSTREAMS`。**基址里可以带一段路径前缀**
   （`K-R1`，形如 `https://<host>/<前缀>`）。

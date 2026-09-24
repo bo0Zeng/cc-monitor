@@ -184,7 +184,10 @@ const SEALED_FNS: &[(&str, &str)] = &[
     ("len", "读字节数"),
     ("is_empty", "`len() == 0`"),
     ("masked", "从明文派生出遮蔽形"),
-    ("expose_for_auth_header", "**出口**：中转换头"),
+    (
+        "expose_for_auth_header",
+        "**出口**：层 2 算鉴权头的值（层 1 只拿算好的头材料）",
+    ),
     ("expose_for_persisting", "**出口**：落盘"),
 ];
 
@@ -588,7 +591,7 @@ fn the_plaintext_has_exactly_two_named_exits() {
     assert_eq!(
         exits, 2,
         "`SecretKey` 交出明文的地方有 {exits} 处，登记的是 **2** 处：\n\
-             · `expose_for_auth_header` —— 中转往上游请求写鉴权头（只在后端生产段）\n\
+             · `expose_for_auth_header` —— 层 2 算鉴权头的值、交层 1 写进上游请求（只在后端生产段）\n\
              · `expose_for_persisting`  —— 把它写回那份文件（只在 creds-core 生产段）\n\
              多一处 ⇒ **必须先在件计划里说清那一处是什么**（`KS2` 逐字：\
              加行是收紧、动断言是放宽，不许在实现里顺手把断言改大）"
