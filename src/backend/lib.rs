@@ -534,12 +534,17 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-mkdir",
     "--files-rename",
     "--files-write-text",
+    // 〔F7a · 第三波 09-24〕同一面第七条（同根内复制）。登记理由与上面逐字相同。
+    "--files-copy",
     "--files-browse",
     "--files-find",
     "--files-index-rebuild",
     "--files-index-status",
     "--files-ls",
     "--files-stat",
+    // 〔F7a · 第三波 09-24〕同族第七、第八条（`设计/60 §13`）。登记理由与上面那几条逐字相同。
+    "--files-home",
+    "--files-read-text",
     "--fork-session",
     // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
     "--history-projects",
