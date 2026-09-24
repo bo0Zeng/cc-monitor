@@ -460,6 +460,7 @@ jobs:
           # （Phase D 审计实测：`shellcheck 'tests/scripts/*.sh'` → openBinaryFile does not exist, RC=2）
           shopt -s nullglob
           FILES=$(printf '%s\n' tests/e2e/*.sh src/shared/cc-bus/scripts/* \
+            src/shared/cc-bus/examples/cc-keepalive \
             tests/e2e/fake-claude \
             tests/e2e/weak-net/*.sh \
             tests/e2e/local-backend-container/*.sh \
@@ -663,7 +664,10 @@ jobs:
           # 今天实测构成（逐组现打，不倒推）：
           # **79 = tests/e2e/*.sh 32 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
           #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + tests/hooks/* 2**。
-          [ "$N" -ge 79 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 79）"; exit 1; }
+          # **2026-09-24 BS1 合并那一拍棘到 80** —— 新增 `src/shared/cc-bus/examples/cc-keepalive`
+          #   （保活调用方，W24C 尺子真跑它）。同拍加文件、同拍棘，`shell_lint_registry` 那条恒等判据当场红给的。
+          # **80 = 上面 79 ＋ cc-bus/examples/cc-keepalive 1**（逐组现打同上）。
+          [ "$N" -ge 80 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 80）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
