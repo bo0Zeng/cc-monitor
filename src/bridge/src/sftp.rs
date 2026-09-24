@@ -460,7 +460,7 @@ pub(crate) fn interpret_profile_read(
 
 // 〔AL1 · 2026-09-24〕这里原来是 `rollback_note`〔散文墓碑〕（「回滚措辞必须与实际发生的事一致」）。
 // 它记的那条未收项 ——「首次安装失败就删掉新建的文件是行为新增（要在远端 `remove`），不在验收轮里做」——
-// 在 `fenced_block::apply` 里收了：原本不存在的文件写坏了就 `Store::remove`，措辞由
+// 在 `fenced_block::apply` 里收了：原本不存在的文件写坏了就 `Store::delete_created`，措辞由
 // `fenced_block::undo_note` 按**真发生了的事**说，本机远端同一份。
 
 /// [`interpret_profile_read`] 的异步取样：read 成功就直接判，**只在需要时**才补问
@@ -1242,7 +1242,7 @@ impl crate::fenced_block::Store for SftpFile<'_> {
         read_profile_text(self.sftp, &self.path, &self.what).await
     }
 
-    async fn backup(&self, original: &str) -> Result<String, String> {
+    async fn save_backup(&self, original: &str) -> Result<String, String> {
         let ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis())
@@ -1252,7 +1252,7 @@ impl crate::fenced_block::Store for SftpFile<'_> {
         Ok(backup)
     }
 
-    async fn replace(&self, content: &str) -> Result<(), String> {
+    async fn put_atomic(&self, content: &str) -> Result<(), String> {
         // 上级目录逐级建（相对 home）。已存在时 `create_dir` 会失败 —— 容忍，
         // 真正的失败由下面那一次上传报出来。
         let comps: Vec<&str> = self.path.split('/').filter(|c| !c.is_empty()).collect();
@@ -1267,7 +1267,7 @@ impl crate::fenced_block::Store for SftpFile<'_> {
         upload_atomic(self.sftp, &self.path, content.as_bytes(), self.mode).await
     }
 
-    async fn remove(&self) -> Result<(), String> {
+    async fn delete_created(&self) -> Result<(), String> {
         self.sftp
             .remove_file(self.path.clone())
             .await

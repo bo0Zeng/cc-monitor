@@ -89,7 +89,7 @@ pub fn find_pair(
 //
 // ⇒ 按 `71 §12.3` 第 4、5 格切：**序列与拼接是规则（留这里，一份）**；
 //   「这台机器上怎么读、怎么存备份、怎么原子替换、怎么删」是读法（[`Store`] 的四个原语，
-//   本机一份 [`LocalFile`]、远端一份 `sftp::SftpFile`）；「排版」随目标文件的方言走（[`Layout`]）。
+//   本机一份 [`LocalFile`]、远端一份 `sftp::SftpFile`；方法名刻意不叫 `replace` / `remove` —— 那两个词与 `str::replace`、集合的 `remove` 同名，按名字认写者的判据会把它们认成同一个）；「排版」随目标文件的方言走（[`Layout`]）。
 
 /// 排版方言。**规则不分方言**（配对 → 整块替换 / 追加 / 悬空中止；剥离 → 删 / 原样 / 悬空中止），
 /// 分方言的只有排版这一层 —— 由目标文件决定（`profile_installer::flavor_of` 按扩展名答），
@@ -244,11 +244,11 @@ pub(crate) trait Store {
     /// 原样读。`Ok(None)` = 确定不存在。
     async fn read(&self) -> Result<Option<String>, String>;
     /// 把原文另存一份，返回备份的名字（给人看）。
-    async fn backup(&self, original: &str) -> Result<String, String>;
+    async fn save_backup(&self, original: &str) -> Result<String, String>;
     /// 原子替换成 `content`；落点不存在就新建（含上级目录）。
-    async fn replace(&self, content: &str) -> Result<(), String>;
+    async fn put_atomic(&self, content: &str) -> Result<(), String>;
     /// 删掉 —— 只在「原本不存在、是我们刚建出来的」那一档回滚时用。
-    async fn remove(&self) -> Result<(), String>;
+    async fn delete_created(&self) -> Result<(), String>;
 }
 
 /// 一次 [`apply`] 做了什么。
@@ -298,7 +298,7 @@ pub(crate) async fn apply<S: Store>(
     let backup = match original.as_deref() {
         Some(o) if keep_backup && !o.is_empty() => Some(
             store
-                .backup(o)
+                .save_backup(o)
                 .await
                 .map_err(|e| format!("备份 {label} 失败，原文件没动：{e}"))?,
         ),
@@ -307,11 +307,11 @@ pub(crate) async fn apply<S: Store>(
     let existed = original.is_some();
     let undo = || async {
         match original.as_deref() {
-            Some(o) => store.replace(o).await.is_ok(),
-            None => store.remove().await.is_ok(),
+            Some(o) => store.put_atomic(o).await.is_ok(),
+            None => store.delete_created().await.is_ok(),
         }
     };
-    if let Err(e) = store.replace(&next).await {
+    if let Err(e) = store.put_atomic(&next).await {
         let undone = undo().await;
         return Err(format!(
             "写 {label} 失败：{e}。{}",
@@ -368,7 +368,7 @@ impl Store for LocalFile {
         Ok(Some(raw))
     }
 
-    async fn backup(&self, _original: &str) -> Result<String, String> {
+    async fn save_backup(&self, _original: &str) -> Result<String, String> {
         let ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis())
@@ -384,7 +384,7 @@ impl Store for LocalFile {
         Ok(b.display().to_string())
     }
 
-    async fn replace(&self, content: &str) -> Result<(), String> {
+    async fn put_atomic(&self, content: &str) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
@@ -392,7 +392,7 @@ impl Store for LocalFile {
             .map_err(|e| e.to_string())
     }
 
-    async fn remove(&self) -> Result<(), String> {
+    async fn delete_created(&self) -> Result<(), String> {
         std::fs::remove_file(&self.path).map_err(|e| e.to_string())
     }
 }

@@ -385,6 +385,21 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              ⚠ `home_dir()` 出现在**这一处**而不是 `account_aliases.rs` 里，是刻意的：\
              那个模块把 `home` 当参数收，于是它的测试拿临时目录当 home，结构上碰不到真实家目录。",
     ),
+    // 〔AL1 · 2026-09-24〕`设计/71` 别名两跳里要落盘 / 读回的那两条。纯渲染那一条不碰 home。
+    (
+        "lib.rs",
+        "aliases_read",
+        "`~/.cc-monitor/account-aliases.sh`（读回口：那份别名文件今天有哪几条）",
+        "只读。monitor 自己的目录，与上面 `write_account_aliases` 那一格同一个落点、同一个理由；\
+             `home_dir()` 在这里而不在 `account_aliases.rs` 里 —— 那边把 `home` 当参数收，测试拿临时目录当 home。",
+    ),
+    (
+        "lib.rs",
+        "aliases_install",
+        "`~/.cc-monitor/account-aliases.sh`，以及**用户自己选的**那份 rc",
+        "与 `write_account_aliases` 那一格逐条同性质（两个落点：monitor 自己的文件 · 有围栏的一行 source），\
+             写侧今天只有一个序列 `fenced_block::apply`，本机原语登记在 `write_site_registry` 的 `fenced_block.rs` 三行。",
+    ),
     (
         "ccm_probe.rs",
         "local_ccm_entry_status",

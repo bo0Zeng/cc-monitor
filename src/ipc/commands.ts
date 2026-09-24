@@ -99,6 +99,10 @@ import type {
 } from "../launch-cli-wire.ts";
 
 import type { AccountAliasReport } from "../generated/AccountAliasReport";
+import type { Alias } from "../generated/Alias";
+import type { AliasInstallReport } from "../generated/AliasInstallReport";
+import type { AliasListing } from "../generated/AliasListing";
+import type { AliasRender } from "../generated/AliasRender";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
@@ -390,6 +394,23 @@ export const commands = {
     rcPath?: string | null;
     dryRun: boolean;
   }) => invoke<AccountAliasReport>("write_account_aliases", args),
+
+  /**
+   * 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。
+   * 预览与「复制去手贴」都只调这一条，后端一个字节都不写。
+   */
+  aliases_render: (args: { aliases: Alias[] }) =>
+    invoke<AliasRender>("aliases_render", args),
+
+  /** 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。 */
+  aliases_read: () => invoke<AliasListing>("aliases_read"),
+
+  /**
+   * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
+   * ⚠ `rcPath` 可选且没有默认值：用户的 shell 配置是哪一份只能由界面上的人选。
+   */
+  aliases_install: (args: { aliases: Alias[]; rcPath?: string | null }) =>
+    invoke<AliasInstallReport>("aliases_install", args),
 
   /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
   panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>

@@ -347,5 +347,212 @@ fn cch_is_gone_and_the_name_is_free_for_the_user() {
 fn the_generated_file_is_byte_stable() {
     let lines = vec!["zcc() { ccm --account 'z' \"$@\"; }".to_string()];
     assert_eq!(render_file(&lines), render_file(&lines));
-    assert!(render_file(&[]).contains("一个账号命令都没有"));
+    assert!(render_file(&[]).contains("一条别名都没有"));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔AL1 · 2026-09-24〕`设计/71`：一类别名 · 两跳（渲染纯 / 写入唯一副作用）· 读回口
+// ═══════════════════════════════════════════════════════════════════════
+
+fn al(name: &str, args: &[&str]) -> Alias {
+    Alias {
+        name: name.to_string(),
+        args: args.iter().map(|s| s.to_string()).collect(),
+    }
+}
+
+/// 黄金串：同一份清单渲染出的每一行逐字钉住（`71 §12.9` W4）。
+#[test]
+fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
+    let r = render(&[
+        al("zcc", &["--account", "z"]),
+        al(
+            "convz",
+            &["--tmux", "--account", "z", "--cwd", "/home/u/文档/c c"],
+        ),
+        al("mo", &["--model", "it's", "--", "--verbose"]),
+    ]);
+    assert!(r.problems.is_empty(), "{:?}", r.problems);
+    assert_eq!(
+        r.lines,
+        vec![
+            r#"zcc() { ccm --account z "$@"; }"#.to_string(),
+            r#"convz() { ccm --tmux --account z --cwd '/home/u/文档/c c' "$@"; }"#.to_string(),
+            r#"mo() { ccm --model 'it'\''s' -- --verbose "$@"; }"#.to_string(),
+        ]
+    );
+    for l in &r.lines {
+        assert!(pinned(&r.code, l), "整份代码里缺这一行：{l}");
+    }
+    assert_eq!(
+        render(&[al("zcc", &["--account", "z"])]).code,
+        render(&[al("zcc", &["--account", "z"])]).code
+    );
+}
+
+/// 🔴 **异源判据**：让真的 bash 去执行渲染出来的那一行 —— 调用时再给的参数接在预置参数后面，
+/// 值里的空格 / 单引号 / 中文原样到达 `ccm`（用一个假 `ccm` 函数把收到的 argv 一行一个吐出来）。
+#[test]
+fn a_rendered_alias_really_appends_the_callers_args_in_bash() {
+    let a = al(
+        "convz",
+        &["--tmux", "--cwd", "/tmp/a b/文档", "--model", "it's"],
+    );
+    let line = render_line(&a);
+    let script = format!("ccm() {{ printf '%s\\n' \"$@\"; }}\n{line}\nconvz --cwd /elsewhere\n");
+    let out = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(&script)
+        .output()
+        .expect("起 bash");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let got: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect();
+    let mut want = a.args.clone();
+    want.extend(["--cwd".to_string(), "/elsewhere".to_string()]);
+    assert_eq!(got, want, "bash 真执行下来的 argv 与清单对不上");
+}
+
+/// 写进去的就是预览的那一份；读回来的清单与写进去的**两向相等**。
+#[test]
+fn what_is_installed_reads_back_as_the_same_list() {
+    let h = tmp_home("roundtrip");
+    let list = vec![
+        al("zcc", &["--account", "z"]),
+        al("zcct", &["--tmux", "--account", "z"]),
+        al(
+            "mine",
+            &["--cwd", "/x y", "--agent", "codex", "--", "--foo"],
+        ),
+    ];
+    let rep = install_in(&h.0, &list, None).expect("写");
+    assert!(rep.wrote_alias_file);
+    let on_disk = std::fs::read_to_string(alias_file_in(&h.0)).unwrap();
+    assert_eq!(on_disk, render(&list).code, "落盘的不是预览的那一份");
+    let back = read_in(&h.0).expect("读回");
+    assert!(
+        back.exists && back.unparsed.is_empty(),
+        "{:?}",
+        back.unparsed
+    );
+    assert_eq!(back.aliases, list);
+    // 再写一次同一份 ⇒ 一个字节都不写。
+    assert!(!install_in(&h.0, &list, None).unwrap().wrote_alias_file);
+}
+
+/// 读回口认得盘上那份**旧的**（v1 头、值带引号、从前 `"${CCM:-…}"` 那种调用词），
+/// 认不出的行**不静默丢**：原文 ＋ 原因。
+#[test]
+fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
+    let h = tmp_home("old");
+    let p = alias_file_in(&h.0);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(
+        &p,
+        "# === cc-monitor account aliases BEGIN v1 ===\n\
+         # 注释\n\
+         zcc() { ccm --account 'z' \"$@\"; }\n\
+         bcct() { \"${CCM:-/h/.cc-monitor/bin/ccm}\" --tmux --account 'b' \"$@\"; }\n\
+         alias x=ls\n\
+         bad() { ccm --print \"$@\"; }\n\
+         # === cc-monitor account aliases END ===\n",
+    )
+    .unwrap();
+    let back = read_in(&h.0).unwrap();
+    assert_eq!(
+        back.aliases,
+        vec![
+            al("zcc", &["--account", "z"]),
+            al("bcct", &["--tmux", "--account", "b"])
+        ]
+    );
+    assert_eq!(back.unparsed.len(), 2, "{:?}", back.unparsed);
+    assert!(
+        back.unparsed[0].starts_with("alias x=ls（"),
+        "{:?}",
+        back.unparsed
+    );
+    assert!(back.unparsed[1].contains("--print"), "{:?}", back.unparsed);
+    // 文件不在 ≠ 读失败。
+    let empty = tmp_home("none");
+    let l = read_in(&empty.0).unwrap();
+    assert!(!l.exists && l.aliases.is_empty());
+}
+
+/// V1–V5（`71 §5`）：每一条规则各有一个会被拦下的例子；有一条不合格 ⇒ **整批不写**。
+#[test]
+fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
+    let bad = [
+        al("1x", &[]),
+        al("a", &["--account", "z", "--base"]),
+        al("b", &["--tmux=w", "--tmux-base", "w"]),
+        al("c", &["--tmux", "--bus-register"]),
+        al("d", &["--detach"]),
+        al("e", &["--tmux-size", "80x24"]),
+        al("f", &["--print"]),
+        al("g", &["resume", "abc"]),
+        al("h", &["--account"]),
+        al("i", &["--cwd", "a\nb"]),
+    ];
+    for a in &bad {
+        assert!(check_alias(a).is_err(), "该拦没拦：{a:?}");
+    }
+    let good = [
+        al(
+            "ok1",
+            &["--tmux", "--detach", "--bus-register", "--bus-note", "x"],
+        ),
+        al("ok2", &["--tmux=w", "--tmux-size", "80x24"]),
+        al("ok3", &["--base", "--agent", "codex"]),
+    ];
+    for a in &good {
+        assert_eq!(check_alias(a), Ok(()), "{a:?}");
+    }
+    let h = tmp_home("bad");
+    let mut list = good.to_vec();
+    list.push(bad[1].clone());
+    let e = install_in(&h.0, &list, None).unwrap_err();
+    assert!(e.contains("一条都没写"), "{e}");
+    assert!(!alias_file_in(&h.0).exists(), "有一条不合格却写了");
+    // 重名也是一条问题。
+    let r = render(&[al("z", &[]), al("z", &["--tmux"])]);
+    assert_eq!(r.problems.len(), 1);
+}
+
+/// 🔴 **异源**：别名里能放的每个旗标，都得是后端 `ccm --help` 里真有的那个词
+/// （用法文本住后端 `control/ccm/mod.rs::USAGE`，两棵树不共享源码 ⇒ 读它的原文）。
+/// 反向：用法里那几个「每次取值都不同」的（第三档）不许混进来。
+#[test]
+fn every_alias_flag_is_a_real_ccm_flag() {
+    let usage_src = std::fs::read_to_string(
+        crate::guard_support::repo_root().join("src/backend/control/ccm/mod.rs"),
+    )
+    .expect("读后端 ccm 用法");
+    let from = guard_core::find_pinned(&usage_src, "选项\n").expect("用法里「选项」那一段锚不住");
+    let usage = &usage_src[from..];
+    for (flag, _) in ALIAS_FLAGS {
+        assert!(
+            usage.contains(&format!("  {flag} ")) || usage.contains(&format!("  {flag}[")),
+            "`{flag}` 不是后端 ccm 用法里的一个旗标 —— 生成出来就是一条当场报错的别名"
+        );
+    }
+    for third in [
+        "--resume",
+        "--ccm-sid",
+        "--print",
+        "--ccm-probe",
+        "--version",
+        "--help",
+    ] {
+        assert!(
+            ALIAS_FLAGS.iter().all(|(f, _)| f != &third),
+            "`{third}` 每次取值都不同，做成固定别名没意义（`71 §4` 第三档）"
+        );
+    }
 }

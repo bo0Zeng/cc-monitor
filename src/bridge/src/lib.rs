@@ -1257,6 +1257,11 @@ pub fn run() {
             // （`~/.cc-monitor/account-aliases.sh`，整份重写）；用户的 rc 最多多一行 `source`，
             // 而且那份 rc 由界面上的人**选**，本条不猜。
             write_account_aliases,
+            // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
+            // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
+            aliases_render,
+            aliases_read,
+            aliases_install,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             backend::control::cc_bus::read_cc_bus_state,
@@ -1830,6 +1835,32 @@ fn write_account_aliases(
 ) -> Result<account_aliases::AccountAliasReport, String> {
     let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何文件".to_string())?;
     account_aliases::apply(&home, &lines, rc_path.as_deref(), dry_run)
+}
+
+/// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。
+/// 预览与「复制去手贴」都只调这一条；`dry_run` 那个布尔从此不需要了（「只生成不写」就是只调这一跳）。
+#[tauri::command]
+fn aliases_render(aliases: Vec<account_aliases::Alias>) -> account_aliases::AliasRender {
+    account_aliases::render(&aliases)
+}
+
+/// 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（`设计/70 §3.1` 「列出现在有哪些命令」）。
+#[tauri::command]
+fn aliases_read() -> Result<account_aliases::AliasListing, String> {
+    let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录".to_string())?;
+    account_aliases::read_in(&home)
+}
+
+/// 〔AL1〕第②跳：**唯一的副作用**。收的是清单不是代码 —— 写进 shell 的文本只由后端渲染
+/// （审计 S-1），而「写的就是预览的那一份」由两跳调同一个 `account_aliases::render` 保证。
+/// home 在这里解析、那边当参数收 ⇒ 那边的测试用临时目录当 home，结构上碰不到真实家目录。
+#[tauri::command]
+fn aliases_install(
+    aliases: Vec<account_aliases::Alias>,
+    rc_path: Option<String>,
+) -> Result<account_aliases::AliasInstallReport, String> {
+    let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何文件".to_string())?;
+    account_aliases::install_in(&home, &aliases, rc_path.as_deref())
 }
 
 #[tauri::command]

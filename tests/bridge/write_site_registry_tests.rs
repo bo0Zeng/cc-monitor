@@ -112,22 +112,22 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //    全部经 `fenced_block::apply`（序列）落到下面这三个本机原语上 ⇒ 写盘这一跳只剩三处。
     //    它们各自**写什么**（生成文件 / rc 里那一行 source / ccm 别名块 / PowerShell 块）
     //    住在各自的 `plan` 闭包里，一个字节的落盘都不自己做。
-    ("fenced_block.rs", "replace", Some("ccm"),
+    ("fenced_block.rs", "put_atomic", Some("ccm"),
      "`LocalFile` 的原子替换：`mkdir -p` 上级目录 ＋ `profile_installer::atomic_write_string`。\
           它是本机这几件事**唯一**的落盘漏斗：ccm 别名块装/卸进用户选的 rc · PowerShell profile 的 cc 块 · \
           `~/.cc-monitor/account-aliases.sh`（monitor 自己那份生成文件，整份重写）· rc 里那一行 source。\
           点名 `ccm` 是因为前两件是那个工具的安装/卸载动作；后两件不装任何工具。\
           路径由调用方给，围栏在调用方（`profile_installer::fence_path_under`：只许落在 home 之内，\
           那份 rc 由界面上的人选）。回滚也走它：把内存里那份原文原样写回。"),
-    ("fenced_block.rs", "backup", None,
+    ("fenced_block.rs", "save_backup", None,
      "给用户那份 rc / profile 另存一份原文（`<名>.ccm-backup-<ms>`，`fs::copy` 连权限位一起拷）。\
           **不是安装动作**，是安装的可撤销那一格。只给**用户的、非空的**文件存；\
           我们自己那份生成文件不存（回滚用内存里的原文）。"),
-    ("fenced_block.rs", "remove", None,
+    ("fenced_block.rs", "delete_created", None,
      "只在一种情形下删：**这份文件原本不存在、是这一次新建的，而写完读回来不对** ⇒ 删掉刚建的那份\
           （半截的 rc 比没有它更坏）。不是安装动作。"),
     ("profile_installer.rs", "atomic_write_string", Some("ccm"),
-     "临时文件 + rename 的原语（〔AL1〕本机 ccm 那几件今天都经 `fenced_block.rs::replace` 调它；另一个直调者是 `mcp.rs::write_json_atomic`）"),
+     "临时文件 + rename 的原语（〔AL1〕本机 ccm 那几件今天都经 `fenced_block.rs::put_atomic` 调它；另一个直调者是 `mcp.rs::write_json_atomic`）"),
     ("profile_installer.rs", "atomic_replace_path", Some("ccm"),
      "跨设备回退的 rename。⚠ 这是**四份平台原语副本之一**，四份都已登记在 `atomic_replace_registry`（承接 C10）——本条不重复判它，只记它是个写点"),
     ("mcp.rs", "write_json_atomic", Some("project-mcp"),

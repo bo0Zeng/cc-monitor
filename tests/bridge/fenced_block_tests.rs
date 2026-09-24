@@ -321,9 +321,9 @@ struct MemStore {
     backups: std::cell::RefCell<Vec<String>>,
     replaces: std::cell::Cell<usize>,
     removes: std::cell::Cell<usize>,
-    /// 第几次 `replace` 失败（从 1 数；0 = 不失败）。
+    /// 第几次 `put_atomic` 失败（从 1 数；0 = 不失败）。
     fail_replace_at: usize,
-    /// 第一次 `replace` 写进去的东西被换成这一份（模拟传输损坏）。
+    /// 第一次 `put_atomic` 写进去的东西被换成这一份（模拟传输损坏）。
     corrupt_first_write: Option<String>,
     fail_read: bool,
 }
@@ -352,11 +352,11 @@ impl Store for MemStore {
         }
         Ok(self.file.borrow().clone())
     }
-    async fn backup(&self, original: &str) -> Result<String, String> {
+    async fn save_backup(&self, original: &str) -> Result<String, String> {
         self.backups.borrow_mut().push(original.to_string());
         Ok(format!("夹具备份{}", self.backups.borrow().len()))
     }
-    async fn replace(&self, content: &str) -> Result<(), String> {
+    async fn put_atomic(&self, content: &str) -> Result<(), String> {
         let n = self.replaces.get() + 1;
         self.replaces.set(n);
         if n == self.fail_replace_at {
@@ -369,7 +369,7 @@ impl Store for MemStore {
         *self.file.borrow_mut() = Some(put);
         Ok(())
     }
-    async fn remove(&self) -> Result<(), String> {
+    async fn delete_created(&self) -> Result<(), String> {
         self.removes.set(self.removes.get() + 1);
         *self.file.borrow_mut() = None;
         Ok(())
@@ -438,7 +438,7 @@ fn a_write_that_reads_back_wrong_is_undone() {
 /// 措辞只说**真发生了的事**：恢复也失败时要说「恢复也失败了」并给出备份在哪，不许说「已恢复」。
 #[test]
 fn the_undo_note_says_only_what_really_happened() {
-    // 写失败 ⇒ 回滚那一次 replace 也失败（第 2 次）。
+    // 写失败 ⇒ 回滚那一次 put_atomic 也失败（第 2 次）。
     let mut s = MemStore::with(Some("user\n"));
     s.fail_replace_at = 1;
     let e = run(&s, true, "new\n").unwrap_err();

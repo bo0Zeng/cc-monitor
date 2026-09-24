@@ -81,7 +81,7 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
     // 写盘只剩 `SftpFile` 的两个原语 —— 装/卸两个命令一个裸写原语都不再有。
     (
         "sftp.rs",
-        "replace",
+        "put_atomic",
         "远端",
         "`SftpFile` 的原子替换：逐级 `create_dir` 上级目录（相对远端 home，已存在就忽略）\
              ＋ `upload_atomic`。**路径由代码定**：远端 rc（`.bashrc` 这类，只许 home 下的一个文件名，\
@@ -89,7 +89,7 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "sftp.rs",
-        "remove",
+        "delete_created",
         "远端",
         "`SftpFile` 的删除：只在「这份文件原本不存在、这一次新建的、写完读回来不对」时删掉刚建的那份。\
              **路径由代码定**（同上两种落点）。",
@@ -655,7 +655,7 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
     ];
     // 〔AL1〕**落点类型**：一个 `fenced_block::Store` 的远端实现，它的写原语方法全在 `REMOTE_WRITES` 里。
     // 入口「造了它」＝ 入口把写交给了它（序列 `fenced_block::apply` 不认识任何落点）。
-    const STORES: &[(&str, &[&str])] = &[("SftpFile", &["replace", "remove"])];
+    const STORES: &[(&str, &[&str])] = &[("SftpFile", &["put_atomic", "delete_created"])];
     for (ty, methods) in STORES {
         for m in *methods {
             assert!(
