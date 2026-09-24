@@ -550,6 +550,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-copy",
     // 〔F7c · 第三波 09-24〕上传的提交（`设计/60 §13`）。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-commit-upload",
+    // 〔RW1 · 第四波 09-24〕用户文件的读改写 ＋ 删历史会话。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
+    "--files-delete-session",
+    "--files-peek",
+    "--files-put",
     "--files-browse",
     "--files-find",
     "--files-index-rebuild",

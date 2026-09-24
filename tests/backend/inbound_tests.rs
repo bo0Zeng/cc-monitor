@@ -411,6 +411,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
+        // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
+        "files-peek",
+        "files-put",
+        "files-delete-session",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -457,6 +461,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-sessions",
         "exit-policy-read",
         "exit-policy-set",
+        // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
+        "files-peek",
+        "files-put",
+        "files-delete-session",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(
