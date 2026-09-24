@@ -1,8 +1,8 @@
 //! 〔RM1b · 第四波〕`tasks-list` 本体的判据。
 //!
 //! 夹具只造**结构**（目录名、文件名、占位字段），不采任何真会话正文。
-//! 口径逐条对着搬家前 monitor `tasks.rs::read_session_tasks` 那几条判据（跳旁文件 · 按数字排 ·
-//! 半截 JSON 跳过 · 目录不在 = 空），外加本件新加的三条（sid 围栏 · 超限跳过 · 目录读不了 ≠ 空）。
+//! 口径逐条对着搬家前 monitor 那份直读实现的判据（跳旁文件 · 按数字排 · 半截 JSON 跳过 ·
+//! 目录不在 = 空），外加本件新加的三条（sid 围栏 · 超限跳过 · 目录读不了 ≠ 空）。
 
 use super::*;
 use std::path::PathBuf;
@@ -119,7 +119,7 @@ fn a_dir_that_is_there_but_unreadable_is_not_an_empty_list() {
     let dir = tasks_root(&h).join("s");
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
     // root 跑测试时权限位拦不住读 —— 那一格判不了，如实跳过而不是假绿。
-    let perms_bite = std::fs::read_dir(&dir).is_err();
+    let perms_bite = std::fs::File::open(&dir).is_err();
     let got = session_task_lines(&h, "s");
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
     if !perms_bite {

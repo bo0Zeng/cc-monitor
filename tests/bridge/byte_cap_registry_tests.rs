@@ -453,6 +453,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "按行那六条帧查询（`history-projects` 等）整份输出",
         "拒收+回错",
     ),
+    // 〔RM1b · 第四波〕任务列表搬进后端（`tasks-list`）：单个任务文件的读上限。
+    (
+        "src/backend/observe/tasks_query.rs",
+        "TASK_FILE_CAP_BYTES",
+        1 << 20,
+        "`tasks-list` 读单个任务文件（本机实测几百字节量级）",
+        "跳过+说清",
+    ),
     // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：backend 的 Claude 知识搬进
     // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
     // 两格同时红（「有上限没登记」+「登记的那个算不出值」）。**登记表的键随搬迁同轮改。**

@@ -93,7 +93,7 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
         match std::fs::metadata(&path) {
             Ok(m) if m.len() > TASK_FILE_CAP_BYTES => {
                 tracing::warn!(
-                    "任务文件 {} 有 {} 字节，超过上限 {TASK_FILE_CAP_BYTES} ⇒ 这一条跳过",
+                    "任务文件 {} 有 {} 字节，超过单个任务文件的读上限 ⇒ 这一条跳过",
                     path.display(),
                     m.len()
                 );
