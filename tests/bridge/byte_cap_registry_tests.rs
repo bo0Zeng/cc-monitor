@@ -213,16 +213,9 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "一趟 `files-ls` 一屏最多几条目录项（**条目数，不是字节**）",
         "截断+说清",
     ),
-    (
-        "src/bridge/src/sftp_pool.rs",
-        "MAX_EDIT_BYTES",
-        256 * 1024,
-        "SFTP 在线编辑的文件体量",
-        "拒收+回错",
-    ),
+    // 〔F7c 收尾 09-24〕池子那一份同值的 `MAX_EDIT_BYTES`（「SFTP 在线编辑的文件体量」）随那条读文本命令一起走了。
     // 〔F7a · 第三波 09-24〕文件窗口编辑器的上限**搬回窗口**（它答「文本控件打字卡不卡」，
     //   是窗口的偏好）：每趟经 `max_bytes` 送给后端 `files-read-text`，后端按它整趟拒、不截断。
-    //   ⚠ 上面池子那一份同值常量只剩老面板那条读文本命令在用，随 SFTP 收成只做传输一起走。
     (
         "src/bridge/src/filewin/editor.rs",
         "MAX_EDIT_BYTES",

@@ -218,7 +218,7 @@ describe("C01 边界生成物", () => {
       "SessionIndexResult.ts", //     `设计/10` 骨架 · 子步 3
       "SessionStartedPayload.ts", //  C02
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
-      "SftpEntry.ts", //              C03（Phase G 报的唯一已确认静默有损点）
+      // 〔F7c 收尾 09-24〕"SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
       "Snippet.ts", //                C04d 批3
       "SubagentLoadResult.ts", //     C04d 批2（**records: JsonlRecord[] 的传递依赖是 C04c 生成的**）
       "SurfaceRow.ts", //             C04d 批2（ConfigSurfaceReport 的传递依赖）
@@ -445,7 +445,7 @@ describe("C01 边界生成物", () => {
     //    （`UsageTotals` 的 `input`/`cache_creation`/`cache_read`/`output`）。
     //    ⚠ **这个数变小不是放宽**：它是「有多少个大整数字段被 `ts(type=…)` 策略盖住」，
     //    人群小了是因为被盖的对象少了，策略本身一个字没松。
-    expect(checked, `期望恰好 20 个大整数字段，实得 ${checked}`).toBe(24); // 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
+    expect(checked, `期望恰好 20 个大整数字段，实得 ${checked}`).toBe(23); // 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {

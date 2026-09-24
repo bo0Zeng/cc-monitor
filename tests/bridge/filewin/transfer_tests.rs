@@ -509,11 +509,11 @@ fn the_real_adapters_speak_only_through_the_channel() {
              它该做的只有「先问完再并行」＋ 经通道说话"
         );
     }
-    // 池子那一个前缀**只许剩复制那一腿的取消**（`forward_cancel`，等 F7a 的 `files-copy`）。
+    // 〔F7c 收尾 09-24〕池子那一个前缀**一处都不剩**（复制那一腿的取消随复制走后端一起删了）。
     assert_eq!(
         prod.matches("sftp_pool::").count(),
-        1,
-        "窗口这一侧够到池子的地方不是恰好一处（复制那一腿的取消）"
+        0,
+        "窗口这一侧又够到了池子"
     );
 }
 
@@ -877,7 +877,7 @@ async fn a_download_opens_and_watches_and_never_talks_to_the_file_backend() {
 // | `pressing_cancel_stops_every_transfer_that_had_not_started_yet` | **行为**：按下取消之后，还没起的那几件一件都不起 | 「UI 上标成停了」而字节照旧在走 |
 // | `a_run_that_is_never_cancelled_launches_every_single_item` | 🔴 **阴性对照** | 上一条可以靠「一件都不起」全绿 —— 那时这个窗口传不了任何东西 |
 // | `the_transfer_id_the_pool_gets_is_the_one_the_window_can_name` | 那个键**离开了适配器的栈** | 窗口说不出要取消哪一趟，画一颗按钮也没用（这一格正是第五刀之前的实况） |
-// | `cancelling_goes_through_the_stop_token_and_the_pool_only_for_copy` | 〔F7c〕经通道的那几趟**停订即撤**；池子那条取消命令只剩复制那一腿 | 按了取消而订阅照挂着（传输台那一侧永远撤不掉） |
+// | `cancelling_goes_through_the_stop_token_only` | 〔F7c〕经通道的那几趟**停订即撤**；池子那条取消命令一处都不剩 | 按了取消而订阅照挂着（传输台那一侧永远撤不掉） |
 
 /// 🔴 **按下取消 ⇒ 还没起的那几件一件都不起**，而且整趟**真的收场**（不挂住）。
 ///
@@ -1016,18 +1016,18 @@ async fn the_transfer_id_the_pool_gets_is_the_one_the_window_can_name() {
     assert!(!desk.is_cancelled());
 }
 
-/// 取消的两腿各落在哪 —— 源码代理，行为那一半由 `pressing_cancel_stops_the_subscription…` 判。
+/// 取消落在哪 —— 源码代理，行为那一半由 `pressing_cancel_stops_the_subscription…` 判。
 ///
-/// 〔F7c 09-24〕经通道起的那几趟（上传 / 下载）撤法是**停订**（`CancelDesk::stop_token`）；
-/// 池子那条取消命令**只剩复制那一腿**（`copy.rs` 仍在本进程里直调 `sftp_copy`），恰好一处。
+/// 〔F7c 收尾 09-24〕经通道起的那几趟（上传 / 下载）撤法是**停订**（`CancelDesk::stop_token`）；
+/// 池子那条取消命令已经一处都不剩（复制那一腿随 F7a 走后端、不可取消）。
 #[test]
-fn cancelling_goes_through_the_stop_token_and_the_pool_only_for_copy() {
+fn cancelling_goes_through_the_stop_token_only() {
     let prod =
         guard_core::production_code(include_str!("../../../src/bridge/src/filewin/transfer.rs"));
     assert_eq!(
-        prod.matches("sftp_pool::sftp_cancel_transfer(").count(),
-        1,
-        "`sftp_pool::sftp_cancel_transfer(` 在生产段里不是恰好一处（复制那一腿）"
+        prod.matches("sftp_pool::").count(),
+        0,
+        "窗口的传输模块又够到了池子 —— 撤只许经停订"
     );
     assert!(
         prod.contains("self.stop_token().cancel()"),
@@ -1055,12 +1055,14 @@ fn cancelling_goes_through_the_stop_token_and_the_pool_only_for_copy() {
     );
 }
 
-/// 取消台没有窗口也不 panic，而且 `forward_cancel` 对没注册过的 id 是 no-op。
+/// 取消台没有窗口也不 panic；一趟都没起过时按取消，送出去的是空的、旗照样立起来。
+/// 〔F7c 收尾 09-24〕从前这里还验「池子那条取消命令对没注册过的 id 是 no-op」（`forward_cancel`〔散文墓碑〕）——
+/// 那条路随复制走后端一起删了。
 #[test]
-fn forwarding_a_cancel_for_an_unknown_id_is_harmless() {
-    // 没注册过的 id：池子那侧逐字是 no-op ⇒ 重复按取消无害。
-    super::forward_cancel(&["filewin-not-a-real-transfer".to_string()]);
+fn cancelling_an_idle_desk_is_harmless() {
     let desk = super::CancelDesk::default();
     assert_eq!(desk.request(), Vec::<String>::new());
+    assert!(desk.is_cancelled());
+    assert!(desk.stop_token().is_cancelled(), "按了取消，撤单令牌没拨下");
     assert_eq!(desk.minted(), 0);
 }

@@ -56,41 +56,6 @@ use crate::ssh_source::RemoteConfig;
 /// 那一份改过来的那天，**连这一行一起删** —— 别让它留成一个用不上的豁免。
 pub use crate::claude_data_fence::is_protected_claude_data_path;
 
-/// 目录项（前端渲染 + 排序用）。
-#[derive(Serialize, Clone, Debug)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct SftpEntry {
-    pub name: String,
-    /// 绝对路径（父目录 + name，SFTP 恒用 `/`）。
-    pub path: String,
-    pub is_dir: bool,
-    pub is_symlink: bool,
-    /// **C03：显式收窄成 `number`，不许回落到 `ts-rs` 的默认 `bigint`。**
-    /// Tauri 命令 IPC 走 `serde_json::to_string` ⇒ 线上是 JSON 文本，`JSON.parse` 永不产 BigInt
-    /// ⇒ `bigint` 与运行时不一致。上限论证：文件大小，f64 安全整数上限 2^53-1 ≈ **8 PB**。
-    /// **这是 Phase G 报的那个唯一已确认的静默有损点**（Rust `u64` ↔ 手写 `paths.ts` 的 `size: number`）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub size: u64,
-    /// 非 UTF-8 文件名有损显示（russh-sftp 按 UTF-8 解）→ 标记,前端拒对其写操作。
-    pub lossy_name: bool,
-}
-
-/// 单文件/目录 stat。
-#[derive(Serialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct SftpStat {
-    pub path: String,
-    pub is_dir: bool,
-    pub size: u64,
-}
-
-/// 判定文件名是否含非 UTF-8 有损替换字符（russh-sftp 已把无效字节转成 U+FFFD）。
-fn is_lossy_name(name: &str) -> bool {
-    name.contains('\u{FFFD}')
-}
-
 // === 连接池 ===
 //
 // ═══ 步 24 · 档③ 第一条：**多连接 ⇒ 边传边浏览** ═════════════════════════════
@@ -492,7 +457,7 @@ impl OriginPool {
         Ok(g.as_ref().expect("上面刚填过").clone())
     }
 
-    /// 怎么在这条连接上现开一条通道 —— `lease` / `lease_transfer` 共用同一份。
+    /// 怎么在这条连接上现开一条通道（`lease_transfer` 用它）。〔F7c 收尾 09-24〕浏览用的 `lease` 随那几条浏览命令一起走了。
     fn opener(
         conn: Arc<SftpConn>,
     ) -> impl std::future::Future<Output = Result<PooledChannel, String>> {
@@ -500,12 +465,6 @@ impl OriginPool {
             let sftp = conn.open_sftp_channel().await?;
             Ok(PooledChannel::Extra { _conn: conn, sftp })
         }
-    }
-
-    /// 借一条**浏览用**通道（列目录 / stat / 小文件读写 / mkdir / rename / delete）。
-    async fn lease(&self, cfg: &RemoteConfig) -> Result<Leased<PooledChannel>, String> {
-        let conn = self.conn(cfg).await?;
-        self.channels.lease(|| Self::opener(conn)).await
     }
 
     /// 借一条**传输用**通道：两道闸都过（次序与理由见 [`ChannelSet::lease_transfer`]）。
@@ -564,39 +523,6 @@ fn looks_like_dead_conn(err: &str) -> bool {
     .any(|k| e.contains(k))
 }
 
-/// SFTP 操作闭包返回的 future 类型别名（借 `&SftpSession`,故带 HRTB 生命周期）。
-type SftpFut<'a, T> =
-    std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, String>> + Send + 'a>>;
-
-/// 在池化 SFTP 连接上跑一次操作：**借一条通道**跑它；op 失败且像连接死亡
-/// → 丢掉这条通道 ＋ 作废整格 ＋ 重借一条再试一次（文件不存在等业务错误不触发重连,原样返回）。
-/// `op` 用 `Box::pin(async move {…})` 包裹(future 借用 `&SftpSession`,需 HRTB)。
-///
-/// 🔴 **步 24：这里不再持 per-origin 独占锁。** 此前它 `slot.lock().await` 整程持有，
-/// 于是同一台 host 上「列目录」要等「下载 8 GB」下完 —— `设计/60 §2 档③` 第一行说的
-/// 就是这件事。现在借的是 [`ChannelSet`] 里的一格，同 host 最多
-/// [`SESSION_CHANNEL_CAP`] 件事**真并行**。
-pub async fn with_sftp<T, F>(cfg: &RemoteConfig, op: F) -> Result<T, String>
-where
-    F: for<'a> Fn(&'a russh_sftp::client::SftpSession) -> SftpFut<'a, T>,
-{
-    let pool = pool_for(&cfg.origin_label()).await;
-    let lease = pool.lease(cfg).await?;
-    let first = op(lease.get().sftp()).await;
-    match first {
-        Ok(v) => Ok(v),
-        Err(e) if looks_like_dead_conn(&e) => {
-            // 连接疑似已死 → 这条通道跟着废（不许回池毒化下一个人），
-            // 整格作废后重借一条再试（网络抖动/远端 sshd 回收空闲 SFTP）。
-            lease.discard();
-            pool.invalidate().await;
-            let lease = pool.lease(cfg).await?;
-            op(lease.get().sftp()).await
-        }
-        Err(e) => Err(e),
-    }
-}
-
 /// 丢弃某 origin 的池连接与它上面全部通道（现仅由 `evict_if_dead` 死连驱逐调用；下次操作重建）。
 /// **`origin` 须传 `cfg.origin_label()`**（池按此键建格,传 host 会静默 no-op）。
 /// D 审计 R3:先克隆出 Arc 释放 `pool()` 全局锁,再动那一格——否则会握着全局锁死等,
@@ -614,88 +540,6 @@ async fn evict_if_dead(origin: &str, err: &str) {
     if looks_like_dead_conn(err) {
         drop_pooled(origin).await;
     }
-}
-
-// === 命令：浏览（只读）===
-
-/// realpath('.')——浏览起点（远端 home 绝对路径）。
-#[tauri::command]
-pub async fn sftp_realpath(cfg: RemoteConfig, path: String) -> Result<String, String> {
-    with_sftp(&cfg, move |s| {
-        let path = path.clone();
-        Box::pin(async move {
-            s.canonicalize(path)
-                .await
-                .map_err(|e| format!("realpath 失败: {e}"))
-        })
-    })
-    .await
-}
-
-/// 列目录:目录在前 + 名称小写排序(aterm 契约)。
-#[tauri::command]
-pub async fn sftp_list_dir(cfg: RemoteConfig, path: String) -> Result<Vec<SftpEntry>, String> {
-    let dir = path.trim_end_matches('/').to_string();
-    let mut out = with_sftp(&cfg, move |s| {
-        let path = path.clone();
-        let dir = dir.clone();
-        Box::pin(async move {
-            let rd = s
-                .read_dir(path)
-                .await
-                .map_err(|e| format!("读目录失败: {e}"))?;
-            let mut v: Vec<SftpEntry> = Vec::new();
-            for entry in rd {
-                let name = entry.file_name();
-                if name == "." || name == ".." {
-                    continue;
-                }
-                let meta = entry.metadata();
-                let ft = entry.file_type();
-                v.push(SftpEntry {
-                    path: format!("{dir}/{name}"),
-                    is_dir: meta.is_dir(),
-                    is_symlink: ft.is_symlink(),
-                    size: meta.len(),
-                    lossy_name: is_lossy_name(&name),
-                    name,
-                });
-            }
-            Ok(v)
-        })
-    })
-    .await?;
-    sort_entries(&mut out);
-    Ok(out)
-}
-
-/// 目录在前,再按名称小写排序（aterm 契约;抽出供单测共用生产比较器）。
-fn sort_entries(v: &mut [SftpEntry]) {
-    v.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-}
-
-/// stat 单个路径。
-#[tauri::command]
-pub async fn sftp_stat(cfg: RemoteConfig, path: String) -> Result<SftpStat, String> {
-    with_sftp(&cfg, move |s| {
-        let path = path.clone();
-        Box::pin(async move {
-            let m = s
-                .metadata(path.clone())
-                .await
-                .map_err(|e| format!("stat 失败: {e}"))?;
-            Ok(SftpStat {
-                path,
-                is_dir: m.is_dir(),
-                size: m.len(),
-            })
-        })
-    })
-    .await
 }
 
 // === 传输(download/upload):chunked + 进度 + 取消 ===
@@ -761,70 +605,8 @@ fn register_cancel(id: &str) -> (Arc<AtomicBool>, CancelGuard) {
     )
 }
 
-/// 翻转某传输的取消标志（前端「取消」按钮调）。id 未注册(尚未开始/已结束)→ no-op。
-#[tauri::command]
-pub async fn sftp_cancel_transfer(transfer_id: String) {
-    if let Ok(m) = cancels().lock() {
-        if let Some(f) = m.get(&transfer_id) {
-            f.store(true, Ordering::SeqCst);
-        }
-    }
-}
-
 fn report(ch: &tauri::ipc::Channel<TransferProgress>, transferred: u64, total: u64) {
     let _ = ch.send(TransferProgress { transferred, total });
-}
-
-/// 下载远端文件到本地。chunked 读、进度上报、可取消。**不走 with_sftp 重试**——部分传输
-/// 不该静默从头重启;失败/取消返回 Err。写本地 `<local>.part` 再 rename(半成品不留原名)。
-/// source 是远端(读,不涉写守卫);target 是本地磁盘。
-#[tauri::command]
-pub async fn sftp_download(
-    cfg: RemoteConfig,
-    remote_path: String,
-    local_path: String,
-    transfer_id: String,
-    on_progress: tauri::ipc::Channel<TransferProgress>,
-) -> Result<(), String> {
-    // 🔴〔2026-09-21〕**本机落点也要过那道围栏。** 必须排在拿连接之前
-    //（`remote_write_registry_tests::a_fenced_write_refuses_before_it_touches_the_wire`
-    // 逐条要求这个顺序）。
-    //
-    // # 为什么此前没有它 —— 两张账各自以为对方盖住了
-    //
-    // ① `NON_WRITING_COMMANDS` 里这一条逐字写着「写的是**本机** ⇒ **不需要** Claude
-    //    数据围栏（那道围栏管的是远端那台机器上正被 Claude 打开的文件）」。
-    //    **那句括号是假的**：`claude_data_fence` 自己的头注写着 F03b 那一路用它判的正是
-    //    「一个写**本机** `INBOX.txt` 的模块…关于**本机路径**的问题」⇒ 它从来不是远端专用的。
-    // ② 同一条又说「本机落点那一半归 `write_site_registry` 的管辖面」，而那张表里这一行
-    //    逐字是「把远端文件落到**本地缓存**；写的**不是用户既有环境**」——
-    //    **也是假的**：`local_path` 来自老面板那个 `saveDialog`，**用户指哪写哪**。
-    //    那是申报，不是守卫。
-    //
-    // ⇒ 实况：把一个远端文件下载到 `~/.claude/projects/<proj>/<sid>.jsonl`，
-    //    `download_inner` 会先写 `.part` 再 `rename` **原子地盖掉**那条会话记录，
-    //    而 `INVARIANTS §1` 的 F47 澄清段逐字要的是「绝无自动/后台写」。
-    //    这一条**同时**修掉老面板与原生窗口两条路（围栏只有这一个家）。
-    guard_write(&local_path)?;
-    let (cancel, _guard) = register_cancel(&transfer_id); // _guard 摘除注册项(含 abort)
-    let r = async {
-        let pool = pool_for(&cfg.origin_label()).await;
-        let lease = pool.lease_transfer(&cfg).await?; // 车道 ＋ 通道两道闸
-        let report_to = |done: u64, total: u64| report(&on_progress, done, total);
-        download_inner(
-            lease.get().sftp(),
-            &remote_path,
-            &local_path,
-            &cancel,
-            &report_to,
-        )
-        .await
-    }
-    .await;
-    if let Err(e) = &r {
-        evict_if_dead(&cfg.origin_label(), e).await; // R1:死连不留在槽里毒化后续
-    }
-    r
 }
 
 /// 下载核心。**语料是一个 SFTP 会话**（不是 `cfg`）——借通道那一段留在
@@ -1044,151 +826,6 @@ async fn remote_resume_offset(
     } else {
         0
     }
-}
-
-/// 上传本地文件到远端。chunked 写、进度、可取消。**写守卫**:拒 Claude 数据源路径。
-/// 写远端 `<remote>.tmp` → 删旧 → rename(近似原子,复用 upload_atomic 的 flush/shutdown 纪律)。
-/// 覆盖不静默:前端先 stat 确认存在并二次确认,后端直接原子替换。
-#[tauri::command]
-pub async fn sftp_upload(
-    cfg: RemoteConfig,
-    local_path: String,
-    remote_path: String,
-    transfer_id: String,
-    on_progress: tauri::ipc::Channel<TransferProgress>,
-) -> Result<(), String> {
-    guard_write(&remote_path)?;
-    let (cancel, _guard) = register_cancel(&transfer_id); // _guard 摘除注册项(含 abort)
-    let r = async {
-        let pool = pool_for(&cfg.origin_label()).await;
-        let lease = pool.lease_transfer(&cfg).await?; // 车道 ＋ 通道两道闸
-        let report_to = |done: u64, total: u64| report(&on_progress, done, total);
-        upload_inner(
-            lease.get().sftp(),
-            &local_path,
-            &remote_path,
-            &cancel,
-            &report_to,
-        )
-        .await
-    }
-    .await;
-    if let Err(e) = &r {
-        evict_if_dead(&cfg.origin_label(), e).await; // R1:死连不留在槽里毒化后续
-    }
-    r
-}
-
-/// 上传核心。语料同 [`download_inner`]：**一个 SFTP 会话**，借通道那一段留在入口里。
-///
-/// # 🔴 步 24 · 档③ 第三条：**断点续传**（上传这一半）
-///
-/// 远端 `<remote>.tmp` 还在 ⇒ [`remote_resume_offset`] 把尾块在两侧对一遍，
-/// 对得上就 `WRITE` 带 offset 接着写、本地也 seek 到同一处。
-///
-/// ⚠ **`.tmp` 的存亡规矩与下载那半逐字相同**：取消留、报错删。
-/// 留在**别人机器**上的半成品比留在本机更刺眼，所以这里只留用户自己按下的那一次。
-async fn upload_inner(
-    sftp: &russh_sftp::client::SftpSession,
-    local_path: &str,
-    remote_path: &str,
-    cancel: &Arc<AtomicBool>,
-    on_progress: &(dyn Fn(u64, u64) + Sync),
-) -> Result<(), String> {
-    let total = tokio::fs::metadata(local_path)
-        .await
-        .map(|m| m.len())
-        .map_err(|e| format!("读本地 {local_path} 失败: {e}"))?;
-    let mut lf = tokio::fs::File::open(local_path)
-        .await
-        .map_err(|e| format!("打开本地 {local_path} 失败: {e}"))?;
-
-    let tmp = format!("{remote_path}.tmp");
-    // 续传要读回远端 `.tmp` 的尾块 ⇒ 打开时带上 READ（此前只有 WRITE）。
-    // **TRUNCATE 只在不续传时给**：带着它开就把上次那半截清零了，续传无从谈起。
-    let resume_from = remote_resume_offset(sftp, &tmp, &mut lf, total).await;
-    let mut flags = russh_sftp::protocol::OpenFlags::CREATE
-        | russh_sftp::protocol::OpenFlags::WRITE
-        | russh_sftp::protocol::OpenFlags::READ;
-    if resume_from == 0 {
-        flags |= russh_sftp::protocol::OpenFlags::TRUNCATE;
-    }
-    let mut rf = sftp
-        .open_with_flags(tmp.clone(), flags)
-        .await
-        .map_err(|e| format!("创建远端 {tmp} 失败: {e}"))?;
-    // `WRITE` 带 offset —— 协议本来就支持，此前我们恒从 0 写。
-    // ⚠ **两侧都无条件 seek**（哪怕 `resume_from == 0`）：上面那趟尾块对拍**动过 `lf` 的游标**，
-    //   而「不续传」那一支此前从没人把它拨回去 —— 那会从文件中间开始上传，
-    //   产物长度对、内容错。写成无条件的，就不存在「哪一支忘了拨」这回事。
-    rf.seek(std::io::SeekFrom::Start(resume_from))
-        .await
-        .map_err(|e| format!("远端 {tmp} 定位到 {resume_from} 失败: {e}"))?;
-    lf.seek(std::io::SeekFrom::Start(resume_from))
-        .await
-        .map_err(|e| format!("本地 {local_path} 定位到 {resume_from} 失败: {e}"))?;
-
-    // 传输核心包一层:失败(非取消)统一 shutdown+删远端 `.tmp`(S1;取消那一支见上方头注)。
-    let core = async {
-        let mut buf = vec![0u8; CHUNK];
-        let mut done: u64 = resume_from;
-        let mut last_report: u64 = resume_from;
-        on_progress(done, total);
-        loop {
-            if cancel.load(Ordering::SeqCst) {
-                return Err("已取消".to_string());
-            }
-            let n = lf
-                .read(&mut buf)
-                .await
-                .map_err(|e| format!("读本地失败: {e}"))?;
-            if n == 0 {
-                break;
-            }
-            rf.write_all(&buf[..n])
-                .await
-                .map_err(|e| format!("写远端失败: {e}"))?;
-            done += n as u64;
-            if done - last_report >= PROGRESS_EVERY {
-                last_report = done;
-                on_progress(done, total);
-            }
-        }
-        // 见 upload_atomic:flush 始终 drain 写队列 + 传播错误,shutdown 关闭。
-        rf.flush()
-            .await
-            .map_err(|e| format!("flush 远端失败（写未确认）: {e}"))?;
-        Ok(done)
-    }
-    .await;
-    let _ = rf.shutdown().await;
-    drop(rf);
-    let done = match core {
-        Ok(d) => d,
-        Err(e) => {
-            // 🔴 与下载那半同一条规矩：取消 ⇒ 留着（续传的本钱）；报错 ⇒ 清掉。
-            if !cancel.load(Ordering::SeqCst) {
-                let _ = sftp.remove_file(tmp.clone()).await; // 清远端半成品 .tmp
-            }
-            return Err(e);
-        }
-    };
-
-    // 原文件在此之前完好无损（失败绝不销毁远端原文件）;此后才删旧+rename(近似原子)。
-    if sftp
-        .try_exists(remote_path.to_string())
-        .await
-        .unwrap_or(false)
-    {
-        sftp.remove_file(remote_path.to_string())
-            .await
-            .map_err(|e| format!("删旧 {remote_path} 失败: {e}"))?;
-    }
-    sftp.rename(tmp.clone(), remote_path.to_string())
-        .await
-        .map_err(|e| format!("rename 到 {remote_path} 失败: {e}"))?;
-    on_progress(done, total);
-    Ok(())
 }
 
 // ═══ F7c：上传**只写暂存区**（`设计/60 §13`）═════════════════════════════════
@@ -1859,7 +1496,7 @@ fn attrs_empty() -> russh_sftp::protocol::FileAttributes {
 
 /// 这个 SFTP 句柄是不是已经被库有损解码过了（含 U+FFFD ⇒ 原字节回不去）。
 ///
-/// 与 [`is_lossy_name`] 同一条性质、**刻意不复用那一个**：那个判的是**文件名**
+/// 与从前那个判文件名的（`is_lossy_name`〔散文墓碑〕，随列目录命令删了）同一条性质、**刻意不复用那一个**：那个判的是**文件名**
 /// （有损只影响显示），这个判的是**句柄**（有损意味着「发回去就是另一个句柄」）。
 /// 两个判据的后果完全不同，共用一个名字会让下一个人以为改一处就够。
 fn handle_is_lossy(handle: &str) -> bool {
@@ -1910,204 +1547,6 @@ pub async fn sftp_copy(
         evict_if_dead(&cfg.origin_label(), e).await; // R1:死连不留在槽里毒化后续
     }
     r
-}
-
-// === 小文件编辑(F49):read_text_for_edit / write_text ===
-
-/// F49 编辑上限。aterm 契约:超上限**拒编而非截断**(截断标记当编辑源会写坏文件)。
-///
-/// 🔴〔第九刀 2026-09-22〕**提级成 `pub`，因为「超了怎么办」的答案要在窗口那一侧**。
-///
-/// `sftp_read_text_for_edit` 回的 `Option<String>` 把**三件事压成了一件**
-///（太大 / 含 NUL / 非 UTF-8 都是 `None`）⇒ 谁拿到 `None` 都说不出为什么。
-/// 而窗口手上**已经有那一行的 `size`**（列目录回来的）⇒ 「太大」这一档
-/// **根本不用发那趟往返就判得出来**，而且能把那个数说给用户听。
-///
-/// ⇒ 窗口读它做**本地**预判（`filewin::editor::why_not_editable`），
-/// 池子这边照旧做最终护栏（`decode_editable` 冗余复核大小，防 stat 与 read 间竞态）。
-/// ⚠ **两处不是两个真相源**：窗口那一侧是同一个常量的一次借用，
-/// 不许在那边另写一个数（`byte_cap_registry` 按源码文本钉这一个的值）。
-pub const MAX_EDIT_BYTES: usize = 256 * 1024;
-
-/// 字节 → 可编辑文本;不可编辑(>256KB / 含 NUL 疑二进制 / 非 UTF-8)→ None。
-/// 纯函数,护栏核心(数据安全红线),便于单测。
-pub fn decode_editable(bytes: &[u8]) -> Option<String> {
-    if bytes.len() > MAX_EDIT_BYTES {
-        return None; // 拒编,不截断
-    }
-    if bytes.contains(&0) {
-        return None; // 含 NUL → 疑二进制
-    }
-    String::from_utf8(bytes.to_vec()).ok() // 非 UTF-8 → None
-}
-
-/// 读远端小文本供编辑;None = 不可编辑(前端灰置/提示)。
-#[tauri::command]
-pub async fn sftp_read_text_for_edit(
-    cfg: RemoteConfig,
-    path: String,
-) -> Result<Option<String>, String> {
-    with_sftp(&cfg, move |s| {
-        let path = path.clone();
-        Box::pin(async move {
-            // 护栏前置:先 stat 大小,超限即拒读(不把 GB 级文件整体缓冲入内存,防 OOM)。
-            // decode_editable 仍是最终护栏(NUL/非 UTF-8;并冗余复核大小,防 stat 与 read 间竞态)。
-            if let Ok(Some(size)) = s.metadata(path.clone()).await.map(|m| m.size) {
-                if size > MAX_EDIT_BYTES as u64 {
-                    return Ok(None);
-                }
-            }
-            let bytes = s
-                .read(path.clone())
-                .await
-                .map_err(|e| format!("读文件失败: {e}"))?;
-            Ok(decode_editable(&bytes))
-        })
-    })
-    .await
-}
-
-/// 写回编辑后的文本。过写守卫;保留原文件权限(stat 取 mode,缺省 0o644);
-/// `upload_atomic` 原子写(.tmp→删旧→rename);失败传播 Err(前端保留编辑框内容)。
-#[tauri::command]
-pub async fn sftp_write_text(
-    cfg: RemoteConfig,
-    path: String,
-    content: String,
-) -> Result<(), String> {
-    guard_write(&path)?;
-    with_sftp(&cfg, move |s| {
-        let path = path.clone();
-        let content = content.clone();
-        Box::pin(async move {
-            // 保留原权限:stat 取 mode(u32),缺省 0o644(新文件)。
-            let mode = s
-                .metadata(path.clone())
-                .await
-                .ok()
-                .and_then(|m| m.permissions)
-                .map(|p| p & 0o7777)
-                .unwrap_or(0o644);
-            crate::sftp::upload_atomic(s, &path, content.as_bytes(), mode).await
-        })
-    })
-    .await
-}
-
-// === 写命令:mkdir / rename / delete（走 with_sftp,过写守卫）===
-
-#[tauri::command]
-pub async fn sftp_mkdir(cfg: RemoteConfig, path: String) -> Result<(), String> {
-    guard_write(&path)?;
-    with_sftp(&cfg, move |s| {
-        let path = path.clone();
-        Box::pin(async move {
-            s.create_dir(path)
-                .await
-                .map_err(|e| format!("新建目录失败: {e}"))
-        })
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn sftp_rename(cfg: RemoteConfig, from: String, to: String) -> Result<(), String> {
-    // from(源)与 to(目标)都过守卫:既不许把 Claude 文件改走,也不许改成 Claude 数据源名。
-    guard_write(&from)?;
-    guard_write(&to)?;
-    with_sftp(&cfg, move |s| {
-        let from = from.clone();
-        let to = to.clone();
-        Box::pin(async move {
-            s.rename(from, to)
-                .await
-                .map_err(|e| format!("重命名失败: {e}"))
-        })
-    })
-    .await
-}
-
-/// 删除:`is_dir` 区分 rmdir/rm（rmdir 只删空目录,非空由 server 报错上层提示）。
-#[tauri::command]
-pub async fn sftp_delete(cfg: RemoteConfig, path: String, is_dir: bool) -> Result<(), String> {
-    guard_write(&path)?;
-    with_sftp(&cfg, move |s| {
-        let path = path.clone();
-        Box::pin(async move {
-            if is_dir {
-                s.remove_dir(path)
-                    .await
-                    .map_err(|e| format!("删除目录失败（非空?）: {e}"))
-            } else {
-                s.remove_file(path)
-                    .await
-                    .map_err(|e| format!("删除文件失败: {e}"))
-            }
-        })
-    })
-    .await
-}
-
-/// `sftp_chmod` 发上线的那一份属性块：**只带权限位，`size` 一律 `None`。**
-///
-/// # 🔴 这个函数存在的唯一理由是「`size` 必须缺席」，不是为了省字
-///
-/// 本仓有一条**真机 e2e 实证**逐字记在 `sftp.rs::upload_atomic` 的尾注里：
-/// 「在 OpenSSH sftp-server 上 setstat（即便只设 permissions、`size=None`）会把刚 rename
-/// 好的文件**截断成 0 字节**」—— 后端因此变 0 字节不可 exec、连接 EOF、无限重部署。
-/// 那是本仓被 `SETSTAT` 咬过的一口，`设计/60 §5.4c` 那句「协议侧没有障碍」**没有提到它**。
-///
-/// ⇒ 落这条命令之前先把那一口**读到底**（现打 `russh-sftp` 3.0.0 那份属性块序列化器；
-/// ⚠ 住址刻意不写成「文件::符号」那一形 —— 它在**依赖树里**，不在本仓，
-/// 写成那一形会被 `structural_scan` 当成一处本仓符号地址而报「全仓找不到」）：
-/// `SSH_FILEXFER_ATTR_SIZE`（`0x1`）这个标志位**只在 `size.is_some()` 时才置**，
-/// `size` 字段也只在那时才上线。⇒ 只要 `size` 是 `None`，线上那个包里
-/// **既没有 SIZE 标志也没有 size 字段**，服务端没有任何东西可以拿来截断。
-///
-/// ⚠ **如实登记本函数买不到什么**：它买的是「**线上那个包的形状**」
-/// （由 `sftp_pool_tests::the_chmod_attrs_never_put_a_size_on_the_wire` 逐字节钉着，
-/// 那是一条**相等**断言，不是「不含某个子串」）。它**买不到**
-/// 「真机上 OpenSSH 不会截断」—— 那要一趟真机，本仓今天没有。
-/// 两者别混着读：前者排除的是**本仓那次事故的成因**（把 size 一起送上去），
-/// 后者是一个更大的声称，本函数**不做**。
-///
-/// ⚠ `mode` 掩到 `0o7777`：SFTP 的 permissions 字段是 unix mode，高位是**文件类型**
-/// （`FileMode::{DIR, REG, LNK…}`）。让调用方把类型位送上去 = 让面板改文件类型，
-/// 那既不是 chmod 的语义，也是服务端行为未定义的一档。
-fn chmod_attrs(mode: u32) -> russh_sftp::protocol::FileAttributes {
-    russh_sftp::protocol::FileAttributes {
-        permissions: Some(mode & 0o7777),
-        ..Default::default()
-    }
-}
-
-/// 改远端文件/目录的权限位（`SSH_FXP_SETSTAT`）。
-///
-/// 〔`设计/60 §5.4c` 裁定：**准了，作为跟进件**〕它当初被挡的是**并发纪律**
-/// （加一条 `#[tauri::command]` 要同改几张计数表，而那一拍别人握着它们），
-/// 不是协议也不是判据。今天那个理由消失了。
-///
-/// **路径由用户选**（面板里点的那一项）⇒ 与 [`sftp_mkdir`] / [`sftp_delete`] 同族，
-/// `guard_write` 在函数第一行：不许把正被 Claude 打开的 jsonl 改成不可读/可执行
-/// （改权限一样能弄坏一场正在跑的会话，而它不像删除那样显眼）。
-///
-/// ⚠ **它只有一个路径参数** —— `remote_write_registry::a_two_path_write_entry_fences_both_of_its_paths`
-/// 那条判据的人群是「签名里有**两个**路径参数」的写入口（`sftp_rename` / `sftp_copy`），
-/// 本条**按构造**不在它的人群里，不是被漏掉。它归单路径那一条
-/// （`a_user_chosen_remote_write_passes_the_claude_data_fence` 的 `USER_CHOSEN_ENTRIES`），
-/// 那张名单里本条是第七个。
-#[tauri::command]
-pub async fn sftp_chmod(cfg: RemoteConfig, path: String, mode: u32) -> Result<(), String> {
-    guard_write(&path)?;
-    with_sftp(&cfg, move |s| {
-        let path = path.clone();
-        Box::pin(async move {
-            s.set_metadata(path, chmod_attrs(mode))
-                .await
-                .map_err(|e| format!("改权限失败: {e}"))
-        })
-    })
-    .await
 }
 
 #[cfg(test)]
