@@ -1771,6 +1771,44 @@ pub fn inline_table_paths(toml: &str) -> Vec<String> {
     out
 }
 
+/// 把一段 markdown 里的**表格行**抠成逐格的字符串。
+///
+/// # 为什么这件事要有一个家
+///
+/// 本仓的登记表、索引、对账表大量是 markdown 表格，而判据要拿它们跟盘面对拍。
+/// 每个判据自己写一遍「按 `|` 切、去首尾空、丢掉分隔行」，就是同一条抠法的第 N 份
+/// —— 而那条抠法有两个**已经踩过**的坑：
+///
+/// 1. **分隔行**（`|---|---|`）长得像数据行 ⇒ 不丢掉它，人群里会多一条全是横线的假行；
+/// 2. 行首行尾那对 `|` 切出来的**空格子** ⇒ 不丢掉，每行都会多两个空字符串，
+///    而「列数」这种恒等断言会因此整表偏移两格。
+///
+/// ⚠ 它**买不到**什么：不认多行格子（格子里带换行的那种写法），也不认转义的 `\|`。
+/// 两形今天全仓零处，登记为**已知欠算，不是已守**。
+pub fn md_table_rows(text: &str) -> Vec<Vec<String>> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let t = line.trim();
+        if !t.starts_with('|') {
+            continue;
+        }
+        let cells: Vec<String> = t
+            .trim_matches('|')
+            .split('|')
+            .map(|c| c.trim().to_string())
+            .collect();
+        // 分隔行：每一格都只由 `-` `:` 空格组成（且至少有一个 `-`）。
+        let is_sep = cells
+            .iter()
+            .all(|c| !c.is_empty() && c.chars().all(|ch| ch == '-' || ch == ':'));
+        if is_sep {
+            continue;
+        }
+        out.push(cells);
+    }
+    out
+}
+
 pub fn find_pinned(hay: &str, needle: &str) -> Result<usize, String> {
     if needle.is_empty() {
         return Err("needle 为空 —— 那会匹配到任何地方，等于关掉判据".into());

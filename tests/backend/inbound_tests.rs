@@ -377,7 +377,16 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     // `files-index-rebuild` 走一整棵树（64 万条现打 0.99 秒，**热缓存**；冷缓存没量过），
     // `files-browse` 把名单上那几个目录各 `read_dir` 一遍。
     // 放 tokio worker 上就是拿唯一那条 runtime 去跑一趟秒级遍历。
+    // 〔波 5 ㈠ 09-23〕`files-create` 也在这一档：它开句柄 ＋ `write_all` 一遍，
+    // 是同步阻塞 I/O，而且围栏② 还要 `canonicalize` 一次（真实路径解析）。
+    // 〔波 5 ㈡ 09-23〕写面另外五条同档，理由同 `files-create`。
     for c in [
+        "files-create",
+        "files-chmod",
+        "files-delete",
+        "files-mkdir",
+        "files-rename",
+        "files-write-text",
         "files-ls",
         "files-stat",
         "files-find",
@@ -403,6 +412,12 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-kill",
         "bus-state",
         "capture-pane",
+        "files-create",
+        "files-chmod",
+        "files-delete",
+        "files-mkdir",
+        "files-rename",
+        "files-write-text",
         "files-ls",
         "files-stat",
         "files-find",
