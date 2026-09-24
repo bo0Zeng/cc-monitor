@@ -2558,7 +2558,9 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
     const tm = makeTM() as unknown as KillTM;
     tm.killRemoteTmux("hostA", "cc-abc", true);
     const msg = String(confirmSpy.mock.calls[0]?.[0] ?? "");
-    expect(msg).toContain("@ccm_sid"); // 未检测到身份标记
+    // 〔U2〕按术语表改词：`@ccm_sid` 是禁词（say：不说标记，说后果「认不出是哪个会话」），
+    //   这一格随改词同拍改 —— 钉的仍是同一件事（回退命中 ⇒ 确认框里有串味警告）。
+    expect(msg).toContain("认不出这是哪个会话"); // 未检测到身份标记
     expect(msg).toContain("同目录"); // 可能杀同目录别的 Claude
     confirmSpy.mockRestore();
   });
@@ -3084,7 +3086,8 @@ describe("设计/80 §8.7 步 4：↗ 远端那一格只问后端一次", () => 
       cmds.filter((c) => c === "list_remote_tmux" || c === "list_local_tmux"),
       "↗ 失败之后又去查了一次 tmux —— tmux 回到了 ↗ 的前提链上（E73 那次 RPC 是步 4 要收的四套之一）",
     ).toEqual([]);
-    expect(showActionFailureToast).toHaveBeenCalledWith("拉前失败", BACKEND_SAYS);
+    // 〔U2〕「拉前」是术语表的禁词（say：「切到终端窗口」），这一格随改词同拍改（行为变更是题面要的，不是迁就）。
+    expect(showActionFailureToast).toHaveBeenCalledWith("切到终端窗口失败", BACKEND_SAYS);
   });
 
   it("★ `attachable:false` 不再在前端短路 ↗ —— 照样问后端（归因是后端那一个布尔的事）", async () => {
