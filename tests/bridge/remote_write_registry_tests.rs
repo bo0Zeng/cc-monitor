@@ -778,7 +778,8 @@ fn the_remote_write_capability_is_still_confined_to_three_files() {
 /// ⇒ 那张表的「6 → 11」这个算式两侧都错。**真实读数是 4 → 9**（第七刀之后 **10**），
 /// 而本条就是那个数的住址。
 /// 🔴 〔第七刀 09-21 补记〕上面那张表里「`sftp_realpath` 在 `filewin/` 里**零处**」
-/// 这句**已经不是实况了** —— 那一格正是第七刀补上的（落点 `source::resolve_remote_home`）。
+/// 这句**已经不是实况了** —— 那一格正是第七刀补上的（落点是 `source.rs` 里一个问 home 的 async 函数；
+/// 〔F7a · 第三波 09-24〕那一问又换成了后端 `files-home`，`sftp_realpath` 从窗口那棵树上又没了，见下表）。
 /// 那句话留着是因为它说清了**当时为什么是零**（窗口寄生在老面板的寻址上），
 /// 而它今天的真伪由本条的相等断言替它保鲜。
 /// ⚠ `设计/` 是唯一真相源、不是 git 仓 ⇒ 这条订正只落在本判据的诊断里，
@@ -793,64 +794,31 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     //   `files-ls`）· `sftp_stat`（「那儿有没有东西」改问 `files-stat`）· `sftp_mkdir` / `sftp_delete` /
     //   `sftp_rename` / `sftp_chmod` / `sftp_write_text`（改走后端写面那五条）。留下的 10 行里 9 行是
     //   窗口进程那一侧**还不是通道**的欠账（跨机传输 §8.4 未拍 · 后端缺 `files-copy` · 本地预判围栏），
-    //   逐条住 `tests/bridge/filewin/boundary_tests.rs::WINDOW_SIDE`；`sftp_realpath` 那一行住 monitor 那一侧。
+    //   逐条住 `tests/bridge/filewin/boundary_tests.rs::WINDOW_SIDE`；〔F7a 09-24〕`sftp_realpath` 那一行已搬去后端 `files-home`（见 `MOVED_TO_BACKEND`）。
     const SITES: &[(&str, &str, &str)] = &[
         // ── 只读那一族（第一~四刀）─────────────────────────────────────
-        // 〔F7c · 第三波 09-24〕`sftp_download` 这一行走了：往外拖经通道开单、订阅进度（`设计/60 §13`），
-        //   字节由 monitor 里的传输台搬（本机落点那道围栏照旧在那一侧，`sftp_pool::transfer_call` 开单时就过）。
         (
-            "MAX_EDIT_BYTES",
-            "常量",
-            "🔴 **编辑上限（256 KiB）** —— 窗口拿它在**本地**判「太大」，\
-             而那正是 `设计/60 §5.4b` 指名留给 `24e` 的「超了怎么办」那一问的答案：\
-             `sftp_read_text_for_edit` 回的 `None` 把三件事压成一件，而列目录回来的\
-             每一行都带着 `size` ⇒ 最常见的那一档**连那趟往返都不发**就答完了。\
-             ⚠ **两处不是两个真相源**：窗口那一侧是同一个常量的一次借用，\
-             不许在那边另写一个数（`byte_cap_registry` 按源码文本钉这一个的值）。\
-             ⚠ 它是**一句话的来源，不是一道围标** —— 读 `size` 与真去读之间文件\
-             被换大了这一形，仍由池子那边 `decode_editable` 的冗余复核守着。",
-        ),
-        (
-            "sftp_read_text_for_edit",
+            "sftp_download",
             "命令",
-            "读一份远端小文本供编辑。落点 `filewin::editor::read_text`，全树恰好一处。\
-             🔴 它回的 `Option<String>` 把**三件事压成一件**（太大 / 含 NUL / 非 UTF-8）\
-             ⇒ 拿到 `None` 说不出为什么。第九刀的答复是**不改签名**：\
-             窗口手上已经有那一行的 `size` ⇒ 「太大」那一档在**发往返之前**\
-             就答完了（`editor::why_not_editable`），剩下两种本来就是同一句人话。\
-             逐条理由住 `editor.rs` 头注「超了怎么办」那一节。\
-             ⚠ 它**不写任何路径**（纯读）⇒ 不进 `REMOTE_WRITES`。",
-        ),
-        (
-            "sftp_realpath",
-            "命令",
-            "🔴 **窗口开在哪儿** —— `canonicalize(\".\")` 解出那台机器的 home 绝对路径。\
-             〔`24e` 第七刀 09-21：**这一条此前在 `filewin/` 里是零处**，而那不是\
-             「不需要」—— 窗口那条入口命令吃的是一条**绝对路径**，唯一来源是老面板\
-             （`src/sftp/panel.ts` 解出 home 再拿它调 `open_file_window`）\
-             ⇒ 窗口**寄生在老面板的寻址上**，`P3`（退役）因此排不动。\
-             现在的落点是 `filewin::source::resolve_remote_home`，全树恰好一处；\
-             `entry.rs` 里空路径那一支走它，且**排在列目录前面**\
-             （`entry_tests::the_empty_path_branch_goes_through_the_one_home_resolver_before_listing`\
-             钉着这两件）。⚠ 它**自己不写任何路径**（只读）⇒ 不进 `REMOTE_WRITES`〕",
+            "🔴 **往外拖** —— 把远端那一行拉到本机。落点 `filewin::download::pull_one`，\
+             全树恰好一处。\
+             〔`24e` 第八刀：`设计/60 §5` 第 6 步那条欠账逐字「往外拖（下载）没做」〕\
+             ⚠ 它是这张表里**唯一落点在本机**的一条 ⇒ 那道 Claude 数据围标守的是\
+             `local_path`，而那一句 `guard_write(&local_path)` 是**当日补的**\
+             （此前三张账首尾相接推诺、链子末端一句假话，逐条来历住\
+             `sftp_pool.rs::sftp_download` 那段注释）。\
+             ⚠ 不静默覆盖那一半在**窗口这一层**（`download::Ask` 那两问），\
+             因为「那儿有没有东西」是一次**本机** IO，池子那边看不见也不该看见。",
         ),
         // ── 传输那一族（第二~三刀）─────────────────────────────────────
         // 〔F7c 09-24〕`sftp_upload` 这一行走了：拖入上传经通道（开单 → 订阅 → 后端 `files-commit-upload` 提交），
         //   窗口进程一行 SFTP 都不碰；传输只写暂存区。
         (
-            "sftp_copy",
-            "命令",
-            "零流量复制（`设计/60 §5` 第二段）。走它而不是 `copy_remote_path` ⇒ \
-             两次 `guard_write`（`from` / `to` 各一次）＋ 取消登记 ＋ 车道预算",
+            "TRANSFER_LANE_CAP",
+            "常量",
+            "一趟拖入同时起几件。**取的就是池里那个数**，不另写一个字面量\
+             （`设计/60 §5.4a` 的 `6 − 4 = 2` 格永远留给浏览）",
         ),
-        (
-            "CopyVerdict",
-            "类型",
-            "复制那一趟的裁决（`None` = 零流量走通了；`Some(说明)` = 退了路，\
-             含实际过网字节数）。**刻意不压成 `bool`** —— 压了就等于允许静默退化成 2× 流量",
-        ),
-        // 〔F7c 09-24〕`TRANSFER_LANE_CAP` 这一行走了：窗口那一侧改用一份与它钉相等的副本
-        //   （`filewin::transfer::WINDOW_TRANSFER_LANES`，`transfer_tests` 钉相等）。
         // ── 🔴〔第五刀 2026-09-21〕`设计/99 §4.6.4` 那五条 ─────────────
         (
             "sftp_cancel_transfer",
@@ -877,8 +845,10 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
              与那条棘轮同一个事实、两个方向",
         ),
     ];
-    /// 「它是什么」那一栏的**封闭集合**。多出第五种就得回来论证。
-    const KINDS: &[&str] = &["命令", "类型", "常量", "函数"];
+    /// 「它是什么」那一栏的**封闭集合**。多出第四种就得回来论证。
+    /// 〔F7a · 第三波 09-24〕原来还有「类型」一档（唯一一条是复制那一趟的裁决类型），
+    /// 复制换到后端之后那一条走了 ⇒ 这一档没人用，删掉（下面那条「每一档都有人用」逐字要求）。
+    const KINDS: &[&str] = &["命令", "常量", "函数"];
 
     let root = repo_root();
     let dir = root.join("src/bridge/src/filewin");
@@ -890,14 +860,20 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     // 接的命令从 `used` 里消失 ⇒ 差集非空 ⇒ 会红；但少扫**全部**就两边都空了）。
     assert_eq!(
         files.len(),
-        // 〔F7c · 第三波 09-24〕16 → 17，多的是 `upload.rs`（工具栏「上传」那一问；它一个池子符号都不碰）。
-        17,
+        // 〔F7c · 合主线 09-24〕主线 19 → 20，多的是 `upload.rs`（工具栏「上传」那一问；一个池子符号都不碰）。
+        20,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\
           一个窗口一个进程）。⚠ `win_main.rs` **不是一个模块** —— 它是那个 `[[bin]]` 的 \
           crate 根，`mod.rs` 刻意不 `mod` 它；它照旧进本条的射程，因为本条问的是\
-          「`filewin/` 这棵树上谁在碰池子那几条命令」，而那个问题对一份 bin 入口一样要问〕—— \
+          「`filewin/` 这棵树上谁在碰池子那几条命令」，而那个问题对一份 bin 入口一样要问〕\
+         〔F7b 09-24：16 → 18，多的是 **create** 与 **bigfile**（「新建空文件」；它走后端 `files-create`，\
+          一条池子命令都不碰 ⇒ 下面 `used` 那一摞不因它变）〕—— \
+         〔F9 09-24（与 F7b 同拍合并，现打 18）多的是 **bigfile**（大文件模式；它一条池子命令都不碰 ——\
+          读上限仍经 `editor.rs` 那一处 `MAX_EDIT_BYTES`）〕—— \
+         〔FW1+FW2 09-24：18 → 19（与 F7b / F9 同拍合并，现打 19），多的是 **select**（选中态 · 键位 · \
+          右键菜单那张表；它一条池命令都不碰，写操作经 `shell.rs` 那几个 `begin_*` 走）〕—— \
          不等就是射程变了，先查扫描面再改这个数",
         files.len()
     );
@@ -930,12 +906,13 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     }
     used.sort();
     // 抽取器自检②：**处数地板**。剥法把生产段剥没了 ⇒ 两边都空 ⇒ 相等断言恒真。
-    // 〔F7c · 第三波 09-24〕10 → 7，贴着现打：走掉的三样是 `sftp_upload` · `sftp_download` ·
-    //   `TRANSFER_LANE_CAP`（上传下载经通道，`设计/60 §13`）—— 与上面 `SITES` 同拍少三行。
-    //   ⚠ 地板只守「抽取器还够得到东西」；**人群多少由下面那条相等断言判**，这个数不替它挡枪。
-    assert!(
-        used.len() >= 7,
-        "只抠到 {} 处 `sftp_pool::…` 引用 —— 抽取器坏了，本条此刻是空转的（实得 {used:?}）",
+    // 〔F7a · 第三波 09-24〕地板改成相等：10 → 9（少了 `sftp_realpath`：开窗前解 home 换成后端 `files-home`）
+    //   → 7（少了读文本那条命令与它的上限常量：换成后端 `files-read-text`，常量搬回 `editor.rs`）
+    //   → 5（少了复制那条命令与它的裁决类型：换成后端 `files-copy`）。
+    assert_eq!(
+        used.len(),
+        5,
+        "抠到 {} 处 `sftp_pool::…` 引用 —— 与现打的条数不等：抽取器坏了，或接线变了（实得 {used:?}）",
         used.len()
     );
 
@@ -1009,19 +986,19 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         ("sftp_rename", "files-rename"),
         ("sftp_chmod", "files-chmod"),
         ("sftp_write_text", "files-write-text"),
-        // 〔F7c · 第三波 09-24〕这两条不是「搬去后端」，是**搬到 monitor 的传输台后面、窗口经通道说**：
-        //   开单 `transfer-upload` / `transfer-download` ＋ 订阅 `transfer/<id>`（上传另经后端 `files-commit-upload` 提交）。
-        (
-            "sftp_upload",
-            "transfer-upload（通道 → 传输台）＋ files-commit-upload",
-        ),
-        ("sftp_download", "transfer-download（通道 → 传输台）"),
+        // 〔F7a · 第三波 09-24〕开窗前解 home（此前住 monitor 那一侧、单拨一条 SFTP）。
+        ("sftp_realpath", "files-home"),
+        // 〔F7a · 第三波 09-24〕编辑器读一份文本（此前 SFTP 把字节整份搬过来；上限常量随之搬回窗口）。
+        ("sftp_read_text_for_edit", "files-read-text"),
+        // 〔F7a · 第三波 09-24〕同机复制（此前走池子那条零流量复制；窗口进程里「后端缺命令」那一类清零）。
+        ("sftp_copy", "files-copy"),
     ];
     assert_eq!(
         declared_cmds.len(),
-        4,
-        "窗口今天接了 {} 条池子命令（〔F2 09-24〕13 → 6；〔F7c 09-24〕6 → 4，上传 · 往外拖走了通道：\
-         剩 取消（复制那一腿）· 读文本进编辑器 · 同机复制 · 开窗前解 home）",
+        3,
+        "窗口今天接了 {} 条池子命令（〔F2 09-24〕13 → 6：上传 · 往外拖 · 取消 · 读文本进编辑器 ·\
+         同机复制 · 开窗前解 home；〔F7a 09-24〕6 → 5：开窗前解 home 换成后端 `files-home`；\
+         5 → 4：读文本进编辑器换成后端 `files-read-text`；4 → 3：同机复制换成后端 `files-copy`）",
         declared_cmds.len()
     );
     let missing: std::collections::BTreeSet<&str> = commands
@@ -1033,12 +1010,13 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         MOVED_TO_BACKEND.iter().map(|(c, _)| *c).collect();
     assert_eq!(
         missing, moved,
-        "窗口不再用的池子命令 ≠ 「搬走的那 9 条」（7 条去后端 ＋ 2 条去通道后面的传输台）。多出来的 ＝ 一条接线掉了而没有对应；\
+        "窗口不再用的池子命令 ≠ 「搬去后端的那几条」（F2 7 条 ＋ F7a 逐条加的）。多出来的 ＝ 一条接线掉了而没有后端对应；\
          少了的 ＝ 窗口又回头用池子了（`D11` 不许）"
     );
     // 反空真：`copy_remote_path` 真的**不在**窗口那棵树上。
     // 🔴 〔第七刀 09-21〕这一圈原先还含 `sftp_realpath` —— 它现在**真的接上了**
-    //（落点 `source::resolve_remote_home`）⇒ 从这一圈里拿掉，并进了上面 `SITES`。
+    //（落点当时是 `source.rs` 里一个问 home 的 async 函数）⇒ 从这一圈里拿掉，并进了上面 `SITES`。
+    //    〔F7a · 第三波 09-24〕那一问又换成了后端 `files-home` ⇒ 它从 `SITES` 出来、进了 `MOVED_TO_BACKEND`。
     //    ⚠ 那不是把一条判据放松了：它换了方向 —— 从「钉住它别悄悄回来」变成
     //      「钉住它恰好一处、且排在列目录前面」（住 `entry_tests` 那条）。
     //    `copy_remote_path` 留着，理由没变（`filewin/` 被判据明禁调它）。

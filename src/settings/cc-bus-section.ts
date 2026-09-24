@@ -241,14 +241,14 @@ export class CcBusSection {
     const h = document.createElement("div");
     h.className = "settings-hint";
     h.textContent =
-      "在远端某个目录开一个独立 agent（走远端的 cc-spawn：同目录已有活会话就复用，没有才新建）。" +
+      "在上面选中的那台机器的某个目录开一个独立 agent（走那台机器上的 cc-spawn：同目录已有活会话就复用，没有才新建）。" +
       "注意这会起一个真实的 agent 进程并消耗账号额度，所以要点两次确认。";
     box.appendChild(h);
 
     this.spawnDir = document.createElement("input");
     this.spawnDir.type = "text";
     this.spawnDir.className = "settings-input cc-bus-spawn-dir";
-    this.spawnDir.placeholder = "工作目录（远端绝对路径）";
+    this.spawnDir.placeholder = "工作目录（那台机器上的绝对路径）";
     box.appendChild(this.spawnDir);
 
     this.spawnTask = document.createElement("input");
@@ -340,6 +340,9 @@ export class CcBusSection {
       const v = this.originSel.value;
       setCurrentMachine(v && v !== LOCAL_ORIGIN ? v : null);
       this.syncLocalAffordances();
+      // 〔第三波 S3〕在这里换账号下拉。原先只靠下面那条订阅去换 —— 而订阅看到选择器**已经**是那台
+      // （就是这一行刚选的）就早退，于是在下拉里换机器，账号下拉一直停在上一台的名单上。
+      void this.loadAccounts(v);
     });
     // S4a：跟随共用 store。`null` = 本机 —— **P4a 起它不再是「原地不动」**：
     // 本机这一格今天有意义了（读面已通），所以跟着切到「本机」那一项。
@@ -351,10 +354,13 @@ export class CcBusSection {
       this.disarmSpawn();
       this.disarmKill(); // 切了机器，上一台那颗武装中的「收掉」必须失效
       this.syncLocalAffordances();
-      if (want !== LOCAL_ORIGIN) void this.loadAccounts(want);
+      void this.loadAccounts(want);
     });
     this.syncLocalAffordances();
-    if (this.originSel.value !== LOCAL_ORIGIN) void this.loadAccounts(this.originSel.value);
+    // 〔第三波 S3〕本机也拉账号列表（BS1b 留下的：原先这两处对本机跳过 ⇒ 本机派生只能选「不指定」）。
+    // `fetchAccounts` 收到后端那个本机串（`backend-policy` 的 `LOCAL_ORIGIN`）自己走本机那条读口
+    // （`accounts.ts` 的 `fetchAccounts` 第一行，A3 接的）—— 这里不另写一条本机分支。
+    void this.loadAccounts(this.originSel.value);
   }
 
   /** 渲染账号下拉。第一项恒为「基座」——**不替用户默认选一个会花钱的号**。 */
@@ -372,7 +378,7 @@ export class CcBusSection {
     }
   }
 
-  /** 取该远端的可选账号。**拿不到就只留「基座」**——宁可少一个选项，
+  /** 取这台机器（远端或本机）的可选账号。**拿不到就只留「基座」**——宁可少一个选项，
    *  也不能让用户以为选了某个号而其实没生效。 */
   /** 〔BS1b 09-24〕本机派生今天走后端原语 `bus-spawn`，与远端**同一条路** ⇒ 不再按本机禁用。
    *  （原先这里对本机禁用派生按钮并挂一句「本机还不能派生」—— 那句话等的原语长出来了。）
@@ -383,13 +389,16 @@ export class CcBusSection {
   }
 
   private async loadAccounts(origin: string): Promise<void> {
+    let names: string[] = [];
     try {
       const st = await fetchAccounts(origin);
-      const names = Array.isArray(st?.accounts) ? selectableAccounts(st).map((a) => a.name) : [];
-      this.renderAccountOptions(names);
+      names = Array.isArray(st?.accounts) ? selectableAccounts(st).map((a) => a.name) : [];
     } catch {
-      this.renderAccountOptions([]);
+      /* 拿不到 ⇒ 只留「不指定」 */
     }
+    // 读在路上时用户又换了一台 ⇒ 这一趟的名单是上一台的，不许盖上去。
+    if (this.originSel.value !== origin) return;
+    this.renderAccountOptions(names);
   }
 
   private async reload(): Promise<void> {

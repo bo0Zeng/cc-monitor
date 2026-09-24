@@ -137,7 +137,7 @@ async fn main() {
             // **backend 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
             Some("--fork-session") => control::fork_write::run(&agent_home, &args),
             // K-H1：HTTP 中转。**常驻**，起来就不返回；配置面只有环境变量。
-            // K-H2a：多传一个 `agent_home` —— 中转要从 `<home>/claudecode-frontend/` 下
+            // K-H2a：多传一个 `agent_home` —— 这个进程的账号层（层 2）要从 `<home>/claudecode-frontend/` 下
             // 读那份凭据文件。**不新开子命令、不动 `SUBCOMMANDS`** ⇒ 不逼出 BUILD_ID bump。
             Some("--relay") => accounts::apikey::run_relay(&agent_home, &args),
             // K-P6b：拨号代理。**常驻**，起来就搬字节直到某一头断开。
@@ -702,6 +702,16 @@ async fn serve_listening(
             }
             // ③ 流结束（客户端走了）⇒ 把牌还回去，回到空转。
             Some(()) = done_rx.recv() => {
+                // 〔B2 · 条 66 · `设计/01 §3.3b ④⑥`〕**最后一个客户走了 ⇒ 现读这台机器的值，照它办。**
+                //   不是「起我的那个 monitor 退了」—— 谁起的它不重要，重要的是此刻还有没有人连着。
+                //   ⚠ 这里**现读**（`exit_policy::last_client_left` 每次真去读盘）：用户可能刚在
+                //   **另一台** monitor 上改过它，不需要任何推送 / 同步协议。
+                //   ⚠ `§3.3b ⑦` 的 `lingerMs`（归零后等一下再决定）**本路没做**：那是一个会自己醒来的构件，
+                //   后端零定时器铁律（P6）不放行，理由整段在 `control/exit_policy.rs` 头注，交主会话拍板。
+                if control::exit_policy::last_client_left() {
+                    tracing::info!("流结束 ⇒ 这台机器的退出策略是「结束」⇒ 退出");
+                    std::process::exit(0);
+                }
                 tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
                 busy.store(false, Ordering::SeqCst);
                 let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only, with_rbind_token);

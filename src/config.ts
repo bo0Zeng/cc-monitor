@@ -36,8 +36,9 @@ export const CONFIG_KEY_OWNERS: Readonly<Record<string, string>> = {
   keybindings: "src/keybindings/store.ts",
   // src/accounts.ts
   accounts: "src/accounts.ts",
-  // src/backend-policy.ts
-  backendPolicy: "src/backend-policy.ts",
+  // 〔B2 · 条 66〕原来这里有 `backendPolicy`（src/backend-policy.ts）—— 「退出行为」那个值
+  //   搬到了后端所在那台机器上（`设计/01 §3.3b ②`「monitor 的 config 里不许再留一份」）⇒ 这一键退役。
+  //   盘上还留着它的旧 config.json 会被下面那条「不认识的键」提示条点名 —— 那是对的：它确实没人读了。
   // src/remote-config.ts（Rust 侧 `lib.rs::load_remote_configs` 也读它，只读）
   remote: "src/remote-config.ts",
   // src/tab-bar-state.ts

@@ -241,6 +241,20 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
     last_nudged != 0 && last_nudged == packed
 }
 
+/// 〔U2 · 第三波〕远端会话一宣告就起的那条 `remote-bind-scan` 线程（每 ~0.6s 扫一次
+/// `ccm-rbind-<sid>` 标题、最多 ~9s）**要不要起**。带启动令牌的会话**不起**：
+///
+/// - ↗ 对它先走 `令牌 → HWND`（`bind::resolve_remote_front` 的第一条路），用不着标题；
+/// - 不在 tmux 里的令牌会话**根本没有谁去设** `ccm-rbind-<sid>` 这个标题
+///   （设它的是 tmux 外层的 `set-titles-string`）⇒ 那 15 次扫描注定白跑 9 秒；
+/// - 在 tmux 里的令牌会话也不必预扫：令牌那扇窗关了、退到标题路时，点 ↗ 那一刻
+///   `try_bind_with_retry` 会现扫（`ON_DEMAND_BIND_*`，最多 4s）—— 预扫只省那一次现扫的等待。
+///
+/// 没令牌（老后端 / 不是 cc-monitor 启动的）⇒ 照旧预扫：标题路是它唯一的路。
+pub(crate) fn wants_title_prescan(rbind_token: Option<&str>) -> bool {
+    rbind_token.is_none()
+}
+
 /// ST1：设置窗的标签（`open_settings_window` 建它时用的同一个串）。
 pub(crate) const SETTINGS_WINDOW_LABEL: &str = "settings";
 /// 主窗的标签（`tauri.conf.json` 里那一个）。
@@ -266,75 +280,56 @@ pub(crate) fn windows_to_destroy_after<'a>(destroyed: &str, alive: &[&'a str]) -
 // `D7 阻-3`：**退出时收哪几个进程**，收成一条判据能替换的缝
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// 退出时**那两条自己不会死的起法**的收口点。
+/// 退出时**那一条自己不会死的起法**的收口点 —— 今天只剩本机中转。
 ///
-/// # 为什么非有这条缝不可（这是同一族病在**退出臂**上的落点）
+/// # 为什么非有这条缝不可
 ///
-/// 先前守着退出臂的是 `local_backend_host_tests.rs::the_exit_path_covers_both_ways_of_starting_the_local_backend`，
-/// 而它的形态是**「那个窗口里有没有这几段文本」**：
-/// `braced_block(prod, "RunEvent::Exit", 200, 6000)` → `kill_on_exit(` 恰好 1 处
-/// + `contains(needle)` ×4 + 两处位置序。
+/// 守着退出臂的判据原先是「那个窗口里有没有这几段文本」，`D7` 的刀 `T13`
+/// （`if kill {` → `if kill && !kill {`，收口那段文本一字不动）⇒ 全绿，而用户勾了「退出时结束它」、
+/// 退出，**本机中转还在那儿听着那个口**。⇒ 收口点进本结构，判据装一份**会记账的替身**，
+/// 断言**两支**：勾了 ⇒ 被调恰好一次；没勾 ⇒ 一次都没调。
 ///
-/// 🔴 `D7` 的刀 `T13`（`if kill {` → `if kill && !kill {`，**`stop_local_relay()` 那段文本一字不动**）
-/// ⇒ **`1229 passed; 0 failed` + `GATE: OK`，四个数与干净树逐字相同。**
-/// **生产后果**：用户勾了「退出时结束它」、退出，**本机中转还在那儿听着那个口** ——
-/// 正是本件自己往那条判据里加的那颗针**逐字说要防的「说谎的开关」**。
+/// # 〔B2 · 条 66〕原来这里有两个收口点，**常驻（脱离）那一个退役了**
 ///
-/// ⇒ 处置与本件前十层同一条：**不再量文本**。这两个收口点进本结构，
-/// 判据装一份**会记账的替身**，断言**两支**（分叉点是 `kill`，两支都买）：
-/// **勾了 ⇒ 两个收口点各被调恰好一次；没勾 ⇒ 一个都没被调**。
+/// 那个值搬到了后端所在那台机器上（`设计/01 §3.3b`），而**常驻那条起法的后端自己就是读它的人**：
+/// 最后一个客户（这个 monitor 的那条流）一断，它现读、选了「结束」就退（后端 `main.rs::serve_listening`）。
+/// monitor 再在退出臂里替它决定一次 = 两个决策处，而且 monitor 那一处违背 `§3.3b ⑥`
+/// （「不是『起我的那个 monitor 退了』」）。⇒ 那个收口点连同它的判据一起删掉。
 ///
-/// # 🔴🔴 为什么**第三个**收口点（被监护那条）不在本结构里 —— 写区拦住了，如实登记
-///
-/// 被监护那条的收口（`LOCAL_BACKEND` 里那个句柄的 `.stop()`）**必须留在退出臂里**：
-/// 写区外的 `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
-/// 逐条要求那一臂**体内**恰好一处 `.stop()`、恰好一处 `kill_on_exit(`、
-/// 策略在前、且中间那个 `if` 判的就是策略绑定名。
-/// 把它抽走 ⇒ 那条判据当场红，而**那个文件不在本件登记的 27 项写区里**。
-///
-/// ⚠ **残留的洞，写清楚**：`if kill { h.stop(); }` → `if kill && !kill { h.stop(); }`
-/// 能过那条判据（它断的是 `between.contains("if kill")`，而 `if kill && !kill` 含 `if kill`），
-/// **今天没有任何行为判据接住那一形**。**重新裁定的落点**：本栏 + 上报口那条
-/// 「要动写区外的 `local_backend.rs`」—— 归 PM 扩写区或立跟进件。
+/// 🔴 **中转为什么还归 monitor 收**：它的 stdin 是 null（`local_backend::supervise` 不接消费者），
+/// 它自己**感觉不到**宿主离开 ⇒ 它的去留只能由宿主决定；而宿主手里已经没有那个值 ⇒
+/// 退出臂在决定那一刻**现问**本机后端一次（`backend_policy::kill_on_exit_now`），两半共用那一个答案。
 ///
 /// # ⚠ 它还买不到什么（射程边缘，如实写）
 ///
-/// - 本结构管的是「**收不收 · 收哪几个**」。**收口点自己收干净了没有**是它们各自的活
-///   （`local_backend_host::stop_local_backend` / `stop_local_relay` 的头注与判据）。
+/// - 本结构管的是「**收不收**」。收口点自己收干净了没有是它自己的活（`stop_local_relay` 的头注与判据）。
 /// - 🔴 `RunEvent::Exit` 那个闭包**本身驱动不了** —— 那要真跑一次 tauri app（红线内够不着）。
-///   ⇒ 臂里那几行由 `local_backend_host_tests.rs::the_exit_arm_hands_the_other_two_ways_to_the_seam`
+///   ⇒ 臂里那几行由 `local_backend_host_tests.rs::the_exit_arm_hands_the_relay_to_the_seam`
 ///   的**零命中守卫**看着（谁在臂里另起一条收法就红）。
-///   **那一行委托本身没有行为级判据，它是这条链上今天最后一跳。**
 #[derive(Clone, Copy)]
 pub(crate) struct ExitShutdownSinks {
-    /// 常驻（脱离）那条起法的收口 —— 生产恒指 [`local_backend_host::stop_detached_backend_on_exit`]。
-    /// 返回「这一趟真的动手收了没有」（没脱离 ⇒ `false`）。
-    pub(crate) detached: fn() -> bool,
     /// 🔴 **第三个进程**：本机中转 —— 生产恒指 [`local_backend_host::stop_relay_on_exit`]。
     /// 返回「这一趟真的收到了一个在跑的中转没有」。
     pub(crate) relay: fn() -> bool,
 }
 
-/// 生产上这条缝里插的那两个口。**只有这一处**，判据按函数地址对拍它。
+/// 生产上这条缝里插的那个口。**只有这一处**，判据按函数地址对拍它。
 pub(crate) const PRODUCTION_EXIT_SHUTDOWN: ExitShutdownSinks = ExitShutdownSinks {
-    detached: local_backend_host::stop_detached_backend_on_exit,
     relay: local_backend_host::stop_relay_on_exit,
 };
 
-/// 退出臂的下半：**那两条自己不会死的起法**，勾了就逐个收掉。
+/// 退出臂的下半：**中转那条自己不会死的起法**，勾了就收掉。
 ///
-/// ⚠ `kill` 是**入参**，不是在这里再读一次策略 —— 退出臂读一次、两半共用同一个答案
-///（读两次 = 三条路可能拿到不同的答案，中间它是可以被改的）。
-pub(crate) fn shutdown_detached_ways_on_exit(kill: bool, sinks: ExitShutdownSinks) {
+/// ⚠ `kill` 是**入参**，不是在这里再问一次 —— 退出臂现问一次、两半共用同一个答案
+///（问两次 = 两条路可能拿到不同的答案，中间它是可以被别的 monitor 改的）。
+pub(crate) fn shutdown_relay_on_exit(kill: bool, sinks: ExitShutdownSinks) {
     if !kill {
-        // 缺省不杀（`P2s` C8②③）：被监护的后端是纯 stdio 子进程，monitor 一退它自己就死；
-        // 而**脱离**那条与**中转**那条不会 —— 那正是「勾了才收」这条策略的意义所在。
-        tracing::info!("退出：kill_on_exit=false —— 常驻后端与本机中转都不收");
+        // 缺省不杀（`P2s` C8②③）：中转不会自己死 —— 那正是「勾了才收」这条策略的意义所在。
+        tracing::info!("退出：kill_on_exit=false —— 本机中转不收");
         return;
     }
-    let detached = (sinks.detached)();
     let relay = (sinks.relay)();
-    tracing::info!("退出：常驻后端收了没={detached} · 本机中转收了没={relay}");
+    tracing::info!("退出：本机中转收了没={relay}");
 }
 
 pub fn run() {
@@ -926,6 +921,12 @@ pub fn run() {
                                 for sid in change.added {
                                     // audit-fixes F03.2：会话（重新）变活 → 清 idle 灰灯标记（resume/新会话）。
                                     ssh_source::clear_idle(&sid);
+                                    // 〔U2〕带启动令牌的会话不预扫标题（理由见 `wants_title_prescan`）。
+                                    // 令牌账本先于这条 `added` 记好（`ssh_source` 收 `SessionAdded` 时先 `note` 再发）。
+                                    let token = bind::remote_rbind_tokens().token_of(&sid);
+                                    if !wants_title_prescan(token.as_deref()) {
+                                        continue;
+                                    }
                                     let cache = remote_cache_for_emitter.clone();
                                     let spawn_res = std::thread::Builder::new()
                                         .name("remote-bind-scan".into())
@@ -1284,7 +1285,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            backend_policy::set_backend_kill_on_exit,
+            backend_policy::backend_exit_policy,
+            backend_policy::set_backend_exit_policy,
             backend::control::backend_control::backend_machines,
             backend::control::backend_control::backend_status,
             backend::control::backend_control::backend_start,
@@ -1293,8 +1295,8 @@ pub fn run() {
             config::save_config,
             // K-H2a：apikey 表那把 key。**读那条永远只回掩码**（`KS6`）；
             // 写那条是「界面」这个第二写者，它与人手编是同一份文件的两个写者（`KS10`）。
-            read_relay_credentials_status,
-            write_relay_credentials_key,
+            read_apikey_credentials_status,
+            write_apikey_credentials_key,
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             apikey_routing_for,
@@ -1498,31 +1500,21 @@ pub fn run() {
         // 而模块头注里逐字写着「不杀就成了游魂进程」。**注释说了、代码没做，靠一条告警才发现。**
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
-                // P2s（C8②③）：**杀不杀由这台机自己的策略说了算**，缺省不杀。
+                // P2s（C8②③）：**杀不杀由这台机自己的值说了算**，缺省不杀。
                 //
-                // ⚠ 原来这里是无条件 `stop()`，理由写着「不杀就成了游魂进程」。
-                // 那个理由**实测不成立**〔08-11，P2s §0a〕：backend 是纯 stdio 子进程，
-                // monitor 一退读端就断，它 **153 毫秒**内自己 broken-pipe 退出。
-                // ⇒ 不杀不会留游魂；那时这条策略的真实语义是「立刻杀」与「让它自己死」之差。
+                // 〔B2 · 条 66 · `设计/01 §3.3b ④`〕那个值住后端所在那台机器上 ⇒ 这里**在决定那一刻现问**
+                // 本机后端一次（`kill_on_exit_now`），不再读一张启动时推进来的表（那张表删了）。
+                // 问不到就按缺省（不结束）办并出声。**只问一次**，下面两半共用同一个答案。
                 //
-                // ★★ 〔`K-P1` 08-26〕**上面那句话今天只对一半的情况成立** ——
-                // 本机后端在 Linux 上会**真脱离**（`local_backend_host::start_detached`），
-                // 那一支上「不杀」就是真的继续跑；`D2 阻-5` 又补上了第三条（**中转是另一个进程**）。
-                // ⇒ 这个勾必须对**三条起法**都生效，否则用户勾了「退出时结束它」、退出、
-                // 而它没被结束 —— 一个说谎的开关。
-                // 策略**只读一次**，三条路共用同一个答案。
-                let kill = crate::backend_policy::kill_on_exit(crate::backend::control::inbound_client::LOCAL_ORIGIN);
+                // ⚠ 常驻（脱离）那条起法**不在这里收** —— 它自己就是读那个值的人：
+                //   这个 monitor 的那条流一断，它现读、选了「结束」就退（后端 `main.rs::serve_listening`）。
+                //   这里替它再决定一次 = 两个决策处，且违背 `§3.3b ⑥`「不是起我的那个 monitor 退了」。
+                let kill = crate::backend_policy::kill_on_exit_now(&crate::origin::Origin::local());
                 // ── 起法 ①：被监护的子进程，句柄在 `LOCAL_BACKEND` 里 ──
                 // ⚠ 锁在这里取、句柄不克隆：`SuperviseHandle` 刻意不是 `Clone`
                 // （克隆出去的那份 `stop()` 谁都能调，就没有「一个句柄一条命」这回事了）。
-                // ⚠ 这个块**必须收口**：下面那条路要取同一把锁（`stop_local_backend` 的第一件事）。
-                //
-                // 🔴🔴 **这一格为什么没跟着进缝〔`D7 阻-3`，08-29〕**：写区外的
-                // `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
-                // 逐条要求这一臂**体内**恰好一处 `.stop()` + 恰好一处 `kill_on_exit(` +
-                // 策略在前 + 中间那个 `if` 判的就是策略绑定名。抽走它那条判据当场红，
-                // 而那个文件不在本件登记的 27 项写区里 ⇒ **上报，不自己动**。
-                // ⚠ 残留的洞如实登记在 `ExitShutdownSinks` 头注里（`if kill && !kill` 过得去）。
+                // 🔴 它为什么留在臂里而不进缝：`backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
+                // 逐条要求这一臂**体内**恰好一处 `.stop()` + 恰好一处现问 + 问在前 + 中间那个 `if` 判的就是那个答案。
                 {
                     let guard = local_backend_host::LOCAL_BACKEND.lock();
                     if let Some(h) = guard.as_ref().ok().and_then(|g| g.as_ref()) {
@@ -1536,16 +1528,10 @@ pub fn run() {
                         }
                     }
                 }
-                // ── 起法 ②③：常驻那条（`K-P1`）+ 🔴 本机中转（`D2 阻-5`）走缝 ──
-                //
-                // 先前这两段是就地写在这条臂里的，而守着它们的是一条「那个窗口里有没有
-                // 这几段文本」的判据 ⇒ `D7` 的刀 `T13`（`if kill {` → `if kill && !kill {`，
-                // `stop_local_relay()` 那段文本一字不动）**`1229` 全绿 + `GATE: OK`**，
-                // 而中转还在那儿听着那个口 —— 正是那颗针自己说要防的「说谎的开关」。
-                // ⇒ 收进 [`ExitShutdownSinks`]，判据装记账替身量**行为**，两支都断。
+                // ── 🔴 本机中转（`D2 阻-5`）走缝 ──
                 // ⚠ **不许在这条臂里再就地收第二样东西** ——
-                //   `the_exit_arm_hands_the_other_two_ways_to_the_seam` 的零命中守卫数着这件事。
-                shutdown_detached_ways_on_exit(kill, PRODUCTION_EXIT_SHUTDOWN);
+                //   `the_exit_arm_hands_the_relay_to_the_seam` 的零命中守卫数着这件事。
+                shutdown_relay_on_exit(kill, PRODUCTION_EXIT_SHUTDOWN);
             }
         });
 }
@@ -1775,14 +1761,14 @@ pub(crate) fn batch_to_payloads(
 /// ★ 这是本件里最要紧的一条：一旦回显，key 就从「只住在后端」变成
 /// 「**每次打开那个界面都往前端传一遍**」⇒ 泄漏面从一次变成无数次，
 /// 每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
-/// ⇒ 返回类型 [`creds_store::RelayCredentialsStatus`] **在类型上就装不下明文**，
+/// ⇒ 返回类型 [`creds_store::ApikeyCredentialsStatus`] **在类型上就装不下明文**，
 /// 由 `the_status_type_cannot_carry_the_plaintext` 钉住。
 #[tauri::command]
-fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus, String> {
+fn read_apikey_credentials_status() -> Result<creds_store::ApikeyCredentialsStatus, String> {
     creds_store::read_status()
 }
 
-/// `K-H2b` `KH2B7`：界面问「**这几个本机账号，起会话时会不会走本机中转**」。
+/// `K-H2b` `KH2B7`：界面问「**这几个本机账号在 apikey 表里有没有行、本机中转在不在跑**」。
 ///
 /// # 为什么是一条**只答本机**的命令，而不是往账号列表里加两个字段
 ///
@@ -1792,7 +1778,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// 而 `payload::relay_base_url` 拼的是**回环**地址，回环是**自指**的）
 /// ⇒ 本机这一侧**在结构上答不了远端那台**。往那份结构里加字段，
 /// 就是让远端那些行也带上两个这一侧答不出来的值。
-/// 命令面的登记（`relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
+/// 命令面的登记（`apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
 ///
 /// # 两个字段各自的射程，别读宽
 ///
@@ -1804,11 +1790,11 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// - `running`：**我们起过本机中转而且没停过**，**不是**「那个口上真有人听」
 ///   （`local_backend_host::relay_running` 头注逐字写了那两个分家的窗口）。
 ///
-/// ⚠ **本结构刻意不走 `ts-rs`**：`RelayCredentialsStatus` 的先例逐字记着理由 ——
+/// ⚠ **本结构刻意不走 `ts-rs`**：`ApikeyCredentialsStatus` 的先例逐字记着理由 ——
 /// 导出会在 `src/generated/` **新增一个文件**，而那个目录的清单由
 /// `tests/generated-boundary-guard.vitest.ts` 逐项等号对拍，那个文件不在本件写区。
 /// ⇒ TS 侧那份是**手写镜像**（`src/accounts.ts::ApikeyRoutingView`），两侧字段名手动同步。
-/// **如实记：这一格今天没有判据对拍**（`RelayCredentialsStatus` 那条有，本条没有）。
+/// **如实记：这一格今天没有判据对拍**（`ApikeyCredentialsStatus` 那条有，本条没有）。
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 struct ApikeyRouting {
@@ -1867,7 +1853,7 @@ fn apikey_routing_for(config_dirs: Vec<String>) -> ApikeyRouting {
 /// `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕，**那个名字全仓零定义**，
 /// 而这句话是当现状在说。
 #[tauri::command]
-fn write_relay_credentials_key(key: String, config_dir: String) -> Result<(), String> {
+fn write_apikey_credentials_key(key: String, config_dir: String) -> Result<(), String> {
     creds_store::write_key(&config_dir, &key)
 }
 
@@ -2504,3 +2490,7 @@ mod remote_config_tests;
 #[cfg(test)]
 #[path = "../../../tests/bridge/lib_window_lifecycle_tests.rs"]
 mod window_lifecycle_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/bridge/lib_remote_bind_prescan_tests.rs"]
+mod remote_bind_prescan_tests;

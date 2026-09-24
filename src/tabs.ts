@@ -1,557 +1,78 @@
-﻿import { invoke } from "@tauri-apps/api/core";
-import { openPath } from "@tauri-apps/plugin-opener";
-import { MessageStream } from "./stream";
-import {
-  reconcilePendingToolResults,
-  isCompactRecord,
-  type RenderContext,
-} from "./cards";
-import { BranchFolder } from "./branch-fold";
-import { attachBranchButton } from "./branch-button"; // G4：实时会话的分叉入口
+﻿/**
+ * 〔U2 · 第三波 · `设计/01 §1.5`「一个 store，一个 router」· `设计/99 §4.22.0`〕**拆分地图**。
+ *
+ * 拆之前（基线 `aede6f5d`，4991 行）本文件是**一个类干五件事**。现打逐件（谁在调 → 拆到哪）：
+ *
+ * | # | 这件事 | 谁在调（生产） | 拆到 |
+ * |---|---|---|---|
+ * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（归档/灰灯/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `getActiveSubagentContext` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（从记录里抽事实） |
+ * | ② | **路由**：切到哪个 tab、谁有权切（手动 5s 保护 · 自动跟随）、记住上次的 tab | `main.ts` 快捷键 / 命令面板 / 启动选 active（`switchTo` · `cycleActive` · `jumpToIndex` · `applyBehavior` · `persistLastActive` · `onManualSwitch`）；`onLine` 里真用户输入（`userActive`） | `tab-router.ts` |
+ * | ③ | **实时流视图**：每个 tab 的流 DOM、按 seq 门控建卡、尾部窗口 / 骨架 / 上翻补批 / 哨兵 / 大纲、重放批 | `events.ts` → `onBatchStart` · `onLine` · `onBatchEnd`；`main.ts` DEV 探针 `debugSnapshot` | `tab-stream-view.ts` |
+ * | ④ | **tab 栏视图**：按钮 · 徽章 · 分组 · 拖动排序与成组 · 固定 · 顺序落盘 | 用户手势；`main.ts` 启动 `loadCollections` · `loadPinned` · `loadOrder` | `tab-bar-view.ts` · `tab-bar-drag.ts` · `tab-drop.ts`（纯落点算术）· `tab-bar-prefs.ts`（集合 / 固定 / 顺序三份落盘） |
+ * | ⑤ | **会话动作**：右键菜单（resume · 换号重启 · attach · 预览 · 杀会话 · 集合 · 固定）与它背后的 IPC（开目录 · 新窗口 · 切到终端窗口） | 用户右键；`main.ts` 快捷键 / 命令面板（`bringActiveTerminalToFront` · `openActiveTabCwd` · `openActiveInNewWindow` · `closeActiveIfArchived`） | `tab-menu.ts`（菜单项怎么组）· `tab-context-menu.ts`（菜单这个控件）· `tab-session-actions.ts`（动作本身 ＋ 本层唯一直呼 `invoke` 的一份） |
+ *
+ * 本文件拆完只剩 `TabManager` 这个**组装根**：对外 API（`main.ts` / `entry-viewer.ts` 调的那些）
+ * 逐字不变，事件怎么在上面几份之间流转写在这里。拆分逐子步提交，每一步 `tabs.vitest` 全绿、断言不动。
+ */
+import { isCompactRecord } from "./cards";
 import { runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "./generated/BranchResult";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
-import {
-  sessionBadge,
-  shouldShowAccountBadge,
-  detectAccountMismatch,
-  restartLocateFailureMessage,
-  withAccount,
-  type SessionAccount,
-  localLaunchAccountSync,
-  localLaunchAccountNameSync,
-  recordLocalLaunchAccount,
-  primeLocalLaunchAccounts,
-} from "./accounts";
-import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
-import { validateLocalLaunch } from "./launch-requests";
-import {
-  enumerateAccountModifiers,
-  type AccountModifierOption,
-  type NamedAccountModifier,
-} from "./launch-menu";
-import { accountAvatarEl } from "./account-color";
+import { detectAccountMismatch, type SessionAccount } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
-import { RecordTimeline } from "./record-timeline";
-import { TailWindow, type SkeletonLedger } from "./live-window";
-// 〔`设计/10` 骨架 · 子步 4〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
-import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
-import { skeletonKind } from "./height-estimate";
-// K-R45 乙（`KR45D2`）：「大纲」。界面 / 跳 与历史查看器共用同一份；〔SE1〕清单问后端要（`OutlineSource`）。
-import { UserInputPanel } from "./views/user-input-panel";
-import { OutlineSource } from "./views/outline-source";
-// ⚠ **实时窗口 import 历史查看器，方向是别扭的 —— 这是写区逼出来的将就，不是惯例。**
-// 共用的只有 `revealCard`（找卡→展开→滚，两条路的卡由同一份渲染器建）。把它搬进中立文件
-// 要同时改 `src/bridge/src/polling_registry.rs` 的调度点分类账（rAF/setTimeout 按文件精确对账），
-// 而 `src/bridge/` 不在本轮写区 —— 实测搬了就红。理由与读数在 `revealCard` 的头注 + 件 `§5.6`。
-import { revealCard } from "./views/session-viewer";
-import {
-  renderContentRecord,
-  routeMetaAndBranch,
-  type MetaSink,
-  type StreamSink,
-} from "./render-stream-record";
-
-/** 〔U3b〕只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
-const NOOP_META: MetaSink = { onBranchRecord: () => {}, onQueueOperation: () => {} };
-import type { BranchRecord } from "./branching";
-import { isAgentTool } from "./cards/subagent";
-import type { AgentsPanel, AgentEntry } from "./agents-panel";
-import { LS_KEYS, safeSet } from "./local-storage";
-import {
-  addMember,
-  collectionOf,
-  createCollection,
-  deleteCollection,
-  getCollections,
-  newCollectionId,
-  removeMember,
-  renameCollection,
-  setCollections,
-  type TabCollection,
-} from "./tab-collections";
-import {
-  getPinned,
-  getTabOrder,
-  isDegradedPin,
-  setPinned,
-  setTabOrder,
-  type PinnedTab,
-} from "./tab-bar-state";
-import {
-  runRemoteResume,
-  runRemoteResumeTmux,
-  runLocalResumeIntoExistingTmux,
-  runRemoteResumeIntoExistingTmux,
-  runRemoteAttach,
-} from "./remote-launch-run";
-// ⚠ **两个同名常量**：本文件要的是 `backend-policy` 那个（`"<local>"`，与 Rust
-// `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
-// `"__local__"`，是账号面自己的标记，**不是 backend origin**。导错一个不会红，只会静默查不到。
-import { AGENT_PROFILE } from "./agent-profile";
-import { LOCAL_ORIGIN } from "./backend-policy";
-import { commands } from "./ipc/commands";
-import { mintSessionTmuxName } from "./remote-launch";
-import { collectEditedFiles } from "./panorama/session-files";
-import { openPanePreview } from "./views/pane-preview";
+import { TailWindow } from "./live-window";
+import type { AgentsPanel } from "./agents-panel";
+import type { TabCollection } from "./tab-collections";
 import { turnEndNotifier } from "./turn-notify";
-import { getBehavior } from "./behavior";
-// F78：远端会话「打开工作目录」→ 用该机配置开 SFTP 面板进入远端 cwd（而非只提示打不开）。
-import { openSftpPanelDir } from "./sftp/panel";
-import {
-  readRemoteConfig,
-  findHostByOrigin,
-  resolveResumeCommand,
-} from "./remote-config";
-import { activityLightClass, type GridSessionSnapshot, type SessionPeek } from "./session-status";
+import type { GridSessionSnapshot, SessionPeek } from "./session-status";
 import { contextPercent } from "./views/context-limit";
 import {
   terminalFrontAvailable,
   TERMINAL_FRONT_UNAVAILABLE_TITLE,
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
-
-/**
- * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
- * `[e2e]` 行(console.info + frontend_perf_log → monitor 日志)。**`import.meta.env.DEV` 门控**:
- * 生产构建 DEV 恒 false,整支被 vite 静态消除(zero prod 包含,同 e2e-probe 范式)。
- */
-function e2eLog(line: string): void {
-  if (import.meta.env.DEV) {
-    console.info(line);
-    void invoke("frontend_perf_log", { lines: line }).catch(() => {});
-  }
-}
-
-/**
- * Tab 生命周期：
- * - `live`：session 进程还在跑（`~/.claude/sessions/<PID>.json` 存在且 PID 探活通过）
- * - `archived`：session 进程退出，Tab 灰显但保留内容；用户可主动关
- *
- * 历史：设计文档原本规划过 `idle`（5min 无消息变灰），但实际未落地，
- * 移除以免误用。
- */
-export type TabStatus = "live" | "archived";
-
-/**
- * P7a-2：把 `block`（被拖的 tab **连同它的 bg 子串**）整块挪到 `beforeSid` 之前。
- * `beforeSid === null` = 挪到末尾。**纯函数** —— 判据直接打在落位上，不必先造一次真拖拽。
- *
- * ⚠ 落点在块内 ⇒ **原样返回**（拖到自己身上不是一次重排，把它算成「挪到末尾」是错的）。
- */
-export function moveTabBlock(
-  order: readonly string[],
-  block: readonly string[],
-  beforeSid: string | null,
-): string[] {
-  const set = new Set(block);
-  if (beforeSid !== null && set.has(beforeSid)) return [...order];
-  const rest = order.filter((x) => !set.has(x));
-  if (beforeSid === null) return [...rest, ...block];
-  const at = rest.indexOf(beforeSid);
-  if (at < 0) return [...rest, ...block];
-  return [...rest.slice(0, at), ...block, ...rest.slice(at)];
-}
-
-// ===== 〔步 17·D · `设计/30 §D`〕Edge 式拖动合并成组 =====
-
-/**
- * 落点语义。**从 1 种扩到 3 种**（`§D.3` 逐字）—— 在这之前只有 `before`（与 `null`＝末尾）。
- *
- * ⚠ `onto` 与 `before` 的区别不只是「插哪儿」：`onto` 会**建组 / 入组**，
- *   而落点所在的容器还顺带决定「拖出组」（`§D.7`）。两件事在 `applyDropToCollections` 里合一。
- */
-export type DropTarget =
-  | { kind: "before"; sid: string } // 插到它前面（今天的行为）
-  | { kind: "onto"; sid: string } // 🆕 与它成组
-  | { kind: "end" }; // 落到末尾（今天的 `null`）
-
-/**
- * `onto` 的触发：**停留**，不是三等分（`§D.4` 已推荐，理由三条）。
- *
- * 🔴 **为什么不三等分**：竖栏里 tab 高约 28px，切成上/中/下三档 = 每档 9px。
- * 9px 的判定区在实际拖动里误触率极高 —— 用户想插到两个 tab 之间，结果建了个组。
- * 而插入排序是**快动作**、成组是**慢动作**，两个手势在**时间**上天然分开，
- * 不用去抢那 9px 的空间。
- */
-export const DWELL_MS = 250;
-/** 停留期间允许的抖动。超过就不算「压住」，退回 `before`/`end`（`§D.4` 逐字）。 */
-export const DWELL_MOVE_PX = 4;
-
-/** 一个 tab 按钮在纵轴上占的那一段。判据直接喂这个，不必先造一次真 DOM 布局。 */
-export interface TabRect {
-  sid: string;
-  top: number;
-  height: number;
-}
-
-/**
- * 指针**正压在**哪个 tab 上（`null` = 没压在任何一个上）。停留计时器靠它决定「还在不在同一个」。
- *
- * ⚠ 被拖的那一块要排除：压在自己身上不是一次合并。
- */
-export function tabUnderY(
-  rects: readonly TabRect[],
-  clientY: number,
-  block: ReadonlySet<string>,
-): string | null {
-  for (const r of rects) {
-    if (block.has(r.sid)) continue;
-    if (clientY >= r.top && clientY < r.top + r.height) return r.sid;
-  }
-  return null;
-}
-
-/**
- * 算落点。三种语义的**唯一判定处**。
- *
- * @param dwellSid 停留已经攒满的那个 sid（`null` = 还没攒满）。攒满这件事由计时器判，
- *                 不在这里判 —— 但「攒满之后指针有没有还在那个矩形里」在这里**再判一次**：
- *                 计时器与指针是两个来源，只信计时器的话，指针早已划走还会合并成组。
- *
- * 🔴 **必须按视觉序（`top` 升序）扫，不能按 `orderedIds` 扫。**
- *   `§D.2` 拆掉「组里的 tab 不参与」那道过滤之后，`orderedIds` 的次序与屏幕上的次序
- *   **不再一致**（组容器整块排在散 tab 前面，见 `refreshTabBar`）⇒ 按 `orderedIds` 扫会
- *   在第一个「中线在指针下方」的元素上停住，而那个元素可能在屏幕上离指针很远。
- */
-export function pickDropTarget(
-  rects: readonly TabRect[],
-  clientY: number,
-  block: ReadonlySet<string>,
-  dwellSid: string | null,
-): DropTarget {
-  const sorted = rects.filter((r) => !block.has(r.sid)).sort((a, b) => a.top - b.top);
-  if (dwellSid !== null && !block.has(dwellSid)) {
-    const r = sorted.find((x) => x.sid === dwellSid);
-    if (r && clientY >= r.top && clientY < r.top + r.height) {
-      return { kind: "onto", sid: dwellSid };
-    }
-  }
-  for (const r of sorted) {
-    if (clientY < r.top + r.height / 2) return { kind: "before", sid: r.sid };
-  }
-  return { kind: "end" };
-}
-
-/**
- * 两个 cwd 的**共同前缀的目录名**（`§D.6` 默认名规则第 1 条）——
- * 最常见情况：同项目的两个会话。算不出来回 `null`。
- *
- * ⚠ 两种分隔符都认：这个 app 的客户端常在 Windows 上，而会话可能来自 Linux 远端。
- * ⚠ 盘符（`C:`）不算目录名 —— 「C:」当组名是噪声，退回 `组 N` 更诚实。
- */
-export function commonDirName(a: string | null, b: string | null): string | null {
-  if (!a || !b) return null;
-  const seg = (p: string): string[] => p.split(/[/\\]+/).filter((s) => s !== "");
-  const sa = seg(a);
-  const sb = seg(b);
-  const n = Math.min(sa.length, sb.length);
-  let i = 0;
-  while (i < n && sa[i] === sb[i]) i++;
-  if (i === 0) return null;
-  const last = sa[i - 1];
-  if (/^[A-Za-z]:$/.test(last)) return null;
-  return last;
-}
-
-/**
- * 拖动合并出来的那个组**叫什么**（`§D.6`）。
- *
- * 🔴 **这条路上不能弹 `window.prompt`**（`真相源/05` I5：原生阻塞弹窗、风格不一致，
- * 且仓里另一套 dialog 插件正在被 ACL 拒）⇒ 必须能算出一个默认名。
- *
- * 优先级：① 两个 cwd 的共同前缀目录名 ② `组 N`（取当前最大编号 +1）。
- * 事后点组头改名（那条路已有，`groupElFor`）。
- */
-export function defaultGroupName(
-  cwdA: string | null,
-  cwdB: string | null,
-  existingNames: readonly string[],
-): string {
-  const dir = commonDirName(cwdA, cwdB);
-  if (dir) return dir;
-  let max = 0;
-  for (const name of existingNames) {
-    const m = /^组\s*(\d+)$/.exec(name.trim());
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return `组 ${max + 1}`;
-}
-
-/**
- * 一次落点对**集合**的全部后果。`§D.7` 那条判据的唯一住址：
- * 「**落点宿主 ≠ 该 tab 当前所属组的容器 ⇒ 视为移出**」。
- *
- * 这里把它写成对称的一句话：**归属跟着落点宿主走**。
- * | 落点 | 宿主 | 后果 |
- * |---|---|---|
- * | `onto X` | X 所在的组；X 还没组 ⇒ 现建一个 | 整块**入组** |
- * | `before X` | X 所在的组（X 是散 tab ⇒ 无宿主）| 入组 / **拖出组** |
- * | `end` | 无宿主（末尾就是散 tab 区）| **拖出组** |
- *
- * ⚠ 整块一起走（`block` = 被拖的交互 tab 连同它的 bg 子串）：
- *   把子树劈成「一半在组里一半在外面」比不能拖更坏（`dragBlockOf` 的头注同一条理由）。
- * ⚠ 建组失败（到 32 个集合的上界 / 名字空）⇒ **原样返回，什么都不做** ——
- *   不许把 tab 塞进一个不存在的集合（`newCollectionId` 那条路已有同样的守卫）。
- */
-export function applyDropToCollections(
-  collections: readonly TabCollection[],
-  block: readonly string[],
-  target: DropTarget,
-  newName: string,
-  newId: string,
-): TabCollection[] {
-  let next: TabCollection[] = [...collections];
-  let hostId: string | null = null;
-  if (target.kind === "onto") {
-    if (block.includes(target.sid)) return next; // 压在自己身上不是一次合并
-    const existing = collectionOf(next, target.sid);
-    if (existing) {
-      hostId = existing.id;
-    } else {
-      // 🔴 **这里刻意没有「建组失败就提前 return」那道守卫** —— 死值验刀 24 实测它恒不承重：
-      //   到 32 个集合的上界时 `createCollection` 原样返回，随后 `addMember` 找不到
-      //   `newId` 这个集合、也原样返回（`tab-collections.ts` 里那两条各自的守卫），
-      //   于是加不加那一行，输出一个字节都不差。
-      //   照 `sanitizeCollections` 的逐字先例：任何输入都区分不出的守卫是一条假绿的防线。
-      // ⇒ 「到上界就什么都不做」这条性质的住址是 `COLLECTION_CAP`，判据也钉在那儿
-      //   （死值验刀 24 改的是那一行，当场红）。
-      next = addMember(createCollection(next, newName, newId), newId, target.sid);
-      hostId = newId;
-    }
-  } else if (target.kind === "before") {
-    hostId = collectionOf(next, target.sid)?.id ?? null;
-  }
-  for (const sid of block) {
-    next = hostId ? addMember(next, hostId, sid) : removeMember(next, sid);
-  }
-  return next;
-}
-
-/**
- * 两份集合表是不是同一件事（顺序、id、名字、成员全比）。
- *
- * 只为一件事存在：**拖动是高频动作**，落点没改变归属时不该每拖一下就写一次
- * `config.json`。写盘本身没坏处，但那会把「用户改了分组」这条信号淹掉。
- */
-export function collectionsEqual(
-  a: readonly TabCollection[],
-  b: readonly TabCollection[],
-): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const x = a[i];
-    const y = b[i];
-    if (x.id !== y.id || x.name !== y.name) return false;
-    if (x.members.length !== y.members.length) return false;
-    for (let j = 0; j < x.members.length; j++) {
-      if (x.members[j] !== y.members[j]) return false;
-    }
-  }
-  return true;
-}
-
-export interface Tab {
-  sessionId: string;
-  /** Batch7-F24：会话类型（"interactive"/"bg"/null=未知视为交互）。bg → ⚙ 标题 + 树状挂宿主后。 */
-  kind: string | null;
-  /** Batch7-F24：bg 任务名（pidfile name 字段）；bg 标题优先用它。 */
-  bgName: string | null;
-  /**
-   * Tab 标题。优先级：[项目] aiTitle > 项目名 > session_id 前 8 位。
-   * aiTitle 一旦出现就锁住，后续 cwd 不再回退。
-   */
-  title: string;
-  cwd: string | null;
-  /**
-   * `cwd` 来源记录的 seq。取**最小 seq（最早记录）**的 cwd = 项目根 / 启动目录。
-   * 会话的 cwd 可能中途漂移到子目录；用最早记录的 cwd 才稳定指向项目根（与历史
-   * 浏览器 quick_extract_cwd 口径一致）。Infinity = 尚未拿到任何带 cwd 的记录。
-   */
-  cwdSeq: number;
-  /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
-  aiTitle: string | null;
-  /**
-   * issue #63①：本会话是从哪个会话 fork 来的（首条带 `forkedFrom` 的记录的 `forkedFrom.sessionId`，
-   * 出现一次就锁定，同 aiTitle）。null = 非 fork。用于给 tab 标题加 `↳` 血缘徽标 + tooltip——否则 fork
-   * 出来的会话与原会话是**同名独立 tab**、肉眼分不清（活 tab 层原本只按 sessionId keyed、完全不看
-   * `forkedFrom`，它此前只在历史树用）。
-   */
-  forkedFromSessionId: string | null;
-  /**
-   * issue #15：数据来源主机标签。null = 本地（标题无前缀）；非空（如 "raspberrypi.local"）
-   * = 远端 SSH 主机名，标题加 `[origin]` 前缀以区分本地/远端。首条 line 帧的 origin
-   * 决定，之后不变（同一 sid 只来自一个来源）。
-   */
-  origin: string | null;
-  status: TabStatus;
-  /**
-   * 〔步 17·B · `设计/30 §B`〕**固定** —— 「关了 app 再打开它还在」。
-   *
-   * 🔴 **必须是正交的一维，不能做成 `TabStatus` 的第三态**（`§B.3` 逐字）：
-   * `archived + pinned` 才是用户的主用例（固定住一个**已经跑完**的会话），
-   * 做成第三态就表达不了它。三个维度各管一件事：
-   * `status`（进程活没活，用户改不了）· `pinned`（你要不要它一直在，只由用户改）·
-   * 集合归属（你怎么分类）。仓里已有先例：`tmuxIdle` 那条注释逐字「与 `archived` 正交」。
-   *
-   * ⚠ **它只影响「重启后还在不在」，不影响位置**（`§B.3b` 用户 2026-09-16 收窄）：
-   *   没有「固定区」，固定的 tab **留在原位**，只多一个 📌 角标；位置由 `§C` 的顺序落盘管。
-   * ⚠ live tab 也可以打 pin（「这个会话我还在跑，但**它跑完之后别丢**」是真实意图），
-   *   但**效果只在它变灰之后才显现** —— live 的重启后由后端 `event_replay` 自动宣告回来。
-   */
-  pinned: boolean;
-  /**
-   * issue #23：红绿灯（与 TabStatus 正交，不碰 archived 门控）。null=未知（旧版 CC
-   * 无 status 字段 / 远端 v1 暂无透传）→ 维持现状绿点。
-   */
-  activity: { status: string; waitingFor: string | null } | null;
-  /**
-   * audit-fixes F03.2（灰灯 / 第三态渲染）：远端 tmux 会话「claude 已退但 tmux 会话还在」
-   * = idle-tmux。**与 TabStatus/activity 都正交**：不是 archived（内容仍在、可 attach 复用），
-   * 也不是 live（claude 进程没了）；仅驱动 `.tab.tmux-idle` 灰点渲染。后端 emitter 收 backend
-   * `removed` 时若 `@ccm_sid` 仍在则 emit `session-idle`（见 ssh_source F03.2a-wire），前端
-   * markTmuxIdle 置 true；复活（session-change added）/ 归档（真 tmux 没了 → session-ended）/
-   * 本会话再有活动（onActivity）时清回 false。默认 false。
-   */
-  tmuxIdle: boolean;
-  /**
-   * issue #23（第二增量）：本会话的 subagent 列表（tool_use id → entry，插入序）。
-   * jsonl 流里配对 Task/Agent 的 tool_use（running）与 tool_result（done）；
-   * 变 idle/归档时把仍 running 的标 aborted。上限 30，超出删最老的非 running。
-   */
-  agents: Map<string, AgentEntry>;
-  /** F70：本会话写类工具（Edit/Write/MultiEdit/NotebookEdit）碰过的文件路径（原样、去重）。
-   * onLine 增量累进，供「点会话 → 全景图高亮它改过的节点」。纯内存、不落盘（守 §28）。 */
-  touchedFiles: Set<string>;
-  /** F88b：本会话**最新一条带 usage 的 assistant 记录**的 prompt token（input+cache 合计）与
-   *  model——供 HUD 算 context 占用%。onLine 捕获、纯内存。null=尚无带 usage 的 assistant 记录。 */
-  latestPromptTokens: number | null;
-  latestModel: string | null;
-  /** F88b（审计）：产出上面两值的记录 seq。重放/远端重投的 onLine **投递序不保证升序**
-   *  （timeline 靠 seq 排序而非到达序），故 trackUsage 只在 seq ≥ 此值时覆盖，保证「最新」= 最大 seq
-   *  而非最后到达。init -1（任何 seq≥0 首次即可写）。 */
-  latestUsageSeq: number;
-  streamEl: HTMLElement;
-  stream: MessageStream;
-  /** 父 JSONL 路径（subagent 加载需要） */
-  parentPath: string;
-  unread: number;
-  /**
-   * P5.2 B 重构：按 seq 排序的 timeline。renderStreamRecord 调
-   * `timeline.insert / peekPrev` 决定 DOM 挂载位置 + tool-group 合并。
-   * **取代**：原 pendingToolGroup（tool-group 合并改后处理，看 timeline 左邻居）
-   * 和 pendingPrependFragment（无 source/inPrependMode 概念，永远按 seq 插入）。
-   */
-  timeline: RecordTimeline;
-  /**
-   * tool_use_id → tool_name 缓存。tool_use 在 assistant 消息出现时记下，
-   * 下一条 user 消息的 tool_result 反查显示工具名。
-   */
-  toolUseNames: Map<string, string>;
-  /**
-   * tool_use_id → tool_use 折叠条 DOM。tool_result 直接注入对应 tool_use
-   * 内部，不再产生独立折叠条。详见 cards/index.ts 的 injectOrBuildToolResult。
-   */
-  toolUseElements: Map<string, HTMLElement>;
-  /**
-   * issue #8: ESC 回退分支折叠管理器。
-   * 跟踪本 Tab 内所有有 uuid 的卡片，监听 parentUuid 分叉，把"被回退"的连续段
-   * 包到可折叠容器里。工具组（tool-group）不参与折叠（无单一 uuid）。
-   */
-  branchFolder: BranchFolder;
-  /**
-   * v2.3.1 (issue #1)：tool_result 可能在 tool_use 之前到达（jsonl 行序错位 /
-   * 不同 session 文件混杂）。先走 fallback 渲染独立卡，batch 结束后
-   * reconcilePendingToolResults 重新匹配 + 注入。
-   */
-  pendingToolResults: Map<
-    string,
-    {
-      block: { type: "tool_result"; tool_use_id: string; content: unknown; is_error?: boolean };
-      element: HTMLElement;
-    }
-  >;
-  /**
-   * 按 seq 去重集合。一个 Tab == 一个 jsonl path == 一个 seq 空间（本地 watcher 的
-   * per-path seqs / 远端后端的 per-process SeqCounter）。SSH 重连后新后端会从
-   * seq 0 重发整个会话 → 命中即丢，避免 Tab 内容翻倍。本地 seq 全程唯一 → 永不命中（no-op）。
-   *
-   * 注意：本集合**只防同 seq 重投**。本地 watcher 截断重读是**换新 seq** 重投整个
-   * 文件、此处放行（at-least-once 投递，INVARIANTS § 25）——uuid 级幂等由下面的
-   * processedUuids（#26）+ computeMainBranch 入口去重 + BranchFolder.seenUuids
-   * （#25）分层兜住。closeTab 时 clear。
-   */
-  seenSeqs: Set<number>;
-  /**
-   * Batch13-F40a:尾部优先窗口账本(单洞后缀不变量,详 live-window.ts)。
-   * 启动重放的旧记录不建卡、收纳于此(meta/branch 数据已喂);floor=null(virgin)
-   * 的后台 tab 在 onBatchEnd 空闲物化尾段 / switchTo 命中时同步物化。
-   */
-  window: TailWindow;
-  /**
-   * 〔`设计/10` 骨架 · 子步 4〕骨架层：`[0, floor)` 那段没物化的历史由占位顶住（总高与滚动条
-   * 一开始就是全会话的），滚到哪里只物化哪里。`null` = 没接上 —— 没拿到索引（老后端 /
-   * 本机后端不在 / seq 与索引对不上）⇒ 退回 `window` 的尾部窗口 + `fillAbove`，行为与之前逐字相同。
-   */
-  skeleton: SkeletonView | null;
-  /** 索引拉取：`idle` 没拉过 · `pending` 在途 · `done` 拉过（成不成都不重拉，免得每次切 tab 起一次进程） */
-  skeletonFetch: "idle" | "pending" | "done";
-  /**
-   * F40b R-1:批期「窗口内中部插入」缓冲——大增量批(>600 行切块,末块先发)落在
-   * 已渲染 tab 上时,老块 seq≥floor 但 <timeline.maxSeq,逐条挂 DOM 会跨帧上方
-   * 插入(§21 病根)。缓冲到 onBatchEnd 一次 batchInsert 挂载。
-   */
-  midBatchBuffer: JsonlLinePayload[];
-  /** F40b:上翻补批 scroll listener 引线(closeTab 摘) */
-  fillHandler: (() => void) | null;
-  /**
-   * issue #26：已处理记录的 uuid 集——onLine 入口的 at-least-once 幂等
-   * （违反此约束见 src/doc/INVARIANTS.md § 25）。截断重读换新 seq 重投时 seenSeqs 放行，
-   * 若不按 uuid 拒掉，每条记录会以更大的 seq 在 timeline 末尾再渲染一遍（整段内容
-   * 翻倍），且 trackAgents/unread 等副作用也会被重投误触发——故在入口整体拒掉。
-   * 无 uuid 的记录（ai-title/mode 等元信息）不占集合、照常处理（它们本身幂等；
-   * 已知微小残留：无 uuid 的 system 细条理论上可翻倍，影响面可忽略）。closeTab 时 clear。
-   */
-  processedUuids: Set<string>;
-  /**
-   * 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源 —— **问后端要**（`--list-user-inputs`），不在前端攒。
-   * 本 tab 只持有「上次要到哪个字节」与已列出的 uuid，不存正文；摘要在面板的行上。
-   * 原先这里是 `userInputs` 旁路账本（`onLine` 一条一条攒，到达序 ≠ 对话序），已删。
-   */
-  outline: OutlineSource;
-  /** 清单界面（与历史查看器**同一个类**）。开关 + 面板都挂在 `inputsEl` 里。 */
-  inputsPanel: UserInputPanel;
-  /**
-   * 清单那块悬浮层。实时 tab 没有查看器那样的顶栏可以塞开关 —— 每个 tab 只有一个
-   * `.stream`（`position:absolute; inset:0`），所以做成与它**平级**的一层，
-   * `.active` 跟着 tab 一起翻（同一套 visibility 机制，切 tab 0 reflow）。
-   */
-  inputsEl: HTMLElement;
-}
-
-/** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
-export interface TabsSummary {
-  total: number;
-  live: number;
-  archived: number;
-}
-
-/** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
-interface TabButtonRefs {
-  root: HTMLButtonElement;
-  label: HTMLSpanElement;
-  badge: HTMLSpanElement;
-  /** A3：账号徽章（该会话属于哪个账号；本地会话不显示，未知显 —）。 */
-  acctBadge: HTMLSpanElement;
-  cwdBtn: HTMLSpanElement;
-  /**
-   * 〔步 17·B〕📌 角标。**纯展示，不可点** —— 与 `.tab-badge`（未读数）同族。
-   * 固定是右键菜单那一项的事；这里再放一个能点的东西就是同一个动作两个入口。
-   */
-  pinBadge: HTMLSpanElement;
-}
+import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
+// 〔U2〕`Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
+export type { Tab, TabStatus, TabsSummary } from "./tab-model";
+import type { DropTarget, TabRect } from "./tab-drop";
+// 〔U2〕落点算术搬去了 `tab-drop.ts`；原样 re-export，`tabs.vitest.ts` 的 import 面零改动。
+export {
+  moveTabBlock,
+  pickDropTarget,
+  tabUnderY,
+  commonDirName,
+  defaultGroupName,
+  applyDropToCollections,
+  collectionsEqual,
+  DWELL_MS,
+  DWELL_MOVE_PX,
+} from "./tab-drop";
+export type { DropTarget, TabRect } from "./tab-drop";
+import { TabMenu } from "./tab-menu";
+import { TabStore } from "./tab-store";
+import { TabStreamView } from "./tab-stream-view";
+import { TabBarPrefs } from "./tab-bar-prefs";
+import { TabBarDrag } from "./tab-bar-drag";
+import { TabBarView, type TabButtonRefs } from "./tab-bar-view";
+import { TabRouter } from "./tab-router";
+import {
+  abortRunningAgents,
+  noteAgents,
+  noteForkedFrom,
+  noteTouchedFiles,
+  noteUsage,
+} from "./tab-session-facts";
+import {
+  TabSessionActions,
+  bringMonitorToFront,
+  bringRemoteTerminalToFront,
+  bringTerminalToFront,
+  e2eLog,
+  forgetSession,
+  listSessionActivity,
+} from "./tab-session-actions";
 
 import {
   findClaudeTmuxMatches,
@@ -572,300 +93,255 @@ export {
 };
 export type { TmuxSession };
 
-/** tmux 反查缓存 TTL:菜单打开按需查,短缓存避免重复右键狂拉 ssh。 */
-const TMUX_CACHE_TTL_MS = 8000;
-/** F74c(#60-B)：cwd 回退串味风险提示（attach 到可能是同目录别的会话前）。 */
-function warnCwdFallbackAttach(): void {
-  showActionFailureToast(
-    "未检测到会话身份标记",
-    "该 tmux 会话没有 @ccm_sid 标记，可能连到同目录里其它会话；建议在远端重装 ccm 助手以精确匹配。",
-    { level: "info", durationMs: 8000 },
-  );
-}
-
-/**
- * 秤 6(`设计/17 §6` 表第 6 行):读 `BranchFolder.records` 的**条数**,给 `debugSnapshot`。
- *
- * # 为什么是按结构读,不是加一个 getter
- *
- * `records` 是 `BranchFolder` 的 private 字段,而本轮的写区**不含** `branch-fold.ts`
- * (同一棵树上还有别路 agent 在写)。TS 的 `private` 只活在编译期,运行时它就是个普通
- * 字段 ⇒ 这里按名字读一次。**只给 DEV 探针用,无副作用、不改任何行为。**
- * 哪天 `branch-fold.ts` 可写了,把这里换成一个 `get recordCount()` 是纯收窄。
- *
- * # 读不到时返 -1,不返 0
- *
- * 字段一旦改名,返 0 会被读成「**账本是空的**」—— 那是一句假话,而且是**朝着"看起来
- * 一切正常"的方向**假(同篇 `§6` 反复点名的那一族:坏掉的尺子把真缺陷一起藏起来)。
- * 返 -1 在读数里一眼就是「这根尺子断了」。`tests/scale6-memory-ledger.vitest.ts`
- * 有一格专钉「它不许是 -1」。
- *
- * # 它量的是条数,不是字节
- *
- * 一条 `BranchRecord` 是 `{uuid, parentUuid, timestamp}` 三个短字符串,**不含正文** ——
- * 这正是下面那句判词的一半依据。想要字节得另外称,本秤不称。
- */
-function branchRecordCount(folder: BranchFolder): number {
-  const inner = folder as unknown as { records?: unknown };
-  return Array.isArray(inner.records) ? inner.records.length : -1;
-}
-
 export class TabManager {
-  private tabs = new Map<string, Tab>();
-  /** F51：per-origin tmux 会话短缓存(反查 attach)。null=该 origin 无 tmux。 */
-  private tmuxCache = new Map<string, { ts: number; sessions: TmuxSession[] | null }>();
-  /** 按插入顺序的 sessionId 数组，与 this.tabs.keys() 顺序一致但避免每次 Array.from */
-  private orderedIds: string[] = [];
   /**
-   * 〔步 17·C · 2026-09-21〕**盘上那份顺序（`tabBar.order`），启动读一次之后留着。**
-   *
-   * 🔴 **它是「一份意图」，不是一次性的动作** —— 这就是那个 no-op 的修法所在
-   *   （成因与现打见 `loadOrder` 头注）。tab 是**陆续**到的，所以这份顺序必须活过
-   *   整个启动窗口期，每来一个 tab 就再应用一次（`placeInOrder` → `applySavedOrder`）。
-   * ⚠ 里面**允许有今天不存在的 sid**（被删的 / 还没宣告到的）——
-   *   它们进不了 `orderedIds`（`applySavedOrder` 按 `present` 筛），所以不会造出假 tab；
-   *   上界由 `ORDER_CAP` 在读的那一侧管。
-   * ⚠ 用户一拖，盘上那份就**过期**了 ⇒ `persistOrder` 落盘的同时把这里同步成新的那张，
-   *   否则后到的 tab 会拿一份旧顺序把用户刚拖的一下撤销。
+   * 〔U2 · ①〕**会话状态账住 `tab-store.ts`** —— tab 集合 · 顺序 · 当前 tab · 早到信号暂存 · 账号快照 ·
+   * 任务快照，外加「变了」那唯一一份订阅。本类与拆出去的几份都读写同一个实例。
    */
-  private savedOrder: string[] = [];
-  /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
-  private tabButtons = new Map<string, TabButtonRefs>();
-  /** A3：远端 live 探测的会话账号归属（sid → 探测行）。main.ts 定期喂。 */
+  private readonly store = new TabStore();
   /**
-   * E73：sid → **attach 进去对人有没有意义**（来自 pidfile 的 `attachable`，经后端帧透传）。
-   *
-   * 只记**显式 false** 的那些。缺席 = 可以 —— 存量会话与旧后端一律照旧，零迁移。
-   *
-   * # 为什么单独一张表而不是 `Tab` 的字段
-   *
-   * 加字段要动 `ensureTab` 的位置参数列车（R03 刚把那种形状收拾过一轮），而这就是
-   * 「某个 sid 的一条会话级元信息」—— 与 `sessionAccountsByS` 同形，放这儿更合身。
+   * 〔U2 · ② · `设计/01 §1.5`〕**路由住 `tab-router.ts`**：下一个 / 第 N 个是谁、自动跟随放不放行、
+   * 切完之后记住上次的 tab 与 5s 手动保护。切换本身的编排（可见性 · 物化 · 面板 · 贴底）仍在 `switchTo`。
    */
-  private notAttachableSids = new Set<string>();
+  private readonly router = new TabRouter(this.store);
 
-  private sessionAccountsByS = new Map<string, SessionAccount>();
-  /** A3：账号名 → 邮箱（徽章 tooltip 用）。 */
-  private accountEmailByName = new Map<string, string>();
-  /** A4：sid → lastAccount（history-metadata）。徽章源②：live 探测不到时兜底。main.ts 定期喂。 */
-  private accountLastByS = new Map<string, string>();
-  /** A4/§7：账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
-  private accountReadyOrigins = new Set<string>();
-  /** account-ux U5：origin → 当前账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。
-   *  **只放 isSelectable 的账号**（main.ts 侧过滤）：不可选的当前账号对齐必失败，指着它说"你不一致"
-   *  是假信息，且与 U1 `resolveFollowAccount`「不可选就下沉」的语义保持一致。 */
-  private currentByOrigin = new Map<string, string>();
-  /** account-ux U6：正在换号重启中的 sid（防同一会话并发重启：新起的进程被后一条编排杀掉）。 */
-  private restartingSids = new Set<string>();
-  /** F04：正在 resumeTabTmux 中的 sid（对称 `restartingSids`）——双击"Resume（tmux）"之间没有
-   *  互斥时，两次并发调用各自查一次陈旧的 `list_remote_tmux` 快照、各自算出"该建哪个名字"，
-   *  可能算出两个不同名字、真建出两个都声称同一 sid 的 tmux 容器（R10 的一个具体、可关闭的成因，
-   *  见 F04 计划 §2 综合来源方案 A §7.4）。 */
-  private resumingSids = new Set<string>();
-  /** A5：换号重启时「等旧号 compact 完成」的 per-sid 回调。onLine 见该 sid 的 compact 摘要行即 resolve。 */
-  private compactWaiters = new Map<string, () => void>();
-  private activeId: string | null = null;
-  /**
-   * v2.2 (issue #12): 当前是否在 batch 模式（启动重放 jsonl-batch 期间）。
-   * batch 模式中 ensureTab 创建的新 Tab 也要把 BranchFolder 设成 batch。
-   *
-   * P5.2 B 重构：inPrependMode / pendingPrependFragment / source flag 全删 —— 前端
-   * 改用 RecordTimeline 按 seq binary-insert，DOM 位置由 seq 决定不受 emit 顺序影响。
-   * 仍保留 inBatch 是因为它控两件事：(1) lazy hljs 注册 (2) BranchFolder.batchMode。
-   */
-  private inBatch = false;
-  /**
-   * issue #11: 每个 sid 当前 task 列表（由 ensureTab 拉初次快照 + task-update 事件
-   * 更新）。切 Tab 时把对应 sid 的快照喂给全局 TasksPanel。
-   */
-  private tasksBySid = new Map<string, TaskEntry[]>();
-  /**
-   * issue #19：归档信号（session-ended）可能早于 replay 把该 sid 的 Tab 建出来。
-   * archiveTab 时若 Tab 还不存在，记进这里；ensureTab 建 Tab 时回查、落实归档。
-   *
-   * issue #20 后 session-ended 已改进 events.ts 的 queue 与行同序处理（否则补发
-   * 归档会被后续 drain 的远端行 un-archive 吃掉），正常路径下 ended 不会再早于
-   * 行到达——本集合降级为防御层（§ 17a 双层防御），保留兜“ended 先于该 sid 任何
-   * 行”的异常序。
-   */
-  private pendingArchive = new Set<string>();
-  /**
-   * audit-fixes F03.2：灰灯（idle-tmux）信号早于 Tab 建出时暂存（同 pendingArchive 模式）。
-   * F5 frontend-ready 重放会重发 SESSION_IDLE，可能早于骨架 remote-added 建 Tab——不暂存则
-   * markTmuxIdle no-op、灰灯丢。ensureTab 建 Tab 时落实（除非同时 pendingArchive→归档优先）。
-   */
-  private pendingTmuxIdle = new Set<string>();
-  /**
-   * issue #23：红绿灯信号早于 Tab 建出来时暂存（同 pendingArchive 的时序竞争模式：
-   * session-activity 同步派发，而建 Tab 的行走异步 queue/drain）。ensureTab 时落实。
-   */
-  private pendingActivity = new Map<
-    string,
-    { status: string; waitingFor: string | null }
-  >();
-  /**
-   * v2.4 issue #2：用户在终端真敲键 → 自动切到对应 Tab 的开关。
-   * 默认 true，从 config.json (autoFollowUserActive) 加载。
-   */
-  private autoFollowUserActive: boolean = true;
-  /**
-   * v2.4 issue #2：自动切 tab 时是否同时把 monitor 窗口拉前台。默认 false。
-   */
-  private bringMonitorToFront: boolean = false;
-  /**
-   * v2.4 issue #2：用户**手动**点 Tab Bar / Ctrl+Tab 后 5s 内拒绝任何 user-active
-   * 自动切。表示"我现在主动在看另一个 tab，请别抢回去"。
-   *
-   * 跟 v1 早期 user-lock 的区别：v1 阻塞 OS focus 检测（已废），v2.4 阻塞
-   * watcher 反推的 type=user 信号；信号语义不同，5s 经验值复用合理。
-   *
-   * 0 = 没有 override 中。每次 manual switchTo 时更新为 now+5000。
-   */
-  private manualOverrideUntil: number = 0;
-  /** Manual override 窗口长度（ms）。issue #2 钦定 5s。 */
-  private static readonly MANUAL_OVERRIDE_MS = 5000;
-  /** Batch13-F40a:物化/后台 tab 尾段条数(与 F39 viewer TAIL_INITIAL 同语义) */
-  private static readonly MATERIALIZE_TAIL_K = 150;
-  /** F40b:上翻补批批量/触发距离(沿用 F39 实测值) */
-  private static readonly FILL_BATCH = 200;
-  private static readonly TOP_TRIGGER_PX = 800;
-  /** F40b:补批防重入(补偿测量期间嵌套触发会算错差值) */
-  private renderingFill = false;
+  // ── 〔U2〕判据探针：这几样拆之前是本类的私有字段，`tabs.vitest.ts` 按名字直读（`activeId` 还直写）。
+  //    值住 store，这里只是同名别名；`protected` 只为不让 `noUnusedLocals` 把「只被判据读」的访问器当死代码。
+  protected get tabs(): Map<string, Tab> {
+    return this.store.tabs;
+  }
+  protected get activeId(): string | null {
+    return this.store.activeId;
+  }
+  protected set activeId(v: string | null) {
+    this.store.activeId = v;
+  }
+  protected get orderedIds(): string[] {
+    return this.store.orderedIds;
+  }
+  protected get pendingArchive(): Set<string> {
+    return this.store.pendingArchive;
+  }
+  protected get pendingTmuxIdle(): Set<string> {
+    return this.store.pendingTmuxIdle;
+  }
+
+
+
+
 
   /**
-   * Tab 撕离（tear-off）拖拽状态机。同一时刻只允许一个拖拽，整段存这里。
-   * - mousedown（左键，非子动作按钮）记录起点 → 候选拖拽（dragging=false）
-   * - document mousemove 越过 6px 阈值 → dragging=true，建 ghost、源 Tab 变暗
-   * - 指针拖离 tab 栏右缘（clientX > barRight + 16，F33 竖栏后为横向判定）→ armed=true（松手即弹窗）
-   * - document mouseup：armed → openInNewWindow(落点)；否则取消。两种情况都抑制后续 click
-   * null = 当前无拖拽。
+   * 〔U2 · ③〕实时流视图住 `tab-stream-view.ts`。**在构造体里建，不写成字段初始化**：
+   * 它要 `streamRootEl`，而字段初始化在参数属性赋值之前跑（esbuild 出原生 class field 时就是这个序），
+   * 写成初始化器会拿到 `undefined`。
    */
-  private drag: {
-    sid: string;
-    /**
-     * 〔步 17·D〕松手时的落点。**三种语义**（`§D.3`）——在这之前这里是
-     * `dropBefore?: string | null`（只有「插到谁之前」与「末尾」两种）。只在**未 armed** 时有意义。
-     */
-    dropTarget: DropTarget;
-    /** 〔步 17·D〕指针此刻压着谁（停留计时的对象）。`null` = 没压在任何 tab 上。 */
-    dwellSid: string | null;
-    /** 〔步 17·D〕停留已经攒满的那个 sid。计时器到点才写，抖动 / 换目标即清回 `null`。 */
-    dwellArmed: string | null;
-    /** 〔步 17·D〕本轮停留的锚点。指针离它超过 `DWELL_MOVE_PX` 就重新计时。 */
-    dwellX: number;
-    dwellY: number;
-    /** 〔步 17·D〕停留计时器句柄。`teardownDrag` 必须清 —— 否则它会在拖拽结束后才到点。 */
-    dwellTimer: number | null;
-    startX: number;
-    startY: number;
-    barRight: number;
-    root: HTMLElement;
-    dragging: boolean;
-    armed: boolean;
-    ghost: HTMLElement | null;
-    onMove: (e: MouseEvent) => void;
-    onUp: (e: MouseEvent) => void;
-  } | null = null;
-  /**
-   * ★ 6d：拖拽进行中有人要求刷 tab 栏 —— 记一笔，`teardownDrag` 收尾时补一次。
-   * 只是一个「有没有」，不记是谁要求的：`refreshTabBar` 本来就是整栏重刷，补一次就够。
-   */
-  private tabBarDirtyDuringDrag = false;
-  /**
-   * 拖拽撕离阈值：指针移动超过此像素才判定为"拖"，否则视为普通点击。
-   */
-  private static readonly DRAG_THRESHOLD_PX = 6;
-  /**
-   * 拖拽结束后需抑制掉紧随 mouseup 的那次 click 的 sid（避免拖完又误切 Tab）。
-   * null = 不抑制。click handler 命中后清零（一次性）。
-   */
-  private suppressClickSid: string | null = null;
-
-  /**
-   * P7a-1（#61）：**归档区**。`#61` 正文自陈「状态机已经有了，缺的是那个「口」」——
-   * 那个口就在 [`refreshTabBar`]，它是全仓**唯一**把 tab 按钮塞进 `barEl` 的地方。
-   *
-   * 三个元素由本类自己建（不改构造签名：那有两个生产调用点 + 一批夹具），
-   * 挂在 `barEl` 之后，作为它的兄弟。
-   */
-  /** P7a-3（#61）：标签页集合。**零自动归组**〔用 08-11「纯手动」〕。 */
-  private collections: TabCollection[] = [];
-  /**
-   * P7a-3 E 阶段补审：**这个实例拉过集合没有。**
-   *
-   * 撕离出来的 viewer 窗口也用 `TabManager`（`main.ts:938`，tab 栏由 `.viewer-mode` 隐藏），
-   * 但它**从不 `loadCollections`** ⇒ `collections` 恒空。右键菜单里若还留着「新建集合…」，
-   * 点一下就把「只含这一个」的列表写回 `config.json` —— **用户已有的集合全没了**。
-   *
-   * 同族先例就在旁边一行：「viewer 窗口共享 localStorage，**禁写 last-active**（防污染主窗口记忆）」。
-   * ⇒ 没拉过就不给入口。这不是把功能藏起来，是**没有那份真相就没有资格改它**。
-   */
-  private collectionsLoaded = false;
-  /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
-  private groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
-  /**
-   * 〔步 17·B〕**这个实例拉过固定表没有** —— 与 `collectionsLoaded` 同一条理由，
-   * 而且这里更要命：`persistPinned` 是**按当前 tab 重算整张表**写回去的，
-   * 没拉过就写 ⇒ 用户上次固定的全没了。撕离出来的 viewer 窗口正是这种实例。
-   * ⇒ 没拉过就不给入口（右键菜单里那两项不出现），也不落盘。
-   */
-  private pinnedLoaded = false;
-  /**
-   * 〔步 17·B〕`loadPinned` 那一趟从盘上读到的记录（sid → 条目）。
-   *
-   * 🔴 **它不是「谁被固定了」的真相** —— 那件事的唯一住址是 `Tab.pinned`
-   * （一个事实一个住址）。这里存的是**盘上那份记录的内容**，只有两个用途：
-   * ① `§B.6` 第一格的降级判定（`jsonlPath` 为空的那些，点进去要说人话）；
-   * ② `lastActiveAt` 的沿用 —— 已经灰了的 tab 什么时候最后活动过，前端没有这个数，
-   *    不许在每次落盘时把它刷成 `Date.now()`（那是把「说不清」写成一句假话）。
-   */
-  private pinnedRecords = new Map<string, PinnedTab>();
-  /**
-   * 〔步 17·B〕复活出来的固定 tab 的**空态提示**（sid → 元素）。
-   *
-   * 🔴 它是「**不许留一个点了没反应的 tab**」这条纪律的落点：复活的 tab 里
-   * 一条内容都没有（`99 §2.5 P3` 裁定「已结束的会话点进去不能看内容，只能 resume」），
-   * 不放点东西进去，用户点它就是一片空白 —— 那与坏了没有区别。
-   * 复活成 live（真 resume 上了）时摘掉。
-   */
-  private pinHintEls = new Map<string, HTMLElement>();
-
+  private readonly view: TabStreamView;
 
   constructor(
-    private barEl: HTMLElement,
-    private streamRootEl: HTMLElement,
-    /** 任何 Tab 增/减/状态变化后回调；宿主用它驱动状态栏等外部 UI */
-    private onTabsChanged?: (summary: TabsSummary) => void,
+    /** 〔U2〕`protected`：本类自己只把它交给 tab 栏视图与拖拽；`tabs.vitest.ts` 按名字直读它。 */
+    protected barEl: HTMLElement,
+    streamRootEl: HTMLElement,
+    /** 任何 Tab 增/减/状态变化后回调；宿主用它驱动状态栏等外部 UI。〔U2〕它是 store 那一份订阅的第一个订阅者。 */
+    onTabsChanged?: (summary: TabsSummary) => void,
     /** issue #11: 全局 TasksPanel，切 Tab / 收事件时由 TabManager 喂数据 */
     private tasksPanel?: TasksPanel,
     /** issue #23: 全局 AgentsPanel（subagent 列表 + 各自状态灯），喂数方式同 tasksPanel */
     private agentsPanel?: AgentsPanel,
-  ) {}
+  ) {
+    if (onTabsChanged) this.store.subscribe(onTabsChanged);
+    this.bar = new TabBarView(this.store, this.prefs, barEl, {
+      refreshTabBar: () => this.refreshTabBar(),
+      openTabCwd: (sid) => this.openTabCwd(sid),
+      bringTerminalToFront: (sid) => bringTerminalToFront(sid),
+      bringRemoteTerminalToFront: (sid) => bringRemoteTerminalToFront(sid),
+      closeTab: (sid) => this.closeTab(sid),
+      switchTo: (sid) => this.switchTo(sid),
+      beginDrag: (e, sid, root) => this.dragger.begin(e, sid, root),
+      takeSuppressedClick: (sid) => this.dragger.takeSuppressedClick(sid),
+      openMenu: (e, sid) => this.menu.open(e, sid),
+    });
+    this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.bar.tabButtons, {
+      refreshTabBar: () => this.refreshTabBar(),
+      openInNewWindow: (sid, screenX, screenY) => this.openInNewWindow(sid, screenX, screenY),
+    });
+    this.view = new TabStreamView(this.store, streamRootEl, {
+      onLine: (payload) => this.onLine(payload),
+      refreshTabBar: () => this.refreshTabBar(),
+      scheduleTabBarRefresh: () => this.bar.scheduleRefresh(),
+      applyAiTitle: (tab, aiTitle) => this.applyAiTitle(tab, aiTitle),
+      userActive: (sid) => this.userActive(sid),
+      startForkedSession: (tab, res) => this.startForkedSession(tab, res),
+    });
+  }
 
-  private notifyChanged(): void {
-    if (!this.onTabsChanged) return;
-    let live = 0;
-    let archived = 0;
-    for (const t of this.tabs.values()) {
-      if (t.status === "archived") archived += 1;
-      else live += 1;
-    }
-    this.onTabsChanged({ total: this.tabs.size, live, archived });
+  /**
+   * 〔U2 · ④〕tab 栏的三份落盘偏好（集合 · 固定 · 顺序）住 `tab-bar-prefs.ts`。
+   */
+  private readonly prefs = new TabBarPrefs(this.store, {
+    refreshTabBar: () => this.refreshTabBar(),
+    createSkeletonTab: (sid, cwd, origin, kind, name) =>
+      this.createSkeletonTab(sid, cwd, origin, kind, name),
+    resumeTab: (sid) => this.resumeTab(sid),
+  });
+
+  /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
+  loadCollections(): Promise<void> {
+    return this.prefs.loadCollections();
+  }
+  /** 〔步 17·B〕启动时把固定的 tab 复活出来（流程见 `tab-bar-prefs.ts` 那一份的头注）。 */
+  loadPinned(): Promise<void> {
+    return this.prefs.loadPinned();
+  }
+  /** 〔步 17·C〕启动时把落盘的顺序拉回来（为什么它曾是结构性 no-op 见 `tab-bar-prefs.ts` 那一份的头注）。 */
+  loadOrder(): Promise<void> {
+    return this.prefs.loadOrder();
+  }
+  /** 右键菜单那一项：翻转固定。 */
+  togglePin(sid: string): void {
+    this.prefs.togglePin(sid);
+  }
+
+  /**
+   * 〔U2 · ④〕拖动排序 / 拖动成组 / 拖出去撕窗口的状态机住 `tab-bar-drag.ts`（落点算术住 `tab-drop.ts`）。
+   * 在构造体里建：它要 `barEl`（参数属性，字段初始化时还没赋上）。
+   */
+  private readonly dragger: TabBarDrag;
+  /**
+   * 〔U2 · ④〕tab 栏视图（按钮 · 徽章 · 分组容器 · 整刷与帧末合批）住 `tab-bar-view.ts`。
+   * 在构造体里建（要 `barEl`）。**整刷的入口仍是本类的 `refreshTabBar`**：拖拽守卫在这一层，
+   * 而且判据会把实例上的 `refreshTabBar` 换成计数替身 —— 帧末合批那一刷必须经它。
+   */
+  private readonly bar: TabBarView;
+
+  // ── 〔U2〕判据探针（tab 栏视图那一份）：`tabs.vitest.ts` 直读这张按钮表。
+  protected get tabButtons(): Map<string, TabButtonRefs> {
+    return this.bar.tabButtons;
+  }
+
+  // ── 〔U2〕判据探针（拖拽那一份）：`tabs.vitest.ts` 直调这两个旧私有名。
+  protected tabRects(): TabRect[] {
+    return this.dragger.tabRects();
+  }
+  protected applyDrop(sid: string, target: DropTarget): void {
+    this.dragger.applyDrop(sid, target);
+  }
+
+  // ── 〔U2〕判据探针（落盘偏好那一份）：`tabs.vitest.ts` 直读 / 直写这三个旧私有名。
+  protected get collections(): TabCollection[] {
+    return this.prefs.collections;
+  }
+  protected set collections(v: TabCollection[]) {
+    this.prefs.collections = v;
+  }
+  protected get collectionsLoaded(): boolean {
+    return this.prefs.collectionsLoaded;
+  }
+  protected set collectionsLoaded(v: boolean) {
+    this.prefs.collectionsLoaded = v;
+  }
+  protected get pinnedLoaded(): boolean {
+    return this.prefs.pinnedLoaded;
+  }
+
+  // ── 〔U2〕判据探针（流视图那一份）：`tabs.vitest.ts` 按名字直调 `updateSentinel`、直读 `materializeQueue`。
+  protected updateSentinel(tab: Tab): void {
+    this.view.updateSentinel(tab);
+  }
+  protected get materializeQueue(): string[] {
+    return this.view.materializeQueue;
+  }
+
+  /**
+   * F40c DEV 探针用:active tab 状态一行 JSON（形状、口径与秤 6 的三个账本见 `tab-stream-view.ts` 那一份）。
+   * 生产不接线,方法本身无副作用。
+   */
+  debugSnapshot(): string {
+    return this.view.debugSnapshot();
+  }
+
+  /**
+   * 〔U2 · ⑤〕会话动作住 `tab-session-actions.ts`（tab 层唯一直呼 `invoke` 的一份）。它只要宿主给四样读数 / 回调。
+   */
+  private readonly actions = new TabSessionActions({
+    tab: (sid) => this.store.tabs.get(sid),
+    isAttachable: (sid) => this.isAttachable(sid),
+    sessionAccount: (sid) => this.store.sessionAccountsByS.get(sid),
+    refreshAccountBadgeFor: (sid) => this.bar.refreshAccountBadgeFor(sid),
+  });
+
+  /** 〔U2 · ⑤〕右键菜单里放哪几项住 `tab-menu.ts`；点下去做事直接交给上面那份 `actions`。 */
+  private readonly menu = new TabMenu(
+    {
+      tab: (sid) => this.store.tabs.get(sid),
+      isAttachable: (sid) => this.isAttachable(sid),
+      collectionsLoaded: () => this.prefs.collectionsLoaded,
+      collections: () => this.prefs.collections,
+      commitCollections: (next) => this.prefs.commitCollections(next),
+      pinnedLoaded: () => this.prefs.pinnedLoaded,
+      togglePin: (sid) => this.togglePin(sid),
+      requestPanoramaHighlight: (sid) => this.requestPanoramaHighlight?.(sid),
+    },
+    this.actions,
+  );
+
+  // ── 〔U2〕判据探针：拆之前这几个是 `TabManager` 的私有成员，`tabs.vitest.ts` 按名字直调 / 直读。
+  //    搬家之后留一层同名转交（不加 `async`、不包一层 `await` —— 那会多一拍微任务，
+  //    而有几条 DOM 判据只放行一个微任务）。`protected` 只是为了不让 `noUnusedLocals`
+  //    把「只被判据读」的成员当死代码；它们不是对外 API。
+  protected get tmuxCache(): Map<string, { ts: number; sessions: TmuxSession[] | null }> {
+    return this.actions.tmuxCache;
+  }
+  protected get restartingSids(): Set<string> {
+    return this.actions.restartingSids;
+  }
+  protected fetchTmuxFresh(origin: string): Promise<TmuxSession[] | null | undefined> {
+    return this.actions.fetchTmuxFresh(origin);
+  }
+  protected resumeTab(sid: string, accountName?: string, useBase?: boolean): Promise<void> {
+    return this.actions.resumeTab(sid, accountName, useBase);
+  }
+  protected resumeTabTmux(sid: string, accountName?: string, useBase?: boolean): Promise<void> {
+    return this.actions.resumeTabTmux(sid, accountName, useBase);
+  }
+  protected restartTabWithAccount(
+    sid: string,
+    accountName: string,
+    compactFirst: boolean,
+    confirmFn?: (msg: string) => boolean,
+  ): Promise<boolean> {
+    return this.actions.restartTabWithAccount(sid, accountName, compactFirst, confirmFn);
+  }
+  protected awaitCompactFor(sid: string, timeoutMs?: number): () => Promise<boolean> {
+    return this.actions.awaitCompactFor(sid, timeoutMs);
+  }
+  protected killRemoteTmux(
+    origin: string,
+    tmuxName: string,
+    viaCwd: boolean,
+    opts?: { confirm?: (message: string) => boolean; idle?: boolean },
+  ): void {
+    this.actions.killRemoteTmux(origin, tmuxName, viaCwd, opts);
+  }
+  private openTabCwd(sid: string): Promise<void> {
+    return this.actions.openTabCwd(sid);
+  }
+  private openInNewWindow(sid: string, screenX?: number, screenY?: number): Promise<void> {
+    return this.actions.openInNewWindow(sid, screenX, screenY);
   }
 
   /**
    * v2.2 (issue #12): 启动重放（jsonl-batch）开始时调一次。所有现有 Tab 的
    * BranchFolder 切到 batch 模式 —— 后续 recordAdded 只 push 不算 mainBranch。
-   * 重放期 ensureTab 新创建的 Tab 也会自动进 batch（看 this.inBatch）。
+   * 重放期 ensureTab 新创建的 Tab 也会自动进 batch（看 this.store.inBatch）。
    *
    * P5.2 B 重构：删了 inPrependMode / pendingToolGroup 清零 —— 前端用 timeline
    * 按 seq 排序，tool-group 合并改后处理（看左邻居），不再需要 chunk 边界协调。
    */
   onBatchStart(): void {
-    this.inBatch = true;
+    this.store.inBatch = true;
     // P5.5 B 重构：lazy 通过 ctx.lazy 传到 renderMarkdown —— onLine 构造 ctx 时
-    // 用 this.inBatch 设置。不再依赖 setRenderLazyMode 全局开关。
-    for (const t of this.tabs.values()) {
+    // 用 this.store.inBatch 设置。不再依赖 setRenderLazyMode 全局开关。
+    for (const t of this.store.tabs.values()) {
       t.branchFolder.setBatchMode(true);
       // Batch13-F40a:deferMode 已退役——重放期旧记录根本不建卡(收纳进 tab.window),
       // "视口上方插入"次数为 0,比"延后到一帧"更强(INVARIANTS §21.3)。
@@ -877,123 +353,13 @@ export class TabManager {
    * 然后切回 live 模式。后续真实时新消息按 timeline 路径走。
    */
   onBatchEnd(): void {
-    this.inBatch = false;
-    for (const t of this.tabs.values()) {
-      // F40b R-1:先把批期缓冲的中部插入一次挂载(内含 unwrapAll/rebuildNow),
-      // 再走既有 flushPending/reconcile
-      this.flushMidBatchBuffer(t);
-      t.branchFolder.flushPending();
-      t.branchFolder.setBatchMode(false);
-      // 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
-      const ctx: RenderContext = {
-        parentPath: t.parentPath,
-        origin: t.origin,
-        toolUseNames: t.toolUseNames,
-        toolUseElements: t.toolUseElements,
-        pendingToolResults: t.pendingToolResults,
-      };
-      // S-6:孤儿卡出 DOM 的同时出账,防悬空 anchor
-      for (const el of reconcilePendingToolResults(ctx)) t.timeline.removeByElement(el);
-    }
-    // Batch13-F40a:active tab 不足一屏(或还是 virgin)→ 立即补物化到可见;
-    // 其余 virgin 后台 tab 进空闲物化队列(逐个串行,避免并发建卡风暴)。
-    const active = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
-    if (active && active.window.pendingCount > 0) {
-      // 步 3：「够不够一屏」改读**真实布局**（见 `contentReachesBottom` 的头注）。
-      const notFilled = !this.contentReachesBottom(active);
-      if (active.window.floorSeq === null || notFilled) {
-        this.materializeUntilFilled(active);
-        active.stream.scrollToBottom();
-      }
-    }
-    // D 审计 S-5:archived 死会话不进后台物化队列(纯浪费;switchTo 命中 virgin
-    // 已有同步物化兜底)。
-    this.materializeQueue = [...this.tabs.entries()]
-      .filter(
-        ([sid, t]) =>
-          sid !== this.activeId &&
-          t.status !== "archived" &&
-          t.window.floorSeq === null &&
-          t.window.pendingCount > 0,
-      )
-      .map(([sid]) => sid);
-    this.scheduleIdleMaterialize();
-    // F40b:active tab 未走物化分支(尾块已可滚)时也要挂哨兵
-    if (active) this.updateSentinel(active);
-    // 〔`设计/10` 骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
-    if (active) this.requestSkeleton(active);
-    if (active?.outline.needsFetch) this.refreshOutline(active); // 〔SE1〕大纲
+    this.store.inBatch = false;
+    const active = this.view.batchEnd();
     // F88b：批期 trackUsage 只更了 tab 字段没喂 chip，这里对活跃 tab 单次 flush 到 HUD
     // （批内多条 assistant 记录只刷一次，消视觉抖动）。
     this.onActiveUsageChanged?.(active?.latestModel ?? null, active?.latestPromptTokens ?? null);
   }
 
-  /**
-   * ★ 步 3（`设计/10 §6`）：**「够不够一屏」改读真实布局。**
-   *
-   * # 旧判据错在哪
-   *
-   * 原来两处都写的是 `el.scrollHeight - el.clientHeight > 1`（「滚得动吗」）。
-   * 那**不是**「屏幕填满了吗」—— 两者在这个仓里经常不是同一件事：
-   * - 每张顶层卡都带 `content-visibility: auto` + `contain-intrinsic-size: auto <估值>`
-   *   （`height-estimate.ts`）。**没渲染过的卡贡献的是估值**，`scrollHeight` 里掺着一笔
-   *   与屏幕上看到的东西无关的账 ⇒ 估高了就"看起来滚得动"，而屏幕仍是半屏。
-   * - 工具密集会话一轮物化可能只产出几张 34px 的合并卡，`scrollHeight` 差一两像素就
-   *   越过 `>1` 这条线 ⇒ 补批当场停手。这正是用户报的「上下半屏」。
-   *
-   * # 新判据
-   *
-   * **最后一张卡的 `getBoundingClientRect().bottom` 有没有够到滚动容器的下沿。**
-   * 这两个数都来自真实布局，不吃估值。
-   *
-   * ⚠ **没有布局时必须退回旧判据**：jsdom 无布局引擎，所有 rect 恒为 0
-   * （容器 rect 高度也是 0）。这时按新判据算恒等于「满了」⇒ 补批整条路在测试环境里
-   * 被静默关掉。所以这里显式探一次「这台机器给不给布局」，给不了就走老的算术判据 ——
-   * **降级要写出来，不能靠恰好**。
-   */
-  private contentReachesBottom(tab: Tab): boolean {
-    const el = tab.streamEl;
-    const view = el.getBoundingClientRect();
-    if (view.height <= 0) {
-      // 拿不到真实布局（jsdom / 还没插进文档 / tab 不可见）⇒ 退回旧的算术判据。
-      return el.scrollHeight - el.clientHeight > 1;
-    }
-    const last = tab.stream.contentElement.lastElementChild;
-    if (!last) return false; // 一张卡都没有 ⇒ 肯定没满
-    // 1px 容差：HiDPI 分数像素下 rect 是小数，卡刚好贴到下沿时会差零点几像素。
-    return last.getBoundingClientRect().bottom >= view.bottom - 1;
-  }
-
-  /**
-   * D 审计 R-3:一次 150 条 payload 可能只产出几张卡(tool-group 合并成单卡 34px、
-   * skip 记录占配额不产卡)——工具密集会话一轮物化后屏幕仍近空,而 F40a 没有上翻
-   * 补批兜底。有界循环补到**一屏填满**或账本弹尽(≤4 轮防病态会话空转)。
-   * 〔步 3〕停手条件从「滚得动」换成 `contentReachesBottom`——理由见它的头注。
-   */
-  private materializeUntilFilled(tab: Tab): void {
-    if (tab.skeleton) {
-      tab.skeleton.fillVisible(); // 〔`设计/10` 骨架〕同上
-      return;
-    }
-    for (let round = 0; round < 4; round++) {
-      if (tab.window.pendingCount === 0) return;
-      if (round > 0 && this.contentReachesBottom(tab)) return;
-      this.materializeTail(tab);
-    }
-  }
-
-  /**
-   * Batch13-F40a/b:批量渲染内核(物化 / 上翻补批 / R-1 缓冲 flush 共用)。
-   * - sink 不接 onRealUserInput(历史 user 卡不得触发自动切 tab)、branch/queue/title
-   *   为 no-op(收纳/缓冲时 routeMetaAndBranch 已喂过,BranchFolder.seenUuids 双保险);
-   * - 不计 unread(重放历史不是"未读新消息",修 backlog S-2;R-1 缓冲的 unread
-   *   在缓冲时已计);
-   * - lazy hljs + observe(批量渲染的是历史内容,滚入视口再高亮);
-   * - 插卡前 unwrapAll 摊平(邻居可能在 fold wrap 内,F39 实证的不变量)、批内
-   *   暂停逐卡 snap(S-7,防 150 次强制 reflow)、插完 reconcile 孤儿 tool_result
-   *   (S-6 同步出账)、rebuildNow 无条件重折(flushPending 的 setsEqual 短路会把
-   *   摊平永久化)。
-   */
   /**
    * G6：分叉产出新会话文件之后 —— **起它**。
    *
@@ -1010,383 +376,6 @@ export class TabManager {
       sourceSessionId: tab.sessionId,
       cwd: tab.cwd,
     });
-  }
-
-  private renderPayloadsBatch(tab: Tab, payloads: JsonlLinePayload[]): void {
-    if (payloads.length === 0) return;
-    const ctx: RenderContext = {
-      parentPath: tab.parentPath,
-      origin: tab.origin,
-      toolUseNames: tab.toolUseNames,
-      toolUseElements: tab.toolUseElements,
-      pendingToolResults: tab.pendingToolResults,
-      lazy: true,
-    };
-    const sink: StreamSink = {
-      timeline: tab.timeline,
-      onBranchRecord: () => {},
-      onQueueOperation: () => {},
-      observeForLazyEnhance: true,
-      // G6：**远端也挂**。〔`K-R88` 09-13〕本机那条命令也收 sid 了 ⇒
-      // **两条路都只要 sid**，「本机拿不到 jsonl 路径就不能分叉」这道门跟着没了
-      // （原先那个随迭代更新的路径游标也一并去掉：没人再要那个值）。
-      onCardRendered: (el, msg) => {
-        if (msg.type !== "user" && msg.type !== "assistant") return;
-        if (!msg.uuid) return;
-        attachBranchButton(el, {
-          uuid: msg.uuid,
-          sourceSessionId: tab.sessionId,
-          origin: tab.origin,
-          cwd: tab.cwd ?? undefined,
-          onForked: (res) => void this.startForkedSession(tab, res),
-        });
-      },
-    };
-    tab.branchFolder.unwrapAll();
-    tab.stream.batchInsert(() => {
-      for (const p of payloads) {
-        try {
-          renderContentRecord(p, ctx, sink);
-        } catch (e) {
-          console.error("[tabs] 批量渲染单条失败,跳过:", p.seq, e);
-        }
-      }
-    });
-    for (const el of reconcilePendingToolResults(ctx)) tab.timeline.removeByElement(el);
-    tab.branchFolder.rebuildNow();
-  }
-
-  /**
-   * Batch13-F40a:物化 tab 的尾段——从窗口账本弹出 seq 最高的 ≤k 条建卡。
-   * 物化目标是 virgin/近 virgin tab(无滚动位置可保),不需要滚动补偿——上翻补批
-   * 的手动补偿在 fillAbove(F40b)。
-   */
-  private materializeTail(tab: Tab, k = TabManager.MATERIALIZE_TAIL_K): void {
-    this.renderPayloadsBatch(tab, tab.window.takeTail(k));
-    this.updateSentinel(tab);
-  }
-
-  /**
-   * 〔`设计/10` 骨架 · 子步 4〕向后端要这个会话的**骨架索引**，到了就接骨架。
-   *
-   * 只对**已经有渲染后缀**的 tab 要（`floor !== null`：骨架顶的是 `[0, floor)`）；
-   * 每个 tab 只要一次（`skeletonFetch`），成不成都不重拉 —— 免得每切一次 tab 起一次本机后端进程。
-   * 调用点只有两处：批结束时的 active tab、`switchTo` 切进来的那个 tab ⇒ 后台 tab 不花这一次。
-   */
-  private requestSkeleton(tab: Tab): void {
-    if (tab.skeletonFetch !== "idle" || !tab.parentPath) return;
-    if (tab.window.floorSeq === null) return;
-    tab.skeletonFetch = "pending";
-    const jsonlPath = tab.parentPath;
-    const origin = tab.origin ?? LOCAL_ORIGIN;
-    void commands
-      .read_session_index({ origin, jsonlPath, fromOffset: 0 })
-      .then(async (res) => {
-        if (this.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
-        tab.skeletonFetch = "done";
-        const got = ledgerFromIndex(res);
-        if (!got.ok) {
-          console.info(`[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：${got.reason}`);
-          return;
-        }
-        // 索引拉回来之前 tab 可能又长了：floor 之下还有索引没覆盖到的行 ⇒ **续传**（从上次的 end 接着要）
-        const floor = tab.window.floorSeq ?? 0;
-        if (floor > got.ledger.endSeq) {
-          const more = await commands.read_session_index({ origin, jsonlPath, fromOffset: got.end });
-          if (more.available) got.ledger.append(more.rows);
-        }
-        if (this.tabs.get(tab.sessionId) !== tab) return;
-        this.attachSkeleton(tab, got.ledger);
-      })
-      .catch((e: unknown) => {
-        tab.skeletonFetch = "done";
-        console.warn(`[tabs] 骨架索引拉取失败（${tab.sessionId.slice(0, 8)}）：`, e);
-      });
-  }
-
-  /**
-   * 接骨架：`[0, floor)` 画成占位。**接之前先对拍 seq 空间** —— 抽几条还在 pending 的记录，
-   * 它们的 uuid 在索引里必须落在同一个 seq 上；对不上（本地截断重读换过 seq，INVARIANTS §25）
-   * 就**不接**，退回尾部窗口（不许硬对）。
-   */
-  private attachSkeleton(tab: Tab, ledger: SkeletonLedger): void {
-    const floor = tab.window.floorSeq;
-    if (floor === null || tab.skeleton) return;
-    for (const p of tab.window.peek(8)) {
-      const u = (p.message as { uuid?: unknown }).uuid;
-      if (typeof u !== "string") continue;
-      const at = ledger.uuidToSeq.get(u);
-      if (at !== p.seq) {
-        console.warn(
-          `[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：seq ${p.seq} 在索引里是 ${String(at)} —— seq 空间对不上`,
-        );
-        return;
-      }
-    }
-    const view = new SkeletonView(ledger, tab.streamEl, tab.timeline, {
-      materialize: (lo, hi) => {
-        const taken = tab.window.takeRange(lo, hi);
-        this.renderPayloadsBatch(tab, taken);
-        this.fetchMissingRows(tab, ledger, lo, hi, new Set(taken.map((p) => p.seq)));
-      },
-    });
-    // 在视口上方插一块高占位：同 `fillAbove` 的纪律 —— 关原生锚定、同一个同步任务里按 ΔscrollHeight 补偿
-    const el = tab.streamEl;
-    const beforeH = el.scrollHeight;
-    const beforeTop = el.scrollTop;
-    try {
-      el.style.overflowAnchor = "none";
-      view.attach(floor);
-      el.scrollTop = beforeTop + (el.scrollHeight - beforeH);
-    } finally {
-      el.style.overflowAnchor = "";
-    }
-    tab.skeleton = view;
-    this.updateSentinel(tab);
-    if (this.activeId === tab.sessionId) view.fillVisible();
-    // 〔U3b · `设计/10` 步 8〕骨架接上 ⇒ 正文不必再驻留：丢掉的那些滚到时按偏移要回来。
-    // ① 前端账本只留离已渲染尾巴最近的一批（第一次上翻不用等 IPC）；
-    // ② monitor 的重放缓冲只留尾巴（F5 之后也只重放尾巴，其余同样按偏移要）。
-    tab.window.keepHighest(TabManager.FILL_BATCH);
-    void commands
-      .replay_keep_tail_only({ sessionId: tab.sessionId })
-      .catch((e: unknown) => console.warn(`[tabs] 重放缓冲留尾巴失败（${tab.sessionId.slice(0, 8)}）：`, e));
-  }
-
-  /**
-   * 〔`设计/10` 骨架 · 子步 5〕**按偏移取正文**：物化 `[lo, hi)` 时，账本里没有、也还没到过的那些
-   * 会建卡的行（`seenSeqs` 里没有、索引说它不是「不建卡」的那种）⇒ 按索引里的字节边界向后端要
-   * （`read_session_range` = `--read-session-from-offset … --until`），回来的行**走 `onLine` 全套**
-   * （去重、旁路记账、门控 —— 这段已经不在占位里了，门控会就地建卡），与重放来的行一视同仁。
-   *
-   * 今天它补的是「重放还没推到」的那一截（远端尾部优先快照的回填期、大会话启动重放的在途期）；
-   * 它也是「骨架不带正文」那条路的另一半 —— 等 `EventReplay.history` 加上界（`设计/10 步 8`），
-   * 没推过来的历史就全靠它取。连续缺的行并成一段、一段一次 IPC；同一段不会被要两次
-   * （骨架把它标成已物化之后就不会再交给宿主）。
-   */
-  private fetchMissingRows(
-    tab: Tab,
-    ledger: SkeletonLedger,
-    lo: number,
-    hi: number,
-    taken: ReadonlySet<number>,
-  ): void {
-    if (!tab.parentPath) return;
-    const runs: Array<[number, number]> = [];
-    for (let s = lo; s < hi; s++) {
-      const f = ledger.factsOf(s);
-      // 〔U3b〕「缺」= 会建卡、而这一次没从账本里取到 —— 两种来历：重放没推过来（没见过），
-      // 或见过、但骨架接上之后被丢出账本（`keepHighest`）。两种回来之后喂法不同，见下。
-      const missing = f !== undefined && skeletonKind(f) !== "none" && !taken.has(s);
-      if (!missing) continue;
-      const last = runs[runs.length - 1];
-      if (last && last[1] === s) last[1] = s + 1;
-      else runs.push([s, s + 1]);
-    }
-    const origin = tab.origin ?? LOCAL_ORIGIN;
-    for (const [a, b] of runs) {
-      const first = ledger.factsOf(a)!;
-      const lastRow = ledger.factsOf(b - 1)!;
-      void commands
-        .read_session_range({
-          origin,
-          jsonlPath: tab.parentPath,
-          offset: first.o,
-          until: lastRow.o + lastRow.n,
-          seqBase: a,
-          lineCount: b - a,
-        })
-        .then((payloads) => {
-          if (this.tabs.get(tab.sessionId) !== tab) return;
-          // 没见过的 ⇒ 走 `onLine` 全套（旁路记账、去重、门控）；
-          // 见过的 ⇒ 旁路账早记过了、去重会把它拒掉 ⇒ 只建卡（meta 那几类照旧不建）。
-          const fresh = payloads.filter((p) => !tab.seenSeqs.has(p.seq));
-          const again = payloads.filter(
-            (p) => tab.seenSeqs.has(p.seq) && routeMetaAndBranch(p, NOOP_META) === "content",
-          );
-          this.feedHistoryRows(tab, fresh);
-          if (again.length > 0) this.renderPayloadsBatch(tab, again);
-        })
-        .catch((e: unknown) => console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e));
-    }
-  }
-
-  /**
-   * 按偏移取回的**历史**行喂进 `onLine` —— 必须按**重放**的语义喂，不能按 live：
-   * live 语义下历史 user 卡会触发 `userActive`（自动切 tab / 拉前 monitor）、
-   * 历史的轮次结束会弹系统通知、每条 `recordAdded` 都重算一次主线。
-   * ⇒ 对这一个 tab 走一遍批：`inBatch` 置位（`userActive` / `turnEndNotifier` 都认它）、
-   * 折叠层进批模式；喂完把批期缓冲的中部插入一次挂载、折叠层 flush。
-   * 若此刻本来就在一个真批里（启动重放未完），只喂不收 —— 真批的 `onBatchEnd` 会收。
-   */
-  private feedHistoryRows(tab: Tab, payloads: JsonlLinePayload[]): void {
-    if (payloads.length === 0) return;
-    const wasBatch = this.inBatch;
-    this.inBatch = true;
-    tab.branchFolder.setBatchMode(true);
-    try {
-      for (const p of payloads) this.onLine(p);
-    } finally {
-      this.inBatch = wasBatch;
-      if (!wasBatch) {
-        this.flushMidBatchBuffer(tab);
-        tab.branchFolder.flushPending();
-        tab.branchFolder.setBatchMode(false);
-      }
-    }
-  }
-
-  /**
-   * F40b R-1:批期缓冲的「窗口内中部插入」(大增量批老块)一次性挂载。
-   * 排序后走渲染内核(含 unwrapAll/rebuildNow——不能依赖随后 flushPending,
-   * 它的 setsEqual 短路会把摊平永久化)。在 onBatchEnd 的 flushPending/reconcile
-   * 之前调。
-   */
-  private flushMidBatchBuffer(tab: Tab): void {
-    if (tab.midBatchBuffer.length === 0) return;
-    const payloads = tab.midBatchBuffer.sort((a, b) => a.seq - b.seq);
-    tab.midBatchBuffer = [];
-    // 已知取舍(D 审计):批末 flush 不做选区守卫——unwrap/rebuild 会杀进行中选区,
-    // 但 flush 不可延迟(数据必须落),且触发面(选中文本时恰逢远端大增量批)极窄。
-    this.renderPayloadsBatch(tab, payloads);
-    this.refreshTabBar(); // 缓冲期攒下的 unread 徽标一次刷新
-  }
-
-  /**
-   * F40b:上翻补批。守卫:防重入 / 账空 / 选区进行中(补批 unwrap/rebuild 会杀
-   * 进行中的选区,等下次 scroll 再试)。补偿:临时关原生锚定(防 WebView2 与手动
-   * 补偿 double-shift;WebKitGTK 本就无锚定),测量→渲染→scrollTop 回写在同一
-   * 同步任务内(不许 await/rAF 打断)。rAF 自链:零高批/不足一屏无 scroll 事件
-   * (F39-R1 场景),补完复检直到离开触发区或账尽。
-   */
-  private fillAbove(tab: Tab): void {
-    // 〔`设计/10` 骨架〕接上了 ⇒ 不再「从尾巴往上一批批补」，只物化与视口相交的那段占位
-    if (tab.skeleton) {
-      tab.skeleton.fillVisible();
-      return;
-    }
-    if (this.renderingFill) return;
-    if (tab.window.pendingCount === 0) return;
-    const sel = document.getSelection();
-    if (sel && !sel.isCollapsed) return;
-    const el = tab.streamEl;
-    this.renderingFill = true;
-    try {
-      el.style.overflowAnchor = "none";
-      const beforeH = el.scrollHeight;
-      const beforeTop = el.scrollTop;
-      this.renderPayloadsBatch(tab, tab.window.takeTail(TabManager.FILL_BATCH));
-      // 哨兵刷新必须在补偿回写**之前**:账尽移除的 ±30px 计入 Δ 一并吃掉——
-      // 移除若在补偿后,dev(无锚定)会在"会话第一条"处一次性跳 30px(D 审计)。
-      this.updateSentinel(tab);
-      el.scrollTop = beforeTop + (el.scrollHeight - beforeH);
-    } finally {
-      // 还原必须在 finally:渲染内核抛出时留下 overflow-anchor:none = 该 tab 永久
-      // 失去原生锚定,违反 §21.2 且无自愈(D 审计,两家共识)
-      el.style.overflowAnchor = "";
-      this.renderingFill = false;
-    }
-    requestAnimationFrame(() => {
-      if (this.activeId !== tab.sessionId) return;
-      const t = this.tabs.get(tab.sessionId);
-      if (!t || t.window.pendingCount === 0) return;
-      const e = t.streamEl;
-      if (e.scrollTop <= TabManager.TOP_TRIGGER_PX || e.scrollHeight - e.clientHeight <= 1) {
-        this.fillAbove(t);
-      }
-    });
-  }
-
-  /**
-   * F40c DEV 探针用:active tab 状态一行 JSON——无 devtools 环境下 E2E 断言的
-   * 唯一出口(经 e2e-probe 热键 → fe_perf 日志)。生产不接线,方法本身无副作用。
-   *
-   * 🔴 秤 6(`设计/17 §6` 表第 6 行)在这里加了**三个账本的条数**:
-   * `branchRecords` / `userInputs` / `pending`。口径与「量不到什么」写在
-   * `branchRecordCount` 的头注与 `tests/evidence/S6-memory-ledger.md` 里。
-   */
-  debugSnapshot(): string {
-    const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
-    if (!tab) return JSON.stringify({ active: null });
-    const el = tab.streamEl;
-    const statusText = document.getElementById("status-bar")?.textContent ?? "";
-    return JSON.stringify({
-      sid: tab.sessionId.slice(0, 8),
-      scrollTop: Math.round(el.scrollTop),
-      scrollHeight: el.scrollHeight,
-      clientHeight: el.clientHeight,
-      distBottom: Math.round(el.scrollHeight - el.scrollTop - el.clientHeight),
-      // 秤 6 的三个账本(`pending` 本来就在,不重复开一个字段):
-      // ① `TailWindow.pending` —— 还没上屏的整条 payload,**这一份是真的文本驻留**
-      pending: tab.window.pendingCount,
-      // ② `BranchFolder.records` —— 每条一个 {uuid,parentUuid,timestamp} 三元组,不含正文
-      branchRecords: branchRecordCount(tab.branchFolder),
-      // ③ 大纲的条数 —— 〔SE1〕清单问后端要，前端只留面板上那几行（每行一份 80 字摘要）
-      userInputs: tab.outline.count,
-      midBuffer: tab.midBatchBuffer.length,
-      // 〔`设计/10` 骨架〕接上没有 · 索引总条数 · 还在占位里的行数 · 占位块数（`timeline` 里含占位条目）
-      skeleton: tab.skeleton
-        ? {
-            rows: tab.skeleton.ledger.count,
-            pendingRows: tab.skeleton.pendingRows,
-            gaps: tab.skeleton.gapCount,
-          }
-        : tab.skeletonFetch,
-      timeline: tab.timeline.size,
-      foldWraps: tab.stream.contentElement.querySelectorAll(":scope > .branch-fold-wrap").length,
-      sentinel:
-        tab.stream.contentElement.querySelector(":scope > .stream-more-above")?.textContent ??
-        null,
-      err: statusText.startsWith("ERR") || statusText.startsWith("REJ") ? statusText : null,
-    });
-  }
-
-  /**
-   * F40b:顶端哨兵——账本非空时置顶「还有 N 条更早消息」,账尽移除。
-   * 非 timeline 实体、无 data-uuid(BranchFolder 视作断 run,天然免疫 fold);
-   * 二分插入的 anchor 恒为 timeline 元素,最老卡 insertBefore(首卡) 自然落哨兵后。
-   */
-  private updateSentinel(tab: Tab): void {
-    const content = tab.stream.contentElement;
-    let el = content.querySelector(":scope > .stream-more-above") as HTMLElement | null;
-    const n = tab.window.pendingCount;
-    // 〔`设计/10` 骨架〕接上了 ⇒ 占位本身就是「上面还有」，哨兵退场
-    if (n === 0 || tab.skeleton) {
-      el?.remove();
-      return;
-    }
-    if (!el) {
-      el = document.createElement("div");
-      el.className = "stream-more-above";
-      content.prepend(el);
-    }
-    el.textContent = `↑ 还有 ${n} 条更早消息 · 上翻加载`;
-  }
-
-  /** F40a:virgin 后台 tab 的空闲物化队列(串行;rIC 缺失时 setTimeout 兜底) */
-  private materializeQueue: string[] = [];
-  private materializeScheduled = false;
-
-  private scheduleIdleMaterialize(): void {
-    if (this.materializeScheduled) return;
-    const sid = this.materializeQueue.shift();
-    if (sid === undefined) return;
-    this.materializeScheduled = true;
-    const run = (): void => {
-      this.materializeScheduled = false;
-      const tab = this.tabs.get(sid);
-      // 只物化仍是 virgin 的(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
-      // 账本继续收纳,批结束会重新排队。
-      if (tab && !this.inBatch && tab.window.floorSeq === null) {
-        this.materializeTail(tab);
-      }
-      this.scheduleIdleMaterialize();
-    };
-    if (typeof window.requestIdleCallback === "function") {
-      window.requestIdleCallback(run, { timeout: 2000 });
-    } else {
-      window.setTimeout(run, 200);
-    }
   }
 
   /**
@@ -1424,16 +413,12 @@ export class TabManager {
     }
 
     // 〔SE1〕大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
-    this.noteOutlineLine(tab);
+    this.view.noteOutlineLine(tab);
 
     // A5：换号重启的 compact 完成检测。仅当有该 sid 的等待者才判（常态零开销）：见 compact 摘要
     // 行即 resolve 该等待者（换号重启编排随即从 compact 步进入 kill 步）。
-    if (this.compactWaiters.size > 0) {
-      const waiter = this.compactWaiters.get(payload.session_id);
-      if (waiter && isCompactRecord(payload.message)) {
-        this.compactWaiters.delete(payload.session_id);
-        waiter();
-      }
+    if (this.actions.hasCompactWaiters()) {
+      this.actions.settleCompact(payload.session_id, () => isCompactRecord(payload.message));
     }
 
     // issue #63①：首条带 forkedFrom 的记录 → 锁定血缘、给 tab 标题加 `↳` 徽标(与原会话区分)。
@@ -1442,7 +427,7 @@ export class TabManager {
 
     // Batch14-F42：turn-end 系统通知。放在双重去重之后（重投行不重报）、
     // 渲染管线之前（通知与渲染/收纳互相独立）。批量重放由 inBatch 短路。
-    turnEndNotifier.observe(payload.session_id, tab.title, payload, this.inBatch);
+    turnEndNotifier.observe(payload.session_id, tab.title, payload, this.store.inBatch);
 
     // issue #23（第二增量）：配对 agent 工具调用，喂 AgentsPanel
     this.trackAgents(tab, payload.message);
@@ -1452,132 +437,10 @@ export class TabManager {
     this.trackUsage(tab, payload.message, payload.seq);
 
     // F70：累进本会话改动集（写类工具 file_path）——放在双重去重之后（重投不重复累），
-    // 渲染/收纳门控之前（连"收纳不建卡"的记录也计入）。纯增量、无 DOM。
-    // F91b-fix(batch18 审计修)：re-touch 时 delete+add 把它移到末尾 = **近因序**，让 F91b peek 的
-    // slice(-8) 显「最近改的 8 个」（原 Set 只记首触序，此刻正猛改的老文件被埋）。Set 成员/size 不变，
-    // F70 全景高亮按成员判定、与序无关，安全。O(1)/文件。
-    for (const f of collectEditedFiles(payload.message)) {
-      tab.touchedFiles.delete(f);
-      tab.touchedFiles.add(f);
-    }
+    // 渲染/收纳门控之前（连"收纳不建卡"的记录也计入）。纯增量、无 DOM。近因序那条理由见 `noteTouchedFiles` 头注。
+    noteTouchedFiles(tab, payload.message);
 
-    const sink: StreamSink = {
-      timeline: tab.timeline,
-      onBranchRecord: (rec: BranchRecord) => tab.branchFolder.recordAdded(rec),
-      // issue #36：队列消息内容 → 折叠豁免集合
-      onQueueOperation: (content: string) => tab.branchFolder.addQueuedContent(content),
-      onTitleUpdate: (title: string) => this.applyAiTitle(tab, title),
-      onRealUserInput: (sid: string) => {
-        this.userActive(sid);
-        this.refreshOutline(tab); // 〔SE1〕真用户输入上屏 ⇒ 大纲要新的一截
-      },
-      observeForLazyEnhance: this.inBatch,
-      // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
-      // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
-      // ⇒ 实时 tab 上没有入口。按钮本体是共享组件（off-main 的呈现区分也在那里）。
-      // **G6 起远端也挂**；〔`K-R88` 09-13〕本机那条也收 sid 之后，
-      // 「本机拿不到 jsonl 路径」这道门对两条路都不再是门槛。
-      onCardRendered: (el, msg) => {
-        if (msg.type !== "user" && msg.type !== "assistant") return;
-        if (!msg.uuid) return;
-        attachBranchButton(el, {
-          uuid: msg.uuid,
-          sourceSessionId: tab.sessionId,
-          origin: tab.origin,
-          cwd: tab.cwd ?? undefined,
-          onForked: (res) => void this.startForkedSession(tab, res),
-        });
-      },
-    };
-
-    // Batch13-F40a:meta/branch 收集与渲染解耦——收纳(不建卡)的记录也要喂
-    // title/queue/branch 数据(routeMetaAndBranch 是两条路径的单一来源,账本 §3)。
-    if (routeMetaAndBranch(payload, sink) === "consumed") return;
-
-    // 门控(单洞后缀不变量,纯 seq 判定):
-    // - virgin + batch:active tab 首条 content 钉 floor(尾块直渲,进步式首屏
-    //   与 deferMode 时代一致);后台 tab 恒收纳(virgin,批后空闲物化)。
-    // - virgin + live:新开 tab 直渲并钉 floor。
-    // - seq >= floor:渲染(live 追加/尾块);seq < floor:收纳(旧块/F30 尾部
-    //   优先回填/迟到块——无论 inBatch,与 batch 哨兵解耦)。
-    // D 审计 C-1(近 virgin 竞态):批后 rIC 队列还没轮到该 tab 就来了真 live 行——
-    // 若直接 pinFloor(新行 seq),账本里整段历史会被钉死滞留(F40a 无再物化入口)。
-    // 先物化尾段(takeTail 顺带钉 floor),live 行(seq 恒更新)再照常 admit。
-    if (tab.window.floorSeq === null && !this.inBatch && tab.window.pendingCount > 0) {
-      this.materializeTail(tab);
-    }
-    const floor = tab.window.floorSeq;
-    let render: boolean;
-    if (floor === null) {
-      render = !this.inBatch || this.activeId === tab.sessionId;
-      if (render) tab.window.pinFloor(payload.seq);
-    } else {
-      render = tab.window.admit(payload.seq);
-      // 〔`设计/10` 骨架〕floor 之下、但已被物化过的那段（岛）里迟到的行 ⇒ 就地建卡，不收纳
-      if (!render && tab.skeleton && !tab.skeleton.isPending(payload.seq)) render = true;
-    }
-    // F40b R-1:批期落在渲染窗口内的**中部**插入(seq≥floor 且 <已渲染最高 seq
-    // ——大增量批的老块)→ 缓冲,onBatchEnd 一次挂载,消逐帧上方插入(§21)。
-    // 离线期真新消息:unread 照计(粒度=记录,与逐条渲染的 inserted 判定在
-    // tool-group 合并上略有偏差,99+ 封顶下可接受)。
-    if (render && this.inBatch && payload.seq < tab.timeline.maxSeq) {
-      tab.midBatchBuffer.push(payload);
-      // 徽标刷新攒到批末 flush 一次(D 审计:600 条缓冲 = 600 次全 bar 巡检)
-      if (this.activeId !== tab.sessionId) tab.unread += 1;
-      return;
-    }
-    if (!render) {
-      tab.window.defer(payload);
-      // 仪表(jsdom 单测无 main.ts,须防 undefined)
-      if (window.__ccmPerf) window.__ccmPerf.recordsDeferred = (window.__ccmPerf.recordsDeferred ?? 0) + 1;
-      // 收纳不计 unread——重放历史不是"未读新消息"(修 backlog S-2)
-      return;
-    }
-
-    const ctx: RenderContext = {
-      parentPath: tab.parentPath,
-      origin: tab.origin,
-      toolUseNames: tab.toolUseNames,
-      toolUseElements: tab.toolUseElements,
-      pendingToolResults: tab.pendingToolResults,
-      // P5.5：batch 期间走 lazy hljs（代码块占位 + IntersectionObserver 触发再补跑）
-      lazy: this.inBatch,
-    };
-    const beforeSize = tab.timeline.size;
-    renderContentRecord(payload, ctx, sink);
-    const inserted = tab.timeline.size > beforeSize;
-
-    // unread 计数：只有真新 entry 入 timeline 才算（tool-group 合并到旧 group 不算）
-    if (inserted && this.activeId !== tab.sessionId) {
-      tab.unread += 1;
-      // ★ F15：**帧末合批**，不是逐行整刷。
-      // 这里是 live 路上每来一行都会走到的地方，而 `refreshTabBar` 是整条 bar 的重刷；
-      // 徽标上的数字攒到帧末一次性更新，用户看到的结果一模一样。
-      // ⚠ 只合批**这一处** —— 其余十几个 `refreshTabBar()` 调用点是用户动作触发的
-      // （切 tab / 关 tab / 改名…），一帧最多一次，合批对它们没有收益，
-      // 反而会把「点完立刻看到」变成「下一帧才看到」。
-      this.scheduleTabBarRefresh();
-    }
-  }
-
-  /**
-   * 〔SE1〕大纲：一条 live 记录到了 —— 记一笔「又长了」（O(1)，不判是不是用户输入）。
-   * 本 tab 是 active、非批期、而且**还一次都没要过**（首个 tab 建出来时路径可能还没到）⇒ 要一次。
-   */
-  private noteOutlineLine(tab: Tab): void {
-    tab.outline.markStale();
-    if (!tab.outline.everFetched && !this.inBatch && this.activeId === tab.sessionId) {
-      void tab.outline.refresh();
-    }
-  }
-
-  /**
-   * 〔SE1〕大纲：向后端要新的一截（从上次的 `end` 接着要；在途就合并成一趟）。
-   * 批期不要 —— 批结束时 active tab 统一要一次，后台 tab 切进来再要（`needsFetch`）。
-   */
-  private refreshOutline(tab: Tab): void {
-    if (this.inBatch) return;
-    void tab.outline.refresh();
+    this.view.ingest(tab, payload);
   }
 
   /**
@@ -1587,81 +450,6 @@ export class TabManager {
    * 首条行回填；pendingArchive/pendingActivity 落实、batch 模式继承均沿用。
    * 已存在同 sid Tab 时为 no-op（幂等，重连重发 session_added 无害）。
    */
-  /**
-   * Batch7-F24 树状排序：bg tab 插到同 (cwd, origin) 交互宿主（及其既有 bg 子项）
-   * 之后；无宿主则追加末尾。交互 tab 创建时反向重锚——把已存在的同 (cwd, origin)
-   * bg tab 拉到自己身后（骨架清单里 bg 可能先于宿主出现）。父子判定 v1 = cwd
-   * 归属（pidfile 无 parentSessionId 字段，精确父子留 backlog）。
-   */
-  /**
-   * 〔步 17·C · 2026-09-21〕新 tab 落位 = **先按树摆（`placeInTree`），再按盘上那份顺序摆**。
-   *
-   * 🔴 **这一层是那个 no-op 的第二半修法**：tab 是陆续到的，而 `loadOrder` 只跑一次
-   *   ⇒ 只在 `loadOrder` 里应用一次，**后到的每一个 tab 都会落到末尾**，
-   *   盘上给它留的那一格永远用不上（现打：会话到齐后顺序 == 到达序）。
-   * ⚠ 包成两层而不是往 `placeInTree` 里塞一句：它有 3 个 `return` 出口，
-   *   逐个补一句就是下一次「补漏了一个出口」。
-   * ⚠ 这里**只动 `orderedIds`、不碰 DOM** —— 拖拽期间的重画抑制（★ 6d）由
-   *   `refreshTabBar` 那道守卫管，与本函数无关（今天 `placeInTree` 也是这个形状）。
-   */
-  private placeInOrder(tab: Tab): void {
-    this.placeInTree(tab);
-    this.applySavedOrder();
-  }
-
-  private placeInTree(tab: Tab): void {
-    const isBg = tab.kind !== null && tab.kind !== "interactive";
-    const sameHost = (t: Tab | undefined): boolean =>
-      !!t && t.cwd !== null && t.cwd === tab.cwd && t.origin === tab.origin;
-    if (isBg && tab.cwd) {
-      // 找宿主（交互 + 同 cwd/origin）——插到宿主连同其已有 bg 子串之后
-      for (let i = 0; i < this.orderedIds.length; i++) {
-        const t = this.tabs.get(this.orderedIds[i]);
-        if (sameHost(t) && (t!.kind === null || t!.kind === "interactive")) {
-          let j = i + 1;
-          while (j < this.orderedIds.length) {
-            const c = this.tabs.get(this.orderedIds[j]);
-            if (sameHost(c) && c!.kind !== null && c!.kind !== "interactive") j++;
-            else break;
-          }
-          this.orderedIds.splice(j, 0, tab.sessionId);
-          return;
-        }
-      }
-      this.orderedIds.push(tab.sessionId);
-      return;
-    }
-    // 交互 tab：追加，再把**真孤儿** bg 子项拉到身后（保持原相对序）。
-    // 已紧跟在先到宿主（同 cwd/origin 交互 tab）之后的 bg 子串不动——
-    // 计划契约"多宿主取第一个"（审计 D-R3：第二个同 cwd 交互会话不许搬走
-    // 第一个宿主已挂好的子树）。
-    this.orderedIds.push(tab.sessionId);
-    if (tab.cwd) {
-      const orphans: string[] = [];
-      let anchored = false; // 当前扫描位置是否处于"sameHost 宿主的 bg 子串"内
-      for (const sid of this.orderedIds) {
-        if (sid === tab.sessionId) continue;
-        const t = this.tabs.get(sid);
-        const isBg = !!t && t.kind !== null && t.kind !== "interactive";
-        if (!isBg) {
-          anchored = sameHost(t) && (t!.kind === null || t!.kind === "interactive");
-          continue;
-        }
-        if (sameHost(t)) {
-          if (!anchored) orphans.push(sid);
-          // anchored 保持——宿主的 bg 子串延续
-        } else {
-          anchored = false; // 异族 bg 打断子串
-        }
-      }
-      if (orphans.length) {
-        this.orderedIds = this.orderedIds.filter((sid) => !orphans.includes(sid));
-        const at = this.orderedIds.indexOf(tab.sessionId) + 1;
-        this.orderedIds.splice(at, 0, ...orphans);
-      }
-    }
-  }
-
   createSkeletonTab(
     sessionId: string,
     cwd: string | null,
@@ -1671,8 +459,8 @@ export class TabManager {
     // E73：`null` = 没说（旧 backend / 存量会话）= 视为可以。只有显式 `false` 才记账。
     attachable: boolean | null = null,
   ): void {
-    if (attachable === false) this.notAttachableSids.add(sessionId);
-    else this.notAttachableSids.delete(sessionId);
+    if (attachable === false) this.store.notAttachableSids.add(sessionId);
+    else this.store.notAttachableSids.delete(sessionId);
     this.ensureTab(sessionId, cwd, "", Number.MAX_SAFE_INTEGER, origin, kind, name);
   }
 
@@ -1685,12 +473,12 @@ export class TabManager {
    *（源头是 pidfile 的同名布尔，契约见 `src/doc/IPC-PROTOCOL.md` §9.3）。
    */
   isAttachable(sid: string): boolean {
-    return !this.notAttachableSids.has(sid);
+    return !this.store.notAttachableSids.has(sid);
   }
 
   /** Batch5-F19：启动 active 选择用（last-active 是否已有 tab）。 */
   hasTab(sessionId: string): boolean {
-    return this.tabs.has(sessionId);
+    return this.store.tabs.has(sessionId);
   }
 
   /**
@@ -1699,7 +487,7 @@ export class TabManager {
    * 本地 code-picture 索引不到，全景侧据此显式提示不索引）。**additive getter，只读，不改既有逻辑。**
    */
   activeRepoInfo(): { cwd: string; origin: string | null } | null {
-    const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (!tab || !tab.cwd) return null;
     return { cwd: tab.cwd, origin: tab.origin };
   }
@@ -1712,7 +500,7 @@ export class TabManager {
   touchedFilesFor(
     sid: string,
   ): { cwd: string; origin: null; files: string[] } | null {
-    const tab = this.tabs.get(sid);
+    const tab = this.store.tabs.get(sid);
     if (!tab || !tab.cwd || tab.origin !== null) return null;
     return { cwd: tab.cwd, origin: null, files: [...tab.touchedFiles] };
   }
@@ -1733,56 +521,20 @@ export class TabManager {
     readyOrigins: Set<string> = new Set(),
     currentByOrigin: Map<string, string> = new Map(),
   ): void {
-    this.sessionAccountsByS = new Map();
+    this.store.sessionAccountsByS = new Map();
     for (const r of rows) {
-      if (r.sessionId) this.sessionAccountsByS.set(r.sessionId, r);
+      if (r.sessionId) this.store.sessionAccountsByS.set(r.sessionId, r);
     }
-    this.accountEmailByName = emailByName;
-    this.accountLastByS = lastAccountByS;
-    this.accountReadyOrigins = readyOrigins;
-    this.currentByOrigin = currentByOrigin;
-    for (const [sid, refs] of this.tabButtons) {
-      const tab = this.tabs.get(sid);
-      if (tab) this.updateAccountBadge(refs, sid, tab);
-    }
-  }
-
-  /**
-   * F09（R7 语义反转）：账号徽章从"仅不一致时才显示的警示信号"改为"账号已知即恒显示的身份
-   * 标识"——门（`shouldShowAccountBadge`）通过 + 账号已知（源③已知除外）就显示，不再要求
-   * `detectAccountMismatch` 为真。旧版"不一致才显示"这条信息没有消失，只是从"触发显示的唯一
-   * 条件"降级为"视觉区分的一个维度"：一致态也显示头像（用户能一眼看出这个会话归属哪个账号），
-   * 不一致态仍用 tooltip 追加"与当前账号不一致"提示，且沿用既有 live 实心/last 幽灵区分
-   * （不新增视觉语言）。⇄ 一键对齐按钮随对齐全套一并删除（见 features/F09-ui-convergence.md
-   * §1"不做什么"——批量/一键对齐是组合层便利,不做等价替代,用户改走 flyout 逐会话操作）。
-   */
-  private updateAccountBadge(refs: TabButtonRefs, sid: string, tab: Tab): void {
-    const hide = (): void => {
-      refs.acctBadge.textContent = "";
-      refs.acctBadge.className = "tab-acct-badge";
-      refs.acctBadge.style.display = "none";
-    };
-    if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) return hide();
-    const b = sessionBadge(
-      sid,
-      tab.origin,
-      this.sessionAccountsByS,
-      this.accountEmailByName,
-      this.accountLastByS,
-    );
-    if (!b || !b.account) return hide(); // 未知账号（源③）→ 退 hover；顺带把 b.account 窄化为 string
-    refs.acctBadge.textContent = "";
-    refs.acctBadge.className = "tab-acct-badge";
-    refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost: b.source === "last" }));
-    const current = tab.origin ? this.currentByOrigin.get(tab.origin) ?? null : null;
-    const mismatch = detectAccountMismatch(b.account, current);
-    refs.acctBadge.title = mismatch ? `${b.tooltip} · 与当前账号「${current}」不一致` : b.tooltip;
-    refs.acctBadge.style.display = "";
+    this.store.accountEmailByName = emailByName;
+    this.store.accountLastByS = lastAccountByS;
+    this.store.accountReadyOrigins = readyOrigins;
+    this.store.currentByOrigin = currentByOrigin;
+    this.bar.refreshAccountBadges();
   }
 
   snapshotSessions(): GridSessionSnapshot[] {
     const out: GridSessionSnapshot[] = [];
-    for (const tab of this.tabs.values()) {
+    for (const tab of this.store.tabs.values()) {
       let running = 0;
       for (const a of tab.agents.values()) {
         if (a.status === "running") running += 1;
@@ -1804,7 +556,7 @@ export class TabManager {
             : null,
         unread: tab.unread,
         kind: tab.kind,
-        account: this.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
+        account: this.store.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
       });
     }
     return out;
@@ -1825,7 +577,7 @@ export class TabManager {
       account: s.account,
       mismatch: detectAccountMismatch(
         s.account,
-        s.origin ? this.currentByOrigin.get(s.origin) ?? null : null,
+        s.origin ? this.store.currentByOrigin.get(s.origin) ?? null : null,
       ),
     }));
     return JSON.stringify(sessions);
@@ -1837,7 +589,7 @@ export class TabManager {
    * 未知 sid → null（选中会话恰好消失时调用方据此清选中）。
    */
   peekSession(sessionId: string): SessionPeek | null {
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
     const agents = [...tab.agents.values()]
       .map((a) => ({ label: a.label, status: a.status }))
@@ -1849,12 +601,22 @@ export class TabManager {
     };
   }
 
-  /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。 */
-  persistLastActive = true;
+  /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。〔U2〕值住路由（`tab-router.ts`）。 */
+  get persistLastActive(): boolean {
+    return this.router.persistLastActive;
+  }
+  set persistLastActive(v: boolean) {
+    this.router.persistLastActive = v;
+  }
 
   /** Batch5-F19（G 验收）：用户手动切 tab 时回调——main.ts 用它清 pendingStartupActive，
-   *  防迟到的远端宣告补切抢走用户已选的焦点。 */
-  onManualSwitch: (() => void) | null = null;
+   *  防迟到的远端宣告补切抢走用户已选的焦点。〔U2〕值住路由（`tab-router.ts`）。 */
+  get onManualSwitch(): (() => void) | null {
+    return this.router.onManualSwitch;
+  }
+  set onManualSwitch(fn: (() => void) | null) {
+    this.router.onManualSwitch = fn;
+  }
 
   /** F70：右键「在全景高亮本会话改动」回调——main.ts 注入（TabManager 不直接持有
    *  PanoramaView，走注入回调，同 onManualSwitch 范式）。仅本地会话菜单出现该项。 */
@@ -1875,7 +637,7 @@ export class TabManager {
     kind: string | null = null,
     bgName: string | null = null,
   ): Tab {
-    let tab = this.tabs.get(sessionId);
+    let tab = this.store.tabs.get(sessionId);
     if (tab) {
       // SSH 重连：远端会话掉线时被 flush 归档过，现在又收到它的行 = backend 在重放 = 会话仍
       // 活着 → 复活成 live。必须放在 ensureTab 里（在 onLine 的 seq 去重 return 之前），否则整段
@@ -1883,7 +645,7 @@ export class TabManager {
       // 翻转，避免会话退出时尾写把已归档的本地 Tab 误复活（远端掉线归档是连接驱动，无此风险）。
       if (tab.status === "archived" && tab.origin !== null) {
         tab.status = "live";
-        this.clearPinHint(sessionId); // 〔步 17·B〕远端复活：空态提示的对象没了
+        this.prefs.clearPinHint(sessionId); // 〔步 17·B〕远端复活：空态提示的对象没了
         this.refreshTabBar();
       }
       // audit-fixes F03.2（D 审计修）：远端 idle-tmux tab 又收到后端重宣告 / jsonl 行 = claude
@@ -1905,9 +667,9 @@ export class TabManager {
         tab.kind = "interactive";
         tab.bgName = null;
         tab.title = this.computeTitle(tab);
-        const i = this.orderedIds.indexOf(sessionId);
-        if (i >= 0) this.orderedIds.splice(i, 1);
-        this.placeInOrder(tab);
+        const i = this.store.orderedIds.indexOf(sessionId);
+        if (i >= 0) this.store.orderedIds.splice(i, 1);
+        this.store.placeInOrder(tab);
         this.refreshTabBar();
       }
       // Batch5-F18：骨架 Tab（无行创建）的 parentPath 为空——首条带路径的行回填，
@@ -1930,49 +692,14 @@ export class TabManager {
 
     const title = computeTitleFor(sessionId, cwd, null, origin, kind, bgName);
 
-    const streamEl = document.createElement("div");
-    streamEl.className = "stream"; // 默认 .stream 已含 visibility:hidden（见 styles.css）
-    this.streamRootEl.appendChild(streamEl);
-
-    const stream = new MessageStream(streamEl);
-    const branchFolder = new BranchFolder(stream.contentElement);
-    const timeline = new RecordTimeline(stream);
-
-    // K-R45 乙：本 tab 的「我说过的 N 句」。界面是共用那一份，这里只给它两件宿主自己的事：
-    // ① 怎么跳 —— 实时窗口没有 `uuidToIdx` / `UnrenderedRanges`，够得着的只有**已经建了卡的**
-    //    那些（`revealCard` 找不到就什么都不做：这条流本来就贴在底部，再滚一次是无意义的动作）；
-    // ② 跳空了怎么解释 —— 实时这一侧的成因与查看器**不是同一件事**：那边是「渲染时被剥成空卡」
-    //    （永久），这边是「还收纳在 `TailWindow` 里没建卡」（**上翻补一批就好了**）。
-    const inputsEl = document.createElement("div");
-    inputsEl.className = "live-user-inputs";
-    const inputsPanel = new UserInputPanel({
-      // 〔`设计/10` 骨架 · 子步 4〕骨架接上之后，「还没加载」的那条先按 uuid→seq 物化出来再跳。
-      jumpTo: (uuid) => {
-        const sk = this.tabs.get(sessionId)?.skeleton;
-        const seq = sk?.ledger.uuidToSeq.get(uuid);
-        if (sk && seq !== undefined && sk.isPending(seq)) sk.ensure(seq);
-        return revealCard(streamEl, uuid);
-      },
-      unjumpableHint: "这一条还没加载出来 —— 往上翻到更早的消息之后再点",
-    });
-    inputsEl.append(inputsPanel.toggle, inputsPanel.panel);
-    this.streamRootEl.appendChild(inputsEl);
-    // 〔SE1〕大纲的数据源：路径可能要等首条行回填（骨架 tab），所以每次要的时候现取
-    const outline = new OutlineSource(inputsPanel, () => {
-      const t = this.tabs.get(sessionId);
-      return t?.parentPath ? { origin: t.origin ?? LOCAL_ORIGIN, jsonlPath: t.parentPath } : null;
-    });
-    // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
-    // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
-    if (this.inBatch) {
-      branchFolder.setBatchMode(true);
-    }
+    const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline } =
+      this.view.mountTabDom(sessionId);
 
     // v2.3.0 issue #11: 异步 fetch 初始 task 快照。task-update 事件路径并行更新
     // tasksBySid，两路收敛到同一份数据；若 sid 是 active 同步推给全局 panel。
     void fetchSessionTasks(sessionId).then((tasks) => {
-      this.tasksBySid.set(sessionId, tasks);
-      if (this.activeId === sessionId) {
+      this.store.tasksBySid.set(sessionId, tasks);
+      if (this.store.activeId === sessionId) {
         this.tasksPanel?.setSession(sessionId, tasks);
       }
     });
@@ -2012,7 +739,7 @@ export class TabManager {
       inputsPanel,
       inputsEl,
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
-      activity: this.pendingActivity.get(sessionId) ?? null,
+      activity: this.store.pendingActivity.get(sessionId) ?? null,
       tmuxIdle: false, // audit-fixes F03.2：默认非灰；pendingTmuxIdle 在下方落实
       agents: new Map(),
       touchedFiles: new Set(), // F70：会话改动集，onLine 增量累进
@@ -2020,57 +747,23 @@ export class TabManager {
       latestModel: null,
       latestUsageSeq: -1,
     };
-    this.pendingActivity.delete(sessionId);
-    // F40b:上翻补批触发器(passive 只读滚动位置;handler 内判 active,后台 tab
-    // 的程序化滚动/尺寸变化不触发补批)
-    const fillHandler = (): void => {
-      if (this.activeId !== sessionId) return;
-      const t = this.tabs.get(sessionId);
-      // 〔`设计/10` 骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
-      // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
-      if (t?.skeleton) {
-        t.skeleton.fillVisible();
-        return;
-      }
-      if (t && t.streamEl.scrollTop <= TabManager.TOP_TRIGGER_PX) this.fillAbove(t);
-    };
-    streamEl.addEventListener("scroll", fillHandler, { passive: true });
-    tab.fillHandler = fillHandler;
-    // ★ 步 3：**视口自己变大 ⇒ 重新补批。**
-    //
-    // `fillHandler` 挂在 scroll 上，而**不可滚的元素根本不产生 scroll 事件** ——
-    // 把窗口从半屏拉到全屏时，多出来的那块空白之前没有任何入口去填。
-    // `MessageStream` 那边现在也观察 `scrollEl`（见 stream.ts），这里是它的消费端。
-    // ⚠ 三道门都不可少：① 只给 active tab 补（后台 tab 0×0 → 真实尺寸那一跳不是
-    // 「用户拉窗口」）；② 账本空了不补；③ 已经满屏了不补（否则每次 RO 都白干一轮）。
-    stream.onViewportResize = (): void => {
-      if (this.activeId !== sessionId) return;
-      const t = this.tabs.get(sessionId);
-      if (!t || t.window.pendingCount === 0) return;
-      // 〔`设计/10` 骨架〕接上了 ⇒ 视口变大露出的是占位，只物化露出来的那段
-      if (t.skeleton) {
-        t.skeleton.fillVisible();
-        return;
-      }
-      if (this.contentReachesBottom(t)) return;
-      this.materializeUntilFilled(t);
-      this.updateSentinel(t);
-    };
+    this.store.pendingActivity.delete(sessionId);
+    this.view.wireTab(tab);
     // issue #19：若该 sid 的归档信号先于本次建 Tab 到达（见 archiveTab），落实归档，
     // 避免重载后已结束会话复活成关不掉的 live Tab。本地 un-archive（上方 origin!==null
     // 那条）不适用，故归档后续 replay 行也不会把它复活。
-    if (this.pendingArchive.delete(sessionId)) {
+    if (this.store.pendingArchive.delete(sessionId)) {
       tab.status = "archived";
       tab.activity = null; // 同 archiveTab：死会话不留陈旧灯/tooltip
-      this.pendingTmuxIdle.delete(sessionId); // 归档优先：真 tmux 没了，灰灯作废
-    } else if (this.pendingTmuxIdle.delete(sessionId)) {
+      this.store.pendingTmuxIdle.delete(sessionId); // 归档优先：真 tmux 没了，灰灯作废
+    } else if (this.store.pendingTmuxIdle.delete(sessionId)) {
       // audit-fixes F03.2：灰灯信号早于建 Tab（F5 重放乱序）→ 落实为 idle-tmux 灰点。
       tab.tmuxIdle = true;
     }
-    this.tabs.set(sessionId, tab);
-    this.placeInOrder(tab);
+    this.store.tabs.set(sessionId, tab);
+    this.store.placeInOrder(tab);
 
-    if (this.activeId === null) {
+    if (this.store.activeId === null) {
       // "auto"：首个 Tab 的激活不是用户手势，不该占用 5s manualOverride 抑制
       // auto-follow（G5 验收 S-1）
       this.switchTo(sessionId, "auto");
@@ -2090,17 +783,9 @@ export class TabManager {
     this.refreshTabBar();
   }
 
-  /**
-   * issue #63①：从记录里取 `forkedFrom.sessionId`，锁定血缘并给标题加 `↳` 徽标（同 aiTitle:出现一次
-   * 就锁,后续记录/重投不覆盖）。fork 会话的首条记录带 `forkedFrom`（Claude 原生 `/branch` 格式,
-   * 后端 history.rs 也读它）——但活 tab 层此前完全不看它,fork 与原会话是同名独立 tab、分不清。
-   */
+  /** issue #63①：首条带 `forkedFrom` 的记录锁定血缘（`tab-session-facts.ts::noteForkedFrom`）⇒ 标题加 `↳` 徽标。 */
   private applyForkedFrom(tab: Tab, message: unknown): void {
-    if (tab.forkedFromSessionId) return; // 已锁定
-    const fk = (message as { forkedFrom?: { sessionId?: unknown } }).forkedFrom;
-    const sid = fk?.sessionId;
-    if (typeof sid !== "string" || sid.length === 0) return;
-    tab.forkedFromSessionId = sid;
+    if (!noteForkedFrom(tab, message)) return;
     tab.title = this.computeTitle(tab);
     this.refreshTabBar();
   }
@@ -2135,13 +820,13 @@ export class TabManager {
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
   archiveTab(sessionId: string): void {
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       // issue #19：Tab 还没被 ensureTab 建出来（归档信号早于 replay 行到达）——
       // 记下待归档，建 Tab 时落实。否则这里直接 return 会静默丢弃归档 → 僵尸 live Tab。
-      this.pendingArchive.add(sessionId);
-      this.pendingActivity.delete(sessionId); // issue #23：死会话的暂存灯一并清
-      this.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：归档优先，清暂存灰灯
+      this.store.pendingArchive.add(sessionId);
+      this.store.pendingActivity.delete(sessionId); // issue #23：死会话的暂存灯一并清
+      this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：归档优先，清暂存灰灯
       return;
     }
     if (tab.status === "archived") return;
@@ -2169,14 +854,14 @@ export class TabManager {
    * 会话首启、jsonl 行尚未建 Tab）则 no-op：随后 jsonl-batch 建的新 Tab 默认即 live。
    */
   reviveTab(sessionId: string): void {
-    this.pendingArchive.delete(sessionId);
-    this.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：复活即清暂存灰灯
-    const tab = this.tabs.get(sessionId);
+    this.store.pendingArchive.delete(sessionId);
+    this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：复活即清暂存灰灯
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) return;
     if (tab.origin !== null) return; // 仅本地；远端复活走 ensureTab 见行路径
     if (tab.status !== "archived") return;
     tab.status = "live";
-    this.clearPinHint(sessionId); // 〔步 17·B〕真接上了 ⇒ 那块「只能 resume」的空态该走了
+    this.prefs.clearPinHint(sessionId); // 〔步 17·B〕真接上了 ⇒ 那块「只能 resume」的空态该走了
     this.refreshTabBar();
     this.emitTabStateProbe(tab); // F-E1:本地复活(archived→live)
   }
@@ -2190,9 +875,9 @@ export class TabManager {
    * （claude 再产活动，非 queue 的次要信号）/ reviveTab（本地）/ archiveTab（tmux 真没了）。
    */
   markTmuxIdle(sessionId: string): void {
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) {
-      this.pendingTmuxIdle.add(sessionId);
+      this.store.pendingTmuxIdle.add(sessionId);
       return;
     }
     if (tab.status === "archived") return; // 归档优先，不回置灰
@@ -2213,10 +898,10 @@ export class TabManager {
     waitingFor: string | null,
   ): void {
     const act = status === null ? null : { status, waitingFor };
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) {
-      if (act) this.pendingActivity.set(sessionId, act);
-      else this.pendingActivity.delete(sessionId);
+      if (act) this.store.pendingActivity.set(sessionId, act);
+      else this.store.pendingActivity.delete(sessionId);
       return;
     }
     // archived 不更新（审计：心跳清死会话后磁盘残留 PID.json 被重扫会推陈旧
@@ -2244,146 +929,28 @@ export class TabManager {
     this.refreshTabBar();
   }
 
-  /**
-   * issue #23（第二增量）：从 jsonl 流配对 agent 工具调用。
-   * - assistant 的 Task/Agent tool_use → 注册 running（label 取 input.description，
-   *   回退 prompt 首行 / 工具名）
-   * - user 的 tool_result（按 tool_use_id 命中）→ done
-   * 防 spam：只在真有变化时刷新面板。结构防御：message 形态全 unknown 窄化，
-   * 任何不匹配静默跳过（§18 同源精神）。
-   */
-  /**
-   * F88b：从 assistant 记录抽 usage → 更新 tab.latestPromptTokens/latestModel（供 HUD context%）。
-   * prompt token = input + cache_creation + cache_read（本轮喂进模型的总量，即 context 占用近似）。
-   * 只认带 usage 的 assistant 记录（user/system/无 usage 的一律跳过，保留上一次值）。
-   *
-   * 审计加固：
-   * - **seq 单调**：onLine 投递序不保证升序（重放/远端重投），故只在 `seq >= tab.latestUsageSeq`
-   *   时覆盖——「最新」= 最大 seq 而非最后到达，防低 seq 历史记录盖掉高 seq 实时值（会误显低占用%）。
-   * - **批期不刷 chip**：重放/大增量批（inBatch）里逐条 assistant 记录都触发 setActive 会视觉抖动
-   *   （10%→20%→…），故批期只更 tab 字段、不喂回调；onBatchEnd 对活跃 tab 单次 flush。
-   */
+  /** F88b：带 usage 的 assistant 记录 ⇒ 更新本会话最新 prompt token ＋ model（`tab-session-facts.ts::noteUsage`）。
+   *  批期不即时喂 chip（onBatchEnd 单次 flush）；实时流则即时刷活跃会话。 */
   private trackUsage(tab: Tab, message: unknown, seq: number): void {
-    const rec = message as {
-      type?: string;
-      message?: {
-        model?: unknown;
-        usage?: {
-          input_tokens?: unknown;
-          cache_creation_input_tokens?: unknown;
-          cache_read_input_tokens?: unknown;
-        };
-      };
-    };
-    if (rec?.type !== "assistant") return;
-    const usage = rec.message?.usage;
-    if (!usage || typeof usage !== "object") return;
-    const num = (v: unknown): number => (typeof v === "number" && v >= 0 ? v : 0);
-    const prompt =
-      num(usage.input_tokens) +
-      num(usage.cache_creation_input_tokens) +
-      num(usage.cache_read_input_tokens);
-    // 全 0（无任何 token 字段）→ 视为无效 usage，不覆盖上一次有效值。
-    if (prompt <= 0) return;
-    // seq 回退（更老的记录晚到）→ 不覆盖更新的值。
-    if (seq < tab.latestUsageSeq) return;
-    tab.latestUsageSeq = seq;
-    tab.latestPromptTokens = prompt;
-    tab.latestModel = typeof rec.message?.model === "string" ? rec.message.model : null;
-    // 批期不即时喂 chip（onBatchEnd 单次 flush）；实时流则即时刷活跃会话。
-    if (!this.inBatch && tab.sessionId === this.activeId) {
+    if (!noteUsage(tab, message, seq)) return;
+    if (!this.store.inBatch && tab.sessionId === this.store.activeId) {
       this.onActiveUsageChanged?.(tab.latestModel, tab.latestPromptTokens);
     }
   }
 
+  /** issue #23（第二增量）：配对 agent 工具调用（`tab-session-facts.ts::noteAgents`），真有变化才刷面板。 */
   private trackAgents(tab: Tab, message: unknown): void {
-    const rec = message as {
-      type?: string;
-      timestamp?: unknown;
-      message?: { content?: unknown };
-    };
-    const content = rec?.message?.content;
-    if (!Array.isArray(content)) return;
-    // F77：这条 assistant 记录的 timestamp——存进 AgentEntry 供「点进 agent 看记录」的 load_subagent 定位。
-    const recTimestamp = typeof rec.timestamp === "string" ? rec.timestamp : "";
-    let changed = false;
-    if (rec.type === "assistant") {
-      for (const b of content) {
-        const blk = b as {
-          type?: string;
-          id?: string;
-          name?: string;
-          input?: { description?: unknown; prompt?: unknown; subagent_type?: unknown };
-        };
-        if (
-          blk?.type !== "tool_use" ||
-          typeof blk.id !== "string" ||
-          typeof blk.name !== "string" ||
-          !isAgentTool(blk.name)
-        ) {
-          continue;
-        }
-        // F77：desc **trim 后**（镜像卡片 `input.description?.trim()`），供 load_subagent 精确匹配。
-        const desc = (
-          typeof blk.input?.description === "string" ? blk.input.description : ""
-        ).trim();
-        const prompt =
-          typeof blk.input?.prompt === "string" ? blk.input.prompt : "";
-        const label =
-          desc || prompt.split("\n")[0]?.slice(0, 80) || blk.name;
-        const agentType =
-          typeof blk.input?.subagent_type === "string"
-            ? blk.input.subagent_type
-            : null;
-        tab.agents.set(blk.id, {
-          id: blk.id,
-          label,
-          agentType,
-          status: "running",
-          timestamp: recTimestamp, // F77：供 load_subagent 定位子 agent
-          desc, // F77：load_subagent 精确匹配的 description（trim 后，非展示 label）
-        });
-        changed = true;
-      }
-      // 上限 30：超出删最老的非 running（Map 保持插入序）
-      if (tab.agents.size > 30) {
-        for (const [id, a] of tab.agents) {
-          if (tab.agents.size <= 30) break;
-          if (a.status !== "running") tab.agents.delete(id);
-        }
-      }
-    } else if (rec.type === "user") {
-      for (const b of content) {
-        const blk = b as { type?: string; tool_use_id?: string };
-        if (blk?.type !== "tool_result" || typeof blk.tool_use_id !== "string") {
-          continue;
-        }
-        const a = tab.agents.get(blk.tool_use_id);
-        if (a && a.status === "running") {
-          a.status = "done";
-          changed = true;
-        }
-      }
-    }
-    if (changed) this.agentsChanged(tab);
+    if (noteAgents(tab, message)) this.agentsChanged(tab);
   }
 
-  /** issue #23：会话不再 busy（idle/shell/归档）→ 仍 running 的 agent 标 aborted
-   *（ESC 打断/崩溃不会有 tool_result，防僵尸"运行中"）。 */
+  /** issue #23：会话不再 busy ⇒ 仍 running 的 agent 标 aborted（`tab-session-facts.ts::abortRunningAgents`）。 */
   private sweepRunningAgents(tab: Tab): void {
-    let changed = false;
-    for (const a of tab.agents.values()) {
-      if (a.status === "running") {
-        a.status = "aborted";
-        changed = true;
-      }
-    }
-    if (changed) this.agentsChanged(tab);
+    if (abortRunningAgents(tab)) this.agentsChanged(tab);
   }
 
   /** agents 变化 → 若是 active Tab 同步给全局面板 */
   private agentsChanged(tab: Tab): void {
-    if (this.activeId === tab.sessionId) {
+    if (this.store.activeId === tab.sessionId) {
       this.agentsPanel?.setSession(tab.sessionId, [...tab.agents.values()]);
     }
   }
@@ -2395,9 +962,7 @@ export class TabManager {
    */
   async syncActivitySnapshot(): Promise<void> {
     try {
-      const list = await invoke<
-        { session_id: string; status: string | null; waiting_for: string | null }[]
-      >("list_session_activity");
+      const list = await listSessionActivity();
       for (const a of list) {
         this.updateActivity(a.session_id, a.status, a.waiting_for);
       }
@@ -2412,40 +977,20 @@ export class TabManager {
    * forget 后该 session 不会在下次 F5 刷新时被 event_replay 重放复活。
    */
   closeTab(sessionId: string): void {
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) return;
     if (tab.status !== "archived") return;
 
-    const wasActive = this.activeId === sessionId;
-    const idx = this.orderedIds.indexOf(sessionId);
+    const wasActive = this.store.activeId === sessionId;
+    const idx = this.store.orderedIds.indexOf(sessionId);
     // 优先切到后一个 Tab，否则前一个
     const fallbackId =
-      this.orderedIds[idx + 1] ?? this.orderedIds[idx - 1] ?? null;
+      this.store.orderedIds[idx + 1] ?? this.store.orderedIds[idx - 1] ?? null;
 
-    tab.stream.dispose();
-    tab.streamEl.remove();
-    // K-R45 乙：大纲跟着走（〔SE1〕`reset` 也让在途那趟回来后不许回写）。
-    // 悬浮层是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
-    tab.outline.reset();
-    tab.inputsEl.remove();
-    // 显式清 Map：释放对已卸载 DOM 节点的强引用，让 GC 可早回收
-    // （Map 本身也会随 Tab 对象一起回收，但显式 clear 让 DOM 引用计数立即归零）
-    tab.toolUseNames.clear();
-    tab.toolUseElements.clear();
-    tab.pendingToolResults.clear();
-    tab.seenSeqs.clear();
-    tab.processedUuids.clear();
-    // F40a/b:窗口账本与缓冲持整段历史 payload(大会话数十 MB 级),断引用;摘 fill listener
-    tab.window.dispose();
-    tab.skeleton?.dispose(); // 〔`设计/10` 骨架〕
-    tab.skeleton = null;
-    tab.midBatchBuffer = [];
-    if (tab.fillHandler) tab.streamEl.removeEventListener("scroll", tab.fillHandler);
-    tab.timeline.dispose();
-    tab.branchFolder.dispose();
-    this.tasksBySid.delete(sessionId);
-    this.tabs.delete(sessionId);
-    if (idx >= 0) this.orderedIds.splice(idx, 1);
+    this.view.disposeTab(tab);
+    this.store.tasksBySid.delete(sessionId);
+    this.store.tabs.delete(sessionId);
+    if (idx >= 0) this.store.orderedIds.splice(idx, 1);
     // 〔步 17·B〕**关掉 = 取消固定。**
     //
     // pin 的语义是「别丢」（`§B.3b`），而 `×` 是用户**明确说要丢**。两者撞上时以后者为准 ——
@@ -2453,21 +998,19 @@ export class TabManager {
     // ⚠ 只有真被固定过才写盘：没固定的 tab 关一下不该顺手改 `config.json`。
     if (tab.pinned) {
       tab.pinned = false;
-      this.pinnedRecords.delete(sessionId);
-      void this.persistPinned();
+      this.prefs.pinnedRecords.delete(sessionId);
+      void this.prefs.persistPinned();
     }
-    this.clearPinHint(sessionId);
+    this.prefs.clearPinHint(sessionId);
 
     // 让后端 event_replay 把这个 session 的历史也丢掉
-    void invoke("forget_session", { sessionId }).catch((e) => {
-      console.warn(`forget_session ${sessionId} failed:`, e);
-    });
+    forgetSession(sessionId);
 
     if (wasActive) {
       if (fallbackId !== null) {
         this.switchTo(fallbackId);
       } else {
-        this.activeId = null;
+        this.store.activeId = null;
         // issue #11: 关掉最后一个 Tab → panel 进入 null session 状态
         this.tasksPanel?.setSession(null, []);
         this.agentsPanel?.setSession(null, []);
@@ -2485,14 +1028,8 @@ export class TabManager {
    * 快捷键 Ctrl+Tab / Ctrl+Shift+Tab 用。
    */
   cycleActive(delta: 1 | -1): void {
-    const ids = this.orderedIds;
-    if (ids.length === 0) return;
-    const idx = this.activeId ? ids.indexOf(this.activeId) : -1;
-    const nextIdx = ((idx + delta) % ids.length + ids.length) % ids.length;
-    const targetId = ids[nextIdx];
-    if (targetId && targetId !== this.activeId) {
-      this.switchTo(targetId);
-    }
+    const targetId = this.router.cycleTarget(delta);
+    if (targetId !== null) this.switchTo(targetId);
   }
 
   /**
@@ -2500,12 +1037,8 @@ export class TabManager {
    * N 大于现有 Tab 数 → 静默忽略；N 对应 Tab 已经 active → 无操作。
    */
   jumpToIndex(oneBasedIdx: number): void {
-    const ids = this.orderedIds;
-    if (oneBasedIdx < 1 || oneBasedIdx > ids.length) return;
-    const targetId = ids[oneBasedIdx - 1];
-    if (targetId && targetId !== this.activeId) {
-      this.switchTo(targetId);
-    }
+    const targetId = this.router.indexTarget(oneBasedIdx);
+    if (targetId !== null) this.switchTo(targetId);
   }
 
   /**
@@ -2516,8 +1049,8 @@ export class TabManager {
    * 之后 ensureTab 时会从 tasksBySid 拿数据；fetchSessionTasks 拿到的也是同样数据。
    */
   updateTasks(sessionId: string, tasks: TaskEntry[]): void {
-    this.tasksBySid.set(sessionId, tasks);
-    if (this.activeId === sessionId) {
+    this.store.tasksBySid.set(sessionId, tasks);
+    if (this.store.activeId === sessionId) {
       this.tasksPanel?.setSession(sessionId, tasks);
     }
   }
@@ -2527,8 +1060,7 @@ export class TabManager {
    * 启动时由 main.ts 调一次拉初值；设置面板 toggle 改了也调一次同步。
    */
   applyBehavior(cfg: BehaviorConfig): void {
-    this.autoFollowUserActive = cfg.autoFollowUserActive;
-    this.bringMonitorToFront = cfg.bringMonitorToFrontOnUserActive;
+    this.router.applyBehavior(cfg);
   }
 
   /**
@@ -2545,38 +1077,20 @@ export class TabManager {
    * 通过后调 switchTo(sid, "auto")，可选 invoke bring_monitor_to_front。
    */
   userActive(sessionId: string): void {
-    // v2.6 修回归：B 重构后 render-stream-record 删了 source="live" 过滤参数，
-    // chunked replay batch 期间的历史 user 消息会触发本方法 → 反复自动切 tab。
-    // 在这里加 inBatch 守卫等价 v2.5 的 source==="live" 检查。
-    if (this.inBatch) return;
-    if (!this.autoFollowUserActive) return;
-    if (Date.now() < this.manualOverrideUntil) return;
-    const tab = this.tabs.get(sessionId);
-    if (!tab) return;
-    if (tab.status === "archived") return;
-    if (this.activeId === sessionId) {
-      // 已经在这个 tab 但用户开了"拉前 monitor"也照拉
-      if (this.bringMonitorToFront) {
-        void invoke("bring_monitor_to_front").catch((e) => {
-          console.warn("bring_monitor_to_front failed:", e);
-        });
-      }
-      return;
-    }
-    this.switchTo(sessionId, "auto");
-    if (this.bringMonitorToFront) {
-      void invoke("bring_monitor_to_front").catch((e) => {
-        console.warn("bring_monitor_to_front failed:", e);
-      });
-    }
+    // 〔U2〕五道跳过条件（批期 · 开关 · 5s 手动保护 · 没有 / 已归档 · 已经是它）住路由（`tab-router.ts::autoFollow`）。
+    const decision = this.router.autoFollow(sessionId);
+    if (decision === "ignore") return;
+    // 已经在这个 tab（`front-only`）但用户开了"拉前 monitor"也照拉
+    if (decision === "switch") this.switchTo(sessionId, "auto");
+    if (this.router.bringMonitorToFront) bringMonitorToFront();
   }
 
   /** 快捷键 Ctrl+W：当前活跃 Tab 是 archived 才关，live 不动 */
   closeActiveIfArchived(): void {
-    if (!this.activeId) return;
-    const tab = this.tabs.get(this.activeId);
+    if (!this.store.activeId) return;
+    const tab = this.store.tabs.get(this.store.activeId);
     if (tab && tab.status === "archived") {
-      this.closeTab(this.activeId);
+      this.closeTab(this.store.activeId);
     }
   }
 
@@ -2591,1282 +1105,39 @@ export class TabManager {
       });
       return;
     }
-    if (!this.activeId) return;
-    const tab = this.tabs.get(this.activeId);
+    if (!this.store.activeId) return;
+    const tab = this.store.tabs.get(this.store.activeId);
     if (!tab || tab.status === "archived") return;
     // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；本地 Tab → 原 sid_hwnd_cache 路径。
     if (tab.origin !== null) {
-      void bringRemoteTerminalToFront(this.activeId);
+      void bringRemoteTerminalToFront(this.store.activeId);
     } else {
-      void bringTerminalToFront(this.activeId);
+      void bringTerminalToFront(this.store.activeId);
     }
   }
 
   /** 快捷键 Ctrl+Shift+E：打开当前活跃 Tab 的工作目录到系统文件管理器 */
   openActiveTabCwd(): void {
-    if (!this.activeId) return;
-    void this.openTabCwd(this.activeId);
+    if (!this.store.activeId) return;
+    void this.openTabCwd(this.store.activeId);
   }
 
   /** F77：活跃 tab 的子 agent 加载上下文（parentPath + origin）——main.ts 点 agent 行时用它
    *  调 `load_subagent`。无活跃 tab / 无 parentPath → null；远端会话 origin!==null（不支持，调用方提示）。 */
   getActiveSubagentContext(): { parentPath: string; origin: string | null } | null {
-    const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (!tab || !tab.parentPath) return null;
     return { parentPath: tab.parentPath, origin: tab.origin };
   }
 
   /** issue #10 快捷键 Ctrl+Shift+N：把当前活跃 Tab 在独立只读窗口打开 */
   openActiveInNewWindow(): void {
-    if (this.activeId) void this.openInNewWindow(this.activeId);
-  }
-
-  /**
-   * issue #10：在独立只读窗口打开指定 session（Tab 右键 / 快捷键 / 拖拽撕离）。
-   *
-   * `screenX` / `screenY`（可选）= 拖拽撕离的落点屏幕坐标（来自 mouseup 的
-   * `e.screenX/screenY`）。两者都给出时透传给后端在该处摆放新窗口；右键 / 快捷键
-   * 不传则后端走默认居中。
-   */
-  private async openInNewWindow(
-    sid: string,
-    screenX?: number,
-    screenY?: number,
-  ): Promise<void> {
-    const tab = this.tabs.get(sid);
-    if (!tab) return;
-    try {
-      await invoke("open_session_in_new_window", {
-        sessionId: sid,
-        title: tab.title,
-        ...(screenX !== undefined && screenY !== undefined
-          ? { x: screenX, y: screenY }
-          : {}),
-      });
-    } catch (e) {
-      showActionFailureToast("打开新窗口失败", String(e));
-    }
-  }
-
-  /**
-   * Tab 撕离拖拽起点（左键 mousedown）。只是"候选"：记录起点 + 挂 document 级
-   * mousemove/mouseup，等指针越过阈值才真正进入拖拽。子动作按钮（📂/↗/×）的
-   * mousedown 已 stopPropagation，不会走到这里。
-   */
-  private beginTabDrag(e: MouseEvent, sid: string, root: HTMLElement): void {
-    // 已有拖拽在进行（理论上不会，因 mouseup 会清）—— 防御性忽略。
-    if (this.drag) return;
-    // 新一轮交互开始：清掉可能残留的抑制标记，避免陈旧 flag 误吞下次 click。
-    this.suppressClickSid = null;
-
-    const barRight = this.barEl.getBoundingClientRect().right;
-    const onMove = (ev: MouseEvent): void => this.onDragMove(ev);
-    const onUp = (ev: MouseEvent): void => this.onDragUp(ev);
-    this.drag = {
-      sid,
-      startX: e.clientX,
-      startY: e.clientY,
-      barRight,
-      root,
-      dragging: false,
-      armed: false,
-      dropTarget: { kind: "end" },
-      dwellSid: null,
-      dwellArmed: null,
-      dwellX: e.clientX,
-      dwellY: e.clientY,
-      dwellTimer: null,
-      ghost: null,
-      onMove,
-      onUp,
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
-
-  /** document mousemove：阈值判定 → 起拖（建 ghost / 变暗），随后跟随 + arm 检测。 */
-  private onDragMove(e: MouseEvent): void {
-    const d = this.drag;
-    if (!d) return;
-
-    // 容错：主键已松开（mouseup 在窗口外丢失，比如拖到别的 app 上释放）→ 收尾取消，
-    // 不弹窗（落点不可信），避免 ghost 残留 + 拖拽状态卡死。下次按下会重新开始。
-    if ((e.buttons & 1) === 0) {
-      const wasDragging = d.dragging;
-      const sid = d.sid;
-      this.teardownDrag();
-      if (wasDragging) this.suppressClickSid = sid;
-      return;
-    }
-
-    if (!d.dragging) {
-      const dx = e.clientX - d.startX;
-      const dy = e.clientY - d.startY;
-      if (Math.hypot(dx, dy) <= TabManager.DRAG_THRESHOLD_PX) return;
-      // 越过阈值 → 正式起拖：阻止文本选区、建 ghost、源 Tab 变暗。
-      e.preventDefault();
-      d.dragging = true;
-      d.root.classList.add("dragging");
-      const ghost = document.createElement("div");
-      ghost.className = "tab-drag-ghost";
-      ghost.textContent = this.tabs.get(d.sid)?.title ?? "";
-      document.body.appendChild(ghost);
-      d.ghost = ghost;
-    }
-
-    // 跟随光标（偏右下避免压在指针正下方）。
-    if (d.ghost) {
-      d.ghost.style.left = `${e.clientX + 8}px`;
-      d.ghost.style.top = `${e.clientY + 8}px`;
-    }
-
-    // P7a-2：**纵向那根轴今天一个消费者都没有** —— arm 只看 `clientX`（见下一行）。
-    // 所以栏内重排走 `clientY`，与 tear-off 天然不争同一根轴。
-    // 〔步 17·D〕这里先更新停留状态，再算落点 —— 落点的 `onto` 那一支要读停留的结论。
-    this.updateDwell(e.clientX, e.clientY);
-    d.dropTarget = this.computeDropTarget(e.clientY);
-    // ★ **落点要看得见**〔D 阶段补审〕：只搬不指示的话，「拖动排序」是一次盲操作 ——
-    // 用户松手前不知道会落在哪，只能松开看结果、错了再拖一次。
-    // armed（拖出右缘）时不指示：那一路根本不重排，指一条不会发生的落点是在骗人。
-    this.markDropTarget(e.clientX > d.barRight + 16 ? null : d.dropTarget);
-
-    // arm：指针拖离竖栏右缘一段距离 = 松手即弹独立窗口（F33 前是下缘判定）。
-    const armed = e.clientX > d.barRight + 16;
-    if (armed !== d.armed) {
-      d.armed = armed;
-      if (d.ghost) {
-        d.ghost.classList.toggle("armed", armed);
-        d.ghost.textContent = armed
-          ? "松开 → 独立窗口"
-          : (this.tabs.get(d.sid)?.title ?? "");
-      }
-    }
-  }
-
-  /**
-   * 〔步 17·D · `§D.2`〕量一遍栏里每个 tab 在纵轴上占的那一段。
-   *
-   * 🔴 **`parentElement !== this.barEl` 那道过滤没了。**
-   *   `§D.2` 现打它是两个缺口之一：它把**组里的 tab 整体排除**在落点之外
-   *   ⇒ 拖不进组、也拖不出组。换成 `barEl.contains(...)`：组容器是 `barEl` 的子树，
-   *   组里的 tab 因此照常参与，而栏外的东西（撕出去的窗口等）仍然不参与。
-   *
-   * ⚠ 只量一次、返回纯数据 —— 判定逻辑在 `pickDropTarget`（纯函数，判据直接打它）。
-   *   这也顺带守住 `§3 P3`「拖拽 layout thrash：量一次、只改变化的那一个」。
-   */
-  private tabRects(): TabRect[] {
-    const out: TabRect[] = [];
-    for (const [sid, refs] of this.tabButtons) {
-      if (!this.barEl.contains(refs.root)) continue;
-      const r = refs.root.getBoundingClientRect();
-      out.push({ sid, top: r.top, height: r.height });
-    }
-    return out;
-  }
-
-  /** 〔步 17·D〕现在的落点。三种语义的判定住 `pickDropTarget`，这里只负责喂它读数。 */
-  private computeDropTarget(clientY: number): DropTarget {
-    const d = this.drag;
-    if (!d) return { kind: "end" };
-    return pickDropTarget(
-      this.tabRects(),
-      clientY,
-      new Set(this.dragBlockOf(d.sid)),
-      d.dwellArmed,
-    );
-  }
-
-  /**
-   * 〔步 17·D · `§D.4`〕停留（dwell）判定：**压住 ≥250ms 且抖动 <4px ⇒ 切进 `onto` 态**。
-   *
-   * 🔴 **必须用计时器，不能只在 `mousemove` 里数时间** —— 指针停住之后
-   *   `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满，这个手势等于没做。
-   *
-   * 三种情况清零重来（`§D.4` 逐字「一旦移出该 tab 的矩形 **或** 移动超过 4px ⇒ 退回」）：
-   * ① 换了压着的 tab；② 没压在任何 tab 上；③ 还在同一个上但离锚点超过 `DWELL_MOVE_PX`。
-   */
-  private updateDwell(clientX: number, clientY: number): void {
-    const d = this.drag;
-    if (!d) return;
-    const hovered = tabUnderY(this.tabRects(), clientY, new Set(this.dragBlockOf(d.sid)));
-    const moved = Math.hypot(clientX - d.dwellX, clientY - d.dwellY);
-    if (hovered === d.dwellSid && moved < DWELL_MOVE_PX) return; // 还在攒，别打断计时
-    d.dwellSid = hovered;
-    d.dwellArmed = null;
-    d.dwellX = clientX;
-    d.dwellY = clientY;
-    if (d.dwellTimer !== null) window.clearTimeout(d.dwellTimer);
-    d.dwellTimer = null;
-    if (hovered === null) return;
-    d.dwellTimer = window.setTimeout(() => {
-      const cur = this.drag;
-      // 计时器到点时拖拽可能已经结束 / 已经换了目标 —— 两者都不许再改状态。
-      if (!cur || cur.dwellTimer === null || cur.dwellSid !== hovered) return;
-      cur.dwellTimer = null;
-      cur.dwellArmed = hovered;
-      // **可逆可见**（`§D.4` 理由 3）：攒满的那一刻就给反馈，用户看到了再松手。
-      // 指针停着不动 ⇒ 不会再有 `mousemove` 来重算落点，所以这里自己算一次。
-      cur.dropTarget = { kind: "onto", sid: hovered };
-      if (!cur.armed) this.markDropTarget(cur.dropTarget);
-    }, DWELL_MS);
-  }
-
-  /**
-   * P7a-2：被拖的那一块 —— 交互 tab 连同它**紧跟其后**的同 `(cwd, origin)` bg 子串。
-   *
-   * ★ 为什么必须带上子串：`placeInOrder` 维护的那棵树不是装饰，它表达
-   * 「这些后台任务属于那个会话」（还带着 D-R3 的审计账）。
-   * 一次拖动就把树拆散，比不能拖更坏。
-   */
-  private dragBlockOf(sid: string): string[] {
-    const host = this.tabs.get(sid);
-    if (!host) return [sid];
-    const hostIsInteractive = host.kind === null || host.kind === "interactive";
-    if (!hostIsInteractive) return [sid];
-    const out = [sid];
-    const at = this.orderedIds.indexOf(sid);
-    for (let i = at + 1; i < this.orderedIds.length; i++) {
-      const t = this.tabs.get(this.orderedIds[i]);
-      if (!t) break;
-      const isBg = t.kind !== null && t.kind !== "interactive";
-      if (isBg && t.cwd !== null && t.cwd === host.cwd && t.origin === host.origin) {
-        out.push(this.orderedIds[i]);
-      } else break;
-    }
-    return out;
-  }
-
-  /**
-   * P7a-2 D 补审：给落点那个 tab 打标（`null` = 不指示，armed 那一路用）。
-   *
-   * 〔步 17·D · `§D.5`〕两种态两种标：`before` 顶部一条线（原样）· `onto` 整块描边 + 轻微放大。
-   * `end` 不标（原样 —— 末尾没有可以描的对象）。
-   */
-  private markDropTarget(target: DropTarget | null): void {
-    const beforeSid = target?.kind === "before" ? target.sid : null;
-    const ontoSid = target?.kind === "onto" ? target.sid : null;
-    for (const [sid, refs] of this.tabButtons) {
-      refs.root.classList.toggle("drop-before", sid === beforeSid);
-      refs.root.classList.toggle("drop-onto", sid === ontoSid);
-    }
-  }
-
-  /**
-   * 〔步 17·D〕把一次落点的**全部后果**落实：顺序 ＋ 集合归属，一拍做完。
-   *
-   * 🔴 **两件事不许分两拍** —— 顺序没变（拖回原位）但归属变了（从组里拖出来）是
-   *   真实情形；反过来也是。谁先 `return`，另一半就静默丢了。
-   *   在这之前这里叫 `applyReorder`，只管顺序、`if (没变化) return` 直接结束。
-   */
-  private applyDrop(sid: string, target: DropTarget): void {
-    const block = this.dragBlockOf(sid);
-    // ① 集合归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则的两侧）。
-    if (this.collectionsLoaded) {
-      const other = target.kind === "end" ? null : this.tabs.get(target.sid);
-      const nextCols = applyDropToCollections(
-        this.collections,
-        block,
-        target,
-        defaultGroupName(
-          this.tabs.get(sid)?.cwd ?? null,
-          other?.cwd ?? null,
-          this.collections.map((c) => c.name),
-        ),
-        newCollectionId(),
-      );
-      // 没变就不写盘：拖动是高频动作，每拖一下都改一次 `config.json` 是白写。
-      if (!collectionsEqual(this.collections, nextCols)) {
-        this.collections = nextCols; // 先改内存（下面统一重画一次），再落盘
-        void this.persistCollections(nextCols);
-      }
-    }
-    // ② 顺序。`onto` 的落位 = 插到目标**之前**（组里成员的相对次序由 `orderedIds` 定，
-    //    见 `refreshTabBar`）；`end` 是末尾。
-    const beforeSid = target.kind === "end" ? null : target.sid;
-    const next = moveTabBlock(this.orderedIds, block, beforeSid);
-    if (next.length !== this.orderedIds.length) {
-      this.refreshTabBar(); // 防御：块算错了就只重画（①可能已经改了归属）
-      return;
-    }
-    if (next.every((x, i) => x === this.orderedIds[i])) {
-      this.refreshTabBar();
-      return;
-    }
-    this.orderedIds = next;
-    this.refreshTabBar();
-    // 🔴 〔步 17·C · 2026-09-19〕**拖动的结果要落盘** —— `设计/30 §C` 逐字「今天拖了白拖」。
-    //   在这之前 `orderedIds` 的 8 个写入点零持久化，而集合（`tabCollections`）是落盘的
-    //   ⇒ 同一个栏里两种寿命：**你建的分组活过重启，你拖的顺序活不过**。
-    //   `tab-collections.ts` 立集合落盘的理由是「用户手写的真相，不是能重算的缓存」，
-    //   而拖动排序**完全符合那条判据** ⇒ 不给它同样的待遇，那条理由就是选择性适用的。
-    // ⚠ 形状照 `commitCollections`：**先改内存再落盘**（上面两行已做完），
-    //   落盘失败只记日志 —— 顺序丢一次远好过拖动卡一下。
-    void this.persistOrder();
-  }
-
-  /** 把当前顺序写进 `config.json` 的 `tabBar.order`。失败只记日志，不打断交互。 */
-  private async persistOrder(): Promise<void> {
-    // 🔴 **先把内存里那份意图同步掉，再去写盘** —— 用户刚拖出来的这张就是最新的意图。
-    //   不同步的话，`savedOrder` 还是启动时读到的那份**旧**顺序，而它每来一个新 tab
-    //   就会被再应用一次（`placeInOrder`）⇒ **后到的一个 tab 能把用户刚拖的一下整张撤销**。
-    //   放在 `await` 之前：落盘失败也照样同步 —— 内存里那张已经是用户看见的事实了。
-    this.savedOrder = [...this.orderedIds];
-    try {
-      await setTabOrder(this.orderedIds);
-    } catch (e) {
-      console.warn("[tab-bar] 顺序落盘失败:", e);
-    }
-  }
-
-  /**
-   * 启动时把落盘的顺序拉回来。**宿主在 `loadCollections` 之后调一次。**
-   *
-   * ⚠ 它**只重排已经存在的 tab，不凭空造 tab**（`§C.3` 逐字）——
-   *   盘上的顺序里会有已经不存在的 sid（上次那个会话被删了）。
-   * ⚠ **盘上没提到的 tab 排在后面**，保持它们此刻的相对次序 ——
-   *   否则「启动后新建的 tab」会被一份旧顺序挤到看不见的地方。
-   *
-   * # 🔴 2026-09-21：修掉「结构性 no-op」（`99 §4` 步 17 那行的 🟡）
-   *
-   * 在这之前它是这么写的：
-   * ```ts
-   * const saved = await getTabOrder(new Set(this.orderedIds));  // ← alive = 此刻的 tab 集
-   * if (saved.length === 0) return;
-   * ```
-   * **它在唯一那个调用点上恒等于 no-op。** `main.ts` 里那一行是
-   * `loadPinned().finally(() => loadOrder())` ⇒ 跑到这儿的时候会话**还没到**
-   * （tab 由随后的 `session_added` / 首行陆续建出来，启动窗口期 30s）⇒
-   * `orderedIds` 是空的（顶多只有几个复活出来的 pinned）⇒ `alive` 是空集 ⇒
-   * `sanitizeOrder` 把盘上那张**整张**当成死 sid 摘掉 ⇒ 空表 ⇒ 上面那句直接 `return`。
-   * 现打：`sanitizeOrder(["c","b","a"], new Set())` == `[]`，而 `alive` 传 `null`
-   * 时原样是 `["c","b","a"]` —— **数据一直读得出来，是被自己那道过滤删掉的。**
-   *
-   * 🔴 **所以这不是「调用点排早了」，挪一挪就好** —— 前端**没有任何一刻**知道
-   *   「会话到齐了」（它们从几台远端陆续宣告，还能中途掉线重连）。
-   *   「已删的会话」与「还没到的会话」在任何单一时刻都**不可区分**
-   *   ⇒ 只要过滤发生在读的那一拍，这个 bug 就还在。
-   *
-   * ⇒ 改法：把盘上那份顺序**留着**（`savedOrder`，一份意图，不是一次性的动作），
-   *   读的时候**不按存活过滤**，过滤改在**每次应用**时按「此刻真的在的 tab」做
-   *   （`applySavedOrder`）；tab 陆续到达时由 `placeInOrder` 再应用一次。
-   */
-  async loadOrder(): Promise<void> {
-    // `null` = 这一趟不按存活过滤（理由见 `getTabOrder` 头注与上面那段）。
-    this.savedOrder = await getTabOrder(null);
-    if (this.applySavedOrder()) this.refreshTabBar();
-  }
-
-  /**
-   * 把 `savedOrder`（盘上那份意图）应用到**此刻真的存在**的 tab 上。
-   * 返回「顺序有没有真的变」—— 没变就别让调用方白重画一次栏。
-   *
-   * 🔴 **`present` 这道过滤是「不凭空造 tab」那条的落点**：盘上提到而今天不在的 sid
-   *   （被删的会话 / **还没宣告到的会话**）在这里被跳过 —— 它**留在 `savedOrder` 里**，
-   *   等它真的到了，`placeInOrder` 再应用一次就会把它放回自己那一格。
-   *   ⚠ 这正是它不能在读的那一刻被摘掉的原因：摘掉就再也等不到了。
-   * ⚠ **盘上没提到的排在后面**、且保持它们此刻的相对次序（`loadOrder` 头注逐字）。
-   */
-  private applySavedOrder(): boolean {
-    if (this.savedOrder.length === 0) return false;
-    const present = new Set(this.orderedIds);
-    const head = this.savedOrder.filter((sid) => present.has(sid));
-    if (head.length === 0) return false;
-    const inHead = new Set(head);
-    const next = [...head, ...this.orderedIds.filter((sid) => !inHead.has(sid))];
-    // 恒等就早退。`next` 与 `orderedIds` 必然同长（两边都是 `orderedIds` 的重排），
-    // 所以逐位比一遍就够。
-    if (next.every((x, i) => x === this.orderedIds[i])) return false;
-    this.orderedIds = next;
-    return true;
-  }
-
-  /** 收尾：拆 document listener、清 ghost / 源 Tab 变暗、清空拖拽状态。 */
-  private teardownDrag(): void {
-    const d = this.drag;
-    if (!d) return;
-    document.removeEventListener("mousemove", d.onMove);
-    document.removeEventListener("mouseup", d.onUp);
-    // 〔步 17·D〕停留计时器必须在这里清。不清的话它会在拖拽结束之后才到点，
-    // 往一个已经收尾的状态上写 `onto` —— 而那时 `this.drag` 已是 null，
-    // 回调里的守卫会吞掉它，但计时器本身是条悬空引线（同 `pendingMenuTimers` 那条教训）。
-    if (d.dwellTimer !== null) window.clearTimeout(d.dwellTimer);
-    d.dwellTimer = null;
-    this.markDropTarget(null); // 拖拽结束必须清掉落点标记，否则它会挂在那儿
-    d.ghost?.remove();
-    d.root.classList.remove("dragging");
-    this.drag = null;
-    // ★ 6d：拖拽期间被守卫挡下的那些刷新，在这里**补一次**。
-    // 少了这一句，守卫就从「推迟」变成「静默丢弃」：会话在拖拽那一秒里跑完了，
-    // 它的 tab 会一直留在主栏假装还活着，直到下一件无关的事碰巧再刷一次栏。
-    // ⚠ 必须在 `this.drag = null` **之后** —— 否则自己被自己的守卫挡回去。
-    if (this.tabBarDirtyDuringDrag) {
-      this.tabBarDirtyDuringDrag = false;
-      this.refreshTabBar();
-    }
-  }
-
-  /** document mouseup：收尾；armed 则在落点弹独立窗口。 */
-  private onDragUp(e: MouseEvent): void {
-    const d = this.drag;
-    if (!d) return;
-    // 〔步 17·D〕落点要在 `teardownDrag` 之前取出来 —— 它会把整个 `drag` 清成 null。
-    const { dragging, armed, sid, dropTarget } = d;
-    this.teardownDrag();
-
-    if (!dragging) return; // 没越阈值 = 纯点击，交给 click handler 正常切 Tab。
-
-    // 起过拖（无论 armed 与否）都抑制紧随的 click —— 拖完不该顺带切 Tab。
-    this.suppressClickSid = sid;
-    if (armed) {
-      // ★ P7a-2-Y2：撕窗口这一路**顺序一个字不动**。两件事都做的话，
-      // 用户撕出一个窗口的同时原栏的序被改了 —— 他没要求过那件事。
-      void this.openInNewWindow(sid, e.screenX, e.screenY);
-      return;
-    }
-    this.applyDrop(sid, dropTarget);
-  }
-
-  /**
-   * audit-fixes F01（修 B1，full-audit 阻塞）：resume 前**现读磁盘** pin，不读内存镜像
-   * `accountLastByS`。后者是 tab 徽章的 10s 刷新数据源，在①启动首轮刷新前（空 Map）②
-   * `list_last_accounts` 抛错被 main.ts 无条件覆写成空 ③刚显式钉 pin 后 10s 内还没轮询到，
-   * 这三种窗口里读它 → `withAccount` 的不-clobber 守卫拿到假 priorPin=null → 把磁盘真实
-   * pin 静默覆盖成全局当前账号。与 history.ts:1489 的「现读」同口径，三处 resume 一致。
-   * 读不到（无 pin / 查询失败）→ undefined → withAccount 落全局账号/基座，与旧行为一致
-   * （区别只是不再"错误地覆盖"既有 pin）。
-   */
-  private async readSessionPin(sid: string): Promise<string | undefined> {
-    try {
-      const map = await invoke<Record<string, string>>("list_last_accounts");
-      return map?.[sid];
-    } catch {
-      return undefined;
-    }
-  }
-
-  /**
-   * F37：手动 resume 一个已结束（灰）的 Tab。与历史浏览器 ↺ 同一套语义：
-   * 本地 → 新终端窗口跑 resume（尊重 F34 自定义命令，缺省 cc 检测→claude）；
-   * 远端 → F41 一键拉起 wt.exe/PowerShell 跑 `ssh -t …`，失败回退复制命令。
-   * resume 成功后 CC 续写同一 jsonl，既有「会话复活」路径会自动把灰 Tab 点亮。
-   */
-  private async resumeTab(sid: string, accountName?: string, useBase = false): Promise<void> {
-    const tab = this.tabs.get(sid);
-    if (!tab) return;
-    const behavior = await getBehavior();
-    if (tab.origin !== null) {
-      // A4：带账号统一走 withAccount（点击时重解析 configDir + 记 lastAccount 源②，与 history 同口径）。
-      // 本地账号切换是 A7，此处忽略（withAccount 只在远端调）。
-      const origin = tab.origin;
-      const cwd = tab.cwd ?? "";
-      await withAccount(
-        origin,
-        accountName ?? null,
-        // `runRemoteResume` 现在返回 boolean（Phase G：别把失败读成成功）。这条路的
-        // 反馈由它自己的 toast 承担，`withAccount` 只要 `void` ⇒ 显式丢弃。
-        async (mods) => {
-          await runRemoteResume(
-            origin,
-            sid,
-            cwd,
-            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
-            mods,
-          );
-        },
-        {
-          sessionId: sid,
-          // audit-fixes F07（I 建议）：显式选号解析不到（登出/目录消失且缓存恰过期）→ 提示而非静默
-          // 落基座（对齐 history.ts:1502；此前 resumeTab 缺此回调，用户明点的"用账号 X resume"被无声吞掉）。
-          onUnselectable: (n) =>
-            showActionFailureToast(
-              "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
-              { level: "info", durationMs: 6000 },
-            ),
-          // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前账号 → 基座)。显式选号维持 A4。
-          // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
-          // F01 步骤2:useBase = 显式「用基座 resume」——不注入、不跟随(老会话住基座,别被 follow
-          //   注入全局当前账号导致 claude --resume 在错数据目录找不到会话，即 #75 主因的逃生口)。
-          follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
-        },
-      );
-      return;
-    }
-    try {
-      // F06：走一遍本地 IR 构造，sid 校验先于 resume_history_session 这次 invoke（不代表本函数
-      // 此前完全没有过 IPC——上面 `getBehavior()` 已经读过一次 config；构造失败与拉起失败分两个
-      // catch，headline 对齐远端 `runRemoteResume` 的"无法构造 resume 命令"/"拉起失败"两分）。
-      validateLocalLaunch({ kind: "resume", sid }, tab.cwd ?? "");
-    } catch (err) {
-      showActionFailureToast("无法构造 resume 命令", String(err));
-      return;
-    }
-    // ★★ P3t-Y2b：本机 resume 也进 tmux（POSIX；Windows 那侧后端不读这个名字，`C12`）。
-    //
-    // 名字**必须**由 `mintSessionTmuxName` 铸 —— 它 = 基名 `<项目名>-cc` + `mintTmuxName` 的避让，
-    // 而 `mintTmuxName` 是全仓唯一带撞名避让的铸造口（F13）。
-    // Rust 侧刻意拒绝自己铸名：在那边补一个默认值就是 F13 修掉的坑第三次。
-    //
-    // ⚠ **这里第一版直接写了 `mintTmuxName(`${sid.slice(0,8)}-cc`, …)`** —— 那等于**又抄了一份
-    // 基名规则**，正是 F13 收敛掉的那个重复（我在上一句里刚写完「唯一铸造口」）。
-    // `session_name_registry` 当场判红（它数的就是「谁在产 `-cc` 基名」）。⇒ 改用现成的那个。
-    // 🔴 `K-R96`（用户 09-12 `R55`「要是可读的名字 / 不要id」）：基名从 `<sid8>-cc`
-    //    换成 `<项目名>-cc`（从 cwd 派生）⇒ 这里要给的是 **cwd**，不是 sid。
-    //    sid 一格没丢：它骑在 `@ccm_sid` 上（后端建会话时 `set-option` 写），
-    //    而本仓认会话从来就只问那个、不问名字前缀。
-    //
-    // `existing` 从 `commands.list_local_tmux()` 来（就在下面几行）。
-    // 〔K-R19 订正 09-03〕这里原先写的是 `local_tmux_names()`，**全仓零定义**：
-    // 真名从来就是 `list_local_tmux`（Rust 侧 `tmux.rs::list_local_tmux`）。
-    // ⚠ 它回 `null` 表示**不知道**（本机后端通道
-    // 没起 / 还没推过帧），不是「一个名字都没占」。不知道的时候**不铸名**、不传 `tmuxName`
-    // ⇒ 后端诚实降级回旧路（不进容器）。硬要铸就是「不避让」，那正是 issue #76
-    //「静默接进第一个会话，而用户以为开了新的」。
-    // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍，见那个取值口的头注）。
-    primeLocalLaunchAccounts();
-    let tmuxName: string | null = null;
-    try {
-      const sessions = await commands.list_local_tmux();
-      if (sessions)
-        tmuxName = mintSessionTmuxName(tab.cwd ?? "", new Set(sessions.map((s) => s.name)));
-    } catch {
-      // 读不到就当不知道 —— 与上面同一条纪律，绝不退化成空集。
-      tmuxName = null;
-    }
-    try {
-      // ★★ `K-H2b` `D1 阻-1`：**账号这一格先前是空的** —— 这条是 tab 栏那条主路，
-      //    而它一个账号都不传 ⇒ ① 起会话落到 shell rc 里那个默认号上（静默串号）；
-      //    ② 中转那一格永远拼不出路由键（没有账号 id ⇒ 不注入）。
-      //    取值口只有一个（`accounts.ts::localLaunchAccountSync`，就在下面几行调着）：
-      //    〔K-R19 订正 09-03〕原先写的是 `resolveLocalLaunchAccount`，**全仓零定义**；
-      //    钉这件事的那条判据（`commands.vitest.ts`）逐字写的就是 `localLaunchAccountSync`。
-      //    resume 走那条会话上次的 pin，
-      //    说不出就**缺席**（逐字节旧行为），绝不回落到「当前账号」——那是 #75 的形状。
-      await invoke("resume_history_session", {
-        sessionId: sid,
-        cwd: tab.cwd ?? "",
-        launcher: behavior.resumeCommandLocal || null,
-        tmuxName,
-        account: localLaunchAccountSync(sid),
-      });
-      // `D3 阻-2`：**本机这条路也要往 pin 里写** —— 在此之前 `recordLastAccount` 的两个
-      //   生产调用点结构上只走远端 ⇒ 本机 `list_last_accounts` 恒空 ⇒ 上面那句「pin 优先」
-      //   在本机永远走不到。⚠ 不等待（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
-      recordLocalLaunchAccount(sid, localLaunchAccountNameSync(sid));
-    } catch (err) {
-      showActionFailureToast("恢复失败", String(err));
-    }
-  }
-
-  /**
-   * F52：tmux 版 resume（远端专用）——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude。
-   * 与 resumeTab 的直连版并列;本地 tab（origin===null）无 tmux 用例,直接 return。
-   *
-   * F04：`resumingSids` 互斥（对称 `restartingSids`）——双击之间没有互斥时，两次并发调用各自
-   * 查一次陈旧快照、各自可能算出不同的 fresh tmux 名，真建出两个都声称同一 sid 的容器（R10 的
-   * 一个具体、可关闭的成因）。
-   *
-   * F09：`accountName` 与 `resumeTab`（直连版）的参数顺序/语义对齐——此前本方法完全没有显式选号
-   * 能力（`withAccount` 恒传 `null`），是 account×container 没做到真正正交的一个实现缺口
-   * （旧扁平菜单从未提供"把此归档会话切到账号 X（tmux）"这一项，反映的正是这个缺口）；flyout
-   * 把 account 组与 container 组做成正交修饰后，这个缺口必须补上，否则"账号=X + 容器=tmux"
-   * 这个组合在 UI 上可选却在实现上是假的。
-   */
-  private async resumeTabTmux(sid: string, accountName?: string, useBase = false): Promise<void> {
-    if (this.resumingSids.has(sid)) return;
-    this.resumingSids.add(sid);
-    try {
-      await this.resumeTabTmuxInner(sid, accountName, useBase);
-    } finally {
-      this.resumingSids.delete(sid);
-    }
-  }
-
-  private async resumeTabTmuxInner(
-    sid: string,
-    accountName: string | undefined,
-    useBase: boolean,
-  ): Promise<void> {
-    const tab = this.tabs.get(sid);
-    if (!tab || tab.origin === null) return;
-    const behavior = await getBehavior();
-    const origin = tab.origin;
-    const cwd = tab.cwd ?? "";
-    // F74：先查该 origin 的 tmux 列表，据 @ccm_sid 分两路。**attach 决策对新鲜度最敏感**——
-    // 8s 缓存里的 @ccm_sid 可能已被 /branch 漂移（快照记 N=A，N 此刻跑 B）→ 据陈旧快照 attach
-    // 又会撞进漂移会话，正是本刀要修的 bug。故这里**总是新查、不读缓存**（用户主动 resume，一次
-    // ssh 可接受；与 resolveAttachMenuItem 的 attach 一律新查对齐），查回来仍写缓存惠及其它路径。
-    // 查询失败（undefined）→ 当作没有会话，走下面 fresh 分支（沿用旧幂等 resume 名，退化不变砖）。
-    const sessions = (await this.fetchTmuxFresh(origin)) ?? null;
-    // ① 目标 sid 正活在某 tmux（@ccm_sid 命中）→ 直接 attach 它，回到活的后端，别重开一个。
-    // F04（R10）：命中 ≥2 个时**仍 attach 到第一个**（resume 非破坏性、可撤销：重新点一次就能换
-    // 目标，不像 kill 一旦选错代价不可逆），但诚实告知——不静默假装只有一个。分级理由见 F04
-    // 计划 §2 取舍④。
-    const matches = findClaudeTmuxMatches(sessions, sid);
-    if (matches.length > 0) {
-      if (matches.length > 1) {
-        showActionFailureToast(
-          "检测到多个同身份会话",
-          `该会话身份（sid）同时活在 ${matches.length} 个 tmux 里，本次接入其中一个（${matches[0].name}）；建议手动到终端核实其余会话是否需要清理。`,
-          { level: "info", durationMs: 8000 },
-        );
-      }
-      await runRemoteAttach(origin, matches[0].name);
-      return;
-    }
-    // ①.5 audit-fixes F03（idle-tmux 就地复用）：目标 sid 的 tmux 还在（@ccm_sid 精确命中）但
-    // command≠claude —— 即 claude 已退、只剩交互 shell 的**空 cc-<sid8>**。往它**就地** resume
-    // （复用原会话名，不 new-session）→ 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）+ 空 shell 起得了 claude
-    // （治 create-gate 短路只 attach 空 shell 的 #75 一条）。仅 @ccm_sid 精确命中才复用（不按 cwd 猜，
-    // 免撞同目录漂移会话）。
-    // E73：明说不可 attach 的会话**不算 idle-tmux** —— 它那个「前台不是 claude」
-    // 恰恰是因为里面跑着别的东西（SDK bridge 之类），不是空壳。
-    const idle = this.isAttachable(sid) ? findIdleTmux(sessions, sid) : undefined;
-    if (idle) {
-      await withAccount(
-        origin,
-        accountName ?? null,
-        async (mods) => {
-          await runRemoteResumeIntoExistingTmux(
-            origin,
-            sid,
-            idle.name,
-            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
-            mods,
-          );
-        },
-        {
-          sessionId: sid,
-          // F09：显式选号解析不到 → 提示而非静默落基座（对齐 resumeTab 的同类回调）。
-          onUnselectable: (n) =>
-            showActionFailureToast(
-              "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
-              { level: "info", durationMs: 6000 },
-            ),
-          // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
-          // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。
-          follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
-        },
-      );
-      return;
-    }
-    // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
-    // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<项目名>-cc`（那正是「resume 进 branch」老 bug）。
-    // 🔴 `K-R96`：基名从 cwd 派生（可读），不再是 `<sid8>-cc`。
-    const existing = new Set((sessions ?? []).map((s) => s.name));
-    const name = mintSessionTmuxName(cwd, existing);
-    // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。
-    await withAccount(
-      origin,
-      accountName ?? null,
-      // runRemoteResumeTmux 现在返回 boolean（Phase G）；withAccount 的 run 要 Promise<void>，
-      // 这条归档 resume 路径不消费成败（失败已由它自己 toast + 剪贴板回退），故丢弃返回值。
-      async (mods) => {
-        await runRemoteResumeTmux(
-          origin,
-          sid,
-          cwd,
-          await resolveResumeCommand(origin, behavior.resumeCommandRemote),
-          name,
-          mods,
-        );
-      },
-      {
-        sessionId: sid,
-        // F09：同上——显式选号解析不到时提示而非静默落基座。
-        onUnselectable: (n) =>
-          showActionFailureToast(
-            "账号不可用",
-            `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
-            { level: "info", durationMs: 6000 },
-          ),
-        // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
-        // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
-        // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。
-        follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
-      },
-    );
-  }
-
-  /**
-   * F51：菜单打开后异步反查 tmux——查该 origin 的会话列表(短缓存),按 `path===cwd &&
-   * command==="claude"` 反查该 tab 的 Claude 所在 tmux 会话。命中 → 把禁用占位「检测中」
-   * 换成可点的 Attach;无 tmux / 无匹配 / 查询失败 → 移除占位。菜单已关则 update/remove no-op。
-   */
-  /**
-   * ★ **`list_remote_tmux` 在 TabManager 里的唯一取数点**〔audit-0805 F14 第五刀，报告 I9′〕。
-   *
-   * # 为什么要收成一个
-   *
-   * 此前类内有**四处**各自 `invoke("list_remote_tmux")`，其中**三处顺手写了缓存、一处没写**
-   * （`awaitExitFor` 的轮询 tick）—— 而那一处恰好是**唯一会反复取数的**：
-   * 它每秒查一遍同一个 origin，却一次都不喂缓存。
-   * ⇒ 报告 I9′ 说的「3 写 1 读」，真正的毛病不是读少，是**取数点与写缓存点没有绑在一起**：
-   * 只要还能「取而不写」，下一个新增的取数点就会再漏一次。
-   *
-   * 收成一个之后，「取数」与「写缓存」**在语法上就是同一件事**，漏不了。
-   * 判据 `tmux-cache-single-writer.vitest.ts` 钉住这一点（定框 **E3**：权威源恰好一个）。
-   *
-   * # 返回值三态，不许压成两态
-   *
-   * - `TmuxSession[]` —— 查到了，有会话
-   * - `null` —— 查到了，**远端没装 tmux / 没有会话**（`NO_TMUX`）
-   * - `undefined` —— **查询本身失败**（ssh 抖动）
-   *
-   * ⚠ 后两者必须分开：`null` 是**确定的答案**（会写进缓存），`undefined` 是**没有答案**
-   * （不写缓存 —— 免得一次 ssh 抖动把 8s 内的重试全抑制掉，D-Sug3）。
-   * 把它们压成一个 `null` 会让「远端确实没有会话」和「我没问到」变得无法区分。
-   */
-  private async fetchTmuxFresh(
-    origin: string,
-  ): Promise<TmuxSession[] | null | undefined> {
-    try {
-      // ★ P3 刀 2 UI：本机走自己的读口 —— 它读的是后端推来的快照，不走 SSH
-      //（`<local>` 拿去查远端配置只会报「未找到远端配置」，与真实原因毫无关系）。
-      // 这就是 `C1`「差别只允许出现在传输这一跳」在读面上的样子：同一个返回类型、同一批消费者。
-      const sessions =
-        origin === LOCAL_ORIGIN
-          ? await commands.list_local_tmux()
-          : await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
-      // 只缓存确定结果（成功列表 / NO_TMUX=null）；瞬时 ssh 失败不缓存，免 8s 内抑制重试（D-Sug3）。
-      this.tmuxCache.set(origin, { ts: Date.now(), sessions });
-      return sessions;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /** ★ P3 刀 2 的 UI 半：本机 tab 的「杀死会话」。
-   *
-   *  与远端那条（`resolveAttachMenuItem`）**共用同一批判定函数**（`findClaudeTmuxMatches`）——
-   *  这就是 `C1`「差别只允许出现在传输这一跳」：读口不同（backend 快照 vs 一次性 SSH），
-   *  之后的一切逐字相同。
-   *
-   *  ⚠ **按 `@ccm_sid` 认，不按名字前缀猜。** 本机会话名今天确实长成 `<sid8>-cc`，
-   *  但拿那个去匹配就是「用命名巧合当身份」—— `INVARIANTS §30` 逐字禁的正是这一类
-   *  （它禁的是按 cwd 猜，同一个错的另一种写法）。名字会被 `/branch` 漂移、会被用户改名。
-   */
-  private async resolveLocalKillMenuItem(sid: string): Promise<void> {
-    const gen = tabMenuGeneration;
-    const got = await this.fetchTmuxFresh(LOCAL_ORIGIN);
-    if (gen !== tabMenuGeneration) return;
-    // `undefined` = 读口抛了；`null` = **本机后端通道不在**（不知道，不是「没有」）。
-    // 两种都不该留一个假装能用的菜单项 —— 移除它，别让用户点一个必失败的破坏性动作。
-    if (got === undefined || got === null) {
-      removeTabContextMenuItem("kill");
-      removeTabContextMenuItem("resume-into");
-      return;
-    }
-    // ★★ P3 刀 3：**空 tmux（claude 已退、只剩交互 shell）→ 就地 resume**。
-    //
-    // 先判这一格，因为它与下面那格互斥：有活 claude 就不是空壳。
-    // E73 同款前提：明说不可 attach 的会话**不算空壳** —— 它前台不是 claude 恰恰是因为
-    // 里面跑着别的东西，不是没人。
-    const idle = this.isAttachable(sid) ? findIdleTmux(got, sid) : undefined;
-    if (idle) {
-      const behavior = await getBehavior();
-      updateTabContextMenuItem("kill", {
-        id: "kill",
-        label: `杀死会话（kill 空 tmux ${idle.name}）`,
-        danger: true,
-        onClick: () => this.killRemoteTmux(LOCAL_ORIGIN, idle.name, false, { idle: true }),
-      });
-      // 就地 resume 是**非破坏性**的，与 kill 并列给出（远端那侧同样两格并列）。
-      updateTabContextMenuItem("resume-into", {
-        id: "resume-into",
-        label: `就地 resume（复用空 tmux ${idle.name}）`,
-        onClick: () =>
-          void runLocalResumeIntoExistingTmux(
-            sid,
-            idle.name,
-            behavior.resumeCommandLocal || AGENT_PROFILE.defaultLauncher,
-          ),
-      });
-      return;
-    }
-    const matches = findClaudeTmuxMatches(got, sid);
-    if (matches.length === 0) {
-      removeTabContextMenuItem("kill");
-      removeTabContextMenuItem("resume-into");
-      return;
-    }
-    removeTabContextMenuItem("resume-into");
-    // F04（R10）同款分级：破坏性动作命中 ≥2 个就**拒绝**，不折叠成第一个。
-    if (matches.length > 1) {
-      updateTabContextMenuItem("kill", {
-        id: "kill",
-        label: `杀死会话（检测到 ${matches.length} 个同身份会话，拒绝）`,
-        enabled: false,
-        danger: true,
-        onClick: () => {},
-      });
-      return;
-    }
-    const name = matches[0].name;
-    updateTabContextMenuItem("kill", {
-      id: "kill",
-      label: `杀死会话（kill tmux ${name}）`,
-      danger: true,
-      onClick: () => this.killRemoteTmux(LOCAL_ORIGIN, name, false),
-    });
-  }
-
-  private async resolveAttachMenuItem(
-    origin: string,
-    cwd: string,
-    sid: string,
-  ): Promise<void> {
-    const gen = tabMenuGeneration; // 捕获发起查询的那一代菜单(R-1 守卫)
-    const got = await this.fetchTmuxFresh(origin);
-    if (got === undefined) {
-      // 查询失败(纯 ssh exec 抖动)→ 移除占位,不缓存。
-      if (gen === tabMenuGeneration) {
-        removeTabContextMenuItem("attach");
-        removeTabContextMenuItem("preview"); // F60：预览占位一并移除
-        removeTabContextMenuItem("kill"); // F79：杀会话占位一并移除
-      }
-      return;
-    }
-    const sessions = got;
-    // 菜单已换/已关(新代次)→ 别动别的菜单(R-1 跨 tab 串味)。
-    if (gen !== tabMenuGeneration) return;
-    const match = findClaudeTmux(sessions, sid, cwd);
-    const viaCwd = isCwdFallbackMatch(sessions, sid); // F74c：回退命中 attach 前提示串味风险
-    // F04（R10）：命中 ≥2 个精确同 sid 的活会话时——`matches.length>1` 与 `viaCwd` 互斥（后者只在
-    // "整张列表无任何会话带 sid"时才可能真，见 `findClaudeTmux`/`isCwdFallbackMatch` 判据），
-    // 故两条 caveat 不会同时触发。attach/preview 沿用 resume 的"警告+继续"（非破坏性、可撤销）；
-    // kill 沿用 restart 的"拒绝"（破坏性、代价不可逆）——分级理由见 F04 计划 §2 取舍④。
-    const matches = findClaudeTmuxMatches(sessions, sid);
-    const ambiguous = matches.length > 1;
-    if (match) {
-      updateTabContextMenuItem("attach", {
-        id: "attach",
-        label: ambiguous ? `Attach（tmux: ${match.name}，⚠还有 ${matches.length - 1} 个同身份会话）` : `Attach（tmux: ${match.name}）`,
-        onClick: () => {
-          if (viaCwd) warnCwdFallbackAttach();
-          if (ambiguous) {
-            showActionFailureToast(
-              "检测到多个同身份会话",
-              `该会话身份（sid）同时活在 ${matches.length} 个 tmux 里，本次接入其中一个（${match.name}）；建议手动到终端核实其余会话是否需要清理。`,
-              { level: "info", durationMs: 8000 },
-            );
-          }
-          void runRemoteAttach(origin, match.name);
-        },
-      });
-      // F60：预览项与 attach 同门(同一 tmux 会话),一并就绪——只读，不受"命中多个"影响。
-      updateTabContextMenuItem("preview", {
-        id: "preview",
-        label: "预览画面",
-        onClick: () => void openPanePreview(origin, match.name),
-      });
-      // F79：杀死会话——命中 ≥2 个时拒绝提供（破坏性操作，选错的代价不可逆，不像 attach 可撤销）。
-      if (ambiguous) {
-        updateTabContextMenuItem("kill", {
-          id: "kill",
-          label: `杀死会话（检测到 ${matches.length} 个同身份会话，请到终端手动处理）`,
-          danger: true,
-          enabled: false,
-          onClick: () => {},
-        });
-      } else {
-        updateTabContextMenuItem("kill", {
-          id: "kill",
-          label: "杀死会话（kill tmux）",
-          danger: true,
-          onClick: () => this.killRemoteTmux(origin, match.name, viaCwd),
-        });
-      }
-    } else {
-      // audit-fixes F03.3（attach-into-idle）：无活 claude，但目标 sid 的**空 tmux**（@ccm_sid 命中、
-      // command≠claude）还在 → 提供 attach 进那个空 shell（用户可在里面自己敲/看，或就地 resume）。
-      // E73：明说不可 attach 的会话**不算 idle-tmux** —— 它那个「前台不是 claude」
-    // 恰恰是因为里面跑着别的东西（SDK bridge 之类），不是空壳。
-    const idle = this.isAttachable(sid) ? findIdleTmux(sessions, sid) : undefined;
-      if (idle) {
-        updateTabContextMenuItem("attach", {
-          id: "attach",
-          label: `Attach（空 tmux ${idle.name}，无 claude）`,
-          onClick: () => void runRemoteAttach(origin, idle.name),
-        });
-        removeTabContextMenuItem("preview"); // 空 shell 无 claude 画面可预览
-        // UX 审计 #1：灰态(idle-tmux)也给 kill——杀空 tmux → tab 转归档 → 可 Resume（给死角一个出口）。
-        updateTabContextMenuItem("kill", {
-          id: "kill",
-          label: `杀死会话（kill 空 tmux ${idle.name}）`,
-          danger: true,
-          onClick: () => this.killRemoteTmux(origin, idle.name, false, { idle: true }),
-        });
-      } else {
-        removeTabContextMenuItem("attach");
-        removeTabContextMenuItem("preview");
-        removeTabContextMenuItem("kill");
-      }
-    }
-  }
-
-  /**
-   * F09：给「Resume」一级菜单项造 flyout——顶层 tmux/直连两项跟随默认账号（sticky pin，同旧版
-   * plain「Resume（tmux/直连）」逐字节保持）；若传入 `accountGroup`（异步账号数据已就绪），
-   * 追加基座与每个可选账号入口，各自再嵌一层 tmux/直连子选择——账号×容器真正正交（此前
-   * `resumeTabTmux` 不支持显式账号，是本功能顺带补上的实现缺口，见 §0/features/
-   * F09-ui-convergence.md「实现期修正」）。
-   */
-  private buildResumeSubmenu(sid: string, accountOptions: AccountModifierOption[]): TabMenuItem[] {
-    const containerLeaves = (accountName: string | undefined, useBase: boolean): TabMenuItem[] => [
-      { label: "tmux", onClick: () => void this.resumeTabTmux(sid, accountName, useBase) },
-      { label: "直连（不建 tmux）", onClick: () => void this.resumeTab(sid, accountName, useBase) },
-    ];
-    const items: TabMenuItem[] = [...containerLeaves(undefined, false)];
-    if (accountOptions.length > 0) {
-      // F09 Phase D 审计（UX，建议）：纯展示性分隔线——把上面"跟随默认账号"两项和下面"换账号"
-      // 一组视觉分开，降低扫描成本（不增加点击次数，审计原话："综合任务时间…新版很可能相当
-      // 甚至更快，不建议再加独立一级项，折中是加视觉分组"）。
-      items.push({ label: "", divider: true });
-      // R05：判别联合取代了 `opt.id === "__base__"` 这个跨文件字符串比较。
-      for (const opt of accountOptions) {
-        items.push({
-          label: opt.label,
-          submenu:
-            opt.kind === "base" ? containerLeaves(undefined, true) : containerLeaves(opt.name, false),
-        });
-      }
-    }
-    return items;
-  }
-
-  /** F09：给「Restart」一级菜单项造 flyout——重启没有容器轴（对齐 §0 Plan agent 共识：restart
-   *  是 kill+resume 编排，作用于会话现有的后端，不经 `LaunchAction`/两个渲染器），只有账号轴，
-   *  每个账号再嵌一层「直接重启/先压缩再重启」（danger，§5）。入参已收窄成 `NamedAccountModifier[]`
-   *  （`kind === "account"` 那一支），基座在类型上就进不来——
-   *  重启从不提供基座逃生口（旧版行为，restart 面对的是已在某账号下运行的活会话，不是老会话）。 */
-  private buildRestartSubmenu(sid: string, accounts: NamedAccountModifier[]): TabMenuItem[] {
-    return accounts.map((a) => ({
-      label: a.label,
-      danger: true,
-      // F09 Phase D 审计（UX，建议）：这里没有「基座」选项——不是遗漏，是有意为之（restart 面对
-      // 的是已在某账号下运行的活会话，不是待迁移的老会话）；hover 到账号名这一层就能看到解释，
-      // 不用先读设计文档才知道这不是 bug。
-      title: `重启到「${a.label}」——不提供「不指定账号」这一项：重启作用于已在某账号下运行的活会话，不是待迁移的老会话`,
-      submenu: [
-        {
-          label: "直接重启",
-          danger: true,
-          title: `杀掉旧进程，用账号「${a.name}」resume 同一会话（中断当前回合、丢进程内状态）`,
-          onClick: () => void this.restartTabWithAccount(sid, a.name, false),
-        },
-        {
-          label: "先压缩上下文再重启",
-          danger: true,
-          title: `先在【旧账号】上 /compact（命中旧缓存更省）再换号重启——比换号后再压缩便宜`,
-          onClick: () => void this.restartTabWithAccount(sid, a.name, true),
-        },
-      ],
-    }));
-  }
-
-  /** A4/A5：远端 tab 菜单开后**异步追加/更新**账号相关 flyout——归档 tab → 更新「Resume」项的
-   *  submenu（补基座+具名账号入口）；活 tab → 账号数 ≥2 时追加一个「Restart」一级项 + flyout
-   *  （旧版从不给活会话基座逃生口，见 buildRestartSubmenu）。复用 F51 代次守卫（gen !==
-   *  tabMenuGeneration 则菜单已换/已关，整体 no-op，防 R-1 跨 tab 串味）。账号库不可用（§7
-   *  旧/未启用）→ `enumerateAccountModifiers` 内部已容错返回空数组，本方法
-   *  据此自然不追加任何东西（默认 Resume 仍在）。异步 fetch 用新鲜值，无冷缓存分裂。 */
-  private async appendAccountMenuItems(
-    origin: string,
-    sid: string,
-    status: TabStatus,
-  ): Promise<void> {
-    // 〔`A3` 第二波〕本机归档 tab 不带账号选择（本机 Resume 走那条会话上次的号，
-    // 见 `accounts.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
-    if (origin === LOCAL_ORIGIN && status === "archived") return;
-    const gen = tabMenuGeneration; // 捕获这一代菜单
-    const accountOptions = await enumerateAccountModifiers(origin);
-    if (gen !== tabMenuGeneration) return; // 菜单已换/已关
-    if (status === "archived") {
-      updateTabContextMenuItem("resume", {
-        id: "resume",
-        label: "Resume",
-        submenu: this.buildResumeSubmenu(sid, accountOptions),
-      });
-      return;
-    }
-    // 活会话重启：旧版阈值——只在 ≥2 个可选具名账号（`kind === "account"`）时才提供，
-    // 从不给基座（restart 面对的是已在某账号下运行的活会话，不是待迁移的老会话）。
-    // R05：判别联合让"排除基座"变成类型收窄，`realAccounts` 因此是 `NamedAccountModifier[]`
-    // ——`a.name` 在类型上可见，不再需要把 `id` 当账号名用。
-    const realAccounts = accountOptions.filter(
-      (o): o is NamedAccountModifier => o.kind === "account",
-    );
-    // **这条实际不可达**（R05 Phase D 审计变异 M8 实测存活）：`realAccounts` 来自
-    // `enumerateAccountModifiers`，而具名账号只在 `selectable.length >= 2` 时被**整批** push
-    // （`launch-menu.ts`），故 `realAccounts.length ∈ {0} ∪ [2, ∞)`，永远不可能是 1。
-    // 保留作 belt-and-braces（阈值真正的执行方在 launch-menu 侧），但别以为这里在独立执行阈值。
-    if (realAccounts.length < 2) return;
-    // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，重启中的会话至少有"⇄ 立刻置灰"这个视觉信号；
-    // 现在这是唯一入口，若不禁用，点了会静默命中 restartTabWithAccount 的 in-flight 守卫、
-    // 什么反应都没有——菜单直接呈现"当前不可点"，而不是点了才知道（守卫本身仍在，这里只是让
-    // UI 提前说实话）。
-    appendTabContextMenuItem({
-      id: "restart",
-      label: "Restart（换号重启）",
-      danger: true,
-      enabled: !this.restartingSids.has(sid),
-      submenu: this.buildRestartSubmenu(sid, realAccounts),
-    });
-  }
-
-  /** A5：造一个「等该 sid compact 完成」的 awaitCompact——注册 waiter 与超时竞速，两路都清理 waiter
-   *  防泄漏。resolve(true)=onLine 检测到 compact 摘要行 / resolve(false)=超时（编排器照 §5.2 不阻断、续 kill）。
-   *  默认 5min（§5）。 */
-  private awaitCompactFor(sid: string, timeoutMs = 300_000): () => Promise<boolean> {
-    return () =>
-      new Promise<boolean>((resolve) => {
-        let settled = false;
-        const finish = (v: boolean): void => {
-          if (settled) return;
-          settled = true;
-          this.compactWaiters.delete(sid);
-          clearTimeout(timer);
-          resolve(v);
-        };
-        this.compactWaiters.set(sid, () => finish(true));
-        const timer = setTimeout(() => finish(false), timeoutMs);
-      });
-  }
-
-  /**
-   * A5+ 优雅退出等待器：轮询该 origin 的 tmux 列表，`claudeExited` 报「目标 sid 前台不再是 claude」
-   * 即 resolve(true)；`timeoutMs`（默认 DEFAULT_EXIT_WAIT_MS=10s）到仍未退出 → resolve(false)（编排器
-   * 据此降级 kill）。list 失败当「未知」跳过本轮（不误判已退出）。注入 `restartWithAccount.awaitExit`。
-   */
-  private awaitExitFor(
-    origin: string,
-    cwd: string,
-    sid: string,
-    timeoutMs = DEFAULT_EXIT_WAIT_MS,
-    pollMs = 1000,
-  ): () => Promise<boolean> {
-    return () =>
-      new Promise<boolean>((resolve) => {
-        let stopped = false;
-        let pollTimer: ReturnType<typeof setTimeout> | undefined;
-        const stop = (v: boolean): void => {
-          if (stopped) return;
-          stopped = true;
-          clearTimeout(timer);
-          if (pollTimer) clearTimeout(pollTimer); // 清掉挂起的下一轮轮询，干净收尾
-          resolve(v);
-        };
-        const timer = setTimeout(() => stop(false), timeoutMs);
-        const tick = async (): Promise<void> => {
-          if (stopped) return;
-          // ★ F14：走唯一取数点 ⇒ **这一轮轮询顺带把缓存刷新了**。
-          // 此前这里是四处取数点里唯一不写缓存的一处，而它恰好是唯一会反复取数的。
-          const got = await this.fetchTmuxFresh(origin);
-          const ok = got !== undefined; // 查询失败 → 本轮跳过（不误判已退出）
-          const sessions = ok ? got : null;
-          if (stopped) return;
-          if (ok && claudeExited(sessions, sid, cwd)) {
-            stop(true);
-            return;
-          }
-          pollTimer = setTimeout(() => void tick(), pollMs);
-        };
-        void tick();
-      });
-  }
-
-  /** A5：活跃会话换号重启——先解析该会话当前所在的 tmux 名（send-keys/kill 目标），再走
-   *  `restartWithAccount` 编排（§5）。会话不在本工具 tmux（非本工具起/已漂移）→ 提示无法重启。
-   *  〔`A3` 第二波〕本机会话（`origin === null`）也走这一条，origin 取 `<local>`。 */
-  private async restartTabWithAccount(
-    sid: string,
-    accountName: string,
-    compactFirst: boolean,
-    confirmFn?: (msg: string) => boolean,
-  ): Promise<boolean> {
-    const tab = this.tabs.get(sid);
-    if (!tab) return false;
-    // D 审计（重要）：同一 sid 的并发重启会互相打架——A 已 kill+resume 起了新 claude，B 的
-    // awaitExit 看到新 claude 仍在 → 超时降级 kill → 把刚起来的新会话又杀了再 resume 一遍
-    // （还多弹一个终端窗口）。点击到弹确认之间有多个 await（getBehavior/list_remote_tmux/
-    // fetchAccounts/checkTrust）且无反馈，双击很自然 → 在唯一入口（右键菜单的 Restart flyout；
-    // ⇄ 按钮/批量对齐已随 F09 删除）上游拦住。
-    if (this.restartingSids.has(sid)) {
-      // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，命中这条守卫时 UI 上至少有"⇄ 立刻置灰"这个
-      // 间接信号；现在右键菜单是唯一入口，点了却什么反应都没有（含最长 5 分钟的 compact 等待+
-      // 10 秒退出等待窗口），用户大概率以为没点中、再点一次——给个明确提示，别让破坏性操作的
-      // in-flight 防抖对用户完全不可见。
-      showActionFailureToast(
-        "正在重启中",
-        "该会话上一次换号重启还没完成，请稍候再试。",
-        { level: "info", durationMs: 4000 },
-      );
-      return false;
-    }
-    this.restartingSids.add(sid);
-    this.refreshAccountBadgeFor(sid);
-    try {
-      return await this.restartTabWithAccountInner(sid, tab, accountName, compactFirst, confirmFn);
-    } finally {
-      this.restartingSids.delete(sid);
-      this.refreshAccountBadgeFor(sid);
-    }
-  }
-
-  /** 单个 tab 的账号徽章就地重刷（in-flight 状态变化时用；tab 已没了就静默跳过）。 */
-  private refreshAccountBadgeFor(sid: string): void {
-    const refs = this.tabButtons.get(sid);
-    const tab = this.tabs.get(sid);
-    if (refs && tab) this.updateAccountBadge(refs, sid, tab);
-  }
-
-  private async restartTabWithAccountInner(
-    sid: string,
-    tab: Tab,
-    accountName: string,
-    compactFirst: boolean,
-    confirmFn?: (msg: string) => boolean,
-  ): Promise<boolean> {
-    // 〔`A3` 第二波〕本机会话的 origin 是 `<local>`：下面每一跳（tmux 快照 / send-keys / kill /
-    // 账号清单 / 信任预检）都按 origin 分流，本机走得通；resume 那一跳在 `restartWithAccount` 里分。
-    const origin = tab.origin ?? LOCAL_ORIGIN;
-    const cwd = tab.cwd ?? "";
-    const behavior = await getBehavior();
-    // 解析该会话当前 tmux 名，一律新查（对齐 resumeTabTmux：attach/重启对新鲜度最敏感，防据陈旧快照误伤）。
-    const sessions = (await this.fetchTmuxFresh(origin)) ?? null;
-    // F04（R10）：破坏性重启必须精确命中**恰好一个**同 sid 的活会话——`findClaudeTmuxMatches`
-    // 不折叠成第一个。`matches.length===0` 沿用旧"无法定位"文案；`matches.length>1` 是新增的
-    // 拒绝分支：错误的那次操作代价不可逆（可能杀掉了对的那个、留下错的那个继续跑），与
-    // resumeTabTmux"警告+继续"的分级不同——分级理由见 F04 计划 §2 取舍④。
-    const matches = findClaudeTmuxMatches(sessions, sid);
-    if (matches.length > 1) {
-      showActionFailureToast(
-        "换号重启拒绝",
-        `该会话身份（sid）同时活在 ${matches.length} 个 tmux 里，无法安全判定该重启哪一个——请到终端手动核实后再试。`,
-        { level: "info", durationMs: 8000 },
-      );
-      return false;
-    }
-    const live = matches[0];
-    // A5 阻塞修（D 审计）：破坏性重启**必须**精确命中 @ccm_sid。无 @ccm_sid 的降级远端此前会走
-    // `findClaudeTmux` 的 cwd 回退（可能抓到同目录**别的** claude）→ kill 错会话 + 对目标 sid 起
-    // 新进程 = 双进程 / jsonl 双写（§5.2 要防的严重态）。`findClaudeTmuxMatches` 只精确匹配、
-    // 不含 cwd 回退，故 `matches` 为空即代表"未精确命中"，天然对齐这条守卫（不猜）。
-    if (!live) {
-      // `K-P5g`：这句话原来把**两条成因**并排摆着（「不在本工具 tmux 里」**或**「不是本工具
-      // 起的」），而当时没有任何东西分得开它们。现在分得开了——`--session-accounts` 读回来的
-      // 身份 token（`launchId`）说得出这条会话是不是从本工具这条路起来的，于是这里**拿它做
-      // 决定**：选哪一条成因、给哪一句补救。判据见 `accounts.ts::restartLocateFailureMessage`
-      // 头注与 `accounts.vitest.ts`；本处的接线由 `tabs.vitest.ts` 那两条对照钉着。
-      const msg = restartLocateFailureMessage(this.sessionAccountsByS.get(sid), {
-        local: origin === LOCAL_ORIGIN,
-      });
-      showActionFailureToast(msg.title, msg.body, { level: "info", durationMs: 8000 });
-      return false;
-    }
-    return await restartWithAccount({
-      origin,
-      sessionId: sid,
-      cwd,
-      tmuxName: live.name,
-      accountName,
-      launcher:
-        origin === LOCAL_ORIGIN
-          ? behavior.resumeCommandLocal
-          : await resolveResumeCommand(origin, behavior.resumeCommandRemote),
-      compactFirst,
-      // `confirmFn` 保留为可选参数（批量对齐曾用 `() => true` 跳过逐会话确认，随 F09 一并删除）；
-      // 唯一现存调用点（右键菜单的 Restart flyout）不传 → 仍走 restartWithAccount 自带的破坏性二次确认。
-      confirm: confirmFn,
-      // A5 step5：真检测器——onLine 见该 sid 的 compact 摘要行即 resolve，超时（5min）按 §5.2 续 kill。
-      awaitCompact: this.awaitCompactFor(sid),
-      // A5+ 优雅退出：轮询 tmux 前台不再是 claude 即 resolve，10s 超时按 §5.2 ④ 降级 kill。
-      awaitExit: this.awaitExitFor(origin, cwd, sid),
-    });
+    if (this.store.activeId) void this.openInNewWindow(this.store.activeId);
   }
 
   /** account-ux U8：当前活跃会话 sid（只读投影，供 Ctrl+K / 快捷键判定"对当前会话做某事"）。 */
   activeSessionId(): string | null {
-    return this.activeId;
-  }
-
-  /** F79(#38)：杀死远端 tmux 会话——二次确认后 kill-session。变灰由 #60-A 对账兜（不主动 archive，守 §24）。
-   *  @param viaCwd findClaudeTmux 是否走了 cwd 回退命中（无 @ccm_sid）——此时会话名是按目录猜的、可能
-   *  不是本 tab 的会话（可能杀到同目录别的 Claude）。破坏性操作，回退命中时在确认框里加强 caveat
-   *  （比 attach 的 toast 更强，因为在用户必须点的确认里）。守 F74c「保留回退+显式提示」的取舍。 */
-  private killRemoteTmux(
-    origin: string,
-    tmuxName: string,
-    viaCwd: boolean,
-    opts?: { confirm?: (message: string) => boolean; idle?: boolean },
-  ): void {
-    const caveat = viaCwd
-      ? `\n\n⚠ 未检测到会话身份标记（@ccm_sid）——「${tmuxName}」是按工作目录猜的，可能不是本 tab 的会话，甚至可能是同目录里另一个正在运行的 Claude。建议在远端重装 ccm 助手后再操作。`
-      : "";
-    // idle-tmux（灰 tab）：claude 已退、只剩空 shell，文案别再说"正在运行的 Claude"；
-    // 杀掉这个残留 tmux → tab 转归档（archived）→ 即可 Resume（给灰态一个出口，治 UX 审计 #1）。
-    // ★ P3 刀 2 UI：本机也会走到这里 ⇒ 文案不能再写死「远端」。
-    // 这不是措辞洁癖：一个说「将终止**远端**……」的确认框，用在本机会话上是**在说假话**，
-    // 而它恰好是个不可恢复的破坏性动作的最后一道人工闸。
-    const isLocal = origin === LOCAL_ORIGIN;
-    const where = isLocal ? "本机" : "远端";
-    const body = opts?.idle
-      ? "该会话里 Claude 已退出（只剩空 tmux shell）；kill 掉这个残留会话。杀掉后 tab 转归档、可 Resume（若是该机唯一会话，可能要等下次重连对账才归档）。"
-      : `将终止${where}这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。`;
-    // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? window.confirm`）。
-    // 默认（不传 opts）走 `window.confirm`，交互零变化——headless e2e/DEV 才注入 ()=>true/false。
-    const confirmFn = opts?.confirm ?? ((m: string) => window.confirm(m));
-    const ok = confirmFn(
-      `杀死会话「${tmuxName}」（机器 ${isLocal ? "本机" : origin}）？\n\n${body}\n此操作不可恢复。${caveat}`,
-    );
-    if (!ok) return;
-    void (async () => {
-      try {
-        await invoke("kill_remote_tmux", { origin, target: tmuxName });
-        const who = isLocal ? "本机" : `远端 [${origin}]`;
-        showActionFailureToast(
-          "已杀死会话",
-          opts?.idle
-            ? `${who} 的 tmux 会话「${tmuxName}」已终止；tab 随后转归档、可 Resume（唯一会话时可能要等下次对账）。`
-            : `${who} 的 tmux 会话「${tmuxName}」已终止；tab 稍后自动变灰。`,
-          { level: "info", durationMs: 6000 },
-        );
-      } catch (err) {
-        showActionFailureToast("杀死会话失败", String(err));
-      }
-    })();
-  }
-
-  /** 打开指定 Tab 的 cwd。本地 → 系统文件管理器；远端 → SFTP 面板进入该远端目录（F78）。无 cwd 忽略。 */
-  private async openTabCwd(sid: string): Promise<void> {
-    const tab = this.tabs.get(sid);
-    if (!tab?.cwd) return;
-    // F78：远端 Tab 的 cwd 是远端路径，本地 openPath 打不开——改成用该机配置开 SFTP 进入该目录
-    // （Batch9-F29 曾从静默 no-op 改成 info 提示；现进一步真能浏览）。找不到该机配置才回退提示。
-    if (tab.origin !== null) {
-      const host = findHostByOrigin((await readRemoteConfig()).hosts, tab.origin);
-      if (host && host.host.trim() !== "" && host.user.trim() !== "") {
-        openSftpPanelDir(host, tab.cwd);
-        return;
-      }
-      // 找到但缺 host/user = 配置不完整；没找到 = 未配置——分开措辞（审计建议）。
-      const why = host
-        ? "该机的远端配置缺 host / user（在设置 → 连接 补全后可用）"
-        : "未找到该机的远端配置（在设置 → 连接 添加后可用）";
-      showActionFailureToast(
-        "远端目录无法本地打开",
-        `该会话在远端机器 [${tab.origin}]，工作目录 ${tab.cwd} 不在本机；${why}。`,
-        { level: "info" },
-      );
-      return;
-    }
-    try {
-      await openPath(tab.cwd);
-    } catch (e) {
-      console.warn(`[tabs] openPath ${tab.cwd} failed:`, e);
-    }
+    return this.store.activeId;
   }
 
   /**
@@ -3879,55 +1150,25 @@ export class TabManager {
    *   不互相锁死（不然 auto 调 switchTo 又设 override 自己就被锁了）。
    */
   switchTo(sessionId: string, source: "manual" | "auto" = "manual"): void {
-    if (!this.tabs.has(sessionId)) return;
-    if (this.activeId === sessionId) return;
+    if (!this.store.tabs.has(sessionId)) return;
+    if (this.store.activeId === sessionId) return;
 
     // 切 active 走 .active class（CSS visibility 控制），避免 display:none/block
     // 触发整棵子树重建 layout tree 卡顿。详 styles.css 的 .stream 注释。
-    for (const [sid, t] of this.tabs) {
-      t.streamEl.classList.toggle("active", sid === sessionId);
-      // K-R45 乙：清单悬浮层与它那条流**同进同出**。漏掉这一句 = 所有 tab 的清单
-      // 一起挂在屏幕上，而且点下去找的是别人的流（`revealCard` 只在自己的 streamEl 里找）。
-      t.inputsEl.classList.toggle("active", sid === sessionId);
-    }
-    const next = this.tabs.get(sessionId);
+    this.view.showOnly(sessionId);
+    const next = this.store.tabs.get(sessionId);
     if (next) next.unread = 0;
-    this.activeId = sessionId;
-    // Batch13-F40a:命中 virgin tab(启动重放全收纳,还没建过卡)→ 同步物化尾段,
-    // 避免切过去一片空白(R-3:有界循环补到可滚,防工具密集会话一轮近空屏)。
-    // 非 virgin tab 不动(上翻补批属 F40b)。
-    if (next && next.window.floorSeq === null && next.window.pendingCount > 0) {
-      this.materializeUntilFilled(next);
-    }
-    // F40b:切入即刷新哨兵(非 virgin 但账本非空的 tab 也要见到「还有 N 条」)
-    if (next) this.updateSentinel(next);
-    // 〔`设计/10` 骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）
-    if (next) this.requestSkeleton(next);
-    if (next?.outline.needsFetch) this.refreshOutline(next); // 〔SE1〕大纲：有新行才要
-    // D 审计 R-2:非 virgin + 不可滚 + 账本有余的 tab 没有 fill 入口(不可滚元素
-    // 不产生 scroll 事件,哨兵可见却"上翻物理不可达")——切入时踢一次,rAF 自链
-    // 接管直到可滚或账尽。
-    if (next && next.window.pendingCount > 0) {
-      const el = next.streamEl;
-      if (el.scrollHeight - el.clientHeight <= 1) this.fillAbove(next);
-    }
-    // Batch5-F19：记住所在 tab——下次启动 active 选择 + replay 优先该 session。
-    // viewer/tear-off 窗口共享同 origin 的 localStorage（INVARIANT § 14），它们的
-    // TabManager 置 persistLastActive=false，防独立窗口看会话 X 污染主窗口记忆。
-    if (this.persistLastActive) {
-      safeSet(LS_KEYS.lastActiveSid, sessionId);
-    }
-    if (source === "manual") {
-      this.manualOverrideUntil = Date.now() + TabManager.MANUAL_OVERRIDE_MS;
-      this.onManualSwitch?.();
-    }
+    this.store.activeId = sessionId;
+    if (next) this.view.activate(next);
+    // Batch5-F19 记住所在 tab ＋ 手动切的 5s 保护（〔U2〕住路由：`tab-router.ts::noteSwitched`）。
+    this.router.noteSwitched(sessionId, source);
     this.refreshTabBar(); // active 高亮 + badge 立即更新（廉价，不阻塞）
 
     // 切 Tab 卡顿优化：把会**强制同步 reflow** 的 scrollToBottom（读 scrollHeight）+
     // 面板整表 re-render 推到下一帧——让 .active 的 visibility 切换先绘制出来（切 Tab 即时
     // 跟手），重活下一帧再做。期间又切走则跳过（不把面板/滚动落到已非 active 的会话上）。
     requestAnimationFrame(() => {
-      if (this.activeId !== sessionId) return;
+      if (this.store.activeId !== sessionId) return;
       next?.stream.scrollToBottom();
       // ★ 步 3：**第二帧再贴一次**（对齐 `session-viewer.ts:82` 已有的同一修法）。
       //
@@ -3940,316 +1181,24 @@ export class TabManager {
       // 切走了则上面那道 `activeId` 守卫已经挡住。真要更细，得让 `MessageStream` 出一个
       // 「只重贴、不改粘底态」的入口 —— 那是另一件事，别在这一步顺手扩。
       requestAnimationFrame(() => {
-        if (this.activeId !== sessionId) return;
-        this.tabs.get(sessionId)?.stream.scrollToBottom();
+        if (this.store.activeId !== sessionId) return;
+        this.store.tabs.get(sessionId)?.stream.scrollToBottom();
       });
       // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
-      this.tasksPanel?.setSession(sessionId, this.tasksBySid.get(sessionId) ?? []);
+      this.tasksPanel?.setSession(sessionId, this.store.tasksBySid.get(sessionId) ?? []);
       // issue #23: agents 面板同步切到新 active Tab
       this.agentsPanel?.setSession(
         sessionId,
-        [...(this.tabs.get(sessionId)?.agents.values() ?? [])],
+        [...(this.store.tabs.get(sessionId)?.agents.values() ?? [])],
       );
       // F88b：HUD context% chip 切到新 active 会话的最新 usage（无带 usage 记录 → null → 隐藏）
-      const nt = this.tabs.get(sessionId);
+      const nt = this.store.tabs.get(sessionId);
       this.onActiveUsageChanged?.(nt?.latestModel ?? null, nt?.latestPromptTokens ?? null);
     });
   }
 
-  /**
-   * 局部更新策略（避免每次 onLine 都 replaceChildren）：
-   *   1. 删除：tabButtons 缓存里有但 orderedIds 已没的 sid → 摘 DOM + 清缓存
-   *   2. 创建：orderedIds 里有但缓存没的 sid → createTabButton 一次（含所有 5 个子
-   *      元素 + 事件 listener），visibility 全交 CSS 控制
-   *   3. 更新：updateTabButton 同步 active / archived / has-unread class + label/badge 文本
-   *   4. 排序：iterate orderedIds + insertBefore，确保 DOM 顺序 = orderedIds 顺序
-   *
-   * CSS 配合（styles.css）：
-   *   .tab.archived .live-dot { display: none }
-   *   .tab:not(.archived) .tab-close { display: none }
-   *   .tab .tab-badge { display: none }
-   *   .tab.has-unread:not(.active) .tab-badge { display: inline-block }
-   */
-  /**
-   * `refreshTabBar` 的**帧末合批**入口〔audit-0805 F15〕。
-   *
-   * 排一次位（`tabBarRefreshScheduled`）+ 无 rAF 时 `setTimeout` 兜底，
-   * 范式与同文件的 `scheduleIdleMaterialize` 一致。
-   * ⚠ 只给 live 路那一处用，别把用户动作触发的调用点也改过来（理由写在调用处）。
-   */
-  private tabBarRefreshScheduled = false;
-
-  private scheduleTabBarRefresh(): void {
-    if (this.tabBarRefreshScheduled) return;
-    this.tabBarRefreshScheduled = true;
-    const run = (): void => {
-      this.tabBarRefreshScheduled = false;
-      this.refreshTabBar();
-    };
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(run);
-    } else {
-      window.setTimeout(run, 0);
-    }
-  }
-
-  /** P7a-1：归档区 UI 建一次。默认折叠（缺省 `"1"`，与 agents/tasks 面板同形态）。 */
-  // 🔴 〔步 17·A · 2026-09-19〕**`ensureArchiveUi()` 整个删掉。**
-  //
-  // `设计/30 §A` 抬头逐字「**已定**：删归档抽屉 · 固定灰 tab」，三条独立理由：
-  //   ① 它永久吃 450px 屏宽（`.tab-archive` 是 `#app` 的 grid item 却没认领格子）
-  //   ② 它是个撕窗口陷阱（tear-off 判定线对抽屉没有意义）
-  //   ③ **它的存在理由本来就自相矛盾** —— 原 `belongsInArchive` 的注释自己写着：
-  //      active tab 会「在你正看着它的时候」掉进折叠的抽屉里 ⇒ 已经为 active 开了例外。
-  //      把例外推广到全部，抽屉就没了。
-  //
-  // ⚠ **删的是抽屉，不是状态。** `status === "archived"` 照旧存在，那种 tab
-  //   **留在原位灰着**（`.tab.archived` 那条 CSS 本来就有，`§A.3` 逐字「不用新写」）。
-  //   用户 2026-09-19 逐字：「没有归档这个东西，不要归档，就是灰 tab。」
-
-  /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
-  async loadCollections(): Promise<void> {
-    this.collections = await getCollections();
-    this.collectionsLoaded = true;
-    this.refreshTabBar();
-  }
-
-  /** P7a-3：落盘 + 重画。**先改内存再落盘** —— 让 UI 立刻响应，落盘失败只记日志。 */
-  private async commitCollections(next: TabCollection[]): Promise<void> {
-    this.collections = next;
-    this.refreshTabBar();
-    await this.persistCollections(next);
-  }
-
-  /**
-   * 只落盘、不重画。〔步 17·D〕`applyDrop` 要在同一拍里改**顺序 ＋ 归属**，
-   * 由它统一重画一次 —— 这里再画一次就是白画（拖动结束那一拍本来就重。`§3 P3`）。
-   * ⚠ 「落盘失败只记日志」这句话只能有一个住址，所以 `commitCollections` 也走这里。
-   */
-  private async persistCollections(next: readonly TabCollection[]): Promise<void> {
-    try {
-      await setCollections(next);
-    } catch (e) {
-      console.warn("[tab-collections] 落盘失败:", e);
-    }
-  }
-
-  // ===== 〔步 17·B · `设计/30 §B`〕固定（pinned）=====
-
-  /**
-   * 启动时把固定的 tab **复活**出来。宿主在 `loadCollections` 之后调一次。
-   *
-   * ⚠ **2026-09-21 订正**：这儿原先写着「必须在 `loadOrder` **之前**」，理由是
-   *   「`loadOrder` 用 `getTabOrder(new Set(this.orderedIds))` 按今天真的存在的 sid 过滤，
-   *   复活的 tab 得先存在，位置才排得回来」。**那个理由连着那道读时过滤一起没了**
-   *   （`loadOrder` 头注记着为什么它是个 no-op）：顺序现在是一份**留着的意图**
-   *   （`savedOrder`），复活出来的 tab 走 `createSkeletonTab` → `placeInOrder` 时
-   *   会**再应用一次** ⇒ 两者谁先谁后都排得回来。
-   * ⚠ `main.ts` 今天仍然是「pinned 先、order 后」那个次序 —— 不改它，但那**不再是承重的**。
-   *
-   * # 复活流程（`§B.5` 逐字）
-   * ```
-   * 读 tabBar.pinned[] → 逐条 createSkeletonTab(sid, cwd, origin, kind, name)
-   *   ├ 标 pinned = true
-   *   ├ 标 status = "archived"（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回 live）
-   *   └ 标题直接用存下来的那份（不等读文件）
-   * ```
-   * 🔴 **不读内容** —— `99 §2.5 P3` 已裁定「已结束的会话点进去不能看内容，只能 resume」。
-   *   `replay_session_to_window` 那条路对 archived 本来就走不通（它的头注逐字：
-   *   「仅活跃 session 的历史在 buffer 里」）。
-   *
-   * ⚠ **已经存在的 sid 不重建**（后端 replay 可能已经先宣告了它）—— 只补一个 `pinned = true`，
-   *   `status` 一个字不碰：那条会话真活着的时候，把它按回 archived 是一句假话。
-   */
-  async loadPinned(): Promise<void> {
-    const list = await getPinned();
-    this.pinnedRecords = new Map(list.map((p) => [p.sid, p]));
-    for (const p of list) {
-      const existed = this.tabs.get(p.sid);
-      if (!existed) {
-        this.createSkeletonTab(p.sid, p.cwd, p.origin, p.kind, p.name);
-        const t = this.tabs.get(p.sid);
-        if (!t) continue;
-        // 没有活进程 ⇒ 灰着。`archiveTab` 那条路要求 tab 已在事件流里，这里是**凭空造**，
-        // 所以直接置位；两者最终形态一致（`.tab.archived` 那条 CSS 本来就有）。
-        t.status = "archived";
-        t.activity = null;
-        t.parentPath = p.jsonlPath; // `§B.5`：复活的必需品（resume 与「有没有记录」都靠它）
-        t.title = p.title; // 骨架期就显示正确标题，不等读文件
-        t.pinned = true;
-        this.mountPinHint(t);
-      } else {
-        existed.pinned = true;
-      }
-    }
-    this.pinnedLoaded = true;
-    this.refreshTabBar();
-  }
-
-  /**
-   * 复活出来的固定 tab 的空态：**说清它是什么 ＋ 给出那唯一的出口**。
-   *
-   * `§B.5` 复活流程最后一行逐字：「用户点进去那一刻，**出现 resume 入口**（🔴 不读内容）」。
-   * `§B.6` 第一格：`jsonlPath` 为空的那种要提示「这个会话没有留下记录」——
-   * **不要留一个点了没反应的 tab**。两种情形在这里分叉。
-   */
-  private mountPinHint(tab: Tab): void {
-    const sid = tab.sessionId;
-    const degraded = this.pinIsDegraded(sid);
-    const box = document.createElement("div");
-    box.className = "pin-revived-hint";
-    const head = document.createElement("strong");
-    head.textContent = degraded ? "这个会话没有留下记录" : "📌 固定下来的已结束会话";
-    const body = document.createElement("p");
-    body.textContent = degraded
-      ? "固定它的时候它还没写下任何一行，前端没有它的 jsonl 路径 —— 没有可以接回去的东西。右键 × 可以把它去掉。"
-      : "内容不在本地缓存里（已结束的会话只能 resume，不能回看）。resume 成功后 Claude 会续写同一份记录，这个 tab 会自己亮起来。";
-    box.append(head, body);
-    if (!degraded) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "pin-revived-hint-btn";
-      btn.textContent = "Resume 这个会话";
-      // 与右键菜单的「Resume」同一个动作、同一个住址 —— 这里只是把入口放在用户正看着的地方。
-      btn.addEventListener("click", () => void this.resumeTab(sid));
-      box.appendChild(btn);
-    }
-    tab.streamEl.appendChild(box);
-    this.pinHintEls.set(sid, box);
-  }
-
-  /** 复活成 live（resume 真的接上了）或 tab 关掉时，摘掉那块空态提示。 */
-  private clearPinHint(sid: string): void {
-    this.pinHintEls.get(sid)?.remove();
-    this.pinHintEls.delete(sid);
-  }
-
-  /**
-   * 把一个 tab 压成一条落盘记录。字段表逐条照 `§B.5`。
-   *
-   * ⚠ `lastActiveAt`：**live ⇒ 此刻**（「它现在还活着」是个真读数）；
-   *   **archived ⇒ 沿用盘上那份，没有就 `null`** —— 前端 `Tab` 上零时间戳字段（现打），
-   *   把它刷成 `Date.now()` 会让「最后活动时刻」变成「最后一次落盘时刻」，那是假话。
-   */
-  private pinRecordFor(tab: Tab): PinnedTab {
-    const prev = this.pinnedRecords.get(tab.sessionId);
-    return {
-      sid: tab.sessionId,
-      jsonlPath: tab.parentPath,
-      cwd: tab.cwd,
-      origin: tab.origin,
-      // `§3.5.7`：缺了 resume 会静默落到默认号。两个源都读不到 ⇒ `null`＝没记到，不是默认号。
-      account:
-        this.sessionAccountsByS.get(tab.sessionId)?.account ??
-        this.accountLastByS.get(tab.sessionId) ??
-        prev?.account ??
-        null,
-      lastActiveAt: tab.status === "live" ? Date.now() : prev?.lastActiveAt ?? null,
-      kind: tab.kind,
-      name: tab.bgName,
-      title: tab.title,
-    };
-  }
-
-  /**
-   * 把「现在哪些 tab 被固定了」整张表写回 `config.json` 的 `tabBar.pinned`。
-   *
-   * **真相源是 `Tab.pinned`**，这里只是把它压平 ⇒ 不会出现「内存说固定了、盘上没有」。
-   *
-   * 🔴 **「没 `loadPinned` 过就不写」那道门不在这里，在 `togglePin`** —— 这是死值验逼出来的：
-   *   我原本在这里也放了一条 `if (!this.pinnedLoaded) return;`，**刀 9 实测它恒不承重**
-   *   （去掉之后一格都不红）。原因是它没有任何可区分的输入：本函数只有两个调用方，
-   *   `togglePin` 自己那道门已经挡在前面，而 `closeTab` 只在 `tab.pinned` 为真时才调，
-   *   `tab.pinned` 又只能由 `loadPinned`（与 `pinnedLoaded = true` 同一个微任务）
-   *   或 `togglePin` 置起来。
-   * ⇒ 照 `sanitizeCollections` 那条逐字先例删掉：「留一道任何输入都区分不出的守卫，
-   *   就是一条假绿的防线」。真正在承重的那道由死值验刀 10 钉着。
-   */
-  private async persistPinned(): Promise<void> {
-    const next: PinnedTab[] = [];
-    for (const sid of this.orderedIds) {
-      const tab = this.tabs.get(sid);
-      if (tab?.pinned) next.push(this.pinRecordFor(tab));
-    }
-    this.pinnedRecords = new Map(next.map((p) => [p.sid, p]));
-    try {
-      await setPinned(next);
-    } catch (e) {
-      console.warn("[tab-bar] 固定落盘失败:", e);
-    }
-  }
-
-  /**
-   * 右键菜单那一项：翻转固定。**先改内存再落盘**（照 `commitCollections` 的形状）。
-   *
-   * ⚠ 不做自动固定（`§B.7` 逐字「照 `tab-collections.ts` 那条『手动建，不要自动』的先例」）——
-   *   这是唯一的入口。
-   */
-  togglePin(sid: string): void {
-    const tab = this.tabs.get(sid);
-    if (!tab || !this.pinnedLoaded) return;
-    tab.pinned = !tab.pinned;
-    this.refreshTabBar();
-    void this.persistPinned();
-  }
-
-  /**
-   * `§B.6` 第一格：这条固定记录**点进去也没有东西可看**（`jsonlPath` 为空 ——
-   * 骨架 tab 从没收到过带路径的行就被固定了）。
-   *
-   * 🔴 用途是**不许留一个点了没反应的 tab**：点它的时候要说人话（见点击处的提示）。
-   * ⚠ 两个条件都要：盘上那条是降级的 **且** 到现在也没有行回填过 `parentPath`
-   *   （真来了行就不再降级 —— 那条 tab 已经有记录可读了）。
-   */
-  private pinIsDegraded(sid: string): boolean {
-    const rec = this.pinnedRecords.get(sid);
-    if (!rec || !isDegradedPin(rec)) return false;
-    return (this.tabs.get(sid)?.parentPath ?? "") === "";
-  }
 
 
-
-  /**
-   * P7a-3：拿到某集合在主栏里的容器（没有就建）。
-   *
-   * 组头点一下改名、右侧 `×` 解散。**解散只去掉分组，一个 tab 都不动** ——
-   * 集合是个视图，不是容器。
-   */
-  private groupElFor(col: TabCollection): HTMLElement {
-    let g = this.groupEls.get(col.id);
-    if (!g) {
-      const wrap = document.createElement("div");
-      wrap.className = "tab-group";
-      const head = document.createElement("div");
-      head.className = "tab-group-head";
-      const name = document.createElement("button");
-      name.type = "button";
-      name.className = "tab-group-name";
-      name.addEventListener("click", () => {
-        const cur = this.collections.find((x) => x.id === col.id);
-        const next = window.prompt("集合名:", cur?.name ?? "");
-        if (next === null) return;
-        void this.commitCollections(renameCollection(this.collections, col.id, next));
-      });
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "tab-group-del";
-      del.textContent = "×";
-      del.title = "解散这个集合（只去掉分组，会话一个都不会关）";
-      del.addEventListener("click", () => {
-        void this.commitCollections(deleteCollection(this.collections, col.id));
-      });
-      head.append(name, del);
-      const list = document.createElement("div");
-      list.className = "tab-group-list";
-      wrap.append(head, list);
-      this.barEl.appendChild(wrap);
-      g = { wrap, head, list };
-      this.groupEls.set(col.id, g);
-    }
-    (g.head.firstElementChild as HTMLElement).textContent = col.name;
-    return g.list;
-  }
 
   private refreshTabBar(): void {
     // ★ 6d（条 54）：**拖拽进行中不重排 tab 栏。**
@@ -4263,729 +1212,11 @@ export class TabManager {
     // ⚠ 守的是 `d.dragging`（真起拖了）而不是 `this.drag` 在不在 —— 后者在「按下还没动」
     // 那一段也为真，那段本来就该照常刷新（它与点击没有区别）。
     // ⚠ 不是丢掉这次刷新：记一笔脏，`teardownDrag` 收尾时补一次（见那里）。
-    if (this.drag?.dragging) {
-      this.tabBarDirtyDuringDrag = true;
-      return;
-    }
-    // 1. 删
-    const wanted = new Set(this.orderedIds);
-    for (const sid of Array.from(this.tabButtons.keys())) {
-      if (!wanted.has(sid)) {
-        const refs = this.tabButtons.get(sid)!;
-        refs.root.remove();
-        this.tabButtons.delete(sid);
-      }
-    }
-
-    // 2 + 3 + 4. 创建 / 更新 / 排序
-    // 〔步 17·A〕抽屉没了 ⇒ 只剩主栏 ＋ 按集合分的若干组
-    // ⇒ 推广成「**每容器一个游标**」。
-    // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
-    for (const [id, g] of this.groupEls) {
-      if (!this.collections.some((x) => x.id === id)) {
-        g.wrap.remove();
-        this.groupEls.delete(id);
-      }
-    }
-    for (const col of this.collections) this.groupElFor(col);
-    const cursors = new Map<HTMLElement, ChildNode | null>();
-    // ★ **未归组的排在所有组之后**〔D 阶段补审〕。
-    //
-    // `barEl` 的游标若从 `firstChild` 起，散 tab 会插到**组容器之前** ——
-    // 而 `P7a3-Y2` 逐字写的是「未归组的照常**在后面**」。
-    // 实现与自己的 DoD 措辞不符，是那种「读起来都对、跑起来是另一回事」的差错。
-    // ⇒ 把 `barEl` 的起点定在最后一个组容器上（没有组则回到 `firstChild` 语义）。
-    const lastGroup = [...this.barEl.children]
-      .filter((e) => e.classList.contains("tab-group"))
-      .pop();
-    if (lastGroup) cursors.set(this.barEl, lastGroup);
-    for (const sid of this.orderedIds) {
-      const tab = this.tabs.get(sid);
-      if (!tab) continue;
-      let refs = this.tabButtons.get(sid);
-      if (!refs) {
-        refs = this.createTabButton(sid);
-        this.tabButtons.set(sid, refs);
-      }
-      this.updateTabButton(refs, sid, tab);
-      // 〔步 17·A〕分流从三路（抽屉 / 组 / 主栏）降到**两路**（组 / 主栏）。
-      // 「归档优先于集合」那条判定整条消失 ⇒ **灰 tab 也能在组里**（`§A.3` 逐字）。
-      const col = collectionOf(this.collections, sid);
-      const host = col ? this.groupElFor(col) : this.barEl;
-      // 排序：希望此 button 出现在**同容器内**前一个之后。
-      const prev = cursors.get(host) ?? null;
-      const targetNext: ChildNode | null = prev ? prev.nextSibling : host.firstChild;
-      if (refs.root !== targetNext || refs.root.parentElement !== host) {
-        host.insertBefore(refs.root, targetNext);
-      }
-      cursors.set(host, refs.root);
-    }
-
-    this.notifyChanged();
+    if (this.dragger.deferRefresh()) return;
+    this.bar.refresh();
   }
 
-  private createTabButton(sid: string): TabButtonRefs {
-    const root = document.createElement("button");
-    root.className = "tab";
-
-    const dot = document.createElement("span");
-    dot.className = "live-dot";
-    root.appendChild(dot);
-
-    const label = document.createElement("span");
-    label.className = "tab-title";
-    root.appendChild(label);
-
-    // A3：账号徽章（该会话属于哪个账号）。默认隐藏，updateTabButton 按 sessionBadge 填。
-    const acctBadge = document.createElement("span");
-    acctBadge.className = "tab-acct-badge";
-    acctBadge.style.display = "none";
-    root.appendChild(acctBadge);
-
-    const badge = document.createElement("span");
-    badge.className = "tab-badge";
-    root.appendChild(badge);
-
-    // 〔步 17·B〕📌 固定角标。默认不显（CSS `.tab:not(.pinned) .tab-pin { display:none }`），
-    // `updateTabButton` 只翻 `.pinned` 这一个类 —— 与其它 5 个子元素同一套「一次性 append、
-    // 可见性交给 class」的形状（见 `.tab .tab-badge` 那条注释）。
-    const pinBadge = document.createElement("span");
-    pinBadge.className = "tab-pin";
-    pinBadge.textContent = "📌";
-    pinBadge.title = "已固定：关掉 app 再打开它还在";
-    root.appendChild(pinBadge);
-
-    // 📂 打开工作目录（cwd）—— 系统默认文件管理器
-    const cwdBtn = document.createElement("span");
-    cwdBtn.className = "tab-cwd";
-    cwdBtn.textContent = "📂";
-    cwdBtn.title = "打开工作目录 (E)";
-    cwdBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void this.openTabCwd(sid);
-    });
-    // 子动作按钮自己处理点击：吞掉 mousedown 避免在它们身上起 Tab 拖拽。
-    cwdBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    root.appendChild(cwdBtn);
-
-    // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）。
-    const focusBtn = document.createElement("span");
-    focusBtn.className = "tab-focus";
-    focusBtn.textContent = "↗";
-    focusBtn.title = "调出对应终端 (`)";
-    focusBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const t = this.tabs.get(sid);
-      if (!t || t.status === "archived") return;
-      // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
-      // 本地 Tab → 走原 sid_hwnd_cache 路径。
-      if (t.origin !== null) {
-        void bringRemoteTerminalToFront(sid);
-      } else {
-        void bringTerminalToFront(sid);
-      }
-    });
-    focusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    if (terminalFrontAvailable()) root.appendChild(focusBtn);
-
-    const closeBtn = document.createElement("span");
-    closeBtn.className = "tab-close";
-    closeBtn.textContent = "×";
-    closeBtn.title = "关闭 Tab";
-    closeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.closeTab(sid);
-    });
-    closeBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    root.appendChild(closeBtn);
-
-    root.addEventListener("click", () => {
-      // 拖拽刚结束的那次 click 不切 Tab（drag-then-release ≠ 选中）。一次性消费。
-      if (this.suppressClickSid === sid) {
-        this.suppressClickSid = null;
-        return;
-      }
-      this.switchTo(sid);
-    });
-    // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
-    root.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
-      // 〔步 17·A〕原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
-      // 抽屉没了，那条例外自动不需要（`§A.3` 逐字「净收益」）。
-      this.beginTabDrag(e, sid, root);
-    });
-    // 中键点击归档 Tab 也关闭（常见 UX）
-    root.addEventListener("mousedown", (e) => {
-      if (e.button !== 1) return;
-      const t = this.tabs.get(sid);
-      if (t?.status === "archived") {
-        e.preventDefault();
-        this.closeTab(sid);
-      }
-    });
-    // issue #10：右键菜单「在新窗口打开」（双屏 / 并排）
-    root.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      const t = this.tabs.get(sid);
-      const items: TabMenuItem[] = [
-        { label: "在新窗口打开", onClick: () => void this.openInNewWindow(sid) },
-      ];
-      // P7a-3（#61）：集合 —— **纯手动**〔用 08-11「手动建, 不要自动, 纯手动」〕。
-      // 二级 flyout：现有集合各一条 + 「新建集合…」；已归组的再给一条「移出集合」。
-      const here = this.collectionsLoaded ? collectionOf(this.collections, sid) : null;
-      const joinItems: TabMenuItem[] = this.collections
-        .filter((col) => col.id !== here?.id)
-        .map((col) => ({
-          label: col.name,
-          onClick: () => void this.commitCollections(addMember(this.collections, col.id, sid)),
-        }));
-      joinItems.push({
-        label: "新建集合…",
-        onClick: () => {
-          const name = window.prompt("新集合名:");
-          if (!name?.trim()) return;
-          const id = newCollectionId();
-          const withNew = createCollection(this.collections, name, id);
-          // 名字空/到上界时 `createCollection` 原样返回 ⇒ 别再往一个不存在的集合里塞成员。
-          if (withNew.length === this.collections.length) return;
-          void this.commitCollections(addMember(withNew, id, sid));
-        },
-      });
-      if (this.collectionsLoaded) items.push({ label: "加入集合", submenu: joinItems });
-      // 〔步 17·B · `§B.7`〕固定 —— 与「加入集合」同级。**这是唯一的入口**（不做自动固定）。
-      // ⚠ `pinnedLoaded` 那道门与集合同一条理由：没读过盘就改，等于把用户上次固定的清空。
-      if (t && this.pinnedLoaded) {
-        items.push({
-          label: t.pinned ? "取消固定" : "📌 固定此标签",
-          title: t.pinned
-            ? "取消后：这个会话变灰之后，关掉 app 再打开就没了"
-            : "固定后：关掉 app 再打开它还在（灰着，可 resume）。位置不变 —— pin 管的是「别丢」，不是「排前面」",
-          onClick: () => this.togglePin(sid),
-        });
-      }
-      if (here) {
-        items.push({
-          label: `移出「${here.name}」`,
-          onClick: () => void this.commitCollections(removeMember(this.collections, sid)),
-        });
-      }
-      // F70（护城河）：本地会话 + 有改动集 → 「在全景高亮本会话改动」。远端（代码不在本机、
-      // code-picture 索引不到）/ 无改动 都不显示（门控之一，另两道在 touchedFilesFor + highlightSession）。
-      if (t && t.origin === null && t.touchedFiles.size > 0) {
-        items.push({
-          label: "在全景高亮本会话改动",
-          onClick: () => this.requestPanoramaHighlight?.(sid),
-        });
-      }
-      // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
-      // F41 起本地与远端都是一键拉起新终端（远端=wt.exe 跑 ssh -t，失败才回退复制命令）。
-      // F09：远端归档 tab 收敛成 1 个「Resume」一级项 + 二级 flyout（容器×账号，MASTERPLAN
-      // §2.6）——顶层 tmux/直连两项跟随默认账号（sticky pin，同旧版 plain「Resume（tmux/直连）」
-      // 行为逐字节保持）；账号项（基座/具名账号，各自再嵌一层容器子选择）由 showTabContextMenu
-      // 后**异步追加**（appendAccountMenuItems→updateTabContextMenuItem，复用 F51 代次守卫），
-      // 消除同步 peek 的冷缓存分裂。本地归档仍单「Resume」（无容器/账号轴）。
-      if (t?.status === "archived") {
-        if (t.origin !== null) {
-          items.push({
-            id: "resume",
-            label: "Resume",
-            submenu: this.buildResumeSubmenu(sid, []),
-          });
-        } else {
-          items.push({
-            label: "Resume",
-            onClick: () => void this.resumeTab(sid),
-          });
-        }
-      }
-      // F51：远端 tab（有 cwd）——反查该 cwd 正跑 claude 的 tmux 会话 → Attach。
-      // 缓存命中同步定夺(无占位闪烁);未命中先禁用占位「检测中」+ 异步查询就绪。
-      const origin = t?.origin ?? null;
-      const cwd = t?.cwd ?? null;
-      let needAsyncAttach = false;
-      if (origin !== null && cwd) {
-        const cached = this.tmuxCache.get(origin);
-        if (cached && Date.now() - cached.ts < TMUX_CACHE_TTL_MS) {
-          const m = findClaudeTmux(cached.sessions, sid, cwd);
-          const viaCwd = isCwdFallbackMatch(cached.sessions, sid); // F74c：回退命中提示串味
-          // F04（R10）：同 `resolveAttachMenuItem` 的分级——attach/preview 警告+继续，kill 拒绝。
-          const cachedMatches = findClaudeTmuxMatches(cached.sessions, sid);
-          const cachedAmbiguous = cachedMatches.length > 1;
-          if (m) {
-            items.push({
-              id: "attach",
-              label: cachedAmbiguous
-                ? `Attach（tmux: ${m.name}，⚠还有 ${cachedMatches.length - 1} 个同身份会话）`
-                : `Attach（tmux: ${m.name}）`,
-              onClick: () => {
-                if (viaCwd) warnCwdFallbackAttach();
-                if (cachedAmbiguous) {
-                  showActionFailureToast(
-                    "检测到多个同身份会话",
-                    `该会话身份（sid）同时活在 ${cachedMatches.length} 个 tmux 里，本次接入其中一个（${m.name}）；建议手动到终端核实其余会话是否需要清理。`,
-                    { level: "info", durationMs: 8000 },
-                  );
-                }
-                void runRemoteAttach(origin, m.name);
-              },
-            });
-            // F60：同一 tmux 会话可只读预览画面（capture-pane 快照，不 attach）——只读，不受影响。
-            items.push({
-              id: "preview",
-              label: "预览画面",
-              onClick: () => void openPanePreview(origin, m.name),
-            });
-            // F79：杀死会话——命中 ≥2 个时拒绝提供（破坏性，选错代价不可逆）。
-            if (cachedAmbiguous) {
-              items.push({
-                id: "kill",
-                label: `杀死会话（检测到 ${cachedMatches.length} 个同身份会话，请到终端手动处理）`,
-                danger: true,
-                enabled: false,
-                onClick: () => {},
-              });
-            } else {
-              items.push({
-                id: "kill",
-                label: "杀死会话（kill tmux）",
-                danger: true,
-                onClick: () => this.killRemoteTmux(origin, m.name, viaCwd),
-              });
-            }
-          } else {
-            // audit-fixes F03.3：缓存命中、无活 claude，但有目标 sid 的空 tmux（idle-tmux）→ 同步给 attach。
-            // E73：同上——不可 attach 的不算空壳。
-            const idle = this.isAttachable(sid)
-              ? findIdleTmux(cached.sessions, sid)
-              : undefined;
-            if (idle) {
-              items.push({
-                id: "attach",
-                label: `Attach（空 tmux ${idle.name}，无 claude）`,
-                onClick: () => void runRemoteAttach(origin, idle.name),
-              });
-              // UX 审计 #1：灰态(idle-tmux)也给 kill——杀空 tmux → tab 转归档 → 可 Resume（给死角一个出口）。
-              items.push({
-                id: "kill",
-                label: `杀死会话（kill 空 tmux ${idle.name}）`,
-                danger: true,
-                onClick: () => this.killRemoteTmux(origin, idle.name, false, { idle: true }),
-              });
-            }
-          }
-        } else {
-          items.push({
-            id: "attach",
-            label: "Attach（检测 tmux…）",
-            enabled: false,
-            onClick: () => {},
-          });
-          items.push({
-            id: "preview",
-            label: "预览画面（检测 tmux…）",
-            enabled: false,
-            onClick: () => {},
-          });
-          items.push({
-            id: "kill",
-            label: "杀死会话（检测 tmux…）",
-            enabled: false,
-            danger: true,
-            onClick: () => {},
-          });
-          needAsyncAttach = true;
-        }
-      }
-      // ★ P3 刀 2 的 UI 半：**本机 tab 也给「杀死会话」**。
-      //
-      // 只加 kill 这一格 —— attach / 预览那两格本机今天还没有对象可接
-      //（前者要本机 attach 路径、后者要 `capture_remote_pane` 的本机对侧），归后面的刀。
-      // 一次只开一格，是为了让「哪一格已经通了」这件事在菜单上就是可见的。
-      let needAsyncLocalKill = false;
-      if (origin === null && t?.status !== "archived") {
-        items.push({
-          id: "kill",
-          label: "杀死会话（检测 tmux…）",
-          enabled: false,
-          danger: true,
-          onClick: () => {},
-        });
-        // P3 刀 3 的占位：查回来是空 tmux 才留下，否则移除。
-        items.push({
-          id: "resume-into",
-          label: "就地 resume（检测 tmux…）",
-          enabled: false,
-          onClick: () => {},
-        });
-        needAsyncLocalKill = true;
-      }
-      showTabContextMenu(e.clientX, e.clientY, items);
-      if (needAsyncAttach && origin !== null && cwd) {
-        void this.resolveAttachMenuItem(origin, cwd, sid);
-      }
-      if (needAsyncLocalKill) {
-        void this.resolveLocalKillMenuItem(sid);
-      }
-      // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
-      // 〔`A3` 第二波〕本机 tab 也进来（`<local>`）—— 只拿「换号重启」那一项，见 appendAccountMenuItems。
-      if (t) void this.appendAccountMenuItems(origin ?? LOCAL_ORIGIN, sid, t.status);
-    });
-
-    return { root, label, badge, acctBadge, cwdBtn, pinBadge };
-  }
-
-  private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
-    refs.root.classList.toggle("active", sid === this.activeId);
-    refs.root.classList.toggle("archived", tab.status === "archived");
-    // 〔步 17·B〕固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
-    // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
-    refs.root.classList.toggle("pinned", tab.pinned);
-    refs.root.classList.toggle("has-cwd", !!tab.cwd);
-    // FIX 5 / Feature ②（issue #15）：远端 Tab（origin 非 null）的 cwd 是 Pi 上的路径，
-    // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
-    // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。
-    refs.root.classList.toggle("remote", tab.origin !== null);
-    // Batch7-F24：bg 任务 tab——缩进 + ⌞ 前缀由 CSS 承担
-    refs.root.classList.toggle("tab-bg", tab.kind !== null && tab.kind !== "interactive");
-    // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。
-    // activity 为 null（旧版 CC / 远端 v1）不加类 → 维持现状绿点。
-    // F91：语义抽到 session-status.ts 供 tab-bar 与 mission-control grid 共用（逐字节等价）。
-    const actStatus = tab.activity?.status ?? null;
-    const lightClass = activityLightClass(actStatus);
-    refs.root.classList.toggle("act-idle", lightClass === "act-idle");
-    refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
-    // audit-fixes F03.2：idle-tmux 灰灯（claude 退但 tmux 会话仍在）。与 archived 正交——
-    // status 仍 live（灯不被 archived 隐藏），tmux-idle 把 .live-dot 覆写为灰、压过红绿黄。
-    refs.root.classList.toggle("tmux-idle", tab.tmuxIdle);
-    const titleParts: string[] = [];
-    if (actStatus === "waiting" && tab.activity?.waitingFor) {
-      titleParts.push(`等待操作：${tab.activity.waitingFor}`);
-    }
-    // issue #63①：fork 会话在 tooltip 里标出血缘(徽标 `↳` 在标题上、来源 sid 在此)。
-    if (tab.forkedFromSessionId) {
-      titleParts.push(`↳ 从 ${tab.forkedFromSessionId.slice(0, 8)} fork 而来`);
-    }
-    refs.root.title = titleParts.join("\n");
-    const unread = tab.unread > 0 && sid !== this.activeId;
-    refs.root.classList.toggle("has-unread", unread);
-
-    if (refs.label.textContent !== tab.title) {
-      refs.label.textContent = tab.title;
-    }
-    if (unread) {
-      const text = tab.unread > 99 ? "99+" : String(tab.unread);
-      if (refs.badge.textContent !== text) {
-        refs.badge.textContent = text;
-      }
-    }
-    this.updateAccountBadge(refs, sid, tab); // A3：账号徽章随 tab 更新一并刷新
-  }
-}
-
-/**
- * issue #10：极简一次性上下文菜单（Tab 右键用）。挂 document.body 作 fixed 浮层，
- * 点任意项 / 点外部 / Esc 即关。一次只允许一个（开新的前先关旧的）。
- *
- * B14-F51：升级为 action 注册表 lite——项带可选 `id`/`enabled`,并可对**已打开**菜单按 id
- * `update`/`remove`(承载异步就绪项,如 attach 的 tmux 反查回来才可点）。
- */
-interface TabMenuItem {
-  id?: string;
-  label: string;
-  enabled?: boolean; // 缺省 true;false = 禁用占位
-  danger?: boolean; // F79：破坏性项（杀会话）红色样式
-  title?: string; // A5：hover tooltip（如 compact 顺序说明）
-  onClick?: () => void; // 有 submenu 时不需要——点击/悬停展开子菜单而非执行动作
-  /** F09：二级 flyout（MASTERPLAN §2.6"动作 × 修饰"，R4 悬停+点击都可触发展开）。
-   *  有 submenu 时 `onClick` 被忽略——这一级只负责展开，不执行动作；真正的动作在叶子项上。 */
-  submenu?: TabMenuItem[];
-  /** F09 Phase D 审计（UX，建议）：纯展示性分隔线——不可点、不响应悬停，只用来在 flyout 里把
-   *  "跟随默认账号"的顶层选项和"换账号"的具名列表视觉分组，降低扫描成本（不增加点击次数）。
-   *  为真时其余字段（onClick/submenu/danger 等）都被忽略。 */
-  divider?: boolean;
-}
-let activeTabMenu: HTMLElement | null = null;
-const activeTabMenuItems = new Map<string, HTMLElement>();
-/** F51：菜单代次令牌——每次开/关菜单自增。在飞的异步就绪(attach 反查)回来时比对代次,
- * 只作用于发起它的那一代菜单;换/关菜单后旧查询整体 no-op(防 R-1 跨 tab 串味错配)。 */
-let tabMenuGeneration = 0;
-/** F09 Phase D 审计（后端架构，重要）：本代菜单存活期间所有 submenu 的展开/收起定时器——
- *  `closeTabContextMenu` 统一清空，防止用户点外部/Esc 关掉整个菜单后，某个 pending 定时器
- *  仍在 150-250ms 后对已从文档树摘除的 wrap 执行 `classList` 操作（功能上是良性 no-op，
- *  但属未清理的悬空定时器）。 */
-let pendingMenuTimers: number[] = [];
-
-/** F09：带 submenu 的项渲染成 `.tab-context-menu-item-wrap`（按钮 + 侧边 flyout 面板），
- *  悬停延迟 150ms 展开、点击也可切换展开（R4）；离开延迟 250ms 收起（不对称是有意的——
- *  Phase D 审计（UX，重要）指出零延迟收起会命中经典"safe triangle"问题：账号数≥2 时
- *  Resume flyout 是一列都带 submenu 的项，用户从某账号项斜向移动鼠标去够它自己 submenu
- *  里的选项，路径中途经过下一个账号项就会被判定"已离开"、submenu 瞬间关闭。给收起也一个
- *  可取消的宽限期，鼠标真落进目标区域后被新一轮 `mouseenter` 清掉，不会误关）。
- *  叶子项（无 submenu）行为不变——仍是裸 `<button class="tab-context-menu-item">`，
- *  点击执行 `onClick` 并关闭整个菜单。 */
-function makeTabMenuButton(it: TabMenuItem): HTMLElement {
-  if (it.divider) {
-    const sep = document.createElement("div");
-    sep.className = "tab-context-menu-divider";
-    return sep;
-  }
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "tab-context-menu-item";
-  if (it.danger) btn.classList.add("is-danger");
-  btn.textContent = it.label;
-  if (it.title) btn.title = it.title;
-  const enabled = it.enabled !== false;
-  btn.disabled = !enabled;
-
-  if (it.submenu && it.submenu.length > 0) {
-    btn.classList.add("has-submenu");
-    const wrap = document.createElement("div");
-    wrap.className = "tab-context-menu-item-wrap";
-    wrap.appendChild(btn);
-    const flyout = document.createElement("div");
-    flyout.className = "tab-context-menu tab-context-submenu";
-    for (const sub of it.submenu) flyout.appendChild(makeTabMenuButton(sub));
-    wrap.appendChild(flyout);
-    if (enabled) {
-      let openTimer: number | null = null;
-      let closeTimer: number | null = null;
-      const clearPending = (t: number | null): void => {
-        if (t == null) return;
-        window.clearTimeout(t);
-        pendingMenuTimers = pendingMenuTimers.filter((id) => id !== t);
-      };
-      const open = (): void => {
-        flipSubmenuIfOverflowing(wrap, flyout);
-        wrap.classList.add("is-open");
-      };
-      wrap.addEventListener("mouseenter", () => {
-        clearPending(openTimer);
-        clearPending(closeTimer);
-        closeTimer = null;
-        openTimer = window.setTimeout(open, 150);
-        pendingMenuTimers.push(openTimer);
-      });
-      wrap.addEventListener("mouseleave", () => {
-        clearPending(openTimer);
-        openTimer = null;
-        closeTimer = window.setTimeout(() => wrap.classList.remove("is-open"), 250);
-        pendingMenuTimers.push(closeTimer);
-      });
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation(); // 别冒泡到 onDocPointerForMenu 把整个菜单关掉
-        if (wrap.classList.contains("is-open")) {
-          wrap.classList.remove("is-open");
-        } else {
-          open();
-        }
-      });
-    }
-    return wrap;
-  }
-
-  if (enabled) {
-    btn.addEventListener("click", () => {
-      closeTabContextMenu();
-      it.onClick?.();
-    });
-  }
-  return btn;
-}
-
-/** F09 Phase D 审计（UX，重要）：级联 flyout 没有视口边缘碰撞检测——tab-bar 可拖到 340px 宽
- *  （`main.ts::clampW` 的硬上限），三级级联（一级菜单+Resume flyout+账号自身 submenu）从
- *  x≈340px 起算需要窗口宽度 ≳790px 才保证不溢出右边界，窄窗口/宽 tab-bar 这两个正常操作
- *  组合起来就会让最深一级 flyout 部分或整体跑出屏幕、变成死菜单。每次展开前（不是持续轮询）
- *  实测一次 `getBoundingClientRect()`，右侧放不下就加 `.flip-left`（CSS 改成向左展开）。 */
-function flipSubmenuIfOverflowing(wrap: HTMLElement, flyout: HTMLElement): void {
-  flyout.classList.remove("flip-left"); // 先复位，按当前真实位置重新判断（tab-bar 宽度可变）
-  const wrapRect = wrap.getBoundingClientRect();
-  const flyoutWidth = flyout.getBoundingClientRect().width || 150; // 未展开时宽度可能是 0，给合理估计
-  if (wrapRect.right + flyoutWidth > window.innerWidth) {
-    flyout.classList.add("flip-left");
-  }
-}
-
-function showTabContextMenu(x: number, y: number, items: TabMenuItem[]): void {
-  closeTabContextMenu();
-  const menu = document.createElement("div");
-  menu.className = "tab-context-menu";
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
-  for (const it of items) {
-    const btn = makeTabMenuButton(it);
-    if (it.id) activeTabMenuItems.set(it.id, btn);
-    menu.appendChild(btn);
-  }
-  document.body.appendChild(menu);
-  activeTabMenu = menu;
-  tabMenuGeneration++; // 新一代菜单 → 让上一代在飞的异步就绪回调失效
-  // 下一拍再挂关闭监听，避免本次右键触发的事件立刻把菜单关掉
-  window.setTimeout(() => {
-    window.addEventListener("pointerdown", onDocPointerForMenu, true);
-    window.addEventListener("keydown", onKeyForMenu, true);
-  }, 0);
-}
-
-/** F51：把已打开菜单里某 id 项替换为新项(异步就绪→可点);菜单已关或无此 id 则 no-op。
- *  F09 Phase D 审计（UX，阻塞）：若旧项当前正展开着 flyout（用户已 hover/点开），替换后的新
- *  元素默认是关闭态——鼠标没动但 flyout 会无预警"啪"地收起（浏览器不会因 DOM 被替换重新
- *  派发 mouseenter）。直接命中 R4"悬停+点击都可触发"这条契约，且越熟练的用户越容易踩中
- *  （账号数据还没到就已经手快点开了）。替换前记下展开态，替换后原样带回去。 */
-function updateTabContextMenuItem(id: string, item: TabMenuItem): void {
-  const old = activeTabMenuItems.get(id);
-  if (!old || !activeTabMenu) return;
-  const wasOpen = old.classList.contains("is-open");
-  const btn = makeTabMenuButton(item);
-  if (wasOpen) btn.classList.add("is-open");
-  activeTabMenuItems.set(item.id ?? id, btn);
-  old.replaceWith(btn);
-}
-
-/** F51：移除已打开菜单里某 id 项(异步查无匹配);无此 id 则 no-op。 */
-function removeTabContextMenuItem(id: string): void {
-  const old = activeTabMenuItems.get(id);
-  if (!old) return;
-  old.remove();
-  activeTabMenuItems.delete(id);
-}
-
-/** A4/A5：往已打开菜单**追加**一项(异步就绪,如账号列表 fetch 回来)。菜单已关则 no-op。 */
-function appendTabContextMenuItem(item: TabMenuItem): void {
-  if (!activeTabMenu) return;
-  const btn = makeTabMenuButton(item);
-  if (item.id) activeTabMenuItems.set(item.id, btn);
-  activeTabMenu.appendChild(btn);
-}
-
-function closeTabContextMenu(): void {
-  if (!activeTabMenu) return;
-  activeTabMenu.remove();
-  activeTabMenu = null;
-  activeTabMenuItems.clear();
-  // F09 Phase D 审计（后端架构，重要）：清掉本代菜单存活期间所有 submenu 的展开/收起定时器，
-  // 防止用户点外部/Esc 关掉整个菜单后，某个 pending 定时器仍在之后对已摘除的 wrap 操作。
-  for (const t of pendingMenuTimers) window.clearTimeout(t);
-  pendingMenuTimers = [];
-  tabMenuGeneration++; // 关菜单也让在飞的异步就绪回调失效(不改别的菜单)
-  window.removeEventListener("pointerdown", onDocPointerForMenu, true);
-  window.removeEventListener("keydown", onKeyForMenu, true);
-}
-function onDocPointerForMenu(e: PointerEvent): void {
-  if (activeTabMenu && !activeTabMenu.contains(e.target as Node)) {
-    closeTabContextMenu();
-  }
-}
-function onKeyForMenu(e: KeyboardEvent): void {
-  if (e.key === "Escape") closeTabContextMenu();
-}
-
-function projectNameFromCwd(cwd: string): string | null {
-  const normalized = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
-  const last = normalized.split("/").filter(Boolean).pop();
-  return last ?? null;
-}
-
-/**
- * 标题格式（决策见 project_monitor_decisions.md）：
- *   aiTitle 有 + cwd 有 → `[项目] aiTitle`
- *   aiTitle 有 + cwd 无 → `aiTitle`
- *   aiTitle 无 + cwd 有 → `项目`
- *   都没有 → `<sid 前 8 位>`
- *
- * issue #15：`origin`（远端 SSH 主机名）非空时，在以上结果前再加 `[origin] ` 前缀，
- * 让用户一眼区分本地 / 远端 Tab（如 `[raspberrypi.local] [proj] aiTitle`）。本地
- * （origin=null）行为与历史完全一致，不加任何前缀。
- *
- * Subagent 不再独立 Tab（嵌入到父 session 的 Task 折叠卡），所以没有 `↳` 前缀分支。
- */
-function computeTitleFor(
-  sessionId: string,
-  cwd: string | null,
-  aiTitle: string | null,
-  origin: string | null = null,
-  kind: string | null = null,
-  bgName: string | null = null,
-  forkedFromSessionId: string | null = null,
-): string {
-  // issue #63①:fork 会话在最终标题前加 `↳ ` 血缘徽标——与原会话(同名)区分开。
-  const mark = (s: string): string => (forkedFromSessionId ? `↳ ${s}` : s);
-  const project = cwd ? projectNameFromCwd(cwd) : null;
-  // Batch7-F24：bg 任务 → ⚙ + 任务名（缩进/⌞ 由 .tab-bg 样式承担）
-  if (kind !== null && kind !== "interactive") {
-    const base = `⚙ ${bgName ?? aiTitle ?? project ?? sessionId.slice(0, 8)}`;
-    return mark(origin ? `[${origin}] ${base}` : base);
-  }
-  let base: string;
-  if (aiTitle) {
-    base = project ? `[${project}] ${aiTitle}` : aiTitle;
-  } else if (project) {
-    base = project;
-  } else {
-    base = sessionId.slice(0, 8);
-  }
-  return mark(origin ? `[${origin}] ${base}` : base);
 }
 
 // P5.2 B 重构：markCardUuid + feedBranchFolder 已搬到 render-stream-record.ts
 // （三 caller 共用 renderStreamRecord 函数内部调用）。tabs.ts 不再持有这两个 helper。
-
-/**
- * 拉对应终端到前台。v1.7 实现：后端查 sid_hwnd_cache + 复合指纹校验 + SetForegroundWindow。
- *
- * 失败模式（任一都会显示在 toast 上）：
- *   - "未绑定窗口"：该 session 启动时没经过 cc function 握手（直接跑 claude 而非 cc）
- *   - "窗口已不存在"：用户关掉了对应 PS/WT 窗口
- *   - "HWND 复用"：原窗口关闭后 HWND 被另一个无关窗口拿到
- *   - "invoke 超时"：极端情况下 Win32 调用卡住
- */
-function bringTerminalToFront(sessionId: string): Promise<void> {
-  const timeoutMs = 5000;
-  return Promise.race([
-    invoke<void>("bring_terminal_to_front", { sessionId }),
-    new Promise<never>((_, reject) =>
-      window.setTimeout(
-        () => reject(new Error(`invoke 超时 ${timeoutMs}ms（后端 Win32 调用可能卡住）`)),
-        timeoutMs,
-      ),
-    ),
-  ]).catch((e) => {
-    console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
-    // P4.5: 改走统一 toast stack（去掉单例 #bring-terminal-toast 的"先到先被覆盖"问题）。
-    showActionFailureToast("拉前失败", String(e?.message ?? e));
-  });
-}
-
-/**
- * Feature ②：拉远端 Tab 对应的本地终端窗口到前台。
- *
- * 〔`设计/80 §8.7` 步 4，第二波 T4〕**分派与归因整条在后端**（`bind.rs::resolve_remote_front`）：
- * 先按启动令牌 `sid → token → HWND`，拉不到再走 `ccm-rbind-<sid>` 标题退路；
- * 失败时说的话只由「这个会话是不是 cc-monitor 启动的」一个布尔决定。
- *
- * ⇒ 这里原先那段 E73「失败之后再打一次 `list_remote_tmux` 分四档猜」**删了** ——
- *   它是 `§8.5 ②` 点名要收的四套判断之一，而且它把 tmux 放回了 ↗ 的前提链上
- *   （用户逐字「不能依赖 tmux」）。后端那句话原样给用户，不再在前端二次解释。
- *
- * 失败模式（后端原文）：带令牌但窗口已关 · 不是 cc-monitor 启动的 · 标题退路也没扫到 /
- * 扫到的窗口校验不过；另有 "invoke 超时"（极端情况下 Win32 调用卡住）。
- */
-function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
-  // #41:后端现扫重试窗口抬到 4s(ON_DEMAND_BIND_*,覆盖首次 attach 的标题四跳传播),故前端超时须
-  // 抬到其上、留 Win32 activate 余量——5s→8s,否则前端超时会和后端重试撞车(刚要绑上就被判超时)。
-  const timeoutMs = 8000;
-  return Promise.race([
-    invoke<void>("bring_remote_terminal_to_front", { sessionId }),
-    new Promise<never>((_, reject) =>
-      window.setTimeout(
-        () => reject(new Error(`invoke 超时 ${timeoutMs}ms（后端 Win32 调用可能卡住）`)),
-        timeoutMs,
-      ),
-    ),
-  ]).catch((e) => {
-    console.warn(`bring_remote_terminal_to_front ${sessionId} failed:`, e);
-    showActionFailureToast("拉前失败", String(e?.message ?? e));
-  });
-}
-

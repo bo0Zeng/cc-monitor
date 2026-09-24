@@ -71,8 +71,8 @@
 //! |---|---|---|
 //! | **发起** | [`rows::show_file_rows`] 行上那颗「复制」＋ [`shell::FileWindow::begin_copy`] | 点得到（合成事件下认得出是哪一行）。⚠ 买不到「真机上鼠标点得到」 |
 //! | **三段顺序** | [`copy::run_copy`] | 探测 → **一次**问覆盖（`FnOnce`）→ 才动手。照 [`transfer::run_drop`] 的形状办 |
-//! | **委派** | [`copy::copy_remote`] | 调的是 `sftp_pool::sftp_copy`（围栏 ＋ 取消登记 ＋ 车道预算全在它里面）。⚠ 买不到一趟真复制的读数 |
-//! | **退路出声** | [`copy::outcome_notice`] ＋ [`copy::CopyBoard::ui`] | 退了路那句话（含过网字节数）**真的被画出来了**（判据从 egui 这一帧的 galley 里读回来）。⚠ 买不到「那几个像素没被列宽切掉」 |
+//! | **委派** | [`copy::copy_remote`] | 〔F7a · 第三波 09-24〕经通道问后端 `files-copy`（围栏在后端，三条路径各过一次）；第三刀那一版调的是 SFTP 池子那条零流量复制。⚠ 买不到一趟真远端上的复制读数 |
+//! | **结局出声** | [`copy::outcome_notice`] ＋ [`copy::CopyBoard::ui`] | 那句话**真的被画出来了**（判据从 egui 这一帧的 galley 里读回来）。〔F7a〕「退路（过网字节数）」那一形随 SFTP 那条路一起不存在了：后端在那台机器上复制，没有慢路可喊。⚠ 买不到「那几个像素没被列宽切掉」 |
 //!
 //! 🔴 **这一格逼出了一条真缺陷，值得单独记**：
 //! 「整行可点」那块命中矩形横向拉满整行宽 ⇒ 它**把行上那颗按钮整个盖住**。
@@ -231,8 +231,12 @@
 //! 它的理由只有一份，住 `boundary_tests::Kind::Terminal` 头注；设计文档那侧由本支在
 //! `设计/60` 末尾追加时一并记下（这儿不留第二份）。
 
+// 🔴〔F9 · 第三波 2026-09-24〕**大文件模式**：只排视口内的行（`设计/60 §9b`）。
+pub mod bigfile;
 pub mod copy;
 pub mod corpus;
+// 🔴〔F7b 2026-09-24〕**新建空文件** —— 老面板 7 项里写侧那一项（`files-create`，经通道）。
+pub mod create;
 // 🔴〔第八刀 2026-09-21〕**往外拖** —— `sftp_download` 在窗口上的落点
 //    （`设计/60 §5` 第 6 步那条欠账逐字「往外拖（下载）没做」）。
 pub mod download;
@@ -250,6 +254,10 @@ pub mod find;
 pub mod fonts;
 pub mod rows;
 pub mod scale;
+// 🔴〔FW1+FW2 2026-09-24〕**选中态 · 键位 · 右键菜单那张表**（`设计/99 §4.21.1`）。
+//    三件问的是同一个问题（「选中了哪几行、能对它们做什么」），纯的一份住这儿；
+//    接到窗口上的那几跳住 `shell.rs`。逐条理由住那份文件的头注。
+pub mod select;
 pub mod shell;
 pub mod source;
 pub mod transfer;

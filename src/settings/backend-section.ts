@@ -19,7 +19,14 @@
  * 「**必须出现「无人监护」这一档，且它只在真脱离那一支出现**」。
  *
  * ★★ **本文件不许有自己的那几句文案** —— 它们的唯一一个家是 `../backend-policy.ts`
- * 的 `EXIT_*` 四条，本文件只调 `describeExitBehavior`。
+ * 的 `EXIT_*` 那几条，本文件只调 `describeExitBehavior`。
+ *
+ * # 〔B2 · 条 66〕那个勾的值**问后端要、交后端写**
+ *
+ * 值住后端所在那台机器上（`设计/01 §3.3b`）。本文件画勾之前问一次（`backend_exit_policy`），
+ * 改勾就发一条后端命令（`set_backend_exit_policy`），**画的是后端写完读回来的那一份**。
+ * 问不到（没连上 / 旧后端不认那条命令）⇒ 勾**禁用**、那一行不说话 —— 我们不知道那台机器上是什么，
+ * 就不替它说一句；更不许拿一个本地缺省值画一个看起来能用的勾。
  * 理由是实测过的失效形态：现行那条判据 `readFileSync` 的**只有一个文件**、只剥整行注释
  * ⇒ 文案搬家 / 拼串 / 进一张 i18n 表就**零命中地绿**（与 `bind_guard` 头注自陈的
  * 「单独存在时是安慰剂」同族）。
@@ -36,12 +43,33 @@ import {
   LOCAL_ORIGIN,
   describeBackendHealth,
   describeExitBehavior,
-  initBackendPolicy,
-  killOnExit,
-  setKillOnExit,
   type BackendHealth,
-  type BackendPolicy,
+  type BackendShell,
+  type ExitPolicyState,
 } from "../backend-policy";
+
+/** 后端 `exit-policy-read` / `exit-policy-set` 回的那一份里，本区要用的三格。 */
+interface ExitAnswer {
+  shell: BackendShell;
+  policy: ExitPolicyState;
+  killOnExit: boolean;
+}
+
+/**
+ * 〔B2〕从后端那份不透明 JSON 里取「退出行为」三格。**缺一格 / 形状不对 ⇒ `null`**（= 问不到）。
+ *
+ * ⚠ 方向与 `readHealth` 一致：**答不出来就说答不出来**，不替后端补一个缺省值 ——
+ * 补了就是在一台我们不知道的机器上画一个看起来能用的勾。
+ */
+function readExitAnswer(raw: unknown): ExitAnswer | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const v = raw as Record<string, unknown>;
+  const shell = v.shell === "standalone" || v.shell === "folded" ? v.shell : null;
+  const policy =
+    v.state === "chosen" || v.state === "absent" || v.state === "unreadable" ? v.state : null;
+  if (shell === null || policy === null || typeof v.killOnExit !== "boolean") return null;
+  return { shell, policy, killOnExit: v.killOnExit };
+}
 
 /**
  * 从 `backend_status` 那份 JSON 里取死亡账读数。**缺席 / 形状不对 ⇒ `null`**。
@@ -82,7 +110,6 @@ interface Machine {
 
 export class BackendSection {
   readonly element: HTMLElement;
-  private policy: BackendPolicy = {};
   private rows = new Map<string, HTMLElement>();
 
   constructor(opts: { headless?: boolean } = {}) {
@@ -112,12 +139,6 @@ export class BackendSection {
 
   /** 重新拉一遍机器清单 + 每台的状态。 */
   async refresh(): Promise<void> {
-    try {
-      this.policy = await initBackendPolicy();
-    } catch (e) {
-      console.warn(`[P2s] 读后端策略失败，按缺省渲染：${String(e)}`);
-      this.policy = {};
-    }
     const machines = await this.machines();
     this.list.innerHTML = "";
     this.rows.clear();
@@ -185,7 +206,9 @@ export class BackendSection {
     label.className = "backend-row-kill";
     const box = document.createElement("input");
     box.type = "checkbox";
-    box.checked = killOnExit(this.policy, m.origin);
+    // 〔B2〕问到那台机器的值之前，勾**禁用**：它的值不在这里，在那台机器上。
+    box.checked = false;
+    box.disabled = true;
     box.onchange = () => void this.toggleKill(m.origin, box);
     label.appendChild(box);
     label.appendChild(document.createTextNode("monitor 退出时结束它"));
@@ -211,20 +234,44 @@ export class BackendSection {
   }
 
   /**
-   * 重画一行的「退出时会发生什么」。
+   * 重画一行的「退出时会发生什么」＋ 那个勾。
    *
    * `detached` 的真相源是后端 `backend_status` 的那一格，而它记的是
    * **起它的时候走没走脱离那条路**（不是拿 `channel`/`pid` 反推 —— 那是假信号）。
    * 远端恒 `null` ⇒ 按「没脱离」算，那对远端是**对的**：断流之后那个进程随管道破裂退出。
+   *
+   * 〔B2〕`answer` 是**后端答的**那一份；`null` = 问不到 ⇒ 勾禁用、那一行不说话。
+   * `describeExitBehavior` 回「不适用」（折进前端那一档）⇒ 勾与那一行**从这一行里拿掉**（E4）。
    */
-  private paintExit(origin: string, detached: boolean): void {
-    const el = this.rows.get(origin)?.querySelector<HTMLElement>(".backend-row-exit");
-    if (!el) return;
-    el.textContent = describeExitBehavior({
-      killOnExit: killOnExit(this.policy, origin),
-      detached,
-    });
+  private paintExit(
+    origin: string,
+    detached: boolean,
+    answer: ExitAnswer | null,
+  ): void {
+    const row = this.rows.get(origin);
+    const el = row?.querySelector<HTMLElement>(".backend-row-exit");
+    const label = row?.querySelector<HTMLElement>(".backend-row-kill");
+    const box = label?.querySelector<HTMLInputElement>("input");
+    if (!el || !label || !box) return;
     el.dataset.detached = String(detached);
+    if (answer === null) {
+      box.disabled = true;
+      el.textContent = "";
+      el.dataset.exit = "unasked";
+      return;
+    }
+    const said = describeExitBehavior({ ...answer, detached });
+    if (said === null) {
+      // 「不适用」（折进前端那一档，E4）：那一格**不存在**，勾与那一行都从这一行里拿掉，
+      // 而不是摆一个禁用的开关 —— 那一档连选择都没有。〔壳在一个后端的生命里不会变，拿掉就不用再放回来。〕
+      label.remove();
+      el.remove();
+      return;
+    }
+    el.dataset.exit = answer.policy;
+    box.disabled = false;
+    box.checked = answer.killOnExit;
+    el.textContent = said;
   }
 
   /**
@@ -286,8 +333,9 @@ export class BackendSection {
   private async toggleKill(origin: string, box: HTMLInputElement): Promise<void> {
     const want = box.checked;
     try {
-      await setKillOnExit(origin, want);
-      this.policy[origin] = want;
+      // 〔B2〕交后端写（那个值住那台机器上），**画的是它写完读回来的那一份**。
+      const back = readExitAnswer(await commands.set_backend_exit_policy({ origin, kill: want }));
+      if (back === null) throw new Error("后端写完回来的那一份形状不对 —— 两端契约对不上");
       // 勾变了 ⇒ 那句「退出时会发生什么」也变了。**同一拍重画**，
       // 否则屏上那句话描述的是上一次的状态（与 A4 那条「画的是操作前的快照」同族）。
       void this.paintStatus(origin);
@@ -310,9 +358,17 @@ export class BackendSection {
       const pid = typeof st.pid === "number" ? `（pid ${st.pid}）` : "";
       state.textContent = on ? `已连上${pid}` : "未连上";
       state.dataset.on = String(on);
+      // 〔B2〕那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
+      let answer: ExitAnswer | null;
+      try {
+        answer = readExitAnswer(await commands.backend_exit_policy({ origin }));
+      } catch (e) {
+        console.warn(`[B2] ${origin} 的退出策略问不到：${String(e)}`);
+        answer = null;
+      }
       // K-P1：`detached` 只认后端给的那一格。**缺席 / null ⇒ 按「没脱离」算**
       // （旧后端没有这一格；远端天然没有）—— 保守方向：不脱离那句话是今天一直在说的那句。
-      this.paintExit(origin, st.detached === true);
+      this.paintExit(origin, st.detached === true, answer);
       // K-P3b：**同一份 JSON**，另一个元素。不新开一次查询，也不接在上面那一行后面。
       this.paintHealth(origin, st.health);
       return on;

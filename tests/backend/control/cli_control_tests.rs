@@ -181,11 +181,18 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 〔`C1` · 09-24〕只读查询面进来三条，**同一形**（无入参、有输出字段 `lines`）：
     /// `history-projects`（列全部项目）· `accounts-list` · `accounts-sessions`
     /// （账号库目录走默认解析，帧面不收 `--accts-dir`）。同族另外五条要输入，不在表里。
+    ///
+    /// 〔B2 · 条 66〕`exit-policy-read` 进来，**同一形**（无入参、有输出字段 `state` / `killOnExit` …）：
+    /// 它是「那台机器上的值是什么」那一问，挂住等 EOF 就是把一句问话变成一次卡死。
+    /// 同族 `exit-policy-set` 要输入（`killOnExit`），不在表里。
     const NO_INPUT_TODAY: &[&str] = &[
         "accounts-list",
         "accounts-sessions",
         "bus-list",
         "bus-state",
+        // 〔F7a · 第三波 09-24〕`files-home`：问这台机器的 home，无入参、有输出字段 `path`。
+        "files-home",
+        "exit-policy-read",
         "files-index-status",
         "history-projects",
         "ping",

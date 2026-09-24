@@ -2623,11 +2623,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_gaps_are_named_not_forgotten",
             1,
         ),
-        (
-            "tests/backend-policy.vitest.ts",
-            "the_boot_path_really_pushes_the_backend_policy",
-            1,
-        ),
+        // 〔B2 · 条 66〕原来这里还有一行 `tests/backend-policy.vitest.ts` 点名的那条「启动时推送」接线钉
+        //   （1 处）—— 那条推送随值搬家退役，点名它的那段散文与那条判据一起删了 ⇒ 本行摘掉（存量 −1）。
         (
             "src/render-stream-record.ts",
             "queued_user_message_never_enters_the_branch_chain",
@@ -2638,7 +2635,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_unattended_wording_is_actually_present",
             1,
         ),
-        ("src/tabs.ts", "local_tmux_names", 1),
+        // 〔U2 · 第三波〕住址从 `src/tabs.ts` 换过来：那条 tab 栏 resume（连同点这个死名的订正注释）随会话动作整块搬家。
+        ("src/tab-session-actions.ts", "local_tmux_names", 1),
         // 🔴 〔搬树 2026-09-18 新增四条〕**不是新长出来的债，是语料面变大了**：
         // 这份 README 原住 `src-tauri/README.md`，而本族的语料根里没有 `src-tauri`
         // ⇒ 它**按构造在射程外**。改名成 `src/bridge/README.md` 之后落进了 `"src"`

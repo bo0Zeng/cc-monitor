@@ -89,16 +89,21 @@ pub const COMMANDS: &[&str] = &[
     "bus-state",
     "cancel",
     "capture-pane",
+    "exit-policy-read",
+    "exit-policy-set",
     "files-browse",
     "files-chmod",
     "files-commit-upload",
+    "files-copy",
     "files-create",
     "files-delete",
     "files-find",
+    "files-home",
     "files-index-rebuild",
     "files-index-status",
     "files-ls",
     "files-mkdir",
+    "files-read-text",
     "files-rename",
     "files-stat",
     "files-write-text",
@@ -573,6 +578,32 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   ⇒ 这一条同拍上了 `lib.rs::SUBCOMMANDS`（不加就当未知 flag、静默进流模式）。
     //   ⇒ 「入口窄」这件事不靠命令面，靠 `readonly_guard` 第三层那条
     //   「**谁引用得到 `control/files_write`**」。理由整段在那个模块的命令面那一节。
+    // 〔B2 · 条 66 · `设计/01 §3.3b`〕「退出行为」那个值的两条命令 —— 值住**后端所在那台机器**
+    //   （`~/.cc-monitor/backend.json`），前端要读要改都经这两条，**前端从不碰那个文件**。
+    //   ⚠ 两条都在阻塞档：同步文件 I/O，开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
+    //   ⚠ `exit-policy-read` **没有错误码**：「读不出来」是一个**状态**（`state: "unreadable"` ＋ `reason`），
+    //     不是一次失败 —— 调用方要的就是那一句「读不出来，按默认办」（`§3.3b ⑤`）。
+    //   ⚠ CLI 面同样是派生的必然（`cli_control::cli_exposed`），理由同下面 `files-create` 那一段。
+    CommandSpec {
+        name: "exit-policy-read",
+        doc_anchor: Some("#### `exit-policy-read`"),
+        codes: &[],
+        fields: &["killOnExit", "path", "reason", "shell", "state"],
+        takes_input: false,
+        run: Run::Blocking(|_r| Ok(Some(crate::control::exit_policy::answer_read()))),
+    },
+    CommandSpec {
+        name: "exit-policy-set",
+        doc_anchor: Some("#### `exit-policy-set`"),
+        codes: &["bad_args", "io_failed"],
+        fields: &["killOnExit", "path", "reason", "shell", "state"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::exit_policy::answer_set(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-create",
         doc_anchor: Some("#### `files-create`"),
@@ -634,6 +665,21 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `files-chmod`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
         fields: &["mode", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔F7a · 第三波 09-24〕写面第七条：同根内复制（`设计/60 §13`）。与上面五条同住一个模块、
+    //   同一扇门、同档（同步文件 I/O，取消不掉）。它**不给第三层添动词**：由 `O_EXCL` 新建 ＋
+    //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `control/files_write.rs::copy_entry`）。
+    CommandSpec {
+        name: "files-copy",
+        doc_anchor: Some("#### `files-copy`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["bytes", "from", "overwrite", "path", "root", "to"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
@@ -773,6 +819,42 @@ pub const REGISTRY: &[CommandSpec] = &[
         codes: &["bad_path", "unreadable"],
         fields: &["kind", "mtime_secs", "path", "readonly", "size"],
         takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // ── 〔F7a · 第三波 · 2026-09-24〕`设计/60 §13`：窗口换走通道的那两问 ────────────────
+    //
+    // 🔴 **同一族（`files-read`）的第七、第八条，整族照旧纯读**：编辑器读一份文本 ·
+    //   开窗前「那台机器的 home 在哪」。此前窗口为这两问各拨一条 SFTP（`设计/60 §12.3`
+    //   那张欠账表），现在经通道问后端 —— 窗口进程够后端**只剩通道**这一条路。
+    // ⚠ `run` 与同族那六条逐字同形（名字从 `r.cmd` 来）；同在 `Run::Blocking`、同样取消不掉。
+    CommandSpec {
+        name: "files-read-text",
+        doc_anchor: Some("#### `files-read-text`"),
+        codes: &[
+            "bad_args",
+            "bad_path",
+            "not_text",
+            "too_large",
+            "unreadable",
+        ],
+        fields: &["bytes", "max_bytes", "path", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-home",
+        doc_anchor: Some("#### `files-home`"),
+        codes: &["no_home"],
+        fields: &["path"],
+        takes_input: false,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
                 .map(Some)

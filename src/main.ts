@@ -13,13 +13,14 @@
  */
 // `LOCAL_ORIGIN`〔`设计/05 §8` 步 2〕：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
-import { initBackendPolicy, LOCAL_ORIGIN } from "./backend-policy";
+import { LOCAL_ORIGIN } from "./backend-policy";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
+import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
 import { listen } from "@tauri-apps/api/event";
@@ -34,7 +35,7 @@ import { UsageHud } from "./usage-hud";
 import { bindErrorToast, showActionFailureToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
 // F83（#39）：顶栏 SFTP 入口——按远端主机数 0/1/N 分支打开现有 SFTP 模态。
-import { openSftpPanel } from "./sftp/panel";
+import { openFileWindow } from "./file-window";
 import { readRemoteConfig, sftpEligibleHosts, hostKey } from "./remote-config";
 // N-F3：主窗口那一条「还差什么」指路 —— 那张清单此前只在设置面板 → 远端那一节渲染，
 // 刚装完没打开过设置的人一个字都看不到。两个维度两个值，见 first-run-hint.ts 头注。
@@ -123,13 +124,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // P2s（C8）：把盘上的后端策略推给 Rust。**必须在这里推**——Rust 那边只持有生效值，
-  // 不读 config.json（避免同一个文件两个写者，见 backend-policy.ts 头注）。
-  // 不推的后果不是报错，是**每台机都退回缺省**：用户设过的「退出时结束它」静默失效。
-  // 失败不拦启动：策略是附加功能，读不到不该让主界面起不来。
-  void initBackendPolicy().catch((e) => {
-    console.warn(`[P2s] backend 策略推送失败，本次运行按缺省（不结束）走：${String(e)}`);
-  });
+  // 〔B2 · 条 66〕这里原来在启动时把 config.json 里的后端策略**推**给 Rust。
+  //   那个值搬到了后端所在那台机器上（`设计/01 §3.3b`），由后端在决定那一刻现读 ⇒
+  //   **没有东西要推了**，这一步整条删掉（留着就是第二个真相源）。
 
   status.innerHTML = "";
   const statusMsg = document.createElement("span");
@@ -498,13 +495,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("app")?.appendChild(gridTrigger);
 
-  // F83（#39）：顶栏 SFTP 入口 —— 设置搬独立窗后腾出的入口位给 SFTP。点击按远端主机数分支：
-  // 0 台提示 / 1 台直开 / 多台选单（选单见 openSftpFromTopbar）。SFTP 仍用现有模态（抽屉化延后）。
+  // F83（#39）：顶栏远端文件入口 —— 设置搬独立窗后腾出的入口位。点击按远端主机数分支：
+  // 0 台提示 / 1 台直开 / 多台选单（选单见 openSftpFromTopbar）。〔F7b〕终点是原生文件窗口（`file-window.ts`）。
   const sftpTrigger = document.createElement("button");
   sftpTrigger.type = "button";
   sftpTrigger.className = "sftp-trigger";
-  sftpTrigger.title = "SFTP 文件（浏览 / 上传 / 下载远端文件）";
-  sftpTrigger.setAttribute("aria-label", "打开 SFTP 文件面板");
+  sftpTrigger.title = "远端文件（浏览 / 上传 / 下载）";
+  sftpTrigger.setAttribute("aria-label", "打开文件窗口");
   sftpTrigger.addEventListener("click", () => void openSftpFromTopbar(sftpTrigger));
   document.getElementById("app")?.appendChild(sftpTrigger);
 
@@ -534,10 +531,11 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "open-cc-bus", title: "打开 cc-bus 驾驶舱", keywords: "cc-bus bus agent 驾驶舱 通信", run: () => { if (!ccBusView.isVisible()) ccBusView.open(); } },
       { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
       { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
-      { id: "open-sftp", title: "打开 SFTP 文件面板", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
+      { id: "open-sftp", title: "打开文件窗口", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
       { id: "win-minimize", title: "最小化窗口", keywords: "minimize 最小化", hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
       { id: "win-fullscreen", title: "切换全屏", keywords: "fullscreen 全屏", hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
-      { id: "term-front", title: "把对应终端窗口拉到前台", keywords: "terminal 终端 front", hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() },
+      // 〔U2〕↗ 那一项只在 ↗ 真能用的机器上列出来（非 Windows 不列；门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
+      ...terminalFrontCommand({ id: "term-front", title: "把对应终端窗口拉到前台", keywords: "terminal 终端 front", hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
       { id: "toggle-tasks", title: "开 / 关 Task 面板", keywords: "task 任务 panel", hint: chordHint("panel.toggle-tasks"), run: () => tasksPanel.toggle() },
       { id: "tab-next", title: "切到下一个 Tab", keywords: "next tab 下一个", hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
       { id: "tab-prev", title: "切到上一个 Tab", keywords: "prev tab 上一个", hint: chordHint("tab.prev"), run: () => tabs.cycleActive(-1) },
@@ -884,13 +882,13 @@ async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
     // 这是引导提示不是失败 → info 级（非红色错误）。
     showActionFailureToast(
       "无可用远端主机",
-      "先在设置 → 连接 配好 host / user，再打开 SFTP 文件面板。",
+      "先在设置 → 连接 配好 host / user，再打开文件窗口。",
       { level: "info" },
     );
     return;
   }
   if (hosts.length === 1) {
-    void openSftpPanel(hosts[0]);
+    void openFileWindow(hosts[0]);
     return;
   }
   // ≥2 台：选主机浮层（照 history F96：body-level fixed，Esc / 外部 pointerdown 关，下一拍挂监听防自关）。
@@ -904,7 +902,7 @@ async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
     item.textContent = h.label || h.host;
     item.addEventListener("click", () => {
       closeSftpHostPicker();
-      void openSftpPanel(h);
+      void openFileWindow(h);
     });
     menu.appendChild(item);
   }

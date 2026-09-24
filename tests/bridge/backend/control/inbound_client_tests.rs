@@ -51,7 +51,7 @@ fn client_on_duplex(
 /// P2s：**`<local>` 在两侧必须是同一个串**。
 ///
 /// 漂了**不会报错** —— 前端的本机开关会去操作一个谁都没登记过的 origin：
-/// `set_backend_kill_on_exit("<localhost>", …)` 存进一张没人读的表，
+/// 〔B2〕问 / 改「退出行为」那一格会发到一个谁都没登记过的 origin（`backend_exit_policy("<localhost>")` 恒回「没有控制通道」），
 /// `backend_status` 永远回 `channel: false`。**设了没反应，且不报错。**
 ///
 /// 照仓里现成的跨语言对拍形状写（`payload.rs` 的 `REFUSE_TAG` 那条 / `launch.rs` 的

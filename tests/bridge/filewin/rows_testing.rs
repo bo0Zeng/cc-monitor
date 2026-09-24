@@ -22,7 +22,7 @@ pub fn render_headless_nonvirtual(
                 for (i, r) in rows.iter().enumerate() {
                     t.rows_materialized += 1;
                     t.last_row = i + 1;
-                    paint_one_row(ui, i, r, false);
+                    paint_one_row(ui, i, r, false, Mark::default());
                 }
             });
         t.total_rows = rows.len();
@@ -75,7 +75,7 @@ pub fn render_headless_with_events_and_text(
     };
     let out = ctx.run_ui(input, |ui| {
         let mut t = RenderTally::default();
-        show_file_rows(ui, rows, &mut t, Some(0.0), None);
+        show_file_rows(ui, rows, &mut t, Some(0.0), None, None);
         tally = t;
     });
     let painted = crate::filewin::copy::testing::text_in_frame(&out);

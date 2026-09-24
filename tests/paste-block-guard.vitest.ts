@@ -50,8 +50,12 @@ const FAMILY_AB: Array<{ file: string; writeTextUses: number; why: string }> = [
     // 2026-07-30 实测：复制命令 / 复制路径 / 复制诊断文本 三处。
     // 🔴 〔`设计/50` 09-18〕**3 → 2**：那一处「复制这一屏」随账号表的用量单元格整块删了
     // （用量 ③ 轴退役）。**计数下降 = 手搓的复制按钮少了一个**，正是这张表要看见的方向。
-    writeTextUses: 2,
-    why: "族 B 两处（复制路径/诊断）+ Z05 的 rc 片段待贴块（走组件）",
+    // 〔第三波 S3 09-24〕**2 → 3**：多的那一处是本机建号那一跳（`launchLocalStep`）的剪贴板回退 ——
+    // Linux 本机刻意不开终端窗口，把 `cc-acct-iso add …` 那条**要执行的命令**复制给用户去 bash 里跑
+    // （与 `remote-launch-run.ts::invokeLaunchOrCopyFallback` 同一形）。它是族 B（复制一条命令），
+    // 不是待贴配置（没有「贴到哪 / 怎么合并 / 怎样生效」那三句）⇒ 不走组件。
+    writeTextUses: 3,
+    why: "族 B 三处（复制路径/诊断/本机建号命令的回退）+ Z05 与本机 rc 片段两处待贴块（走组件）",
   },
 ];
 

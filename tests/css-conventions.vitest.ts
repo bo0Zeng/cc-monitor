@@ -115,6 +115,9 @@ const UNUSED_TOKENS: Readonly<Record<string, string>> = {
   "--field-border-focus": "表单族预留；今天 :focus 各处自己写 --accent",
   "--field-placeholder": "表单族预留；今天 ::placeholder 各处自己写 --text-faint",
   "--state-focus": "交互态族预留（`设计/41 §2` 族一）",
+  "--state-hover":
+    "交互态族（`设计/41 §2` 族一）。〔F7b 09-24〕今天的两个消费者（老 SFTP 面板的按钮与行悬停）" +
+    "随面板整段 CSS 退役；族不拆 —— 同 `--state-focus`，等下一个悬停态自然接上",
   "--state-disabled-opacity":
     "交互态族预留。`设计/41 §2` 要「把散在各处的 0.45/0.5/0.55 收成一个 token」，" +
     "而现打 `opacity: 0.x` 有 46 处、值域 0.35–0.95，**机械分不出哪些是「禁用/变灰」** " +
