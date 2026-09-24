@@ -826,6 +826,12 @@ mod tests {
                 "RawAccount",
                 "**根本不是 wire**：它在解析 cc-acct-iso 写的清单**文件**（文件 schema）",
             ),
+            (
+                "observe/history_query.rs",
+                "IndexRow",
+                "一次性子命令 `--read-session-from-offset … --index` 的**出参行**（骨架索引），\
+                 不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",
+            ),
         ];
 
         let files: &[(&str, &str)] = &[
