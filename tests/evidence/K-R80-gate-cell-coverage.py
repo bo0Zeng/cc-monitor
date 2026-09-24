@@ -645,7 +645,7 @@ E2E_NOTE = ("六套后端二进制 e2e 之一（`ccm` 四套 ＋ 第二波 T4 �
 for suite, anchor in [
     ("ccm tests/e2e/ccm-print-parity", "run_e2e ccm-print-parity 12"),
     ("ccm tests/e2e/ccm-rbind-title", "run_e2e ccm-rbind-title  8"),
-    ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               46"),
+    ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               48"),
     ("ccm tests/e2e/ccm-contract-parity", "run_e2e ccm-contract-parity   45"),
     # 〔第二波 T4 09-24〕令牌那两套（`设计/80 §8.7` 步 2 / 步 3）—— 此前只被 shellcheck、不被执行。
     #   被测对象同是那个后端二进制（`ccm` 即 `cc-monitor-backend`），读法与上面四格一字不差。

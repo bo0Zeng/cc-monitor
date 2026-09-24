@@ -867,7 +867,7 @@ jobs:
           #    （留着就是一颗哑弹：CI 每跑必红，而红的不是被测对象）。真机那一面的等价覆盖
           #    在 `backend-gate2` 那一套（真 backend + 真 tmux，用例逐行来自同一张
           #    gate2-golden.tsv）。⚠ 地板值刻意不在这里重抄，理由见上面那段警告。
-          for pair in "tmux-target 26" "ccm-cli 46" "ccm-print-parity 12" \
+          for pair in "tmux-target 26" "ccm-cli 48" "ccm-print-parity 12" \
                       "cc-spawn-uplift 72" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "backend-fork 10" "inbound-frames 33" \
@@ -1106,7 +1106,7 @@ jobs:
       # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-backend`）——
       #    套件顶上那道 `[ -x ]` 是 fail-closed 的，不 build 就红。
       - name: ccm CLI 契约（F02）
-        run: bash tests/e2e/assert-pass-floor.sh ccm-cli 46
+        run: bash tests/e2e/assert-pass-floor.sh ccm-cli 48
 
       - name: ccm --print 平价预言机（F03）
         run: bash tests/e2e/assert-pass-floor.sh ccm-print-parity 12
