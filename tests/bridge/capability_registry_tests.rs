@@ -16,6 +16,14 @@ const ALLOWED: &[(&str, &str)] = &[
     ("core:window:allow-set-fullscreen", "全屏"),
     ("core:window:allow-is-fullscreen", "查全屏状态"),
     ("core:window:allow-close", "关窗"),
+    (
+        "core:window:allow-hide",
+        "ST1「关窗改隐藏」（`设计/01 §1.3` · `70 §1.3 F`）：设置窗接管了 close-requested，\
+             放行动作是 `hide()`（不销毁、下次 show 出来复用）。⚠ 这份 capability 同时发给 \
+             `main` / `viewer-*` / `settings` 三类窗口 —— 另开一份只给 settings 的 capability 文件能收窄，\
+             但本条判据只读 `default.json`，另开文件等于绕过它，所以不收窄、如实登记。\
+             藏起来的设置窗会吊住进程 ⇒ 主窗销毁时后端把它一起 destroy（`lib.rs::windows_to_destroy_after`）",
+    ),
 ];
 
 /// 继承这套权限的窗口模式。改动它 = 改动「谁拿到这些能力」。
