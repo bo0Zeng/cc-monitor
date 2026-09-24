@@ -32,6 +32,8 @@ vi.mock("../../src/accounts", async () => ({
 import { CcBusSection } from "../../src/settings/cc-bus-section";
 import { invoke } from "@tauri-apps/api/core";
 import { fetchAccounts } from "../../src/accounts";
+import { LOCAL_ORIGIN } from "../../src/backend-policy";
+import { __resetMachineContextForTests } from "../../src/settings/machine-context";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 const mockFetchAccounts = fetchAccounts as unknown as ReturnType<typeof vi.fn>;
@@ -754,6 +756,75 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     btn.click();
     await flush();
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+  });
+
+  // ── 〔第三波 S3〕本机派生也要能选账号（BS1b 留下的：本机那一格不拉账号列表 ⇒ 只能「不指定」）──
+  const LOCAL = {
+    ...ACCTS,
+    origin: "__local__",
+    accounts: [
+      { name: "w", email: "w@x", configDir: "/l/w", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+      { name: "off", email: "", configDir: "/l/o", isDefault: false, mode: "isolated", exists: true, loggedIn: false },
+    ],
+  };
+  /** 按机器答账号：aya ⇒ ACCTS；后端那个本机串 ⇒ LOCAL。 */
+  const byOrigin = (origin: string) =>
+    Promise.resolve(origin === LOCAL_ORIGIN ? LOCAL : origin === "aya" ? ACCTS : { accounts: [] });
+  const optsOf = (s: CcBusSection) =>
+    [...s.element.querySelectorAll<HTMLOptionElement>(".cc-bus-spawn-acct option")].map((o) => o.value);
+
+  it("★ 只有本机可选时：账号下拉列的是**本机**的可选账号（问的是后端那个本机串）", async () => {
+    __resetMachineContextForTests();
+    mockFetchAccounts.mockImplementation(byOrigin);
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return [];
+      throw new Error(cmd);
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    expect(s.element.querySelector<HTMLSelectElement>(".cc-bus-origin")!.value).toBe(LOCAL_ORIGIN);
+    expect(mockFetchAccounts.mock.calls.map((c) => c[0]), "本机那一格没去拉账号").toContain(LOCAL_ORIGIN);
+    // 可选性仍只走 `selectableAccounts` 那一份（未登录的 off 不进）。
+    expect(optsOf(s)).toEqual(["", "w"]);
+  });
+
+  it("★ 在下拉里从 aya 换到本机：账号下拉换成本机那一份（不停在 aya 的名单上）", async () => {
+    __resetMachineContextForTests();
+    const s = await load();
+    mockFetchAccounts.mockImplementation(byOrigin);
+    expect(optsOf(s), "前提：先站在 aya 上").toEqual(["", "z", "b", "apikey"]);
+    const sel = s.element.querySelector<HTMLSelectElement>(".cc-bus-origin")!;
+    sel.value = LOCAL_ORIGIN;
+    sel.dispatchEvent(new Event("change"));
+    await flush();
+    expect(optsOf(s)).toEqual(["", "w"]);
+    // 换回 aya 也一样跟着换（两个方向都走同一处）。
+    sel.value = "aya";
+    sel.dispatchEvent(new Event("change"));
+    await flush();
+    expect(optsOf(s)).toEqual(["", "z", "b", "apikey"]);
+  });
+
+  it("★ 读在路上又换了一台：上一台晚到的名单不许盖上来", async () => {
+    __resetMachineContextForTests();
+    const s = await load();
+    let releaseAya!: (v: unknown) => void;
+    mockFetchAccounts.mockImplementation((origin: string) =>
+      origin === "aya" ? new Promise((r) => (releaseAya = r)) : byOrigin(origin),
+    );
+    const sel = s.element.querySelector<HTMLSelectElement>(".cc-bus-origin")!;
+    sel.value = LOCAL_ORIGIN;
+    sel.dispatchEvent(new Event("change"));
+    await flush();
+    sel.value = "aya";
+    sel.dispatchEvent(new Event("change"));
+    sel.value = LOCAL_ORIGIN;
+    sel.dispatchEvent(new Event("change"));
+    await flush();
+    releaseAya(ACCTS);
+    await flush();
+    expect(optsOf(s), "aya 那一趟晚到，把本机的名单盖掉了").toEqual(["", "w"]);
   });
 
   it("账号取不到时只留「基座」，不能让人以为选了号而其实没生效", async () => {

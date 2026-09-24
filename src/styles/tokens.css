@@ -52,7 +52,8 @@
  *     transform · opacity · background · color · border-color
  *
  * 理由是这五个只走合成/重绘。**要动尺寸就用 `transform: scale`** ——
- * `.sftp-bar-fill` 那条 `transition: width` 就是这么治好的（每帧重排 → 只走合成，`S24`）。
+ * 老 SFTP 面板的进度条那条 `transition: width` 就是这么治好的（每帧重排 → 只走合成，`S24`；
+ * 那条规则〔F7b〕已随老面板一起退役，先例留在这儿）。
  * 白名单之外只有**逐条登记**的例外，今天两条：`grid-template-rows`（`0fr ↔ 1fr`
  * 那个「不用预知内容高度就能平滑展开」的标准技巧，只在展开那 200ms 重排）与
  * `none`（那是**关掉**过渡）。

@@ -440,6 +440,8 @@ pub struct FileWindow {
     /// ⚠ 刻意不写进 `listing.error`：那一格只在下一趟列目录时才清，
     ///   而「打字跳转没找到」是一句**下一次按键就过时**的话 ⇒ 下一次按键 / 点击就清掉。
     key_notice: Option<String>,
+    /// 〔F7b〕「新建空文件叫什么」那个框。`None` = 没在问。逻辑住 [`super::create`]。
+    pub(super) new_file: Option<super::create::NewFilePrompt>,
 }
 
 /// 〔FW2〕一个摆着的右键菜单：**在哪儿 · 列哪几项 · 对几项说话**。
@@ -529,6 +531,7 @@ impl FileWindow {
             menu: None,
             menus_opened: 0,
             key_notice: None,
+            new_file: None,
         }
     }
 
@@ -1035,7 +1038,6 @@ impl FileWindow {
     /// 这里只负责把「问谁 · 怎么问 · 怎么起」三个口接上去（同 [`Self::start_drop`]）。
     /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
-        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
@@ -1046,42 +1048,32 @@ impl FileWindow {
             return false;
         };
         let origin = self.source.origin();
-        let cfg = cfg.clone();
         let board = self.copy_board.clone();
-        // 🔴 把窗口交给看板（同 `start_drop`）：进度与裁决都是从 tokio 那条线程写进来的，
+        // 🔴 把窗口交给看板（同 `start_drop`）：「在跑」与结局都是从 tokio 那条线程写进来的，
         //    不敲一下，屏幕要等用户下次动鼠标才更新。
         board.attach(ctx);
-        // 🔴〔第五刀〕新的一趟 ⇒ 取消台复位（同 [`Self::start_drop`] 那条理由）。
-        board.cancels().reset();
         h.spawn(async move {
-            let copy_cfg = cfg.clone();
+            let (probe_line, probe_origin) = (line.clone(), origin.clone());
             let ask_board = board.clone();
             let run_board = board.clone();
-            let out = super::copy::run_copy(
-                job,
-                move |j| {
-                    let line = line.clone();
-                    let origin = origin.clone();
-                    async move { super::copy::probe_target(&line, &origin, &j).await }
-                },
-                move |j| {
-                    let rx = ask_board.ask(j);
-                    async move { rx.await.unwrap_or(false) }
-                },
-                // 🔴〔第五刀〕同上：取消那道闸 ＋ 造键，都在 `launch_unless_cancelled` 里。
-                //   ⚠ 复制那一路的 `launch` 回的是 `Result<CopyVerdict, String>`，
-                //   而那道闸回 `Result<(), String>` ⇒ 裁决经 `verdict` 这个格子带出来
-                //   （**不许**把它压成 `bool`，理由住 `copy::CopyOutcome`）。
-                move |j| async move {
-                    let desk = run_board.cancels();
-                    let name = j.name.clone();
-                    super::transfer::launch_unless_cancelled(&desk, &name, |id| async move {
-                        super::copy::copy_remote(&copy_cfg, &j, &run_board, &id).await
-                    })
-                    .await
-                },
-            )
-            .await;
+            let out =
+                super::copy::run_copy(
+                    job,
+                    move |j| async move {
+                        super::copy::probe_target(&probe_line, &probe_origin, &j).await
+                    },
+                    move |j| {
+                        let rx = ask_board.ask(j);
+                        async move { rx.await.unwrap_or(false) }
+                    },
+                    // 〔F7a〕经通道问后端 `files-copy`；第二个参数是覆盖策略（问过且答了「覆盖」）。
+                    //   后端这一趟取消不掉 ⇒ 不再走取消那道闸（理由住 `copy.rs` 头注）。
+                    move |j, overwrite| async move {
+                        run_board.begin(&j.name);
+                        super::copy::copy_remote(&line, &origin, &j, overwrite).await
+                    },
+                )
+                .await;
             board.finish(out);
         });
         true
@@ -1453,7 +1445,6 @@ impl FileWindow {
     /// **连那趟往返都不发** —— 而且把**为什么**说出来。
     /// 逐条理由住 `editor.rs` 头注「超了怎么办」那一节。
     pub fn begin_edit(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
-        let cfg = self.source.cfg();
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
@@ -1473,13 +1464,18 @@ impl FileWindow {
                 Some("读远端文本要一个 tokio 运行时，这个窗口没拿到".into());
             return false;
         };
-        let cfg = cfg.clone();
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            return false;
+        };
+        let origin = self.source.origin();
         let board = self.edits.clone();
         board.attach(ctx);
         board.begin_open(&row.path);
         h.spawn(async move {
             use super::editor::Arrived;
-            let got = super::editor::read_text(&cfg, &row.path).await;
+            // 〔F7a〕读文本经通道问后端（`files-read-text`），不再拨 SFTP。
+            let got = super::editor::read_text(&line, &origin, &row.path).await;
             board.deliver(match got {
                 Ok(Some(text)) => Arrived::Text {
                     path: row.path.clone(),
@@ -1529,7 +1525,7 @@ impl FileWindow {
             *self.listing.error.lock().unwrap() = Some(format!(
                 "改完之后有 {} 字节，超过 {} 的上限 —— 存不回去（超限**拒编而非截断**）",
                 p.text.len(),
-                super::rows::human_size(crate::sftp_pool::MAX_EDIT_BYTES as u64)
+                super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64)
             ));
             return false;
         }
@@ -1700,7 +1696,7 @@ impl FileWindow {
                     egui::Color32::RED,
                     format!(
                         "已经超过 {} 的上限 {} 字节 —— 存不回去",
-                        super::rows::human_size(crate::sftp_pool::MAX_EDIT_BYTES as u64),
+                        super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64),
                         -pane.headroom()
                     ),
                 );
@@ -1712,14 +1708,7 @@ impl FileWindow {
                     Err(why) => ui.colored_label(egui::Color32::RED, format!("存不回去：{why}")),
                 };
             }
-            if let Some(text) = self.editing_text_mut() {
-                ui.add(
-                    egui::TextEdit::multiline(text)
-                        .desired_rows(24)
-                        .desired_width(f32::INFINITY)
-                        .code_editor(),
-                );
-            }
+            super::bigfile::show(ui, self.editing.as_mut());
             ui.horizontal(|ui| {
                 if ui.button("保存").clicked() {
                     save = true;
@@ -1875,7 +1864,7 @@ impl FileWindow {
         self.menu.as_ref()
     }
 
-    /// 有一个模态框摆着吗（上传那一问 · 复制那两问 · 写操作那两问 · 往外拖那两问 · 编辑面）。
+    /// 有一个模态框摆着吗（上传那一问 · 复制那两问 · 写操作那两问 · 新建空文件那个框〔F7b〕· 往外拖那两问 · 编辑面）。
     ///
     /// 🔴 **一处**：拖入那一口（[`Self::take_drops`]）与键盘那一口（[`Self::apply_keys`]）
     /// 问的是同一个函数 —— 分成两份的症状是「编辑面开着，按 Delete 删掉了列表里的文件」。
@@ -1885,6 +1874,7 @@ impl FileWindow {
             || self.copy_prompt.is_some()
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
+            || self.new_file.is_some()
             || self.pull_ask.is_some()
             || self.editing.is_some()
     }
@@ -2189,6 +2179,7 @@ impl FileWindow {
         //    编不过。`⬆ 上一级` 与 `刷新` 两颗**例外**：它们调的那两个方法
         //    在这个闭包里借得出来（现状如此，别读成「跳转可以在闭包里做」）。
         let mut mkdir = false;
+        let mut new_file = false; // 〔F7b〕同 `mkdir` 的借用理由，收在帧尾
         let mut go: Option<String> = None;
         let mut pick: Option<SortBy> = None;
         let mut term = false;
@@ -2203,6 +2194,10 @@ impl FileWindow {
             //    （另外三条在行上），所以它的落点是工具栏。
             if ui.button(MKDIR_LABEL).clicked() {
                 mkdir = true;
+            }
+            // 〔F7b〕「新建空文件」—— 同样不针对某一行，所以同样在工具栏（逻辑住 `create.rs`）。
+            if ui.button(super::create::NEW_FILE_LABEL).clicked() {
+                new_file = true;
             }
             // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
             //    它在 POSIX 上恒定「失败」，而那是既定设计（逐条住 `open_terminal_here`）。
@@ -2254,6 +2249,9 @@ impl FileWindow {
         });
         if mkdir {
             self.begin_mkdir();
+        }
+        if new_file {
+            self.begin_new_file();
         }
         if let Some(by) = pick {
             self.set_sort(by);
@@ -2307,6 +2305,8 @@ impl FileWindow {
         //    同样模态、同样画在列表之前。
         self.write_board.ui(ui);
         self.write_ui(ui);
+        // 〔F7b〕新建空文件那个框（同样模态、同样在前）。
+        self.new_file_ui(ui);
         // 🔴〔第八刀〕往外拖那一摞：两问 ／ 进度 ／ 结局。同样模态、同样在前。
         self.pull_ui(ui);
         // 🔴〔第九刀〕编辑那一摞：**先消化到货，再画** ——

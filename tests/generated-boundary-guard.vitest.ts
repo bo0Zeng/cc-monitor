@@ -560,6 +560,8 @@ describe("C01 边界生成物", () => {
     // 这 3 个就是设计上该剩下的：`ipc/commands.ts`（包装层自己，即那个「1」）·
     // `tabs.ts`（等 tabs.ts 红线授权）· `accounts.ts`（等 account-zero 的 Z02，跨工作区冲突协议）。
     // 29 → 23 → 19 → 14 → 12 → 10 → 8 → 7 → 6 → 5 → 4 → **3**。
+    // 〔U2 · 第三波〕名单里的 `tabs.ts` 换成了 `tab-session-actions.ts`：拆 `tabs.ts` 时把 tab 层的每一条
+    //   `invoke` 收进那一份（tab 层唯一直呼 `invoke` 的一份），`tabs.ts` 与其余拆出来的几份一条都不直呼 ⇒ 仍是 3。
     expect(hits.length, `期望恰好 3 个，实得 ${hits.length}`).toBe(3);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
       "src/ipc/commands.ts",

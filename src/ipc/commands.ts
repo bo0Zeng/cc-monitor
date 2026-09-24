@@ -60,13 +60,13 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * 走手写而不是 `#[ts(export)]` 的理由是现打的（08-27）：`ts-rs` 导出会在 `src/generated/`
  * **新增一个文件**，而那个目录的清单由 `tests/generated-boundary-guard.vitest.ts`
  * 逐项等号对拍，那个文件不在 `K-H2a` 的写区。
- * ⇒ 字段与 Rust 侧 `creds_store::RelayCredentialsStatus`（serde 默认 snake_case）
+ * ⇒ 字段与 Rust 侧 `creds_store::ApikeyCredentialsStatus`（serde 默认 snake_case）
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
 import type { ApikeyRoutingView } from "../accounts";
 
-export interface RelayCredentialsStatus {
+export interface ApikeyCredentialsStatus {
   /** 配了没配。 */
   configured: boolean;
   /** 掩码形（前后各留几位；短到看不出前后缀的整条遮掉）。没配 = 空串。**永远不是明文。** */
@@ -374,8 +374,8 @@ export const commands = {
    * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
    * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
    */
-  write_relay_credentials_key: (args: { key: string; configDir: string }) =>
-    invoke<void>("write_relay_credentials_key", args),
+  write_apikey_credentials_key: (args: { key: string; configDir: string }) =>
+    invoke<void>("write_apikey_credentials_key", args),
 
   write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>
     invoke<void>("write_skill_file", args),
@@ -663,15 +663,15 @@ export const commands = {
   /**
    * `K-H2a` `KS6`：读 apikey 表那把 key 的状态。**返回里永远只有掩码。**
    */
-  read_relay_credentials_status: () =>
-    invoke<RelayCredentialsStatus>("read_relay_credentials_status"),
+  read_apikey_credentials_status: () =>
+    invoke<ApikeyCredentialsStatus>("read_apikey_credentials_status"),
 
   /**
    * `K-H2b` `KH2B7`：问「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
    *
    * ⚠ **只答本机**，而且那不是欠账：中转是**每台机器自己的一个进程**、注入的是**回环**地址
    * （自指）⇒ 本机这一侧**在结构上答不了远端那台**。命令面的登记
-   * （`parity_ledger` 的 `relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
+   * （`parity_ledger` 的 `apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
    * ⚠ 返回类型是**手写镜像**（`ApikeyRoutingView` 住 `src/accounts.ts`），
    * 与 Rust 的 `ApikeyRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
    */
@@ -1006,11 +1006,20 @@ export const commands = {
   load_config: () => invoke<Record<string, unknown>>("load_config"),
 
   /**
-   * P2s（C8）：这台机的后端，monitor 退出时结不结束它。Rust 返回 `Result<(), String>` ⇒ **桶①**。
+   * 〔B2 · 条 66〕问那台机器的后端：「退出行为」那个值现在是什么（值住那台机器上，`设计/01 §3.3b`）。
+   * Rust 那边是后端回的不透明 JSON（`shell` / `state` / `killOnExit` / `reason` / `path`）⇒ **桶②**，
+   * 形状由 `settings/backend-section.ts` 的 `readExitAnswer` 逐格取、缺一格就当问不到。
    * `origin` 本机是 `"<local>"`（见 `backend-policy.ts` 的 `LOCAL_ORIGIN`，两侧有判据对拍）。
    */
-  set_backend_kill_on_exit: (args: { origin: string; kill: boolean }) =>
-    invoke<void>("set_backend_kill_on_exit", args),
+  backend_exit_policy: (args: { origin: string }) =>
+    invoke<Record<string, unknown>>("backend_exit_policy", args),
+
+  /**
+   * 〔B2 · 条 66〕交那台机器的后端去写那个值；回**写完读回来的那一份**（同上一条的形状）⇒ **桶②**。
+   * 前端从不碰那份文件 —— 这条命令就是前端改它的唯一一条路（`§3.3b ③`）。
+   */
+  set_backend_exit_policy: (args: { origin: string; kill: boolean }) =>
+    invoke<Record<string, unknown>>("set_backend_exit_policy", args),
 
   /**
    * P2s（C8）：这台机的后端现在什么状态。Rust 那边是不透明 JSON（同 `load_config` 那处的
@@ -1064,7 +1073,7 @@ export const commands = {
    *
    * 🔴 **它为什么不是「发个请求就回」**：Rust 侧**先真的把那个目录列出来**，
    * 列不出来就带着 `sftp_pool` 那边的原文 reject ⇒ 这一条 `await` 真的能失败，
-   * 调用方该接住它并出声（`src/sftp/panel.ts::openNativeWindow`）。
+   * 调用方该接住它并出声（`src/file-window.ts::openFileWindow`，全仓唯一调用点）。
    * 没有这一层的话「点了按钮什么都没发生」与「开成功了」在界面上分不开
    * —— 本机没有图形会话时那正是必然发生的事。
    *

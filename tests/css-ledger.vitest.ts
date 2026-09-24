@@ -227,7 +227,9 @@ const KNOWN_DEAD: readonly { name: string; why: string }[] = [
  * 而 `ci.yml` 那一步是 `npm run lint:css || true`（结构上不会红）。本格接的就是那半格。
  */
 // 〔2026-09-24 U1 合并那一拍棘 47 → 39〕三入口 ＋ CSS 拆 10 份 ＋ 层真包进去之后现打 39（现打，不是 47−8 算的）。
-const STYLELINT_CEILING = 39;
+// 〔F7b 09-24 棘 39 → 36〕老 SFTP 面板那整段 CSS 退役，带走 `shared.css` 里 3 条 `color-function-alias-notation`
+//   （`rgba` → `rgb`；那一份 7 → 4，现打，不是 39−3 算的：全仓 `npx stylelint` 现打 36）。
+const STYLELINT_CEILING = 36;
 
 /**
  * ★ **靠前缀（而不是靠直接住址）才解释得通的 CSS 类名个数**上限。现打 **35**（分母 777）。

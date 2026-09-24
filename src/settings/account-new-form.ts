@@ -20,7 +20,7 @@
  * - **订阅**：弹终端跑 `cc-acct-iso add <名> --apply`，用户在那个终端里 `/login`。
  * - **第三方 apikey**：同一条命令建出账号目录；**key 在表单里就收下**，
  *   等这个号出现在账号列表里（知道了它的 configDir）时由 `accounts-section.ts`
- *   接着调 `write_relay_credentials_key` 写进 apikey 表 —— 两条命令在前端串起来，
+ *   接着调 `write_apikey_credentials_key` 写进 apikey 表 —— 两条命令在前端串起来，
  *   用户看到的是一次操作（`§4.4` 末段：「前提是后端不动」）。
  *
  * ⚠ 为什么不能当场就写 key：apikey 表按账号目录索引，而账号目录由那条终端命令建，
@@ -76,6 +76,12 @@ export function aliasHintFor(name: string): string {
  */
 export function renderNewAccountForm(
   onCreate: (req: NewAccountRequest) => void | Promise<void>,
+  /**
+   * 〔第三波 S3〕两支岔口下面那一行提示的**替换**。缺席 = 远端那一页的原话（「创建后弹出终端」）。
+   * 本机那一页要换：本机在 Linux 上**不开终端窗口**（`launch.rs::POSIX_NO_TERMINAL_WINDOW`，
+   * 既定设计），「弹出终端」对它是一句假话。只换这两句，表单的形状与校验一个字不动。
+   */
+  hints?: { subscription: string; apikey: string },
 ): HTMLElement {
   const C = NEW_ACCOUNT_COPY;
   const box = document.createElement("div");
@@ -194,7 +200,9 @@ export function renderNewAccountForm(
     const apikey = chosen() === "apikey";
     keyBox.hidden = !apikey;
     adv.hidden = apikey;
-    accessHint.textContent = apikey ? C.apikeyHint : C.subscriptionHint;
+    accessHint.textContent = apikey
+      ? (hints?.apikey ?? C.apikeyHint)
+      : (hints?.subscription ?? C.subscriptionHint);
     aliasHint.textContent = aliasHintFor(nameIn.value.trim());
     const cur = current();
     if ("req" in cur) {

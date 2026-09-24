@@ -449,17 +449,21 @@ pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
     Ok(out)
 }
 
-/// 远端 `.` 解出来的那条路径能不能当**起点**用。
+/// 那台机器答出来的 home 能不能当**起点**用。
 ///
 /// # 🔴 抽成纯函数的理由
 ///
-/// [`resolve_remote_home`] 整条路要真远端才跑得起来（本仓红线不许起真连接）
-/// ⇒ 那条路上**唯一有逻辑的一段**就是这里，把它抽出来，它就有判据了。
+/// 问 home 那一趟（`entry.rs` 的 `ask_home`）要一个起着的后端才跑得起来
+/// ⇒ 那条路上**有逻辑的一段**就是这里（连同 [`home_from_reply`] 的解字节），抽出来它就有判据了。
+///
+/// 〔F7a · 第三波 2026-09-24〕改过名（旧名带着 SFTP 那一问的字眼）：第七刀那一版问的是
+/// SFTP 的 `realpath(".")`；现在问的是后端 `files-home`，判的这一道一个字没变。
 ///
 /// # 为什么要判一道，而不是把回值直接拿去开窗
 ///
-/// 入口那条命令吃的是一条**绝对路径**。`canonicalize(".")` 在规矩的 SFTP 服务端上
-/// 回的就是绝对路径，但那是**对面的承诺**，不是我们的不变量 ——
+/// 入口那条命令吃的是一条**绝对路径**。后端那一侧对 home 也判过「必须是绝对路径」，
+/// 但那是**对面的承诺**，不是我们的不变量（对面可能是一台旧后端、也可能是 Windows 上
+/// 那种不以 `/` 起头的绝对路径）——
 /// 空串 / 相对路径 / 一串空白，任一种直接拿去开窗都是「窗口出来了、里面是空的」，
 /// 而那正是 [`super::entry::open_file_window`] 头注花一整节要避免的那一形。
 /// ⇒ 不合格就**带着原文回错**，让 webview 那侧照旧弹它的失败提示。
@@ -467,7 +471,7 @@ pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
 /// ⚠ 末尾的 `/` 会被剥掉（根 `/` 除外）—— 那不是洁癖：
 /// [`parent_dir`] 靠「回来的和给出去的相等」判「已经在顶上了」，
 /// 而 `/srv/` 与 `/srv` 在那个算法里是两个不同的输入。
-pub fn start_dir_from_realpath(answer: &str) -> Result<String, String> {
+pub fn start_dir_from_home(answer: &str) -> Result<String, String> {
     let t = answer.trim();
     if t.is_empty() {
         return Err("远端把 home 解成了空路径 —— 没有起点可以开窗".into());
@@ -485,16 +489,28 @@ pub fn start_dir_from_realpath(answer: &str) -> Result<String, String> {
     })
 }
 
-/// 问远端「`.` 是哪儿」—— 也就是那台机器上的 home 绝对路径。
+/// 问 home 那条线上命令的名字（后端 `files-read` 族第八条）。
+pub const CMD_HOME: &str = "files-home";
+
+/// 一趟 `files-home` 的 `data` → 开窗的起点。
 ///
-/// 🔴 **这是 `sftp_realpath` 在窗口这一侧的唯一落点。** 在这之前，那条路径的
-/// 唯一来源是老面板 `src/sftp/panel.ts` 那处 `sftp_realpath(cfg, ".")`
-/// ⇒ 窗口连「自己开在远端 home」都做不到，而 `P3`（老面板退役）因此排不动。
+/// 🔴〔F7a · 第三波 2026-09-24〕**这一问从 SFTP 换到了后端。** 上一版这里是一个
+/// async 函数（monitor 为「`.` 是哪儿」单拨一条 SFTP，走池子那条 `realpath` 命令），
+/// 它是 monitor 那一侧**最后一处**碰 SFTP 的地方；
+/// 现在问的是后端 `files-home`，经通道宿主的同一个句柄（`entry.rs` 的 `ask_home`）。
 ///
-/// ⚠ 本函数**自己没有逻辑** —— 判的那一道住 [`start_dir_from_realpath`]。
-pub async fn resolve_remote_home(cfg: &RemoteConfig) -> Result<String, String> {
-    let answer = crate::sftp_pool::sftp_realpath(cfg.clone(), ".".to_string()).await?;
-    start_dir_from_realpath(&answer)
+/// 两道：① `path` 解成字节 —— **不是合法 UTF-8 就拒**（窗口的路径是字符串，有损解码之后
+/// 寻址不到那个目录，开出来的是别处）；② 能不能当起点，交 [`start_dir_from_home`]。
+pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
+    let raw = d
+        .get("path")
+        .ok_or_else(|| format!("`{CMD_HOME}` 的应答里没有 `path`"))?;
+    let bytes = super::find::decode_path(raw)
+        .ok_or_else(|| "`path` 的形状不对 —— 只认字符串或 `{\"b16\": …}`".to_string())?;
+    let s = String::from_utf8(bytes).map_err(|_| {
+        format!("那台机器的 home 不是合法 UTF-8 —— 窗口的路径是字符串，寻址不到它（`{CMD_HOME}`）")
+    })?;
+    start_dir_from_home(&s)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -523,12 +539,14 @@ pub async fn resolve_remote_home(cfg: &RemoteConfig) -> Result<String, String> {
 //
 // # ⚠ 这一步**没有**做到什么（别读宽）
 //
-// - **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消 · 读一份文本进编辑器）：`设计/60 §8.4` 未拍，
+// - **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消）：`设计/60 §8.4` 未拍，
 //   题面逐字「上传/跨机传输不做」。逐条登记在 `boundary_tests::Kind::Transfer`。
-// - **同机复制仍走 SFTP**：后端今天没有 `files-copy` 这条命令（写面是那六条），
-//   窗口一侧补不出来 ⇒ 登记在 `boundary_tests::Kind::BackendLacks`，交主会话。
-// - **开窗时解 home**（[`resolve_remote_home`]）仍走 SFTP，而且它**住 monitor 那一侧**
-//   （入口命令调它）：后端没有「这台机器的 home 是哪儿」这一问（`hello.homes` 今天恒空）。
+//   ✅〔F7a · 第三波 2026-09-24〕「读一份文本进编辑器」那一条已换成后端 `files-read-text`。
+// - ✅〔F7a · 第三波 2026-09-24〕**同机复制**此前仍走 SFTP（后端没有 `files-copy`，
+//   登记在 `boundary_tests` 那一类「后端缺命令」里）—— 现在问后端 `files-copy`，那一类清零删了。
+// - ✅〔F7a · 第三波 2026-09-24〕**开窗时解 home** 此前仍走 SFTP（住 monitor 那一侧，
+//   后端没有这一问）—— 现在问后端 `files-home`（[`home_from_reply`]），monitor 那一侧
+//   开窗一个 SFTP 都不拨了。
 // - **`Row` 仍然持字符串不持字节**（改它要动六个模块与四十来条判据，单独一刀）。
 
 /// 那条线上命令的名字。⚠ 能力名是 `files.ls`，线上名是 `files-ls`
@@ -697,24 +715,81 @@ pub async fn ask(
     args: &serde_json::Value,
     t: std::time::Duration,
 ) -> Result<serde_json::Value, String> {
+    ask_coded(line, origin, cmd, args, t)
+        .await
+        .map_err(|f| f.said)
+}
+
+/// 一趟 [`ask_coded`] 没成：**对端说的码**（只有「对端拒了」那一形有）＋ 那句人话。
+///
+/// 🔴〔F7a · 第三波 2026-09-24〕为什么要把码留下来：编辑器读文本那一问，后端的
+/// `too_large` / `not_text` 与「连不上」是**两件事**（前者说「这份不是一份能编辑的文本」，
+/// 后者说「这一趟没走通」），而 [`said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Failed {
+    /// 对端拒绝时它给的那个码（`None` = 不是对端拒的：没走通 / 这一侧拼错 / 对端不认这条命令）。
+    pub code: Option<String>,
+    /// 给人看的那句话（[`said`] 翻过的，或这一侧自己的那句）。
+    pub said: String,
+}
+
+impl Failed {
+    fn local(said: String) -> Self {
+        Self { code: None, said }
+    }
+}
+
+/// 与 [`ask`] 同一件事，失败时**把对端的码一起交出来**（[`Failed`]）。
+///
+/// 🔴 **窗口进程里说 `call` 的仍然只有一处 —— 就是这里**：[`ask`] 是它的一层薄壳
+/// （只把码丢掉）。「期限由调用方给、这里只换成绝对时刻」那一条同 [`ask`] 头注。
+pub async fn ask_coded(
+    line: &Line,
+    origin: &Origin,
+    cmd: &str,
+    args: &serde_json::Value,
+    t: std::time::Duration,
+) -> Result<serde_json::Value, Failed> {
     use crate::chan::wire::{Body, Budget, CancelToken, Comms, Op};
     let budget = Budget {
         until: std::time::Instant::now() + t,
         cancel: CancelToken::new(),
     };
-    let payload =
-        Body(serde_json::to_vec(args).map_err(|e| format!("`{cmd}` 的参数拼不出来：{e}"))?);
+    let payload = Body(
+        serde_json::to_vec(args)
+            .map_err(|e| Failed::local(format!("`{cmd}` 的参数拼不出来：{e}")))?,
+    );
     let op = Op(cmd.to_string());
     let body = line
         .call(origin, &op, payload, budget)
         .await
-        .map_err(|e| said(cmd, &e))?;
-    let v: serde_json::Value =
-        serde_json::from_slice(&body.0).map_err(|e| format!("`{cmd}` 的应答读不动：{e}"))?;
+        .map_err(|e| Failed {
+            code: refused_code(&e),
+            said: said(cmd, &e),
+        })?;
+    let v: serde_json::Value = serde_json::from_slice(&body.0)
+        .map_err(|e| Failed::local(format!("`{cmd}` 的应答读不动：{e}")))?;
     if v.is_null() {
-        return Err(format!("`{cmd}` 回了一条空应答，和约定的不一样"));
+        return Err(Failed::local(format!(
+            "`{cmd}` 回了一条空应答，和约定的不一样"
+        )));
     }
     Ok(v)
+}
+
+/// 对端拒了的那一形里，它给的那个码。别的形一律 `None`（**不猜**）。
+pub fn refused_code(e: &crate::chan::wire::CallError) -> Option<String> {
+    use crate::chan::wire::{CallError, PeerFault};
+    match e {
+        CallError::Peer {
+            why: PeerFault::Refused { body },
+        } => serde_json::from_slice::<serde_json::Value>(&body.0)
+            .ok()?
+            .get("code")?
+            .as_str()
+            .map(str::to_string),
+        _ => None,
+    }
 }
 
 /// 通道那三层失败（`05 §3.3.1`）→ 窗口上那一句话。**穷尽 `match`，不许 `_ =>`。**

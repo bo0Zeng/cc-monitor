@@ -54,3 +54,16 @@ export function formatBytes(n: number): string {
   if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
+
+/**
+ * 路径的最后一段（给人看的短名；兼容 `\` 分隔与尾随 `/`）。
+ *
+ * 〔F7b〕从退役的老 SFTP 面板（`sftp/paths.ts`）搬来 —— 今天唯一的消费者是 viewer 窗的标题
+ * （`entry-viewer.ts`：会话工作目录 → 窗口名）。它不切**远端**路径给后端用：那件事归 Rust 侧
+ * `filewin::source::remote_basename`，只认 `/`。
+ */
+export function basename(path: string): string {
+  const norm = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const i = norm.lastIndexOf("/");
+  return i >= 0 ? norm.slice(i + 1) : norm;
+}

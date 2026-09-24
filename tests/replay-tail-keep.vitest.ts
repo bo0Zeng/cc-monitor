@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * 〔U3b · `设计/10` 步 8〕重放缓冲「只留尾巴」的条数**不是拍的**：它等于前端开一个 tab 时
- * 不滚动最多会建的条数（`tabs.ts` 的 `materializeUntilFilled`：`MATERIALIZE_TAIL_K` × 轮数上限）。
+ * 不滚动最多会建的条数（`tab-stream-view.ts`〔U2 前住 `tabs.ts`〕的 `materializeUntilFilled`：`MATERIALIZE_TAIL_K` × 轮数上限）。
  * 两边各在自己的源码里（Rust 常量 / TS 静态字段 ＋ 循环上界），本条现读两边、对等式。
  *
  * 买到：改了任一边（比如把首屏物化改成 5 轮）而没回来想「重放尾巴够不够」⇒ 红。
@@ -24,7 +24,9 @@ function only(src: string, re: RegExp, what: string): number {
 describe("〔U3b〕重放尾巴 == 首屏物化上限", () => {
   it("REPLAY_TAIL_KEEP == MATERIALIZE_TAIL_K × materializeUntilFilled 的轮数上限", () => {
     const rs = read("src/bridge/src/event_replay.rs");
-    const ts = read("src/tabs.ts");
+    // 〔U2 · 第三波〕物化那一族（`MATERIALIZE_TAIL_K` 与 `materializeUntilFilled`）随实时流视图从
+    //   `src/tabs.ts` 搬进了 `src/tab-stream-view.ts`，两处写法逐字未动 ⇒ 这里只换住址，两条抽取正则一字不改。
+    const ts = read("src/tab-stream-view.ts");
     const keep = only(rs, /pub const REPLAY_TAIL_KEEP: usize = (\d+);/, "Rust 那一侧");
     const k = only(ts, /private static readonly MATERIALIZE_TAIL_K = (\d+);/, "MATERIALIZE_TAIL_K");
     const body = ts.slice(ts.indexOf("private materializeUntilFilled("));

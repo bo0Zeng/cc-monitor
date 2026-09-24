@@ -251,7 +251,7 @@ fn the_shape_the_injection_side_builds_lands_in_the_slots_this_parser_expects() 
 /// 走的必须是本模块这个 [`segment_is_safe`]，不是另写一份。
 ///
 /// 本条钉的是**那个谓词与 `parse` 的判断一致** —— 它俩要是漂开了，
-/// 症状是「文件里配了一条账号，中转永远 404」，而两边各自看起来都没错。
+/// 症状是「文件里配了一条账号，请求永远 404」，而两边各自看起来都没错。
 #[test]
 fn the_exported_predicate_agrees_with_what_parse_accepts() {
     // 分母 = 我列出的这 5 个 id（**都不含 `/`**，理由见下面那一段）。

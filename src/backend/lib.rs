@@ -375,7 +375,18 @@ pub const PROTO_VERSION: u32 = 1;
 /// ⚠ 旧后端配新 shim ⇒ 容器路内层缺 `ccm` 那个词（入口②的老病复发）⇒ **必须**让已部署的远端被判 stale。
 /// 照 p1v 的先例（只改行为/wire、不改子命令 ⇒ bump 但**不**往 `SUBCOMMAND_HISTORY` 加行）。
 /// ★ re-embed 归发版那一拍。
-pub const BUILD_ID: &str = "p2q-no-ccm-self";
+///
+/// ★★★ **p2r-apikey-naming**（2026-09-24，第三波 R3 合并那一拍）：**子命令集一个没变，是行为变了** ——
+/// 账号层读的凭据文件改叫 `apikey-credentials.json`、环境变量改叫 `CCM_APIKEY_CREDENTIALS` /
+/// `CCM_AGENT_UPSTREAM_CLAUDE_CODE`（旧名逐条登记在 `tests/naming/account-vs-relay-naming.vitest.ts` 那张表里，
+/// 这里**刻意不复写**，否则那条判据当场红）。用户裁「不要把账号和中转混为一谈」，不留兼容读旧名。
+/// ⚠ 新 monitor 递新变量名、旧后端不认 ⇒ 回头读旧文件名 ⇒ 界面配好了、请求静默 404 ⇒ **必须**让已部署的后端被判 stale。
+/// 线上字节不变（`wire_golden` 未动）。照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
+///
+/// ★★★ **p2s-files-copy-exit-policy**（2026-09-24，第三波 F7a ＋ B2 合并那一拍）：子命令 ＋10 ——
+/// F7a `files-copy` / `files-read-text` / `files-home`，B2 `exit-policy-read` / `exit-policy-set`（两个命令面）；
+/// ＋ B2 行为：常驻后端最后一条流断开时现读 `backend.json` 决定退不退（读到「结束」就自己退）。
+pub const BUILD_ID: &str = "p2s-files-copy-exit-policy";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -475,6 +486,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
     // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
     "--capture-pane",
+    // 〔B2 · 条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
+    // 登记理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
+    // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--exit-policy-read",
+    "--exit-policy-set",
     "--backend-probe",
     // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
     // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都
@@ -527,12 +543,17 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-mkdir",
     "--files-rename",
     "--files-write-text",
+    // 〔F7a · 第三波 09-24〕同一面第七条（同根内复制）。登记理由与上面逐字相同。
+    "--files-copy",
     "--files-browse",
     "--files-find",
     "--files-index-rebuild",
     "--files-index-status",
     "--files-ls",
     "--files-stat",
+    // 〔F7a · 第三波 09-24〕同族第七、第八条（`设计/60 §13`）。登记理由与上面那几条逐字相同。
+    "--files-home",
+    "--files-read-text",
     "--fork-session",
     // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
     "--history-projects",
@@ -1168,30 +1189,16 @@ fn wire_commands_unavailable_on(t: Target) -> Vec<String> {
         .collect()
 }
 
-/// `ccm-launcher` 那一面里，**载体是 tmux** 的那几条能力 —— 一条一条的依据：
-///
-/// ⚠ 这是一条关于**机制**的声明（「它靠什么活着」），不是差异登记：差异 = 本表 × 平台那一维，
-/// 由本段现推；理由与档住 [`TARGET_GAPS`]。两张表回答的不是同一个问题。
-/// ⚠ 它**该住** `control/ccm/mod.rs` 那张 `CAPABILITIES` 旁边（一条能力一个住址）——
-/// 那份文件不在 PR1 的写区里，先住在汇总这一层、紧挨着那一面的适配函数，已报备。
-const CCM_TMUX_CARRIED: &[&str] = &[
-    "attach",               // 实现就是 `tmux attach`
-    "base-url-across-tmux", // 名字就是「跨 tmux 的边界」
-    "bus-register",         // `argv.rs`：要 `--detach`，而 `--detach` 要 `--tmux`
-    "ccm-sid",              // 只在容器（tmux）那条路上被消费，`Plan::Direct` 里没有这个字段
-    "detach",               // 实现就是 `tmux detach`
-    "tmux",                 // 它本身
-    "tmux-base",            // tmux 的 `base-index`
-    "tmux-size",            // tmux 窗格尺寸
-];
-
 /// `ccm-launcher`：载体是 tmux 的那几条，在平台确证没有 tmux 的 target 上摘掉。
+///
+/// 「哪几条载体是 tmux」住 `control::ccm::CCM_TMUX_CARRIED`（紧挨着那一面的 `CAPABILITIES`，
+/// 一条能力一个住址）；这里只做「× 平台档」那一步。
 fn ccm_launcher_on(t: Target) -> Vec<&'static str> {
     let no_tmux = tmux_by_platform(t) == Some(false);
     control::ccm::CAPABILITIES
         .iter()
         .copied()
-        .filter(|c| !(no_tmux && CCM_TMUX_CARRIED.contains(c)))
+        .filter(|c| !(no_tmux && control::ccm::CCM_TMUX_CARRIED.contains(c)))
         .collect()
 }
 

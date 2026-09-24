@@ -1237,7 +1237,7 @@ pub enum LaunchAccount {
         ///
         /// 推得出一个像样的名字（`cc-acct-iso` 的布局是 `~/.claude-accts/<名字>`，
         /// [`apikey_account_id_of_dir`] 就是那么推的），**但那两处的失效方向相反**：
-        /// 推错一个中转 id ⇒ 表里查不到 ⇒ 逐字节走旧路（保守）；推错一个 `--account`
+        /// 推错一个 apikey 账号 id ⇒ 表里查不到 ⇒ 逐字节走旧路（保守）；推错一个 `--account`
         /// ⇒ `ccm` 当场 `die`（`src/backend/control/ccm/argv.rs` 认不出这个名字 = 退出码 2）
         /// ⇒ **一次本来能起的会话变成一条报错**。⇒ 这一格只收**调用方说得出**的名字。
         ///
@@ -2002,7 +2002,7 @@ pub(crate) fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// `KH2B7` 的**纯派生半**：给一批 configDir 与一张 id 表，答「哪几个走中转」。
+/// `KH2B7` 的**纯派生半**：给一批 configDir 与一张 id 表，答「哪几个在 apikey 表里有行」。
 ///
 /// ★ 抽成纯函数的理由与本模块另外两次一样：`apikey_rows()` 要读盘、`relay_running()` 要读进程状态，
 /// 而**这条规则本身**（怎么从 configDir 推 id、怎么和表比）不该只能对着真实的家目录跑。
@@ -2029,13 +2029,13 @@ pub(crate) fn apikey_routed_subset(
         .collect()
 }
 
-/// 起本机会话时报给中转的那个 agent 名（适配器的 `id()`）。**起会话那一侧与界面那一侧共用这一处**，
+/// 起本机会话时写进中转路由键第 1 段的那个 agent 名（适配器的 `id()`；读它的是账号层）。**起会话那一侧与界面那一侧共用这一处**，
 /// 两边问的是同一件事（「这一家的号走不走 apikey 端点改写」）⇒ 不许各自去问适配层。
 pub(crate) fn launch_agent_id() -> &'static str {
     crate::adapter::active().id()
 }
 
-/// apikey 凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
+/// apikey 凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走 apikey 端点改写）。
 ///
 /// ⚠ 「读不到」与「一条都没配」在这里**故意同一处置**：两者的正确行为都是
 /// 「照旧走官方直连」，而把「读文件失败」变成一次起会话失败，是拿一个**能用的**状态
@@ -2056,12 +2056,12 @@ pub(crate) fn apikey_rows() -> Vec<String> {
 ///
 /// # ⚠ 它与中转那侧的人群**不完全一致**，差在哪要写清楚
 ///
-/// 中转装表时会把两类行**丢出表**（`accounts::table::build`）：① 账号 id 当不了路由段；
+/// 账号层装表时会把两类行**丢出表**（`accounts::apikey::table::build`）：① 账号 id 当不了路由段；
 /// ② `base_url` 解析不了。本函数**只筛得掉第 ①** 类（`payload::relay_segment_is_safe`
 /// 与 `route::segment_is_safe` 是同一条规则，由 `payload.rs` 那边的头注登记着）。
 /// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住后端那一侧、monitor 够不着
 /// （单向依赖）。
-/// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而中转那侧 404。
+/// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而账号层那侧 404。
 /// **如实登记，不假装两侧人群相等。**〔`D1` 点名的那条同族，处置是「筛掉能筛的、写清剩下的」。〕
 pub(crate) fn apikey_rows_at(path: &std::path::Path) -> Vec<String> {
     let Ok(raw) = std::fs::read_to_string(path) else {
@@ -2295,7 +2295,7 @@ fn relay_prefix_for_launch(
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
-        // attach 不起 agent ⇒ 这一跳没有「要往哪个号的中转上指」这个问题。
+        // attach 不起 agent ⇒ 这一跳没有「往中转上指」这个问题。
         // ⚠ 它今天到不了这里（[`launch_local`] 入口就拒了 attach），本臂是**穷尽性**的一半：
         //    哪天有人把 attach 接进那条路，编译器会先逼他读一遍上面这句话。
         #[cfg(not(windows))]
@@ -2346,7 +2346,7 @@ pub(crate) const LAUNCH_ID_VAR: &str = "CCM_LAUNCH_ID";
 /// # ⚠ 它欠的一笔账（如实登记，别读成缺陷也别读成没有）
 ///
 /// **新开**会话时，中转路由键与本 token 是**两个不同的 nonce**（同一份铸法被调了两次）——
-/// 中转那一次在 `payload::apikey_endpoint_for` 里面，本文件够不着它算好的值。
+/// 中转路由键那一份在 `payload::apikey_endpoint_for` 里面，本文件够不着它算好的值。
 /// 今天不构成缺陷：`mint_route_key` 头注现打登记过「route key 对路由完全惰性、tee 今天零消费者」，
 /// 而身份 token 与它**不共享任何消费者**。要它们相等得改 `payload.rs`（本拍只许读它）。
 fn launch_identity_token(action: &LocalPsAction) -> String {

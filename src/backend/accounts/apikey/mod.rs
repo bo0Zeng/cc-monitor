@@ -1,7 +1,7 @@
 //! 层 2 · **账号层**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**（`设计/20 §3.1`）。
 //!
 //! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/apikey/`：`accounts/` 是账号**域**，
-//! 它下面「给中转当层 2 的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
+//! 它下面「挂在 `--relay` 进程上当层 2 的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
 //! 不共用一张登记表（用户「账号就账号, 中转就中转」）。两块互不引用，由
 //! `account_layer_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
 //!
@@ -9,7 +9,7 @@
 //!
 //! | | |
 //! |---|---|
-//! | **知道** | 账号模型 · `relay-credentials.json` · 上游 · `auth_style` · 热重载 · 哪个账号走哪个模式 |
+//! | **知道** | 账号模型 · `apikey-credentials.json` · 上游 · `auth_style` · 热重载 · 哪个账号走哪个模式 |
 //! | **不知道** | HTTP 怎么发、字节怎么泵 —— 那是层 1（`server.rs` / `listen.rs` / `http1.rs`） |
 //!
 //! ⇒ **「agent」与「账号」这两个业务词只在这一层出现。** 层 1 手里只有
@@ -59,7 +59,7 @@ use creds_core::store::AuthStyle;
 use std::io::Write;
 use table::{RoutingTable, Row};
 
-/// 凭据文件（`relay-credentials.json`）里那些行**挂在哪个 agent 名下**。
+/// 凭据文件（`apikey-credentials.json`）里那些行**挂在哪个 agent 名下**。
 ///
 /// # 为什么要有这个值（条 49 拆键之后必然冒出来的一格）
 ///
@@ -95,12 +95,13 @@ pub(crate) struct AgentUpstream {
 /// **claude-code 这一行的一格**存在 —— `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
 /// 数着它的处数（层 2 恰好登记那几处，层 1 零处）。
 ///
-/// ⚠ 环境变量名 `CCM_RELAY_UPSTREAM` **没改名**：它今天只盖 claude-code 这一家（先前它盖整个进程，
-/// 而进程里只有这一家在用它），`src/doc/IPC-PROTOCOL.md` 那一行逐字点着这个名字。
-/// 改名要与那份契约同拍，**不在本拍**。
+/// 环境变量名 `CCM_AGENT_UPSTREAM_CLAUDE_CODE`〔R3 改名；先前叫中转的名字 —— 旧名见 `设计/20` R3 那一段〕：
+/// 它是**本表里 claude-code 那一行**的旋钮，不是中转的配置（层 1 没有默认上游）。名字照本表的形状起：
+/// `CCM_AGENT_UPSTREAM_<agent>`，哪天登记第二家就照这个形状加一行。
+/// `src/doc/IPC-PROTOCOL.md` 那一行逐字点着这个名字，同拍改。
 pub(crate) const AGENT_UPSTREAMS: &[AgentUpstream] = &[AgentUpstream {
     agent: CREDENTIALS_FILE_AGENT,
-    env: "CCM_RELAY_UPSTREAM",
+    env: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
     fallback: "https://api.anthropic.com",
 }];
 

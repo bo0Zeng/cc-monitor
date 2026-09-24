@@ -1,5 +1,10 @@
 //! `24e` 第九刀：**改一份远端文本** —— `sftp_read_text_for_edit` ＋ `sftp_write_text`。
 //!
+//! 🔴〔F7a · 第三波 2026-09-24〕**读写两半都经通道问后端了**：写那一半 F2 已换成
+//! `files-write-text`；读那一半这一拍换成 `files-read-text`（[`read_text`]）。标题里那两条
+//! 池子命令是第九刀当时的住址，下面几节讲「上限」「超了怎么办」的推理照旧成立 ——
+//! 变的只是「最终护栏」住哪：从池子那边的解码函数换成后端那条命令（它自己判两次大小）。
+//!
 //! ═══════════════════════════════════════════════════════════════════════
 //! # 🔴 一、`设计/60 §5.4b` 把两个问题**指名**留给了这一刀
 //! ═══════════════════════════════════════════════════════════════════════
@@ -17,7 +22,7 @@
 //! 老面板的做法是把那一行灰置 —— 而「灰置」与「这个功能坏了」在屏幕上同形。
 //!
 //! 🔴 **而那三件里最常见的那一件，窗口自己就判得出来**：列目录回来的每一行
-//! 都带着 `size` ⇒ [`why_not_editable`] 按 [`crate::sftp_pool::MAX_EDIT_BYTES`]
+//! 都带着 `size` ⇒ [`why_not_editable`] 按 [`MAX_EDIT_BYTES`]
 //! 在**本地**判「太大」，**连那趟往返都不发**，而且把那个数说给用户听
 //! （「这份 1.2 M 超过 256 K 的编辑上限」）。
 //!
@@ -25,8 +30,8 @@
 //! （「这不是一份文本文件」）⇒ **三件事分成了两句人话，零签名改动、零额外往返。**
 //!
 //! ⚠ 如实登记它**买不到**什么：远端那个文件在「我们读 `size`」与「我们真去读它」
-//! 之间被换掉（变大 / 变成二进制）⇒ 本地预判会放它过去，而池子那边的
-//! `decode_editable` 仍然是最终护栏（它冗余复核大小，正是为这个竞态）。
+//! 之间被换掉（变大 / 变成二进制）⇒ 本地预判会放它过去，而〔F7a〕后端 `files-read-text`
+//! 仍然是最终护栏（它在那台机器上再判两次大小，正是为这个竞态；第九刀时这一格住池子那边）。
 //! ⇒ **本地预判是一句话的来源，不是一道围栏。**
 //!
 //! ## 问题一「**这个量该多大**」—— 本刀**不动它**，并写清为什么
@@ -103,24 +108,31 @@
 //! 4. **没有语法高亮 / 行号 / 查找替换** —— 那是一个编辑器，不是这一刀。
 //!
 //! ═══════════════════════════════════════════════════════════════════════
-//! # 四、〔第十四刀 2026-09-23〕「只排视口内的行」—— **设计住 `设计/60 §9`**
+//! # 四、「只排视口内的行」—— **〔F9 2026-09-24〕落地了，住 [`super::bigfile`]**
 //!
-//! 那一刀的完整设计（egui 那一侧到底提供什么的**源码级**读数 · 十条难题表 ·
-//! 上限该定多少 · 四个更便宜的等价物 · 裁决）原先写在这儿 332 行，
-//! **2026-09-23 回落进 `调研/设计/60 §9`** —— 这儿不留第二份（`D2`：一个数只有一个住址）。
+//! 第十四刀的设计（egui 那一侧的源码级读数 · 十条难题表 · 四个更便宜的等价物）住
+//! `调研/设计/60 §9`；落地的形状、两个阈值的推算、判据与买不到的，住 `设计/60 §9b`
+//! 与 [`super::bigfile`] 头注。
 //!
-//! 🔴 **本刀的状态一句话**：内核与判据在（`LineIndex` / `Window` / `splice_window` /
-//! `WindowingPayoff`），**而一个生产调用方都没有** ⇒ 按本仓「判据不在执行链上就等于不存在」，
-//! **「只排视口内」这个功能今天没有落地，也不许读成落地了**。
-//! 落地要三件按序：① 用户重新拍方向（原裁决建立在一个被证伪的数上）·
-//! ② `shell.rs` 那一处 `TextEdit::multiline` 换成走 `Window` · ③ 自己的全文撤销栈
-//! （egui 的撤销栈快照的是**窗口** ⇒ 滚一屏再 Ctrl+Z 会把旧的 40 行写进新窗口的字节区间，
-//! **屏幕上看不出来**）。
+//! ⚠ 第十四刀留在这里的那一组内核（行索引 · 窗口 · 写回 · 「开窗买不到」那把尺子）
+//! **随落地一起删了**：它们建模的是「窗口化 `TextEdit`」那条路，而落地走的是另一条
+//! （自己画、全文坐标、横向也只排可见段）—— 那条路的撤销栈会静默改坏文件
+//! （`§9 §四.2` 第 3 条），一行特别长时也买不到东西（第 10 条），留着只会让人以为它还是候选。
+//! 行结构改由 [`super::bigfile::Lines`] 增量维护，判据对着 `str::split('\n')` 钉。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::sftp_pool::MAX_EDIT_BYTES;
+/// 编辑上限（256 KiB）。**超上限拒编而非截断**（截断过的文本当编辑源会写坏文件）。
+///
+/// 🔴〔F7a · 第三波 2026-09-24〕**住址从池子搬到了窗口这里，而这是它该住的地方**：
+/// `设计/60 §5.4b` 逐字「那个上限该是多少、超了怎么办，要在**原生窗口的文本控件**这个语境里答」
+/// —— 它答的是「这个编辑框打字卡不卡」，是窗口的偏好，不是后端的机制。
+/// ⇒ 每趟经 `max_bytes` 送给后端 `files-read-text`（后端按它拒、不截断；后端另有自己的
+/// 一趟天花板，那是另一个数、另一件事）。这个数经第九刀复核过，理由住本模块头注「这个量该多大」。
+/// ⚠ 池子那边 `sftp_pool.rs` 里还有一份同值的常量 —— 那是老面板那条读文本命令自己的，
+/// 窗口不再借它（`boundary_tests` 窗口那张表里它那一行这一拍删了）；那条命令随 SFTP 收成只做传输一起走。
+pub const MAX_EDIT_BYTES: usize = 256 * 1024;
 
 use super::source::Row;
 
@@ -170,7 +182,7 @@ pub fn is_editable(r: &Row) -> bool {
     why_not_editable(r).is_none()
 }
 
-/// 池子回了 `None` 之后那句话。
+/// 后端说「不可编辑」之后那句话（第九刀时是池子回了 `None`）。
 ///
 /// 🔴 **「太大」不在这里** —— 那一档由 [`why_not_editable`] 在发往返**之前**挡掉。
 /// 走到这儿还是 `None`，剩下的可能只有两种，而它们是同一句人话。
@@ -189,7 +201,10 @@ pub fn not_text_notice(path: &str) -> String {
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 打开着的那一份。
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// ⚠〔F9〕不再派生 `PartialEq`：[`Self::big`] 是一份共享的界面状态，谈不上「相等」，
+/// 而全仓没有一处比较两个 `Pane`。
+#[derive(Clone, Debug)]
 pub struct Pane {
     pub path: String,
     /// 行上那个名字（标题用）。
@@ -201,6 +216,8 @@ pub struct Pane {
     original: String,
     /// 上一次存盘的结局（`None` = 还没存过）。
     pub last_save: Option<Result<(), String>>,
+    /// 〔F9〕大文件模式那一格（`None` 在里面 ＝ 普通路径）。逐条住 [`super::bigfile`] 头注。
+    pub(crate) big: super::bigfile::BigSlot,
 }
 
 impl Pane {
@@ -211,6 +228,7 @@ impl Pane {
             original: text.clone(),
             text,
             last_save: None,
+            big: Default::default(),
         }
     }
 
@@ -239,8 +257,9 @@ impl Pane {
         MAX_EDIT_BYTES as i64 - self.text.len() as i64
     }
 
-    /// 🔴 **敲超上限了吗。** 存回去会被池子拒（`decode_editable` 的最终护栏），
-    /// 所以要在屏幕上先说，而不是等存的时候才失败。
+    /// 🔴 **敲超上限了吗。** 〔F7a 订正〕存回去那一下**后端不拦大小**（写面 `files-write-text`
+    /// 没有上限）—— 拦的是本窗口：超上限的内容存回去之后，下次就读不回来编辑了（读那一问按上限拒）。
+    /// 所以要在屏幕上先说，并且不发那一趟。
     pub fn over_cap(&self) -> bool {
         self.text.len() > MAX_EDIT_BYTES
     }
@@ -277,7 +296,7 @@ pub enum Arrived {
         name: String,
         text: String,
     },
-    /// 池子说它不可编辑（那句话由 [`not_text_notice`] 给）。
+    /// 后端说它不可编辑（那句话由 [`not_text_notice`] 给）。
     NotText { path: String },
     /// 下层那句原话（连不上 / 没权限 …）。
     Failed { path: String, why: String },
@@ -382,24 +401,55 @@ impl EditBoard {
     }
 }
 
-/// 读一份远端文本。
+/// 读文本那条线上命令的名字（后端 `files-read` 族第七条）。
+pub const CMD_READ_TEXT: &str = "files-read-text";
+
+/// 读一份文本那一趟的往返上限（调用方给的期限，`05 §3.3.2`）。
+pub const READ_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// 读一份远端文本 —— 〔F7a · 第三波 2026-09-24〕经通道问后端 `files-read-text`。
 ///
-/// 回值：`Ok(Some(文本))` / `Ok(None)` = 池子说它不可编辑（那句话由
-/// [`not_text_notice`] 给）/ `Err` = 下层那句原话。
+/// 回值：`Ok(Some(文本))` / `Ok(None)` = 后端说它不可编辑（那句话由
+/// [`not_text_notice`] 给）/ `Err` = 那句原话（没走通 / 读不到 …）。
+///
+/// ⚠ 上一版这里调的是池子那条读文本命令（SFTP 把字节整份搬过来）；那是窗口进程里
+/// 「跨机传输」那一类欠账的一条。现在字节**在那台机器上**读、只把文本经通道交回来。
+/// ⚠ 有逻辑的那一段（哪几个码算「不可编辑」）住 [`text_from_reply`]。
 pub async fn read_text(
-    cfg: &crate::ssh_source::RemoteConfig,
+    line: &super::source::Line,
+    origin: &super::source::Origin,
     path: &str,
 ) -> Result<Option<String>, String> {
-    crate::sftp_pool::sftp_read_text_for_edit(cfg.clone(), path.to_string()).await
+    let args = serde_json::json!({ "path": path, "max_bytes": MAX_EDIT_BYTES });
+    text_from_reply(super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await)
+}
+
+/// 后端那一趟的结局 → 编辑器那三形。**纯函数**（判得动）。
+///
+/// - 回了 `text` ⇒ `Some(文本)`；回了却没有 `text` ⇒ 契约不符，报错（**不当成空文本**：
+///   空编辑框存回去就是把那份文件清空）。
+/// - 🔴 对端拒、码是 `too_large` / `not_text` ⇒ `None`：那是「这份不是一份能编辑的文本」，
+///   不是「这一趟没走通」—— 两者分开说（[`not_text_notice`] 那句话里连竞态那一形都说了）。
+/// - 其余一律 `Err`（那句话原样）。
+pub fn text_from_reply(
+    r: Result<serde_json::Value, super::source::Failed>,
+) -> Result<Option<String>, String> {
+    match r {
+        Ok(d) => d
+            .get("text")
+            .and_then(serde_json::Value::as_str)
+            .map(|t| Some(t.to_string()))
+            .ok_or_else(|| format!("`{CMD_READ_TEXT}` 的应答里没有 `text`，和约定的不一样")),
+        Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
+        Err(f) => Err(f.said),
+    }
 }
 
 /// 存回去 —— 〔F2 · 2026-09-24〕经通道说后端写面那条 `files-write-text`。
 ///
 /// 🔴 **围栏在后端那一层**（写面那道会话数据围栏，与桥那一份函数体逐字节相同）⇒ 本模块
 /// 不自己判一遍（判定只有一个家）。踩线时那句拒绝原样落进 [`Pane::last_save`]。
-/// ⚠ 上一版这里调的是池子那条写文本命令（SFTP）；读那一半（[`read_text`]）**仍走 SFTP**：
-/// 后端今天没有「读一份文本」的命令，而把字节从那台机器搬到这个窗口是一次**跨机传输**
-/// （`设计/60 §8.4` 未拍）—— 登记在 `boundary_tests::Kind::Transfer`。
+/// ⚠ 上一版这里调的是池子那条写文本命令（SFTP）。读那一半（[`read_text`]）〔F7a〕也换成了后端。
 /// ⚠ 路径切成 `(root, rel)` 与写面其余四条同形（[`super::writeops::apply_remote`] 头注）。
 pub async fn write_text(
     line: &super::source::Line,
@@ -421,161 +471,6 @@ pub async fn write_text(
     )
     .await
     .map(|_| ())
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// 只排视口内的行：行索引 · 那一扇窗 · 它到底买到了什么
-//
-// 🔴 **这一组今天一个生产调用方都没有** —— 逐条理由住头注 §四.5。
-//    它在这里是为了把 §四 那几条结论**钉成判据**（相等断言），
-//    而不是为了假装「只排视口内」已经接上了。
-// ═══════════════════════════════════════════════════════════════════════
-
-/// 一份文本的**行起点**（字节偏移）。
-///
-/// 🔴 它是「只排视口内」的**唯一**几何来源：`ScrollArea::show_rows` 只会说
-/// 「第 a..b 行可见」，把那一段**行号**翻成**字节区间**要靠这张表。
-///
-/// ⚠ 「行」在这里逐字是「**按 `\n` 切出来的段**」，与 epaint 切段的单位
-/// **刻意同一个**（`epaint-0.36.2/src/text/fonts.rs`）—— 两边用不同的单位就会出现
-/// 「我以为开了窗、epaint 那边还是一整段」的静默态。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LineIndex {
-    /// `starts[i]` = 第 `i` 行第一个字节的偏移。**恒非空**（`starts[0] == 0`）。
-    starts: Vec<usize>,
-    len: usize,
-}
-
-impl LineIndex {
-    /// 扫一遍全文建表。O(n)，一趟。
-    pub fn build(text: &str) -> Self {
-        let mut starts = Vec::with_capacity(text.len() / 48 + 1);
-        starts.push(0);
-        for (i, _) in text.match_indices('\n') {
-            starts.push(i + 1);
-        }
-        Self {
-            starts,
-            len: text.len(),
-        }
-    }
-
-    /// 有几行。⚠ 末尾那个 `\n` 之后算**一个空行**（与编辑器的通行读法一致）。
-    pub fn lines(&self) -> usize {
-        self.starts.len()
-    }
-
-    pub fn total_bytes(&self) -> usize {
-        self.len
-    }
-
-    /// 第 `line` 行第一个字节的偏移（越界 ⇒ 文本末尾）。
-    pub fn line_start(&self, line: usize) -> usize {
-        self.starts.get(line).copied().unwrap_or(self.len)
-    }
-
-    /// 第 `line` 行**内容**的末尾 —— **不含那个 `\n`**。
-    ///
-    /// ⚠ 不含换行这一条是承重的：喂给 `TextEdit` 的窗口末尾多一个 `\n`
-    /// 会在屏幕上多出一个空行，而那个空行**在全文里不存在** ⇒ 用户会以为
-    /// 文件末尾多了一行，接着去删它。
-    pub fn line_content_end(&self, line: usize) -> usize {
-        match self.starts.get(line + 1) {
-            // 下一行的起点减一 = 这一行那个 `\n` 的位置。
-            Some(&next) => next - 1,
-            None => self.len,
-        }
-    }
-
-    /// 最长那一行有多少字节。
-    ///
-    /// 🔴 头注 §四.3(c) 那个「该加的第二个量」就是它，而它同时是两件事的答案：
-    /// epaint 不可再分的排版单位（§四.1c）· 一扇窗至少要装多少（§四.2 第 10 条）。
-    pub fn longest_line(&self) -> usize {
-        (0..self.lines())
-            .map(|i| self.line_content_end(i) - self.line_start(i))
-            .max()
-            .unwrap_or(0)
-    }
-}
-
-/// 视口那一扇窗：**全文里只有这几行会被交给排版**。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Window {
-    /// 可见的行号区间（半开）。
-    pub lines: std::ops::Range<usize>,
-    /// 那几行在全文里的字节区间（半开，**不含末行那个 `\n`**）。
-    pub bytes: std::ops::Range<usize>,
-}
-
-impl Window {
-    pub fn byte_len(&self) -> usize {
-        self.bytes.end - self.bytes.start
-    }
-}
-
-/// 把 `ScrollArea::show_rows` 给的那个行号区间翻成一扇窗。
-///
-/// ⚠ 入参会被**夹进**合法范围（`show_rows` 给的 `max_row` 会比总行数多一 ——
-/// 见 `scroll_area.rs` 那个 `+ 1`）。夹不住的话 [`window_text`] 会切片越界 panic。
-pub fn window_of(idx: &LineIndex, visible: std::ops::Range<usize>) -> Window {
-    let total = idx.lines();
-    let first = visible.start.min(total - 1);
-    let last = visible.end.clamp(first + 1, total);
-    Window {
-        lines: first..last,
-        bytes: idx.line_start(first)..idx.line_content_end(last - 1),
-    }
-}
-
-/// 那一扇窗里的字 —— **零拷贝**，这是「只排视口内」真正省下东西的那一步。
-pub fn window_text<'a>(text: &'a str, w: &Window) -> &'a str {
-    &text[w.bytes.clone()]
-}
-
-/// 把改过的那一扇窗**写回全文**。
-///
-/// 🔴 这是整条路上唯一会改用户数据的一步 ⇒ 它必须**逐字节可逆**，
-/// 由 [`tests::splicing_a_window_back_is_byte_exact`] 钉住
-/// （包括「改长了 / 改短了 / 删掉几行 / 里头有中文」四形）。
-///
-/// ⚠ 调用方在这之后必须**重建 [`LineIndex`]** —— 行结构可能变了。
-/// 本函数刻意**不**替调用方重建：那会让「一次编辑要重扫全文」这笔开销
-/// 藏在一个看起来免费的函数里。
-pub fn splice_window(text: &mut String, w: &Window, edited: &str) {
-    text.replace_range(w.bytes.clone(), edited);
-}
-
-/// 「只排视口内」对**这一份文件**买到了多少。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct WindowingPayoff {
-    /// 最坏那一扇窗要装多少字节（滑遍所有起始行取最大）。
-    pub worst_window_bytes: usize,
-    pub total_bytes: usize,
-}
-
-impl WindowingPayoff {
-    /// 🔴 **买不到东西吗** —— 最坏那扇窗还是得装下全文。
-    ///
-    /// 这一条就是头注 §四.2 第 10 条那个洞，**钉成一条相等断言**而不是散文：
-    /// 一份压成一行的 256 KiB JSON 上它回 `true`，而开窗对它
-    /// **一毫秒都省不下来**（现打 release 1.11–1.46 ms vs 整份同值）。
-    pub fn buys_nothing(&self) -> bool {
-        self.worst_window_bytes >= self.total_bytes
-    }
-}
-
-/// 滑遍所有起始行，算最坏那一扇窗。O(行数)。
-pub fn windowing_payoff(idx: &LineIndex, rows_per_screen: usize) -> WindowingPayoff {
-    let rows = rows_per_screen.max(1);
-    let worst = (0..idx.lines())
-        .map(|i| window_of(idx, i..i + rows).byte_len())
-        .max()
-        .unwrap_or(0);
-    WindowingPayoff {
-        worst_window_bytes: worst,
-        total_bytes: idx.total_bytes(),
-    }
 }
 
 #[cfg(test)]

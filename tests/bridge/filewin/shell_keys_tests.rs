@@ -415,6 +415,12 @@ fn keys_do_not_leak_past_a_focused_field_a_modal_or_the_hit_list() {
     d.key(&mut w, egui::Key::Delete, NONE);
     assert!(picked(&w).is_empty(), "模态框摆着，↓ 却动了列表");
     w.cancel_write();
+    // ①′〔合并 F7b〕「新建空文件」那个框也是模态的 —— `modal_up()` 里要有它。
+    assert!(w.begin_new_file());
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    d.key(&mut w, egui::Key::Delete, NONE);
+    assert!(picked(&w).is_empty(), "新建空文件那个框摆着，↓ 却动了列表");
+    w.cancel_new_file();
     // ② 搜索框里有字 ⇒ 画的是命中那一摞，而且搜索框拿着焦点。
     crate::filewin::find::testing::type_into_search(&d.ctx, &mut w, "a");
     assert!(w.showing_hits());
@@ -656,7 +662,7 @@ fn open_menu(
 /// 实得一侧是 egui 这一帧**真画在菜单那一块里**的字。
 #[test]
 fn the_menu_lists_exactly_what_the_selection_allows() {
-    let big = crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1;
+    let big = crate::filewin::editor::MAX_EDIT_BYTES as u64 + 1;
     let lossy = "\u{FFFD}x";
     // (情形, 行, 先选, 右键点谁, 菜单上该有的字)
     let cases: Vec<(
