@@ -248,3 +248,38 @@ fn embedded_build_id_single_source_wired() {
         "build_id 含意外字符（多半是抠错了行）：{id:?}"
     );
 }
+
+/// 🔴 ★ 〔`设计/80 §8.7` 步 3〕**升级判定不许再被 `if !tail_only` 包住。**
+///
+/// 两位的世界里那道外层 guard 等价于「本轮跑在降级模式」；三位之后它当场为假 ——
+/// `tail_only` 已开、`rbind-token` 这一位没开是真实可达的状态。那时 guard 会把升级整个
+/// 跳过 ⇒ `--with-rbind-token` 永远发不出去 ⇒ 令牌字段恒缺席 = 一个**合法值** ⇒ 极安静。
+///
+/// 纯函数那两条（`upgrade_reconnect_converges` / `capability_gate_matrix`）**结构上看不见
+/// 调用点**，这一条按源文本钉：`if should_upgrade_reconnect(` 那一行的缩进，必须与同一个
+/// hello 分支里 `if build_id == EXPECTED_BACKEND_BUILD_ID {` 那一行**相同**
+/// （被任何一层 `if` 包住，缩进就会深一格）。
+/// ⚠ 买不到：「没包住但改成了别的等价短路」（例：`!tail_only && should_upgrade…`）——
+///   下面第二条断言只挡了最直白的那一形。
+#[test]
+fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    let indent = |needle: &str| -> usize {
+        let hits: Vec<&str> = prod.lines().filter(|l| l.contains(needle)).collect();
+        assert_eq!(hits.len(), 1, "`{needle}` 在生产段里不是恰好 1 处：{hits:#?}");
+        hits[0].len() - hits[0].trim_start().len()
+    };
+    let call = indent("if should_upgrade_reconnect(");
+    let anchor = indent("if build_id == EXPECTED_BACKEND_BUILD_ID {");
+    assert!(anchor >= 8, "锚点缩进只有 {anchor} —— 抽错了行，本条此刻无效");
+    assert_eq!(
+        call, anchor,
+        "升级判定被包进了某个 `if` 里（缩进 {call} ≠ 锚点 {anchor}）—— \
+         若那是 `if !tail_only`，`--with-rbind-token` 在 tail_only 已开的连接上永远发不出去"
+    );
+    let line = prod
+        .lines()
+        .find(|l| l.contains("if should_upgrade_reconnect("))
+        .unwrap();
+    assert!(!line.contains("tail_only &&"), "升级判定前面被短路了：{line}");
+}
