@@ -4489,6 +4489,38 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(t.window.pendingCount).toBe(before + 1);
   });
 
+  it("子步 5：物化到一段**还没到过**的行 ⇒ 按索引的字节边界要回来（从偏移读），走 onLine 全套建卡", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "read_session_index") return Promise.resolve(idx(300));
+      if (cmd === "read_session_range") {
+        const a = args as { seqBase: number; lineCount: number };
+        return Promise.resolve(
+          Array.from({ length: a.lineCount }, (_, k) => mk("miss", a.seqBase + k, `u${a.seqBase + k}`)),
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+    const t = replay("miss", new Set([100, 101, 102, 150]));
+    await settle();
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+    spy.mockClear();
+    t.skeleton!.ensure(101, 3); // [98, 105)：98/99/103/104 在账本里，100–102 没到过
+    const ranges = vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_range");
+    // 连续缺的三行并成**一段**、一次 IPC；字节边界取自索引（o = seq×10，n = 10）
+    expect(ranges).toEqual([
+      [
+        "read_session_range",
+        { origin: "<local>", jsonlPath: "/p/miss.jsonl", offset: 1000, until: 1030, seqBase: 100, lineCount: 3 },
+      ],
+    ]);
+    await settle();
+    const rendered = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq).sort((x, y) => x - y);
+    expect(rendered).toEqual([98, 99, 100, 101, 102, 103, 104]);
+    // 150 不在这一段里 ⇒ 没被要
+    expect(ranges.some((c) => (c[1] as { seqBase: number }).seqBase === 150)).toBe(false);
+  });
+
   it("大纲跳转：点到还在占位里的一条 ⇒ 先按 uuid→seq 物化那一段再跳", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),

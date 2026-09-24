@@ -38,6 +38,7 @@ import { RecordTimeline } from "./record-timeline";
 import { TailWindow, type SkeletonLedger } from "./live-window";
 // 〔`设计/10` 骨架 · 子步 4〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
+import { skeletonKind } from "./height-estimate";
 // K-R45 乙（`KR45D2`）：「我说过的 N 句」。挑句子 / 界面 / 跳，三段都与历史查看器共用同一份。
 import { toUserInputEntry, type UserInputEntry } from "./views/user-input-index";
 import { UserInputPanel } from "./views/user-input-panel";
@@ -1138,7 +1139,10 @@ export class TabManager {
       }
     }
     const view = new SkeletonView(ledger, tab.streamEl, tab.timeline, {
-      materialize: (lo, hi) => this.renderPayloadsBatch(tab, tab.window.takeRange(lo, hi)),
+      materialize: (lo, hi) => {
+        this.renderPayloadsBatch(tab, tab.window.takeRange(lo, hi));
+        this.fetchMissingRows(tab, ledger, lo, hi);
+      },
     });
     // 在视口上方插一块高占位：同 `fillAbove` 的纪律 —— 关原生锚定、同一个同步任务里按 ΔscrollHeight 补偿
     const el = tab.streamEl;
@@ -1154,6 +1158,49 @@ export class TabManager {
     tab.skeleton = view;
     this.updateSentinel(tab);
     if (this.activeId === tab.sessionId) view.fillVisible();
+  }
+
+  /**
+   * 〔`设计/10` 骨架 · 子步 5〕**按偏移取正文**：物化 `[lo, hi)` 时，账本里没有、也还没到过的那些
+   * 会建卡的行（`seenSeqs` 里没有、索引说它不是「不建卡」的那种）⇒ 按索引里的字节边界向后端要
+   * （`read_session_range` = `--read-session-from-offset … --until`），回来的行**走 `onLine` 全套**
+   * （去重、旁路记账、门控 —— 这段已经不在占位里了，门控会就地建卡），与重放来的行一视同仁。
+   *
+   * 今天它补的是「重放还没推到」的那一截（远端尾部优先快照的回填期、大会话启动重放的在途期）；
+   * 它也是「骨架不带正文」那条路的另一半 —— 等 `EventReplay.history` 加上界（`设计/10 步 8`），
+   * 没推过来的历史就全靠它取。连续缺的行并成一段、一段一次 IPC；同一段不会被要两次
+   * （骨架把它标成已物化之后就不会再交给宿主）。
+   */
+  private fetchMissingRows(tab: Tab, ledger: SkeletonLedger, lo: number, hi: number): void {
+    if (!tab.parentPath) return;
+    const runs: Array<[number, number]> = [];
+    for (let s = lo; s < hi; s++) {
+      const f = ledger.factsOf(s);
+      const missing = f !== undefined && skeletonKind(f) !== "none" && !tab.seenSeqs.has(s);
+      if (!missing) continue;
+      const last = runs[runs.length - 1];
+      if (last && last[1] === s) last[1] = s + 1;
+      else runs.push([s, s + 1]);
+    }
+    const origin = tab.origin ?? LOCAL_ORIGIN;
+    for (const [a, b] of runs) {
+      const first = ledger.factsOf(a)!;
+      const lastRow = ledger.factsOf(b - 1)!;
+      void commands
+        .read_session_range({
+          origin,
+          jsonlPath: tab.parentPath,
+          offset: first.o,
+          until: lastRow.o + lastRow.n,
+          seqBase: a,
+          lineCount: b - a,
+        })
+        .then((payloads) => {
+          if (this.tabs.get(tab.sessionId) !== tab) return;
+          for (const p of payloads) this.onLine(p);
+        })
+        .catch((e: unknown) => console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e));
+    }
   }
 
   /**
