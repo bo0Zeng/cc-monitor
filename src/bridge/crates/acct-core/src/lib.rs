@@ -91,6 +91,34 @@ pub fn auth_kind_from_manifest(raw: Option<&str>) -> &'static str {
     }
 }
 
+/// 〔第三波 S3 · 2026-09-24〕分类的**第二个输入**：这台机器的 apikey 表里有没有这个号的一行。
+///
+/// 有 ⇒ [`AUTH_KIND_API_KEY`]；没有 ⇒ 原样回 `manifest_kind`（[`auth_kind_from_manifest`] 的结论，一格不动）。
+///
+/// # 为什么要有这一格
+///
+/// 设置页新建账号的 apikey 那一支是「`cc-acct-iso add` 建目录 ＋ 把 key 写进 apikey 表」——
+/// 而 cc-acct-iso **没有 apikey 账号这个概念**，manifest 里那个号的 `authKind` 缺席 ⇒ 按上面那条落订阅，
+/// 又没有订阅凭据 ⇒ 「未登录」、选不中。可它明明配好了 key。
+///
+/// # 为什么住这里（而不是界面那一侧拼一个「清单说 api-key 或表里有它」）
+///
+/// 「这个号是什么种类」只许有一个家（主会话裁 D1）。界面各处（徽章 / 按钮 / 下拉）照读 `authKind`，
+/// 一份新判定都不长；可选性也经 [`auth_ready`] 跟着对上。
+///
+/// ⚠ 只有**本机**那个生产者（monitor 的 `local_accounts.rs`）喂得出第二个输入 —— apikey 表是本机的。
+/// 远端清单今天不经这一格（远端建的 apikey 号，key 写在本机的表里、远端会话用不上，归「key 送到远端」那件事）。
+pub fn auth_kind_with_apikey_table(
+    manifest_kind: &'static str,
+    in_apikey_table: bool,
+) -> &'static str {
+    if in_apikey_table {
+        AUTH_KIND_API_KEY
+    } else {
+        manifest_kind
+    }
+}
+
 /// 「鉴权方式这一维**不再阻塞**这个号被选中」。**这是这条规则的唯一住址** ——
 /// 两个生产者（backend `observe/accounts_query.rs` · monitor `local_accounts.rs`）都调它，
 /// 所以「三个生产者各填一个不同默认值」那种漂移在结构上不可表示。
