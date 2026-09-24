@@ -699,28 +699,34 @@ mod tests {
                 .unwrap_or_else(|e| panic!("读不到子进程脚本 {child}：{e} —— 判不了，不许当成绿"));
             let mut accepts: Vec<String> = Vec::new();
             let mut in_loop = false;
-            for line in script.lines() {
-                let t = line.trim_start();
-                if t.starts_with("while true; do") {
+            // ⚠ 块界用**整行相等**（与 `pin_line` 同一口径），不用前缀匹配：
+            //   前缀 needle 在语料上会被撑大而照样绿（`needle_anchor_registry` 那条棘轮管的就是它）。
+            // ⚠ 变量名刻意不叫 `line` / `t`：那条棘轮按**文件内变量名**认语料，
+            //   同名会把本文件别处的无关匹配一起卷进去（现打：卷进过 2 处）。
+            for sline in script.lines() {
+                let st = sline.trim();
+                if st == "while true; do" {
                     in_loop = true;
                     continue;
                 }
-                if in_loop && t.starts_with("done") {
+                if in_loop && st == "done" {
                     break;
                 }
-                if !in_loop || t.starts_with('#') {
+                if !in_loop {
                     continue;
                 }
-                if let Some(arm) = t.split(')').next() {
-                    if arm.len() > 2
-                        && arm.starts_with("--")
-                        && arm[2..]
-                            .chars()
-                            .all(|c| c.is_ascii_alphanumeric() || c == '-')
-                        && t.len() > arm.len()
-                    {
-                        accepts.push(arm.to_string());
-                    }
+                // case 臂的模式段：`--xxx)` 之前那一截，形如两个连字符 ＋ `[A-Za-z0-9-]+`
+                let arm: String = st.chars().take_while(|c| *c != ')').collect();
+                let dashes = arm.chars().take(2).filter(|c| *c == '-').count();
+                if arm.chars().count() > 2
+                    && dashes == 2
+                    && arm
+                        .chars()
+                        .skip(2)
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-')
+                    && st.chars().count() > arm.chars().count()
+                {
+                    accepts.push(arm);
                 }
             }
             accepts.sort();
