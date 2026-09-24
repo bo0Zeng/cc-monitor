@@ -3,6 +3,9 @@
  *
  * 列出 monitor 所有持久化数据的位置 + WebView2 用户数据目录 + localStorage keys，
  * 每项配 [打开] 按钮。**纯展示，不做删除 / 清空操作**——避免误点。
+ * 〔用户 09-24 裁，答 `设计/70 §11.6` #1〕「数据位置那一页要不要（删 / 清空），不要，给路径」
+ * ⇒ 这条红线由 `tests/settings/data-section.vitest.ts` 钉着：效应面两向相等（只读 `get_data_paths`、
+ *   只会 `openPath`、`localStorage` 零写）＋ 每一条路径以纯文本上屏。
  *
  * 设计：
  * - 进入面板时 invoke `get_data_paths` 拉一次后端探测（async + spawn_blocking）
