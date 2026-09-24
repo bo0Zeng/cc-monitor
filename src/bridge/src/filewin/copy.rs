@@ -264,8 +264,12 @@ pub fn outcome_notice(o: &CopyOutcome) -> Notice {
 /// 「该问的没问就覆盖了」。⇒ 一份。
 ///
 /// ⚠ 探的是[`CopyJob::overwrite_target`]（＝ `to`），不是 `from` —— 会被盖掉的是目标。
-pub async fn probe_target(cfg: &crate::ssh_source::RemoteConfig, job: &CopyJob) -> bool {
-    super::transfer::probe_remote(cfg, job.overwrite_target()).await
+pub async fn probe_target(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    job: &CopyJob,
+) -> bool {
+    super::transfer::probe_remote(line, origin, job.overwrite_target()).await
 }
 
 /// 真起一趟复制 —— 调既有命令 `sftp_pool::sftp_copy`。

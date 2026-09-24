@@ -25,7 +25,7 @@ fn synth_cfg() -> RemoteConfig {
 ///
 /// ⇒ 现在空路径的意思是「开在远端 home」，而本条断的换成**更强**的一件：
 /// 报错里要出现 `realpath` ——**那证明我们真的去问了**。
-/// 只断「报错非空」的话，一个把空路径原样丢给 `list_remote` 的实现也能全绿。
+/// 只断「报错非空」的话，一个把空路径原样丢下去列的实现也能全绿。
 ///
 /// 🔴 「一个窗口都不开」照旧是这条的第二半，也是更要紧的那一半：
 /// 早退的实现很容易先 `spawn` 了线程再检查参数，那样用户会看到一个空窗 ＋ 一条报错。
@@ -57,9 +57,11 @@ async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot
 
 /// 🔴 **列不出来就别开窗** —— 而且要把下层那句原文带回去。
 ///
-/// ⚠ 这条走的是真 `list_remote` ⇒ 真 `sftp_pool`，而 `host` 是 `.invalid`
-/// （DNS 保留域）⇒ 它**连不上**，那正是本条要的那一形：失败路径。
-/// **不是**「起了一条真连接」—— 解析就失败了，一个 TCP 包都没出去。
+/// 〔F2 · 2026-09-24〕列那一趟改成问后端之后，判据进程里**通道口没起来**
+/// （`chan::host::start` 只在 app 起来时调）⇒ 它在「够不着后端」那一步就回错 ——
+/// 同一个性质（列不出来就别开窗）的另一个失败点，一个包都不出去。
+/// ⚠ 「后端说列不出来 ⇒ 不开窗」那一形要一个起着的通道口，本条不买；
+/// 那句话本身的翻译与窗口里那一次同一个函数（`source::said`），由 `source_tests` 那几条判。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_directory_we_cannot_list_is_an_error_not_a_blank_window() {
     let before = crate::filewin::shell::open_requested();
@@ -202,9 +204,10 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
     let at_home = prod
         .find("resolve_remote_home(")
         .expect("上一比已经保证它在，这里拿不到位置说明抽取器坏了");
+    // 〔F2 · 2026-09-24〕列那一趟从池子（SFTP）换成了问后端（`list_first_screen`）。
     let at_list = prod
-        .find("list_remote(")
-        .expect("`list_remote(` 不在生产段里 —— 那条「先列一趟再开窗」的纪律没了");
+        .find("list_first_screen(")
+        .expect("`list_first_screen(` 不在生产段里 —— 那条「先列一趟再开窗」的纪律没了");
     assert!(
         at_home < at_list,
         "问 home 那一跳排在列目录后面 —— 那就是先拿空路径去列了一趟"

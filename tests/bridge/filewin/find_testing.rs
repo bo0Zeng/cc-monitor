@@ -26,10 +26,13 @@
 //!   与 `src/backend/files/index.rs` 那份（连续 blob ＋ u32 界桩 ＋ overlay）**不是同一份实现**。
 //!   ⇒ 本摞判据买到的是**客户端侧那条链**（发命令 · 解析回参 · 画到帧上）真的通，
 //!   **不是**后端那份真索引的正确性 —— 后者的判据住 `tests/backend/files/`。
-//! - **回程那一跳走 [`crate::backend::control::inbound_client::InboundClient::route_reply`]**
-//!   （生产里由 `ssh_source` 的收帧侧调的同一个函数）⇒ **帧的反序列化那一小段
-//!   不在本摞的射程里**（它有自己的判据，同 `inbound_client_tests.rs` 那一摞的形状）。
-//! - **时延买不到。** 这台后端在同一个进程里、走内存管道。
+//! - 〔F2 · 2026-09-24〕**它挂在通道宿主的 `Backends` 那一格上**（[`wire_up`]：真回环口、
+//!   真钥匙、真 `dial`，窗口手里拿的就是生产那个 `chan::client::Client`）。
+//!   ⇒ 「窗口 → 通道 → 路由器」在射程里；**宿主往 `inbound_client` 转交那一跳不在**
+//!   （这台合成后端就坐在那一跳的位置上）。那一跳的能力协商（后端没声明的命令一个字节都不发）
+//!   由本台后端**照样演**：没在 [`FakeBackend::offered`] 里的命令答 `Peer{Unsupported}`，
+//!   而且**不进线上记录**（没发出去）。
+//! - **时延买不到。** 这台后端在同一个进程里、走回环。
 //!
 //! # 四、那棵树：**采结构不采内容**
 //!
@@ -348,6 +351,85 @@ impl FakeBackend {
                     })),
                 )
             }
+            // 〔F2〕列目录：走 `list_local`（理由同 [`walk`] 头注：扫描型判据不许裸遍历），
+            //   按线上契约把每一条摊成 `{path, kind, size}`。
+            "files-ls" => {
+                let Some(dir) = args.get("path").and_then(|v| v.as_str()) else {
+                    return (
+                        false,
+                        Some("bad_path".into()),
+                        Some("少了 `path`".into()),
+                        None,
+                    );
+                };
+                match crate::filewin::source::list_local(std::path::Path::new(dir)) {
+                    Ok(rows) => {
+                        let entries: Vec<serde_json::Value> = rows
+                            .iter()
+                            .map(|r| {
+                                serde_json::json!({
+                                    "path": r.path,
+                                    "kind": if r.is_dir { "dir" } else { "file" },
+                                    "size": r.size,
+                                })
+                            })
+                            .collect();
+                        (
+                            true,
+                            None,
+                            None,
+                            Some(serde_json::json!({ "entries": entries, "truncated": false })),
+                        )
+                    }
+                    Err(e) => (false, Some("unreadable".into()), Some(e), None),
+                }
+            }
+            // 〔F2〕那条路径上有没有东西：列它的上一级，找那个名字。
+            "files-stat" => {
+                let Some(p) = args.get("path").and_then(|v| v.as_str()) else {
+                    return (
+                        false,
+                        Some("bad_path".into()),
+                        Some("少了 `path`".into()),
+                        None,
+                    );
+                };
+                let parent = crate::filewin::source::parent_dir(p);
+                let name = crate::filewin::source::remote_basename(p);
+                let hit = crate::filewin::source::list_local(std::path::Path::new(&parent))
+                    .map(|rows| rows.iter().any(|r| r.name == name))
+                    .unwrap_or(false);
+                if hit {
+                    (
+                        true,
+                        None,
+                        None,
+                        Some(serde_json::json!({ "path": p, "kind": "file" })),
+                    )
+                } else {
+                    (
+                        false,
+                        Some("unreadable".into()),
+                        Some("这个路径读不到".into()),
+                        None,
+                    )
+                }
+            }
+            // 〔F2〕写面五条：**只记下来、不落盘**（判据要的是「窗口发了哪一条、参数长什么样」），
+            //   `root` 里带 `refuse` 的一律按后端围栏那一档拒（`refused`）。
+            "files-mkdir" | "files-delete" | "files-rename" | "files-chmod"
+            | "files-write-text" => {
+                let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
+                if root.contains("refuse") {
+                    return (
+                        false,
+                        Some("refused".into()),
+                        Some("refuse write: 围栏".into()),
+                        None,
+                    );
+                }
+                (true, None, None, Some(serde_json::json!({ "path": root })))
+            }
             other => (
                 false,
                 Some("unknown_command".into()),
@@ -445,68 +527,112 @@ fn walk(root: &std::path::Path) -> Vec<Vec<u8>> {
     out
 }
 
-/// 一台**接在登记表上**的合成后端：把它登记成 `origin` 那台机器的入方向通道，
-/// 并起一条任务不停地答话。
+/// 一台**挂在通道宿主上**的合成后端（〔F2 · 2026-09-24〕从前挂在进程级登记表上）。
 ///
 /// 回的那个 `WireLog` 是**它收到过的每一行请求**（按顺序）——
 /// `§3.5.2a` 那条判据数的就是它里面的 `files-index-rebuild`。
 pub struct Wired {
     pub origin: String,
     pub log: WireLog,
-    client: std::sync::Arc<crate::backend::control::inbound_client::InboundClient>,
+    /// 窗口手里那条线 —— 生产那个 `chan::client::Client`，拨的是真回环口。
+    pub line: crate::filewin::source::Line,
 }
 
-impl Drop for Wired {
-    fn drop(&mut self) {
-        crate::backend::control::inbound_client::unregister(&self.origin, &self.client);
+/// 把 [`FakeBackend`] 挂成通道宿主的 `Backends`。
+struct Hosted {
+    be: std::sync::Mutex<FakeBackend>,
+    log: WireLog,
+}
+
+impl crate::chan::router::Backends for Hosted {
+    fn call(
+        &self,
+        _origin: crate::chan::wire::Origin,
+        op: crate::chan::wire::Op,
+        payload: crate::chan::wire::Body,
+        _left: std::time::Duration,
+        _cancel: crate::chan::wire::CancelToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<crate::chan::wire::Body, crate::chan::wire::CallError>,
+    > {
+        use crate::chan::wire::{Body, CallError, PeerFault};
+        let args: serde_json::Value =
+            serde_json::from_slice(&payload.0).unwrap_or(serde_json::Value::Null);
+        let mut be = self.be.lock().unwrap();
+        // 能力协商（同 `InboundClient::call` 第一行）：没声明的命令**一个字节都不发** ⇒ 不进记录。
+        if !be.offered.iter().any(|c| c == &op.0) {
+            return Box::pin(async {
+                Err(CallError::Peer {
+                    why: PeerFault::Unsupported,
+                })
+            });
+        }
+        self.log
+            .lock()
+            .unwrap()
+            .push(serde_json::json!({ "cmd": op.0, "args": args }));
+        let (ok, code, message, data) = be.answer(&op.0, &args);
+        let r = if ok {
+            Ok(Body(
+                serde_json::to_vec(&data.unwrap_or(serde_json::Value::Null)).unwrap_or_default(),
+            ))
+        } else {
+            // 与宿主那一侧 `backend_route::layer_call_error` 拼的 body 同形。
+            Err(CallError::Peer {
+                why: PeerFault::Refused {
+                    body: Body(
+                        serde_json::to_vec(
+                            &serde_json::json!({ "code": code, "message": message }),
+                        )
+                        .unwrap_or_default(),
+                    ),
+                },
+            })
+        };
+        Box::pin(async move { r })
+    }
+
+    fn subscribe(
+        &self,
+        _origin: crate::chan::wire::Origin,
+        _kind: crate::chan::wire::Kind,
+        _from: Option<crate::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, crate::chan::wire::Item> {
+        Box::pin(futures::stream::iter([crate::chan::wire::Item::Closed {
+            by: crate::chan::wire::By::Ours(crate::chan::wire::OursFault::Misuse),
+        }]))
     }
 }
 
-/// 把一台合成后端接到 `origin` 上。**要在 tokio 运行时里调。**
-pub fn wire_up(origin: &str, mut be: FakeBackend) -> Wired {
-    use tokio::io::AsyncBufReadExt;
-    let (mine, theirs) = tokio::io::duplex(1 << 20);
-    let hello = crate::ssh_source::InboundFrame::Hello {
-        v: 1,
-        build_id: "filewin-find-double".into(),
-        host_arch: "x86_64".into(),
-        claude_dir: "/tmp".into(),
-        homes: vec![],
-        capabilities: vec![],
-        commands: be.offered.clone(),
-    };
-    let witness = crate::backend::control::inbound_client::BackendHello::from_hello_frame(&hello)
-        .expect("是 Hello 帧");
-    let client = crate::backend::control::inbound_client::park(mine).into_client(witness);
-    crate::backend::control::inbound_client::register(origin, client.clone());
+/// 把一台合成后端挂到一个真通道口上，拨通，交回窗口要的那条线。**要在 tokio 运行时里调。**
+pub async fn wire_up(origin: &str, be: FakeBackend) -> Wired {
     let log = be.log.clone();
-    let c = client.clone();
-    tokio::spawn(async move {
-        let mut peer = tokio::io::BufReader::new(theirs);
-        loop {
-            let mut line = String::new();
-            match peer.read_line(&mut line).await {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
-            }
-            let Ok(req) = serde_json::from_str::<serde_json::Value>(line.trim_end()) else {
-                break;
-            };
-            be.log.lock().unwrap().push(req.clone());
-            let id = req["id"].as_str().unwrap_or("").to_string();
-            let cmd = req["cmd"].as_str().unwrap_or("").to_string();
-            let args = req.get("args").cloned().unwrap_or(serde_json::Value::Null);
-            if cmd == "cancel" {
-                continue;
-            }
-            let (ok, code, message, data) = be.answer(&cmd, &args);
-            c.route_reply(&id, ok, code, message, data);
-        }
+    let hosted = std::sync::Arc::new(Hosted {
+        be: std::sync::Mutex::new(be),
+        log: log.clone(),
     });
+    let h = crate::chan::host::start_with(
+        hosted,
+        crate::chan::host::mint_key(),
+        1 << 22,
+        std::time::Duration::from_secs(5),
+    )
+    .await
+    .expect("回环口绑得上");
+    let line = crate::chan::dial::dial(
+        &h,
+        crate::chan::wire::Budget {
+            until: std::time::Instant::now() + std::time::Duration::from_secs(5),
+            cancel: crate::chan::wire::CancelToken::new(),
+        },
+    )
+    .await
+    .expect("拨得通、过得了认证");
     Wired {
         origin: origin.to_string(),
         log,
-        client,
+        line,
     }
 }
 
@@ -547,7 +673,8 @@ impl Wired {
 ///
 /// ⚠ 用 [`crate::filewin::shell::FileWindow::seeded`] 而不是 `new`：后者会
 /// `reload()`，而远端那一支会去拨真 SFTP —— 本仓红线不许起真连接。
-pub fn window_on(origin: &str, cwd: &str) -> crate::filewin::shell::FileWindow {
+pub fn window_on(wired: &Wired, cwd: &str) -> crate::filewin::shell::FileWindow {
+    let origin = wired.origin.as_str();
     let cfg = crate::ssh_source::RemoteConfig {
         host: "example.invalid".into(),
         label: origin.into(),
@@ -559,12 +686,14 @@ pub fn window_on(origin: &str, cwd: &str) -> crate::filewin::shell::FileWindow {
         addresses: Vec::new(),
         jump: None,
     };
-    crate::filewin::shell::FileWindow::seeded(
+    let mut w = crate::filewin::shell::FileWindow::seeded(
         crate::filewin::source::Source::remote(cfg),
         cwd.to_string(),
         tokio::runtime::Handle::try_current().ok(),
-        Vec::new(),
-    )
+        Vec::<crate::filewin::source::Row>::new(),
+    );
+    w.attach_line(wired.line.clone());
+    w
 }
 
 /// 跑一帧**生产那个** [`crate::filewin::shell::FileWindow::frame_body`]，

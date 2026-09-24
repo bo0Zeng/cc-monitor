@@ -7,15 +7,15 @@
 //! | [`a_protected_path_is_blocked_before_anything_is_asked_or_done`] | 围栏在**问与做之前**：踩线的既不进问答也不进 `apply` | 用户会被问「要删这个吗」，答「删」之后才被拒 —— 而那一问已经教他「这是可以删的」 |
 //! | [`a_rename_is_fenced_on_both_of_its_paths`] | **两路径各过一遍** | 能把任意文件改名**成** `<远端>/projects/<proj>/<sid>.jsonl`，盖掉正被 Claude 打开的会话 |
 //! | [`an_ordinary_path_really_gets_through_the_fence`] | 🔴 **阴性对照** —— 围栏不是「什么都挡」 | 上面两条可以靠「一律拒」全绿，而那时窗口一件事都干不了 |
-//! | [`the_pools_own_fence_still_refuses_a_protected_path`] | **第二道**（池子入口那道 `guard_write`）今天是活的 | 本层被绕过就没人挡了 |
+//! | [`a_refusal_from_the_backend_fence_comes_back_as_a_sentence`] | 〔F2〕**第二道**（后端写面那道围栏）拒了，那句话原样回到窗口上 | 被拒与「成功」/ 空串分不开 |
+//! | [`the_real_adapter_speaks_the_backend_write_face_with_root_and_rel`] | 〔F2〕四件各发哪条命令、参数切成 `(root, rel)`（读线上真到的那几行） | 发错命令 / 切错路径，后端那一侧落在别处 |
 //! | [`the_question_is_asked_exactly_once_for_the_whole_batch`] | N 件只问一次，且顺序是 问 → 做 | 每件弹一次（旧面板 `uploadDropped` 那一形） |
 //! | [`nothing_is_touched_when_the_answer_is_no`] | 「问过了」与「做了」分得开 | 「问了但照做」在读数上看不出来 |
 //!
 //! # ⚠ 这一摞买不到什么（逐条）
 //!
-//! - **一趟真操作的读数买不到**（本仓红线不许起真连接）⇒ `apply` 那一侧
-//!   除了 [`the_pools_own_fence_still_refuses_a_protected_path`] 那一条**刻意不过网**
-//!   的以外，全部喂的是合成适配器。
+//! - **一趟真操作的读数买不到**（本仓红线不许起真连接）⇒ `apply` 那一侧喂的是
+//!   合成适配器，或者〔F2〕挂在真通道口上的一台合成后端（它只记下收到了什么、不落盘）。
 //! - **生产那一侧递不进 `N > 1`**（窗口还没有多选）—— 逐字登记在 `super` 头注。
 //!   这一摞按 `N > 1` 喂的是 [`super::run_writes`] 本体，也就是生产那个函数。
 
@@ -246,73 +246,61 @@ async fn an_ordinary_path_really_gets_through_the_fence() {
     assert!(out.blocked.is_empty(), "实得 {:?}", out.blocked);
 }
 
-/// 🔴 **第二道围栏今天是活的** —— 池子入口那道 `guard_write`。
+/// 🔴〔F2 · 2026-09-24〕**后端那道围栏拒了，那句话原样回到窗口上** —— 不是被吞掉。
 ///
-/// # 为什么这一条不需要连接，而它仍然是真读数
-///
-/// 那四条命令的**第一行**就是 `guard_write(&path)?` ⇒ 受保护路径上它在
-/// `with_sftp` **之前**就返回 `Err`，一个 packet 都不发。
-/// ⇒ 这一条在一台没有远端的机器上跑得动，而它买到的是
-/// 「**本层被绕过时还有人挡**」（有人直接调 [`super::apply_remote`]，
-/// 或者路径在两步之间才变成受保护的）。
-///
-/// ⚠ **阴性对照这一条只走到围栏那一步，不往下走**：普通路径上这四条命令会去
-/// `with_sftp` 拨一条真连接，而本仓红线不许（而且那是一趟 DNS 往返，判据会变慢变飘）。
-/// ⇒ 阴性那一侧判的是**那道围栏的判定本身**：`guard_write` 的函数体逐字是
-/// 「`is_protected_claude_data_path(path)` 为真才拒」⇒ 判定为假 ⇒ 它必定放过。
-/// 那个判定与本层[`super::fenced_path`]问的是**同一个函数**（本模块头注 §二）。
+/// 上一版这里判的是「池子入口那道 `guard_write` 还活着」（那四条走 SFTP 的时候）。
+/// 写面改走后端之后，第二道围栏在**后端**那一侧（写面那道会话数据围栏），判它的判据住
+/// `tests/backend/`；窗口这一侧要保住的是：**被拒 ⇒ 一句带原话的错**，不是「成功」也不是空串。
+/// 合成后端对 `root` 里带 `refuse` 的一律按围栏那一档（`refused`）拒。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_pools_own_fence_still_refuses_a_protected_path() {
-    let cfg = crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: "writeops-fence".into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        backend_path: "/nonexistent".into(),
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    };
-    let ops = vec![
-        WriteOp::Mkdir { path: protected() },
-        WriteOp::Delete {
-            path: protected(),
-            is_dir: false,
+async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    let wired = wire_up(
+        "writeops-refuse",
+        FakeBackend::new(&["files-mkdir", "files-delete"], Declared::default()),
+    )
+    .await;
+    let origin = crate::origin::Origin(wired.origin.clone());
+    let e = super::apply_remote(
+        &wired.line,
+        &origin,
+        &WriteOp::Mkdir {
+            path: "/srv/refuse/newdir".into(),
         },
-        WriteOp::Chmod {
-            path: protected(),
-            mode: 0o600,
+    )
+    .await
+    .expect_err("后端拒了，窗口这一侧却成了");
+    assert!(
+        e.contains("refused") && e.contains("refuse write"),
+        "那句话里没有后端的码与原话：`{e}`"
+    );
+    // 阴性对照：同一条命令在普通路径上成（否则上面可以靠「什么都失败」蒙过去）。
+    super::apply_remote(
+        &wired.line,
+        &origin,
+        &WriteOp::Mkdir {
+            path: "/srv/data/newdir".into(),
         },
-        WriteOp::Rename {
-            from: "/srv/data/x.bin".to_string(),
-            to: protected(),
+    )
+    .await
+    .expect("普通路径上也失败了 —— 上面那一条在空转");
+    // 后端没声明的命令 ⇒ 一个字节都没发，而且**说出来**。
+    let e = super::apply_remote(
+        &wired.line,
+        &origin,
+        &WriteOp::Chmod {
+            path: "/srv/data/x".into(),
+            mode: 0o644,
         },
-    ];
-    for op in &ops {
-        let e = super::apply_remote(&cfg, op)
-            .await
-            .expect_err("池子那一侧竟然放过了一条受保护路径");
-        assert!(
-            e.contains("Claude"),
-            "报的不是围栏那句话，而是 `{e}` —— 那说明它没在围栏上被拒，\
-             而是走到了连接那一步（围栏被谁摘了）"
-        );
-    }
-    // 🔴 阴性对照：同一个判定在普通路径上必须为**假** ⇒ 那道围栏必定放过。
-    //    （为什么不真调一趟：理由住本条头注最后一段。）
-    for p in [
-        "/srv/data/newdir",
-        &ordinary(),
-        "/home/u/.claude/projects/dash-proj/sub/deep/abc.jsonl", // `projects/` 下不是恰两段
-        "/home/u/notes/abc.jsonl",                               // 不在 `projects/` 下
-    ] {
-        assert!(
-            !crate::sftp_pool::is_protected_claude_data_path(p),
-            "`{p}` 被那道围栏当成 Claude 数据源了 —— 它在拒一切，\
-             而那时这个窗口一件事都干不了"
-        );
-    }
+    )
+    .await
+    .expect_err("后端没声明 `files-chmod`，却成了");
+    assert!(e.contains("files-chmod"), "没说是哪条命令不认：`{e}`");
+    assert_eq!(
+        wired.cmds(),
+        ["files-mkdir", "files-mkdir"],
+        "没声明的那条竟然上了线"
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -798,41 +786,63 @@ fn a_board_with_no_window_still_records_and_does_not_panic() {
 // 🔴 委派：这一层**一行自己的写代码都没有**
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 [`super::apply_remote`] 调的是池子那四条既有命令，**不自己借会话**。
+/// 🔴〔F2 · 2026-09-24〕[`super::apply_remote`] 发的是**后端写面那四条**，参数切成 `(root, rel)`。
 ///
-/// 自己借的后果逐条住 `super` 头注那张表（围栏 · 通道预算 · 第二条 SSH）。
-///
-/// ⚠ 本条扫的是**生产段**（`production_code` 剥掉注释），
-/// 所以头注里提到那几个名字不算数。
-#[test]
-fn the_real_adapter_delegates_to_the_pools_own_four_commands() {
-    let src =
-        std::fs::read_to_string(crate::guard_support::crate_src_root().join("filewin/writeops.rs"))
-            .expect("writeops.rs 读不动");
-    let prod = guard_core::production_code(&src);
-    for needle in [
-        "sftp_pool::sftp_mkdir(",
-        "sftp_pool::sftp_delete(",
-        "sftp_pool::sftp_rename(",
-        "sftp_pool::sftp_chmod(",
-        "sftp_pool::is_protected_claude_data_path",
-    ] {
-        assert!(
-            prod.contains(needle),
-            "生产段里找不到 `{needle}` —— 这一层要么自己借了会话（那就丢了围栏与通道预算），\
-             要么那条命令的落点被挪走了"
-        );
+/// **行为判据**（不扫源码）：挂一台合成后端，四件各发一次，读它收到了什么。
+/// 两侧不同源：期望是按「当前目录 ＋ 名字」手写的，实得是线上真到了后端的那几行。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    let wired = wire_up(
+        "writeops-face",
+        FakeBackend::new(
+            &["files-mkdir", "files-delete", "files-rename", "files-chmod"],
+            Declared::default(),
+        ),
+    )
+    .await;
+    let origin = crate::origin::Origin(wired.origin.clone());
+    let ops = [
+        WriteOp::Mkdir {
+            path: "/srv/data/新目录".into(),
+        },
+        WriteOp::Delete {
+            path: "/srv/data/x.bin".into(),
+            is_dir: false,
+        },
+        WriteOp::Rename {
+            from: "/srv/data/x.bin".into(),
+            to: "/srv/data/y.bin".into(),
+        },
+        WriteOp::Chmod {
+            path: "/srv/data/y.bin".into(),
+            mode: 0o640,
+        },
+    ];
+    for op in &ops {
+        super::apply_remote(&wired.line, &origin, op)
+            .await
+            .unwrap_or_else(|e| panic!("{} 没成：{e}", op.label()));
     }
-    // 🔴 **不许自己借会话**：这几个名字一个都不许出现在本模块的生产段里。
-    for forbidden in ["with_sftp(", "connect_sftp(", "russh_sftp"] {
-        assert!(
-            !prod.contains(forbidden),
-            "本模块生产段里出现了 `{forbidden}` —— 那会让 `filewin/` 变成\
-             `remote_write_registry::capability_holders` 的人群成员，\
-             而那张表的第五条判据（人群只许是那四个文件）会当场红。\
-             围栏与通道预算也就跟着一起丢了。"
-        );
-    }
-    // 反空真：这把尺子认得出「不在」。
-    assert!(!prod.contains("sftp_pool::sftp_no_such_command("));
+    let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
+    let want = vec![
+        serde_json::json!({ "cmd": "files-mkdir", "args": { "root": "/srv/data", "rel": "新目录" } }),
+        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "rel": "x.bin" } }),
+        serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": "x.bin", "to": "y.bin" } }),
+        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "rel": "y.bin", "mode": 0o640 } }),
+    ];
+    assert_eq!(got, want, "线上那四行与期望不等");
+    // 改名跨目录 ⇒ 当场拒，一个字节不发（写面只有一个 `root`）。
+    let e = super::apply_remote(
+        &wired.line,
+        &origin,
+        &WriteOp::Rename {
+            from: "/srv/data/a".into(),
+            to: "/srv/other/a".into(),
+        },
+    )
+    .await
+    .expect_err("跨目录改名竟然发出去了");
+    assert!(!e.is_empty());
+    assert_eq!(wired.log.lock().unwrap().len(), 4, "跨目录那一件上了线");
 }

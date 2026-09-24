@@ -6,13 +6,14 @@ use super::*;
 use crate::filewin::copy::testing::rects_of;
 use crate::filewin::copy::{is_copyable, COPY_LABEL};
 use crate::filewin::corpus;
+use crate::filewin::source::Row;
 
 /// 1280×800，与 `真相源/99` 那趟原型同一个视口。
 fn screen() -> egui::Vec2 {
     egui::vec2(1280.0, 800.0)
 }
 
-fn rows(n: usize) -> Vec<Row> {
+fn rows(n: usize) -> Vec<Listed> {
     corpus::synth_rows(n, 0xC0FFEE)
 }
 
@@ -232,13 +233,18 @@ fn a_frame_with_no_input_reports_no_click() {
 // ════════════════════════════════════════════════════════════════════════
 
 /// 四行，四档齐：目录 · 两个普通文件 · 一个有损名。
-fn mixed_rows() -> Vec<Row> {
-    let mk = |name: &str, is_dir: bool, lossy: bool, size: u64| Row {
-        name: name.to_string(),
-        path: format!("/srv/{name}"),
-        is_dir,
-        size,
-        lossy_name: lossy,
+///
+/// ⚠ 走 `Listed::plain`（链接与时间两格都「没送」）—— 本族判的是那六颗按钮，
+/// 新那两列各有自己的判据（下面那两节）。
+fn mixed_rows() -> Vec<Listed> {
+    let mk = |name: &str, is_dir: bool, lossy: bool, size: u64| {
+        crate::filewin::source::Listed::plain(Row {
+            name: name.to_string(),
+            path: format!("/srv/{name}"),
+            is_dir,
+            size,
+            lossy_name: lossy,
+        })
     };
     vec![
         mk("adir", true, false, 0),
@@ -445,7 +451,7 @@ struct RealEventProbe {
 /// 一个**只转发不实现**的 `eframe::App`：调生产那个行画函数，抄出生产那个读数。
 #[cfg(not(windows))]
 struct RowProbeApp {
-    rows: Vec<Row>,
+    rows: Vec<Listed>,
     shared: std::sync::Arc<std::sync::Mutex<RealEventProbe>>,
 }
 
@@ -1222,4 +1228,91 @@ fn the_toolbox_hands_out_a_different_display_to_each_screen() {
             s.display()
         );
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔补齐五项 2026-09-23〕符号链接那个标记 · 修改时间那一列
+// ════════════════════════════════════════════════════════════════════════
+
+/// 三行：一条链接（带时间）· 一个目录（带时间）· 一个文件（时间没送）。
+fn linked_rows() -> Vec<Listed> {
+    let mk = |name: &str, is_dir: bool, link: bool, t: Option<u64>| Listed {
+        row: Row {
+            name: name.to_string(),
+            path: format!("/srv/{name}"),
+            is_dir,
+            size: 3,
+            lossy_name: false,
+        },
+        link,
+        mtime_secs: t,
+    };
+    vec![
+        mk("to-elsewhere", false, true, Some(1_700_000_000)),
+        mk("adir", true, false, Some(951_782_400)),
+        mk("plain.txt", false, false, None),
+    ]
+}
+
+/// 🔴 **链接那一行有自己的字形，而且只有链接那几行有** —— 画出来的 `🔗` 个数 == 链接行数。
+///
+/// 反空真：目录与普通文件那两行的字形照旧各画一次（这把尺子认得出字形）。
+#[test]
+fn only_the_link_rows_get_the_link_mark_painted() {
+    let ctx = egui::Context::default();
+    let rows = linked_rows();
+    let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
+    let (tally, painted) =
+        render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
+    assert_eq!(tally.rows_materialized, 3);
+    let want = rows.iter().filter(|r| r.link).count();
+    assert_eq!(want, 1, "语料自己变了");
+    assert_eq!(
+        rects_of(&painted, "🔗").len(),
+        want,
+        "链接标记的个数与链接行数不等"
+    );
+    assert_eq!(rects_of(&painted, "📁").len(), 1);
+    assert_eq!(
+        rects_of(&painted, "📄").len(),
+        1,
+        "链接那一行不该**同时**画成普通文件"
+    );
+}
+
+/// 🔴 **修改时间那一列：送了就画、没送就一个字都不画** —— 画出来的时间串 == 送了的那几格。
+///
+/// ⚠ 判的是「没送 ⇒ 不画一个编出来的时间」：如果哪天有人把 `None` 兜底成 0，
+/// 屏幕上就会多一条 `1970-01-01 00:00Z`，本条当场红（那一格在阴性对照里点了名）。
+#[test]
+fn the_time_column_shows_exactly_the_times_that_were_sent() {
+    let ctx = egui::Context::default();
+    let rows = linked_rows();
+    let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
+    let (_, painted) = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
+    for r in &rows {
+        if let Some(t) = r.mtime_secs {
+            let s = crate::filewin::source::format_mtime(t);
+            assert_eq!(
+                rects_of(&painted, &s).len(),
+                1,
+                "`{}` 那一格时间 `{s}` 没画出来",
+                r.name
+            );
+        }
+    }
+    let times = painted
+        .iter()
+        .filter(|(t, _)| t.ends_with('Z') && t.len() == 17)
+        .count();
+    assert_eq!(
+        times,
+        rows.iter().filter(|r| r.mtime_secs.is_some()).count(),
+        "画出来的时间条数与送了时间的行数不等"
+    );
+    assert_eq!(
+        rects_of(&painted, "1970-01-01 00:00Z").len(),
+        0,
+        "没送的那一格被兜底成了 1970"
+    );
 }

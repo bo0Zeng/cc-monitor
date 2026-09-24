@@ -138,7 +138,15 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   分流规则一有第二份实现，「被门拒绝」就会在某一份里被洗成「换条路重做」。
     //   ⚠ 它回的是 `Result<Value, Routed>`（同 `tmux.rs` 那一处的形状）——
     //   「拿到了那一份 data」与「三态里的另外两态」在类型上分得开。
-    ("find.rs", Verdict::UsesRouter),
+    // 〔F2 · 2026-09-24〕**上面那一行（`find.rs`）退役了**：文件窗口成了独立进程，只经通道说 `call`，
+    //   搜索不再直连进程级登记表（`inbound_client`），分层判定在通道宿主那一侧（`host.rs`，
+    //   走分流器的分层出口）。窗口一侧只把分好层的结果翻成一句人话（`filewin/source.rs::said`）。
+    //   ⇒ 两份新发现的 `.call(` 都**不做回落决策、也碰不到 inbound**，牙与纯路由器那一档同一套：
+    // · `source.rs` —— 窗口进程里说 `Comms::call` 的唯一一处（`filewin/source.rs::ask`）。
+    ("source.rs", Verdict::PureRouterNoFallbackDecision),
+    // · `entry.rs` —— monitor 那一侧开窗前那一屏，调的是通道宿主注入给路由器的**同一个**句柄
+    //   （`chan::host::InboundBackends`），不自己碰 inbound。
+    ("entry.rs", Verdict::PureRouterNoFallbackDecision),
     // ★ 〔面 A 通道，2026-09-24〕**不是发送端，是纯路由器**（`chan/router.rs`）。
     //   发现阶段看见它，是因为它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄的
     //   `call`，不是 `inbound_client` 的；它生产段里的 `CallError::` 也是通道自己的

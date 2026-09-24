@@ -208,165 +208,327 @@ fn rel(root: &Path, p: &Path) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// ① 正向：`filewin/` 只许够到一张明写的清单 —— **逐格相等**
+// ① 正向：`filewin/` 只许够到两张明写的清单 —— **窗口进程一张 · monitor 那一侧一张，各自逐格相等**
 // ═══════════════════════════════════════════════════════════════════
+//
+// 🔴〔F2 · 2026-09-24〕从前这里是**一张**表（整棵 `filewin/` 够到 app 侧的 30 条边）。
+// 窗口成了独立进程、只经通道说 `call` 之后，「整棵树」这个人群不再对应任何一个进程：
+// 同一棵树编进两个二进制，一部分代码只在 monitor 里跑（入口那条 Tauri 命令、起窗口进程、
+// 开窗前解 home），其余只在窗口进程里跑。题面那句判据逐字是「**窗口进程的依赖面** ==
+// {通道客户端, 线上类型, 界面库…}，两向相等」⇒ 人群按**进程**切：
+//
+// - monitor 那一侧 ＝ `entry.rs` 整份 ＋ [`MONITOR_FNS`] 里点名的那几个函数；
+// - 窗口进程那一侧 ＝ 其余全部（含每份文件函数外的 `use`）。
+//
+// 切法是**按函数体切块**（[`chunks_by_fn`]）：一行 `fn 名字(` 开一块，块归那个名字。
+// ⚠ 漏判面：写在一个 monitor 函数体里的**闭包**若在别处被调用，按构造算 monitor 那一侧 ——
+// 那是「代码写在哪」而不是「在哪个进程跑」；今天两份表都是现打的，那一形零处。
 
-/// 一条边的**类别**。闭集 —— 加一格之前先读 `filewin/mod.rs` 那一节的五类。
+/// 一条边的**类别**。闭集。
 ///
-/// 🔴 类别不是装饰：它是「甲要花多少钱」的那一维。
-/// `Transport` 那一类是抽 crate 真正的墙（状态耦合，不是符号耦合）。
+/// 🔴 类别不是装饰：窗口那一侧它答的是「**为什么这条边还不是通道**」——
+/// `Channel` / `Wire` 两类之外的每一类都是一笔**有住址的欠账**，各自写清卡在谁手里。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Kind {
-    /// 纯数据类型。搬进共享 crate 最便宜。
-    Type,
-    /// 口径常量。搬走之后两侧仍然只许有一份。
-    Budget,
-    /// 那 13 条 `sftp_*`。**进程级连接池**绑在这一类上。
-    Transport,
-    /// 安全性质的唯一住址（`INVARIANTS F47` 要求与 SFTP 写命令共用）。
-    Fence,
-    /// 后端长连接那条控制通道。
+    /// 通道客户端那一侧（`chan::client` / `chan::dial` / 交接件那个类型）。**题面要的就是它。**
     Channel,
-    /// 起进程那个全仓唯一出口。
+    /// 线上类型（`chan::wire::*`，`05 §3.3` 那一套）。**题面要的就是它。**
+    Wire,
+    /// 🔴 **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消 · 读一份文本进编辑器）—— `设计/60 §8.4` 未拍，
+    /// 题面逐字「上传/跨机传输不做」。⚠ 这一类在，窗口进程就仍然拨第二条 SSH（只在真搬字节时）。
+    Transfer,
+    /// 🔴 **后端今天没有这条命令**：同机复制（写面那六条里没有 `files-copy`）。
+    /// 窗口一侧补不出来（后端不在本路写区）⇒ 交主会话。
+    BackendLacks,
+    /// 本地预判的那道围栏（踩线的那一件**一个字节都不上线**）。权威在后端写面那一侧；
+    /// 本地这一份的去留钉在写区外那条「旧住址最后一个消费者」判据上，交主会话。
+    Fence,
+    /// 「在此打开终端」—— **本机**动作（在用户面前这台机器上开一个窗口），后端在对面，够不着。
+    /// 为什么它不归 `Spawn`：那是原语，这是一层编排（按 origin 读落盘的远端配置 ＋ 一条平台裁决）。
+    Terminal,
+    /// monitor 那一侧：通道宿主（交接件 · 生产句柄）。
+    Host,
+    /// monitor 那一侧：起进程那个全仓唯一出口（`exec_site_registry` 管着）。
     Spawn,
+    /// monitor 那一侧：开窗前解 home（后端没有这一问，`hello.homes` 今天恒空）＋ 那条命令的入参类型。
+    HomeAndConfig,
 }
 
-/// ★ **登记表**：`filewin/` 生产段够得到的 app 侧符号，**逐条**。
+/// monitor 那一侧的函数（`entry.rs` 整份之外）。**点名，不靠目录。**
+const MONITOR_FNS: &[(&str, &str)] = &[
+    ("proc.rs", "spawn_window"),
+    ("proc.rs", "write_seed"),
+    ("proc.rs", "open_in_new_process"),
+    ("proc.rs", "reap_later"),
+    ("source.rs", "resolve_remote_home"),
+];
+
+/// monitor 那一侧整份算的文件。
+const MONITOR_FILES: &[&str] = &["entry.rs"];
+
+/// ★ **窗口进程**够得到的 app 侧符号，逐条。
 ///
-/// 🔴 这张表就是那句「解耦清楚」的可判形态：盘上多一条 / 少一条都红。
-/// 数字与条目是**现打**出来的（先置空跑一趟，从诊断里读出来再钉），
-/// 不是照着 `use` 抄的。
-///
-/// ⚠ 路径逐字**不带 `crate` 前缀**，而且这张表住 `tests/` ——
-/// 被扫的两个人群都够不着它 ⇒ 结构上不可能「在自己的语料里找到自己」
-/// （理由住本文件头注那一节）。
-///
-/// ⚠ **它是一份 census，不是一份许可**：在这里加一行不等于那条边是对的，
-/// 只等于「它被看见了」。
-const REGISTERED: &[(&str, Kind)] = &[
-    // ── 后端长连接那条控制通道（搜索那一族走它）──────────────────
-    ("backend::control::backend_route::Routed", Kind::Channel),
-    ("backend::control::backend_route::no_channel", Kind::Channel),
-    (
-        "backend::control::backend_route::route_call_error",
-        Kind::Channel,
-    ),
-    (
-        "backend::control::inbound_client::client_for",
-        Kind::Channel,
-    ),
-    // ── 纯类型 ──────────────────────────────────────────────────
-    ("origin::Origin", Kind::Type),
-    ("sftp_pool::CopyVerdict", Kind::Type),
-    ("sftp_pool::SftpEntry", Kind::Type),
-    ("ssh_source::RemoteConfig", Kind::Type),
-    // ── 口径常量 ────────────────────────────────────────────────
-    ("sftp_pool::MAX_EDIT_BYTES", Kind::Budget),
-    ("sftp_pool::TRANSFER_LANE_CAP", Kind::Budget),
-    // ── 围栏（安全性质的唯一住址）────────────────────────────────
+/// 🔴 题面判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
+/// 其余四类每一条都是一笔带住址的欠账（见 [`Kind`]）。
+const WINDOW_SIDE: &[(&str, Kind)] = &[
+    // ── 通道客户端 ──
+    ("chan::client::Client", Kind::Channel),
+    ("chan::dial::dial", Kind::Channel),
+    ("chan::host::Handoff", Kind::Channel),
+    // ── 线上类型 ──
+    ("chan::wire::Body", Kind::Wire),
+    ("chan::wire::Budget", Kind::Wire),
+    ("chan::wire::CallError", Kind::Wire),
+    ("chan::wire::CancelToken", Kind::Wire),
+    ("chan::wire::Comms", Kind::Wire),
+    ("chan::wire::HopFault", Kind::Wire),
+    ("chan::wire::Op", Kind::Wire),
+    ("chan::wire::Origin", Kind::Wire),
+    ("chan::wire::OursFault", Kind::Wire),
+    ("chan::wire::PeerFault", Kind::Wire),
+    ("chan::wire::Reach", Kind::Wire),
+    // ── 跨机传输（§8.4 未拍）──
+    ("sftp_pool::MAX_EDIT_BYTES", Kind::Transfer),
+    ("sftp_pool::TRANSFER_LANE_CAP", Kind::Transfer),
+    ("sftp_pool::sftp_cancel_transfer", Kind::Transfer),
+    ("sftp_pool::sftp_download", Kind::Transfer),
+    ("sftp_pool::sftp_read_text_for_edit", Kind::Transfer),
+    ("sftp_pool::sftp_upload", Kind::Transfer),
+    ("ssh_source::RemoteConfig", Kind::Transfer),
+    // ── 后端缺命令 ──
+    ("sftp_pool::CopyVerdict", Kind::BackendLacks),
+    ("sftp_pool::sftp_copy", Kind::BackendLacks),
+    // ── 本地预判围栏 ──
     ("sftp_pool::is_protected_claude_data_path", Kind::Fence),
-    // ── 传输：那 13 条 `sftp_*` —— 抽 crate 的墙就在这一类上 ──────
-    ("sftp_pool::sftp_cancel_transfer", Kind::Transport),
-    ("sftp_pool::sftp_chmod", Kind::Transport),
-    ("sftp_pool::sftp_copy", Kind::Transport),
-    ("sftp_pool::sftp_delete", Kind::Transport),
-    ("sftp_pool::sftp_download", Kind::Transport),
-    ("sftp_pool::sftp_list_dir", Kind::Transport),
-    ("sftp_pool::sftp_mkdir", Kind::Transport),
-    ("sftp_pool::sftp_read_text_for_edit", Kind::Transport),
-    ("sftp_pool::sftp_realpath", Kind::Transport),
-    ("sftp_pool::sftp_rename", Kind::Transport),
-    ("sftp_pool::sftp_stat", Kind::Transport),
-    ("sftp_pool::sftp_upload", Kind::Transport),
-    ("sftp_pool::sftp_write_text", Kind::Transport),
-    // ── 起进程（全仓唯一出口；另有 `exec_site_registry` 管着它）──
+    // ── 本机动作 ──
+    ("launch::launch_remote_terminal", Kind::Terminal),
+];
+
+/// ★ **monitor 那一侧**（`entry.rs` ＋ [`MONITOR_FNS`]）够得到的 app 侧符号，逐条。
+const MONITOR_SIDE: &[(&str, Kind)] = &[
+    ("chan::host::InboundBackends", Kind::Host),
+    ("chan::host::handoff", Kind::Host),
+    ("chan::router::Backends", Kind::Host),
+    ("chan::wire::Body", Kind::Host),
+    ("chan::wire::CancelToken", Kind::Host),
+    ("chan::wire::Op", Kind::Host),
     ("spawn_managed::ConsolePolicy", Kind::Spawn),
     ("spawn_managed::Lifetime", Kind::Spawn),
     ("spawn_managed::ManagedChild", Kind::Spawn),
     ("spawn_managed::StderrSink", Kind::Spawn),
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
+    ("sftp_pool::sftp_realpath", Kind::HomeAndConfig),
+    ("ssh_source::RemoteConfig", Kind::HomeAndConfig),
 ];
 
-/// ★★ **`filewin/` 够到 app 侧的每一条边都在表里，表里也不留死行。**
+/// 一段生产代码 → `(函数名, 那一块)`。函数外的行归 `""`。
 ///
-/// 少了它，「解耦清楚」这句话会退化成一次性的：今天摸完了是干净的，
-/// 明天谁在 `writeops.rs` 里随手 `use crate::history::…` 一行，
-/// 没有任何一个数会动。
-#[test]
-fn every_edge_from_the_file_manager_into_the_app_is_declared() {
-    let (inside, _) = both_halves();
-    // ★ 抽取器自检 1：人群塌了 ⇒ 下面那条相等会在两边都空上成立。
-    assert!(
-        inside.len() >= 16,
-        "`filewin/` 下只扫到 {} 份 `.rs` —— 遍历器坏了（2026-09-23 现打 17）。\
-         这一格非有不可：人群塌成空集时，下面那条相等**照样成立**",
-        inside.len()
-    );
-
-    let root = repo_root();
-    let mut found: BTreeSet<String> = BTreeSet::new();
-    let mut who: std::collections::BTreeMap<String, Vec<String>> = Default::default();
-    for (path, src) in &inside {
-        let prod = guard_core::production_code(src);
-        // ★ 剥法自检：剥完不许残留测试属性（`guard-core` 那条反向自检）。
-        guard_core::assert_no_test_code(&rel(&root, path), &prod);
-        for e in app_side_edges(&prod) {
-            who.entry(e.clone()).or_default().push(rel(&root, path));
-            found.insert(e);
+/// 一行里出现 `fn 名字(`（前面只许是 `pub` / `async` / `const` 之类的修饰词）就开一块。
+fn chunks_by_fn(prod: &str) -> Vec<(String, String)> {
+    const FN_WORD: &str = "fn ";
+    let mut out: Vec<(String, String)> = vec![(String::new(), String::new())];
+    for line in prod.lines() {
+        let t = line.trim_start();
+        let head_ok = t.find(FN_WORD).is_some_and(|at| {
+            t[..at].split_whitespace().all(|w| {
+                matches!(
+                    w,
+                    "pub" | "pub(crate)" | "pub(super)" | "async" | "const" | "unsafe"
+                )
+            })
+        });
+        if head_ok {
+            let at = t.find(FN_WORD).unwrap_or(0) + FN_WORD.len();
+            let name: String = t[at..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                out.push((name, String::new()));
+            }
+        }
+        if let Some(last) = out.last_mut() {
+            last.1.push_str(line);
+            last.1.push('\n');
         }
     }
-    // ★ 抽取器自检 2：命中面塌了 ⇒ 同上。
-    assert!(
-        found.len() >= 20,
-        "只抽到 {} 条边 —— 抽取器坏了（2026-09-23 现打 29）",
-        found.len()
-    );
+    out
+}
 
-    let want: BTreeSet<String> = REGISTERED.iter().map(|(p, _)| (*p).to_string()).collect();
-    assert_eq!(
-        want.len(),
-        REGISTERED.len(),
-        "`REGISTERED` 里有重复路径 —— 后一行会静默吃掉前一行"
+/// 整棵 `filewin/` 生产段 → `(窗口进程那一侧的边, monitor 那一侧的边, 点名的 monitor 函数找到了几个)`。
+fn edges_by_process() -> (
+    std::collections::BTreeMap<String, Vec<String>>,
+    std::collections::BTreeMap<String, Vec<String>>,
+    BTreeSet<(String, String)>,
+) {
+    let (inside, _) = both_halves();
+    assert!(
+        inside.len() >= 16,
+        "`filewin/` 下只扫到 {} 份 `.rs` —— 遍历器坏了（2026-09-24 现打 17）。\
+         人群塌成空集时，下面那两条相等**照样成立**",
+        inside.len()
     );
-    // 🔴 **逐格相等，两个方向一起报**：地板在「变少」方向是瞎的。
+    let root = repo_root();
+    let mut window: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    let mut monitor: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    let mut met: BTreeSet<(String, String)> = BTreeSet::new();
+    for (path, src) in &inside {
+        let prod = guard_core::production_code(src);
+        guard_core::assert_no_test_code(&rel(&root, path), &prod);
+        let file = path.file_name().unwrap().to_string_lossy().to_string();
+        let whole_monitor = MONITOR_FILES.contains(&file.as_str());
+        for (name, chunk) in chunks_by_fn(&prod) {
+            let named = MONITOR_FNS.iter().any(|(f, n)| *f == file && *n == name);
+            if named {
+                met.insert((file.clone(), name.clone()));
+            }
+            let side = if whole_monitor || named {
+                &mut monitor
+            } else {
+                &mut window
+            };
+            for e in app_side_edges(&chunk) {
+                side.entry(e).or_default().push(format!("{file}::{name}"));
+            }
+        }
+    }
+    (window, monitor, met)
+}
+
+fn assert_side_equals(
+    who_side: &str,
+    found: &std::collections::BTreeMap<String, Vec<String>>,
+    table: &[(&str, Kind)],
+) {
+    let want: BTreeSet<String> = table.iter().map(|(p, _)| (*p).to_string()).collect();
+    assert_eq!(want.len(), table.len(), "{who_side} 那张表里有重复路径");
+    let got: BTreeSet<String> = found.keys().cloned().collect();
     assert_eq!(
-        found,
+        got,
         want,
-        "文件管理器与 app 侧那条边界动了。\n  \
+        "{who_side} 与 app 侧那条边界动了。\n  \
          盘上有、表里没有（**新长出来的耦合**）：{:?}\n  \
-         表里有、盘上没有（那条边退役了 ⇒ 把这一行删掉，别让表替真判据挡枪）：{:?}\n\n\
-         ⇒ 这张表就是「解耦清楚」那句话的可判形态。加一行之前先问一遍：\n\
-         ① 这条边**非有不可**吗（`filewin/` 能不能只吃一个已经在表里的类型）？\n\
-         ② 它落在哪一类（`Kind`）—— 那一维记的是「哪天真抽 crate 要花多少钱」；\n\
-         ③ 类别不够用**不是**往 `Kind` 里随手加一格的理由，先读 `filewin/mod.rs` 那一节。\n\
-         逐条住址：{:?}",
-        found.difference(&want).collect::<Vec<_>>(),
-        want.difference(&found).collect::<Vec<_>>(),
-        who,
+         表里有、盘上没有（那条边退役了 ⇒ 删掉这一行）：{:?}\n\
+         逐条住址：{found:?}",
+        got.difference(&want).collect::<Vec<_>>(),
+        want.difference(&got).collect::<Vec<_>>(),
     );
 }
 
-/// ★ **表里每一类都还活着** —— 类别不许长草。
+/// ★★ **窗口进程够到 app 侧的每一条边都在 [`WINDOW_SIDE`] 里，表里也不留死行；
+/// monitor 那一侧同理对 [`MONITOR_SIDE`]。** 两张表各自两向相等。
+#[test]
+fn every_edge_from_the_file_manager_into_the_app_is_declared() {
+    let (window, monitor, met) = edges_by_process();
+    // ★ 抽取器自检：点名的 monitor 函数**一个都不许找不到**（改名 ⇒ 那一块会悄悄滑进窗口那一侧）。
+    let want_met: BTreeSet<(String, String)> = MONITOR_FNS
+        .iter()
+        .map(|(f, n)| ((*f).to_string(), (*n).to_string()))
+        .collect();
+    assert_eq!(met, want_met, "`MONITOR_FNS` 里点名的函数盘上找不全");
+    assert!(
+        window.len() >= 10 && monitor.len() >= 5,
+        "抽到的边太少 —— 抽取器坏了"
+    );
+    assert_side_equals("窗口进程", &window, WINDOW_SIDE);
+    assert_side_equals("monitor 那一侧", &monitor, MONITOR_SIDE);
+}
+
+/// 🔴 **题面那句判据本身：窗口进程够后端只经通道 —— 池子与登记表那几条「够后端」的路零处。**
 ///
-/// 一个空了的类别会替真欠账挡枪：读表的人以为那一维还有内容。
+/// 上一条判的是「表 == 盘」（表里写什么都行，只要两边一样）；这一条判的是**表里不许写什么**：
+/// 窗口那一侧不许有 `backend::*`（直连进程级登记表 / 分流器）、不许有池子那几条**读侧 / 写面**
+/// 命令（列目录 · stat · 建目录 · 删 · 改名 · 改权限 · 写文本）—— 它们都已经有后端命令了。
+/// 零命中守卫 ＋ 反向自检（那几条确实曾经在盘上，见 `git log`；这里喂合成文本证明认得出）。
+#[test]
+fn the_window_process_reaches_the_backend_only_through_the_channel() {
+    let (window, _, _) = edges_by_process();
+    const BANNED_PREFIX: &[&str] = &["backend::"];
+    const BANNED_EXACT: &[&str] = &[
+        "sftp_pool::sftp_list_dir",
+        "sftp_pool::sftp_stat",
+        "sftp_pool::sftp_mkdir",
+        "sftp_pool::sftp_delete",
+        "sftp_pool::sftp_rename",
+        "sftp_pool::sftp_chmod",
+        "sftp_pool::sftp_write_text",
+        "sftp_pool::sftp_realpath",
+        "sftp_pool::SftpEntry",
+    ];
+    let hits: Vec<&String> = window
+        .keys()
+        .filter(|e| {
+            BANNED_EXACT.contains(&e.as_str())
+                || BANNED_PREFIX.iter().any(|p| starts_with_str(e, p))
+        })
+        .collect();
+    assert!(
+        hits.is_empty(),
+        "窗口进程里又长出了不经通道够后端的边：{hits:?}\n住址：{:?}",
+        hits.iter().map(|h| (h, window.get(*h))).collect::<Vec<_>>()
+    );
+    // 两类「题面要的」确实在（否则上面那条零命中可能只是因为窗口什么都不够了）。
+    for must in [
+        "chan::client::Client",
+        "chan::dial::dial",
+        "chan::wire::Comms",
+    ] {
+        assert!(
+            window.contains_key(must),
+            "窗口进程里没有 `{must}` —— 它不再说 call 了？"
+        );
+    }
+    // 反向自检：切块 ＋ 抽取认得出一条被禁的边。
+    let fake = chunks_by_fn(&format!(
+        "fn x() {{ {CRATE_WORD}::sftp_pool::sftp_list_dir(a) }}"
+    ));
+    assert!(fake
+        .iter()
+        .any(|(n, c)| n == "x" && app_side_edges(c).contains("sftp_pool::sftp_list_dir")));
+}
+
+/// ★ **表里每一类都还活着** —— 类别不许长草；而且每一类只出现在它该在的那一侧。
 #[test]
 fn every_declared_edge_falls_in_a_live_category() {
     use Kind::*;
-    for k in [Type, Budget, Transport, Fence, Channel, Spawn] {
-        let n = REGISTERED.iter().filter(|(_, kk)| *kk == k).count();
+    for (k, side) in [
+        (Channel, WINDOW_SIDE),
+        (Wire, WINDOW_SIDE),
+        (Transfer, WINDOW_SIDE),
+        (BackendLacks, WINDOW_SIDE),
+        (Fence, WINDOW_SIDE),
+        (Terminal, WINDOW_SIDE),
+        (Host, MONITOR_SIDE),
+        (Spawn, MONITOR_SIDE),
+        (HomeAndConfig, MONITOR_SIDE),
+    ] {
+        let n = side.iter().filter(|(_, kk)| *kk == k).count();
         assert!(
             n > 0,
-            "`Kind::{k:?}` 这一类今天一条边都没有 —— 把它从 `Kind` 里删掉，\
-             并在 `filewin/mod.rs` 那一节里同拍改掉它"
+            "`Kind::{k:?}` 在它那一侧一条边都没有 —— 把它从 `Kind` 里删掉"
+        );
+        let other = if std::ptr::eq(side, WINDOW_SIDE) {
+            MONITOR_SIDE
+        } else {
+            WINDOW_SIDE
+        };
+        assert!(
+            !other.iter().any(|(_, kk)| *kk == k),
+            "`Kind::{k:?}` 跑到了另一侧的表里 —— 类别是按进程分的"
         );
     }
-    // 🔴 `Transport` 那一类是甲的墙 —— 它**空了**才是大新闻（那说明池子解耦了）。
-    let transport = REGISTERED.iter().filter(|(_, k)| *k == Transport).count();
+    // 🔴 欠账那几类的**条数恒等**（不是地板）：变多 ＝ 窗口又长出一条不经通道的路；
+    //    变少 ＝ 有一笔欠账还了 —— 好事，但要同拍改这里并写清是哪一笔。
+    let debt = |k: Kind| WINDOW_SIDE.iter().filter(|(_, kk)| *kk == k).count();
     assert_eq!(
-        transport, 13,
-        "走 `sftp_pool` 那条池子的命令从 13 条变成了 {transport} 条。\
-         **变多**＝ 抽 crate 更贵了；**变少**＝ 可能有人真把池子注进来了 —— \
-         那是好事，但要同拍改 `filewin/mod.rs` 那一节的「甲的代价 ①」（它逐字说这是墙）"
+        (
+            debt(Transfer),
+            debt(BackendLacks),
+            debt(Fence),
+            debt(Terminal)
+        ),
+        (7, 2, 1, 1),
+        "窗口进程里「还不是通道」的那几类条数变了（传输 · 后端缺命令 · 本地围栏 · 本机动作）"
     );
 }
 

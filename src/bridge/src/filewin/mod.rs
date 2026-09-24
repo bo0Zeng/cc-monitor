@@ -225,6 +225,11 @@
 //! ⚠ 它住 `tests/` 而不是新建生产模块，是被判据逼出来的：第一版写成 `filewin/boundary.rs`
 //! 当场红在 `remote_write_registry_tests`（它把 `filewin/` 那棵树的 `.rs` 份数**钉成恒等 16**）。
 //! 顺带发现那个位置**结构上不可能「在自己的语料里找到自己」**。
+//!
+//! ⚠〔补齐五项 2026-09-23 · 合并时并入〕主线把那一节整体回落进 `设计/60 §10` 的同时，
+//! 本支在那一节里加过「第 6 类：开终端（`launch::launch_remote_terminal`）」。
+//! 它的理由只有一份，住 `boundary_tests::Kind::Terminal` 头注；设计文档那侧由本支在
+//! `设计/60` 末尾追加时一并记下（这儿不留第二份）。
 
 pub mod copy;
 pub mod corpus;

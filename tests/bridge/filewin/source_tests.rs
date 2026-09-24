@@ -50,17 +50,20 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
         ("aux", true),
         ("build.rs", false),
     ];
-    let mut mine: Vec<Row> = names
+    let mut mine: Vec<Listed> = names
         .iter()
-        .map(|(n, d)| Row {
-            name: (*n).to_string(),
-            path: format!("/x/{n}"),
-            is_dir: *d,
-            size: 0,
-            lossy_name: false,
+        .map(|(n, d)| {
+            Listed::plain(Row {
+                name: (*n).to_string(),
+                path: format!("/x/{n}"),
+                is_dir: *d,
+                size: 0,
+                lossy_name: false,
+            })
         })
         .collect();
-    sort_rows(&mut mine);
+    // ⚠ 缺省那一档 —— 它就是本刀之前那个写死的函数（逐字节相同那一条住下面）。
+    sort_rows(&mut mine, SortBy::default());
 
     // 生产契约逐字（`sftp_pool.rs::sort_entries`）：目录在前，再名称小写升序。
     let mut theirs: Vec<(String, bool)> =
@@ -79,135 +82,82 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
     );
 }
 
-/// 远端那条路上唯一有逻辑的一段：五个字段一个都不许掉。
-/// **这是真行为判据**（不是判源码）—— 它不需要网络。
-#[test]
-fn the_sftp_entry_mapping_carries_every_field() {
-    let e = crate::sftp_pool::SftpEntry {
-        name: "\u{FFFD}odd".to_string(),
-        path: "/remote/dir/\u{FFFD}odd".to_string(),
-        is_dir: false,
-        is_symlink: true,
-        size: 4242,
-        lossy_name: true,
-    };
-    let r = row_from_sftp_entry(e);
-    assert_eq!(
-        r,
-        Row {
-            name: "\u{FFFD}odd".to_string(),
-            path: "/remote/dir/\u{FFFD}odd".to_string(),
-            is_dir: false,
-            size: 4242,
-            // 🔴 有损名必须一路传到行上 —— 写操作要靠它灰置。
-            lossy_name: true,
-        }
-    );
-}
+// 〔F2 · 2026-09-24〕这里原先有一条「`SftpEntry` → 行的映射六格一格不许掉」的判据。
+// 窗口进程不再经 SFTP 列目录（没有退路，`D11`）⇒ 那个映射函数连同这条判据一起走了；
+// 「后端送的每一格落到行上哪一格」由下面那张逐格表（`files.ls` 的声明现读）接着管。
 
-/// ⚠ **判源码是代理，不是标的**（`tests/bridge/sftp_tests.rs` 同款如实标注）。
+/// 🔴 **整棵 `filewin/` 上「列一个远端目录」恰好两处，全是问后端 `files-ls`；池子那条列目录命令零处。**
 ///
-/// 买的是：远端列目录**走的是共用那条池**，没有人在本模块里另开一条。
-/// 买不到：那条池今天真连得上、连上之后回的东西对不对。
+/// 〔F2 · 2026-09-24〕上一版这里是两条：「`list_remote` 调的是共用池」＋「池子那条列目录命令
+/// 整棵树恰好一处（`source.rs`）」。窗口改成只经通道说 `call` 之后，那条路整条摘了 ⇒ 判据翻面：
+///
+/// - 问后端 `files-ls` 的地方（`CMD_LS` 这个名字被用到的地方）恰好两处：
+///   `source.rs`（窗口进程里那一次，[`list_via_backend`]）与 `entry.rs`（开窗前那一屏，
+///   monitor 进程里经通道宿主的同一个句柄）。**两向相等**，多一处 / 少一处都红。
+/// - 池子那条列目录命令在整棵树的生产段里**零处**（零命中守卫，带反向自检）。
+/// - 自己开连接 / 借会话的写法**零处**。
+///
+/// ⚠ 判源码是代理：买的是「只有这两处在问、而且问的是后端」；「后端答得对」由
+/// [`listing_has_no_second_road_when_the_backend_refuses`] 那条行为判据买。
 #[test]
-fn the_remote_path_delegates_to_the_shared_pool_instead_of_rolling_its_own() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/source.rs"));
-    let at = prod
-        .find("pub async fn list_remote")
-        .expect("生产段里找不到 `list_remote` —— 抽取器坏了，本条此刻无效");
-    let body = &prod[at..];
-    let end = body.find("\n}").map(|i| i + 2).unwrap_or(body.len());
-    let body = &body[..end];
-    assert!(
-        body.contains("sftp_pool::sftp_list_dir"),
-        "`list_remote` 不再调共用池的 `sftp_list_dir` 了 —— \
-             那意味着这里长出了第二条列远端目录的路（也就是第二个连接池）"
-    );
-    assert!(
-        !body.contains("connect_sftp") && !body.contains("read_dir"),
-        "`list_remote` 里出现了自己建连接 / 自己 read_dir 的痕迹"
-    );
-}
-
-/// 🔴 **第二刀把上面那条从「一个函数体」扩到「整棵 `filewin/`」。**
-///
-/// 上一版只看 `list_remote` 那一个函数体。它接不住的那一形，正是这一刀会长出来的：
-/// 新加的入口（`entry.rs`）或传输层（`transfer.rs`）里**另开一条**列远端目录的路
-/// —— 那个函数体一个字都不会变，而池被拆成了两份。
-///
-/// ⇒ 判「整棵树上列远端目录的路**恰好一条**」：
-/// `sftp_list_dir` 的调用形状在整棵 `filewin/` 的生产段里出现**恰好 1 次**，
-/// 而且那 1 次在 `source.rs` 里。
-///
-/// ⚠ 买的是「只有一条路，且那条路调共用池」；
-/// 买不到那条池今天连得上（红线不许起真连接）。
-#[test]
-fn the_whole_filewin_tree_has_exactly_one_way_to_list_a_remote_directory() {
+fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() {
     let root = crate::guard_support::crate_src_root().join("filewin");
     let files = guard_core::files_by_extension(&root, "rs");
-    // 反空真①：扫描面没塌。这棵树今天 **9** 份
-    //（copy/corpus/entry/mod/rows/scale/shell/source/transfer）——
-    //〔第三刀 09-20〕`copy.rs` 进来之后从 8 变 9，这个地板跟着抬。
     assert!(
-        files.len() >= 9,
+        files.len() >= 16,
         "`filewin/` 下只扫到 {} 份 `.rs`（{files:?}）—— 扫描面塌了，下面几条在空转",
         files.len()
     );
-    for must in [
-        "source.rs",
-        "shell.rs",
-        "entry.rs",
-        "transfer.rs",
-        "copy.rs",
-    ] {
-        assert!(
-            files.iter().any(|f| f == must),
-            "扫描面里没有 `{must}` —— 抽取器坏了"
-        );
-    }
-
-    let needle = format!("sftp_pool::sftp_{}(", "list_dir");
-    let mut where_: Vec<(String, usize)> = Vec::new();
+    let ask_ls = "CMD_LS";
+    let pool_ls = format!("sftp_pool::sftp_{}(", "list_dir");
+    let mut asking: Vec<(String, bool)> = Vec::new();
     let mut total_prod = 0usize;
     for f in &files {
         let src = std::fs::read_to_string(root.join(f)).expect("read filewin rs");
         let prod = guard_core::production_code(&src);
         total_prod += prod.len();
-        let n = prod.matches(needle.as_str()).count();
-        if n > 0 {
-            where_.push((f.clone(), n));
+        // 定义那一行（`pub const CMD_LS`）不算「问」。
+        let uses = prod
+            .lines()
+            .filter(|l| {
+                guard_core::contains_word(l, ask_ls) && !guard_core::contains_word(l, "const")
+            })
+            .count();
+        if uses > 0 {
+            asking.push((f.clone(), true));
         }
-        // 自己开连接 / 自己 read_dir 远端，一处都不许有。
+        assert_eq!(
+            prod.matches(pool_ls.as_str()).count(),
+            0,
+            "`filewin/{f}` 的生产段里又出现了池子那条列目录命令 —— `D11`：没有退路"
+        );
         for banned in ["connect_sftp", "russh_sftp", "SftpSession", "with_sftp("] {
             assert!(
                 !prod.contains(banned),
-                "`filewin/{f}` 的生产段里出现了 `{banned}` —— \
-                 这棵树不许自己碰连接／通道，远端那一侧只能走 `sftp_pool` 那几条既有命令"
+                "`filewin/{f}` 的生产段里出现了 `{banned}` —— 这棵树不许自己碰连接／通道"
             );
         }
     }
-    // 反空真②：剥法没把整棵树剥没。
     assert!(
         total_prod > 20_000,
         "整棵树的生产段只剩 {total_prod} 字节 —— 剥法坏了"
     );
-
+    asking.sort();
     assert_eq!(
-        where_,
-        vec![("source.rs".to_string(), 1usize)],
-        "列远端目录的路不再是「`source.rs` 里恰好一条」—— 实得 {where_:?}。\n\
-         多一处就是多一个「怎么列远端」的答案；而这棵树上每一条自己开的路，\n\
-         都会把 `设计/60 §5.4a` 那条「6 − 4 = 2 格永远留给浏览」的预算拆成两份。"
+        asking,
+        vec![
+            ("entry.rs".to_string(), true),
+            ("source.rs".to_string(), true)
+        ],
+        "问后端列目录的地方不再是「`entry.rs` 与 `source.rs` 各一处」"
     );
-
-    // 反空真③：这把尺子认得出「多一处」。
-    let fake = format!("fn x() {{ {needle} }}\n{needle}");
+    // 反向自检：这把尺子认得出池子那条命令（否则上面那条零命中恒真）。
+    let fake = format!("fn x() {{ {pool_ls} }}");
     assert_eq!(
         guard_core::production_code(&fake)
-            .matches(needle.as_str())
+            .matches(pool_ls.as_str())
             .count(),
-        2
+        1
     );
 }
 
@@ -465,7 +415,7 @@ fn a_screenful_comes_back_already_sorted() {
         ],
         "truncated": false,
     });
-    let (rows, truncated) = rows_from_ls_data(&d).expect("这一份该解得出来");
+    let (rows, truncated) = rows_from_ls_data(&d, SortBy::default()).expect("这一份该解得出来");
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(
         names,
@@ -498,71 +448,522 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
             { "path": "/a/also-good", "kind": "dir" },
         ],
     });
-    let e = rows_from_ls_data(&d).expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
+    let e = rows_from_ls_data(&d, SortBy::default())
+        .expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
     assert!(e.contains("第 1 条"), "报错没说是第几条：{e}");
     // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
     let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ] });
-    assert_eq!(rows_from_ls_data(&ok).unwrap().0.len(), 1);
+    assert_eq!(
+        rows_from_ls_data(&ok, SortBy::default()).unwrap().0.len(),
+        1
+    );
 }
 
 /// `truncated` 带得回来（缺了就当没截断）。
 #[test]
 fn truncation_is_carried_back_not_dropped() {
     let d = serde_json::json!({ "entries": [], "truncated": true });
-    assert!(rows_from_ls_data(&d).unwrap().1, "截断那一格被丢了");
+    assert!(
+        rows_from_ls_data(&d, SortBy::default()).unwrap().1,
+        "截断那一格被丢了"
+    );
     let d2 = serde_json::json!({ "entries": [] });
-    assert!(!rows_from_ls_data(&d2).unwrap().1, "缺了就该当没截断");
+    assert!(
+        !rows_from_ls_data(&d2, SortBy::default()).unwrap().1,
+        "缺了就该当没截断"
+    );
 }
 
-/// 🔴 **退路在，而且排在问后端之后；而且它只有一支。**
+/// 🔴〔F2 · 2026-09-24〕**后端说不行 ⇒ 列目录就是失败，没有第二条路**（`D11`）。
 ///
-/// ⚠ 同上，判源码是代理：`list_dir` 那条路要一条真后端通道才走得完，
-/// 而判据不许在进程级登记表上种一个 `<local>` 通道
-///（那张表是**进程内全局**的，`inbound_client` 自己的头注记着两条判据在同一个键上
-/// 起真后端会互相看见对方登记的通道 ⇒ 种它就是给别的判据下毒）。
-///
-/// # 🔴〔2026-09-23 本机侧退役〕**退路从两支变一支，而本条的三个断言都换了写法**
-///
-/// 从前这里逐支钉（`list_local(` = 本机那条 · `list_remote(` = 远端那条），
-/// 而三处匹配全是**裸的**（`prod.find("…")` / `body.contains("…")`）。
-/// 本机那一侧不在了（`source.rs` 头注那块墓碑）⇒ 少一支；顺带把三处
-/// 换成 `guard_core::pin_line`（**整行相等**）：
-///
-/// - 裸子串匹配的病形是「匹配单位比事实小」—— `body.find("list_remote(")` 在这份
-///   文件上**现打命中 2 处**（`list_dir` 体内那一处 ＋ 下面 `pub async fn list_remote(`
-///   那一行），于是「退路排在问后端之后」那句话可能锚在**函数声明**上，
-///   而那是恒真的（声明永远在后面）。⚠ 这不是假想：换成 `find_pinned` 的那一趟
-///   它当场以「命中 2 处，断言指不明是哪一处」红了。
-/// - `needle_anchor_registry` 那条递减棘轮今天**零富余** ⇒ 新写一处裸匹配当场红。
-///   本条这一换让那个数**往下走三格**，不是持平。
-///
-/// ⚠ 整行相等买到什么、买不到什么：买到「那一行逐字是这样」（缩进被 `trim` 掉）；
-/// **买不到**「这一行在语义上属于 `list_dir`」—— 那靠它与 `fn` 那一行的**行序**。
-#[test]
-fn the_fallback_exists_and_comes_after_asking_the_backend() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/source.rs"));
-    let at_fn = guard_core::pin_line(
-        &prod,
-        "pub async fn list_dir(source: &Source, dir: &str) -> Result<(Vec<Row>, bool, ListVerdict), String> {",
+/// 上一版这里是反面：「退路在、排在问后端之后、只有一支」（源码代理，钉三行的行序）。
+/// 退路拿掉之后它换成**行为**判据 —— 挂一台合成后端（真回环、真钥匙、真 `dial`）：
+/// ① 后端答得出 ⇒ 一屏回来，而且**是后端那一份**（名字与大小逐格相等）；
+/// ② 后端拒（目录读不进去）⇒ `Err`，那句话里带着后端的码 —— 不是一屏空的、不是「退回去自己列」。
+/// ③ 线上恰好一条 `files-ls`（没有第二趟、也没有别的命令被悄悄发出去）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn listing_has_no_second_road_when_the_backend_refuses() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    let root = synth_tree();
+    let wired = wire_up(
+        "source-ls",
+        FakeBackend::new(&[CMD_LS], Declared::default()),
     )
-    .expect("`list_dir` 的签名不在生产段里（或者它换了形状）");
-    let at_ask = guard_core::pin_line(
-        &prod,
-        "match list_via_backend(&source.origin(), dir, LS_LIMIT).await {",
-    )
-    .expect("`list_dir` 里没有问后端那一跳 —— 那它就不是主路了");
-    let at_fb = guard_core::pin_line(&prod, "let rows = list_remote(source.cfg(), dir).await?;")
-        .expect("那条退路不在了（或者它换了形状 —— 那就把这一行一起改）");
-    // 🔴 三行的**顺序**是承重的：`fn` → 问后端 → 退路。
-    assert!(
-        at_fn < at_ask && at_ask < at_fb,
-        "三行的顺序不对（fn {at_fn} / 问后端 {at_ask} / 退路 {at_fb}）—— \
-         退路排在问后端之前的话，后端那条主路永远走不到"
+    .await;
+    let cfg = crate::ssh_source::RemoteConfig {
+        host: "example.invalid".into(),
+        label: wired.origin.clone(),
+        port: 22,
+        user: "nobody".into(),
+        key_path: None,
+        backend_path: "/nonexistent".into(),
+        host_key_fingerprint: None,
+        addresses: Vec::new(),
+        jump: None,
+    };
+    let src = Source::remote(cfg);
+    let dir = root.to_string_lossy().to_string();
+    // ① 后端答得出。
+    let (rows, cut) = list_dir(&wired.line, &src, &dir, SortBy::default())
+        .await
+        .expect("后端答得出，窗口这一侧却失败了");
+    let want = list_local(&root).expect("合成树列得出来");
+    assert_eq!(
+        rows.iter()
+            .map(|r| (r.name.clone(), r.size, r.is_dir))
+            .collect::<Vec<_>>(),
+        want.iter()
+            .map(|r| (r.name.clone(), r.size, r.is_dir))
+            .collect::<Vec<_>>(),
+        "经通道回来的那一屏与后端那一侧看见的不等"
     );
-    // 🔴 退路必须**交出一句话**（`ListVerdict` 是 `Some`）——
-    //    静默降级与成功在屏幕上长得一样。
-    let at_say = guard_core::pin_line(&prod, "Ok((rows, false, Some(why)))")
-        .expect("退路没把原因交出去 —— 那就是一次静默降级");
-    assert!(at_fb < at_say, "那句话不在退路后面（fn 体被重排过？）");
+    assert!(!rows.is_empty(), "合成树是空的 —— 上面那条相等在空集上成立");
+    assert!(!cut);
+    // ② 后端拒 ⇒ 失败，带码。
+    let e = list_dir(&wired.line, &src, "/definitely/not/here", SortBy::default())
+        .await
+        .expect_err("后端拒了，窗口却交出了一屏");
+    assert!(e.contains("unreadable"), "那句话里没有后端的码：{e}");
+    // ③ 线上恰好两条 `files-ls`（① 一条、② 一条），没有别的。
+    assert_eq!(wired.cmds(), [CMD_LS, CMD_LS]);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔补齐五项 2026-09-23〕排序 · 面包屑 · 修改时间 · 逐格表
+// ════════════════════════════════════════════════════════════════════════
+
+/// 一摞行的**序指纹**（FNV-1a 64，喂 `名字 ‖ 是不是目录 ‖ 0`）。
+///
+/// ⚠ 散列本身不是被测对象 —— 它只是把「两万行的序」压成一个能钉进判据的数。
+/// 基线那一趟用的是**逐字同一段**散列代码（见下面那条判据的头注）。
+fn order_fingerprint(v: &[Listed]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for r in v {
+        for b in r.name.bytes().chain([u8::from(r.is_dir), 0]) {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    h
+}
+
+/// 🔴 **缺省那一档（名称）与本刀之前那个写死的 `sort_rows` 逐字节同序。**
+///
+/// # 两侧不同源 —— 那个数是在**基线提交上真跑出来的**
+///
+/// 期望值 `0xb7ba462750a3cc6a` 不是由本文件里任何一行算出来的：它是在基线
+/// `2cb26ecc`（补齐五项之前，`sort_rows(v: &mut [Row])` 还是写死的那一版）的一棵临时工作树里，
+/// 对 `corpus::synth_rows(20_000, 0x5EED_0F0D)` 跑**那一版** `sort_rows` 印出来的
+/// （同一段散列代码；语料的名字与是否目录两格在两版之间逐字节相同 ——
+/// `corpus::synth_rows` 头注写着新那两格一格 rng 都不多抽）。
+///
+/// ⇒ `Name` 那一支里多出来的那个 `then_with(Equal)` 哪天被人改成真比较一格东西，
+///   这条当场红；而 `sort_rows` 整个换一种写法、只要序不变，它照样绿（它判的是行为）。
+#[test]
+fn the_default_order_is_byte_for_byte_what_it_was_before() {
+    let mut v = crate::filewin::corpus::synth_rows(20_000, 0x5EED_0F0D);
+    let before = order_fingerprint(&v);
+    sort_rows(&mut v, SortBy::default());
+    assert_eq!(
+        order_fingerprint(&v),
+        0xb7ba_4627_50a3_cc6a,
+        "缺省那一档的序与基线那一版不再逐字节相同 —— 「默认与从前一样」那句话失效了"
+    );
+    // 反空真：这份语料真的被重排了（不是本来就有序、排了等于没排）。
+    assert_ne!(
+        before, 0xb7ba_4627_50a3_cc6a,
+        "语料本来就是有序的 —— 上面那条在空转"
+    );
+    // 反空真 ②：「大小」那一档真的给出**不同**的序（`by` 这一格不是被忽略掉的）。
+    // ⚠ 「类型」那一档在这份语料上**恰好**与名称同序（现打）：合成名字里没有点，
+    //   而旧面板那个怪处让「没有点」的扩展名就是整个名字 ⇒ 按扩展名排 ＝ 按名字排。
+    //   那一档的区分力由 `sorting_by_type_matches_the_old_panel` 单独喂。
+    let mut w = v.clone();
+    sort_rows(&mut w, SortBy::Size);
+    assert_ne!(
+        order_fingerprint(&w),
+        0xb7ba_4627_50a3_cc6a,
+        "「大小」那一档排出来和名称一模一样 —— 入参没进比较器"
+    );
+}
+
+/// 🔴 **已经按名称排过的一屏，再按名称排一遍是恒等**（稳定排序 ＋ 同一个比较器）。
+///
+/// 这是 `list_dir` 那一步「池子排过一次、这里再排一次」不搅序的结构理由。
+#[test]
+fn sorting_an_already_sorted_screenful_by_name_changes_nothing() {
+    let mut once = crate::filewin::corpus::synth_rows(5_000, 7);
+    sort_rows(&mut once, SortBy::Name);
+    let mut twice = once.clone();
+    sort_rows(&mut twice, SortBy::Name);
+    assert_eq!(once, twice);
+    // 阴性对照：换一档**会**改（否则「恒等」可能来自比较器根本没在比）。
+    let mut other = once.clone();
+    sort_rows(&mut other, SortBy::Size);
+    assert_ne!(once, other);
+}
+
+fn named(name: &str, is_dir: bool, size: u64) -> Listed {
+    Listed::plain(Row {
+        name: name.to_string(),
+        path: format!("/x/{name}"),
+        is_dir,
+        size,
+        lossy_name: false,
+    })
+}
+
+fn order_of(v: &[Listed]) -> Vec<&str> {
+    v.iter().map(|r| r.name.as_str()).collect()
+}
+
+/// 「大小」那一档：目录恒在前 · 大的在前 · 一样大按名称（同旧面板 `b.size - a.size || cmpName`）。
+///
+/// ⚠ 期望序是**照着 `src/sftp/paths.ts::sortEntries` 手推**的，不是拿本函数跑一遍抄下来的。
+#[test]
+fn sorting_by_size_matches_the_old_panel() {
+    let mut v = vec![
+        named("small", false, 1),
+        named("Zdir", true, 0),
+        named("big", false, 900),
+        named("b-tie", false, 50),
+        named("a-tie", false, 50),
+        named("adir", true, 0),
+    ];
+    sort_rows(&mut v, SortBy::Size);
+    assert_eq!(
+        order_of(&v),
+        ["adir", "Zdir", "big", "a-tie", "b-tie", "small"]
+    );
+}
+
+/// 「类型」那一档：按扩展名 · 相持按名称 —— **连旧面板那个怪处一起照抄**：
+/// 名字里没有点时，`lastIndexOf` 回 `-1`、`slice(0)` 回**整个名字**，于是
+/// `README` 的「扩展名」是 `readme`，排在 `md` 后面、`rs` 前面。
+#[test]
+fn sorting_by_type_matches_the_old_panel() {
+    let mut v = vec![
+        named("b.rs", false, 0),
+        named("README", false, 0),
+        named("a.md", false, 0),
+        named("z.MD", false, 0),
+        named("a.rs", false, 0),
+        named("src", true, 0),
+    ];
+    sort_rows(&mut v, SortBy::Type);
+    assert_eq!(
+        order_of(&v),
+        ["src", "a.md", "z.MD", "README", "a.rs", "b.rs"],
+        "注意 `README` 的位置：它就是那个怪处的阴性对照 —— \
+         把「没有点就回空串」写对了的版本会把它排到文件那一段的最前面"
+    );
+}
+
+/// 下拉里那三档是**闭集**，名字与旧面板那三档一一对应，而且缺省是名称。
+#[test]
+fn the_sort_menu_is_the_three_old_panel_choices_and_defaults_to_name() {
+    assert_eq!(SortBy::default(), SortBy::Name);
+    let labels: Vec<&str> = SortBy::ALL.iter().map(|b| b.label()).collect();
+    assert_eq!(labels, ["名称", "大小", "类型"]);
+}
+
+/// 面包屑：根在最前，每一段各是一个可点的前缀；`//` 与尾巴上的 `/` 不生出空段。
+#[test]
+fn breadcrumbs_are_every_prefix_with_the_root_first() {
+    let own = |v: &[(&str, &str)]| -> Vec<(String, String)> {
+        v.iter()
+            .map(|(a, b)| ((*a).to_string(), (*b).to_string()))
+            .collect()
+    };
+    assert_eq!(
+        breadcrumbs("/home/u/带空格 的目录/"),
+        own(&[
+            ("/", "/"),
+            ("home", "/home"),
+            ("u", "/home/u"),
+            ("带空格 的目录", "/home/u/带空格 的目录"),
+        ])
+    );
+    assert_eq!(
+        breadcrumbs("/a//b"),
+        own(&[("/", "/"), ("a", "/a"), ("b", "/a/b")])
+    );
+    // 到顶与空串：恰好一格（根自己），不是零格。
+    assert_eq!(breadcrumbs("/"), own(&[("/", "/")]));
+    assert_eq!(breadcrumbs(""), own(&[("/", "/")]));
+    // 🔴 与 `parent_dir` 同一种切法：每一格的「去哪儿」再取一次上一级，正好是前一格。
+    let crumbs = breadcrumbs("/srv/a/b/c");
+    for w in crumbs.windows(2) {
+        assert_eq!(
+            parent_dir(&w[1].1),
+            w[0].1,
+            "面包屑与「上一级」两种切法漂开了"
+        );
+    }
+    // ⚠ 反斜杠**不是**分隔符（远端路径恒用 `/`）。
+    assert_eq!(breadcrumbs("/a\\b").len(), 2);
+}
+
+/// 🔴 **逆向日历算法与正向那一份互为逆** —— 两份住两个文件（`utils.rs` 那份不在本路写区），
+/// 于是「两份漂开」只能靠这一条接：往返恒等在一段稠密的日子上逐日断。
+///
+/// 两侧**不同源**：正向是 `crate::utils::days_from_civil`（另一个人写的、另一个文件），
+/// 逆向是 `source::civil_from_days`。
+#[test]
+fn the_two_date_algorithms_are_each_others_inverse() {
+    let mut checked = 0u32;
+    for y in 1899..=2101 {
+        for m in 1..=12 {
+            let dim = match m {
+                2 if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 => 29,
+                2 => 28,
+                4 | 6 | 9 | 11 => 30,
+                _ => 31,
+            };
+            for d in 1..=dim {
+                let z = crate::utils::days_from_civil(y, m, d);
+                assert_eq!(civil_from_days(z), (y, m, d), "第 {z} 天往返不回原样");
+                checked += 1;
+            }
+        }
+    }
+    // 反空真：真的走了约两百年（不是循环体一次没进）。
+    assert_eq!(
+        checked, 74_144,
+        "1899-01-01 ～ 2101-12-31 应当是 74144 天（python `date` 相减现打）"
+    );
+    // 锚：纪元那一天。
+    assert_eq!(civil_from_days(0), (1970, 1, 1));
+}
+
+/// 修改时间那一列写什么：UTC，尾巴上一个 `Z`。
+#[test]
+fn a_modification_time_is_printed_in_utc_and_says_so() {
+    assert_eq!(format_mtime(0), "1970-01-01 00:00Z");
+    // 2023-11-14T22:13:20Z（`date -u -d @1700000000` 现打）。
+    assert_eq!(format_mtime(1_700_000_000), "2023-11-14 22:13Z");
+    // 闰日。
+    assert_eq!(format_mtime(951_782_400), "2000-02-29 00:00Z");
+}
+
+/// `files-ls` 那份声明里的字段名 —— **现读后端源码**（`files.ls` 那条 `Capability` 的 `fields`）。
+fn backend_ls_fields() -> std::collections::BTreeSet<String> {
+    const CAP_LINE: &str = "name: \"files.ls\",";
+    const FIELDS_HEAD: &str = "fields: &[";
+    // ⚠ **运行期读**，不是 `include_str!`：后者是一条 monitor → backend 的**编译期**边，
+    //   要进 `cross_half_edge_registry` 那张表（写区外）；这一条只要今天那份声明的文本。
+    let raw =
+        std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/files/mod.rs"))
+            .expect("读不到后端那份 `files/mod.rs`");
+    let prod = guard_core::production_code(&raw);
+    let at = guard_core::pin_line(&prod, CAP_LINE).expect("后端那条 `files.ls` 能力声明不见了");
+    let line = prod
+        .lines()
+        .skip(at)
+        .take(20)
+        .map(str::trim)
+        .find_map(|l| l.strip_prefix(FIELDS_HEAD))
+        .expect("`files.ls` 那条声明后面 20 行里没有 `fields`");
+    line.split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect()
+}
+
+/// 🔴 **后端送的每一格 ↔ 窗口这一行的哪一格** —— `row_from_ls_entry` 头注那张表的可判形态。
+///
+/// 左栏的人群**现读后端声明**（[`backend_ls_fields`]），与下面这张表**两向相等**
+/// ⇒ 后端多送一格而窗口没说它去哪 / 表里写着一格而后端早不送了，两种都红。
+/// 右栏每一格各挂一条**行为**断言（不判源码）。
+#[test]
+fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
+    const TABLE: &[(&str, &str)] = &[
+        ("entries", "那一屏有几行"),
+        ("kind", "is_dir ＋ link"),
+        ("mtime_secs", "mtime_secs（缺 ＝ None）"),
+        ("path", "path · name · lossy_name"),
+        ("size", "size（缺 ＝ 0）"),
+        ("truncated", "界面上那句「只拿到了前 N 条」"),
+    ];
+    let declared: std::collections::BTreeSet<String> =
+        TABLE.iter().map(|(k, _)| (*k).to_string()).collect();
+    assert_eq!(
+        backend_ls_fields(),
+        declared,
+        "后端 `files.ls` 声明的字段与窗口这张逐格表对不上"
+    );
+
+    // ── 右栏：逐格行为 ──
+    let one = |v: serde_json::Value| row_from_ls_entry(&v).expect("这一条该解得出来");
+    // kind：两格，不是一格。
+    let link = one(serde_json::json!({ "path": "/a/l", "kind": "symlink" }));
+    assert!(link.link && !link.is_dir, "symlink 没落成 link");
+    let dir = one(serde_json::json!({ "path": "/a/d", "kind": "dir" }));
+    assert!(dir.is_dir && !dir.link);
+    let file = one(serde_json::json!({ "path": "/a/f", "kind": "file" }));
+    assert!(!file.is_dir && !file.link);
+    // mtime_secs：原样；缺了是 None，不是 0（1970）。
+    let t =
+        one(serde_json::json!({ "path": "/a/t", "kind": "file", "mtime_secs": 1_700_000_000u64 }));
+    assert_eq!(t.mtime_secs, Some(1_700_000_000));
+    assert_eq!(file.mtime_secs, None);
+    // size：缺 ⇒ 0。
+    let s = one(serde_json::json!({ "path": "/a/s", "kind": "file", "size": 42 }));
+    assert_eq!((s.size, file.size), (42, 0));
+    // path：字节 → 名字，有损那一格跟着字节走。
+    let lossy = one(serde_json::json!({ "path": { "b16": "2f612f66ff" }, "kind": "file" }));
+    assert!(lossy.lossy_name && lossy.name.ends_with('\u{FFFD}'));
+    assert_eq!(file.name, "f");
+    // entries / truncated：由 `rows_from_ls_data` 摊开。
+    let (rows, cut) = rows_from_ls_data(
+        &serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ], "truncated": true }),
+        SortBy::default(),
+    )
+    .unwrap();
+    assert_eq!((rows.len(), cut), (1, true));
+}
+
+/// 🔴 **盘上每一处按 `/` 切远端路径的地方都在这张表里，表里也没有死行。**
+///
+/// `parent_dir` / `remote_basename` / `breadcrumbs` 那一族的头注说「多一份切法就多一种
+/// 『Windows 上 `\` 被当分隔符』的机会」—— 这一条把那句话从散文变成相等断言。
+///
+/// # 人群与口径
+///
+/// - 人群：`filewin/` 生产段（`guard_core::production_code` 剥过测试与注释）。
+/// - 算一处「切」：一行里出现 `.split('/')` · `.rsplit('/')` · `.rfind('/')` ·
+///   `.split_terminator('/')` 任一形；记成 `(文件, 所在函数)`。
+/// - ⚠ **不算**：`trim_end_matches('/')`（剥尾巴，不切）· `push('/')`（拼，不切）·
+///   `matches('/').count()`（数深度，不切）。它们不产生「哪一段是名字」的判断。
+#[test]
+fn every_place_that_splits_a_remote_path_is_declared() {
+    const SPLITS: &[&str] = &[
+        ".split('/')",
+        ".rsplit('/')",
+        ".rfind('/')",
+        ".split_terminator('/')",
+    ];
+    const FN_WORD: &str = "fn ";
+    /// `(文件, 函数, 为什么它可以切)`。
+    const DECLARED: &[(&str, &str, &str)] = &[
+        (
+            "corpus.rs",
+            "measure",
+            "合成语料的统计（深度 / 段长），不是远端路径",
+        ),
+        ("corpus.rs", "synth_rows", "合成语料取名字，不是远端路径"),
+        ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
+        ("source.rs", "parent_dir", "上一级"),
+        ("source.rs", "remote_basename", "尾段"),
+    ];
+    let dir = crate::guard_support::repo_root().join("src/bridge/src/filewin");
+    let mut found: std::collections::BTreeSet<(String, String)> = Default::default();
+    let mut files = 0usize;
+    for (path, src) in guard_core::scan_tree_excluding(&dir, &["rs"], &[]) {
+        files += 1;
+        let file = path.file_name().unwrap().to_string_lossy().to_string();
+        let prod = guard_core::production_code(&src);
+        let mut current = String::new();
+        for line in prod.lines() {
+            if let Some(name) = fn_name_on(line, FN_WORD) {
+                current = name;
+            }
+            if SPLITS.iter().any(|n| guard_core::contains_word(line, n)) {
+                found.insert((file.clone(), current.clone()));
+            }
+        }
+    }
+    assert!(
+        files >= 16,
+        "`filewin/` 只扫到 {files} 份 —— 遍历器坏了，下面那条会在空集上成立"
+    );
+    let want: std::collections::BTreeSet<(String, String)> = DECLARED
+        .iter()
+        .map(|(f, n, _)| ((*f).to_string(), (*n).to_string()))
+        .collect();
+    assert_eq!(
+        found, want,
+        "按 `/` 切远端路径的地方与登记表对不上。\n  多出来的（新写了一份切法）：{:?}\n  表里有、盘上没了的：{:?}",
+        found.difference(&want).collect::<Vec<_>>(),
+        want.difference(&found).collect::<Vec<_>>()
+    );
+}
+
+/// 这一行是不是一个函数头；是的话回函数名。
+fn fn_name_on(line: &str, fn_word: &str) -> Option<String> {
+    let t = line.trim_start();
+    let at = t.find(fn_word)?;
+    // `fn ` 之前只许是可见性 / `async` / `const` 之类的词（不许是一段表达式）。
+    let head = &t[..at];
+    if !head.split_whitespace().all(|w| {
+        matches!(
+            w,
+            "pub" | "pub(crate)" | "pub(super)" | "async" | "const" | "unsafe"
+        )
+    }) {
+        return None;
+    }
+    let rest = &t[at + fn_word.len()..];
+    let name: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    (!name.is_empty()).then_some(name)
+}
+
+/// 🔴〔F2〕**通道那三层失败，每一层说的话都不一样** —— 而「发没发出去」那一格一定说出来。
+///
+/// 写面那几条据此决定要不要再点一次：`NotSent` ＝ 这一下没生效；`Sent` / `Unknown` ＝ 对面可能已经做了。
+/// 压成同一句的话，用户在「删除」上再点一次就可能删两遍。
+#[test]
+fn each_layer_of_a_channel_failure_says_something_different() {
+    use crate::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
+    let hop = |idx, reach| CallError::Hop {
+        at: HopId { idx, tag: "wait" },
+        reach,
+        why: HopFault::Overrun,
+    };
+    let not_sent = said("files-delete", &hop(1, Reach::NotSent));
+    let unknown = said("files-delete", &hop(1, Reach::Unknown));
+    let sent = said("files-delete", &hop(1, Reach::Sent));
+    assert_ne!(not_sent, unknown, "「没发出去」与「拿不准」说成了同一句");
+    assert_eq!(
+        unknown, sent,
+        "`Sent` 与 `Unknown` 对用户是同一件事（对面可能已经做了）"
+    );
+    assert_ne!(
+        said("x", &hop(0, Reach::NotSent)),
+        said("x", &hop(1, Reach::NotSent)),
+        "断在哪一段没说出来"
+    );
+    // 对端拒绝：码与原话都在（走 `find::refusal` 那一个翻译）。
+    let refused = said(
+        "files-mkdir",
+        &CallError::Peer {
+            why: PeerFault::Refused {
+                body: Body(br#"{"code":"refused","message":"refuse write: fence"}"#.to_vec()),
+            },
+        },
+    );
+    assert!(
+        refused.contains("refused") && refused.contains("refuse write: fence"),
+        "{refused}"
+    );
+    // 不认这条命令 ⇒ 点名是哪一条。
+    assert!(said(
+        "files-chmod",
+        &CallError::Peer {
+            why: PeerFault::Unsupported
+        }
+    )
+    .contains("files-chmod"));
+    // 本侧三种互不相同。
+    let ours: std::collections::BTreeSet<String> =
+        [OursFault::Cancelled, OursFault::Misuse, OursFault::Broken]
+            .into_iter()
+            .map(|why| said("x", &CallError::Ours { why }))
+            .collect();
+    assert_eq!(ours.len(), 3, "本侧三种错说成了同一句");
 }
