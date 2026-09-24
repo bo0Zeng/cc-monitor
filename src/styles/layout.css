@@ -8,6 +8,7 @@
  * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
  */
 
+@layer layout {
 #app {
   /* Batch11-F33：竖直 tab 栏。原顶部 36px 横栏 tab 多了会滑到右上角 🕐/⚙ 图标
      底下被压住；改左侧竖栏后 tab 纵向生长永不重叠，消息流列在剩余空间里居中
@@ -66,4 +67,5 @@ body.viewer-mode #app {
 
 body.viewer-mode .viewer-topbar {
   grid-area: top;
+}
 }

@@ -8,6 +8,7 @@
  * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
  */
 
+@layer components {
 /* F33：竖栏右缘拖拽调宽把手（挂 #app，用 --tab-bar-w 自动跟位；折叠/viewer 隐藏） */
 #tab-bar-resizer {
   position: absolute;
@@ -2002,4 +2003,5 @@
   color: var(--text-2);
   font-size: 11px;
   margin: 6px 0 2px;
+}
 }

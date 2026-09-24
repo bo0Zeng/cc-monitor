@@ -8,6 +8,7 @@
  * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
  */
 
+@layer components {
 /* issue #10：Tab 右键上下文菜单（极简浮层，挂 body） */
 .tab-context-menu {
   position: fixed;
@@ -2461,4 +2462,5 @@
   font-size: 12px;
   margin-top: 8px;
   padding: 4px 12px;
+}
 }

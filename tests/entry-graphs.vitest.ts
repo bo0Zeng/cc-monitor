@@ -116,6 +116,8 @@ interface Closure {
 
 let CLOSURES: Record<Win, Closure>;
 let INPUT: Record<string, string>;
+/** 构建产物：html 文件名 → 它按序链的 CSS 资产全文（每个窗口真正加载的样式，就是这一串）。 */
+let BUILT_CSS_BY_HTML: Record<string, string[]>;
 
 async function buildClosures(): Promise<{ closures: Record<Win, Closure>; input: Record<string, string> }> {
   let input: Record<string, string> = {};
@@ -166,6 +168,15 @@ async function buildClosures(): Promise<{ closures: Record<Win, Closure>; input:
     };
     walk(entry[0].fileName);
     closures[win] = { facade: rel(entry[0].facadeModuleId ?? ""), modules, cssAssets };
+  }
+  BUILT_CSS_BY_HTML = {};
+  for (const w of Object.values(WINDOWS)) {
+    const html = assets.get(w.html);
+    const text = typeof html?.source === "string" ? html.source : Buffer.from(html?.source ?? "").toString("utf8");
+    BUILT_CSS_BY_HTML[w.html] = [...text.matchAll(/<link rel="stylesheet"[^>]*href="\/([^"]+\.css)"/g)].map((m) => {
+      const a = assets.get(m[1]);
+      return typeof a?.source === "string" ? a.source : Buffer.from(a?.source ?? "").toString("utf8");
+    });
   }
   return { closures, input };
 }
@@ -523,4 +534,112 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
       expect(blind, `${win}：摘掉这些文件，完整性判据照样绿`).toEqual([]);
     }
   }, TIMEOUT_MS);
+});
+
+// ═══════════════════════════ 子步 3：层真包进去（对构建产物）═══════════════════════════
+//
+// 源码那一侧（每条规则都在层里、层名不拼错、声明次序）住 `tests/css-ledger.vitest.ts` 格 ⑤。
+// 这里判**产物**，因为有两件事只在构建里发生：
+//   ① 第三方 CSS（highlight.js 主题、KaTeX）由 `vite.config.ts` 的 postcss 插件包进 `@layer vendor` ——
+//      插件没生效，它们就是无层的，会反过来压住我们所有的覆盖；
+//   ② vite 按 JS chunk 重新归并 CSS 资产、重排 `<link>` —— 层声明那一句必须仍在每个窗口的**第一份**资产的最前面。
+
+/** 压缩过的 CSS：顶层（不在任何 at-rule 里）的规则 ＋ 每条规则所在的层。 */
+function builtLayerScan(css: string): { topLevelRules: string[]; layerOfClass: Map<string, Set<string>>; firstLayerStmt: string | null } {
+  const topLevelRules: string[] = [];
+  const layerOfClass = new Map<string, Set<string>>();
+  let firstLayerStmt: string | null = null;
+  const stack: string[] = [];
+  let buf = "";
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (c === '"' || c === "'") {
+      const end = css.indexOf(c, i + 1);
+      buf += css.slice(i, end + 1);
+      i = end;
+      continue;
+    }
+    if (c === "/" && css[i + 1] === "*") {
+      i = css.indexOf("*/", i + 2) + 1;
+      continue;
+    }
+    if (c === ";") {
+      const t = buf.trim();
+      if (firstLayerStmt === null && /^@layer\s/.test(t) && stack.length === 0) firstLayerStmt = t;
+      buf = "";
+      continue;
+    }
+    if (c === "{") {
+      const prelude = buf.trim();
+      buf = "";
+      if (prelude.startsWith("@")) {
+        if (/^@(?:-webkit-)?keyframes\b|^@font-face\b/.test(prelude)) {
+          let d = 1;
+          while (d > 0 && ++i < css.length) d += css[i] === "{" ? 1 : css[i] === "}" ? -1 : 0;
+          continue;
+        }
+        stack.push(prelude);
+        continue;
+      }
+      const layer = [...stack].reverse().find((a) => a.startsWith("@layer "));
+      if (!layer) topLevelRules.push(prelude.slice(0, 60));
+      for (const m of prelude.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) {
+        const set = layerOfClass.get(m[1]) ?? new Set<string>();
+        set.add(layer ? layer.slice(7) : "<无层>");
+        layerOfClass.set(m[1], set);
+      }
+      let d = 1;
+      while (d > 0 && ++i < css.length) d += css[i] === "{" ? 1 : css[i] === "}" ? -1 : 0;
+      continue;
+    }
+    if (c === "}") {
+      stack.pop();
+      buf = "";
+      continue;
+    }
+    buf += c;
+  }
+  return { topLevelRules, layerOfClass, firstLayerStmt };
+}
+
+describe("子步 3 · 层真包进去（对构建产物）", () => {
+  it("每个窗口：第一份 CSS 资产以层声明开头，且那句与 layers.css 逐字同序", () => {
+    // 先剥注释：layers.css 的头注里逐字写着 `@layer a, b, c;` 这句示意（第一版就咬到了它）
+    const layersSrc = readFileSync(resolve(REPO_ROOT, "src/styles/layers.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const src = /@layer\s+([^;{]+);/.exec(layersSrc);
+    expect(src, "layers.css 里没有 `@layer …;` 声明").toBeTruthy();
+    const want = (src?.[1] ?? "").split(",").map((x) => x.trim());
+    for (const w of Object.values(WINDOWS)) {
+      const assets = BUILT_CSS_BY_HTML[w.html];
+      expect(assets.length, `${w.html} 的构建产物一份 CSS 都没链 —— 下面几条零命中地绿`).toBeGreaterThan(0);
+      const first = builtLayerScan(assets[0]).firstLayerStmt ?? "";
+      expect(first.replace(/^@layer\s+/, "").split(",").map((x) => x.trim()), `${w.html} 第一份资产的层声明`).toEqual(want);
+      expect(assets[0].trimStart().startsWith("@layer"), `${w.html} 第一份资产不是以层声明开头 —— 先出现的层名会抢走次序`).toBe(true);
+    }
+  });
+
+  it("🔴 每个窗口的构建 CSS 里，一条无层规则都没有（含第三方）", () => {
+    for (const w of Object.values(WINDOWS)) {
+      const scans = BUILT_CSS_BY_HTML[w.html].map(builtLayerScan);
+      const classes = scans.reduce((n, s) => n + s.layerOfClass.size, 0);
+      expect(classes, `${w.html} 的构建 CSS 一个类都没扫到 —— 零命中不作数`).toBeGreaterThan(200);
+      expect(scans.flatMap((s) => s.topLevelRules), `${w.html} 的构建产物里有无层规则 —— 它们压过所有有层的`).toEqual([]);
+    }
+  });
+
+  it("正控：第三方的类（hljs / katex）在主窗与 viewer 的产物里存在，且**只**在 vendor 层里", () => {
+    for (const html of ["index.html", "viewer.html"]) {
+      const merged = new Map<string, Set<string>>();
+      for (const s of BUILT_CSS_BY_HTML[html].map(builtLayerScan))
+        for (const [c, ls] of s.layerOfClass) merged.set(c, new Set([...(merged.get(c) ?? []), ...ls]));
+      const vendorish = [...merged].filter(([c]) => c === "hljs" || c.startsWith("hljs-") || c === "katex" || c.startsWith("katex-"));
+      expect(vendorish.length, `${html}：产物里没有 hljs / katex 的类 —— 本条对着空气`).toBeGreaterThan(20);
+      // 我们自己也写了几条带 `hljs` / `katex-display` 的覆盖（在 components 层），所以判的是「第三方那份在 vendor 里」：
+      // 每个这一族的类至少有一处在 vendor 层，且**没有**任何一处无层
+      const bad = vendorish.filter(([, ls]) => ls.has("<无层>")).map(([c]) => c);
+      expect(bad, `${html}：这些第三方类出现在无层规则里 —— vite.config.ts 的 vendor 插件没生效`).toEqual([]);
+      const inVendor = vendorish.filter(([, ls]) => ls.has("vendor")).length;
+      expect(inVendor, `${html}：第三方类一个都不在 vendor 层里`).toBeGreaterThan(20);
+    }
+  });
 });
