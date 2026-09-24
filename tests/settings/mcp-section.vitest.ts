@@ -407,3 +407,38 @@ function loaded<T extends { loadNow(): void }>(s: T): T {
   s.loadNow();
   return s;
 }
+
+// ST1「切机器 pending」（`设计/70 §6` #5）：读本机那一趟**在路上**时这一格不许是空的
+// （空的与「本机没有 MCP 配置」在屏幕上分不开）；读回来那一刻撤掉。
+describe("ST1 切机器 pending：MCP 本机那一趟", () => {
+  it("在路上：挂一行 aria-busy 的「读取中」；回来：撤掉并画列表", async () => {
+    document.body.replaceChildren();
+    let release!: (v: unknown) => void;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "read_mcp_servers") return new Promise((r) => (release = r));
+      return [];
+    });
+    const section = loaded(new McpSection());
+    await new Promise((r) => setTimeout(r, 0));
+    const busy = section.element.querySelector<HTMLElement>(".mcp-loading[aria-busy=true]");
+    expect(busy, "读在路上时这一格是空的").toBeTruthy();
+    expect(busy!.textContent).toContain("本机");
+    release([{ scope: "user", name: "srv1", server: { command: "npx" }, sourcePath: "/h/.claude.json" }]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(section.element.querySelector(".mcp-loading")).toBeNull();
+    expect(section.element.textContent).toContain("srv1");
+  });
+
+  it("读失败：「读取中」那一行也要撤（不许永远停在读取中）", async () => {
+    document.body.replaceChildren();
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "read_mcp_servers") throw new Error("后端没起来");
+      return [];
+    });
+    vi.mocked(invoke).mockClear();
+    const section = loaded(new McpSection());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(invoke).mock.calls.some(([c]) => c === "read_mcp_servers"), "前提：真读了").toBe(true);
+    expect(section.element.querySelector(".mcp-loading")).toBeNull();
+  });
+});
