@@ -863,6 +863,11 @@ export const commands = {
   /** Z05：抓远端 `cc-acct-iso shellinit` 的输出（只读）。返回带 BEGIN/END 围栏的 rc 片段。 */
   remote_acct_iso_shellinit: (args: { cfg: unknown }) =>
     invoke<string>("remote_acct_iso_shellinit", args),
+  /** 〔`A3` 第二波〕上面两条的**本机**对侧：问本机后端（`--acct-iso-status` / `--acct-iso-shellinit`）。
+   *  出参与远端那条逐字相同。⚠ 今天**还没有界面调用点** —— 设置页账号那一节归 A2+ST1，
+   *  接线在那边；这里先把口开好（账本 `acct-iso.check` / `acct-iso.shellinit` 两笔欠账随之结清）。 */
+  check_local_acct_iso: () => invoke<AcctIsoStatus>("check_local_acct_iso"),
+  local_acct_iso_shellinit: () => invoke<string>("local_acct_iso_shellinit"),
 
   /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),

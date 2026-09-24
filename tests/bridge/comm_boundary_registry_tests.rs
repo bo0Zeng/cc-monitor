@@ -617,7 +617,7 @@ fn population_claimed_in_prose(module_src: &str) -> usize {
 const LAYER_TWO_PREFIX: &str = "src/backend/accounts/";
 
 /// 层 2 今天有几份文件。**相等，不是地板** —— 多一份就回来改这个数并重读下面那条。
-const LAYER_TWO_FILES: usize = 4;
+const LAYER_TWO_FILES: usize = 5; // 〔`A3` 第二波〕4 → 5：+`acct_iso.rs`（本机 `cc-acct-iso` 两问的一次性查询）。重读过下面那条：它不自称成员、也不在 `REGISTERED` 里 ⇒ 零命中两条照旧成立。
 
 /// ★★ **成员资格说的是「这份文件里的代码属于层 1」，不是「它的模块子树都属于层 1」。**
 ///
