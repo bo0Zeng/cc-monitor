@@ -239,8 +239,9 @@ fn every_exemption_still_points_at_a_real_ungated_suite() {
 /// ⚠ 反空真：右边读不到 `gate.sh` ⇒ 右空、左 2 ⇒ 当场分叉；左边的两条是手写的，不从右边派生。
 #[test]
 fn an_exemption_that_claims_the_local_gate_is_really_run_there() {
-    let gate = std::fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
-        .expect("读不到 tests/scripts/gate.sh");
+    let gate =
+        std::fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
+            .expect("读不到 tests/scripts/gate.sh");
     let floored = floored();
     let mut right: Vec<String> = gate
         .lines()

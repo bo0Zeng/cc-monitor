@@ -97,6 +97,8 @@ describe("F41 runRemoteResume", () => {
     expect(invokeMock).toHaveBeenCalledWith("launch_remote_terminal", {
       origin: "aya",
       remoteCmd: expect.stringContaining("claude --resume sid-1"),
+      // 〔第二波 T4〕本地半的令牌握手：resume 起 agent 进程 ⇒ 带着这次铸的令牌。
+      rbindToken: expect.stringMatching(/^[0-9a-f]{32}$/),
     });
     expect(writeText).not.toHaveBeenCalled();
     expect(toastMock).toHaveBeenCalledTimes(1);
@@ -972,6 +974,76 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
     // ★ 每一次拉起铸的是**新的**一个（同一个令牌复用到两个窗口上 ⇒ join 会拉错窗口）。
     const vals = Object.values(got);
     expect(new Set(vals).size, `五次拉起里有令牌重复：${JSON.stringify(got)}`).toBe(vals.length);
+  });
+
+  // ─── ③ 〔第二波 T4〕本地半的生产写入方：交给窗口去登记的令牌 == 注进远端环境的令牌 ─────
+  //
+  // 两侧异源：左 = `render_launch_payload` 收到的**渲染请求**里那条 `export-rbind-token`（远端进程
+  // 环境里将会是它）；右 = `launch_remote_terminal` 收到的 `rbindToken`（本地窗口将以它为 marker 登记）。
+  // 两边不是同一个 mock 的同一个字段 ⇒ 前端哪天从别处取令牌（另铸一个 / 取 ctx 里的旧值），这里当场分叉。
+  function routeBoth(opts: { typed?: boolean } = {}): { rendered: (string | null)[]; handed: (string | null | undefined)[] } {
+    const rendered: (string | null)[] = [];
+    const handed: (string | null | undefined)[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      if (cmd === "render_launch_payload") {
+        const req = (args as { req: PayloadRenderRequest }).req;
+        const op = req.env.find((o) => o.kind === "export-rbind-token");
+        rendered.push(op && "value" in op ? (op.value as string) : null);
+        return Promise.resolve(renderLaunchPayloadStub(req));
+      }
+      if (cmd === "backend_send_into")
+        return Promise.resolve(opts.typed ? { typed: true, mayFallBack: false, reason: null } : { typed: false, mayFallBack: true, reason: "无通道" });
+      if (cmd === "render_ccm_launch") return Promise.resolve({ ok: true, cmd: "<ccm-attach-line>", reason: null });
+      if (cmd === "list_remote_tmux") return Promise.resolve([]);
+      if (cmd === "launch_remote_terminal") {
+        handed.push((args as { rbindToken?: string | null }).rbindToken);
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    return { rendered, handed };
+  }
+
+  it("★★ 五条起 agent 进程的路：交给本地窗口登记的令牌 == 渲进远端载荷的那一个（逐条相等）", async () => {
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const runs: [string, () => Promise<unknown>][] = [
+      ["resume-direct", () => runRemoteResume("aya", "abc-123", "/w", "claude")],
+      ["resume-tmux", () => runRemoteResumeTmux("aya", "abc-123", "/w", "claude", "p-cc")],
+      ["send-into（回落整串）", () => runRemoteResumeIntoExistingTmux("aya", "abc-123", "p-cc", "claude")],
+      ["launcher", () => runRemoteLauncher("aya", "/w", "p-cc", "claude")],
+      ["new-session", () => runNewSessionRemote("aya", "/w", "claude")],
+    ];
+    for (const [label, run] of runs) {
+      const { rendered, handed } = routeBoth();
+      await run();
+      expect(handed, `${label}：没交出去一个窗口 —— 这一格的读数不可信`).toHaveLength(1);
+      expect(handed[0], `${label}：窗口没带令牌 —— 本地表永远收不到它，↗ 按令牌找不到窗口`).toMatch(/^[0-9a-f]{32}$/);
+      expect(
+        rendered,
+        `${label}：交给窗口登记的令牌不是渲进载荷的那一个 —— join 会静默失配`,
+      ).toContain(handed[0]);
+    }
+  });
+
+  it("★★ send-into 已键入（`typed`）⇒ 开出去的那个 attach 窗口带的是**被键入那份载荷**的令牌", async () => {
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const { rendered, handed } = routeBoth({ typed: true });
+    await runRemoteResumeIntoExistingTmux("aya", "abc-123", "p-cc", "claude");
+    expect(rendered, "量具自检：send-into 那份载荷应当恰好渲了一次").toHaveLength(1);
+    expect(rendered[0]).toMatch(/^[0-9a-f]{32}$/);
+    expect(handed, "attach 窗口没开 / 开了两个").toHaveLength(1);
+    expect(
+      handed[0],
+      "attach 窗口没带令牌，或带的不是刚被键进 tmux 的那个 claude 的令牌 —— 那个窗口登记不上",
+    ).toBe(rendered[0]);
+  });
+
+  it("★ `attach` 不铸币 ⇒ 交给窗口的 `rbindToken` 是 `null`（不是一个没人消费的新令牌）", async () => {
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const { handed } = routeBoth();
+    await runRemoteAttach("aya", "t0-cc");
+    expect(handed).toEqual([null]);
   });
 
   it("★ 调用方显式传的令牌优先（不被铸币口顶掉）", async () => {
