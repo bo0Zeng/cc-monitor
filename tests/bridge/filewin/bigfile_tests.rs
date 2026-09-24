@@ -847,4 +847,97 @@ fn the_readings_behind_the_two_thresholds() {
             three(&|| big(&text))
         );
     }
+
+    // ── 〔F9 续 · 09-24〕8 MiB（后端 `files-read-text` 一趟的天花板）**经窗口的生产路径**：
+    //    打开那一帧（到货 → 立编辑面 → 判模式 → 建行表 → 排第一屏，含 `shell.rs` 每帧那一次
+    //    `Pane` 克隆）与打字帧（真点一下拿焦点、再送字）。⚠ 不含后端读盘与线上搬运那一段。
+    let window = |text: &str| -> ((f64, f64), (f64, f64)) {
+        let mut w = crate::filewin::shell::FileWindow::seeded(
+            crate::filewin::source::Source::remote(crate::ssh_source::RemoteConfig {
+                host: "example.invalid".into(),
+                label: "readings".into(),
+                port: 22,
+                user: "nobody".into(),
+                key_path: None,
+                backend_path: "/nonexistent/cc-monitor-backend".into(),
+                host_key_fingerprint: None,
+                addresses: Vec::new(),
+                jump: None,
+            }),
+            "/srv/data".to_string(),
+            None,
+            Vec::<crate::filewin::source::Row>::new(),
+        );
+        let ctx = egui::Context::default();
+        let mut tt = 0.0;
+        let mut run = |w: &mut crate::filewin::shell::FileWindow, ev: Vec<egui::Event>| {
+            tt += 0.5;
+            let mut inp = screen();
+            inp.time = Some(tt);
+            inp.events = ev;
+            let out = ctx.run_ui(inp, |ui| w.frame_body(ui));
+            let seen = crate::filewin::copy::testing::text_in_frame(&out);
+            out.drop_without_applying_deltas();
+            seen
+        };
+        run(&mut w, Vec::new()); // 字体图集那一帧不算
+        w.edits.deliver(crate::filewin::editor::Arrived::Text {
+            path: "/srv/data/big.txt".into(),
+            name: "big.txt".into(),
+            text: text.to_string(),
+        });
+        // 打开 ＝ 到货之后、**第一屏文件文字真画出来**为止的那几帧之和
+        //（egui 的模态框第一帧只量尺寸不画 ⇒ 通常是两帧）。
+        let is_file = |t: &str| t.len() > 8 && text.contains(t);
+        let mut seen = Vec::new();
+        let mut frames = 0;
+        let open = timed(|| {
+            while frames < 5 && !seen.iter().any(|(t, _): &(String, egui::Rect)| is_file(t)) {
+                seen = run(&mut w, Vec::new());
+                frames += 1;
+            }
+        });
+        assert!(
+            w.editing().is_some_and(|p| p.big.is_big()),
+            "8 MiB 没进大文件模式"
+        );
+        let at = seen
+            .iter()
+            .find(|(t, _)| is_file(t))
+            .map(|(_, r)| r.center())
+            .expect("五帧里第一屏一行文件文字都没画");
+        for ev in click_at(at) {
+            run(&mut w, ev);
+        }
+        let mut k = (0.0, 0.0);
+        for _ in 0..3 {
+            let d = timed(|| {
+                run(&mut w, vec![egui::Event::Text("x".into())]);
+            });
+            worst(&mut k, d);
+        }
+        assert!(w.editing().unwrap().dirty(), "送的字没落进全文");
+        (open, k)
+    };
+    for (label, text) in [
+        ("8 MiB / 每行 64 字节", lines_corpus(8 * 1024 * 1024, 64)),
+        ("8 MiB / 压成一行", one_line(8 * 1024 * 1024)),
+        (
+            "8 MiB / 中文每行 30 字",
+            ("汉字".repeat(15) + "\n").repeat(8 * 1024 * 1024 / 91),
+        ),
+    ] {
+        let v: Vec<_> = (0..3).map(|_| window(&text)).collect();
+        println!(
+            "〔现打·{profile}〕窗口生产路径 {label}（{} 字节）⇒ 打开那一帧墙钟 {:.2} / {:.2} / {:.2} ms｜\
+             打字帧（三帧最坏）墙钟 {:.2} / {:.2} / {:.2} ms",
+            text.len(),
+            v[0].0 .0,
+            v[1].0 .0,
+            v[2].0 .0,
+            v[0].1 .0,
+            v[1].1 .0,
+            v[2].1 .0,
+        );
+    }
 }
