@@ -103,8 +103,10 @@ import json
 import os
 import posixpath
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # ⚠ `tomllib` 是 py≥3.11 的标准库（沙箱镜像与本机现打都有；本文件刻意不引第三方 ——
@@ -294,7 +296,7 @@ NO_FALLBACK_FNS = [
 # ⇒ **`resolve_window_bin()` 的「exe 旁那一份」这一支在装机布局下命中。**
 #
 # 机制（读的是 `tauri-cli` 2.11.2 与 `tauri-bundler` 2.9.x 的源码，不是推论）：
-#   `interface/rust.rs::get_binaries` 把 Cargo.toml 里**每一个** `[[bin]]` 都交给打包器
+#   `tauri-cli` 的 `interface/rust.rs` 里那个 `get_binaries` 把 Cargo.toml 里**每一个** `[[bin]]` 都交给打包器
 #   （`name == 包名` 或 `default-run` 的那个 `is_main = true`，其余 `false`）；而
 #   `windows/nsis/mod.rs` · `windows/msi/mod.rs` · `linux/debian.rs` 三处都写着
 #   `for bin in settings.binaries() { if !bin.main() { …和主二进制装在一处… } }`。
@@ -1149,6 +1151,74 @@ def run_checks(emit):
               "这台机器上没有 `bash` —— **判不了，按红记**（不许退化成静默跳过）")
     except subprocess.TimeoutExpired:
         check(False, "⑬g re-embed `--check` 跑得起来且有数", "跑超时 120s —— 判不了，按红记")
+
+    # ── ⑬h〔B1 · 09-24〕开发构建的判词 `--check-dev` **有牙**：真跑，四个夹具 ──────────
+    #   它治的：「开发构建起不起得来本机后端」在这之前**只有一句 cargo 警告**，而那句还写着
+    #   「开发构建里这是正常的」（`D11` 反面）。B1 把它收成 `re-embed.sh --check-dev`：
+    #   本机那一份缺席即红、铺了就**真起一趟**、第一行必须是自报源码 `BUILD_ID` 的 hello。
+    #   ⇒ 本条不信那段脚本的自述，拿四个夹具**当场跑它**（沙箱仓根，只放脚本与身份那份源码；
+    #   「字节」是几行 sh，**一个 cargo 都不编**）：
+    #     F0 缺席                    ⇒ `--check-dev` 红、而 `--check` 绿（两个模式**恰好**差在这一格）；
+    #     F1 身份戳对、却一个字不吐 ⇒ 红在「起得来」那一格（**戳对得上 ≠ 起得来**，这一格就是证据）；
+    #     F2 身份戳对、hello 自报对 ⇒ 绿（阴性对照：尺子不是恒红）；
+    #     F3 hello 自报的是别的版本 ⇒ 红在「起得来」那一格。
+    #   ⚠ 买不到：「这棵树上那份真字节起得来」—— 那是 `--check-dev` 在真树上跑的事（B1 交付里
+    #     现打过一趟），本格在门禁里**不要求**真树铺了字节（字节不进仓，要求它会把每一棵
+    #     新 clone 的树都判红；接不接进门禁是 `gate.sh` 的事，不在本件写区）。
+    lib = read_rel("src/backend/lib.rs")
+    sid = rust_str_const(lib, "BUILD_ID") if lib else None
+    sop = rust_str_const(lib, "BUILD_STAMP_OPEN") if lib else None
+    scl = rust_str_const(lib, "BUILD_STAMP_CLOSE") if lib else None
+    try:
+        host = subprocess.run(["rustc", "-vV"], capture_output=True, text=True, timeout=30).stdout
+        host = next((l.split(": ", 1)[1].strip() for l in host.splitlines() if l.startswith("host: ")), "")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        host = ""
+    check(bool(sid and sop and scl and host), "⑬h地板·夹具要的四样都取得到",
+          "BUILD_ID=%r 界标=%r/%r 本机 triple=%r —— 缺一样就**判不了，按红记**" % (sid, sop, scl, host))
+    if sid and sop and scl and host and reembed is not None:
+        stamp = "# %s%s%s" % (sop, sid, scl)
+
+        def fixture(body):
+            d = Path(tempfile.mkdtemp(prefix="k-r124-dev-"))
+            (d / "tests" / "scripts").mkdir(parents=True)
+            (d / "src" / "backend").mkdir(parents=True)
+            (d / "tests" / "scripts" / "re-embed.sh").write_text(reembed, encoding="utf-8")
+            (d / "src" / "backend" / "lib.rs").write_text(lib, encoding="utf-8")
+            if body is not None:
+                nd = d / "src" / "bridge" / "native-backend"
+                nd.mkdir(parents=True)
+                (nd / "cc-monitor-native").write_text("#!/bin/sh\n%s\n%s\n" % (stamp, body), encoding="utf-8")
+                (nd / "cc-monitor-native").chmod(0o755)
+                (nd / "cc-monitor-native.target").write_text(host + "\n", encoding="utf-8")
+            return d
+
+        def go(d, mode):
+            p = subprocess.run(["bash", str(d / "tests" / "scripts" / "re-embed.sh"), mode],
+                               capture_output=True, text=True, timeout=120)
+            return p.returncode, [l.split(" :: ")[0][6:] for l in p.stdout.splitlines() if l.startswith("FAIL")]
+
+        start = "本机内嵌后端起得来（真起一趟，第一行是 hello）"
+        present = "开发构建起得来本机后端（本机那一份在盘上）"
+        hello = '{"kind":"hello","v":1,"build_id":"%s","host_arch":"x"}'
+        cases = [
+            ("F0 缺席 · --check-dev", None, "--check-dev", 1, [present]),
+            ("F0 缺席 · --check", None, "--check", 0, []),
+            ("F1 戳对、一个字不吐", "exit 0", "--check-dev", 1, [start]),
+            ("F2 戳对、hello 对（阴性对照）", "echo '%s'" % (hello % sid), "--check-dev", 0, []),
+            ("F3 hello 自报别的版本", "echo '%s'" % (hello % (sid + "-stale")), "--check-dev", 1, [start]),
+        ]
+        for label, body, mode, want_rc, want_fails in cases:
+            d = fixture(body)
+            try:
+                rc, got = go(d, mode)
+            except subprocess.TimeoutExpired:
+                rc, got = "<超时>", ["<超时>"]
+            finally:
+                shutil.rmtree(d, ignore_errors=True)
+            check(rc == want_rc and got == want_fails, "⑬h开发构建判词有牙·%s" % label,
+                  "现打 rc=%r 红在 %r（要 rc=%r 红在 %r）—— 红错地方、或该红不红，都说明那条判词"
+                  "判的不是「开发构建起不起得来本机后端」" % (rc, got, want_rc, want_fails))
 
     # ══ 〔本拍 09-23〕⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ══════════════════════
     cargo_doc = toml_load(BRIDGE_CARGO)
