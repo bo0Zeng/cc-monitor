@@ -501,7 +501,7 @@ export class McpSection {
     const note = document.createElement("span");
     note.className = "settings-hint";
     note.textContent =
-      "跨机 user scope（机器全局）MCP · 只读。要管理远端**项目级** .mcp.json：在上方项目目录填/选远端项目路径。";
+      "跨机 user scope（机器全局）MCP · 只读。要管理远端项目级的 .mcp.json：在上方项目目录填/选远端项目路径。";
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className =

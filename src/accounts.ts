@@ -490,7 +490,7 @@ export function accountStatusBadge(
         text: "api-key（中转未运行）",
         warn: true,
         title:
-          "这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被**当场拒**" +
+          "这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被当场拒掉" +
           "（不是静默失败：中转没起来与网络坏了在 claude 那边长得一模一样，" +
           "所以这一条在起会话那一侧就拦下来）。请先起本机后端。",
       };
@@ -498,15 +498,15 @@ export function accountStatusBadge(
     // 三种「没配上」的成因，各说各的 —— **合成一句就等于又写下一句说不准的话**。
     const why =
       local != null
-        ? "apikey 凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。" +
+        ? "apikey 凭据文件里没有这个账号的一行 ⇒ cc-monitor 不会替它配 base URL。" +
           "要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 " +
           "shell 环境里配好第三方端点。"
         : relay?.scope === "remote"
-          ? "cc-monitor 今天只给**本机**会话配 base URL；**远端**这一半还不做" +
+          ? "cc-monitor 今天只给本机会话配 base URL；远端这一半还不做" +
             "（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上" +
             "自己配好第三方端点。"
           : "cc-monitor 只在两件事都成立时替它配端点（base URL）：① apikey 凭据文件里有这个" +
-            "账号 id 的一行；② 本机中转在跑。**这一处没被告知它属于哪一半、那两条成不成立**，" +
+            "账号 id 的一行；② 本机中转在跑。这一处没被告知它属于哪一半、那两条成不成立，" +
             "所以不替它下判断。";
     return {
       text: "api-key（未配置端点）",
