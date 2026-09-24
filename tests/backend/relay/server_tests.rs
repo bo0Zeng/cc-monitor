@@ -3029,7 +3029,7 @@ fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
 /// （`D2RUN`），而真机后果是 `--relay` 整个起不来。今天那条接线住 `run_reading`，
 /// 取值器与执行体都注入 ⇒ 本条打得到它，**且不碰进程环境**。
 ///
-/// 期望值全是**手写字面量**，不拿被测的 `ENV_PORT` / `ENV_UPSTREAM` 去算。
+/// 期望值全是**手写字面量**，不拿被测的 `ENV_PORT` / 层 2 那张表里的旋钮名去算。
 ///
 /// ⚠⚠ **名字只说它证得了的那一半**〔铁律 15 自查，本轮我自己写的第一版就犯了同一种病〕：
 /// 我第一版把它叫 `the_relay_entry_reads_each_env_var_into_its_own_config_slot`
