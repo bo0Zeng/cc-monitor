@@ -1886,6 +1886,174 @@
   border-color: var(--border-strong);
 }
 
+/* PN1b 选图（设计/97 §7）：选择器 · 旋钮行 · 盖在气泡画布上的图层。
+   图里的线型按 data-conf 画（CP3：确定 / 派发 / 按名字凑 / 混合 看起来必须不同）。 */
+.panorama-diagram-select {
+  padding: 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-small);
+}
+
+.panorama-diagram-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 16px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.panorama-diagram-bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.panorama-diagram-bar input[type="number"] {
+  width: 56px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+}
+
+.panorama-diagram {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  z-index: var(--z-overlay);
+}
+
+.panorama-diagram-note {
+  padding: 10px 16px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+
+.panorama-diagram-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.panorama-diagram-canvas [data-node] rect {
+  fill: var(--bg-2);
+  stroke: var(--border-strong);
+  stroke-width: 1.2;
+}
+
+.panorama-diagram-canvas [data-node] {
+  cursor: pointer;
+}
+
+.panorama-diagram-canvas [data-node]:hover rect,
+.panorama-diagram-canvas [data-node]:focus rect {
+  stroke: var(--accent);
+}
+
+.panorama-diagram-canvas [data-node][data-focus] rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.panorama-diagram-canvas text {
+  fill: var(--text);
+  font-size: 12px;
+  text-anchor: middle;
+}
+
+.panorama-diagram-canvas text[data-line="sub"],
+.panorama-diagram-canvas text[data-edge-label] {
+  fill: var(--text-2);
+  font-size: 10px;
+}
+
+.panorama-diagram-canvas [data-arrow] {
+  fill: var(--text-2);
+}
+
+.panorama-diagram-canvas [data-edge] line {
+  stroke: var(--text-2);
+  fill: none;
+}
+
+.panorama-diagram-canvas [data-conf="exact"] line {
+  stroke-width: 2.6;
+}
+
+.panorama-diagram-canvas [data-conf="dispatch"] line,
+.panorama-diagram-canvas [data-conf="implements"] line {
+  stroke-width: 1.4;
+  stroke-dasharray: 6 4;
+}
+
+.panorama-diagram-canvas [data-conf="guess"] line {
+  stroke-width: 1.2;
+  stroke-dasharray: 2 4;
+  stroke: var(--warn);
+}
+
+.panorama-diagram-canvas [data-conf="mixed"] line,
+.panorama-diagram-canvas [data-conf="composes"] line {
+  stroke-width: 1.2;
+}
+
+.panorama-diagram-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 6px 16px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  border-top: 1px solid var(--border-strong);
+}
+
+.panorama-diagram-legend [data-conf]::before {
+  content: "";
+  display: inline-block;
+  width: 26px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 2px solid var(--text-2);
+}
+
+.panorama-diagram-legend [data-conf="exact"]::before {
+  border-top-width: 3px;
+}
+
+.panorama-diagram-legend [data-conf="dispatch"]::before,
+.panorama-diagram-legend [data-conf="implements"]::before {
+  border-top-style: dashed;
+}
+
+.panorama-diagram-legend [data-conf="guess"]::before {
+  border-top-style: dotted;
+  border-top-color: var(--warn);
+}
+
+.panorama-diagram-legend [data-conf="mixed"]::before,
+.panorama-diagram-legend [data-conf="composes"]::before {
+  border-top-width: 1px;
+}
+
+.panorama-diagram-honesty {
+  padding: 6px 16px 8px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  background: var(--bg-2);
+}
+
 .panorama-edge-line {
   font-size: 10px;
   color: var(--text-faint);
