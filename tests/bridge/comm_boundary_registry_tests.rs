@@ -614,7 +614,7 @@ fn population_claimed_in_prose(module_src: &str) -> usize {
 }
 
 /// **层 2 的住址前缀** —— 下面那条「成员资格不传递」判据的人群。
-const LAYER_TWO_PREFIX: &str = "src/backend/relay/accounts/";
+const LAYER_TWO_PREFIX: &str = "src/backend/accounts/";
 
 /// 层 2 今天有几份文件。**相等，不是地板** —— 多一份就回来改这个数并重读下面那条。
 const LAYER_TWO_FILES: usize = 4;

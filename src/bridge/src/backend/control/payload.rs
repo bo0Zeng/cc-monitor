@@ -823,7 +823,27 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
     format!("$env:ANTHROPIC_BASE_URL='{base_url}'; ")
 }
 
-/// 「这次拉起要不要走中转」的**唯一判断口**〔`§0e` 裁一：**只接 api-key 号**〕。
+/// apikey 凭据文件里那些行**属于哪一家 agent**〔条 49〕。
+///
+/// # 为什么要有这个值
+///
+/// 后端那张表的键今天是 **agent ＋ 账号**（`src/backend/relay/accounts/table.rs`），不是账号：
+/// claude-code 的 3 号账号与 codex 的 3 号账号是两行。而凭据文件的格式（`creds-core`）
+/// **今天没有 agent 这一维** —— 它是界面上给 claude-code 的账号配第三方 key 时写出来的，
+/// 每一行都是这一家的。⇒ 本文件判「这个号在不在表里」时，**agent 也得对得上**，
+/// 否则别家拿同一个账号 id 起会话会被注入一条后端必回 404 的路由（或更早那一版：错发到 Anthropic）。
+///
+/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::CREDENTIALS_FILE_AGENT`，
+/// 由后端那条 `the_credentials_file_agent_is_the_same_on_both_halves` 现抠**本行的字面量**对拍；
+/// 本侧再由 `payload_tests` 钉它等于 claude-code 那个适配器的 `id()`（两侧异源）。
+pub const APIKEY_TABLE_AGENT: &str = "claude-code";
+
+/// 「这次拉起要不要**改写 apikey 端点**」的**唯一判断口**〔`§0e` 裁一：**只接 api-key 号**〕。
+///
+/// ⚠ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕它问的是**账号层**的事（这个号有没有第三方 key、
+/// 要不要把端点改写掉），**不是**「要不要走中转」—— 改写恰好经由本机中转落地，但「过不过中转」
+/// 是层 1 的事，将来对每一条会话都成立（`设计/20 §3.2` 表里无行那一格的 `/t/`）。
+/// 本函数先前的名字（旧名见 `设计/90 §1.2` 那张对照表的左列）与这一行头注都用中转的名字说账号层的事，两处都改了。
 ///
 /// # 判据是「表里有没有这一行」，不是「这个号看起来是不是 api-key 号」
 ///
@@ -837,6 +857,11 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 ///
 /// ⇒ **没配第三方 key 的号一个字节都不受影响**：`accounts` 里没有它 ⇒ 本函数回 `None`
 /// ⇒ 前缀逐字节与本件之前相同（`KH2B5` 的对照就打这一格）。
+///
+/// 🔴 〔条 49〕「表里有这一行」说的是 **(agent, 账号) 这一对**，不是账号：
+/// `agent` 不是 [`APIKEY_TABLE_AGENT`] ⇒ 那一家在表里**一行都没有** ⇒ `None`（照旧直连，不注入）。
+/// ⚠ 为什么是「不注入」而不是「拒绝起会话」：表里无行的那一格今天的正确行为就是「照旧走」
+/// （`设计/20 §3.2` 第 4 行），与账号 id 查不到同一处置；拒绝只给「有行、中转却没在跑」那一格。
 /// ⚠ **第三个入参刻意不叫 `relay_running`**〔`D6 阻-4`，08-29〕：
 /// `history.rs` 那道人群闸数的是**标识符 `relay_running` 在生产段里出现几次**
 /// （定义 1 + 缝里那一处 1 = 2），一个同名的形参会让那个数恒多两处、闸就只能靠一个
@@ -851,7 +876,7 @@ pub fn apikey_endpoint_for(
     let Some(id) = account_id else {
         return Ok(None);
     };
-    if !rows.iter().any(|r| r == id) {
+    if agent != APIKEY_TABLE_AGENT || !rows.iter().any(|r| r == id) {
         return Ok(None);
     }
     if !running {
@@ -859,7 +884,8 @@ pub fn apikey_endpoint_for(
         //   把它渲染成一条指向没人听的口的 URL，症状会长成「claude 连不上 API」——
         //   与网络故障同形，而这一条是我们自己的责任。⇒ 在**起会话那一侧**当场说出来。
         return Err(refuse(format!(
-            "账号 {id:?} 配了第三方端点（apikey 表里有它这一行），但**本机中转没在跑** ——\n\
+            "apikey 端点改写不可用：账号 {id:?} 配了第三方端点（apikey 表里有它这一行），\
+             但改写要经过的**本机中转没在跑** ——\n\
              这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败，\
              而真正的原因在我们这一侧。\n\
              ⇒ 先起本机后端（设置 → 本机后端），或把该账号那一行从凭据文件里去掉。"
