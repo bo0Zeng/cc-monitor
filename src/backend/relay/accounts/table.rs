@@ -266,7 +266,7 @@ pub(crate) const WHY_PLAINTEXT_OFF_LOOPBACK: &str =
 
 /// `auth_style` 写了一个认不出的词。**刻意不回落成默认值**。
 pub(crate) const WHY_AUTH_STYLE_UNKNOWN: &str =
-    "auth_style 写的不是这个中转认得的值之一（认得的那几个见下面那行现算的清单）";
+    "auth_style 写的不是账号层认得的值之一（认得的那几个见下面那行现算的清单）";
 
 /// `auth_style` 说「一个鉴权头都不发」，而同一行又配了一把 key。
 ///

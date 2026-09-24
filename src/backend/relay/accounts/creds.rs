@@ -131,12 +131,16 @@ pub(crate) fn announce(
     out: &mut dyn std::io::Write,
 ) -> usize {
     let mut n = 0usize;
+    // ⚠ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕本层每一行日志的前缀是 `[apikey]`，**不是** `[relay]`：
+    //   `--relay` 这一个进程同时承载两层，而先前两层的日志共用一个 `[relay]` —— 读日志的人
+    //   分不出「中转（搬字节）出事了」还是「apikey 那张表出事了」，影响面就判不出来。
+    //   `[relay]` 只留给层 1 自己那几行（监听 · 连上游 · 在途上界）。
     // ① 路径 —— `KS9` 的「文档化」就落在这一行。**总是印**，配没配都印。
-    let _ = writeln!(out, "[relay] credentials file: {}", loaded.path.display());
+    let _ = writeln!(out, "[apikey] credentials file: {}", loaded.path.display());
     n += 1;
 
     if let Some(p) = &loaded.problem {
-        let _ = writeln!(out, "[relay] credentials problem: {p}");
+        let _ = writeln!(out, "[apikey] credentials problem: {p}");
         n += 1;
     }
 
@@ -144,12 +148,12 @@ pub(crate) fn announce(
     match &loaded.verdict {
         Verdict::OwnerOnly => {}
         Verdict::TooWide { how, fix } => {
-            let _ = writeln!(out, "[relay] credentials permissions too wide: {how}");
-            let _ = writeln!(out, "[relay] how to fix: {fix}");
+            let _ = writeln!(out, "[apikey] credentials permissions too wide: {how}");
+            let _ = writeln!(out, "[apikey] how to fix: {fix}");
             n += 2;
         }
         Verdict::Undetermined { why } => {
-            let _ = writeln!(out, "[relay] credentials permissions unknown: {why}");
+            let _ = writeln!(out, "[apikey] credentials permissions unknown: {why}");
             n += 1;
         }
     }
@@ -161,7 +165,7 @@ pub(crate) fn announce(
     for r in rejected {
         let _ = writeln!(
             out,
-            "[relay] credentials: this account cannot be used: {:?} - {}",
+            "[apikey] credentials: this account cannot be used: {:?} - {}",
             r.id, r.why
         );
         n += 1;
@@ -181,7 +185,7 @@ pub(crate) fn announce(
             .join(" | ");
         let _ = writeln!(
             out,
-            "[relay] credentials: auth_style must be one of: {legal}"
+            "[apikey] credentials: auth_style must be one of: {legal}"
         );
         n += 1;
     }
@@ -194,7 +198,7 @@ pub(crate) fn announce(
     for note in notes {
         let _ = writeln!(
             out,
-            "[relay] credentials: this account is not on the default path: {:?} - {}",
+            "[apikey] credentials: this account is not on the default path: {:?} - {}",
             note.id, note.what
         );
         n += 1;
@@ -206,15 +210,15 @@ pub(crate) fn announce(
     if rows > 0 {
         let _ = writeln!(
             out,
-            "[relay] credentials: configured, {rows} account(s) routable"
+            "[apikey] credentials: configured, {rows} account(s) routable"
         );
     } else {
-        let _ = writeln!(out, "[relay] credentials: not configured");
+        let _ = writeln!(out, "[apikey] credentials: not configured");
         // ⚠ 文件不在时**连模板一起印** —— 否则「导入」这条要靠猜（`KS9` 逐字）。
         if loaded.problem.is_none() {
             let _ = writeln!(
                 out,
-                "[relay] create that file to configure one; it is plain JSON:\n{}",
+                "[apikey] create that file to configure one; it is plain JSON:\n{}",
                 store::TEMPLATE
             );
             n += 1;

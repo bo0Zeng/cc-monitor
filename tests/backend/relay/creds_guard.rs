@@ -137,67 +137,67 @@ mod tests {
             // ⚠ 〔`设计/20 §7` 步 1〕它**搬家了**：热重载整块归层 2，住址从
             //   `server.rs` 变成 `accounts/mod.rs`。话一个字没改。
             "accounts/mod.rs",
-            "[relay] 凭据文件读不成表，**保留上一张表不动**",
+            "[apikey] 凭据文件读不成表，**保留上一张表不动**",
             "`D2 阻-2`：重载时解析失败 —— **不把表换成空**（空表 = 全部 404），\
              留住上一张能用的、只出声。这一形是「表可重载」之后新长出来的",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials file:",
+            "[apikey] credentials file:",
             "凭据文件在哪（`KS9` 路径文档化）",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials problem:",
+            "[apikey] credentials problem:",
             "文件读不动 / 解析不了",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials permissions too wide:",
+            "[apikey] credentials permissions too wide:",
             "权限过宽（`KS11`）",
         ),
         (
             "accounts/creds.rs",
-            "[relay] how to fix:",
+            "[apikey] how to fix:",
             "怎么修（`KS11` 要求两样都有）",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials permissions unknown:",
+            "[apikey] credentials permissions unknown:",
             "查不出权限，也要出声",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: this account cannot be used:",
+            "[apikey] credentials: this account cannot be used:",
             "一条账号进不了路由表（id 当不了路由段 / `base_url` 解析不了）—— \
              `K-H2`：静默丢一行的症状是「我明明配了，中转永远 404」",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: configured",
+            "[apikey] credentials: configured",
             "配了 —— **只印这个布尔与进得了表的条数**，不印长度、不印掩码",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: auth_style must be one of:",
+            "[apikey] credentials: auth_style must be one of:",
             "有一条的 `auth_style` 认不出时，把认得的那几个**现算**着印出来（`K-R1`）——\
              它是给正在排错的人看的最后一句话，所以不许是一份会变旧的字面量清单",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: this account is not on the default path:",
+            "[apikey] credentials: this account is not on the default path:",
             "一条**进了表、但行为与默认不同**的账号（`K-R1`：带了路径前缀 / 换了鉴权头形状）。\
              它与上面那条「cannot be used」是两件事：这一条**照发**，只是发出去的字节不同 ⇒ \
              它错了的症状是上游的 404 / 401，与「上游挂了」同形，必须在启动时说出来",
         ),
         (
             "accounts/creds.rs",
-            "[relay] credentials: not configured",
+            "[apikey] credentials: not configured",
             "没配",
         ),
         (
             "accounts/creds.rs",
-            "[relay] create that file to configure one",
+            "[apikey] create that file to configure one",
             "没配时印模板",
         ),
     ];
@@ -613,6 +613,31 @@ mod tests {
             LOG_SITES.len(),
             found
         );
+        // ★ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕**前缀按层分，两向**：
+        //   住层 2（`accounts/`）的那几行 ⇔ 前缀是 `[apikey]`；其余（层 1）⇔ 前缀是 `[relay]`。
+        //   `--relay` 一个进程承载两层，先前两层共用 `[relay]` ⇒ 读日志的人判不出是哪一层出的事。
+        //   ⚠ 反空真：两边都得**非空**，否则「前缀按层分」在一个只剩一层的表上恒真。
+        //   ⚠ 本条量的是**登记表**；登记表与盘上逐条对上由下面那一段钉着（同一条判据里）。
+        let is_layer_two = |f: &str| f.starts_with("accounts/");
+        let two = LOG_SITES.iter().filter(|(f, _, _)| is_layer_two(f)).count();
+        let one = LOG_SITES.len() - two;
+        assert!(
+            two > 0 && one > 0,
+            "登记表里只剩一层的日志（层 2 {two} 行 · 层 1 {one} 行）—— 下面那条「前缀按层分」在空转"
+        );
+        for (file, head, _) in LOG_SITES {
+            assert_eq!(
+                head.starts_with("[apikey] "),
+                is_layer_two(file),
+                "{file} “{head}”：前缀与它住的那一层对不上。\n\
+                 层 2（apikey / 账号）的日志用 `[apikey]`，层 1（中转，搬字节）用 `[relay]` —— \
+                 **不许用中转的名字说账号层的事**（`设计/20 §6`）。"
+            );
+            assert!(
+                head.starts_with("[apikey] ") || head.starts_with("[relay] "),
+                "{file} “{head}”：前缀两个都不是"
+            );
+        }
         // 逐条对上（不是只对数量 —— 数量对得上而内容换了一批，那也是漂移）。
         for (file, head, _) in LOG_SITES {
             assert!(

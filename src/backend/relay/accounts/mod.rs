@@ -209,7 +209,7 @@ impl Accounts {
         // ⚠ 「一条都没配」与「读坏了」是两回事：前者 `problem` 是 `None`、accounts 空，
         //   那是一个**合法**状态（谁都不走中转），照换不误。
         if let Some(why) = loaded.problem.as_deref() {
-            eprintln!("[relay] 凭据文件读不成表，**保留上一张表不动**（不是换成空表）：{why}");
+            eprintln!("[apikey] 凭据文件读不成表，**保留上一张表不动**（不是换成空表）：{why}");
             // 印记也**不更新** —— 下次请求进来还会再试一次，人把文件改回来就自动恢复。
             return;
         }
