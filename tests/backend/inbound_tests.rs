@@ -383,6 +383,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     // 〔波 5 ㈡ 09-23〕写面另外五条同档，理由同 `files-create`。
     for c in [
         "files-create",
+        "files-commit-upload",
         "files-chmod",
         "files-delete",
         "files-mkdir",
@@ -424,6 +425,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-state",
         "capture-pane",
         "files-create",
+        "files-commit-upload",
         "files-chmod",
         "files-delete",
         "files-mkdir",

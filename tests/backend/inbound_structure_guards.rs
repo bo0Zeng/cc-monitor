@@ -139,6 +139,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "capture-pane"
                 | "files-browse"
                 | "files-create"
+                | "files-commit-upload"
                 | "files-chmod"
                 | "files-delete"
                 | "files-mkdir"
@@ -191,6 +192,7 @@ fn every_registered_command_declares_its_run_kind() {
         "capture-pane",
         "files-browse",
         "files-create",
+        "files-commit-upload",
         "files-chmod",
         "files-delete",
         "files-mkdir",
@@ -394,9 +396,12 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     //   ⇒ 本条的人群必须**先把写那一面减掉**，否则它会把写那一面当成「读族漏声明了一条」
     //   （现打：不减的话逐字报 `files-create` 在 wired 里而不在 declared 里）。
     //   ⚠ 减法是**按那张表**减，不是按名字手写一份 —— 手写第二份就是下一个漂移源。
+    // 〔F7c · 第三波 09-24〕写那一侧从此是**两张表**：写面 `MANAGE_COMMANDS` ＋ 上传提交
+    //   `files_commit::COMMIT_COMMANDS`（`readonly_guard` 第三层第二个登记的模块）。减法按两张表的并。
     let write_face: std::collections::BTreeSet<String> =
         crate::control::files_write::manage_command_names()
             .into_iter()
+            .chain(crate::control::files_commit::commit_command_names())
             .map(str::to_string)
             .collect();
     assert!(
@@ -439,7 +444,21 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
          而 `readonly_guard` 第三层那条「只从声明过的那一面来」判的正是这张表。"
     );
     // ★ 写那一面的每条命令，`codes` / `fields` 与它自己的登记逐字对上（同读族那一半）。
-    for cap in crate::control::files_write::MANAGE_COMMANDS {
+    type WriteAnswer = fn(&str, &serde_json::Value) -> crate::control::files_write::Answer;
+    let tables: [(&[crate::control::files_write::ManageCommand], WriteAnswer); 2] = [
+        (
+            crate::control::files_write::MANAGE_COMMANDS,
+            crate::control::files_write::answer_wire,
+        ),
+        (
+            crate::control::files_commit::COMMIT_COMMANDS,
+            crate::control::files_commit::answer_wire,
+        ),
+    ];
+    for (cap, answer) in tables
+        .iter()
+        .flat_map(|(t, a)| t.iter().map(move |c| (c, *a)))
+    {
         let spec = super::REGISTRY
             .iter()
             .find(|s| s.name == cap.name)
@@ -467,7 +486,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             cap.name
         );
         // 真的调一次：分派必须够得到它（`unknown_command` / 不认的名字都算断线）。
-        let out = crate::control::files_write::answer_wire(cap.name, &serde_json::json!({}));
+        let out = answer(cap.name, &serde_json::json!({}));
         if let Err((code, msg)) = out {
             assert!(
                 cap.codes.contains(&code),

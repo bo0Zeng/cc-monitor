@@ -91,6 +91,7 @@ pub const COMMANDS: &[&str] = &[
     "capture-pane",
     "files-browse",
     "files-chmod",
+    "files-commit-upload",
     "files-create",
     "files-delete",
     "files-find",
@@ -648,6 +649,24 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // ── 〔F7c · 第三波 · 2026-09-24〕`设计/60 §13`：上传的**提交** ──────────────────────
+    //
+    // 🔴 SFTP 缩成只做传输之后，上传只写暂存区（`~/.cc-monitor/staging/<key>.part`）；
+    //   把它挪进用户目标的**那一下**在这里 —— 用户逐字「现在只允许后端的文件管理部分写文件」。
+    //   处理器住 `control/files_commit.rs`（`readonly_guard` 第三层第二个登记的模块），
+    //   本文件照旧是那一层唯一的门。阻塞档：同步文件系统 I/O（围栏的 `canonicalize` ＋ 改名）。
+    CommandSpec {
+        name: "files-commit-upload",
+        doc_anchor: Some("#### `files-commit-upload`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["bytes", "key", "overwrite", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_commit::answer_wire(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
