@@ -169,6 +169,25 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
              刻意做成这样好让秤 F3 两个方向都喂得进去（`tests/bridge/sftp_copy_f3_tests.rs`）；\
              围栏在命令入口上，与 `upload_atomic` 那一条同形。",
     ),
+    // ---- 〔F7c · 第三波 09-24〕`设计/60 §13`：上传**只写暂存区**，路径**由代码定** ----
+    (
+        "sftp_pool.rs",
+        "upload_to_staging",
+        "远端",
+        "上传的唯一新形状：本机文件 → `~/.cc-monitor/staging/<key>.part`（相对 SFTP 起始目录）。\
+             **路径由代码定**（`staging_part(key)`，`key` 由本机路径 · 大小 · 修改时间派生；\
+             函数签名里**没有目标路径**）⇒ 不需要 Claude 数据围栏 —— 它写不到用户目录里去。\
+             撤 ⇒ 删自己那份暂存件；失败 ⇒ 留着给续传。落进用户目标的那一下归后端 \
+             `files-commit-upload`（先过围栏）。「暂存区之外零写」另有一条行为判据\
+             （`sftp_staging_tests::a_staging_upload_writes_nothing_outside_the_staging_area`）。",
+    ),
+    (
+        "sftp_pool.rs",
+        "ensure_staging_dir",
+        "远端",
+        "建暂存区**最后那一段**（`.cc-monitor/staging`）。**路径由代码定**；上一级 \
+             `~/.cc-monitor`（后端的家）不在 ⇒ 报错，**不顺手建**（`D11`：后端是给定的）。",
+    ),
     (
         "sftp_pool.rs",
         "download_inner",

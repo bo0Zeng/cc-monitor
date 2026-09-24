@@ -356,26 +356,21 @@ fn never_cancelled() -> Arc<AtomicBool> {
     Arc::new(AtomicBool::new(false))
 }
 
-/// 一条**收得下进度**的 tauri channel：把每条 `transferred` 攒进一个 `Vec`。
+/// 一个**收得下进度**的回调：把每条「已传」攒进一个 `Vec`。
 ///
 /// ★ 第一条进度报的就是**续传起点** —— 那是 `download_inner` 的头一个动作，
 /// 也是本秤判「到底从哪儿接上的」的第二个针（第一个针在服务端的偏移表里）。
-fn progress_sink() -> (
-    tauri::ipc::Channel<super::TransferProgress>,
-    Arc<Mutex<Vec<u64>>>,
-) {
+///
+/// 〔F7c · 第三波 09-24〕两条传输核心的进度口从 `tauri::ipc::Channel` 换成了一个普通回调
+/// （`Fn(已传, 总共)`）：传输台跑在 monitor 里、进度走通道的订阅流，不再有 webview 那一跳。
+/// 老面板那两条 Tauri 命令在入口处把 channel 包成这个回调 —— 本秤喂的是核心，不经那一层。
+fn progress_sink() -> (impl Fn(u64, u64) + Sync, Arc<Mutex<Vec<u64>>>) {
     let seen: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
     let sink = seen.clone();
-    let ch = tauri::ipc::Channel::new(move |body: tauri::ipc::InvokeResponseBody| {
-        // body 是已序列化的 JSON 文本（命令 IPC 恒走 `serde_json`）。
-        // 判据**自己解**，不复用被测侧的类型 —— 两侧同源会恒真。
-        let raw = body.deserialize::<serde_json::Value>().unwrap_or_default();
-        if let Some(n) = raw.get("transferred").and_then(|v| v.as_u64()) {
-            sink.lock().unwrap().push(n);
-        }
-        Ok(())
-    });
-    (ch, seen)
+    (
+        move |transferred: u64, _total: u64| sink.lock().unwrap().push(transferred),
+        seen,
+    )
 }
 
 /// 自旋到 `cond` 成立为止（每轮让出执行权）。超过 `ROUNDS` 轮就当没成立，回 `false`。

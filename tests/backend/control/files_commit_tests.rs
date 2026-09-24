@@ -198,3 +198,83 @@ fn the_wire_face_requires_an_explicit_overwrite_and_knows_only_its_command() {
     assert_eq!(e.0, "bad_args");
     assert_eq!(commit_command_names(), vec!["files-commit-upload"]);
 }
+
+// ═══ 孤儿扫（`设计/60 §13.2 ④`：暂存区清理只靠事件 —— 这一格的事件是「一次提交成功」）═══
+
+/// 把一份暂存件的修改时间拨到 `secs`（判据自己定时间，不等墙钟）。
+fn set_mtime(p: &Path, secs: u64) {
+    let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs);
+    std::fs::File::options()
+        .write(true)
+        .open(p)
+        .expect("开暂存件")
+        .set_modified(t)
+        .expect("拨修改时间");
+}
+
+/// ★ 老的删；新的留；调用方手上那一份留（哪怕老）；不是我们形状的名字一个不碰。
+#[test]
+fn the_sweep_removes_only_stale_parts_of_our_own_shape() {
+    let (home, _root) = rig("sweep");
+    let now: u64 = 2_000_000_000;
+    let old = now - STAGING_STALE_SECS - 1;
+    let fresh = now - STAGING_STALE_SECS + 60;
+    let k_old = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let k_fresh = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    for (k, t) in [(k_old, old), (k_fresh, fresh), (KEY, old)] {
+        set_mtime(&stage(&home, k, b"z"), t);
+    }
+    let stranger = home.join(STAGING_DIR).join("notes.part");
+    std::fs::write(&stranger, b"not ours").unwrap();
+    set_mtime(&stranger, old);
+    let gone = sweep_stale(&home, now, KEY);
+    assert_eq!(gone, vec![format!("{k_old}{PART_SUFFIX}")]);
+    let staged = |k: &str| home.join(STAGING_DIR).join(format!("{k}{PART_SUFFIX}"));
+    assert!(!staged(k_old).exists());
+    assert!(staged(k_fresh).exists(), "新的被扫了 —— 一趟正在传的会被删");
+    assert!(staged(KEY).exists(), "调用方手上那一份被扫了");
+    assert!(stranger.exists(), "不是我们形状的名字被动了");
+}
+
+/// ★ 暂存区里一条**指出去的链接**（名字是我们的形状、而且很老）不删 —— 删之前先过围栏。
+#[cfg(unix)]
+#[test]
+fn the_sweep_never_follows_a_link_out_of_the_staging_area() {
+    let (home, root) = rig("sweeplink");
+    let outside = root.join("precious.txt");
+    std::fs::write(&outside, b"keep me").unwrap();
+    let link = home.join(STAGING_DIR).join(format!("{KEY}{PART_SUFFIX}"));
+    std::os::unix::fs::symlink(&outside, &link).unwrap();
+    let gone = sweep_stale(&home, u64::MAX / 2, "ffffffffffffffffffffffffffffffff");
+    assert!(gone.is_empty(), "扫到了一条链接：{gone:?}");
+    assert_eq!(std::fs::read(&outside).unwrap(), b"keep me");
+}
+
+/// 🔴 **提交成功就是扫的那个事件**：经线上那一面提交一次 ⇒ 老孤儿没了。
+///
+/// ⚠ 从 `answer_commit_at` 进（家由判据给）：不改进程的 `HOME` —— 那是全进程共享的。
+#[test]
+fn a_successful_commit_is_the_event_that_sweeps() {
+    let (home, root) = rig("sweepwire");
+    let orphan = "cccccccccccccccccccccccccccccccc";
+    set_mtime(&stage(&home, orphan, b"old"), 1);
+    stage(&home, KEY, b"payload");
+    answer_commit_at(
+        &home,
+        &serde_json::json!({
+            "key": KEY,
+            "root": root.to_string_lossy(),
+            "rel": "landed.bin",
+            "overwrite": false,
+        }),
+    )
+    .expect("提交该成");
+    assert_eq!(std::fs::read(root.join("landed.bin")).unwrap(), b"payload");
+    assert!(
+        !home
+            .join(STAGING_DIR)
+            .join(format!("{orphan}{PART_SUFFIX}"))
+            .exists(),
+        "提交成功了，老孤儿还在 —— 「提交」那个事件没接上扫"
+    );
+}
