@@ -14,6 +14,9 @@
  * 4. **表的形状**：key 三段式 · kind 五档 · 占位符只许具名 · `args` 与 `zh` 里的占位符两向相等。
  * 5. **`kind == "title"` 的条数不为 0**（`91 §5.1.1` 决定 4 的反空真：全填成 body 会让 R5 静默空转）。
  *
+ * 标题以 `[C-xx]` 开头的两条是 `src/shared/copy/rules.json` 里那两条「机检」规矩的实现
+ * （`copy-rules.vitest.ts` 按这个前缀做规矩 ↔ 实现两向对拍，改标题要连规矩表一起改）。
+ *
  * # 不判什么（诚实段）
  *
  * - **Rust 一侧没有调用点**（本波只抽了一个 TS 样板区），本文件也不扫 `.rs`。
@@ -22,30 +25,16 @@
  * - **不判全集**：没抽进表的文案今天仍是散在源码里的字面量，归普查（K-T68）与 CP1 台账管。
  */
 import ts from "typescript";
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { productionTsFiles } from "../test-support/production-sources.ts";
-import { TABLE_PATH } from "./copy-support.ts";
+import { loadTable, NAMED_PH, type Table } from "./copy-support.ts";
 
 const KINDS = new Set(["title", "control", "action", "body", "error"]);
 const KEY_RE = /^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$/;
-const NAMED_PH = /\{([A-Za-z][A-Za-z0-9]*)\}/g;
 /** 取文口自己住的文件：它里头的 `copyText` 是定义，不是引用。 */
 const HOME = "src/copy-table.ts";
 const FN = "copyText";
-
-export interface Entry {
-  kind: string;
-  zh: string;
-  args: string[];
-  waive?: Record<string, string>;
-}
-export type Table = Record<string, Entry>;
-
-export function loadTable(path = TABLE_PATH): Table {
-  return (JSON.parse(readFileSync(path, "utf8")) as { entries?: Table }).entries ?? {};
-}
 
 /** 表自己的形状问题。 */
 export function tableProblems(table: Table): string[] {
@@ -135,11 +124,11 @@ describe("CP2a · 文案表：形状", () => {
     expect(Object.keys(table).length).toBeGreaterThan(0);
   });
 
-  it("key 三段式 · kind 五档 · 占位符只许具名 · args 与占位符两向相等", () => {
+  it("[C-K1] key 三段式 · kind 五档 · 占位符只许具名 · args 与占位符两向相等", () => {
     expect(tableProblems(table)).toEqual([]);
   });
 
-  it("kind == title 的条数不为 0（全填成 body 会让 R5 静默空转）", () => {
+  it("[C-K2] kind == title 的条数不为 0（全填成 body 会让 R5 静默空转）", () => {
     expect(Object.values(table).filter((e) => e.kind === "title").length).toBeGreaterThan(0);
   });
 });
