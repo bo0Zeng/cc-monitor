@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# cc-keepalive <to> [附言...]  —— 保活的**调用方**(设计 95 §3bis),不是 cc-bus 的功能。
+#
+# ## 它是什么
+#
+# 用户逐字:「保活本来就不应该他来搞,他的功能就是把会话注入 agent」
+#          「保活是调用 cc-bus,然后把保活文本换掉」。
+# ⇒ 本脚本只做一件事:调一次 `cc-send --kind keepalive`,**立即返回**。
+#   保活文本不在这里,在 kinds 表 `keepalive` 那一行的注入模板里(改措辞去改表,不改本脚本);
+#   `[附言...]` 会作为正文跟在那段模板后面(可空)。
+#   cc-bus 自己**不认识**「保活」这个词(判据在 `scripts/` 里现打它零出现)——
+#   它只是照 kinds 表注入:拦停**留**(别让对方结束本轮)· 敲门**关**(不往屏幕打字)·
+#   去重**关**(保活文本按定义重复,开着的话第二次就被静默 COALESCE 掉)。
+#
+# ## 多久一次、发给谁 —— 全是调用方的事
+#
+# 本脚本**不循环、不 sleep**(那是 cron / systemd timer 的活;cc-bus 的周期唤醒是登记在册的,
+# 不为一个调用方多开一处)。例:
+#   */10 * * * *  ~/.claude/skills/cc-bus/examples/cc-keepalive planner
+#
+# ## 身份
+#
+# 缺省以 `cc-keepalive` 的身份发(cron 里没有 tmux,`cc-whoami` 认不出人 ⇒ 会是 unknown);
+# 显式给 `CC_BUS_ID` 就用你给的。开了 ACL 时要在 policy.tsv 里放行这个发件人。
+#
+# ## ⚠ 买得到 / 买不到
+#
+# ✅ 对方**正在跑一轮**、想结束时:Stop 钩子把保活那段喂回去,拦下这次结束。
+# ❌ 对方**已经停在输入框前**(本轮早结束了):保活不敲门 ⇒ 它要等下一次想结束时才看到。
+#    这是 §3bis 那张表选的那一边(「敲门要关,否则每次保活都往对方屏幕打字」),不是漏。
+# ❌ 「对方还活着吗」—— 那是另一件事(登记 ≠ 在线),本脚本不探活;对方不在,消息就躺在收件箱里。
+set -euo pipefail
+to="${1:?用法: cc-keepalive <to> [附言...]}"; shift
+SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+: "${CC_BUS_ID:=cc-keepalive}"
+export CC_BUS_ID
+# `--new`:保活不是谁对谁的回复,不接因果链(不然 hops 会一路涨、撞灭环阀门)
+exec "$SELFDIR/../scripts/cc-send" --new --kind keepalive -- "$to" "$*"

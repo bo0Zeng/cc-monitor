@@ -38,6 +38,8 @@ done
 # 放示例配置(不覆盖已有;默认不激活任何阀门/ACL)
 [ -f "$BUSHOME/config.example" ]     || cp "$SKILLDIR/examples/config"     "$BUSHOME/config.example"
 [ -f "$BUSHOME/policy.tsv.example" ] || cp "$SKILLDIR/examples/policy.tsv" "$BUSHOME/policy.tsv.example"
+# kinds 表:随包那份本身就生效(脚本找不到 ~/.cc-bus/kinds.tsv 时用它);这里放一份 .example 供复制改
+[ -f "$BUSHOME/kinds.tsv.example" ]  || cp "$SKILLDIR/examples/kinds.tsv"  "$BUSHOME/kinds.tsv.example"
 
 echo "✅ 已安装:13 个命令 → $BINDIR;运行时根 → $BUSHOME"
 case ":$PATH:" in *":$BINDIR:"*) :;; *) echo "⚠ $BINDIR 不在 PATH,请加入";; esac

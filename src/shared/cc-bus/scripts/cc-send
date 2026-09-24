@@ -1,27 +1,36 @@
 #!/usr/bin/env bash
-# cc-send <to> <消息...>  组信封 v2 → 原子入队 → cc-busd 处理(不在则就地 source 库跑管线兜底)
+# cc-send [--new|--broadcast] [--kind <k>] <to> <消息...>
+#   组信封 v2 → 原子入队 → cc-busd 处理(不在则就地 source 库跑管线兜底)
+#   `--kind`:这条怎么注入(拦停 / 敲门 / 过哪些阀门 / 两个模板),查 kinds.tsv;缺省 msg = 老行为。
+#   不认识的 kind / 那一行不合法 ⇒ **当场 rc=2**(发信方还在,这时说最便宜;入队之后再发现就只能落回 msg)。
 set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)   # 解析 symlink,确保能找到同目录的 lib
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh"
 
-new_chain=0; msg_class="direct"
+new_chain=0; msg_class="direct"; kind="msg"
 while true; do
   case "${1:-}" in
     --new)       new_chain=1; shift;;                    # 强制新因果链(新话题)
     --broadcast) msg_class="broadcast"; new_chain=1; shift;;  # 广播:标记 class + 不接因果链
+    --kind)      [ $# -ge 2 ] || { echo "cc-send: --kind 后面要跟一个 kind 名" >&2; exit 2; }
+                 kind="$2"; shift 2;;
     --)          shift; break;;                          # 显式结束旗标(其后即使是 --xx 也当收件人)
     *) break;;
   esac
 done
-to="${1:?用法: cc-send [--new|--broadcast] <to> <消息...>}"; shift
+to="${1:?用法: cc-send [--new|--broadcast] [--kind <k>] <to> <消息...>}"; shift
 # 收件人 id 会拼进文件路径,白名单校验防路径穿越
 case "$to" in *[!A-Za-z0-9_-]*|'') echo "cc-send: 非法收件人 '$to'(仅 [A-Za-z0-9_-])" >&2; exit 2;; esac
 text="$*"
 from=$("$SELFDIR/cc-whoami" 2>/dev/null || echo unknown)   # 身份自动从 tmux 认领
 mkdir -p "$BUS/inbox" "$BUS/state" "$BUS/log" "$BUS/queue"
 route_load_config
+if ! kinds_lookup "$kind"; then
+  echo "cc-send: $KIND_WHY —— 没发" >&2
+  exit 2
+fi
 
 # ★★ **收件人根本不存在时要说一句**〔08-13 实测〕
 #
@@ -53,8 +62,8 @@ if [ "$new_chain" = 0 ] && [ -f "$lr" ]; then
 fi
 env=$(jq -cn --arg id "$id" --arg from "$from" --arg to "$to" --arg ts "$ts" \
    --arg text "$text" --arg class "$msg_class" --arg irt "$irt" \
-   --arg trace "$trace" --argjson hops "$hops" \
-   '{id:$id,from:$from,to:$to,ts:$ts,text:$text,class:$class,in_reply_to:(if $irt=="" then null else $irt end),trace:$trace,hops:$hops,prio:0}')
+   --arg trace "$trace" --argjson hops "$hops" --arg kind "$kind" \
+   '{id:$id,from:$from,to:$to,ts:$ts,text:$text,class:$class,kind:$kind,in_reply_to:(if $irt=="" then null else $irt end),trace:$trace,hops:$hops,prio:0}')
 
 # 原子入队。文件名用纳秒,给 F04 按序消费留更细的时间分辨率
 seq="$$-$RANDOM"
