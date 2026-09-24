@@ -800,7 +800,8 @@ pub(crate) async fn stream_read_remote_session(
     let mut cwd_seen: Option<String> = None;
     let mut chunk: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
     let mut total = 0u32;
-    let mut next_seq: u64 = 0;
+    // 〔U3b〕seq = **可计行号**（同本机那一支，住址 `session_skeleton·rs::LineNumberer`）
+    let mut numberer = crate::session_skeleton::LineNumberer::default();
     let mut first_line = true;
     loop {
         // ★〔G 审计〕原来是无界 `read_line`。下面那条 `MAX_SESSION_BYTES` 是**总量**且
@@ -842,28 +843,24 @@ pub(crate) async fn stream_read_remote_session(
             // 走这条路却假装读完了 —— 定框 E5 要的是「同一份数据走不同路得到同一个答案」。
             return Err(session_truncated_message(read_bytes, total));
         }
-        let trimmed = buf.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if first_line {
+        if first_line && !buf.trim().is_empty() {
             first_line = false;
-            if is_old_backend_hello(trimmed) {
+            if is_old_backend_hello(buf.trim()) {
                 return Err(OLD_BACKEND_MSG.to_string());
             }
         }
         // 与本地 stream_read_session_jsonl 同口径：parse + displayable 过滤 + per-file seq
-        let rec = match parse_line(trimmed) {
-            Ok(Some(r)) if r.is_displayable() => r,
-            _ => continue,
+        // 〔U3b〕先占号、后过滤（住址 `session_skeleton·rs::numbered_displayable`）
+        let Some((seq, rec)) =
+            crate::session_skeleton::numbered_displayable(&mut numberer, &buf, parse_line)
+        else {
+            continue;
         };
         if let JsonlRecord::User { cwd, .. } = &rec {
             if cwd_seen.is_none() {
                 cwd_seen = cwd.clone();
             }
         }
-        let seq = next_seq;
-        next_seq += 1;
         chunk.push(crate::bridge::JsonlLinePayload {
             session_id: session_id.clone(),
             cwd: cwd_seen.clone(),

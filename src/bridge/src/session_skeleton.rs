@@ -182,6 +182,62 @@ pub async fn read_session_index(
     })
 }
 
+/// 〔U3b〕**monitor 侧「这一行占不占 seq」的唯一住址** —— 与后端 `history_query·rs::line_counts`
+/// 同一口径（剥 BOM 再 `trim`，空了就不占号）。三个调用方：本机历史读（`history·rs::stream_read_session_jsonl`）·
+/// 远端历史读（`remote_history·rs::stream_read_remote_session`）· 按偏移取正文（[`range_payloads`]）。
+///
+/// # 为什么要有它
+///
+/// 查看器那两支原先只给**可显示**的记录编号（`permission-mode` 之类不占号）⇒ 查看器的 seq
+/// 与 watcher / 骨架索引的行号空间**不是同一个**，骨架接不上。改成「每个可计行占一个号、
+/// 不可显示的占号不出 payload」之后，三条读路与后端索引同一个空间：索引第 k 行 = seq `base+k`。
+///
+/// ⚠ 跨 crate 的对拍住 `tests/__fixtures__/skeleton-seq-space.jsonl`（＋同名 `.golden`）：后端索引与本类各自读同一份夹具、
+/// 各自对同一份金标准（两侧实现不同源）。
+#[derive(Debug, Default)]
+pub(crate) struct LineNumberer {
+    next: u64,
+}
+
+impl LineNumberer {
+    pub(crate) fn starting_at(base: u64) -> Self {
+        Self { next: base }
+    }
+
+    /// 一行原文 → `Some((seq, 去掉 BOM 与首尾空白的正文))`；不占号的行 ⇒ `None`。
+    pub(crate) fn number<'a>(&mut self, raw: &'a str) -> Option<(u64, &'a str)> {
+        let body = raw.trim_start_matches('\u{feff}').trim();
+        if body.is_empty() {
+            return None;
+        }
+        let seq = self.next;
+        self.next += 1;
+        Some((seq, body))
+    }
+
+    /// 已经发出去的号数（= 下一个号 − 起点）之外，调用方关心的只有「下一个号」。
+    pub(crate) fn next_seq(&self) -> u64 {
+        self.next
+    }
+}
+
+/// 〔U3b〕**先占号、后过滤** —— 两条历史读路与 [`range_payloads`] 共用的那一步。
+///
+/// 顺序就是全部要点：不可显示的记录（`permission-mode` …）与解析不出的行**照占号**、只是不出记录；
+/// 把占号挪到过滤之后，seq 就退回「可显示序号」、与索引对不上（`tests/bridge/session_skeleton_tests.rs`
+/// 的金标准那一格会红）。返回 `None` = 这一行不出记录（号可能已经占了）。
+pub(crate) fn numbered_displayable<'a, E>(
+    numberer: &mut LineNumberer,
+    raw: &'a str,
+    parse: impl FnOnce(&'a str) -> Result<Option<crate::messages::JsonlRecord>, E>,
+) -> Option<(u64, crate::messages::JsonlRecord)> {
+    let (seq, body) = numberer.number(raw)?;
+    match parse(body) {
+        Ok(Some(rec)) if rec.is_displayable() => Some((seq, rec)),
+        _ => None,
+    }
+}
+
 /// 把 `--read-session-from-offset … --until` 的输出行编成 payload。**纯函数**。
 ///
 /// `seq_base` = `offset` 那一行的 seq（取自索引）；第 k 个**可计行**是 `seq_base + k`
@@ -199,28 +255,22 @@ pub(crate) fn range_payloads(
     // 载荷上的 `origin` 字段本机不序列化、远端是机器名（与 live 行同一口径）
     let label = origin.host_name().map(str::to_string);
     let mut out = Vec::new();
-    let mut k: u64 = 0;
+    let mut numberer = LineNumberer::starting_at(seq_base);
     for l in lines {
-        if k >= max_lines {
+        if numberer.next_seq() >= seq_base + max_lines {
             break;
         }
-        if l.trim_start_matches('\u{feff}').trim().is_empty() {
+        let Some((seq, rec)) = numbered_displayable(&mut numberer, l, parse_line) else {
             continue;
-        }
-        let seq = seq_base + k;
-        k += 1;
-        if let Ok(Some(rec)) = parse_line(l) {
-            if rec.is_displayable() {
-                out.push(crate::bridge::JsonlLinePayload {
-                    session_id: session_id.to_string(),
-                    cwd: None,
-                    path: path.to_string(),
-                    seq,
-                    origin: label.clone(),
-                    message: rec,
-                });
-            }
-        }
+        };
+        out.push(crate::bridge::JsonlLinePayload {
+            session_id: session_id.to_string(),
+            cwd: None,
+            path: path.to_string(),
+            seq,
+            origin: label.clone(),
+            message: rec,
+        });
     }
     out
 }

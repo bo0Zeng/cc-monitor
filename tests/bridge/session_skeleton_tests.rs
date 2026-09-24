@@ -151,3 +151,108 @@ fn argv_puts_options_first_so_old_backends_fail_with_zero_bytes() {
         "args[1] 不是选项 ⇒ 老后端会真去读：{rng:?}"
     );
 }
+
+fn seq_space_golden() -> (Vec<(u64, Option<String>)>, u64) {
+    let golden = include_str!("../__fixtures__/skeleton-seq-space.golden");
+    let mut want = Vec::new();
+    let mut count = 0;
+    for l in golden.lines() {
+        if let Some(v) = l.strip_prefix("#count\t") {
+            count = v.parse().unwrap();
+        } else if !l.starts_with('#') {
+            let (s, u) = l.split_once('\t').unwrap();
+            want.push((s.parse().unwrap(), (u != "-").then(|| u.to_string())));
+        }
+    }
+    assert!(
+        !want.is_empty(),
+        "金标准一行都没抽到 —— 下面的相等在空集上绿"
+    );
+    (want, count)
+}
+
+fn uuid_of(body: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()?
+        .get("uuid")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// 〔U3b〕**跨 crate 的 seq 空间对拍**（monitor 这一侧）：本机历史读的切行法（`BufRead::lines`）
+/// 与远端历史读的切行法（按 `\n` 切、带着行尾）喂给同一个 `LineNumberer`，都必须对上**同一份**
+/// 金标准（后端索引在 `history_query_index_tests.rs` 对的也是它）。torn 残尾：本侧会给它编下一个号
+/// （读路不认 torn），索引不列它 —— 号仍在同一空间里（== count）。
+#[test]
+fn both_history_readers_number_lines_in_the_index_seq_space() {
+    use std::io::BufRead;
+    let data: &[u8] = include_bytes!("../__fixtures__/skeleton-seq-space.jsonl");
+    let (want, count) = seq_space_golden();
+    // 本机那一支：`BufRead::lines`
+    let mut n = LineNumberer::default();
+    let local: Vec<(u64, Option<String>)> = std::io::BufReader::new(data)
+        .lines()
+        .map_while(Result::ok)
+        .filter_map(|l| n.number(&l).map(|(s, b)| (s, uuid_of(b))))
+        .collect();
+    // 远端那一支：lossy 解码、按 `\n` 切、行尾留着
+    let text = String::from_utf8_lossy(data);
+    let mut n = LineNumberer::default();
+    let remote: Vec<(u64, Option<String>)> = text
+        .split_inclusive('\n')
+        .filter_map(|l| n.number(l).map(|(s, b)| (s, uuid_of(b))))
+        .collect();
+    for (name, got) in [("本机", local), ("远端", remote)] {
+        let (complete, torn) = got.split_at(want.len());
+        assert_eq!(complete, want.as_slice(), "{name}那一支的编号与索引对不上");
+        // torn 那行是半截 JSON ⇒ 取不出 uuid；要紧的是它的号 == count（仍在同一空间）
+        assert_eq!(torn, &[(count, None)], "{name}：torn 残尾");
+    }
+}
+
+/// 按偏移取回的那一段也在同一空间：可显示的出 payload、不可显示与非 JSON 的占号不出。
+#[test]
+fn range_payloads_on_the_golden_fixture() {
+    let data: &[u8] = include_bytes!("../__fixtures__/skeleton-seq-space.jsonl");
+    let text = String::from_utf8_lossy(data);
+    let lines: Vec<String> = text.lines().map(str::to_string).collect();
+    let (want, count) = seq_space_golden();
+    let got = range_payloads(
+        &lines,
+        0,
+        count,
+        "s",
+        "/p/s.jsonl",
+        &crate::origin::Origin::local(),
+    );
+    let seqs: Vec<u64> = got.iter().map(|p| p.seq).collect();
+    // 手算：0 user · 1 permission-mode（不可显示）· 2 assistant · 3 system · 4 非 JSON · 5 user
+    assert_eq!(seqs, vec![0, 2, 3, 5]);
+    assert!(seqs.iter().all(|s| want.iter().any(|(w, _)| w == s)));
+}
+
+/// 〔U3b〕两条历史读路**真的走**那个「先占号、后过滤」的住址，而且手里不再有自己的计数器。
+/// 金标准那一格测的是住址本身；这一格钉的是读路没绕开它（绕开 = 回到「可显示序号」、与索引对不上）。
+#[test]
+fn both_history_readers_go_through_the_one_numbering_home() {
+    for (name, src) in [
+        (
+            "history.rs",
+            include_str!("../../src/bridge/src/history.rs"),
+        ),
+        (
+            "remote_history.rs",
+            include_str!("../../src/bridge/src/remote_history.rs"),
+        ),
+    ] {
+        let prod = guard_core::production_code(src);
+        assert!(
+            guard_core::find_pinned(&prod, "session_skeleton::numbered_displayable(").is_ok(),
+            "{name}：没走（或不止一处走）`numbered_displayable`"
+        );
+        assert!(
+            !guard_core::contains_word(&prod, "next_seq"),
+            "{name}：读路里又长出了自己的 `next_seq` 计数器"
+        );
+    }
+}
