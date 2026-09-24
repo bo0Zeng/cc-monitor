@@ -47,6 +47,7 @@ import {
   type Viewport,
   type FileBubble,
 } from "../panorama/layout";
+import { clipForFile, clipForSymbol, type CoverageReading, type IndexStamp } from "../panorama/agent-clip";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 
@@ -915,13 +916,14 @@ export class PanoramaView implements OverlayHandle {
     this.openSidebar();
     this.renderSidebarStatus("加载符号详情…");
     try {
-      const nv = await api.node(repo, id);
+      // 索引读数与节点详情**同一刻取**：「复制给 agent」要说清这份详情是哪一次索引的（CP7）。
+      const [nv, stamp] = await Promise.all([api.node(repo, id), this.stampOf(repo)]);
       if (seq !== this.searchSeq || this.repo !== repo) return;
       if (!nv) {
         this.renderSidebarStatus(`未找到符号：${id}`);
         return;
       }
-      this.renderNodeDetail(nv);
+      this.renderNodeDetail(nv, stamp);
     } catch (e) {
       if (seq !== this.searchSeq) return;
       this.renderSidebarStatus(`加载失败：${String(e)}`);
@@ -929,7 +931,7 @@ export class PanoramaView implements OverlayHandle {
     }
   }
 
-  private renderNodeDetail(nv: NodeView): void {
+  private renderNodeDetail(nv: NodeView, stamp: IndexStamp | null = null): void {
     const s = nv.symbol;
     this.sidebarEl.replaceChildren();
     this.sidebarEl.appendChild(this.sidebarHeader(s.name, s.kind));
@@ -947,6 +949,23 @@ export class PanoramaView implements OverlayHandle {
     appendMetaRow(meta, "语言", s.lang, false);
     appendMetaRow(meta, "类型", s.kind, false);
     detail.appendChild(meta);
+    // CP7：复制给 agent —— 一次性文本，自带住址 ＋ 索引读数 ＋「看不见 / 分不清」那一行。
+    // 覆盖读数与索引读数**同一刻定格**（渲染时），别让点击时新刷的 overview 配上旧详情。
+    if (this.repo) {
+      const repo = this.repo;
+      const coverage = this.coverageReading();
+      detail.appendChild(
+        this.copyForAgentButton(() =>
+          clipForSymbol(
+            { repo, stamp, coverage },
+            s,
+            nv.callers,
+            nv.callees,
+            nv.annotations,
+          ),
+        ),
+      );
+    }
 
     // callees（它调用了谁）
     detail.appendChild(
@@ -1260,18 +1279,24 @@ export class PanoramaView implements OverlayHandle {
     symWrap.className = "panorama-file-symbols";
     symWrap.appendChild(makeSideNote("加载符号…"));
     this.sidebarEl.appendChild(symWrap);
-    void this.loadFileSymbols(b.file, symWrap);
+    void this.loadFileSymbols(b, symWrap);
   }
 
   /** F71：拉某文件的符号列表填进 symWrap。竞态用 searchSeq 代际防串（切文件/搜索作废本次）。 */
-  private async loadFileSymbols(file: string, symWrap: HTMLElement): Promise<void> {
+  private async loadFileSymbols(b: FileBubble, symWrap: HTMLElement): Promise<void> {
     if (!this.repo) return;
     const repo = this.repo;
+    const file = b.file;
     const seq = ++this.searchSeq;
     try {
-      const syms = await api.symbolsInFile(repo, file);
+      const [syms, stamp] = await Promise.all([api.symbolsInFile(repo, file), this.stampOf(repo)]);
       if (seq !== this.searchSeq || this.repo !== repo) return;
       symWrap.replaceChildren();
+      // CP7：文件那一级的「复制给 agent」（符号列表到手之后才有东西可复制）。
+      const coverage = this.coverageReading();
+      symWrap.appendChild(
+        this.copyForAgentButton(() => clipForFile({ repo, stamp, coverage }, b, syms)),
+      );
       if (syms.length === 0) {
         symWrap.appendChild(makeSideNote("该文件无已索引符号（符号太少 / 解析失败 / 非代码文件）。"));
         return;
@@ -1460,6 +1485,55 @@ export class PanoramaView implements OverlayHandle {
       showActionFailureToast(what === "approve" ? "批准失败" : "删除失败", String(e));
     }
     if (this.repo === repo) await this.showAnnotationQueue();
+  }
+
+  // === 复制给 agent（CP7）===
+
+  /** 当前仓的索引读数。取不到 → null（文本里如实说「未取到」，不省掉那一行）。 */
+  private async stampOf(repo: string): Promise<IndexStamp | null> {
+    try {
+      const st = await api.status(repo);
+      return st ? { indexedAt: st.indexedAt, stale: st.stale } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** CP4「看不见多少」的原料：全来自 overview ＋ 本页画了几个气泡。没加载完 → null。 */
+  private coverageReading(): CoverageReading | null {
+    if (!this.overview || !this.layout) return null;
+    return {
+      unresolved_calls: this.overview.unresolved_calls,
+      parse_errors: this.overview.parse_errors,
+      total_files: this.overview.total_files,
+      drawn_files: this.layout.bubbles.length,
+    };
+  }
+
+  /** 「复制给 agent」按钮。文本点的那一刻才拼，但拼进去的读数都是渲染时定格的那份。 */
+  private copyForAgentButton(make: () => string): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "panorama-btn";
+    btn.dataset.pano = "copy-agent";
+    btn.textContent = "复制给 agent";
+    btn.title = "复制一段能贴进对话的文本：带仓、对象、索引读数，以及看不见 / 分不清多少";
+    btn.addEventListener("click", () => {
+      const text = make();
+      const clip = navigator.clipboard;
+      if (!clip) {
+        showActionFailureToast("复制失败", "这个环境没有剪贴板接口。");
+        return;
+      }
+      clip.writeText(text).then(
+        () => {
+          btn.textContent = "已复制 ✓";
+          window.setTimeout(() => (btn.textContent = "复制给 agent"), 1500);
+        },
+        (e: unknown) => showActionFailureToast("复制失败", String(e)),
+      );
+    });
+    return btn;
   }
 
   // === 侧栏基础 ===
