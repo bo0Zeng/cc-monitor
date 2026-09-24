@@ -23,17 +23,25 @@ import {
   setDefaultName,
   // K-H2c：「这几个号在不在apikey 表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
   fetchLocalRelayRouting,
+  localRelayStateFor,
+  type AccountRelayState,
+  type ApikeyRoutingView,
   getModelForAccount,
   setModelForAccount,
   invalidateAccountsCache,
   type AccountsState,
   type Account,
 } from "../accounts";
-import { pickPrimaryOrigin } from "../account-chip";
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
+// 〔第三波 S3〕本机那一支新长的字全走文案表（`设计/91 §5.1`）：一处取文，判据按表逐条量。
+import { copyText } from "../copy-table";
+// 〔第三波 S3〕本机建号那一跳：后端那个本机串（与本文件经 `../accounts` 用的 `"__local__"` 不是同一个值），
+// 以及「本机刻意不开终端窗口」那句话的跨语言标记（唯一住址在 `remote-launch-run.ts`）。
+import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "../backend-policy";
+import { POSIX_NO_WINDOW_MARKER } from "../remote-launch-run";
 // 〔AL1 · 2026-09-24〕别名那一块与用户级 PATH 那一格都搬去了机器页「本机 → 工具 → 别名」
 // （`设计/70 §3.3` · `设计/71`）—— 两者是同一个问题（「这台机器的终端怎么找到 ccm」）的两条路。
 // A2（`设计/70 §4.4`）：新建账号那张表单。
@@ -245,9 +253,9 @@ export class AccountsSection {
      * 病因见 `machine-context.ts` 头注：这四块此前各维护一份 `this.origin`，
      * 用户在一处切了机器，另外三处还停在上一台 —— 而它们讲的是同一台机器。
      *
-     * **不能表示「本机」时怎么办**：本分节的下拉只列远端。收到 `null`（本机）就**原地不动**，
-     * 不乱选一台。这是已知的半截状态，S4b 的机器详情页会从根上解决它
-     * （本机那一页压根不会包含只对远端有意义的分节）。
+     * **收到 `null`（本机）**：原先这里写的是「本分节的下拉只列远端，收到 `null` 就原地不动」。
+     * 下拉早删了（E59），本机那一支也早有了（`N-F1b`）⇒ 〔第三波 S3〕`null` 就切到本机那一支
+     * （见 [`followMachine`]）。
      */
     subscribeMachine((origin) => this.followMachine(origin));
     // ST1「延后加载」：构造期不再 `void this.init()` —— 见 `loadNow()`。
@@ -269,22 +277,34 @@ export class AccountsSection {
     } catch {
       this.hosts = [];
     }
-    // 填远端下拉
-    // E59：初值仍取「主 origin」作为**兜底落点**（`RemoteSection` 抛异常时这几块会留在
-    // 列表页上，那儿没有页上下文）。正常路径上，`subscribeMachine` 立刻会把它改成页头那台。
-    this.origin =
-      getCurrentMachine() ??
-      pickPrimaryOrigin(this.hosts) ??
-      (this.hosts[0]?.label || this.hosts[0]?.host || null);
+    // 🔴 〔第三波 S3 · 09-24〕**初值只认共用 store**：`null` 就是本机（`machine-context.ts` 头注）。
+    //    这里原先是 `getCurrentMachine() ?? pickPrimaryOrigin(...) ?? hosts[0]` —— E59 留的
+    //    「兜底落点」。而 store 的初值恰好是 `null`（本机页一出现 per-machine 那几块就落在它上面，
+    //    `panel.ts` 的 S4b-2 那句注释逐字说两者对齐）⇒ 配了远端的机器上，**本机页这一节显的是
+    //    主远端的账号**，本机那一支（与 A3 的两条本机命令）在那种机器上一次都走不到。
+    //    ⚠ 这里**不**拿主机清单去核 store 说的那台：清单读失败时 `hosts` 是空的，而页头说的
+    //    那一台照样是那一台 —— 核了的话，读配置失败会让 aya 那一页显出本机的账号（比读不到更糟）。
+    //    「认不认得」只在切机器那一跳上核（[`followMachine`]，E59 原样）。
+    this.origin = getCurrentMachine();
     await this.reload(false);
   }
 
-  /** S4a：跟随共用 store 切机器。见构造里那段注释。 */
+  /** 这台是不是已加载的主机清单里的一台。 */
+  private knows(origin: string): boolean {
+    return this.hosts.some((h) => (h.label || h.host) === origin);
+  }
+
+  /**
+   * S4a：跟随共用 store 切机器。见构造里那段注释。
+   *
+   * 〔第三波 S3〕`null`（本机）原先在这里**原地不动**（「本分节表示不了」）—— 那句话自 `N-F1b`
+   * 起就不成立了（`origin` 为空时走本机那一支），留着它的后果是：从 aya 那一页切回本机页，
+   * 这一节还停在 aya 的账号上。⇒ 本机也跟。
+   */
   private followMachine(origin: string | null): void {
-    if (origin === null) return; // 本机：本分节表示不了，原地不动
     // E59：判据从「在不在我自己的下拉里」改成「在不在已加载的主机清单里」——
     // 下拉没了，而这条判据本来问的就是「这台我认不认得」。
-    if (!this.hosts.some((h) => (h.label || h.host) === origin)) return;
+    if (origin !== null && !this.knows(origin)) return;
     if (this.origin === origin) return;
     this.origin = origin;
     void this.reload(true);
@@ -477,11 +497,7 @@ export class AccountsSection {
         "accounts-info accounts-local-empty-title",
         LOCAL_ACCOUNTS_COPY.emptyTitle,
       );
-      AccountsSection.line(
-        box,
-        "accounts-hint accounts-local-empty-next",
-        LOCAL_ACCOUNTS_COPY.emptyNext,
-      );
+      await this.renderLocalAcctIsoProbe(box);
       return;
     }
 
@@ -500,15 +516,118 @@ export class AccountsSection {
     const cur = currentWorkingAccount(state);
     const table = document.createElement("div");
     table.className = "accounts-local-table";
+    // 〔第三波 S3〕本机这一半的两格事实（apikey 表里有没有它那一行 · 本机中转在不在跑）问后端要：
+    // `accountStatusBadge` 本机那三档从 `K-H2b` 起就「有实现、没接线」，这里接上。
+    const routing = await this.readLocalRouting(state.accounts);
     for (const a of state.accounts) {
-      table.appendChild(AccountsSection.localRow(a, cur?.name === a.name));
+      table.appendChild(
+        AccountsSection.localRow(a, cur?.name === a.name, routing ? localRelayStateFor(a, routing) : undefined),
+      );
     }
     box.appendChild(table);
-    AccountsSection.line(box, "accounts-hint accounts-local-hint", LOCAL_ACCOUNTS_COPY.scopeHint);
+    // 〔第三波 S3〕原先这里是 `LOCAL_ACCOUNTS_COPY.scopeHint`（「只读；在这里改不了它们」）——
+    // 这一拍本机能新建账号了，那句话成了假话 ⇒ 换成文案表里本机那一句。
+    AccountsSection.line(box, "accounts-hint accounts-local-hint", copyText("accountsLocal.list.scope"));
+    box.appendChild(this.renderLocalRcSnippetBlock());
+    // 〔第三波 S3〕本机也能新建账号：与远端同一张表单（同一套校验、同一条 `cc-acct-iso add` 命令），
+    // 只是跑命令的那一跳走本机（[`launchLocalStep`]）。apikey 那一支在本机**真的有用**：
+    // apikey 表与中转本来就是本机的，起本机会话时按账号换上那把 key。
+    box.appendChild(
+      renderNewAccountForm((req) => this.createAccount(req, "local"), {
+        subscription: copyText("accountsLocal.new.subscriptionHint"),
+        apikey: copyText("accountsLocal.new.apikeyHint"),
+      }),
+    );
+    this.renderPendingKeys();
+    await this.flushPendingKeys(state.accounts);
     // 〔AL1 · 2026-09-24〕这里原来挂着「按账号生成命令」那一块（`K-R49`）。它搬去了机器页
     // 「本机 → 工具 → 别名」，并且不再是「账号表的投影」—— 别名清单归用户（`设计/71 §8`）。
     // 〔AL1 · 2026-09-24〕`K-R135` 那一格（用户级 PATH）也跟着别名块搬去了机器页「别名」里
     // （Windows 本机上，第一次展开那一块时建）。
+  }
+
+  /**
+   * 〔第三波 S3 · A3 接线〕本机空态的「下一步」：先问本机后端**这台机器装没装 cc-acct-iso**
+   * （`check_local_acct_iso` → `--acct-iso-status`），再说下一步 —— 三个结局各说各的：
+   *
+   * | 问到的 | 这一格说什么 | 「下一步」那一行 |
+   * |---|---|---|
+   * | 装了 | 装在哪（路径是后端答的） | 在终端里跑 `init`（本机没有替你开终端的口，如实说「在终端里」） |
+   * | 没装 | 还没装 | 原样用 `LOCAL_ACCOUNTS_COPY.emptyNext`（装 + 初始化，本机没有安装口） |
+   * | 问不出来 | 查不出来 ＋ 原因 | 同上 —— 问不出来**不许**当成「装了」，也不许当成「没装」 |
+   *
+   * ⚠ 账本（`note`）**不跟着改**：`acctIso` 那一格在空态里照旧记「未启用」。装没装是它下面一层的
+   * 原因，要进账本得先在 `FACET_MEANING` 里给它一个词 —— 那是账本那一侧的事，这一拍不动。
+   */
+  private async renderLocalAcctIsoProbe(box: HTMLElement): Promise<void> {
+    const iso = AccountsSection.line(box, "accounts-hint accounts-local-iso", "");
+    let installed: boolean | null = null;
+    try {
+      const st = await commands.check_local_acct_iso();
+      if (typeof st?.installed !== "boolean") throw new Error(String(st));
+      installed = st.installed;
+      iso.textContent = st.installed
+        ? copyText("accountsLocal.acctIso.installed", { path: st.path ?? "cc-acct-iso" })
+        : copyText("accountsLocal.acctIso.missing");
+    } catch (e) {
+      iso.textContent = copyText("accountsLocal.acctIso.probeFailed", { reason: String(e) });
+    }
+    AccountsSection.line(
+      box,
+      "accounts-hint accounts-local-empty-next",
+      installed === true ? copyText("accountsLocal.acctIso.initNext") : LOCAL_ACCOUNTS_COPY.emptyNext,
+    );
+  }
+
+  /**
+   * 〔第三波 S3 · A3 接线〕本机的 rc 片段：`local_acct_iso_shellinit` → 待贴块。
+   *
+   * 与远端那颗「生成 rc 片段…」（[`renderRcSnippet`]）同一个形状、同一条纪律：
+   * **只读、不代写**（`paste-block.ts` 模块头：本组件没有任何写入路径）。
+   * 围栏已在 Rust 侧校验过一次（`local_accounts.rs::classify_local_shellinit`，与远端共用
+   * `shellinit_fence_state`）；这里再校验一次，理由同远端那条：「能显示」与「能贴」是两件事。
+   *
+   * ⚠ 文案全走 `copyText`（`accountsLocal.rc.*`）：本机那一支上不许出现「远端」，
+   * 远端那段话（「这台远端的 ~/.bashrc」「在远端跑一次」）不能照抄过来。
+   */
+  private renderLocalRcSnippetBlock(): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "accounts-local-rc";
+    const btn = mkBtn(copyText("accountsLocal.rc.action"));
+    btn.title = copyText("accountsLocal.rc.hover");
+    const out = document.createElement("div");
+    out.className = "accounts-maint-rc";
+    btn.addEventListener("click", () => {
+      void (async () => {
+        btn.disabled = true;
+        out.innerHTML = "";
+        try {
+          const snippet = await commands.local_acct_iso_shellinit();
+          out.appendChild(
+            buildPasteBlock({
+              text: () => snippet,
+              target: copyText("accountsLocal.rc.target"),
+              mergeNote: copyText("accountsLocal.rc.merge"),
+              activation: copyText("accountsLocal.rc.activation"),
+              invalidReason: (t) =>
+                t.includes("# ===== BEGIN cc-acct-iso =====") &&
+                t.includes("# ===== END cc-acct-iso =====")
+                  ? null
+                  : copyText("accountsLocal.rc.incomplete"),
+              multiline: true,
+              rows: 12,
+              className: "accounts-rc-paste",
+            }).element,
+          );
+        } catch (e) {
+          showActionFailureToast(copyText("accountsLocal.rc.failed"), String(e), { level: "error" });
+        } finally {
+          btn.disabled = false;
+        }
+      })();
+    });
+    wrap.append(btn, out);
+    return wrap;
   }
 
   /**
@@ -536,23 +655,41 @@ export class AccountsSection {
   }
 
   /**
+   * 〔第三波 S3〕本机那两格事实：问后端（`apikey_routing_for`，只答本机）。
+   *
+   * ⚠ **问不到就是 `null`，不是「表里没有」**：`null` 让徽章走「没被告知 ⇒ 不替它下判断」那一支；
+   * 当成空表的话，一个其实配好了的号会被说成「apikey 凭据文件里没有这个账号的一行」。
+   * 回来的形状不对（桥接层异常）同样按「没问到」算。
+   */
+  private async readLocalRouting(accounts: Account[]): Promise<ApikeyRoutingView | null> {
+    const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
+    if (dirs.length === 0) return null;
+    try {
+      const r = await fetchLocalRelayRouting(dirs);
+      return Array.isArray(r?.routed) && typeof r?.running === "boolean" ? r : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
    *
-   * ⚠ 徽章走 `accountStatusBadge(a)` 而**不传** `relay`：那个参数说的是
-   * 「这个号在apikey 表里有没有一行、本机中转在不在跑」，本件没有去问后端要这两格
-   *（那要多一条 IPC，属下一件）⇒ **不传就是如实说「这一处没被告知」**，
-   * 它自己的那一支逐字写着「所以不替它下判断」。
+   * 〔第三波 S3〕徽章的 `relay` 从这一拍起**传本机那一半**（`{ scope: "local", … }`，
+   * 由 `localRelayStateFor` 从后端答的两格事实摊出来）。原先这里不传，理由是「那要多一条 IPC，属下一件」
+   * —— 那条命令（`apikey_routing_for`）早在盘上了，只是这一支没去问。
+   * 问不到 / 账号 0（没有 configDir）⇒ 仍然不传，徽章照旧「不替它下判断」。
    * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
    * 文案里当场出现「远端」两个字；`NF1bD2` 那条判据正是钉这个的。
    */
-  private static localRow(a: Account, isCurrent: boolean): HTMLElement {
+  private static localRow(a: Account, isCurrent: boolean, relay?: AccountRelayState): HTMLElement {
     const row = document.createElement("div");
     row.className = isCurrent ? "accounts-local-row current" : "accounts-local-row";
     row.appendChild(accountAvatarEl(a.name, { size: 16, ghost: !isSelectable(a) }));
     AccountsSection.line(row, "accounts-local-row-name", a.name);
     AccountsSection.line(row, "accounts-local-row-email", a.email);
 
-    const badge = accountStatusBadge(a);
+    const badge = accountStatusBadge(a, relay);
     const badgeEl = AccountsSection.line(
       row,
       badge.warn ? "accounts-local-row-badge warn" : "accounts-local-row-badge",
@@ -599,6 +736,57 @@ export class AccountsSection {
     } catch (e) {
       showActionFailureToast("拉起终端失败", String(e), { level: "error" });
       return false;
+    }
+  }
+
+  /**
+   * 〔第三波 S3〕在**本机**跑一个账号步骤（今天只有新建账号用它）。
+   *
+   * 走的是既有那条 `launch_remote_terminal`，`origin` 给后端那个本机串 —— 它本机那一支早就在
+   * （`launch.rs::launch_remote_terminal` 头一段：Windows 开一个 PowerShell 窗口；别的系统**刻意不开窗口**，
+   * 回一句带 `POSIX_NO_WINDOW_MARKER` 的话，让前端把命令交给用户在自己的 bash 里跑）。
+   * ⇒ 本机建号**不需要新命令**。
+   *
+   * 三个结局，返回值说「这条命令会不会被跑」（apikey 那一支据此决定留不留那把 key）：
+   * - 开了窗口 ⇒ `true`；
+   * - 刻意不开窗口（按后端自己的声明判，不按 OS 猜）⇒ 命令复制好，`true` —— 这一支就是 Linux 上的正路；
+   * - 真失败 ⇒ 命令照样复制给用户，但返回 `false`：与远端那条「终端没拉起来就不留 key」同一个口径。
+   */
+  private async launchLocalStep(step: AcctIsoStep): Promise<boolean> {
+    const built = buildAcctIsoCmd(step);
+    if (!built.ok) {
+      showActionFailureToast(copyText("accountsLocal.new.cmdInvalid"), built.reason, { level: "error" });
+      return false;
+    }
+    try {
+      await commands.launch_remote_terminal({ origin: BACKEND_LOCAL_ORIGIN, remoteCmd: built.cmd });
+      showActionFailureToast(
+        copyText("accountsLocal.new.launched"),
+        copyText("accountsLocal.new.launchedNext"),
+        { level: "info", durationMs: 5000 },
+      );
+      return true;
+    } catch (err) {
+      let copied = true;
+      try {
+        await navigator.clipboard.writeText(built.cmd);
+      } catch {
+        copied = false; // 命令在提示里照样看得见，可以手动复制
+      }
+      const byDesign = String(err).includes(POSIX_NO_WINDOW_MARKER);
+      const headline = byDesign
+        ? copied
+          ? copyText("accountsLocal.new.noWindowCopied")
+          : copyText("accountsLocal.new.noWindowNotCopied")
+        : copied
+          ? copyText("accountsLocal.new.failedCopied")
+          : copyText("accountsLocal.new.failedNotCopied");
+      showActionFailureToast(
+        headline,
+        copyText("accountsLocal.new.pasteBody", { reason: String(err), cmd: built.cmd }),
+        { level: byDesign ? "info" : "error", durationMs: 10000 },
+      );
+      return byDesign;
     }
   }
 
@@ -928,12 +1116,17 @@ export class AccountsSection {
    *
    * ⚠ **终端没拉起来就不留 key** —— 那个号不会出现，留着就是一把在内存里永远等不到主人的明文。
    */
-  private async createAccount(req: NewAccountRequest): Promise<void> {
-    const launched = await this.launchStep({
+  private async createAccount(
+    req: NewAccountRequest,
+    where: "remote" | "local" = "remote",
+  ): Promise<void> {
+    const step: AcctIsoStep = {
       kind: "add-apply",
       name: req.name,
       credFile: req.access === "subscription" ? req.credFile : undefined,
-    });
+    };
+    const launched =
+      where === "local" ? await this.launchLocalStep(step) : await this.launchStep(step);
     if (launched && req.access === "apikey") this.pendingKeys.set(req.name, req.key);
     this.renderPendingKeys();
   }

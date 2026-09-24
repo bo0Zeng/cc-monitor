@@ -326,7 +326,9 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "check_remote_acct_iso",
         "deploy_remote_acct_iso",
         # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
-        # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。今天零界面调用点（接线排第三波）⇒ 前端落点不动。
+        # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
+        # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机空态问装没装），
+        # 那一份本来就在 `FRONTEND_PIN['S3']` 里 ⇒ 名单按实数现打**不变**（1 → 1，没有换份）。
         "check_local_acct_iso",
     ), "§3-3 第三行：后端写区 `acct_iso_deploy.rs` ＋ 本机装口新落点，收「2 条 ＋ 1 条欠口」。"
        "① 里住 `acct_iso_deploy.rs` 的恰好这两条（同文件的 `remote_acct_iso_shellinit` 归 ②）；"
@@ -339,7 +341,9 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "aliases_render",
         "remote_acct_iso_shellinit",
         # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
-        # `shellinit_fence_state` ⇒ 归 ② 同一件。零界面调用点 ⇒ 前端落点不动。
+        # `shellinit_fence_state` ⇒ 归 ② 同一件。
+        # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机那一块的
+        # 「生成 rc 片段」），那一份本来就在 `FRONTEND_PIN['S4']` 里 ⇒ 名单按实数现打**不变**（2 → 2）。
         "local_acct_iso_shellinit",
     ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处在 `K-R117` 现打时恰好 2 条命令"
        "（`§S5` 归处栏）；〔AL1〕那条 `write_account_aliases` 拆成三条、〔A3〕加了本机那条 shellinit 之后是 5 条。"
