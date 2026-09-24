@@ -12,6 +12,7 @@
 use super::*;
 use crate::filewin::copy::testing::{rects_of, text_in_frame, PaintedText};
 use crate::filewin::select::Action;
+use crate::filewin::source::Row;
 
 const SCREEN: egui::Vec2 = egui::vec2(1280.0, 800.0);
 
@@ -486,7 +487,8 @@ fn perform_refuses_what_the_table_refuses_and_says_so() {
         (
             vec![file("a.bin"), file("b.bin")],
             vec!["a.bin", "b.bin"],
-            vec![Open, Edit, Copy, Download, Rename, Chmod],
+            // 〔FW5〕多项的「权限」放开了（批量改权限）⇒ 不在拒绝表里。
+            vec![Open, Edit, Copy, Download, Rename],
         ),
         (
             vec![file("a.bin")],
@@ -579,7 +581,7 @@ async fn the_batch_that_reaches_the_wire_is_exactly_the_selection() {
     // 目录那一项带着「是目录」走（删目录与删文件是两条不同的远端调用）。
     assert!(asking.iter().any(|op| matches!(
         op,
-        crate::filewin::writeops::WriteOp::Delete { path, is_dir: true } if path == "/srv/data/sub"
+        crate::filewin::writeops::WriteOp::Delete { path, is_dir: true, raw: None } if path == "/srv/data/sub"
     )));
     assert!(
         wired.cmds().is_empty(),
@@ -705,7 +707,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("b.bin"), file("c.bin")],
             vec![("a.bin", NONE), ("c.bin", CTRL)],
             "c.bin",
-            vec!["删除这 2 项"],
+            vec!["改这 2 项的权限", "删除这 2 项"],
         ),
         (
             "右键落在选中外：换成只选它",
@@ -1089,4 +1091,121 @@ fn a_real_x_keyboard_drives_the_list() {
         run.stdout
     );
     assert_eq!(run.reading("k.run_native"), "ok", "窗口没干净收场");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔FW5 · 第四波〕批量改权限 · 删目录连同内容 · 乱码名 —— 接到窗口上的那几跳
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 选中三项（普通文件 · 目录 · 带字节的乱码名）→ 菜单那一项「权限」→ 一个框 → 敲 `640` →
+/// 一次问完 → 线上恰好三行 `files-chmod`，乱码名那一行的 `rel` 是 b16。
+/// 再选中目录与乱码名 → Delete → 线上两行 `files-delete`：目录带 `recursive: true`，乱码名走 b16。
+///
+/// 两侧异源：期望手写；实得读合成后端真收到的那几行。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    use crate::filewin::source::Listed;
+    let wired = wire_up(
+        "keys-fw5",
+        FakeBackend::new(
+            &["files-chmod", "files-delete", "files-ls"],
+            Declared::default(),
+        ),
+    )
+    .await;
+    let odd = Listed {
+        raw_name: Some(b"caf\xe9".to_vec()),
+        ..Listed::plain(row("caf\u{FFFD}", false, 3, true))
+    };
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("keys-fw5")),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![
+            Listed::plain(file("a.bin")),
+            odd.clone(),
+            Listed::plain(dir("sub")),
+        ],
+    );
+    w.attach_line(wired.line.clone());
+    // ⚠ 选中直接走选中态本体（不经 `Drive::pick`）：那个驱动按**画出来的字**找行，
+    //   而 U+FFFD 在无头字体链上画不出来（落点算不出）。点击 → 选中那一跳另有判据看着。
+    fn pick_rows(w: &mut FileWindow, idx: &[usize]) {
+        let rows = w.listing.rows.lock().unwrap().clone();
+        w.selection.clear();
+        for (k, &i) in idx.iter().enumerate() {
+            w.selection
+                .click(&rows, i, if k == 0 { NONE } else { CTRL });
+        }
+    }
+    pick_rows(&mut w, &[0, 1, 2]);
+    assert_eq!(w.selection().len(), 3, "前提：三项没选上");
+    assert!(w.perform(Action::Chmod, None), "批量改权限没摆出框");
+    {
+        let p = w.write_prompt.as_mut().expect("框没摆出来");
+        assert_eq!(p.heading(), "把这 3 项的权限改成（八进制）：");
+        p.text = "640".into();
+    }
+    assert!(w.confirm_write(None), "框里的字没变成一摞");
+    async fn settle(w: &mut FileWindow, round: u64) {
+        for _ in 0..400 {
+            if w.write_board.is_asking() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert_eq!(
+            w.write_board.asking().len(),
+            if round == 0 { 3 } else { 2 },
+            "一次问完那一摞件数不对"
+        );
+        assert!(w.write_board.settle(true));
+        for _ in 0..400 {
+            if w.write_board.rounds() > round {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    }
+    settle(&mut w, 0).await;
+    let b16 = serde_json::json!({ "b16": "636166e9" });
+    let chmods: Vec<serde_json::Value> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-chmod")
+        .map(|r| r["args"]["rel"].clone())
+        .collect();
+    assert_eq!(
+        chmods,
+        vec![
+            serde_json::json!("a.bin"),
+            b16.clone(),
+            serde_json::json!("sub")
+        ],
+        "线上那几行 files-chmod 与选中态不等"
+    );
+
+    // 删：目录 ＋ 乱码名（不跑帧 ⇒ 列表不重列，下标还是那三行）。
+    pick_rows(&mut w, &[1, 2]);
+    assert!(w.perform(Action::Delete, None), "批量删没起来");
+    settle(&mut w, 1).await;
+    let dels: Vec<serde_json::Value> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-delete")
+        .map(|r| r["args"].clone())
+        .collect();
+    assert_eq!(
+        dels,
+        vec![
+            serde_json::json!({ "root": "/srv/data", "rel": b16 }),
+            serde_json::json!({ "root": "/srv/data", "rel": "sub", "recursive": true }),
+        ],
+        "线上那几行 files-delete 不对（目录要带 recursive，乱码名要走 b16）"
+    );
 }

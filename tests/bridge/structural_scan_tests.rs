@@ -3705,6 +3705,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/sftp_family_registry_tests.rs", 2),
         ("tests/bridge/sftp_move_ledger_tests.rs", 1),
         ("tests/bridge/sftp_pool_tests.rs", 5),
+        // 〔FW5 · 第四波〕两处墓碑标记：写面相对段「只收 UTF-8」那句（围栏改按 `Path` 判之后作废）·
+        //   选中那张表里「批量改权限没做」那一格（做了）。
+        ("src/backend/control/files_write.rs", 1),
+        ("src/bridge/src/filewin/select.rs", 1),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

@@ -124,6 +124,15 @@ pub struct Listed {
     /// 两者刻意不混：SFTP 那条退路交不出它（`SftpEntry` 里没有这一格），
     /// 而「后端送了一个 0」是 1970 年，那是一个真时间。
     pub mtime_secs: Option<u64>,
+    /// 〔FW5 · 第四波〕**有损名的原始字节**（名字那一段，不是整条路径）；名字是合法 UTF-8 ⇒ `None`。
+    ///
+    /// 窗口的路径是字符串，非 UTF-8 的名字经有损解码之后**寻址不到**（U+FFFD 不是那个字节）。
+    /// 后端 `files-ls` 送的本来就是字节（`{"b16": …}`），此前在 [`row_from_ls_entry`] 里被丢掉了 ——
+    /// 留住它，写操作（改名 · 删除 · 改权限）就能对乱码名动手（`writeops::rel_json` 发 b16）。
+    /// ⚠ `serde(default)`：开窗那一跳（`proc::OpenRequest`）两头版本不齐时缺这一格 ⇒ `None`
+    /// ⇒ 那一行退回「有损名不许写」，不会拿显示串去寻址。
+    #[serde(default)]
+    pub raw_name: Option<Vec<u8>>,
 }
 
 impl Listed {
@@ -136,6 +145,7 @@ impl Listed {
             row,
             link: false,
             mtime_secs: None,
+            raw_name: None,
         }
     }
 }
@@ -590,6 +600,11 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
     let lossy_name = std::str::from_utf8(&bytes).is_err();
     let path = String::from_utf8_lossy(&bytes).to_string();
     let name = remote_basename(&path).to_string();
+    // 〔FW5〕有损名留住**名字那一段**的原始字节（最后一个 `/` 之后；远端路径恒用 `/`）。
+    let raw_name = lossy_name.then(|| {
+        let cut = bytes.iter().rposition(|b| *b == b'/').map_or(0, |k| k + 1);
+        bytes[cut..].to_vec()
+    });
     // 🔴 `kind` 落**两格**，不是一格：压成一个布尔就是「看不出哪个是符号链接」。
     let kind = v.get("kind").and_then(|k| k.as_str());
     let is_dir = kind == Some("dir");
@@ -610,6 +625,7 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
         // 🔴 原样带上来。缺了就是 `None`（＝**后端没送**）—— 不许兜底成 0，
         //    那是 1970-01-01，一个看起来很像真读数的假时间。
         mtime_secs: v.get("mtime_secs").and_then(serde_json::Value::as_u64),
+        raw_name,
     })
 }
 
