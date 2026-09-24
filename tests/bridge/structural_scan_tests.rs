@@ -2336,6 +2336,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    ⇒ 散文里这三处（README 1 · `ssh_source.rs` 2）全是**病史与墓碑**，该留；
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
+        // 🔴 〔波 4 合并时补〕`set_char_range` 是 **egui 上游的 API**（`builder.rs` 里
+        //   调它把光标写回去），本仓代码里当然没有这个名字。`filewin/editor.rs` 那一段点它，
+        //   是为了说清「在 layouter 里只排 40 行会让光标下标被当成全文绝对下标用、
+        //   **每帧毁一次**」—— 那是「假的只排视口内」里最坏的一种。
+        //   ⇒ 按本条第 ③ 条出路（仓外名字）登记。
+        ("src/bridge/src/filewin/editor.rs", "set_char_range", 1),
         ("src/bridge/README.md", "daemonless_stream_loop", 1),
         ("src/bridge/src/ssh_source.rs", "daemonless_stream_loop", 2),
         (
@@ -3410,6 +3416,10 @@ fn every_prose_tombstone_mark_is_registered() {
         //   并在原位留了一块墓碑（三句齐：为什么有 · 谁裁的 · 所以它走了）。
         //   ⚠ 那块墓碑**刻意没点任何死符号的名字** ⇒ 它不需要 `TOMBSTONED` 加行，
         //   只需要本表这一行 —— 两张表守的是两件事，别混。
+        // 🔴 〔波 4 合并时补〕`filewin/editor.rs` 那一段记的是**一个被现打证伪的旧读数**
+        //   （「26 万字节排一帧 16.3 ms」是 debug 档 ＋ 全新 Context 的第一帧；release 是 2.5 ms）。
+        //   按本表的口径它是墓碑：**不删那段话**，但挂上标记、登记在册。
+        ("src/bridge/src/filewin/editor.rs", 1),
         ("tests/bridge/comm_boundary_registry_tests.rs", 1),
         ("tests/bridge/crates/guard-core/lib_tests.rs", 1),
         ("tests/bridge/doc_claim_registry_tests.rs", 1),
