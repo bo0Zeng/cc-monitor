@@ -326,7 +326,7 @@ const MONITOR_PAYLOAD_SRC: &str =
     include_str!("../../../src/bridge/src/backend/control/payload.rs");
 
 /// ★★★ 🔴 **跨半边对拍**〔`设计/20 §7` 步 4 · 条 59〕：monitor 注入闸认为「登记了默认上游」的那几家
-/// （`payload.rs::AGENTS_WITH_DEFAULT_UPSTREAM`）⇔ 后端 `accounts::AGENT_UPSTREAMS` 的 agent 列，**两向集合相等**。
+/// （`payload.rs::AGENTS_WITH_DEFAULT_UPSTREAM`）⇔ 后端 `accounts::apikey::AGENT_UPSTREAMS` 的 agent 列，**两向集合相等**。
 ///
 /// 两侧**异源**：本侧是后端运行期那张表，那一侧是 monitor 源码里那一行的**字面量**（现抠，不是 `use`）。
 /// 漂开的两个方向各有各的症状：
@@ -353,7 +353,7 @@ fn the_agents_with_a_default_upstream_are_the_same_on_both_halves() {
             "抠出来的 {a:?} 不像一个路由段 —— 抽取器坏了"
         );
     }
-    let ours: std::collections::BTreeSet<String> = crate::accounts::AGENT_UPSTREAMS
+    let ours: std::collections::BTreeSet<String> = crate::accounts::apikey::AGENT_UPSTREAMS
         .iter()
         .map(|a| a.agent.to_string())
         .collect();
@@ -364,7 +364,7 @@ fn the_agents_with_a_default_upstream_are_the_same_on_both_halves() {
 }
 
 /// ★★★ **跨半边对拍**：monitor 真的拼出来的 `/t/` 样例（`payload.rs::RELAY_PASSTHROUGH_SAMPLE`），
-/// 本解析器读成**直通模式**、四段各落各位；再交给**生产段那张决策表**（`accounts::decide`）：
+/// 本解析器读成**直通模式**、四段各落各位；再交给**生产段那张决策表**（`accounts::apikey::decide`）：
 /// 那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 502。
 ///
 /// ⇒ 「monitor 注入的那一形，后端真的会照直通处理」这一截从源码到决策表一路是真的；
@@ -393,11 +393,11 @@ fn the_passthrough_sample_the_monitor_side_builds_parses_as_passthrough() {
     assert_eq!(r.rest, "/v1/messages");
 
     // 交给生产段那张决策表（空表 = 这个号在 apikey 表里没有行，即订阅号）。
-    let table = crate::accounts::table::RoutingTable::build(std::iter::empty());
-    let ups = crate::accounts::Upstreams::from_env(&|_| None).expect("内置默认");
+    let table = crate::accounts::apikey::table::RoutingTable::build(std::iter::empty());
+    let ups = crate::accounts::apikey::Upstreams::from_env(&|_| None).expect("内置默认");
     let said = |k: &super::super::RouteKey| {
         let mut out = String::new();
-        crate::accounts::decide(&table, &ups, r.mode, k, &mut |d| {
+        crate::accounts::apikey::decide(&table, &ups, r.mode, k, &mut |d| {
             out = match d {
                 super::super::Destination::Passthrough { upstream } => {
                     format!("pass {}", upstream.host)
