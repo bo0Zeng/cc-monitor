@@ -22,7 +22,9 @@ const REGISTERED: &[(&str, &str, &str)] = &[
              取数走事件（`events.ts` 的帧）。这一类是后端那条护栏头注说的「正当周期行为」。",
     ),
     (
-        "src/tabs.ts",
+        // 〔U2 · 第三波〕住址从 `src/tabs.ts` 换到这里：会话动作（连同 `awaitExitFor` 这条 1s 轮询）
+        //   整块搬进了 `tab-session-actions.ts`，节拍、上限、退出条件一个字没变。
+        "src/tab-session-actions.ts",
         "data-poll",
         "`awaitExitFor`：等 claude 退出时每 1s 拉一次 `list_remote_tmux`（有 timeout 上限）。\
              ⚠⚠ **F02 订正：原文那句「事件源已经存在」是错的。** 它等的**不是会话消失**，\
@@ -419,10 +421,10 @@ fn every_data_poll_names_its_event_source_and_owner() {
             assert!(why.contains("退役归"), "{f} 记成 data-poll 却没说谁退役它");
         }
     }
-    // 〔`C1` · 09-24〕地板 `>= 3` 换成相等：今天 data-poll 恰好 **2** 条（`tabs.ts` 的 `awaitExitFor` ·
+    // 〔`C1` · 09-24〕地板 `>= 3` 换成相等：今天 data-poll 恰好 **2** 条（`tab-session-actions.ts`〔U2 前住 `tabs.ts`〕的 `awaitExitFor` ·
     //   `cc-busd`）。**少的那条**是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
     //   地板在「少了一条」这个方向上判不出是退役还是抽取坏了 —— 相等判得出，而且逼人写清是哪一条。
-    assert_eq!(polls, 2, "data-poll 条数变了（今天 2：tabs.ts · cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
+    assert_eq!(polls, 2, "data-poll 条数变了（今天 2：tab-session-actions.ts · cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
 }
 
 /// **全部调度调用点的分类账**：`(相对仓根的路径, API, 处数, 这几处是什么)`。
@@ -466,9 +468,22 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/settings/cc_integration.ts", "setTimeout", 1, "500ms 后撤掉状态徽章的高亮描边。一次性。"),
     ("src/settings/config-surface-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
     ("src/settings/drift-ledger-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
-    ("src/tabs.ts", "requestAnimationFrame", 4, "① `fillAbove` 批末复检（间接自链，有队列型守卫）② 切 Tab 后把面板整表 re-render 推到下一帧，入口处 `this.activeId !== sessionId` 早返。③ ★ F15：`scheduleTabBarRefresh` —— live 路上后台 tab 的 unread 徽标**帧末合批**（原来每来一行整刷一次 bar）。排一次位，不是自链。⚠ 只合批这一处，用户动作触发的十几个调用点仍是同步的（合批对它们无收益，反而把「点完立刻看到」变成「下一帧」）。④ ★ 步 3（`设计/10`，2026-09-18）：`switchTo` 贴底的**第二帧**（对齐 `session-viewer.ts` 已有的同一修法）。⚠ 它**不是只读校正** —— `scrollToBottom()` 会把 `stickToBottom` 重新置真，所以第二帧与第一帧一样是强制贴底。可接受的理由只有一条：两帧之间只隔 ~16ms，人滚不出意图；切走了有 `activeId` 守卫挡着。**不是自链**（回调里不再排下一次）。"),
-    ("src/tabs.ts", "requestIdleCallback", 1, "★ **空闲物化队列的自链**：`run` 处理一个后台 tab 后再排自己。退出条件是队列空。"),
-    ("src/tabs.ts", "setTimeout", 11, "① `setTimeout(run, 200)` —— 上面那条 rIC 队列在 `requestIdleCallback` 缺失时的兜底，同一条自链 ② ③ 两处 `timeoutMs` 上限（`finish(false)` / `stop(false)`）④ ★ `pollTimer = setTimeout(() => void tick(), pollMs)` —— **真 data-poll**（`awaitExitFor`），见 `REGISTERED` 那条 ⑤ ⑥ hover 菜单的 150ms 开 / 250ms 关延时 ⑦ 0ms 下一拍挂右键菜单关闭监听 ⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。除 ④ 外都不是周期取数。 ⑩ ★ F15：`scheduleTabBarRefresh` 的**无 rAF 兜底**，0ms、一次性。 ⑪ ★ 〔步 17·D · 2026-09-19〕`updateDwell` 的**停留计时器**（`DWELL_MS` = 250ms，`设计/30 §D.4`）：拖动时压住某个 tab 满 250ms ⇒ 落点从 `before` 切成 `onto`（与它成组）。**一次性、非取数**：每次换目标 / 抖动超 4px 都先 `clearTimeout` 再重排，`teardownDrag` 收尾时无条件清（判据 `tests/tabs.vitest.ts` 「步 17·D ⑤」那组用 `vi.getTimerCount()` 数在飞的定时器，死值验刀 21 钉着）。⚠ 它**非有不可**：指针停住之后 `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满。"),
+    // 〔U2 · 拆 `tabs.ts` 子步 9〕实时流视图搬进 `tab-stream-view.ts` ⇒ 原 `tabs.ts` 的 rAF ① · rIC ×1 · setTimeout ① 三处跟着走（下三行）：
+    //   rAF 4 = 3 ＋ 1 · rIC 1 = 0 ＋ 1（`tabs.ts` 那一行因此整行删掉）· setTimeout 3 = 2 ＋ 1。一处没多一处没少。
+    ("src/tab-stream-view.ts", "requestAnimationFrame", 1, "① `fillAbove` 批末复检（间接自链，有队列型守卫）：补完一批下一帧再看一眼，仍在触发区 / 仍不可滚且账本有余就再补；切走了（`activeId` 守卫）或账尽即停。"),
+    ("src/tab-stream-view.ts", "requestIdleCallback", 1, "★ **空闲物化队列的自链**：`run` 处理一个后台 tab 后再排自己。退出条件是队列空。"),
+    ("src/tab-stream-view.ts", "setTimeout", 1, "① `setTimeout(run, 200)` —— 上面那条 rIC 队列在 `requestIdleCallback` 缺失时的兜底，同一条自链。"),
+    ("src/tabs.ts", "requestAnimationFrame", 2, "〔U2〕原 ① `fillAbove` 批末复检搬去了 `tab-stream-view.ts`（上面那条），编号沿用原号。② 切 Tab 后把面板整表 re-render 推到下一帧，入口处 `this.activeId !== sessionId` 早返。〔U2〕原 ③（`scheduleTabBarRefresh` 帧末合批）随 tab 栏视图搬去了 `tab-bar-view.ts`。④ ★ 步 3（`设计/10`，2026-09-18）：`switchTo` 贴底的**第二帧**（对齐 `session-viewer.ts` 已有的同一修法）。⚠ 它**不是只读校正** —— `scrollToBottom()` 会把 `stickToBottom` 重新置真，所以第二帧与第一帧一样是强制贴底。可接受的理由只有一条：两帧之间只隔 ~16ms，人滚不出意图；切走了有 `activeId` 守卫挡着。**不是自链**（回调里不再排下一次）。"),
+    // 〔U2 · 拆 `tabs.ts` 子步 11〕拖拽状态机搬进 `tab-bar-drag.ts` ⇒ 原 ⑪ 停留计时器跟着走（下一行）：`tabs.ts` setTimeout 2 = 1 ＋ 1。
+    ("src/tab-bar-drag.ts", "setTimeout", 1, "⑪ ★ 〔步 17·D · 2026-09-19〕`updateDwell` 的**停留计时器**（`DWELL_MS` = 250ms，`设计/30 §D.4`）：拖动时压住某个 tab 满 250ms ⇒ 落点从 `before` 切成 `onto`（与它成组）。**一次性、非取数**：每次换目标 / 抖动超 4px 都先 `clearTimeout` 再重排，`teardownDrag` 收尾时无条件清（判据 `tests/tabs.vitest.ts` 「步 17·D ⑤」那组用 `vi.getTimerCount()` 数在飞的定时器，死值验刀 21 钉着）。⚠ 它**非有不可**：指针停住之后 `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满。"),
+    // 〔U2 · 拆 `tabs.ts` 子步 12〕tab 栏视图搬进 `tab-bar-view.ts` ⇒ 原 rAF ③ 与 setTimeout ⑩（同一个 `scheduleTabBarRefresh` 的两支）跟着走（下两行）：
+    //   `tabs.ts` rAF 3 = 2 ＋ 1 · setTimeout 1 = 0 ＋ 1（`tabs.ts` 的 setTimeout 那一行因此整行删掉）。
+    ("src/tab-bar-view.ts", "requestAnimationFrame", 1, "③ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`） —— live 路上后台 tab 的 unread 徽标**帧末合批**（原来每来一行整刷一次 bar）。排一次位，不是自链。⚠ 只合批这一处，用户动作触发的十几个调用点仍是同步的（合批对它们无收益，反而把「点完立刻看到」变成「下一帧」）。"),
+    ("src/tab-bar-view.ts", "setTimeout", 1, "⑩ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`）的**无 rAF 兜底**，0ms、一次性。"),
+    // 〔U2 · 拆 `tabs.ts` 子步 4〕右键菜单控件搬进 `tab-context-menu.ts` ⇒ 原 ⑤ ⑥ ⑦ 三处跟着走（下一行）：11 = 8 ＋ 3，一处没多一处没少。
+    ("src/tab-context-menu.ts", "setTimeout", 3, "① ② hover 菜单的 150ms 开 / 250ms 关延时（二级 flyout；`closeTabContextMenu` 统一清）③ 0ms 下一拍挂右键菜单关闭监听。都是一次性 UI 延时，不取数。"),
+    // 〔U2 · 拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
+    ("src/tab-session-actions.ts", "setTimeout", 5, "② ③ 两处 `timeoutMs` 上限（`awaitCompactFor` 的 `finish(false)` / `awaitExitFor` 的 `stop(false)`）④ ★ `pollTimer = setTimeout(() => void tick(), pollMs)` —— **真 data-poll**（`awaitExitFor`），见 `REGISTERED` 那条 ⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。除 ④ 外都不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。"),
     ("src/views/grid-monitor.ts", "setInterval", 1, "1s 整表重绘 —— **ui-clock，不取数**，见 `REGISTERED` 那条。"),
     ("src/views/history.ts", "requestAnimationFrame", 1, "展开/收起项目后合并重画一次列表，`rafPending` 标志防重入。一次性。"),
     ("src/views/history.ts", "setTimeout", 3, "① `waitForIndexThenSearch` 的 1 秒等待 —— **wait-for-condition**（等本地索引就绪），上限 120 拍、超限有说人话的文案。⚠ **F14 第四刀改过**：它原来每秒重发 `search_history`，而那条路在 Rust 侧无条件 join 了 `search_remote_all` ⇒ **每台一条 SSH**；现在只问 `get_search_index_status`（零 SSH），就绪后补跑一次完整搜索。关视图由 F14 第一刀的 `ftSeq++` 掐断。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
