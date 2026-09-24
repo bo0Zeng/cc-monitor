@@ -78,6 +78,7 @@ src/backend/control/ccm/argv.rs:335	--bus-note 需要配合 --bus-register（不
 src/backend/control/ccm/argv.rs:340	非法 --tmux-size: '{}'（要 <宽>x<高>，如 220x50，且均为正整数）	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号给格式与例子，可操作
 src/backend/control/ccm/argv.rs:345	agent={} 不支持 resume（无 resume flag）	改·§2.1	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；`agent=` 是日志行 key=value 格式，括号「无 resume flag」重复 兼§2.4 →「{} 不支持 resume」
 src/backend/control/ccm/mod.rs:119	ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\\n	改·§2.2	[对外] ccm 撞名时的报错（execute 出口与 --print 吐出的 printf 都会打到终端）；「C14：spawn 就是起」是内部条款号与设计论证，破折号后「拒绝静默接回别人的会话」也是论证 兼§2.4 新词:C14 →「ccm: tmux 会话名 %s 已被占用」
+src/backend/control/ccm/mod.rs:127	ccm: 会话 %s 里的命令起不来，原因见上一行。没有接进去，也没有登记；会话还在，可以进去看。\\n	保留	[对外] CC1：ccm 容器路自检没过时打到终端（cc-spawn 原样转给调用方）；先说结果，原因交给上一行被叫那一趟自己的原话，再说没做什么、现场在哪；无破折号/括号/内部词
 src/backend/control/ccm/mod.rs:143	\n用法：ccm [new|resume <sid>|attach <会话名>] [选项…] [-- 透传给 agent 的参数…]	改·§2.1	[对外] ccm --help 正文；「后端本身的一次性模式…常驻模式是同一个二进制接流」讲架构，「tmux 容器」「容器路」「@ccm_sid_expect」「issue #75 的逃生口」「平价预言机」都是内部名/自造比喻 兼§2.5 兼§2.2 新词:容器路 新词:平价预言机 新词:意图标 新词:一次性模式
 src/backend/control/ccm/mod.rs:465	CCM_ENV 非空，而它是一段任意 shell，只有 shell 解释得了	改·§2.2	[对外] WHY_SHELL_* 作为 {why} 拼进 exec_shell 的报错（sh 不在时打到终端）；讲的是「我们为什么非得经 shell」的内部推理，含 `set -f; exec $cmd` / display-message / 容器路 等实现 兼§2.1 新词:容器路 新词:身份配方
 src/backend/control/ccm/mod.rs:468	后端答出的是一整条命令串，要靠 shell 拆成词才跑得了（`set -f; exec $cmd`）	改·§2.2	[对外] WHY_SHELL_* 作为 {why} 拼进 exec_shell 的报错（sh 不在时打到终端）；讲的是「我们为什么非得经 shell」的内部推理，含 `set -f; exec $cmd` / display-message / 容器路 等实现 兼§2.1 新词:容器路 新词:身份配方
