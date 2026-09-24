@@ -13,6 +13,15 @@
 //!
 //! 上述三个 `#[tauri::command]` 在 lib.rs 的 invoke_handler! 里注册。
 //!
+//! ## 🔴〔C2 · 2026-09-24，`设计/05 §13`〕本模块**不再拨 SSH**
+//!
+//! 上面第一条里的「russh client 数据源」今天是个旧名字：连远端、鉴权、开通道全在后端的拨号代理
+//! （`src/backend/dial/`）；本模块拿链路只经宿主 `dial_host`（`connect_and_exec_cmd` /
+//! `connect_and_exec_capture` / 测试连接），读代理应答的是通信层成员 `ssh_link`。
+//! 本模块留下的是**业务**：远端流的帧解析与分派、会话 / tmux / idle 账本、旁路快照（续传见 `snapshot_resume`）、
+//! ssh config 导入 —— 所以它不登记为通信层成员（理由住 `comm_boundary_registry_tests::TRANSPORT_LEFT_OUTSIDE`）。
+//! 下面那段 crypto backend 的说明今天说的是后端拨号代理与 `inproc_dial.rs`（SFTP 那一份）用的 `russh`。
+//!
 //! ## Crypto backend 选择（S3 的核心风险点）
 //!
 //! russh 0.61 默认 crypto backend 是 `aws-lc-rs`，它在 windows-msvc 上构建需要
