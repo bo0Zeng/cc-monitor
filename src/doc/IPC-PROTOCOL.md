@@ -1101,6 +1101,102 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 ⚠ **真远端那一维本轮买不到**：这一条在本机文件系统上跑过；
 「在一台真远端机器上经这条命令写成过」**没有读数**。
 
+#### 文件管理写面的另外五条（波 5 ㈡，2026-09-23）—— **改动既有数据**
+
+🔴 用户逐字：「**现在只允许后端的文件管理部分写文件**」。下面五条都会改动盘上**已经在**的东西，
+它们与上面 `files-create` 同住一个后端模块，而后端的写盘护栏（`readonly_guard`）为它们长出了
+**第三层**：能用的改动动词是闭集 · 每一处先过 Claude 会话数据围栏 · 后端源码里够得到那个模块的
+**只有**命令注册那一处。
+
+五条共用的口径（别读宽）：
+
+- `root` 与 `files-create` 同形（字符串或 `{"b16":…}`，必须已在盘上）；相对段（`rel` / `from` / `to`）
+  **只收 UTF-8**，上跳段 / 绝对路径 / 盘符 / 空段 / 当前目录段一律拒（`refused`）。
+- **围栏只拦那几份具体的会话文件**（`projects/<proj>/<sid>.jsonl` 恰 2 段 · `sessions/<x>.json` 恰 1 段）。
+  `~/.claude` 底下的其余东西（skills · 配置 · 账号库）**改得动** —— 用户 09-23 逐字
+  「文件管理器该不该能改 `~/.claude` 里的东西. 可以.」。与桥那一侧的围栏**函数体逐字节相同**。
+- 错误码四个，与 `files-create` 同义：`bad_path` · `bad_args` · `refused`（围栏拦的）· `io_failed`（盘上没成）。
+- ⚠ **判定与动手之间有一个窗**（TOCTOU），本面没有闭合它。
+- ⚠ **真远端那一维没有读数**：五条全在本机文件系统上跑过。
+- **CLI 面同样有它们**（从命令注册那一处派生，与 `files-create` 同一条理由）：
+  `--files-mkdir` · `--files-rename` · `--files-delete` · `--files-chmod` · `--files-write-text`，
+  载荷走 stdin，与帧面的 `args` 同形。
+
+#### `files-mkdir`：新建一个目录
+
+```text
+→ {"id":"w2","cmd":"files-mkdir","args":{"root":"/home/u/docs","rel":"new"}}
+← {"kind":"reply","id":"w2","ok":true,"data":{"path":"/home/u/docs/new"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `root` / `rel` | → | 目标根 ＋ 相对段。**只建最后那一段**：父目录不在 ⇒ `refused`（不顺手补中间几层） |
+| `path` | ← | 建出来的那个目录（父目录解完 symlink 的） |
+
+#### `files-rename`：改名 / 同根内移动
+
+```text
+→ {"id":"w3","cmd":"files-rename","args":{"root":"/home/u/docs","from":"a.md","to":"b.md"}}
+← {"kind":"reply","id":"w3","ok":true,"data":{"path":"/home/u/docs/b.md"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `root` | → | 目标根 |
+| `from` / `to` | → | 两个相对段，**各过一遍围栏**（只判 `from` 就能把任意文件改名成一份会话文件的名字） |
+| `path` | ← | 新名字的落点 |
+
+🔴 **`to` 已经在了 ⇒ 拒（`io_failed`），不覆盖**：unix 上系统那一步会静默顶掉已有目标，
+那是一次没人问过的覆盖。看与改之间的窗没闭合，如实写。
+
+#### `files-delete`：删一个文件或一个**空**目录
+
+```text
+→ {"id":"w4","cmd":"files-delete","args":{"root":"/home/u/docs","rel":"old.md"}}
+← {"kind":"reply","id":"w4","ok":true,"data":{"path":"/home/u/docs/old.md"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `root` / `rel` | → | 目标根 ＋ 相对段。**删的是链接本身**，不跟过去 |
+| `path` | ← | 删掉的那一项 |
+
+🔴 **不递归，刻意的**：围栏的射程是一条路径，递归删动的是整棵子树 —— 顶上那一条过得了围栏，
+底下藏着的一份会话文件照样被一起删掉。非空目录 ⇒ 系统报错、原样带回（`io_failed`）。
+
+#### `files-chmod`：改 unix 权限位
+
+```text
+→ {"id":"w5","cmd":"files-chmod","args":{"root":"/home/u/docs","rel":"run.sh","mode":493}}
+← {"kind":"reply","id":"w5","ok":true,"data":{"path":"/home/u/docs/run.sh","mode":493}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `root` / `rel` | → | 目标根 ＋ 相对段 |
+| `mode` | → ← | **十进制数值**（`493` = `0o755`），只收低 12 位；超出 ⇒ `refused`。出方向原样回送 |
+| `path` | ← | **解到底**的那个真路径 |
+
+🔴 **它跟链接** ⇒ 落点连最后一段也解到底再判一次：根里一条指向会话文件的链接不许借它把那份文件改成不可读。
+⚠ 非 unix 平台上**如实回 `io_failed`**，不假装改成了。
+
+#### `files-write-text`：覆盖写一份**已经在**的普通文件
+
+```text
+→ {"id":"w6","cmd":"files-write-text","args":{"root":"/home/u/docs","rel":"a.md","content":"new text"}}
+← {"kind":"reply","id":"w6","ok":true,"data":{"path":"/home/u/docs/a.md","bytes":8}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `root` / `rel` | → | 目标根 ＋ 相对段。目标必须**已经在、且是普通文件**；新建请走 `files-create`（`O_EXCL`，两条路刻意分开） |
+| `content` | → | 字符串或 `{"b16":…}`。🔴 **必须给** —— 不给不默认成空（那等于把那份文件清空） |
+| `path` | ← | **解到底**的那个真路径（它跟链接，理由同 `files-chmod`） |
+| `bytes` | ← | 写进去了几个字节 |
+
+⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件，编辑器的那些语义不在它里面。
+
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
 ```text

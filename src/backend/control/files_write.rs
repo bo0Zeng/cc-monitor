@@ -1,6 +1,25 @@
 //! 〔步 23b · 2026-09-19〕**文件管理面的落盘原语** —— `设计/60 §6.5.2 A` 拍板的那个
 //! 「**带围栏的**白名单模块」，`readonly_guard` 写盘白名单上的第二个洞口。
 //!
+//! # 🔴〔波 5 ㈡ · 2026-09-23〕本模块从白名单层**搬到了第三层**，下面「它刻意不是什么」那一节是**历史**
+//!
+//! 用户逐字：「**现在只允许后端的文件管理部分写文件**」（收窄的是**主语**，不是动作）。
+//! ⇒ `设计/60 §8.6` 第 3 步：新建目录 · 改名 · 删除 · 改权限 · 覆盖写 —— 它们要
+//! **改动既有数据**，正是白名单层的判准（「不改既有数据」）所禁的。
+//! ⇒ `readonly_guard` 长出**第三层**，判准换成「**改，但每一处都先过围栏、
+//! 且只从声明过的那一面来**」，本模块是那一层**唯一**登记的模块。
+//!
+//! | 那一层钉的 | 怎么钉 |
+//! |---|---|
+//! | 能用哪几个改动动词 | **闭集**登记（`readonly_guard` 那张表）；表外的改动动词在本模块里照旧红 —— 包括**递归删**（没签字，理由见 [`delete_entry`]） |
+//! | 每一处改动都先过围栏 | 本模块每个含改动动词的函数里，围栏调用必须出现在**第一个改动动词之前** |
+//! | 只从文件管理那一面来 | 后端生产树里引用得到本模块的文件，集合**恒等于**登记的那一扇门（`inbound.rs`）；其余任何一面伸手 ⇒ 红 |
+//! | `O_EXCL` 那一处没变质 | 开句柄的调用与 `O_EXCL` 仍然逐一配对（新建那条路一个字节没松） |
+//!
+//! ⚠ 下面原来那几段（「它只会新建……」「它不删、不改名……」）写的是 09-19 那一版的射程，
+//! **今天不再成立**；留着是因为「它当初为什么只许新建」那条推理今天仍然是第三层的底子
+//! （O_EXCL 那条路**仍然**只新建）。读现状看上面那张表。
+//!
 //! # 它是什么，以及它**刻意不是**什么
 //!
 //! `设计/60 §6.5.1` 逐字裁过一次：同一轮对话里先说的「把不能写文件的规矩去掉」，
@@ -246,6 +265,161 @@ pub fn create_new_file(root: &Path, rel: &str, bytes: &[u8]) -> Result<PathBuf, 
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  改动既有数据的那五件 ——〔波 5 ㈡ · 2026-09-23〕`设计/60 §8.6` **第 3 步**
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 🔴 **这一节才花掉用户那句话**：「现在只允许后端的文件管理部分写文件」。
+//   它们每一件都会改动盘上已经在的东西 ⇒ 本模块因此从白名单层搬到第三层。
+//
+// 🔴 **每个函数的第一件事是过围栏** —— 那不是风格，是 `readonly_guard` 第三层
+//   逐函数扫出来的：函数里第一个改动动词之前，必须已经出现一次围栏调用。
+//   换一种写法（先动手、后判），那一层当场红。
+//
+// ⚠ 围栏分两个入口，差别只在**最后那一段解不解**：
+//   · [`fenced_target`] —— 只解父目录。给「作用在**链接本身**上」的动词用
+//     （新建 · 建目录 · 改名 · 删除 —— 它们都不跟最后那一段的链接）。
+//   · [`fenced_existing`] —— 连最后那一段也解。给「**跟链接**」的动词用
+//     （改权限 · 覆盖写）：不解的话，根里一条指向会话文件的链接就能把那份文件改坏。
+//
+// ⚠ **TOCTOU 照旧在**（同本模块头注诚实边界第 1 条）：判定与动手之间有一个窗。
+//   第三层钉的是「先判后动」这个**顺序**，钉不了「判完之后世界没变」。如实登记。
+
+/// 围栏③：对一个**已经在盘上**的东西做一次**会跟链接**的写之前，把它**解到底**再判一次。
+///
+/// 先走 [`fenced_target`]（词法 ＋ 父目录解开），再把**完整路径**解成真路径：
+/// 解出来是一份会话文件 ⇒ 拒；解出来跑出了目标根 ⇒ 拒。返回解到底的那一个 ——
+/// 动手就动它，不再经过任何一条链接。
+pub fn fenced_existing(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let at = fenced_target(root, rel)?;
+    let real = std::fs::canonicalize(&at)
+        .map_err(|e| format!("refuse write: 目标解析不了（{}：{e}）", at.display()))?;
+    if is_protected_session_path(&real) {
+        return Err(format!(
+            "refuse write: 解到底之后落到了一份 Claude 会话数据文件上（{}）",
+            real.display()
+        ));
+    }
+    let real_root = std::fs::canonicalize(root)
+        .map_err(|e| format!("refuse write: 目标根解析不了（{}：{e}）", root.display()))?;
+    if !real.starts_with(&real_root) {
+        return Err(format!(
+            "refuse write: 解到底之后跑出了目标根（{} 不在 {} 里）",
+            real.display(),
+            real_root.display()
+        ));
+    }
+    Ok(real)
+}
+
+/// 新建一个目录。**只建最后那一段**：父目录不在 ⇒ 围栏② 那一步就拒
+/// （「顺手把中间几层补出来」是另一件事，没人裁过）。
+pub fn make_dir(root: &Path, rel: &str) -> Result<PathBuf, WriteRefusal> {
+    let target = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    std::fs::create_dir(&target).map_err(|e| {
+        WriteRefusal::Io(format!(
+            "refuse write: 建目录 {} 失败：{e}",
+            target.display()
+        ))
+    })?;
+    Ok(target)
+}
+
+/// 改名 / 同根内移动。
+///
+/// 🔴 **两个参数各过一遍围栏** —— 只判 `from` 的话，能把任意文件**改名成**一份会话文件的名字，
+/// 盖掉正在跑的那一场（桥那一侧 `sftp_rename` 当初就是少了这一道被逮住的）。
+///
+/// 🔴 **目标已经在了就拒**：unix 上系统那一步**会静默顶掉**已有的目标文件 —— 那就是一次
+/// 没人问过的覆盖。⇒ 先看一眼（不跟链接地看），在就拒。
+/// ⚠ 看与改之间有一个窗（TOCTOU）；原子的「不许顶掉」要平台专有的调用，本刀没做，如实登记。
+pub fn rename_entry(root: &Path, from: &str, to: &str) -> Result<PathBuf, WriteRefusal> {
+    let src = fenced_target(root, from).map_err(WriteRefusal::Fenced)?;
+    let dst = fenced_target(root, to).map_err(WriteRefusal::Fenced)?;
+    if std::fs::symlink_metadata(&dst).is_ok() {
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: 目标已经在了（{}）—— 改名不覆盖，先删掉它或换个名字",
+            dst.display()
+        )));
+    }
+    std::fs::rename(&src, &dst).map_err(|e| {
+        WriteRefusal::Io(format!(
+            "refuse write: 改名 {} → {} 失败：{e}",
+            src.display(),
+            dst.display()
+        ))
+    })?;
+    Ok(dst)
+}
+
+/// 删一个文件或一个**空**目录。**删的是链接本身**（不跟过去）。
+///
+/// 🔴 **递归删刻意没做，不是漏了**：围栏的射程是**一条路径**，而递归删动的是一整棵子树 ——
+/// 根里一个普通目录底下可以藏着一份会话文件（有人把 `projects/` 拷进了文件管理目标），
+/// 顶上那一条路径过得了围栏，底下那一份却会被一起删掉。
+/// 要做就得逐条目过一遍围栏，而那一遍与真删之间的窗是**整趟遍历**那么长。
+/// ⇒ 那是一个新形状，要单独论证；本模块今天删非空目录 ⇒ 系统报错、原样带回。
+pub fn delete_entry(root: &Path, rel: &str) -> Result<PathBuf, WriteRefusal> {
+    let target = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let is_dir = std::fs::symlink_metadata(&target)
+        .map(|m| m.is_dir())
+        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", target.display())))?;
+    let done = if is_dir {
+        std::fs::remove_dir(&target)
+    } else {
+        std::fs::remove_file(&target)
+    };
+    done.map_err(|e| WriteRefusal::Io(format!("refuse write: 删 {} 失败：{e}", target.display())))?;
+    Ok(target)
+}
+
+/// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 [`fenced_existing`]。
+///
+/// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
+pub fn change_mode(root: &Path, rel: &str, mode: u32) -> Result<PathBuf, WriteRefusal> {
+    let real = fenced_existing(root, rel).map_err(WriteRefusal::Fenced)?;
+    if mode > 0o7777 {
+        return Err(WriteRefusal::Fenced(format!(
+            "refuse write: 权限位只收低 12 位（给的是 {mode:o}）"
+        )));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(mode)).map_err(|e| {
+            WriteRefusal::Io(format!("refuse write: 改权限 {} 失败：{e}", real.display()))
+        })?;
+        Ok(real)
+    }
+    #[cfg(not(unix))]
+    {
+        Err(WriteRefusal::Io(format!(
+            "refuse write: 这个平台没有 unix 权限位，{} 一个字节没动",
+            real.display()
+        )))
+    }
+}
+
+/// 覆盖写一份**已经在**的普通文件。**跟链接** ⇒ 走 [`fenced_existing`]。
+///
+/// ⚠ 只覆盖**普通文件**：目标是目录或不存在 ⇒ 拒。新建一份请走 [`create_new_file`]
+/// （那条是 `O_EXCL`，两条路刻意分开 —— 「新建」与「改既有」是两件风险不同的事）。
+pub fn overwrite_text(root: &Path, rel: &str, bytes: &[u8]) -> Result<PathBuf, WriteRefusal> {
+    let real = fenced_existing(root, rel).map_err(WriteRefusal::Fenced)?;
+    let is_file = std::fs::metadata(&real)
+        .map(|m| m.is_file())
+        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display())))?;
+    if !is_file {
+        return Err(WriteRefusal::Fenced(format!(
+            "refuse write: {} 不是一份普通文件 —— 覆盖写只收普通文件",
+            real.display()
+        )));
+    }
+    std::fs::write(&real, bytes)
+        .map_err(|e| WriteRefusal::Io(format!("refuse write: 写 {} 失败：{e}", real.display())))?;
+    Ok(real)
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  命令面 ——〔波 5 ㈠ · 2026-09-23〕`设计/60 §8.6` **第 2 步**
 // ══════════════════════════════════════════════════════════════════════════
 //
@@ -302,13 +476,51 @@ pub struct ManageCommand {
 ///
 /// `readonly_guard` 第三层那条「只从声明过的那一面来」判的就是这张表 ——
 /// 表里没有的名字，`inbound::REGISTRY` 上也不许有对应的一条。
-pub const MANAGE_COMMANDS: &[ManageCommand] = &[ManageCommand {
-    name: "files-create",
-    what: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
-    args: &["content", "rel", "root"],
-    fields: &["bytes", "path"],
-    codes: &["bad_args", "bad_path", "io_failed", "refused"],
-}];
+pub const MANAGE_COMMANDS: &[ManageCommand] = &[
+    ManageCommand {
+        name: "files-create",
+        what: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
+        args: &["content", "rel", "root"],
+        fields: &["bytes", "path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+    // ── 〔波 5 ㈡ 09-23〕`设计/60 §8.6` 第 3 步：**改动既有数据**的那五件 ──────────
+    ManageCommand {
+        name: "files-mkdir",
+        what: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
+        args: &["rel", "root"],
+        fields: &["path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+    ManageCommand {
+        name: "files-rename",
+        what: "改名 / 同根内移动；**两个参数各过一遍围栏**，目标已存在就拒（不覆盖）",
+        args: &["from", "root", "to"],
+        fields: &["path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+    ManageCommand {
+        name: "files-delete",
+        what: "删一个文件或一个**空**目录（不递归；删的是链接本身，不跟过去）",
+        args: &["rel", "root"],
+        fields: &["path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+    ManageCommand {
+        name: "files-chmod",
+        what: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次",
+        args: &["mode", "rel", "root"],
+        fields: &["mode", "path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+    ManageCommand {
+        name: "files-write-text",
+        what: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次",
+        args: &["content", "rel", "root"],
+        fields: &["bytes", "path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+];
 
 /// 本面声明的线上命令名。
 pub fn manage_command_names() -> Vec<&'static str> {
@@ -373,6 +585,80 @@ fn answer_create(args: &serde_json::Value) -> Answer {
     }))
 }
 
+/// 取一个**相对段**参数（只收 UTF-8，理由同 [`answer_create`] 头注）。
+fn rel_of(args: &serde_json::Value, key: &str) -> Result<String, (&'static str, String)> {
+    args.get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or((
+            "bad_args",
+            format!("少了 `{key}`，或者它不是一个字符串 —— 这一格只收 UTF-8（围栏本体按段判）"),
+        ))
+}
+
+/// 把一个落点交回去（原始字节形）。
+fn path_json(p: &Path) -> serde_json::Value {
+    crate::files::raw::to_json(crate::files::raw::path_bytes(p))
+}
+
+/// 一次拒绝交回线上：码由那个枚举自己答（理由住 [`WriteRefusal`]）。
+fn refusal(e: WriteRefusal) -> (&'static str, String) {
+    (e.code(), e.message().to_string())
+}
+
+fn answer_mkdir(args: &serde_json::Value) -> Answer {
+    let root = path_of(args, "root")?;
+    let rel = rel_of(args, "rel")?;
+    let done = make_dir(&root, &rel).map_err(refusal)?;
+    Ok(serde_json::json!({ "path": path_json(&done) }))
+}
+
+fn answer_rename(args: &serde_json::Value) -> Answer {
+    let root = path_of(args, "root")?;
+    let from = rel_of(args, "from")?;
+    let to = rel_of(args, "to")?;
+    let done = rename_entry(&root, &from, &to).map_err(refusal)?;
+    Ok(serde_json::json!({ "path": path_json(&done) }))
+}
+
+fn answer_delete(args: &serde_json::Value) -> Answer {
+    let root = path_of(args, "root")?;
+    let rel = rel_of(args, "rel")?;
+    let done = delete_entry(&root, &rel).map_err(refusal)?;
+    Ok(serde_json::json!({ "path": path_json(&done) }))
+}
+
+fn answer_chmod(args: &serde_json::Value) -> Answer {
+    let root = path_of(args, "root")?;
+    let rel = rel_of(args, "rel")?;
+    let mode = args
+        .get("mode")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|m| u32::try_from(m).ok())
+        .ok_or((
+            "bad_args",
+            "少了 `mode`，或者它不是一个非负整数（十进制数值，例如 420 = 0o644）".to_string(),
+        ))?;
+    let done = change_mode(&root, &rel, mode).map_err(refusal)?;
+    Ok(serde_json::json!({ "path": path_json(&done), "mode": mode }))
+}
+
+fn answer_write_text(args: &serde_json::Value) -> Answer {
+    let root = path_of(args, "root")?;
+    let rel = rel_of(args, "rel")?;
+    // 🔴 这里**必须给** `content`：不给就把一份既有文件写成空的，那不是一个该有默认值的动作。
+    let v = args.get("content").ok_or((
+        "bad_args",
+        "少了 `content` —— 覆盖写不给默认值（默认成空等于把那份文件清空）".to_string(),
+    ))?;
+    let bytes = crate::files::raw::from_json(v).ok_or((
+        "bad_args",
+        "`content` 的形状不对 —— 只认字符串或 `{\"b16\": \"<十六进制>\"}`".to_string(),
+    ))?;
+    let done = overwrite_text(&root, &rel, &bytes).map_err(refusal)?;
+    Ok(serde_json::json!({ "path": path_json(&done), "bytes": bytes.len() }))
+}
+
 /// 这一面的**唯一入口**（形状照 `files::answer_wire`）。
 ///
 /// 🔴 分派写成一个对 [`MANAGE_COMMANDS`] 的 `match`，而「表里有、分派没有」
@@ -380,6 +666,11 @@ fn answer_create(args: &serde_json::Value) -> Answer {
 pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
     match wire_name {
         "files-create" => answer_create(args),
+        "files-mkdir" => answer_mkdir(args),
+        "files-rename" => answer_rename(args),
+        "files-delete" => answer_delete(args),
+        "files-chmod" => answer_chmod(args),
+        "files-write-text" => answer_write_text(args),
         other => Err(("bad_args", format!("`{other}` 不是文件管理写面的命令"))),
     }
 }

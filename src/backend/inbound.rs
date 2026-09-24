@@ -87,12 +87,17 @@ pub const COMMANDS: &[&str] = &[
     "cancel",
     "capture-pane",
     "files-browse",
+    "files-chmod",
     "files-create",
+    "files-delete",
     "files-find",
     "files-index-rebuild",
     "files-index-status",
     "files-ls",
+    "files-mkdir",
+    "files-rename",
     "files-stat",
+    "files-write-text",
     "kill",
     "launch",
     "ping",
@@ -550,6 +555,74 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-create",
         doc_anchor: Some("#### `files-create`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["bytes", "content", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // ── 〔波 5 ㈡ · 2026-09-23〕`设计/60 §8.6` **第 3 步**：改动既有数据的那五条 ──────────
+    //
+    // 🔴 **这五条才花掉用户那句话**：「现在只允许后端的文件管理部分写文件」。
+    //   处理器同住 `control/files_write.rs`（`readonly_guard` 第三层唯一登记的模块），
+    //   而本文件是那一层登记的**唯一一扇门** —— 后端生产树里别处引用那个模块 ⇒ 红。
+    //   ⚠ 本段五条与上面 `files-create` 的 `run` 逐字同形（名字从 `r.cmd` 来）。
+    // ⚠ 全在阻塞档：同步文件系统 I/O（外加围栏那几次 `canonicalize`），开跑之后打不断
+    //   ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
+    CommandSpec {
+        name: "files-mkdir",
+        doc_anchor: Some("#### `files-mkdir`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-rename",
+        doc_anchor: Some("#### `files-rename`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["from", "path", "root", "to"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-delete",
+        doc_anchor: Some("#### `files-delete`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-chmod",
+        doc_anchor: Some("#### `files-chmod`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["mode", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-write-text",
+        doc_anchor: Some("#### `files-write-text`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
         fields: &["bytes", "content", "path", "rel", "root"],
         takes_input: true,

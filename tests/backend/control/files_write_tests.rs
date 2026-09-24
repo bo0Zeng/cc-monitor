@@ -720,3 +720,278 @@ fn the_command_face_says_which_argument_is_wrong() {
     );
     std::fs::remove_dir_all(&root).ok();
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  改动既有数据的那五件 ——〔波 5 ㈡ · 2026-09-23〕`设计/60 §8.6` **第 3 步**
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 每一件都**正控 ＋ 阴性对照同拍**：只验「该拒的拒了」，一个恒 `Err` 的实现也全绿；
+// 只验「该成的成了」，一个没有围栏的实现也全绿。
+// 🔴 阴性那一侧每一条都**去盘上核**「那份会话文件一个字节没动」—— 回了 `Err` 不算数。
+
+/// 在 `base` 底下铺一份「正在跑的会话记录」，回它的路径与原始字节。
+fn plant_live_session(base: &Path) -> (PathBuf, Vec<u8>) {
+    let dir = base.join("cfg/projects/-x");
+    std::fs::create_dir_all(&dir).expect("建会话目录");
+    let live = dir.join("abc.jsonl");
+    let bytes = b"{\"type\":\"live\"}\n".to_vec();
+    std::fs::write(&live, &bytes).expect("铺会话文件");
+    (live, bytes)
+}
+
+#[test]
+fn mkdir_builds_one_level_and_refuses_a_session_shaped_target() {
+    let base = temp_root("mk");
+    let root = base.join(".claude"); // 09-23 之后：根在 `.claude` 底下是合法的
+    std::fs::create_dir_all(root.join("projects")).expect("建根");
+    // 正控：`skills` 那一类 —— 建得出来。
+    let got =
+        make_dir(&root, "skills").expect("🔴 `~/.claude/skills` 建不出来 —— 09-23 那一裁没落地");
+    assert!(got.is_dir(), "说建了，盘上没有");
+    // 不顺手补中间几层。
+    let err = make_dir(&root, "a/b/c").expect_err("父目录不在，竟然建成了");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert!(!root.join("a").exists(), "中间那几层被顺手补出来了");
+    // 阴性：一条长成会话文件形状的路径，建目录也不许。
+    let err = make_dir(&root, "projects/-x")
+        .map(|_| ())
+        .and_then(|_| make_dir(&root, "projects/-x/abc.jsonl").map(|_| ()));
+    let err = err.expect_err("会话文件那个位置上竟然建出了目录");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert!(!root.join("projects/-x/abc.jsonl").exists());
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn rename_moves_inside_the_root_and_never_overwrites_or_touches_a_session_file() {
+    let base = temp_root("mv");
+    let root = base.join("cfg");
+    let (live, bytes) = plant_live_session(&base);
+    std::fs::write(root.join("a.md"), b"A").expect("铺 a");
+    std::fs::write(root.join("b.md"), b"B").expect("铺 b");
+
+    // 正控：改名成一个不存在的名字。
+    let got = rename_entry(&root, "a.md", "c.md").expect("干净的改名被误拒");
+    assert_eq!(std::fs::read(&got).expect("读回"), b"A");
+    assert!(!root.join("a.md").exists(), "改名之后旧名还在");
+
+    // 🔴 目标已在 ⇒ 拒，而且**两份内容都没动**。
+    let err = rename_entry(&root, "c.md", "b.md").expect_err("改名顶掉了一份既有文件");
+    assert_eq!(err.code(), "io_failed", "{err:?}");
+    assert_eq!(
+        std::fs::read(root.join("b.md")).expect("b"),
+        b"B",
+        "被顶掉的那份内容变了"
+    );
+    assert_eq!(std::fs::read(root.join("c.md")).expect("c"), b"A");
+
+    // 🔴 两个参数各过一遍围栏：from 是会话文件 ⇒ 拒；to 是会话文件的名字 ⇒ 拒。
+    let err =
+        rename_entry(&root, "projects/-x/abc.jsonl", "moved.jsonl").expect_err("会话文件被改走了");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    let err = rename_entry(&root, "c.md", "projects/-x/new.jsonl")
+        .expect_err("普通文件被改名成了一份会话记录");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert_eq!(
+        std::fs::read(&live).expect("读会话"),
+        bytes,
+        "🔴 会话文件被动了"
+    );
+    assert!(root.join("c.md").exists(), "被拒的那一次把源文件挪走了");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+#[cfg(unix)]
+fn delete_removes_files_empty_dirs_and_links_but_never_a_session_file_or_a_subtree() {
+    let base = temp_root("rm");
+    let root = base.join("cfg");
+    let (live, bytes) = plant_live_session(&base);
+    std::fs::write(root.join("x.md"), b"x").expect("铺");
+    std::fs::create_dir_all(root.join("empty")).expect("铺空目录");
+    std::fs::create_dir_all(root.join("full")).expect("铺非空目录");
+    std::fs::write(root.join("full/keep.md"), b"k").expect("铺");
+    std::os::unix::fs::symlink(&live, root.join("link.jsonl")).expect("放一条指向会话的链接");
+
+    // 正控：文件 · 空目录。
+    delete_entry(&root, "x.md").expect("删普通文件被误拒");
+    assert!(!root.join("x.md").exists());
+    delete_entry(&root, "empty").expect("删空目录被误拒");
+    assert!(!root.join("empty").exists());
+    // 链接：删的是链接本身，目标一个字节没动。
+    delete_entry(&root, "link.jsonl").expect("删链接被误拒");
+    assert!(
+        std::fs::symlink_metadata(root.join("link.jsonl")).is_err(),
+        "链接还在"
+    );
+    assert_eq!(
+        std::fs::read(&live).expect("读会话"),
+        bytes,
+        "🔴 删链接时跟了过去"
+    );
+
+    // 🔴 不递归：非空目录 ⇒ 系统报错，里面的东西还在。
+    let err = delete_entry(&root, "full").expect_err("非空目录被删掉了 —— 递归删没签字");
+    assert_eq!(err.code(), "io_failed", "{err:?}");
+    assert!(root.join("full/keep.md").exists(), "非空目录里的东西没了");
+
+    // 🔴 阴性：会话文件本身 ⇒ 拒，盘上原样。
+    let err = delete_entry(&root, "projects/-x/abc.jsonl").expect_err("会话文件被删了");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert_eq!(std::fs::read(&live).expect("读会话"), bytes);
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+#[cfg(unix)]
+fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = temp_root("chmod");
+    let root = base.join("cfg");
+    let (live, _) = plant_live_session(&base);
+    let before = std::fs::metadata(&live)
+        .expect("读会话元数据")
+        .permissions()
+        .mode();
+    std::fs::write(root.join("run.sh"), b"#!/bin/sh\n").expect("铺");
+    std::os::unix::fs::symlink(&live, root.join("innocent.txt")).expect("放链接");
+
+    // 正控。
+    change_mode(&root, "run.sh", 0o700).expect("干净的改权限被误拒");
+    let m = std::fs::metadata(root.join("run.sh"))
+        .expect("读")
+        .permissions()
+        .mode();
+    assert_eq!(m & 0o7777, 0o700, "说改了，盘上的权限位不对");
+
+    // 🔴 阴性：名字干净（`innocent.txt`），解到底却是会话文件 ⇒ 拒，而且权限位没变。
+    //    只解父目录的围栏（`fenced_target`）在这一形上是**瞎的** —— 这一格就是
+    //    `fenced_existing` 存在的理由。
+    let err =
+        change_mode(&root, "innocent.txt", 0o000).expect_err("借一条链接把会话文件改成了不可读");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    let after = std::fs::metadata(&live)
+        .expect("读会话元数据")
+        .permissions()
+        .mode();
+    assert_eq!(before, after, "🔴 会话文件的权限位被改了");
+
+    // 超出低 12 位 ⇒ 拒。
+    let err = change_mode(&root, "run.sh", 0o100000).expect_err("高位被收下了");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+#[cfg(unix)]
+fn overwrite_replaces_an_existing_regular_file_and_nothing_else() {
+    let base = temp_root("ow");
+    let root = base.join("cfg");
+    let (live, bytes) = plant_live_session(&base);
+    std::fs::write(root.join("a.md"), b"old").expect("铺");
+    std::os::unix::fs::symlink(&live, root.join("notes.md")).expect("放链接");
+
+    // 正控。
+    let got = overwrite_text(&root, "a.md", b"new").expect("干净的覆盖写被误拒");
+    assert_eq!(std::fs::read(&got).expect("读回"), b"new");
+
+    // 🔴 阴性：链接指向会话文件 ⇒ 拒，会话一个字节没动。
+    let err = overwrite_text(&root, "notes.md", b"PWNED").expect_err("借链接覆盖了会话文件");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert_eq!(
+        std::fs::read(&live).expect("读会话"),
+        bytes,
+        "🔴 会话被覆盖了"
+    );
+    // 不存在 ⇒ 拒（新建走 O_EXCL 那条路，不在这里）。
+    assert!(
+        overwrite_text(&root, "nope.md", b"x").is_err(),
+        "覆盖写顺手新建了文件"
+    );
+    assert!(!root.join("nope.md").exists());
+    // 目录 ⇒ 拒。
+    let err = overwrite_text(&root, "projects", b"x").expect_err("对着目录覆盖写");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 命令面这一侧五条都**够得到**，而且那道围栏在命令面上照样咬。
+#[test]
+fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
+    let base = temp_root("cmd5");
+    let root = base.join("cfg");
+    let (live, bytes) = plant_live_session(&base);
+    std::fs::write(root.join("a.md"), b"a").expect("铺");
+    let r = root.to_str().expect("utf8");
+    let ok = |cmd: &str, args: serde_json::Value| {
+        answer_wire(cmd, &args).unwrap_or_else(|e| panic!("`{cmd}` 被误拒：{e:?}"))
+    };
+    ok("files-mkdir", serde_json::json!({"root": r, "rel": "d"}));
+    ok(
+        "files-rename",
+        serde_json::json!({"root": r, "from": "a.md", "to": "d/b.md"}),
+    );
+    ok(
+        "files-write-text",
+        serde_json::json!({"root": r, "rel": "d/b.md", "content": "zz"}),
+    );
+    #[cfg(unix)]
+    ok(
+        "files-chmod",
+        serde_json::json!({"root": r, "rel": "d/b.md", "mode": 384}),
+    );
+    ok(
+        "files-delete",
+        serde_json::json!({"root": r, "rel": "d/b.md"}),
+    );
+    assert!(!root.join("d/b.md").exists(), "删了一圈，盘上还在");
+
+    // 阴性：同样五条，对着那份会话文件 ⇒ 全部 `refused`，会话一个字节没动。
+    for (cmd, args) in [
+        (
+            "files-mkdir",
+            serde_json::json!({"root": r, "rel": "projects/-x/n.jsonl"}),
+        ),
+        (
+            "files-rename",
+            serde_json::json!({"root": r, "from": "projects/-x/abc.jsonl", "to": "z"}),
+        ),
+        (
+            "files-write-text",
+            serde_json::json!({"root": r, "rel": "projects/-x/abc.jsonl", "content": "x"}),
+        ),
+        (
+            "files-chmod",
+            serde_json::json!({"root": r, "rel": "projects/-x/abc.jsonl", "mode": 0}),
+        ),
+        (
+            "files-delete",
+            serde_json::json!({"root": r, "rel": "projects/-x/abc.jsonl"}),
+        ),
+    ] {
+        let (code, msg) = match answer_wire(cmd, &args) {
+            Err(e) => e,
+            Ok(v) => panic!("🔴 `{cmd}` 对着会话文件成功了：{v}"),
+        };
+        assert_eq!(code, "refused", "`{cmd}` 档位不对：{msg}");
+    }
+    assert_eq!(
+        std::fs::read(&live).expect("读会话"),
+        bytes,
+        "🔴 会话被动了"
+    );
+    // `files-write-text` 不给 `content` ⇒ 不许默认成空。
+    std::fs::write(root.join("keep.md"), b"keep").expect("铺");
+    let (code, _) = answer_wire(
+        "files-write-text",
+        &serde_json::json!({"root": r, "rel": "keep.md"}),
+    )
+    .expect_err("不给 content 竟然写了");
+    assert_eq!(code, "bad_args");
+    assert_eq!(
+        std::fs::read(root.join("keep.md")).expect("读"),
+        b"keep",
+        "文件被清空了"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
