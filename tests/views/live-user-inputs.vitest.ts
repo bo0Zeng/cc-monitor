@@ -21,13 +21,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 
+/**
+ * 〔SE2〕骨架索引的替身：`null` = 回 `undefined`（== SE1 那几格的形状：索引要不到）；
+ * 否则回一份索引，`rows[k]` 就是 seq k（大纲那几个键由用例逐行写明 —— 异源：不拿前端算的去对前端）。
+ */
+const indexStub = vi.hoisted(() => ({ rows: null as null | Array<Record<string, unknown>> }));
+
 // --- 只 mock「会真的去碰机器」的那几样；渲染管线保持真身 ---
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../test-support/session-viewer-rig");
   return {
-    invoke: vi.fn(async (cmd: string, args: { fromOffset: number }) =>
-      cmd === "list_user_inputs" ? rig.answerListUserInputs(args) : undefined,
-    ),
+    invoke: vi.fn(async (cmd: string, args: { fromOffset: number }) => {
+      if (cmd === "list_user_inputs") return rig.answerListUserInputs(args);
+      if (cmd === "read_session_index" && indexStub.rows && args.fromOffset === 0) {
+        const rows = indexStub.rows;
+        return { available: true, from: 0, end: rows.length, rows };
+      }
+      return undefined;
+    }),
   };
 });
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValue(undefined) }));
@@ -105,7 +116,10 @@ beforeEach(() => {
   tm = new TabManager(barEl, streamRootEl);
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  indexStub.rows = null;
+});
 
 describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => {
   /**
@@ -298,6 +312,73 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
     expect(toggleOf().textContent).toBe("大纲");
+  });
+});
+
+describe("SE2 首屏：索引顺带出大纲 ⇒ 同一份文件只读一遍", () => {
+  /** 造一份 `[0, n)` 的索引：每行一个 uuid `u<k>`；`inputs` 里的那几行带大纲的键（`x` 摘要 / `ts`）。 */
+  function indexWith(n: number, inputs: Record<number, string>): Array<Record<string, unknown>> {
+    return Array.from({ length: n }, (_, k) => ({
+      o: k,
+      n: 1,
+      t: "user",
+      u: `u${k}`,
+      ...(inputs[k] !== undefined ? { x: inputs[k], ts: `t${k}` } : {}),
+    }));
+  }
+  const indexCalls = (): unknown[] =>
+    vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_index").map((c) => c[1]);
+
+  function replay(): void {
+    tm.onBatchStart();
+    feed(userLine(100, "u100", "最新那一句"));
+    feed(userLine(1, "u1", "很久以前那一句"));
+    tm.onBatchEnd();
+  }
+
+  it("🔴 索引里带了大纲 ⇒ `list_user_inputs` 一次都不发（从 0 那趟省掉），面板 == 索引给的", async () => {
+    indexStub.rows = indexWith(101, { 1: "很久以前那一句", 100: "最新那一句" });
+    // 反证台子：清单那条若被问到，会回一份**不同的**清单 —— 面板若长成它，就是没用上索引
+    outlineBackend.entries = [outlineEntry("list-only", "只有清单那条才会给")];
+    replay();
+    await settleOutline();
+    expect(indexCalls(), "索引真的发了（从 0）").toEqual([
+      { origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 },
+    ]);
+    expect(outlineCalls()).toEqual([]);
+    expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100"]);
+    expect(rowsOf().map((r) => r.textContent)).toEqual(["1. 很久以前那一句", "2. 最新那一句"]);
+    expect(toggleOf().textContent).toBe("大纲 · 2");
+  });
+
+  it("种上之后，真用户输入上屏 ⇒ 从索引的 end 接着要增量（不是从 0）", async () => {
+    indexStub.rows = indexWith(101, { 1: "a", 100: "b" });
+    replay();
+    await settleOutline();
+    expect(outlineCalls()).toEqual([]);
+    outlineBackend.entries = Array.from({ length: 102 }, (_, k) => outlineEntry(`z${k}`));
+    feed(userLine(101, "u101", "刚说的"));
+    await settleOutline();
+    expect(outlineCalls()).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 101 }]);
+    expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100", "z101"]);
+  });
+
+  it("🔴 索引里一个 `x` 都没有（老后端 / 真的零条，分不清）⇒ 照旧自己从 0 要**恰好一次**", async () => {
+    indexStub.rows = indexWith(101, {});
+    outlineBackend.entries = [outlineEntry("u1"), outlineEntry("u100")];
+    replay();
+    await settleOutline();
+    expect(indexCalls().length).toBe(1);
+    expect(outlineCalls()).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 }]);
+    expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100"]);
+  });
+
+  it("索引要不到（回包不对 / 失败）⇒ 同上，从 0 要恰好一次", async () => {
+    outlineBackend.entries = [outlineEntry("u1")];
+    replay();
+    await settleOutline();
+    expect(indexCalls().length, "索引那一趟照发").toBe(1);
+    expect(outlineCalls()).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 }]);
   });
 });
 

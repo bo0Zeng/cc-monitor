@@ -24,7 +24,7 @@ import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
 import { skeletonKind } from "./height-estimate";
 // K-R45 乙（`KR45D2`）：「大纲」。界面 / 跳 与历史查看器共用同一份；〔SE1〕清单问后端要（`OutlineSource`）。
 import { UserInputPanel } from "./views/user-input-panel";
-import { OutlineSource } from "./views/outline-source";
+import { OutlineSource, outlineSeedFromIndex } from "./views/outline-source";
 // ⚠ **实时窗口 import 历史查看器，方向是别扭的 —— 这是写区逼出来的将就，不是惯例。**
 // 共用的只有 `revealCard`（找卡→展开→滚，两条路的卡由同一份渲染器建）。把它搬进中立文件
 // 要同时改 `src/bridge/src/polling_registry.rs` 的调度点分类账（rAF/setTimeout 按文件精确对账），
@@ -569,8 +569,11 @@ export class TabStreamView {
     tab.skeletonFetch = "pending";
     const jsonlPath = tab.parentPath;
     const origin = tab.origin ?? LOCAL_ORIGIN;
-    void commands
-      .read_session_index({ origin, jsonlPath, fromOffset: 0 })
+    const first = commands.read_session_index({ origin, jsonlPath, fromOffset: 0 });
+    // 〔SE2 · `设计/10 §9.5` 欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
+    // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧 `list_user_inputs(0)`。
+    tab.outline.awaitSeed(first.then(outlineSeedFromIndex));
+    void first
       .then(async (res) => {
         if (this.store.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
         tab.skeletonFetch = "done";
