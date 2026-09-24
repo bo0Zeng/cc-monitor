@@ -414,9 +414,18 @@ export class RemoteSection {
       return;
     }
     this.gapsBox.style.display = "";
+    // 🔴 `设计/70 §5.3`〔2026-09-18〕：「还差什么（诊断汇总）」→「**诊断**」—— 用户逐字「这种说法太口语了」
+    //    （`91 §2.6` 第六类病：标签写成问句 · 口语语域 · 括号里才是真名）。
+    //    ⚠ 与 `§10.3` 那次改名同拍：「应用」页那块原叫「诊断」的已先让名成「日志」
+    //    （`diagnostics-section.ts`），所以这一刻起面板上只有一个「诊断」（`§8` 判据 #11）。
+    //    名字进块标题（与别的块同一个 `.settings-group-title`），摘要另起一行。
+    const title = document.createElement("div");
+    title.className = "settings-group-title";
+    title.textContent = "诊断";
+    this.gapsBox.appendChild(title);
     const head = document.createElement("div");
     head.className = "settings-label remote-gaps-head";
-    head.textContent = `还差什么：${summary}`;
+    head.textContent = summary;
     this.gapsBox.appendChild(head);
     const list = document.createElement("ul");
     list.className = "remote-gaps-list";
