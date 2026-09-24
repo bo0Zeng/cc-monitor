@@ -126,19 +126,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              不是一回事 —— 后端化之后这一格该跟着部署那条一起走，不单独退役。",
     ),
     // 〔P8a 08-12〕新增的直读点 —— **老实登记，不绕棘轮**（棘轮要的是论证，不是禁令）。
-    (
-        "src/plugins.rs",
-        "reader",
-        5,
-        "`survey_marketplaces_in`(165/166) 读 `<claude_dir>/plugins/known_marketplaces.json`，\
-             `list_plugin_marketplaces` 那条命令(203/204) 取 dir 再转交它；签名占 1 处。\
-             ⚠ 机器数 **5 处**，我手数是 4 —— 与 F09/F10 首跑同一条纪律的第四次：**以机器数为准**。\
-             ★ **退役归 F10**，退役条件与本仓其它 reader 同形：**backend 侧补一条\
-             `--list-marketplaces`**（它已经会读远端 `~/.claude`，`--list-projects` / \
-             `--list-sessions` / `--list-subagents` 是现成的形状）。那条一落地，\
-             本机改走后端、远端那半（今天记在 `parity_ledger` 的 `plugins.marketplaces` \
-             那行上）也一起补平 —— **一件事同时清两笔账**。",
-    ),
+    // 〔RM1b · 第四波〕那一条（`src/plugins.rs`，`reader`，5 处）**真退役**，退役条件原文逐字兑现：
+    //   「backend 侧补一条 `--list-marketplaces`……那条一落地，本机改走后端、远端那半……也一起补平
+    //   —— 一件事同时清两笔账」。落地的名字是帧命令 `plugins-marketplaces`（CLI 面 `--plugins-marketplaces`），
+    //   本体从 `plugins.rs` 原样搬进后端 `observe/plugins_query.rs` ⇒ 本文件 0 处，整行摘掉。
     (
         "src/search.rs",
         "reader",
@@ -627,8 +618,8 @@ fn every_reader_names_its_retirement_owner() {
     }
     // 抽取器自检：一条 reader 都没认出来时上面全空转。
     assert_eq!(
-        readers, 7,
-        "`reader` 条数变了（**实测 7 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
+        readers, 6,
+        "`reader` 条数变了（**实测 6 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
              而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\
@@ -668,7 +659,10 @@ fn every_reader_names_its_retirement_owner() {
              后端的 `--list-projects` 只服务 claude，本机仍自己合成 codex 的合成项目。\n\
              → **7**〔RM1b · 第四波〕**真退役**：`tasks.rs` 读 `tasks/<sid>/*.json` 那一整条\
              改问那台机器的后端 `tasks-list`（本机也走后端，远端那半随之补平 —— `parity_ledger` \
-             `session.tasks` 那笔欠账同拍结清）。本文件处数 3 → 0，整行摘掉。"
+             `session.tasks` 那笔欠账同拍结清）。本文件处数 3 → 0，整行摘掉。\n\
+             → **6**〔RM1b · 第四波〕**真退役**：`plugins.rs` 那条（`P8a` 那次「往上走」加的）\
+             按它自己写下的退役条件退掉 —— 后端补了 `plugins-marketplaces`，本机改走后端，\
+             `parity_ledger` `plugins.marketplaces` 同拍结清。本文件处数 5 → 0，整行摘掉。"
     );
 }
 

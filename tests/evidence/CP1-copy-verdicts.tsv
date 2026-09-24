@@ -565,7 +565,6 @@ src/bridge/src/local_backend_host.rs:1800	本机后端已停（pid={pid:?}）	�
 src/bridge/src/local_backend_host.rs:1802	本机后端本来就没在跑	保留	[对外] 短
 src/bridge/src/origin.rs:144	一台机器的名字；本机是一个**具名**的 origin，逐字送 `"{LOCAL}"`（线上不再有 null）	改·§2.1	[可达存疑] serde Visitor 的 expecting 文本，前端传坏 origin 时进 Tauri 命令反序列化报错；origin / null / 「逐字送」「线上」都是协议实现 兼§2.4（markdown **具名**）→「需要一个机器名」
 src/backend/observe/plugins_query.rs:175	`known_marketplaces.json` 里没记 `installLocation` ⇒ 无从去数	改·§2.1	[对外] 〔RM1b · 第四波〕随插件市场枚举从 monitor `plugins.rs` 原样搬进后端（远端也要答得出），裁词照旧 —— 插件页 declared_error：installLocation 字段名 ＋「⇒ 无从去数」的推导箭头 兼§2.4 →「插件市场记录里缺安装位置，数不出插件数」
-src/bridge/src/plugins.rs:189	`known_marketplaces.json` 里没记 `installLocation` ⇒ 无从去数	改·§2.1	[对外] 插件页 declared_error：installLocation 字段名 ＋「⇒ 无从去数」的推导箭头 兼§2.4 →「插件市场记录里缺安装位置，数不出插件数」
 src/bridge/src/profile_installer.rs:328	  第 {} 行  {}{}\n	保留	[对外] 冲突行清单的行格式（行号＋原文）
 src/bridge/src/profile_installer.rs:332	     ← 会赢过我们那一块	保留	[对外] 冲突行后的标注，短（「我们那一块」CP2 可说「cc-monitor 装的那段」）
 src/bridge/src/profile_installer.rs:339	{what} 里有 {} 行提到 ccm，而它们都在 cc-monitor 的围栏之外。\n\n         围栏删法够不着裸行 —— 边界在哪只有你知道，所以 cc-monitor 一个字节都不会碰它们。\n\n         要不要删、删哪几行，由你自己定：\n\n{body}	改·§2.1	[对外] rc 里散落 ccm 行的提示：「围栏」「围栏删法够不着裸行」是实现说法 兼§2.4（破折号＋三行）新词:围栏 新词:裸行 →「{what} 里有 N 行提到 ccm，不在 cc-monitor 管理的那段里，cc-monitor 不会动它们。要不要删由你决定：」
