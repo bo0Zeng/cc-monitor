@@ -34,8 +34,9 @@
 //!    只判「声明了的码在 `codes` 里」，不判反方向）。
 
 use super::super::{
-    capabilities_on, parity_faces, tmux_platform_of, GapKind, Target, CAPABILITY_FACES,
-    COMMAND_FACES, TARGETS, TARGET_GAPS, TARGET_NARROWINGS, TMUX_PLATFORM,
+    capabilities_on, parity_faces, tmux_platform_of, unix_mode_bits_on, GapKind, Target,
+    CAPABILITY_FACES, COMMAND_FACES, NO_UNIX_MODE, TARGETS, TARGET_GAPS, TARGET_NARROWINGS,
+    TMUX_PLATFORM,
 };
 use crate::control::ccm::CCM_TMUX_CARRIED;
 use std::collections::{BTreeMap, BTreeSet};
@@ -90,6 +91,10 @@ fn every_gap_speaks_in_the_voice_of_its_own_tier() {
 /// - **欠着 12**：同一格的 `tmux` · `attach` · `detach` · `bus-register` · `ccm-sid` · `base-url-across-tmux`
 ///   （原文都答了「暂时不做 / 将来」—— 用户 09-21 裁「Windows 用 Windows 自己的后台服务，后面再做」）；
 ///   ＋ 命令面 × Windows 6 条（帧面 `capture-pane` / `kill` / `launch` ＋ CLI 面同名 3 条，子步 3 被横向对等现推出来）。
+/// - 〔FW5 · 09-24〕**结构 2 → 4**：多了帧面 `files-chmod` 与 CLI 面 `--files-chmod`（× Windows）。
+///   它们不是新裁的差异：`change_mode` 在非 unix 上从来就改不了；FW5 给那条命令声明了 `no_unix_mode` 码，
+///   现推段（`unix_mode_bits_on` × 码）才第一次看见它们（`设计/96 §8.4` 买不到 1 · `§8.5` 待拍 3）。
+///   档判结构：能力的定义就是「改 unix 权限位」，Windows 没有那套位；那边改访问权限是另一条能力。
 #[test]
 fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
     let count = |k: GapKind| TARGET_GAPS.iter().filter(|g| g.kind == k).count();
@@ -101,8 +106,8 @@ fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
     );
     assert_eq!(
         (s, o),
-        (2, 12),
-        "差异登记表两档现打 结构 {s} · 欠着 {o}（PR1 落地时 2 · 12，逐条见本条头注）。\n\
+        (4, 12),
+        "差异登记表两档现打 结构 {s} · 欠着 {o}（PR1 落地时 2 · 12；FW5 结构 +2 → 4 · 12，逐条见本条头注）。\n\
          这个数本身没有对错，但它变了说明有裁决动过 —— 连理由一起看、一起改。"
     );
 }
@@ -232,6 +237,47 @@ fn the_target_axis_agrees_with_the_host_tmux_platform() {
         tmux_platform_of(host),
         TMUX_PLATFORM,
         "本机是 {host:?}：Target 轴说它是一档，编进去的 `TMUX_PLATFORM` 说是另一档 —— 两根平台轴分叉了"
+    );
+}
+
+/// ★〔FW5〕**unix 权限位那根轴在本机这一格对得上**：[`unix_mode_bits_on`] 给本机的答案 ==
+/// 这份测试二进制真编进去的 `cfg(unix)`（`change_mode` 走哪一支看的就是它）。
+///
+/// Windows 那一格由 `lib.rs` 里 `#[cfg(windows)]` 那条编译期断言钉（本机门禁上它不存在）。
+#[test]
+fn the_unix_mode_axis_agrees_with_what_this_binary_was_compiled_with() {
+    let host = if cfg!(windows) {
+        Target::Windows
+    } else if cfg!(target_os = "macos") {
+        Target::MacOs
+    } else if cfg!(target_env = "musl") {
+        Target::LinuxMusl
+    } else {
+        Target::LinuxGnu
+    };
+    assert_eq!(
+        unix_mode_bits_on(host),
+        cfg!(unix),
+        "本机是 {host:?}：Target 轴说它{}有 unix 权限位，编进去的 `cfg(unix)` 说相反 —— 两根轴分叉了",
+        if unix_mode_bits_on(host) { "" } else { "没" }
+    );
+    // 码的两份字面量逐字相等（`lib.rs` 那份给现推用，写面那份给 `WriteRefusal::code` 用 ——
+    // 后者不借前者，理由住 `control/files_write.rs::NO_UNIX_MODE` 头注）。
+    assert_eq!(
+        crate::control::files_write::WriteRefusal::Unsupported(String::new()).code(),
+        NO_UNIX_MODE,
+        "写面回的那个码与 target 轴现推读的那个码不是同一个串 —— 两份字面量漂开了"
+    );
+    // 那个码真有人声明（否则现推那一维对空集恒成立）：恰好 `files-chmod` 一条。
+    let declaring: Vec<&str> = crate::inbound::REGISTRY
+        .iter()
+        .filter(|s| s.codes.contains(&NO_UNIX_MODE))
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(
+        declaring,
+        vec!["files-chmod"],
+        "声明 `{NO_UNIX_MODE}` 的命令不是恰好 `files-chmod` 一条 —— 多了要连登记表一起看，少了现推那一维就空转"
     );
 }
 

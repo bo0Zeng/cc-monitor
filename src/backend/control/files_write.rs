@@ -239,10 +239,13 @@ pub enum WriteRefusal {
     Unsupported(String),
 }
 
-/// 〔FW5〕命令级码：**这台机器的平台没有 unix 权限位**。只有 `files-chmod` 声明它。
+/// 〔FW5〕命令级码：**这个平台没有 unix 权限位**。只有 `files-chmod` 声明它。
 ///
-/// ⚠ 与 `lib.rs::NO_TMUX` 同形：它是「这个平台上做不到」的**声明**，target 轴从命令的
-/// `codes` 里现推「哪几条在哪个 target 上做不到」，不另抄一张清单。
+/// ⚠ 这是这个字面量在后端的**第二份**（另一份是 `lib.rs::NO_UNIX_MODE`，target 轴现推用），
+/// 但它**不是第二个真相源** —— 真相是 `inbound::REGISTRY` 里 `files-chmod` 自己登记的 `codes`。
+/// 刻意不去借 `lib.rs` 那一份：文件管理后端往外够的边是登记过的闭集（`files/module_boundary_guard`，
+/// 「只许依赖 platform / common / 围栏」），为一个码多长一条边不值。
+/// 两份逐字相等由 `target_parity_guard::the_unix_mode_axis_agrees_with_what_this_binary_was_compiled_with` 钉着。
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 impl WriteRefusal {
