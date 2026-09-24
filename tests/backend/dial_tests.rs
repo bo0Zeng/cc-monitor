@@ -294,6 +294,9 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             ok: true,
             error: None,
             fingerprint: Some("SHA256:x".into()),
+            endpoint: Some("h:22".into()),
+            v: ACK_V,
+            uses: USES,
         },
     )
     .await
@@ -303,4 +306,160 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     assert!(s.ends_with('\n'), "ack 没有以换行收尾：{s:?}");
     let v: serde_json::Value = serde_json::from_str(s.trim()).expect("ack 不是合法 JSON");
     assert_eq!(v["ok"], serde_json::Value::Bool(true));
+}
+
+/// 〔C2〕v2 的字段全是可选的：老界面（v1 六个字段）发来的请求照样读得动，而且用法缺省是长流。
+/// 新字段按蛇形键读：`use` / `endpoints` / `jump` / `capture` / `forward` / `stages` / `probe`。
+#[test]
+fn a_v2_request_reads_and_a_v1_request_still_reads() {
+    let v1 = r#"{"host":"h","port":22,"user":"u","key_path":"/k","host_key_fingerprint":null,"command":"c"}"#;
+    let r = parse_request(v1).expect("v1 请求读不动了");
+    assert_eq!(r.use_, Use::Stream);
+    assert_eq!(
+        r.race_order(),
+        vec![Endpoint {
+            host: "h".into(),
+            port: 22
+        }]
+    );
+    assert!(!r.stages && !r.probe && r.jump.is_none());
+    let v2 = r#"{"host":"h","port":22,"user":"u","key_path":null,"host_key_fingerprint":null,
+        "use":"capture","capture":{"max_bytes":7,"abort_marker":"M"},
+        "endpoints":[{"host":"a","port":1},{"host":"b","port":2}],
+        "jump":{"host":"j","port":2222,"user":"ju","key_path":"/jk","host_key_fingerprint":"SHA256:j","label":"跳"},
+        "stages":true,"probe":true}"#;
+    let r = parse_request(v2).expect("v2 请求读不动");
+    assert_eq!(r.use_, Use::Capture);
+    assert_eq!(
+        r.command, "",
+        "command 缺省为空（subsystem / forward 不需要它）"
+    );
+    assert_eq!(
+        r.capture
+            .as_ref()
+            .map(|c| (c.max_bytes, c.abort_marker.clone())),
+        Some((7, Some("M".into())))
+    );
+    assert_eq!(
+        r.race_order(),
+        vec![
+            Endpoint {
+                host: "a".into(),
+                port: 1
+            },
+            Endpoint {
+                host: "b".into(),
+                port: 2
+            }
+        ],
+        "给了竞速顺序就原样用（界面已按 last-good 排好）"
+    );
+    let j = r.jump.expect("跳板没读进来");
+    assert_eq!(
+        (j.host.as_str(), j.port, j.user.as_str(), j.label.as_str()),
+        ("j", 2222, "ju", "跳")
+    );
+    assert!(r.stages && r.probe);
+    for (word, want) in [
+        ("stream", Use::Stream),
+        ("capture", Use::Capture),
+        ("forward", Use::Forward),
+    ] {
+        let raw = format!(
+            r#"{{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"{word}"}}"#
+        );
+        assert_eq!(parse_request(&raw).unwrap().use_, want);
+        assert!(
+            USES.contains(&word),
+            "`{word}` 读得动却不在 ack 的 `uses` 里 —— 界面会把它判成老代理"
+        );
+    }
+    assert_eq!(
+        USES.len(),
+        3,
+        "`uses` 与 `Use` 的变体必须一一对应（两向：上面逐个读过，这里数一遍）"
+    );
+    // SFTP 子系统刻意不认（红线 I7 那一裁没拍，见 `dial/mod.rs` 头注）：读到它就是请求坏了。
+    let sub = r#"{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"subsystem"}"#;
+    assert!(
+        parse_request(sub).is_err(),
+        "代理认了 subsystem —— 后端长出了远端文件传输能力"
+    );
+}
+
+/// 〔C2〕ack 与阶段行的线上形状：ack 带 `v`/`uses`/`endpoint`；阶段行是 `{"stage":{"kind":…}}`，
+/// `kind` 是 camelCase 的六个字面量（界面 `ConnectStage` 那一侧对拍）。
+#[tokio::test]
+async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
+    let mut buf: Vec<u8> = Vec::new();
+    let sink = StageSink::new(true);
+    sink.emit(Stage::Dialing {
+        endpoint: "h:22".into(),
+    });
+    sink.emit(Stage::HostKey {
+        endpoint: "h:22".into(),
+        fingerprint: "SHA256:x".into(),
+    });
+    sink.emit(Stage::Failed {
+        endpoint: "b:22".into(),
+        reason: "[tcp] refused".into(),
+    });
+    sink.emit(Stage::Won {
+        endpoint: "h:22".into(),
+    });
+    sink.emit(Stage::Auth {
+        ok: true,
+        detail: None,
+    });
+    sink.emit(Stage::Established);
+    write_stages_then_ack(
+        &mut buf,
+        &sink,
+        &DialAck::failed("x".into(), Some("SHA256:x".into())),
+    )
+    .await
+    .unwrap();
+    let text = String::from_utf8(buf).unwrap();
+    let lines: Vec<serde_json::Value> = text
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 7, "六行阶段 ＋ 恰好一行 ack：{text}");
+    let kinds: Vec<&str> = lines[..6]
+        .iter()
+        .map(|v| v["stage"]["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        kinds,
+        ["dialing", "hostKey", "failed", "won", "auth", "established"]
+    );
+    assert_eq!(lines[1]["stage"]["fingerprint"], "SHA256:x");
+    let ack = &lines[6];
+    assert_eq!(ack["ok"], false);
+    assert_eq!(ack["v"], ACK_V);
+    assert_eq!(ack["uses"], serde_json::json!(USES));
+    assert_eq!(
+        ack["fingerprint"], "SHA256:x",
+        "失败的 ack 也带上看到过的指纹（TOFU 展示要它）"
+    );
+    // 不要阶段 ⇒ 一个字节的阶段都不出
+    let mut quiet: Vec<u8> = Vec::new();
+    let off = StageSink::new(false);
+    off.emit(Stage::Established);
+    write_stages_then_ack(&mut quiet, &off, &DialAck::failed("x".into(), None))
+        .await
+        .unwrap();
+    assert_eq!(String::from_utf8(quiet).unwrap().lines().count(), 1);
+}
+
+/// 〔C2〕错误串粗分成阶段标签（搬自界面侧，那一份删了 —— 只此一份）。
+#[test]
+fn a_dial_error_is_bucketed_into_a_stage_label() {
+    use super::connect::classify_stage;
+    assert_eq!(classify_stage("Connection refused (os error 111)"), "tcp");
+    assert_eq!(classify_stage("No route to host"), "tcp");
+    assert_eq!(classify_stage("所有地址握手超时（a:1）"), "timeout");
+    assert_eq!(classify_stage("operation timed out"), "timeout");
+    assert_eq!(classify_stage("Unknown server key"), "hostkey");
+    assert_eq!(classify_stage("something else"), "other");
 }
