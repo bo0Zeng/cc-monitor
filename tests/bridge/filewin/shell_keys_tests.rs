@@ -436,6 +436,33 @@ fn keys_do_not_leak_past_a_focused_field_a_modal_or_the_hit_list() {
     assert_eq!(picked(&w), set(&["b.bin"]));
 }
 
+/// 🔴 点一下行 ⇒ **键盘交回列表**，哪怕此前拿着焦点的是一颗按钮（Tab 过去的）。
+///
+/// ⚠ 这一跳是 egui 的缺省行为（点别处即交出焦点），不是本仓的代码 —— 本条钉的是
+/// `keys_blocked` 第 4 道闸**依赖**的那个前提：egui 哪天换了缺省，键盘会在点过行之后
+/// 仍然归那颗按钮，而用户看到的是「↓ 没反应」。
+#[test]
+fn clicking_a_row_takes_the_keyboard_back_from_a_focused_button() {
+    let mut w = window(vec![file("a.bin"), file("b.bin")]);
+    let mut d = Drive::new();
+    d.frame(&mut w, Vec::new());
+    d.key(&mut w, egui::Key::Tab, NONE);
+    d.frame(&mut w, Vec::new());
+    assert!(
+        d.ctx.egui_wants_keyboard_input(),
+        "前提：Tab 之后该有一个控件拿着焦点"
+    );
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    assert!(picked(&w).is_empty(), "一颗按钮拿着焦点，↓ 却动了列表");
+    d.pick(&mut w, "a.bin", NONE);
+    assert!(
+        !d.ctx.egui_wants_keyboard_input(),
+        "点了行，焦点还在那颗按钮上"
+    );
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    assert_eq!(picked(&w), set(&["b.bin"]), "点了行之后 ↓ 没归列表");
+}
+
 /// 🔴 **执行口自己也问那张表**：表里没有的动作，`perform` 出声、不做 ——
 /// 哪怕底下那个 `begin_*` 自己会静默拒掉（那一形在屏幕上就是「点了没反应」）。
 #[test]

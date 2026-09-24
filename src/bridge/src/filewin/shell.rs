@@ -1896,7 +1896,7 @@ impl FileWindow {
     /// 3. 画的是搜索命中那一摞 —— 那一摞交不出下标（`rows::HitTally` 头注那条），
     ///    按 Delete 删的会是**另一摞**里同一个下标的文件；
     /// 4. 有控件拿着键盘焦点（搜索框里正在打字、一颗按钮刚被 Tab 到）—— 字是给它的。
-    ///    ⚠ 点一下列表里的行会把焦点清掉（[`Self::apply_pick_click`]），键盘就回到列表。
+    ///    ⚠ 点一下列表里的行，焦点就交出去了（egui 点别处即交；行不可聚焦），键盘回到列表。
     pub fn keys_blocked(&self, ctx: &egui::Context) -> bool {
         self.modal_up()
             || self.menu.is_some()
@@ -2062,9 +2062,14 @@ impl FileWindow {
 
     /// 🔴 **胶水**：列表说「第 `i` 行被单击了（带着这几个修饰键）」→ 选中态跟着变。
     ///
-    /// 点行这一下同时**把键盘交给列表**（清掉 egui 的焦点）：不清的话，刚在搜索框里
-    /// 打过字的用户点一下列表、再按 ↓，字还是进搜索框（[`Self::keys_blocked`] 第 4 道闸）。
-    pub fn apply_pick_click(&mut self, ctx: &egui::Context) -> bool {
+    /// ⚠ 「点行这一下把键盘交回列表」**不在这儿做**：egui 自己在「点了别处」时让拿着焦点的
+    /// 控件交出焦点（输入框与按钮都是；`SurrenderFocusOn::Clicks` 是缺省），而点一下可聚焦的
+    /// 控件**并不**给它焦点（按钮要 Tab 过去才拿得到）⇒ 点完行之后没人拿着焦点，键盘自然归列表。
+    /// 〔死值验现打〕第一版这里还有一句「显式清焦点」、行上还把 `Sense::click()` 换成了不可聚焦的那一档，
+    /// 理由都是「点行会把焦点给行」—— **两刀各摘一次，一条判据都不红**，读 egui 源码核实那个前提不成立
+    /// ⇒ 两处都撤回了。承重的是 egui 那条缺省行为，由
+    /// `clicking_a_row_takes_the_keyboard_back_from_a_focused_button` 钉着（egui 换缺省那天它红）。
+    pub fn apply_pick_click(&mut self) -> bool {
         let Some((i, mods)) = self.tally.picked_click else {
             return false;
         };
@@ -2073,7 +2078,6 @@ impl FileWindow {
             self.selection.click(&rows, i, mods);
         }
         self.key_notice = None;
-        ctx.memory_mut(|m| m.stop_text_input());
         true
     }
 
@@ -2373,7 +2377,7 @@ impl FileWindow {
         // 🔴〔第九刀〕第五条胶水。
         self.apply_edit_click(Some(ctx.clone()));
         // 🔴〔FW2〕第六、七条胶水：单击改选中 · 右键摆菜单。然后画菜单（它在最上层）。
-        self.apply_pick_click(&ctx);
+        self.apply_pick_click();
         let at = ctx.input(|i| i.pointer.interact_pos()).unwrap_or_default();
         self.apply_menu_click(at);
         self.menu_ui(ui);
