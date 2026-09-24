@@ -211,47 +211,42 @@ fn the_whole_filewin_tree_has_exactly_one_way_to_list_a_remote_directory() {
     );
 }
 
-/// 上一级目录：**远端与本机不是同一个算法。**
+/// 上一级目录：**只有一个算法，而它只认 `/`。**
 ///
-/// 🔴 远端那一支**不许**借 `std::path` —— 在 Windows 上 `Path` 把 `\` 也当分隔符，
+/// 🔴 它**不许**借 `std::path` —— 在 Windows 上 `Path` 把 `\` 也当分隔符，
 /// 于是远端一个名字里含反斜杠的目录会被切成两级（而 SFTP 的路径分隔符只有 `/`）。
+///
+/// ⚠〔2026-09-23 本机侧退役〕本条原名是
+/// 〔散文墓碑〕`walking_up_uses_slashes_on_the_remote_side_and_the_platform_on_the_local_side`，
+/// 尾巴上那半判的是**本机**那一支（用 `Path` 造期望值、到顶回原值）。
+/// `parent_dir` 今天只吃一条字符串、只有一个算法 ⇒ 那半判的东西不在了。
+/// **反斜杠那一条一个字没动** —— 它才是这条判据承重的那一格。
 #[test]
-fn walking_up_uses_slashes_on_the_remote_side_and_the_platform_on_the_local_side() {
-    let remote = Source::Remote(Box::new(crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: "r".into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        backend_path: "/nonexistent".into(),
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    }));
+fn walking_up_uses_slashes_only_and_never_the_platform_separator() {
     // 相等断言，逐个：
-    assert_eq!(parent_dir(&remote, "/a/b/c"), "/a/b");
-    assert_eq!(parent_dir(&remote, "/a/b/c/"), "/a/b");
-    assert_eq!(parent_dir(&remote, "/a"), "/");
-    assert_eq!(parent_dir(&remote, "/"), "/", "到根了还往上走");
-    assert_eq!(parent_dir(&remote, ""), "/");
+    assert_eq!(parent_dir("/a/b/c"), "/a/b");
+    assert_eq!(parent_dir("/a/b/c/"), "/a/b");
+    assert_eq!(parent_dir("/a"), "/");
+    assert_eq!(parent_dir("/"), "/", "到根了还往上走");
+    assert_eq!(parent_dir(""), "/");
     // 🔴 承重的那一条：反斜杠是**名字的一部分**，不是分隔符。
     assert_eq!(
-        parent_dir(&remote, "/srv/a\\b/c"),
+        parent_dir("/srv/a\\b/c"),
         "/srv/a\\b",
         "远端路径里的反斜杠被当成分隔符了 —— 那是 `std::path` 在 Windows 上的行为，\
          而这条路上不许用它"
     );
-
-    // 本机那一支用本机分隔符 ⇒ 用 `Path` 造期望值，别手写字面量。
-    let deep = std::path::Path::new("x").join("y").join("z");
-    let want = std::path::Path::new("x").join("y");
-    assert_eq!(
-        parent_dir(&Source::Local, &deep.to_string_lossy()),
-        want.to_string_lossy().to_string()
+    // 🔴 **阴性对照**：换成 `std::path` 的那一形在这几格上会给出不同的答案
+    //    ⇒ 上面那一比不是恒真的。
+    #[cfg(windows)]
+    assert_ne!(
+        std::path::Path::new("/srv/a\\b/c")
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        "/srv/a\\b".to_string(),
+        "这台机器上 `std::path` 与本算法答得一样 —— 那上面那一比在这台机器上买不到东西"
     );
-    // 到顶回原值（不是空串）。
-    let top = std::path::Path::new("/").to_string_lossy().to_string();
-    assert_eq!(parent_dir(&Source::Local, &top), top);
 }
 
 #[test]
@@ -313,20 +308,9 @@ fn a_trailing_slash_is_normalised_away_into_one_canonical_form() {
 
     // 🔴 把那个假前提**钉成读数**：`parent_dir` 自己就吃得下尾斜杠
     //    ⇒ 哪天它不吃了，本条会红，而那时才轮到「剥这一步变承重了」这句话。
-    let remote = Source::Remote(Box::new(crate::ssh_source::RemoteConfig {
-        host: "example.invalid".into(),
-        label: "r".into(),
-        port: 22,
-        user: "nobody".into(),
-        key_path: None,
-        backend_path: "/nonexistent".into(),
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    }));
     assert_eq!(
-        parent_dir(&remote, "/srv/data/"),
-        parent_dir(&remote, "/srv/data"),
+        parent_dir("/srv/data/"),
+        parent_dir("/srv/data"),
         "`parent_dir` 不再自己吃尾斜杠了 —— 那么 `start_dir_from_realpath` 里剥那一步\
          就从「规范形」升级成「承重」，回头把上面那段墓碑重写"
     );
@@ -530,40 +514,55 @@ fn truncation_is_carried_back_not_dropped() {
     assert!(!rows_from_ls_data(&d2).unwrap().1, "缺了就该当没截断");
 }
 
-/// 🔴 **退路在，而且排在问后端之后。**
+/// 🔴 **退路在，而且排在问后端之后；而且它只有一支。**
 ///
 /// ⚠ 同上，判源码是代理：`list_dir` 那条路要一条真后端通道才走得完，
 /// 而判据不许在进程级登记表上种一个 `<local>` 通道
 ///（那张表是**进程内全局**的，`inbound_client` 自己的头注记着两条判据在同一个键上
 /// 起真后端会互相看见对方登记的通道 ⇒ 种它就是给别的判据下毒）。
+///
+/// # 🔴〔2026-09-23 本机侧退役〕**退路从两支变一支，而本条的三个断言都换了写法**
+///
+/// 从前这里逐支钉（`list_local(` = 本机那条 · `list_remote(` = 远端那条），
+/// 而三处匹配全是**裸的**（`prod.find("…")` / `body.contains("…")`）。
+/// 本机那一侧不在了（`source.rs` 头注那块墓碑）⇒ 少一支；顺带把三处
+/// 换成 `guard_core::pin_line`（**整行相等**）：
+///
+/// - 裸子串匹配的病形是「匹配单位比事实小」—— `body.find("list_remote(")` 在这份
+///   文件上**现打命中 2 处**（`list_dir` 体内那一处 ＋ 下面 `pub async fn list_remote(`
+///   那一行），于是「退路排在问后端之后」那句话可能锚在**函数声明**上，
+///   而那是恒真的（声明永远在后面）。⚠ 这不是假想：换成 `find_pinned` 的那一趟
+///   它当场以「命中 2 处，断言指不明是哪一处」红了。
+/// - `needle_anchor_registry` 那条递减棘轮今天**零富余** ⇒ 新写一处裸匹配当场红。
+///   本条这一换让那个数**往下走三格**，不是持平。
+///
+/// ⚠ 整行相等买到什么、买不到什么：买到「那一行逐字是这样」（缩进被 `trim` 掉）；
+/// **买不到**「这一行在语义上属于 `list_dir`」—— 那靠它与 `fn` 那一行的**行序**。
 #[test]
 fn the_fallback_exists_and_comes_after_asking_the_backend() {
     let prod =
         guard_core::production_code(include_str!("../../../src/bridge/src/filewin/source.rs"));
-    let at_fn = prod
-        .find("pub async fn list_dir(")
-        .expect("`list_dir` 不在生产段里");
-    let body = &prod[at_fn..];
-    let at_ask = body
-        .find("list_via_backend(")
-        .expect("`list_dir` 里没有问后端那一跳 —— 那它就不是主路了");
-    // 退路两支各一处。
-    for (needle, what) in [
-        ("list_local(", "本机那条退路"),
-        ("list_remote(", "远端那条退路"),
-    ] {
-        let at = body
-            .find(needle)
-            .unwrap_or_else(|| panic!("`list_dir` 里没有{what}"));
-        assert!(
-            at_ask < at,
-            "{what}排在问后端**之前** —— 那后端那条主路就永远走不到"
-        );
-    }
+    let at_fn = guard_core::pin_line(
+        &prod,
+        "pub async fn list_dir(source: &Source, dir: &str) -> Result<(Vec<Row>, bool, ListVerdict), String> {",
+    )
+    .expect("`list_dir` 的签名不在生产段里（或者它换了形状）");
+    let at_ask = guard_core::pin_line(
+        &prod,
+        "match list_via_backend(&source.origin(), dir, LS_LIMIT).await {",
+    )
+    .expect("`list_dir` 里没有问后端那一跳 —— 那它就不是主路了");
+    let at_fb = guard_core::pin_line(&prod, "let rows = list_remote(source.cfg(), dir).await?;")
+        .expect("那条退路不在了（或者它换了形状 —— 那就把这一行一起改）");
+    // 🔴 三行的**顺序**是承重的：`fn` → 问后端 → 退路。
+    assert!(
+        at_fn < at_ask && at_ask < at_fb,
+        "三行的顺序不对（fn {at_fn} / 问后端 {at_ask} / 退路 {at_fb}）—— \
+         退路排在问后端之前的话，后端那条主路永远走不到"
+    );
     // 🔴 退路必须**交出一句话**（`ListVerdict` 是 `Some`）——
     //    静默降级与成功在屏幕上长得一样。
-    assert!(
-        body.contains("Some(why)"),
-        "退路没把原因交出去 —— 那就是一次静默降级"
-    );
+    let at_say = guard_core::pin_line(&prod, "Ok((rows, false, Some(why)))")
+        .expect("退路没把原因交出去 —— 那就是一次静默降级");
+    assert!(at_fb < at_say, "那句话不在退路后面（fn 体被重排过？）");
 }

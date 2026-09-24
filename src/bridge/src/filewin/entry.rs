@@ -32,16 +32,15 @@
 //! ⚠ 刻意不回一个结构体：`设计` 那条纪律是「返回类型只在 TS 侧真消费字段时才生成」
 //! （`tests/ipc/commands.vitest.ts` 头注逐字），一个 `usize` 不需要 `ts-rs`。
 //!
-//! # 🔴 三、签名为什么只吃 `RemoteConfig`（而窗口自己两侧都会）
+//! # 🔴 三、签名为什么只吃 `RemoteConfig` —— 因为**只有一侧**
 //!
-//! 窗口的数据面两侧都通（`Source::Local` / `Source::Remote`），
-//! 但**这条命令只开远端那一侧**，因为界面上点得到它的地方只有一个 ——
-//! 旧 SFTP 面板的表头（见 `src/sftp/panel.ts`），而那块面板本来就是远端专用的。
+//! 〔2026-09-23 本机侧退役〕这一节从前讲的是一处不对称：窗口的数据面两侧都通，
+//! 而这条命令只开远端那一侧，本机侧靠窗口自己工具栏上那颗按钮走到。
+//! **那处不对称不在了** —— 窗口的数据面今天只有远端一侧
+//! （用户裁决与那条白名单原文住 `super::source` 头注那块墓碑）。
 //!
-//! ⇒ 于是 `parity_ledger` 那一行签的是 `Side::Remote`，**签的是实况不是愿望**。
-//! 本机那一侧今天的可达路径是**窗口自己那颗「本机」按钮**
-//! （[`super::shell::FileWindow::go_local`]）—— 它不是第二条 Tauri 命令，
-//! 所以它不进那张表；如实记在这儿，别以为本机侧没人走得到。
+//! ⇒ `parity_ledger` 那一行照旧签 `Side::Remote`，而它**从「签实况」变成了「签全部」**：
+//! 本机那一侧没有另一条可达路径等着被记上来了。
 //!
 //! 🔴〔第七刀补记〕`path` 传空串现在是**合法调用**，意思是「开在远端 home」——
 //! 于是顶栏那颗按钮接过来时**不必先自己解一趟路径**（那正是老面板今天在做的事）。
@@ -105,30 +104,12 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
     if name.is_empty() {
         return Err(format!("`{f}` 看不出要高亮哪个文件"));
     }
-    // ⚠ `parent_dir` 的远端那一支一个 cfg 字段都不看 ⇒ 这里不需要真配置。
-    let dir = super::source::parent_dir(&Source::Remote(Box::new(synthetic_remote())), f);
+    // 🔴〔2026-09-23 本机侧退役〕**这里少了一个占位配置，那是买到的东西之一。**
+    //    从前 `parent_dir` 的签名吃 `&Source`（两侧不是同一个切法），于是这一行
+    //    得合成一份「一个字段都不会被读」的 `RemoteConfig` 喂给它（`synthetic_remote`）。
+    //    本机那一侧退役之后 `parent_dir` 只吃一条字符串 ⇒ 那个占位整个不需要了。
+    let dir = super::source::parent_dir(f);
     Ok(Target::Reveal { dir, name })
-}
-
-/// [`plan_target`] 里那一处占位配置。
-///
-/// 🔴 它存在只因为 [`super::source::parent_dir`] 的签名吃 `&Source`，
-/// 而**远端那一支一个 cfg 字段都不看**（它只用 `Source::Remote` 这个判别式选算法）。
-/// ⚠ 刻意不把 `parent_dir` 改成吃一个 `bool` —— 那个签名今天挡住了
-/// 「拿 `std::path` 切远端路径」那一形（`parent_dir` 头注逐字），
-/// 换成 `bool` 之后调用方就能随手传错。⇒ 宁可在这儿多一个占位。
-fn synthetic_remote() -> RemoteConfig {
-    RemoteConfig {
-        host: String::new(),
-        label: String::new(),
-        port: 0,
-        user: String::new(),
-        key_path: None,
-        backend_path: String::new(),
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    }
 }
 
 /// 在**原生窗口**里打开远端 `path` 这个目录。
@@ -188,7 +169,7 @@ pub async fn open_file_window(
     //    🔴 `D11`：一条退路都没有。起不了独立进程就是错，照实报（`proc` 里那几档
     //      各自带着自己的原因），**不许**退回同进程开一个。
     let pid = open_in_new_process(&OpenRequest {
-        source: Source::Remote(Box::new(cfg)),
+        source: Source::remote(cfg),
         cwd: path,
         rows,
         reveal,

@@ -82,13 +82,11 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::ssh_source::RemoteConfig;
-
 use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
-use super::source::{list_local, list_remote, parent_dir, Row, Source};
+use super::source::{parent_dir, Row, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
@@ -156,15 +154,20 @@ pub fn any_thread_hook(builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>
     }
 }
 
-/// 「本机」那颗按钮的落脚点 —— 用户的 home。
+/// **「存到哪儿」那一问的缺省落点** —— 用户的 home。
+///
+/// 🔴〔2026-09-23 本机侧退役〕**它换了唯一消费者，如实记**：从前它是工具栏上
+/// 那颗「本机」按钮的落脚点（那颗按钮连同整个本机侧已经不在了，见
+/// `source.rs` 头注那块墓碑）；今天它只有一个消费者 ——
+/// [`super::download::default_dest`]（往外拖时「存到哪儿」那一格的缺省值）。
+/// ⇒ 它**不再是文件管理器的一部分**，是**往外传**那条路上的一格。
 ///
 /// 🔴 **抽成一个具名函数不是风格，是登记要求**：`local_read_surface_registry::HOME_REACHES`
-/// 按「上一处 `fn 名字`」给每一处 `home_dir()` 归属，写在 `ui()` 里的话那一行会被登记成
-/// `("shell.rs", "ui")` —— 一个说不出自己在干什么的名字。
+/// 按「上一处 `fn 名字`」给每一处 `home_dir()` 归属，写在别人体内的话那一行会被登记成
+/// 一个说不出自己在干什么的名字。
 ///
-/// ⚠ 它**只把 home 当一个起点路径**，不去读 home 里的任何东西
-/// （真正列目录的是 [`list_local`]，而它列的是用户之后走到哪就是哪）。
-/// 拿不到 home 就退到 `.`（当前工作目录），**不猜一个路径出来**。
+/// ⚠ 它**只把 home 当一条缺省路径**，不去读 home 里的任何东西 —— 一次 `home_dir()`，
+/// 零次 `read_dir`。拿不到 home 就退到 `.`（当前工作目录），**不猜一个路径出来**。
 pub fn local_home() -> String {
     dirs::home_dir()
         .map(|p| p.to_string_lossy().to_string())
@@ -295,17 +298,6 @@ pub struct Reveal {
     pub scrolled: bool,
 }
 
-/// 点「本机」之前这个窗口在哪儿 —— **一台远端 ＋ 那台上的一个目录**。
-///
-/// ⚠ 刻意是两个字段而不是一条字符串：远端路径恒用 `/`，而「哪台机器」这件事
-/// 全仓只有 `RemoteConfig` 一种表达（`super::source::Source::origin` 头注那条纪律）。
-#[derive(Clone, Debug)]
-pub struct RemoteReturn {
-    pub cfg: Box<RemoteConfig>,
-    /// 用户**离开时**在看的那个远端目录（不是 home —— 理由见 [`FileWindow::away`]）。
-    pub cwd: String,
-}
-
 pub struct FileWindow {
     pub source: Source,
     pub cwd: String,
@@ -314,7 +306,12 @@ pub struct FileWindow {
     /// 〔第五刀〕命中那一摞这一帧画了什么。**与 [`Self::tally`] 刻意是两个类型** ——
     /// [`HitTally`] 里没有「谁被点了」这个概念，逐条理由住那个类型的头注。
     pub hits_tally: HitTally,
-    /// 远端要在 tokio 上跑；本机不需要，所以是 `Option`。
+    /// 远端列目录要在 tokio 上跑，而**判据里大量窗口拿不到运行时**，所以是 `Option`。
+    ///
+    /// ⚠ 从前这句话写的是「本机不需要，所以是 `Option`」—— 本机那一侧退役之后
+    /// 那个理由不成立了，但这一格**照旧是 `Option`**，换了一条真的理由：
+    /// 起窗那条路（`super::proc`）与判据都可能手上没有运行时，而那时它要**出声**
+    /// （[`Self::reload`] 里那一支），不许假装列了个空目录。
     pub rt: Option<tokio::runtime::Handle>,
     /// `设计/60 §5.4d`：拖入那一摞的状态机（**先一次问完，再并行传**）。
     pub board: DropBoard,
@@ -368,22 +365,6 @@ pub struct FileWindow {
     /// ⚠ 两个字段刻意分开：**高亮要一直留着**（一帧的高亮在连续重绘的窗口上等于看不见），
     /// 而**滚只滚一次**（每帧都滚就把用户自己的滚动按住了）。
     reveal: Option<Reveal>,
-    /// 🔴〔第六刀〕这个窗口**从哪台远端上走开的** —— 与「此刻在看哪一侧」
-    /// （[`Self::source`]）**刻意分成两个字段**。
-    ///
-    /// # 少了它是一扇单向门（这一条是承重的）
-    ///
-    /// [`Self::go_local`] 会把 `source` 换成 [`Source::Local`]，而 `Source::Remote`
-    /// 里那个 `RemoteConfig` 就在同一个枚举格子上 ⇒ **那一下把它盖掉了**。
-    /// 窗口上没有第二条路能把它拿回来（没有第二条 `#[tauri::command]`、
-    /// 没有 `go_remote`、界面上本机态那一格只是个 `ui.label("本机")`）
-    /// ⇒ 第六刀之前的实况是：**用户点一下「本机」，这个窗口就再也回不到远端**，
-    /// 只能关掉、回老面板重开一个。
-    ///
-    /// ⚠ 记的是**来处**，不是「远端 home」：回去要落在**用户离开时那儿**。
-    /// 「窗口自己开在远端 home」是另一件事（那要 `sftp_realpath`，是入口那条命令的题），
-    /// 登记在 `mod.rs` 那一节里，**本字段买不到它，别读宽**。
-    away: Option<RemoteReturn>,
 }
 
 impl FileWindow {
@@ -429,7 +410,6 @@ impl FileWindow {
             editing: None,
             asking_discard: false,
             reveal: None,
-            away: None,
         }
     }
 
@@ -441,7 +421,7 @@ impl FileWindow {
         // 🔴〔第十二刀 2026-09-22〕**先问后端，问不到才退回旧路** ——
         //    用户指令的第 1 步，逐条理由住 `source.rs` 那一段头注。
         match &self.rt {
-            // ── 有运行时 ⇒ 主路（两侧走**同一条**：`files-ls` on 这个 origin）──
+            // ── 有运行时 ⇒ 主路（`files-ls` on 这个 origin）───────────
             Some(h) => {
                 let source = self.source.clone();
                 h.spawn(async move {
@@ -449,27 +429,20 @@ impl FileWindow {
                     store_listed_if_current(&l, mine, r);
                 });
             }
-            // ── 没有运行时 ⇒ 问不了后端。**这也是一条退路，而它要出声。**
-            //    （判据里大量 `FileWindow::new(Source::Local, …, None)` 走这一支）
-            None => match &self.source {
-                Source::Local => {
-                    let r = list_local(std::path::Path::new(&cwd));
-                    let kept = store_if_current(&l, mine, r);
-                    if kept {
-                        *l.verdict.lock().unwrap() = Some(
-                            "这个窗口没有 tokio 运行时 ⇒ 问不了后端，这一屏是 monitor 自己列的"
-                                .into(),
-                        );
-                    }
-                }
-                Source::Remote(_) => {
-                    store_if_current(
-                        &l,
-                        mine,
-                        Err("远端目录要一个 tokio 运行时，这个窗口没拿到".into()),
-                    );
-                }
-            },
+            // ── 没有运行时 ⇒ 问不了后端，也走不了 SFTP 那条退路 ⇒ **出声**。
+            //
+            // 🔴〔2026-09-23 本机侧退役〕这一支从前是两支：本机那一支同步
+            //    `read_dir` 一趟、把「这一屏是 monitor 自己列的」写进裁决格。
+            //    本机侧不在了（`source.rs` 头注那块墓碑）⇒ 现在只剩「出声」这一种结局。
+            // ⚠ **不许**把它改回「静默交一个空列表」：那与「这个目录真的是空的」
+            //    在屏幕上分不开，而那正是本仓的头号病形。
+            None => {
+                store_if_current(
+                    &l,
+                    mine,
+                    Err("远端目录要一个 tokio 运行时，这个窗口没拿到".into()),
+                );
+            }
         }
     }
 
@@ -489,7 +462,7 @@ impl FileWindow {
 
     /// 上一级。已经在顶上就什么都不做（[`parent_dir`] 到顶回原值）。
     pub fn navigate_up(&mut self) {
-        let up = parent_dir(&self.source, &self.cwd);
+        let up = parent_dir(&self.cwd);
         self.navigate_to(up);
     }
 
@@ -508,47 +481,6 @@ impl FileWindow {
         let before = self.cwd.clone();
         self.navigate_to(target);
         self.cwd != before
-    }
-
-    /// 切到**本机**那一侧，落在 `home`。
-    ///
-    /// 🔴 它是 [`list_local`] 今天**唯一的用户可达入口**。没有它，本机那半是
-    /// 「盘上有 ≠ 被走到」（`K-R18` 语料八）—— 有判据、没有人走得到。
-    pub fn go_local(&mut self, home: String) {
-        // 🔴 **先记来处，再盖 `source`** —— 顺序反了就等于没记
-        //    （`self.source` 已经是 `Local` 了，那个 `if let` 不会命中），
-        //    而那正是这条缺陷原本的形状：一扇单向门，且安安静静。
-        if let Source::Remote(cfg) = &self.source {
-            self.away = Some(RemoteReturn {
-                cfg: cfg.clone(),
-                cwd: self.cwd.clone(),
-            });
-        }
-        self.source = Source::Local;
-        self.cwd = home;
-        self.reveal = None; // 同 `navigate_to`：换了机器那一行就不在这儿了
-        self.listing.invalidate();
-        self.reload();
-    }
-
-    /// 回到点「本机」之前那台远端的那个目录。
-    ///
-    /// 回值 = **真的回去了**。没有来处（这个窗口一开始就是本机侧的）⇒ `false`，
-    /// 而那时界面上那颗按钮也不该在（两处看的是同一个 [`Self::return_label`]）。
-    ///
-    /// ⚠ 它**不重新解析远端 home**，也不起任何 IO：来处是离开时就记下的
-    /// ⇒ 这一跳是**同步**的，换目录这件事照旧留在 UI 线程手上
-    /// （同 [`Self::seen_rounds`] 头注那条理由）。
-    pub fn go_remote(&mut self) -> bool {
-        let Some(back) = self.away.take() else {
-            return false;
-        };
-        self.source = Source::Remote(back.cfg);
-        self.cwd = back.cwd;
-        self.reveal = None; // 同上
-        self.listing.invalidate();
-        self.reload();
-        true
     }
 
     /// 现在高亮着哪一行的名字（`None` = 没有）。判据与界面看同一个值。
@@ -609,24 +541,17 @@ impl FileWindow {
         }
     }
 
-    /// 「回去」那颗按钮上写哪台机器 —— `None` = 没有来处，那颗按钮不画。
-    ///
-    /// 🔴 抽成一个函数是为了让**按钮在不在**与**跳得成不成**看同一个判据：
-    /// 两处各写一份条件时，「按钮画了但点了没反应」是个静默态。
-    pub fn return_label(&self) -> Option<String> {
-        self.away.as_ref().map(|b| b.cfg.origin_label())
-    }
-
     /// 🔴〔第四刀〕**发一趟搜索** —— `设计/60 §3.5` 那一件在窗口上的落点。
     ///
     /// 回值 = 真的发出去了一趟（子串是空的、或这个窗口没有 tokio 运行时 ⇒ `false`）。
     ///
     /// # 本机与远端**同一条路**
     ///
-    /// 两侧都走那条长连接上的 `files-find`（[`Source::origin`] 给的是登记表里的键）。
-    /// ⚠ 与列目录**刻意不同**：列目录本机走文件系统、远端走 SFTP（[`Self::reload`]），
-    /// 而搜索**只有后端那一条**（`设计/60 §2 档①`：SFTP 给不了搜索）。
-    /// ⇒ 本机没起后端时这里拿到的是「没有可用的控制通道」那句话，而**不是**
+    /// 走那条长连接上的 `files-find`（[`Source::origin`] 给的是登记表里的键）。
+    /// ⚠ 与列目录**刻意不同**：列目录**有一条退路**（后端问不到就退回 SFTP，
+    /// 见 [`Self::reload`] 与 `super::source::list_dir`），而搜索**只有后端那一条**
+    /// （`设计/60 §2 档①`：SFTP 给不了搜索）。
+    /// ⇒ 后端没起来时这里拿到的是「没有可用的控制通道」那句话，而**不是**
     /// 悄悄退回一趟 `walkdir` —— 那会是第二份搜索实现，而且它没有常驻索引。
     ///
     /// # `force_rebuild` 是那颗按钮，不是一个周期
@@ -671,12 +596,12 @@ impl FileWindow {
 
     /// 拖进来的那几个本机文件 → 待传清单（**目标目录 = 当前目录**）。
     ///
-    /// ⚠ 只在**远端**那一侧成立：本机拖本机是「复制文件」，那是另一件事，本刀不做
-    /// ⇒ 本机源上返回空清单（不是静默忽略：调用方据此出声）。
+    /// 🔴〔2026-09-23 本机侧退役〕**这里少了一道闸，而那是对的。** 从前开头有一句
+    /// `if !self.source.is_remote() { return Vec::new(); }` —— 它防的是
+    /// 「窗口看着本机时把本机文件拖进本机」。`Source` 收成 newtype 之后
+    /// 那个状态**写不出来了**（理由住 `super::source::Source` 头注）⇒ 那道闸
+    /// 不是被删掉了，是它要守的东西整条不在了。
     pub fn pending_for(&self, local_paths: &[String]) -> Vec<Pending> {
-        if !self.source.is_remote() {
-            return Vec::new();
-        }
         local_paths
             .iter()
             .filter_map(|p| Pending::into_remote_dir(p, &self.cwd))
@@ -688,16 +613,13 @@ impl FileWindow {
     /// 🔴 三段的顺序不在这里，在 [`crate::filewin::transfer::run_drop`] 的结构里 ——
     /// 这里只负责把「问谁 · 怎么问 · 怎么传」三个口接上去。
     /// 接错了会被 `transfer_tests` 逮住的是**那个函数**，不是本函数；
-    /// 而本函数接不上（没运行时 / 本机源）要**出声**，判据见 `shell_tests`。
+    /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
+    /// ⚠ 从前这句话是「没运行时 / 本机源」—— 本机源那一支不在了（见 `Source` 头注）。
     pub fn start_drop(&mut self, items: Vec<Pending>, ctx: Option<egui::Context>) -> bool {
         if items.is_empty() {
             return false;
         }
-        let Source::Remote(cfg) = &self.source else {
-            *self.listing.error.lock().unwrap() =
-                Some("这个窗口现在看的是本机，拖进来的文件没有远端目标".into());
-            return false;
-        };
+        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("上传要一个 tokio 运行时，这个窗口没拿到".into());
@@ -842,17 +764,14 @@ impl FileWindow {
 
     /// 摆出「把第 `i` 行复制成什么名字」那个框。回值 = 真的摆出来了。
     ///
-    /// ⚠ **两道闸，刻意重复**：
-    /// - `super::copy::is_copyable` —— 目录与有损名一律不接。列表上那两档压根不画
-    ///   那颗按钮，这里是第二道，防的是「按钮没了、调用还在」（那正是死值验刀 2 那一形）。
-    /// - **远端才有** —— `copy-data` 是 SFTP 协议的扩展，本机复制压根不经 SFTP
-    ///   （同 `parity_ledger` 里 `sftp_copy` 那一行旁边的理由）。本机源上**出声**，不静默。
+    /// ⚠ **这里只剩一道闸了，如实记**：`super::copy::is_copyable` —— 目录与有损名
+    /// 一律不接。列表上那两档压根不画那颗按钮，这里是第二道，防的是
+    /// 「按钮没了、调用还在」（那正是死值验刀 2 那一形）。
+    ///
+    /// 🔴〔2026-09-23 本机侧退役〕**第二道闸（「远端才有」）删了。** `copy-data` 是
+    /// SFTP 协议的扩展，本机复制压根不经 SFTP ⇒ 从前本机源上要出声拒。
+    /// 今天窗口**只可能**看着一台远端（`Source` 是 newtype）⇒ 那句话说不出口了。
     pub fn begin_copy(&mut self, i: usize) -> bool {
-        if !self.source.is_remote() {
-            *self.listing.error.lock().unwrap() =
-                Some("这个窗口现在看的是本机，零流量复制只在远端那一侧成立".into());
-            return false;
-        }
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
@@ -895,13 +814,9 @@ impl FileWindow {
     ///
     /// 🔴 三段的顺序不在这里，在 [`super::copy::run_copy`] 的结构里 ——
     /// 这里只负责把「问谁 · 怎么问 · 怎么起」三个口接上去（同 [`Self::start_drop`]）。
-    /// 而本函数接不上（没运行时 / 本机源）要**出声**，判据见 `shell_tests`。
+    /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
-        let Source::Remote(cfg) = &self.source else {
-            *self.listing.error.lock().unwrap() =
-                Some("这个窗口现在看的是本机，零流量复制只在远端那一侧成立".into());
-            return false;
-        };
+        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
@@ -996,28 +911,15 @@ impl FileWindow {
         self.write_prompt.as_ref()
     }
 
-    /// 这四条写操作只在**远端**那一侧成立 —— 本机源上**出声**，不静默。
-    ///
-    /// 🔴 抽成一个函数是为了让那句话只有一个住址：四个入口（新建目录 · 改名 ·
-    /// 删除 · 权限）都问它，而它们都要在本机源上说同一句话。
-    /// ⚠ 为什么本机不做：这四条走的是 `sftp_pool` 那四条命令，**它们全要一条 SFTP 会话**。
-    /// 本机改文件是另一件事（另一套原语、另一套围栏），本刀不做，也不假装做了。
-    fn remote_only(&self) -> bool {
-        if self.source.is_remote() {
-            return true;
-        }
-        *self.listing.error.lock().unwrap() = Some(
-            "这个窗口现在看的是本机 —— 新建目录 / 改名 / 删除 / 改权限走的是远端那四条 SFTP 命令"
-                .into(),
-        );
-        false
-    }
-
     /// 摆出「新建目录」那个框。回值 = 真的摆出来了。
+    ///
+    /// 🔴〔2026-09-23 本机侧退役〕**`remote_only()` 那道共用闸整条删了。**
+    /// 它从前是四个入口（新建目录 · 改名 · 删除 · 权限）的共用住址，
+    /// 干的事是「窗口看着本机 ⇒ 出声拒」（理由：这四条全要一条 SFTP 会话）。
+    /// `Source` 收成 newtype 之后那个状态**写不出来** ⇒ 四处各少一句
+    /// `if !self.remote_only() { return false; }`，那不是四道闸被删掉了，
+    /// 是它们要守的那个状态整条不在了（逐条理由住 `super::source::Source` 头注）。
     pub fn begin_mkdir(&mut self) -> bool {
-        if !self.remote_only() {
-            return false;
-        }
         self.write_prompt = Some(WritePrompt::for_mkdir(&self.cwd));
         true
     }
@@ -1061,11 +963,11 @@ impl FileWindow {
         )
     }
 
-    /// 第 `i` 行，且它**能被写**。`None` ⇒ 不接（越界 / 有损名 / 本机源，已出声）。
+    /// 第 `i` 行，且它**能被写**。`None` ⇒ 不接（越界 / 有损名）。
+    ///
+    /// ⚠ 从前这句话是「越界 / 有损名 / **本机源**，已出声」—— 本机源那一档不在了
+    /// （同 [`Self::begin_mkdir`] 那条）。它不是**静默**掉的：那个状态写不出来。
     fn writable_row(&mut self, i: usize) -> Option<Row> {
-        if !self.remote_only() {
-            return None;
-        }
         let rows = self.listing.rows.lock().unwrap();
         match rows.get(i) {
             Some(r) if is_writable(r) => Some(r.clone()),
@@ -1104,15 +1006,12 @@ impl FileWindow {
     ///
     /// 🔴 三段的顺序不在这里，在 [`super::writeops::run_writes`] 的结构里 ——
     /// 这里只负责把「怎么问 · 怎么做」两个口接上去（同 [`Self::start_drop`]）。
-    /// 而本函数接不上（没运行时 / 本机源）要**出声**，判据见 `shell_tests`。
+    /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_writes(&mut self, ops: Vec<WriteOp>, ctx: Option<egui::Context>) -> bool {
         if ops.is_empty() {
             return false;
         }
-        let Source::Remote(cfg) = &self.source else {
-            self.remote_only();
-            return false;
-        };
+        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("这几件写操作要一个 tokio 运行时，这个窗口没拿到".into());
@@ -1181,13 +1080,10 @@ impl FileWindow {
 
     /// 摆出第一问（「存到哪儿」，缺省填 `<本机 home>/<原名>`）。回值 = 真的摆出来了。
     ///
-    /// ⚠ 本机那一侧**出声拒**，不静默 —— 同 [`Self::begin_copy`] 的理由与口径。
+    /// ⚠ **缺省值里那个「本机 home」不是本机文件管理器**（[`local_home`] 头注那条）：
+    /// 往外拖就是往本机盘上写一份，落点当然在本机。用户裁的是「本地不需要**文件管理器**」。
+    /// 🔴〔2026-09-23 本机侧退役〕开头那道「本机源出声拒」的闸删了 —— 同 [`Self::begin_copy`]。
     pub fn begin_pull(&mut self, i: usize) -> bool {
-        if !self.source.is_remote() {
-            *self.listing.error.lock().unwrap() =
-                Some("这个窗口现在看的是本机，没有什么可往外拖的".into());
-            return false;
-        }
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
@@ -1251,11 +1147,7 @@ impl FileWindow {
     /// （那是池子取消登记表的唯一造键落点）⇒ 这一趟从此**取消得掉**，
     /// 与上传/复制两条路共用同一张在飞表。
     pub fn start_pull(&mut self, src_path: &str, dest: &str, ctx: Option<egui::Context>) -> bool {
-        let Source::Remote(cfg) = &self.source else {
-            *self.listing.error.lock().unwrap() =
-                Some("这个窗口现在看的是本机，没有什么可往外拖的".into());
-            return false;
-        };
+        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("往外拖要一个 tokio 运行时，这个窗口没拿到".into());
@@ -1322,11 +1214,7 @@ impl FileWindow {
     /// **连那趟往返都不发** —— 而且把**为什么**说出来。
     /// 逐条理由住 `editor.rs` 头注「超了怎么办」那一节。
     pub fn begin_edit(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
-        let Source::Remote(cfg) = &self.source else {
-            *self.listing.error.lock().unwrap() =
-                Some("这个窗口现在看的是本机，这两条命令是远端的".into());
-            return false;
-        };
+        let cfg = self.source.cfg();
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
@@ -1404,9 +1292,7 @@ impl FileWindow {
             ));
             return false;
         }
-        let Source::Remote(cfg) = &self.source else {
-            return false;
-        };
+        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("存远端文本要一个 tokio 运行时，这个窗口没拿到".into());
@@ -1745,10 +1631,15 @@ impl FileWindow {
         if let Some(note) = self.font.notice() {
             ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), note);
         }
-        let mut go_local: Option<String> = None;
-        // 〔第六刀〕本机态下那颗「回 <机器名>」—— 与 `go_local` 同一个理由收在帧尾：
-        // 按钮在 `ui.horizontal` 的闭包里，那里借着 `&mut self` 的一部分。
-        let mut go_remote = false;
+        // 🔴〔2026-09-23 本机侧退役〕**这条工具栏上少了一对按钮，逐条记清。**
+        //
+        // 从前这里有一颗「本机」（远端态下画）与一颗「回 <机器名>」（本机态下画），
+        // 以及两个收在帧尾的 `go_local` / `go_remote` 标志（按钮在 `ui.horizontal`
+        // 的闭包里借着 `&mut self` 的一部分 ⇒ 跳转不能在闭包里做）。
+        // 两颗按钮连同那一对函数都不在了 —— 用户裁决与那条白名单原文住
+        // `super::source` 头注那块墓碑。
+        // ⚠ **帧尾消化 `mkdir` 这一格照旧留着**：它与那两颗按钮是同一个借用理由，
+        //   而「新建目录」那条功能一个字没动。别顺手把它也内联回闭包里。
         let mut mkdir = false;
         ui.horizontal(|ui| {
             if ui.button("⬆ 上一级").clicked() {
@@ -1762,21 +1653,6 @@ impl FileWindow {
             if ui.button(MKDIR_LABEL).clicked() {
                 mkdir = true;
             }
-            if !self.source.is_remote() {
-                ui.label("本机");
-                // 🔴〔第六刀〕**回远端那颗按钮** —— 没有它，上面那颗「本机」是一扇
-                //    单向门（逐条理由住 [`Self::away`]）。标签上带着那台机器的名字，
-                //    因为一个窗口只可能有一个来处，写「远端」两个字说不出是哪台。
-                //    ⚠ 只用中文＋ASCII，不用箭头字形：那一族要看装没装上字体
-                //    （`fonts.rs`），而这颗按钮在本机态下必须画得出来。
-                if let Some(back) = self.return_label() {
-                    if ui.button(format!("回 {back}")).clicked() {
-                        go_remote = true;
-                    }
-                }
-            } else if ui.button("本机").clicked() {
-                go_local = Some(local_home());
-            }
             ui.label(format!("{} : {}", self.source.label(), self.cwd));
             if self.listing.is_loading() {
                 ui.spinner();
@@ -1786,19 +1662,11 @@ impl FileWindow {
         if mkdir {
             self.begin_mkdir();
         }
-        if let Some(home) = go_local {
-            self.go_local(home);
-        }
-        // ⚠ 与上面那一跳**互斥**：`go_local` 只在远端态画得出来、`go_remote` 只在本机态
-        //    ⇒ 同一帧里不可能两个都真。这里照旧按顺序消化，不额外写一条 `else`。
-        if go_remote {
-            self.go_remote();
-        }
         if let Some(e) = self.listing.error.lock().unwrap().clone() {
             ui.colored_label(egui::Color32::RED, e);
         }
         // 🔴〔第十二刀〕**退了路要出声。** 一次静默降级与一次成功在屏幕上长得一样，
-        //    而代价是真的：这一屏不是后端列的，是 monitor 自己列的
+        //    而代价是真的：这一屏不是后端列的，是 monitor 自己开一条 SFTP 列的
         //    ⇒ 没有 `kind`（分不出符号链接）、没有截断读数、也不是「后端做前端拿结果」。
         if let Some(why) = self.listing.verdict.lock().unwrap().clone() {
             ui.colored_label(
