@@ -71,7 +71,14 @@
 //!   它买的是「egui 收到这串事件之后认出来的是哪一行」——
 //!   逐条与那次现打的读数写在 [`super::rows`] 的 `paint_one_row` 头注里。
 //! - **Windows 上一次都没跑过。**
-//! - 多选 · 预览 · 双栏 · 右键菜单 **仍然一个都没有**（`设计/60 §4 戊` 代价第 2 条）。
+//! - 预览 · 双栏 **仍然一个都没有**（`设计/60 §4 戊` 代价第 2 条）。
+//!   〔FW1+FW2 2026-09-24〕**多选与右键菜单做了**（还有键盘）：纯的那一份（选中态 · 键位 ·
+//!   「能做什么」那张表）住 [`super::select`]，接到窗口上的那几跳住本文件
+//!   [`FileWindow::apply_keys`] / [`FileWindow::apply_pick_click`] /
+//!   [`FileWindow::apply_menu_click`] / [`FileWindow::perform`]。
+//!   🔴 **写操作一条新路都没长**：键盘与菜单做的每一件，都落回行上那几颗按钮已经在走的
+//!   那几个 `begin_*`（以及删除那一摞的 `start_writes`）⇒ 围栏 · 一次问完 · 只经通道说 `call`
+//!   这几道闸一道都没绕开。
 //!   ⚠ **拖放从这一条里划出去了**：第二刀做了「拖入本机文件 → 上传到当前远端目录」
 //!   那一半（见 [`FileWindow::start_drop`] 与 [`super::transfer`]）；
 //!   **往外拖（下载）没做**，窗口之间互拖也没做。
@@ -86,6 +93,7 @@ use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
+use super::select::{self, Action, Intent, Selection, TypeAhead};
 use super::source::{breadcrumbs, parent_dir, Line, Listed, Row, SortBy, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
@@ -414,7 +422,45 @@ pub struct FileWindow {
     /// ⚠ 两个字段刻意分开：**高亮要一直留着**（一帧的高亮在连续重绘的窗口上等于看不见），
     /// 而**滚只滚一次**（每帧都滚就把用户自己的滚动按住了）。
     reveal: Option<Reveal>,
+    /// 🔴〔FW1+FW2〕**选中态**（哪几行 · 键盘光标 · Shift 的锚）。**UI 线程自己的**。
+    ///
+    /// ⚠ 按名字记（理由住 [`super::select`] 头注 §二）。换目录清空；
+    ///   一摞写操作跑完只清「选中」、留着光标（[`Self::settle_finished_writes`]）。
+    selection: Selection,
+    /// 〔FW1〕打字跳转攒着的那几个字。
+    type_ahead: TypeAhead,
+    /// 〔FW1〕键盘把光标挪到了第几行 ⇒ 这一帧画列表时要不要把它滚进视野。**只滚一次**。
+    key_scroll: Option<usize>,
+    /// 〔FW2〕摆着的那个右键菜单（`None` = 没摆）。
+    menu: Option<MenuAt>,
+    /// 〔FW2〕开过几次菜单 —— 每次开菜单换一个 egui id（理由住 [`MenuAt::serial`]）。
+    menus_opened: u64,
+    /// 〔FW1+FW2〕键盘 / 菜单那一下**做不了**时说的那句话（`None` = 没话说）。
+    ///
+    /// ⚠ 刻意不写进 `listing.error`：那一格只在下一趟列目录时才清，
+    ///   而「打字跳转没找到」是一句**下一次按键就过时**的话 ⇒ 下一次按键 / 点击就清掉。
+    key_notice: Option<String>,
 }
+
+/// 〔FW2〕一个摆着的右键菜单：**在哪儿 · 列哪几项 · 对几项说话**。
+///
+/// 🔴 那几项是**开菜单那一刻**按 [`select::actions_for`] 算好的快照 ——
+/// 每帧重算要扫一遍整摞行找选中（64 万行那一档每帧一趟 O(n)）。
+/// 快照不会过时：菜单摆着的时候键盘不接（[`FileWindow::apply_keys`] 的闸），
+/// 点别处菜单先关；而点菜单上那一项时 [`FileWindow::perform`] **再问一次**那张表。
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuAt {
+    pub at: egui::Pos2,
+    pub actions: Vec<Action>,
+    pub n: usize,
+    /// 🔴 第几次开菜单。egui 的弹层按「上一帧有没有这个 id 的响应」判「刚打开」：
+    ///   摆着一个菜单时在另一行上再右键一下，同一个 id 会被当成「开着时有人点了别处」
+    ///   当场关掉 ⇒ 右键第二下只关不开。每次开菜单换一个 id 就没有这一形。
+    pub serial: u64,
+}
+
+/// 〔FW2〕菜单上一项都没有时摆的那一句（有损名那一档：什么都做不了，但要说出来）。
+pub const MENU_EMPTY: &str = "对选中的这几项没有能做的事";
 
 impl FileWindow {
     pub fn new(source: Source, cwd: String, rt: Option<tokio::runtime::Handle>) -> Self {
@@ -477,6 +523,12 @@ impl FileWindow {
             sort_by: SortBy::default(),
             term_notice: Arc::new(Mutex::new(None)),
             reveal: None,
+            selection: Selection::default(),
+            type_ahead: TypeAhead::default(),
+            key_scroll: None,
+            menu: None,
+            menus_opened: 0,
+            key_notice: None,
         }
     }
 
@@ -531,6 +583,13 @@ impl FileWindow {
         //    留着的话，新目录里**恰好同名**的另一个文件会被高亮 ——
         //    而用户会以为那就是他要找的那个。
         self.reveal = None;
+        // 🔴〔FW1+FW2〕选中态按名字记 ⇒ 新目录里**同名**的那几个不是同一样东西。
+        //    留着的话按 Delete 删的是新目录里恰好同名的文件。
+        self.selection.clear();
+        self.type_ahead.clear();
+        self.key_scroll = None;
+        self.menu = None;
+        self.key_notice = None;
         self.cwd = path;
         self.listing.invalidate();
         self.reload();
@@ -847,14 +906,7 @@ impl FileWindow {
         //   「一次问完」就变成「答错了哪一个都不知道」。
         // ⚠〔第五刀〕写操作那一摞同理，而它的代价更大：那个框上「都别做」与
         //   上传那个框上「全都不覆盖」叠在一起，答错一个就是删错东西。
-        if self.board.is_asking()
-            || self.copy_board.is_asking()
-            || self.copy_prompt.is_some()
-            || self.write_board.is_asking()
-            || self.write_prompt.is_some()
-            || self.pull_ask.is_some()
-            || self.editing.is_some()
-        {
+        if self.modal_up() {
             return;
         }
         let dropped: Vec<String> = ctx.input(|i| {
@@ -1228,6 +1280,8 @@ impl FileWindow {
             return false;
         }
         self.seen_write_rounds = now;
+        // 〔FW2〕删掉 / 改了名的那几个名字已经不在了 ⇒ 选中清掉（光标留着，理由住 `Selection::clear_picked`）。
+        self.selection.clear_picked();
         self.reload();
         true
     }
@@ -1797,6 +1851,301 @@ impl FileWindow {
     }
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔FW1+FW2 2026-09-24〕键盘 · 多选 · 右键菜单 —— 接到窗口上的那几跳
+// ════════════════════════════════════════════════════════════════════════
+//
+// 纯的那一份（选中态 · 键位翻译 · 「能做什么」那张表）住 `select.rs`；这里只有胶水，
+// 而每一条胶水都是一个具名方法（同 `apply_click` 那条理由：写在 `frame_body` 里的话，
+// 两头各有判据、中间这一跳谁都没在看）。
+
+impl FileWindow {
+    /// 选中态（判据与界面看同一个值）。
+    pub fn selection(&self) -> &Selection {
+        &self.selection
+    }
+
+    /// 键盘 / 菜单那一下做不了时说的那句话。
+    pub fn key_notice(&self) -> Option<&str> {
+        self.key_notice.as_deref()
+    }
+
+    /// 摆着的那个右键菜单。
+    pub fn menu(&self) -> Option<&MenuAt> {
+        self.menu.as_ref()
+    }
+
+    /// 有一个模态框摆着吗（上传那一问 · 复制那两问 · 写操作那两问 · 往外拖那两问 · 编辑面）。
+    ///
+    /// 🔴 **一处**：拖入那一口（[`Self::take_drops`]）与键盘那一口（[`Self::apply_keys`]）
+    /// 问的是同一个函数 —— 分成两份的症状是「编辑面开着，按 Delete 删掉了列表里的文件」。
+    fn modal_up(&self) -> bool {
+        self.board.is_asking()
+            || self.copy_board.is_asking()
+            || self.copy_prompt.is_some()
+            || self.write_board.is_asking()
+            || self.write_prompt.is_some()
+            || self.pull_ask.is_some()
+            || self.editing.is_some()
+    }
+
+    /// 键盘这一帧该不该归列表。**四道闸**，任一成立就不接：
+    ///
+    /// 1. 有模态框摆着（[`Self::modal_up`]）—— 键是给那个框的；
+    /// 2. 右键菜单摆着 —— Esc / 点别处先把它收掉；
+    /// 3. 画的是搜索命中那一摞 —— 那一摞交不出下标（`rows::HitTally` 头注那条），
+    ///    按 Delete 删的会是**另一摞**里同一个下标的文件；
+    /// 4. 有控件拿着键盘焦点（搜索框里正在打字、一颗按钮刚被 Tab 到）—— 字是给它的。
+    ///    ⚠ 点一下列表里的行会把焦点清掉（[`Self::apply_pick_click`]），键盘就回到列表。
+    pub fn keys_blocked(&self, ctx: &egui::Context) -> bool {
+        self.modal_up()
+            || self.menu.is_some()
+            || self.showing_hits()
+            || ctx.egui_wants_keyboard_input()
+    }
+
+    /// 🔴 **胶水**：这一帧 egui 收到的按键 → 意图 → 一件一件做。回值 = 做了几件。
+    pub fn apply_keys(&mut self, ctx: &egui::Context) -> usize {
+        if self.keys_blocked(ctx) {
+            return 0;
+        }
+        let (events, now) = ctx.input(|i| (i.events.clone(), i.time));
+        let its = select::intents(&events);
+        let n = its.len();
+        for it in its {
+            self.apply_intent(it, now, Some(ctx.clone()));
+        }
+        n
+    }
+
+    /// 做一件意图。回值 = 真的做成了（做不了的那几形**已出声**，见 [`Self::key_notice`]）。
+    ///
+    /// `now` 是 egui 的输入时钟（秒），只给打字跳转那一格比「隔了多久」用。
+    pub fn apply_intent(&mut self, it: Intent, now: f64, ctx: Option<egui::Context>) -> bool {
+        self.key_notice = None;
+        match it {
+            Intent::Step { by, extend } => self.step(by, extend),
+            Intent::Edge { end, extend } => {
+                let len = self.listing.rows.lock().unwrap().len();
+                self.go_to(select::edge_target(len, end), extend)
+            }
+            Intent::Parent => {
+                let before = self.cwd.clone();
+                self.navigate_up();
+                self.cwd != before
+            }
+            Intent::SelectAll => {
+                let rows = self.listing.rows.lock().unwrap();
+                self.selection.select_all(&rows);
+                !rows.is_empty()
+            }
+            Intent::Open => self.open_picked(ctx),
+            Intent::Delete => self.perform(Action::Delete, ctx),
+            Intent::Rename => self.perform(Action::Rename, ctx),
+            Intent::Type(t) => {
+                let prefix = self.type_ahead.feed(now, &t).to_string();
+                let hit = {
+                    let rows = self.listing.rows.lock().unwrap();
+                    select::jump_target(&rows, &prefix)
+                        .map(|i| (i, self.selection.move_to(&rows, i, false)))
+                };
+                match hit {
+                    Some((i, _)) => {
+                        self.key_scroll = Some(i);
+                        true
+                    }
+                    None => {
+                        self.key_notice = Some(format!("没有以「{prefix}」开头的项"));
+                        false
+                    }
+                }
+            }
+        }
+    }
+
+    /// ↑↓：光标挪一步，并记下「这一帧要滚进视野」。
+    fn step(&mut self, by: isize, extend: bool) -> bool {
+        let target = {
+            let rows = self.listing.rows.lock().unwrap();
+            select::step_target(rows.len(), self.selection.cursor_index(&rows), by)
+        };
+        self.go_to(target, extend)
+    }
+
+    /// 光标落到第 `target` 行（`None` = 空列表，什么都不做）。
+    fn go_to(&mut self, target: Option<usize>, extend: bool) -> bool {
+        if let Some(t) = target {
+            let rows = self.listing.rows.lock().unwrap();
+            self.selection.move_to(&rows, t, extend);
+        }
+        self.key_scroll = target;
+        target.is_some()
+    }
+
+    /// 回车：选中的**恰好一项** ⇒ 目录进去、文件编辑。
+    ///
+    /// ⚠ 文件那一支**直接**走 [`Self::begin_edit`]，不先问 [`select::actions_for`]：
+    /// 那张表对「超编辑上限」只会说「没有编辑这一项」，而 `begin_edit` 会说**为什么**
+    /// （多了多少字节）—— 两者判的是同一个函数（`editor::is_editable` 就是
+    /// `why_not_editable` 的 `is_none()`），所以准不准一致，只是这一支说得更具体。
+    fn open_picked(&mut self, ctx: Option<egui::Context>) -> bool {
+        let one = {
+            let rows = self.listing.rows.lock().unwrap();
+            match self.selection.picked_indices(&rows).as_slice() {
+                [i] => Some((*i, rows[*i].is_dir)),
+                _ => None,
+            }
+        };
+        match one {
+            Some((_, true)) => self.perform(Action::Open, ctx),
+            Some((i, false)) => self.begin_edit(i, ctx),
+            None => {
+                self.key_notice = Some(select::refusal(Action::Open, self.selection.len()));
+                false
+            }
+        }
+    }
+
+    /// 🔴 **对选中那几项做一件事 —— 菜单与键盘的唯一执行口。**
+    ///
+    /// 先**再问一次** [`select::actions_for`]（菜单是开菜单那一刻的快照，键盘压根没问过）：
+    /// 不在表里 ⇒ 出声、不做。在表里 ⇒ 落回行上那几颗按钮**已经在走**的那几个 `begin_*`
+    /// —— 一条新写路都没长（围栏 · 一次问完 · 只经通道说 `call` 全在那几个函数后面）。
+    pub fn perform(&mut self, a: Action, ctx: Option<egui::Context>) -> bool {
+        let (idx, allowed) = {
+            let rows = self.listing.rows.lock().unwrap();
+            let idx = self.selection.picked_indices(&rows);
+            let picked: Vec<&super::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
+            let allowed = select::actions_for(&picked);
+            (idx, allowed)
+        };
+        if !allowed.contains(&a) {
+            self.key_notice = Some(select::refusal(a, idx.len()));
+            return false;
+        }
+        match (a, idx.as_slice()) {
+            (Action::Delete, _) => self.delete_picked(&idx, ctx),
+            (Action::Open, [i]) => self.activate(*i),
+            (Action::Edit, [i]) => self.begin_edit(*i, ctx),
+            (Action::Copy, [i]) => self.begin_copy(*i),
+            (Action::Download, [i]) => self.begin_pull(*i),
+            (Action::Rename, [i]) => self.begin_rename(*i),
+            (Action::Chmod, [i]) => self.begin_chmod(*i),
+            // `actions_for` 只对恰好一项给出单项动作 ⇒ 这一支走不到；
+            // 真走到了也**出声**，不静默。
+            _ => {
+                self.key_notice = Some(select::refusal(a, idx.len()));
+                false
+            }
+        }
+    }
+
+    /// 删掉第 `idx` 那几行 —— **一摞**，走 [`Self::start_writes`]（⇒ `run_writes`：
+    /// 围栏 → 一次问完 → 串行做）。「批量底层已做好」说的就是那个函数。
+    ///
+    /// 🔴 每一行照旧过 [`Self::writable_row`] 那道第二闸；有一行过不去 ⇒ **整摞不起**并出声
+    /// （起一摞「删 3 项」却悄悄只删 2 项，正是「选中态 == 批量那一摞」这条相等的反面）。
+    fn delete_picked(&mut self, idx: &[usize], ctx: Option<egui::Context>) -> bool {
+        let mut ops = Vec::with_capacity(idx.len());
+        for &i in idx {
+            let Some(row) = self.writable_row(i) else {
+                self.key_notice = Some(select::refusal(Action::Delete, idx.len()));
+                return false;
+            };
+            ops.push(WriteOp::Delete {
+                path: row.path,
+                is_dir: row.is_dir,
+            });
+        }
+        self.start_writes(ops, ctx)
+    }
+
+    /// 🔴 **胶水**：列表说「第 `i` 行被单击了（带着这几个修饰键）」→ 选中态跟着变。
+    ///
+    /// 点行这一下同时**把键盘交给列表**（清掉 egui 的焦点）：不清的话，刚在搜索框里
+    /// 打过字的用户点一下列表、再按 ↓，字还是进搜索框（[`Self::keys_blocked`] 第 4 道闸）。
+    pub fn apply_pick_click(&mut self, ctx: &egui::Context) -> bool {
+        let Some((i, mods)) = self.tally.picked_click else {
+            return false;
+        };
+        {
+            let rows = self.listing.rows.lock().unwrap();
+            self.selection.click(&rows, i, mods);
+        }
+        self.key_notice = None;
+        ctx.memory_mut(|m| m.stop_text_input());
+        true
+    }
+
+    /// 🔴 **胶水**：列表说「第 `i` 行被右键点了」→ 选中态按右键的手感变 → 摆出菜单。
+    ///
+    /// `at` = 菜单摆在哪儿（指针那一刻的位置；判据直接喂）。
+    pub fn apply_menu_click(&mut self, at: egui::Pos2) -> bool {
+        let Some(i) = self.tally.menu_clicked else {
+            return false;
+        };
+        if self.modal_up() {
+            return false;
+        }
+        let (actions, n) = {
+            let rows = self.listing.rows.lock().unwrap();
+            self.selection.pick_for_menu(&rows, i);
+            let idx = self.selection.picked_indices(&rows);
+            let picked: Vec<&super::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
+            (select::actions_for(&picked), idx.len())
+        };
+        self.menus_opened += 1;
+        self.key_notice = None;
+        self.menu = Some(MenuAt {
+            at,
+            actions,
+            n,
+            serial: self.menus_opened,
+        });
+        true
+    }
+
+    /// 菜单那一层的 egui id（判据按它找菜单画在哪一块）。
+    pub fn menu_id(serial: u64) -> egui::Id {
+        egui::Id::new(("filewin-row-menu", serial))
+    }
+
+    /// 画右键菜单；点了哪一项就交给 [`Self::perform`]。点别处 / Esc ⇒ 收掉。
+    fn menu_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(m) = self.menu.clone() else {
+            return;
+        };
+        let mut open = true;
+        let mut chosen: Option<Action> = None;
+        egui::Popup::new(
+            Self::menu_id(m.serial),
+            ui.ctx().clone(),
+            egui::PopupAnchor::Position(m.at),
+            ui.layer_id(),
+        )
+        .kind(egui::PopupKind::Menu)
+        .open_bool(&mut open)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .show(|ui| {
+            if m.actions.is_empty() {
+                ui.label(MENU_EMPTY);
+            }
+            for a in &m.actions {
+                if ui.button(a.label(m.n)).clicked() {
+                    chosen = Some(*a);
+                }
+            }
+        });
+        if chosen.is_some() || !open {
+            self.menu = None;
+        }
+        if let Some(a) = chosen {
+            let ctx = ui.ctx().clone();
+            self.perform(a, Some(ctx));
+        }
+    }
+}
+
 impl FileWindow {
     /// 🔴〔第四刀〕**每一帧的正文。** 从 `eframe::App::ui` 里剥出来的，
     /// 剥的理由只有一个：**让它进得了执行链**。
@@ -1877,6 +2226,12 @@ impl FileWindow {
                 ui.spinner();
                 ui.label("正在列…");
             }
+            // 〔FW2〕选中了不止一项 ⇒ 说一声几项（一项时那块选中色自己就说清了）。
+            //   ⚠ 摆在工具栏上而不是另起一行：另起一行会在选中第二项的那一下把整张列表往下推。
+            let n = self.selection.len();
+            if n > 1 {
+                ui.label(format!("已选 {n} 项"));
+            }
         });
         // 🔴〔补齐五项〕**面包屑** —— 从 `/a/b/c/d` 回 `/a` 只要一下，不用点四次「上一级」。
         //    ⚠ 路径切分走 `source::breadcrumbs`（与 `parent_dir` / `remote_basename`
@@ -1905,6 +2260,17 @@ impl FileWindow {
         if term {
             let ctx = ui.ctx().clone();
             self.open_terminal_here(Some(ctx));
+        }
+        // 🔴〔FW1〕**键盘** —— 在画列表之前接：这一帧按的键，这一帧的列表就要画出结果
+        //    （光标那一圈、滚进视野）。能不能接由 `keys_blocked` 那四道闸说了算。
+        //    ⚠ 滚进视野要**上一帧**真物化的那一段 ⇒ 在 `tally` 被清零之前取。
+        let (prev_first, prev_last) = (self.tally.first_row, self.tally.last_row);
+        {
+            let ctx = ui.ctx().clone();
+            self.apply_keys(&ctx);
+        }
+        if let Some(said) = self.key_notice.clone() {
+            ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), said);
         }
         // 🔴〔补齐五项〕开终端那一下说的话 —— **摆着不走**（同字体那条：
         //    它是一个「到你换台机器 / 换个系统为止都成立的状态」，不是一次性事件）。
@@ -1979,9 +2345,22 @@ impl FileWindow {
                 }
                 None => None,
             };
+            // 〔FW1〕键盘挪了光标 ⇒ 不在视野里才滚（reveal 那一下优先：它也是「只滚一次」）。
+            let key_jump = self
+                .key_scroll
+                .take()
+                .and_then(|i| select::scroll_for(i, prev_first, prev_last, pitch));
+            let jump = jump.or(key_jump);
             let want = self.reveal.as_ref().map(|r| r.name.clone());
             let rows = self.listing.rows.lock().unwrap();
-            show_file_rows(ui, &rows, &mut self.tally, jump, want.as_deref());
+            show_file_rows(
+                ui,
+                &rows,
+                &mut self.tally,
+                jump,
+                want.as_deref(),
+                Some(&self.selection),
+            );
         }
         // ⚠ 这三条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
         //   命中那一摞交不出下标 —— 第四刀靠的是「那个函数不画可点控件」这条纪律，
@@ -1992,7 +2371,12 @@ impl FileWindow {
         // 🔴〔第八刀〕第四条胶水。**不许写在这行之外** —— 理由住 `apply_pull_click`。
         self.apply_pull_click();
         // 🔴〔第九刀〕第五条胶水。
-        self.apply_edit_click(Some(ctx));
+        self.apply_edit_click(Some(ctx.clone()));
+        // 🔴〔FW2〕第六、七条胶水：单击改选中 · 右键摆菜单。然后画菜单（它在最上层）。
+        self.apply_pick_click(&ctx);
+        let at = ctx.input(|i| i.pointer.interact_pos()).unwrap_or_default();
+        self.apply_menu_click(at);
+        self.menu_ui(ui);
     }
 
     /// 搜索那一行：输入框 ＋「重建索引」＋ 在飞指示，接着是新鲜度那一行。
@@ -2163,3 +2547,8 @@ pub fn open_detached_seeded(
 #[cfg(test)]
 #[path = "../../../../tests/bridge/filewin/shell_tests.rs"]
 mod tests;
+
+// 〔FW1+FW2〕键盘 · 多选 · 右键菜单接到窗口上的那一摞（每一条都真跑 `frame_body`）。
+#[cfg(test)]
+#[path = "../../../../tests/bridge/filewin/shell_keys_tests.rs"]
+mod keys_tests;

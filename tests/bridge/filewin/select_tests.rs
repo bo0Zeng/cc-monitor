@@ -143,9 +143,11 @@ fn stepping_stops_at_the_ends_and_enters_from_the_right_side() {
     assert_eq!(step_target(5, Some(2), -1), Some(1));
     assert_eq!(step_target(5, Some(4), 1), Some(4), "到底了却绕回去了");
     assert_eq!(step_target(5, Some(0), -1), Some(0), "到顶了却绕回去了");
-    // Home / End 走的就是「挪一个很大的步」。
-    assert_eq!(step_target(5, Some(2), isize::MIN / 2), Some(0));
-    assert_eq!(step_target(5, Some(2), isize::MAX / 2), Some(4));
+    // Home / End 另有一个落点函数，**没有光标时 End 也落最后一行**
+    // （先前那一版借「挪一个很大的步」，没光标时 End 落在了第一行）。
+    assert_eq!(edge_target(0, true), None);
+    assert_eq!(edge_target(5, false), Some(0));
+    assert_eq!(edge_target(5, true), Some(4));
 }
 
 /// Shift+方向键：从锚扩到光标（两向相等）。
