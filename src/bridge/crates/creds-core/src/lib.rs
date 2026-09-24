@@ -41,9 +41,13 @@
 //!
 //! # 分工（别把两件事混成一件）
 //!
-//! - **写**这份文件：**只有 monitor 那一侧**（本 crate 的 `harden` feature 打开时）。
-//! - **读**这份文件：两侧都读。backend 那侧**只许读** —— `K-H2a` 裁四：`readonly_guard.rs`
-//!   扫后端生产段断言不含任何文件系统变更调用，白名单恰好一个模块 `control/fork_write.rs`。
+//! - **写**这份文件：每台机器上恰好一个程序写者。monitor 所在那台是 monitor（`creds_store`）；
+//!   〔RM1a · 第四波〕其余每台是那台的后端 —— 只有账号域那一份 `accounts/apikey/file_face.rs`，
+//!   只从帧面 `apikey-key-set` 进来（`readonly_guard` 第四层登记）。两侧都开本 crate 的 `harden`。
+//! - **读**这份文件：两侧都读。`K-H2a` 裁四原话「backend 只许读」**收窄**成上面那一格：
+//!   后端里除了那一份，照旧一个写都没有 —— 先前由「feature 不开」这件事让编译器兜着，
+//!   今天由两条判据兜（`readonly_guard::g6_dependency_signoff` 的写半边引用处判据 ·
+//!   `relay::creds_guard` 的 feature 声明判据）。
 
 pub mod perm;
 pub mod store;

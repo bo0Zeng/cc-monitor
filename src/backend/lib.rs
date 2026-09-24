@@ -494,6 +494,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--exit-policy-read",
     "--exit-policy-set",
+    // 〔RM1a · 第四波〕账号层那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
+    // 自动派生的 CLI 面。⚠ `--apikey-key-set` 的入参（含 key）**从 stdin 读**（`takes_input: true`），
+    // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    "--apikey-key-set",
+    "--apikey-read",
     "--backend-probe",
     // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
     // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都

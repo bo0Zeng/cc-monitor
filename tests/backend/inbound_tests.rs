@@ -411,6 +411,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
+        // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
+        "apikey-key-set",
+        "apikey-read",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -457,6 +460,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-sessions",
         "exit-policy-read",
         "exit-policy-set",
+        "apikey-key-set",
+        "apikey-read",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(
