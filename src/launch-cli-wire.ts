@@ -41,10 +41,16 @@ export interface CliRenderResponse {
   reason: string | null;
 }
 
-/** U8a-2c-pre：兜底那支 `container:"none"` 的载荷渲染入参。 */
+/** U8a-2c-pre：兜底那支 `container:"none"` 的载荷渲染入参。
+ *
+ *  ⚠ 与 TS `launch-plan.ts::EnvOp` **同名同序**（那边是 IR，这边是上线形状）。
+ *  Rust 对侧 `launch_wire.rs::WireEnvOp` 带 `deny_unknown_fields` ⇒ 少一个变体
+ *  就是一次「反序列化失败 → 静默走另一条渲染路」，所以两边必须一起加。 */
 export type WireEnvOp =
   | { kind: "export-config-dir"; value: string }
   | { kind: "export-model"; value: string }
+  /** `设计/80 §8` 步 1：启动期令牌。Rust 渲染侧对 `[0-9a-f]{32}` 之外的值 fail-closed 拒。 */
+  | { kind: "export-rbind-token"; value: string }
   | { kind: "unset-config-dir" }
   | { kind: "unset-nested-env" };
 

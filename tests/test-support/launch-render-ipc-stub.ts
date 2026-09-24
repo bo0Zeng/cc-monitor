@@ -64,6 +64,11 @@ function renderInner(req: PayloadRenderRequest): string {
           return `export CLAUDE_CONFIG_DIR=${q(op.value)}; `;
         case "export-model":
           return `export ANTHROPIC_MODEL=${q(op.value)}; `;
+        // `设计/80 §8` 步 1。⚠ 桩**不模拟**真命令那道形状闸
+        // （`payload.rs::rbind_token_shape_ok` ⇒ `REFUSE:`）—— 同本文件头注那条口径：
+        // 它只模拟已登记的那两道，别的拒绝要验就直接 mock 一次 reject。
+        case "export-rbind-token":
+          return `export CCM_RBIND_TOKEN=${q(op.value)}; `;
         case "unset-config-dir":
           return "unset CLAUDE_CONFIG_DIR; ";
         case "unset-nested-env":

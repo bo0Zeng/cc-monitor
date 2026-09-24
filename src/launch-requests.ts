@@ -28,14 +28,22 @@ function accountOf(configDir?: string, name?: string): LaunchAccount {
   return configDir ? { kind: "account", name, configDir } : { kind: "base" };
 }
 
-/** 对应 `buildResumeDirectCmd`：无容器（直连），resume 到当前登录 shell。 */
+/** 对应 `buildResumeDirectCmd`：无容器（直连），resume 到当前登录 shell。
+ *
+ *  🔴 **`设计/80 §8.4` 那张表里「今天做不到 ↗ 的那一档」就是这一格**（`container:{kind:"none"}`，
+ *  `§6.1`/`§5 方案 A` 明确不覆盖它，因为它没有 tmux 可以挂 `@ccm_sid`）。
+ *  步 1 之后它**自动**带上启动期令牌 —— 本函数为此**一行特殊处理都没有**：
+ *  `rbindToken` 和其余修饰一样只是进 `ctx`，`RBIND_TOKEN_DIMENSION` 往 `plan.env` 推一条
+ *  `EnvOp`，而 `EnvOp` 是容器无关的。**「自动」这件事本身有判据**
+ *  （`tests/launch-requests.vitest.ts` 的「容器无关」那一组：两条起法各渲一次、
+ *  断言同一条 `export CCM_RBIND_TOKEN=` 都在）。 */
 export function planResumeDirect(
   sid: string,
   cwd: string,
   launcher = AGENT_PROFILE.defaultLauncher,
   mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
-  const { configDir, accountName, modelOverride } = mods;
+  const { configDir, accountName, modelOverride, rbindToken } = mods;
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
@@ -48,6 +56,7 @@ export function planResumeDirect(
     launcherOverride: launcher,
     ccmSid: undefined,
     modelOverride,
+    rbindToken,
   };
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
@@ -60,7 +69,7 @@ export function planResumeTmux(
   name: string,
   mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
-  const { configDir, accountName, modelOverride } = mods;
+  const { configDir, accountName, modelOverride, rbindToken } = mods;
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
@@ -90,6 +99,7 @@ export function planResumeTmux(
     launcherOverride: launcher,
     ccmSid: sid, // #72：自建 resume 会话打完整 sid，供 findClaudeTmux 精确命中
     modelOverride,
+    rbindToken,
   };
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
@@ -101,7 +111,7 @@ export function planResumeIntoExistingTmux(
   launcher = AGENT_PROFILE.defaultLauncher,
   mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
-  const { configDir, accountName, modelOverride } = mods;
+  const { configDir, accountName, modelOverride, rbindToken } = mods;
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
@@ -117,6 +127,7 @@ export function planResumeIntoExistingTmux(
     launcherOverride: launcher,
     ccmSid: undefined, // 复用会话已在建时打过标，不重设（同今天行为）
     modelOverride,
+    rbindToken,
   };
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
@@ -128,7 +139,7 @@ export function planLauncher(
   command = AGENT_PROFILE.defaultLauncher,
   mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
-  const { configDir, accountName, modelOverride } = mods;
+  const { configDir, accountName, modelOverride, rbindToken } = mods;
   const name = tmuxName.trim();
   if (!isValidNewTmuxName(name)) {
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
@@ -142,6 +153,7 @@ export function planLauncher(
     launcherOverride: command,
     ccmSid: undefined, // 今天就不设——已知 F04 缺口，本次原样保留、不顺手"修一半"
     modelOverride,
+    rbindToken,
   };
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
@@ -179,7 +191,12 @@ export function validateLocalLaunch(action: LaunchAction, cwd: string | null): v
   }
 }
 
-/** 对应 `buildAttachCmd`：接回一个已存在的 tmux 会话，不启动任何东西。 */
+/** 对应 `buildAttachCmd`：接回一个已存在的 tmux 会话，不启动任何东西。
+ *
+ *  ⚠ **刻意不收 `mods`**（原状），于是也**不带启动期令牌** —— 不是漏了：
+ *  attach 一个 agent 进程都不起，而令牌的唯一消费者是 agent 进程的 `environ`
+ *  （`设计/80 §8.2`）。`RBIND_TOKEN_DIMENSION.applies` 那条 `action.kind` 判断是第二道
+ *  同向的闸（万一将来这里开始收 `mods`，它也不会往 attach 里注一个没人读的敏感值）。 */
 export function planAttach(name: string): LaunchPlanBuild {
   if (!isValidTmuxName(name)) {
     throw new Error(`非法 tmux 会话名(拒绝拼入命令): ${JSON.stringify(name)}`);

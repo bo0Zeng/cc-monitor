@@ -136,12 +136,91 @@ export const NESTED_ENV_RESET_DIMENSION: LaunchDimension = {
   cliFlags: () => [], // ccm 内部恒清（agent_nested_env 按 agent 查表），无需专属 flag
 };
 
+/**
+ * 令牌形状的**唯一判据（TS 侧）**：32 个小写十六进制字符。
+ *
+ * **不收大写、不收 `0x` 前缀、不收连字符**——形状只有一种，为的是省掉「同一个令牌两种写法」
+ * 这件事：本地那张 `token → HWND` 表与后端从 `environ` 读回来的串要能直接相等比较，
+ * 中间不许有归一化步骤（归一化是「两侧各写一遍、各写错一遍」的经典落点）。
+ *
+ * ⚠ **它不做转义、也不替代转义**：渲染器照样 `posixQuote` 一遍（同 `export-model`）。
+ * 这条校验买的是「变量值的形状」，不是「拼进 shell 安不安全」——
+ * 那两件事在本仓是两道闸，不许合并成一道。
+ *
+ * Rust 同侧是 `src/bridge/src/backend/control/payload.rs::rbind_token_shape_ok`
+ * （那边是 fail-closed 的 `Err`，不是 `throw`）。两侧形状由
+ * `tests/launch-render-fallback.vitest.ts` 的对拍钉住：**改 Rust 的长度或字符集，TS 这边会红**。
+ */
+export function isValidRbindToken(token: string): boolean {
+  return /^[0-9a-f]{32}$/.test(token);
+}
+
+/**
+ * 🔴 **rbind-token（`设计/80 §8` 步 1，2026-09-23）：启动期令牌 `CCM_RBIND_TOKEN`。**
+ *
+ * 「买到什么 / **买不到什么**」逐字住 `launch-plan.ts::EnvOp` 那一段
+ * （要害一句：**令牌不许承载任何权限语义** —— 它会进 `/proc/<pid>/environ`、
+ * `cmdline` 与 shell 历史）。这里只记三件与**维度机制**有关的事：
+ *
+ * **① `order` 是 40 —— 排在全部 `unset` 之后，刻意的。**
+ * 今天没有任何 `unset` 变体碰得到 `CCM_RBIND_TOKEN`（`unset-config-dir` 清的是
+ * `CLAUDE_CONFIG_DIR`，`unset-nested-env` 的键表是 `AGENT_PROFILE.nestedEnvVars`），
+ * 所以排哪儿在**今天**都渲得对。排最后是为了**明天**：这一族的既有教训逐字是
+ * 「即便未来某次改动让二者同时 applies，也不会把刚 export 的值被后到的 unset 抹掉」
+ * （见 `ENV_RESET_DIMENSION` 那条注释）。⇒ 顺序钉成模块加载即崩的断言，不留作注释纪律。
+ *
+ * **② `applies` 是条件式，而且 attach 不带。**
+ * 没令牌 ⇒ 这个维度整格不出现，载荷**逐字节等于今天**（这是步 1 能独立回滚的支点）。
+ * `attach` 那一档一个 agent 进程都不起，而令牌的唯一消费者就是 agent 进程的 `environ`
+ * （`§8.2` 那张图）⇒ 注进去没人会读它，只会白白多一处敏感值的落点。
+ * 照 `NESTED_ENV_RESET_DIMENSION` 的同一条口径写成 `new`/`resume` 两档。
+ *
+ * **③ `cliFlags` 恒 `null` —— 这是「诚实放弃」，不是缺口。**
+ * `ccm` 今天没有承接这个令牌的 flag（能力清单里也没有对应的 cap），
+ * 而 `INVARIANTS §33` 的铁律是**表达不了就必须放弃、不得近似**：
+ * 若这里返回 `[]`（沉默跳过），CLI 渲染器就会吐出一条**丢了令牌**的 `ccm …` ——
+ * 那正是 R11/R08 那族「看起来生效了，只是少带了一样东西」的形状，而且是静默的。
+ * ⇒ 带令牌的 plan 一律降级到载荷渲染器。**这与 F07 刚落地时 `model` 恒 `null`
+ * （`R14①`）是同一拍**：等 `ccm` 学会了，这里改成吐 flag ＋ 声明 `requiredCaps` 即可。
+ *
+ * ⚠ **而 `tryRenderCli` 今天不是生产渲染器**（生产那条在 Rust 的
+ * `backend::control::ccm_invocation`，它的 `CliSpec` 里没有这个维度）
+ * ⇒ 光靠本维度返回 `null` **拦不住生产**。生产那一层的闸在
+ * `remote-launch-run.ts::renderLaunchCommand`（按载荷里有没有这条 `EnvOp` 决定要不要试
+ * CLI 那条路），判据在 `tests/remote-launch-run.vitest.ts`。
+ * **两处都要有，少一处就是一条静默丢令牌的路。**
+ */
+export const RBIND_TOKEN_DIMENSION: LaunchDimension = {
+  id: "rbind-token",
+  order: 40, // 排在 nested-env-reset(30) 之后：export 不许被后到的 unset 抹掉
+  // 🔴 **`!== undefined` 不是 `!!`**（本条判据第一次跑就把 `!!` 逮住了，如实记下）：
+  // `""` 用 `!!` 判是**假**，于是一个空令牌会静默地读成「这次不带令牌」——
+  // 那正是本仓 Z01 起的支点「**空值 ≠ 未设**」要防的形状（`payload.rs` 里
+  // 「空串**不是**账号 0，是坏数据」是同一条）。`undefined` = 诚实的没有；
+  // `""` = 铸币出了 bug，必须在 `apply` 里 throw，不许当没有。
+  applies: (ctx) =>
+    ctx.rbindToken !== undefined && (ctx.action.kind === "new" || ctx.action.kind === "resume"),
+  apply: (plan, ctx) => {
+    if (ctx.rbindToken === undefined) return;
+    if (!isValidRbindToken(ctx.rbindToken)) {
+      // 形状不对**不许降级成"这次不带令牌"** —— 那会把一次铸币 bug 变成一次
+      // 「↗ 不明原因失效」，而 `§8.5 ②` 买的恰恰是「归因从四档猜变成一个布尔」。
+      throw new Error(
+        `非法 CCM_RBIND_TOKEN（拒绝拼入命令，要 [0-9a-f]{32}）: ${JSON.stringify(ctx.rbindToken)}`,
+      );
+    }
+    plan.env.push({ kind: "export-rbind-token", value: ctx.rbindToken });
+  },
+  cliFlags: () => null, // 见头注 ③：ccm 说不出 ⇒ 整条降级，不近似
+};
+
 export const LAUNCH_DIMENSIONS: LaunchDimension[] = [
   IDENTITY_DIMENSION,
   ENV_RESET_DIMENSION,
   ACCOUNT_DIMENSION,
   MODEL_DIMENSION,
   NESTED_ENV_RESET_DIMENSION,
+  RBIND_TOKEN_DIMENSION,
 ].sort((a, b) => a.order - b.order);
 
 /** 顺序不变量——模块加载即跑一次。顺序错了直接让进程/测试启动崩溃，不必等到某次真机 resume
@@ -165,6 +244,13 @@ function assertDimensionOrderInvariants(dims: LaunchDimension[]): void {
   }
   if (idx("model") >= idx("nested-env-reset")) {
     throw new Error("不变式违反：model 必须排在 nested-env-reset 之前");
+  }
+  // `设计/80 §8` 步 1：rbind-token 排在**全部 unset 之后**（`nested-env-reset` 是今天最后
+  // 那个 unset）。理由见 `RBIND_TOKEN_DIMENSION` 头注 ①：防「明天多一个 unset 变体，
+  // 把刚 export 的令牌抹掉」。⚠ 同上面四条：本函数只对**完整注册表**有意义
+  // （缺项时 `findIndex` 回 -1，会报一条与真实病因无关的不变式违反）。
+  if (idx("nested-env-reset") >= idx("rbind-token")) {
+    throw new Error("不变式违反：rbind-token 必须排在 nested-env-reset 之后（防 unset 抹掉令牌）");
   }
 }
 assertDimensionOrderInvariants(LAUNCH_DIMENSIONS);

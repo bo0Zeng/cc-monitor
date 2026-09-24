@@ -67,9 +67,49 @@ export type LaunchAccount =
  * 既然如此就没必要保留自由字段——把"清哪些变量"从**数据**移进**变体名**，
  * 渲染器按 kind 查表。于是"往 unset 里塞任意变量名"在类型层就不可表达。
  */
+/**
+ * 🔴 **`export-rbind-token`（`设计/80 §8` 步 1，2026-09-23）：启动期令牌 `CCM_RBIND_TOKEN`。**
+ *
+ * # 这一格买到什么
+ *
+ * `↗`（拉前那个动作）要的全部东西是一个映射 `sid → 本地 HWND`。今天这个映射靠
+ * **tmux 会话级 option `@ccm_sid` ＋ `set-titles-string` 让 tmux 现算标题**送到本地
+ * （`设计/80 §3` 的「五跳无回执」）—— 也就是说 tmux 在链条上**不是在"发现身份"，
+ * 是在"把身份广播到本地"**。`§8` 的裁决：广播这件事本仓另有一条有分帧、双向的通道
+ * （后端 wire），缺的只是一个**本地已知的、可以 join 的键**。⇒ 这个变体就是那个键的载荷侧：
+ * monitor 生成 32 hex → 随 `export CCM_RBIND_TOKEN=…` 进启动命令 → 被 agent 进程继承 →
+ * 后端从 `/proc/<pid>/environ` 读出来、连同 `sid` 从 wire 报回（**那半是另一路的活**）。
+ *
+ * **它天然统一两条起法**：`EnvOp` 作用在**载荷**上、**容器无关** ⇒
+ * `container:"tmux"` 与 `container:"none"`（`planResumeDirect`，直连登录 shell，
+ * **今天 ↗ 做不到的那一档**）走的是同一组 `EnvOp`，两支都带上它。
+ * 这不是额外要做的事，是这个设计的自动结果（`设计/80 §8.4` 那张表）。
+ *
+ * # 🔴 这一格**买不到**什么（`设计/80 §8.6 ③`：令牌必须当敏感数据对待）
+ *
+ * 令牌会出现在远端的 `/proc/<pid>/environ`、可能出现在 `/proc/<pid>/cmdline`
+ * （`export … ; claude …` 这种前缀形正是本仓的载荷形态）以及 shell 历史里。
+ * ⇒ 它**只能是一个不可猜的关联 id，不许承载任何权限语义**：
+ * 拿到它顶多能让某人的 `↗` 拉错窗口，**不能越权**。
+ * 哪天有人想让它兼作鉴权凭据 / 会话密钥 / 能力票据，先回来读这一段 ——
+ * 那要求的是一条完全不同的通道（不经 environ、不经 cmdline、不经 shell 历史）。
+ *
+ * ⚠ 它也**买不到**「用户自己开终端裸 `ssh` 进去敲 `claude`」那一档的 `↗`
+ * （没人给它注令牌）。那不是回归：`设计/80 §8.6 ①` 现打的结论是那一档本来就没 marker，
+ * 令牌只把它从「失败且归因错」变成「失败且说得准」。
+ *
+ * # 为什么是窄变体，而不是顺手放宽成通用 export
+ *
+ * 同本文件头注第 3 条与上面 R04③ 的**同一条理由**：通用 `{op:"export";key;value}`
+ * 等于给任何维度开一个「绕开校验往命令里塞任意变量名」的口子。
+ * ⇒ 变体名把变量名钉死，`value` 侧再过 `[0-9a-f]{32}` 形状校验
+ * （TS 侧 `launch-dimensions.ts::isValidRbindToken`，Rust 侧
+ * `payload.rs::rbind_token_shape_ok`，两侧形状由判据对拍）。**先例是 `export-model`。**
+ */
 export type EnvOp =
   | { kind: "export-config-dir"; value: string }
   | { kind: "export-model"; value: string } // F07：每账号默认模型（ANTHROPIC_MODEL）
+  | { kind: "export-rbind-token"; value: string } // 设计/80 §8：启动期令牌（CCM_RBIND_TOKEN）
   | { kind: "unset-config-dir" } // 账号维度的"显式基座"：清 CLAUDE_CONFIG_DIR
   | { kind: "unset-nested-env" }; // 嵌套会话标记全套（键表由 AGENT_PROFILE.nestedEnvVars 定）
 
@@ -154,6 +194,11 @@ export interface LaunchModifiers {
   accountName?: string;
   /** F07：该账号配置的默认模型偏好（本机 `config.json`）。 */
   modelOverride?: string;
+  /** `设计/80 §8` 步 1：启动期令牌（`[0-9a-f]{32}`）。**今天零生产产出者** ——
+   *  铸币口归 `§8.7` 步 3（本地半要先能把 `token → HWND` 记下来，令牌才有意义），
+   *  这里只把槽位线通到底，与 `WrapSpec` 当年的落法同形（那个槽位也是先零生产者、
+   *  后接 rbind 的）。谁给它赋值就是谁负责让本地那张表认得它。 */
+  rbindToken?: string;
 }
 
 /** `buildLaunchPlan` 的输入——调用方已解析好的具体意图，维度据此派生 `env`/`args`/`identity`。 */
@@ -170,6 +215,10 @@ export interface LaunchContext {
    *  `features/F07-per-account-model.md` §2 第1条：这个维度的默认态（不触发）就是用户的期望
    *  （该账号自身已配置好的默认模型），不是 F05 修的那种"沉默=意外身份切换"。 */
   modelOverride?: string;
+  /** `设计/80 §8` 步 1：这次拉起的启动期令牌（`[0-9a-f]{32}`）。`undefined` = 这次不带令牌
+   *  （`RBIND_TOKEN_DIMENSION.applies` 据此判断）—— 而「不带」是**诚实的没有**，
+   *  不是「有但说不出」：没令牌的会话 `↗` 就是不可用，`§8.5 ②` 要的正是这句准确的话。 */
+  rbindToken?: string;
 }
 
 /**

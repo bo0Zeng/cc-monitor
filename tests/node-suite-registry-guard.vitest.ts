@@ -92,8 +92,13 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:context-limit", "tests/views/context-limit.test.ts", 5],
   ["test:session-backend", "tests/session-backend.test.ts", 10], // P3s-Y2 +1（新造名字必须过铸造口）
   ["test:panorama-session-files", "tests/panorama/session-files.test.ts", 7],
-  ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 28],
-  ["test:launch-render-cli", "tests/launch-render-cli.test.ts", 27], // `K-R53` +1（`KR53D3`：「没探出来」与「真的没装」不许给同一句降级理由）
+  // 🔴 〔`设计/80 §8` 步 1 · 2026-09-23〕**28 → 38**：启动期令牌那一族 +10
+  //    （形状闸逐格 · `""` 是坏数据不是「没有」· attach 不带 · cliFlags 恒 null ·
+  //     两条顺序不变量 · buildLaunchPlan 数组顺序 · renderFallback 逐字节 · applies 两态）。
+  ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 38],
+  // `K-R53` +1（`KR53D3`：「没探出来」与「真的没装」不许给同一句降级理由）；
+  // 🔴 〔`设计/80 §8` 步 1 · 2026-09-23〕**27 → 30**：带令牌 ⇒ 诚实放弃 CLI ＋ 对照组 ＋ attach 豁免。
+  ["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30],
 ];
 
 /**
@@ -107,7 +112,11 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // `tests/views/usage-pivot.test.ts` 整份删除（14 条）＋ `context-limit.test.ts` 少一条（6 → 5）
 // = −15；而同期别处 +8（现打全仓 237）。⚠ **这个数下降只有一种正当理由：被测对象没了。**
 // 复算命令：遍历 `tests/**/*.test.ts` 数行首 `test(`（本文件 `allTestTsFiles` 用的同一把尺子）。
-const TOTAL_FLOOR = 237;
+// 🔴 〔`设计/80 §8` 步 1 · 2026-09-23〕**237 → 250**（+13：launch-dimensions +10 · launch-render-cli +3）。
+// **往上棘**：这条是地板，不棘它等于让「加了 13 条、明天删掉 13 条」在它眼里完全同形
+// —— 地板在「变少」方向本来就是瞎的，棘到现打值才买得到东西。
+// 复算命令：遍历 `tests/**/*.test.ts` 数行首 `test(`（本文件 `allTestTsFiles` 用的同一把尺子）。
+const TOTAL_FLOOR = 250;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;
