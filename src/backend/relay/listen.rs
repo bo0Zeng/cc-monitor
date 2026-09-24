@@ -28,7 +28,7 @@
 //! `src/bridge/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。
 
 use super::server::{self, Relay, DEFAULT_PORT, INFLIGHT_CONNECTIONS, LOOPBACK};
-use super::{accounts, tee::TeeSink, upstream::Base};
+use super::{accounts, tee::TeeSink};
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
@@ -223,10 +223,14 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
 /// 而 `run()` 尾巴上是**永不返回**的 `serve()` ⇒ 没有任何判据调得动它。
 /// 实测：把 `run()` 的函数体整个换成 `2`，384 条判据**全绿**（审计 `CG1`）——
 /// `CCM_RELAY_PORT`/`CCM_RELAY_UPSTREAM` 的解析、两个默认值，**一样都没被量过**。
+///
+/// ⚠ 〔条 59/60〕它收的第二样从「一个上游串」换成了**取值器本身**：默认上游改成每 agent 一行、
+/// 每家一个环境旋钮之后，「该读哪几个变量」是**层 2 的表**说了算（`accounts::AGENT_UPSTREAMS`），
+/// 层 1 连那几个变量叫什么都不知道 —— 它只把取值器原样递过去。
 pub(super) fn resolve_config(
     port_env: Option<&str>,
-    upstream_env: Option<&str>,
-) -> Option<(u16, Base)> {
+    get: &dyn Fn(&str) -> Option<String>,
+) -> Option<(u16, accounts::Upstreams)> {
     let port = port_env
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
@@ -236,11 +240,11 @@ pub(super) fn resolve_config(
     //   真要带上，改的是 `run_with` 的报文与 `creds_guard::LOG_SITES` 那张表 ⇒ 另一拍。
     //   ★ 而**每一行**账号的 `base_url` 那句为什么，今天是真的印出去了（`table::build`）。
     //
-    // ⚠⚠ **上游那一半住层 2 了**（`20 §4`「常量跟着职责走」）：`ENV_UPSTREAM` 与
-    //    `DEFAULT_UPSTREAM` 都在 `accounts/`，本函数只是把环境里那个串**递过去**，
-    //    自己**认不出**默认值是什么。⇒ 层 1 里没有任何可以回落的默认上游。
-    let base = accounts::upstream_default(upstream_env)?;
-    Some((port, base))
+    // ⚠⚠ **上游那一半住层 2**（`20 §4`「常量跟着职责走」）：每一家的环境旋钮与内置默认
+    //    都在 `accounts/` 那张表里，本函数**认不出**任何一家的默认值是什么。
+    //    ⇒ 层 1 里没有任何可以回落的默认上游。
+    let upstreams = accounts::Upstreams::from_env(get)?;
+    Some((port, upstreams))
 }
 
 /// `run()` 剥掉「读环境变量」之后的那一半。
@@ -253,11 +257,10 @@ pub(super) fn resolve_config(
 /// （`accounts::load_credentials`）—— 那三件事一件都不属于搬字节这一层。
 pub(super) fn run_with(
     port_env: Option<&str>,
-    upstream_env: Option<&str>,
-    creds_get: &dyn Fn(&str) -> Option<String>,
+    get: &dyn Fn(&str) -> Option<String>,
     home: &std::path::Path,
 ) -> i32 {
-    let Some((port, base)) = resolve_config(port_env, upstream_env) else {
+    let Some((port, upstreams)) = resolve_config(port_env, get) else {
         eprintln!("[relay] bad upstream base url");
         return 2;
     };
@@ -275,14 +278,11 @@ pub(super) fn run_with(
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
     let (table, creds_path, stamp) =
-        accounts::load_credentials(creds_get, home, &base, &mut std::io::stderr());
+        accounts::load_credentials(get, home, &upstreams, &mut std::io::stderr());
     // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
     // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
-    let dest = accounts::Accounts::new(table).reloading_from(accounts::Reload::new(
-        creds_path,
-        base.clone(),
-        stamp,
-    ));
+    let dest = accounts::Accounts::new(table, upstreams)
+        .reloading_from(accounts::Reload::new(creds_path, stamp));
     let relay = Relay::new(
         Arc::new(dest),
         TeeSink::to_stdout(),
@@ -303,8 +303,8 @@ pub(super) fn run_with(
 /// **389 条判据全绿**（D2 `D2RUN`），而真机后果是 `--relay` **整个起不来**：
 /// 端口读不懂 ⇒ 回默认 8788、上游解析失败 ⇒ 退 2。
 /// 判据见 `each_env_var_name_goes_into_its_own_config_slot`。
-pub(super) type RelayExec<'a> = dyn Fn(Option<&str>, Option<&str>, &dyn Fn(&str) -> Option<String>, &std::path::Path) -> i32
-    + 'a;
+pub(super) type RelayExec<'a> =
+    dyn Fn(Option<&str>, &dyn Fn(&str) -> Option<String>, &std::path::Path) -> i32 + 'a;
 
 pub(super) fn run_reading(
     get: &dyn Fn(&str) -> Option<String>,
@@ -312,10 +312,11 @@ pub(super) fn run_reading(
     exec: &RelayExec<'_>,
 ) -> i32 {
     let port = get(ENV_PORT);
-    let upstream = get(accounts::ENV_UPSTREAM);
-    // ⚠ `get` 原样往下传：凭据那条路的取值器**必须与端口/上游是同一个**，
+    // ⚠ `get` 原样往下传：凭据与每家上游那两条路的取值器**必须与端口是同一个**，
     //   否则判据喂进去的环境和生产段读的环境是两套（那正是「量具的作用域对不上事实」）。
-    exec(port.as_deref(), upstream.as_deref(), get, home)
+    // ⚠ 〔条 60〕上游那个变量**不在这里读了**：它每家一个，名字住层 2 那张表，
+    //   本层只读自己的端口（`C5`：端口是后端交给通信层的策略值）。
+    exec(port.as_deref(), get, home)
 }
 
 /// `--relay` 的入口。配置面只有环境变量（backend 今天没有配置文件面）。

@@ -732,6 +732,50 @@ fn an_account_with_no_row_in_the_relay_table_is_not_routed_through_the_relay() {
     );
 }
 
+/// ★★★ 〔条 49〕**别家拿同一个账号 id 起会话，不注入。**
+///
+/// 后端那张表的键是 agent ＋ 账号；凭据文件里的行今天只属于 [`APIKEY_TABLE_AGENT`] 那一家。
+/// ⇒ codex 的 3 号账号与 claude-code 的 3 号账号**不是同一行**：前者在表里一行都没有。
+/// 先前本函数只比账号 id ⇒ codex 那一发会被注入 `/s/codex/3/…`，而后端（拆键之前）
+/// 会拿 claude-code 那一行的上游与 key 去发 —— **错发到 Anthropic**。
+///
+/// 量法是**对照**：同一张表、同一个账号 id、同一个「中转在跑」，只有 agent 不同。
+#[test]
+fn another_agent_with_the_same_account_id_is_not_routed_to_that_row() {
+    let rows = vec!["3".to_string()];
+    // 非空对照：凭据文件那一家（手写字面量）拿这个 id ⇒ 注入。
+    assert!(
+        apikey_endpoint_for(Some("3"), &rows, true, None, "claude-code")
+            .unwrap()
+            .is_some(),
+        "这把尺子是瞎的：那一家自己的行都不注入"
+    );
+    // 别家同一个 id ⇒ 一个字节都不注入（照旧直连）。
+    assert_eq!(
+        apikey_endpoint_for(Some("3"), &rows, true, None, "codex").unwrap(),
+        None,
+        "codex 的 3 号被接到了 claude-code 那一行 —— 键里没有 agent"
+    );
+    // 而且它**不拒绝起会话**：中转没在跑时也照旧起得来（无行那一格的处置）。
+    assert_eq!(
+        apikey_endpoint_for(Some("3"), &rows, false, None, "codex").unwrap(),
+        None,
+        "别家的号被「中转没在跑」那道闸挡了 —— 它在表里根本没有行"
+    );
+}
+
+/// ★ [`APIKEY_TABLE_AGENT`] 就是 claude-code 那个适配器报出来的 `id()` —— **两侧异源**：
+/// 一侧是本文件的常量，一侧是适配器那个函数的返回值（起会话时 `adapter::active().id()` 走的就是它）。
+#[test]
+fn the_apikey_table_agent_is_the_claude_code_adapters_id() {
+    use crate::adapter::AgentAdapter;
+    assert_eq!(
+        APIKEY_TABLE_AGENT,
+        crate::adapter::claude_code::ClaudeCodeAdapter.id(),
+        "凭据文件那一家与起会话时报出来的 agent 名对不上 ⇒ 那一家自己的号永远不注入"
+    );
+}
+
 /// ★★ `KH2B2`②：**「中转没起来」不是静默的** —— 在起会话那一侧就说得出话。
 #[test]
 fn a_relay_that_is_not_running_is_refused_out_loud_at_launch_time() {

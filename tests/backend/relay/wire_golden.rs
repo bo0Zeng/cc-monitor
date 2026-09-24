@@ -224,8 +224,10 @@ const GOLDEN: &[Golden] = &[
     },
     // ⑥ 直通模式 ＋ 表里**没有这一行** ⇒ **502**，一个字节都不到上游。
     //    🔴 `20 §3.1` 第 4 行逐字「不许回落到某一个写死的常量」：那一格要「按 `seg1`
-    //    取该 agent 的默认上游」，而那张表（条 59，住 `agents/`）**今天还不存在**
-    //    ⇒ 每一个 `seg1` 都算未登记，本格恒 502。理由整段住 `accounts::decide`。
+    //    取该 agent 的默认上游」。那张每 agent 一行的表（条 59）今天落了
+    //    （`accounts::AGENT_UPSTREAMS`），而本格的 `seg1`（`GOLDEN_AGENT`）**不在表里**
+    //    ⇒ 未登记 ⇒ 502。理由整段住 `accounts::decide`；登记过的那一半由
+    //    `table_tests` 那条「登记过的走自己那一行、未登记的拒」量（不经网络）。
     //    ⚠ 它与 ③ 的 404 **刻意不同码**：404 答的是「代入模式要求表里有这一行」，
     //    502 答的是「这个 agent 没有登记上游」——两件事，两个码。
     Golden {
@@ -318,6 +320,14 @@ impl TeeTap {
     }
 }
 
+/// 这张表里那两行挂在谁名下（条 49：键是 agent ＋ 账号）。
+///
+/// ⚠ **它必须与下面那些请求行的首段逐字相同**（`/s/agentA/…`），否则 `/s/` 那几格全变 404。
+/// ⚠ 它**刻意不是**任何一家登记过的 agent：`/t/` ＋ 表里无行那一格（本文件第 ⑤′ 格，`/t/agentA/nosuch`）
+///   钉的是「未登记 ⇒ 502」—— 换成一家登记过的，那一格就会真的连出去。
+/// ⚠ 这是**夹具**的改动，不是期望字节的改动：每一格手写的期望串一个字节都没动。
+const GOLDEN_AGENT: &str = "agentA";
+
 /// 起一个中转：表里两行（一行有 key、一行没有），都指着那个假上游。
 fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     let buf = Arc::new(Mutex::new(Vec::new()));
@@ -338,12 +348,14 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     let table = RoutingTable::build(
         [
             (
+                GOLDEN_AGENT.to_string(),
                 ACCT_WITH_KEY.to_string(),
                 base.clone(),
                 Some(SecretKey::new(ROW_KEY)),
                 AuthStyle::DEFAULT,
             ),
             (
+                GOLDEN_AGENT.to_string(),
                 ACCT_NO_KEY.to_string(),
                 base.clone(),
                 None,
@@ -354,7 +366,10 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     );
     // ⚠ 走的是**生产段那条真实的层 2**（`Accounts`），不是判据自己造的一个假 `Destinations`。
     let relay = Arc::new(Relay::new(
-        Arc::new(Accounts::new(table)),
+        Arc::new(Accounts::new(
+            table,
+            super::accounts::Upstreams::from_env(&|_| None).expect("内置默认"),
+        )),
         TeeSink::new(Box::new(Sink(Arc::clone(&buf), tick))),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
