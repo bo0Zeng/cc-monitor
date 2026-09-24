@@ -460,7 +460,12 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/error-toast.ts", "setTimeout", 1, "`durationMs` 后移除 toast。一次性。"),
     ("src/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② ③ `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。"),
     ("src/session-accounts-poll.ts", "setInterval", 1, "10s `refreshSessionAccounts` —— **真 data-poll**，详见上面 `REGISTERED` 那条（事件源与退役去处都在那里）。⚠ F14 第三刀从 `main.ts` 搬来：唯一的一处，且句柄留着（`stop()`）。"),
-    ("src/main.ts", "setTimeout", 3, "① 0ms 下一拍挂 sftp 主机选择器的关闭监听 ② ③ 1.2s 后把「已复制」还原成「复制」。全是一次性 UI 反馈。"),
+    // 〔三入口拆分 · `设计/01 §1.2`〕原先 `main.ts` 一行 3 处；代码块「复制」那段全局代理
+    //   （② ③ 两处）搬进了主窗与 viewer 窗共用的 `entry-render-common.ts`（viewer 窗不再加载
+    //   `main.ts`，而它也要这段代理；设置窗没有代码块，不加载它）。
+    //   **一处都没多、一处都没少，只是换了文件**：3 = 1 ＋ 2。
+    ("src/entry-render-common.ts", "setTimeout", 2, "① ② 1.2s 后把「已复制」/「失败」还原成「复制」。一次性 UI 反馈。"),
+    ("src/main.ts", "setTimeout", 1, "0ms 下一拍挂 sftp 主机选择器的关闭监听。一次性 UI 反馈。"),
     ("src/settings/cc_integration.ts", "setTimeout", 1, "500ms 后撤掉状态徽章的高亮描边。一次性。"),
     ("src/settings/config-surface-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
     ("src/settings/drift-ledger-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
@@ -471,7 +476,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/views/history.ts", "requestAnimationFrame", 1, "展开/收起项目后合并重画一次列表，`rafPending` 标志防重入。一次性。"),
     ("src/views/history.ts", "setTimeout", 3, "① `waitForIndexThenSearch` 的 1 秒等待 —— **wait-for-condition**（等本地索引就绪），上限 120 拍、超限有说人话的文案。⚠ **F14 第四刀改过**：它原来每秒重发 `search_history`，而那条路在 Rust 侧无条件 join 了 `search_remote_all` ⇒ **每台一条 SSH**；现在只问 `get_search_index_status`（零 SSH），就绪后补跑一次完整搜索。关视图由 F14 第一刀的 `ftSeq++` 掐断。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
     ("src/views/panorama.ts", "requestAnimationFrame", 3, "① `scheduleDraw` 合并重绘，`drawScheduled` 防重入 ② ③ 开/关侧栏后下一帧重算画布尺寸再画。都是一次性。"),
-    ("src/views/panorama.ts", "setTimeout", 1, "250ms 搜索去抖。一次性（每次输入前 clear）。"),
+    ("src/views/panorama.ts", "setTimeout", 2, "① 250ms 搜索去抖。一次性（每次输入前 clear）。② 「复制给 agent」成功后 1.5s 把按钮字还原。一次性，只动按钮自己的字，不取数不重排。"),
     ("src/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),
     ("src/views/session-viewer.ts", "setTimeout", 2, "① `setTimeout(r, 0)` 让出主线程 ② 2.2s 后移除搜索命中的闪烁 class。都是一次性。"),
 ];

@@ -2,7 +2,7 @@
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
 //!
-//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据；新增文件须 `O_EXCL` 且只许在白名单模块里（`D1` 08-01 收窄后的铁律，与 `src/doc/INVARIANTS.md` §41.6 的「现措辞」同一句）。
+//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过 Claude 会话数据围栏、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
 //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Command::new` 的起进程点。
 //!
 //! ⚠ **这两行今天不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
@@ -10,6 +10,19 @@
 //! 人群比性质**小**（不含依赖 crate 的写、不含被起进程的写面、不含非 `fs::` 命名空间的写路径），
 //! 同时又比性质**大**（backend 写一个与用户无关的自己的文件也会红）。
 //! ⇒ **它今天真能拦住的形状全表在 [`g6_reach`]，一个今天在盘上、形状相同却通过了的反例也在那里。**
+//!
+//! # 🔴 〔波 5 ㈡ · 2026-09-23〕**第三层** —— 判准从「不改既有数据」换成「改，但每一处都先过围栏、且只从声明过的那一面来」
+//!
+//! 用户逐字：「**现在只允许后端的文件管理部分写文件**」。这句话收窄的是**主语**（谁能写），
+//! 不是动作（能写什么）⇒ 动作是宽的（建目录 · 改名 · 删除 · 改权限 · 覆盖写），
+//! 入口是窄的（只有文件管理那一面）。`设计/60 §8.6` 第 3 步逐字要这一层，
+//! `§8.3 甲` 逐字要求「降级后的强度要**机检**」⇒ 它不是一句散文，是 `tests` 模块里
+//! 四条会红的判据（形状与逐条的漏判面住 `MUTATING_FACE_MODULES` 的头注）。
+//!
+//! ⚠ 按 [`g6_doctrine`] 那张四格表，这一刀落在**「缩性质」**那一格，不是「加白名单」：
+//! 性质从「不改既有数据」缩成「不改既有数据，文件管理面除外」，
+//! **缩掉的那一半归谁**写在登记表上 —— 归那道 Claude 会话数据围栏 ＋ 本层四条判据。
+//! 「只缩不写归属 = 把那一半丢了」（那一格的 why 逐字）。
 //!
 //! # 〔`K-R79` 09-12〕上面那三条「小」里的第三条：**远端那一半今天有一层了**
 //!
@@ -149,6 +162,12 @@ mod tests {
     ///   一个说不出理由的模块，多半是该搬走而没搬的那种。
     const BACKEND_CORE_MODULES: &[(&str, &str)] = &[
         (
+            "accounts",
+            "账号层（apikey 端点改写）：那张 `(agent, 账号)` 表 · 每 agent 一行的默认上游 · \
+             **只读**那份凭据文件（`creds-core` 的 `harden` 不开，写不了）· 热重载。\
+             2026-09-24 从 `relay/` 底下搬出来（「中转层不要有账号」），在那之前它就在本护栏的人群里",
+        ),
+        (
             "agents",
             "每个 agent 一份适配层，装它专属的知识（codex + claudecode）",
         ),
@@ -259,15 +278,13 @@ mod tests {
             "G2 / `--fork-session`：用 `O_EXCL` 在 projects 目录里新建一份**此前不存在**的 \
              jsonl，不改、不覆盖、不删任何既有文件 —— 这正是 `D1` 收窄后那条铁律的误差项",
         ),
-        (
-            "control/files_write.rs",
-            "〔步 23b · 09-19〕文件管理面的落盘原语（`设计/60 §6.5.2 A`）：用 `O_EXCL` 在\
-             **用户指定的那个文件管理目标**底下新建一份**此前不存在**的文件，不改、不覆盖、\
-             不删、不建目录。写点过两道围栏 —— ① 词法（上跳段 / 绝对路径 / 盘符 / 空段）\
-             ② 现打（解完 symlink 再判一次是否跑出目标根）—— 两道都要过 Claude 数据源那一关\
-             （判定的唯一住址在适配层 `is_inside_tree`，本模块只调用它）。\
-             ⚠ 它**今天没有调用方**：本轮落的是「模块 ＋ 围栏 ＋ 判据」，接命令面在后面那一轮",
-        ),
+        // 🔴 **〔波 5 ㈡ · 2026-09-23〕`control/files_write.rs` 这一条搬到了第三层**
+        // （[`MUTATING_FACE_MODULES`]），不是删了。它 09-19 登记在这里时的射程逐字是
+        // 「用 `O_EXCL` 新建一份此前不存在的文件，不改、不覆盖、不删、不建目录」；
+        // 用户 09-23「现在只允许后端的文件管理部分写文件」之后它要改动既有数据，
+        // 而那正是**本层的判准所禁的** ⇒ 它不能留在本层（留着就是把本层的判准改松），
+        // 只能去一个判准**不同**、而且**更窄地只收它一个**的层。
+        // ⚠ 它那一处 `O_EXCL` 新建**仍然**被逐一配对钉着（第三层照搬了那条配对）。
         // 🔴 **〔条 67 · 2026-09-18〕`platform/landing.rs` 这一条摘掉了，连同它那份文件。**
         // 它是 `K-W2D` 给「按需拉一个外部二进制」那条路写的落盘原语，
         // `K-R55` 把它从 `sidecars/codepicture/acquire.rs` 下沉到 `platform/`。
@@ -291,6 +308,163 @@ mod tests {
             .map(|(p, _)| *p)
             .collect::<Vec<_>>()
             .join(" / ")
+    }
+
+    // ═══════════════════════ 第三层：文件管理面〔波 5 ㈡ · 2026-09-23〕═══════════════════════
+
+    /// ★ **第三层登记的模块** —— 能改动既有数据的，**只有这一面**。
+    ///
+    /// `(仓库相对路径, why)`。形状照 [`WRITE_WHITELIST_MODULES`]（相等断言 ＋ 幽灵检查 ＋
+    /// `why` 地板），而且**仍然按文件**，不按目录（那张表底下那块墓碑逐字的理由）。
+    ///
+    /// # 判准换了什么 —— 四条，每条一个判据，每条各有一个漏判面（如实登记）
+    ///
+    /// | # | 钉什么 | 判据 | 它**看不见**什么 |
+    /// |---|---|---|---|
+    /// | ① | 改动动词是**闭集** | [`MUTATING_FACE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only`（表外动词照旧红，只在本层模块里放行表内那几个） | 换命名空间的写（`os::unix::fs::…`）——与默认层同一个洞 |
+    /// | ② | 表外的改动在本层**照旧禁** | [`MUTATING_FACE_STILL_FORBIDDEN`]（含**递归删**：没签字） | 同上 |
+    /// | ③ | **每一处都先过围栏** | [`unfenced_mutations`]：函数里第一个改动动词之前，必须已经出现一次围栏调用 | 🔴 **数据流**：它判「先判后动」的**顺序**，判不了「动的就是判过的那一个」（`let _ = 围栏(a); 改(b)` 骗得过它）。那一半靠本模块自己的行为判据 |
+    /// | ④ | **只从文件管理那一面来** | [`MUTATING_FACE_DOORS`]：后端生产树里引用得到本层模块的文件，集合**恒等于**那一扇门；那扇门里够得到它的命令，集合**恒等于** `MANAGE_COMMANDS` | 宏拼出来的路径；`use` 之后改用短名（`use` 那一行本身带前缀，看得见） |
+    ///
+    /// ⚠ **它不判「这一面该不该有写能力」** —— 那是用户裁的（09-23 那句话），
+    /// 本层只钉「裁出来的那个射程没被悄悄放大」。
+    pub(super) const MUTATING_FACE_MODULES: &[(&str, &str)] = &[(
+        "control/files_write.rs",
+        "文件管理面的写原语（`设计/60 §8.6` 第 2、3 步）：`O_EXCL` 新建 · 建目录 · 改名 · \
+         删文件或空目录 · 改权限 · 覆盖写。每一件都先过 Claude 会话数据围栏 \
+         （`agents::claudecode::paths::is_protected_session_path`，与桥那一侧函数体逐字相同）\
+         ＋ 词法 ＋ 解 symlink 再判；会跟链接的两件（改权限 · 覆盖写）连最后一段也解到底。\
+         线上入口只有 `inbound.rs` 那几条 `files-*` 写命令（`MANAGE_COMMANDS` 逐条登记）",
+    )];
+
+    /// 第三层模块**能用**的改动动词（`fs::` 之后那个词）。**闭集**。
+    ///
+    /// ⚠ 每一个都要在 [`unfenced_mutations`] 的针里有对应的调用形 —— 由
+    /// `every_third_layer_judge_reds_on_its_own_sample` 逐个喂样本钉住。
+    pub(super) const MUTATING_FACE_VERBS: &[&str] = &[
+        "create_dir",
+        "remove_dir",
+        "remove_file",
+        "rename",
+        "set_permissions",
+        "write",
+    ];
+
+    /// 第三层模块里**只许住在本层**的两个**非改动**词。刻意不进全局 `READ_ONLY`：
+    ///
+    /// - `symlink_metadata` —— 一次**读**（不跟链接地看一眼），改名「目标已在就拒」与
+    ///   删除「是文件还是目录」都靠它。进全局只读表就是给全后端多一个读动词，
+    ///   而 `files::answer_stat` 头注逐字把那件事叫做「放宽一条红线」—— 本刀不替它做那个决定。
+    /// - `Permissions` —— 一个类型，只在「改权限」那一处被构造。
+    const MUTATING_FACE_AUX: &[&str] = &["Permissions", "symlink_metadata"];
+
+    /// 第三层模块**仍然不许**出现的东西。
+    ///
+    /// 🔴 **递归删**在这里：围栏的射程是**一条路径**，递归删动的是一整棵子树 ——
+    /// 顶上那一条过得了围栏，底下藏着的一份会话文件照样被一起删掉（理由全文在
+    /// 那个模块的 `delete_entry` 头注）。要做就得逐条目过围栏，那是一个新形状，要单独论证。
+    /// ⚠ `fs::symlink(` 带左括号：不带的话它是 `symlink_metadata` 的前缀，会自伤。
+    pub(super) const MUTATING_FACE_STILL_FORBIDDEN: &[&str] = &[
+        "remove_dir_all",
+        "fs::copy",
+        "fs::hard_link",
+        "fs::soft_link",
+        "fs::symlink(",
+        "File::create",
+        "truncate(true)",
+        "append(true)",
+        "set_len",
+        "create(true)",
+    ];
+
+    /// 围栏调用的针。**本层模块的围栏入口只有这两个**（其余两道被它们串着）。
+    const FENCE_CALLS: &[&str] = &["fenced_target(", "fenced_existing("];
+
+    /// 改动动词在源码里的**调用形**（[`unfenced_mutations`] 找的就是这些）。
+    ///
+    /// 由 [`MUTATING_FACE_VERBS`] **派生**，外加 `O_EXCL` 那一处的 `.open(` —— 不手写第二份。
+    fn mutation_calls() -> Vec<String> {
+        let mut v: Vec<String> = MUTATING_FACE_VERBS
+            .iter()
+            .map(|w| format!("fs::{w}("))
+            .collect();
+        v.push(".open(".to_string());
+        v
+    }
+
+    /// ★ **第三层那扇门** —— 后端生产树里**唯一**被允许引用第三层模块的文件。
+    ///
+    /// `(仓库相对路径, why)`。**零命中守卫的形状**（照 `tests/bridge/filewin/boundary_tests.rs`
+    /// 那条「app 侧只许有一条门」）：期望集合只有这一个元素，多出任何一个都红。
+    const MUTATING_FACE_DOORS: &[(&str, &str)] = &[(
+        "inbound.rs",
+        "命令注册那一处 —— 帧面与 CLI 面共用它（`cli_control` 从 `REGISTRY` 派生）。\
+         用户那句「只允许后端的文件管理部分写文件」在源码上的形态就是：\
+         够得到写原语的**只有**这里那几条 `files-*` 写命令",
+    )];
+
+    fn is_mutating_face(rel: &str) -> bool {
+        MUTATING_FACE_MODULES.iter().any(|(p, _)| *p == rel)
+    }
+
+    /// 第三层判定 ②：本层模块里有没有表外的改动写法。
+    pub(super) fn violates_mutating_face_layer(prod: &str) -> Option<&'static str> {
+        MUTATING_FACE_STILL_FORBIDDEN
+            .iter()
+            .find(|pat| prod.contains(**pat))
+            .copied()
+    }
+
+    /// 第三层判定 ③：**没先过围栏**的那几处改动，逐条回 `函数头 → 那个改动`。
+    ///
+    /// 按**顶格** `fn` / `pub fn` 切成函数块（本层模块今天全是顶格函数；嵌套函数会被并进
+    /// 外层那一块 —— 那只会让判定**更严**，不会更松）。块里第一个改动调用之前，
+    /// 必须已经出现一次 [`FENCE_CALLS`] 里的调用。第一个 `fn` 之前的改动一律算没过围栏。
+    pub(super) fn unfenced_mutations(prod: &str) -> Vec<String> {
+        let calls = mutation_calls();
+        let mut starts: Vec<usize> = Vec::new();
+        let mut at = 0usize;
+        // ⚠ 循环变量刻意**不叫 `line`**：`needle_anchor_registry` 的语料变量识别是**按名字、
+        //   整份文件**算的，本文件别处有一句 `let t = line.trim()`（与这里无关的另一个作用域）——
+        //   这里要是也叫 `line`，那一句会被连带认成语料派生，两处**旧的** `t.strip_prefix("…")`
+        //   就被算进那条零富余的递减棘轮（现打：22 > 20，红在桥那一侧）。
+        for fn_row in prod.split_inclusive('\n') {
+            let fn_row_t = fn_row.trim_end();
+            let is_fn_head = fn_row_t
+                .split_whitespace()
+                .next()
+                .is_some_and(|w| w == "fn")
+                || fn_row_t.split_whitespace().take(2).collect::<Vec<_>>() == ["pub", "fn"];
+            let at_column_zero = !fn_row.starts_with(' ') && !fn_row.starts_with('\t');
+            if is_fn_head && at_column_zero {
+                starts.push(at);
+            }
+            at += fn_row.len();
+        }
+        let mut bounds: Vec<(usize, usize)> = Vec::new();
+        let head_end = starts.first().copied().unwrap_or(prod.len());
+        bounds.push((0, head_end));
+        for (i, st) in starts.iter().enumerate() {
+            let end = starts.get(i + 1).copied().unwrap_or(prod.len());
+            bounds.push((*st, end));
+        }
+        let mut bad = Vec::new();
+        for (a, b) in bounds {
+            let chunk = &prod[a..b];
+            let first_mut = calls
+                .iter()
+                .filter_map(|c| chunk.find(c.as_str()).map(|k| (k, c.clone())))
+                .min_by_key(|(k, _)| *k);
+            let Some((mk, which)) = first_mut else {
+                continue;
+            };
+            let first_fence = FENCE_CALLS.iter().filter_map(|f| chunk.find(f)).min();
+            if first_fence.is_none_or(|fk| fk > mk) {
+                let head = chunk.lines().next().unwrap_or("").trim().to_string();
+                bad.push(format!("{head}  →  {which}"));
+            }
+        }
+        bad
     }
 
     /// 白名单模块**仍然不许**出现的东西 —— 这一层比默认层**更严**。
@@ -377,9 +551,10 @@ mod tests {
     }
 
     /// 扫后端生产源码，按文件分流到两层判据。返回 (默认层文件数, 命中的白名单模块数)。
-    fn scan(src_dir: &std::path::Path) -> (usize, usize) {
+    fn scan(src_dir: &std::path::Path) -> (usize, usize, usize) {
         let mut default_scanned = 0usize;
         let mut whitelisted = 0usize;
+        let mut face = 0usize;
         // Phase G 审计：**递归**。原来是 `read_dir`（只看顶层）——今天 backend src 是平的
         // 所以尚未失效，但「写盘能力不可能悄悄扩散到第二个模块」这句承诺对
         // `src/<subdir>/x.rs` 是不成立的：那种文件既不进默认层也不进白名单层，
@@ -405,6 +580,38 @@ mod tests {
                 .replace('\\', "/");
             let src = std::fs::read_to_string(&path).expect("read rs file");
             let prod = crate::guard_support::production_source(&src);
+
+            // 🔴 〔波 5 ㈡〕第三层：改动既有数据，只许在这里，而且每一处先过围栏。
+            if is_mutating_face(&rel) {
+                face += 1;
+                if let Err(why) = open_calls_are_all_exclusive(&prod) {
+                    panic!("第三层模块 {}：{why}", path.display());
+                }
+                if let Some(pat) = violates_mutating_face_layer(&prod) {
+                    panic!(
+                        "第三层模块 {} 含 `{pat}`。\n\
+                         这一层放行的改动动词是一个**闭集**（`MUTATING_FACE_VERBS`），\n\
+                         `{pat}` 不在里面 —— 要加，先论证它为什么过得了「一条路径一道围栏」。",
+                        path.display()
+                    );
+                }
+                // ⚠ 这一判**剥注释**再判（`guard_core::production_code`），与上面两判不同口径：
+                //   上面两判不剥注释是 fail-closed（写进注释也算，宁可误红）；而这一判找的是
+                //   「围栏调用在改动调用**之前**」——注释里提一句 `fenced_target(` 就能把它喂饱，
+                //   不剥注释在这一判上是 **fail-open**。现打：第一版没剥，头注里一句散文
+                //   就被判成了「没过围栏的改动」（方向相反的那一形同样会发生）。
+                let bad = unfenced_mutations(&guard_core::production_code(&src));
+                if !bad.is_empty() {
+                    panic!(
+                        "第三层模块 {} 里有改动**没先过围栏**：\n  {}\n\n\
+                         判准逐字：「改，但**每一处都先过围栏**、且只从声明过的那一面来」。\n\
+                         ⇒ 在那个函数里、第一个改动之前调一次 `fenced_target(` 或 `fenced_existing(`。",
+                        path.display(),
+                        bad.join("\n  ")
+                    );
+                }
+                continue;
+            }
 
             if is_write_whitelisted(&rel) {
                 whitelisted += 1;
@@ -440,7 +647,7 @@ mod tests {
             }
             default_scanned += 1;
         }
-        (default_scanned, whitelisted)
+        (default_scanned, whitelisted, face)
     }
 
     /// **红线 I7 的机器化护栏**（G2 起分两层）。
@@ -579,7 +786,7 @@ mod tests {
     #[test]
     fn backend_write_capability_is_confined_to_the_registered_modules() {
         let src_dir = crate::guard_support::src_root();
-        let (default_scanned, whitelisted) = scan(&src_dir);
+        let (default_scanned, whitelisted, face) = scan(&src_dir);
         // 🔴 〔步 10 · 2026-09-19〕**地板换成恒等。**
         //    上一版逐字是 `default_scanned >= 5` —— 它在「变多」那个方向上有意义，
         //    在「**变少**」这个方向上完全是瞎的：人群从 64 掉到 6，它照样绿。
@@ -590,10 +797,10 @@ mod tests {
             .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs"))
             .count();
         assert_eq!(
-            default_scanned + whitelisted + skipped_self,
+            default_scanned + whitelisted + face + skipped_self,
             core_files().len(),
-            "人群对不上：默认层 {default_scanned} ＋ 白名单层 {whitelisted} ＋ 跳过本文件 \
-             {skipped_self} != 登记派生的 {} 份。\n\
+            "人群对不上：默认层 {default_scanned} ＋ 白名单层 {whitelisted} ＋ 第三层 {face} ＋ \
+             跳过本文件 {skipped_self} != 登记派生的 {} 份。\n\
              ⇒ 有文件既没进默认层也没进白名单层 —— 那种文件**不受任何一层管**，\n\
              而上一版那条地板（`>= 5`）对它一声不吭。",
             core_files().len()
@@ -613,6 +820,15 @@ mod tests {
              ★ **相等断言，不许改回地板** —— 地板在「变多」这个方向上是瞎的。",
             WRITE_WHITELIST_MODULES.len(),
             write_whitelist_names()
+        );
+        // 🔴 〔波 5 ㈡〕第三层同形：扫到的第三层模块数 == 登记的条数。**相等，不是地板。**
+        assert_eq!(
+            face,
+            MUTATING_FACE_MODULES.len(),
+            "第三层模块必须**恰好**是登记的那几个（登记 {}，扫到 {face}）。\n\
+             少一个 = 登记挂空号（搬走 / 改名了，这张表没跟）；\n\
+             多一个不可能从这里来（没登记的模块走默认层，那一层会先红）。",
+            MUTATING_FACE_MODULES.len()
         );
     }
 
@@ -651,6 +867,238 @@ mod tests {
                 prod.contains(WHITELIST_REQUIRED),
                 "白名单登记了 `{rel}`，而它的生产段里找不到 `{WHITELIST_REQUIRED}` —— \
                  它今天根本不写盘（那这条登记该摘），或者写盘方式被换掉了（那更要有人看一眼）"
+            );
+        }
+    }
+
+    // ═══════════════════ 第三层的判据〔波 5 ㈡ · 2026-09-23〕═══════════════════
+
+    /// 后端生产树里**引用得到第三层模块**的文件（仓库相对路径，不含那个模块自己）。
+    ///
+    /// 针是模块名 ＋ 两个冒号（`files_write::`），**运行时拼**、剥过注释再找。
+    /// ⚠ 漏判面：宏拼出来的路径；`use` 之后改用短名 —— 但 `use` 那一行本身带前缀，
+    /// 「引入」这件事照旧看得见（同 `boundary_tests::paths_from` 那条登记）。
+    fn mutating_face_referrers() -> (usize, std::collections::BTreeSet<String>) {
+        let root = crate::guard_support::src_root();
+        let needles: Vec<String> = MUTATING_FACE_MODULES
+            .iter()
+            .map(|(p, _)| {
+                let stem = p.rsplit('/').next().unwrap_or(p);
+                format!("{}::", stem.trim_end_matches(".rs"))
+            })
+            .collect();
+        let mut out = std::collections::BTreeSet::new();
+        let mut scanned = 0usize;
+        for path in core_files() {
+            if path.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs") {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            scanned += 1;
+            if is_mutating_face(&rel) {
+                continue;
+            }
+            let src = std::fs::read_to_string(&path).expect("read rs file");
+            let prod = guard_core::production_code(&src);
+            if needles.iter().any(|n| prod.contains(n.as_str())) {
+                out.insert(rel);
+            }
+        }
+        (scanned, out)
+    }
+
+    /// 🔴🔴 **第三层判据 ④ 的一半：只从文件管理那一面来 —— 零命中守卫。**
+    ///
+    /// 期望集合只有**一个**元素（那扇门）。原生后端的其余任何一面
+    /// （`observe/` · `control/` 其余 · `agents/` · `relay/` …）伸手引用第三层模块 ⇒ 红。
+    /// 这就是用户那句「现在只允许后端的文件管理部分写文件」在**模块引用**这一维上的形状。
+    #[test]
+    fn the_mutating_face_is_reached_through_exactly_one_door() {
+        let (scanned, found) = mutating_face_referrers();
+        // 反空真：人群塌了 ⇒ 下面那条相等可能在两边都空上成立。
+        assert!(
+            scanned >= 60,
+            "只扫到 {scanned} 份后端源文件 —— 遍历坏了，零命中守卫在空人群上恒绿"
+        );
+        let want: std::collections::BTreeSet<String> = MUTATING_FACE_DOORS
+            .iter()
+            .map(|(p, _)| (*p).to_string())
+            .collect();
+        assert_eq!(
+            found,
+            want,
+            "\n够得到文件管理写面的后端文件与登记的那扇门对不上。\n  \
+             盘上有、表里没有（🔴 **别的面伸手进了写面**）：{:?}\n  \
+             表里有、盘上没有（那扇门退役了 ⇒ 同轮改表）：{:?}\n\n\
+             用户逐字：「现在只允许后端的文件管理部分写文件」。\n\
+             ⇒ 别的面要改盘上的东西，不许借这个模块的函数；真要，那是一次新的产品裁决。",
+            found.difference(&want).collect::<Vec<_>>(),
+            want.difference(&found).collect::<Vec<_>>()
+        );
+        for (p, why) in MUTATING_FACE_DOORS {
+            assert!(
+                why.trim().chars().count() >= 20,
+                "那扇门 `{p}` 没写清为什么是它"
+            );
+        }
+    }
+
+    /// 🔴🔴 **第三层判据 ④ 的另一半：那扇门里，够得到写面的命令恰好是写面登记的那几条。**
+    ///
+    /// 上一条只判「哪份**文件**引用得到」—— `inbound.rs` 里任何一条命令都在那份文件里，
+    /// 所以还得往下切一刀：按 `CommandSpec {` 切块，块里引用了写面的，
+    /// 取它的 `name`，集合 == `MANAGE_COMMANDS`。
+    ///
+    /// ⚠ **两侧异源**：一侧是 `inbound.rs` 的**源码文本**，一侧是写面模块里的**常量表**。
+    /// 若两侧取自同一张表（比如拿 `REGISTRY` 去比 `REGISTRY`）就是恒真。
+    #[test]
+    fn inside_the_door_only_the_file_manager_commands_reach_the_mutating_face() {
+        let src = std::fs::read_to_string(crate::guard_support::src_root().join("inbound.rs"))
+            .expect("读 inbound.rs");
+        let prod = guard_core::production_code(&src);
+        let needle = format!("files_{}::", "write");
+        let marker = format!("CommandSpec {}", "{");
+        let mut chunks = 0usize;
+        let mut reaching: std::collections::BTreeSet<String> = Default::default();
+        for chunk in prod.split(marker.as_str()).skip(1) {
+            chunks += 1;
+            if !chunk.contains(needle.as_str()) {
+                continue;
+            }
+            let name = chunk
+                .split("name:")
+                .nth(1)
+                .and_then(|t| t.split('"').nth(1))
+                .unwrap_or("<没抠出名字>")
+                .to_string();
+            reaching.insert(name);
+        }
+        assert!(
+            chunks >= 15,
+            "只切出 {chunks} 块 `CommandSpec` —— 切法坏了，本条在空转"
+        );
+        let want: std::collections::BTreeSet<String> =
+            crate::control::files_write::manage_command_names()
+                .into_iter()
+                .map(str::to_string)
+                .collect();
+        assert!(
+            !want.is_empty(),
+            "写面登记表是空的 —— 下面那条相等在空集上成立"
+        );
+        assert_eq!(
+            reaching,
+            want,
+            "\n那扇门里够得到写面的命令，与写面自己登记的那几条对不上。\n  \
+             够得到、却没登记（🔴 **一条非文件管理命令拿到了写能力**）：{:?}\n  \
+             登记了、却够不到（登记挂空号，调用方拿到 `unknown_command`）：{:?}",
+            reaching.difference(&want).collect::<Vec<_>>(),
+            want.difference(&reaching).collect::<Vec<_>>()
+        );
+    }
+
+    /// ★ 第三层登记的每一条都**真的在盘上、真的在改**（幽灵检查，照白名单那条同形）。
+    #[test]
+    fn every_mutating_face_module_is_really_on_the_tree_and_really_mutates() {
+        let src_dir = crate::guard_support::src_root();
+        assert!(
+            !MUTATING_FACE_MODULES.is_empty(),
+            "第三层表空了 —— 那条相等会变成 `0 == 0`"
+        );
+        for (rel, why) in MUTATING_FACE_MODULES {
+            assert!(why.trim().chars().count() >= 20, "`{rel}` 没写清它改什么");
+            let src = std::fs::read_to_string(src_dir.join(rel))
+                .unwrap_or_else(|e| panic!("第三层登记了 `{rel}`，它不在盘上（{e}）—— 幽灵条目"));
+            let prod = guard_core::production_code(&src);
+            let calls = mutation_calls();
+            let used: Vec<&String> = calls.iter().filter(|c| prod.contains(c.as_str())).collect();
+            assert!(
+                used.len() >= 2,
+                "`{rel}` 的生产段里只找到 {} 种改动调用 —— 它今天不在改东西（那这条登记该摘）",
+                used.len()
+            );
+            // 🔴 围栏调用必须真的在 —— 否则 `unfenced_mutations` 会把**每一处**都报出来，
+            //    但一份「一处改动都没有」的文件也会让那条判据零命中地绿。
+            assert!(
+                FENCE_CALLS.iter().any(|f| prod.contains(f)),
+                "`{rel}` 里一处围栏调用都没有"
+            );
+        }
+    }
+
+    /// 🔴 **第三层每一个判定，在合成样本上正反各喂一遍。**
+    ///
+    /// 在真树上判不够：「判定采到了而且全过」与「判定什么都没采到」输出一样。
+    #[test]
+    fn every_third_layer_judge_reds_on_its_own_sample() {
+        // ③ 围栏顺序 —— 阳性：没围栏的改动。
+        for v in MUTATING_FACE_VERBS {
+            let sample = format!("pub fn f(p: &Path) {{\n    std::fs::{v}(p).ok();\n}}\n");
+            assert_eq!(
+                unfenced_mutations(&sample).len(),
+                1,
+                "`fs::{v}` 没围栏却没被报出来 —— 那个动词在针里缺席了"
+            );
+        }
+        assert_eq!(
+            unfenced_mutations("fn f() {\n    x.open(p);\n}\n").len(),
+            1,
+            "`.open(` 没围栏却没被报出来"
+        );
+        // ③ 阴性：先判后动 ⇒ 零条。
+        assert!(
+            unfenced_mutations(
+                "pub fn f(r: &Path) {\n    let t = fenced_target(r, \"a\")?;\n    std::fs::remove_file(&t).ok();\n}\n"
+            )
+            .is_empty(),
+            "先过围栏再动手的样本被误报了 —— 这条判据会逼人去关掉它"
+        );
+        // ③ 顺序是承重的：先动后判 ⇒ 仍然红。
+        assert_eq!(
+            unfenced_mutations(
+                "pub fn f(r: &Path) {\n    std::fs::rename(a, b).ok();\n    let _ = fenced_existing(r, \"a\");\n}\n"
+            )
+            .len(),
+            1,
+            "先动手、后判的样本没被报出来 —— 判的是「有没有」不是「先不先」"
+        );
+        // ③ 切块是按函数的：第一个函数判过，不许替第二个函数作保。
+        assert_eq!(
+            unfenced_mutations(
+                "fn a(r: &Path) {\n    fenced_target(r, \"x\").ok();\n}\nfn b() {\n    std::fs::write(p, b).ok();\n}\n"
+            )
+            .len(),
+            1,
+            "一个函数里的围栏替另一个函数作了保 —— 切块失效"
+        );
+        // ② 表外的改动在本层照旧禁。
+        for pat in MUTATING_FACE_STILL_FORBIDDEN {
+            let sample = format!("fn f() {{ let _ = \"{pat}\"; }}");
+            assert_eq!(
+                violates_mutating_face_layer(&sample),
+                Some(*pat),
+                "`{pat}` 这一形在第三层没被认出来"
+            );
+        }
+        // ② 阴性：表内动词本身不许被 ② 误伤（尤其 `fs::symlink(` 与 `symlink_metadata`）。
+        for v in MUTATING_FACE_VERBS.iter().chain(MUTATING_FACE_AUX.iter()) {
+            let sample = format!("fn f() {{ std::fs::{v}(p); }}");
+            assert_eq!(
+                violates_mutating_face_layer(&sample),
+                None,
+                "表内的 `{v}` 被第三层的禁词表误伤了"
+            );
+        }
+        // ① 闭集与默认层：同一批动词写在别的模块里，默认层**照旧**认得出来（阴性对照的底子）。
+        for v in ["create_dir", "remove_dir", "remove_file", "rename", "write"] {
+            let sample = format!("fn f() {{ std::fs::{v}(p); }}");
+            assert!(
+                violates_default_layer(&sample).is_some(),
+                "默认层认不出 `fs::{v}` —— 那别的面写它就不会红"
             );
         }
     }
@@ -911,8 +1359,18 @@ mod tests {
                             continue;
                         }
                         // 那几个写口，且只准住在登记过的白名单模块里。
+                        // 〔波 5 ㈡〕第三层模块同样可以有（`O_EXCL` 新建那一处还在它里面）。
                         if WRITE_ONLY_IN_WHITELIST.contains(&full.as_str())
-                            && is_write_whitelisted(&rel)
+                            && (is_write_whitelisted(&rel) || is_mutating_face(&rel))
+                        {
+                            continue;
+                        }
+                        // 🔴 〔波 5 ㈡〕第三层那个**闭集**：只在第三层模块里放行，别处照旧红。
+                        //    这一支就是「只从文件管理面来」在**动词**这一维上的形状：
+                        //    同一个 `fs::rename`，写在 `control/files_write.rs` 里过，写在任何别处红。
+                        if (MUTATING_FACE_VERBS.contains(&full.as_str())
+                            || MUTATING_FACE_AUX.contains(&full.as_str()))
+                            && is_mutating_face(&rel)
                         {
                             continue;
                         }
@@ -936,8 +1394,9 @@ mod tests {
              ★ 本条是白名单 —— 它挡的不只是已知的写 API，也挡**没人想到过**的那些：\n\
              08-06 实测，上面那条黑名单放过了 `os::unix::fs::symlink` 与 `fs::set_permissions`\n\
              （表里写的是早已废弃的 `soft_link`，而 `set_permissions` 根本没列）。\n\
-             要新增只读调用就把动词加进 `READ_ONLY`；要写盘只有一条路：\n\
-             进已登记的白名单模块 `{}`（那条路自己另有护栏），并**同轮在那张表上签字**。",
+             要新增只读调用就把动词加进 `READ_ONLY`；要写盘只有两条路：\n\
+             新增文件 ⇒ 进已登记的白名单模块 `{}`；改动既有数据 ⇒ 只有第三层那一面\n\
+             （文件管理面，用户 09-23「现在只允许后端的文件管理部分写文件」）。两条路各自另有护栏。",
             bad.join("\n"),
             write_whitelist_names()
         );
@@ -2065,6 +2524,29 @@ mod g6_staged_zero {
             "—",
             "本 crate",
         ),
+        // 🔴 〔波 5 ㈢ · 2026-09-23〕**这一条是刚刚变成零的，不是一直是零。**
+        //
+        // 用户 09-23 逐字裁「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
+        // ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」按丙（统一）裁，统一到**窄的那一档**
+        // ⇒ `control/files_write.rs` 的两道围栏从 `is_inside_tree`（拒**整棵 `~/.claude*` 树**）
+        //   换成 `is_protected_session_path`（只拒那几份具体的会话文件），
+        //   而 `is_inside_tree` 的**唯一生产消费者**就是那两处。
+        //
+        // ⚠ **为什么不删它**（本仓「不为旧配置留兼容」那条纪律这里不适用）：
+        //   它是「`~/.claude*` 那个星号包含哪些树」这条知识的**唯一住址**，
+        //   而那条知识本身没有过期 —— 过期的是「写侧要不要用它」这个**产品裁决**。
+        //   删掉它等于把一条仍然正确的布局知识连同那次裁决一起丢掉，
+        //   下一次有人要「整棵树」那一档（比如给另一家 agent 立围栏）就得重写一遍。
+        // ⚠ 而它留着**必须有人数着**：一个零消费者的 `pub fn` 与一个「已经接上的」
+        //   长得一模一样，这条登记就是那个数。谁把它接回生产路径，
+        //   下面那条判据当场红 —— 而那一红正是「有人重新裁了这一格」该出现的地方。
+        (
+            "agents/claudecode/paths.rs",
+            "is_inside_tree",
+            "backend 生产段里**跨文件消费者 0 个**（09-23 之前是 `control/files_write.rs` 两处）",
+            "—",
+            "本 crate",
+        ),
     ];
 
     /// `(相对路径, 原文, 生产段)`。
@@ -2114,8 +2596,8 @@ mod g6_staged_zero {
     fn the_staged_zero_registry_has_no_ghost_entries() {
         assert_eq!(
             STAGED_ZERO.len(),
-            6,
-            "这一族的登记表从 6 条变成 {} 条了 —— 加成员是好事，\
+            7,
+            "这一族的登记表从 7 条变成 {} 条了 —— 加成员是好事，\
              但每加一条都要说清「被钉的那个零逐字是什么」与「接线那天为什么该红」",
             STAGED_ZERO.len()
         );
@@ -2181,8 +2663,9 @@ mod g6_staged_zero {
             }
         }
         assert_eq!(
-            checked, 3,
-            "只核了 {checked} 条「今天没有判据」的欠账（登记时是 3 条）—— \
+            checked, 4,
+            "只核了 {checked} 条「今天没有判据」的欠账（登记时是 3 条，\
+             波 5 ㈢ 09-23 加了 `is_inside_tree` 之后是 4 条）—— \
              筛选条件与登记表脱节了，本条在空转"
         );
         assert!(

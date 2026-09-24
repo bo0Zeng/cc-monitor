@@ -38,7 +38,8 @@
  *   发现新的插入点 ⇒ 当场红，逼人把它登记进下面那张表（然后尺 C 会问它认领了没有）。
  * - **尺 B（住址对账）**：表里每一行的「插入的那个表达式」必须真的被赋过那个 class/id。
  *   —— 防止表上写着 `.tab-archive` 而源码早改名了这种「判据守着一个不存在的东西」。
- * - **尺 C（认领对账，会红的那条）**：按 `src/styles.css` 逐个判「认领了没有」。
+ * - **尺 C（认领对账，会红的那条）**：按该模式那个窗口真正加载的 CSS（它的 html 链的全部样式表）
+ *   逐个判「认领了没有」。
  *
  * 三把尺子各带一次**自检**（拿一段合成输入喂进去，确认它看得见本该看见的东西）——
  * 尺子自己坏掉的时候会永远说「没问题」，那比没有判据更坏。
@@ -98,30 +99,23 @@ interface AppChild {
 type Mode = "default" | "viewer";
 const BOTH: readonly Mode[] = ["default", "viewer"];
 
-/** `index.html` 里静态写死的那三个（不经过任何 JS 插入，故不在尺 A 的人群里）。 */
-const STATIC_CHILDREN: readonly AppChild[] = [
-  {
-    file: "index.html",
-    expr: '<div id="tab-bar">',
-    selector: "#tab-bar",
-    modes: BOTH,
-    why: "静态 DOM；viewer 里靠 display:none 退出 grid",
-  },
-  {
-    file: "index.html",
-    expr: '<main id="message-stream">',
-    selector: "#message-stream",
-    modes: BOTH,
-    why: "静态 DOM",
-  },
-  {
-    file: "index.html",
-    expr: '<div id="status-bar">',
-    selector: "#status-bar",
-    modes: BOTH,
-    why: "静态 DOM",
-  },
+/**
+ * html 里静态写死的那三个（不经过任何 JS 插入，故不在尺 A 的人群里）。
+ *
+ * 〔三入口拆分 · `设计/01 §1.2`〕原先两种模式共用一个 `index.html`；拆开之后
+ * 主窗口读 `index.html`、viewer 读 `viewer.html` —— **人群按「哪个 html 在哪种模式下加载」重列**，
+ * 判红条件一个字没动。`settings.html` 里没有 `#app`（设置窗不再需要把它 `display:none` 掉），
+ * 所以本文件对 settings 仍是 N/A（理由见抬头「settings 那一半」）。
+ */
+const STATIC_IDS: readonly { expr: string; selector: string; why: string }[] = [
+  { expr: '<div id="tab-bar">', selector: "#tab-bar", why: "静态 DOM；viewer 里靠 display:none 退出 grid" },
+  { expr: '<main id="message-stream">', selector: "#message-stream", why: "静态 DOM" },
+  { expr: '<div id="status-bar">', selector: "#status-bar", why: "静态 DOM" },
 ];
+const HTML_OF: Record<Mode, string> = { default: "index.html", viewer: "viewer.html" };
+const STATIC_CHILDREN: readonly AppChild[] = (Object.keys(HTML_OF) as Mode[]).flatMap((mode) =>
+  STATIC_IDS.map((c) => ({ file: HTML_OF[mode], expr: c.expr, selector: c.selector, modes: [mode], why: c.why })),
+);
 
 /** JS 插进 `#app` 的那些。`expr` 必须与源码逐字相同 —— 尺 A 拿它对账。 */
 const INSERTED_CHILDREN: readonly AppChild[] = [
@@ -182,7 +176,8 @@ const INSERTED_CHILDREN: readonly AppChild[] = [
     why: "同上",
   },
   {
-    file: "src/main.ts",
+    // 〔三入口拆分〕`bootstrapViewer` 从 `main.ts` 搬到了 viewer 窗自己的入口模块。
+    file: "src/entry-viewer.ts",
     expr: "topbar",
     selector: ".viewer-topbar",
     modes: ["viewer"],
@@ -349,6 +344,12 @@ interface CssRule {
   readonly decls: Map<string, string>;
   /** 外层 at-rule 的 prelude 链（`@media …` / `@layer …`），空 = 无条件生效。 */
   readonly atRules: string[];
+  /**
+   * 所在级联层的先后号（`@layer a, b;` 语句与 `@layer x { }` 块里**第一次出现**的次序），
+   * 无层 = `Infinity`（无层样式赢过所有有层的）。〔三入口拆分 · `设计/41 §3`〕层真包进去之后，
+   * 「后来者赢」只在同一层里成立 —— 不看层的解析器会把低层里后写的那条误判成赢家。
+   */
+  readonly layer: number;
   /** 源序（越大越晚）。 */
   readonly order: number;
 }
@@ -393,6 +394,14 @@ export function parseCss(rawCss: string): CssRule[] {
   const css = stripComments(rawCss);
   const rules: CssRule[] = [];
   const stack: string[] = [];
+  const layerNames: string[] = [];
+  const noteLayer = (name: string): void => {
+    if (name && !layerNames.includes(name)) layerNames.push(name);
+  };
+  const layerOf = (): number => {
+    const l = [...stack].reverse().find((a) => /^@layer\b/.test(a));
+    return l ? layerNames.indexOf(l.replace(/^@layer\s+/, "").trim()) : Infinity;
+  };
   let buf = "";
   let quote: string | null = null;
   let order = 0;
@@ -413,10 +422,20 @@ export function parseCss(rawCss: string): CssRule[] {
       buf += c;
       continue;
     }
+    // 语句形 at-rule（`@layer a, b;` / `@import …;`）到分号为止，不许粘进下一条规则的 prelude
+    if (c === ";") {
+      const stmt = buf.trim();
+      const m = /^@layer\s+(.+)$/s.exec(stmt);
+      if (m) for (const n of m[1].split(",")) noteLayer(n.trim());
+      buf = "";
+      continue;
+    }
     if (c === "{") {
       const prelude = buf.trim();
       buf = "";
       if (prelude.startsWith("@")) {
+        const m = /^@layer\s+([\w-]+)$/.exec(prelude);
+        if (m) noteLayer(m[1]);
         stack.push(prelude);
         continue;
       }
@@ -430,6 +449,7 @@ export function parseCss(rawCss: string): CssRule[] {
           .filter(Boolean),
         decls: parseDecls(body),
         atRules: [...stack],
+        layer: layerOf(),
         order: order++,
       });
       i = end === -1 ? css.length : end;
@@ -511,9 +531,12 @@ function trackCount(value: string): number {
   return n;
 }
 
-/** 某个选择器在某模式下拿到的一条属性（后来者赢；`body.viewer-mode X` 压过 `X`）。 */
+/**
+ * 某个选择器在某模式下拿到的一条属性：先比层（后声明的层赢、无层最大），同层里
+ * `body.viewer-mode X` 压过 `X`，再同则后来者赢。
+ */
 function resolve(rules: CssRule[], selector: string, mode: Mode, prop: string): string | undefined {
-  let best: { rank: number; order: number; value: string } | undefined;
+  let best: { layer: number; rank: number; order: number; value: string } | undefined;
   for (const r of rules) {
     // 带条件的 at-rule（媒体查询）不参与「无条件认领」的判定
     if (r.atRules.some((a) => /^@(?:media|supports|container)\b/.test(a))) continue;
@@ -524,9 +547,11 @@ function resolve(rules: CssRule[], selector: string, mode: Mode, prop: string): 
       if (sel === selector) rank = 0;
       else if (mode === "viewer" && sel === `body.viewer-mode ${selector}`) rank = 1;
       if (rank < 0) continue;
-      if (!best || rank > best.rank || (rank === best.rank && r.order > best.order)) {
-        best = { rank, order: r.order, value: v };
-      }
+      const wins =
+        !best ||
+        r.layer > best.layer ||
+        (r.layer === best.layer && (rank > best.rank || (rank === best.rank && r.order > best.order)));
+      if (wins) best = { layer: r.layer, rank, order: r.order, value: v };
     }
   }
   return best?.value;
@@ -578,8 +603,19 @@ export function claimOf(rules: CssRule[], selector: string, mode: Mode, tpl: Tem
 
 // ── 3. 判据 ────────────────────────────────────────────────────────────────
 
-const CSS = readFileSync(join(REPO_ROOT, "src/styles.css"), "utf8");
-const RULES = parseCss(CSS);
+/**
+ * 〔三入口拆分 · 人群改定义〕原先读 `src/styles.css` 一份；拆开之后每种模式读**那个窗口真正加载的
+ * 全部样式表** —— 它的 html 里 `<link rel="stylesheet">` 清单，按序拼起来（清单只有这一份，没有副本）。
+ */
+function windowCss(html: string): string {
+  const links = [...readFileSync(join(REPO_ROOT, html), "utf8").matchAll(/<link rel="stylesheet" href="\/([^"]+)"/g)];
+  if (links.length === 0) throw new Error(`${html} 里一条样式表链接都没有 —— 下面各条会对着空 CSS 空转`);
+  return links.map((m) => readFileSync(join(REPO_ROOT, m[1]), "utf8")).join("\n");
+}
+const CSS_OF: Record<Mode, string> = { default: windowCss(HTML_OF.default), viewer: windowCss(HTML_OF.viewer) };
+const RULES_OF: Record<Mode, CssRule[]> = { default: parseCss(CSS_OF.default), viewer: parseCss(CSS_OF.viewer) };
+const CSS = CSS_OF.default;
+const RULES = RULES_OF.default;
 
 describe("S24 · #app 的每个直接子元素都认领了格子", () => {
   it("尺 A 自检：合成一个新插入点，它必须被看见", () => {
@@ -627,9 +663,11 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
         : new RegExp(`\\b${leaf}\\.className\\s*=\\s*"${name}(?:[ "])`);
       expect(pat.test(hay), `${c.file} 的 \`${c.expr}\` 应该被赋成 \`${c.selector}\``).toBe(true);
     }
-    // index.html 里那三个静态的
-    const html = readFileSync(join(REPO_ROOT, "index.html"), "utf8");
-    for (const c of STATIC_CHILDREN) expect(html).toContain(c.expr);
+    // html 里那几个静态的（主窗口 `index.html` ＋ viewer 窗 `viewer.html`，各三个）
+    expect(STATIC_CHILDREN.length, "静态人群空了 —— 下面那条零命中地绿").toBe(6);
+    for (const c of STATIC_CHILDREN) {
+      expect(readFileSync(join(REPO_ROOT, c.file), "utf8"), `${c.file} 里没有 ${c.expr}`).toContain(c.expr);
+    }
   });
 
   // 🔴 〔步 17·A · 2026-09-19〕靶子从 `.tab-archive` 换成 `#message-stream`。
@@ -655,7 +693,7 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
       // ★ `mode === "viewer"` 这一档 = `INVARIANTS.md` **条 22 第 4 项**（精简模式 CSS
       //   不能塌 grid 行）今天唯一的机检住址。理由与射程见本文件抬头那一节。
       it("模板自洽：具名区域的行/列数 == 声明的轨道数（隐式行数因此被钉在 0；viewer 档 = 条 22 第 4 项）", () => {
-        const tpl = templateOf(RULES, mode);
+        const tpl = templateOf(RULES_OF[mode], mode);
         expect(tpl.rows, "grid-template-areas 的行数 != grid-template-rows 的轨道数").toBe(
           tpl.declaredRows,
         );
@@ -666,11 +704,11 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
       });
 
       it("每个 in-flow 直接子元素都认领了一个本模板里声明过的格子（viewer 档 = 条 22 第 4 项）", () => {
-        const tpl = templateOf(RULES, mode);
+        const tpl = templateOf(RULES_OF[mode], mode);
         const unclaimed: string[] = [];
         for (const c of ALL_CHILDREN) {
           if (!c.modes.includes(mode)) continue;
-          const claim = claimOf(RULES, c.selector, mode, tpl);
+          const claim = claimOf(RULES_OF[mode], c.selector, mode, tpl);
           if (claim.kind === "none") {
             unclaimed.push(`${c.selector}（插入点 ${c.file} :: ${c.expr}）—— ${claim.detail}`);
           }
@@ -683,11 +721,11 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
       });
 
       it("模板里声明的每个具名区域都有人认领（没有空转的行）", () => {
-        const tpl = templateOf(RULES, mode);
+        const tpl = templateOf(RULES_OF[mode], mode);
         const claimed = new Set<string>();
         for (const c of ALL_CHILDREN) {
           if (!c.modes.includes(mode)) continue;
-          const claim = claimOf(RULES, c.selector, mode, tpl);
+          const claim = claimOf(RULES_OF[mode], c.selector, mode, tpl);
           if (claim.kind === "area") claimed.add(claim.detail.replace("grid-area: ", ""));
         }
         expect([...tpl.areas].filter((a) => !claimed.has(a))).toEqual([]);

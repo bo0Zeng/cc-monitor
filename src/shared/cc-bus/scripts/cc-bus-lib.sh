@@ -21,6 +21,181 @@
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cc-bus-adapt.sh"
 ccbus_adapt_load || return 13
 
+# ── kinds 表(设计 95 §2):信封的 `kind` → 一组行为 ──────────────────────────────
+#
+# cc-bus 的功能只有「把一段文本注入 agent」这一件;`kind` 决定的是**怎么注入**:
+#   拦停(Stop 钩子要不要把这条喂回去、拦下本轮结束)· 敲门(要不要往对方屏幕打字)·
+#   过哪几道阀门 · 两个模板(T1 喂给 Claude 的 / T2 打进屏幕的)。
+# 表住 `~/.cc-bus/kinds.tsv`(用户可改);没有 ⇒ 用 skill 自带的 `examples/kinds.tsv`
+# (部署时随包落盘、带注释);两份都没有 ⇒ 只有内置的 `msg` 一行 = 今天的行为,零回归。
+#
+# 🔴 **敲门模板(T2)里不许放正文 `{body}`**:T2 走 `send-keys` ＋ Enter,
+#    正文里的换行会被当成回车 ⇒ 把消息内容当成对方的输入执行。三道闸,**任何一道单独都够**:
+#    ① 装表时逐行判(`kinds_check_row`),含 `{body}` 的行整行作废,cc-send 当场 rc=2;
+#    ② 渲染 T2 的函数**根本不收正文**(`kinds_render_nudge` 的参数表里没有它);
+#    ③ 渲染结果里只要有控制字符或残留的 `{body}` 字面量就拒,退回内置 T2。
+#    ⚠ 买不到:用户**自己**在 T2 里写一句祈使句 —— 那是他的 prompt,cc-bus 不替他审措辞。
+#
+# 🔴 **阀门① ACL 与 ② 限流不许按 kind 关**:kind 是**发信方**自己选的,
+#    能靠选 kind 绕开 ACL 就等于没有 ACL。⇒ 装表时缺这两项的行作废(①),
+#    而且 `route_process` 里那两道门**结构上就不看 kind**(②,无条件跑)。
+#    按 kind 可关的只有 ③ 去重与 ④ 灭环(保活文本按定义重复 ⇒ 必须能关去重,§3bis)。
+CCBUS_KIND_DEFAULT="msg"
+# 内置的 msg 两段文本 —— **与改造前硬编码在 stop-hook / 本文件里的两句逐字节相同**,
+# 判据把它与 `examples/kinds.tsv` 那一行对拍(两份表达同一件事,漂了就红)。
+CCBUS_KIND_BUILTIN_T1='你收到新的 cc-bus 消息,请先处理完再结束本轮:\n{body}'
+CCBUS_KIND_BUILTIN_T2='🔔 cc-bus: 你有来自 {from} 的新消息,运行 cc-recv 读取并按内容处理'
+CCBUS_KIND_VALVES_KNOWN="acl rate dedup loop"
+CCBUS_KIND_VALVES_REQUIRED="acl rate"
+CCBUS_KIND_T1_VARS="from to ts kind count body"
+CCBUS_KIND_T2_VARS="from to ts kind"          # ⚠ 没有 body,也没有 count(敲门时不知道几条)
+
+# 生效的那份表在哪。没有 ⇒ rc=1(调用方落内置 msg)。
+kinds_file() {
+  if [ -f "$BUS/kinds.tsv" ]; then printf '%s' "$BUS/kinds.tsv"; return 0; fi
+  local shipped
+  shipped="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/examples/kinds.tsv"
+  if [ -f "$shipped" ]; then printf '%s' "$shipped"; return 0; fi
+  return 1
+}
+
+# 模板里的 `{变量}` 是不是都在允许表里。不认识的那个打到 stdout,rc=1。
+_kinds_vars_ok() {
+  local rest="$1" allow=" $2 " v
+  while [[ "$rest" =~ \{([A-Za-z_]+)\}(.*) ]]; do
+    v="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
+    case "$allow" in *" $v "*) ;; *) printf '%s' "$v"; return 1 ;; esac
+  done
+  return 0
+}
+
+# 判一行。合法 ⇒ rc=0;不合法 ⇒ 理由打到 stdout,rc=1。**纯判定,零 I/O。**
+kinds_check_row() {
+  local kind="$1" block="$2" nudge="$3" valves="$4" t1="$5" t2="$6" v bad got=" "
+  [[ "$kind" =~ ^[a-z0-9_-]{1,32}$ ]] || { printf 'kind 名 %q 非法(只许 [a-z0-9_-],1–32 个字符)' "$kind"; return 1; }
+  case "$block" in yes|no) ;; *) printf '%s: 拦停列要 yes/no,给的是 %q' "$kind" "$block"; return 1 ;; esac
+  case "$nudge" in yes|no) ;; *) printf '%s: 敲门列要 yes/no,给的是 %q' "$kind" "$nudge"; return 1 ;; esac
+  local parts; IFS=',' read -ra parts <<< "$valves"
+  for v in "${parts[@]}"; do
+    case " $CCBUS_KIND_VALVES_KNOWN " in
+      *" $v "*) got="$got$v " ;;
+      *) printf '%s: 不认识的阀门 %q(只有 %s)' "$kind" "$v" "$CCBUS_KIND_VALVES_KNOWN"; return 1 ;;
+    esac
+  done
+  for v in $CCBUS_KIND_VALVES_REQUIRED; do
+    case "$got" in
+      *" $v "*) ;;
+      *) printf '%s: 阀门列缺 %s —— ACL 与限流不许按 kind 关(kind 是发信方自己选的)' "$kind" "$v"; return 1 ;;
+    esac
+  done
+  if [ "$block" = yes ] && [[ "$t1" != *"{body}"* ]]; then
+    printf '%s: 拦停=yes 的注入模板必须含 {body} —— 否则消息根本没喂回去' "$kind"; return 1
+  fi
+  bad=$(_kinds_vars_ok "$t1" "$CCBUS_KIND_T1_VARS") || { printf '%s: 注入模板里有不认识的变量 {%s}' "$kind" "$bad"; return 1; }
+  # 🔴 安全项(95 §2.1 / §4 步 4):敲门模板不许放正文
+  if [[ "$t2" == *"{body}"* ]]; then
+    printf '%s: 🔴 敲门模板里不许放 {body} —— 它走 send-keys,正文里的换行会被当成回车执行' "$kind"; return 1
+  fi
+  if [[ "$t2" == *[[:cntrl:]]* ]]; then
+    printf '%s: 🔴 敲门模板里有控制字符 —— 打进屏幕就是按键' "$kind"; return 1
+  fi
+  bad=$(_kinds_vars_ok "$t2" "$CCBUS_KIND_T2_VARS") || { printf '%s: 敲门模板里有不认识(或不许用)的变量 {%s}' "$kind" "$bad"; return 1; }
+  if [ "$nudge" = yes ] && { [ -z "$t2" ] || [ "$t2" = "-" ]; }; then
+    printf '%s: 敲门=yes 却没给敲门模板(写 - 表示不敲)' "$kind"; return 1
+  fi
+  return 0
+}
+
+# 查一个 kind。rc=0 ⇒ 设好 KIND_NAME/BLOCK/NUDGE/VALVES/T1/T2/SRC;
+# rc=1 ⇒ 表里没有它;rc=2 ⇒ 有但那一行不合法。两种失败的理由都在 KIND_WHY。
+# ⚠ `msg` 永远查得到:表里没有 msg 那一行 ⇒ 内置(零回归的那条底)。
+# ⚠ 表里同名多行 ⇒ **第一行赢**(与 policy.tsv「首个匹配生效」同一条)。
+kinds_lookup() {
+  local want="$1" f="" row n
+  KIND_WHY=""
+  if f=$(kinds_file); then
+    # 剥行尾 \r:Windows 上编辑过的表是 CRLF,而**敲门模板尾巴上的 \r 打进屏幕就是一个回车**
+    row=$(awk -F'\t' -v k="$want" '{sub(/\r$/,"")} /^[[:space:]]*#/ {next} $1==k {print; exit}' "$f" 2>/dev/null || true)
+    if [ -n "$row" ]; then
+      local F; IFS=$'\t' read -ra F <<< "$row"
+      n=${#F[@]}
+      if [ "$n" -ne 6 ]; then
+        KIND_WHY="$want: 那一行有 $n 列,要 6 列(kind 拦停 敲门 阀门 注入模板 敲门模板;空的写 -;列间是真 TAB)[$f]"
+        return 2
+      fi
+      if ! KIND_WHY=$(kinds_check_row "${F[@]}"); then KIND_WHY="$KIND_WHY [$f]"; return 2; fi
+      KIND_NAME="${F[0]}"; KIND_BLOCK="${F[1]}"; KIND_NUDGE="${F[2]}"; KIND_VALVES="${F[3]}"
+      KIND_T1="${F[4]}"; KIND_T2="${F[5]}"; KIND_SRC="$f"
+      return 0
+    fi
+  fi
+  if [ "$want" = "$CCBUS_KIND_DEFAULT" ]; then
+    KIND_NAME=msg; KIND_BLOCK=yes; KIND_NUDGE=yes; KIND_VALVES="acl,rate,dedup,loop"
+    KIND_T1="$CCBUS_KIND_BUILTIN_T1"; KIND_T2="$CCBUS_KIND_BUILTIN_T2"; KIND_SRC=builtin
+    return 0
+  fi
+  KIND_WHY="不认识的 kind '$want'(${f:-没有 kinds.tsv,只有内置的 msg})"
+  return 1
+}
+
+# 查不到 / 不合法 ⇒ 落回 msg,并在 bus.log 里说清楚(**不静默**)。用于**已经入队**的信封:
+# 表是入队之后才改的 —— 那时发信方已经走了,拒掉就是静默丢;按 msg 投是最不意外的去处。
+kinds_lookup_or_msg() {
+  kinds_lookup "$1" && return 0
+  route_log "KIND fallback '$1'→msg($KIND_WHY)"
+  kinds_lookup "$CCBUS_KIND_DEFAULT"
+}
+
+kinds_has_valve() { case ",$KIND_VALVES," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+
+# T1(注入模板)渲染到 <out>。正文走 `--rawfile`,**不走 argv**(160KB 那件事故,95 §3ter.0)。
+# `\n` 只在**模板**里展开成换行;`{body}` 最后填 ⇒ 正文里碰巧有 `{from}` 也不会被替换。
+kinds_render_inject() {   # <模板> <out> <正文文件> <from> <to> <kind> <count>
+  jq -jn --arg t "$1" --rawfile body "$3" --arg from "$4" --arg to "$5" \
+         --arg kind "$6" --arg count "$7" --arg ts "$(store_now)" \
+    '$t | gsub("\\\\n"; "\n")
+        | split("{from}") | join($from) | split("{to}") | join($to)
+        | split("{ts}") | join($ts) | split("{kind}") | join($kind)
+        | split("{count}") | join($count) | split("{body}") | join($body)' > "$2"
+}
+
+# T2(敲门模板)渲染到 stdout。🔴 **参数表里没有正文** —— 这是三道闸里的第二道:
+# 就算有人绕过装表那道判,这里也没有东西可以填进 `{body}`。
+# 渲染结果里有控制字符(`{ts}` 来自信封,信封谁都能写)或残留的 `{body}` ⇒ rc=1,调用方退回内置。
+kinds_render_nudge() {    # <模板> <from> <to> <kind> <ts>
+  local out
+  out=$(jq -jn --arg t "$1" --arg from "$2" --arg to "$3" --arg kind "$4" --arg ts "$5" \
+    '$t | split("{from}") | join($from) | split("{to}") | join($to)
+        | split("{ts}") | join($ts) | split("{kind}") | join($kind)') || return 1
+  case "$out" in ''|*[[:cntrl:]]*|*'{body}'*) return 1 ;; esac
+  printf '%s' "$out"
+}
+
+# Stop 钩子那一批里**该用哪一行拦停**。入参:cc-peek `--kinds-file` 写出的那一行(`kind:from kind:from …`)。
+# 出:`<kind>\t<from>\t<条数>`;这一批**没有**要拦停的 kind ⇒ rc=1(调用方放行、不推进)。
+# 优先级 = 表里的行序(越靠前越优先),内置 msg 排最后;同级取这一批里先出现的那条。
+# ⚠ 一条都没解析出来(全是坏行)⇒ 按 msg 拦:那一批里至少有「跳过 N 条读不懂的」那句话要喂回去,
+#   与改造前逐字同一个行为(否则毒丸会永远卡在收件箱里、每轮都被重读)。
+kinds_pick_block() {
+  local meta ent k fr best="" bestfrom="" bestrank=100000 rank n=0 f order=""
+  meta=$(cat "$1" 2>/dev/null || true)
+  if f=$(kinds_file); then
+    order=$(awk -F'\t' '{sub(/\r$/,"")} /^[[:space:]]*#/ {next} NF {printf "%s ", $1}' "$f" 2>/dev/null || true)
+  fi
+  for ent in $meta; do
+    n=$((n+1))
+    k="${ent%%:*}"; fr="${ent#*:}"
+    kinds_lookup "$k" || { kinds_lookup "$CCBUS_KIND_DEFAULT"; k=msg; }
+    [ "$KIND_BLOCK" = yes ] || continue
+    rank=$(printf '%s' "$order" | awk -v k="$k" '{for(i=1;i<=NF;i++) if($i==k){print i; exit}}')
+    [ -n "$rank" ] || rank=99999
+    if [ "$rank" -lt "$bestrank" ]; then best="$k"; bestfrom="$fr"; bestrank="$rank"; fi
+  done
+  if [ "$n" -eq 0 ]; then printf '%s\t%s\t%s' msg "?" 0; return 0; fi
+  [ -n "$best" ] || return 1
+  printf '%s\t%s\t%s' "$best" "$bestfrom" "$n"
+}
+
 # 两阶段读口的锚(cc-peek 发、cc-commit 校验,**两边必须是同一份实现**,否则永远比不中)。
 # 取第 <行号> 行现算 cksum,形如 `<校验和>-<字节数>` —— 与下面 `_dedup_hash` 同一招,零新依赖。
 twophase_anchor() { sed -n "${2}p" "$1" | cksum | awk '{print $1"-"$2}'; }
@@ -234,8 +409,9 @@ route_deliver() {
 }
 
 # 敲门(去抖):同一收件人 DEBOUNCE 秒内只敲一次;send-keys 到其 pane。
+# 敲什么由 kind 的 T2 定(`kinds_render_nudge` —— 它**不收正文**,见 kinds 那一节的三道闸)。
 route_nudge() {
-  local to="$1" from="$2"
+  local to="$1" from="$2" t2="${3:-$CCBUS_KIND_BUILTIN_T2}" kind="${4:-msg}" ts="${5:-}"
   local nf="$BUS/state/nudge-$to" now last target   # 独立行:$to 已赋值后再拼路径
   now=$(date +%s)
   mkdir -p "$BUS/state"
@@ -256,8 +432,12 @@ route_nudge() {
           target=""
         fi
       fi
-      if [ -n "$target" ] && os_send_keys "$target" \
-           "🔔 cc-bus: 你有来自 $from 的新消息,运行 cc-recv 读取并按内容处理"; then
+      # T2 渲染不出来(控制字符 / 残留 {body})⇒ 退回内置那一句,并**说出来**
+      knock=$(kinds_render_nudge "$t2" "$from" "$to" "$kind" "$ts") || {
+        route_log "NUDGE tpl-refused kind=$kind —— 敲门模板渲染出了控制字符或 {body},改敲内置那一句"
+        knock=$(kinds_render_nudge "$CCBUS_KIND_BUILTIN_T2" "$from" "$to" "$kind" "")
+      }
+      if [ -n "$target" ] && os_send_keys "$target" "$knock"; then
         # claude 的输入要**另打一个 Enter** 才算提交 —— 这一位由 agent 词典自陈(§3.2b),
         # 不是所有 agent 都这样;`sleep 0.3` 刻意留在本文件(它是本仓登记在册的周期唤醒)。
         if agent_submit_enter; then
@@ -282,10 +462,33 @@ route_process() {
   case "$from" in *[!A-Za-z0-9_-]*|'') route_log "DROP badname from=$from"; return 10;; esac
   # 这里的门全是【只读】(无副作用)。限流/去重的状态仅在 deliver 成功后(见下)才提交,
   # 于是一次瞬时 deliver 失败 + 重排队会干净地重跑各门,而不会被 throttle/coalesce 掉后静默丢失。
+  # kind:缺省 msg(老信封零回归)。查不到 / 那一行不合法 ⇒ 按 msg 投并记一行(已入队的不许静默丢)。
+  local kind ts; kind=$(printf '%s' "$line" | jq -r '.kind // "msg"' 2>/dev/null || echo msg)
+  ts=$(printf '%s' "$line" | jq -r '.ts // ""' 2>/dev/null || true)
+  kinds_lookup_or_msg "$kind"; kind="$KIND_NAME"
+  # 🔴 阀门① ACL 与 ② 限流**不看 kind**:这两行无条件跑(kind 是发信方自己选的,不许靠它绕开)。
   route_policy_check "$from" "$to" || return 10
   route_rate_check   "$from" "$to" || return 10
-  route_loop_check   "$line"       || return 10
-  route_dedup_check  "$line"       || return 10
+  # ③ 去重 ④ 灭环按 kind 可关(保活文本按定义重复 ⇒ 去重必须能关,95 §3bis)
+  if kinds_has_valve loop;  then route_loop_check  "$line" || return 10; fi
+  if kinds_has_valve dedup; then route_dedup_check "$line" || return 10; fi
+  # 能力降级(95 §3.2b):按收件方 agent 词典的三位能力,把想要的行为降到做得到的那一档。
+  #   拦停 ⇒ 敲门 ⇒ 只入收件箱 ⇒ **投递前就拒**(别让消息烂在收件箱里)。每降一级 bus.log 里一行。
+  # ⚠ 买不到:「收件方是哪种 agent」—— 按**本进程**装载的词典算(今天只有 claude 一本)。
+  local want=inbox got nudge_on=no
+  [ "$KIND_NUDGE" = yes ] && want=nudge
+  [ "$KIND_BLOCK" = yes ] && want=block
+  got=$(ccbus_degrade "$want")
+  if [ "$got" = "$CCBUS_DEGRADE_SINK" ]; then
+    route_log "REJECT kind=$kind $from->$to —— 收件方一种投递语义都做不到(降级链走到底),投递前就拒"
+    return 10
+  fi
+  case "$got" in
+    nudge) nudge_on=yes ;;                                   # 本来就要敲,或拦停降成了敲门
+    block) if [ "$KIND_NUDGE" = yes ] && [ "$(ccbus_degrade nudge)" = nudge ]; then nudge_on=yes; fi ;;
+  esac
+  local t2="$KIND_T2"
+  { [ -z "$t2" ] || [ "$t2" = "-" ]; } && t2="$CCBUS_KIND_BUILTIN_T2"   # 拦停降成敲门、而这一行本来不敲
   # msg-id 幂等:同 id 已在收件人 inbox → 跳过(reaper 退回重投的双投防护;正常唯一 id 永不命中)。
   # 只扫 inbox 尾部(重投的必是近期消息),避免 inbox 只增导致每次投递 O(n) 全量扫。
   local mid; mid=$(printf '%s' "$line" | jq -r '.id // ""')
@@ -296,8 +499,12 @@ route_process() {
   route_deliver "$to" "$line" || { route_log "ERROR deliver $from->$to"; return 1; }
   # 已投递 → 现在才提交有副作用的门(安全:上面 deliver 失败绝不会走到这)。
   route_rate_commit  "$from" "$to"
-  route_dedup_commit "$line"
-  route_nudge   "$to" "$from" || true
-  route_log "DELIVER $from->$to"
+  if kinds_has_valve dedup; then route_dedup_commit "$line"; fi
+  if [ "$nudge_on" = yes ]; then
+    route_nudge "$to" "$from" "$t2" "$kind" "$ts" || true
+  else
+    route_log "NUDGE off $to kind=$kind"
+  fi
+  if [ "$kind" = msg ]; then route_log "DELIVER $from->$to"; else route_log "DELIVER $from->$to kind=$kind"; fi
   return 0
 }

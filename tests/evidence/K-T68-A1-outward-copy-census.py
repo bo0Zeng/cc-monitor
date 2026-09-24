@@ -123,6 +123,13 @@ CC_BUS_INJECT_FILES = (
     "src/bridge/src/cc_bus_deploy.rs",
 )
 
+# 🔴 修 bug（CP1 2026-09-24）：Rust 里 `'` 不一定开一个字符字面量 —— 生命周期 `'a`、
+# 循环标签 `'read` 都以 `'` 打头、且**没有**闭合的 `'`。旧逻辑一律当单引号串扫到行尾，
+# 于是 ① `break 'read; // EOF；…` 把后面的**注释**吐成一条假「字面量」（ssh_source.rs 现打）；
+# ② `&'a str, "中文"` 这种行会把同行的真字符串**吞进**那条假串里，真文案从人群里消失。
+# ⇒ Rust 下只有形如 `'x'` / `'\n'` / `'\u{…}'` 的才算字符字面量，其余的 `'` 当普通字符。
+RS_CHAR_LIT = re.compile(r"'(?:[^'\\\n]|\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}\}|.))'")
+
 CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 
 # ── 地板：低于它说明尺子没切到东西，必须报空转而不是报 0 ──────────────────────
@@ -409,6 +416,16 @@ def mask_comments(src: str, lang: str) -> str:
                 prev_sig = '"'
                 continue
 
+        if lang == "rs" and c == "'":
+            cm = RS_CHAR_LIT.match(src, i)
+            if cm:                 # 真字符字面量：整个跳过
+                i = cm.end()
+                prev_sig = "'"
+                continue
+            prev_sig = c           # 生命周期 / 循环标签：普通字符
+            i += 1
+            continue
+
         if c in ('"', "'") or (lang == "ts" and c == "`"):
             q = c
             j = i + 1
@@ -489,27 +506,147 @@ def mask_comments(src: str, lang: str) -> str:
     return "".join(out)
 
 
-def strip_cfg_test(masked: str) -> str:
-    """把 `#[cfg(test)]` 后面那个 `{...}` 整块换成空格（行号不变）。"""
-    out = list(masked)
-    for m in re.finditer(r"#\[cfg\((?:test|all\([^)]*test[^)]*\))\)\]", masked):
-        i = masked.find("{", m.end())
-        if i < 0:
+CFG_TEST_RE = re.compile(r"#\[cfg\((?:test|all\([^)]*test[^)]*\))\)\]")
+
+
+def _cfg_test_item_end(masked: str, pos: int) -> int:
+    """从 `#[cfg(test)]` 之后起，找**它修饰的那一个 item** 的结尾（含）。
+
+    🔴 修 bug（CP1 2026-09-24）：旧版一律取「后面第一个 `{`」配平 —— 而本仓最常见的写法是
+    `#[cfg(test)] #[path = "…"] mod x;`（**分号桩，没有块**）以及 `#[cfg(test)] const X: &[…] = &[…];`。
+    旧版于是跳过它、把**下一个生产 item 的函数体**整块涂掉：生产文案从人群里静默消失，
+    而 `const` 表里的测试专用说明反倒留在人群里（`backend/mod.rs::BACKEND_FILES` 现打 22 条）。
+    ⇒ 按 item 走：先跳过后续属性 `#[…]`，再按 `() [] {}` 配平（跳字符串）——
+    深度 0 遇 `;` ⇒ item 到此为止；深度 0 遇 `{` ⇒ 配平到对应 `}` 为止。
+    """
+    n = len(masked)
+    i = pos
+    while True:
+        while i < n and masked[i].isspace():
+            i += 1
+        if masked.startswith("#[", i) or masked.startswith("#![", i):
+            d = 0
+            while i < n:
+                if masked[i] == "[":
+                    d += 1
+                elif masked[i] == "]":
+                    d -= 1
+                    if d == 0:
+                        i += 1
+                        break
+                i += 1
             continue
-        d = 0
-        j = i
-        while j < len(masked):
-            if masked[j] == "{":
-                d += 1
-            elif masked[j] == "}":
-                d -= 1
-                if d == 0:
-                    break
-            j += 1
-        for k in range(m.start(), min(j + 1, len(masked))):
+        break
+    d = 0
+    while i < n:
+        c = masked[i]
+        if c == '"' or (c == "r" and i + 1 < n and masked[i + 1] in '#"'):
+            for _s, e, _t in iter_strings(masked, "rs", i, n):
+                i = e
+                break
+            else:
+                i += 1
+            continue
+        if c == "'":
+            cm = RS_CHAR_LIT.match(masked, i)
+            i = cm.end() if cm else i + 1
+            continue
+        if c in "([":
+            d += 1
+        elif c in ")]":
+            d -= 1
+        elif c == "{":
+            if d == 0:
+                bd = 0
+                j = i
+                while j < n:
+                    cj = masked[j]
+                    if cj == '"' or (cj == "r" and j + 1 < n and masked[j + 1] in '#"'):
+                        for _s, e, _t in iter_strings(masked, "rs", j, n):
+                            j = e
+                            break
+                        else:
+                            j += 1
+                        continue
+                    if cj == "'":
+                        cm = RS_CHAR_LIT.match(masked, j)
+                        j = cm.end() if cm else j + 1
+                        continue
+                    if cj == "{":
+                        bd += 1
+                    elif cj == "}":
+                        bd -= 1
+                        if bd == 0:
+                            return j
+                    j += 1
+                return n - 1
+            d += 1
+        elif c == "}":
+            if d == 0:
+                return i - 1          # 撞到外层的 `}`：item 不完整，止于此
+            d -= 1
+        elif c == ";" and d == 0:
+            return i
+        i += 1
+    return n - 1
+
+
+def strip_cfg_test(masked: str) -> str:
+    """把 `#[cfg(test)]` 修饰的**那一个 item** 整个换成空格（行号不变）。"""
+    out = list(masked)
+    for m in CFG_TEST_RE.finditer(masked):
+        end = _cfg_test_item_end(masked, m.end())
+        for k in range(m.start(), min(end + 1, len(masked))):
             if out[k] != "\n":
                 out[k] = " "
     return "".join(out)
+
+
+CFG_TEST_MOD_RE = re.compile(
+    r"#\[cfg\((?:test|all\([^)]*test[^)]*\))\)\]\s*"
+    r"((?:#\[[^\]]*\]\s*)*)"
+    r"(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)\s*;"
+)
+
+
+def cfg_test_module_files(root: Path) -> set:
+    """🔴 修 bug（CP1 2026-09-24）：`#[cfg(test)] mod x;` 声明的模块**整个文件**只在测试构建里，
+    但它住在另一个文件里 ⇒ 单文件内的 `strip_cfg_test` 看不见（`backend/agents/fake/` 现打 28 条混进人群）。
+    ⇒ 先扫一遍所有 `.rs`，把这种声明解析成文件路径（及其子模块目录），整棵从语料里摘掉。
+    → 相对仓根的 posix 路径前缀集合（文件本身，或 `dir/`）。
+    """
+    out = set()
+    if not root.exists():
+        return out
+    for p in root.rglob("*.rs"):
+        try:
+            raw = p.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if "cfg(" not in raw:
+            continue
+        masked = mask_comments(raw, "rs")
+        for m in CFG_TEST_MOD_RE.finditer(masked):
+            attrs, name = m.group(1), m.group(2)
+            pm = re.search(r'#\[path\s*=\s*"([^"]+)"\]', attrs)
+            is_modrs = p.name in ("mod.rs", "lib.rs", "main.rs")
+            base = p.parent if is_modrs else p.parent / p.stem
+            if pm:
+                cands = [(p.parent / pm.group(1)).resolve()]
+            else:
+                cands = [(base / f"{name}.rs").resolve(), (base / name / "mod.rs").resolve()]
+            for c in cands:
+                if not c.exists():
+                    continue
+                try:
+                    rel = c.relative_to(REPO).as_posix()
+                except ValueError:
+                    continue
+                out.add(rel)
+                sub = c.parent if c.name == "mod.rs" else c.parent / c.stem
+                if sub.is_dir():
+                    out.add(sub.relative_to(REPO).as_posix() + "/")
+    return out
 
 
 def iter_strings(src: str, lang: str, lo: int, hi: int):
@@ -535,6 +672,10 @@ def iter_strings(src: str, lang: str, lo: int, hi: int):
                 yield (i, k + len(term), src[j + 1:k])
                 i = k + len(term)
                 continue
+        if lang == "rs" and c == "'":
+            cm = RS_CHAR_LIT.match(src, i)
+            i = cm.end() if cm else i + 1     # 字符字面量不可能含一个完整的中文句子；标签/生命周期跳过
+            continue
         if c in ('"', "'") or (lang == "ts" and c == "`"):
             q = c
             j = i + 1
@@ -712,10 +853,48 @@ def resolve_kind(expr: str, off: int, tagmap) -> tuple:
 # ═══════════════════════════════════════════════════════════════════════════
 #  扫描
 # ═══════════════════════════════════════════════════════════════════════════
+def enclosing_calls(masked: str, lang: str) -> dict:
+    """→ {字面量起点: 包住它的各层 `(` 前面那一截调用名（由内到外，用 ` | ` 连）}。
+
+    🔴 修 bug（CP1 2026-09-24）：「明写排除」原先只看字面量**前 60 个字符**里有没有
+    `assert!(` / `tracing::warn!(` …。多行写法（`assert_eq!(\n a,\n b,\n "中文")`、
+    `const _: () = assert!(matches!(…), "…")`）的宏名离字面量远 ⇒ 看不见 ⇒ 被算进存疑带。
+    定义 §二 第 2·3·4 条排的是**出口**，不是「前 60 字」—— 这里按括号层级找包住它的调用。
+    """
+    spans = [(a, b) for a, b, _t in iter_strings(masked, lang, 0, len(masked))]
+    starts = {a: b for a, b in spans}
+    out = {}
+    stack = []
+    i, n = 0, len(masked)
+    while i < n:
+        if i in starts:
+            out[i] = " | ".join(re.sub(r"\s+", " ", masked[max(0, o - 40):o + 1]).strip()
+                               for o in reversed(stack[-6:]))
+            i = starts[i]
+            continue
+        c = masked[i]
+        if lang == "rs" and c == "'":
+            cm = RS_CHAR_LIT.match(masked, i)
+            i = cm.end() if cm else i + 1
+            continue
+        if c == "(":
+            stack.append(i)
+        elif c == ")" and stack:
+            stack.pop()
+        i += 1
+    return out
+
+
+def is_declined(r: dict) -> bool:
+    """残差里这一条是不是落在**明写排除**的出口里（定义 §二 第 2·3·4 条）。"""
+    return bool(DECLINED_CTX.search(r["ctx"]) or DECLINED_CTX.search(r.get("encl", "")))
+
+
 def production_files(root: Path):
     out = []
     if not root.exists():
         return out
+    test_mods = cfg_test_module_files(root)
     for p in sorted(root.rglob("*")):
         if not p.is_file() or p.suffix not in (".ts", ".rs"):
             continue
@@ -723,6 +902,8 @@ def production_files(root: Path):
         if any(rel.startswith(d + "/") or rel == d for d in EXCLUDED_DIRS):
             continue
         if EXCLUDED_FILE_RE.search("/" + rel):
+            continue
+        if rel in test_mods or any(rel.startswith(t) for t in test_mods if t.endswith("/")):
             continue
         out.append((p, rel))
     return out
@@ -818,12 +999,14 @@ def scan(root: Path):
                     pass
 
         # 残差：所有含汉字的字面量里，没被任何出口吃掉的那些
+        encl_of = enclosing_calls(masked, lang)
         for s, e, text in iter_strings(masked, lang, 0, len(masked)):
             if s in consumed or not CJK.search(text):
                 continue
             ctx = masked[max(0, s - 60):s]
             ctx = re.sub(r"\s+", " ", ctx).strip()[-48:]
-            residual.append(dict(file=rel, line=line_of(masked, s), ctx=ctx, text=text[:80]))
+            residual.append(dict(file=rel, line=line_of(masked, s), ctx=ctx, text=text[:80],
+                                 encl=encl_of.get(s, "")))
 
     return files, scanned_lines, entries, residual, english, ccbus_excluded
 
@@ -1097,8 +1280,8 @@ def main_report(args) -> int:
     P(f"  生产源码里含汉字的字面量总数（遮注释后）  : {len(residual) + len(entries)}")
     P(f"    · 被出口白名单收进来的（主集＋预备队）  : {len(entries)}")
     P(f"    · 残差（不在任何已登记出口里）          : {len(residual)}")
-    declined = [r for r in residual if DECLINED_CTX.search(r["ctx"])]
-    unsure = [r for r in residual if not DECLINED_CTX.search(r["ctx"])]
+    declined = [r for r in residual if is_declined(r)]
+    unsure = [r for r in residual if not is_declined(r)]
     P(f"    · 其中**明写排除**的出口（tracing:: / console. / panic! / expect( / assert! …）: {len(declined)}")
     P(f"    · 🔴 **存疑带**（既不在白名单、也不在明写排除里）                          : {len(unsure)}")
     P("  ⇒ 读法：**全集 = 主集 ＋ 存疑带里将来被裁进来的那一部分**。存疑带是这份普查**说不准**的量，")

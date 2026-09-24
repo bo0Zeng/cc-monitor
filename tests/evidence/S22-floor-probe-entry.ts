@@ -44,6 +44,14 @@
  * 且 `failures[]` 写明哪一段空了；`S22-floor-run.sh` 的汇总段见到 `ok:false` **退 1**。
  * 「一张卡都没量到」必须是**失败**，不许被当成「没发现问题」。
  */
+// 〔三入口拆分 · 住址搬家〕原先这一行 `import "../../src/styles.css"` 就带着令牌与重置
+// （它 `@import` 了 tokens.css、自带 `@layer reset`）；拆开之后它们各住一份。照 `viewer.html` 的
+// 样式表清单逐份引（viewer 窗 = tab 管理 ＋ 渲染栈，正是本探针量的那一块），次序与那份清单相同。
+import "../../src/styles/layers.css";
+import "../../src/styles/reset.css";
+import "../../src/styles/tokens.css";
+import "../../src/styles/layout.css";
+import "../../src/styles/shared.css";
 import "../../src/styles.css";
 import fixtureJsonl from "../__fixtures__/scale2-height-records.jsonl?raw";
 import { buildCorpus } from "../scale2-height-corpus";

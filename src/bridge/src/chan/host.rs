@@ -1,0 +1,231 @@
+//! 通道 · **宿主那一侧**（monitor 进程里）：绑回环 · 造钥匙 · `accept` · 把连接交给路由器 · 注入后端句柄。
+//!
+//! # 🔴 为什么这一份**不是**通信层成员（刻意的）
+//!
+//! 它做的正是 `C4` / `C5` 不许通信层做的那几件事：
+//!
+//! | 它做的 | 为什么归宿主 |
+//! |---|---|
+//! | 绑 `127.0.0.1:0` | `01 §2.1 C5` 逐字：「由**后端** `bind`/`listen`……把 `accept` 到的连接交给面 B」—— 面 A 这里照同一个先例 |
+//! | 造钥匙（OS 随机源） | `C4`：凭据由后端交给通信层 |
+//! | 定帧长上限、认证等待时长 | `C4`：配置与**期限值**都是策略值，归后端 |
+//! | 把 `op` 翻成 `inbound_client` 的一条命令、把载荷当 JSON 读 | 那是后端那一半的实现 —— 路由器不许知道载荷长什么样（`C1`） |
+//!
+//! ⇒ 圈进来的话 `C4`/`C5` 当场破；**不圈它就是它的归属**，与 `relay/listen.rs` 那一份
+//! 「语义上就该在外面」同形。
+//!
+//! # 🔴 「一个对外端口」仍然成立（`01 §4`）
+//!
+//! 本文件只绑**回环**（`Ipv4Addr::LOCALHOST`），端口由内核挑 ⇒ 不新开任何对外端口。
+//! 判据里有一条直接看 [`start_with`] 交回来的地址是不是回环。
+//!
+//! # 🔴 钥匙怎么交接
+//!
+//! 1. monitor 起来时 [`start`] 造一把钥匙（两枚 v4 UUID 的 244 位 OS 随机数，写成 64 位十六进制）；
+//! 2. [`handoff`] 把「地址 ＋ 钥匙 ＋ 帧长上限」交给要起外部前端的那一方；
+//! 3. 那一方**照 `filewin/proc.rs` 的先例把它写进子进程的 stdin**（不走 argv —— `/proc/<pid>/cmdline`
+//!    世界可读；不走环境变量 —— `/proc/<pid>/environ` 同用户可读、且会被孙进程继承）；
+//! 4. 外部前端从 stdin 读到它，用 [`super::dial::dial`] 连上并出示钥匙。
+//!
+//! ⚠ **第 3 步本波不做**（接进文件窗口是下一波 F2 的活）—— 本文件只交得出 [`Handoff`]。
+//! ⚠ **钥匙不进日志**：[`Handoff`] 与 `Key` 的 `Debug` 都手写成不打印内容；本文件的日志只印端口。
+//!
+//! # 买到什么
+//!
+//! - monitor 进程里有一个**只听回环、只认一把钥匙**的通道口，外部前端经它说 `call`。
+//! - `call` 经注入的 [`InboundBackends`] 走**既有**的 `inbound_client`（本机与远端同一条路），
+//!   一行新业务都没写。
+//!
+//! # 买不到什么
+//!
+//! - 🔴 **`subscribe` 在生产上今天一条流都没有**：`inbound_client` 只有「一问一答」，
+//!   后端推上来的帧今天走 `ssh_source` 的 Tauri 事件那条路，而那一份不在本波写区。
+//!   ⇒ [`InboundBackends::subscribe`] 对任何 `kind` 都原位回 `Closed{Peer(…)}`（对端说「没有这条流」），
+//!   **不装作订阅成功**。「订阅收得到帧」今天只由判据里的合成句柄证明 —— 如实登记。
+//! - **不买对端撤活**：外部前端撤单 ⇒ 路由器拨下撤单手柄 ⇒ 本适配器丢掉那次 `inbound_client` 调用；
+//!   `inbound_client` 那一侧补发 `cancel` 的那一手是它的私有函数，今天够不着 ⇒ 后端可能照跑完。
+//! - **不买同机其它用户的隔离之外的东西**：回环口上同一台机器的任何进程都能**连**，
+//!   挡它们的只有那把钥匙；钥匙在子进程 stdin 管子里走一次，之后只在两边内存里。
+//!   能读 monitor 进程内存的人（同用户 root / ptrace）本来就能直接驱动后端，不在本文件射程。
+//! - **不买连接数上界**：没出示钥匙的连接最多挂 `hello_within` 那么久；出示了钥匙的连接不设上限。
+
+use super::router::{self, Backends, Ended, Terms};
+use super::wire::{
+    Body, By, CallError, CancelToken, Cursor, Item, Key, Kind, Op, Origin, OursFault,
+};
+use crate::backend::control::{backend_route, inbound_client};
+use futures::future::BoxFuture;
+use futures::stream::BoxStream;
+use serde::{Deserialize, Serialize};
+use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
+
+/// 外部前端连上通道要的全部东西：地址 ＋ 钥匙 ＋ 帧长上限。
+///
+/// 它整份过一次进程边界（走子进程的 stdin，见模块头注），所以能序列化。
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Handoff {
+    /// 回环上的那个口。
+    pub addr: SocketAddr,
+    /// 那把钥匙。
+    pub key: Key,
+    /// 帧头 / 帧体各自的字节上限（两端必须同一个数）。
+    pub frame: usize,
+}
+
+impl std::fmt::Debug for Handoff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Handoff")
+            .field("addr", &self.addr)
+            .field("key", &self.key)
+            .field("frame", &self.frame)
+            .finish()
+    }
+}
+
+/// 造一把钥匙：两枚 v4 UUID（各 122 位来自 OS 随机源）拼成 64 位十六进制。
+pub fn mint_key() -> Key {
+    Key(format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    ))
+}
+
+/// 在回环上起一个通道口，把每条接进来的连接交给路由器。回交接件。
+///
+/// `frame` 与 `hello_within` 由调用方给（它们是策略值）。判据用它起一个挂着合成句柄的口。
+///
+/// # Errors
+///
+/// 回环口绑不上。
+pub async fn start_with(
+    backends: Arc<dyn Backends>,
+    key: Key,
+    frame: usize,
+    hello_within: Duration,
+) -> std::io::Result<Handoff> {
+    let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+    let addr = listener.local_addr()?;
+    let terms = Terms {
+        key: key.clone(),
+        frame,
+        hello_within,
+    };
+    tokio::spawn(async move {
+        loop {
+            // `accept` 是内核事件，不是定时器；单次失败（fd 顶满之类）不许把整个口带走。
+            let (stream, _) = match listener.accept().await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("通道：accept 失败（{e}），这一条放过，口照开");
+                    continue;
+                }
+            };
+            let terms = terms.clone();
+            let backends = Arc::clone(&backends);
+            tokio::spawn(async move {
+                match router::serve(stream, terms, backends).await {
+                    Ended::Left => {}
+                    Ended::Denied => tracing::warn!("通道：一条连接没过认证，已关"),
+                    Ended::Broken(why) => tracing::warn!("通道：一条连接坏了，已关（{why}）"),
+                }
+            });
+        }
+    });
+    Ok(Handoff { addr, key, frame })
+}
+
+/// 本进程那个通道口的交接件（[`start`] 成功之后才有）。
+static HANDOFF: OnceLock<Handoff> = OnceLock::new();
+
+/// **生产入口**：monitor 起来时调一次。绑回环、造钥匙、挂上 [`InboundBackends`]。
+///
+/// # Errors
+///
+/// 回环口绑不上 / 已经起过一次。
+pub async fn start() -> Result<(), String> {
+    let handoff = start_with(
+        Arc::new(InboundBackends),
+        mint_key(),
+        // 帧头 / 帧体各自的上限：一屏目录（`filewin::source::LS_LIMIT` 条）的 JSON 在兆字节级，给 64 MiB。
+        64 << 20,
+        // 没出示钥匙的连接最多挂这么久。
+        Duration::from_secs(5),
+    )
+    .await
+    .map_err(|e| format!("通道口绑不上回环：{e}"))?;
+    tracing::info!("通道：在 {} 上听（只认回环、只认一把钥匙）", handoff.addr);
+    HANDOFF
+        .set(handoff)
+        .map_err(|_| "通道口已经起过一次了".to_string())
+}
+
+/// 交给要起外部前端的那一方。`None` = 通道没起来 —— **不许**因此退回别的路（`D11`）。
+pub fn handoff() -> Option<Handoff> {
+    HANDOFF.get().cloned()
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  生产那个后端句柄：`call` 走既有的 `inbound_client`
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 生产的后端句柄 —— `origin` ⇒ `inbound_client::client_for`（本机与远端同一条路）。
+pub struct InboundBackends;
+
+/// 这一跳在面 A 上的编号：路由器 ↔ 后端（`wire::HopId` 头注那两跳里的第 1 跳）。
+const HOP: u8 = 1;
+
+impl Backends for InboundBackends {
+    fn call(
+        &self,
+        origin: Origin,
+        op: Op,
+        payload: Body,
+        left: Duration,
+        _cancel: CancelToken,
+    ) -> BoxFuture<'static, Result<Body, CallError>> {
+        // 撤单**不在这里接**：路由器在撤单手柄拨下时直接丢掉本 future（`router::run_call`），
+        // `inbound_client` 那次调用随之被丢 —— 本句柄再接一次就是第二份「撤了怎么说」。
+        Box::pin(async move {
+            // 🔴 分层判定**不在本文件**：「那台机器没有控制通道」与 inbound 的每一种失败
+            //    怎么分层、`reach` 是哪一档，唯一的家是 `backend_route` 的
+            //    `layer_no_channel` / `layer_call_error`（它们与旧三态同出一源）。
+            //    本文件只做搬运，不 match inbound 的错误枚举。
+            let Some(client) = inbound_client::client_for(origin.as_wire_str()) else {
+                return Err(backend_route::layer_no_channel(HOP));
+            };
+            // 这个后端说 JSON：载荷在这里（宿主这一侧）才第一次被当成 JSON 读。
+            // 读不动是**调用方用错了**（`Ours{Misuse}`）—— 与 inbound 无关，不是分流判定。
+            let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
+                return Err(OursFault::Misuse.into());
+            };
+            match client.call(&op.0, args, left).await {
+                Ok(v) => Ok(Body(
+                    serde_json::to_vec(&v.unwrap_or(serde_json::Value::Null)).unwrap_or_default(),
+                )),
+                Err(e) => Err(backend_route::layer_call_error(&e, HOP).error),
+            }
+        })
+    }
+
+    fn subscribe(
+        &self,
+        origin: Origin,
+        kind: Kind,
+        from: Option<Cursor>,
+    ) -> BoxStream<'static, Item> {
+        // 生产今天没有任何流可订阅（模块头注「买不到」第一条）。对端原位说「没有这条流」，
+        // 不装作订阅成功、也不静默挂着。
+        let _ = (origin, from);
+        let body = serde_json::to_vec(&serde_json::json!({
+            "code": "no-such-stream",
+            "kind": kind.0,
+        }))
+        .unwrap_or_default();
+        Box::pin(futures::stream::iter([Item::Closed {
+            by: By::Peer(Body(body)),
+        }]))
+    }
+}

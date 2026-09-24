@@ -4369,3 +4369,193 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     ).toEqual(["a", "c", "b", "d"]);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔`设计/10` 骨架 · 子步 4〕接入判据：索引 → 占位 → 门控 → 跳转。
+// 本文件把 `MessageStream` / `RecordTimeline` mock 掉了 ⇒ 这里只判**接线**（要没要索引、
+// 接没接上、哪些行收纳哪些建卡）；「只物化可见区」本身的几何判据住 `tests/skeleton-view.vitest.ts`
+// （那边是真 stream ＋ 真 timeline）。
+// ═══════════════════════════════════════════════════════════════════════
+describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+  });
+
+  const mk = (sid: string, seq: number, uuid: string) =>
+    ({
+      session_id: sid,
+      cwd: "/p",
+      path: `/p/${sid}.jsonl`,
+      seq,
+      message: { type: "assistant", uuid } as never,
+    }) as never;
+  /** 索引：第 i 行 uuid = `u{i + shift}`（shift ≠ 0 模拟「seq 空间对不上」） */
+  const idx = (n: number, shift = 0) => ({
+    available: true,
+    from: 0,
+    end: n * 10,
+    rows: Array.from({ length: n }, (_, i) => ({
+      o: i * 10,
+      n: 10,
+      t: "assistant",
+      u: `u${i + shift}`,
+      ch: 100,
+      pl: 1,
+    })),
+  });
+  const indexCalls = () => vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_index");
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  /** 重放形状：尾巴先到（钉 floor=200），老的 [0,200) 后到 ⇒ 全收纳。`skip` 里的 seq 不发（模拟迟到）。 */
+  function replay(sid: string, skip: Set<number> = new Set()): Tab {
+    tm.onLine(mk(sid, 200, "u200")); // 首个 tab ⇒ active，非批期直渲钉 floor
+    // jsdom 没布局 ⇒ `contentReachesBottom` 退回算术判据；给它一个「已满屏」的几何，
+    // 否则批结束会把 [0,200) 全物化掉（那是没有骨架时的正确行为，不是本组要测的）
+    const el = peek(tm).tabs.get(sid)!.streamEl;
+    Object.defineProperty(el, "scrollHeight", { value: 2000, configurable: true });
+    Object.defineProperty(el, "clientHeight", { value: 800, configurable: true });
+    tm.onBatchStart();
+    for (let s = 201; s < 300; s++) tm.onLine(mk(sid, s, `u${s}`));
+    for (let s = 0; s < 200; s++) if (!skip.has(s)) tm.onLine(mk(sid, s, `u${s}`));
+    tm.onBatchEnd();
+    return peek(tm).tabs.get(sid)!;
+  }
+
+  it("批结束：active tab 要一次索引（本机 origin 逐字 `<local>`、从 0 起），到了就接骨架、哨兵退场", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+    );
+    const t = replay("sk");
+    expect(indexCalls()).toEqual([
+      ["read_session_index", { origin: "<local>", jsonlPath: "/p/sk.jsonl", fromOffset: 0 }],
+    ]);
+    await settle();
+    expect(t.skeleton, "索引到了却没接上").not.toBeNull();
+    expect(t.skeleton!.pendingRows).toBe(200);
+    expect(t.stream.contentElement.querySelector(".stream-more-above")).toBeNull();
+    const snap = JSON.parse(tm.debugSnapshot()) as { skeleton: { rows: number; pendingRows: number } };
+    expect(snap.skeleton).toMatchObject({ rows: 300, pendingRows: 200 });
+    // 只要一次：再结束一批、切走再切回都不重拉
+    tm.onBatchStart();
+    tm.onBatchEnd();
+    expect(indexCalls().length).toBe(1);
+  });
+
+  it("老后端 / 本机后端不在（available:false）⇒ 不接，尾部窗口照旧（账本还在、哨兵还在）", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(
+        cmd === "read_session_index"
+          ? { available: false, reason: "老后端", from: 0, end: 0, rows: [] }
+          : undefined,
+      ),
+    );
+    const t = replay("old");
+    await settle();
+    expect(t.skeleton).toBeNull();
+    expect(t.skeletonFetch).toBe("done");
+    expect(t.window.pendingCount).toBe(200);
+    expect(t.stream.contentElement.querySelector(".stream-more-above")).not.toBeNull();
+  });
+
+  it("🔴 seq 空间对不上（uuid 在索引里落在别的 seq）⇒ 不接 —— 不许硬对", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300, 7) : undefined),
+    );
+    const t = replay("shift");
+    await settle();
+    expect(t.skeleton).toBeNull();
+    expect(t.window.pendingCount).toBe(200);
+  });
+
+  it("门控：占位里的行收纳；岛（ensure 物化过的一段）里迟到的行就地建卡，不收纳", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+    );
+    const t = replay("gate", new Set([60, 150]));
+    await settle();
+    const sk = t.skeleton!;
+    sk.ensure(60, 5); // [55, 66) 物化（60 还没到）
+    expect(sk.isPending(60)).toBe(false);
+    const before = t.window.pendingCount;
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+    spy.mockClear();
+    tm.onLine(mk("gate", 60, "u60")); // 迟到、落在岛里 ⇒ 建卡
+    expect(spy.mock.calls.map((c) => (c[0] as { seq: number }).seq)).toEqual([60]);
+    tm.onLine(mk("gate", 150, "u150")); // 迟到、落在占位里 ⇒ 收纳
+    expect(spy.mock.calls.length).toBe(1);
+    expect(t.window.pendingCount).toBe(before + 1);
+  });
+
+  it("子步 5：物化到一段**还没到过**的行 ⇒ 按索引的字节边界要回来（从偏移读），走 onLine 全套建卡", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "read_session_index") return Promise.resolve(idx(300));
+      if (cmd === "read_session_range") {
+        const a = args as { seqBase: number; lineCount: number };
+        return Promise.resolve(
+          Array.from({ length: a.lineCount }, (_, k) => mk("miss", a.seqBase + k, `u${a.seqBase + k}`)),
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+    const t = replay("miss", new Set([100, 101, 102, 150]));
+    await settle();
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+    spy.mockClear();
+    t.skeleton!.ensure(101, 3); // [98, 105)：98/99/103/104 在账本里，100–102 没到过
+    const ranges = vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_range");
+    // 连续缺的三行并成**一段**、一次 IPC；字节边界取自索引（o = seq×10，n = 10）
+    expect(ranges).toEqual([
+      [
+        "read_session_range",
+        { origin: "<local>", jsonlPath: "/p/miss.jsonl", offset: 1000, until: 1030, seqBase: 100, lineCount: 3 },
+      ],
+    ]);
+    await settle();
+    const rendered = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq).sort((x, y) => x - y);
+    expect(rendered).toEqual([98, 99, 100, 101, 102, 103, 104]);
+    // 🔴 取回的是**历史**：按重放语义建卡 —— sink 不接 onRealUserInput（历史 user 卡不许自动切 tab），
+    //    轮次结束检测按批期短路（不许为历史弹系统通知）
+    for (const c of spy.mock.calls.filter((c) => (c[0] as { seq: number }).seq >= 100 && (c[0] as { seq: number }).seq <= 102)) {
+      expect((c[2] as { onRealUserInput?: unknown }).onRealUserInput).toBeUndefined();
+    }
+    const { turnEndNotifier } = await import("../src/turn-notify");
+    const obs = vi.mocked(turnEndNotifier.observe).mock.calls.filter(
+      (c) => (c[2] as { seq: number }).seq >= 100 && (c[2] as { seq: number }).seq <= 102,
+    );
+    expect(obs.length).toBe(3);
+    expect(obs.every((c) => c[3] === true), "历史行按 live 喂了 ⇒ 会为旧轮次弹通知").toBe(true);
+    // 150 不在这一段里 ⇒ 没被要
+    expect(ranges.some((c) => (c[1] as { seqBase: number }).seqBase === 150)).toBe(false);
+  });
+
+  it("滚动：接上骨架后**每次**滚动都交给 fillVisible —— 不再只在离顶 800px 内才补（占位可以在中部）", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+    );
+    const t = replay("scroll");
+    await settle();
+    const spy = vi.spyOn(t.skeleton!, "fillVisible");
+    Object.defineProperty(t.streamEl, "scrollTop", { value: 5000, configurable: true });
+    t.streamEl.dispatchEvent(new Event("scroll"));
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("大纲跳转：点到还在占位里的一条 ⇒ 先按 uuid→seq 物化那一段再跳", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+    );
+    const t = replay("jump");
+    await settle();
+    expect(t.skeleton!.isPending(42)).toBe(true);
+    const host = (t.inputsPanel as unknown as { host: { jumpTo(u: string): unknown } }).host;
+    // jsdom 没有 `CSS.escape`（`revealCard` 要它）；本格判的是「跳之前先物化」，找不找得到卡不在本格
+    const g = globalThis as unknown as { CSS?: { escape(s: string): string } };
+    g.CSS ??= { escape: (x: string) => x };
+    host.jumpTo("u42");
+    expect(t.skeleton!.isPending(42)).toBe(false);
+  });
+});
