@@ -1,5 +1,5 @@
 /**
- * format.ts 纯函数断言脚本：formatBytes / formatTimestampSmart / formatTimestampShort。
+ * format.ts 纯函数断言脚本：formatBytes / formatTimestampSmart / formatTimestampShort / basename。
  *
  * 跑法：`node tests/format.test.ts` 或 `npm run test:format`。
  * 同 remote-health.test.ts：零 node 依赖、失败 throw 非零退出作 pre-push 门禁；tsc --noEmit 类型检查。
@@ -9,6 +9,7 @@
  */
 
 import {
+  basename,
   formatBytes,
   formatTimestampSmart,
   formatTimestampShort,
@@ -34,6 +35,14 @@ function ok(cond: boolean, msg?: string): void {
 }
 
 console.log("format.test.ts");
+
+// === basename（〔F7b〕随老 SFTP 面板退役从 sftp/paths.ts 搬来，原判据四格原样搬）===
+test("basename: 取最后一段（兼容反斜杠 / 尾斜杠）", () => {
+  eq(basename("/home/pi/a.txt"), "a.txt");
+  eq(basename("C:\\Users\\me\\b.rs"), "b.rs");
+  eq(basename("/home/pi/"), "pi");
+  eq(basename("solo"), "solo");
+});
 
 // === formatBytes（全确定性边界）===
 test("formatBytes: B 段（< 1024）", () => {
