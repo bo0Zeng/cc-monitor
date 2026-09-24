@@ -239,6 +239,27 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
     last_nudged != 0 && last_nudged == packed
 }
 
+/// ST1：设置窗的标签（`open_settings_window` 建它时用的同一个串）。
+pub(crate) const SETTINGS_WINDOW_LABEL: &str = "settings";
+/// 主窗的标签（`tauri.conf.json` 里那一个）。
+pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
+
+/// ST1「关窗改隐藏」的生命周期缝：**`destroyed` 这个窗口刚销毁、`alive` 是此刻还在的窗口，
+/// 要跟着 destroy 掉哪几个。**
+///
+/// 设置窗关窗是隐藏（它永不自己销毁）⇒ 主窗销毁时它必须跟着走，否则一个看不见的窗口
+/// 会把进程吊住。别的组合一律不动：viewer 窗看得见、关得掉；设置窗自己销毁不牵连谁。
+pub(crate) fn windows_to_destroy_after<'a>(destroyed: &str, alive: &[&'a str]) -> Vec<&'a str> {
+    if destroyed != MAIN_WINDOW_LABEL {
+        return Vec::new();
+    }
+    alive
+        .iter()
+        .copied()
+        .filter(|l| *l == SETTINGS_WINDOW_LABEL)
+        .collect()
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // `D7 阻-3`：**退出时收哪几个进程**，收成一条判据能替换的缝
 // ═════════════════════════════════════════════════════════════════════════════
@@ -532,6 +553,28 @@ pub fn run() {
             }
         });
     }
+
+    // ST1「关窗改隐藏」的另一半（`设计/01 §1.3` · `70 §1.3 F`）：设置窗关窗 = **隐藏**，永不自己销毁
+    // ⇒ 它会把进程吊住（Tauri 是「最后一个窗口销毁才退出」）。主窗一销毁，就把它一起 destroy 掉，
+    //    让「最后一个**看得见**的窗口关掉 ⇒ 进程退出」照旧成立。决策在纯函数里，这里只执行。
+    // ⚠ 刻意**不** `app.exit(0)`：那会改变「主窗关了、viewer 窗还开着」时的行为，
+    //   退出行为整体搬家归 `01 §3.3b`（第三波 B2），这里不预先改它的语义。
+    builder = builder.on_window_event(|window, event| {
+        if !matches!(event, tauri::WindowEvent::Destroyed) {
+            return;
+        }
+        use tauri::Manager;
+        let app = window.app_handle();
+        let alive: Vec<String> = app.webview_windows().keys().cloned().collect();
+        let alive: Vec<&str> = alive.iter().map(String::as_str).collect();
+        for label in windows_to_destroy_after(window.label(), &alive) {
+            if let Some(w) = app.get_webview_window(label) {
+                if let Err(e) = w.destroy() {
+                    tracing::warn!("跟着主窗收掉 {label} 窗口失败：{e}");
+                }
+            }
+        }
+    });
 
     builder
         .plugin(tauri_plugin_opener::init())
@@ -1898,7 +1941,7 @@ async fn open_session_in_new_window(
 #[tauri::command]
 async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
-    let label = "settings";
+    let label = SETTINGS_WINDOW_LABEL;
     if let Some(w) = app.get_webview_window(label) {
         let _ = w.unminimize();
         let _ = w.show();
@@ -2472,3 +2515,7 @@ mod mod_decl_hygiene_tests;
 #[cfg(test)]
 #[path = "../../../tests/bridge/lib_remote_config_tests.rs"]
 mod remote_config_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/bridge/lib_window_lifecycle_tests.rs"]
+mod window_lifecycle_tests;
