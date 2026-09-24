@@ -1324,6 +1324,76 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 
 **错误码**：`bad_path` · `bad_args` · `refused`（围栏拦的 / 源不是普通文件 / 源即目标）· `io_failed`（盘上没成：目标已在且没说覆盖 / 读写中断 / 换名失败）。
 
+#### `files-peek`：读改写的**读那一半**（RW1 · 第四波，2026-09-24）
+
+用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管** ⇒ monitor 进程不再直接写用户文件
+（rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/` ·
+cc-bus 收件箱）。这些改动都是「读 → 算 → 写回」，本机与远端**同一条路**：先 `files-peek`、再 `files-put`。
+
+```text
+→ {"id":"p1","cmd":"files-peek","args":{"root":"/home/u","rel":".bashrc"}}
+← {"kind":"reply","id":"p1","ok":true,"data":{"path":"/home/u/.bashrc","exists":true,"text":"# my rc\n"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `root` / `rel` | → | 与写面其余几条同形；**与 `files-put` 同一道围栏**（读的那一份就是写的那一份） |
+| `exists` | ← | `false` ⇒ **确定不存在**（`text` 为 `null`）。「读不出来」不是这一形，是 `io_failed` |
+| `text` | ← | 全文（UTF-8）；不在时 `null` |
+| `path` | ← | 读的是哪一份（最后一段是链接时是解到底的那一份） |
+
+⚠ 上限 256 KiB（`files_write::PEEK_MAX_BYTES`）：写那一半要把新内容与读到的那一份装进同一行请求，
+而一行上限是 1 MiB ⇒ 读得回来的写得回去。超了 ⇒ `too_large`，不截断。不是 UTF-8 ⇒ `not_text`；不是普通文件 ⇒ `refused`。
+
+**错误码**：`bad_path` · `bad_args` · `refused` · `io_failed` · `not_text` · `too_large`。
+
+#### `files-put`：整份替换一份文本文件（RW1 · 第四波，2026-09-24）
+
+```text
+→ {"id":"p2","cmd":"files-put","args":{"root":"/home/u","rel":".bashrc","content":"# my rc\nnew\n","expect":"# my rc\n","backup":true}}
+← {"kind":"reply","id":"p2","ok":true,"data":{"path":"/home/u/.bashrc","bytes":13,"changed":true,"created":false,"backup":"/home/u/.bashrc.ccm-backup-1727150000000-0"}}
+```
+
+🔴 **用户文件的写规则只有这一份**（monitor 那一侧从前的 `fenced_block::apply` 搬到了这里）：
+CAS → 相同不写 → 备份 → 同目录 `O_EXCL` 暂存旁名写满、换名上位 → 回读逐字节比对 → 不符回滚。
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `root` / `rel` | → | 同 `files-peek`。最后一段是链接 ⇒ 解到底、**改真文件**（不把用户的链接换成一份普通文件） |
+| `content` | → | 新全文（字符串或 `{"b16":…}`），**必须给** |
+| `expect` | → | 🔴 **必须给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」。盘上那份对不上 ⇒ `stale`、一个字节不写（重读重算，别重发同一份） |
+| `backup` | → | 可缺席的布尔（缺省否）。真 ⇒ 原文非空时另存 `<名>.ccm-backup-<毫秒>-<序号>`（`O_EXCL`，沿用原权限位） |
+| `parents` | → | 可缺席的布尔（缺省否）。真 ⇒ 父目录不在就逐级建（每一级各过一遍围栏） |
+| `path` | ← | 落点 |
+| `bytes` | ← | 新内容的字节数 |
+| `changed` | ← | 真的写了吗（新内容与盘上逐字节相同 ⇒ `false`，一个字节不动） |
+| `created` | ← | 这份文件是这一次新建的 |
+| `backup` | ← | 备份落在哪；没备份 ⇒ `null` |
+
+- 替换沿用原文件的权限位；新建的文件是后端进程的缺省（受 umask）。
+- 回读不符 ⇒ 回滚（原来在 ⇒ 原文换回去；原来不在 ⇒ 删掉刚建的），`io_failed` 的话里说清恢复成没成。
+- ⚠ CAS 之后、换名之前那一个窗（TOCTOU）没闭合：窗里被别人改了，那次改动会被盖掉。CAS 缩小的是「monitor 读 → 后端写」那一整趟往返的窗。
+- **CLI 面同样有它们**（从命令注册那一处派生）：`--files-peek` · `--files-put` · `--files-delete-session`，载荷走 stdin。
+
+**错误码**：`bad_path` · `bad_args` · `refused`（围栏拦的 / 不是普通文件）· `io_failed` · `stale`（读改写之间盘上那份变了）。
+
+#### `files-delete-session`：删一份历史会话 —— **会话文件围栏唯一的例外**（RW1 · 第四波，2026-09-24）
+
+```text
+→ {"id":"p3","cmd":"files-delete-session","args":{"sid":"2f1c9a4e-0b7d-4c1e-9a55-3b2f0c8d1e77"}}
+← {"kind":"reply","id":"p3","ok":true,"data":{"path":"/home/u/.claude/projects/-home-u-x/2f1c9a4e-0b7d-4c1e-9a55-3b2f0c8d1e77.jsonl"}}
+```
+
+写面其余每一条都被会话文件围栏挡在 `projects/<proj>/<sid>.jsonl` 外面；历史浏览器里「删掉这场会话」是**唯一**
+能删它的一条，本机与远端同一条路（此前本机是 monitor 进程直删、远端是 SFTP 直删）。
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 🔴 **只收 sid**：多给任何一个键 ⇒ `bad_args`。落点由后端在它自己的记录树里按 sid 找（与分叉那条同一份「找」），解到底必须恰是 `<项目>/<sid>.jsonl` 且在记录树里 |
+| `path` | ← | 删掉的那一份 |
+
+**错误码**：`bad_args` · `refused`（sid 形状不对 / 没找到 / 解完链接跑出记录树 / 不是那一形）· `io_failed`。
+
 #### 「退出行为」那个值（B2 · 条 66，`设计/01 §3.3b`，2026-09-24）—— **值住后端所在那台机器**
 
 那个值（「最后一个客户走了之后，这台机器的后端退不退」）住后端所在那台机器的 `~/.cc-monitor/backend.json`，

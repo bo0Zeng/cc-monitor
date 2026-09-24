@@ -431,6 +431,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`files-read-text` 调用方给的 `max_bytes` 最大能多大（一帧应答整份进内存、整份过线）",
         "拒收+回错",
     ),
+    // 〔RW1 · 第四波 09-24〕用户文件读改写的**读那一半**一趟肯交多少。写那一半要把新内容与
+    //   读到的那一份装进同一行请求（后端一行 `MAX_LINE_BYTES` = 1 MiB）⇒ 两份各 256 KiB、给转义留余量。
+    (
+        "src/backend/control/files_write.rs",
+        "PEEK_MAX_BYTES",
+        256 * 1024,
+        "`files-peek` 一趟读回的文本（读改写的读那一半；写回时与新内容同装一行请求）",
+        "拒收+回错",
+    ),
     // 〔`C1` · 09-24〕只读查询的帧面宿主那三个数（一帧应答要整个进内存、整个过线）。
     (
         "src/backend/read_face.rs",
