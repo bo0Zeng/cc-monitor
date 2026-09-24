@@ -77,3 +77,27 @@
 - 前端：`src/backend-policy.ts` · `src/settings/backend-section.ts` · `src/main.ts` 两行 · `src/config.ts` 一行 · `src/ipc/commands.ts` 两条。
 - 对应 tests 与登记（`parity_ledger` · `commands.vitest` · `backend_route_tests::SENDERS` · `config-unknown-keys` · CP1 台账）。
 - 设计文档：`设计/01` 末尾。
+
+---
+
+## 七、落地之后（子步 2–3）与死值验逐刀
+
+落地形状与没做的几格同写在 `设计/01` 末尾「附 · §3.3b 落地」（仓外）。这里只留**死值验**的逐刀账
+（刀：锚串恰好命中 1 处 · 替换串不含原串 · 刀后跑判据 · 备份拷回 ＋ `touch` · sha256 逐字节恢复）：
+
+| 刀 | 下在哪 | 红在哪 |
+|---|---|---|
+| K1 | `src/backend-policy.ts` 多一行导出 `"backend.json"` | `exit_policy::tests::the_file_name_has_exactly_one_home_in_all_production_code` |
+| K2 | `exit_policy.rs::read_now` 里包一层 `static OnceLock` | `exit_policy::tests::the_decision_path_has_exactly_the_registered_cache_points` |
+| K2b | `exit_policy.rs::read_at` 里按线程记住第一次读到的内容 | `every_read_goes_to_disk` ＋ `the_writer_is_atomic_…` ＋ 缓存点那条 |
+| K3 | `main.rs`：启动时读一次存进变量，流结束那一臂用变量 | `exit_policy::tests::the_only_decision_site_is_the_stream_end_arm` |
+| K4 | `read_face.rs` 里调一次 `exit_policy::answer_set` | `readonly_guard::tests::the_own_state_writer_is_reached_through_exactly_one_door` |
+| K5 | `exit_policy.rs::write_at` 里加一句 `fs::write` 直写目标 | `readonly_guard::tests::backend_write_capability_is_confined_to_the_registered_modules` ＋ `every_fs_call_in_backend_production_is_read_only` |
+| K6 | monitor `backend_policy.rs::kill_on_exit_now` 前面加一个 `static OnceLock` 快照 | `backend_policy::tests::the_monitor_keeps_no_copy_of_the_exit_value` |
+| K7 | Rust `EXIT_COPY` 漏掉 `EXIT_UNREADABLE` 那一行 | `the_exit_copy_is_the_same_string_on_both_sides` ＋ `every_cross_language_table_is_compared_on_both_sides` |
+| K8 | `describeExitBehavior` 删掉「折进前端 ⇒ 不适用」那一行 | `backend-section.vitest.ts` 的 E4 穷举 ＋ E4 DOM 两格 |
+| K9 | 把 `EXIT_UNREADABLE` 那句抄进 `backend-section.ts` | `backend-section.vitest.ts`「只许有一个家」（E3） |
+| K10 | 问不到那一支把勾放开（`disabled = false`） | `backend-section.vitest.ts`「问不到 ⇒ 勾禁用、那一行不说话」 |
+| K11 | `backend-section.ts` 里往 `config.json` 存一份 `backendPolicy` | `backend-policy.vitest.ts`「推送链与本地持久化零命中」 |
+
+每刀后恢复 sha256 逐字节相同；阴性对照：后端 889 过 ＋ 1 条预期红（`build_id_guard`）· monitor 工作区全绿 · vitest 168 份全绿。
