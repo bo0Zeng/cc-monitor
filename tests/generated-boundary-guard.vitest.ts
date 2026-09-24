@@ -188,6 +188,7 @@ describe("C01 边界生成物", () => {
       "MarketplaceSurvey.ts",
       "McpServerEntry.ts", // C04d 批5b（`scope: String` 比手写的三值 union **宽**——那才是线上真相）
       "Origin.ts", // 步 12：`Origin` 的线上形状（`null | string` —— 两个变体、三个线上值，见 `src/bridge/src/origin.rs` 头注）
+      "OutlineFailure.ts", // SE1 回修：大纲要不到的种类（结构性 / 瞬时由前端据它分）
       "PanoramaStatus.ts", // C04d 批7（**panorama 一族唯一能生成的**——其余 10 个住 vendored，受 SS-10 铁律阻塞）
       "PathCcmVerdict.ts", // `K-R69`：PATH 上那个 `ccm` 与我们那一份的关系（四态，没有兜底档）
       "ProfileKind.ts", // C04d 批5a（ProfileScan 的传递依赖）
@@ -359,7 +360,7 @@ describe("C01 边界生成物", () => {
     // ——对面那份二进制自报的构建身份（`--ccm-probe` 的 `build=` 行）。同一条理由：
     // **缺席与 `null` 语义不同** —— 缺席 = 那份后端是 `p2f-build-stamp` 之前的旧版、
     // 它压根不吐这一行；写成 `| null` 会把「它没说」与「它说了个空」混成一格。
-    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(15); // 〔SE1〕+1（`UserInputsResult.reason`：缺席 = 清单可用）； 〔`设计/10` 骨架 · 子步 3〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
+    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(16); // 〔SE1〕+2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔`设计/10` 骨架 · 子步 3〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {

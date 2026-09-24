@@ -50,28 +50,36 @@ export const viewerRig: { chunk: unknown[] } = { chunk: [] };
  * 判定只住后端（Rust 那侧有自己的判据）⇒ 这里**不判**：`entries` 由用例**逐条写明**
  * 「后端这一刻说文件里有哪几条、按什么顺序」。它只模仿后端的**增量语义**：
  * 偏移用「条数」代替字节 —— `fromOffset = k` ⇒ 回第 k 条起的那一截、`end` = 总条数；
- * `k` 超过总条数 ⇒ 要不到（后端「越过 EOF」那一形：文件被截断/重写）。
- * `available: false` ⇒ 整个要不到（老后端 / 本机后端不在），原因原样带回。
+ * `k` 超过总条数 ⇒ 要不到（后端「越过 EOF」那一形：文件被截断/重写 ⇒ monitor 报 `transport`）。
+ * `available: false` ⇒ 整个要不到，种类 = `failure`（缺省 `oldBackend`：结构性），原因原样带回。
+ * `failNext = n` ⇒ 接下来 n 趟**瞬时**失败（`transport`），之后照常 —— 模仿 ssh 抖一下。
  */
 export const outlineBackend: {
   entries: { uuid: string; excerpt: string; timestamp: string }[];
   available: boolean;
   reason: string;
-} = { entries: [], available: true, reason: "" };
+  failure: "oldBackend" | "truncated" | "transport";
+  failNext: number;
+} = { entries: [], available: true, reason: "", failure: "oldBackend", failNext: 0 };
 
 /** 按上面那份替身回一趟 `list_user_inputs`。 */
 export function answerListUserInputs(args: { fromOffset: number }): unknown {
   const from = args.fromOffset;
   const all = outlineBackend.entries;
-  if (!outlineBackend.available || from > all.length) {
-    return {
-      available: false,
-      reason: outlineBackend.available ? "越过 EOF" : outlineBackend.reason,
-      from,
-      end: from,
-      entries: [],
-    };
+  const no = (failure: string, reason: string): unknown => ({
+    available: false,
+    reason,
+    failure,
+    from,
+    end: from,
+    entries: [],
+  });
+  if (outlineBackend.failNext > 0) {
+    outlineBackend.failNext--;
+    return no("transport", "连不上");
   }
+  if (!outlineBackend.available) return no(outlineBackend.failure, outlineBackend.reason);
+  if (from > all.length) return no("transport", "越过 EOF");
   return { available: true, from, end: all.length, entries: all.slice(from) };
 }
 
@@ -198,6 +206,8 @@ export function installViewerRig(): ViewerRigHandles {
   outlineBackend.entries = [];
   outlineBackend.available = true;
   outlineBackend.reason = "";
+  outlineBackend.failure = "oldBackend";
+  outlineBackend.failNext = 0;
   let queue: FrameRequestCallback[] = [];
   vi.stubGlobal(
     "ResizeObserver",
