@@ -774,7 +774,6 @@ impl FileWindow {
         if items.is_empty() {
             return false;
         }
-        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("上传要一个 tokio 运行时，这个窗口没拿到".into());
@@ -785,7 +784,6 @@ impl FileWindow {
             return false;
         };
         let origin = self.source.origin();
-        let cfg = cfg.clone();
         let board = self.board.clone();
         // 🔴 **把窗口交给看板**，它自己会在「有问题要问 / 进度动了 / 跑完了」时敲一下。
         //   不交的话：进度条要等用户下次动鼠标才跳一格（egui 只在有事发生时才画下一帧）。
@@ -794,7 +792,8 @@ impl FileWindow {
         //    上一摞按过取消 ⇒ 这一摞一件都起不来，而屏幕上看起来是「拖进去没反应」。
         board.cancels().reset();
         h.spawn(async move {
-            let up_cfg = cfg.clone();
+            // 〔F7c〕上传那一腿也经通道（开单 → 起跑并看 → 提交），拿同一条线 ＋ 同一个地址。
+            let (up_line, up_origin) = (line.clone(), origin.clone());
             let ask_board = board.clone();
             let up_board = board.clone();
             let out =
@@ -813,7 +812,7 @@ impl FileWindow {
                         async move { rx.await.unwrap_or_default() }
                     },
                     move |p| {
-                        let cfg = up_cfg.clone();
+                        let (line, origin) = (up_line.clone(), up_origin.clone());
                         let b = up_board.clone();
                         // 🔴〔第五刀〕**取消那道闸在这儿**：按过取消之后，还没起的那几件
                         //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
@@ -824,8 +823,8 @@ impl FileWindow {
                             super::transfer::launch_unless_cancelled(
                                 &desk,
                                 &name,
-                                |id| async move {
-                                    super::transfer::upload_remote(&cfg, &p, &b, &id).await
+                                |_id| async move {
+                                    super::transfer::upload_remote(&line, &origin, &p, &b).await
                                 },
                             )
                             .await
@@ -1327,13 +1326,17 @@ impl FileWindow {
     /// （那是池子取消登记表的唯一造键落点）⇒ 这一趟从此**取消得掉**，
     /// 与上传/复制两条路共用同一张在飞表。
     pub fn start_pull(&mut self, src_path: &str, dest: &str, ctx: Option<egui::Context>) -> bool {
-        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("往外拖要一个 tokio 运行时，这个窗口没拿到".into());
             return false;
         };
-        let cfg = cfg.clone();
+        // 〔F7c〕下载经通道开单、订阅进度 —— 要那条线 ＋ 那台机器的地址。
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            return false;
+        };
+        let origin = self.source.origin();
         let board = self.pull.clone();
         board.attach(ctx);
         let src = src_path.to_string();
@@ -1347,12 +1350,12 @@ impl FileWindow {
         board.begin(&name);
         h.spawn(async move {
             let desk = board.cancels();
-            let run = super::transfer::launch_unless_cancelled(&desk, &name, |id| {
+            let run = super::transfer::launch_unless_cancelled(&desk, &name, |_id| {
                 let b = board.clone();
-                let cfg = cfg.clone();
+                let (line, origin) = (line.clone(), origin.clone());
                 let src = src.clone();
                 let to = to.clone();
-                async move { super::download::pull_one(&cfg, &src, &to, &id, &b).await }
+                async move { super::download::pull_one(&line, &origin, &src, &to, &b).await }
             })
             .await;
             let (got, total) = board.seen();

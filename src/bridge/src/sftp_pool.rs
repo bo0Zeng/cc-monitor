@@ -1557,7 +1557,7 @@ pub fn watch_ticket(
             if !first && rx.changed().await.is_err() {
                 // 发送端在票里、票在守卫里 ⇒ 这一支到不了；到了就当它收场了。
                 let snap = Snap {
-                    end: Some(End::Failed("传输台丢了这一趟的状态".to_string())),
+                    end: Some(End::Failed("这一趟传输的状态丢了".to_string())),
                     ..Snap::default()
                 };
                 return Some((snap, (rx, guard, false, true)));

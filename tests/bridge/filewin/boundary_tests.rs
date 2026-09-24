@@ -287,17 +287,24 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("chan::wire::OursFault", Kind::Wire),
     ("chan::wire::PeerFault", Kind::Wire),
     ("chan::wire::Reach", Kind::Wire),
-    // ── 跨机传输（§8.4 未拍）──
+    // 〔F7c · 第三波 09-24〕订阅那一口（`source::watch`，窗口进程里唯一一处 `subscribe`）用到的四样。
+    ("chan::wire::By", Kind::Wire),
+    ("chan::wire::Item", Kind::Wire),
+    ("chan::wire::Kind", Kind::Wire),
+    ("chan::wire::Sub", Kind::Wire),
+    // ── 跨机传输 ──
+    // 〔F7c · 第三波 09-24〕`§8.4` 拍了（「保留SFTP. 思考怎么干净」）：上传 / 下载经通道开单、订阅进度
+    //   （`设计/60 §13`）⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行**走掉**；
+    //   `sftp_cancel_transfer` 挪到「后端缺命令」那一类（它今天只剩复制那一腿）。
+    //   剩下这三格是**编辑器读文本**那一族（`files-read-text` 归 F7a）＋ 它们共用的那台机器的配置。
     ("sftp_pool::MAX_EDIT_BYTES", Kind::Transfer),
-    ("sftp_pool::TRANSFER_LANE_CAP", Kind::Transfer),
-    ("sftp_pool::sftp_cancel_transfer", Kind::Transfer),
-    ("sftp_pool::sftp_download", Kind::Transfer),
     ("sftp_pool::sftp_read_text_for_edit", Kind::Transfer),
-    ("sftp_pool::sftp_upload", Kind::Transfer),
     ("ssh_source::RemoteConfig", Kind::Transfer),
     // ── 后端缺命令 ──
     ("sftp_pool::CopyVerdict", Kind::BackendLacks),
     ("sftp_pool::sftp_copy", Kind::BackendLacks),
+    // 〔F7c〕复制那一腿的取消（`transfer::forward_cancel`）：与 `sftp_copy` 同一行账，F7a 换成 `files-copy` 那天一起走。
+    ("sftp_pool::sftp_cancel_transfer", Kind::BackendLacks),
     // ── 本地预判围栏 ──
     ("sftp_pool::is_protected_claude_data_path", Kind::Fence),
     // ── 本机动作 ──
@@ -527,7 +534,10 @@ fn every_declared_edge_falls_in_a_live_category() {
             debt(Fence),
             debt(Terminal)
         ),
-        (7, 2, 1, 1),
+        // 〔F7c · 第三波 09-24〕(7, 2, 1, 1) → (3, 3, 1, 1)：传输那一类走掉 `sftp_upload` ·
+        //   `sftp_download` · `TRANSFER_LANE_CAP`（上传下载经通道），`sftp_cancel_transfer` 挪去
+        //   「后端缺命令」（只剩复制那一腿的取消）⇒ 传输 −4、后端缺命令 +1。
+        (3, 3, 1, 1),
         "窗口进程里「还不是通道」的那几类条数变了（传输 · 后端缺命令 · 本地围栏 · 本机动作）"
     );
 }

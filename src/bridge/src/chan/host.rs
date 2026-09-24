@@ -322,10 +322,7 @@ fn transfer_stream(origin: &Origin, id: &str, from: Option<Cursor>) -> BoxStream
         }]))
     };
     if from.is_some() {
-        return closed(
-            "bad_args",
-            "传输进度流的每一格都是一整份快照，没有「从哪续」这回事".to_string(),
-        );
+        return closed("bad_args", "传输进度不支持从某一格续看".to_string());
     }
     match crate::sftp_pool::watch_ticket(origin, id) {
         Ok(snaps) => Box::pin(
