@@ -306,6 +306,12 @@ fn home_and_end_jump_and_scroll_the_row_into_view() {
 fn alt_up_goes_to_the_parent_directory() {
     let mut w = window(vec![file("a.bin")]);
     let mut d = Drive::new();
+    d.pick(&mut w, "a.bin", NONE);
+    assert_eq!(
+        picked(&w),
+        set(&["a.bin"]),
+        "前提：先选中一项（下面判「换目录清空」要它）"
+    );
     d.key(&mut w, egui::Key::ArrowUp, egui::Modifiers::ALT);
     assert_eq!(w.cwd, "/srv", "Alt+↑ 没回上一级");
     // 换了目录 ⇒ 选中态清空（新目录里同名的不是同一样东西）。
@@ -428,6 +434,52 @@ fn keys_do_not_leak_past_a_focused_field_a_modal_or_the_hit_list() {
     );
     d.key(&mut w, egui::Key::ArrowDown, NONE);
     assert_eq!(picked(&w), set(&["b.bin"]));
+}
+
+/// 🔴 **执行口自己也问那张表**：表里没有的动作，`perform` 出声、不做 ——
+/// 哪怕底下那个 `begin_*` 自己会静默拒掉（那一形在屏幕上就是「点了没反应」）。
+#[test]
+fn perform_refuses_what_the_table_refuses_and_says_so() {
+    use Action::*;
+    let lossy = "\u{FFFD}x";
+    // (行, 选中谁, 表里没有的那几件)
+    let cases: Vec<(Vec<Row>, Vec<&str>, Vec<Action>)> = vec![
+        (vec![dir("sub")], vec!["sub"], vec![Edit, Copy, Download]),
+        (
+            vec![row(lossy, false, 3, true)],
+            vec![lossy],
+            vec![Open, Edit, Copy, Download, Rename, Chmod, Delete],
+        ),
+        (
+            vec![file("a.bin"), file("b.bin")],
+            vec!["a.bin", "b.bin"],
+            vec![Open, Edit, Copy, Download, Rename, Chmod],
+        ),
+        (
+            vec![file("a.bin")],
+            vec![],
+            vec![Open, Edit, Copy, Download, Rename, Chmod, Delete],
+        ),
+    ];
+    for (rows, pick, refused) in cases {
+        for a in refused {
+            let mut w = window(rows.clone());
+            let mut d = Drive::new();
+            for (k, n) in pick.iter().enumerate() {
+                d.pick(&mut w, n, if k == 0 { NONE } else { CTRL });
+            }
+            assert!(!w.perform(a, None), "{pick:?} 上 {a:?} 竟然做了");
+            assert_eq!(
+                w.key_notice(),
+                Some(crate::filewin::select::refusal(a, pick.len()).as_str()),
+                "{pick:?} 上 {a:?} 做不了却没出声"
+            );
+            assert!(
+                w.write_prompt().is_none() && w.copy_prompt().is_none() && w.pull_ask().is_none()
+            );
+            assert_eq!(w.cwd, "/srv/data");
+        }
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════
