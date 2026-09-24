@@ -19,16 +19,31 @@ pub(crate) type Agent = AgentClient<Box<dyn AgentStream + Send + Unpin + 'static
 const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
 
 /// 连本机 ssh-agent。连不上 ⇒ `Err(人话)`，**不猜别的位置**。
-pub(crate) async fn connect() -> Result<Agent, String> {
+///
+/// 〔SR1a〕`sock` = 界面进程交过来的 agent 套接字路径（Unix）。常驻后端活得比任何一个界面都长，
+/// 自己身上那份 `SSH_AUTH_SOCK` 可能早就不指向活的 agent 了 ⇒ 给了就用给的；没给才读本进程的环境。
+/// Windows 上 agent 是固定的命名管道，这个参数不用。
+pub(crate) async fn connect(sock: Option<&str>) -> Result<Agent, String> {
     #[cfg(unix)]
     {
-        AgentClient::connect_env()
-            .await
-            .map(AgentClient::dynamic)
-            .map_err(|e| format!("连不上 SSH_AUTH_SOCK 指的 agent（agent 没起？变量没设？）: {e}"))
+        match sock.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(path) => AgentClient::connect_uds(path)
+                .await
+                .map(AgentClient::dynamic)
+                .map_err(|e| {
+                    format!("连不上界面交过来的 agent 套接字 {path}（agent 没起？）: {e}")
+                }),
+            None => AgentClient::connect_env()
+                .await
+                .map(AgentClient::dynamic)
+                .map_err(|e| {
+                    format!("连不上 SSH_AUTH_SOCK 指的 agent（agent 没起？变量没设？）: {e}")
+                }),
+        }
     }
     #[cfg(windows)]
     {
+        let _ = sock;
         AgentClient::connect_named_pipe(OPENSSH_AGENT_PIPE)
             .await
             .map(AgentClient::dynamic)
@@ -36,6 +51,7 @@ pub(crate) async fn connect() -> Result<Agent, String> {
     }
     #[cfg(not(any(unix, windows)))]
     {
+        let _ = sock;
         Err("本平台没有 ssh-agent 接法".to_string())
     }
 }
