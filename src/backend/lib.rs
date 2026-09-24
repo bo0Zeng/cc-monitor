@@ -352,7 +352,16 @@ pub const PROTO_VERSION: u32 = 1;
 /// ⇒ **解锁条件（发版那一拍，同轮做完）**：步 1／3 落地、monitor 侧开始发
 /// `--with-rbind-token` 之后，bump 到 `p2o-rbind-token`（或那一波的合并版本号）
 /// ＋ **同拍 re-embed**。**在那之前这条能力在已部署的远端上是休眠的 —— 这是刻意的。**
-pub const BUILD_ID: &str = "p2n-files-rebuild-and-browse";
+///
+/// ★★★ **p2o-files-write-and-rbind-token**（2026-09-24，第一波合并那一拍）：
+/// 上面那笔「欠着的 bump」**在这一拍还掉**，与 F1 写面六条命令合成一次 ——
+/// 解锁条件逐条核过：步 1（`CCM_RBIND_TOKEN` 进环境）与步 3（铸币口 ＋ 本地半）已落，
+/// monitor 已在协商到 `rbind-token` 时发 `--with-rbind-token`。
+/// 线上面这一拍动了：① `files-create/-mkdir/-rename/-delete/-chmod/-write-text`
+/// 两个命令面各 ＋6（写面只从 `inbound.rs` 那一扇门进，见 `files::module_boundary_guard`）；
+/// ② `hello.capabilities` 的 `rbind-token` 从此有人认、有人发。
+/// ★ re-embed 归发版那一拍（同 p2d…p2n 的登记）；本机 `--native` 那份由合并那一拍重打。
+pub const BUILD_ID: &str = "p2o-files-write-and-rbind-token";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

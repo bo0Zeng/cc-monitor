@@ -100,10 +100,9 @@
 //! - **「窗口真的出现在屏幕上」在本机量不到**：`XDG_SESSION_TYPE=tty`
 //!   （`真相源/99 §一`）。这一侧买得到的是「那个进程起来了、而且没有当场退」；
 //!   「屏幕上真有一个窗口」由 Xvfb 台架那一摞买（它自己的头注写清了它买不到的四样）。
-//! - **发版包里还没有这个二进制。** 它是本包的第二个 `[[bin]]`，`cargo` 编得出来，
-//!   但 Tauri 的安装包只装主二进制与 `externalBin` 那几个 sidecar
-//!   ⇒ 装机那份今天 [`resolve_window_bin`] 会**找不到它并出声**（`D11`：不留退路）。
-//!   打包那一格要动 `tauri.sidecar.conf.json` 与发版流水线，**两处都不在本刀写区** ⇒ 报备。
+//! - 〔订正 · F8〕**发版包里本来就有这个二进制**：tauri bundler 把每个 `[[bin]]` 装到主程序旁
+//!   （真 deb ＋ 生成的 NSIS 脚本核过），[`resolve_window_bin`] 那条「exe 旁边」的分支找得到它。
+//!   两向相等判据住 `K-R124-ruler.py` ⑭；真 Windows 装机那一维仍零读数。
 //! - **Windows 上一趟读数都没有**（手上没有 Windows 机器）。
 
 use std::path::{Path, PathBuf};
