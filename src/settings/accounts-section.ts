@@ -23,6 +23,9 @@ import {
   setDefaultName,
   // K-H2c：「这几个号在不在apikey 表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
   fetchLocalRelayRouting,
+  localRelayStateFor,
+  type AccountRelayState,
+  type ApikeyRoutingView,
   getModelForAccount,
   setModelForAccount,
   invalidateAccountsCache,
@@ -509,8 +512,13 @@ export class AccountsSection {
     const cur = currentWorkingAccount(state);
     const table = document.createElement("div");
     table.className = "accounts-local-table";
+    // 〔第三波 S3〕本机这一半的两格事实（apikey 表里有没有它那一行 · 本机中转在不在跑）问后端要：
+    // `accountStatusBadge` 本机那三档从 `K-H2b` 起就「有实现、没接线」，这里接上。
+    const routing = await this.readLocalRouting(state.accounts);
     for (const a of state.accounts) {
-      table.appendChild(AccountsSection.localRow(a, cur?.name === a.name));
+      table.appendChild(
+        AccountsSection.localRow(a, cur?.name === a.name, routing ? localRelayStateFor(a, routing) : undefined),
+      );
     }
     box.appendChild(table);
     AccountsSection.line(box, "accounts-hint accounts-local-hint", LOCAL_ACCOUNTS_COPY.scopeHint);
@@ -630,23 +638,41 @@ export class AccountsSection {
   }
 
   /**
+   * 〔第三波 S3〕本机那两格事实：问后端（`apikey_routing_for`，只答本机）。
+   *
+   * ⚠ **问不到就是 `null`，不是「表里没有」**：`null` 让徽章走「没被告知 ⇒ 不替它下判断」那一支；
+   * 当成空表的话，一个其实配好了的号会被说成「apikey 凭据文件里没有这个账号的一行」。
+   * 回来的形状不对（桥接层异常）同样按「没问到」算。
+   */
+  private async readLocalRouting(accounts: Account[]): Promise<ApikeyRoutingView | null> {
+    const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
+    if (dirs.length === 0) return null;
+    try {
+      const r = await fetchLocalRelayRouting(dirs);
+      return Array.isArray(r?.routed) && typeof r?.running === "boolean" ? r : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
    *
-   * ⚠ 徽章走 `accountStatusBadge(a)` 而**不传** `relay`：那个参数说的是
-   * 「这个号在apikey 表里有没有一行、本机中转在不在跑」，本件没有去问后端要这两格
-   *（那要多一条 IPC，属下一件）⇒ **不传就是如实说「这一处没被告知」**，
-   * 它自己的那一支逐字写着「所以不替它下判断」。
+   * 〔第三波 S3〕徽章的 `relay` 从这一拍起**传本机那一半**（`{ scope: "local", … }`，
+   * 由 `localRelayStateFor` 从后端答的两格事实摊出来）。原先这里不传，理由是「那要多一条 IPC，属下一件」
+   * —— 那条命令（`apikey_routing_for`）早在盘上了，只是这一支没去问。
+   * 问不到 / 账号 0（没有 configDir）⇒ 仍然不传，徽章照旧「不替它下判断」。
    * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
    * 文案里当场出现「远端」两个字；`NF1bD2` 那条判据正是钉这个的。
    */
-  private static localRow(a: Account, isCurrent: boolean): HTMLElement {
+  private static localRow(a: Account, isCurrent: boolean, relay?: AccountRelayState): HTMLElement {
     const row = document.createElement("div");
     row.className = isCurrent ? "accounts-local-row current" : "accounts-local-row";
     row.appendChild(accountAvatarEl(a.name, { size: 16, ghost: !isSelectable(a) }));
     AccountsSection.line(row, "accounts-local-row-name", a.name);
     AccountsSection.line(row, "accounts-local-row-email", a.email);
 
-    const badge = accountStatusBadge(a);
+    const badge = accountStatusBadge(a, relay);
     const badgeEl = AccountsSection.line(
       row,
       badge.warn ? "accounts-local-row-badge warn" : "accounts-local-row-badge",
