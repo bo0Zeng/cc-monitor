@@ -98,8 +98,15 @@ const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
  * ⚠ 别把地板往上抬成快照 —— 那会让每一次正常改动都红在一个与被守性质无关的数上。
  */
 const FLOORS = {
-  /** `src` 下的 CSS 文件份数（现打 2：`styles.css` ＋ `styles/tokens.css`）。 */
-  cssFiles: 2,
+  /**
+   * `src` 下的 CSS 文件份数。〔三入口拆分 · 人群改定义〕原先现打 2（`styles.css` ＋ `styles/tokens.css`），
+   * 按窗口 / 按层切开之后现打 **10**（`styles.css` ＋ `styles/` 下 9 份：layers · reset · tokens · layout ·
+   * shared · settings-shared · main · settings · viewer）。人群的**定义**没变（仍是 `src/**\/*.css` 全体，
+   * 与 `npm run lint:css` 的 glob 同一批，由格 ④ 对拍），变的是份数 ⇒ 地板跟着抬到 8：
+   * 留在 2 的话，丢掉 8 份文件这条也不会叫。「每份都被某个窗口的 html 链到」住 `tests/entry-graphs.vitest.ts`。
+   * 同一拍现打：类名 780 · 代码侧引用 858 · z-index 39 · 悬空 162 —— 与拆之前**逐项相等**（拆文件只搬家，不改账）。
+   */
+  cssFiles: 8,
   /** CSS 选择器里的类名个数（现打 777）。 */
   cssClasses: 600,
   /** `z-index` 声明条数（现打 39）。 */

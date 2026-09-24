@@ -1,0 +1,69 @@
+/**
+ * `#app` 网格与各格子的认领（`grid-template-*` / `grid-area`），含 viewer 窗的三行模板。
+ *
+ * 加载它的窗口：**主窗 ＋ viewer 窗**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
+ * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
+ *
+ * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ */
+
+#app {
+  /* Batch11-F33：竖直 tab 栏。原顶部 36px 横栏 tab 多了会滑到右上角 🕐/⚙ 图标
+     底下被压住；改左侧竖栏后 tab 纵向生长永不重叠，消息流列在剩余空间里居中
+     （左右空白自动对称）。宽度由 --tab-bar-w 驱动（拖拽调宽 + localStorage 记忆）。 */
+  /* 🔴 S24：多出来的 `archive` 那一行是**给归档抽屉认领的格子**，不是装饰。
+     病史：`TabManager.ensureArchiveUi()`（`tabs.ts`）把 `.tab-archive` 插成 `#tab-bar`
+     的兄弟 ⇒ 它是 `#app` 的 in-flow 直接子元素；而它从来没写过 `grid-area`/`position`
+     ⇒ **一个没认领格子的 grid item**，浏览器只好给它开一条**隐式行**。
+     真引擎实测（Chromium 153，900×700）：插进去之后 `#app` 的 `grid-template-rows`
+     从 `676px 24px` 变成 `641px 24px 35px` ⇒ ① `#message-stream` 被偷 35px；
+     ② 抽屉画在 y=665，**在状态栏下面**。读数见 `tests/evidence/S24-css-readings.md`。
+     ⇒ `main` 跨 `tabs`/`archive` 两行：抽屉开多高，消息流的高度都**一个像素不变**
+       （被让出高度的是 tab 栏自己，它本来就 `overflow-y:auto`）。
+     ⚠ 这条模板与 `tests/app-grid-claims.vitest.ts` 绑着：`#app` 的每个 in-flow 直接
+       子元素都必须认领一个**本模板里声明过的**具名区域，否则那条判据当场红。 */
+  display: grid;
+  /* 🔴 〔步 17·A · 2026-09-19〕`archive` 那一行**删了**，模板从三行回到两行。
+     上面那段 S24 的病史留着（它记录的是当时为真的事），但它治的那个病
+     随归档抽屉一起消失了：抽屉不存在 ⇒ 没有那个没认领格子的 grid item ⇒
+     不需要给它开一行，`main` 也不必再跨两行。
+     ⚠ `设计/30 §A.1` 逐字承诺的「左边 450px 空地消失」就是这一刀。 */
+  grid-template-areas:
+    "tabs main"
+    "status status";
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 24px;
+  height: 100vh;
+  position: relative;
+}
+
+#message-stream {
+  grid-area: main;
+}
+
+#status-bar {
+  grid-area: status;
+}
+
+/* issue #10：独立只读窗口 —— 隐藏 tab 栏，消息流占满，保留 slim 状态栏。
+   关键：#tab-bar 用 display:none 会把它**从 grid item 中移除**，剩下两个子元素
+   （#message-stream / #status-bar）自动重排到前两行 —— 所以这里必须只定义**两行**
+   `1fr 24px`，否则 message-stream 会落进多出来的那行被压成 0 高（踩过：实测
+   streamRoot 高度 0，整窗只剩状态栏文字）。
+   设置 / 历史触发按钮在 viewer bootstrap 里压根不创建，这里再兜底隐藏一次。 */
+/* viewer 有 slim 顶栏（.viewer-topbar，bootstrapViewer prepend 进 #app）：
+   #tab-bar display:none 不算 grid item，剩 [topbar, message-stream, status-bar]
+   三个 item → 三行 `auto 1fr 24px`。 */
+body.viewer-mode #app {
+  grid-template-areas:
+    "top"
+    "main"
+    "status";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) 24px;
+}
+
+body.viewer-mode .viewer-topbar {
+  grid-area: top;
+}
