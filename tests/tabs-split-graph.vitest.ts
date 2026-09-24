@@ -174,12 +174,12 @@ const DEPS: Record<string, readonly string[]> = {
     "src/backend-policy.ts",
     "src/behavior.ts",
     "src/error-toast.ts",
+    "src/file-window.ts", // F78：远端会话「打开工作目录」（〔F7b〕老 SFTP 面板删了，改开文件窗口）
     "src/ipc/commands.ts",
     "src/launch-requests.ts",
     "src/remote-config.ts",
     "src/remote-launch-run.ts",
     "src/remote-launch.ts",
-    "src/sftp/panel.ts", // F78：远端会话「打开工作目录」
     "src/tmux-sessions.ts",
   ],
 };

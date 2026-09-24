@@ -92,17 +92,19 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     ).toBeGreaterThan(100);
   });
 
-  it("CSS 切规则那一刀在承重：规则数与 fixed 选择器数都不许塌（09-22 实测 25 个 fixed 选择器）", () => {
+  it("CSS 切规则那一刀在承重：规则数与 fixed 选择器数都不许塌（09-24 实测 24 个 fixed 选择器）", () => {
     expect(CSS_RULES.length, "一条 CSS 规则都没切出来 —— ②⑤ 此刻无效").toBeGreaterThan(500);
     // 🔴 这个 25 是**等号**，不是地板：本文件第一版用「相邻规则共用 `}`」的 matchAll 形，
     //    这里实测报 16（漏 9 条），而 16 看起来完全正常。等号让那种漏当场可见。
     //    真加了一个 fixed 浮层 ⇒ 这里与下面 ② 的登记表**同时**红，那正是要的摩擦。
+    //    〔F7b 09-24〕25 → 24：少的是 `.sftp-overlay`（老 SFTP 面板的遮罩，随面板整段 CSS 退役；
+    //    它挂在 `document.body` 上、不在 ② 的登记表里 —— 那张表今天一行都没因此变）。
     expect(
       fixedSelectors().length,
-      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（09-22 实测 25）。\n` +
+      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（09-24 实测 24）。\n` +
         "★ 变多 = 新加了一个浮层 ⇒ 去 ② 的登记表里交代它挂在哪；\n" +
         "★ 变少 = 要么真删了一个，要么**切规则那一刀又漏了**（第一版漏了 9 条，报 16）。",
-    ).toBe(25);
+    ).toBe(24);
   });
 
   it("🔴 正控：`alert(` 的量具对合成样本判得出「有」与「没有」两种", () => {
