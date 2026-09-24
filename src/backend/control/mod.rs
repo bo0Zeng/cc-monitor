@@ -11,6 +11,10 @@
 //!   新建一份此前不存在的文件）。红线 I7 的第二个洞口，`设计/60 §6.5.2 A` 拍板的那个
 //!   「带围栏的模块」。〔订正 · F1 · p2o〕已接命令面（`files-create` ＋ 改动既有数据的五件），
 //!   并已从白名单层搬到 `readonly_guard` 第三层（「改，但每一处先过围栏、且只从文件管理面来」）。
+//! - [`exit_policy`]（B2 · 条 66，`设计/01 §3.3b`）：**写后端自己的那一份状态文件**
+//!   （`~/.cc-monitor/backend.json`，「退出行为」那个值）。它**不碰用户数据** ——
+//!   `readonly_guard` 为它单开一层「后端自有状态文件」（按文件登记、动词闭集、只从 `inbound.rs` 进），
+//!   理由与射程住那一层的登记表。
 //! - [`tmux_hook`]：**改 tmux server 状态**（`tmux set-hook -g`）+ **发信号**（`SIGUSR1`）。
 //! - [`gate`]（F03）：**§34 Gate 2（identity）在本侧的承载** —— 探一次 tmux 拿回
 //!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在共享的 `gate-core`（定框 C1）。
@@ -60,6 +64,7 @@ pub mod capture_pane;
 pub(crate) mod cc_bus;
 pub mod ccm;
 pub mod cli_control;
+pub mod exit_policy;
 pub mod files_commit;
 pub mod files_write;
 pub mod fork_write;

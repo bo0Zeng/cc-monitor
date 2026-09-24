@@ -3,7 +3,7 @@ use super::*;
 /// ★★ **跨 crate 契约对拍**：monitor 与后端算出来的是**同一份文件**。
 ///
 /// 两边各写一份路径字面量的话，漂开的那天没有任何东西会说，
-/// 而症状是「界面上配好了，中转说没配」——查不出来的那一类。
+/// 而症状是「界面上配好了，账号层说没配」——查不出来的那一类。
 #[test]
 fn the_two_sides_resolve_the_same_file() {
     let home = dirs::home_dir().expect("这台机器得有 home");
@@ -18,18 +18,18 @@ fn the_two_sides_resolve_the_same_file() {
     );
 
     // ★★ `K-H2b` `D1 阻-3`：**上面那个 `home.join(".claude")` 是手写的根** ——
-    // 它钉住的只有**相对段**（`work/relay-credentials.json` 这一截），
+    // 它钉住的只有**相对段**（`work/apikey-credentials.json` 这一截），
     // 钉不住「两侧的**根**会不会算到两个地方去」。而那正是阻-3 的病：
     // backend 侧的根走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**；
     // monitor 这一侧**刻意不跟随**（本模块头注逐字）⇒ 中转一旦继承到那个变量，
-    // 两侧读写的就是两份文件，而症状是「界面上配好了，中转说没配」。
+    // 两侧读写的就是两份文件，而症状是「界面上配好了，账号层说没配」。
     //
     // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
-    // `local_backend_host::start_local_relay` 用 `CCM_RELAY_CREDENTIALS` 把
+    // `local_backend_host::start_local_relay` 用 `CCM_APIKEY_CREDENTIALS` 把
     // **本函数算出来的这一个**交给中转。
     //
     // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_backend_host.rs` 的生产段里有没有
-    // `crate::creds_store::resolve_path()` / `"CCM_RELAY_CREDENTIALS".into()` 这两段文本」——
+    // `crate::creds_store::resolve_path()` / `"CCM_APIKEY_CREDENTIALS".into()` 这两段文本」——
     // **同一族的病**（文本留住、行为摘掉：把那两段文本留在一处用不到的地方，
     // 真正交出去的换成别的路径 ⇒ 两条照绿）。
     // ⇒ 换成读 `local_backend_host::relay_child_envs()` **产出来的那一份**：
@@ -37,7 +37,7 @@ fn the_two_sides_resolve_the_same_file() {
     let envs = crate::local_backend_host::relay_child_envs();
     assert_eq!(
         envs.iter()
-            .find(|(k, _)| k == "CCM_RELAY_CREDENTIALS")
+            .find(|(k, _)| k == "CCM_APIKEY_CREDENTIALS")
             .map(|(_, v)| v.clone()),
         Some(mine.display().to_string()),
         "起中转那一侧交出去的凭据路径不是**本函数**算出来的这一个 —— 它会退回去读 \
@@ -117,7 +117,7 @@ fn tmpdir(tag: &str) -> PathBuf {
 #[test]
 fn a_program_write_keeps_everything_the_human_put_there() {
     let dir = tmpdir("interleave");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
 
     // ① 人先手写了一份（裸 `fs::write` = 拿编辑器写的）。
     std::fs::write(
@@ -192,7 +192,7 @@ fn a_program_write_keeps_everything_the_human_put_there() {
 #[test]
 fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
     let dir = tmpdir("keep-row-fields");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
 
     // ① 人手编：这一条账号指着一个第三方端点、用非默认的鉴权头形状。
     //    ⚠ 期望值全是**手写字面量**，不是拿被测代码算出来的。
@@ -232,7 +232,7 @@ fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
         "写侧给没写过 auth_style 的那一条**凭空加**了一格：{back}"
     );
 
-    // ★★ 而这份文件**装回中转那一侧**之后，那两格真的被读了出来
+    // ★★ 而这份文件**装回账号层那一侧**之后，那两格真的被读了出来
     //    —— 只断「JSON 里还在」的话，一个读侧的回落（比如把 `auth_style` 忽略掉）
     //    在本条上**看不见**。
     let doc = store::parse(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
@@ -259,7 +259,7 @@ fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
 fn a_written_file_is_owner_only_and_a_widened_one_is_called_out() {
     use std::os::unix::fs::PermissionsExt;
     let dir = tmpdir("perm");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
 
     write_key_at(&p, "/h/.claude-alt/acct-perm", "sk-ant-JUST-WRITTEN").expect("写");
     let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
@@ -289,7 +289,7 @@ fn a_written_file_is_owner_only_and_a_widened_one_is_called_out() {
 #[test]
 fn a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
     let dir = tmpdir("three-states");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
 
     // ① 文件不存在 ⇒ 没配、无问题、无提醒。
     let s0 = read_status_at(&p).expect("读");
@@ -334,7 +334,7 @@ fn a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
 #[test]
 fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
     let dir = tmpdir("same-source");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
     // ⚠ 目录名取中性名：断言里用的是**它派生出来的那个 id**，
     //   而 `brief` 12 逐字点名过「断言用的子串取自夹具的名字」那一形。
     let one = "/h/.claude-alt/acct-one";
@@ -358,13 +358,13 @@ fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
     assert_eq!(
         crate::history::apikey_routed_subset(&[one.to_string()], &rows, "claude-code"),
         vec![one.to_string()],
-        "界面写下的那一行，起会话那一侧找不到 —— 「设置里说走中转、起会话时没走」\n\
+        "界面写下的那一行，起会话那一侧找不到 —— 「设置里说走 apikey 端点改写、起会话时没走」\n\
              正是 `apikey_account_id_of_dir` 头注逐字点名的那一形。表里现在是：{rows:?}"
     );
     // 只配了一个号 ⇒ 另一个号**不许**被顺带配上（「拿 A 的 key 发 B 的请求」的反面）。
     assert!(
         crate::history::apikey_routed_subset(&[two.to_string()], &rows, "claude-code").is_empty(),
-        "只配了一个号，另一个号也说走中转了：{rows:?}"
+        "只配了一个号，另一个号也说在 apikey 表里有行了：{rows:?}"
     );
     // ⚠ 而且它落的**不是** `default` 那一行 —— 那一行谁的会话都命中得了。
     assert!(
@@ -406,7 +406,7 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
             0,
             "写侧出现了 `{needle}` —— 那是在长第二份「取末段名」的规则。\n\
                  ⚠ `apikey_account_id_of_dir` 的头注逐字写着它被抽出来的理由：\n\
-                 「两边各写一个 basename 规则，漂开的那天症状是『设置里说走中转、起会话时没走』，\n\
+                 「两边各写一个 basename 规则，漂开的那天症状是『设置里说走 apikey 端点改写、起会话时没走』，\n\
                  而两边看起来都没错」。"
         );
     }
@@ -454,7 +454,7 @@ fn the_write_side_no_longer_targets_the_legacy_top_level_slot() {
 
     // 行为那一维：全新文件写一次，顶层那一格不许被创建。
     let dir = tmpdir("legacy-slot");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
     write_key_at(&p, "/h/.claude-alt/acct-fresh", "KEY-FRESH").expect("写");
     let back: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
@@ -478,7 +478,7 @@ fn the_write_side_no_longer_targets_the_legacy_top_level_slot() {
 #[test]
 fn a_config_dir_that_names_no_account_is_refused_instead_of_falling_back() {
     let dir = tmpdir("no-id");
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
     for bad in ["", "   ", "/"] {
         let e = write_key_at(&p, bad, "KEY-SHOULD-NOT-LAND")
             .expect_err("说不出账号却写成功了 —— 那一把落到哪儿了？");
@@ -523,7 +523,7 @@ const PLAINTEXT_SCAN_TREES: &[&str] = &["src/bridge/src", "src/bridge/crates", "
 /// · `creds-core/src/lib.rs` 只扫 `include_str!("../../src/bridge/src/lib.rs")`——**它自己这一个文件**；
 /// · `relay/creds_guard.rs` 扫后端那个 crate；
 /// ⇒ **`src/bridge` 整个不在任何人的人群里**，而 monitor 恰恰是明文**第一次进程序**的地方
-///   （`write_relay_credentials_key(key: String)`）。
+///   （`write_apikey_credentials_key(key: String)`）。
 /// D1 审计刀 B 实打：在 monitor 生产段取一次明文 `eprintln!` 出去
 /// ⇒ **8 包合计 1284 passed，一条都没红**。
 ///
@@ -811,7 +811,7 @@ fn the_ts_status_type_matches_this_struct() {
     // ⚠ 用 `find_pinned` 而不是裸 `.find("…")`：本仓 `needle_anchor_registry` 立着一条递减棘轮
     //   （语料变量上的裸匹配「与 `contains` 同族同险：needle 被撑大时照样绿」）。
     //   它额外买两样：**恰好一处** + 两侧有边界。〔08-27 我第一版写裸 `.find` 撞红过它。〕
-    let at = guard_core::find_pinned(&rust_src, "pub struct RelayCredentialsStatus {")
+    let at = guard_core::find_pinned(&rust_src, "pub struct ApikeyCredentialsStatus {")
         .expect("切不出结构体 —— 本条按红处理，不是绿");
     let body = brace_block(&rust_src, at).expect("结构体没闭合 —— 按红处理");
     let rust_fields: Vec<String> = body
@@ -830,7 +830,7 @@ fn the_ts_status_type_matches_this_struct() {
     // TS 侧：从 `src/ipc/commands.ts` 里切出接口体，派生字段名。
     let ts = std::fs::read_to_string(crate::guard_support::repo_src_root().join("ipc/commands.ts"))
         .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
-    let tat = guard_core::find_pinned(&ts, "export interface RelayCredentialsStatus {")
+    let tat = guard_core::find_pinned(&ts, "export interface ApikeyCredentialsStatus {")
         .expect("TS 侧找不到那个接口 —— 它被改名或删了");
     let tbody = brace_block(&ts, tat).expect("接口没闭合 —— 按红处理");
     assert!(
@@ -850,13 +850,13 @@ fn the_ts_status_type_matches_this_struct() {
     for f in &rust_fields {
         assert!(
             ts_fields.contains(f),
-            "TS 的 `RelayCredentialsStatus` 缺字段 `{f}` —— 它是手写类型，没有编译器管：\nRust={rust_fields:?}\nTS={ts_fields:?}"
+            "TS 的 `ApikeyCredentialsStatus` 缺字段 `{f}` —— 它是手写类型，没有编译器管：\nRust={rust_fields:?}\nTS={ts_fields:?}"
         );
     }
     for f in &ts_fields {
         assert!(
             rust_fields.contains(f),
-            "TS 的 `RelayCredentialsStatus` 多了字段 `{f}`，Rust 侧没有它。\n\
+            "TS 的 `ApikeyCredentialsStatus` 多了字段 `{f}`，Rust 侧没有它。\n\
                  ⚠ 这一格是承重的：TS 侧偷偷多一个装明文的字段，正是 `KS6` 要挡的那一形。\nRust={rust_fields:?}\nTS={ts_fields:?}"
         );
     }
@@ -866,10 +866,10 @@ fn the_ts_status_type_matches_this_struct() {
 /// `KS6` 的后端那一半：**回帧里装不下明文**。
 #[test]
 fn the_status_type_cannot_carry_the_plaintext() {
-    let s = RelayCredentialsStatus {
+    let s = ApikeyCredentialsStatus {
         configured: true,
         masked: SecretKey::new("sk-ant-PLAINTEXT-NEVER-ECHOED").masked(),
-        path: "/somewhere/relay-credentials.json".to_string(),
+        path: "/somewhere/apikey-credentials.json".to_string(),
         notice: None,
         problem: None,
     };
@@ -894,7 +894,7 @@ fn the_status_type_cannot_carry_the_plaintext() {
 const PLAINTEXT_HOPS: &[(&str, &str, &str, &str)] = &[
     (
         "lib.rs",
-        "fn write_relay_credentials_key(",
+        "fn write_apikey_credentials_key(",
         "key",
         "creds_store::write_key(&config_dir, &key)",
     ),
@@ -915,7 +915,7 @@ const PLAINTEXT_HOPS: &[(&str, &str, &str, &str)] = &[
 /// 数一个**标识符**出现几次 —— 带词边界，不是子串。
 ///
 /// ⚠ **这个助手是第一跑逼出来的，经过记下来**：第一版直接用 `matches(binding).count()`，
-/// 实测 `key` 在 `write_relay_credentials_key` 的函数体里数出 **2** 次 ——
+/// 实测 `key` 在 `write_apikey_credentials_key` 的函数体里数出 **2** 次 ——
 /// 因为它调的那个函数**自己就叫 `write_key`**，`key` 是它的后缀。
 /// ⇒ 那一版数的根本不是「明文被碰了几次」，是「这几个字母出现了几次」。
 /// **本工作区最贵那族病的又一形：尺子的作用域对不上事实。**
@@ -943,8 +943,8 @@ fn count_ident(hay: &str, ident: &str) -> usize {
 ///
 /// # 它补的是哪一格（别把它读大）
 ///
-/// `KS6` 保的是 key **回**前端那个方向（`RelayCredentialsStatus` 在**类型上**装不下明文）。
-/// **去**后端那个方向 `write_relay_credentials_key(key: String)` **入参就是明文**，
+/// `KS6` 保的是 key **回**前端那个方向（`ApikeyCredentialsStatus` 在**类型上**装不下明文）。
+/// **去**后端那个方向 `write_apikey_credentials_key(key: String)` **入参就是明文**，
 /// 而 `K-H2a` 把它逐字登记成 **`判不了`**（`lib.rs` 那段头注：
 /// 「⇒ 它的身份是 **`判不了`**，不是「射程外」。**这两个词不是一回事**：
 /// 前者欠着一次测量，后者是已经裁过不做。」）。

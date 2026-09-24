@@ -1536,8 +1536,12 @@ deadcode_t0=$(date +%s)
 #   ⇒ 四样都挂 `#[cfg(test)]`（样例常量是后端 `include_str!` 按源码文本读的，挂属性不影响那一读）。
 #   其中 `relay_route_path` 那一条在 33 之前的读数里本来就在（旧的那条 `payload.rs` 警告）⇒ 净 −1。
 #   ⚠ 同一拍 T4 让 `bind.rs::lookup_hwnd_for_token` 有了生产调用方（35→34 那一拍已记）。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 33，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=33; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-24（第三波 B2 合并）：33 → 34，现打，逐条记**：B2 加了第四句退出文案 `backend_policy.rs::EXIT_UNREADABLE`
+#   （「那台机器上的退出策略读不出来，按默认办」）。它与同文件已在册的 `EXIT_KILLS` / `EXIT_UNATTENDED` / `EXIT_SELF_DIES` /
+#   `EXIT_COPY` 同一族：Rust 这一份**只为与 TS 那份逐字对拍而存在**（家在 `src/backend-policy.ts`），非 test 构建里本来就没读者。
+#   ⚠ 这一族要不要整族挂 `#[cfg(test)]` 是另一件事（会一次降 7 条），不在合并这一拍做。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \

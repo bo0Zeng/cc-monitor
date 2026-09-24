@@ -995,3 +995,195 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     );
     std::fs::remove_dir_all(&base).ok();
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔F7a · 第三波 · 2026-09-24〕`files-copy` —— 同根内复制（`设计/60 §13`）
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 正控 ＋ 阴性对照同拍（同上一节那条口径）；阴性那一侧每一条都去盘上核
+// 「那份会话文件一个字节没动」「目标没被顺手建出来」—— 回了 `Err` 不算数。
+
+/// 目录里有没有复制留下的暂存旁名（`.<名>.ccm-copy-<pid>-<序号>.part`）。
+///
+/// ⚠ **不列目录**（`scanning_guard_registry` 不许测试段裸遍历目录）：旁名的形状是确定的，
+/// 本进程造过的序号是 `0..COPY_SEQ` ⇒ 逐个按名字问「在不在」。
+fn copy_leftovers(dir: &Path, name: &str) -> Vec<String> {
+    let upto = COPY_SEQ.load(std::sync::atomic::Ordering::Relaxed);
+    (0..upto)
+        .map(|seq| format!(".{name}.ccm-copy-{}-{seq}.part", std::process::id()))
+        .filter(|n| std::fs::symlink_metadata(dir.join(n)).is_ok())
+        .collect()
+}
+
+/// ★ 缺省不覆盖：复制出来逐字节相等；目标已在 ⇒ `io_failed`、**两份都一个字节没动**。
+#[test]
+fn copy_lands_a_byte_exact_copy_and_never_overwrites_unless_asked() {
+    let base = temp_root("cp");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    std::fs::write(root.join("a.md"), b"AAAA\n").expect("铺 a");
+    let (got, n) = copy_entry(&root, "a.md", "b.md", false).expect("干净的复制被误拒");
+    assert_eq!(std::fs::read(&got).expect("读回"), b"AAAA\n");
+    assert_eq!(n, 5, "回报的字节数与真复制的不相等");
+    std::fs::write(root.join("b.md"), b"OLD").expect("改 b");
+    let err = copy_entry(&root, "a.md", "b.md", false).expect_err("🔴 缺省复制顶掉了一份既有文件");
+    assert_eq!(err.code(), "io_failed", "{err:?}");
+    assert_eq!(
+        std::fs::read(root.join("b.md")).expect("b"),
+        b"OLD",
+        "被拒的那一趟改了目标"
+    );
+    assert_eq!(
+        std::fs::read(root.join("a.md")).expect("a"),
+        b"AAAA\n",
+        "源被动了"
+    );
+    assert!(
+        copy_leftovers(&root, "b.md").is_empty(),
+        "留下了暂存旁名：{:?}",
+        copy_leftovers(&root, "b.md")
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 显式覆盖：目标换成新内容，**不留暂存旁名**；目标是一条链接时顶掉的是**链接本身**，
+/// 它指着的那份会话记录一个字节没动。
+#[test]
+#[cfg(unix)]
+fn explicit_overwrite_replaces_the_link_itself_and_leaves_no_side_file() {
+    let base = temp_root("cpo");
+    let root = base.join("cfg");
+    let (live, bytes) = plant_live_session(&base);
+    std::fs::write(root.join("a.md"), b"NEW").expect("铺 a");
+    std::fs::write(root.join("b.md"), b"OLD").expect("铺 b");
+    copy_entry(&root, "a.md", "b.md", true).expect("显式覆盖被拒了");
+    assert_eq!(std::fs::read(root.join("b.md")).expect("b"), b"NEW");
+    // 目标是一条指向会话文件的链接：不覆盖 ⇒ `O_EXCL` 在链接上就失败；覆盖 ⇒ 顶掉链接。
+    std::os::unix::fs::symlink(&live, root.join("ln.md")).expect("铺链接");
+    let err = copy_entry(&root, "a.md", "ln.md", false).expect_err("链接上 O_EXCL 竟然成了");
+    assert_eq!(err.code(), "io_failed", "{err:?}");
+    copy_entry(&root, "a.md", "ln.md", true).expect("覆盖一条链接被拒了");
+    assert!(
+        !std::fs::symlink_metadata(root.join("ln.md"))
+            .expect("ln")
+            .file_type()
+            .is_symlink(),
+        "覆盖之后那一格还是链接 —— 那就是跟过去写了"
+    );
+    assert_eq!(
+        std::fs::read(&live).expect("读会话"),
+        bytes,
+        "🔴 会话记录被经由链接改写了"
+    );
+    for n in ["b.md", "ln.md"] {
+        assert!(
+            copy_leftovers(&root, n).is_empty(),
+            "留下了暂存旁名：{:?}",
+            copy_leftovers(&root, n)
+        );
+    }
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 🔴 三条路径各过一遍围栏：源是会话文件 / 源是指向会话文件的链接 / 目标是会话文件的位置
+/// ⇒ 全部 `refused`；会话一个字节没动，被拒的目标没被建出来。
+#[test]
+#[cfg(unix)]
+fn copy_is_fenced_on_the_source_the_target_and_through_a_link() {
+    let base = temp_root("cpf");
+    let root = base.join("cfg");
+    let (live, bytes) = plant_live_session(&base);
+    std::fs::write(root.join("a.md"), b"A").expect("铺 a");
+    std::os::unix::fs::symlink(&live, root.join("peek.md")).expect("铺链接");
+    for (from, to, why) in [
+        ("projects/-x/abc.jsonl", "stolen.jsonl", "源就是会话文件"),
+        (
+            "peek.md",
+            "stolen.md",
+            "源是指向会话文件的链接（解到底再判）",
+        ),
+        ("a.md", "projects/-x/new.jsonl", "目标落在会话文件的位置上"),
+    ] {
+        for overwrite in [false, true] {
+            let err = copy_entry(&root, from, to, overwrite)
+                .expect_err(&format!("🔴 {why}（overwrite={overwrite}）竟然复制成了"));
+            assert_eq!(err.code(), "refused", "{why}：{err:?}");
+        }
+    }
+    assert!(!root.join("stolen.jsonl").exists() && !root.join("stolen.md").exists());
+    assert!(!root.join("projects/-x/new.jsonl").exists());
+    assert_eq!(
+        std::fs::read(&live).expect("读会话"),
+        bytes,
+        "🔴 会话被动了"
+    );
+    assert!(copy_leftovers(&root.join("projects/-x"), "new.jsonl").is_empty());
+    assert!(
+        copy_leftovers(&root, "stolen.md").is_empty()
+            && copy_leftovers(&root, "stolen.jsonl").is_empty()
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 形状类的拒：目录 · 源即目标 · 上跳段 · `overwrite` 不是布尔 —— 各落自己的码，盘上不多一个字节。
+/// 命令面那一侧真够得到它，回参的键 == `MANAGE_COMMANDS` 声明的 `fields`（两向）。
+#[test]
+fn copy_refuses_its_shapes_and_is_reachable_on_the_command_face() {
+    let base = temp_root("cps");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(root.join("d")).expect("建根");
+    std::fs::write(root.join("a.md"), b"A").expect("铺 a");
+    let r = root.to_str().expect("utf8");
+    for (args, want) in [
+        (
+            serde_json::json!({"root": r, "from": "d", "to": "d2"}),
+            "refused",
+        ),
+        (
+            serde_json::json!({"root": r, "from": "a.md", "to": "a.md"}),
+            "refused",
+        ),
+        (
+            serde_json::json!({"root": r, "from": "a.md", "to": "../x.md"}),
+            "refused",
+        ),
+        (
+            serde_json::json!({"root": r, "from": "a.md", "to": "z.md", "overwrite": 1}),
+            "bad_args",
+        ),
+        (serde_json::json!({"root": r, "from": "a.md"}), "bad_args"),
+    ] {
+        match answer_wire("files-copy", &args) {
+            Err((c, m)) => assert_eq!(c, want, "{args}：{m}"),
+            Ok(v) => panic!("🔴 {args} 竟然成了：{v}"),
+        }
+    }
+    assert!(
+        !root.join("d2").exists() && !root.join("z.md").exists() && !base.join("x.md").exists()
+    );
+    let v = answer_wire(
+        "files-copy",
+        &serde_json::json!({"root": r, "from": "a.md", "to": "c.md"}),
+    )
+    .expect("命令面上一趟干净的复制被拒了");
+    let got: std::collections::BTreeSet<&str> = v
+        .as_object()
+        .expect("对象")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let declared: std::collections::BTreeSet<&str> = MANAGE_COMMANDS
+        .iter()
+        .find(|c| c.name == "files-copy")
+        .expect("在表里")
+        .fields
+        .iter()
+        .copied()
+        .collect();
+    assert_eq!(
+        got, declared,
+        "`files-copy` 真回出去的键与声明的 `fields` 对不上"
+    );
+    assert_eq!(std::fs::read(root.join("c.md")).expect("c"), b"A");
+    std::fs::remove_dir_all(&base).ok();
+}

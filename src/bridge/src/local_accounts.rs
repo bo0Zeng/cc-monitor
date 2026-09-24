@@ -464,6 +464,36 @@ pub(crate) fn classify_local_accounts(outcome: QueryOutcome) -> LocalAccountsOut
     }
 }
 
+/// 〔第三波 S3 · 2026-09-24〕把本机 apikey 表并进清单：**表里有这个号的一行 ⇒ 它是 api-key 号、可选**。
+///
+/// 后端答的清单只看 manifest（cc-acct-iso 没有 apikey 账号这个概念）⇒ 设置页 apikey 那一支建出来的号
+/// 在那里是「订阅 · 没凭据」= 未登录、选不中。apikey 表只在 monitor 这一侧（本机）⇒ 并在这一跳。
+///
+/// - 「哪个号在表里」走全仓那一份规则 `history::apikey_routed_subset`（`apikey_routing_for` 调的同一个）；
+/// - 「在表里 ⇒ 什么种类 / 就不就绪」两条规则住 `acct-core`，这里一格判定都不长（`RemoteAccount::apply_apikey_table`）。
+/// - 只动 `Listed` 那一档；两个失败档原样过（没有清单就没有东西可并）。
+///
+/// **纯函数**：表的行与 agent 名都是入参 ⇒ 判据用真写入口写一份表、用真解析读一份清单来量它。
+pub(crate) fn with_apikey_table(
+    outcome: LocalAccountsOutcome,
+    rows: &[String],
+    agent: &str,
+) -> LocalAccountsOutcome {
+    let LocalAccountsOutcome::Listed { meta, mut accounts } = outcome else {
+        return outcome;
+    };
+    let dirs: Vec<String> = accounts
+        .iter()
+        .filter_map(|a| a.config_dir.clone())
+        .collect();
+    let routed = crate::history::apikey_routed_subset(&dirs, rows, agent);
+    for a in &mut accounts {
+        let in_table = a.config_dir.as_ref().is_some_and(|d| routed.contains(d));
+        a.apply_apikey_table(in_table);
+    }
+    LocalAccountsOutcome::Listed { meta, accounts }
+}
+
 /// L3a：列出**本机**的账号 —— **问本机后端**（`N-F1c`）。
 ///
 /// `list_remote_accounts` 的本地对侧，**输出类型完全相同**；从 `N-F1c` 起连
@@ -477,11 +507,17 @@ pub(crate) fn classify_local_accounts(outcome: QueryOutcome) -> LocalAccountsOut
 pub async fn list_local_accounts() -> Result<AccountsResult, String> {
     // exec 是阻塞 IO，挪到阻塞线程池（与 `list_local_session_accounts` 同处理）。
     tokio::task::spawn_blocking(|| {
-        classify_local_accounts(run_query(
-            env!("CCM_TARGET_TRIPLE"),
-            &["--list-accounts"],
-            &*crate::spawn_managed::local_backend_one_shot_query(),
-        ))
+        // 〔第三波 S3〕「表里有哪几行」只从那条缝取（`history::inject_facts`，理由见它的头注）。
+        let facts = crate::history::inject_facts();
+        with_apikey_table(
+            classify_local_accounts(run_query(
+                env!("CCM_TARGET_TRIPLE"),
+                &["--list-accounts"],
+                &*crate::spawn_managed::local_backend_one_shot_query(),
+            )),
+            &(facts.rows)(),
+            crate::history::launch_agent_id(),
+        )
         .into_result()
     })
     .await
@@ -537,7 +573,7 @@ pub(crate) fn classify_local_trust(outcome: QueryOutcome) -> crate::accounts::Ac
 /// 本机那一侧的入口 —— 由 `accounts::check_account_trust` 在 `origin == <local>` 时调。
 ///
 /// **不单开一条 Tauri 命令**：远端那条本来就吃 `origin`，本机只是 `origin` 的另一个取值
-/// （`C1`「本地 = 不走 ssh 的远端」；同 `set_backend_kill_on_exit` 那一族的形）。
+/// （`C1`「本地 = 不走 ssh 的远端」；同 `backend_policy::backend_exit_policy` 那一族的形）。
 pub(crate) async fn local_account_trust(
     config_dir: Option<String>,
     cwd: String,

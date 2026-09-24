@@ -1008,11 +1008,20 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 /// 后者靠人真跑。**别把这段读成「以后会自动跑」**：它们仍不在 CI 里（要真 tmux/真进程）。
 fn every_ignored_test_still_has_someone_who_triggers_it() {
     /// 不由 e2e 驱动、**刻意手动**的，逐条写清谁在什么时候跑它。
-    const MANUAL: &[(&str, &str)] = &[(
-        "f63_real_data_ledger",
-        "不是 e2e：它要本机真实历史数据（头注记着 771 会话 / 643MB 的基线），\
+    const MANUAL: &[(&str, &str)] = &[
+        (
+            "f63_real_data_ledger",
+            "不是 e2e：它要本机真实历史数据（头注记着 771 会话 / 643MB 的基线），\
              跑法写在自己的头注里，属于「改 F63 解析时人工重算的台账」",
-    )];
+        ),
+        (
+            "the_readings_behind_the_two_thresholds",
+            "〔F9 09-24〕不是判据是**读数**：大文件模式两个门槛的来源，只在 **release** 档上有意义\
+             （debug 档慢一个数量级，拿它推门槛就是 `设计/60 §9 §四.0` 订正过的那个错）。\
+             跑法写在它自己的头注里；它产出的两个数落在 `bigfile::LINE_READING` / `TOTAL_READING`，\
+             由 `the_two_thresholds_are_what_the_readings_derive` 每趟钉住「推算式 == 常量」。",
+        ),
+    ];
 
     // ── 🔴 第三档触发器：**由同一个 crate 里的判据 spawn 子进程去跑**〔2026-09-21 加〕
     //
@@ -1045,6 +1054,11 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         (
             "xvfb_worker_real_pointer_events_on_a_row",
             "真 X 鼠标事件那一趟：由 `rows_tests.rs` 的 `scenario_b()` spawn 子进程跑",
+        ),
+        (
+            "xvfb_worker_real_keys_on_the_window",
+            "〔FW1+FW2 09-24〕真 X 键盘那一趟：由 `shell_keys_tests.rs` 的 \
+             `a_real_x_keyboard_drives_the_list` spawn 子进程跑",
         ),
     ];
 

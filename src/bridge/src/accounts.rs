@@ -188,6 +188,22 @@ impl AuthKind {
     }
 }
 
+impl RemoteAccount {
+    /// 〔第三波 S3〕把「本机 apikey 表里有没有这个号的一行」并进 `authKind` / `authReady`。
+    ///
+    /// 两条规则都不住这里：分类是 `acct_core::auth_kind_with_apikey_table`，就绪是 `acct_core::auth_ready`
+    /// —— 本函数只把结论落回这份结构。**分类没变就一个字节都不动**（没行的订阅号逐字节是后端答的那一份）。
+    pub(crate) fn apply_apikey_table(&mut self, in_apikey_table: bool) {
+        let from_manifest = self.auth_kind.unwrap_or_default().as_contract_str();
+        let kind = acct_core::auth_kind_with_apikey_table(from_manifest, in_apikey_table);
+        if kind == from_manifest {
+            return;
+        }
+        self.auth_kind = Some(AuthKind::from_manifest(Some(kind)));
+        self.auth_ready = Some(acct_core::auth_ready(kind, self.logged_in));
+    }
+}
+
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsResult {

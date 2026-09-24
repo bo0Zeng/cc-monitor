@@ -148,7 +148,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "wait-for-condition",
         3,
         "三处都有终止条件：① resize 稳定检测 `loop { sleep(60ms); if now == last { break } }`；\
-             ② `remote-bind-scan` 的 `for _ in 0..15`（每 ~0.6s、最多 ~9s，命中即停）；\
+             ② `remote-bind-scan` 的 `for _ in 0..15`（每 ~0.6s、最多 ~9s，命中即停；\
+             〔U2〕带启动令牌的会话不起这条线程，见 `lib.rs::wants_title_prescan`）；\
              ③ 等 watcher 首扫完成 `loop { …; if elapsed > WAIT_TIMEOUT { break }; sleep(10ms) }`\
              （10s 上限，超时就带部分历史 replay）。**三处都不是节拍器。**",
     ),

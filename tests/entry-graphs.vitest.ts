@@ -35,7 +35,7 @@
  * - ❌ 买不到：窗口**真的开得出来、长得对**（本机无图形会话）。dev 模式下 vite 按 url 直接
  *   伺服 `settings.html` / `viewer.html`，与构建产物是同一张 `input` 表，但 dev 那条路本文件没跑。
  * - ❌ 买不到：viewer 闭包里**带进了什么多余的**（`tabs.ts` 的依赖链今天拖进了
- *   `sftp/panel.ts` / `tasks-panel.ts` 等，`tabs.ts` 不在本轮写区）。本文件只钉「不许有」清单，
+ *   `tasks-panel.ts` 等，`tabs.ts` 不在本轮写区；〔F7b〕老 SFTP 面板已退役，那一条不在了）。本文件只钉「不许有」清单，
  *   不钉「只许有」—— 钉全集会让每一次 `tabs.ts` 的正常改动都红在一个与拆分无关的数上。
  */
 import { readFileSync } from "node:fs";
@@ -80,6 +80,20 @@ const FORBIDDEN_IN_SETTINGS: readonly { pat: string; what: string }[] = [
   { pat: "src/tabs.ts", what: "tab 管理" },
   { pat: "src/tab-bar-state.ts", what: "tab 管理（tab 栏状态）" },
   { pat: "src/tab-collections.ts", what: "tab 管理（标签页集合）" },
+  // 〔U2 · 第三波〕`tabs.ts` 拆成 13 份之后，「设置窗里没有 tab 管理」要对每一份都成立 ——
+  //   只钉 `tabs.ts` 一个名字，某一份被设置窗间接带进来时这里看不见。正控照旧（每一份都得在主窗 / viewer 的闭包里命中）。
+  { pat: "src/tab-model.ts", what: "tab 管理（tab 的形状与标题）" },
+  { pat: "src/tab-store.ts", what: "tab 管理（会话状态账 / store）" },
+  { pat: "src/tab-router.ts", what: "tab 管理（路由）" },
+  { pat: "src/tab-session-facts.ts", what: "tab 管理（从记录里抽事实）" },
+  { pat: "src/tab-stream-view.ts", what: "tab 管理（实时流视图）" },
+  { pat: "src/tab-bar-view.ts", what: "tab 管理（tab 栏视图）" },
+  { pat: "src/tab-bar-drag.ts", what: "tab 管理（拖拽）" },
+  { pat: "src/tab-drop.ts", what: "tab 管理（落点算术）" },
+  { pat: "src/tab-bar-prefs.ts", what: "tab 管理（集合 / 固定 / 顺序落盘）" },
+  { pat: "src/tab-menu.ts", what: "tab 管理（右键菜单项）" },
+  { pat: "src/tab-context-menu.ts", what: "tab 管理（右键菜单控件）" },
+  { pat: "src/tab-session-actions.ts", what: "tab 管理（会话动作）" },
   { pat: "src/main.ts", what: "主窗口 bootstrap" },
   { pat: "src/entry-main.ts", what: "主窗口入口" },
   { pat: "src/entry-viewer.ts", what: "viewer 入口" },

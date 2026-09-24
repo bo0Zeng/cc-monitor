@@ -234,12 +234,13 @@ enum Kind {
     Channel,
     /// 线上类型（`chan::wire::*`，`05 §3.3` 那一套）。**题面要的就是它。**
     Wire,
-    /// 🔴 **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消 · 读一份文本进编辑器）—— `设计/60 §8.4` 未拍，
+    /// 🔴 **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消；〔F7a 09-24〕读一份文本进编辑器那一条已换成后端
+    /// `files-read-text`）—— `设计/60 §8.4` 未拍，
     /// 题面逐字「上传/跨机传输不做」。⚠ 这一类在，窗口进程就仍然拨第二条 SSH（只在真搬字节时）。
     Transfer,
-    /// 🔴 **后端今天没有这条命令**：同机复制（写面那六条里没有 `files-copy`）。
-    /// 窗口一侧补不出来（后端不在本路写区）⇒ 交主会话。
-    BackendLacks,
+    // 〔F7a · 第三波 09-24〕这里原来还有一类「后端今天没有这条命令」（同机复制：池子那条复制命令 ＋
+    //   它的裁决类型，2 条）。后端有了 `files-copy` 之后两条都换走了通道 ⇒ 这一类清零，随之删掉
+    //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
     /// 本地预判的那道围栏（踩线的那一件**一个字节都不上线**）。权威在后端写面那一侧；
     /// 本地这一份的去留钉在写区外那条「旧住址最后一个消费者」判据上，交主会话。
     Fence,
@@ -250,8 +251,10 @@ enum Kind {
     Host,
     /// monitor 那一侧：起进程那个全仓唯一出口（`exec_site_registry` 管着）。
     Spawn,
-    /// monitor 那一侧：开窗前解 home（后端没有这一问，`hello.homes` 今天恒空）＋ 那条命令的入参类型。
-    HomeAndConfig,
+    /// monitor 那一侧：那条命令的入参类型（那台机器的配置）。
+    /// 〔F7a · 第三波 09-24〕这一类原先还装着「开窗前解 home」（走 SFTP，后端没有这一问）——
+    /// 现在问后端 `files-home`，走的是 `Host` 那一类的同一个句柄 ⇒ 这一类只剩配置，改了名。
+    Config,
 }
 
 /// monitor 那一侧的函数（`entry.rs` 整份之外）。**点名，不靠目录。**
@@ -260,7 +263,6 @@ const MONITOR_FNS: &[(&str, &str)] = &[
     ("proc.rs", "write_seed"),
     ("proc.rs", "open_in_new_process"),
     ("proc.rs", "reap_later"),
-    ("source.rs", "resolve_remote_home"),
 ];
 
 /// monitor 那一侧整份算的文件。
@@ -269,7 +271,7 @@ const MONITOR_FILES: &[&str] = &["entry.rs"];
 /// ★ **窗口进程**够得到的 app 侧符号，逐条。
 ///
 /// 🔴 题面判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
-/// 其余四类每一条都是一笔带住址的欠账（见 [`Kind`]）。
+/// 其余三类每一条都是一笔带住址的欠账（见 [`Kind`]；〔F7a 09-24〕「后端缺命令」那一类清零删了）。
 const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
     ("chan::client::Client", Kind::Channel),
@@ -294,17 +296,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("chan::wire::Sub", Kind::Wire),
     // ── 跨机传输 ──
     // 〔F7c · 第三波 09-24〕`§8.4` 拍了（「保留SFTP. 思考怎么干净」）：上传 / 下载经通道开单、订阅进度
-    //   （`设计/60 §13`）⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行**走掉**；
-    //   `sftp_cancel_transfer` 挪到「后端缺命令」那一类（它今天只剩复制那一腿）。
-    //   剩下这三格是**编辑器读文本**那一族（`files-read-text` 归 F7a）＋ 它们共用的那台机器的配置。
-    ("sftp_pool::MAX_EDIT_BYTES", Kind::Transfer),
-    ("sftp_pool::sftp_read_text_for_edit", Kind::Transfer),
+    //   （`设计/60 §13`）⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行走掉；
+    //   `sftp_cancel_transfer` 随复制走后端（F7a，不可取消）一起走掉（`transfer::forward_cancel` 删了）。
     ("ssh_source::RemoteConfig", Kind::Transfer),
-    // ── 后端缺命令 ──
-    ("sftp_pool::CopyVerdict", Kind::BackendLacks),
-    ("sftp_pool::sftp_copy", Kind::BackendLacks),
-    // 〔F7c〕复制那一腿的取消（`transfer::forward_cancel`）：与 `sftp_copy` 同一行账，F7a 换成 `files-copy` 那天一起走。
-    ("sftp_pool::sftp_cancel_transfer", Kind::BackendLacks),
     // ── 本地预判围栏 ──
     ("sftp_pool::is_protected_claude_data_path", Kind::Fence),
     // ── 本机动作 ──
@@ -324,8 +318,7 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::ManagedChild", Kind::Spawn),
     ("spawn_managed::StderrSink", Kind::Spawn),
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
-    ("sftp_pool::sftp_realpath", Kind::HomeAndConfig),
-    ("ssh_source::RemoteConfig", Kind::HomeAndConfig),
+    ("ssh_source::RemoteConfig", Kind::Config),
 ];
 
 /// 一段生产代码 → `(函数名, 那一块)`。函数外的行归 `""`。
@@ -502,12 +495,11 @@ fn every_declared_edge_falls_in_a_live_category() {
         (Channel, WINDOW_SIDE),
         (Wire, WINDOW_SIDE),
         (Transfer, WINDOW_SIDE),
-        (BackendLacks, WINDOW_SIDE),
         (Fence, WINDOW_SIDE),
         (Terminal, WINDOW_SIDE),
         (Host, MONITOR_SIDE),
         (Spawn, MONITOR_SIDE),
-        (HomeAndConfig, MONITOR_SIDE),
+        (Config, MONITOR_SIDE),
     ] {
         let n = side.iter().filter(|(_, kk)| *kk == k).count();
         assert!(
@@ -528,17 +520,12 @@ fn every_declared_edge_falls_in_a_live_category() {
     //    变少 ＝ 有一笔欠账还了 —— 好事，但要同拍改这里并写清是哪一笔。
     let debt = |k: Kind| WINDOW_SIDE.iter().filter(|(_, kk)| *kk == k).count();
     assert_eq!(
-        (
-            debt(Transfer),
-            debt(BackendLacks),
-            debt(Fence),
-            debt(Terminal)
-        ),
-        // 〔F7c · 第三波 09-24〕(7, 2, 1, 1) → (3, 3, 1, 1)：传输那一类走掉 `sftp_upload` ·
-        //   `sftp_download` · `TRANSFER_LANE_CAP`（上传下载经通道），`sftp_cancel_transfer` 挪去
-        //   「后端缺命令」（只剩复制那一腿的取消）⇒ 传输 −4、后端缺命令 +1。
-        (3, 3, 1, 1),
-        "窗口进程里「还不是通道」的那几类条数变了（传输 · 后端缺命令 · 本地围栏 · 本机动作）"
+        (debt(Transfer), debt(Fence), debt(Terminal)),
+        (5, 1, 1),
+        "窗口进程里「还不是通道」的那几类条数变了（传输 · 本地围栏 · 本机动作）\
+         〔F7a 09-24〕传输 7 → 5：编辑器读文本那两条（池子那条读文本命令 ＋ 它的上限常量）换成后端 \
+         `files-read-text`，上限常量搬回窗口（`editor::MAX_EDIT_BYTES`）；\
+         后端缺命令 2 → 0（类别删了）：同机复制那两条换成后端 `files-copy`"
     );
 }
 

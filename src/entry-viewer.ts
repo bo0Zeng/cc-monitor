@@ -11,7 +11,7 @@ import "./entry-common"; // 全局错误捕获（模块副作用）
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands } from "./ipc/commands";
-import { basename } from "./sftp/paths"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区）
+import { basename } from "./format"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区；〔F7b〕随老面板退役从 sftp/paths 搬来）
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
 import { loadTheme } from "./theme";

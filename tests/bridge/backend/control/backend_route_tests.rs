@@ -165,6 +165,11 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   本件要删的东西，长连接不在时明说「没有控制通道」。但**照样走分流器**
     //   （`route_call_error` ＋ `no_channel`），理由与 `cc_bus.rs` / `tmux.rs` / `find.rs` 逐字相同。
     ("frame_query.rs", Verdict::UsesRouter),
+    // ★ 〔B2 · 条 66 · 2026-09-24〕**第十个发送端** —— 「退出行为」那个值搬到后端所在那台机器上之后，
+    //   monitor 问它 / 交它写 / 退出臂现问它，都经 `backend_policy.rs::exit_policy_call` 这一口。
+    //   没有第二条路可回落（值只在那台机器上），长连接不在时明说「没有控制通道」；**照样走分流器**，
+    //   理由与 `frame_query.rs` 那条逐字相同。
+    ("backend_policy.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

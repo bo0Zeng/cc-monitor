@@ -44,7 +44,7 @@ const PRESET_OPTIONS: Array<{ id: PresetId; label: string }> = [
   { id: "Custom", label: "自定义路径..." },
 ];
 
-// P2.1: 通过 LS_KEYS 中转保留下划线 key 名（迁移成本大于收益）。
+// P2.1: 通过 LS_KEYS 转一道、保留下划线 key 名（迁移成本大于收益）。
 
 
 

@@ -48,6 +48,13 @@ async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot
         !e.trim().is_empty(),
         "报错是空串 —— webview 那侧会弹一个没有内容的失败提示"
     );
+    // 🔴〔F7a · 第三波 09-24〕**「真的去问了」这一件又断得住了**：问的是后端，
+    //    判据进程里没有那台机器的控制通道 ⇒ 那一跳就地失败，而失败那句话带着**命令名**
+    //    （`source::said` 逐字「`files-home` 没走通…」）⇒ 是哪一跳失败的，文本分得开了。
+    assert!(
+        e.contains(crate::filewin::source::CMD_HOME),
+        "空路径的报错里没有 `files-home` —— 那就不是在问 home（原文：{e}）"
+    );
     assert_eq!(
         crate::filewin::shell::open_requested(),
         before,
@@ -71,6 +78,11 @@ async fn a_directory_we_cannot_list_is_an_error_not_a_blank_window() {
     assert!(
         !e.trim().is_empty(),
         "报错是空串 —— webview 那侧会弹一个没有内容的失败提示"
+    );
+    // 〔F7a〕阴性对照：给了路径 ⇒ **不问 home**（问了就是多一趟往返，而且它会先失败、盖掉真原因）。
+    assert!(
+        !e.contains(crate::filewin::source::CMD_HOME),
+        "给了路径却去问了 home：{e}"
     );
     assert_eq!(
         crate::filewin::shell::open_requested(),
@@ -178,7 +190,7 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
     );
 }
 
-/// 🔴 **空路径那一支真的走 `resolve_remote_home`，而且排在列目录前面。**
+/// 🔴 **空路径那一支真的走 `ask_home`（问后端 `files-home`），而且排在列目录前面。**
 ///
 /// # 为什么要这条源码代理
 ///
@@ -196,13 +208,13 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
     let prod =
         guard_core::production_code(include_str!("../../../src/bridge/src/filewin/entry.rs"));
     assert_eq!(
-        prod.matches("resolve_remote_home(").count(),
+        prod.matches("ask_home(&").count(),
         1,
-        "`entry.rs` 生产段里 `resolve_remote_home(` 不是恰好一处 —— \
+        "`entry.rs` 生产段里 `ask_home(&` 不是恰好一处 —— \
          少了就是空路径又被原样丢下去，多了就是这件事长出了第二个住址"
     );
     let at_home = prod
-        .find("resolve_remote_home(")
+        .find("ask_home(&")
         .expect("上一比已经保证它在，这里拿不到位置说明抽取器坏了");
     // 〔F2 · 2026-09-24〕列那一趟从池子（SFTP）换成了问后端（`list_first_screen`）。
     let at_list = prod
@@ -213,7 +225,18 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
         "问 home 那一跳排在列目录后面 —— 那就是先拿空路径去列了一趟"
     );
     // 反空真：这把尺子认得出「不在」。
-    assert!(!prod.contains("resolve_remote_home_that_does_not_exist"));
+    assert!(!prod.contains("ask_home_that_does_not_exist"));
+    // 〔F7a · 第三波 09-24〕那一跳问的是后端：`entry.rs` 生产段里一处 SFTP 都不许有
+    //   （monitor 这一侧开窗此前唯一碰 SFTP 的就是问 home 那一下）。针拼出来，免得命中本文件。
+    let pool = format!("sftp_{}::", "pool");
+    assert!(
+        !prod.contains(pool.as_str()),
+        "`entry.rs` 又够到了 SFTP 那个池子 —— 开窗前那两问都该走后端"
+    );
+    assert!(
+        prod.contains("CMD_HOME"),
+        "问 home 那一跳没用 `files-home` 那个常量"
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════
