@@ -987,7 +987,8 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         .filter(|c| !declared_cmds.contains(c))
         .map(String::as_str)
         .collect();
-    let moved: std::collections::BTreeSet<&str> = MOVED_TO_BACKEND.iter().map(|(c, _)| *c).collect();
+    let moved: std::collections::BTreeSet<&str> =
+        MOVED_TO_BACKEND.iter().map(|(c, _)| *c).collect();
     assert_eq!(
         missing, moved,
         "窗口不再用的池子命令 ≠ 「搬去后端的那 7 条」。多出来的 ＝ 一条接线掉了而没有后端对应；\
