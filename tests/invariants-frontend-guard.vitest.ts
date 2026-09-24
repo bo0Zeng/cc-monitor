@@ -348,10 +348,13 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
   it("★ JS 侧那个唯一豁免类：每处临时 `overflow-anchor:none` 都有还原，且还原在 `finally` 里", () => {
     const toggles = anchorToggles(SOURCES);
     // 分母：09-22 实测两处（`tabs.fillAbove` F40b · `session-viewer.maybeFillAbove` F39）。
+    // 〔`设计/10` 骨架 · 子步 4〕+2，同一豁免类（同步任务内临时关、`finally` 还原）：
+    // `tabs.attachSkeleton`（视口上方插一块高占位时按 ΔscrollHeight 补偿）·
+    // `skeleton-view.materializeRanges`（物化可见区时钉住视口里那张已渲染卡）。
     expect(
       toggles.length,
-      "找不到任何临时关闭处 —— 下面两条在空集合上绿。要么两处补批路都删了（那这一格一起删），要么量具坏了",
-    ).toBe(2);
+      "找不到任何临时关闭处 —— 下面两条在空集合上绿。要么补批路都删了（那这一格一起删），要么量具坏了",
+    ).toBe(4);
     expect(
       toggles.filter((t) => t.onLine === null).map((t) => `${t.file}:${t.offLine}`),
       "临时关掉了 `overflow-anchor` 却找不到还原处 ⇒ 那个 tab / viewer 会话**永久**失去原生锚定",

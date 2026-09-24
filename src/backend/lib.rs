@@ -998,8 +998,13 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--accts-dir",
     "--after-ms",
     "--include-tools",
+    // 〔`设计/10` 骨架 · 子步 1〕`--read-session-from-offset` 的两个选项（出骨架索引 / 右端收口）。
+    // 刻意是**选项**不是新子命令：新子命令会逼出 `BUILD_ID` bump，本轮不许 —— 理由与老后端上的
+    // 降级形状住 `observe::history_query::FromOffsetOpts` 的头注。
+    "--index",
     "--limit",
     "--scope",
+    "--until",
 ];
 
 /// 从 argv 剥离流模式 flag，返回（剩余参数, with_bg, tail_only, with_rbind_token）。

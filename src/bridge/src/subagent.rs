@@ -51,7 +51,11 @@ pub struct SubagentLoadResult {
 ///
 /// 本机 = exec 一次本机后端拿 stdout；远端 = 经 ssh exec 同一个二进制。
 /// 定框 `C1` 逐字「本地 = 不走 ssh 的远端」——⇒ 子命令、参数、解析、挑选**全是同一份**。
-enum Backend {
+///
+/// 〔`设计/10` 骨架 · 子步 3〕它从本模块私有升成 `pub(crate)`：骨架索引与按偏移取正文
+/// （`session_skeleton.rs`）问的是**同一个问题**「这条查询谁去跑」—— 另写一份本机/远端分流
+/// 就是 `K33` 说的第二处实现。**只改了可见性，一行行为没动。**
+pub(crate) enum Backend {
     Local,
     Remote(Box<crate::ssh_source::RemoteConfig>),
 }
@@ -73,7 +77,7 @@ impl Backend {
     /// 「没说」在类型上到不了这里。
     ///
     /// ⚠ 分流点仍然**恰好一处**（`subagent_tests.rs` 钉着 `fn for_origin(` 的处数）。
-    fn for_origin(route: crate::origin::Route<'_>) -> Result<Self, String> {
+    pub(crate) fn for_origin(route: crate::origin::Route<'_>) -> Result<Self, String> {
         match route {
             crate::origin::Route::Local => Ok(Backend::Local),
             crate::origin::Route::Remote(host) => {
@@ -84,7 +88,7 @@ impl Backend {
     }
 
     /// 报错文案里的「谁」—— 本机 / 哪台远端。
-    fn whose(&self) -> String {
+    pub(crate) fn whose(&self) -> String {
         match self {
             Backend::Local => "本机".to_string(),
             Backend::Remote(cfg) => format!("远端 [{}]", cfg.origin_label()),
@@ -95,7 +99,7 @@ impl Backend {
     ///
     /// 出的是**逐行、已 trim、已剔空行**的输出 —— 两条路形状一致
     /// （远端那条由 `run_list_query` 保证，本机这条在 [`run_local_query`] 里对齐）。
-    async fn query(&self, argv: &[&str]) -> Result<Vec<String>, String> {
+    pub(crate) async fn query(&self, argv: &[&str]) -> Result<Vec<String>, String> {
         match self {
             Backend::Local => run_local_query(argv),
             Backend::Remote(cfg) => {
