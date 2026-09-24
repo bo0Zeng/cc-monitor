@@ -695,24 +695,24 @@ pub async fn stream_read_session_jsonl(
         let mut total = 0u32;
         // P5.1：history 流式读时同样给每行 seq（per-file 单调）。SessionViewer
         // 用 RecordTimeline 排序时跟实时 tab 走同一套逻辑。
-        let mut next_seq: u64 = 0;
+        // 〔U3b〕seq = **可计行号**（与 watcher / 骨架索引同一个空间）：不可显示的记录照占号、
+        // 不出 payload。原先只给可显示的编号 ⇒ 查看器的 seq 与索引对不上、骨架接不上。
+        // 「占不占号」只有一个住址：`session_skeleton·rs::LineNumberer`。
+        let mut numberer = crate::session_skeleton::LineNumberer::default();
 
         for line in reader.lines().map_while(Result::ok) {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
+            let Some((seq, rec)) =
+                crate::session_skeleton::numbered_displayable(&mut numberer, &line, |b| {
+                    crate::parser::parse_for_kind(kind, b)
+                })
+            else {
                 continue;
-            }
-            let rec = match crate::parser::parse_for_kind(kind, trimmed) {
-                Ok(Some(r)) if r.is_displayable() => r,
-                _ => continue,
             };
             if let JsonlRecord::User { cwd, .. } = &rec {
                 if cwd_seen.is_none() {
                     cwd_seen = cwd.clone();
                 }
             }
-            let seq = next_seq;
-            next_seq += 1;
             buf.push(crate::bridge::JsonlLinePayload {
                 session_id: session_id.clone(),
                 cwd: cwd_seen.clone(),

@@ -50,8 +50,12 @@ import { revealCard } from "./views/session-viewer";
 import {
   renderContentRecord,
   routeMetaAndBranch,
+  type MetaSink,
   type StreamSink,
 } from "./render-stream-record";
+
+/** 〔U3b〕只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
+const NOOP_META: MetaSink = { onBranchRecord: () => {}, onQueueOperation: () => {} };
 import type { BranchRecord } from "./branching";
 import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
@@ -1140,8 +1144,9 @@ export class TabManager {
     }
     const view = new SkeletonView(ledger, tab.streamEl, tab.timeline, {
       materialize: (lo, hi) => {
-        this.renderPayloadsBatch(tab, tab.window.takeRange(lo, hi));
-        this.fetchMissingRows(tab, ledger, lo, hi);
+        const taken = tab.window.takeRange(lo, hi);
+        this.renderPayloadsBatch(tab, taken);
+        this.fetchMissingRows(tab, ledger, lo, hi, new Set(taken.map((p) => p.seq)));
       },
     });
     // 在视口上方插一块高占位：同 `fillAbove` 的纪律 —— 关原生锚定、同一个同步任务里按 ΔscrollHeight 补偿
@@ -1158,6 +1163,13 @@ export class TabManager {
     tab.skeleton = view;
     this.updateSentinel(tab);
     if (this.activeId === tab.sessionId) view.fillVisible();
+    // 〔U3b · `设计/10` 步 8〕骨架接上 ⇒ 正文不必再驻留：丢掉的那些滚到时按偏移要回来。
+    // ① 前端账本只留离已渲染尾巴最近的一批（第一次上翻不用等 IPC）；
+    // ② monitor 的重放缓冲只留尾巴（F5 之后也只重放尾巴，其余同样按偏移要）。
+    tab.window.keepHighest(TabManager.FILL_BATCH);
+    void commands
+      .replay_keep_tail_only({ sessionId: tab.sessionId })
+      .catch((e: unknown) => console.warn(`[tabs] 重放缓冲留尾巴失败（${tab.sessionId.slice(0, 8)}）：`, e));
   }
 
   /**
@@ -1171,12 +1183,20 @@ export class TabManager {
    * 没推过来的历史就全靠它取。连续缺的行并成一段、一段一次 IPC；同一段不会被要两次
    * （骨架把它标成已物化之后就不会再交给宿主）。
    */
-  private fetchMissingRows(tab: Tab, ledger: SkeletonLedger, lo: number, hi: number): void {
+  private fetchMissingRows(
+    tab: Tab,
+    ledger: SkeletonLedger,
+    lo: number,
+    hi: number,
+    taken: ReadonlySet<number>,
+  ): void {
     if (!tab.parentPath) return;
     const runs: Array<[number, number]> = [];
     for (let s = lo; s < hi; s++) {
       const f = ledger.factsOf(s);
-      const missing = f !== undefined && skeletonKind(f) !== "none" && !tab.seenSeqs.has(s);
+      // 〔U3b〕「缺」= 会建卡、而这一次没从账本里取到 —— 两种来历：重放没推过来（没见过），
+      // 或见过、但骨架接上之后被丢出账本（`keepHighest`）。两种回来之后喂法不同，见下。
+      const missing = f !== undefined && skeletonKind(f) !== "none" && !taken.has(s);
       if (!missing) continue;
       const last = runs[runs.length - 1];
       if (last && last[1] === s) last[1] = s + 1;
@@ -1197,7 +1217,14 @@ export class TabManager {
         })
         .then((payloads) => {
           if (this.tabs.get(tab.sessionId) !== tab) return;
-          this.feedHistoryRows(tab, payloads);
+          // 没见过的 ⇒ 走 `onLine` 全套（旁路记账、去重、门控）；
+          // 见过的 ⇒ 旁路账早记过了、去重会把它拒掉 ⇒ 只建卡（meta 那几类照旧不建）。
+          const fresh = payloads.filter((p) => !tab.seenSeqs.has(p.seq));
+          const again = payloads.filter(
+            (p) => tab.seenSeqs.has(p.seq) && routeMetaAndBranch(p, NOOP_META) === "content",
+          );
+          this.feedHistoryRows(tab, fresh);
+          if (again.length > 0) this.renderPayloadsBatch(tab, again);
         })
         .catch((e: unknown) => console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e));
     }

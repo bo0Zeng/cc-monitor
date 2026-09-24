@@ -1369,6 +1369,8 @@ pub fn run() {
             // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的两个调用点。
             session_skeleton::read_session_index,
             session_skeleton::read_session_range,
+            // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
+            session_skeleton::replay_keep_tail_only,
             remote_history::list_remote_history_projects,
             // F10：一键装 / 卸远端 ccm 助手到 ~/.bashrc（SFTP 写 profile，SS-H）
             sftp::install_remote_ccm_helper,

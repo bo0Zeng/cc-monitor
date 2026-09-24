@@ -1,0 +1,11 @@
+# 〔U3b〕骨架 seq 空间的金标准：`skeleton-seq-space.jsonl` 里每个**可计行**的 seq 与 uuid（`-` = 没有 uuid）。
+# 两侧**各自**读那份夹具、**各自**对这份表：后端 `history_query_index_tests.rs`（索引行号）· monitor `session_skeleton_tests.rs`（LineNumberer）。
+# 手算：空行 / 全空白 / 只有 BOM / 只有 U+000B 的四行不占号；带 BOM 的记录行占号（⚠ 夹具里**不放 CRLF**：仓的 `.gitattributes` 是 `* text=auto eol=lf`，入库会被规一成 LF、字节偏移随之变）；非 JSON 行占号；torn 残尾不进索引。
+0	s-0
+1	s-1
+2	s-2
+3	s-3
+4	-
+5	s-4
+#count	6
+#end	384

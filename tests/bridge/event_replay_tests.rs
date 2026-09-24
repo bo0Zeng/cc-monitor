@@ -169,3 +169,89 @@ fn build_chunks_preserves_input_order_within_chunks() {
         );
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔U3b · `设计/10` 步 8〕两档容量：接上骨架的会话只留尾巴；其余不设上限。
+// ═══════════════════════════════════════════════════════════════════════
+
+fn seqs_of(replay: &EventReplay, sid: &str) -> Vec<u64> {
+    let mut v: Vec<u64> = replay
+        .inner
+        .lock()
+        .history
+        .iter()
+        .filter(|p| p.session_id == sid)
+        .map(|p| p.seq)
+        .collect();
+    v.sort_unstable();
+    v
+}
+
+#[test]
+fn sessions_without_a_skeleton_are_never_trimmed() {
+    let replay = EventReplay::new();
+    let batch: Vec<_> = (0..REPLAY_TAIL_KEEP * 3)
+        .map(|i| payload("free", i))
+        .collect();
+    push_and_trim(&mut replay.inner.lock(), &batch);
+    assert_eq!(seqs_of(&replay, "free").len(), REPLAY_TAIL_KEEP * 3);
+    assert_eq!(replay.stats().trimmed_total, 0);
+}
+
+/// 🔴 按 seq 留尾巴，不按到达序：远端快照是尾部优先（尾块先到、头块后到）。
+#[test]
+fn keep_tail_only_keeps_the_highest_seqs_even_when_the_tail_arrived_first() {
+    let replay = EventReplay::new();
+    let n = REPLAY_TAIL_KEEP * 2;
+    let tail_first: Vec<_> = (REPLAY_TAIL_KEEP..n)
+        .chain(0..REPLAY_TAIL_KEEP)
+        .map(|i| payload("s", i))
+        .collect();
+    push_and_trim(&mut replay.inner.lock(), &tail_first);
+    push_and_trim(&mut replay.inner.lock(), &[payload("other", 0)]);
+    let dropped = replay.keep_tail_only("s");
+    assert_eq!(dropped, REPLAY_TAIL_KEEP);
+    let want: Vec<u64> = (REPLAY_TAIL_KEEP as u64..n as u64).collect();
+    assert_eq!(seqs_of(&replay, "s"), want);
+    assert_eq!(seqs_of(&replay, "other"), vec![0], "别的会话一条不动");
+    assert_eq!(replay.keep_tail_only("s"), 0, "幂等");
+}
+
+/// 登记之后：长到 `KEEP + SLACK` 不修，再来一条修回 `KEEP`（摊还）；读数跟着走。
+#[test]
+fn live_growth_is_trimmed_back_to_keep_after_the_slack() {
+    let replay = EventReplay::new();
+    replay.keep_tail_only("s"); // 空会话登记：计数 0
+    let upto = REPLAY_TAIL_KEEP + TRIM_SLACK;
+    let batch: Vec<_> = (0..upto).map(|i| payload("s", i)).collect();
+    push_and_trim(&mut replay.inner.lock(), &batch);
+    assert_eq!(seqs_of(&replay, "s").len(), upto, "余量之内不修");
+    push_and_trim(&mut replay.inner.lock(), &[payload("s", upto)]);
+    let got = seqs_of(&replay, "s");
+    assert_eq!(got.len(), REPLAY_TAIL_KEEP);
+    assert_eq!(*got.first().unwrap(), (upto + 1 - REPLAY_TAIL_KEEP) as u64);
+    assert_eq!(*got.last().unwrap(), upto as u64);
+    assert_eq!(
+        replay.stats(),
+        ReplayStats {
+            history_len: REPLAY_TAIL_KEEP,
+            tail_only_sessions: 1,
+            trimmed_total: (TRIM_SLACK + 1) as u64,
+        }
+    );
+}
+
+#[test]
+fn forget_also_drops_the_tail_only_registration() {
+    let replay = EventReplay::new();
+    replay.keep_tail_only("s");
+    replay.forget("s");
+    assert_eq!(replay.stats().tail_only_sessions, 0);
+    let batch: Vec<_> = (0..REPLAY_TAIL_KEEP * 2).map(|i| payload("s", i)).collect();
+    push_and_trim(&mut replay.inner.lock(), &batch);
+    assert_eq!(
+        seqs_of(&replay, "s").len(),
+        REPLAY_TAIL_KEEP * 2,
+        "忘掉之后回到不设上限那一档"
+    );
+}
