@@ -24,6 +24,7 @@ const FAMILY_B = [
   "src/settings/drift-ledger-section.ts", // U-CC1 复制漂移诊断文本（同族 B：复制完就完事，不贴进任何配置）
   "src/main.ts",
   "src/remote-launch-run.ts", // 回退：复制命令让用户自己跑
+  "src/views/panorama.ts", // 代码全景「复制给 agent」（`设计/97` CP7）：贴进对话，不贴进任何配置
   // 〔`设计/50`〕原先这里还有 `src/views/usage-view.ts`（用量视图里「复制这一屏」）——
   // 用量 ② 轴整轴退役，那份文件整删。
   "src/paste-block.ts", // 组件自己
