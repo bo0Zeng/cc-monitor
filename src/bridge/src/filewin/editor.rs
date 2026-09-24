@@ -1,4 +1,4 @@
-//! `24e` 第九刀：**改一份远端文本** —— `sftp_read_text_for_edit` ＋ `sftp_write_text`。
+//! `24e` 第九刀：**改一份远端文本** —— `sftp_read_text_for_edit`〔散文墓碑〕 ＋ `sftp_write_text`。
 //!
 //! 🔴〔F7a · 第三波 2026-09-24〕**读写两半都经通道问后端了**：写那一半 F2 已换成
 //! `files-write-text`；读那一半这一拍换成 `files-read-text`（[`read_text`]）。标题里那两条
@@ -17,7 +17,7 @@
 //!
 //! ## 问题二「**超了怎么办**」—— 本刀答了，而答案不用改任何签名
 //!
-//! `sftp_read_text_for_edit` 回的 `Option<String>` 把**三件事压成一件**：
+//! `sftp_read_text_for_edit`〔散文墓碑〕 回的 `Option<String>` 把**三件事压成一件**：
 //! 太大 / 含 NUL / 非 UTF-8 全是 `None` ⇒ **谁拿到 `None` 都说不出为什么**。
 //! 老面板的做法是把那一行灰置 —— 而「灰置」与「这个功能坏了」在屏幕上同形。
 //!

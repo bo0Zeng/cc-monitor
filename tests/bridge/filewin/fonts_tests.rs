@@ -292,7 +292,9 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let files = drawn_files();
     assert_eq!(
         files.len(),
-        15,
+        // 〔F7c · 第三波 09-24〕主线 15 → 16，多的是 `upload.rs`（工具栏「上传」那一问）。
+        //   字形一个没多：那几句刻意只用探针里已有的字。
+        16,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \

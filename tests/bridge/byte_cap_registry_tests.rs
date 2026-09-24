@@ -53,6 +53,12 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "STAGING_STALE_SECS",
+        "〔F7c · 第三波 09-24〕**时间**不是体量：暂存区里一份上传件多少秒没动过才算孤儿\
+             （后端 `files_commit·rs::sweep_stale`，只在一次提交成功时顺手扫，不是节拍器）。\
+             它不限任何字节量 —— 暂存区能长多大今天**没有上限**，孤儿只按时间收。",
+    ),
+    (
         "TRIM_SLACK",
         "〔U3b〕**条数**不是体量：重放缓冲里一个「只留尾巴」的会话要**多出**这么多条才修剪一次\
              （`event_replay·rs::push_and_trim`）—— 量的是摊还节奏，不是容量。\
@@ -207,16 +213,9 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "一趟 `files-ls` 一屏最多几条目录项（**条目数，不是字节**）",
         "截断+说清",
     ),
-    (
-        "src/bridge/src/sftp_pool.rs",
-        "MAX_EDIT_BYTES",
-        256 * 1024,
-        "SFTP 在线编辑的文件体量",
-        "拒收+回错",
-    ),
+    // 〔F7c 收尾 09-24〕池子那一份同值的 `MAX_EDIT_BYTES`（「SFTP 在线编辑的文件体量」）随那条读文本命令一起走了。
     // 〔F7a · 第三波 09-24〕文件窗口编辑器的上限**搬回窗口**（它答「文本控件打字卡不卡」，
     //   是窗口的偏好）：每趟经 `max_bytes` 送给后端 `files-read-text`，后端按它整趟拒、不截断。
-    //   ⚠ 上面池子那一份同值常量只剩老面板那条读文本命令在用，随 SFTP 收成只做传输一起走。
     (
         "src/bridge/src/filewin/editor.rs",
         "MAX_EDIT_BYTES",

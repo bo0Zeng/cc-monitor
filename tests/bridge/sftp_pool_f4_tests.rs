@@ -39,7 +39,7 @@
 //!   那三个往返的真实代价 —— **一条都没答**。本秤买的是「我们这一侧的闸与偏移对不对」。
 //! - **它不判 `OriginPool` 那一层。** `OriginPool` 攥着一条真 SSH 连接，本进程里
 //!   构造不出来。被判的是它的**全部策略**所在的 [`ChannelSet`]（两道闸 · 复用 · 世代），
-//!   以及两条传输核心 `download_inner` / `upload_inner`。
+//!   以及两条传输核心 `download_inner` / `upload_to_staging`（〔F7c 收尾 09-24〕上传那一条从直写目标的旧核心换成了只写暂存区的这一条）。
 //!   `OriginPool` 剩下的部分是**接线**：把 `connect_sftp` 的结果喂给上面两者。
 //!   ⚠ 那几行接线**没有判据**，如实登记在这里。
 //! - **它不判 `MaxSessions` 这个数配得对不对** —— 6 是本地自律，远端真值量不到
@@ -53,7 +53,10 @@ use std::time::Duration;
 
 use russh_sftp::protocol::{Attrs, Data, FileAttributes, Handle, Status, StatusCode, Version};
 
-use super::{download_inner, upload_inner, ChannelSet, SESSION_CHANNEL_CAP, TRANSFER_LANE_CAP};
+use super::{
+    download_inner, staging_part, upload_to_staging, ChannelSet, SESSION_CHANNEL_CAP, STAGING_DIR,
+    TRANSFER_LANE_CAP,
+};
 
 // ═══ ① 合成服务端：一张内存表 ＋ **逐条记偏移** ════════════════════════════════
 
@@ -356,26 +359,21 @@ fn never_cancelled() -> Arc<AtomicBool> {
     Arc::new(AtomicBool::new(false))
 }
 
-/// 一条**收得下进度**的 tauri channel：把每条 `transferred` 攒进一个 `Vec`。
+/// 一个**收得下进度**的回调：把每条「已传」攒进一个 `Vec`。
 ///
 /// ★ 第一条进度报的就是**续传起点** —— 那是 `download_inner` 的头一个动作，
 /// 也是本秤判「到底从哪儿接上的」的第二个针（第一个针在服务端的偏移表里）。
-fn progress_sink() -> (
-    tauri::ipc::Channel<super::TransferProgress>,
-    Arc<Mutex<Vec<u64>>>,
-) {
+///
+/// 〔F7c · 第三波 09-24〕两条传输核心的进度口从 `tauri::ipc::Channel` 换成了一个普通回调
+/// （`Fn(已传, 总共)`）：传输台跑在 monitor 里、进度走通道的订阅流，不再有 webview 那一跳。
+/// 老面板那两条 Tauri 命令在入口处把 channel 包成这个回调 —— 本秤喂的是核心，不经那一层。
+fn progress_sink() -> (impl Fn(u64, u64) + Sync, Arc<Mutex<Vec<u64>>>) {
     let seen: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
     let sink = seen.clone();
-    let ch = tauri::ipc::Channel::new(move |body: tauri::ipc::InvokeResponseBody| {
-        // body 是已序列化的 JSON 文本（命令 IPC 恒走 `serde_json`）。
-        // 判据**自己解**，不复用被测侧的类型 —— 两侧同源会恒真。
-        let raw = body.deserialize::<serde_json::Value>().unwrap_or_default();
-        if let Some(n) = raw.get("transferred").and_then(|v| v.as_u64()) {
-            sink.lock().unwrap().push(n);
-        }
-        Ok(())
-    });
-    (ch, seen)
+    (
+        move |transferred: u64, _total: u64| sink.lock().unwrap().push(transferred),
+        seen,
+    )
 }
 
 /// 自旋到 `cond` 成立为止（每轮让出执行权）。超过 `ROUNDS` 轮就当没成立，回 `false`。
@@ -885,17 +883,30 @@ async fn a_download_with_a_mismatched_part_starts_over_instead_of_stitching() {
     );
 }
 
-/// 上传：远端 `.tmp` 里已有**对的**前 40 KiB ⇒ `WRITE` 从那里接着写。
-///
-/// 针是**服务端记下的最小写偏移**：续上 ⇒ `RESUME_AT`；从头 ⇒ `0`。
-#[tokio::test]
-async fn an_upload_with_a_matching_remote_tmp_resumes_from_the_verified_tail() {
-    let corpus = synthetic_corpus();
-    let fs = new_fs();
+/// 暂存件的键（上传两条共用；形状与后端认的一样：32 位小写十六进制）。
+const UP_KEY: &str = "f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4f4";
+
+/// 本台的「文件系统」只认文件 ⇒ 暂存区那个目录拿一格同名条目顶上（`stat` 答得出「在」即可）。
+fn with_staging_dir(fs: &Arc<Mutex<FakeFs>>) {
     fs.lock()
         .unwrap()
         .files
-        .insert("/dst.bin.tmp".to_string(), corpus[..RESUME_AT].to_vec());
+        .insert(STAGING_DIR.to_string(), Vec::new());
+}
+
+/// 上传：暂存件里已有**对的**前 40 KiB ⇒ `WRITE` 从那里接着写。
+///
+/// 针是**服务端记下的最小写偏移**：续上 ⇒ `RESUME_AT`；从头 ⇒ `0`。
+/// 〔F7c 收尾 09-24〕半成品从「目标旁边的 `.tmp`」搬进了暂存区（`staging/<key>.part`），尾块对拍一个字节没改。
+#[tokio::test]
+async fn an_upload_with_a_matching_staging_part_resumes_from_the_verified_tail() {
+    let corpus = synthetic_corpus();
+    let fs = new_fs();
+    with_staging_dir(&fs);
+    fs.lock()
+        .unwrap()
+        .files
+        .insert(staging_part(UP_KEY), corpus[..RESUME_AT].to_vec());
     let sftp = session_on(fs.clone()).await;
 
     let dir = TmpDir::new("up-resume");
@@ -903,7 +914,7 @@ async fn an_upload_with_a_matching_remote_tmp_resumes_from_the_verified_tail() {
     std::fs::write(&src, &corpus).expect("预置本地源");
 
     let (ch, seen) = progress_sink();
-    upload_inner(&sftp, &src, "/dst.bin", &never_cancelled(), &ch)
+    upload_to_staging(&sftp, &src, UP_KEY, &never_cancelled(), &ch)
         .await
         .expect("续传上传应当成功");
 
@@ -919,25 +930,22 @@ async fn an_upload_with_a_matching_remote_tmp_resumes_from_the_verified_tail() {
         "第一条进度应当报在续传起点上"
     );
     assert_eq!(
-        fs.lock().unwrap().files.get("/dst.bin").cloned(),
+        fs.lock().unwrap().files.get(&staging_part(UP_KEY)).cloned(),
         Some(corpus),
-        "远端落地的字节应当逐字节等于本地源"
-    );
-    assert!(
-        !fs.lock().unwrap().files.contains_key("/dst.bin.tmp"),
-        "成功之后远端 `.tmp` 应当已经换名上位"
+        "暂存件的字节应当逐字节等于本地源"
     );
 }
 
-/// 上传：远端 `.tmp` 是**别人的字节** ⇒ 从 0 重来（且 `TRUNCATE` 要把它清掉）。
+/// 上传：暂存件是**别人的字节** ⇒ 从 0 重来（且 `TRUNCATE` 要把它清掉）。
 #[tokio::test]
-async fn an_upload_with_a_mismatched_remote_tmp_starts_over() {
+async fn an_upload_with_a_mismatched_staging_part_starts_over() {
     let corpus = synthetic_corpus();
     let fs = new_fs();
+    with_staging_dir(&fs);
     fs.lock()
         .unwrap()
         .files
-        .insert("/dst.bin.tmp".to_string(), vec![0x55u8; RESUME_AT]);
+        .insert(staging_part(UP_KEY), vec![0x55u8; RESUME_AT]);
     let sftp = session_on(fs.clone()).await;
 
     let dir = TmpDir::new("up-mismatch");
@@ -945,7 +953,7 @@ async fn an_upload_with_a_mismatched_remote_tmp_starts_over() {
     std::fs::write(&src, &corpus).expect("预置本地源");
 
     let (ch, _seen) = progress_sink();
-    upload_inner(&sftp, &src, "/dst.bin", &never_cancelled(), &ch)
+    upload_to_staging(&sftp, &src, UP_KEY, &never_cancelled(), &ch)
         .await
         .expect("重传应当成功");
 
@@ -955,9 +963,9 @@ async fn an_upload_with_a_mismatched_remote_tmp_starts_over() {
         "尾块对不上就必须从 0 重写"
     );
     assert_eq!(
-        fs.lock().unwrap().files.get("/dst.bin").cloned(),
+        fs.lock().unwrap().files.get(&staging_part(UP_KEY)).cloned(),
         Some(corpus),
-        "远端落地的字节应当逐字节等于本地源（缝出来的那个会在这里红）"
+        "暂存件的字节应当逐字节等于本地源（缝出来的那个会在这里红）"
     );
 }
 

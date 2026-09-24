@@ -392,6 +392,8 @@ pub struct FileWindow {
     /// 「存到哪儿 / 盖掉它吗」那两问。`None` = 没在问。
     /// **UI 线程自己的**（同 [`Self::write_prompt`] 的理由：它是一个正在被编辑的草稿）。
     pull_ask: Option<super::download::Ask>,
+    /// 〔F7c · 第三波 09-24〕工具栏「上传」那一问（状态与判定全在 `upload.rs`，这里只挂着）。
+    pub upload: super::upload::UploadPrompt,
     /// 🔴〔第九刀〕编辑那一趟的共享落点（读到货 · 存结局）。
     pub edits: super::editor::EditBoard,
     /// 打开着的那一份文本。`None` = 没在编辑。**UI 线程自己的**。
@@ -519,6 +521,7 @@ impl FileWindow {
             seen_write_rounds: 0,
             pull: super::download::DownloadBoard::default(),
             pull_ask: None,
+            upload: super::upload::UploadPrompt::default(),
             edits: super::editor::EditBoard::default(),
             editing: None,
             asking_discard: false,
@@ -836,7 +839,6 @@ impl FileWindow {
         if items.is_empty() {
             return false;
         }
-        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("上传要一个 tokio 运行时，这个窗口没拿到".into());
@@ -847,7 +849,6 @@ impl FileWindow {
             return false;
         };
         let origin = self.source.origin();
-        let cfg = cfg.clone();
         let board = self.board.clone();
         // 🔴 **把窗口交给看板**，它自己会在「有问题要问 / 进度动了 / 跑完了」时敲一下。
         //   不交的话：进度条要等用户下次动鼠标才跳一格（egui 只在有事发生时才画下一帧）。
@@ -856,7 +857,8 @@ impl FileWindow {
         //    上一摞按过取消 ⇒ 这一摞一件都起不来，而屏幕上看起来是「拖进去没反应」。
         board.cancels().reset();
         h.spawn(async move {
-            let up_cfg = cfg.clone();
+            // 〔F7c〕上传那一腿也经通道（开单 → 起跑并看 → 提交），拿同一条线 ＋ 同一个地址。
+            let (up_line, up_origin) = (line.clone(), origin.clone());
             let ask_board = board.clone();
             let up_board = board.clone();
             let out =
@@ -875,7 +877,7 @@ impl FileWindow {
                         async move { rx.await.unwrap_or_default() }
                     },
                     move |p| {
-                        let cfg = up_cfg.clone();
+                        let (line, origin) = (up_line.clone(), up_origin.clone());
                         let b = up_board.clone();
                         // 🔴〔第五刀〕**取消那道闸在这儿**：按过取消之后，还没起的那几件
                         //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
@@ -886,8 +888,8 @@ impl FileWindow {
                             super::transfer::launch_unless_cancelled(
                                 &desk,
                                 &name,
-                                |id| async move {
-                                    super::transfer::upload_remote(&cfg, &p, &b, &id).await
+                                |_id| async move {
+                                    super::transfer::upload_remote(&line, &origin, &p, &b).await
                                 },
                             )
                             .await
@@ -1373,13 +1375,17 @@ impl FileWindow {
     /// （那是池子取消登记表的唯一造键落点）⇒ 这一趟从此**取消得掉**，
     /// 与上传/复制两条路共用同一张在飞表。
     pub fn start_pull(&mut self, src_path: &str, dest: &str, ctx: Option<egui::Context>) -> bool {
-        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("往外拖要一个 tokio 运行时，这个窗口没拿到".into());
             return false;
         };
-        let cfg = cfg.clone();
+        // 〔F7c〕下载经通道开单、订阅进度 —— 要那条线 ＋ 那台机器的地址。
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            return false;
+        };
+        let origin = self.source.origin();
         let board = self.pull.clone();
         board.attach(ctx);
         let src = src_path.to_string();
@@ -1393,12 +1399,12 @@ impl FileWindow {
         board.begin(&name);
         h.spawn(async move {
             let desk = board.cancels();
-            let run = super::transfer::launch_unless_cancelled(&desk, &name, |id| {
+            let run = super::transfer::launch_unless_cancelled(&desk, &name, |_id| {
                 let b = board.clone();
-                let cfg = cfg.clone();
+                let (line, origin) = (line.clone(), origin.clone());
                 let src = src.clone();
                 let to = to.clone();
-                async move { super::download::pull_one(&cfg, &src, &to, &id, &b).await }
+                async move { super::download::pull_one(&line, &origin, &src, &to, &b).await }
             })
             .await;
             let (got, total) = board.seen();
@@ -1876,6 +1882,8 @@ impl FileWindow {
             || self.write_prompt.is_some()
             || self.new_file.is_some()
             || self.pull_ask.is_some()
+            // 〔F7c〕工具栏「上传」那一问（框开着时键盘不许动列表）。
+            || self.upload.is_open()
             || self.editing.is_some()
     }
 
@@ -2199,6 +2207,10 @@ impl FileWindow {
             if ui.button(super::create::NEW_FILE_LABEL).clicked() {
                 new_file = true;
             }
+            // 〔F7c〕「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
+            if ui.button(super::upload::UPLOAD_LABEL).clicked() {
+                self.upload.open();
+            }
             // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
             //    它在 POSIX 上恒定「失败」，而那是既定设计（逐条住 `open_terminal_here`）。
             if ui.button("在此打开终端").clicked() {
@@ -2309,6 +2321,12 @@ impl FileWindow {
         self.new_file_ui(ui);
         // 🔴〔第八刀〕往外拖那一摞：两问 ／ 进度 ／ 结局。同样模态、同样在前。
         self.pull_ui(ui);
+        // 〔F7c〕「上传」那一问：确定之后走拖入那一条（先一次问完覆盖，再并行传）。
+        let up_dir = self.cwd.clone();
+        if let Some(items) = self.upload.ui(ui, &up_dir) {
+            let ctx = ui.ctx().clone();
+            self.start_drop(items, Some(ctx));
+        }
         // 🔴〔第九刀〕编辑那一摞：**先消化到货，再画** ——
         //    反了的话这一帧画的是上一帧的状态（读完了却还显示「正在读」）。
         self.settle_opened_edits();

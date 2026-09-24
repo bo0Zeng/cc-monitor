@@ -14,6 +14,11 @@
 //! ⚠ 这不是说原生对话框是错的答案 —— 它是一个**今天验不了**的答案。
 //! 登记在 `设计/99`，等有真桌面那天再量。
 //!
+//! # 🔴〔F7c · 第三波 09-24〕窗口不碰 SFTP：下载经通道开单、订阅进度（[`pull_one`]）
+//!
+//! 下面第二、三节说的「池子那一层」今天住 **monitor 里的传输台**（`sftp_pool::transfer_call` 开单时
+//! 先过本机落点那道围栏，起跑时 `download_inner` 之前再过一次）；窗口这一侧照旧只把那句拒绝原样带给用户。
+//!
 //! # 🔴 二、围栏在池子那一层，不在这儿
 //!
 //! 本机落点那道围栏 2026-09-21 补在了 `sftp_pool::sftp_download` 的第一行
@@ -335,37 +340,42 @@ impl DownloadBoard {
     }
 }
 
-/// 真起一件下载 —— 调既有命令 `sftp_pool::sftp_download`。
+/// 开单：下载（传输台那一侧 `sftp_pool::TRANSFER_DOWNLOAD`，判据钉两份相等）。
+pub const OP_DOWNLOAD: &str = "transfer-download";
+
+/// 真起一件下载 —— **开单 → 起跑并看**，两步全经通道（`设计/60 §13.2 ⑤`）。
 ///
-/// 🔴 同 `transfer::upload_remote` 那三条理由（同进程直调、进度通道在本进程现造、
-/// `transfer_id` 由调用方给）。**本模块一行传输代码都不写** ⇒ 4 条传输车道、
-/// 取消登记、断点续传、以及那道**本机落点围栏**全部照旧生效。
+/// 🔴〔F7c · 第三波 09-24〕窗口进程**一行 SFTP 都不碰**了：字节由 monitor 里的传输台从远端读、
+/// 落到用户在上面那一问里选的本机路径（远端只读、不经后端）。本机落点那道围栏、`.part` ＋ 改名上位、
+/// 撤留 `.part` 续传，**全在传输台那一侧，一个字节没改**（`sftp_pool::download_inner`）。
+/// ⚠ 窗口与 monitor 在同一台机器上 ⇒ 「本机路径」对两边是同一个东西。
 pub async fn pull_one(
-    cfg: &crate::ssh_source::RemoteConfig,
+    line: &super::source::Line,
+    origin: &super::source::Origin,
     remote_path: &str,
     dest: &str,
-    transfer_id: &str,
     board: &DownloadBoard,
 ) -> Result<(), String> {
-    let sink = board.clone();
-    let chan = tauri::ipc::Channel::new(move |body| {
-        if let tauri::ipc::InvokeResponseBody::Json(s) = &body {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
-                let got = v.get("transferred").and_then(|x| x.as_u64()).unwrap_or(0);
-                let total = v.get("total").and_then(|x| x.as_u64()).unwrap_or(0);
-                sink.progress(got, total);
-            }
-        }
-        Ok(())
-    });
-    crate::sftp_pool::sftp_download(
-        cfg.clone(),
-        remote_path.to_string(),
-        dest.to_string(),
-        transfer_id.to_string(),
-        chan,
+    let stop = board.cancels().stop_token();
+    let opened = super::source::ask(
+        line,
+        origin,
+        OP_DOWNLOAD,
+        &serde_json::json!({ "remote_path": remote_path, "local_path": dest }),
+        super::transfer::OPEN_BUDGET,
     )
-    .await
+    .await?;
+    let id = super::transfer::field(&opened, OP_DOWNLOAD, "id")?;
+    let sink = board.clone();
+    super::source::watch(
+        line,
+        origin,
+        &format!("{}{id}", super::transfer::KIND_PREFIX),
+        &stop,
+        |got, total| sink.progress(got, total),
+    )
+    .await?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -141,10 +141,16 @@ fn has_prefix(hay: &str, prefix: &str) -> bool {
 // ═══════════════════════════════════════════════════════════════════
 
 /// 模块成员里**不住 `files/` 目录**的那几份（仓相对 `src/backend`）。
-const MEMBERS_ELSEWHERE: &[&str] = &["control/files_write.rs"];
+/// 〔F7c · 第三波 09-24〕`control/files_commit.rs`（上传的提交）同一条理由住 `control/`：
+/// 它会改变世界；而 `files/` 那一族的头注逐字「整族纯读」，放进去那句话就当场变假。
+const MEMBERS_ELSEWHERE: &[&str] = &["control/files_commit.rs", "control/files_write.rs"];
 
 /// 模块在 crate 内的路径前缀（**成员之间**的引用不算一条边）。
-const MODULE_PATHS: &[&str] = &["files::", "control::files_write::"];
+const MODULE_PATHS: &[&str] = &[
+    "files::",
+    "control::files_commit::",
+    "control::files_write::",
+];
 
 fn src_root() -> PathBuf {
     crate::guard_support::src_root()
@@ -195,6 +201,9 @@ fn inward_edges(prod: &str) -> BTreeSet<String> {
     }
     for p in paths_from(prod, "files_write") {
         out.insert(format!("control::files_write::{p}"));
+    }
+    for p in paths_from(prod, "files_commit") {
+        out.insert(format!("control::files_commit::{p}"));
     }
     out
 }
@@ -310,6 +319,12 @@ const DOORS: &[(&str, &str, Door)] = &[
         "control::files_write::answer_wire",
         Door::Command,
     ),
+    // 〔F7c · 第三波 09-24〕上传的提交（`设计/60 §13`）：同一扇门里的第三个入口函数。
+    (
+        "inbound.rs",
+        "control::files_commit::answer_wire",
+        Door::Command,
+    ),
     ("lib.rs", "files::capability_names", Door::Ledger),
 ];
 
@@ -394,20 +409,23 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
     );
     let command = DOORS.iter().filter(|(_, _, d)| *d == Door::Command).count();
     assert_eq!(
-        command, 2,
-        "命令注册那一处够到的入口函数从 2 个变成了 {command} 个 —— \
-         两族（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire`）各一个入口，\
+        command, 3,
+        "命令注册那一处够到的入口函数从 3 个变成了 {command} 个 —— \
+         三面（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire` ／ \
+         上传提交 `control::files_commit::answer_wire`〔F7c 09-24 +1〕）各一个入口，\
          多一个就说明有命令绕过了入口、直接调内部"
     );
 }
 
-/// ★ 挂载那两行**各恰好一处**（`use` 形与 `::` 形的针按构造看不见 `pub mod x;`）。
+/// ★ 挂载那三行**各恰好一处**（`use` 形与 `::` 形的针按构造看不见 `pub mod x;`）。〔F7c 09-24：两行 → 三行，多了 `files_commit`〕
 #[test]
-fn the_file_backend_is_mounted_from_exactly_two_declarations() {
+fn the_file_backend_is_mounted_from_exactly_its_three_declarations() {
     let root = src_root();
     for (file, line) in [
         ("lib.rs", "pub mod files;"),
         ("control/mod.rs", "pub mod files_write;"),
+        // 〔F7c · 第三波 09-24〕上传的提交那一份。
+        ("control/mod.rs", "pub mod files_commit;"),
     ] {
         let src = std::fs::read_to_string(root.join(file))
             .unwrap_or_else(|e| panic!("读不到 `{file}`：{e}"));

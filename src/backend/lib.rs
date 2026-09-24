@@ -545,6 +545,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-write-text",
     // 〔F7a · 第三波 09-24〕同一面第七条（同根内复制）。登记理由与上面逐字相同。
     "--files-copy",
+    // 〔F7c · 第三波 09-24〕上传的提交（`设计/60 §13`）。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
+    "--files-commit-upload",
     "--files-browse",
     "--files-find",
     "--files-index-rebuild",

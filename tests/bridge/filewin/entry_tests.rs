@@ -199,7 +199,7 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
 /// 而「问得到 home 时它真的开在那儿」要真远端，本机永远量不到。
 ///
 /// ⇒ 剩下能确定地钉住的是**结构**：那一跳在不在、在不在前面。
-/// 同族先例：`transfer_tests::the_real_adapters_delegate_to_the_shared_pool`
+/// 同族先例：`transfer_tests::the_real_adapters_speak_only_through_the_channel`
 /// （那条头注逐字「判源码是代理」）。
 ///
 /// ⚠ **它买不到那一跳是对的**，只买到它在。别读宽。

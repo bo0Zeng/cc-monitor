@@ -38,7 +38,7 @@
 //! # 买不到什么（逐条，别读宽）
 //!
 //! - ✅〔F2 · 2026-09-24〕**第一个真前端接上了**：文件窗口进程（`filewin/proc.rs::dial_back` 拨回，`filewin/source.rs::ask` 说 `call`）。
-//! - 🔴 **生产上的 `subscribe` 一条流都没有**（理由住 `host.rs` 头注）。
+//! - ✅〔F7c · 2026-09-24〕**生产上的 `subscribe` 有了第一条流**：传输进度 `transfer/<id>`；其余 `kind` 照旧没有（理由住 `host.rs` 头注）。
 //! - **不买重连**（`client.rs` 头注）· **不买对端撤活**（`host.rs` 头注）· **不买协议版本协商**（`wire.rs` 头注）。
 
 pub mod client;
