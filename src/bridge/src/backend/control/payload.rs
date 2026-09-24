@@ -148,6 +148,27 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
 /// `shell-quote.ts::UNSET_CONFIG_DIR_PREFIX` 同源（对拍夹具覆盖）。
 pub const UNSET_CONFIG_DIR_PREFIX: &str = "unset CLAUDE_CONFIG_DIR; ";
 
+/// 启动期令牌的长度 —— **32 个字符**。
+///
+/// 单独提成常量是为了让 TS 那侧的对拍判据**从本文件抽这个数**、而不是手抄一个 32
+/// （`tests/launch-render-fallback.vitest.ts`）。改这个数 ⇒ TS 那条对拍当场红。
+pub const RBIND_TOKEN_LEN: usize = 32;
+
+/// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个**小写**十六进制字符。
+///
+/// **不收大写**（`b'A'..=b'F'` 刻意不在放行集里）：形状只有一种写法，
+/// 好让本地那张 `token → HWND` 表与从 `environ` 读回来的串能直接相等比较，
+/// 中间不留归一化步骤 —— 归一化是「两侧各写一遍、各写错一遍」的经典落点。
+///
+/// ⚠ 这条**不是转义**：渲染时照样过 `posix_quote`（同 `ExportModel`）。
+/// 「值的形状」与「拼进 shell 安不安全」在本仓是两道闸，不许合并成一道。
+pub fn rbind_token_shape_ok(token: &str) -> bool {
+    token.len() == RBIND_TOKEN_LEN
+        && token
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// 载荷里的一条环境操作。
 ///
 /// **刻意是窄变体而不是通用 `{op, key, value}`**（照搬 TS `launch-plan.ts::EnvOp` 的裁决）：
@@ -160,6 +181,19 @@ pub enum EnvOp<'a> {
         value: &'a str,
     },
     ExportModel {
+        value: &'a str,
+    },
+    /// `设计/80 §8` 步 1：启动期令牌 `CCM_RBIND_TOKEN`（`[0-9a-f]{32}`）。
+    ///
+    /// 「买到什么 / **买不到什么**」逐字住 TS `launch-plan.ts::EnvOp` 那一段。
+    /// 本侧只重复一句要害：**它只是一个不可猜的关联 id，不许承载任何权限语义** ——
+    /// 它会进远端的 `/proc/<pid>/environ` 与 `cmdline`，拿到它顶多能让某人的
+    /// `↗` 拉错窗口，不能越权。
+    ///
+    /// ⚠ 形状校验在 [`render_env_ops`] 里、是 **fail-closed 的 `Err`**（不是「宽容渲染」）。
+    /// 这与 `ExportModel` 那一格**刻意不同**：模型名渲错了远端 `claude` 会自己报错，
+    /// 而令牌渲错了是**静默**的（`↗` 从此拉不到窗口，且归因指向别处）。
+    ExportRbindToken {
         value: &'a str,
     },
     UnsetConfigDir,
@@ -245,6 +279,21 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 let _ = write!(
                     out,
                     "export ANTHROPIC_MODEL={}; ",
+                    shell_quote_core::posix_quote(value)
+                );
+            }
+            EnvOp::ExportRbindToken { value } => {
+                // ★ fail-closed：形状不对**不许渲染成"这次不带令牌"**，也不许照拼 ——
+                //   前者把一次铸币 bug 变成「↗ 不明原因失效」，后者把一个未校验的串
+                //   送进远端 shell。理由见 `EnvOp::ExportRbindToken` 的文档注释。
+                if !rbind_token_shape_ok(value) {
+                    return Err(refuse(format!(
+                        "拒绝拼入命令：CCM_RBIND_TOKEN 形状不对 {value:?}（要 32 个小写十六进制字符）"
+                    )));
+                }
+                let _ = write!(
+                    out,
+                    "export CCM_RBIND_TOKEN={}; ",
                     shell_quote_core::posix_quote(value)
                 );
             }
