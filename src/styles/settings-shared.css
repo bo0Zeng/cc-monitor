@@ -8,6 +8,7 @@
  * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
  */
 
+@layer components {
 .settings-preset-del {
   padding-left: 6px;
   padding-right: 6px;
@@ -288,4 +289,5 @@
 
 .account-picker-action {
   color: var(--text-2);
+}
 }

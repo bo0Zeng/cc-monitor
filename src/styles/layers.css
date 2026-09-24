@@ -15,6 +15,20 @@
  * 而这个桶的位置恰好就在声明的层**之后**。
  * ⇒ 反过来，如果先包 `components`、把 `layout` 留在外面，次序就**倒过来**了。
  *
- * 今天的状态写在 `设计/41` 末尾追加的那一节；每个文件包进了哪一层，看文件本身的 `@layer` 块。
+ * # 今天每一层装着什么（三入口拆分那一拍把「无层桶」清空了）
+ *
+ * | 层 | 装什么 | 住址 |
+ * |---|---|---|
+ * | `reset` | `box-sizing` · `html/body` · 表单控件最小重置 | `reset.css` |
+ * | `vendor` | 第三方样式表（highlight.js 主题 · KaTeX） | 构建时由 `vite.config.ts` 的 postcss 插件包上 |
+ * | `tokens` | `:root` 令牌 | `tokens.css` |
+ * | `base` | （空）今天没有纯元素级的规则 | — |
+ * | `layout` | `#app` 网格 ＋ 格子认领 | `layout.css` |
+ * | `components` | 其余全部 | `shared` / `styles` / `settings-shared` / `main` / `settings` / `viewer` |
+ * | `states` | （空）既有的状态规则**没有搬** —— 搬过去会让它们无视特异度压过组件，离线核对里 17 处会翻转，其余的靠目视才能放心；新写的状态覆盖可以直接进这层 | — |
+ * | `utilities` | （空） | — |
+ *
+ * 判据：`tests/css-ledger.vitest.ts` 格 ⑤（源码：零无层规则、零野层名、次序 == 设计）·
+ * `tests/entry-graphs.vitest.ts`「子步 3」（构建产物：零无层规则、第三方只在 `vendor`、层声明排第一）。
  */
-@layer reset, tokens, base, layout, components, states, utilities;
+@layer reset, vendor, tokens, base, layout, components, states, utilities;

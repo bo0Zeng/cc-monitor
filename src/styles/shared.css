@@ -8,6 +8,7 @@
  * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
  */
 
+@layer components {
 /* === 通用 toast 体系（v2.0.0 落地 issue #4 + INVARIANT § 12）===
  *
  * .ccm-toast-stack: 固定右下角的堆叠容器；多个 toast append 进来自动垂直排列
@@ -519,4 +520,5 @@
 
 .acct-avatar.ghost.acct-c7 {
   color: var(--acct-c7);
+}
 }

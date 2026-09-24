@@ -8,6 +8,7 @@
  * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
  */
 
+@layer components {
 /* 🔴 S24：`.tab-archive` 也要在这张单子里。viewer 窗口**照样 new 一个 TabManager**
    （`main.ts` bootstrapViewer），所以抽屉在这里也会被插进 `#app` —— 而 viewer 的模板
    只有 `top/main/status` 三行、没有 `archive`。实测（改前）：viewer 里插进抽屉，
@@ -58,4 +59,5 @@ body.viewer-mode .grid-monitor-trigger {
 .viewer-topbar-btn:hover {
   color: var(--text);
   background: var(--overlay-hover);
+}
 }

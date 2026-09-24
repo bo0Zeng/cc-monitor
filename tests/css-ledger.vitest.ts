@@ -599,3 +599,181 @@ describe("S25 ④ stylelint 报错总数（递减棘轮）", () => {
     denom("④", 1, "处 CI 侧散文（与判据常量对上了）");
   });
 });
+
+// ═══════════════════════════ ⑤ 层真包进去（`设计/41 §3` · 件 2）═══════════════════════════
+//
+// 〔三入口拆分那一拍新装〕`设计/41` 抬头的订正逐字：「7 个层只有 `reset`/`tokens` 真包进去
+// （**无层样式赢过所有有层的**，收益还没到手）」。本格钉的就是那一句的反面，两条：
+//
+// ⑤a **恒等**：`src` 下每一份 CSS 里的每一条规则，外层 at-rule 链上都有一个 `@layer` ——
+//     无层规则的条数 == 0。一条漏网的无层规则会**压过所有有层的**（与特异度无关），
+//     正是订正里说的那个病。
+// ⑤b **恒等**：用到的每个层名都在 `layers.css` 那句声明里，且那句声明的次序 == 下面这张表。
+//     拼错一个层名不会报错 —— 浏览器会**悄悄新开一层、排在所有声明过的层之后**，于是那一块
+//     压过一切。这一形没有任何别的东西会叫。
+//
+// 买到 / 买不到：
+// - ✅ 源码层面零无层规则、零野层名、层序与设计一致。构建产物（含第三方 CSS 被
+//   `vite.config.ts` 的插件包进 `vendor` 那一步）另由 `tests/entry-graphs.vitest.ts` 对产物再判一次。
+// - ❌ **每条规则进的是不是「对的」那一层**（该进 `states` 的还在 `components`）判不了 ——
+//   那要语义。今天 `base` / `states` / `utilities` 三层是空的，理由写在 `设计/41` 末尾追加的那一节。
+
+/** 层的设计次序（`设计/41 §3` 七层 ＋ 第三方那一层 `vendor`，排在 `reset` 之后、我们所有层之前）。 */
+const LAYER_ORDER = ["reset", "vendor", "tokens", "base", "layout", "components", "states", "utilities"] as const;
+
+interface LayerScan {
+  /** 判过的规则条数（分母）。 */
+  rules: number;
+  /** 不在任何 `@layer` 里的规则：选择器 → 所在行。 */
+  unlayered: string[];
+  /** 用到的层名（`@layer x {` 块与 `@layer a, b;` 语句里出现的）。 */
+  used: string[];
+  /** `@layer a, b, …;` 语句按出现次序。 */
+  statements: string[][];
+  /** 真装着规则的层（`@layer x { … }` 块的名字）。 */
+  blocks: string[];
+}
+
+/** 扫一份 CSS：每条规则在不在层里、用了哪些层名。注释与字符串里的花括号不算。 */
+export function scanLayers(css: string, file: string): LayerScan {
+  const out: LayerScan = { rules: 0, unlayered: [], used: [], statements: [], blocks: [] };
+  const stack: string[] = [];
+  let buf = "";
+  let line = 1;
+  let inRule = 0;
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (c === "\n") line++;
+    if (c === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      const stop = end === -1 ? css.length : end + 2;
+      for (let k = i; k < stop; k++) if (css[k] === "\n") line++;
+      i = stop - 1;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const end = css.indexOf(c, i + 1);
+      buf += css.slice(i, end + 1);
+      i = end;
+      continue;
+    }
+    if (inRule > 0) {
+      if (c === "{") inRule++;
+      if (c === "}") inRule--;
+      continue;
+    }
+    if (c === ";") {
+      const m = /^@layer\s+([^{]+)$/.exec(buf.trim());
+      if (m) {
+        const names = m[1].split(",").map((s) => s.trim());
+        out.statements.push(names);
+        out.used.push(...names);
+      }
+      buf = "";
+      continue;
+    }
+    if (c === "{") {
+      const prelude = buf.trim().replace(/\s+/g, " ");
+      buf = "";
+      if (prelude.startsWith("@")) {
+        const m = /^@layer\s+([\w-]+)$/.exec(prelude);
+        if (m) {
+          out.used.push(m[1]);
+          out.blocks.push(m[1]);
+        }
+        // @keyframes / @font-face 的内部不是规则
+        if (/^@(?:-webkit-)?keyframes\b|^@font-face\b/.test(prelude)) {
+          inRule = 1;
+          continue;
+        }
+        stack.push(prelude);
+        continue;
+      }
+      out.rules++;
+      if (!stack.some((a) => a.startsWith("@layer "))) out.unlayered.push(`${file}:${line}  ${prelude.slice(0, 60)}`);
+      inRule = 1;
+      continue;
+    }
+    if (c === "}") {
+      stack.pop();
+      buf = "";
+      continue;
+    }
+    buf += c;
+  }
+  return out;
+}
+
+describe("S25 ⑤ 层真包进去（设计/41 §3 · 件 2）", () => {
+  it("⑤a 每一条规则都在某个 @layer 里（无层规则 == 0）", () => {
+    const led = ledger();
+    let rules = 0;
+    const unlayered: string[] = [];
+    for (const f of led.cssFiles) {
+      const s = scanLayers(readFileSync(resolve(REPO_ROOT, f), "utf8"), f);
+      rules += s.rules;
+      unlayered.push(...s.unlayered);
+    }
+    // 反空真：扫到的规则条数掉到地板以下 ⇒ 扫描器坏了，下面那条零命中地绿
+    expect(rules, `只判到 ${rules} 条规则 —— 扫描器坏了`).toBeGreaterThan(900);
+    expect(
+      unlayered,
+      "这些规则不在任何 `@layer` 里 —— **无层样式赢过所有有层的**（与特异度无关），\n" +
+        "它们会悄悄压过层里的一切。放进它该在的那一层（多半是 `components`）。",
+    ).toEqual([]);
+    denom("⑤", rules, `条规则（${led.cssFiles.length} 份 CSS，无层 0）`);
+  });
+
+  it("⑤b 层名都在声明里、声明次序 == 设计（拼错的层名会悄悄排到最后、压过一切）", () => {
+    const led = ledger();
+    const decl = scanLayers(readFileSync(resolve(REPO_ROOT, "src/styles/layers.css"), "utf8"), "layers.css");
+    expect(decl.statements, "`layers.css` 里应该恰好一句 `@layer …;` 声明").toHaveLength(1);
+    expect(decl.statements[0], "层的次序与 `设计/41 §3`（＋ vendor）不一致").toEqual([...LAYER_ORDER]);
+    const wild: string[] = [];
+    const used = new Set<string>();
+    for (const f of led.cssFiles) {
+      const sc = scanLayers(readFileSync(resolve(REPO_ROOT, f), "utf8"), f);
+      for (const n of sc.used) if (!(LAYER_ORDER as readonly string[]).includes(n)) wild.push(`${f}: @layer ${n}`);
+      for (const n of sc.blocks) used.add(n);
+    }
+    expect(wild, "这些层名没在声明里 —— 浏览器会给它新开一层、排在所有声明过的层之后").toEqual([]);
+    // 分母：今天真有规则落进的层（base / states / utilities 空着，理由见 `设计/41` 末尾追加的那一节）
+    for (const must of ["reset", "tokens", "layout", "components"]) expect(used.has(must), `没有任何文件用到 \`${must}\` 层`).toBe(true);
+    // `vendor` 不在源码里 —— 它由 `vite.config.ts` 的插件在构建时包上（产物那一侧由 entry-graphs 判）
+    denom("⑤", used.size, `个层真装着规则（${[...used].sort().join(" · ")}），零野层名`);
+  });
+
+  /**
+   * `设计/41 §4` · 件 3：最小重置里要有表单控件那一族。订正里那句「`@layer reset` 里只有
+   * `box-sizing` ＋ `html/body`，button/input 那一族没有」就是本条的反面。
+   * ⚠ 这是**存在性**钉子：买到「那几条声明在、而且在 `reset` 层里」，**买不到**它们在真窗口里
+   * 让哪些控件变了样（要目视；静态普查的读数写在 `reset.css` 那条规则的注释里）。
+   */
+  it("⑤c reset 层里有表单控件的最小重置（四种控件继承字体与颜色；button 抹底抹边）", () => {
+    const css = readFileSync(resolve(REPO_ROOT, "src/styles/reset.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+    const body = /@layer\s+reset\s*\{([\s\S]*)\}\s*$/.exec(css.trim())?.[1] ?? "";
+    expect(body.length, "reset.css 里切不出 `@layer reset { … }` —— 下面几条对着空串").toBeGreaterThan(100);
+    const rules = [...body.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+      sels: m[1].split(",").map((x) => x.trim()),
+      decls: m[2].replace(/\s+/g, " "),
+    }));
+    const find = (sel: string, decl: RegExp): boolean => rules.some((r) => r.sels.includes(sel) && decl.test(r.decls));
+    for (const el of ["button", "input", "select", "textarea"]) {
+      expect(find(el, /font:\s*inherit/), `reset 层里没有给 \`${el}\` 继承字体`).toBe(true);
+      expect(find(el, /color:\s*inherit/), `reset 层里没有给 \`${el}\` 继承颜色`).toBe(true);
+    }
+    expect(find("button", /background:\s*none/) && find("button", /border:\s*0/), "reset 层里没有抹掉 button 的原生底与边").toBe(true);
+    denom("⑤", rules.length, "条 reset 规则（表单控件那一族在）");
+  });
+
+  it("⑤ 死值验：扫描器认得出无层规则与野层名，也不把 @keyframes 的帧当规则", () => {
+    const bad = scanLayers(
+      "@layer components { .ok { color: red; } }\n.leak { color: red; }\n@layer componets { .typo { x: y; } }\n@keyframes k { 0% { opacity: 0; } }",
+      "<变异体>",
+    );
+    expect(bad.rules, "变异体里 3 条规则（帧不算）").toBe(3);
+    expect(bad.unlayered.map((u) => u.replace(/^.*?\s{2}/, ""))).toEqual([".leak"]);
+    expect(bad.used.filter((n) => !(LAYER_ORDER as readonly string[]).includes(n))).toEqual(["componets"]);
+    denom("⑤", 3, "条变异体规则（1 条无层、1 个野层名，都逮到了）");
+  });
+});
