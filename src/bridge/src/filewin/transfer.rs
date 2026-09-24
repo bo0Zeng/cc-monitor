@@ -38,15 +38,18 @@
 //! # ⚠ 买不到什么（逐条写明，别读宽）
 //!
 //! - **没有一趟真传输的读数。** 本仓红线不许起真连接
-//!   （`tests/bridge/sftp_tests.rs` 逐字「跑不了真路」）⇒ [`probe_remote`] / [`upload_remote`]
-//!   这两个适配器**本机跑不到**。它们买得到的是**委派**：它们调的是
-//!   `sftp_pool` 那两条既有命令，不自己开连接、不自己分块写
-//!   （判据 `transfer_tests::the_real_adapters_delegate_to_the_shared_pool`）。
-//! - **`lanes` 不是真正的闸。** 真正的闸在池里（`lease_transfer` 的 4 条车道，
+//!   （`tests/bridge/sftp_tests.rs` 逐字「跑不了真路」）。〔F7c 09-24〕[`probe_remote`] / [`upload_remote`]
+//!   今天**经通道**说话（开单 · 订阅进度 · 后端提交），不自己开连接、不碰池子
+//!   （判据 `transfer_tests::the_real_adapters_speak_only_through_the_channel` 判源码，
+//!   `transfer_tests::an_upload_opens_watches_then_commits_with_the_humans_answer` 在真回环 ＋ 合成对端上判三步的顺序与载荷）。
+//!   传输台那一侧（真 SFTP 会话上）的读数由 `sftp_staging_tests` / `chan::host::transfer_stream_tests` 各自判。
+//! - **`lanes` 不是真正的闸。** 真正的闸在 monitor 的池里（`lease_transfer` 的 4 条车道，
 //!   借不到就 `await`，那个 `await` 就是队列 —— `设计/60 §5.4a`）。
-//!   本模块这个数只为「别把一万个 future 一起堆起来」，所以它**取的就是池里那个常量**
-//!   （[`crate::sftp_pool::TRANSFER_LANE_CAP`]），不另写一个字面量。
-//! - **不做断点续传的判断**：那在 `sftp_upload` 里面（尾块逐字节对账），本模块看不见也不该看见。
+//!   本层这个数只为「别把一万条订阅一起堆起来」；〔F7c〕它是一份**与池里那个数钉相等**的副本
+//!   （[`WINDOW_TRANSFER_LANES`]），因为窗口进程一个 `sftp_pool` 符号都不碰。
+//! - **不做断点续传的判断**：那在传输台那一侧（暂存件的尾块对拍），本模块看不见也不该看见。
+//! - ✅〔F7c · 第三波 09-24〕**「上传按钮」做了**：工具栏「上传」⇒ 问一句本机路径（一行一个）⇒ 交给 [`run_drop`]
+//!   （`upload.rs`；下面三件里 ① 拍了、② 仍然没有原生选文件框、③ 挂载只占 `shell.rs` 几行）。下面是当时停下的原话：
 //! - 🔴〔F1 · 波 5 · 2026-09-24〕**「上传按钮」没做，停在这里 —— 做不动，不是漏了。**
 //!   今天只能把文件**拖**进窗口（[`run_drop`] 那一条）。加一颗按钮卡在三件事上，逐条：
 //!   ① **一道没拍的设计题**：跨机传输走后端帧面还是走 SFTP（`设计/60 §8.4` 与 `§8.5` 要一起裁）
@@ -60,12 +63,12 @@
 //!
 //! # 🔴〔第五刀 2026-09-21〕取消那一条（`设计/99 §4.6.4` 单记的那一格）
 //!
-//! 那一节逐字：「`sftp_cancel_transfer` 那一条值得单记：池子里有取消登记，
+//! 那一节逐字：「`sftp_cancel_transfer`〔散文墓碑〕 那一条值得单记：池子里有取消登记，
 //! **窗口上没有取消按钮** ⇒ 一趟传输起来了就只能等它自己完。」
 //!
 //! ## 病根不是「少画一颗按钮」，是**那个键窗口说不出来**
 //!
-//! 池子的取消登记表以 `transfer_id` 为键（`sftp_pool::sftp_cancel_transfer` 吃的就是它），
+//! 池子的取消登记表以 `transfer_id` 为键（`sftp_pool::sftp_cancel_transfer〔散文墓碑〕` 吃的就是它），
 //! 而这一刀之前那个 id 是在 [`upload_remote`] 里 `uuid::Uuid::new_v4()` **现造的**
 //! ⇒ 它从没离开过那个函数的栈 ⇒ 窗口**根本说不出要取消哪一趟**。
 //! 画一颗按钮解决不了这个：按钮手上没有键。
@@ -78,22 +81,47 @@
 //! | 半 | 落点 | 买到 | 买不到 |
 //! |---|---|---|---|
 //! | **还没起的那几件一件都不起** | [`launch_unless_cancelled`] | 行为：`N` 件里按下取消之后，`go` 再也不被调（相等断言 ＋ 阴性对照） | —— |
-//! | **已经在飞的那一趟停下来** | [`forward_cancel`] → `sftp_pool::sftp_cancel_transfer` | **委派**：那几个 id 真的被送进池子那条命令 | 🔴 **一趟真传输在池子里真的停了** —— 那要一趟真连接（本仓红线不许），而池子那一侧的取消旗由它自己的判据与秤 F4 钉着 |
+//! | **已经在飞的那一趟停下来** | 〔F7c 收尾〕[`CancelDesk::stop_token`] → 停订 → 传输台撤（从前那条 `forward_cancel`〔散文墓碑〕把 id 送进池子的取消命令，随复制走后端一起删了） | 行为：按取消 ⇒ 对端看见流被丢掉、不提交 | 🔴 **一趟真传输在真 sshd 上真的停了** —— 那要一趟真连接（本仓红线不许） |
+
+//!
+//! # 🔴〔F7c · 第三波 · 2026-09-24〕窗口进程**一行 SFTP 都不碰**了（`设计/60 §13`）
+//!
+//! 用户逐字「**保留SFTP. 思考怎么干净**」＋「**现在只允许后端的文件管理部分写文件**」。
+//! 上面几节里「调池子那条既有命令」「同一个进程级连接池」的说法**是上一版的**，今天的形状是：
+//!
+//! ```text
+//! 开单  source::ask(line, origin, "transfer-upload", {local_path})        → {id, key}
+//! 起跑  source::watch(line, origin, "transfer/<id>", 撤的令牌, 进度回调)    → 传完的字节数
+//! 提交  source::ask(line, origin, "files-commit-upload", {key, root, rel, overwrite})
+//! ```
+//!
+//! - 传输台（SFTP 连接、池、车道闸、续传、暂存区）住 **monitor**；窗口只经通道说 `call` / `subscribe`。
+//! - 上传**只写暂存区**；落进用户目录的那一下是**后端文件管理**那条提交命令（先过围栏）。
+//! - 覆盖不覆盖由这一侧**显式**交给后端（[`Pending::overwrite`]：人在那一问里点了「覆盖」的才是 `true`）；
+//!   人没被问过的那几件一律 `false` ⇒ 目标在两问之间冒出来了，后端拒，不静默盖掉。
+//! - 取消：窗口里那颗按钮 ⇒ [`CancelDesk::request`] 拨下这一摞的撤单令牌 ⇒ 每一趟的订阅停掉 ⇒
+//!   传输台那一侧「停订即撤」。〔F7c 收尾〕从前复制那一腿的池子取消（`forward_cancel`〔散文墓碑〕）
+//!   随复制走后端（F7a `files-copy`，不可取消）一起删了 ⇒ 窗口进程里一个 `sftp_pool` 符号都不剩。
 
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// 一趟拖入同时起几件。
+/// 一趟拖入同时起几件（同时挂着几条进度订阅 / 同时问几件「那儿有没有东西」）。
 ///
-/// 🔴 **这个数不在本层裁定** —— 真正的闸在池里（`lease_transfer` 的车道信号量，
-/// `设计/60 §5.4a` 的 `6 − 4 = 2`）。本层限并发只为「别把一万个 future 一起堆起来」，
-/// 所以它**取的就是池里那个常量**，不另写一个字面量。
+/// 🔴 **这个数不在本层裁定** —— 真正的闸在 monitor 的池里（`lease_transfer` 的车道信号量，
+/// `设计/60 §5.4a` 的 `6 − 4 = 2`）；这里多挂的那几条订阅只是在那道闸前面排队。
+/// 本层限并发只为「别把一万条订阅一起堆起来」。
 ///
-/// ⚠ 抽成一个函数是为了让「窗口那一侧用的是不是池里那个数」有一个**唯一**的落点
-/// 判得动（`transfer_tests::our_concurrency_cap_is_the_pools_own_lane_count`）。
+/// 〔F7c 09-24〕它**不再** `use` 池里那个常量：窗口进程一个 `sftp_pool` 的符号都不碰
+/// （`boundary_tests::WINDOW_SIDE` 两向钉着）⇒ 两边各写一份、判据钉**相等**
+/// （`transfer_tests::our_concurrency_cap_is_the_pools_own_lane_count`）——
+/// 「两份逐字副本 ＋ 相等断言」，与 `设计/60 §11.4` 那两份围栏同一个形状。
+pub const WINDOW_TRANSFER_LANES: usize = 4;
+
+/// 一趟拖入同时起几件 —— 窗口那一侧拿这个数的**唯一**落点。
 pub fn lanes() -> usize {
-    crate::sftp_pool::TRANSFER_LANE_CAP
+    WINDOW_TRANSFER_LANES
 }
 
 /// 一件待传：本机哪个文件 → 远端哪条路径。
@@ -103,6 +131,9 @@ pub struct Pending {
     pub remote_path: String,
     /// 显示名（＝ 远端那一侧的 basename）。
     pub name: String,
+    /// 〔F7c〕提交时交给后端的覆盖策略。**只有人在那一问里点了「覆盖」的那几件是 `true`**
+    /// （由 [`run_drop`] 在「一次问完」之后标上）；造出来时一律 `false`。
+    pub overwrite: bool,
 }
 
 impl Pending {
@@ -120,6 +151,7 @@ impl Pending {
             local_path: local_path.to_string(),
             remote_path: format!("{base}/{name}"),
             name,
+            overwrite: false,
         })
     }
 }
@@ -184,11 +216,16 @@ where
     };
 
     // 准传的那一摞 = 不冲突的全部 ＋ 人点了「覆盖」的那几件。
+    // 〔F7c〕后者**标上** `overwrite` —— 提交时后端据它决定「目标在就拒」还是「整份换掉」；
+    //   前者一律不标：人没被问过的，目标若在两问之间冒出来，后端拒，不替人盖。
     let go: Vec<Pending> = items
         .iter()
         .zip(flags.iter())
         .filter(|(p, hit)| !**hit || allowed.contains(p))
-        .map(|(p, _)| p.clone())
+        .map(|(p, hit)| Pending {
+            overwrite: *hit,
+            ..p.clone()
+        })
         .collect();
     let skipped = items.len() - go.len();
 
@@ -265,6 +302,9 @@ pub struct CancelDesk {
     requested: Arc<AtomicBool>,
     /// 一共造过几个键 —— 给判据一个可观测的数（键唯一性靠它对账）。
     minted: Arc<AtomicU64>,
+    /// 〔F7c〕这一摞的**撤单令牌**：经通道起的每一趟（上传 / 下载）都盯着它，
+    /// 拨下 ⇒ 那一趟的订阅停掉 ⇒ 传输台那一侧「停订即撤」。下一摞换一枚新的（[`CancelDesk::reset`]）。
+    stop: Arc<Mutex<crate::chan::wire::CancelToken>>,
 }
 
 impl CancelDesk {
@@ -316,14 +356,18 @@ impl CancelDesk {
         self.requested.load(Ordering::SeqCst)
     }
 
+    /// 这一摞此刻的撤单令牌（经通道起的每一趟拿它去盯）。
+    pub fn stop_token(&self) -> crate::chan::wire::CancelToken {
+        self.stop.lock().unwrap().clone()
+    }
+
     /// 🔴 **按下取消**：立旗 ＋ 把在飞的那几个键**真的送进池子**。
     ///
     /// 回值 = 送出去的那几个键（判据按它做相等断言）。
     pub fn request(&self) -> Vec<String> {
         self.requested.store(true, Ordering::SeqCst);
-        let ids = self.in_flight_ids();
-        forward_cancel(&ids);
-        ids
+        self.stop_token().cancel();
+        self.in_flight_ids()
     }
 
     /// 下一摞开始：旗放下、在飞表清空。
@@ -333,22 +377,7 @@ impl CancelDesk {
     pub fn reset(&self) {
         self.requested.store(false, Ordering::SeqCst);
         self.in_flight.lock().unwrap().clear();
-    }
-}
-
-/// 把取消**真的送到池子里** —— 调既有命令 `sftp_pool::sftp_cancel_transfer`。
-///
-/// 🔴 **为什么可以在 UI 线程上同步跑完一个 `async fn`**：那条命令的函数体里
-/// **一个 `await` 都没有**（它只锁一次取消登记表、翻一个 `AtomicBool`）
-/// ⇒ `block_on` 立刻返回，不阻塞画帧。
-/// ⚠ 换成「往看板里塞一个 tokio `Handle`」的话，**画一帧就依赖一个运行时**，
-/// 而窗口手上**不一定有**一个（`FileWindow::rt` 是 `Option`，理由住它自己那一格；
-/// 从前那条理由是「本机那一侧压根没有运行时」，本机侧 2026-09-23 退役了）。
-///
-/// ⚠ 没注册过的 id 在池子那侧是 no-op（那条命令的注释逐字）⇒ 重复按取消无害。
-pub fn forward_cancel(ids: &[String]) {
-    for id in ids {
-        futures::executor::block_on(crate::sftp_pool::sftp_cancel_transfer(id.clone()));
+        *self.stop.lock().unwrap() = Default::default();
     }
 }
 
@@ -410,48 +439,71 @@ pub async fn probe_remote(
 /// 一次「那儿有没有东西」的往返上限（调用方给的期限，`05 §3.3.2`）。
 pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// 真起一件上传 —— 调既有命令 `sftp_pool::sftp_upload`。
+/// 开单：上传（传输台那一侧 `sftp_pool::TRANSFER_UPLOAD`，判据钉两份相等）。
+pub const OP_UPLOAD: &str = "transfer-upload";
+/// 进度流的 `kind` 前缀（传输台那一侧 `sftp_pool::TRANSFER_KIND_PREFIX`，判据钉两份相等）。
+pub const KIND_PREFIX: &str = "transfer/";
+/// 提交：后端文件管理那一条（后端 `control/files_commit.rs::COMMIT_COMMANDS`）。
+pub const CMD_COMMIT: &str = "files-commit-upload";
+/// 开单那一趟往返的上限（调用方给的期限，`05 §3.3.2`）。开单只登记、不搬字节。
+pub const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+/// 提交那一趟往返的上限：后端那一侧是围栏的几次 `canonicalize` ＋ 一次同盘改名。
+pub const COMMIT_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// 从开单的应答里取一个字符串字段（缺了 ⇒ 契约不符，照实说）。
+pub(crate) fn field(v: &serde_json::Value, cmd: &str, key: &str) -> Result<String, String> {
+    v.get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| format!("`{cmd}` 的应答里没有 `{key}` —— 和约定的不一样"))
+}
+
+/// 真起一件上传 —— **开单 → 起跑并看 → 提交**，三步全经通道（`设计/60 §13.2`）。
 ///
-/// 🔴 **为什么可以直接调一个 `#[tauri::command]`**：同进程（`super` 头注），
-/// 它同时就是一个普通 `pub async fn` ⇒ 这里不过 IPC、不过 serde，
-/// 走的是**同一个进程级连接池**，于是 4 条传输车道、取消登记、断点续传
-/// 全部照旧生效，本模块一行传输代码都不用写。
-///
-/// 🔴 **进度通道是在本进程里现造的**（`tauri::ipc::Channel::new`）：
-/// 那个类型不只为 webview 服务，`new` 收一个普通回调。
-/// ⇒ 进度直接落进 `board`，不绕一圈 webview。
-///
-/// 🔴〔第五刀〕`transfer_id` **由调用方给**，不在这儿造。
-/// 它是池子取消登记表的键 —— 造在这儿的话它从没离开过这个栈，
-/// 窗口就说不出要取消哪一趟（理由逐字住本模块头注那一节，
-/// 唯一的造键落点是 [`CancelDesk::mint`]）。
+/// 🔴 这里一行 SFTP 都没有：字节由 monitor 里的传输台搬进暂存区，
+/// 落进用户目录的那一下是后端文件管理的 `files-commit-upload`（先过围栏）。
+/// ⚠ 传输失败 ⇒ 不提交、暂存件留着（重拖一次从尾块接上）；撤 ⇒ 不提交、暂存件已删。
 pub async fn upload_remote(
-    cfg: &crate::ssh_source::RemoteConfig,
+    line: &super::source::Line,
+    origin: &super::source::Origin,
     p: &Pending,
     board: &DropBoard,
-    transfer_id: &str,
 ) -> Result<(), String> {
+    let stop = board.cancels().stop_token();
+    let opened = super::source::ask(
+        line,
+        origin,
+        OP_UPLOAD,
+        &serde_json::json!({ "local_path": p.local_path }),
+        OPEN_BUDGET,
+    )
+    .await?;
+    let id = field(&opened, OP_UPLOAD, "id")?;
+    let key = field(&opened, OP_UPLOAD, "key")?;
     let name = p.name.clone();
     let sink = board.clone();
-    let chan = tauri::ipc::Channel::new(move |body| {
-        // `InvokeResponseBody` 在同进程里就是那段 JSON 文本。
-        if let tauri::ipc::InvokeResponseBody::Json(s) = &body {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
-                let got = v.get("transferred").and_then(|x| x.as_u64()).unwrap_or(0);
-                let total = v.get("total").and_then(|x| x.as_u64()).unwrap_or(0);
-                sink.progress(&name, got, total);
-            }
-        }
-        Ok(())
-    });
-    crate::sftp_pool::sftp_upload(
-        cfg.clone(),
-        p.local_path.clone(),
-        p.remote_path.clone(),
-        transfer_id.to_string(),
-        chan,
+    super::source::watch(
+        line,
+        origin,
+        &format!("{KIND_PREFIX}{id}"),
+        &stop,
+        |got, total| sink.progress(&name, got, total),
     )
-    .await
+    .await?;
+    super::source::ask(
+        line,
+        origin,
+        CMD_COMMIT,
+        &serde_json::json!({
+            "key": key,
+            "root": super::source::parent_dir(&p.remote_path),
+            "rel": super::source::remote_basename(&p.remote_path),
+            "overwrite": p.overwrite,
+        }),
+        COMMIT_BUDGET,
+    )
+    .await?;
+    Ok(())
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -663,4 +715,4 @@ impl DropBoard {
 
 #[cfg(test)]
 #[path = "../../../../tests/bridge/filewin/transfer_tests.rs"]
-mod tests;
+pub(crate) mod tests;

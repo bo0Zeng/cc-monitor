@@ -1240,7 +1240,7 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
 
 /// 起一摞真的走 `writeops::run_writes`，而**不是**在窗口里另写一套确认流。
 ///
-/// ⚠ 判源码是代理（同族先例：`transfer_tests::the_real_adapters_delegate_to_the_shared_pool`）。
+/// ⚠ 判源码是代理（同族先例：`transfer_tests::the_real_adapters_speak_only_through_the_channel`）。
 /// 买的是：多选长出来那天，它自动落在「一次问完」那条路上。
 #[test]
 fn the_window_starts_a_batch_through_the_shared_three_step_function() {

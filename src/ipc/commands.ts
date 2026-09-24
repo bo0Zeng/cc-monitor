@@ -173,7 +173,6 @@ import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { TransferProgress } from "../generated/TransferProgress";
 import type { PanoramaStatus } from "../generated/PanoramaStatus";
 import type { ProfileScan } from "../generated/ProfileScan";
-import type { SftpEntry } from "../generated/SftpEntry";
 import type { PushResult } from "../generated/PushResult";
 import type { RemoteProjectsResult } from "../generated/RemoteProjectsResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
@@ -495,13 +494,9 @@ export const commands = {
   panorama_write_doc_link: (args: { repo: string; doc: string; target: string }) =>
     invoke<void>("panorama_write_doc_link", args),
 
-  /** 取消一次进行中的传输。Rust **无返回值**（`fn … -> ()`）⇒ **桶①**。 */
-  sftp_cancel_transfer: (args: { transferId: string }) =>
-    invoke<void>("sftp_cancel_transfer", args),
-
   /**
    * 远端内部复制（步 23b）。Rust 返回 `Result<Option<String>, String>` ⇒ `string | null`
-   * （**原始类型**，与 `sftp_read_text_for_edit` 同一形；不生成类型）。
+   * （**原始类型**；不生成类型）。
    *
    * 🔴 **`null` 与非 `null` 是两条不同的路，调用方必须分开处理：**
    * - `null` ⇒ 走了 `copy-data` 扩展，**服务端自己搬字节，一个文件字节都没经过这台机器**；
@@ -518,67 +513,9 @@ export const commands = {
     onProgress: Channel<TransferProgress>;
   }) => invoke<string | null>("sftp_copy", args),
 
-  /**
-   * 改远端文件/目录的权限位（`SSH_FXP_SETSTAT`）。**桶①**。
-   *
-   * 〔`设计/60 §5.4c`〕`mode` 是 unix 权限位（八进制那四位，如 `0o644`）——
-   * 高位的文件类型位由 Rust 侧掩掉，别指望用它改文件类型。
-   */
-  sftp_chmod: (args: { cfg: unknown; path: string; mode: number }) =>
-    invoke<void>("sftp_chmod", args),
-
-  /** 删远端文件/目录。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  sftp_delete: (args: { cfg: unknown; path: string; isDir: boolean }) =>
-    invoke<void>("sftp_delete", args),
-
-  /** 下载（带 `Channel<TransferProgress>` 进度）。**桶①**。 */
-  sftp_download: (args: {
-    cfg: unknown;
-    remotePath: string;
-    localPath: string;
-    transferId: string;
-    onProgress: Channel<TransferProgress>;
-  }) => invoke<void>("sftp_download", args),
-
-  /** 列目录。返回值字段被真消费 ⇒ 生成物（桶③；`size: u64` C03 已按字节数量纲论证）。 */
-  sftp_list_dir: (args: { cfg: unknown; path: string }) =>
-    invoke<SftpEntry[]>("sftp_list_dir", args),
-
-  /** 建远端目录。**桶①**。 */
-  sftp_mkdir: (args: { cfg: unknown; path: string }) => invoke<void>("sftp_mkdir", args),
-
-  /** 读远端文本供编辑。Rust 返回 `Result<Option<String>, String>` ⇒ `string | null`。 */
-  sftp_read_text_for_edit: (args: { cfg: unknown; path: string }) =>
-    invoke<string | null>("sftp_read_text_for_edit", args),
-
-  /** 解析远端真实路径（`realpath`）。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  sftp_realpath: (args: { cfg: unknown; path: string }) =>
-    invoke<string>("sftp_realpath", args),
-
-  /** 远端重命名/移动。**桶①**。 */
-  sftp_rename: (args: { cfg: unknown; from: string; to: string }) =>
-    invoke<void>("sftp_rename", args),
-
-  /**
-   * stat 一个远端路径。**返回 `unknown`（§5 桶②）而不是生成物**：
-   * `SftpStat` 是 C03 **刻意跳过**没生成的那一个——TS 侧一直是裸 `invoke` 无类型参数、
-   * **字段没人读**，为它生成类型就是「为假想消费者建抽象」。
-   * 这里写 `unknown` 并在这一行注明，不留下让人以为「漏了」的空白。
-   */
-  sftp_stat: (args: { cfg: unknown; path: string }) => invoke<unknown>("sftp_stat", args),
-
-  /** 上传（带 `Channel<TransferProgress>` 进度）。**桶①**。 */
-  sftp_upload: (args: {
-    cfg: unknown;
-    localPath: string;
-    remotePath: string;
-    transferId: string;
-    onProgress: Channel<TransferProgress>;
-  }) => invoke<void>("sftp_upload", args),
-
-  /** 写远端文本。**桶①**。 */
-  sftp_write_text: (args: { cfg: unknown; path: string; content: string }) =>
-    invoke<void>("sftp_write_text", args),
+  // 〔F7c 收尾 09-24〕池子那十二条的包装一起走了（老面板删了、窗口改走通道；`设计/60 §13b`）：
+  //   sftp_cancel_transfer · sftp_chmod · sftp_delete · sftp_download · sftp_list_dir · sftp_mkdir ·
+  //   sftp_read_text_for_edit · sftp_realpath · sftp_rename · sftp_stat · sftp_upload · sftp_write_text。
 
   /** 起一条端口转发。Rust 返回 `Result<String, String>`（转发 id）⇒ 原始类型。 */
   start_forward: (args: {

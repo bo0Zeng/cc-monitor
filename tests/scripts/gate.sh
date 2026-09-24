@@ -1540,8 +1540,14 @@ deadcode_t0=$(date +%s)
 #   （「那台机器上的退出策略读不出来，按默认办」）。它与同文件已在册的 `EXIT_KILLS` / `EXIT_UNATTENDED` / `EXIT_SELF_DIES` /
 #   `EXIT_COPY` 同一族：Rust 这一份**只为与 TS 那份逐字对拍而存在**（家在 `src/backend-policy.ts`），非 test 构建里本来就没读者。
 #   ⚠ 这一族要不要整族挂 `#[cfg(test)]` 是另一件事（会一次降 7 条），不在合并这一拍做。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-24（F7c 收尾，主会话授权动这一个数）：34 → 36，现打，逐条记**：
+#   池子那十二条 Tauri 命令删了之后，`sftp_pool.rs` 里**浏览那一半**的通道闸在生产上没人用了 ——
+#   `ChannelSet::lease`（只过通道闸、不过车道闸的那一口）与 `Leased::discard`（原先只有 `with_sftp` 的死连重试调它）。
+#   **刻意没删**：秤 F4（`sftp_pool_f4_tests`）拿它俩量「传输占满车道时浏览还进得来」那条 `6 − 4 = 2` 的设计；
+#   而浏览今天整个走后端 `files-*`，SFTP 上已经没有浏览 ⇒ 车道闸「给浏览留格子」那条前提不在了。
+#   它俩连同 `TRANSFER_LANE_CAP` 的去留是一道设计题（要主会话裁），不是本拍顺手删的活。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 36，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=36; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \

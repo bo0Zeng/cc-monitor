@@ -341,6 +341,14 @@ mod tests {
          （`agents::claudecode::paths::is_protected_session_path`，与桥那一侧函数体逐字相同）\
          ＋ 词法 ＋ 解 symlink 再判；会跟链接的两件（改权限 · 覆盖写）连最后一段也解到底。\
          线上入口只有 `inbound.rs` 那几条 `files-*` 写命令（`MANAGE_COMMANDS` 逐条登记）",
+    ), (
+        // 〔F7c · 第三波 · 2026-09-24〕`设计/60 §13`：SFTP 缩成只做传输之后，上传只写暂存区，
+        //   把暂存件挪进用户目标的**那一下**住这里 —— 同一句用户裁决（「只允许后端的文件管理部分写文件」）。
+        "control/files_commit.rs",
+        "上传的提交（`设计/60 §13`）：把 `~/.cc-monitor/staging/<key>.part` 改名上位到用户指定的目标。\
+         先过写面那道围栏（`files_write::fenced_target`，借用、不抄）；不覆盖那一支先 `O_EXCL` 占位再改名上位\
+         （改名失败撤掉自己那个 0 字节占位）。暂存件路径由本模块自己拼、`key` 只收 32 位十六进制 ⇒ \
+         调用方指不到暂存区之外的源。线上入口只有 `inbound.rs` 那一条 `files-commit-upload`（`COMMIT_COMMANDS`）",
     )];
 
     /// 第三层模块**能用**的改动动词（`fs::` 之后那个词）。**闭集**。
@@ -1114,13 +1122,20 @@ mod tests {
         let src = std::fs::read_to_string(crate::guard_support::src_root().join("inbound.rs"))
             .expect("读 inbound.rs");
         let prod = guard_core::production_code(&src);
-        let needle = format!("files_{}::", "write");
+        // 〔F7c · 第三波 09-24〕第三层从此两个模块 ⇒ 针按登记表**派生**（每个模块一根），不手写第二份。
+        let needles: Vec<String> = MUTATING_FACE_MODULES
+            .iter()
+            .map(|(p, _)| {
+                let stem = p.rsplit('/').next().unwrap_or(p);
+                format!("{}::", stem.trim_end_matches(".rs"))
+            })
+            .collect();
         let marker = format!("CommandSpec {}", "{");
         let mut chunks = 0usize;
         let mut reaching: std::collections::BTreeSet<String> = Default::default();
         for chunk in prod.split(marker.as_str()).skip(1) {
             chunks += 1;
-            if !chunk.contains(needle.as_str()) {
+            if !needles.iter().any(|n| chunk.contains(n.as_str())) {
                 continue;
             }
             let name = chunk
@@ -1135,9 +1150,11 @@ mod tests {
             chunks >= 15,
             "只切出 {chunks} 块 `CommandSpec` —— 切法坏了，本条在空转"
         );
+        // 两侧异源照旧：一侧源码文本，一侧是两个第三层模块**各自**的常量表的并。
         let want: std::collections::BTreeSet<String> =
             crate::control::files_write::manage_command_names()
                 .into_iter()
+                .chain(crate::control::files_commit::commit_command_names())
                 .map(str::to_string)
                 .collect();
         assert!(

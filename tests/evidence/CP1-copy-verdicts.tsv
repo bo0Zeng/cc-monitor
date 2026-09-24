@@ -490,6 +490,14 @@ src/bridge/src/filewin/source.rs:763	`{cmd}` 没走通：{leg}那一段{what}，
 src/bridge/src/filewin/source.rs:766	`{cmd}` 撤了	改·§2.1	[可达存疑] 本地撤单；窗口今天没有撤单按钮走到这一格 →「已取消」
 src/bridge/src/filewin/source.rs:767	`{cmd}` 的参数这一侧就拼错了	改·§2.1	[可达存疑] 内部不变量（用法错）；句首带内部命令名 兼§2.2 →「内部错误，请重开窗口」
 src/bridge/src/filewin/source.rs:768	`{cmd}` 的应答对不上约定	改·§2.1	[可达存疑] 对端说的话解不出来；句首带内部命令名 →「后端返回的内容读不懂」
+src/bridge/src/filewin/upload.rs:28	上传	保留	[对外] 文件窗口工具栏按钮；短、动词直说
+src/bridge/src/filewin/upload.rs:61	要传的文件是空的	保留	[对外] 上传那一问点确定时框是空的，红字画在框下；说清发生了什么
+src/bridge/src/filewin/upload.rs:66	{l} 不是本机上的一份文件	保留	[对外] 同上；点名那一行路径，用户知道改哪一行
+src/bridge/src/filewin/upload.rs:70	{l} 取不到名字	保留	[对外] 同上；路径是 / 或以分隔符收尾时出现，点名那一行
+src/bridge/src/filewin/upload.rs:141	把本机的文件传到这个目录	保留	[对外] 上传那一问的标题
+src/bridge/src/filewin/upload.rs:142	本机路径（一行一个）	保留	[对外] 上传那一问输入框上方的提示；括号是用法说明不是补充
+src/bridge/src/filewin/upload.rs:150	确定	保留	[对外] 上传那一问的按钮
+src/bridge/src/filewin/upload.rs:153	取消	保留	[对外] 上传那一问的按钮
 src/bridge/src/filewin/select.rs:446	打开	保留	[对外] 右键菜单项（目录），动词
 src/bridge/src/filewin/select.rs:458	删除这 {n} 项	保留	[对外] 右键菜单项（多选时），动词＋数量，一眼看清会删几项
 src/bridge/src/filewin/select.rs:508	还没有选中任何一项	保留	[对外] 按 Delete / F2 而一项都没选时画在窗口上，一句说清
@@ -580,6 +588,8 @@ src/bridge/src/sftp.rs:1383	别名块已写进 {profile}{backup_note}。重连 s
 src/bridge/src/sftp_pool.rs:1286	远端的 sftp-server 握手时没报 `copy-data` 扩展（或修订号不是 1）	改·§2.1	[对外] CopyVerdict 经 copy.rs 慢路前缀画在窗口上；sftp-server 握手/copy-data 扩展/修订号是协议细节 新词:copy-data 新词:sftp-server →「远端不支持服务器端直接复制」
 src/bridge/src/sftp_pool.rs:1294	远端给的 SFTP 句柄含非 UTF-8 字节，库已有损解码 ⇒ 不敢照原样发回去	改·§2.1	[对外] 同上；句柄/有损解码讲实现 兼§2.2 新词:SFTP句柄 →「远端不支持服务器端直接复制」
 src/bridge/src/sftp_pool.rs:1387	{why} ⇒ 退回中转：{relayed} 字节经过了你这台机器（零流量复制没走上）	改·§2.1	[对外] 同上；「退回中转」「零流量复制没走上」讲内部路径 兼§2.4 新词:中转 新词:零流量复制 →「{why}，数据经本机转了一次（{relayed} 字节）」
+src/bridge/src/chan/host.rs:325	传输进度不支持从某一格续看	保留	[可达存疑] 传输进度流带了续传游标时原位回的那句（窗口的 source::watch 从不带，只有协议用错才会看到）；短、无内部词
+src/bridge/src/sftp_pool.rs:1560	这一趟传输的状态丢了	保留	[可达存疑] 传输台的快照流发送端没了才走到（发送端在票里、票在守卫里，按构造到不了）；窗口若收到会原样画在失败那一行；短、无内部词
 src/bridge/src/skill_host.rs:147	planned-build 今天不在 tool_registry 那张表里（那张表收哪几条，\n             唯一住址是 `tool_registry::TOOLS`）。把它变成可装归 devbench F06。	改·§2.1	[对外] skill 不支持安装的说明（源码注释自己写着「这一句是用户看得见的」）：露出 tool_registry::TOOLS 源码住址与内部工单 devbench F06 兼§2.2 →「planned-build 暂不支持在这里安装」
 src/bridge/src/skill_host.rs:213	在场	保留	[对外] skill 存在性的短状态（「在场」偏书面，CP2 可换「已找到」）
 src/bridge/src/skill_host.rs:215	{skill} 的前提没满足：找不到 {}	保留	[对外] 缺前提的说明，先说结果再给路径

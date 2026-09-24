@@ -258,8 +258,9 @@ impl SftpConn {
 /// ③ 部署路上多一次不必要的 setstat，收益是零、风险是变砖。
 /// ⇒ 订正的是**那句括号的证据等级**（推断 → 今天复现不出来），**不是这条禁令**。
 ///
-/// ⚠ 与 `sftp_pool::sftp_chmod` 的关系：那条命令**要**改权限，是它的本职；
-/// 它靠「属性块逐字节不带 size」那条判据挡住这一形（`the_chmod_attrs_never_put_a_size_on_the_wire`）。
+/// ⚠ 与池子那条改权限命令的关系〔F7c 收尾 09-24：`sftp_chmod`〔散文墓碑〕已删，改权限今天是后端 `files-chmod`〕：
+/// 那条命令**要**改权限，是它的本职；它当时靠「属性块逐字节不带 size」那条判据挡住这一形
+/// （`the_chmod_attrs_never_put_a_size_on_the_wire`〔散文墓碑〕，随它一起删了）。
 /// **两者不矛盾**：这里禁的是部署路上「顺手兜底」，那里做的是用户点了「改权限」。
 pub async fn upload_atomic(
     sftp: &SftpSession,

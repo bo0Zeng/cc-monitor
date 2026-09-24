@@ -1277,6 +1277,27 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 ⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件，编辑器的那些语义不在它里面。
 
+#### `files-commit-upload`：把暂存区里一份传完的上传件挪进目标（F7c，2026-09-24）
+
+```text
+→ {"id":"w7","cmd":"files-commit-upload","args":{"key":"0123456789abcdef0123456789abcdef","root":"/home/u/docs","rel":"a.bin","overwrite":false}}
+← {"kind":"reply","id":"w7","ok":true,"data":{"path":"/home/u/docs/a.bin","bytes":1048576}}
+```
+
+SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-monitor/staging/<key>.part`；
+把它挪进用户目标的那一下**只有这条命令**（用户逐字「现在只允许后端的文件管理部分写文件」）。
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `key` | → | 暂存件的键：**恰好 32 位小写十六进制**。暂存件路径由后端自己拼（`$HOME/.cc-monitor/staging/<key>.part`），调用方指不到暂存区之外任何文件 |
+| `root` / `rel` | → | 目标根 ＋ 相对段，先过写面那两道围栏（词法 ＋ 父目录解 symlink ＋ 会话文件那一问） |
+| `overwrite` | → | 🔴 **必须给**（`true` / `false`），不给默认值。`false` ⇒ 先 `O_EXCL` 占位（目标已在 ⇒ `io_failed`），再改名上位；`true` ⇒ 直接改名上位（同盘原子） |
+| `path` | ← | 落点（父目录解过 symlink 的那一个） |
+| `bytes` | ← | 暂存件的字节数（改名不搬字节，这个数就是它在盘上的长度） |
+
+⚠ 暂存件不在（传输没跑完 · SFTP 起始目录不是这台后端的 home）⇒ `io_failed`；暂存件是链接或目录 ⇒ `refused`。
+⚠ 暂存区与目标不在同一个文件系统上 ⇒ 改名回 `EXDEV`、`io_failed`（复制 ＋ 删那一形在第三层禁表里，没做）。
+- **CLI 面同样有它**（从命令注册那一处派生，与写面同一条理由）：`--files-commit-upload`，载荷走 stdin，与帧面的 `args` 同形。
 #### `files-copy`：同根内复制一份普通文件（F7a · 第三波，2026-09-24）
 
 写面第七条。文件窗口的「复制」此前走 SFTP 那条零流量复制；现在经通道问后端 —— 复制发生在

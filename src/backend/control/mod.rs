@@ -65,6 +65,7 @@ pub(crate) mod cc_bus;
 pub mod ccm;
 pub mod cli_control;
 pub mod exit_policy;
+pub mod files_commit;
 pub mod files_write;
 pub mod fork_write;
 pub(crate) mod gate;

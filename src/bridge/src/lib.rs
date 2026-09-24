@@ -49,7 +49,7 @@ mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profi
                   // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
                   // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
                   // ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
-                  //   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 34**。
+                  //   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（〔F7c 收尾〕34 → 36，逐条住 gate.sh 那一格上方）。
                   //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
                   //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
@@ -1412,19 +1412,9 @@ pub fn run() {
             accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,
-            sftp_pool::sftp_realpath,
-            sftp_pool::sftp_list_dir,
-            sftp_pool::sftp_stat,
-            sftp_pool::sftp_download,
-            sftp_pool::sftp_upload,
-            sftp_pool::sftp_cancel_transfer,
-            sftp_pool::sftp_mkdir,
-            sftp_pool::sftp_rename,
-            sftp_pool::sftp_delete,
+            // 〔F7c 收尾 09-24〕池子的 Tauri 命令只剩 `sftp_copy` 一条（秤 F3 / 门禁 `f3-copy` 那一格还在量它的核心）；
+            //   其余十二条〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）。
             sftp_pool::sftp_copy, // 步 23b：零流量复制（`copy-data`），退不了路要出声
-            sftp_pool::sftp_chmod, // `设计/60 §5.4c`：`SETSTAT` 改权限（属性块不带 size）
-            sftp_pool::sftp_read_text_for_edit,
-            sftp_pool::sftp_write_text,
             // 🔴 `24e` 第二刀（`设计/60 §4 戊` / `§5` 第三段）：**原生文件管理窗口的入口。**
             //    它不是「又一条 sftp 命令」—— 它开的是那个 egui 窗口（同进程、次线程，
             //    进程形态见 `filewin/mod.rs` 头注）。先真的列一趟目录，列不出来就带原文报错，

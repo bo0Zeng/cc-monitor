@@ -202,7 +202,9 @@ const ENTRIES: &[(&str, &str, &str)] = &[
     (
         "subscribe",
         "rs",
-        "订阅（`Comms::subscribe`）—— 窗口今天零处（生产上零条流，`chan/host.rs` 头注）",
+        "订阅（`Comms::subscribe`）—— 〔F7c 09-24〕窗口恰好一处（`filewin/source.rs::watch`，传输进度流\
+         `transfer/<id>`，生产上第一条流）。⚠ 它**没有期限参数**（`05 §3.3.0` 的签名逐字：订阅是长期意向，\
+         不被一次调用的期限拴住）⇒ 本表这一格不进「显式给 `Budget`」那条，只进调用点条数恒等",
     ),
 ];
 
@@ -2236,6 +2238,10 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     );
     let mut offenders: Vec<String> = Vec::new();
     let mut sites = 0usize;
+    // 〔F7c 09-24〕按入口分开数：`subscribe` 进来了（窗口里第一处），而它**没有期限参数**
+    //   （`05 §3.3.0` 签名逐字）⇒ 「显式给 `Budget`」只对带期限的入口判；条数两个入口各自恒等。
+    let mut per_entry: std::collections::BTreeMap<&str, usize> = Default::default();
+    const HAS_DEADLINE: &[&str] = &["call"];
     for (entry, lang, _) in ENTRIES {
         for (rel, text) in all
             .iter()
@@ -2243,7 +2249,12 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         {
             let prod = production_of(rel, text);
             let head = format!("{entry}(");
-            sites += prod.matches(head.as_str()).count();
+            let n = prod.matches(head.as_str()).count();
+            sites += n;
+            *per_entry.entry(entry).or_default() += n;
+            if !HAS_DEADLINE.contains(entry) {
+                continue;
+            }
             for s in call_sites_without_budget(&prod, entry) {
                 offenders.push(format!("  {rel} —— `{s}`"));
             }
@@ -2256,12 +2267,16 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
          「这条路该等多久」没有任何调用方想过（`§9`：那 8 条无期限路径连实测分布都没有）。",
         offenders.join("\n")
     );
-    // 🔴〔F2〕调用点**条数恒等**（不是地板）：今天恰好 1 处（`filewin/source.rs::ask`）。
-    //    变多 ＝ 窗口里长出了第二处说 `call` 的地方（期限的住址跟着分家）；
+    // 🔴〔F2〕调用点**条数恒等**（不是地板）：`call` 恰好 1 处（`filewin/source.rs::ask`）；
+    //    〔F7c 09-24〕`subscribe` 恰好 1 处（`filewin/source.rs::watch`）。
+    //    变多 ＝ 窗口里长出了第二处说它的地方（期限 / 撤的住址跟着分家）；
     //    变少 ＝ 那一处没了 —— 上面那条零违例会在零个调用点上**恒绿**。
     assert_eq!(
-        sites, 1,
-        "前端对通信层入口的调用点不再恰好一处（实得 {sites}）"
+        per_entry,
+        [("call", 1usize), ("subscribe", 1usize)]
+            .into_iter()
+            .collect(),
+        "前端对通信层两个入口的调用点不再各恰好一处（共 {sites}）"
     );
     assert_eq!(
         call_sites_without_budget("await call(origin, op, payload);\n", "call").len(),
