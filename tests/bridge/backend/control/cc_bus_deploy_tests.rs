@@ -377,13 +377,25 @@ fn an_unwritable_skills_dir_fails_loudly() {
 }
 
 /// ★ 装完就能跑：`scripts/` 下的必须可执行。
+///
+/// 〔保活 09-24〕`examples/cc-keepalive` 同理 —— 它是给 cron 直接调的，
+/// 装出去不可执行，那条 cron 行就会在用户机器上每十分钟静默失败一次。
+/// ⚠ 反面也钉：不带 shebang 的示例（`kinds.tsv`）**不许**被顺手标成可执行。
 #[cfg(unix)]
 #[test]
 fn deployed_scripts_are_executable() {
     use std::os::unix::fs::PermissionsExt;
     let t = tmpdir("exec");
     deploy_into(&t.0).expect("部署");
-    let p = t.0.join("skills/cc-bus/scripts/cc-send");
-    let mode = std::fs::metadata(&p).unwrap().permissions().mode();
-    assert!(mode & 0o111 != 0, "装完不可执行等于没装（mode={mode:o}）");
+    for rel in ["scripts/cc-send", "examples/cc-keepalive"] {
+        let p = t.0.join("skills/cc-bus").join(rel);
+        let mode = std::fs::metadata(&p).unwrap().permissions().mode();
+        assert!(mode & 0o111 != 0, "{rel} 装完不可执行等于没装（mode={mode:o}）");
+    }
+    let kinds = t.0.join("skills/cc-bus/examples/kinds.tsv");
+    let mode = std::fs::metadata(&kinds).unwrap().permissions().mode();
+    assert!(
+        mode & 0o111 == 0,
+        "kinds.tsv 不是脚本，却被标成了可执行（mode={mode:o}）"
+    );
 }

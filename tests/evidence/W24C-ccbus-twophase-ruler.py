@@ -90,6 +90,8 @@ EXPECTED_TAGS = [
     "B8", "B9", "B10", "B11", "B12", "B13", "B14",
     # 〔kinds 09-24〕设计 95 §2 / §3bis:静态 2 条(K1 随包表 · K2 🔴 敲门够不着正文)＋ 真跑 3 条
     "K1", "K2", "K3", "K4", "K5",
+    # 〔保活 09-24〕设计 95 §3bis:保活是调用方(本体零提及 ＋ 调用方不循环 ＋ 真跑)
+    "K6",
 ]
 
 # ── 登记:静态面的那些数 ─────────────────────────────────────────────────────
@@ -843,6 +845,58 @@ def check_k5(tmp):
                   f"c={c_ok}(现打 {out!r})")
 
 
+KEEPALIVE_CALLER = ROOT / "src" / "shared" / "cc-bus" / "examples" / "cc-keepalive"
+
+
+def check_k6(tmp):
+    """保活是**调用方**,不是 cc-bus 的功能(95 §3bis,用户逐字「他的功能就是把会话注入 agent」)。"""
+    import json
+    if not KEEPALIVE_CALLER.is_file():
+        bad("K6", f"保活的调用方不在:{KEEPALIVE_CALLER}")
+        return
+    # a) cc-bus 本体(scripts/ 整目录,剥注释)**不认识**「保活」这个词;正控:调用方与 kinds 表里认得出
+    words = ["keepalive", "保活"]
+    inside = {}
+    for p in sorted(SCRIPTS.iterdir()):
+        if p.is_file():
+            body = src(p.name)
+            n = sum(body.count(w) for w in words)
+            if n:
+                inside[p.name] = n
+    caller = strip_comments(KEEPALIVE_CALLER.read_text(encoding="utf-8"))
+    ctrl = caller.count("keepalive") + KINDS_SHIPPED.read_text(encoding="utf-8").count("keepalive")
+    if ctrl == 0:
+        bad("K6", "正控没过:调用方与 kinds 表里一个 keepalive 都扫不到 —— 扫描器是瞎的")
+        return
+    if inside:
+        bad("K6", f"cc-bus 本体里出现了保活这个概念:{inside} —— 保活是调用方,cc-bus 只照 kinds 表注入")
+        return
+    # b) 调用方只发一次、不循环不睡(周期是 cron 的事)
+    loops = [w for w in ("sleep", "while ", "until ", "for ") if w in caller]
+    if loops:
+        bad("K6", f"保活调用方里有循环/睡眠 {loops} —— 多久一次是调用方外面(cron/timer)的事,本脚本只发一次")
+        return
+    # c) 真跑两次:去重开着也都到、不敲门、身份缺省 cc-keepalive、不接因果链;Stop 钩子用保活那段拦停
+    b, env, log = kinds_bus(tmp, "k6")
+    env = dict(env, CCBUS_DEDUP_WINDOW="60")
+    env.pop("CC_BUS_ID", None)
+    # 预埋一条「cc-keepalive 刚读过 bob 的消息」⇒ 不带 --new 的话下一条会接成回复(in_reply_to 非空)
+    (b.home / "state" / "lastread-cc-keepalive__bob").write_text("bob-earlier\t0\tbob\n", encoding="utf-8")
+    rcs = [subprocess.run([str(KEEPALIVE_CALLER), "bob"], env=env, capture_output=True, text=True).returncode
+           for _ in range(2)]
+    rows = [json.loads(x) for x in bob_inbox(b)]
+    shape = [(r.get("kind"), r.get("from"), r.get("in_reply_to")) for r in rows]
+    rc, out, _ = hook_as_bob(b, env)
+    reason = json.loads(out)["reason"] if out.strip() else ""
+    if (rcs == [0, 0] and shape == [("keepalive", "cc-keepalive", None)] * 2 and not knocks(log)
+            and reason.startswith("(cc-bus 保活 · 来自 cc-keepalive)") and bob_pos(b) == "2"):
+        ok("K6", f"保活是调用方:cc-bus 本体(scripts/ 剥注释)零次提到它,正控在调用方＋表里命中 {ctrl} 次;"
+                 "调用方无循环无睡眠;真跑两次(去重 60s 开着)都到、零敲门、身份 cc-keepalive、不接因果链,"
+                 "Stop 钩子用保活那段拦停并推进到 2")
+    else:
+        bad("K6", f"保活那一格不对:rc={rcs} 入箱={shape} 敲={knocks(log)} 拦停={reason[:40]!r} pos={bob_pos(b)}")
+
+
 def preflight():
     """跑不动就说跑不动 —— 不许把「环境缺件」当成绿。"""
     miss = [c for c in ("bash", "jq", "flock", "awk", "sed", "cksum") if shutil.which(c) is None]
@@ -866,7 +920,7 @@ def main():
     check_k1(); check_k2()
     with tempfile.TemporaryDirectory(prefix="w24c-") as tmp:
         behavioral(tmp)
-        check_k3(tmp); check_k4(tmp); check_k5(tmp)
+        check_k3(tmp); check_k4(tmp); check_k5(tmp); check_k6(tmp)
     print()
     # ── 反空真的锚:**标签集合两向对拍**,不是"数够了就行" ──────────────────
     got, want = set(PASSED) | set(FAILED), set(EXPECTED_TAGS)
@@ -878,7 +932,7 @@ def main():
     if FAILED:
         print(f"ccbus-twophase: FAIL={len(FAILED)}({', '.join(FAILED)})")
         return 1
-    print(f"ccbus-twophase: {len(PASSED)} passed(两阶段:静态 7 条 ＋ 真跑 14 条;kinds:静态 2 条 ＋ 真跑 3 条;"
+    print(f"ccbus-twophase: {len(PASSED)} passed(两阶段:静态 7 条 ＋ 真跑 14 条;kinds:静态 2 条 ＋ 真跑 3 条;保活 1 条;"
           f"标签集合与登记的 {len(EXPECTED_TAGS)} 条两向相等)")
     return 0
 
