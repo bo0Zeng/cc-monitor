@@ -1298,6 +1298,48 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 ⚠ 暂存件不在（传输没跑完 · SFTP 起始目录不是这台后端的 home）⇒ `io_failed`；暂存件是链接或目录 ⇒ `refused`。
 ⚠ 暂存区与目标不在同一个文件系统上 ⇒ 改名回 `EXDEV`、`io_failed`（复制 ＋ 删那一形在第三层禁表里，没做）。
 - **CLI 面同样有它**（从命令注册那一处派生，与写面同一条理由）：`--files-commit-upload`，载荷走 stdin，与帧面的 `args` 同形。
+
+#### `files-stage-chunk`：存盘的一块进暂存区（F9c · 第四波，2026-09-24）
+
+```text
+→ {"id":"w8","cmd":"files-stage-chunk","args":{"key":"0123456789abcdef0123456789abcdef","seq":0,"content":"……"}}
+← {"kind":"reply","id":"w8","ok":true,"data":{"bytes":1048000}}
+```
+
+文件窗口存一份**装不进一条请求行**的文本（入方向一行上限 1 MiB）时，先把它切成几块逐块送来，
+每块落成 `$HOME/.cc-monitor/staging/<key>.<seq>.chunk`（暂存区不在就建）。块只进我们自己的暂存区，
+落进用户文件的那一下是下一条 `files-commit-text`。
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `key` | → | 这一次存盘的键：**恰好 32 位小写十六进制**（调用方每次存盘现造一个） |
+| `seq` | → | 块号，从 0 起的非负整数 |
+| `content` | → | 字符串或 `{"b16":…}`，**至少 1 字节**（空块 ⇒ `bad_args`） |
+| `bytes` | ← | 这一块写进去的字节数 |
+
+⚠ `O_EXCL` 新建：同一 `key` 的同一块已经在（重发 / 撞键）⇒ `io_failed`，一个字节不盖。写到一半失败 ⇒ 删掉自己刚建的那一份。
+- **CLI 面同样有它**：`--files-stage-chunk`，载荷走 stdin，与帧面的 `args` 同形。
+
+#### `files-commit-text`：按块读回、拼起来、原地覆盖（F9c · 第四波，2026-09-24）
+
+```text
+→ {"id":"w9","cmd":"files-commit-text","args":{"key":"0123456789abcdef0123456789abcdef","chunks":3,"bytes":3000000,"root":"/home/u/docs","rel":"big.log"}}
+← {"kind":"reply","id":"w9","ok":true,"data":{"path":"/home/u/docs/big.log","bytes":3000000}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `key` | → | 与 `files-stage-chunk` 同一个键 |
+| `chunks` | → | 块数：读回 `0..chunks` 这几块。只收 `1..=bytes`（每块至少 1 字节） |
+| `bytes` | → | 拼起来**必须恰好**这么长；最多 8 MiB（`files-read-text` 一趟的天花板：存得回的要读得回来），超了 ⇒ `bad_args` |
+| `root` / `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原地覆盖（权限位 / 属主不变） |
+| `path` | ← | 解到底的那个真路径 |
+| `bytes` | ← | 写进去的字节数 |
+
+⚠ 少一块 · 多出第 `chunks` 块 · 总长对不上 ⇒ `io_failed`，目标**一个字节没动**；某一块是链接或目录 ⇒ `refused`。
+⚠ **不论成败**都删掉这一次的块；成功时顺手扫一遍暂存区的孤儿（`<key>.part` 与 `<key>.<seq>.chunk` 两种形状，7 天没动过的）。
+⚠ 为什么不是「改名上位」（`files-commit-upload` 那种）：改名会换掉权限位 / 属主、把链接本身换成普通文件、跨盘时 `EXDEV` 失败 —— 同一份文件 1 MiB 上下会存出两种结果。
+- **CLI 面同样有它**：`--files-commit-text`，载荷走 stdin，与帧面的 `args` 同形。
 #### `files-copy`：同根内复制一份普通文件（F7a · 第三波，2026-09-24）
 
 写面第七条。文件窗口的「复制」此前走 SFTP 那条零流量复制；现在经通道问后端 —— 复制发生在
