@@ -652,7 +652,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-delete",
         doc_anchor: Some("#### `files-delete`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["path", "rel", "root"],
+        // 〔FW5〕`recursive`（入）· `removed`（出）：显式才删整棵树，逐条目过围栏。
+        fields: &["path", "recursive", "rel", "removed", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
@@ -663,7 +664,14 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-chmod",
         doc_anchor: Some("#### `files-chmod`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        // 〔FW5〕`no_unix_mode`：这个平台没有 unix 权限位（target 轴从这一格现推 Windows 那一格）。
+        codes: &[
+            "bad_args",
+            "bad_path",
+            "io_failed",
+            "no_unix_mode",
+            "refused",
+        ],
         fields: &["mode", "path", "rel", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
