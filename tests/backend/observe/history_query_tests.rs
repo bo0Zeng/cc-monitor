@@ -172,10 +172,10 @@ fn read_session_from_offset_path_guard() {
     let outside = tmp.join("secret.jsonl");
     std::fs::write(&outside, "nope").unwrap();
     // projects 外 → 拒（守卫先于 seek）。
-    assert!(read_session_from_offset(&tmp, &outside.to_string_lossy(), 0).is_err());
+    assert!(read_session_from_offset(&tmp, &outside.to_string_lossy(), 0, None).is_err());
     // 合法 jsonl + offset 超长 → seek 过 EOF 读空、Ok（不 panic、不报错）。
     let ok = dir.join("ok.jsonl");
-    assert!(read_session_from_offset(&tmp, &ok.to_string_lossy(), 9999).is_ok());
+    assert!(read_session_from_offset(&tmp, &ok.to_string_lossy(), 9999, None).is_ok());
     std::fs::remove_dir_all(&tmp).ok();
 }
 
@@ -193,7 +193,7 @@ fn stream_from_offset_production_path_byte_parity() {
     for off in [0u64, 4, 5, 7, 100] {
         let mut f = std::fs::File::open(&p).unwrap();
         let mut got = Vec::new();
-        let n = stream_from_offset(&mut f, off, &mut got).expect("stream ok");
+        let n = stream_from_offset(&mut f, off, None, &mut got).expect("stream ok");
         // 对拍纯助手（= 生产 seek 应吐的字节）：逐字节一致 + copy 返回字节数吻合。
         assert_eq!(got, slice_from_offset(data, off), "off={off} 字节不符");
         assert_eq!(n as usize, got.len(), "off={off} copy 计数不符");

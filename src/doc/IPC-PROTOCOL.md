@@ -1466,6 +1466,37 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 - **光在闭集里加一行是「申报」，申报会在那一层被掏空之后照样绿着**
   ⇒ 「app 自带某个二进制」这类条目，右边必须去钉真源码。墓碑在 `cross_half_edge_registry.rs`。
 
+### 10.3 会话骨架索引：`--read-session-from-offset` 的 `--index` / `--until` 两个选项（`设计/10` 骨架，2026-09-24）
+
+**是什么**：同一条「从偏移读」多两种出法 —— 不带选项时**字节一个不变**（原样透传 `[offset, EOF]`）。
+
+| 调用 | 出什么 |
+|---|---|
+| `--read-session-from-offset <p> <offset> --until <end>` | 原样透传 **`[offset, end)`**（半开；`end ≤ offset` ⇒ 空）。两端取自索引里的行边界 ⇒ 切出来恰好是整行。**不替调用方对齐行边界** |
+| `--read-session-from-offset <p> <offset> --index [--until <end>]` | **骨架索引**（不含正文），逐行 JSON，见下 |
+
+**索引三段**：
+1. 头 `{"kind":"session_index","v":1,"from":<offset>}` —— **首行就认得出对面会出索引**；
+2. 每个**可计行**一行（口径 = `line_counts`，与 watcher / `--read-session-tail` 的行号空间一字一致 ⇒
+   第 k 行就是 seq `base+k`，`base` = `offset` 之前的可计行数，**由调用方持有**，本命令不回）：
+   `{"o":<行起点绝对字节>,"n":<行字节长含\n>,"t":<type>,"u":<uuid>,"sc":true,"mt":true,"ch":…,"cj":…,"pl":…,"cb":…,"cl":…,"fd":…}`
+   —— `sc`=isSidechain · `mt`=isMeta · `ch` 正文字符数（代码块外）· `cj` 其中 CJK（`> U+2E80`）·
+   `pl` 正文非空硬行 · `cb` 围栏代码块数 · `cl` 代码行数 · `fd` 折叠单元数（tool_use / tool_result / thinking / image）。
+   **零值与假值不序列化**；解析不出的行**仍占一行**（只有 `o`/`n`），丢了它后面的 seq 全错一位；
+3. 尾 `{"kind":"session_index_end","count":N,"end":E}` —— `E` = 最后一个**完整行**的末字节（torn 残尾不计）＝
+   **下一次续传该带的 `offset`**。**没有尾行 ⇒ 输出被截断**，调用方不许把前面那些行当全量。
+
+`--until` 与 `--index` 同用：只收**起点** `< end` 的行（起点在界内的那一行整行收）。
+
+**这些是「宽度无关料」，不是高度**：高度依赖列宽，后端不知道列宽（`设计/10 §2.5b`）。前端拿它做第一级粗估。
+
+🔴 **为什么是选项不是新子命令**：新子命令会进 `build_id_guard` 的指纹、逼出 `BUILD_ID` bump；那一拍本轮不许做。
+⇒ **在已部署的老后端上这两个选项是休眠的**：老后端只读 `args[1..=2]`，多余参数不看 ⇒ `--index` 被忽略、照旧透传字节
+⇒ **首行不是 `session_index` 头** ⇒ 客户端必须据此判「对面不会出索引」并**诚实降级**（不许把 jsonl 行当索引行解析）；
+`--until` 被忽略 ⇒ 多透传到 EOF ⇒ 客户端按 `end` 自己截掉（结果仍对，只多传字节）。
+新后端上写错的尾随参数**报错退出 2**（`unknown option`），不静默忽略。
+⚠ 要让远端真的用上它，得等下一次 bump `BUILD_ID`（判 stale → 重装）。路径守卫与 `--read-session` 同一套。
+
 ## 11. 远端终端拉起（ccm-rbind，issue #18）——注册与拉起全链路
 
 本地 `__ccm_bind`（§2/§3，文件 IPC + PowerShell 握手）的**远端对偶**：远端没有共享
