@@ -106,6 +106,30 @@ pub(crate) fn parse_index_output(
     Ok((from, end, rows))
 }
 
+/// 索引那条的 argv。🔴 **选项写在位置参数前面** —— 让不认它的老后端**零字节失败**：
+/// 老后端只看 `args[1]`/`args[2]`，选项在后它会把整份会话透传回来（弱网上几十 MB，只为认出「它不会」）；
+/// 选项在前它拿路径当 offset 解析 ⇒ `offset must be a number` ⇒ 退出 2、stdout 0 字节
+/// （现打读数在后端 `FromOffsetOpts` 的头注里）。新后端两种位置都认。
+pub(crate) fn index_argv(jsonl_path: &str, from_offset: u64) -> Vec<String> {
+    vec![
+        "--read-session-from-offset".into(),
+        "--index".into(),
+        jsonl_path.into(),
+        from_offset.to_string(),
+    ]
+}
+
+/// 按偏移取正文那条的 argv（同一条纪律：选项在前）。
+pub(crate) fn range_argv(jsonl_path: &str, offset: u64, until: u64) -> Vec<String> {
+    vec![
+        "--read-session-from-offset".into(),
+        "--until".into(),
+        until.to_string(),
+        jsonl_path.into(),
+        offset.to_string(),
+    ]
+}
+
 /// 路径的廉价预检（与 `load_subagent` / `stream_read_remote_session` 同一条纪律）：
 /// 真正的越权读由后端 `fence_under_projects` 兜底。
 fn precheck(jsonl_path: &str) -> Result<(), String> {
@@ -132,13 +156,8 @@ pub async fn read_session_index(
         rows: Vec::new(),
     };
     let backend = Backend::for_origin(route)?;
-    let from = from_offset.to_string();
-    let argv = [
-        "--read-session-from-offset",
-        jsonl_path.as_str(),
-        from.as_str(),
-        "--index",
-    ];
+    let argv = index_argv(&jsonl_path, from_offset);
+    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
     // 「后端不在 / 查询失败」对骨架来说**同一个处置**：没有索引，退回尾部窗口 —— 原因原样带给前端显示。
     let lines = match backend.query(&argv).await {
         Ok(l) => l,
@@ -220,14 +239,8 @@ pub async fn read_session_range(
     let route = origin.route("read_session_range")?;
     precheck(&jsonl_path)?;
     let backend = Backend::for_origin(route)?;
-    let (o, u) = (offset.to_string(), until.to_string());
-    let argv = [
-        "--read-session-from-offset",
-        jsonl_path.as_str(),
-        o.as_str(),
-        "--until",
-        u.as_str(),
-    ];
+    let argv = range_argv(&jsonl_path, offset, until);
+    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
     let lines = backend.query(&argv).await?;
     let file_name = jsonl_path.rsplit(['/', '\\']).next().unwrap_or("");
     let sid = file_name.strip_suffix(".jsonl").unwrap_or(file_name);
