@@ -197,6 +197,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { restartWithAccount } from "../src/account-restart";
 import { invalidateAccountsCache } from "../src/accounts";
 import { showActionFailureToast } from "../src/error-toast";
+import { __setHostOsForTests, type HostOs } from "../src/settings/host-os";
 import {
   runRemoteResume,
   runRemoteResumeTmux,
@@ -207,7 +208,6 @@ import {
   TabManager,
   findClaudeTmux,
   findClaudeTmuxMatches,
-  explainBringFrontFailure,
   findIdleTmux,
   isCwdFallbackMatch,
   claudeExited,
@@ -2942,63 +2942,120 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
 });
 
 /**
- * ★★ E73：`↗` 失败之后的**归因**必须按实况分档。
+ * ★★ 〔`设计/80 §8.7` 步 4，第二波 T4〕↗ 远端那一格：**前端不再猜，tmux 不在前提链上**。
  *
- * 原来只有一句「未绑定窗口（远端会话需在远端启用 ccm wrapper）」—— 对「用户直接跑 claude
- * 而不是 ccm」是对的，但对**没有交互终端撑着**的会话（SDK bridge：有 tmux、`@ccm_sid` 也对，
- * 但前台是 python3、`stdin=DEVNULL`）就是**把用户引向一个不存在的问题** ——
- * 装 ccm 也不会好。错误归因比失败本身更贵。
+ * 这里原先是 E73 那组「↗ 失败之后再打一次 `list_remote_tmux` 分四档归因」的判据。
+ * 步 4 把「有没有终端」的四套判断（`attachable` 布尔 · `findClaudeTmuxMatches` · 后端 HWND 校验 ·
+ * E73 那次远端 RPC）收成后端一句 ——「这个会话是不是 cc-monitor 启动的」（有没有启动令牌），
+ * 归因的判据住 `bind_tests.rs` 那张 64 格真值表。前端这一侧只钉三件事：
+ * ① 失败时**一次 tmux 查询都不发**（用户逐字「不能依赖 tmux」）；② 后端那句话**原样**给用户；
+ * ③ `attachable:false` 不再在前端短路 ↗（那是被收掉的四套之一）。
  */
-describe("E73：↗ 拉前失败的归因", () => {
-  const S = (name: string, sid: string | null, command: string) => ({
-    name,
-    path: "/p",
-    command,
-    attached: false,
-    windows: 1,
-    sid,
-  });
-  const RAW = "未绑定窗口（远端会话需在远端启用 ccm wrapper）";
-  const SID = "abcd1234-1111-2222-3333-444455556666";
-
+describe("设计/80 §8.7 步 4：↗ 远端那一格只问后端一次", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
-  beforeEach(() => mockInvoke.mockReset());
-
-  it("★★ tmux 里有它、但前台不是 claude → 明说「没有可拉前的终端」且**装 ccm 不会好**", async () => {
-    mockInvoke.mockResolvedValue([S("bridge-cc", SID, "python3")]);
-    const r = await explainBringFrontFailure("aya", SID, "/p", RAW);
-    expect(r.title).toContain("没有可拉前的终端");
-    expect(r.detail).toContain("python3");
-    expect(r.detail, "必须把「别去装 ccm」说出来，否则用户还是会去装").toContain(
-      "装 ccm 不会让这个变好",
-    );
-    expect(r.detail, "别再把原来那句误导文案抄进来").not.toContain("需在远端启用 ccm wrapper");
-  });
-
-  it("★ 有交互终端只是没 marker → 原文案在这一档才是对的，原样给", async () => {
-    mockInvoke.mockResolvedValue([S("proj-cc", SID, "claude")]);
-    const r = await explainBringFrontFailure("aya", SID, "/p", RAW);
-    expect(r.title).toBe("拉前失败");
-    expect(r.detail).toBe(RAW);
-  });
-
-  it("★ 压根不在 tmux 里 → 说清是「查不到」，不是「没装 ccm」", async () => {
-    mockInvoke.mockResolvedValue([S("别的-cc", "另一个-sid", "claude")]);
-    const r = await explainBringFrontFailure("aya", SID, "/p", RAW);
-    expect(r.title).toContain("不在（本工具的）tmux 里");
-    expect(r.detail).toContain(SID.slice(0, 8));
-  });
-
-  it("★ 查不到清单 / 远端没 tmux → **不乱归因**，如实说查不了", async () => {
-    mockInvoke.mockRejectedValue(new Error("ssh 挂了"));
-    const a = await explainBringFrontFailure("aya", SID, "/p", RAW);
-    expect(a.detail).toContain("无法进一步判断原因");
-    expect(a.detail, "原始错误不许吞").toContain(RAW);
-
+  const BACKEND_SAYS = "<后端归因原文>";
+  beforeEach(() => {
+    vi.clearAllMocks();
     mockInvoke.mockReset();
-    mockInvoke.mockResolvedValue(null); // 远端没装 tmux
-    const b = await explainBringFrontFailure("aya", SID, "/p", RAW);
-    expect(b.detail).toContain("没装 tmux");
+    __setHostOsForTests("windows");
+  });
+  afterEach(() => __setHostOsForTests(null));
+
+  async function clickFront(tm: TabManager, sid: string): Promise<void> {
+    const btn = peek(tm).tabButtons.get(sid)?.root.querySelector(".tab-focus") as HTMLElement | null;
+    expect(btn, "量具自检：Windows 上应当渲出 ↗").not.toBeNull();
+    btn!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it("★★ 失败 ⇒ 后端那句话原样给用户，而且**一次 tmux 查询都不发**", async () => {
+    mockInvoke.mockImplementation((cmd: string) =>
+      cmd === "bring_remote_terminal_to_front" ? Promise.reject(new Error(BACKEND_SAYS)) : Promise.resolve([]),
+    );
+    const tm = makeTM();
+    tm.createSkeletonTab("r1", "/p", "aya", "interactive", null);
+    await clickFront(tm, "r1");
+    const cmds = mockInvoke.mock.calls.map((c) => c[0]);
+    expect(cmds, "量具自检：↗ 真的发到了后端").toContain("bring_remote_terminal_to_front");
+    expect(
+      cmds.filter((c) => c === "list_remote_tmux" || c === "list_local_tmux"),
+      "↗ 失败之后又去查了一次 tmux —— tmux 回到了 ↗ 的前提链上（E73 那次 RPC 是步 4 要收的四套之一）",
+    ).toEqual([]);
+    expect(showActionFailureToast).toHaveBeenCalledWith("拉前失败", BACKEND_SAYS);
+  });
+
+  it("★ `attachable:false` 不再在前端短路 ↗ —— 照样问后端（归因是后端那一个布尔的事）", async () => {
+    mockInvoke.mockResolvedValue(undefined);
+    const tm = makeTM();
+    tm.createSkeletonTab("r2", "/p", "aya", "interactive", null, false);
+    expect(tm.isAttachable("r2"), "量具自检：这个会话确实被宣告成不可 attach").toBe(false);
+    await clickFront(tm, "r2");
+    expect(mockInvoke.mock.calls.map((c) => c[0])).toContain("bring_remote_terminal_to_front");
+    expect(showActionFailureToast, "成功了还弹了 toast / 前端又替后端解释了一句").not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ★★ 〔第二波 T4 · LF1〕↗ 在非 Windows 上**别装得能用**。
+ *
+ * 非 Windows 上 ↗ 的最后一跳（`EnumWindows` / `SetForegroundWindow`）在 Rust 侧是恒失败的桩
+ * ⇒ 那颗按钮每点必败。门住 `terminal-front.ts`；`unknown` 照常显示（与 `hostOsAllows` 同一条理由）。
+ */
+describe("LF1：↗ 只在 Windows 上出现", () => {
+  const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(undefined);
+  });
+  afterEach(() => __setHostOsForTests(null));
+
+  const focusBtnOf = (tm: TabManager, sid: string) =>
+    peek(tm).tabButtons.get(sid)?.root.querySelector(".tab-focus") ?? null;
+
+  it("★★ 两向：linux / macos 不渲 ↗，windows / unknown 渲（本地 tab 与远端 tab 同一道门）", () => {
+    const want: [HostOs, boolean][] = [
+      ["windows", true],
+      ["unknown", true],
+      ["linux", false],
+      ["macos", false],
+    ];
+    for (const [os, shown] of want) {
+      __setHostOsForTests(os);
+      const tm = makeTM();
+      tm.ensureTab("l1", "/w", "p", 0, null);
+      tm.createSkeletonTab("r1", "/p", "aya", "interactive", null);
+      expect(peek(tm).tabButtons.get("l1"), `${os}：量具自检，tab 按钮本身得在`).toBeDefined();
+      expect(focusBtnOf(tm, "l1") !== null, `${os} 本地 tab 的 ↗`).toBe(shown);
+      expect(focusBtnOf(tm, "r1") !== null, `${os} 远端 tab 的 ↗`).toBe(shown);
+    }
+  });
+
+  it("★ 快捷键 / 命令面板在 linux 上走到 ↗ ⇒ 说实话、**不发 IPC**", () => {
+    __setHostOsForTests("linux");
+    const tm = makeTM();
+    tm.createSkeletonTab("r1", "/p", "aya", "interactive", null);
+    tm.switchTo("r1");
+    tm.bringActiveTerminalToFront();
+    const sent = mockInvoke.mock.calls
+      .map((c) => c[0])
+      .filter((c) => c === "bring_remote_terminal_to_front" || c === "bring_terminal_to_front");
+    expect(sent, "linux 上照样发了 ↗ 的 IPC —— 那是装作试过").toEqual([]);
+    expect(showActionFailureToast).toHaveBeenCalledWith(
+      "本机不能切到终端窗口",
+      expect.stringContaining("Windows"),
+      expect.objectContaining({ level: "info" }),
+    );
+  });
+
+  it("★ 对照：windows 上快捷键照常发 IPC（上一条不是因为别的原因没发）", () => {
+    __setHostOsForTests("windows");
+    const tm = makeTM();
+    tm.createSkeletonTab("r1", "/p", "aya", "interactive", null);
+    tm.switchTo("r1");
+    tm.bringActiveTerminalToFront();
+    expect(mockInvoke.mock.calls.map((c) => c[0])).toContain("bring_remote_terminal_to_front");
   });
 });
 

@@ -123,7 +123,9 @@ describe("CP2a · 术语对照表", () => {
   it("★ 表里 ledger 的并集 == CP1 台账的全部「新词:」标记（两向）", () => {
     const marks = ledgerMarkers(tsv);
     // 正控：锚两个裁文案时一定标过的词。
-    expect(marks.has("backend") && marks.has("拉前"), "台账标记一个都没抽到 —— 抽取器坏了").toBe(true);
+    // 〔第二波 T4 09-24〕第二个锚从「拉前」换成「围栏」：标「新词:拉前」的那四行随原文（E73 那段）一起删了，
+    //   台账里已经没有它 —— 锚一个真没了的词，这条正控会把「删对了」读成「抽取器坏了」。
+    expect(marks.has("backend") && marks.has("围栏"), "台账标记一个都没抽到 —— 抽取器坏了").toBe(true);
     const ours = terms.flatMap((t) => t.ledger ?? []);
     expect(diff(marks, new Set(ours)), "台账标了新词，术语表没收（去 terms.json 给它一个处置）").toEqual([]);
     expect(diff(ours, marks), "术语表认领了一个台账里已经没有的标记").toEqual([]);
