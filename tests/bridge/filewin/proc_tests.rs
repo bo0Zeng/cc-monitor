@@ -456,3 +456,110 @@ fn the_entry_command_has_no_in_process_fallback_left() {
         "起窗口进程的结果又被 `let _ = …` 丢掉了 —— 那就回到了「静默成功」那一形"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔F2 · 2026-09-24〕窗口进程拨回 monitor 那一下
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 **拿着交接件拨得通；钥匙不对 / 口不在就是错 —— 而且错的时候窗口不开**（`D11`）。
+///
+/// ① 阳性：一个真通道口（合成后端挂在宿主上）⇒ 拨得通，而且那条线**真能说一次 `call`**；
+/// ② 钥匙错一个字节 ⇒ 错（不是「连上了再说」）；③ 口不在 ⇒ 错。
+/// ④ `child_main` 里「先拨、拨不通就回 `EXIT_WINDOW_FAILED`」排在开窗之前（源码行序，代理）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it() {
+    use crate::filewin::find::testing::{Declared, FakeBackend};
+    // ① 阳性：真口 ＋ 真钥匙。
+    let be = std::sync::Arc::new(FakeBackendHost::new(FakeBackend::new(
+        &["files-stat"],
+        Declared::default(),
+    )));
+    let h = crate::chan::host::start_with(
+        be,
+        crate::chan::host::mint_key(),
+        1 << 20,
+        std::time::Duration::from_secs(5),
+    )
+    .await
+    .expect("回环口绑得上");
+    let line = dial_back(&h).await.expect("拿着对的交接件却拨不通");
+    let origin = crate::origin::Origin("proc-dial".into());
+    let r = crate::filewin::source::ask(
+        &line,
+        &origin,
+        "files-stat",
+        &serde_json::json!({ "path": "/" }),
+        std::time::Duration::from_secs(5),
+    )
+    .await;
+    assert!(r.is_ok(), "拨通了却说不了一次 call：{r:?}");
+    // ② 钥匙错。
+    let mut wrong = h.clone();
+    wrong.key = crate::chan::wire::Key("0".repeat(64));
+    let e = match dial_back(&wrong).await {
+        Ok(_) => panic!("钥匙不对竟然拨通了"),
+        Err(e) => e,
+    };
+    assert!(e.contains("窗口连不上主程序"), "{e}");
+    // ③ 口不在（拿一个刚放掉的回环端口）。
+    let dead = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap()
+    };
+    let mut gone = h.clone();
+    gone.addr = dead;
+    assert!(dial_back(&gone).await.is_err(), "口不在竟然拨通了");
+    // ④ 行序：拨在开窗之前，拨不通就回失败码。
+    let prod = guard_core::production_code(include_str!("../../../src/bridge/src/filewin/proc.rs"));
+    let at_dial = guard_core::find_pinned(&prod, "rt.block_on(dial_back(&req.handoff))")
+        .expect("child_main 里没有拨回那一下");
+    let at_open = guard_core::find_pinned(&prod, "super::shell::open_detached_seeded(")
+        .expect("child_main 里没有开窗那一下");
+    assert!(
+        at_dial < at_open,
+        "开窗排在拨通道之前 —— 拨不通时窗口已经开了"
+    );
+}
+
+/// 把 `find::testing::FakeBackend` 挂成宿主句柄的最小包装（`wire_up` 那一份不交出句柄本身）。
+struct FakeBackendHost(std::sync::Mutex<crate::filewin::find::testing::FakeBackend>);
+
+impl FakeBackendHost {
+    fn new(be: crate::filewin::find::testing::FakeBackend) -> Self {
+        Self(std::sync::Mutex::new(be))
+    }
+}
+
+impl crate::chan::router::Backends for FakeBackendHost {
+    fn call(
+        &self,
+        _origin: crate::chan::wire::Origin,
+        op: crate::chan::wire::Op,
+        _payload: crate::chan::wire::Body,
+        _left: std::time::Duration,
+        _cancel: crate::chan::wire::CancelToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<crate::chan::wire::Body, crate::chan::wire::CallError>,
+    > {
+        let known = self.0.lock().unwrap().offered.iter().any(|c| c == &op.0);
+        Box::pin(async move {
+            if known {
+                Ok(crate::chan::wire::Body(b"{\"kind\":\"dir\"}".to_vec()))
+            } else {
+                Err(crate::chan::wire::CallError::Peer {
+                    why: crate::chan::wire::PeerFault::Unsupported,
+                })
+            }
+        })
+    }
+
+    fn subscribe(
+        &self,
+        _origin: crate::chan::wire::Origin,
+        _kind: crate::chan::wire::Kind,
+        _from: Option<crate::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, crate::chan::wire::Item> {
+        Box::pin(futures::stream::empty())
+    }
+}
