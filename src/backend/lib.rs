@@ -382,7 +382,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// 这里**刻意不复写**，否则那条判据当场红）。用户裁「不要把账号和中转混为一谈」，不留兼容读旧名。
 /// ⚠ 新 monitor 递新变量名、旧后端不认 ⇒ 回头读旧文件名 ⇒ 界面配好了、请求静默 404 ⇒ **必须**让已部署的后端被判 stale。
 /// 线上字节不变（`wire_golden` 未动）。照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
-pub const BUILD_ID: &str = "p2r-apikey-naming";
+///
+/// ★★★ **p2s-files-copy-exit-policy**（2026-09-24，第三波 F7a ＋ B2 合并那一拍）：子命令 ＋10 ——
+/// F7a `files-copy` / `files-read-text` / `files-home`，B2 `exit-policy-read` / `exit-policy-set`（两个命令面）；
+/// ＋ B2 行为：常驻后端最后一条流断开时现读 `backend.json` 决定退不退（读到「结束」就自己退）。
+pub const BUILD_ID: &str = "p2s-files-copy-exit-policy";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
