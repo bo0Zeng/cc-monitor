@@ -1,0 +1,22 @@
+# cc-bus 的 kinds 表 —— 每条消息带一个 kind(cc-send --kind <k>,缺省 msg),这里定它**怎么注入**。
+# 生效顺序:~/.cc-bus/kinds.tsv(你的)→ 本文件(随 skill 部署)→ 内置 msg 一行(= 老行为)。
+# 想改就复制到 ~/.cc-bus/kinds.tsv 再改;改完即时生效(cc-send / cc-busd / Stop 钩子每次现读)。
+#
+# 每行 6 列,列间是**真 TAB**,空的写 -:
+#   kind   拦停   敲门   阀门   注入模板(T1)   敲门模板(T2)
+#   · 拦停 yes/no —— Stop 钩子要不要把它喂回给 Claude、拦下「本轮结束」
+#   · 敲门 yes/no —— 投递后要不要往对方屏幕打一行字(tmux send-keys ＋ Enter)
+#   · 阀门 acl,rate,dedup,loop 的子集 —— ⚠ acl 与 rate **必须有**(kind 是发信方自己选的,不许靠它绕开 ACL / 限流)
+#   · T1 喂给 Claude 的那段;拦停=yes 时**必须含 {body}**;\n 写成两个字符,渲染时变换行
+#   · T2 打进屏幕的那一行。🔴 **不许含 {body}**:它走 send-keys,正文里的换行会被当成回车执行
+# 变量:T1 可用 {from} {to} {ts} {kind} {count} {body};T2 只可用 {from} {to} {ts} {kind}。
+# 一批里有几种 kind 要拦停时,用**排在前面的那一行**的 T1;全不拦停 ⇒ 这一批不喂、也不算读过。
+# 不合法的行 ⇒ cc-send --kind 那一行当场 rc=2;已入队的按 msg 投并在 bus.log 里记一行 KIND fallback。
+#
+# kind	拦停	敲门	阀门	注入模板(T1)	敲门模板(T2)
+urgent	yes	yes	acl,rate,loop	🔴 紧急:{from} 要你先看这条,先处理它再结束本轮:\n{body}	🔴 cc-bus 紧急: {from} 有消息给你,运行 cc-recv 立刻读
+msg	yes	yes	acl,rate,dedup,loop	你收到新的 cc-bus 消息,请先处理完再结束本轮:\n{body}	🔔 cc-bus: 你有来自 {from} 的新消息,运行 cc-recv 读取并按内容处理
+# 保活(设计 95 §3bis):拦停**留**(目的就是别让它结束本轮)· 敲门**关**(不往屏幕打字)·
+# 去重**关**(保活文本按定义重复,开着第二次就被静默 COALESCE 掉)。调用方见 examples/cc-keepalive。
+keepalive	yes	no	acl,rate,loop	(cc-bus 保活 · 来自 {from})手上的活还没收尾就接着做,别结束本轮;真做完了就简短说一句做完了什么。\n{body}	-
+fyi	no	no	acl,rate,dedup,loop	-	-
