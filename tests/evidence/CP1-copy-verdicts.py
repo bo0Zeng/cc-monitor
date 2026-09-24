@@ -17,7 +17,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
  一、人群是**借来的**，不是本文件自己定义的
 ═══════════════════════════════════════════════════════════════════════════════
-「存疑带」的定义住在 `K-T68-A1-outward-copy-census.py`（`scan()` 的残差 ＋ `DECLINED_CTX`）。
+「存疑带」的定义住在 `K-T68-A1-outward-copy-census.py`（`scan()` 的残差 ＋ `is_declined()`）。
 本文件**把那个模块原样 import 进来调它**，不抄它的正则 —— 一个性质两把尺子会各自漂
 （`gate.sh` 头注逐字：「一个性质一把尺子」）。普查改口径，本判据的人群跟着变，台账当场对不上 ⇒ 红。
 
@@ -124,7 +124,7 @@ def doubt_band(census, src_root: Path | None = None):
     if src_root is not None:
         census.SRC_ROOT = src_root
     _files, _lines, _entries, residual, _en, _cc = census.scan(census.SRC_ROOT)
-    unsure = [r for r in residual if not census.DECLINED_CTX.search(r["ctx"])]
+    unsure = [r for r in residual if not census.is_declined(r)]
 
     # 回源码取全文（普查残差里的 text 截到 80 字）
     cache = {}
