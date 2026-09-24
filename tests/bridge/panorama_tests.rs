@@ -430,3 +430,98 @@ fn the_diagram_commands_pass_the_upstream_through_untouched() {
     std::fs::remove_dir_all(&repo).ok();
     std::fs::remove_dir_all(&store).ok();
 }
+
+/// PN1b（`设计/97` CP2）：**本仓零处写死上游的图种名**。
+///
+/// 图种由上游注册表决定（`DiagramKind::ALL`），本仓的选择器从 `panorama_diagram_kinds` 现读。
+/// 一旦有人在前端 / bridge 里写一个 `"<某个图种 id>"` 的字面量，上游改名或加图时那一处就会
+/// 静默地指向错的东西 —— 那正是上游这一轮刚治掉的毛病（种类写两遍、已经漂了）。
+///
+/// 人群：`src/panorama/` 整棵（TS，**连注释一起扫**，更严）· `src/views/panorama.ts` ·
+/// `src/bridge/src/panorama*.rs`（剥注释与测试段）。针：每个 id 带引号的三种写法
+/// （`"id"` / `'id'` / 反引号）—— 引号就是边界，不会被 `modules` 这类更长的词撑大。
+/// 正控：同一把尺子量 vendored 的 `registry.rs`（生产段），每个 id 恰好量到一次
+/// （`DiagramKind::id` 那一臂）—— 尺子瞎了这条先红。
+/// 买不到：不带引号的拼法（把 id 拆成两半拼）它认不出。
+#[test]
+fn no_upstream_diagram_kind_id_is_spelled_out_on_our_side() {
+    let ids: Vec<&str> = DiagramKind::ALL.iter().map(|k| k.id()).collect();
+    let root = crate::guard_support::repo_root();
+    let hits_in = |src: &str| -> Vec<String> {
+        let mut out = Vec::new();
+        for id in &ids {
+            for q in ['"', '\'', '`'] {
+                let needle = format!("{q}{id}{q}");
+                for _ in src.matches(needle.as_str()) {
+                    out.push(needle.clone());
+                }
+            }
+        }
+        out
+    };
+
+    // 正控：尺子在注册表本身上量得到每个 id，且恰好一次
+    let registry = std::fs::read_to_string(
+        root.join("src/bridge/vendor/code-picture-core/src/diagram/registry.rs"),
+    )
+    .expect("读 vendored 注册表");
+    let mut control = hits_in(&guard_core::production_code(&registry));
+    control.sort();
+    let mut want: Vec<String> = ids.iter().map(|id| format!("\"{id}\"")).collect();
+    want.sort();
+    assert_eq!(control, want, "尺子在注册表上没量准 —— 下面的零命中不作数");
+
+    // 人群
+    let mut corpus: Vec<(String, String)> = Vec::new();
+    for (p, src) in guard_core::scan_tree_excluding(&root.join("src/panorama"), &["ts"], &[]) {
+        corpus.push((p.to_string_lossy().replace('\\', "/"), src));
+    }
+    let view = root.join("src/views/panorama.ts");
+    corpus.push((
+        view.to_string_lossy().into(),
+        std::fs::read_to_string(&view).expect("读 views/panorama.ts"),
+    ));
+    for (p, src) in guard_core::scan_tree_excluding(&root.join("src/bridge/src"), &["rs"], &[]) {
+        let name = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        // 按「第一个 `_` / `.` 之前那一段」整段相等来认 `panorama*.rs`（不用前缀匹配：
+        // `needle_anchor` 棘轮拦的正是语料变量上的裸前缀/子串匹配）。
+        if name.split(['_', '.']).next() == Some("panorama") {
+            corpus.push((
+                p.to_string_lossy().replace('\\', "/"),
+                guard_core::production_code(&src),
+            ));
+        }
+    }
+    // 人群自检：这几份必须在（任何一份掉出去，零命中就是空转）
+    let mut present: Vec<&str> = [
+        "src/panorama/diagram-view.ts",
+        "src/panorama/diagram-render.ts",
+        "src/panorama/types.ts",
+        "src/views/panorama.ts",
+        "src/bridge/src/panorama.rs",
+    ]
+    .into_iter()
+    .filter(|want| corpus.iter().any(|(p, _)| p.ends_with(want)))
+    .collect();
+    present.sort();
+    assert_eq!(
+        present.len(),
+        5,
+        "人群里少了该扫的文件，实得 {present:?}（共 {} 份）",
+        corpus.len()
+    );
+
+    let found: Vec<String> = corpus
+        .iter()
+        .flat_map(|(p, src)| hits_in(src).into_iter().map(move |h| format!("{p}: {h}")))
+        .collect();
+    assert_eq!(
+        found,
+        Vec::<String>::new(),
+        "本仓写死了上游的图种名 —— 选项该从注册表现读（CP2）"
+    );
+}

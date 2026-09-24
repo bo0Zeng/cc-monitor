@@ -980,3 +980,46 @@ src/panorama/agent-clip.ts:81	分不清：本符号 {…} 条直接边里 {…} 
 src/panorama/agent-clip.ts:82	（启发 {…} · 动态猜测 {…}），动态派发 {…} 条，确定 {…} 条	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；「分不清」的分项计数，动态派发单列（候选完整，不算分不清）
 src/views/panorama.ts:1686	派发	保留	[对外] 置信度标签（动态派发），与「精确 / 启发 / 动态猜测」同列
 src/views/panorama.ts:1698	动态派发：候选是某个 trait / 接口在仓内的全部实现，运行时才定是哪一个	保留	[对外] 置信度 hint，说清派发与按名字凑的区别；trait / 接口是开发者自己的词
+src/panorama/agent-clip.ts:99	仓：{…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；字段标签
+src/panorama/agent-clip.ts:149	对象：图「{…}」（kind={…}）	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；住址：图的人读名 ＋ 注册表 id（给 agent 定位用）
+src/panorama/agent-clip.ts:149	 · 中心符号 {…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；住址：调用子图的中心符号
+src/panorama/agent-clip.ts:151	诚实信号：{…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4 那一行原样带上
+src/panorama/diagram-honesty.ts:20	{…}：不适用	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；这张图不量这一格时如实说不适用，不写 0
+src/panorama/diagram-honesty.ts:24	看不见	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；格名
+src/panorama/diagram-honesty.ts:24	处调用	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；计量单位
+src/panorama/diagram-honesty.ts:25	分不清	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；格名
+src/panorama/diagram-honesty.ts:25	处调用	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；计量单位
+src/panorama/diagram-honesty.ts:26	滤掉	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；格名
+src/panorama/diagram-honesty.ts:26	条全靠名字凑的连接	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；计量单位，说清滤掉的是什么
+src/panorama/diagram-honesty.ts:27	排除	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；格名
+src/panorama/diagram-honesty.ts:27	个测试符号	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；计量单位
+src/panorama/diagram-honesty.ts:30	省略：不适用	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；这张图没有节点上限时如实说不适用
+src/panorama/diagram-honesty.ts:31	省略 {…} 个节点（{…} 个符号）、{…} 条连接	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；因节点上限没画的量
+src/panorama/diagram-honesty.ts:33	读索引没出错	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；读库那一格的正常态
+src/panorama/diagram-honesty.ts:33	读索引出错 {…} 处，这张图不完整	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；读库出错时说清后果
+src/panorama/diagram-render.ts:88	派发	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；动态派发
+src/panorama/diagram-render.ts:88	分不清?	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；按名字凑的候选，带问号
+src/panorama/diagram-render.ts:89	{…} {…} 选 1	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；歧义边的候选数（N 选 1）
+src/panorama/diagram-render.ts:111	{…}×派发	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；一捆全是动态派发
+src/panorama/diagram-render.ts:113	{…}×分不清?	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；一捆全是按名字凑的
+src/panorama/diagram-render.ts:116	{…} 确定	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；混合一捆的成分
+src/panorama/diagram-render.ts:117	{…} 派发	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；混合一捆的成分
+src/panorama/diagram-render.ts:118	{…} 分不清	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；混合一捆的成分
+src/panorama/diagram-render.ts:361	{…} 符号 / {…} 文件	保留	[对外] 团/模块节点的副标题，规模计数
+src/panorama/diagram-render.ts:395	实现	保留	[对外] 类图里实现关系的标签
+src/panorama/diagram-render.ts:403	…还有 {…} 项	保留	[对外] 类型节点里成员太多时的截断说明
+src/panorama/diagram-view.ts:115	读不到图种清单	保留	[对外] 选图那一块的界面文字；取注册表失败的提示标题，正文是后端原话
+src/panorama/diagram-view.ts:155	「{…}」要以一个符号为中心：先在搜索或文件详情里点一个符号。	保留	[对外] 选图那一块的界面文字；需要符号的图没选符号时的说明，告诉人下一步点哪里
+src/panorama/diagram-view.ts:164	画图中…	保留	[对外] 选图那一块的界面文字；加载态
+src/panorama/diagram-view.ts:174	画不出这张图：{…}	保留	[对外] 选图那一块的界面文字；后端报错时的说明，后面接上游原话
+src/panorama/diagram-view.ts:220	只看确定的连接	保留	[对外] 选图那一块的界面文字；旋钮名
+src/panorama/diagram-view.ts:220	全靠名字凑、一条确定的都没有的连接不画；滤掉多少写在图下面	保留	[对外] 选图那一块的界面文字；旋钮的 title 提示
+src/panorama/diagram-view.ts:221	排除测试	保留	[对外] 选图那一块的界面文字；旋钮名
+src/panorama/diagram-view.ts:221	架构讲的是产品的结构；排掉多少写在图下面	保留	[对外] 选图那一块的界面文字；旋钮的 title 提示
+src/panorama/diagram-view.ts:240	复制给 agent	保留	[对外] 按钮名（CP7），与节点详情里的同名按钮一致
+src/panorama/diagram-view.ts:243	复制 Mermaid	保留	[对外] 选图那一块的界面文字；按钮名；Mermaid 是开发者认得的格式名
+src/panorama/diagram-view.ts:286	这一版还画不出这种形状的图（shape={…}）。可以点「复制 Mermaid」拿到上游画好的文本。	保留	[对外] 选图那一块的界面文字；新形状的诚实降级：说清画不出、给出路；shape 名附上便于对照上游
+src/panorama/diagram-view.ts:311	{…} · {…} 个文件 · {…} 个符号	保留	[对外] 选图那一块的界面文字；下钻侧栏的副标题
+src/panorama/diagram-view.ts:331	{…} 个字段 · {…} 个方法	保留	[对外] 选图那一块的界面文字；下钻侧栏的副标题
+src/views/panorama.ts:1117	复制给 agent	保留	[对外] 按钮名（CP7），与节点详情里的同名按钮一致
+src/views/panorama.ts:1459	复制给 agent	保留	[对外] 按钮名（CP7），与节点详情里的同名按钮一致

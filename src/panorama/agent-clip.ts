@@ -130,3 +130,26 @@ export function clipForFile(
   for (const s of symbols) lines.push(`  - ${s.id}  ${s.kind}  L${s.start_line}`);
   return lines.join("\n");
 }
+
+/**
+ * PN1b：一张图的「复制给 agent」—— Mermaid ＋ 诚实信号那一行 ＋ 索引读数（CP7 三样都在）。
+ * `honesty` 是调用方用 `diagram-honesty.ts` 拼好的那一行（数据只来自上游 `Diagram.honesty`）；
+ * `mermaid` 是上游 `to_mermaid` 的原文（它自己的图注里也印着诚实读数）。
+ */
+export function clipForDiagram(
+  ctx: Pick<ClipContext, "repo" | "stamp">,
+  kind: { id: string; title: string },
+  honesty: string,
+  mermaid: string,
+  center: string | null,
+): string {
+  return [
+    CLIP_HEAD,
+    `仓：${ctx.repo}`,
+    `对象：图「${kind.title}」（kind=${kind.id}）` + (center ? ` · 中心符号 ${center}` : ""),
+    stampLine(ctx.stamp),
+    `诚实信号：${honesty}`,
+    "Mermaid：",
+    mermaid.trimEnd(),
+  ].join("\n");
+}
