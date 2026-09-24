@@ -1453,3 +1453,129 @@ fn the_build_time_execution_surface_stays_registered() {
              ⚠ **不许**改成豁免某个文件名或某个路径 —— 那是放宽人群，不是收窄性质。"
     );
 }
+
+/// 一份 JSON 里**任意深度**、键名恰为 `capabilities` 的处数。
+///
+/// 为什么按键名全树找、而不只看 `app.security.capabilities` 那一个住址：
+/// 那是 Tauri 2 今天的字段名（`tauri-utils` 的 `SecurityConfig::capabilities`，现打），
+/// 上游挪了住址，只盯一个路径的判据会**零命中地绿**；本仓两份配置里这个键名今天零处，
+/// 按键名全树找没有误报的代价。
+fn capability_keys_anywhere(v: &serde_json::Value) -> usize {
+    match v {
+        serde_json::Value::Object(m) => m
+            .iter()
+            .map(|(k, x)| usize::from(k == "capabilities") + capability_keys_anywhere(x))
+            .sum(),
+        serde_json::Value::Array(xs) => xs.iter().map(capability_keys_anywhere).sum(),
+        _ => 0,
+    }
+}
+
+/// ★★ **Tauri 会加载的能力来源 == {`capabilities/default.json`}**〔D0b 2026-09-24，`INVARIANTS §45`〕。
+///
+/// # 它补的洞
+///
+/// [`every_webview_permission_is_registered`] 只读 `capabilities/default.json` **一个文件**。
+/// 而 Tauri 2 给 webview 发能力的来源不止那一份（现打 `tauri-build` 2.6 / `tauri-utils` 2.9 源码）：
+///
+/// | 来源 | 上游怎么读 | 本条怎么判 |
+/// |---|---|---|
+/// | `capabilities/` 目录 | `tauri_build::build()` 默认模式 `./capabilities/**/*` —— **目录下全部文件** | 目录里的文件集**两向等于** `{default.json}` |
+/// | 配置里内联 | `app.security.capabilities`（标识符或整份内联对象都行） | 两份配置（主 ＋ sidecar 合并配置）里 `capabilities` 键**零处** |
+/// | 平台配置 | `tauri.{linux,windows,macos,android,ios}.conf.json` 等会被合并进主配置 | 那几个文件名**零存在**（它们一出现，上一格就少看了一份） |
+/// | 运行期 | `Manager::add_capability` | 生产源码零调用 |
+///
+/// 任一来源多出东西，webview 就拿到了**没过 `ALLOWED` 那张表**的能力 ——
+/// 而 `ALLOWED` 那一行 `core:window:allow-hide` 的理由自己就写着「另开文件等于绕过它」。
+/// ⇒ 本条把「绕过」这条路本身堵成会红的：**能力只有一个来源，那一个来源才有登记表。**
+///
+/// ⚠ 真要加第二份能力文件（比如给 settings 窗单独收窄）：不是在这里加豁免，
+/// 是把 [`every_webview_permission_is_registered`] 改成读**全部**来源、逐份对 `ALLOWED`，再改本条的集合。
+#[test]
+fn tauri_loads_capabilities_from_exactly_one_source() {
+    let bridge = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+
+    // ① 目录：全部文件（空扩展名列表 = 不筛）两向等于 {default.json}。
+    let files: std::collections::BTreeSet<String> =
+        guard_core::scan_tree_excluding(&bridge.join("capabilities"), &[], &[])
+            .into_iter()
+            .map(|(p, _)| {
+                p.strip_prefix(bridge.join("capabilities"))
+                    .expect("扫出来的文件不在 capabilities/ 下")
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+    let want: std::collections::BTreeSet<String> = ["default.json".to_string()].into();
+    assert_eq!(
+        files, want,
+        "`src/bridge/capabilities/` 里的文件集 ≠ {{default.json}}（两向）。\n\
+         ⚠ `tauri_build::build()` 会加载那个目录下的**全部**文件 —— 多出来的每一份都在给 webview 发能力，\n\
+         而 `every_webview_permission_is_registered` 只读 `default.json`，那几份**绕过了登记表**。"
+    );
+
+    // ② 配置里的内联能力：零处。先给计数器一个正控 —— 认得出一条合成的内联能力。
+    let probe: serde_json::Value = serde_json::from_str(
+        r#"{"app":{"security":{"csp":"x","capabilities":["main",{"identifier":"d","permissions":[]}]}}}"#,
+    )
+    .expect("正控夹具不是合法 JSON");
+    assert_eq!(
+        capability_keys_anywhere(&probe),
+        1,
+        "计数器认不出一条合成的 `app.security.capabilities` —— 下面的零命中在空转"
+    );
+    for name in ["tauri.conf.json", "tauri.sidecar.conf.json"] {
+        let raw = capability_json_sibling(name);
+        let v: serde_json::Value =
+            serde_json::from_str(&raw).unwrap_or_else(|e| panic!("{name} 不是合法 JSON：{e}"));
+        let n = capability_keys_anywhere(&v);
+        assert_eq!(
+            n, 0,
+            "`{name}` 里出现了 {n} 处 `capabilities` 键 —— 配置里内联的能力（`app.security.capabilities`）\n\
+             同样会发给 webview，而它**不过 `ALLOWED` 那张表**。能力只许住 `capabilities/default.json`。"
+        );
+    }
+
+    // ③ 平台配置：会被 Tauri 合并进主配置的那几个文件名，一个都不许在。
+    //    正控：同一个探针认得出真在的那份主配置。
+    assert!(
+        bridge.join("tauri.conf.json").is_file(),
+        "探针认不出真在的 `tauri.conf.json` —— 下面的「零存在」在空转"
+    );
+    let mut merged: Vec<String> = Vec::new();
+    for plat in ["linux", "windows", "macos", "android", "ios"] {
+        for form in [
+            format!("tauri.{plat}.conf.json"),
+            format!("tauri.{plat}.conf.json5"),
+            format!("Tauri.{plat}.toml"),
+        ] {
+            if bridge.join(&form).exists() {
+                merged.push(form);
+            }
+        }
+    }
+    for form in ["tauri.conf.json5", "Tauri.toml"] {
+        if bridge.join(form).exists() {
+            merged.push(form.to_string());
+        }
+    }
+    assert!(
+        merged.is_empty(),
+        "出现了会被 Tauri 合并进主配置的文件：{merged:?}\n\
+         ⇒ 上面第 ② 格只看两份配置，这几份里的内联能力它看不见。要加就把它们一并纳入第 ② 格。"
+    );
+
+    // ④ 运行期：生产源码零 `add_capability`（针运行期拼，免得本文件的散文自己成为命中 ——
+    //    虽然本文件住 `tests/`、结构上不在被扫的那棵树里）。
+    let needle = format!("{}_{}", "add", "capability");
+    let hits: Vec<String> = guard_core::scan_tree_excluding(&bridge.join("src"), &["rs"], &[])
+        .into_iter()
+        .filter(|(_, src)| guard_core::production_code(src).contains(&needle))
+        .map(|(p, _)| p.display().to_string())
+        .collect();
+    assert!(
+        hits.is_empty(),
+        "生产源码里出现了运行期加能力（`{needle}`）：{hits:?}\n\
+         ⇒ 那是第四个来源，同样不过 `ALLOWED` 那张表。"
+    );
+}
