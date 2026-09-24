@@ -705,7 +705,7 @@ export class TabSessionActions {
  *   - "未绑定窗口"：该 session 启动时没经过 cc function 握手（直接跑 claude 而非 cc）
  *   - "窗口已不存在"：用户关掉了对应 PS/WT 窗口
  *   - "HWND 复用"：原窗口关闭后 HWND 被另一个无关窗口拿到
- *   - "invoke 超时"：极端情况下 Win32 调用卡住
+ *   - "切到终端窗口超时"：极端情况下 Win32 调用卡住（〔S4〕正文按 CP1 裁词改：不说 invoke / Win32、不说毫秒数）
  */
 export function bringTerminalToFront(sessionId: string): Promise<void> {
   const timeoutMs = 5000;
@@ -713,7 +713,7 @@ export function bringTerminalToFront(sessionId: string): Promise<void> {
     invoke<void>("bring_terminal_to_front", { sessionId }),
     new Promise<never>((_, reject) =>
       window.setTimeout(
-        () => reject(new Error(`invoke 超时 ${timeoutMs}ms（后端 Win32 调用可能卡住）`)),
+        () => reject(new Error("切到终端窗口超时")),
         timeoutMs,
       ),
     ),
@@ -736,7 +736,7 @@ export function bringTerminalToFront(sessionId: string): Promise<void> {
  *   （用户逐字「不能依赖 tmux」）。后端那句话原样给用户，不再在前端二次解释。
  *
  * 失败模式（后端原文）：带令牌但窗口已关 · 不是 cc-monitor 启动的 · 标题退路也没扫到 /
- * 扫到的窗口校验不过；另有 "invoke 超时"（极端情况下 Win32 调用卡住）。
+ * 扫到的窗口校验不过；另有 "切到终端窗口超时"（极端情况下 Win32 调用卡住）。
  */
 export function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
   // #41:后端现扫重试窗口抬到 4s(ON_DEMAND_BIND_*,覆盖首次 attach 的标题四跳传播),故前端超时须
@@ -746,7 +746,7 @@ export function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
     invoke<void>("bring_remote_terminal_to_front", { sessionId }),
     new Promise<never>((_, reject) =>
       window.setTimeout(
-        () => reject(new Error(`invoke 超时 ${timeoutMs}ms（后端 Win32 调用可能卡住）`)),
+        () => reject(new Error("切到终端窗口超时")),
         timeoutMs,
       ),
     ),

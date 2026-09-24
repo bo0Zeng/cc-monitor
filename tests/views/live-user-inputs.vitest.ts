@@ -80,7 +80,7 @@ let streamRootEl: HTMLElement;
 const feed = (p: RigPayload): void => tm.onLine(p as never);
 
 const peek = (sid: string): Tab =>
-  (tm as unknown as { tabs: Map<string, Tab> }).tabs.get(sid)!;
+  (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
 
 const overlayOf = (sid = "s1"): HTMLElement =>
   peek(sid).inputsEl;

@@ -276,6 +276,18 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
     expect(decls).toEqual(["TabManager"]);
   });
 
+  // 〔S4 · 第四波〕U2 拆完时 `TabManager` 上给旧判据留了二十来个同名 `protected` 转交（值住新家），
+  // 只为 `tabs.vitest.ts` 按旧私有名直读。判据已改成直指新家（那边的 `TMHomes`）⇒ 转交删光。
+  // 本格钉「不再长回来」：`protected` 在这个类里**只**有过这一种用途。
+  it("★ 〔S4〕TabManager 上零 `protected` 成员（给旧判据的转交不再长回来；同一谓词的正控）", () => {
+    const protectedMember = /^[ \t]+protected\s+(?:get\s+|set\s+|readonly\s+)?[A-Za-z_$][\w$]*/gm;
+    expect(
+      "  protected get tabs(): Map<string, Tab> {\n    protected barEl: HTMLElement,\n".match(protectedMember),
+      "正控：旧转交的两种写法（访问器 · 参数属性）必须各命中一处（否则谓词拼错了）",
+    ).toEqual(["  protected get tabs", "    protected barEl"]);
+    expect(code.match(protectedMember) ?? []).toEqual([]);
+  });
+
   it("★ 导出面 == 拆之前的 import 面（逐名两向相等）", () => {
     const names = new Set<string>();
     for (const m of code.matchAll(/^export\s+(?:type\s+)?\{([^}]*)\}/gm)) {

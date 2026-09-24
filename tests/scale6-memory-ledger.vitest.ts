@@ -429,7 +429,7 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
 
   const feed = (p: RigPayload): void => tm.onLine(p as never);
   const peek = (sid: string): Tab =>
-    (tm as unknown as { tabs: Map<string, Tab> }).tabs.get(sid)!;
+    (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
   /** 直读 `BranchFolder` 的私有账本 —— 判据侧的**第二条路**，用来跟快照对数。 */
   const realBranchRecords = (sid: string): number =>
     (peek(sid).branchFolder as unknown as { records: unknown[] }).records

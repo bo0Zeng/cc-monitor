@@ -140,6 +140,7 @@ import { commands } from "../../src/ipc/commands";
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../src/views/history";
 import { TabManager } from "../../src/tabs";
+import type { TabSessionActions } from "../../src/tab-session-actions";
 import {
   primeLocalLaunchAccounts,
   __resetLocalLaunchSnapshotForTests,
@@ -880,7 +881,8 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
     const tm = new TabManager(bar, root);
     tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, 0, null);
     tm.archiveTab(sid);
-    await (tm as unknown as { resumeTab(s: string): Promise<void> }).resumeTab(sid);
+    // 〔S4 · 第四波〕会话动作住 `tab-session-actions.ts`；`TabManager` 上不再留同名转交 ⇒ 直接指向新家。
+    await (tm as unknown as { actions: TabSessionActions }).actions.resumeTab(sid);
     await new Promise((r) => setTimeout(r, 0));
     return tm;
   }
