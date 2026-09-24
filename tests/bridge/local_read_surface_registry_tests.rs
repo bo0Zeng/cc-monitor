@@ -408,7 +408,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "dial_host.rs",
-        "resolve_proxy",
+        "resolve_proxy_uncached",
         "`~/.cc-monitor/bin`（本机后端自释放那一份的落点 —— 拨号代理就是它）",
         "〔C2 09-24〕**不是伸手拿用户的东西**：与下面 `local_backend_host.rs::start_local_backend` 同一个目录、\
              同一份解析（`local_backend::resolve_or_extract`）—— 开发树上找拨号代理要走到这一处（`D11`：找不到就报，\
