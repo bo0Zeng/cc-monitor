@@ -63,6 +63,16 @@ function renderEnvOps(ops: EnvOp[]): string {
     .map((op) => {
       if (op.kind === "export-config-dir") return buildEnvPrefix(op.value); // "export CLAUDE_CONFIG_DIR='…'; "
       if (op.kind === "export-model") return `export ANTHROPIC_MODEL=${posixQuote(op.value)}; `; // F07
+      // `设计/80 §8` 步 1：启动期令牌。**这一支是容器无关的** —— 它落在载荷上，于是
+      // `container:"none"`（下面 `renderFallback` 的第二支）与 `container:"tmux"`
+      // （第三支，整条载荷被 `posixQuote` 一次塞进 `send-keys`）**自动两支都带**，
+      // 不需要各写一遍。那正是 `§8.4` 说的「直接起和 tmux 用同一套机制不是额外要做的事，
+      // 是这个设计的自动结果」。
+      // ⚠ 形状校验在**产出侧**（`RBIND_TOKEN_DIMENSION.apply` throw）与 **Rust 渲染侧**
+      // （`payload.rs::rbind_token_shape_ok`，回 `Err`）。本函数逐字不校验 ——
+      // 它与 `export-config-dir` 那一格的 TS/Rust 姿态差异是同一件已登记的事
+      // （`INVARIANTS §33b`：TS 座「不做校验/转义」，Rust 侧回 `Result`）。
+      if (op.kind === "export-rbind-token") return `export CCM_RBIND_TOKEN=${posixQuote(op.value)}; `;
       // R04③：`unset` 侧收窄为无参变体后，键表由 kind 在这里查——不再由维度递自由字符串数组。
       // 输出逐字节不变（`unset CLAUDE_CONFIG_DIR; ` / `unset <嵌套env 全套>; `）。
       if (op.kind === "unset-config-dir") return UNSET_CONFIG_DIR_PREFIX;

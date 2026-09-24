@@ -545,6 +545,62 @@ fn model_export_is_quoted() {
     );
 }
 
+/// ★★ `设计/80 §8` 步 1：启动期令牌那一格 —— **形状闸是 fail-closed 的 `Err`，不是宽容渲染**。
+///
+/// 为什么这一格要比 [`model_export_is_quoted`] 严：模型名渲错了，远端 `claude`
+/// 自己会报错（用户当场看得到）；**令牌渲错了是静默的** —— 会话照起、命令照跑，
+/// 只有 `↗` 从此拉不到窗口，而归因指向别处（`设计/80 §8.5 ②` 要治的正是这个）。
+/// ⇒ 形状不对不许渲染成「这次不带令牌」，也不许照拼。
+#[test]
+fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
+    const TOK: &str = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
+    // ── 正控先立：合法令牌渲出来的字节就是那一串（否则下面全红也说明不了什么）──
+    let ok = PayloadSpec {
+        env: &[EnvOp::ExportRbindToken { value: TOK }],
+        cwd: None,
+        launcher: "claude",
+        args: &[],
+        wrap: &[],
+    };
+    assert_eq!(
+        render_payload(&ok).unwrap(),
+        "export CCM_RBIND_TOKEN='0f1e2d3c4b5a69788796a5b4c3d2e1f0'; claude"
+    );
+    // ── 逐格拒 ──
+    for bad in [
+        "",                                    // 空串：**坏数据不是「没有」**（Z01 的支点）
+        "0F1E2D3C4B5A69788796A5B4C3D2E1F0",    // 大写 hex：刻意不收（不许同一令牌两种写法）
+        "0f1e2d3c4b5a69788796a5b4c3d2e1f",     // 31 位
+        "0f1e2d3c4b5a69788796a5b4c3d2e1f00",   // 33 位
+        "0f1e2d3c4b5a69788796a5b4c3d2e1fg",    // 非 hex
+        "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1",  // 带连字符（UUID 形）
+        "0f1e2d3c4b5a69788796a5b4c3d2e1f ",    // 尾随空白
+        "'; rm -rf / #",                       // 注入形（长度也不对，两道都拦）
+    ] {
+        let spec = PayloadSpec {
+            env: &[EnvOp::ExportRbindToken { value: bad }],
+            cwd: None,
+            launcher: "claude",
+            args: &[],
+            wrap: &[],
+        };
+        let r = render_payload(&spec);
+        assert!(
+            r.is_err(),
+            "令牌 {bad:?} 应被拒 —— 形状不对不许静默渲成「这次不带令牌」，也不许照拼"
+        );
+        // 拒绝必须带 `REFUSE:` 标（前端按标分流：坏输入不许回落去换一条路渲染）。
+        assert!(
+            r.unwrap_err().starts_with(REFUSE_TAG),
+            "令牌 {bad:?} 的拒绝没带 REFUSE 标 —— 前端会把它当通道异常去回落"
+        );
+    }
+    // ── 形状判据本体的阴性对照：它不是「恒假」──
+    assert!(rbind_token_shape_ok(TOK));
+    assert!(!rbind_token_shape_ok(""));
+    assert_eq!(RBIND_TOKEN_LEN, 32, "长度常量变了 —— TS 侧那条对拍会跟着红，两处一起改");
+}
+
 // ═════════════════════════════════════════════════════════════════════
 // `K-H2b`：接上注入点
 // ═════════════════════════════════════════════════════════════════════

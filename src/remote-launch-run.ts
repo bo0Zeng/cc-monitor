@@ -78,7 +78,27 @@ async function renderLaunchCommand(
   plan: LaunchPlan,
 ): Promise<string> {
   const behavior = await getBehavior();
-  if (!behavior.forceLaunchPayloadRenderer && ctx.transport.kind === "ssh") {
+  // 🔴 `设计/80 §8` 步 1：**带启动期令牌的 plan 不许去试 `ccm …` 调用行那条路。**
+  //
+  // `ccm` 今天没有承接 `CCM_RBIND_TOKEN` 的 flag，而**生产的 CLI 渲染在 Rust 那侧**
+  // （`backend::control::ccm_invocation`）—— 它的 `CliSpec` 里没有 `rbind-token` 这个维度
+  // ⇒ 不拦住的话它会**照常渲成功**，只是渲出来的 `ccm …` 里**没有令牌**。
+  // 那是「静默丢一样东西」的形状：命令能跑、会话能起、只有 `↗` 从此拉不到窗口，
+  // 而归因会指向别处（正是 `§8.5 ②`/`§6.2` 那四档猜要治的病）。
+  //
+  // ⚠ TS 的 `RBIND_TOKEN_DIMENSION.cliFlags` 也返回 `null`（诚实放弃，判据在
+  // `tests/launch-render-cli.test.ts`），但 `tryRenderCli` **今天不是生产渲染器**
+  // ⇒ 那一处拦不住这里。**两处都要有**，这一处是站在生产路上的那一处。
+  //
+  // ⚠ 判据依据的是**载荷里有没有这条 `EnvOp`**（不是「ctx 里有没有 rbindToken」）——
+  // 判据必须读渲染器真吃的那个对象，否则「维度没把它推进 plan」这一类回归在这里是隐形的。
+  const payloadCarriesRbindToken = plan.env.some((op) => op.kind === "export-rbind-token");
+  if (payloadCarriesRbindToken) {
+    console.debug(
+      `[launch] 载荷带启动期令牌，\`ccm …\` 调用行说不出它 ⇒ 直接走后端载荷渲染（origin=${origin}）`,
+    );
+  }
+  if (!behavior.forceLaunchPayloadRenderer && ctx.transport.kind === "ssh" && !payloadCarriesRbindToken) {
     const probe = await probeCcm(origin);
     // R04①：一次调用同时回答"能不能"与"渲染成什么"。拿不到 `ok:true` 就走兜底——
     // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（改造前 `renderCli` 对 `cliFlags` 返回

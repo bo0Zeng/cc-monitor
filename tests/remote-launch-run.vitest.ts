@@ -732,3 +732,96 @@ describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () 
     expect(String(toastMock.mock.calls[0][0])).toContain("无法构造 attach 命令");
   });
 });
+
+// ═══ `设计/80 §8` 步 1：**带启动期令牌的 plan 不许去试 `ccm …` 调用行那条路** ═══════
+//
+// 🔴 这一组是本件在**生产路上**的唯一一道闸，而它必须存在的理由是一条不对称：
+//
+//   · TS 的 `RBIND_TOKEN_DIMENSION.cliFlags` 返回 `null`（诚实放弃），
+//     但 `tryRenderCli` **今天不是生产渲染器**（生产在 Rust 的 `ccm_invocation`）；
+//   · Rust 那侧的 `CliSpec` **没有** `rbind-token` 这个维度（本件没动它，见交回报告）
+//     ⇒ 把一个带令牌的请求送过去，它会**照常渲成功**，只是渲出来的 `ccm …` 里没有令牌。
+//
+// 失效形态：命令能跑、会话能起、**只有 `↗` 从此拉不到窗口**，而归因指向别处 ——
+// 正是 `§8.5 ②`/`§6.2` 那「四档猜」要治的病。⇒ 拒绝必须落在**分派**这一层。
+//
+// ⚠ 判据读的是**载荷里有没有那条 `EnvOp`**（不是「ctx 里有没有 rbindToken」）：
+//   判据必须读渲染器真吃的那个对象，否则「维度没把它推进 plan」这一类回归在这里是隐形的。
+describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用行", () => {
+  const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** ccm **装了而且能力齐全** —— 不这么桩的话 CLI 那条路本来就不会走，本组恒绿。 */
+  function routeWithCcmInstalled(): { cmds: string[]; launched: string[] } {
+    const cmds: string[] = [];
+    const launched: string[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      cmds.push(cmd);
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({
+          installed: true,
+          version: "2",
+          capabilities: [
+            "new", "resume", "attach", "tmux", "account", "model", "cwd",
+            "agent", "launcher", "ccm-sid", "print", "detach", "tmux-size",
+          ],
+        });
+      if (cmd === "render_ccm_launch")
+        return Promise.resolve({ ok: true, cmd: "<ccm-line-without-the-token>", reason: null });
+      if (cmd === "render_launch_payload")
+        return Promise.resolve(
+          renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req),
+        );
+      if (cmd === "launch_remote_terminal") {
+        launched.push((args as { remoteCmd: string }).remoteCmd);
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    return { cmds, launched };
+  }
+
+  it("★ 对照组先立：不带令牌、ccm 齐全 ⇒ 真的走了 `render_ccm_launch`", async () => {
+    const { cmds, launched } = routeWithCcmInstalled();
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteResume("devbox", "sid-t0", "/w", "claude");
+    expect(
+      cmds,
+      "连不带令牌的时候都不走 CLI 那条路 —— 那下面那条判据什么也没证明（空真）",
+    ).toContain("render_ccm_launch");
+    expect(launched).toEqual(["<ccm-line-without-the-token>"]);
+  });
+
+  it("★★ 带令牌 ⇒ 一次 `render_ccm_launch` 都不发，改走后端载荷渲染，且令牌真在串里", async () => {
+    const { cmds, launched } = routeWithCcmInstalled();
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runRemoteResume("devbox", "sid-t1", "/w", "claude", { rbindToken: TOK });
+    expect(ok).toBe(true);
+    expect(
+      cmds.filter((c) => c === "render_ccm_launch"),
+      "带令牌却去试了 `ccm …` 那条路 —— 后端那侧不认这个维度，会渲出一条**丢了令牌**的命令",
+    ).toEqual([]);
+    expect(cmds).toContain("render_launch_payload");
+    // ★ 正控：交出去的那一串里**真的**有令牌（只验「没走 CLI」的话，
+    //   「干脆把令牌整个丢掉」这个变异也会绿）。
+    expect(launched).toHaveLength(1);
+    expect(launched[0]).toContain(`export CCM_RBIND_TOKEN='${TOK}'; `);
+  });
+
+  it("★★ tmux 那一格同理（容器无关）：不试 CLI，令牌落在内层载荷里", async () => {
+    const { cmds, launched } = routeWithCcmInstalled();
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runRemoteResumeTmux("devbox", "sid-t2", "/w", "claude", "t2-cc", {
+      rbindToken: TOK,
+    });
+    expect(ok).toBe(true);
+    expect(cmds.filter((c) => c === "render_ccm_launch")).toEqual([]);
+    expect(launched).toHaveLength(1);
+    // tmux 那一格整条内层载荷被 posix-quote 一层塞进 `send-keys` ⇒ 针跟着被 quote。
+    expect(launched[0]).toContain(`export CCM_RBIND_TOKEN='\\''${TOK}'\\''; `);
+    expect(launched[0]).toContain("tmux new-session -d -s t2-cc");
+  });
+});

@@ -42,11 +42,14 @@ export interface GoldenCase {
 }
 
 const ACCT = "/home/u/.claude-alt/z";
+/** `设计/80 §8` 步 1：一个形状合法的启动期令牌（`[0-9a-f]{32}`）。
+ *  ⚠ 夹具里的令牌是**常量**，不是现场铸的 —— 逐字节金标准里不许有随机值。 */
+const RBIND = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
 /**
  * 用例集。**每加一条 Rust 侧就多比一条** —— 这是对拍面的唯一定义处。
  *
- * 覆盖面：四种 `EnvOp` 各至少一次 · 有/无 cwd · 空 args · 多 args ·
+ * 覆盖面：五种 `EnvOp` 各至少一次 · 有/无 cwd · 空 args · 多 args ·
  * 需要转义的路径与参数 · wrap 折叠（含乱序 `order`）。
  */
 export const GOLDEN_CASES: readonly GoldenCase[] = [
@@ -92,12 +95,30 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     wrap: [],
   },
   {
-    name: "四种 EnvOp 同时出现（顺序即契约）",
+    // `设计/80 §8` 步 1：**只有令牌**的那一格 —— 它是 `container:"none"`
+    // （`planResumeDirect`，今天 ↗ 做不到的那一档）在步 1 之后的载荷形态。
+    name: "只有启动期令牌（container:\"none\" 那一档也带）",
+    env: [{ kind: "export-rbind-token", value: RBIND }],
+    cwd: "/w",
+    launcher: "claude",
+    args: [],
+    wrap: [],
+  },
+  {
+    // ⚠ **别把这条读成「维度 order 的判据」**（死值验 `M7b` 现打订正的一句半真话）：
+    //   本文件的用例**手写** `env` 数组、**从不跑维度注册表** ⇒ 把
+    //   `RBIND_TOKEN_DIMENSION.order` 从 40 改成 15，本条金标准**照绿**。
+    //   它钉的是「**给定这个顺序**，TS 与 Rust 渲出来的字节一样」。
+    //   「维度真的按这个顺序发」由 `tests/launch-dimensions.test.ts`
+    //   （`buildLaunchPlan` 五种 EnvOp 数组相等 ＋ 模块加载即崩的顺序不变式）与
+    //   `tests/launch-requests.vitest.ts`（整条载荷逐字节相等）钉 —— M7b 实测那两处共红 5 条。
+    name: "五种 EnvOp 同时出现（顺序即契约）",
     env: [
       { kind: "export-config-dir", value: ACCT },
       { kind: "export-model", value: "sonnet" },
       { kind: "unset-config-dir" },
       { kind: "unset-nested-env" },
+      { kind: "export-rbind-token", value: RBIND },
     ],
     cwd: "/w",
     launcher: "claude",

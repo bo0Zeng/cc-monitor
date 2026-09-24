@@ -43,10 +43,18 @@ describe("载荷黄金串夹具（U8c-1 跨语言对拍的 TS 半边）", () => 
     expect(empty).toEqual([]);
   });
 
-  test("四种 EnvOp 每一种都至少被一条用例覆盖", () => {
+  // ⚠ 这是**相等**不是包含 —— 反空真：`EnvOp` 加了变体却没加用例 ⇒ 红；删了用例也红。
+  //   清单跟着 `src/launch-plan.ts::EnvOp` 走，改一侧必须回来改这里。
+  test("五种 EnvOp 每一种都至少被一条用例覆盖", () => {
     const seen = new Set(GOLDEN_CASES.flatMap((c) => c.env.map((op) => op.kind)));
     expect([...seen].sort()).toEqual(
-      ["export-config-dir", "export-model", "unset-config-dir", "unset-nested-env"].sort(),
+      [
+        "export-config-dir",
+        "export-model",
+        "export-rbind-token", // 设计/80 §8 步 1
+        "unset-config-dir",
+        "unset-nested-env",
+      ].sort(),
     );
   });
 });

@@ -303,6 +303,10 @@ pub enum WireTmuxOuter {
 pub enum WireEnvOp {
     ExportConfigDir { value: String },
     ExportModel { value: String },
+    /// `设计/80 §8` 步 1：启动期令牌。与 TS `launch-cli-wire.ts::WireEnvOp` 同名同序。
+    /// 形状不对由 [`super::payload::render_env_ops`] fail-closed 拒（不在 wire 这一层拒 ——
+    /// 拒绝理由要带 `REFUSE:` 标才走得到前端那条按标分流的逻辑）。
+    ExportRbindToken { value: String },
     UnsetConfigDir,
     UnsetNestedEnv,
 }
@@ -360,6 +364,9 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
                 super::payload::EnvOp::ExportConfigDir { value }
             }
             WireEnvOp::ExportModel { value } => super::payload::EnvOp::ExportModel { value },
+            WireEnvOp::ExportRbindToken { value } => {
+                super::payload::EnvOp::ExportRbindToken { value }
+            }
             WireEnvOp::UnsetConfigDir => super::payload::EnvOp::UnsetConfigDir,
             WireEnvOp::UnsetNestedEnv => super::payload::EnvOp::UnsetNestedEnv { keys: &nested },
         })
