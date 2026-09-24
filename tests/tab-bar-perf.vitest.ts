@@ -22,6 +22,7 @@ vi.mock("../src/terminal-front", () => ({ terminalFrontAvailable: () => true }))
 
 import { TabBarView, type TabBarViewHost } from "../src/tab-bar-view";
 import { TabBarDrag } from "../src/tab-bar-drag";
+import { TabStreamView, type TabStreamHost } from "../src/tab-stream-view";
 import { TabStore } from "../src/tab-store";
 import type { TabBarPrefs } from "../src/tab-bar-prefs";
 import type { Tab } from "../src/tab-model";
@@ -477,5 +478,40 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒 3 个"
       expect(r.host.switchTo).not.toHaveBeenCalled();
       expect(r.host.beginDrag).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("P5：切 tab 只写 4 次 class，与 tab 数无关（代码不改，钉住现状）", () => {
+  /**
+   * `tab-stream-view.ts::showOnly` 遍历全部 tab 各 `toggle` 两次 —— 但 DOM 规范上 `force` 与现状一致的
+   * `toggle` 不写 ⇒ 真写的只有旧 active 与新 active 的 streamEl ＋ inputsEl。`设计/30` P5 要的「只动两个元素」
+   * 在 DOM 写这一层今天就成立；剩下的 O(N) 只是 JS 循环。这一格把它钉住，免得哪天有人把 toggle 换成无条件写。
+   */
+  const switchWrites = (n: number): number[] => {
+    const store = new TabStore();
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    for (let i = 0; i < n; i++) {
+      const streamEl = document.createElement("div");
+      streamEl.className = "stream";
+      const inputsEl = document.createElement("div");
+      root.append(streamEl, inputsEl);
+      store.tabs.set(`s${i}`, { sessionId: `s${i}`, streamEl, inputsEl } as unknown as Tab);
+    }
+    const view = new TabStreamView(store, root, {} as TabStreamHost);
+    const mo = new MutationObserver(() => {});
+    mo.observe(root, { subtree: true, attributes: true, attributeFilter: ["class"] });
+    const out: number[] = [];
+    for (const sid of ["s0", `s${n - 1}`, "s1"]) {
+      view.showOnly(sid);
+      out.push(mo.takeRecords().length);
+    }
+    mo.disconnect();
+    root.remove();
+    return out;
+  };
+  it("N = 10 与 N = 40：第一次切（没有旧 active）2 条，之后每次切 4 条", () => {
+    expect(switchWrites(10)).toEqual([2, 4, 4]);
+    expect(switchWrites(40)).toEqual([2, 4, 4]);
   });
 });
