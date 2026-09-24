@@ -334,3 +334,79 @@ fn the_pure_router_verdict_has_teeth() {
         "被撑大的标识符被当成了那几个名字 —— 假红"
     );
 }
+
+/// ★★ **收拢表逐档穷举**〔面 A 通道那一拍，2026-09-24〕—— `route_call_error` 对
+/// `inbound_client::CallError` 的**每一个变体**，产出的三态**连同那句话**逐字节钉死。
+///
+/// # 两侧为什么异源
+///
+/// 右侧（期望值）是**字面量**，抄自改动之前那份 `route_call_error` 在同一输入上的产出
+/// —— 先在旧实现上跑绿、再动实现（「分层判定只许一份，三态从它收拢」那一拍）。
+/// 它**不**调新的分层函数自证：拿新函数去算期望值，改错了两边一起错，恒真。
+///
+/// # 买到 / 买不到
+///
+/// **买到**：收拢前后同一输入 ⇒ 同一三态、同一句话（kill/launch/send_keys/cc_bus/tmux/find
+/// 六个调用方看到的一个字节都没变）。
+/// **买不到**：每个变体只喂了**一个**样本（字段值取一种）；字段值不同的输入由各调用方自己的判据管。
+#[test]
+fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering() {
+    // 穷尽见证：`inbound_client::CallError` 多一个变体，这里编译不过 —— 逼人回来补下表。
+    fn witness(e: &CallError) {
+        match e {
+            CallError::Unsupported { .. }
+            | CallError::TooManyPending
+            | CallError::Disconnected
+            | CallError::Cancelled
+            | CallError::Timeout { .. }
+            | CallError::Remote { .. } => {}
+        }
+    }
+    let suffix = " —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；请刷新会话列表后再决定";
+    let table: Vec<(CallError, Routed)> = vec![
+        (
+            CallError::Unsupported {
+                cmd: "kill".into(),
+                offered: vec!["ping".into(), "cancel".into()],
+            },
+            Routed::NoChannel(
+                "远端后端没声明 `kill` 能力（它声明的是 [\"ping\", \"cancel\"]）—— 多半是旧版本"
+                    .into(),
+            ),
+        ),
+        (
+            CallError::TooManyPending,
+            Routed::NoChannel("入方向同时在等的命令已达上限，这条没入队".into()),
+        ),
+        (
+            CallError::Disconnected,
+            Routed::Refused(format!("入方向通道已断开{suffix}")),
+        ),
+        (
+            CallError::Timeout {
+                after: Duration::from_millis(1500),
+            },
+            Routed::Refused(format!("等应答超时（1500ms）{suffix}")),
+        ),
+        (
+            CallError::Cancelled,
+            Routed::Refused(format!("命令已被取消{suffix}")),
+        ),
+        (
+            CallError::Remote {
+                code: "wrong_owner".into(),
+                message: "sid=x".into(),
+            },
+            Routed::Refused("wrong_owner/sid=x".into()),
+        ),
+    ];
+    assert_eq!(table.len(), 6, "收拢表的行数与穷尽见证的变体数对不上");
+    for (e, want) in table {
+        witness(&e);
+        assert_eq!(
+            route_call_error(&e, plain),
+            want,
+            "`{e:?}` 收拢出来的三态（或那句话）变了 —— 旧三态一个字节都不许变"
+        );
+    }
+}
