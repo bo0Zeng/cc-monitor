@@ -592,66 +592,6 @@ async fn the_production_handle_says_unreachable_and_no_such_stream_out_loud() {
     );
 }
 
-/// ★ 生产句柄的错误映射与全仓唯一的分流器（`backend_route::route_call_error`）
-/// 在「**能不能证明没发出去**」那一维上逐档一致 —— 两份实现一漂就红。
-///
-/// 左边：分流器说 `NoChannel`（证明没发出去）。右边：本通道说 `reach: NotSent`，
-/// 或 `Peer{Unsupported}`（`05 §3.3.1`：「一个字节都没发」、重放安全）。
-#[test]
-fn the_production_handle_agrees_with_the_one_router_on_what_was_provably_not_sent() {
-    use crate::backend::control::backend_route::{route_call_error, Routed};
-    use crate::backend::control::inbound_client::CallError as In;
-    // 穷尽见证：`inbound_client::CallError` 多一个变体，这里编译不过 —— 逼人回来补下面那张清单。
-    fn witness(e: &In) {
-        match e {
-            In::Unsupported { .. }
-            | In::TooManyPending
-            | In::Disconnected
-            | In::Cancelled
-            | In::Timeout { .. }
-            | In::Remote { .. } => {}
-        }
-    }
-    let all = [
-        In::Unsupported {
-            cmd: "files-ls".into(),
-            offered: vec![],
-        },
-        In::TooManyPending,
-        In::Disconnected,
-        In::Cancelled,
-        In::Timeout {
-            after: Duration::from_secs(1),
-        },
-        In::Remote {
-            code: "c".into(),
-            message: "m".into(),
-        },
-    ];
-    assert_eq!(all.len(), 6, "清单与穷尽见证对不上");
-    for e in all {
-        witness(&e);
-        let there = matches!(
-            route_call_error(&e, |c, m| format!("{c}{m}")),
-            Routed::NoChannel(_)
-        );
-        let mine = host::from_inbound(e.clone());
-        let here = matches!(
-            mine,
-            CallError::Hop {
-                reach: Reach::NotSent,
-                ..
-            } | CallError::Peer {
-                why: PeerFault::Unsupported
-            }
-        );
-        assert_eq!(
-            there, here,
-            "`{e:?}`：分流器说「证明没发出去」= {there}，本通道说 = {here}（映射成 {mine:?}）—— 两份实现漂开了"
-        );
-    }
-}
-
 /// 钥匙不进日志：交接件与钥匙的 `Debug` 都不含钥匙内容。
 #[test]
 fn the_key_never_shows_up_in_debug_output() {

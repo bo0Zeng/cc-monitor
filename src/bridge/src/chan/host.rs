@@ -51,10 +51,9 @@
 
 use super::router::{self, Backends, Ended, Terms};
 use super::wire::{
-    Body, By, CallError, CancelToken, Cursor, HopFault, HopId, Item, Key, Kind, Op, Origin,
-    OursFault, PeerFault, Reach,
+    Body, By, CallError, CancelToken, Cursor, Item, Key, Kind, Op, Origin, OursFault,
 };
-use crate::backend::control::inbound_client;
+use crate::backend::control::{backend_route, inbound_client};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
@@ -175,40 +174,8 @@ pub fn handoff() -> Option<Handoff> {
 /// 生产的后端句柄 —— `origin` ⇒ `inbound_client::client_for`（本机与远端同一条路）。
 pub struct InboundBackends;
 
-/// `inbound_client` 的失败 ⇒ 面 A 的三层。第 1 跳 = 路由器 ↔ 后端。
-///
-/// 🔴 **「这一条能不能证明没发出去」这件事，全仓只许有一个答案** —— 它的家是
-/// `backend::control::backend_route` 的 `route_call_error`（那张表逐行写了每一档的产地）。
-/// 本函数分得比它细（三层 × `reach` × `why`），但**在「证明没发出去」那一维上必须与它逐档一致**：
-/// 判据 `the_production_handle_agrees_with_the_one_router_on_what_was_provably_not_sent`
-/// 对 `inbound_client::CallError` 的每一个变体两边各问一遍、要求相等 —— 两份一漂就红。
-pub(crate) fn from_inbound(e: inbound_client::CallError) -> CallError {
-    use inbound_client::CallError as In;
-    let hop = |tag: &'static str, reach: Reach, why: HopFault| CallError::Hop {
-        at: HopId { idx: 1, tag },
-        reach,
-        why,
-    };
-    match e {
-        In::Unsupported { .. } => CallError::Peer {
-            why: PeerFault::Unsupported,
-        },
-        In::TooManyPending => hop("write", Reach::NotSent, HopFault::Overrun),
-        In::Disconnected => hop("read", Reach::Unknown, HopFault::Dropped),
-        In::Cancelled => CallError::Ours {
-            why: OursFault::Cancelled,
-        },
-        In::Timeout { .. } => hop("wait", Reach::Unknown, HopFault::Overrun),
-        In::Remote { code, message } => CallError::Peer {
-            why: PeerFault::Refused {
-                body: Body(
-                    serde_json::to_vec(&serde_json::json!({ "code": code, "message": message }))
-                        .unwrap_or_default(),
-                ),
-            },
-        },
-    }
-}
+/// 这一跳在面 A 上的编号：路由器 ↔ 后端（`wire::HopId` 头注那两跳里的第 1 跳）。
+const HOP: u8 = 1;
 
 impl Backends for InboundBackends {
     fn call(
@@ -217,35 +184,28 @@ impl Backends for InboundBackends {
         op: Op,
         payload: Body,
         left: Duration,
-        cancel: CancelToken,
+        _cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
+        // 撤单**不在这里接**：路由器在撤单手柄拨下时直接丢掉本 future（`router::run_call`），
+        // `inbound_client` 那次调用随之被丢 —— 本句柄再接一次就是第二份「撤了怎么说」。
         Box::pin(async move {
+            // 🔴 分层判定**不在本文件**：「那台机器没有控制通道」与 inbound 的每一种失败
+            //    怎么分层、`reach` 是哪一档，唯一的家是 `backend_route` 的
+            //    `layer_no_channel` / `layer_call_error`（它们与旧三态同出一源）。
+            //    本文件只做搬运，不 match inbound 的错误枚举。
             let Some(client) = inbound_client::client_for(origin.as_wire_str()) else {
-                // 那台机器今天没有控制通道 ⇒ 立即报错，不排队、不降级（`05 §4.5.2`）。
-                return Err(CallError::Hop {
-                    at: HopId {
-                        idx: 1,
-                        tag: "open",
-                    },
-                    reach: Reach::NotSent,
-                    why: HopFault::Unreachable,
-                });
+                return Err(backend_route::layer_no_channel(HOP));
             };
             // 这个后端说 JSON：载荷在这里（宿主这一侧）才第一次被当成 JSON 读。
+            // 读不动是**调用方用错了**（`Ours{Misuse}`）—— 与 inbound 无关，不是分流判定。
             let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
-                return Err(CallError::Ours {
-                    why: OursFault::Misuse,
-                });
+                return Err(OursFault::Misuse.into());
             };
-            let out = tokio::select! {
-                r = client.call(&op.0, args, left) => r,
-                () = cancel.cancelled() => return Err(CallError::Ours { why: OursFault::Cancelled }),
-            };
-            match out {
+            match client.call(&op.0, args, left).await {
                 Ok(v) => Ok(Body(
                     serde_json::to_vec(&v.unwrap_or(serde_json::Value::Null)).unwrap_or_default(),
                 )),
-                Err(e) => Err(from_inbound(e)),
+                Err(e) => Err(backend_route::layer_call_error(&e, HOP).error),
             }
         })
     }
