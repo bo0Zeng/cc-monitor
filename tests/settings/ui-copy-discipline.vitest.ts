@@ -144,10 +144,9 @@ export function violationsOf(text: string): { shape: string; hit: string }[] {
  * 逐条：住址 → 它今天产的是哪一种形状。
  */
 const BACKEND_SIDE_DEBT: Readonly<Record<string, string>> = {
-  "src/bridge/src/backend_policy.rs::death_copy":
-    "产 `**下一步：…**`（markdown ＋ 设计论证 ＋ 同一个 exit 码说两遍）—— `70 §7` 第二刀 步 7",
-  "src/bridge/src/backend_policy.rs::ledger_line":
-    "整条日志行被 `「」` 包着拼进 `HEALTH_CRASHED` 的 `{last}` —— 同上",
+  // 〔第四波 ST2 · 步 7〕`backend_policy.rs::death_copy` / `::ledger_line` 两条**还清了**：
+  //   death_copy 不再产 markdown / 论证；界面上「最后一次」接的是 `last_brief`（判定 ＋ 退出状态），
+  //   账行只落日志。判据在 Rust 那侧：`backend_policy_tests.rs::what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format`。
   "src/bridge/src/data_paths.rs":
     "条目说明里有 `sid` / `HWND`（`91 §4` R1 硬命中）—— `70 §10.2` 差项 4",
 };
@@ -226,7 +225,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
     // 这一格不是断言代码，是断言**我们没有假装那几条已经没了**。
     // 它会在有人把登记清空时红 —— 那时要么债真还了（去 `src/bridge/` 核过再删），
     // 要么是有人把不方便的话删掉了。
-    expect(Object.keys(BACKEND_SIDE_DEBT).length).toBe(3);
+    expect(Object.keys(BACKEND_SIDE_DEBT).length).toBe(1);
     for (const [addr, why] of Object.entries(BACKEND_SIDE_DEBT)) {
       expect(addr.startsWith("src/bridge/"), `${addr} 不在后端那一侧，登记错地方了`).toBe(true);
       expect(why.length, `${addr} 的理由是空的`).toBeGreaterThan(10);
