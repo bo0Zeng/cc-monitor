@@ -176,15 +176,25 @@ async fn loopback_roundtrip_through_the_proxy() {
         addresses: vec![],
         jump: None,
     };
-    // ① 字节流：远端 `cat`，写进去什么回来什么（半关之后输出照样全回）
-    let mut s = crate::ssh_source::connect_and_exec_cmd(&cfg, "cat")
+    // ① 字节流：远端 `head -n1`，写进去什么回来什么；它读完一行自己退 ⇒ 下行 EOF ⇒ 链路收工
+    let mut s = crate::ssh_source::connect_and_exec_cmd(&cfg, "head -n1")
         .await
         .expect("开不了流");
     s.write_all(b"hello\n").await.unwrap();
-    s.shutdown().await.unwrap();
+    s.flush().await.unwrap();
     let mut got = String::new();
     s.read_to_string(&mut got).await.unwrap();
     assert_eq!(got, "hello\n");
+    // ①b 界面关了写半边 ⇒ 代理收工（`D3③`：界面走了代理跟着走）—— 远端 `cat` 永不自己退
+    let mut s = crate::ssh_source::connect_and_exec_cmd(&cfg, "cat")
+        .await
+        .expect("开不了流");
+    s.shutdown().await.unwrap();
+    let mut rest = Vec::new();
+    tokio::time::timeout(std::time::Duration::from_secs(10), s.read_to_end(&mut rest))
+        .await
+        .expect("关了写半边 10 秒代理还没收工 —— 它挂在一条没人收的下行上了")
+        .unwrap();
     // ② 收全：stdout / stderr / 退出码
     let ex = crate::ssh_source::connect_and_exec_capture(&cfg, "echo o; echo e >&2; exit 5", None)
         .await

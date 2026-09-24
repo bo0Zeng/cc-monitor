@@ -58,22 +58,21 @@ pub(crate) async fn serve<W: tokio::io::AsyncWrite + Unpin>(
                 tracing::error!("dial: 写 ack 失败（界面已经走了？）");
                 return EXIT_DIAL_FAILED;
             }
-            // 两条方向对拷。**下行结束就收工**（= 远端那头走了）；上行结束（界面关了写半边）只是
-            // 把 EOF 递给远端（半关），远端命令读到 EOF 自己收尾之后下行才结束 —— 否则
-            // 「界面写完就关」的那一形（一次性命令喂 stdin）会把还没回来的输出截掉。
-            // 界面整个走了（管子断）⇒ 我们写 stdout 失败 ⇒ 下行那一边也结束。
+            // 两条方向对拷。**哪一边先结束就收工**（`K-P6b` 那一版的语义，C2 一度改成「上行结束只半关」又改回来）：
+            // 下行结束 = 远端那头走了；上行结束 = **界面走了**（管子断 / 句柄被丢）。
+            // ⚠ 不许把上行 EOF 读成「半关、接着等下行」：界面被强杀时（Linux 上没有 Job 兜着）上行 EOF 是它
+            //   唯一的遗言，而远端后端的长流**不会**因为 stdin EOF 退出 ⇒ 代理会挂在一条没人收的下行上
+            //   （C2 现打逮到过一个这样挂了 42 分钟的代理）。本 crate 不许睡，也就没有「等一会儿再收」这一形。
             let (mut down, mut up) = tokio::io::split(channel.into_stream());
-            let upstream = tokio::spawn(async move {
-                let mut input = tokio::io::stdin();
-                let r = tokio::io::copy(&mut input, &mut up).await;
-                tracing::info!("dial: 上行结束（界面关了写半边）：{r:?}");
-                if let Err(e) = up.shutdown().await {
-                    tracing::info!("dial: 把 EOF 递给远端失败：{e}");
+            let mut input = tokio::io::stdin();
+            tokio::select! {
+                r = tokio::io::copy(&mut input, &mut up) => {
+                    tracing::info!("dial: 上行结束（界面那头断了）：{r:?}");
                 }
-            });
-            let r = tokio::io::copy(&mut down, out).await;
-            tracing::info!("dial: 下行结束（远端那头走了 / 界面不收了）：{r:?}");
-            upstream.abort();
+                r = tokio::io::copy(&mut down, out) => {
+                    tracing::info!("dial: 下行结束（远端那头断了）：{r:?}");
+                }
+            }
             0
         }
         Use::Capture => {

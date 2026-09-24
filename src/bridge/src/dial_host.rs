@@ -149,8 +149,8 @@ pub(crate) fn request(
 /// 丢掉这个结构 = 丢掉子进程句柄 = 代理被收掉（`Lifetime::JobKillOnClose`）。
 pub struct DialStream {
     _child: crate::spawn_managed::ManagedTokioChild,
-    /// `None` = 已经半关（`shutdown` 把它丢了 ⇒ 子进程读到 EOF ⇒ 代理把 EOF 递给远端）。
-    /// ⚠ **必须真的丢掉**：tokio 的 `ChildStdin::poll_shutdown` 不关管子，只靠它「关写半边」远端永远等不到 EOF。
+    /// `None` = 已经关了写半边（`shutdown` 把它丢了 ⇒ 子进程读到 EOF ⇒ 代理收工 —— 「界面走了」）。
+    /// ⚠ **必须真的丢掉**：tokio 的 `ChildStdin::poll_shutdown` 不关管子，只靠它「关写半边」代理永远看不见界面走了。
     w: Option<tokio::process::ChildStdin>,
     /// ⚠ **必须是 `BufReader` 本体**：ack 那一行是按行读的，缓冲里很可能已经预读了后面的字节。
     r: BufReader<tokio::process::ChildStdout>,
