@@ -321,9 +321,9 @@ fn a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
 /// # 它为什么不是「写完能读回来」
 ///
 /// 「读回来」用的是本文件自己的读法 ⇒ 两边同错就同绿（本仓判过的那族）。
-/// 这里**换一侧的取值口来读**：`history::relay_rows_at` 是起会话那一侧
-/// **生产上真正用的那一个**（`PRODUCTION_RELAY_FACTS.rows` 指的就是它的无参半），
-/// 判断也用那一侧的 `history::relay_routed_subset`（`KH2B7` 与徽章共用的那一条）。
+/// 这里**换一侧的取值口来读**：`history::apikey_rows_at` 是起会话那一侧
+/// **生产上真正用的那一个**（`PRODUCTION_INJECT_FACTS.rows` 指的就是它的无参半），
+/// 判断也用那一侧的 `history::apikey_routed_subset`（`KH2B7` 与徽章共用的那一条）。
 /// ⇒ 绿的含义是「**界面写下的那一行，起会话那一刻找得到**」，不是「我写了我读得到」。
 ///
 /// # ⚠ 它买不到什么
@@ -342,24 +342,28 @@ fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
 
     // 非空对照**排最前**：还没写的时候，起会话那一侧说「这个号没有行」。
     assert!(
-        crate::history::relay_routed_subset(&[one.to_string()], &crate::history::relay_rows_at(&p))
-            .is_empty(),
+        crate::history::apikey_routed_subset(
+            &[one.to_string()],
+            &crate::history::apikey_rows_at(&p),
+            "claude-code",
+        )
+        .is_empty(),
         "文件还不存在就说这个号有行了 —— 这把尺子恒真，下面全是空真"
     );
 
     write_key_at(&p, one, "KEY-FOR-ONE").expect("写");
 
     // ★ 正题：用**起会话那一侧**的取值口 + 它的判断读这份文件。
-    let rows = crate::history::relay_rows_at(&p);
+    let rows = crate::history::apikey_rows_at(&p);
     assert_eq!(
-        crate::history::relay_routed_subset(&[one.to_string()], &rows),
+        crate::history::apikey_routed_subset(&[one.to_string()], &rows, "claude-code"),
         vec![one.to_string()],
         "界面写下的那一行，起会话那一侧找不到 —— 「设置里说走中转、起会话时没走」\n\
-             正是 `relay_account_id_of_dir` 头注逐字点名的那一形。表里现在是：{rows:?}"
+             正是 `apikey_account_id_of_dir` 头注逐字点名的那一形。表里现在是：{rows:?}"
     );
     // 只配了一个号 ⇒ 另一个号**不许**被顺带配上（「拿 A 的 key 发 B 的请求」的反面）。
     assert!(
-        crate::history::relay_routed_subset(&[two.to_string()], &rows).is_empty(),
+        crate::history::apikey_routed_subset(&[two.to_string()], &rows, "claude-code").is_empty(),
         "只配了一个号，另一个号也说走中转了：{rows:?}"
     );
     // ⚠ 而且它落的**不是** `default` 那一行 —— 那一行谁的会话都命中得了。
@@ -390,7 +394,7 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
     guard_core::assert_no_test_code("creds_store 写侧 id 规则", &src);
     // ① **调**那一份唯一的规则，恰好一处。
     assert_eq!(
-        src.matches("relay_account_id_of_dir(").count(),
+        src.matches("apikey_account_id_of_dir(").count(),
         1,
         "写侧调那条唯一规则的次数不是 1 —— 0 次说明它自己算了一份，\n\
              多次说明这条线上有两个地方在推 id。生产段：{src}"
@@ -401,7 +405,7 @@ fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
             src.matches(needle).count(),
             0,
             "写侧出现了 `{needle}` —— 那是在长第二份「取末段名」的规则。\n\
-                 ⚠ `relay_account_id_of_dir` 的头注逐字写着它被抽出来的理由：\n\
+                 ⚠ `apikey_account_id_of_dir` 的头注逐字写着它被抽出来的理由：\n\
                  「两边各写一个 basename 规则，漂开的那天症状是『设置里说走中转、起会话时没走』，\n\
                  而两边看起来都没错」。"
         );

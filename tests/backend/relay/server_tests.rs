@@ -3348,7 +3348,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_the_relay_with_that_ac
 ///    本条只走它算内容的那两步，写盘由 monitor 侧那几条既有判据分管。
 ///
 /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
-/// （`history::relay_account_id_of_dir`，住 monitor，backend 够不着）——
+/// （`history::apikey_account_id_of_dir`，住 monitor，backend 够不着）——
 /// 那一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for` 钉。
 /// **本条从「已经有了一个 id」那一刻接手。**
 #[cfg(unix)]

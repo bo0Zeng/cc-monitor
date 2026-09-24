@@ -12,7 +12,7 @@
 // ⚠ 那两句假话不是笔误，是**从上一轮报告里抄来没量的**（`ROADMAP` `己1-f34` 记着这一条）。
 //
 // ★★ `D1 阻-5`〔08-28〕：现在它**真的会**渲染本机账号 —— 没有远端时回落到
-// `fetchLocalAccounts`，并且那几行的徽章带上「这个号走不走本机中转」的三态
+// `fetchLocalAccounts`，并且那几行的徽章带上「这个号走不走 apikey 端点改写」的三态
 // （`accountStatusBadge` 的 `{scope:"local",…}`）。在此之前 `KH2B7` 那三态
 // **在用户看得见的地方一处都没落地**（两个取值函数生产调用方各 0）。
 import {
@@ -20,7 +20,7 @@ import {
   fetchLocalAccounts,
   fetchLocalRelayRouting,
   localRelayStateFor,
-  type RelayRoutingView,
+  type ApikeyRoutingView,
   deriveUi,
   currentWorkingAccount,
   accountColorsActive,
@@ -78,8 +78,8 @@ export class AccountChip {
   private origin: string | null = null;
   /** `D1 阻-5`：这一拍渲染的是**本机**账号吗（没有远端时回落）。 */
   private local = false;
-  /** `D1 阻-5`：本机那几个 configDir 走不走中转。`null` = 没问到（远端那半恒 `null`）。 */
-  private relayRouting: RelayRoutingView | null = null;
+  /** `D1 阻-5`：本机那几个 configDir 走不走 apikey 端点改写。`null` = 没问到（远端那半恒 `null`）。 */
+  private relayRouting: ApikeyRoutingView | null = null;
   private state: AccountsState | null = null;
   private menu: HTMLElement | null = null;
   private menuClose: ((e: Event) => void) | null = null;
@@ -113,7 +113,7 @@ export class AccountChip {
     }
     // ★ `D1 阻-5`：**没有远端不等于没有账号** —— 本机 `~/.claude-accts/` 那份 manifest
     //   一直在，只是此前没有任何界面渲染它（`fetchLocalAccounts` 全仓生产调用方只有
-    //   fork 那个小窗）。⇒ 回落到本机那一份，并把「走不走中转」一起问出来。
+    //   fork 那个小窗）。⇒ 回落到本机那一份，并把「走不走 apikey 端点改写」一起问出来。
     this.local = !this.origin;
     this.relayRouting = null;
     this.state = this.local
@@ -283,7 +283,7 @@ export class AccountChip {
     // 就是本机账号」，而那是假的 —— `fetchAccounts` 只问 `list_remote_accounts`，
     // `origin` 为 `null` 时 `refresh` 整个隐藏并 `return`，一行都渲染不到。〕
     //
-    // ★ `D1 阻-5`：本机那几行带上「走不走中转」的三态；远端那几行明说是远端那一半。
+    // ★ `D1 阻-5`：本机那几行带上「走不走 apikey 端点改写」的三态；远端那几行明说是远端那一半。
     //   问不到 routing（`null`）时**不表态** —— 回落到缺席那一档（只说条件、不下判断）。
     const s = accountStatusBadge(
       a,

@@ -1438,22 +1438,22 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
     );
 }
 
-/// ★★★ `D6 阻-4` 的**人群闸**：谁绕开 `history::RelayFactSources` / `history::LaunchSink`
+/// ★★★ `D6 阻-4` 的**人群闸**：谁绕开 `history::InjectFactSources` / `history::LaunchSink`
 /// 那两条缝，直接去调那几个取值口 / 那两个送法 ⇒ **当场红**。
 ///
 /// # 它为什么必须是一道闸，而不是一句头注
 ///
-/// 上一拍（08-28）买那条缝时，`RelayFactSources` 的头注里逐字写着
+/// 上一拍（08-28）买那条缝时，`InjectFactSources` 的头注里逐字写着
 /// 「这两个取值口的**生产消费方恰好 2**」，并把那句话当成了闸。
 /// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、绕开缝直接调
-/// `history::relay_rows()` / `local_backend_host::relay_running()`
+/// `history::apikey_rows()` / `local_backend_host::relay_running()`
 /// ⇒ **`1227 passed; 0 failed`、`GATE: OK`、四个数与干净树逐字相同。**
 /// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
 /// ★ PM `§8 裁四` 的定性：**治一个「今天数出来的 N」的过程中，长出了一个新的。**
 ///
 /// # 它钉的是**零调用点**（不是「今天有几个消费方」）
 ///
-/// 走缝的写法里，那几个函数只以**函数指针**出现（`rows: relay_rows,`）——
+/// 走缝的写法里，那几个函数只以**函数指针**出现（`rows: apikey_rows,`）——
 /// **没有括号**。⇒ 只要断言「调用形在全树生产段里恰好只剩它们自己的定义行」，
 /// 这道闸就与「今天有几个消费方」**完全脱钩**：明天多十个消费方，只要都走缝，本条不动；
 /// 谁不走缝，第一次调用就把那个数顶上去。
@@ -1472,7 +1472,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
 ///   `history.rs` 自己的 `#[cfg(test)]` 段里 —— 那种**不经 `#[path]`** 的测试模块
 ///   `file!()` 会命中，缝自己那一份真会被摘出人群。⇒ 结论照旧，成因要说准。）
 /// - 它只看 Rust 侧。别的 crate（backend）够不着这几个符号（单向依赖）。
-/// - `let f = crate::history::relay_rows; f()` 这一形由裸标识符那一半接住（会变成 3）。
+/// - `let f = crate::history::apikey_rows; f()` 这一形由裸标识符那一半接住（会变成 3）。
 #[test]
 fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -1484,7 +1484,7 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
         files.len()
     );
 
-    /// 裸标识符计数：`relay_rows_at` 里的 `relay_rows` 不算。
+    /// 裸标识符计数：`apikey_rows_at` 里的 `apikey_rows` 不算。
     fn bare(hay: &str, ident: &str) -> usize {
         hay.match_indices(ident)
             .filter(|(i, _)| {
@@ -1498,11 +1498,11 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     // (裸标识符, 调用形恰好几处, 裸标识符恰好几处)
     //
     // ⚠ **这两格仍然是计数制，别顺手统一成下面那种住址制**〔ccbus-win 09-10〕：
-    //   它们今天**没有第二类消费者** —— 除了缝，谁都不该调 `relay_rows`（读文件）
+    //   它们今天**没有第二类消费者** —— 除了缝，谁都不该调 `apikey_rows`（读文件）
     //   / `relay_running`（问后端）。计数对它们仍然是对的答案。
     let mut counts = [
-        // 定义 1 处（`history.rs`）+ 缝里 `rows: relay_rows,` 1 处。
-        ("relay_rows", 1usize, 2usize, 0usize, 0usize),
+        // 定义 1 处（`history.rs`）+ 缝里 `rows: apikey_rows,` 1 处。
+        ("apikey_rows", 1usize, 2usize, 0usize, 0usize),
         // 定义 1 处（`local_backend_host.rs`）+ 缝里 `running: crate::local_backend_host::relay_running,` 1 处。
         ("relay_running", 1, 2, 0, 0),
         // 〔`设计/20 §7` 步 4〕定义 1 处（`history.rs`）+ 缝里 `all_sessions: relay_all_sessions_switch,` 1 处。
@@ -1521,8 +1521,8 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     // ⇒ 一个数在回答两个从今天起答案不同的问题。这正是本条原文写的出路 ②
     //   「**重新裁定**并在这里说清为什么这一处可以不走」。
     //
-    // ⚠ **走缝是错的出路**：为了问一句「是不是 Windows」而调 `history::relay_facts()`，
-    //   会顺带跑 `relay_rows()`（读文件）与 `relay_running()`（问后端）。
+    // ⚠ **走缝是错的出路**：为了问一句「是不是 Windows」而调 `history::inject_facts()`，
+    //   会顺带跑 `apikey_rows()`（读文件）与 `relay_running()`（问后端）。
     //
     // # 换制之后它比原来强在哪（**有读数，不是设想**）
     //
@@ -1546,8 +1546,8 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
             "cc_bus.rs",
             1,
             "`resolve_bash` 的平台那一格〔ccbus-win 09-10〕。它不走缝的理由是\
-                 **缝答的不是它要问的东西**：`RelayFactSources` 是「中转」那三件事的取值口，\
-                 而这里只要「是不是 Windows」，走缝要顺带付 `relay_rows()`（读文件）\
+                 **缝答的不是它要问的东西**：`InjectFactSources` 是「中转」那三件事的取值口，\
+                 而这里只要「是不是 Windows」，走缝要顺带付 `apikey_rows()`（读文件）\
                  与 `relay_running()`（问后端）两笔钱。\
                  ⚠ 它**没有**因此自己写 `cfg!(windows)` —— 那句话仍然只有一个家，\
                  由 `cc_bus::tests::the_bash_cc_bus_runs_is_resolved_in_exactly_one_place` \
@@ -1601,16 +1601,16 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
             got_calls, want_calls,
             "\n★★ `{ident}(` 在 `src/bridge/src` 的生产段里有 {got_calls} 处（期望 {want_calls} 处 = \
                  它自己的定义行）。\n\
-                 ⇒ 有人**绕开 `history::RelayFactSources` 那条缝**直接调了这个取值口。\n\
+                 ⇒ 有人**绕开 `history::InjectFactSources` 那条缝**直接调了这个取值口。\n\
                  那正是 `D6` 刀 `E5` 的形状：绕缝的那一处 ① 没有判据数得出来\n\
                  ② 它「问没问 / 用没用答案」也没有任何判据。\n\
-                 ⇒ 合法出路只有两条：**改成走缝**（`history::relay_facts()`），\n\
+                 ⇒ 合法出路只有两条：**改成走缝**（`history::inject_facts()`），\n\
                  或**重新裁定**并在这里说清为什么这一处可以不走。"
         );
         assert_eq!(
             got_bare, want_bare,
             "\n★ 裸标识符 `{ident}` 在生产段里有 {got_bare} 处（期望 {want_bare} 处 = \
-                 定义 1 + `PRODUCTION_RELAY_FACTS` 里 1）。\n\
+                 定义 1 + `PRODUCTION_INJECT_FACTS` 里 1）。\n\
                  ⇒ 有人把这个取值口的**函数指针**复制到了第二个地方 —— \
                  那条缝就不再是唯一的入口了。"
         );
@@ -1629,7 +1629,7 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     assert_eq!(
         copies, 1,
         "\n★ `{PLATFORM}` 的**函数指针**在生产段里被复制到了 {copies} 个地方\
-             （期望 1 = `PRODUCTION_RELAY_FACTS` 里那一处）。\n\
+             （期望 1 = `PRODUCTION_INJECT_FACTS` 里那一处）。\n\
              ⇒ 多了：那条缝就不再是唯一入口；少了：缝上那一格不再由它答。"
     );
 
@@ -1648,9 +1648,9 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     assert!(
         unregistered.is_empty(),
         "\n★★ 这些地方调了 `{PLATFORM}(` 却**没有登记住址**：\n{}\n\n\
-             ⇒ 有人绕开 `history::RelayFactSources` 那条缝直接问了平台，而 ① 没有判据数得出来\n\
+             ⇒ 有人绕开 `history::InjectFactSources` 那条缝直接问了平台，而 ① 没有判据数得出来\n\
              ② 它「问没问 / 用没用答案」也没有任何判据。\n\
-             合法出路两条：**改成走缝**（`history::relay_facts()`），\n\
+             合法出路两条：**改成走缝**（`history::inject_facts()`），\n\
              或**登记进 `PLATFORM_TAKE_SITES` 并写清为什么这一处可以不走**。",
         unregistered.join("\n")
     );

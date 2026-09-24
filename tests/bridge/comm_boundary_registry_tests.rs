@@ -39,7 +39,7 @@ fn repo_root() -> PathBuf {
 /// ｜ ✅ `C4` 从这一步起可以真断言零读盘」。现打两句：
 ///
 /// 1. **搬家那半已经做完了**（`99 §4` 的 `14-i` 带走的）—— 那两份今天住
-///    `src/backend/relay/accounts/`，与 `impl Destinations`（那张决策表的唯一实现）同一层，
+///    `src/backend/accounts/`（先住 `relay/accounts/`，2026-09-24 搬出中转层），与 `impl Destinations`（那张决策表的唯一实现）同一层，
 ///    层 1 手里只剩一个 `Arc<dyn Destinations>` ⇒「收一张表」的**接法**也在盘上了。
 /// 2. **而「圈进来」那半一直没人做** ⇒ `C4` 一直绿着，却**一份 `relay/` 的文件都没扫过**：
 ///    它成立在一个不含被它点名的那个东西的人群上。这一拍补的就是那一半。
