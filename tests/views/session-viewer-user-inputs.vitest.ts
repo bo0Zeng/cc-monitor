@@ -3,18 +3,19 @@
  *
  * 〔用 09-10 逐字〕「**要的就是跳过去就行**」。
  *
- * ## 🔴 分母写在判据的名字里
+ * ## 🔴 口径不在这里量了（SE1）
  *
- * 「一条用户输入」的口径**只有一个住址**：`user-input-index.ts::collectUserInputs`
- * 的头注（`type:"user"` ＋ 非 `isMeta` ＋ **非 `isSidechain`** ＋ 有 uuid ＋ 纯文本非空）。
- * 「**sidechain / 子 agent 里的用户消息算不算**」这一问，本件选的是**不算** ——
- * 这份清单回答的是「**我**在这个会话里说过什么」。这个选择写进了下面那条判据的名字。
+ * 「一条用户输入」的口径**只有一个住址**：后端 `observe/user_inputs.rs`（四条：`type:"user"` ＋
+ * 非 `isMeta` ＋ **非 `isSidechain`** ＋ 有 uuid ＋ 纯文本非空），判据在 Rust 那侧
+ * （`user_inputs_tests.rs`，每条口径两向）。查看器从 SE1 起**问后端要**清单（`list_user_inputs`），
+ * 本文件量的是：后端给什么就列什么、按它的顺序 · 问的是这一份会话 · 点一下跳过去。
+ * 后端那份清单由台子里的 `outlineBackend` 替身**逐条写明**（它不判 —— 不拿前端算的去对前端）。
  *
  * ## 台子住哪儿
  *
  * IPC / `ResizeObserver` / `CSS` / `scrollIntoView` / rAF 那一套桩与
  * `session-viewer-scroll.vitest.ts` **共用一份**，住 `session-viewer-rig.ts`
- * （保真边界写在那份的头注里：真渲染管线 + 真 `collectUserInputs`，只有 IPC 那层是假的）。
+ * （保真边界写在那份的头注里：真渲染管线，只有 IPC 那层是假的）。
  * 本套件不叫 `flushRaf` ⇒ 双 rAF 那一格归 `KR45D0`，这里不重复量。
  */
 
@@ -34,20 +35,36 @@ import {
   assistantLine,
   userLine,
   viewerRig,
+  outlineBackend,
+  outlineEntry,
+  settleOutline,
   type RigPayload,
   type ViewerRigHandles,
 } from "../test-support/session-viewer-rig";
 import { REPO_ROOT } from "../test-support/repo-root";
 import { SessionViewer } from "../../src/views/session-viewer";
-import { collectUserInputs } from "../../src/views/user-input-index";
+import { invoke } from "@tauri-apps/api/core";
 
 let rig: ViewerRigHandles;
 
-async function mount(lines: RigPayload[]): Promise<SessionViewer> {
+/**
+ * 挂一份会话。`outline` = 后端这一刻说清单里有哪几条（缺省：`lines` 里 user 行的 uuid **按给的顺序**，
+ * 摘要取正文 —— 这只是夹具的省事写法，**不是**判定：要排掉谁的用例一律显式传）。
+ */
+async function mount(lines: RigPayload[], outline?: string[]): Promise<SessionViewer> {
   viewerRig.chunk = lines;
+  const text = (p: RigPayload): string => {
+    const c = (p.message as { message?: { content?: unknown } }).message?.content;
+    return typeof c === "string" ? c : "";
+  };
+  outlineBackend.entries = (outline ?? lines
+    .filter((p) => (p.message as { type?: string }).type === "user")
+    .map((p) => (p.message as { uuid: string }).uuid))
+    .map((u) => outlineEntry(u, text(lines.find((p) => (p.message as { uuid?: string }).uuid === u)!)));
   const v = new SessionViewer(() => {});
   document.body.appendChild(v.element);
   await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", suppressBranch: true });
+  await settleOutline();
   expectLoaded(v.element);
   return v;
 }
@@ -76,51 +93,41 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("KR45D1 挑句子这一半（collectUserInputs，纯函数）", () => {
-  it("口径就是那四条：type/isMeta/isSidechain/有 uuid 且纯文本非空", () => {
-    const got = collectUserInputs([
-      { type: "user", uuid: "a", timestamp: "t", message: { content: "第一句" } },
-      { type: "assistant", uuid: "b", message: { content: [{ type: "text", text: "回复" }] } },
-      { type: "user", uuid: "c", isMeta: true, message: { content: "注入的 prompt" } },
-      { type: "user", uuid: "d", isSidechain: true, message: { content: "子 agent 的活" } },
-      { type: "user", uuid: "e", message: { content: [{ type: "tool_result", content: "x" }] } },
-      { type: "user", uuid: null, message: { content: "没有 uuid 就跳不过去" } },
-      { type: "user", uuid: "g", message: { content: "   " } },
-      { type: "user", uuid: "h", timestamp: "t2", message: { content: [{ type: "text", text: "第二句" }] } },
-    ]);
-    expect(got.map((e) => e.uuid)).toEqual(["a", "h"]);
-    expect(got.map((e) => e.payloadIndex)).toEqual([0, 7]); // 下标是原数组里的，不是过滤后的
-    expect(got[1].excerpt).toBe("第二句");
-  });
-
-  it("摘要压成一行并截断（清单一行一条，别把布局撑爆）", () => {
-    const long = "甲".repeat(200);
-    const [e] = collectUserInputs([
-      { type: "user", uuid: "a", message: { content: `多\n行\n  文  本` } },
-    ]);
-    expect(e.excerpt).toBe("多 行 文 本");
-    const [f] = collectUserInputs([{ type: "user", uuid: "b", message: { content: long } }]);
-    expect(f.excerpt.length).toBe(81); // 80 字 + 省略号
-    expect(f.excerpt.endsWith("…")).toBe(true);
-  });
-});
-
-describe("KR45D1 清单挂进查看器：条数 = 主线用户输入条数（子 agent/sidechain 的不算）", () => {
-  it("不多不少 —— 混进 assistant / isMeta / sidechain / tool_result / 无 uuid 也只列主线那些", async () => {
-    const v = await mount([
-      userLine(1, "u1", "第一句"),
-      assistantLine(2, "a1", "回复"),
-      userLine(3, "u3", "skill 展开的 prompt", { isMeta: true }),
-      userLine(4, "u4", "子 agent 里说的", { isSidechain: true }),
-      userLine(5, "u5", [{ type: "tool_result", tool_use_id: "t1", content: "结果" }]),
-      userLine(6, null, "没有 uuid"),
-      userLine(7, "u7", "第二句"),
-    ]);
+describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不判）", () => {
+  it("问的是这一份会话（本机 origin 逐字 `<local>`、从 0 起），列出来的 == 后端给的，顺序不动", async () => {
+    const v = await mount(
+      [
+        userLine(1, "u1", "第一句"),
+        assistantLine(2, "a1", "回复"),
+        userLine(3, "u3", "skill 展开的 prompt", { isMeta: true }),
+        userLine(7, "u7", "第二句"),
+      ],
+      ["u1", "u7"], // 后端说：主线用户输入是这两条（isMeta 那条它排掉了）
+    );
+    const calls = vi.mocked(invoke).mock.calls.filter((c) => c[0] === "list_user_inputs");
+    expect(calls.map((c) => c[1])).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 }]);
     const rows = rowsOf(v);
-    expect(rows.length).toBe(2); // 分母 = 7 条记录里的 2 条主线用户输入
     expect(rows.map((r) => r.dataset.inputUuid)).toEqual(["u1", "u7"]);
     expect(rows[0].textContent).toBe("1. 第一句");
     expect(toggleOf(v).textContent).toBe("大纲 · 2");
+  });
+
+  it("🔴 查看器不自己判：后端没列的 user 行不出现（反向：旧的 TS 判定若还在，u3 会冒出来）", async () => {
+    const v = await mount([userLine(1, "u1", "第一句"), userLine(3, "u3", "也像一句用户输入")], ["u1"]);
+    expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["u1"]);
+  });
+
+  it("后端要不到（老后端 / 本机后端不在）⇒ 灰掉、原因挂在开关提示上", async () => {
+    viewerRig.chunk = [userLine(1, "u1", "第一句")];
+    const v = new SessionViewer(() => {});
+    document.body.appendChild(v.element);
+    outlineBackend.available = false;
+    outlineBackend.reason = "本机后端不在";
+    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", suppressBranch: true });
+    await settleOutline();
+    expect(rowsOf(v).length).toBe(0);
+    expect(toggleOf(v).disabled).toBe(true);
+    expect(toggleOf(v).title).toContain("本机后端不在");
   });
 
   it("面板默认收着，点开关才展开（默认收着 ⇒ 对既有布局零影响）", async () => {
@@ -172,7 +179,7 @@ describe("KR45D1 点一下跳过去", () => {
     expect(rowsOf(v)[0].dataset.unjumpable).toBeUndefined();
   });
 
-  // ★ 活体夹具，钉的是 `user-input-index.ts` 头注里**自陈的那条不等价**：
+  // ★ 活体夹具，钉的是后端 `observe/user_inputs.rs` 头注里**自陈的那条不等价**：
   //   渲染那边还会剥一层 `stripInternalNoise`，`[Request interrupted by user]`
   //   会被整条剥空 ⇒ 不建卡 ⇒ 清单里这一条落不到卡上。
   //   `KR45D3` / `§0c` 的红线是「**不许静默产出那一形**」——这里断的就是「它没静默」。
@@ -221,7 +228,9 @@ describe("KR45D1 点一下跳过去", () => {
     expect(rowsOf(v).length).toBe(2);
 
     viewerRig.chunk = [userLine(1, "n1", "新会话唯一一句")];
+    outlineBackend.entries = [outlineEntry("n1", "新会话唯一一句")];
     await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", suppressBranch: true });
+    await settleOutline();
     expectLoaded(v.element);
 
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["n1"]);
