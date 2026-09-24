@@ -76,6 +76,16 @@ export const ACTIONS: ReadonlyArray<Action> = [
     default: "KeyN",
     available: true,
   },
+  // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（大纲在同一块面板里）。与命令栏同理带 Ctrl：
+  // 查找要能在任何时候唤起，而单键 F 在只读主视图上容易误触；Ctrl+KeyF 全表空闲（`actions.vitest.ts` 查重）。
+  // ⚠ 与 `app.search-history`（**历史浏览器**的全文搜索预留位）不是一件事：那边搜全部会话，这边只搜当前 tab 这一份。
+  {
+    id: "session.find",
+    label: "在当前会话里查找",
+    category: "Tab",
+    default: "Ctrl+KeyF",
+    available: true,
+  },
 
   // ===== Terminal =====
   { id: "terminal.bring-front", label: "把对应终端窗口拉到前台", category: "Term", default: "Backquote", available: true },
