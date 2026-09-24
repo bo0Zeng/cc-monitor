@@ -67,6 +67,18 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     }
 }
 
+/// 帧面那条（`history-search`）的入口：`rest` 是 `--search <query>` **之后**那一截，
+/// 解析走**同一个** [`parse_opts`] —— 选项的口径只有一份，不在帧面另写一套 JSON 解析。
+pub(crate) fn search_into(
+    agent_home: &Path,
+    query: &str,
+    rest: &[String],
+    out: &mut impl Write,
+) -> Result<(), String> {
+    let opts = parse_opts(rest);
+    search(agent_home, query, &opts, out)
+}
+
 /// 从 `--search <query>` 之后的参数解析选项（未知/缺值的容错忽略）。
 fn parse_opts(rest: &[String]) -> SearchOpts {
     let mut opts = SearchOpts {

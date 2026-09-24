@@ -60,6 +60,7 @@ mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 #[cfg(test)]
 #[path = "../../tests/backend/ratchet_guard.rs"]
 mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
+pub mod read_face; // 〔C1 · 09-24〕只读查询的帧面宿主（8 条：history-* / accounts-*）—— 薄壳，本体在 observe/，住顶层的理由同 files/
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -429,6 +430,13 @@ pub static CC_MONITOR_BUILD_STAMP: [u8; BUILD_STAMP_LEN] = build_stamp();
 pub const SUBCOMMANDS: &[&str] = &[
     "--account-trust",
     "--account-trust-zero",
+    // 〔`C1` · 2026-09-24〕只读查询面那八条帧命令**自动派生**出来的 CLI 面
+    //（`cli_control::cli_exposed`）。登记在这里的理由与下面那几族逐字相同 ——
+    // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
+    // ⚠ 它们与 `--list-accounts` / `--session-accounts` 是**同一个函数的两个宿主**，
+    //   不是第二份实现（理由整段在 `inbound::REGISTRY` 那一段）。
+    "--accounts-list",
+    "--accounts-sessions",
     // ── P4d：控制面的 CLI 面。**它们不在这里各写一条实现** ——
     // 分派臂按 `cli_control::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
     // 登记在这张表里是因为 `is_query_mode` 与 `argv_table_guard` 都读它，
@@ -507,6 +515,13 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-ls",
     "--files-stat",
     "--fork-session",
+    // 〔`C1`〕同上一段：`history-*` 六条帧命令的 CLI 面。
+    "--history-projects",
+    "--history-read",
+    "--history-search",
+    "--history-sessions",
+    "--history-subagents",
+    "--history-tail",
     "--kill",
     "--launch",
     "--list-accounts",
