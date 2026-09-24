@@ -3,6 +3,7 @@ use super::testing::{
     render_headless_with_events_and_text,
 };
 use super::*;
+use crate::filewin::source::Row;
 use crate::filewin::copy::testing::rects_of;
 use crate::filewin::copy::{is_copyable, COPY_LABEL};
 use crate::filewin::corpus;
@@ -12,7 +13,7 @@ fn screen() -> egui::Vec2 {
     egui::vec2(1280.0, 800.0)
 }
 
-fn rows(n: usize) -> Vec<Row> {
+fn rows(n: usize) -> Vec<Listed> {
     corpus::synth_rows(n, 0xC0FFEE)
 }
 
@@ -232,13 +233,18 @@ fn a_frame_with_no_input_reports_no_click() {
 // ════════════════════════════════════════════════════════════════════════
 
 /// 四行，四档齐：目录 · 两个普通文件 · 一个有损名。
-fn mixed_rows() -> Vec<Row> {
-    let mk = |name: &str, is_dir: bool, lossy: bool, size: u64| Row {
-        name: name.to_string(),
-        path: format!("/srv/{name}"),
-        is_dir,
-        size,
-        lossy_name: lossy,
+///
+/// ⚠ 走 `Listed::plain`（链接与时间两格都「没送」）—— 本族判的是那六颗按钮，
+/// 新那两列各有自己的判据（下面那两节）。
+fn mixed_rows() -> Vec<Listed> {
+    let mk = |name: &str, is_dir: bool, lossy: bool, size: u64| {
+        crate::filewin::source::Listed::plain(Row {
+            name: name.to_string(),
+            path: format!("/srv/{name}"),
+            is_dir,
+            size,
+            lossy_name: lossy,
+        })
     };
     vec![
         mk("adir", true, false, 0),
@@ -445,7 +451,7 @@ struct RealEventProbe {
 /// 一个**只转发不实现**的 `eframe::App`：调生产那个行画函数，抄出生产那个读数。
 #[cfg(not(windows))]
 struct RowProbeApp {
-    rows: Vec<Row>,
+    rows: Vec<Listed>,
     shared: std::sync::Arc<std::sync::Mutex<RealEventProbe>>,
 }
 

@@ -50,17 +50,20 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
         ("aux", true),
         ("build.rs", false),
     ];
-    let mut mine: Vec<Row> = names
+    let mut mine: Vec<Listed> = names
         .iter()
-        .map(|(n, d)| Row {
-            name: (*n).to_string(),
-            path: format!("/x/{n}"),
-            is_dir: *d,
-            size: 0,
-            lossy_name: false,
+        .map(|(n, d)| {
+            Listed::plain(Row {
+                name: (*n).to_string(),
+                path: format!("/x/{n}"),
+                is_dir: *d,
+                size: 0,
+                lossy_name: false,
+            })
         })
         .collect();
-    sort_rows(&mut mine);
+    // ⚠ 缺省那一档 —— 它就是本刀之前那个写死的函数（逐字节相同那一条住下面）。
+    sort_rows(&mut mine, SortBy::default());
 
     // 生产契约逐字（`sftp_pool.rs::sort_entries`）：目录在前，再名称小写升序。
     let mut theirs: Vec<(String, bool)> =
@@ -79,8 +82,15 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
     );
 }
 
-/// 远端那条路上唯一有逻辑的一段：五个字段一个都不许掉。
+/// 远端那条路上唯一有逻辑的一段：**六个字段一个都不许掉**。
 /// **这是真行为判据**（不是判源码）—— 它不需要网络。
+///
+/// 🔴〔补齐五项 2026-09-23〕**这条判据此前漏了一格，而那一格正是一条真缺口。**
+/// 它原来只对拍五格（判词逐字「五个字段一个都不许掉」），而 `SftpEntry`
+/// 一直在送 `is_symlink` —— 于是「退路那一屏也看不出哪个是符号链接」
+/// 在这条判据上**一点痕迹都没有**：夹具里 `is_symlink: true` 摆在那儿，
+/// 没有任何一侧读它。⇒ 现在对拍的是整个 [`Listed`]（六格），
+/// 那一格漂开当场红。
 #[test]
 fn the_sftp_entry_mapping_carries_every_field() {
     let e = crate::sftp_pool::SftpEntry {
@@ -94,13 +104,20 @@ fn the_sftp_entry_mapping_carries_every_field() {
     let r = row_from_sftp_entry(e);
     assert_eq!(
         r,
-        Row {
-            name: "\u{FFFD}odd".to_string(),
-            path: "/remote/dir/\u{FFFD}odd".to_string(),
-            is_dir: false,
-            size: 4242,
-            // 🔴 有损名必须一路传到行上 —— 写操作要靠它灰置。
-            lossy_name: true,
+        Listed {
+            row: Row {
+                name: "\u{FFFD}odd".to_string(),
+                path: "/remote/dir/\u{FFFD}odd".to_string(),
+                is_dir: false,
+                size: 4242,
+                // 🔴 有损名必须一路传到行上 —— 写操作要靠它灰置。
+                lossy_name: true,
+            },
+            // 🔴 符号链接那一格：SFTP 这条**退路**也送得出它，别在这儿丢掉。
+            link: true,
+            // ⚠ `None` 是「SFTP 交不出这一格」，不是「这个文件没有时间」
+            //    （`SftpEntry` 里压根没有 mtime）。
+            mtime_secs: None,
         }
     );
 }
@@ -465,7 +482,7 @@ fn a_screenful_comes_back_already_sorted() {
         ],
         "truncated": false,
     });
-    let (rows, truncated) = rows_from_ls_data(&d).expect("这一份该解得出来");
+    let (rows, truncated) = rows_from_ls_data(&d, SortBy::default()).expect("这一份该解得出来");
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(
         names,
@@ -498,20 +515,20 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
             { "path": "/a/also-good", "kind": "dir" },
         ],
     });
-    let e = rows_from_ls_data(&d).expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
+    let e = rows_from_ls_data(&d, SortBy::default()).expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
     assert!(e.contains("第 1 条"), "报错没说是第几条：{e}");
     // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
     let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ] });
-    assert_eq!(rows_from_ls_data(&ok).unwrap().0.len(), 1);
+    assert_eq!(rows_from_ls_data(&ok, SortBy::default()).unwrap().0.len(), 1);
 }
 
 /// `truncated` 带得回来（缺了就当没截断）。
 #[test]
 fn truncation_is_carried_back_not_dropped() {
     let d = serde_json::json!({ "entries": [], "truncated": true });
-    assert!(rows_from_ls_data(&d).unwrap().1, "截断那一格被丢了");
+    assert!(rows_from_ls_data(&d, SortBy::default()).unwrap().1, "截断那一格被丢了");
     let d2 = serde_json::json!({ "entries": [] });
-    assert!(!rows_from_ls_data(&d2).unwrap().1, "缺了就该当没截断");
+    assert!(!rows_from_ls_data(&d2, SortBy::default()).unwrap().1, "缺了就该当没截断");
 }
 
 /// 🔴 **退路在，而且排在问后端之后；而且它只有一支。**
@@ -544,16 +561,21 @@ fn the_fallback_exists_and_comes_after_asking_the_backend() {
         guard_core::production_code(include_str!("../../../src/bridge/src/filewin/source.rs"));
     let at_fn = guard_core::pin_line(
         &prod,
-        "pub async fn list_dir(source: &Source, dir: &str) -> Result<(Vec<Row>, bool, ListVerdict), String> {",
+        // ⚠ 钉的是**函数头那一行**（签名被 rustfmt 折成多行之后，整条签名不再是「一行」）。
+        //   `pub async fn list_dir(` 在这份文件里恰好一行，`pin_line` 自带那道自检。
+        "pub async fn list_dir(",
     )
     .expect("`list_dir` 的签名不在生产段里（或者它换了形状）");
     let at_ask = guard_core::pin_line(
         &prod,
-        "match list_via_backend(&source.origin(), dir, LS_LIMIT).await {",
+        "match list_via_backend(&source.origin(), dir, LS_LIMIT, by).await {",
     )
     .expect("`list_dir` 里没有问后端那一跳 —— 那它就不是主路了");
-    let at_fb = guard_core::pin_line(&prod, "let rows = list_remote(source.cfg(), dir).await?;")
-        .expect("那条退路不在了（或者它换了形状 —— 那就把这一行一起改）");
+    let at_fb = guard_core::pin_line(
+        &prod,
+        "let mut rows = list_remote(source.cfg(), dir).await?;",
+    )
+    .expect("那条退路不在了（或者它换了形状 —— 那就把这一行一起改）");
     // 🔴 三行的**顺序**是承重的：`fn` → 问后端 → 退路。
     assert!(
         at_fn < at_ask && at_ask < at_fb,

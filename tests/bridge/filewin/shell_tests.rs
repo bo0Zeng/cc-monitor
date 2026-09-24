@@ -169,12 +169,14 @@ fn changing_directory_clears_the_previous_rows_instead_of_leaving_them_up() {
 #[test]
 fn a_late_answer_from_the_directory_we_left_is_thrown_away() {
     let l = Listing::default();
-    let row = |n: &str| Row {
-        name: n.to_string(),
-        path: format!("/x/{n}"),
-        is_dir: false,
-        size: 0,
-        lossy_name: false,
+    let row = |n: &str| {
+        Listed::plain(Row {
+            name: n.to_string(),
+            path: format!("/x/{n}"),
+            is_dir: false,
+            size: 0,
+            lossy_name: false,
+        })
     };
 
     // A 出发（拿到号 0）。
@@ -1188,7 +1190,7 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
     // ⇒ 而这一趟**一个下标都没交出来**：`HitTally` 里压根没有那种字段。
     //   与目录列表那一支对照（那一支交得出来）—— 那正是这一条要分开的两件事。
     let mut rt = crate::filewin::rows::RenderTally::default();
-    let rows = vec![file_row("a.bin")];
+    let rows = vec![Listed::plain(file_row("a.bin"))];
     let out = ctx.run_ui(
         egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(

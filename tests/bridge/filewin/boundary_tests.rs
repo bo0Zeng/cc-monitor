@@ -229,6 +229,25 @@ enum Kind {
     Channel,
     /// 起进程那个全仓唯一出口。
     Spawn,
+    /// 🔴〔补齐五项 2026-09-23〕**给用户开一个真终端**那个全仓唯一出口。
+    ///
+    /// # 为什么它不是 [`Kind::Spawn`]（那条判词逐字说了「不许随手加一格」，所以这里得答）
+    ///
+    /// `Spawn` 那一类是 `spawn_managed::*` —— 一组**原语**：起一个子进程、
+    /// 按策略管它的控制台与寿命。而 `launch::launch_remote_terminal` 是**一层编排**，
+    /// 它在原语之上多做两件 `Spawn` 那一类一件都不做的事：
+    ///
+    /// 1. **按 origin 去读落盘的那份远端配置**（`load_remote_config_by_label`）
+    ///    ⇒ 它把 `filewin/` 与 **app 的配置文件**接上了，那是一条状态耦合，
+    ///    不是一次符号引用（抽 crate 的代价因此与 `Spawn` 那一类不同级）。
+    /// 2. **按平台分档**（Windows：PowerShell ＋ Windows Terminal；POSIX：
+    ///    逐字回一句「刻意不替你挑终端模拟器」）⇒ 它带着一条**产品裁决**，
+    ///    而那条裁决的唯一住址在 `launch.rs`，不在这儿。
+    ///
+    /// ⇒ 归进 `Spawn` 会让那一维记的「抽 crate 要花多少钱」**变假**：
+    /// 读者会以为这条边只要注一个 spawn 口就断得开。
+    /// 同拍在 `filewin/mod.rs` 那一节里加了第 6 类（判词逐字要求「同拍改」）。
+    Terminal,
 }
 
 /// ★ **登记表**：`filewin/` 生产段够得到的 app 侧符号，**逐条**。
@@ -279,6 +298,8 @@ const REGISTERED: &[(&str, Kind)] = &[
     ("sftp_pool::sftp_stat", Kind::Transport),
     ("sftp_pool::sftp_upload", Kind::Transport),
     ("sftp_pool::sftp_write_text", Kind::Transport),
+    // ── 开终端（全仓唯一出口；`launcher_identity_registry` 把它记成 `L2`）──
+    ("launch::launch_remote_terminal", Kind::Terminal),
     // ── 起进程（全仓唯一出口；另有 `exec_site_registry` 管着它）──
     ("spawn_managed::ConsolePolicy", Kind::Spawn),
     ("spawn_managed::Lifetime", Kind::Spawn),
@@ -318,7 +339,8 @@ fn every_edge_from_the_file_manager_into_the_app_is_declared() {
     // ★ 抽取器自检 2：命中面塌了 ⇒ 同上。
     assert!(
         found.len() >= 20,
-        "只抽到 {} 条边 —— 抽取器坏了（2026-09-23 现打 29）",
+        "只抽到 {} 条边 —— 抽取器坏了（2026-09-23 现打 30：补齐五项那一刀多了\
+         `launch::launch_remote_terminal` 一条，也就是「在此打开终端」那颗按钮）",
         found.len()
     );
 
@@ -352,7 +374,7 @@ fn every_edge_from_the_file_manager_into_the_app_is_declared() {
 #[test]
 fn every_declared_edge_falls_in_a_live_category() {
     use Kind::*;
-    for k in [Type, Budget, Transport, Fence, Channel, Spawn] {
+    for k in [Type, Budget, Transport, Fence, Channel, Spawn, Terminal] {
         let n = REGISTERED.iter().filter(|(_, kk)| *kk == k).count();
         assert!(
             n > 0,
