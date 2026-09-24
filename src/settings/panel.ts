@@ -322,6 +322,15 @@ export class SettingsPanel {
   /** F82a：见 SettingsPanelOptions.windowMode。 */
   private readonly windowMode: boolean;
 
+  /**
+   * ST1「关窗改隐藏」（`设计/01 §1.3`：关窗 ＝ 隐藏，不销毁）：本面板亲手把窗口藏起来了。
+   * 藏起来之后窗口再拿到焦点 ＝ 被 `open_settings_window` 重新 show 出来 ⇒ 重跑一遍 `open()`
+   * （`01 §1.3` 那个「重新打开」事件，这里用窗口自己的 focus 事件代替，不动后端那条命令）。
+   */
+  private hiddenByUs = false;
+  /** ST1「未保存关窗拦截」（`70 §6` #1）：有没保存的改动时拦在关窗前的那一条。 */
+  private closeGuard!: HTMLElement;
+
   // issue #5: 快捷键编辑器（lazy 构造，首次打开时建 DOM）
   private kbEditor?: KeybindingsEditor;
   private kbOverrideChip?: HTMLElement;
@@ -331,6 +340,7 @@ export class SettingsPanel {
     this.windowMode = opts.windowMode ?? false;
     this.el = this.build();
     document.body.appendChild(this.el);
+    if (this.windowMode) this.installWindowLifecycle();
     // issue #5: Esc 由 KeybindingDispatcher 统一调度。本面板 open 时
     // pushOverlay 自己，close 时 pop —— 多弹层共存按 LIFO 顺序关。
   }
@@ -539,6 +549,70 @@ export class SettingsPanel {
     }
   }
 
+  /**
+   * ST1：窗口模式下接管两件事 —— 系统标题栏的 X（`onCloseRequested`，一律 `preventDefault`，
+   * 交给 [`requestClose`]）与「藏起来之后又被 show 出来」（focus ⇒ 重跑 `open()`）。
+   *
+   * ⚠ 一旦挂上 close-requested 的监听，Tauri 就不再替我们关窗（它看到 JS 侧有这个监听，就把系统那次关窗拦下来），
+   *   放行的动作只剩 `hide()`（`core:window:allow-hide`，`capabilities/default.json`）。
+   *   **本面板从不调 destroy / close**：主窗销毁时由后端把本窗一起 destroy
+   *   （`lib.rs::windows_to_destroy_after`），否则一个藏着的窗口会把进程吊住。
+   * ⚠ 挂监听失败（运行时 / ACL 拒）不许把面板炸穿 —— 与 `safeBlock` 同一个隔离思路；
+   *   那时系统 X 退回 Tauri 的默认行为（销毁），只是少了拦截。
+   */
+  private installWindowLifecycle(): void {
+    try {
+      const w = getCurrentWindow();
+      void w
+        .onCloseRequested((e) => {
+          e.preventDefault();
+          this.requestClose();
+        })
+        .catch((e: unknown) => console.warn("[settings] 挂关窗拦截失败：", e));
+      void w
+        .onFocusChanged(({ payload: focused }) => {
+          if (!focused || !this.hiddenByUs) return;
+          this.hiddenByUs = false;
+          void this.open();
+        })
+        .catch((e: unknown) => console.warn("[settings] 挂重新打开监听失败：", e));
+    } catch (e) {
+      console.warn("[settings] 窗口生命周期接管失败：", e);
+    }
+  }
+
+  /** 外观（主题）或 Claude 数据目录有没保存的改动 —— 其余各块都是即时写，没有「未保存」这回事。 */
+  isDirty(): boolean {
+    const norm = (t: ThemeConfig): string =>
+      JSON.stringify(
+        Object.entries(t)
+          .filter(([, v]) => v !== undefined && v !== null && v !== "")
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+      );
+    return (
+      norm(this.current) !== norm(this.original) ||
+      this.claudeDirInput.value.trim() !== this.claudeDirOriginal
+    );
+  }
+
+  /**
+   * ST1「未保存关窗拦截」（`70 §6` #1 · `§8` #7）：系统 X 与页头 × 都走这里。
+   * 没改动 ⇒ 直接关；有改动 ⇒ 亮出那一条（保存并关闭 / 丢弃改动 / 继续编辑），**不静默丢**。
+   * 「取消」与 Esc 不走这里 —— 那两个本来就是明说的「丢弃并关闭」（`§6` #1 原文：它们会回滚）。
+   */
+  requestClose(): void {
+    if (!this.isDirty()) {
+      this.close();
+      return;
+    }
+    // 显隐只走类（`.settings-banner` 自带 `display:none`，再用 `hidden` 切会撞 S30 ⑦）。
+    this.closeGuard.classList.add("settings-banner-show");
+  }
+
+  private hideCloseGuard(): void {
+    this.closeGuard.classList.remove("settings-banner-show");
+  }
+
   close(): void {
     // 关闭前 blur 掉面板内仍聚焦的输入框。本面板是 hide（移除 .open class）而非从 DOM
     // 移除，元素留着、焦点不会自动释放。若不 blur，document.activeElement 仍是这个隐藏
@@ -547,9 +621,24 @@ export class SettingsPanel {
     const active = document.activeElement;
     if (active instanceof HTMLElement && this.el.contains(active))
       active.blur();
-    // 窗口模式：关闭 = 关掉这个独立设置窗口（而非隐藏浮层）。
+    this.hideCloseGuard();
+    // 窗口模式：ST1「关窗改隐藏」—— 关闭 ＝ 把窗口藏起来（`01 §1.3`），面板状态照非窗口模式那样收好，
+    // 下一次 show 出来由 focus 那一路重跑 `open()`（见 `installWindowLifecycle`）。
     if (this.windowMode) {
-      void getCurrentWindow().close();
+      this.el.classList.remove("open");
+      this.isOpen = false;
+      dispatcher.popOverlay(this);
+      this.hiddenByUs = true;
+      void getCurrentWindow()
+        .hide()
+        .catch((e: unknown) => {
+          // 藏不掉就别假装藏了：窗口还在屏幕上，面板得回到能用的样子并说出原因。
+          this.hiddenByUs = false;
+          void this.open().then(() => {
+            this.banner.textContent = `关不掉这个窗口：${String(e)}`;
+            this.banner.classList.add("settings-banner-show");
+          });
+        });
       return;
     }
     this.el.classList.remove("open");
@@ -630,6 +719,7 @@ export class SettingsPanel {
     root.className = "settings-panel";
 
     root.appendChild(this.buildHeader());
+    root.appendChild(this.buildCloseGuard());
     // 🔴 P12：「配置里有 app 不认识的键」常驻条。**放在最上面、任何一页之前** ——
     // 它说的是「你写下的某个设置根本没生效」，比面板里任何一格都更该先被看见。
     // 同 S7 那条：它是状态不是事件，所以不属于任何一页，也刻意没有关闭按钮。
@@ -644,6 +734,30 @@ export class SettingsPanel {
     return root;
   }
 
+  /** ST1「未保存关窗拦截」那一条。平时藏着；`requestClose()` 发现有改动才亮。 */
+  private buildCloseGuard(): HTMLElement {
+    const bar = document.createElement("div");
+    bar.className = "settings-banner";
+    bar.dataset.closeGuard = "unsaved";
+    bar.append("外观或 Claude 数据目录有改动还没保存。");
+    const saveBtn = this.makeBtn("保存并关闭", "primary", () => {
+      void this.save()
+        .then(() => {
+          if (this.isOpen) this.close();
+        })
+        .catch((e: unknown) => {
+          this.hideCloseGuard();
+          this.banner.textContent = `保存失败：${String(e)}`;
+          this.banner.classList.add("settings-banner-show");
+        });
+    });
+    const dropBtn = this.makeBtn("丢弃改动", "secondary", () => this.cancel());
+    const stayBtn = this.makeBtn("继续编辑", "secondary", () => this.hideCloseGuard());
+    bar.append(saveBtn, dropBtn, stayBtn);
+    this.closeGuard = bar;
+    return bar;
+  }
+
   private buildHeader(): HTMLElement {
     const header = document.createElement("div");
     header.className = "settings-header";
@@ -656,7 +770,8 @@ export class SettingsPanel {
     close.type = "button";
     close.textContent = "×";
     close.title = "关闭（ESC 也行）";
-    close.addEventListener("click", () => this.cancel());
+    // ST1：页头 × 与系统 X 同一条路 —— 有没保存的改动先拦一下（`70 §6` #1）。
+    close.addEventListener("click", () => this.requestClose());
     header.appendChild(close);
     return header;
   }
