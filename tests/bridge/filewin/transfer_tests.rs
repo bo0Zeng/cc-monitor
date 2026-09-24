@@ -612,7 +612,7 @@ async fn only_the_items_a_human_agreed_to_overwrite_go_out_with_overwrite() {
 
 /// 合成对端这一趟怎么收场。
 #[derive(Clone, Copy)]
-enum Ends {
+pub(crate) enum Ends {
     Done,
     Failed,
     /// 永不收场（只有被停订才结束）——「撤」那一条用。
@@ -620,7 +620,7 @@ enum Ends {
 }
 
 /// 一台合成对端：记下它看见的每一步（`call` 的名字与载荷 · 订阅的 kind · 流被丢掉）。
-struct XferHost {
+pub(crate) struct XferHost {
     ends: Ends,
     log: std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
 }
@@ -714,7 +714,7 @@ impl crate::chan::router::Backends for XferHost {
 }
 
 /// 挂一台合成对端到真通道口上，拨通。回（线 · 地址 · 它的记录）。
-async fn xfer_rig(
+pub(crate) async fn xfer_rig(
     ends: Ends,
 ) -> (
     super::super::source::Line,
@@ -749,7 +749,7 @@ async fn xfer_rig(
     )
 }
 
-fn steps(log: &std::sync::Mutex<Vec<(String, serde_json::Value)>>) -> Vec<String> {
+pub(crate) fn steps(log: &std::sync::Mutex<Vec<(String, serde_json::Value)>>) -> Vec<String> {
     log.lock().unwrap().iter().map(|(s, _)| s.clone()).collect()
 }
 

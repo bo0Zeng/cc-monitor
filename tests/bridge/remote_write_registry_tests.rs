@@ -890,7 +890,8 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     // 接的命令从 `used` 里消失 ⇒ 差集非空 ⇒ 会红；但少扫**全部**就两边都空了）。
     assert_eq!(
         files.len(),
-        16,
+        // 〔F7c · 第三波 09-24〕16 → 17，多的是 `upload.rs`（工具栏「上传」那一问；它一个池子符号都不碰）。
+        17,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\
