@@ -65,7 +65,7 @@ get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 #     （`shared/ccm` 的默认值逐字如此）⇒ 换成带目录的形态**更贴生产**，不是迁就判据。
 FAKE_BACKEND="$REPO/tests/e2e/fake-backend.sh"
 run_print() {
-  env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
+  env -u TMUX -u CLAUDE_CONFIG_DIR CCM_CONFIG=/nonexistent \
     CCM_BACKEND_BIN="$FAKE_BACKEND" \
     CCM_ACCTS_MANIFEST=/nonexistent/accounts.json bash -c "$1 --print"
 }

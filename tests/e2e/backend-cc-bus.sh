@@ -386,7 +386,7 @@ done
 printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$PWD/agent-args.$PPID"\nexec sleep 300\n' > "$_EW/bin/fake-agent"
 chmod +x "$_EW/bin/fake-agent"
 _sp() {  # $1.. = 额外的 VAR=值；目录与任务两个入口一样（那样内层参数才可能逐字相等）
-  env -u TMUX -u TMUX_PANE -u CC_BUS_ID -u CCM_SELF HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
+  env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
       CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" CCM_NO_PRETRUST=1 \
       CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$@" \
       "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/proj" "任务乙"
@@ -440,15 +440,22 @@ chk "  两个入口都登记上了总线（各一条）" \
   "$(cut -f1 "$_EW/bus/agents.tsv" 2>/dev/null | grep -cxF -e "${_n1:-<无>}" -e "${_n2:-<无>}")" "2"
 
 echo "[17b] ★ pane 里起的东西当场报参数错误 ⇒ cc-spawn **不许**报成功、**不许**登记（CC1）"
-# 造一个「不认这套参数」的入口（旧副本的形状：认不得就 exit 2），经 `CCM_SELF` 让 ccm 在 pane 里叫它
-#（`CCM_SELF` 是既有契约：内层载荷用「我是被当作什么叫的」那个名字）。
-printf '#!/bin/bash\necho "ccm(旧副本): 未知选项: $1" >&2\nexit 2\n' > "$_EW/bin/old-ccm"
-chmod +x "$_EW/bin/old-ccm"
+# 造一个「不认这套参数」的入口（旧副本的形状：认不得就 exit 2），让 ccm 在 pane 里叫的是它。
+# 〔MC1 · 2026-09-24〕从前经环境变量 `CCM_SELF` 指过去；那个变量删了（`设计/01 §6.7b`），内层载荷
+#   只认「这个进程自己被怎么叫的」⇒ 改成**真的**那样叫它：一个入口脚本 `exec -a <旧副本路径>` 真身，
+#   真身跑起来 `argv[0]` 就是旧副本的路径（basename 仍是 `ccm` ⇒ 入口①）——正是「PATH 上那个 `ccm`
+#   是一份不认新参数的旧副本」的现场形状。这一格钉的「假成功看得见」一个字没变。
+mkdir -p "$_EW/old"
+printf '#!/bin/bash\necho "ccm(旧副本): 未知选项: $1" >&2\nexit 2\n' > "$_EW/old/ccm"
+chmod +x "$_EW/old/ccm"
+mkdir -p "$_EW/e4"
+printf '#!/bin/bash\nexec -a "%s" "%s" "$@"\n' "$_EW/old/ccm" "$D" > "$_EW/e4/ccm"
+chmod +x "$_EW/e4/ccm"
 mkdir -p "$_EW/bad"
 _ob="$(env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
       CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" CCM_NO_PRETRUST=1 \
       CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
-      CCM_BIN="$_EW/e3/ccm" CCM_SELF="$_EW/bin/old-ccm" \
+      CCM_BIN="$_EW/e4/ccm" \
       "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/bad" "任务丙" 2>"$_EW/errb.txt")"; _rb=$?
 for _i in $(seq 1 30); do tmux capture-pane -p -t '=bad_cc:' 2>/dev/null | grep -q '未知选项' && break; sleep 0.1; done
 chk "  前提：pane 里那一跳真的当场报了参数错误（不是本格没打到）" \
