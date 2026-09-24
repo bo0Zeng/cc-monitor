@@ -14,10 +14,26 @@ cc-monitor 仓内,CI 无需改 checkout、构建自洽。
 
 ## 来源
 - 上游仓:`/home/zbl/文档/project/self项目/code-picture/code-picture`
-- vendored commit:**`d558e47`**(F72 批注与索引分家)
-- vendored 时间:2026-07-16
+- vendored commit:**`276b531`**(PN1b:图种注册表 + 统一出口 + 批注来源)
+- vendored 时间:2026-09-24
 - 沿革:`e6b9d64`(F18,07-10)→ `179a5b2`(F68 signature+DB迁移)→ `d8f1fe7`(F68 审计修)→
-  `d558e47`(F72 批注分家回仓)
+  `d558e47`(F72 批注分家回仓)→ `276b531`(PN1b,09-24;中间 34 笔,见下)
+
+## PN1b re-vendor 带进的变化(09-24,`d558e47..276b531`,34 笔)
+
+- **依赖差零**:`cargo tree -p code-picture-core -e normal` 两边同一份 40 个包;release rlib 2.0 MB → 5.0 MB。
+  精确层(语言服务器)住上游的 `code-picture-lsp`,**不在这份副本里**;core 只留接缝(`precise.rs`),不起进程。
+- **画图**(本件的正题):`diagram::registry`(图种注册表,唯一真相源)· `Engine::draw(kind, &req)`
+  统一出口 · `Diagram { kind, honesty, body }` 按形状分变体 · 公共诚实信号 `Honesty` · 全部 `Serialize`。
+  消费方 `panorama.rs` 新增 `panorama_diagram_kinds` / `panorama_diagram` 两条命令原样透出。
+- **批注来源**:`Annotation.origin`(`Human` / `Agent` / `Unrecorded`),批准只改 `status`。
+- **模型扩档**(消费方的手写 TS 类型要跟):`Confidence` 加 `Dispatch`(动态派发)· `EdgeKind` 加
+  `AmbiguousCall` · `Edge` 加 `candidates` / `arg_flow` · `Overview` 加 `ambiguous_calls` /
+  `unresolved_imports` / `db_errors` · `Subsystem` 加 `member_hash` / `anchors` / `internal_edges` /
+  `external_edges` · `Symbol` 加 `return_type` / `return_flow` / `param_flow`。
+- 调用图不再「猜了当真」(歧义边单列)、社区检测换加权 Louvain、控制流/数据流一族(`cfg` / `pdg` /
+  `graph::*`)进来了 —— 全景命令面没用到它们。
+- 索引库 `SCHEMA_VERSION` 变了的话旧 `index.db` 打开会自动重建派生表(与 F68 同一机制)。
 
 ## F72 re-vendor 带进的变化(消费方须知)
 - **批注与索引分家**:`store_dir` 原本把整个 `.codepicture`(索引 index.db + 批注 annotations/)
@@ -41,9 +57,9 @@ cc-monitor 仓内,CI 无需改 checkout、构建自洽。
 ## 如何 re-vendor(上游有更新时)
 ```
 UP=<code-picture 仓>/crates/code-picture-core
-VD=src-tauri/vendor/code-picture-core
+VD=src/bridge/vendor/code-picture-core
 # 注意:rm 会删本 VENDOR.md(副本特有、非上游文件),re-vendor 后重写它、更新 pin
-rm -rf "$VD" && cp -r "$UP" "$VD" && rm -rf "$VD/tests" "$VD/target" "$VD/Cargo.lock"
+rm -rf "$VD" && mkdir -p "$VD" && cp -r "$UP/src" "$UP/Cargo.toml" "$VD/"
 # 重建本 VENDOR.md(更新 commit/时间/变化);cargo build 验证;跑门槛
 ```
 

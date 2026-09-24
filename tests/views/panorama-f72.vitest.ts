@@ -83,7 +83,7 @@ describe("F72 批注 + doc-link 写 UI（节点详情面板）", () => {
     vi.mocked(api.removeAnnotation).mockResolvedValue(true);
     probe(v).renderNodeDetail(
       nodeView([
-        { id: "aaa", file: "src/lib.rs", symbol: "f", body: "old", author: "me", status: "Active" },
+        { id: "aaa", file: "src/lib.rs", symbol: "f", body: "old", author: "me", status: "Active", origin: "Human" },
       ]),
     );
     btnByText(v, "删除").click();

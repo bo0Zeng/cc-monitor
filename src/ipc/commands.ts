@@ -145,6 +145,8 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // `PanoramaStatus` 例外：它在 `panorama.rs`、是本仓自己的类型 ⇒ 已生成。
 import type {
   Annotation,
+  DiagramKindInfo,
+  DiagramRequest,
   DocLink,
   DriftItem,
   Edge,
@@ -152,6 +154,7 @@ import type {
   IndexStats,
   NodeView,
   Overview,
+  PanoramaDiagram,
   SubGraph,
   Symbol as PanoramaSymbol,
 } from "../panorama/types";
@@ -399,6 +402,13 @@ export const commands = {
   /** 某符号的调用者边。 */
   panorama_callers: (args: { repo: string; symbol: string; depth: number }) =>
     invoke<Edge[]>("panorama_callers", args),
+
+  /** PN1b：画一张图（图种 id 来自注册表，不在本仓写死）。认不出的 kind / 缺符号都是 reject。 */
+  panorama_diagram: (args: { repo: string; kind: string; request: DiagramRequest }) =>
+    invoke<PanoramaDiagram>("panorama_diagram", args),
+
+  /** PN1b：图种注册表原样透出（选图下拉从它现读，CP2）。 */
+  panorama_diagram_kinds: () => invoke<DiagramKindInfo[]>("panorama_diagram_kinds"),
 
   /** 某符号关联的文档链接。 */
   panorama_docs_for: (args: { repo: string; symbol: string }) =>
