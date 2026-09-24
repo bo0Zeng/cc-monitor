@@ -64,11 +64,9 @@ const EXEMPT: ReadonlyArray<readonly [file: string, why: string]> = [
       "两处都在做「派生名 → 铸名」；等 `tmux-sessions.ts` 头注说的模块级 store 落地，" +
       "该一起收编，不是单独收这一个。",
   ],
-  [
-    "tabs.ts::explainBringFrontFailure",
-    "`tabs.ts` 里的**模块级导出函数**（不是 `TabManager` 方法）⇒ 语法上就够不到 `this.tmuxCache`。" +
-      "它只在**拉前失败之后**查一次用于分档诊断，happy path 零开销，取而不写代价可忽略。",
-  ],
+  // 〔墓碑·第二波 T4 09-24〕`tabs.ts::explainBringFrontFailure` 这一条删了：那个函数整个删了 ——
+  //   它是 `设计/80 §8.7` 步 4 点名要收的「四套有没有终端的判断」之一（E73 那次远端 RPC），
+  //   ↗ 的归因从此只住后端一处（`bind.rs::resolve_remote_front`），tmux 不在 ↗ 的前提链上。
 ] as const;
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -136,11 +134,12 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
 
     expect(
       fetches,
-      `tabs.ts 里有 ${fetches} 个取数点。允许两个：类内唯一的 \`fetchTmuxFresh\`，` +
-        "外加模块级 `explainBringFrontFailure`（够不到私有缓存，已登记例外）。" +
+      `tabs.ts 里有 ${fetches} 个取数点。只允许一个：类内唯一的 \`fetchTmuxFresh\`。` +
+        "〔第二波 T4：2 → 1〕少掉的那一个是模块级 `explainBringFrontFailure`（↗ 失败后按 tmux 实况猜归因），" +
+        "`设计/80 §8.7` 步 4 把它收进后端那一个布尔之后整个删了。" +
         "多出来的那个 —— 它是不是本来就该走 `fetchTmuxFresh`？" +
         "★ 报告 I9′ 那条毛病（取而不写）就是这么来的：取数与写缓存是两件能分开做的事。",
-    ).toBe(2);
+    ).toBe(1);
 
     expect(
       writes,

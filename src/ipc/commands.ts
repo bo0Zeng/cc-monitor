@@ -763,8 +763,11 @@ export const commands = {
   get_session_tasks: (args: { sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
 
-  /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  launch_remote_terminal: (args: { origin: string; remoteCmd: string }) =>
+  /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。
+   *  〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbindToken`：这次拉起铸的启动期令牌 ——
+   *  后端据此在新窗口里先做一次令牌握手（本地 `token → HWND` 表的生产写入方）。
+   *  可省（Rust 侧是 `Option<String>`）：账号部署那几个不起 agent 进程的调用方不带。 */
+  launch_remote_terminal: (args: { origin: string; remoteCmd: string; rbindToken?: string | null }) =>
     invoke<void>("launch_remote_terminal", args),
 
   /**

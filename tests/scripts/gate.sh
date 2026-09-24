@@ -33,7 +33,7 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕27 格
+# │ 〔自述·格数〕29 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
@@ -41,9 +41,11 @@
 # │   fmt · fmt-backend ·
 # │   winchk · winchk-backend · cargo · f3-copy · comm-boundary · deadcode · generated · backend · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
-# │   ccm tests/e2e/ccm-contract-parity
-# │ 〔自述·现物〕四套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
-# │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
+# │   ccm tests/e2e/ccm-contract-parity ·
+# │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend
+# │ 〔自述·现物〕六套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
+# │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh` ·
+# │   `tests/e2e/backend-rbind-token.sh` · `tests/e2e/rbind-token-endtoend.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
 # │ 〔自述·现物〕`copy2` 那一格的判据本体：`tests/evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
 # │ 〔自述·现物〕`shellcheck` 那一格没有独立的判据文件 —— 它的**人群与地板都从
 # │   `.github/workflows/ci.yml` 现读**（那一段 `FILES=` ＋ 它下面那条覆盖面地板行），
@@ -1517,8 +1519,19 @@ deadcode_t0=$(date +%s)
 #     ⚠ 这一条**不会**自己出列；它的代价就是「平台分支抽出来可测」本身，不是漏。
 # ⚠ 这个数是**现打**的（合并后主线 `cargo check -p monitor --message-format=short`），不是 33+2 算的；
 #   两条的新旧由 `95132442:src/bridge/src/bind.rs` 里这两个函数**零命中**核过。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 35，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=35; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-24（第二波 T4 令牌步 4）：35 → 34，降的 1 条逐条记在这里。**
+# **又是那条刻意的耦合按设计开火了，而且上面那段逐字预告过它**：
+#   「`lookup_hwnd_for_token` …… **步 4 落地那一拍它会自己出列 ⇒ 本格当场红，逼人改回 34。**」
+# 吃它的是 `src/bridge/src/bind.rs::resolve_remote_front`（↗ 远端那一格的唯一分派点，
+#   先令牌 `sid → token → HWND`、后标题退路），生产调用链是
+#   `lib.rs::bring_remote_terminal_to_front` → `bind::bring_remote_front` → 它 ⇒ 那一条出列。
+# ⚠ `entry_from_marker_hit` **仍在这 34 条里**，上面那段也逐字预告过「这一条**不会**自己出列」——
+#   它的生产调用方只在 `#[cfg(windows)]` 那支，本格量的是 Linux 非 test 构建。
+# ⚠ 这个数是**现打**的（本工作树 `w2/t4`，`cargo check -p monitor --message-format=short | grep -c "never used"`
+#   = 34，同一趟 `grep bind.rs` 只剩 `entry_from_marker_hit` / `find_window_by_marker_substr` /
+#   `process_creation_filetime` 三条），不是 35−1 算的。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
@@ -1687,13 +1700,13 @@ gate_selftest_e2e
 gate_e2e_wanted() {
   if [ -z "$GATE_ONLY" ]; then return 0; fi
   local suite
-  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity; do
+  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity backend-rbind-token rbind-token-endtoend; do
     case " $GATE_ONLY " in *" $suite "*) return 0 ;; esac
   done
   return 1
 }
 if gate_e2e_wanted; then
-printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（四套 ccm e2e 的被测对象）"
+printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（六套 e2e 的被测对象）"
 ( cd src/backend && cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) || true
 else
 printf '  ·    %-14s %s\n' "e2e 前置" "跳过（GATE_ONLY 一套 e2e 都没点 ⇒ 不白编那一趟 cargo build）"
@@ -1774,6 +1787,36 @@ run_e2e ccm-cli               46
 #    Rust 侧那几条跑的是测试壳。⚠ `ci.yml` 那两处（调用行 + 清单副本）**不在本件写区**，
 #    逐字 diff 已交回 PM（头注那条「三处一起改」的纪律照旧）。
 run_e2e ccm-contract-parity   45
+
+# ── 令牌那两套（第二波 T4，2026-09-24）：**只被 shellcheck、不被执行**的那一格接进执行链 ──
+#
+# 🔴 题面：`设计/80 §8.7` 步 2 立了 `tests/e2e/backend-rbind-token.sh`（真后端报不报得出令牌），
+#   步 3 立了 `tests/e2e/rbind-token-endtoend.sh`（生产载荷字节 → 真 bash → 进程环境 → 真后端 → wire）。
+#   两套落地那天都**只进了 `ci.yml` 的 shellcheck 人群**，没有任何一条执行链跑它们 ——
+#   `ci.yml` 两段注释逐字「也没有加 `assert-pass-floor` 那一行 …… **待拍板**」。
+#   ⇒ 步 4（↗ 改走令牌 join）一落地，「令牌真的活到 wire 上」这一格就是它的前提，
+#   而那个前提**没人在验**。判据不在执行链上就等于不存在。
+#
+# ★ 形状与上面四格**逐字同一条**：`run_e2e`（`assert-pass-floor.sh … exact`）⇒
+#   PASS 数**恒等**（多了少了都红）＋ 抓不到「合计 PASS=」红 ＋ 退出码非零红。
+#   ⚠ 格名前缀沿用 `ccm`：`K-R48` 之后 `ccm` 就是 `cc-monitor-backend` 这个二进制
+#   （`argv[0]` 叫 `ccm` 就进一次性模式），而这两套的被测对象**正是这个二进制** ⇒ 名实相符，
+#   不为它另开一个前缀（另开 ⇒ `found_cells()` / `K-G4C` 收据那几条正则都要跟着分叉）。
+#
+# ★ **反空真锚**不是这个数，是每套自带的「量具自检」格：`session_added` 真的到了
+#   （`added_count == 1`）才判帧上有没有令牌；阴性组（不跑载荷前缀 / 没索要 / 形状不对）
+#   与正题组**同一形态**，只差被测的那一个变量 ⇒ 「帧根本没到」读不成「令牌不在」。
+#   端到端那套还有一道取值自检：从金标准里抽不到**恰好一条**带令牌的载荷就当场 `exit 1`
+#   （先于「合计」行 ⇒ 这里红在「退出码」那一支，不是「抓不到数」那一支）。
+#
+# 〔量于 2026-09-24，本工作树 `w2/t4`，本机非沙箱〕`backend-rbind-token` **11 PASS / 0 FAIL** ·
+#   `rbind-token-endtoend` **9 PASS / 0 FAIL**，两套连打两趟同值。
+#   ⚠ **不在 `ci.yml` 的计数地板里** —— 那一行是 T3/步 2 报备「待拍板」的另一件事，本拍不替它拍；
+#   `tests/bridge/e2e_gate_registry_tests.rs` 的 `EXEMPT` 为此各登记了一条（理由写在那里）。
+# ⚠ 它**买不到**什么：两套都不经 ssh、不经 Windows、不开窗 ⇒ 「↗ 真的把那个窗口拉到前台」
+#   这一维仍是零格（`设计/80 §10.4` / §11 同一句）。
+run_e2e backend-rbind-token   11
+run_e2e rbind-token-endtoend   9
 
 # ── `f3-copy`：**秤 F3 两向**独立成格（`23b·B` 落地，本拍第 26 格）────────────────
 #
@@ -2000,7 +2043,9 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
   #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
-  echo "GATE: OK —— 27 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · f3-copy · comm-boundary · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity），可以出货"
+    # 🔴 第二波 T4（09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
+  #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
+  echo "GATE: OK —— 29 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · f3-copy · comm-boundary · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend），可以出货"
   gate_print_blind
   exit 0
 fi

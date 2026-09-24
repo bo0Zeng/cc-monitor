@@ -638,7 +638,7 @@ cell(
     },
 )
 
-E2E_NOTE = ("四套 `ccm` e2e 之一。`e2e/` 下的套件今天远不止四套 —— "
+E2E_NOTE = ("六套后端二进制 e2e 之一（`ccm` 四套 ＋ 第二波 T4 接进来的令牌两套）。`e2e/` 下的套件今天远不止四套 —— "
             "`ccm-acceptance` / `ccm-pretrust` / `cc-spawn-uplift` 等**都不在这道门里**"
             "（那笔账逐字记在本文件头注引的 `gate.sh` 那一段：一次真行为变更的 71 条红里"
             "「这道门看得见 9 条、看不见 62 条」）")
@@ -647,6 +647,10 @@ for suite, anchor in [
     ("ccm tests/e2e/ccm-rbind-title", "run_e2e ccm-rbind-title  8"),
     ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               46"),
     ("ccm tests/e2e/ccm-contract-parity", "run_e2e ccm-contract-parity   45"),
+    # 〔第二波 T4 09-24〕令牌那两套（`设计/80 §8.7` 步 2 / 步 3）—— 此前只被 shellcheck、不被执行。
+    #   被测对象同是那个后端二进制（`ccm` 即 `cc-monitor-backend`），读法与上面四格一字不差。
+    ("ccm tests/e2e/backend-rbind-token", "run_e2e backend-rbind-token   11"),
+    ("ccm tests/e2e/rbind-token-endtoend", "run_e2e rbind-token-endtoend   9"),
 ]:
     cell(
         suite,
@@ -1342,6 +1346,11 @@ invoke("winchk-backend", ELSEWHERE,
        "`backend` 那个 job 有一条 `-msvc` 跨 target check（`真相源/92 §2.1.1` 的 `C3`）。"
        "⚠ 同上：本格 `-gnu`、云端 `-msvc`",
        anchor="cargo check --all-targets --target x86_64-pc-windows-msvc")
+for _s in ("backend-rbind-token", "rbind-token-endtoend"):
+    invoke("ccm tests/e2e/" + _s, NOWHERE,
+           "〔第二波 T4 09-24〕`ci.yml` 里这一套**只在 shellcheck 人群里**，没有 `assert-pass-floor.sh` 调用行 —— "
+           "`ci.yml` 步 2 / 步 3 那两段注释逐字「也没有加 `assert-pass-floor` 那一行 …… 待拍板」。"
+           "⇒ 云端这一格零覆盖。本格只把它接进**本机**执行链，不替那件待拍板的事拍板")
 for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity"):
     invoke("ccm tests/e2e/" + _s, ELSEWHERE,
            "云端有一条同套件的 `assert-pass-floor.sh` 调用行。"
@@ -1356,7 +1365,8 @@ invoke("muslbuild", NOWHERE,
        "缺的是：zig 0.14.0 ＋ cargo-zigbuild 0.23.0 ＋ 两个 musl target —— 装得上，但那是一笔"
        "**本拍量不了**的账（沙箱断网，`gh run view` 做不到）⇒ 不猜，明着登记欠着")
 invoke("deadcode", NOWHERE,
-       "本格是 `cargo check -p monitor` **非 test 构建**里 `never used` 的**恒等棘轮**（钉在 36）。"
+       "本格是 `cargo check -p monitor` **非 test 构建**里 `never used` 的**恒等棘轮**（钉的数只住 `gate.sh` 那一行 `pin=`；"
+       "〔第二波 T4 订正〕这里原先抄着一个 36，而那时 `pin` 早已是 35 —— 散文副本必腐，删了数不删话）。"
        "云端那几趟 clippy 跑的是 `--all-targets`（含 test 档，那些函数有调用方）⇒ **量的不是同一个数**，"
        "也没有任何一处棘轮。⇒ 这一维云端零覆盖")
 invoke("ccbus-twophase", NOWHERE,
