@@ -483,8 +483,8 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     //   多一条新主路 ⇒ 这个数变 ⇒ 红一次，逼人回来看要不要传账号。
     expect(
       sites.length,
-      `起本机会话的调用点从 4 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
-    ).toBe(4);
+      `起本机会话的调用点从 5 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
+    ).toBe(5); // 〔`A3` 第二波〕4 → 5：`account-restart-local.ts`（本机换号重启的 resume 那一跳；账号是用户点的那个，带着）
     const missing = sites.filter((s) => !/\baccount\s*:/.test(s.text)).map((s) => s.file);
     expect(
       missing,
@@ -518,9 +518,9 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // 抽取器自检：分成两族之后任一族空掉 = 上面那个正则坏了，下面在空转。
     expect(
       resumeSites.length,
-      `\`resume_history_session\` 的调用点从 3 变成了 ${resumeSites.length}：\n` +
+      `\`resume_history_session\` 的调用点从 4 变成了 ${resumeSites.length}：\n` +
         resumeSites.map((s) => s.file).join("\n"),
-    ).toBe(3);
+    ).toBe(4); // 〔`A3` 第二波〕3 → 4：`account-restart-local.ts`（带 `tmuxName` —— 复用被 kill 让出来的旧名）
     expect(
       sites.length - resumeSites.length,
       "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +
