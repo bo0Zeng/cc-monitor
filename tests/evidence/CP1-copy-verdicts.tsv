@@ -978,3 +978,19 @@ src/backend/accounts/table.rs:288	这一条用 Authorization: Bearer 头把 key 
 src/backend/accounts/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
+src/settings/account-new-form.ts:46	新建账号	保留	[对外] 表单标题，名词短语（设计/70 §4.4）
+src/settings/account-new-form.ts:47	账号名，如 b	保留	[对外] 输入框占位，给一个例子
+src/settings/account-new-form.ts:48	接入方式	保留	[对外] 单选组的读屏标签（设计/70 §4.4 原词）
+src/settings/account-new-form.ts:49	订阅	保留	[对外] 单选项，用户自己也这么叫
+src/settings/account-new-form.ts:50	创建后弹出终端，在那个终端里用这个号 /login。	保留	[对外] 选了订阅之后的一句说明：会发生什么、用户要做什么；/login 是 claude 自己的命令名
+src/settings/account-new-form.ts:51	第三方 apikey	保留	[对外] 单选项；「中转」不指账号（用户裁：账号就账号、中转就中转）
+src/settings/account-new-form.ts:53	创建后弹出终端建好账号目录；这个号出现在下面的账号列表里时（终端跑完点「刷新」），	保留	[对外] apikey 那一支的说明前半：key 什么时候写进去（与后半同一句，运行期拼接）
+src/settings/account-new-form.ts:54	这把 key 自动写进 apikey 表。在那之前 key 只留在这个窗口里，关掉 monitor 就没了。	保留	[对外] apikey 那一支的说明后半：key 在写进去之前住哪、会不会丢
+src/settings/account-new-form.ts:55	粘贴 API key	保留	[对外] 密码框占位
+src/settings/account-new-form.ts:56	高级：从旧凭据快照导入（免重登）	保留	[对外] 折叠标题，沿用旧维护区的叫法
+src/settings/account-new-form.ts:57	旧凭据快照路径	保留	[对外] 输入框占位
+src/settings/account-new-form.ts:58	将在终端里运行：	保留	[对外] 命令预览的头一行，先说在哪跑
+src/settings/account-new-form.ts:59	（填好账号名后显示将运行的命令）	保留	[对外] 预览区空态
+src/settings/account-new-form.ts:60	清空	保留	[对外] 按钮：清掉表单三格
+src/settings/account-new-form.ts:61	创建	保留	[对外] 主按钮（非红色，设计/70 §4.3 ②）
+src/settings/account-new-form.ts:69	这个号的命令名会是 {…}	保留	[对外] 表单里的一行提示，取代原先那句「去设置 → 行为」的散文导航（设计/70 §4.3 ⑤）
