@@ -112,8 +112,8 @@ export class DiagnosticsSection {
       // ⇒ 这一块让名。它的全部内容（写不写日志文件 / 级别 / 错误提示 / 路径 / 大小 / 打开）
       //   都是日志的事。
       // ⚠ `§10.3` 逐字要求这次改名与 `§5.3` 那个改名**同拍**，怕的是中间有一段时间
-      //   两个「诊断」并存。**本拍先改这一个**：先让名不会造出那一档，后改反而会
-      //   —— 顺序上这是安全的那一半，另一半（`§5.3` 那个改名）还没落地。
+      //   两个「诊断」并存。这一个先改了；〔ST1 · 09-24〕`§5.3` 那一半也落了
+      //   （`remote-section.ts::renderGaps` 的块标题）。判据 `settings-unique-names.vitest.ts`（`§8 #11`）。
       heading.textContent = "日志";
       heading.appendChild(makeInfoIcon(DIAGNOSTICS_INFO_TEXT));
       group.appendChild(heading);
@@ -344,7 +344,7 @@ export class DiagnosticsSection {
       }
       await this.refresh();
     } catch (e) {
-      showActionFailureToast("保存诊断配置失败", String(e));
+      showActionFailureToast("保存日志设置失败", String(e));
       // 失败 → 回退到当前实际值
       await this.refresh();
     }
@@ -354,7 +354,7 @@ export class DiagnosticsSection {
     try {
       await commands.open_log_file();
     } catch (e) {
-      showActionFailureToast("打开 log 文件失败", String(e));
+      showActionFailureToast("打开日志文件失败", String(e));
     }
   }
 
@@ -362,7 +362,7 @@ export class DiagnosticsSection {
     try {
       await commands.open_log_dir();
     } catch (e) {
-      showActionFailureToast("打开 log 目录失败", String(e));
+      showActionFailureToast("打开日志目录失败", String(e));
     }
   }
 }
