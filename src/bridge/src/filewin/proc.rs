@@ -373,6 +373,26 @@ fn reap_later(child: crate::spawn_managed::ManagedChild) {
 // 子进程那一侧
 // ═══════════════════════════════════════════════════════════════════
 
+/// 窗口进程拨回 monitor 那个通道口、出示钥匙，换一条线。**拨不通就是错**（`D11`）。
+///
+/// 抽成具名函数是为了让它可判：[`child_main`] 要读 stdin、要开真窗口，判据跑不动它；
+/// 而「拿着交接件拨不拨得通、拨不通说什么」这一段不需要窗口。
+/// 期限是这里给的（`05 §3.3.2`：说法归调用方）。
+///
+/// # Errors
+///
+/// 连不上 / 钥匙不对 / 期限内没答 —— 带着通道那一层的分层原因。
+pub async fn dial_back(h: &crate::chan::host::Handoff) -> Result<super::source::Line, String> {
+    use crate::chan::wire::{Budget, CancelToken};
+    let budget = Budget {
+        until: std::time::Instant::now() + DIAL_BUDGET,
+        cancel: CancelToken::new(),
+    };
+    crate::chan::dial::dial(h, budget)
+        .await
+        .map_err(|e| format!("窗口连不上主程序：{e}"))
+}
+
 /// 拨回 monitor 那个通道口（回环）的期限。回环上连一次 ＋ 一来一回的认证，给得很宽。
 pub const DIAL_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -419,16 +439,11 @@ pub fn child_main() -> i32 {
         }
     };
     // 🔴〔F2 · 2026-09-24〕**先拨通道，拨不通就别开窗**（`D11`：没有退路 ——
-    //    不许「连不上就退回 SFTP 自己列」）。期限是这里给的（`05 §3.3.2`：说法归调用方）。
-    use crate::chan::wire::{Budget, CancelToken};
-    let budget = Budget {
-        until: std::time::Instant::now() + DIAL_BUDGET,
-        cancel: CancelToken::new(),
-    };
-    let line = match rt.block_on(crate::chan::dial::dial(&req.handoff, budget)) {
+    //    不许「连不上就退回 SFTP 自己列」）。
+    let line = match rt.block_on(dial_back(&req.handoff)) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("窗口连不上主程序：{e}");
+            eprintln!("{e}");
             return EXIT_WINDOW_FAILED;
         }
     };
