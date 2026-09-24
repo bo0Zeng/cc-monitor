@@ -122,6 +122,7 @@ const DEPS: Record<string, readonly string[]> = {
   // ① 事实抽取：agent 工具名判定 · 写类工具的文件路径。
   "src/tab-session-facts.ts": ["src/cards/subagent.ts", "src/panorama/session-files.ts"],
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，经 ipc/commands 包装层要骨架索引与正文。
+  //   〔SE2〕大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/tab-stream-view.ts": [
     "src/backend-policy.ts",
     "src/branch-button.ts",
@@ -134,8 +135,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/skeleton-view.ts",
     "src/stream.ts",
     "src/views/outline-source.ts",
+    "src/views/session-find.ts", // 〔SE2〕查找面板（搜索 ／ 大纲两个模式）
     "src/views/session-viewer.ts", // 只为 revealCard（方向别扭的那条，理由在 import 处）
-    "src/views/user-input-panel.ts",
   ],
   // ④ tab 栏视图：画按钮（账号徽章 · 状态灯 · 分组 · ↗ 的 OS 门），手势全交宿主。
   "src/tab-bar-view.ts": [

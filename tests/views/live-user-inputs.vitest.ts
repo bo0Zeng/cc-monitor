@@ -467,7 +467,7 @@ describe("KR45D2 清单跟着 tab 走", () => {
     expect(outlineCalls().map((a) => (a as { jsonlPath: string }).jsonlPath)).toContain("/p/s1.jsonl");
   });
 
-  it("关掉 tab ⇒ 清单清空、悬浮层摘掉；在途那趟回来也不许回写", async () => {
+  it("关掉 tab ⇒ 清单清空、查找面板摘掉；在途那趟回来也不许回写", async () => {
     outlineBackend.entries = [outlineEntry("u1")];
     feed(userLine(1, "u1", "第一句"));
     const overlay = overlayOf("s1");
@@ -475,7 +475,7 @@ describe("KR45D2 清单跟着 tab 走", () => {
     tm.archiveTab("s1"); // 只有 archived 的 tab 关得掉
     tm.closeTab("s1"); // 此刻 list_user_inputs 还在途
     await settleOutline();
-    expect(streamRootEl.querySelectorAll(".live-user-inputs").length).toBe(0);
+    expect(streamRootEl.querySelectorAll(".session-find").length).toBe(0);
     expect(overlay.querySelectorAll(".user-input-row").length, "关掉之后迟到的清单回写了").toBe(0);
   });
 });
@@ -483,11 +483,11 @@ describe("KR45D2 清单跟着 tab 走", () => {
 /**
  * 与上面那几格**是一对，各买各的**：上面量的是「JS 这边把 `.active` 翻对了没有」，
  * 这一格量的是「CSS 那边真有宿主」—— jsdom **不加载** `styles.css`，
- * 把 `.live-user-inputs` 那几条规则整段删掉，上面**一格都不会红**，
+ * 把 `.session-find` 那几条规则整段删掉，上面**一格都不会红**，
  * 而真实后果是每个 tab 的清单**一起挂在屏幕上**（`.active` 翻得再对也没用）。
  * 同形先例：`session-viewer-user-inputs.vitest.ts` 里三条共用规则那一格。
  */
-describe("KR45D2 实时那块悬浮层在 styles.css 里真有宿主", () => {
+describe("KR45D2 · SE2 实时那块查找面板（大纲在里面）在 styles.css 里真有宿主", () => {
   it("两条规则都在，而且靠 visibility 收起（不是 display —— 切 tab 要 0 reflow）", () => {
     const cssLines = readFileSync(`${REPO_ROOT}/src/styles.css`, "utf8")
       .split("\n")
@@ -496,14 +496,14 @@ describe("KR45D2 实时那块悬浮层在 styles.css 里真有宿主", () => {
     expect(cssLines.length, "读到的 styles.css 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
     expect(cssLines, "读到的不是 styles.css —— 连基准那条规则都没有").toContain(".stream {");
 
-    expect(cssLines, "悬浮层没有 CSS 宿主 ⇒ 每个 tab 的清单一起挂在屏幕上").toContain(
-      ".live-user-inputs {",
+    expect(cssLines, "面板没有 CSS 宿主 ⇒ 每个 tab 的面板一起挂在屏幕上").toContain(".session-find {");
+    expect(cssLines, "没有 .active 那条 ⇒ 切过去的那个 tab 的面板也显示不出来").toContain(
+      ".session-find.active {",
     );
-    expect(cssLines, "没有 .active 那条 ⇒ 切过去的那个 tab 的清单也显示不出来").toContain(
-      ".live-user-inputs.active {",
-    );
+    // 〔SE2〕旧的独立悬浮层整块删了（`设计/10 §2.2b ④`）：规则零命中（正控 = 上面那条 `.session-find {` 命中）
+    expect(cssLines.filter((l) => l.startsWith(".live-user-inputs"))).toEqual([]);
 
-    const open = cssLines.indexOf(".live-user-inputs {");
+    const open = cssLines.indexOf(".session-find {");
     const body = cssLines.slice(open + 1, cssLines.indexOf("}", open));
     expect(body, "默认不 hidden ⇒ 非 active 的 tab 的清单照样挂在屏幕上").toContain(
       "visibility: hidden;",
@@ -511,7 +511,7 @@ describe("KR45D2 实时那块悬浮层在 styles.css 里真有宿主", () => {
     // 🔴 与 `.stream` 同一条纪律：切 active 不许走 display（整棵子树重建 layout tree）。
     expect(
       body.filter((l) => /^display\s*:/.test(l)),
-      "`.live-user-inputs` 里出现了 display ⇒ 切 tab 从 0 reflow 退回整棵子树重建",
+      "`.session-find` 里出现了 display ⇒ 切 tab 从 0 reflow 退回整棵子树重建",
     ).toEqual([]);
   });
 });
