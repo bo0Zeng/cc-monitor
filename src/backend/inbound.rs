@@ -89,6 +89,8 @@ pub const COMMANDS: &[&str] = &[
     "bus-state",
     "cancel",
     "capture-pane",
+    "exit-policy-read",
+    "exit-policy-set",
     "files-browse",
     "files-chmod",
     "files-create",
@@ -572,6 +574,32 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   ⇒ 这一条同拍上了 `lib.rs::SUBCOMMANDS`（不加就当未知 flag、静默进流模式）。
     //   ⇒ 「入口窄」这件事不靠命令面，靠 `readonly_guard` 第三层那条
     //   「**谁引用得到 `control/files_write`**」。理由整段在那个模块的命令面那一节。
+    // 〔B2 · 条 66 · `设计/01 §3.3b`〕「退出行为」那个值的两条命令 —— 值住**后端所在那台机器**
+    //   （`~/.cc-monitor/backend.json`），前端要读要改都经这两条，**前端从不碰那个文件**。
+    //   ⚠ 两条都在阻塞档：同步文件 I/O，开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
+    //   ⚠ `exit-policy-read` **没有错误码**：「读不出来」是一个**状态**（`state: "unreadable"` ＋ `reason`），
+    //     不是一次失败 —— 调用方要的就是那一句「读不出来，按默认办」（`§3.3b ⑤`）。
+    //   ⚠ CLI 面同样是派生的必然（`cli_control::cli_exposed`），理由同下面 `files-create` 那一段。
+    CommandSpec {
+        name: "exit-policy-read",
+        doc_anchor: Some("#### `exit-policy-read`"),
+        codes: &[],
+        fields: &["killOnExit", "path", "reason", "shell", "state"],
+        takes_input: false,
+        run: Run::Blocking(|_r| Ok(Some(crate::control::exit_policy::answer_read()))),
+    },
+    CommandSpec {
+        name: "exit-policy-set",
+        doc_anchor: Some("#### `exit-policy-set`"),
+        codes: &["bad_args", "io_failed"],
+        fields: &["killOnExit", "path", "reason", "shell", "state"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::exit_policy::answer_set(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-create",
         doc_anchor: Some("#### `files-create`"),

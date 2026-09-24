@@ -1229,6 +1229,54 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 ⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件，编辑器的那些语义不在它里面。
 
+#### 「退出行为」那个值（B2 · 条 66，`设计/01 §3.3b`，2026-09-24）—— **值住后端所在那台机器**
+
+那个值（「最后一个客户走了之后，这台机器的后端退不退」）住后端所在那台机器的 `~/.cc-monitor/backend.json`，
+**只有后端写**。前端要读要改都经下面两条命令；monitor 自己的 `config.json` 里**不再有它**，
+monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改动时把生效值推给 monitor」的 tauri 命令整条退役）。
+
+两条命令回同一个形状：
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `shell` | ← | 这一趟后端是哪个壳。今天恒 `"standalone"`（独立进程）；折进前端进程的那一档今天不存在，哪天有了它要答 `"folded"`，界面据此把整格说成「不适用」 |
+| `state` | ← | 三态：`"chosen"`（有人选过）· `"absent"`（文件不在 = 没人选过）· `"unreadable"`（文件在但读不出来 / 家目录解析不出来）。🔴 后两态**不许合并** —— 「读不出来」不等于「有人选了默认」 |
+| `killOnExit` | ↔ | 生效值。`chosen` 时是选的那个；另两态是缺省 `false`（不结束）。`exit-policy-set` 的入参也是它 |
+| `reason` | ← | 只在 `unreadable` 时有：为什么读不出来。其余为 `null` |
+| `path` | ← | 那份文件的绝对路径（家目录解析不出来时 `null`） |
+
+#### `exit-policy-read`：现读一次（**不读 stdin**）
+
+```text
+→ {"id":"x1","cmd":"exit-policy-read"}
+← {"kind":"reply","id":"x1","ok":true,"data":{"shell":"standalone","state":"absent","killOnExit":false,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
+```
+
+**没有错误码**：读不出来是一个**状态**，照样 `ok:true` 回 `state:"unreadable"` ＋ `reason`。
+每一次都真去读盘，没有缓存（用户可能刚从另一台 monitor 改过它）。
+
+#### `exit-policy-set`：写那个值，写完读回
+
+```text
+→ {"id":"x2","cmd":"exit-policy-set","args":{"killOnExit":true}}
+← {"kind":"reply","id":"x2","ok":true,"data":{"shell":"standalone","state":"chosen","killOnExit":true,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
+```
+
+回的是**写完之后再读一遍**的那一份（盘上的事实，不是「我以为写进去了」）。
+写法：`O_EXCL` 新建一份临时文件 → 写满 → 原子挪到目标上（读者只会看到整份旧的或整份新的）；
+`~/.cc-monitor` 不在就建那一层。
+
+**错误码**：`bad_args`（`killOnExit` 缺了或不是布尔）· `io_failed`（家目录解析不出来 / 盘上没写成）。
+
+⚠ **CLI 面也有它们**（`--exit-policy-read` / `--exit-policy-set`），同 `files-create` 那一条理由：CLI 面从 `inbound::REGISTRY` **派生**，不是选的。
+
+**谁按它动手**（两处，都是「最后一个客户走了」那一刻现读）：
+① 常驻（脱离）那条载体上，那一条流断了 ⇒ 后端自己现读、`true` 就退出；
+② monitor 退出时现问一次本机后端（`exit-policy-read`），按答案收它自己起的那两个子进程（被监护的后端 ＋ 本机中转）。
+⚠ `设计/01 §3.3b ⑦` 的 `lingerMs`（归零后等一下再决定）**没做**：那是一个会自己醒来的构件，后端零定时器铁律不放行，已上报。
+⚠ **远端**那一行的值写得进去、读得回来，但今天**没有任何进程按它动手**：远端后端只走 stdio（SSH exec），
+它没有「最后一个客户走了」那一臂，SSH 一断它本来就随管道破裂退出。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。
