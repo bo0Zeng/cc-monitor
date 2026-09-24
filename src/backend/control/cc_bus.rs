@@ -753,7 +753,8 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
 /// 拼给 `cc-spawn` 的 argv —— 纯函数。
 ///
 /// **`--` 不能省**：`cc-spawn` 的旗标循环跑在取位置参数之前，`dir` 若是 `--new` 这类词会被它
-/// 自己吃成旗标（monitor 侧 `build_spawn_cmd` 头注逐字记着那次）。任务为空就不传（与 SSH 那条同形）。
+/// 自己吃成旗标（B03 审计建议那一条，当年记在 monitor 侧那条 SSH 构造器的头注里；那条路 BS1b 删了，
+/// 这件事搬到了这里）。任务为空就不传。
 pub(crate) fn spawn_argv(a: &SpawnArgs) -> Vec<String> {
     let mut v = vec!["--tool".to_string(), a.tool.clone()];
     match &a.account {
