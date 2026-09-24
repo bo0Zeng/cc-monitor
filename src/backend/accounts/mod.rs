@@ -43,6 +43,8 @@
 //! （`decide` 被直接问，不经网络）；`wire_golden` 那一格用的 `seg1` 是一个**未登记**的名字，
 //! 仍钉着 502 那一半。
 
+// 〔`A3` 第二波〕这台机器上的 `cc-acct-iso`：装没装 · shellinit 那段片段（两条一次性查询）。
+pub mod acct_iso;
 pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（层 2 搬家带过来的）
 mod policy; // 热重载（`20 §4`：`accounts/policy.rs`）
 pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**

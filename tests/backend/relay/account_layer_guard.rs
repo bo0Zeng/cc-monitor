@@ -44,7 +44,8 @@ mod tests {
     const RELAY_DIR: &str = "relay";
 
     /// ㈠ 层 2 那棵树里的文件（相对**层 2 的根**）。**相等，不是地板**。
-    const ACCOUNT_LAYER_FILES: &[&str] = &["creds.rs", "mod.rs", "policy.rs", "table.rs"];
+    const ACCOUNT_LAYER_FILES: &[&str] =
+        &["acct_iso.rs", "creds.rs", "mod.rs", "policy.rs", "table.rs"]; // 〔`A3` 第二波〕+`acct_iso.rs`（本机 `cc-acct-iso` 两问：账号的事归账号层）
 
     /// ㈣ 层 2 用到的层 1 的东西（相对 `crate::relay::` 的路径）—— **接口面就这么宽**。
     ///

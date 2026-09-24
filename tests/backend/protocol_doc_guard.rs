@@ -116,6 +116,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "observe/history_query.rs",
         include_str!("../../src/backend/observe/history_query.rs"),
     ),
+    // 〔`A3` 第二波〕`--acct-iso-status` / `--acct-iso-shellinit` 的分派住这里。
+    (
+        "accounts/acct_iso.rs",
+        include_str!("../../src/backend/accounts/acct_iso.rs"),
+    ),
     (
         "observe/accounts_query.rs",
         include_str!("../../src/backend/observe/accounts_query.rs"),

@@ -150,6 +150,11 @@ async fn main() {
             // 而 monitor 的账号 0 路径**真的在发这条命令**。
             // 测试当时抓不到，是因为它们直接调 `observe::accounts_query::run`、**绕过了本处调度**。
             // 现由 `observe::accounts_query::tests::main_dispatches_every_subcommand_we_handle` 钉住。
+            // 〔`A3` 第二波〕本机那一侧的 `cc-acct-iso` 两问 —— 住账号层（不住 `observe/`：shellinit 要起进程）。
+            // ⚠ 两条臂各写一行（不合成 `A | B`）：合起来超宽，`cargo fmt` 会把臂体折成块，
+            //   而 `argv_table_guard` 按行取臂体、块体会被判成「不是一次调用」。
+            Some("--acct-iso-status") => emit_answer(accounts::acct_iso::answer(&args)),
+            Some("--acct-iso-shellinit") => emit_answer(accounts::acct_iso::answer(&args)),
             Some("--list-accounts")
             | Some("--session-accounts")
             | Some("--account-trust")
@@ -243,6 +248,19 @@ async fn main() {
 
 /// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
 /// 两份 hello 会各自漂，而这一帧是仓外 aterm 按精确字节在读的东西。
+/// 〔`A3` 第二波〕把账号层产出的一次查询答案写出去 —— 进程的 stdout / stderr 归入口这一处。
+///
+/// 账号层（`accounts/`）不自己 `print`：它同时是 `--relay` 进程的层 2，那一层的每一条输出都在
+/// 中转日志白名单底下（`relay::creds_guard`），而查询的输出不是日志。理由全文见
+/// `accounts::acct_iso::Answer` 头注。
+fn emit_answer(a: accounts::acct_iso::Answer) -> i32 {
+    print!("{}", a.stdout);
+    if let Some(e) = a.stderr {
+        eprintln!("{e}");
+    }
+    a.code
+}
+
 fn build_hello(agent_home: &std::path::Path) -> Frame {
     Frame::Hello {
         v: PROTO_VERSION,
