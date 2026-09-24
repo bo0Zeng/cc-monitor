@@ -3,7 +3,11 @@
  * 点外关 + Esc + ✕，z-index 200）——invoke `capture_remote_pane` 抓 `tmux capture-pane -p`
  * 的屏幕文本，等宽 `<pre>` 展示；失败弹 toast。**非 attach、不接管终端；只读快照非实时**
  * （「重新抓取」按钮手动刷新，要动态看去 attach）。一次只开一个。
+ *
+ * 〔CP2a〕本文件是抽表的**样板区**：它的对外文案全部住 `src/shared/copy/table.json` 的
+ * `panePreview.*`，经 `copyText` 取；这里不再写任何中文字面量（`调研/设计/91 §5.1`）。
  */
+import { copyText } from "../copy-table";
 import { showActionFailureToast } from "../error-toast";
 import { commands } from "../ipc/commands";
 
@@ -39,26 +43,26 @@ export async function openPanePreview(origin: string, target: string): Promise<v
   head.className = "pane-preview-head";
   const title = document.createElement("span");
   title.className = "pane-preview-title";
-  title.textContent = `预览画面 · [${origin}] tmux: ${target}`;
+  title.textContent = copyText("panePreview.head.title", { origin, target });
   head.appendChild(title);
 
   const refreshBtn = document.createElement("button");
   refreshBtn.type = "button";
   refreshBtn.className = "pane-preview-btn";
-  refreshBtn.textContent = "重新抓取";
+  refreshBtn.textContent = copyText("panePreview.head.refresh");
   head.appendChild(refreshBtn);
 
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
   closeBtn.className = "pane-preview-btn";
   closeBtn.textContent = "✕";
-  closeBtn.title = "关闭";
+  closeBtn.title = copyText("panePreview.head.close");
   closeBtn.addEventListener("click", closePanePreview);
   head.appendChild(closeBtn);
 
   const pre = document.createElement("pre");
   pre.className = "pane-preview-pre";
-  pre.textContent = "抓取中…";
+  pre.textContent = copyText("panePreview.body.loading");
 
   box.appendChild(head);
   box.appendChild(pre);
@@ -70,15 +74,15 @@ export async function openPanePreview(origin: string, target: string): Promise<v
   let loaded = false; // 已成功抓过一次（刷新失败时保留旧画面）
   const load = async (): Promise<void> => {
     refreshBtn.disabled = true;
-    if (!loaded) pre.textContent = "抓取中…";
+    if (!loaded) pre.textContent = copyText("panePreview.body.loading");
     try {
       const text = await commands.capture_remote_pane({ origin, target });
       if (current !== overlay) return; // 抓取途中被关/换
-      pre.textContent = text.length > 0 ? text : "（画面为空）";
+      pre.textContent = text.length > 0 ? text : copyText("panePreview.body.empty");
       loaded = true;
     } catch (e) {
       if (current !== overlay) return;
-      showActionFailureToast("预览画面失败", String(e), { level: "info" });
+      showActionFailureToast(copyText("panePreview.capture.failed"), String(e), { level: "info" });
       if (!loaded) closePanePreview(); // 首次失败无内容可留 → 关
     } finally {
       if (current === overlay) refreshBtn.disabled = false; // overlay 已关/换则别碰旧按钮

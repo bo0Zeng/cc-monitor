@@ -1,0 +1,622 @@
+{
+  "说明": [
+    "术语对照表（设计/91 §5.2④）：内部词 → 对外词。与 R1 禁词表一体两面：R1 说不许出现什么，本表说该说什么。",
+    "三档：正名 = 对外就叫这个（写文案时用它）· 限用 = 外部真实存在、用户自己也这么叫的词，只在 context 写明的语境里许说（R1b）· 禁 = 我们内部起的名，对外不许出现（R1），say 写换成什么。",
+    "禁档的 points（可选）必须指向本表里一条正名或限用；say 是给写文案的人的一句换法，不是定稿。",
+    "scan：给文案表（src/shared/copy/table.json）跑 R1 扫描用的正则（JS 语法）；null 表示判不了（单字、普通词的内部义），noScanWhy 写为什么，该词只靠人工 review。",
+    "examples / counterExamples：scan 必须命中 / 必须不命中的样例 —— 判据逐条跑，扫描正则写死了会当场红。",
+    "census：这条对应普查量具 K-T68-A1 的 R1_WORDS / R1_CANDIDATES 里哪个名字（两向相等，见 tests/copy/copy-terms.vitest.ts）。",
+    "ledger：这条覆盖 CP1 台账依据列里哪些「新词:」标记（两向相等：台账每出现一个新标记，本表就得给出处置）。",
+    "ask：术语本身定了、但具体一句话还要用户拍板的，写成要问用户的一句话。"
+  ],
+  "terms": [
+    {
+      "word": "后端",
+      "tier": "正名",
+      "meaning": "每台机器上跑的那个 cc-monitor 程序（本机与远端同一个，落在 ~/.cc-monitor/bin/ccm；设计/01 §6.7b）。",
+      "source": "设计/91 §3.1 · 用户 2026-09-17「现在没有 daemon，只有 backend」",
+      "ledger": ["二进制"],
+      "note": "「后端二进制」「后端程序」对外一律说「后端」；要强调是那个文件时说「后端程序」。台账里「二进制」一词也归这里。"
+    },
+    {
+      "word": "中转",
+      "tier": "正名",
+      "meaning": "本机把 Claude 请求按账号换上 API key 再转发给上游的那一层（HTTP 中转；设计/20）。",
+      "source": "设计/20 · 设计/90 §1.2（relay → 中转）",
+      "ledger": ["中转"],
+      "note": "⚠ 只指这一件。文件传输里「退回中转」（数据经本机转一次）是另一件事，别用这个词 —— 那里说「经本机转发」。"
+    },
+    {
+      "word": "API key",
+      "tier": "正名",
+      "meaning": "上游服务商发的 key（Anthropic 控制台或第三方）；与「订阅」相对的另一种登录方式。",
+      "source": "A1 拆键（apikey 表）· 用户在控制台看到的就是这个拼法",
+      "note": "拼法统一「API key」。apikey / api-key / API Key 这些变体是内部标识符或随手写法，见禁档「apikey」。"
+    },
+    {
+      "word": "会话",
+      "tier": "正名",
+      "meaning": "一次 Claude Code / codex 对话（resume 能接回去的那个单位）。",
+      "source": "设计/91 §5.2④ 例（sid → 会话）",
+      "note": "要露出它的编号时说「会话 ID」，不说 sid / session id / uuid。"
+    },
+    {
+      "word": "会话记录",
+      "tier": "正名",
+      "meaning": "会话落在盘上的那份记录文件（今天是 .jsonl）。",
+      "source": "R1 jsonl 的换法"
+    },
+    {
+      "word": "机器",
+      "tier": "正名",
+      "meaning": "一台跑着后端的主机。自己这台叫「本机」，别的叫「远端」或直接叫它的名字（aya / gpd）。",
+      "source": "设计/91 §5.2④ 例（origin → 机器）· 设计/70 §5.3「机器」页"
+    },
+    {
+      "word": "账号",
+      "tier": "正名",
+      "meaning": "一个 Claude 登录身份（订阅或 API key）。",
+      "source": "设计/70 §4",
+      "note": "「号」「切号」「换号」是口语简称：按钮与标题上写「账号」「切换账号」；正文里许用简称（主观项，不机检）。"
+    },
+    {
+      "word": "别名",
+      "tier": "正名",
+      "meaning": "写进 shell 配置的一行命令（如 zcc、cct），本质是给 ccm 预先带上一组参数（设计/71）。",
+      "source": "设计/71 · 设计/70 §3.3"
+    },
+    {
+      "word": "部署",
+      "tier": "正名",
+      "meaning": "把后端装到另一台机器上（设计/70 §3.3 ①，只对别的机器）。",
+      "source": "设计/70 §3.3"
+    },
+    {
+      "word": "tmux",
+      "tier": "限用",
+      "meaning": "用户机器上的终端复用程序。",
+      "context": "讲用户自己能 attach / 看得见的 tmux 会话时许说（「tmux 会话」比「终端复用会话」清楚）。我们对 tmux 的用法（send-keys · capture-pane · @ccm_sid 这类会话标记）不许露，见禁档。",
+      "source": "设计/91 §4 R1b（2026-09-18 裁定）",
+      "census": "tmux"
+    },
+    {
+      "word": "SSH",
+      "tier": "限用",
+      "meaning": "连远端用的 ssh。",
+      "context": "讲连接、主机、密钥、主机指纹时许说。",
+      "source": "设计/91 §4 R1b"
+    },
+    {
+      "word": "git",
+      "tier": "限用",
+      "meaning": "版本控制程序。",
+      "context": "讲仓库、分支时许说。",
+      "source": "设计/91 §4 R1b"
+    },
+    {
+      "word": "PowerShell",
+      "tier": "限用",
+      "meaning": "Windows 上的 shell。",
+      "context": "讲终端集成、$PROFILE 时许说；不许缩写成 PS。",
+      "source": "设计/91 §4 R1b"
+    },
+    {
+      "word": "ccm",
+      "tier": "限用",
+      "meaning": "用户在 shell 里敲的那个命令；它就是后端程序本身（设计/01 §6.7b）。",
+      "context": "只在讲「shell 里敲的命令」时许说（ccm 的参数、别名、写进 ~/.bashrc 的那一段）。讲「机器上装的那个程序」时说「后端」。「ccm 助手」「ccm wrapper」是我们起的名，禁。",
+      "source": "设计/01 §6.7b · 设计/70 §5（MC1：「ccm 助手」删掉）· CP1 判不了之一（settings/machine-card.ts「卸载 ccm 中」）",
+      "census": "ccm",
+      "ledger": ["ccm"],
+      "ask": "机器页的「卸载 ccm」其实只删 ~/.bashrc 里那一段（让 shell 认得 ccm / cc / cct 的片段），后端程序本身留着 —— 按钮继续叫「卸载 ccm」你认，还是改叫「移除 shell 里的 ccm 命令」？"
+    },
+    {
+      "word": "in-place",
+      "tier": "限用",
+      "meaning": "cc-acct-iso 用 `init --default-in-place` 建出来的那种账号：它的配置目录就是共享库 ~/.claude 本身。",
+      "context": "只在说明「这个账号为什么不能按会话切换」时许说，并且说「in-place 账号」。依据：这种账号只有亲手敲过 --default-in-place 才会有（cc-monitor 自己从不建它；manifest 的 mode 字段由 cc-acct-iso 写），cc-acct-iso 自己的提示也叫它 in-place ⇒ 用户认得这个词。",
+      "source": "CP1 判不了之二（accounts.ts「in-place 模式」）· src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso 的 init / verify 提示",
+      "ledger": ["in-place"],
+      "note": "同一处的徽标字「逃生口」是我们起的比喻（见禁档「逃生口」），与本词无关。"
+    },
+    {
+      "word": "Claude Code",
+      "tier": "限用",
+      "meaning": "Anthropic 的命令行工具；命令名 claude。",
+      "context": "产品名，许说。讲它的 hooks、settings.json 等它自己的概念时许用它的原名。",
+      "source": "外部产品名"
+    },
+    {
+      "word": "hook",
+      "tier": "限用",
+      "meaning": "Claude Code 自己的 hooks 配置（settings.json 里的 hooks 段）。",
+      "context": "只在讲 Claude Code 的 hooks 配置时许说（中文「钩子」同义）。讲我们内部的回调、tmux-hook 之类不许说。",
+      "source": "普查 R1 候选（K-T68 面④附）",
+      "census": "hook"
+    },
+    {
+      "word": "SSH 主机指纹",
+      "tier": "限用",
+      "meaning": "ssh 首次连接时让你确认的那串 SHA256。",
+      "context": "讲主机密钥、首次连接确认时许说。别处（例如 vendored 组件的「指纹文件」）是内部的版本指纹，不许说。",
+      "source": "CP1 台账新词「指纹」",
+      "ledger": ["指纹"]
+    },
+    {
+      "word": "@ccm_sid",
+      "tier": "禁",
+      "say": "不说。要说的是后果：「认不出这是哪个会话」。",
+      "points": "会话",
+      "scan": { "re": "@ccm_sid", "flags": "" },
+      "census": "@ccm_sid",
+      "source": "设计/91 §4 R1 · §2.1"
+    },
+    {
+      "word": "ccm wrapper",
+      "tier": "禁",
+      "say": "ccm（讲 shell 命令时）或「后端」（讲程序时）。",
+      "points": "ccm",
+      "scan": { "re": "ccm\\s*wrapper", "flags": "i" },
+      "census": "ccm wrapper",
+      "source": "设计/91 §4 R1"
+    },
+    {
+      "word": "hwnd cache",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "hwnd\\s*cache", "flags": "i" },
+      "census": "hwnd cache",
+      "source": "设计/91 §4 R1"
+    },
+    {
+      "word": "daemon",
+      "tier": "禁",
+      "say": "后端。",
+      "points": "后端",
+      "scan": { "re": "daemon", "flags": "i" },
+      "census": "daemon",
+      "source": "设计/91 §3.1 · §4 R1"
+    },
+    {
+      "word": "pidfile",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "pid\\s*file", "flags": "i" },
+      "census": "pidfile",
+      "source": "设计/91 §4 R1"
+    },
+    {
+      "word": "jsonl",
+      "tier": "禁",
+      "say": "会话记录。",
+      "points": "会话记录",
+      "scan": { "re": "jsonl", "flags": "i" },
+      "census": "jsonl",
+      "source": "设计/91 §4 R1"
+    },
+    {
+      "word": "inotify",
+      "tier": "禁",
+      "say": "不说；要说后果时说「自动刷新不工作」。",
+      "scan": { "re": "inotify", "flags": "i" },
+      "census": "inotify",
+      "source": "设计/91 §4 R1"
+    },
+    {
+      "word": "HWND",
+      "tier": "禁",
+      "say": "终端窗口。",
+      "scan": { "re": "\\bHWND\\b", "flags": "" },
+      "census": "HWND",
+      "source": "设计/91 §4 R1"
+    },
+    {
+      "word": "relay",
+      "tier": "禁",
+      "say": "中转。",
+      "points": "中转",
+      "scan": { "re": "\\brelay\\b", "flags": "i" },
+      "census": "relay",
+      "source": "设计/91 §4 R1 · 设计/90 §1.2"
+    },
+    {
+      "word": "sid",
+      "tier": "禁",
+      "say": "会话；要露编号时说「会话 ID」。",
+      "points": "会话",
+      "scan": { "re": "(?<![\\w@])sid(?!\\w)", "flags": "i" },
+      "counterExamples": ["@ccm_sid", "inside"],
+      "census": "sid",
+      "source": "设计/91 §4 R1"
+    },
+    {
+      "word": "判据",
+      "tier": "禁",
+      "say": "不说（我们内部对「测试」的叫法）。报错里说发生了什么。",
+      "scan": { "re": "判据", "flags": "" },
+      "census": "判据",
+      "source": "设计/91 §2.2 · §4 R1"
+    },
+    {
+      "word": "守卫",
+      "tier": "禁",
+      "say": "不说（用户 2026-09-17「没有守卫这种东西，都是测试」）。报错里说被拦下的原因。",
+      "scan": { "re": "守卫", "flags": "" },
+      "census": "守卫",
+      "source": "设计/91 §2.2 · §4 R1"
+    },
+    {
+      "word": "死亡账",
+      "tier": "禁",
+      "say": "不说；要说的是「后端上次退出的原因」。",
+      "points": "后端",
+      "scan": { "re": "死亡账", "flags": "" },
+      "census": "死亡账",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "尺子",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "尺子", "flags": "" },
+      "census": "尺子",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "棘轮",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "棘轮", "flags": "" },
+      "census": "棘轮",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "空真",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "空真", "flags": "" },
+      "census": "空真",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "恒绿",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "恒绿", "flags": "" },
+      "census": "恒绿",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "墓碑",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "墓碑", "flags": "" },
+      "census": "墓碑",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "活体",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "活体", "flags": "" },
+      "census": "活体",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "写区",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "写区", "flags": "" },
+      "census": "写区",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "定框",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "定框", "flags": "" },
+      "census": "定框",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "铸名",
+      "tier": "禁",
+      "say": "不说；要说时说「起名」。",
+      "scan": { "re": "铸名", "flags": "" },
+      "census": "铸名",
+      "source": "设计/91 §2.5 · §4 R1"
+    },
+    {
+      "word": "灰",
+      "tier": "禁",
+      "say": "说状态本身：「已结束」或「可重连」（设计/30 §3.5.2）。纯颜色义（灰色 / 灰度 / 灰阶）不在此列。",
+      "scan": { "re": "灰(?![色度阶])", "flags": "" },
+      "examples": ["tab 稍后自动变灰"],
+      "counterExamples": ["灰色", "灰度"],
+      "census": "灰",
+      "source": "设计/30 §3.5.2 · 设计/91 §4 R1"
+    },
+    {
+      "word": "IPC",
+      "tier": "禁",
+      "say": "不说；说「连接」或直接说结果。",
+      "scan": { "re": "\\bIPC\\b", "flags": "" },
+      "census": "IPC",
+      "source": "普查 R1 候选"
+    },
+    {
+      "word": "stderr/stdout",
+      "tier": "禁",
+      "say": "「输出」「错误输出」。",
+      "scan": { "re": "\\bstd(?:err|out)\\b", "flags": "i" },
+      "census": "stderr/stdout",
+      "source": "普查 R1 候选"
+    },
+    {
+      "word": "PTY",
+      "tier": "禁",
+      "say": "终端。",
+      "scan": { "re": "\\bpty\\b", "flags": "i" },
+      "census": "PTY",
+      "source": "普查 R1 候选"
+    },
+    {
+      "word": "WebView",
+      "tier": "禁",
+      "say": "「界面」；讲它存的数据时说「界面数据」。",
+      "scan": { "re": "webview", "flags": "i" },
+      "census": "WebView",
+      "source": "普查 R1 候选"
+    },
+    {
+      "word": "socket",
+      "tier": "禁",
+      "say": "不说；说「连接」。",
+      "scan": { "re": "\\bsocket\\b", "flags": "i" },
+      "census": "socket",
+      "source": "普查 R1 候选"
+    },
+    {
+      "word": "fd",
+      "tier": "禁",
+      "say": "不说。",
+      "scan": { "re": "(?<!\\w)fd(?!\\w)", "flags": "" },
+      "census": "fd",
+      "ledger": ["fd"],
+      "source": "普查 R1 候选 · CP1 台账"
+    },
+    {
+      "word": "serde/序列化",
+      "tier": "禁",
+      "say": "不说；说「格式不对」「读不出来」。",
+      "scan": { "re": "\\bserde\\b|序列化", "flags": "i" },
+      "census": "serde/序列化",
+      "source": "普查 R1 候选"
+    },
+    {
+      "word": "backend",
+      "tier": "禁",
+      "say": "后端（英文 backend 夹在中文里一律换）。",
+      "points": "后端",
+      "scan": { "re": "\\bbackend\\b", "flags": "i" },
+      "ledger": ["backend"],
+      "source": "设计/91 §7.3"
+    },
+    {
+      "word": "origin",
+      "tier": "禁",
+      "say": "机器。",
+      "points": "机器",
+      "scan": { "re": "\\borigin\\b", "flags": "i" },
+      "source": "设计/91 §5.2④ 例"
+    },
+    {
+      "word": "apikey",
+      "tier": "禁",
+      "say": "API key（拼法统一）。",
+      "points": "API key",
+      "scan": { "re": "\\b(?:[Aa]pi[-_]?[Kk]ey|API[-_][Kk]ey|APIKEY|APIkey)\\b|API Key", "flags": "" },
+      "examples": ["apikey 凭据文件", "api-key（经本机中转）", "API Key"],
+      "counterExamples": ["第三方 API key"],
+      "source": "A1 拆键 · 今天界面上 api-key / apikey / API key 三种拼法并存"
+    },
+    {
+      "word": "manifest",
+      "tier": "禁",
+      "say": "账号清单（~/.claude-accts/accounts.json）；版本不对时说「账号清单格式版本」。",
+      "scan": { "re": "\\bmanifest\\b", "flags": "i" },
+      "ledger": ["manifest", "schema"],
+      "source": "设计/91 §7.3"
+    },
+    {
+      "word": "kill",
+      "tier": "禁",
+      "say": "「结束」（结束会话 / 结束进程）。",
+      "scan": { "re": "\\bkill\\b", "flags": "i" },
+      "ledger": ["kill"],
+      "source": "CP1 台账"
+    },
+    {
+      "word": "英文实现词",
+      "tier": "禁",
+      "say": "不说实现，说结果：watcher →「自动刷新」· invoke / spawn / dispatch →「启动」「执行」· panic →「程序出错」· rollback →「还原」· flock →「锁」· uuid →「ID」· vendored / 编译期内嵌 →「随 cc-monitor 一起安装」· sftp-server →「远端的 SFTP 服务」· 其余（pidfd · tokio 运行时 · Win32 · SessionMap · ToolSpec · CLI 渲染器 · SFTP 句柄 · copy-data）→ 不说。",
+      "scan": { "re": "\\b(?:watcher|invoke|spawn|dispatch|panic|tokio|pidfd|rollback|flock|uuid|vendored|Win32|SessionMap|ToolSpec|copy-data|sftp-server)\\b|CLI\\s*渲染器|SFTP\\s*句柄|编译期内嵌|交叉编译内嵌", "flags": "i" },
+      "examples": ["tokio运行时", "watcher", "SFTP句柄"],
+      "ledger": ["watcher", "invoke", "spawn", "dispatch", "panic", "tokio运行时", "pidfd", "rollback", "flock", "uuid", "vendored", "Win32", "SessionMap", "ToolSpec", "copy-data", "sftp-server", "CLI渲染器", "SFTP句柄", "编译期内嵌", "交叉编译内嵌"],
+      "source": "设计/91 §7.3（英文我方名）· CP1 台账"
+    },
+    {
+      "word": "系统错误码",
+      "tier": "禁",
+      "say": "说人话：ETXTBSY →「文件正被占用」· DACL →「权限列表」（宽泛主体 →「对所有人开放的条目」）。",
+      "scan": { "re": "\\bE[A-Z]{4,}\\b|\\bDACL\\b|宽泛主体|os error \\d+", "flags": "" },
+      "examples": ["ETXTBSY", "os error 26"],
+      "ledger": ["ETXTBSY", "DACL", "宽泛主体"],
+      "source": "CP1 台账"
+    },
+    {
+      "word": "代码里的名字",
+      "tier": "禁",
+      "say": "用界面上那个字段 / 那一栏的标签（backendPath →「后端路径」· keyPath →「密钥文件」· hostKeyFingerprint →「SSH 主机指纹」· configDir / claudeDir →「配置目录」· kind →「类型」），不直出代码里的名字、文件名与枚举原值（ADDED / ALREADY / Exact / bad_args …）。",
+      "scan": { "re": "\\b[a-z]+(?:[A-Z][a-z0-9]*)+\\b|\\b(?:ADDED|ALREADY|Exact|Heuristic|DynamicGuess|bad_args|bad_path|accounts-meta|agents\\.tsv|__ccm_bind|auto-launch|touches|localStorage|UserDataFolder)\\b|\\.?build_id\\b", "flags": "" },
+      "examples": ["backendPath", "cliFlags", "__ccm_bind", ".build_id", "ADDED"],
+      "counterExamples": ["API key", "Claude Code"],
+      "ledger": ["backendPath", "keyPath", "hostKeyFingerprint", "configDir", "claudeDir", "cliFlags", "label", "jump", "kind", "ADDED", "ALREADY", "Exact/Heuristic/DynamicGuess", "错误码bad_args/bad_path", "accounts-meta", "agents.tsv", "__ccm_bind", "auto-launch", "touches", "localStorage", "UserDataFolder", "build_id", ".build_id"],
+      "source": "设计/91 §7.3（配置键名直出）· CP1 台账",
+      "note": "label / jump / kind 是普通英文单词，正则认不出它们是配置键 ⇒ 这三个只靠人工 review。"
+    },
+    {
+      "word": "内部编号",
+      "tier": "禁",
+      "say": "不说。设计条目号、工单号（C8① · C14 · K-R49 · U4b …）任何形如「字母＋数字」的内部编号不许出现在对外串里。",
+      "scan": { "re": "\\b[A-Z](?:-[A-Z])?\\d{1,3}[a-z]?(?![\\w.-])|\\b[A-Z]\\d+[①-⑩]", "flags": "" },
+      "examples": ["C14", "K-R49", "U4b", "C8①"],
+      "counterExamples": ["SHA256", "UTF-8", "Win32"],
+      "ledger": ["C14", "C8①", "K-Rxx工单号", "U4b"],
+      "source": "设计/91 §7.3"
+    },
+    {
+      "word": "TOFU",
+      "tier": "禁",
+      "say": "「首次连接时记下」。",
+      "points": "SSH 主机指纹",
+      "scan": { "re": "\\bTOFU\\b", "flags": "" },
+      "ledger": ["TOFU"],
+      "source": "CP1 台账"
+    },
+    {
+      "word": "PS",
+      "tier": "禁",
+      "say": "PowerShell（不许缩写）。",
+      "points": "PowerShell",
+      "scan": { "re": "\\bPS\\b", "flags": "" },
+      "ledger": ["PS"],
+      "source": "CP1 台账"
+    },
+    {
+      "word": "tmux 的我方用法",
+      "tier": "禁",
+      "say": "不说我们怎么用 tmux：send-keys / send-into →「发送」· capture-pane →「抓取画面」· tmux 标记 → 不说（说后果：认不出是哪个会话）。",
+      "points": "tmux",
+      "scan": { "re": "send-keys|send-into|capture-pane|tmux-hook|tmux\\s*标记", "flags": "i" },
+      "examples": ["send-keys", "capture-pane"],
+      "ledger": ["send-keys", "send-into"],
+      "source": "设计/91 §4 R1b 第 2 条 · §7.3"
+    },
+    {
+      "word": "通信层行话",
+      "tier": "禁",
+      "say": "说结果，不说通道：连不上 →「连不上 {机器}」· 版本对不上 →「{机器} 的后端版本不对，需要更新」。帧 / 首帧 / 帧面 / hello / ack / 握手 / 应答（形状）/ 协议漂移 / 契约 / 载荷 / 能力（声明 / 协商 / token）/ 控制通道 / 控制面 / 入方向（命令）/ 对侧 / 读面 / 写面 / 读端 / 另一条路 / 口 / 流 / 通道 / 链路 / 管道 / 腿 / 拨号任务 / 路由段，一律不说（路由段 → 「请求地址」）。",
+      "points": "后端",
+      "scan": { "re": "首帧|帧面|hello\\s*帧|\\bhello\\b|\\back\\b|握手|应答形状|协议漂移|控制通道|控制面|入方向|能力声明|能力协商|能力\\s*token|读面|写面|读端|拨号任务|另一条路|路由段", "flags": "i" },
+      "examples": ["握手时没报", "hello帧", "能力token"],
+      "ledger": ["帧", "首帧", "帧面", "hello", "hello帧", "ack", "握手", "应答", "应答形状", "协议漂移", "契约", "载荷", "能力", "能力token", "能力声明", "能力协商", "控制通道", "控制面", "入方向", "入方向命令", "对侧", "读面", "写面", "读端", "另一条路", "口", "流", "通道", "链路", "管道", "腿", "拨号任务", "路由段"],
+      "source": "设计/91 §7.3（通道/协议行话）· CP1 台账",
+      "note": "帧 / 口 / 流 / 通道 / 链路 / 管道 / 腿 / 能力 / 契约 / 载荷 / 应答 / 对侧 是单字或普通词，正则扫它们会把「流程」「端口」「能力」的正常用法一起扫掉 ⇒ 这几个只靠人工 review。"
+    },
+    {
+      "word": "拉前",
+      "tier": "禁",
+      "say": "「切到终端窗口」。",
+      "scan": { "re": "拉前", "flags": "" },
+      "ledger": ["拉前"],
+      "source": "设计/91 §7.3（自造概念名）"
+    },
+    {
+      "word": "容器",
+      "tier": "禁",
+      "say": "tmux 会话（容器 / 容器路 / 容器路径 都是我们给「在 tmux 里起」起的名）。",
+      "points": "tmux",
+      "scan": { "re": "容器", "flags": "" },
+      "ledger": ["容器", "容器路", "容器路径"],
+      "source": "设计/91 §7.3"
+    },
+    {
+      "word": "落点",
+      "tier": "禁",
+      "say": "「安装位置」或直接写路径。",
+      "scan": { "re": "落点", "flags": "" },
+      "ledger": ["落点"],
+      "source": "设计/91 §7.3"
+    },
+    {
+      "word": "围栏",
+      "tier": "禁",
+      "say": "「cc-monitor 加的那一段」（BEGIN / END 标记之间）；围栏外的「裸行」→「那一段之外的行」。",
+      "scan": { "re": "围栏|裸行", "flags": "" },
+      "ledger": ["围栏", "裸行"],
+      "source": "设计/91 §7.3"
+    },
+    {
+      "word": "常驻实例",
+      "tier": "禁",
+      "say": "「上次留下的后端」（接管 → 「接着用」）。",
+      "points": "后端",
+      "scan": { "re": "常驻实例", "flags": "" },
+      "ledger": ["常驻实例", "接管"],
+      "source": "CP1 台账",
+      "note": "「接管」是普通词，不扫。"
+    },
+    {
+      "word": "版本标记",
+      "tier": "禁",
+      "say": "「后端版本」；没有时说「远端还没装后端」。",
+      "points": "后端",
+      "scan": { "re": "版本标记", "flags": "" },
+      "ledger": ["版本标记"],
+      "source": "设计/91 §7.3"
+    },
+    {
+      "word": "重走",
+      "tier": "禁",
+      "say": "「重新扫描」（重走周期 →「扫描间隔」· 走完 →「扫完」）。",
+      "scan": { "re": "重走", "flags": "" },
+      "ledger": ["重走", "重走周期", "走完"],
+      "source": "设计/91 §7.3",
+      "note": "「走完」是普通词，不扫。"
+    },
+    {
+      "word": "慢路",
+      "tier": "禁",
+      "say": "「较慢的方式」。",
+      "scan": { "re": "慢路", "flags": "" },
+      "ledger": ["慢路"],
+      "source": "CP1 台账"
+    },
+    {
+      "word": "零流量复制",
+      "tier": "禁",
+      "say": "「在远端直接复制」；没走上时说「数据经本机转了一次」。",
+      "scan": { "re": "零流量复制", "flags": "" },
+      "ledger": ["零流量复制"],
+      "source": "CP1 台账"
+    },
+    {
+      "word": "逃生口",
+      "tier": "禁",
+      "say": "说它是什么、不能做什么：in-place 账号 →「不支持切换」。",
+      "points": "in-place",
+      "scan": { "re": "逃生口", "flags": "" },
+      "source": "设计/91 §2.5 同族（accounts.ts 账号徽标的字，本拍术语表里现打出来的）"
+    },
+    {
+      "word": "自造概念名",
+      "tier": "禁",
+      "say": "说它做的事，不说我们给它起的名：数据面漂移记账 · 诚实降级 / 如实降级 · 平价预言机 · 分流器 · 原语 · 身份配方 · 身份行 · 装口 · 抢救 · 铸 · 申报 · 意图标 · 开窗预算 · 浏览名单 · 拉起器 · 起法 · 同寿 · 避让 · 一次性模式 · 双向绑定 · 反推。",
+      "scan": { "re": "数据面漂移记账|诚实降级|如实降级|平价预言机|分流器|原语|身份配方|身份行|装口|抢救|铸|申报|意图标|开窗预算|浏览名单|拉起器|起法|同寿|一次性模式|双向绑定|反推", "flags": "" },
+      "examples": ["诚实降级", "开窗预算"],
+      "ledger": ["数据面漂移记账", "诚实降级", "如实降级", "平价预言机", "分流器", "原语", "身份配方", "身份行", "装口", "抢救", "铸", "申报", "意图标", "开窗预算", "浏览名单", "拉起器", "起法", "同寿", "避让", "一次性模式", "双向绑定", "反推"],
+      "source": "设计/91 §2.5 · §7.3",
+      "note": "「避让」是普通词，不扫。"
+    },
+    {
+      "word": "普通词的内部义",
+      "tier": "禁",
+      "say": "按语境换：档 →「类别」· 面 →「类别」· 维度 →「选项」· 对账 →「核对」· 产物 →「文件」· 数据源 / 聚合 →「汇总」· 子命令 →「命令」· 监听 →「监视」· 持久化 →「保存」· 注入 →「写入」· 语义 / 调用方 → 不说。",
+      "scan": null,
+      "noScanWhy": "全是普通中文词，只有在我们的语境里才是行话；正则分不出「流程」和「流」、「能力」和「能力声明」那种区别 ⇒ 只靠人工 review（主观项）。",
+      "ledger": ["档", "面", "维度", "对账", "产物", "数据源", "聚合", "子命令", "监听", "持久化", "注入", "语义", "调用方"],
+      "source": "CP1 台账"
+    }
+  ]
+}
