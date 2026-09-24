@@ -47,10 +47,10 @@ use std::net::{IpAddr, Ipv4Addr, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-// ⚠ `ENV_UPSTREAM` 与 `DEFAULT_UPSTREAM` **搬去层 2 了**（`20 §4`「常量跟着职责走」）：
-//   住址 `accounts/mod.rs`。搬完之后层 1 里**没有任何可以回落的默认上游**
+// ⚠ 上游的环境旋钮与默认值**先搬去层 2**（`20 §4`「常量跟着职责走」），**再被条 59 整删**成
+//   每 agent 一行的表（`accounts::AGENT_UPSTREAMS`）。层 1 里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
-//   的**两向相等断言**钉着（层 1 零处 ＋ 层 2 恰好一处），不是一条散文。
+//   的**两向相等断言**钉着（层 1 零处 ＋ 层 2 恰好登记那几处），不是一条散文。
 
 // ══ 下面这三个常量的**职责在 `listen.rs`**（监听面），代码留在这里 ══════════════
 //    理由**不是**职责，是两处**写区外的散文住址**逐字点着 `…/relay/server.rs::<常量名>`，

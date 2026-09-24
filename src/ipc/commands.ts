@@ -117,6 +117,7 @@ import type { BranchResult } from "../generated/BranchResult";
 // ⚠ 射程：这一条只管**入方向**。出方向那一半（`JsonlRecord` / `RemoteHealthPayload` 一族的
 //   `origin: string | null`）今天仍有 `null`，不在步 2 的写区里 —— 别读成「全仓没有 `null` 了」。
 import type { Origin } from "../generated/Origin";
+import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -886,6 +887,27 @@ export const commands = {
      */
     origin: Origin;
   }) => invoke<SubagentLoadResult>("load_subagent", args),
+
+  /**
+   * 〔`设计/10` 骨架 · 子步 3〕**骨架索引**：从字节 `fromOffset` 起（冷启动 0 / 续传传上次的 `end`）。
+   * 跑的是后端 `--read-session-from-offset … --index`（`IPC-PROTOCOL.md §10.3`）。
+   * `available: false` **不是错误**：对面是不认 `--index` 的老后端 / 本机后端不在 ⇒ 调用方退回尾部窗口。
+   */
+  read_session_index: (args: { origin: Origin; jsonlPath: string; fromOffset: number }) =>
+    invoke<SessionIndexResult>("read_session_index", args),
+
+  /**
+   * 〔`设计/10` 骨架 · 子步 3〕**按偏移取一段正文** `[offset, until)` —— 两端、`seqBase`、`lineCount`
+   * 都取自骨架索引（这一段第一行的 seq、这一段的可计行数）。「只物化可见区」要的那一段。
+   */
+  read_session_range: (args: {
+    origin: Origin;
+    jsonlPath: string;
+    offset: number;
+    until: number;
+    seqBase: number;
+    lineCount: number;
+  }) => invoke<JsonlLinePayload[]>("read_session_range", args),
 
   /**
    * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。

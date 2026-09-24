@@ -24,6 +24,7 @@ import {
   planAttach,
 } from "./launch-requests";
 import type { LaunchModifiers } from "./launch-plan";
+import { isValidRbindToken } from "./launch-dimensions";
 // 🔴 〔步 22b·B 2026-09-20〕**这里原来 `import { renderFallback } from "./launch-render-fallback"`。**
 // `设计/90 §4 E` 收官：外层 tmux 那三格切到 `backend::control::payload::render_tmux_outer`
 // 之后，本文件是 `renderFallback` **最后一个生产消费者** —— 那一行随之退役。
@@ -59,6 +60,90 @@ import type { LaunchContext, LaunchPlan } from "./launch-plan";
  *  用途：区分「载荷渲染被拒」（坏输入，换条路渲染只会糊过去 ⇒ 不许回落）
  *  与「IPC/序列化异常」（通道问题，与载荷无关 ⇒ 可回落）。 */
 const REFUSE_TAG = "REFUSE:";
+
+// ═══════ 🔴 `设计/80 §8.7` 步 3：**启动期令牌的铸币口** ═══════════════════════════
+//
+// 步 1 把载荷侧的槽位铺到底（窄 `EnvOp` ＋ 两个渲染器 ＋ 黄金串），**刻意零生产铸币口**
+// —— 那一刀的收尾话逐字：「铸币归 §8.7 步 3，本地半要先能记住 `token → HWND`，
+// 令牌才有意义」。本刀两件一起落：`bind.rs` 记得住了（`lookup_hwnd_for_token`），
+// 这里开始真的铸。
+//
+// ## 令牌为什么**不可猜**（`§8.6 ③` 的硬要求）
+//
+// 令牌会出现在远端的 `/proc/<pid>/environ`、`/proc/<pid>/cmdline` 与 shell 历史里
+// ⇒ 它**只能是一个不可猜的关联 id，不许承载任何权限语义**。
+// 拿到它顶多能让某人的 `↗` 拉错窗口，**不能越权**。
+//
+// ⇒ 熵取自**平台 CSPRNG**（`crypto.getRandomValues`，16 字节 = **128 位**），
+//   渲成 32 个小写十六进制字符。
+//
+// 🔴 **拿不到 CSPRNG 就 throw，绝不回落 `Math.random()`**。这一条不是洁癖：
+//   `Math.random()` 在 V8 里是 xorshift128+，**种子可从少量输出反推** ——
+//   那会让「不可猜」这条性质静默失效，而失效的表现是**零**（令牌照样是 32 hex、
+//   命令照样跑、判据照样绿）。⇒ 这是本仓 fail-closed 纪律的正典形态：
+//   **说不出就放弃，不许近似**（`INVARIANTS §33`）。
+//   代价是「没有 CSPRNG 的宿主上拉不起会话」—— 而那个宿主集合是**空的**
+//   （Tauri 的 webview 与 Node ≥19 都有 `globalThis.crypto`），
+//   真要出现，用户看到的是一条**说得准的**错误，不是一个悄悄变弱的令牌。
+//
+// ## 🔴 它连带的那个后果，写死在这里
+//
+// 从这一刀起，**每一次「起 agent 进程」的拉起都带令牌** ⇒ 经
+// `renderLaunchCommand` 那道闸（步 1 加的），生产上那条 `ccm …` 调用行
+// **只剩 `attach` 那一格还在走**（`planAttach` 不收 `mods`，永不带令牌）。
+// 这不是回归、也不是偷偷换路：`RBIND_TOKEN_DIMENSION` 头注 ③ 逐字预告过
+// （「带令牌的 plan 一律降级到载荷渲染器……等 `ccm` 学会了，这里改成吐 flag」），
+// 两条路的产物都有**入库的逐字节金标准**（`cli-golden.json` / `payload-golden.json`）。
+// ⇒ 换的是**渲染形态**，不是渲染语言、也不是校验口径（两条都在 Rust、同一排闸）。
+// 判据在 `tests/remote-launch-run.vitest.ts` 的「铸币口」那一组（含一条点名钉住
+// 「`attach` 仍走 `ccm …`」的正控 —— 少了它，「CLI 那条路整个死了」会读成一条绿）。
+
+/** 令牌的熵：**16 字节 = 128 位**，渲成 32 个小写十六进制字符。
+ *
+ *  ⚠ 那个 `32` 是**跨三处的双写点**（本侧字符数 ·
+ *  `payload.rs::RBIND_TOKEN_LEN` · `bind.rs::RBIND_TOKEN_LEN`），三处各有判据。
+ *  这里只声明**字节数**，字符数由 `2 * 本值` 派生 —— 不再手抄一个 32 出来。 */
+const RBIND_TOKEN_ENTROPY_BYTES = 16;
+
+/**
+ * 铸一个启动期令牌。
+ *
+ * **只有一个出口**（这是刻意的）：全仓所有「起 agent 进程」的拉起都从这里取令牌，
+ * 于是「令牌怎么产的」这一问只有一个住址可查、只有一处会被死值验打。
+ *
+ * @throws 拿不到 CSPRNG（`crypto.getRandomValues` 不在）—— 见上方那段，**不回落**。
+ * @throws 铸出来的串形状不对 —— 那是一次编程错误（进制/长度算错），
+ *         宁可在铸币口当场炸，也不要让它一路滑到远端 shell 里去
+ *         （`RBIND_TOKEN_DIMENSION.apply` 与 `payload.rs` 那两道闸会拒，
+ *          但那时的错误信息说的是「拼命令时发现形状不对」，指不到这里）。
+ */
+export function mintRbindToken(): string {
+  const c: Crypto | undefined = globalThis.crypto;
+  if (!c || typeof c.getRandomValues !== "function") {
+    throw new Error(
+      "拒绝铸造启动期令牌：本宿主没有 CSPRNG（crypto.getRandomValues 不在）。" +
+        "刻意不回落 Math.random —— 那会让「令牌不可猜」这条性质静默失效（设计/80 §8.6 ③）。",
+    );
+  }
+  const bytes = new Uint8Array(RBIND_TOKEN_ENTROPY_BYTES);
+  c.getRandomValues(bytes);
+  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  if (!isValidRbindToken(token)) {
+    // 与维度侧**同一条形状**（不在这里写第二份正则）。
+    throw new Error(`铸币口产出了形状不对的令牌（内部错误）: ${JSON.stringify(token)}`);
+  }
+  return token;
+}
+
+/** 给一组修饰补上令牌。**已经有令牌就原样返回** —— 调用方显式传的优先（测试与将来
+ *  「复用同一个令牌重连」那一档都要这个口子）。
+ *
+ *  ⚠ **`=== undefined` 不是 `??`/`!`**：与 `RBIND_TOKEN_DIMENSION.applies` 同一条纪律
+ *  （**空值 ≠ 未设**，`Z01` 起的支点）。调用方真传了 `""` ⇒ 原样留着 ⇒
+ *  维度那一层 `throw` ⇒ 一次铸币 bug 被**当场**看见，而不是静默退化成「这次不带令牌」。 */
+function withMintedRbindToken(mods: LaunchModifiers): LaunchModifiers {
+  return mods.rbindToken === undefined ? { ...mods, rbindToken: mintRbindToken() } : mods;
+}
 
 /** 挑渲染器：`forceLegacyLaunchRenderer` 手动逃生口（MASTERPLAN R2）短路到载荷那条；否则探测到 ccm
  *  且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/含 CLI 表达不了的
@@ -390,7 +475,7 @@ export async function runRemoteResume(
 ): Promise<boolean> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, mods);
+    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, withMintedRbindToken(mods));
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 resume 命令", String(err));
@@ -424,7 +509,7 @@ export async function runRemoteResumeTmux(
 ): Promise<boolean> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, mods);
+    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, withMintedRbindToken(mods));
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 tmux resume 命令", String(err));
@@ -534,7 +619,7 @@ export async function runRemoteResumeIntoExistingTmux(
   let cmd: string;
   let viaBackend = false;
   try {
-    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, mods);
+    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, withMintedRbindToken(mods));
     // ★ U8a-2c-1：**先试 backend**。这一格今天的整串是
     //   `tmux send-keys -t '=name:' '<载荷>' Enter; tmux attach -t '=name:'` —— 两半干干净净：
     //   `send-keys` 交给远端 `control/`，`attach` **必须**留在用户自己的终端（§1.3）。
@@ -601,7 +686,7 @@ export async function runLocalResumeIntoExistingTmux(
 ): Promise<boolean> {
   let plan: LaunchPlan;
   try {
-    ({ plan } = planResumeIntoExistingTmux(sid, name, launcher, mods));
+    ({ plan } = planResumeIntoExistingTmux(sid, name, launcher, withMintedRbindToken(mods)));
   } catch (err) {
     showActionFailureToast("无法构造就地 resume 命令", String(err));
     return false;
@@ -729,7 +814,7 @@ export async function runRemoteLauncher(
 ): Promise<void> {
   let cmd: string;
   try {
-    const { ctx, plan } = planLauncher(cwd, tmuxName, command, mods);
+    const { ctx, plan } = planLauncher(cwd, tmuxName, command, withMintedRbindToken(mods));
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 launcher 命令", String(err));

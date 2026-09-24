@@ -22,8 +22,11 @@ const FAMILY_A = [
 const FAMILY_B = [
   "src/settings/config-surface-section.ts", // T02 复制诊断文本
   "src/settings/drift-ledger-section.ts", // U-CC1 复制漂移诊断文本（同族 B：复制完就完事，不贴进任何配置）
-  "src/main.ts",
+  // 〔三入口拆分 · 住址搬家〕代码块「复制」那处全局代理从 `main.ts` 搬到了主窗与 viewer 窗
+  // 共用的 `entry-render-common.ts`（viewer 不再加载 `main.ts`）。语义一字未改。
+  "src/entry-render-common.ts",
   "src/remote-launch-run.ts", // 回退：复制命令让用户自己跑
+  "src/views/panorama.ts", // 代码全景「复制给 agent」（`设计/97` CP7）：贴进对话，不贴进任何配置
   // 〔`设计/50`〕原先这里还有 `src/views/usage-view.ts`（用量视图里「复制这一屏」）——
   // 用量 ② 轴整轴退役，那份文件整删。
   "src/paste-block.ts", // 组件自己

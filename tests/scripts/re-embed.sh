@@ -64,14 +64,33 @@
 #    「⚠ 买不到：**防篡改**。谁都能往一段字节里塞一个假戳。它防的是漂移与手滑……
 #      不防恶意 —— 那要签名，不是戳。」
 #
+# ── 🔴〔2026-09-24 · B1〕**开发构建也要起得来本机后端** ─────────────────────────────
+#
+# 横切纪律 `D11`（用户逐字「不要退路 / 所有东西都不要假设后端没起来」）。在这之前，
+# 开发构建里「本机后端起不来」**只有一句 cargo 警告**，而那句警告自己写着
+# 「开发构建里这是正常的」——于是开发构建上窗口「走后端」那条主路**一直在走退路**，
+# 本机上验证任何后端功能都先天带着这个洞。
+# ⇒ 修的是**构建这一侧**，不是运行期（运行期那条解析链「exe 旁 → 本机 Linux 用内嵌 musl
+#   → 本产物自带的那份」一个字都没动，也**没有**多一条「起不来就换一条路」的分支）：
+#   · **开发构建的路径是明写的，而且就是发版那一条**：`--native` 编出本机原生后端、
+#     铺进 `src/bridge/native-backend/`，`build.rs::embed_native_backend` 把它内嵌进 exe，
+#     运行期按原路自释放再起。**配方与发版那两步逐字同源**（判据 ⑬b 钉着）。
+#   · **「起得来」从一句警告变成可判的**：本文件现在**真起一趟**那份字节
+#     （[`native_starts`]：空 stdin、隔离的 HOME、一个一律失败的 tmux 替身），
+#     读它 stdout 的第一行 —— **必须是一帧 hello，且它自报的 `build_id` 等于源码**。
+#     身份戳对得上 ≠ 起得来（戳是编进字节的一串字，跑不起来的字节照样带着它）。
+#   · `--check-dev`：开发构建的判词。与 `--check` 同一套，唯一的差别是
+#     **本机那一份缺席 = 红**（`--check` 里缺席是 `skip` —— 那是给 CI / 没铺字节的树的）。
+#
 # ── 跑法 ──────────────────────────────────────────────────────────────────────
 #
-#   bash tests/scripts/re-embed.sh            # 重编两份 musl 字节并铺回落点，铺完自检
-#   bash tests/scripts/re-embed.sh --check    # 只问「盘上的字节与源码对不对得上」，不产字节
-#   bash tests/scripts/re-embed.sh --native   # 本机那一份（裸 exe 自带的后端）重编并重铺
-#   bash tests/scripts/re-embed.sh --clean    # 守卫给的第二条出路：删掉落点（自动部署诚实关闭）
+#   bash tests/scripts/re-embed.sh             # 重编两份 musl 字节并铺回落点，铺完自检
+#   bash tests/scripts/re-embed.sh --check     # 只问「盘上的字节与源码对不对得上 · 铺了的起不起得来」，不产字节
+#   bash tests/scripts/re-embed.sh --check-dev # 同上，但**本机那一份缺席就是红**：开发构建起得来本机后端吗
+#   bash tests/scripts/re-embed.sh --native    # 本机那一份（开发构建 ＋ 裸 exe 自带的后端）重编并重铺，铺完按 --check-dev 自检
+#   bash tests/scripts/re-embed.sh --clean     # 守卫给的第二条出路：删掉落点（自动部署诚实关闭）
 #
-# 退出码 0 = 过；1 = 有对不上的 / 抠不到身份 / 编不过。
+# 退出码 0 = 过；1 = 有对不上的 / 抠不到身份 / 编不过 / 铺了却起不来 /（`--check-dev`）本机那一份没铺。
 # 最后一行恒印 `re-embed: <N> passed（…）`，`N` = 上面逐行印出来的 PASS 条数。
 set -euo pipefail
 
@@ -155,12 +174,45 @@ do_native() {
   printf '==> 铺好 src/bridge/native-backend/cc-monitor-native（＋ .target = %s）\n' "$triple"
 }
 
+# 🔴〔B1〕**真起一趟**本机那一份，回它 stdout 的第一行（起不来就回空串）。
+#
+# 为什么是「hello 帧」而不是 `--version` 之类：后端的流模式**第一件事**就是写一帧 hello
+# （`build_hello`，带 `build_id`），而 monitor 起本机后端走的正是这条路 ⇒ 问 hello
+# 问的就是「monitor 真去起它时会看到什么」。stdin 喂空 ⇒ 读到 EOF 它自己退。
+#
+# ⚠ **隔离是承重的**（本仓铁律：起真后端的地方一律不许碰用户的真 tmux server）：
+#   · `env -i`：一个环境变量都不继承 ⇒ `$TMUX` 不在，监听口那几个开关也不在（⇒ 走 stdio）；
+#   · `HOME` 指一个空的临时目录 ⇒ 它看不到用户的 agent 家目录，一个字节都读不到；
+#   · `PATH` 最前面挂一个**一律失败**的 `tmux` 替身 ⇒ tmux 那半只会被报成「观测不到」。
+# ⚠ `timeout` 兜住「它起来了却不写 hello、也不退」那一形 —— 那一形同样是「起不来」。
+native_starts() {
+  local f="$1" sandbox line
+  sandbox="$(mktemp -d)"
+  mkdir -p "$sandbox/bin" "$sandbox/home"
+  printf '#!/bin/sh\nexit 1\n' > "$sandbox/bin/tmux"
+  cp "$f" "$sandbox/bin/backend-under-test"
+  chmod +x "$sandbox/bin/tmux" "$sandbox/bin/backend-under-test"
+  line="$(env -i HOME="$sandbox/home" PATH="$sandbox/bin:/usr/bin:/bin" LANG=C.UTF-8 \
+            timeout 20 "$sandbox/bin/backend-under-test" </dev/null 2>/dev/null | head -n 1 || true)"
+  rm -rf "$sandbox"
+  printf '%s' "$line"
+}
+
+# 一行 hello 帧里抠 `build_id`。抠不到给空串（调用方按红记）。
+# 帧形现打（本机 `--native` 那一份，2026-09-24）：`{"kind":"hello","v":1,"build_id":"…",…}`。
+hello_build_id() {
+  printf '%s' "$1" | grep -q '^{"kind":"hello",' || return 0
+  printf '%s' "$1" | sed -nE 's/.*"build_id":"([^"]*)".*/\1/p'
+}
+
 do_clean() {
   rm -rf "$EMBEDDED_DIR" "$NATIVE_DIR"
   printf '==> 已删两个内嵌落点 —— 自动部署与自释放诚实关闭，编译立刻恢复\n'
 }
 
 do_check() {
+  # 〔B1〕1 = 开发构建的判词（`--check-dev`）：本机那一份缺席就是红。
+  local require_native="${1:-0}"
   local id open close arch t f got present=0
 
   id="$(src_const BUILD_ID)"
@@ -218,8 +270,28 @@ do_check() {
       bad "本机内嵌后端与源码同一版" \
           "字节自报 [$got]，源码是 [$id] —— **半 bump**：它会以 cc-monitor-local-[$got] 之名落到用户盘上"
     fi
+    # 🔴〔B1〕**起不起得来**。只对「给这台机器编的」那一份问 —— 给别的 triple 编的那份
+    #   在这里本来就起不来，而那一格 `build.rs` 的 ① 号硬校验已经会当场 panic。
+    local staged host hello hid
+    staged="$(tr -d '[:space:]' < "$NATIVE_DIR/cc-monitor-native.target" 2>/dev/null || true)"
+    host="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p')"
+    if [ -n "$host" ] && [ "$staged" = "$host" ]; then
+      hello="$(native_starts "$f")"
+      hid="$(hello_build_id "$hello")"
+      if [ -n "$hid" ] && [ "$hid" = "$id" ]; then
+        ok "本机内嵌后端起得来（真起一趟，第一行是 hello）" "hello 自报 build_id [$hid] == 源码 [$id]"
+      else
+        bad "本机内嵌后端起得来（真起一趟，第一行是 hello）" \
+            "第一行读作 [${hello:0:160}]，抠出的 build_id [$hid]，源码 [$id] —— 身份戳对得上 ≠ 起得来：monitor 真去起它时看到的就是这一行"
+      fi
+    else
+      printf 'skip  本机内嵌后端起不起得来 :: 它是给 [%s] 编的、这台是 [%s] —— 不在这里起（错 triple 那一形由 build.rs 当场拦）\n' "$staged" "$host"
+    fi
+  elif [ "$require_native" = "1" ]; then
+    bad "开发构建起得来本机后端（本机那一份在盘上）" \
+        "src/bridge/native-backend/cc-monitor-native 没铺 ⇒ 这棵树编出来的 exe **起不了本机后端**（D11：这不是「开发构建里的正常情况」）。出路：bash tests/scripts/re-embed.sh --native"
   else
-    printf 'skip  本机内嵌后端 :: 没铺（裸 exe 起不了本机后端；开发构建里这是正常的）\n'
+    printf 'skip  本机内嵌后端 :: 没铺（这棵树编出来的 exe 起不了本机后端 —— 开发构建要它就跑 --native，判它用 --check-dev）\n'
   fi
 
   if [ "$fail" -ne 0 ]; then
@@ -235,12 +307,13 @@ do_check() {
 }
 
 case "${1:---reembed}" in
-  --check) do_check ;;
+  --check) do_check 0 ;;
+  --check-dev) do_check 1 ;;
   --clean) do_clean ;;
-  --native) do_native; do_check ;;
-  --reembed) do_build; do_check ;;
+  --native) do_native; do_check 1 ;;
+  --reembed) do_build; do_check 0 ;;
   *)
-    printf 'usage: %s [--check|--clean|--native]\n' "$0" >&2
+    printf 'usage: %s [--check|--check-dev|--clean|--native]\n' "$0" >&2
     exit 2
     ;;
 esac

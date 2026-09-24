@@ -78,7 +78,14 @@ export type LaunchAccount =
  * 是在"把身份广播到本地"**。`§8` 的裁决：广播这件事本仓另有一条有分帧、双向的通道
  * （后端 wire），缺的只是一个**本地已知的、可以 join 的键**。⇒ 这个变体就是那个键的载荷侧：
  * monitor 生成 32 hex → 随 `export CCM_RBIND_TOKEN=…` 进启动命令 → 被 agent 进程继承 →
- * 后端从 `/proc/<pid>/environ` 读出来、连同 `sid` 从 wire 报回（**那半是另一路的活**）。
+ * 后端从 `/proc/<pid>/environ` 读出来、连同 `sid` 从 wire 报回。
+ *
+ * ✅ 〔2026-09-23 补齐〕上一句原先括着「**那半是另一路的活**」—— 三半今天都落地了：
+ * 远端读侧 `backend::control::identity_tag::rbind_token_of`（步 2）·
+ * wire 字段 `session_added.rbind_token`（步 2，monitor 侧读回在 `ssh_source::parse_frame`）·
+ * 本地那张表 `bind.rs::lookup_hwnd_for_token`（步 3）。
+ * ⚠ **仍然缺的是把它们串起来的那一刀**（`§8.7` 步 4：`↗` 改走 join），
+ * 而 `§8.7` 逐字警告「不要先做 4」。⇒ 今天买到的是「键齐了」，不是「↗ 已经不依赖 tmux」。
  *
  * **它天然统一两条起法**：`EnvOp` 作用在**载荷**上、**容器无关** ⇒
  * `container:"tmux"` 与 `container:"none"`（`planResumeDirect`，直连登录 shell，
@@ -194,10 +201,13 @@ export interface LaunchModifiers {
   accountName?: string;
   /** F07：该账号配置的默认模型偏好（本机 `config.json`）。 */
   modelOverride?: string;
-  /** `设计/80 §8` 步 1：启动期令牌（`[0-9a-f]{32}`）。**今天零生产产出者** ——
-   *  铸币口归 `§8.7` 步 3（本地半要先能把 `token → HWND` 记下来，令牌才有意义），
-   *  这里只把槽位线通到底，与 `WrapSpec` 当年的落法同形（那个槽位也是先零生产者、
-   *  后接 rbind 的）。谁给它赋值就是谁负责让本地那张表认得它。 */
+  /** `设计/80 §8` 步 1：启动期令牌（`[0-9a-f]{32}`）。
+   *
+   *  ✅ 〔`§8.7` 步 3 · 2026-09-23〕**墓碑** —— 这里原话是「**今天零生产产出者**……
+   *  铸币口归 `§8.7` 步 3」。那句今天假了：铸币口落成了，唯一住址是
+   *  `remote-launch-run.ts::mintRbindToken`（128 位 CSPRNG，拿不到就 throw、不回落）。
+   *  **不传 = 诚实的没有**：五个「起 agent 进程」的执行器会在那里补一个，
+   *  `planAttach` 那一格永不带（attach 不起进程，令牌无人消费）。 */
   rbindToken?: string;
 }
 

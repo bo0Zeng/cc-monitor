@@ -20,6 +20,7 @@ fn hwnd_entry_roundtrip() {
         ps_proc_start: "639150434950992340".to_string(),
         title_at_bind: "✳ Claude Code".to_string(),
         registered_at: 1716393600000,
+        rbind_token: None,
     };
     let s = serde_json::to_string(&e).unwrap();
     let parsed: HwndEntry = serde_json::from_str(&s).unwrap();
@@ -369,4 +370,297 @@ fn remote_bind_finds_real_ccm_rbind_window() {
             "窗口销毁后 verify_binding 应报错（IsWindow=false）"
         );
     }
+}
+
+// ══════════ `设计/80 §8.7` 步 3：本地半 —— `令牌 → 窗口句柄` ══════════
+//
+// 这一组守的是**方案 E 的本地那一半**：`↗ 拉前终端` 需要的全部东西是一个映射
+// `(sid) → (本地 HWND)`，而方案 E 把那个映射的键从「跨五跳广播过来的 sid」
+// 换成「monitor 自己铸的启动期令牌」。本模块要多记的只有 `令牌 → HWND`。
+//
+// 🔴 **下面每一条都是平台无关的那一段**。Win32 那一跳（`EnumWindows` 找窗口）
+//    在非 Windows 上是个恒 `None` 的桩 ⇒ 「↗ 真的把窗口拉起来了」这一维
+//    **本机一格都买不到**，它今天仍只有 `remote_bind_finds_real_ccm_rbind_window`
+//    那条要在 Windows session 1 手动跑的 smoke。别把这一组读成端到端。
+
+/// 形状合法的令牌：恰好 32 个小写十六进制字符。值本身无意义。
+const T3_TOK: &str = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
+
+fn t3_marker(tok: &str) -> String {
+    format!("ccm-rbind-token-{tok}")
+}
+
+/// ★ 正题：**这一种 marker 解得出令牌**，而 Era 2 那一种解不出（行为一字未改）。
+///
+/// ⚠ 判据里那个前缀 **`"ccm-rbind-token-"` 是手写的字面量**，不是从
+/// `super::RBIND_TOKEN_MARKER_PREFIX` 取的 —— 两侧同源的话，改常量时判据跟着改，
+/// 恒真。要的正是「改了那个常量，本条会红」。
+#[test]
+fn a_launch_token_marker_yields_the_token_and_the_era2_one_does_not() {
+    assert_eq!(
+        rbind_token_from_marker(&t3_marker(T3_TOK)),
+        Some(T3_TOK),
+        "带令牌的 marker 解不出令牌 —— 本地那张 `token → HWND` 表就永远是空的"
+    );
+    // Era 2 的 marker（PowerShell profile 的 `__ccm_bind` 产的）—— 不该被认成令牌。
+    assert_eq!(rbind_token_from_marker("ccm-bind-9692-abc12345"), None);
+    // Era 3 远端标题路的 marker（`ccm-rbind-<sid>`，sid 是 uuid）—— 同上。
+    assert_eq!(
+        rbind_token_from_marker("ccm-rbind-9d66c46d-bf88-4f99-877e-455555555555"),
+        None,
+        "`ccm-rbind-token-` 与 `ccm-rbind-<sid>` 互相误命中了 —— 两条路会互相拉错窗口"
+    );
+    assert_eq!(rbind_token_from_marker("plain-shell"), None);
+}
+
+/// ★ fail closed：形状不对**一律当没有**，不许当「大概是它」。
+///
+/// 失效方向是**极安静**的：把一个形状可疑的串记进表里，会让「拉错窗口」
+/// （有键、键错了）伪装成「拉不到窗口」（没键）—— `§6.2` 记的正是这个病。
+#[test]
+fn a_malformed_launch_token_marker_is_treated_as_no_token_at_all() {
+    let bad = [
+        ("少一位", "0f1e2d3c4b5a69788796a5b4c3d2e1f"),
+        ("多一位", "0f1e2d3c4b5a69788796a5b4c3d2e1f00"),
+        ("有大写", "0F1E2D3C4B5A69788796A5B4C3D2E1F0"),
+        ("非十六进制", "0f1e2d3c4b5a69788796a5b4c3d2e1fg"),
+        ("空", ""),
+    ];
+    for (why, tok) in bad {
+        assert_eq!(
+            rbind_token_from_marker(&t3_marker(tok)),
+            None,
+            "「{why}」这一形被当成了合法令牌"
+        );
+    }
+    // 尾巴上挂东西也不行（子串匹配的世界里这一条是必须的）。
+    assert_eq!(
+        rbind_token_from_marker(&format!("{}-extra", t3_marker(T3_TOK))),
+        None,
+        "marker 后面还挂着东西却照样解出了令牌 —— 那会把两个不同的窗口记成同一个键"
+    );
+    // 前缀差一个字节 ⇒ 不是这一种 marker。
+    assert_eq!(
+        rbind_token_from_marker(&format!("x{}", t3_marker(T3_TOK))),
+        None
+    );
+}
+
+fn t3_entry(ps_pid: u32, marker: &str) -> HwndEntry {
+    let req = AwaitRequest {
+        ps_pid,
+        marker: marker.to_string(),
+        proc_start: "639150434950992340".to_string(),
+    };
+    let hit = MarkerHit {
+        hwnd: 0x4321 + ps_pid as isize,
+        owner_pid: 37684,
+        title: format!("{marker} - Windows PowerShell"),
+    };
+    entry_from_marker_hit(&req, hit, 132456789012345678)
+}
+
+fn t3_registry(dir: std::path::PathBuf, entries: Vec<HwndEntry>) -> BindRegistry {
+    let map: HashMap<u32, HwndEntry> = entries.into_iter().map(|e| (e.ps_pid, e)).collect();
+    BindRegistry {
+        monitor_data_dir: dir,
+        by_ps_pid: Arc::new(parking_lot::RwLock::new(map)),
+    }
+}
+
+/// ★★ 本件的正题：**`令牌 → 窗口句柄` 查得到**，而且查的是 Era 2 那张表。
+///
+/// 三件一起验，缺一件读数就不可信：
+/// ① 带令牌那条查得到，拿回来的 `hwnd` 是**那一条**（不是碰巧有一条）；
+/// ② 不带令牌那条（Era 2 的 `ccm-bind-…`）**不因此消失** —— 它照样按 `ps_pid` 查得到；
+/// ③ 查一个没铸过的令牌 ⇒ `None`（不是「随便给一条」）。
+#[test]
+fn the_launch_token_finds_its_window_handle_in_the_same_era2_table() {
+    let dir = std::env::temp_dir().join("ccm-t3-lookup");
+    let era2 = t3_entry(4242, "ccm-bind-4242-abc12345");
+    let tokd = t3_entry(9692, &t3_marker(T3_TOK));
+    let want_hwnd = tokd.hwnd;
+    let reg = t3_registry(dir, vec![era2, tokd]);
+
+    // ① 令牌查得到，而且是那一条
+    let got = reg
+        .lookup_hwnd_for_token(T3_TOK)
+        .expect("按令牌查不到窗口 —— 方案 E 的本地半整条不通");
+    assert_eq!(got.hwnd, want_hwnd);
+    assert_eq!(got.ps_pid, 9692);
+    // ② Era 2 那条一点没受影响
+    assert_eq!(reg.lookup_hwnd_for_ps(4242).map(|e| e.ps_pid), Some(4242));
+    assert_eq!(
+        reg.lookup_hwnd_for_ps(4242).and_then(|e| e.rbind_token),
+        None,
+        "Era 2 的 marker 被记上了令牌 —— 那是凭空造了一个键"
+    );
+    // ③ 没铸过的令牌查不到
+    assert_eq!(
+        reg.lookup_hwnd_for_token("ffffffffffffffffffffffffffffffff")
+            .map(|e| e.hwnd),
+        None
+    );
+    // ④ 形状不对的查询串命不中（靠「表里的键入表时就过了形状闸」＋ 逐字节相等）
+    assert!(reg
+        .lookup_hwnd_for_token("0F1E2D3C4B5A69788796A5B4C3D2E1F0")
+        .is_none());
+    assert!(reg.lookup_hwnd_for_token("").is_none());
+}
+
+/// ★ **持久化是白拿的** —— 因为根本没有第二张表。
+///
+/// 写一份 `ps-registry/<PID>.json`（= monitor 上一次跑的时候留下的），
+/// 走生产那条 `scan_registry_dir` 重载，令牌照样查得到。
+/// 这一条同时钉住 `HwndEntry.rbind_token` 的 **additive 兼容**：
+/// 同一个目录里那份**没有**该字段的老文件必须照样读得进来（`serde(default)`）。
+#[test]
+fn the_token_survives_a_monitor_restart_and_old_files_still_load() {
+    let dir = std::env::temp_dir().join(format!("ccm-t3-restart-{}", std::process::id()));
+    let reg_dir = dir.join("ps-registry");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&reg_dir).unwrap();
+
+    // 新文件：带令牌（用生产的写法产 JSON）
+    let tokd = t3_entry(9692, &t3_marker(T3_TOK));
+    std::fs::write(
+        reg_dir.join("9692.json"),
+        serde_json::to_string(&tokd).unwrap(),
+    )
+    .unwrap();
+    // 老文件：**手写**一份**没有** `rbind_token` 字段的（= 升级前留在盘上的那种）。
+    //  ⚠ 刻意不是 `serde_json::to_string(HwndEntry{rbind_token:None})` —— 那两侧同源，
+    //    `skip_serializing_if` 一旦被删掉，同源那种写法照样绿。
+    std::fs::write(
+        reg_dir.join("4242.json"),
+        r#"{"ps_pid":4242,"hwnd":123,"owner_pid":7,"owner_proc_start":0,"ps_proc_start":"1","title_at_bind":"old","registered_at":1}"#,
+    )
+    .unwrap();
+
+    let loaded = scan_registry_dir(&reg_dir);
+    assert_eq!(
+        loaded.len(),
+        2,
+        "老文件没读进来 —— additive 兼容破了：{loaded:?}"
+    );
+    let reg = t3_registry(dir.clone(), loaded.into_values().collect());
+    assert_eq!(
+        reg.lookup_hwnd_for_token(T3_TOK).map(|e| e.ps_pid),
+        Some(9692),
+        "monitor 重启之后按令牌查不到了 —— 持久化那一维断了"
+    );
+    assert_eq!(reg.lookup_hwnd_for_ps(4242).map(|e| e.hwnd), Some(123));
+
+    // 顺带钉住「新写出去的字节对老 monitor 也无害」：不带令牌的条目**不序列化**该字段。
+    let plain = t3_entry(4243, "ccm-bind-4243-abc12345");
+    let json = serde_json::to_string(&plain).unwrap();
+    assert!(
+        !json.contains("rbind_token"),
+        "不带令牌的条目也把字段写出去了 —— 老 monitor 读到的字节不再逐字节等于从前：{json}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// ★ 心跳清理那一维也是白拿的：PS 进程死了 ⇒ 条目走 ⇒ 令牌跟着查不到。
+///
+/// ⚠ **诚实边界**：`is_pid_alive` 在非 Windows 上是恒 `false` 的桩
+/// ⇒ 本机上「谁该被清掉」这一问它答不了，本条真正在买的是
+/// **「清掉之后令牌确实查不到了」**（= 没有第二张表漏清）。
+/// 清掉之前那一半（`lookup_hwnd_for_token` 命中）才是本条的正控。
+#[test]
+fn a_dead_shell_takes_its_token_out_of_the_table_too() {
+    let dir = std::env::temp_dir().join(format!("ccm-t3-heartbeat-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("ps-registry")).unwrap();
+    let reg = t3_registry(dir.clone(), vec![t3_entry(9692, &t3_marker(T3_TOK))]);
+    assert!(
+        reg.lookup_hwnd_for_token(T3_TOK).is_some(),
+        "清理之前就查不到 —— 下面那句什么也证明不了（空真）"
+    );
+    cleanup_dead(&reg);
+    assert!(
+        reg.lookup_hwnd_for_token(T3_TOK).is_none(),
+        "主表清了、按令牌还查得到 —— 那说明有第二张没人清的表"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 🔴 ★ **令牌一个字节都不许进日志**（`设计/80 §8.6 ③`）。
+///
+/// 后端读侧有一条同名同形的判据（`identity_tag::tests::
+/// the_token_value_never_reaches_a_log_macro`），**本地这一侧此前没有** ——
+/// 因为此前本地 marker 里没有敏感值。步 3 把令牌**变成了** marker，
+/// 于是 `req.marker` 与 `entry.title_at_bind` 两处都成了泄露点。
+///
+/// 两半一起验：① 脱敏函数真的抹掉了值；② 生产段里那两个 `tracing!` 调用点
+/// **确实过了脱敏**（只验 ① 的话，把 `redact_marker(...)` 从调用点删掉本条照样绿）。
+#[test]
+fn the_launch_token_value_never_reaches_a_log_macro() {
+    // ① 行为：抹值、留形状
+    let red = redact_marker(&t3_marker(T3_TOK));
+    assert!(!red.contains(T3_TOK), "脱敏之后令牌还在：{red}");
+    assert!(
+        red.contains("ccm-rbind-token-"),
+        "形状也被抹掉了，排障看不出这是哪一类：{red}"
+    );
+    // 窗口标题那一档：令牌夹在中间（WT 会往标题里塞别的东西）
+    let titled = redact_marker(&format!("{} - Windows PowerShell", t3_marker(T3_TOK)));
+    assert!(!titled.contains(T3_TOK), "标题里的令牌没被抹掉：{titled}");
+    // 不含令牌的文本原样过（不许把 Era 2 的排障信息也一起吃掉）
+    assert_eq!(
+        redact_marker("ccm-bind-9692-abc12345"),
+        "ccm-bind-9692-abc12345"
+    );
+
+    // ② 接线：生产段里凡是把 marker / title_at_bind 交给 tracing 的，必须过脱敏。
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/bind.rs"));
+    assert!(
+        prod.len() > 5000,
+        "抽出来的生产段只有 {} 字节 —— 抽取器坏了，本条此刻在空转",
+        prod.len()
+    );
+    //    切法：从每个 `tracing::` 起，收到那一句的 `);` 为止 —— 只看**日志宏的实参**。
+    //    （整文件裸扫会把 `find_window_by_marker_substr(&req.marker)` 这种正常用法
+    //     也算成泄露，那是刀没落在靶子上。）
+    let mut calls: Vec<String> = Vec::new();
+    let mut cur: Option<String> = None;
+    for line in prod.lines() {
+        let t = line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        if cur.is_none() && t.contains("tracing::") {
+            cur = Some(String::new());
+        }
+        if let Some(buf) = cur.as_mut() {
+            buf.push_str(line);
+            buf.push('\n');
+            if t.ends_with(");") || t.ends_with(";") && t.contains(')') {
+                calls.push(cur.take().unwrap());
+            }
+        }
+    }
+    assert!(
+        calls.len() >= 8,
+        "只切出 {} 处 `tracing::` 调用 —— 切法坏了，本条此刻在空转",
+        calls.len()
+    );
+    let offenders: Vec<&String> = calls
+        .iter()
+        .filter(|c| {
+            (c.contains("req.marker") || c.contains("title_at_bind"))
+                && !c.contains("redact_marker")
+        })
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "有 `tracing!` 把可能含令牌的串裸着打出去了（漏了 `redact_marker`）：{offenders:#?}"
+    );
+    // 反向自检：那两处**确实**在日志里出现过（否则上面那条是零命中的绿）。
+    assert_eq!(
+        calls.iter().filter(|c| c.contains("redact_marker")).count(),
+        2,
+        "过了脱敏的 `tracing!` 不是 2 处 —— 要么调用点搬家了、要么本条抽错了"
+    );
 }

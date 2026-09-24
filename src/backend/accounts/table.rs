@@ -1,4 +1,16 @@
-//! 路由表：路由键里那一段账号 → **上游与 key 焊在一起的一个值**〔`K-H2` `KH1`/`KH2`〕。
+//! 路由表：路由键里 **agent ＋ 账号** 那两段 → **上游与 key 焊在一起的一个值**〔`K-H2` `KH1`/`KH2`；键的第二维是条 49〕。
+//!
+//! # 🔴 表的键是 `(agent, 账号)`，不是账号〔条 49 · `设计/20 §3.1` 拍板 (b) 甲〕
+//!
+//! 先前 `lookup` 只收一个账号 ⇒ **claude 的 3 号账号与 codex 的 3 号账号是同一行**。
+//! 那一形今天不疼只因为 codex 那边没有注入；「让所有会话都过中转」那一刀一落地，
+//! codex 会话一发 `/s/codex/3/…` 就会拿到 claude 那一行的上游与 key ⇒ **每一发都错发到 Anthropic**。
+//! ⇒ 今天键是两段，一段都不许省：查 `(codex, 3)` 查不到 ⇒ `/s/` 回 404，一个字节不发上游。
+//!
+//! ⚠ **凭据文件本身今天没有 agent 这一维**（`creds-core` 那份格式只有账号 id）。
+//! 装表时每一行挂在谁名下由调用方显式交进来（[`build`] 的 `agent` 入参），
+//! 那个值今天恒是 `super::CREDENTIALS_FILE_AGENT` —— 住址与理由见它的头注。
+//! **本模块自己不认识任何一个 agent 的名字**。
 //!
 //! # 它治的是一个**今天就已经存在**的形状，不是一个将来的风险
 //!
@@ -26,7 +38,7 @@
 //! | **从一个 `Row` 里拿不到 `&Base`** | ⚠ **这条今天不成立了**：`Row::base()` 存在（层间契约要它），但**收成了 `pub(super)`** ⇒ 层 1 够不到整个 `Row`。旧话：⭐ 编译器（字段私有 · 住 `mod sealed` · 无 `base()` 访问器） | 这是编译器**真正**买到的**唯一**一条 |
 //! | ⚠ **另一半（`&SecretKey`）根本不在这张表的保护面里** | **没有人** —— [`Row::key`] 就是一个 `pub(crate)` 访问器 | 〔`D2` `§五-2`，`C-补` 08-28 补的话，**不是新缺陷**〕`Row` 两个半边**不对称**：`base` 那半没访问器（要「有意重建」，见 `D1-M1`），`key` 那半**一个方法调用**就够 ⇒ 「拿 B 的 key」不需要重建任何东西。⚠ 它下游那一跳另有人守：把 `&SecretKey` 变成明文的地方由 `creds_guard` ㈢（`expose_for_auth_header(` 恰好 1 处）钉着 —— 但那守的是**明文出口**，**不是**「谁拿得到这个值」 |
 //! | 上游与 key「只能同源」 | **只有行为判据** | `D1-M2`：两行同时在作用域、A 连 B 渲染 ⇒ **编译通过**（我复打过）。`D1-M1`：换签名收 `host: &str` + 用 `row.host_header()` **重建 `Base`** 去连 ⇒ **488 passed / 0 failed** |
-//! | 进程里「没有默认上游可回落」 | ⚠ **今天换人守了**：`DEFAULT_UPSTREAM` 搬进层 2（`accounts/mod.rs`），`table_guard::layer_one_has_no_default_upstream_to_fall_back_to` 两向相等断言钉着「层 1 零处 · 层 2 恰好登记那几处」。旧话：只有一条文本棘轮（禁 `Relay` 里出现 `base:` / `key:` 字面） | **假**（那一拍）：那个默认上游常量当时是**层 1 的** crate 常量（当时的住址见本表下面那一段），`Base` 三个字段全 `pub(crate)`、`Base::parse` 也是 ⇒ 一行就能造一个。⚠ **后半句今天仍成立** —— 层 1 有意去 `Base::parse` 现造一个，没人拦得住 |
+//! | 进程里「没有默认上游可回落」 | ⚠ **今天换人守了**：那个进程级常量先搬进层 2、条 59 又把它**整删**成每 agent 一行的表（`super::AGENT_UPSTREAMS`），`table_guard::layer_one_has_no_default_upstream_to_fall_back_to` 两向相等断言钉着「层 1 零处 · 层 2 恰好登记那几处」。旧话：只有一条文本棘轮（禁 `Relay` 里出现 `base:` / `key:` 字面） | **假**（那一拍）：那个默认上游常量当时是**层 1 的** crate 常量（当时的住址见本表下面那一段），`Base` 三个字段全 `pub(crate)`、`Base::parse` 也是 ⇒ 一行就能造一个。⚠ **后半句今天仍成立** —— 层 1 有意去 `Base::parse` 现造一个，没人拦得住 |
 //! | 装表**只有一处**做 | **文本判据**（`table_guard.rs` 那几条相等断言；⚠ 「`sealed` 里面」那一格今天改成「`accounts/` 里面」） | `D1-M4`：㈠ 那根针在它自称「真正的人群」（`sealed` 里面）**恰恰最弱** —— **一个字面量能焊出任意多行**，数字面量数不出「焊了几行、每行装了什么」。实测多行焊接 + 把回落整个加回来 ⇒ `table_guard` 单跑 **10 passed / 0 failed** |
 //!
 //! ⚠⚠ **上表第 4 行那个「当时的住址」是 `server.rs:24`** —— 逐条说清它为什么还写着行号：
@@ -48,14 +60,13 @@
 //!
 //! # ⚠ 「这一行的 `base_url` 缺席」与「这一行不在表里」是两件事
 //!
-//! - 缺席 ⇒ 用中转启动时那个**默认上游**（`CCM_RELAY_UPSTREAM` / 内置默认）。
+//! - 缺席 ⇒ 用**这一行所属那个 agent** 的默认上游（每 agent 一行，`super::AGENT_UPSTREAMS`）。
 //!   它是**一行已经存在**的行的一个字段取默认值，**不是**回落。
 //! - 不在表里 ⇒ **404，一个字节都不发上游**。
 //!
 //! 这两句读起来像，差别正是 `KH2` 要守的全部。
 
-use super::super::route;
-use super::super::upstream::Base;
+use crate::relay::{segment_is_safe, Base};
 use creds_core::store::{AccountEntry, AuthStyle, AuthStyleSetting};
 
 // ★★ 🔴 〔`设计/20 §7` 步 2〕**`mod sealed` 删掉了** —— 换来的东西写在这里
@@ -152,9 +163,12 @@ impl Row {
     }
 }
 
-/// 账号 id → [`Row`]。**一个进程一张**，跨连接共享。
+/// `(agent, 账号 id)` → [`Row`]。**一个进程一张**，跨连接共享。
+///
+/// ⚠ 键是一个**二元组**而不是拼接串（`format!("{agent}/{id}")` 那一种）：
+/// 拼接串要靠「两段里都不许出现分隔符」这条外部约束才不撞，二元组不靠任何约束。
 pub(crate) struct RoutingTable {
-    rows: BTreeMap<String, Row>,
+    rows: BTreeMap<(String, String), Row>,
 }
 
 impl RoutingTable {
@@ -162,15 +176,17 @@ impl RoutingTable {
     /// （`table_guard::the_only_place_that_welds_an_upstream_to_a_key_is_inside_layer_two`
     /// 那条相等断言钉着）。
     ///
-    /// 收的是**分开的四样**（id / 上游 / key / 鉴权头形状），出的是**焊死的一样**。
+    /// 收的是**分开的五样**（agent / id / 上游 / key / 鉴权头形状），出的是**焊死的一样**。
     /// 焊接这一步只此一次 ⇒ 「哪个上游配哪把 key、用哪种头」这个决定只有一个地方做得了。
     ///
-    /// ⚠ `K-R1` 把第四样加进来，形状照前三样：**跟着行走，不做进程级设置**。
+    /// ⚠ `K-R1` 把鉴权头形状加进来，形状照前几样：**跟着行走，不做进程级设置**。
+    /// ⚠ 条 49 把 agent 加进来：它只进**键**，不进 [`Row`] —— 「这一行属于谁」是索引，
+    ///   不是这一行要发出去的任何一个字节。
     pub(crate) fn build(
-        entries: impl IntoIterator<Item = (String, Base, Option<SecretKey>, AuthStyle)>,
+        entries: impl IntoIterator<Item = (String, String, Base, Option<SecretKey>, AuthStyle)>,
     ) -> Self {
         let mut rows = BTreeMap::new();
-        for (id, base, key, auth_style) in entries {
+        for (agent, id, base, key, auth_style) in entries {
             // ⚠ **排版随便拆，形状不能改。** `table_guard` 那条相等断言 09-09 起走
             //   `sites_layout_blind`：**先把生产段的空白全删干净**，再找无空白形的针
             //   `Row{base`（`table_guard::WELD`）⇒ 换行 / 缩进 / `cargo fmt` 一格都不影响它。
@@ -183,7 +199,7 @@ impl RoutingTable {
             //   逐行尺子数出 0 处留下的化石，今天双重失效 —— 而它真正的害处，是在教
             //   下一个人拿生产代码的排版去迁就判据。〕
             rows.insert(
-                id,
+                (agent, id),
                 Row {
                     base,
                     key,
@@ -195,8 +211,11 @@ impl RoutingTable {
     }
 
     /// 查一条。**查不到就是 `None`** —— 调用方回 404，不许拿别的行顶上。
-    pub(super) fn lookup(&self, account: &str) -> Option<&Row> {
-        self.rows.get(account)
+    ///
+    /// 🔴 **两段都是键**（条 49）：同一个账号 id 挂在另一个 agent 名下 ⇒ 查不到。
+    /// 不许「agent 查不到就只按账号再查一次」—— 那正是本次要拆掉的那一形。
+    pub(super) fn lookup(&self, agent: &str, account: &str) -> Option<&Row> {
+        self.rows.get(&(agent.to_string(), account.to_string()))
     }
 
     /// 表里有几行。只给日志与判据用。
@@ -246,7 +265,7 @@ pub(crate) const WHY_PLAINTEXT_OFF_LOOPBACK: &str =
 
 /// `auth_style` 写了一个认不出的词。**刻意不回落成默认值**。
 pub(crate) const WHY_AUTH_STYLE_UNKNOWN: &str =
-    "auth_style 写的不是这个中转认得的值之一（认得的那几个见下面那行现算的清单）";
+    "auth_style 写的不是账号层认得的值之一（认得的那几个见下面那行现算的清单）";
 
 /// `auth_style` 说「一个鉴权头都不发」，而同一行又配了一把 key。
 ///
@@ -293,14 +312,17 @@ fn note_for_auth_style(style: AuthStyle) -> Option<&'static str> {
     })
 }
 
-/// 把文件里读出来的那些条，装成一张表。
+/// 把文件里读出来的那些条，装成一张表。**每一条都挂在 `agent` 名下**（条 49）。
+///
+/// `default_base` 是 **`agent` 那一家**的默认上游（每 agent 一行，住 `super::AGENT_UPSTREAMS`），
+/// 不是进程级的某一个 —— 它只给「这一行没写 `base_url`」那一格取值，**不是**回落。
 ///
 /// # 「装不进去」的判断都在这里，都出声 —— **条数别写死，数下面那几条**
 ///
 /// ⚠ 本节的标题先前逐字是「**两条**『装不进去』的判断」，而 `K-R1` 之后是四条。
 /// 「报一个基数也是复述」（`brief` 13b）：标题里那个数会在下一次加判断时**自动变成假话**。
 ///
-/// 1. **账号 id 当不了路由段** —— 走 [`route::segment_is_safe`]，
+/// 1. **账号 id 当不了路由段** —— 走 [`segment_is_safe`]，
 ///    与 `route::parse` 用的是**同一个谓词**（`route.rs` 头注逐字论证过为什么不许各写一份）。
 ///    装不下的那条**永远匹配不上**任何请求，进表只会变成一行死行。
 /// 2. **`base_url` 解析不了** —— 走 `Base::parse`。
@@ -329,14 +351,21 @@ fn note_for_auth_style(style: AuthStyle) -> Option<&'static str> {
 /// 而那要打真网才知道。⇒ 它换来的是一条 [`Note`]，不是一条判断。
 pub(crate) fn build(
     entries: Vec<AccountEntry>,
+    agent: &str,
     default_base: &Base,
 ) -> (RoutingTable, Vec<Rejected>, Vec<Note>) {
-    let mut rows: Vec<(String, Base, Option<creds_core::SecretKey>, AuthStyle)> = Vec::new();
+    let mut rows: Vec<(
+        String,
+        String,
+        Base,
+        Option<creds_core::SecretKey>,
+        AuthStyle,
+    )> = Vec::new();
     let mut rejected: Vec<Rejected> = Vec::new();
     let mut notes: Vec<Note> = Vec::new();
 
     for e in entries {
-        if !route::segment_is_safe(&e.id) {
+        if !segment_is_safe(&e.id) {
             rejected.push(Rejected {
                 id: e.id,
                 why: WHY_ID_UNUSABLE,
@@ -399,12 +428,12 @@ pub(crate) fn build(
                 what,
             });
         }
-        rows.push((e.id, base, e.key, auth_style));
+        rows.push((agent.to_string(), e.id, base, e.key, auth_style));
     }
 
     (RoutingTable::build(rows), rejected, notes)
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/relay/table_tests.rs"]
+#[path = "../../../tests/backend/accounts/table_tests.rs"]
 mod tests;

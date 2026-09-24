@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn layer_one_has_no_default_upstream_to_fall_back_to() {
         let files = crate_production();
-        // 层 2 的人群：`relay/accounts/` 底下那几份。层 1 = `relay/` 里**除它之外**的。
+        // 层 2 的人群：`accounts/` 底下那几份。层 1 = `relay/` 里**除它之外**的。
         let is_layer_two = |p: &str| p.contains("accounts/") || p.contains("accounts\\");
         let in_relay = |p: &str| p.contains("relay/") || p.contains("relay\\");
 
@@ -403,16 +403,27 @@ mod tests {
         // 期望处数是**显式登记的**（不是「>0 就算」）—— 多一处就要来加一行，说清它是什么。
         const LAYER_TWO_SITES: &[(&str, usize, &str)] = &[
             (
-                "DEFAULT_UPSTREAM",
+                "AGENT_UPSTREAMS",
                 2,
-                "①常量声明本身 ②`upstream_default` 里那一次 `unwrap_or`",
+                "①每 agent 一行的那张表的声明本身 ②`Upstreams::from_env` 里那一次遍历",
             ),
             (
                 "https://api.anthropic.com",
                 1,
-                "那条 URL 字面量只出现在常量声明那一处",
+                "那条 URL 字面量只出现在表里 claude-code 那一行",
             ),
         ];
+        // 〔条 59〕先前那个**进程级**常量（`DEFAULT_UPSTREAM`）整删了 —— 它对每一个 `seg1`
+        // 都成立，于是「codex 的请求发给 Anthropic」在层 2 里也写得出来。
+        // ⇒ 它的名字在**整个 crate** 的生产段里零处（不只层 1）。反空真由上面那张表的
+        //   第一行担：同一把尺子在层 2 数得到它的继任者（恰好 2 处），它才不是瞎的。
+        let revived = sites(&files, "DEFAULT_UPSTREAM");
+        assert!(
+            revived.is_empty(),
+            "进程级的默认上游常量又回来了：{revived:?}\n\
+             🔴 默认上游是**每 agent 一行**（`accounts::AGENT_UPSTREAMS`）；一个对所有 agent \
+             都成立的值，就是「未登记的 agent 回落到某一家」那条被明禁的路。"
+        );
         for (needle, want, why) in LAYER_TWO_SITES {
             let hits = sites(&files, needle);
             let layer_two: Vec<&String> = hits.iter().filter(|p| is_layer_two(p)).collect();

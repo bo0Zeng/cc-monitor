@@ -54,6 +54,7 @@
 //! 分成两个变体 —— **那是它自己的活**。记在这里，别让下一个人以为是漏了。
 
 use crate::backend::control::inbound_client::CallError;
+use crate::chan::wire as w;
 
 /// 一条走后端的控制命令的结局。**三态**，分界线见模块头注。
 #[derive(Debug, PartialEq, Eq)]
@@ -68,25 +69,145 @@ pub(crate) enum Routed {
     Refused(String),
 }
 
-/// `CallError` → 三态。`refusal` 只负责把 `(code, message)` 翻成用户看的话 ——
-/// **分流本身不许由调用方决定**，那就是本模块存在的全部意义。
-pub(crate) fn route_call_error(e: &CallError, refusal: impl Fn(&str, &str) -> String) -> Routed {
+/// ★★ **分层判定的唯一一份**〔面 A 通道那一拍，2026-09-24〕：`inbound_client::CallError`
+/// ⇒ `设计/05 §3.3.1` 的三层（传输错 · 对端错 · 我们自己错）＋ `reach` 三档 ＋ `why`。
+///
+/// 🔴 **它是全仓唯一 `match` `inbound_client::CallError` 的地方。** 旧的三态
+/// （[`route_call_error`]）从它收拢出来，通道的生产句柄（`chan/host.rs`）直接用它 ——
+/// 「能不能证明没发出去」从此只有一个答案，不再是两份实现靠对拍保平安。
+///
+/// `hop` 是调用方那一侧给这一跳的编号（`05 §3.3.0` 的 `HopId.idx`，位置由调用方定）。
+///
+/// | 进来的 | 分层结果 | 理由（与模块头注那张表逐档对应） |
+/// |---|---|---|
+/// | `Unsupported` | `Peer{Unsupported}` | 对端**事前**就说不认（`hello.commands`），一个字节没发 |
+/// | `TooManyPending` | `Hop{write, NotSent, Overrun}` | 本侧在飞上限顶满，早于入队 |
+/// | `Disconnected` | `Hop{read, Unknown, Dropped}` | 两个产地分不开 ⇒ 拿不准一律 `Unknown` |
+/// | `Timeout` | `Hop{wait, Unknown, Overrun}` | 同上 |
+/// | `Cancelled` | `Ours{Cancelled}` | 撤单源自本侧（后端只是确认了它）；副作用状态未知，不是回滚 |
+/// | `Remote{code,message}` | `Peer{Refused{body}}`，body = `{"code","message"}` 的 JSON | 对端说了话；body 对通道不透明 |
+///
+/// 附带的 [`Detail`] 是**给人看的那句话的原料**，只为让收拢出来的三态逐字节不变；
+/// 它**不参与**任何分流判断（分流只看 `error`）。
+pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
+    let at = |tag: &'static str| w::HopId { idx: hop, tag };
+    let text = |s: String| Detail::Text(s);
     match e {
-        // 以下三档都在 `call()` 真正写出去**之前**返回 —— 见模块头注那张表。
-        CallError::Unsupported { cmd, offered } => Routed::NoChannel(format!(
-            "远端后端没声明 `{cmd}` 能力（它声明的是 {offered:?}）—— 多半是旧版本"
+        CallError::Unsupported { cmd, offered } => Layered {
+            error: w::CallError::Peer {
+                why: w::PeerFault::Unsupported,
+            },
+            detail: text(format!(
+                "远端后端没声明 `{cmd}` 能力（它声明的是 {offered:?}）—— 多半是旧版本"
+            )),
+        },
+        CallError::TooManyPending => Layered {
+            error: w::CallError::Hop {
+                at: at("write"),
+                reach: w::Reach::NotSent,
+                why: w::HopFault::Overrun,
+            },
+            detail: text("入方向同时在等的命令已达上限，这条没入队".into()),
+        },
+        CallError::Disconnected => Layered {
+            error: w::CallError::Hop {
+                at: at("read"),
+                reach: w::Reach::Unknown,
+                why: w::HopFault::Dropped,
+            },
+            detail: text(e.to_string()),
+        },
+        CallError::Timeout { .. } => Layered {
+            error: w::CallError::Hop {
+                at: at("wait"),
+                reach: w::Reach::Unknown,
+                why: w::HopFault::Overrun,
+            },
+            detail: text(e.to_string()),
+        },
+        CallError::Cancelled => Layered {
+            error: w::CallError::Ours {
+                why: w::OursFault::Cancelled,
+            },
+            detail: text(e.to_string()),
+        },
+        CallError::Remote { code, message } => Layered {
+            error: w::CallError::Peer {
+                why: w::PeerFault::Refused {
+                    body: w::Body(
+                        serde_json::to_vec(
+                            &serde_json::json!({ "code": code, "message": message }),
+                        )
+                        .unwrap_or_default(),
+                    ),
+                },
+            },
+            detail: Detail::Remote {
+                code: code.clone(),
+                message: message.clone(),
+            },
+        },
+    }
+}
+
+/// [`layer_call_error`] 的产出：`05` 的分层错误 ＋ 给人看的那句话的原料。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Layered {
+    /// `05 §3.3.1` 的三层。**分流只看它。**
+    pub error: w::CallError,
+    /// 那句话的原料 —— 不参与分流。
+    pub detail: Detail,
+}
+
+/// 给人看的那句话的原料。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Detail {
+    /// 已经说成一句话了。
+    Text(String),
+    /// 对端的原话，由调用方的 `refusal` 翻成用户看的话。
+    Remote { code: String, message: String },
+}
+
+/// 没有控制通道（`client_for` 回 `None`）的分层结果 —— **一个字节都没发出去**。
+pub(crate) fn layer_no_channel(hop: u8) -> w::CallError {
+    w::CallError::Hop {
+        at: w::HopId {
+            idx: hop,
+            tag: "open",
+        },
+        reach: w::Reach::NotSent,
+        why: w::HopFault::Unreachable,
+    }
+}
+
+/// `CallError` → 三态 —— **建在 [`layer_call_error`] 上的一层收拢**，自己不再看 inbound 的枚举。
+/// `refusal` 只负责把 `(code, message)` 翻成用户看的话 ——
+/// **分流本身不许由调用方决定**，那就是本模块存在的全部意义。
+///
+/// 收拢规则只有一条：分层结果**能证明没发出去**（`reach: NotSent`，或对端事前就说不认）
+/// ⇒ `NoChannel`（可回落）；其余一律 `Refused`（不回落）。
+/// 收拢前后逐字节不变由 `the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering` 钉着。
+pub(crate) fn route_call_error(e: &CallError, refusal: impl Fn(&str, &str) -> String) -> Routed {
+    let Layered { error, detail } = layer_call_error(e, 0);
+    let provably_not_sent = match error {
+        w::CallError::Hop { reach, .. } => match reach {
+            w::Reach::NotSent => true,
+            w::Reach::Sent | w::Reach::Unknown => false,
+        },
+        w::CallError::Peer { why } => match why {
+            w::PeerFault::Unsupported => true,
+            w::PeerFault::Refused { .. } => false,
+        },
+        w::CallError::Ours { .. } => false,
+    };
+    match (provably_not_sent, detail) {
+        (true, Detail::Text(s)) => Routed::NoChannel(s),
+        (true, Detail::Remote { code, message }) => Routed::NoChannel(refusal(&code, &message)),
+        (false, Detail::Text(s)) => Routed::Refused(format!(
+            "{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\
+             请刷新会话列表后再决定"
         )),
-        CallError::TooManyPending => {
-            Routed::NoChannel("入方向同时在等的命令已达上限，这条没入队".into())
-        }
-        // 以下都不能证明「没发出去」⇒ 按最坏算，不回落。
-        CallError::Disconnected | CallError::Timeout { .. } | CallError::Cancelled => {
-            Routed::Refused(format!(
-                "{e} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\
-                 请刷新会话列表后再决定"
-            ))
-        }
-        CallError::Remote { code, message } => Routed::Refused(refusal(code, message)),
+        (false, Detail::Remote { code, message }) => Routed::Refused(refusal(&code, &message)),
     }
 }
 

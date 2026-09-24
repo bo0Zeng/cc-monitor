@@ -139,7 +139,7 @@ async fn main() {
             // K-H1：HTTP 中转。**常驻**，起来就不返回；配置面只有环境变量。
             // K-H2a：多传一个 `agent_home` —— 中转要从 `<home>/claudecode-frontend/` 下
             // 读那份凭据文件。**不新开子命令、不动 `SUBCOMMANDS`** ⇒ 不逼出 BUILD_ID bump。
-            Some("--relay") => relay::run(&agent_home, &args),
+            Some("--relay") => accounts::run_relay(&agent_home, &args),
             // K-P6b：拨号代理。**常驻**，起来就搬字节直到某一头断开。
             // 它不认 `agent_home`（不读任何 agent 的东西），也不碰 `listen::Admit`
             // —— `K-P7` 逐字写着 E 成立的条件就是「不复用 `listen::Admit`」。

@@ -32,7 +32,10 @@ mod origin; // P2s（C8）：每台机一份后端策略（生效值住内存，
             //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
 mod bridge;
+// 通信层面 A 的第一个进程外客户端那条路（`设计/05` 末尾「面 A 的第一个外部客户端：通道」）。
+// `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
+pub mod chan;
 mod claude_data_fence; // 步 H2：Claude 自己的数据不许我们写 —— `INVARIANTS §1` 的 F47/F03b 两段澄清共用的那一个判定（用户 09-21 裁「拆」）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
@@ -174,6 +177,8 @@ mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shel
 #[cfg(test)]
 mod structural_scan;
 mod subagent;
+// 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」：骨架索引 ＋ 按偏移取一段正文。
+mod session_skeleton;
 mod tasks;
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
 mod tmux_reconcile;
@@ -622,6 +627,12 @@ pub fn run() {
                         }
                     }
                 }
+            }
+
+            // 面 A 通道：绑回环、起路由器，外部前端（下一波接进文件窗口）经它说 call/subscribe。
+            // 起不来只出声、不退回别的路（`D11`）；钥匙永不进日志（`chan::host` 头注）。
+            if let Err(e) = tauri::async_runtime::block_on(chan::host::start()) {
+                tracing::warn!("面 A 通道没起来：{e}");
             }
 
             // Debug build 自动开 DevTools(CCM_NO_DEVTOOLS=1 抑制——远程实测/E2E 时省半屏)
@@ -1312,6 +1323,9 @@ pub fn run() {
             history::list_history_projects,
             history::stream_history_sessions_in_project,
             history::stream_read_session_jsonl,
+            // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的两个调用点。
+            session_skeleton::read_session_index,
+            session_skeleton::read_session_range,
             remote_history::list_remote_history_projects,
             // F10：一键装 / 卸远端 ccm 助手到 ~/.bashrc（SFTP 写 profile，SS-H）
             sftp::install_remote_ccm_helper,
@@ -1828,7 +1842,7 @@ fn forget_session(
 }
 
 /// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，
-/// 加载 `index.html?viewer=<sid>` —— 前端检测到 `viewer` 参数走精简只读 bootstrap。
+/// 加载 `viewer.html?viewer=<sid>` —— 独立入口 `src/entry-viewer.ts`（三入口拆分，`设计/01 §1.2`）。
 /// 窗口已存在则前置聚焦（不重复开）。双屏 / 并排查看用。
 ///
 /// **必须 `async`**：Tauri 2 同步 `fn` 命令在**主线程**执行，而
@@ -1855,7 +1869,7 @@ async fn open_session_in_new_window(
         let _ = w.set_focus();
         return Ok(());
     }
-    let url = tauri::WebviewUrl::App(format!("index.html?viewer={session_id}").into());
+    let url = tauri::WebviewUrl::App(format!("viewer.html?viewer={session_id}").into());
     let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
         .title(if title.is_empty() {
             "cc-monitor"
@@ -1878,7 +1892,7 @@ async fn open_session_in_new_window(
 
 /// F82a（#56+#47）：把「设置」开进独立窗口（SS-3 终态：设置搬独立窗）。单例 `settings` 窗，
 /// 已存在则前置聚焦。**必须 `async`**（同 `open_session_in_new_window`：同步命令建窗死锁，见其
-/// doc + `viewer-window-investigation.md` 五坑之一）。设置窗加载 `?settings=1` → 前端 `bootstrapSettings`
+/// doc + `viewer-window-investigation.md` 五坑之一）。设置窗加载 `settings.html`（独立入口 `src/entry-settings.ts`）→ `bootstrapSettings`
 /// 精简挂载 SettingsPanel（windowMode）。设置项经既有 config 命令读写（窗口无关），无需 replay/事件流；
 /// 保存时前端广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为（跨窗同步）。
 #[tauri::command]
@@ -1891,7 +1905,7 @@ async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
         let _ = w.set_focus();
         return Ok(());
     }
-    let url = tauri::WebviewUrl::App("index.html?settings=1".into());
+    let url = tauri::WebviewUrl::App("settings.html".into());
     tauri::WebviewWindowBuilder::new(&app, label, url)
         .title("cc-monitor 设置")
         .inner_size(760.0, 820.0)

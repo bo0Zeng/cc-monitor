@@ -3158,6 +3158,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    真要修，同拍要核的还有 `:1463` 那处**同形**的显式 push 与它那条
         //    「四个根下 186 + build.rs 1」的分母自述（那句今天也已经陈了）。
         ("src/bridge/build.rs", "c_cross_note", 2),
+        // 〔BS1 · ccbus-win 09-24〕Windows 预检从「说没做」换成真探测（`K-R69` 的
+        //   `probe_binary_uncached`）⇒ 旧测试整条改写，头注逐字引旧名说明它为什么不在了。
+        (
+            "tests/bridge/backend/control/cc_bus_deploy_tests.rs",
+            "windows_says_the_precheck_did_not_happen_instead_of_staying_silent",
+            1,
+        ),
     ];
 
     let corpus = dead_name_corpus();
@@ -3409,6 +3416,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/backend/control/local_backend.rs", 1),
         ("src/bridge/src/backend/control/payload.rs", 1),
         ("src/bridge/src/backend/control/tmux.rs", 7),
+        ("src/bridge/src/cc_bus_deploy.rs", 1),
         ("src/bridge/src/ccm_cli_contract.rs", 1),
         // 🔴〔本机侧退役 2026-09-23〕文件管理器「本机」那一侧整条退役，
         //   `source.rs` 的头注上留了一块墓碑：**4 处标记**（一处是墓碑正文那一句，
@@ -3431,6 +3439,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/readonly_guard.rs", 2),
         ("tests/bridge/backend/control/backend_kill_tests.rs", 1),
         ("tests/bridge/backend/control/backend_send_keys_tests.rs", 1),
+        ("tests/bridge/backend/control/cc_bus_deploy_tests.rs", 1),
         ("tests/bridge/backend/control/cc_bus_tests.rs", 2),
         ("tests/bridge/backend/control/inbound_client_tests.rs", 1),
         (
