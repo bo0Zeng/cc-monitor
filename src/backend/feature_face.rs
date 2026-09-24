@@ -42,6 +42,16 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 .ok_or(("bad_args", "缺 `sid`（要一个字符串）".to_string()))?;
             lines(crate::observe::tasks_query::session_task_lines(home, sid)?)
         }
+        // 应答恰一行：整份 survey（形状同 monitor 的 `MarketplaceSurvey`）。
+        // 三条出口：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；
+        // 某一条数不出 ⇒ 那一条 `declared_plugins: null` ＋ 理由（整张表照出）。
+        "plugins-marketplaces" => {
+            let survey = crate::observe::plugins_query::survey_marketplaces_in(home)
+                .map_err(|e| ("failed", e))?;
+            let line = serde_json::to_string(&survey)
+                .map_err(|e| ("failed", format!("序列化 marketplace 清单失败：{e}")))?;
+            lines(vec![line])
+        }
         other => Err(("bad_args", format!("本族不认识 `{other}`"))),
     }
 }

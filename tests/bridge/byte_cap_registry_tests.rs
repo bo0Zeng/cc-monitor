@@ -453,6 +453,22 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "按行那六条帧查询（`history-projects` 等）整份输出",
         "拒收+回错",
     ),
+    // 〔RM1b · 第四波〕插件市场枚举搬进后端（`plugins-marketplaces`）：两个上限原样随行
+    //   （量、值、超限语义都与 monitor `plugins.rs` 那两条逐字相同；monitor 那两条在本机读实现退役那拍摘）。
+    (
+        "src/backend/observe/plugins_query.rs",
+        "KNOWN_MARKETPLACES_CAP",
+        4 * 1024 * 1024,
+        "读 marketplace 登记表（`P8a` 本机实测 206 字节）",
+        "硬报错",
+    ),
+    (
+        "src/backend/observe/plugins_query.rs",
+        "MARKETPLACE_MANIFEST_CAP",
+        32 * 1024 * 1024,
+        "读单个 marketplace 的 manifest（`P8a` 本机实测 161 KB / 声明 276 个插件）",
+        "降级+说清",
+    ),
     // 〔RM1b · 第四波〕任务列表搬进后端（`tasks-list`）：单个任务文件的读上限。
     (
         "src/backend/observe/tasks_query.rs",
