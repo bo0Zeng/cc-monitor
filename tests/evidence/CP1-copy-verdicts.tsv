@@ -176,6 +176,201 @@ src/bridge/src/ssh_source.rs:4225	SSH 连上了，但后端在超时内未回 he
 src/bridge/src/ssh_source.rs:4229	SSH 连上了，但后端探测失败：{e}	保留	[对外] 测试连接结果＋原因
 src/bridge/src/ssh_source.rs:4341	(非 hello 帧: {other:?})	改·§2.1	[对外] 后端握手摘要（result.backend_hello 画在测试结果下方）；「非 hello 帧」＋Debug 转储是协议细节 新词:hello帧
 src/bridge/src/ssh_source.rs:4377	control=unsupported(backend 未声明入方向命令)	改·§2.1	[对外] 同一摘要里的 control= 段，日志键值格式 新词:入方向命令 新词:控制通道
+src/settings/accounts-section.ts:588	将在远端「{…}」的终端里运行：\n\n{…}\n\n	保留	[对外] 危险操作的 confirm 首段：说清在哪台机器跑什么命令，先说结果
+src/settings/accounts-section.ts:590	命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可 rollback。继续？	改·§2.4	[对外] 一句塞三件事（在哪执行＋要你确认＋自带备份可撤）且夹英文 rollback 新词:rollback →「命令会在远端终端里执行，出错可撤回。继续？」
+src/settings/accounts-section.ts:1115	片段不完整（缺 BEGIN/END 围栏），先别贴 —— 在远端跑一次 `cc-acct-iso verify` 看是什么状况。	改·§2.4	[对外] 括号补充＋破折号＋处方三合一 兼§2.3 新词:围栏 →「片段不完整，别贴。」细节另起一句
+src/settings/acct-deploy.ts:47	{…}不能为空	保留	[对外] 输入校验提示，短而准
+src/settings/acct-deploy.ts:48	{…}不能包含双引号	保留	[对外] 输入校验提示，短而准
+src/settings/acct-deploy.ts:50	{…}不能包含控制字符	保留	[对外] 输入校验提示，短而准
+src/settings/acct-deploy.ts:52	{…}不能以「-」开头	保留	[对外] 输入校验提示，短而准
+src/settings/acct-deploy.ts:88	凭据快照路径	保留	[对外] 校验提示里的字段名（名词短语）
+src/settings/backend-section.ts:151	本机	保留	[对外] 机器名「本机」
+src/settings/backend-section.ts:155	本机	保留	[对外] 机器名「本机」
+src/settings/cc-bus-hooks-section.ts:183	$HOME 显式路径（不依赖 PATH；要求它确实装在那儿）	保留	[对外] 下拉项：形态名＋一处括号说取舍，括号里是真取舍不是正文；PATH/$HOME 是用户自己的 shell 词
+src/settings/cc-bus-hooks-section.ts:184	裸命令（简洁；要求它在 PATH 上）	保留	[对外] 下拉项，同上
+src/settings/cc-bus-hooks-section.ts:209	先等诊断读完。	保留	[对外] 粘贴框的不可用理由，短
+src/settings/cc-bus-hooks-section.ts:297	$HOME 显式路径形态	保留	[对外] 形态警示的标签
+src/settings/cc-bus-hooks-section.ts:298	裸命令形态	保留	[对外] 形态警示的标签
+src/settings/cc-bus-section.ts:206	；旧的已备份到 {…}	保留	[对外] 状态行尾巴：备份住址
+src/settings/cc-bus-section.ts:435	登记 {…} 个	保留	[对外] 状态行计数片段
+src/settings/cc-bus-section.ts:436	其中 spawn 派生 {…} 个	保留	[对外] 状态行计数片段；spawn 取自用户自己用的 cc-spawn 命令名（R1b 语境）
+src/settings/cc-bus-section.ts:437	另有 {…} 个 spawn 过但未登记	保留	[对外] 状态行计数片段，同上
+src/settings/cc-bus-section.ts:438	{…} 条无法解析（已跳过）	保留	[对外] 状态行计数片段
+src/settings/cc-bus-section.ts:439	「登记」不等于「在线」	保留	[对外] 澄清「登记≠在线」，用户会误读的那一处，短
+src/settings/cc-bus-section.ts:485	时间未知	保留	[对外] 元数据占位
+src/settings/cc-bus-section.ts:486	cc-spawn 派生	保留	[对外] 元数据：cc-spawn 是用户自己敲的命令名
+src/settings/cc-bus-section.ts:486	自行登记	保留	[对外] 元数据
+src/settings/cc-bus-section.ts:487	未在 agents.tsv 登记	内部词→「未登记」	[对外] agents.tsv 是 cc-bus 的内部登记文件名 新词:agents.tsv
+src/settings/cc-bus-section.ts:627	账号 {…}	保留	[对外] 确认文案里点名账号
+src/settings/cc-bus-section.ts:627	不指定账号	保留	[对外] 确认文案里点名账号
+src/settings/cc_integration.ts:562	请重启 PowerShell，cc 命令立即可用。	保留	[对外] 写完 profile 后用户确实要做的一步，已验证可行（重启 PowerShell 即生效）
+src/settings/cc_integration.ts:563	下一步：[打开 profile]，在自己的 claude wrapper 开头加 __ccm_bind 再重启 PowerShell。	改·§2.3	[对外] 「下一步：」处方，把改 wrapper 的活派给用户 兼§2.1 新词:__ccm_bind →「已写入。自定义 wrapper 需要手动接入，见 profile 说明。」
+src/settings/config-surface-section.ts:83	{…} —— cc-monitor 不装这一项，请你自己装上 `{…}`	保留	[对外] 测过确认缺、且用户确实要自己装：这是已验证可行的提示，不是派内部维护活；反引号会原样显示，CP2 可顺手去掉
+src/settings/config-surface-section.ts:86	{…} —— 这一项本机查不动（见上面的原因），别当成它不在	改·§2.4	[对外] 破折号＋括号补充＋口语「查不动」「别当成」一句三合一 →「本机无法检查这一项，不代表它不存在」
+src/settings/config-surface-section.ts:126	可按围栏/整文件撤销（在对应工具的部署入口里）	内部词→「按片段/整文件撤销」	[对外] 「围栏」是我们对受管片段的内部叫法 新词:围栏 兼§2.4
+src/settings/config-surface-section.ts:129	暂无自动撤销；如需清理请按上面的路径手动处理	保留	[对外] 没有自动撤销时用户确实只能手动处理，说得直接
+src/settings/config-surface-section.ts:132	这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有	改·§2.2	[对外] 把内部欠账（「安装入口还没写」）当文案说给用户 兼§2.4 →「暂不支持自动安装与撤销」
+src/settings/config-surface-section.ts:135	cc-monitor 不装这一项（通用工具，请你自己装），也就无所谓撤销	改·§2.2	[对外] 设计论证当文案（为什么不装、所以无所谓撤）兼§2.4 →「不适用：这一项需自行安装」
+src/settings/config-surface-section.ts:137	cc-monitor 本来就不该装这一项（它不是我们的东西），也就无所谓撤销	改·§2.2	[对外] 设计论证当文案（本来就不该装、不是我们的东西）兼§2.4 →「不适用：cc-monitor 不管理这一项」
+src/settings/config-surface-section.ts:140	这一项的档本前端还不认识 —— 撤销请按上面的路径手动处理	改·§2.1	[对外] 在讲实现（「这一项的档本前端还不认识」）新词:档 兼§2.4 →「撤销方式未知，请按上面的路径手动处理」
+src/settings/config-surface-section.ts:158	其中 {…} 项该由 cc-monitor 自带、而安装入口还没写：{…}	改·§2.2	[对外] 内部欠账当文案（「安装入口还没写」）→「其中 N 项暂不支持自动安装：…」
+src/settings/config-surface-section.ts:164	== cc-monitor 配置面审计 ==	保留	[对外] 可复制诊断文本的标题，读者是把它转贴给开发者的用户
+src/settings/config-surface-section.ts:166	~/.claude 解析为={…}	保留	[对外] 可复制诊断文本的字段行
+src/settings/config-surface-section.ts:176	    位置: {…}	保留	[对外] 可复制诊断文本的字段行
+src/settings/config-surface-section.ts:177	    解析为: {…}	保留	[对外] 可复制诊断文本的字段行
+src/settings/config-surface-section.ts:178	    我们做什么: {…}	保留	[对外] 可复制诊断文本的字段行
+src/settings/config-surface-section.ts:179	    现状: {…}	保留	[对外] 可复制诊断文本的字段行
+src/settings/config-surface-section.ts:191	== settings.json 的各作用域（会影响钩子诊断结论）==	保留	[对外] 可复制诊断文本的小节标题，括号一处说明用途
+src/settings/config-surface-section.ts:196	读不到，不猜	改·§2.2	[对外] 「不猜」是我们内部的纪律口号，不是给用户的信息 →「读不到」
+src/settings/config-surface-section.ts:198	含 cc-bus 钩子字样	保留	[对外] 状态片段
+src/settings/config-surface-section.ts:199	不含 cc-bus 钩子字样	保留	[对外] 状态片段
+src/settings/config-surface-section.ts:292	扫描中…	保留	[对外] 按钮忙碌态
+src/settings/config-surface-section.ts:301	复制中…	保留	[对外] 按钮忙碌态
+src/settings/config-surface-section.ts:399	正在扫这台机器上的足迹…	保留	[对外] 加载骨架文案
+src/settings/config-surface-section.ts:457	钩子字样：读不到，不猜	改·§2.2	[对外] 「不猜」是内部纪律口号 →「钩子字样：读不到」
+src/settings/config-surface-section.ts:459	含 cc-bus 钩子字样	保留	[对外] 状态片段
+src/settings/config-surface-section.ts:460	不含 cc-bus 钩子字样	保留	[对外] 状态片段
+src/settings/data-section.ts:117	正在读这台机器上的数据位置…	保留	[对外] 加载骨架文案
+src/settings/data-section.ts:143	monitor 持久化	内部词→「cc-monitor 自己的数据」	[对外] 卡片标题用了实现词「持久化」新词:持久化
+src/settings/data-section.ts:154	WebView2 用户数据	保留	[对外] 卡片标题；WebView2 是用户系统上真实存在、目录名里就带着的组件（R1b 语境）
+src/settings/data-section.ts:165	PowerShell profile 备份	保留	[对外] 卡片标题；PowerShell profile 是用户自己的文件
+src/settings/data-section.ts:185	卸载 monitor	保留	[对外] 提示条的加粗片段，拼起来是一句完整的话
+src/settings/data-section.ts:186	 默认	保留	[对外] 提示条拼接片段
+src/settings/data-section.ts:187	不清	保留	[对外] 提示条的加粗片段
+src/settings/data-section.ts:188	这些数据。想彻底清除（星标 / 颜色配置 / WebView2 cache 等）请手动删除上面的目录。	保留	[对外] 用户想彻底清理时确实只能手删；括号列举是真补充
+src/settings/diagnostics-section.ts:54	monitor 没有可以看的控制台窗口，所以后端的输出都写进日志文件：\n	改·§2.2	[对外] 先讲实现理由（没有控制台窗口，所以…）再讲事实 →「后端日志写在：」
+src/settings/diagnostics-section.ts:56	出错时同时在右下角弹一条提示，点它直接打开日志文件。	保留	[对外] 说用户看得见的行为，一句
+src/settings/diagnostics-section.ts:237	打开中…	保留	[对外] 按钮忙碌态
+src/settings/diagnostics-section.ts:246	打开中…	保留	[对外] 按钮忙碌态
+src/settings/diagnostics-section.ts:256	读取中…	保留	[对外] 按钮忙碌态
+src/settings/diagnostics-section.ts:314	日志文件开关	保留	[对外] 「需重启生效」条子上的设置名
+src/settings/drift-ledger-section.ts:35	看不懂的记录类型	改·§2.6	[对外] 区块标题用口语「看不懂的」→「未知记录类型」
+src/settings/drift-ledger-section.ts:37	已知类型解析失败	保留	[对外] 区块标题，名词短语
+src/settings/drift-ledger-section.ts:39	未登记的会话 kind	内部词→「未知会话类型」	[对外] kind 是枚举字段名 新词:kind
+src/settings/drift-ledger-section.ts:41	远端后端声明了我们不认识的能力	改·§2.1	[对外] 在讲握手协议（后端「声明能力」）新词:能力声明 →「远端后端有本版本不认识的功能」
+src/settings/drift-ledger-section.ts:44	未命名的面（{…}）	内部词→「未知类别（原名）」	[对外] 「面」是我们内部的分类叫法 新词:面
+src/settings/drift-ledger-section.ts:53	条记录	保留	[对外] 计数单位
+src/settings/drift-ledger-section.ts:55	次观测（每次重扫一次，不是会话数）	保留	[对外] 计数单位，括号是防误读的必要说明
+src/settings/drift-ledger-section.ts:57	次握手	内部词→「次连接」	[对外] 「握手」是协议实现词 新词:握手
+src/settings/drift-ledger-section.ts:59	次	保留	[对外] 计数单位
+src/settings/drift-ledger-section.ts:65	\n      首见：{…}	保留	[对外] 诊断文本字段
+src/settings/drift-ledger-section.ts:72	数据面漂移记账：本次运行期间没有遇到任何看不懂的东西。	内部词→「格式兼容记录」	[对外] 「数据面漂移记账」是自造概念名 兼§2.5 新词:数据面漂移记账 →「格式兼容记录：本次运行没有遇到无法识别的数据。」
+src/settings/drift-ledger-section.ts:75	{…}（{…} 种{…}）	保留	[对外] 小节标题＋计数
+src/settings/drift-ledger-section.ts:76	  后果：{…}	保留	[对外] 诊断文本字段
+src/settings/drift-ledger-section.ts:80	数据面漂移记账（本进程内，重启归零）\n\n{…}	内部词→「格式兼容记录」	[对外] 自造概念名＋「本进程内」实现词 兼§2.5 新词:数据面漂移记账 →「格式兼容记录（重启后清空）」
+src/settings/drift-ledger-section.ts:125	读取中…	保留	[对外] 按钮忙碌态
+src/settings/drift-ledger-section.ts:133	复制中…	保留	[对外] 按钮忙碌态
+src/settings/machine-card.ts:334	名称 (label，可选)	内部词→「名称（可选）」	[对外] 表单标签括号里挂的是配置文件键名 label，用户不需要 新词:label（配置键）
+src/settings/machine-card.ts:335	pi / nano（留空用主机名）	保留	[对外] 占位符举例
+src/settings/machine-card.ts:340	主机 (host)	保留	[对外] 表单标签；host 是 ssh 用户自己也这么叫的词（R1b）
+src/settings/machine-card.ts:341	raspberrypi.local 或 192.168.1.10	保留	[对外] 占位符举例
+src/settings/machine-card.ts:344	端口 (port)	保留	[对外] 表单标签；port 同 ssh 语境
+src/settings/machine-card.ts:348	用户 (user)	保留	[对外] 表单标签；user 同 ssh 语境
+src/settings/machine-card.ts:349	如 ubuntu / pi / root	保留	[对外] 占位符举例
+src/settings/machine-card.ts:354	backend 路径 (backendPath)	内部词→「后端路径」	[对外] 英文 backend 与配置键名 backendPath 都是我们这一侧的词（91 §3.1 定对外说「后端」）新词:backend（英文） 新词:backendPath
+src/settings/machine-card.ts:374	私钥路径 (keyPath，可选)	内部词→「私钥路径（可选）」	[对外] 括号里是配置键名 keyPath 新词:keyPath
+src/settings/machine-card.ts:380	主机指纹 (hostKeyFingerprint，可选)	内部词→「主机指纹（可选）」	[对外] 括号里是配置键名 hostKeyFingerprint 新词:hostKeyFingerprint
+src/settings/machine-card.ts:381	SHA256:…（留空则首连 TOFU）	内部词→「留空则首次连接时记下」	[对外] TOFU 是安全圈缩写，用户不会这么叫 新词:TOFU
+src/settings/machine-card.ts:426	跳板 (jump，可选)	内部词→「跳板机（可选）」	[对外] 括号里是配置键名 jump 新词:jump（配置键）
+src/settings/machine-card.ts:427	另一台已配置主机的 label（空=直连；经该跳板隧道连本机）	内部词→「另一台已配置机器的名称（留空为直连）」	[对外] 占位符里用了配置键名 label，括号里再塞一段隧道原理 兼§2.4
+src/settings/machine-card.ts:449	resume 命令（这台机器）	保留	[对外] 表单标签；resume 是 claude CLI 用户自己敲的子命令
+src/settings/machine-card.ts:450	留空 = 用全局默认	保留	[对外] 占位符
+src/settings/machine-card.ts:609	该主机	保留	[对外] 确认框里主机名的兜底
+src/settings/machine-card.ts:662	（未命名机器）	保留	[对外] 未命名机器的显示名
+src/settings/machine-card.ts:682	请先填好 host / user / backendPath 再测试。	内部词→「请先填好主机、用户和后端路径再测试。」	[对外] 用配置键名 backendPath 指字段 新词:backendPath
+src/settings/machine-card.ts:715	测试失败：{…}	保留	[对外] 失败前缀＋原因
+src/settings/machine-card.ts:785	选择要推送的公钥 (.pub)	保留	[对外] 文件选择框标题
+src/settings/machine-card.ts:789	公钥	保留	[对外] 文件类型过滤名
+src/settings/machine-card.ts:794	推送公钥中	保留	[对外] 按钮忙碌态
+src/settings/machine-card.ts:797	公钥已推送（ADDED）：{…}	内部词→「公钥已推送：…」	[对外] 括号里是后端返回的原始枚举 ADDED 新词:ADDED
+src/settings/machine-card.ts:798	公钥已存在，无需重复（ALREADY）：{…}	内部词→「公钥已存在，无需重复推送：…」	[对外] 括号里是后端返回的原始枚举 ALREADY 新词:ALREADY
+src/settings/machine-card.ts:1025	安装后端中	保留	[对外] 按钮忙碌态
+src/settings/machine-card.ts:1027	已装	保留	[对外] 组件状态小标
+src/settings/machine-card.ts:1027	装失败	保留	[对外] 组件状态小标
+src/settings/machine-card.ts:1047	卸载后端中	保留	[对外] 按钮忙碌态
+src/settings/machine-card.ts:1069	卸载 ccm 中	判不了	[对外] ccm 被 91 §2.1 点名为内部名，但机器卡上它是用户要装/卸的组件、按钮就叫它；换成什么对外词需要产品拍板（术语对照表 91 §5.2④ 还没有）
+src/settings/machine-card.ts:1152	backend 响应正常{…}	内部词→「后端响应正常」	[对外] 英文 backend，91 §3.1 定对外说「后端」新词:backend（英文）
+src/settings/machine-card.ts:1153	backend 未响应 / 未部署	内部词→「后端未响应或未安装」	[对外] 英文 backend 新词:backend（英文）
+src/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
+src/settings/machine-status.ts:53	连接	保留	[对外] 状态格标签
+src/settings/machine-status.ts:57	账号	保留	[对外] 状态格标签
+src/settings/machine-status.ts:152	刚刚	保留	[对外] 相对时间
+src/settings/machine-status.ts:153	{…} 分钟前	保留	[对外] 相对时间
+src/settings/machine-status.ts:154	{…} 小时前	保留	[对外] 相对时间
+src/settings/machine-status.ts:155	{…} 天前	保留	[对外] 相对时间
+src/settings/mcp-section.ts:74	(未知形态)	保留	[对外] MCP server 连接方式读不出时的占位
+src/settings/mcp-section.ts:112	用户	保留	[对外] 作用域名
+src/settings/mcp-section.ts:113	本项目(local)	保留	[对外] 作用域名；local 是 Claude Code 自己的 scope 名，用户在 claude mcp 命令里也这么叫
+src/settings/mcp-section.ts:114	项目 .mcp.json	保留	[对外] 作用域名；.mcp.json 是用户项目里的文件
+src/settings/mcp-section.ts:613	 · 只读（远端）	保留	[对外] 分组标题后缀
+src/settings/mcp-section.ts:614	 · 只读	保留	[对外] 分组标题后缀
+src/settings/mcp-section.ts:797	本机	保留	[对外] 确认框里的位置名
+src/settings/mcp-section.ts:797	远端 [{…}]	保留	[对外] 确认框里的位置名
+src/settings/panel.ts:149	自动跟随用户输入 + 拉前 monitor 窗口。\n\n	保留	[对外] ⓘ 说明首句，先说功能
+src/settings/panel.ts:150	「自动跟随」：watcher 反推—用户在 claude 里敲回车 → monitor 切到对应 session 的 Tab。	改·§2.1	[对外] 讲实现（「watcher 反推」）新词:watcher 新词:反推 →「在 claude 里按回车后，monitor 切到对应会话的 Tab。」
+src/settings/panel.ts:151	只跟「真用户输入」（不跟工具返回、不跟 claude 流式回复）。你手动点 Tab 后 5 秒内不会被自动切抢回。\n\n	保留	[对外] 括号里是真补充（哪些输入不跟），第二句是可感知的行为
+src/settings/panel.ts:152	「拉前 monitor」默认关：monitor 静静在后台切 Tab，不打断你正在用的其他窗口（浏览器/IDE）。	保留	[对外] 默认值＋行为，一句
+src/settings/panel.ts:153	开启后在终端输入时 monitor 浮上来抢焦。仅当「自动跟随」开启时生效。	保留	[对外] 开启后的行为＋前置条件
+src/settings/panel.ts:156	自定义全部快捷键：Tab 切换 / 终端拉前 / 行为开关 / 弹层关闭 等约 17 项。\n\n	保留	[对外] ⓘ 说明首句
+src/settings/panel.ts:157	改即生效，无需重启。点 [改] 后按下你想要的组合键。冲突会弹覆盖确认。	保留	[对外] 操作说明，短句
+src/settings/panel.ts:163	「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。	保留	[对外] 术语定义：破折号引定义、括号列子目录，是用户在磁盘上看得见的目录
+src/settings/panel.ts:164	默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。	保留	[对外] 默认值＋生效条件
+src/settings/panel.ts:166	「终端集成」—— 把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 	改·§2.4	[对外] 与下一截拼成一句：破折号＋做什么＋为什么＋括号补充三合一 新词:注入
+src/settings/panel.ts:167	Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。	改·§2.1	[对外] 「双向绑定」是实现机制，括号里夹英文 work 兼§2.4 新词:双向绑定 →「装好后『拉前终端』按钮才能用。可一键安装/卸载。」
+src/settings/panel.ts:170	字体（正文 / 等宽 / 字号）+ 颜色（10 个语义 token：背景 / 卡片 / 文字 / user / assistant 等）。	内部词→「颜色（背景 / 卡片 / 文字 等 10 种）」	[对外] 「语义 token」是设计系统内部词 新词:语义 token
+src/settings/panel.ts:171	配一次基本不再动，所以默认收起。	改·§2.2	[对外] 解释为什么默认收起的设计理由 → 删
+src/settings/panel.ts:174	「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 	改·§2.4	[对外] 破折号起头，一句里塞了连接方式＋数据源替换＋行为不变 兼§2.1
+src/settings/panel.ts:175	jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n	改·§2.1	[对外] 「jsonl-watcher 作为数据源」整句在讲实现，R1 jsonl 命中 新词:watcher →「远端会话和本机会话显示方式相同」
+src/settings/panel.ts:176	关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。	保留	[对外] 默认＋生效条件，用户可操作
+src/settings/panel.ts:177	配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。	内部词→「缺主机、用户或后端路径」	[对外] 配置键名 backendPath 新词:backendPath
+src/settings/panel.ts:183	「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。\n\n	保留	[对外] 术语定义＋用途，一句
+src/settings/panel.ts:184	「数据位置」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / 	内部词→「monitor 自己写入的所有文件位置」	[对外] 「持久化路径」是实现词 新词:持久化
+src/settings/panel.ts:185	WebView2 UserDataFolder / localStorage keys 等。每项可点 [打开] 直接到文件管理器。	内部词→去掉「localStorage keys」「UserDataFolder」	[对外] 浏览器存储键与 WebView2 的内部目录名，用户在界面上找不到对应物 新词:localStorage 新词:UserDataFolder
+src/settings/panel.ts:186	纯展示，无危险操作。	保留	[对外] 短句
+src/settings/panel.ts:192	\n\n【行为】	保留	[对外] tooltip 分节标题
+src/settings/panel.ts:194	\n\n【快捷键】	保留	[对外] tooltip 分节标题
+src/settings/panel.ts:201	\n\n【终端集成】	保留	[对外] tooltip 分节标题
+src/settings/panel.ts:524	显示后台任务会话	保留	[对外] 「需重启生效」条子上的设置名
+src/settings/panel.ts:576	Claude 数据目录	保留	[对外] 「需重启生效」条子上的设置名
+src/settings/panel.ts:604	选择 Claude 数据目录（含 projects 和 sessions 子目录）	保留	[对外] 目录选择框标题，括号是选对目录的必要提示
+src/settings/panel.ts:697	连接	保留	[对外] 页签名
+src/settings/panel.ts:698	组件	保留	[对外] 页签名
+src/settings/panel.ts:702	账号	保留	[对外] 页签名
+src/settings/panel.ts:703	工具	保留	[对外] 页签名
+src/settings/panel.ts:706	足迹	保留	[对外] 页签名
+src/settings/panel.ts:745	外观	保留	[对外] 折叠组标题
+src/settings/panel.ts:766	日志与数据	保留	[对外] 折叠组标题
+src/settings/panel.ts:795	应用	保留	[对外] 页面名
+src/settings/panel.ts:989	正在列这台机器上的账号 / 工具…	保留	[对外] 加载骨架文案
+src/settings/panel.ts:998	机器列表这一块没能建起来	改·§2.1	[对外] 兜底提示的原因在讲界面构件没建起来（实现层失败），拼进兜底句后更长 →「机器列表加载失败」
+src/settings/panel.ts:1001	机器	保留	[对外] 页面名
+src/settings/panel.ts:1015	改动足迹	保留	[对外] 页面名
+src/settings/panel.ts:1109	这台机器上的机器列表没读出来	保留	[对外] 兜底提示的原因，说结果
+src/settings/panel.ts:1458	终端集成	保留	[不对外] 写进 dataset.naBlock 的数据属性，只供选择器/测试定位，不渲染
+src/settings/plugins-section.ts:41	（没说原因 —— 那是个 bug）	改·§2.2	[对外] 把我们的缺陷判断（「那是个 bug」）当文案说给用户，还带破折号 兼§2.4 →「（原因未知）」
+src/settings/plugins-section.ts:42	读不到插件数：{…}	保留	[对外] 结果＋原因
+src/settings/plugins-section.ts:44	声明 {…} 个插件	保留	[对外] 计数
+src/settings/plugins-section.ts:49	更新时间：未记	保留	[对外] 字段＋未知值
+src/settings/plugins-section.ts:51	更新时间：{…}	保留	[对外] 字段＋原值
+src/settings/plugins-section.ts:52	更新时间：{…}	保留	[对外] 字段＋本地化时间
+src/settings/readiness.ts:48	缺	保留	[对外] 缺口标头，已刻意与「未测过」分开
+src/settings/readiness.ts:50	未测过	保留	[对外] 缺口标头
+src/settings/readiness.ts:207	{…} 项确认缺	保留	[对外] 缺口计数
+src/settings/readiness.ts:208	{…} 项还没测过	保留	[对外] 缺口计数
+src/settings/readiness.ts:214	本机	保留	[对外] 机器名「本机」
+src/settings/remote-section.ts:83	远端模式：monitor 通过 SSH 连到一台或多台远端主机，由各台后端作为额外数据源\n	改·§2.1	[对外] 讲架构（「各台后端作为额外数据源」与下一截「与本地聚合」）新词:数据源 新词:聚合 →「monitor 通过 SSH 连到远端主机，远端会话与本机会话一起显示。」
+src/settings/remote-section.ts:84	与本地聚合（渲染、Tab、分支等行为完全相同；远端 Tab 标题带 [机器名] 前缀）。\n	改·§2.4	[对外] 与上一截同一句，跨行＋长括号补充，一句三合一 兼§2.1
+src/settings/remote-section.ts:85	关闭（默认）或机器列表为空时一切走本地，不受影响。\n\n	保留	[对外] 默认行为，一句
+src/settings/remote-section.ts:86	⚠ 启用 / 修改任意远端设置后，需重启 monitor 才生效。\n	保留	[对外] 生效条件，用户可操作
+src/settings/remote-section.ts:87	某台配置不完整（缺 host / user / backendPath）时后端会跳过该台。	内部词→「缺主机、用户或后端路径」	[对外] 配置键名 backendPath 新词:backendPath
+src/settings/remote-section.ts:376	本机	保留	[对外] 机器页名「本机」
+src/settings/remote-section.ts:880	 +{…} 备用地址	保留	[对外] 导入预览的计数片段
+src/settings/remote-section.ts:882	 · 跳板 {…}	保留	[对外] 导入预览片段
+src/settings/remote-section.ts:883	{…}{…} · {…}{…} · 来源: {…}	保留	[对外] 导入预览行骨架（· 分隔的字段）
+src/settings/remote-section.ts:1135	远端机器配置	保留	[对外] 「需重启生效」条子上的设置名
+src/settings/router.ts:96	设置分类	保留	[对外] 导航的 aria-label，名词短语
+src/settings/unknown-keys-notice.ts:49	配置文件 config.json 里有 {…} 个设置项认不出来：{…}。	保留	[对外] 结果＋点名哪几个键；config.json 是用户自己机器上的文件
+src/settings/unknown-keys-notice.ts:50	它们不起作用（拼错了，或者是已经取消掉的旧名字）；改对或删掉它们，这条提示才会消失。	保留	[对外] 后果＋用户确实能做且做了会好的处理，括号是真补充
 src/sftp/panel.ts:94	名称	保留	[对外] 排序下拉选项
 src/sftp/panel.ts:95	大小	保留	[对外] 排序下拉选项
 src/sftp/panel.ts:96	类型	保留	[对外] 排序下拉选项
