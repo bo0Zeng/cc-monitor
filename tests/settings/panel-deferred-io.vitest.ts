@@ -113,26 +113,24 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
 /**
  * 登记表 ②：点进「应用」才该出现的那几发。
  *
- * 前三条是 `70 §10.4` 逐字点名的那三块（日志 2 · 数据位置 1）；
- * 后两条是同一页上「按账号生成命令」那一块的（`local_ccm_entry_status` ＋
- * 一次 `write_account_aliases` 的 `dryRun` 预览）—— 它们原先也在构造期就打出去，
- * 同属判据 #3 要治的那一族，所以一起推后。
+ * 就是 `70 §10.4` 逐字点名的那三块（日志 2 · 数据位置 1）。
+ * 〔AL1 · 2026-09-24〕从前这里还有两条（`local_ccm_entry_status` ＋ 一次 `write_account_aliases`〔散文墓碑〕
+ * 的 `dryRun` 预览）—— 那是「按账号生成命令」那一块的；它搬去了机器页「本机 → 工具 → 别名」，
+ * 而且在那里**连「本机页可见」都不够**：它是个 `<details>`，第一次展开才发 I/O
+ * （那三发 —— `local_ccm_entry_status` · `aliases_read` · `aliases_render` —— 由 `machine-aliases.vitest.ts` 钉）。
+ * 下面「点进本机页 ⇒ 恰好 `MACHINE_PAGE_IPC`」那一条因此也在替它作证：本机页上多挂一块别名，一发都没多。
  */
 const APP_PAGE_IPC = [
   "get_diagnostics_config",
   "get_log_file_info",
   "get_data_paths",
-  "local_ccm_entry_status",
-  "write_account_aliases",
 ] as const;
 
 /**
  * 登记表 ②b：**重开一次设置**之后再点进「应用」，该重来的是哪几发。
  *
- * 只有那三块 —— 「按账号生成命令」那两发**不重来**，因为那一块是「建一次 DOM」，
- * 重开时重建等于在页面上多出第二份。⚠ 代价如实写：它显示的是**第一次点进来时**
- * 的读数，重开设置不会刷新它。那是本件**没有**动的一格（`70 §6 #2`「保存模型
- * 统一成全即时」那条也还没做），不是这条判据放水。
+ * 〔AL1〕与 ② 同一份（那三块每次重开都重读）。从前这里比 ② 少两发 —— 那两发属于「按账号生成命令」那一块
+ * （「建一次 DOM」、重开不重来）；那一块搬走之后两张表相等了，仍分开写，因为它们回答的是两个问题。
  */
 const APP_PAGE_IPC_ON_REOPEN = [
   "get_diagnostics_config",
@@ -182,7 +180,7 @@ describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () 
     }
   });
 
-  it("点进「应用」⇒ **恰好**多出那三发（日志 2 · 数据位置 1）", async () => {
+  it("点进「应用」⇒ **恰好**多出那三发（日志 2 · 数据位置 1）", async () => { // 〔AL1〕从前是五发
     new SettingsPanel({ windowMode: true });
     await tick();
     const mark = ipc.calls.length;

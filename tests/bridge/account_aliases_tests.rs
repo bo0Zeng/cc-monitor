@@ -29,144 +29,93 @@ fn tmp_home(tag: &str) -> TmpHome {
     TmpHome(d)
 }
 
-/// ★★ 围栏：**放进用户 shell 会被执行的那一行，一个命令分隔符都不许有**。
-///
-/// 正例那一半不是凑数：围栏收太紧会把 `buildAliasLine` 真正产出的形状挡在外面
-/// （六个修饰 + 带空格的模型名那种要引号的值），那是把一个洞换成一个回归。
+// 〔AL1 · 2026-09-24〕这里原来是「形状围栏」那一条（`validate_alias_line`〔散文墓碑〕只放行
+// `名字() { ccm <已知修饰...> "$@"; }` 一形）与四条 `apply(dry_run)` 的判据。前端不再递 shell 文本
+// （递的是结构，文本由 `render` 出），围栏没有输入了 ⇒ 挡注入那件事换成下面
+// `injection_attempts_arrive_as_plain_args_in_bash`：**让真 bash 执行渲染出来的那一行**，
+// 看那几个危险值是不是原样、作为一个参数到了 `ccm` 手里。「预览不写」那一条也不需要了 ——
+// `render` 连 home 都不收，结构上够不到任何文件。
+
+/// ★★ 注入：值里的 `;` / `$( )` / 反引号 / `|` / 换行以外的一切，到了 shell 里**只是一个参数**。
 #[test]
-fn the_alias_fence_only_lets_the_generated_shape_through() {
-    for ok in [
-        "alphacc() { ccm --account 'z' \"$@\"; }",
-        "betacc() { ccm \"$@\"; }",
-        "alphacct() { ccm --tmux --account 'z' --agent codex --model 'opus' \"$@\"; }",
-        "basecc() { ccm --base --launcher '/usr/bin/claude' \"$@\"; }",
-        "m() { ccm --model 'claude-opus-4-1' \"$@\"; }",
-        // `q()` 对含引号的值产出的那一形 —— 反斜杠唯一合法的出场
-        "q1() { ccm --model 'a'\\''b' \"$@\"; }",
-    ] {
+fn injection_attempts_arrive_as_plain_args_in_bash() {
+    let evil = [
+        "z; rm -rf ~",
+        "$(id -u)",
+        "`id -u`",
+        "a | sh",
+        "a > ~/.bashrc",
+        "it's",
+        "\"$@\"",
+    ];
+    for v in evil {
+        let a = al("evil", &["--account", v]);
+        assert_eq!(check_alias(&a), Ok(()), "{v:?}");
+        let script = format!(
+            "ccm() {{ printf '%s\\n' \"$@\"; }}\n{}\nevil\n",
+            render_line(&a)
+        );
+        let out = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(&script)
+            .output()
+            .expect("起 bash");
         assert!(
-            validate_alias_line(ok).is_ok(),
-            "围栏拒了一个 `buildAliasLine` 真会产出的形状：{ok:?} —— \
-                 收太紧会让用户在界面上点了「写入」却永远写不成"
+            out.status.success(),
+            "{v:?}：{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let got: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            got,
+            vec!["--account".to_string(), v.to_string()],
+            "{v:?} 没有原样到达"
         );
     }
-    for bad in [
-        // 注入：分号起第二条命令
-        "alphacc() { ccm --account 'z'; rm -rf ~ \"$@\"; }",
-        // 注入：命令替换
-        "alphacc() { ccm --account $(id -u) \"$@\"; }",
-        "alphacc() { ccm --account `id -u` \"$@\"; }",
-        // 注入：后台 / 管道 / 重定向
-        "alphacc() { ccm --account z & \"$@\"; }",
-        "alphacc() { ccm --account z | sh \"$@\"; }",
-        "alphacc() { ccm --account z > ~/.bashrc \"$@\"; }",
-        // 换行：整条第二行都是自由的
-        "alphacc() { ccm\nrm -rf ~ \"$@\"; }",
-        // 名字非法：带空格粘进 rc 会当场弄坏 shell 配置（Phase D 审计逼出来的那条）
-        "my alias() { ccm \"$@\"; }",
-        "2cc() { ccm \"$@\"; }",
-        // 修饰不在闭集里
-        "alphacc() { ccm --dangerously-skip-permissions \"$@\"; }",
-        // 形状：不转发 "$@"
-        "alphacc() { ccm --account 'z'; }",
-        // 引号不配平
-        "alphacc() { ccm --model 'op \"$@\"; }",
-        // 干脆不是我们生成的东西
-        "rm -rf ~",
-        "",
-    ] {
-        assert!(
-            validate_alias_line(bad).is_err(),
-            "围栏放行了 {bad:?} —— 这一行会被写进一份用户 shell 会 source 的文件"
-        );
-    }
+    // 换行 / 控制字符根本进不了渲染（一条别名只许占一行）。
+    assert!(check_alias(&al("nl", &["--account", "a\nb"])).is_err());
 }
 
-/// ★★ **整份重写**：删了账号，它那条命令当场没了。
-///
-/// 这一条买的正是「为什么不往 `~/.bashrc` 追加」——追加那条路上，
-/// 下面第二次调用只会让文件里**同时**有 `alphacc` 和 `betacc`。
+/// ★★ **整份重写**：清单里删了一条，它那一行当场没了（「往 rc 里追加」那条路删不掉）。
 #[test]
-fn regenerating_drops_the_account_you_deleted() {
+fn rewriting_drops_the_alias_you_deleted() {
     let h = tmp_home("regen");
     let two = vec![
-        "alphacc() { ccm --account 'z' \"$@\"; }".to_string(),
-        "betacc() { ccm --account 'b' \"$@\"; }".to_string(),
+        al("alphacc", &["--account", "z"]),
+        al("betacc", &["--account", "b"]),
     ];
-    let r = apply(&h.0, &two, None, false).expect("第一次生成");
-    assert!(r.wrote_alias_file, "第一次必须真写：{r:?}");
+    assert!(install_in(&h.0, &two, None).unwrap().wrote_alias_file);
     let p = alias_file_in(&h.0);
-    let after = std::fs::read_to_string(&p).expect("读回生成文件");
-    // ⚠ 比的是**整行相等**，而且拿的是喂进去的那一行本身 ——
-    //   `contains("alphacc()")` 这种子串比法的匹配单位比事实小：那一行被截断 / 被改了修饰，
-    //   它照样绿（`needle_anchor_registry` 那条递减棘轮数的正是这一族）。
+    let after = std::fs::read_to_string(&p).unwrap();
+    for a in &two {
+        assert!(pinned(&after, &render_line(a)), "{after}");
+    }
+    let one = vec![al("alphacc", &["--account", "z"])];
+    install_in(&h.0, &one, None).unwrap();
+    let after = std::fs::read_to_string(&p).unwrap();
     assert!(
-        pinned(&after, &two[0]) && pinned(&after, &two[1]),
-        "{after}"
+        pinned(&after, &render_line(&one[0])),
+        "留下来的那条没了：{after}"
     );
-
-    // 删掉 b 这个账号之后再生成一次
-    let one = vec!["alphacc() { ccm --account 'z' \"$@\"; }".to_string()];
-    apply(&h.0, &one, None, false).expect("第二次生成");
-    let after = std::fs::read_to_string(&p).expect("读回生成文件");
-    assert!(pinned(&after, &one[0]), "留下来的那条没了：{after}");
     assert!(
-        !pinned(&after, &two[1]),
-        "★ 删了账号，它那条命令还在 —— 那正是「往 rc 里追加」这条路的病：{after}"
+        !pinned(&after, &render_line(&two[1])),
+        "★ 删了一条，它那一行还在：{after}"
     );
 }
 
-/// 内容一致 ⇒ **一个字节都不写**（不是「写了一遍一样的」）。
-#[test]
-fn identical_content_is_not_rewritten() {
-    let h = tmp_home("idem");
-    let lines = vec!["alphacc() { ccm --account 'z' \"$@\"; }".to_string()];
-    assert!(apply(&h.0, &lines, None, false).unwrap().wrote_alias_file);
-    let r = apply(&h.0, &lines, None, false).unwrap();
-    assert!(
-        !r.wrote_alias_file && r.alias_file_unchanged,
-        "第二次不该再写：{r:?}"
-    );
-}
-
-/// 预览**一个字节都不写** —— 「看一眼会发生什么」不该有副作用。
-#[test]
-fn dry_run_touches_nothing() {
-    let h = tmp_home("dry");
-    let lines = vec!["alphacc() { ccm --account 'z' \"$@\"; }".to_string()];
-    let r = apply(&h.0, &lines, None, true).expect("预览");
-    assert_eq!(r.names, vec!["alphacc".to_string()]);
-    assert!(!r.wrote_alias_file);
-    assert!(
-        !alias_file_in(&h.0).exists(),
-        "预览把文件写出来了 —— 那它就不是预览"
-    );
-}
-
-/// 一条不合法 ⇒ **整批不写**。半份别名文件比没有更坏。
-#[test]
-fn one_bad_line_aborts_the_whole_batch() {
-    let h = tmp_home("batch");
-    let lines = vec![
-        "alphacc() { ccm --account 'z' \"$@\"; }".to_string(),
-        "evil() { ccm --account 'z'; curl x|sh \"$@\"; }".to_string(),
-    ];
-    assert!(apply(&h.0, &lines, None, false).is_err());
-    assert!(
-        !alias_file_in(&h.0).exists(),
-        "整批该被拒，可文件已经建出来了"
-    );
-}
-
-/// 同名两条 ⇒ 拒。后一条会静默盖掉前一条，而用户只会看见「少了一个命令」。
+/// 同名两条 ⇒ 拒，一个字节都不写（后一条会静默盖掉前一条，而用户只会看见「少了一个命令」）。
 #[test]
 fn duplicate_names_are_refused() {
     let h = tmp_home("dup");
-    let lines = vec![
-        "alphacc() { ccm --account 'z' \"$@\"; }".to_string(),
-        "alphacc() { ccm --account 'b' \"$@\"; }".to_string(),
+    let two = vec![
+        al("alphacc", &["--account", "z"]),
+        al("alphacc", &["--account", "b"]),
     ];
-    assert!(apply(&h.0, &lines, None, false).is_err());
+    assert!(install_in(&h.0, &two, None).is_err());
+    assert!(!alias_file_in(&h.0).exists());
 }
 
 /// ★★ rc 那一行：**加一次，第二次一个字节都不写**，而且用户自己的内容一行不动。
@@ -175,7 +124,6 @@ fn the_rc_source_line_is_added_once_and_keeps_user_content() {
     let h = tmp_home("rc");
     let rc = h.0.join(".bashrc");
     std::fs::write(&rc, "export PATH=$PATH:/opt/bin\nalias ll='ls -l'\n").expect("写 rc");
-    let lines = vec!["alphacc() { ccm --account 'z' \"$@\"; }".to_string()];
     let line = source_line(&alias_file_in(&h.0));
 
     let added = ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect("第一次装");
@@ -197,10 +145,8 @@ fn the_rc_source_line_is_added_once_and_keeps_user_content() {
     assert_eq!(twice.matches(&line).count(), 1, "那一行出现了两次：{twice}");
 
     // 顺带：候选表能认出「已经 source 过了」
-    let r = apply(&h.0, &lines, None, true).expect("预览");
-    let me = r
-        .rc_candidates
-        .iter()
+    let me = rc_candidates_in(&h.0)
+        .into_iter()
         .find(|c| c.path == rc.display().to_string())
         .expect("候选里该有 .bashrc");
     assert!(me.sourced, "装完了还说没 source 过：{me:?}");

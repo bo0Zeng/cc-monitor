@@ -1,41 +1,34 @@
-//! `K-R49`：**加了账号，那条命令也该跟着有** —— 每个账号一条 shell 命令，而且真的落盘。
+//! 别名：**名字 ＋ 一组 ccm 参数**（`设计/71`）。一类，没有「账号别名」这一种。
 //!
-//! 〔用 09-10〕逐字：「**比如添加账号后添加对应命令, 像是 alphacc, betacc 这种, 我现在添加了一个
-//! 账号但是没法直接添加命令, 还得手动去改**」。
+//! 〔用 2026-09-17〕逐字：「**不要有 account alias 这种东西。alias 应该独立吗？应该就是 ccm
+//! 参数附加器。即生成别名，都是调用 ccm，ccm 本身就可以指定账号。**」
 //!
-//! # 🔴 落点：**我们自己那份文件**，不是用户的 `~/.bashrc`
+//! # 来历（`K-R49`）
 //!
-//! 别名**本身**由 TS 侧的 `buildAliasLine` 生成（全仓唯一那份生成器，本模块**不再造第二份**）。
-//! 本模块只回答「写到哪、怎么写、什么时候不写」三件事，而第一件的答案刻意**不是** `~/.bashrc`：
+//! 本模块起于 09-10 那一句「**添加账号后添加对应命令, 像是 alphacc, betacc 这种……还得手动去改**」：
+//! 那时它按**账号表**整份重写一份文件，TS 侧的 `buildAliasLine`〔散文墓碑〕拼行、这里只管落盘
+//! ＋ 一道「形状围栏」挡注入。〔AL1 · 2026-09-24〕两处都翻了：清单归**用户**（不再是账号表的投影，
+//! `71 §8`），shell 文本由**本模块**渲染（前端递的是结构，不是代码 —— 审计 S-1 那条
+//! 「后端拥有那段文本」终于对别名也成立了），那道形状围栏随之退役。
 //!
-//! 1. **重复追加**：加三个账号往 rc 里追三次，没有任何东西负责去重；
-//! 2. **删不掉**：账号删了那一行还在，指向一个不存在的账号；
+//! # 🔴 落点：**我们自己那份文件**，不是用户的 `~/.bashrc`（这一条没变）
+//!
+//! 往 rc 里追加的那条路有三条病：
+//! 1. **重复追加**：没有任何东西负责去重；
+//! 2. **删不掉**：删了一条，那一行还在；
 //! 3. **弄坏的代价是「shell 起不来」** —— 而那正是用户用来救火的东西。
 //!
-//! ⇒ 落点是 [`alias_file_in`]（`~/.cc-monitor/account-aliases.sh`，**monitor 自己的目录**，
-//! 与 `local_backend` / `local_backend_host` 用的是同一个），**每次按账号表整份重写**：
-//! 幂等、删了账号那一行当场消失、删掉整份文件也只是少几个命令，shell 照常起得来。
+//! ⇒ 落点是 [`alias_file_in`]（`~/.cc-monitor/account-aliases.sh`，**monitor 自己的目录**），
+//! **整份重写**：幂等、删一条当场消失、删掉整份文件也只是少几个命令，shell 照常起得来。
+//! （文件名里的 `account` 是历史：改名要动每个人 rc 里那一行 source，`71 §9.2` 那道迁移题本路没做。）
 //!
 //! # 用户的 shell 配置里最多只多**一行** `source`，而且多数人连这一行都不用加
 //!
-//! `src/shared/ccm-aliases.sh`（装 ccm 别名块时写进 rc 的那一份）本轮起自带一行
-//! `if [ -r … ]; then . …; fi` 指向这份生成文件 ⇒ **已经装了 ccm 别名块的人，加账号之后什么都不用做**。
-//! 没装的人可以让本模块把那一行 `source` 写进**他自己指定**的那份 rc（[`apply`] 的 `rc`
-//! 参数）—— 路径由界面上的人选，本模块**不猜**（`§0e`：`.bashrc` / `.zshrc` /
-//! fish 的 `config.fish` 写法不同，猜一个写进去是最坏的那条路）。那一行走
-//! BEGIN/END 围栏 + 备份 + 原子替换 + 写后回读校验 + 失败回滚，与 `profile_installer`
-//! 同一套原语，且**幂等**（已经 source 过就一个字节都不写）。
-//!
-//! # 🔴 围栏：前端递过来的是**要被 shell 执行的代码**
-//!
-//! 那一侧 `sftp.rs` 早就写过这条账（审计 S-1：「写进 ~/.bashrc 的是被 shell **执行**的代码，
-//! 绝不能让前端注入任意 bash」），它的解法是「后端拥有那段文本」。本模块拿不到那条路 ——
-//! 别名的**内容**天然来自用户填的那几个格子 ⇒ 改成**形状围栏**：[`validate_alias_line`]
-//! 只接受 `名字() { ccm <已知修饰...> "$@"; }` 这**一个**形状，命令分隔符 / 展开符
-//! （`;` `&` `|` `$` 反引号 `(` `)` 换行 …）一个都不放行。
-//!
-//! ⚠ **它是围栏，不是第二个生成器** —— 它只判「合不合法」，一个字节的内容都不产出。
-//! 这条分界是有意的：生成器有两份就会漂，围栏有两份只是更严。
+//! `src/shared/ccm-aliases.sh`（别名块）自带一行 `if [ -r … ]; then . …; fi` 指向这份文件 ⇒
+//! 装了别名块的人什么都不用做。没装的人可以让 [`install_in`] 把那一行写进**他自己指定**的那份 rc
+//! —— 路径由界面上的人选，本模块**不猜**（`.bashrc` / `.zshrc` / fish 写法不同）。
+//! 围栏 ＋ 备份 ＋ 原子替换 ＋ 写后回读 ＋ 回滚 走 `fenced_block::apply` —— 与别名块、
+//! PowerShell profile、远端 rc **同一份规则**（`71 §12.5`）。
 
 use std::path::{Path, PathBuf};
 
@@ -56,19 +49,6 @@ pub(crate) const RC_END: &str = "# === cc-monitor aliases END ===";
 const FILE_BEGIN: &str = "# === cc-monitor aliases BEGIN v2 ===";
 const FILE_END: &str = "# === cc-monitor aliases END ===";
 
-/// `buildAliasLine` 会拼出来的**全部**修饰。围栏按这张表认词，多一个就红。
-///
-/// ⚠ 它与 TS 那一侧 `buildAliasLine` 的 `flags` 是同一件事的两个住址，
-/// 而这一侧是**收窄**方向：TS 多加一个修饰而这里忘了加 ⇒ 写不进去（报错，不是静默丢）。
-const KNOWN_FLAGS: &[&str] = &[
-    "--tmux",
-    "--account",
-    "--base",
-    "--agent",
-    "--model",
-    "--launcher",
-];
-
 /// 界面上那个「要不要把这一行 `source` 加进去」的候选。**只列真实存在的那几份。**
 ///
 /// ⚠ fish 的 `config.fish` **不在这里**，那不是遗漏：生成文件是 POSIX sh 的函数写法，
@@ -85,30 +65,6 @@ pub struct AccountAliasRc {
     pub path: String,
     /// 这份 rc 今天已经把生成文件 `source` 进去了吗（装过 ccm 别名块的人这一格就是 true）。
     pub sourced: bool,
-}
-
-/// 一次生成的结果 —— **预览与真写走同一个返回形状**，差别只在 `wrote_*` 那两格。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct AccountAliasReport {
-    /// 生成文件的绝对路径。
-    pub alias_path: String,
-    /// 这一份文件里会有哪几条命令（按传进来的顺序）。
-    pub names: Vec<String>,
-    /// 名字撞了的那几条，每条一句人话。**只出声，不拦** —— 见模块头注。
-    pub collisions: Vec<String>,
-    /// 这台机器上找得到的 shell 配置候选。
-    pub rc_candidates: Vec<AccountAliasRc>,
-    /// 真写了生成文件吗（预览恒 false）。
-    pub wrote_alias_file: bool,
-    /// 内容与盘上那份逐字相同 ⇒ **一个字节都没写**。
-    pub alias_file_unchanged: bool,
-    /// 往用户 rc 里加了那一行 `source` 吗（已经有了 ⇒ false，且 `notes` 里说明）。
-    pub wrote_rc: bool,
-    /// 给人看的补充说明，一条一句。
-    pub notes: Vec<String>,
 }
 
 /// 生成文件的绝对路径。`home` 由调用方给 —— 测试拿临时目录当 home，**绝不碰真实家目录**。
@@ -133,7 +89,7 @@ pub fn source_line(alias_path: &Path) -> String {
 /// 把中段按 POSIX 单引号规则切成词，顺便证明引号是配平的。
 ///
 /// ⚠ 反斜杠**只**在 `'\''`（关引号 + 转义的引号 + 开引号）这一形里放行 ——
-/// 它是 `buildAliasLine` 的 `q()` 唯一会产出的反斜杠；别处出现一律拒。
+/// 它是 `shell_quote_core::posix_quote` 唯一会产出的反斜杠（从前 TS 那个 `q()` 也是这一形）；别处出现一律拒。
 fn split_words(mid: &str) -> Result<Vec<String>, String> {
     let mut words: Vec<String> = Vec::new();
     let mut cur = String::new();
@@ -174,55 +130,6 @@ fn split_words(mid: &str) -> Result<Vec<String>, String> {
         words.push(cur);
     }
     Ok(words)
-}
-
-/// 🔴 **形状围栏**：只放行 `名字() { ccm <已知修饰...> "$@"; }` 这一个形状。
-///
-/// 它挡的是**注入**，不是难看：放进用户 shell 会被执行的那一行，一个命令分隔符都不许有。
-pub fn validate_alias_line(line: &str) -> Result<String, String> {
-    let rest = line
-        .strip_suffix(" \"$@\"; }")
-        .ok_or_else(|| format!("形状不对（结尾必须是 ` \"$@\"; }}`）：{line}"))?;
-    let (name, tail) = rest
-        .split_once("() { ccm")
-        .ok_or_else(|| format!("形状不对（缺 `() {{ ccm`）：{line}"))?;
-    if name.is_empty()
-        || !name
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-    {
-        return Err(format!(
-            "命令名只能用字母/数字/下划线、且不能以数字开头（实得 {name:?}）"
-        ));
-    }
-    let mid = match tail {
-        "" => "",
-        t => t
-            .strip_prefix(' ')
-            .ok_or_else(|| format!("`ccm` 后面缺一个空格：{line}"))?,
-    };
-    // 先按字符集拒一遍：命令分隔符 / 展开符 / 重定向 / 通配 一个都不放行。
-    for c in mid.chars() {
-        let ok = c.is_ascii_alphanumeric()
-            || matches!(
-                c,
-                ' ' | '-' | '_' | '.' | ',' | ':' | '/' | '@' | '=' | '+' | '\'' | '\\'
-            );
-        if !ok {
-            return Err(format!("修饰里出现了不许出现的字符 {c:?}：{line}"));
-        }
-    }
-    for w in split_words(mid)? {
-        if w.starts_with('-') && !KNOWN_FLAGS.contains(&w.as_str()) {
-            return Err(format!("不认识的修饰 `{w}`：{line}"));
-        }
-        if w.is_empty() {
-            return Err(format!("修饰里有一个空词：{line}"));
-        }
-    }
-    Ok(name.to_string())
 }
 
 /// 整份生成文件的内容。**没有时间戳** —— 有了就永远比不出「内容没变」，每次都要写一遍。
@@ -691,77 +598,6 @@ fn ensure_rc_source_line(home: &Path, rc_raw: &str, line: &str) -> Result<bool, 
         applied,
         crate::fenced_block::Applied::Written { .. }
     ))
-}
-
-/// 正题：按账号表生成/重写那份别名文件，并（可选）把那一行 `source` 装进指定的 rc。
-///
-/// `dry_run = true` 时**一个字节都不写**，只把同一份报告算出来给界面预览。
-pub fn apply(
-    home: &Path,
-    lines: &[String],
-    rc: Option<&str>,
-    dry_run: bool,
-) -> Result<AccountAliasReport, String> {
-    // 🔴 先整批过围栏：**有一条不合法就整批不写**（fail-closed）。
-    // 写一半的别名文件是最坏的结局 —— 它 source 得进去，而少了的那几条没人会发现。
-    let mut names: Vec<String> = Vec::new();
-    for l in lines {
-        names.push(validate_alias_line(l)?);
-    }
-    {
-        let mut sorted = names.clone();
-        sorted.sort();
-        let before = sorted.len();
-        sorted.dedup();
-        if sorted.len() != before {
-            return Err("同一个命令名出现了两次 —— 后一条会静默盖掉前一条，先把名字改开".into());
-        }
-    }
-
-    let alias_path = alias_file_in(home);
-    let content = render_file(lines);
-    let line = source_line(&alias_path);
-    let collisions: Vec<String> = names.iter().filter_map(|n| collision_note(n)).collect();
-    let mut notes: Vec<String> = Vec::new();
-    let mut wrote_alias_file = false;
-    let mut alias_file_unchanged = false;
-    let mut wrote_rc = false;
-
-    if dry_run {
-        notes.push("这是预览：盘上一个字节都没动。".to_string());
-    } else {
-        match write_alias_file(&alias_path, &content)? {
-            true => wrote_alias_file = true,
-            false => {
-                alias_file_unchanged = true;
-                notes.push("别名文件的内容和盘上那份逐字相同 —— 一个字节都没写。".to_string());
-            }
-        }
-        if let Some(rc_raw) = rc {
-            if ensure_rc_source_line(home, rc_raw, &line)? {
-                wrote_rc = true;
-                notes.push(format!(
-                    "往 {rc_raw} 里加了一行 `source`（围栏 `{RC_BEGIN}`，要撤就整块删掉）。"
-                ));
-            } else {
-                notes.push(format!("{rc_raw} 里已经 source 过这份文件了 —— 没再动它。"));
-            }
-        }
-    }
-    notes.push(format!(
-        "生效方式：`. {}`，或者开一个新终端。",
-        alias_path.display()
-    ));
-    Ok(AccountAliasReport {
-        alias_path: alias_path.display().to_string(),
-        names,
-        collisions,
-        rc_candidates: rc_candidates_in(home),
-        wrote_alias_file,
-        alias_file_unchanged,
-        wrote_rc,
-        notes,
-    })
 }
 
 #[cfg(test)]
