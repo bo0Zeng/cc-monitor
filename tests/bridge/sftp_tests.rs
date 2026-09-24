@@ -1258,25 +1258,30 @@ fn bytes_on_disk_but_read_empty_is_refused() {
 /// 两个命令都把 profile 交给 `SftpFile` ＋ `fenced_block::apply`（不在函数体里自己读）。
 #[test]
 fn profile_read_modify_write_goes_through_the_failsafe_reader() {
-    let raw = include_str!("../../src/bridge/src/sftp.rs");
-    let src = guard_core::production_code(raw);
-    let body = |sig: &str| -> String {
-        let i = src
+    // ⚠ 刻意不用裸 `contains`：`needle_anchor_registry` 那条递减棘轮治的正是「匹配单位比事实小」。
+    //   针要么是完整的调用形（`find_pinned`：恰好一处 ＋ 两侧有边界），要么是一个词（`contains_word`）。
+    let sftp_prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let item = |sig: &str, end: &str| -> String {
+        let i = sftp_prod
             .find(sig)
             .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = src[i..]
-            .find("\n    }\n")
+        let j = sftp_prod[i..]
+            .find(end)
             .map(|k| i + k)
-            .unwrap_or(src.len());
-        src[i..j].to_string()
+            .unwrap_or(sftp_prod.len());
+        sftp_prod[i..j].to_string()
     };
-    let read = body("async fn read(&self) -> Result<Option<String>, String> {");
-    assert!(
-        read.contains("read_profile_text(self.sftp, &self.path"),
-        "SftpFile::read 没走 fail-safe 读取器：{read}"
+    let reader = item(
+        "async fn read(&self) -> Result<Option<String>, String> {",
+        "\n    }\n",
     );
+    guard_core::find_pinned(
+        &reader,
+        "read_profile_text(self.sftp, &self.path, &self.what)",
+    )
+    .unwrap_or_else(|e| panic!("SftpFile::read 没走 fail-safe 读取器（{e}）：{reader}"));
     assert!(
-        !read.contains("read_optional("),
+        !guard_core::contains_word(&reader, "read_optional"),
         "SftpFile::read 又直接拿 read_optional 读了——那会把「读不出来」当成空文件，\
              于是跳过备份 + 整份覆盖 / 谎报无需卸载"
     );
@@ -1284,28 +1289,30 @@ fn profile_read_modify_write_goes_through_the_failsafe_reader() {
     for (sig, transform) in [
         (
             "pub async fn uninstall_remote_ccm_helper(",
-            "strip_profile_block(",
+            "strip_profile_block",
         ),
         (
             "pub async fn install_remote_ccm_helper(",
-            "merge_profile_block(",
+            "merge_profile_block",
         ),
     ] {
-        let i = src.find(sig).unwrap_or_else(|| panic!("找不到 {sig}"));
-        let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
-        let code = &src[i..j];
+        let cmd_body = item(sig, "\n}\n");
         assert!(
-            code.contains(transform),
+            guard_core::contains_word(&cmd_body, transform),
             "{sig}: 找不到 {transform}——守卫失效了"
         );
+        guard_core::find_pinned(&cmd_body, "crate::fenced_block::apply(&rc,")
+            .unwrap_or_else(|e| panic!("{sig}: profile 没交给 fenced_block::apply（{e}）"));
         assert!(
-            code.contains("SftpFile {") && code.contains("crate::fenced_block::apply(&rc"),
-            "{sig}: profile 没交给 SftpFile ＋ fenced_block::apply"
+            guard_core::contains_word(&cmd_body, "SftpFile"),
+            "{sig}: profile 没交给 SftpFile"
         );
-        assert!(
-            !code.contains("read_optional(") && !code.contains("read_profile_text("),
-            "{sig}: 又在函数体里自己读 profile 了 —— 读取只许有 SftpFile::read 那一个住址"
-        );
+        for reader_prim in ["read_optional", "read_profile_text"] {
+            assert!(
+                !guard_core::contains_word(&cmd_body, reader_prim),
+                "{sig}: 又在函数体里自己读 profile 了（{reader_prim}）—— 读取只许有 SftpFile::read 那一个住址"
+            );
+        }
         checked += 1;
     }
     assert_eq!(checked, 2, "期望恰好两个 profile 命令，实得 {checked}");

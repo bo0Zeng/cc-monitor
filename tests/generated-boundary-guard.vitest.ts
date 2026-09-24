@@ -134,6 +134,12 @@ describe("C01 边界生成物", () => {
       // ⚠ 顺序按目录名排序，别按加入时间摆。
       "AcctIsoStatus.ts", //          C04d 批3（**抓到漂移**：TS 原来只认 1/3 个字段）
       "ActiveSessionPayload.ts", //   C04b
+      // 〔AL1 · 2026-09-24〕`设计/71`：一类别名（名字 ＋ 一组 ccm 参数）· 渲染（纯）· 读回 · 写入。
+      "Alias.ts",
+      "AliasInstallReport.ts",
+      "AliasListing.ts",
+      "AliasProblem.ts",
+      "AliasRender.ts",
       "ApiMessage.ts", //             C04c
       // K-A1：账号的**鉴权方式**（`subscription` | `api-key`）。
       // 加它之前 `RemoteAccount` 压根没有 ts_rs derive，两侧靠一行注释对齐 ⇒

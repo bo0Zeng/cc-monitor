@@ -51,8 +51,10 @@ pub(crate) const RC_BEGIN: &str = "# === cc-monitor aliases BEGIN v1 ===";
 pub(crate) const RC_END: &str = "# === cc-monitor aliases END ===";
 
 /// 生成文件自己的围栏（整份重写，所以它只是给人看的边界）。
-const FILE_BEGIN: &str = "# === cc-monitor account aliases BEGIN v1 ===";
-const FILE_END: &str = "# === cc-monitor account aliases END ===";
+/// 〔AL1 · 2026-09-24〕v1 → v2：`71` 逐字「不要有 account alias 这种东西」—— 文件里只有**一类**别名。
+/// 读回（[`read_in`]）不认这两行（注释行一律跳过），所以盘上那份 v1 照样读得回来。
+const FILE_BEGIN: &str = "# === cc-monitor aliases BEGIN v2 ===";
+const FILE_END: &str = "# === cc-monitor aliases END ===";
 
 /// `buildAliasLine` 会拼出来的**全部**修饰。围栏按这张表认词，多一个就红。
 ///
@@ -229,12 +231,12 @@ pub fn render_file(lines: &[String]) -> String {
     out.push_str(FILE_BEGIN);
     out.push('\n');
     out.push_str(
-        "# 这份文件由 cc-monitor 按账号表**整份重写**，别手改 —— 下一次生成会原样覆盖。\n\
-         # 删了某个账号、再生成一次，它那条命令就跟着没了（这正是它不住在你 rc 里的理由）。\n\
+        "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n\
+         # 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n\
          # 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n",
     );
     if lines.is_empty() {
-        out.push_str("# （当前一个账号命令都没有）\n");
+        out.push_str("# （当前一条别名都没有）\n");
     }
     for l in lines {
         out.push_str(l);
@@ -243,6 +245,342 @@ pub fn render_file(lines: &[String]) -> String {
     out.push_str(FILE_END);
     out.push('\n');
     out
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔AL1 · 2026-09-24〕`设计/71`：**别名只有一类 —— 名字 ＋ 一组 ccm 参数**
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// 用户 2026-09-17 逐字：「不要有 account alias 这种东西……就是 ccm 参数附加器」。
+// 账号（`--account`）只是参数里的一个维度。清单由**用户**拥有，不跟着账号表自动增删（`71 §8`）。
+//
+// 命令面是两跳（`71 §12.6`）：
+//   ① [`render`] —— **纯**：清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。预览、复制都只调这一跳；
+//   ② [`install_in`] —— **唯一的副作用**：同一份渲染落进 `~/.cc-monitor/account-aliases.sh`，
+//      可选地往用户选的 rc 里装一行 `source`。它收的是**清单**不是代码 —— 写进 shell 的文本
+//      只由本模块产出（审计 S-1：绝不让前端注入可执行的 shell），而「写的就是预览的那一份」
+//      由两跳调同一个 [`render`] 保证。
+// 读回口：[`read_in`] 把盘上那份按行解析回清单（`70 §3.1` 那张「没有的」表第一条）。
+
+/// 一条别名。`args` 是原样的 ccm argv（`["--tmux", "--account", "z"]`），渲染时逐个按需加引号。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct Alias {
+    pub name: String,
+    pub args: Vec<String>,
+}
+
+/// 一条别名的问题（进不了代码的那一条为什么进不了）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct AliasProblem {
+    pub name: String,
+    pub message: String,
+}
+
+/// ① 那一跳的产物。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct AliasRender {
+    /// 整份文件（写入那一跳原样落盘的就是它；手贴的人复制它或 `lines`）。
+    pub code: String,
+    /// 每条合格别名的那一行，按清单顺序。
+    pub lines: Vec<String>,
+    /// 不合格的那几条。**非空时 [`install_in`] 一个字节都不写**（fail-closed）。
+    pub problems: Vec<AliasProblem>,
+    /// 名字撞了的提示，一条一句。**只出声、不拦**（`cc` 在多数机器上是 C 编译器，盖不盖由人定）。
+    pub collisions: Vec<String>,
+}
+
+/// 读回口的产物。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct AliasListing {
+    pub alias_path: String,
+    /// 那份文件在不在。不在 ≠ 读失败（读失败是 `Err`）。
+    pub exists: bool,
+    pub aliases: Vec<Alias>,
+    /// 解析不回清单的那几行（原文 ＋ 原因）。**不静默丢**：写回去之前人得知道它们会没。
+    pub unparsed: Vec<String>,
+    /// 这台机器上找得到的 shell 配置候选（「那一行 source 加进哪份」）。
+    pub rc_candidates: Vec<AccountAliasRc>,
+}
+
+/// ② 那一跳的产物。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct AliasInstallReport {
+    pub alias_path: String,
+    pub wrote_alias_file: bool,
+    pub wrote_rc: bool,
+    /// 给人看的补充说明，一条一句。
+    pub notes: Vec<String>,
+}
+
+/// 能进别名的 ccm 修饰：`(旗标, 要不要跟一个值)`。`71 §4` 第一、二档；
+/// 第三档（`resume` / `attach` / `--ccm-sid` / `--print` / …）每次取值都不同，做成固定别名没意义 ⇒ 不收。
+/// `--tmux=<名>` 是 `--tmux` 的内联形，另判；`--` 之后原样透传给 agent。
+///
+/// ⚠ 每一个旗标都得是后端 `ccm --help` 里真有的那个词 —— 判据
+/// `account_aliases_tests.rs::every_alias_flag_is_a_real_ccm_flag` 去后端的用法文本里对（异源）。
+pub(crate) const ALIAS_FLAGS: &[(&str, bool)] = &[
+    ("--cwd", true),
+    ("--account", true),
+    ("--base", false),
+    ("--tmux", false),
+    ("--tmux-base", true),
+    ("--agent", true),
+    ("--model", true),
+    ("--launcher", true),
+    ("--tmux-size", true),
+    ("--detach", false),
+    ("--bus-register", false),
+    ("--bus-note", true),
+];
+
+/// 名字的规则（`71 §5` V5 前半）：POSIX shell 函数名。
+fn name_is_valid(name: &str) -> bool {
+    let mut cs = name.chars();
+    cs.next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// 一条别名合不合格。**这些是「判定的规则」**（`71 §12.3` 第 6 格），与哪种 shell 无关。
+pub fn check_alias(a: &Alias) -> Result<(), String> {
+    if !name_is_valid(&a.name) {
+        return Err("名字只能用字母、数字、下划线，而且不能以数字开头".into());
+    }
+    let (mut account, mut base, mut tmux, mut tmux_named, mut tmux_base) =
+        (false, false, false, false, false);
+    let (mut size, mut detach, mut bus) = (false, false, false);
+    let mut it = a.args.iter();
+    while let Some(w) = it.next() {
+        if w.chars().any(char::is_control) {
+            return Err("参数里有换行或控制字符".into());
+        }
+        if w == "--" {
+            if it.any(|x| x.chars().any(char::is_control)) {
+                return Err("参数里有换行或控制字符".into());
+            }
+            break;
+        }
+        if let Some(n) = w.strip_prefix("--tmux=") {
+            if n.is_empty() {
+                return Err("`--tmux=` 后面缺会话名".into());
+            }
+            tmux = true;
+            tmux_named = true;
+            continue;
+        }
+        let Some((flag, takes)) = ALIAS_FLAGS.iter().find(|(f, _)| f == w) else {
+            return Err(format!("`{w}` 不能放进别名（只收 ccm 的修饰）"));
+        };
+        if *takes {
+            match it.next() {
+                Some(v) if !v.is_empty() && !v.chars().any(char::is_control) => {}
+                _ => return Err(format!("`{flag}` 后面缺一个值")),
+            }
+        }
+        match *flag {
+            "--account" => account = true,
+            "--base" => base = true,
+            "--tmux" => tmux = true,
+            "--tmux-base" => {
+                tmux = true;
+                tmux_base = true;
+            }
+            "--tmux-size" => size = true,
+            "--detach" => detach = true,
+            "--bus-register" => bus = true,
+            _ => {}
+        }
+    }
+    // V1–V4（`71 §5`，依据是 `ccm --help` 逐字）。
+    if account && base {
+        return Err("`--account` 与 `--base` 只能选一个".into());
+    }
+    if tmux_named && tmux_base {
+        return Err("`--tmux=<名>` 与 `--tmux-base` 只能选一个".into());
+    }
+    if bus && !detach {
+        return Err("`--bus-register` 要和 `--detach` 一起用".into());
+    }
+    if (size || detach) && !tmux {
+        return Err("`--tmux-size` 与 `--detach` 只在 tmux 里起的时候有意义".into());
+    }
+    Ok(())
+}
+
+/// 一个参数要不要加引号：只由「安全字符」组成的原样放，其余一律 POSIX 单引号
+/// （实现只有一份：`shell_quote_core::posix_quote`）。
+fn shell_word(w: &str) -> String {
+    let safe = !w.is_empty()
+        && w.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '_' | '-' | '.' | '/' | ':' | '@' | '%' | '+' | '=' | ',')
+        });
+    if safe {
+        w.to_string()
+    } else {
+        shell_quote_core::posix_quote(w)
+    }
+}
+
+/// 一条（合格的）别名在 POSIX shell 里那一行：`名字() { ccm <参数…> "$@"; }`。
+/// `"$@"` 必须在最后 —— 那就是「参数附加器」的全部含义：调用时再给的参数接在后面、后者胜。
+pub fn render_line(a: &Alias) -> String {
+    let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+    let mut out = format!("{}() {{ {word}", a.name);
+    for w in &a.args {
+        out.push(' ');
+        out.push_str(&shell_word(w));
+    }
+    out.push_str(" \"$@\"; }");
+    out
+}
+
+/// ① **纯**：清单 → 代码。一个字节都不写、一个文件都不读（撞名检查读的是自带片段与 `PATH`）。
+pub fn render(aliases: &[Alias]) -> AliasRender {
+    let mut lines = Vec::new();
+    let mut problems = Vec::new();
+    let mut seen: Vec<&str> = Vec::new();
+    for a in aliases {
+        if seen.contains(&a.name.as_str()) {
+            problems.push(AliasProblem {
+                name: a.name.clone(),
+                message: "同一个名字出现了两次 —— 后一条会盖掉前一条".into(),
+            });
+            continue;
+        }
+        seen.push(&a.name);
+        match check_alias(a) {
+            Ok(()) => lines.push(render_line(a)),
+            Err(message) => problems.push(AliasProblem {
+                name: a.name.clone(),
+                message,
+            }),
+        }
+    }
+    let collisions = aliases
+        .iter()
+        .filter(|a| name_is_valid(&a.name))
+        .filter_map(|a| collision_note(&a.name))
+        .collect();
+    AliasRender {
+        code: render_file(&lines),
+        lines,
+        problems,
+        collisions,
+    }
+}
+
+/// 把生成文件里的一行解析回一条别名。认两种调用词：裸 `ccm`，以及从前那种
+/// `"${CCM:-<路径>}"`（`K-R69` 的 `ccmInvocation` 吐过）—— 读回之后一律按裸 `ccm` 重写。
+fn parse_line(line: &str) -> Result<Alias, String> {
+    let rest = line
+        .strip_suffix(" \"$@\"; }")
+        .ok_or("结尾不是 `\"$@\"; }`")?;
+    let (name, body) = rest
+        .split_once("() { ")
+        .ok_or("不是 `名字() { … }` 的形状")?;
+    let mut words = split_words(body)?.into_iter();
+    let head = words.next().unwrap_or_default();
+    let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+    if head != word && !head.starts_with("\"${CCM:-") {
+        return Err(format!("调的不是 {word}"));
+    }
+    let a = Alias {
+        name: name.to_string(),
+        args: words.collect(),
+    };
+    check_alias(&a)?;
+    Ok(a)
+}
+
+/// **读回口**：盘上那份别名文件 → 清单。只读。
+pub fn read_in(home: &Path) -> Result<AliasListing, String> {
+    let path = alias_file_in(home);
+    let (exists, text) = match std::fs::read_to_string(&path) {
+        Ok(t) => (true, t),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (false, String::new()),
+        Err(e) => return Err(format!("读不了 {}：{e}", path.display())),
+    };
+    let mut aliases = Vec::new();
+    let mut unparsed = Vec::new();
+    for l in text.lines().map(str::trim) {
+        if l.is_empty() || l.starts_with('#') {
+            continue;
+        }
+        match parse_line(l) {
+            Ok(a) => aliases.push(a),
+            Err(why) => unparsed.push(format!("{l}（{why}）")),
+        }
+    }
+    Ok(AliasListing {
+        alias_path: path.display().to_string(),
+        exists,
+        aliases,
+        unparsed,
+        rc_candidates: rc_candidates_in(home),
+    })
+}
+
+/// ② **唯一的副作用**：把 [`render`] 的产物整份写进别名文件，可选地把一行 `source` 装进 `rc`。
+/// 有一条不合格 ⇒ **整批不写**（写一半的别名文件是最坏的结局：它 source 得进去，少了的没人发现）。
+pub fn install_in(
+    home: &Path,
+    aliases: &[Alias],
+    rc: Option<&str>,
+) -> Result<AliasInstallReport, String> {
+    let r = render(aliases);
+    if !r.problems.is_empty() {
+        let why: Vec<String> = r
+            .problems
+            .iter()
+            .map(|p| format!("{}：{}", p.name, p.message))
+            .collect();
+        return Err(format!(
+            "有 {} 条别名不合格，一条都没写：{}",
+            why.len(),
+            why.join("；")
+        ));
+    }
+    let path = alias_file_in(home);
+    let wrote_alias_file = write_alias_file(&path, &r.code)?;
+    let mut notes = Vec::new();
+    if !wrote_alias_file {
+        notes.push("别名文件和盘上那份一模一样，没有重写。".to_string());
+    }
+    let mut wrote_rc = false;
+    if let Some(rc_raw) = rc {
+        if ensure_rc_source_line(home, rc_raw, &source_line(&path))? {
+            wrote_rc = true;
+            notes.push(format!(
+                "{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。"
+            ));
+        } else {
+            notes.push(format!("{rc_raw} 里已经接上了这份文件，没有再动它。"));
+        }
+    }
+    notes.push(format!(
+        "新开一个终端就能用；当前终端要先执行一次 . {}",
+        path.display()
+    ));
+    Ok(AliasInstallReport {
+        alias_path: path.display().to_string(),
+        wrote_alias_file,
+        wrote_rc,
+        notes,
+    })
 }
 
 /// 这个名字是不是已经被占了。**只出声、不拦** —— 见 `§0c 问三`。
