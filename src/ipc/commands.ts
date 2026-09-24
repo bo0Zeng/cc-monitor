@@ -21,12 +21,16 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **89 个命令**（C04a 样板 1 + C04d 批 1-6c 的 88）。
- * 其余 10 个仍走各模块里的裸 `invoke`（119 − 109 = 10），由 **C04d** 后续批次迁进来。
+ * ~~**89 个命令**（C04a 样板 1 + C04d 批 1-6c 的 88）。其余 10 个仍走各模块里的裸 `invoke`。~~〔那是 C04d 时的读数〕
+ * ★★〔C4a · 第四波 · 子步 2〕**全部**：Rust 侧每一条命令在本表里都有且只有一个条目（今天 142/142，
+ * 数由 `commands.vitest.ts` 的包装层计数与 `RUST_COMMAND_COUNT` 两处钉着），
+ * 全仓 TS **只有本文件**直呼 `invoke`（判据：`commands.vitest.ts` 末尾「裸 invoke 只在包装层」那一节
+ * ＋ `generated-boundary-guard.vitest.ts` 的「直接 import invoke 的生产文件恰好 1 个」）。
  *
- * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
+ * ~~**条目按字母序**~~〔现打：早就不是了 —— 各批按落地顺序追加〕。加新条目时追加即可。
  *
- * **所以守卫里绝不能写「每个命令都必须经过包装层」**——那会假红，而假红的守卫会被人关掉。
+ * 〔C4a〕上一版这里写「守卫里绝不能写『每个命令都必须经过包装层』—— 那会假红」：
+ * 那句话记的是还剩裸 `invoke` 的年代；今天那条**就是**判据（零命中带正控）。
  *
  * ## 守卫实际钉住的四条（别少说也别多说）
  *
@@ -64,7 +68,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
-import type { ApikeyRoutingView } from "../accounts";
+import type { ApikeyRoutingView, RawAccountsResult, TrustResult } from "../accounts";
 
 export interface ApikeyCredentialsStatus {
   /** 配了没配。 */
@@ -183,6 +187,7 @@ import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionAccountsResult } from "../generated/SessionAccountsResult";
+import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 import type { TaskEntry } from "../generated/TaskEntry";
 
@@ -1088,4 +1093,53 @@ export const commands = {
     name: string;
     server: unknown;
   }) => invoke<void>("write_project_mcp_server", args),
+
+  // ════════════════════════════════════════════════════════════════════════
+  // 〔C4a · 子步 2〕**最后十条**：原先在 `tab-session-actions.ts`（tab 层）与 `accounts.ts`
+  // 里直呼裸 `invoke` 的那 16 处调的命令里，没进包装层的这十条。自此 **142/142** 条全部经本表，
+  // 全仓 TS 只有本文件直呼 `invoke`（判据 `commands.vitest.ts` 末尾「裸 invoke 只在包装层」那一节）。
+  // ════════════════════════════════════════════════════════════════════════
+
+  /** issue #10：把某会话在一个独立只读窗口（`viewer-<sid>`）里打开。`x`/`y` = 拖拽撕离的落点。**桶①**。 */
+  open_session_in_new_window: (args: {
+    sessionId: string;
+    title: string;
+    x?: number;
+    y?: number;
+  }) => invoke<void>("open_session_in_new_window", args),
+
+  /** 本机会话拉前（Windows 按 sid→HWND 缓存）。**桶①**。 */
+  bring_terminal_to_front: (args: { sessionId: string }) =>
+    invoke<void>("bring_terminal_to_front", args),
+
+  /** 远端会话拉前（后端唯一分派点：先启动令牌、后标题退路）。**桶①**。 */
+  bring_remote_terminal_to_front: (args: { sessionId: string }) =>
+    invoke<void>("bring_remote_terminal_to_front", args),
+
+  /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
+  forget_session: (args: { sessionId: string }) => invoke<void>("forget_session", args),
+
+  /** 把监控窗口拉到最前。**桶①**。 */
+  bring_monitor_to_front: () => invoke<void>("bring_monitor_to_front"),
+
+  /** 某台远端的账号清单。**桶③**（手写形状 `RawAccountsResult`，住 `accounts.ts`，理由见那里）。 */
+  list_remote_accounts: (args: { origin: Origin }) =>
+    invoke<RawAccountsResult>("list_remote_accounts", args),
+
+  /** 本机账号清单（问本机后端 `--list-accounts`）。**桶③**，同上。 */
+  list_local_accounts: () => invoke<RawAccountsResult>("list_local_accounts"),
+
+  /** 某台远端上正在跑的会话各属于哪个账号。**桶③**（生成物）。 */
+  list_remote_session_accounts: (args: { origin: Origin }) =>
+    invoke<SessionAccountsResult>("list_remote_session_accounts", args),
+
+  /**
+   * 换号前的目录信任预检。**桶③**（手写 `TrustResult`，住 `accounts.ts`）。
+   * `configDir: null` = 问账号 0（后端走 `--account-trust-zero`）—— **绝不传空串**（Z01）。
+   */
+  check_account_trust: (args: { origin: Origin; configDir: string | null; cwd: string }) =>
+    invoke<TrustResult>("check_account_trust", args),
+
+  /** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。**桶③**（生成物）。 */
+  list_session_activity: () => invoke<SessionActivityPayload[]>("list_session_activity"),
 } as const;

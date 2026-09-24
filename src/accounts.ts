@@ -8,7 +8,6 @@
 //
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
 // available:false 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
-import { invoke } from "@tauri-apps/api/core";
 import { commands } from "./ipc/commands";
 import type { AuthKind } from "./generated/AuthKind";
 import type { RemoteAccount } from "./generated/RemoteAccount";
@@ -51,7 +50,7 @@ export interface AccountsMeta {
   accountZeroAware?: boolean;
 }
 
-interface RawAccountsResult {
+export interface RawAccountsResult {
   available: boolean;
   error: string | null;
   meta: AccountsMeta | null;
@@ -1108,7 +1107,7 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
 
   let raw: RawAccountsResult;
   try {
-    raw = await invoke<RawAccountsResult>("list_remote_accounts", { origin });
+    raw = await commands.list_remote_accounts({ origin });
   } catch (e) {
     // Rust 侧只有"该远端根本没配"才 Err；当作不可用而非崩溃
     const state: AccountsState = {
@@ -1226,7 +1225,7 @@ export async function fetchLocalAccounts(force = false): Promise<AccountsState> 
 
   let raw: RawAccountsResult;
   try {
-    raw = await invoke<RawAccountsResult>("list_local_accounts");
+    raw = await commands.list_local_accounts();
   } catch (e) {
     // Rust 侧只有「取不到 HOME」才 Err；当作不可用而非崩溃（与远端那条同处理）。
     const state: AccountsState = {
@@ -1264,7 +1263,7 @@ export async function fetchSessionAccounts(
   const cached = sessionAccountsCache.get(origin);
   if (!force && cached && now - cached.at < SESSION_ACCOUNTS_TTL_MS) return cached.value;
   try {
-    const raw = await invoke<RawSessionAccountsResult>("list_remote_session_accounts", { origin });
+    const raw: RawSessionAccountsResult = await commands.list_remote_session_accounts({ origin });
     const value = raw.available ? (raw.sessions ?? []) : [];
     sessionAccountsCache.set(origin, { at: now, value });
     return value;
@@ -1292,7 +1291,7 @@ export async function checkTrust(
   cwd: string,
 ): Promise<TrustResult> {
   try {
-    return await invoke<TrustResult>("check_account_trust", { origin, configDir, cwd });
+    return await commands.check_account_trust({ origin, configDir, cwd });
   } catch (e) {
     return { available: false, trusted: false, known: false, error: String(e) };
   }
@@ -1321,7 +1320,7 @@ export function __resetAccountsCacheForTest(): void {
  */
 export async function recordLastAccount(sessionId: string, account: string): Promise<void> {
   try {
-    await invoke("update_history_metadata", { sessionId, patch: { lastAccount: account } });
+    await commands.update_history_metadata({ sessionId, patch: { lastAccount: account } });
   } catch (e) {
     console.warn("record lastAccount failed:", e);
   }

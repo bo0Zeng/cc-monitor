@@ -12,7 +12,7 @@
  *    ⇒ `tabs.ts` 的顶层声明 == `{TabManager}`，导出面 == 登记（它对外的 import 面，拆前拆后逐字相同）。
  *
  * 外加三条分工的零命中（**每条带同一谓词的正控**，免得零命中是因为谓词拼错）：
- * - 直呼 `invoke`（`@tauri-apps/api/core`）只在 `tab-session-actions.ts`；
+ * - 直呼 `invoke`（`@tauri-apps/api/core`）在 tab 层**零处**（〔C4a〕原先只在 `tab-session-actions.ts`，那 11 处收进了包装层）；
  * - 渲染栈（流 / 时间线 / 折叠层 / 卡片 / 逐条渲染）只在 `tab-stream-view.ts`（组装根除外）；
  * - 纯模块（形状 / 落点算术 / store / 路由 / 事实抽取）一处 `document.` / `window.` 都不碰。
  *
@@ -166,9 +166,9 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ⑤ 菜单控件：零依赖（纯 DOM）。
   "src/tab-context-menu.ts": [],
-  // ⑤ 会话动作：tab 层唯一直呼 invoke 的一份。
+  // ⑤ 会话动作。〔C4a · 子步 2〕原先是「tab 层唯一直呼 invoke 的一份」；那 11 处收进了包装层，
+  //   本份从此与其余几份一样只经 `ipc/commands.ts` 说话。
   "src/tab-session-actions.ts": [
-    "npm:@tauri-apps/api/core",
     "npm:@tauri-apps/plugin-opener",
     "src/account-restart.ts",
     "src/accounts.ts",
@@ -241,10 +241,12 @@ describe("〔U2〕拆 tabs.ts：每一份的直接运行期依赖 == 登记（�
 });
 
 describe("〔U2〕分工的三条边界（零命中 ＋ 同一谓词的正控）", () => {
-  it("★ 直呼 invoke 只在 tab-session-actions.ts", () => {
+  // 〔C4a · 子步 2〕原题「直呼 invoke 只在 tab-session-actions.ts」：那一份的 11 处收进了包装层
+  //   （`src/ipc/commands.ts`），tab 层从此**零处**直呼。正控改到包装层自己身上（同一个谓词）。
+  it("★ 直呼 invoke 在 tab 层零处（正控：包装层自己命中）", () => {
     const hits = SPLIT.filter((f) => runtimeImports(f).includes(INVOKE));
-    expect(hits, "正控：会话动作那一份必须命中（否则谓词拼错了）").toContain("src/tab-session-actions.ts");
-    expect(hits).toEqual(["src/tab-session-actions.ts"]);
+    expect(runtimeImports("src/ipc/commands.ts"), "正控：包装层必须命中（否则谓词拼错了）").toContain(INVOKE);
+    expect(hits).toEqual([]);
     expect(runtimeImports("src/tabs.ts"), "组装根也不许直呼").not.toContain(INVOKE);
   });
 
