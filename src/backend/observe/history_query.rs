@@ -61,6 +61,11 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
             },
             Err(e) => Err(e),
         },
+        // 〔`设计/10 §2.2b ⑥` · SE1〕大纲的数据源：「你说过的话」清单（判定住 `observe::user_inputs`）。
+        Some("--list-user-inputs") => match parse_user_inputs_args(&args[1..]) {
+            Ok((from, p)) => list_user_inputs(agent_home, p, from),
+            Err(e) => Err(e),
+        },
         Some(other) => Err(format!("unknown argument: {other}")),
         None => Err("no query argument".into()),
     };
@@ -94,11 +99,15 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 /// ⚠ **它与 `sessionCount` 恒等长，这是契约的一部分** —— 下游据此判「空清单」是
 /// 「真的没有会话」还是「这一行坏了」（`sessionCount > 0` 而清单空 ⇒ 后者，不许当成 0）。
 fn list_projects(agent_home: &Path) -> Result<(), String> {
+    list_projects_into(agent_home, &mut std::io::stdout().lock())
+}
+
+/// `--list-projects` 的本体，出口是参数 ——〔`C1` · 2026-09-24〕帧面那条（`history-projects`）
+/// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答。
+pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<(), String> {
     let root = projects_root(agent_home);
     let entries =
         std::fs::read_dir(&root).map_err(|e| format!("read_dir {} failed: {e}", root.display()))?;
-    let stdout = std::io::stdout();
-    let mut out = stdout.lock();
     for entry in entries.flatten() {
         let dir = entry.path();
         if !dir.is_dir() {
@@ -174,6 +183,15 @@ fn project_row(dir: &Path, dir_name: String) -> Option<serde_json::Value> {
 ///   "firstUserExcerpt","aiTitle","cwd"}`
 /// 元数据在远端 CPU 上扫整个文件提取（对齐本地 analyze 口径的精简版）。
 fn list_sessions(agent_home: &Path, project_dir: &str) -> Result<(), String> {
+    list_sessions_into(agent_home, project_dir, &mut std::io::stdout().lock())
+}
+
+/// `--list-sessions` 的本体，出口是参数（同 [`list_projects_into`]：帧面与 CLI 同一个函数）。
+pub(crate) fn list_sessions_into(
+    agent_home: &Path,
+    project_dir: &str,
+    out: &mut dyn Write,
+) -> Result<(), String> {
     // project_dir 是目录名而非路径：拒绝任何分隔符 / 上跳
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("invalid project dir name: {project_dir}"));
@@ -186,8 +204,6 @@ fn list_sessions(agent_home: &Path, project_dir: &str) -> Result<(), String> {
     let dir = fence_under_projects(agent_home, Path::new(project_dir))?;
     let entries =
         std::fs::read_dir(&dir).map_err(|e| format!("read_dir {} failed: {e}", dir.display()))?;
-    let stdout = std::io::stdout();
-    let mut out = stdout.lock();
     for entry in entries.flatten() {
         let p = entry.path();
         if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
@@ -259,28 +275,35 @@ pub fn list_subagents(agent_home: &Path, args: &[String]) -> i32 {
         );
         return 2;
     };
-    let parent_path = match fence_under_projects(agent_home, Path::new(parent)) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("{}", serde_json::json!({"code":"path_refused","message":e}));
-            return 2;
+    match list_subagents_into(agent_home, parent, &mut std::io::stdout().lock()) {
+        Ok(()) => 0,
+        Err((code, message)) => {
+            eprintln!("{}", serde_json::json!({"code":code,"message":message}));
+            2
         }
-    };
+    }
+}
+
+/// [`list_subagents`] 的本体，出口是参数（帧面 `history-subagents` 与 CLI 同一个函数）。
+/// 错误是 `(code, message)`，CLI 那层把它原样印成 stderr 那一行 JSON（字节与改前相同）。
+pub(crate) fn list_subagents_into(
+    agent_home: &Path,
+    parent: &str,
+    out: &mut dyn Write,
+) -> Result<(), (&'static str, String)> {
+    let parent_path =
+        fence_under_projects(agent_home, Path::new(parent)).map_err(|e| ("path_refused", e))?;
     // 目录推法与 monitor 侧逐字同形：`<父 jsonl 去后缀>/subagents`。
     let Some(dir) = parent_path
         .file_stem()
         .and_then(|s| s.to_str())
         .and_then(|stem| parent_path.parent().map(|d| d.join(stem).join("subagents")))
     else {
-        eprintln!(
-            "{}",
-            serde_json::json!({"code":"bad_parent","message":"父路径推不出 subagents 目录"})
-        );
-        return 2;
+        return Err(("bad_parent", "父路径推不出 subagents 目录".to_string()));
     };
     // 目录不在 = 这个会话没有 subagent，**不是错**：回空、exit 0。
     let Ok(rd) = std::fs::read_dir(&dir) else {
-        return 0;
+        return Ok(());
     };
     for entry in rd.flatten() {
         let meta_path = entry.path();
@@ -310,16 +333,18 @@ pub fn list_subagents(agent_home: &Path, args: &[String]) -> i32 {
             })
             .and_then(|l| serde_json::from_str::<serde_json::Value>(l.trim()).ok())
             .and_then(|v| v.get("timestamp")?.as_str().map(str::to_string));
-        println!(
+        writeln!(
+            out,
             "{}",
             serde_json::json!({
                 "path": jsonl.to_string_lossy(),
                 "description": description,
                 "timestamp": timestamp,
             })
-        );
+        )
+        .map_err(|e| ("write_failed", format!("write failed: {e}")))?;
     }
-    0
+    Ok(())
 }
 
 fn validate_session_path(
@@ -456,6 +481,64 @@ pub(crate) fn parse_from_offset_args(
         ));
     }
     Ok((opts, pos))
+}
+
+/// `--list-user-inputs [--from <offset>] <jsonl_path>` 的 argv：一个位置参数 ＋ 一个可选的 `--from`。
+///
+/// 选项在位置参数前后都认；**monitor 一律写在前面**（`session_outline::user_inputs_argv`
+/// 有判据钉着，与骨架索引 `index_argv` 同一条纪律）。未知的 `--选项`、多余的位置参数都**报错**，
+/// 不静默忽略 —— 静默忽略会让调用方拿到一份形状不对的输出还以为成功了。
+pub(crate) fn parse_user_inputs_args(rest: &[String]) -> Result<(u64, &String), String> {
+    let mut from: u64 = 0;
+    let mut pos: Vec<&String> = Vec::new();
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--from" => {
+                from = it
+                    .next()
+                    .ok_or("--from requires <offset> (byte offset)")?
+                    .parse::<u64>()
+                    .map_err(|_| "--from <offset>: offset must be a number")?;
+            }
+            other if other.starts_with("--") => {
+                return Err(format!("--list-user-inputs: unknown option {other}"))
+            }
+            _ => pos.push(a),
+        }
+    }
+    match pos.as_slice() {
+        [p] => Ok((from, *p)),
+        _ => Err(format!(
+            "--list-user-inputs takes exactly one <jsonl_path>, got {} positional arguments",
+            pos.len()
+        )),
+    }
+}
+
+/// `--list-user-inputs`：从字节 `from` 起（冷启动 0 / 增量传上次的 `end`）出「你说过的话」清单。
+/// 形状与口径见 [`crate::observe::user_inputs`] 的头注。
+///
+/// `from` 超过文件长度 ⇒ **报错**（文件被截断或重写过 —— 调用方手上的 `end` 已经不指向这份文件），
+/// 不回一份空清单假装「没有新的」。路径守卫与 `--read-session` 同一套。
+fn list_user_inputs(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<(), String> {
+    use std::io::{Seek, SeekFrom};
+    let target = validate_session_path(agent_home, jsonl_path)?;
+    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let len = f.metadata().map_err(|e| format!("stat failed: {e}"))?.len();
+    if from > len {
+        return Err(format!(
+            "--from {from} is past EOF ({len} bytes): file was truncated or rewritten"
+        ));
+    }
+    f.seek(SeekFrom::Start(from))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    crate::observe::user_inputs::write_user_inputs(std::io::BufReader::new(f), from, &mut out)
+        .map_err(|e| format!("stream failed: {e}"))?;
+    out.flush().map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
 }
 
 /// `--read-session-from-offset <path> <offset> --index [--until <end>]`：**骨架索引**。
@@ -686,11 +769,61 @@ fn slice_from_offset(bytes: &[u8], offset: u64) -> &[u8] {
 /// 行号空间一字一致），随后原样输出可计行 [F,T)（最新 N 行）、再输出 [0,F)。
 /// monitor 据 meta 编 seq：前 T-F 行 = F+i，其余 = i。空文件 → 仅 meta。
 fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<(), String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let (plan, mut f) = tail_plan(agent_home, jsonl_path, n)?;
+    let TailPlan {
+        total,
+        tail_from,
+        split_at,
+        end: complete_end,
+    } = plan;
+    let meta =
+        format!("{{\"kind\":\"snapshot_meta\",\"total\":{total},\"tail_from\":{tail_from}}}\n");
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    out.write_all(meta.as_bytes())
+        .map_err(|e| format!("stream failed: {e}"))?;
+    // 尾段 [split_at, complete_end)
+    f.seek(SeekFrom::Start(split_at))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    std::io::copy(&mut (&mut f).take(complete_end - split_at), &mut out)
+        .map_err(|e| format!("stream failed: {e}"))?;
+    // 头段 [0, split_at)
+    f.seek(SeekFrom::Start(0))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    std::io::copy(&mut (&mut f).take(split_at), &mut out)
+        .map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// `--read-session-tail` 那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
+///
+/// 〔`C1` · 2026-09-24〕抽出来是因为帧面那条（`history-tail`）只要**这张图**，
+/// 正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话，
+/// 而 CLI 这条仍然一口气印完。**两条路扫的是同一个函数**，行号口径因此只有一份。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TailPlan {
+    /// 可计行总数（`line_counts` 口径）。
+    pub total: u64,
+    /// 尾段第一行的行号。
+    pub tail_from: u64,
+    /// 尾段第一行的字节起点（＝ 头段的字节终点）。
+    pub split_at: u64,
+    /// 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
+    pub end: u64,
+}
+
+/// 扫一遍，出 [`TailPlan`] 与已打开的那份文件（调用方按区间去读）。
+pub(crate) fn tail_plan(
+    agent_home: &Path,
+    jsonl_path: &str,
+    n: usize,
+) -> Result<(TailPlan, std::fs::File), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     // 审计 D：整文件 std::fs::read 在 Pi 级设备上对数百 MB 会话有 OOM 风险
     // （旧 --read-session 是 io::copy 流式）——改单遍流式扫描（环形缓冲只存
     // 最近 N 个可计行的字节偏移，O(N) 内存）+ 两次 seek 范围拷贝。
-    use std::io::{BufRead, Read, Seek, SeekFrom, Write};
+    use std::io::BufRead;
     let f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let mut reader = std::io::BufReader::new(f);
     let mut recent: std::collections::VecDeque<u64> = std::collections::VecDeque::new();
@@ -724,24 +857,134 @@ fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<()
     }
     let tail_from = total - recent.len() as u64;
     let split_at = recent.front().copied().unwrap_or(complete_end);
-    let meta =
-        format!("{{\"kind\":\"snapshot_meta\",\"total\":{total},\"tail_from\":{tail_from}}}\n");
-    let mut f = reader.into_inner();
-    let stdout = std::io::stdout();
-    let mut out = stdout.lock();
-    out.write_all(meta.as_bytes())
-        .map_err(|e| format!("stream failed: {e}"))?;
-    // 尾段 [split_at, complete_end)
-    f.seek(SeekFrom::Start(split_at))
-        .map_err(|e| format!("seek failed: {e}"))?;
-    std::io::copy(&mut (&mut f).take(complete_end - split_at), &mut out)
-        .map_err(|e| format!("stream failed: {e}"))?;
-    // 头段 [0, split_at)
-    f.seek(SeekFrom::Start(0))
-        .map_err(|e| format!("seek failed: {e}"))?;
-    std::io::copy(&mut (&mut f).take(split_at), &mut out)
-        .map_err(|e| format!("stream failed: {e}"))?;
-    Ok(())
+    Ok((
+        TailPlan {
+            total,
+            tail_from,
+            split_at,
+            end: complete_end,
+        },
+        reader.into_inner(),
+    ))
+}
+
+/// 帧面按字节区间分页读一份会话的**一页**（`history-read`）。
+///
+/// # 为什么要分页（`C1` · 2026-09-24）
+///
+/// 一次性子命令把整份会话**流**回去（`io::copy`），连接关了就是 EOF；帧面是一问一答，
+/// 一帧应答要整个进内存、整个过线 —— 而本仓见过 270 MB 的会话，monitor 那头单帧上限
+/// 64 MiB。⇒ 调用方给 `[offset, until)`，本函数回**不超过 `page` 字节、切在行尾**的一页，
+/// 外加续点 `next`；调用方循环到 `eof`。
+///
+/// # 切法
+///
+/// - 这一页之后区间里还有字节 ⇒ 切在**最后一个 `\n` 之后**，不把半行交出去；
+/// - 一页里一个 `\n` 都没有（单行比 `page` 还长）⇒ 往后续读到那一行的 `\n`，
+///   但**不超过 `line_cap`** —— 超了回 `oversized_line`（不许截半行冒充整行）；
+/// - 区间到头（`until` 或读时的文件长度）⇒ 余下的全给，含 torn 残尾（与 `--read-session`
+///   的 `io::copy` 同口径：残尾怎么处置由调用方定）。
+///
+/// 错误是 `(code, message)`：`refused`（围栏拒）· `failed`（读失败）· `oversized_line`
+/// （不叫 `line_too_long`：那是入方向信封的**协议级** code，命令级不许撞名）。
+pub(crate) fn read_page(
+    agent_home: &Path,
+    jsonl_path: &str,
+    offset: u64,
+    until: Option<u64>,
+    page: usize,
+    line_cap: usize,
+) -> Result<ReadPage, (&'static str, String)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let target = validate_session_path(agent_home, jsonl_path).map_err(|e| ("refused", e))?;
+    let mut f =
+        std::fs::File::open(&target).map_err(|e| ("failed", format!("open failed: {e}")))?;
+    let len = f
+        .metadata()
+        .map_err(|e| ("failed", format!("stat failed: {e}")))?
+        .len();
+    let limit = until.map_or(len, |u| u.min(len));
+    if offset >= limit {
+        return Ok(ReadPage {
+            bytes: Vec::new(),
+            next: offset,
+            eof: true,
+        });
+    }
+    f.seek(SeekFrom::Start(offset))
+        .map_err(|e| ("failed", format!("seek failed: {e}")))?;
+    let mut src = f.take(limit - offset);
+    let mut bytes = Vec::with_capacity(page.min((limit - offset) as usize));
+    (&mut src)
+        .take(page as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|e| ("failed", format!("read failed: {e}")))?;
+    let reached_limit = offset + bytes.len() as u64 >= limit;
+    if !reached_limit {
+        match bytes.iter().rposition(|&b| b == b'\n') {
+            Some(i) => bytes.truncate(i + 1),
+            None => {
+                // 单行比一页还长：续读到它的行尾，但不超过 `line_cap`。
+                let mut more = [0u8; 64 * 1024];
+                loop {
+                    let k = src
+                        .read(&mut more)
+                        .map_err(|e| ("failed", format!("read failed: {e}")))?;
+                    if k == 0 {
+                        break;
+                    }
+                    let done = match more[..k].iter().position(|&b| b == b'\n') {
+                        Some(i) => {
+                            bytes.extend_from_slice(&more[..=i]);
+                            true
+                        }
+                        None => {
+                            bytes.extend_from_slice(&more[..k]);
+                            false
+                        }
+                    };
+                    // ⚠ 上限在**每一次**续读之后判，包括找到行尾的那一次 ——
+                    //   只在「没找到」那一支判的话，行尾恰好落在这一块里的超长行会被整行交出去。
+                    if bytes.len() > line_cap {
+                        return Err((
+                            "oversized_line",
+                            format!(
+                                "偏移 {offset} 起的那一行超过 {line_cap} 字节，一帧装不下 —— 拒收，不截半行"
+                            ),
+                        ));
+                    }
+                    if done {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    let next = offset + bytes.len() as u64;
+    Ok(ReadPage {
+        bytes,
+        next,
+        eof: next >= limit,
+    })
+}
+
+/// [`read_page`] 的一页。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ReadPage {
+    /// 原始字节（调用方负责解码 —— 帧面那层用 `from_utf8_lossy`）。
+    pub bytes: Vec<u8>,
+    /// 下一页从这里起。
+    pub next: u64,
+    /// 区间到头了。
+    pub eof: bool,
+}
+
+/// 帧面那几条要的「这台的 agent 家目录」—— 与 `main.rs` 那一句**同一个出处**。
+///
+/// 住这里而不是帧面宿主那边：通用层不许点 agent 的名字（`agent_boundary_guard`），
+/// 而本层今天本来就是 Claude 专属的（`observe/mod.rs` 头注）。
+pub(crate) fn agent_home() -> std::path::PathBuf {
+    crate::agents::claudecode::paths::resolve_home()
 }
 
 /// 这一行**算不算一行**（＝ 口径 `watcher::read_new_lines`：BOM 与全空白跳过）。
@@ -973,3 +1216,7 @@ mod kr83_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/history_query_index_tests.rs"]
 mod index_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/history_query_user_inputs_tests.rs"]
+mod user_inputs_tests;

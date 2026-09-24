@@ -54,7 +54,10 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-D="${CCM_E2E_BACKEND_BIN:-$REPO/.build/backend/debug/cc-monitor-backend}"
+# 〔第二波 T4 接进执行链〕与 `ccm-*` 那四套同一条取法：`$CARGO_TARGET_DIR` 优先，
+#   缺省落仓根 `.build/backend`（`src/backend/.cargo/config.toml` 的 `target-dir`）。
+#   此前只认后一半 ⇒ 门禁若在设了 `CARGO_TARGET_DIR` 的沙箱里跑，本套件会找不到它刚 build 的那一份。
+D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"
 [ -x "$D" ] || { echo "需要后端二进制：$D（先 cargo build -p cc-monitor-backend）"; exit 1; }
 
 W="$(mktemp -d /tmp/e2e-rbind-token.XXXXXX)"
@@ -147,4 +150,7 @@ chk "asked 的令牌也没有漏进后端日志" \
 
 echo
 echo "backend-rbind-token: $pass passed, $fail failed"
+# 〔第二波 T4〕`tests/scripts/gate.sh` 经 `tests/e2e/assert-pass-floor.sh` 按 exact 判本套件，
+#   那把尺子只认这一行的格式（`合计 PASS=<n>`）。上面那句人读的留着，这一行给尺子。
+echo "===== 合计 PASS=$pass FAIL=$fail ====="
 [ "$fail" -eq 0 ] || exit 1

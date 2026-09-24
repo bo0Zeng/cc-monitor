@@ -325,6 +325,9 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
     ("S3", ("①-account 半", (
         "check_remote_acct_iso",
         "deploy_remote_acct_iso",
+        # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
+        # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。今天零界面调用点（接线排第三波）⇒ 前端落点不动。
+        "check_local_acct_iso",
     ), "§3-3 第三行：后端写区 `acct_iso_deploy.rs` ＋ 本机装口新落点，收「2 条 ＋ 1 条欠口」。"
        "① 里住 `acct_iso_deploy.rs` 的恰好这两条（同文件的 `remote_acct_iso_shellinit` 归 ②）；"
        "那「1 条欠口」今天盘上还不存在 ⇒ 不进闭集")),
@@ -335,8 +338,11 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "aliases_read",
         "aliases_render",
         "remote_acct_iso_shellinit",
+        # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
+        # `shellinit_fence_state` ⇒ 归 ② 同一件。零界面调用点 ⇒ 前端落点不动。
+        "local_acct_iso_shellinit",
     ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处在 `K-R117` 现打时恰好 2 条命令"
-       "（`§S5` 归处栏）；〔AL1〕那条 `write_account_aliases` 拆成三条之后是 4 条。"
+       "（`§S5` 归处栏）；〔AL1〕那条 `write_account_aliases` 拆成三条、〔A3〕加了本机那条 shellinit 之后是 5 条。"
        "写盘落点不是命令，住 `SITE_ARCHIVE`，不进本闭集")),
     ("S5", ("③装 MCP/skill", (
         # 🔴 〔步 12·C 收尾 2026-09-20〕**7 条 → 5 条**：`write_remote_mcp_server` 与

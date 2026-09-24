@@ -62,6 +62,14 @@ const TRANSCALLS: &[(&str, &str, &str, &str)] = &[
              ⇒ 门要住在懂那套语义的一侧，本模块不重写一遍。",
         "同 `cc-agents`：pid 那一列能从命令面拿到的那天。**这一条是四条里最后收的**\
              —— 破坏性动作的门重写错一次的代价，本仓已经付过。",
+    ),    (
+        "cc-spawn",
+        "写：起一个真 agent 会话（tmux ＋ claude/codex 进程，烧额度）· 登记进名册与 spawn 台账 · 预信任目录",
+        "〔ccbus-spawn 09-24〕`bus-spawn` 那条原语的实现（**今天没登记进帧面**，等 `BUILD_ID`）。\
+             命名避让 / 总线登记 / 台账 / 预信任全在 `cc-spawn`（它内部再经 `ccm`），\
+             后端重写一份就是第二处起会话 —— 那正是账本 `K8` 消灭的病。",
+        "`cc-spawn` 本身被收成 `ccm` 的一条子命令（它今天已经是「`ccm` 外面一层壳」）；\
+             那时转调换成进程内调用，本行删掉。",
     ),
 ];
 
@@ -342,4 +350,87 @@ fn the_backend_does_not_re_implement_the_recipient_charset_rule() {
     ] {
         assert!(parse_send(&bad).is_err(), "形状不对却放行了：{bad:?}");
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `bus-spawn`（09-24）：形状校验 · argv · 回显里的 id · 退出码分档
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 🔴 **账号必须表态**：`account` 与 `base:true` 恰好一个。都不给 = 替用户选了默认号去烧额度。
+#[test]
+fn bus_spawn_refuses_to_pick_an_account_for_the_user() {
+    let ok_acct = parse_spawn(&json!({"tool":"claude","dir":"/p","account":"a1"})).unwrap();
+    assert_eq!(ok_acct.account.as_deref(), Some("a1"));
+    let ok_base = parse_spawn(&json!({"tool":"codex","dir":"/p","base":true})).unwrap();
+    assert_eq!(ok_base.account, None);
+    for bad in [
+        json!({"tool":"claude","dir":"/p"}),              // 没表态
+        json!({"tool":"claude","dir":"/p","base":false}), // 表了个「不」
+        json!({"tool":"claude","dir":"/p","account":"a","base":true}), // 两样都给
+        json!({"tool":"  ","dir":"/p","base":true}),      // 没说起哪种
+        json!({"tool":"claude","dir":"  ","base":true}),  // 空目录
+        json!({"tool":"claude","base":true}),             // 缺目录
+        json!("不是对象"),
+    ] {
+        let e = parse_spawn(&bad).expect_err(&format!("形状不对却放行了：{bad}"));
+        assert_eq!(e.0, "invalid_args", "{bad} 的码不对：{e:?}");
+    }
+    // 🔴 agent 种类**不在这里判**：一个 cc-spawn 不认的 tool 要放行到 cc-spawn，由它 rc=2 拒
+    //   （后端写第二份白名单 = 通用层又多一处「加 agent 要跟着改」，`agent_locality_guard` 钉着）。
+    assert!(
+        parse_spawn(&json!({"tool":"not-an-agent","dir":"/p","base":true})).is_ok(),
+        "后端又开始白名单 agent 种类了 —— 那是 cc-spawn 的事"
+    );
+}
+
+/// argv：`--` 一定在目录前（`dir` 叫 `--new` 也当目录）· 账号二选一照转 · 空任务不传。
+#[test]
+fn bus_spawn_argv_ends_options_before_the_directory() {
+    let a = parse_spawn(&json!({"tool":"claude","dir":"--new","account":"a1","task":"跑门禁"}))
+        .unwrap();
+    assert_eq!(
+        spawn_argv(&a),
+        [
+            "--tool",
+            "claude",
+            "--account",
+            "a1",
+            "--",
+            "--new",
+            "跑门禁"
+        ]
+    );
+    let b = parse_spawn(&json!({"tool":"codex","dir":"/p","base":true,"task":"  "})).unwrap();
+    assert_eq!(spawn_argv(&b), ["--tool", "codex", "--base", "--", "/p"]);
+}
+
+/// 回显里认 id：只认 `已 spawn: <id>` 那一行，id 过 `[A-Za-z0-9_-]` 且不以 `-` 开头；认不出 ⇒ `None`（不猜）。
+#[test]
+fn bus_spawn_reads_the_id_from_what_cc_spawn_said_and_never_guesses() {
+    let said = "ccm: 预信任 /p\n已 spawn: foo_cc-2   (目录: /p  初始任务: x)\n  跟它聊: cc-send foo_cc-2 \"...\"";
+    assert_eq!(spawned_id_of(said).as_deref(), Some("foo_cc-2"));
+    for bad in [
+        "",
+        "spawned foo_cc",
+        "已 spawn:",
+        "已 spawn: --help",
+        "已 spawn: a/b",
+    ] {
+        assert_eq!(spawned_id_of(bad), None, "{bad:?} 不该认出 id");
+    }
+}
+
+/// 退出码分档：2 ⇒ invalid_args · 124 ⇒ timed_out **且说清「可能已经起来了、别直接重试」** · 其它 ⇒ failed。
+#[test]
+fn bus_spawn_timeout_warns_that_the_agent_may_already_be_running() {
+    assert!(classify_spawn(Some(0), "").is_ok());
+    assert_eq!(classify_spawn(Some(2), "x").unwrap_err().0, "invalid_args");
+    let (c, m) = classify_spawn(Some(TIMED_OUT_CODE), "x").unwrap_err();
+    assert_eq!(c, "timed_out");
+    assert!(
+        m.contains("可能已经起来了") && m.contains("bus-state"),
+        "超时那句没把「副作用可能已经发生」说出来 —— 用户会直接重试、再起一个真 agent：{m}"
+    );
+    assert_eq!(classify_spawn(Some(1), "x").unwrap_err().0, "failed");
+    assert_eq!(classify_spawn(None, "x").unwrap_err().0, "failed");
 }

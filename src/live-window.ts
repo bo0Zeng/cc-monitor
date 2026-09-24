@@ -89,6 +89,22 @@ export class TailWindow {
   }
 
   /**
+   * 〔U3b · `设计/10` 步 8〕只留 seq 最高的 `keep` 条，其余**出账丢弃**；返回丢掉的条数。
+   *
+   * 只许在**骨架接上之后**调：丢掉的那些从此只能按偏移要回来（`read_session_range`）。
+   * 没骨架的 tab 调了它，上翻到头就没了。
+   */
+  keepHighest(keep: number): number {
+    const k = Math.max(0, keep);
+    if (this.pending.length <= k) return 0;
+    if (this.dirty) {
+      this.pending.sort((a, b) => a.seq - b.seq);
+      this.dirty = false;
+    }
+    return this.pending.splice(0, this.pending.length - k).length;
+  }
+
+  /**
    * 〔`设计/10` 骨架 · 子步 4〕只读看几条 pending（**不出账**）—— 骨架接上之前用它对拍
    * 「seq 与索引行号是不是同一个空间」（截断重读换过 seq 的会话对不上，不许硬接）。
    */

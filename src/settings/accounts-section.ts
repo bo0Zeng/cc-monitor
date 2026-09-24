@@ -17,7 +17,6 @@ import {
   LOCAL_ACCOUNTS_COPY,
   deriveUi,
   currentWorkingAccount,
-  selectableAccounts,
   isSelectable,
   accountStatusBadge,
   accountLoginActionLabel,
@@ -37,6 +36,8 @@ import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
 // 〔AL1 · 2026-09-24〕别名那一块与用户级 PATH 那一格都搬去了机器页「本机 → 工具 → 别名」
 // （`设计/70 §3.3` · `设计/71`）—— 两者是同一个问题（「这台机器的终端怎么找到 ccm」）的两条路。
+// A2（`设计/70 §4.4`）：新建账号那张表单。
+import { renderNewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { SETTINGS_APPLIED_EVENT } from "./events";
 // Phase G：这两格此前**没有任何生产者**，见下面 `note()` 的注释。
 // `N-F2`：本机那条路也要写进同一本账 ⇒ 连本机那个 key 一起取，别在这儿长第二个名字。
@@ -49,15 +50,15 @@ import {
 } from "./acct-deploy";
 
 /**
- * 中转 key 那一块要显的**一个账号**。只带界面真正用得到的三样。
+ * apikey 那一格要显的**一个账号**。只带界面真正用得到的三样。
  *
  * ⚠⚠ `K-H2c` `KH2C1`：`configDir` 在前端是一个**不透明串** —— 前端一个字都不解析它，
- * 原样递给那条命令，由 Rust 用**全仓唯一那份规则**（`history::relay_account_id_of_dir`）
+ * 原样递给那条命令，由 Rust 用**全仓唯一那份规则**（`history::apikey_account_id_of_dir`）
  * 推出账号 id。前端自己从那个路径里取末段名，就是在长**第二份**规则，
  * ⚠ 这句话**刻意不写成代码形状** —— `accounts-section.vitest.ts` 里那条机检
  * （标题以「KH2C1 机检：前端一个字都不推账号 id」打头的那个 `it`）
  * 扫的是整份文件（含注释），写成代码形状会让它红在一句注释上。
- * 漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。
+ * 漂开的那天症状是「设置里说这个号用 apikey 表里那一行、起会话时没用上」，而两边看起来都没错。
  * 由那条机检钉着。
  *
  * ⚠ 〔`K-R20` 订正 09-03〕上面两处原先都点着
@@ -75,46 +76,21 @@ export interface RelayKeyAccount {
 }
 
 /**
- * `K-H2a` `KS6` 前端那一半：中转那把第三方 API key 的一块。
+ * `K-H2a` `KS6` 前端那一半：**第三方 API key 那份文件**的一块（apikey 表，不是中转的东西 ——
+ * 用户 09 月裁「中转层不要有账号，账号就账号、中转就中转」）。
  *
- * # ★★ **永不回显** —— 这一块存在的全部意义
- *
- * `KS6` 逐字：「配好之后，后端**永远**不把明文回给前端；界面只显示掩码（前后各留几位）
- * 或『已配置』。**要改就重新输。**」理由：一旦回显，key 就从「只住在后端」变成
- * 「**每次打开那个界面都往前端传一遍**」⇒ 泄漏面从一次变成无数次，
- * 每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
- *
- * ⇒ 本函数**结构上做不到回显**，两道：
- *   ① 入参 [`RelayCredentialsStatus`] 里**没有明文那个字段**（Rust 侧与本仓 TS 侧双向对拍钉着）；
- *   ② 输入框**从不预填**（`value` 一次都不被赋值），存完就清空。
- * 由 `accounts-section.vitest.ts` 里 `KS6` 那一族钉住，含一条**源码扫描**：
- * 本文件里那个输入框的 `.value` 只许被赋成空串。
- *
- * # 它顺带承载的两条
+ * 🔴 `设计/70 §4.3` ③ / `§4.4` 关键二：**这一块里不再有账号下拉。**
+ * 它原先自带一个 `<select>` 选「配给哪个账号」—— 于是「哪个账号」在界面上被问两次
+ * （账号表一次、这里一次），那正是「apikey 端点表与账号 manifest 在后端是两份，界面照着抄成
+ * 两个控件」。⇒ 配 key 变成**账号那一行自己的一格**（[`renderApikeyEditor`]），
+ * 这一块只剩**文件本身**的事：
  *
  * - `KS9`：**把那份文件的路径显出来** —— 一个「能手编但没人知道在哪」的文件等于不能手编。
- * - `KS11`：权限过宽 / 查不出来时**在界面上出声**（件计划定的是「出声」不是「拒绝」；
- *   拒绝会把人卡死在一个他不知道怎么修的地方）。
- *
- * # ⚠⚠ `K-H2c`：它从「一把全局 key」变成「**配给某一个账号**」
- *
- * 先前这一块只有一个输入框，`onSave` 只收 `key` ⇒ 后端只写得了**顶层那一格**，
- * 读出来 id 逐字是 `default`，而起会话那一侧按**账号目录末段名**索引
- * ⇒ **从界面配的 key 永远匹配不上任何账号，中转一律 404、一个字节不发上游。**
- * 今天多一个账号选择器，`onSave` 连 `configDir` 一起交出去。
- *
- * ⚠ **「哪个账号」这件事前端不推**，见 [`RelayKeyAccount`] 头注。
- *
- * ⚠ **`status.configured` / `status.masked` 说的是「顶层那一把」**（历史格式那一行），
- * **不是**当前选中这个账号 —— 它读得出来，但界面不再往那儿写（`KH2C3`）。
- * 「这个号配没配」由 [`RelayKeyAccount.routed`] 答（后端算的那一格）。
- * **这两件事分两行显，不许合成一行** —— 合成一行就是拿 A 的状态冒充 B 的。
+ * - `KS11`：权限过宽 / 查不出来时**在界面上出声**（件计划定的是「出声」不是「拒绝」）。
+ * - 文件读坏了**不许静默当成「没配」**。
+ * - `KH2C3`：**顶层那一把**（历史格式那一行）单独一行显 —— 它说的不是任何一个账号。
  */
-export function renderRelayKeyBlock(
-  status: RelayCredentialsStatus,
-  accounts: RelayKeyAccount[],
-  onSave: (key: string, configDir: string) => void | Promise<void>,
-): HTMLElement {
+export function renderApikeyFileBlock(status: RelayCredentialsStatus): HTMLElement {
   const box = document.createElement("div");
   box.className = "relay-key-block";
 
@@ -122,32 +98,6 @@ export function renderRelayKeyBlock(
   title.className = "relay-key-title";
   title.textContent = "第三方 API key";
   box.appendChild(title);
-
-  // ★ `K-H2c`：配给**哪个账号**。选项的 value 是那个不透明的 configDir。
-  const picker = document.createElement("select");
-  picker.className = "relay-key-account";
-  for (const a of accounts) {
-    const opt = document.createElement("option");
-    opt.value = a.configDir;
-    opt.textContent = a.name;
-    picker.appendChild(opt);
-  }
-  const state = document.createElement("div");
-  state.className = "relay-key-state";
-  const selected = (): RelayKeyAccount | undefined =>
-    accounts.find((a) => a.configDir === picker.value);
-  const syncState = (): void => {
-    const a = selected();
-    state.textContent = !a
-      ? "这台机器上没有能配的账号：账号 0 在 manifest 里没有目录名，说不出 id ⇒ 配了也不会被注入。先加一个隔离账号，或者直接编辑下面那份 JSON。"
-      : a.routed
-        ? `${a.name}：apikey 表里已经有它那一行。再存一次会**替换**它那一把 key。`
-        : `${a.name}：apikey 表里还没有它那一行 —— 它的会话今天走官方直连。`;
-  };
-  if (accounts.length) box.appendChild(picker);
-  syncState();
-  picker.addEventListener("change", syncState);
-  box.appendChild(state);
 
   // `KS9`：路径要能被找到，人才改得动它。
   const where = document.createElement("div");
@@ -170,43 +120,75 @@ export function renderRelayKeyBlock(
     bad.textContent = status.problem;
     box.appendChild(bad);
   }
-
   // ★ `KH2C3`：**顶层那一把**（历史格式那一行）单独一行显。它读得出来，
-  //   但界面不再往那儿写 —— 与上面那行「这个号配没配」是**两件事**，不许合成一行。
+  //   但界面不再往那儿写 —— 与每一行上「这个号配没配」是**两件事**，不许合成一行。
   if (status.configured) {
     const legacy = document.createElement("div");
     legacy.className = "relay-key-legacy";
     legacy.textContent = `顶层那一把（历史格式）：已配置 ${status.masked}。它照常还能用，但界面不再往那一格写。`;
     box.appendChild(legacy);
   }
+  return box;
+}
+
+/**
+ * `设计/70 §4.4` 关键二：**某一个账号**的第三方 API key —— 账号那一行展开出来的一格。
+ *
+ * 「哪个账号」由它挂在哪一行回答，**不再有下拉**。
+ *
+ * # ★★ **永不回显**（`KS6`）
+ *
+ * 「配好之后，后端**永远**不把明文回给前端；界面只显示掩码或『已配置』。**要改就重新输。**」
+ * ⇒ 结构上做不到回显，两道：
+ *   ① 入参里**没有明文那个字段**（[`RelayKeyAccount`] 只有 name / configDir / routed）；
+ *   ② 输入框**从不预填**（`value` 一次都不被赋非空值），存之前先清空。
+ * 由 `accounts-section.vitest.ts` 里 `KS6` 那一族钉住，含一条**源码扫描**。
+ */
+export function renderApikeyEditor(
+  a: RelayKeyAccount,
+  onSave: (key: string, configDir: string) => void | Promise<void>,
+): { editor: HTMLElement; toggle: HTMLButtonElement } {
+  const box = document.createElement("div");
+  box.className = "accounts-row-apikey";
+  // 默认收着；由同一个函数里造的那颗按钮开合（`hidden` 与类名写在同一处，
+  // `css-conventions` 的 S30 ⑦ 那把尺子才推得出它切的是哪个类）。
+  box.hidden = true;
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "accounts-row-apikey-toggle";
+  toggle.textContent = a.routed ? "换 apikey" : "配 apikey";
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.addEventListener("click", () => {
+    box.hidden = !box.hidden;
+    toggle.setAttribute("aria-expanded", String(!box.hidden));
+  });
+
+  const state = document.createElement("div");
+  state.className = "relay-key-state";
+  state.textContent = a.routed
+    ? `${a.name}：apikey 表里已经有它那一行。再存一次会替换它那一把 key。`
+    : `${a.name}：apikey 表里还没有它那一行 —— 它的会话今天走官方直连。`;
+  box.appendChild(state);
 
   const input = document.createElement("input");
   input.type = "password";
   input.className = "relay-key-input";
+  input.autocomplete = "off";
   // ★★ **这里刻意什么都不做** —— 不预填、不 placeholder 回显掩码。
-  //    `status` 里也没有明文可填（类型上就没有那个字段）。
-  input.placeholder = selected()?.routed ? "输入新的 key 以替换" : "粘贴 key";
-  input.disabled = accounts.length === 0;
+  input.placeholder = a.routed ? "输入新的 key 以替换" : "粘贴 key";
   box.appendChild(input);
-  picker.addEventListener("change", () => {
-    input.placeholder = selected()?.routed ? "输入新的 key 以替换" : "粘贴 key";
-  });
 
   const save = mkBtn("保存");
   save.className = "relay-key-save";
-  save.disabled = accounts.length === 0;
   save.addEventListener("click", () => {
     const v = input.value.trim();
-    const a = selected();
-    // 说不出配给哪个账号就**什么都不做** —— 后端那一侧也会拒（不回落到顶层那一格），
-    // 这里挡一次只是别让人对着一个没有目标的输入框按半天。
-    if (!v || !a) return;
+    if (!v) return;
     // 先清空再交出去：**明文在 DOM 里停留的时间越短越好**（截图 / 录屏那两个出口）。
     input.value = "";
     void onSave(v, a.configDir);
   });
   box.appendChild(save);
-  return box;
+  return { editor: box, toggle };
 }
 
 export class AccountsSection {
@@ -214,8 +196,14 @@ export class AccountsSection {
   private body: HTMLElement;
   private hosts: RemoteHostConfig[] = [];
   private origin: string | null = null;
-  /** U7：维护区展开态。null=用户还没表态（按账号数给默认）；true/false=用户手动开合过，reload 后保持。 */
+  /** U7：维护区展开态。null=用户还没表态（默认折叠）；true/false=用户手动开合过，reload 后保持。 */
   private maintOpen: boolean | null = null;
+  /**
+   * A2：表单上选了「第三方 apikey」、终端已拉起、但这个号**还没出现在列表里**的那几把 key（名 → key）。
+   * 只住内存，不落盘、不进 DOM；放弃 / 写成 / 写不成都会把它删掉。
+   */
+  private readonly pendingKeys = new Map<string, string>();
+  private pendingBox: HTMLElement | null = null;
 
   constructor() {
     const root = document.createElement("div");
@@ -262,6 +250,15 @@ export class AccountsSection {
      * （本机那一页压根不会包含只对远端有意义的分节）。
      */
     subscribeMachine((origin) => this.followMachine(origin));
+    // ST1「延后加载」：构造期不再 `void this.init()` —— 见 `loadNow()`。
+  }
+
+  /**
+   * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）：
+   * 构造期不再发 I/O；宿主（`panel.ts`）在**某台机器的子页第一次可见**时调它。
+   * 重开设置后宿主会再调一次（重开要看新读数）。
+   */
+  loadNow(): void {
     void this.init();
   }
 
@@ -344,6 +341,23 @@ export class AccountsSection {
 
   private async reload(force: boolean): Promise<void> {
     this.body.innerHTML = "";
+    // 🔴 ST1「切机器 pending」（`设计/70 §6` #5）：一次切机器 = 这一块重读一趟（远端是一次 SSH 往返）。
+    //    原先这段时间这一块是**空的** —— 与「这台机器没有账号」在屏幕上分不开。
+    //    ⇒ 先挂一行「正在读」，读回来（成或败）那一刻撤掉。
+    const pending = document.createElement("div");
+    pending.className = "accounts-info";
+    pending.dataset.pending = "accounts";
+    pending.setAttribute("aria-busy", "true");
+    pending.textContent = `正在读 ${this.origin ?? "本机"} 的账号…`;
+    this.body.appendChild(pending);
+    try {
+      await this.reloadInner(force);
+    } finally {
+      pending.remove();
+    }
+  }
+
+  private async reloadInner(force: boolean): Promise<void> {
     if (!this.origin) {
       // `N-F1b`：这里原先逐字印
       // 「没有已配置的远端。账号功能在远端 Linux 上——先在「连接」组配一台远端。」
@@ -561,19 +575,19 @@ export class AccountsSection {
   private async launchStep(
     step: AcctIsoStep,
     opts: { danger?: boolean; confirmExtra?: string } = {},
-  ): Promise<void> {
-    if (!this.origin) return;
+  ): Promise<boolean> {
+    if (!this.origin) return false;
     const built = buildAcctIsoCmd(step);
     if (!built.ok) {
       showActionFailureToast("命令无法生成", built.reason, { level: "error" });
-      return;
+      return false;
     }
     if (opts.danger) {
       const msg =
         `将在远端「${this.origin}」的终端里运行：\n\n${built.cmd}\n\n` +
         (opts.confirmExtra ? `${opts.confirmExtra}\n\n` : "") +
         `命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可 rollback。继续？`;
-      if (!window.confirm(msg)) return;
+      if (!window.confirm(msg)) return false;
     }
     try {
       await commands.launch_remote_terminal({ origin: this.origin, remoteCmd: built.cmd });
@@ -581,8 +595,10 @@ export class AccountsSection {
         level: "info",
         durationMs: 5000,
       });
+      return true;
     } catch (e) {
       showActionFailureToast("拉起终端失败", String(e), { level: "error" });
+      return false;
     }
   }
 
@@ -842,10 +858,19 @@ export class AccountsSection {
       info.textContent = `已启用 · ${accounts.length} 个账号 · manifest ${meta.manifestPath}${meta.updatedAt ? ` · 更新于 ${meta.updatedAt}` : ""}`;
       this.body.appendChild(info);
     }
+    // 🔴 `设计/70 §4.4` 关键二：apikey 是**账号那一行自己的一格** ⇒ 画表之前先问清
+    //    「哪几个号在 apikey 表里有一行」（`K-H2c` 口径①：问后端要，前端不推 id）。
+    const apikey = await this.readApikeyState(accounts);
     const table = document.createElement("div");
     table.className = "accounts-table";
     for (const a of accounts) {
-      table.appendChild(await this.accountRow(a, def?.name === a.name));
+      const { row, editor } = await this.accountRow(
+        a,
+        def?.name === a.name,
+        apikey.entries.find((e) => e.configDir === a.configDir) ?? null,
+      );
+      table.appendChild(row);
+      if (editor) table.appendChild(editor);
     }
     this.body.appendChild(table);
 
@@ -883,130 +908,166 @@ export class AccountsSection {
       "提示：批量对齐（曾经的「⚠k」「⇄」和命令面板里的对齐命令）已下线，请在会话右键菜单的「Restart」里逐个切换账号。";
     this.body.appendChild(removedHint);
 
-    // K-H2a：中转那把第三方 API key。**挂在账号这一组里**——它是「用哪个身份打上游」
-    // 这件事的一部分，而不是一个独立的设置面。
-    // K-H2c：把这一页显的这几个账号递进去 —— 那把 key 今天是**配给某一个号**的。
-    void this.mountRelayKeyBlock(accounts);
+    // K-H2a：第三方 API key 那份**文件**（路径 / 权限 / 读坏了 / 顶层那一把）。
+    // 挂在账号这一组里 —— 它是「用哪个身份打上游」这件事的一部分。配 key 本身在每一行上。
+    this.body.appendChild(apikey.fileBlock);
 
-    // U8：数的是**可选**账号数,不是总数——1 个 isolated + 1 个 in-place 逃生口时总数=2 但
-    // 你其实还只有一个能用的号,此刻"加第二个账号"仍是正路。与 accountColorsActive 同源判据。
-    this.body.appendChild(this.renderMaintenance(selectableAccounts(state).length));
+    // 🔴 `设计/70 §4.4`（A2）：**新建账号是一张常驻的表单**，不再藏在「维护」折叠组里、
+    //    也不再是红色按钮。岔口（订阅 / 第三方 apikey）在表单里问。
+    this.body.appendChild(renderNewAccountForm((req) => this.createAccount(req)));
+    this.renderPendingKeys();
+    // 表单交过 apikey、而这个号这一趟已经出现在列表里了 ⇒ 接着把 key 写进去。
+    await this.flushPendingKeys(accounts);
+
+    this.body.appendChild(this.renderMaintenance());
   }
 
   /**
-   * 读一次中转 key 的状态并把那一块挂上去。
+   * A2：表单交上来一个新账号。两支共用同一条终端命令（`cc-acct-iso add <名> --apply`）；
+   * apikey 那一支另把 key 记在 [`pendingKeys`] 里，等这个号在列表里出现再写。
    *
-   * ⚠ **读失败不许静默**：这一格与账号列表不同——账号读不到只是少一块信息，
-   * 而凭据读不到时用户可能正打算配它。失败就把失败显出来。
-   *
-   * # ⚠ `K-H2c` 三条口径，一条都别省
-   *
-   * ① **「这个号在不在apikey 表里」是问后端要的**（`KH2B7` 那条既有命令），
-   *    前端不推账号 id、也不读那份凭据文件。它失败**不挡配 key** ——
-   *    那只影响状态那一行的措辞，而配 key 本身是这一块存在的理由。
-   * ② **没有 `configDir` 的账号（账号 0）被滤掉**：起会话那一侧对它逐字回 `None`
-   *    （`relay_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
-   * ③ ⚠⚠ **如实记一条今天没买到的**：这一页显的是 `this.origin` 那台机器的账号，
-   *    而 `read_relay_credentials_status` / `write_relay_credentials_key` / `relay_routing_for`
-   *    **全是本机**的（那三条命令自己的头注逐字都写着「只答本机」）。
-   *    在 `cc-acct-iso` 的布局下两边的目录末段名同名 ⇒ 实际用起来对得上，
-   *    但**这一格没有任何东西钉着**。这是 `K-H2a` 起就有的形状（那一块本来就无条件挂着），
-   *    本轮**没有把它变好也没有把它变坏**，登记在件文件 `§7` 的上报口里。
+   * ⚠ **终端没拉起来就不留 key** —— 那个号不会出现，留着就是一把在内存里永远等不到主人的明文。
    */
-  private async mountRelayKeyBlock(accounts: Account[]): Promise<void> {
-    try {
-      const status = await commands.read_relay_credentials_status();
-      const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
-      let routed: string[] = [];
-      try {
-        routed = dirs.length ? (await fetchLocalRelayRouting(dirs)).routed : [];
-      } catch {
-        // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
+  private async createAccount(req: NewAccountRequest): Promise<void> {
+    const launched = await this.launchStep({
+      kind: "add-apply",
+      name: req.name,
+      credFile: req.access === "subscription" ? req.credFile : undefined,
+    });
+    if (launched && req.access === "apikey") this.pendingKeys.set(req.name, req.key);
+    this.renderPendingKeys();
+  }
+
+  /**
+   * A2：「建好后自动写 key」还在等的那几个号 —— 常驻一行，并且可以放弃（放弃 = 把内存里那把 key 丢掉）。
+   * 这一行不说 key 的任何一个字符。
+   */
+  private renderPendingKeys(): void {
+    this.pendingBox?.remove();
+    if (this.pendingKeys.size === 0) {
+      this.pendingBox = null;
+      return;
+    }
+    const box = document.createElement("div");
+    box.className = "accounts-new-pending";
+    for (const name of this.pendingKeys.keys()) {
+      const line = document.createElement("div");
+      line.className = "accounts-hint";
+      line.textContent = `等 ${name} 出现在账号列表里（终端跑完点「刷新」），就把它的 apikey 写进去。`;
+      const drop = mkBtn("放弃");
+      drop.addEventListener("click", () => {
+        this.pendingKeys.delete(name);
+        this.renderPendingKeys();
+      });
+      line.appendChild(drop);
+      box.appendChild(line);
+    }
+    const form = this.body.querySelector(".accounts-new");
+    if (form) form.after(box);
+    else this.body.appendChild(box);
+    this.pendingBox = box;
+  }
+
+  /**
+   * A2：把表单上收下的 key 写给**已经出现**的那几个号。
+   *
+   * ⚠ configDir 取自**这一趟列表里那个号自己的字段**（不透明串，`KH2C1`），前端不从名字推。
+   * ⚠ 出现了但没有 configDir（账号 0 那种）⇒ 配了也不会被用上：丢掉 key 并说出来，不假装写成了。
+   */
+  private async flushPendingKeys(accounts: Account[]): Promise<void> {
+    for (const [name, key] of [...this.pendingKeys]) {
+      const a = accounts.find((x) => x.name === name);
+      if (!a) continue;
+      this.pendingKeys.delete(name);
+      if (!a.configDir) {
+        showActionFailureToast(
+          "apikey 没写",
+          `${name} 没有自己的账号目录，apikey 表里配了也不会被用上。`,
+          { level: "error" },
+        );
+        continue;
       }
-      const entries: RelayKeyAccount[] = dirs.map((configDir) => ({
-        name: accounts.find((a) => a.configDir === configDir)?.name ?? configDir,
-        configDir,
-        routed: routed.includes(configDir),
-      }));
-      this.body.appendChild(
-        renderRelayKeyBlock(status, entries, async (key, configDir) => {
-          try {
-            await commands.write_relay_credentials_key({ key, configDir });
-            void this.reload(true);
-          } catch (e) {
-            showActionFailureToast("保存第三方 API key", String(e));
-          }
-        }),
-      );
+      await this.writeApikey(key, a.configDir, name);
+    }
+    this.renderPendingKeys();
+  }
+
+  /** 唯一那一处把 key 交给后端的地方（行上的「保存」与表单的「建好后写」都走它）。 */
+  private async writeApikey(key: string, configDir: string, name: string): Promise<void> {
+    try {
+      await commands.write_relay_credentials_key({ key, configDir });
+      showActionFailureToast("已写入 apikey", `${name} 的 apikey 已写进 apikey 表。`, {
+        level: "info",
+        durationMs: 3000,
+      });
+      void this.reload(true);
     } catch (e) {
-      const box = document.createElement("div");
-      box.className = "relay-key-problem";
-      box.textContent = `读不到第三方 API key 的状态：${String(e)}`;
-      this.body.appendChild(box);
+      showActionFailureToast("保存第三方 API key", String(e));
     }
   }
 
-  /** A6：已启用态的「维护」区——加账号 / 自检 / 补链，均弹终端。
-   *  account-ux U7：整块收进 `<details>` **默认折叠**——三项都低频且带 danger（加账号会动远端
-   *  目录、补链会改软链），常驻展开既占版面又把危险操作摆在手边。内部结构一行未改。 */
-  private renderMaintenance(selectableCount: number): HTMLElement {
+  /**
+   * 读一次 apikey 那份文件的状态，并问后端「这几个号在不在 apikey 表里」。
+   *
+   * ⚠ **读失败不许静默**：凭据读不到时用户可能正打算配它 ⇒ 失败就把失败显出来
+   * （文件那一块换成一句读不到的原因；每一行上配 key 那一格照常能用 —— 写不依赖读）。
+   *
+   * # ⚠ `K-H2c` 三条口径，一条都别省
+   *
+   * ① **「这个号在不在 apikey 表里」是问后端要的**（`KH2B7` 那条既有命令），
+   *    前端不推账号 id、也不读那份凭据文件。它失败**不挡配 key** ——
+   *    那只影响状态那一行的措辞，而配 key 本身是这一格存在的理由。
+   * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
+   *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
+   * ③ ⚠⚠ **如实记一条今天没买到的**：这一页显的是 `this.origin` 那台机器的账号，
+   *    而 `read_relay_credentials_status` / `write_relay_credentials_key` / `apikey_routing_for`
+   *    **全是本机**的（那三条命令自己的头注逐字都写着「只答本机」）。
+   *    在 `cc-acct-iso` 的布局下两边的目录末段名同名 ⇒ 实际用起来对得上，
+   *    但**这一格没有任何东西钉着**。这是 `K-H2a` 起就有的形状，本轮没有把它变好也没有变坏。
+   */
+  private async readApikeyState(
+    accounts: Account[],
+  ): Promise<{ entries: RelayKeyAccount[]; fileBlock: HTMLElement }> {
+    const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
+    let routed: string[] = [];
+    try {
+      routed = dirs.length ? (await fetchLocalRelayRouting(dirs)).routed : [];
+    } catch {
+      // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
+    }
+    const entries: RelayKeyAccount[] = accounts
+      .filter((a): a is Account & { configDir: string } => !!a.configDir)
+      .map((a) => ({ name: a.name, configDir: a.configDir, routed: routed.includes(a.configDir) }));
+    let fileBlock: HTMLElement;
+    try {
+      fileBlock = renderApikeyFileBlock(await commands.read_relay_credentials_status());
+    } catch (e) {
+      fileBlock = document.createElement("div");
+      fileBlock.className = "relay-key-problem";
+      fileBlock.textContent = `读不到第三方 API key 的状态：${String(e)}`;
+    }
+    return { entries, fileBlock };
+  }
+
+  /** A6：已启用态的「维护」区——自检 / 补链 / rc 片段，均弹终端或只读。
+   *  account-ux U7：整块收进 `<details>` **默认折叠**——都低频，补链还会改软链。
+   *  🔴 `设计/70 §4.3` ①（A2）：**加账号已经搬出去了**（常驻的「新建账号」表单）——
+   *  它是最常用的账号操作，不是维护。于是原来那条「只有 1 个号时默认展开，好让人看见加账号」
+   *  的理由也跟着没了 ⇒ 默认一律折叠。 */
+  private renderMaintenance(): HTMLElement {
     const wrap = document.createElement("details");
     wrap.className = "accounts-maint-wrap";
-    // 默认展开态**按状态给**，不是常量：刚跑完 A6 部署向导回来正好是「ready + 只有 1 个账号」，
-    // 此刻用户唯一该做的下一步就是"加第二个账号"（否则多账号隔离白装了），把唯一的正路藏进
-    // 折叠等于死胡同。稳态（≥2 个账号）仍默认折叠——那三项都低频且带 danger。
-    // 用户手动开合过就以用户的选择为准（reload 会重建 DOM，不记住的话展开态和输入会被吞掉）。
-    wrap.open = this.maintOpen ?? selectableCount < 2;
+    // 用户手动开合过就以用户的选择为准（reload 会重建 DOM，不记住的话展开态会被吞掉）。
+    wrap.open = this.maintOpen ?? false;
     wrap.addEventListener("toggle", () => {
       this.maintOpen = wrap.open;
     });
     const summary = document.createElement("summary");
-    summary.textContent = "维护（加账号 / 自检 / 补链）";
+    summary.textContent = "维护（自检 / 补链 / rc 片段）";
     wrap.appendChild(summary);
 
     const box = document.createElement("div");
     box.className = "accounts-maint";
-
-    // 加账号：内联小表单（名 + 可选凭据快照路径）→ 弹终端 add --apply。
-    const addForm = document.createElement("div");
-    addForm.className = "accounts-maint-add";
-    const nameIn = document.createElement("input");
-    nameIn.type = "text";
-    nameIn.placeholder = "新账号名（如 b）";
-    nameIn.className = "accounts-maint-name";
-    const credIn = document.createElement("input");
-    credIn.type = "text";
-    credIn.placeholder = "可选：旧凭据快照路径（免重登）";
-    credIn.className = "accounts-maint-cred";
-    const addBtn = mkBtn("加账号…");
-    addBtn.classList.add("danger");
-    const addErr = document.createElement("span");
-    addErr.className = "accounts-maint-err";
-    const syncAdd = (): void => {
-      const v = validateAcctName(nameIn.value.trim());
-      addBtn.disabled = !v.ok;
-      addErr.textContent = nameIn.value.trim() && !v.ok ? v.reason : "";
-    };
-    nameIn.addEventListener("input", syncAdd);
-    addBtn.addEventListener("click", () => {
-      const name = nameIn.value.trim();
-      const credFile = credIn.value.trim() || undefined;
-      void this.launchStep(
-        { kind: "add-apply", name, credFile },
-        {
-          danger: true,
-          confirmExtra: credFile
-            ? "将新建该账号 config-dir 并从指定快照导入凭据（免重登）。"
-            : "将新建该账号 config-dir；随后在弹出的终端里用它 /login。",
-        },
-      );
-    });
-    addForm.append(nameIn, credIn, addBtn, addErr);
-    box.appendChild(addForm);
-    // 〔AL1 · 2026-09-24〕`设计/70` 第三刀步 12：这里原来是一行散文导航（「加完之后到『设置 → 行为 →
-    // 按账号生成命令』里一键写入」）。`70 §3.1` 逐字：「用一句散文告诉用户去另一个顶层页找一个功能，
-    // 本身就是 IA 失败的自证」—— 别名并进机器页之后它不再需要，删掉。
-    syncAdd();
 
     // 自检 / 补链。
     const ops = document.createElement("div");
@@ -1023,19 +1084,20 @@ export class AccountsSection {
     const rcBtn = mkBtn("生成 rc 片段…");
     rcBtn.title =
       "抓远端 `cc-acct-iso shellinit` 的输出，给你一段可贴的 rc 片段（贴了之后裸 claude 走默认账号，"
-      + "每个账号有 <名>cc 函数，账号 0 有 0cc 逃生口）。**只读，不会替你写任何文件。**";
+      + "每个账号有 <名>cc 函数，账号 0 有 0cc 逃生口）。只读，不会替你写任何文件。";
     const rcBox = document.createElement("div");
     rcBox.className = "accounts-maint-rc";
     rcBtn.addEventListener("click", () => void this.renderRcSnippet(rcBtn, rcBox));
     ops.append(verifyBtn, syncBtn, rcBtn);
     box.appendChild(ops);
     box.appendChild(rcBox);
-    // 🔴 `K-R49`：**这一条路上刻意只给一句指路话，不把那一块搬过来。**
+    // 🔴 `K-R49`：**这一条路上刻意不把「按账号生成命令」那一块搬过来。**
     // 这张表显的是**远端那台**的账号，而别名是给**本机 shell** 用的
     // （`ccm --account <名>` 在这台机器上跑）⇒ 在这里挂那一块就得去读本机账号，
     // 而 `NF1bD3` 那条判据逐字断的正是「配了远端时，本机那条读口一次都不该被调」。
-    // 它守的是「远端页上不许渲染本机的账号」，那条性质是对的 —— 所以这里让路，
-    // 改成把人指到它真正的家（设置 → 行为）。
+    // 它守的是「远端页上不许渲染本机的账号」，那条性质是对的 —— 所以这里让路。
+    // 〔A2 · `70 §4.3` ⑤〕原先那句「加完之后到『设置 → 行为 → …』里写入」的散文导航已撤：
+    // 命令名改成新建表单里的一行提示（`aliasHintFor`），管理器归 `设计/71 §13` 那一路。
     wrap.appendChild(box);
     return wrap;
   }
@@ -1077,7 +1139,7 @@ export class AccountsSection {
           text: () => snippet,
           target: "这台远端的 ~/.bashrc（zsh 用户贴 ~/.zshrc；它是登录 shell 的配置文件）",
           mergeNote:
-            "**追加**到文件末尾，并删掉你以前手写的 swap 式切号块——片段自带 BEGIN/END 围栏，"
+            "追加到文件末尾，并删掉你以前手写的 swap 式切号块——片段自带 BEGIN/END 围栏，"
             + "重新生成时替换围栏之间那一段即可，别贴成两份。",
           activation: "`source` 它，或在该远端开一个新的登录 shell（已经开着的 shell 不受影响）。",
           // 围栏在 Rust 侧已经校验过一次（拿不到就直接 Err）；这里再校验一次是因为
@@ -1100,7 +1162,16 @@ export class AccountsSection {
     }
   }
 
-  private async accountRow(a: Account, isCurrent: boolean): Promise<HTMLElement> {
+  /**
+   * 表里的一行。`apikey` 非空 ⇒ 这个号能配第三方 API key：操作列多一颗按钮，
+   * 点开的那一格（[`renderApikeyEditor`]）作为**这一行紧后面的兄弟**挂进表里，
+   * 不算这一行的列（`.accounts-row` 的子元素数 == grid 列数那条契约不动）。
+   */
+  private async accountRow(
+    a: Account,
+    isCurrent: boolean,
+    apikey: RelayKeyAccount | null = null,
+  ): Promise<{ row: HTMLElement; editor: HTMLElement | null }> {
     const model = await getModelForAccount(a.name); // F07：每账号默认模型偏好
     const row = document.createElement("div");
     row.className = "accounts-row";
@@ -1228,8 +1299,17 @@ export class AccountsSection {
       login.addEventListener("click", () => void this.launchStep({ kind: "login", name: a.name }));
       actions.appendChild(login);
     }
+    // 🔴 `设计/70 §4.4` 关键二：**「哪个账号」只问一次** —— 配 apikey 是这一行自己的一格。
+    let editor: HTMLElement | null = null;
+    if (apikey) {
+      const ed = renderApikeyEditor(apikey, (key, configDir) =>
+        this.writeApikey(key, configDir, a.name),
+      );
+      editor = ed.editor;
+      actions.appendChild(ed.toggle);
+    }
     row.appendChild(actions);
-    return row;
+    return { row, editor };
   }
 
   private async selectDefault(a: Account): Promise<void> {

@@ -27,6 +27,10 @@
 //! 每 10s 扫一遍内存中的 ps-registry，对每个 PS_PID 调 `is_process_alive`，
 //! 死 PS 的条目从内存 + 磁盘移除。避免长期累积。
 //!
+//! 〔第二波 T4〕它同时是 ↗ 令牌路的「死绑定周期清」（`设计/80 §0.1` ④）：
+//! [`resolve_remote_front`] 按令牌查的就是这张表，死掉的窗口 10s 内出表 ⇒ ↗ 退到标题路。
+//! 节拍只有这一个（归 [`BindRegistry`]）；令牌账本 [`RbindTokenBook`] 是事件驱动的，不另起节拍器。
+//!
 //! ## 🔴 第二种 marker 来源：**启动期令牌**（`设计/80 §8.7` 步 3，2026-09-23）
 //!
 //! 上面那条链一个字都没改。这一节只说**多出来的那一种 marker 来源**。
@@ -58,10 +62,13 @@
 //!
 //! ### ⚠ 本模块**买不到**什么（别把这一段读大）
 //!
-//! - 🔴 **今天没有任何生产代码往 `ps-await` 里写一个带令牌的 marker。**
-//!   写那一份的是本地终端进程自己（Era 2 是 PowerShell profile 里的 `__ccm_bind`），
-//!   而那条链住 `launch.rs` / `scripts/cc.ps1.tpl` —— **都不在本刀的写区**。
-//!   ⇒ 本模块今天买到的是「**接得住**」，**不是**「已经在收」。
+//! - 〔第二波 T4 订正〕步 3 落地那天这里写的是「今天没有任何生产代码往 `ps-await` 里写一个
+//!   带令牌的 marker ⇒ 本模块买到的是『接得住』，不是『已经在收』」—— **那句话到此作废**：
+//!   写入方接上了，是 monitor 拉起窗口时注入的那段令牌握手前奏
+//!   （`launch.rs::with_rbind_bind_prelude` ＋ `scripts/rbind-token-bind.ps1.tpl`，
+//!   与 `__ccm_bind` 同一条握手、只差 marker 的形状）。
+//!   ⚠ 但「那段 PowerShell 在真 Windows 上真的跑通、表里真的多了一条」**本机一格都买不到**
+//!   （没有 `pwsh`、没有 Windows）；判据只钉得住交给 PowerShell 的那段**文字**。
 //! - 🔴 **「↗ 真的把那个窗口拉到前台了」这一维本仓的 Linux 门禁一格都买不到**：
 //!   没有图形会话、没有 Windows，`find_window_by_marker_substr` 在非 Windows 上
 //!   是个恒 `None` 的桩。判据能验的是**平台无关**的那两段（marker 解令牌 · 表里查得到），
@@ -138,7 +145,7 @@ pub struct BindRegistry {
 impl BindRegistry {
     /// 启动 watcher 线程 + 心跳线程。返回 Arc 给外部持有引用。
     pub fn spawn(monitor_data_dir: PathBuf) -> Arc<Self> {
-        let await_dir = monitor_data_dir.join("ps-await");
+        let await_dir = monitor_data_dir.join(AWAIT_SUBDIR);
         let registry_dir = monitor_data_dir.join("ps-registry");
 
         for d in [&await_dir, &registry_dir] {
@@ -246,6 +253,23 @@ impl BindRegistry {
 /// 与 `token-<32hex>` 无论如何对不上；反向也一样（本函数要求前缀后**恰好** 32 个
 /// 小写十六进制字符、后面一个字节都不许有）。两条判据各钉一头，见 `bind_tests.rs`。
 pub const RBIND_TOKEN_MARKER_PREFIX: &str = "ccm-rbind-token-";
+
+/// 握手目录 `ps-await/` 的名字（相对 monitor 数据目录）。
+///
+/// 〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕**有两个写入方、一个读方**，三处必须同一个名字：
+/// 读方 = [`BindRegistry::spawn`] 监听的目录；写入方 ① = PowerShell profile 里的 `__ccm_bind`
+/// （`scripts/cc.ps1.tpl`，它在用户机器上自己拼 `ps-await`，改不动已装的那份 ⇒ 本常量**不许改值**）；
+/// 写入方 ② = `launch.rs` 在拉起窗口时注入的那段令牌握手前奏（取的就是本常量）。
+pub const AWAIT_SUBDIR: &str = "ps-await";
+
+/// 带令牌的 marker：`ccm-rbind-token-<32hex>`。形状不对 ⇒ `None`（不产一个解不回来的 marker）。
+///
+/// 与 [`rbind_token_from_marker`] 互为逆：`rbind_token_from_marker(&rbind_token_marker(t)?) == Some(t)`。
+/// **写入方只许用它拼**（`launch.rs` 的令牌握手前奏）—— 手拼一份前缀，哪天前缀改了，
+/// 本地表会静默收不到任何带令牌的条目（「拉不到窗口」与「没有令牌」同形）。
+pub fn rbind_token_marker(token: &str) -> Option<String> {
+    rbind_token_shape_ok(token).then(|| format!("{RBIND_TOKEN_MARKER_PREFIX}{token}"))
+}
 
 /// 令牌的字符数 —— **32**。
 ///
@@ -861,6 +885,9 @@ impl RemoteHwndCache {
     ) {
         if matches!(disposition, crate::ssh_source::RemovedDisposition::Archive) {
             self.forget(sid);
+            // 〔`设计/80 §8.7` 步 4，第二波 T4〕令牌账本跟着忘，口径与上面那条绑定**同一条**：
+            // `Archive` 忘、`Idle` 不忘（本地那个 ssh 窗口可能还开着，令牌指的正是它）。
+            remote_rbind_tokens().forget(sid);
         }
     }
 
@@ -924,6 +951,187 @@ impl RemoteHwndCache {
     pub fn try_bind_with_retry(&self, _sid: &str, _attempts: u32, _step_ms: u64) -> bool {
         false
     }
+}
+
+// ═══════ 🔴 `设计/80 §8.7` 步 4 / 步 5：**↗ 远端那一格的唯一分派点** ═══════════════════
+//
+// 步 4 逐字：「↗ 改走 join；四套『有没有终端』的判断收敛成一句」。那四套是
+// `attachable` 布尔 · `findClaudeTmuxMatches` · 后端 HWND 校验 · E73 那次远端 RPC（`§8.5 ②`）。
+// 收成的那一句就是：**这个 sid 有没有启动令牌**。
+//
+// 步 5 逐字：「旧标题路降级成**退路**（不删 —— 它覆盖『用户自己在 tmux 里跑 ccm』那一档）」。
+// ⇒ 分派只有一种顺序：**先令牌、后标题**；失败时说的话**只由那一个布尔决定**。
+//
+// ## 为什么标题路在「有令牌」时也要试一次
+//
+// 令牌登记的是**拉起那一刻**的那个窗口。那个窗口关掉、用户再用 attach 开一个新的 ——
+// 新窗口不做令牌握手（`attach` 不铸币），但 tmux 容器那一格的外层命令设了
+// `set-titles-string ccm-rbind-#{@ccm_sid}`（`payload.rs::render_tmux_outer`）⇒ 标题路接得住。
+// 不试的话，这一档从「今天能拉」退成「拉不了」—— 那是回归，不是收敛。
+//
+// ## ⚠ 买不到什么
+//
+// `verify_binding` / `activate` / `find_window_by_marker_substr` 在非 Windows 上都是桩 ⇒
+// 本仓 Linux 门禁买得到的是**分派本身**（哪条路先、什么时候退、失败说哪句话），
+// 「窗口真的到了前台」一格都买不到。
+
+/// 远端会话 `sid → 启动期令牌`（wire 上 `SessionAdded.rbind_token` 读回来的那个）。
+///
+/// **不落盘，刻意的**：真相源在远端那个进程的 `environ` 里（后端每次重连 / 重新宣告都会
+/// 再报一遍）。在本地再存一份只会多一个会陈旧的副本 —— monitor 重启之后，
+/// `令牌 → HWND` 那一半由 `ps-registry/*.json` 重载（持久化），`sid → 令牌` 这一半由
+/// 重连后的 `SessionAdded` 重新喂进来，join 自然恢复。判据见 `bind_tests.rs` 的重启那一条。
+pub struct RbindTokenBook {
+    by_sid: RwLock<HashMap<String, String>>,
+}
+
+impl RbindTokenBook {
+    pub fn new() -> Self {
+        Self {
+            by_sid: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// wire 上读到一条 `SessionAdded` 时调。`None` ⇒ **删掉**旧值：同一个 sid 被重新宣告成
+    /// 「没令牌」（比如换了一个老后端、或那个进程换了人）时，不许让上一次的令牌粘着 ——
+    /// 粘着的令牌会把 ↗ 拉到一个已经不属于它的窗口上。
+    ///
+    /// ⚠ 形状**不在这里再判一遍**：进来的值只可能来自 `ssh_source::parse_frame`，
+    /// 那里已经过了 [`rbind_token_shape_ok`]（同一条函数）。
+    pub fn note(&self, sid: &str, token: Option<&str>) {
+        let mut w = self.by_sid.write();
+        match token {
+            Some(t) => {
+                w.insert(sid.to_string(), t.to_string());
+            }
+            None => {
+                w.remove(sid);
+            }
+        }
+    }
+
+    pub fn token_of(&self, sid: &str) -> Option<String> {
+        self.by_sid.read().get(sid).cloned()
+    }
+
+    pub fn forget(&self, sid: &str) {
+        self.by_sid.write().remove(sid);
+    }
+}
+
+impl Default for RbindTokenBook {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 进程里唯一那本令牌账本。写者 = `ssh_source` 收 `SessionAdded` 的那一处；
+/// 读者 = [`bring_remote_front`]；清者 = [`RemoteHwndCache::apply_remote_disposition`]（`Archive`）。
+pub fn remote_rbind_tokens() -> &'static RbindTokenBook {
+    static BOOK: std::sync::OnceLock<RbindTokenBook> = std::sync::OnceLock::new();
+    BOOK.get_or_init(RbindTokenBook::new)
+}
+
+/// 本地表里那一条 → ↗ 要的那份绑定。字段一一对应（`verify_binding` 读 hwnd / owner_pid /
+/// owner_proc_start 三样）。
+fn binding_from_entry(e: HwndEntry) -> SidHwndBinding {
+    SidHwndBinding {
+        hwnd: e.hwnd,
+        owner_pid: e.owner_pid,
+        owner_proc_start: e.owner_proc_start,
+        ps_pid: e.ps_pid,
+        ps_proc_start: e.ps_proc_start,
+        title_at_bind: e.title_at_bind,
+        registered_at: e.registered_at,
+    }
+}
+
+/// 有令牌、却切不到窗口时说的话（`§8.5 ②`：失败归因只由「有没有令牌」一个布尔决定）。
+///
+/// 🔴 两句话的**开头**是分派的对外面：前端不再猜（E73 那次远端 RPC 已删），用户读到的就是这里。
+/// ⚠ 措辞过 `设计/91` 的术语表：不说「令牌」「拉前」「拉起」（前两个是内部词，后一个是禁档），
+///   说用户看得见的那件事 —— 「是不是 cc-monitor 启动的」。
+pub(crate) const FRONT_FAIL_WITH_TOKEN: &str = "这个会话是 cc-monitor 启动的，但找不到它的终端窗口";
+/// 没有令牌时说的话。
+pub(crate) const FRONT_FAIL_WITHOUT_TOKEN: &str =
+    "这个会话不是 cc-monitor 启动的，找不到它的终端窗口";
+
+/// ↗ 远端那一格的**唯一分派点**。平台相关的两跳（校验窗口、现扫标题）由调用方注入，
+/// 好让分派本身在任何机器上都验得了（`entry_from_marker_hit` 同一个理由）。
+///
+/// - `token`：这个 sid 的启动期令牌（[`RbindTokenBook::token_of`]）。**这是唯一的分派变量。**
+/// - `verify`：生产是 [`verify_binding`]（IsWindow ＋ 属主 PID ＋ procStart）。
+/// - `rescan`：生产是 [`RemoteHwndCache::try_bind_with_retry`]（标题路的点击时现扫）。
+pub fn resolve_remote_front(
+    sid: &str,
+    token: Option<&str>,
+    registry: &BindRegistry,
+    title_path: &RemoteHwndCache,
+    verify: &dyn Fn(&SidHwndBinding) -> Result<(), String>,
+    rescan: &dyn Fn(&str) -> bool,
+) -> Result<SidHwndBinding, String> {
+    // ① 令牌路（步 4）：`sid → token → HWND`，查的是 Era 2 那张表（持久化 ＋ 心跳白拿）。
+    let mut token_window_gone: Option<String> = None;
+    if let Some(tok) = token {
+        if let Some(entry) = registry.lookup_hwnd_for_token(tok) {
+            let b = binding_from_entry(entry);
+            match verify(&b) {
+                Ok(()) => return Ok(b),
+                Err(why) => token_window_gone = Some(why),
+            }
+        }
+    }
+    // ② 标题路（步 5：退路，不删）。与改之前 `lib.rs` 那一段逐步相同：
+    //    没缓存 ⇒ 现扫；缓存校验不过 ⇒ 忘掉、再现扫、再校验。
+    let title = (|| -> Result<SidHwndBinding, String> {
+        let b = match title_path.lookup(sid) {
+            Some(b) => b,
+            None => {
+                rescan(sid);
+                title_path.lookup(sid).ok_or_else(String::new)?
+            }
+        };
+        if verify(&b).is_ok() {
+            return Ok(b);
+        }
+        title_path.forget(sid);
+        rescan(sid);
+        let b = title_path.lookup(sid).ok_or_else(String::new)?;
+        verify(&b)?;
+        Ok(b)
+    })();
+    title.map_err(|title_err| {
+        // ③ 归因：**只看 `token.is_some()`**。
+        let head = match (token.is_some(), &token_window_gone) {
+            (true, Some(why)) => format!("{FRONT_FAIL_WITH_TOKEN}：{why}。"),
+            (true, None) => format!("{FRONT_FAIL_WITH_TOKEN}，它可能已经关了。"),
+            (false, _) => format!("{FRONT_FAIL_WITHOUT_TOKEN}。"),
+        };
+        let tail = if title_err.is_empty() {
+            "按 tmux 窗口标题也没找到。".to_string()
+        } else {
+            format!("按 tmux 窗口标题找到的窗口已经不能用了：{title_err}。")
+        };
+        format!("{head}{tail}")
+    })
+}
+
+/// 生产那一趟：查账本 → 分派 → 拉前。`lib.rs::bring_remote_terminal_to_front` 只调这一个。
+pub fn bring_remote_front(
+    sid: &str,
+    registry: &BindRegistry,
+    title_path: &RemoteHwndCache,
+) -> Result<(), String> {
+    let token = remote_rbind_tokens().token_of(sid);
+    let b = resolve_remote_front(
+        sid,
+        token.as_deref(),
+        registry,
+        title_path,
+        &verify_binding,
+        &|s| title_path.try_bind_with_retry(s, ON_DEMAND_BIND_ATTEMPTS, ON_DEMAND_BIND_STEP_MS),
+    )?;
+    activate(b.hwnd)
 }
 
 /// F75：on-demand（↗ 点击）现扫绑定的重试窗口——`ON_DEMAND_BIND_ATTEMPTS × ON_DEMAND_BIND_STEP_MS`。

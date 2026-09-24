@@ -194,6 +194,11 @@ mod tests {
         ("observe", "观测面 —— 读，不改变世界"),
         ("platform", "唯一允许平台原语与平台 cfg 的层"),
         ("plugin", "插件通用调用口：找它 / 起它 / 问它会什么"),
+        (
+            "read_face",
+            "〔`C1` · 09-24〕只读查询的帧面宿主：八条一次性查询的帧面那一层壳 —— \
+             本体在 `observe/`（CLI 那一臂同一个函数），它只解 `args`、装应答。**零写盘**",
+        ),
         ("relay", "HTTP 中转搬字节那半"),
         ("wire", "线上协议的帧定义与编解码"),
         // ── 下面这些整体是 `cfg(test)` 的守卫，生产构建为空 ──────────────────
@@ -1590,6 +1595,11 @@ mod spawn_registry {
              四者都是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别\
              （同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **backend 进程自身**\
              不写用户既有数据）。\
+             ★★ **ccbus-spawn 09-24：第五条到了，逐条记在这里** —— `cc-spawn`（`bus-spawn` 那条原语，\
+             **今天写好了、没登记进帧面**，登记要 bump `BUILD_ID`）。写面：**起一个真 agent 会话**\
+             （tmux ＋ claude/codex 进程，烧额度）· 登记进名册与 spawn 台账 · 预信任那个目录。\
+             仍是**被起的那个进程**在写（它内部再经 `ccm`），与用户在终端里敲 `cc-spawn` 没有区别；\
+             加它的那一刀同样被下面那条相等断言当场红、被逼回来读这一段之后才写下。\
              ⚠ 这一处口从此是**通用**的：将来经它起的每一个插件，写面都落在这一条理由底下，\
              而这条键**分不出**是哪个插件 —— 加一种新的被调命令时必须回来重读这一段，\
              没有任何机检会替你想起（`K6b` 那一族，本条就是它的活体标本）。\
@@ -1603,7 +1613,14 @@ mod spawn_registry {
              （`K-R2` PM 审计 §六㈡ 已端上去），本条**不替它回答**。\
              ⚠⚠ 而这正是这条键的病在**第二个使用者**身上复发：\
              键仍是 `<非字面量>`、仍分不出是哪个插件 ⇒ **加这一条不会红**，\
-             是人回来读了这一段才写下的。下一个使用者同理。",
+             是人回来读了这一段才写下的。下一个使用者同理。\
+             ★★ **〔`A3` 第二波 09-24〕第三个使用者到了，逐条记在这里** —— 账号层 \
+             `accounts/iso.rs`经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
+             写面：**只读** —— `cmd_shellinit` 全是 `printf`，不写任何文件（vendored 那份 \
+             `src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso` 逐行可查）；它读 manifest 与 \
+             `~/.cc-acct-iso/config`，要 `HOME` / `PATH`（都在继承白名单里）。\
+             ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`；下面那条「恰好四条」只数 \
+             `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。",
             "缩性质",
             "键能分得出「哪个插件、哪条被调命令」的那天（今天是 `<非字面量>`，四条命令共用一个键）。\
              ⚠ 在那之前，本条的覆盖面由 [`super::g6_reach`] 那一格钉着：\
@@ -2435,7 +2452,7 @@ mod g6_reach {
         cmds.dedup();
         assert_eq!(
             cmds,
-            vec!["cc-agents", "cc-kill", "cc-list", "cc-send"],
+            vec!["cc-agents", "cc-kill", "cc-list", "cc-send", "cc-spawn"],
             "经 `plugin/invoke.rs` 那个 `<非字面量>` 键转调的命令变了：{cmds:?}\n\
              ⇒ 回 `ALLOWED` 里 `plugin/invoke.rs` 那条**重读它的豁免理由**，\n\
              把新命令的写面写进去。**不许只改这个断言。**\n\
@@ -2906,6 +2923,15 @@ mod error_envelope_registry {
              ⇒ 键集那条判据的窗口必须够得着下一行（见 `every_envelope_carries_both_keys`）。",
         ),
         (
+            "accounts/iso.rs",
+            "serde_json::json!({\"code\": code, \"message\": message})",
+            "〔`A3` 第二波〕本机 `cc-acct-iso` 两问的失败信封（一个闭包 `fail`，四档码共用）",
+            "与 `observe/accounts_query.rs` 那份**同形不同家**：它住账号层（`accounts/`），\
+             而那份住 observe、`control/` 的出口按分层它也引不到 ⇒ 收成一份要先动分层，\
+             同 `K-R103`「不收」那条的理由。⚠ 它**只产出**信封、不自己写 stderr —— \
+             写出去那一下在 `main.rs::emit_answer`（账号层的输出受中转日志白名单管，查询输出不是日志）。",
+        ),
+        (
             "observe/history_query.rs",
             "\"invalid_args\"",
             "`--list-subagents` 的用法错",
@@ -2914,17 +2940,12 @@ mod error_envelope_registry {
         ),
         (
             "observe/history_query.rs",
-            "\"path_refused\"",
-            "`--list-subagents` 的路径被拒",
-            "同上一行。⚠ 它的 `message` 直接塞 `fence_under_projects` 回的那句话\
-             ⇒ 信封的**值**不受本模块管，本模块只管键集。",
-        ),
-        (
-            "observe/history_query.rs",
-            "\"bad_parent\"",
-            "`--list-subagents` 的父路径推不出目录",
-            "同上一行。三处凑在同一个函数里，而它们仍然是三份独立的字面量 ——\
-             这一格如实登记：它们**没有**共享出口，改一处不会带着另两处走。",
+            "\"code\":code",
+            "`--list-subagents` 的路径被拒 / 父路径推不出目录（〔`C1` · 09-24〕两处收成一处）",
+            "〔`C1` · 09-24〕上一版这里是两行（`path_refused` · `bad_parent`），各是一份独立的 `json!` 字面量。\
+             本体搬进 `list_subagents_into`（帧面 `history-subagents` 与 CLI 共用，错误回 `(code, message)`）之后，\
+             CLI 那层壳只剩**一处**信封，把那对值原样印出 —— 两个 code 的字面量从此住在本体里、不在信封里。\
+             ⚠ 字节与改前相同（`json!` 的键序由 `serde_json` 定，与写法无关）。",
         ),
     ];
 

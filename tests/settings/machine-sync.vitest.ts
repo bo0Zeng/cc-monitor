@@ -76,7 +76,7 @@ describe("S4a 跨分节机器同步", () => {
    */
   it("★ 在 cc-bus 驾驶舱里切机器 → cc-bus-hooks 跟着变（§5-4 记的那个病）", async () => {
     const bus = new CcBusSection();
-    const hooks = new CcBusHooksSection();
+    const hooks = loaded(new CcBusHooksSection());
     await settle();
 
     const busSel = selOf(bus.element, "cc-bus-origin");
@@ -97,7 +97,7 @@ describe("S4a 跨分节机器同步", () => {
 
   it("★ 直接驱动 store（= 机器详情页切页那条真实路径）→ 两块都跟上", async () => {
     const bus = new CcBusSection();
-    const hooks = new CcBusHooksSection();
+    const hooks = loaded(new CcBusHooksSection());
     await settle();
     const busSel = selOf(bus.element, "cc-bus-origin");
 
@@ -125,10 +125,10 @@ describe("S4a 跨分节机器同步", () => {
     await settle();
     expect(busSel.value).toBe("<local>"); // 跟着切到「本机」
     expect(getCurrentMachine()).toBeNull(); // store 仍用 null 表示本机（换算只在一处）
-    // 写面在本机没有对侧 ⇒ 派生按钮当场禁用，并说明为什么（别把人引过去再吃后端错误）。
+    // 〔BS1b 09-24 订正〕本机派生已走后端 `bus-spawn` 原语（本机、远端同一条路）⇒ 切到本机时派生按钮**不再**禁用。
+    //   原来这里钉的是「写面在本机没有对侧 ⇒ 当场禁用」，那个前提被 BS1b 拆掉了（`refuse_local_write` 已删）。
     const spawn = bus.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement;
-    expect(spawn.disabled).toBe(true);
-    expect(spawn.title).toContain("写面");
+    expect(spawn.disabled).toBe(false);
   });
 
   it("hooks 那块切到本机时**明说这是本机页**（它早就诚实表示了本机）", async () => {
@@ -136,7 +136,7 @@ describe("S4a 跨分节机器同步", () => {
     // **那个前提是我猜的，实测是假的**：它切到本机时显示「（本机页：无远端可诊断）」。
     // 记在这里是因为教训比结论有用：**先量再写断言**，否则判据钉的是我的想象。
     const bus = new CcBusSection();
-    const hooks = new CcBusHooksSection();
+    const hooks = loaded(new CcBusHooksSection());
     await settle();
     selOf(bus.element, "cc-bus-origin").value = "nano";
     selOf(bus.element, "cc-bus-origin").dispatchEvent(new Event("change"));
@@ -161,7 +161,7 @@ describe("S4a 跨分节机器同步", () => {
 
   it("★ 同值重复切换不重复发请求（否则四块互相激起 ssh 往返 = 变相轮询）", async () => {
     const bus = new CcBusSection();
-    new CcBusHooksSection();
+    loaded(new CcBusHooksSection());
     await settle();
     const busSel = selOf(bus.element, "cc-bus-origin");
 
@@ -178,3 +178,10 @@ describe("S4a 跨分节机器同步", () => {
     expect(mockInvoke.mock.calls.length).toBe(after1);
   });
 });
+
+/** ST1「延后加载」：分节构造期不再发 I/O，由宿主在机器子页第一次可见时调 `loadNow()`。
+ *  本文件量的是分节**加载之后**的行为 ⇒ 构造完就当宿主那样叫醒它。 */
+function loaded<T extends { loadNow(): void }>(s: T): T {
+  s.loadNow();
+  return s;
+}

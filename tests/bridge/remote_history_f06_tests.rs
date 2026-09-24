@@ -89,15 +89,14 @@ fn the_cap_check_is_still_wired_not_just_declared() {
 
     const COND: &str = "if read_bytes > MAX_SESSION_BYTES {";
 
-    // ① `+ 1`：它是「到限」与「正好读完」唯一的区分手段。
-    guard_core::pin_line(
-        &prod,
-        "let mut reader = BufReader::new(stream.take(MAX_SESSION_BYTES + 1));",
-    )
-    .expect(
-        "★ `take(MAX_SESSION_BYTES + 1)` 这一行不在了（或写法变了）。\n\
-             只 take(MAX) 的话，到限时 read_line 返回 0，与正常 EOF **完全同形** ——\n\
-             下面两条即使都在，也再没有任何东西能分辨「读完了」和「读到上限」。",
+    // ① 计数喂的是**真实读到的字节**。〔`C1` · 09-24〕上一版这一格钉的是
+    //    `stream.take(MAX_SESSION_BYTES + 1)`（`+ 1` 是那条 SSH 流上分辨「到限」与「正好读完」
+    //    唯一的手段）。读法换成长连接分页之后没有那条流了：每页回来就把这一页的原始字节数
+    //    （续点之差）加进计数 —— 没有 `take`，也就没有「到限时与 EOF 同形」那一形，
+    //    `>` 本身就分得开。⇒ 锚换成「计数真的在加」这一行，它被摘掉时下面那条判断恒假。
+    let add = guard_core::pin_line(&prod, "read_bytes += page.next - offset;").expect(
+        "★ 读到的字节不再计进 `read_bytes` 了（或写法变了）。\n\
+             计数不涨，下面那条上限判断就恒假 —— 与 08-06 那次 `if false` 变异同一个效果。",
     );
 
     // ② 条件本身：这一条正是 08-06 那次 `if false` 变异摘掉的东西。
@@ -105,6 +104,7 @@ fn the_cap_check_is_still_wired_not_just_declared() {
         "★ 上限判断不在生产段里了。08-06 实测：把它换成 `if false {`，\n\
              monitor 全量 989 条**一条都不会红** —— 本条就是为那个洞补的。",
     );
+    assert!(add < at, "计数在判断之后才加 —— 撞上限的那一页会被放过去");
 
     // ③ 那一支必须**报错**，不能是 break/continue：后者等于「读完了」。
     let body = prod

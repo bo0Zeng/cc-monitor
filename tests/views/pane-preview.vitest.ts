@@ -110,3 +110,29 @@ describe("★ 竞态：回包晚于关闭 / 换预览", () => {
     expect(overlayEl()).toBeNull();
   });
 });
+
+// 〔CP2a〕本文件是抽表的样板区（`调研/设计/91 §5.1`）：文案搬进了 `src/shared/copy/table.json`。
+// 抽表这一拍**不许改任何一个字** ⇒ 下面把抽表前界面上的每一句逐字钉住（原文取自抽表前的源码）。
+describe("抽表前后界面文字逐字不变（CP2a 样板区）", () => {
+  it("标题 · 两个按钮 · 加载中 · 空画面 · 失败 toast", async () => {
+    const d = deferred<string>();
+    capture.mockReturnValue(d.promise);
+    const pending = openPanePreview("devbox", "%1");
+    const root = overlayEl();
+    expect(root?.querySelector(".pane-preview-title")?.textContent).toBe("预览画面 · [devbox] tmux: %1");
+    const btns = [...(root?.querySelectorAll("button") ?? [])];
+    expect(btns.map((b) => [b.textContent, b.title])).toEqual([
+      ["重新抓取", ""],
+      ["✕", "关闭"],
+    ]);
+    expect(preText(root)).toBe("抓取中…");
+    d.resolve("");
+    await pending;
+    expect(preText(overlayEl())).toBe("（画面为空）");
+
+    closePanePreview();
+    capture.mockRejectedValue(new Error("boom"));
+    await openPanePreview("devbox", "%1");
+    expect(toast.mock.calls[0]?.[0]).toBe("预览画面失败");
+  });
+});

@@ -187,7 +187,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
             // ⚠ 只印数字与上限，**永不印请求头**（`K9` 裁定四第 1 条）——
             // 这一支根本还没读过一个字节，连请求头都还不存在。
             eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight");
-            let _ = server::respond_and_drain(&mut stream, "503 Service Unavailable");
+            let _ = server::respond_and_drain(&mut stream, server::BUSY);
             continue;
         }
         // ★ 先留一份 fd 副本：`spawn` 失败时 `stream` 已经被 move 进那个闭包、拿不回来，
@@ -211,7 +211,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
             inflight.fetch_sub(1, SeqCst);
             eprintln!("[relay] cannot spawn connection thread: {e}");
             if let Some(mut s) = spare {
-                let _ = server::respond_and_drain(&mut s, "503 Service Unavailable");
+                let _ = server::respond_and_drain(&mut s, server::BUSY);
             }
         }
     }
@@ -312,7 +312,7 @@ pub(super) fn run_reading(
 /// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了
 /// —— 本函数这一行今天是**判不了**的那一格，登记住址件文件 §8.18.3。
 pub(crate) fn run(home: &std::path::Path, _args: &[String], startup: &dyn Startup) -> i32 {
-    // ★ 层 2 那只手是**调用方递进来的**（`accounts::run_relay`，`--relay` 的装配口）——
+    // ★ 层 2 那只手是**调用方递进来的**（`accounts::apikey::run_relay`，`--relay` 的装配口）——
     //   本层**叫不出**它的名字。先前这里写死 `super::accounts::Boot`：层 2 搬出 `relay/` 那一拍删的。
     run_reading(&|k| std::env::var(k).ok(), home, &|p, get, h| {
         run_with(p, get, h, startup)

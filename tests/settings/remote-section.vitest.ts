@@ -47,6 +47,7 @@ import {
   sftpEligibleHosts,
 } from "../../src/remote-config";
 import type { RemoteHostConfig, RemoteConfig } from "../../src/remote-config";
+import * as remoteConfigModule from "../../src/remote-config";
 // `N-F2`：`forgetMachine` 是本文件末尾那条「先证会红」用的 —— 只抹本机那一栏，
 // 而不是 `localStorage.clear()`，这样「回到旧行为」这句话是按机器说的，不是按整本账说的。
 import {
@@ -962,5 +963,44 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(st.connection?.kind).toBe("ok");
     expect(st.backend?.kind).toBe("ok");
     ipcReplies.clear();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ST1「那个勾选框会自己跳」（`设计/70 §1` 截图对比 ＋ `§8` 判据 #2）：
+// 「启用远端模式」在配置读回来之前**不可交互**；读失败就一直灰着（那一刻它显示的不是盘上的值）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("ST1：「启用远端模式」读回来之前不可点", () => {
+  beforeEach(() => vi.resetAllMocks());
+  const box = (sec: RemoteSection) =>
+    [...sec.element.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].find(
+      (c) => c.parentElement?.textContent?.includes("启用远端模式"),
+    )!;
+
+  it("读回来之前灰着，读回来之后可点、且值就是盘上的值", async () => {
+    type Cfg = Awaited<ReturnType<typeof loadConfig>>;
+    let release!: (v: Cfg) => void;
+    vi.mocked(loadConfig).mockReturnValue(
+      new Promise((r) => (release = r)) as ReturnType<typeof loadConfig>,
+    );
+    const sec = new RemoteSection({ headless: true });
+    const cb = box(sec);
+    expect(cb, "找不到那个复选框 —— 下面全是空真").toBeTruthy();
+    expect(cb.disabled, "配置还没读回来就能点 —— 用户点下去的是一个假状态").toBe(true);
+    release({ remote: { enabled: true, hosts: [] } } as unknown as Cfg);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cb.disabled).toBe(false);
+    expect(cb.checked).toBe(true);
+  });
+
+  it("读失败 ⇒ 一直灰着（显示的不是盘上的值，点它就是写假状态回去）", async () => {
+    // ⚠ `readRemoteConfig` 自己会把 `loadConfig` 的异常吞成默认值 ⇒ 要量「读失败」这一支，
+    //   得让它**本身** reject（`refresh()` 的 catch 那一格）。
+    const spy = vi.spyOn(remoteConfigModule, "readRemoteConfig").mockRejectedValue(new Error("读不到"));
+    const sec = new RemoteSection({ headless: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(spy, "那条读口没被调 —— 下面是空真").toHaveBeenCalled();
+    expect(box(sec).disabled).toBe(true);
+    spy.mockRestore();
   });
 });

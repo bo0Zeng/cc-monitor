@@ -197,6 +197,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { restartWithAccount } from "../src/account-restart";
 import { invalidateAccountsCache } from "../src/accounts";
 import { showActionFailureToast } from "../src/error-toast";
+import { __setHostOsForTests, type HostOs } from "../src/settings/host-os";
 import {
   runRemoteResume,
   runRemoteResumeTmux,
@@ -207,7 +208,6 @@ import {
   TabManager,
   findClaudeTmux,
   findClaudeTmuxMatches,
-  explainBringFrontFailure,
   findIdleTmux,
   isCwdFallbackMatch,
   claudeExited,
@@ -2777,6 +2777,108 @@ describe("A5 compact waiter（awaitCompactFor + onLine 检测）", () => {
   });
 });
 
+// 〔`A3` 第二波〕**本机换号重启**：菜单与编排入口都对本机 tab 开放，origin 取 backend 的 `<local>`。
+// 死值验对照：把 `restartTabWithAccount` 开头那条改回 `tab.origin === null ⇒ return false`、
+// 或把右键那一行改回 `origin !== null && t`，下面各红一条。
+describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
+  const restartSpy = restartWithAccount as unknown as ReturnType<typeof vi.fn>;
+  type Priv = { restartTabWithAccount(sid: string, name: string, c: boolean): Promise<boolean> };
+  let tm: TabManager;
+  const TWO_LOCAL = {
+    available: true,
+    error: null,
+    meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 2, error: null },
+    accounts: [
+      { name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+      { name: "b", email: "b@x", configDir: "/h/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true },
+    ],
+  };
+  const localSess = (over: Record<string, unknown> = {}) => ({
+    name: "proj-cc",
+    path: "/w",
+    command: "claude",
+    attached: false,
+    windows: 1,
+    sid: "l1",
+    ...over,
+  });
+  const rightClick = (sid: string): void => {
+    (tm as unknown as { tabButtons: Map<string, { root: HTMLElement }> }).tabButtons
+      .get(sid)!
+      .root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+  };
+  const menuItems = (): HTMLButtonElement[] =>
+    [
+      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+    ] as HTMLButtonElement[];
+  const invokedCmds = (): string[] =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    invalidateAccountsCache();
+    tm = makeTM();
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+      if (cmd === "list_local_accounts") return Promise.resolve(TWO_LOCAL);
+      if (cmd === "list_local_tmux") return Promise.resolve([localSess()]);
+      return Promise.resolve(undefined);
+    });
+  });
+
+  it("本机活会话 ≥2 可选账号 → 出现「Restart」，点了走 `<local>`；账号清单问的是本机后端", async () => {
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    rightClick("l1");
+    await flushMicro();
+    await flushMicro();
+    await flushMicro();
+    expect(menuItems().map((b) => b.textContent)).toContain("Restart（换号重启）");
+    // 账号清单那一跳问的是**本机**（`list_local_accounts`），不是拿 `<local>` 去问远端。
+    expect(invokedCmds()).toContain("list_local_accounts");
+    expect(invokedCmds()).not.toContain("list_remote_accounts");
+    menuItems().find((b) => b.textContent === "直接重启")?.click();
+    await flushMicro();
+    expect(restartSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: "<local>", sessionId: "l1", accountName: "z", compactFirst: false }),
+    );
+  });
+
+  it("本机**归档** tab 不拉账号清单（本机 Resume 不带账号选择，只有活会话才有换号重启）", async () => {
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    (tm as unknown as { tabs: Map<string, { status: string }> }).tabs.get("l1")!.status = "archived";
+    rightClick("l1");
+    await flushMicro();
+    await flushMicro();
+    expect(invokedCmds()).not.toContain("list_local_accounts");
+    expect(menuItems().map((b) => b.textContent)).not.toContain("Restart（换号重启）");
+  });
+
+  it("本机会话精确 @ccm_sid 命中 → 编排器拿到 `<local>` ＋ 本机 resume 命令 ＋ 本机 tmux 名", async () => {
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    await (tm as unknown as Priv).restartTabWithAccount("l1", "b", false);
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+    const arg = restartSpy.mock.calls[0][0];
+    expect(arg.origin).toBe("<local>");
+    expect(arg.tmuxName).toBe("proj-cc");
+    expect(arg.accountName).toBe("b");
+    expect(arg.launcher).toBe(""); // getBehavior 的 mock：resumeCommandLocal = ""（远端那条是 "cct"）
+    expect(invokedCmds()).toContain("list_local_tmux");
+    expect(invokedCmds()).not.toContain("list_remote_tmux");
+  });
+
+  it("本机会话不在本工具 tmux 里 → 拒重启，提示**不指**本机不存在的那条补救路", async () => {
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+      cmd === "list_local_tmux" ? Promise.resolve([]) : Promise.resolve(undefined),
+    );
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    await (tm as unknown as Priv).restartTabWithAccount("l1", "b", false);
+    expect(restartSpy).not.toHaveBeenCalled();
+    const toast = vi.mocked(showActionFailureToast).mock.calls.at(-1);
+    expect(toast?.[0]).toBe("无法换号重启");
+    expect(String(toast?.[1])).not.toContain("把此会话切到账号 X");
+  });
+});
+
 describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动手）", () => {
   const restartSpy = restartWithAccount as unknown as ReturnType<typeof vi.fn>;
   type Priv = { restartTabWithAccount(sid: string, name: string, c: boolean): Promise<void> };
@@ -2942,63 +3044,120 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
 });
 
 /**
- * ★★ E73：`↗` 失败之后的**归因**必须按实况分档。
+ * ★★ 〔`设计/80 §8.7` 步 4，第二波 T4〕↗ 远端那一格：**前端不再猜，tmux 不在前提链上**。
  *
- * 原来只有一句「未绑定窗口（远端会话需在远端启用 ccm wrapper）」—— 对「用户直接跑 claude
- * 而不是 ccm」是对的，但对**没有交互终端撑着**的会话（SDK bridge：有 tmux、`@ccm_sid` 也对，
- * 但前台是 python3、`stdin=DEVNULL`）就是**把用户引向一个不存在的问题** ——
- * 装 ccm 也不会好。错误归因比失败本身更贵。
+ * 这里原先是 E73 那组「↗ 失败之后再打一次 `list_remote_tmux` 分四档归因」的判据。
+ * 步 4 把「有没有终端」的四套判断（`attachable` 布尔 · `findClaudeTmuxMatches` · 后端 HWND 校验 ·
+ * E73 那次远端 RPC）收成后端一句 ——「这个会话是不是 cc-monitor 启动的」（有没有启动令牌），
+ * 归因的判据住 `bind_tests.rs` 那张 64 格真值表。前端这一侧只钉三件事：
+ * ① 失败时**一次 tmux 查询都不发**（用户逐字「不能依赖 tmux」）；② 后端那句话**原样**给用户；
+ * ③ `attachable:false` 不再在前端短路 ↗（那是被收掉的四套之一）。
  */
-describe("E73：↗ 拉前失败的归因", () => {
-  const S = (name: string, sid: string | null, command: string) => ({
-    name,
-    path: "/p",
-    command,
-    attached: false,
-    windows: 1,
-    sid,
-  });
-  const RAW = "未绑定窗口（远端会话需在远端启用 ccm wrapper）";
-  const SID = "abcd1234-1111-2222-3333-444455556666";
-
+describe("设计/80 §8.7 步 4：↗ 远端那一格只问后端一次", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
-  beforeEach(() => mockInvoke.mockReset());
-
-  it("★★ tmux 里有它、但前台不是 claude → 明说「没有可拉前的终端」且**装 ccm 不会好**", async () => {
-    mockInvoke.mockResolvedValue([S("bridge-cc", SID, "python3")]);
-    const r = await explainBringFrontFailure("devbox", SID, "/p", RAW);
-    expect(r.title).toContain("没有可拉前的终端");
-    expect(r.detail).toContain("python3");
-    expect(r.detail, "必须把「别去装 ccm」说出来，否则用户还是会去装").toContain(
-      "装 ccm 不会让这个变好",
-    );
-    expect(r.detail, "别再把原来那句误导文案抄进来").not.toContain("需在远端启用 ccm wrapper");
-  });
-
-  it("★ 有交互终端只是没 marker → 原文案在这一档才是对的，原样给", async () => {
-    mockInvoke.mockResolvedValue([S("proj-cc", SID, "claude")]);
-    const r = await explainBringFrontFailure("devbox", SID, "/p", RAW);
-    expect(r.title).toBe("拉前失败");
-    expect(r.detail).toBe(RAW);
-  });
-
-  it("★ 压根不在 tmux 里 → 说清是「查不到」，不是「没装 ccm」", async () => {
-    mockInvoke.mockResolvedValue([S("别的-cc", "另一个-sid", "claude")]);
-    const r = await explainBringFrontFailure("devbox", SID, "/p", RAW);
-    expect(r.title).toContain("不在（本工具的）tmux 里");
-    expect(r.detail).toContain(SID.slice(0, 8));
-  });
-
-  it("★ 查不到清单 / 远端没 tmux → **不乱归因**，如实说查不了", async () => {
-    mockInvoke.mockRejectedValue(new Error("ssh 挂了"));
-    const a = await explainBringFrontFailure("devbox", SID, "/p", RAW);
-    expect(a.detail).toContain("无法进一步判断原因");
-    expect(a.detail, "原始错误不许吞").toContain(RAW);
-
+  const BACKEND_SAYS = "<后端归因原文>";
+  beforeEach(() => {
+    vi.clearAllMocks();
     mockInvoke.mockReset();
-    mockInvoke.mockResolvedValue(null); // 远端没装 tmux
-    const b = await explainBringFrontFailure("devbox", SID, "/p", RAW);
-    expect(b.detail).toContain("没装 tmux");
+    __setHostOsForTests("windows");
+  });
+  afterEach(() => __setHostOsForTests(null));
+
+  async function clickFront(tm: TabManager, sid: string): Promise<void> {
+    const btn = peek(tm).tabButtons.get(sid)?.root.querySelector(".tab-focus") as HTMLElement | null;
+    expect(btn, "量具自检：Windows 上应当渲出 ↗").not.toBeNull();
+    btn!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it("★★ 失败 ⇒ 后端那句话原样给用户，而且**一次 tmux 查询都不发**", async () => {
+    mockInvoke.mockImplementation((cmd: string) =>
+      cmd === "bring_remote_terminal_to_front" ? Promise.reject(new Error(BACKEND_SAYS)) : Promise.resolve([]),
+    );
+    const tm = makeTM();
+    tm.createSkeletonTab("r1", "/p", "devbox", "interactive", null);
+    await clickFront(tm, "r1");
+    const cmds = mockInvoke.mock.calls.map((c) => c[0]);
+    expect(cmds, "量具自检：↗ 真的发到了后端").toContain("bring_remote_terminal_to_front");
+    expect(
+      cmds.filter((c) => c === "list_remote_tmux" || c === "list_local_tmux"),
+      "↗ 失败之后又去查了一次 tmux —— tmux 回到了 ↗ 的前提链上（E73 那次 RPC 是步 4 要收的四套之一）",
+    ).toEqual([]);
+    expect(showActionFailureToast).toHaveBeenCalledWith("拉前失败", BACKEND_SAYS);
+  });
+
+  it("★ `attachable:false` 不再在前端短路 ↗ —— 照样问后端（归因是后端那一个布尔的事）", async () => {
+    mockInvoke.mockResolvedValue(undefined);
+    const tm = makeTM();
+    tm.createSkeletonTab("r2", "/p", "devbox", "interactive", null, false);
+    expect(tm.isAttachable("r2"), "量具自检：这个会话确实被宣告成不可 attach").toBe(false);
+    await clickFront(tm, "r2");
+    expect(mockInvoke.mock.calls.map((c) => c[0])).toContain("bring_remote_terminal_to_front");
+    expect(showActionFailureToast, "成功了还弹了 toast / 前端又替后端解释了一句").not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ★★ 〔第二波 T4 · LF1〕↗ 在非 Windows 上**别装得能用**。
+ *
+ * 非 Windows 上 ↗ 的最后一跳（`EnumWindows` / `SetForegroundWindow`）在 Rust 侧是恒失败的桩
+ * ⇒ 那颗按钮每点必败。门住 `terminal-front.ts`；`unknown` 照常显示（与 `hostOsAllows` 同一条理由）。
+ */
+describe("LF1：↗ 只在 Windows 上出现", () => {
+  const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(undefined);
+  });
+  afterEach(() => __setHostOsForTests(null));
+
+  const focusBtnOf = (tm: TabManager, sid: string) =>
+    peek(tm).tabButtons.get(sid)?.root.querySelector(".tab-focus") ?? null;
+
+  it("★★ 两向：linux / macos 不渲 ↗，windows / unknown 渲（本地 tab 与远端 tab 同一道门）", () => {
+    const want: [HostOs, boolean][] = [
+      ["windows", true],
+      ["unknown", true],
+      ["linux", false],
+      ["macos", false],
+    ];
+    for (const [os, shown] of want) {
+      __setHostOsForTests(os);
+      const tm = makeTM();
+      tm.ensureTab("l1", "/w", "p", 0, null);
+      tm.createSkeletonTab("r1", "/p", "devbox", "interactive", null);
+      expect(peek(tm).tabButtons.get("l1"), `${os}：量具自检，tab 按钮本身得在`).toBeDefined();
+      expect(focusBtnOf(tm, "l1") !== null, `${os} 本地 tab 的 ↗`).toBe(shown);
+      expect(focusBtnOf(tm, "r1") !== null, `${os} 远端 tab 的 ↗`).toBe(shown);
+    }
+  });
+
+  it("★ 快捷键 / 命令面板在 linux 上走到 ↗ ⇒ 说实话、**不发 IPC**", () => {
+    __setHostOsForTests("linux");
+    const tm = makeTM();
+    tm.createSkeletonTab("r1", "/p", "devbox", "interactive", null);
+    tm.switchTo("r1");
+    tm.bringActiveTerminalToFront();
+    const sent = mockInvoke.mock.calls
+      .map((c) => c[0])
+      .filter((c) => c === "bring_remote_terminal_to_front" || c === "bring_terminal_to_front");
+    expect(sent, "linux 上照样发了 ↗ 的 IPC —— 那是装作试过").toEqual([]);
+    expect(showActionFailureToast).toHaveBeenCalledWith(
+      "本机不能切到终端窗口",
+      expect.stringContaining("Windows"),
+      expect.objectContaining({ level: "info" }),
+    );
+  });
+
+  it("★ 对照：windows 上快捷键照常发 IPC（上一条不是因为别的原因没发）", () => {
+    __setHostOsForTests("windows");
+    const tm = makeTM();
+    tm.createSkeletonTab("r1", "/p", "devbox", "interactive", null);
+    tm.switchTo("r1");
+    tm.bringActiveTerminalToFront();
+    expect(mockInvoke.mock.calls.map((c) => c[0])).toContain("bring_remote_terminal_to_front");
   });
 });
 
@@ -4544,6 +4703,54 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it("〔U3b · 步 8〕接上骨架 ⇒ 前端账本只留离尾巴最近的 200 条、monitor 重放缓冲只留尾巴；丢掉的滚到时按偏移要回来、只建卡不重记账", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "read_session_index") return Promise.resolve(idx(1100));
+      if (cmd === "read_session_range") {
+        const a = args as { seqBase: number; lineCount: number };
+        return Promise.resolve(
+          Array.from({ length: a.lineCount }, (_, k) => mk("big", a.seqBase + k, `u${a.seqBase + k}`)),
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+    // 尾巴 [1000,1100) 先到（钉 floor=1000），[0,1000) 后到 ⇒ 全收纳
+    tm.onLine(mk("big", 1000, "u1000"));
+    const el = peek(tm).tabs.get("big")!.streamEl;
+    Object.defineProperty(el, "scrollHeight", { value: 2000, configurable: true });
+    Object.defineProperty(el, "clientHeight", { value: 800, configurable: true });
+    tm.onBatchStart();
+    for (let s = 1001; s < 1100; s++) tm.onLine(mk("big", s, `u${s}`));
+    for (let s = 0; s < 1000; s++) tm.onLine(mk("big", s, `u${s}`));
+    tm.onBatchEnd();
+    const t = peek(tm).tabs.get("big")!;
+    expect(t.window.pendingCount).toBe(1000);
+    await settle();
+    expect(t.skeleton).not.toBeNull();
+    // ① 前端账本：只留 seq 最高的 200 条（[800,1000)）
+    expect(t.window.pendingCount).toBe(200);
+    expect(t.window.peek(1)[0].seq).toBe(800);
+    // ② monitor 重放缓冲：按 sid 登记「只留尾巴」
+    expect(vi.mocked(invoke).mock.calls.filter((c) => c[0] === "replay_keep_tail_only")).toEqual([
+      ["replay_keep_tail_only", { sessionId: "big" }],
+    ]);
+    // ③ 滚到被丢掉的那段：按偏移要回来；这些行**见过**（旁路账早记过）⇒ 只建卡，不再走 onLine
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+    const { turnEndNotifier } = await import("../src/turn-notify");
+    spy.mockClear();
+    vi.mocked(turnEndNotifier.observe).mockClear();
+    t.skeleton!.ensure(300, 2); // [298, 303)
+    await settle();
+    expect(
+      vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_range").map((c) => c[1]),
+    ).toEqual([
+      { origin: "<local>", jsonlPath: "/p/big.jsonl", offset: 2980, until: 3030, seqBase: 298, lineCount: 5 },
+    ]);
+    expect(spy.mock.calls.map((c) => (c[0] as { seq: number }).seq)).toEqual([298, 299, 300, 301, 302]);
+    expect(vi.mocked(turnEndNotifier.observe), "见过的行又走了一遍 onLine 旁路").not.toHaveBeenCalled();
+  });
+
   it("大纲跳转：点到还在占位里的一条 ⇒ 先按 uuid→seq 物化那一段再跳", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
@@ -4557,5 +4764,40 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     g.CSS ??= { escape: (x: string) => x };
     host.jumpTo("u42");
     expect(t.skeleton!.isPending(42)).toBe(false);
+  });
+
+  // 〔SE1〕数据源换成后端之后，这条路必须照旧通：行是后端清单给的（不是流上攒的），
+  //   点**那一行**（不是直接调宿主）⇒ 先按 uuid→seq 物化再跳。
+  it("🔴 SE1：大纲的行来自后端清单，点到还在占位里的那一行 ⇒ 先物化那一段再跳", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(
+        cmd === "read_session_index"
+          ? idx(300)
+          : cmd === "list_user_inputs"
+            ? {
+                available: true,
+                from: 0,
+                end: 3,
+                entries: [
+                  { uuid: "u7", excerpt: "七", timestamp: "" },
+                  { uuid: "u42", excerpt: "四十二", timestamp: "" },
+                  { uuid: "u250", excerpt: "二百五十", timestamp: "" },
+                ],
+              }
+            : undefined,
+      ),
+    );
+    const t = replay("jump2");
+    await settle();
+    await settle();
+    const rows = [...t.inputsEl.querySelectorAll<HTMLButtonElement>(".user-input-row")];
+    // 行 == 后端给的，顺序不动（流上喂的全是 assistant 行 ⇒ 前端若还在自己攒，这里一条都不会有）
+    expect(rows.map((r) => r.dataset.inputUuid)).toEqual(["u7", "u42", "u250"]);
+    expect(t.skeleton!.isPending(42), "夹具没落在占位里 ⇒ 下面那半是空真").toBe(true);
+    const g = globalThis as unknown as { CSS?: { escape(s: string): string } };
+    g.CSS ??= { escape: (x: string) => x };
+    rows[1].click();
+    expect(t.skeleton!.isPending(42)).toBe(false);
+    expect(t.skeleton!.isPending(7), "只物化点到的那一段，不是全建").toBe(true);
   });
 });

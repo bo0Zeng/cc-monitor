@@ -426,49 +426,49 @@ pub(crate) fn windows_ccm_precheck(
     ours: Option<(&str, &crate::ccm_probe::CcmProbeResult)>,
     want_build: &str,
 ) -> String {
-    let needs = CC_SPAWN_NEEDS;
-    let path_caveat = "⚠ 查的是 **cc-monitor 装的那一份**，不是你 PATH 上那个 —— `cc-spawn` 在 bash 里调的是\
-                       PATH 上的 `ccm`，而 Windows 上问 PATH 要走登录 shell，那条路这里没有（`KU22`）。";
+    // 〔CP1 台账 09-24〕这几句对用户可见（设置页 cc-bus 区）：不上 markdown 星号、不上 `{:?}` 数组形、
+    //   不上工单号、不说内部推理 —— 台账那几行因此从「改」换成「保留」。
+    let join = |xs: &[&str]| xs.join("、");
+    let needs = join(CC_SPAWN_NEEDS);
+    let path_caveat =
+        "这里查的是 cc-monitor 自己装的那一份 ccm。cc-spawn 实际调用的是 PATH 上的 ccm，\
+                       在 Windows 上查不到那一个是哪一份。";
     let Some((at, card)) = ours else {
         return format!(
-            "本机还没有 cc-monitor 装的那份 `ccm`（`~/.cc-monitor/bin/`）—— 装出去的 `cc-spawn` \
-             够不够新**查不了**。⚠ 「没有警告」**不等于「没问题」**：`cc-spawn` 开头仍会协商 {needs:?}，\
-             缺一条就以「ccm 版本太旧」退出。先在设置页把本机后端装上（顺序：ccm 先、cc-bus 后）。"
+            "本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。\
+             cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。"
         );
     };
     if !card.installed {
         return format!(
-            "问了 cc-monitor 装的那份 `ccm`（{at}），它**没答出** `--ccm-probe` —— 版本与能力**查不了**。\
-             ⚠ 这是「查不了」，不是「没问题」：`cc-spawn` 开头仍会协商 {needs:?}。"
+            "问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。\
+             cc-spawn 启动时需要 ccm 支持：{needs}。"
         );
     }
-    let missing: Vec<&str> = needs
+    let missing: Vec<&str> = CC_SPAWN_NEEDS
         .iter()
         .copied()
         .filter(|c| !card.capabilities.iter().any(|x| x == c))
         .collect();
-    let build = card.build.as_deref().unwrap_or("(没报 build)");
+    let build = card.build.as_deref().unwrap_or("未知");
     if build != want_build {
+        let lack = if missing.is_empty() {
+            String::new()
+        } else {
+            format!("它还缺少：{}，cc-spawn 会因此退出。", join(&missing))
+        };
         return format!(
-            "cc-monitor 装的那份 `ccm`（{at}）**不是这一版**：它报 build={build}，这一版 monitor \
-             期望 {want_build}。{}在设置页重装本机后端（顺序：ccm 先、cc-bus 后）。\n{path_caveat}",
-            if missing.is_empty() {
-                String::new()
-            } else {
-                format!("它还缺能力 {missing:?}（装出去的 `cc-spawn` 会以「ccm 版本太旧」退出）。")
-            }
+            "cc-monitor 装的 ccm（{at}）不是这一版：它的版本是 {build}，这一版需要 {want_build}。\
+             {lack}请在设置页重装本机后端，再装 cc-bus。\n{path_caveat}"
         );
     }
     if !missing.is_empty() {
         return format!(
-            "cc-monitor 装的那份 `ccm`（{at}）是这一版（build={build}），却缺能力 {missing:?} ⇒ \
-             装出去的 `cc-spawn` 会以「ccm 版本太旧」退出 —— 这不该发生，多半是两边的清单漂了。\n{path_caveat}"
+            "cc-monitor 装的 ccm（{at}）版本对，但缺少：{}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{path_caveat}",
+            join(&missing)
         );
     }
-    format!(
-        "查过 cc-monitor 装的那份 `ccm`（{at}）：是这一版（build={build}），`cc-spawn` 要的 {needs:?} 都在。\n\
-         {path_caveat}"
-    )
+    format!("cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{path_caveat}")
 }
 
 /// `cc-spawn` 开头那段能力协商要的东西 —— **与 `src/shared/cc-bus/scripts/cc-spawn` 同一份清单**。

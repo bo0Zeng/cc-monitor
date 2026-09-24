@@ -422,13 +422,26 @@ interface LaunchToasts {
  *  按后端自己的声明判，只软化后端明说「这是既定设计」的那一种。 */
 export const POSIX_NO_WINDOW_MARKER = "刻意不替你挑终端模拟器";
 
+/** 〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕**这份 plan 真正要渲进载荷的那个令牌**。
+ *
+ *  从 `plan.env` 取、不从 `ctx`/`mods` 取：渲染器吃的是 `plan`，于是「交给本地窗口去登记的令牌」
+ *  与「注进远端进程环境的令牌」**在构造上是同一个串** —— 从中间态取的话，「维度没把它推进 plan」
+ *  那一类回归会造出一个本地登记了、远端却没有的令牌（join 静默失配，表现与「没令牌」同形）。 */
+function rbindTokenOf(plan: LaunchPlan): string | null {
+  const op = plan.env.find((o) => o.kind === "export-rbind-token");
+  return op && op.kind === "export-rbind-token" ? op.value : null;
+}
+
 async function invokeLaunchOrCopyFallback(
   origin: string,
   cmd: string,
   toasts: LaunchToasts,
+  // 〔第二波 T4〕这次拉起的启动期令牌（`rbindTokenOf`）；`attach` 那一格恒 `null`。
+  //   交给后端，让新开的窗口以它为 marker 登记进本地表（`launch.rs::with_rbind_bind_prelude`）。
+  rbindToken: string | null,
 ): Promise<boolean> {
   try {
-    await commands.launch_remote_terminal({ origin, remoteCmd: cmd });
+    await commands.launch_remote_terminal({ origin, remoteCmd: cmd, rbindToken });
     showActionFailureToast(toasts.success, toasts.successDetail, { level: "info", durationMs: 6000 });
     return true;
   } catch (err) {
@@ -474,9 +487,11 @@ export async function runRemoteResume(
   // 「已 resume」）。既有调用点忽略返回值 ⇒ 行为逐字不变。
 ): Promise<boolean> {
   let cmd: string;
+  let token: string | null;
   try {
     const { ctx, plan } = planResumeDirect(sid, cwd, launcher, withMintedRbindToken(mods));
     cmd = await renderLaunchCommand(origin, ctx, plan);
+    token = rbindTokenOf(plan);
   } catch (err) {
     showActionFailureToast("无法构造 resume 命令", String(err));
     return false;
@@ -486,7 +501,7 @@ export async function runRemoteResume(
     successDetail: `新终端窗口正在连接 [${origin}] 并 resume 该会话。`,
     failureCopied: "拉起失败，已复制 resume 命令",
     failureNotCopied: "拉起失败，请手动复制以下命令",
-  });
+  }, token);
 }
 
 /** F52：tmux 版 resume——在远端 tmux 会话 `<sid8>-cc` 里幂等 resume Claude;失败回退复制命令。
@@ -508,9 +523,11 @@ export async function runRemoteResumeTmux(
   mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<boolean> {
   let cmd: string;
+  let token: string | null;
   try {
     const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, withMintedRbindToken(mods));
     cmd = await renderLaunchCommand(origin, ctx, plan);
+    token = rbindTokenOf(plan);
   } catch (err) {
     showActionFailureToast("无法构造 tmux resume 命令", String(err));
     return false;
@@ -520,7 +537,7 @@ export async function runRemoteResumeTmux(
     successDetail: `新终端窗口正在连接 [${origin}] 并在 tmux 会话里 resume 该会话。`,
     failureCopied: "拉起失败，已复制 tmux resume 命令",
     failureNotCopied: "拉起失败，请手动复制以下命令",
-  });
+  }, token);
 }
 
 /** U8a-2c-1 + **F14**：把 `send-keys` 那半边交给**远端 backend**（`control/launch.rs`，`mode:"send-into"`）。
@@ -618,8 +635,12 @@ export async function runRemoteResumeIntoExistingTmux(
 ): Promise<boolean> {
   let cmd: string;
   let viaBackend = false;
+  let token: string | null;
   try {
     const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, withMintedRbindToken(mods));
+    // ★ 〔第二波 T4〕两条出路都用**这份 send-into plan** 的令牌：`typed` 那条开的窗口只跑 `attach`，
+    //   但它接上的正是刚被键入、环境里带着这个令牌的那个 claude —— 本地要登记的就是这一个。
+    token = rbindTokenOf(plan);
     // ★ U8a-2c-1：**先试 backend**。这一格今天的整串是
     //   `tmux send-keys -t '=name:' '<载荷>' Enter; tmux attach -t '=name:'` —— 两半干干净净：
     //   `send-keys` 交给远端 `control/`，`attach` **必须**留在用户自己的终端（§1.3）。
@@ -651,7 +672,7 @@ export async function runRemoteResumeIntoExistingTmux(
       : `新终端窗口正在连接 [${origin}] 并在原 tmux 会话「${name}」里 resume 该会话（复用、不新建）。`,
     failureCopied: "拉起失败，已复制就地 resume 命令",
     failureNotCopied: "拉起失败，请手动复制以下命令",
-  });
+  }, token);
 }
 
 /**
@@ -754,7 +775,7 @@ export async function runLocalResumeIntoExistingTmux(
     successDetail: `本机 tmux 会话「${name}」里已就地 resume（复用、不新建），终端窗口正在接上它。`,
     failureCopied: "已就地 resume，attach 命令已复制",
     failureNotCopied: "已就地 resume，请手动复制 attach 命令",
-  });
+  }, rbindTokenOf(plan));
   // ★ 就地 resume 本身已经成了（`typed`）——**attach 开不开得了窗口不改变这个结论**。
   //   返回 `false` 会让调用方以为这次 resume 没做成，那是把两件事混成一件。
   return true;
@@ -813,9 +834,11 @@ export async function runRemoteLauncher(
   mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<void> {
   let cmd: string;
+  let token: string | null;
   try {
     const { ctx, plan } = planLauncher(cwd, tmuxName, command, withMintedRbindToken(mods));
     cmd = await renderLaunchCommand(origin, ctx, plan);
+    token = rbindTokenOf(plan);
   } catch (err) {
     showActionFailureToast("无法构造 launcher 命令", String(err));
     return;
@@ -825,7 +848,7 @@ export async function runRemoteLauncher(
     successDetail: `新终端窗口正在连接 [${origin}] 并在 tmux 会话「${tmuxName}」里启动 Claude。`,
     failureCopied: "拉起失败，已复制命令",
     failureNotCopied: "拉起失败，请手动复制以下命令",
-  });
+  }, token);
 }
 
 /** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。
@@ -844,5 +867,5 @@ export async function runRemoteAttach(origin: string, name: string): Promise<voi
     successDetail: `新终端窗口正在连接 [${origin}] 并 attach 到 tmux 会话「${name}」。`,
     failureCopied: "拉起失败，已复制 attach 命令",
     failureNotCopied: "拉起失败，请手动复制以下命令",
-  });
+  }, null); // `attach` 不铸币（`planAttach` 不收 `mods`）⇒ 新窗口不做令牌握手
 }

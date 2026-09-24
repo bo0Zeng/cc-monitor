@@ -20,6 +20,9 @@ import type { LaunchModifiers } from "./launch-plan";
 // 源：`src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
 // （它每次生成都跑一遍 `history.rs::LaunchAccount` 的生产反序列化器验一次）。
 import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
+// 〔`A3` 第二波〕backend 的本机 origin（`"<local>"`）—— 与本文件自己那个 `LOCAL_ORIGIN`
+// （`"__local__"`，账号面的缓存键）**不是同一个值**，所以换个名字导进来，别让两者在读者眼里混成一个。
+import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "./backend-policy";
 
 // ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
 //
@@ -244,7 +247,7 @@ export type AccountRelayState =
   | { scope: "local"; hasRow: boolean; running: boolean };
 
 /**
- * `K-H2b` `KH2B7` 的**产出方**：问后端「这几个**本机** configDir 走不走中转」。
+ * `K-H2b` `KH2B7` 的**产出方**：问后端「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
  *
  * # 它为什么是一条只答本机的命令（而不是账号列表上的两个字段）
  *
@@ -253,7 +256,7 @@ export type AccountRelayState =
  * 就是让远端那些行也带上两个这一侧答不出来的值。
  * 命令面的登记（`relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
  *
- * ★〔第四拍〕**取数那一跳接上了**：走包装层 `commands.relay_routing_for`。
+ * ★〔第四拍〕**取数那一跳接上了**：走包装层 `commands.apikey_routing_for`。
  * ⚠ 经过如实记：第三拍它退回过一次 —— 注册一条命令会同时动两个钉死计数
  * （`parity_ledger.rs` 5 个数 + `tests/ipc/commands.vitest.ts` 两处 `144`），
  * 而后者当时不在写区。**那两个数是联动的**：注册了不调 ⇒ 前一个红；调了没注册 ⇒ 编不过。
@@ -262,7 +265,7 @@ export type AccountRelayState =
  * **不是**「那把 key 能用」；`running` 说的是「我们起过它而且没停过」，
  * **不是**「那个口上真有人听」。
  */
-export interface RelayRoutingView {
+export interface ApikeyRoutingView {
   /** 传进去的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回）。 */
   routed: string[];
   /** 本机中转在不在跑。 */
@@ -357,7 +360,7 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
  * ⚠ 名字这一半**本来就在手上**（[`localLaunchAccountNameSync`]，与取目录那半同源）——
  * 缺的从来不是数据，是**没往下传**。所以这里是把同一条规则的两半一起交出去，
  * **不是**在后端那侧从目录名反推一个名字：反推错的失效方向是 `shared/ccm` 当场 `die`
- *（退出码 2 = 一次本来能起的会话变成一条报错），与 `relay_account_id_of_dir`
+ *（退出码 2 = 一次本来能起的会话变成一条报错），与 `apikey_account_id_of_dir`
  * 那条「推错就回落」的保守方向相反。理由逐字住 `history.rs` 的 `LaunchAccount::Named::name`。
  */
 export type LocalLaunchAccountWire = Record<
@@ -443,19 +446,19 @@ export function __setLocalLaunchSnapshotForTests(
   localLaunchSnapshot = { state, pins };
 }
 
-export async function fetchLocalRelayRouting(configDirs: string[]): Promise<RelayRoutingView> {
-  return await commands.relay_routing_for({ configDirs });
+export async function fetchLocalRelayRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
+  return await commands.apikey_routing_for({ configDirs });
 }
 
 /**
  * 把上面那份读数落到**一个账号**上。
  *
  * `configDir` 缺席（账号 0）⇒ `null`：账号 0 在 manifest 里没有目录名，
- * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `relay_account_id` 的三态同形）。
+ * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `apikey_account_id` 的三态同形）。
  */
 export function localRelayStateFor(
   a: Account,
-  routing: RelayRoutingView,
+  routing: ApikeyRoutingView,
 ): AccountRelayState | undefined {
   if (!a.configDir) return undefined;
   return { scope: "local", hasRow: routing.routed.includes(a.configDir), running: routing.running };
@@ -490,7 +493,7 @@ export function accountStatusBadge(
         text: "api-key（中转未运行）",
         warn: true,
         title:
-          "这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被**当场拒**" +
+          "这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被当场拒掉" +
           "（不是静默失败：中转没起来与网络坏了在 claude 那边长得一模一样，" +
           "所以这一条在起会话那一侧就拦下来）。请先起本机后端。",
       };
@@ -498,15 +501,15 @@ export function accountStatusBadge(
     // 三种「没配上」的成因，各说各的 —— **合成一句就等于又写下一句说不准的话**。
     const why =
       local != null
-        ? "apikey 凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。" +
+        ? "apikey 凭据文件里没有这个账号的一行 ⇒ cc-monitor 不会替它配 base URL。" +
           "要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 " +
           "shell 环境里配好第三方端点。"
         : relay?.scope === "remote"
-          ? "cc-monitor 今天只给**本机**会话配 base URL；**远端**这一半还不做" +
+          ? "cc-monitor 今天只给本机会话配 base URL；远端这一半还不做" +
             "（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上" +
             "自己配好第三方端点。"
           : "cc-monitor 只在两件事都成立时替它配端点（base URL）：① apikey 凭据文件里有这个" +
-            "账号 id 的一行；② 本机中转在跑。**这一处没被告知它属于哪一半、那两条成不成立**，" +
+            "账号 id 的一行；② 本机中转在跑。这一处没被告知它属于哪一半、那两条成不成立，" +
             "所以不替它下判断。";
     return {
       text: "api-key（未配置端点）",
@@ -768,12 +771,21 @@ export function shouldShowAccountBadge(
  * ⇒ 本函数的「是」精确读作「**这个进程的环境里带着本工具铸的身份标记**」，
  * 不读作「一定是本工具直接拉起的」。文案也按这个强度写，不许写强。
  */
-export function restartLocateFailureMessage(row: SessionAccount | undefined): {
+export function restartLocateFailureMessage(
+  row: SessionAccount | undefined,
+  opts: { local?: boolean } = {},
+): {
   title: string;
   body: string;
 } {
   // ⚠ `undefined`（老后端不出这个键）与 `null`（backend 说「不作数」）在这里是同一件事。
   const carriesOurLaunchMark = Boolean(row && row.alive && row.launchId);
+  // 〔`A3` 第二波〕最后那句补救**只对远端成立**：本机归档 tab 的 Resume 不带账号选择
+  // （走 `localLaunchAccountSync`，沿用这条会话上次的号），「把此会话切到账号 X」在本机不存在。
+  // 对本机说那句话，是在指一条走不通的路。
+  const tail = opts.local
+    ? "本机归档后的 Resume 沿用这条会话上次的账号，换号只对本工具在 tmux 里起的会话做得到。"
+    : "可先归档后用右键「把此会话切到账号 X」。";
   if (carriesOurLaunchMark) {
     return {
       title: "无法换号重启：tmux 标记丢了",
@@ -781,14 +793,13 @@ export function restartLocateFailureMessage(row: SessionAccount | undefined): {
         "这条会话的进程里带着本工具铸的身份标记，说明它是从本工具这条路起来的；" +
         "但它现在不在本工具的 tmux 里——多半是 tmux 会话被重建过、或 @ccm_sid 标记丢了。" +
         "换号重启要往那个 tmux 里发按键，定位不到就不能动手（乱猜会杀错会话）。" +
-        "可先归档后用右键「把此会话切到账号 X」。",
+        tail,
     };
   }
   return {
     title: "无法换号重启",
     body:
-      "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——" +
-      "可先归档后用右键「把此会话切到账号 X」。",
+      "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——" + tail,
   };
 }
 
@@ -1082,8 +1093,14 @@ interface CacheEntry<T> {
 const accountsCache = new Map<string, CacheEntry<AccountsState>>();
 const sessionAccountsCache = new Map<string, CacheEntry<SessionAccount[]>>();
 
-/** 取某台远端的账号状态（带 TTL 缓存）。force=true 或缓存过期时重发。 */
+/** 取某台远端的账号状态（带 TTL 缓存）。force=true 或缓存过期时重发。
+ *
+ * 〔`A3` 第二波〕`origin` 是 backend 的本机 origin（`<local>`）⇒ 转给 [`fetchLocalAccounts`]
+ * （问本机后端的 `--list-accounts`）。在此之前它会拿 `<local>` 去问 `list_remote_accounts`，
+ * 回来一句「远端 '<local>' 未配置」—— 本机换号重启与它的菜单都经这里，那句话会让本机
+ * 恒显示「没有可选账号」。 */
 export async function fetchAccounts(origin: string, force = false): Promise<AccountsState> {
+  if (origin === BACKEND_LOCAL_ORIGIN) return fetchLocalAccounts(force);
   const now = Date.now();
   const cached = accountsCache.get(origin);
   if (!force && cached && now - cached.at < ACCOUNTS_TTL_MS) return cached.value;

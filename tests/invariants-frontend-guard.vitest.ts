@@ -353,7 +353,7 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
     expect(
       toggles.length,
       "找不到任何临时关闭处 —— 下面两条在空集合上绿。要么补批路都删了（那这一格一起删），要么量具坏了",
-    ).toBe(4);
+    ).toBe(5); // 〔U3b〕+1 同一豁免类：`skeleton-view.attachGaps`（查看器接骨架时钉住视口那张卡）
     expect(
       toggles.filter((t) => t.onLine === null).map((t) => `${t.file}:${t.offLine}`),
       "临时关掉了 `overflow-anchor` 却找不到还原处 ⇒ 那个 tab / viewer 会话**永久**失去原生锚定",
