@@ -235,35 +235,18 @@ fn build_session_hits(
                 }
             }
             "user" | "assistant" => {
-                let is_assistant = kind == "assistant";
-                let content_v = v.get("message").and_then(|m| m.get("content"));
-                let raw_main = content_v
-                    .map(search_core::extract_text_blocks)
-                    .unwrap_or_default();
-                let main = if is_assistant {
-                    search_core::truncate_plain(&raw_main, MAIN_CAP)
-                } else {
-                    search_core::truncate_plain(&search_core::clean_user_text(&raw_main), MAIN_CAP)
+                // 〔SE2〕「这条记录拿哪两段文本去搜、命中算哪一种」只住 [`record_text`] / [`record_hit`]：
+                // 会话内查找（`--find-in-session`）调的是同一对函数。
+                let Some(rt) = record_text(&v, opts.include_tools) else {
+                    continue;
                 };
-                if !is_assistant && first_user_excerpt.is_empty() && !main.is_empty() {
-                    first_user_excerpt = search_core::truncate_excerpt(&main, 120);
+                if !rt.is_assistant && first_user_excerpt.is_empty() && !rt.main.is_empty() {
+                    first_user_excerpt = search_core::truncate_excerpt(&rt.main, 120);
                 }
-                let tool = if opts.include_tools {
-                    content_v
-                        .map(|c| {
-                            search_core::truncate_plain(
-                                &search_core::extract_tool_text(c, is_assistant),
-                                TOOL_CAP,
-                            )
-                        })
-                        .unwrap_or_default()
-                } else {
-                    String::new()
-                };
                 // scope 过滤：想要 user 却是 assistant（或反之）→ 跳过。
                 if let Some(s) = opts.scope.as_deref() {
                     let want_user = s == "user";
-                    if want_user == is_assistant {
+                    if want_user == rt.is_assistant {
                         continue;
                     }
                 }
@@ -276,19 +259,12 @@ fn build_session_hits(
                 if opts.after_ms > 0 && ts_ms < opts.after_ms {
                     continue;
                 }
-                let in_main = main.to_lowercase().contains(q_lc);
-                let in_tool = !tool.is_empty() && tool.to_lowercase().contains(q_lc);
-                if !in_main && !in_tool {
+                let Some((hkind, text)) = record_hit(&rt, q_lc) else {
                     continue;
-                }
+                };
                 hit_count += 1;
                 match budget.take(hits.len()) {
                     SnippetVerdict::Give => {
-                        let (hkind, text) = if in_main {
-                            (if is_assistant { "assistant" } else { "user" }, &main)
-                        } else {
-                            ("tool", &tool)
-                        };
                         let (before, matched, after) = search_core::make_snippet(text, q_lc);
                         let uuid = v
                             .get("uuid")
@@ -336,6 +312,139 @@ fn build_session_hits(
         // 而 `merge_search_results` 逐字 `truncated: local.truncated` 把远端那一半整个丢掉。
         "hitsTruncated": session_starved,
     }))
+}
+
+/// 一条 user / assistant 记录拿去搜的两段文本（〔SE2〕从 `build_session_hits` 里拆出来）。
+pub(crate) struct RecordText {
+    pub(crate) is_assistant: bool,
+    /// 正文：文本块；user 那侧先剥 CLI 注入的包装（`clean_user_text`），再按 `MAIN_CAP` 截断。
+    pub(crate) main: String,
+    /// 工具内容（tool_use 入参 / tool_result 输出 / thinking），按 `TOOL_CAP` 截断；不搜工具时空串。
+    pub(crate) tool: String,
+}
+
+/// 一条已解析的记录 → 拿去搜的文本；不是 user / assistant ⇒ `None`。
+///
+/// 🔴 **全局搜索（`--search`）与会话内查找（`--find-in-session`）的口径只有这一个住址**；
+/// 抽取 / 剥注入 / 截断的助手本身住 `search-core`（与 monitor 同一份）。
+pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> {
+    let is_assistant = match v.get("type").and_then(Value::as_str) {
+        Some("assistant") => true,
+        Some("user") => false,
+        _ => return None,
+    };
+    let content_v = v.get("message").and_then(|m| m.get("content"));
+    let raw_main = content_v
+        .map(search_core::extract_text_blocks)
+        .unwrap_or_default();
+    let main = if is_assistant {
+        search_core::truncate_plain(&raw_main, MAIN_CAP)
+    } else {
+        search_core::truncate_plain(&search_core::clean_user_text(&raw_main), MAIN_CAP)
+    };
+    let tool = if include_tools {
+        content_v
+            .map(|c| {
+                search_core::truncate_plain(
+                    &search_core::extract_tool_text(c, is_assistant),
+                    TOOL_CAP,
+                )
+            })
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    Some(RecordText {
+        is_assistant,
+        main,
+        tool,
+    })
+}
+
+/// 命中判定：先看正文、再看工具内容（大小写不敏感子串）。命中 ⇒ `(种类, 命中的那段文本)`，
+/// 种类是 `"user"` / `"assistant"` / `"tool"`（与 `Hit.kind` 同一套词）。`q_lc` 已小写、已 trim。
+pub(crate) fn record_hit<'a>(rt: &'a RecordText, q_lc: &str) -> Option<(&'static str, &'a str)> {
+    if rt.main.to_lowercase().contains(q_lc) {
+        return Some((if rt.is_assistant { "assistant" } else { "user" }, &rt.main));
+    }
+    if !rt.tool.is_empty() && rt.tool.to_lowercase().contains(q_lc) {
+        return Some(("tool", &rt.tool));
+    }
+    None
+}
+
+/// 会话内查找一次最多列多少条（缺省）。尾行照报**全量**命中数。
+pub(crate) const FIND_DEFAULT_LIMIT: usize = 500;
+/// 会话内查找的上限封顶（调用方要得再多也只列这么多）。
+pub(crate) const FIND_MAX_LIMIT: usize = 2000;
+
+/// 〔SE2 · `设计/10 §6 步 6`〕**会话内查找**的内核：读 `r`（一份会话，从头）逐行找 `query`，
+/// 出三段（形状登记 `IPC-PROTOCOL.md §10.5`）：
+/// 1. 头 `{"kind":"session_find","v":1}`；
+/// 2. 每条命中一行 `{"uuid","kind","before","matched","after"}`，**按文件序**（= 对话序），最多 `limit` 条；
+/// 3. 尾 `{"kind":"session_find_end","count":N,"total":T}` —— `T` = 全量命中数（≥ N）。**没有尾行 ⇒ 截断**。
+///
+/// 与 `--search` 的差别只在「扫哪些文件、给多少条」：口径（[`record_text`] / [`record_hit`] ＋ `search-core`
+/// 的片段）同一份。没有 uuid 的记录不算（跳不过去 —— 列出来就是一条点了没反应的项）。
+/// 只看**完整行**（torn 残尾下一次再看）。空查询 ⇒ 零条。返回 `(count, total)`。
+pub(crate) fn write_session_find<R: std::io::BufRead, W: std::io::Write>(
+    mut r: R,
+    query: &str,
+    include_tools: bool,
+    limit: usize,
+    out: &mut W,
+) -> std::io::Result<(u64, u64)> {
+    writeln!(out, "{{\"kind\":\"session_find\",\"v\":1}}")?;
+    let q = query.trim().to_lowercase();
+    let mut count: u64 = 0;
+    let mut total: u64 = 0;
+    let mut buf: Vec<u8> = Vec::new();
+    while !q.is_empty() {
+        buf.clear();
+        let read = r.read_until(b'\n', &mut buf)?;
+        if read == 0 || buf.last() != Some(&b'\n') {
+            break;
+        }
+        let text = String::from_utf8_lossy(&buf[..buf.len() - 1]);
+        let Ok(v) = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
+        else {
+            continue;
+        };
+        let Some(uuid) = v
+            .get("uuid")
+            .and_then(Value::as_str)
+            .filter(|u| !u.is_empty())
+        else {
+            continue;
+        };
+        let Some(rt) = record_text(&v, include_tools) else {
+            continue;
+        };
+        let Some((kind, hit)) = record_hit(&rt, &q) else {
+            continue;
+        };
+        total += 1;
+        if (count as usize) < limit {
+            let (before, matched, after) = search_core::make_snippet(hit, &q);
+            serde_json::to_writer(
+                &mut *out,
+                &serde_json::json!({
+                    "uuid": uuid,
+                    "kind": kind,
+                    "before": before,
+                    "matched": matched,
+                    "after": after,
+                }),
+            )?;
+            out.write_all(b"\n")?;
+            count += 1;
+        }
+    }
+    writeln!(
+        out,
+        "{{\"kind\":\"session_find_end\",\"count\":{count},\"total\":{total}}}"
+    )?;
+    Ok((count, total))
 }
 
 // === 文本抽取 / snippet / 截断：**一份都不在这里**（`K-R100`） ===
@@ -390,3 +499,7 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/search_query_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/search_query_find_tests.rs"]
+mod find_tests;
