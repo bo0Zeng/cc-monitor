@@ -903,11 +903,7 @@ const KNOWN_CAPABILITY_TOKENS: &[&str] = &["bg", "rbind-token", "tail-only"];
 /// 一起补穷举（`ssh_source_stream_flag_gate_tests.rs`），不许只改一边。
 fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool, bool) {
     let has = |c: &str| capabilities.iter().any(|t| t == c);
-    (
-        show_bg && has("bg"),
-        has("tail-only"),
-        has("rbind-token"),
-    )
+    (show_bg && has("bg"), has("tail-only"), has("rbind-token"))
 }
 
 /// F66（#58③）★ 防无限重连的收敛判据（纯函数，穷举单测）：收到后端能力声明后，
@@ -2657,8 +2653,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 // ⚠ 形状那一条**不在这里重写一遍** —— 过 `bind::rbind_token_shape_ok`，
                 // 即**本地那张 `token → HWND` 表用的同一条**。两处各写一遍的后果是
                 // join 在某些取值上静默失配，而失配与「没有令牌」在界面上同形。
-                rbind_token: opt("rbind_token")
-                    .filter(|t| crate::bind::rbind_token_shape_ok(t)),
+                rbind_token: opt("rbind_token").filter(|t| crate::bind::rbind_token_shape_ok(t)),
             })
         }
         "session_status" => {

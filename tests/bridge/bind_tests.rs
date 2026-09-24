@@ -440,7 +440,10 @@ fn a_malformed_launch_token_marker_is_treated_as_no_token_at_all() {
         "marker 后面还挂着东西却照样解出了令牌 —— 那会把两个不同的窗口记成同一个键"
     );
     // 前缀差一个字节 ⇒ 不是这一种 marker。
-    assert_eq!(rbind_token_from_marker(&format!("x{}", t3_marker(T3_TOK))), None);
+    assert_eq!(
+        rbind_token_from_marker(&format!("x{}", t3_marker(T3_TOK))),
+        None
+    );
 }
 
 fn t3_entry(ps_pid: u32, marker: &str) -> HwndEntry {
@@ -499,7 +502,9 @@ fn the_launch_token_finds_its_window_handle_in_the_same_era2_table() {
         None
     );
     // ④ 形状不对的查询串命不中（靠「表里的键入表时就过了形状闸」＋ 逐字节相等）
-    assert!(reg.lookup_hwnd_for_token("0F1E2D3C4B5A69788796A5B4C3D2E1F0").is_none());
+    assert!(reg
+        .lookup_hwnd_for_token("0F1E2D3C4B5A69788796A5B4C3D2E1F0")
+        .is_none());
     assert!(reg.lookup_hwnd_for_token("").is_none());
 }
 
@@ -533,7 +538,11 @@ fn the_token_survives_a_monitor_restart_and_old_files_still_load() {
     .unwrap();
 
     let loaded = scan_registry_dir(&reg_dir);
-    assert_eq!(loaded.len(), 2, "老文件没读进来 —— additive 兼容破了：{loaded:?}");
+    assert_eq!(
+        loaded.len(),
+        2,
+        "老文件没读进来 —— additive 兼容破了：{loaded:?}"
+    );
     let reg = t3_registry(dir.clone(), loaded.into_values().collect());
     assert_eq!(
         reg.lookup_hwnd_for_token(T3_TOK).map(|e| e.ps_pid),
@@ -591,12 +600,18 @@ fn the_launch_token_value_never_reaches_a_log_macro() {
     // ① 行为：抹值、留形状
     let red = redact_marker(&t3_marker(T3_TOK));
     assert!(!red.contains(T3_TOK), "脱敏之后令牌还在：{red}");
-    assert!(red.contains("ccm-rbind-token-"), "形状也被抹掉了，排障看不出这是哪一类：{red}");
+    assert!(
+        red.contains("ccm-rbind-token-"),
+        "形状也被抹掉了，排障看不出这是哪一类：{red}"
+    );
     // 窗口标题那一档：令牌夹在中间（WT 会往标题里塞别的东西）
     let titled = redact_marker(&format!("{} - Windows PowerShell", t3_marker(T3_TOK)));
     assert!(!titled.contains(T3_TOK), "标题里的令牌没被抹掉：{titled}");
     // 不含令牌的文本原样过（不许把 Era 2 的排障信息也一起吃掉）
-    assert_eq!(redact_marker("ccm-bind-9692-abc12345"), "ccm-bind-9692-abc12345");
+    assert_eq!(
+        redact_marker("ccm-bind-9692-abc12345"),
+        "ccm-bind-9692-abc12345"
+    );
 
     // ② 接线：生产段里凡是把 marker / title_at_bind 交给 tracing 的，必须过脱敏。
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/bind.rs"));
@@ -634,7 +649,8 @@ fn the_launch_token_value_never_reaches_a_log_macro() {
     let offenders: Vec<&String> = calls
         .iter()
         .filter(|c| {
-            (c.contains("req.marker") || c.contains("title_at_bind")) && !c.contains("redact_marker")
+            (c.contains("req.marker") || c.contains("title_at_bind"))
+                && !c.contains("redact_marker")
         })
         .collect();
     assert!(
@@ -643,10 +659,7 @@ fn the_launch_token_value_never_reaches_a_log_macro() {
     );
     // 反向自检：那两处**确实**在日志里出现过（否则上面那条是零命中的绿）。
     assert_eq!(
-        calls
-            .iter()
-            .filter(|c| c.contains("redact_marker"))
-            .count(),
+        calls.iter().filter(|c| c.contains("redact_marker")).count(),
         2,
         "过了脱敏的 `tracing!` 不是 2 处 —— 要么调用点搬家了、要么本条抽错了"
     );

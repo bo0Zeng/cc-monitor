@@ -105,7 +105,10 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
 fn capability_gate_matrix() {
     // 空集 = 旧 backend / 尚未收到 hello → 全降级
     assert_eq!(decide_stream_flags(&caps(&[]), true), (false, false, false));
-    assert_eq!(decide_stream_flags(&caps(&[]), false), (false, false, false));
+    assert_eq!(
+        decide_stream_flags(&caps(&[]), false),
+        (false, false, false)
+    );
     // 全能力声明
     assert_eq!(
         decide_stream_flags(&caps(&["bg", "tail-only", "rbind-token"]), true),
@@ -266,12 +269,19 @@ fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
     let indent = |needle: &str| -> usize {
         let hits: Vec<&str> = prod.lines().filter(|l| l.contains(needle)).collect();
-        assert_eq!(hits.len(), 1, "`{needle}` 在生产段里不是恰好 1 处：{hits:#?}");
+        assert_eq!(
+            hits.len(),
+            1,
+            "`{needle}` 在生产段里不是恰好 1 处：{hits:#?}"
+        );
         hits[0].len() - hits[0].trim_start().len()
     };
     let call = indent("if should_upgrade_reconnect(");
     let anchor = indent("if build_id == EXPECTED_BACKEND_BUILD_ID {");
-    assert!(anchor >= 8, "锚点缩进只有 {anchor} —— 抽错了行，本条此刻无效");
+    assert!(
+        anchor >= 8,
+        "锚点缩进只有 {anchor} —— 抽错了行，本条此刻无效"
+    );
     assert_eq!(
         call, anchor,
         "升级判定被包进了某个 `if` 里（缩进 {call} ≠ 锚点 {anchor}）—— \
@@ -281,5 +291,8 @@ fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
         .lines()
         .find(|l| l.contains("if should_upgrade_reconnect("))
         .unwrap();
-    assert!(!line.contains("tail_only &&"), "升级判定前面被短路了：{line}");
+    assert!(
+        !line.contains("tail_only &&"),
+        "升级判定前面被短路了：{line}"
+    );
 }
