@@ -682,6 +682,33 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 /// 路由键的固定首段。**`route.rs::parse` 用 `strip_prefix("/s/")` 认它。**
 pub const RELAY_ROUTE_PREFIX: &str = "/s/";
 
+/// 直通模式的路由键首段〔`设计/20 §2` 两个前缀 · `§3.2` 表里无行那一格〕。
+///
+/// `/s/` 是「代入」（非它不可，表里没这一行就 404）；`/t/` 是「直通」（有它更好：中转**永不**
+/// 代入 auth，下游那份鉴权头逐字节原样上去，只为让这条会话的流量过中转、拿到 SSE）。
+/// ⚠ 与后端 `route.rs::PREFIXES` 那张表是同一件事的两处写法 —— 由后端那条
+/// `the_passthrough_sample_the_monitor_side_builds_parses_as_passthrough` 现抠
+/// [`RELAY_PASSTHROUGH_SAMPLE`] 去 `parse` 对拍。
+pub const RELAY_PASSTHROUGH_PREFIX: &str = "/t/";
+
+/// 路由键走哪个前缀。**只有 [`relay_route_path_in`] 一处把它翻成字面量。**
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RouteMode {
+    /// `/s/`：代入 —— apikey 表里有这一行（账号层的事，见 [`apikey_endpoint_for`]）。
+    Substitute,
+    /// `/t/`：直通 —— 表里没这一行，只为过中转拿 SSE（见 [`relay_endpoint_for`]）。
+    Passthrough,
+}
+
+impl RouteMode {
+    fn prefix(self) -> &'static str {
+        match self {
+            RouteMode::Substitute => RELAY_ROUTE_PREFIX,
+            RouteMode::Passthrough => RELAY_PASSTHROUGH_PREFIX,
+        }
+    }
+}
+
 /// 本机中转的端口。**monitor 这一侧是权威** —— 起中转时以 `CCM_RELAY_PORT`
 /// 显式交给子进程（`local_backend_host::start_local_relay`），注入侧用同一个常量拼 URL。
 ///
@@ -728,6 +755,16 @@ pub fn relay_segment_is_safe(seg: &str) -> bool {
 ///
 /// **fail-closed**：任一段过不了白名单就 `Err`，绝不拼一条「看起来对」的 URL 出去。
 pub fn relay_route_path(agent: &str, account: &str, key: &str) -> Result<String, String> {
+    relay_route_path_in(RouteMode::Substitute, agent, account, key)
+}
+
+/// 同上，前缀由 `mode` 定。**两个前缀共用这一处拼串**（`KL7` 第 1 条：只许有一个构造口）。
+pub fn relay_route_path_in(
+    mode: RouteMode,
+    agent: &str,
+    account: &str,
+    key: &str,
+) -> Result<String, String> {
     for (what, seg) in [("agent", agent), ("account", account), ("key", key)] {
         if !relay_segment_is_safe(seg) {
             return Err(refuse(format!(
@@ -738,15 +775,26 @@ pub fn relay_route_path(agent: &str, account: &str, key: &str) -> Result<String,
             )));
         }
     }
-    Ok(format!("{RELAY_ROUTE_PREFIX}{agent}/{account}/{key}"))
+    Ok(format!("{}{agent}/{account}/{key}", mode.prefix()))
 }
 
 /// 注入给 agent 进程的 base URL。**恒回环**（`§0e` 裁四：回环是自指的，
 /// 同一个字面串写进哪台机器就指哪台 ⇒ 「选机器」这件事已经由「这条命令在哪台机器上跑」做完了）。
 pub fn relay_base_url(port: u16, agent: &str, account: &str, key: &str) -> Result<String, String> {
+    relay_base_url_in(RouteMode::Substitute, port, agent, account, key)
+}
+
+/// 同上，前缀由 `mode` 定。
+pub fn relay_base_url_in(
+    mode: RouteMode,
+    port: u16,
+    agent: &str,
+    account: &str,
+    key: &str,
+) -> Result<String, String> {
     Ok(format!(
         "http://127.0.0.1:{port}{}",
-        relay_route_path(agent, account, key)?
+        relay_route_path_in(mode, agent, account, key)?
     ))
 }
 
@@ -756,6 +804,9 @@ pub fn relay_base_url(port: u16, agent: &str, account: &str, key: &str) -> Resul
 /// 钉住它逐字节等于 [`relay_route_path`] 的产物 ⇒ 谁改了构造口而没改它，monitor 这侧当场红；
 /// 谁改了它而后端那侧解析不出预期的段，backend 那侧当场红。
 pub const RELAY_ROUTE_SAMPLE: &str = "/s/claude-code/acct-a/k-0123456789abcdef";
+
+/// 直通那一形的跨半边样例（同 [`RELAY_ROUTE_SAMPLE`]：它是**夹具**，不是文档）。
+pub const RELAY_PASSTHROUGH_SAMPLE: &str = "/t/claude-code/acct-a/k-0123456789abcdef";
 
 /// `<key>` 段的**唯一铸造口**〔`KH2B6`〕。
 ///
@@ -891,12 +942,113 @@ pub fn apikey_endpoint_for(
              ⇒ 先起本机后端（设置 → 本机后端），或把该账号那一行从凭据文件里去掉。"
         )));
     }
-    Ok(Some(relay_base_url(
+    endpoint_in(RouteMode::Substitute, agent, id, sid).map(Some)
+}
+
+/// 两个判断口（[`apikey_endpoint_for`] · [`relay_endpoint_for`]）拼注入地址的**同一处**：
+/// 回环 ＋ 端口 ＋ 前缀 ＋ 三段，`<key>` 段只在这里铸（`launcher_identity_registry` 数着铸法的调用点）。
+fn endpoint_in(
+    mode: RouteMode,
+    agent: &str,
+    account: &str,
+    sid: Option<&str>,
+) -> Result<String, String> {
+    relay_base_url_in(
+        mode,
         RELAY_PORT,
         agent,
-        id,
+        account,
         &route_key_for_session(sid),
-    )?))
+    )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `设计/20 §7` 步 4 · `01 §2.5` 入口纪律：**全量注入**（带开关，默认关）
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// 登记了**默认上游**的 agent —— 只有它们的会话可以走 `/t/`〔条 49 / 条 59〕。
+///
+/// # 🔴 这张表为什么是注入闸的一半（codex 那一刀）
+///
+/// `/t/` 表里无行时，后端按路由键第 1 段取**那一家自己的**默认上游；没登记 ⇒ 502
+/// （`accounts::decide`）。而 `01 §2.5` 那条同拍前置逐字是「否则非 Anthropic 的 agent 带着中转地址
+/// 起来、表里又没有它 ⇒ **每一发都错发到 Anthropic**」。后端那一侧今天已经 fail-closed（502），
+/// 但「注入之后每一发都 502」对用户而言与「会话起不来」同形 ⇒ **注入闸在这一侧就不注**：
+/// 不在这张表里的 agent 一个字节都不注入，照旧直连。
+///
+/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::AGENT_UPSTREAMS` 那张表的 agent 列，
+/// 由后端那条 `the_agents_with_a_default_upstream_are_the_same_on_both_halves` 现抠**本行的字面量**
+/// 做两向集合相等（异源：一侧是后端运行期的表，一侧是本文件的源码文本）。
+/// ⚠ codex **刻意不在这里**：它的默认上游本仓零证据（后端那张表头注逐字）。
+pub const AGENTS_WITH_DEFAULT_UPSTREAM: &[&str] = &["claude-code"];
+
+/// 账号 0（`LaunchAccount::Base`，不注入 `CLAUDE_CONFIG_DIR` 那一档）在 `/t/` 路由里的账号段。
+///
+/// ⚠ 它只是一个**标签**（`/t/` 从不查它的 key）。唯一的风险是它与 apikey 表里某一行**同名** ——
+/// 那时后端会把这条会话自己的鉴权头原样送到**那一行的第三方上游**（`§3.1` 第 3 行）。
+/// ⇒ [`relay_endpoint_for`] 撞名就不注入（见那里第 ⑥ 步）。
+pub const BASE_ACCOUNT_SEGMENT: &str = "0";
+
+/// 这次拉起的中转问句（[`relay_endpoint_for`] 的入参）。
+#[derive(Debug, Clone, Copy)]
+pub struct RelayAsk<'a> {
+    /// apikey 表里的账号 id（`LaunchAccount::Named` 的目录名；账号 0 与没表态都是 `None`）。
+    pub account_id: Option<&'a str>,
+    /// `/t/` 那一格用的账号标签：`Named` ⇒ 同 `account_id`；账号 0 ⇒ [`BASE_ACCOUNT_SEGMENT`]；
+    /// 调用方没表态 ⇒ `None`（说不出是哪个号就不走 `/t/`）。
+    pub passthrough_label: Option<&'a str>,
+    /// apikey 表里有哪几行（凭据文件那一家的）。
+    pub rows: &'a [String],
+    /// 本机中转在不在跑。
+    pub running: bool,
+    /// resume 时那条会话的 sid（`<key>` 段）。
+    pub sid: Option<&'a str>,
+    /// 这次起的是哪一家 agent（适配器的 `id()`）。
+    pub agent: &'a str,
+    /// 🔴 **全量注入的开关**（`设计/20 §7` 步 4：「必须带开关，默认关；真机验过再默认开」）。
+    pub all_sessions: bool,
+}
+
+/// 「这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址」的**唯一判断口**（`设计/20 §3.2` 那张表的 monitor 半）。
+///
+/// | 情况 | 答 |
+/// |---|---|
+/// | ① apikey 表里有 (agent, 账号) 这一行 | 交给 [`apikey_endpoint_for`]：中转在跑 ⇒ `/s/`；没跑 ⇒ **拒绝起会话**（今天的行为，一字不改）|
+/// | ② 开关关着（**默认**） | `None` —— 逐字节与本件之前相同 |
+/// | ③ 中转没在跑 | `None` —— `/t/` 是「有它更好」，降级是照旧直连，**不是**拒绝（`§3.2` 第 4 行 ⚠）|
+/// | ④ 🔴 agent 没登记默认上游（codex） | `None` —— 见 [`AGENTS_WITH_DEFAULT_UPSTREAM`] |
+/// | ⑤ 说不出是哪个号 | `None` |
+/// | ⑥ 账号标签与 apikey 表里某一行同名 | `None`（见 [`BASE_ACCOUNT_SEGMENT`]）|
+/// | ⑦ 账号标签当不了路由段 | `None` —— 同 ③：为了「有它更好」不拒绝起会话 |
+/// | 其余 | `/t/<agent>/<账号>/<sid 或 nonce>` |
+///
+/// ⚠ **没做的那两行**（`§3.2` 第 5/6 行：用户自己设了 `ANTHROPIC_BASE_URL`）：本函数**不知道**
+/// 用户在 shell 或 `settings.json` 里有没有设它 —— 开关打开时，那种号的端点会被本注入盖掉（或盖不掉，
+/// 取决于 claude 自己的优先级，本仓零证据、`C7` 不许起真 claude 去量）。这是开关默认关的理由之一。
+pub fn relay_endpoint_for(ask: &RelayAsk<'_>) -> Result<Option<String>, String> {
+    // ① 账号层先答。它答 `Some` 或 `Err` 就是终局 —— 「非它不可」那一格不许被下面的「有它更好」盖掉。
+    if let Some(u) = apikey_endpoint_for(ask.account_id, ask.rows, ask.running, ask.sid, ask.agent)?
+    {
+        return Ok(Some(u));
+    }
+    // ② ③
+    if !ask.all_sessions || !ask.running {
+        return Ok(None);
+    }
+    // ④ 🔴 codex 那一刀：没登记默认上游的 agent 一个字节都不注入。
+    if !AGENTS_WITH_DEFAULT_UPSTREAM.contains(&ask.agent) {
+        return Ok(None);
+    }
+    // ⑤
+    let Some(label) = ask.passthrough_label else {
+        return Ok(None);
+    };
+    // ⑥ 与 apikey 表撞名 ⇒ 后端 `/t/` 有行那一格会把这条会话自己的鉴权头送去那一行的上游。
+    if ask.agent == APIKEY_TABLE_AGENT && ask.rows.iter().any(|r| r == label) {
+        return Ok(None);
+    }
+    // ⑦
+    Ok(endpoint_in(RouteMode::Passthrough, ask.agent, label, ask.sid).ok())
 }
 
 #[cfg(test)]
