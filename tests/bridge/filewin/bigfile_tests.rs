@@ -111,17 +111,13 @@ fn one_line(n: usize) -> String {
 }
 
 fn is_file_text(t: &str) -> bool {
-    !t.starts_with("大文件模式") && !t.starts_with("这一行共") && !t.starts_with("只读")
+    !t.starts_with("大文件模式") && !t.starts_with("这一行共")
 }
 
-/// 🔴〔F9 续〕本族量的是**编辑面自己**（排版 · 编辑 · 撤销）在大文本上的形状，而 1 MiB 以上的文本
-/// 打开时会因为「存不回去」进只读（`editor::save_fits`）⇒ 这里把只读摘掉。
-/// 生产上编辑面照样会碰到 1 MiB 以上的文本（敲字 / 粘贴推过去），那时它得照样打得动字；
-/// 只读那一格自己的判据住 `editor_tests::a_file_that_cannot_be_saved_back_opens_read_only_and_says_why`。
+/// 本族量的是**编辑面自己**（排版 · 编辑 · 撤销）在大文本上的形状。
+/// 〔F9c〕上一版这里要把「打开即只读」摘掉（1 MiB 以上存不回）；存盘改走暂存区之后那一档整个删了。
 fn pane(text: String) -> Pane {
-    let mut p = Pane::opened("/srv/big.txt", "big.txt", text);
-    p.read_only = None;
-    p
+    Pane::opened("/srv/big.txt", "big.txt", text)
 }
 
 /// 先在一个丢掉的 `Context` 上跑一帧，让 `Doc` 立起来（钉偏移要它先在）。
@@ -869,11 +865,12 @@ fn the_readings_behind_the_two_thresholds() {
         );
     }
 
-    // ── 〔F9 续 · 09-24〕**存得回的最大那一份**（编辑上限 ＝ 后端入方向一行，`editor::save_fits`）
+    // ── 〔F9 续 · 09-24 → F9c 第四波〕**存得回的最大那一份**（〔F9c〕编辑上限 ＝ 8 MiB，装不进一行的分块走暂存区）
     //    **经窗口的生产路径**：打开那一帧（到货 → 立编辑面 → 判模式 → 建行表 → 排第一屏，含 `shell.rs` 每帧那一次
     //    `Pane` 克隆）与打字帧（真点一下拿焦点、再送字）。⚠ 不含后端读盘与线上搬运那一段。
     //    ⚠ 这一段第一版量的是 8 MiB（后端 `files-read-text` 一趟的天花板），读数记在 `设计/60 §9c`；
-    //    那一拍逮出「存不回去」之后上限定成了一行的上限，8 MiB 从此打不开，语料跟着换成这一形。
+    //    那一拍逮出「存不回去」之后上限一度定成一行的上限（1 MiB）；〔F9c〕存盘走暂存区之后回到 8 MiB，
+    //    「存得回的最大」＝ 恰好 `MAX_EDIT_BYTES` 那么大（每一形都存得回，不再按转义削）。
     let window = |text: &str| -> ((f64, f64), (f64, f64), bool) {
         let mut w = crate::filewin::shell::FileWindow::seeded(
             crate::filewin::source::Source::remote(crate::ssh_source::RemoteConfig {
@@ -920,10 +917,6 @@ fn the_readings_behind_the_two_thresholds() {
                 frames += 1;
             }
         });
-        assert!(
-            w.editing().is_some_and(|p| p.read_only.is_none()),
-            "存得回的那一份竟然进了只读"
-        );
         let big = w.editing().is_some_and(|p| p.big.is_big());
         let at = seen
             .iter()
@@ -943,16 +936,15 @@ fn the_readings_behind_the_two_thresholds() {
         assert!(w.editing().unwrap().dirty(), "送的字没落进全文");
         (open, k, big)
     };
-    // 存得回的最大那一份：从一行的上限起，按 1 KiB 往下削到 `save_fits` 放行为止。
+    // 存得回的最大那一份：〔F9c〕恰好 `MAX_EDIT_BYTES`（语料生成器按它切齐）。
     let largest = |make: &dyn Fn(usize) -> String| -> String {
-        let mut n = crate::filewin::editor::MAX_EDIT_BYTES;
-        loop {
-            let t = make(n);
-            if crate::filewin::editor::save_fits("/srv/data/big.txt", &t).is_ok() {
-                return t;
-            }
-            n -= 1024;
+        let mut t = make(crate::filewin::editor::MAX_EDIT_BYTES);
+        let mut cut = t.len().min(crate::filewin::editor::MAX_EDIT_BYTES);
+        while !t.is_char_boundary(cut) {
+            cut -= 1;
         }
+        t.truncate(cut);
+        t
     };
     for (label, text) in [
         ("每行 64 字节", largest(&|n| lines_corpus(n, 64))),
