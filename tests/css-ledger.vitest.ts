@@ -226,7 +226,8 @@ const KNOWN_DEAD: readonly { name: string; why: string }[] = [
  * `tests/eslint-baseline.vitest.ts` 的头注逐字登记过「本条不管 stylelint，登记在此，不假装覆盖了」，
  * 而 `ci.yml` 那一步是 `npm run lint:css || true`（结构上不会红）。本格接的就是那半格。
  */
-const STYLELINT_CEILING = 47;
+// 〔2026-09-24 U1 合并那一拍棘 47 → 39〕三入口 ＋ CSS 拆 10 份 ＋ 层真包进去之后现打 39（现打，不是 47−8 算的）。
+const STYLELINT_CEILING = 39;
 
 /**
  * ★ **靠前缀（而不是靠直接住址）才解释得通的 CSS 类名个数**上限。现打 **35**（分母 777）。

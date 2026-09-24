@@ -241,7 +241,8 @@ jobs:
       # 它与判据里的 `STYLELINT_CEILING` 必须同值，漂了就红。
       # 本行原先写着「**50 项基线**（E82 订正：这里原写「57 项」，实测 50）」——
       # 现打是 **47**，而那句散文从写下之后再没人核过。这正是它现在必须被机检的理由。
-      # S25-STYLELINT-CEILING: 47
+      # 〔2026-09-24 U1 合并那一拍棘 47 → 39〕CSS 按窗口拆 ＋ 层包进去之后现打 39（10 份文件合计）。
+      # S25-STYLELINT-CEILING: 39
       - name: stylelint (advisory, baseline)
         run: npm run lint:css || true
 
