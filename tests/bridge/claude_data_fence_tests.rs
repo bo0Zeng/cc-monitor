@@ -258,7 +258,10 @@ fn the_backend_copy_of_this_fence_is_byte_identical() {
         .expect("读后端那一份 —— 读不到就是搬走了，同轮摘登记");
     let mine = std::fs::read_to_string(root.join(FENCE_HOME)).expect("读本族那一份");
     // 针**运行时拼**：写成字面量的话本文件自己就成了第三处住址。
-    let a = body(&mine, &format!("pub fn is_protected_claude_{}_path(", "data"));
+    let a = body(
+        &mine,
+        &format!("pub fn is_protected_claude_{}_path(", "data"),
+    );
     let b = body(&theirs, &format!("pub fn is_protected_session_{}(", "file"));
     // 反空真：抽出来的必须是真代码（`rfind` 是这段判定的骨架）。
     assert!(

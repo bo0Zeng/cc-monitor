@@ -62,9 +62,9 @@ fn the_session_file_predicate_answers_both_ways() {
     use crate::agents::claudecode::paths::is_protected_session_file;
     // ── 阳性：那几份具体的会话文件 ──────────────────────────────────
     for hit in [
-        "/home/u/.claude/projects/-x/abc.jsonl",       // `projects/` 下恰 2 段
-        "/home/u/.claude/sessions/1234.json",          // pidfile，`sessions/` 下 1 段
-        "/opt/accts/q/projects/-x/abc.jsonl",          // 配置根被切走，照样认得（结构判定）
+        "/home/u/.claude/projects/-x/abc.jsonl", // `projects/` 下恰 2 段
+        "/home/u/.claude/sessions/1234.json",    // pidfile，`sessions/` 下 1 段
+        "/opt/accts/q/projects/-x/abc.jsonl",    // 配置根被切走，照样认得（结构判定）
         "C:\\Users\\me\\.claude\\projects\\p\\s.jsonl", // 反斜杠先归一
     ] {
         assert!(
@@ -76,7 +76,7 @@ fn the_session_file_predicate_answers_both_ways() {
     //    ★ 前四条是 09-23 那一裁买到的东西，**逐条承重**。
     for miss in [
         "/home/u/.claude/skills/my-skill/SKILL.md", // 用户 09-23 逐字点名的那一类
-        "/home/u/.claude/settings.json",            // `INVARIANTS §1` SS-14：写面绝不含它 —— 而「不含」≠「拒写」
+        "/home/u/.claude/settings.json", // `INVARIANTS §1` SS-14：写面绝不含它 —— 而「不含」≠「拒写」
         "/home/u/.claude-alt/q/.credentials.json", // 账号库
         "/home/u/.claude/projects/-x/sub/abc.jsonl", // `projects/` 下**多一层** ⇒ 不是会话文件那个位置
         "/home/u/.claude/projects/a.jsonl",          // 少一层
@@ -118,7 +118,10 @@ fn the_two_copies_of_the_session_fence_are_byte_identical() {
         .expect("读桥那一份");
     // 针**运行时拼**：写成字面量的话本文件自己就成了第三处住址。
     let a = body(&mine, &format!("pub fn is_protected_session_{}(", "file"));
-    let b = body(&theirs, &format!("pub fn is_protected_claude_{}_path(", "data"));
+    let b = body(
+        &theirs,
+        &format!("pub fn is_protected_claude_{}_path(", "data"),
+    );
     // 反空真：抽出来的必须是真代码。
     assert!(
         a.len() > 400 && a.contains("rfind"),
@@ -151,8 +154,8 @@ fn the_lexical_fence_refuses_the_four_shapes() {
         ("", "空的"),
         ("   ", "空的"),
     ] {
-        let err = fence_lexical(&root, rel)
-            .expect_err(&format!("围栏① 放过了 {rel:?} —— 它该被拒"));
+        let err =
+            fence_lexical(&root, rel).expect_err(&format!("围栏① 放过了 {rel:?} —— 它该被拒"));
         assert!(
             err.contains("refuse write") && err.contains(word),
             "拒了，但说不清是哪一形（rel={rel:?}，错误={err}）"
@@ -186,7 +189,10 @@ fn a_target_root_inside_the_claude_tree_is_allowed_unless_the_write_point_is_a_s
     // 向一：skills 那一类 —— 必须放行。
     let ok = fence_lexical(Path::new("/home/u/.claude/skills"), "my-skill/SKILL.md")
         .expect("🔴 用户 09-23 裁「可以」，而这条路径被拒了");
-    assert_eq!(ok, PathBuf::from("/home/u/.claude/skills/my-skill/SKILL.md"));
+    assert_eq!(
+        ok,
+        PathBuf::from("/home/u/.claude/skills/my-skill/SKILL.md")
+    );
     // 向二：写点恰好是那份会话文件 —— 照旧拒。
     let err = fence_lexical(Path::new("/home/u/.claude/projects"), "-x/s.jsonl")
         .expect_err("写点就是一份会话记录，竟然放行了");
@@ -294,10 +300,7 @@ fn a_write_into_a_claude_tree_that_is_not_session_data_really_lands() {
     std::fs::create_dir_all(&live).expect("建 projects 根");
     let err = create_new_file(&live, "-x/s.jsonl", b"x").expect_err("会话记录竟然写进去了");
     assert_eq!(err.code(), "refused", "档位不对：{err:?}");
-    assert!(
-        !live.join("-x/s.jsonl").exists(),
-        "说拒了，文件却落盘了"
-    );
+    assert!(!live.join("-x/s.jsonl").exists(), "说拒了，文件却落盘了");
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -313,8 +316,7 @@ fn the_resolved_fence_catches_a_symlink_out_of_the_target_root() {
     std::os::unix::fs::symlink(&outside, root.join("out")).expect("放 symlink");
 
     let lexical = fence_lexical(&root, "out/a.md").expect("围栏① 该放过它");
-    let err =
-        fence_resolved(&root, &lexical).expect_err("symlink 指出目标根，围栏② 竟然放行了");
+    let err = fence_resolved(&root, &lexical).expect_err("symlink 指出目标根，围栏② 竟然放行了");
     assert!(err.contains("跑出了目标根"), "拒了，但说的不是越界：{err}");
     std::fs::remove_dir_all(&base).ok();
 }
