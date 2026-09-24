@@ -551,6 +551,17 @@
 .stream {
   position: absolute;
   inset: 0;
+  /* 〔`设计/41 §6` · 件 5〕消息列的宿主是一个**尺寸容器**（名字 `stream`，只量行内方向）。
+     卡片的排版取决于「它所在那一列多宽」，不是「窗口多宽」—— 媒体查询只知道窗口，
+     `@container stream (…)` 才知道列。`src/height-estimate.ts` 的 `COL_W` 也改成在这个容器里实测
+     （之前写死 780，列被窗口压窄时估高就用了一个错的宽度）。
+     ⚠ 容器会顺带给本元素上**布局包含**（layout containment）：它成为 fixed / absolute 后代的包含块、
+     成为层叠上下文。`.stream` 本就是 `position: absolute`（absolute 后代的包含块早就是它），
+     而 fixed 浮层按 `INVARIANTS` 条 13 一律挂 `document.body`（`invariants-frontend-guard` ② 机检），
+     流里没有 fixed 后代 ⇒ 前者不改变任何一格；后者把流里的 z-index 关在流里 —— 正是
+     `设计/41 §5`「流里的浮层关在流里」要的方向，但**视觉上没有目视过**。
+     行内尺寸包含不改变它的宽：它是 `inset: 0` 的绝对定位，宽本来就由包含块给，不由内容撑。 */
+  container: stream / inline-size;
   overflow-y: auto;
   /* 保留浏览器原生 overflow-anchor（默认 auto）。启动重放往视口上方插旧消息时，
      靠原生锚定（亚像素精确）维持底部视觉稳定；stream.ts 的 snap 只在真正落后底部

@@ -73,7 +73,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import stylelint from "stylelint";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildLedger,
   cssClassesOf,
@@ -775,5 +775,106 @@ describe("S25 ⑤ 层真包进去（设计/41 §3 · 件 2）", () => {
     expect(bad.unlayered.map((u) => u.replace(/^.*?\s{2}/, ""))).toEqual([".leak"]);
     expect(bad.used.filter((n) => !(LAYER_ORDER as readonly string[]).includes(n))).toEqual(["componets"]);
     denom("⑤", 3, "条变异体规则（1 条无层、1 个野层名，都逮到了）");
+  });
+});
+
+// ═══════════════════════════ ⑥ 容器查询取代写死宽度（`设计/41 §6` · 件 5）═══════════════════════════
+//
+// 两件事绑在一起（`设计/41 §6` 逐字「两件事都要做，不能只做一件」）：
+//   CSS 侧 —— 消息列的宿主 `.stream` 是名为 `stream` 的行内尺寸容器；
+//   JS 侧 —— `src/height-estimate.ts` 的 `COL_W` 不再写死 780，而是在那个容器里实测。
+// 本格钉三条：
+//   ⑥a `.stream` 的规则里声明了 `container: stream / inline-size`（名字与轴都对）；
+//   ⑥b `COL_W` 真的是量出来的：它的初始化里建了 `.stream > .stream-content`、挂进 `#message-stream`、
+//       读了宽度 —— 且**没有**再出现 `const COL_W = <数字>` 那一形；
+//   ⑥c 量不到时的回退值 == `tokens.css` 的 `--stream-max-width`（原先只有一句注释「若列宽 token 改动需同步这里」）。
+// 买到 / 买不到：
+// - ✅ 两侧的住址与回退值不漂。
+// - ❌ 真引擎里量出来的数对不对、列被压窄时估高是否更准 —— 要真窗口（本机无图形会话）。
+// - ❌ 拉窗口之后 `COL_W` 不重算（只在模块求值时量一次），理由写在 `height-estimate.ts` 那条注释里。
+
+function colWInit(src: string): string {
+  const i = src.indexOf("const COL_W");
+  if (i < 0) return "";
+  const end = src.indexOf(";\n", src.indexOf("})(", i));
+  return end < 0 ? src.slice(i, i + 200) : src.slice(i, end + 1);
+}
+
+describe("S25 ⑥ 容器查询取代写死宽度（设计/41 §6 · 件 5）", () => {
+  const css = readFileSync(resolve(REPO_ROOT, "src/styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+  const est = readFileSync(resolve(REPO_ROOT, "src/height-estimate.ts"), "utf8");
+
+  it("⑥a `.stream` 是名为 stream 的行内尺寸容器", () => {
+    // ⚠ 前界用**后行断言**、不吃掉那个 `}`：相邻两条规则共用一个 `}`，吃掉它 ⇒ matchAll 每隔一条漏一条
+    //   （`tests/evidence/P21-frontend-invariants.ts` 的 `cssRules` 头注记过同一个坑；本条第一版又踩了一次，
+    //   `.stream` 恰好落在被漏掉的那一半里，当场「找不到」）。
+    const rules = [...css.matchAll(/(?<=^|[{};])\s*([^{};@]+)\{([^{}]*)\}/g)]
+      .map((m) => ({ sel: m[1], body: m[2] }))
+      .filter((m) => m.sel.split(",").map((x) => x.trim()).includes(".stream"));
+    expect(rules.length, "styles.css 里找不到 `.stream { … }` —— 下面那条对着空气").toBeGreaterThan(0);
+    const decl = rules.map((m) => /(?:^|;)\s*container\s*:\s*([^;]+)/.exec(m.body)?.[1].trim()).find(Boolean);
+    expect(decl, "`.stream` 没有声明 `container` —— 列宽没有容器可查").toBe("stream / inline-size");
+    denom("⑥", rules.length, "条 `.stream` 规则（其中一条声明了 container: stream / inline-size）");
+  });
+
+  it("⑥b `COL_W` 是在那个容器里量出来的，不是写死的", () => {
+    const init = colWInit(est);
+    expect(init.length, "height-estimate.ts 里切不出 `const COL_W …` 那一段").toBeGreaterThan(100);
+    expect(/const COL_W\s*(?::\s*number)?\s*=\s*\d+\s*;/.test(est), "`COL_W` 又写成了一个裸数字").toBe(false);
+    for (const [what, re] of [
+      ["挂进 #message-stream", /getElementById\("message-stream"\)/],
+      ["建 .stream", /className\s*=\s*"stream"/],
+      ["建 .stream-content", /className\s*=\s*"stream-content"/],
+      ["读宽度", /getBoundingClientRect\(\)\.width/],
+      ["量完撤掉", /\.remove\(\)/],
+    ] as const) {
+      expect(re.test(init), `COL_W 的初始化里缺「${what}」`).toBe(true);
+    }
+    denom("⑥", 5, "处实测要件（挂进消息流 · .stream · .stream-content · 读宽 · 撤掉）");
+  });
+
+  /**
+   * ⑥d **行为**：上面三条只证明「代码长成了量的样子」，这一条证明「量出来的数真的进了估高」。
+   * jsdom 没有布局 ⇒ 把 `getBoundingClientRect` 换成「`.stream-content` 宽 400」，重新求值模块，
+   * 再对一张正文卡估高：必须按 400 折行，而不是 780。
+   * 反空真：同一段文字按 400 与按 780 算出来的高度必须不同，否则本条对宽度不敏感、判不出任何东西。
+   */
+  it("⑥d 行为：列被压到 400px 时，估高按 400 折行（探针量完就撤）", async () => {
+    const host = document.createElement("div");
+    host.id = "message-stream";
+    document.body.appendChild(host);
+    const orig = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      const w = this.classList.contains("stream-content") ? 400 : 0;
+      return { width: w, height: 0, top: 0, left: 0, right: w, bottom: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      vi.resetModules();
+      const m = await import("../src/height-estimate.ts");
+      const text = "字".repeat(60) + "x".repeat(400);
+      const card = document.createElement("div");
+      card.className = "card card-assistant";
+      card.innerHTML = `<div class="card-header">h</div><div class="card-body"><div class="block-text"><p>${text}</p></div></div>`;
+      const LH = 15 * 1.65;
+      const at400 = 22 + m.fallbackTextHeight(text, 15, LH, 400) + 10;
+      const at780 = 22 + m.fallbackTextHeight(text, 15, LH, 780) + 10;
+      expect(at400, "这段文字按 400 与 780 折行一样高 —— 本条对宽度不敏感").not.toBe(at780);
+      expect(m.estimateStreamNodeHeight(card), "估高没用上量出来的列宽").toBeCloseTo(at400);
+      expect(host.children.length, "探针没撤掉 —— 消息流里多了一个空的 .stream").toBe(0);
+      denom("⑥", 400, "px 的假列宽被估高用上了（对照 780 高度不同）");
+    } finally {
+      Element.prototype.getBoundingClientRect = orig;
+      host.remove();
+      vi.resetModules();
+    }
+  });
+
+  it("⑥c 量不到时的回退值 == tokens.css 的 --stream-max-width", () => {
+    const fb = /\}\)\((\d+)\);\s*$/.exec(colWInit(est))?.[1];
+    const tok = /--stream-max-width:\s*(\d+)px/.exec(readFileSync(resolve(REPO_ROOT, "src/styles/tokens.css"), "utf8"))?.[1];
+    expect(fb, "切不出 COL_W 的回退值").toBeTruthy();
+    expect(tok, "tokens.css 里切不出 --stream-max-width").toBeTruthy();
+    expect(Number(fb), "COL_W 的回退值与 --stream-max-width 漂了").toBe(Number(tok));
+    denom("⑥", Number(fb), "px（COL_W 回退值 == --stream-max-width）");
   });
 });
