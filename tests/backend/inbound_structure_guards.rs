@@ -138,6 +138,11 @@ fn every_registered_command_declares_its_run_kind() {
                 | "capture-pane"
                 | "files-browse"
                 | "files-create"
+                | "files-chmod"
+                | "files-delete"
+                | "files-mkdir"
+                | "files-rename"
+                | "files-write-text"
                 | "files-ls"
                 | "files-stat"
                 | "files-find"
@@ -174,6 +179,11 @@ fn every_registered_command_declares_its_run_kind() {
         "capture-pane",
         "files-browse",
         "files-create",
+        "files-chmod",
+        "files-delete",
+        "files-mkdir",
+        "files-rename",
+        "files-write-text",
         "files-ls",
         "files-stat",
         "files-find",

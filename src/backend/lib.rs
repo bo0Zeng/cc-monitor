@@ -484,6 +484,12 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   写面的「窄」因此**不靠命令面**，而靠 `readonly_guard` 第三层那条
     //   「只从声明过的那一面来」—— 它判的是**谁引用得到那个模块**，不是谁发得出命令。
     "--files-create",
+    // 〔波 5 ㈡ 09-23〕同一面的另外五条（`设计/60 §8.6` 第 3 步）。登记理由与上一行逐字相同。
+    "--files-chmod",
+    "--files-delete",
+    "--files-mkdir",
+    "--files-rename",
+    "--files-write-text",
     "--files-browse",
     "--files-find",
     "--files-index-rebuild",
