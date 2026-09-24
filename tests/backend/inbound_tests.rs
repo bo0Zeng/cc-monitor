@@ -357,6 +357,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-list",
         "bus-send",
         "bus-kill",
+        "bus-spawn",
         "bus-state",
         "capture-pane",
     ] {
@@ -410,6 +411,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-list",
         "bus-send",
         "bus-kill",
+        "bus-spawn",
         "bus-state",
         "capture-pane",
         "files-create",

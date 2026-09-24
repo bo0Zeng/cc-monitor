@@ -668,31 +668,29 @@ pub(crate) fn send_for_inbound(
 //
 // # 它治的是什么
 //
-// monitor 侧 `cc_bus.rs::cc_bus_spawn` 对 `<local>` 走 `refuse_local_write`，拒绝理由逐字：
-// 「cc-bus 的这一面在本机没有对侧（backend 侧没有它的原语）…剩下这一条等的是**后端先长出
-// 那条原语**，不是等谁记得接线」。⇒ **本节就是那条原语**。远端那条今天仍是 SSH 拼
-// `cc-spawn …` 的 shell 串；原语登记之后两侧都该改走它（`K-R98` 给发消息、`K-R112` 给收掉
-// 做过的同一件事）。
+// 这条原语登记之前，monitor 侧派生对 `<local>` 一律拒绝，理由逐字：「cc-bus 的这一面在本机
+// 没有对侧（backend 侧没有它的原语）…剩下这一条等的是**后端先长出那条原语**，不是等谁记得接线」。
+// ⇒ **本节就是那条原语**。登记之后本机与远端都改走它（`K-R98` 给发消息、`K-R112` 给收掉
+// 做过的同一件事），远端那条拼 `cc-spawn …` shell 串走 SSH 的老路同轮删掉。
 //
-// # 🔴 今天**没有登记进帧面**，而且这是刻意的
+// # 登记与 `BUILD_ID`〔BS1b 09-24〕
 //
 // 登记 = `inbound::COMMANDS` / `REGISTRY` 各一行 ＋ `SUBCOMMANDS` 一行 `--bus-spawn`
-// ⇒ 子命令集指纹变了 ⇒ `build_id_guard::adding_a_subcommand_forces_a_build_id_bump` 要求
-// **bump `BUILD_ID`**。本轮（10 路并行的一波）**不许 bump** —— 一波里各路各 bump 一次，
-// 会在合并时撞成一串互相覆盖的身份。⇒ 本节「能填不真填」（与 `lib.rs` 里那几处
-// `#[allow(dead_code)]` 同一个取法：**接线是一次纯发布决策，不是忘了**），解锁步骤逐条写在
-// `src/doc/IPC-PROTOCOL.md` 的 `bus-spawn` 小节里。
+// ⇒ 子命令集指纹变了 ⇒ `build_id_guard::adding_a_subcommand_forces_a_build_id_bump` 红。
+// 那一条红是**预期的**：本波各路的新命令由主会话合并那一拍**合成一次** bump（各路各 bump
+// 会在合并时撞成一串互相覆盖的身份）。
 //
 // # 它**不**做的
 //
 // · **不重写起会话**：命名避让 / 总线登记 / 台账 / 预信任目录全在 `cc-spawn`（它内部再经 `ccm`），
 //   本模块只转调 —— 同本模块头注 ②「转调脚本，不在这里重实现」。
-// · **不替用户选账号**：`account` 与 `base` 必须二选一**显式**给（monitor 侧 `build_spawn_cmd`
-//   那条纪律原样搬过来：不传 ⇒ ccm 落 manifest 的默认号 ⇒ 点两下就在一个没人选过的号上烧额度）。
+// · **不替用户选账号**：`account` 与 `base` 必须二选一**显式**给（不传 ⇒ ccm 落 manifest 的
+//   默认号 ⇒ 点两下就在一个没人选过的号上烧额度，B03 审计重要-5 那条）。
+// · **不白名单 agent 种类**：`tool` 只判非空，认不认归 `cc-spawn`（见 [`parse_spawn`]）。
+// · 发给 `cc-spawn` 的旗标登记在 `protocol_doc_guard::CHILD_PROCESS_FLAGS`（它们不是后端 argv）。
 
 /// `bus-spawn` 的入参（形状校验过的）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(not(test), allow(dead_code))] // 同 [`spawn_for_inbound`]：登记那一拍才有生产调用方
 pub(crate) struct SpawnArgs {
     pub(crate) tool: String,
     pub(crate) dir: String,
@@ -707,7 +705,6 @@ pub(crate) struct SpawnArgs {
 /// 它判的是「这组参数能不能构成一次**有意义且表过态**的调用」：
 /// `tool` 非空（**是哪几种 agent 不在这里判** —— 见下）· `dir` 非空 ·
 /// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）。
-#[cfg_attr(not(test), allow(dead_code))] // 同 [`spawn_for_inbound`]：登记那一拍才有生产调用方
 pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
     let obj = args
         .as_object()
@@ -757,7 +754,6 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
 ///
 /// **`--` 不能省**：`cc-spawn` 的旗标循环跑在取位置参数之前，`dir` 若是 `--new` 这类词会被它
 /// 自己吃成旗标（monitor 侧 `build_spawn_cmd` 头注逐字记着那次）。任务为空就不传（与 SSH 那条同形）。
-#[cfg_attr(not(test), allow(dead_code))] // 同上
 pub(crate) fn spawn_argv(a: &SpawnArgs) -> Vec<String> {
     let mut v = vec!["--tool".to_string(), a.tool.clone()];
     match &a.account {
@@ -780,7 +776,6 @@ pub(crate) fn spawn_argv(a: &SpawnArgs) -> Vec<String> {
 /// 今天的形状（`src/shared/cc-bus/scripts/cc-spawn` 末尾现打）：`已 spawn: <id>   (目录: …)`。
 /// ⚠ 拿输出当接口的代价（同 [`parse_list`]）：cc-bus 换个说法这里就认不出 ⇒ 回 `None`，
 /// **不猜**。调用方拿到 `None` 时要说「起了，但 id 没认出来」，而不是「没起来」。
-#[cfg_attr(not(test), allow(dead_code))] // 同 [`spawn_for_inbound`]：登记那一拍才有生产调用方
 pub(crate) fn spawned_id_of(said: &str) -> Option<String> {
     said.lines().find_map(|l| {
         let rest = l.trim_start().strip_prefix("已 spawn:")?;
@@ -806,7 +801,6 @@ pub(crate) fn spawned_id_of(said: &str) -> Option<String> {
 /// | 其它 / 信号 | `failed` | 原样带上它的诊断 |
 ///
 /// ⚠ 期限仍住在子进程里（`timeout` 前缀，默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调），零定时器铁律不动。
-#[allow(dead_code)] // 能填不真填 —— 登记进帧面要 bump `BUILD_ID`，本轮不许（见本节头注）
 pub(crate) fn spawn_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
@@ -824,7 +818,6 @@ pub(crate) fn spawn_for_inbound(
 }
 
 /// `cc-spawn` 的退出码 → 语义码 —— 纯函数（表在 [`spawn_for_inbound`] 头注）。
-#[cfg_attr(not(test), allow(dead_code))] // 同 [`spawn_for_inbound`]：登记那一拍才有生产调用方
 pub(crate) fn classify_spawn(code: Option<i32>, detail: &str) -> Result<(), (String, String)> {
     match code {
         Some(0) => Ok(()),

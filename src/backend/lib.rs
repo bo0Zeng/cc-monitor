@@ -441,6 +441,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--bus-kill",
     "--bus-list",
     "--bus-send",
+    // 〔BS1b 09-24〕派生协作 agent（`inbound::REGISTRY` 的 `bus-spawn`）。登记理由同上面那三条。
+    "--bus-spawn",
     // `K-R113`：cc-bus 的**具名读命令**（名单 ＋ spawn 台账一次回全）。
     // 登记在这里的理由与上面那三条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
     "--bus-state",

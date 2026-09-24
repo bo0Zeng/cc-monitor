@@ -353,7 +353,7 @@ fn the_backend_does_not_re_implement_the_recipient_charset_rule() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// `bus-spawn`（09-24，未登记进帧面）：形状校验 · argv · 回显里的 id · 退出码分档
+// `bus-spawn`（09-24）：形状校验 · argv · 回显里的 id · 退出码分档
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 🔴 **账号必须表态**：`account` 与 `base:true` 恰好一个。都不给 = 替用户选了默认号去烧额度。
@@ -433,22 +433,4 @@ fn bus_spawn_timeout_warns_that_the_agent_may_already_be_running() {
     );
     assert_eq!(classify_spawn(Some(1), "x").unwrap_err().0, "failed");
     assert_eq!(classify_spawn(None, "x").unwrap_err().0, "failed");
-}
-
-/// 🔴 **今天没登记进帧面** —— 钉成相等，登记那一拍**故意变红**（那一拍要同时 bump `BUILD_ID`）。
-///
-/// 为什么要钉：`spawn_for_inbound` 带 `#[allow(dead_code)]`，编译器不会提醒它没接线；
-/// 而「写好了、没接线」与「接上了」在源码里只差 `inbound.rs` 的两行。
-#[test]
-fn bus_spawn_is_written_but_not_yet_on_the_wire() {
-    assert!(
-        !crate::inbound::COMMANDS.contains(&"bus-spawn"),
-        "`bus-spawn` 进了 `inbound::COMMANDS` —— 那一拍必须同时 bump `BUILD_ID`、\
-         在 `build_id_guard` 追加一行、把 `--bus-spawn` 加进 `SUBCOMMANDS`、\
-         改 `plugin_class_registry` 的 `bus-*` 条数（4 → 5）、并把本条删掉"
-    );
-    assert!(
-        !crate::SUBCOMMANDS.contains(&"--bus-spawn"),
-        "`--bus-spawn` 进了 `SUBCOMMANDS` —— 同上"
-    );
 }
