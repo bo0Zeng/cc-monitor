@@ -35,7 +35,7 @@
  * - ❌ 买不到：窗口**真的开得出来、长得对**（本机无图形会话）。dev 模式下 vite 按 url 直接
  *   伺服 `settings.html` / `viewer.html`，与构建产物是同一张 `input` 表，但 dev 那条路本文件没跑。
  * - ❌ 买不到：viewer 闭包里**带进了什么多余的**（`tabs.ts` 的依赖链今天拖进了
- *   `sftp/panel.ts` / `tasks-panel.ts` 等，`tabs.ts` 不在本轮写区）。本文件只钉「不许有」清单，
+ *   `tasks-panel.ts` 等，`tabs.ts` 不在本轮写区；〔F7b〕老 SFTP 面板已退役，那一条不在了）。本文件只钉「不许有」清单，
  *   不钉「只许有」—— 钉全集会让每一次 `tabs.ts` 的正常改动都红在一个与拆分无关的数上。
  */
 import { readFileSync } from "node:fs";

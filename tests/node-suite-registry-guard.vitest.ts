@@ -77,7 +77,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
   // `K-R96` +1（`KR96D3`：名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。
   ["test:remote-launch", "tests/remote-launch.test.ts", 44],
-  ["test:format", "tests/format.test.ts", 10],
+  ["test:format", "tests/format.test.ts", 11], // 〔F7b〕+1：basename 随老 SFTP 面板退役从 sftp/paths 搬进 format.ts，判据一起搬来
   ["test:history-cache", "tests/views/history-cache.test.ts", 8],
   ["test:history-prefs", "tests/views/history-prefs.test.ts", 18],
   ["test:history-actions", "tests/views/history-actions.test.ts", 10],

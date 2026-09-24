@@ -65,7 +65,7 @@ export interface RemoteConfig {
 }
 
 /**
- * F83（#39）:可打开 SFTP 的远端主机——`host` 与 `user` 都非空（`openSftpPanel` 的前置，
+ * F83（#39）:可打开文件窗口的远端主机——`host` 与 `user` 都非空（`file-window.ts::openFileWindow` 的前置，
  * 见 remote-section「文件」按钮同款校验）。顶栏 SFTP 入口据此决定 0 台提示 / 1 台直开 / 多台选单。
  * 纯函数（不看 `enabled`：即使远端数据源没启用，也能纯浏览某台的文件）。
  */

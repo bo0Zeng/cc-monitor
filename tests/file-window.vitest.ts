@@ -108,7 +108,6 @@ describe("F7b 入口人群", () => {
       const n = code.match(/\bopen_file_window\b/g)?.length ?? 0;
       for (let i = 0; i < n; i++) sites.push(file);
     }
-    // ⚠ 过渡态：老面板表头那颗「在原生窗口打开」还在（它随老面板一起删，那一拍这里收成一处）。
-    expect(sites).toEqual(["src/file-window.ts", "src/sftp/panel.ts"]);
+    expect(sites).toEqual(["src/file-window.ts"]);
   });
 });
