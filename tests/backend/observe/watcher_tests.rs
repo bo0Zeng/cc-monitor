@@ -2557,6 +2557,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
+        rbind_token: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "b".into(),
@@ -2570,6 +2571,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
+        rbind_token: None,
     });
     assert_eq!(
         sink.dropped, 0,
@@ -2589,6 +2591,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
+        rbind_token: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "d".into(),
@@ -2602,6 +2605,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
+        rbind_token: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "e".into(),
@@ -2615,6 +2619,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
+        rbind_token: None,
     });
     assert_eq!(sink.dropped, 3);
 
@@ -2651,6 +2656,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         lines: None,
         status: None,
         waiting_for: None,
+        rbind_token: None,
     });
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
 }
@@ -3083,4 +3089,128 @@ fn the_missing_dir_branch_still_says_it_never_retries() {
                  否则下一个人会以为「打个 warn 就够了」"
         );
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `设计/80 §8.7` 步 2：**启动期令牌上 wire** —— `session_added.rbind_token`
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// ★★ **本刀的正题（帧那一半）：一个带着 `CCM_RBIND_TOKEN` 的真进程，
+/// 它的令牌真的出现在 `session_added` 帧上。**
+///
+/// # 为什么这一条与 `identity_tag_tests` 那条不重复
+///
+/// 那边断的是「**读得出来**」（`rbind_token_of` 对一个真进程回对值）；
+/// 本条断的是「**接上了**」—— `process_session_added` 真的去调它、
+/// 真的把结果放进了那个字段。这两件事之间**有一整条接线**可以断掉而那边照常绿
+/// （本仓逐字「判据不在执行链上就等于不存在」）。
+///
+/// # 三组对照，缺任何一组读数都不可信
+///
+/// | 组 | 客户端索要了吗 | 进程环境里有吗 | 期望 |
+/// |---|---|---|---|
+/// | 正题 | ✅ `--with-rbind-token` | ✅ | 帧上是那个令牌 |
+/// | 阴性一（**默认路**） | ❌ | ✅ | 帧上**没有**（令牌默认不上 wire，`§8.6 ③`） |
+/// | 阴性二（**归因那一格**） | ✅ | ❌ | 帧上**没有** = 「这条会话真的没有令牌」（`§8.5 ②`） |
+///
+/// ★ 阴性一不是陪跑：它是「默认关」那条承诺的**唯一**判据。把 `state.with_rbind_token`
+/// 那个闸门删掉（改成无条件读），正题与阴性二都还绿，只有它红。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_launch_token_rides_the_session_added_frame_only_when_the_client_asked() {
+    /// 起一个 `sleep`，可选地给它注一个 `CCM_RBIND_TOKEN`。
+    fn spawn_sleeper(token: Option<&str>) -> std::process::Child {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("60");
+        // ★ 先 `env_remove`：本测试进程自己碰巧带着这个变量时（步 1 落地之后
+        //   开发机上完全可能），阴性二会继承到它、当场变成一条假绿。
+        cmd.env_remove("CCM_RBIND_TOKEN");
+        if let Some(t) = token {
+            cmd.env("CCM_RBIND_TOKEN", t);
+        }
+        let kid = cmd
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("起不来 `sleep` —— 本条的夹具坏了，读数一个字都不能信");
+        // 🔴 等它走出 `execve` 窗口——不等就是一条真的间歇性假红。
+        // 成因与现打读数写在
+        // `identity_tag_tests::the_token_is_read_back_out_of_a_real_child_process_environ`
+        // 里那个同名助手的头注里（`/proc/<pid>/environ` 刚 `execve` 时回 0 字节，
+        // 本机 1/500）。门是「environ 非空」而不是「读到令牌」：阴性组本来就没令牌。
+        for _ in 0..500 {
+            match std::fs::read(format!("/proc/{}/environ", kid.id())) {
+                Ok(b) if !b.is_empty() => break,
+                _ => std::thread::yield_now(),
+            }
+        }
+        kid
+    }
+
+    /// 跑一趟：起子进程 → 配一份合成 pidfile → 喂 `process_session_added` → 取帧上那个字段。
+    ///
+    /// 回 `Ok(帧上的 rbind_token)`。**不是真 claude**（`C7`：夹具不许起真 agent），
+    /// 而这条路上「是不是 claude」由 procStart 逐位相等那条主证据放行，与 cmdline 无关。
+    fn probe(label: &str, asked: bool, token: Option<&str>) -> Option<String> {
+        let dir = std::env::temp_dir().join(format!("ccm-rbind-{}-{label}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut kid = spawn_sleeper(token);
+        let pid = kid.id();
+        let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"), false, false);
+        state.with_rbind_token = asked;
+        let path = dir.join(format!("{pid}.json"));
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{"pid":{pid},"sessionId":"rb-{label}","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#
+            ),
+        )
+        .unwrap();
+        process_session_added(&path, &mut state, &mut sink);
+        let got = match rx.try_recv() {
+            Ok(Frame::SessionAdded {
+                sid, rbind_token, ..
+            }) => {
+                assert_eq!(sid, format!("rb-{label}"), "宣告的是另一条会话？");
+                rbind_token
+            }
+            other => panic!(
+                "[{label}] 没收到 `session_added` —— 本趟的读数一个字都不能信（实得 {other:?}）"
+            ),
+        };
+        let _ = kid.kill();
+        let _ = kid.wait();
+        std::fs::remove_dir_all(&dir).ok();
+        got
+    }
+
+    const GOOD: &str = "0123456789abcdef0123456789abcdef";
+
+    // ── 正题 ───────────────────────────────────────────────────────────────
+    assert_eq!(
+        probe("yes", true, Some(GOOD)).as_deref(),
+        Some(GOOD),
+        "索要了、环境里也有，帧上却没有那个令牌 —— \
+         `设计/80 §8.2` 那条「后端从 `/proc/<pid>/environ` 读出来、经 wire 报回」**没接上**"
+    );
+
+    // ── 阴性一：没索要 ⇒ 默认不上 wire ────────────────────────────────────
+    assert_eq!(
+        probe("unasked", false, Some(GOOD)),
+        None,
+        "没发 `--with-rbind-token` 却把令牌放上了 wire —— \
+         令牌是敏感数据（`§8.6 ③`），默认关那条承诺没兑现"
+    );
+
+    // ── 阴性二：索要了，但这条会话压根没有令牌 ⇒ 缺席 = 归因那一格 ────────
+    assert_eq!(
+        probe("bare", true, None),
+        None,
+        "环境里没有那个变量，帧上却凭空多出一个令牌 —— \
+         那会让 `§8.5 ②` 那个布尔恒真（「有没有令牌」从此答不准）"
+    );
 }

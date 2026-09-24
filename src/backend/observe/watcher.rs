@@ -850,6 +850,7 @@ pub fn spawn(
     agent_home: PathBuf,
     with_bg: bool,
     tail_only: bool,
+    with_rbind_token: bool,
 ) -> (mpsc::Receiver<Frame>, WatcherPoke) {
     let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
@@ -859,7 +860,17 @@ pub fn spawn(
     let poke = WatcherPoke(events_tx.clone());
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
-        .spawn(move || watch_loop(agent_home, tx, with_bg, tail_only, events_tx, events_rx))
+        .spawn(move || {
+            watch_loop(
+                agent_home,
+                tx,
+                with_bg,
+                tail_only,
+                with_rbind_token,
+                events_tx,
+                events_rx,
+            )
+        })
         .expect("spawn jsonl-watcher thread");
     (rx, poke)
 }
@@ -874,6 +885,7 @@ fn watch_loop(
     tx: mpsc::Sender<Frame>,
     with_bg: bool,
     tail_only: bool,
+    with_rbind_token: bool,
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
 ) {
@@ -884,6 +896,9 @@ fn watch_loop(
     let sessions = crate::agents::claudecode::paths::sessions_root(&agent_home);
 
     let mut state = ReaderState::new(projects.clone(), with_bg, tail_only);
+    // 〔`设计/80 §8.7` 步 2〕注入「客户端索要了启动期令牌」这一位。**不进 `new` 的签名**
+    // 的理由写在那个字段的头注里（同 `events_tx` 那条既有纪律）。
+    state.with_rbind_token = with_rbind_token;
     // All frames go out through a FrameSink: a bounded-channel sender that counts
     // frames dropped on a full channel and emits a single `Overflow` signal once
     // the channel drains enough to accept it (#32). Never blocks this reader.
@@ -1302,6 +1317,16 @@ struct ReaderState {
     /// 历史由 monitor 经 `--read-session` 旁路快照拉取（0..L'-1 由 monitor 编号，
     /// 重叠区被 (sid,seq) 去重吸收）。默认 false = 全量重放（旧 monitor 兼容）。
     tail_only: bool,
+    /// 〔`设计/80 §8.7` 步 2〕`--with-rbind-token`：客户端**显式索要**
+    /// `session_added` 上的 `rbind_token`（启动期令牌）。
+    ///
+    /// **默认 false，而且刻意不进 [`ReaderState::new`] 的签名** —— 两个理由：
+    /// ① 与 `events_tx` 同一条既有纪律（那条头注逐字：「11 处 `ReaderState::new`
+    ///    因此无需改签名」）；
+    /// ② 语义上 false 才是对的默认：令牌是敏感数据，**没人索要就不读**
+    ///    （论证住 `wire.rs` 那个字段的头注）。
+    /// 生产路由 [`watch_loop`] 注入；夹具直接置字段。
+    with_rbind_token: bool,
 }
 
 impl ReaderState {
@@ -1316,6 +1341,7 @@ impl ReaderState {
             active_sids: HashSet::new(),
             with_bg,
             tail_only,
+            with_rbind_token: false,
         }
     }
 }
@@ -1907,6 +1933,24 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         lines: first_lines,
         status: meta_str("status"),
         waiting_for: meta_str("waitingFor"),
+        // 🔴 〔`设计/80 §8.7` 步 2〕**启动期令牌** —— 把「会话身份」从 tmux 上解绑的那个键。
+        //
+        // ★ **零新节拍**：读它的那一刻就是这一刻。`§8.3` 那一栏逐字「后端**已经在**
+        //   inotify `sessions/`……看到 `<PID>.json` 的那一刻，**pid 与 sid 同时在手**」——
+        //   本行只是在同一刻多读一个环境变量，没有新循环、没有新通道、没有新平台原语。
+        //
+        // ★ **位置与上面 `identity_tag::tag(pid, &sid)` 同理**：也在 `pid_alive` +
+        //   `add_time_verdict`（procStart 冒名检查）之后 ⇒ 报出去之前已经证过
+        //   「这个 pid 真的是写那份 pidfile 的那个 claude」，令牌不会张冠李戴。
+        //
+        // ★ **默认不读**（`state.with_rbind_token`）：令牌是敏感数据（`§8.6 ③`），
+        //   只有显式发了 `--with-rbind-token` 的客户端才拿得到。没索要 ⇒ `None`
+        //   ⇒ `skip_serializing_if` ⇒ 这一帧的字节与本字段加进来之前一字不差。
+        rbind_token: if state.with_rbind_token {
+            crate::control::identity_tag::rbind_token_of(pid)
+        } else {
+            None
+        },
     });
     if !state.tail_only {
         for p in &jsonls {

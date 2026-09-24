@@ -266,6 +266,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
                 lines: None,
                 status: None,
                 waiting_for: None,
+                rbind_token: None,
             },
             "session_added",
         ),
@@ -716,6 +717,7 @@ fn dg3_codex_fields_serialize_when_present() {
         lines: None,
         status: None,
         waiting_for: None,
+        rbind_token: None,
     })
     .unwrap();
     assert_eq!(
@@ -773,6 +775,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         lines: None,
         status: None,
         waiting_for: None,
+        rbind_token: None,
     })
     .unwrap();
     assert_eq!(
@@ -887,4 +890,68 @@ fn removal_cause_is_additive_on_the_wire() {
     );
     // 反向自检：两条不是同一个串（否则上面两个断言可能同时被一个退化实现满足）。
     assert_ne!(gone, sup);
+}
+
+/// ★★ `设计/80 §8.7` 步 2：`session_added.rbind_token` 的**线上形状** ——
+/// absent 形字节等价 ＋ present 形精确字节。
+///
+/// # 两条合起来才是那句 additive 承诺（缺任一条它都不成立）
+///
+/// 同 `homes` / `unavailable` 两族的既有分工（那两处的头注逐字写过这一点）：
+/// - **absent**：`None` 被省略 ⇒ 与本字段加进来**之前**逐字节相同。
+///   这一格是给**没索要令牌的客户端**（含仓外 aterm，它按精确字节对 fixture、
+///   契约冻结 2026-07-18）的红线 —— 而生产路上「没索要就不读」那道闸门
+///   由 `watcher_tests::the_launch_token_rides_the_session_added_frame_only_when_the_client_asked`
+///   的阴性一钉住，两处合起来才是「默认关」。
+/// - **present**：字段按 `wire.rs` 声明序排在**最后**（`waiting_for` 之后）。
+///   ⚠ 本行右边那串就是消费侧照着实现的东西 —— 挪字段位置会改它。
+#[test]
+fn session_added_rbind_token_is_additive_present_and_absent() {
+    // ① absent：省略 ⇒ 与本字段加进来之前逐字节相同。
+    //    ★ 右边这串与 `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent`
+    //      里那串**刻意逐字重复**（同 `hello_unavailable_is_additive_present_and_absent`
+    //      的手法）：同一串钉在两处，任何一处被改掉都还有另一处会红。
+    let absent = to_line(&Frame::SessionAdded {
+        sid: "s".into(),
+        agent_kind: None,
+        liveness_confidence: None,
+        session_kind: None,
+        attachable: None,
+        cwd: None,
+        name: None,
+        path: None,
+        lines: None,
+        status: None,
+        waiting_for: None,
+        rbind_token: None,
+    })
+    .unwrap();
+    assert_eq!(
+        absent, "{\"kind\":\"session_added\",\"sid\":\"s\"}\n",
+        "`rbind_token` 为 `None` 时没被省略 ⇒ `session_added` 的线上字节变了\n\
+         ⇒ 仓外 aterm 那份按精确字节对的 fixture 当场对不上（契约冻结 2026-07-18）。\n\
+         additive 的全部意义就在这一格。"
+    );
+
+    // ② present：真带上时的精确字节（消费侧照这个实现）。
+    let present = to_line(&Frame::SessionAdded {
+        sid: "s".into(),
+        agent_kind: None,
+        liveness_confidence: None,
+        session_kind: None,
+        attachable: None,
+        cwd: None,
+        name: None,
+        path: None,
+        lines: None,
+        status: None,
+        waiting_for: None,
+        rbind_token: Some("0123456789abcdef0123456789abcdef".into()),
+    })
+    .unwrap();
+    assert_eq!(
+        present,
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"rbind_token\":\"0123456789abcdef0123456789abcdef\"}\n",
+        "`rbind_token` 的线上名 / 位置变了 —— 那个名字是两路共用的契约（`设计/80 §8.7` 那张表钉死）"
+    );
 }
