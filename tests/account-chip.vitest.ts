@@ -399,7 +399,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
 // ① `阻-4`：本文件此前两处注释写着「远端全关掉时这里渲染的就是本机账号」——**是假的**。
 //    `fetchAccounts` 只问 `list_remote_accounts`，`origin` 为 `null` 时 `refresh` 整个隐藏。
 // ② `阻-5`：于是 `KH2B7` 那三态**在用户看得见的地方一处都没落地**
-//    （`fetchLocalRelayRouting` / `localRelayStateFor` 生产调用方各 0）。
+//    （`fetchLocalApikeyRouting` / `localApikeyEndpointStateFor` 生产调用方各 0）。
 // ⇒ 本组既钉「本机那几行真的渲染出来了」，也钉「三态真的分得开」。
 describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带中转三态", () => {
   /** 起一个「没有远端」的 chip，本机账号由 `fetchLocalAccounts` 给、routing 由那条命令给。 */
@@ -415,7 +415,7 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带�
     vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts, defaultName: accounts[0]?.name ?? "" }),
     );
-    const spy = vi.spyOn(accountsMod, "fetchLocalRelayRouting");
+    const spy = vi.spyOn(accountsMod, "fetchLocalApikeyRouting");
     if (routing === "fail") spy.mockRejectedValue(new Error("问不到"));
     else spy.mockResolvedValue(routing);
     const chip = new AccountChip({ openSettings: () => {} });
@@ -502,7 +502,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
     vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts: [acct({ name: "acct-a", configDir: "/h/.claude-accts/acct-a" })], defaultName: "acct-a" }),
     );
-    vi.spyOn(accountsMod, "fetchLocalRelayRouting").mockResolvedValue({ routed: [], running: false });
+    vi.spyOn(accountsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
@@ -540,7 +540,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     document.querySelectorAll(".account-picker").forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue(state({ accounts, defaultName }));
-    vi.spyOn(accountsMod, "fetchLocalRelayRouting").mockResolvedValue({ routed: [], running: false });
+    vi.spyOn(accountsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     return chip;
@@ -604,7 +604,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
       ...state({ accounts: [], defaultName: null }),
       meta: { enabled: false, acctsDir: "", manifestPath: "", updatedAt: null, sharedStore: null, count: 0, error: null },
     } as unknown as AccountsState);
-    vi.spyOn(accountsMod, "fetchLocalRelayRouting").mockResolvedValue({ routed: [], running: false });
+    vi.spyOn(accountsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     expect(

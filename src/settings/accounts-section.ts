@@ -22,7 +22,7 @@ import {
   accountLoginActionLabel,
   setDefaultName,
   // K-H2c：「这几个号在不在apikey 表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
-  fetchLocalRelayRouting,
+  fetchLocalApikeyRouting,
   getModelForAccount,
   setModelForAccount,
   invalidateAccountsCache,
@@ -66,7 +66,7 @@ import {
  * 真正钉这件事的是一条**中文标题**的 `it`，它本来就没有 snake_case 名字，
  * 而这两处一直**当现状在说**。
  */
-export interface RelayKeyAccount {
+export interface ApikeyEditorAccount {
   /** 显示用的名字（**只用来显示**，绝不当成 id 递给后端）。 */
   name: string;
   /** 递给后端那条命令的不透明串。 */
@@ -92,16 +92,16 @@ export interface RelayKeyAccount {
  */
 export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElement {
   const box = document.createElement("div");
-  box.className = "relay-key-block";
+  box.className = "apikey-file-block";
 
   const title = document.createElement("div");
-  title.className = "relay-key-title";
+  title.className = "apikey-file-title";
   title.textContent = "第三方 API key";
   box.appendChild(title);
 
   // `KS9`：路径要能被找到，人才改得动它。
   const where = document.createElement("div");
-  where.className = "relay-key-path";
+  where.className = "apikey-file-path";
   where.textContent = `文件：${status.path}`;
   where.title = "这份文件是明文 JSON，可以直接用编辑器改，改完下次读就生效";
   box.appendChild(where);
@@ -109,14 +109,14 @@ export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElem
   // `KS11`：过宽 / 查不出来要**在界面上显出来**。
   if (status.notice) {
     const warn = document.createElement("div");
-    warn.className = "relay-key-notice";
+    warn.className = "apikey-file-notice";
     warn.textContent = status.notice;
     box.appendChild(warn);
   }
   // 文件读坏了（人手编打错一个逗号）——**不许静默当成「没配」**。
   if (status.problem) {
     const bad = document.createElement("div");
-    bad.className = "relay-key-problem";
+    bad.className = "apikey-file-problem";
     bad.textContent = status.problem;
     box.appendChild(bad);
   }
@@ -124,7 +124,7 @@ export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElem
   //   但界面不再往那儿写 —— 与每一行上「这个号配没配」是**两件事**，不许合成一行。
   if (status.configured) {
     const legacy = document.createElement("div");
-    legacy.className = "relay-key-legacy";
+    legacy.className = "apikey-file-legacy";
     legacy.textContent = `顶层那一把（历史格式）：已配置 ${status.masked}。它照常还能用，但界面不再往那一格写。`;
     box.appendChild(legacy);
   }
@@ -140,12 +140,12 @@ export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElem
  *
  * 「配好之后，后端**永远**不把明文回给前端；界面只显示掩码或『已配置』。**要改就重新输。**」
  * ⇒ 结构上做不到回显，两道：
- *   ① 入参里**没有明文那个字段**（[`RelayKeyAccount`] 只有 name / configDir / routed）；
+ *   ① 入参里**没有明文那个字段**（[`ApikeyEditorAccount`] 只有 name / configDir / routed）；
  *   ② 输入框**从不预填**（`value` 一次都不被赋非空值），存之前先清空。
  * 由 `accounts-section.vitest.ts` 里 `KS6` 那一族钉住，含一条**源码扫描**。
  */
 export function renderApikeyEditor(
-  a: RelayKeyAccount,
+  a: ApikeyEditorAccount,
   onSave: (key: string, configDir: string) => void | Promise<void>,
 ): { editor: HTMLElement; toggle: HTMLButtonElement } {
   const box = document.createElement("div");
@@ -164,7 +164,7 @@ export function renderApikeyEditor(
   });
 
   const state = document.createElement("div");
-  state.className = "relay-key-state";
+  state.className = "accounts-row-apikey-state";
   state.textContent = a.routed
     ? `${a.name}：apikey 表里已经有它那一行。再存一次会替换它那一把 key。`
     : `${a.name}：apikey 表里还没有它那一行 —— 它的会话今天走官方直连。`;
@@ -172,14 +172,14 @@ export function renderApikeyEditor(
 
   const input = document.createElement("input");
   input.type = "password";
-  input.className = "relay-key-input";
+  input.className = "accounts-row-apikey-input";
   input.autocomplete = "off";
   // ★★ **这里刻意什么都不做** —— 不预填、不 placeholder 回显掩码。
   input.placeholder = a.routed ? "输入新的 key 以替换" : "粘贴 key";
   box.appendChild(input);
 
   const save = mkBtn("保存");
-  save.className = "relay-key-save";
+  save.className = "accounts-row-apikey-save";
   save.addEventListener("click", () => {
     const v = input.value.trim();
     if (!v) return;
@@ -404,8 +404,8 @@ export class AccountsSection {
    *
    * 远端那张表带着一整套只对远端成立的东西：维护区那几个按钮会**动远端目录**、
    * 「去登录」会去拉一个**远端终端**（`accountLoginActionLabel` 的两句文案都逐字带「远端」）、
-   * 中转那一块问的是「这几个 configDir 走不走**本机**中转」而表里显的是远端的号
-   *（`mountRelayKeyBlock` 头注口径③ 自己记着这笔账）。把本机接进那条路，
+   * apikey 那一块问的是「这几个 configDir 在**本机**的 apikey 表里有没有行」而表里显的是远端的号
+   *（那一块当年的头注口径③ 自己记着这笔账；它今天拆成 `renderApikeyFileBlock` ＋ `renderApikeyEditor`）。把本机接进那条路，
    * 等于把「一台远端机器」这个概念套到本机头上 —— 那正是 `N2` 排除的那件事，
    * 也正是 `control-parity` 那个区花 41 件治过的病。
    * ⇒ 本机这一支只做它今天真做得到的事：**把清单列出来**。
@@ -538,7 +538,7 @@ export class AccountsSection {
   /**
    * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
    *
-   * ⚠ 徽章走 `accountStatusBadge(a)` 而**不传** `relay`：那个参数说的是
+   * ⚠ 徽章走 `accountStatusBadge(a)` 而**不传** `endpoint`：那个参数说的是
    * 「这个号在apikey 表里有没有一行、本机中转在不在跑」，本件没有去问后端要这两格
    *（那要多一条 IPC，属下一件）⇒ **不传就是如实说「这一处没被告知」**，
    * 它自己的那一支逐字写着「所以不替它下判断」。
@@ -1027,15 +1027,15 @@ export class AccountsSection {
    */
   private async readApikeyState(
     accounts: Account[],
-  ): Promise<{ entries: RelayKeyAccount[]; fileBlock: HTMLElement }> {
+  ): Promise<{ entries: ApikeyEditorAccount[]; fileBlock: HTMLElement }> {
     const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
     let routed: string[] = [];
     try {
-      routed = dirs.length ? (await fetchLocalRelayRouting(dirs)).routed : [];
+      routed = dirs.length ? (await fetchLocalApikeyRouting(dirs)).routed : [];
     } catch {
       // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
     }
-    const entries: RelayKeyAccount[] = accounts
+    const entries: ApikeyEditorAccount[] = accounts
       .filter((a): a is Account & { configDir: string } => !!a.configDir)
       .map((a) => ({ name: a.name, configDir: a.configDir, routed: routed.includes(a.configDir) }));
     let fileBlock: HTMLElement;
@@ -1043,7 +1043,7 @@ export class AccountsSection {
       fileBlock = renderApikeyFileBlock(await commands.read_apikey_credentials_status());
     } catch (e) {
       fileBlock = document.createElement("div");
-      fileBlock.className = "relay-key-problem";
+      fileBlock.className = "apikey-file-problem";
       fileBlock.textContent = `读不到第三方 API key 的状态：${String(e)}`;
     }
     return { entries, fileBlock };
@@ -1170,7 +1170,7 @@ export class AccountsSection {
   private async accountRow(
     a: Account,
     isCurrent: boolean,
-    apikey: RelayKeyAccount | null = null,
+    apikey: ApikeyEditorAccount | null = null,
   ): Promise<{ row: HTMLElement; editor: HTMLElement | null }> {
     const model = await getModelForAccount(a.name); // F07：每账号默认模型偏好
     const row = document.createElement("div");

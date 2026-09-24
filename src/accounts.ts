@@ -221,7 +221,7 @@ export interface AccountStatusBadge {
  * 的那些号，cc-monitor **真的**会替它配）。⇒ 按「这个号属于哪一半 / 那两个前置成不成立」
  * 分别说各自的话。
  *
- * | `relay` | 用户看到 | 那句话为什么是真的 |
+ * | `endpoint` | 用户看到 | 那句话为什么是真的 |
  * |---|---|---|
  * | `{scope:"local",hasRow:true,running:true}` | 「api-key（经本机中转）」 | 两个前置都成立 |
  * | `{scope:"local",hasRow:true,running:false}` | 「api-key（中转未运行）」 | 起会话那一侧会**当场拒**（`KH2B2`②） |
@@ -240,7 +240,7 @@ export interface AccountStatusBadge {
  * 「远端就 `{scope:"remote"}`、本机就缺席」（chip）。
  * **这是「本机那三档有实现、没接线」，别读成「接上了」。** 经过住件文件 `§4`。
  */
-export type AccountRelayState =
+export type ApikeyEndpointState =
   /** 远端那一半：`K-H2b` `§0e` 裁四明写不做 ⇒ 对它确实没人配端点。 */
   | { scope: "remote" }
   /** 本机那一半：两个前置各自成不成立。 */
@@ -446,7 +446,7 @@ export function __setLocalLaunchSnapshotForTests(
   localLaunchSnapshot = { state, pins };
 }
 
-export async function fetchLocalRelayRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
+export async function fetchLocalApikeyRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
   return await commands.apikey_routing_for({ configDirs });
 }
 
@@ -456,17 +456,17 @@ export async function fetchLocalRelayRouting(configDirs: string[]): Promise<Apik
  * `configDir` 缺席（账号 0）⇒ `null`：账号 0 在 manifest 里没有目录名，
  * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `apikey_account_id` 的三态同形）。
  */
-export function localRelayStateFor(
+export function localApikeyEndpointStateFor(
   a: Account,
   routing: ApikeyRoutingView,
-): AccountRelayState | undefined {
+): ApikeyEndpointState | undefined {
   if (!a.configDir) return undefined;
   return { scope: "local", hasRow: routing.routed.includes(a.configDir), running: routing.running };
 }
 
 export function accountStatusBadge(
   a: Account,
-  relay?: AccountRelayState,
+  endpoint?: ApikeyEndpointState,
 ): AccountStatusBadge {
   if (a.mode === "in-place") {
     return {
@@ -476,7 +476,7 @@ export function accountStatusBadge(
     };
   }
   if (a.authKind === "api-key") {
-    const local = relay?.scope === "local" ? relay : null;
+    const local = endpoint?.scope === "local" ? endpoint : null;
     if (local?.hasRow && local.running) {
       return {
         text: "api-key（经本机中转）",
@@ -504,7 +504,7 @@ export function accountStatusBadge(
         ? "apikey 凭据文件里没有这个账号的一行 ⇒ cc-monitor 不会替它配 base URL。" +
           "要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 " +
           "shell 环境里配好第三方端点。"
-        : relay?.scope === "remote"
+        : endpoint?.scope === "remote"
           ? "cc-monitor 今天只给本机会话配 base URL；远端这一半还不做" +
             "（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上" +
             "自己配好第三方端点。"
