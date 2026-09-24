@@ -1541,14 +1541,17 @@ fn both_exits_of_launch_remote_terminal_hand_the_token_to_the_prelude() {
     let start = prod
         .find("pub async fn launch_remote_terminal(")
         .expect("生产段里找不到 `launch_remote_terminal` —— 改名了就回来改本条");
-    let body = &prod[start..];
-    let body = &body[..body.find("\n}\n").expect("找不到函数体收尾")];
-    let opens = body.matches("launch_powershell_window(").count();
-    let preludes = body.matches("with_rbind_bind_prelude(").count();
-    let handed = body.matches("rbind_token.as_deref()").count();
+    // ⚠ 变量刻意不叫 `body`：本文件里另有一个 `body` 是 `read_to_string` 读进来的语料，
+    //   `needle_anchor_registry` 的语料追踪按**名字**认 —— 同名会把这里（`include_str!` 的编译期文本）
+    //   误算进那条递减棘轮。
+    let fn_tail = &prod[start..];
+    let fn_text = &fn_tail[..fn_tail.find("\n}\n").expect("找不到函数体收尾")];
+    let opens = fn_text.matches("launch_powershell_window(").count();
+    let preludes = fn_text.matches("with_rbind_bind_prelude(").count();
+    let handed = fn_text.matches("rbind_token.as_deref()").count();
     assert_eq!(
         opens, 2,
-        "开窗的出路不是 2 条（本机 / 远端）—— 抽取器瞄偏了，或多了一条出路：\n{body}"
+        "开窗的出路不是 2 条（本机 / 远端）—— 抽取器瞄偏了，或多了一条出路：\n{fn_text}"
     );
     assert_eq!(
         preludes, opens,

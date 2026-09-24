@@ -3556,16 +3556,18 @@ async fn stream_loop(
                 waiting_for,
                 rbind_token,
             }) => {
-                // 🔴 〔`设计/80 §8.7` 步 3/4〕**只记一句账，一个分派都不改。**
+                // 🔴 〔`设计/80 §8.7` 步 4，第二波 T4〕**记进令牌账本 —— ↗ 从此按它分派。**
                 //
-                // `↗` 改走 `sid → token → HWND` 的 join 是**步 4**，而 `§8.7` 逐字
-                // 警告「不要先做 4」—— 先改 UI 分派会造出一段「令牌还没有、
-                // 判断已经改」的窗口期。这一行买的是「**这一帧上到底有没有令牌**」
-                // 这个读数在排障时看得见（`§8.5 ②` 要的那个布尔）。
+                // 步 3 那一拍这里「只记一句账，一个分派都不改」（`§8.7` 逐字「不要先做 4」）。
+                // 步 3 的本地半与它的生产写入方（`launch.rs` 的令牌握手前奏）都落了，
+                // 「令牌还没有、判断已经改」那段窗口期不再存在 ⇒ 本拍把它接上：
+                // `bind::bring_remote_front` 先查这本账，有令牌走 `token → HWND`，没有走标题退路。
+                // `None` 也要记（= 删掉旧值）：重新宣告成「没令牌」时，上一次的令牌不许粘着。
                 //
                 // ⚠ **只打布尔，不打值**（`§8.6 ③`：令牌是敏感数据）。
                 //   后端那一侧对同一条性质有判据钉着，这一侧由
                 //   `ssh_source_parse_frame_tests.rs::the_token_value_never_reaches_a_log_macro` 钉。
+                crate::bind::remote_rbind_tokens().note(&sid, rbind_token.as_deref());
                 tracing::debug!(
                     "ssh_source [{host_label}] session_added sid={sid} has_rbind_token={}",
                     rbind_token.is_some()
