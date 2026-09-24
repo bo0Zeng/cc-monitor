@@ -9,7 +9,7 @@
  *   而界面说「已装」，于是没人去点那颗按钮。
  *
  * ★ 第三态今天**才**做得出来：它要一个「哪一版才算对」的真相源，而那正是 `U9`②
- * （用户 08-13 裁「**仓内那份为准**」）。⇒ 真相源 = 内嵌的那 17 个字节串。
+ * （用户 08-13 裁「**仓内那份为准**」）。⇒ 真相源 = 内嵌的那一组字节串（`FILES`）。
  * `PS2` 摸底时立的那条判据逐字写着「**加第三态之前先答版本口径**」—— 答了，所以能加。
  */
 export type CcBusInstallState = { "state": "not_installed" } | { "state": "up_to_date" } | { "state": "drifted", differing: number, missing: number, };

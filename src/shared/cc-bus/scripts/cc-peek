@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-peek [id] [--max-lines N] [--token-file PATH]
+# cc-peek [id] [--max-lines N] [--token-file PATH] [--kinds-file PATH]
 #   两阶段读口的**第一跳:纯读**。渲染消息文本 ＋ 吐一个自包含令牌,**不写任何状态**。
 #   第二跳是 cc-commit(唯一的副作用)。cc-recv 一字不改地留着 ≡ peek 之后立刻 commit。
 #
@@ -30,6 +30,12 @@
 # (95 §3ter.7 把"走哪条通道"登记为判不了,缺的证据是"钩子改造后的取法定了没有" ——
 #  本轮把钩子一起改了,取法就是 `--token-file`,于是这一格有答案了。)
 #
+# ## `--kinds-file`:这一段里每条消息的 `kind`(设计 95 §2)
+#
+# Stop 钩子要按 kind 决定**拦不拦**、用**哪一段**注入模板 —— 而 stdout 必须与 cc-recv 逐字节同一套渲染
+# (判据对拍),kind 不能混进正文。⇒ 与令牌同一个取法:**写到调用方指定的文件里**,一行
+# `kind:from kind:from …`(两样都过白名单,不合的记成 `msg` / `?`)。同样**不许落在总线目录里**。
+#
 # 退出码:0 = 正常(有没有新消息都是 0) · 2 = 参数非法 · 13 = 适配层办不到。
 set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
@@ -41,13 +47,15 @@ ccbus_adapt_load || exit 13        # 三个 trait 装不齐就不干活(fail-clo
 # shellcheck source=cc-bus-lib.sh
 . "$SELFDIR/cc-bus-lib.sh"
 
-id=""; maxlines=""; tokfile=""
+id=""; maxlines=""; tokfile=""; kindsfile=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --max-lines)  [ $# -ge 2 ] || { echo "cc-peek: --max-lines 后面要跟一个数" >&2; exit 2; }
                   maxlines="$2"; shift 2 ;;
     --token-file) [ $# -ge 2 ] || { echo "cc-peek: --token-file 后面要跟一个路径" >&2; exit 2; }
                   tokfile="$2"; shift 2 ;;
+    --kinds-file) [ $# -ge 2 ] || { echo "cc-peek: --kinds-file 后面要跟一个路径" >&2; exit 2; }
+                  kindsfile="$2"; shift 2 ;;
     --) shift; break ;;
     -*) echo "cc-peek: 不认识的旗标 '$1'" >&2; exit 2 ;;
     *)  [ -z "$id" ] || { echo "cc-peek: 多给了一个 id '$1'" >&2; exit 2; }; id="$1"; shift ;;
@@ -59,6 +67,7 @@ fi
 # 🔴 令牌文件**不许落在总线目录里**:本命令的全部价值是"零写面",
 #    而一个写进 `$BUS/` 的令牌文件会把它变成"写了一点点",并且要有人清(撞 §3ter.2 那条)。
 case "${tokfile:-}" in "$BUS"/*) echo "cc-peek: --token-file 不许指向总线目录 $BUS 里" >&2; exit 2;; esac
+case "${kindsfile:-}" in "$BUS"/*) echo "cc-peek: --kinds-file 不许指向总线目录 $BUS 里" >&2; exit 2;; esac
 [ -n "$id" ] || id=$("$SELFDIR/cc-whoami")
 case "$id" in *[!A-Za-z0-9_-]*|'') echo "cc-peek: 非法/空 id '$id'" >&2; exit 2;; esac
 
@@ -86,6 +95,11 @@ raw=$(
       if [ -n "$maxlines" ] && [ $((pos+maxlines)) -lt "$total" ]; then to=$((pos+maxlines)); fi
       new=$(sed -n "$((pos+1)),${to}p" "$inbox")
       printf '%s.%s.%s\n' "$from" "$to" "$(twophase_anchor "$inbox" "$to")"
+      # 第二行:这一段每条的 kind:from(与令牌同在锁内取 ⇒ 与正文是同一个快照)。坏行不出条目。
+      printf '%s\n' "$new" | jq -Rj 'fromjson? // empty
+        | ((.kind // "msg") | tostring | if test("^[a-z0-9_-]{1,32}$") then . else "msg" end) + ":"
+        + ((.from // "?") | tostring | if test("^[A-Za-z0-9_-]+$") then . else "?" end) + " "'
+      printf '\n'
       # 显示:fromjson? 跳过非法 JSON 坏行(防毒丸卡死),// 默认容忍 v1 缺字段行
       # 🔴 **这一段与 cc-recv:21-37 是同一套渲染**,判据逐字对拍两边的 jq 程序 ——
       #    分成两份写就会漂,而"漂了"在输出上只表现成"两条命令给出不同的正文"。
@@ -107,12 +121,15 @@ raw=$(
 
 raw=${raw%$'\001'}
 token=${raw%%$'\n'*}
-body=${raw#*$'\n'}
-[ "$body" != "$token" ] || body=""             # 只有令牌一行(理论上不会发生)时别把令牌当正文
+rest=${raw#*$'\n'}
+kinds=${rest%%$'\n'*}
+body=${rest#*$'\n'}
+[ "$body" != "$rest" ] || body=""              # 只有令牌 ＋ kinds 两行(理论上不会发生)时别把它们当正文
 [ -z "$body" ] || printf '%s' "$body"
 if [ -n "$tokfile" ]; then
   printf '%s' "$token" > "$tokfile"            # 调用方指定的文件,不在 BUS 里 ⇒ 不是总线状态
 else
   printf '%s\n' "$token" >&2
 fi
+[ -z "$kindsfile" ] || printf '%s' "$kinds" > "$kindsfile"   # 同 --token-file:调用方指定、不在 BUS 里
 exit 0

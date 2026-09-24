@@ -88,6 +88,28 @@ cc-broadcast "全体同步:X 已完成"    # 广播给除自己外所有已登�
 - 消息一定落 inbox;对方空闲→敲门即处理,在忙→其 Stop 钩子兜底。
 - 有 `cc-busd` 在跑→异步投递;没有→cc-send 就地兜底。两条路同一套管线,行为一致。
 
+## 消息分轻重:`--kind` ＋ `kinds.tsv`
+每条消息带一个 `kind`(`cc-send --kind <k> …`,缺省 `msg` = 老行为),它决定这条**怎么注入**:
+拦停(Stop 钩子要不要喂回、拦下本轮结束)· 敲门(要不要往对方屏幕打一行)· 过哪几道阀门 · 两段模板。
+
+| kind(随包默认) | 拦停 | 敲门 | 阀门 | 用在 |
+|---|---|---|---|---|
+| `urgent` | ✓ | ✓ | ACL · 限流 · 灭环(**不去重**) | 要对方先放下手上的 |
+| `msg` | ✓ | ✓ | 全部 | 默认,与改造前逐字节同一个行为 |
+| `keepalive` | ✓ | ✗ | ACL · 限流 · 灭环(**不去重**) | 保活:别让它结束本轮(调用方见 `examples/cc-keepalive`) |
+| `fyi` | ✗ | ✗ | 全部 | 「随便看看」:不把对方从收尾里拽回来、不打扰屏幕;`cc-recv`/面板照样读得到 |
+
+- 表的查找顺序:`~/.cc-bus/kinds.tsv`(你的)→ skill 的 `examples/kinds.tsv`(随包、带注释)→ 内置 `msg` 一行。
+- 🔴 **敲门模板里不许放 `{body}`**:它走 `send-keys` ＋ Enter,正文里的换行会被当成回车执行。含 `{body}` 的行整行作废。
+- 🔴 **ACL 与限流不许按 kind 关**:kind 是发信方自己选的。缺这两项的行整行作废。
+- 不认识的 kind / 那一行不合法 ⇒ `cc-send` 当场 rc=2(没发);已入队的按 `msg` 投、`bus.log` 记一行 `KIND fallback`。
+- Stop 钩子一批里全是不拦停的 kind(如 `fyi`)⇒ 放行、**不推进**已读位置(留着等下一条要拦停的一起喂)。
+
+**保活是调用方,不是 cc-bus 的功能**:`examples/cc-keepalive <to> [附言]` 只调一次
+`cc-send --new --kind keepalive` 就返回(身份缺省 `cc-keepalive`);多久一次交给 cron / systemd timer,
+例 `*/10 * * * * ~/.claude/skills/cc-bus/examples/cc-keepalive planner`。保活文本改 kinds 表那一行。
+⚠ 它只在对方**正在跑一轮、想结束时**起作用(Stop 钩子拦下);对方已经停在输入框前时它不敲门,要等下一次想结束。
+
 ## 派生会话(cc-spawn):在某目录开一个独立协作 agent
 要一个**长驻、独立历史、原生读某工作目录文件**的协作者(区别于 subagent:同上下文、一次性)。
 
@@ -143,11 +165,11 @@ bash ~/.claude/skills/cc-bus/scripts/cc-bus-install.sh
 send-keys 投递的内容 = 对方 CC 的**用户级输入**(auto 权限基本不弹确认)。**只在你信任的 pane 间用**,别把 `cc-send` 接不可信来源。
 
 ## 命令一览
-`cc-whoami`(查/认领身份) · `cc-send`(单播/`--new`/`--broadcast`) · `cc-broadcast`(广播) · `cc-recv`(收) · `cc-peek`(纯读,吐令牌) · `cc-commit`(确认推进) · `cc-register`(登记,无参自动认领) · `cc-list`(看在线/积压) · `cc-spawn`(在某目录开独立 cct 会话) · `cc-kill`(收掉会话) · `cc-agents`(列 spawn 的会话) · `cc-busd`(守护 start/stop/status) · `cc-bus-stop-hook`(Stop 钩子) · `cc-bus-lib.sh`(路由管线库,被 source) · `cc-bus-adapt.sh`＋`cc-bus-adapt-posix.sh`/`cc-bus-adapt-windows.sh`/`cc-bus-agent-claude.sh`(三个适配面,被 source) · `cc-bus-install.sh`(安装)。
+`cc-whoami`(查/认领身份) · `cc-send`(单播/`--new`/`--broadcast`/`--kind`) · `cc-broadcast`(广播) · `cc-recv`(收) · `cc-peek`(纯读,吐令牌) · `cc-commit`(确认推进) · `cc-register`(登记,无参自动认领) · `cc-list`(看在线/积压) · `cc-spawn`(在某目录开独立 cct 会话) · `cc-kill`(收掉会话) · `cc-agents`(列 spawn 的会话) · `cc-busd`(守护 start/stop/status) · `cc-bus-stop-hook`(Stop 钩子) · `cc-bus-lib.sh`(路由管线库,被 source) · `cc-bus-adapt.sh`＋`cc-bus-adapt-posix.sh`/`cc-bus-adapt-windows.sh`/`cc-bus-agent-claude.sh`(三个适配面,被 source) · `cc-bus-install.sh`(安装)。
 
 ## 排障
 - 敲门没反应:`cat ~/.cc-bus/agents.tsv` 看地址;对方在忙靠 Stop 钩子;`cc-list` 看积压。
-- 消息没到:`tail ~/.cc-bus/log/bus.log` 看流水(`DELIVER`/`REJECT acl`/`THROTTLE`/`DROP *`/`COALESCE dup`/`NUDGE skip`);开了 ACL/限流会拒投。
+- 消息没到:`tail ~/.cc-bus/log/bus.log` 看流水(`DELIVER`/`REJECT acl`/`THROTTLE`/`DROP *`/`COALESCE dup`/`NUDGE skip`/`NUDGE off`/`KIND fallback`/`DEGRADE`);开了 ACL/限流会拒投。
 - 队列积压:`cc-busd status` 看深度;`~/.cc-bus/log/busd.log` 看守护事件;`.dead.*` 是投递失败的死信。
 - 停机期间入队的消息滞留 queue,**要等 cc-busd 起来才被消费**(cc-send 兜底只处理自己新发的那条、不扫别人滞留的);所以要可靠就常驻 cc-busd。
 - 孤儿(认领后崩溃)回收靠 cc-busd 的 reaper;**纯兜底部署(不常驻 cc-busd)无崩溃恢复**——要崩溃安全就常驻 cc-busd。
