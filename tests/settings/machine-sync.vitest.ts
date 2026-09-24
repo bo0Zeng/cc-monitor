@@ -125,10 +125,10 @@ describe("S4a 跨分节机器同步", () => {
     await settle();
     expect(busSel.value).toBe("<local>"); // 跟着切到「本机」
     expect(getCurrentMachine()).toBeNull(); // store 仍用 null 表示本机（换算只在一处）
-    // 写面在本机没有对侧 ⇒ 派生按钮当场禁用，并说明为什么（别把人引过去再吃后端错误）。
+    // 〔BS1b 09-24 订正〕本机派生已走后端 `bus-spawn` 原语（本机、远端同一条路）⇒ 切到本机时派生按钮**不再**禁用。
+    //   原来这里钉的是「写面在本机没有对侧 ⇒ 当场禁用」，那个前提被 BS1b 拆掉了（`refuse_local_write` 已删）。
     const spawn = bus.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement;
-    expect(spawn.disabled).toBe(true);
-    expect(spawn.title).toContain("写面");
+    expect(spawn.disabled).toBe(false);
   });
 
   it("hooks 那块切到本机时**明说这是本机页**（它早就诚实表示了本机）", async () => {
