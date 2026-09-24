@@ -733,3 +733,275 @@ fn clicking_elsewhere_closes_the_menu_and_another_right_click_reopens_it() {
     assert_eq!(w.cwd, "/srv/data", "点别处关菜单，竟然顺手做了一件事");
     assert!(w.write_prompt().is_none() && w.copy_prompt().is_none());
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴 真 X 键盘：Xvfb 台架（XTEST 注进去的真键 → winit → egui → `frame_body` → 这张键位表）
+// ════════════════════════════════════════════════════════════════════════
+//
+// # 它买的是上面那一摞买不到的那一段
+//
+// 上面每一格喂的都是**合成的** `egui::Event::Key`。而「真键盘按下 F2」要先过
+// X 的键码 → winit 的逻辑键 → egui-winit 的 `egui::Key` 这三道翻译，
+// 其中任何一道把 `F2` / `Delete` / `Home` 翻成了别的（或把 Ctrl+A 连带发成了 `Text("a")`），
+// 合成事件那一摞**一条都不会红**。⇒ 这一格在真 X 服务器上把每个键真按一遍，
+// 从**生产那个** `FileWindow` 里读回选中态。
+//
+// # 被测对象只有一份
+//
+// 托管它的那个 `eframe::App` 只做两件事：调生产那个 `frame_body`（与 `App::ui` 那一句委派逐字同形）·
+// 把选中态抄进一个共享格子让驱动线程读。键位表、胶水、四道闸一个字节都不在这儿。
+//
+// # ⚠ 买不到（逐条，别读宽）
+//
+// - 真物理键盘（按键抖动、输入法、非 US 键盘布局 —— Xvfb 的键盘布局是默认那一份）；
+// - 真窗口管理器下的焦点（Xvfb 没有 WM；这一格靠「指针在哪个窗口、键就给哪个窗口」加一次显式 `windowfocus`）；
+// - Windows / macOS 一趟没跑过（本族整条 `cfg(not(windows))`）。
+
+/// 真键那一趟从窗口里带出来的读数（驱动线程隔着线程读）。
+#[cfg(not(windows))]
+#[derive(Default)]
+struct KeyProbe {
+    frames: u64,
+    picked: Vec<String>,
+    cwd: String,
+    prompt: Option<String>,
+    error: Option<String>,
+    /// 驱动线程要求：把 F2 摆出来的那个框收掉（它是模态的，摆着的时候键盘不归列表）。
+    cancel_prompt: bool,
+    close_now: bool,
+}
+
+#[cfg(not(windows))]
+struct KeyProbeApp {
+    w: FileWindow,
+    shared: std::sync::Arc<std::sync::Mutex<KeyProbe>>,
+}
+
+#[cfg(not(windows))]
+impl eframe::App for KeyProbeApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // 🔴 与 `impl eframe::App for FileWindow` 那一句委派逐字同形 —— 被测对象是同一个。
+        self.w.frame_body(ui);
+        let ctx = ui.ctx().clone();
+        let mut p = self.shared.lock().unwrap();
+        p.frames += 1;
+        p.picked = self.w.selection().names();
+        p.cwd = self.w.cwd.clone();
+        p.prompt = self.w.write_prompt().map(|q| q.src_name.clone());
+        p.error = self.w.listing.error.lock().unwrap().clone();
+        if p.cancel_prompt {
+            p.cancel_prompt = false;
+            self.w.cancel_write();
+        }
+        let close = p.close_now;
+        drop(p);
+        if close {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        // 台架自己把帧推起来（驱动线程隔着线程读）；⚠ 这是台架的选择，不是生产的行为。
+        ctx.request_repaint();
+    }
+}
+
+/// 窗口标题 —— **全 ASCII**（`xdotool search --name` 按 C 区域设置编译正则，中文标题一个都找不着；
+/// `rows_tests` 那一格现打栽过）。
+#[cfg(not(windows))]
+const KEY_PROBE_TITLE: &str = "ccm-filewin-real-key-probe";
+
+/// 真键那一趟的步骤：`(读数名, xdotool 参数, 等到什么为止)`。
+#[cfg(not(windows))]
+type KeyStep = (&'static str, &'static [&'static str], fn(&KeyProbe) -> bool);
+
+#[cfg(not(windows))]
+fn key_steps() -> Vec<KeyStep> {
+    fn p(k: &KeyProbe, names: &[&str]) -> bool {
+        let mut want: Vec<String> = names.iter().map(|s| s.to_string()).collect();
+        want.sort();
+        k.picked == want
+    }
+    vec![
+        ("k.down1", &["key", "Down"], |k| p(k, &["alpha.bin"])),
+        ("k.down2", &["key", "Down"], |k| p(k, &["beta.bin"])),
+        ("k.shift_down", &["key", "shift+Down"], |k| {
+            p(k, &["beta.bin", "gamma.bin"])
+        }),
+        ("k.end", &["key", "End"], |k| p(k, &["zeta.bin"])),
+        ("k.home", &["key", "Home"], |k| p(k, &["alpha.bin"])),
+        ("k.ctrl_a", &["key", "ctrl+a"], |k| k.picked.len() == 5),
+        ("k.type_ze", &["type", "ze"], |k| p(k, &["zeta.bin"])),
+        ("k.delete", &["key", "Delete"], |k| {
+            k.error.as_deref().is_some_and(|e| e.contains("运行时"))
+        }),
+        ("k.type_su", &["type", "su"], |k| p(k, &["sub"])),
+        ("k.f2", &["key", "F2"], |k| {
+            k.prompt.as_deref() == Some("sub")
+        }),
+        ("k.return", &["key", "Return"], |k| k.cwd == "/srv/data/sub"),
+        ("k.alt_up", &["key", "alt+Up"], |k| k.cwd == "/srv/data"),
+    ]
+}
+
+/// **实景工作面**：真 X 键盘打在生产那个窗口上。
+#[cfg(not(windows))]
+#[test]
+#[ignore = "实景工作面：由 a_real_x_keyboard_drives_the_list 在它自己的进程里点起来"]
+fn xvfb_worker_real_keys_on_the_window() {
+    use crate::filewin::rows::testing::xvfb;
+    use std::sync::{Arc, Mutex};
+    let display = xvfb::child_display();
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("xvfb-keys")),
+        "/srv/data".to_string(),
+        None,
+        vec![
+            file("alpha.bin"),
+            file("beta.bin"),
+            file("gamma.bin"),
+            dir("sub"),
+            file("zeta.bin"),
+        ],
+    );
+    *w.listing.error.lock().unwrap() = None;
+    let shared = Arc::new(Mutex::new(KeyProbe::default()));
+    let app = KeyProbeApp {
+        w,
+        shared: Arc::clone(&shared),
+    };
+    let drv_shared = Arc::clone(&shared);
+    let drv_display = display.clone();
+    let driver = std::thread::spawn(move || drive_real_keys(&drv_display, &drv_shared));
+    let opts = eframe::NativeOptions {
+        event_loop_builder: Some(Box::new(crate::filewin::shell::any_thread_hook)),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([900.0, 600.0])
+            .with_title(KEY_PROBE_TITLE),
+        ..Default::default()
+    };
+    let ran = eframe::run_native(
+        KEY_PROBE_TITLE,
+        opts,
+        Box::new(move |_cc| Ok(Box::new(app))),
+    );
+    xvfb::emit(
+        "k.run_native",
+        match &ran {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("err:{e}"),
+        },
+    );
+    for line in driver
+        .join()
+        .unwrap_or_else(|_| vec!["驱动线程炸了".into()])
+    {
+        println!("  驱动线程：{line}");
+    }
+    xvfb::emit("k.frames", shared.lock().unwrap().frames);
+}
+
+/// 驱动那一侧：等窗口 → 把指针与焦点放进窗口 → 逐步按键、每步等到窗口状态变过来（带上限）→ 关窗。
+#[cfg(not(windows))]
+fn drive_real_keys(
+    display: &str,
+    shared: &std::sync::Arc<std::sync::Mutex<KeyProbe>>,
+) -> Vec<String> {
+    use crate::filewin::rows::testing::xvfb;
+    let mut log = Vec::new();
+    let sleep = |ms: u64| std::thread::sleep(std::time::Duration::from_millis(ms));
+    let ids = xvfb::wait_for_windows(display, KEY_PROBE_TITLE, 20_000);
+    let Some(id) = ids.first().cloned() else {
+        shared.lock().unwrap().close_now = true;
+        log.push("一个窗口都没等到".into());
+        return log;
+    };
+    for _ in 0..100 {
+        if shared.lock().unwrap().frames >= 5 {
+            break;
+        }
+        sleep(50);
+    }
+    // 指针放进窗口下半截的空白处（不压在任何行、任何输入框上），再显式给一次焦点。
+    if let Ok(g) = xvfb::geometry(display, &id) {
+        let x = (g.x + g.w as i32 / 2).to_string();
+        let y = (g.y + g.h as i32 - 40).to_string();
+        if let Err(e) = xvfb::xdotool_on(display, &["mousemove", "--sync", &x, &y]) {
+            log.push(format!("移不过去：{e}"));
+        }
+    }
+    if let Err(e) = xvfb::xdotool_on(display, &["windowfocus", "--sync", &id]) {
+        log.push(format!("windowfocus 没成（没有 WM 时可能如此）：{e}"));
+    }
+    sleep(200);
+    for (name, args, done) in key_steps() {
+        // 两段打字之间要隔过「停一秒重来」那个窗（`TYPE_AHEAD_RESET_SECS`）。
+        if args[0] == "type" {
+            sleep(1_300);
+        }
+        if let Err(e) = xvfb::xdotool_on(display, args) {
+            log.push(format!("{name}：xdotool 没成：{e}"));
+        }
+        let mut ok = false;
+        for _ in 0..60 {
+            if done(&shared.lock().unwrap()) {
+                ok = true;
+                break;
+            }
+            sleep(50);
+        }
+        xvfb::emit(name, if ok { "ok" } else { "timeout" });
+        if !ok {
+            let p = shared.lock().unwrap();
+            log.push(format!(
+                "{name} 没等到：picked={:?} cwd={} prompt={:?} error={:?}",
+                p.picked, p.cwd, p.prompt, p.error
+            ));
+        }
+        // F2 摆出来的框是模态的（它摆着的时候键盘不归列表 —— 那正是第一道闸）⇒ 收掉再往下。
+        if name == "k.f2" {
+            shared.lock().unwrap().cancel_prompt = true;
+            sleep(150);
+        }
+    }
+    sleep(150);
+    shared.lock().unwrap().close_now = true;
+    log
+}
+
+/// 🔴 **真 X 键盘下，键位表的每一格都按得动** —— 逐格相等（每一格恰好 `ok`）。
+///
+/// 反空真：每一步等的都是**窗口状态真变成了那一格要的样子**（不是「按过了」），
+/// 而相邻两步要的状态互不相同 ⇒ 一个键被吞掉，它自己那一格与下一格都会 `timeout`。
+#[cfg(not(windows))]
+#[test]
+fn a_real_x_keyboard_drives_the_list() {
+    use crate::filewin::rows::testing::xvfb;
+    let run = {
+        let _guard = xvfb::exclusive();
+        xvfb::require_toolbox("「真键盘按得动文件窗口」");
+        let screen = xvfb::Screen::start()
+            .unwrap_or_else(|e| panic!("起不了 Xvfb ⇒ 这一格判不了，不是过了：{e}"));
+        xvfb::run_scenario(
+            screen.display(),
+            "filewin::shell::keys_tests::xvfb_worker_real_keys_on_the_window",
+        )
+    };
+    run.must_have_passed("「真键盘按得动文件窗口」");
+    let frames: u64 = run.reading("k.frames").parse().unwrap_or(0);
+    assert!(
+        frames >= 5,
+        "窗口只画了 {frames} 帧 —— 下面那几格量的不是一个活窗口"
+    );
+    let got: Vec<(String, String)> = key_steps()
+        .iter()
+        .map(|(n, _, _)| (n.to_string(), run.reading(n)))
+        .collect();
+    let want: Vec<(String, String)> = key_steps()
+        .iter()
+        .map(|(n, _, _)| (n.to_string(), "ok".to_string()))
+        .collect();
+    assert_eq!(
+        got, want,
+        "真键盘下有几格没按动（`timeout` 那几格）。驱动线程的日记在子进程 stdout 里：\n{}",
+        run.stdout
+    );
+    assert_eq!(run.reading("k.run_native"), "ok", "窗口没干净收场");
+}
