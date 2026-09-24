@@ -385,6 +385,16 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "入方向单行",
         "拒收+回错",
     ),
+    // 〔F7a · 第三波 09-24〕`files-read-text` 一趟最多肯交多少 —— **后端的天花板，不是编辑上限**
+    //   （编辑上限是调用方的，每趟经 `max_bytes` 送过来）。推算：JSON 转义最坏 ×6 ⇒ 48 MiB，
+    //   仍在 monitor 读后端一行（`BACKEND_FRAME_LINE_CAP` 64 MiB）与通道一帧（64 MiB）之内。
+    (
+        "src/backend/files/mod.rs",
+        "READ_TEXT_MAX_BYTES",
+        8 * 1024 * 1024,
+        "`files-read-text` 调用方给的 `max_bytes` 最大能多大（一帧应答整份进内存、整份过线）",
+        "拒收+回错",
+    ),
     // 〔`C1` · 09-24〕只读查询的帧面宿主那三个数（一帧应答要整个进内存、整个过线）。
     (
         "src/backend/read_face.rs",

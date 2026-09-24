@@ -394,6 +394,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-index-status",
         "files-index-rebuild",
         "files-browse",
+        // 〔F7a · 第三波 09-24〕同族第七、第八条：`files-read-text` 读一整份文件（同步 I/O）。
+        "files-read-text",
+        "files-home",
         // 〔`C1` · 09-24〕只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
         "history-projects",
         "history-read",
@@ -435,6 +438,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-index-status",
         "files-index-rebuild",
         "files-browse",
+        "files-read-text",
+        "files-home",
         "history-projects",
         "history-read",
         "history-search",

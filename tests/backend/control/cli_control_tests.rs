@@ -186,6 +186,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "accounts-sessions",
         "bus-list",
         "bus-state",
+        // 〔F7a · 第三波 09-24〕`files-home`：问这台机器的 home，无入参、有输出字段 `path`。
+        "files-home",
         "files-index-status",
         "history-projects",
         "ping",
