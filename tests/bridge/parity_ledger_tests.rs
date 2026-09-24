@@ -430,7 +430,10 @@ const LEDGER: &[(&str, &str, Side)] = &[
         "accounts.session-accounts",
         Side::Local,
     ),
-    ("check_account_trust", "accounts.trust", Side::Remote),
+    // 〔`A3` 第二波〕`origin == <local>` ⇒ exec 本机后端同一条 `--account-trust*`
+    // （`local_accounts::local_account_trust`）⇒ 一条命令两侧都办了 ⇒ `Both`；
+    // 能力 `accounts.trust` 那笔 `ParityDebt` 随之结清（理由表那一行已删）。
+    ("check_account_trust", "accounts.trust", Side::Both),
     ("deploy_remote_acct_iso", "acct-iso.deploy", Side::Remote),
     ("check_remote_acct_iso", "acct-iso.check", Side::Remote),
     (
@@ -467,7 +470,6 @@ const LEDGER: &[(&str, &str, Side)] = &[
 /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
 const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
     ("ccm.user-path", Asym::NaturallyAsymmetric, "🔴 `K-R135`：「把我们那个 bin 目录放上**用户级** PATH」。**天然只有本机一侧，而且这一条的『天然』是可证的，不是图省事**：① **远端那一侧同一件事已经有答案，只是载体不同** —— 远端 `ccm` 落 `~/.local/bin`，而把它放上 PATH 的是写进远端 rc 的那个围栏块（`install_remote_ccm_helper` ＋ `src/shared/ccm-aliases.sh` 里那一行 —— 那一行正是 `K-R135` 本轮修的：它此前只加 `~/.local/bin`，对本机那一边是错的）。⇒ 欠的不是「远端没有这项能力」，是**两边的机制本来就不同**。② **「用户级 PATH」这一档是 Windows 独有的**（注册表 `HKCU` 下那个 `Environment` 键），而远端按 `K32` 是 Linux ⇒ 那台机器上根本没有这一档可改，补一条对侧命令只能是个空壳。⚠ **诚实边界**：哪天真出现「远端是 Windows」这一形，本条要回来重裁 —— 那时它就不再是 `NaturallyAsymmetric`，而是 `ParityDebt`。今天不给它发明一条够不着的对侧。"),
-    ("accounts.trust", Asym::ParityDebt, "同 accounts.list：预信任检查只有远端有 —— 命令面实测只有 `check_account_trust`（`Side::Remote`），本机零对侧。归 L3。"),
     ("acct-iso.check", Asym::ParityDebt, "本机同样需要「这台装没装 cc-acct-iso」的检测（切号要靠它），今天只能查远端 —— 命令面实测只有 `check_remote_acct_iso`，本机零对侧；而本机确实**用得着**它：`local_accounts.rs` 头注逐字说这份数据有三个读者，其中写侧就是 `cc-acct-iso`。归 L3。"),
     ("acct-iso.deploy", Asym::NaturallyAsymmetric, "vendored 副本要**传到**远端才能用（`deploy_remote_acct_iso`）；本地就在本机、不存在传输这一步。⚠⚠ **P3b 标疑（08-12）：这条理由属于「从未被验证过」那一类，别当它已经核过。** 「不存在传输」是真的，但**「不存在安装」没人量过** —— 实测本机 `~/.local/bin` 下确实躺着 `cc-acct-iso`（`config_surface_tests.rs::either_host_keeps_the_glob_count` 记着那 12 条 `cc-*`），而它是**怎么到那儿的**、要不要 monitor 管，本表从来没答过。⇒ 若答案是「要 monitor 管」，这条就该从 `natural` 变 `ParityDebt`。归 `P3b` 的后续或 `L3`。"),
     ("skill.inbox", Asym::Undecided, "devbench F03：skill 接入面今天只读写**本机工作目录**下的 `.claude/planned-build/INBOX.txt`。远端项目也可能有同一份结构（那边的 `.claude/` 一样在），技术上走 SFTP 就能读写 —— **但「远端项目的收件箱要不要能在这里编辑」没人裁定过**。⇒ 刻意记 `Undecided` 而不是 `NaturallyAsymmetric`：后者会替产品做主说「本地不需要」，而事实是**没想过**。⚠ 若将来要做，写面围栏那三道得先想清楚远端版怎么算（`canonicalize` 在远端不成立）。"),
@@ -806,6 +808,13 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
              它留在各自那一支里，不是欠账。",
     ),
     (
+        "check_account_trust",
+        "〔`A3` 第二波〕本机与远端跑**同一条**后端子命令（`--account-trust` / \
+             `--account-trust-zero`），出参走**同一份**解析 `accounts::trust_from_lines`。\
+             命令体对 origin 不做远端假设 —— 它只用 origin 决定「那条查询谁去跑」\
+             （本机 exec 本机后端、argv 直传；远端 ssh exec，参数 `shell_quote`）。",
+    ),
+    (
         "set_backend_kill_on_exit",
         "P2s：backend 策略是 per-host 的，本机的 origin 就是 `<local>`。\
              命令体对 origin **不做任何远端假设**（它只是一张表的键），所以两侧共用一条命令 —— 这正是 C1。",
@@ -926,7 +935,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     //   **这个数是第四处** —— 它不在任何一份派工单里，是本轮自己量出来的。
     // - 〔`设计/10` 骨架 · 子步 3〕**+2**（`read_session_index` / `read_session_range`，都 `Both`，
     //   归已有能力 `history.read-session`）。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 96; // `设计/50` −2（`aggregate_usage_all` Local · `account_usage_local` Local）  〔散文墓碑〕
+    const EXPECTED_LOCAL_OR_BOTH: usize = 97; // **〔`A3` 第二波〕+1（`check_account_trust` Remote → Both：`<local>` 走本机后端同一条 `--account-trust*`）** // // `设计/50` −2（`aggregate_usage_all` Local · `account_usage_local` Local）  〔散文墓碑〕
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
@@ -1145,7 +1154,7 @@ fn ledger_shape_is_pinned() {
     let sides = capability_sides();
     assert_eq!(sides.len(), 65, "能力总数变了"); // **`设计/50` −2（`usage.aggregate` 与 `usage.per-account` 两条能力整条退役 —— 两条**原本都对称**，所以不对称数不动）** // **K-R109 +1（launch.render-attach，Local-only；⚠ 派工单猜的是「能力数 65 不动」，实打不成立 —— 两个「归已有能力」的归法各被一条判据顶回来了，逐条见 `LEDGER` 里那一行旁边）** // **K-R49 +1（alias.account-commands，Local-only）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.backend-policy / backend.status / backend.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（relay.routing，Local-only）**；**`K-R135` +1（ccm.user-path，Local-only：`R85` 那一格「加/撤/现在状态」；远端那一侧同一件事由 rc 围栏块办，而「用户级 PATH」这一档是 Windows 独有的 ⇒ `NaturallyAsymmetric`）**
     let asym = asymmetric_capabilities();
-    assert_eq!(asym.len(), 28, "不对称能力数变了"); // **K-R109 +1（launch.render-attach，NaturallyAsymmetric）** // **K-R49 +1（alias.account-commands，ParityDebt）** // **K-H2b +1（relay.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+    assert_eq!(asym.len(), 27, "不对称能力数变了"); // **〔`A3` 第二波〕−1（`accounts.trust` 结清：`check_account_trust` 按 origin 分流到本机后端 ⇒ `Both`）** // **K-R109 +1（launch.render-attach，NaturallyAsymmetric）** // **K-R49 +1（alias.account-commands，ParityDebt）** // **K-H2b +1（relay.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
                                                     // P3t-Y2b +1（tmux.local-census）；**P3b -1（launch.send-into 结清：P3 刀 3 让本机真的在用它 ⇒ Both，不再不对称）**
                                                     // **P7c-1 -1（subagent.load 结清：远端展开做出来了 ⇒ Both）** —— backend 只列候选，挑选留本侧（C1）
                                                     // **`K-R135` +1（ccm.user-path，`NaturallyAsymmetric`）** —— 见 ASYMMETRY_REASONS 里那一行：
@@ -1162,7 +1171,7 @@ fn ledger_shape_is_pinned() {
             .or_default() += 1;
     }
     assert_eq!(kinds.get("natural"), Some(&13), "天然不对称条数变了"); // **`K-R135` +1（ccm.user-path：远端同一件事由 rc 围栏块办 ＋ 那一档只有 Windows 有 ⇒ 天然，不是欠账；哪天远端是 Windows 就回来改成 `debt`）** // **K-R109 +1（launch.render-attach —— 记 `natural` 记的是「远端由 `render_ccm_launch` 一并产、不需要单独命令名」，不是「远端还没做」）** // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）。**K-H2b +1（relay.routing）—— 记 `natural` 记的是「回环自指 ⇒ 这个问题问错了机器」，不是「远端还没做」；把 key 送到远端那笔账在 `creds.relay-key` 那行（`debt`），两者别混。**
-    assert_eq!(kinds.get("debt"), Some(&12), "平价欠账条数变了"); // **K-R49 +1（alias.account-commands：远端那半只有「吐待贴文本」那半条路，落盘没有主人）** // **K-H2a +1（creds.relay-key：本机能配、远端那侧还没有路 —— 而且不能照抄 SFTP 上传，理由见那一行）** // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**；**P8a +1（plugins.marketplaces：新开的本机口，远端那半要等后端的 `--list-marketplaces`）**
+    assert_eq!(kinds.get("debt"), Some(&11), "平价欠账条数变了"); // **〔`A3` 第二波〕−1（`accounts.trust`：本机那一侧补上了，理由表那一行删掉）** // **K-R49 +1（alias.account-commands：远端那半只有「吐待贴文本」那半条路，落盘没有主人）** // **K-H2a +1（creds.relay-key：本机能配、远端那侧还没有路 —— 而且不能照抄 SFTP 上传，理由见那一行）** // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**；**P8a +1（plugins.marketplaces：新开的本机口，远端那半要等后端的 `--list-marketplaces`）**
     assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
                                                                     // P3b -1（launch.send-into：它的「还没裁定」被 C1/C8 + P2 + P3 刀 3 三重证伪）
 }
@@ -1446,7 +1455,7 @@ const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
     //    ⚠ 这个数是**跑出来的**：先让 `signed_total` 那一比印出现打的 48 行，
     //      再让 `hist == want` 印出现打的直方图，照它写。
     //      （34−2+1 恰好也是 33，但「算出来恰好相等」不是判据。）
-    (Derived::RemoteOnly, 34), // **〔`24e` 第二刀 · 09-20〕33 → 34**（`open_file_window`：签名里带 `RemoteConfig`、体里点名 `list_remote`，派生器现打归 `RemoteOnly`；另外三格一个都不动）。⚠ 这个数照旧是**跑出来的**，不是 33+1 算出来的：先让 `signed_total` 那一比印出现打的 `Side::Remote` 行数，再让 `hist == want` 印出现打的直方图，照它写。 // `设计/50` −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **〔步 23b · 09-20〕+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
+    (Derived::RemoteOnly, 33), // **〔`A3` 第二波〕34 → 33**（`check_account_trust` 的 `Side` 从 `Remote` 改成 `Both`：`<local>` 那一支 exec 本机后端，理由见 `ORIGIN_TAKING_BOTH` 那一行。数照旧是**跑出来的**：先改总数让 `hist == want` 印出现打直方图，再照它写）。 // **〔`24e` 第二刀 · 09-20〕33 → 34**（`open_file_window`：签名里带 `RemoteConfig`、体里点名 `list_remote`，派生器现打归 `RemoteOnly`；另外三格一个都不动）。⚠ 这个数照旧是**跑出来的**，不是 33+1 算出来的：先让 `signed_total` 那一比印出现打的 `Side::Remote` 行数，再让 `hist == want` 印出现打的直方图，照它写。 // `设计/50` −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **〔步 23b · 09-20〕+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
     (Derived::FramePlane, 5),  // `设计/50` −1（`account_usage`）
     (Derived::Mixed, 0),
     (Derived::Unclassified, 10),

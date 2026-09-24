@@ -621,3 +621,93 @@ async fn the_read_port_really_asks_the_backend() {
     );
     assert!(r.accounts.is_empty() && r.meta.is_none());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 〔`A3` 第二波〕`accounts.trust` 的本机对侧
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// argv 两形：账号 0 不传路径（与远端那条同一条规矩），具名账号传 `configDir`。
+/// **参数原样是 argv 的一格**（不过 shell ⇒ 不许被引号包一层）。
+#[test]
+fn the_local_trust_argv_has_the_two_shapes_and_no_quoting() {
+    assert_eq!(
+        local_trust_argv(None, "/w/my proj"),
+        vec!["--account-trust-zero", "/w/my proj"]
+    );
+    assert_eq!(
+        local_trust_argv(Some("/h/.claude-alt/z"), "/w/my proj"),
+        vec!["--account-trust", "/h/.claude-alt/z", "/w/my proj"]
+    );
+}
+
+/// 三档各说各的：答出来 ⇒ 字段原样；够不着 / 失败 ⇒ `available:false` 且**说得出是哪一种**。
+/// 「未信任」（`trusted:false` ＋ `available:true`）只许来自后端真答出来的那一行。
+#[test]
+fn the_local_trust_endings_are_told_apart() {
+    let ok = classify_local_trust(QueryOutcome::Ok(
+        "{\"trusted\":true,\"known\":true}\n".into(),
+    ));
+    assert!(ok.available && ok.trusted && ok.known && ok.error.is_none());
+
+    let untrusted = classify_local_trust(QueryOutcome::Ok(
+        "{\"trusted\":false,\"known\":false}\n".into(),
+    ));
+    assert!(untrusted.available && !untrusted.trusted && !untrusted.known);
+
+    let empty = classify_local_trust(QueryOutcome::Ok("\n".into()));
+    let no_backend = classify_local_trust(QueryOutcome::NoBackend("找过 /x".into()));
+    let failed = classify_local_trust(QueryOutcome::Failed {
+        code: Some(2),
+        stderr: "unsafe configDir".into(),
+    });
+    let whys: Vec<String> = [&empty, &no_backend, &failed]
+        .iter()
+        .map(|r| {
+            assert!(!r.available && !r.trusted, "失败档不许冒充成一个信任结论");
+            r.error.clone().expect("失败档必须带理由")
+        })
+        .collect();
+    assert!(whys[1].contains("本机后端不在") && whys[1].contains("找过 /x"));
+    assert!(whys[2].contains("unsafe configDir"));
+    assert_eq!(
+        whys.iter().collect::<std::collections::BTreeSet<_>>().len(),
+        3,
+        "三种失败说成了同一句：{whys:?}"
+    );
+    for w in &whys {
+        assert!(!w.contains("远端"), "本机那条路的话里出现了「远端」：{w}");
+    }
+}
+
+/// ★ 走**生产入口本体**（`accounts::check_account_trust`），不扫源码：
+/// `<local>` 必须在「先查远端配置」之前被分走。
+///
+/// 没分走时（把 `check_account_trust` 开头那条 `if origin == … LOCAL_ORIGIN` 摘掉），
+/// `cfg_for("<local>")` 回 `Err("远端 '<local>' 未配置或未启用")` —— 一句与真实原因无关的话
+/// （`local_origin_registry` 头注记的那一族）。分走了 ⇒ 单测环境没有本机后端 ⇒
+/// `Ok(available:false)` ＋「本机后端不在」。
+#[tokio::test]
+async fn check_account_trust_routes_local_before_asking_for_a_remote_config() {
+    let probe = run_query(
+        env!("CCM_TARGET_TRIPLE"),
+        &["--account-trust-zero", "/"],
+        &*crate::spawn_managed::local_backend_one_shot_query(),
+    );
+    assert!(
+        matches!(probe, QueryOutcome::NoBackend(_)),
+        "测试环境里居然找得到 local_backend —— 本条的前提不成立"
+    );
+    let r = crate::accounts::check_account_trust(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string(),
+        None,
+        "/".to_string(),
+    )
+    .await
+    .expect("本机那条路的诚实降级是 Ok(available=false)，不该是 Err（Err 说明它去查了远端配置）");
+    assert!(!r.available);
+    let why = r.error.expect("够不着本机后端时必须说出理由");
+    assert!(
+        why.contains("本机后端不在"),
+        "理由不是「本机后端不在」：{why}"
+    );
+}
