@@ -2,16 +2,36 @@
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（各自只许有一句）
 //!
-//! - **它守的性质是**：`lib.rs::TARGET_GAPS` 这张差异登记表里的每一行都分了档（结构上没有 · 欠着），
-//!   而且每一档的措辞与它的档对得上。
-//! - **它扫的人群是**：`lib.rs::TARGET_GAPS` 的全部行。
+//! - **它守的性质是**：四个编译 target 上「做得到」的能力集**两向相等**，每一格差异都在
+//!   `lib.rs::TARGET_GAPS` 里有一行理由且分了档（结构上没有 · 欠着），登记表里也没有一行是现推看不出来的。
+//! - **它扫的人群是**：`lib.rs::capabilities_on` 从声明现推出来的四份 `(面, 名)`（第 2 层汇总那三面 ＋
+//!   帧面 `inbound::REGISTRY` ＋ CLI 面 `SUBCOMMANDS`）× `TARGET_GAPS` 全部行。
 //!
-//! # ⚠ 它**买不到**什么
+//! # 两侧为什么不同源
 //!
-//! 1. **档分得对不对，本份判不了** —— 它只判「`why` 的措辞与档不自相矛盾」。
-//!    一条欠账被登记成「结构上没有」而措辞也跟着改了，本份照样绿；
-//!    那一格要人读（`GapKind` 头注写着判准）。
-//! 2. 「这条能力在那个 target 上真做不到」要真机，本份同 `capability_ledger_guard` 一样够不着。
+//! 现推那一侧读的是**实现侧的声明**（面的 `targets` · ccm 那几条的载体 · 命令自己的 `no_tmux` 码 ×
+//! 平台档），**一个字都不读** `TARGET_GAPS`（[`the_derivation_never_reads_the_gap_table`] 从源码上钉零命中）。
+//! 从登记表减出每个 target 的集合再拿去对登记表，是 `x == x`。
+//!
+//! # ⚠ 它**买不到**什么（逐条，别读宽）
+//!
+//! 1. **只看得见声明说得出来的差异。** 声明里没有逐 target 信息的地方，本条判「处处相等」：
+//!    - `files-chmod` 在非 unix 上恒回 `io_failed`（`control/files_write.rs::change_mode` 的
+//!      `#[cfg(not(unix))]` 那一支）—— 它的 `codes` 说不出「这个平台没有」，本条**看不见**这一格；
+//!    - CLI 独有的子命令（如 `--tmux-notify`）没有任何逐 target 声明；
+//!    - `files-read` 逐条的 `targets` 本段不读（开门在写区外，理由住 `lib.rs::TARGET_NARROWINGS` 头注）。
+//! 2. **判的是「做得到」这根轴的声明，不是「编得过」，更不是「真机上跑得起来」。**
+//!    编得过归门禁的 `winchk` / `winchk-backend` / `muslbuild`（**macOS 一格都没有**）；
+//!    真机归 `真相源/106` 那种现打。产物层（每个 `[[bin]]` ↔ 入包路线）归
+//!    `tests/evidence/K-R124-ruler.py` ⑭，本份不复制。
+//! 3. **macOS 那一列是纯声明**：没有产线、没有编译门禁（`设计/96 §7.1.1b` 第 5、6 行），
+//!    ⇒ 本条对它判的只是「声明上与 Linux 一样」。
+//! 4. **档分得对不对判不了** —— 只判「`why` 的措辞与档不自相矛盾」（判准住 `lib.rs::GapKind` 头注）。
+//! 5. **`CCM_TMUX_CARRIED` 是一条手写的机制声明**：往 `ccm-launcher` 加一条靠 tmux 活着的新能力
+//!    却没登记进它 ⇒ 那条能力在 Windows 上被现推成「做得到」，本条看不见。
+//!    帧面**同形**：一条新命令真起 `tmux` 却没在 `codes` 里声明 `no_tmux`，本条同样看不见 ——
+//!    今天没有判据拿 `codes` 去对「谁真 `Command::new("tmux")`」（现打：`main_fourth_face_tests`
+//!    只判「声明了的码在 `codes` 里」，不判反方向）。
 
 use super::super::{
     capabilities_on, parity_faces, tmux_platform_of, GapKind, Target, CAPABILITY_FACES,
@@ -66,8 +86,9 @@ fn every_gap_speaks_in_the_voice_of_its_own_tier() {
 /// 现打（PR1 落地时）：
 /// - **结构 2**：`ccm-launcher` × Windows 的 `tmux-base`（原文逐字「不是推后，是这一条本身不该跨过去」）·
 ///   `tmux-size`（原文逐字「不照搬这一条」；PR1 把它句尾那个自相矛盾的「暂时不做」摘了，改写成「另立一行」）；
-/// - **欠着 6**：同一格的 `tmux` · `attach` · `detach` · `bus-register` · `ccm-sid` · `base-url-across-tmux`
-///   （原文都答了「暂时不做 / 将来」—— 用户 09-21 裁「Windows 用 Windows 自己的后台服务，后面再做」）。
+/// - **欠着 12**：同一格的 `tmux` · `attach` · `detach` · `bus-register` · `ccm-sid` · `base-url-across-tmux`
+///   （原文都答了「暂时不做 / 将来」—— 用户 09-21 裁「Windows 用 Windows 自己的后台服务，后面再做」）；
+///   ＋ 命令面 × Windows 6 条（帧面 `capture-pane` / `kill` / `launch` ＋ CLI 面同名 3 条，子步 3 被横向对等现推出来）。
 #[test]
 fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
     let count = |k: GapKind| TARGET_GAPS.iter().filter(|g| g.kind == k).count();
@@ -79,8 +100,8 @@ fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
     );
     assert_eq!(
         (s, o),
-        (2, 6),
-        "差异登记表两档现打 结构 {s} · 欠着 {o}（PR1 落地时 2 · 6，逐条见本条头注）。\n\
+        (2, 12),
+        "差异登记表两档现打 结构 {s} · 欠着 {o}（PR1 落地时 2 · 12，逐条见本条头注）。\n\
          这个数本身没有对错，但它变了说明有裁决动过 —— 连理由一起看、一起改。"
     );
 }
@@ -256,4 +277,123 @@ fn every_parity_face_is_populated_on_every_target() {
             );
         }
     }
+}
+
+// ══════════════════ 🔴🔴 正题：四个 target 的能力集两向相等，差异 == 登记表 ══════════════════
+
+/// 四个 target 以 `设计/96` 为准（`§2.9` 那张表：Linux musl / native · Windows · macOS）。
+///
+/// ⚠ 这里用一个**穷尽的 `match`** 而不是再抄一份名单：[`Target`] 长出第五个成员时本函数编不过，
+/// 于是「`TARGETS` 忘了加它」这一形（新 target 整列不在人群里，对等断言对它全称成立）没有机会发生。
+fn every_variant_is_in_targets(t: Target) -> bool {
+    match t {
+        Target::LinuxGnu | Target::LinuxMusl | Target::Windows | Target::MacOs => {
+            TARGETS.contains(&t)
+        }
+    }
+}
+
+/// 🔴🔴 **`设计/96 §2` 第 3 层**：四个 target 的能力集**完全相等**，
+/// 不相等的每一格都要在 `TARGET_GAPS` 里有一行（理由 ＋ 档），**两向**。
+///
+/// # 两侧从哪来（刻意异源）
+///
+/// | 一侧 | 来源 | 谁会改它 |
+/// |---|---|---|
+/// | **现推的差异** | `capabilities_on(t)`：面的 `targets` · ccm 那几条的载体 · 命令自己声明的 `no_tmux` 码 × 平台档 | 加命令 / 加能力 / 改实现的那一路 |
+/// | **登记的差异** | `TARGET_GAPS` | 裁「为什么做不到、哪一档」的那一拍 |
+///
+/// 现推那一段不读登记表，由 [`the_derivation_never_reads_the_gap_table`] 从源码上钉。
+///
+/// # 两向各治一形
+///
+/// - **现推有、登记没有** ⇒ 有一个 target 上少了一条能力，**没有人说过为什么** ——
+///   本波加命令的那几路，谁的新命令声明了 `no_tmux`，合并那一拍就红在这里（红对了）；
+/// - **登记有、现推没有** ⇒ 登记表说做不到，声明侧却看不出差异 ⇒ 要么已经做到了
+///   （删那一行 —— 同 `P19` 删 `agent` 那一形），要么声明侧把这件事丢了。
+#[test]
+fn every_target_has_the_same_capabilities_except_the_registered_gaps() {
+    for &t in TARGETS {
+        assert!(every_variant_is_in_targets(t));
+    }
+    assert_eq!(
+        TARGETS.len(),
+        4,
+        "target 全集现打 {} 个（`设计/96` 定的是四个：Linux gnu · Linux musl · Windows · macOS）。\n\
+         变了就回那一篇核「四个」还成不成立，再改这个数。",
+        TARGETS.len()
+    );
+    for t in [
+        Target::LinuxGnu,
+        Target::LinuxMusl,
+        Target::Windows,
+        Target::MacOs,
+    ] {
+        assert!(every_variant_is_in_targets(t), "`TARGETS` 里没有 {t:?}");
+    }
+
+    let per: BTreeMap<Target, BTreeSet<(&str, &str)>> = TARGETS
+        .iter()
+        .map(|&t| {
+            let v = capabilities_on(t);
+            let set: BTreeSet<_> = v.iter().copied().collect();
+            assert_eq!(set.len(), v.len(), "{t:?} 上现推出来有重复的 `(面, 名)`");
+            (t, set)
+        })
+        .collect();
+    let union: BTreeSet<(&str, &str)> = per.values().flatten().copied().collect();
+
+    // ★ 反空真 ①：并集就是「声明过的全部」—— 一条声明过、却在**每一个** target 上都被收窄掉的能力，
+    //   不在并集里，也就不会出现在任何差异里（它在四个 target 上「都没有」也算「相等」）。
+    let declared: BTreeSet<(&str, &str)> = parity_faces()
+        .flat_map(|f| (f.declares)().into_iter().map(move |n| (f.family, n)))
+        .collect();
+    let nowhere: Vec<_> = declared.difference(&union).collect();
+    assert!(
+        nowhere.is_empty(),
+        "这几条声明了、却在四个 target 上**一个都不在**：{nowhere:?}\n\
+         ⇒ 它们不会出现在任何差异里（处处没有也是「处处相等」）—— 要么收窄写错了，要么这条能力该删。"
+    );
+    // ★ 反空真 ②：人群不是空的，而且三类面都在里面（第 2 层汇总 · 帧面 · CLI 面）。
+    for fam in [
+        "ccm-launcher",
+        "files-read",
+        "stream-flags",
+        "wire-commands",
+        "cli-subcommands",
+    ] {
+        assert!(
+            union.iter().any(|(f, _)| *f == fam),
+            "并集里没有 `{fam}` 这一面 —— 人群缺了一块，横向对等对缺的那块全称成立"
+        );
+    }
+
+    let derived: BTreeSet<(&str, &str, Target)> = per
+        .iter()
+        .flat_map(|(&t, here)| union.difference(here).map(move |&(f, n)| (f, n, t)))
+        .collect();
+    let registered: BTreeSet<(&str, &str, Target)> = TARGET_GAPS
+        .iter()
+        .map(|g| (g.family, g.capability, g.target))
+        .collect();
+    assert_eq!(
+        registered.len(),
+        TARGET_GAPS.len(),
+        "`TARGET_GAPS` 里有重复的 (面, 能力, target) —— 一格登记了两次，条数会虚报"
+    );
+
+    let unexplained: Vec<_> = derived.difference(&registered).collect();
+    let unwitnessed: Vec<_> = registered.difference(&derived).collect();
+    assert!(
+        unexplained.is_empty() && unwitnessed.is_empty(),
+        "\n🔴 **四个 target 的能力集对不上，而差异登记表没有说清。**\n\n\
+         现推有、登记没有（**有个 target 少了一条能力，没人说过为什么**）：\n  {unexplained:?}\n\
+         ⇒ 往 `lib.rs::TARGET_GAPS` 补一行：理由（为什么做不到 ＋ 将来怎么办）与档\n\
+           （`GapKind::Structural` 结构上没有 · `GapKind::Owed` 欠着，判准在 `GapKind` 头注）。\n\
+           或者 —— 它其实做得到 ⇒ 回去改声明（命令的 `codes` / `CCM_TMUX_CARRIED` / 面的 `targets`）。\n\n\
+         登记有、现推没有（**登记说做不到，声明侧看不出差异**）：\n  {unwitnessed:?}\n\
+         ⇒ 已经做到了 ⇒ 删那一行（同 `P19` 删 `agent`：减一条要写清根因没了、真机那一维买没买到）；\n\
+           或者声明侧把这件事丢了 ⇒ 把它补回声明里。\n\n\
+         🚫 **不许**把登记表改成从 `capabilities_on` 算出来的东西 —— 两侧同源，本条当场恒真。"
+    );
 }

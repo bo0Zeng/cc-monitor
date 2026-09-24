@@ -820,7 +820,7 @@ pub enum GapKind {
 /// ⇒ [`TargetGap::why`] 要同时答两件：**今天为什么做不到** ＋ **将来怎么办**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetGap {
-    /// 哪一面。必须是 [`CAPABILITY_FACES`] 里真有的族名。
+    /// 哪一面。必须是 [`CAPABILITY_FACES`] 或 [`COMMAND_FACES`] 里真有的族名。
     pub family: &'static str,
     /// 哪一条能力。必须是那一面**真的声明过**的名字（判据拦幽灵）。
     pub capability: &'static str,
@@ -834,7 +834,11 @@ pub struct TargetGap {
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
 ///
-/// 今天全部 8 条都在 `ccm-launcher` × Windows 这一格上：
+/// 〔PR1 · 09-24〕**8 → 14**：命令面并进第 3 层之后，帧面 3 条 ＋ CLI 面 3 条（`capture-pane` /
+/// `kill` / `launch` × Windows）被那条横向两向相等**现推出来**、逐条登记在表尾。下面那段账说的是
+/// `ccm-launcher` 那 8 条：
+///
+/// 那 8 条都在 `ccm-launcher` × Windows 这一格上：
 /// **6 条**是读源码推出来的（tmux 那一族），**另 2 条是真机现打补的**
 /// （`bus-register` / `ccm-sid`）—— 上一版的账把它们记成「做得到」，
 /// 🔴 **那两格是错的，不是缺的**。逐条读数住 `真相源/106`。
@@ -964,6 +968,64 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         why: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；              将来那个后台服务要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
+    },    // ── 〔PR1 · 2026-09-24〕命令面 × Windows：**不是新裁的，是第一次被看见** ────────────
+    //
+    // 这六行在 PR1 之前就是真的（`K-P4` 那一拍 `unavailable_from` 在 Windows 上就会列出这三条），
+    // 只是没有任何东西把命令面放进 target 这根轴里对 —— PR1 把帧面 / CLI 面并进第 3 层的人群，
+    // 那条两向相等当场点出它们，于是逐条登记。**差异是现推出来的**（命令自己声明的 `no_tmux` 码 ×
+    // Windows 平台档），这里只补理由与档。
+    // 档：六条都是**欠着** —— 「起会话 / 杀会话 / 看一眼画面」与 tmux 无关，是 Windows 该有的；
+    // 谁来还是用户 09-21 那一句（「Windows 用 Windows 自己的后台服务，后面再做」）。
+    TargetGap {
+        family: "wire-commands",
+        capability: "capture-pane",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务给出\
+              「看一眼会话画面」的等价物〔用户 2026-09-21 拍板〕，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
+        capability: "kill",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "结束会话今天是起一次 `tmux kill-session`（命令自己声明了 `no_tmux` 码）。\
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
+              管会话的生死〔用户 2026-09-21 拍板〕，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
+        capability: "launch",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "起会话今天是在 tmux 里开一个新会话（命令自己声明了 `no_tmux` 码）。\
+              Windows 上没有 tmux ⇒ 平台默认做不到。将来由那个 Windows 后台服务\
+              承担「会话活在前端之外」〔用户 2026-09-21 拍板〕，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--capture-pane",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--kill",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--launch",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        why: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+              派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
 ];
 
