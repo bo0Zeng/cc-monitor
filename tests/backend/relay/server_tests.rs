@@ -1411,9 +1411,9 @@ fn relay_child_process_entry_point() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
-    // `run()` 自己去读 `CCM_RELAY_PORT` / `CCM_RELAY_UPSTREAM`。成功那条路永不返回。
+    // `run()` 自己去读 `CCM_RELAY_PORT` / `CCM_AGENT_UPSTREAM_CLAUDE_CODE`。成功那条路永不返回。
     // ⚠ home 走**生产段那条**解析（`resolve_home` 认 `CLAUDE_CONFIG_DIR`）——
-    //   而凭据那份文件的位置由 `CCM_RELAY_CREDENTIALS` 覆盖，父进程一定会设它
+    //   而凭据那份文件的位置由 `CCM_APIKEY_CREDENTIALS` 覆盖，父进程一定会设它
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
     // ⚠ 〔层 2 搬出 `relay/` 那一拍〕走的是 `main.rs` 的 `--relay` 那一臂**真调的那一个**
     //   （`accounts::apikey::run_relay` = 层 1 的 `run` ＋ 层 2 那只手），不是层 1 的 `run` 本身 ——
@@ -1458,12 +1458,12 @@ impl Drop for RelayChild {
 /// 表是空的 ⇒ **每一发都是 404**，而这几条判据要的是一趟**真转发**。
 ///
 /// ⇒ 今天写一份**只有一条空账号**的真文件：`{"accounts":{"acctA":{}}}`
-/// —— keyless、用默认上游（`CCM_RELAY_UPSTREAM` 指着假上游），
+/// —— keyless、用默认上游（`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 指着假上游），
 /// 正好等价于先前那条隐式透传，但**是显式的一条路**。
 fn spawn_relay_child(up: SocketAddr) -> RelayChild {
     // 判据绝不许去碰用户真实的那份凭据文件 ⇒ 自己造一份临时的。
     let dir = tmpdir(&format!("child-{}", up.port()));
-    let p = dir.join("relay-credentials.json");
+    let p = dir.join("apikey-credentials.json");
     std::fs::write(&p, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n")
         .expect("写子进程的凭据夹具");
     spawn_relay_child_with_creds(up, &p)
@@ -1489,7 +1489,7 @@ fn spawn_relay_child_with_creds(up: SocketAddr, creds_path: &std::path::Path) ->
         .env(CHILD_MARK, "1")
         .env("CCM_RELAY_PORT", "0")
         .env(
-            "CCM_RELAY_UPSTREAM",
+            "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
             format!("http://127.0.0.1:{}", up.port()),
         )
         .env(creds::ENV_CREDENTIALS, creds_path)
@@ -1683,7 +1683,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     const CANARY: &str = "sk-ant-CANARY-MUST-NEVER-LEAVE-THIS-PROCESS";
 
     let dir = tmpdir("canary");
-    let creds_path = dir.join("relay-credentials.json");
+    let creds_path = dir.join("apikey-credentials.json");
     // ← 这一行就是「人拿编辑器写了一份 JSON 放进去」。没有界面、没有 IPC、没有迁移步骤。
     std::fs::write(
         &creds_path,
@@ -1963,7 +1963,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
 
     let dead_port = a_port_nobody_listens_on();
     let dir = tmpdir("canary-multi");
-    let creds_path = dir.join("relay-credentials.json");
+    let creds_path = dir.join("apikey-credentials.json");
 
     // ★★★ **两个不同的活上游**〔`D1` 阻-2 回修，08-28〕。
     //
@@ -1992,7 +1992,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     )
     .expect("写凭据夹具");
 
-    // 子进程那个 `CCM_RELAY_UPSTREAM` 只当**默认上游**用；本判据里三行都写了
+    // 子进程那个 `CCM_AGENT_UPSTREAM_CLAUDE_CODE` 只当**默认上游**用；本判据里三行都写了
     // 自己的 `base_url` ⇒ 默认那一格在这里**一次都用不上**（这正是要的）。
     let relay = spawn_relay_child_with_creds(up_a.addr, &creds_path);
 
@@ -3061,7 +3061,7 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
     let exec: &RelayExec<'_> = &|p, get, _home| {
         seen.lock()
             .expect("lock")
-            .push((p.map(str::to_string), get("CCM_RELAY_UPSTREAM")));
+            .push((p.map(str::to_string), get("CCM_AGENT_UPSTREAM_CLAUDE_CODE")));
         7
     };
 
@@ -3076,7 +3076,7 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
         seen.lock().expect("lock").clone(),
         vec![(
             Some("CCM_RELAY_PORT".to_string()),
-            Some("CCM_RELAY_UPSTREAM".to_string())
+            Some("CCM_AGENT_UPSTREAM_CLAUDE_CODE".to_string())
         )],
         "第 1 个配置位必须读 CCM_RELAY_PORT；递下去的取值器必须是入口收到的那一个"
     );
@@ -3100,7 +3100,7 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
     });
     assert_eq!(
         asked.lock().expect("lock").clone(),
-        vec!["CCM_RELAY_UPSTREAM".to_string()],
+        vec!["CCM_AGENT_UPSTREAM_CLAUDE_CODE".to_string()],
         "层 2 该问的上游旋钮（今天只登记了 claude-code 一家）不是这一个"
     );
 }
@@ -3117,7 +3117,7 @@ fn relay_entry_exit_code_within_5s(port_env: Option<String>, upstream_env: Optio
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let get = move |k: &str| match upstream_env.as_deref() {
-            Some(v) if k == "CCM_RELAY_UPSTREAM" => Some(v.to_string()),
+            Some(v) if k == "CCM_AGENT_UPSTREAM_CLAUDE_CODE" => Some(v.to_string()),
             _ => None,
         };
         let _ = tx.send(run_with(
@@ -3216,14 +3216,14 @@ head -n 1 <&3
 /// 两半之间的编译期边（`include_str!`）**必须登记进 `src/bridge/src/cross_half_edge_registry.rs`**，
 /// 而那个文件不在本件写区里。⇒ **两侧今天靠「同一个形状写了两遍」，没有判据对拍。**
 /// monitor 那一侧自己那半由 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`
-/// 与 `only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix` 钉着。
+/// 与 `only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix` 钉着。
 /// **这一格如实登记为「没买到」，不许读成「对上了」。**
 #[cfg(unix)]
 #[test]
-fn a_launch_command_carrying_the_relay_env_prefix_reaches_the_relay_with_that_accounts_key() {
+fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_accounts_key() {
     let up = spawn_fake_upstream(None);
     let dir = tmpdir("kh2b1");
-    let creds = dir.join("relay-credentials.json");
+    let creds = dir.join("apikey-credentials.json");
     // 两条**各自带 key** 的行 —— 「拿 A 的 key 发 B 的请求」是本族最坏的失效形态，
     // 一行是量不出来的。
     // ⚠ 写法照 `spawn_relay_child` 那份夹具（转义的普通串，不是 `r#"…"#`）——
@@ -3383,7 +3383,7 @@ fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {
 fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upstream() {
     let up = spawn_fake_upstream(None);
     let dir = tmpdir("kh2c2");
-    let creds = dir.join("relay-credentials.json");
+    let creds = dir.join("apikey-credentials.json");
 
     // ★ 两条 —— 一条量不出「拿 A 的 key 发 B 的请求」，那是本族最坏的失效形态。
     //   id 取中性名：断言里用的是 key 那个值，不是目录名（`brief` 12 那条）。
@@ -3507,7 +3507,7 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
 fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
     let up = spawn_fake_upstream(None);
     let dir = tmpdir("reload");
-    let creds = dir.join("relay-credentials.json");
+    let creds = dir.join("apikey-credentials.json");
     // 起手只有一条空账号（等价于 `spawn_relay_child` 那份夹具）。
     std::fs::write(&creds, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n")
         .expect("写起手的凭据夹具");
@@ -3565,7 +3565,7 @@ fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
 fn a_broken_credentials_file_keeps_the_last_good_table_instead_of_emptying_it() {
     let up = spawn_fake_upstream(None);
     let dir = tmpdir("reload-bad");
-    let creds = dir.join("relay-credentials.json");
+    let creds = dir.join("apikey-credentials.json");
     std::fs::write(
         &creds,
         b"{\n  \"accounts\": {\n    \"acctA\": { \"api_key\": \"KEY-A\" }\n  }\n}\n",

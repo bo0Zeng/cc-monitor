@@ -3468,7 +3468,7 @@ fn unified_builder_byte_identical_to_pre_f06_new_session_output() {
 /// 只有「这个号在不在apikey 表里」不同：
 /// api-key 号（表里有行）的命令**带**那个 env，官方号的命令里**一个字节都没有**。
 #[test]
-fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() {
+fn only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix() {
     let rows = vec!["acct-a".to_string()];
     let named = |d: &str| LaunchAccount::Named {
         config_dir: d.to_string(),
@@ -4021,7 +4021,7 @@ fn the_rows_really_come_from_that_file_not_from_a_constant() {
             .unwrap_or(0)
     ));
     std::fs::create_dir_all(&dir).expect("建临时目录");
-    let f = dir.join("relay-credentials.json");
+    let f = dir.join("apikey-credentials.json");
 
     // ① 文件不在 ⇒ 零条（**不是**报错：读不到与一条没配的正确行为都是「照旧直连」）。
     assert!(apikey_rows_at(&f).is_empty(), "文件不在却读出了行");
