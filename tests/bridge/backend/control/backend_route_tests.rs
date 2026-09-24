@@ -139,6 +139,13 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⚠ 它回的是 `Result<Value, Routed>`（同 `tmux.rs` 那一处的形状）——
     //   「拿到了那一份 data」与「三态里的另外两态」在类型上分得开。
     ("find.rs", Verdict::UsesRouter),
+    // ★ 〔面 A 通道，2026-09-24〕**不是发送端，是纯路由器**（`chan/router.rs`）。
+    //   发现阶段看见它，是因为它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄的
+    //   `call`，不是 `inbound_client` 的；它生产段里的 `CallError::` 也是通道自己的
+    //   （`05 §3.3.1` 那三层），不是本模块分流的那个枚举。
+    //   ⇒ 登记成 `PureRouterNoFallbackDecision`，牙见那一档的判法：它连
+    //   `inbound_client` 这个名字都不许碰 —— 碰了就说明它不再「只转交」了。
+    ("router.rs", Verdict::PureRouterNoFallbackDecision),
 ];
 
 #[cfg(test)]
@@ -156,6 +163,40 @@ enum Verdict {
     /// 但今天还差一步」，这一档说的是「**根本没有回落这回事**」。
     /// 合成一档会让「欠着」与「不适用」长得一样。
     ProbeOnlyNoFallbackDecision,
+    /// **纯路由器**：它的 `.call(` 调的是**别人注入的句柄**，自己够不着任何后端发送端，
+    /// 因此既没有「该不该回落」这个问题，也没有资格去分流。
+    ///
+    /// ⚠ 与 `ProbeOnlyNoFallbackDecision` **刻意分开**：那一档**真的**在走后端（发一条 `ping`），
+    /// 只是不回落；这一档**根本不走后端**。合成一档会让「走后端但不回落」与「不走后端」长得一样
+    /// —— 而后者一旦悄悄开始走后端，就该被逼回来重新表态。
+    ///
+    /// 🔴 牙（缺一当场红）：生产段**零** `route_call_error`（用了 ⇒ 它其实有回落决策）·
+    /// **零** `inbound_client` / `InboundClient` / `client_for`（碰了 ⇒ 它不再只转交注入的句柄，
+    /// 而且它生产段里那些 `CallError::` 从此可能是本模块分流的那个枚举 ——
+    /// 这一档之所以能免掉 `own` 那条检查，**全靠**这一条把 inbound 的类型挡在文件外）。
+    PureRouterNoFallbackDecision,
+}
+
+/// `PureRouterNoFallbackDecision` 那一档的牙：生产段里**不许出现**的名字（有边界匹配）。
+/// 它们是「够得到本机/远端后端发送端」的全部入口：模块名、客户端类型名、取客户端的函数名。
+#[cfg(test)]
+const PURE_ROUTER_MUST_NOT_NAME: &[&str] = &["inbound_client", "InboundClient", "client_for"];
+
+/// 一份生产段是不是「纯路由器」—— 返回违反的那几条（空 = 过）。
+#[cfg(test)]
+fn pure_router_violations(prod: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    if guard_core::contains_word(prod, "route_call_error") {
+        out.push(
+            "用了 `route_call_error`（它其实有回落决策 ⇒ 登记该改成 `UsesRouter`）".to_string(),
+        );
+    }
+    for n in PURE_ROUTER_MUST_NOT_NAME {
+        if guard_core::contains_word(prod, n) {
+            out.push(format!("碰了 `{n}`（它不再只转交注入的句柄）"));
+        }
+    }
+    out
 }
 
 /// ★★ **零命中守卫：分流规则不许有第二份实现 —— 而发现机制是遍历，不是手写清单。**
@@ -236,6 +277,17 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
                          那就是第二份分流规则。要么改用 `route_call_error`，要么说清它判的不是回落。"
                 );
             }
+            Verdict::PureRouterNoFallbackDecision => {
+                // ⚠ 这一档**不查** `own`：它的 `CallError::` 是通道自己的类型。
+                //   能不查的前提是下面这条把 inbound 那个枚举整个挡在文件外。
+                let bad = pure_router_violations(prod);
+                assert!(
+                    bad.is_empty(),
+                    "`{name}` 登记为「纯路由器、不做回落决策」，生产段却：\n  {}\n\
+                         ⇒ 它已经不只是转交注入的句柄了 —— 重新表态（多半是 `UsesRouter`）。",
+                    bad.join("\n  ")
+                );
+            }
             Verdict::ExemptPendingF14 => {
                 // ★ **例外也要钉**：它今天确实还没用分流器（那是 F14 的活）；
                 // 一旦它改好了，本条会红 —— 逼人把登记改成 `UsesRouter`。
@@ -247,4 +299,38 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
             }
         }
     }
+}
+
+/// `PureRouterNoFallbackDecision` 的牙**活着**：四个名字各喂一份违例样本必须认出来，
+/// 一份只调注入句柄的干净样本必须不认；被撑大的名字（`inbound_clients` 之类）不误判。
+#[test]
+fn the_pure_router_verdict_has_teeth() {
+    let clean = "pub fn serve(b: Arc<dyn Backends>) { let f = b.call(o, op, body, left, c); \
+                 let e = CallError::Ours { why: OursFault::Cancelled }; }\n";
+    assert!(
+        pure_router_violations(clean).is_empty(),
+        "干净的纯路由器被判成违例：{:?}",
+        pure_router_violations(clean)
+    );
+    for (bad, what) in [
+        ("let r = route_call_error(&e, f);\n", "route_call_error"),
+        (
+            "use crate::backend::control::inbound_client::CallError;\n",
+            "inbound_client",
+        ),
+        ("fn f(c: Arc<InboundClient>) {}\n", "InboundClient"),
+        ("let c = client_for(&o);\n", "client_for"),
+    ] {
+        let hits = pure_router_violations(bad);
+        assert_eq!(
+            hits.len(),
+            1,
+            "`{what}` 那一形没被认出来（或被认成了别的）：{hits:?}"
+        );
+    }
+    assert!(
+        pure_router_violations("let inbound_clients_seen = 0; let my_client_format = 1;\n")
+            .is_empty(),
+        "被撑大的标识符被当成了那几个名字 —— 假红"
+    );
 }
