@@ -366,8 +366,8 @@ fn not_one_capability_in_this_family_declares_a_write() {
     assert_eq!(
         effects, all_read,
         "有能力声明了写副作用。这一族的存在理由是**搜索**（`设计/60 §2 档①` 只有那一行），\n\
-         而写那一侧整个留在 SFTP（`设计/60 §6.6 ①`）—— 那正是 `readonly_guard` 4259 行\n\
-         一行都不用改的原因。"
+         写面住后端文件管理的另一个模块（`control/files_write.rs`，`设计/60 §3.3`），\n\
+         不在这一族 —— 这一族纯读。"
     );
 }
 
