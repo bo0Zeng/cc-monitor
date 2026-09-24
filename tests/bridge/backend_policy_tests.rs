@@ -1014,3 +1014,129 @@ fn the_two_same_named_local_origin_constants_stay_deliberately_different() {
          不是一次「顺手统一常量」—— 回去看 `设计/00 §2.5 ①`。"
     );
 }
+
+// ── 〔第四波 ST2 · `设计/70 §7` 第二刀 步 7〕后端停止产 markdown 与设计论证 ─────────
+
+/// `70 §2.4` 那五种形状里，**后端这一侧**能产出来的四种（markdown · 源码住址 · 日志行格式 · 设计论证）。
+/// 与 `tests/settings/ui-copy-discipline.vitest.ts::SHAPES` 同义；这里只认字面，不做语义判断。
+fn ui_copy_violations(s: &str) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if s.contains("**") {
+        out.push("markdown 标记");
+    }
+    if s.contains(".rs") || s.contains("::") {
+        out.push("源码住址");
+    }
+    if ["[死亡账]", "origin=", "判定=", "退出状态="]
+        .iter()
+        .any(|n| s.contains(n))
+    {
+        out.push("日志行格式");
+    }
+    if ["下一步：", "放大器", "本条不推翻", "如实登记", "判不了"]
+        .iter()
+        .any(|n| s.contains(n))
+    {
+        out.push("设计论证 / 下一步处方");
+    }
+    out
+}
+
+/// ★★ **进界面的那一格**（`Health::last_brief` → `backend_status` 的 `health.last`）四形全干净，
+/// 而**进日志的那一行**（`ledger_line`）照旧带着日志行格式 —— 两边的分工是这条判据的全部内容。
+///
+/// 反空真：尺子先在一段合成的脏文本上四种全逮到（正控），再在 `ledger_line` 上逮到日志行格式
+/// （它**本来就该**是日志行 —— 若那边也零命中，说明尺子瞎了，而不是后端干净了）。
+#[test]
+fn what_reaches_the_settings_panel_carries_no_markdown_no_argument_no_log_format() {
+    let dirty = "**下一步：**看 `backend_policy.rs` 里的 [死亡账] origin=x —— 重起是放大器";
+    let mut got = ui_copy_violations(dirty);
+    got.sort_unstable();
+    assert_eq!(
+        got,
+        vec![
+            "markdown 标记",
+            "日志行格式",
+            "源码住址",
+            "设计论证 / 下一步处方"
+        ],
+        "正控没全逮到 —— 下面的「零命中」是在一把瞎了的尺子上成立的"
+    );
+    let shapes = four_shapes();
+    assert_eq!(shapes.len(), 4, "夹具少了一形");
+    for (what, ev) in &shapes {
+        let d = verdict(ev).expect("四形都是死亡");
+        let brief = last_brief(&d);
+        assert_eq!(
+            ui_copy_violations(&brief),
+            Vec::<&str>::new(),
+            "「{what}」进界面的那一格犯了 `70 §2.4`：{brief}"
+        );
+        // 判定词与退出状态都在（界面上要读得出「怎么死的、退出码多少」）。
+        assert!(
+            brief.contains(death_kind(&d)) && brief.contains(&exit_status(&d)),
+            "「{what}」的短摘要丢了判定或退出状态：{brief}"
+        );
+        // 进日志的那四条话也不许再带 markdown / 论证（它们不进界面，但 `70 §7` 步 7 逐字要后端「停止产」）。
+        let copy = death_copy(&d);
+        assert!(
+            !copy.contains("**") && !copy.contains("放大器") && !copy.contains(".rs"),
+            "「{what}」的日志话里还有 markdown / 论证 / 源码住址：{copy}"
+        );
+        // 反空真：日志那一行**就是**日志行格式。
+        assert!(
+            ui_copy_violations(&ledger_line("o", &d)).contains(&"日志行格式"),
+            "账行不再是日志行格式了 —— 尺子或账行其一坏了"
+        );
+    }
+}
+
+/// ★ 读数里那一格**接的是短摘要，不是账行**：记一笔之后 `describe_health` 说出来的话里
+/// 没有日志行格式（原来 `HEALTH_CRASHED` 的 `{last}` 被整条账行填满，截图 2 那一段就是它）。
+#[test]
+fn the_crash_reading_quotes_the_brief_not_the_ledger_line() {
+    let origin = "st2-读数接短摘要-甲";
+    let ev = DeathEvidence {
+        outcome: Outcome::Exited(-1073741510),
+        handshake: Handshake::Spoke,
+        reader: ReaderEnd::CleanEof,
+        start_failure: None,
+    };
+    let mut sink = CapturingSink::default();
+    let rec = record_death(origin, &ev, &mut sink).expect("要记一笔");
+    let h = health(origin);
+    assert_eq!(
+        h.last.as_deref(),
+        Some(rec.line.as_str()),
+        "账行那一格没跟上"
+    );
+    let d = verdict(&ev).expect("是死亡");
+    assert_eq!(h.last_brief.as_deref(), Some(last_brief(&d).as_str()));
+    let said = describe_health(&h);
+    assert!(
+        said.contains("exit -1073741510"),
+        "读数里没有退出状态：{said}"
+    );
+    assert_eq!(
+        ui_copy_violations(&said),
+        Vec::<&str>::new(),
+        "读数里混进了账行 / markdown：{said}"
+    );
+}
+
+/// ★ 接线那一半：`backend_status` 那份 JSON 的 `health.last` **接的是短摘要**。
+///
+/// ⚠ 读源码文本（JSON 在 `backend_control.rs` 里拼，要真跑那条命令得起一整条控制通道）——
+/// 如实登记：这是一条接线钉，不是行为判据；行为那半由上面两条纯函数判据管。
+#[test]
+fn the_status_json_hands_the_panel_the_brief() {
+    let prod = guard_core::production_code(include_str!(
+        "../../src/bridge/src/backend/control/backend_control.rs"
+    ));
+    guard_core::pin_line(&prod, "\"last\": h.last_brief,").unwrap_or_else(|why| {
+        panic!(
+            "{why}\n⇒ `backend_status` 的 `health.last` 不再接 `last_brief` —— \
+             整条账行（日志行格式）又会被拼进设置面板（`70 §2.1` #3）。"
+        )
+    });
+}
