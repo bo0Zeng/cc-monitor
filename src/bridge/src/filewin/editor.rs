@@ -59,7 +59,7 @@
 //!       debug 0.98–1.27 ms。
 //!    ⇒ 「满上限时排版几乎吃掉整帧」这句话**在 release 上不成立**
 //!      （满上限、行结构正常时打字帧 release **0.08–1.02 ms**，余量 16–200 倍）。
-//!    ⇒ 本段**不删**（散文墓碑），但从此**不许**再拿它论证「满上限就超预算」。
+//!    ⇒ 本段**不删**〔散文墓碑〕，但从此**不许**再拿它论证「满上限就超预算」。
 //!    ⇒ 而真正超预算的那一族**另有其人**，也在 §四 里：**一行特别长的文件**。
 //! 2. **改小**会让今天能改的文件改不了（用户会当成退步），而现打没有任何
 //!    读数说 256 KiB 排不动。
@@ -162,22 +162,22 @@
 //! ### (a) `TextEdit` **没有** `show_rows` 那一族的对等物 —— 现打核过源码
 //!
 //! `show_rows` / `show_viewport` 只长在 `ScrollArea` 上（`egui-0.36.2`
-//! `src/containers/scroll_area.rs:983` / `:1020`），`TextEdit` 的整个构建器面
+//! `src/containers/scroll_area.rs` / `:1020`），`TextEdit` 的整个构建器面
 //! （现打数过 **30 个** `pub fn`）里一个行/区间/偏移参数都没有。
-//! `desired_rows` 只设**最小高度**（`builder.rs:521`），`clip_text` 在 multiline 上
-//! 是**空操作**（`builder.rs:378-382`，逐字注释「always show everything in multiline」）。
-//! 而每帧拿**全文**去排：`builder.rs:683`
+//! `desired_rows` 只设**最小高度**（`builder.rs`），`clip_text` 在 multiline 上
+//! 是**空操作**（`builder.rs`，逐字注释「always show everything in multiline」）。
+//! 而每帧拿**全文**去排：`builder.rs`
 //! `let mut galley = layouter(ui, text, args.available_size.x);`
 //! —— 排版之前对 `text` **没有任何开窗/裁剪**（唯一的加工是密码掩码）。
 //!
 //! ⚠ 顺带核掉一个很容易踩的假象：`.desired_width(f32::INFINITY)` 的文档说
-//! 它「disable automatic word wrap」，但 `builder.rs:498` 紧接着
+//! 它「disable automatic word wrap」，但 `builder.rs` 紧接着
 //! `.at_most(available_width)` **把它夹回可见宽度** ⇒ **生产那个 `TextEdit`
 //! 今天是在软换行的**。
 //!
 //! ### (b) 有 `layouter` 钩子，但它**不是**「只排视口内」的入口
 //!
-//! 签名（`builder.rs:24`，逐字）：
+//! 签名（`builder.rs`，逐字）：
 //! `type LayouterFn<'t> = &'t mut dyn FnMut(&Ui, &dyn TextBuffer, f32) -> Arc<Galley>;`
 //! —— 拿到的是**整个** `TextBuffer`（无偏移参数），要回一个 `Arc<Galley>`。
 //! 它自己的文档逐字说它是给**语法高亮**用的，并且「will be called at least once per frame」。
@@ -187,18 +187,18 @@
 //! `TextBuffer` 那一侧按「全文第 0 个字符」数**，而 `TextEdit` 靠这两个数**相等**。
 //! galley 只装 40 行、`text` 却是全文时，现打核过源码会坏的地方（逐条）：
 //!
-//! 1. **光标每帧被夹坏并写回**：`text_selection/text_cursor_state.rs:38-46`
+//! 1. **光标每帧被夹坏并写回**：`text_selection/text_cursor_state.rs`
 //!    的 `range()` 把存着的光标 `clamp_cursor` 到 galley 上，
-//!    `builder.rs:1373` 再 `set_char_range` 写回去 ⇒ 窗口外的光标**每帧被毁一次**。
-//! 2. 鼠标命中（`builder.rs:791`）回的是窗口相对下标，被当绝对用。
-//! 3. 所有键盘移动、`Ctrl+A`、`Ctrl+End` 都按 galley 算（`cursor_range.rs:107-165`）。
-//! 4. **每一次修改都落在错的字节上**（`text_buffer.rs:125-131` 拿
+//!    `builder.rs` 再 `set_char_range` 写回去 ⇒ 窗口外的光标**每帧被毁一次**。
+//! 2. 鼠标命中（`builder.rs`）回的是窗口相对下标，被当绝对用。
+//! 3. 所有键盘移动、`Ctrl+A`、`Ctrl+End` 都按 galley 算（`cursor_range.rs`）。
+//! 4. **每一次修改都落在错的字节上**（`text_buffer.rs` 拿
 //!    `min.index..max.index` 直接删全文的字符区间）。
-//! 5. 控件自己的尺寸是 `galley.size()`（`builder.rs:685-690`）⇒ 外面那个
+//! 5. 控件自己的尺寸是 `galley.size()`（`builder.rs`）⇒ 外面那个
 //!    `ScrollArea` 没东西可滚，`scroll_to_rect` 滚到错的地方。
 //! 6. 选区绘制、撤销栈、AccessKit 同族。
 //! 7. debug 档会直接撞 `debug_assert!(…, "Cursor out of bounds")`
-//!    （`epaint` `text_layout_types.rs:1285`）。
+//!    （`epaint` `text_layout_types.rs`）。
 //!
 //! ⇒ **「只排视口内」必须做在「喂给控件的那个字符串」这一层，不许做在 layouter 里。**
 //! ⚠ 而这正是用户明令禁止的那种「假的只排视口内」里**最坏**的一种 ——
@@ -208,27 +208,27 @@
 //!
 //! 这一条是本节对工作量估计影响最大的发现。
 //!
-//! - **缓存键**：`epaint-0.36.2/src/text/fonts.rs:1101`
+//! - **缓存键**：`epaint-0.36.2/src/text/fonts.rs`
 //!   `let hash = crate::util::hash((&job, OrderedFloat(pixels_per_point)));`
-//!   而 `LayoutJob` 的 `Hash` 把**整段文本**哈进去（`text_layout_types.rs:322`）。
+//!   而 `LayoutJob` 的 `Hash` 把**整段文本**哈进去（`text_layout_types.rs`）。
 //!   ⇒ 文本没变 ⇒ 命中 ⇒ `Arc::clone`，**不重排**（§四.0 那 0.98–1.27 ms 就是它）。
-//! - **逐段切分**：`fonts.rs:890-893` 的 `layout_job` 里
+//! - **逐段切分**：`epaint-0.36.2/src/text/fonts.rs` 的 `layout_job` 里
 //!   `let allow_split_paragraphs = true; // Optimization for editing text with many paragraphs.`
-//!   `fonts.rs:1127-1145` 在未命中时按 `\n` 切段、**逐段各自缓存**，再 `Galley::concat`。
+//!   `epaint-0.36.2/src/text/fonts.rs` 在未命中时按 `\n` 切段、**逐段各自缓存**，再 `Galley::concat`。
 //!   上游注释逐字：「**if we edit a single paragraph, only that paragraph will be re-layouted**」。
-//!   闸门（`fonts.rs:1297-1302`）：`break_on_newline && wrap.max_rows == usize::MAX
+//!   闸门（`epaint-0.36.2/src/text/fonts.rs`）：`break_on_newline && wrap.max_rows == usize::MAX
 //!   && text.contains('\n')` —— 生产那个 `TextEdit::multiline` **三条全中**。
 //!
 //! 🔴 ⇒ **「只重排改动的那一段」egui 0.36.2 已经替我们做了**，而且它**不是**一个
 //!    可选项 —— 它是上面所有读数的**既有基线**。
 //!    ⇒ 「只排视口内」要省的**不是排版**，是它剩下那笔 **O(行数) 的记账**：
-//!      哈一遍全文 ＋ 逐段查缓存 ＋ 逐段各分配一个 `String`（`fonts.rs:1200`）
+//!      哈一遍全文 ＋ 逐段查缓存 ＋ 逐段各分配一个 `String`（`epaint-0.36.2/src/text/fonts.rs`）
 //!      ＋ `Galley::concat` 把几千个子 galley 拼起来。
 //!
 //! ⚠ 一条**买不到**的边界，如实登记：缓存条目**只活一趟 pass**
-//! （`fonts.rs:1284-1291` 的 `retain(last_used == generation)`）⇒ 控件漏画一趟
+//! （`epaint-0.36.2/src/text/fonts.rs` 的 `retain(last_used == generation)`）⇒ 控件漏画一趟
 //! （折叠、换页签、窗口关掉）或者整数换行宽变了（改窗口大小、滚动条出现/消失）
-//! 或者字体图谱填过 80 %（`fonts.rs:722-743` 会**整个重建**）
+//! 或者字体图谱填过 80 %（`epaint-0.36.2/src/text/fonts.rs` 会**整个重建**）
 //! ⇒ **一次完整重排**。这一条本机**没量**（要真窗口改大小）。
 //!
 //! ───────────────────────────────────────────────────────────────────────
@@ -242,9 +242,9 @@
 //! |---|---|---|---|
 //! | 1 | **光标跨出视口** | ✅ | 光标停在窗口末行再按 ↓，控件只会把它夹在窗口末尾（它不知道后面还有）⇒ 要拦：读 `TextEdit::load_state` 里的光标，撞边界就**移窗 ＋ 重放光标**。窗口↔全文下标只差一个 [`Window::bytes`] 的起点。 |
 //! | 2 | **选区跨出视口** | ⚠ 答得了，但要**自己一层状态** | 跨出窗口的选区在控件里**表示不出来**（它只有窗口那点文本）⇒ 锚点必须存在**全文坐标**里，控件里那一份只是可见的那一截。 |
-//! | 3 | **撤销栈** | 🔴 答得了，而且**不做就会毁数据** | `text_edit/state.rs:13` 逐字 `TextEditUndoer = Undoer<(CCursorRange, String)>` —— 快照是**控件那份文本的全部**，而控件那份文本是**窗口**。⇒ 滚一屏再 `Ctrl+Z`，把**旧窗口的 40 行**写进**新窗口的字节区间**：第 4000 行被第 0 行的旧内容盖掉，**屏幕上看不出来**。⇒ 每次移窗都得 `clear_undoer()`，并且**自己实现全文撤销栈**。这是本刀最高危的一格，也是「这不是一个上限调整」的主要来源。 |
+//! | 3 | **撤销栈** | 🔴 答得了，而且**不做就会毁数据** | `text_edit/state.rs` 逐字 `TextEditUndoer = Undoer<(CCursorRange, String)>` —— 快照是**控件那份文本的全部**，而控件那份文本是**窗口**。⇒ 滚一屏再 `Ctrl+Z`，把**旧窗口的 40 行**写进**新窗口的字节区间**：第 4000 行被第 0 行的旧内容盖掉，**屏幕上看不出来**。⇒ 每次移窗都得 `clear_undoer()`，并且**自己实现全文撤销栈**。这是本刀最高危的一格，也是「这不是一个上限调整」的主要来源。 |
 //! | 4 | **查找** | ✅（今天本来就没有） | 第三节逐字登记过「没有查找替换」⇒ 不是退步。做法：在**全文**里搜（256 KiB 的 `str::find` 是微秒级），命中之后**移窗过去**。⚠ 但「把窗口外的命中高亮出来」**做不到**：那一行没有 galley 就没有矩形。 |
-//! | 5 | **软换行** | 🔴 答得了，代价是一次**可见的行为变更** | 软换行开着时「第 N 行」≠「第 N 个视觉行」：要把滚动偏移翻成第一可见**逻辑行**，得先知道它前面每一行各占几个视觉行 ⇒ 得把全文排一遍，正是要躲的那件事。而 `ScrollArea::show_rows`（`scroll_area.rs:993-1001`）**结构上假定行高一律**。⇒ **软换行必须关掉**，长行改横向滚。⚠ 现打说关它**几乎一点都不省**（§四.4α）—— 它是**几何前提**，不是优化。这一条要跟用户说清：他会看见长行不再折了。 |
+//! | 5 | **软换行** | 🔴 答得了，代价是一次**可见的行为变更** | 软换行开着时「第 N 行」≠「第 N 个视觉行」：要把滚动偏移翻成第一可见**逻辑行**，得先知道它前面每一行各占几个视觉行 ⇒ 得把全文排一遍，正是要躲的那件事。而 `ScrollArea::show_rows`（`scroll_area.rs`）**结构上假定行高一律**。⇒ **软换行必须关掉**，长行改横向滚。⚠ 现打说关它**几乎一点都不省**（§四.4α）—— 它是**几何前提**，不是优化。这一条要跟用户说清：他会看见长行不再折了。 |
 //! | 6 | **输入法** | 🔴 **今天答不了** | egui 在 `events()` 里按**控件相对** `CCursor` 处理 `Event::Ime`，并按 galley 算 `IMEOutput` 交给平台摆候选框。预编辑整段落在窗口内时**推理上**不变；但**本机没有图形会话、也没有输入法**（`XDG_SESSION_TYPE=tty`）⇒ 一趟都跑不了。**原样留在「判不了」里，不许猜。** |
 //! | 7 | **复制整份内容** | 🔴 答得了，而且**不做就是一个静默丢数据的口子** | 控件里 `Ctrl+A` / `Ctrl+C` **只拿得到窗口那几十行**，而用户以为拿到的是整份。⇒ 必须在控件**外**另给一颗「复制整份」（全文在我们手上），并把 `Ctrl+A` 拦下来改成选全文。 |
 //! | 8 | **滚动条与行号的几何** | ✅ | 总高度 = 行数 × 行高，从 [`LineIndex`] 来，不从控件尺寸来（同 [`super::rows`] 那条路）。 |
@@ -317,8 +317,8 @@
 //! | **64 MiB** | **25.1 – 36.9 ms** | 2.82 – 3.68 ms | 1.16 – 1.32 ms | **17.60 – 19.42 ms** |
 //!
 //! （以上 release 档。）那两次全量克隆是 **egui 自己干的，不是我们的代码**：
-//! `builder.rs:1085` 与 `:1375` 各一行 `text.as_str().to_owned()`，
-//! 于是**聚焦的 `TextEdit` 每帧要把整份文本堆拷两遍**（还有 `builder.rs:485`
+//! `builder.rs` 与 `:1375` 各一行 `text.as_str().to_owned()`，
+//! 于是**聚焦的 `TextEdit` 每帧要把整份文本堆拷两遍**（还有 `builder.rs`
 //! 那一行 `prev_text`，**不分聚焦与否，每帧一次** ⇒ 一共三次）。
 //! ⇒ 64 MiB 上单这一笔就是 **1.5 倍帧预算**，而它**换不掉的 layouter 钩子管不到**。
 //!
@@ -339,7 +339,7 @@
 //! - 🔴 **两者差 45 倍，本刀没有把它拉平** ⇒ 「内存上限该多少」这一问
 //!   **今天答不了**，而这正是 §四.3(c) 不动 `MAX_EDIT_BYTES` 的第一条理由。
 //!   要答它得上真的分配器计数（`dhat` / `jemalloc` 统计），本刀没做。
-//! ⚠ 而 egui 的撤销栈默认 `max_undos = 100`（`util/undoer.rs:29`）、快照是全文
+//! ⚠ 而 egui 的撤销栈默认 `max_undos = 100`（`util/undoer.rs`）、快照是全文
 //! ⇒ **算出来**（不是量出来）的撤销栈上界 = 100 × 全文：
 //! 256 KiB ⇒ 25 MiB；4 MiB ⇒ 400 MiB；64 MiB ⇒ 6.4 GiB。
 //! ⇒ 开窗之后这两项也都从「全文」降成「窗口」。
@@ -384,7 +384,7 @@
 //!   「关软换行」当成一个便宜的优化先上；实际上它是**只排视口内的几何前提**
 //!   （§四.2 第 5 条），单独上只换来「长行不再折」这个**可见的退步**。
 //! ⚠ 它另有一个**没量到**的副作用值得记：`wrap.max_width` 设成 `f32::INFINITY`
-//!   之后 `fonts.rs:1076-1099` 那段取整分支不走了 ⇒ **缓存键与控件宽度无关**
+//!   之后 `epaint-0.36.2/src/text/fonts.rs` 那段取整分支不走了 ⇒ **缓存键与控件宽度无关**
 //!   ⇒ 改窗口大小不再让整份 galley 失效。本机**没量**（要真窗口改大小）。
 //!
 //! ### (β) 「什么都不做，靠 galley 缓存」—— 在**今天的上限内**其实够用
@@ -429,7 +429,7 @@
 //! （[`LineIndex`] / [`Window`] / [`WindowingPayoff`] 那一组 ＋ 它们的相等断言），
 //! 而**不把它接进生产**。
 //! 🔴 **如实登记「没做」的那一半**：生产那个 `TextEdit` 在
-//! `filewin/shell.rs:1587`，**不在本刀写区**（另一路正在改那棵树的结构）
+//! `filewin/shell.rs` 里 `editing_text_mut()` 那一处 `TextEdit::multiline`，**不在本刀写区**（另一路正在改那棵树的结构）
 //! ⇒ 本节这组东西**一个生产调用方都没有**。
 //! 按本仓那条「**判据不在执行链上就等于不存在**」：
 //! **「只排视口内」这个功能今天没有落地，也不许读成落地了。**
@@ -738,7 +738,7 @@ pub async fn write_text(
 /// 「第 a..b 行可见」，把那一段**行号**翻成**字节区间**要靠这张表。
 ///
 /// ⚠ 「行」在这里逐字是「**按 `\n` 切出来的段**」，与 epaint 切段的单位
-/// **刻意同一个**（`fonts.rs:1297-1302`）—— 两边用不同的单位就会出现
+/// **刻意同一个**（`epaint-0.36.2/src/text/fonts.rs`）—— 两边用不同的单位就会出现
 /// 「我以为开了窗、epaint 那边还是一整段」的静默态。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LineIndex {
@@ -818,7 +818,7 @@ impl Window {
 /// 把 `ScrollArea::show_rows` 给的那个行号区间翻成一扇窗。
 ///
 /// ⚠ 入参会被**夹进**合法范围（`show_rows` 给的 `max_row` 会比总行数多一 ——
-/// 见 `scroll_area.rs:996` 那个 `+ 1`）。夹不住的话 [`window_text`] 会切片越界 panic。
+/// 见 `scroll_area.rs` 那个 `+ 1`）。夹不住的话 [`window_text`] 会切片越界 panic。
 pub fn window_of(idx: &LineIndex, visible: std::ops::Range<usize>) -> Window {
     let total = idx.lines();
     let first = visible.start.min(total - 1);

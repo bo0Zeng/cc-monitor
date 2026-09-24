@@ -575,7 +575,7 @@ fn the_readings_behind_only_laying_out_the_viewport() {
     // ── 打字帧：每帧改一个字 ⇒ galley 缓存必失，量的是「敲一个键要多久」──
     //
     // `wrap == false` 那一支要**自己给 layouter**：`.desired_width(f32::INFINITY)`
-    // 被 `builder.rs:498` 的 `.at_most(available_width)` 夹回可见宽度，
+    // 被 `builder.rs` 的 `.at_most(available_width)` 夹回可见宽度，
     // multiline 上关不掉软换行（§四.1a）。
     let typing = |text: &str, wrap: bool| -> Vec<std::time::Duration> {
         let ctx = egui::Context::default();
@@ -755,7 +755,7 @@ fn the_readings_behind_only_laying_out_the_viewport() {
         let mut cmp = Vec::new();
         for _ in 0..3 {
             let t0 = std::time::Instant::now();
-            // egui 聚焦时每帧干这两下（`builder.rs:1085` / `:1375`）
+            // egui 聚焦时每帧干这两下（`builder.rs` / `:1375`）
             let (a, b) = (t.as_str().to_owned(), t.as_str().to_owned());
             clone2.push(t0.elapsed());
             std::hint::black_box((a.len(), b.len()));
