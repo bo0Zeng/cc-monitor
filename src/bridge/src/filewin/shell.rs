@@ -602,7 +602,10 @@ impl FileWindow {
         let slot = self.term_notice.clone();
         *slot.lock().unwrap() = None;
         h.spawn(async move {
-            let said = match crate::launch::launch_remote_terminal(origin.0, cmd).await {
+            // 〔合并主线 dfc7c4e9：T4 给这条命令加了 `rbind_token`〕`None` —— 与旧面板那颗同名按钮
+            //   逐字同形（`src/sftp/panel.ts` 那一处不带令牌）：「在此打开终端」开的是一个裸 shell，
+            //   不是一场要被 ↗ 找回来的会话，没有令牌可铸。
+            let said = match crate::launch::launch_remote_terminal(origin.0, cmd, None).await {
                 Ok(()) => None,
                 Err(why) => Some(format!("终端没打开：{why}")),
             };
