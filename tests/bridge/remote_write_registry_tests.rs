@@ -843,15 +843,17 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     // 接的命令从 `used` 里消失 ⇒ 差集非空 ⇒ 会红；但少扫**全部**就两边都空了）。
     assert_eq!(
         files.len(),
-        17,
+        18,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\
           一个窗口一个进程）。⚠ `win_main.rs` **不是一个模块** —— 它是那个 `[[bin]]` 的 \
           crate 根，`mod.rs` 刻意不 `mod` 它；它照旧进本条的射程，因为本条问的是\
           「`filewin/` 这棵树上谁在碰池子那几条命令」，而那个问题对一份 bin 入口一样要问〕\
-         〔F7b 09-24：16 → 17，多的是 **create**（「新建空文件」；它走后端 `files-create`，\
+         〔F7b 09-24：16 → 18，多的是 **create** 与 **bigfile**（「新建空文件」；它走后端 `files-create`，\
           一条池子命令都不碰 ⇒ 下面 `used` 那一摞不因它变）〕—— \
+         〔F9 09-24（与 F7b 同拍合并，现打 18）多的是 **bigfile**（大文件模式；它一条池子命令都不碰 ——\
+          读上限仍经 `editor.rs` 那一处 `MAX_EDIT_BYTES`）〕—— \
          不等就是射程变了，先查扫描面再改这个数",
         files.len()
     );
