@@ -26,6 +26,46 @@
 //!
 //! 每 10s 扫一遍内存中的 ps-registry，对每个 PS_PID 调 `is_process_alive`，
 //! 死 PS 的条目从内存 + 磁盘移除。避免长期累积。
+//!
+//! ## 🔴 第二种 marker 来源：**启动期令牌**（`设计/80 §8.7` 步 3，2026-09-23）
+//!
+//! 上面那条链一个字都没改。这一节只说**多出来的那一种 marker 来源**。
+//!
+//! `设计/80 §8.1` 的判断逐字：「**tmux 不是在做发现身份，是在做把身份广播到本地**」——
+//! 而 `↗ 拉前终端` 需要的全部东西只是一个映射 `(sid) → (本地 HWND)`。今天那个映射靠
+//! tmux 会话级 option `@ccm_sid` ＋ `set-titles-string` 合成的窗口标题，**跳五次、无回执**，
+//! 而且 `container:"none"`（直连、没有 tmux）那一档**根本没有**这个映射。
+//!
+//! 方案 E 造的那个「本地已知、可以 join 的键」就是**启动期令牌**：monitor 起会话时
+//! 铸一个 32 位小写十六进制的随机串，一路注进远端进程的 environ（`CCM_RBIND_TOKEN`，
+//! 步 1 ＋ 步 2 已落地），**同一个串**同时交给本地那个终端进程当 marker。
+//! ⇒ 本模块要多记的只有一件事：**`令牌 → HWND`**。
+//!
+//! ### 落法：**Era 2 那套一行没动，只多一个可空字段 ＋ 一个查法**
+//!
+//! - marker 长这样：`ccm-rbind-token-<32 hex>`（[`RBIND_TOKEN_MARKER_PREFIX`]）。
+//!   握手文件 [`AwaitRequest`] 的**形状一个字节都没变** —— 令牌不是新字段，
+//!   它**就是 marker 本身**（`§8.2` 逐字「marker = token」）。这样一来
+//!   「窗口标题里含 marker」与「窗口标题里含令牌」是同一件事，
+//!   `§8.2` 那条退路（本地 shell 在 ssh 之前自设标题）**不需要第二套解析**。
+//! - [`HwndEntry`] 多一个 `rbind_token: Option<String>`（`skip_serializing_if`）
+//!   ⇒ 今天写出去的 `ps-registry/<PID>.json` **逐字节等于从前**，老文件照样读得进来。
+//! - 查法 [`BindRegistry::lookup_hwnd_for_token`] 是**在同一张表上扫**，
+//!   **不是第二份索引**：三重指纹 · 心跳清理 · 磁盘持久化 · monitor 重启后重载
+//!   —— 四件全部原样继承，不需要各写一遍失效逻辑（第二份索引最典型的病就是
+//!   「主表清了、索引没清」，这里在构造上不可能发生）。
+//!   表里是「这台机上还活着的 PowerShell 窗口」，个位数量级 ⇒ 线性扫不值得换索引。
+//!
+//! ### ⚠ 本模块**买不到**什么（别把这一段读大）
+//!
+//! - 🔴 **今天没有任何生产代码往 `ps-await` 里写一个带令牌的 marker。**
+//!   写那一份的是本地终端进程自己（Era 2 是 PowerShell profile 里的 `__ccm_bind`），
+//!   而那条链住 `launch.rs` / `scripts/cc.ps1.tpl` —— **都不在本刀的写区**。
+//!   ⇒ 本模块今天买到的是「**接得住**」，**不是**「已经在收」。
+//! - 🔴 **「↗ 真的把那个窗口拉到前台了」这一维本仓的 Linux 门禁一格都买不到**：
+//!   没有图形会话、没有 Windows，`find_window_by_marker_substr` 在非 Windows 上
+//!   是个恒 `None` 的桩。判据能验的是**平台无关**的那两段（marker 解令牌 · 表里查得到），
+//!   Win32 那一跳仍只有 `remote_bind_finds_real_ccm_rbind_window` 那条手动 smoke。
 
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
@@ -63,6 +103,17 @@ pub struct HwndEntry {
     pub title_at_bind: String,
     /// Unix 毫秒
     pub registered_at: i64,
+    /// `设计/80 §8.7` 步 3：这次绑定的**启动期令牌**（`[0-9a-f]{32}`），
+    /// 由 [`rbind_token_from_marker`] 从 marker 里解出来。
+    ///
+    /// **`None` 是绝大多数条目的正常取值** —— Era 2 那条链（PowerShell profile 的
+    /// `__ccm_bind`）用的 marker 是 `ccm-bind-<PID>-<8hex>`，它不带令牌，
+    /// 这些条目今天和从前一样只能按 `ps_pid` 查。
+    ///
+    /// `serde(default)` ＋ `skip_serializing_if`：**磁盘上的老 `ps-registry/*.json`
+    /// 照样读得进来，新写出去的也逐字节等于从前**（additive，与 wire 上那一族同纪律）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rbind_token: Option<String>,
 }
 
 /// session_id → 拉前所需信息（持久化到 sid-hwnd-cache.json）。
@@ -118,6 +169,34 @@ impl BindRegistry {
         self.by_ps_pid.read().get(&ps_pid).cloned()
     }
 
+    /// `设计/80 §8.7` 步 3：**按启动期令牌查那个窗口** —— 方案 E 要的 `token → HWND`。
+    ///
+    /// # 为什么是「在同一张表上扫」而不是第二份索引
+    ///
+    /// 这张表里是**这台机上还活着的 PowerShell 窗口**（个位数量级；心跳每 10s
+    /// 把死掉的清出去）。多一份 `HashMap<String, u32>` 换来的是 O(1)，代价是
+    /// **多一条要各写一遍的失效路径** —— 而本模块的失效路径有四条
+    /// （心跳清理 · `cleanup_dead` 的磁盘删除 · 启动时 `scan_registry_dir` 重载 ·
+    /// `process_await_file` 的覆盖写）。第二份索引最典型的病就是「主表清了、索引没清」，
+    /// 那个 bug 在这里**在构造上不可能发生**：只有一张表。
+    ///
+    /// # 形状：**入表时**就过了闸，查询这一侧刻意不再过一遍
+    ///
+    /// 表里的 `rbind_token` 只可能来自 [`rbind_token_from_marker`]（fail closed：
+    /// 不 `trim`、不认大写、必须恰好 32 位）⇒ 表里每个键形状都确定对，
+    /// 而这里是**逐字节相等**比较 ⇒ 形状不对的查询串**在构造上**命中不了任何一条。
+    /// 〔死值验 09-24〕初版这里还多一道查询侧形状闸；把它删掉之后 1792 条判据
+    /// **全绿** —— 它不可观测、没有判据能钉它，于是删了，而不是留一行没人守的代码。
+    /// 「形状不对的查询不命中」这件事本身仍有判据
+    /// （`the_launch_token_finds_its_window_handle_in_the_same_era2_table` 的 ④）。
+    pub fn lookup_hwnd_for_token(&self, token: &str) -> Option<HwndEntry> {
+        self.by_ps_pid
+            .read()
+            .values()
+            .find(|e| e.rbind_token.as_deref() == Some(token))
+            .cloned()
+    }
+
     /// 当前注册的 PS 数量（UI 状态显示用）
     pub fn registration_count(&self) -> usize {
         self.by_ps_pid.read().len()
@@ -150,8 +229,111 @@ impl BindRegistry {
     }
 }
 
+/// `设计/80 §8.7` 步 3：带令牌的那一种 marker 长什么样。
+///
+/// **前缀刻意与 Era 2 的 `ccm-bind-<PID>-<8hex>` 以及远端标题路的
+/// `ccm-rbind-<sid>` 三者互不为前缀**，所以三种 marker 在同一个 `title.contains`
+/// 的世界里不会互相误命中：
+///
+/// | 来源 | 形状 | 键 |
+/// |---|---|---|
+/// | Era 2 · PowerShell profile `__ccm_bind` | `ccm-bind-<PID>-<8hex>` | `ps_pid` |
+/// | Era 3 · 远端 tmux 标题（`RemoteHwndCache`） | `ccm-rbind-<sid>` | `sid` |
+/// | **方案 E · 启动期令牌（本节）** | `ccm-rbind-token-<32hex>` | **令牌** |
+///
+/// ⚠ `ccm-rbind-token-` **是** `ccm-rbind-` 的扩展，看起来像会撞 —— 不会：
+/// 那一路拼的是 `ccm-rbind-<sid>`，而 sid 是 uuid（含 `-`、有大写、长 36），
+/// 与 `token-<32hex>` 无论如何对不上；反向也一样（本函数要求前缀后**恰好** 32 个
+/// 小写十六进制字符、后面一个字节都不许有）。两条判据各钉一头，见 `bind_tests.rs`。
+pub const RBIND_TOKEN_MARKER_PREFIX: &str = "ccm-rbind-token-";
+
+/// 令牌的字符数 —— **32**。
+///
+/// 🔴 **这是一个跨三处的双写点**，三处必须同一个数：本常量 ·
+/// 载荷侧 `backend::control::payload::RBIND_TOKEN_LEN` ·
+/// 后端读侧 `control::identity_tag`。那三处各自有判据，**别在这里再抄一个 32 出去**。
+const RBIND_TOKEN_LEN: usize = 32;
+
+/// 令牌形状：恰好 [`RBIND_TOKEN_LEN`] 个**小写**十六进制字符。
+///
+/// 与载荷侧 `payload::rbind_token_shape_ok` 是**同一条形状**（那边是渲染前的闸，
+/// 这边是绑定时的闸）。不收大写、不 `trim`、不认 `0x` 前缀 ——
+/// 只有一种写法，本地这张 `token → HWND` 表与从远端 `environ` 读回来的串
+/// 才能**直接相等比较**，中间不留归一化步骤（归一化是「两侧各写一遍、
+/// 各写错一遍」的经典落点，`launch-dimensions.ts::isValidRbindToken` 的头注同话）。
+///
+/// 🔴 **本 crate 里只许有这一份**：`ssh_source::parse_frame` 读 wire 上那个
+/// `rbind_token` 字段时过的也是这一条（`设计/80 §8.7` 步 3/步 4 同拍）。
+/// 「本地表的键」与「wire 上读回来的串」形状一旦不同源，
+/// join 就会在某些取值上静默失配 —— 而失配的表现是「拉不到窗口」，与「没有令牌」同形。
+pub(crate) fn rbind_token_shape_ok(token: &str) -> bool {
+    token.len() == RBIND_TOKEN_LEN
+        && token
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// 从一个 marker 里解出启动期令牌。**不是**这一种 marker ⇒ `None`（Era 2 的
+/// `ccm-bind-…` 走的就是这条，行为与从前一字不差）。
+///
+/// fail closed 到底：前缀对了但后面形状不对（少一位 / 多一位 / 有大写 / 尾巴上
+/// 还挂着东西）**一律当没有**，而不是当「大概是它」。把一个形状可疑的串记进表里，
+/// 会让「拉错窗口」（有键、键错了）伪装成「拉不到窗口」（没键）—— 那正是
+/// `§6.2` 记的「失败归因把人引向一个不存在的问题」。
+pub fn rbind_token_from_marker(marker: &str) -> Option<&str> {
+    let rest = marker.strip_prefix(RBIND_TOKEN_MARKER_PREFIX)?;
+    rbind_token_shape_ok(rest).then_some(rest)
+}
+
+/// 把一段**可能含启动期令牌**的文本（marker / 窗口标题）变成可以进日志的样子。
+///
+/// 🔴 令牌是敏感数据（`§8.6 ③`：它会进远端 `/proc/<pid>/environ`、`cmdline` 与
+/// shell 历史）。本仓后端那一侧对同一条性质有一条专门的判据
+/// （`identity_tag::tests::the_token_value_never_reaches_a_log_macro`），
+/// **而本地这一侧此前没有** —— 因为此前本地 marker 里没有敏感值。
+/// 步 3 把令牌变成 marker 之后，本函数与 `bind_tests.rs` 里那条同名判据是这一格的闸。
+///
+/// 只抹**值**、保留**形状**：排障要能看出「这是一个带令牌的 marker」，
+/// 那一位信息不敏感，敏感的是那 32 个字符。
+fn redact_marker(text: &str) -> String {
+    match rbind_token_from_marker(text) {
+        Some(_) => format!("{RBIND_TOKEN_MARKER_PREFIX}<32hex 已隐去>"),
+        // 窗口标题是**子串**匹配（WT 会往标题里塞别的东西）⇒ 令牌可能夹在中间，
+        // 上面那条 `strip_prefix` 够不着。这一支按前缀切一刀，前缀之后全抹掉。
+        None => match text.find(RBIND_TOKEN_MARKER_PREFIX) {
+            Some(i) => format!("{}{RBIND_TOKEN_MARKER_PREFIX}<已隐去>", &text[..i]),
+            None => text.to_string(),
+        },
+    }
+}
+
+/// 把「扫到的那个窗口」＋「await 请求」组装成一条绑定。
+///
+/// **刻意是平台无关的**（Win32 那一跳全在 [`find_window_by_marker_substr`] 里）：
+/// `设计/80 §8.7` 步 3 新增的那一格 —— marker 里的令牌要跟着进表 —— 如果写在
+/// `#[cfg(windows)]` 的函数体里，本仓 Linux 门禁**一条判据都够不到它**
+/// （`cfg(not(windows))` 那支是恒 `None` 的桩）。抽出来之后那一格在任何机器上都验得了。
+fn entry_from_marker_hit(req: &AwaitRequest, hit: MarkerHit, owner_proc_start: u64) -> HwndEntry {
+    HwndEntry {
+        ps_pid: req.ps_pid,
+        hwnd: hit.hwnd,
+        owner_pid: hit.owner_pid,
+        owner_proc_start,
+        ps_proc_start: req.proc_start.clone(),
+        title_at_bind: hit.title,
+        registered_at: crate::utils::now_ms(),
+        // `设计/80 §8.7` 步 3：令牌**就是 marker 本身**（`§8.2` 逐字「marker = token」）。
+        // 不是这一种 marker ⇒ `None` ⇒ 这条绑定只能按 `ps_pid` 查（= 今天的行为）。
+        rbind_token: rbind_token_from_marker(&req.marker).map(str::to_string),
+    }
+}
+
 /// 启动时扫已有 ps-registry/*.json（应对 monitor 重启）。
 /// P3 归并：走 utils::scan_dir_jsons。
+///
+/// ⚠ `设计/80 §8.7` 步 3 之后这一句**同时**把 `token → HWND` 那张表恢复了 ——
+/// 因为根本没有第二张表（见 [`BindRegistry::lookup_hwnd_for_token`] 的头注）。
+/// 「持久化」这一维是白拿的，不是又实现了一遍。
 fn scan_registry_dir(dir: &Path) -> HashMap<u32, HwndEntry> {
     crate::utils::scan_dir_jsons(dir, |e: &HwndEntry| e.ps_pid)
 }
@@ -236,9 +418,11 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
     let entry = match found {
         Some(e) => e,
         None => {
+            // 🔴 `设计/80 §8.7` 步 3：marker 今天**可能就是令牌本身**
+            //    ⇒ 原样打出去等于把敏感值写进滚动日志（`§8.6 ③`）。过一道脱敏。
             tracing::warn!(
                 "bind: no window found with marker={:?} ps_pid={} (retried 600ms)",
-                req.marker,
+                redact_marker(&req.marker),
                 req.ps_pid
             );
             // 找不到窗口也要清 await，让 PS 解除阻塞超时
@@ -261,12 +445,16 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
     // 更新内存缓存
     this.by_ps_pid.write().insert(req.ps_pid, entry.clone());
 
+    // 🔴 同上：`title_at_bind` 是**包含 marker 的那个窗口标题** ⇒ 带令牌的那一档里
+    //    它含着令牌。这一行还多报一位「这条绑定有没有令牌」——那是排障时真正要知道的，
+    //    而它**不泄露值**（`§8.5 ②` 要的就是这个布尔，不是那个串）。
     tracing::info!(
-        "bind: registered ps_pid={} hwnd={:#x} owner_pid={} title={:?}",
+        "bind: registered ps_pid={} hwnd={:#x} owner_pid={} title={:?} has_rbind_token={}",
         req.ps_pid,
         entry.hwnd,
         entry.owner_pid,
-        entry.title_at_bind
+        redact_marker(&entry.title_at_bind),
+        entry.rbind_token.is_some()
     );
 
     // 最后删 await 文件，解除 PS 阻塞
@@ -380,15 +568,9 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
         .map(|ft| ft.0)
         .unwrap_or(0);
 
-    Some(HwndEntry {
-        ps_pid: req.ps_pid,
-        hwnd: m.hwnd,
-        owner_pid: m.owner_pid,
-        owner_proc_start,
-        ps_proc_start: req.proc_start.clone(),
-        title_at_bind: m.title,
-        registered_at: crate::utils::now_ms(),
-    })
+    // 组装那一步是**平台无关**的（见 `entry_from_marker_hit` 头注：写在这里的话
+    // `设计/80 §8.7` 步 3 那一格在 Linux 门禁上一条判据都够不到）。
+    Some(entry_from_marker_hit(req, m, owner_proc_start))
 }
 
 #[cfg(not(windows))]
