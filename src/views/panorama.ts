@@ -1186,7 +1186,7 @@ export class PanoramaView implements OverlayHandle {
       foot.className = "panorama-ann-foot";
       const author = document.createElement("span");
       author.className = "panorama-ann-author";
-      author.textContent = a.author + (a.status === "Proposed" ? " · 待批准" : "");
+      author.textContent = `${a.author} · ${originLabel(a.origin)}` + (a.status === "Proposed" ? " · 待批准" : "");
       foot.appendChild(author);
       const del = document.createElement("button");
       del.type = "button";
@@ -1603,7 +1603,10 @@ export class PanoramaView implements OverlayHandle {
         foot.className = "panorama-ann-foot";
         const who = document.createElement("span");
         who.className = "panorama-ann-author";
-        who.textContent = `${a.author} · ${a.symbol ? `${a.file}#${a.symbol}` : `${a.file}（文件级）`}`;
+        who.dataset.origin = a.origin;
+        who.textContent =
+          `${a.author} · ${originLabel(a.origin)} · ` +
+          (a.symbol ? `${a.file}#${a.symbol}` : `${a.file}（文件级）`);
         foot.appendChild(who);
         if (pending) {
           const ok = document.createElement("button");
@@ -1774,6 +1777,21 @@ function truncate(s: string, max: number): string {
 
 function fmtScore(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+/**
+ * CP6：批注是谁说的（上游 `Annotation.origin`，批准只改状态不改它）。
+ * 已生效那一节里「人写的」与「agent 提议、人批准的」必须分得开 —— 后者不是人的指示。
+ */
+function originLabel(o: Annotation["origin"]): string {
+  switch (o) {
+    case "Human":
+      return "人写";
+    case "Agent":
+      return "agent 提议";
+    case "Unrecorded":
+      return "来源未记录";
+  }
 }
 
 function confidenceLabel(c: Confidence): string {
