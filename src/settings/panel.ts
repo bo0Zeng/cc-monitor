@@ -51,12 +51,9 @@ import {
   withResumePreset,
   type BehaviorConfig,
 } from "../behavior";
-import {
-  diagnoseRemoteLauncher,
-  buildAliasGeneratorSection,
-  buildAccountAliasBlock, // K-R49：按账号一次给齐 `zcc` / `bcc`，而且真落盘
-} from "../launcher-diagnostics";
+import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
 import { fetchLocalAccounts } from "../accounts"; // K-R49：别名是给**这台机器**的 shell 用的
+import { buildAliasManager } from "./machine-aliases"; // 〔AL1〕机器页 ②「别名」
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
@@ -909,6 +906,18 @@ export class SettingsPanel {
           ? this.safeBlock("终端集成", () => new CcIntegrationSection().element)
           : SettingsPanel.ccIntegrationNotApplicable(),
       },
+      // 〔AL1 · 2026-09-24〕机器页 ②「别名」（`设计/71 §13`）。本机那一格在这里；远端那一格在
+      // `MachineCard` 的「组件」栏里（它只给得出待贴文本 ＋ 装 / 卸别名块，理由见那边）。
+      // 构造零 I/O：它是个 `<details>`，第一次展开才读盘（`70 §8` #3）。
+      {
+        appliesTo: "local",
+        tab: "tools",
+        el: this.safeBlock("别名", () =>
+          buildAliasManager({
+            loadAccounts: async () => (await fetchLocalAccounts()).accounts.map((a) => a.name),
+          }),
+        ),
+      },
       // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
       // 本机与远端都有意义（它自己的机器行第一颗按钮就是本机）。
       {
@@ -1246,34 +1255,10 @@ export class SettingsPanel {
     remoteInput.addEventListener("input", () =>
       this.updateRemoteLauncherWarning(),
     );
-    // F08 Phase D 审计（重要项修复）：别名生成器紧挨着诊断放在同一处——此前生成器藏在
-    // "远端 (SSH)"每台主机卡片的三层折叠里、且按主机重复渲染（内容与选中哪台机器无关），
-    // 诊断提示也从未指向它。两者是同一段用户旅程的两半，理应彼此相邻。
-    // K-R49：先「按账号一次给齐」，再是「我要拼一条自定义的」——**顺序是有意的**：
-    // 用户 09-10 逐字说的是「添加账号后添加对应命令」，那条路该在手工拼之前被看见。
-    // ⚠ 账号读口取**本机**那条（`fetchLocalAccounts`）：这几条命令是给这台机器上的
-    //   shell 用的，`ccm --account <名>` 也在这台机器上跑。
-    // 🔴 步 2（`70 §1.3 B` · `§8` 判据 #3）：**这两块的构造期也发 I/O**
-    // （`local_ccm_entry_status` ＋ 一次 `write_account_aliases` 的 `dryRun` 预览
-    //  ＋ `fetchLocalAccounts`），而它们住「应用」页、落地页是「机器」。
-    //
-    // ⚠ 这一处与上面那几块**不同**：那几块是「构造照常、只延后网络往返」，
-    // 这一处**连构造一起延后** —— 它们的 I/O 在 `launcher-diagnostics.ts` 的
-    // 建造函数体里，从外面推不后。形态照 `CC_INTEGRATION_HOST_OS` 那一格：
-    // **门开在「建不建」这一层**（藏起来那几发照发）。
-    // 代价如实写：这两块的构造错误会推迟到用户第一次点进「应用」才出现。
-    const aliasSlot = document.createElement("div");
-    group.appendChild(aliasSlot);
-    this.loadOnFirstVisit("app", () => {
-      // 只建一次 —— `open()` 会把「这一页放过没有」清零，别在重开时重建一份 DOM。
-      if (aliasSlot.childElementCount > 0) return;
-      aliasSlot.appendChild(
-        buildAccountAliasBlock(async () =>
-          (await fetchLocalAccounts()).accounts.map((a) => a.name),
-        ),
-      );
-      aliasSlot.appendChild(buildAliasGeneratorSection());
-    });
+    // 〔AL1 · 2026-09-24〕这里原来挂着两块别名（「按账号生成命令」·「生成自定义别名」）。
+    // 它们合成一类、搬去了机器页「本机 → 工具 → 别名」（`设计/70 §3.3` · `设计/71 §13`）：
+    // 别名是**每台机器一份**的东西，按本面板那条顶层判据（它改的是谁的状态）归机器页，不归「应用」。
+    // 上面那条越层诊断的提示文案跟着指过去了。
 
     return group;
   }

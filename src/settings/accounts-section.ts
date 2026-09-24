@@ -35,8 +35,8 @@ import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
-// `K-R49`：加了账号就把 `zcc` / `bcc` 那条命令也给出来（并真落盘到 cc-monitor 自己那份文件）。
-import { buildAccountAliasBlock, buildUserPathBlock, suggestAliasName } from "../launcher-diagnostics";
+// 〔AL1 · 2026-09-24〕别名那一块搬去了机器页「本机 → 工具 → 别名」（`设计/70 §3.3` · `设计/71`）。
+import { buildUserPathBlock } from "../launcher-diagnostics";
 import { SETTINGS_APPLIED_EVENT } from "./events";
 // Phase G：这两格此前**没有任何生产者**，见下面 `note()` 的注释。
 // `N-F2`：本机那条路也要写进同一本账 ⇒ 连本机那个 key 一起取，别在这儿长第二个名字。
@@ -491,21 +491,11 @@ export class AccountsSection {
     }
     box.appendChild(table);
     AccountsSection.line(box, "accounts-hint accounts-local-hint", LOCAL_ACCOUNTS_COPY.scopeHint);
-    // 🔴 `K-R49` 那两跳里的第一跳：**加了账号，这一节要提一句那条命令。**
-    // 此前这里渲染完就完了 —— 生成器住在设置面板另一个分组里，与这条流程互不相识，
-    // 用户 09-10 逐字「我现在添加了一个账号但是没法直接添加命令, 还得手动去改」。
-    // ⚠ 账号名**从这一支手上这份清单来**，不重新拉一遍：这一支刚刚读到的就是本机那份。
-    //
-    // ⚠⚠ **挂在 `this.body` 上，不是挂在 `box`（`.accounts-local`）里面** —— 这不是排版口味：
-    //   `NF1bD2` 那条判据断的是「`.accounts-local` 子树里的汉字全部来自 `LOCAL_ACCOUNTS_COPY`」，
-    //   而这一块的文案有**自己的家**（它同时挂在设置面板的「行为」组里，两处同一份）。
-    //   塞进那棵子树等于宣称它的文案归账号文案表管，那是把一份文案说成两个主人。
-    this.body.appendChild(
-      buildAccountAliasBlock(async () => state.accounts.map((a) => a.name)),
-    );
-    // 🔴 `K-R135`（`R85`）：用户级 PATH 那一格，挨着上面那个 rc 围栏块放 ——
-    //    两者是**同一个问题的两条路**（「怎么让这台机器上敲得到 ccm」：
-    //    POSIX 走 rc 围栏块，Windows 走用户级 PATH），分开放会让人以为只有一条。
+    // 〔AL1 · 2026-09-24〕这里原来挂着「按账号生成命令」那一块（`K-R49`）。它搬去了机器页
+    // 「本机 → 工具 → 别名」，并且不再是「账号表的投影」—— 别名清单归用户（`设计/71 §8`）。
+    // 🔴 `K-R135`（`R85`）：用户级 PATH 那一格 —— 与「别名」那一块里的 rc 别名块是
+    //    **同一个问题的两条路**（「怎么让这台机器上敲得到 ccm」：POSIX 走 rc 别名块，
+    //    Windows 走用户级 PATH）。〔AL1〕别名块搬去机器页之后它仍留在这里，那一格的文案说清了另一条路在哪。
     // ⚠ **同样挂在 `this.body` 上，不是挂进 `box`（`.accounts-local`）** ——
     //    理由与上面那一块逐字相同：`NF1bD2` 断的是「`.accounts-local` 子树里的汉字
     //    全部来自 `LOCAL_ACCOUNTS_COPY`」，而这一块的文案有自己的家。
@@ -1018,20 +1008,9 @@ export class AccountsSection {
     });
     addForm.append(nameIn, credIn, addBtn, addErr);
     box.appendChild(addForm);
-    // 🔴 `K-R49` 第一跳的另一半：**「加账号」那个按钮旁边要说出下一步。**
-    // 那条终端跑完之后用户回到这里点「刷新」，而在此之前没有任何东西告诉他
-    //「命令」这件事存在。这一行随名字实时变，说的是**他这次要加的那个号**。
-    const nextCmd = document.createElement("div");
-    nextCmd.className = "accounts-maint-nextcmd";
-    const syncNextCmd = (): void => {
-      const alias = suggestAliasName(nameIn.value.trim());
-      nextCmd.textContent = alias
-        ? `加完之后到「设置 → 行为 → 按账号生成命令」里一键写入 —— 这个号的命令会叫 ${alias}。`
-        : "加完之后到「设置 → 行为 → 按账号生成命令」里给每个号一键生成对应命令。";
-    };
-    nameIn.addEventListener("input", syncNextCmd);
-    syncNextCmd();
-    box.appendChild(nextCmd);
+    // 〔AL1 · 2026-09-24〕`设计/70` 第三刀步 12：这里原来是一行散文导航（「加完之后到『设置 → 行为 →
+    // 按账号生成命令』里一键写入」）。`70 §3.1` 逐字：「用一句散文告诉用户去另一个顶层页找一个功能，
+    // 本身就是 IA 失败的自证」—— 别名并进机器页之后它不再需要，删掉。
     syncAdd();
 
     // 自检 / 补链。
@@ -1079,7 +1058,7 @@ export class AccountsSection {
    * 的红线**」，而那句话今天只对**这一块**成立，别拿它去撤别处的活：
    * - 仍然成立的是「**不问自取**」那一半：没有用户当次手势就写他的 shell 配置，禁。
    * - 用户 09-10 逐字要的是反过来的事：「**我现在添加了一个账号但是没法直接添加命令,
-   *   还得手动去改**」⇒ 按账号生成命令那一块（`buildAccountAliasBlock`）**会真落盘**，
+   *   还得手动去改**」⇒ 按账号生成命令那一块（`buildAccountAliasBlock`〔散文墓碑〕，〔AL1〕今天是机器页的「别名」）**会真落盘**，
    *   而它把代价压到最小：重写的是 cc-monitor 自己那份文件，用户的 rc 最多多一行 `source`，
    *   且那份 rc 由他在下拉里自己选。整条推理住 `launcher-diagnostics.ts` 的模块头注。
    * - **这一块为什么仍然不代写**：它抓的是**远端** `cc-acct-iso shellinit` 的输出，

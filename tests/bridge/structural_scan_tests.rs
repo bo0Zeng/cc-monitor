@@ -2777,6 +2777,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    ⚠ `sftp.rs` 那块墓碑点的 `rollback_note` 不进本表：死名普查不把它算作死名
         //    （它是 `…_matches_what_actually_happened` 的前缀），标记只记在 `REGISTERED` 里。
         ("src/bridge/src/fenced_block.rs", "find_block_range", 1),
+        // 〔AL1 · 2026-09-24 · 子步 4〕`write_account_aliases`（`lines` ＋ `dryRun`）退役，拆成两跳 ＋ 读回口。
+        ("tests/bridge/parity_ledger_tests.rs", "write_account_aliases", 2),
+        ("tests/bridge/account_aliases_tests.rs", "validate_alias_line", 1),
+        ("tests/generated-boundary-guard.vitest.ts", "write_account_aliases", 1),
+        ("tests/settings/panel-deferred-io.vitest.ts", "write_account_aliases", 1),
         (
             "tests/bridge/sftp_tests.rs",
             "rollback_note_matches_what_actually_happened",
@@ -3420,6 +3425,13 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔AL1 · 2026-09-24〕规则收成一份那一拍新贴的两块墓碑（本机配对 helper · 远端回滚措辞 helper）。
         ("src/bridge/src/fenced_block.rs", 1),
         ("src/bridge/src/sftp.rs", 1),
+        // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
+        // 测试里「形状围栏」那一条（`validate_alias_line`）· 生成物表里退役的 `AccountAliasReport.ts` ·
+        // 延后 I/O 登记表里退役的 `write_account_aliases`，各一块。
+        ("src/bridge/src/account_aliases.rs", 1),
+        ("tests/bridge/account_aliases_tests.rs", 1),
+        ("tests/generated-boundary-guard.vitest.ts", 1),
+        ("tests/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/wire.rs", 1),
         ("src/bridge/README.md", 1),
         ("src/bridge/build.rs", 1),
@@ -3445,7 +3457,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/doc/ARCHITECTURE.md", 1),
         ("src/doc/INVARIANTS.md", 4),
         ("src/doc/IPC-PROTOCOL.md", 4),
-        ("src/settings/accounts-section.ts", 1),
+        // 〔AL1 · 2026-09-24〕+1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
+        ("src/settings/accounts-section.ts", 2),
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),
         ("tests/backend/readonly_guard.rs", 2),
@@ -3478,7 +3491,8 @@ fn every_prose_tombstone_mark_is_registered() {
         // 🔴〔本机侧退役 2026-09-23〕`parent_dir` 只剩一个算法 ⇒ 那条判据改了名
         //   （旧名尾巴上那半判的是本机那一支）。旧名逐字留着说明「它为什么改了」。
         ("tests/bridge/filewin/source_tests.rs", 1),
-        ("tests/bridge/parity_ledger_tests.rs", 5),
+        // 〔AL1 · 2026-09-24〕+2：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行。
+        ("tests/bridge/parity_ledger_tests.rs", 7),
         ("tests/bridge/plugin_class_registry_tests.rs", 2),
         ("tests/bridge/polling_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。

@@ -1253,10 +1253,6 @@ pub fn run() {
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走中转」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             relay_routing_for,
-            // K-R49：加了账号就把那条命令也落下来。写的是 monitor 自己那份别名文件
-            // （`~/.cc-monitor/account-aliases.sh`，整份重写）；用户的 rc 最多多一行 `source`，
-            // 而且那份 rc 由界面上的人**选**，本条不猜。
-            write_account_aliases,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
             // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
             aliases_render,
@@ -1814,27 +1810,6 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 #[tauri::command]
 fn write_relay_credentials_key(key: String, config_dir: String) -> Result<(), String> {
     creds_store::write_key(&config_dir, &key)
-}
-
-/// `K-R49`：**加了账号，那条命令也该跟着有。**
-///
-/// 前端递过来的是 `buildAliasLine`（全仓唯一那份别名生成器）吐出来的那几行，
-/// 本条只负责**落盘**：整份重写 `~/.cc-monitor/account-aliases.sh`，
-/// 可选地把**一行** `source` 装进用户**自己指定**的那份 rc。
-///
-/// 🔴 三件事在 `account_aliases` 那一侧，别在这里重写：
-/// ① 每一行都要过形状围栏（写进去的是会被 shell 执行的代码）；
-/// ② `dry_run` 时一个字节都不写 —— 界面拿它做预览；
-/// ③ home 由这里解析、由那边当参数收 —— 那边的测试用临时目录当 home，
-///    结构上碰不到真实家目录。
-#[tauri::command]
-fn write_account_aliases(
-    lines: Vec<String>,
-    rc_path: Option<String>,
-    dry_run: bool,
-) -> Result<account_aliases::AccountAliasReport, String> {
-    let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何文件".to_string())?;
-    account_aliases::apply(&home, &lines, rc_path.as_deref(), dry_run)
 }
 
 /// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。

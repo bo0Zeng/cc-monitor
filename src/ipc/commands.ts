@@ -98,7 +98,6 @@ import type {
   SendIntoResponse,
 } from "../launch-cli-wire.ts";
 
-import type { AccountAliasReport } from "../generated/AccountAliasReport";
 import type { Alias } from "../generated/Alias";
 import type { AliasInstallReport } from "../generated/AliasInstallReport";
 import type { AliasListing } from "../generated/AliasListing";
@@ -376,24 +375,6 @@ export const commands = {
 
   write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>
     invoke<void>("write_skill_file", args),
-
-  /**
-   * `K-R49`：**加了账号，那条命令也该跟着有。**
-   *
-   * `lines` 是 `buildAliasLine`（全仓唯一那份别名生成器）吐出来的那几行，后端只负责落盘：
-   * 整份重写 `~/.cc-monitor/account-aliases.sh`（**monitor 自己的文件**，不是用户的 rc）。
-   *
-   * ⚠ `rcPath` 是**可选**的，而且**没有默认值** —— 用户的 shell 配置是哪一份
-   * （`.bashrc` / `.zshrc` / …）只能由界面上的人选，猜一个写进去是最坏的那条路。
-   * 不给它就只写生成文件，用户的 shell 配置一个字节不动。
-   *
-   * ⚠ `dryRun: true` 时后端**一个字节都不写**，返回的是同一份报告 —— 界面拿它做预览。
-   */
-  write_account_aliases: (args: {
-    lines: string[];
-    rcPath?: string | null;
-    dryRun: boolean;
-  }) => invoke<AccountAliasReport>("write_account_aliases", args),
 
   /**
    * 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。
