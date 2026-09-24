@@ -32,7 +32,10 @@
     "panePreview.body.empty": {
       "kind": "body",
       "zh": "（画面为空）",
-      "args": []
+      "args": [],
+      "waive": {
+        "C-L4": "显示在终端画面框里：括号把它和真画面区分开 —— 真画面里可能恰好就有「画面为空」这四个字。"
+      }
     },
     "panePreview.capture.failed": {
       "kind": "error",

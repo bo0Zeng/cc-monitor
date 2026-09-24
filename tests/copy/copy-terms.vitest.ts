@@ -26,19 +26,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { REPO_ROOT } from "../test-support/repo-root.ts";
-import { loadTerms, scannerOf, type Term } from "./copy-support.ts";
+import { censusList, loadTerms, scannerOf, type Term } from "./copy-support.ts";
 
 const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "K-T68-A1-outward-copy-census.py");
 const LEDGER = resolve(REPO_ROOT, "tests", "evidence", "CP1-copy-verdicts.tsv");
-
-/** 普查量具里一张词表的名字（`("名字", re.compile(...))` 那一列）。 */
-export function censusList(py: string, name: string): string[] {
-  const start = py.indexOf(`\n${name} = [`);
-  if (start < 0) return [];
-  const end = py.indexOf("\n]", start);
-  const body = py.slice(start, end < 0 ? undefined : end);
-  return [...body.matchAll(/^\s*\("([^"]+)",\s*re\.compile\(/gm)].map((m) => m[1]);
-}
 
 /** 台账依据列里的 `新词:` 标记。标记止于空白或中文标点 / 括号（与 CP1 头注第五段同口径）。 */
 export function ledgerMarkers(tsv: string): Set<string> {

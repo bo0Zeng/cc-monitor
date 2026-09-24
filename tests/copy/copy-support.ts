@@ -53,3 +53,32 @@ export function r1Hits(text: string, terms: Term[]): string[] {
   }
   return out;
 }
+
+/** 普查量具里一张词表的名字（`("名字", re.compile(...))` 那一列）。 */
+export function censusList(py: string, name: string): string[] {
+  const start = py.indexOf(`\n${name} = [`);
+  if (start < 0) return [];
+  const end = py.indexOf("\n]", start);
+  const body = py.slice(start, end < 0 ? undefined : end);
+  return [...body.matchAll(/^\s*\("([^"]+)",\s*re\.compile\(/gm)].map((m) => m[1]);
+}
+
+export interface Entry {
+  kind: string;
+  zh: string;
+  args: string[];
+  waive?: Record<string, string>;
+}
+export type Table = Record<string, Entry>;
+
+export function loadTable(path = TABLE_PATH): Table {
+  return (JSON.parse(readFileSync(path, "utf8")) as { entries?: Table }).entries ?? {};
+}
+
+/** 具名占位符。 */
+export const NAMED_PH = /\{([A-Za-z][A-Za-z0-9]*)\}/g;
+
+/** 剥掉插值点之后的「人话」—— 规矩都对它跑（占位符名是标识符，不上界面）。 */
+export function speech(zh: string): string {
+  return zh.replace(NAMED_PH, "");
+}
