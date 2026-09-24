@@ -511,6 +511,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--launch",
     "--list-accounts",
     "--list-subagents",
+    // 〔`设计/10 §2.2b ⑥` · SE1〕大纲的数据源：「你说过的话」清单。**是新子命令** ⇒
+    // `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--list-user-inputs",
     "--list-projects",
     "--list-sessions",
     "--ping",
@@ -1312,6 +1315,8 @@ pub const STREAM_FLAGS: &[&str] = &["--with-bg", "--tail-only", "--with-rbind-to
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--accts-dir",
     "--after-ms",
+    // 〔SE1〕`--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
+    "--from",
     "--include-tools",
     // 〔`设计/10` 骨架 · 子步 1〕`--read-session-from-offset` 的两个选项（出骨架索引 / 右端收口）。
     // 刻意是**选项**不是新子命令：新子命令会逼出 `BUILD_ID` bump，本轮不许 —— 理由与老后端上的

@@ -45,6 +45,55 @@ import { expect, vi } from "vitest";
 export const viewerRig: { chunk: unknown[]; index?: unknown } = { chunk: [] };
 
 /**
+ * 〔SE1〕**后端那份「你说过的话」清单的替身**（`list_user_inputs`）。
+ *
+ * 判定只住后端（Rust 那侧有自己的判据）⇒ 这里**不判**：`entries` 由用例**逐条写明**
+ * 「后端这一刻说文件里有哪几条、按什么顺序」。它只模仿后端的**增量语义**：
+ * 偏移用「条数」代替字节 —— `fromOffset = k` ⇒ 回第 k 条起的那一截、`end` = 总条数；
+ * `k` 超过总条数 ⇒ 要不到（后端「越过 EOF」那一形：文件被截断/重写 ⇒ monitor 报 `transport`）。
+ * `available: false` ⇒ 整个要不到，种类 = `failure`（缺省 `oldBackend`：结构性），原因原样带回。
+ * `failNext = n` ⇒ 接下来 n 趟**瞬时**失败（`transport`），之后照常 —— 模仿 ssh 抖一下。
+ */
+export const outlineBackend: {
+  entries: { uuid: string; excerpt: string; timestamp: string }[];
+  available: boolean;
+  reason: string;
+  failure: "oldBackend" | "truncated" | "transport";
+  failNext: number;
+} = { entries: [], available: true, reason: "", failure: "oldBackend", failNext: 0 };
+
+/** 按上面那份替身回一趟 `list_user_inputs`。 */
+export function answerListUserInputs(args: { fromOffset: number }): unknown {
+  const from = args.fromOffset;
+  const all = outlineBackend.entries;
+  const no = (failure: string, reason: string): unknown => ({
+    available: false,
+    reason,
+    failure,
+    from,
+    end: from,
+    entries: [],
+  });
+  if (outlineBackend.failNext > 0) {
+    outlineBackend.failNext--;
+    return no("transport", "连不上");
+  }
+  if (!outlineBackend.available) return no(outlineBackend.failure, outlineBackend.reason);
+  if (from > all.length) return no("transport", "越过 EOF");
+  return { available: true, from, end: all.length, entries: all.slice(from) };
+}
+
+/** 造一条后端清单项（摘要默认就是 uuid，判据要比对文字时再给）。 */
+export function outlineEntry(uuid: string, excerpt = uuid): { uuid: string; excerpt: string; timestamp: string } {
+  return { uuid, excerpt, timestamp: "" };
+}
+
+/** 等在途的 `list_user_inputs`（及它合并出来的补一趟）都落地。 */
+export async function settleOutline(): Promise<void> {
+  for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+}
+
+/**
  * `@tauri-apps/api/core` 的替身。
  *
  * ⚠ 调用方必须走**异步动态 import** 的工厂：
@@ -61,6 +110,7 @@ export function tauriCoreMock(): Record<string, unknown> {
       onmessage: ((v: unknown) => void) | null = null;
     },
     invoke: vi.fn(async (cmd: string, args: Record<string, unknown>) => {
+      if (cmd === "list_user_inputs") return answerListUserInputs(args as { fromOffset: number });
       if (cmd === "stream_read_session_jsonl") {
         const ch = args.onChunk as { onmessage?: ((v: unknown) => void) | null };
         ch.onmessage?.(viewerRig.chunk);
@@ -156,6 +206,11 @@ export function installViewerRig(): ViewerRigHandles {
   document.body.replaceChildren();
   viewerRig.chunk = [];
   viewerRig.index = undefined;
+  outlineBackend.entries = [];
+  outlineBackend.available = true;
+  outlineBackend.reason = "";
+  outlineBackend.failure = "oldBackend";
+  outlineBackend.failNext = 0;
   let queue: FrameRequestCallback[] = [];
   vi.stubGlobal(
     "ResizeObserver",

@@ -61,6 +61,11 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
             },
             Err(e) => Err(e),
         },
+        // 〔`设计/10 §2.2b ⑥` · SE1〕大纲的数据源：「你说过的话」清单（判定住 `observe::user_inputs`）。
+        Some("--list-user-inputs") => match parse_user_inputs_args(&args[1..]) {
+            Ok((from, p)) => list_user_inputs(agent_home, p, from),
+            Err(e) => Err(e),
+        },
         Some(other) => Err(format!("unknown argument: {other}")),
         None => Err("no query argument".into()),
     };
@@ -456,6 +461,64 @@ pub(crate) fn parse_from_offset_args(
         ));
     }
     Ok((opts, pos))
+}
+
+/// `--list-user-inputs [--from <offset>] <jsonl_path>` 的 argv：一个位置参数 ＋ 一个可选的 `--from`。
+///
+/// 选项在位置参数前后都认；**monitor 一律写在前面**（`session_outline::user_inputs_argv`
+/// 有判据钉着，与骨架索引 `index_argv` 同一条纪律）。未知的 `--选项`、多余的位置参数都**报错**，
+/// 不静默忽略 —— 静默忽略会让调用方拿到一份形状不对的输出还以为成功了。
+pub(crate) fn parse_user_inputs_args(rest: &[String]) -> Result<(u64, &String), String> {
+    let mut from: u64 = 0;
+    let mut pos: Vec<&String> = Vec::new();
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--from" => {
+                from = it
+                    .next()
+                    .ok_or("--from requires <offset> (byte offset)")?
+                    .parse::<u64>()
+                    .map_err(|_| "--from <offset>: offset must be a number")?;
+            }
+            other if other.starts_with("--") => {
+                return Err(format!("--list-user-inputs: unknown option {other}"))
+            }
+            _ => pos.push(a),
+        }
+    }
+    match pos.as_slice() {
+        [p] => Ok((from, *p)),
+        _ => Err(format!(
+            "--list-user-inputs takes exactly one <jsonl_path>, got {} positional arguments",
+            pos.len()
+        )),
+    }
+}
+
+/// `--list-user-inputs`：从字节 `from` 起（冷启动 0 / 增量传上次的 `end`）出「你说过的话」清单。
+/// 形状与口径见 [`crate::observe::user_inputs`] 的头注。
+///
+/// `from` 超过文件长度 ⇒ **报错**（文件被截断或重写过 —— 调用方手上的 `end` 已经不指向这份文件），
+/// 不回一份空清单假装「没有新的」。路径守卫与 `--read-session` 同一套。
+fn list_user_inputs(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<(), String> {
+    use std::io::{Seek, SeekFrom};
+    let target = validate_session_path(agent_home, jsonl_path)?;
+    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let len = f.metadata().map_err(|e| format!("stat failed: {e}"))?.len();
+    if from > len {
+        return Err(format!(
+            "--from {from} is past EOF ({len} bytes): file was truncated or rewritten"
+        ));
+    }
+    f.seek(SeekFrom::Start(from))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    crate::observe::user_inputs::write_user_inputs(std::io::BufReader::new(f), from, &mut out)
+        .map_err(|e| format!("stream failed: {e}"))?;
+    out.flush().map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
 }
 
 /// `--read-session-from-offset <path> <offset> --index [--until <end>]`：**骨架索引**。
@@ -973,3 +1036,7 @@ mod kr83_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/history_query_index_tests.rs"]
 mod index_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/history_query_user_inputs_tests.rs"]
+mod user_inputs_tests;
