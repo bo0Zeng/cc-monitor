@@ -1236,7 +1236,7 @@ pub enum LaunchAccount {
         /// # ⚠ 它**不是**从 `config_dir` 推出来的
         ///
         /// 推得出一个像样的名字（`cc-acct-iso` 的布局是 `~/.claude-alt/<名字>`，
-        /// [`relay_account_id_of_dir`] 就是那么推的），**但那两处的失效方向相反**：
+        /// [`apikey_account_id_of_dir`] 就是那么推的），**但那两处的失效方向相反**：
         /// 推错一个中转 id ⇒ 表里查不到 ⇒ 逐字节走旧路（保守）；推错一个 `--account`
         /// ⇒ `ccm` 当场 `die`（`src/backend/control/ccm/argv.rs` 认不出这个名字 = 退出码 2）
         /// ⇒ **一次本来能起的会话变成一条报错**。⇒ 这一格只收**调用方说得出**的名字。
@@ -1519,7 +1519,7 @@ fn build_local_posix_command(
 #[cfg(not(windows))]
 const NO_TMUX_NAME: &str = "没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸";
 
-/// 🔴 `K-R55`（09-11）：**本机 ccm 探测的取值口** —— 与 [`RelayFactSources`] 是同一条缝的形状。
+/// 🔴 `K-R55`（09-11）：**本机 ccm 探测的取值口** —— 与 [`InjectFactSources`] 是同一条缝的形状。
 ///
 /// # 它为什么非有不可（不是「为了好看」，是一条判据今天买不到它要的东西）
 ///
@@ -1543,9 +1543,9 @@ const NO_TMUX_NAME: &str = "没有 tmux 会话名（前端未传）—— 名字
 /// - **探测自己答得对不对**：那是 `ccm_probe` 自己那几条判据的事（本缝只管「问不问」）。
 /// - **生产上插进这条缝的是不是它**：由
 ///   `the_local_launch_really_asks_the_production_ccm_probe` 按**函数地址**对拍，
-///   不是按文本 —— 理由与 [`PRODUCTION_RELAY_FACTS`] 那一条相同。
+///   不是按文本 —— 理由与 [`PRODUCTION_INJECT_FACTS`] 那一条相同。
 /// - **谁绕开这条缝直接调 [`crate::ccm_probe::probe_local_ccm`]**：今天没有人群闸数它
-///   （`RelayFactSources` 那三个取值口有一道，住 `payload.rs`）。**登记，不假装钉住了。**
+///   （`InjectFactSources` 那三个取值口有一道，住 `payload.rs`）。**登记，不假装钉住了。**
 #[cfg(not(windows))]
 #[derive(Clone, Copy)]
 pub(crate) struct CcmProbeSource(pub(crate) fn() -> crate::ccm_probe::CcmProbeResult);
@@ -1976,26 +1976,26 @@ fn launch_local(
 /// - [`LaunchAccount::Base`]（账号 0）⇒ `None`。**说不出 id 就不注入** ——
 ///   账号 0 是「显式不注入 `CLAUDE_CONFIG_DIR`」那一档，它在 manifest 里没有目录名。
 /// - 参数缺席（调用方没表态）⇒ `None`，同上。
-fn relay_account_id(account: Option<&LaunchAccount>) -> Option<String> {
+fn apikey_account_id(account: Option<&LaunchAccount>) -> Option<String> {
     match account {
-        Some(LaunchAccount::Named { config_dir, .. }) => relay_account_id_of_dir(config_dir),
+        Some(LaunchAccount::Named { config_dir, .. }) => apikey_account_id_of_dir(config_dir),
         _ => None,
     }
 }
 
 /// 上一条的**纯派生半** —— 「一个 configDir 对应apikey 表里哪个 id」。
 ///
-/// ★ 抽出来的理由是**只许有一份**：界面那一侧（徽章要显「这个号走不走中转」）问的是
+/// ★ 抽出来的理由是**只许有一份**：界面那一侧（徽章要显「这个号走不走 apikey 端点改写」）问的是
 /// **同一个问题**，而它手上也只有 configDir。两边各写一个 basename 规则，
-/// 漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。
+/// 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
 ///
 /// ⚠⚠ **界面那一侧今天还没有人调它** —— 那条把这个事实端给前端的路（一条只答本机的
 /// tauri 命令）**本轮做到一半退回了**：新注册一条命令会让 `parity_ledger.rs` 的
 /// `every_tauri_command_is_declared_in_the_ledger` 当场红（实测报文逐字：
-/// 「这些命令已注册但**没进平价对账表**：["relay_routing_for"]」），
+/// 「这些命令已注册但**没进平价对账表**：["apikey_routing_for"]」），
 /// 而那个文件**不在 `K-H2b` 的写区**。⇒ 本函数今天只有起会话那一侧一个调用方；
 /// 它被抽出来是为了「接的时候只有一份规则」，**不是**已经接上了。经过住件文件 `§4`。
-pub(crate) fn relay_account_id_of_dir(config_dir: &str) -> Option<String> {
+pub(crate) fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
     std::path::Path::new(config_dir.trim())
         .file_name()
         .and_then(|s| s.to_str())
@@ -2004,17 +2004,35 @@ pub(crate) fn relay_account_id_of_dir(config_dir: &str) -> Option<String> {
 
 /// `KH2B7` 的**纯派生半**：给一批 configDir 与一张 id 表，答「哪几个走中转」。
 ///
-/// ★ 抽成纯函数的理由与本模块另外两次一样：`relay_rows()` 要读盘、`relay_running()` 要读进程状态，
+/// ★ 抽成纯函数的理由与本模块另外两次一样：`apikey_rows()` 要读盘、`relay_running()` 要读进程状态，
 /// 而**这条规则本身**（怎么从 configDir 推 id、怎么和表比）不该只能对着真实的家目录跑。
 ///
 /// ⚠ **它答的是「表里有没有这一行」，不是「这个 key 能不能用」** —— 后者要到 claude 那边才知道。
 /// ⚠ 也不是「这次拉起会不会真的注入」：那还要过 `relay_running` 那一格（`apikey_endpoint_for`）。
-pub(crate) fn relay_routed_subset(config_dirs: &[String], rows: &[String]) -> Vec<String> {
+///
+/// 🔴 〔条 49 · `设计/90 §1.2`〕「有行」说的是 **(agent, 账号) 这一对**：apikey 凭据文件里的行
+/// 只属于 `payload::APIKEY_TABLE_AGENT` 那一家。先前本函数只比账号 id、**不看 agent** ⇒
+/// 起会话的若是别家（它在表里一行都没有），界面会说「这个号走 apikey 端点改写」而起会话那一侧不注入。
+/// ⇒ `agent` 不是那一家 ⇒ 空集，与 `payload::apikey_endpoint_for` 的判法逐格同答。
+pub(crate) fn apikey_routed_subset(
+    config_dirs: &[String],
+    rows: &[String],
+    agent: &str,
+) -> Vec<String> {
+    if agent != crate::backend::control::payload::APIKEY_TABLE_AGENT {
+        return Vec::new();
+    }
     config_dirs
         .iter()
-        .filter(|d| relay_account_id_of_dir(d).is_some_and(|id| rows.iter().any(|r| *r == id)))
+        .filter(|d| apikey_account_id_of_dir(d).is_some_and(|id| rows.iter().any(|r| *r == id)))
         .cloned()
         .collect()
+}
+
+/// 起本机会话时报给中转的那个 agent 名（适配器的 `id()`）。**起会话那一侧与界面那一侧共用这一处**，
+/// 两边问的是同一件事（「这一家的号走不走 apikey 端点改写」）⇒ 不许各自去问适配层。
+pub(crate) fn launch_agent_id() -> &'static str {
+    crate::adapter::active().id()
 }
 
 /// apikey 凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
@@ -2022,11 +2040,11 @@ pub(crate) fn relay_routed_subset(config_dirs: &[String], rows: &[String]) -> Ve
 /// ⚠ 「读不到」与「一条都没配」在这里**故意同一处置**：两者的正确行为都是
 /// 「照旧走官方直连」，而把「读文件失败」变成一次起会话失败，是拿一个**能用的**状态
 /// 去换一条错误提示。⇒ 只在日志里留一行。
-pub(crate) fn relay_rows() -> Vec<String> {
+pub(crate) fn apikey_rows() -> Vec<String> {
     let Some(p) = crate::creds_store::resolve_path() else {
         return Vec::new();
     };
-    relay_rows_at(&p)
+    apikey_rows_at(&p)
 }
 
 /// 上一条剥掉「路径从哪来」之后的那一半〔`D1 阻-6`〕。
@@ -2038,14 +2056,14 @@ pub(crate) fn relay_rows() -> Vec<String> {
 ///
 /// # ⚠ 它与中转那侧的人群**不完全一致**，差在哪要写清楚
 ///
-/// 中转装表时会把两类行**丢出表**（`relay::table::build`）：① 账号 id 当不了路由段；
+/// 中转装表时会把两类行**丢出表**（`accounts::table::build`）：① 账号 id 当不了路由段；
 /// ② `base_url` 解析不了。本函数**只筛得掉第 ①** 类（`payload::relay_segment_is_safe`
 /// 与 `route::segment_is_safe` 是同一条规则，由 `payload.rs` 那边的头注登记着）。
 /// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住后端那一侧、monitor 够不着
 /// （单向依赖）。
 /// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而中转那侧 404。
 /// **如实登记，不假装两侧人群相等。**〔`D1` 点名的那条同族，处置是「筛掉能筛的、写清剩下的」。〕
-pub(crate) fn relay_rows_at(path: &std::path::Path) -> Vec<String> {
+pub(crate) fn apikey_rows_at(path: &std::path::Path) -> Vec<String> {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return Vec::new();
     };
@@ -2062,19 +2080,30 @@ pub(crate) fn relay_rows_at(path: &std::path::Path) -> Vec<String> {
     }
 }
 
-/// 纯函数半：给定「账号 id / 表里有哪几行 / 中转在不在」，产出要拼上去的前缀。
+/// 纯函数半：给定「账号 id / `/t/` 标签 / 表里有哪几行 / 中转在不在 / 全量注入开关」，产出要拼上去的前缀。
 ///
 /// 空串 = **不走中转**（逐字节旧路）。`Err` = 该走但走不了（`KH2B2`②，出声不静默）。
+/// 判断本身住 `payload::relay_endpoint_for`（`设计/20 §3.2` 那张表）；本函数只挑平台形态。
 fn relay_prefix_for(
     account_id: Option<&str>,
+    passthrough_label: Option<&str>,
     rows: &[String],
     running: bool,
     sid: Option<&str>,
     windows: bool,
+    all_sessions: bool,
 ) -> Result<String, String> {
-    let agent = crate::adapter::active().id();
-    let url = crate::backend::control::payload::apikey_endpoint_for(
-        account_id, rows, running, sid, agent,
+    let agent = launch_agent_id();
+    let url = crate::backend::control::payload::relay_endpoint_for(
+        &crate::backend::control::payload::RelayAsk {
+            account_id,
+            passthrough_label,
+            rows,
+            running,
+            sid,
+            agent,
+            all_sessions,
+        },
     )?;
     Ok(match url {
         None => String::new(),
@@ -2108,35 +2137,35 @@ fn relay_prefix_for(
 ///
 /// 先前这里逐字写着「这两个取值口的**生产消费方恰好 2**」，并把那个 2 当成了闸。
 /// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、**绕开这条缝**直接调
-/// `history::relay_rows()` / `local_backend_host::relay_running()` ⇒ **全量门禁四个数与干净树逐字相同**。
+/// `history::apikey_rows()` / `local_backend_host::relay_running()` ⇒ **全量门禁四个数与干净树逐字相同**。
 /// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
 /// ★ 定性（PM `§8 裁四`）：**治一个「今天数出来的 N」的过程中，长出了一个新的「今天数出来的 N」。**
 ///
 /// **今天数着这件事的是一道闸**，住 `backend/control/payload.rs::
 /// `nobody_reaches_the_relay_take_points_without_going_through_the_seam`（**目录扫描**
 /// `src/bridge/src`，不是手写名单）。它钉的是**零调用点**：
-/// - `relay_rows()` / `relay_running()` 的**调用形**在生产段全树**各恰好 1 处**（就是它们自己的定义行）；
-/// - 裸标识符 `relay_rows` / `relay_running` 各恰好 **2** 处（定义 + 本结构这一处）；
+/// - `apikey_rows()` / `relay_running()` 的**调用形**在生产段全树**各恰好 1 处**（就是它们自己的定义行）；
+/// - 裸标识符 `apikey_rows` / `relay_running` 各恰好 **2** 处（定义 + 本结构这一处）；
 /// - [`platform_is_windows`] **不再数总数**〔ccbus-win 09-10〕：它从今天起有了第二类消费方
-///   （`cc_bus::resolve_bash` 只要「是不是 Windows」，走缝要顺带付 `relay_rows()` 读文件
+///   （`cc_bus::resolve_bash` 只要「是不是 Windows」，走缝要顺带付 `apikey_rows()` 读文件
 ///   与 `relay_running()` 问后端两笔钱），⇒ 那一格换成**点名住址**（`PLATFORM_TAKE_SITES`），
 ///   函数指针那一半改钉**差值**（裸标识符 − 调用形 == 1 = 只有本结构持有它）。
 ///   ★ 换制的理由是数个数会**抵消**：「加一处绕缝」＋「删一处正当」总数不变 ⇒ 一声不吭。
 ///   PM 09-10 在沙箱里现打过这一刀，住址制两条都逮得住（读数住 `audits/ccbus-win-PM.md`）。
 ///
 /// ⇒ 谁绕开这条缝直接调那三个取值口、或把它们的函数指针复制到第二个地方，**当场红**。
-/// 今天的两个生产消费方（起会话侧 [`relay_prefix_for_launch`] · 界面侧 `crate::relay_routing_for`）
+/// 今天的两个生产消费方（起会话侧 [`relay_prefix_for_launch`] · 界面侧 `crate::apikey_routing_for`）
 /// 各有一条行为判据；**闸不数它们有几个**，闸数的是「有没有人绕过去」。
 ///
 /// # 它买不到什么（如实写，别读宽）
 ///
 /// 本结构只管「**问不问**」与「**答案用不用**」。「那三个取值口自己答得对不对」由它们各自的
-/// 判据买（[`relay_rows_at`] 那条读真文件的 · `local_backend_host::relay_running_really_reads_the_handle_table`）。
+/// 判据买（[`apikey_rows_at`] 那条读真文件的 · `local_backend_host::relay_running_really_reads_the_handle_table`）。
 /// 而「生产上这条缝里插的**就是**那三个取值口」由 `the_production_relay_facts_are_those_two_take_points`
 /// 按**函数地址**对拍 —— 不是按文本。
 ///
 /// ⚠ **仍然没有判据的那两格**（`D6 阻-4` / PM `§8 裁六` 订正过这两栏，别再照旧读）：
-/// ㈠ [`relay_rows`] 自己那三行胶水（`creds_store::resolve_path()` + [`relay_rows_at`]）。
+/// ㈠ [`apikey_rows`] 自己那三行胶水（`creds_store::resolve_path()` + [`apikey_rows_at`]）。
 ///    `D6` 的刀 `Xa` 把它掏空成 `Vec::new()` ⇒ **全绿、门禁四个数与干净树逐字相同**。
 ///    🔴 **先前这里写的理由（「要动真实家目录，红线不许 ⇒ 做不到」）是假的，解锁条件（「要动 `paths.rs`」）也是假的**：
 ///    `paths.rs` 从 `dirs::home_dir()` 拼路径 ⇒ 在 Linux 上它读的就是 `$HOME`，
@@ -2162,8 +2191,8 @@ fn relay_prefix_for(
 ///    `the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` 的
 ///    「PowerShell 那一格」当场红（`D6` 的刀 `Xb` 打的正是调用点那一格）。
 #[derive(Clone, Copy)]
-pub(crate) struct RelayFactSources {
-    /// 「这个号在不在apikey 表里」——生产恒指 [`relay_rows`]。
+pub(crate) struct InjectFactSources {
+    /// 「这个号在不在apikey 表里」——生产恒指 [`apikey_rows`]。
     pub(crate) rows: fn() -> Vec<String>,
     /// 「中转在不在跑」——生产恒指 [`crate::local_backend_host::relay_running`]。
     pub(crate) running: fn() -> bool,
@@ -2175,65 +2204,94 @@ pub(crate) struct RelayFactSources {
     /// **Windows 上中转前缀渲染成 POSIX 形态**（`export …` 塞进 PowerShell 串）⇒ 注入整个失效。
     /// ⇒ 收进本结构之后它成了**可翻的一维**：判据喂 `|| true` 就该拿到 PowerShell 形态。
     pub(crate) windows: fn() -> bool,
+    /// 🔴 「全量注入开关开没开」——生产恒指 [`relay_all_sessions_switch`]〔`设计/20 §7` 步 4〕。
+    ///
+    /// 进缝的理由与 `windows` 那一格同一条：它在生产上是一次环境读取，写在调用点上
+    /// 判据就翻不动它 ⇒ 「开关关着时一个字节都不变 / 开着时订阅号走 `/t/`」两格都量不到。
+    pub(crate) all_sessions: fn() -> bool,
 }
+
+/// 全量注入开关的生产取值口：环境变量 [`RELAY_ALL_SESSIONS_ENV`] 恰好是 `1` 才算开。
+///
+/// # 为什么是一个环境变量、为什么默认关（`设计/20 §7` 步 4 逐字「必须带开关，默认关；真机验过再默认开」）
+///
+/// - **默认关**：没设 / 设成别的值 ⇒ 关 ⇒ 起会话的命令逐字节与本件之前相同。
+/// - **环境变量**：真机验证那一趟要能不重编就翻（`CCM_NO_DEVTOOLS` / `CCM_CJK_FONT` 同形）；
+///   它在 monitor 进程起来时读一次环境（每次拉起都读，不缓存 —— 读一次环境的钱可以忽略）。
+/// - ⚠ 它**不是**设置页上的一个开关：那一页不在本件的写区，而「真机验过再默认开」那一天
+///   要做的是把默认值翻过来，不是加一个界面。
+pub(crate) fn relay_all_sessions_switch() -> bool {
+    std::env::var(RELAY_ALL_SESSIONS_ENV).is_ok_and(|v| v == "1")
+}
+
+/// 全量注入开关的环境变量名。
+pub(crate) const RELAY_ALL_SESSIONS_ENV: &str = "CCM_RELAY_ALL_SESSIONS";
 
 /// 「这台机是不是 Windows」的生产取值口。**只有这一处**说得出这句话。
 ///
 /// ⚠ 抽成函数不是为了好看：`cfg!(windows)` 写在调用点上时它是个**常量表达式**，
-/// 判据没有任何办法让它变。抽出来 + 进 [`RelayFactSources`] 之后，
+/// 判据没有任何办法让它变。抽出来 + 进 [`InjectFactSources`] 之后，
 /// 「调用点用没用这个答案」变成了可翻的一维（见本结构 `windows` 那一格的头注）。
 pub(crate) fn platform_is_windows() -> bool {
     cfg!(windows)
 }
 
 /// 生产上这条缝里插的那三个取值口。**只有这一处**，判据按地址对拍它。
-pub(crate) const PRODUCTION_RELAY_FACTS: RelayFactSources = RelayFactSources {
-    rows: relay_rows,
+pub(crate) const PRODUCTION_INJECT_FACTS: InjectFactSources = InjectFactSources {
+    rows: apikey_rows,
     running: crate::local_backend_host::relay_running,
     windows: platform_is_windows,
+    all_sessions: relay_all_sessions_switch,
 };
 
 #[cfg(test)]
 thread_local! {
     /// 判据装进来的替身。**线程局部** ⇒ 同进程别的判据不受影响（`cargo test` 是多线程跑的）。
-    static RELAY_FACTS_OVERRIDE: std::cell::Cell<Option<RelayFactSources>> =
+    static INJECT_FACTS_OVERRIDE: std::cell::Cell<Option<InjectFactSources>> =
         const { std::cell::Cell::new(None) };
 }
 
 /// 装替身，离开作用域自动还原（`assert!` 炸了也还原）。
 #[cfg(test)]
-pub(crate) struct RelayFactsGuard(Option<RelayFactSources>);
+pub(crate) struct InjectFactsGuard(Option<InjectFactSources>);
 
 #[cfg(test)]
-impl Drop for RelayFactsGuard {
+impl Drop for InjectFactsGuard {
     fn drop(&mut self) {
-        RELAY_FACTS_OVERRIDE.with(|c| c.set(self.0));
+        INJECT_FACTS_OVERRIDE.with(|c| c.set(self.0));
     }
 }
 
 #[cfg(test)]
-pub(crate) fn override_relay_facts(facts: RelayFactSources) -> RelayFactsGuard {
-    RelayFactsGuard(RELAY_FACTS_OVERRIDE.with(|c| c.replace(Some(facts))))
+pub(crate) fn override_inject_facts(facts: InjectFactSources) -> InjectFactsGuard {
+    InjectFactsGuard(INJECT_FACTS_OVERRIDE.with(|c| c.replace(Some(facts))))
 }
 
-/// 这一拍要用的两个取值口。生产上恒是 [`PRODUCTION_RELAY_FACTS`]。
-pub(crate) fn relay_facts() -> RelayFactSources {
+/// 这一拍要用的两个取值口。生产上恒是 [`PRODUCTION_INJECT_FACTS`]。
+pub(crate) fn inject_facts() -> InjectFactSources {
     #[cfg(test)]
-    if let Some(f) = RELAY_FACTS_OVERRIDE.with(|c| c.get()) {
+    if let Some(f) = INJECT_FACTS_OVERRIDE.with(|c| c.get()) {
         return f;
     }
-    PRODUCTION_RELAY_FACTS
+    PRODUCTION_INJECT_FACTS
 }
 
 /// 上一条的**接线半**：这台机器上的两个事实（表里有哪几行 · 中转在不在）在这里读。
 ///
-/// ⚠ 两个事实**只从 [`relay_facts`] 取**（理由见 [`RelayFactSources`] 头注：
+/// ⚠ 两个事实**只从 [`inject_facts`] 取**（理由见 [`InjectFactSources`] 头注：
 /// 直接在这里调那两个函数的写法，只能靠「文本在不在」来钉，而那一形 `D5` 已经打穿了）。
 fn relay_prefix_for_launch(
     action: &LocalPsAction,
     account: Option<&LaunchAccount>,
 ) -> Result<String, String> {
-    let id = relay_account_id(account);
+    let id = apikey_account_id(account);
+    // `/t/` 那一格的账号标签：`Named` ⇒ 同 id；账号 0 ⇒ 固定标签；没表态 ⇒ 说不出就不走 `/t/`。
+    let label = match account {
+        Some(LaunchAccount::Base) => {
+            Some(crate::backend::control::payload::BASE_ACCOUNT_SEGMENT.to_string())
+        }
+        _ => id.clone(),
+    };
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
@@ -2243,13 +2301,15 @@ fn relay_prefix_for_launch(
         #[cfg(not(windows))]
         LocalPsAction::Attach => None,
     };
-    let facts = relay_facts();
+    let facts = inject_facts();
     relay_prefix_for(
         id.as_deref(),
+        label.as_deref(),
         &(facts.rows)(),
         (facts.running)(),
         sid,
         (facts.windows)(),
+        (facts.all_sessions)(),
     )
 }
 
@@ -2347,7 +2407,7 @@ struct LaunchIdentity {
 
 /// 上面两条的**接线半**：铸一个 token，按这台机器是不是 Windows 渲成一句前缀。
 ///
-/// ⚠ 平台那一格**走 [`relay_facts`] 那条缝取**，不写 `cfg!(windows)`：
+/// ⚠ 平台那一格**走 [`inject_facts`] 那条缝取**，不写 `cfg!(windows)`：
 /// `D6` 的刀 `Xb` 现打过，写在调用点上的 `cfg!(windows)` 是个**常量表达式**，
 /// 判据没有任何办法让它变 ⇒ 「Windows 上渲成 POSIX 形态」这一形全绿。
 /// 走缝之后它成了可翻的一维（判据喂 `|| true` 就该拿到 PowerShell 形态）。
@@ -2360,7 +2420,7 @@ struct LaunchIdentity {
 /// `prefix` 这一半与上一版那个 `-> String` 的返回值**逐字节相同**。
 fn launch_identity(action: &LocalPsAction) -> LaunchIdentity {
     let token = launch_identity_token(action);
-    let prefix = launch_identity_env_prefix(&token, (relay_facts().windows)());
+    let prefix = launch_identity_env_prefix(&token, (inject_facts().windows)());
     LaunchIdentity { token, prefix }
 }
 
@@ -2385,7 +2445,7 @@ fn launch_identity(action: &LocalPsAction) -> LaunchIdentity {
 ///
 /// ⇒ 处置**不是**再写一个更聪明的文本判据（那是下一层），是**不量文本**：
 /// 把「送出去」收成本结构这一跳，判据换一个**会记账的替身**进来，断言
-/// **真正交出去的那一串**以正确的前缀打头、且前缀随 [`RelayFactSources`] 给的答案与
+/// **真正交出去的那一串**以正确的前缀打头、且前缀随 [`InjectFactSources`] 给的答案与
 /// **哪个账号**一起变。
 ///
 /// # 顺带被这条缝按平了的一格
@@ -2536,7 +2596,7 @@ pub fn new_local_session(
     // 那句话**今天仍然对**，它说的是「不从某条旧会话继承」。⚠ 但它被读成了「所以这条路
     // 不该有账号参数」，而后果是：**这条主路上一个账号都说不出**，于是
     // ① 起会话落到 shell rc 里那个默认号上（`config_dir_prefix_posix` 头注逐字点名的静默串号），
-    // ② 中转那一格**永远拼不出路由键**（没有账号 id ⇒ `relay_account_id` 回 `None`）。
+    // ② 中转那一格**永远拼不出路由键**（没有账号 id ⇒ `apikey_account_id` 回 `None`）。
     // ⇒ 现在收**调用方明说的那一个**：前端传的是「用户此刻选中的当前账号」，
     //   **不是**从别的会话继承来的。参数缺席仍然是「没表态」，逐字节旧行为。
     //

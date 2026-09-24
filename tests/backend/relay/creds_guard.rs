@@ -41,6 +41,13 @@ mod tests {
     /// 每行 `(那个名字, 它为什么可以进日志)`。⚠ 加一行**就是在放宽**，要写得出理由。
     const ALLOWED_LOG_ARGS: &[(&str, &str)] = &[
         ("e", "错误对象本身（`std::io::Error` / 解析错误）—— 它不含请求头"),
+        (
+            "upstream_failure",
+            "层 1 传输失败那一行（`server::UpstreamFailure::for_log`，`设计/20 §3.1a`）：\
+             上游的**主机与端口** ＋ 一句固定文案（卡在哪一跳）＋ 底层那条 `io::Error`。\
+             ⚠ 刻意**不带**基址里的路径前缀（凭据文件内容，同 `note.what` 那条理由）、\
+             不含请求头、与任何一把 key 无关 —— 这几格由 `UpstreamFailure` 的字段集兜着",
+        ),
         ("a", "监听地址（`local_addr()`）"),
         ("port", "端口号"),
         (
@@ -121,9 +128,11 @@ mod tests {
             "起线程失败",
         ),
         (
+            // 〔`设计/20 §3.1a`〕先前是 `[relay] upstream connect failed`，只管「连不上」一支；
+            //   今天等响应那四支（没回应就断 · 读出错 · 不是 HTTP · 只有 1xx）也走这一行 ⇒ 回 504。
             "relay/server.rs",
-            "[relay] upstream connect failed",
-            "连不上上游",
+            "[relay] upstream failed",
+            "上游连不上 / 没回应 / 回的不是 HTTP（层 1 自己的传输失败，回 504）",
         ),
         (
             "relay/listen.rs",

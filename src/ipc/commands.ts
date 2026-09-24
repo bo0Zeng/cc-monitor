@@ -49,7 +49,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * 逐个字段对拍，漏一个就红。
  */
 /**
- * `K-H2a` `KS6`：中转那把第三方 API key 的**状态**。
+ * `K-H2a` `KS6`：apikey 表那把第三方 API key 的**状态**。
  *
  * ⚠⚠ **这个类型里没有明文那个字段 —— 那是本件最要紧的一条，不是省略。**
  * `KS6` 逐字：一旦回显，key 就从「只住在后端」变成「**每次打开那个界面都往前端传一遍**」
@@ -64,7 +64,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
-import type { RelayRoutingView } from "../accounts";
+import type { ApikeyRoutingView } from "../accounts";
 
 export interface RelayCredentialsStatus {
   /** 配了没配。 */
@@ -364,9 +364,9 @@ export const commands = {
    *
    * ⚠⚠ `K-H2c` `KH2C1`：**`configDir` 是承重的入参，别换成账号名。**
    * 那把 key 落进 `accounts.<账号 id>` 那一格，而 `<账号 id>` 由 Rust 用**全仓唯一那份规则**
-   * （`history::relay_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
+   * （`history::apikey_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
    * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
-   * 漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。
+   * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
    */
   write_relay_credentials_key: (args: { key: string; configDir: string }) =>
     invoke<void>("write_relay_credentials_key", args),
@@ -649,22 +649,22 @@ export const commands = {
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   /**
-   * `K-H2a` `KS6`：读中转那把 key 的状态。**返回里永远只有掩码。**
+   * `K-H2a` `KS6`：读 apikey 表那把 key 的状态。**返回里永远只有掩码。**
    */
   read_relay_credentials_status: () =>
     invoke<RelayCredentialsStatus>("read_relay_credentials_status"),
 
   /**
-   * `K-H2b` `KH2B7`：问「这几个**本机** configDir 走不走中转」。
+   * `K-H2b` `KH2B7`：问「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
    *
    * ⚠ **只答本机**，而且那不是欠账：中转是**每台机器自己的一个进程**、注入的是**回环**地址
    * （自指）⇒ 本机这一侧**在结构上答不了远端那台**。命令面的登记
    * （`parity_ledger` 的 `relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
-   * ⚠ 返回类型是**手写镜像**（`RelayRoutingView` 住 `src/accounts.ts`），
-   * 与 Rust 的 `RelayRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
+   * ⚠ 返回类型是**手写镜像**（`ApikeyRoutingView` 住 `src/accounts.ts`），
+   * 与 Rust 的 `ApikeyRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
    */
-  relay_routing_for: (args: { configDirs: string[] }) =>
-    invoke<RelayRoutingView>("relay_routing_for", args),
+  apikey_routing_for: (args: { configDirs: string[] }) =>
+    invoke<ApikeyRoutingView>("apikey_routing_for", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),
