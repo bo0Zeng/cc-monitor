@@ -17,17 +17,17 @@ src/accounts.ts:482	这个号在apikey 凭据文件里有一行，本机中转�
 src/accounts.ts:483	ANTHROPIC_BASE_URL 指向本机中转，由中转按账号换上这一行的 key。\n	改·§2.4	[对外] 与上一截同一句，复述中转换 key 的实现 兼§2.1
 src/accounts.ts:484	⚠ 它保证的是「请求发得到中转、中转按这一行转发」；	改·§2.2	[对外] 在 tooltip 里论证「它保证的是什么」，写给开发看的边界论证 兼§2.4 →「key 是否有效，要等第一次请求才知道」
 src/accounts.ts:485	那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。	改·§2.2	[对外] 与上一截同一句（保证边界的论证）
-src/accounts.ts:493	这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被**当场拒**	改·§2.4	[对外] 徽标 title：markdown `**当场拒**` 在 title 属性里原样显示＋破折号＋括号长补充 兼§2.2
+src/accounts.ts:493	这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被当场拒掉	改·§2.4	[对外] 徽标 title：破折号＋括号长补充 兼§2.2（ST1 已去掉 `**当场拒**` 的星号，其余病未治）
 src/accounts.ts:494	（不是静默失败：中转没起来与网络坏了在 claude 那边长得一模一样，	改·§2.2	[对外] 括号里是设计论证（为什么在起会话一侧拦、与网络坏了长得一样）兼§2.4
 src/accounts.ts:495	所以这一条在起会话那一侧就拦下来）。请先起本机后端。	改·§2.2	[对外] 设计论证的收尾；末句「请先起本机后端」可操作可留 →「本机中转没在运行，起会话会失败。先启动本机后端。」
-src/accounts.ts:501	apikey 凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。	改·§2.4	[对外] 徽标 title：markdown `**…**` 原样显示＋`⇒` 符号推理式 →「凭据文件里没有这个账号，不会替它配置请求地址」
+src/accounts.ts:501	apikey 凭据文件里没有这个账号的一行 ⇒ cc-monitor 不会替它配 base URL。	改·§2.4	[对外] 徽标 title：`⇒` 符号推理式（ST1 已去掉星号） →「凭据文件里没有这个账号，不会替它配置请求地址」
 src/accounts.ts:502	要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 	保留	[对外] 用户自己能做的配置指引（给账号加一行端点＋key），可操作
 src/accounts.ts:503	shell 环境里配好第三方端点。	保留	[对外] 上一句指引的收尾，可操作
-src/accounts.ts:505	cc-monitor 今天只给**本机**会话配 base URL；**远端**这一半还不做	改·§2.2	[对外] 「今天只给本机…远端这一半还不做」是路线图/设计论证，markdown `**` 原样显示 兼§2.4
+src/accounts.ts:505	cc-monitor 今天只给本机会话配 base URL；远端这一半还不做	改·§2.2	[对外] 「今天只给本机…远端这一半还不做」是路线图/设计论证（ST1 已去掉星号）
 src/accounts.ts:506	（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上	改·§2.2	[对外] 括号里论证「把 key 送到远端是另一件事」＋ `⇒` 推理符号 兼§2.4
 src/accounts.ts:507	自己配好第三方端点。	保留	[对外] 可操作的收尾（在远端机器上配好第三方端点）
 src/accounts.ts:508	cc-monitor 只在两件事都成立时替它配端点（base URL）：① apikey 凭据文件里有这个	改·§2.4	[对外] 列条件的长句＋括号补充，开头「cc-monitor 只在两件事都成立时」是机制解说 兼§2.1
-src/accounts.ts:509	账号 id 的一行；② 本机中转在跑。**这一处没被告知它属于哪一半、那两条成不成立**，	改·§2.2	[对外] 「这一处没被告知它属于哪一半」是内部推理（本函数拿不到什么参数），markdown 原样显示 兼§2.4
+src/accounts.ts:509	账号 id 的一行；② 本机中转在跑。这一处没被告知它属于哪一半、那两条成不成立，	改·§2.2	[对外] 「这一处没被告知它属于哪一半」是内部推理（本函数拿不到什么参数）（ST1 已去掉星号）
 src/accounts.ts:510	所以不替它下判断。	改·§2.2	[对外] 与上一截同一句（不下判断的理由）→「无法判断端点是否已配置」
 src/accounts.ts:515	这个号用 API key 鉴权，不看 ~/.claude 里的订阅凭据 —— 所以它可以被设为当前账号、	改·§2.4	[对外] 徽标 title：破折号＋「所以…」推理链，一句里讲鉴权方式＋能设为当前＋能起会话
 src/accounts.ts:516	会话也起得来。但请求要发得出去还差一格：	改·§2.4	[对外] 与上一截同一句；「还差一格」口语 →「但还没配置请求地址：」
@@ -980,3 +980,24 @@ src/backend/accounts/table.rs:288	这一条用 Authorization: Bearer 头把 key 
 src/backend/accounts/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
+src/settings/account-new-form.ts:46	新建账号	保留	[对外] 表单标题，名词短语（设计/70 §4.4）
+src/settings/account-new-form.ts:47	账号名，如 b	保留	[对外] 输入框占位，给一个例子
+src/settings/account-new-form.ts:48	接入方式	保留	[对外] 单选组的读屏标签（设计/70 §4.4 原词）
+src/settings/account-new-form.ts:49	订阅	保留	[对外] 单选项，用户自己也这么叫
+src/settings/account-new-form.ts:50	创建后弹出终端，在那个终端里用这个号 /login。	保留	[对外] 选了订阅之后的一句说明：会发生什么、用户要做什么；/login 是 claude 自己的命令名
+src/settings/account-new-form.ts:51	第三方 apikey	保留	[对外] 单选项；「中转」不指账号（用户裁：账号就账号、中转就中转）
+src/settings/account-new-form.ts:53	创建后弹出终端建好账号目录；这个号出现在下面的账号列表里时（终端跑完点「刷新」），	保留	[对外] apikey 那一支的说明前半：key 什么时候写进去（与后半同一句，运行期拼接）
+src/settings/account-new-form.ts:54	这把 key 自动写进 apikey 表。在那之前 key 只留在这个窗口里，关掉 monitor 就没了。	保留	[对外] apikey 那一支的说明后半：key 在写进去之前住哪、会不会丢
+src/settings/account-new-form.ts:55	粘贴 API key	保留	[对外] 密码框占位
+src/settings/account-new-form.ts:56	高级：从旧凭据快照导入（免重登）	保留	[对外] 折叠标题，沿用旧维护区的叫法
+src/settings/account-new-form.ts:57	旧凭据快照路径	保留	[对外] 输入框占位
+src/settings/account-new-form.ts:58	将在终端里运行：	保留	[对外] 命令预览的头一行，先说在哪跑
+src/settings/account-new-form.ts:59	（填好账号名后显示将运行的命令）	保留	[对外] 预览区空态
+src/settings/account-new-form.ts:60	清空	保留	[对外] 按钮：清掉表单三格
+src/settings/account-new-form.ts:61	创建	保留	[对外] 主按钮（非红色，设计/70 §4.3 ②）
+src/settings/account-new-form.ts:69	这个号的命令名会是 {…}	保留	[对外] 表单里的一行提示，取代原先那句「去设置 → 行为」的散文导航（设计/70 §4.3 ⑤）
+src/settings/panel.ts:912	账号	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
+src/settings/panel.ts:940	插件（marketplace）	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
+src/settings/panel.ts:947	cc-bus 钩子	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
+src/settings/panel.ts:1504	终端集成	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
+src/settings/panel.ts:742	外观或 Claude 数据目录有改动还没保存。	保留	[对外] ST1 未保存关窗拦截那一条的正文：先说发生了什么，后面跟三颗按钮（保存并关闭 / 丢弃改动 / 继续编辑）

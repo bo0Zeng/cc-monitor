@@ -76,7 +76,7 @@ describe("S4a 跨分节机器同步", () => {
    */
   it("★ 在 cc-bus 驾驶舱里切机器 → cc-bus-hooks 跟着变（§5-4 记的那个病）", async () => {
     const bus = new CcBusSection();
-    const hooks = new CcBusHooksSection();
+    const hooks = loaded(new CcBusHooksSection());
     await settle();
 
     const busSel = selOf(bus.element, "cc-bus-origin");
@@ -97,7 +97,7 @@ describe("S4a 跨分节机器同步", () => {
 
   it("★ 直接驱动 store（= 机器详情页切页那条真实路径）→ 两块都跟上", async () => {
     const bus = new CcBusSection();
-    const hooks = new CcBusHooksSection();
+    const hooks = loaded(new CcBusHooksSection());
     await settle();
     const busSel = selOf(bus.element, "cc-bus-origin");
 
@@ -136,7 +136,7 @@ describe("S4a 跨分节机器同步", () => {
     // **那个前提是我猜的，实测是假的**：它切到本机时显示「（本机页：无远端可诊断）」。
     // 记在这里是因为教训比结论有用：**先量再写断言**，否则判据钉的是我的想象。
     const bus = new CcBusSection();
-    const hooks = new CcBusHooksSection();
+    const hooks = loaded(new CcBusHooksSection());
     await settle();
     selOf(bus.element, "cc-bus-origin").value = "nano";
     selOf(bus.element, "cc-bus-origin").dispatchEvent(new Event("change"));
@@ -161,7 +161,7 @@ describe("S4a 跨分节机器同步", () => {
 
   it("★ 同值重复切换不重复发请求（否则四块互相激起 ssh 往返 = 变相轮询）", async () => {
     const bus = new CcBusSection();
-    new CcBusHooksSection();
+    loaded(new CcBusHooksSection());
     await settle();
     const busSel = selOf(bus.element, "cc-bus-origin");
 
@@ -178,3 +178,10 @@ describe("S4a 跨分节机器同步", () => {
     expect(mockInvoke.mock.calls.length).toBe(after1);
   });
 });
+
+/** ST1「延后加载」：分节构造期不再发 I/O，由宿主在机器子页第一次可见时调 `loadNow()`。
+ *  本文件量的是分节**加载之后**的行为 ⇒ 构造完就当宿主那样叫醒它。 */
+function loaded<T extends { loadNow(): void }>(s: T): T {
+  s.loadNow();
+  return s;
+}

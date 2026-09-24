@@ -252,9 +252,14 @@ export class RemoteSection {
     // `readRemoteConfig()` reject 时这个方法是 `void this.refresh()` 掉的一个
     // 未捕获 rejection ⇒ 一个机器页都不会注册，而宿主那边只看得到「什么都没来」。
     // `finally` 让两条路都经过这里。
+    // 🔴 `70 §1` 那个「自己从 ☐ 跳到 ☑」的复选框（`§8` 判据 #2）：读回来之前**不可交互**。
+    //    否则用户在它变之前以为它是关的、点一下，结果是把它关掉（而他以为自己在打开）。
+    //    读失败就一直灰着 —— 那一刻它显示的值不是盘上的值，点它就是写一个假状态回去。
+    this.enabledCheckbox.disabled = true;
     try {
       this.original = await readRemoteConfig();
       this.enabledCheckbox.checked = this.original.enabled;
+      this.enabledCheckbox.disabled = false;
       this.rebuildCards(this.original.hosts);
       this.hideBanner();
       void this.populateAliases();
@@ -409,9 +414,18 @@ export class RemoteSection {
       return;
     }
     this.gapsBox.style.display = "";
+    // 🔴 `设计/70 §5.3`〔2026-09-18〕：「还差什么（诊断汇总）」→「**诊断**」—— 用户逐字「这种说法太口语了」
+    //    （`91 §2.6` 第六类病：标签写成问句 · 口语语域 · 括号里才是真名）。
+    //    ⚠ 与 `§10.3` 那次改名同拍：「应用」页那块原叫「诊断」的已先让名成「日志」
+    //    （`diagnostics-section.ts`），所以这一刻起面板上只有一个「诊断」（`§8` 判据 #11）。
+    //    名字进块标题（与别的块同一个 `.settings-group-title`），摘要另起一行。
+    const title = document.createElement("div");
+    title.className = "settings-group-title";
+    title.textContent = "诊断";
+    this.gapsBox.appendChild(title);
     const head = document.createElement("div");
     head.className = "settings-label remote-gaps-head";
-    head.textContent = `还差什么：${summary}`;
+    head.textContent = summary;
     this.gapsBox.appendChild(head);
     const list = document.createElement("ul");
     list.className = "remote-gaps-list";
@@ -703,7 +717,7 @@ export class RemoteSection {
     enabledRow.appendChild(enabledLabel);
     enabledRow.appendChild(
       makeInfoIcon(
-        "勾选后 monitor 启动时会**额外**用 SSH 连下列每台机器作为数据源（与本地聚合）。\n" +
+        "勾选后 monitor 启动时会额外用 SSH 连下列每台机器作为数据源（与本地聚合）。\n" +
           "⚠ 需重启 monitor 才生效。某台配置不完整时后端跳过该台。列表为空 = 等于关闭。",
       ),
     );

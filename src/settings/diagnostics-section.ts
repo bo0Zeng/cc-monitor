@@ -71,6 +71,8 @@ export class DiagnosticsSection {
   private pathSpan!: HTMLSpanElement;
   private sizeSpan!: HTMLSpanElement;
   private openFileBtn!: HTMLButtonElement;
+  /** `70 §11.3.3`：读不到当前设置时，原因落在这一块上（不再只进 console）。 */
+  private readFailLine!: HTMLElement;
 
   constructor(opts: DiagnosticsSectionOptions = {}) {
     this.headless = opts.headless ?? false;
@@ -110,12 +112,20 @@ export class DiagnosticsSection {
       // ⇒ 这一块让名。它的全部内容（写不写日志文件 / 级别 / 错误提示 / 路径 / 大小 / 打开）
       //   都是日志的事。
       // ⚠ `§10.3` 逐字要求这次改名与 `§5.3` 那个改名**同拍**，怕的是中间有一段时间
-      //   两个「诊断」并存。**本拍先改这一个**：先让名不会造出那一档，后改反而会
-      //   —— 顺序上这是安全的那一半，另一半（`§5.3` 那个改名）还没落地。
+      //   两个「诊断」并存。这一个先改了；〔ST1 · 09-24〕`§5.3` 那一半也落了
+      //   （`remote-section.ts::renderGaps` 的块标题）。判据 `settings-unique-names.vitest.ts`（`§8 #11`）。
       heading.textContent = "日志";
       heading.appendChild(makeInfoIcon(DIAGNOSTICS_INFO_TEXT));
       group.appendChild(heading);
     }
+
+    // 🔴 `70 §11.4` 那处真缺陷 ＋ `§8` 判据 #2（「没有复选框在加载后自己改状态」）：
+    //    读失败原先只 `console.warn` ⇒ 三个控件**静默显示构造期默认值**，用户一点就把
+    //    假状态写回去 —— 与 `§1` 那个「启用远端模式」自己从 ☐ 跳到 ☑ 是**同一种伤**。
+    //    ⇒ 失败落在这一块上，并且三个控件在**读回来之前不可交互**（见 `setControlsReady`）。
+    this.readFailLine = document.createElement("div");
+    this.readFailLine.className = "settings-banner";
+    group.appendChild(this.readFailLine);
 
     // 1. 启用 log 文件 toggle
     const logRow = document.createElement("label");
@@ -258,7 +268,15 @@ export class DiagnosticsSection {
     btnRow.appendChild(refreshBtn);
     group.appendChild(btnRow);
 
+    this.setControlsReady(false);
     return group;
+  }
+
+  /** 三个会写回后端的控件：读回来之前一律不可交互（`70 §8` 判据 #2 的形状）。 */
+  private setControlsReady(ready: boolean): void {
+    for (const c of [this.logEnabledCheckbox, this.levelSelect, this.errorToastCheckbox]) {
+      c.disabled = !ready;
+    }
   }
 
   /** 从后端拉当前配置 + log 文件信息，刷新 UI */
@@ -269,8 +287,14 @@ export class DiagnosticsSection {
       this.logEnabledCheckbox.checked = cfg.log_enabled;
       this.levelSelect.value = cfg.log_level;
       this.errorToastCheckbox.checked = cfg.error_toast;
+      this.readFailLine.textContent = "";
+      this.readFailLine.classList.remove("settings-banner-show");
+      this.setControlsReady(true);
     } catch (e) {
-      console.warn("get_diagnostics_config failed:", e);
+      // 这一路本来就会失败（`INVARIANTS §15`：日志子系统失败不许挡启动）⇒ 界面必须答得出「读不到」。
+      this.setControlsReady(false);
+      this.readFailLine.textContent = `读不到当前的日志设置（${String(e)}），下面三项先不能改。点「刷新信息」重试。`;
+      this.readFailLine.classList.add("settings-banner-show");
     }
     try {
       const info = await commands.get_log_file_info();
@@ -320,7 +344,7 @@ export class DiagnosticsSection {
       }
       await this.refresh();
     } catch (e) {
-      showActionFailureToast("保存诊断配置失败", String(e));
+      showActionFailureToast("保存日志设置失败", String(e));
       // 失败 → 回退到当前实际值
       await this.refresh();
     }
@@ -330,7 +354,7 @@ export class DiagnosticsSection {
     try {
       await commands.open_log_file();
     } catch (e) {
-      showActionFailureToast("打开 log 文件失败", String(e));
+      showActionFailureToast("打开日志文件失败", String(e));
     }
   }
 
@@ -338,7 +362,7 @@ export class DiagnosticsSection {
     try {
       await commands.open_log_dir();
     } catch (e) {
-      showActionFailureToast("打开 log 目录失败", String(e));
+      showActionFailureToast("打开日志目录失败", String(e));
     }
   }
 }
