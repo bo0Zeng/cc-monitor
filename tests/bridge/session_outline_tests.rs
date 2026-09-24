@@ -136,7 +136,8 @@ fn the_wire_words_match_what_the_backend_source_writes() {
 fn every_failure_lands_in_its_own_kind() {
     let head = r#"{"kind":"user_inputs","v":1,"from":0}"#;
     let tail0 = r#"{"kind":"user_inputs_end","count":0,"end":5}"#;
-    let kind = |q: Result<Vec<String>, String>| outline_result(q, 0).failure;
+    use crate::subagent::{QueryError, QueryFailure};
+    let kind = |q: Result<Vec<String>, QueryError>| outline_result(q, 0).failure;
     // 结构性：老后端（0 字节 / hello / 别的形状）
     assert_eq!(kind(Ok(vec![])), Some(OutlineFailure::OldBackend));
     assert_eq!(
@@ -145,30 +146,56 @@ fn every_failure_lands_in_its_own_kind() {
     );
     // 瞬时：截断
     assert_eq!(kind(Ok(l(&[head]))), Some(OutlineFailure::Truncated));
-    // 瞬时：查询本身失败 —— 不管报错文字写的是什么
+    // 查询自己带出种类 ⇒ 逐档照搬（〔C2〕此前一律 `transport`，那是 SE1 登记的两处分错档）
     assert_eq!(
-        kind(Err("随便一句话".into())),
+        kind(Err(QueryError::transport("随便一句话".into()))),
         Some(OutlineFailure::Transport)
     );
     assert_eq!(
-        kind(Err("unknown argument: --list-user-inputs".into())),
-        Some(OutlineFailure::Transport),
-        "错误文字里像「老后端」也不许据文字改判 —— 分类只看是哪一条路失败的"
+        kind(Err(QueryError::old_backend("随便一句话".into()))),
+        Some(OutlineFailure::OldBackend)
     );
+    assert_eq!(
+        kind(Err(QueryError::truncated("随便一句话".into()))),
+        Some(OutlineFailure::Truncated)
+    );
+    assert_eq!(
+        kind(Err(QueryError::transport(
+            "unknown argument: --list-user-inputs".into()
+        ))),
+        Some(OutlineFailure::Transport),
+        "错误文字里像「老后端」也不许据文字改判 —— 分类只看查询自己带出来的种类"
+    );
+    // 三档映射逐档相等（两向：每个查询种类都落到同名的大纲种类，且三个大纲种类都被落到）
+    let all = [
+        QueryFailure::OldBackend,
+        QueryFailure::Truncated,
+        QueryFailure::Transport,
+    ];
+    let mapped: std::collections::BTreeSet<String> = all
+        .iter()
+        .map(|k| format!("{:?}", outline_kind(*k)))
+        .collect();
+    let names: std::collections::BTreeSet<String> = all.iter().map(|k| format!("{k:?}")).collect();
+    assert_eq!(mapped, names, "查询种类 ⇒ 大纲种类不是逐名一一对应");
     // 要到了：没有种类、没有原因
     let ok = outline_result(Ok(l(&[head, tail0])), 0);
     assert!(ok.available);
     assert_eq!(ok.failure, None);
     assert_eq!(ok.reason, None);
     // 要不到时 end 原样退回请求的 from（前端据此不动续点）
-    let bad = outline_result(Err("x".into()), 42);
+    let bad = outline_result(Err(crate::subagent::QueryError::transport("x".into())), 42);
     assert_eq!((bad.from, bad.end, bad.available), (42, 42, false));
 }
 
 /// 线上形状：种类是 camelCase 的字面量（前端生成物是字面量联合）；要到了就不出这个键。
 #[test]
 fn the_failure_kind_is_on_the_wire_only_when_unavailable() {
-    let v = serde_json::to_value(outline_result(Err("x".into()), 0)).unwrap();
+    let v = serde_json::to_value(outline_result(
+        Err(crate::subagent::QueryError::transport("x".into())),
+        0,
+    ))
+    .unwrap();
     assert_eq!(v["failure"], "transport");
     let v = serde_json::to_value(outline_result(Ok(vec![]), 0)).unwrap();
     assert_eq!(v["failure"], "oldBackend");

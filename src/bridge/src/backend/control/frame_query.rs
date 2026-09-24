@@ -55,6 +55,12 @@ pub(crate) const STILL_DIALED: &[(&str, &str)] = &[
         "只剩 `--index` 那一形（会话骨架索引）：不在题面八条里、帧面没有对应命令。\
          同一个子命令的 `--until` 那一形（按区间取正文）已经走 `history-read`，不在这里拨",
     ),
+    (
+        "--list-user-inputs",
+        "〔C2 · 补第二波的集成缝〕会话大纲（SE1）：与本表同波落地，既不在题面八条里、帧面也没有对应命令 \
+         ⇒ 此前在这里被当场拒，远端大纲**每次**都拿到「这是本程序的 bug」。上帧面要加一条帧命令 \
+         （= 后端子命令面 ＋1，要 bump），另拍；今天先让它照旧拨",
+    ),
 ];
 
 /// 拨号那条路放不放行这条子命令（`args` 的第一个 token）。
@@ -232,6 +238,24 @@ pub(crate) enum ArgvRoute {
         from: u64,
         upto: Option<u64>,
     },
+}
+
+impl ArgvRoute {
+    /// 这条路走的是哪条帧命令（报错与「认不认」那一问用）。
+    pub(crate) fn frame_cmd(&self) -> &'static str {
+        match self {
+            ArgvRoute::Lines(cmd, _) => cmd,
+            ArgvRoute::Read { .. } => "history-read",
+        }
+    }
+}
+
+/// 〔C2 · SE1 欠账〕长连接**在**、却**不认**这条帧命令 ⇒ `true`（对面的后端比这条查询老）。
+///
+/// 没有长连接 ⇒ `false`：那是「够不着」（瞬时），不是「对面老」—— 由 [`run_routed`] 照旧报「没有控制通道」。
+/// 与 [`call`] 里那一问是**同一个** `accepts`，只是提前问，让调用方拿到种类而不是一句话。
+pub(crate) fn refuses(origin: &Origin, route: &ArgvRoute) -> bool {
+    inbound_client::client_for(origin.as_wire_str()).is_some_and(|c| !c.accepts(route.frame_cmd()))
 }
 
 pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {

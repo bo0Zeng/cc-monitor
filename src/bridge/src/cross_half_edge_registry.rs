@@ -195,6 +195,16 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          子命令名与 `--from`，必须是后端 `history_query::run` 那条臂与 \
          `parse_user_inputs_args` 真认的那两个字面量 —— 两处各写一份，只有同时读两侧才验得了。",
     ),
+    (
+        "monitor→backend",
+        "tests/bridge/subagent_tests.rs",
+        "src/backend/observe/history_query.rs",
+        "★〔C2 · SE1 欠账 09-24 新增〕**「老后端」那一档的认法两侧同形** —— \
+         `subagent::tests::a_local_backend_that_does_not_know_the_subcommand_is_old_not_broken`。\
+         monitor 的 `local_failure_kind` 凭「退出 2 ＋ stderr 行尾是 `unknown argument: <子命令>`」判老后端，\
+         那一串的写侧是后端 `history_query::run` 的 `unknown argument: {other}` 与 `query error: {e}`。\
+         失效方向**很安静**：后端改一个字，本机老后端又全落回「瞬时」、前端重试到上限才停，两侧各自全绿。",
+    ),
     // ── backend → monitor（2 条）：backend 的判据去读 monitor ────────────────────
     (
         "backend→monitor",
