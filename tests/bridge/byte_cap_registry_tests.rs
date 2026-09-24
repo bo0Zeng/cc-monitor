@@ -53,6 +53,12 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "TRIM_SLACK",
+        "〔U3b〕**条数**不是体量：重放缓冲里一个「只留尾巴」的会话要**多出**这么多条才修剪一次\
+             （`event_replay·rs::push_and_trim`）—— 量的是摊还节奏，不是容量。\
+             容量那一格是 `REPLAY_TAIL_KEEP`（也是条数），两者之和就是那一档的上界。",
+    ),
+    (
         "CHANNEL_CAPACITY",
         "**条数**不是体量（mpsc 通道能排多少帧）。它的溢出语义由 `Overflow` 帧管，见 F03。",
     ),

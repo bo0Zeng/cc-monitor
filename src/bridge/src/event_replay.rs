@@ -14,8 +14,16 @@
 //!
 //! ## 容量
 //!
-//! 不设上限。jsonl 行的内存占用 ≈ 文件大小，对监控这种"内存 = 历史 + 实时
-//! 增量"的场景可接受。极端情况（跑几个月几十万条），重启 monitor 即清。
+//! 〔U3b · `设计/10` 步 8〕**两档**，以「前端能不能按偏移把正文要回来」为界：
+//!
+//! | 会话 | 留多少 | 丢掉的正文从哪回来 |
+//! |---|---|---|
+//! | 前端**已接上骨架**并调过 [`EventReplay::keep_tail_only`] | 尾巴 [`REPLAY_TAIL_KEEP`] 条（修剪有 [`TRIM_SLACK`] 的摊还余量 ⇒ 上界 `KEEP + SLACK`） | 骨架滚到那里时 `read_session_range`（`--read-session-from-offset --until`） |
+//! | 其余（没索引：本机后端不在 / 老后端 / Codex） | **不设上限**（原样） | 无处可回 ⇒ 不许丢 |
+//!
+//! 🔴 **第二档仍然无上限，这是刻意的**：没有骨架的会话，丢掉的正文前端再也拿不回来
+//! （上翻到头就没了），而「内存省一点」换「历史少一截」是回归。极端情况重启 monitor 即清（原话照旧）。
+//! 读数（长度 / 修剪次数）见 [`EventReplay::stats`] 与每次修剪的 `[replay]` 日志行。
 
 use crate::bridge::{events, JsonlBatchPayload, JsonlLinePayload};
 use parking_lot::Mutex;
@@ -35,6 +43,42 @@ struct Inner {
     /// Batch8-F26：frontend-ready 携带的"用户上次所在 tab"（F19 语义）。存下来
     /// 供远端快照拉取排队（当前 tab 的会话先拉）；None = 无记忆/未就绪。
     priority_sid: Option<String>,
+    /// 〔U3b〕前端已接上骨架的会话 → 它在 `history` 里此刻有几条（只给这些会话计数，
+    /// 未登记的会话一条都不数 ⇒ 第二档零额外开销）。
+    tail_only: std::collections::HashMap<String, usize>,
+    /// 〔U3b〕累计修剪掉的条数（读数口，[`EventReplay::stats`]）。
+    trimmed_total: u64,
+}
+
+/// 〔U3b · `设计/10` 步 8〕**接上骨架的会话，history 里只留尾巴这么多条可显示记录。**
+///
+/// # 依据（量出来的，不是拍的）
+///
+/// ① **前端开一个 tab 时最多建多少条不用滚动**：`tabs.ts` 的 `materializeUntilFilled` 是
+///    `MATERIALIZE_TAIL_K`（150）× 最多 4 轮 = **600**。尾巴少于它，F5 之后那一屏就要等
+///    按偏移取正文（多一次 IPC ＋ 一次后端进程）；多于它，多出来的那段首屏根本用不上。
+///    ⇒ 取 600。这条等式由 `tests/replay-tail-keep.vitest.ts` 对着两边源码钉着（改一边会红）。
+/// ② **它够不够一屏**（2026-09-24，laptop 本机 39 份会话，按骨架第一级粗估、1080 px 视口）：
+///    被截的 7 份里，尾巴 600 条覆盖 **11.8–75.3 屏**（p50 28.6）⇒ 首屏 ＋ 头几次上翻都不用去取。
+///    对照：150 条最坏只有 1.6 屏（离「一屏」只差一点），300 条最坏 6.6 屏。
+/// ③ **它省多少**：39 份会话可显示记录的字节 188.8 MB → 26.3 MB（13.9%）；
+///    单会话留下的字节 p50 1.50 MB、最大 2.45 MB（全留时最大的那份 95 MB）。
+///
+/// ⚠ 这些数是**记录行的字节**，不是 `JsonlLinePayload` 在堆上的真大小（解析后的结构体
+///    另有开销，未量）；量具与读数在 `设计/10 §9`。
+pub const REPLAY_TAIL_KEEP: usize = 600;
+
+/// 修剪的摊还余量：一个会话超过 `KEEP + SLACK` 才修剪回 `KEEP`。
+/// 修剪一次是 O(history)（按 seq 找第 KEEP 大、再 retain）⇒ 每来一行都修会让 live 路付 O(history)；
+/// 攒 `KEEP/4` 条修一次，摊到每行是 O(history)/150。**代价**：接了骨架的会话上界是 750 条不是 600。
+pub const TRIM_SLACK: usize = REPLAY_TAIL_KEEP / 4;
+
+/// 〔U3b〕读数：`history` 总长 · 接了骨架的会话数 · 累计修剪条数。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplayStats {
+    pub history_len: usize,
+    pub tail_only_sessions: usize,
+    pub trimmed_total: u64,
 }
 
 /// 切块阈值（v2.3.1 issue #1 启动加速 + P5.4 B 重构简化）。
@@ -66,6 +110,8 @@ impl EventReplay {
                 history: VecDeque::new(),
                 ready: false,
                 priority_sid: None,
+                tail_only: std::collections::HashMap::new(),
+                trimmed_total: 0,
             }),
         }
     }
@@ -96,9 +142,7 @@ impl EventReplay {
         // 先持锁 push history + 看 ready 状态
         let (ready, big_batch) = {
             let mut inner = self.inner.lock();
-            for p in &payloads {
-                inner.history.push_back(p.clone());
-            }
+            push_and_trim(&mut inner, &payloads);
             (inner.ready, payloads.len() >= INCREMENTAL_BATCH_THRESHOLD)
         };
 
@@ -152,9 +196,7 @@ impl EventReplay {
         }
         let (ready, big_batch) = {
             let mut inner = self.inner.lock();
-            for p in &payloads {
-                inner.history.push_back(p.clone());
-            }
+            push_and_trim(&mut inner, &payloads);
             (inner.ready, payloads.len() >= INCREMENTAL_BATCH_THRESHOLD)
         };
         if !ready {
@@ -317,11 +359,38 @@ impl EventReplay {
     /// 用户主动关闭 archived Tab 时调用 —— 否则 F5 刷新 history 会重放出来"复活" Tab。
     pub fn forget(&self, session_id: &str) {
         let mut inner = self.inner.lock();
+        inner.tail_only.remove(session_id);
         let before = inner.history.len();
         inner.history.retain(|p| p.session_id != session_id);
         let removed = before - inner.history.len();
         if removed > 0 {
             tracing::info!("event_replay forget {session_id}: dropped {removed} entries");
+        }
+    }
+
+    /// 〔U3b〕前端对这个会话**接上了骨架**（拿得到索引、按偏移取得回正文）⇒ 从此它在 history 里
+    /// 只留尾巴 [`REPLAY_TAIL_KEEP`] 条。当场修剪一次；返回这次丢掉的条数。幂等。
+    ///
+    /// ⚠ 登记是**单向**的：之后若索引再拿不到（远端断线 / 后端被换成老版本），F5 之后那个 tab
+    /// 只剩尾巴，上翻到头就没了 —— 要等索引恢复。如实登记在 `设计/10 §9` 的「买不到」。
+    pub fn keep_tail_only(&self, session_id: &str) -> usize {
+        let mut inner = self.inner.lock();
+        let n = inner
+            .history
+            .iter()
+            .filter(|p| p.session_id == session_id)
+            .count();
+        inner.tail_only.insert(session_id.to_string(), n);
+        trim_to_tail(&mut inner, session_id)
+    }
+
+    /// 〔U3b〕读数口（日志与判据用）。
+    pub fn stats(&self) -> ReplayStats {
+        let inner = self.inner.lock();
+        ReplayStats {
+            history_len: inner.history.len(),
+            tail_only_sessions: inner.tail_only.len(),
+            trimmed_total: inner.trimmed_total,
         }
     }
 
@@ -375,6 +444,53 @@ impl Default for EventReplay {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 〔U3b〕进账：push 进 history；登记过「只留尾巴」的会话计数，超过 `KEEP + SLACK` 就修回 `KEEP`。
+fn push_and_trim(inner: &mut Inner, payloads: &[JsonlLinePayload]) {
+    let mut over: Vec<String> = Vec::new();
+    for p in payloads {
+        inner.history.push_back(p.clone());
+        if let Some(n) = inner.tail_only.get_mut(&p.session_id) {
+            *n += 1;
+            if *n > REPLAY_TAIL_KEEP + TRIM_SLACK && !over.contains(&p.session_id) {
+                over.push(p.session_id.clone());
+            }
+        }
+    }
+    for sid in over {
+        trim_to_tail(inner, &sid);
+    }
+}
+
+/// 〔U3b〕把一个会话修回尾巴 `KEEP` 条 —— **按 seq 取最大的那些，不按到达序**：
+/// 远端快照走 `--read-session-tail`（尾部优先），到达序是「尾块在前、头块在后」，按到达序丢会把尾巴丢掉。
+/// 返回丢掉的条数。
+fn trim_to_tail(inner: &mut Inner, sid: &str) -> usize {
+    let mut seqs: Vec<u64> = inner
+        .history
+        .iter()
+        .filter(|p| p.session_id == sid)
+        .map(|p| p.seq)
+        .collect();
+    if seqs.len() <= REPLAY_TAIL_KEEP {
+        return 0;
+    }
+    seqs.sort_unstable_by(|a, b| b.cmp(a));
+    let floor = seqs[REPLAY_TAIL_KEEP - 1];
+    let before = inner.history.len();
+    inner
+        .history
+        .retain(|p| p.session_id != sid || p.seq >= floor);
+    let dropped = before - inner.history.len();
+    let kept = seqs.len() - dropped;
+    inner.tail_only.insert(sid.to_string(), kept);
+    inner.trimmed_total += dropped as u64;
+    tracing::info!(
+        "[replay] {sid} 修剪到尾巴 {kept} 条（丢 {dropped}，seq < {floor}）；history 总长 {}",
+        inner.history.len()
+    );
+    dropped
 }
 
 /// Batch5-F19：分组切块——priority session（用户上次所在 tab）的块在前，其余
