@@ -1242,6 +1242,81 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 〔第三波 S3〕本机清单上的徽章接上本机那一半的两格事实（`apikey_routing_for`）。
+// `accountStatusBadge` 的 `{ scope: "local" }` 三档自 `K-H2b` 起「有实现、没接线」。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("S3：本机清单的徽章说本机那一半的真话", () => {
+  const KEYED = acct({
+    name: "k",
+    email: "k@x.edu",
+    configDir: "/h/.claude-accts/k",
+    loggedIn: false,
+    authKind: "api-key",
+    authReady: true,
+  });
+  async function badgeWith(routing: (() => Promise<unknown>) | null): Promise<HTMLElement> {
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    setCurrentMachine(null);
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [KEYED], defaultName: "k" }));
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "apikey_routing_for" && routing ? routing() : Promise.resolve(undefined),
+    );
+    const el = await mount();
+    return el.querySelector<HTMLElement>(".accounts-local-row-badge")!;
+  }
+
+  it("★ 表里有它 ＋ 中转在跑 ⇒ 「经本机中转」；只问本机这几个号的目录", async () => {
+    const b = await badgeWith(() => Promise.resolve({ routed: [KEYED.configDir], running: true }));
+    expect(b.textContent).toBe(
+      accounts.accountStatusBadge(KEYED, { scope: "local", hasRow: true, running: true }).text,
+    );
+    const asked = invokeMock.mock.calls.filter(([c]) => c === "apikey_routing_for");
+    expect(asked).toHaveLength(1);
+    expect(asked[0][1]).toEqual({ configDirs: [KEYED.configDir] });
+  });
+
+  it("★ 表里有它 ＋ 中转没跑 ⇒ 「中转未运行」；表里没它 ⇒ 说表里没它 —— 三档两两不同", async () => {
+    const seen = [
+      await badgeWith(() => Promise.resolve({ routed: [KEYED.configDir], running: true })),
+      await badgeWith(() => Promise.resolve({ routed: [KEYED.configDir], running: false })),
+      await badgeWith(() => Promise.resolve({ routed: [], running: true })),
+    ].map((b) => `${b.textContent}|${b.title}`);
+    expect(new Set(seen).size, seen.join("\n")).toBe(3);
+    expect(seen[1]).toContain(
+      accounts.accountStatusBadge(KEYED, { scope: "local", hasRow: true, running: false }).text,
+    );
+    expect(seen[2]).toContain(
+      accounts.accountStatusBadge(KEYED, { scope: "local", hasRow: false, running: true }).title,
+    );
+  });
+
+  it("★ 问不到（抛错 / 形状不对）⇒ 不替它下判断：与「没被告知」那一支逐字相同，不当成「表里没有」", async () => {
+    const untold = accounts.accountStatusBadge(KEYED);
+    for (const r of [
+      () => Promise.reject(new Error("后端不在")),
+      () => Promise.resolve(undefined),
+      () => Promise.resolve({ routed: "x" }),
+    ]) {
+      const b = await badgeWith(r);
+      expect(b.textContent).toBe(untold.text);
+      expect(b.title).toBe(untold.title);
+    }
+  });
+
+  it("★ 本机那三档上屏的字里没有「远端」", async () => {
+    for (const r of [
+      () => Promise.resolve({ routed: [KEYED.configDir], running: true }),
+      () => Promise.resolve({ routed: [KEYED.configDir], running: false }),
+      () => Promise.resolve({ routed: [], running: true }),
+    ]) {
+      const b = await badgeWith(r);
+      expect(`${b.textContent}${b.title}`.length).toBeGreaterThan(5);
+      expect(`${b.textContent}${b.title}`).not.toContain("远端");
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // `N-F2`：**本机也进「还差什么」那张清单** —— 那张清单本来就把本机算进去了，缺的是写点。
 //
 // 病（件文件 `§0a` / 定框 `N2` 09-05 订正段，本族开工时逐条现打复核过）：
