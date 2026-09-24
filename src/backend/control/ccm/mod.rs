@@ -118,6 +118,14 @@ pub(crate) const CAPABILITIES: &[&str] = &[
 pub(crate) const NAME_TAKEN_FMT: &str =
     "ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\\n";
 
+/// 〔CC1〕容器里那条内层命令**自检没过**时的那句话。形状与理由同 [`NAME_TAKEN_FMT`]
+/// （`printf` 格式串，结尾是反斜杠 + n）。退出码 `4`（起不来）；它前面一行是自检那一趟**自己的原话**。
+///
+/// 会话**留着不收**：pane 里有同一句原话，是用户看得见的唯一现场；收会话是破坏性动作，
+/// 有它自己的三道门（`§34`），不在这条路上顺手做。
+pub(crate) const SELF_CHECK_FAILED_FMT: &str =
+    "ccm: 会话 %s 里的命令起不来，原因见上一行。没有接进去，也没有登记；会话还在，可以进去看。\\n";
+
 /// 窗口标题的合成式 —— **让 tmux 自己从 `@ccm_sid` 合成**，与 pane 标题彻底分开。
 ///
 /// monitor 靠扫窗口标题里的 `ccm-rbind-<sid>` 绑定终端窗口（`bind.rs`）。

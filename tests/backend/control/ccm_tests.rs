@@ -360,6 +360,7 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         size: Some(("220".into(), "50".into())),
         detach: true,
         payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
+        self_check: "'/usr/local/bin/ccm' '--cwd' '/p' '--print'".into(),
         trust_poll: true,
         bus: None,
     };
