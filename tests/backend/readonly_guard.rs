@@ -2,7 +2,7 @@
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
 //!
-//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过 Claude 会话数据围栏、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
+//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过 Claude 会话数据围栏、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔B2 · 条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json`，不是用户数据）只许在逐文件登记的那一份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
 //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Command::new` 的起进程点。
 //!
 //! ⚠ **这两行今天不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
@@ -412,6 +412,68 @@ mod tests {
         MUTATING_FACE_MODULES.iter().any(|(p, _)| *p == rel)
     }
 
+    // ═══════════════ 第四层：后端**自有**状态文件〔B2 · 条 66 · 2026-09-24〕═══════════════
+
+    /// ★ **第四层登记的模块** —— 写**后端自己的**状态文件，不碰用户数据。
+    ///
+    /// # 它为什么不是「又开了一个口子」（按 [`g6_doctrine`] 那张四格表，这一刀落在「收窄人群」）
+    ///
+    /// 本护栏头注逐字承认人群比性质**大**：「backend 写一个与用户无关的自己的文件也会红」。
+    /// `设计/01 §3.3b`（条 66，2026-09-18 拍板）要的正是那一形 —— 「退出行为」那个值住后端所在那台机器的
+    /// `~/.cc-monitor/backend.json`、**只有后端写**。那份文件是**我们的**（与 `bin/ccm`、`listen-token` 同一个家），
+    /// 不是用户数据 ⇒ 性质「不许改动用户既有数据」**一个字没松**，松的只是人群里那一块误差。
+    ///
+    /// # 仍然窄（每条一个判据）
+    ///
+    /// | # | 钉什么 | 判据 |
+    /// |---|---|---|
+    /// | ① | **按文件**登记（不按目录，同第三层那块墓碑的理由） | 相等断言（扫到的第四层模块数 == 本表条数） |
+    /// | ② | 动词**闭集**：建那一层目录 · 原子挪 · 失败时删自己的临时文件 | [`OWN_STATE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only` |
+    /// | ③ | 表外写法照旧禁（覆盖写 / 截断 / 追加 / 复制 / 链接 / 改权限 / 删目录） | [`OWN_STATE_STILL_FORBIDDEN`] ＋ `.open(` 与 `O_EXCL` 配对 |
+    /// | ④ | **只从一扇门进来**：写口 `answer_set` 只被 `inbound.rs` 引用 | `the_own_state_writer_is_reached_through_exactly_one_door` |
+    /// | ⑤ | **只写那一份文件**：文件名在全部生产代码里只有这一个家 | `control::exit_policy::tests::the_file_name_has_exactly_one_home_in_all_production_code` |
+    ///
+    /// ⚠ 漏判面：它判不了「挪进去的那一下落在的就是那个名字」（数据流）——
+    /// 那一半靠那个模块自己的行为判据（写完读回、目录里只剩那一份）。
+    pub(super) const OWN_STATE_MODULES: &[(&str, &str)] = &[(
+        "control/exit_policy.rs",
+        "「退出行为」那个值（`设计/01 §3.3b` 条 66）：后端**自己的**状态文件 \
+         `~/.cc-monitor/backend.json`，一格布尔。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；\
+         目录不在就建那一层（父目录是家目录）；失败删掉自己的临时文件。\
+         线上入口只有 `inbound.rs` 的 `exit-policy-set`（＋ 派生的 CLI 面）",
+    )];
+
+    /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
+    const OWN_STATE_VERBS: &[&str] = &["create_dir", "remove_file", "rename"];
+
+    /// 第四层模块**仍然不许**出现的东西。`create(true)` 不含于 `create_new(true)`，不自伤；
+    /// `remove_dir` 同时挡住 `remove_dir_all`。
+    const OWN_STATE_STILL_FORBIDDEN: &[&str] = &[
+        "fs::write",
+        "fs::copy",
+        "fs::hard_link",
+        "fs::soft_link",
+        "fs::symlink(",
+        "fs::remove_dir",
+        "set_permissions",
+        "File::create",
+        "truncate(true)",
+        "append(true)",
+        "set_len",
+        "create(true)",
+    ];
+
+    /// 第四层那扇门：后端生产树里**唯一**被允许引用写口的文件。
+    const OWN_STATE_DOORS: &[(&str, &str)] = &[(
+        "inbound.rs",
+        "命令注册那一处 —— `exit-policy-set` 一条（帧面与派生的 CLI 面共用）。\
+         前端改那个值只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
+    )];
+
+    fn is_own_state(rel: &str) -> bool {
+        OWN_STATE_MODULES.iter().any(|(p, _)| *p == rel)
+    }
+
     /// 第三层判定 ②：本层模块里有没有表外的改动写法。
     pub(super) fn violates_mutating_face_layer(prod: &str) -> Option<&'static str> {
         MUTATING_FACE_STILL_FORBIDDEN
@@ -556,10 +618,11 @@ mod tests {
     }
 
     /// 扫后端生产源码，按文件分流到两层判据。返回 (默认层文件数, 命中的白名单模块数)。
-    fn scan(src_dir: &std::path::Path) -> (usize, usize, usize) {
+    fn scan(src_dir: &std::path::Path) -> (usize, usize, usize, usize) {
         let mut default_scanned = 0usize;
         let mut whitelisted = 0usize;
         let mut face = 0usize;
+        let mut own = 0usize;
         // Phase G 审计：**递归**。原来是 `read_dir`（只看顶层）——今天 backend src 是平的
         // 所以尚未失效，但「写盘能力不可能悄悄扩散到第二个模块」这句承诺对
         // `src/<subdir>/x.rs` 是不成立的：那种文件既不进默认层也不进白名单层，
@@ -618,6 +681,25 @@ mod tests {
                 continue;
             }
 
+            // 〔B2〕第四层：后端自有状态文件。
+            if is_own_state(&rel) {
+                own += 1;
+                if let Err(why) = open_calls_are_all_exclusive(&prod) {
+                    panic!("第四层模块 {}：{why}", path.display());
+                }
+                if let Some(pat) = OWN_STATE_STILL_FORBIDDEN
+                    .iter()
+                    .find(|p| prod.contains(**p))
+                {
+                    panic!(
+                        "第四层模块 {} 含 `{pat}`。这一层只写后端自己的那一份状态文件，\n\
+                         做法只有「`O_EXCL` 临时文件 → 原子挪」一种；`{pat}` 不在那条路上。",
+                        path.display()
+                    );
+                }
+                continue;
+            }
+
             if is_write_whitelisted(&rel) {
                 whitelisted += 1;
                 assert!(
@@ -652,7 +734,7 @@ mod tests {
             }
             default_scanned += 1;
         }
-        (default_scanned, whitelisted, face)
+        (default_scanned, whitelisted, face, own)
     }
 
     /// **红线 I7 的机器化护栏**（G2 起分两层）。
@@ -791,7 +873,7 @@ mod tests {
     #[test]
     fn backend_write_capability_is_confined_to_the_registered_modules() {
         let src_dir = crate::guard_support::src_root();
-        let (default_scanned, whitelisted, face) = scan(&src_dir);
+        let (default_scanned, whitelisted, face, own) = scan(&src_dir);
         // 🔴 〔步 10 · 2026-09-19〕**地板换成恒等。**
         //    上一版逐字是 `default_scanned >= 5` —— 它在「变多」那个方向上有意义，
         //    在「**变少**」这个方向上完全是瞎的：人群从 64 掉到 6，它照样绿。
@@ -802,10 +884,10 @@ mod tests {
             .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs"))
             .count();
         assert_eq!(
-            default_scanned + whitelisted + face + skipped_self,
+            default_scanned + whitelisted + face + own + skipped_self,
             core_files().len(),
             "人群对不上：默认层 {default_scanned} ＋ 白名单层 {whitelisted} ＋ 第三层 {face} ＋ \
-             跳过本文件 {skipped_self} != 登记派生的 {} 份。\n\
+             第四层 {own} ＋ 跳过本文件 {skipped_self} != 登记派生的 {} 份。\n\
              ⇒ 有文件既没进默认层也没进白名单层 —— 那种文件**不受任何一层管**，\n\
              而上一版那条地板（`>= 5`）对它一声不吭。",
             core_files().len()
@@ -835,6 +917,66 @@ mod tests {
              多一个不可能从这里来（没登记的模块走默认层，那一层会先红）。",
             MUTATING_FACE_MODULES.len()
         );
+        // 〔B2〕第四层同形：相等，不是地板。
+        assert_eq!(
+            own,
+            OWN_STATE_MODULES.len(),
+            "第四层模块必须**恰好**是登记的那几个（登记 {}，扫到 {own}）。\n\
+             少一个 = 登记挂空号（搬走 / 改名了，这张表没跟）。",
+            OWN_STATE_MODULES.len()
+        );
+    }
+
+    /// 🔴 〔B2〕**第四层判据 ④：写口只从一扇门进来 —— 零命中守卫。**
+    ///
+    /// 针是写口的**限定名**（`exit_policy::answer_set`，运行时拼）。读口（`exit_policy::last_client_left` /
+    /// `answer_read`）不在针里 —— 读不改世界，`main.rs` 流结束那一臂正是读口的合法调用点。
+    #[test]
+    fn the_own_state_writer_is_reached_through_exactly_one_door() {
+        let root = crate::guard_support::src_root();
+        let needle = format!("exit_policy::{}", "answer_set");
+        let mut scanned = 0usize;
+        let mut found: std::collections::BTreeSet<String> = Default::default();
+        for path in core_files() {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if path.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs")
+                || is_own_state(&rel)
+            {
+                continue;
+            }
+            scanned += 1;
+            let src = std::fs::read_to_string(&path).expect("read rs file");
+            if guard_core::production_code(&src).contains(needle.as_str()) {
+                found.insert(rel);
+            }
+        }
+        // `main.rs` 不在 `core_files()` 里（它不属于任何模块）⇒ 单独看一眼，它也不许碰写口。
+        let main = std::fs::read_to_string(root.join("main.rs")).expect("读 main.rs");
+        if guard_core::production_code(&main).contains(needle.as_str()) {
+            found.insert("main.rs".into());
+        }
+        assert!(
+            scanned >= 60,
+            "只扫到 {scanned} 份后端源文件 —— 遍历坏了，零命中守卫在空人群上恒绿"
+        );
+        let want: std::collections::BTreeSet<String> = OWN_STATE_DOORS
+            .iter()
+            .map(|(p, _)| (*p).to_string())
+            .collect();
+        assert_eq!(
+            found,
+            want,
+            "够得到后端自有状态文件写口的文件与登记的那扇门对不上。\n  多出来的：{:?}\n  少了的：{:?}",
+            found.difference(&want).collect::<Vec<_>>(),
+            want.difference(&found).collect::<Vec<_>>()
+        );
+        for (p, why) in OWN_STATE_MODULES.iter().chain(OWN_STATE_DOORS) {
+            assert!(why.trim().chars().count() >= 20, "`{p}` 没写清为什么");
+        }
     }
 
     /// ★★ 反向那半：**表里每一条都得对得上一份真的在写的文件**（幽灵检查）。
@@ -1366,8 +1508,14 @@ mod tests {
                         // 那几个写口，且只准住在登记过的白名单模块里。
                         // 〔波 5 ㈡〕第三层模块同样可以有（`O_EXCL` 新建那一处还在它里面）。
                         if WRITE_ONLY_IN_WHITELIST.contains(&full.as_str())
-                            && (is_write_whitelisted(&rel) || is_mutating_face(&rel))
+                            && (is_write_whitelisted(&rel)
+                                || is_mutating_face(&rel)
+                                || is_own_state(&rel))
                         {
+                            continue;
+                        }
+                        // 〔B2〕第四层那个闭集：只在第四层模块里放行。
+                        if OWN_STATE_VERBS.contains(&full.as_str()) && is_own_state(&rel) {
                             continue;
                         }
                         // 🔴 〔波 5 ㈡〕第三层那个**闭集**：只在第三层模块里放行，别处照旧红。
