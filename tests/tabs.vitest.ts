@@ -4558,4 +4558,39 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     host.jumpTo("u42");
     expect(t.skeleton!.isPending(42)).toBe(false);
   });
+
+  // 〔SE1〕数据源换成后端之后，这条路必须照旧通：行是后端清单给的（不是流上攒的），
+  //   点**那一行**（不是直接调宿主）⇒ 先按 uuid→seq 物化再跳。
+  it("🔴 SE1：大纲的行来自后端清单，点到还在占位里的那一行 ⇒ 先物化那一段再跳", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(
+        cmd === "read_session_index"
+          ? idx(300)
+          : cmd === "list_user_inputs"
+            ? {
+                available: true,
+                from: 0,
+                end: 3,
+                entries: [
+                  { uuid: "u7", excerpt: "七", timestamp: "" },
+                  { uuid: "u42", excerpt: "四十二", timestamp: "" },
+                  { uuid: "u250", excerpt: "二百五十", timestamp: "" },
+                ],
+              }
+            : undefined,
+      ),
+    );
+    const t = replay("jump2");
+    await settle();
+    await settle();
+    const rows = [...t.inputsEl.querySelectorAll<HTMLButtonElement>(".user-input-row")];
+    // 行 == 后端给的，顺序不动（流上喂的全是 assistant 行 ⇒ 前端若还在自己攒，这里一条都不会有）
+    expect(rows.map((r) => r.dataset.inputUuid)).toEqual(["u7", "u42", "u250"]);
+    expect(t.skeleton!.isPending(42), "夹具没落在占位里 ⇒ 下面那半是空真").toBe(true);
+    const g = globalThis as unknown as { CSS?: { escape(s: string): string } };
+    g.CSS ??= { escape: (x: string) => x };
+    rows[1].click();
+    expect(t.skeleton!.isPending(42)).toBe(false);
+    expect(t.skeleton!.isPending(7), "只物化点到的那一段，不是全建").toBe(true);
+  });
 });
