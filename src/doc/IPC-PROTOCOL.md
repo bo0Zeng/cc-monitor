@@ -1750,7 +1750,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   `capture` 在 ack 之后回一行 `{"stdout","stderr","exit_status"}`；`forward` 每接一条连接回一行 `{"accepted":n}`，stdin EOF 即收工。
 - 鉴权：`key_path` 或 **ssh-agent**（Unix `SSH_AUTH_SOCK` —— 新能力；Windows OpenSSH 命名管道 —— 零真机读数）。
   竞速**同时起拨**、不错开（后端零定时器护栏禁 `sleep`/`timeout`）；握手看门狗改在界面侧等 ack 时执行（45 s）。
-- 读数：`tests/evidence/C2-dial-loopback.py` 对真回环 sshd 八项（竞速 · 严格指纹 · 半关 · 跳板 · agent · 转发）。
+- 读数：`tests/evidence/C2-dial-loopback.py` 对真回环 sshd 八项（竞速 · 严格指纹 · 流与收工 · 跳板 · agent · 转发）。
 - ⚠ 后端行为变了（多了用法与字段），**子命令集不变** ⇒ 合并时 bump `BUILD_ID`，否则开发树里按旧 id 释放出来的
   老代理会被界面判成「本机后端太旧」。
 

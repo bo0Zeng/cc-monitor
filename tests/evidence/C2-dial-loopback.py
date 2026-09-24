@@ -16,7 +16,7 @@
   ① capture：stdout / stderr / 退出码三样收全（退出码 7 原样回来）
   ② 竞速：一个死端口排在前面，活的那个胜出；阶段行六种按到达顺序出、kind 是 camelCase
   ③ 严格指纹：给错指纹 ⇒ 拒绝、ack 里带上实得指纹
-  ④ stream：半关 —— 界面写完关掉写半边，远端 `cat` 的输出照样全回来
+  ④ stream：远端输出原样回来 · 界面走了（stdin EOF）代理就收工，哪怕远端那头还活着（`D3③`）
   ⑤ 跳板：经跳板开隧道、在隧道上握手（跳板与目标是同一台，形状是真的）
   ⑥ ssh-agent（Unix）：不给私钥路径，走 SSH_AUTH_SOCK
   ⑦ 没有 agent 也没给私钥 ⇒ 明说，不回落
@@ -123,9 +123,17 @@ def main():
         ack = json.loads(out[0])
         check("错指纹被拒、退出 3、带实得指纹", (not ack["ok"]) and rc == 3 and ack["fingerprint"] == fp, (rc, out))
 
-        print("④ stream 半关")
-        rc, out = dial(bin_path, {**base, "host_key_fingerprint": fp, "command": "cat"}, stdin=b"hello\nworld\n")
-        check("写完就关，输出照样全回", out[1:] == ["hello", "world"] and rc == 0, (rc, out))
+        print("④ stream")
+        # 界面的写半边一直开着（真实用法：一次性查询从不关它），只看下行
+        env = {**os.environ, "CCM_DIAL_REQUEST": json.dumps({**base, "host_key_fingerprint": fp, "command": "echo hello; echo world"})}
+        pr = subprocess.Popen([bin_path, "--dial"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+        out = [ln for ln in pr.stdout.read().decode().split("\n") if ln]
+        rc = pr.wait(timeout=10)
+        pr.stdin.close()
+        check("远端的输出原样回来、远端退了代理就收工（写半边一直开着）", out[1:] == ["hello", "world"] and rc == 0, (rc, out))
+        t0 = time.time()
+        rc, out = dial(bin_path, {**base, "host_key_fingerprint": fp, "command": "cat"}, stdin=b"")
+        check("界面走了（stdin EOF）代理就收工 —— 哪怕远端那头还活着", rc == 0 and time.time() - t0 < 10, (rc, out, time.time() - t0))
 
         print("⑤ 跳板")
         rc, out = dial(bin_path, {**base, "command": "echo via-jump", "use": "capture", "capture": {"max_bytes": 100}, "stages": True,
