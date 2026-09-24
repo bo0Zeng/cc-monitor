@@ -865,12 +865,15 @@ NO_GATE_NEEDED = {
              "why": "那一格的命令本体住 `scripts.test`、`include` 住 `vitest.config.ts`；"
                     "它们坏了那一格根本起不来 ⇒ 是**依赖**不是**分母**，登记只记分母"},
             {"档": "应用入口与构建 / 工具链配置", "判": UNJUDGED,
-             "成员": ["index.html", "vite.config.ts", "tsconfig.json",
+             "成员": ["index.html", "settings.html", "viewer.html", "vite.config.ts", "tsconfig.json",
                      "eslint.config.js", ".stylelintrc.json"],
              "why": "🔴 **这一档今天 0 格覆盖，而「文档与仓库元数据」那顶帽子对它们是假的**："
                     "`index.html` 是应用入口 · `vite.config.ts` 决定构建产物 · "
                     "`tsconfig.json` / `eslint.config.js` / `.stylelintrc.json` 决定类型与 lint 的口径。"
-                    "⇒ 本条**不声称它们不需要门**，只声称**它们已被逐份数到**"},
+                    "⇒ 本条**不声称它们不需要门**，只声称**它们已被逐份数到**。"
+                    "〔U1 09-24〕三入口拆分后多了 `settings.html` / `viewer.html`；三份 html 与 vite input、"
+                    "`lib.rs` 开窗 url 的三处对账住 `tests/entry-graphs.vitest.ts`（经 `npm` 那一格跑到），"
+                    "但那是**依赖面的对账**，不是这一档的分母 ⇒ 判档不改"},
             {"档": "依赖锁", "判": UNJUDGED, "成员": ["package-lock.json"],
              "why": "它决定 `npm ci` 装出来的是哪一棵依赖树 —— 同样既不是文档也不是仓库元数据。"
                     "0 格覆盖，加不加门另裁"},
