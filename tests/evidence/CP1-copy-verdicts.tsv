@@ -1193,3 +1193,4 @@ src/settings/backend-section.ts:113	状态	保留	[对外] 后端四栏表头（
 src/settings/backend-section.ts:114	操作	保留	[对外] 后端四栏表头
 src/settings/backend-section.ts:115	退出行为	保留	[对外] 后端四栏表头（01 §3.3 生命周期那一轴的界面面）
 src/settings/backend-section.ts:116	健康	保留	[对外] 后端四栏表头
+src/settings/backend-section.ts:122	monitor 这次启动时没有为这台机器登记后端：远端模式没开，或者这台是启动之后才加的。重启 monitor 之后才能在这里起停。	保留	[对外] 机器列表行上后端「未登记」那一格的 ⓘ（ST2 步 14）：说清为什么起停不了、怎么办（重启）

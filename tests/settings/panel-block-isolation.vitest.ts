@@ -214,6 +214,11 @@ describe("T07 分区块隔离（真行为）", () => {
     expect(hint!.textContent).toContain("位置不对");
     // 「都还能用」——账号那块的真身还在 DOM 里，不是被兜底提示替掉了。
     expect(document.querySelector(".accounts-section-stub")).not.toBeNull();
+    // 〔ST2 · 步 14〕后端那几行本该挂在机器列表的行上 —— 列表没建起来 ⇒ 它们也退回列表页，不许无处安放。
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+    const backendRows = page.querySelector<HTMLElement>(".backend-section");
+    expect(backendRows, "机器列表挂了，后端那几行跟着从界面上消失了").not.toBeNull();
+    expect(backendRows!.querySelector('.backend-row[data-origin="<local>"]')).not.toBeNull();
   });
 
   it("换一块抛（McpSection）→ 同样只坏那一块", async () => {
