@@ -152,6 +152,11 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⇒ 走分流器的**第二个出口** `layer_call_error`（三态正是从它收拢出来的，同出一源），
     //   「没有控制通道」走 `layer_no_channel`。它自己**不** match inbound 的错误枚举。
     ("host.rs", Verdict::UsesRouter),
+    // ★ 〔`C1` · 2026-09-24〕**第九个发送端** —— 只读查询面（`frame_query.rs`，
+    //   `history-*` / `accounts-*` 八条）。它**没有第二条路可回落**：逐次拨 SSH 那条正是
+    //   本件要删的东西，长连接不在时明说「没有控制通道」。但**照样走分流器**
+    //   （`route_call_error` ＋ `no_channel`），理由与 `cc_bus.rs` / `tmux.rs` / `find.rs` 逐字相同。
+    ("frame_query.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。
