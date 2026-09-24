@@ -2134,3 +2134,9 @@ mod pool_f4_tests;
 #[cfg(test)]
 #[path = "../../../tests/bridge/sftp_staging_tests.rs"]
 pub(crate) mod staging_tests;
+
+/// 〔F7c · 第三波 09-24〕**SFTP 那一族收到只剩传输**的恒等登记（`设计/60 §13.4`）：Tauri 命令 == 待收 ·
+/// 远端写函数 == 暂存区那两个 ∪ 待收 · 通道上的传输操作恰好两条。待收每一格要求消费者此刻在盘上。
+#[cfg(test)]
+#[path = "../../../tests/bridge/sftp_family_registry_tests.rs"]
+mod family_registry;
