@@ -53,7 +53,7 @@ pub(crate) fn resolve_path() -> Option<PathBuf> {
 /// （`readdirSync` + 逐项比对，新增文件必然让它红一次）——**那个文件不在本轮写区**。
 /// ⇒ 走手写 + 对拍，等价的牙由 `the_ts_status_type_matches_this_struct` 买。
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
-pub struct RelayCredentialsStatus {
+pub struct ApikeyCredentialsStatus {
     /// 配了没配。
     pub configured: bool,
     /// 掩码形（前后各留几位；短到看不出前后缀的整条遮掉）。没配 = 空串。
@@ -78,7 +78,7 @@ pub struct RelayCredentialsStatus {
 /// ⇒ 「某个**账号**配没配」不由本函数答，由 `history::apikey_rows_at` 那一族答
 /// （那正是起会话那一侧用的同一个取值口，`KH2B7` 已经把它端给了界面）。
 /// 本函数答的三样是**文件级**的：那份文件在哪 · 权限过不过宽 · 是不是被手编坏了。
-pub(crate) fn read_status() -> Result<RelayCredentialsStatus, String> {
+pub(crate) fn read_status() -> Result<ApikeyCredentialsStatus, String> {
     read_status_at(&resolve_path().ok_or_else(|| "no home dir".to_string())?)
 }
 
@@ -87,13 +87,13 @@ pub(crate) fn read_status() -> Result<RelayCredentialsStatus, String> {
 /// ★ 抽出来的理由与本仓 `relay::server::resolve_config` 那次逐字同一条：
 /// 不抽的话，这段逻辑只能对着**真实 home 目录下那份文件**跑 —— 而判据不许碰用户的真东西，
 /// 于是它会变成一格**永远没人量过**的代码。
-pub(crate) fn read_status_at(path: &std::path::Path) -> Result<RelayCredentialsStatus, String> {
+pub(crate) fn read_status_at(path: &std::path::Path) -> Result<ApikeyCredentialsStatus, String> {
     let verdict = perm::judge(&perm::probe(path));
     let raw = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => {
-            return Ok(RelayCredentialsStatus {
+            return Ok(ApikeyCredentialsStatus {
                 configured: false,
                 masked: String::new(),
                 path: path.display().to_string(),
@@ -111,7 +111,7 @@ pub(crate) fn read_status_at(path: &std::path::Path) -> Result<RelayCredentialsS
         },
         Err(e) => (false, String::new(), Some(e.to_string())),
     };
-    Ok(RelayCredentialsStatus {
+    Ok(ApikeyCredentialsStatus {
         configured,
         masked,
         path: path.display().to_string(),

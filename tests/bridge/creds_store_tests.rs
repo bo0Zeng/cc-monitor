@@ -523,7 +523,7 @@ const PLAINTEXT_SCAN_TREES: &[&str] = &["src/bridge/src", "src/bridge/crates", "
 /// · `creds-core/src/lib.rs` 只扫 `include_str!("../../src/bridge/src/lib.rs")`——**它自己这一个文件**；
 /// · `relay/creds_guard.rs` 扫后端那个 crate；
 /// ⇒ **`src/bridge` 整个不在任何人的人群里**，而 monitor 恰恰是明文**第一次进程序**的地方
-///   （`write_relay_credentials_key(key: String)`）。
+///   （`write_apikey_credentials_key(key: String)`）。
 /// D1 审计刀 B 实打：在 monitor 生产段取一次明文 `eprintln!` 出去
 /// ⇒ **8 包合计 1284 passed，一条都没红**。
 ///
@@ -811,7 +811,7 @@ fn the_ts_status_type_matches_this_struct() {
     // ⚠ 用 `find_pinned` 而不是裸 `.find("…")`：本仓 `needle_anchor_registry` 立着一条递减棘轮
     //   （语料变量上的裸匹配「与 `contains` 同族同险：needle 被撑大时照样绿」）。
     //   它额外买两样：**恰好一处** + 两侧有边界。〔08-27 我第一版写裸 `.find` 撞红过它。〕
-    let at = guard_core::find_pinned(&rust_src, "pub struct RelayCredentialsStatus {")
+    let at = guard_core::find_pinned(&rust_src, "pub struct ApikeyCredentialsStatus {")
         .expect("切不出结构体 —— 本条按红处理，不是绿");
     let body = brace_block(&rust_src, at).expect("结构体没闭合 —— 按红处理");
     let rust_fields: Vec<String> = body
@@ -830,7 +830,7 @@ fn the_ts_status_type_matches_this_struct() {
     // TS 侧：从 `src/ipc/commands.ts` 里切出接口体，派生字段名。
     let ts = std::fs::read_to_string(crate::guard_support::repo_src_root().join("ipc/commands.ts"))
         .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
-    let tat = guard_core::find_pinned(&ts, "export interface RelayCredentialsStatus {")
+    let tat = guard_core::find_pinned(&ts, "export interface ApikeyCredentialsStatus {")
         .expect("TS 侧找不到那个接口 —— 它被改名或删了");
     let tbody = brace_block(&ts, tat).expect("接口没闭合 —— 按红处理");
     assert!(
@@ -850,13 +850,13 @@ fn the_ts_status_type_matches_this_struct() {
     for f in &rust_fields {
         assert!(
             ts_fields.contains(f),
-            "TS 的 `RelayCredentialsStatus` 缺字段 `{f}` —— 它是手写类型，没有编译器管：\nRust={rust_fields:?}\nTS={ts_fields:?}"
+            "TS 的 `ApikeyCredentialsStatus` 缺字段 `{f}` —— 它是手写类型，没有编译器管：\nRust={rust_fields:?}\nTS={ts_fields:?}"
         );
     }
     for f in &ts_fields {
         assert!(
             rust_fields.contains(f),
-            "TS 的 `RelayCredentialsStatus` 多了字段 `{f}`，Rust 侧没有它。\n\
+            "TS 的 `ApikeyCredentialsStatus` 多了字段 `{f}`，Rust 侧没有它。\n\
                  ⚠ 这一格是承重的：TS 侧偷偷多一个装明文的字段，正是 `KS6` 要挡的那一形。\nRust={rust_fields:?}\nTS={ts_fields:?}"
         );
     }
@@ -866,7 +866,7 @@ fn the_ts_status_type_matches_this_struct() {
 /// `KS6` 的后端那一半：**回帧里装不下明文**。
 #[test]
 fn the_status_type_cannot_carry_the_plaintext() {
-    let s = RelayCredentialsStatus {
+    let s = ApikeyCredentialsStatus {
         configured: true,
         masked: SecretKey::new("sk-ant-PLAINTEXT-NEVER-ECHOED").masked(),
         path: "/somewhere/apikey-credentials.json".to_string(),
@@ -894,7 +894,7 @@ fn the_status_type_cannot_carry_the_plaintext() {
 const PLAINTEXT_HOPS: &[(&str, &str, &str, &str)] = &[
     (
         "lib.rs",
-        "fn write_relay_credentials_key(",
+        "fn write_apikey_credentials_key(",
         "key",
         "creds_store::write_key(&config_dir, &key)",
     ),
@@ -915,7 +915,7 @@ const PLAINTEXT_HOPS: &[(&str, &str, &str, &str)] = &[
 /// 数一个**标识符**出现几次 —— 带词边界，不是子串。
 ///
 /// ⚠ **这个助手是第一跑逼出来的，经过记下来**：第一版直接用 `matches(binding).count()`，
-/// 实测 `key` 在 `write_relay_credentials_key` 的函数体里数出 **2** 次 ——
+/// 实测 `key` 在 `write_apikey_credentials_key` 的函数体里数出 **2** 次 ——
 /// 因为它调的那个函数**自己就叫 `write_key`**，`key` 是它的后缀。
 /// ⇒ 那一版数的根本不是「明文被碰了几次」，是「这几个字母出现了几次」。
 /// **本工作区最贵那族病的又一形：尺子的作用域对不上事实。**
@@ -943,8 +943,8 @@ fn count_ident(hay: &str, ident: &str) -> usize {
 ///
 /// # 它补的是哪一格（别把它读大）
 ///
-/// `KS6` 保的是 key **回**前端那个方向（`RelayCredentialsStatus` 在**类型上**装不下明文）。
-/// **去**后端那个方向 `write_relay_credentials_key(key: String)` **入参就是明文**，
+/// `KS6` 保的是 key **回**前端那个方向（`ApikeyCredentialsStatus` 在**类型上**装不下明文）。
+/// **去**后端那个方向 `write_apikey_credentials_key(key: String)` **入参就是明文**，
 /// 而 `K-H2a` 把它逐字登记成 **`判不了`**（`lib.rs` 那段头注：
 /// 「⇒ 它的身份是 **`判不了`**，不是「射程外」。**这两个词不是一回事**：
 /// 前者欠着一次测量，后者是已经裁过不做。」）。

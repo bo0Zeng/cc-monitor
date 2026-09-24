@@ -675,7 +675,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 // 2. **Windows 那一侧只到「编得过」**（`relay_env_prefix_ps` 一行运行时行为都没量过），
 //    原样延续 `K-H2` 的登记。
 // 3. **远端那一半不做**（`K-H2b` `§0e` 裁四）：把 key 送到远端那台机器的路
-//    （`parity_ledger.rs` 的 `creds.relay-key`）今天**没有主人**。
+//    （`parity_ledger.rs` 的 `creds.apikey`）今天**没有主人**。
 //    回环地址是**自指**的 ⇒ 同一个字面串写进哪台机器就指哪台，
 //    但「那台机器上有没有那份凭据」是另一件事，本件明写 `判不了`。
 
