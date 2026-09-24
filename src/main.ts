@@ -20,6 +20,7 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
+import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
 import { listen } from "@tauri-apps/api/event";
@@ -537,7 +538,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "open-sftp", title: "打开 SFTP 文件面板", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
       { id: "win-minimize", title: "最小化窗口", keywords: "minimize 最小化", hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
       { id: "win-fullscreen", title: "切换全屏", keywords: "fullscreen 全屏", hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
-      { id: "term-front", title: "把对应终端窗口拉到前台", keywords: "terminal 终端 front", hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() },
+      // 〔U2〕↗ 那一项只在 ↗ 真能用的机器上列出来（非 Windows 不列；门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
+      ...terminalFrontCommand({ id: "term-front", title: "把对应终端窗口拉到前台", keywords: "terminal 终端 front", hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
       { id: "toggle-tasks", title: "开 / 关 Task 面板", keywords: "task 任务 panel", hint: chordHint("panel.toggle-tasks"), run: () => tasksPanel.toggle() },
       { id: "tab-next", title: "切到下一个 Tab", keywords: "next tab 下一个", hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
       { id: "tab-prev", title: "切到上一个 Tab", keywords: "prev tab 上一个", hint: chordHint("tab.prev"), run: () => tabs.cycleActive(-1) },
