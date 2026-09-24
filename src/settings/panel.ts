@@ -221,7 +221,14 @@ export class SettingsPanel {
     /** S4b-3b-2：这块归详情页的哪一栏。`footprint` 是 `70 §10.1`/`§5.3` 新增的第五栏。 */
     tab: "acct" | "tools" | "footprint";
     el: HTMLElement;
+    /**
+     * ST1「延后加载」：这一块的第一发 I/O。**某台机器的子页第一次可见时**才调
+     * （`70 §5.3` 判据 2）。构造失败（`safeBlock` 收住）的块没有它。
+     */
+    load?: () => void;
   }[] = [];
+  /** ST1：本次打开以来 per-machine 那几块放过 I/O 没有。`open()` 清零（重开要看新读数）。 */
+  private perMachineLoaded = false;
   /**
    * 🔴 第一刀 · 步 2（`设计/70 §1.3 B`）：**「这一页首次可见」才发 I/O。**
    *
@@ -391,6 +398,7 @@ export class SettingsPanel {
     // 与「日志」那两发 —— 那三发在落地页是「机器」的情况下**每次打开都是白发的**，
     // 正是 `§8` 判据 #3（非落地页零 I/O）今天被打破的那一处。
     this.pagesLoaded.clear();
+    this.perMachineLoaded = false;
     // issue #15 (S6): 每次打开重拉 config.json 的 remote 子对象，跟外部改动对齐
     // 步 4（`70 §1.3 D`）：`refresh()` 失败时会把原因画到那一块自己的 banner 上；
     // 这里 `catch` 掉是为了不再多产一条走状态栏的未捕获 rejection（同一件事说两遍，
@@ -839,7 +847,13 @@ export class SettingsPanel {
               // 步 2 + 步 14a：机器子页是**动态注册**的，登记表只能在这一刻填。
               // ⚠ 用 `set` 不是 `push`：`rebuildCards` 每次 refresh 都会重注册一遍同一批
               //   页 id，push 会让同一发 I/O 排队攒到 N 份。
-              this.pageLoaders.set(id, [() => this.footprintSection?.loadNow()]);
+              // ST1「延后加载」：per-machine 那几块是**单例**、跟着机器子页搬 ⇒ 任意一台机器的
+              //   子页第一次可见时放一次（`loadPerMachineOnce` 自己去重）；之后切机器由各块
+              //   自己的 `subscribeMachine` 重读。
+              this.pageLoaders.set(id, [
+                () => this.footprintSection?.loadNow(),
+                () => this.loadPerMachineOnce(),
+              ]);
               // ★ S4b-3b-2：远端机器页拆成横向四栏（主计划 §2.3）。
               // 复用 `SettingsRouter`（横向 + 无页头）而不是另造 tab 原语 ——
               // 「同一时刻只有一栏可见 + aria + 方向键 + 不重复注册」与左侧导航
@@ -895,7 +909,7 @@ export class SettingsPanel {
         // 因为前者在 jsdom 里直接 `new AccountsSection()`，结构性地绕过了这一层。
         appliesTo: "both",
         tab: "acct",
-        el: this.safeBlock("账号", () => new AccountsSection().element),
+        ...this.loadableBlock("账号", () => new AccountsSection()),
       },
       {
         // PowerShell $PROFILE 注入 —— 只对**本机**有意义；远端的对应物是
@@ -905,16 +919,16 @@ export class SettingsPanel {
         // **整块不构造**（构造即发两次 Windows 专用 IPC）。
         appliesTo: "local",
         tab: "tools",
-        el: hostOsAllows(SettingsPanel.CC_INTEGRATION_HOST_OS)
-          ? this.safeBlock("终端集成", () => new CcIntegrationSection().element)
-          : SettingsPanel.ccIntegrationNotApplicable(),
+        ...(hostOsAllows(SettingsPanel.CC_INTEGRATION_HOST_OS)
+          ? this.loadableBlock("终端集成", () => new CcIntegrationSection())
+          : { el: SettingsPanel.ccIntegrationNotApplicable() }),
       },
       // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
       // 本机与远端都有意义（它自己的机器行第一颗按钮就是本机）。
       {
         appliesTo: "both",
         tab: "tools",
-        el: this.safeBlock("MCP", () => new McpSection().element),
+        ...this.loadableBlock("MCP", () => new McpSection()),
       },
       // P8a：插件面（marketplace）只读枚举。
       // ⚠ `appliesTo: "local"` —— 它今天**只有本机口**（远端要等后端的
@@ -923,14 +937,14 @@ export class SettingsPanel {
       {
         appliesTo: "local",
         tab: "tools",
-        el: this.safeBlock("插件（marketplace）", () => new PluginsSection().element),
+        ...this.loadableBlock("插件（marketplace）", () => new PluginsSection()),
       },
       // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
       // 本机与远端都要诊断（§2.4 表里这一行两栏都写着「诊断 + 待贴片段」）。
       {
         appliesTo: "both",
         tab: "tools",
-        el: this.safeBlock("cc-bus 钩子", () => new CcBusHooksSection().element),
+        ...this.loadableBlock("cc-bus 钩子", () => new CcBusHooksSection()),
       },
       // 🔴 步 14a（`70 §10.1` · `§5.3` 那张图的第五栏）：**「足迹」**。
       //
@@ -1061,6 +1075,36 @@ export class SettingsPanel {
     else this.pageLoaders.set(pageId, [load]);
   }
 
+  /**
+   * ST1「延后加载」：构造一块 per-machine 分节（照常在 `safeBlock` 里），并把它的 `loadNow`
+   * 挂出来留给「机器子页第一次可见」那一刻。构造失败 ⇒ 没有 `load`（与 `remoteSection` 那格同一约定）。
+   */
+  private loadableBlock(
+    title: string,
+    make: () => { element: HTMLElement; loadNow(): void },
+  ): { el: HTMLElement; load?: () => void } {
+    let sec: { loadNow(): void } | undefined;
+    const el = this.safeBlock(title, () => {
+      const s = make();
+      sec = s;
+      return s.element;
+    });
+    return { el, load: sec ? () => sec!.loadNow() : undefined };
+  }
+
+  /** ST1：per-machine 那几块的第一发。一次打开里只放一次（它们是单例，不按机器各起一份）。 */
+  private loadPerMachineOnce(): void {
+    if (this.perMachineLoaded) return;
+    this.perMachineLoaded = true;
+    for (const b of this.perMachineBlocks) {
+      try {
+        b.load?.();
+      } catch (e) {
+        console.warn("[settings] per-machine 分节首次加载抛异常：", e);
+      }
+    }
+  }
+
   /** 步 2：某一页可见了 —— 把它那几块的第一发 I/O 放出去。重复调用是 no-op。 */
   private flushPage(id: string | null): void {
     if (id === null || this.pagesLoaded.has(id)) return;
@@ -1094,6 +1138,8 @@ export class SettingsPanel {
 
   private revealPerMachineFallback(why: string): void {
     if (this.machinePageRegistered) return;
+    // ST1「延后加载」：兜底态下这几块就摆在（落地的）列表页上、用户看得见 ⇒ 这时才放它们的第一发。
+    this.loadPerMachineOnce();
     this.perMachineSlot.hidden = false;
     this.perMachineFallbackHint.hidden = false;
     this.perMachineFallbackHint.removeAttribute("aria-busy");

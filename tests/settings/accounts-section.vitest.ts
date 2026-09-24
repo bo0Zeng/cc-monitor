@@ -103,7 +103,7 @@ const host = (p: Record<string, unknown> = {}) => ({
 
 /** 建 section 并等它的两段 async（init → reload）落定。 */
 async function mount(): Promise<HTMLElement> {
-  const s = new AccountsSection();
+  const s = loaded(new AccountsSection());
   document.body.innerHTML = "";
   document.body.appendChild(s.element);
   await new Promise((r) => setTimeout(r, 0));
@@ -1453,3 +1453,10 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
   });
 });
+
+/** ST1「延后加载」：分节构造期不再发 I/O，由宿主在机器子页第一次可见时调 `loadNow()`。
+ *  本文件量的是分节**加载之后**的行为 ⇒ 构造完就当宿主那样叫醒它。 */
+function loaded<T extends { loadNow(): void }>(s: T): T {
+  s.loadNow();
+  return s;
+}

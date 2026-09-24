@@ -89,7 +89,7 @@ describe("F87b-fix 编辑锁名", () => {
         ];
       return []; // list_mcp_project_dirs / list_remote_mcp_origins
     });
-    const section = new McpSection();
+    const section = loaded(new McpSection());
     document.body.appendChild(section.element);
     await flush(); // 构造期 reload 完成
     // 设项目目录（writable 需 dir）并「读取」重渲染出带「编辑」钮的 project 条目
@@ -147,7 +147,7 @@ describe("F89a 远端项目管理", () => {
       if (cmd === "read_remote_project_mcp") return []; // 空远端项目 .mcp.json
       return []; // list_remote_mcp_project_dirs / read_mcp_servers / read_remote_mcp_servers
     });
-    const section = new McpSection();
+    const section = loaded(new McpSection());
     document.body.appendChild(section.element);
     await flush();
     // 切到远端 pi
@@ -190,7 +190,7 @@ describe("F89b 库 UI（累积 + 已在本项目 + 注册）", () => {
       }
       return []; // list_* / origins
     });
-    const section = new McpSection();
+    const section = loaded(new McpSection());
     document.body.appendChild(section.element);
     await flush();
     const dirInput = section.element.querySelector<HTMLInputElement>('input[placeholder^="项目目录"]')!;
@@ -240,7 +240,7 @@ describe("P6b MCP 工作目录清单", () => {
       }
       return [];
     });
-    const section = new McpSection();
+    const section = loaded(new McpSection());
     document.body.appendChild(section.element);
     await flush();
 
@@ -261,7 +261,7 @@ describe("P6b MCP 工作目录清单", () => {
   it("★ P6b-Y1b：一个目录都没有 ⇒ 说清是「没用过」，不是「加载失败」", async () => {
     document.body.replaceChildren();
     vi.mocked(invoke).mockImplementation(async () => []);
-    const section = new McpSection();
+    const section = loaded(new McpSection());
     document.body.appendChild(section.element);
     await flush();
     expect(chips(section.element)).toEqual([]);
@@ -290,7 +290,7 @@ describe("P6b MCP 工作目录清单", () => {
         });
       return [];
     });
-    const section = new McpSection();
+    const section = loaded(new McpSection());
     document.body.appendChild(section.element);
     await flush(); // 本机枚举挂住
 
@@ -312,7 +312,7 @@ describe("P6b MCP 工作目录清单", () => {
       if (cmd === "list_mcp_project_dirs") throw new Error("boom");
       return [];
     });
-    const section = new McpSection();
+    const section = loaded(new McpSection());
     document.body.appendChild(section.element);
     await flush();
     const txt = () => section.element.querySelector(".mcp-dirs")?.textContent ?? "";
@@ -347,7 +347,7 @@ describe("P6b MCP 工作目录清单", () => {
         });
       return [];
     });
-    const section = new McpSection();
+    const section = loaded(new McpSection());
     document.body.appendChild(section.element);
     await flush();
     expect(chips(section.element)).toEqual(["/local/a", "/local/b"]);
@@ -383,7 +383,7 @@ describe("P6b MCP 工作目录清单", () => {
         });
       return [];
     });
-    const section = new McpSection();
+    const section = loaded(new McpSection());
     document.body.appendChild(section.element);
     await flush();
     expect(chips(section.element)).toEqual(["/local/only"]);
@@ -400,3 +400,10 @@ describe("P6b MCP 工作目录清单", () => {
     expect(chips(section.element)).toEqual(["/local/only"]);
   });
 });
+
+/** ST1「延后加载」：分节构造期不再发 I/O，由宿主在机器子页第一次可见时调 `loadNow()`。
+ *  本文件量的是分节**加载之后**的行为 ⇒ 构造完就当宿主那样叫醒它。 */
+function loaded<T extends { loadNow(): void }>(s: T): T {
+  s.loadNow();
+  return s;
+}

@@ -7,7 +7,7 @@
  * 设置窗独立于主窗口、拿不到活跃会话 cwd → 用项目目录输入框（datalist 从 `list_mcp_project_dirs` 自动补全「用过的项目」）。
  * 纯函数（groupByScope / serverSummary / parseServerConfig）零 import，node 可测。
  */
-import { subscribeMachine } from "./machine-context";
+import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 // 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
@@ -131,6 +131,9 @@ export class McpSection {
   private editNameLabel: HTMLElement | null = null;
   /** F87b③：当前选中的机器。null = 本机（既有本地读写）；非空 = 远端 origin（只读跨机）。 */
   private origin: string | null = null;
+  /** ST1：`loadNow()` 之前收到的「要看哪台」（只记不读）。 */
+  private wantedOrigin: string | null = getCurrentMachine();
+  private loaded = false;
   /** F89b：统一目录（库）——会话内读到过的所有 distinct server（键=catalogKey），供一键注册进项目。累积不清（有清空钮）。 */
   private catalog = new Map<string, { name: string; server: unknown }>();
 
@@ -140,11 +143,29 @@ export class McpSection {
     // （它的机器行第一颗按钮就是本机），所以 null 也照单全收。
     // `selectMachine` 自带「同值早退」，与 store 的「同值不通知」两道去重叠加，
     // 不会因为往返而多打一次 ssh。
-    subscribeMachine((origin) => void this.selectMachine(origin));
-    void this.loadProjectCandidates();
+    // ST1「延后加载」：还没 `loadNow()` 之前只记下要看哪台，**不发 I/O**。
+    subscribeMachine((origin) => {
+      this.wantedOrigin = origin;
+      if (this.loaded) void this.selectMachine(origin);
+    });
     this.loadMachines(); // E59：只渲染「在看哪台」那一行（选择按钮已删）
+  }
+
+  /**
+   * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）：
+   * 构造期不再发 I/O；宿主（`panel.ts`）在**某台机器的子页第一次可见**时调它。
+   * 重开设置后宿主会再调一次（重开要看新读数）。
+   */
+  loadNow(): void {
+    this.loaded = true;
+    if (this.wantedOrigin !== this.origin) {
+      void this.selectMachine(this.wantedOrigin); // 它自己会拉候选 + 读
+      return;
+    }
+    if (this.origin === null) void this.loadProjectCandidates();
+    else void this.loadRemoteProjectCandidates(this.origin);
     // 业务二审 gap#6：打开即读（空 dir 也先显 user/local scope），不再是看似坏掉的空框。
-    void this.reload();
+    void this.refresh();
   }
 
   private build(): HTMLElement {
