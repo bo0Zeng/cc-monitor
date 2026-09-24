@@ -85,7 +85,7 @@ function entryCensus(): string[] {
 }
 
 /**
- * 入口全表（`设计/60 §13` 那五处）。**改入口就改这张表**，理由写在行尾。
+ * 入口全表（`设计/60 §14`〔F7b〕那五处）。**改入口就改这张表**，理由写在行尾。
  */
 const ENTRIES: readonly string[] = [
   "src/cards/index.ts · 定位文件", // 会话工具卡上的文件链接（老面板 revealPath，F54）
