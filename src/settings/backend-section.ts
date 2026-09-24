@@ -38,10 +38,13 @@ import { commands } from "../ipc/commands";
 const SETTLE_TRIES = 30;
 const SETTLE_INTERVAL_MS = 100;
 import { showActionFailureToast } from "../error-toast";
+import { makeInfoIcon } from "./info-icon";
 import {
   HEALTH_UNKNOWN,
+  HEALTH_UNKNOWN_WHY,
   LOCAL_ORIGIN,
   describeBackendHealth,
+  describeHealthDetail,
   describeExitBehavior,
   type BackendHealth,
   type BackendShell,
@@ -102,6 +105,18 @@ function readHealth(raw: unknown): BackendHealth | null {
   };
 }
 
+/**
+ * 🔴 第二刀 步 6（`设计/70 §2.3`）：一台机那一行的**四栏**。栏名只在这里写一次，
+ * 表头与每一格的 `data-col` 都从这张表来。
+ */
+export const BACKEND_COLUMNS = [
+  ["state", "状态"],
+  ["ops", "操作"],
+  ["exit", "退出行为"],
+  ["health", "健康"],
+] as const;
+export type BackendColumn = (typeof BACKEND_COLUMNS)[number][0];
+
 /** 一台机在这一区里的身份。`origin` 是唯一键，`title` 只给人看。 */
 interface Machine {
   origin: string;
@@ -111,6 +126,11 @@ interface Machine {
 export class BackendSection {
   readonly element: HTMLElement;
   private rows = new Map<string, HTMLElement>();
+  /**
+   * origin → 那一台的**四格**容器。重画（状态 / 退出行为 / 健康）与起停都只认这里，
+   * 不认它挂在谁底下 ——〔步 14〕这四格会挂进机器列表那一行上。
+   */
+  private cellHosts = new Map<string, HTMLElement>();
 
   constructor(opts: { headless?: boolean } = {}) {
     this.element = document.createElement("div");
@@ -127,8 +147,11 @@ export class BackendSection {
     //   由 `describeExitBehavior` 从唯一的那个家取。
     //   ⚠ 原来这里那句「它仍会在 monitor 退出后很快自行退出」是**实测结论**，
     //   而 K-P1 之后它只对**没脱离**的那一支成立 —— 留在这里就成了一句半假的全称。
-    hint.textContent = "每台机各一份。每一行下面写着这台机在 monitor 退出时会发生什么。";
+    hint.textContent = "每台机各一行。「退出行为」那一格写着 monitor 退出时这台机会怎样。";
     this.element.appendChild(hint);
+    // 🔴 第二刀 步 6（`设计/70 §2.3`）：**表格式四栏** —— 状态 / 操作 / 退出行为 / 健康。
+    //   原来是一行跑句（「本机未连上 [起][停] ☐ monitor 退出时结束它」），控件嵌在散文里。
+    this.element.appendChild(BackendSection.columnHead());
     this.list = document.createElement("div");
     this.list.className = "backend-list";
     this.element.appendChild(this.list);
@@ -142,6 +165,7 @@ export class BackendSection {
     const machines = await this.machines();
     this.list.innerHTML = "";
     this.rows.clear();
+    this.cellHosts.clear();
     for (const m of machines) {
       const row = this.buildRow(m);
       this.rows.set(m.origin, row);
@@ -177,6 +201,27 @@ export class BackendSection {
     }
   }
 
+  /** 四栏的表头。栏名与 `buildRow` 里每一格的 `data-col` 一一对应（`BACKEND_COLUMNS`）。 */
+  static columnHead(): HTMLElement {
+    const head = document.createElement("div");
+    head.className = "settings-hint";
+    head.dataset.backendColumns = "head";
+    for (const [col, title] of BACKEND_COLUMNS) {
+      const cell = document.createElement("span");
+      cell.dataset.col = col;
+      cell.textContent = title;
+      head.appendChild(cell);
+    }
+    return head;
+  }
+
+  /**
+   * 一台机那一行：名字 ＋ **四格**（`BACKEND_COLUMNS`）。
+   *
+   * ⚠ 每一格是一个带 `data-col` 的容器，里面的元素**沿用原来的类名**
+   *   （`.backend-row-state` / `.backend-row-kill` / `.backend-row-exit` / `.backend-row-health`）——
+   *   判据与既有测试按类名找它们；分栏这一维走 `data-*`，不新造 CSS 类（`css-ledger` ③ 是棘轮）。
+   */
   private buildRow(m: Machine): HTMLElement {
     const row = document.createElement("div");
     row.className = "backend-row";
@@ -186,22 +231,41 @@ export class BackendSection {
     name.className = "backend-row-name";
     name.textContent = m.title;
     row.appendChild(name);
+    row.appendChild(this.buildCells(m.origin));
+    return row;
+  }
 
+  /**
+   * 四格本体（不含名字）。〔步 14〕机器列表那一行也挂这一份 —— 同一套格子、同一套重画，
+   * 只是宿主不同（见 `cellsFor`）。
+   */
+  private buildCells(origin: string): HTMLElement {
+    const cells = document.createElement("span");
+    cells.dataset.backendCells = origin;
+    const col = (name: BackendColumn): HTMLElement => {
+      const c = document.createElement("span");
+      c.dataset.col = name;
+      cells.appendChild(c);
+      return c;
+    };
+
+    const stateCol = col("state");
     const state = document.createElement("span");
     state.className = "backend-row-state";
     state.textContent = "查询中…";
-    row.appendChild(state);
+    stateCol.appendChild(state);
 
+    const ops = col("ops");
     const start = document.createElement("button");
     start.textContent = "起";
-    start.onclick = () => void this.act(m.origin, "start");
-    row.appendChild(start);
-
+    start.onclick = () => void this.act(origin, "start");
+    ops.appendChild(start);
     const stop = document.createElement("button");
     stop.textContent = "停";
-    stop.onclick = () => void this.act(m.origin, "stop");
-    row.appendChild(stop);
+    stop.onclick = () => void this.act(origin, "stop");
+    ops.appendChild(stop);
 
+    const exitCol = col("exit");
     const label = document.createElement("label");
     label.className = "backend-row-kill";
     const box = document.createElement("input");
@@ -209,28 +273,26 @@ export class BackendSection {
     // 〔B2〕问到那台机器的值之前，勾**禁用**：它的值不在这里，在那台机器上。
     box.checked = false;
     box.disabled = true;
-    box.onchange = () => void this.toggleKill(m.origin, box);
+    box.onchange = () => void this.toggleKill(origin, box);
     label.appendChild(box);
     label.appendChild(document.createTextNode("monitor 退出时结束它"));
-    row.appendChild(label);
-
+    exitCol.appendChild(label);
     // ★★ `K-P1 KPY4`：**这台机退出时到底会发生什么**，按状态分档如实说。
     // 文案本体不在本文件（见头注）；这里只放它的位置。
     const exit = document.createElement("div");
     exit.className = "backend-row-exit";
-    row.appendChild(exit);
+    exitCol.appendChild(exit);
 
-    // ★★ `K-P3b KP3W4`：**那句「无人监护」后面接的那个读数**，另起一行。
-    //
-    // ⚠ **不许接在上面那一行后面**：`describeExitBehavior` 的四张脸被
-    // `backend-section.vitest.ts` 用**等号**逐格钉着（它自己逐字写着「不是「包含」
-    // 而是「等于」——「包含」会放过「在正确那句后面又加了一句错的」」）。
-    // 接上去当场红那四格，而那**不是误报**：那两句话说的是两件事。
-    const health = document.createElement("div");
+    // ★★ `K-P3b KP3W4`：**读数**，另起一格。
+    // ⚠ **不许接在退出那一句后面**：`describeExitBehavior` 的四张脸被
+    // `backend-section.vitest.ts` 用**等号**逐格钉着 —— 那两句话说的是两件事。
+    const healthCol = col("health");
+    const health = document.createElement("span");
     health.className = "backend-row-health";
-    row.appendChild(health);
+    healthCol.appendChild(health);
 
-    return row;
+    this.cellHosts.set(origin, cells);
+    return cells;
   }
 
   /**
@@ -248,9 +310,9 @@ export class BackendSection {
     detached: boolean,
     answer: ExitAnswer | null,
   ): void {
-    const row = this.rows.get(origin);
-    const el = row?.querySelector<HTMLElement>(".backend-row-exit");
-    const label = row?.querySelector<HTMLElement>(".backend-row-kill");
+    const cells = this.cellHosts.get(origin);
+    const el = cells?.querySelector<HTMLElement>(".backend-row-exit");
+    const label = cells?.querySelector<HTMLElement>(".backend-row-kill");
     const box = label?.querySelector<HTMLInputElement>("input");
     if (!el || !label || !box) return;
     el.dataset.detached = String(detached);
@@ -266,6 +328,9 @@ export class BackendSection {
       // 而不是摆一个禁用的开关 —— 那一档连选择都没有。〔壳在一个后端的生命里不会变，拿掉就不用再放回来。〕
       label.remove();
       el.remove();
+      // 🔴 `设计/70 §1` 末段 ＋ `01 §6.7a` 规矩 0：折进前端那个壳下 monitor **就是**后端，
+      //   没有第二个进程可起可停 ⇒ [起][停] 也**不存在**（不是禁用）。E4 当时只拿掉了退出那一格。
+      cells?.querySelector<HTMLElement>('[data-col="ops"]')?.replaceChildren();
       return;
     }
     el.dataset.exit = answer.policy;
@@ -283,10 +348,32 @@ export class BackendSection {
    * 而 K-P3 §0-1 逐字点名这两句话「差得很远，不许混用」。
    */
   private paintHealth(origin: string, raw: unknown): void {
-    const el = this.rows.get(origin)?.querySelector<HTMLElement>(".backend-row-health");
-    if (!el) return;
+    const col = this.cellHosts.get(origin)?.querySelector<HTMLElement>('[data-col="health"]');
+    const el = col?.querySelector<HTMLElement>(".backend-row-health");
+    if (!col || !el) return;
     const h = readHealth(raw);
     el.textContent = h === null ? HEALTH_UNKNOWN : describeBackendHealth(h);
+    // 🔴 第二刀 步 6（`70 §2.3`）：长的那一半**不进格子**。
+    //   无记录 ⇒ ⓘ 里放那句「为什么这不等于没崩过」（`§2.2`：区分保留，只换位置）；
+    //   记到过事 ⇒ `[详情]` 展开四个计数（分开列）与完整记录去哪看。
+    //   重画会跑很多遍（`settleStatus` 轮询），所以先把上一次的附件摘掉再挂。
+    for (const extra of col.querySelectorAll("[data-health-extra]")) extra.remove();
+    const detail = h === null ? null : describeHealthDetail(h);
+    if (detail === null) {
+      const why = makeInfoIcon(HEALTH_UNKNOWN_WHY);
+      why.dataset.healthExtra = "why";
+      col.appendChild(why);
+      return;
+    }
+    const more = document.createElement("details");
+    more.dataset.healthExtra = "detail";
+    const sum = document.createElement("summary");
+    sum.textContent = "详情";
+    const body = document.createElement("div");
+    body.className = "settings-hint";
+    body.textContent = detail;
+    more.append(sum, body);
+    col.appendChild(more);
   }
 
   /**
@@ -306,8 +393,8 @@ export class BackendSection {
    * ⚠ 超时不是失败：远端断流后对面进程什么时候退，我们在本机看不见（诚实边界 11c）。
    */
   private async act(origin: string, what: "start" | "stop"): Promise<void> {
-    const row = this.rows.get(origin);
-    const btns = row ? [...row.querySelectorAll("button")] : [];
+    const cells = this.cellHosts.get(origin);
+    const btns = cells ? [...cells.querySelectorAll("button")] : [];
     for (const b of btns) b.disabled = true;
     try {
       const msg =
@@ -348,9 +435,9 @@ export class BackendSection {
 
   /** 画一次状态，并把「通道在不在」返回给 `settleStatus` 判落定。查不到回 `null`。 */
   private async paintStatus(origin: string): Promise<boolean | null> {
-    const row = this.rows.get(origin);
-    if (!row) return null;
-    const state = row.querySelector<HTMLElement>(".backend-row-state");
+    const cells = this.cellHosts.get(origin);
+    if (!cells) return null;
+    const state = cells.querySelector<HTMLElement>(".backend-row-state");
     if (!state) return null;
     try {
       const st = await commands.backend_status({ origin });
@@ -369,6 +456,8 @@ export class BackendSection {
       // K-P1：`detached` 只认后端给的那一格。**缺席 / null ⇒ 按「没脱离」算**
       // （旧后端没有这一格；远端天然没有）—— 保守方向：不脱离那句话是今天一直在说的那句。
       this.paintExit(origin, st.detached === true, answer);
+      // 折进前端那一档：状态那一格说它随 monitor 一起（`70 §2.3` 线框「● 已就绪（后端随 monitor 一起）」）。
+      if (answer?.shell === "folded" && on) state.textContent = "已就绪（随 monitor 一起）";
       // K-P3b：**同一份 JSON**，另一个元素。不新开一次查询，也不接在上面那一行后面。
       this.paintHealth(origin, st.health);
       return on;

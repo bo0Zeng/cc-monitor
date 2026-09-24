@@ -88,15 +88,15 @@ pub const EXIT_COPY: &[(&str, &str)] = &[
 /// ★★ 最要紧的是 [`HEALTH_UNKNOWN`]：它买的是 `K-P3` `§0-1` 那一格 ——
 /// 今天不是「它没崩过」，是「**没有任何东西在记它崩没崩**」，而 `§0-1` 逐字写着
 /// 「这两句话差得很远，件计划里不许混用」。⇒ 读数的默认档是**答不出来**，不是绿灯。
-pub const HEALTH_UNKNOWN: &str =
-    "上次崩没崩：答不出来 —— 今天没有任何东西在跨 monitor 进程地记它崩没崩，而「答不出来」不等于「没崩过」";
-/// 记到过事、但一次崩溃都没有。`{misread}` 是**两侧共用的占位符**。
-pub const HEALTH_CLEAN: &str =
-    "这次 monitor 开着以来：它一次都没崩过（读坏了 {misread} 次不算它崩 —— 那是我们这一侧的读端）";
-/// 崩过。`{crashed}` / `{last}` 同上。
-pub const HEALTH_CRASHED: &str = "这次 monitor 开着以来：它崩过 {crashed} 次，最后一次是「{last}」";
-/// 崩过但那一行没留住 —— 也要说出口，不许拿空串糊过去。
-pub const HEALTH_LAST_MISSING: &str = "那一行没留下来";
+/// 〔第四波 ST2 · `设计/70 §2.3`〕格子里只写「— 无记录」；那条区分（为什么这不等于没崩过）
+/// 进 ⓘ，住 TS 那侧的 `HEALTH_UNKNOWN_WHY` —— 区分保留，换成界面状态（`§2.2`：不能一起扫掉）。
+pub const HEALTH_UNKNOWN: &str = "— 无记录";
+/// 记到过事、但一次崩溃都没有。〔ST2 · 步 6〕读坏了几次进界面的 `[详情]`，这一句不再带占位符。
+pub const HEALTH_CLEAN: &str = "没崩过（这次 monitor 开着以来）";
+/// 崩过。`{crashed}` / `{last}` 是**两侧共用的占位符**；`{last}` 填 [`last_brief`]（不是账行）。
+pub const HEALTH_CRASHED: &str = "⚠ 崩过 {crashed} 次 · 最后一次：{last}";
+/// 崩过但那一次没留住 —— 也要说出口，不许拿空串糊过去。
+pub const HEALTH_LAST_MISSING: &str = "没留下记录";
 
 /// `KP3C` 的那四条，顺序**与 TS 那侧逐条对齐**。
 pub const HEALTH_COPY: &[(&str, &str)] = &[
@@ -459,8 +459,8 @@ pub fn death_copy(d: &Death) -> String {
              同一处反复崩时重起帮不上忙。"
             .to_string(),
         Death::Misread { detail } => format!(
-            "读坏了：{detail}。这是 monitor 这一侧的读端出错，不算它崩了一次；\
-             重开这条读端，别去动那个进程。"
+            "读坏了：{detail}。这是 monitor 这一侧读的时候出错，不算它崩了一次；\
+             重新接上它，别去动那个进程。"
         ),
     }
 }
@@ -661,7 +661,7 @@ pub fn describe_health(h: &Health) -> String {
         return HEALTH_UNKNOWN.to_string();
     }
     if h.crashed == 0 {
-        return HEALTH_CLEAN.replace("{misread}", &h.misread.to_string());
+        return HEALTH_CLEAN.to_string();
     }
     HEALTH_CRASHED
         .replace("{crashed}", &h.crashed.to_string())
