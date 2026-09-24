@@ -530,34 +530,36 @@ fn xvfb_worker_opens_a_real_window() {
             }
             Err(e) => xvfb::emit("a.window_w", format!("几何问不到：{e}")),
         }
-        // 关窗走的是那条「请你关掉」的窗口协议消息 —— winit 收到它才会把循环收干净，
-        // 而「循环干净退出」正是下面 `a.run_native=ok` 要买的东西。
+        // 🔴〔X1 2026-09-24 修根因〕关窗改成**像窗口管理器那样请它关**
+        //    （`WM_DELETE_WINDOW`，住 `xvfb::close_like_a_wm`），不再 `xdotool windowclose`。
         //
-        // 🔴 **〔2026-09-21 登记：这一族在满盘跑里飘，现打约 1/4〕**
+        // # 🪦 上一版这里的登记（2026-09-21「满盘约 1/4 在飘」）是怎么结案的
         //
-        // **读数**：满盘 `cargo test -p monitor --lib` 现打 **5 趟红 1 趟**；另一路独立现打
-        // **12 趟红 3 趟** ⇒ 汇总 **4 / 17 ≈ 24%**。而**单独**跑 `filewin::shell` 那一组
-        // 26/26 绿 —— 两种配置的读数不一样，所以
-        // **「单独跑绿」在这一族上不构成「验过了」**（本仓早记过这条，这里是它的又一个实例）。
+        // 上一版逐字登记了两句互相矛盾的话，并明说「没有读数能判哪句对」：
+        // 「`windowclose` 走的是协议消息（优雅）」对「失效链第一步是硬销毁」。
+        // `真相源/107 §2` 后来读了 `xprop` 看到 winit 列了 `WM_DELETE_WINDOW`，
+        // 于是**推断** `windowclose` 发的是 ClientMessage、判「硬销毁」不成立。
+        // 🔴 **那条推断是错的** —— 它推的是 xdotool 的实现，没量 xdotool 实际发了什么。
+        // X1 现打：拿 `xev`（它也列了 `WM_DELETE_WINDOW`）当靶子跑本机那版
+        // `xdotool windowclose`（3.20160805），`xev` 收到的是 `UnmapNotify` ＋ `DestroyNotify`，
+        // **零条 ClientMessage** ⇒ **它是 `XDestroyWindow`，硬销毁。**
         //
-        // **失效链**（另一路抓的，我没独立复现全链）：硬销毁窗口 ⇒ winit 在
-        // `x11/util/geometry.rs` 的 `TranslateCoordinates` 上 panic（`X11Error{ Window, .. }`）
-        // ⇒ 那个 panic 毒了一把锁 ⇒ 析构里 `unwrap()` 它 ⇒ **「panic in a destructor
-        // during cleanup」⇒ 非 unwind abort ⇒ 实景子进程退出码 `None`** ⇒ 父判据一次带走 2 格。
+        // 硬销毁之后逐趟分类（本工作面单跑，各 80 趟，读数全文住 `设计/60`「Xvfb 抖动」）：
+        // **干净退出 0/240 · 线程 panic（进程活着，上一版父判据放行）≈ 九成 ·
+        // 进程 abort（父判据红）≈ 一成**，环境负载 ~50 与加压到 ~108 两档红率不可分
+        // （8/80 · 10/80 · 8/80）⇒ **不是负载下的时序，是台架那一锤本身每趟都弄坏 winit**；
+        // 「抖」的只是那一下 panic 落在 winit 持锁的那一段（⇒ 毒锁 ⇒ 析构再 panic ⇒ abort）
+        // 还是不持锁的那一段（⇒ 只是线程 panic）。
         //
-        // 🔴 **而这一段的第一句话与那条链互相矛盾，我没有读数能判哪句对**：
-        // 上面写着 `windowclose` 走的是**协议消息**（优雅），而那条链说它是**硬销毁**。
-        // `xdotool windowclose` 的实现是「窗口在 `WM_PROTOCOLS` 里列了 `WM_DELETE_WINDOW`
-        // 就发 ClientMessage，否则 `XDestroyWindow`」⇒ **winit 到底有没有列，本仓没量过。**
-        // ⇒ 量法写死在这儿，谁接手谁跑：让台架起窗之后 `xprop -id <id> WM_PROTOCOLS`。
-        //
-        // ⚠ **锁池那一条不是这一条** —— 陈旧锁棘轮（`xvfb_rig.rs::classify_lock` 那一拍）
-        // 已修且有读数（上面这 5 趟里锁数每趟都是 **0**）。**这里说的是另一个机制。**
-        //
-        // 🔴 **它的真危险不是「会红」，是「1/4 的红会被人学会重跑绕过」** ——
-        // 一条判据不是靠变哑死的，是靠喊狼死的。⇒ 这条登记要么被修掉，要么被裁成
-        // 「本族在满盘里判不了」并把那一格从满盘里摘出去**单独跑**，**不许就这么挂着**。
-        let _ = xvfb::xdotool_on(&display, &["windowclose", id]);
+        // ⇒ 读数 `a.close_sent` 是这一条消息**服务器收下了**（不是窗口已经关了；
+        //   关没关干净由下面 `a.run_native` 说了算，父判据判它恒为 `ok`）。
+        xvfb::emit(
+            "a.close_sent",
+            match xvfb::close_like_a_wm(&display, id) {
+                Ok(()) => "ok".to_string(),
+                Err(e) => e.replace('\n', " "),
+            },
+        );
     }
     xvfb::emit("a.open_requested_delta", open_requested() - req0);
     xvfb::emit("a.windows_opened_delta", windows_opened() - opened0);
