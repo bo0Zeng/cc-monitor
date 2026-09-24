@@ -48,6 +48,9 @@ import type { AccountsState, Account } from "../../src/accounts";
 import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
 import { buildAcctIsoCmd } from "../../src/settings/acct-deploy";
 import { copyText } from "../../src/copy-table";
+import { NEW_ACCOUNT_COPY } from "../../src/settings/account-new-form";
+import { LOCAL_ORIGIN } from "../../src/backend-policy";
+import { POSIX_NO_WINDOW_MARKER } from "../../src/remote-launch-run";
 import COPY_TABLE from "../../src/shared/copy/table.json";
 
 /** 〔第三波 S3〕文案表里本机那一支的条目（key 以 `accountsLocal.` 打头）—— 现算，不写死条数。 */
@@ -1028,6 +1031,9 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
       ...Object.values(accounts.LOCAL_ACCOUNTS_COPY),
       // ①b 〔第三波 S3〕文案表里本机那一支的条目（`accountsLocal.*`）：带占位符的按占位符切成段
       ...localCopyFragments(),
+      // ①c 〔第三波 S3〕本机也挂了新建账号那张表单 —— 它的字住它自己那张表（`NEW_ACCOUNT_COPY`），
+      //     那也是**一个家**（远端那一页用的是同一张）。两句「弹出终端」的提示本机换掉了（见 ①b）。
+      ...Object.values(NEW_ACCOUNT_COPY),
       // ② 徽章那一族：家在 accounts.ts，逐个账号现算
       ...st.accounts.flatMap((a) => {
         const b = accounts.accountStatusBadge(a);
@@ -1687,6 +1693,137 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
   });
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 〔第三波 S3〕本机页也能新建账号（A2+ST1 留下的：本机那一支原先只读）。
+// 同一张表单、同一条 `cc-acct-iso add` 命令；跑命令那一跳走既有的 `launch_remote_terminal`
+// 本机那一支（`origin` = 后端那个本机串）—— Linux 上它**刻意不开窗口**、回一句带标记的话，
+// 前端把命令复制给用户在自己的 bash 里跑。apikey 那一支在本机真的有用（apikey 表与中转本来就是本机的）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("S3：本机页新建账号", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const B_DIR = "/h/.claude-alt/dir-of-b"; // 末段刻意 ≠ 名字（KH2C1：前端不从名字推目录）
+  /** 后端在 POSIX 本机上回的那句话（带跨语言标记，唯一出处在 `launch.rs`）。 */
+  const NO_WINDOW = `本机不是 Windows：cc-monitor ${POSIX_NO_WINDOW_MARKER}（会话容器是 tmux）`;
+
+  function wire(launch: "ok" | "no-window" | "fail") {
+    const calls: Array<[string, unknown]> = [];
+    invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
+      calls.push([cmd as string, args]);
+      if (cmd === "launch_remote_terminal") {
+        if (launch === "no-window") return Promise.reject(NO_WINDOW);
+        if (launch === "fail") return Promise.reject(new Error("没有终端"));
+      }
+      return Promise.resolve(undefined);
+    });
+    return calls;
+  }
+  const writeText = vi.fn();
+  async function mountLocal(accts: Account[]): Promise<HTMLElement> {
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    setCurrentMachine(null);
+    writeText.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: accts, defaultName: "z" }));
+    return mount();
+  }
+  async function submit(el: HTMLElement, name: string, key?: string): Promise<void> {
+    const form = el.querySelector<HTMLElement>(".accounts-local .accounts-new")!;
+    const nameIn = form.querySelector<HTMLInputElement>("input.accounts-maint-name")!;
+    nameIn.value = name;
+    nameIn.dispatchEvent(new Event("input"));
+    if (key !== undefined) {
+      const r = form.querySelector<HTMLInputElement>('input[type=radio][value="apikey"]')!;
+      r.checked = true;
+      r.dispatchEvent(new Event("change"));
+      const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input")!;
+      keyIn.value = key;
+      keyIn.dispatchEvent(new Event("input"));
+    }
+    [...form.querySelectorAll("button")].find((b) => b.textContent === NEW_ACCOUNT_COPY.create)!.click();
+    await tick();
+    await tick();
+  }
+  async function refresh(el: HTMLElement, accts: Account[]): Promise<void> {
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: accts, defaultName: "z" }));
+    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
+    for (let i = 0; i < 6; i++) await tick();
+  }
+
+  it("★ 本机有号 ⇒ 本机那一块里有新建表单；提示是本机的话，不是「弹出终端」；「只读」那句撤了", async () => {
+    wire("ok");
+    const el = await mountLocal([acct({ name: "z" })]);
+    const form = el.querySelector(".accounts-local .accounts-new");
+    expect(form, "本机页没有新建账号表单").not.toBeNull();
+    expect(form!.querySelector(".accounts-new-hint:not(:empty)")?.textContent).toBe(
+      copyText("accountsLocal.new.subscriptionHint"),
+    );
+    expect(el.textContent ?? "").not.toContain(NEW_ACCOUNT_COPY.subscriptionHint);
+    expect(el.textContent ?? "").not.toContain(accounts.LOCAL_ACCOUNTS_COPY.scopeHint);
+    expect(el.querySelector(".accounts-local-hint")?.textContent).toBe(copyText("accountsLocal.list.scope"));
+  });
+
+  it("阴性对照：远端页上那张表单的提示一个字没变（换提示只发生在本机那一页）", async () => {
+    wire("ok");
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    const form = el.querySelector(".accounts-new")!;
+    expect(form.querySelector(".accounts-new-hint:not(:empty)")?.textContent).toBe(
+      NEW_ACCOUNT_COPY.subscriptionHint,
+    );
+  });
+
+  it("★ 订阅 ⇒ 建号命令在**本机**跑：launch_remote_terminal 收到的是后端那个本机串 ＋ 同一条 add 命令", async () => {
+    const calls = wire("ok");
+    const el = await mountLocal([acct({ name: "z" })]);
+    await submit(el, "b");
+    const launches = calls.filter(([c]) => c === "launch_remote_terminal");
+    expect(launches).toHaveLength(1);
+    const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
+    expect(launches[0][1]).toEqual({ origin: LOCAL_ORIGIN, remoteCmd: want.ok ? want.cmd : "∅" });
+  });
+
+  it("★ Linux（后端说「刻意不开窗口」）⇒ 命令复制给用户；apikey 那一支照样等号出现、写给**它的** configDir", async () => {
+    const calls = wire("no-window");
+    const el = await mountLocal([acct({ name: "z" })]);
+    await submit(el, "b", "sk-ant-FOR-B");
+    const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
+    expect(writeText).toHaveBeenCalledWith(want.ok ? want.cmd : "∅");
+    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+    expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
+    expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
+    await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
+    const writes = calls.filter(([c]) => c === "write_relay_credentials_key");
+    expect(writes.map(([, a]) => a)).toEqual([{ key: "sk-ant-FOR-B", configDir: B_DIR }]);
+    expect(el.querySelector(".accounts-new-pending")).toBeNull();
+  });
+
+  it("★ 真失败（不是那句既定设计）⇒ 命令照样复制，但不留 key（与远端「终端没拉起来就不留」同一口径）", async () => {
+    const calls = wire("fail");
+    const el = await mountLocal([acct({ name: "z" })]);
+    await submit(el, "b", "sk-ant-FOR-B");
+    expect(writeText).toHaveBeenCalled();
+    expect(el.querySelector(".accounts-new-pending")).toBeNull();
+    await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
+    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+  });
+
+  it("★ 两种出错的提示分得开：既定设计是 info、真失败是 error，且标题不同", async () => {
+    const toast = vi.mocked(showActionFailureToast);
+    const seen: string[] = [];
+    for (const mode of ["no-window", "fail"] as const) {
+      wire(mode);
+      toast.mockClear();
+      const el = await mountLocal([acct({ name: "z" })]);
+      await submit(el, "b");
+      const c = toast.mock.calls.at(-1)!;
+      seen.push(`${c[0]}|${(c[2] as { level: string }).level}`);
+      expect(String(c[1])).toContain("cc-acct-iso add");
+    }
+    expect(seen[0]).toBe(`${copyText("accountsLocal.new.noWindowCopied")}|info`);
+    expect(seen[1]).toBe(`${copyText("accountsLocal.new.failedCopied")}|error`);
+  });
+});
 
 // ST1「切机器 pending」（`设计/70 §6` #5）：切到另一台 = 这一块重读一趟（远端是一次 SSH 往返），
 // 这段时间这一块原先是**空的** —— 与「这台没有账号」分不开。
