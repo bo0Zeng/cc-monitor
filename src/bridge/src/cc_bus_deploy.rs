@@ -35,6 +35,12 @@ const FILES: &[(&str, &[u8])] = &[
         "examples/cc-busd.service",
         include_bytes!("../../shared/cc-bus/examples/cc-busd.service"),
     ),
+    // 〔保活 09-24〕设计 95 §3bis：保活是 cc-bus 的**调用方**，所以它住 `examples/`，
+    // 不进 `scripts/`（那里的命令面条数有判据钉着，而「保活不是 cc-bus 的功能」本来就该在结构上看得见）。
+    (
+        "examples/cc-keepalive",
+        include_bytes!("../../shared/cc-bus/examples/cc-keepalive"),
+    ),
     (
         "examples/config",
         include_bytes!("../../shared/cc-bus/examples/config"),
@@ -244,7 +250,9 @@ pub fn deploy_into(claude_dir: &Path) -> Result<CcBusDeployReport, String> {
         }
         std::fs::write(&p, bytes).map_err(|e| format!("写 {} 失败：{e}", p.display()))?;
         // `scripts/` 下的都要可执行 —— 装完不能跑等于没装。
-        if rel.starts_with("scripts/") {
+        // 〔保活 09-24〕`examples/` 里带 shebang 的那一份（`cc-keepalive`，给 cron 直接调）同理；
+        //   按「字节以 `#!` 开头」认，不按文件名列 —— 列名单会在下一个示例脚本进来时漏。
+        if rel.starts_with("scripts/") || bytes.starts_with(b"#!") {
             crate::platform_fs::make_executable(&p)?;
         }
         written += 1;

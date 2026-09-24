@@ -105,6 +105,11 @@ cc-broadcast "全体同步:X 已完成"    # 广播给除自己外所有已登�
 - 不认识的 kind / 那一行不合法 ⇒ `cc-send` 当场 rc=2(没发);已入队的按 `msg` 投、`bus.log` 记一行 `KIND fallback`。
 - Stop 钩子一批里全是不拦停的 kind(如 `fyi`)⇒ 放行、**不推进**已读位置(留着等下一条要拦停的一起喂)。
 
+**保活是调用方,不是 cc-bus 的功能**:`examples/cc-keepalive <to> [附言]` 只调一次
+`cc-send --new --kind keepalive` 就返回(身份缺省 `cc-keepalive`);多久一次交给 cron / systemd timer,
+例 `*/10 * * * * ~/.claude/skills/cc-bus/examples/cc-keepalive planner`。保活文本改 kinds 表那一行。
+⚠ 它只在对方**正在跑一轮、想结束时**起作用(Stop 钩子拦下);对方已经停在输入框前时它不敲门,要等下一次想结束。
+
 ## 派生会话(cc-spawn):在某目录开一个独立协作 agent
 要一个**长驻、独立历史、原生读某工作目录文件**的协作者(区别于 subagent:同上下文、一次性)。
 
