@@ -310,3 +310,235 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
         FENCE_SHAPES.len()
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔AL1 · 2026-09-24〕`设计/71 §12.5`：**规则只有一份** —— 拼接与落盘序列的判据
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 内存里的落点：数写了几次、能按需让某一步失败 / 让读回来的东西不对。
+struct MemStore {
+    file: std::cell::RefCell<Option<String>>,
+    backups: std::cell::RefCell<Vec<String>>,
+    replaces: std::cell::Cell<usize>,
+    removes: std::cell::Cell<usize>,
+    /// 第几次 `replace` 失败（从 1 数；0 = 不失败）。
+    fail_replace_at: usize,
+    /// 第一次 `replace` 写进去的东西被换成这一份（模拟传输损坏）。
+    corrupt_first_write: Option<String>,
+    fail_read: bool,
+}
+
+impl MemStore {
+    fn with(file: Option<&str>) -> Self {
+        MemStore {
+            file: std::cell::RefCell::new(file.map(str::to_string)),
+            backups: Default::default(),
+            replaces: Default::default(),
+            removes: Default::default(),
+            fail_replace_at: 0,
+            corrupt_first_write: None,
+            fail_read: false,
+        }
+    }
+}
+
+impl Store for MemStore {
+    fn label(&self) -> String {
+        "夹具文件".into()
+    }
+    async fn read(&self) -> Result<Option<String>, String> {
+        if self.fail_read {
+            return Err("读不出来".into());
+        }
+        Ok(self.file.borrow().clone())
+    }
+    async fn backup(&self, original: &str) -> Result<String, String> {
+        self.backups.borrow_mut().push(original.to_string());
+        Ok(format!("夹具备份{}", self.backups.borrow().len()))
+    }
+    async fn replace(&self, content: &str) -> Result<(), String> {
+        let n = self.replaces.get() + 1;
+        self.replaces.set(n);
+        if n == self.fail_replace_at {
+            return Err("盘满了".into());
+        }
+        let put = match (&self.corrupt_first_write, n) {
+            (Some(c), 1) => c.clone(),
+            _ => content.to_string(),
+        };
+        *self.file.borrow_mut() = Some(put);
+        Ok(())
+    }
+    async fn remove(&self) -> Result<(), String> {
+        self.removes.set(self.removes.get() + 1);
+        *self.file.borrow_mut() = None;
+        Ok(())
+    }
+}
+
+fn run(store: &MemStore, keep_backup: bool, next: &str) -> Result<Applied, String> {
+    let next = next.to_string();
+    futures::executor::block_on(apply(store, keep_backup, |_| Ok(Some(next))))
+}
+
+/// 算出来与盘上逐字相同 ⇒ **一次写都没有、一份备份都没有**。
+#[test]
+fn nothing_is_written_when_the_plan_changes_nothing() {
+    let s = MemStore::with(Some("a\n"));
+    assert_eq!(run(&s, true, "a\n").unwrap(), Applied::Unchanged);
+    assert_eq!((s.replaces.get(), s.backups.borrow().len()), (0, 0));
+    // 计划说「没事可做」也一样。
+    let s = MemStore::with(Some("a\n"));
+    let r = futures::executor::block_on(apply(&s, true, |_| Ok(None))).unwrap();
+    assert_eq!(r, Applied::Unchanged);
+    assert_eq!(s.replaces.get(), 0);
+}
+
+/// 备份只给**用户的、非空的**文件：我们自己的文件（`keep_backup = false`）、空文件、新文件都不留。
+#[test]
+fn a_backup_is_kept_only_for_a_nonempty_user_file() {
+    let cases: [(Option<&str>, bool, usize); 4] = [
+        (Some("user\n"), true, 1),
+        (Some("user\n"), false, 0),
+        (Some(""), true, 0),
+        (None, true, 0),
+    ];
+    for (file, keep, want) in cases {
+        let s = MemStore::with(file);
+        let r = run(&s, keep, "new\n").unwrap();
+        assert_eq!(s.backups.borrow().len(), want, "{file:?} keep={keep}");
+        assert_eq!(
+            r,
+            Applied::Written {
+                backup: (want == 1).then(|| "夹具备份1".to_string()),
+                created: file.is_none(),
+            }
+        );
+    }
+}
+
+/// 🔴 读回来不对 ⇒ 回滚：原来有 ⇒ 写回原文；原来没有 ⇒ **删掉刚建的那份**
+/// （后者是远端那一侧 Phase G 审阅时登记下、一直没收的那条未收项）。
+#[test]
+fn a_write_that_reads_back_wrong_is_undone() {
+    let mut s = MemStore::with(Some("user\n"));
+    s.corrupt_first_write = Some("usXr\n".into());
+    let e = run(&s, true, "user\nblock\n").unwrap_err();
+    assert_eq!(s.file.borrow().as_deref(), Some("user\n"), "没回滚成原文");
+    assert!(e.contains("原文件已恢复"), "{e}");
+
+    let mut s = MemStore::with(None);
+    s.corrupt_first_write = Some("坏\n".into());
+    let e = run(&s, true, "block\n").unwrap_err();
+    assert_eq!(s.file.borrow().as_deref(), None, "刚建的那份没删");
+    assert_eq!(s.removes.get(), 1);
+    assert!(e.contains("刚建出来的那份已删掉"), "{e}");
+}
+
+/// 措辞只说**真发生了的事**：恢复也失败时要说「恢复也失败了」并给出备份在哪，不许说「已恢复」。
+#[test]
+fn the_undo_note_says_only_what_really_happened() {
+    // 写失败 ⇒ 回滚那一次 replace 也失败（第 2 次）。
+    let mut s = MemStore::with(Some("user\n"));
+    s.fail_replace_at = 1;
+    let e = run(&s, true, "new\n").unwrap_err();
+    assert!(e.contains("盘满了") && e.contains("原文件已恢复"), "{e}");
+
+    let mut s = MemStore::with(Some("user\n"));
+    s.corrupt_first_write = Some("x\n".into());
+    s.fail_replace_at = 2;
+    let e = run(&s, true, "new\n").unwrap_err();
+    assert!(!e.contains("已恢复"), "恢复失败了却说已恢复：{e}");
+    assert!(
+        e.contains("恢复原文件也失败了") && e.contains("夹具备份1"),
+        "{e}"
+    );
+}
+
+/// 读不出来 ⇒ `Err`，**一个字节都不写**（把读不出来当空文件就是跳过备份 ＋ 整份覆盖）。
+#[test]
+fn an_unreadable_file_is_never_written() {
+    let mut s = MemStore::with(Some("user\n"));
+    s.fail_read = true;
+    assert!(run(&s, true, "new\n").is_err());
+    assert_eq!((s.replaces.get(), s.backups.borrow().len()), (0, 0));
+}
+
+/// 两种排版都幂等；POSIX 块外一个字节都不动，PowerShell 保住 CRLF。
+#[test]
+fn splicing_is_idempotent_and_keeps_every_user_line() {
+    let (b, e) = ("# === x BEGIN ===", "# === x END ===");
+    let block = format!("{b}\nbody\n{e}\n");
+    for layout in [Layout::Posix, Layout::PowerShell] {
+        for existing in ["", "user\n", "user", "a\r\nb\r\n"] {
+            let once = splice_in(existing, b, e, &block, "t", layout).unwrap();
+            let twice = splice_in(&once, b, e, &block, "t", layout).unwrap();
+            assert_eq!(once, twice, "{layout:?} {existing:?}");
+            let out = splice_out(&once, b, e, "t", layout).unwrap();
+            assert!(!out.contains("body"), "{layout:?} {existing:?} → {out:?}");
+            for l in existing.lines() {
+                assert!(out.contains(l), "{layout:?} 丢了用户那行 {l:?}：{out:?}");
+            }
+        }
+    }
+    let crlf = splice_in("a\r\nb\r\n", b, e, &block, "t", Layout::PowerShell).unwrap();
+    assert!(
+        !crlf.replace("\r\n", "").contains('\n'),
+        "混进了裸 LF：{crlf:?}"
+    );
+    // 悬空 BEGIN：两种排版都中止。
+    for layout in [Layout::Posix, Layout::PowerShell] {
+        assert!(splice_in(&format!("{b}\nuser\n"), b, e, &block, "t", layout).is_err());
+        assert!(splice_out(&format!("{b}\nuser\n"), b, e, "t", layout).is_err());
+    }
+}
+
+/// 🔴 **规则只有一个住址**：三家（本机别名文件 · 本机 rc/profile · 远端 rc）的生产段里，
+/// 「配对 ＋ 读回比对」的原语**零命中**，全部经 `fenced_block`；正控是 `fenced_block` 自己
+/// 恰好一处 `verify_readback(` 调用。
+///
+/// 死值验：往 `account_aliases.rs::ensure_rc_source_line` 里放回一行
+/// `crate::verified_write::verify_and_rollback(` ⇒ 本条红在第一个断言。
+#[test]
+fn the_write_rule_has_exactly_one_home() {
+    let root = crate::guard_support::repo_root().join("src/bridge/src");
+    let read = |f: &str| {
+        let raw = std::fs::read_to_string(root.join(f)).unwrap();
+        let prod = guard_core::production_code(&raw);
+        guard_core::assert_no_test_code(f, &prod);
+        prod
+    };
+    let needles = [
+        "verify_and_rollback(",
+        "verify_readback(",
+        "find_pair(",
+        "split_inclusive(",
+    ];
+    let mut hits: Vec<String> = Vec::new();
+    for f in ["account_aliases.rs", "profile_installer.rs"] {
+        let prod = read(f);
+        for n in needles {
+            if prod.contains(n) {
+                hits.push(format!("{f}: {n}"));
+            }
+        }
+    }
+    // `sftp.rs` 另有两条**部署**路（后端二进制 / cc-acct-iso）走 `verify_uploaded_bytes`，
+    // 那是按字节比的另一件事、不在本条人群里 ⇒ 只扫别名 / rc 那一段。
+    let sftp = read("sftp.rs");
+    let from = guard_core::find_pinned(&sftp, "pub(crate) const CCM_PROFILE_BEGIN")
+        .expect("远端 rc 那一段的起点锚不住");
+    for n in needles {
+        if sftp[from..].contains(n) {
+            hits.push(format!("sftp.rs（rc 那一段）: {n}"));
+        }
+    }
+    assert!(hits.is_empty(), "规则长出了第二个住址：{hits:?}");
+    // 正控：人群不是空的 —— 规则真在 `fenced_block` 里，而且恰好一处。
+    let home = read("fenced_block.rs");
+    guard_core::find_pinned(
+        &home,
+        "crate::verified_write::verify_readback(&next, &back)",
+    )
+    .expect("序列里那一处读回比对不见了（或长成了两处）");
+}

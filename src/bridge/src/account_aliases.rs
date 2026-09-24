@@ -302,93 +302,57 @@ pub fn rc_candidates_in(home: &Path) -> Vec<AccountAliasRc> {
 
 /// 把生成文件写下去。**内容一致就一个字节都不写。**
 ///
-/// 落盘走 `profile_installer::atomic_write_string`（临时文件 + 原子替换）——
-/// 本仓已经有四份平台原语副本了，这里绝不添第五份。
+/// 〔AL1 · 2026-09-24〕序列走 `fenced_block::apply`（与 rc / profile / 远端那几处同一份，`71 §12.5`）。
+/// 生成文件是**我们自己**的东西 ⇒ 不留备份文件；写坏了回滚成原来那份，原来没有就删掉
+/// —— 一个半截的它比没有它更坏（source 时会报语法错）。
 fn write_alias_file(path: &Path, content: &str) -> Result<bool, String> {
-    if std::fs::read_to_string(path).is_ok_and(|old| old == content) {
-        return Ok(false);
-    }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("建不出 {}：{e}", parent.display()))?;
-    }
-    let owned = path.to_path_buf();
-    crate::profile_installer::atomic_write_string(&owned, content)
-        .map_err(|e| format!("写 {} 失败：{e}", path.display()))?;
-    crate::verified_write::verify_and_rollback(
-        content,
-        || std::fs::read_to_string(path).map_err(|e| format!("{e}（{}）", path.display())),
-        || {
-            // 生成文件是**我们自己**的东西，没有「用户原内容」要回滚回去；
-            // 写坏了就删掉 —— 一个半截的它比没有它更坏（source 时会报语法错）。
-            let _ = std::fs::remove_file(path);
-        },
-    )?;
-    Ok(true)
+    let applied = crate::fenced_block::apply_local(path, false, |_| Ok(Some(content.to_string())))?;
+    Ok(matches!(
+        applied,
+        crate::fenced_block::Applied::Written { .. }
+    ))
 }
 
 /// 把那一行 `source` 装进用户指定的 rc。**已经有了就一个字节都不写。**
 ///
-/// 🔴 三道，一道都不省：① 路径过 `profile_installer::fence_profile_path`（只许落在 home 之内）；
+/// 🔴 三道，一道都不省：① 路径过 `profile_installer::fence_path_under`（只许落在 home 之内）；
 /// ② 围栏损坏（有 BEGIN 没 END）**中止**，绝不用后面那个 END 去配对、吃掉中间的用户代码；
-/// ③ 写之前先备份、写完回读逐字比对、不符回滚。
+/// ③ 写之前先备份、写完回读逐字比对、不符回滚。〔AL1〕② 是 `fenced_block::splice_in`，
+/// ③ 是 `fenced_block::apply` —— 与 rc 别名块、PowerShell profile、远端 rc 同一份规则。
 fn ensure_rc_source_line(home: &Path, rc_raw: &str, line: &str) -> Result<bool, String> {
     // ⚠ 围栏是 `profile_installer` 那一份，**不在这里长第二道** —— `home` 当参数传进去，
     //   于是这条路测得了（临时目录当 home），而生产侧传的是 `dirs::home_dir()`。
     let path = crate::profile_installer::fence_path_under(home, rc_raw)?;
-    let existing =
-        std::fs::read_to_string(&path).map_err(|e| format!("读不到 {}：{e}", path.display()))?;
-    // 🔴 认的是 [`ALIAS_FILE_REL`]，**不是那一整行**。
-    //
-    // 这一处栽过：`src/shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`（**没展开**），
-    // 而这里手上的 `line` 带的是展开后的绝对路径 ⇒ 按整行比，
-    // **一个已经装了 ccm 别名块的人会被判成「还没 source 过」，于是又被追加一行** ——
-    // 那正是本件开头列的第一条病（重复追加）。
-    // 按相对路径认，两种写法都认得出来。
-    if existing.contains(ALIAS_FILE_REL) {
-        return Ok(false);
-    }
     let what = path.display().to_string();
     let block = format!("{RC_BEGIN}\n{line}\n{RC_END}\n");
-    let updated = match crate::fenced_block::find_pair(&existing, RC_BEGIN, RC_END, &what)? {
-        Some((b, e)) => {
-            let ls: Vec<&str> = existing.split_inclusive('\n').collect();
-            let before: String = ls[..b].concat();
-            let after: String = if e + 1 < ls.len() {
-                ls[(e + 1)..].concat()
-            } else {
-                String::new()
-            };
-            format!("{before}{block}{after}")
+    let applied = crate::fenced_block::apply_local(&path, true, |existing| {
+        let Some(existing) = existing else {
+            return Err(format!("读不到 {what}：文件不存在"));
+        };
+        // 🔴 认的是 [`ALIAS_FILE_REL`]，**不是那一整行**。
+        //
+        // 这一处栽过：`src/shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`（**没展开**），
+        // 而这里手上的 `line` 带的是展开后的绝对路径 ⇒ 按整行比，
+        // **一个已经装了 ccm 别名块的人会被判成「还没 source 过」，于是又被追加一行** ——
+        // 那正是本件开头列的第一条病（重复追加）。
+        // 按相对路径认，两种写法都认得出来。
+        if existing.contains(ALIAS_FILE_REL) {
+            return Ok(None);
         }
-        None => {
-            let mut out = existing.clone();
-            if !out.is_empty() && !out.ends_with('\n') {
-                out.push('\n');
-            }
-            out.push_str(&block);
-            out
-        }
-    };
-    let backup = path.with_file_name(format!(
-        "{}.ccm-aliases-backup-{}",
-        path.file_name()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "rc".into()),
-        std::process::id()
-    ));
-    std::fs::copy(&path, &backup).map_err(|e| format!("备份 {} 失败：{e}", path.display()))?;
-    if let Err(e) = crate::profile_installer::atomic_write_string(&path, &updated) {
-        let _ = std::fs::copy(&backup, &path);
-        return Err(format!("写 {} 失败：{e}（已从备份恢复）", path.display()));
-    }
-    crate::verified_write::verify_and_rollback(
-        &updated,
-        || std::fs::read_to_string(&path).map_err(|e| format!("{e}（{what}）")),
-        || {
-            let _ = std::fs::copy(&backup, &path);
-        },
-    )?;
-    Ok(true)
+        crate::fenced_block::splice_in(
+            existing,
+            RC_BEGIN,
+            RC_END,
+            &block,
+            &what,
+            crate::fenced_block::Layout::Posix,
+        )
+        .map(Some)
+    })?;
+    Ok(matches!(
+        applied,
+        crate::fenced_block::Applied::Written { .. }
+    ))
 }
 
 /// 正题：按账号表生成/重写那份别名文件，并（可选）把那一行 `source` 装进指定的 rc。

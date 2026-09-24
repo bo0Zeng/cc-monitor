@@ -22,7 +22,7 @@
 //! - 远端（`sftp::merge_profile_block`）：**Err 中止**。这是 F10 审计 B1 专门加的——
 //!   原话「绝不用独立 `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，
 //!   也不破坏文件」。
-//! - 本机（`profile_installer::find_block_range`）：返回 `None` → 走**追加**分支。
+//! - 本机（`profile_installer::find_block_range`〔散文墓碑〕）：返回 `None` → 走**追加**分支。
 //!
 //! 本机那条的后果我实测过（`profile_installer` 里留着那条复现测试）：
 //!
@@ -75,6 +75,342 @@ pub fn find_pair(
             b + 1
         )),
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔AL1 · 2026-09-24〕`设计/71 §12.5`：**规则只有一份** —— 拼接一处，落盘序列一处
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// 立件时现打（`tests/evidence/MC1-AL1-摸底.md` 第四节）：配对判定早就只有 [`find_pair`] 一份，
+// 但「配对之后怎么拼」写了三份（`sftp::merge/strip_profile_block` · `profile_installer` 的
+// `replace_or_append_block/strip_block` · `account_aliases::ensure_rc_source_line` 里内联的那一段），
+// 「备份 → 原子写 → 回读比对 → 回滚」这个序列写了五个函数体（本机三处 ＋ 远端装/卸）。
+// `verified_write` 头注自己记着为什么远端那几处没收进去：「回滚是 `async` SFTP 操作，塞不进 `impl FnOnce()`」。
+//
+// ⇒ 按 `71 §12.3` 第 4、5 格切：**序列与拼接是规则（留这里，一份）**；
+//   「这台机器上怎么读、怎么存备份、怎么原子替换、怎么删」是读法（[`Store`] 的四个原语，
+//   本机一份 [`LocalFile`]、远端一份 `sftp::SftpFile`）；「排版」随目标文件的方言走（[`Layout`]）。
+
+/// 排版方言。**规则不分方言**（配对 → 整块替换 / 追加 / 悬空中止；剥离 → 删 / 原样 / 悬空中止），
+/// 分方言的只有排版这一层 —— 由目标文件决定（`profile_installer::flavor_of` 按扩展名答），
+/// 不由宿主平台决定。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Layout {
+    /// POSIX rc：块原样放（调用方给的块以 `\n` 结尾）；追加时只补一个缺的换行；剥离后前后原样拼。
+    Posix,
+    /// PowerShell profile：**保住原文件的行尾**（默认 CRLF —— notepad / VSCode / autocrlf 三大来源）；
+    /// 追加前空一行；剥离后尾部至多留一个行尾。
+    PowerShell,
+}
+
+/// 原文件用的行尾：含任何 `\r\n` 就算 CRLF。
+fn detect_eol(s: &str) -> &'static str {
+    if s.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
+/// 把文本的行尾统一成 `eol`（先全归 LF，再按需换成 CRLF）。
+fn rewrite_eol(content: &str, eol: &str) -> String {
+    let lf = content.replace("\r\n", "\n");
+    if eol == "\n" {
+        lf
+    } else {
+        lf.replace('\n', "\r\n")
+    }
+}
+
+/// 把 `[b, e]`（行下标，含两端）切出来，返回前后两段（各自带着原来的行尾）。
+fn cut(existing: &str, b: usize, e: usize) -> (String, String) {
+    let lines: Vec<&str> = existing.split_inclusive('\n').collect();
+    let before = lines[..b].concat();
+    let after = if e + 1 < lines.len() {
+        lines[(e + 1)..].concat()
+    } else {
+        String::new()
+    };
+    (before, after)
+}
+
+/// **装**：`block`（含两个标记行）放进 `existing` —— 有配对块就整块替换，没有就追加，
+/// 有 BEGIN 没 END 就 `Err` 中止（[`find_pair`]）。幂等：`splice_in(splice_in(x)) == splice_in(x)`。
+pub(crate) fn splice_in(
+    existing: &str,
+    begin: &str,
+    end: &str,
+    block: &str,
+    what: &str,
+    layout: Layout,
+) -> Result<String, String> {
+    let pair = find_pair(existing, begin, end, what)?;
+    Ok(match layout {
+        Layout::Posix => match pair {
+            Some((b, e)) => {
+                let (before, after) = cut(existing, b, e);
+                format!("{before}{block}{after}")
+            }
+            None => {
+                let mut out = existing.to_string();
+                if !out.is_empty() && !out.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str(block);
+                out
+            }
+        },
+        Layout::PowerShell => {
+            let eol = detect_eol(existing);
+            let block = rewrite_eol(block.trim_end_matches(['\r', '\n']), eol);
+            let mut out = String::new();
+            match pair {
+                Some((b, e)) => {
+                    let (before, after) = cut(existing, b, e);
+                    if !before.is_empty() {
+                        out.push_str(&before);
+                        if !before.ends_with('\n') {
+                            out.push_str(eol);
+                        }
+                    }
+                    out.push_str(&block);
+                    out.push_str(eol);
+                    if !after.is_empty() {
+                        out.push_str(&after);
+                        if !after.ends_with('\n') {
+                            out.push_str(eol);
+                        }
+                    }
+                }
+                None => {
+                    out.push_str(existing);
+                    if !out.is_empty() {
+                        if !out.ends_with('\n') {
+                            out.push_str(eol);
+                        }
+                        out.push_str(eol);
+                    }
+                    out.push_str(&block);
+                    out.push_str(eol);
+                }
+            }
+            out
+        }
+    })
+}
+
+/// **卸**：删掉配对块，块外一个字节都不动；没有块 ⇒ 原样返回；悬空 BEGIN ⇒ `Err`
+/// （「原样返回」看着无害，实则让人以为卸干净了，而那个 BEGIN 下次安装会吃掉它下面的内容）。
+pub(crate) fn splice_out(
+    existing: &str,
+    begin: &str,
+    end: &str,
+    what: &str,
+    layout: Layout,
+) -> Result<String, String> {
+    let Some((b, e)) = find_pair(existing, begin, end, what)? else {
+        return Ok(existing.to_string());
+    };
+    let (before, after) = cut(existing, b, e);
+    Ok(match layout {
+        Layout::Posix => format!("{before}{after}"),
+        Layout::PowerShell => {
+            let eol = detect_eol(existing);
+            let mut out = String::new();
+            for part in [&before, &after] {
+                if !part.is_empty() {
+                    out.push_str(part);
+                    if !part.ends_with('\n') {
+                        out.push_str(eol);
+                    }
+                }
+            }
+            let double = format!("{eol}{eol}");
+            while out.ends_with(&double) {
+                out.truncate(out.len() - eol.len());
+            }
+            out
+        }
+    })
+}
+
+/// 落点给的四个原语 —— **规则一个字都不住在实现里**，它们只回答「这台机器上怎么做这件事」。
+///
+/// ⚠ 读必须 fail-closed：说不清「不存在」还是「读不出来」⇒ `Err`。把读不出来当成空文件，
+/// 正是 `sftp::interpret_profile_read` 头注记的那两个数据丢失口（跳过备份 ＋ 整份覆盖）。
+pub(crate) trait Store {
+    /// 给人看的名字（报错里用）。
+    fn label(&self) -> String;
+    /// 原样读。`Ok(None)` = 确定不存在。
+    async fn read(&self) -> Result<Option<String>, String>;
+    /// 把原文另存一份，返回备份的名字（给人看）。
+    async fn backup(&self, original: &str) -> Result<String, String>;
+    /// 原子替换成 `content`；落点不存在就新建（含上级目录）。
+    async fn replace(&self, content: &str) -> Result<(), String>;
+    /// 删掉 —— 只在「原本不存在、是我们刚建出来的」那一档回滚时用。
+    async fn remove(&self) -> Result<(), String>;
+}
+
+/// 一次 [`apply`] 做了什么。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Applied {
+    /// 算出来的内容与盘上逐字相同（或计划说「没事可做」）⇒ **一个字节都没写**。
+    Unchanged,
+    /// 写了。`backup` = 原文另存在哪（原文为空 / 不存在 / 调用方不要备份时为 `None`）；
+    /// `created` = 这份文件是这一次新建的。
+    Written {
+        backup: Option<String>,
+        created: bool,
+    },
+}
+
+/// 回滚之后那半句话 —— **说的必须是真发生了的事**（从前远端 `existing` 为空时一个回滚都没做，
+/// 文案却无条件说「已尝试回滚原文件」；本机那一侧没有备份时干脆什么都不说）。
+fn undo_note(existed: bool, undone: bool, backup: Option<&str>) -> String {
+    match (existed, undone, backup) {
+        (true, true, _) => "原文件已恢复。".to_string(),
+        (false, true, _) => "刚建出来的那份已删掉。".to_string(),
+        (true, false, Some(b)) => format!("恢复原文件也失败了，原文备份在 {b}。"),
+        (true, false, None) => "恢复原文件也失败了，请打开它看一眼。".to_string(),
+        (false, false, _) => "刚建出来的那份没删掉，请手动删掉它。".to_string(),
+    }
+}
+
+/// 🔴 **那一个序列**：读 → 计划 → 相同就不写 → 备份 → 原子替换 → 回读逐字比对 → 不符就回滚。
+///
+/// `plan` 拿到原样读到的文本（`None` = 文件不存在），回 `Some(新内容)` 或 `None`（没事可做）。
+/// 方言相关的一切（BOM、围栏、排版、「不存在算不算错」）都在 `plan` 里答，本函数不认识任何一种。
+/// `keep_backup`：用户的文件（rc / profile）要一份给人看的备份；我们自己的文件
+/// （整份由我们拥有、下一次生成会原样覆盖）不留 —— 回滚用的是内存里那份原文，不靠备份文件。
+pub(crate) async fn apply<S: Store>(
+    store: &S,
+    keep_backup: bool,
+    plan: impl FnOnce(Option<&str>) -> Result<Option<String>, String>,
+) -> Result<Applied, String> {
+    let original = store.read().await?;
+    let Some(next) = plan(original.as_deref())? else {
+        return Ok(Applied::Unchanged);
+    };
+    if original.as_deref() == Some(next.as_str()) {
+        return Ok(Applied::Unchanged);
+    }
+    let label = store.label();
+    let backup = match original.as_deref() {
+        Some(o) if keep_backup && !o.is_empty() => Some(
+            store
+                .backup(o)
+                .await
+                .map_err(|e| format!("备份 {label} 失败，原文件没动：{e}"))?,
+        ),
+        _ => None,
+    };
+    let existed = original.is_some();
+    let undo = || async {
+        match original.as_deref() {
+            Some(o) => store.replace(o).await.is_ok(),
+            None => store.remove().await.is_ok(),
+        }
+    };
+    if let Err(e) = store.replace(&next).await {
+        let undone = undo().await;
+        return Err(format!(
+            "写 {label} 失败：{e}。{}",
+            undo_note(existed, undone, backup.as_deref())
+        ));
+    }
+    let verdict = match store.read().await {
+        Ok(Some(back)) => crate::verified_write::verify_readback(&next, &back),
+        Ok(None) => crate::verified_write::WriteVerdict::Mismatch {
+            detail: "写完读回来，文件不见了。".to_string(),
+        },
+        Err(e) => crate::verified_write::WriteVerdict::Mismatch {
+            detail: format!("写完读不回来（{e}），确认不了写对了没有。"),
+        },
+    };
+    if let crate::verified_write::WriteVerdict::Mismatch { detail } = verdict {
+        let undone = undo().await;
+        return Err(format!(
+            "写后校验失败：{detail} {}",
+            undo_note(existed, undone, backup.as_deref())
+        ));
+    }
+    Ok(Applied::Written {
+        backup,
+        created: !existed,
+    })
+}
+
+/// 本机那一份原语。路径由调用方给（调用方负责围栏：`profile_installer::fence_path_under`）。
+pub(crate) struct LocalFile {
+    pub path: std::path::PathBuf,
+}
+
+impl Store for LocalFile {
+    fn label(&self) -> String {
+        self.path.display().to_string()
+    }
+
+    async fn read(&self) -> Result<Option<String>, String> {
+        let p = &self.path;
+        if !p.exists() {
+            return Ok(None);
+        }
+        let raw = std::fs::read_to_string(p).map_err(|e| format!("读不了 {}：{e}", p.display()))?;
+        // v1.7.9 事故的那一道：盘上有字节却读到空（OneDrive 占位 / 杀软锁着）。
+        // 继续走会拿「空 ＋ 新块」覆盖掉原内容。
+        let on_disk = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+        if on_disk > 0 && raw.is_empty() {
+            return Err(format!(
+                "{} 在盘上有 {on_disk} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。",
+                p.display()
+            ));
+        }
+        Ok(Some(raw))
+    }
+
+    async fn backup(&self, _original: &str) -> Result<String, String> {
+        let ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let name = self
+            .path
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "profile".into());
+        let b = self.path.with_file_name(format!("{name}.ccm-backup-{ms}"));
+        // 逐字节拷（连同权限位）：用户那份 rc 若是 600，备份也该是 600。
+        std::fs::copy(&self.path, &b).map_err(|e| e.to_string())?;
+        Ok(b.display().to_string())
+    }
+
+    async fn replace(&self, content: &str) -> Result<(), String> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        crate::profile_installer::atomic_write_string(&self.path, content)
+            .map_err(|e| e.to_string())
+    }
+
+    async fn remove(&self) -> Result<(), String> {
+        std::fs::remove_file(&self.path).map_err(|e| e.to_string())
+    }
+}
+
+/// 本机调用方大多是同步的（`install_to_profile` 等）。本机的原语一个 `await` 点都不真等，
+/// 所以就地跑完即可 —— **远端那一份不许走这里**（它要真的等 SFTP）。
+pub(crate) fn apply_local(
+    path: &std::path::Path,
+    keep_backup: bool,
+    plan: impl FnOnce(Option<&str>) -> Result<Option<String>, String>,
+) -> Result<Applied, String> {
+    futures::executor::block_on(apply(
+        &LocalFile {
+            path: path.to_path_buf(),
+        },
+        keep_backup,
+        plan,
+    ))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -137,7 +473,7 @@ pub const FENCE_SHAPES: &[FenceShape] = &[
         uninstall_site: Some("profile_installer.rs::uninstall_from_profile"),
         pairing: "fenced_block.rs::find_pair",
         differs_in: "内容是**现渲**的（命令名与要不要带 cc 函数由界面给），另两套写的是仓里那份文件本身；\
-                     而且它要保住 CRLF（profile_installer.rs::detect_eol）",
+                     而且它要保住 CRLF（fenced_block.rs::detect_eol，`Layout::PowerShell` 那一臂）",
     },
     FenceShape {
         id: "local-posix-source-line",
