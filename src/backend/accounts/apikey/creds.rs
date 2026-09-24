@@ -59,7 +59,8 @@ pub(crate) fn resolve_path(get: &dyn Fn(&str) -> Option<String>, home: &Path) ->
     }
 }
 
-/// 读一次。**只读** —— 本模块一个文件系统变更调用都没有（`K-H2a` 裁四；
+/// 读一次。**只读** —— 本模块一个文件系统变更调用都没有（`K-H2a` 裁四；〔RM1a〕裁四今天收窄成
+/// 「写只在 `file_face` 那一份、只从帧面进来」，本模块照旧一个写都没有；
 /// backend 的 `readonly_guard` 扫的就是这件事）。
 pub(crate) fn load(path: &Path) -> Loaded {
     // ★ 顺序是承重的：**先查权限，再读内容**。

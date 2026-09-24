@@ -10,6 +10,7 @@
 //! | | |
 //! |---|---|
 //! | **知道** | 账号模型 · `apikey-credentials.json` · 上游 · `auth_style` · 热重载 · 哪个账号走哪个模式 |
+//! | **也管** | 〔RM1a〕这台机器上那份凭据文件的写与文件级读（[`file_face`]，帧面两条命令）—— 账号层自己的状态 |
 //! | **不知道** | HTTP 怎么发、字节怎么泵 —— 那是层 1（`server.rs` / `listen.rs` / `http1.rs`） |
 //!
 //! ⇒ **「agent」与「账号」这两个业务词只在这一层出现。** 层 1 手里只有
@@ -49,6 +50,10 @@
 //! 仍钉着 502 那一半。
 
 pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（层 2 搬家带过来的）
+                      // 〔RM1a · 第四波〕这台机器上那份凭据文件的**帧面读写口**（`apikey-key-set` / `apikey-read`）。
+                      // 账号层自己的状态文件，不是用户文件 ⇒ `readonly_guard` 第四层登记它，只从 `inbound.rs` 进来。
+                      // ⚠ 它**不在** `--relay` 那条启动路径上：中转进程里的账号层仍然只读（`creds`），写只在流模式的帧面上发生。
+pub(crate) mod file_face;
 mod policy; // 热重载（`20 §4`：`accounts/policy.rs`；今天住 `accounts/apikey/policy.rs`）
 pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**
 

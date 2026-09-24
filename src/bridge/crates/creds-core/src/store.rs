@@ -4,9 +4,9 @@
 //!
 //! 三条理由，每条都指向本仓一条真实存在的判据：
 //!
-//! 1. **backend 只许读，不许写**〔`K-H2a` 裁四〕：`readonly_guard.rs` 扫后端生产段
-//!    （剥掉 `#[cfg(test)]` 块之后）断言**不含任何文件系统变更调用**，白名单**恰好一个模块**
-//!    `control/fork_write.rs`。本 crate 被 backend depend ⇒ 写调用放进来是在给那道护栏挖洞。
+//! 1. **backend 的写面逐文件登记**〔`K-H2a` 裁四，〔RM1a〕收窄后〕：`readonly_guard.rs` 扫后端生产段
+//!    （剥掉 `#[cfg(test)]` 块之后），写只许出现在登记过的那几层模块里（账号域那一份凭据写口在第四层）。
+//!    本 crate 被 backend depend、而那张登记表**扫不到**本 crate ⇒ 写调用放进来是在给那道护栏挖洞。
 //! 2. **写盘落点必须被登记表看见**：`src/bridge/src/write_site_registry.rs` 与
 //!    `atomic_replace_registry.rs` 的扫描根**都是 `src/bridge/src`**
 //!    （两者的 `src_root()` 逐字是 `CARGO_MANIFEST_DIR/src`）——

@@ -1372,6 +1372,55 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 ⚠ **远端**那一行的值写得进去、读得回来，但今天**没有任何进程按它动手**：远端后端只走 stdio（SSH exec），
 它没有「最后一个客户走了」那一臂，SSH 一断它本来就随管道破裂退出。
 
+#### 账号层那份凭据文件在「这台机器」上的读写（RM1a · 第四波，2026-09-24）—— **账号层自己的状态，不是用户文件**
+
+第三方 API key 那份文件（`apikey-credentials.json`）归**账号层（层 2）**：名字、格式、落点都是本仓定的，
+只有中转进程里的账号层读它 ⇒ 它**不走**文件管理那一面（那一面是给用户文件的），
+写口登记在后端 `readonly_guard` 的**第四层**（后端自有状态文件），只从下面 `apikey-key-set` 一条进来。
+判清的全文住 `调研/第四波记录/RM1a.md §1`。
+
+- **每台机器上的程序写者恰好一个**：monitor 所在那台是 monitor 自己；其余每台是那台的后端（本节两条）。
+  monitor **从不**把 `apikey-key-set` 发给本机那条连接。
+- **路径**与那台机器上 `--relay` 进程的账号层**同一个出处**（`accounts::apikey::creds::resolve_path` ＋ 同一个家目录）。
+- 🔴 **明文只在 `apikey-key-set` 的 `args.key` 里**：不进 argv、不进 env、不进任何日志；两条的应答都只有**掩码**。
+- 两条都**不起中转**；中转那两条（`relay-*`）也**不碰凭据**。
+
+#### `apikey-key-set`：给一个账号写 key，写完读回
+
+```text
+→ {"id":"k1","cmd":"apikey-key-set","args":{"account":"work","key":"<明文>"}}
+← {"kind":"reply","id":"k1","ok":true,"data":{"account":"work","path":"/home/u/.claude/claudecode-frontend/apikey-credentials.json","masked":"sk-a****wxyz"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `account` | ↔ | 账号 id（monitor 用全仓唯一那份规则从账号目录推出来，后端不再推）。必须当得了路由段 —— 与账号层装表时**同一个谓词**，写得进去却装不进表 = 那一行永远 404 |
+| `key` | → | 明文。空串拒 |
+| `masked` | ← | 写完**再读一遍**、这一行 key 的掩码（盘上的事实） |
+| `path` | ← | 那份文件的绝对路径 |
+
+写法：**写的那一刻读盘** → 只改 `accounts.<account>.api_key` 那一格（别的行与未知键一个不动）→ 临时文件**出生即只给本人**（O_EXCL）→ 写满 → 落盘 → 原子改名；失败删自己的临时文件。
+**错误码**：`bad_args`（缺字段 / 账号 id 当不了路由段 / key 空）· `bad_file`（现有文件解析不了 ⇒ **不覆盖**，人手编的内容不许被抹掉）· `io_failed`。
+
+#### `apikey-read`：文件级的状态 ＋ 表里有哪几行（**不读 stdin**）
+
+```text
+→ {"id":"k2","cmd":"apikey-read"}
+← {"kind":"reply","id":"k2","ok":true,"data":{"configured":false,"masked":"","path":"…/apikey-credentials.json","notice":null,"problem":null,"rows":["work"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `configured` · `masked` | ← | **顶层那一把**（历史格式那一行）配没配、掩码 —— 与 monitor 那一侧 `ApikeyCredentialsStatus` 同名同义 |
+| `path` | ← | 那份文件的绝对路径 |
+| `notice` | ← | 权限过宽 / 查不出来时的一句话（文件不在时 `null`）|
+| `problem` | ← | 读不动 / 解析不了时的一句话。🔴 **解析不了不退化成「没配」** |
+| `rows` | ← | 表里有哪几条账号 id（筛掉当不了路由段的；`base_url` 解析不了的那一类**筛不掉**，同 monitor 那一侧的口径）|
+
+**没有错误码**：读不动是一个**状态**（`problem`），照样 `ok:true`。
+
+⚠ **CLI 面也有它们**（`--apikey-key-set` / `--apikey-read`），从 `inbound::REGISTRY` 派生；`--apikey-key-set` 的入参**从 stdin 读**。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。
