@@ -162,7 +162,7 @@ fn an_illegal_path_is_its_own_verdict_not_a_confirmation() {
 
 /// 存在性那一问是**注进来的**，而生产那一侧只有一个住址。
 ///
-/// ⚠ 判源码是代理（同族先例 `transfer_tests::the_real_adapters_delegate_to_the_shared_pool`）。
+/// ⚠ 判源码是代理（同族先例 `transfer_tests::the_real_adapters_speak_only_through_the_channel`）。
 /// 买的是：判据走的那条路与生产走的那条路，**存在性判定只有一份**。
 #[test]
 fn the_existence_check_has_exactly_one_production_address() {

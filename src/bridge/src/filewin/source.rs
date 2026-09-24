@@ -717,6 +717,83 @@ pub async fn ask(
     Ok(v)
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// 🔴〔F7c · 第三波 · 2026-09-24〕窗口进程里说 `subscribe` 的**唯一一处**：看一趟传输
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 进度流一开始给的 credit（格数）。之后每吃一格还一格。
+///
+/// ⚠ 格子是**整份快照**（传输台那一侧合并中间几格不丢信息）⇒ credit 小也不会漏读数，
+/// 它只决定「窗口一口气最多攒几格没画」。
+pub const WATCH_CREDIT: u32 = 8;
+
+/// 看一趟传输（`kind` = `transfer/<id>`）到收场。回传完的字节数；失败 / 撤 ⇒ 那句原话。
+///
+/// - `stop` 被拨下 ⇒ **停订**（`Sub::stop`）⇒ 传输台那一侧「停订即撤」；本函数回「撤了」。
+/// - 每一格进度交给 `on(已传, 总共)`。
+///
+/// 🔴 **窗口进程里说 `subscribe` 的只有这一处**（`X6` 的 Rust 那一侧人群里 `subscribe` 那一格）。
+/// ⚠ `subscribe` 没有期限参数（`05 §3.3.0`：订阅是长期意向）—— 这一趟多久算完由传输台说了算，
+/// 窗口能做的是撤。
+pub async fn watch(
+    line: &Line,
+    origin: &Origin,
+    kind: &str,
+    stop: &crate::chan::wire::CancelToken,
+    mut on: impl FnMut(u64, u64),
+) -> Result<u64, String> {
+    use crate::chan::wire::{By, Comms, Item, Kind, Sub};
+    use futures::StreamExt as _;
+    let mut sub = line.subscribe(origin, &Kind(kind.to_string()), None, WATCH_CREDIT);
+    let json = |b: &[u8]| serde_json::from_slice::<serde_json::Value>(b).unwrap_or_default();
+    loop {
+        let next = tokio::select! {
+            i = sub.next() => i,
+            () = stop.cancelled() => {
+                sub.stop();
+                return Err(super::transfer::CANCELLED.to_string());
+            }
+        };
+        let Some(item) = next else {
+            return Err("这一趟传输没说完就断了".to_string());
+        };
+        match item {
+            Item::Frame { body, .. } => {
+                let v = json(&body.0);
+                on(
+                    v.get("got")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0),
+                    v.get("total")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0),
+                );
+                sub.want(1);
+            }
+            Item::Gap { .. } | Item::Seen { .. } => sub.want(1),
+            Item::Unseen { .. } => {
+                return Err("窗口到主程序那一段断了，这一趟传输也就撤了".to_string())
+            }
+            Item::Closed { by: By::Ours(why) } => {
+                return Err(format!("这一趟传输在本侧断了：{why:?}"))
+            }
+            Item::Closed { by: By::Peer(body) } => {
+                let v = json(&body.0);
+                let text = |k: &str| v.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
+                return match text("state") {
+                    "done" => Ok(v
+                        .get("bytes")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0)),
+                    "failed" => Err(text("why").to_string()),
+                    "cancelled" => Err(super::transfer::CANCELLED.to_string()),
+                    _ => Err(super::find::refusal(kind, text("code"), text("message"))),
+                };
+            }
+        }
+    }
+}
+
 /// 通道那三层失败（`05 §3.3.1`）→ 窗口上那一句话。**穷尽 `match`，不许 `_ =>`。**
 ///
 /// 🔴 对端说了话（`Peer{Refused}`）时 body 是宿主那一侧拼的 `{"code","message"}`

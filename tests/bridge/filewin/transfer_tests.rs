@@ -7,6 +7,7 @@ fn p(name: &str) -> Pending {
         local_path: format!("/home/u/{name}"),
         remote_path: format!("/srv/{name}"),
         name: name.to_string(),
+        overwrite: false,
     }
 }
 
@@ -462,11 +463,12 @@ fn a_pending_upload_targets_the_current_remote_directory_with_forward_slashes() 
 
 /// ⚠ **判源码是代理，不是标的**（同 `source_tests` 那条的如实标注）。
 ///
-/// 买的是：上传与探测走的是 `sftp_pool` 那两条既有命令 ——
-/// 于是 4 条传输车道、取消登记、断点续传全都照旧生效，本模块一行传输代码都没有。
-/// 买不到：那两条命令今天真连得上。
+/// 〔F7c · 第三波 09-24〕上一版这里钉的是「上传走 `sftp_pool` 那条既有命令」。**今天反过来**：
+/// 窗口进程一行 SFTP 都不碰（`设计/60 §13`）——上传经通道开单、订阅、再经后端提交。
+/// 买的是：这一层**只剩**通道那几个口（开单 · 提交 · 探测各恰好一处），自己开连接 / 分块写 /
+/// 直调池子传输命令的痕迹一个都没有。行为那一半由下面 `an_upload_opens_watches_then_commits…` 那一族判。
 #[test]
-fn the_real_adapters_delegate_to_the_shared_pool() {
+fn the_real_adapters_speak_only_through_the_channel() {
     let prod =
         guard_core::production_code(include_str!("../../../src/bridge/src/filewin/transfer.rs"));
     assert!(
@@ -474,17 +476,10 @@ fn the_real_adapters_delegate_to_the_shared_pool() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
-    // 〔F2 · 2026-09-24〕「那儿有没有东西」那一问改问后端（`files-stat`，经通道）——
-    //   它不搬字节，归后端不归传输；搬字节那一件（上传）照旧走池子（`设计/60 §8.4` 未拍）。
-    assert_eq!(
-        prod.matches("sftp_pool::sftp_stat(").count(),
-        0,
-        "`probe_remote` 又回到了池子那条 `stat` —— 它不搬字节，该问后端"
-    );
     for needle in [
         "\"files-stat\"",
-        "sftp_pool::sftp_upload(",
-        "sftp_pool::TRANSFER_LANE_CAP",
+        "\"transfer-upload\"",
+        "\"files-commit-upload\"",
         "pub fn lanes()",
     ] {
         assert_eq!(
@@ -495,26 +490,38 @@ fn the_real_adapters_delegate_to_the_shared_pool() {
             prod.matches(needle).count()
         );
     }
-    // 自己开连接 / 自己分块写的痕迹，一个都不许有。
+    // 自己开连接 / 自己分块写 / 直调池子传输命令的痕迹，一个都不许有。
     for banned in [
         "connect_sftp",
         "russh_sftp",
         "SftpSession",
         "with_sftp(",
         "lease_transfer",
+        "sftp_upload(",
+        "sftp_download(",
+        "TRANSFER_LANE_CAP",
+        "RemoteConfig",
+        "tauri::",
     ] {
         assert!(
             !prod.contains(banned),
-            "生产段里出现了 `{banned}` —— 这一层不许自己碰连接／通道，\
-             它该做的只有「先问完再并行」那件事"
+            "生产段里出现了 `{banned}` —— 窗口进程不碰 SFTP（`设计/60 §13.2 ①`），\
+             它该做的只有「先问完再并行」＋ 经通道说话"
         );
     }
+    // 池子那一个前缀**只许剩复制那一腿的取消**（`forward_cancel`，等 F7a 的 `files-copy`）。
+    assert_eq!(
+        prod.matches("sftp_pool::").count(),
+        1,
+        "窗口这一侧够到池子的地方不是恰好一处（复制那一腿的取消）"
+    );
 }
 
-/// 🔴 **闸的数值不许在这里另写一份。**
+/// 🔴 **闸的数值两份、钉相等。**
 ///
-/// 真正的车道闸在池里（`lease_transfer`，`设计/60 §5.4a` 的 `6 − 4 = 2`）。
-/// 本层那个并发上限**取的就是池里那个常量** —— 相等断言，而不是「注释里说是 4」。
+/// 真正的车道闸在 monitor 的池里（`lease_transfer`，`设计/60 §5.4a` 的 `6 − 4 = 2`）。
+/// 〔F7c〕窗口进程不再 `use` 池里那个常量（它一个 `sftp_pool` 符号都不碰）⇒ 两边各写一份，
+/// 本条钉**相等**（两侧异源：窗口的常量 · 池子的常量）。
 #[test]
 fn our_concurrency_cap_is_the_pools_own_lane_count() {
     assert_eq!(
@@ -522,8 +529,11 @@ fn our_concurrency_cap_is_the_pools_own_lane_count() {
         4,
         "池里的车道数变了 —— 本层跟着它走，但这个数变了要回 `设计/60 §5.4a` 重读一遍理由"
     );
-    // 本层那个落点回的就是池里那个数（相等，不是「注释里说是 4」）。
-    assert_eq!(lanes(), crate::sftp_pool::TRANSFER_LANE_CAP);
+    assert_eq!(
+        lanes(),
+        crate::sftp_pool::TRANSFER_LANE_CAP,
+        "窗口那一侧起几件与池里的车道数漂开了"
+    );
     // 窗口那一侧**只经这一个落点**拿那个数，不自己再写一份。
     let shell =
         guard_core::production_code(include_str!("../../../src/bridge/src/filewin/shell.rs"));
@@ -533,10 +543,327 @@ fn our_concurrency_cap_is_the_pools_own_lane_count() {
         "窗口那一侧起传输时用的不是 `transfer::lanes()`（或者用了两处）"
     );
     assert!(
-        !shell.contains("TRANSFER_LANE_CAP"),
-        "`shell.rs` 直接引了池里那个常量 —— 那就有两个地方在答「起几件」，\
-         而两个地方一定会漂"
+        !shell.contains("TRANSFER_LANE_CAP") && !shell.contains("WINDOW_TRANSFER_LANES"),
+        "`shell.rs` 直接引了那个常量 —— 那就有两个地方在答「起几件」，而两个地方一定会漂"
     );
+}
+
+/// 🔴 窗口这一侧写死的那几个**线上名字**与对面（传输台 / 后端）那一份逐字相等。
+///
+/// 两侧异源：窗口的常量 · 传输台的常量 · 后端提交命令表的源码（运行期读，不是编译期边）。
+/// 漂开的症状是具体的：开单答「不认」、订阅答「没有这条流」、提交答 `unknown_command`。
+#[test]
+fn the_wire_names_the_window_says_are_the_ones_the_other_side_answers() {
+    assert_eq!(OP_UPLOAD, crate::sftp_pool::TRANSFER_UPLOAD);
+    assert_eq!(
+        crate::filewin::download::OP_DOWNLOAD,
+        crate::sftp_pool::TRANSFER_DOWNLOAD
+    );
+    assert_eq!(KIND_PREFIX, crate::sftp_pool::TRANSFER_KIND_PREFIX);
+    let backend = std::fs::read_to_string(
+        crate::guard_support::repo_root().join("src/backend/control/files_commit.rs"),
+    )
+    .expect("读后端提交那一份");
+    assert_eq!(
+        backend
+            .matches(&format!("name: {CMD_COMMIT:?},")[..])
+            .count(),
+        1,
+        "后端提交命令表里找不到逐字相同的 `{CMD_COMMIT}`"
+    );
+}
+
+/// 🔴 **只有人点了「覆盖」的那几件带 `overwrite: true` 去提交**；没被问过的一律 `false`。
+///
+/// 两向：带 `true` 的集合 == 人勾了的冲突项；带 `false` 的 == 其余真传了的。
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn only_the_items_a_human_agreed_to_overwrite_go_out_with_overwrite() {
+    let launched: std::sync::Mutex<Vec<(String, bool)>> = std::sync::Mutex::new(Vec::new());
+    run_drop(
+        vec![p("a"), p("b"), p("c"), p("d")],
+        4,
+        |it| async move { it.name == "a" || it.name == "c" }, // a / c 冲突
+        |clashes| async move { clashes.into_iter().filter(|x| x.name == "a").collect() },
+        |it| {
+            let l = &launched;
+            async move {
+                l.lock().unwrap().push((it.name.clone(), it.overwrite));
+                Ok(())
+            }
+        },
+    )
+    .await;
+    let mut got = launched.lock().unwrap().clone();
+    got.sort();
+    assert_eq!(
+        got,
+        vec![
+            ("a".to_string(), true),
+            ("b".to_string(), false),
+            ("d".to_string(), false),
+        ],
+        "覆盖标记没跟着人的回答走（c 答了不覆盖该不传；b / d 没被问过该是 false）"
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔F7c〕经通道的那三步：开单 → 起跑并看 → 提交（真回环 ＋ 真钥匙 ＋ 合成对端）
+// ════════════════════════════════════════════════════════════════════════
+
+/// 合成对端这一趟怎么收场。
+#[derive(Clone, Copy)]
+enum Ends {
+    Done,
+    Failed,
+    /// 永不收场（只有被停订才结束）——「撤」那一条用。
+    Hang,
+}
+
+/// 一台合成对端：记下它看见的每一步（`call` 的名字与载荷 · 订阅的 kind · 流被丢掉）。
+struct XferHost {
+    ends: Ends,
+    log: std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+}
+
+/// 流被丢掉时记一笔（停订 / 连接没了）。
+struct DropMark(std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>);
+impl Drop for DropMark {
+    fn drop(&mut self) {
+        self.0
+            .lock()
+            .unwrap()
+            .push(("dropped".into(), serde_json::Value::Null));
+    }
+}
+
+impl crate::chan::router::Backends for XferHost {
+    fn call(
+        &self,
+        _origin: crate::chan::wire::Origin,
+        op: crate::chan::wire::Op,
+        payload: crate::chan::wire::Body,
+        _left: std::time::Duration,
+        _cancel: crate::chan::wire::CancelToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<crate::chan::wire::Body, crate::chan::wire::CallError>,
+    > {
+        let args: serde_json::Value = serde_json::from_slice(&payload.0).unwrap_or_default();
+        self.log.lock().unwrap().push((op.0.clone(), args));
+        let answer = match op.0.as_str() {
+            "transfer-upload" => serde_json::json!({ "id": "x-up", "key": "k".repeat(32) }),
+            "transfer-download" => serde_json::json!({ "id": "x-down" }),
+            _ => serde_json::json!({ "path": "/srv/a.bin", "bytes": 3 }),
+        };
+        Box::pin(async move {
+            Ok(crate::chan::wire::Body(
+                serde_json::to_vec(&answer).unwrap_or_default(),
+            ))
+        })
+    }
+
+    fn subscribe(
+        &self,
+        _origin: crate::chan::wire::Origin,
+        kind: crate::chan::wire::Kind,
+        _from: Option<crate::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, crate::chan::wire::Item> {
+        use crate::chan::wire::{Body, By, Item};
+        use futures::StreamExt as _;
+        self.log
+            .lock()
+            .unwrap()
+            .push(("subscribe".into(), serde_json::json!(kind.0)));
+        let frame = Item::Frame {
+            seq: 1,
+            body: Body(br#"{"got":1,"total":3}"#.to_vec()),
+        };
+        let end = |v: serde_json::Value| Item::Closed {
+            by: By::Peer(Body(serde_json::to_vec(&v).unwrap_or_default())),
+        };
+        let mark = DropMark(self.log.clone());
+        let head = futures::stream::iter([frame]);
+        match self.ends {
+            Ends::Done => head
+                .chain(futures::stream::iter([end(
+                    serde_json::json!({ "state": "done", "bytes": 3 }),
+                )]))
+                .map(move |i| {
+                    let _keep = &mark;
+                    i
+                })
+                .boxed(),
+            Ends::Failed => head
+                .chain(futures::stream::iter([end(
+                    serde_json::json!({ "state": "failed", "why": "断网（合成）" }),
+                )]))
+                .map(move |i| {
+                    let _keep = &mark;
+                    i
+                })
+                .boxed(),
+            Ends::Hang => head
+                .chain(futures::stream::pending())
+                .map(move |i| {
+                    let _keep = &mark;
+                    i
+                })
+                .boxed(),
+        }
+    }
+}
+
+/// 挂一台合成对端到真通道口上，拨通。回（线 · 地址 · 它的记录）。
+async fn xfer_rig(
+    ends: Ends,
+) -> (
+    super::super::source::Line,
+    super::super::source::Origin,
+    std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+) {
+    let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let h = crate::chan::host::start_with(
+        std::sync::Arc::new(XferHost {
+            ends,
+            log: log.clone(),
+        }),
+        crate::chan::host::mint_key(),
+        1 << 20,
+        std::time::Duration::from_secs(5),
+    )
+    .await
+    .expect("回环口绑得上");
+    let line = crate::chan::dial::dial(
+        &h,
+        crate::chan::wire::Budget {
+            until: std::time::Instant::now() + std::time::Duration::from_secs(5),
+            cancel: crate::chan::wire::CancelToken::new(),
+        },
+    )
+    .await
+    .expect("拨得通");
+    (
+        line,
+        crate::chan::wire::Origin("判据机器·窗口传输".into()),
+        log,
+    )
+}
+
+fn steps(log: &std::sync::Mutex<Vec<(String, serde_json::Value)>>) -> Vec<String> {
+    log.lock().unwrap().iter().map(|(s, _)| s.clone()).collect()
+}
+
+/// 🔴 **上传三步的顺序与载荷**：开单（带本机路径）→ 订阅 `transfer/<开单回的 id>` → 提交
+/// （`key` 是开单回的那一个，`root` / `rel` 由目标路径切出来，`overwrite` 是人的回答）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_upload_opens_watches_then_commits_with_the_humans_answer() {
+    let (line, origin, log) = xfer_rig(Ends::Done).await;
+    let board = DropBoard::default();
+    let mut item = p("a.bin");
+    item.overwrite = true;
+    upload_remote(&line, &origin, &item, &board)
+        .await
+        .expect("该走通");
+    // 「流被丢掉」那一笔是收场之后路由器收尾记下的，与三步的先后无关 ⇒ 不进这张序。
+    let got: Vec<(String, serde_json::Value)> = log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(s, _)| s != "dropped")
+        .cloned()
+        .collect();
+    let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
+    assert_eq!(
+        &names[..],
+        ["transfer-upload", "subscribe", "files-commit-upload"],
+        "三步的顺序不对：{names:?}"
+    );
+    assert_eq!(
+        got[0].1,
+        serde_json::json!({ "local_path": "/home/u/a.bin" })
+    );
+    assert_eq!(got[1].1, serde_json::json!("transfer/x-up"));
+    assert_eq!(
+        got[2].1,
+        serde_json::json!({ "key": "k".repeat(32), "root": "/srv", "rel": "a.bin", "overwrite": true })
+    );
+}
+
+/// ★ **传输失败 ⇒ 不提交**（暂存件留在传输台那一侧给续传），失败原话带回来。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_transfer_is_never_committed() {
+    let (line, origin, log) = xfer_rig(Ends::Failed).await;
+    let e = upload_remote(&line, &origin, &p("a.bin"), &DropBoard::default())
+        .await
+        .expect_err("该失败");
+    assert!(e.contains("断网（合成）"), "失败原话没带回来：{e}");
+    assert!(
+        !steps(&log).iter().any(|s| s == "files-commit-upload"),
+        "传输失败了还去提交：{:?}",
+        steps(&log)
+    );
+}
+
+/// 🔴 **按取消 ⇒ 停订**（对端看见流被丢掉）⇒ 不提交；回的是「被取消了」那一句。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pressing_cancel_stops_the_subscription_and_nothing_is_committed() {
+    let (line, origin, log) = xfer_rig(Ends::Hang).await;
+    let board = DropBoard::default();
+    let desk = board.cancels();
+    let run = {
+        let (line, origin, board) = (line.clone(), origin.clone(), board.clone());
+        tokio::spawn(async move { upload_remote(&line, &origin, &p("a.bin"), &board).await })
+    };
+    // 等订阅真的挂上（对端记下了那一笔）再按取消 —— 有界自旋，不睡觉。
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !steps(&log).iter().any(|s| s == "subscribe") {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("订阅该挂上");
+    desk.request();
+    let r = tokio::time::timeout(std::time::Duration::from_secs(10), run)
+        .await
+        .expect("按了取消，那一趟该收场")
+        .expect("任务没 panic");
+    assert_eq!(r, Err(CANCELLED.to_string()));
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !steps(&log).iter().any(|s| s == "dropped") {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("对端没看见流被丢掉 —— 停订没送到（传输台那一侧就撤不了）");
+    assert!(!steps(&log).iter().any(|s| s == "files-commit-upload"));
+}
+
+/// ★ 下载两步：开单（远端路径 ＋ 本机落点）→ 订阅；**没有提交**（远端只读、不经后端）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_download_opens_and_watches_and_never_talks_to_the_file_backend() {
+    let (line, origin, log) = xfer_rig(Ends::Done).await;
+    let board = crate::filewin::download::DownloadBoard::default();
+    crate::filewin::download::pull_one(&line, &origin, "/srv/a.bin", "/tmp/a.bin", &board)
+        .await
+        .expect("该走通");
+    let got = log.lock().unwrap().clone();
+    assert_eq!(got[0].0, "transfer-download");
+    assert_eq!(
+        got[0].1,
+        serde_json::json!({ "remote_path": "/srv/a.bin", "local_path": "/tmp/a.bin" })
+    );
+    assert_eq!(
+        got[1],
+        (
+            "subscribe".to_string(),
+            serde_json::json!("transfer/x-down")
+        )
+    );
+    assert!(
+        !got.iter().any(|(s, _)| s.starts_with("files-")),
+        "下载碰了文件管理后端：{got:?}"
+    );
+    assert_eq!(board.seen(), (1, 3), "进度那一格没落到看板上");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -550,7 +877,7 @@ fn our_concurrency_cap_is_the_pools_own_lane_count() {
 // | `pressing_cancel_stops_every_transfer_that_had_not_started_yet` | **行为**：按下取消之后，还没起的那几件一件都不起 | 「UI 上标成停了」而字节照旧在走 |
 // | `a_run_that_is_never_cancelled_launches_every_single_item` | 🔴 **阴性对照** | 上一条可以靠「一件都不起」全绿 —— 那时这个窗口传不了任何东西 |
 // | `the_transfer_id_the_pool_gets_is_the_one_the_window_can_name` | 那个键**离开了适配器的栈** | 窗口说不出要取消哪一趟，画一颗按钮也没用（这一格正是第五刀之前的实况） |
-// | `cancelling_really_goes_through_the_pools_own_cancel_command` | **委派**给池子那条既有命令 | 自己另造一套取消（而池子里那面旗谁都不翻） |
+// | `cancelling_goes_through_the_stop_token_and_the_pool_only_for_copy` | 〔F7c〕经通道的那几趟**停订即撤**；池子那条取消命令只剩复制那一腿 | 按了取消而订阅照挂着（传输台那一侧永远撤不掉） |
 
 /// 🔴 **按下取消 ⇒ 还没起的那几件一件都不起**，而且整趟**真的收场**（不挂住）。
 ///
@@ -689,27 +1016,37 @@ async fn the_transfer_id_the_pool_gets_is_the_one_the_window_can_name() {
     assert!(!desk.is_cancelled());
 }
 
-/// 取消这一趟真的落到池子那条命令上 —— **委派**。
+/// 取消的两腿各落在哪 —— 源码代理，行为那一半由 `pressing_cancel_stops_the_subscription…` 判。
 ///
-/// ⚠ 与本文件那条 `the_real_adapters_delegate_to_the_shared_pool` 同族、同边界：
-/// 判的是源码（代理），买的是「走的是池子那条既有命令」；
-/// **买不到**「一趟真传输在池子里真的停了」—— 那要一趟真连接。
+/// 〔F7c 09-24〕经通道起的那几趟（上传 / 下载）撤法是**停订**（`CancelDesk::stop_token`）；
+/// 池子那条取消命令**只剩复制那一腿**（`copy.rs` 仍在本进程里直调 `sftp_copy`），恰好一处。
 #[test]
-fn cancelling_really_goes_through_the_pools_own_cancel_command() {
+fn cancelling_goes_through_the_stop_token_and_the_pool_only_for_copy() {
     let prod =
         guard_core::production_code(include_str!("../../../src/bridge/src/filewin/transfer.rs"));
     assert_eq!(
         prod.matches("sftp_pool::sftp_cancel_transfer(").count(),
         1,
-        "`sftp_pool::sftp_cancel_transfer(` 在生产段里不是恰好一处 —— \
-         多了就是长出了第二条取消路，少了就是这一条没接上"
+        "`sftp_pool::sftp_cancel_transfer(` 在生产段里不是恰好一处（复制那一腿）"
     );
+    assert!(
+        prod.contains("self.stop_token().cancel()"),
+        "按取消没有拨下这一摞的撤单令牌 —— 经通道起的那几趟撤不掉"
+    );
+    let dl =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/download.rs"));
+    for (who, src) in [("transfer.rs", &prod), ("download.rs", &dl)] {
+        assert_eq!(
+            src.matches("cancels().stop_token()").count(),
+            1,
+            "`{who}` 的那一趟没盯这一摞的撤单令牌"
+        );
+    }
     // 造键的落点也只许有一个（否则会有一趟的键谁都不知道）。
     assert_eq!(
         prod.matches("Uuid::new_v4()").count(),
         1,
-        "造 `transfer_id` 的地方不是恰好一处 —— 第五刀之前那一处在 `upload_remote` 里，\
-         而那正是「窗口说不出要取消哪一趟」的病根"
+        "造 `transfer_id` 的地方不是恰好一处"
     );
     let copy = guard_core::production_code(include_str!("../../../src/bridge/src/filewin/copy.rs"));
     assert!(

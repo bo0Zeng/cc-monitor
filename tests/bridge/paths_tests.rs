@@ -99,7 +99,7 @@ fn no_home_and_no_override_is_still_none() {
 
 /// 🔴 **那个出口真的盖住了 monitor 这一侧的全部** —— 没人自己拼那条路径。
 ///
-/// ⚠ 判源码是**代理**（同族先例 `transfer_tests::the_real_adapters_delegate_to_the_shared_pool`）。
+/// ⚠ 判源码是**代理**（同族先例 `transfer_tests::the_real_adapters_speak_only_through_the_channel`）。
 /// 买的是：`CCM_DATA_DIR` 一设，monitor 这棵树上**所有**落点一起挪
 /// —— 而不是挪了八分之七。
 ///
