@@ -418,6 +418,22 @@ describe("modelByAccount config 读写（F07）", () => {
 });
 
 describe("fetchAccounts TTL 缓存", () => {
+  // 〔`A3` 第二波〕backend 的本机 origin（`<local>`）⇒ 问本机后端，不拿它去问远端。
+  // 死值验对照：把 `fetchAccounts` 开头那条 `if (origin === BACKEND_LOCAL_ORIGIN)` 摘掉 ⇒
+  // 第一次发的是 `list_remote_accounts`、带着 `{ origin: "<local>" }`，本条红。
+  it("A3：`<local>` 走本机那条（`list_local_accounts`），不是拿 `<local>` 去问远端", async () => {
+    __resetAccountsCacheForTest();
+    loadCfg.mockResolvedValue({});
+    invokeMock.mockResolvedValue({ available: true, error: null, meta: null, accounts: [acct({})] });
+    const st = await fetchAccounts("<local>");
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock.mock.calls[0][0]).toBe("list_local_accounts");
+    expect(st.available).toBe(true);
+    // 与 `fetchLocalAccounts` 共用同一格缓存（账号面的本机键），TTL 内不重发。
+    await fetchAccounts("<local>");
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    __resetAccountsCacheForTest();
+  });
   it("首次 fetch 命中 invoke，TTL 内不重发", async () => {
     loadCfg.mockResolvedValue({});
     invokeMock.mockResolvedValue({ available: true, error: null, meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null }, accounts: [acct({})] });
@@ -1252,6 +1268,19 @@ describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说�
     expect(withMark.body).not.toContain(TOKEN);
     expect(withMark.title).not.toContain(TOKEN);
     expect(without.body).not.toContain(TOKEN);
+  });
+
+  // 〔`A3` 第二波〕本机会话也会走到这句话 —— 最后那句补救**只对远端成立**。
+  it("A3：本机那一支不指「把此会话切到账号 X」（本机归档 Resume 不带账号选择），成因判定两支照旧", () => {
+    for (const r of [row({ launchId: null }), row({ launchId: TOKEN })]) {
+      const remote = restartLocateFailureMessage(r);
+      const local = restartLocateFailureMessage(r, { local: true });
+      expect(remote.body).toContain("把此会话切到账号 X");
+      expect(local.body).not.toContain("把此会话切到账号 X");
+      expect(local.title).toBe(remote.title); // 只换补救那一句，成因那一半一个字不动
+    }
+    // 缺省 = 远端（既有调用点逐字节不变）。
+    expect(restartLocateFailureMessage(row(), {})).toEqual(restartLocateFailureMessage(row()));
   });
 
   it("进程已死的行不作数：`alive:false` 上的 token 一律不参与这次判断", () => {
