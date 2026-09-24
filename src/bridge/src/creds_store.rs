@@ -75,7 +75,7 @@ pub struct RelayCredentialsStatus {
 /// （见 [`write_key`] 头注）。**这两句话必须一起读**：
 /// 只读前半会以为它被废了，只读后半会以为它被删了，而**两件事都没有发生**。
 ///
-/// ⇒ 「某个**账号**配没配」不由本函数答，由 `history::relay_rows_at` 那一族答
+/// ⇒ 「某个**账号**配没配」不由本函数答，由 `history::apikey_rows_at` 那一族答
 /// （那正是起会话那一侧用的同一个取值口，`KH2B7` 已经把它端给了界面）。
 /// 本函数答的三样是**文件级**的：那份文件在哪 · 权限过不过宽 · 是不是被手编坏了。
 pub(crate) fn read_status() -> Result<RelayCredentialsStatus, String> {
@@ -156,10 +156,10 @@ fn notice_of(v: &Verdict) -> Option<String> {
 /// # ⚠⚠ `K-H2c`：它写的是 `accounts.<id>` 那一格，**不再是顶层那一把**
 ///
 /// `<id>` **不是**调用方给的名字，而是由 `config_dir` 经**全仓唯一那份规则**
-/// [`crate::history::relay_account_id_of_dir`] 推出来的 —— 起会话那一侧
-/// （`history::relay_account_id`）调的是**同一个函数**，不是一份同形的第二实现。
+/// [`crate::history::apikey_account_id_of_dir`] 推出来的 —— 起会话那一侧
+/// （`history::apikey_account_id`）调的是**同一个函数**，不是一份同形的第二实现。
 /// ⚠ 两边各写一份「取末段名」的逻辑，漂开的那天症状是
-/// 「设置里说走中转、起会话时没走」，而两边看起来都没错（那条头注自己就是这么写的）。
+/// 「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错（那条头注自己就是这么写的）。
 /// ⇒ 这一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for`
 /// （行为，跨两半）与 `the_account_id_rule_is_not_reimplemented_on_the_write_side`（机检）钉住。
 ///
@@ -211,7 +211,7 @@ pub(crate) fn write_key_at(
 ) -> Result<(), String> {
     // ★★ 「这是哪个账号」**全仓只有一份规则** —— 直接调起会话那一侧的那一个。
     //    这不是「两侧对拍」，是**共用一份实现**：漂开这件事在结构上不可表示。
-    let id = crate::history::relay_account_id_of_dir(config_dir).ok_or_else(|| {
+    let id = crate::history::apikey_account_id_of_dir(config_dir).ok_or_else(|| {
         format!(
             "说不出这是哪个账号（configDir 是 {config_dir:?}）—— 这一格不许回落到顶层那一把：\
              回落的症状是「以为配给了 A，其实写进了 default」，而 default 那一行谁都能命中。"

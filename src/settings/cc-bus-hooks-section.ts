@@ -83,6 +83,15 @@ export class CcBusHooksSection {
 
   constructor() {
     this.element = this.build();
+    // ST1「延后加载」：构造期不读 —— 见 `loadNow()`。
+  }
+
+  /**
+   * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）：
+   * 构造期不再发 I/O；宿主（`panel.ts`）在**某台机器的子页第一次可见**时调它。
+   * 重开设置后宿主会再调一次（重开要看新读数）。
+   */
+  loadNow(): void {
     void this.loadOrigins();
     // 本机诊断是纯本地读文件（无 SSH、无远端往返），代价可忽略 → 直接读。
     // 远端那份要 SSH，**只在用户点「检查远端」时才发**（同 cc-bus 驾驶舱的纪律）。

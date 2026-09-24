@@ -818,6 +818,27 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
     cc_accounts::trust_of_config(&cc_accounts::config_path_in(&home), cwd)
 }
 
+/// 帧面那两条（`accounts-list` / `accounts-sessions`）的入口〔`C1` · 2026-09-24〕。
+///
+/// 跑的是 CLI 那两臂**同一个函数**（[`list_accounts`] / [`session_accounts`]），账号库目录
+/// 走同一个解析（帧面不收 `--accts-dir` 覆盖 —— monitor 从不发它，那是给人手调的旋钮）。
+pub(crate) fn lines_for_frame(agent_home: &Path, which: FrameAccounts) -> Vec<String> {
+    let accts_dir = resolve_accts_dir(&[]);
+    match which {
+        FrameAccounts::List => list_accounts(&accts_dir),
+        FrameAccounts::BySession => session_accounts(agent_home, &accts_dir),
+    }
+}
+
+/// [`lines_for_frame`] 问的是哪一条。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FrameAccounts {
+    /// `--list-accounts` 那一臂。
+    List,
+    /// `--session-accounts` 那一臂。
+    BySession,
+}
+
 /// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
 pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     let accts_dir = resolve_accts_dir(args);

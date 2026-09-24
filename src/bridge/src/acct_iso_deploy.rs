@@ -32,7 +32,7 @@ const EXAMPLE_CONFIG: &[u8] = include_bytes!("../vendor/cc-acct-iso/examples/con
 /// 内嵌脚本内容指纹（build 期由 `.vendor_id` 决定），trim 掉尾换行。
 const VENDOR_ID_RAW: &str = include_str!("../vendor/cc-acct-iso/.vendor_id");
 
-fn vendor_id() -> &'static str {
+pub(crate) fn vendor_id() -> &'static str {
     VENDOR_ID_RAW.trim()
 }
 
@@ -138,12 +138,11 @@ pub async fn remote_acct_iso_shellinit(cfg: RemoteConfig) -> Result<String, Stri
 /// 一次被截断的输出（SSH 中途断、超时）会带着半截片段过关，而**半截片段贴进 rc
 /// 会让用户的登录 shell 直接报错**（未闭合的函数体）。这就是这条必须 fail-closed 的理由。
 pub(crate) fn validate_shellinit_output(out: String) -> Result<String, String> {
-    let has_begin = out.contains(SHELLINIT_FENCE_BEGIN);
-    let has_end = out.contains(SHELLINIT_FENCE_END);
-    if has_begin && has_end {
+    let state = shellinit_fence_state(&out);
+    if state == FenceState::Complete {
         return Ok(out);
     }
-    Err(if has_begin {
+    Err(if state == FenceState::Truncated {
         format!(
             "远端产出的 rc 片段**不完整**（有 {SHELLINIT_FENCE_BEGIN:?} 但没有 \
 {SHELLINIT_FENCE_END:?}）——输出可能被截断了。**别贴**，半截片段会让登录 shell 报错。请重试。"
@@ -154,6 +153,30 @@ pub(crate) fn validate_shellinit_output(out: String) -> Result<String, String> {
 常见原因：cc-acct-iso 未安装（先在「维护」里部署）、或该远端还没跑过 `cc-acct-iso init`。"
         )
     })
+}
+
+/// 片段的围栏齐不齐 —— 〔`A3` 第二波〕从 [`validate_shellinit_output`] 里抽出来的**判定**，
+/// 远端那条与本机那条（`local_accounts::classify_local_shellinit`）共用它；两边只是话不同
+/// （远端说「先在『维护』里部署」，本机今天没有那个口）。**两条都要在**的理由见上面那个函数的头注。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FenceState {
+    /// BEGIN 与 END 都在。
+    Complete,
+    /// 有 BEGIN 没 END —— 多半是被截断了。
+    Truncated,
+    /// 连 BEGIN 都没有 —— 没产出片段。
+    Missing,
+}
+
+pub(crate) fn shellinit_fence_state(out: &str) -> FenceState {
+    match (
+        out.contains(SHELLINIT_FENCE_BEGIN),
+        out.contains(SHELLINIT_FENCE_END),
+    ) {
+        (true, true) => FenceState::Complete,
+        (true, false) => FenceState::Truncated,
+        (false, _) => FenceState::Missing,
+    }
 }
 
 /// `cc-acct-iso shellinit` 输出的围栏 —— **跨语言双写点**，由

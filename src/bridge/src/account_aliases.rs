@@ -391,7 +391,7 @@ pub fn render(aliases: &[Alias]) -> AliasRender {
 }
 
 /// 把生成文件里的一行解析回一条别名。认两种调用词：裸 `ccm`，以及从前那种
-/// `"${CCM:-<路径>}"`（`K-R69` 的 `ccmInvocation` 吐过）—— 读回之后一律按裸 `ccm` 重写。
+/// `"${CCM:-<路径>}"`（`K-R69` 的 `ccmInvocation`〔散文墓碑〕吐过，那一格随 TS 生成器退役）—— 读回之后一律按裸 `ccm` 重写。
 fn parse_line(line: &str) -> Result<Alias, String> {
     let rest = line
         .strip_suffix(" \"$@\"; }")

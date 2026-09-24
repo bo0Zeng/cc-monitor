@@ -300,10 +300,13 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    原因同上 —— 本轮在 `panel.ts` 上游加了一行 import ＋ 建面板时多挂了一条常驻条
   //    （「配置里有不认识的键」那条）。**住址没变、内容没变**，只是行号跟着挪；
   //    三处逐处现打核过（`b.el` / 两处 `perMachineFallbackHint`），语义一字未动。
-  // ⚠ 〔AL1 · 2026-09-24〕`668 → 665` / `1091 → 1100` / `1098 → 1107`：**又漂了一次**，原因同上 ——
-  //    本轮在 `panel.ts` 上游把 import 收成一行、在 per-machine 那张表里多挂了「别名」一块、
-  //    删了「行为」组里那段别名挂载。三处逐处现打核过，语义一字未动。
-  "src/settings/panel.ts:665":
+  // ⚠ 〔ST1 · 2026-09-24〕`668 → 791` / `1091 → 1250` / `1098 → 1259`：**又漂了一次**，原因同上 ——
+  //    本轮在 `panel.ts` 上游加了延后加载（`loadableBlock`）与关窗接管（`installWindowLifecycle` /
+  //    拦截条）。三处逐处现打核过：仍是 `b.el` 与两处 `perMachineFallbackHint`，语义一字未动。
+  // ⚠ 〔AL1 合并 · 2026-09-24〕`791 → 788` / `1250 → 1259` / `1259 → 1268`：**又漂了一次**，原因同上 ——
+  //    AL1 在 `panel.ts` 上游把 import 收成一行、per-machine 表里多挂「别名」一块、删「行为」组里那段别名挂载。
+  //    三处逐处现打核过：仍是 `b.el` 与两处 `perMachineFallbackHint`，语义一字未动。
+  "src/settings/panel.ts:788":
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 〔步 20 · `设计/70 §1.3 C`〕兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -311,9 +314,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1100":
+  "src/settings/panel.ts:1259":
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1107":
+  "src/settings/panel.ts:1268":
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则

@@ -76,6 +76,15 @@ export class CcIntegrationSection {
 
   constructor() {
     this.root = this.build();
+    // ST1「延后加载」：构造期不读 —— 见 `loadNow()`。
+  }
+
+  /**
+   * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）：
+   * 构造期不再发 I/O；宿主（`panel.ts`）在**某台机器的子页第一次可见**时调它。
+   * 重开设置后宿主会再调一次（重开要看新读数）。
+   */
+  loadNow(): void {
     void this.refresh();
     void this.refreshAutoLaunch();
   }
@@ -446,7 +455,7 @@ export class CcIntegrationSection {
     body.style.marginTop = "4px";
     body.textContent =
       "profile.ps1（CurrentUserAllHosts）是合法的 PowerShell profile 位置——所有 host 都会读它。" +
-      "如果你**故意**装在那里（比如想让 VSCode 终端 / ISE / SSH 也用 cc），保留即可。" +
+      "如果你是故意装在那里（比如想让 VSCode 终端 / ISE / SSH 也用 cc），保留即可。" +
       "如果是 v1.7.0/1.7.1 残留 或 重复安装（同时也在 $PROFILE 装了一份），建议清理其中一份避免重复定义：";
     warn.appendChild(body);
     const list = document.createElement("ul");

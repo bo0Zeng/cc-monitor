@@ -70,6 +70,48 @@ fn there_are_exactly_two_ways_in() {
     assert_eq!(intercept("/opt/ccmonitor", &none), None, "子串不算");
 }
 
+/// 〔CC1〕「怎么叫我」＝ 进程 argv 里 `intercept` **吃掉的那一段**；两个入口各一格，再加回环。
+///
+/// 回环是这条的正题：把 `self_invocation` 交出来的那一段 ＋ 任意一串 ccm 参数**再喂给 `intercept`**，
+/// 必须原样拿回那串参数 —— 也就是「pane 里把自己再叫一次，叫得回 ccm 模式、参数一个不多一个不少」。
+/// 〔BS1b 现打的那一形：入口② 只取 argv0 ⇒ `intercept("cc-monitor-backend", ["--cwd", …])` 是 `None`，
+///  那一跳直接掉进后端直连口。〕⚠ 这是单元层的**同源**自检；异源判据在 e2e `backend-cc-bus.sh` [17]。
+#[test]
+fn calling_myself_again_goes_back_through_the_same_way_in() {
+    let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    // 入口①：只有 argv0。
+    assert_eq!(
+        self_invocation(&v(&["/x/ccm", "--tmux", "--cwd", "/p"])),
+        v(&["/x/ccm"])
+    );
+    // 入口②：argv0 ＋ 子命令词（这一格就是 BS1b 那个缺陷的反面）。
+    assert_eq!(
+        self_invocation(&v(&[
+            "/x/cc-monitor-backend",
+            "ccm",
+            "--tmux",
+            "--cwd",
+            "/p"
+        ])),
+        v(&["/x/cc-monitor-backend", SUBCOMMAND_WORD])
+    );
+    // 回环：两个入口、同一串内层参数 ⇒ 都叫得回 ccm 模式、拿回的参数逐字相同。
+    let inner = v(&["--cwd", "/p", "--agent", "claude", "--", "--tail-only"]);
+    for outer in [
+        v(&["/x/ccm", "--tmux=n"]),
+        v(&["/x/cc-monitor-backend", "ccm", "--tmux=n"]),
+    ] {
+        let mut again = self_invocation(&outer);
+        again.extend(inner.iter().cloned());
+        let (a0, rest) = again.split_first().expect("非空");
+        assert_eq!(
+            intercept(a0, rest),
+            Some(inner.clone()),
+            "从 {outer:?} 进来的，在 pane 里把自己再叫一次（{again:?}）叫不回 ccm 模式"
+        );
+    }
+}
+
 /// 〔搬自 `ccm-contract-parity` 的 `--ccm-probe` 那 5 条〕
 ///
 /// 这份输出是**外部契约**：`ccm_probe.rs::parse_probe_output` 按行解析
@@ -198,7 +240,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
         pwd: "/p".into(),
         accts_manifest: "/nonexistent/accounts.json".into(),
         account_env: "CLAUDE_CONFIG_DIR".into(),
-        self_path: "/usr/local/bin/ccm".into(),
+        self_argv: vec!["/usr/local/bin/ccm".into()],
         ..Default::default()
     };
     let payload_of = |env: &Env| -> String {
@@ -318,6 +360,7 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         size: Some(("220".into(), "50".into())),
         detach: true,
         payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
+        self_check: "'/usr/local/bin/ccm' '--cwd' '/p' '--print'".into(),
         trust_poll: true,
         bus: None,
     };
@@ -388,7 +431,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         pwd: "/p".into(),
         accts_manifest: "/nonexistent/accounts.json".into(),
         account_env: "CLAUDE_CONFIG_DIR".into(),
-        self_path: "/usr/local/bin/ccm".into(),
+        self_argv: vec!["/usr/local/bin/ccm".into()],
         tmux: tmux.map(str::to_string),
         ..Default::default()
     };

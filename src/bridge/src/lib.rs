@@ -179,6 +179,8 @@ mod structural_scan;
 mod subagent;
 // 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」：骨架索引 ＋ 按偏移取一段正文。
 mod session_skeleton;
+// 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源：问后端要「你说过的话」清单。
+mod session_outline;
 mod tasks;
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
 mod tmux_reconcile;
@@ -237,6 +239,27 @@ pub(crate) fn pack_nudge_state(w: u32, h: u32, fullscreen: bool) -> u64 {
 /// pack 结果不可能为 0（0×0 在事件入口与 settle 双重滤除）。
 pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
     last_nudged != 0 && last_nudged == packed
+}
+
+/// ST1：设置窗的标签（`open_settings_window` 建它时用的同一个串）。
+pub(crate) const SETTINGS_WINDOW_LABEL: &str = "settings";
+/// 主窗的标签（`tauri.conf.json` 里那一个）。
+pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
+
+/// ST1「关窗改隐藏」的生命周期缝：**`destroyed` 这个窗口刚销毁、`alive` 是此刻还在的窗口，
+/// 要跟着 destroy 掉哪几个。**
+///
+/// 设置窗关窗是隐藏（它永不自己销毁）⇒ 主窗销毁时它必须跟着走，否则一个看不见的窗口
+/// 会把进程吊住。别的组合一律不动：viewer 窗看得见、关得掉；设置窗自己销毁不牵连谁。
+pub(crate) fn windows_to_destroy_after<'a>(destroyed: &str, alive: &[&'a str]) -> Vec<&'a str> {
+    if destroyed != MAIN_WINDOW_LABEL {
+        return Vec::new();
+    }
+    alive
+        .iter()
+        .copied()
+        .filter(|l| *l == SETTINGS_WINDOW_LABEL)
+        .collect()
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -532,6 +555,28 @@ pub fn run() {
             }
         });
     }
+
+    // ST1「关窗改隐藏」的另一半（`设计/01 §1.3` · `70 §1.3 F`）：设置窗关窗 = **隐藏**，永不自己销毁
+    // ⇒ 它会把进程吊住（Tauri 是「最后一个窗口销毁才退出」）。主窗一销毁，就把它一起 destroy 掉，
+    //    让「最后一个**看得见**的窗口关掉 ⇒ 进程退出」照旧成立。决策在纯函数里，这里只执行。
+    // ⚠ 刻意**不** `app.exit(0)`：那会改变「主窗关了、viewer 窗还开着」时的行为，
+    //   退出行为整体搬家归 `01 §3.3b`（第三波 B2），这里不预先改它的语义。
+    builder = builder.on_window_event(|window, event| {
+        if !matches!(event, tauri::WindowEvent::Destroyed) {
+            return;
+        }
+        use tauri::Manager;
+        let app = window.app_handle();
+        let alive: Vec<String> = app.webview_windows().keys().cloned().collect();
+        let alive: Vec<&str> = alive.iter().map(String::as_str).collect();
+        for label in windows_to_destroy_after(window.label(), &alive) {
+            if let Some(w) = app.get_webview_window(label) {
+                if let Err(e) = w.destroy() {
+                    tracing::warn!("跟着主窗收掉 {label} 窗口失败：{e}");
+                }
+            }
+        }
+    });
 
     builder
         .plugin(tauri_plugin_opener::init())
@@ -1246,13 +1291,13 @@ pub fn run() {
             backend::control::backend_control::backend_stop,
             config::load_config,
             config::save_config,
-            // K-H2a：中转那把 key。**读那条永远只回掩码**（`KS6`）；
+            // K-H2a：apikey 表那把 key。**读那条永远只回掩码**（`KS6`）；
             // 写那条是「界面」这个第二写者，它与人手编是同一份文件的两个写者（`KS10`）。
             read_relay_credentials_status,
             write_relay_credentials_key,
-            // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走中转」。
+            // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
-            relay_routing_for,
+            apikey_routing_for,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
             // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
             aliases_render,
@@ -1327,6 +1372,9 @@ pub fn run() {
             // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的两个调用点。
             session_skeleton::read_session_index,
             session_skeleton::read_session_range,
+            // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
+            session_skeleton::replay_keep_tail_only,
+            session_outline::list_user_inputs,
             remote_history::list_remote_history_projects,
             // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
             // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
@@ -1356,6 +1404,9 @@ pub fn run() {
             accounts::list_remote_accounts,
             local_accounts::list_local_accounts,
             local_accounts::list_local_session_accounts, // E79：本机版「某会话属于哪个账号」
+            // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧（问本机后端）。
+            local_accounts::check_local_acct_iso,
+            local_accounts::local_acct_iso_shellinit,
             accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,
@@ -1418,6 +1469,8 @@ pub fn run() {
             panorama::panorama_list_annotations,
             panorama::panorama_write_doc_link,
             panorama::panorama_remove_doc_link,
+            panorama::panorama_diagram_kinds,
+            panorama::panorama_diagram,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,
@@ -1717,7 +1770,7 @@ pub(crate) fn batch_to_payloads(
 
 /// 前端关闭 archived Tab 时调用：从 event_replay 历史里抹掉这个 session，
 /// 防止下次 F5 刷新它原地复活。
-/// `K-H2a` `KS6`：读中转那把 key 的**状态**。**永远只回掩码，不回明文。**
+/// `K-H2a` `KS6`：读 apikey 表那把 key 的**状态**。**永远只回掩码，不回明文。**
 ///
 /// ★ 这是本件里最要紧的一条：一旦回显，key 就从「只住在后端」变成
 /// 「**每次打开那个界面都往前端传一遍**」⇒ 泄漏面从一次变成无数次，
@@ -1734,7 +1787,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// # 为什么是一条**只答本机**的命令，而不是往账号列表里加两个字段
 ///
 /// 账号列表那份结构（`accounts::RemoteAccount`）**同时**装着远端账号，
-/// 而「走不走中转」这件事**只对本机成立** —— 中转是**每台机器自己的一个进程**
+/// 而「走不走 apikey 端点改写」这件事**只对本机成立** —— 中转是**每台机器自己的一个进程**
 /// （`relay/mod.rs` 自陈「独立进程」；注入的是那个 agent 进程自己的 `ANTHROPIC_BASE_URL`，
 /// 而 `payload::relay_base_url` 拼的是**回环**地址，回环是**自指**的）
 /// ⇒ 本机这一侧**在结构上答不了远端那台**。往那份结构里加字段，
@@ -1744,7 +1797,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// # 两个字段各自的射程，别读宽
 ///
 /// - `routed`：**这个 configDir 推出来的账号 id 在apikey 凭据表里有一行**。
-///   推 id 的规则只有一份（`history::relay_account_id_of_dir`），起会话那一侧调的是同一个，
+///   推 id 的规则只有一份（`history::apikey_account_id_of_dir`），起会话那一侧调的是同一个，
 ///   由 `history::tests::the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule` 钉着。
 ///   ⚠ 它**不**答「那把 key 能不能用」（要到 claude 那边才知道），
 ///   也**不**答「这次拉起会不会真注入」（那还要过 `running` 那一格）。
@@ -1754,26 +1807,30 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// ⚠ **本结构刻意不走 `ts-rs`**：`RelayCredentialsStatus` 的先例逐字记着理由 ——
 /// 导出会在 `src/generated/` **新增一个文件**，而那个目录的清单由
 /// `tests/generated-boundary-guard.vitest.ts` 逐项等号对拍，那个文件不在本件写区。
-/// ⇒ TS 侧那份是**手写镜像**（`src/accounts.ts::RelayRoutingView`），两侧字段名手动同步。
+/// ⇒ TS 侧那份是**手写镜像**（`src/accounts.ts::ApikeyRoutingView`），两侧字段名手动同步。
 /// **如实记：这一格今天没有判据对拍**（`RelayCredentialsStatus` 那条有，本条没有）。
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
-struct RelayRouting {
+struct ApikeyRouting {
     /// 传进来的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回，不是 id）。
     routed: Vec<String>,
     /// 本机中转在不在跑。射程见上。
     running: bool,
 }
 
-/// ⚠ **两个事实只从 [`history::relay_facts`] 取**（`D5 阻-1`）：这是那两个取值口的
+/// ⚠ **两个事实只从 [`history::inject_facts`] 取**（`D5 阻-1`）：这是那两个取值口的
 /// **第二个**生产消费方（第一个是起会话那一侧的 `history::relay_prefix_for_launch`），
 /// 两处走同一条缝、各有一条行为判据。直接在这里调那两个函数的写法只能靠「文本在不在」来钉，
-/// 而那一形 `D5` 已经打穿了 —— 整段理由住 `history::RelayFactSources` 的头注。
+/// 而那一形 `D5` 已经打穿了 —— 整段理由住 `history::InjectFactSources` 的头注。
 #[tauri::command]
-fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
-    let facts = history::relay_facts();
-    RelayRouting {
-        routed: history::relay_routed_subset(&config_dirs, &(facts.rows)()),
+fn apikey_routing_for(config_dirs: Vec<String>) -> ApikeyRouting {
+    let facts = history::inject_facts();
+    ApikeyRouting {
+        routed: history::apikey_routed_subset(
+            &config_dirs,
+            &(facts.rows)(),
+            history::launch_agent_id(),
+        ),
         running: (facts.running)(),
     }
 }
@@ -1798,8 +1855,8 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 ///
 /// 界面手上的账号对象**两个字段都有**（`local_accounts.rs` 的 `RawAccount { name, configDir }`），
 /// 而它们是 manifest 里**两个独立字段、可以漂开**。apikey 表按**账号 id** 索引，
-/// 而那个 id 由 [`history::relay_account_id_of_dir`] 从 `configDir` 推出来 ——
-/// **全仓只有那一份规则**，起会话那一侧（`history::relay_account_id`）调的是同一个函数。
+/// 而那个 id 由 [`history::apikey_account_id_of_dir`] 从 `configDir` 推出来 ——
+/// **全仓只有那一份规则**，起会话那一侧（`history::apikey_account_id`）调的是同一个函数。
 ///
 /// ⇒ 这条命令**只收 `configDir`，由 Rust 推 id**。收 `name`、或让 TS 自己
 /// `split('/').pop()`，都是在长出**第二份**规则，而那正是 `KH2C1` 红字禁的那件事
@@ -1906,7 +1963,7 @@ async fn open_session_in_new_window(
 #[tauri::command]
 async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
-    let label = "settings";
+    let label = SETTINGS_WINDOW_LABEL;
     if let Some(w) = app.get_webview_window(label) {
         let _ = w.unminimize();
         let _ = w.show();
@@ -2125,60 +2182,23 @@ async fn bring_terminal_to_front(
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
-/// Feature ②：拉对应**远端** Tab 的本地终端窗口（远端会话需在远端启用 ccm wrapper，
-/// 由它设 `ccm-rbind-<sid>` 窗口标题让 monitor 绑定本地 HWND）。
+/// Feature ②：拉对应**远端** Tab 的本地终端窗口。
 ///
-/// 流程：sid → 查 RemoteHwndCache（纯内存，session_added 时扫窗口绑定）→ 校验复合
-/// 指纹（verify_binding：IsWindow + owner_pid + procStart）→ activate。镜像
-/// `bring_terminal_to_front`，但走远端缓存。**必须 async + spawn_blocking** 隔离
-/// Win32 sync 调用（INVARIANT § 10）。
+/// 〔`设计/80 §8.7` 步 4 / 步 5，第二波 T4〕分派整条搬进 `bind::bring_remote_front`
+/// （**唯一分派点**：先令牌 `sid → token → HWND`、后标题 `ccm-rbind-<sid>` 退路；
+/// 失败说的话只由「这个 sid 有没有启动令牌」一个布尔决定）。本命令只剩「拿两份 State、
+/// 挪到阻塞线程池」—— **必须 async + spawn_blocking** 隔离 Win32 sync 调用（INVARIANT § 10）。
 #[tauri::command]
 async fn bring_remote_terminal_to_front(
     session_id: String,
     cache: tauri::State<'_, Arc<bind::RemoteHwndCache>>,
+    registry: tauri::State<'_, Arc<bind::BindRegistry>>,
 ) -> Result<(), String> {
     let cache = cache.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        // 先查缓存；没命中就**点击时现扫一次**（marker 还挂在窗口标题上就能即时绑）。
-        // 覆盖：① eager 扫描时机错过；② 用户 /resume 切到别的 sid——wrapper 会把
-        // marker 重刷成当前 sid，这里现扫即可绑上。try_bind 是同步 Win32，已在
-        // spawn_blocking 里（INVARIANT § 10）。
-        let mut binding = match cache.lookup(&session_id) {
-            Some(b) => b,
-            None => {
-                cache.try_bind_with_retry(
-                    &session_id,
-                    bind::ON_DEMAND_BIND_ATTEMPTS,
-                    bind::ON_DEMAND_BIND_STEP_MS,
-                );
-                cache
-                    .lookup(&session_id)
-                    .ok_or_else(|| "未绑定窗口（远端会话需在远端启用 ccm wrapper）".to_string())?
-            }
-        };
-        // 缓存命中但校验失败（终端已关 / HWND 易主）→ forget + 现扫重绑一次再试。
-        // 场景：关掉终端后重新 ssh + tmux attach——新终端标题仍带 marker（tmux 会话级
-        // set-titles 持久，attach 时重推 #T），死缓存不失效重扫的话 ↗ 就永远失灵。
-        if bind::verify_binding(&binding).is_err() {
-            cache.forget(&session_id);
-            // #41(残):verify-fail 重绑路原是**单发** try_bind——F75 只给上面 cache-miss 路加了重试,
-            // 这条(重新 attach、旧绑定失效)漏了。镜像兄弟路用 try_bind_with_retry,覆盖"刚 attach、
-            // 新窗口 ccm-rbind 标题还没四跳传过来"的窗口期(否则重绑单扫落空 → 弹"未扫到新窗口")。
-            cache.try_bind_with_retry(
-                &session_id,
-                bind::ON_DEMAND_BIND_ATTEMPTS,
-                bind::ON_DEMAND_BIND_STEP_MS,
-            );
-            binding = cache.lookup(&session_id).ok_or_else(|| {
-                "原绑定终端已关闭，且未扫到新的 ccm-rbind 窗口（请确认已重新 attach 且终端标题带 marker）"
-                    .to_string()
-            })?;
-            bind::verify_binding(&binding)?;
-        }
-        bind::activate(binding.hwnd)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    let registry = registry.inner().clone();
+    tokio::task::spawn_blocking(move || bind::bring_remote_front(&session_id, &registry, &cache))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 // === v1.7：PowerShell profile cc 集成 IPC ===
@@ -2480,3 +2500,7 @@ mod mod_decl_hygiene_tests;
 #[cfg(test)]
 #[path = "../../../tests/bridge/lib_remote_config_tests.rs"]
 mod remote_config_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/bridge/lib_window_lifecycle_tests.rs"]
+mod window_lifecycle_tests;

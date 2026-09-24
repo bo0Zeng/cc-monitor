@@ -24,9 +24,9 @@
  * - **盖得到**：走 `src/ipc/commands` 那个包装层的每一次 IPC（全仓唯一的 `invoke` 包装层）。
  * - **盖不到**：① 绕过包装层直呼 `invoke("...")` 的调用点（本仓有过这种形态，
  *   `installface` 那格的裁词里也写着同一条边界）；② 那几块 per-machine 分节
- *   （账号 / 终端集成 / MCP / 插件 / cc-bus 钩子）—— 本文件把它们 stub 掉了，
- *   它们构造期也发 I/O，**那是一笔还没还的债**，`70 §8 #3` 点的是「应用」与
- *   「改动足迹」两页，本条不冒充已经把它们也治了；③ 真实排版（jsdom 没有排版引擎）。
+ *   （账号 / 终端集成 / MCP / 插件 / cc-bus 钩子）—— 本文件把它们 stub 掉了。
+ *   〔ST1 · 09-24〕那笔「它们构造期也发 I/O」的债已还：它们改成机器子页第一次可见时才放，
+ *   判据住 `panel-per-machine-deferred-io.vitest.ts`（不 stub、两层录音机）；③ 真实排版（jsdom 没有排版引擎）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 

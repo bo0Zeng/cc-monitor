@@ -621,3 +621,206 @@ async fn the_read_port_really_asks_the_backend() {
     );
     assert!(r.accounts.is_empty() && r.meta.is_none());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 〔`A3` 第二波〕`accounts.trust` 的本机对侧
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// argv 两形：账号 0 不传路径（与远端那条同一条规矩），具名账号传 `configDir`。
+/// **参数原样是 argv 的一格**（不过 shell ⇒ 不许被引号包一层）。
+#[test]
+fn the_local_trust_argv_has_the_two_shapes_and_no_quoting() {
+    assert_eq!(
+        local_trust_argv(None, "/w/my proj"),
+        vec!["--account-trust-zero", "/w/my proj"]
+    );
+    assert_eq!(
+        local_trust_argv(Some("/h/.claude-accts/z"), "/w/my proj"),
+        vec!["--account-trust", "/h/.claude-accts/z", "/w/my proj"]
+    );
+}
+
+/// 三档各说各的：答出来 ⇒ 字段原样；够不着 / 失败 ⇒ `available:false` 且**说得出是哪一种**。
+/// 「未信任」（`trusted:false` ＋ `available:true`）只许来自后端真答出来的那一行。
+#[test]
+fn the_local_trust_endings_are_told_apart() {
+    let ok = classify_local_trust(QueryOutcome::Ok(
+        "{\"trusted\":true,\"known\":true}\n".into(),
+    ));
+    assert!(ok.available && ok.trusted && ok.known && ok.error.is_none());
+
+    let untrusted = classify_local_trust(QueryOutcome::Ok(
+        "{\"trusted\":false,\"known\":false}\n".into(),
+    ));
+    assert!(untrusted.available && !untrusted.trusted && !untrusted.known);
+
+    let empty = classify_local_trust(QueryOutcome::Ok("\n".into()));
+    let no_backend = classify_local_trust(QueryOutcome::NoBackend("找过 /x".into()));
+    let failed = classify_local_trust(QueryOutcome::Failed {
+        code: Some(2),
+        stderr: "unsafe configDir".into(),
+    });
+    let whys: Vec<String> = [&empty, &no_backend, &failed]
+        .iter()
+        .map(|r| {
+            assert!(!r.available && !r.trusted, "失败档不许冒充成一个信任结论");
+            r.error.clone().expect("失败档必须带理由")
+        })
+        .collect();
+    assert!(whys[1].contains("本机后端不在") && whys[1].contains("找过 /x"));
+    assert!(whys[2].contains("unsafe configDir"));
+    assert_eq!(
+        whys.iter().collect::<std::collections::BTreeSet<_>>().len(),
+        3,
+        "三种失败说成了同一句：{whys:?}"
+    );
+    for w in &whys {
+        assert!(!w.contains("远端"), "本机那条路的话里出现了「远端」：{w}");
+    }
+}
+
+/// ★ 走**生产入口本体**（`accounts::check_account_trust`），不扫源码：
+/// `<local>` 必须在「先查远端配置」之前被分走。
+///
+/// 没分走时（把 `check_account_trust` 开头那条 `if origin == … LOCAL_ORIGIN` 摘掉），
+/// `cfg_for("<local>")` 回 `Err("远端 '<local>' 未配置或未启用")` —— 一句与真实原因无关的话
+/// （`local_origin_registry` 头注记的那一族）。分走了 ⇒ 单测环境没有本机后端 ⇒
+/// `Ok(available:false)` ＋「本机后端不在」。
+#[tokio::test]
+async fn check_account_trust_routes_local_before_asking_for_a_remote_config() {
+    let probe = run_query(
+        env!("CCM_TARGET_TRIPLE"),
+        &["--account-trust-zero", "/"],
+        &*crate::spawn_managed::local_backend_one_shot_query(),
+    );
+    assert!(
+        matches!(probe, QueryOutcome::NoBackend(_)),
+        "测试环境里居然找得到 local_backend —— 本条的前提不成立"
+    );
+    let r = crate::accounts::check_account_trust(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string(),
+        None,
+        "/".to_string(),
+    )
+    .await
+    .expect("本机那条路的诚实降级是 Ok(available=false)，不该是 Err（Err 说明它去查了远端配置）");
+    assert!(!r.available);
+    let why = r.error.expect("够不着本机后端时必须说出理由");
+    assert!(
+        why.contains("本机后端不在"),
+        "理由不是「本机后端不在」：{why}"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 「没装」是 `Ok(installed:false)`（后端 exit 0 那一支），不是错误；
+/// 「问不出来」三档（后端不在 / 查询失败 / 读不懂）是 `Err`，且**不许**说成「没装」。
+#[test]
+fn the_local_acct_iso_status_tells_not_installed_from_cannot_ask() {
+    let yes = classify_local_acct_iso(QueryOutcome::Ok(
+        "{\"installed\":true,\"path\":\"/h/.local/bin/cc-acct-iso\",\"looked\":null}\n".into(),
+    ))
+    .unwrap();
+    assert!(yes.installed);
+    assert_eq!(yes.path.as_deref(), Some("/h/.local/bin/cc-acct-iso"));
+    // vendor 指纹与远端那条同一个来源（前端比「有没有更新」用的是同一个值）。
+    assert_eq!(yes.vendor_id, crate::acct_iso_deploy::vendor_id());
+
+    let no = classify_local_acct_iso(QueryOutcome::Ok(
+        "{\"installed\":false,\"path\":null,\"looked\":\"找不到\"}".into(),
+    ))
+    .unwrap();
+    assert!(!no.installed && no.path.is_none());
+
+    let errs: Vec<String> = [
+        QueryOutcome::NoBackend("找过 /x".into()),
+        QueryOutcome::Failed {
+            code: Some(2),
+            stderr: "{\"code\":\"bad_args\",\"message\":\"unknown argument\"}".into(),
+        },
+        QueryOutcome::Ok("not json".into()),
+        QueryOutcome::Ok("{\"path\":null}".into()),
+    ]
+    .into_iter()
+    .map(|o| classify_local_acct_iso(o).expect_err("问不出来的那几档必须是 Err"))
+    .collect();
+    assert!(errs[0].contains("本机后端不在") && errs[0].contains("找过 /x"));
+    assert!(
+        errs[1].contains("unknown argument") && !errs[1].contains("\"code\""),
+        "后端的 {{code,message}} 要取出 message 说人话：{}",
+        errs[1]
+    );
+    for e in &errs {
+        assert!(!e.contains("远端"), "本机那条路的话里出现了「远端」：{e}");
+    }
+}
+
+/// 片段：围栏齐 ⇒ 原样；缺 END ⇒ 截断那句；缺 BEGIN ⇒ 没产出那句；后端失败 ⇒ 带后端原话。
+/// 四种失败两两不同，都不说「远端」、都不指「先在『维护』里部署」（本机没有那个口）。
+#[test]
+fn the_local_shellinit_uses_the_same_fence_judgment_with_local_words() {
+    use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN as B, SHELLINIT_FENCE_END as E};
+    let whole = format!("{B}\nzcc() {{ :; }}\n{E}\n");
+    assert_eq!(
+        classify_local_shellinit(QueryOutcome::Ok(whole.clone())),
+        Ok(whole)
+    );
+    let errs: Vec<String> = [
+        QueryOutcome::Ok(format!("{B}\nzcc() {{")),
+        QueryOutcome::Ok("warn only".into()),
+        QueryOutcome::NoBackend("找过 /x".into()),
+        QueryOutcome::Failed {
+            code: Some(2),
+            stderr: "{\"code\":\"not_installed\",\"message\":\"找不到 `cc-acct-iso`\"}".into(),
+        },
+    ]
+    .into_iter()
+    .map(|o| classify_local_shellinit(o).expect_err("失败档必须是 Err"))
+    .collect();
+    assert!(errs[0].contains("不完整"));
+    assert!(errs[1].contains("没能产出"));
+    assert!(errs[3].contains("找不到 `cc-acct-iso`"));
+    assert_eq!(
+        errs.iter().collect::<std::collections::BTreeSet<_>>().len(),
+        4,
+        "四种失败说成了同一句：{errs:?}"
+    );
+    for e in &errs {
+        assert!(
+            !e.contains("远端") && !e.contains("维护"),
+            "本机那条路指了走不通的路：{e}"
+        );
+    }
+    // 同一个判定：远端那条对同样的截断输出也判不完整（话不同、判法同源）。
+    assert!(
+        crate::acct_iso_deploy::validate_shellinit_output(format!("{B}\nx"))
+            .unwrap_err()
+            .contains("不完整")
+    );
+}
+
+/// ★ 走**生产入口本体**：单测环境没有本机后端 ⇒ 两条都是带理由的 `Err`（真去问了），
+/// 不是「空但成功」（被短路的形状：`Ok(installed:false)` / `Ok("")`）。
+#[tokio::test]
+async fn the_two_local_acct_iso_commands_really_ask_the_backend() {
+    let probe = run_query(
+        env!("CCM_TARGET_TRIPLE"),
+        &["--acct-iso-status"],
+        &*crate::spawn_managed::local_backend_one_shot_query(),
+    );
+    assert!(
+        matches!(probe, QueryOutcome::NoBackend(_)),
+        "测试环境里居然找得到 local_backend —— 本条的前提不成立"
+    );
+    let st = check_local_acct_iso()
+        .await
+        .expect_err("没有本机后端却答出了装没装");
+    assert!(st.contains("本机后端不在"), "{st}");
+    let sn = local_acct_iso_shellinit()
+        .await
+        .expect_err("没有本机后端却拿到了片段");
+    assert!(sn.contains("本机后端不在"), "{sn}");
+}

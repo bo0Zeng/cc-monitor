@@ -71,7 +71,7 @@ describe("P8a-Y2：null 不是 0", () => {
 describe("P8a-Y1：「没有」与「读不到」在界面上分得开", () => {
   it("文件不存在 ⇒ 说「这台机器没有」", async () => {
     listPluginMarketplaces.mockResolvedValue({ entries: [], file_absent: true });
-    const s = new PluginsSection();
+    const s = loaded(new PluginsSection());
     await settle();
     const text = s.element.textContent ?? "";
     expect(text).toContain("没有登记任何 marketplace");
@@ -80,7 +80,7 @@ describe("P8a-Y1：「没有」与「读不到」在界面上分得开", () => {
 
   it("★★ invoke 抛错 ⇒ 说「读不到」，且**明说这不等于「没有」**", async () => {
     listPluginMarketplaces.mockRejectedValue("解析失败");
-    const s = new PluginsSection();
+    const s = loaded(new PluginsSection());
     await settle();
     const text = s.element.textContent ?? "";
     expect(text).toContain("读不到 marketplace 登记表");
@@ -91,7 +91,7 @@ describe("P8a-Y1：「没有」与「读不到」在界面上分得开", () => {
 
   it("登记表在但为空 ⇒ 第三句话（既不是「没有文件」也不是「读不到」）", async () => {
     listPluginMarketplaces.mockResolvedValue({ entries: [], file_absent: false });
-    const s = new PluginsSection();
+    const s = loaded(new PluginsSection());
     await settle();
     const text = s.element.textContent ?? "";
     expect(text).toContain("登记表在，但里面一个 marketplace 都没有");
@@ -99,7 +99,7 @@ describe("P8a-Y1：「没有」与「读不到」在界面上分得开", () => {
 
   it("列出来时把来源/落点/更新时间都摆上", async () => {
     listPluginMarketplaces.mockResolvedValue({ entries: [entry()], file_absent: false });
-    const s = new PluginsSection();
+    const s = loaded(new PluginsSection());
     await settle();
     const text = s.element.textContent ?? "";
     expect(text).toContain("mk");
@@ -113,7 +113,7 @@ describe("P8a-Y1：「没有」与「读不到」在界面上分得开", () => {
       entries: [entry({ declared_plugins: null, declared_error: "落点里没有" })],
       file_absent: false,
     });
-    const s = new PluginsSection();
+    const s = loaded(new PluginsSection());
     await settle();
     expect(s.element.querySelector(".plugins-row-count-unknown")).not.toBeNull();
   });
@@ -161,9 +161,12 @@ describe("P8a-Y4：不留零消费者", () => {
     expect(block).toContain('appliesTo: "local"');
   });
 
-  it("★ 渲染路径上真的调了那条命令", async () => {
+  it("★ 渲染路径上真的调了那条命令 —— 而且是在 `loadNow()` 之后，不是构造期（ST1 延后加载）", async () => {
     listPluginMarketplaces.mockResolvedValue({ entries: [], file_absent: true });
-    new PluginsSection();
+    const s = new PluginsSection();
+    await settle();
+    expect(listPluginMarketplaces, "构造期就读了 —— 机器子页还没可见").toHaveBeenCalledTimes(0);
+    s.loadNow();
     await settle();
     expect(listPluginMarketplaces).toHaveBeenCalledTimes(1);
   });
@@ -175,7 +178,7 @@ describe("D 补审：慢的那次不许盖掉后点的", () => {
     listPluginMarketplaces
       .mockImplementationOnce(() => new Promise((r) => (releaseFirst = r)))
       .mockResolvedValueOnce({ entries: [entry({ id: "新的" })], file_absent: false });
-    const s = new PluginsSection();
+    const s = loaded(new PluginsSection());
     // 第二次（构造之后手动触发）先回来
     await (s as unknown as { refresh(): Promise<void> }).refresh();
     expect(s.element.textContent).toContain("新的");
@@ -191,7 +194,7 @@ describe("D 补审：慢的那次不许盖掉后点的", () => {
     listPluginMarketplaces
       .mockImplementationOnce(() => new Promise((_r, j) => (rejectFirst = j)))
       .mockResolvedValueOnce({ entries: [entry({ id: "新的" })], file_absent: false });
-    const s = new PluginsSection();
+    const s = loaded(new PluginsSection());
     await (s as unknown as { refresh(): Promise<void> }).refresh();
     rejectFirst("迟到的失败");
     await settle();
@@ -208,3 +211,10 @@ describe("更新时间", () => {
     expect(lastUpdatedText(entry({ last_updated: "前天" }))).toBe("更新时间：前天");
   });
 });
+
+/** ST1「延后加载」：分节构造期不再发 I/O，由宿主在机器子页第一次可见时调 `loadNow()`。
+ *  本文件量的是分节**加载之后**的行为 ⇒ 构造完就当宿主那样叫醒它。 */
+function loaded<T extends { loadNow(): void }>(s: T): T {
+  s.loadNow();
+  return s;
+}

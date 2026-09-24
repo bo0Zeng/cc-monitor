@@ -646,6 +646,38 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 错误码：`not_installed`（找不到 `cc-list` / `cc-agents`，消息里带查过哪些位置）·
 `timed_out` · `failed`。**只读**：两条被调命令都不写任何文件。
 
+#### `bus-spawn`：派生一个协作 agent（BS1b，09-24）
+
+```text
+→ {"id":"B5","cmd":"bus-spawn","args":{"tool":"claude","dir":"/home/zbl/proj","task":"跑门禁","account":"a1"}}
+← {"kind":"reply","id":"B5","ok":true,"data":{"spawned":true,"id":"proj_cc-2","said":"已 spawn: proj_cc-2   (目录: /home/zbl/proj  初始任务: 跑门禁)\n…"}}
+```
+
+入参：`tool`（起哪种 agent，**后端只判非空**，认不认归 `cc-spawn` 自己）· `dir`（工作目录，非空）·
+`task`（初始任务，可空）· **`account` 与 `base:true` 恰好给一个** —— 两样都不给 ⇒ `invalid_args`。
+⚠ 为什么逼调用方表态：不传的话 `ccm` 落 manifest 的默认号，等于**替用户选了一个他没选过的号**去起一个真
+agent、烧真额度。
+
+回值：`spawned`（恒 `true`）· `id`（新会话的总线身份；从 `cc-spawn` 的回显里认，**认不出就是 `null`** ——
+那是「起了，但名字没认出来」，**不是**「没起来」）· `said`（`cc-spawn` 的原始回显，给人看）。
+
+★ **本机与远端同一条路**：monitor 对每台机器（含 `<local>`）都走这条原语，不再有「远端拼一条 `cc-spawn …`
+shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / spawn 台账 / 预信任目录全在 `cc-spawn`
+（它内部再经 `ccm`），后端**只转调**。发给 `cc-spawn` 的 `--tool` / `--account` / `--base` 是**子进程的**
+旗标，不是后端 argv（`protocol_doc_guard::CHILD_PROCESS_FLAGS` 登记 ＋ 两向判据）。
+
+错误码：
+
+| 码 | 什么情况 |
+|---|---|
+| `invalid_args` | 缺 `tool`/`dir`、账号没表态或两样都给；或 `cc-spawn` 自己 rc=2（目录不存在 · 不认的 tool · ccm 太旧） |
+| `not_installed` | 找不到 `cc-spawn` |
+| `timed_out` | 子进程跑过期限被结束。🔴 **会话可能已经起来了**（`cc-spawn` 是建完会话才回显的）⇒ 先 `bus-state` 看一眼，**别直接重试**：重试会再起一个真 agent |
+| `failed` | 其它退出码 / 被信号打断 |
+
+⚠ 期限同 `bus-send`：住在子进程里（`timeout` 前缀，默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调），后端零定时器。
+⚠ **这是写面，而且有代价**：它起一个真 agent 进程。UI 侧必须先让用户确认（与收掉 agent 同一条纪律）。
+
 #### `kill`：杀一个 tmux 会话（F04a，**第一条破坏性入方向命令**）
 
 ```text
@@ -1197,6 +1229,137 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 ⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件，编辑器的那些语义不在它里面。
 
+#### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
+
+出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。
+
+| 帧命令 | 同一个函数的 CLI 那一臂 | 应答形状 |
+|---|---|---|
+| `history-projects` | `--list-projects` | 按行 |
+| `history-sessions` | `--list-sessions` | 按行 |
+| `history-search` | `--search` | 按行 |
+| `history-subagents` | `--list-subagents` | 按行 |
+| `accounts-list` | `--list-accounts` | 按行 |
+| `accounts-sessions` | `--session-accounts` | 按行 |
+| `history-read` | `--read-session` · `--read-session-from-offset`（不带 `--index`） | 按字节分页 |
+| `history-tail` | `--read-session-tail` 的那张「尾段在哪」的图 | 四个数 |
+
+- **按行**：`data = {"lines": [...]}`，每个元素就是 CLI 那条 stdout 的一行（trim 过、剔空行）。整份输出超过 32 MiB ⇒ `too_large`，**不截断**（截断的清单会被当成完整的用）。
+- **名字刻意不与 CLI 同名**：CLI 面从 `REGISTRY` **自动派生**（`--<名>`），同名就会把 `--list-projects` 抢过去改印一行 JSON。⇒ 代价如实写：八条同拍多出八个 CLI 面 `--history-projects` · `--history-sessions` · `--history-search` · `--history-subagents` · `--history-read` · `--history-tail` · `--accounts-list` · `--accounts-sessions`（stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。它们与老的那八个子命令是**同一个函数的两个宿主**，不是第二份实现。
+- 八条全在阻塞档（做文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
+- 失败的 code 都是**命令级**的；读失败 `failed`，参数缺或类型不对 `bad_args`。
+
+#### `history-projects`：列全部项目（**不读 stdin**）
+
+```text
+→ {"id":"q1","cmd":"history-projects","args":{}}
+← {"kind":"reply","id":"q1","ok":true,"data":{"lines":["{\"dirName\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `lines` | ← | 每项目一行，形状同 `--list-projects`（含 `sessionIds`） |
+
+#### `history-sessions`：列一个项目下的会话
+
+```text
+→ {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj"}}
+← {"kind":"reply","id":"q2","ok":true,"data":{"lines":["{\"sessionId\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `project_dir` | → | 项目目录名（不是路径；含分隔符 / `..` ⇒ `failed`） |
+| `lines` | ← | 每会话一行，形状同 `--list-sessions` |
+
+#### `history-search`：全文搜索
+
+```text
+→ {"id":"q3","cmd":"history-search","args":{"query":"deploy","limit":50}}
+← {"kind":"reply","id":"q3","ok":true,"data":{"lines":["{\"sessionId\":…,\"hitCount\":3,…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `query` | → | 搜索词（必填） |
+| `include_tools` | → | 可选布尔，= `--include-tools` |
+| `scope` | → | 可选，`user` / `assistant`，= `--scope` |
+| `after_ms` | → | 可选，= `--after-ms` |
+| `limit` | → | 可选，= `--limit` |
+| `lines` | ← | 每命中会话一行 `SessionHits`，形状与行序同 `--search` |
+
+⚠ 选项**不在帧面另写一份语义**：这几个字段被摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit`，交给 CLI 那一臂同一个解析。
+
+#### `history-subagents`：列一个父会话的 subagent 候选
+
+```text
+→ {"id":"q4","cmd":"history-subagents","args":{"parent":"/home/u/.claude/projects/-p/s.jsonl"}}
+← {"kind":"reply","id":"q4","ok":true,"data":{"lines":["{\"path\":…,\"description\":…,\"timestamp\":…}"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `parent` | → | 父会话 jsonl 路径（`projects/` 围栏照旧；越界 ⇒ `path_refused`，推不出目录 ⇒ `bad_parent`） |
+| `lines` | ← | 每候选一行 `{path, description, timestamp}`，同 `--list-subagents`（只列不挑） |
+
+#### `accounts-list`：账号清单（**不读 stdin**）
+
+```text
+→ {"id":"q5","cmd":"accounts-list","args":{}}
+← {"kind":"reply","id":"q5","ok":true,"data":{"lines":["{\"kind\":\"accounts-meta\",…}", "{\"name\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `lines` | ← | 同 `--list-accounts`：首行 `accounts-meta`，其后每账号一行。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
+
+#### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
+
+```text
+→ {"id":"q6","cmd":"accounts-sessions","args":{}}
+← {"kind":"reply","id":"q6","ok":true,"data":{"lines":["{\"sessionId\":…,\"account\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `lines` | ← | 同 `--session-accounts`：每条运行中会话一行 |
+
+#### `history-read`：按字节分页读一份会话
+
+```text
+→ {"id":"q7","cmd":"history-read","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","offset":0}}
+← {"kind":"reply","id":"q7","ok":true,"data":{"text":"{…}\n{…}\n","next":1048571,"eof":false}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`） |
+| `offset` | → | 从这个字节起（缺省 0） |
+| `until` | → | 可选右端（半开区间 `[offset, until)`），= `--until` |
+| `text` | ← | 这一页（UTF-8 有损解码）。**不超过 1 MiB，切在行尾**；区间到头时余下的全给（含 torn 残尾） |
+| `next` | ← | 下一页从这里起（= `offset` ＋ 这一页的原始字节数） |
+| `eof` | ← | 区间到头了（`until` 或读时的文件长度） |
+
+🔴 **为什么分页**：一帧应答要整个进内存、整个过线；本仓见过 270 MB 的会话，而 monitor 单帧上限 64 MiB。单行比一页还长时续读到行尾，但超过 32 MiB ⇒ `oversized_line`（不叫 `line_too_long`：那是入方向信封的协议级 code）。
+
+#### `history-tail`：尾段在哪（快照「尾部优先」那张图）
+
+```text
+→ {"id":"q8","cmd":"history-tail","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","n":500}}
+← {"kind":"reply","id":"q8","ok":true,"data":{"total":1200,"tail_from":700,"split_at":3310442,"end":5120088}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | jsonl 路径（围栏同上） |
+| `n` | → | 要最新几行 |
+| `total` | ← | 可计行总数（口径同 `--read-session-tail` 的 `snapshot_meta`） |
+| `tail_from` | ← | 尾段第一行的行号 |
+| `split_at` | ← | 尾段第一行的字节起点 |
+| `end` | ← | 最后一个完整行之后的字节位置 |
+
+客户端先读 `[split_at, end)`（最新 N 行）再读 `[0, split_at)`（回填），都走 `history-read` 带 `until`；与 `--read-session-tail` 一趟印出的两段**逐字节相同**（扫的是同一个函数）。
+
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
 ```text
@@ -1262,6 +1425,8 @@ rc=2
 - `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId}`。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `history.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
 - `--account-trust <configDir> <cwd> [--accts-dir <p>]`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 - `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）
+- `--acct-iso-status`（A3 第二波，`src/backend/accounts/iso.rs`）→ **这台机器**上装没装 `cc-acct-iso`。单行 `{"installed":bool,"path":string|null,"looked":string|null}`：先查 `$HOME/.local/bin/cc-acct-iso`（install 脚本的软链落点）、再查 `PATH`，与远端那条 `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 同一个顺序；**「没装」是答案不是错误**（exit 0，`looked` 说清查过哪儿）。按「可执行文件在不在」判 ⇒ 非 unix 上恒 `installed:false`。只读、不起进程。
+- `--acct-iso-shellinit`（A3 第二波，同上）→ 起一次本机 `cc-acct-iso shellinit`（经插件通用调用口：argv 直传不过 shell、`timeout` 前缀给子进程期限、环境白名单），退出码 0 时把它的 stdout **原样**吐出（BEGIN/END 围栏由 monitor 那侧校验，本命令不再写第二份围栏常量）。失败 exit 2 + stderr `{"code","message"}`，`code` ∈ `not_installed` · `timed_out` · `tool_failed` · `not_run` · `bad_args`。被起的那一条只读（`cmd_shellinit` 全是 `printf`）。
 - `--fork-session <args>`（G2 branch-anywhere，`src/backend/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**后端唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`src/doc/INVARIANTS.md` §41.6）
 - `--tmux-notify <backend_pid> <backend_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的后端发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：后端退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
 
@@ -1271,6 +1436,7 @@ rc=2
   （`fence_under_projects`，subagent 目录本来就在 `<claude_dir>/projects/` 内）。
   ★ **它只列不挑**：按 description 精确匹配、按 `tool_use_timestamp` 挑最近的那一步**留在客户端**
   —— 那套逻辑本机远端共用一份，别在两侧各写一遍。挑中之后用**既有的** `--read-session` 取内容。
+- `--list-user-inputs [--from <offset>] <jsonl_path>`（SE1，`设计/10 §2.2b ⑥`）→ 大纲的数据源：该会话里每一条**主线用户输入**（头 ＋ 每条一行 ＋ 尾），形状与口径见 **§10.4**
 
 #### 控制面的 CLI 那一半（P4d，p1y）
 
@@ -1335,6 +1501,9 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 **`K-R113` 追加一条（09-13）**：`--bus-state` —— 总线名单 ＋ spawn 台账**一次回全**
 （见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**，声明无输入的命令必须秒回。
 
+**BS1b 追加一条（09-24）**：`--bus-spawn` —— 派生一个协作 agent（见上面它自己那一小节）。
+同上，与帧面同一个 `run`；**读 stdin**（那段 JSON 就是它的 `args`）。⚠ 它**起一个真 agent**。
+
 **步 `24f` 追加四条（09-20）**：`--files-ls` / `--files-stat` / `--files-find` /
 `--files-index-status` —— `files-read` 这一族的 CLI 面（逐条见上面各自那一小节）。
 同上，与帧面走**同一个 `run`**，CLI 面这一层不写第二份实现。
@@ -1364,28 +1533,44 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 不是一次性查询，而是一个**常驻**进程，起来就不返回。
 
 - **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
-- 上游默认 `https://api.anthropic.com`，`CCM_RELAY_UPSTREAM` 可盖；**基址里可以带一段路径前缀**
+- 默认上游**每个 agent 一行**〔条 59 / 条 60，2026-09-24 订正；先前这里写的是「上游默认
+  `https://api.anthropic.com`，`CCM_RELAY_UPSTREAM` 可盖」—— 那是一个进程级的默认，已整删〕：
+  今天只登记了 `claude-code`（默认 `https://api.anthropic.com`，`CCM_RELAY_UPSTREAM` 只盖这一家）；
+  **codex 刻意没登记**（它的默认上游本仓零证据）⇒ 它走 `/t/` 回 **502**，不回落到任何一家。
+  表住 `accounts::AGENT_UPSTREAMS`。**基址里可以带一段路径前缀**
   （`K-R1`，形如 `https://<host>/<前缀>`）。
   ⚠ **订正〔`K-R1` 09-04〕**：这一行先前逐字写着「`http://` 只给本机夹具用」——**那半句今天不准确了**。
   今天的分界线是**回环**：`http://` 打到本机回环是一等公民（〔用 09-04〕逐字要「还可以接本地部署的」），
   而**明文 + 非回环**的那一行会被装表那一步**拒掉并出声**
-  （判据 `relay::table::tests::a_plaintext_upstream_is_only_allowed_on_loopback`）。
+  （判据 `accounts::table::tests::a_plaintext_upstream_is_only_allowed_on_loopback`；层 2 2026-09-24 搬出了 `relay/`）。
   `裁-1`「只准 TLS」**没有被推翻**，升的只有回环这一格。
-- 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<account>/<key>`，
-  中转把 `/s/<agent>/<account>/<key>` 剥掉、其余路径与查询串**原样**转给上游。
+- 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<account>/<key>`
+  （**代入**：apikey 表里有这一行，换上这一行的 key）或 `…/t/<agent>/<account>/<key>`
+  （**直通**〔`设计/20 §2`〕：永不代入，下游那份鉴权头逐字节原样上去；表里没这一行时发到那个 agent 自己的默认上游），
+  中转把前缀与三段剥掉、其余路径与查询串**原样**转给上游。
   ⚠ **那一行的基址若带路径前缀，前缀会被接在这段原样路径的前面**〔`K-R1`，住址
-  `relay::table::Row::upstream_target`〕—— 前缀为空时与改前**逐字节相同**。
+  `upstream::Base::upstream_target`〕—— 前缀为空时与改前**逐字节相同**。
   🔴 中转**不查重、不合并重复的段**：配了 `<host>/v1` 而客户端发 `/v1/messages` 的人
   会得到 `/v1/v1/messages`（装表时给那一行记一条 note 说出来，见 `table::NOTE_PATH_PREFIX`）。
-  ⚠ **`<account>` 那一段是 `K-H2` 加的**，它是中转路由表的**索引键**：
-  表里查不到那个账号 ⇒ **404，一个字节都不发上游**（不回落到别的账号的 key，
-  也不回落到默认上游）。三段仍然都是不透明串 —— 中转不解释它们，只拿 `<account>` 查表。
+  ⚠ **`<account>` 那一段是 `K-H2` 加的**。〔条 49，2026-09-24 订正：先前这里写「中转……只拿 `<account>` 查表」，
+  拆键之后不准了〕apikey 表的键是 **`<agent>` ＋ `<account>` 两段**（claude-code 的 3 号与 codex 的 3 号是两行）：
+  `/s/` 表里查不到那一对 ⇒ **404，一个字节都不发上游**（不回落到别的账号的 key，
+  也不回落到默认上游）。三段对**中转（层 1）**仍然都是不透明串 —— 它不解释它们，原样交给账号层（层 2）去查。
+  ⚠ 线上字节一个没变，变的是查表语义。
   ⚠⚠ **老的三段形状 `/s/<agent>/<key>/…` 不会被解析器拒掉**，它会被重读成
   `account=<key>`；挡住它的是「表里查不到」那一格，不是解析器
   （判据 `route::tests::the_old_three_segment_shape_is_not_rejected_here_it_is_reread_as_a_different_route`）。
-- ⚠ **今天还没有任何东西设置 `ANTHROPIC_BASE_URL`** —— 现打（08-28，分母 = `git ls-files` 全部跟踪文件）：
-  这个名字全仓 2 处命中，两处都是文档 / 注释，**生产代码 0 处**；`--relay` 没有任何启动方。
-  ⇒ 上面这条路由今天**没有入口**。接上它是另一件（`K-H2b`），不在 `K-H2` 的射程里。
+- 谁设 `ANTHROPIC_BASE_URL`〔2026-09-24 订正；先前这里是 08-28 的读数「生产代码 0 处、没有入口」，`K-H2b` 之后不成立〕：
+  monitor 起**本机**会话时（`payload::relay_endpoint_for`，`设计/20 §3.2` 的 monitor 半）——
+  apikey 表里有 (agent, 账号) 这一行 ⇒ 注入 `/s/`（中转没在跑 ⇒ **拒绝起会话**）；
+  没有这一行 ⇒ 默认**不注入**。全量注入（订阅号也注 `/t/`）**带开关、默认关**：
+  monitor 进程环境里 `CCM_RELAY_ALL_SESSIONS=1` 才开；开了也只给登记了默认上游的 agent 注（codex 不注），
+  中转没在跑 ⇒ 不注（照旧直连，不拒绝）。远端机器那一半不注入。
+- 中转**自己造**的状态码〔`设计/20 §3.1a`，每个码只有一处常量，三组两两不相交〕：
+  请求读不懂 400 / 411 / 413 · 路由不成立 404（`/s/` 表里无行，或路径根本不是路由形状）与 502（`/t/` 的 agent 没登记默认上游）·
+  在途连接顶满 503 · 🔴 **上游连不上 / 没回应 / 回的不是 HTTP ⇒ 504**（2026-09-24 前是 502，与层 2 撞码），
+  响应体第二行是一句人话：`上游 <主机>:<端口> <结果>。卡在<哪一步>这一步。`。
+  ⚠ 上游**自己**答的 5xx 原样转发，与上面这几个码共用值域 —— 分得开它们的只有那句话。
 - 响应**逐块透传绝不缓冲**；同一批字节里的 SSE 事件抄一份到**本进程的 stdout**
   （NDJSON；要落文件由启动方重定向）。**这条流上今天是三种行** —— 分母不是印象，是
   `relay/tee.rs` **生产段**（剥掉 `#[cfg(test)]` 后 304 行）里**把一行送出去的全部落点，
@@ -1642,6 +1827,38 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 万一拿到超出 `end` 的正文（老后端不认 `--until`），客户端按索引给的行数自己截掉。
 新后端上写错的 `--选项` 与多余的位置参数都**报错退出 2**，不静默忽略。
 ⚠ 要让远端真的用上它，得等下一次 bump `BUILD_ID`（判 stale → 重装）。路径守卫与 `--read-session` 同一套。
+
+### 10.4 「你说过的话」清单：`--list-user-inputs`（SE1 · `设计/10 §2.2b ⑥`，2026-09-24）
+
+**是什么**：大纲（原名「我说过的 N 句」）的数据源。**判定只有后端这一个住址**（`observe/user_inputs.rs`）——
+前端从前在 `onLine` 旁路里一条一条攒（到达序 ≠ 对话序、monitor 起得晚就不全），查看器那边再用同一份 TS 判定扫全量；
+两份都删了，两个宿主都来问这条。
+
+| 调用 | 出什么 |
+|---|---|
+| `--list-user-inputs [--from <offset>] <p>` | 从字节 `offset`（缺省 0）起的清单，逐行 JSON，见下 |
+
+选项在位置参数前后都认；**客户端写在前面**（monitor 侧 `session_outline::user_inputs_argv`，有判据钉着，与 §10.3 同一条纪律）。
+
+**口径**（四条同时满足才算一条）：`type == "user"` · `isMeta != true` · `isSidechain != true`（子 agent 的 prompt 不算 —— 选出来的，不是漏的）·
+`message.content` 抽出的**纯文本**（字符串本身，或 `type:"text"` 块用 `\n` 拼）trim 后非空（工具结果回灌靠这条排除）。**没有 uuid 的不要。**
+⚠ 已知不等价：渲染那边还会再剥一层 `stripInternalNoise`，剥空了不建卡 ⇒ 清单可能多出极少数「没有卡」的项；前端跳空时标出来。
+
+**三段**：
+1. 头 `{"kind":"user_inputs","v":1,"from":<offset>}` —— 首行就认得出对面会出这份清单；
+2. 每条一行 `{"uuid":…,"timestamp":…,"excerpt":…}`，**按文件顺序**（= 对话顺序）。`timestamp` 没有 ⇒ `""`；
+   `excerpt` = 正文多空白折成一个空格、截到 80 个 Unicode 标量（超出加 `…`）；
+3. 尾 `{"kind":"user_inputs_end","count":N,"end":E}` —— `E` = 最后一个**完整行**的末字节（torn 残尾不计）＝
+   **下一次增量该带的 `--from`**。**没有尾行 ⇒ 输出被截断**，调用方不许当全量。
+
+**增量**：`--from <上次的 end>` 只读新写进来的那一截；两段拼起来与一次全量逐条相等（判据：`user_inputs_tests` 在每个行边界切一刀）。
+`offset` **超过文件长度 ⇒ 报错退出 2**（`past EOF`：文件被截断或重写过，调用方手上的 `end` 已不指向这份文件）——
+不回一份空清单假装「没有新的」；客户端据此从 0 重要一份。⚠ **「被重写但更长」这里认不出来**（同 §10.3 的 seq 空间假设），
+客户端按「增量里出现了已有的 uuid」兜一道。
+
+🔴 **它是新子命令**（不是 §10.3 那种选项）⇒ 进 `build_id_guard` 指纹、要 bump `BUILD_ID` 才会让已部署的远端判 stale 重装。
+老后端上：路径是裸参数 ⇒ 落进查询分支报 `unknown argument`、**stdout 0 字节、退出 2**；客户端认「首行不是 `user_inputs` 头」⇒ 诚实降级（大纲灰掉、说清原因）。
+路径守卫与 `--read-session` 同一套。
 
 ## 11. 远端终端拉起（ccm-rbind，issue #18）——注册与拉起全链路
 

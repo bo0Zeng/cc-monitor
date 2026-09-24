@@ -1,7 +1,7 @@
 //! `.md` 解析(F05):frontmatter `covers:` / 就近 README / 正文内联链接 → DocLink。
-//! 纯字符串解析,无 IO(内容由 engine 读入传下)。只认指向 `.rs` 的目标或目录。
+//! 纯字符串解析,无 IO(内容由 engine 读入传下)。只认指向**已支持语言源码文件**或目录的目标。
 
-use crate::model::{DocLink, LinkSource};
+use crate::model::{DocLink, Lang, LinkSource};
 use std::path::Path;
 
 pub fn parse_md(doc_rel: &str, content: &str) -> Vec<DocLink> {
@@ -55,7 +55,7 @@ fn parent_dir(rel: &str) -> Option<String> {
     rel.rfind('/').map(|i| rel[..=i].to_string())
 }
 
-/// 把一个目标 spec 解析成 (文件或目录, 符号?)。非 .rs / 非目录 / 外链 → None。
+/// 把一个目标 spec 解析成 (文件或目录, 符号?)。非源码文件 / 非目录 / 外链 → None。
 fn parse_target(raw: &str) -> Option<(String, Option<String>)> {
     let spec = raw.trim();
     if spec.is_empty()
@@ -78,9 +78,10 @@ fn parse_target(raw: &str) -> Option<(String, Option<String>)> {
     if path.ends_with('/') {
         return Some((path.to_string(), None)); // 目录目标
     }
-    if !path.ends_with(".rs") {
-        return None; // 只认 Rust 代码文件(或目录)
-    }
+    // 扩展名判定的**唯一住址**是 `Lang::from_path`(9 门);此处不许再写第二份扩展名表。
+    // F05 写这行时只有 Rust;F11 九门扇出改了 scan/engine/anchor,漏了这里 → 非 Rust 仓
+    // 的文件级/符号级 covers 被静默丢弃,drift 恒空(空 ≠ 没漂,调用方分不出来)。
+    Lang::from_path(path)?; // 非已支持语言的源码文件 → 不登记
     let symbol = match frag {
         // 行号锚 #L123 → 退化为文件级
         Some(f)
@@ -509,6 +510,54 @@ mod tests {
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].target_file, "src/x.rs");
         assert!(links[0].target_symbol.is_none());
+    }
+
+    #[test]
+    fn nine_langs_recognized_as_targets() {
+        // 回归:F05 写扩展名闸时只有 Rust;F11 九门扇出改了 scan/engine/anchor 却漏了这里,
+        // 于是非 Rust 仓的文件级/符号级 covers 被静默丢弃 —— drift 恒空,而"空"与"没漂"
+        // 在调用方那里分不开。判定的唯一住址是 `Lang::from_path`,这条把九门全钉住。
+        for path in [
+            "src/a.rs",
+            "src/a.py",
+            "src/a.js",
+            "src/a.mjs",
+            "src/a.ts",
+            "src/a.tsx",
+            "src/a.java",
+            "src/a.kt",
+            "src/a.c",
+            "src/a.cpp",
+            "src/a.h",
+            "src/a.cs",
+        ] {
+            let md = format!("---\ncovers:\n  - {path}#f\n---\n");
+            let links = parse_md("d.md", &md);
+            assert!(
+                links
+                    .iter()
+                    .any(|l| l.target_file == path && l.target_symbol.as_deref() == Some("f")),
+                "{path} 应登记为 DocLink(九门之一)"
+            );
+        }
+    }
+
+    #[test]
+    fn non_source_targets_still_ignored() {
+        // 放宽到九门之后,非源码目标仍不许登记 —— 防这次修过了头。
+        for path in [
+            "docs/other.md",
+            "package.json",
+            "pic.png",
+            "Makefile",
+            "a.yaml",
+            "a.toml",
+            "Cargo.lock",
+            "notes.txt",
+        ] {
+            let md = format!("---\ncovers:\n  - {path}\n---\n");
+            assert!(parse_md("d.md", &md).is_empty(), "{path} 不该被登记");
+        }
     }
 
     #[test]

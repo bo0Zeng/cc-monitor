@@ -1023,7 +1023,7 @@ pub fn user_path_remove() -> Result<(), String> {
 ///
 /// ⚠ **`K-R132` 把「把 `cct` 从 Windows 文案里摘掉」随动到 `src/launcher-diagnostics.ts`
 /// 那一句上 —— 本轮现打，那个随动的前提是假的**：那一句只在 **POSIX rc** 那一臂印
-/// （它的下拉只遍历 `AccountAliasReport::rc_candidates`，而那张表现算自
+/// （它的下拉只遍历 `AccountAliasReport::rc_candidates`〔散文墓碑〕（〔AL1〕今天是 `AliasListing::rc_candidates`），而那张表现算自
 /// `account_aliases::RC_CANDIDATES`，**一份 PowerShell profile 都没有**），
 /// 而那一臂的 `cct` 是**真有**的（`src/shared/ccm-aliases.sh` 里就定义着）。
 /// PowerShell 那一臂是另一份文件（`src/settings/cc_integration.ts` 的 `renderScanResult`），

@@ -8,9 +8,11 @@ fn the_backend_never_matches_or_ranks_subagents() {
     let prod = crate::guard_support::production_code(include_str!(
         "../../../src/backend/observe/history_query.rs"
     ));
+    // 〔`C1` · 09-24〕本体搬进了 `list_subagents_into`（帧面与 CLI 共用，出口是参数）；
+    // `list_subagents` 只剩 CLI 那层壳 ⇒ 锚跟着本体走。
     let at = prod
-        .find("pub fn list_subagents(")
-        .expect("找不到 list_subagents —— 判据在空转");
+        .find("fn list_subagents_into(")
+        .expect("找不到 list_subagents_into —— 判据在空转");
     let body: String = prod[at..].chars().take(2600).collect();
     for banned in [
         "description ==",

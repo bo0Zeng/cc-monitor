@@ -79,6 +79,32 @@ export class SkeletonView {
     return this.pendingHeight;
   }
 
+  /**
+   * 〔U3b〕骨架接上：任意一组**不相交**的 seq 区间画成占位（查看器用 —— 它首屏除了尾巴，
+   * 可能还有一个深链岛，已渲染集不是后缀）。空区间与越出账本的部分照收（高按账本算，越界为 0）。
+   *
+   * 视口稳定：**钉住视口里最上面那张已渲染卡的屏幕位置**（占位可能同时插在它上方和下方，
+   * 按 ΔscrollHeight 补偿只对「全插在上方」成立）；视口里没有已渲染卡就不补偿。
+   * 同一个同步任务里测 → 插 → 回写，期间关原生锚定、`finally` 还原（同 `fillAbove` 的纪律）。
+   * 返回占位的像素高合计。
+   */
+  attachGaps(gaps: ReadonlyArray<readonly [number, number]>): number {
+    const el = this.scrollEl;
+    const anchor = this.firstVisibleIn(el.querySelector<HTMLElement>(".stream-content"));
+    const anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
+    try {
+      el.style.overflowAnchor = "none";
+      for (const [lo, hi] of gaps) if (hi > lo) this.addGap(lo, hi);
+      if (anchor && anchor.isConnected) {
+        const delta = anchor.getBoundingClientRect().top - anchorTop;
+        if (delta !== 0) el.scrollTop += delta;
+      }
+    } finally {
+      el.style.overflowAnchor = "";
+    }
+    return this.pendingHeight;
+  }
+
   /** 这个 seq 还在占位里（没物化）吗 —— 宿主据此决定迟到的行直接建卡还是收纳。 */
   isPending(seq: number): boolean {
     return this.gaps.some((g) => seq >= g.lo && seq < g.hi);
@@ -197,9 +223,13 @@ export class SkeletonView {
 
   /** 视口里最上面那张**已渲染**的元素（不是占位）；没有 ⇒ null。 */
   private visibleRenderedAnchor(): HTMLElement | null {
-    const view = this.scrollEl.getBoundingClientRect();
-    const content = this.gaps[0]?.el.parentElement;
+    return this.firstVisibleIn(this.gaps[0]?.el.parentElement ?? null);
+  }
+
+  private firstVisibleIn(content: HTMLElement | null): HTMLElement | null {
     if (!content) return null;
+    const view = this.scrollEl.getBoundingClientRect();
+    if (view.height <= 0) return null;
     for (const child of Array.from(content.children)) {
       const c = child as HTMLElement;
       if (c.classList.contains(SKELETON_GAP_CLASS)) continue;

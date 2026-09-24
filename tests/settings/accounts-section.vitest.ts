@@ -27,7 +27,11 @@ vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../../src/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
 import { readFileSync } from "node:fs";
-import { AccountsSection, renderRelayKeyBlock } from "../../src/settings/accounts-section";
+import {
+  AccountsSection,
+  renderApikeyEditor,
+  renderApikeyFileBlock,
+} from "../../src/settings/accounts-section";
 // `N-F2`：账本与那张清单 —— 本文件末尾那一族要断的正是「面板跑完之后账本里是什么」，
 // 所以取的是**真的** `readStatus` / `computeGaps`，一个桩都不架。
 import {
@@ -41,6 +45,8 @@ import type { RelayCredentialsStatus } from "../../src/ipc/commands";
 import { showActionFailureToast } from "../../src/error-toast";
 import * as accounts from "../../src/accounts";
 import type { AccountsState, Account } from "../../src/accounts";
+import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
+import { buildAcctIsoCmd } from "../../src/settings/acct-deploy";
 
 function acct(p: Partial<Account>): Account {
   return {
@@ -96,7 +102,7 @@ const host = (p: Record<string, unknown> = {}) => ({
 
 /** 建 section 并等它的两段 async（init → reload）落定。 */
 async function mount(): Promise<HTMLElement> {
-  const s = new AccountsSection();
+  const s = loaded(new AccountsSection());
   document.body.innerHTML = "";
   document.body.appendChild(s.element);
   await new Promise((r) => setTimeout(r, 0));
@@ -106,6 +112,7 @@ async function mount(): Promise<HTMLElement> {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  __resetMachineContextForTests();
   readRemoteConfigMock.mockReset().mockResolvedValue({ enabled: true, hosts: [host()] });
   // 〔AL1 · 2026-09-24〕从前本机那一支挂着一块「按账号生成命令」（挂上去就先预览一次），
   // 这里要给那条命令一个形状对的最小答案。那一块搬去了机器页 ⇒ 所有命令照旧回 `undefined`。
@@ -360,25 +367,35 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     expect(cur.querySelector(".accounts-row-mark")?.textContent).toBe("★");
   });
 
-  it("稳态（≥2 个账号）维护区默认折叠：加账号/补链会动远端，不该摊在手边", async () => {
+  it("维护区默认折叠：补链会动远端，不该摊在手边", async () => {
     fetchAccountsMock.mockResolvedValue(ready());
     const el = await mount();
     const wrap = el.querySelector<HTMLDetailsElement>("details.accounts-maint-wrap")!;
     expect(wrap).not.toBeNull();
     expect(wrap.open).toBe(false); // ← 变异验证锚点：改成恒定默认展开这里就红
     expect(wrap.querySelector("summary")?.textContent).toContain("维护");
-    // A6 维护区内部功能仍在（只是被包进了 details）
-    expect(wrap.querySelector(".accounts-maint-add")).not.toBeNull();
     expect(wrap.querySelector(".accounts-maint-ops")).not.toBeNull();
   });
 
-  it("刚部署完只有 1 个账号 → 维护区默认展开（此时唯一的正路就是「加第二个账号」）", async () => {
+  it("🔴 A2（`70 §4.3` ①②）：新建账号**不在维护折叠里**、**不是红色** —— 只有 1 个号时也一样", async () => {
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: A })], defaultName: A }),
     );
     const el = await mount();
+    const form = el.querySelector<HTMLElement>(".accounts-new");
+    expect(form, "新建账号表单不见了").not.toBeNull();
+    expect(form!.closest("details"), "新建账号又被收进了折叠组").toBeNull();
+    // 维护区里不再有加账号那一套（`accounts-maint-add` 整个类已撤）。
+    expect(el.querySelector(".accounts-maint-add")).toBeNull();
     const wrap = el.querySelector<HTMLDetailsElement>("details.accounts-maint-wrap")!;
-    expect(wrap.open).toBe(true);
+    expect(wrap.open, "只剩自检/补链的维护区没有理由默认展开").toBe(false);
+    // 「创建」按钮：不带 danger。非空对照：那颗按钮确实找得到。
+    const create = [...form!.querySelectorAll("button")].find((b) => b.textContent === "创建");
+    expect(create, "找不到「创建」按钮 —— 下面那条是空真").toBeTruthy();
+    expect(create!.classList.contains("danger")).toBe(false);
+    expect(create!.className).toContain("settings-btn-primary");
+    // 整个账号分节里一颗红按钮都没有（remote ready 态：没有删账号动作）。
+    expect(el.querySelectorAll("button.danger").length).toBe(0);
   });
 
   it("长 configDir 有 title 兜全文（列宽省略后仍可见）", async () => {
@@ -553,7 +570,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     };
   }
 
-  // `K-H2c`：那一块今天要**配给某一个账号**。默认给两个号，第一个已经在apikey 表里。
+  // `K-H2c`：key 今天是**配给某一个账号**的。默认给两个号，第一个已经在 apikey 表里。
   // ⚠ 名字与 configDir 末段**刻意不同名**（`n1` vs `dir-one`）：断言里凡是用到 id 的地方，
   //   同名会让「前端拿名字当 id」与「后端从 configDir 推 id」两种实现**都绿**。
   const ACCTS = [
@@ -562,30 +579,35 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
   ];
 
   it("KS6：输入框**从不预填** —— 已配置时也一样，要改就重新输", () => {
-    const el = renderRelayKeyBlock(status(), ACCTS, () => {});
+    const el = renderApikeyEditor(ACCTS[0], () => {}).editor;
     const input = el.querySelector<HTMLInputElement>("input.relay-key-input");
     expect(input, "那个输入框不见了 —— 下面的断言会零命中地绿").toBeTruthy();
     expect(input!.value).toBe("");
     // 它是密码框（截图 / 录屏那两个出口）。
     expect(input!.type).toBe("password");
-    // 非空对照：这一块**确实**知道「已经配过了」（不是整块空着才让上面恒真）。
-    expect(el.textContent).toContain("已配置");
+    // 非空对照：这一格**确实**知道「已经配过了」（不是整块空着才让上面恒真）。
+    expect(el.textContent).toContain("已经有它那一行");
     expect(input!.placeholder).toContain("替换");
+    // 顶层那一把的掩码只在文件那一块（它说的不是任何一个账号）。
+    expect(renderApikeyFileBlock(status()).textContent).toContain("已配置");
   });
 
   it("KS6：界面上只出现掩码，明文一个字节都进不来（类型上就没有那个字段）", () => {
-    const el = renderRelayKeyBlock(status({ masked: "sk-a**********WXYZ" }), ACCTS, () => {});
+    const el = renderApikeyFileBlock(status({ masked: "sk-a**********WXYZ" }));
+    el.appendChild(renderApikeyEditor(ACCTS[0], () => {}).editor);
     expect(el.textContent).toContain("sk-a**********WXYZ");
-    // 明文那个值**根本递不进来** —— 这一条量的是类型面：多传一个字段 tsc 会红。
-    // 行为面这里能量的是：整块里没有任何长得像完整 key 的东西（没有 `*` 的长串）。
     const looksLikePlaintext = /sk-[A-Za-z0-9-]{20,}/.test(el.textContent ?? "");
     expect(looksLikePlaintext, `界面上出现了像明文 key 的串：${el.textContent}`).toBe(false);
   });
 
-  it("KS6 机检：本文件里那个输入框的 `.value` **只许被赋成空串**", () => {
-    // 人群 = 本文件生产段里所有对 `input.value` 的赋值。
-    const assigns = [...src().matchAll(/input\.value\s*=\s*([^;]+);/g)].map((m) => m[1].trim());
-    expect(assigns.length, "一处赋值都没扫到 —— 抽取器坏了，本条在空转").toBeGreaterThan(0);
+  it("KS6 机检：输入框的 `.value` **只许被赋成空串**（人群 = 账号分节 ＋ 新建账号表单）", () => {
+    // 人群 = 两份生产文件里所有对某个 `…input.value` / `…In.value` 的赋值。
+    // A2 之后 key 也会经过新建表单（`account-new-form.ts`）⇒ 那份必须一起进人群。
+    const code = src() + "\n" + readFileSync("src/settings/account-new-form.ts", "utf8");
+    const assigns = [...code.matchAll(/(?:input|In)\.value\s*=\s*([^;]+);/g)].map((m) =>
+      m[1].trim(),
+    );
+    expect(assigns.length, "一处赋值都没扫到 —— 抽取器坏了，本条在空转").toBeGreaterThan(3);
     for (const rhs of assigns) {
       expect(
         rhs,
@@ -596,44 +618,34 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
   });
 
   it("KS11：权限过宽时**在界面上出声**；没问题时不出声", () => {
-    const warned = renderRelayKeyBlock(
+    const warned = renderApikeyFileBlock(
       status({ notice: "同机器上的别人也读得到它（mode 是 0644…）。怎么修：跑 `chmod 600 …`" }),
-      ACCTS,
-      () => {},
     );
     const n = warned.querySelector(".relay-key-notice");
     expect(n, "过宽了却没在界面上显出来").toBeTruthy();
     expect(n!.textContent).toContain("chmod 600");
-    // 非空对照：没问题时那一块**不该**出现（否则上面是恒真）。
-    expect(
-      renderRelayKeyBlock(status(), ACCTS, () => {}).querySelector(".relay-key-notice"),
-    ).toBeNull();
+    expect(renderApikeyFileBlock(status()).querySelector(".relay-key-notice")).toBeNull();
   });
 
   it("KS9：那份文件的路径要显出来 —— 能手编但没人知道在哪 = 不能手编", () => {
-    const el = renderRelayKeyBlock(status(), ACCTS, () => {});
+    const el = renderApikeyFileBlock(status());
     expect(el.textContent).toContain("relay-credentials.json");
     expect(el.querySelector(".relay-key-path")?.getAttribute("title")).toContain("编辑器");
   });
 
   it("文件读坏了要说出来，**不许静默当成「没配」**", () => {
-    const el = renderRelayKeyBlock(
+    const el = renderApikeyFileBlock(
       status({ configured: false, masked: "", problem: "凭据文件不是合法 JSON（…）" }),
-      ACCTS,
-      () => {},
     );
     expect(el.querySelector(".relay-key-problem")?.textContent).toContain("不是合法 JSON");
-    // 非空对照：没问题时那一块不出现。
-    expect(
-      renderRelayKeyBlock(status(), ACCTS, () => {}).querySelector(".relay-key-problem"),
-    ).toBeNull();
+    expect(renderApikeyFileBlock(status()).querySelector(".relay-key-problem")).toBeNull();
   });
 
   it("存一次：明文原样交给回调，交完输入框**立刻清空**", () => {
     const seen: string[] = [];
-    const el = renderRelayKeyBlock(status({ configured: false, masked: "" }), ACCTS, (k) => {
+    const el = renderApikeyEditor(ACCTS[1], (k: string) => {
       seen.push(k);
-    });
+    }).editor;
     const input = el.querySelector<HTMLInputElement>("input.relay-key-input")!;
     input.value = "  sk-ant-TYPED-BY-HAND  ";
     el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
@@ -645,74 +657,76 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // `K-H2c` `KH2C1` 前端那两堵墙：那一块说得出「配给哪个账号」，而且**不自己推 id**。
+  // `K-H2c` `KH2C1` ＋ `设计/70 §4.4` 关键二：**「哪个账号」只问一次** ——
+  // 配 key 是账号那一行自己的一格；整块里**没有账号下拉**。
   // ───────────────────────────────────────────────────────────────────────────
 
-  it("KH2C1：存的时候把**选中那个账号的 configDir** 一起交出去 —— 换一个号就换一个值", () => {
+  it("KH2C1：每一格交出去的是**它那一个账号的 configDir** —— 两个号两个值", () => {
     const seen: Array<[string, string]> = [];
-    const el = renderRelayKeyBlock(status({ configured: false, masked: "" }), ACCTS, (k, d) => {
+    const onSave = (k: string, d: string) => {
       seen.push([k, d]);
-    });
-    const picker = el.querySelector<HTMLSelectElement>("select.relay-key-account");
-    expect(picker, "账号选择器不见了 —— 下面全是空真").toBeTruthy();
-    // 选项的 value 是**不透明的 configDir**，不是名字（名字只用来显示）。
-    expect([...picker!.options].map((o) => o.value)).toEqual([
-      "/h/.claude-accts/dir-one",
-      "/h/.claude-accts/dir-two",
-    ]);
-    expect([...picker!.options].map((o) => o.textContent)).toEqual(["n1", "n2"]);
-
-    const input = el.querySelector<HTMLInputElement>("input.relay-key-input")!;
-    const save = el.querySelector<HTMLButtonElement>("button.relay-key-save")!;
-    input.value = "sk-ant-FOR-ONE";
-    save.click();
-    // ★ 换一个号，同一个输入框，交出去的**第二格必须跟着变**。
-    picker!.value = "/h/.claude-accts/dir-two";
-    picker!.dispatchEvent(new Event("change"));
-    input.value = "sk-ant-FOR-TWO";
-    save.click();
+    };
+    const one = renderApikeyEditor(ACCTS[0], onSave).editor;
+    const two = renderApikeyEditor(ACCTS[1], onSave).editor;
+    for (const [el, key] of [
+      [one, "sk-ant-FOR-ONE"],
+      [two, "sk-ant-FOR-TWO"],
+    ] as const) {
+      el.querySelector<HTMLInputElement>("input.relay-key-input")!.value = key;
+      el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
+    }
     expect(seen).toEqual([
       ["sk-ant-FOR-ONE", "/h/.claude-accts/dir-one"],
       ["sk-ant-FOR-TWO", "/h/.claude-accts/dir-two"],
     ]);
   });
 
-  it("KH2C1：状态那一行说的是**选中那个号**配没配，`status.configured` 说的是顶层那一把 —— 两行分开", () => {
-    const el = renderRelayKeyBlock(status(), ACCTS, () => {});
-    const state = el.querySelector(".relay-key-state")!;
-    // 选中的是 routed=true 那个 ⇒ 说「已经有它那一行」。
-    expect(state.textContent).toContain("n1");
-    expect(state.textContent).toContain("已经有它那一行");
-    // ★ 换到 routed=false 那个 ⇒ 同一行必须翻面（非空对照：这把尺子分得出两种结局）。
-    const picker = el.querySelector<HTMLSelectElement>("select.relay-key-account")!;
-    picker.value = "/h/.claude-accts/dir-two";
-    picker.dispatchEvent(new Event("change"));
-    expect(state.textContent).toContain("n2");
-    expect(state.textContent).toContain("还没有它那一行");
-    // 顶层那一把是**另一行**（`KH2C3`：读得出来，但界面不再往那儿写）。
-    const legacy = el.querySelector(".relay-key-legacy");
-    expect(legacy?.textContent, "顶层那一把没有单独显 —— 它会被读成当前这个号的状态").toContain(
-      "sk-a**********WXYZ",
-    );
+  it("KH2C1：状态那一行说的是**这个号**配没配；顶层那一把只在文件那一块 —— 两处分开", () => {
+    expect(renderApikeyEditor(ACCTS[0], () => {}).editor.textContent).toContain("n1：apikey 表里已经有它那一行");
+    // 非空对照：routed=false 那个必须翻面（这把尺子分得出两种结局）。
+    expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).toContain("n2：apikey 表里还没有它那一行");
+    const legacy = renderApikeyFileBlock(status()).querySelector(".relay-key-legacy");
+    expect(legacy?.textContent, "顶层那一把没有单独显").toContain("sk-a**********WXYZ");
     expect(legacy!.textContent).toContain("不再往那一格写");
+    // 编辑格里**不许**出现顶层那一把 —— 那会被读成这个号的状态。
+    expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).not.toContain("sk-a");
   });
 
-  it("KH2C1：一个能配的账号都没有时**存不出去** —— 不许悄悄落到顶层那一格", () => {
-    const seen: Array<[string, string]> = [];
-    const el = renderRelayKeyBlock(status({ configured: false, masked: "" }), [], (k, d) => {
-      seen.push([k, d]);
-    });
-    expect(el.querySelector("select.relay-key-account"), "没有账号却还挂着选择器").toBeNull();
-    const input = el.querySelector<HTMLInputElement>("input.relay-key-input")!;
-    const save = el.querySelector<HTMLButtonElement>("button.relay-key-save")!;
-    expect(input.disabled).toBe(true);
-    expect(save.disabled).toBe(true);
-    // 即便有人绕过 disabled 直接点，也不许交出去（`disabled` 在 jsdom 里不拦 `.click()`）。
-    input.value = "sk-ant-NOWHERE-TO-GO";
-    save.click();
-    expect(seen, "没有账号可配却把 key 交出去了 —— 那一把会落到哪儿？").toEqual([]);
-    // 而且要说清为什么配不了（不是一个空白的死胡同）。
-    expect(el.querySelector(".relay-key-state")!.textContent).toContain("没有能配的账号");
+  it("🔴 `70 §4.3` ③：整个账号分节里**没有账号下拉** —— 「哪个账号」由那一行回答", async () => {
+    fetchAccountsMock.mockResolvedValue(
+      state({
+        accounts: [
+          acct({ name: "n1", configDir: "/h/.claude-accts/dir-one" }),
+          acct({ name: "n2", configDir: "/h/.claude-accts/dir-two" }),
+          acct({ name: "0", configDir: null, mode: "bare" }),
+        ],
+        defaultName: "n1",
+      }),
+    );
+    invokeMock.mockImplementation((cmd: unknown) =>
+      Promise.resolve(
+        cmd === "read_relay_credentials_status"
+          ? status()
+          : cmd === "apikey_routing_for"
+            ? { routed: ["/h/.claude-accts/dir-one"] }
+            : undefined,
+      ),
+    );
+    const el = await mount();
+    expect(el.querySelector("select"), "账号分节里又长出了一个下拉").toBeNull();
+    // 有 configDir 的两个号各有一颗按钮、一格编辑器；账号 0 没有（配了也不会被用上）。
+    const toggles = [...el.querySelectorAll<HTMLButtonElement>("button.accounts-row-apikey-toggle")];
+    expect(toggles.map((b) => b.textContent)).toEqual(["换 apikey", "配 apikey"]);
+    const editors = [...el.querySelectorAll<HTMLElement>(".accounts-row-apikey")];
+    expect(editors.length).toBe(2);
+    expect(editors.every((e) => e.hidden)).toBe(true);
+    toggles[1].click();
+    expect(editors[1].hidden).toBe(false);
+    expect(editors[1].textContent).toContain("n2");
+    // 表外还挂着文件那一块（路径 / 顶层那一把）。
+    expect(el.querySelector(".relay-key-block .relay-key-path")?.textContent).toContain(
+      "relay-credentials.json",
+    );
   });
 
   it("KH2C1 机检：前端**一个字都不推账号 id** —— 那条规则全仓只有 Rust 那一份", () => {
@@ -722,7 +736,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
       expect(
         code.includes(needle),
         `前端出现了 \`${needle}\` —— 那是在长**第二份**「从 configDir 取账号 id」的规则。\n` +
-          "`relay_account_id_of_dir` 的头注逐字：两边各写一个 basename 规则，" +
+          "`apikey_account_id_of_dir` 的头注逐字：两边各写一个 basename 规则，" +
           "漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。",
       ).toBe(false);
     }
@@ -1303,3 +1317,138 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     expect(s, "回到旧行为时它该说「还没测过」").toContain("还没测过");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A2（`设计/70 §8` 判据 #9）：**账号一步建成** —— 填名字 + 选「第三方 apikey」+ 填 key → 点创建
+// ⇒ 终端里跑的是建号那一条；这个号出现在列表里之后，apikey 表里有它那一行（configDir 是**它自己的**）。
+// **中途不需要去第二个控件选账号。**
+// ─────────────────────────────────────────────────────────────────────────────
+describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次操作", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const B_DIR = "/h/.claude-accts/dir-of-b"; // 末段刻意 ≠ 名字（见 K-H2a 那一族的理由）
+
+  function wire(opts: { launchFails?: boolean } = {}) {
+    const calls: Array<[string, unknown]> = [];
+    invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
+      calls.push([cmd as string, args]);
+      if (cmd === "launch_remote_terminal" && opts.launchFails) {
+        return Promise.reject(new Error("没有终端"));
+      }
+      if (cmd === "read_relay_credentials_status") {
+        return Promise.resolve({ configured: false, masked: "", path: "/h/x.json", notice: null, problem: null });
+      }
+      return Promise.resolve(undefined);
+    });
+    return calls;
+  }
+
+  async function submitApikey(el: HTMLElement, name: string, key: string): Promise<void> {
+    const form = el.querySelector<HTMLElement>(".accounts-new")!;
+    const nameIn = form.querySelector<HTMLInputElement>("input.accounts-maint-name")!;
+    nameIn.value = name;
+    nameIn.dispatchEvent(new Event("input"));
+    const r = form.querySelector<HTMLInputElement>('input[type=radio][value="apikey"]')!;
+    r.checked = true;
+    r.dispatchEvent(new Event("change"));
+    const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input")!;
+    keyIn.value = key;
+    keyIn.dispatchEvent(new Event("input"));
+    [...form.querySelectorAll("button")].find((b) => b.textContent === "创建")!.click();
+    await tick();
+    await tick();
+  }
+
+  it("★ 判据 #9：建号那条命令先跑；号出现之后 key 写给**它的** configDir；没有经过任何下拉", async () => {
+    const calls = wire();
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    await submitApikey(el, "b", "sk-ant-FOR-B");
+
+    const launches = calls.filter(([c]) => c === "launch_remote_terminal");
+    expect(launches.length).toBe(1);
+    const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
+    expect((launches[0][1] as { remoteCmd: string }).remoteCmd).toBe(want.ok ? want.cmd : "∅");
+    // 号还没出现 ⇒ 一个字节都不写，但屏幕上说得出在等谁。
+    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+    expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
+    expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
+
+    // 终端跑完、用户点「刷新」：这一趟列表里有 b 了。
+    fetchAccountsMock.mockResolvedValue(
+      state({
+        accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })],
+        defaultName: "z",
+      }),
+    );
+    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
+    for (let i = 0; i < 6; i++) await tick();
+
+    const writes = calls.filter(([c]) => c === "write_relay_credentials_key");
+    expect(writes.map(([, a]) => a)).toEqual([{ key: "sk-ant-FOR-B", configDir: B_DIR }]);
+    expect(el.querySelector(".accounts-new-pending"), "写完了还挂着「等」那一行").toBeNull();
+    expect(el.querySelector("select")).toBeNull();
+  });
+
+  it("终端没拉起来 ⇒ 不留那把 key（那个号不会出现，留着就是一把永远等不到主人的明文）", async () => {
+    const calls = wire({ launchFails: true });
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    await submitApikey(el, "b", "sk-ant-FOR-B");
+    expect(el.querySelector(".accounts-new-pending")).toBeNull();
+    // 即便之后真出现一个叫 b 的号，也不会被写进去。
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
+    );
+    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
+    for (let i = 0; i < 6; i++) await tick();
+    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+  });
+
+  it("「放弃」把等着的那把 key 丢掉：之后号出现也不写", async () => {
+    const calls = wire();
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    await submitApikey(el, "b", "sk-ant-FOR-B");
+    const pending = el.querySelector(".accounts-new-pending")!;
+    [...pending.querySelectorAll("button")].find((b) => b.textContent === "放弃")!.click();
+    expect(el.querySelector(".accounts-new-pending")).toBeNull();
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
+    );
+    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
+    for (let i = 0; i < 6; i++) await tick();
+    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+  });
+});
+
+
+// ST1「切机器 pending」（`设计/70 §6` #5）：切到另一台 = 这一块重读一趟（远端是一次 SSH 往返），
+// 这段时间这一块原先是**空的** —— 与「这台没有账号」分不开。
+describe("ST1 切机器 pending：账号那一块", () => {
+  it("切到 aya、读还在路上：挂一行 aria-busy 的「正在读 aya 的账号」；回来就撤", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host(), host({ label: "gpd" })] });
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    expect(el.querySelector("[data-pending=accounts]"), "前提：读完了不该还挂着").toBeNull();
+    let release!: (v: AccountsState) => void;
+    fetchAccountsMock.mockReturnValue(new Promise((r) => (release = r)));
+    setCurrentMachine("gpd");
+    await new Promise((r) => setTimeout(r, 0));
+    const busy = el.querySelector<HTMLElement>("[data-pending=accounts]");
+    expect(busy, "读在路上时这一块是空的").toBeTruthy();
+    expect(busy!.getAttribute("aria-busy")).toBe("true");
+    expect(busy!.textContent).toContain("gpd");
+    release(state({ origin: "gpd", accounts: [acct({ name: "g1" })], defaultName: "g1" }));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(el.querySelector("[data-pending=accounts]")).toBeNull();
+    expect(el.querySelector(".accounts-table")?.textContent).toContain("g1");
+  });
+});
+
+/** ST1「延后加载」：分节构造期不再发 I/O，由宿主在机器子页第一次可见时调 `loadNow()`。
+ *  本文件量的是分节**加载之后**的行为 ⇒ 构造完就当宿主那样叫醒它。 */
+function loaded<T extends { loadNow(): void }>(s: T): T {
+  s.loadNow();
+  return s;
+}

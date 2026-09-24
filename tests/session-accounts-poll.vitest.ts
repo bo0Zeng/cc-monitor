@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   HOST_FANOUT_LIMIT,
   mapWithLimit,
   collectAccountRows,
-  createGatedPoller,
+  createEventRefresher,
   type HostFetchers,
 } from "../src/session-accounts-poll";
 import type { RemoteHostConfig } from "../src/remote-config";
@@ -157,6 +157,15 @@ describe("collectAccountRows —— 扇出", () => {
     expect([...out.readyOrigins]).toEqual(["good"]);
   });
 
+  it("★ 〔C1〕长连接刚握手完（forceAccounts）⇒ 账号清单也 force；默认仍不 force", async () => {
+    const forced = fanoutProbe();
+    await collectAccountRows([host("a"), host("b")], forced.f, undefined, true);
+    expect(forced.accountsForced).toEqual([true, true]);
+    const plain = fanoutProbe();
+    await collectAccountRows([host("a"), host("b")], plain.f);
+    expect(plain.accountsForced.every((x) => x !== true)).toBe(true);
+  });
+
   it("★ 意图判据：session-accounts 强制刷新，accounts 走 TTL", async () => {
     const { f, sessionForced, accountsForced } = fanoutProbe();
     await collectAccountRows([host("a"), host("b")], f);
@@ -172,131 +181,77 @@ describe("collectAccountRows —— 扇出", () => {
   });
 });
 
-describe("createGatedPoller", () => {
-  afterEach(() => {
+describe("createEventRefresher（C1：替掉 10 秒轮询）", () => {
+  it("★ 零定时器：不 request 就一次都不跑", async () => {
+    vi.useFakeTimers();
+    let runs = 0;
+    createEventRefresher(async () => {
+      runs += 1;
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(runs, "没有事件却跑了 —— 那就是轮询换了个名字").toBe(0);
+    expect(vi.getTimerCount(), "刷新器自己挂了定时器").toBe(0);
     vi.useRealTimers();
   });
 
-  it("★ 上一轮没跑完，这一拍跳过而不是叠加", async () => {
-    vi.useFakeTimers();
-    let entered = 0;
+  it("★ 在飞时再来的请求合并成**一次**补跑，而不是叠加", async () => {
+    let runs = 0;
     let release!: () => void;
-    const blocked = new Promise<void>((r) => (release = r));
-    const p = createGatedPoller({
-      intervalMs: 1000,
-      tick: async () => {
-        entered += 1;
-        await blocked;
-      },
-      isHidden: () => false,
-      subscribeVisibility: () => () => {},
+    let blocked = new Promise<void>((r) => (release = r));
+    const r = createEventRefresher(async () => {
+      runs += 1;
+      await blocked;
     });
-    p.start(); // 立刻跑一轮，卡住不返回
-    expect(entered).toBe(1);
-    await vi.advanceTimersByTimeAsync(5000); // 五拍
-    expect(
-      entered,
-      `五拍之内进了 ${entered} 次 —— 没有重入锁。报告 I-5：单轮 >10s 时轮次会摞起来，` +
-        "每摞一层就是对所有远端多一轮 SSH",
-    ).toBe(1);
-    expect(p.skippedInFlight).toBe(5);
+    r.request();
+    for (let i = 0; i < 5; i += 1) r.request();
+    expect(runs).toBe(1);
+    expect(r.coalesced).toBe(5);
+    const first = release;
+    blocked = Promise.resolve();
+    first();
+    await new Promise((res) => setTimeout(res, 0));
+    await new Promise((res) => setTimeout(res, 0));
+    expect(runs, "五次请求应合并成恰好一次补跑（拿到最新），不是 0 次也不是 5 次").toBe(2);
+  });
+
+  it("★ force 在合并时取「或」", async () => {
+    const seen: boolean[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let first = true;
+    const r = createEventRefresher(async (force) => {
+      seen.push(force);
+      if (first) {
+        first = false;
+        await gate;
+      }
+    });
+    r.request();
+    r.request(false);
+    r.request(true);
+    r.request(false);
     release();
+    await new Promise((res) => setTimeout(res, 0));
+    await new Promise((res) => setTimeout(res, 0));
+    expect(seen).toEqual([false, true]);
   });
 
-  it("★ 窗口不可见时跳过；重新可见时立刻补一轮", async () => {
-    vi.useFakeTimers();
-    let hidden = false;
-    let ticks = 0;
-    let onVis!: () => void;
-    const p = createGatedPoller({
-      intervalMs: 1000,
-      tick: async () => {
-        ticks += 1;
-      },
-      isHidden: () => hidden,
-      subscribeVisibility: (cb) => {
-        onVis = cb;
-        return () => {};
-      },
-    });
-    p.start();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(ticks).toBe(1); // start 那一轮
-
-    hidden = true;
-    await vi.advanceTimersByTimeAsync(3000);
-    expect(ticks, "窗口看不见时还在对所有远端发 SSH").toBe(1);
-    expect(p.skippedHidden).toBe(3);
-
-    hidden = false;
-    onVis();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(ticks, "切回来时数据是陈旧的，必须补一轮").toBe(2);
-  });
-
-  it("可见时照常轮询（反向判据：不许门控成永不刷新）", async () => {
-    vi.useFakeTimers();
-    let ticks = 0;
-    const p = createGatedPoller({
-      intervalMs: 1000,
-      tick: async () => {
-        ticks += 1;
-      },
-      isHidden: () => false,
-      subscribeVisibility: () => () => {},
-    });
-    p.start();
-    await vi.advanceTimersByTimeAsync(3000);
-    expect(ticks, "沿用 F13/F14 立的形态：写一条「该停」就要写一条「不许全停」").toBe(4);
-    p.stop();
-  });
-
-  it("★ stop() 之后真的不再跑 —— 今天那个 interval 句柄是丢掉的", async () => {
-    vi.useFakeTimers();
-    let ticks = 0;
-    let unsubscribed = false;
-    const p = createGatedPoller({
-      intervalMs: 1000,
-      tick: async () => {
-        ticks += 1;
-      },
-      isHidden: () => false,
-      subscribeVisibility: () => () => {
-        unsubscribed = true;
-      },
-    });
-    p.start();
-    await vi.advanceTimersByTimeAsync(2000);
-    const before = ticks;
-    p.stop();
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(ticks, "stop() 之后还在跑 —— 停不下来的轮询和没有 stop 是一回事").toBe(before);
-    expect(unsubscribed, "stop() 必须退订 visibilitychange，否则监听器泄漏").toBe(true);
-  });
-
-  it("★ tick 抛错不会把重入锁焊死", async () => {
-    vi.useFakeTimers();
-    let ticks = 0;
-    const seen: string[] = [];
-    const p = createGatedPoller({
-      intervalMs: 1000,
-      tick: async () => {
-        ticks += 1;
+  it("★ run 抛错不会把「在飞」焊死，且有身份地计数", async () => {
+    const errs: string[] = [];
+    let runs = 0;
+    const r = createEventRefresher(
+      async () => {
+        runs += 1;
         throw new Error("boom");
       },
-      isHidden: () => false,
-      subscribeVisibility: () => () => {},
-      onError: (e) => seen.push(String(e)),
-    });
-    p.start();
-    await vi.advanceTimersByTimeAsync(3000);
-    expect(
-      ticks,
-      "一次异常就把轮询永久锁死 —— 这正是 `finally` 而不是 `then` 的理由",
-    ).toBeGreaterThan(1);
-    // ★ 接住不等于吞掉：每次失败都要有身份（E4）
-    expect(p.failures, "失败被吞成「看起来一切正常」").toBe(ticks);
-    expect(seen.every((m) => m.includes("boom"))).toBe(true);
-    p.stop();
+      (e) => errs.push(String(e)),
+    );
+    r.request();
+    await new Promise((res) => setTimeout(res, 0));
+    r.request();
+    await new Promise((res) => setTimeout(res, 0));
+    expect(runs, "一次异常就锁死了刷新").toBe(2);
+    expect(r.failures).toBe(2);
+    expect(errs.every((m) => m.includes("boom"))).toBe(true);
   });
 });

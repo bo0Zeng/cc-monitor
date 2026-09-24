@@ -116,6 +116,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "observe/history_query.rs",
         include_str!("../../src/backend/observe/history_query.rs"),
     ),
+    // 〔`A3` 第二波〕`--acct-iso-status` / `--acct-iso-shellinit` 的分派住这里。
+    (
+        "accounts/iso.rs",
+        include_str!("../../src/backend/accounts/iso.rs"),
+    ),
     (
         "observe/accounts_query.rs",
         include_str!("../../src/backend/observe/accounts_query.rs"),
@@ -123,6 +128,14 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     (
         "observe/search_query.rs",
         include_str!("../../src/backend/observe/search_query.rs"),
+    ),
+    // 〔`C1` · 09-24〕只读查询的帧面宿主。它不做 match 分派，但把 `history-search` 的
+    // JSON 选项摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit` 那几个 token
+    // （解析走 CLI 那一臂同一个 `parse_opts`）⇒ 派生的文件集把它扫了进来。登记，不改判据：
+    // 那几个 token 本来就在 IPC-PROTOCOL.md 里，它们从此也在这里受对拍。
+    (
+        "read_face.rs",
+        include_str!("../../src/backend/read_face.rs"),
     ),
     // 它不做 match 分派，只在用法串里提自己的名字 —— 但 D 审计正是把一个
     // `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 藏在这里绕过了护栏。
@@ -161,11 +174,50 @@ const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[(
      它们是终端命令面、不是 wire 协议面。",
 )];
 
-/// 分派里出现的所有 `--子命令` / `--选项`（跨 [`DISPATCH_FILES`] 全部文件）。
-pub(crate) fn dispatched_subcommands() -> Vec<String> {
+/// 🔴 **子进程旗标** —— 后端**发给它转调的那个子进程**的 `--旗标`，不是后端自己分派的 argv。〔BS1b 09-24〕
+///
+/// # 为什么要有这一类
+///
+/// [`dispatched_subcommands`] 把 [`DISPATCH_FILES`] 里**每一个** `"--x"` 字面量都当成
+/// 「后端自己认的 token」，于是要求它进 `lib.rs` 的 argv 三分表、进 `IPC-PROTOCOL.md §10`。
+/// 而 `bus-spawn` 转调 `cc-spawn` 时要发 `--tool` / `--account` / `--base` —— 那是**cc-spawn 的**
+/// 旗标：塞进 `SUBCOMMAND_OPTIONS` 会改 `is_query_mode` 的行为（`--tool` 打头的 argv 从此被当成
+/// 「子命令选项脱离了子命令」），写进 §10 会让冻结契约描述一件它不负责的事。
+/// 旧模型里只有两类（wire 面 · 终端面 [`TERMINAL_SURFACE_FILES`]），这是第三类。
+///
+/// # ⚠ 它**不是**豁免，是换了一格判据（同 [`TERMINAL_SURFACE_FILES`] 的取法）
+///
+/// 登记在这里的旗标从上面两条对拍里**按文件**摘掉，但必须被
+/// `child_process_flags_are_exactly_what_the_file_sends_and_what_the_child_accepts` 接住：
+/// ① 那份文件里的 `"--x"` 字面量集合 **==** 登记的旗标集合（两向；多一个没登记的 token ⇒ 红，
+///    不许靠这张表把一条真 wire 子命令藏起来）；
+/// ② 子进程脚本旗标循环里认的旗标集合 **==** 登记的 ∪ [`CHILD_FLAGS_NOT_SENT`]（两向；
+///    发了一个它不认的 ⇒ 红，它新认了一个而这边没表态 ⇒ 红）。
+/// 两侧**异源**：①读 Rust 生产段的字面量，②读 shell 脚本的 `case` 臂。
+///
+/// 🔴 **不许**把旗标拼成运行期字符串（`format!("--{}", "tool")`）来躲 [`dispatched_subcommands`] ——
+/// 那是把扫描面静默挖空；正路就是登记在这里、让 ①② 接住。
+pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[(
+    "control/cc_bus.rs",
+    "src/shared/cc-bus/scripts/cc-spawn",
+    &["--account", "--base", "--tool"],
+    "`bus-spawn` 转调 `cc-spawn` 时的旗标（`control/cc_bus.rs::spawn_argv`）。\
+     它们是 cc-spawn 的命令面：后端 argv 从不认它们，线上契约里也没有它们的位置。",
+)];
+
+/// 子进程认、而后端**刻意不发**的旗标 —— 每条带理由（②那一向的另一半）。
+pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[(
+    "src/shared/cc-bus/scripts/cc-spawn",
+    "--new",
+    "P4b 之后 cc-spawn **默认就是新建**，`--new` 是为兼容外面的老调用方保留的 no-op；后端没有理由发它。",
+)];
+
+/// 一份源码生产段里的 `"--x"` 字面量（按出现序去重）—— [`dispatched_subcommands`] 与
+/// 子进程旗标那条接盘判据**共用这一处取法**（两处各写一份的话，一处放宽、一处没跟，就会各说各话）。
+pub(crate) fn dashdash_literals(raw: &str) -> Vec<String> {
+    let src = crate::guard_support::production_code(raw);
     let mut out: Vec<String> = Vec::new();
-    for (_, raw) in DISPATCH_FILES {
-        let src = crate::guard_support::production_code(raw);
+    {
         let mut from = 0usize;
         while let Some(rel) = src[from..].find("\"--") {
             let i = from + rel + 1;
@@ -189,13 +241,37 @@ pub(crate) fn dispatched_subcommands() -> Vec<String> {
             from = i + 2;
         }
     }
+    out
+}
+
+/// 分派里出现的所有 `--子命令` / `--选项`（跨 [`DISPATCH_FILES`] 全部文件）。
+///
+/// ⚠ 〔BS1b〕[`CHILD_PROCESS_FLAGS`] 里登记的那几个**按文件**摘掉 —— 同一个 token 出现在
+/// 别的分派文件里照样算（摘的是「这份文件发给子进程的那几个」，不是这个字串）。
+pub(crate) fn dispatched_subcommands() -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (name, raw) in DISPATCH_FILES {
+        let child: Vec<&str> = CHILD_PROCESS_FLAGS
+            .iter()
+            .filter(|(f, ..)| f == name)
+            .flat_map(|(_, _, flags, _)| flags.iter().copied())
+            .collect();
+        for s in dashdash_literals(raw) {
+            if !child.contains(&s.as_str()) && !out.contains(&s) {
+                out.push(s);
+            }
+        }
+    }
     out.sort();
     out
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{dispatched_subcommands, DISPATCH_FILES, TERMINAL_SURFACE_FILES};
+    use super::{
+        dashdash_literals, dispatched_subcommands, CHILD_FLAGS_NOT_SENT, CHILD_PROCESS_FLAGS,
+        DISPATCH_FILES, TERMINAL_SURFACE_FILES,
+    };
 
     const DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
 
@@ -593,6 +669,97 @@ mod tests {
              而 `every_dispatched_subcommand_appears_in_the_protocol_doc` **照常报绿**。\n\
              把新文件加进 `DISPATCH_FILES`（含 `include_str!`）。"
         );
+    }
+
+    /// 🔴 [`CHILD_PROCESS_FLAGS`] 的接盘判据：**①② 两向相等**（登记表头注写着为什么）。〔BS1b 09-24〕
+    ///
+    /// ⚠ 买不到：「旗标的**值**对不对」（`--tool` 后面跟的是什么）—— 那一格由 cc-spawn 自己 rc=2 判，
+    /// 行为判据住 `control::cc_bus::tests`（argv 形状）与 `tests/e2e/backend-cc-bus.sh`（真跑）。
+    #[test]
+    fn child_process_flags_are_exactly_what_the_file_sends_and_what_the_child_accepts() {
+        assert!(
+            !CHILD_PROCESS_FLAGS.is_empty(),
+            "登记表空了 —— 要么真没有子进程旗标了（那就连同 `dispatched_subcommands` 里那段摘除一起删），\
+             要么是被人掏空了"
+        );
+        let repo = crate::guard_support::src_root()
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("从 src/backend 回不到仓根")
+            .to_path_buf();
+        for (file, child, flags, why) in CHILD_PROCESS_FLAGS {
+            assert!(why.chars().count() > 30, "`{file}` 那行理由太短：{why}");
+            // ① 这份文件里的 `"--x"` 字面量 == 登记的（两向）
+            let raw = DISPATCH_FILES
+                .iter()
+                .find(|(n, _)| n == file)
+                .unwrap_or_else(|| {
+                    panic!("`{file}` 不在 `DISPATCH_FILES` 里 —— 摘除按文件认，那份文件得先被扫到")
+                })
+                .1;
+            let mut sent = dashdash_literals(raw);
+            sent.sort();
+            let mut reg: Vec<String> = flags.iter().map(|s| s.to_string()).collect();
+            reg.sort();
+            assert_eq!(
+                sent, reg,
+                "\n`{file}` 里的 `--x` 字面量与登记的子进程旗标对不上。\n\
+                 多出来的 ⇒ 要么是一条**真 wire 子命令**（那它不该躲在这张表里，去三分表与 §10），\n\
+                 要么是新发给子进程的旗标（登记它）；少掉的 ⇒ 不再发了，把登记摘掉。"
+            );
+            // ② 子进程旗标循环里认的 == 登记的 ∪ 刻意不发的（两向）
+            let script = std::fs::read_to_string(repo.join(child))
+                .unwrap_or_else(|e| panic!("读不到子进程脚本 {child}：{e} —— 判不了，不许当成绿"));
+            let mut accepts: Vec<String> = Vec::new();
+            let mut in_loop = false;
+            // ⚠ 块界用**整行相等**（与 `pin_line` 同一口径），不用前缀匹配：
+            //   前缀 needle 在语料上会被撑大而照样绿（`needle_anchor_registry` 那条棘轮管的就是它）。
+            // ⚠ 变量名刻意不叫 `line` / `t`：那条棘轮按**文件内变量名**认语料，
+            //   同名会把本文件别处的无关匹配一起卷进去（现打：卷进过 2 处）。
+            for sline in script.lines() {
+                let st = sline.trim();
+                if st == "while true; do" {
+                    in_loop = true;
+                    continue;
+                }
+                if in_loop && st == "done" {
+                    break;
+                }
+                if !in_loop {
+                    continue;
+                }
+                // case 臂的模式段：`--xxx)` 之前那一截，形如两个连字符 ＋ `[A-Za-z0-9-]+`
+                let arm: String = st.chars().take_while(|c| *c != ')').collect();
+                let dashes = arm.chars().take(2).filter(|c| *c == '-').count();
+                if arm.chars().count() > 2
+                    && dashes == 2
+                    && arm
+                        .chars()
+                        .skip(2)
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-')
+                    && st.chars().count() > arm.chars().count()
+                {
+                    accepts.push(arm);
+                }
+            }
+            accepts.sort();
+            accepts.dedup();
+            let mut want: Vec<String> = reg.clone();
+            for (c, f, why) in CHILD_FLAGS_NOT_SENT {
+                if c == child {
+                    assert!(why.chars().count() > 20, "`{f}` 不发的理由太短：{why}");
+                    want.push(f.to_string());
+                }
+            }
+            want.sort();
+            assert_eq!(
+                accepts, want,
+                "\n`{child}` 旗标循环里认的旗标，与「后端发的 ∪ 刻意不发的」对不上。\n\
+                 左边多 ⇒ 子进程新认了一个旗标、这边没表态（发不发都要写一句）；\n\
+                 右边多 ⇒ 后端发了一个子进程**不认**的旗标（它会被当成位置参数吃掉，\
+                 `cc-spawn` 那条的后果是「目录不存在：--xxx」）。"
+            );
+        }
     }
 
     /// 🔴 [`TERMINAL_SURFACE_FILES`] 里的每一份，都必须**真的**被它声称的那条判据接住。
