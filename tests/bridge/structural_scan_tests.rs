@@ -1735,9 +1735,9 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         //    那正是原先第 1062 行那段话讲的东西）⇒ 从「判不了真伪」变成
         //    `every_symbol_address_in_the_sources_still_resolves` **真的判得了**。
         //    ⚠ 没有「换一个今天对的行号」—— 那是本条头注逐字禁的那一手。
-        // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕住址跟着那句散文搬进 `tests/bridge/`。
-        // **存量条数一格没变** —— 一处行号地址都没新增，只是左端的文件名换了。
-        ("parity_ledger_tests.rs", "sftp.rs", 141),
+        // 🔴 〔RM1a · 第四波〕**这一行删了**：`parity_ledger_tests.rs` 里点 `sftp.rs` 第 141 行的那句散文
+        //    住在 `creds.apikey` 那条平价欠账的理由里，那条欠账结清、整行删掉，那处行号地址随之没了。
+        //    **存量少一条，这是往下走**（递减方向）。
         ("ratchet_guard.rs", "control/tmux_hook.rs", 6),
         ("ratchet_guard.rs", "control/tmux_hook.rs", 102),
         ("ratchet_guard.rs", "main.rs", 651),

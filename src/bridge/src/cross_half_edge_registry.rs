@@ -83,6 +83,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/apikey_remote_tests.rs",
+        "src/backend/inbound.rs",
+        "〔RM1a〕账号层那份凭据文件按机器读写：monitor 这边发的两个命令名、解析的那几个字段 \
+         必须就是后端登记表里声明的那几个 —— 读它才能拿**后端声明的**字段造样本喂解析器\
+         （本侧手抄一份就成了两侧同源的恒等）",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/backend/control/backend_send_keys_tests.rs",
         "src/backend/control/launch.rs",
         "两个 mode 名必须是后端真能 parse 的那两个（`parse_request` 不 deny unknown \

@@ -57,6 +57,7 @@ mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
+mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写：本机进 creds_store，远端交那台机器的后端
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 #[cfg(test)]
@@ -1761,9 +1762,15 @@ pub(crate) fn batch_to_payloads(
 /// 每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
 /// ⇒ 返回类型 [`creds_store::ApikeyCredentialsStatus`] **在类型上就装不下明文**，
 /// 由 `the_status_type_cannot_carry_the_plaintext` 钉住。
+///
+/// 〔RM1a · 第四波〕**收 `origin`**：本机读 monitor 自己那一份（原样），远端问那台机器的后端
+/// （`apikey-read`）—— 远端账号页显的从此是**那台机器上**那份文件的状态，不再是本机的。
+/// 回的仍是同一个**装不下明文**的类型。
 #[tauri::command]
-fn read_apikey_credentials_status() -> Result<creds_store::ApikeyCredentialsStatus, String> {
-    creds_store::read_status()
+async fn read_apikey_credentials_status(
+    origin: origin::Origin,
+) -> Result<creds_store::ApikeyCredentialsStatus, String> {
+    apikey_remote::status_on(&origin).await
 }
 
 /// `K-H2b` `KH2B7`：界面问「**这几个本机账号在 apikey 表里有没有行、本机中转在不在跑**」。
@@ -1850,9 +1857,19 @@ fn apikey_routing_for(config_dirs: Vec<String>) -> ApikeyRouting {
 /// ⚠ 〔`K-R20` 订正 09-03〕原先点的是
 /// `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕，**那个名字全仓零定义**，
 /// 而这句话是当现状在说。
+///
+/// # 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的那台机器上
+///
+/// 本机那一臂只进 `creds_store`（原样）；远端那一臂由 monitor 推出账号 id、交**那台机器的后端**写
+/// （帧面 `apikey-key-set`，后端账号域那一份是那台机器上唯一的写者）。分派住 `apikey_remote::write_key_on`。
+/// 明文在本函数体里仍然**只被往下传一次**（`PLAINTEXT_HOPS` 那一行跟着改了住址）。
 #[tauri::command]
-fn write_apikey_credentials_key(key: String, config_dir: String) -> Result<(), String> {
-    creds_store::write_key(&config_dir, &key)
+async fn write_apikey_credentials_key(
+    origin: origin::Origin,
+    key: String,
+    config_dir: String,
+) -> Result<(), String> {
+    apikey_remote::write_key_on(&origin, &config_dir, key).await
 }
 
 /// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。

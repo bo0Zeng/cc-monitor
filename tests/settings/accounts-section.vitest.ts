@@ -774,7 +774,9 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     );
     // ★ 正题的另一半：那条命令**确实**收到了 configDir（不是「什么都没传所以没推 id」）。
     expect(
-      /write_apikey_credentials_key\(\{\s*key,\s*configDir\s*\}\)/.test(code),
+      /write_apikey_credentials_key\(\{\s*origin:\s*this\.machineOrigin\(\),\s*key,\s*configDir\s*\}\)/.test(
+        code,
+      ),
       "那条写命令没把 configDir 一起交出去 —— 后端就只能落到顶层那一格",
     ).toBe(true);
   });
@@ -1656,7 +1658,8 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     for (let i = 0; i < 6; i++) await tick();
 
     const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
-    expect(writes.map(([, a]) => a)).toEqual([{ key: "sk-ant-FOR-B", configDir: B_DIR }]);
+    // 〔RM1a〕key 落在**建号的那台机器**上：这一页站在 devbox ⇒ origin 就是 devbox（先前不收 origin，落本机）。
+    expect(writes.map(([, a]) => a)).toEqual([{ origin: "devbox", key: "sk-ant-FOR-B", configDir: B_DIR }]);
     expect(el.querySelector(".accounts-new-pending"), "写完了还挂着「等」那一行").toBeNull();
     expect(el.querySelector("select")).toBeNull();
   });
@@ -1674,6 +1677,33 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
     expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
+  });
+
+  it("〔RM1a〕等着的那把 key 只认**建它的那台机器**：换到本机页、同名的号出现也不写；回到那台才写", async () => {
+    const calls = wire();
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    await submitApikey(el, "b", "sk-ant-FOR-B");
+    expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
+    // 换到本机页：本机恰好也有一个叫 b 的号（本机列表走本机那条读口）。
+    fetchLocalAccountsMock.mockResolvedValue(
+      localState({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
+    );
+    setCurrentMachine(null);
+    for (let i = 0; i < 8; i++) await tick();
+    expect(fetchLocalAccountsMock, "没真切到本机页 —— 下面那条「没写」是空真").toHaveBeenCalled();
+    expect(
+      calls.some(([c]) => c === "write_apikey_credentials_key"),
+      "在 devbox 上建的号，key 被写到了本机",
+    ).toBe(false);
+    // 回到 devbox：号出现了 ⇒ 写给 devbox。
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
+    );
+    setCurrentMachine("devbox");
+    for (let i = 0; i < 8; i++) await tick();
+    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
+    expect(writes.map(([, a]) => a)).toEqual([{ origin: "devbox", key: "sk-ant-FOR-B", configDir: B_DIR }]);
   });
 
   it("「放弃」把等着的那把 key 丢掉：之后号出现也不写", async () => {
@@ -1794,7 +1824,10 @@ describe("S3：本机页新建账号", () => {
     expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
     await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
     const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
-    expect(writes.map(([, a]) => a)).toEqual([{ key: "sk-ant-FOR-B", configDir: B_DIR }]);
+    // 〔RM1a〕本机页 ⇒ origin 是后端那个本机串（本机那一份仍只由 monitor 写）。
+    expect(writes.map(([, a]) => a)).toEqual([
+      { origin: LOCAL_ORIGIN, key: "sk-ant-FOR-B", configDir: B_DIR },
+    ]);
     expect(el.querySelector(".accounts-new-pending")).toBeNull();
   });
 

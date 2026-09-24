@@ -170,6 +170,11 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   没有第二条路可回落（值只在那台机器上），长连接不在时明说「没有控制通道」；**照样走分流器**，
     //   理由与 `frame_query.rs` 那条逐字相同。
     ("backend_policy.rs", Verdict::UsesRouter),
+    // ★ 〔RM1a · 第四波〕账号层那份凭据文件**按机器**读写：远端那一臂问 / 交那台机器的后端
+    //   （`apikey-read` / `apikey-key-set`），都经 `apikey_remote.rs::call` 这一口。
+    //   没有第二条路可回落（那份文件只在那台机器上），长连接不在时明说「没有控制通道」；
+    //   **照样走分流器**，理由与 `backend_policy.rs` 那条逐字相同。
+    ("apikey_remote.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

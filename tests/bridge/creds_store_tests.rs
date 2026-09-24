@@ -889,26 +889,47 @@ fn the_status_type_cannot_carry_the_plaintext() {
 
 /// 明文那个入参从 IPC 边界进来之后，一路上**每一跳**允许它出现的地方。
 ///
-/// 每行 `(文件, 切窗口的锚点, 明文那个绑定叫什么, 它唯一该出现的那个写法)`。
-/// ⚠ **加一行、或把某一行的次数改大，都是放宽** —— 要先说清多出来的那一处是什么。
-const PLAINTEXT_HOPS: &[(&str, &str, &str, &str)] = &[
+/// 每行 `(文件, 切窗口的锚点, 明文那个绑定叫什么, 它该出现的那几个写法)`。
+/// 绑定在窗口里出现的次数必须**等于**那几个写法的条数，而且每一条都在。
+/// ⚠ **加一行、或给某一行多登一个写法，都是放宽** —— 要先说清多出来的那一处是什么。
+///
+/// 〔RM1a · 第四波〕这张表从「每跳恰好 1 处」改成「每跳逐处登记」，**只为一格**：
+/// `apikey_remote::write_key_on` 按机器分两臂（本机进 `creds_store`、远端交那台机器的后端），
+/// 两台机器两个写者，明文在那个函数体里**就是**两处。其余每跳仍然恰好 1 处（表里各登一条）。
+/// 远端那条路在 `send_key` 装进 `args` 之后就是通用的帧面编码，本表管到那一跳为止。
+const PLAINTEXT_HOPS: &[(&str, &str, &str, &[&str])] = &[
     (
         "lib.rs",
         "fn write_apikey_credentials_key(",
         "key",
-        "creds_store::write_key(&config_dir, &key)",
+        &["apikey_remote::write_key_on(&origin, &config_dir, key)"],
+    ),
+    (
+        "apikey_remote.rs",
+        "pub(crate) async fn write_key_on(",
+        "key",
+        &[
+            "crate::creds_store::write_key(config_dir, &key)",
+            "send_key(host, config_dir, key)",
+        ],
+    ),
+    (
+        "apikey_remote.rs",
+        "async fn send_key(",
+        "plain",
+        &["\"key\": plain"],
     ),
     (
         "creds_store.rs",
         "pub(crate) fn write_key(",
         "plain",
-        "plain,",
+        &["plain,"],
     ),
     (
         "creds_store.rs",
         "pub(crate) fn write_key_at(",
         "plain",
-        "SecretKey::new(plain)",
+        &["SecretKey::new(plain)"],
     ),
 ];
 
@@ -976,9 +997,13 @@ fn the_plaintext_argument_is_only_ever_handed_one_hop_further() {
             "creds_store.rs",
             include_str!("../../src/bridge/src/creds_store.rs"),
         ),
+        (
+            "apikey_remote.rs",
+            include_str!("../../src/bridge/src/apikey_remote.rs"),
+        ),
     ];
 
-    for (file, anchor, binding, only_use) in PLAINTEXT_HOPS {
+    for (file, anchor, binding, uses) in PLAINTEXT_HOPS {
         let raw = sources
             .iter()
             .find(|(f, _)| f == file)
@@ -1003,21 +1028,25 @@ fn the_plaintext_argument_is_only_ever_handed_one_hop_further() {
             "{file} 的 `{anchor}` 窗口里根本没有 `{binding}` —— 切法坏了，本条在空转"
         );
 
-        // ★ 正题：那个明文绑定**恰好出现一次**（**按标识符数，不按子串**），
-        //   且就是登记表说的那一处。
+        // ★ 正题：那个明文绑定出现的次数**等于**登记的写法条数（**按标识符数，不按子串**），
+        //   且每一条登记的写法都在。
         let n = count_ident(&code, binding);
         assert_eq!(
-            n, 1,
-            "{file} 的 `{anchor}` 里，明文绑定 `{binding}` 出现了 {n} 次，应当**恰好 1** 次。\n\
-                 ⚠ `K-H2` `KH7`：明文入参只许被往下传一次。多碰一次就多一个出口 ——\n\
+            n,
+            uses.len(),
+            "{file} 的 `{anchor}` 里，明文绑定 `{binding}` 出现了 {n} 次，登记的是 {} 处。\n\
+                 ⚠ `K-H2` `KH7`：明文入参只许被往下传登记过的那几次。多碰一次就多一个出口 ——\n\
                  进了一句日志 / 被拷进一个错误消息 / 被塞进一个结构体，都会撞这一条。\n\
                  真要多一处，先在件计划里说清那一处是什么，别在这里把次数改大。\n\
-                 窗口（已剥注释）：{code}"
+                 窗口（已剥注释）：{code}",
+            uses.len()
         );
-        assert!(
-            code.contains(only_use),
-            "{file} 的 `{anchor}` 里那唯一一次不是登记的写法 `{only_use}` —— 靶子挪了。\n\
-                 窗口（已剥注释）：{code}"
-        );
+        for only_use in *uses {
+            assert!(
+                code.contains(only_use),
+                "{file} 的 `{anchor}` 里没有登记的写法 `{only_use}` —— 靶子挪了。\n\
+                     窗口（已剥注释）：{code}"
+            );
+        }
     }
 }

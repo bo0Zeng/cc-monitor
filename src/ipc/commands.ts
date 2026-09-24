@@ -372,8 +372,11 @@ export const commands = {
    * （`history::apikey_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
    * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
    * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
+   *
+   * 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的**那台机器**上 —— 本机进 monitor 自己那一份，
+   * 远端交那台机器的后端写（`apikey-key-set`）。先前远端账号页配的 key 落在本机，远端会话用不上。
    */
-  write_apikey_credentials_key: (args: { key: string; configDir: string }) =>
+  write_apikey_credentials_key: (args: { origin: Origin; key: string; configDir: string }) =>
     invoke<void>("write_apikey_credentials_key", args),
 
   write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>
@@ -599,9 +602,10 @@ export const commands = {
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   /**
    * `K-H2a` `KS6`：读 apikey 表那把 key 的状态。**返回里永远只有掩码。**
+   * 〔RM1a〕收 `origin`：远端读的是**那台机器上**那一份（问那台的后端 `apikey-read`）。
    */
-  read_apikey_credentials_status: () =>
-    invoke<ApikeyCredentialsStatus>("read_apikey_credentials_status"),
+  read_apikey_credentials_status: (args: { origin: Origin }) =>
+    invoke<ApikeyCredentialsStatus>("read_apikey_credentials_status", args),
 
   /**
    * `K-H2b` `KH2B7`：问「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
