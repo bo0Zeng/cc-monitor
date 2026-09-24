@@ -1530,8 +1530,14 @@ deadcode_t0=$(date +%s)
 # ⚠ 这个数是**现打**的（本工作树 `w2/t4`，`cargo check -p monitor --message-format=short | grep -c "never used"`
 #   = 34，同一趟 `grep bind.rs` 只剩 `entry_from_marker_hit` / `find_window_by_marker_substr` /
 #   `process_creation_filetime` 三条），不是 35−1 算的。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-24（第二波大合并那一拍）：34 → 33，现打，逐条记**：
+#   R2 让生产改走 `payload.rs` 的 `relay_route_path_in` / `relay_base_url_in`，旧的两口 `relay_route_path` /
+#   `relay_base_url` 与两个跨半边样例常量 `RELAY_ROUTE_SAMPLE` / `RELAY_PASSTHROUGH_SAMPLE` 只剩判据在用
+#   ⇒ 四样都挂 `#[cfg(test)]`（样例常量是后端 `include_str!` 按源码文本读的，挂属性不影响那一读）。
+#   其中 `relay_route_path` 那一条在 33 之前的读数里本来就在（旧的那条 `payload.rs` 警告）⇒ 净 −1。
+#   ⚠ 同一拍 T4 让 `bind.rs::lookup_hwnd_for_token` 有了生产调用方（35→34 那一拍已记）。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 33，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=33; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \

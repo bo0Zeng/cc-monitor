@@ -754,6 +754,7 @@ pub fn relay_segment_is_safe(seg: &str) -> bool {
 /// 两处各拼一遍，就会各自答错同一个问题。
 ///
 /// **fail-closed**：任一段过不了白名单就 `Err`，绝不拼一条「看起来对」的 URL 出去。
+#[cfg(test)] // 〔第二波合并〕R2 之后生产走 `*_in` 那一版，这一口只剩判据与跨半边对拍在用
 pub fn relay_route_path(agent: &str, account: &str, key: &str) -> Result<String, String> {
     relay_route_path_in(RouteMode::Substitute, agent, account, key)
 }
@@ -780,6 +781,7 @@ pub fn relay_route_path_in(
 
 /// 注入给 agent 进程的 base URL。**恒回环**（`§0e` 裁四：回环是自指的，
 /// 同一个字面串写进哪台机器就指哪台 ⇒ 「选机器」这件事已经由「这条命令在哪台机器上跑」做完了）。
+#[cfg(test)] // 〔第二波合并〕R2 之后生产走 `*_in` 那一版，这一口只剩判据与跨半边对拍在用
 pub fn relay_base_url(port: u16, agent: &str, account: &str, key: &str) -> Result<String, String> {
     relay_base_url_in(RouteMode::Substitute, port, agent, account, key)
 }
@@ -803,9 +805,11 @@ pub fn relay_base_url_in(
 /// ⚠ 它不是文档，是**夹具**：`the_relay_route_sample_is_what_the_builder_really_produces`
 /// 钉住它逐字节等于 [`relay_route_path`] 的产物 ⇒ 谁改了构造口而没改它，monitor 这侧当场红；
 /// 谁改了它而后端那侧解析不出预期的段，backend 那侧当场红。
+#[cfg(test)] // 〔第二波合并〕R2 之后生产走 `*_in` 那一版，这一口只剩判据与跨半边对拍在用
 pub const RELAY_ROUTE_SAMPLE: &str = "/s/claude-code/acct-a/k-0123456789abcdef";
 
 /// 直通那一形的跨半边样例（同 [`RELAY_ROUTE_SAMPLE`]：它是**夹具**，不是文档）。
+#[cfg(test)] // 〔第二波合并〕R2 之后生产走 `*_in` 那一版，这一口只剩判据与跨半边对拍在用
 pub const RELAY_PASSTHROUGH_SAMPLE: &str = "/t/claude-code/acct-a/k-0123456789abcdef";
 
 /// `<key>` 段的**唯一铸造口**〔`KH2B6`〕。
