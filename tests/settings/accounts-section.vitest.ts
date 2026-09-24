@@ -47,6 +47,21 @@ import * as accounts from "../../src/accounts";
 import type { AccountsState, Account } from "../../src/accounts";
 import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
 import { buildAcctIsoCmd } from "../../src/settings/acct-deploy";
+import { copyText } from "../../src/copy-table";
+import COPY_TABLE from "../../src/shared/copy/table.json";
+
+/** 〔第三波 S3〕文案表里本机那一支的条目（key 以 `accountsLocal.` 打头）—— 现算，不写死条数。 */
+function localCopyEntries(): Array<[string, string]> {
+  const out = Object.entries(COPY_TABLE.entries as Record<string, { zh: string }>)
+    .filter(([k]) => k.startsWith("accountsLocal."))
+    .map(([k, e]) => [k, e.zh] as [string, string]);
+  if (out.length === 0) throw new Error("文案表里一条 accountsLocal.* 都没有 —— 下游的人群是空的");
+  return out;
+}
+/** 同上，按具名占位符切成字面段（插进去的值归「数据」那一类，不归文案）。 */
+function localCopyFragments(): string[] {
+  return localCopyEntries().flatMap(([, zh]) => zh.split(/\{[A-Za-z][A-Za-z0-9]*\}/));
+}
 
 function acct(p: Partial<Account>): Account {
   return {
@@ -113,6 +128,11 @@ async function mount(): Promise<HTMLElement> {
 beforeEach(() => {
   vi.restoreAllMocks();
   __resetMachineContextForTests();
+  // 〔第三波 S3〕共用 store 的 `null` 就是本机（`machine-context.ts` 头注）；本分节从此**只认 store**，
+  // 不再在 `null` 上兜底去读主远端。本文件大半条目量的是远端那一支 ⇒ 默认站在 devbox 那一页上；
+  // 量本机那一支的条目显式 `setCurrentMachine(null)`（各处的 `noRemotes()` 顺手做了 ——
+  // 一台远端都没配的机器只有本机那一页）。
+  setCurrentMachine("devbox");
   readRemoteConfigMock.mockReset().mockResolvedValue({ enabled: true, hosts: [host()] });
   // 〔AL1 · 2026-09-24〕从前本机那一支挂着一块「按账号生成命令」（挂上去就先预览一次），
   // 这里要给那条命令一个形状对的最小答案。那一块搬去了机器页 ⇒ 所有命令照旧回 `undefined`。
@@ -152,6 +172,7 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
    */
   it("没有已配置的远端 → 远端那三件套一件不出、远端读口一次不调（本机那一支归 NF1bD1）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    setCurrentMachine(null); // 〔第三波 S3〕一台远端都没配 ⇒ 只有本机那一页
     const el = await mount();
     expectNoReadyChrome(el);
     expect(
@@ -802,6 +823,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
   /** 没有配任何远端 —— 本族每条都从这里出发。 */
   function noRemotes(): void {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    setCurrentMachine(null); // 一台远端都没配 ⇒ 只有本机那一页
   }
 
   /**
@@ -946,6 +968,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     expect(harvested.filter((s) => s.includes("该远端尚未启用多账号"))).toEqual([]);
     // 阴性对照：同一把尺子在**远端**那一支上**认得出**「远端」——它不是恒空。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
+    setCurrentMachine("devbox"); // 〔第三波 S3〕站到 devbox 那一页上（上面的 `noRemotes()` 把 store 置回了本机）
     fetchAccountsMock.mockResolvedValue(state({ available: false, error: "backend 过旧" }));
     const remoteEl = await mount();
     expect(
@@ -955,7 +978,8 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
   });
 
   it("★ NF1bD2：本机文案表里逐条不含「远端」（分母 = 表的条目数，现算）", () => {
-    const table = Object.entries(accounts.LOCAL_ACCOUNTS_COPY);
+    // 〔第三波 S3〕人群加上文案表里本机那一支的条目（`accountsLocal.*`）—— 两个家都是本机的家。
+    const table = [...Object.entries(accounts.LOCAL_ACCOUNTS_COPY), ...localCopyEntries()];
     // 分母现算（`brief` 13b：报一个基数也是复述 ⇒ 不写死条数）。
     expect(table.length, "文案表是空的 —— 下面那条是空真").toBeGreaterThan(0);
     expect(
@@ -1002,6 +1026,8 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     const allowed = [
       // ① 本机文案表（现算，不写死条数）
       ...Object.values(accounts.LOCAL_ACCOUNTS_COPY),
+      // ①b 〔第三波 S3〕文案表里本机那一支的条目（`accountsLocal.*`）：带占位符的按占位符切成段
+      ...localCopyFragments(),
       // ② 徽章那一族：家在 accounts.ts，逐个账号现算
       ...st.accounts.flatMap((a) => {
         const b = accounts.accountStatusBadge(a);
@@ -1036,7 +1062,10 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
 
   // ---- `NF1bD3`：远端那条路一个字节没动 ----
 
-  it("★ NF1bD3：配了远端时照旧走远端那条读口，本机那一支一格不长", async () => {
+  it("★ NF1bD3：站在 devbox 那一页上照旧走远端那条读口，本机那一支一格不长", async () => {
+    // 〔第三波 S3〕题面原为「配了远端时照旧走远端那条读口」—— 那是「store 为空就兜底读主远端」
+    // 那一形的口径；兜底删了之后，「走不走远端」由**你站在哪一页**决定，不由「配没配远端」决定。
+    // 反方向（本机页 + 配了远端 ⇒ 本机那一支）见下一条。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: L1 })], defaultName: L1 }),
@@ -1048,6 +1077,167 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     // 远端那三件套照旧在（非空对照：这条不是在一屏空白上判的）。
     expect(el.querySelector(".accounts-table")).not.toBeNull();
     expect(el.querySelector(".accounts-current-banner")).not.toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 〔第三波 S3〕**本机页就是本机** —— 配了远端的机器上，本机那一页这一节原先显的是主远端的账号。
+//
+// 病：`init` 在 store 为 `null` 时兜底取主远端（E59 的「兜底落点」），`followMachine(null)` 原地不动。
+// 而 store 的初值恰好是 `null`、本机页一出现 per-machine 那几块就落在它上面 ⇒ 配了远端的机器上，
+// 本机那一支（连同 A3 那两条本机命令）一次都走不到；从 devbox 那一页切回本机页，这一节也还停在 devbox。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("S3：本机页就是本机（配了远端也一样）", () => {
+  it("★ 本机页（store = null）＋ 配了远端 ⇒ 走本机那条读口，远端读口一次不调", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
+    setCurrentMachine(null);
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    expect(fetchLocalAccountsMock, "本机页上没去读本机的账号").toHaveBeenCalled();
+    expect(fetchAccountsMock, "本机页上去读了远端的账号").not.toHaveBeenCalled();
+    expect(el.querySelector(".accounts-local"), "本机页上没有本机那一块").not.toBeNull();
+    expect(el.querySelector(".accounts-table"), "本机页上长出了远端那张表").toBeNull();
+  });
+
+  it("★ 从 devbox 那一页切回本机页 ⇒ 这一节跟着切到本机（不停在 devbox）", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    // 前提：确实先站在 devbox 上（否则下面那条「切回来」是空真）。
+    expect(el.querySelector(".accounts-table"), "前提：先得在 devbox 那一页上").not.toBeNull();
+    expect(fetchLocalAccountsMock).not.toHaveBeenCalled();
+    setCurrentMachine(null);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetchLocalAccountsMock, "切回本机页后没去读本机").toHaveBeenCalled();
+    expect(el.querySelector(".accounts-local"), "切回本机页后这一节还停在 devbox").not.toBeNull();
+    expect(el.querySelector(".accounts-table")).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 〔第三波 S3〕A3 那两条本机命令接上界面：`check_local_acct_iso` / `local_acct_iso_shellinit`。
+// 两条今天零界面调用点（`设计/96` A3-4「界面接线」）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("S3：本机那一支接上 A3 的两条本机命令", () => {
+  const FENCED =
+    "# ===== BEGIN cc-acct-iso =====\nexport CLAUDE_CONFIG_DIR='/h/.claude-alt/z'\n" +
+    "# ===== END cc-acct-iso =====\n";
+
+  function noRemotes(): void {
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    setCurrentMachine(null); // 一台远端都没配 ⇒ 只有本机那一页
+  }
+  /** 只答指名的那几条命令，其余一律 `undefined`（与本文件默认桩同形）。 */
+  function answer(table: Record<string, () => Promise<unknown>>): void {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd in table ? table[cmd]() : Promise.resolve(undefined),
+    );
+  }
+  const calledWith = (cmd: string): number => invokeMock.mock.calls.filter(([c]) => c === cmd).length;
+
+  it("★ 空态 · 装了 ⇒ 说装在哪（后端答的路径原样上屏），下一步是在终端里 init", async () => {
+    noRemotes();
+    answer({
+      check_local_acct_iso: () =>
+        Promise.resolve({ installed: true, path: "/h/.local/bin/cc-acct-iso", vendor_id: "v" }),
+    });
+    const el = await mount();
+    expect(calledWith("check_local_acct_iso"), "空态没去问本机装没装").toBe(1);
+    expect(calledWith("check_remote_acct_iso"), "本机那一支去问了远端").toBe(0);
+    const iso = el.querySelector(".accounts-local-iso")?.textContent ?? "";
+    expect(iso).toBe(copyText("accountsLocal.acctIso.installed", { path: "/h/.local/bin/cc-acct-iso" }));
+    expect(el.querySelector(".accounts-local-empty-next")?.textContent).toBe(
+      copyText("accountsLocal.acctIso.initNext"),
+    );
+  });
+
+  it("★ 空态 · 没装 ⇒ 说没装，下一步照旧是「装 + 初始化」那一句", async () => {
+    noRemotes();
+    answer({
+      check_local_acct_iso: () => Promise.resolve({ installed: false, path: null, vendor_id: "v" }),
+    });
+    const el = await mount();
+    expect(el.querySelector(".accounts-local-iso")?.textContent).toBe(
+      copyText("accountsLocal.acctIso.missing"),
+    );
+    expect(el.querySelector(".accounts-local-empty-next")?.textContent).toBe(
+      accounts.LOCAL_ACCOUNTS_COPY.emptyNext,
+    );
+  });
+
+  it("★ 空态 · 问不出来 ⇒ 说问不出来 ＋ 原因；不许当成「装了」也不许当成「没装」", async () => {
+    noRemotes();
+    answer({ check_local_acct_iso: () => Promise.reject(new Error("本机后端不在")) });
+    const el = await mount();
+    const iso = el.querySelector(".accounts-local-iso")?.textContent ?? "";
+    expect(iso).toContain("本机后端不在");
+    expect(iso).not.toBe(copyText("accountsLocal.acctIso.missing"));
+    expect(el.querySelector(".accounts-local-empty-next")?.textContent).toBe(
+      accounts.LOCAL_ACCOUNTS_COPY.emptyNext,
+    );
+    expect(el.textContent ?? "").not.toContain(copyText("accountsLocal.acctIso.initNext"));
+  });
+
+  it("★ 三个结局两两不同（只断「调了」的话，三档写成同一句也全绿）", async () => {
+    const seen: string[] = [];
+    for (const r of [
+      () => Promise.resolve({ installed: true, path: "/p", vendor_id: "v" }),
+      () => Promise.resolve({ installed: false, path: null, vendor_id: "v" }),
+      () => Promise.reject(new Error("x")),
+    ]) {
+      noRemotes();
+      answer({ check_local_acct_iso: r });
+      const el = await mount();
+      seen.push(
+        `${el.querySelector(".accounts-local-iso")?.textContent}|${el.querySelector(".accounts-local-empty-next")?.textContent}`,
+      );
+    }
+    expect(new Set(seen).size).toBe(3);
+  });
+
+  it("★ 有号 ⇒ 不问装没装；「生成 rc 片段」走本机那条命令，渲染成待贴块", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(
+      localState({ accounts: [acct({ name: "z" })], defaultName: "z" }),
+    );
+    answer({ local_acct_iso_shellinit: () => Promise.resolve(FENCED) });
+    const el = await mount();
+    expect(calledWith("check_local_acct_iso"), "已启用还去问装没装").toBe(0);
+    const btn = [...el.querySelectorAll<HTMLButtonElement>(".accounts-local button")].find(
+      (b) => b.textContent === copyText("accountsLocal.rc.action"),
+    );
+    expect(btn, "本机那一块没有「生成 rc 片段」").toBeTruthy();
+    expect(calledWith("local_acct_iso_shellinit"), "没点就去抓了").toBe(0);
+    btn!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calledWith("local_acct_iso_shellinit")).toBe(1);
+    expect(calledWith("remote_acct_iso_shellinit"), "本机那一支去抓了远端的片段").toBe(0);
+    expect(el.querySelector<HTMLTextAreaElement>(".accounts-local .paste-block-out")?.value).toBe(FENCED);
+    // 待贴块上的三句话也是本机口吻：一个「远端」都没有。
+    const txt = el.querySelector(".accounts-local .paste-block")?.textContent ?? "";
+    expect(txt.length).toBeGreaterThan(10);
+    expect(txt).not.toContain("远端");
+    expect(txt).toContain(copyText("accountsLocal.rc.target"));
+  });
+
+  it("★ 抓取失败 ⇒ 不渲染任何待贴块，原因进提示", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(
+      localState({ accounts: [acct({ name: "z" })], defaultName: "z" }),
+    );
+    answer({ local_acct_iso_shellinit: () => Promise.reject(new Error("没跑过 init")) });
+    const toast = vi.mocked(showActionFailureToast);
+    toast.mockClear();
+    const el = await mount();
+    [...el.querySelectorAll<HTMLButtonElement>(".accounts-local button")]
+      .find((b) => b.textContent === copyText("accountsLocal.rc.action"))!
+      .click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(el.querySelector(".paste-block")).toBeNull();
+    expect(toast.mock.calls.map((c) => String(c[1])).join(" ")).toContain("没跑过 init");
   });
 });
 
@@ -1084,6 +1274,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
 
   function noRemotes(): void {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    setCurrentMachine(null); // 一台远端都没配 ⇒ 只有本机那一页
   }
 
   /** 跑一遍本机那条路，回来时账本里本机那一栏长什么样。 */
