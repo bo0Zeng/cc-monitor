@@ -24,7 +24,7 @@ vi.mock("../../src/ipc/commands", () => ({
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
-import { DataSection } from "../../src/settings/data-section";
+import { DataSection, describeDataClass } from "../../src/settings/data-section";
 
 const SRC = "src/settings/data-section.ts";
 
@@ -90,6 +90,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
   it("② 每一条的路径都以纯文本上屏；按钮上没有「删 / 清」", async () => {
     const item = (label: string, path: string) => ({
       label,
+      class: "truth" as const,
       path,
       kind: "file",
       description: `${label} 是什么`,
@@ -119,5 +120,51 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
     expect(buttons.length, "一颗按钮都没有 —— 下面的「没有删」是空真").toBeGreaterThan(0);
     expect(buttons.filter((t) => /删|清/.test(t))).toEqual([]);
+  });
+});
+
+describe("〔ST2 · 用户 09-24 裁〕数据位置「真相 / 缓存」那一格", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const mk = (label: string, cls: string) => ({
+    label,
+    class: cls,
+    path: `/h/.claude/claudecode-frontend/${label}`,
+    kind: "file",
+    description: `${label} 是什么`,
+    exists: true,
+    sizeBytes: 1,
+  });
+
+  it("★★ 每一行都说得出删了会怎样，且说的是**它自己那一类**（两向：行 ↔ 类）", async () => {
+    const entries = [
+      mk("config.json", "truth"),
+      mk("history-metadata.json", "truth"),
+      mk("sid-hwnd-cache.json", "cache"),
+      mk("logs/", "cache"),
+    ];
+    paths.value = { monitorDataDir: "/h", entries, webviewUserDataDir: null, profileBackupDirs: [] };
+    const sec = new DataSection({ headless: true });
+    document.body.appendChild(sec.element);
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
+    expect(rows.length, "一行都没挂上类 —— 下面的逐行比在空人群上恒绿").toBe(entries.length);
+    const got = rows.map((r) => [
+      r.querySelector(".settings-data-item-label")!.textContent,
+      r.querySelector<HTMLElement>("[data-data-class]")!.textContent,
+    ]);
+    expect(got).toEqual([
+      ["config.json", "删了会丢"],
+      ["history-metadata.json", "删了会丢"],
+      ["sid-hwnd-cache.json", "可随手删"],
+      ["logs/", "可随手删"],
+    ]);
+  });
+
+  it("★ 后端将来加第三类 ⇒ 原样说出来，不整页炸、也不假装认识", () => {
+    expect(describeDataClass("truth")).toBe("删了会丢");
+    expect(describeDataClass("cache")).toBe("可随手删");
+    expect(describeDataClass("archive" as never)).toBe("类别未知（archive）");
   });
 });

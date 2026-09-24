@@ -34,8 +34,28 @@ import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 //    正确方向是把 Rust 侧改成 enum（让源更严），**但那是类型收紧、不属于 C01 范围**，
 //    已登记。在那之前 `kind` 在 TS 侧是 `string`。
 // `ts-rs` 一个类型一个文件，所以是两条 import（本文件其余 import 不带扩展名，这里对齐）。
+import type { DataClass } from "../generated/DataClass";
 import type { DataPathInfo } from "../generated/DataPathInfo";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
+
+/**
+ * 〔第四波 ST2 · 用户 09-24 裁「真相 / 缓存列提前做」〕每一行那一格「删了会怎样」。
+ *
+ * 值来自后端 `data_paths.rs::DataPathInfo.class`（非可选枚举，`INVARIANTS §2.1` 那两类）。
+ * 它治的是 `70 §11.5.2` 写下的那笔代价：用户**看得见每个文件多大，却看不出哪个删了会丢东西**
+ * ⇒ 想清干净的人只能整个目录一起删、或者一个都不敢删。
+ * ⚠ 后端加第三类时**不许整页炸**，也不许假装认识它 —— 原样说出来。
+ */
+export function describeDataClass(c: DataClass): string {
+  switch (c) {
+    case "truth":
+      return "删了会丢";
+    case "cache":
+      return "可随手删";
+    default:
+      return `类别未知（${String(c)}）`;
+  }
+}
 
 /** 一个 `<strong>` —— 让「强调」由 DOM 结构承担，而不是由字符串里的标记承担（`70 §2.3`）。 */
 function strong(text: string): HTMLElement {
@@ -189,6 +209,8 @@ export class DataSection {
       " 默认",
       strong("不清"),
       "这些数据。想彻底清除（星标 / 颜色配置 / WebView2 cache 等）请手动删除上面的目录。",
+      // 〔ST2〕那一格怎么读：只想腾空间的话，删「可随手删」的就够了。
+      "标着「可随手删」的下次用到时会重建；标着「删了会丢」的是你设过的东西。",
     );
     this.mainBody.appendChild(note);
   }
@@ -244,6 +266,14 @@ export class DataSection {
     desc.className = "settings-data-item-desc";
     desc.textContent = info.description;
     li.appendChild(desc);
+
+    // 〔ST2〕「删了会怎样」那一格。类别进 DOM（`data-class`），判据与用户看的是同一份值。
+    // ⚠ 不挂类名：它只要一段字，不要样式（`css-ledger` ③ 是棘轮，新造一个没规则的类名会抬它）。
+    li.dataset.class = info.class;
+    const cls = document.createElement("span");
+    cls.dataset.dataClass = info.class;
+    cls.textContent = describeDataClass(info.class);
+    li.appendChild(cls);
 
     const meta = document.createElement("span");
     meta.className = "settings-data-item-meta";
