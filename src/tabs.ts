@@ -58,7 +58,6 @@ import {
 /** 〔U3b〕只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
 const NOOP_META: MetaSink = { onBranchRecord: () => {}, onQueueOperation: () => {} };
 import type { BranchRecord } from "./branching";
-import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
 import {
@@ -83,7 +82,6 @@ import {
 // `"__local__"`，是账号面自己的标记，**不是 backend origin**。导错一个不会红，只会静默查不到。
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
-import { collectEditedFiles } from "./panorama/session-files";
 import { turnEndNotifier } from "./turn-notify";
 import { activityLightClass, type GridSessionSnapshot, type SessionPeek } from "./session-status";
 import { contextPercent } from "./views/context-limit";
@@ -121,6 +119,13 @@ export {
 } from "./tab-drop";
 export type { DropTarget, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
+import {
+  abortRunningAgents,
+  noteAgents,
+  noteForkedFrom,
+  noteTouchedFiles,
+  noteUsage,
+} from "./tab-session-facts";
 import {
   TabSessionActions,
   bringMonitorToFront,
@@ -1089,14 +1094,8 @@ export class TabManager {
     this.trackUsage(tab, payload.message, payload.seq);
 
     // F70：累进本会话改动集（写类工具 file_path）——放在双重去重之后（重投不重复累），
-    // 渲染/收纳门控之前（连"收纳不建卡"的记录也计入）。纯增量、无 DOM。
-    // F91b-fix(batch18 审计修)：re-touch 时 delete+add 把它移到末尾 = **近因序**，让 F91b peek 的
-    // slice(-8) 显「最近改的 8 个」（原 Set 只记首触序，此刻正猛改的老文件被埋）。Set 成员/size 不变，
-    // F70 全景高亮按成员判定、与序无关，安全。O(1)/文件。
-    for (const f of collectEditedFiles(payload.message)) {
-      tab.touchedFiles.delete(f);
-      tab.touchedFiles.add(f);
-    }
+    // 渲染/收纳门控之前（连"收纳不建卡"的记录也计入）。纯增量、无 DOM。近因序那条理由见 `noteTouchedFiles` 头注。
+    noteTouchedFiles(tab, payload.message);
 
     const sink: StreamSink = {
       timeline: tab.timeline,
@@ -1727,17 +1726,9 @@ export class TabManager {
     this.refreshTabBar();
   }
 
-  /**
-   * issue #63①：从记录里取 `forkedFrom.sessionId`，锁定血缘并给标题加 `↳` 徽标（同 aiTitle:出现一次
-   * 就锁,后续记录/重投不覆盖）。fork 会话的首条记录带 `forkedFrom`（Claude 原生 `/branch` 格式,
-   * 后端 history.rs 也读它）——但活 tab 层此前完全不看它,fork 与原会话是同名独立 tab、分不清。
-   */
+  /** issue #63①：首条带 `forkedFrom` 的记录锁定血缘（`tab-session-facts.ts::noteForkedFrom`）⇒ 标题加 `↳` 徽标。 */
   private applyForkedFrom(tab: Tab, message: unknown): void {
-    if (tab.forkedFromSessionId) return; // 已锁定
-    const fk = (message as { forkedFrom?: { sessionId?: unknown } }).forkedFrom;
-    const sid = fk?.sessionId;
-    if (typeof sid !== "string" || sid.length === 0) return;
-    tab.forkedFromSessionId = sid;
+    if (!noteForkedFrom(tab, message)) return;
     tab.title = this.computeTitle(tab);
     this.refreshTabBar();
   }
@@ -1881,141 +1872,23 @@ export class TabManager {
     this.refreshTabBar();
   }
 
-  /**
-   * issue #23（第二增量）：从 jsonl 流配对 agent 工具调用。
-   * - assistant 的 Task/Agent tool_use → 注册 running（label 取 input.description，
-   *   回退 prompt 首行 / 工具名）
-   * - user 的 tool_result（按 tool_use_id 命中）→ done
-   * 防 spam：只在真有变化时刷新面板。结构防御：message 形态全 unknown 窄化，
-   * 任何不匹配静默跳过（§18 同源精神）。
-   */
-  /**
-   * F88b：从 assistant 记录抽 usage → 更新 tab.latestPromptTokens/latestModel（供 HUD context%）。
-   * prompt token = input + cache_creation + cache_read（本轮喂进模型的总量，即 context 占用近似）。
-   * 只认带 usage 的 assistant 记录（user/system/无 usage 的一律跳过，保留上一次值）。
-   *
-   * 审计加固：
-   * - **seq 单调**：onLine 投递序不保证升序（重放/远端重投），故只在 `seq >= tab.latestUsageSeq`
-   *   时覆盖——「最新」= 最大 seq 而非最后到达，防低 seq 历史记录盖掉高 seq 实时值（会误显低占用%）。
-   * - **批期不刷 chip**：重放/大增量批（inBatch）里逐条 assistant 记录都触发 setActive 会视觉抖动
-   *   （10%→20%→…），故批期只更 tab 字段、不喂回调；onBatchEnd 对活跃 tab 单次 flush。
-   */
+  /** F88b：带 usage 的 assistant 记录 ⇒ 更新本会话最新 prompt token ＋ model（`tab-session-facts.ts::noteUsage`）。
+   *  批期不即时喂 chip（onBatchEnd 单次 flush）；实时流则即时刷活跃会话。 */
   private trackUsage(tab: Tab, message: unknown, seq: number): void {
-    const rec = message as {
-      type?: string;
-      message?: {
-        model?: unknown;
-        usage?: {
-          input_tokens?: unknown;
-          cache_creation_input_tokens?: unknown;
-          cache_read_input_tokens?: unknown;
-        };
-      };
-    };
-    if (rec?.type !== "assistant") return;
-    const usage = rec.message?.usage;
-    if (!usage || typeof usage !== "object") return;
-    const num = (v: unknown): number => (typeof v === "number" && v >= 0 ? v : 0);
-    const prompt =
-      num(usage.input_tokens) +
-      num(usage.cache_creation_input_tokens) +
-      num(usage.cache_read_input_tokens);
-    // 全 0（无任何 token 字段）→ 视为无效 usage，不覆盖上一次有效值。
-    if (prompt <= 0) return;
-    // seq 回退（更老的记录晚到）→ 不覆盖更新的值。
-    if (seq < tab.latestUsageSeq) return;
-    tab.latestUsageSeq = seq;
-    tab.latestPromptTokens = prompt;
-    tab.latestModel = typeof rec.message?.model === "string" ? rec.message.model : null;
-    // 批期不即时喂 chip（onBatchEnd 单次 flush）；实时流则即时刷活跃会话。
+    if (!noteUsage(tab, message, seq)) return;
     if (!this.inBatch && tab.sessionId === this.activeId) {
       this.onActiveUsageChanged?.(tab.latestModel, tab.latestPromptTokens);
     }
   }
 
+  /** issue #23（第二增量）：配对 agent 工具调用（`tab-session-facts.ts::noteAgents`），真有变化才刷面板。 */
   private trackAgents(tab: Tab, message: unknown): void {
-    const rec = message as {
-      type?: string;
-      timestamp?: unknown;
-      message?: { content?: unknown };
-    };
-    const content = rec?.message?.content;
-    if (!Array.isArray(content)) return;
-    // F77：这条 assistant 记录的 timestamp——存进 AgentEntry 供「点进 agent 看记录」的 load_subagent 定位。
-    const recTimestamp = typeof rec.timestamp === "string" ? rec.timestamp : "";
-    let changed = false;
-    if (rec.type === "assistant") {
-      for (const b of content) {
-        const blk = b as {
-          type?: string;
-          id?: string;
-          name?: string;
-          input?: { description?: unknown; prompt?: unknown; subagent_type?: unknown };
-        };
-        if (
-          blk?.type !== "tool_use" ||
-          typeof blk.id !== "string" ||
-          typeof blk.name !== "string" ||
-          !isAgentTool(blk.name)
-        ) {
-          continue;
-        }
-        // F77：desc **trim 后**（镜像卡片 `input.description?.trim()`），供 load_subagent 精确匹配。
-        const desc = (
-          typeof blk.input?.description === "string" ? blk.input.description : ""
-        ).trim();
-        const prompt =
-          typeof blk.input?.prompt === "string" ? blk.input.prompt : "";
-        const label =
-          desc || prompt.split("\n")[0]?.slice(0, 80) || blk.name;
-        const agentType =
-          typeof blk.input?.subagent_type === "string"
-            ? blk.input.subagent_type
-            : null;
-        tab.agents.set(blk.id, {
-          id: blk.id,
-          label,
-          agentType,
-          status: "running",
-          timestamp: recTimestamp, // F77：供 load_subagent 定位子 agent
-          desc, // F77：load_subagent 精确匹配的 description（trim 后，非展示 label）
-        });
-        changed = true;
-      }
-      // 上限 30：超出删最老的非 running（Map 保持插入序）
-      if (tab.agents.size > 30) {
-        for (const [id, a] of tab.agents) {
-          if (tab.agents.size <= 30) break;
-          if (a.status !== "running") tab.agents.delete(id);
-        }
-      }
-    } else if (rec.type === "user") {
-      for (const b of content) {
-        const blk = b as { type?: string; tool_use_id?: string };
-        if (blk?.type !== "tool_result" || typeof blk.tool_use_id !== "string") {
-          continue;
-        }
-        const a = tab.agents.get(blk.tool_use_id);
-        if (a && a.status === "running") {
-          a.status = "done";
-          changed = true;
-        }
-      }
-    }
-    if (changed) this.agentsChanged(tab);
+    if (noteAgents(tab, message)) this.agentsChanged(tab);
   }
 
-  /** issue #23：会话不再 busy（idle/shell/归档）→ 仍 running 的 agent 标 aborted
-   *（ESC 打断/崩溃不会有 tool_result，防僵尸"运行中"）。 */
+  /** issue #23：会话不再 busy ⇒ 仍 running 的 agent 标 aborted（`tab-session-facts.ts::abortRunningAgents`）。 */
   private sweepRunningAgents(tab: Tab): void {
-    let changed = false;
-    for (const a of tab.agents.values()) {
-      if (a.status === "running") {
-        a.status = "aborted";
-        changed = true;
-      }
-    }
-    if (changed) this.agentsChanged(tab);
+    if (abortRunningAgents(tab)) this.agentsChanged(tab);
   }
 
   /** agents 变化 → 若是 active Tab 同步给全局面板 */
