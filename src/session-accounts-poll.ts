@@ -27,9 +27,24 @@
  * ⇒ 行为与今天一样（今天靠 `8 < 10` 这个巧合达到同样效果），但**意图从巧合变成明写**，
  * 而且以后有人把 TTL 调到 12s 时不会悄悄把这条轮询变成空转。
  *
- * ⚠ 与之相对，`fetchAccounts`（账号列表，30s TTL）**刻意不 force**：
- * 账号列表只在迁移/登录时变，让它 3 轮才真发一次 SSH 是对的。
- * **两者的区别是数据变化率，不是疏忽** —— 写在这里免得下一个人「顺手统一一下」。
+ * ⚠ 与之相对，`fetchAccounts`（账号列表，30s TTL）**默认不 force**：
+ * 账号列表只在迁移/登录时变。**两者的区别是数据变化率，不是疏忽** ——
+ * 写在这里免得下一个人「顺手统一一下」。
+ *
+ * # 🔴 〔`C1` · 2026-09-24〕那个 10 秒轮询**删了**
+ *
+ * 它补的是「别人改了账号没有事件源」（`polling_registry` 那条 F02 订正逐字）。两件事改了它的前提：
+ *
+ * 1. 两条查询搬上了**已有的长连接**（后端帧面 `accounts-sessions` / `accounts-list`）——
+ *    问一次不再是「一次完整的 TCP+SSH+鉴权」（此前每台每小时 480 次握手）。
+ * 2. 「会话 ↔ 账号」只在**会话起停**时变（后端读的是 `sessions/<PID>.json` ＋ 那个进程的环境，
+ *    进程活着时环境不变）—— 而会话起停**本来就有帧**（`session_added` / `session_removed`），
+ *    monitor 早就把它们转成 `remote-session-added` / `session-ended` 两个事件。
+ *
+ * ⇒ 刷新改由事件驱动（{@link createEventRefresher}）：长连接握手完成（`remote-backend-ready`，
+ * 强制刷账号清单）· 会话起停 · 本 UI 切号。**零定时器**。
+ * 买不到的一格如实写：**另一个 monitor 改了默认账号、而这台上没有任何会话起停** ——
+ * 这边的账号清单要等下一次握手 / 会话起停 / 本 UI 操作才刷新（此前最多 30 秒）。
  */
 
 import type { RemoteHostConfig } from "./remote-config";
@@ -88,13 +103,15 @@ export interface AccountRows {
 async function oneHost(
   h: RemoteHostConfig,
   f: HostFetchers,
+  forceAccounts: boolean,
 ): Promise<{ origin: string; sessions: SessionAccount[]; state: AccountsState }> {
   const origin = h.label || h.host;
   const [sessions, state] = await Promise.all([
-    // ★ 显式 force：轮询是这个缓存的**写者**，见模块头注。
+    // ★ 显式 force：刷新者是这个缓存的**写者**，见模块头注。
     f.fetchSessionAccounts(origin, true),
-    // ★ 刻意不 force：账号列表 30s TTL，变化率低，3 轮真发一次就够。
-    f.fetchAccounts(origin),
+    // ★ 默认不 force（账号列表 30s TTL，变化率低）；长连接刚握手完时才 force ——
+    //   那之前缓存里可能是一份「没有控制通道」的不可用结果，不 force 会把它再端 30 秒。
+    forceAccounts ? f.fetchAccounts(origin, true) : f.fetchAccounts(origin),
   ]);
   return { origin, sessions, state };
 }
@@ -110,8 +127,9 @@ export async function collectAccountRows(
   hosts: readonly RemoteHostConfig[],
   f: HostFetchers,
   limit: number = HOST_FANOUT_LIMIT,
+  forceAccounts = false,
 ): Promise<AccountRows> {
-  const per = await mapWithLimit(hosts, limit, (h) => oneHost(h, f));
+  const per = await mapWithLimit(hosts, limit, (h) => oneHost(h, f, forceAccounts));
 
   const out: AccountRows = {
     rows: [],
@@ -129,116 +147,62 @@ export async function collectAccountRows(
   return out;
 }
 
-export interface GatedPollerOptions {
-  intervalMs: number;
-  /**
-   * 一轮要干的活。
-   *
-   * ⚠ **它抛错由本轮询器接住**，不是「调用方自己消化」：`start()` 里是 `void run()`，
-   * 不接住就变成 unhandled rejection —— 本仓 `main.ts` 挂着全局 `unhandledrejection`
-   * 钩子，那会把每一次失败刷进状态栏。接住之后按 **E4**（静默失败给身份）
-   * 打一条带名字的 warn，并计进 `failures` 让判据看得见。
-   */
-  tick: () => Promise<void>;
-  /** 出错时怎么报。默认 `console.warn`。 */
-  onError?: (e: unknown) => void;
-  /** 窗口当前看不见吗。默认读 `document.hidden`。 */
-  isHidden?: () => boolean;
-  /** 订阅可见性变化，返回退订函数。默认挂 `visibilitychange`。 */
-  subscribeVisibility?: (cb: () => void) => () => void;
-}
-
-export interface GatedPoller {
-  start(): void;
-  /** 停表并退订。⚠ 今天 `main.ts` 那个 `setInterval` 的句柄是**丢掉的**，全仓没人停得了它。 */
-  stop(): void;
-  /** 因为上一轮还在飞而跳过的次数（判据用）。 */
-  readonly skippedInFlight: number;
-  /** 因为窗口不可见而跳过的次数（判据用）。 */
-  readonly skippedHidden: number;
-  /** `tick` 抛错的次数。⚠ 有身份地失败（E4）：不许把异常吞成「看起来一切正常」。 */
+/**
+ * 事件驱动的刷新器〔`C1` · 2026-09-24〕—— 替掉那个 10 秒 `setInterval`。
+ *
+ * - **零定时器**：只在 {@link EventRefresher.request} 时跑。
+ * - **不叠加**：在飞时再来的请求合并成**一次**补跑（跑完立刻再跑一轮，拿到最新）；
+ *   启动时一批 `remote-session-added` 涌进来只会多跑一轮，不会摞 N 轮。
+ * - `force` 在合并时取「或」：任何一次要求 force，补跑那一轮就 force。
+ * - `run` 抛错由这里接住（E4：有身份地失败，计进 `failures`），不留 unhandled rejection，
+ *   也不把「在飞」焊死。
+ */
+export interface EventRefresher {
+  request(force?: boolean): void;
+  /** 在飞时进来、被合并掉的请求数（判据用）。 */
+  readonly coalesced: number;
+  /** `run` 抛错的次数。 */
   readonly failures: number;
 }
 
-/**
- * 带**重入锁**与**可见性门控**的轮询器。
- *
- * - 上一轮没跑完 ⇒ 这一拍**跳过**（不叠加）。今天没有这条：单轮 >10s 时轮次会摞起来。
- * - 窗口不可见 ⇒ 跳过；**重新可见时立刻补一轮**（否则用户切回来看到的是陈旧数据）。
- * - `start()` 会**先跑一轮**再起表 —— 与今天 `void refreshSessionAccounts(); setInterval(…)` 一致。
- *
- * ⚠ 这不是新增周期唤醒（定框 **E6** 只许减不许增）：它**替换**了 `main.ts` 原来那个
- * `setInterval`，而且新增了「可见性跳过」与「能停」两条**减少**唤醒的性质。
- */
-export function createGatedPoller(o: GatedPollerOptions): GatedPoller {
-  const isHidden = o.isHidden ?? ((): boolean => document.hidden);
-  const subscribe =
-    o.subscribeVisibility ??
-    ((cb: () => void): (() => void) => {
-      document.addEventListener("visibilitychange", cb);
-      return () => document.removeEventListener("visibilitychange", cb);
-    });
-
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let unsubscribe: (() => void) | null = null;
+export function createEventRefresher(
+  run: (force: boolean) => Promise<void>,
+  onError: (e: unknown) => void = (e) => console.warn("session-accounts refresh failed:", e),
+): EventRefresher {
   let inFlight = false;
-  let skippedInFlight = 0;
-  let skippedHidden = 0;
+  let pending = false;
+  let pendingForce = false;
+  let coalesced = 0;
   let failures = 0;
-
-  const onError =
-    o.onError ??
-    ((e: unknown): void => {
-      console.warn("session-accounts poller tick failed:", e);
-    });
-
-  const run = async (): Promise<void> => {
-    if (inFlight) {
-      skippedInFlight += 1;
-      return;
-    }
+  const loop = async (force: boolean): Promise<void> => {
     inFlight = true;
     try {
-      await o.tick();
+      await run(force);
     } catch (e) {
-      // 必须接住：`start()` 里是 `void run()`，不接住就成 unhandled rejection，
-      // 而 `main.ts` 的全局钩子会把它刷进状态栏（判据 `tick 抛错` 那条实测撞出来的）。
       failures += 1;
       onError(e);
     } finally {
-      // `finally` 而不是 `then`：`tick` 抛了也必须解锁，否则一次异常就把轮询永久锁死。
       inFlight = false;
     }
+    if (pending) {
+      const f = pendingForce;
+      pending = false;
+      pendingForce = false;
+      await loop(f);
+    }
   };
-
   return {
-    start(): void {
-      if (timer !== null) return;
-      void run();
-      timer = setInterval(() => {
-        if (isHidden()) {
-          skippedHidden += 1;
-          return;
-        }
-        void run();
-      }, o.intervalMs);
-      unsubscribe = subscribe(() => {
-        if (!isHidden()) void run();
-      });
-    },
-    stop(): void {
-      if (timer !== null) {
-        clearInterval(timer);
-        timer = null;
+    request(force = false): void {
+      if (inFlight) {
+        pending = true;
+        pendingForce = pendingForce || force;
+        coalesced += 1;
+        return;
       }
-      unsubscribe?.();
-      unsubscribe = null;
+      void loop(force);
     },
-    get skippedInFlight(): number {
-      return skippedInFlight;
-    },
-    get skippedHidden(): number {
-      return skippedHidden;
+    get coalesced(): number {
+      return coalesced;
     },
     get failures(): number {
       return failures;

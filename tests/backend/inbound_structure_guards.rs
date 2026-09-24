@@ -149,6 +149,16 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-find"
                 | "files-index-rebuild"
                 | "files-index-status"
+                // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
+                // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
+                | "history-projects"
+                | "history-read"
+                | "history-search"
+                | "history-sessions"
+                | "history-subagents"
+                | "history-tail"
+                | "accounts-list"
+                | "accounts-sessions"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -191,6 +201,14 @@ fn every_registered_command_declares_its_run_kind() {
         "files-find",
         "files-index-rebuild",
         "files-index-status",
+        "history-projects",
+        "history-read",
+        "history-search",
+        "history-sessions",
+        "history-subagents",
+        "history-tail",
+        "accounts-list",
+        "accounts-sessions",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()

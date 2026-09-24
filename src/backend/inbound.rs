@@ -80,6 +80,8 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 ///   （`U8a-2d` 换掉的），而同一份文件的 `mod tests` 里自己写着「上一版是 …」——
 ///   **一份文件里，一处当现状说，另一处说它是历史。**
 pub const COMMANDS: &[&str] = &[
+    "accounts-list",
+    "accounts-sessions",
     "bus-kill",
     "bus-list",
     "bus-send",
@@ -99,6 +101,12 @@ pub const COMMANDS: &[&str] = &[
     "files-rename",
     "files-stat",
     "files-write-text",
+    "history-projects",
+    "history-read",
+    "history-search",
+    "history-sessions",
+    "history-subagents",
+    "history-tail",
     "kill",
     "launch",
     "ping",
@@ -748,6 +756,133 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // ── 〔`C1` · 2026-09-24〕只读查询面上线 —— `设计/15 §3.2` 层 1 ＋ `99 §4.19.2 ⑥` ──────────
+    //
+    // 🔴 **这八条此前全是一次性子命令**：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），
+    //   而这条长连接明明已经在那儿。账号那两条还被一个 10 秒的轮询按台数翻倍。
+    //   ⇒ 登记上来，monitor 改走已有的 `inbound_client`，那些逐次拨号与轮询一起删。
+    //
+    // 🔴 **处理器住顶层 `read_face`，与 `files/` 同一个理由**：本文件不许出现 `observe::`
+    //   （`inbound_never_reaches_into_the_observe_layer`），而查询本体住 `observe/`。
+    //   `read_face` 只做换壳 —— 每条都调 CLI 那一臂同一个函数，`out` 从 stdout 换成内存。
+    //
+    // ⚠ **名字刻意不与 CLI 那几条同名**（`history-projects` 而不是 `list-projects`）：
+    //   CLI 面是从本表**自动派生**的（`cli_control::cli_exposed`）—— 同名就会把
+    //   `--list-projects` 从 `history_query::run` 手里抢走、改印一行 JSON，
+    //   而本机 monitor 正在 exec 那条读它的逐行输出。⇒ 代价如实登记：这八条同拍多出
+    //   八个 CLI 面（`--history-projects` …），已进 `lib.rs::SUBCOMMANDS`（不进就静默进流模式）。
+    //
+    // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
+    //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
+    CommandSpec {
+        name: "history-projects",
+        doc_anchor: Some("#### `history-projects`"),
+        codes: &["failed", "too_large"],
+        fields: &["lines"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-sessions",
+        doc_anchor: Some("#### `history-sessions`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["lines", "project_dir"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-search",
+        doc_anchor: Some("#### `history-search`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &[
+            "after_ms",
+            "include_tools",
+            "limit",
+            "lines",
+            "query",
+            "scope",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-subagents",
+        doc_anchor: Some("#### `history-subagents`"),
+        codes: &[
+            "bad_args",
+            "bad_parent",
+            "path_refused",
+            "too_large",
+            "write_failed",
+        ],
+        fields: &["lines", "parent"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-read",
+        doc_anchor: Some("#### `history-read`"),
+        codes: &["bad_args", "failed", "oversized_line", "refused"],
+        fields: &["eof", "next", "offset", "path", "text", "until"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-tail",
+        doc_anchor: Some("#### `history-tail`"),
+        codes: &["bad_args", "failed"],
+        fields: &["end", "n", "path", "split_at", "tail_from", "total"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-list",
+        doc_anchor: Some("#### `accounts-list`"),
+        codes: &["too_large"],
+        fields: &["lines"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "accounts-sessions",
+        doc_anchor: Some("#### `accounts-sessions`"),
+        codes: &["too_large"],
+        fields: &["lines"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

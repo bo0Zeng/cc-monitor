@@ -194,6 +194,11 @@ mod tests {
         ("observe", "观测面 —— 读，不改变世界"),
         ("platform", "唯一允许平台原语与平台 cfg 的层"),
         ("plugin", "插件通用调用口：找它 / 起它 / 问它会什么"),
+        (
+            "read_face",
+            "〔`C1` · 09-24〕只读查询的帧面宿主：八条一次性查询的帧面那一层壳 —— \
+             本体在 `observe/`（CLI 那一臂同一个函数），它只解 `args`、装应答。**零写盘**",
+        ),
         ("relay", "HTTP 中转搬字节那半"),
         ("wire", "线上协议的帧定义与编解码"),
         // ── 下面这些整体是 `cfg(test)` 的守卫，生产构建为空 ──────────────────
@@ -2935,17 +2940,12 @@ mod error_envelope_registry {
         ),
         (
             "observe/history_query.rs",
-            "\"path_refused\"",
-            "`--list-subagents` 的路径被拒",
-            "同上一行。⚠ 它的 `message` 直接塞 `fence_under_projects` 回的那句话\
-             ⇒ 信封的**值**不受本模块管，本模块只管键集。",
-        ),
-        (
-            "observe/history_query.rs",
-            "\"bad_parent\"",
-            "`--list-subagents` 的父路径推不出目录",
-            "同上一行。三处凑在同一个函数里，而它们仍然是三份独立的字面量 ——\
-             这一格如实登记：它们**没有**共享出口，改一处不会带着另两处走。",
+            "\"code\":code",
+            "`--list-subagents` 的路径被拒 / 父路径推不出目录（〔`C1` · 09-24〕两处收成一处）",
+            "〔`C1` · 09-24〕上一版这里是两行（`path_refused` · `bad_parent`），各是一份独立的 `json!` 字面量。\
+             本体搬进 `list_subagents_into`（帧面 `history-subagents` 与 CLI 共用，错误回 `(code, message)`）之后，\
+             CLI 那层壳只剩**一处**信封，把那对值原样印出 —— 两个 code 的字面量从此住在本体里、不在信封里。\
+             ⚠ 字节与改前相同（`json!` 的键序由 `serde_json` 定，与写法无关）。",
         ),
     ];
 

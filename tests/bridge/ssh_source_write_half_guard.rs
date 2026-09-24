@@ -254,7 +254,8 @@ fn ssh_source_never_writes_to_a_stream_itself() {
     //   已记过四次。**量具要用被测者那一套**，这是第五次。
     const ALLOWED_IO_IMPORTS: &[&str] = &[
         "use tokio::io::{AsyncBufReadExt, BufReader};",
-        "use tokio::io::AsyncBufReadExt;",
+        // 〔`C1` · 09-24〕`use tokio::io::AsyncBufReadExt;` 这一行随 `fetch_snapshot` 改走长连接出去了
+        // （它读的那条 SSH 流没了）。反向锚点当场逮住它 —— 放行清单不许留死行。
         "use tokio::io::AsyncReadExt;",
     ];
     let io_imports: Vec<&str> = prod

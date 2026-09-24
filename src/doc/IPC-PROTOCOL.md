@@ -1229,6 +1229,137 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 ⚠ 没有大小上限、没有「写之前那一版」的备份 —— 本面只做「写」这一件，编辑器的那些语义不在它里面。
 
+#### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
+
+出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。
+
+| 帧命令 | 同一个函数的 CLI 那一臂 | 应答形状 |
+|---|---|---|
+| `history-projects` | `--list-projects` | 按行 |
+| `history-sessions` | `--list-sessions` | 按行 |
+| `history-search` | `--search` | 按行 |
+| `history-subagents` | `--list-subagents` | 按行 |
+| `accounts-list` | `--list-accounts` | 按行 |
+| `accounts-sessions` | `--session-accounts` | 按行 |
+| `history-read` | `--read-session` · `--read-session-from-offset`（不带 `--index`） | 按字节分页 |
+| `history-tail` | `--read-session-tail` 的那张「尾段在哪」的图 | 四个数 |
+
+- **按行**：`data = {"lines": [...]}`，每个元素就是 CLI 那条 stdout 的一行（trim 过、剔空行）。整份输出超过 32 MiB ⇒ `too_large`，**不截断**（截断的清单会被当成完整的用）。
+- **名字刻意不与 CLI 同名**：CLI 面从 `REGISTRY` **自动派生**（`--<名>`），同名就会把 `--list-projects` 抢过去改印一行 JSON。⇒ 代价如实写：八条同拍多出八个 CLI 面 `--history-projects` · `--history-sessions` · `--history-search` · `--history-subagents` · `--history-read` · `--history-tail` · `--accounts-list` · `--accounts-sessions`（stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。它们与老的那八个子命令是**同一个函数的两个宿主**，不是第二份实现。
+- 八条全在阻塞档（做文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
+- 失败的 code 都是**命令级**的；读失败 `failed`，参数缺或类型不对 `bad_args`。
+
+#### `history-projects`：列全部项目（**不读 stdin**）
+
+```text
+→ {"id":"q1","cmd":"history-projects","args":{}}
+← {"kind":"reply","id":"q1","ok":true,"data":{"lines":["{\"dirName\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `lines` | ← | 每项目一行，形状同 `--list-projects`（含 `sessionIds`） |
+
+#### `history-sessions`：列一个项目下的会话
+
+```text
+→ {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj"}}
+← {"kind":"reply","id":"q2","ok":true,"data":{"lines":["{\"sessionId\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `project_dir` | → | 项目目录名（不是路径；含分隔符 / `..` ⇒ `failed`） |
+| `lines` | ← | 每会话一行，形状同 `--list-sessions` |
+
+#### `history-search`：全文搜索
+
+```text
+→ {"id":"q3","cmd":"history-search","args":{"query":"deploy","limit":50}}
+← {"kind":"reply","id":"q3","ok":true,"data":{"lines":["{\"sessionId\":…,\"hitCount\":3,…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `query` | → | 搜索词（必填） |
+| `include_tools` | → | 可选布尔，= `--include-tools` |
+| `scope` | → | 可选，`user` / `assistant`，= `--scope` |
+| `after_ms` | → | 可选，= `--after-ms` |
+| `limit` | → | 可选，= `--limit` |
+| `lines` | ← | 每命中会话一行 `SessionHits`，形状与行序同 `--search` |
+
+⚠ 选项**不在帧面另写一份语义**：这几个字段被摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit`，交给 CLI 那一臂同一个解析。
+
+#### `history-subagents`：列一个父会话的 subagent 候选
+
+```text
+→ {"id":"q4","cmd":"history-subagents","args":{"parent":"/home/u/.claude/projects/-p/s.jsonl"}}
+← {"kind":"reply","id":"q4","ok":true,"data":{"lines":["{\"path\":…,\"description\":…,\"timestamp\":…}"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `parent` | → | 父会话 jsonl 路径（`projects/` 围栏照旧；越界 ⇒ `path_refused`，推不出目录 ⇒ `bad_parent`） |
+| `lines` | ← | 每候选一行 `{path, description, timestamp}`，同 `--list-subagents`（只列不挑） |
+
+#### `accounts-list`：账号清单（**不读 stdin**）
+
+```text
+→ {"id":"q5","cmd":"accounts-list","args":{}}
+← {"kind":"reply","id":"q5","ok":true,"data":{"lines":["{\"kind\":\"accounts-meta\",…}", "{\"name\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `lines` | ← | 同 `--list-accounts`：首行 `accounts-meta`，其后每账号一行。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
+
+#### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
+
+```text
+→ {"id":"q6","cmd":"accounts-sessions","args":{}}
+← {"kind":"reply","id":"q6","ok":true,"data":{"lines":["{\"sessionId\":…,\"account\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `lines` | ← | 同 `--session-accounts`：每条运行中会话一行 |
+
+#### `history-read`：按字节分页读一份会话
+
+```text
+→ {"id":"q7","cmd":"history-read","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","offset":0}}
+← {"kind":"reply","id":"q7","ok":true,"data":{"text":"{…}\n{…}\n","next":1048571,"eof":false}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`） |
+| `offset` | → | 从这个字节起（缺省 0） |
+| `until` | → | 可选右端（半开区间 `[offset, until)`），= `--until` |
+| `text` | ← | 这一页（UTF-8 有损解码）。**不超过 1 MiB，切在行尾**；区间到头时余下的全给（含 torn 残尾） |
+| `next` | ← | 下一页从这里起（= `offset` ＋ 这一页的原始字节数） |
+| `eof` | ← | 区间到头了（`until` 或读时的文件长度） |
+
+🔴 **为什么分页**：一帧应答要整个进内存、整个过线；本仓见过 270 MB 的会话，而 monitor 单帧上限 64 MiB。单行比一页还长时续读到行尾，但超过 32 MiB ⇒ `oversized_line`（不叫 `line_too_long`：那是入方向信封的协议级 code）。
+
+#### `history-tail`：尾段在哪（快照「尾部优先」那张图）
+
+```text
+→ {"id":"q8","cmd":"history-tail","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","n":500}}
+← {"kind":"reply","id":"q8","ok":true,"data":{"total":1200,"tail_from":700,"split_at":3310442,"end":5120088}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | jsonl 路径（围栏同上） |
+| `n` | → | 要最新几行 |
+| `total` | ← | 可计行总数（口径同 `--read-session-tail` 的 `snapshot_meta`） |
+| `tail_from` | ← | 尾段第一行的行号 |
+| `split_at` | ← | 尾段第一行的字节起点 |
+| `end` | ← | 最后一个完整行之后的字节位置 |
+
+客户端先读 `[split_at, end)`（最新 N 行）再读 `[0, split_at)`（回填），都走 `history-read` 带 `until`；与 `--read-session-tail` 一趟印出的两段**逐字节相同**（扫的是同一个函数）。
+
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
 ```text

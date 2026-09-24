@@ -51,6 +51,8 @@ pub mod tmux;
 //    逐字「根下只允许 mod.rs」，而它的三个消费者（`backend_kill` / `backend_launch` /
 //    `backend_send_keys`）全在这条能力线上。
 pub mod inbound_client;
+// 〔C1 · 09-24〕只读查询走已有长连接的发送端（history-* / accounts-* 八条帧命令）。
+pub(crate) mod frame_query;
 pub mod launch_wire;
 pub mod local_backend;
 pub mod payload;

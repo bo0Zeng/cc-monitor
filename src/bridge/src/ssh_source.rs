@@ -1356,7 +1356,6 @@ const SNAPSHOT_MAX_BYTES: u64 = 512 * 1024 * 1024;
 const SNAPSHOT_CHUNK_LINES: usize = 500;
 /// Batch9-F30：尾部优先——最新 N 行先到（第一批 emit 即最新内容），旧历史回填。
 const SNAPSHOT_TAIL_LINES: usize = 500;
-const SNAPSHOT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// 每连接一个：待拉快照队列。sid 幂等（重复宣告不重拉）；`cancel(sid)`
 /// （SessionRemoved 时调）摘除排队项 + 给 inflight 打取消标记 + 从 seen 摘除
@@ -1799,7 +1798,6 @@ impl SnapshotQueue {
 /// 不算失败、不重试不 toast。
 async fn snapshot_dispatcher(
     q: std::sync::Arc<SnapshotQueue>,
-    cfg: RemoteConfig,
     replay: Arc<EventReplay>,
     app: tauri::AppHandle,
     host_label: String,
@@ -1813,7 +1811,6 @@ async fn snapshot_dispatcher(
             return; // 队列已关（排队项作废，重连重拉）
         };
         let q = q.clone();
-        let cfg = cfg.clone();
         let replay = replay.clone();
         let app = app.clone();
         let host_label = host_label.clone();
@@ -1832,7 +1829,7 @@ async fn snapshot_dispatcher(
             let sid_short: String = item.sid.chars().take(8).collect();
             let mut last_err = String::new();
             for attempt in 1..=2 {
-                match fetch_snapshot(&q, &cfg, &item, &host_label, &replay, &app).await {
+                match fetch_snapshot(&q, &item, &host_label, &replay, &app).await {
                     Ok(FetchOutcome::Done(lines)) => {
                         tracing::info!(
                             "snapshot [{host_label}] {sid_short}: {lines} 行历史就位（attempt {attempt}）"
@@ -1935,101 +1932,69 @@ fn snapshot_line_countable(line: &str) -> bool {
 
 /// 拉取单个会话的完整历史快照并灌进既有管线。
 ///
-/// 读取是 **fill_buf 字节级**（审计 D-I3/S2/S5）：超时打在"单次底层读无进展"
-/// 而非整行（多 MB 的 base64 图片行在慢链路上不再假超时）；`from_utf8_lossy`
-/// 解码对齐后端（坏字节不再让该会话历史永不可得）；EOF 处无 `\n` 的残行
-/// 丢弃不计 seq（与 backend `read_new_lines` 的 F14 语义一字一致）。
+/// 🔴 〔`C1` · 2026-09-24〕**不再为每份快照单拨一条 SSH。** 此前这里 exec 一次
+/// `<backend> --read-session-tail <p> 500`，读它一口气印出来的「meta ＋ 尾段 ＋ 头段」；
+/// 现在走已有长连接：先 `history-tail` 问那张图（`total` / `tail_from` / 两段的字节边界），
+/// 再按 `[split_at, end)`、`[0, split_at)` 两段用 `history-read` 分页取正文 ——
+/// 与那条子命令印出的两段**逐字节相同**（后端扫的是同一个函数），行号映射（[`tail_seq`]）一个字没动。
 ///
 /// 每个 chunk 边界查取消（会话 removed / 连接断）——中止并**补偿 emit 一次
 /// session-ended**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
 /// 压回 archived（审计 D-B1 僵尸复活的封口；archiveTab 幂等，重复无害）。
 ///
-/// 完整性校验（审计 D-I2）：p1f 帧带 prime 时的行数 L——拉到的行数 < L 即
-/// 判失败（backend exit 2 时 stdout 零字节、512MB take 截断等都会在此兜住）。
+/// 完整性校验（审计 D-I2）：到达的可计行数必须**恰好等于** `total`。
 async fn fetch_snapshot(
     q: &std::sync::Arc<SnapshotQueue>,
-    cfg: &RemoteConfig,
     item: &SnapshotItem,
     host_label: &str,
     replay: &Arc<EventReplay>,
     app: &tauri::AppHandle,
 ) -> Result<FetchOutcome, String> {
+    use crate::backend::control::frame_query;
     let sid = &item.sid;
     let path = &item.path;
-    // Batch9-F30：尾部优先变体（p1g；快照仅在 confirmed 时运行故无兼容分支，
-    // meta 解析仍留防御回退）。
-    let cmd = format!(
-        "{} --read-session-tail {} {SNAPSHOT_TAIL_LINES}",
-        shell_quote(&cfg.backend_path),
-        shell_quote(path)
-    );
-    let stream = connect_and_exec_cmd(cfg, &cmd).await?;
-    use tokio::io::AsyncBufReadExt;
-    let mut reader = tokio::io::BufReader::new(stream);
-    let mut acc: Vec<u8> = Vec::new();
-    let mut total_bytes: u64 = 0;
-    // Batch9-F30：arrived = 可计行到达序号；meta 到手后两段映射成行号 seq
-    // （前 total-tail_from 行 = tail_from+i，其余 = i-seg1）。meta 缺失
-    // （防御，理论不可达）→ seq=arrived 旧行为。
+    let origin = crate::origin::Origin(host_label.to_string());
+    let plan = frame_query::tail(&origin, path, SNAPSHOT_TAIL_LINES as u64).await?;
     let mut arrived: u64 = 0;
-    let mut tail_map: Option<(u64, u64)> = None; // (total, tail_from)
-    let mut first_countable = true;
+    let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
-    'read: loop {
-        // 无进展超时：计时对象是单次底层读（fill_buf），不是一整行。
-        let n = {
-            let buf = tokio::time::timeout(SNAPSHOT_READ_TIMEOUT, reader.fill_buf())
-                .await
-                .map_err(|_| "快照读取超时（60s 无数据进展）".to_string())?
-                .map_err(|e| format!("快照读取失败: {e}"))?;
-            if buf.is_empty() {
-                break 'read; // EOF；acc 里的无 \n 残行按 F14 语义丢弃
+    // 尾段先到（最新 N 行先就位），头段回填。
+    'read: for (from, upto) in [(plan.split_at, plan.end), (0, plan.split_at)] {
+        let mut offset = from;
+        while offset < upto {
+            let page = frame_query::read_page(&origin, path, offset, Some(upto)).await?;
+            total_bytes += page.next - offset;
+            if total_bytes > SNAPSHOT_MAX_BYTES {
+                // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
+                tracing::warn!(
+                    "snapshot [{host_label}] {sid}: 超过 {SNAPSHOT_MAX_BYTES} 字节上限，截断"
+                );
+                break 'read;
             }
-            acc.extend_from_slice(buf);
-            buf.len()
-        };
-        reader.consume(n);
-        total_bytes += n as u64;
-        if total_bytes > SNAPSHOT_MAX_BYTES {
-            // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
-            tracing::warn!(
-                "snapshot [{host_label}] {sid}: 超过 {SNAPSHOT_MAX_BYTES} 字节上限，截断"
-            );
-            break 'read;
-        }
-        // 切出 acc 中所有完整行
-        while let Some(pos) = acc.iter().position(|&b| b == b'\n') {
-            let line_bytes: Vec<u8> = acc.drain(..=pos).collect();
-            let line = String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1]);
-            let line = line.trim_end_matches('\r');
-            if !snapshot_line_countable(line) {
-                continue;
-            }
-            if first_countable {
-                first_countable = false;
-                if let Some(m) = parse_snapshot_meta(line) {
-                    tail_map = Some(m);
+            for line in page.text.split('\n') {
+                let line = line.trim_end_matches('\r');
+                if !snapshot_line_countable(line) {
                     continue;
                 }
-            }
-            let seq = match tail_map {
-                Some((total, tail_from)) => tail_seq(arrived, total, tail_from),
-                None => arrived,
-            };
-            chunk.push(JsonlLine {
-                session_id: sid.to_string(),
-                path: std::path::PathBuf::from(path),
-                seq,
-                raw: line.to_string(),
-            });
-            arrived += 1;
-            if chunk.len() >= SNAPSHOT_CHUNK_LINES {
-                if q.is_cancelled(sid) {
-                    cancelled = true;
-                    break 'read;
+                chunk.push(JsonlLine {
+                    session_id: sid.to_string(),
+                    path: std::path::PathBuf::from(path),
+                    seq: tail_seq(arrived, plan.total, plan.tail_from),
+                    raw: line.to_string(),
+                });
+                arrived += 1;
+                if chunk.len() >= SNAPSHOT_CHUNK_LINES {
+                    if q.is_cancelled(sid) {
+                        cancelled = true;
+                        break 'read;
+                    }
+                    flush_lines(replay, app, host_label, std::mem::take(&mut chunk)).await;
                 }
-                flush_lines(replay, app, host_label, std::mem::take(&mut chunk)).await;
+            }
+            offset = page.next;
+            if page.eof {
+                break;
             }
         }
     }
@@ -2046,14 +2011,15 @@ async fn fetch_snapshot(
     if !chunk.is_empty() {
         flush_lines(replay, app, host_label, chunk).await;
     }
-    // 完整性校验：meta.total 精确对账（F30）；无 meta 退回帧 lines 下界校验
-    if let Some((total, _)) = tail_map {
-        if arrived != total {
-            return Err(format!(
-                "快照不完整：{arrived}/{total} 行（连接中断或后端报错）"
-            ));
-        }
-    } else if let Some(expected) = item.expected_lines {
+    // 完整性校验：`total` 精确对账（F30）。
+    if arrived != plan.total {
+        return Err(format!(
+            "快照不完整：{arrived}/{} 行（连接中断或后端报错）",
+            plan.total
+        ));
+    }
+    // 下界：宣告时 prime 的行数 L（`session_added.lines`）—— 文件在宣告之后被截短才会撞上。
+    if let Some(expected) = item.expected_lines {
         if arrived < expected {
             return Err(format!(
                 "快照不完整：{arrived}/{expected} 行（连接中断或后端报错）"
@@ -2063,26 +2029,9 @@ async fn fetch_snapshot(
     Ok(FetchOutcome::Done(arrived))
 }
 
-/// Batch9-F30：解析快照流首行的 meta。非 meta（普通 jsonl 行）/ 关系非法
-/// （tail_from > total——自家 backend saturating_sub 不可达，但 meta 是远端
-/// 进程输出，防御式拒收退回旧编号，审计 D）→ None。
-fn parse_snapshot_meta(line: &str) -> Option<(u64, u64)> {
-    let v: serde_json::Value = serde_json::from_str(line).ok()?;
-    if v.get("kind")?.as_str()? != "snapshot_meta" {
-        return None;
-    }
-    let total = v.get("total")?.as_u64()?;
-    let tail_from = v.get("tail_from")?.as_u64()?;
-    if tail_from > total {
-        tracing::warn!("snapshot_meta 非法（tail_from {tail_from} > total {total}），按旧格式处理");
-        return None;
-    }
-    Some((total, tail_from))
-}
-
 /// 两段编号映射（纯函数，与测试共用——审计 D：原测试在测试体内重实现映射，
 /// 锤不到生产代码）：到达序 → 行号。前 total-tail_from 行是尾段（最新），
-/// 其余是头段回填。调用方保证 tail_from <= total（parse_snapshot_meta 校验）。
+/// 其余是头段回填。调用方保证 tail_from <= total（`frame_query::tail` 校验）。
 fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
     let seg1 = total.saturating_sub(tail_from);
     if arrived < seg1 {
@@ -3291,7 +3240,6 @@ async fn stream_loop(
     if tail_only {
         tauri::async_runtime::spawn(snapshot_dispatcher(
             snapshots.clone(),
-            cfg.clone(),
             replay.clone(),
             app.clone(),
             host_label.clone(),
@@ -3426,6 +3374,14 @@ async fn stream_loop(
         if let Some(client) = attach_inbound_client(&host_label, &mut parked, frame.as_ref()) {
             inbound_guard.1 = Some(client.clone());
             inbound = Some(client);
+            // 〔`C1` · 09-24〕告诉前端「这台的长连接能问话了」：账号那两条查询从此走它，
+            // 前端的账号刷新（替掉那个 10 秒轮询的事件驱动刷新器）在这一刻强制拉一次。
+            if let Err(e) = app.emit(
+                crate::bridge::events::REMOTE_BACKEND_READY,
+                &serde_json::json!({ "origin": host_label }),
+            ) {
+                tracing::warn!("remote-backend-ready emit failed: {e}");
+            }
         }
 
         match frame {
