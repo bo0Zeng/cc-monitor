@@ -1855,7 +1855,8 @@ body.settings-window-mode .settings-panel {
   }
 }
 
-.accounts-row + .accounts-row {
+.accounts-row + .accounts-row,
+.accounts-row-apikey + .accounts-row {
   border-top: 1px solid var(--border-faint);
 }
 
@@ -2140,6 +2141,97 @@ body.settings-window-mode .settings-panel {
   margin-top: 6px;
 }
 
+/* A2（`设计/70 §4.4`）：新建账号 —— 一张常驻表单，岔口（订阅 / 第三方 apikey）在表单里。
+   外框与向导同一套（边框 + 淡底），不另造一种框。按钮走 settings-btn，「创建」是 primary 不是红色。 */
+.accounts-new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.accounts-new-hint {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  line-height: 1.5;
+}
+
+.accounts-new-access {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.accounts-new-key {
+  display: flex;
+  flex-direction: column;
+}
+
+.accounts-new-key[hidden] {
+  display: none;
+}
+
+/* 高级（凭据快照）：折叠标记同 .accounts-maint-wrap 的既有范式（去掉原生三角 + 自绘 ▸/▾）。 */
+.accounts-new-adv > summary {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 2px 0;
+  user-select: none;
+  list-style: none;
+}
+
+.accounts-new-adv > summary::-webkit-details-marker {
+  display: none;
+}
+
+.accounts-new-adv > summary::before {
+  content: "▸ ";
+  color: var(--text-faint);
+}
+
+.accounts-new-adv[open] > summary::before {
+  content: "▾ ";
+}
+
+.accounts-new-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 「建好后自动写 key」还在等的那几个号：一行一个，带「放弃」。 */
+.accounts-new-pending {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 账号那一行展开出来的「配 apikey」一格：跨满整行，挂在那一行紧后面（不算那一行的列）。 */
+.accounts-row-apikey {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 8px 40px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+
+.accounts-row-apikey[hidden] {
+  display: none;
+}
+
+/* 操作列那颗开合按钮：长相交给 .accounts-row-actions button，这里只管「展开着」的那一态。 */
+.accounts-row-apikey-toggle[aria-expanded="true"] {
+  border-color: var(--border-medium);
+  color: var(--text);
+}
+
 /* A6:设置「账号」组的部署/维护向导 */
 .accounts-wizard,
 .accounts-maint {
@@ -2267,13 +2359,6 @@ body.settings-window-mode .settings-panel {
   margin-top: -2px;
 }
 
-.accounts-maint-add {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
 .accounts-wiz-btns button,
 .accounts-wiz-copyrow button,
 .accounts-maint button {
@@ -2298,8 +2383,7 @@ body.settings-window-mode .settings-panel {
   cursor: not-allowed;
 }
 
-.accounts-wiz-btns button.danger,
-.accounts-maint button.danger {
+.accounts-wiz-btns button.danger {
   border-color: var(--error);
   color: var(--error);
 }
