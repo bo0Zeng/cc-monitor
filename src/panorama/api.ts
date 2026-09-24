@@ -9,7 +9,7 @@
  * callers/callees/impact/search/docs_for/touching。
  */
 import { commands } from "../ipc/commands";
-import type { PanoramaStatus } from "./types";
+import type { DiagramRequest, PanoramaStatus } from "./types";
 
 /** 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。 */
 export const index = (repo: string) =>
@@ -66,6 +66,13 @@ export const search = (repo: string, query: string, limit?: number) =>
 /** 覆盖某符号的 `.md` 文档链接。 */
 export const docsFor = (repo: string, symbol: string) =>
   commands.panorama_docs_for({ repo, symbol });
+
+/** PN1b：图种注册表（原样）。不依赖仓 —— 注册表编在二进制里。 */
+export const diagramKinds = () => commands.panorama_diagram_kinds();
+
+/** PN1b：画一张图。`kind` 是注册表里的 id，本仓不写死。 */
+export const diagram = (repo: string, kind: string, request: DiagramRequest) =>
+  commands.panorama_diagram({ repo, kind, request });
 
 /** F71：列某文件的所有符号（点文件气泡 → 展开符号列表 → 点符号进详情）。 */
 export const symbolsInFile = (repo: string, file: string) =>

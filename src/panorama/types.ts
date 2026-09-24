@@ -173,3 +173,142 @@ export interface DriftItem {
   target_symbol: string | null;
   reason: string;
 }
+
+// === PN1b：选图（`设计/97 §7`）—— 上游 `diagram::registry` / `diagram::shape` 的手写镜像 ===
+//
+// ⚠ 与上面那批一样是**手写**（上游类型在 vendored 副本里，不许给它加 `ts_rs` 派生）。
+// 🔴 本仓**不写任何图种的名字**：`kind` / `id` 一律是 `string`，选项来自注册表现读。
+// 🔴 形状是**开集**：上游将来加一种新形状，线上会出现这里不认识的 `shape` ——
+//    类型上它落进 `UnknownDiagramBody`，界面走「这一版还画不出」那条路，不静默。
+
+/** 注册表的一行（`DiagramKindInfo`）。 */
+export interface DiagramKindInfo {
+  /** 稳定 id —— 画图请求里原样回传。 */
+  id: string;
+  /** 人读名。 */
+  title: string;
+  summary: string;
+  /** 这张图认哪些输入（`symbol`/`depth`/`max_nodes`/`certain_only`/`exclude_tests` 的子集；开集）。 */
+  params: string[];
+  /** 画出来的形状（开集）。 */
+  shape: string;
+}
+
+/** 画图请求（`DiagramRequest`）。上游 `deny_unknown_fields`：拼错字段名会被拒。 */
+export interface DiagramRequest {
+  symbol?: string | null;
+  depth?: number | null;
+  max_nodes?: number | null;
+  certain_only?: boolean | null;
+  exclude_tests?: boolean | null;
+}
+
+/** 因节点上限而没画的量。 */
+export interface DiagramOmitted {
+  nodes: number;
+  symbols: number;
+  links: number;
+}
+
+/**
+ * 公共诚实信号（`Honesty`）。🔴 `null` ≠ 0：`null` = 这张图不量这一格（类图不画调用），
+ * 0 = 量了、没有。界面把 `null` 写成「不适用」，不写成 0。
+ */
+export interface DiagramHonesty {
+  unresolved_calls: number | null;
+  ambiguous_calls: number | null;
+  filtered_guess_links: number | null;
+  excluded_test_symbols: number | null;
+  omitted: DiagramOmitted | null;
+  db_errors: string[];
+}
+
+/** 团/模块节点（`ArchNode`）。 */
+export interface ClusterNode {
+  id: string;
+  label: string;
+  size: number;
+  files: number;
+  anchors: string[];
+  /** 成员文件（下钻用）。 */
+  member_files: string[];
+}
+
+/** 一捆聚合连接（`ArchLink`）：成分分开记，不许合成一个「最可信的档」。 */
+export interface ClusterLink {
+  from: string;
+  to: string;
+  exact: number;
+  dispatch: number;
+  guess: number;
+}
+
+export interface ClustersBody {
+  shape: "clusters";
+  nodes: ClusterNode[];
+  links: ClusterLink[];
+}
+
+export interface CallNode {
+  id: string;
+  name: string;
+  file: string;
+  kind: SymKind;
+  start_line: number;
+}
+
+export interface CallEdge {
+  from: string;
+  to: string;
+  confidence: Confidence;
+  candidates: number | null;
+  call_site_line: number | null;
+}
+
+export interface CallGraphBody {
+  shape: "call_graph";
+  center: string;
+  depth: number;
+  nodes: CallNode[];
+  edges: CallEdge[];
+}
+
+export interface TypeNode {
+  id: string;
+  name: string;
+  symbol: string | null;
+  fields: { name: string; ty: string }[];
+  methods: { name: string; symbol: string }[];
+}
+
+export interface TypeRelation {
+  from: string;
+  to: string;
+  kind: "implements" | "composes";
+  label: string | null;
+}
+
+export interface TypeGraphBody {
+  shape: "type_graph";
+  types: TypeNode[];
+  relations: TypeRelation[];
+}
+
+/** 这一版不认识的形状 —— 只保证有 `shape` 这个标签。 */
+export interface UnknownDiagramBody {
+  shape: string;
+}
+
+export type DiagramBody = ClustersBody | CallGraphBody | TypeGraphBody | UnknownDiagramBody;
+
+export interface Diagram {
+  kind: string;
+  honesty: DiagramHonesty;
+  body: DiagramBody;
+}
+
+/** `panorama_diagram` 的返回：图 ＋ 上游 Mermaid 渲染（复制与「画不出」兜底用，不许解析它）。 */
+export interface PanoramaDiagram {
+  diagram: Diagram;
+  mermaid: string;
+}
