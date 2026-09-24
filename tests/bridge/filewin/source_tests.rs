@@ -912,3 +912,58 @@ fn fn_name_on(line: &str, fn_word: &str) -> Option<String> {
         .collect();
     (!name.is_empty()).then_some(name)
 }
+
+/// 🔴〔F2〕**通道那三层失败，每一层说的话都不一样** —— 而「发没发出去」那一格一定说出来。
+///
+/// 写面那几条据此决定要不要再点一次：`NotSent` ＝ 这一下没生效；`Sent` / `Unknown` ＝ 对面可能已经做了。
+/// 压成同一句的话，用户在「删除」上再点一次就可能删两遍。
+#[test]
+fn each_layer_of_a_channel_failure_says_something_different() {
+    use crate::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
+    let hop = |idx, reach| CallError::Hop {
+        at: HopId { idx, tag: "wait" },
+        reach,
+        why: HopFault::Overrun,
+    };
+    let not_sent = said("files-delete", &hop(1, Reach::NotSent));
+    let unknown = said("files-delete", &hop(1, Reach::Unknown));
+    let sent = said("files-delete", &hop(1, Reach::Sent));
+    assert_ne!(not_sent, unknown, "「没发出去」与「拿不准」说成了同一句");
+    assert_eq!(
+        unknown, sent,
+        "`Sent` 与 `Unknown` 对用户是同一件事（对面可能已经做了）"
+    );
+    assert_ne!(
+        said("x", &hop(0, Reach::NotSent)),
+        said("x", &hop(1, Reach::NotSent)),
+        "断在哪一段没说出来"
+    );
+    // 对端拒绝：码与原话都在（走 `find::refusal` 那一个翻译）。
+    let refused = said(
+        "files-mkdir",
+        &CallError::Peer {
+            why: PeerFault::Refused {
+                body: Body(br#"{"code":"refused","message":"refuse write: fence"}"#.to_vec()),
+            },
+        },
+    );
+    assert!(
+        refused.contains("refused") && refused.contains("refuse write: fence"),
+        "{refused}"
+    );
+    // 不认这条命令 ⇒ 点名是哪一条。
+    assert!(said(
+        "files-chmod",
+        &CallError::Peer {
+            why: PeerFault::Unsupported
+        }
+    )
+    .contains("files-chmod"));
+    // 本侧三种互不相同。
+    let ours: std::collections::BTreeSet<String> =
+        [OursFault::Cancelled, OursFault::Misuse, OursFault::Broken]
+            .into_iter()
+            .map(|why| said("x", &CallError::Ours { why }))
+            .collect();
+    assert_eq!(ours.len(), 3, "本侧三种错说成了同一句");
+}
