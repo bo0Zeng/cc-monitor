@@ -83,6 +83,7 @@ pub const COMMANDS: &[&str] = &[
     "bus-kill",
     "bus-list",
     "bus-send",
+    "bus-spawn",
     "bus-state",
     "cancel",
     "capture-pane",
@@ -444,6 +445,17 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["from", "live", "registered", "sent", "to"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::cc_bus::send_for_inbound(&r.args).map(Some)),
+    },
+    // 〔BS1b 09-24〕派生一个协作 agent（转调 `cc-spawn`）。起子进程并等它退出 ⇒ 阻塞档，
+    // 同上面那三条。**会起一个真 agent 进程（烧额度）** —— 这一跳不重试由调用方负责，
+    // 超时那一档的说法里明写「可能已经起来了」（`control::cc_bus::classify_spawn`）。
+    CommandSpec {
+        name: "bus-spawn",
+        doc_anchor: Some("#### `bus-spawn`"),
+        codes: &["invalid_args", "not_installed", "timed_out", "failed"],
+        fields: &["id", "said", "spawned"],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::cc_bus::spawn_for_inbound(&r.args).map(Some)),
     },
     // `K-R113`（09-13）：**一次回全的具名读命令。**
     //

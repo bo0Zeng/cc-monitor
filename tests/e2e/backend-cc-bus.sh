@@ -308,6 +308,67 @@ _dk 'bad/id' >/dev/null
 chk "  非法 id ⇒ invalid_args（由 cc-kill 自己拒，白名单只有一份）" \
   "$(jq -r .code < "$SANDBOX/kerr.txt" 2>/dev/null)" "invalid_args"
 
+echo "[16] ★ bus-spawn：本机派生走后端原语（BS1b）—— 真跑 cc-spawn，启动器是假 agent"
+# ⚠ 后端起插件前先 `env_clear()`，只放行白名单 ＋ `CC_BUS_*`/`CCBUS_*` 两个前缀
+#   （`plugin::invoke::INHERITED_ENV_KEYS`）⇒ `CCSPAWN_LAUNCH` / `CCM_BIN` 这类测试钩子**到不了** cc-spawn。
+#   ⇒ 本格改从 **PATH** 与 **HOME**（两者都在白名单里）喂，而且 PATH 是**收窄过的**
+#   （`$_SB` ＋ tmux 垫片 ＋ 系统目录，**不含**用户的 `~/.local/bin` / `~/.cc-monitor/bin`）：
+#   沙箱 HOME 里没有 `~/.cc-monitor/bin/`、PATH 上也没有 `cc-monitor-backend` ⇒ cc-spawn 按查找次序
+#   落到 PATH 上的 `ccm`（= 本工作树刚 build 的那一份，按名字 `ccm` 走入口①），它再起 PATH 上的
+#   `claude`（= 下面那个只记参数然后 sleep 的假 agent）。
+# ⚠ 为什么是 `ccm` 这个名字而不是 `cc-monitor-backend`〔BS1b 首跑现打，写区外的一个真缺陷〕：
+#   走入口②（`cc-monitor-backend ccm …`）时，ccm 在 pane 里**重新起自己**那一跳丢了 `ccm` 这个词
+#   ⇒ pane 里逐字是 `cc-monitor-backend --cwd … --launcher claude …` ⇒「unknown argument: --cwd」，
+#   会话是一个空 bash，而 cc-spawn **rc=0 且登记上了总线**（假成功）。住址 `control/ccm/plan.rs`，
+#   不在本件写区 ⇒ 已报备，本格按入口①跑，不替它洗绿。
+_SB="$SANDBOX/spawnbin"; _SH="$SANDBOX/spawnhome"; _SW="$SANDBOX/spawnwork"
+mkdir -p "$_SB" "$_SH" "$_SW/proj"
+ln -sf "$D" "$_SB/ccm"
+_SPATH="$_SB:$_SHIM:/usr/local/bin:/usr/bin:/bin"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "%s/agent-args.txt"\nsleep 300\n' "$_SW" > "$_SB/claude"
+chmod +x "$_SB/claude"
+# 🔴🔴 **启动器是在 tmux 的 pane 里按名字找的**：pane 里 `claude` 解析到谁，决定了会不会起一个
+#   用户**真的** claude（带着任务文本、用他的账号烧额度）。现打：pane 的环境取自**起会话的那个
+#   tmux 客户端**（只改服务端全局 PATH，pane 里看到的仍是客户端那份；本机 `~/.local/bin/claude`
+#   就是真的那个）。⇒ 两道闸：
+#   ① 隔离服务端的全局 PATH / HOME 也换成沙箱的（兜底：有哪一跳没带客户端环境时仍落在沙箱里）；
+#   ② **起飞前自检**：用与派生那一趟**同样的客户端环境**在同一台服务端上开一个 pane 问
+#      `command -v claude`，不是 `$_SB/claude` 就**整格不跑**（记一条 FAIL），
+#      绝不在没证明是假 agent 的时候派生。
+tmux set-environment -g PATH "$_SPATH"
+tmux set-environment -g HOME "$_SH"
+# ⚠ 自检的 tmux **客户端**要带与派生那一趟同样的 PATH / HOME：新会话的环境取自**客户端**
+#   （现打：只改服务端全局 PATH，pane 里看到的仍是客户端那份），而派生那一趟的客户端是 ccm，
+#   它的 PATH / HOME 就是下面 `_ds` 交给后端的那一份（后端按白名单原样传下去）。
+env HOME="$_SH" PATH="$_SPATH" \
+  tmux new-session -d -s spawncanary -c /tmp "command -v claude > '$_SW/which.txt'; sleep 30"
+for _i in 1 2 3 4 5 6 7 8 9 10; do [ -s "$_SW/which.txt" ] && break; sleep 0.3; done
+tmux kill-session -t '=spawncanary' 2>/dev/null || true
+_which="$(cat "$_SW/which.txt" 2>/dev/null)"
+chk "起飞前：隔离服务端的 pane 里 claude 解析到假 agent" "$_which" "$_SB/claude"
+_ds() {
+  printf '%s' "$1" | env HOME="$_SH" PATH="$_SPATH" CLAUDE_CONFIG_DIR="$CLA" \
+    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" CC_BUS_SCRIPTS="$SCRIPTS" CC_BUS_TIMEOUT_SECS=40 \
+    "$TIMEOUT" 60 "$D" --bus-spawn 2>"$SANDBOX/serr.txt"
+}
+if [ "$_which" != "$_SB/claude" ]; then
+  echo "  !! 自检没过 —— 本格不派生（宁可少判，也不在用户的 claude 上起会话）"
+else
+_s1="$(_ds "{\"tool\":\"claude\",\"dir\":\"$_SW/proj\",\"task\":\"跑一遍门禁\",\"base\":true}")"
+chk "★ spawned=true" "$(printf '%s' "$_s1" | jq -r .spawned 2>/dev/null)" "true"
+chk "★ 回值里认出了新会话的 id" "$(printf '%s' "$_s1" | jq -r .id 2>/dev/null)" "proj_cc"
+chk "  会话真的起了（隔离 socket 上）" "$(tmux has-session -t '=proj_cc' 2>/dev/null && echo 在 || echo 没有)" "在"
+for _i in 1 2 3 4 5 6 7 8 9 10; do [ -s "$_SW/agent-args.txt" ] && break; sleep 0.3; done
+chk "  初始任务作为参数送到了启动器" "$(tr -d '\n' < "$_SW/agent-args.txt" 2>/dev/null)" "跑一遍门禁"
+chk "  登记进了总线名册" "$(cut -f1 "$BUS/agents.tsv" 2>/dev/null | grep -cx proj_cc || true)" "1"
+_ds '{"tool":"claude","dir":"/tmp"}' >/dev/null
+chk "★ 账号不表态 ⇒ invalid_args（不替用户选默认号）" "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "invalid_args"
+_ds "{\"tool\":\"not-an-agent\",\"dir\":\"$_SW/proj\",\"base\":true}" >/dev/null
+chk "★ 不认的 tool ⇒ 由 cc-spawn 自己拒成 invalid_args（后端不写第二份白名单）" \
+  "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "invalid_args"
+chk "  …而且没起出第二个会话" "$(tmux has-session -t '=proj_cc-2' 2>/dev/null && echo 起了 || echo 没起)" "没起"
+fi
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

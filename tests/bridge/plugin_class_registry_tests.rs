@@ -355,15 +355,20 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
         names.len()
     );
     let bus: Vec<&String> = names.iter().filter(|n| n.starts_with("bus-")).collect();
+    // 〔BS1b 09-24〕4 → 5：多了 `bus-spawn`（派生协作 agent，转调 `cc-spawn`）。
+    //   按本条自己的要求先回本表 `cc-bus` 那一行看了：「今天什么样 / 差在哪」仍成立
+    //   （仍只经命令面够到，多的这条也是转调），所以只改数，不改那一行。
     assert_eq!(
         bus.len(),
-        4,
-        "backend 转调 cc-bus 的命令从 4 条变成 {} 条：{bus:?}\n\
-             今天这四条是 `bus-list` / `bus-send` / `bus-kill` / `bus-state`\
-             （`bus-state` 是 `K-R113` 09-13 补的**具名读命令**：总线名单 ＋ spawn 台账一次回全）。\n\
-             ⚠ **`C19` 的 ⚠ 与实测今天对上了**：那里写的是「`bus-*` 四条」，实测也是四条 ——\
+        5,
+        "backend 转调 cc-bus 的命令从 5 条变成 {} 条：{bus:?}\n\
+             今天这五条是 `bus-list` / `bus-send` / `bus-kill` / `bus-state` / `bus-spawn`\
+             （`bus-state` 是 `K-R113` 09-13 补的**具名读命令**：总线名单 ＋ spawn 台账一次回全；\
+             `bus-spawn` 是 BS1b 09-24 补的派生原语）。\n\
+             ⚠ **`C19` 写的是「`bus-*` 四条」，BS1b 之后实测五条 —— `C19` 那句今天过期了**。\
+             （它上一回是对上的：K-R113 之后四条 ——\
              ⚠⚠ 而这一句此前**反过来是过期的**（它逐字写着「`C19` 说四条、实测三条」，\
-             `K-R113` 之后实测就是四条了）⇒ 本行是那次订正的订正，别再照旧读。\n\
+             `K-R113` 之后实测就是四条了）⇒ 本行是那次订正的订正，别再照旧读。）\n\
              ★ **仍然刻意没有 `bus-recv`**：`cc-recv` 有副作用（推进已读位置），\
              backend 代读等于把消息从人那里偷走 —— 这句今天仍是真的，理由全文在\
              `src/backend/control/cc_bus.rs` 的模块头注 ①。\n\

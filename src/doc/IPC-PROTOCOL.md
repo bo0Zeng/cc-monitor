@@ -646,6 +646,38 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 错误码：`not_installed`（找不到 `cc-list` / `cc-agents`，消息里带查过哪些位置）·
 `timed_out` · `failed`。**只读**：两条被调命令都不写任何文件。
 
+#### `bus-spawn`：派生一个协作 agent（BS1b，09-24）
+
+```text
+→ {"id":"B5","cmd":"bus-spawn","args":{"tool":"claude","dir":"/home/zbl/proj","task":"跑门禁","account":"a1"}}
+← {"kind":"reply","id":"B5","ok":true,"data":{"spawned":true,"id":"proj_cc-2","said":"已 spawn: proj_cc-2   (目录: /home/zbl/proj  初始任务: 跑门禁)\n…"}}
+```
+
+入参：`tool`（起哪种 agent，**后端只判非空**，认不认归 `cc-spawn` 自己）· `dir`（工作目录，非空）·
+`task`（初始任务，可空）· **`account` 与 `base:true` 恰好给一个** —— 两样都不给 ⇒ `invalid_args`。
+⚠ 为什么逼调用方表态：不传的话 `ccm` 落 manifest 的默认号，等于**替用户选了一个他没选过的号**去起一个真
+agent、烧真额度。
+
+回值：`spawned`（恒 `true`）· `id`（新会话的总线身份；从 `cc-spawn` 的回显里认，**认不出就是 `null`** ——
+那是「起了，但名字没认出来」，**不是**「没起来」）· `said`（`cc-spawn` 的原始回显，给人看）。
+
+★ **本机与远端同一条路**：monitor 对每台机器（含 `<local>`）都走这条原语，不再有「远端拼一条 `cc-spawn …`
+shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / spawn 台账 / 预信任目录全在 `cc-spawn`
+（它内部再经 `ccm`），后端**只转调**。发给 `cc-spawn` 的 `--tool` / `--account` / `--base` 是**子进程的**
+旗标，不是后端 argv（`protocol_doc_guard::CHILD_PROCESS_FLAGS` 登记 ＋ 两向判据）。
+
+错误码：
+
+| 码 | 什么情况 |
+|---|---|
+| `invalid_args` | 缺 `tool`/`dir`、账号没表态或两样都给；或 `cc-spawn` 自己 rc=2（目录不存在 · 不认的 tool · ccm 太旧） |
+| `not_installed` | 找不到 `cc-spawn` |
+| `timed_out` | 子进程跑过期限被结束。🔴 **会话可能已经起来了**（`cc-spawn` 是建完会话才回显的）⇒ 先 `bus-state` 看一眼，**别直接重试**：重试会再起一个真 agent |
+| `failed` | 其它退出码 / 被信号打断 |
+
+⚠ 期限同 `bus-send`：住在子进程里（`timeout` 前缀，默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调），后端零定时器。
+⚠ **这是写面，而且有代价**：它起一个真 agent 进程。UI 侧必须先让用户确认（与收掉 agent 同一条纪律）。
+
 #### `kill`：杀一个 tmux 会话（F04a，**第一条破坏性入方向命令**）
 
 ```text
@@ -1337,6 +1369,9 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
 **`K-R113` 追加一条（09-13）**：`--bus-state` —— 总线名单 ＋ spawn 台账**一次回全**
 （见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**，声明无输入的命令必须秒回。
+
+**BS1b 追加一条（09-24）**：`--bus-spawn` —— 派生一个协作 agent（见上面它自己那一小节）。
+同上，与帧面同一个 `run`；**读 stdin**（那段 JSON 就是它的 `args`）。⚠ 它**起一个真 agent**。
 
 **步 `24f` 追加四条（09-20）**：`--files-ls` / `--files-stat` / `--files-find` /
 `--files-index-status` —— `files-read` 这一族的 CLI 面（逐条见上面各自那一小节）。
