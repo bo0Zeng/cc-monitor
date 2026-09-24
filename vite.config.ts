@@ -27,6 +27,21 @@ export default defineConfig(async () => ({
   build: {
     outDir: ".build/dist",
     emptyOutDir: true,
+    // 〔三入口拆分 · `设计/01 §1.2`〕三个 html 各带一个入口模块，各自一张模块图：
+    //   index.html    → src/entry-main.ts      主窗口
+    //   settings.html → src/entry-settings.ts  只含设置面板 ＋ 主题 ＋ 键位
+    //   viewer.html   → src/entry-viewer.ts    只含 tab 管理 ＋ 渲染栈
+    // Tauri 开窗那两处（`src/bridge/src/lib.rs` 的 `open_settings_window` /
+    // `open_session_in_new_window`）指向后两个 html。
+    // 🔴 「设置窗里没有高亮/数学/tab 管理」由 `tests/entry-graphs.vitest.ts` 对**本配置真跑出来的**
+    //    构建产物做零命中断言 —— 它读的就是这张 `input` 表，改这里那边跟着变，不存在两份副本。
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        settings: "settings.html",
+        viewer: "viewer.html",
+      },
+    },
   },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {

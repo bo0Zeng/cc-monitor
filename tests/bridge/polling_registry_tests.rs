@@ -460,7 +460,11 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/error-toast.ts", "setTimeout", 1, "`durationMs` 后移除 toast。一次性。"),
     ("src/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② ③ `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。"),
     ("src/session-accounts-poll.ts", "setInterval", 1, "10s `refreshSessionAccounts` —— **真 data-poll**，详见上面 `REGISTERED` 那条（事件源与退役去处都在那里）。⚠ F14 第三刀从 `main.ts` 搬来：唯一的一处，且句柄留着（`stop()`）。"),
-    ("src/main.ts", "setTimeout", 3, "① 0ms 下一拍挂 sftp 主机选择器的关闭监听 ② ③ 1.2s 后把「已复制」还原成「复制」。全是一次性 UI 反馈。"),
+    // 〔三入口拆分 · `设计/01 §1.2`〕原先 `main.ts` 一行 3 处；代码块「复制」那段全局代理
+    //   （② ③ 两处）随三入口共用的部分搬进了 `entry-common.ts`（viewer 窗不再加载 `main.ts`，
+    //   而它也要这段代理）。**一处都没多、一处都没少，只是换了文件**：3 = 1 ＋ 2。
+    ("src/entry-common.ts", "setTimeout", 2, "① ② 1.2s 后把「已复制」/「失败」还原成「复制」。一次性 UI 反馈。"),
+    ("src/main.ts", "setTimeout", 1, "0ms 下一拍挂 sftp 主机选择器的关闭监听。一次性 UI 反馈。"),
     ("src/settings/cc_integration.ts", "setTimeout", 1, "500ms 后撤掉状态徽章的高亮描边。一次性。"),
     ("src/settings/config-surface-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
     ("src/settings/drift-ledger-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
