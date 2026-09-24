@@ -311,8 +311,8 @@
   display: none;
 }
 
-/* F78（#55）：远端 Tab 的 📂「打开工作目录」不再隐藏——点它现在打开 SFTP 面板进入该远端 cwd
-   （openTabCwd 远端分支：按 origin 找该机配置 → openSftpPanelDir）。找不到配置才回退 info 提示。
+/* F78（#55）：远端 Tab 的 📂「打开工作目录」不再隐藏——点它现在在文件窗口里进入该远端 cwd
+   （openTabCwd 远端分支：按 origin 找该机配置 → openFileWindow；〔F7b〕原先是老 SFTP 面板）。找不到配置才回退 info 提示。
    （原 FIX 5/issue #15 因本地打不开而隐藏；F83 起 SFTP 入口就绪，本地打不开的 cwd 改由 SFTP 浏览。） */
 
 .tab-title {

@@ -430,6 +430,34 @@ impl FakeBackend {
                 }
                 (true, None, None, Some(serde_json::json!({ "path": root })))
             }
+            // 〔F7b〕新建空文件：同写面五条「只记下来、不落盘」；`root` 带 `refuse` ⇒ 围栏那一档，
+            //   `rel` 带 `exists` ⇒ 「目标已经在了」那一档（后端 `O_EXCL` 失败走的是 `io_failed`）。
+            "files-create" => {
+                let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
+                let rel = args.get("rel").and_then(|v| v.as_str()).unwrap_or("");
+                if root.contains("refuse") {
+                    return (
+                        false,
+                        Some("refused".into()),
+                        Some("refuse write: 围栏".into()),
+                        None,
+                    );
+                }
+                if rel.contains("exists") {
+                    return (
+                        false,
+                        Some("io_failed".into()),
+                        Some("目标已经在了（不覆盖）".into()),
+                        None,
+                    );
+                }
+                (
+                    true,
+                    None,
+                    None,
+                    Some(serde_json::json!({ "path": format!("{root}/{rel}"), "bytes": 0 })),
+                )
+            }
             other => (
                 false,
                 Some("unknown_command".into()),

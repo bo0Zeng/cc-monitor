@@ -638,14 +638,14 @@ src/main.ts:455	打开设置	保留	[对外] 顶栏按钮 aria-label
 src/main.ts:468	打开历史会话浏览器	保留	[对外] 顶栏按钮 aria-label
 src/main.ts:499	打开代码全景	保留	[对外] 顶栏按钮 aria-label
 src/main.ts:513	打开多 agent 监控	保留	[对外] 顶栏按钮 aria-label
-src/main.ts:526	打开 SFTP 文件面板	保留	[对外] 顶栏按钮 aria-label；SFTP 是用户认得的协议名
+src/main.ts:507	打开文件窗口	保留	[对外] 顶栏按钮 aria-label；〔F7b〕老 SFTP 面板退役，终点换成原生文件窗口，名字跟着改
 src/main.ts:549	打开历史浏览器	保留	[对外] 命令面板条目标题
 src/main.ts:550	打开代码全景	保留	[对外] 命令面板条目标题
 src/main.ts:552	打开收件箱	保留	[对外] 命令面板条目标题
 src/main.ts:553	打开 cc-bus 驾驶舱	保留	[对外] 命令面板条目标题；cc-bus 是功能名
 src/main.ts:554	打开多 agent 监控	保留	[对外] 命令面板条目标题
 src/main.ts:555	打开设置	保留	[对外] 命令面板条目标题
-src/main.ts:556	打开 SFTP 文件面板	保留	[对外] 命令面板条目标题
+src/main.ts:537	打开文件窗口	保留	[对外] 命令面板条目标题（〔F7b〕同上）
 src/main.ts:557	最小化窗口	保留	[对外] 命令面板条目标题
 src/main.ts:558	切换全屏	保留	[对外] 命令面板条目标题
 src/main.ts:559	把对应终端窗口拉到前台	保留	[对外] 命令面板条目标题
@@ -866,15 +866,6 @@ src/settings/remote-section.ts:1135	远端机器配置	保留	[对外] 「需重
 src/settings/router.ts:96	设置分类	保留	[对外] 导航的 aria-label，名词短语
 src/settings/unknown-keys-notice.ts:49	配置文件 config.json 里有 {…} 个设置项认不出来：{…}。	保留	[对外] 结果＋点名哪几个键；config.json 是用户自己机器上的文件
 src/settings/unknown-keys-notice.ts:50	它们不起作用（拼错了，或者是已经取消掉的旧名字）；改对或删掉它们，这条提示才会消失。	保留	[对外] 后果＋用户确实能做且做了会好的处理，括号是真补充
-src/sftp/panel.ts:94	名称	保留	[对外] 排序下拉选项
-src/sftp/panel.ts:95	大小	保留	[对外] 排序下拉选项
-src/sftp/panel.ts:96	类型	保留	[对外] 排序下拉选项
-src/sftp/panel.ts:276	下载 {…}	保留	[对外] 传输进度标签
-src/sftp/panel.ts:304	上传 {…}	保留	[对外] 传输进度标签
-src/sftp/panel.ts:462	复制 {…}	保留	[对外] 传输进度标签
-src/sftp/panel.ts:483	目录	保留	[对外] 拼进删除确认的名词
-src/sftp/panel.ts:483	文件	保留	[对外] 拼进删除确认的名词
-src/sftp/panel.ts:508	上传 {…}	保留	[对外] 传输进度标签
 src/tabs.ts:268	组 {…}	保留	[对外] 新建标签组的默认名
 src/tabs.ts:3344	重启到「{…}」——不提供「不指定账号」这一项：重启作用于已在某账号下运行的活会话，不是待迁移的老会话	改·§2.2	[对外] 右键菜单项 title：破折号后在论证「为什么不提供不指定账号这一项」，是写给开发的设计理由 兼§2.4 →「用账号「X」重启这个会话」
 src/tabs.ts:3349	杀掉旧进程，用账号「{…}」resume 同一会话（中断当前回合、丢进程内状态）	保留	[对外] 子菜单 title：动作＋括号里的后果（中断回合），后果对用户有用
@@ -1138,3 +1129,9 @@ src/views/panorama.ts:1459	复制给 agent	保留	[对外] 按钮名（CP7），
 src/views/panorama.ts:1789	人写	保留	[对外] 批注来源标签（CP6）：人亲手写的
 src/views/panorama.ts:1791	agent 提议	保留	[对外] 批注来源标签（CP6）：agent 提的，批准后仍是它，与人写的分开
 src/views/panorama.ts:1793	来源未记录	保留	[对外] 批注来源标签（CP6）：旧文件没记来源，如实说不猜
+src/bridge/src/filewin/create.rs:41	新建空文件	保留	[对外] 按钮字面（〔F7b〕窗口工具栏，老面板「新建文件」的对应物；「空」字说清它不带内容）
+src/bridge/src/filewin/create.rs:66	在这个目录里新建一个空文件，叫：	保留	[对外] 输入框标题（与「新建目录」那个框同形）
+src/bridge/src/filewin/create.rs:153	新建不了，请重开这个窗口	保留	[对外] 窗口没有运行环境时画在工具栏下；结果一句 ＋ 用户做得到的一步（同「终端开不了，请重开这个窗口」）
+src/bridge/src/filewin/create.rs:191	⚠ 只在这一个目录里 —— 不许带 `/`。已有同名的就不建，不会盖掉它。	保留	[对外] 输入提示：前半与「新建目录」框逐字同，后半说清「新建不是覆盖」
+src/bridge/src/filewin/create.rs:193	确定	保留	[对外] 按钮
+src/bridge/src/filewin/create.rs:196	取消	保留	[对外] 按钮

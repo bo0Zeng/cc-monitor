@@ -414,6 +414,8 @@ pub struct FileWindow {
     /// ⚠ 两个字段刻意分开：**高亮要一直留着**（一帧的高亮在连续重绘的窗口上等于看不见），
     /// 而**滚只滚一次**（每帧都滚就把用户自己的滚动按住了）。
     reveal: Option<Reveal>,
+    /// 〔F7b〕「新建空文件叫什么」那个框。`None` = 没在问。逻辑住 [`super::create`]。
+    pub(super) new_file: Option<super::create::NewFilePrompt>,
 }
 
 impl FileWindow {
@@ -477,6 +479,7 @@ impl FileWindow {
             sort_by: SortBy::default(),
             term_notice: Arc::new(Mutex::new(None)),
             reveal: None,
+            new_file: None,
         }
     }
 
@@ -852,6 +855,7 @@ impl FileWindow {
             || self.copy_prompt.is_some()
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
+            || self.new_file.is_some()
             || self.pull_ask.is_some()
             || self.editing.is_some()
         {
@@ -1836,6 +1840,7 @@ impl FileWindow {
         //    编不过。`⬆ 上一级` 与 `刷新` 两颗**例外**：它们调的那两个方法
         //    在这个闭包里借得出来（现状如此，别读成「跳转可以在闭包里做」）。
         let mut mkdir = false;
+        let mut new_file = false; // 〔F7b〕同 `mkdir` 的借用理由，收在帧尾
         let mut go: Option<String> = None;
         let mut pick: Option<SortBy> = None;
         let mut term = false;
@@ -1850,6 +1855,10 @@ impl FileWindow {
             //    （另外三条在行上），所以它的落点是工具栏。
             if ui.button(MKDIR_LABEL).clicked() {
                 mkdir = true;
+            }
+            // 〔F7b〕「新建空文件」—— 同样不针对某一行，所以同样在工具栏（逻辑住 `create.rs`）。
+            if ui.button(super::create::NEW_FILE_LABEL).clicked() {
+                new_file = true;
             }
             // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
             //    它在 POSIX 上恒定「失败」，而那是既定设计（逐条住 `open_terminal_here`）。
@@ -1896,6 +1905,9 @@ impl FileWindow {
         if mkdir {
             self.begin_mkdir();
         }
+        if new_file {
+            self.begin_new_file();
+        }
         if let Some(by) = pick {
             self.set_sort(by);
         }
@@ -1937,6 +1949,8 @@ impl FileWindow {
         //    同样模态、同样画在列表之前。
         self.write_board.ui(ui);
         self.write_ui(ui);
+        // 〔F7b〕新建空文件那个框（同样模态、同样在前）。
+        self.new_file_ui(ui);
         // 🔴〔第八刀〕往外拖那一摞：两问 ／ 进度 ／ 结局。同样模态、同样在前。
         self.pull_ui(ui);
         // 🔴〔第九刀〕编辑那一摞：**先消化到货，再画** ——
