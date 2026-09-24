@@ -35,7 +35,27 @@ const LH_PROSE = 15 * 1.65; // --font-size-prose × --line-height-prose
 const LH_BASE = 14 * 1.55;
 const LH_MONO = 13 * 1.55;
 
-const COL_W = 780; // --stream-max-width
+// 〔`设计/41 §6` · `设计/10`「`COL_W = 780` 改成从容器实测」〕列宽不再写死：模块求值时在 `#message-stream`
+// 里临时摆一个生产形状的 `.stream > .stream-content`（`.stream` 是名为 `stream` 的尺寸容器，见 styles.css），
+// 量出真列宽 = min(`--stream-max-width`, 流宽 − 两侧内边距) 立刻撤掉。
+// 量不到（jsdom 没有布局 / 该窗口没有消息流）才退回 780 —— 那个数与 tokens.css 的 `--stream-max-width`
+// 由 `tests/css-ledger.vitest.ts` 格 ⑥ 对拍。
+// ⚠ 买不到：**只量一次**。拉窗口之后不重算 —— 要跟着变，得把本常量改成调用时量，动的是本文件别处
+//   （`USER_BODY_W` 与各估高调用点），不在这一拍的写区。影响面只是「从没渲染过的卡」的初值
+//   （`contain-intrinsic-size: auto` 渲染过一次就用真值），即滚动条精度。
+const COL_W: number = ((fallback: number): number => {
+  const host = typeof document === "undefined" ? null : document.getElementById("message-stream");
+  if (!host) return fallback;
+  const probe = document.createElement("div");
+  probe.className = "stream";
+  const col = document.createElement("div");
+  col.className = "stream-content";
+  probe.appendChild(col);
+  host.appendChild(probe);
+  const w = col.getBoundingClientRect().width;
+  probe.remove();
+  return w > 0 ? w : fallback;
+})(780);
 const USER_BODY_W = COL_W * 0.8 - 34; // 气泡 max-width 80% - padding 16×2 - border 2
 const SUMMARY_H = 38; // 折叠 <details> 只剩 summary 行
 const CODE_BAR_H = 30; // .code-bar(copy 按钮撑高)+ border
@@ -371,4 +391,116 @@ export function applyIntrinsicSize(el: HTMLElement): void {
   if (h !== null) {
     el.style.setProperty("contain-intrinsic-size", `auto ${appliedIntrinsicPx(h)}px`);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔`设计/10` 骨架 · 子步 2〕第一级粗估：**不看 DOM、不看正文**，只看后端索引给的宽度无关料。
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * 后端骨架索引的一行（`--read-session-from-offset … --index`，形状住 `IPC-PROTOCOL.md §10.3`）。
+ * 零值 / 假值不上线 ⇒ 这里全是可选。
+ */
+export interface SkeletonFacts {
+  /** 行起点字节偏移（绝对） */
+  o: number;
+  /** 行字节长（含 `\n`） */
+  n: number;
+  /** 记录 `type`（解析不出 ⇒ 缺） */
+  t?: string;
+  u?: string;
+  sc?: boolean;
+  mt?: boolean;
+  /** 正文字符数（代码块外） */
+  ch?: number;
+  /** 其中 CJK */
+  cj?: number;
+  /** 正文非空硬行 */
+  pl?: number;
+  /** 围栏代码块数 */
+  cb?: number;
+  /** 代码行数 */
+  cl?: number;
+  /** 折叠单元数（tool_use / tool_result / thinking / image） */
+  fd?: number;
+}
+
+/**
+ * 一条记录在骨架里算哪一类：
+ * - `none`：**不建卡**（meta / attachment / ai-title / 解析不出的…）——高 0，**也不打断**工具组的连续
+ *   （渲染时它们根本不进 timeline，`peekPrev` 看得见的左邻居仍是上一个工具组）；
+ * - `tool`：只有折叠单元的记录（纯 tool_use / 纯 tool_result）——连续的一串并成**一张**工具组卡；
+ * - `card`：其余。
+ */
+export type SkeletonKind = "none" | "tool" | "card";
+
+/**
+ * 卡片外框（padding + border + 卡间 margin）的偏保守常数。
+ * ⚠ 这几个数**是估的**：它们对着 styles.css 的量级取整，**没有秤对拍过**（秤 2 量的是
+ * `contain-intrinsic-size` 那条 content-box 路，不量卡间距）。`设计/10 §2.5b`：粗估宁可偏高 ——
+ * 精算后是往下修，视觉上比往上撑好。
+ */
+const SKEL_USER_CHROME = 36;
+const SKEL_CARD_CHROME = 20;
+const SKEL_TOOL_GROUP_H = SUMMARY_H + 8;
+const SKEL_SYSTEM_H = 32;
+
+/** 字宽算术（口径 = `fallbackTextHeight`：CJK 全宽、其余 0.52em），折成行数的**上界**。 */
+function factLines(f: SkeletonFacts, fontSizePx: number, widthPx: number): number {
+  const ch = f.ch ?? 0;
+  const cj = Math.min(f.cj ?? 0, ch);
+  const w = cj * fontSizePx + (ch - cj) * fontSizePx * 0.52;
+  // Σ ceil(wᵢ/W) ≤ 硬行数 + Σwᵢ/W —— 取上界（偏保守，见 SKEL_* 那段头注）
+  return (f.pl ?? 0) + w / widthPx;
+}
+
+function factCode(f: SkeletonFacts): number {
+  const cb = f.cb ?? 0;
+  return (f.cl ?? 0) * LH_MONO + cb * (CODE_BAR_H + CODE_PAD_V + CODE_MARGIN);
+}
+
+/** 一条记录属于哪一类（不看邻居）。 */
+export function skeletonKind(f: SkeletonFacts): SkeletonKind {
+  if (f.t !== "user" && f.t !== "assistant" && f.t !== "system") return "none";
+  if (f.mt) return "none";
+  if (f.t === "system") return "card";
+  const hasBody = (f.ch ?? 0) > 0 || (f.cb ?? 0) > 0;
+  if (!hasBody) return (f.fd ?? 0) > 0 ? "tool" : "none";
+  return "card";
+}
+
+/**
+ * **第一级粗估**：由宽度无关料 × 当前列宽算一条记录在骨架里占多高（px，border-box 口径）。
+ *
+ * `prevKind` = 上一条**建卡**记录的类别（`none` 不算）—— 连续的 `tool` 只有第一条出高，其余并进同一个组。
+ * `colW` 默认 `COL_W`（写死的 780 **留给 U1** 改成容器实测；本函数已经吃参数，U1 只需传进来）。
+ *
+ * 买到：骨架落地那一瞬间就有总高（滚动条大致对、跳转可用）。
+ * **买不到**：精度。它不知道 slash/compact 细条、ESC 折叠、`stripInternalNoise` 剥空这些渲染期决定；
+ * 第二级（建卡时 `applyIntrinsicSize` ＋ `contain-intrinsic-size: auto` 记住真值）接管已渲染的那部分。
+ */
+export function estimateFromFacts(
+  f: SkeletonFacts,
+  prevKind: SkeletonKind,
+  colW: number = COL_W,
+): number {
+  const kind = skeletonKind(f);
+  if (kind === "none") return 0;
+  if (kind === "tool") return prevKind === "tool" ? 0 : SKEL_TOOL_GROUP_H;
+  if (f.t === "system") return SKEL_SYSTEM_H;
+  const folded = (f.fd ?? 0) * SUMMARY_H;
+  if (f.t === "user") {
+    const userW = colW * 0.8 - 34;
+    return factLines(f, 14, userW) * LH_BASE + factCode(f) + folded + SKEL_USER_CHROME;
+  }
+  const paras = Math.max(0, (f.pl ?? 0) - 1) * P_GAP;
+  return (
+    CARD_HEADER_H +
+    factLines(f, 15, colW) * LH_PROSE +
+    paras +
+    factCode(f) +
+    folded +
+    BLOCK_GAP +
+    SKEL_CARD_CHROME
+  );
 }

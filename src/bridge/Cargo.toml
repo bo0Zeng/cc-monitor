@@ -53,12 +53,33 @@ path = "src/main.rs"
 # 第二个 `[[bin]]` 不动包数，而且它要的每一样（egui/eframe/winit/tokio/sftp 那条池）
 # 本包已经全有 ⇒ **零新增依赖**。
 #
-# ⚠ **代价如实记，两条**：
-# ① 它把整个 `monitor_lib` 链进第二份产物 ⇒ `cargo build` 多一次链接（体积翻一份）。
-# ② **发版包里今天还没有它**：Tauri 的安装包只装主二进制与 `externalBin` 那几个 sidecar。
-#    ⇒ 装机那份上 `filewin::proc::resolve_window_bin` 会找不到它**并出声**
-#    （`D11`：不留退路）。补它要动 `tauri.sidecar.conf.json` 与发版流水线，
-#    **两处都不在本刀写区** ⇒ 已报备，别在这里偷偷加一条回落。
+# ⚠ **代价如实记**：它把整个 `monitor_lib` 链进第二份产物
+# ⇒ `cargo build` 多一次链接（体积翻一份）。
+#
+# ── 🔴〔2026-09-23 同日订正〕**「发版包里还没有它」那条报备是假的** ─────────────────
+#
+# 〔墓碑，原话逐字：「② **发版包里今天还没有它**：Tauri 的安装包只装主二进制与
+#  `externalBin` 那几个 sidecar ⇒ 装机那份上 `filewin::proc::resolve_window_bin` 会
+#  找不到它**并出声**（`D11`：不留退路）。补它要动 `tauri.sidecar.conf.json` 与发版流水线」。〕
+#
+# 现打两趟推翻（本仓这份 manifest ＋ `tauri.conf.json` ＋ `tauri.sidecar.conf.json`，
+# `@tauri-apps/cli` 现锁 2.11.2，喂的是占位字节 —— 问的是**清单**）：
+#   · 真 `.deb`：`dpkg-deb -c` 现打 `usr/bin/` **三份** —— `monitor` ·
+#     **`cc-monitor-filewin`** · `cc-monitor-backend`，同一个目录；
+#   · NSIS 那份清单（生成出来的 `installer.nsi`）现打逐字
+#     `File /a "/oname=cc-monitor-filewin.exe" …`，与 `${MAINBINARYNAME}.exe` 同落 `$INSTDIR`。
+# 机制：`tauri-cli::get_binaries` 把**每一个** `[[bin]]` 都交给打包器（`name == 包名` 的那个
+# 算主二进制、其余 `!bin.main()`），而 nsis/msi/deb 三个打包器都把非主 bin 装在主二进制旁边。
+# ⇒ `resolve_window_bin()` 的「exe 旁那一份」在装机布局下**命中**，`externalBin` 一个字不用加。
+#
+# ⚠ **别把它加进 `externalBin`**：现打过那一形 —— 同一个落点名会被铺**两份**（NSIS 清单里
+#   `/oname=cc-monitor-filewin.exe` 出现两行；MSI 那边是两个组件往 `INSTALLDIR` 装同一个
+#   文件名，WiX 的 ICE30 那一族，本机验不了）。
+# 🔴 **这条路线由判据钉着，别只读这段注释**：`tests/evidence/K-R124-ruler.py` 的 ⑭ ——
+#   每个 `[[bin]]` ↔ 入包路线登记（**两向集合相等**）· 主二进制恰好一个 ·
+#   `required-features` 零命中（带了它 `get_binaries` 会**静默**跳过这个 bin）·
+#   `externalBin` ↔ 登记两向且不与本包 bin 重名 · 消费侧 `proc::BIN_STEM` ↔ 下面这个
+#   `name` 逐字 · 以及那把工具的版本。**改下面这个名字，判据当场红。**
 [[bin]]
 name = "cc-monitor-filewin"
 path = "src/filewin/win_main.rs"

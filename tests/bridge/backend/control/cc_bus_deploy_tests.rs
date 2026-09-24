@@ -227,7 +227,7 @@ fn the_deploy_precheck_lists_what_cc_spawn_negotiates() {
 
 /// ★★ Windows 那条预检**真探了**，而且五种情形的话**互相分得开**〔ccbus-win 09-24〕。
 ///
-/// 🪦 上一版这里是 `windows_says_the_precheck_did_not_happen_instead_of_staying_silent`
+/// 🪦 上一版这里是 `windows_says_the_precheck_did_not_happen_instead_of_staying_silent`〔散文墓碑〕
 /// （`#[cfg(windows)]`，断言那句话里有「没做预检」）。那一版的前提 ——「monitor 在 Windows 上
 /// 没有任何 ccm 探测形态」—— 在 `K-R69`（`probe_binary_uncached`）之后不成立了，
 /// 于是那句话从「诚实」变成了「过期」。⇒ 本条判的是**纯函数** `windows_ccm_precheck`，

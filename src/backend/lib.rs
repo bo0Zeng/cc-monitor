@@ -15,6 +15,7 @@
 //!   · `tests/backend/build_id_guard.rs`（真身份住址的逐条核对）
 //! **别在第四处写它的住址。**
 
+pub mod accounts; // 账号层（apikey 端点改写）：`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载。**不是中转**，不住 relay/
 #[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
@@ -352,7 +353,16 @@ pub const PROTO_VERSION: u32 = 1;
 /// ⇒ **解锁条件（发版那一拍，同轮做完）**：步 1／3 落地、monitor 侧开始发
 /// `--with-rbind-token` 之后，bump 到 `p2o-rbind-token`（或那一波的合并版本号）
 /// ＋ **同拍 re-embed**。**在那之前这条能力在已部署的远端上是休眠的 —— 这是刻意的。**
-pub const BUILD_ID: &str = "p2n-files-rebuild-and-browse";
+///
+/// ★★★ **p2o-files-write-and-rbind-token**（2026-09-24，第一波合并那一拍）：
+/// 上面那笔「欠着的 bump」**在这一拍还掉**，与 F1 写面六条命令合成一次 ——
+/// 解锁条件逐条核过：步 1（`CCM_RBIND_TOKEN` 进环境）与步 3（铸币口 ＋ 本地半）已落，
+/// monitor 已在协商到 `rbind-token` 时发 `--with-rbind-token`。
+/// 线上面这一拍动了：① `files-create/-mkdir/-rename/-delete/-chmod/-write-text`
+/// 两个命令面各 ＋6（写面只从 `inbound.rs` 那一扇门进，见 `files::module_boundary_guard`）；
+/// ② `hello.capabilities` 的 `rbind-token` 从此有人认、有人发。
+/// ★ re-embed 归发版那一拍（同 p2d…p2n 的登记）；本机 `--native` 那份由合并那一拍重打。
+pub const BUILD_ID: &str = "p2o-files-write-and-rbind-token";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -473,6 +483,23 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 取词器**静默丢弃**，那等于把这四条从三条判据底下同时抽走而三条都照常报绿。
     // 〔步 `24f` 第三刀 09-21〕同族的第五、第六条（`设计/96 §2.9` 裁）。登记在这里的理由
     // 与上面那四条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
+    // 🔴 〔波 5 ㈠ · 2026-09-23 · `设计/60 §8.6` 第 2 步〕**本族第一条会往盘上写的命令。**
+    //
+    // 它落在这张表里**不是选择，是派生的必然**：`cli_control::cli_exposed` 逐字是
+    // `!matches!(spec.run, Run::Builtin)` —— 只要一条命令进了 `inbound::REGISTRY`
+    // 且不是那个硬臂，CLI 面就**自动**认得它；而本表是 `is_query_mode` 那道闸门。
+    // ⇒ 不加这一行的后果与上面那几条逐字相同（当未知 flag、照常进流模式）。
+    // ⚠ **如实登记一条代价**：因此「写这一面只从帧面进来」这句话**做不到**，
+    //   两个宿主共用同一个 `run`（`设计/60 §8.1` 的「一份代码两种宿主」正是这一形）。
+    //   写面的「窄」因此**不靠命令面**，而靠 `readonly_guard` 第三层那条
+    //   「只从声明过的那一面来」—— 它判的是**谁引用得到那个模块**，不是谁发得出命令。
+    "--files-create",
+    // 〔波 5 ㈡ 09-23〕同一面的另外五条（`设计/60 §8.6` 第 3 步）。登记理由与上一行逐字相同。
+    "--files-chmod",
+    "--files-delete",
+    "--files-mkdir",
+    "--files-rename",
+    "--files-write-text",
     "--files-browse",
     "--files-find",
     "--files-index-rebuild",
@@ -972,8 +999,13 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--accts-dir",
     "--after-ms",
     "--include-tools",
+    // 〔`设计/10` 骨架 · 子步 1〕`--read-session-from-offset` 的两个选项（出骨架索引 / 右端收口）。
+    // 刻意是**选项**不是新子命令：新子命令会逼出 `BUILD_ID` bump，本轮不许 —— 理由与老后端上的
+    // 降级形状住 `observe::history_query::FromOffsetOpts` 的头注。
+    "--index",
     "--limit",
     "--scope",
+    "--until",
 ];
 
 /// 从 argv 剥离流模式 flag，返回（剩余参数, with_bg, tail_only, with_rbind_token）。

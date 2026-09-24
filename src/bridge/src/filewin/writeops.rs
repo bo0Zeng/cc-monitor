@@ -82,6 +82,16 @@
 //! - **往外拖（`sftp_download`）与文本编辑（`sftp_read_text_for_edit` /
 //!   `sftp_write_text`）不在本刀射程里**，登记在此：前者是另一个交互题（选目标目录），
 //!   后者要一个编辑器面，而 `设计/60 §5.4b`（大文件编辑改流式）至今没做、形状没定。
+//! - 🔴〔F1 · 波 5 · 2026-09-24〕**新建空文件：后端那一半有了，窗口这一半刻意没接。**
+//!   后端文件管理写面今天有 `files-create`（`O_EXCL` 新建，不给 `content` 就是空文件，
+//!   过 Claude 会话数据围栏；`src/doc/IPC-PROTOCOL.md` §10 那一节），另有
+//!   `files-mkdir` / `-rename` / `-delete` / `-chmod` / `-write-text` 五条。
+//!   **本模块没有加第五种 [`WriteOp`]**，理由两条：① 窗口这一波**够不着后端**
+//!   （独立进程里客户端登记表是空的；接通道归 F3、接窗口归 F2）；
+//!   ② 若在这里用 `sftp_write_text` 兜一个「新建」，那是往**与目标相反**的方向走
+//!   （`设计/60 §8.4`：SFTP 要缩成只做传输），而且会动
+//!   `remote_write_registry_tests` 那条「窗口用了池子哪几条命令」的相等断言。
+//!   ⇒ 窗口上那颗按钮（住 `rows.rs` / `shell.rs`，不在本路写区）等 F2 接后端时一起落。
 
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
