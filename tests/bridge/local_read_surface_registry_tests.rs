@@ -407,6 +407,14 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              `local_backend_host.rs::write_listen_pid`",
     ),
     (
+        "dial_host.rs",
+        "resolve_proxy",
+        "`~/.cc-monitor/bin`（本机后端自释放那一份的落点 —— 拨号代理就是它）",
+        "〔C2 09-24〕**不是伸手拿用户的东西**：与下面 `local_backend_host.rs::start_local_backend` 同一个目录、\
+             同一份解析（`local_backend::resolve_or_extract`）—— 开发树上找拨号代理要走到这一处（`D11`：找不到就报，\
+             不再进程内拨 SSH）。写侧同一条登记（`local_backend.rs::extract_embedded_to`）。",
+    ),
+    (
         "local_backend_host.rs",
         "start_local_backend",
         "`~/.cc-monitor/bin`（P2z 自释放内嵌后端的落点）",

@@ -197,6 +197,16 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/bridge/dial_host_tests.rs",
+        "src/backend/dial/mod.rs",
+        "★〔C2 · `设计/05 §13` 09-24 新增〕**拨号请求的键两侧同形** —— \
+         `dial_host::tests::the_request_keys_are_the_ones_the_proxy_reads`。写侧是 monitor 的 \
+         `dial_host::request`（`serde_json::json!` 拼的蛇形键），读侧是后端 `dial::DialRequest` 的字段。\
+         失效方向**很安静**：serde 默认忽略未知字段 ⇒ 本侧写错一个键名，代理照样读得动、那一项悄悄变成缺省 \
+         （竞速只剩一个地址 · 跳板被当成直连 · 用法退回长流），两侧各自的判据全绿。",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/subagent_tests.rs",
         "src/backend/observe/history_query.rs",
         "★〔C2 · SE1 欠账 09-24 新增〕**「老后端」那一档的认法两侧同形** —— \

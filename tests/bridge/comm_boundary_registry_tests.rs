@@ -2375,14 +2375,14 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
     (
         "src/bridge/src/ssh_source.rs",
         &["C1", "C4", "C5", "X2"],
-        &["读文本", "读环境OS"],
-        "四条一起咬，而**每一条都指着一件真该搬走的东西**，它们分别归不同的步\
-         （`真相源/100 §四` 那张分类表）：`C1` 在公开面上命名了会话/tmux/claude/agent/sid 一族\
-         · `C4` 读 `~/.ssh/config` ＋ 读一个环境变量 · `C5` 自己起进程 · `X2` 期限的**值**写在本层。\
-         🔴 `C4` 那处读环境变量**另有一条判据正着钉住它必须在**\
-         （`ssh_source_dial_move_judge::the_proxy_is_resolved_from_exactly_two_places_and_never_from_home`，\
-         它钉的是「解析口只认两处」这条设计）⇒ **清它是改设计，不是做清理**，\
-         而那条设计题今天没人拍。别把这一行读成「顺手能清」。",
+        &["读文本"],
+        "〔C2 · 2026-09-24，`设计/05 §13`〕**传输那一段已经搬出去了**：SSH 的全部活进了后端的拨号代理，\
+         界面侧读应答的那一段是新的通信层成员 `ssh_link.rs`，起代理的是宿主 `dial_host.rs`。\
+         今天咬它的四条**全是业务该做的事**，不是传输面没洗干净：`C1` 公开面上是会话/tmux/agent 那一族\
+         （远端数据源本来就是业务）· `C4` 读 `~/.ssh/config`（「从 ssh config 导入」这个功能）· \
+         `C5` 起 `ssh -G`（同一个功能）· `X2` 重连退避与快照重试的期限值。\
+         ⇒ **这一份不是「还差一点就进来」，是「本来就不该进来」**：登记它等于把业务家圈进通信层。\
+         〔`C4` 原来还有一个判词「读环境OS」—— 拨号代理二进制的解析搬去了宿主，那一处随之离开。〕",
     ),
     (
         "src/bridge/src/sftp.rs",
@@ -2695,7 +2695,9 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
 ///   写在表里各自那一行。
 #[test]
 fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
-    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 5);
+    // 〔C2 · 2026-09-24〕`C4` 判词处数 5 → **4**：少的是 `ssh_source.rs` 的「读环境OS」——
+    //   拨号代理二进制的解析（`CCM_DIAL_PROXY`）随拨号搬去了宿主 `dial_host.rs`（不是成员，那一处本来就归它）。
+    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 4);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

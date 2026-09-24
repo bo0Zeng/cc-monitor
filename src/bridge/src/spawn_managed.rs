@@ -98,7 +98,7 @@ pub enum Lifetime {
 /// 设计稿写的是 `{ ToLog, Null }` —— 那是**从一个落点（`local_backend.rs::supervise_with_stdio`）看出去**
 /// 得到的两格。把人群现打一遍（`write_site_registry::SPAWNS`，14 个运行期落点）之后，
 /// 今天真实存在的是**四**格：还有「不接管，跟着界面进程的 stderr 走」
-/// （`ssh_source::spawn_dial_proxy` 逐字写着为什么）与「接出来当返回值读」
+/// （`dial_host.rs::open` 逐字写着为什么）与「接出来当返回值读」
 /// （四处 `.output()`：`local_query` · `profile_installer` · `launch::ssh_client_available` ·
 /// `ssh_source::resolve_ssh_host`）。
 ///

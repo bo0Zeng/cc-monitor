@@ -582,14 +582,19 @@ src/bridge/src/sftp_pool.rs:1387	{why} ⇒ 退回中转：{relayed} 字节经过
 src/bridge/src/skill_host.rs:147	planned-build 今天不在 tool_registry 那张表里（那张表收哪几条，\n             唯一住址是 `tool_registry::TOOLS`）。把它变成可装归 devbench F06。	改·§2.1	[对外] skill 不支持安装的说明（源码注释自己写着「这一句是用户看得见的」）：露出 tool_registry::TOOLS 源码住址与内部工单 devbench F06 兼§2.2 →「planned-build 暂不支持在这里安装」
 src/bridge/src/skill_host.rs:213	在场	保留	[对外] skill 存在性的短状态（「在场」偏书面，CP2 可换「已找到」）
 src/bridge/src/skill_host.rs:215	{skill} 的前提没满足：找不到 {}	保留	[对外] 缺前提的说明，先说结果再给路径
-src/bridge/src/ssh_source.rs:440	超时	保留	[不对外] classify_stage 的匹配关键词（对报错原文做 contains），不上界面
-src/bridge/src/ssh_source.rs:442	指纹	保留	[不对外] classify_stage 的匹配关键词，不上界面
-src/bridge/src/ssh_source.rs:602	拨号任务异常: {je}	改·§2.1	[可达存疑] 收进拨号错误列表、可能拼进连接失败报错；「拨号任务异常」是 tokio JoinError 的实现话 新词:拨号任务 →「连接中断：{je}」
-src/bridge/src/ssh_source.rs:655	跳板 {}	保留	[对外] 连接阶段显示的端点名；跳板是用户自己配的 ssh 跳板
-src/bridge/src/ssh_source.rs:679	{}:{}（经跳板）	保留	[对外] 连接阶段显示的端点
-src/bridge/src/ssh_source.rs:845	agent 身份被拒（user={user}）	改·§2.1	[可达存疑] 鉴权失败原因进 last_err 最终上报；`user={user}` 是日志行格式 →「ssh-agent 里的密钥被拒（用户 {user}）」
-src/bridge/src/ssh_source.rs:846	agent 签名鉴权出错: {e}	保留	[可达存疑] 鉴权失败原因，ssh-agent 是用户认得的词（R1b 语境内）
-src/bridge/src/ssh_source.rs:1221	(代理没说原因)	保留	[可达存疑] 拼进「拨号代理拨不通: {why}」的兜底原因，短
+src/bridge/src/inproc_dial.rs:142	超时	保留	[不对外] classify_stage 的匹配关键词（对报错原文做 contains），不上界面 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:144	指纹	保留	[不对外] classify_stage 的匹配关键词，不上界面 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:252	拨号任务异常: {je}	改·§2.1	[可达存疑] 收进拨号错误列表、可能拼进连接失败报错；「拨号任务异常」是 tokio JoinError 的实现话 新词:拨号任务 →「连接中断：{je}」 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:305	跳板 {}	保留	[对外] 连接阶段显示的端点名；跳板是用户自己配的 ssh 跳板 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:329	{}:{}（经跳板）	保留	[对外] 连接阶段显示的端点 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:495	agent 身份被拒（user={user}）	改·§2.1	[可达存疑] 鉴权失败原因进 last_err 最终上报；`user={user}` 是日志行格式 →「ssh-agent 里的密钥被拒（用户 {user}）」 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/inproc_dial.rs:496	agent 签名鉴权出错: {e}	保留	[可达存疑] 鉴权失败原因，ssh-agent 是用户认得的词（R1b 语境内） 〔C2 09-24：随进程内拨号原样搬进 inproc_dial.rs（只服务 SFTP），同句同裁〕
+src/bridge/src/ssh_link.rs:103	拨号代理一个字节都没回就走了（它自己的 stderr 上有原因）	改·§2.1	[可达存疑] 〔C2〕拨号代理没回应答时的报错，原样进连接失败提示；「拨号代理」「stderr」是实现词 →「本机后端没能替你连上远端（它自己的日志里有原因）」 新词:拨号代理
+src/bridge/src/ssh_link.rs:105	拨号代理拨不通: {why}	改·§2.1	[可达存疑] 〔C2〕代理 ack 说拨不通，{why} 是 SSH 那一层的原因；「拨号代理」是实现词 →「连不上：{why}」 新词:拨号代理
+src/bridge/src/ssh_link.rs:108	本机后端太旧（拨号应答 v{v}，不认 `{wanted}`）—— 重装本机后端后再试	改·§2.1	[对外] 〔C2〕代理比界面老时的提示；「拨号应答 v{v}」「`{wanted}`」是协议细节 →「本机后端版本太旧，重装后再试」
+src/bridge/src/ssh_link.rs:110	拨号代理回的不是约定的形状: {s}	改·§2.1	[可达存疑] 〔C2〕代理回了读不懂的东西（对面不是我们的代理 / 坏了）；整句讲实现 →「本机后端回了看不懂的东西，重装后再试」 新词:拨号代理
+src/bridge/src/ssh_link.rs:112	拨号代理回了一行 {n} 字节，超过上限 —— 拒收	改·§2.1	[可达存疑] 〔C2〕对面一行超上限被拒收；讲实现 →「本机后端回的数据不对劲，已拒收」 新词:拨号代理
+src/bridge/src/ssh_link.rs:114	读拨号代理失败: {e}	改·§2.1	[可达存疑] 〔C2〕读代理管子出错；「拨号代理」是实现词 →「和本机后端的连接断了：{e}」 新词:拨号代理
 src/bridge/src/ssh_source.rs:2219	远端 [{host_label}] 发来一行 {bytes} 字节，超过单行上限 {BACKEND_FRAME_LINE_CAP} 字节，\n         这一行**已整行丢弃**。这不是网络拥塞 —— 要么该会话里有异常巨大的一条记录，\n         要么对端不是本工具的后端。重开该会话可看完整历史。	改·§2.4	[对外] 健康提示：markdown ** ＋破折号＋首句长，一段塞结果、排除项、两种归因、处方 兼§2.2 →「远端 [{host_label}] 有一条记录过大（{bytes} 字节），已跳过。重开会话可看完整历史」
 src/bridge/src/ssh_source.rs:2465	远端 [{host_label}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。	保留	[对外] 健康提示，结果＋可行处方两句
 src/bridge/src/ssh_source.rs:2478	；受影响清单**不全**，建议刷新该来源	改·§2.4	[对外] 拼接段带 markdown ** 兼§2.3（「建议刷新」）→「；受影响的会话没列全」

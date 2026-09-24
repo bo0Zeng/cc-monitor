@@ -2678,6 +2678,24 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 🔴 〔C2 · 2026-09-24〕拨号搬进后端的拨号代理之后，界面侧 `K-P6b` 那一版的三条判据随它们守的东西一起删了：
+        //    回落登记（回落删了，`D11`）· 请求行按蛇形键写（请求改由宿主 `dial_host` 造，判据搬去那边且改成与后端异源）·
+        //    代理只从两处解析（解析多了「自释放那一份」一处）。留下的那几句说的正是「它们为什么不在了」⇒ 第②条出路。
+        (
+            "tests/bridge/ssh_source_dial_move_judge.rs",
+            "every_registered_fallback_is_actually_decided_in_the_entry",
+            1,
+        ),
+        (
+            "tests/bridge/ssh_source_dial_move_judge.rs",
+            "the_request_line_is_written_with_snake_case_keys",
+            1,
+        ),
+        (
+            "tests/bridge/ssh_source_dial_move_judge.rs",
+            "the_proxy_is_resolved_from_exactly_two_places_and_never_from_home",
+            1,
+        ),
         // 🔴 〔`C1` · 2026-09-24〕快照改走长连接（`history-tail` 给那张图）之后，
         //    解析 `--read-session-tail` 首行 meta 的那个函数与它的两条判据一起删了；
         //    留下的那一句说的正是「它为什么不在了」⇒ 第②条出路：贴墓碑 ＋ 记账。
@@ -3492,6 +3510,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/lib.rs", 1),
         // 〔AL1 · 2026-09-24〕规则收成一份那一拍新贴的两块墓碑（本机配对 helper · 远端回滚措辞 helper）。
         ("src/bridge/src/fenced_block.rs", 1),
+        // 〔C2 · 2026-09-24〕拨号归后端那一拍：`inproc_dial.rs` 那块（端口转发用的 russh 句柄别名删了）·
+        // `ssh_source_dial_move_judge.rs` 三块（回落表那条判据 · 请求行那条 · 解析两处那条，随拨号搬家删掉）。
+        ("src/bridge/src/inproc_dial.rs", 1),
+        ("tests/bridge/ssh_source_dial_move_judge.rs", 3),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/bridge/src/sftp.rs", 4),
         ("src/bridge/src/profile_installer.rs", 2), // 〔AL1〕+1：`AccountAliasReport` 那一句

@@ -213,9 +213,16 @@ async fn forward<W: tokio::io::AsyncWrite + Unpin>(
                 }
             }
             a = listener.accept() => {
-                let Ok((mut tcp, _peer)) = a else {
-                    // 瞬时错误（ECONNABORTED / fd 耗尽）不杀这条转发：回到 select 继续等。
-                    continue;
+                let (mut tcp, _peer) = match a {
+                    Ok(v) => v,
+                    // ⚠ 界面侧原来在这里 100ms 退避后重试（瞬时错误不杀转发）。本 crate 不许「睡到点自己醒」
+                    //   （`no_timer_guard`），而不退避直接重试会在 fd 耗尽（EMFILE，持续性的）时空转吃满一核
+                    //   ⇒ **收工并出声**：界面那侧读到管子关了，把这条转发标成 `error`，用户重开即可。
+                    //   代价：一次真·瞬时的 ECONNABORTED 也会让这条转发结束。
+                    Err(e) => {
+                        tracing::error!("dial: 转发的本地口 accept 失败，这条转发收工：{e}");
+                        break;
+                    }
                 };
                 accepted += 1;
                 if write_line(out, &serde_json::json!({ "accepted": accepted })).await.is_err() {

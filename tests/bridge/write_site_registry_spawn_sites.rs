@@ -67,18 +67,16 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           用 `-lc` 而不是 `-lic`：只要 `$HOME`/`$CC_BUS_HOME`，不需要交互式 rc
           ★ 三条策略为什么是这三格：`JobKillOnClose` 是先前 `kill_on_drop(true)` ＋ `reap_whole_tree_on_drop` 两句收成的同一条；`Hidden` 那格**先前没人回答过**（Windows 上起的是 `Git\\bin\\bash.exe`）。",
      "Hidden · JobKillOnClose · Null"),
-    ("ssh_source.rs", "spawn_dial_proxy", "`<代理二进制> --dial`（子进程，常驻到某一头断开）",
-     "`K-P6b`：**backend 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
-          起的是什么：`cc-monitor-backend`（本仓 `src/backend` 的产物）——\
-          发版包里它就在 `monitor.exe` 旁边（`externalBin` local_backend），\
-          解析口 `resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY` 与 exe 旁那份。\
-          **argv 只有一个常量 flag，零插值**；主机名 / 用户名 / 私钥**路径**走环境变量 \
+    ("dial_host.rs", "open", "`<本机后端> --dial`（拨号代理子进程：长流常驻到某一头断开 · 一次性 exec 短命 · 转发一条一个）",
+     "〔C2 · `设计/05 §13`〕**界面拿一条 SSH 链路的唯一入口**：SSH 的全部活（竞速 · 跳板 · host key · 鉴权 · 开通道）\
+          交给这个子进程去跑，界面只在它的管子上读应答与字节。起的是 `cc-monitor-backend`（本仓 `src/backend` 的产物）——\
+          解析口 `dial_host.rs::resolve_proxy`：环境变量 `CCM_DIAL_PROXY` · exe 旁那份 · 本机后端自释放那一份，\
+          三处都没有就**报**（`D11`：不留退路）。**argv 只有一个常量 flag，零插值**；主机名 / 用户名 / 私钥**路径**走环境变量 \
           `CCM_DIAL_REQUEST`（`argv` 是世界可读的，`/proc/<pid>/environ` 不是）。\
-          为什么必须起进程：这正是本件的**目的** —— 让那一跳拨号不发生在界面进程的地址空间里。\
-          ⚠ 它 `kill_on_drop(true)`：界面退出 = 句柄 drop = 代理跟着走。\
-          🔴 **别把这一行读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里\
-          这条只覆盖 1 处，逐处登记在 `ssh_source::dial_move_judge::DIAL_SITES`
-          ★ 三条策略为什么是这三格：`Inherit` 是刻意的：代理的诊断（拨号失败、TOFU 警告）跟着界面进程的 stderr 走，接管它要再起一条泵。`JobKillOnClose` 比先前的 `kill_on_drop` 多买一格：monitor 被强杀时也生效。",
+          为什么必须起进程：「拨 SSH 归后端」而本机后端今天还不在 monitor 进程里（`4b` 未落地）。\
+          〔`K-P6b` 那一版住 `ssh_source.rs`、只覆盖后端长连接流一处；C2 之后覆盖界面侧除 SFTP 外的全部拨号，\
+          逐处住 `ssh_source::dial_move_judge::DIAL_SITES`。〕
+          ★ 三条策略为什么是这三格：`Inherit` 是刻意的：代理的诊断（拨号失败、TOFU 警告）跟着界面进程的 stderr 走，接管它要再起一条泵。`JobKillOnClose`：界面退出 / 被强杀 = 代理跟着走（Windows 上还有 Job）。",
      "Hidden · JobKillOnClose · Inherit"),
     // 🔴 **`K-R104`（09-13）：`account_usage.rs` 那一行（本机执行面）删了。**
     //    那个函数不存在了 —— 本机用量探针不再在界面进程里 `sh -c <载荷>`，
@@ -188,7 +186,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           两条硬理由 —— ① 环境变量装不下（一屏上限 5 万条，JSON 是兆字节级，\
           而 Linux 一条环境变量的上限是 32 页 ⇒ `execve` 直接 `E2BIG`）；\
           ② argv 是世界可读的（`/proc/<pid>/cmdline`），而种子里带着 `RemoteConfig`\
-          （主机名 · 用户名 · 私钥**路径**）—— 同一条理由 `ssh_source::spawn_dial_proxy` 用过一次。\
+          （主机名 · 用户名 · 私钥**路径**）—— 同一条理由拨号代理的宿主 `dial_host.rs::open` 也用着。\
           ⚠ 二进制的来路只有两处（环境变量 `CCM_FILEWIN_BIN` · exe 旁那份），\
           都不在就**出声**（`D11`：不留退路），由 `filewin::proc::tests` 那一摞钉住。\
           ⚠ 收尸归本落点自己（`Detached` 不改父子关系）：一条阻塞在 `waitpid` 上的线程，\
@@ -197,7 +195,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           用户一关 `CTRL_CLOSE_EVENT` 就把文件窗口杀了；egui 那个窗口自己会出来，它不需要控制台。\
           `Detached` 是**承重的**，与 `lib.rs::open_with_os` 逐字同形：这条 Tauri 命令一返回句柄就丢，\
           `JobKillOnClose` 会在那一瞬间把刚开出来的窗口收掉；顺带买到「关掉 monitor 不带走已开的文件窗口」。\
-          `Inherit` 与 `spawn_dial_proxy` 同形：它 stderr 上只有「窗口为什么没立起来」那一句，\
+          `Inherit` 与 `dial_host.rs::open` 同形：它 stderr 上只有「窗口为什么没立起来」那一句，\
           接管它要再起一条泵。⚠ 代价如实记：装机那份 GUI app 没有 stderr 控制台 ⇒ 那句话今天会丢。",
      "Hidden · Detached · Inherit"),
     ("local_backend_host.rs", "signal_term", "`kill -TERM <pid>`",

@@ -1733,6 +1733,27 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   远端 `echo` 的字节原样从 stdout 回来；指纹给错则 `{"ok":false,"error":"…Unknown server key"}` 且退出码 `3`。
   ⇒ **代理拨得通**这一环成立；**界面在默认装机上选哪一支**仍然是上面那个没测的格子。
 
+**〔C2 · 2026-09-24，`调研/设计/05-通信层.md §13`〕`--dial` 从「搬走 1 处」变成「SSH 的全部活」。**
+上面 `K-P6b` 那一段是它当时的样子，**原文不改**；下面几句是今天的样子，与上面冲突时以这里为准：
+
+- 🔴 **拨号搬出去了**（上面那句「任何地方都不许把它写成拨号搬出去了」到此作废）：界面进程里除 SFTP 外的
+  **全部**拨号 —— 后端长连接流 · 一次性 exec · 收全 exec · 测试连接 · 端口转发 —— 都经这个代理；
+  界面侧拿链路的唯一入口是宿主 `dial_host.rs`，读应答的是通信层成员 `ssh_link.rs`。
+  **唯一的例外是 SFTP**（`sftp.rs`，第三波 `F7c` 独占）：仍用 `inproc_dial.rs` 那一份进程内拨号，
+  理由（池预算 · 红线 I7）写在 `设计/05 §13.5`。
+- **两条回落都删了**（`D11`「后端是给定的，不要退路」）：拿不到代理二进制 ⇒ **报**；没配 `keyPath` ⇒ 代理自己走 ssh-agent。
+- 请求只**加**了可选字段（v1 那六个一个没改）：`endpoints`（竞速顺序）· `jump`（跳板那一台）·
+  `use`（`stream` 缺省 · `capture` · `forward`）· `capture{max_bytes,abort_marker}` · `forward{local_port,remote_host,remote_port}` ·
+  `stages` · `probe`。**SFTP 子系统不在 `use` 里**（后端的远端写那一层把它判作远端写能力）。
+- 应答：`stages=true` 时 ack 之前先有若干行 `{"stage":{"kind":…}}`（与 `ConnectStage` 同形）；ack 多了
+  `endpoint`（竞速胜者）· `v`（`2`）· `uses`（认得的用法）—— **界面据 `uses` 认出老代理并出声**，不去解它的字节；
+  `capture` 在 ack 之后回一行 `{"stdout","stderr","exit_status"}`；`forward` 每接一条连接回一行 `{"accepted":n}`，stdin EOF 即收工。
+- 鉴权：`key_path` 或 **ssh-agent**（Unix `SSH_AUTH_SOCK` —— 新能力；Windows OpenSSH 命名管道 —— 零真机读数）。
+  竞速**同时起拨**、不错开（后端零定时器护栏禁 `sleep`/`timeout`）；握手看门狗改在界面侧等 ack 时执行（45 s）。
+- 读数：`tests/evidence/C2-dial-loopback.py` 对真回环 sshd 八项（竞速 · 严格指纹 · 半关 · 跳板 · agent · 转发）。
+- ⚠ 后端行为变了（多了用法与字段），**子命令集不变** ⇒ 合并时 bump `BUILD_ID`，否则开发树里按旧 id 释放出来的
+  老代理会被界面判成「本机后端太旧」。
+
 ⚠ 加一条 CLI 命令要动**两处**：`inbound::REGISTRY`（实现与分派臂）+ `main::SUBCOMMANDS`
 （`is_query_mode` 的闸门）。只动前者的后果是**静默的** —— 后端把它当未知 flag、
 打一行 warn 之后照常进流模式，调用方拿到一堆 jsonl 行。08-13 实测撞到过，

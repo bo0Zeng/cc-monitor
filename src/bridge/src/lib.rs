@@ -102,6 +102,12 @@ mod sftp;
 // remote off（默认）时本模块不被调用，本地路径 bit-for-bit 不变。
 mod ccm_probe;
 mod ssh_source;
+// 〔C2 · `设计/05 §13`〕拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
+mod ssh_link;
+// 〔C2〕界面进程里最后一份 russh 拨号 —— 只剩 SFTP（`F7c`）一个用户，换走即删。
+mod inproc_dial;
+// 〔C2〕拨号代理的宿主：定位本机后端 · 配置 → 请求 · 起 `--dial` · 管子交给 `ssh_link`。
+mod dial_host;
 // T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）。
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；

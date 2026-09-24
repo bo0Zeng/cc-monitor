@@ -1,15 +1,17 @@
-//! F58 本地端口转发管理台(-L)。把远端机(或其内网)端口映到本机 `127.0.0.1:localPort`,经
-//! cc-monitor 已有 SSH 连接隧道(复用 `connect_session` → 自动继承 F45 竞速/F56 跳板 +
-//! `channel_open_direct_tcpip`,同 F56)。**每转发一条独立 SSH 会话**(存注册表保活)+ 本地
-//! `TcpListener` + accept 循环;每进来的 TCP 连接开一条 direct-tcpip channel 双向 `copy`。
+//! F58 本地端口转发管理台(-L)。把远端机(或其内网)端口映到本机 `127.0.0.1:localPort`。
 //!
-//! v1 **即席**(不持久化 config)。**停** = abort accept 任务(drop listener 停接受,本地端口释放)
-//! + `session.disconnect(ByApplication)` **主动断连**。注意:**仅 drop session Arc 关不掉连接**——
-//! russh `Handle::drop` 是 no-op,且每条在飞连接的 `ChannelStream` 各持会话 sender 的 clone 保活
-//! 会话(D 审计 russh 源码实证);故必须主动 Disconnect,让服务端关连接 → 在飞 direct-tcpip
-//! channel 全死 → 各 per-conn `copy_bidirectional` 报错收尾。
+//! 〔C2 · `设计/05 §13`〕**绑口与隧道都不在界面进程里了**：每条转发起一个拨号代理
+//! （`<本机后端> --dial`，`use: forward`），由它绑本机回环口、每接进一条连接开一条 direct-tcpip、
+//! 双向对拷（竞速 / 跳板 / 鉴权与别的链路同一份，住后端 `dial/`）。本文件只剩三个命令面 ＋ 一张转发账：
+//! 起 = 宿主起代理、等它回 ack（口绑好了才算起来）；停 = 丢掉那条链路（代理子进程随之收掉 ⇒
+//! 本地口释放、在飞隧道全断）；列 = 账上每一条的状态与累计连接数（代理每接一条报一行）。
+//!
+//! 〔墓碑 —— 原头注要点逐字：「**每转发一条独立 SSH 会话**(存注册表保活)+ 本地 `TcpListener` + accept 循环」
+//!  「**仅 drop session Arc 关不掉连接** —— russh `Handle::drop` 是 no-op……故必须主动 Disconnect」。〕
+//! 那两件今天在代理进程里：它收到 stdin EOF 就丢 listener ＋ 主动断开 SSH；界面这侧丢掉链路就是那一下。
+//!
+//! v1 **即席**(不持久化 config)。
 
-use crate::ssh_source::{self, SshSession};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -37,7 +39,7 @@ pub struct ForwardStatus {
     pub local_port: u16,
     pub remote_host: String,
     pub remote_port: u16,
-    /// "running"（accept 循环存活）| "error"（循环退出）。v1 = accept 循环存活性,非 session 健康。
+    /// "running"（代理那条链路还在）| "error"（代理收工了）。
     pub state: String,
     pub error: Option<String>,
     // **C03 大整数策略**：量纲是**累计连接数**，`Number.MAX_SAFE_INTEGER` = 2^53-1 条
@@ -49,10 +51,9 @@ pub struct ForwardStatus {
 
 struct ForwardEntry {
     spec: ForwardSpec,
-    /// 保活:drop 则 russh 关连接 → 隧道死(同 F56 jump_holders 教训)。russh Handle 不 Clone,
-    /// 用 `Arc` 在 accept 循环/per-conn 任务/注册表间共享(`channel_open_direct_tcpip(&self)`）。
-    _session: Arc<SshSession>,
-    accept_task: AbortHandle,
+    /// 读代理计数行的那个任务：它手里握着那条链路（代理子进程）。**停 = abort 它** ⇒ 链路被丢 ⇒ 代理收工。
+    /// 任务自己结束（代理退了 / 远端断了）⇒ 状态读成 `error`。
+    pump: AbortHandle,
     conn_count: Arc<AtomicU64>,
 }
 
@@ -80,74 +81,49 @@ fn validate_spec(spec: &ForwardSpec) -> Result<(), String> {
     Ok(())
 }
 
-/// F58：启动一条本地端口转发。绑 `127.0.0.1:localPort` → 经 origin 的 SSH 会话隧道到
-/// `remoteHost:remotePort`。校验/查配置/连接/绑定任一失败 → Err（不进注册表）。返回转发 id。
+/// F58：启动一条本地端口转发。代理那侧绑好 `127.0.0.1:localPort`（口绑不上 / 连不上 / 鉴权失败都在 ack 里）
+/// 才算起来 —— 任一失败 → Err（不进账）。返回转发 id。
 #[tauri::command]
 pub async fn start_forward(spec: ForwardSpec) -> Result<String, String> {
     validate_spec(&spec)?;
     let cfg = crate::load_remote_config_by_label(&spec.origin)
         .ok_or_else(|| format!("未找到远端配置: {}", spec.origin))?;
-    // 起转发专用会话(自动继承 F45 竞速 / F56 跳板)。
-    let (session, _fp) = ssh_source::connect_session(&cfg, None, None)
-        .await
-        .map_err(|e| format!("连接 {} 失败: {e}", spec.origin))?;
-    let session = Arc::new(session); // russh Handle 不 Clone → Arc 共享
-                                     // 仅绑 127.0.0.1(不对外暴露)。
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", spec.local_port))
-        .await
-        .map_err(|e| format!("绑定本地端口 127.0.0.1:{} 失败: {e}", spec.local_port))?;
-
+    let mut link =
+        crate::dial_host::forward(&cfg, spec.local_port, &spec.remote_host, spec.remote_port)
+            .await
+            .map_err(|e| format!("连接 {} 失败: {e}", spec.origin))?;
     let conn_count = Arc::new(AtomicU64::new(0));
-    let accept_session = Arc::clone(&session);
-    let remote_host = spec.remote_host.clone();
-    let remote_port = spec.remote_port;
     let counter = Arc::clone(&conn_count);
-    // accept 循环:每进来的 TCP 连接开一条 direct-tcpip channel + 双向 copy。
+    let origin = spec.origin.clone();
+    // 代理每接进一条连接报一行 —— 计数照抄它的数；管子关了 = 这条转发没了。
     let task = tokio::spawn(async move {
         loop {
-            let (mut tcp, _peer) = match listener.accept().await {
-                Ok(v) => v,
-                // 瞬时错误(ECONNABORTED / EMFILE fd 耗尽 等)不杀这条转发:短暂 backoff 后重试
-                // (本地已 bound 的 listener 无「永久失败」态,故不 break)。避免忙等。
-                Err(_) => {
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    continue;
+            match link.next_accepted().await {
+                Ok(Some(n)) => counter.store(n, Ordering::Relaxed),
+                Ok(None) => {
+                    tracing::warn!("端口转发 [{origin}] 的代理收工了（远端断开 / 进程退出）");
+                    break;
                 }
-            };
-            counter.fetch_add(1, Ordering::Relaxed);
-            let session = Arc::clone(&accept_session);
-            let host = remote_host.clone();
-            tokio::spawn(async move {
-                match session
-                    .channel_open_direct_tcpip(host, remote_port as u32, "127.0.0.1".to_string(), 0)
-                    .await
-                {
-                    Ok(channel) => {
-                        let mut chs = channel.into_stream();
-                        let _ = tokio::io::copy_bidirectional(&mut tcp, &mut chs).await;
-                    }
-                    Err(_) => { /* 开隧道失败 → 丢弃本连接 */ }
+                Err(e) => {
+                    tracing::warn!("端口转发 [{origin}] 的计数读不下去了：{e}");
+                    break;
                 }
-            });
+            }
         }
     });
-
     let id = next_id();
     registry().lock().unwrap().insert(
         id.clone(),
         ForwardEntry {
             spec,
-            _session: session,
-            accept_task: task.abort_handle(),
+            pump: task.abort_handle(),
             conn_count,
         },
     );
     Ok(id)
 }
 
-/// F58：停止一条转发——abort accept 循环(drop listener 停接受、本地端口释放)+ `session.disconnect`
-/// 主动断连(仅 drop session Arc 关不掉连接:Handle::drop no-op + 在飞连接持 sender clone 保活,
-/// D 审计 russh 源码实证)→ 服务端关 → 在飞 channel 全死 → copy 收尾。移除注册表条目。
+/// F58：停止一条转发 —— 丢掉那条链路（代理子进程随之收掉：本地口释放、在飞隧道全断）。移除账上条目。
 #[tauri::command]
 pub async fn stop_forward(id: String) -> Result<(), String> {
     let entry = registry()
@@ -155,15 +131,7 @@ pub async fn stop_forward(id: String) -> Result<(), String> {
         .unwrap()
         .remove(&id)
         .ok_or_else(|| format!("未找到转发: {id}"))?;
-    entry.accept_task.abort(); // 停止接受新连接(drop listener,本地端口释放)
-    let _ = entry
-        ._session
-        .disconnect(
-            russh::Disconnect::ByApplication,
-            "cc-monitor: stop forward",
-            "",
-        )
-        .await;
+    entry.pump.abort();
     Ok(())
 }
 
@@ -178,7 +146,7 @@ pub async fn list_forwards() -> Vec<ForwardStatus> {
             local_port: e.spec.local_port,
             remote_host: e.spec.remote_host.clone(),
             remote_port: e.spec.remote_port,
-            state: if e.accept_task.is_finished() {
+            state: if e.pump.is_finished() {
                 "error".to_string()
             } else {
                 "running".to_string()

@@ -76,7 +76,7 @@
 //!    而一屏的上限是 [`super::source::LS_LIMIT`] 条 —— 那个量纲上的 JSON 是**兆字节级**
 //!    ⇒ `execve` 直接 `E2BIG`。它不是「大目录慢一点」，是**大目录根本开不出窗**。
 //! 2. **argv 是世界可读的**（`/proc/<pid>/cmdline`），而种子里带着 `RemoteConfig`
-//!    （主机名 · 用户名 · 私钥**路径**）。同一条理由已经在 `ssh_source::spawn_dial_proxy`
+//!    （主机名 · 用户名 · 私钥**路径**）。同一条理由已经在 `dial_host.rs::open`
 //!    上用过一次（它把那几样从 argv 挪进了环境变量）。stdin 连 `/proc` 那一格都不给。
 //! 3. 顺带：stdin 那一头**关掉就是 EOF**，「种子给完了」不需要第二种表示。
 //!
@@ -267,7 +267,7 @@ pub fn resolve_window_bin() -> Result<PathBuf, String> {
 ///   ⚠ 顺带一格**刻意的**：用户关掉 monitor 时，已经开着的文件窗口**不跟着走** ——
 ///   那正是「像系统自己的文件管理器一样」那句裁决的样子。
 /// - `StderrSink::Inherit` —— 诊断跟着界面进程的 stderr 走。理由与
-///   `ssh_source::spawn_dial_proxy` 逐字同形：接管它要再起一条泵，
+///   `dial_host.rs::open` 逐字同形：接管它要再起一条泵，
 ///   而这个子进程的 stderr 上只有「窗口为什么没立起来」那一句话。
 ///
 /// # Errors
