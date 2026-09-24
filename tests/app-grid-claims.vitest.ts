@@ -98,30 +98,23 @@ interface AppChild {
 type Mode = "default" | "viewer";
 const BOTH: readonly Mode[] = ["default", "viewer"];
 
-/** `index.html` 里静态写死的那三个（不经过任何 JS 插入，故不在尺 A 的人群里）。 */
-const STATIC_CHILDREN: readonly AppChild[] = [
-  {
-    file: "index.html",
-    expr: '<div id="tab-bar">',
-    selector: "#tab-bar",
-    modes: BOTH,
-    why: "静态 DOM；viewer 里靠 display:none 退出 grid",
-  },
-  {
-    file: "index.html",
-    expr: '<main id="message-stream">',
-    selector: "#message-stream",
-    modes: BOTH,
-    why: "静态 DOM",
-  },
-  {
-    file: "index.html",
-    expr: '<div id="status-bar">',
-    selector: "#status-bar",
-    modes: BOTH,
-    why: "静态 DOM",
-  },
+/**
+ * html 里静态写死的那三个（不经过任何 JS 插入，故不在尺 A 的人群里）。
+ *
+ * 〔三入口拆分 · `设计/01 §1.2`〕原先两种模式共用一个 `index.html`；拆开之后
+ * 主窗口读 `index.html`、viewer 读 `viewer.html` —— **人群按「哪个 html 在哪种模式下加载」重列**，
+ * 判红条件一个字没动。`settings.html` 里没有 `#app`（设置窗不再需要把它 `display:none` 掉），
+ * 所以本文件对 settings 仍是 N/A（理由见抬头「settings 那一半」）。
+ */
+const STATIC_IDS: readonly { expr: string; selector: string; why: string }[] = [
+  { expr: '<div id="tab-bar">', selector: "#tab-bar", why: "静态 DOM；viewer 里靠 display:none 退出 grid" },
+  { expr: '<main id="message-stream">', selector: "#message-stream", why: "静态 DOM" },
+  { expr: '<div id="status-bar">', selector: "#status-bar", why: "静态 DOM" },
 ];
+const HTML_OF: Record<Mode, string> = { default: "index.html", viewer: "viewer.html" };
+const STATIC_CHILDREN: readonly AppChild[] = (Object.keys(HTML_OF) as Mode[]).flatMap((mode) =>
+  STATIC_IDS.map((c) => ({ file: HTML_OF[mode], expr: c.expr, selector: c.selector, modes: [mode], why: c.why })),
+);
 
 /** JS 插进 `#app` 的那些。`expr` 必须与源码逐字相同 —— 尺 A 拿它对账。 */
 const INSERTED_CHILDREN: readonly AppChild[] = [
@@ -182,7 +175,8 @@ const INSERTED_CHILDREN: readonly AppChild[] = [
     why: "同上",
   },
   {
-    file: "src/main.ts",
+    // 〔三入口拆分〕`bootstrapViewer` 从 `main.ts` 搬到了 viewer 窗自己的入口模块。
+    file: "src/entry-viewer.ts",
     expr: "topbar",
     selector: ".viewer-topbar",
     modes: ["viewer"],
@@ -627,9 +621,11 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
         : new RegExp(`\\b${leaf}\\.className\\s*=\\s*"${name}(?:[ "])`);
       expect(pat.test(hay), `${c.file} 的 \`${c.expr}\` 应该被赋成 \`${c.selector}\``).toBe(true);
     }
-    // index.html 里那三个静态的
-    const html = readFileSync(join(REPO_ROOT, "index.html"), "utf8");
-    for (const c of STATIC_CHILDREN) expect(html).toContain(c.expr);
+    // html 里那几个静态的（主窗口 `index.html` ＋ viewer 窗 `viewer.html`，各三个）
+    expect(STATIC_CHILDREN.length, "静态人群空了 —— 下面那条零命中地绿").toBe(6);
+    for (const c of STATIC_CHILDREN) {
+      expect(readFileSync(join(REPO_ROOT, c.file), "utf8"), `${c.file} 里没有 ${c.expr}`).toContain(c.expr);
+    }
   });
 
   // 🔴 〔步 17·A · 2026-09-19〕靶子从 `.tab-archive` 换成 `#message-stream`。
