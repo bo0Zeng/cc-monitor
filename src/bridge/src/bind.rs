@@ -301,10 +301,7 @@ fn redact_marker(text: &str) -> String {
         // 窗口标题是**子串**匹配（WT 会往标题里塞别的东西）⇒ 令牌可能夹在中间，
         // 上面那条 `strip_prefix` 够不着。这一支按前缀切一刀，前缀之后全抹掉。
         None => match text.find(RBIND_TOKEN_MARKER_PREFIX) {
-            Some(i) => format!(
-                "{}{RBIND_TOKEN_MARKER_PREFIX}<已隐去>",
-                &text[..i]
-            ),
+            Some(i) => format!("{}{RBIND_TOKEN_MARKER_PREFIX}<已隐去>", &text[..i]),
             None => text.to_string(),
         },
     }

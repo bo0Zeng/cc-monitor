@@ -1687,7 +1687,11 @@ fn the_shared_stripper_keeps_the_relay_seam_this_guard_must_scan() {
 fn rbind_env_name_on_the_read_side() -> String {
     const READER: &str = include_str!("../../../../src/backend/control/identity_tag.rs");
     // 反向自检：真读到了那个文件，而且它确实是读侧所在的那个文件。
-    assert!(READER.len() > 4000, "没读到后端的 identity_tag.rs（只有 {} 字节）", READER.len());
+    assert!(
+        READER.len() > 4000,
+        "没读到后端的 identity_tag.rs（只有 {} 字节）",
+        READER.len()
+    );
     assert!(
         READER.contains("pub(crate) fn rbind_token_of("),
         "后端侧的令牌读函数不在预期文件里 —— 双写点锚点已失效，本条此刻无效"

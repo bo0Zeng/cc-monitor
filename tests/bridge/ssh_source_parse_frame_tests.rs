@@ -637,7 +637,11 @@ fn a_malformed_launch_token_on_the_wire_is_read_as_no_token() {
 #[test]
 fn the_wire_side_shape_check_is_the_same_one_the_local_table_uses() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
-    assert!(prod.len() > 20000, "抽出来的生产段太小，本条在空转：{}", prod.len());
+    assert!(
+        prod.len() > 20000,
+        "抽出来的生产段太小，本条在空转：{}",
+        prod.len()
+    );
     assert!(
         prod.contains("crate::bind::rbind_token_shape_ok"),
         "`parse_frame` 没在用 `bind::rbind_token_shape_ok` —— 形状多了一份副本"
@@ -649,7 +653,9 @@ fn the_wire_side_shape_check_is_the_same_one_the_local_table_uses() {
     );
     // 恒等的另一头：那个函数真的按 32 位小写十六进制判（不是恒真）。
     assert!(crate::bind::rbind_token_shape_ok(PF_TOK));
-    assert!(!crate::bind::rbind_token_shape_ok("0F1E2D3C4B5A69788796A5B4C3D2E1F0"));
+    assert!(!crate::bind::rbind_token_shape_ok(
+        "0F1E2D3C4B5A69788796A5B4C3D2E1F0"
+    ));
     assert!(!crate::bind::rbind_token_shape_ok("0f1e2d3c"));
 }
 
@@ -679,7 +685,11 @@ fn the_token_value_never_reaches_a_log_macro() {
             }
         }
     }
-    assert!(calls.len() >= 30, "只切出 {} 处 tracing —— 切法坏了", calls.len());
+    assert!(
+        calls.len() >= 30,
+        "只切出 {} 处 tracing —— 切法坏了",
+        calls.len()
+    );
     let touching: Vec<&String> = calls.iter().filter(|c| c.contains("rbind_token")).collect();
     assert_eq!(
         touching.len(),
