@@ -13,7 +13,7 @@ import { Channel } from "@tauri-apps/api/core";
 import { commands } from "../ipc/commands";
 // 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
-import { LOCAL_ORIGIN } from "../backend-policy";
+import type { Origin } from "../ipc/origin";
 import { MessageStream } from "../stream";
 import {
   type JsonlRecord,
@@ -126,10 +126,11 @@ export interface ViewerOptions {
    */
   scrollToUuid?: string;
   /**
-   * issue #16：远端来源。undefined=本地（走 stream_read_session_jsonl）；
-   * host=远端（走 stream_read_remote_session，经 SSH 拉取，chunk 口径一致）。
+   * issue #16：哪台机器的会话（本机 = `LOCAL_ORIGIN`）。
+   * 〔C4a · `设计/05 §8` 步 2〕上一版是「`undefined` = 本地」—— 「没说」被当成本机；
+   * 现在**必填**（子 agent 查看器就曾因此把远端子 agent 的文件拿去本机读）。
    */
-  origin?: string;
+  origin: Origin;
   /**
    * F62：会话工作目录（= 历史条目 projectPath）。分叉出新会话后作它的起始目录。
    * **G6 订正**：原注释写着"远端会话不建分支，可缺省"——远端现在也能分叉了，
@@ -212,7 +213,7 @@ export class SessionViewer {
     this.subtitleEl.textContent = opts.subtitle ?? "";
 
     this.disposeStream();
-    this.outlineWhere = { origin: opts.origin ?? LOCAL_ORIGIN, jsonlPath: opts.jsonlPath };
+    this.outlineWhere = { origin: opts.origin, jsonlPath: opts.jsonlPath };
     const gen = ++this.loadGeneration;
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
@@ -226,7 +227,7 @@ export class SessionViewer {
       toolUseElements: new Map(),
       pendingToolResults: new Map(),
       // Batch9-F29（审计三家共识）：远端会话展开 subagent 需 origin 降级
-      origin: opts.origin ?? null,
+      origin: opts.origin,
       lazy: true,
     };
     const timeline = new RecordTimeline(this.stream);
@@ -243,7 +244,7 @@ export class SessionViewer {
       onCardRendered: opts.suppressBranch
         ? undefined
         : (el, msg) =>
-            this.attachBranchButton(el, msg, opts.jsonlPath, opts.cwd, opts.origin ?? null),
+            this.attachBranchButton(el, msg, opts.jsonlPath, opts.cwd, opts.origin),
     };
     this.renderCtx = ctx;
     this.renderSink = sink;
@@ -270,7 +271,7 @@ export class SessionViewer {
       onTitleUpdate: () => {}, // viewer 标题静态,不消费 ai-title
     };
     // 〔U3b〕骨架索引与正文**并行**要（索引是另一个后端进程，~0.1 s / 50 MB）；接骨架在首屏之后。
-    const origin = opts.origin ?? LOCAL_ORIGIN;
+    const origin = opts.origin;
     const indexP = commands
       .read_session_index({ origin, jsonlPath: opts.jsonlPath, fromOffset: 0 })
       .catch((e: unknown) => ({ available: false, reason: String(e), from: 0, end: 0, rows: [] }));
@@ -303,7 +304,7 @@ export class SessionViewer {
       // ⚠ **原先那条编译期保护没有丢**：从前是「给本地命令传 origin」编译错，
       //   现在是「不传 origin」编译错（`origin` 必填）。方向反了，牙没掉。
       const finalCount = await commands.stream_read_session_jsonl({
-        origin: opts.origin ?? LOCAL_ORIGIN,
+        origin: opts.origin,
         jsonlPath: opts.jsonlPath,
         onChunk: channel,
       });
@@ -465,7 +466,7 @@ export class SessionViewer {
     message: JsonlRecord,
     jsonlPath: string,
     cwd: string | undefined,
-    origin: string | null,
+    origin: Origin,
   ): void {
     if (message.type !== "user" && message.type !== "assistant") return;
     const uuid = message.uuid;
@@ -491,7 +492,7 @@ export class SessionViewer {
     res: BranchResult,
     sourceSessionId: string,
     cwd: string | null,
-    origin: string | null,
+    origin: Origin,
   ): Promise<void> {
     // E78：与实时 tab 那条走**同一句** —— 查事实、起会话、反馈全在 `runForkFlow` 里。
     // `sourceSessionId` 是**源**会话的（新会话此刻还没起，查它必定"查不到"、白弹一次窗）。

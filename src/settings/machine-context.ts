@@ -12,8 +12,14 @@
  *
  * # 语义
  *
- * `null` = **本机**。字符串 = 某台远端的 origin（`label || host`，与
+ * 值是一个 origin：本机 = `LOCAL_ORIGIN`（`"<local>"`）；其余 = 某台远端的 origin（`label || host`，与
  * `remote-config.ts::hostKey` 同口径）。
+ *
+ * 〔C4a · `设计/05 §8` 步 2〕上一版是「`null` = 本机」，于是四个订阅者各自写一遍
+ * `origin === null ? LOCAL_ORIGIN : origin` 把它换成后端认的那个串（`cc-bus-section.ts` 那句注释逐字：
+ * 「两套表示各有各的理由，**换算只准在这一处发生**」）。现在只有一套表示，换算没有了。
+ * 空白名**不是任何一台机器** ⇒ `set` 收到它什么都不做（上一版把它归一成「本机」——
+ * 那正是步 2 要治的「没说被当成本机」，与 Rust `Origin::route` 拒空白名同一条）。
  *
  * # 刻意不做的两件事
  *
@@ -24,21 +30,24 @@
  *   撞主计划 §1-2 的红线。
  */
 
-type Listener = (origin: string | null) => void;
+import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 
-let current: string | null = null;
+type Listener = (origin: Origin) => void;
+
+let current: Origin = LOCAL_ORIGIN;
 const listeners = new Set<Listener>();
 
-/** 当前机器。`null` = 本机。 */
-export function getCurrentMachine(): string | null {
+/** 当前机器（本机 = `LOCAL_ORIGIN`）。 */
+export function getCurrentMachine(): Origin {
   return current;
 }
 
 /**
  * 切到某台机器。**值没变就什么都不做**（见文件头注：同值广播 = 变相轮询）。
  */
-export function setCurrentMachine(origin: string | null): void {
-  const next = origin === "" ? null : origin;
+export function setCurrentMachine(origin: Origin): void {
+  if (origin.trim() === "") return; // 空白名不是任何一台机器（见头注）
+  const next = origin;
   if (next === current) return;
   current = next;
   for (const fn of [...listeners]) {
@@ -61,6 +70,6 @@ export function subscribeMachine(fn: Listener): () => void {
 
 /** 仅供测试：把 store 还原成初始状态（本机 + 无订阅者）。 */
 export function __resetMachineContextForTests(): void {
-  current = null;
+  current = LOCAL_ORIGIN;
   listeners.clear();
 }

@@ -26,8 +26,8 @@ import {
 } from "./launch-menu";
 import { runLocalResumeIntoExistingTmux, runRemoteAttach } from "./remote-launch-run";
 import { AGENT_PROFILE } from "./agent-profile";
-// ⚠ 要的是 `backend-policy` 那个（`"<local>"`），不是 `accounts.ts` 里同名的 `"__local__"`（理由见 `tab-session-actions.ts` 那条注释）。
-import { LOCAL_ORIGIN } from "./backend-policy";
+// 〔C4a〕本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
+import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { openPanePreview } from "./views/pane-preview";
 import { getBehavior } from "./behavior";
 import {
@@ -125,7 +125,7 @@ export class TabMenu {
     }
     // F70（护城河）：本地会话 + 有改动集 → 「在全景高亮本会话改动」。远端（代码不在本机、
     // code-picture 索引不到）/ 无改动 都不显示（门控之一，另两道在 touchedFilesFor + highlightSession）。
-    if (t && t.origin === null && t.touchedFiles.size > 0) {
+    if (t && isLocalOrigin(t.origin) && t.touchedFiles.size > 0) {
       items.push({
         label: "在全景高亮本会话改动",
         onClick: () => this.host.requestPanoramaHighlight(sid),
@@ -139,7 +139,7 @@ export class TabMenu {
     // 后**异步追加**（appendAccountMenuItems→updateTabContextMenuItem，复用 F51 代次守卫），
     // 消除同步 peek 的冷缓存分裂。本地归档仍单「Resume」（无容器/账号轴）。
     if (t?.status === "archived") {
-      if (t.origin !== null) {
+      if (isRemoteOrigin(t.origin)) {
         items.push({
           id: "resume",
           label: "Resume",
@@ -154,11 +154,12 @@ export class TabMenu {
     }
     // F51：远端 tab（有 cwd）——反查该 cwd 正跑 claude 的 tmux 会话 → Attach。
     // 缓存命中同步定夺(无占位闪烁);未命中先禁用占位「检测中」+ 异步查询就绪。
-    const origin = t?.origin ?? null;
+    // 〔C4a〕下面这一段只对**远端** tab：`remote` = 那台远端的名字；本机 tab / 没有这个 tab ⇒ `null`。
+    const remote = t !== undefined && isRemoteOrigin(t.origin) ? t.origin : null;
     const cwd = t?.cwd ?? null;
     let needAsyncAttach = false;
-    if (origin !== null && cwd) {
-      const cached = this.actions.tmuxCache.get(origin);
+    if (remote !== null && cwd) {
+      const cached = this.actions.tmuxCache.get(remote);
       if (cached && Date.now() - cached.ts < TMUX_CACHE_TTL_MS) {
         const m = findClaudeTmux(cached.sessions, sid, cwd);
         const viaCwd = isCwdFallbackMatch(cached.sessions, sid); // F74c：回退命中提示串味
@@ -180,14 +181,14 @@ export class TabMenu {
                   { level: "info", durationMs: 8000 },
                 );
               }
-              void runRemoteAttach(origin, m.name);
+              void runRemoteAttach(remote, m.name);
             },
           });
           // F60：同一 tmux 会话可只读预览画面（capture-pane 快照，不 attach）——只读，不受影响。
           items.push({
             id: "preview",
             label: "预览画面",
-            onClick: () => void openPanePreview(origin, m.name),
+            onClick: () => void openPanePreview(remote, m.name),
           });
           // F79：杀死会话——命中 ≥2 个时拒绝提供（破坏性，选错代价不可逆）。
           if (cachedAmbiguous) {
@@ -203,7 +204,7 @@ export class TabMenu {
               id: "kill",
               label: "杀死会话（kill tmux）",
               danger: true,
-              onClick: () => this.actions.killRemoteTmux(origin, m.name, viaCwd),
+              onClick: () => this.actions.killRemoteTmux(remote, m.name, viaCwd),
             });
           }
         } else {
@@ -216,14 +217,14 @@ export class TabMenu {
             items.push({
               id: "attach",
               label: `Attach（空 tmux ${idle.name}，无 claude）`,
-              onClick: () => void runRemoteAttach(origin, idle.name),
+              onClick: () => void runRemoteAttach(remote, idle.name),
             });
             // UX 审计 #1：灰态(idle-tmux)也给 kill——杀空 tmux → tab 转归档 → 可 Resume（给死角一个出口）。
             items.push({
               id: "kill",
               label: `杀死会话（kill 空 tmux ${idle.name}）`,
               danger: true,
-              onClick: () => this.actions.killRemoteTmux(origin, idle.name, false, { idle: true }),
+              onClick: () => this.actions.killRemoteTmux(remote, idle.name, false, { idle: true }),
             });
           }
         }
@@ -256,7 +257,7 @@ export class TabMenu {
     //（前者要本机 attach 路径、后者要 `capture_remote_pane` 的本机对侧），归后面的刀。
     // 一次只开一格，是为了让「哪一格已经通了」这件事在菜单上就是可见的。
     let needAsyncLocalKill = false;
-    if (origin === null && t?.status !== "archived") {
+    if (t !== undefined && isLocalOrigin(t.origin) && t.status !== "archived") {
       items.push({
         id: "kill",
         label: "杀死会话（检测 tmux…）",
@@ -274,15 +275,15 @@ export class TabMenu {
       needAsyncLocalKill = true;
     }
     showTabContextMenu(e.clientX, e.clientY, items);
-    if (needAsyncAttach && origin !== null && cwd) {
-      void this.resolveAttachMenuItem(origin, cwd, sid);
+    if (needAsyncAttach && remote !== null && cwd) {
+      void this.resolveAttachMenuItem(remote, cwd, sid);
     }
     if (needAsyncLocalKill) {
       void this.resolveLocalKillMenuItem(sid);
     }
     // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
     // 〔`A3` 第二波〕本机 tab 也进来（`<local>`）—— 只拿「换号重启」那一项，见 appendAccountMenuItems。
-    if (t) void this.appendAccountMenuItems(origin ?? LOCAL_ORIGIN, sid, t.status);
+    if (t) void this.appendAccountMenuItems(t.origin, sid, t.status);
   }
 
   /**

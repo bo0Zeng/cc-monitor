@@ -41,6 +41,7 @@ export type { ConfigSurfaceReport, EnvTier, SettingsScope, SurfaceRow, SurfaceSt
 import { GAP_HEAD, type GapKind } from "./readiness";
 import { makeInfoIcon } from "./info-icon";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
+import { isRemoteOrigin, type Origin } from "../ipc/origin";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import { withPending } from "./pending";
 
@@ -348,7 +349,7 @@ export class ConfigSurfaceSection {
    * ⚠ 它只在**本机**那一页上真发 I/O —— 见 `applyOriginGate` 的头注。
    */
   loadNow(): void {
-    if (getCurrentMachine() !== null) return;
+    if (isRemoteOrigin(getCurrentMachine())) return;
     void this.refresh();
   }
 
@@ -371,7 +372,8 @@ export class ConfigSurfaceSection {
    * ⚠ 这一格**不许**被读成「判据 #12 绿了」——`§10.1` 逐字：「只做 ① 不许声称它绿了」。
    */
   private applyOriginGate(): void {
-    const remote = getCurrentMachine();
+    const origin = getCurrentMachine();
+    const remote = isRemoteOrigin(origin) ? origin : null;
     this.notForThisMachine.textContent =
       remote === null
         ? ""
@@ -389,7 +391,7 @@ export class ConfigSurfaceSection {
     this.localOnly.hidden = remote !== null;
   }
 
-  private onMachineChanged(_origin: string | null): void {
+  private onMachineChanged(_origin: Origin): void {
     // 只管**这一页现在该长什么样**。「要不要现在去读」由宿主的「这一页首次可见」
     // 那张登记表决定（`panel.ts::flushPage`）—— 两处都决定就会重复发。
     this.applyOriginGate();

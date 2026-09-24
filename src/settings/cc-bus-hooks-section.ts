@@ -13,6 +13,7 @@
 // 然后建议用户去修一个没坏的东西。所以这里必须把
 // 「显式路径且存在（没问题）」与「显式路径但不存在（真问题）」**分开渲染**。
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
+import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { commands } from "../ipc/commands";
 import { buildPasteBlock, type PasteBlock } from "../paste-block"; // T03
 
@@ -68,8 +69,12 @@ export class CcBusHooksSection {
   /** 已配置的远端清单——用来判断「store 给的这台我认不认得」。 */
   private knownOrigins: string[] = [];
 
-  /** 当前生效的 origin；`null` = 本机 / 未选定 ⇒ 远端诊断不可用。 */
-  private origin: string | null = null;
+  /**
+   * 「检查远端」要诊断的那台远端；`null` = **没有可诊断的远端**（在看本机，或 store 给的那台不在已配置清单里）。
+   * 〔C4a〕它不是 origin（上一版叫 `origin`、`null` 同时装着「本机」与「不认得」两件事）——本机在 store 里是
+   * `LOCAL_ORIGIN`，这一格只回答「按钮该打向哪台远端」。
+   */
+  private diagnosable: string | null = null;
 
   /** 「检查远端」按钮。**存直接引用而不是每次 `this.element.querySelector`** ——
    *  `build()` 里就会调 `setOrigin`，而那时 `this.element` 还没赋值（实测抛 undefined）。 */
@@ -249,12 +254,12 @@ export class CcBusHooksSection {
    * E59：跟随共用 store。**不在切换时自动发诊断请求** —— 本分节的既有语义就是
    * 「点了才发」（只读诊断，不替用户改 `~/.claude/settings.json`），自动发就成了变相轮询。
    */
-  private setOrigin(origin: string | null): void {
-    const known = origin !== null && this.knownOrigins.includes(origin);
-    this.origin = known ? origin : null;
+  private setOrigin(origin: Origin): void {
+    const known = isRemoteOrigin(origin) && this.knownOrigins.includes(origin);
+    this.diagnosable = known ? origin : null;
     this.originName.textContent = known
-      ? (origin as string)
-      : origin === null
+      ? origin
+      : isLocalOrigin(origin)
         ? "（本机页：无远端可诊断）"
         : `（${origin}：未在已配置的远端里）`;
     this.checkRemoteBtn.disabled = !known;
@@ -272,8 +277,8 @@ export class CcBusHooksSection {
   }
 
   private async checkRemote(btn: HTMLButtonElement): Promise<void> {
-    const origin = this.origin;
-    if (!origin) return;
+    const origin = this.diagnosable;
+    if (origin === null) return;
     btn.disabled = true;
     this.remoteBox.textContent = "检查中…";
     try {

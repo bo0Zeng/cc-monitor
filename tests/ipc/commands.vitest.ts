@@ -37,6 +37,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join, sep } from "node:path";
+import ts from "typescript";
 
 // ── `K-H2b` `D4 阻-2`：文件末尾那一组是**行为**判据，要驱动真的 `views/history.ts`。
 //    mock 骨架照 `views/history-actions.vitest.ts`（路径多一层 `../`）。
@@ -146,6 +147,7 @@ import {
   __resetAccountsCacheForTest,
   type Account,
 } from "../../src/accounts";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 /** Rust 有、但 TS 侧**静态**看不见的命令（全部经动态命令名调用）。见头注「不能写的断言 2」。 */
 /**
@@ -878,7 +880,7 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
     const root = document.createElement("div");
     document.body.append(bar, root);
     const tm = new TabManager(bar, root);
-    tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, 0, null);
+    tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, 0, LOCAL_ORIGIN);
     tm.archiveTab(sid);
     await (tm as unknown as { resumeTab(s: string): Promise<void> }).resumeTab(sid);
     await new Promise((r) => setTimeout(r, 0));
@@ -1069,5 +1071,229 @@ describe("`设计/05 §8` 步 2：origin 去 null 化（入方向）", () => {
         "   那时全仓 8 处写着 `origin: Origin` 的参数会**一个字不改**地又装得下 `null`，\n" +
         "   而上面那条参数面判据照绿 —— 本条就是为这一形立的。",
     ).toBe("string");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+/**
+ * 〔C4a · `设计/05 §8` 步 2 的 TS 那一半〕**TS 侧没有一处 origin 装得下 `null`。**
+ *
+ * # 它治什么
+ *
+ * 步 2 之前 TS 侧「本机」有两种写法在同一张类型里并存：`null`（tab / 设置共用 store / 分叉流…）
+ * 与 `"<local>"`（`LOCAL_ORIGIN`，与 Rust 跨语言对拍）。两者之间靠散在各处的 `?? LOCAL_ORIGIN` /
+ * `origin === null` / `origin ? … : …` 互相翻译 —— 基线上现打 **37 处** `origin…: … null`
+ * （手写 36 ＋ 生成物 1）。`§8` 逐字「⚠ 2 在 5 之前（否则 `call` 的第一个参数还得容忍 `null`）」。
+ *
+ * `commands.vitest.ts` 那一节（「origin 去 null 化（入方向）」）只管**包装层的参数**；本条管**全部 TS**
+ * （含 `src/generated/`）：字段 · 参数 · 变量 · 函数返回 · `new Set<…>` / `new Map<…>` 的元素类型。
+ *
+ * # 口径：量的是**声明**，不是文本
+ *
+ * 用 TypeScript 自己的解析器（`ts.createSourceFile`）走语法树，不用正则：`{ origin: x }`（对象字面量的值）
+ * 与 `{ origin: string | null }`（类型）在文本上长得一样，只有语法树分得开。
+ * 人群 = 名字里带 `origin`（大小写不敏感，`original…` 除外）、**带类型标注**的声明；
+ * 违例 = 那段类型里出现 `null` 字面量类型。
+ *
+ * # 判据（零命中带正控；人群恒等）
+ *
+ * 1. 违例集合 == [`PENDING`]（两向）—— 今天只剩生成物一处，住址与解锁条件写在表里；
+ * 2. 人群条数**恒等**（不是地板）—— 塌成 0 与「全都合规」在终端上一模一样；
+ * 3. 识别器阳性对照五形 ＋ 阴性对照三形（`originalType` 不算、值不算、干净类型不算）；
+ * 4. 真语料锚点：`Tab.origin`（`tab-model.ts`）与 `pickPrimaryOrigin` 的返回（`account-chip.ts`）
+ *    必须在人群里 —— 证明扫的是真树。
+ *
+ * # 买不到（写死，别读宽）
+ *
+ * - `origin?: string`（可选 = 缺省）**不在违例里**：出方向生成物（`HistoryProject` / `JsonlLinePayload` /
+ *   `SessionHits` 一族，Rust 侧 `skip_serializing_if`）用「缺省 = 本机」，那是 Rust 出方向的事，
+ *   在 TS 这边只在消费处经 `ipc/origin.ts::originFromWire` 收成一个表示。
+ * - 换个名字装同一件事（`host: string | null`）—— 词是 `origin`，改名就出人群。
+ * - `accounts.ts` 自己那个 `LOCAL_ORIGIN = "__local__"`（账号面的缓存键）**仍在**：
+ *   `backend_policy_tests.rs::the_two_same_named_local_origin_constants_stay_deliberately_different`
+ *   逐字钉着「两者刻意不同、合并是一次设计变更」，那条判据不在本拍写区 —— 登记给主会话拍板。
+ */
+
+/**
+ * 还装得下 `null` 的那几处 —— `(仓相对路径 → 为什么今天还在、什么时候能摘)`。**不是豁免清单**：
+ * 它与盘上的违例两向相等，修好了不摘 ⇒ 红；新长一处 ⇒ 红。
+ */
+const PENDING: Record<string, string> = {
+  "src/generated/RemoteHealthPayload.ts::RemoteHealthPayload.origin":
+    "Rust 出方向 `bridge.rs::RemoteHealthPayload.origin` 仍是 `Option<String>`（头注自认「`None` 理论不该出现」，" +
+    "五个发射点现打全是 `Some(host)`）。改成 `String` 要动那五个发射点，而它们全住 `ssh_source.rs` —— " +
+    "第四波 SR1a 的写区（单一常驻后端正在重写它）。解锁：SR1a 合并后同拍把字段改成 `String`、" +
+    "五处 `Some(x.clone())` 改成 `x.clone()`、重生成绑定，再摘这一行。",
+};
+
+/** 基线之后现打的人群条数（带类型标注、名字带 origin 的声明）。 */
+const POPULATION = 175;
+
+interface Decl {
+  /** `文件::宿主.名字`（宿主 = 外层接口 / 类 / 类型别名 / 函数名；顶层是 `<top>`）。 */
+  key: string;
+  /** 类型标注的原文。 */
+  type: string;
+  /** 类型里有没有 `null` 字面量类型。 */
+  nullable: boolean;
+}
+
+const isOriginName = (name: string): boolean => /origin/i.test(name) && !/^original/i.test(name);
+
+function containsNull(node: ts.Node): boolean {
+  if (node.kind === ts.SyntaxKind.NullKeyword) return true;
+  if (ts.isLiteralTypeNode(node) && node.literal.kind === ts.SyntaxKind.NullKeyword) return true;
+  return ts.forEachChild(node, (c) => (containsNull(c) ? true : undefined)) ?? false;
+}
+
+function nameOf(n: ts.Node | undefined): string | null {
+  if (!n) return null;
+  if (ts.isIdentifier(n) || ts.isPrivateIdentifier(n) || ts.isStringLiteral(n)) return n.text;
+  return null;
+}
+
+/** 外层宿主的名字（给键用，免得同名字段在不同接口里撞成一个）。 */
+function hostOf(node: ts.Node): string {
+  for (let p: ts.Node | undefined = node.parent; p; p = p.parent) {
+    if (
+      ts.isInterfaceDeclaration(p) ||
+      ts.isClassDeclaration(p) ||
+      ts.isTypeAliasDeclaration(p) ||
+      ts.isFunctionDeclaration(p) ||
+      ts.isMethodDeclaration(p) ||
+      ts.isMethodSignature(p)
+    ) {
+      const n = nameOf(p.name);
+      if (n) return n;
+    }
+  }
+  return "<top>";
+}
+
+/** 一份 TS 源码里「名字带 origin、带类型标注」的全部声明。 */
+function originDecls(rel: string, src: string): Decl[] {
+  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const out: Decl[] = [];
+  const push = (node: ts.Node, name: string, type: ts.Node): void => {
+    out.push({
+      key: `${rel}::${hostOf(node)}.${name}`,
+      type: type.getText(sf),
+      nullable: containsNull(type),
+    });
+  };
+  const visit = (node: ts.Node): void => {
+    // 字段 / 参数 / 变量 / 类属性：名字带 origin 且有类型标注。
+    if (
+      (ts.isPropertySignature(node) ||
+        ts.isPropertyDeclaration(node) ||
+        ts.isParameter(node) ||
+        ts.isVariableDeclaration(node)) &&
+      node.type
+    ) {
+      const name = nameOf(node.name);
+      if (name && isOriginName(name)) push(node, name, node.type);
+    }
+    // 函数 / 方法的返回类型：函数名**以 origin 收尾**（`pickPrimaryOrigin`）才是「回一个 origin」；
+    // `findHostByOrigin` / `resolveRemoteConfigByOrigin` 是「按 origin 找别的东西」，回的不是 origin。
+    if (
+      (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) &&
+      node.type
+    ) {
+      const name = nameOf(node.name);
+      if (name && /origins?$/i.test(name) && !/byorigins?$/i.test(name)) push(node, `${name}()`, node.type);
+    }
+    // 函数类型别名 `type X = (origin: …) => …` 的参数已由 isParameter 覆盖。
+    // `const origins = new Set<…>()` / `new Map<…>()`：元素类型写在类型实参上，不在标注里。
+    if (ts.isVariableDeclaration(node) && !node.type && node.initializer) {
+      const name = nameOf(node.name);
+      const init = node.initializer;
+      if (name && isOriginName(name) && ts.isNewExpression(init) && init.typeArguments) {
+        for (const ta of init.typeArguments) push(node, `${name}<>`, ta);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+/** 全部前端 TS（含生成物）。复用本文件的 `walk`（**不另起一个遍历**：`scanning-guard-registry` 的棘轮数着
+ *  「做目录遍历的测试文件」，另起一份就多一个）；两个 Rust 工程住 `src/` 下，里面没有前端 TS，照样排掉。 */
+function originCorpus(): Decl[] {
+  const all: Decl[] = [];
+  for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+    const rel = f.slice(REPO_ROOT.length + 1);
+    if (rel.startsWith("src/bridge/") || rel.startsWith("src/backend/")) continue;
+    all.push(...originDecls(rel, readFileSync(f, "utf8")));
+  }
+  return all;
+}
+
+describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ 生成物）", () => {
+  it("★★ 装得下 `null` 的 origin 声明 == 登记的待办（两向；今天只剩生成物一处）", () => {
+    const found = originCorpus()
+      .filter((d) => d.nullable)
+      .map((d) => d.key)
+      .sort();
+    expect(
+      found,
+      "这几处 origin 在类型上装得下 `null`：\n" +
+        "本机是一个**具名**的 origin（`LOCAL_ORIGIN` = `\"<local>\"`，住 `backend-policy.ts`，与 Rust 跨语言对拍）；\n" +
+        "「是不是本机」只经 `src/ipc/origin.ts` 判（`isLocalOrigin` / `isRemoteOrigin`），\n" +
+        "Rust 出方向的「缺省 = 本机」只在 `originFromWire` 那一处收成一个表示。\n" +
+        "⇒ 出路是把那一处改成 `Origin`，**不是**把它登记进 PENDING。",
+    ).toEqual(Object.keys(PENDING).sort());
+  });
+
+  it("★ 人群恒等（不是地板）：名字带 origin、带类型标注的声明现打条数", () => {
+    const n = originCorpus().length;
+    expect(
+      n,
+      `人群现打 ${n} 条，钉的是 ${POPULATION} 条。真加/删了一处带类型的 origin 声明就来改这个数（写清多了/少了哪几处）；\n` +
+        "★ 掉到 0 多半是 `walk` / 解析口径坏了 —— 那时上一条会拿空集比出绿。",
+    ).toBe(POPULATION);
+  });
+
+  it("★ 真语料锚点：两处已知声明在人群里，而且都不装 null", () => {
+    const all = originCorpus();
+    const tab = all.find((d) => d.key === "src/tab-model.ts::Tab.origin");
+    expect(tab, "`Tab.origin` 不在人群里 —— 识别器没扫到真树").toBeDefined();
+    expect(tab?.nullable).toBe(false);
+    const cur = all.find((d) => d.key === "src/account-chip.ts::<top>.pickPrimaryOrigin()");
+    expect(cur, "`pickPrimaryOrigin()` 的返回类型不在人群里 —— 返回类型那一支在空转").toBeDefined();
+    expect(cur?.nullable).toBe(false);
+  });
+
+  it("★ 识别器阳性对照五形 ＋ 阴性对照三形", () => {
+    // 反例：「按 origin 找别的东西」回 `X | null` 是合法的（找不到），不是 origin 装 null。
+    expect(
+      originDecls("probe.ts", "function findHostByOrigin(o: Origin): Host | null { return null; }").filter(
+        (d) => d.nullable,
+      ),
+      "`…ByOrigin()` 回的不是 origin，被当成 origin 判了",
+    ).toEqual([]);
+    const bad = [
+      "interface A { origin: string | null }",
+      "function f(origin: string | null): void {}",
+      "class C { private wantedOrigin: string | null = null; }",
+      "export function pickPrimaryOrigin(): string | null { return null; }",
+      "const origins = new Set<string | null>();",
+    ];
+    for (const src of bad) {
+      const ds = originDecls("probe.ts", src);
+      expect(ds.length, `识别器在 ${src} 里一处 origin 声明都没摘到`).toBeGreaterThan(0);
+      expect(ds.some((d) => d.nullable), `识别器没认出 ${src} 装得下 null`).toBe(true);
+    }
+    const good = [
+      "interface B { originalType: string | null }", // 不是 origin
+      "const x = { origin: null };", // 值，不是类型
+      "interface D { origin: Origin; remote: string | null }", // 干净；`remote` 不在人群
+    ];
+    for (const src of good) {
+      expect(
+        originDecls("probe.ts", src).filter((d) => d.nullable),
+        `干净写法 ${src} 被判成违例 —— 假红比不查更坏`,
+      ).toEqual([]);
+    }
   });
 });

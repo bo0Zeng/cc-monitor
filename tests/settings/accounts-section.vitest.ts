@@ -175,7 +175,7 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
    */
   it("没有已配置的远端 → 远端那三件套一件不出、远端读口一次不调（本机那一支归 NF1bD1）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null); // 〔第三波 S3〕一台远端都没配 ⇒ 只有本机那一页
+    setCurrentMachine(LOCAL_ORIGIN); // 〔第三波 S3〕一台远端都没配 ⇒ 只有本机那一页
     const el = await mount();
     expectNoReadyChrome(el);
     expect(
@@ -826,7 +826,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
   /** 没有配任何远端 —— 本族每条都从这里出发。 */
   function noRemotes(): void {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null); // 一台远端都没配 ⇒ 只有本机那一页
+    setCurrentMachine(LOCAL_ORIGIN); // 一台远端都没配 ⇒ 只有本机那一页
   }
 
   /**
@@ -1096,7 +1096,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
 describe("S3：本机页就是本机（配了远端也一样）", () => {
   it("★ 本机页（store = null）＋ 配了远端 ⇒ 走本机那条读口，远端读口一次不调", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
     const el = await mount();
     expect(fetchLocalAccountsMock, "本机页上没去读本机的账号").toHaveBeenCalled();
@@ -1112,7 +1112,7 @@ describe("S3：本机页就是本机（配了远端也一样）", () => {
     // 前提：确实先站在 devbox 上（否则下面那条「切回来」是空真）。
     expect(el.querySelector(".accounts-table"), "前提：先得在 devbox 那一页上").not.toBeNull();
     expect(fetchLocalAccountsMock).not.toHaveBeenCalled();
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     expect(fetchLocalAccountsMock, "切回本机页后没去读本机").toHaveBeenCalled();
@@ -1132,7 +1132,7 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
 
   function noRemotes(): void {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null); // 一台远端都没配 ⇒ 只有本机那一页
+    setCurrentMachine(LOCAL_ORIGIN); // 一台远端都没配 ⇒ 只有本机那一页
   }
   /** 只答指名的那几条命令，其余一律 `undefined`（与本文件默认桩同形）。 */
   function answer(table: Record<string, () => Promise<unknown>>): void {
@@ -1262,7 +1262,7 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
   });
   async function badgeWith(routing: (() => Promise<unknown>) | null): Promise<HTMLElement> {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [KEYED], defaultName: "k" }));
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "apikey_routing_for" && routing ? routing() : Promise.resolve(undefined),
@@ -1355,7 +1355,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
 
   function noRemotes(): void {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null); // 一台远端都没配 ⇒ 只有本机那一页
+    setCurrentMachine(LOCAL_ORIGIN); // 一台远端都没配 ⇒ 只有本机那一页
   }
 
   /** 跑一遍本机那条路，回来时账本里本机那一栏长什么样。 */
@@ -1721,7 +1721,7 @@ describe("S3：本机页新建账号", () => {
   const writeText = vi.fn();
   async function mountLocal(accts: Account[]): Promise<HTMLElement> {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    setCurrentMachine(null);
+    setCurrentMachine(LOCAL_ORIGIN);
     writeText.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: accts, defaultName: "z" }));

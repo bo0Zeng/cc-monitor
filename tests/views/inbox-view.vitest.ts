@@ -78,6 +78,7 @@ vi.mock("../../src/keybindings/registry", () => ({
 
 import type { SkillView } from "../../src/ipc/commands";
 import { InboxView } from "../../src/views/inbox-view";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 /** 生产段：剥掉块注释与整行 `//`（免得头注里的说明被当成代码命中）。 */
 function production(src: string): string {
@@ -160,7 +161,7 @@ const textareaEl = () => document.querySelector<HTMLTextAreaElement>(".inbox-tex
 const saveEl = () => document.querySelector<HTMLButtonElement>(".inbox-save")!;
 
 /** 本地会话（有 cwd、`origin === null`）—— 唯一能开收件箱的那一形。 */
-const localRepo = () => ({ cwd: "/home/u/proj", origin: null });
+const localRepo = () => ({ cwd: "/home/u/proj", origin: LOCAL_ORIGIN });
 
 beforeEach(() => {
   document.body.replaceChildren();

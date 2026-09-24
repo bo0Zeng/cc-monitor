@@ -76,6 +76,7 @@ import {
 } from "../src/render-stream-record";
 import type { JsonlLinePayload } from "../src/events";
 import type { JsonlRecord, RenderContext } from "../src/cards/index";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 // `__dirname` 在 vitest 里指向 `tests/`（同 `scale2-height-truth.vitest.ts` 的用法）
 const FIXTURE = resolve(__dirname, "__fixtures__/scale2-height-records.jsonl");
@@ -139,7 +140,7 @@ const EXPECTED_SAMPLES = 552;
 function freshCtx(): RenderContext {
   return {
     parentPath: "/tmp/scale1/session.jsonl",
-    origin: null,
+    origin: LOCAL_ORIGIN,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
     pendingToolResults: new Map(),

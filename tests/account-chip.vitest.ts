@@ -23,6 +23,7 @@ import type { AccountsState, Account } from "../src/accounts";
 import * as accountsMod from "../src/accounts";
 // `D4 阻-4`：命令面板那一侧的**生产段**（chip 的快照就是喂给它的）。
 import { buildAccountCommands } from "../src/account-commands";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -95,11 +96,12 @@ describe("pickPrimaryOrigin", () => {
   it("label 空 → 用 host", () => {
     expect(pickPrimaryOrigin([host({ label: "", host: "devbox.local" })])).toBe("devbox.local");
   });
-  it("label 与 host 都空 → null（那台机器没有身份）", () => {
-    expect(pickPrimaryOrigin([host({ label: "", host: "" })])).toBeNull();
+  // 〔C4a〕「没有一台有身份的远端」就是本机（上一版回 `null`、调用方再把 `null` 读成本机）。
+  it("label 与 host 都空 → 本机（那台远端没有身份）", () => {
+    expect(pickPrimaryOrigin([host({ label: "", host: "" })])).toBe(LOCAL_ORIGIN);
   });
-  it("空列表 → null", () => {
-    expect(pickPrimaryOrigin([])).toBeNull();
+  it("空列表 → 本机", () => {
+    expect(pickPrimaryOrigin([])).toBe(LOCAL_ORIGIN);
   });
 });
 

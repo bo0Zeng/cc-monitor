@@ -17,11 +17,12 @@ import {
   GridMonitorView,
 } from "../../src/views/grid-monitor";
 import type { GridSessionSnapshot } from "../../src/session-status";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   sessionId: "s",
   title: "t",
-  origin: null,
+  origin: LOCAL_ORIGIN,
   cwd: null,
   status: "live",
   tmuxIdle: false,
@@ -40,13 +41,13 @@ describe("F91 groupSessionsByOrigin", () => {
   it("本机组恒在最前，远端组按 label 升序，组内保输入序", () => {
     const groups = groupSessionsByOrigin([
       snap({ sessionId: "r-b", origin: "beta" }),
-      snap({ sessionId: "l1", origin: null }),
+      snap({ sessionId: "l1", origin: LOCAL_ORIGIN }),
       snap({ sessionId: "r-a", origin: "alpha" }),
-      snap({ sessionId: "l2", origin: null }),
+      snap({ sessionId: "l2", origin: LOCAL_ORIGIN }),
       snap({ sessionId: "r-a2", origin: "alpha" }),
     ]);
     expect(groups.map((g) => g.label)).toEqual(["本机", "alpha", "beta"]);
-    expect(groups[0].origin).toBeNull();
+    expect(groups[0].origin).toBe(LOCAL_ORIGIN);
     expect(groups[0].sessions.map((s) => s.sessionId)).toEqual(["l1", "l2"]); // 保输入序
     expect(groups[1].sessions.map((s) => s.sessionId)).toEqual(["r-a", "r-a2"]);
   });
@@ -98,8 +99,8 @@ describe("F91 sortSessionsInGroup", () => {
 describe("F91 summarizeSessions", () => {
   it("机器数（本机算一台）/ 活会话数 / 运行中 agent 总数", () => {
     const r = summarizeSessions([
-      snap({ origin: null, status: "live", runningAgents: 2 }),
-      snap({ origin: null, status: "archived", runningAgents: 0 }),
+      snap({ origin: LOCAL_ORIGIN, status: "live", runningAgents: 2 }),
+      snap({ origin: LOCAL_ORIGIN, status: "archived", runningAgents: 0 }),
       snap({ origin: "h1", status: "live", runningAgents: 1 }),
       snap({ origin: "h1", status: "live", runningAgents: 0 }),
     ]);
@@ -119,7 +120,7 @@ describe("F91 GridMonitorView", () => {
   it("open 渲染分组标题 + 摘要 + cell；F91b 点 cell = 高亮不关（不 switchTo、板保持开）", () => {
     document.body.replaceChildren();
     const source = mkSource([
-      snap({ sessionId: "l1", title: "本地会话", origin: null, activityStatus: "busy", runningAgents: 2 }),
+      snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, activityStatus: "busy", runningAgents: 2 }),
       snap({ sessionId: "r1", title: "远端会话", origin: "pi", activityStatus: "waiting", waitingFor: "permission prompt" }),
     ]);
     const view = new GridMonitorView(source);

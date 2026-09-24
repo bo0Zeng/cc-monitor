@@ -945,6 +945,7 @@ src/views/history.ts:528	全文	保留	[对外] 模式切换按钮名
 src/views/history.ts:528	搜索所有会话的消息内容（回车触发）	保留	[对外] 模式切换按钮 title
 src/views/history.ts:1323	{…} 个会话	保留	[对外] 项目分组统计 chip
 src/views/history.ts:1331	隐藏 {…}	保留	[对外] 项目分组统计 chip
+src/views/inbox-view.ts:115	 ｜ 没有可编辑的收件箱	保留	[对外] 状态栏追加的一句；〔C4a〕文案未改 —— 基线上普查把它记在第 46 行 `target:` 字段那一格名下（`field.body`，跨了 68 行，现打），本拍动了同文件的类型后它落回存疑带，补裁
 src/views/inbox-view.ts:126	 ｜ 读文件失败：{…}	保留	[对外] 状态栏追加的失败原因
 src/views/inbox-view.ts:169	关闭	保留	[对外] 关闭按钮 aria-label
 src/views/panorama.ts:925	签名	保留	[对外] 代码全景节点详情的字段名（开发者视图，术语对口）

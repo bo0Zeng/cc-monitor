@@ -54,6 +54,7 @@ import {
   type SessionAccount,
 } from "../src/accounts";
 import { enumerateAccountModifiers } from "../src/launch-menu";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
@@ -320,7 +321,7 @@ describe("sessionBadge（§3 优先级）", () => {
     return m;
   }
   it("本地会话（origin null）→ 无徽章", () => {
-    expect(sessionBadge("s1", null, new Map(), emailBy)).toBeNull();
+    expect(sessionBadge("s1", LOCAL_ORIGIN, new Map(), emailBy)).toBeNull();
   });
   it("live 探测到账号 → 已知徽章", () => {
     const m = live([{ pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/.claude-alt/z", account: "z", bare: false, alive: true }]);
@@ -522,7 +523,7 @@ describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
     expect(sessionBadge("s1", "devbox", new Map(), emailBy)?.text).toBe("—");
   });
   it("本地会话（origin null）源②也不显", () => {
-    expect(sessionBadge("s1", null, new Map(), emailBy, new Map([["s1", "b"]]))).toBeNull();
+    expect(sessionBadge("s1", LOCAL_ORIGIN, new Map(), emailBy, new Map([["s1", "b"]]))).toBeNull();
   });
 });
 
@@ -597,7 +598,7 @@ describe("resolveAccount（F05：判别联合形态的账号解析，AccountReso
 
 describe("shouldShowAccountBadge（A4/§7 徽章门控）", () => {
   it("本地会话（origin null）→ 不显", () => {
-    expect(shouldShowAccountBadge(null, new Set(["devbox"]))).toBe(false);
+    expect(shouldShowAccountBadge(LOCAL_ORIGIN, new Set(["devbox"]))).toBe(false);
   });
   it("ready 远端 → 显", () => {
     expect(shouldShowAccountBadge("devbox", new Set(["devbox"]))).toBe(true);

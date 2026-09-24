@@ -32,6 +32,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { deriveForkSource, runForkFlow } from "../src/fork-flow";
 import { askForkLaunch } from "../src/fork-ask";
 import type { SessionAccount } from "../src/accounts";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 type TmuxRow = {
   name: string;
@@ -261,7 +262,7 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
 
   async function fork(): Promise<string> {
     const outcome = await runForkFlow({
-      origin: null,
+      origin: LOCAL_ORIGIN,
       newSessionId: NEW,
       sourceSessionId: SRC,
       cwd: "/p",

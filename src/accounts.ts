@@ -23,6 +23,7 @@ import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
 // 〔`A3` 第二波〕backend 的本机 origin（`"<local>"`）—— 与本文件自己那个 `LOCAL_ORIGIN`
 // （`"__local__"`，账号面的缓存键）**不是同一个值**，所以换个名字导进来，别让两者在读者眼里混成一个。
 import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "./backend-policy";
+import { isLocalOrigin, type Origin } from "./ipc/origin";
 
 // ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
 //
@@ -675,7 +676,7 @@ export function badgeText(name: string): string {
  *   源① live 探测（`/proc/<pid>/environ` 硬真相）——优先；
  *   源② lastAccount（history-metadata：上次用本工具带账号起该会话时记的）——探测不到时兜底，标"上次"；
  *   源③ 都无 → `—`、不猜。
- * 本地会话（origin 为 null）不产徽章。
+ * 本地会话（`LOCAL_ORIGIN`）不产徽章。
  */
 export interface SessionBadge {
   text: string; // 显示文本；"—" = 未知
@@ -688,12 +689,12 @@ export interface SessionBadge {
 }
 export function sessionBadge(
   sid: string,
-  origin: string | null,
+  origin: Origin,
   liveByS: Map<string, SessionAccount>,
   emailByName: Map<string, string>,
   lastAccountByS?: Map<string, string>,
 ): SessionBadge | null {
-  if (origin === null) return null; // 本地会话 A7 前不支持
+  if (isLocalOrigin(origin)) return null; // 本地会话 A7 前不支持
   // 源①：live 探测——唯一硬真相，优先。
   const live = liveByS.get(sid);
   if (live && live.alive && live.account) {
@@ -731,14 +732,14 @@ export function sessionBadge(
 
 /**
  * A4/§7 降级：某会话是否**该显**账号徽章。只有「账号可查询」的远端才显（即 available 的
- * origin,由 main.ts 收进 readyOrigins）。本地会话（origin null）与不可查询的远端
+ * origin,由 main.ts 收进 readyOrigins）。本地会话（`LOCAL_ORIGIN`）与不可查询的远端
  * （未迁移 / 旧后端）一律不显——否则满屏 `—` 是噪音、违反 §7「不可用即安静隐藏」。
  */
 export function shouldShowAccountBadge(
-  origin: string | null,
+  origin: Origin,
   readyOrigins: Set<string>,
 ): boolean {
-  if (origin === null) return false; // 本地会话 A7 前不支持
+  if (isLocalOrigin(origin)) return false; // 本地会话 A7 前不支持
   return readyOrigins.has(origin);
 }
 

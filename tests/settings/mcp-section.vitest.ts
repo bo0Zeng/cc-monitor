@@ -19,6 +19,7 @@ import {
 } from "../../src/settings/mcp-section";
 import { invoke } from "@tauri-apps/api/core";
 import { setCurrentMachine } from "../../src/settings/machine-context";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const ent = (scope: McpServerEntry["scope"], name: string, server: unknown): McpServerEntry => ({
   scope,
@@ -225,7 +226,7 @@ describe("P6b MCP 工作目录清单", () => {
   // 不归位的话，上一条测完停在 `"devbox"` ⇒ 下一条里的 `setCurrentMachine("devbox")`
   // 是个**空操作**（`selectMachine` 第一句就是 `if (origin === this.origin) return`）
   // ⇒ 判据测的是一次根本没发生的切换。实测栽过一次。
-  beforeEach(() => setCurrentMachine(null));
+  beforeEach(() => setCurrentMachine(LOCAL_ORIGIN));
   const chips = (root: HTMLElement) =>
     [...root.querySelectorAll<HTMLButtonElement>(".mcp-dir-chip")].map((b) => b.textContent);
 
@@ -390,7 +391,7 @@ describe("P6b MCP 工作目录清单", () => {
 
     setCurrentMachine("devbox"); // 去远端（枚举挂住）
     await flush();
-    setCurrentMachine(null); // 还没回来就切回本机
+    setCurrentMachine(LOCAL_ORIGIN); // 还没回来就切回本机
     await flush();
     expect(chips(section.element)).toEqual(["/local/only"]);
 
