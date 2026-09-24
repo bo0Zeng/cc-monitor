@@ -99,7 +99,7 @@ import { openPanePreview } from "./views/pane-preview";
 import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开 SFTP 面板进入远端 cwd（而非只提示打不开）。
-import { openSftpPanelDir } from "./sftp/panel";
+import { openFileWindow } from "./file-window";
 import {
   readRemoteConfig,
   findHostByOrigin,
@@ -3839,7 +3839,7 @@ export class TabManager {
     })();
   }
 
-  /** 打开指定 Tab 的 cwd。本地 → 系统文件管理器；远端 → SFTP 面板进入该远端目录（F78）。无 cwd 忽略。 */
+  /** 打开指定 Tab 的 cwd。本地 → 系统文件管理器；远端 → 文件窗口进入该远端目录（F78）。无 cwd 忽略。 */
   private async openTabCwd(sid: string): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab?.cwd) return;
@@ -3848,7 +3848,7 @@ export class TabManager {
     if (tab.origin !== null) {
       const host = findHostByOrigin((await readRemoteConfig()).hosts, tab.origin);
       if (host && host.host.trim() !== "" && host.user.trim() !== "") {
-        openSftpPanelDir(host, tab.cwd);
+        void openFileWindow(host, { dir: tab.cwd });
         return;
       }
       // 找到但缺 host/user = 配置不完整；没找到 = 未配置——分开措辞（审计建议）。
