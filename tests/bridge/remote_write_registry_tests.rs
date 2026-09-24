@@ -76,7 +76,7 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
              把「全仓谁在读 Claude 的数据布局」钉成相等断言，本文件这一份与那一份\
              逐条对得上（它那张 `LAYOUT_READERS` 里这一道单列一行）。",
     ),
-    // 〔AL1 · 2026-09-24〕从前这里是 `install_remote_ccm_helper` 一行（它自己逐级 `create_dir`）。
+    // 〔AL1 · 2026-09-24〕从前这里是 `install_remote_ccm_helper`〔散文墓碑〕一行（它自己逐级 `create_dir`）。
     // 「备份 → 原子写 → 回读 → 回滚」收成 `fenced_block::apply` 一份之后，远端 rc / 入口的
     // 写盘只剩 `SftpFile` 的两个原语 —— 装/卸两个命令一个裸写原语都不再有。
     (
@@ -646,8 +646,8 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
         // 〔AL1 · 2026-09-24〕装 / 卸远端 rc 两条命令今天**不直调写原语**：它们造一个 `SftpFile`
         // 交给 `fenced_block::apply`，写落在 `SftpFile` 的原语上。那一格用「落点类型」表达
         // （见下面 `STORES`），而不是在中间垫一层函数名 —— 本表仍是一跳。
-        ("sftp.rs", "uninstall_remote_ccm_helper", "SftpFile"),
-        ("sftp.rs", "install_remote_ccm_helper", "SftpFile"),
+        ("sftp.rs", "uninstall_remote_alias_block", "SftpFile"),
+        ("sftp.rs", "install_remote_alias_block", "SftpFile"),
         // ★〔步 23b · 09-20〕零流量复制。**为了这条边，`sftp_copy` 刻意没抽 `copy_inner`** ——
         // 本表是**一跳**的，中间垫一层，「按钮 ↔ 真实写点」这条边就表达不出来；
         // 理由逐字写在 `sftp_pool.rs::sftp_copy` 的头注上。

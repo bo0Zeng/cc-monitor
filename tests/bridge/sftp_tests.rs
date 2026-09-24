@@ -1288,11 +1288,11 @@ fn profile_read_modify_write_goes_through_the_failsafe_reader() {
     let mut checked = 0usize;
     for (sig, transform) in [
         (
-            "pub async fn uninstall_remote_ccm_helper(",
+            "pub async fn uninstall_remote_alias_block(",
             "strip_profile_block",
         ),
         (
-            "pub async fn install_remote_ccm_helper(",
+            "pub async fn install_remote_alias_block(",
             "merge_profile_block",
         ),
     ] {
@@ -1524,4 +1524,38 @@ fn the_sftp_dependency_is_really_on_russh_sftp_three() {
         "声明面（{declared}）与锁定面（{locked}）的主版本对不上 —— \
          只钉一侧的话，另一侧掉下去是无声的"
     );
+}
+
+/// 🔴 〔MC1 · 2026-09-24〕`设计/71 §13.3` ①：**「部署后端」只有一个动作** —— 后端本体 ＋ `ccm` 入口。
+///
+/// 两向：`deploy_remote_backend` 的函数体里**恰好一处** `put_ccm_entry(` 调用；
+/// 全文件生产段里推入口的原语（`ccm_entry_shim(`）**恰好一处**、就住 `put_ccm_entry` 里 ——
+/// 装别名块那条（`install_remote_alias_block`）**零命中**（从前它一次做两件事，`71 §13.1` 那个 ① ②）。
+///
+/// 死值验：把 `deploy_remote_backend` 里那一句 `put_ccm_entry(sftp, &path)` 摘掉 ⇒ 第一条红。
+#[test]
+fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let body_of = |sig: &str| -> String {
+        let i = prod
+            .find(sig)
+            .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+        let j = prod[i..].find("\n}\n").map(|k| i + k).unwrap_or(prod.len());
+        prod[i..j].to_string()
+    };
+    let deploy = body_of("pub async fn deploy_remote_backend(");
+    guard_core::find_pinned(&deploy, "put_ccm_entry(sftp, &path)")
+        .unwrap_or_else(|e| panic!("部署后端没有连同 ccm 入口一起放（{e}）"));
+    let block = body_of("pub async fn install_remote_alias_block(");
+    for prim in ["ccm_entry_shim", "put_ccm_entry", "CCM_CLI_REMOTE_PATH"] {
+        assert!(
+            !guard_core::contains_word(&block, prim),
+            "装别名块那条又在推入口了（{prim}）—— 那是「部署后端」的事"
+        );
+    }
+    let helper = body_of("async fn put_ccm_entry(");
+    guard_core::find_pinned(&helper, "ccm_entry_shim(backend_path)")
+        .unwrap_or_else(|e| panic!("put_ccm_entry 里推的不是那三行入口（{e}）"));
+    guard_core::find_pinned(&prod, "ccm_entry_shim(")
+        .unwrap_or_else(|e| panic!("推入口的原语不是恰好一处（{e}）"));
 }

@@ -11,8 +11,11 @@
 //! |---|---|---|
 //! | `profile_installer.rs::install_to_profile`（写入） | **只比长度** | 从备份恢复 |
 //! | `profile_installer.rs::uninstall_from_profile`（剥离） | **只比长度** | 从备份恢复 |
-//! | `sftp.rs::install_remote_ccm_helper` 里 `CCM_CLI_SCRIPT` 那半（远端 ccm CLI） | 比内容 | 报错，不动 profile |
-//! | `sftp.rs::install_remote_ccm_helper` 里 `merged` 那半（远端 profile） | 比内容 | 回滚 |
+//! | `install_remote_ccm_helper`〔散文墓碑〕（`sftp.rs`）里 `CCM_CLI_SCRIPT` 那半（远端 ccm CLI） | 比内容 | 报错，不动 profile |
+//! | `install_remote_ccm_helper`〔散文墓碑〕（`sftp.rs`）里 `merged` 那半（远端 profile） | 比内容 | 回滚 |
+//!
+//! 〔AL1 · 2026-09-24〕那两处今天都走 `fenced_block::apply`（入口那半并进了 `sftp.rs::deploy_remote_backend`，
+//! rc 那半是 `sftp.rs::install_remote_alias_block`）。
 //!
 //! **本机侧只比长度 = 同长度的损坏被静默放过**：字节翻转、编码变形、CRLF↔LF 等长替换
 //! 都能穿过去。而 `~/.bashrc` / `$PROFILE` 写坏的后果是用户下次开终端就炸。

@@ -11,7 +11,8 @@
 //! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（`mcp::write_remote_mcp_server` 等，字符串守卫
 //!   `is_safe_remote_mcp_json`：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；经本模块 `upload_atomic` 原子写）。
 //!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
-//! - **F10**：cc(m) 助手装/卸——**本模块 `install_remote_ccm_helper`/`uninstall_remote_ccm_helper` 写远端 `~/.bashrc`**
+//! - **F10**：别名块装/卸——**本模块 [`install_remote_alias_block`]/[`uninstall_remote_alias_block`] 写远端 `~/.bashrc`**
+//!   （〔MC1〕从前这一对叫 `install_remote_ccm_helper`〔散文墓碑〕/ `uninstall_…`，推入口那一半并进了 [`deploy_remote_backend`]）
 //!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
 //! - **F50**：`pubkey::push_public_key` 经 SSH-exec 追加公钥到远端 `~/.ssh/authorized_keys`（不在本模块，登记于此备查）。
 //!
@@ -907,7 +908,7 @@ fn is_safe_remote_backend_path(path: &str) -> bool {
     is_safe_remote_managed_path(path, &["cc-monitor"])
 }
 
-/// 手动安装 / 更新远端后端（设置面板「安装后端」按钮）。逻辑同自动部署
+/// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）。逻辑同自动部署
 /// [`ensure_backend_deployed`]，但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况
 /// （路径含 `~` / 探测不到 arch / 无该 arch 内嵌）显式报错——手动触发时用户要反馈。
 #[tauri::command]
@@ -938,11 +939,11 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     // K-W4 §0c：手动「安装后端」按钮此前也只看标记 —— 落点文件被删/截断时，
     // 它会对着一个不存在的文件回「已是最新，无需重装」。同一条病，同一处修法。
     let target = probe_target_binary(sftp, &path).await;
-    match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
-        DeployAction::Skip => Ok(format!(
+    let backend_msg = match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
+        DeployAction::Skip => format!(
             "远端已是最新后端（{}，{arch}）：{path}，无需重装。",
             bin.build_id
-        )),
+        ),
         DeployAction::Deploy(reason) => {
             ensure_dir_all(sftp, remote_parent(&path)).await;
             upload_atomic_verified(sftp, &path, bin.bytes, 0o700).await?;
@@ -952,12 +953,23 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
                 cfg.origin_label(),
                 bin.build_id
             );
-            Ok(format!(
+            format!(
                 "已安装后端（{}，{arch}）到 {path}（{reason}）。重连远端即可用。",
                 bin.build_id
-            ))
+            )
         }
-    }
+    };
+    // 〔MC1 · 2026-09-24〕`设计/71 §13.3` ①：**部署后端只有一个动作** —— 后端本体 ＋ `ccm` 入口
+    //   一起放（从前入口住「装 ccm 启动器」那颗按钮里，要点两次）。后端先、入口后：入口转发给后端，
+    //   后端没就位时放入口等于给一条当场报错的命令。**只在这颗按钮上放**，连接时的自动部署
+    //   （[`ensure_backend_deployed`]）不碰 `~/.local/bin` —— 那是用户点了才发生的事。
+    let entry = match put_ccm_entry(sftp, &path).await? {
+        crate::fenced_block::Applied::Unchanged => "终端里的 ccm 入口已就位。",
+        crate::fenced_block::Applied::Written { .. } => {
+            "终端里的 ccm 入口已放好（~/.local/bin/ccm）。"
+        }
+    };
+    Ok(format!("{backend_msg}{entry}"))
 }
 
 /// 卸载远端后端（设置面板「卸载后端」按钮）：删后端二进制 + 同目录 `.build_id`。
@@ -1285,11 +1297,15 @@ fn remote_profile_name(profile: &str) -> Result<String, String> {
     Ok(p.to_string())
 }
 
-/// 卸载远端 ccm 助手（设置面板「卸载 ccm」按钮）：从 profile 删 BEGIN/END 块。
+/// 〔MC1 · 2026-09-24〕**别名块**卸载（机器页 ②「别名」里的「卸载别名块」）：从远端 rc 删 BEGIN/END 块。
+///
+/// 从前它叫 `uninstall_remote_ccm_helper`〔散文墓碑〕、按钮叫「卸载 ccm」——「ccm 助手」这个词
+/// 盖着两件事（`设计/71 §13.1`：① 推入口 ② 写别名块），而这一条只做过 ②。用户 2026-09-17 逐字
+/// 「装/卸 ccm 助手是假的，删掉这个东西」⇒ 名字跟着它真做的事走。
 /// 序列走 `fenced_block::apply`（与本机同一份）：没有块 ⇒ 一个字节都不写；否则
 /// **先备份**（`.ccm-backup-<ms>`）→ 写 → **读回逐字比对**，不符则回滚。
 #[tauri::command]
-pub async fn uninstall_remote_ccm_helper(
+pub async fn uninstall_remote_alias_block(
     cfg: RemoteConfig,
     profile: String,
 ) -> Result<String, String> {
@@ -1313,57 +1329,41 @@ pub async fn uninstall_remote_ccm_helper(
     .await?;
     let crate::fenced_block::Applied::Written { backup, .. } = applied else {
         return Ok(if missing {
-            format!("远端 {profile} 不存在，没有 ccm 块可卸载。")
+            format!("远端 {profile} 不存在，没有别名块可卸载。")
         } else {
-            format!("远端 {profile} 里没有 ccm 块，无需卸载。")
+            format!("远端 {profile} 里没有别名块，不用卸载。")
         });
     };
-    tracing::info!("远端 [{}] 已卸载 ccm 助手（{profile}）", cfg.origin_label());
+    tracing::info!("远端 [{}] 已卸载别名块（{profile}）", cfg.origin_label());
     Ok(match backup {
-        Some(b) => format!("已从远端 {profile} 删除 ccm 块（原文件已备份为 {b}）。"),
-        None => format!("已从远端 {profile} 删除 ccm 块。"),
+        Some(b) => format!("已从远端 {profile} 删掉别名块（原文件备份在 {b}）。"),
+        None => format!("已从远端 {profile} 删掉别名块。"),
     })
 }
 
-/// 一键把 `ccm` wrapper 装进远端 bash profile（F10，SS-H）。
+/// 〔MC1 · 2026-09-24〕**别名块**装进远端 rc（机器页 ②「别名」里的「装别名块」）。
+///
+/// 从前它叫 `install_remote_ccm_helper`〔散文墓碑〕，一次做两件事：① 推 `ccm` 入口到
+/// `~/.local/bin/ccm` ② 把别名块合进 rc。`设计/71 §13.3`：① 并进「部署后端」（本文件
+/// [`deploy_remote_backend`]），② 并进「别名」⇒ 本函数只剩 ②。
 ///
 /// `profile` 默认 `.bashrc`（SFTP 相对路径解析到 home；拒 `/`、`\`、`..` 防写 home 外）。
 /// 写入的 snippet 是**后端拥有**的 [`CCM_WRAPPER_SNIPPET`]（审计 S-1：不接受前端传入可执行
-/// bash）。两次写都走 `fenced_block::apply`（与本机同一个序列）：相同则不写；否则
-/// 备份（rc 才备份）→ 原子写 → 读回逐字比对 → 不符回滚。
+/// bash）。写走 `fenced_block::apply`（与本机同一个序列）：相同则不写；否则
+/// 备份 → 原子写 → 读回逐字比对 → 不符回滚。别名块引用 `ccm` —— 那条入口由「部署后端」放。
 ///
 /// 注：profile 统一写 `0o644`（.bashrc 惯例）；若用户原本 `chmod 600`，重装会归一到 644。
 #[tauri::command]
-pub async fn install_remote_ccm_helper(
+pub async fn install_remote_alias_block(
     cfg: RemoteConfig,
     profile: String,
 ) -> Result<String, String> {
     let profile = remote_profile_name(&profile)?;
     let conn = connect_sftp(&cfg).await?;
-    let sftp = &conn.sftp;
-
-    // ① 先部署入口（0755 可执行文件）。**先于写 profile**——别名块引用 `ccm`，
-    //    若先写块再部署失败，用户会拿到一堆指向不存在命令的别名。
-    // 🔴 `K-R48` 第二拍：推的不再是那个 1592 行的 bash 启动器，是 [`ccm_entry_shim`]
-    //    —— 三行、零实现，只把 argv 转给**已经部署好的后端**（`ensure_backend_deployed`
-    //    把它推到 `cfg.backend_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-backend`）。
-    // 〔AL1〕它从前写完只比对、**不回滚**（坏的入口会留在远端）；走同一个序列之后，
-    //    比对不上就恢复成原来那份（原来没有就删掉）。
-    let shim = ccm_entry_shim(&cfg.backend_path);
-    let entry = SftpFile {
-        sftp,
-        path: CCM_CLI_REMOTE_PATH.to_string(),
-        mode: 0o755,
-        what: format!("远端 ~/{CCM_CLI_REMOTE_PATH}"),
-    };
-    crate::fenced_block::apply(&entry, false, |_| Ok(Some(shim)))
-        .await
-        .map_err(|e| format!("{e} 没动 {profile}。"))?;
-
-    // ② 再把别名块合进 profile（损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件）。
+    // 损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件。
     let what = format!("远端 ~/{profile}");
     let rc = SftpFile {
-        sftp,
+        sftp: &conn.sftp,
         path: profile.clone(),
         mode: 0o644,
         what: what.clone(),
@@ -1373,23 +1373,40 @@ pub async fn install_remote_ccm_helper(
     })
     .await?;
     let crate::fenced_block::Applied::Written { backup, .. } = applied else {
-        return Ok(format!(
-            "ccm CLI 已部署到远端 ~/{CCM_CLI_REMOTE_PATH}；{profile} 的别名块已是最新，无需改动。"
-        ));
+        return Ok(format!("{profile} 里的别名块已是最新，没有改动。"));
     };
     let backup_note = backup
-        .map(|b| format!("（原文件已备份为 {b}）"))
+        .map(|b| format!("（原文件备份在 {b}）"))
         .unwrap_or_default();
-
-    tracing::info!(
-        "远端 [{}] 已装 ccm CLI + 别名块到 {profile}",
-        cfg.origin_label()
-    );
+    tracing::info!("远端 [{}] 已装别名块到 {profile}", cfg.origin_label());
     Ok(format!(
-        "已部署 ccm CLI 到 ~/{CCM_CLI_REMOTE_PATH}，别名块已写入 {profile}{backup_note}。\
-         重连远端 ssh 终端后可用：`ccm`（起会话）/ `ccm --tmux`（tmux 里起）/ \
-         `ccm --account <名>`（指定账号）。`ccm --help` 看全部修饰。"
+        "别名块已写进 {profile}{backup_note}。重连 ssh 之后，终端里就有 cc / cct，\
+         以及「别名」里生成的那几条。"
     ))
+}
+
+/// 〔MC1 · 2026-09-24〕把 `ccm` 入口放到远端 `~/.local/bin/ccm`（[`deploy_remote_backend`] 的后半）。
+///
+/// 🔴 **它仍是那三行 shim**（[`ccm_entry_shim`]）。`设计/01 §6.7b` 的目标是「`ccm` 就是后端
+/// 二进制本身、落 `~/.cc-monitor/bin/ccm`、没有 shim」—— 那一步卡在写区外：monitor 起远端后端的
+/// 两处（`ssh_source.rs` 流模式与零参数探针）直接 exec `backend_path`，而后端 `main.rs` 头一件事就是
+/// 「basename ＝ `ccm` ⇒ 进一次性 ccm 模式」⇒ 把后端文件名改成 `ccm`，探针那一发会变成
+/// 「在当前目录起一个 agent」。改哪一侧都在本路写区外（摸底住 `tests/evidence/MC1-AL1-摸底.md`）。
+/// ⇒ 本拍只做**界面与动作的归一**：装后端与放入口是**一个按钮、一次调用**，不再分成两颗。
+async fn put_ccm_entry(
+    sftp: &SftpSession,
+    backend_path: &str,
+) -> Result<crate::fenced_block::Applied, String> {
+    let entry = SftpFile {
+        sftp,
+        path: CCM_CLI_REMOTE_PATH.to_string(),
+        mode: 0o755,
+        what: format!("远端 ~/{CCM_CLI_REMOTE_PATH}"),
+    };
+    // 走同一个序列：从前它写完只比对、**不回滚**（坏的入口会留在远端）；
+    // 今天比对不上就恢复成原来那份（原来没有就删掉）。入口是我们自己的文件 ⇒ 不留备份。
+    let shim = ccm_entry_shim(backend_path);
+    crate::fenced_block::apply(&entry, false, |_| Ok(Some(shim))).await
 }
 
 #[cfg(test)]

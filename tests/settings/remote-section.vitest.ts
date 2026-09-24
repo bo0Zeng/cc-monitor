@@ -803,9 +803,38 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const inComp = got!.components.textContent ?? "";
     expect(inConn).toContain("主机 (host)");
     expect(inComp).toContain("resume 命令（这台机器）");
-    expect(inComp).toContain("装 ccm 启动器");
     // 反向：resume 命令**不该**留在连接那半
     expect(inConn).not.toContain("resume 命令（这台机器）");
+  });
+
+  /**
+   * 🔴 〔MC1 · 2026-09-24〕`设计/71 §13` · `设计/01 §6.7`：**机器卡上只有三个动作**。
+   *
+   * 从前「组件」栏那一行挤着 8 颗按钮。今天两向钉：
+   * · 「组件」栏的按钮**恰好**是 ① 部署后端（部署 · 卸载）与 ② 别名（装别名块 · 卸载别名块）那四颗；
+   * · 「连接」栏的按钮**恰好**是动这条连接的那四颗（测试连接 · 推送公钥 · 文件 · 开新 Claude）
+   *   ——（外加指纹那一格原有的「重置为 TOFU」）；
+   * · 「ccm 助手 / ccm 启动器」这个词在两栏里一个字都不许有（用户逐字「装/卸 ccm 助手是假的」）。
+   */
+  it("★ MC1：组件栏只剩 ① 部署后端 ＋ ② 别名，连接栏是动这条连接的那几颗，「ccm 助手」一个字都不剩", async () => {
+    const p = fakePages();
+    await mount([mkH("a", "1.1.1.1")], p.host);
+    const got = p.addedParts[1]!;
+    const labels = (el: HTMLElement): string[] =>
+      [...el.querySelectorAll<HTMLButtonElement>("button")]
+        .filter((b) => !b.closest("details"))
+        .map((b) => b.textContent ?? "");
+    expect(labels(got.components)).toEqual(["部署后端", "卸载后端", "装别名块", "卸载别名块"]);
+    expect(labels(got.connection).filter((t) => t !== "重置为 TOFU")).toEqual([
+      "测试连接",
+      "推送公钥",
+      "文件",
+      "开新 Claude",
+    ]);
+    for (const part of [got.connection, got.components]) {
+      const txt = [part.textContent ?? "", ...[...part.querySelectorAll("[title]")].map((e) => e.getAttribute("title") ?? "")].join("\n");
+      expect(txt).not.toMatch(/ccm (助手|启动器)/);
+    }
   });
 
   it("本机页不带 parts（它没有卡片，不该被拆栏）", async () => {

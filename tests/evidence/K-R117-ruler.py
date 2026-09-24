@@ -292,8 +292,11 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   `sftp.rs:743/796` 两个新名在盘上、`ipc/commands.ts:739/959` 两侧都跟上了。
         #   ⇒ 改表是**跟上真相**，不是凑绿。
         "deploy_remote_backend",
-        "install_remote_ccm_helper",
-        "uninstall_remote_ccm_helper",
+        # 〔MC1 · 2026-09-24〕`install_remote_ccm_helper` / `uninstall_remote_ccm_helper` 改名成
+        #   `…_remote_alias_block`（「ccm 助手」这个词删掉，`设计/71 §13`）。本条红的时候逐字
+        #   「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
+        "install_remote_alias_block",
+        "uninstall_remote_alias_block",
         "uninstall_remote_backend",
     ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
        "`ccm.install`/`ccm.uninstall` 的远端半」。现打这四条的住址恰好都在 `sftp.rs`")),

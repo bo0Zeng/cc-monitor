@@ -256,7 +256,7 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
     // ② 反向自检：扫描器在真树上认得出一个真的卸载实现（零命中 ⇒ 下面全是空真）。
     assert!(
         crate::structural_scan::fn_names_starting_with(file_of("sftp.rs"), &["uninstall"])
-            .contains(&"uninstall_remote_ccm_helper".to_string()),
+            .contains(&"uninstall_remote_alias_block".to_string()),
         "扫描器在真树上零命中 —— 本条此刻无效，先查剥法别改断言"
     );
 

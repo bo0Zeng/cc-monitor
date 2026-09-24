@@ -1328,10 +1328,12 @@ pub fn run() {
             session_skeleton::read_session_index,
             session_skeleton::read_session_range,
             remote_history::list_remote_history_projects,
-            // F10：一键装 / 卸远端 ccm 助手到 ~/.bashrc（SFTP 写 profile，SS-H）
-            sftp::install_remote_ccm_helper,
-            sftp::uninstall_remote_ccm_helper,
-            // F08c：手动安装 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）
+            // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
+            // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
+            sftp::install_remote_alias_block,
+            sftp::uninstall_remote_alias_block,
+            // F08c：部署 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）。
+            // 〔MC1〕部署那一条同时放 `ccm` 入口 —— 「部署后端」只有一个动作。
             sftp::deploy_remote_backend,
             sftp::uninstall_remote_backend,
             acct_iso_deploy::deploy_remote_acct_iso,

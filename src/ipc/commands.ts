@@ -779,6 +779,7 @@ export const commands = {
     invoke<boolean>("check_cc_bus_agent_online", args),
 
   /** 部署内嵌的后端到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
+  /** 部署远端后端（〔MC1〕连同 `ccm` 入口，一次）。 */
   deploy_remote_backend: (args: { cfg: unknown }) => invoke<string>("deploy_remote_backend", args),
 
   /**
@@ -945,9 +946,9 @@ export const commands = {
   /** 批量导入 `~/.ssh/config` 的预览分组（F57）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   import_ssh_hosts: () => invoke<ImportGroup[]>("import_ssh_hosts"),
 
-  /** 往远端 `~/.bashrc` 装 ccm wrapper。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  install_remote_ccm_helper: (args: { cfg: unknown; profile: string }) =>
-    invoke<string>("install_remote_ccm_helper", args),
+  /** 往远端 rc 里装别名块（〔MC1〕从前叫「装 ccm 助手」）。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
+  install_remote_alias_block: (args: { cfg: unknown; profile: string }) =>
+    invoke<string>("install_remote_alias_block", args),
 
   /** 搜索索引状态。Rust 签名**无 `Result` 包装**（`-> SearchIndexStatus`）。 */
   get_search_index_status: () => invoke<SearchIndexStatus>("get_search_index_status"),
@@ -1055,9 +1056,9 @@ export const commands = {
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: () => invoke<void>("open_settings_window"),
 
-  /** 从远端 `~/.bashrc` 卸 ccm wrapper。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  uninstall_remote_ccm_helper: (args: { cfg: unknown; profile: string }) =>
-    invoke<string>("uninstall_remote_ccm_helper", args),
+  /** 从远端 rc 里卸别名块。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
+  uninstall_remote_alias_block: (args: { cfg: unknown; profile: string }) =>
+    invoke<string>("uninstall_remote_alias_block", args),
 
   /** 卸远端后端。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
   uninstall_remote_backend: (args: { cfg: unknown }) =>
