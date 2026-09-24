@@ -1238,8 +1238,10 @@ pub fn staging_key(local_path: &str, size: u64, mtime_ns: u128) -> String {
         (salt, local_path, size, mtime_ns).hash(&mut h);
         h.finish()
     };
+    // 两个 64 位散列各占键长的一半（`STAGING_KEY_LEN` 是后端认的那个长度，判据逐字比）。
+    let w = STAGING_KEY_LEN / 2;
     format!(
-        "{:016x}{:016x}",
+        "{:0w$x}{:0w$x}",
         half("ccm-staging-a"),
         half("ccm-staging-b")
     )
@@ -1358,6 +1360,293 @@ pub async fn upload_to_staging(
             }
             Err(e)
         }
+    }
+}
+
+// ═══ F7c：**传输台** —— 窗口经通道够到 SFTP 的唯一一处（`设计/60 §13.2 ①`）═══════
+//
+// 窗口进程一行 SFTP 都不碰：它经通道说
+//   `call(origin, "transfer-upload" | "transfer-download", …)` ⇒ **开单**（登记一张票，不起跑，回 id）
+//   `subscribe(origin, "transfer/<id>", None)`                 ⇒ **起跑并看进度**
+//   停订（`Sub::stop` / 丢掉订阅 / 连接断了）                    ⇒ **撤这一趟**
+// SFTP 连接留在 monitor，借的就是上面那一池（`lease_transfer`：车道 ＋ 通道两道闸，`6 − 4 = 2` 同一份）。
+//
+// 🔴 **起跑挂在订阅上、不挂在开单上**（`设计/60 §13.3` 第 2 条）：`chan::client` 发订阅那一帧是另起
+//    一个任务 `post` 的，而 `call` 由调用方自己的任务发 ⇒ 两帧在线上的先后不保证。开单即起跑的话，
+//    一趟小传输会在订阅到达之前跑完、终局没人收。订阅起跑 ⇒ 这个竞态不存在。
+// 🔴 **撤就是停订**（`chan::wire::Sub::stop` 头注逐字「与 `call` 的撤单同义」）⇒ 没有第三条命令。
+//
+// ⚠ 本节**只说领域话**（「此刻传了多少 · 怎么收场的」）；把它翻成通道那几种格子的，是宿主
+//    `chan/host.rs`（它不是通信层成员，「把载荷当 JSON 读」本来就是它的活）。
+
+/// 开单：上传。载荷 `{"local_path"}`，回 `{"id","key"}`（`key` 是暂存件的键，提交时交给后端）。
+pub const TRANSFER_UPLOAD: &str = "transfer-upload";
+/// 开单：下载。载荷 `{"remote_path","local_path"}`，回 `{"id"}`。
+pub const TRANSFER_DOWNLOAD: &str = "transfer-download";
+/// 🔴 **窗口经通道说得出的传输命令：恰好这两条。** 取消不是命令（停订即撤）。
+pub const TRANSFER_OPS: [&str; 2] = [TRANSFER_UPLOAD, TRANSFER_DOWNLOAD];
+/// 进度流的 `kind`：`transfer/<id>`。
+pub const TRANSFER_KIND_PREFIX: &str = "transfer/";
+
+/// 这个操作名是不是传输台的。
+pub fn is_transfer_op(op: &str) -> bool {
+    TRANSFER_OPS.contains(&op)
+}
+
+/// 一趟传输**此刻**的样子（流里的每一格都是一整份快照，不是增量 ⇒ 合并掉中间几格不丢信息）。
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct Snap {
+    pub got: u64,
+    pub total: u64,
+    /// `Some` ⇒ 收场了（流的最后一格）。
+    pub end: Option<End>,
+}
+
+/// 怎么收场的。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum End {
+    /// 传完了。
+    Done { bytes: u64 },
+    /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传。
+    Failed(String),
+    /// 撤了（停订 / 连接断了）。上传那一路的暂存件已删。
+    Cancelled,
+}
+
+/// 一趟传输要跑的那件事：拿到「撤了没有」与「报进度」两样，回传完的字节数。
+pub type TransferJob = Box<
+    dyn FnOnce(
+            Arc<AtomicBool>,
+            Arc<dyn Fn(u64, u64) + Send + Sync>,
+        ) -> futures::future::BoxFuture<'static, Result<u64, String>>
+        + Send,
+>;
+
+/// 一张票。
+struct Ticket {
+    origin: crate::origin::Origin,
+    /// 上传那一路的暂存件键（同一台机器上同一个键同时只许一张票在跑）。
+    key: Option<String>,
+    /// 还没起跑的那件事（第一次订阅时取走）。
+    job: std::sync::Mutex<Option<TransferJob>>,
+    cancel: Arc<AtomicBool>,
+    state: Arc<tokio::sync::watch::Sender<Snap>>,
+}
+
+impl Ticket {
+    fn is_over(&self) -> bool {
+        self.state.borrow().end.is_some()
+    }
+}
+
+/// 进程里全部在册的票：`id → 票`。
+fn desk() -> &'static std::sync::Mutex<HashMap<String, Arc<Ticket>>> {
+    static D: std::sync::OnceLock<std::sync::Mutex<HashMap<String, Arc<Ticket>>>> =
+        std::sync::OnceLock::new();
+    D.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+fn desk_lock() -> std::sync::MutexGuard<'static, HashMap<String, Arc<Ticket>>> {
+    desk().lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// **开单**：登记一张票（不起跑）。同一台机器上同一个暂存件键已有一张没收场的票 ⇒ 拒。
+///
+/// 判据也从这里进（喂一件合成的事，不起真连接）。
+pub fn open_ticket(
+    origin: &crate::origin::Origin,
+    key: Option<String>,
+    job: TransferJob,
+) -> Result<String, String> {
+    let mut d = desk_lock();
+    if let Some(k) = &key {
+        if d.values()
+            .any(|t| t.origin == *origin && t.key.as_ref() == Some(k) && !t.is_over())
+        {
+            return Err("同一份文件正在往那台机器上传（同一个暂存件），等它收场再来".to_string());
+        }
+    }
+    let id = format!("xfer-{}", uuid::Uuid::new_v4().simple());
+    let (tx, _rx) = tokio::sync::watch::channel(Snap::default());
+    d.insert(
+        id.clone(),
+        Arc::new(Ticket {
+            origin: origin.clone(),
+            key,
+            job: std::sync::Mutex::new(Some(job)),
+            cancel: Arc::new(AtomicBool::new(false)),
+            state: Arc::new(tx),
+        }),
+    );
+    Ok(id)
+}
+
+/// 订阅那一格的守卫：**流被丢掉 = 停订**。没收场就撤；无论如何把票摘掉。
+struct WatchGuard {
+    id: String,
+    ticket: Arc<Ticket>,
+}
+
+impl Drop for WatchGuard {
+    fn drop(&mut self) {
+        if !self.ticket.is_over() {
+            self.ticket.cancel.store(true, Ordering::SeqCst);
+        }
+        desk_lock().remove(&self.id);
+    }
+}
+
+/// **起跑并看**：`id` 那张票的快照流（第一格是此刻，之后每变一次出一格，收场那一格是最后一格）。
+///
+/// - 没有这张票 / 票不是这台机器的 ⇒ `Err(("no-such-transfer", …))`（宿主原位说出来）；
+/// - 已经有人在看（第二次订阅）⇒ `Err(("already-watched", …))` —— 一趟传输一个看的人，撤的语义才不含糊。
+///
+/// ⚠ 必须在 tokio 运行时里调（起跑是 `tokio::spawn`）；宿主的订阅口恒在路由器的任务里。
+pub fn watch_ticket(
+    origin: &crate::origin::Origin,
+    id: &str,
+) -> Result<futures::stream::BoxStream<'static, Snap>, (&'static str, String)> {
+    let ticket = desk_lock()
+        .get(id)
+        .cloned()
+        .filter(|t| t.origin == *origin)
+        .ok_or_else(|| ("no-such-transfer", format!("没有这一趟传输（{id}）")))?;
+    let job = ticket
+        .job
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+        .ok_or_else(|| {
+            (
+                "already-watched",
+                format!("这一趟传输已经有人在看了（{id}）"),
+            )
+        })?;
+    let rx = ticket.state.subscribe();
+    // ── 起跑 ──
+    let state = Arc::clone(&ticket.state);
+    let cancel = Arc::clone(&ticket.cancel);
+    let sink_state = Arc::clone(&state);
+    let sink: Arc<dyn Fn(u64, u64) + Send + Sync> = Arc::new(move |got, total| {
+        sink_state.send_modify(|s| {
+            s.got = got;
+            s.total = total;
+        });
+    });
+    tokio::spawn(async move {
+        let r = job(Arc::clone(&cancel), sink).await;
+        let end = match r {
+            Ok(bytes) => End::Done { bytes },
+            // 判的是**撤的旗**，不是错误文案（同 `download_inner` 那条理由）。
+            Err(_) if cancel.load(Ordering::SeqCst) => End::Cancelled,
+            Err(e) => End::Failed(e),
+        };
+        state.send_modify(|s| s.end = Some(end));
+    });
+    // ── 看 ──
+    let guard = WatchGuard {
+        id: id.to_string(),
+        ticket,
+    };
+    Ok(Box::pin(futures::stream::unfold(
+        (rx, guard, true, false),
+        |(mut rx, guard, first, over)| async move {
+            if over {
+                return None;
+            }
+            if !first && rx.changed().await.is_err() {
+                // 发送端在票里、票在守卫里 ⇒ 这一支到不了；到了就当它收场了。
+                let snap = Snap {
+                    end: Some(End::Failed("传输台丢了这一趟的状态".to_string())),
+                    ..Snap::default()
+                };
+                return Some((snap, (rx, guard, false, true)));
+            }
+            let snap = rx.borrow_and_update().clone();
+            let over = snap.end.is_some();
+            Some((snap, (rx, guard, false, over)))
+        },
+    )))
+}
+
+/// **开单**那一面（宿主 `call` 调）：读载荷、造那件事、登记。回应答的 JSON。
+///
+/// 失败回 `(码, 话)`，宿主原样翻成「对端答不行」（与后端命令的拒绝同一个信封）。
+pub async fn transfer_call(
+    cfg: RemoteConfig,
+    op: &str,
+    payload: &serde_json::Value,
+) -> Result<serde_json::Value, (&'static str, String)> {
+    let text = |k: &str| {
+        payload
+            .get(k)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .ok_or((
+                "bad_args",
+                format!("`{op}` 少了 `{k}`，或者它不是一个字符串"),
+            ))
+    };
+    let origin = crate::origin::Origin(cfg.origin_label());
+    match op {
+        TRANSFER_UPLOAD => {
+            let local = text("local_path")?;
+            let meta = tokio::fs::metadata(&local)
+                .await
+                .map_err(|e| ("io_failed", format!("读本地 {local} 失败: {e}")))?;
+            if !meta.is_file() {
+                return Err(("bad_args", format!("{local} 不是一份普通文件")));
+            }
+            let mtime_ns = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let key = staging_key(&local, meta.len(), mtime_ns);
+            let job_key = key.clone();
+            let job: TransferJob = Box::new(move |cancel, sink| {
+                Box::pin(async move {
+                    let pool = pool_for(&cfg.origin_label()).await;
+                    let lease = pool.lease_transfer(&cfg).await?;
+                    let r =
+                        upload_to_staging(lease.get().sftp(), &local, &job_key, &cancel, &*sink)
+                            .await;
+                    if let Err(e) = &r {
+                        evict_if_dead(&cfg.origin_label(), e).await;
+                    }
+                    r
+                })
+            });
+            let id = open_ticket(&origin, Some(key.clone()), job).map_err(|e| ("busy", e))?;
+            Ok(serde_json::json!({ "id": id, "key": key }))
+        }
+        TRANSFER_DOWNLOAD => {
+            let remote = text("remote_path")?;
+            let local = text("local_path")?;
+            // 本机落点那道围栏：开单时就判（出声早），起跑时 `download_inner` 之前再判一次。
+            guard_write(&local).map_err(|e| ("refused", e))?;
+            let job: TransferJob = Box::new(move |cancel, sink| {
+                Box::pin(async move {
+                    guard_write(&local)?;
+                    let pool = pool_for(&cfg.origin_label()).await;
+                    let lease = pool.lease_transfer(&cfg).await?;
+                    let r =
+                        download_inner(lease.get().sftp(), &remote, &local, &cancel, &*sink).await;
+                    if let Err(e) = &r {
+                        evict_if_dead(&cfg.origin_label(), e).await;
+                    }
+                    r?;
+                    tokio::fs::metadata(&local)
+                        .await
+                        .map(|m| m.len())
+                        .map_err(|e| format!("落地之后读不到 {local}: {e}"))
+                })
+            });
+            let id = open_ticket(&origin, None, job).map_err(|e| ("busy", e))?;
+            Ok(serde_json::json!({ "id": id }))
+        }
+        other => Err(("bad_args", format!("`{other}` 不是传输台的命令"))),
     }
 }
 
@@ -1844,4 +2133,4 @@ mod pool_f4_tests;
 /// 不认建目录与列目录），所以另立一个模块。
 #[cfg(test)]
 #[path = "../../../tests/bridge/sftp_staging_tests.rs"]
-mod staging_tests;
+pub(crate) mod staging_tests;

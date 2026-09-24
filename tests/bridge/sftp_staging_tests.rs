@@ -44,7 +44,7 @@ struct Entry {
 }
 
 #[derive(Default, Debug)]
-pub(super) struct Fs {
+pub(crate) struct Fs {
     files: BTreeMap<String, Entry>,
     dirs: BTreeSet<String>,
     handles: HashMap<String, String>,
@@ -52,7 +52,7 @@ pub(super) struct Fs {
     /// 列目录句柄 → 还没交出去的那一批（一次交完，第二次 `EOF`）。
     dir_handles: HashMap<String, Option<String>>,
     /// 🔴 **本台架的针**：每一次会改东西的请求碰的路径，按到达顺序。
-    pub(super) mutated: Vec<(String, String)>,
+    pub(crate) mutated: Vec<(String, String)>,
     /// 第 N 次（0 起）`WRITE` 之后开始回 `FAILURE`（「失败留」那一格要一个中途真坏的形状）。
     fail_write_after: Option<usize>,
     write_calls: usize,
@@ -67,6 +67,10 @@ impl Fs {
         let id = self.next_handle;
         self.next_handle += 1;
         String::from_utf8(id.to_be_bytes().to_vec()).expect("序号 < 0x80")
+    }
+    /// 一份文件此刻的字节（给别的台架看结果用；判据自己看表，不信被测侧的自述）。
+    pub(crate) fn files_snapshot(&self, path: &str) -> Option<Vec<u8>> {
+        self.files.get(path).map(|e| e.bytes.clone())
     }
     fn touch(&mut self, verb: &str, path: &str) {
         self.mutated.push((verb.to_string(), path.to_string()));
@@ -382,10 +386,18 @@ impl russh_sftp::server::Handler for Server {
     }
 }
 
+/// 一张传输台的票还在不在册（给别的台架一个可观测的读数：票在收场 ＋ 停订之后真的摘掉了）。
+///
+/// ⚠ 住判据这一侧、不住生产段：生产上没人问这件事（`#[cfg(test)]` 支撑项在生产树里是一条递减棘轮）。
+/// ⚠ 按 id 问、不按总数问：同一个进程里并发跑的别的判据也在开票，总数不是这一条自己的读数。
+pub(crate) fn ticket_in_desk(id: &str) -> bool {
+    super::desk_lock().contains_key(id)
+}
+
 // ═══ ② 台架 ═════════════════════════════════════════════════════════════════
 
 /// 起一台：`~/.cc-monitor` 在（后端的家），暂存区还不在。
-pub(super) fn home_with_backend() -> Arc<Mutex<Fs>> {
+pub(crate) fn home_with_backend() -> Arc<Mutex<Fs>> {
     // 新建 / 写过的文件打「此刻」的时间：否则孤儿扫会把这一趟之前刚建的件判成老的。
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -399,7 +411,7 @@ pub(super) fn home_with_backend() -> Arc<Mutex<Fs>> {
     Arc::new(Mutex::new(fs))
 }
 
-pub(super) async fn session_on(fs: Arc<Mutex<Fs>>) -> russh_sftp::client::SftpSession {
+pub(crate) async fn session_on(fs: Arc<Mutex<Fs>>) -> russh_sftp::client::SftpSession {
     let (client_io, server_io) = tokio::io::duplex(256 * 1024);
     russh_sftp::server::run(server_io, Server { fs }).await;
     russh_sftp::client::SftpSession::new(client_io)
@@ -408,15 +420,15 @@ pub(super) async fn session_on(fs: Arc<Mutex<Fs>>) -> russh_sftp::client::SftpSe
 }
 
 /// 合成语料：编译期拼、含不可打印字节、长过 `CHUNK` 好几倍（一个真会话正文的字节都没有）。
-pub(super) fn corpus(len: usize) -> Vec<u8> {
+pub(crate) fn corpus(len: usize) -> Vec<u8> {
     let unit: [u8; 16] = *b"F7c-stage\x00\x01\x02\x03\x04\x05\x06";
     unit.iter().copied().cycle().take(len).collect()
 }
 
 /// 本机一份夹具文件（落 `temp_dir`，跑完就删）。
-pub(super) struct Local(pub(super) PathBuf);
+pub(crate) struct Local(pub(crate) PathBuf);
 impl Local {
-    pub(super) fn new(tag: &str, bytes: &[u8]) -> Self {
+    pub(crate) fn new(tag: &str, bytes: &[u8]) -> Self {
         static N: AtomicUsize = AtomicUsize::new(0);
         let p = std::env::temp_dir().join(format!(
             "ccm-f7c-{tag}-{}-{}",
@@ -426,7 +438,7 @@ impl Local {
         std::fs::write(&p, bytes).expect("写夹具文件");
         Self(p)
     }
-    pub(super) fn path(&self) -> String {
+    pub(crate) fn path(&self) -> String {
         self.0.to_string_lossy().into_owned()
     }
 }

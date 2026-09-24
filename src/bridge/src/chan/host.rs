@@ -39,10 +39,11 @@
 //!
 //! # 买不到什么
 //!
-//! - 🔴 **`subscribe` 在生产上今天一条流都没有**：`inbound_client` 只有「一问一答」，
-//!   后端推上来的帧今天走 `ssh_source` 的 Tauri 事件那条路，而那一份不在本波写区。
-//!   ⇒ [`InboundBackends::subscribe`] 对任何 `kind` 都原位回 `Closed{Peer(…)}`（对端说「没有这条流」），
-//!   **不装作订阅成功**。「订阅收得到帧」今天只由判据里的合成句柄证明 —— 如实登记。
+//! - ✅〔F7c · 第三波 · 2026-09-24〕**生产上有了第一条流**：`transfer/<id>`（传输台那一趟的进度，
+//!   `设计/60 §13.2 ①`；翻译住本文件末尾那一节，判据 `transfer_stream_tests` 走真回环 ＋ 真钥匙 ＋ 本句柄）。
+//!   🔴 **其余 `kind` 照旧一条流都没有**：`inbound_client` 只有「一问一答」，后端推上来的帧今天走
+//!   `ssh_source` 的 Tauri 事件那条路 ⇒ [`InboundBackends::subscribe`] 对别的 `kind` 仍原位回
+//!   `Closed{Peer(…)}`（对端说「没有这条流」），**不装作订阅成功**。
 //! - **不买对端撤活**：外部前端撤单 ⇒ 路由器拨下撤单手柄 ⇒ 本适配器丢掉那次 `inbound_client` 调用；
 //!   `inbound_client` 那一侧补发 `cancel` 的那一手是它的私有函数，今天够不着 ⇒ 后端可能照跑完。
 //! - **不买同机其它用户的隔离之外的东西**：回环口上同一台机器的任何进程都能**连**，
@@ -187,6 +188,11 @@ impl Backends for InboundBackends {
         left: Duration,
         _cancel: CancelToken,
     ) -> BoxFuture<'static, Result<Body, CallError>> {
+        // 🔴〔F7c · 第三波 09-24〕**传输台那两条开单命令不去后端**：SFTP 连接住 monitor
+        //    （`设计/60 §13.2 ①`），它们由本进程的传输台答。其余一切照旧去 `inbound_client`。
+        if crate::sftp_pool::is_transfer_op(&op.0) {
+            return Box::pin(transfer_open(origin, op, payload));
+        }
         // 撤单**不在这里接**：路由器在撤单手柄拨下时直接丢掉本 future（`router::run_call`），
         // `inbound_client` 那次调用随之被丢 —— 本句柄再接一次就是第二份「撤了怎么说」。
         Box::pin(async move {
@@ -217,8 +223,11 @@ impl Backends for InboundBackends {
         kind: Kind,
         from: Option<Cursor>,
     ) -> BoxStream<'static, Item> {
-        // 生产今天没有任何流可订阅（模块头注「买不到」第一条）。对端原位说「没有这条流」，
-        // 不装作订阅成功、也不静默挂着。
+        // 🔴〔F7c · 第三波 09-24〕**生产上的第一条流**：`transfer/<id>` ⇒ 传输台那一趟的进度。
+        if let Some(id) = kind.0.strip_prefix(crate::sftp_pool::TRANSFER_KIND_PREFIX) {
+            return transfer_stream(&origin, id, from);
+        }
+        // 别的 `kind` 今天照旧没有流。对端原位说「没有这条流」，不装作订阅成功、也不静默挂着。
         let _ = (origin, from);
         let body = serde_json::to_vec(&serde_json::json!({
             "code": "no-such-stream",
@@ -230,3 +239,104 @@ impl Backends for InboundBackends {
         }]))
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔F7c · 第三波 · 2026-09-24〕传输台那一口：开单 ＋ 进度流（`设计/60 §13.2 ①`）
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 本文件在这里做的仍然只是**宿主**那几件事：按 `origin` 找那台机器的配置（读配置归宿主，`C4`）、
+// 把载荷当 JSON 读、把传输台的领域话（`sftp_pool::Snap`）翻成通道的格子。
+// 传输本身（借通道 · 写暂存区 · 续传 · 撤）一行都不在这里。
+
+/// 拒绝的信封：与后端命令的拒绝**同一个形状**（`{"code","message"}`，`backend_route::layer_call_error`
+/// 逐字），窗口那一侧用同一个翻译（`filewin::source::said`）说人话。
+///
+/// ⚠ 经线上那一层的构造器（`wire::err_from_wire`）造，**不在本文件手写那个枚举的变体**：
+/// 本文件登记在 `backend_route_tests::SENDERS` 里（走分流器的那一档），那一档的牙是
+/// 「生产段不许自己拼 / 匹配那个错误枚举」—— 分层判定只许有一个家。这里不做任何分层判定：
+/// 传输台说了「不行」，就是对端说了「不行」，原样装进那个信封。
+fn refused(code: &str, message: String) -> CallError {
+    let body = serde_json::to_vec(&serde_json::json!({ "code": code, "message": message }))
+        .unwrap_or_default();
+    super::wire::err_from_wire(super::wire::WireErr::Refused, body)
+}
+
+/// 开单：`transfer-upload` / `transfer-download`。
+async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, CallError> {
+    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
+        return Err(OursFault::Misuse.into());
+    };
+    // 本机那一侧**先分**：本机没有 SFTP 传输这回事（用户逐字「本地不需要文件管理器」，
+    // 文件窗口只开在远端上）⇒ 说真实原因，不让下一行答一句「未找到远端配置: <local>」。
+    if origin.as_wire_str() == inbound_client::LOCAL_ORIGIN {
+        return Err(refused(
+            "local_has_no_transfer",
+            "本机那一侧没有 SFTP 传输 —— 文件窗口只开在远端机器上".to_string(),
+        ));
+    }
+    let Some(cfg) = crate::load_remote_config_by_label(origin.as_wire_str()) else {
+        return Err(refused(
+            "no_such_origin",
+            format!(
+                "没有叫 `{}` 的远端配置 —— 传输要那台机器的 SSH 配置",
+                origin.as_wire_str()
+            ),
+        ));
+    };
+    match crate::sftp_pool::transfer_call(cfg, &op.0, &args).await {
+        Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
+        Err((code, message)) => Err(refused(code, message)),
+    }
+}
+
+/// 一格快照 ⇒ 流里的一格。收场那一格是 `Closed{Peer(结局)}`，其余是 `Frame{seq, {"got","total"}}`。
+fn snap_item(seq: u64, snap: &crate::sftp_pool::Snap) -> Item {
+    use crate::sftp_pool::End;
+    let json = |v: serde_json::Value| Body(serde_json::to_vec(&v).unwrap_or_default());
+    match &snap.end {
+        None => Item::Frame {
+            seq,
+            body: json(serde_json::json!({ "got": snap.got, "total": snap.total })),
+        },
+        Some(End::Done { bytes }) => Item::Closed {
+            by: By::Peer(json(serde_json::json!({ "state": "done", "bytes": bytes }))),
+        },
+        Some(End::Failed(why)) => Item::Closed {
+            by: By::Peer(json(serde_json::json!({ "state": "failed", "why": why }))),
+        },
+        Some(End::Cancelled) => Item::Closed {
+            by: By::Peer(json(serde_json::json!({ "state": "cancelled" }))),
+        },
+    }
+}
+
+/// 进度流。**`from` 必须是 `None`**：每一格都是一整份快照，「从哪续」对它没有意义 ——
+/// 给了就原位说用法错，不装作续上了。
+fn transfer_stream(origin: &Origin, id: &str, from: Option<Cursor>) -> BoxStream<'static, Item> {
+    use futures::stream::StreamExt;
+    let closed = |code: &str, message: String| -> BoxStream<'static, Item> {
+        let body = serde_json::to_vec(&serde_json::json!({ "code": code, "message": message }))
+            .unwrap_or_default();
+        Box::pin(futures::stream::iter([Item::Closed {
+            by: By::Peer(Body(body)),
+        }]))
+    };
+    if from.is_some() {
+        return closed(
+            "bad_args",
+            "传输进度流的每一格都是一整份快照，没有「从哪续」这回事".to_string(),
+        );
+    }
+    match crate::sftp_pool::watch_ticket(origin, id) {
+        Ok(snaps) => Box::pin(
+            snaps
+                .enumerate()
+                .map(|(i, snap)| snap_item(i as u64 + 1, &snap)),
+        ),
+        Err((code, e)) => closed(code, e),
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/bridge/chan/transfer_stream_tests.rs"]
+mod transfer_stream_tests;
