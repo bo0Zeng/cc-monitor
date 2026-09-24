@@ -27,7 +27,14 @@ import {
   MAX_DEPTH,
   type Layer,
 } from "../panorama/subgraph-layers";
-import type { Overview, NodeView, Symbol, Edge, Confidence } from "../panorama/types";
+import type {
+  Annotation,
+  Overview,
+  NodeView,
+  Symbol,
+  Edge,
+  Confidence,
+} from "../panorama/types";
 import {
   computeLayout,
   fitViewport,
@@ -425,6 +432,18 @@ export class PanoramaView implements OverlayHandle {
     driftBtn.title = "仓里 .md 指向的目标文件/符号已失效（悬空链接）。反映上次索引快照，改了代码请先刷新。";
     driftBtn.addEventListener("click", () => void this.showDrift());
     bar.appendChild(driftBtn);
+
+    // 批注审批队列：agent 经 MCP `propose_annotation` 提的批注落成 Proposed，
+    // 要人在这里批准才变 Active（agent 那侧 `annotations_for` 只回 Active）。
+    // 后端 list/approve 两条命令与前端 api 早就齐了，此前这一页**零调用点**。
+    const queueBtn = document.createElement("button");
+    queueBtn.type = "button";
+    queueBtn.className = "panorama-btn";
+    queueBtn.dataset.pano = "ann-queue";
+    queueBtn.textContent = "批注审批";
+    queueBtn.title = "列出本仓全部批注：agent 提议、待你批准的在上；批准后 agent 才看得见。";
+    queueBtn.addEventListener("click", () => void this.showAnnotationQueue());
+    bar.appendChild(queueBtn);
 
     view.appendChild(bar);
 
@@ -1318,6 +1337,129 @@ export class PanoramaView implements OverlayHandle {
       this.renderSidebarStatus(`查漂移失败：${String(e)}`);
       showActionFailureToast("文档漂移查询失败", String(e));
     }
+  }
+
+  /**
+   * 批注审批队列。**只取、只画、只收**（`设计/97` CP1）：状态是 core 给的数据
+   * （`Annotation.status`），这里不判、不改写，只把人的「批准 / 驳回」回写。
+   *
+   * - 批准 → `approveAnnotation`（Proposed → Active）；返回 false = 那条已不在了，如实说。
+   * - 驳回 → `removeAnnotation`（core 没有「驳回」这个状态，驳回就是删，写在按钮提示上）。
+   * - 已生效那一节也列出来，带删除 —— 否则人批准完就再也找不回那条。
+   *
+   * 买到：agent 提议的东西第一次有了人审入口。
+   * **买不到**：批准之后它与「人亲手写的」在数据上**分不开**（两者都是 Active，
+   * 只剩 `author` 一个自由文本字段）—— 那是 CP6，要上游加字段，本页不假装分得开。
+   */
+  private async showAnnotationQueue(): Promise<void> {
+    if (!this.repo) {
+      showActionFailureToast("无法列批注", "当前不是本地仓库视图（远端或无仓）。");
+      return;
+    }
+    const repo = this.repo;
+    const seq = ++this.searchSeq;
+    this.openSidebar();
+    this.renderSidebarStatus("读取批注…");
+    try {
+      const all = await api.listAnnotations(repo);
+      if (seq !== this.searchSeq || this.repo !== repo) return;
+      this.renderAnnotationQueue(repo, all);
+    } catch (e) {
+      if (seq !== this.searchSeq) return;
+      this.renderSidebarStatus(`读取批注失败：${String(e)}`);
+      showActionFailureToast("读取批注失败", String(e));
+    }
+  }
+
+  private renderAnnotationQueue(repo: string, all: Annotation[]): void {
+    const proposed = all.filter((a) => a.status === "Proposed");
+    const active = all.filter((a) => a.status === "Active");
+    this.sidebarEl.replaceChildren();
+    this.sidebarEl.appendChild(
+      this.sidebarHeader("批注审批", `${proposed.length} 条待审 · ${active.length} 条已生效`),
+    );
+    this.sidebarEl.appendChild(
+      makeSideNote("待审 = agent 提议的；批准前 agent 看不见它。驳回会直接删掉那条（core 没有「驳回」状态）。"),
+    );
+    // 状态既不是 Proposed 也不是 Active（core 将来加档）→ 不许静默吞掉，单独数出来。
+    const other = all.length - proposed.length - active.length;
+    if (other > 0) {
+      this.sidebarEl.appendChild(
+        makeSideNote(`另有 ${other} 条批注的状态本页不认识（core 新加的档？），未列出。`),
+      );
+    }
+
+    const section = (title: string, rows: Annotation[], pending: boolean): HTMLElement => {
+      const sec = document.createElement("div");
+      sec.className = "panorama-node-section";
+      sec.dataset.pano = pending ? "ann-queue-proposed" : "ann-queue-active";
+      const h = document.createElement("div");
+      h.className = "panorama-node-section-title";
+      h.textContent = `${title}（${rows.length}）`;
+      sec.appendChild(h);
+      if (rows.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "panorama-edge-empty";
+        empty.textContent = pending ? "（没有待审的）" : "（还没有）";
+        sec.appendChild(empty);
+      }
+      for (const a of rows) {
+        const row = document.createElement("div");
+        row.className = "panorama-ann-row";
+        row.dataset.annId = a.id;
+        const body = document.createElement("div");
+        body.className = "panorama-ann-body";
+        body.textContent = a.body;
+        row.appendChild(body);
+        const foot = document.createElement("div");
+        foot.className = "panorama-ann-foot";
+        const who = document.createElement("span");
+        who.className = "panorama-ann-author";
+        who.textContent = `${a.author} · ${a.symbol ? `${a.file}#${a.symbol}` : `${a.file}（文件级）`}`;
+        foot.appendChild(who);
+        if (pending) {
+          const ok = document.createElement("button");
+          ok.type = "button";
+          ok.className = "panorama-btn";
+          ok.textContent = "批准";
+          ok.title = "批准后变为生效，agent 才看得见";
+          ok.addEventListener("click", () => void this.decideAnnotation(repo, a.id, "approve"));
+          foot.appendChild(ok);
+        }
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "panorama-btn panorama-ann-del";
+        del.textContent = pending ? "驳回" : "删除";
+        del.title = pending ? "驳回 = 删掉这条提议" : "删掉这条批注（落在仓里的文件一起删）";
+        del.addEventListener("click", () => void this.decideAnnotation(repo, a.id, "remove"));
+        foot.appendChild(del);
+        row.appendChild(foot);
+        sec.appendChild(row);
+      }
+      return sec;
+    };
+    this.sidebarEl.appendChild(section("待审", proposed, true));
+    this.sidebarEl.appendChild(section("已生效", active, false));
+  }
+
+  /** 批准 / 驳回（删）一条批注，然后重列。返回 false = 那条已不在（别人先删了），如实报。 */
+  private async decideAnnotation(
+    repo: string,
+    id: string,
+    what: "approve" | "remove",
+  ): Promise<void> {
+    try {
+      const existed =
+        what === "approve"
+          ? await api.approveAnnotation(repo, id)
+          : await api.removeAnnotation(repo, id);
+      if (!existed) {
+        showActionFailureToast("那条批注已不在", `id ${id} 在盘上已经没有了（可能别处先删了）。已重新列出。`);
+      }
+    } catch (e) {
+      showActionFailureToast(what === "approve" ? "批准失败" : "删除失败", String(e));
+    }
+    if (this.repo === repo) await this.showAnnotationQueue();
   }
 
   // === 侧栏基础 ===
