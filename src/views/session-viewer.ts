@@ -33,8 +33,8 @@ import { UnrenderedRanges } from "../render-window";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../generated/BranchResult";
-// K-R45 甲：挑「用户说过的每一句」那一半住在这里（纯函数，乙那条路要共用，别复制）
-import { collectUserInputs } from "./user-input-index";
+// 〔SE1〕大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
+import { OutlineSource } from "./outline-source";
 // K-R45：清单界面两条路共用一份，只有一个住址
 import { UserInputPanel } from "./user-input-panel";
 
@@ -171,6 +171,9 @@ export class SessionViewer {
   // K-R45 甲：用户输入清单（开关在顶栏，面板夹在状态栏与消息流之间）。
   // 界面本体住 `user-input-panel.ts` —— 实时窗口那条路用的是**同一份**。
   private inputs!: UserInputPanel;
+  /** 〔SE1〕大纲的数据源；`where` 在 `load` 时换成这一份会话。 */
+  private outline!: OutlineSource;
+  private outlineWhere: { origin: string; jsonlPath: string } | null = null;
   /** 用户点"返回历史"时调用 */
   private onBack: () => void;
 
@@ -199,6 +202,7 @@ export class SessionViewer {
     this.subtitleEl.textContent = opts.subtitle ?? "";
 
     this.disposeStream();
+    this.outlineWhere = { origin: opts.origin ?? LOCAL_ORIGIN, jsonlPath: opts.jsonlPath };
     const gen = ++this.loadGeneration;
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
@@ -544,21 +548,19 @@ export class SessionViewer {
     return el;
   }
 
-  // ==== K-R45 甲 · 用户输入清单 ====
+  // ==== K-R45 甲 · 用户输入清单（大纲） ====
 
   /**
-   * `KR45D1`：扫出这个会话里**主线**的用户输入，喂给清单面板。
+   * 〔SE1 · `设计/10 §2.2b ⑥`〕清单**问后端要**（`--list-user-inputs`），不再扫 `payloads`。
    *
-   * 🔴 **数据源是 `payloads`，不是 DOM**。件里写的是「扫已有 `data-uuid` 的卡」，
-   * 而那样只扫得到**已渲染**的那些 —— 首屏只渲染末尾 `TAIL_INITIAL` 条（150），
-   * 于是长会话里清单会缺掉绝大部分，而**长会话恰恰是这件活唯一的用处**。
-   * ⇒ 走 `payloads`（收集阶段是全量的），条数才做得到「不多不少」。
-   * 挑的口径（含 sidechain 算不算）只有一个住址：`user-input-index.ts::collectUserInputs`。
+   * 原先这里对全量 `payloads` 调前端那份 `collectUserInputs` —— 口径没错，但它是前端的判定，
+   * 后端出了这份清单之后留着它就是「各写一遍判定」（设计逐字禁掉的那一形）⇒ 判定只住后端，
+   * 两个宿主（本查看器 / 实时 tab）走同一个 `OutlineSource`。
    *
    * 界面与「跳完回头核一次落点」那一段住 `user-input-panel.ts`（实时窗口同一份）。
    */
   private rebuildUserInputs(): void {
-    this.inputs.setEntries(collectUserInputs(this.payloads.map((p) => p.message)));
+    void this.outline.refresh();
   }
 
   /** 主动释放（HistoryView 卸载本组件时调） */
@@ -584,7 +586,8 @@ export class SessionViewer {
     this.lastFirstScreenMs = null;
     // K-R45 甲：清单也要跟着释放 —— 留着就是上一个会话的句子挂在下一个会话上，
     // 点下去按 uuid 找不到卡，正好落进「静默跳到看不见的东西上」那一形。
-    this.inputs?.clear();
+    // 〔SE1〕`reset` 同时让在途那趟回来后不许回写（换会话之后迟到的清单不属于这一份）。
+    this.outline?.reset();
   }
 
   // (旧的 renderAll 被流式 load 替代，删了 —— v2.2 issue #12)
@@ -611,9 +614,10 @@ export class SessionViewer {
     this.inputs = new UserInputPanel({
       jumpTo: (uuid) => this.scrollToMessage(uuid),
       // 查看器这一侧落空的成因是自陈的那条不等价：渲染会再剥一层 `stripInternalNoise`，
-      // 剥空了**不建卡**（`user-input-index.ts` 头注）。`scrollToMessage` 会退到底部。
+      // 剥空了**不建卡**（后端 `observe/user_inputs.rs` 头注那条「已知不等价」）。`scrollToMessage` 会退到底部。
       unjumpableHint: "这条在渲染时被剥成了空卡，跳不过去（已退到会话末尾）",
     });
+    this.outline = new OutlineSource(this.inputs, () => this.outlineWhere);
     // 开关塞在顶栏标题右边（标题那块 flex:1 会吃掉余量）。
 
     const titles = document.createElement("div");
