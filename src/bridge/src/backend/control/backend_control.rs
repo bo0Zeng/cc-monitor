@@ -139,7 +139,8 @@ pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
         "pid": pid,
         "attempts": attempts,
         "detached": detached,
-        "killOnExit": crate::backend_policy::kill_on_exit(&origin),
+        // 〔B2 · 条 66〕原来这里还有一格 `killOnExit`（读 monitor 进程内那张表）。值搬到后端那台机器上之后
+        //   这里没有它了 —— 要它问那台机器（`backend_policy::backend_exit_policy`），不许在这儿留一份副本。
         // 键名与 TS 的 `BackendHealth` 接口逐格对齐（`src/backend-policy.ts`）。
         "health": serde_json::json!({
             "crashed": h.crashed,

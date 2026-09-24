@@ -13,7 +13,7 @@
  */
 // `LOCAL_ORIGIN`〔`设计/05 §8` 步 2〕：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
-import { initBackendPolicy, LOCAL_ORIGIN } from "./backend-policy";
+import { LOCAL_ORIGIN } from "./backend-policy";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
@@ -123,13 +123,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // P2s（C8）：把盘上的后端策略推给 Rust。**必须在这里推**——Rust 那边只持有生效值，
-  // 不读 config.json（避免同一个文件两个写者，见 backend-policy.ts 头注）。
-  // 不推的后果不是报错，是**每台机都退回缺省**：用户设过的「退出时结束它」静默失效。
-  // 失败不拦启动：策略是附加功能，读不到不该让主界面起不来。
-  void initBackendPolicy().catch((e) => {
-    console.warn(`[P2s] backend 策略推送失败，本次运行按缺省（不结束）走：${String(e)}`);
-  });
+  // 〔B2 · 条 66〕这里原来在启动时把 config.json 里的后端策略**推**给 Rust。
+  //   那个值搬到了后端所在那台机器上（`设计/01 §3.3b`），由后端在决定那一刻现读 ⇒
+  //   **没有东西要推了**，这一步整条删掉（留着就是第二个真相源）。
 
   status.innerHTML = "";
   const statusMsg = document.createElement("span");

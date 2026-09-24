@@ -1006,11 +1006,20 @@ export const commands = {
   load_config: () => invoke<Record<string, unknown>>("load_config"),
 
   /**
-   * P2s（C8）：这台机的后端，monitor 退出时结不结束它。Rust 返回 `Result<(), String>` ⇒ **桶①**。
+   * 〔B2 · 条 66〕问那台机器的后端：「退出行为」那个值现在是什么（值住那台机器上，`设计/01 §3.3b`）。
+   * Rust 那边是后端回的不透明 JSON（`shell` / `state` / `killOnExit` / `reason` / `path`）⇒ **桶②**，
+   * 形状由 `settings/backend-section.ts` 的 `readExitAnswer` 逐格取、缺一格就当问不到。
    * `origin` 本机是 `"<local>"`（见 `backend-policy.ts` 的 `LOCAL_ORIGIN`，两侧有判据对拍）。
    */
-  set_backend_kill_on_exit: (args: { origin: string; kill: boolean }) =>
-    invoke<void>("set_backend_kill_on_exit", args),
+  backend_exit_policy: (args: { origin: string }) =>
+    invoke<Record<string, unknown>>("backend_exit_policy", args),
+
+  /**
+   * 〔B2 · 条 66〕交那台机器的后端去写那个值；回**写完读回来的那一份**（同上一条的形状）⇒ **桶②**。
+   * 前端从不碰那份文件 —— 这条命令就是前端改它的唯一一条路（`§3.3b ③`）。
+   */
+  set_backend_exit_policy: (args: { origin: string; kill: boolean }) =>
+    invoke<Record<string, unknown>>("set_backend_exit_policy", args),
 
   /**
    * P2s（C8）：这台机的后端现在什么状态。Rust 那边是不透明 JSON（同 `load_config` 那处的
