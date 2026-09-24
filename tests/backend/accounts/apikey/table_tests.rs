@@ -356,7 +356,7 @@ fn every_auth_style_other_than_the_default_gets_announced() {
 //  条 49 / 条 59 / 条 60：表的键是 agent ＋ 账号 · 默认上游每 agent 一行 · 未登记直接拒
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 期望值一律**手写字面量**（`"claude-code"` · `"CCM_RELAY_UPSTREAM"` · 那条官方 URL 的主机名），
+// 期望值一律**手写字面量**（`"claude-code"` · `"CCM_AGENT_UPSTREAM_CLAUDE_CODE"` · 那条官方 URL 的主机名），
 // 不拿被测的 `CREDENTIALS_FILE_AGENT` / `AGENT_UPSTREAMS` 去算 —— 拿被测常量写期望值再拿它去读，
 // 两侧同源，恒真。
 
@@ -499,7 +499,7 @@ fn passthrough_without_a_row_goes_to_that_agents_own_upstream_and_an_unregistere
 #[test]
 fn each_agents_env_knob_overrides_only_that_agents_default() {
     let got = Upstreams::from_env(&|k| {
-        (k == "CCM_RELAY_UPSTREAM").then(|| "http://127.0.0.1:1/pfx".to_string())
+        (k == "CCM_AGENT_UPSTREAM_CLAUDE_CODE").then(|| "http://127.0.0.1:1/pfx".to_string())
     })
     .expect("回环明文是合法上游");
     let cc = got.of("claude-code").expect("claude-code 该登记着");

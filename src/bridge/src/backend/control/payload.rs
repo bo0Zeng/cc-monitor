@@ -675,7 +675,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 // 2. **Windows 那一侧只到「编得过」**（`relay_env_prefix_ps` 一行运行时行为都没量过），
 //    原样延续 `K-H2` 的登记。
 // 3. **远端那一半不做**（`K-H2b` `§0e` 裁四）：把 key 送到远端那台机器的路
-//    （`parity_ledger.rs` 的 `creds.relay-key`）今天**没有主人**。
+//    （`parity_ledger.rs` 的 `creds.apikey`）今天**没有主人**。
 //    回环地址是**自指**的 ⇒ 同一个字面串写进哪台机器就指哪台，
 //    但「那台机器上有没有那份凭据」是另一件事，本件明写 `判不了`。
 
@@ -902,7 +902,7 @@ pub const APIKEY_TABLE_AGENT: &str = "claude-code";
 ///
 /// # 判据是「表里有没有这一行」，不是「这个号看起来是不是 api-key 号」
 ///
-/// 中转的路由表按账号 id 索引，**没有那一行就是 404**（`KL7` 第 2 条：查不到 ⇒ 404 且
+/// 账号层的 apikey 表按 (agent, 账号 id) 索引，**没有那一行就是 404**（`KL7` 第 2 条：查不到 ⇒ 404 且
 /// 一个字节不发上游、不许回落）。⇒ 把一个表里没有的号指向中转 = 亲手把一个能用的号弄坏。
 /// 而**行是用户配第三方 key 时才会有的** ⇒ 「表里有行」与「这是个 api-key 号」在生产上同延，
 /// 但前者是**可判定的**、后者要靠 manifest 里那个自述字段。
