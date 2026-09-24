@@ -446,14 +446,6 @@ fn build_inbox_cmd(id: &str) -> Result<String, String> {
     ))
 }
 
-/// 图形化 spawn = 远端跑**收编后的** `cc-spawn`（它内部已改经 `ccm`）。
-/// **刻意不在 cc-monitor 侧重写起会话**——那正是本工作区消灭的病（账本 K8）。
-/// `tool` 走白名单（是枚举不是引用）；`dir`/`task` 是自由文本 → 引用。
-///
-/// `account`：`Some(名)` → 转发 `--account <名>`；`None` → 转发 `--base`（**显式不注入**）。
-/// **刻意不提供"什么都不传"这一档**（L2 / B03 审计重要-5）：不传的话 ccm 会落 manifest 的
-/// 默认号，于是从驾驶舱点两下就在默认账号上起真 agent 烧额度，而用户既没选过也不知道用了
-/// 哪个号。让调用方**必须表态**——选一个号，或显式说"就用基座"。
 // ★★ `K-R112`（09-13）：**这里原来住着广播那条回落的命令构造器** `build_broadcast_cmd`。〔散文墓碑〕
 //
 // 它拼的是 `cc-broadcast <文本>`，而那条脚本发给 `agents.tsv` 的**每一行** ——
@@ -473,51 +465,13 @@ fn build_inbox_cmd(id: &str) -> Result<String, String> {
 // **那道 id 白名单没有丢，换了住址**：搬进 [`kill_via_backend`]，理由在那里写得更硬
 // —— 这一条的后果是杀掉一棵进程树。
 
-fn build_spawn_cmd(
-    tool: &str,
-    dir: &str,
-    task: &str,
-    account: Option<&str>,
-) -> Result<String, String> {
-    match tool {
-        "claude" | "codex" => {}
-        _ => return Err(format!("未知 tool: {tool}（支持 claude|codex）")),
-    }
-    if dir.trim().is_empty() {
-        return Err("工作目录为空".to_string());
-    }
-    // 账号名会作为 `--account` 的值拼进命令。它来自 manifest（由 cc-monitor 自己维护），
-    // 但仍过一遍字符集——**不因为"这是我们自己的数据"就免检**（B03 审计的 `--help` 教训：
-    // 盘上真会出现没人预料的 id）。
-    if let Some(a) = account {
-        if a.is_empty()
-            || a.starts_with('-')
-            || !a
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        {
-            return Err(format!("非法账号名（拒绝拼入命令）: {a:?}"));
-        }
-    }
-    // **`--` 不能省**（B03 审计建议）：`cc-spawn` 的旗标循环（`--new`/`--tool`/`--`）跑在
-    // 取位置参数**之前**，所以 `dir` 若是 `--new` 这类词会被它自己吃成旗标，然后把任务文本
-    // 当成目录，报出"目录不存在: 分析架构"这种莫名其妙的错。这与我给 id 加前导 `-` 校验的
-    // 理由逐字同源，只是当时没施加到 dir 上。用 `--` 显式结束选项即可，不必再加白名单。
-    let acct_flag = match account {
-        Some(a) => format!(" --account {a}"),
-        None => " --base".to_string(),
-    };
-    let mut cmd = format!(
-        "cc-spawn --tool {tool}{acct_flag} -- {}",
-        crate::ssh_source::shell_quote(dir)
-    );
-    if !task.trim().is_empty() {
-        cmd.push(' ');
-        cmd.push_str(&crate::ssh_source::shell_quote(task));
-    }
-    cmd.push_str(" 2>&1");
-    Ok(cmd)
-}
+// ★★ 〔BS1b 09-24〕**这里原来住着派生那条 SSH 主路的命令构造器**（拼 `cc-spawn --tool … -- <目录> <任务>`）。〔散文墓碑〕
+//
+// 与上面收掉那块同形：派生那条**主路就是 SSH**，后端侧的原语今天长出来了（`bus-spawn`，
+// `src/backend/control/cc_bus.rs`）⇒ 改走原语，整块走。
+// **它守的三件事没有丢，换了住址**：账号必须表态（`account` / `base` 二选一）与 `--` 在目录前
+// 两件搬进后端那条原语的形状校验与 argv；账号名的字符集校验留在 [`spawn_via_backend`]
+// （「调用方不能靠对端校验」）；`tool` 的白名单**删了** —— 认不认归 `cc-spawn` 自己。
 
 /// inbox 里的一条消息（字段取自盘上真实 jsonl：id/from/to/ts/text/class/…）。
 /// 只取渲染要用的四个——多取一个字段就多一处要跟着 cc-bus 演进的耦合。
@@ -565,10 +519,6 @@ pub fn parse_inbox_jsonl(text: &str) -> (Vec<CcBusMessage>, usize) {
 /// 读某个 agent inbox 的上限〔devbench F10b 提成具名常量〕。
 const INBOX_READ_CAP: u64 = 4 * 1024 * 1024;
 
-/// 控制类命令（发消息 / spawn）回显的上限〔devbench F10b 提成具名常量〕。
-/// 两处共用一个数：它们回的都是「一句人读的确认」，不是数据。
-const CONTROL_REPLY_CAP: u64 = 64 * 1024;
-
 /// 三条命令共用的「连上去、跑、读回」。抽出来是因为它们的超时/上限/措辞各不相同，
 /// 而**连接与读取的形状必须一致**（同 `mcp.rs` 的既有纪律）。
 /// 超限怎么办。**两档的分界是「截断有没有毒」，不是「哪个更严格」**〔G 审计逼出来的〕。
@@ -578,7 +528,8 @@ pub(crate) enum OnOverflow {
     Reject,
     /// 读的是**回显**（一句确认），或调用方本来就按「坏行跳过」处理 ⇒ 截断+说清。
     ///
-    /// ★ 为什么必须有这一档：`cc_bus_send` / `cc_bus_spawn` 的命令**有副作用** ——
+    /// ★ 为什么必须有这一档：写面的命令**有副作用**（发消息 / 派生今天都改走后端原语了，
+    /// 这一档今天服务的是读 inbox 那条；理由原样留着，下一条经 SSH 的写面仍然适用）——
     /// 远端 agent 已经起来了、消息已经投递了，此时因为回显太长回一个 Err，
     /// 用户看到「失败」会重试 ⇒ **起两个 agent 在真烧额度**。
     /// 截断一句确认从来不影响副作用是否发生。
@@ -641,10 +592,11 @@ async fn exec_read(
 }
 
 fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
-    // ★ **兜底，不是主路**〔P4a-Y2〕。两个调用方今天都在它之前分了本机
-    //   （`read_cc_bus_inbox` 走本机臂直接返回；`cc_bus_spawn` 先过 `refuse_local_write`）。
+    // ★ **兜底，不是主路**〔P4a-Y2〕。唯一的调用方今天在它之前分了本机
+    //   （`read_cc_bus_inbox` 走本机臂直接返回）。
     //   ⚠〔`K-R112` 09-13〕原文写「三个调用方…`cc_bus_send`/`cc_bus_spawn`」——
-    //   发消息那条 `K-R98` 就不经这里了，广播与收掉本件也走掉了 ⇒ 现打是**两个**。
+    //   发消息那条 `K-R98` 就不经这里了，广播与收掉 `K-R112` 走掉了；
+    //   〔BS1b 09-24〕派生也改走后端原语了 ⇒ 现打是**一个**。
     //
     // 那为什么还要这一条？因为「所有调用方都守规矩」是一个**承诺**，不是结构 ——
     // 下一个人加第四个调用方时，那个承诺对他不可见，而 `<local>` 掉进下面那句的后果是
@@ -652,8 +604,7 @@ fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
     // （`P4d-Y5` 收口的正是这一族，`local_origin_registry` 按**位置**盯着它）。
     if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         return Err("本机没有「远端配置」这种东西 —— 这条路是远端专属的。\n\
-             cc-bus 的读面本机已经通了（走同一条命令串，只是不包进 ssh）；\n\
-             写面还没做，归 `P4b`。"
+             cc-bus 的读面本机走同一条命令串（只是不包进 ssh）；写面全走后端原语。"
             .to_string());
     }
     crate::load_remote_config_by_label(origin)
@@ -968,26 +919,11 @@ async fn local_shell_read(
     Ok(String::from_utf8_lossy(&raw).into_owned())
 }
 
-/// 写面对 `<local>` 的诚实拒绝〔P4a-Y2〕。
-///
-/// 不加这一条的话，`<local>` 会掉进 `cfg_of`，报「远端 `<local>` 未配置或未启用」——
-/// 又一句与真实原因毫无关系的话（`P4d-Y5` 收口的正是这一族）。
-///
-/// ⚠〔`K-R112` 09-13〕**今天只剩一个调用方**：`cc_bus_spawn`。
-/// 发消息（`P4f`）· 广播（`P4f`）· 收掉（本件）三条都已改走后端原语，
-/// 它们的 `origin` 是入参不是分支 ⇒ 没有「本机走不到」这回事了。
-/// **留着这一份不是为了对称**：spawn 那条今天真的没有对侧（backend 帧面 10 条里没有 spawn），
-/// 而这句话要说清「缺的是后端能力」，不是「配置没找到」。
-fn refuse_local_write(origin: &str, what: &str) -> Option<String> {
-    if origin != crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        return None;
-    }
-    Some(format!(
-        "本机还不能{what}：cc-bus 的这一面在本机没有对侧（backend 侧没有它的原语）。\n\
-         读面（清单 / 在线 / inbox）与写面里的发消息 / 广播 / 收掉今天都通了；\n\
-         剩下这一条等的是**后端先长出那条原语**，不是等谁记得接线。"
-    ))
-}
+// ★★ 〔BS1b 09-24〕**这里原来住着写面对 `<local>` 的诚实拒绝**（`refuse_local_write`）。〔散文墓碑〕
+//
+// 它最后一个调用方是派生；那句拒绝逐字写着「剩下这一条等的是**后端先长出那条原语**，
+// 不是等谁记得接线」—— 原语（`bus-spawn`）今天长出来了 ⇒ 派生改走 [`spawn_via_backend`]，
+// 本机与远端同一条路，这里**没有**「本机走不到」这回事了 ⇒ 整块走（留一个没人调的拒绝是一句谎话）。
 
 /// 从 `bus-list` 的回值里取某个 id 的在线状态 —— **纯函数**。
 ///
@@ -1399,12 +1335,13 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
 pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<String, String> {
     // ★★ **本机写面接上了**〔P4f 08-13〕。
     //
-    // `refuse_local_write` 的拒绝理由逐字写着「写面归 `P4b`（cc-bus 改调后端原语）——
+    // `refuse_local_write` 的拒绝理由逐字写着「写面归 `P4b`（cc-bus 改调后端原语）—— 〔散文墓碑〕
     // 用户 08-12 已裁『**先把确切的命令组件做出来，然后 cc-bus 可以去调用**』」。
     // **那些命令组件今天做出来了**（`P4f` 的 `bus-send`）⇒ 前提到期，这一条不再拒。
     //
-    // ⚠ 其余三条（广播 / kill / spawn）**仍然拒**：backend 侧没有对应的原语。
+    // ⚠ 其余三条（广播 / kill / spawn）当时**仍然拒**：backend 侧没有对应的原语。
     // 拒绝理由是逐条的，不是一句通用话 —— 别把它们一起放行。
+    // 〔BS1b 09-24〕三条今天全改走后端原语了（广播 `P4f` · 收掉 `K-R112` · 派生 BS1b）。
     //
     // 🔴🔴 **`K-R98`（09-13）：远端这半也改走原语了。**
     //   在此之前它还在**拼一条 `cc-send …` 的 shell 串走 SSH** —— 而后端侧那条
@@ -1483,7 +1420,7 @@ pub(crate) fn describe_kill_reply(id: &str, reply: Option<&serde_json::Value>) -
 /// —— 与 `K-R98` 给发消息记的那句逐字同形。
 ///
 /// 改走之后换来两样具体的东西，都不是「架构更整齐」这种空话：
-/// 1. **`<local>` 通了**：本机此前被 `refuse_local_write` 拦着（那句拒绝逐字写着
+/// 1. **`<local>` 通了**：本机此前被 `refuse_local_write` 拦着（那句拒绝逐字写着 〔散文墓碑〕
 ///    「写面归 `P4b`（cc-bus 改调后端原语）」）—— 前提到期了，这一条不再拒。
 /// 2. **回值从「一坨回显」变成三个字段**：老路把 `cc-kill` 的 stdout `trim` 一下就交给用户，
 ///    「杀了会话」与「只摘了陈旧登记」在那一坨里分不开；`bus-kill` 分得开，
@@ -1522,17 +1459,113 @@ async fn kill_via_backend(origin: &str, id: &str) -> Result<String, String> {
 /// # 🔴 `origin` 是原语的一个入参，不是一个分支〔`K-R112` 09-13〕
 ///
 /// 本机与远端**共用这整个函数体**（同 `cc_bus_send`）：`client_for(origin)` 两侧都答得出。
-/// ⚠ `cc_bus_spawn` **仍然拒** `<local>` —— backend 侧没有 spawn 原语。
-/// 拒绝理由是**逐条**的，不是一句通用话，别把两条一起放行。
+/// 〔BS1b 09-24〕派生（`cc_bus_spawn`）当时仍拒 `<local>`；今天它也改走后端原语了，两条同形。
 #[tauri::command]
 pub async fn cc_bus_kill(origin: String, id: String) -> Result<String, String> {
     kill_via_backend(&origin, &id).await
 }
 
+/// backend 那条**派生协作 agent** 原语的名字（BS1b 09-24；实现住 `src/backend/control/cc_bus.rs`）。
+const BUS_SPAWN: &str = "bus-spawn";
+
+/// 把 `bus-spawn` 的回值讲成人话 —— 纯函数。
+///
+/// ★ `id` 是 `null` 时**不许**说成「没起来」：后端是从 `cc-spawn` 的回显里认名字的，
+/// 认不出只说明「那句话换了说法」，会话多半已经在跑 —— 说成失败，用户会重试、再起一个真 agent。
+/// ⚠ 应答形状不认识（缺 `spawned`）⇒ **不知道起没起**，同 [`describe_kill_reply`] 那条理由。
+pub(crate) fn describe_spawn_reply(reply: Option<&serde_json::Value>) -> String {
+    let get = |k: &str| reply.and_then(|r| r.get(k));
+    let said = get("said").and_then(|v| v.as_str()).unwrap_or("").trim();
+    match (
+        get("spawned").and_then(|v| v.as_bool()),
+        get("id").and_then(|v| v.as_str()),
+    ) {
+        (Some(true), Some(id)) => format!("已派生 {id}\n{said}"),
+        (Some(true), None) => format!(
+            "已派生，但没认出新会话的名字。会话应该已经在运行，请不要重试，到 cc-bus 名单里找它。\n{said}"
+        ),
+        _ => "派生的回应格式认不出来，不确定会话有没有起来。请先看一眼 cc-bus 名单，不要直接重试。"
+            .to_string(),
+    }
+}
+
+/// 派生那一趟**交给后端之前**这一侧自己判的形状 —— 纯函数（async 那层要通道，没法单测）。
+///
+/// `tool` / `dir` 非空 · 账号名过字符集（不以 `-` 开头、只含 `[A-Za-z0-9_-]`）。
+/// ⚠ **刻意不白名单 `tool`**：认不认归 `cc-spawn`（后端那侧同一条，`agent_locality_guard` 钉着）。
+pub(crate) fn check_spawn_shape(
+    tool: &str,
+    dir: &str,
+    account: Option<&str>,
+) -> Result<(), String> {
+    if tool.trim().is_empty() {
+        return Err("没选起哪种 agent".to_string());
+    }
+    if dir.trim().is_empty() {
+        return Err("工作目录为空".to_string());
+    }
+    if let Some(a) = account {
+        if a.is_empty()
+            || a.starts_with('-')
+            || !a
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(format!("非法账号名（拒绝交给后端）: {a:?}"));
+        }
+    }
+    Ok(())
+}
+
+/// 派生：走后端的 `bus-spawn` 原语〔BS1b 09-24〕。**本机与远端同一条路**（同 [`kill_via_backend`]）。
+///
+/// # 为什么不是「再拼一条 `cc-spawn` 的 shell 串」
+///
+/// 在本件之前这条的主路**就是 SSH**（拼串 → `exec_read`），本机则整条拒绝 —— 那句拒绝逐字等的是
+/// 「后端先长出那条原语」。原语长出来了 ⇒ 改走它，换来的是：`<local>` 通了；回值从「一坨回显」
+/// 变成 `spawned` / `id` / `said` 三个字段（[`describe_spawn_reply`]）；超时那一档由后端明说
+/// 「可能已经起来了」，不再被这一侧当成普通失败。
+///
+/// ⚠ **账号名的字符集校验留在这一侧**（「调用方不能靠对端校验」，同 [`send_via_backend`]）；
+/// 账号**必须表态**这一条两侧都有：这一侧 `None` ⇒ 显式发 `base:true`，后端那侧两样都不给就拒。
+async fn spawn_via_backend(
+    origin: &str,
+    tool: &str,
+    dir: &str,
+    task: &str,
+    account: Option<&str>,
+) -> Result<String, String> {
+    let outcome = "没有派生".to_string();
+    check_spawn_shape(tool, dir, account)?;
+    let Some(client) = crate::backend::control::inbound_client::client_for(origin) else {
+        return Err(describe_no_channel_for(origin, "派生 agent", &outcome));
+    };
+    // 能力协商放在动手之前（同收掉那条）：「这台的后端太旧」是问得出答案的，不许与超时同形。
+    if !client.accepts(BUS_SPAWN) {
+        return Err(describe_backend_too_old_for(origin, BUS_SPAWN, &outcome));
+    }
+    let mut args = serde_json::json!({ "tool": tool, "dir": dir, "task": task });
+    match account {
+        Some(a) => args["account"] = serde_json::Value::String(a.to_string()),
+        None => args["base"] = serde_json::Value::Bool(true),
+    }
+    match client
+        .call(BUS_SPAWN, args, std::time::Duration::from_secs(90))
+        .await
+    {
+        Ok(reply) => Ok(describe_spawn_reply(reply.as_ref())),
+        Err(e) => Err(describe_bus_error(&outcome, &e)),
+    }
+}
+
 /// B03 批二：图形化 spawn。**注意这会起一个真实 agent 进程（消耗额度）**
 ///
-/// `account`：`None` 或空串 = 显式用基座（转发 `--base`）；否则用该账号。
+/// `account`：`None` 或空串 = 显式用基座（发 `base:true`）；否则用该账号。
 /// —— UI 侧必须先让用户确认。
+///
+/// # 🔴 `origin` 是原语的一个入参，不是一个分支〔BS1b 09-24〕
+///
+/// 本机与远端**共用这整个函数体**（同 `cc_bus_send` / `cc_bus_kill`）。
 #[tauri::command]
 pub async fn cc_bus_spawn(
     origin: String,
@@ -1542,21 +1575,7 @@ pub async fn cc_bus_spawn(
     account: Option<String>,
 ) -> Result<String, String> {
     let acct = account.as_deref().filter(|a| !a.is_empty());
-    if let Some(why) = refuse_local_write(&origin, "spawn 一个 agent") {
-        return Err(why);
-    }
-    let cmd = build_spawn_cmd(&tool, &dir, &task, acct)?;
-    let cfg = cfg_of(&origin)?;
-    let out = exec_read(
-        &cfg,
-        &cmd,
-        CONTROL_REPLY_CAP,
-        60,
-        "spawn",
-        OnOverflow::Truncate,
-    )
-    .await?;
-    Ok(out.trim().to_string())
+    spawn_via_backend(&origin, &tool, &dir, &task, acct).await
 }
 
 #[cfg(test)]

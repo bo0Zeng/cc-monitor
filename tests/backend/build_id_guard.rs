@@ -322,6 +322,18 @@ mod tests {
             "p2o-files-write-and-rbind-token",
             "--account-trust\n--account-trust-zero\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--dial\n--files-browse\n--files-chmod\n--files-create\n--files-delete\n--files-find\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-mkdir\n--files-rename\n--files-stat\n--files-write-text\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:files-browse\nch:files-chmod\nch:files-create\nch:files-delete\nch:files-find\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-mkdir\nch:files-rename\nch:files-stat\nch:files-write-text\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2p（2026-09-24 第二波合并那一拍，C1 ＋ SE1 ＋ A3 ＋ BS1b ＋ R2 同拍）：**一次 bump**。
+        //   子命令 ＋21：C1 只读查询面八条上帧面（`ch:history-*` 六条 ＋ `ch:accounts-*` 两条，
+        //   各自自动派生的 CLI 面 `--history-*` / `--accounts-*`）· SE1 `--list-user-inputs` ·
+        //   A3 `--acct-iso-status` / `--acct-iso-shellinit` · BS1b `--bus-spawn` ＋ `ch:bus-spawn`。
+        //   另有**行为**变更、指纹看不见：R2 让中转层 1 的传输失败从 502/无响应改成 504 ＋ 一句人话。
+        // ⚠ 失效形状同 p2m…p2o：旧后端 CLI 面 `unknown argument`、帧面 `Unsupported`（C1 那八条 ⇒ monitor 明说
+        //   「后端还不认」，**不会**悄悄回落拨号）；止于「判 stale 只看 build_id」。
+        // 🔴 上面各行快照一个字节没改。
+        (
+            "p2p-readface-outline-acctiso-spawn-504",
+            "--account-trust\n--account-trust-zero\n--accounts-list\n--accounts-sessions\n--acct-iso-shellinit\n--acct-iso-status\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-spawn\n--bus-state\n--capture-pane\n--dial\n--files-browse\n--files-chmod\n--files-create\n--files-delete\n--files-find\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-mkdir\n--files-rename\n--files-stat\n--files-write-text\n--fork-session\n--history-projects\n--history-read\n--history-search\n--history-sessions\n--history-subagents\n--history-tail\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--list-user-inputs\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:accounts-list\nch:accounts-sessions\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-spawn\nch:bus-state\nch:cancel\nch:capture-pane\nch:files-browse\nch:files-chmod\nch:files-create\nch:files-delete\nch:files-find\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-mkdir\nch:files-rename\nch:files-stat\nch:files-write-text\nch:history-projects\nch:history-read\nch:history-search\nch:history-sessions\nch:history-subagents\nch:history-tail\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};

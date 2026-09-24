@@ -79,6 +79,30 @@ mod tests {
     /// ⚠ **类型也要登记，不只是函数**：`Done` / `NotRun` 出现在调用方的签名与 `match` 里，
     /// 它们和函数一样是接口面。漏登记等于「接口只算函数」——那是个会腐的口径。
     const ALLOWED_INTO_PLUGIN: &[(&str, &str, &str)] = &[
+        // 〔`A3` 第二波〕账号层经本口起 `cc-acct-iso shellinit`（`accounts/iso.rs`）。
+        // 四条边与 `control` 那几条同一套形状；码 → 语义的映射留在调用方（`shellinit_outcome`）。
+        (
+            "accounts",
+            "crate::plugin::discover::find",
+            "① 找它：`$HOME/.local/bin/cc-acct-iso` 先、`PATH` 后（与远端 `command -v` 前置 \
+             `~/.local/bin` 同一个顺序），找不到那句话的尾巴由账号层给",
+        ),
+        (
+            "accounts",
+            "crate::plugin::invoke::run",
+            "③ 传 argv 起它：`cc-acct-iso shellinit`（只读，全是 `printf`），期限走 `timeout` 前缀、\
+             环境白名单 —— 账号层不另开一处 `Command::new`",
+        ),
+        (
+            "accounts",
+            "crate::plugin::invoke::Done",
+            "④ 骨架的返回类型：账号层自己判「只有码 0 才算产出了片段」（码的语义留在调用方）",
+        ),
+        (
+            "accounts",
+            "crate::plugin::invoke::NotRun",
+            "「根本没跑起来」那一类：账号层要分得出它与「跑了但失败」（两个不同的失败码）",
+        ),
         (
             "control",
             "crate::plugin::discover::find",
@@ -438,13 +462,16 @@ mod tests {
     /// 形状照 [`ALLOWED_OBSERVE_TO_CONTROL`]：不是禁绝（调用口本来就是给人用的），
     /// 是**让每一条边被人看见一次**。
     ///
+    /// 〔`A3` 第二波〕扫描面加了 **`accounts/`**：账号层从这一拍起经本口起 `cc-acct-iso`
+    /// （`accounts/iso.rs`），不把它纳进来，那几条边就落在盲区里、本条照绿。
+    ///
     /// ⚠ 扫的是 **`control/` 与 `observe/` 两层**，不只是 control ——
     /// 「今天只有 control 在用」是**读数**，不是性质。观测层哪天伸手过来（它一旦这么做，
     /// 就等于在只读层起进程），这条会红并逼人先把那条边写进表里。
     #[test]
     fn the_interface_into_plugin_is_exactly_the_registered_set() {
         let mut found: Vec<(String, String)> = Vec::new();
-        for layer in ["control", "observe"] {
+        for layer in ["control", "observe", "accounts"] {
             let files = layer_sources(layer);
             assert_collection_is_complete(layer, &files);
             for (_, code) in &files {

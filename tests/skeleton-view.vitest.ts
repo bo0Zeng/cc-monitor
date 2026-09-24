@@ -246,3 +246,33 @@ describe("跳转与续传", () => {
     expect(ok.ok && ok.ledger.count === 1 && ok.end === 9).toBe(true);
   });
 });
+
+describe("〔U3b〕attachGaps（查看器：已渲染集不是后缀）", () => {
+  it("占位同时插在视口那张卡的上方和下方 ⇒ 钉住它的屏幕位置（ΔscrollHeight 补偿在这里是错的）", () => {
+    // 已渲染：岛 [100,110) ＋ 尾巴 [4900,5000)；视口停在岛上
+    const s = setup(5000, 4900);
+    s.host.materialize(100, 110);
+    s.host.calls.length = 0;
+    s.layout.scrollTop = 0; // 岛第一张卡此刻在 y=0
+    const islandFirst = cardsIn(s.content)[0] as HTMLElement;
+    expect(islandFirst.dataset.seq).toBe("100");
+    const before = islandFirst.getBoundingClientRect().top;
+    const h = s.view.attachGaps([
+      [0, 100],
+      [110, 4900],
+    ]);
+    expect(h).toBeCloseTo(s.ledger.heightOf(0, 100) + s.ledger.heightOf(110, 4900));
+    expect(islandFirst.getBoundingClientRect().top).toBeCloseTo(before);
+    expect(s.view.gapCount).toBe(2);
+    expect(s.view.isPending(50) && s.view.isPending(200) && !s.view.isPending(105)).toBe(true);
+  });
+
+  it("空区间跳过", () => {
+    const s = setup(100, 50);
+    s.view.attachGaps([
+      [10, 10],
+      [0, 50],
+    ]);
+    expect(s.view.gapCount).toBe(1);
+  });
+});

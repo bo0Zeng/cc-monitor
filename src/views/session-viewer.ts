@@ -30,11 +30,14 @@ import {
   type StreamSink,
 } from "../render-stream-record";
 import { UnrenderedRanges } from "../render-window";
+// 〔U3b〕查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
+import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
+import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../generated/BranchResult";
-// K-R45 甲：挑「用户说过的每一句」那一半住在这里（纯函数，乙那条路要共用，别复制）
-import { collectUserInputs } from "./user-input-index";
+// 〔SE1〕大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
+import { OutlineSource } from "./outline-source";
 // K-R45：清单界面两条路共用一份，只有一个住址
 import { UserInputPanel } from "./user-input-panel";
 
@@ -152,6 +155,13 @@ export class SessionViewer {
   private payloads: JsonlLinePayload[] = [];
   private unrendered: UnrenderedRanges | null = null;
   private uuidToIdx = new Map<string, number>();
+  /**
+   * 〔U3b〕骨架层：没渲染的 seq 区间由占位顶住（滚动条一开始就是全会话的），滚到哪物化哪。
+   * `null` = 没接上（本机后端不在 / 老后端 / Codex 会话 / seq 对不上）⇒ 行为与之前逐字相同。
+   * ⚠ 查看器仍然**全量收正文**（大纲 / 分叉折叠要全量记录，SE1 那一路在把大纲搬到后端）——
+   * 骨架在这里买的是滚动条与「只建可见区」，**不是**内存。
+   */
+  private skeleton: SkeletonView | null = null;
   private renderCtx: RenderContext | null = null;
   private renderSink: StreamSink | null = null;
   private folder: BranchFolder | null = null;
@@ -171,6 +181,9 @@ export class SessionViewer {
   // K-R45 甲：用户输入清单（开关在顶栏，面板夹在状态栏与消息流之间）。
   // 界面本体住 `user-input-panel.ts` —— 实时窗口那条路用的是**同一份**。
   private inputs!: UserInputPanel;
+  /** 〔SE1〕大纲的数据源；`where` 在 `load` 时换成这一份会话。 */
+  private outline!: OutlineSource;
+  private outlineWhere: { origin: string; jsonlPath: string } | null = null;
   /** 用户点"返回历史"时调用 */
   private onBack: () => void;
 
@@ -199,6 +212,7 @@ export class SessionViewer {
     this.subtitleEl.textContent = opts.subtitle ?? "";
 
     this.disposeStream();
+    this.outlineWhere = { origin: opts.origin ?? LOCAL_ORIGIN, jsonlPath: opts.jsonlPath };
     const gen = ++this.loadGeneration;
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
@@ -255,6 +269,11 @@ export class SessionViewer {
       onQueueOperation: (content) => queuedContents.push(content),
       onTitleUpdate: () => {}, // viewer 标题静态,不消费 ai-title
     };
+    // 〔U3b〕骨架索引与正文**并行**要（索引是另一个后端进程，~0.1 s / 50 MB）；接骨架在首屏之后。
+    const origin = opts.origin ?? LOCAL_ORIGIN;
+    const indexP = commands
+      .read_session_index({ origin, jsonlPath: opts.jsonlPath, fromOffset: 0 })
+      .catch((e: unknown) => ({ available: false, reason: String(e), from: 0, end: 0, rows: [] }));
     const channel = new Channel<JsonlLinePayload[]>();
     channel.onmessage = (chunk) => {
       if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
@@ -333,9 +352,67 @@ export class SessionViewer {
       this.streamEl.addEventListener("scroll", this.onScrollFill, { passive: true });
       // R1(D 审计):短会话首屏不足一屏时永远不会有 scroll 事件——主动踢一脚自链
       requestAnimationFrame(() => void this.maybeFillAbove());
+      // 〔U3b〕索引到了就接骨架（首屏已经在了，不等它）
+      void indexP.then((res) => this.attachSkeleton(gen, res));
     } catch (e) {
       this.statusEl.textContent = `加载失败：${String(e)}`;
     }
+  }
+
+  /** 升序 payloads 里第一个 `seq >= x` 的下标 */
+  private idxAtSeq(x: number): number {
+    let l = 0;
+    let r = this.payloads.length;
+    while (l < r) {
+      const m = (l + r) >>> 1;
+      if (this.payloads[m].seq < x) l = m + 1;
+      else r = m;
+    }
+    return l;
+  }
+
+  /**
+   * 〔U3b〕接骨架。先对拍 seq 空间（抽几条 payload，它们的 uuid 在索引里必须落在同一个 seq 上 ——
+   * 查看器两条读路子步 1 起按可计行编号；Codex 会话 / 读完之间文件被改写 ⇒ 对不上就不接），
+   * 再把 `UnrenderedRanges` 的每个洞翻成 seq 区间画成占位：洞 `[a,b)` 的 seq 区间从上一个已渲染记录的
+   * 下一行起、到下一个已渲染记录为止（夹在中间的不可显示行一并归进去，高为 0）。
+   */
+  private attachSkeleton(
+    gen: number,
+    res: SessionIndexResult | undefined,
+  ): void {
+    if (!res || !this.stream || this.loadGeneration !== gen || !this.unrendered || !this.renderCtx) return;
+    const got = ledgerFromIndex(res);
+    if (!got.ok) {
+      console.info(`[session-viewer] 骨架未接：${got.reason}`);
+      return;
+    }
+    const ledger = got.ledger;
+    let checked = 0;
+    for (const p of this.payloads) {
+      const u = (p.message as { uuid?: unknown }).uuid;
+      if (typeof u !== "string") continue;
+      if (ledger.uuidToSeq.get(u) !== p.seq) {
+        console.warn(`[session-viewer] 骨架未接：seq ${p.seq} 在索引里是 ${String(ledger.uuidToSeq.get(u))}`);
+        return;
+      }
+      if (++checked >= 8) break;
+    }
+    const n = this.payloads.length;
+    const gaps = this.unrendered.holes.map(([a, b]): [number, number] => [
+      a === 0 ? ledger.base : this.payloads[a - 1].seq + 1,
+      b < n ? this.payloads[b].seq : ledger.endSeq,
+    ]);
+    const view = new SkeletonView(ledger, this.streamEl, this.renderSink!.timeline, {
+      materialize: (lo, hi) => {
+        this.renderRange(this.idxAtSeq(lo), this.idxAtSeq(hi));
+        this.rebuildFold();
+      },
+    });
+    view.attachGaps(gaps);
+    this.skeleton = view;
+    view.fillVisible();
+    this.updateStatus(n);
   }
 
   /** F39:渲染 payload 下标区间 [lo,hi)(逐条 renderStreamRecord,二分插入保序) */
@@ -473,6 +550,11 @@ export class SessionViewer {
    * 批后自链复检(R1:零高批/短内容场景没有 scroll 事件可依赖)。
    */
   private async maybeFillAbove(): Promise<void> {
+    // 〔U3b〕接上骨架 ⇒ 不再「从顶上往上一批批补」，只物化与视口相交的那段占位（不自链）
+    if (this.skeleton) {
+      if (this.skeleton.fillVisible() > 0) this.updateStatus(this.payloads.length);
+      return;
+    }
     if (this.renderingBatch || !this.unrendered || this.unrendered.isEmpty) return;
     if (!this.shouldFill()) return;
     // 选区守卫(Phase G 终审:与 tabs.fillAbove 对齐)——补批的 unwrapAll/rebuildFold
@@ -531,7 +613,12 @@ export class SessionViewer {
   private scrollToMessage(uuid: string): HTMLElement | null {
     // F39:目标还没渲染(非首屏路径调进来,如未来的重复定位)→ 先渲染目标岛
     const idx = this.uuidToIdx.get(uuid);
-    if (idx !== undefined && this.unrendered?.contains(idx)) {
+    // 〔U3b〕接上骨架 ⇒ 岛也经骨架物化（占位要跟着切开，不许在占位中间凭空插一段卡）
+    const seq = idx !== undefined ? this.payloads[idx]?.seq : undefined;
+    if (this.skeleton && seq !== undefined && this.skeleton.isPending(seq)) {
+      this.skeleton.ensure(seq, 100);
+      this.updateStatus(this.payloads.length);
+    } else if (idx !== undefined && this.unrendered?.contains(idx)) {
       this.renderRange(Math.max(0, idx - 100), Math.min(this.payloads.length, idx + 100));
       this.rebuildFold();
       this.updateStatus(this.payloads.length);
@@ -544,21 +631,19 @@ export class SessionViewer {
     return el;
   }
 
-  // ==== K-R45 甲 · 用户输入清单 ====
+  // ==== K-R45 甲 · 用户输入清单（大纲） ====
 
   /**
-   * `KR45D1`：扫出这个会话里**主线**的用户输入，喂给清单面板。
+   * 〔SE1 · `设计/10 §2.2b ⑥`〕清单**问后端要**（`--list-user-inputs`），不再扫 `payloads`。
    *
-   * 🔴 **数据源是 `payloads`，不是 DOM**。件里写的是「扫已有 `data-uuid` 的卡」，
-   * 而那样只扫得到**已渲染**的那些 —— 首屏只渲染末尾 `TAIL_INITIAL` 条（150），
-   * 于是长会话里清单会缺掉绝大部分，而**长会话恰恰是这件活唯一的用处**。
-   * ⇒ 走 `payloads`（收集阶段是全量的），条数才做得到「不多不少」。
-   * 挑的口径（含 sidechain 算不算）只有一个住址：`user-input-index.ts::collectUserInputs`。
+   * 原先这里对全量 `payloads` 调前端那份 `collectUserInputs` —— 口径没错，但它是前端的判定，
+   * 后端出了这份清单之后留着它就是「各写一遍判定」（设计逐字禁掉的那一形）⇒ 判定只住后端，
+   * 两个宿主（本查看器 / 实时 tab）走同一个 `OutlineSource`。
    *
    * 界面与「跳完回头核一次落点」那一段住 `user-input-panel.ts`（实时窗口同一份）。
    */
   private rebuildUserInputs(): void {
-    this.inputs.setEntries(collectUserInputs(this.payloads.map((p) => p.message)));
+    void this.outline.refresh();
   }
 
   /** 主动释放（HistoryView 卸载本组件时调） */
@@ -572,6 +657,9 @@ export class SessionViewer {
       this.stream.dispose();
       this.stream = null;
     }
+    // 〔U3b〕骨架随会话走
+    this.skeleton?.dispose();
+    this.skeleton = null;
     // F39:释放增量渲染状态(payloads 可达 37MB 量级)
     this.payloads = [];
     this.unrendered = null;
@@ -584,7 +672,8 @@ export class SessionViewer {
     this.lastFirstScreenMs = null;
     // K-R45 甲：清单也要跟着释放 —— 留着就是上一个会话的句子挂在下一个会话上，
     // 点下去按 uuid 找不到卡，正好落进「静默跳到看不见的东西上」那一形。
-    this.inputs?.clear();
+    // 〔SE1〕`reset` 同时让在途那趟回来后不许回写（换会话之后迟到的清单不属于这一份）。
+    this.outline?.reset();
   }
 
   // (旧的 renderAll 被流式 load 替代，删了 —— v2.2 issue #12)
@@ -611,9 +700,10 @@ export class SessionViewer {
     this.inputs = new UserInputPanel({
       jumpTo: (uuid) => this.scrollToMessage(uuid),
       // 查看器这一侧落空的成因是自陈的那条不等价：渲染会再剥一层 `stripInternalNoise`，
-      // 剥空了**不建卡**（`user-input-index.ts` 头注）。`scrollToMessage` 会退到底部。
+      // 剥空了**不建卡**（后端 `observe/user_inputs.rs` 头注那条「已知不等价」）。`scrollToMessage` 会退到底部。
       unjumpableHint: "这条在渲染时被剥成了空卡，跳不过去（已退到会话末尾）",
     });
+    this.outline = new OutlineSource(this.inputs, () => this.outlineWhere);
     // 开关塞在顶栏标题右边（标题那块 flex:1 会吃掉余量）。
 
     const titles = document.createElement("div");

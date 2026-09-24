@@ -49,7 +49,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * 逐个字段对拍，漏一个就红。
  */
 /**
- * `K-H2a` `KS6`：中转那把第三方 API key 的**状态**。
+ * `K-H2a` `KS6`：apikey 表那把第三方 API key 的**状态**。
  *
  * ⚠⚠ **这个类型里没有明文那个字段 —— 那是本件最要紧的一条，不是省略。**
  * `KS6` 逐字：一旦回显，key 就从「只住在后端」变成「**每次打开那个界面都往前端传一遍**」
@@ -64,7 +64,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
-import type { RelayRoutingView } from "../accounts";
+import type { ApikeyRoutingView } from "../accounts";
 
 export interface RelayCredentialsStatus {
   /** 配了没配。 */
@@ -118,6 +118,7 @@ import type { BranchResult } from "../generated/BranchResult";
 //   `origin: string | null`）今天仍有 `null`，不在步 2 的写区里 —— 别读成「全仓没有 `null` 了」。
 import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
+import type { UserInputsResult } from "../generated/UserInputsResult";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -144,6 +145,8 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // `PanoramaStatus` 例外：它在 `panorama.rs`、是本仓自己的类型 ⇒ 已生成。
 import type {
   Annotation,
+  DiagramKindInfo,
+  DiagramRequest,
   DocLink,
   DriftItem,
   Edge,
@@ -151,6 +154,7 @@ import type {
   IndexStats,
   NodeView,
   Overview,
+  PanoramaDiagram,
   SubGraph,
   Symbol as PanoramaSymbol,
 } from "../panorama/types";
@@ -363,9 +367,9 @@ export const commands = {
    *
    * ⚠⚠ `K-H2c` `KH2C1`：**`configDir` 是承重的入参，别换成账号名。**
    * 那把 key 落进 `accounts.<账号 id>` 那一格，而 `<账号 id>` 由 Rust 用**全仓唯一那份规则**
-   * （`history::relay_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
+   * （`history::apikey_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
    * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
-   * 漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。
+   * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
    */
   write_relay_credentials_key: (args: { key: string; configDir: string }) =>
     invoke<void>("write_relay_credentials_key", args),
@@ -398,6 +402,13 @@ export const commands = {
   /** 某符号的调用者边。 */
   panorama_callers: (args: { repo: string; symbol: string; depth: number }) =>
     invoke<Edge[]>("panorama_callers", args),
+
+  /** PN1b：画一张图（图种 id 来自注册表，不在本仓写死）。认不出的 kind / 缺符号都是 reject。 */
+  panorama_diagram: (args: { repo: string; kind: string; request: DiagramRequest }) =>
+    invoke<PanoramaDiagram>("panorama_diagram", args),
+
+  /** PN1b：图种注册表原样透出（选图下拉从它现读，CP2）。 */
+  panorama_diagram_kinds: () => invoke<DiagramKindInfo[]>("panorama_diagram_kinds"),
 
   /** 某符号关联的文档链接。 */
   panorama_docs_for: (args: { repo: string; symbol: string }) =>
@@ -648,22 +659,22 @@ export const commands = {
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   /**
-   * `K-H2a` `KS6`：读中转那把 key 的状态。**返回里永远只有掩码。**
+   * `K-H2a` `KS6`：读 apikey 表那把 key 的状态。**返回里永远只有掩码。**
    */
   read_relay_credentials_status: () =>
     invoke<RelayCredentialsStatus>("read_relay_credentials_status"),
 
   /**
-   * `K-H2b` `KH2B7`：问「这几个**本机** configDir 走不走中转」。
+   * `K-H2b` `KH2B7`：问「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
    *
    * ⚠ **只答本机**，而且那不是欠账：中转是**每台机器自己的一个进程**、注入的是**回环**地址
    * （自指）⇒ 本机这一侧**在结构上答不了远端那台**。命令面的登记
    * （`parity_ledger` 的 `relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
-   * ⚠ 返回类型是**手写镜像**（`RelayRoutingView` 住 `src/accounts.ts`），
-   * 与 Rust 的 `RelayRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
+   * ⚠ 返回类型是**手写镜像**（`ApikeyRoutingView` 住 `src/accounts.ts`），
+   * 与 Rust 的 `ApikeyRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
    */
-  relay_routing_for: (args: { configDirs: string[] }) =>
-    invoke<RelayRoutingView>("relay_routing_for", args),
+  apikey_routing_for: (args: { configDirs: string[] }) =>
+    invoke<ApikeyRoutingView>("apikey_routing_for", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),
@@ -752,8 +763,11 @@ export const commands = {
   get_session_tasks: (args: { sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
 
-  /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  launch_remote_terminal: (args: { origin: string; remoteCmd: string }) =>
+  /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。
+   *  〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbindToken`：这次拉起铸的启动期令牌 ——
+   *  后端据此在新窗口里先做一次令牌握手（本地 `token → HWND` 表的生产写入方）。
+   *  可省（Rust 侧是 `Option<String>`）：账号部署那几个不起 agent 进程的调用方不带。 */
+  launch_remote_terminal: (args: { origin: string; remoteCmd: string; rbindToken?: string | null }) =>
     invoke<void>("launch_remote_terminal", args),
 
   /**
@@ -863,6 +877,11 @@ export const commands = {
   /** Z05：抓远端 `cc-acct-iso shellinit` 的输出（只读）。返回带 BEGIN/END 围栏的 rc 片段。 */
   remote_acct_iso_shellinit: (args: { cfg: unknown }) =>
     invoke<string>("remote_acct_iso_shellinit", args),
+  /** 〔`A3` 第二波〕上面两条的**本机**对侧：问本机后端（`--acct-iso-status` / `--acct-iso-shellinit`）。
+   *  出参与远端那条逐字相同。⚠ 今天**还没有界面调用点** —— 设置页账号那一节归 A2+ST1，
+   *  接线在那边；这里先把口开好（账本 `acct-iso.check` / `acct-iso.shellinit` 两笔欠账随之结清）。 */
+  check_local_acct_iso: () => invoke<AcctIsoStatus>("check_local_acct_iso"),
+  local_acct_iso_shellinit: () => invoke<string>("local_acct_iso_shellinit"),
 
   /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),
@@ -908,6 +927,21 @@ export const commands = {
     seqBase: number;
     lineCount: number;
   }) => invoke<JsonlLinePayload[]>("read_session_range", args),
+
+  /**
+   * 〔U3b · `设计/10` 步 8〕这个会话**接上了骨架** ⇒ monitor 的重放缓冲只留尾巴（F5 之后也只重放尾巴，
+   * 其余按偏移要回来）。返回这次丢掉的条数。**只许在骨架接上之后调**（唯一调用点：`tabs.ts` 的骨架接入）。
+   */
+  replay_keep_tail_only: (args: { sessionId: string }) =>
+    invoke<number>("replay_keep_tail_only", args),
+
+  /**
+   * 〔SE1 · `设计/10 §2.2b ⑥`〕**大纲的数据源**：「你说过的话」清单，从字节 `fromOffset` 起
+   * （冷启动 0 / 增量传上次的 `end`）。跑的是后端 `--list-user-inputs`（`IPC-PROTOCOL.md §10.4`）。
+   * 判定只住后端。`available: false` **不是错误**：老后端 / 本机后端不在 / 输出被截断 ⇒ 大纲灰掉、原因挂提示上。
+   */
+  list_user_inputs: (args: { origin: Origin; jsonlPath: string; fromOffset: number }) =>
+    invoke<UserInputsResult>("list_user_inputs", args),
 
   /**
    * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。

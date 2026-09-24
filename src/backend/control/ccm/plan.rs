@@ -45,8 +45,9 @@ pub(crate) struct Env {
     /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
     pub(crate) account_env: String,
-    /// 这一趟的 `argv[0]`（内层载荷要用它把自己再叫一次）。
-    pub(crate) self_path: String,
+    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：入口① `[argv0]` · 入口② `[argv0, "ccm"]`
+    /// · 设了 `CCM_SELF` 就是 `[那个值]`。取法住 [`super::self_invocation`]。
+    pub(crate) self_argv: Vec<String>,
     /// `CCM_NO_PRETRUST=1`。
     pub(crate) no_pretrust: bool,
     /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
@@ -99,8 +100,12 @@ impl Env {
             // 🔴 `CCM_SELF` 优先于 `argv[0]`：内层载荷要用**「我是被当作什么叫的」**那个名字。
             //   `argv[0]` 在「一个二进制多个名字」下拿到的可能是真身路径，而内层要的是
             //   用户 `PATH` 上那个入口 —— 两者在软链 / 别名下不是同一个东西。
-            self_path: get("CCM_SELF")
-                .unwrap_or_else(|| std::env::args().next().unwrap_or_default()),
+            //   `CCM_SELF` 是**一个**入口名（远端 shim 传 `$0`、判据传 `/usr/local/bin/ccm`）；
+            //   没设就是这个进程**自己被怎么叫的那一段**（入口② 下带着 `ccm` 那个词，CC1）。
+            self_argv: match get("CCM_SELF") {
+                Some(s) => vec![s],
+                None => super::self_invocation(&std::env::args().collect::<Vec<_>>()),
+            },
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             home,
@@ -306,6 +311,9 @@ pub(crate) struct Container {
     pub(crate) detach: bool,
     /// 送进容器的那条内层命令（已经是一整条 POSIX 命令串）。
     pub(crate) payload: String,
+    /// 〔CC1〕**同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
+    /// 只在 `--` 前多一个 `--print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
+    pub(crate) self_check: String,
     /// 要不要挂那段「抓信任框、自动按 Enter」的兜底轮询。
     pub(crate) trust_poll: bool,
     // ★★ 〔`K-R96` 09-12〕**`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
@@ -617,7 +625,7 @@ pub(crate) fn build(
             _ => base,
         };
         // 内层：同一条命令去掉 `--tmux`，并把**继承来的**那几个变量显式化。
-        let mut inner: Vec<String> = vec![env.self_path.clone()];
+        let mut inner: Vec<String> = env.self_argv.clone();
         if o.action == Action::Resume {
             inner.push("resume".into());
             inner.push(o.sid.clone());
@@ -645,13 +653,24 @@ pub(crate) fn build(
             inner.push(flag::CCM_SID.into());
             inner.push(o.ccm_sid.clone());
         }
+        // 🔴 〔CC1〕**自检那一趟与 pane 里那一趟是同一串 argv**，只在 `--` 之前多一个 `--print`
+        //    （放在 `--` 之后就成了透传给 agent 的参数）。两条都从这一个 `inner` 渲出来，
+        //    不许在别处另拼一份 —— 另拼的那份一旦漂了，自检过的就不是 pane 里跑的那条。
+        let mut dry = inner.clone();
+        dry.push(flag::PRINT.into());
         if !o.passthru.is_empty() {
-            inner.push(flag::END.into());
-            inner.extend(o.passthru.iter().cloned());
+            for v in [&mut inner, &mut dry] {
+                v.push(flag::END.into());
+                v.extend(o.passthru.iter().cloned());
+            }
         }
         let mut payload = inner.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ");
+        let bare = payload.clone();
         // 🔴 **把继承来的那几个显式化** —— tmux 的 `update-environment` 默认列表不含它们，
         // 外层那句 `export` 在 tmux 进程边界上会被整个吃掉（账号注入 100% 失效，实测过）。
+        // ⚠ 这几行的形状（`payload = format!("export <VAR>={}; {payload}", sq(v));`）有人在逐行认：
+        //   `bridge` 那条 `KP5ED1`（`payload_tests·rs::forwarded_by_container_path`）从起点
+        //   `let mut payload = inner.iter()` 数到登记那段注释，改形状它会红。
         if account.is_empty() && !o.use_base {
             if let Some(v) = env
                 .inherited_config_dir
@@ -667,6 +686,13 @@ pub(crate) fn build(
         if let Some(v) = env.ccm_launch_id.as_deref().filter(|v| !v.is_empty()) {
             payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));
         }
+        // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
+        // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
+        let exports = &payload[..payload.len() - bare.len()];
+        let self_check = format!(
+            "{exports}{}",
+            dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
+        );
 
         // 🔴 **要了登记而登记不成，必须出声**〔`K-R48` 第二拍 09-11 补回〕。
         //
@@ -710,6 +736,7 @@ pub(crate) fn build(
             size: parse_size(&o.tmux_size),
             detach: o.detach,
             payload,
+            self_check,
             trust_poll: o.agent == "claude" && !env.no_pretrust,
             bus,
         }));
@@ -804,6 +831,28 @@ fn render_container(c: &Container) -> String {
 pub(crate) fn render_container_tail(c: &Container) -> String {
     let t = sq(&format!("={}:", c.name));
     let mut seq = String::new();
+    // ★★ 〔CC1〕**先自检，再谈兜底 / 接进去 / 登记** —— 排在收尾的最前面，而且只能在这里。
+    //
+    // 从前 ccm 的 rc=0 只说明「会话建了、载荷键入了、收尾跑了」，pane 里那一跳一个字都没看：
+    // BS1b 现打入口② 那一跳当场「unknown argument: --cwd」退回空 bash，而 cc-spawn 照报成功、
+    // 还登记上了总线（**假成功**）。登记就发生在本段下面 ⇒ 确认必须排在它前面、住在 ccm 里；
+    // 放进 cc-spawn 只能「先登记、再撤回」。
+    //
+    // 确认的形状：**用 pane 里那一跳的同一个入口、同一串参数、同一段 export 前缀，加 `--print` 真跑一次**
+    //（[`Container::self_check`]，与载荷出自 `build` 里同一个 `inner`）。等的是**一个进程退出**，
+    // 不是一段时间 —— 零定时器、零轮询。它不过 ⇒ 把它自己的原话转给调用方、`exit 4`（起不来），
+    // 后面的接进去与登记一段都不跑。
+    //
+    // ⚠ 它**买到**的：入口路由（BS1b 那一形）· 参数解析 · 账号解析 · `CCM_SELF` 指着一份不认这套参数的入口。
+    // ⚠ 它**买不到**的（别读成做到了）：`--print` 不解析启动器 ⇒ 「启动器在 PATH 上找不到」仍会在 pane 里
+    //   退回 shell 而这里照报成功；agent exec 起来之后自己当场退出，同样看不见。要看见这两类得有一个
+    //   **exec 那一刻的正信号**（今天没有），登记在 `设计/95` 末尾。
+    seq.push_str(&format!(
+        " && {{ _ccm_e=$({{ {}; }} 2>&1 >/dev/null) || {{ printf '%s\\n' \"$_ccm_e\" >&2; printf {} {} >&2; exit 4; }}; }}",
+        c.self_check,
+        sq(super::SELF_CHECK_FAILED_FMT),
+        sq(&c.name)
+    ));
     // 🔴 下面那条**自带节拍的 shell 串**不是漏进来的，是 `C14` 逐字登记的那个例外
     //（「预信任的『等信任框』没有内核事件源 …… `C8` 的唯一登记例外：`control/` 继续
     // 以 shell 字符串形态产出它」）。节拍由**目标 shell** 提供，后端进程自己一个定时器都没有。

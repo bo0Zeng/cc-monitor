@@ -67,6 +67,15 @@ export class PluginsSection {
 
   constructor() {
     this.element = this.build();
+    // ST1「延后加载」：构造期不读 —— 见 `loadNow()`。
+  }
+
+  /**
+   * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）：
+   * 构造期不再发 I/O；宿主（`panel.ts`）在**某台机器的子页第一次可见**时调它。
+   * 重开设置后宿主会再调一次（重开要看新读数）。
+   */
+  loadNow(): void {
     void this.refresh();
   }
 
@@ -80,8 +89,8 @@ export class PluginsSection {
     // 在用户那一侧的兑现。改它之前先读模块头注。
     hint.textContent =
       "这一页列出这台机器上登记的 Claude Code marketplace，以及每个 marketplace " +
-      "自己**声明**的插件数。它回答的是「有哪些插件可以装」，" +
-      "**不是**「装了哪些 / 启用了哪些」—— 后者今天在盘上没有真相源，" +
+      "自己声明的插件数。它回答的是「有哪些插件可以装」，" +
+      "不是「装了哪些 / 启用了哪些」—— 后者今天在盘上没有真相源，" +
       "与其猜一个数字给你看，不如说清这一点。只读、按需读一次，不后台轮询。";
     root.appendChild(hint);
 

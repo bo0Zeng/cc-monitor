@@ -418,6 +418,22 @@ describe("modelByAccount config 读写（F07）", () => {
 });
 
 describe("fetchAccounts TTL 缓存", () => {
+  // 〔`A3` 第二波〕backend 的本机 origin（`<local>`）⇒ 问本机后端，不拿它去问远端。
+  // 死值验对照：把 `fetchAccounts` 开头那条 `if (origin === BACKEND_LOCAL_ORIGIN)` 摘掉 ⇒
+  // 第一次发的是 `list_remote_accounts`、带着 `{ origin: "<local>" }`，本条红。
+  it("A3：`<local>` 走本机那条（`list_local_accounts`），不是拿 `<local>` 去问远端", async () => {
+    __resetAccountsCacheForTest();
+    loadCfg.mockResolvedValue({});
+    invokeMock.mockResolvedValue({ available: true, error: null, meta: null, accounts: [acct({})] });
+    const st = await fetchAccounts("<local>");
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock.mock.calls[0][0]).toBe("list_local_accounts");
+    expect(st.available).toBe(true);
+    // 与 `fetchLocalAccounts` 共用同一格缓存（账号面的本机键），TTL 内不重发。
+    await fetchAccounts("<local>");
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    __resetAccountsCacheForTest();
+  });
   it("首次 fetch 命中 invoke，TTL 内不重发", async () => {
     loadCfg.mockResolvedValue({});
     invokeMock.mockResolvedValue({ available: true, error: null, meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null }, accounts: [acct({})] });
@@ -1018,18 +1034,18 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     }
   });
 
-  // ★★★ 规则那一段：一份**后端读数**（`RelayRoutingView`）怎么落到某一个账号上，
+  // ★★★ 规则那一段：一份**后端读数**（`ApikeyRoutingView`）怎么落到某一个账号上，
   // 以及三档**真的分得开**。喂进来的是读数的形状，**不是**直接喂 `{scope:"local",…}`
   // —— 后者会把 `localRelayStateFor` 那一格整个绕过去。
   //
   // ⚠ **取数那一跳（`invoke`）今天还没接上**，卡点写在 `accounts.ts` 那段头注里
   // （`tests/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
   // 不是「界面上真的显出来了」。
-  it("★ 产出方：问的是 `relay_routing_for`，入参是那几个 configDir", async () => {
+  it("★ 产出方：问的是 `apikey_routing_for`，入参是那几个 configDir", async () => {
     invokeMock.mockResolvedValue({ routed: ["/h/.claude-alt/acct-a"], running: true });
     const got = await fetchLocalRelayRouting(["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"]);
     // 命令名打错在生产上是**运行时** `invoke` reject（不是编译错）⇒ 在这里钉死它。
-    expect(invokeMock).toHaveBeenCalledWith("relay_routing_for", {
+    expect(invokeMock).toHaveBeenCalledWith("apikey_routing_for", {
       configDirs: ["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"],
     });
     expect(got).toEqual({ routed: ["/h/.claude-alt/acct-a"], running: true });
@@ -1252,6 +1268,19 @@ describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说�
     expect(withMark.body).not.toContain(TOKEN);
     expect(withMark.title).not.toContain(TOKEN);
     expect(without.body).not.toContain(TOKEN);
+  });
+
+  // 〔`A3` 第二波〕本机会话也会走到这句话 —— 最后那句补救**只对远端成立**。
+  it("A3：本机那一支不指「把此会话切到账号 X」（本机归档 Resume 不带账号选择），成因判定两支照旧", () => {
+    for (const r of [row({ launchId: null }), row({ launchId: TOKEN })]) {
+      const remote = restartLocateFailureMessage(r);
+      const local = restartLocateFailureMessage(r, { local: true });
+      expect(remote.body).toContain("把此会话切到账号 X");
+      expect(local.body).not.toContain("把此会话切到账号 X");
+      expect(local.title).toBe(remote.title); // 只换补救那一句，成因那一半一个字不动
+    }
+    // 缺省 = 远端（既有调用点逐字节不变）。
+    expect(restartLocateFailureMessage(row(), {})).toEqual(restartLocateFailureMessage(row()));
   });
 
   it("进程已死的行不作数：`alive:false` 上的 token 一律不参与这次判断", () => {

@@ -241,3 +241,38 @@ fn session_index_entry_keeps_the_path_fence() {
     assert!(session_index(&tmp, &dir.join("ok.jsonl").to_string_lossy(), 0, None).is_ok());
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+/// 〔U3b〕**跨 crate 的 seq 空间对拍**：后端索引读同一份夹具，逐行对同一份金标准。
+/// monitor 那侧（`session_skeleton·rs::LineNumberer`）在 `tests/bridge/session_skeleton_tests.rs`
+/// 对**同一份**金标准 —— 两侧实现不同源，金标准是手算的（见 `.golden` 头注）。
+#[test]
+fn index_rows_match_the_shared_seq_space_golden() {
+    let data: &[u8] = include_bytes!("../../__fixtures__/skeleton-seq-space.jsonl");
+    let golden = include_str!("../../__fixtures__/skeleton-seq-space.golden");
+    let mut want: Vec<(u64, Option<String>)> = Vec::new();
+    let (mut count, mut end) = (None, None);
+    for l in golden.lines() {
+        if let Some(v) = l.strip_prefix("#count\t") {
+            count = v.parse::<u64>().ok();
+        } else if let Some(v) = l.strip_prefix("#end\t") {
+            end = v.parse::<u64>().ok();
+        } else if !l.starts_with('#') {
+            let (s, u) = l.split_once('\t').unwrap();
+            want.push((s.parse().unwrap(), (u != "-").then(|| u.to_string())));
+        }
+    }
+    assert!(
+        !want.is_empty(),
+        "金标准一行都没抽到 —— 下面的相等在空集上绿"
+    );
+    let v = index_of(data, 0, None);
+    let (_, rows, tail) = split(&v);
+    let got: Vec<(u64, Option<String>)> = rows
+        .iter()
+        .enumerate()
+        .map(|(k, r)| (k as u64, r["u"].as_str().map(str::to_string)))
+        .collect();
+    assert_eq!(got, want);
+    assert_eq!(tail["count"].as_u64(), count);
+    assert_eq!(tail["end"].as_u64(), end);
+}

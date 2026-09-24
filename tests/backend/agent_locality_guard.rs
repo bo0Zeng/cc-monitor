@@ -314,8 +314,11 @@ mod tests {
         ),
         (
             "observe/history_query.rs",
-            5,
-            "会话记录根 + 「这个文件是不是会话记录」×4",
+            6,
+            "会话记录根 + 「这个文件是不是会话记录」×4 ＋ 〔`C1` · 09-24〕解析本机 home ×1 \
+             （帧面那八条要一个根；与 `main.rs` 那一句**同一个出处**，但 `main.rs` 在 bin 里、\
+             lib 够不着 ⇒ 多一处。**长了是坏事，如实登记**：它与 `main.rs` 那处是同一个欠账的两个住址，\
+             `L2`/`S6` 收接口那轮一起收）",
         ),
         ("observe/search_query.rs", 2, "会话记录根 + 会话文件判定"),
         (
@@ -389,6 +392,7 @@ mod tests {
         ("账号环境变量名", "observe/accounts_query.rs", 1, "按 `CLAUDE_CONFIG_DIR` 去读别人进程的环境 ⇒ 这家的账号维度**无法表达**"),
         ("账号信任判定", "observe/accounts_query.rs", 1, "按 `.claude.json` 的 `projects[cwd].hasTrustDialogAccepted` 判 ⇒ 对这家恒判「不信任」"),
         ("判活 cmdline", "observe/watcher.rs", 1, "cmdline 兜底词表是 `claude`/`node` ⇒ 这家的进程被判成冒名"),
+        ("解析本机 home", "observe/history_query.rs", 1, "〔`C1` · 09-24〕帧面那八条（`read_face`）的根从这里问 ⇒ 与 `main.rs` 那一句同形：**只有一个根**，第三家连被问到的机会都没有"),
         ("解析本机 home", "main.rs", 1, "`resolve_agent_home()` 写死问 claudecode ⇒ 所有一次性子命令与流模式**只有一个根**，第三家连被问到的机会都没有"),
         ("resume 默认命令", "control/resolve_query.rs", 2, "`agent_kind` 不等于 `\"codex\"` 一律落 Claude 路 ⇒ 未知 kind **静默**拿到 `claude`"),
         ("resume 命令形", "control/resolve_query.rs", 2, "同上：`--resolve` 对 `agentKind:\"fake\"` 返回 `claude --resume <sid>`，**rc=0**。⚠ 这是最坏的一种：不是「没有会话」，是**跑错命令**"),

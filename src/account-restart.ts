@@ -1,4 +1,5 @@
-// A5：换号破坏性重启会话的编排（DESIGN §5）。活跃远端会话 → 杀旧进程 + 用新账号 resume 同一 sid。
+// A5：换号破坏性重启会话的编排（DESIGN §5）。活跃会话 → 杀旧进程 + 用新账号 resume 同一 sid。
+// 〔`A3` 第二波〕本机会话也走这一条（`origin = <local>`），只在第⑤步换成本机那一跳。
 // **破坏性**（中断当前回合）。失败语义严格照 §5.2：compact 失败/超时**不阻断**；kill 失败**必须中止**、
 // 绝不续 resume（否则新旧两个进程抢同一会话）。在 A4 的账号解析/记账之上插入 [compact]→kill→resume。
 // 依赖经 import（vitest 可 vi.mock）；confirm / awaitCompact 两个交互点可注入，便于纯逻辑单测。
@@ -13,6 +14,9 @@ import { commands } from "./ipc/commands";
 import { runRemoteResumeTmux } from "./remote-launch-run";
 import { fetchAccounts, accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "./accounts";
 import { showActionFailureToast } from "./error-toast";
+// 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（**不是** `accounts.ts` 那个 `__local__`）。
+import { LOCAL_ORIGIN } from "./backend-policy";
+import { runLocalRestartResume } from "./account-restart-local";
 
 export interface RestartWithAccountOpts {
   origin: string;
@@ -183,12 +187,19 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // 见 F05 计划 §2 第2条：account-restart.ts 与 withAccount 是并列路径，不强行合并）。
   // F07：同样补查一次该账号的模型偏好（withAccount 内部也做同一次查询——两条并列路径各自补
   // 一次，同 F05 对 accountName 的处理模式）。
-  const modelOverride = await getModelForAccount(accountName);
-  const launched = await runRemoteResumeTmux(origin, sessionId, cwd, launcher, tmuxName, {
-    configDir,
-    accountName,
-    modelOverride,
-  });
+  //
+  // 〔`A3` 第二波〕**本机那一跳**：编排上面五步两侧逐字共用（`tmux_send_keys` / `kill_remote_tmux`
+  // 都按 origin 分流、`<local>` 走得通；账号清单与信任预检也按 origin 分流到本机后端），
+  // 只有「resume」这一跳两侧起法不同 —— 见 `account-restart-local.ts` 头注那张表。
+  // ⚠ 本机那一跳**交不了模型偏好**（本机载荷里没有那一格），所以这里不去查它。
+  const isLocal = origin === LOCAL_ORIGIN;
+  const launched = isLocal
+    ? await runLocalRestartResume({ sessionId, cwd, launcher, tmuxName, configDir, accountName })
+    : await runRemoteResumeTmux(origin, sessionId, cwd, launcher, tmuxName, {
+        configDir,
+        accountName,
+        modelOverride: await getModelForAccount(accountName),
+      });
 
   // ⑥ 记 lastAccount（源②）+ 提示。
   // **只有真拉起来了才算成功**（Phase G 审计）：此前无条件记账+报成功,而第⑤步的失败是
@@ -197,8 +208,11 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   if (!launched) {
     showActionFailureToast(
       "旧会话已结束，但新会话未能自动拉起",
-      `已用「${accountName}」的命令回退到剪贴板——请到远端终端粘贴执行，会话内容不会丢（jsonl 续写）。` +
-        `未记账本次账号归属。`,
+      isLocal
+        ? // 本机没有剪贴板那条回退 —— 不许照抄远端那句「到远端终端粘贴」。
+          `会话内容不会丢，可以在标签页上右键 Resume 重新拉起。本次没有记下账号归属。`
+        : `已用「${accountName}」的命令回退到剪贴板——请到远端终端粘贴执行，会话内容不会丢（jsonl 续写）。` +
+          `未记账本次账号归属。`,
       { level: "error", durationMs: 12000 },
     );
     return false;

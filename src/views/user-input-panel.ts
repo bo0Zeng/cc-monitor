@@ -29,7 +29,8 @@
  * ⇒ 判据住 `user-input-panel.vitest.ts`「先跳空、后来跳得过去」那一格，
  *   活体读数（真会发生的那条转移）住 `live-user-inputs.vitest.ts`。
  */
-import type { UserInputEntry } from "./user-input-index";
+// 〔SE1〕条目的形状由后端定（`session_outline.rs::UserInputEntry` 的生成物）；判定只住后端。
+import type { UserInputEntry } from "../generated/UserInputEntry";
 
 /**
  * 这块界面的名字 —— **`大纲`**（`设计/10 §2.2b ③` 定名，步 2）。
@@ -47,6 +48,9 @@ import type { UserInputEntry } from "./user-input-index";
  * 改名那天两边一起改，不会有一边还叫旧名。
  */
 const OUTLINE_LABEL = "大纲";
+
+/** 开关的 tooltip（`设计/10 §2.2b ③`）。一个住址：建开关与「要到清单」两处都用它。 */
+const OUTLINE_HINT = "按你的输入跳转";
 
 /** 宿主要提供的两件事 —— 「怎么跳」和「跳空了怎么跟人解释」。 */
 export interface UserInputPanelHost {
@@ -74,7 +78,7 @@ export class UserInputPanel {
     this.toggle.type = "button";
     this.toggle.className = "user-inputs-toggle";
     // 标签只有两个字 ⇒ 用 tooltip 说清它是干什么的（`设计/10 §2.2b ③` 的「最终形状」）。
-    this.toggle.title = "按你的输入跳转";
+    this.toggle.title = OUTLINE_HINT;
     this.toggle.addEventListener("click", () => this.toggleOpen());
     this.panel = document.createElement("div");
     this.panel.className = "user-inputs";
@@ -83,41 +87,48 @@ export class UserInputPanel {
   }
 
   /**
-   * 换一份清单。
+   * 换一份清单：清空再建表。
    *
-   * 🔴 **按 uuid 就地对账，不整表重建**：实时那条路每来一句用户输入就调一次，
-   * 整表重建会把已经标上的 `data-unjumpable` **连带抹掉** —— 那是「只加不减」的
-   * 镜像形（一次**假的「减」**）：这一行明明还是跳不过去的，标记却自己没了。
-   * 查看器那条路每次 `load()` 先 `clear()`，走的是「没有旧行」这一支，行为不变。
+   * 〔SE1〕这里原先是**按 uuid 就地对账**（不碰 `title`、尾部裁剪、写前比一次）——
+   * 那段复杂度只为实时那条路「每来一句就整表交一次」而存在（`设计/10 §2.2b ⑤`）。
+   * 清单改问后端之后，整表只在**冷启动 / 文件被重写**时换；新来的几条走 [`appendEntries`]。
    */
   setEntries(entries: readonly UserInputEntry[]): void {
+    this.panel.replaceChildren();
+    this.appendEntries(entries);
+  }
+
+  /**
+   * 在末尾接上几条（增量：后端从上次的 `end` 接着给的那一截）。编号接着往下数。
+   * 已有的行**一个字都不碰** —— 挂着的 `data-unjumpable` / 那句提示照旧挂着。
+   */
+  appendEntries(entries: readonly UserInputEntry[]): void {
+    const base = this.panel.children.length;
     for (let i = 0; i < entries.length; i++) {
-      const old = this.panel.children[i] as HTMLButtonElement | undefined;
-      if (old && old.dataset.inputUuid === entries[i].uuid) {
-        // 同一条：只刷序号+摘要。**不碰 `title`** —— 它可能正挂着「跳不过去」那句。
-        // `设计/17 §2.9`：这里原先**无条件重写**，而实时那条路每来一句调一次
-        // ⇒ 全程 O(n²) 次 `textContent` 写（最大会话 585 条 ⇒ Σ(1..585) = 17.1 万次）。
-        // 写前比一次 ⇒ append 场景每次写 0 行，全程降到 O(n)。
-        const next = `${i + 1}. ${entries[i].excerpt}`;
-        if (old.textContent !== next) old.textContent = next;
-        continue;
-      }
-      const row = this.buildRow(entries[i], i);
-      if (old) this.panel.replaceChild(row, old);
-      else this.panel.appendChild(row);
+      this.panel.appendChild(this.buildRow(entries[i], base + i));
     }
-    while (this.panel.children.length > entries.length) this.panel.lastElementChild!.remove();
+    const n = this.panel.children.length;
     // `设计/10 §2.2b`：标签只说「点我干什么」，计数用间隔点挂在后面、0 条时不挂。
-    this.toggle.textContent =
-      entries.length > 0 ? `${OUTLINE_LABEL} · ${entries.length}` : OUTLINE_LABEL;
+    this.toggle.textContent = n > 0 ? `${OUTLINE_LABEL} · ${n}` : OUTLINE_LABEL;
+    this.toggle.title = OUTLINE_HINT;
     // 一条都没有 ⇒ 禁用。不给一个点了没反应的入口。
-    this.toggle.disabled = entries.length === 0;
+    this.toggle.disabled = n === 0;
+  }
+
+  /**
+   * 〔SE1〕这一趟**要不到**清单（老后端 / 本机后端不在 / 输出被截断）：清空、灰掉，
+   * 原因挂在开关的提示上 —— 灰掉而不说为什么，与「一条都没有」长得一模一样。
+   */
+  setUnavailable(reason: string): void {
+    this.clear();
+    this.toggle.title = reason ? `大纲暂时用不了：${reason}` : "大纲暂时用不了";
   }
 
   /** 清空并收起（换会话 / 关 tab）—— 旧会话的句子不许挂在新会话上。 */
   clear(): void {
     this.panel.replaceChildren();
     this.panel.hidden = true;
+    this.toggle.title = OUTLINE_HINT;
     this.toggle.textContent = OUTLINE_LABEL;
     this.toggle.disabled = true;
     this.toggle.setAttribute("aria-expanded", "false");

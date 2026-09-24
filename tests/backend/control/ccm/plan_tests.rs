@@ -7,7 +7,7 @@ fn env() -> Env {
         pwd: "/p".into(),
         accts_manifest: "/nonexistent/accounts.json".into(),
         account_env: "CLAUDE_CONFIG_DIR".into(),
-        self_path: "/usr/local/bin/ccm".into(),
+        self_argv: vec!["/usr/local/bin/ccm".into()],
         ..Default::default()
     }
 }
@@ -949,4 +949,54 @@ fn the_message_the_user_actually_sees_carries_the_reason() {
         msg.contains("解析不动"),
         "用户看到的那句话里没有原因：{msg}"
     );
+}
+
+/// ★ 〔CC1〕自检那一趟与 pane 里那一趟**是同一条命令**：同一段 `export` 前缀、同一个入口、
+/// 同一串参数，只在 `--` 之前多一个 `--print`（放到 `--` 后面就成了透传给 agent 的参数，
+/// 那一趟会**真起一个会话**而不是自检 —— 本件现打时就这么踩过一次）。
+///
+/// 另钉**顺序**：收尾里自检排在兜底轮询 / 接进去 / 登记**之前**（登记在它后面，才谈得上「不登记」）。
+#[test]
+fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registering() {
+    let mut e = env();
+    e.self_argv = vec!["/opt/cc-monitor-backend".into(), "ccm".into()];
+    e.anthropic_base_url = Some("https://relay.example/v1".into());
+    e.bus_scripts = Some("/opt/bus".into());
+    for (args, has_passthru) in [
+        (&["--tmux=n1", "--cwd", "/p", "--", "task", "--x"][..], true),
+        (&["--tmux=n1", "--cwd", "/p"][..], false),
+    ] {
+        // 旗标排在最前（排到 `--` 后面就成了透传参数）。
+        let mut a = vec!["--bus-register", "--detach"];
+        a.extend_from_slice(args);
+        let p = plan_of(&a, &e, &AccountTable::default());
+        let Plan::Container(c) = &p else {
+            panic!("该是容器路：{p:?}")
+        };
+        let want = if has_passthru {
+            c.payload.replacen(" '--' ", " '--print' '--' ", 1)
+        } else {
+            format!("{} '--print'", c.payload)
+        };
+        assert_eq!(c.self_check, want, "自检与载荷不是同一条命令");
+        assert!(
+            c.self_check
+                .starts_with("export ANTHROPIC_BASE_URL='https://relay.example/v1'; '/opt/cc-monitor-backend' 'ccm' "),
+            "自检没带同一段 export 前缀 / 同一个入口：{}",
+            c.self_check
+        );
+        let tail = render_container_tail(c);
+        let at = |needle: &str| {
+            tail.find(needle)
+                .unwrap_or_else(|| panic!("收尾里没有 {needle}：{tail}"))
+        };
+        assert!(
+            at(&c.self_check) < at("cc-register"),
+            "自检排在登记后面了 ⇒ 起不来的也照登记：{tail}"
+        );
+        assert!(
+            tail.contains("exit 4"),
+            "自检不过没有 exit 4（起不来）：{tail}"
+        );
+    }
 }

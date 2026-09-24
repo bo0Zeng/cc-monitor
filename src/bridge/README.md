@@ -179,6 +179,8 @@ src/bridge/
 | `panorama_list_annotations` (Batch15) | `{ repo }` | `Annotation[]` | 列全部批注 |
 | `panorama_write_doc_link` (Batch15) | `{ repo, doc, target }` | `()` | 写一条文档 ↔ 符号链接 |
 | `panorama_remove_doc_link` (Batch15) | `{ repo, doc, target }` | `bool` | 删一条文档链接 |
+| `panorama_diagram_kinds` (PN1b) | — | `DiagramKindInfo[]` | 图种注册表原样透出（id · 人读名 · 认哪些参数 · 形状），选图下拉从它现读 |
+| `panorama_diagram` (PN1b) | `{ repo, kind, request }` | `{ diagram, mermaid }` | 画一张图：上游 `Diagram`（按形状分变体 ＋ 公共诚实信号）原样透出，另附 Mermaid 渲染；认不出的 kind 报错 |
 | `start_forward` (B14-F58) | `{ spec: {origin,localPort,remoteHost,remotePort} }` | `String`(id) | 启动本地端口转发:校验→connect_session→bind 127.0.0.1:localPort→accept 循环隧道 direct-tcpip;返回转发 id |
 | `stop_forward` (B14-F58) | `{ id }` | `()` | 停止转发:abort accept 循环 + drop session 关连接 |
 | `list_forwards` (B14-F58) | — | `ForwardStatus[]` | 列所有转发(id/spec/state/connCount) |

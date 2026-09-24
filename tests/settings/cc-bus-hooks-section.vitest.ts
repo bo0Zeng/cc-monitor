@@ -90,7 +90,7 @@ describe("B04 四态不得被误渲染", () => {
         );
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     const lines = [
@@ -112,7 +112,7 @@ describe("B04 只读与文案", () => {
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(`不该自动调 ${cmd}`);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     const called = mockInvoke.mock.calls.map((c) => c[0]);
@@ -136,7 +136,7 @@ describe("B04 只读与文案", () => {
       throw new Error(cmd);
     });
     setCurrentMachine("devbox"); // E59：页上下文（原来是分节自己的下拉选的）
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     (
@@ -157,7 +157,7 @@ describe("B04 只读与文案", () => {
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     // T03：输出面现在由 `buildPasteBlock` 产出，`cc-bus-hooks-out` 落在它的根节点上
@@ -183,7 +183,7 @@ describe("B04 只读与文案", () => {
         );
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     expect(
@@ -215,7 +215,7 @@ describe("B04 只读与文案", () => {
   });
 
   it("文案要讲清为什么不代劳，而不是只说「请手动粘贴」", () => {
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     const why = s.element.querySelector(".cc-bus-hooks-why")?.textContent ?? "";
     expect(why).toContain("共享");
     expect(why).toContain("覆盖");
@@ -231,7 +231,7 @@ describe("B04 对自己的 IPC 返回值也要防御", () => {
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     // 应降级成"未配置远端"，而不是炸掉整个分节
@@ -254,7 +254,7 @@ describe("B04 对自己的 IPC 返回值也要防御", () => {
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     expect(
@@ -285,7 +285,7 @@ describe("B04 审计修复：第五态、兜底、以及守卫本身", () => {
   });
 
   it("【B04-6】不得再宣称「与本机现状一致」（那是写死的，snippet 根本不看诊断）", () => {
-    const s2 = new CcBusHooksSection();
+    const s2 = loaded(new CcBusHooksSection());
     const all = s2.element.textContent ?? "";
     expect(all).not.toContain("与本机现状一致");
   });
@@ -368,7 +368,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
       if (cmd === "diagnose_local_cc_bus_hooks") return repWithWarning();
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     const w = s.element.querySelector<HTMLElement>(
@@ -384,7 +384,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
       if (cmd === "diagnose_local_cc_bus_hooks") return repWithWarning();
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     const sel =
@@ -410,7 +410,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
       throw new Error(cmd);
     });
     setCurrentMachine("devbox"); // E59：页上下文
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     const btn = [...s.element.querySelectorAll("button")].find((b) =>
@@ -431,7 +431,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     expect(s.element.textContent).toContain("待贴片段（基于本机盘面）");
@@ -444,7 +444,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     expect(
@@ -463,7 +463,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
  */
 describe("E59：origin 只来自页上下文", () => {
   it("★★ DOM 里没有任何可选机器的控件", () => {
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     expect(s.element.querySelector("select.cc-bus-hooks-origin")).toBeNull();
     // 也不许换个形状偷偷留着（一排按钮之类）
@@ -480,7 +480,7 @@ describe("E59：origin 只来自页上下文", () => {
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     return flush().then(() => {
       const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-hooks-check-remote")!;
@@ -499,7 +499,7 @@ describe("E59：origin 只来自页上下文", () => {
       throw new Error(cmd);
     });
     setCurrentMachine("devbox");
-    const s = new CcBusHooksSection();
+    const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
     expect(s.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("devbox");
@@ -512,3 +512,10 @@ describe("E59：origin 只来自页上下文", () => {
     expect(calls.at(-1)?.[1]).toEqual({ origin: "nano" });
   });
 });
+
+/** ST1「延后加载」：分节构造期不再发 I/O，由宿主在机器子页第一次可见时调 `loadNow()`。
+ *  本文件量的是分节**加载之后**的行为 ⇒ 构造完就当宿主那样叫醒它。 */
+function loaded<T extends { loadNow(): void }>(s: T): T {
+  s.loadNow();
+  return s;
+}

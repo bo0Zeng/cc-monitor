@@ -82,7 +82,10 @@ fn the_panorama_command_surface_leaks_no_storage_or_parser_detail() {
 fn adding_a_panorama_command_forces_a_look_at_this_seam() {
     // ⚠ **21 不是 22**：裸 grep 数到 22，其中一处命令属性写在注释里
     //（`production_code` 剥掉了它）。判据数的是**生产段**，两个数不一样是对的。
-    const COMMANDS_TODAY: usize = 21;
+    // 〔PN1b 09-24〕21 → 23：多了 `panorama_diagram_kinds`（注册表原样透出）与
+    // `panorama_diagram`（画一张图）—— 都是查询语义：说的是「代码里有什么结构」，
+    // 参数是图种 id ＋ 画图旋钮，没有一个字关于存储或解析。
+    const COMMANDS_TODAY: usize = 23;
     let n = prod().matches(cmd_attr().as_str()).count();
     assert_eq!(
         n, COMMANDS_TODAY,

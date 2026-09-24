@@ -19,6 +19,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { runRemoteResumeTmux } from "../src/remote-launch-run";
 import { accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "../src/accounts";
 import { restartWithAccount, type RestartWithAccountOpts } from "../src/account-restart";
+import { showActionFailureToast } from "../src/error-toast";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const resumeTmux = runRemoteResumeTmux as unknown as ReturnType<typeof vi.fn>;
@@ -202,5 +203,72 @@ describe("A5/Phase G：resume 真失败时不得上报成功", () => {
       modelOverride: "opus",
     });
     vi.mocked(getModelForAccount).mockResolvedValue(undefined); // 复位，别泄漏给后续用例
+  });
+});
+
+// 〔`A3` 第二波〕**本机那一侧**：编排前五步与远端逐字共用（只是 origin 换成 `<local>`），
+// 第⑤步换成本机那一跳（`resume_history_session`，账号走载荷上的 `account`）。
+// 死值验对照：把 `account-restart.ts` 第⑤步那个 `isLocal ? … : …` 改回恒走 `runRemoteResumeTmux`，
+// 下面第一条当场红（`resumeTmux` 被调、`resume_history_session` 没被调）。
+describe("A3 本机换号重启（origin = <local>）", () => {
+  const LOCAL = "<local>";
+  const payloadOf = (cmd: string): Record<string, unknown> | undefined =>
+    invokeMock.mock.calls.find((c) => c[0] === cmd)?.[1] as Record<string, unknown> | undefined;
+
+  it("happy：Esc→/exit→kill 都带 `<local>`，resume 走本机那一跳、交的是**用户点的那个号**（名字 ＋ 目录）", async () => {
+    const ok = await restartWithAccount(baseOpts({ origin: LOCAL, tmuxName: "proj-cc", launcher: "" }));
+    expect(ok).toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith("tmux_send_keys", {
+      origin: LOCAL,
+      target: "proj-cc",
+      keys: "/exit",
+      enter: true,
+    });
+    expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", { origin: LOCAL, target: "proj-cc" });
+    expect(resumeTmux).not.toHaveBeenCalled();
+    expect(payloadOf("resume_history_session")).toEqual({
+      sessionId: "s1",
+      cwd: "/w",
+      launcher: null, // 设置里没配本机 resume 命令 ⇒ 交 null，由后端用默认
+      tmuxName: "proj-cc", // 旧名已被 kill 让出来，照远端那条一样复用
+      account: { kind: "named", configDir: "/h/z", name: "z" },
+    });
+    // 本机那一跳交不了模型偏好 ⇒ 不去查它（查了也没地方放）。
+    expect(getModelForAccount).not.toHaveBeenCalled();
+    expect(recordLast).toHaveBeenCalledWith("s1", "z");
+  });
+
+  it("kill 在 resume **之前**（顺序是 §5.2 的硬约束，两侧同一条）", async () => {
+    await restartWithAccount(baseOpts({ origin: LOCAL, tmuxName: "proj-cc", launcher: "cc2" }));
+    const order = invokeMock.mock.calls.map((c) => c[0]);
+    expect(order.indexOf("kill_remote_tmux")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("kill_remote_tmux")).toBeLessThan(order.indexOf("resume_history_session"));
+    expect(payloadOf("resume_history_session")?.launcher).toBe("cc2");
+  });
+
+  it("kill 失败 ⇒ 中止，**不**起本机 resume（新旧两个进程抢同一会话）", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "kill_remote_tmux" ? Promise.reject(new Error("gate")) : Promise.resolve(undefined),
+    );
+    const ok = await restartWithAccount(baseOpts({ origin: LOCAL, tmuxName: "proj-cc" }));
+    expect(ok).toBe(false);
+    expect(payloadOf("resume_history_session")).toBeUndefined();
+    expect(recordLast).not.toHaveBeenCalled();
+  });
+
+  it("本机 resume 失败 ⇒ false、不记账，提示里**不许**出现远端那条的剪贴板 / 远端终端", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "resume_history_session" ? Promise.reject(new Error("没有 ccm")) : Promise.resolve(undefined),
+    );
+    const ok = await restartWithAccount(baseOpts({ origin: LOCAL, tmuxName: "proj-cc" }));
+    expect(ok).toBe(false);
+    expect(recordLast).not.toHaveBeenCalled();
+    const toasts = vi.mocked(showActionFailureToast).mock.calls;
+    const last = toasts.at(-1);
+    expect(last?.[0]).toBe("旧会话已结束，但新会话未能自动拉起");
+    expect(String(last?.[1])).not.toContain("剪贴板");
+    expect(String(last?.[1])).not.toContain("远端");
+    // 本机那一跳自己先说了一次**为什么**没起来（后端的原话）。
+    expect(toasts.some((c) => String(c[1]).includes("没有 ccm"))).toBe(true);
   });
 });

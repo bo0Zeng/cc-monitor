@@ -42,9 +42,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 // --- 只 mock「会真的去碰机器」的那几样；渲染管线保持真身（同 live-user-inputs.vitest.ts）---
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn().mockResolvedValue(undefined),
-}));
+// 〔SE1〕大纲清单问后端要 ⇒ `list_user_inputs` 由台子里的替身回答（其余命令照旧回 undefined）
+vi.mock("@tauri-apps/api/core", async () => {
+  const rig = await import("./test-support/session-viewer-rig");
+  return {
+    invoke: vi.fn(async (cmd: string, args: { fromOffset: number }) =>
+      cmd === "list_user_inputs" ? rig.answerListUserInputs(args) : undefined,
+    ),
+  };
+});
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: vi.fn().mockResolvedValue(undefined),
 }));
@@ -88,6 +94,9 @@ import {
   installViewerRig,
   userLine,
   assistantLine,
+  outlineBackend,
+  outlineEntry,
+  settleOutline,
   type RigPayload,
 } from "./test-support/session-viewer-rig";
 import { TabManager, type Tab } from "../src/tabs";
@@ -445,25 +454,25 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
    *
    * - `branchRecords = 4`：4 条带 uuid 的记录（收纳的那两条也喂 —— `routeMetaAndBranch`
    *   是两条路径的单一来源）
-   * - `userInputs   = 3`：3 条主线 user 文本（assistant 那条按口径排掉）
+   * - `userInputs   = 3`：〔SE1〕大纲的条数 = **后端**说的那 3 条（清单问后端要，前端不攒）
    * - `pending      = 2`：尾块先到钉住 floor=100 ⇒ seq 1/2 进收纳账本
    */
-  function threeLedgersNonEmpty(): void {
+  async function threeLedgersNonEmpty(): Promise<void> {
+    outlineBackend.entries = [outlineEntry("u1"), outlineEntry("u2"), outlineEntry("u100")];
     feed(userLine(100, "u100", "最新那一句")); // 渲染，钉 floor=100
     feed(assistantLine(101, "a101", "回复一句")); // 渲染；不进清单
     feed(userLine(1, "u1", "很久以前那一句")); // seq<floor ⇒ 收纳
     feed(userLine(2, "u2", "也是很久以前")); // seq<floor ⇒ 收纳
+    await settleOutline();
   }
 
-  it("🔴 反空真：三个账本**同时**非空，且快照里三个数**逐个相等**于各自的真值", () => {
-    threeLedgersNonEmpty();
+  it("🔴 反空真：三个账本**同时**非空，且快照里三个数**逐个相等**于各自的真值", async () => {
+    await threeLedgersNonEmpty();
     const s = snap();
 
     // ① 先证明三个账本真的都被喂到了（任一恒空，下面的相等断言就是装饰）
     expect(realBranchRecords("s1"), "branchFolder 恒空 ⇒ 这张表是空真").toBe(4);
-    expect(peek("s1").userInputs.length, "userInputs 恒空 ⇒ 这张表是空真").toBe(
-      3,
-    );
+    expect(peek("s1").outline.count, "大纲恒空 ⇒ 这张表是空真").toBe(3);
     expect(peek("s1").window.pendingCount, "pending 恒空 ⇒ 这张表是空真").toBe(
       2,
     );
@@ -476,38 +485,41 @@ describe("秤 6 丙：三个账本的大小进 `debugSnapshot`", () => {
     console.log(`[S6-丙] debugSnapshot = ${tm.debugSnapshot()}`);
   });
 
-  it("快照里的三个数与三个账本**同源**（不是各自写死的常数）", () => {
-    threeLedgersNonEmpty();
+  it("快照里的三个数与三个账本**同源**（不是各自写死的常数）", async () => {
+    await threeLedgersNonEmpty();
     expect(snap().branchRecords).toBe(realBranchRecords("s1"));
-    expect(snap().userInputs).toBe(peek("s1").userInputs.length);
+    expect(snap().userInputs).toBe(peek("s1").outline.count);
     expect(snap().pending).toBe(peek("s1").window.pendingCount);
 
     // 再喂两条 ⇒ 三个数各自该怎么动就怎么动（写死的常数在这里当场红）
-    feed(userLine(102, "u102", "再说一句")); // 渲染：branch+1、inputs+1、pending 不动
-    feed(userLine(3, "u3", "又一条旧的")); // 收纳：branch+1、inputs+1、pending+1
+    outlineBackend.entries.push(outlineEntry("u102"));
+    feed(userLine(102, "u102", "再说一句")); // 渲染：branch+1、inputs+1（后端多了一条）、pending 不动
+    feed(userLine(3, "u3", "又一条旧的")); // 收纳：branch+1、pending+1；inputs 只看后端说什么 ⇒ 不动
+    await settleOutline();
     const s = snap();
     expect(s.branchRecords).toBe(6);
-    expect(s.userInputs).toBe(5);
+    expect(s.userInputs).toBe(4);
     expect(s.pending).toBe(3);
   });
 
-  it("`branchRecords` 不许是 -1 —— -1 = 那根尺子断了（字段被改名读不到）", () => {
-    threeLedgersNonEmpty();
+  it("`branchRecords` 不许是 -1 —— -1 = 那根尺子断了（字段被改名读不到）", async () => {
+    await threeLedgersNonEmpty();
     expect(snap().branchRecords).not.toBe(-1);
   });
 
-  it("重投（换 seq 的同一条 uuid）不许让任何一个账本涨", () => {
-    threeLedgersNonEmpty();
+  it("重投（换 seq 的同一条 uuid）不许让任何一个账本涨", async () => {
+    await threeLedgersNonEmpty();
     const before = snap();
     feed({ ...userLine(100, "u100", "最新那一句"), seq: 999 });
+    await settleOutline();
     const after = snap();
     expect(after.branchRecords).toBe(before.branchRecords);
     expect(after.userInputs).toBe(before.userInputs);
     expect(after.pending).toBe(before.pending);
   });
 
-  it("上翻补批把收纳的那些渲出来 ⇒ `pending` 归零，另外两个账本一条不少", () => {
-    threeLedgersNonEmpty();
+  it("上翻补批把收纳的那些渲出来 ⇒ `pending` 归零，另外两个账本一条不少", async () => {
+    await threeLedgersNonEmpty();
     peek("s1").streamEl.dispatchEvent(new Event("scroll"));
 
     const s = snap();
