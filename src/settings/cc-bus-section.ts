@@ -241,14 +241,14 @@ export class CcBusSection {
     const h = document.createElement("div");
     h.className = "settings-hint";
     h.textContent =
-      "在远端某个目录开一个独立 agent（走远端的 cc-spawn：同目录已有活会话就复用，没有才新建）。" +
+      "在上面选中的那台机器的某个目录开一个独立 agent（走那台机器上的 cc-spawn：同目录已有活会话就复用，没有才新建）。" +
       "注意这会起一个真实的 agent 进程并消耗账号额度，所以要点两次确认。";
     box.appendChild(h);
 
     this.spawnDir = document.createElement("input");
     this.spawnDir.type = "text";
     this.spawnDir.className = "settings-input cc-bus-spawn-dir";
-    this.spawnDir.placeholder = "工作目录（远端绝对路径）";
+    this.spawnDir.placeholder = "工作目录（那台机器上的绝对路径）";
     box.appendChild(this.spawnDir);
 
     this.spawnTask = document.createElement("input");
