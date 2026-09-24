@@ -307,7 +307,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
             Verdict::UsesRouter => {
                 assert!(
                     uses,
-                    "`{name}` 登记为用分流器，生产段却没有 `route_call_error`"
+                    "`{name}` 登记为用分流器，生产段却两个出口（{ROUTER_EXITS:?}）一个都没用"
                 );
                 assert!(
                     !own,
