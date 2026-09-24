@@ -52,7 +52,7 @@ import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
-import { installGlobalClickDelegation } from "./entry-common";
+import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
 import { buildAccountCommands } from "./account-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";

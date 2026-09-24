@@ -7,7 +7,8 @@
  *
  * 原先它加载 `index.html?viewer=<sid>`，由 `main.ts` 在 DOMContentLoaded 里分叉。
  */
-import { installGlobalClickDelegation } from "./entry-common"; // 顺带装上全局错误捕获（模块副作用）
+import "./entry-common"; // 全局错误捕获（模块副作用）
+import { installGlobalClickDelegation } from "./entry-render-common";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { commands } from "./ipc/commands";
 import { basename } from "./sftp/paths"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区）

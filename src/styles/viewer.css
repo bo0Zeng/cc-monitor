@@ -1,0 +1,61 @@
+/**
+ * viewer 的 slim 顶栏，以及把主窗 chrome 在 viewer 里兜底藏掉的那条。
+ *
+ * 加载它的窗口：**只有 viewer 窗**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
+ * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
+ *
+ * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ */
+
+/* 🔴 S24：`.tab-archive` 也要在这张单子里。viewer 窗口**照样 new 一个 TabManager**
+   （`main.ts` bootstrapViewer），所以抽屉在这里也会被插进 `#app` —— 而 viewer 的模板
+   只有 `top/main/status` 三行、没有 `archive`。实测（改前）：viewer 里插进抽屉，
+   `grid-template-rows` 从 `auto 644px 24px` 变成 `auto 511px 24px 133px`，
+   消息流被偷 133px。tab 栏在 viewer 里本就 `display:none`，抽屉是它的附属 ⇒ 一起藏。 */
+body.viewer-mode #tab-bar,
+body.viewer-mode #tab-bar-resizer,
+body.viewer-mode .settings-trigger,
+body.viewer-mode .history-trigger,
+body.viewer-mode .panorama-trigger,
+body.viewer-mode .sftp-trigger,
+body.viewer-mode .grid-monitor-trigger {
+  display: none;
+}
+
+/* issue #10：独立窗口 slim 顶栏（标题 + 调出终端 + 打开目录） */
+.viewer-topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.viewer-topbar-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viewer-topbar-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+}
+
+.viewer-topbar-btn:hover {
+  color: var(--text);
+  background: var(--overlay-hover);
+}

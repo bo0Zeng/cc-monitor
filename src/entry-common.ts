@@ -8,11 +8,12 @@
  * | `viewer.html` | `entry-viewer.ts` | 只含 tab 管理 ＋ 渲染栈 |
  *
  * 🔴 **本文件会进三个窗口的模块图** ⇒ 它只许 import 三个窗口都该有的东西。
- * 今天只有一个 `@tauri-apps/plugin-opener`（外链走系统浏览器）。往这里加一个 import，
+ * 今天只有一个 `@tauri-apps/plugin-opener`（外链走系统浏览器）。代码块「复制」那半只有主窗与
+ * viewer 要，住 `entry-render-common.ts`。往这里加一个 import，
  * 就是往设置窗里塞一个模块 —— `tests/entry-graphs.vitest.ts` 对构建产物的模块图做零命中断言，
  * 塞进高亮 / 数学排版 / tab 管理会当场红。
  *
- * 原先这两件住 `main.ts`，三个窗口都加载 `main.ts`，所以顺带都有；拆开之后要显式共用。
+ * 原先这几件住 `main.ts`，三个窗口都加载 `main.ts`，所以顺带都有；拆开之后要显式共用。
  */
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -33,12 +34,11 @@ window.addEventListener("unhandledrejection", (e) => {
 });
 
 /**
- * 外链 + 代码块复制的全局 click 代理。主窗口与独立 viewer 窗口共用。
+ * 外链的全局 click 代理。三个窗口共用（设置窗里也有外链）。
  * - 外链（render.ts 标 data-external）：preventDefault + openUrl 走系统浏览器，
  *   避免 WebView2 把 UI 替换成外站。capture 阶段顶层接管防被卡片 handler 抢先。
- * - 代码块"复制"按钮：marked 输出的 HTML 无法挂 listener，这里 delegate。
  */
-export function installGlobalClickDelegation(): void {
+export function installExternalLinkDelegation(): void {
   document.addEventListener(
     "click",
     (e) => {
@@ -55,27 +55,4 @@ export function installGlobalClickDelegation(): void {
     },
     true,
   );
-
-  document.addEventListener("click", (e) => {
-    const btn = (e.target as HTMLElement | null)?.closest?.(".code-copy");
-    if (!btn) return;
-    const block = btn.closest(".code-block");
-    const pre = block?.querySelector("pre");
-    const text = pre?.textContent ?? "";
-    if (!text) return;
-    void navigator.clipboard.writeText(text).then(
-      () => {
-        btn.classList.add("copied");
-        btn.textContent = "已复制";
-        window.setTimeout(() => {
-          btn.classList.remove("copied");
-          btn.textContent = "复制";
-        }, 1200);
-      },
-      () => {
-        btn.textContent = "失败";
-        window.setTimeout(() => (btn.textContent = "复制"), 1200);
-      },
-    );
-  });
 }

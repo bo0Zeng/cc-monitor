@@ -9,7 +9,7 @@
  * 原先设置窗加载 `index.html?settings=1`，由 `main.ts` 在 DOMContentLoaded 里分叉 ——
  * 分叉之前整份主窗口包已经解析完了。
  */
-import { installGlobalClickDelegation } from "./entry-common"; // 顺带装上全局错误捕获（模块副作用）
+import { installExternalLinkDelegation } from "./entry-common"; // 顺带装上全局错误捕获（模块副作用）
 import { loadTheme } from "./theme";
 import { SettingsPanel } from "./settings";
 import { dispatcher } from "./keybindings/registry";
@@ -37,8 +37,8 @@ window.addEventListener("DOMContentLoaded", async () => {
  */
 async function bootstrapSettings(): Promise<void> {
   document.body.classList.add("settings-window-mode");
-  // 同 viewer：外链/代码块复制走全局 click 代理（防未来设置里的外链在本 WebView 打开顶掉 UI）。
-  installGlobalClickDelegation();
+  // 同 viewer：外链走全局 click 代理（防未来设置里的外链在本 WebView 打开顶掉 UI）。
+  installExternalLinkDelegation(); // 设置窗没有代码块，只要外链那一半（`entry-render-common.ts` 头注）
   const panel = new SettingsPanel({ windowMode: true });
   await panel.open(); // 面板压 overlay 栈底
   // ★ 设置窗有自己的 dispatcher 实例，必须 applyOverrides + start()（同 viewer bootstrap）——否则

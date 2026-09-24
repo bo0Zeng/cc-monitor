@@ -1,0 +1,19 @@
+/**
+ * 最小重置（`设计/41 §4`）。三个窗口都加载。
+ *
+ * 零影响的证明（包 `reset` 层那天现打，搬家不改变它）：`box-sizing` 全文只有 2 处声明，
+ * 另一处是具体元素（特异度远高于 `*`）⇒ 放进最低的 `reset` 层不改变任何一格。
+ */
+@layer reset {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+}

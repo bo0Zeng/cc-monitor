@@ -42,6 +42,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { build, type Rollup } from "vite";
 import { describe, it, expect, beforeAll } from "vitest";
+import { stripCodeComments } from "./evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
 
 const TIMEOUT_MS = 180_000;
@@ -245,4 +246,281 @@ describe("三入口 · 模块图零命中（对构建产物）", () => {
     expect(leaked, "viewer 窗的模块图里混进了不该有的东西（`设计/01 §1.2`：只含 tab 管理 ＋ 渲染栈）").toEqual([]);
     console.log(`  ok   entry-graphs  viewer 闭包 ${mods.size} 个模块，${FORBIDDEN_IN_VIEWER.length} 个禁止模式零命中`);
   });
+});
+
+// ═══════════════════════════ 子步 2：CSS 按窗口拆 ═══════════════════════════
+//
+// 每个窗口的 CSS 清单**只有一份**：它的 html 里 `<link rel="stylesheet">` 的列表（按序）。
+// 下面三条都从那份清单出发：
+//   ① 清单自洽 —— `layers.css` 排第一（它定层的先后）、每个 `src/**/*.css` 至少被一个窗口链到；
+//   ② 🔴 零命中（对**构建产物**的 CSS）—— 设置窗的 CSS 里没有高亮 / 数学 / tab / 卡片 / 流；
+//      viewer 的 CSS 里没有设置面板 / 历史视图 / 全景 / 网格 / 命令栏；
+//   ③ 完整性 —— 窗口模块图里的代码**挂得上**的类，它在 CSS 里的每一条规则都在这个窗口的清单里
+//      （拆文件最怕的就是「某个窗口少链了一份，样式静默没了」）。
+//
+// 买到 / 买不到（③）：
+// - ✅ 按「代码里怎么挂类」的四种写法（`className =` / `class="…"` / `classList.*("…")` /
+//   `querySelector(".…")` 系）＋ 模板里紧贴 `${}` 的前缀，逐窗口算出挂得上的类，再对 CSS 规则取交。
+// - ❌ 运行时从数据拼出来、四种写法之外的类名，本条看不见 —— 那一族缺了样式不会在这里红。
+//   拆分当时另用一把更宽的尺子（全部字符串字面量里的类名形 token）逐块分配过文件，
+//   那把尺子噪声太大（`role="tab"`、主题键 `"card"` 都会被当成类），不适合做常驻判据。
+
+/**
+ * `src/**\/*.css` 的全文。人群由 `import.meta.glob` 的**键**给出（构建期展开，不新增目录遍历者），
+ * 内容用 `readFileSync` 读。
+ * ⚠ **不能用 `?raw` 直接取内容**：vitest 对 `.css` 模块默认整份替换成空串（`test.css` 未开），
+ *   `?raw` 也一样 —— 第一版就这么写的，全部 CSS 读成 `""`，下面「完整性」那条**零命中地绿**，
+ *   是「完整性的正控」那条当场逮住的。
+ */
+const CSS_SOURCES: Record<string, string> = Object.fromEntries(
+  Object.keys(import.meta.glob("../src/**/*.css")).map((p) => {
+    const rel = p.replace(/^\.\.\//, "");
+    return [rel, readFileSync(resolve(REPO_ROOT, rel), "utf8")];
+  }),
+);
+
+function linksOf(html: string): string[] {
+  return [...readFileSync(resolve(REPO_ROOT, html), "utf8").matchAll(/<link rel="stylesheet" href="\/([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+}
+
+/** 一条规则：它的选择器列表（已去注释、压空白）。只关心选择器，不关心声明。 */
+function selectorsOf(css: string): string[][] {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+  const out: string[][] = [];
+  let buf = "";
+  let depthInRule = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      const end = text.indexOf(c, i + 1);
+      buf += text.slice(i, end + 1);
+      i = end;
+      continue;
+    }
+    if (depthInRule) {
+      if (c === "}") depthInRule = false;
+      continue;
+    }
+    if (c === ";") {
+      buf = "";
+      continue;
+    }
+    if (c === "{") {
+      const prelude = buf.trim().replace(/\s+/g, " ");
+      buf = "";
+      if (prelude.startsWith("@")) {
+        // @keyframes 的内部是「0% {…}」这种伪规则，整块跳过
+        if (/^@(?:-webkit-)?keyframes\b/.test(prelude)) {
+          let d = 1;
+          while (d > 0 && ++i < text.length) d += text[i] === "{" ? 1 : text[i] === "}" ? -1 : 0;
+        }
+        continue;
+      }
+      out.push(splitTop(prelude));
+      depthInRule = true;
+      continue;
+    }
+    if (c === "}") {
+      buf = "";
+      continue;
+    }
+    buf += c;
+  }
+  return out;
+}
+
+function splitTop(prelude: string): string[] {
+  const parts: string[] = [];
+  let d = 0;
+  let cur = "";
+  for (const c of prelude) {
+    if (c === "(") d++;
+    if (c === ")") d--;
+    if (c === "," && d === 0) {
+      parts.push(cur.trim());
+      cur = "";
+      continue;
+    }
+    cur += c;
+  }
+  if (cur.trim()) parts.push(cur.trim());
+  return parts;
+}
+
+/** 一个选择器要命中，元素树上**必须**有哪些类与 id（`:not(…)` 里的、属性选择器里的不算）。 */
+function needs(sel: string): { classes: string[]; ids: string[] } {
+  let s = sel;
+  for (;;) {
+    const i = s.indexOf(":not(");
+    if (i < 0) break;
+    let d = 0;
+    let k = i + 4;
+    for (; k < s.length; k++) {
+      if (s[k] === "(") d++;
+      else if (s[k] === ")" && --d === 0) break;
+    }
+    s = s.slice(0, i) + s.slice(k + 1);
+  }
+  s = s.replace(/\[[^\]]*\]/g, "");
+  return {
+    classes: [...s.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1]),
+    ids: [...s.matchAll(/#(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1]),
+  };
+}
+
+/** 一份源码里「挂得上」的类（四种写法）＋ 模板里紧贴 `${}` 的前缀。 */
+function attachedIn(raw: string, classes: Set<string>, prefixes: Set<string>): void {
+  const text = stripCodeComments(raw);
+  const CLASS = /^-?[_a-zA-Z][\w-]*$/;
+  const take = (s: string, tpl: boolean): void => {
+    const parts = tpl ? s.split(/\$\{[^}]*\}/) : [s];
+    parts.forEach((p, i) => {
+      const toks = p.split(/\s+/);
+      toks.forEach((t, j) => {
+        if (!t) return;
+        if (tpl && j === toks.length - 1 && i < parts.length - 1 && /[\w-]$/.test(t)) prefixes.add(t);
+        else if (CLASS.test(t)) classes.add(t);
+      });
+    });
+  };
+  for (const m of text.matchAll(/\bclassName\s*(?:=|\+=|:)\s*(["'`])((?:(?!\1)[^\\]|\\.)*)\1/g)) take(m[2], m[1] === "`");
+  for (const m of text.matchAll(/\bclass\s*=\s*\\?"([^"\n<>]*)\\?"/g)) take(m[1], true);
+  for (const m of text.matchAll(/\bclassList\.(?:add|remove|toggle|contains|replace)\(([^)\n]*)\)/g))
+    for (const lit of m[1].matchAll(/"([^"\n]*)"|'([^'\n]*)'|`([^`\n]*)`/g)) take(lit[1] ?? lit[2] ?? lit[3] ?? "", lit[3] !== undefined);
+  for (const m of text.matchAll(/\b(?:querySelector|querySelectorAll|closest|matches)\(\s*(["'`])([^"'`\n]*)\1/g))
+    for (const c of m[2].matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) classes.add(c[1]);
+}
+
+/** 窗口 W 的代码挂得上的类 / 前缀 / id（按窗口缓存 —— 源码在一次运行里不变）。 */
+const REACHABLE = new Map<Win, { classes: Set<string>; prefixes: string[]; ids: Set<string> }>();
+function reachable(win: Win): { classes: Set<string>; prefixes: string[]; ids: Set<string> } {
+  const hitCache = REACHABLE.get(win);
+  if (hitCache) return hitCache;
+  const r = computeReachable(win);
+  REACHABLE.set(win, r);
+  return r;
+}
+function computeReachable(win: Win): { classes: Set<string>; prefixes: string[]; ids: Set<string> } {
+  const classes = new Set<string>();
+  const prefixes = new Set<string>();
+  const ids = new Set<string>();
+  const files = [...CLOSURES[win].modules].filter((m) => m.startsWith("src/") && m.endsWith(".ts"));
+  const texts = files.map((f) => readFileSync(resolve(REPO_ROOT, f), "utf8"));
+  // `${CONST}` 形的常量拼接：先把全窗口的 `const X = "字面量"` 收起来填回去再扫一遍
+  const consts = new Map<string, string>();
+  for (const t of texts)
+    for (const m of t.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;\n]+)?=\s*(["'])((?:(?!\2)[^\\\n]|\\.)*)\2/g))
+      consts.set(m[1], m[3]);
+  for (const t of texts) {
+    attachedIn(t, classes, prefixes);
+    attachedIn(t.replace(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g, (a, id: string) => consts.get(id) ?? a), classes, prefixes);
+    for (const m of t.matchAll(/\.id\s*=\s*["'`]([\w-]+)["'`]/g)) ids.add(m[1]);
+  }
+  for (const m of readFileSync(resolve(REPO_ROOT, WINDOWS[win].html), "utf8").matchAll(/\bid="([\w-]+)"/g)) ids.add(m[1]);
+  return { classes, prefixes: [...prefixes].filter((p) => p.length >= 4), ids };
+}
+
+/** 规则里有没有一个选择器，在窗口 W 里挂得上。 */
+function matchableIn(sels: string[], r: ReturnType<typeof reachable>): boolean {
+  const has = (c: string): boolean => r.classes.has(c) || r.prefixes.some((p) => c.startsWith(p) && c.length > p.length);
+  return sels.some((sel) => {
+    const n = needs(sel);
+    return n.classes.every(has) && n.ids.every((i) => r.ids.has(i));
+  });
+}
+
+const CSS_RULES: Record<string, string[][]> = Object.fromEntries(
+  Object.entries(CSS_SOURCES).map(([f, css]) => [f, selectorsOf(css)]),
+);
+
+/** 完整性：W 挂得上的每一条规则，它所在的文件都在 W 的清单里。返回缺的（文件 → 选择器）。 */
+function missingIn(win: Win, links: readonly string[]): string[] {
+  const r = reachable(win);
+  const linked = new Set(links);
+  const out: string[] = [];
+  for (const [file, rules] of Object.entries(CSS_RULES)) {
+    if (linked.has(file)) continue;
+    for (const sels of rules) if (matchableIn(sels, r)) out.push(`${file} :: ${sels.join(", ")}`);
+  }
+  return out;
+}
+
+/** 构建产物 CSS 里出现过的类名（压缩过的文本，只取选择器段）。 */
+function builtClasses(win: Win): Set<string> {
+  const out = new Set<string>();
+  for (const css of CLOSURES[win].cssAssets.values()) for (const sels of selectorsOf(css)) for (const s of sels) for (const c of needs(s).classes) out.add(c);
+  return out;
+}
+
+/** 设置窗的 CSS 里不许出现的类族（前缀；`^tab$` 这种精确名也按前缀写，靠 `-` 边界区分）。 */
+const CSS_FORBIDDEN_IN_SETTINGS = ["hljs", "katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold", "live-dot"];
+/** viewer 的 CSS 里不许出现的类族。 */
+const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "history-view", "history-entry", "panorama-canvas", "grid-monitor-cell", "command-bar", "mcp-", "accounts-row"];
+function familyHits(classes: Set<string>, fam: string): string[] {
+  return [...classes].filter((c) => (fam.endsWith("-") ? c.startsWith(fam) : c === fam || c.startsWith(`${fam}-`)));
+}
+
+describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表）", () => {
+  it("清单自洽：每个窗口先链 layers.css；每份 src CSS 至少被一个窗口链到；链到的文件都存在", () => {
+    const all = new Set<string>();
+    for (const w of Object.values(WINDOWS)) {
+      const links = linksOf(w.html);
+      expect(links[0], `${w.html} 的第一条样式表不是 layers.css —— 层的先后会随窗口而变`).toBe("src/styles/layers.css");
+      for (const l of links) {
+        expect(CSS_SOURCES[l], `${w.html} 链了一份不存在的样式表 ${l}`).toBeDefined();
+        all.add(l);
+      }
+    }
+    expect(Object.keys(CSS_SOURCES).length, "glob 没扫到 CSS —— 下面那条零命中地绿").toBeGreaterThan(5);
+    const empty = Object.entries(CSS_SOURCES).filter(([, t]) => t.trim().length < 50).map(([f]) => f);
+    expect(empty, "这些 CSS 读出来是空的 —— 读法坏了（`?raw` 在 vitest 里就是这么坏的）").toEqual([]);
+    expect(Object.keys(CSS_SOURCES).filter((f) => !all.has(f)), "这些 CSS 没有任何窗口链它 —— 写了等于没写").toEqual([]);
+  });
+
+  it("🔴 设置窗的构建产物 CSS：没有高亮 / 数学 / tab / 卡片 / 流 / 折叠块", () => {
+    const got = builtClasses("settings");
+    expect(got.size, "设置窗的构建 CSS 一个类都没读到 —— 零命中不作数").toBeGreaterThan(200);
+    const leaked = CSS_FORBIDDEN_IN_SETTINGS.flatMap((f) => familyHits(got, f));
+    expect(leaked, "设置窗的 CSS 里混进了渲染栈 / tab 管理的样式").toEqual([]);
+  });
+
+  it("🔴 viewer 的构建产物 CSS：没有设置面板 / 历史视图 / 全景 / 网格 / 命令栏", () => {
+    const got = builtClasses("viewer");
+    expect(got.size, "viewer 的构建 CSS 一个类都没读到 —— 零命中不作数").toBeGreaterThan(200);
+    const leaked = CSS_FORBIDDEN_IN_VIEWER.flatMap((f) => familyHits(got, f));
+    expect(leaked, "viewer 的 CSS 里混进了主窗 chrome / 设置面板的样式").toEqual([]);
+  });
+
+  it("正控：两张 CSS 禁止表里的每一族，在主窗的构建 CSS 里都命中（拼错的族在这里红）", () => {
+    const main = builtClasses("main");
+    const settings = builtClasses("settings");
+    const blind = [
+      ...CSS_FORBIDDEN_IN_SETTINGS.filter((f) => familyHits(main, f).length === 0),
+      ...CSS_FORBIDDEN_IN_VIEWER.filter((f) => familyHits(main, f).length === 0 && familyHits(settings, f).length === 0),
+    ];
+    expect(blind, "这些族在别的窗口里也零命中 —— 它们是瞎的").toEqual([]);
+  });
+
+  it("完整性：每个窗口的代码挂得上的类，它们的每条规则都在这个窗口的清单里", () => {
+    for (const win of Object.keys(WINDOWS) as Win[]) {
+      const r = reachable(win);
+      expect(r.classes.size, `${win} 挂得上的类只收到 ${r.classes.size} 个 —— 抽取坏了`).toBeGreaterThan(150);
+      expect(missingIn(win, linksOf(WINDOWS[win].html)), `${win} 窗口挂得上、却没链到样式的规则`).toEqual([]);
+    }
+  }, TIMEOUT_MS);
+
+  it("完整性的正控：从每个窗口的清单里各摘掉一份，这条判据必须红", () => {
+    for (const win of Object.keys(WINDOWS) as Win[]) {
+      const links = linksOf(WINDOWS[win].html);
+      const blind = links
+        .filter((l) => !["src/styles/layers.css"].includes(l))
+        .filter((drop) => missingIn(win, links.filter((l) => l !== drop)).length === 0);
+      // `layers.css` 只有一句层声明、没有规则，不在这里判（它的住址由「清单自洽」那条钉：必须排第一）。
+      // `reset.css` / `tokens.css` 只有 `*` / `html` / `:root` 这种无类选择器 —— 它们在任何窗口都挂得上，
+      // 所以摘掉同样会红（第一版以为这两份看不见，现打是看得见的）。
+      expect(blind, `${win}：摘掉这些文件，完整性判据照样绿`).toEqual([]);
+    }
+  }, TIMEOUT_MS);
 });
