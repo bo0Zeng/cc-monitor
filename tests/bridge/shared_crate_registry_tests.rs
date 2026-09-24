@@ -1028,13 +1028,6 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              `C2_LOOPBACK` 再按名字跑这一条，并核输出里那句 `C2-LOOPBACK-MONITOR ok`）。门禁沙箱里起不了 sshd ⇒ 进不了门禁。\
              谁什么时候跑：改 `dial_host` / `ssh_link` / 后端 `dial/` 的那一拍，交付前跑一趟、把输出贴进报告。",
         ),
-        (
-            "the_real_index_tiers_agree_with_the_void_blocks_both_ways",
-            "〔D0b 09-24〕不是 e2e，也不是长期手测：它是**等别人做完再上链**的那一种 —— \
-             判据对真 `调研/设计/` 此刻必红（三档与正文两向都在变），而那批文档正由第四波 D0 对账。\
-             谁什么时候跑：D0 合进主线那一拍，主会话跑 `cargo test -p monitor --lib design_doc_registry -- --ignored`，\
-             红集为空 ⇒ 删掉那一行 `#[ignore]` 并删掉本行登记。解锁条件原文住那条判据的文档注释。",
-        ),
     ];
 
     // ── 🔴 第三档触发器：**由同一个 crate 里的判据 spawn 子进程去跑**〔2026-09-21 加〕
