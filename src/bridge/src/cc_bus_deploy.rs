@@ -25,7 +25,7 @@
 
 use std::path::{Path, PathBuf};
 
-/// 内嵌的那 17 个文件。**单一事实源 = `src/shared/cc-bus/`**，这里只是编译期固化。
+/// 内嵌的那些文件（条数以 `FILES.len()` 为准，判据对拍，不在散文里写数）。**单一事实源 = `src/shared/cc-bus/`**，这里只是编译期固化。
 ///
 /// ⚠ 加文件要同时加到这里 —— 判据 `the_embedded_file_list_matches_the_repo` 会对拍，
 /// 少一个当场红（否则装出去的是个**缺件的** skill，而那比不装更糟）。
@@ -38,6 +38,15 @@ const FILES: &[(&str, &[u8])] = &[
     (
         "examples/config",
         include_bytes!("../../shared/cc-bus/examples/config"),
+    ),
+    // 〔kinds 09-24〕设计 95 §2.2「部署要跟上」：**带注释的默认 kinds 表**随包落盘。
+    // ⚠ 它落在 `<claude_dir>/skills/cc-bus/examples/`，**不是** `~/.cc-bus/kinds.tsv` ——
+    //   只读铁律第 7 条例外只放行 `skills/cc-bus` 这一个落点（`fenced_dest`）。
+    //   脚本按「`~/.cc-bus/kinds.tsv` → 随包这一份 → 内置 msg」的顺序找，所以随包这份**就是生效的默认**，
+    //   用户要改时复制到 `~/.cc-bus/` 再改（`cc-bus-install.sh` 顺手放一份 `.example`）。
+    (
+        "examples/kinds.tsv",
+        include_bytes!("../../shared/cc-bus/examples/kinds.tsv"),
     ),
     (
         "examples/policy.tsv",
@@ -258,7 +267,7 @@ pub fn deploy_into(claude_dir: &Path) -> Result<CcBusDeployReport, String> {
 ///   而界面说「已装」，于是没人去点那颗按钮。
 ///
 /// ★ 第三态今天**才**做得出来：它要一个「哪一版才算对」的真相源，而那正是 `U9`②
-/// （用户 08-13 裁「**仓内那份为准**」）。⇒ 真相源 = 内嵌的那 17 个字节串。
+/// （用户 08-13 裁「**仓内那份为准**」）。⇒ 真相源 = 内嵌的那一组字节串（`FILES`）。
 /// `PS2` 摸底时立的那条判据逐字写着「**加第三态之前先答版本口径**」—— 答了，所以能加。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
@@ -375,7 +384,7 @@ fn local_ccm_too_old_warning() -> Option<String> {
 ///
 /// # 落成什么形状
 ///
-/// 装**照做**（`deploy_into` 与平台无关，那 17 个文件照样落盘、照样幂等、照样留备份），
+/// 装**照做**（`deploy_into` 与平台无关，`FILES` 里那些文件照样落盘、照样幂等、照样留备份），
 /// 但返回一句话，由 `deploy_local_cc_bus` 原样填进报告的 `warning`，
 /// 前端 `settings/cc-bus-section.ts` 把它接在成功文案后面显示。
 /// ⇒ 用户在 Windows 上读到的是「**这一格没做预检**」，而不是什么都没有。

@@ -119,7 +119,12 @@ ccbus_cap() {
 # 按能力降级:给一个想要的行为,返回**这个 agent 真做得到**的那一档(或 reject)。
 # 每降一级记一行日志 —— 静默降级与静默丢在输出上一模一样,那正是本仓在治的病。
 ccbus_degrade() {
-  local want="$1" cur="$want" cap nxt guard=0
+  # ⚠ `cur` 必须**独立一行**赋值:`local want="$1" cur="$want"` 里的 `$want` 是在**整条 local
+  #   生效之前**展开的 ⇒ 取到的是空串(或调用方同名的那个变量 —— bash 是动态作用域),
+  #   于是本函数对任何输入都回 reject。〔kinds 接线时现打逮到:本函数此前**零调用点**,
+  #   那条 bug 从写下起就没人跑到过 —— 判据不在执行链上就等于不存在。〕
+  local want="$1" cur cap nxt guard=0
+  cur="$want"
   while [ "$cur" != "$CCBUS_DEGRADE_SINK" ]; do
     guard=$((guard+1)); [ "$guard" -le 8 ] || { printf '%s' "$CCBUS_DEGRADE_SINK"; return 0; }
     cap=$(printf '%s' " $CCBUS_BEHAVIOR_CAP " | sed -n "s/.* $cur:\([^ ]*\).*/\1/p")
