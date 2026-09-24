@@ -1503,6 +1503,30 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 客户端先读 `[split_at, end)`（最新 N 行）再读 `[0, split_at)`（回填），都走 `history-read` 带 `until`；与 `--read-session-tail` 一趟印出的两段**逐字节相同**（扫的是同一个函数）。
 
+#### 功能侧只读查询（RM1b，第四波）—— 远端会话的任务 · 远端插件市场
+
+出处：`parity_ledger` 的 `session.tasks` / `plugins.marketplaces` 两笔 `ParityDebt`。这几样此前只有 monitor **直读本机**那一条路，远端机器上的同一份数据答不出来。本机后端与远端后端是同一个二进制 ⇒ 读法搬进后端，monitor 按 origin 问那一台（**本机也走这里**，monitor 的直读实现随之退役）。
+
+- 宿主是 `feature_face`（不是 `read_face`，理由在它头注），本体在 `observe/`。
+- 应答一律**按行**：`data = {"lines": [...]}`；整份超过 32 MiB ⇒ `too_large`（与 `C1` 同一个口径、同一个常量）。
+- CLI 面同样自动派生（`--tasks-list` …），已进 `SUBCOMMANDS`。
+- 全在阻塞档（同步文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
+
+#### `tasks-list`：一个会话的任务列表
+
+```text
+→ {"id":"t1","cmd":"tasks-list","args":{"sid":"0c1d…"}}
+← {"kind":"reply","id":"t1","ok":true,"data":{"lines":["{\"id\":\"1\",\"subject\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id。只许一段普通路径名（空 / 含分隔符 / `.` / `..` ⇒ `bad_args`） |
+| `lines` | ← | 每个任务一行：`<tasks>/<sid>/<数字>.json` 里那个 JSON 对象**原样**（后端不认字段），按那个数字升序 |
+
+- 那个 sid **没有任务目录** ⇒ 空 `lines`（诚实的空）；目录**在但读不了** ⇒ `failed`（不说成「没有任务」）。
+- 半截 / 解不成对象的文件跳过（写者持锁那一刻读到半截是正常时序）；单个文件超过 1 MiB ⇒ 跳过并 `warn!` 点名。
+
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
 ```text
