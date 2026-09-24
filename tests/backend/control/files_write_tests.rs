@@ -4,8 +4,12 @@
 //!
 //! **买到的**（全部在本机临时目录上真跑，不是源码扫描）：
 //!
-//! - 围栏① 真的会拒：上跳段 · 绝对路径 · 空段 · 落进 Claude 树的写点；
-//! - 围栏② 真的会拒：目标根里放一条**真的 symlink** 指向 Claude 树，解完之后被拦；
+//! - 围栏① 真的会拒：上跳段 · 绝对路径 · 空段 · **写点本身就是一份会话文件**；
+//! - 围栏② 真的会拒：目标根里放一条**真的 symlink** 指向一份会话文件，解完之后被拦；
+//! - 🔴〔波 5 ㈢ 09-23〕**放宽那一侧同样有判据**：`~/.claude/skills/**` ·
+//!   `settings.json` · 另一个账号的账号库 —— 逐条**必须写得进去**（用户 09-23 裁
+//!   「文件管理器该不该能改 `~/.claude` 里的东西. 可以.」）。
+//!   ⚠ 这一侧的判据与上一侧**同等承重**：只验「该拒的拒了」，一个恒 `Err` 的围栏也全绿。
 //! - 两道围栏**真的接在写入口上**：拒绝的那几次，盘上**没有**多出任何文件
 //!   （删掉入口里那一句串联调用 ⇒ 文件会真落盘 ⇒ 这里当场红）；
 //! - `O_EXCL` 真的是 `O_EXCL`：第二次写同一个名字失败，且**第一份内容一个字节没动**。
@@ -15,9 +19,12 @@
 //! 1. 🔴 **没有真远端**。本模块与本族判据全跑在**本机**文件系统上。
 //!    「在一台真的远端机器上、经由后端跑过一次这条写路」这件事**本轮判不了** ——
 //!    盘面上没有真远端，`设计/60 §7` 那条「未实测」照旧成立。
-//! 2. 🔴 **没有覆盖「多账号同时在盘上」那一维**。`resolve_home` 只答得出此刻被选中的
+//! 2. ✅〔波 5 ㈢ 09-23 · **本条已假，留原话当墓碑**〕原话是
+//!    「🔴 **没有覆盖「多账号同时在盘上」那一维**。`resolve_home` 只答得出此刻被选中的
 //!    那一个配置根；另外几个账号目录靠「段以 `.claude` 开头」这条形状兜，
-//!    而那条形状**换个名字就兜不住**。本族判据对那一维**不出声**。
+//!    而那条形状**换个名字就兜不住**」。
+//!    围栏换成**结构判定**之后这一维不存在了：它不问配置根在哪。
+//!    🔴 **别读成「变强了」** —— 代价是「整棵树」那一档的拦截面整个没了，而那是用户裁的。
 //! 3. 🔴 **TOCTOU 那个窗没判**。围栏② 与落盘之间的竞态要真并发才量得出来，
 //!    本族判据一格都没量。模块头注里登记的兜底（`O_EXCL` 挡住最后那一段）
 //!    这里只验了「同名第二次会失败」，**没有**验「父目录在窗里被换掉」那一形。
@@ -35,65 +42,99 @@ fn temp_root(tag: &str) -> PathBuf {
     p
 }
 
-/// 一个**确定不在 Claude 树里**的假配置根，给纯函数用例当参数。
-///
-/// 纯函数全部把 `claude_home` 当**入参**收，刻意不去读环境变量 ——
-/// `set_var` 在并发测试里是共享状态，本仓不往那条路上走。
-fn fake_home() -> PathBuf {
-    PathBuf::from("/nonexistent-claude-home-for-tests")
-}
+// 🔴 〔波 5 ㈢ 09-23〕原来这里有一个 `fake_home()`（「一个确定不在 Claude 树里的假配置根，
+//    给纯函数用例当参数」）。**围栏不再收配置根这个入参了** ⇒ 它一个调用方都没有。
+//    留着它就是一个「看起来还在被用」的死夹具，删掉。
+//    ⚠ 这件事本身是一条读数：**写侧围栏从此与「此刻选中哪个账号」无关**。
 
-// ── 围栏核心判定：`is_inside_tree` ────────────────────────────────
+// ── 围栏核心判定：`is_protected_session_file`〔波 5 ㈢ 09-23 换的〕──────────
 
 /// ★ **量具自检**：这条判定两个方向都得会答。
 ///
 /// 只验「该拒的拒了」是空真的一半：一个恒返回 `true` 的实现同样能过。
 /// ⇒ 阴阳两侧同拍验，缺一侧这条就不是判据。
+///
+/// 🔴 **阴性那一侧这一轮是主角**：用户 09-23 裁「文件管理器该不该能改 `~/.claude`
+/// 里的东西. **可以.**」⇒ 下面阴性表里那几条 `~/.claude/**` **09-23 之前是被拒的**，
+/// 今天必须放行。哪一条回到「拒」，就是有人把那一裁悄悄收回去了。
 #[test]
-fn the_claude_tree_predicate_answers_both_ways() {
-    let home = PathBuf::from("/home/u/.claude");
-    // ── 阳性：该认出来的几形 ──────────────────────────────────────
+fn the_session_file_predicate_answers_both_ways() {
+    use crate::agents::claudecode::paths::is_protected_session_file;
+    // ── 阳性：那几份具体的会话文件 ──────────────────────────────────
     for hit in [
-        "/home/u/.claude",                            // 根自己
-        "/home/u/.claude/projects/p/s.jsonl",         // 根底下
-        "/home/u/.claude.json",                       // `~/.claude*` 那个星号
-        "/home/u/.claude-alt/q/projects/p/s.jsonl", // 另一个账号的根
-        "/srv/work/.claude/settings.json",            // 工程内的那棵
-        "/home/u/.claudex/x",                         // 星号逐字包含它
+        "/home/u/.claude/projects/-x/abc.jsonl",       // `projects/` 下恰 2 段
+        "/home/u/.claude/sessions/1234.json",          // pidfile，`sessions/` 下 1 段
+        "/opt/accts/q/projects/-x/abc.jsonl",          // 配置根被切走，照样认得（结构判定）
+        "C:\\Users\\me\\.claude\\projects\\p\\s.jsonl", // 反斜杠先归一
     ] {
         assert!(
-            is_inside_tree(&home, Path::new(hit)),
-            "该判成 Claude 树却放过了：{hit}"
+            is_protected_session_file(hit),
+            "该判成会话数据却放过了：{hit}"
         );
     }
-    // ── 阴性：普通路径一个都不许误伤 ────────────────────────────────
+    // ── 阴性：这些**必须**放行 ────────────────────────────────────────
+    //    ★ 前四条是 09-23 那一裁买到的东西，**逐条承重**。
     for miss in [
+        "/home/u/.claude/skills/my-skill/SKILL.md", // 用户 09-23 逐字点名的那一类
+        "/home/u/.claude/settings.json",            // `INVARIANTS §1` SS-14：写面绝不含它 —— 而「不含」≠「拒写」
+        "/home/u/.claude-alt/q/.credentials.json", // 账号库
+        "/home/u/.claude/projects/-x/sub/abc.jsonl", // `projects/` 下**多一层** ⇒ 不是会话文件那个位置
+        "/home/u/.claude/projects/a.jsonl",          // 少一层
+        "/home/u/.claude/projects/-x/abc.jsonl.bak", // 后缀差一截
         "/home/u/docs/a.md",
-        "/home/u/claude/a.md", // 没有前导点 —— 这是普通目录
         "/srv/work/src/main.rs",
-        "/home/u/notes/claude-notes.md",
     ] {
         assert!(
-            !is_inside_tree(&home, Path::new(miss)),
-            "普通路径被误伤成 Claude 树：{miss}"
+            !is_protected_session_file(miss),
+            "🔴 这条路径被拒了，而 09-23 那一裁要求它放行：{miss}"
         );
     }
 }
 
-/// 配置根被账号隔离切到一个**不带 `.claude` 字样**的地方时，第一条仍然认得出来。
+/// 🔴🔴 **两个 crate 里那两份判定的函数体，逐字节相同。**
 ///
-/// 这一格是「段形状」那条兜不住的那一半 —— 两条各治一形，缺一条就有一族逃得掉。
+/// 两棵树之间没有共享落点（`src/backend` 刻意不在 monitor 那个 workspace 里），
+/// 而 `设计/60 §8.8` 记着上一次「把围栏搬成共享 crate」当天就被撤回。
+/// ⇒ 统一只能靠「两份**逐字**副本 ＋ 一条相等断言」。本条是后端这一侧那一份；
+/// 桥那一侧还有一份同形的（`tests/bridge/claude_data_fence_tests.rs`），
+/// 两侧各自跑得起来 —— 只跑一棵树的人也逃不掉。
+///
+/// ⚠ 它钉的是**函数体**，不钉函数名（两侧刻意不同名：同名会让桥那条
+/// 「`pub fn is_protected_claude_data_path` 全仓恰好一次」的断言红，而那条断言是对的）。
 #[test]
-fn a_relocated_config_root_is_still_recognised() {
-    let home = PathBuf::from("/opt/accts/q");
+fn the_two_copies_of_the_session_fence_are_byte_identical() {
+    fn body(src: &str, sig: &str) -> String {
+        let at = src
+            .find(sig)
+            .unwrap_or_else(|| panic!("语料里找不到 `{sig}` —— 抽取坏了，本条此刻在空转"));
+        let open = src[at..].find('{').expect("找不到函数体开头") + at;
+        let close = src[open..].find("\n}\n").expect("找不到函数体结尾") + open;
+        src[open + 1..close + 1].to_string()
+    }
+    let root = crate::guard_support::repo_root();
+    let mine = std::fs::read_to_string(root.join("src/backend/agents/claudecode/paths.rs"))
+        .expect("读后端那一份");
+    let theirs = std::fs::read_to_string(root.join("src/bridge/src/claude_data_fence.rs"))
+        .expect("读桥那一份");
+    // 针**运行时拼**：写成字面量的话本文件自己就成了第三处住址。
+    let a = body(&mine, &format!("pub fn is_protected_session_{}(", "file"));
+    let b = body(&theirs, &format!("pub fn is_protected_claude_{}_path(", "data"));
+    // 反空真：抽出来的必须是真代码。
     assert!(
-        is_inside_tree(&home, Path::new("/opt/accts/q/projects/p/s.jsonl")),
-        "`CLAUDE_CONFIG_DIR` 切到不带 `.claude` 字样的地方就认不出来了 —— \
-         那正是账号隔离每天在做的事"
+        a.len() > 400 && a.contains("rfind"),
+        "后端那一份抽出来只有 {} 字节 —— 抽取坏了",
+        a.len()
     );
-    assert!(
-        !is_inside_tree(&home, Path::new("/opt/accts-other/x")),
-        "按段比的语义丢了：`/opt/accts-other` 不在 `/opt/accts/q` 底下"
+    assert_eq!(
+        a, b,
+        "🔴 **两份会话围栏分叉了。**\n\
+         这两份函数体必须逐字节相同 —— 它们是**同一个判定**，\n\
+         两份存在的唯一理由是两个 crate 之间没有共享落点（`src/backend` 刻意不在\n\
+         monitor 那个 workspace 里，`设计/60 §8.8` 记着搬成共享 crate 被撤回过）。\n\
+         ⇒ 处置：改了一侧就把同一段字节抄到另一侧。\n\
+         ★ 分叉的代价不是重复代码，是**两份会给出不同答案**：同一次「往 `~/.claude` 里写」\n\
+         在后端那条路与桥那条路上结果不同，而界面上看不出这个区别\n\
+         （`设计/60 §8.7` 逐字记着这个后果，这一刀治的就是它）。"
     );
 }
 
@@ -101,7 +142,6 @@ fn a_relocated_config_root_is_still_recognised() {
 
 #[test]
 fn the_lexical_fence_refuses_the_four_shapes() {
-    let home = fake_home();
     let root = PathBuf::from("/srv/target");
     for (rel, word) in [
         ("../escape.txt", "上跳段"),
@@ -111,7 +151,7 @@ fn the_lexical_fence_refuses_the_four_shapes() {
         ("", "空的"),
         ("   ", "空的"),
     ] {
-        let err = fence_lexical(&home, &root, rel)
+        let err = fence_lexical(&root, rel)
             .expect_err(&format!("围栏① 放过了 {rel:?} —— 它该被拒"));
         assert!(
             err.contains("refuse write") && err.contains(word),
@@ -125,49 +165,138 @@ fn the_lexical_fence_refuses_the_four_shapes() {
 /// 没有这一格，一个「恒 `Err`」的围栏也能让上面那条全绿 —— 那是最典型的空真。
 #[test]
 fn the_lexical_fence_lets_a_clean_relative_path_through() {
-    let home = fake_home();
     let root = PathBuf::from("/srv/target");
-    let ok = fence_lexical(&home, &root, "docs/notes/a.md").expect("干净的相对段被误拒");
+    let ok = fence_lexical(&root, "docs/notes/a.md").expect("干净的相对段被误拒");
     assert_eq!(ok, root.join("docs/notes/a.md"), "落点算错了");
 }
 
-/// 目标根**自己**落在 Claude 树里时，相对段再干净也不行。
+/// 🔴🔴 **〔波 5 ㈢ 09-23〕这一格整个翻了牌，而它是那一裁的正题。**
+///
+/// 原来的标题逐字是「目标根**自己**落在 Claude 树里时，相对段再干净也不行」，
+/// 断言的是「把文件管理目标指到 `~/.claude` 底下 ⇒ 整个拒」。
+/// **用户 09-23 逐字裁掉了那一句**：「文件管理器该不该能改 `~/.claude` 里的东西. 可以.」
+///
+/// ⇒ 今天判的是**两向**：
+/// · 目标根指到 `~/.claude` 底下 ＋ 写点不是会话文件 ⇒ **放行**（那一裁买到的东西）；
+/// · 同一个根 ＋ 写点**恰好**是那份会话文件 ⇒ **照旧拒**（那一裁没买到的东西）。
+///
+/// ⚠ 只留前一向就等于把围栏拆了；只留后一向就等于那一裁没落地。**两向缺一不可。**
 #[test]
-fn a_target_root_inside_the_claude_tree_is_refused_outright() {
-    let home = PathBuf::from("/home/u/.claude");
-    let err = fence_lexical(&home, Path::new("/home/u/.claude/projects"), "p/s.jsonl")
-        .expect_err("把「文件管理目标」指到 Claude 树里，竟然放行了");
-    assert!(err.contains("Claude 数据源"), "拒了，但不是围栏拒的：{err}");
+fn a_target_root_inside_the_claude_tree_is_allowed_unless_the_write_point_is_a_session_file() {
+    // 向一：skills 那一类 —— 必须放行。
+    let ok = fence_lexical(Path::new("/home/u/.claude/skills"), "my-skill/SKILL.md")
+        .expect("🔴 用户 09-23 裁「可以」，而这条路径被拒了");
+    assert_eq!(ok, PathBuf::from("/home/u/.claude/skills/my-skill/SKILL.md"));
+    // 向二：写点恰好是那份会话文件 —— 照旧拒。
+    let err = fence_lexical(Path::new("/home/u/.claude/projects"), "-x/s.jsonl")
+        .expect_err("写点就是一份会话记录，竟然放行了");
+    assert!(
+        err.contains("Claude 会话数据"),
+        "拒了，但不是围栏拒的：{err}"
+    );
+    // 向二之二：pidfile 那一形也要拦（两形都在判定里，只验一形等于半个判据）。
+    let err = fence_lexical(Path::new("/home/u/.claude/sessions"), "4321.json")
+        .expect_err("pidfile 竟然放行了");
+    assert!(err.contains("Claude 会话数据"), "拒的理由不对：{err}");
 }
 
 // ── 围栏②（现打，真 symlink）──────────────────────────────────────────
 
-/// ★★ **本族最承重的一格**：目标根里藏一条指向 Claude 树的 symlink。
+/// ★★ **本族最承重的一格**：目标根里藏一条 symlink，解完之后写点落到会话文件上。
 ///
-/// 围栏① 对它**完全看不见**（`docs/a.md` 在词法上干净得很），
+/// 围栏① 对它**完全看不见**（`docs/abc.jsonl` 在词法上干净得很 —— 它自己那一段
+/// 不构成 `projects/<proj>/<sid>.jsonl` 那个形状），
 /// 只有解完 symlink 再判一次才拦得住。⇒ 这一格红，说明围栏② 没了。
 ///
-/// ★ 它同时钉着围栏② 里**两条判定的先后**：这条 symlink 既跑出了目标根、又落进了那几棵树，
-/// 两条都会拒 —— 而诊断必须是「碰了 Claude 数据源」那一句（那是这条围栏立在这里的全部理由）。
+/// ⚠ 〔波 5 ㈢ 09-23〕语料跟着判定改了：此前放的 symlink 指向**一棵 `.claude` 树**，
+/// 今天那已经不是拒绝理由（用户裁「可以」）⇒ 它得指向 `projects/<proj>/` ——
+/// 也就是让解完之后的那条路径**恰好是**一份会话记录。
+/// **这不是把用例改弱，是把它改到新判定真正的边界上**：旧语料在新判定下会放行，
+/// 留着它只会让这一格以「围栏坏了」的假象红。
+///
+/// ★ 它同时钉着围栏② 里**两条判定的先后**：这条路径既跑出了目标根、又是一份会话文件，
+/// 两条都会拒 —— 而诊断必须是「碰了 Claude 会话数据」那一句（那是这条围栏立在这里的全部理由）。
 /// 把顺序换回去，本格会以「说的不是 Claude」的形式红。
 #[test]
 #[cfg(unix)]
-fn the_resolved_fence_catches_a_symlink_into_the_claude_tree() {
+fn the_resolved_fence_catches_a_symlink_onto_a_session_file() {
     let base = temp_root("symlink");
     let root = base.join("target");
-    let home = base.join(".claude");
+    // 解完之后必须长成 `<任意>/projects/<proj>/<sid>.jsonl`（`projects/` 下恰 2 段）。
+    let live = base.join("cfg/projects/-x");
     std::fs::create_dir_all(&root).expect("建目标根");
-    std::fs::create_dir_all(&home).expect("建假 Claude 根");
-    std::os::unix::fs::symlink(&home, root.join("docs")).expect("放 symlink");
+    std::fs::create_dir_all(&live).expect("建会话目录");
+    std::os::unix::fs::symlink(&live, root.join("docs")).expect("放 symlink");
 
     // 围栏①：看不见 —— 这一句是**对照**，它证明围栏② 不是多余的。
-    let lexical = fence_lexical(&home, &root, "docs/a.md").expect("围栏① 本来就该放过它");
+    let lexical = fence_lexical(&root, "docs/abc.jsonl").expect("围栏① 本来就该放过它");
     // 围栏②：解完之后当场拦下。
-    let err = fence_resolved(&home, &root, &lexical)
-        .expect_err("目标根里的 symlink 指进 Claude 树，围栏② 竟然放行了");
+    let err = fence_resolved(&root, &lexical)
+        .expect_err("目标根里的 symlink 指到会话目录，围栏② 竟然放行了");
     assert!(
-        err.contains("Claude 数据源"),
+        err.contains("Claude 会话数据"),
         "拒了，但不是 Claude 围栏拒的：{err}"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★★ **上一格的阴性对照，而它是 09-23 那一裁在围栏② 上的正题。**
+///
+/// 同样是目标根里一条 symlink、同样指到一棵 `.claude` 树里，但解完之后落的是
+/// `skills/` 那一类 ⇒ **必须写得进去**。
+///
+/// 没有这一格，把围栏② 改回「解完只要落在 `.claude` 树里就拒」会全绿 ——
+/// 那正是这一刀要撤掉的那一档。
+#[test]
+#[cfg(unix)]
+fn the_resolved_fence_lets_a_symlink_into_a_claude_tree_through_when_it_is_not_a_session_file() {
+    let base = temp_root("symlinkok");
+    let root = base.join("target");
+    let skills = base.join(".claude/skills");
+    std::fs::create_dir_all(&root).expect("建目标根");
+    std::fs::create_dir_all(&skills).expect("建 skills 目录");
+    std::os::unix::fs::symlink(&skills, root.join("s")).expect("放 symlink");
+
+    let lexical = fence_lexical(&root, "s/SKILL.md").expect("围栏① 该放过它");
+    let err = fence_resolved(&root, &lexical).expect_err("这一格今天该以「跑出目标根」被拒");
+    // 🔴 它仍然被拒，**但理由必须是越界，不是 Claude** —— 两者的差别就是这一裁的全部内容。
+    assert!(
+        err.contains("跑出了目标根"),
+        "🔴 拒的理由是 Claude 那一关，说明「整棵树」那一档没撤干净：{err}"
+    );
+    assert!(
+        !err.contains("会话数据"),
+        "🔴 skills 文件被判成了会话数据：{err}"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 同一件事**在目标根里面**做一遍：根就指在 `.claude` 底下，写点是 `skills/**`
+/// ⇒ 两道围栏都得放行，而且要**真落盘**。
+///
+/// 上一格证明的是「理由换了」，这一格证明的是「**真的写得进去**」——
+/// 缺了它，一个「一律以越界为由拒掉」的实现照样让上一格绿。
+#[test]
+fn a_write_into_a_claude_tree_that_is_not_session_data_really_lands() {
+    let base = temp_root("skillswrite");
+    // 目标根**自己**就在一棵名字以 `.claude` 开头的树里 —— 09-23 之前这是当场拒。
+    let root = base.join(".claude/skills");
+    std::fs::create_dir_all(&root).expect("建 skills 根");
+    let got = create_new_file(&root, "my-skill/../SKILL.md", b"x");
+    assert!(got.is_err(), "围栏① 的「不做规范化」那条口径松了");
+
+    let got = create_new_file(&root, "SKILL.md", b"hello")
+        .expect("🔴 用户 09-23 裁「可以」，而这一次写被拒了");
+    assert_eq!(std::fs::read(&got).expect("读回"), b"hello");
+
+    // 而同一个根底下，**会话文件那一形照旧写不进去**（阳性对照，同拍）。
+    let live = base.join(".claude/projects");
+    std::fs::create_dir_all(&live).expect("建 projects 根");
+    let err = create_new_file(&live, "-x/s.jsonl", b"x").expect_err("会话记录竟然写进去了");
+    assert_eq!(err.code(), "refused", "档位不对：{err:?}");
+    assert!(
+        !live.join("-x/s.jsonl").exists(),
+        "说拒了，文件却落盘了"
     );
     std::fs::remove_dir_all(&base).ok();
 }
@@ -183,9 +312,9 @@ fn the_resolved_fence_catches_a_symlink_out_of_the_target_root() {
     std::fs::create_dir_all(&outside).expect("建外部目录");
     std::os::unix::fs::symlink(&outside, root.join("out")).expect("放 symlink");
 
-    let lexical = fence_lexical(&fake_home(), &root, "out/a.md").expect("围栏① 该放过它");
-    let err = fence_resolved(&fake_home(), &root, &lexical)
-        .expect_err("symlink 指出目标根，围栏② 竟然放行了");
+    let lexical = fence_lexical(&root, "out/a.md").expect("围栏① 该放过它");
+    let err =
+        fence_resolved(&root, &lexical).expect_err("symlink 指出目标根，围栏② 竟然放行了");
     assert!(err.contains("跑出了目标根"), "拒了，但说的不是越界：{err}");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -195,8 +324,8 @@ fn the_resolved_fence_catches_a_symlink_out_of_the_target_root() {
 fn the_resolved_fence_lets_a_clean_path_through() {
     let root = temp_root("clean2");
     std::fs::create_dir_all(root.join("docs")).expect("建子目录");
-    let lexical = fence_lexical(&fake_home(), &root, "docs/a.md").expect("围栏① 该放过它");
-    let got = fence_resolved(&fake_home(), &root, &lexical).expect("围栏② 误拒了干净路径");
+    let lexical = fence_lexical(&root, "docs/a.md").expect("围栏① 该放过它");
+    let got = fence_resolved(&root, &lexical).expect("围栏② 误拒了干净路径");
     assert_eq!(
         got.file_name().and_then(|s| s.to_str()),
         Some("a.md"),
@@ -215,8 +344,7 @@ fn the_resolved_fence_lets_a_clean_path_through() {
 #[test]
 fn a_missing_parent_directory_is_a_plain_refusal_not_a_silent_mkdir() {
     let root = temp_root("noparent");
-    let err = fence_resolved(&fake_home(), &root, &root.join("nope/a.md"))
-        .expect_err("父目录不在，却没拒");
+    let err = fence_resolved(&root, &root.join("nope/a.md")).expect_err("父目录不在，却没拒");
     assert!(err.contains("父目录解析不了"), "拒的理由不对：{err}");
     assert!(
         !root.join("nope").exists(),
@@ -258,22 +386,26 @@ fn the_write_entry_point_actually_goes_through_the_fence() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 同上一格的 Claude 那一侧：写点落进 `.claude` 段，入口必须拒，且盘上不留东西。
+/// 同上一格的 Claude 那一侧：写点**就是一份会话记录**，入口必须拒，且盘上不留东西。
+///
+/// ⚠ 〔波 5 ㈢ 09-23〕原来这一格建的根是 `<临时>/.claude`、写点 `a.md`，
+/// 断言「落在 `.claude` 段底下就拒」。**那一句今天是假的**（用户裁「可以」）
+/// ⇒ 语料换成真正还被拦的那一形：`projects/<proj>/<sid>.jsonl`。
 #[test]
-fn the_write_entry_point_refuses_a_claude_tree_target() {
+fn the_write_entry_point_refuses_a_live_session_file() {
     let base = temp_root("claudewire");
-    let root = base.join(".claude");
-    std::fs::create_dir_all(&root).expect("建一个名字以 .claude 开头的目标根");
+    let root = base.join(".claude/projects");
+    std::fs::create_dir_all(root.join("-x")).expect("建会话目录");
 
-    let err = create_new_file(&root, "a.md", b"x")
-        .expect_err("写点落在 `.claude` 段底下，写入口竟然放行了");
+    let err = create_new_file(&root, "-x/abc.jsonl", b"x")
+        .expect_err("写点就是一份会话记录，写入口竟然放行了");
     assert_eq!(err.code(), "refused", "档位不对：{err:?}");
     assert!(
-        err.message().contains("Claude 数据源"),
+        err.message().contains("Claude 会话数据"),
         "拒了，但不是 Claude 围栏拒的：{}",
         err.message()
     );
-    assert!(!root.join("a.md").exists(), "说拒了，文件却落盘了");
+    assert!(!root.join("-x/abc.jsonl").exists(), "说拒了，文件却落盘了");
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -346,24 +478,24 @@ fn a_clean_write_lands_once_and_never_overwrites() {
 fn the_write_entry_point_is_still_fenced_after_a_symlink_is_resolved() {
     let base = temp_root("wired2");
     let root = base.join("target");
-    // 名字以那个前缀开头 ⇒ 不论环境变量指向哪，它都算 Claude 那几棵树里的一棵。
-    let tree = base.join(".claude-deadvalue");
+    // 解完之后要恰好长成 `<任意>/projects/<proj>/<sid>.jsonl`。
+    let live = base.join("cfg/projects/-x");
     std::fs::create_dir_all(&root).expect("建目标根");
-    std::fs::create_dir_all(&tree).expect("建假树");
-    std::os::unix::fs::symlink(&tree, root.join("docs")).expect("放 symlink");
+    std::fs::create_dir_all(&live).expect("建会话目录");
+    std::os::unix::fs::symlink(&live, root.join("docs")).expect("放 symlink");
 
-    let err = create_new_file(&root, "docs/a.md", b"x")
-        .expect_err("词法上干净、解完却落进那棵树 —— 写入口竟然放行了");
+    let err = create_new_file(&root, "docs/abc.jsonl", b"x")
+        .expect_err("词法上干净、解完却落到一份会话记录上 —— 写入口竟然放行了");
     assert_eq!(err.code(), "refused", "档位不对：{err:?}");
     assert!(
-        err.message().contains("Claude 数据源"),
+        err.message().contains("Claude 会话数据"),
         "拒了，但不是围栏② 的 Claude 那一关拒的：{}",
         err.message()
     );
     assert!(
-        !tree.join("a.md").exists(),
-        "🔴 说拒了，文件却真的落进那棵树了：{}",
-        tree.join("a.md").display()
+        !live.join("abc.jsonl").exists(),
+        "🔴 说拒了，文件却真的落进那个会话目录了：{}",
+        live.join("abc.jsonl").display()
     );
     std::fs::remove_dir_all(&base).ok();
 }
@@ -475,26 +607,26 @@ fn the_command_face_reaches_the_lexical_fence() {
 fn the_command_face_reaches_the_resolved_fence() {
     let base = temp_root("cmdres");
     let root = base.join("target");
-    // 名字以那个前缀开头 ⇒ 不论环境变量指向哪，它都算 Claude 那几棵树里的一棵。
-    let tree = base.join(".claude-deadvalue");
+    // 解完之后恰好长成 `<任意>/projects/<proj>/<sid>.jsonl`。
+    let live = base.join("cfg/projects/-x");
     std::fs::create_dir_all(&root).expect("建目标根");
-    std::fs::create_dir_all(&tree).expect("建假树");
-    std::os::unix::fs::symlink(&tree, root.join("docs")).expect("放 symlink");
+    std::fs::create_dir_all(&live).expect("建会话目录");
+    std::os::unix::fs::symlink(&live, root.join("docs")).expect("放 symlink");
 
     let (code, msg) = answer_wire(
         "files-create",
-        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "docs/a.md"}),
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "docs/abc.jsonl"}),
     )
-    .expect_err("词法上干净、解完却落进那棵树 —— 命令面竟然放行了");
+    .expect_err("词法上干净、解完却落到一份会话记录上 —— 命令面竟然放行了");
     assert_eq!(code, "refused", "档位不对（{msg}）");
     assert!(
-        msg.contains("Claude 数据源"),
+        msg.contains("Claude 会话数据"),
         "拒了，但不是围栏② 的 Claude 那一关拒的：{msg}"
     );
     assert!(
-        !tree.join("a.md").exists(),
-        "🔴 说拒了，文件却真的落进那棵树了：{}",
-        tree.join("a.md").display()
+        !live.join("abc.jsonl").exists(),
+        "🔴 说拒了，文件却真的落进那个会话目录了：{}",
+        live.join("abc.jsonl").display()
     );
     std::fs::remove_dir_all(&base).ok();
 }

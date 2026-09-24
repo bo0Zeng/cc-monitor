@@ -27,12 +27,30 @@
 //!
 //! | 道 | 住址 | 它拦的是 | 它**拦不住**的是 |
 //! |---|---|---|---|
-//! | ① 词法 | [`fence_lexical`] | 上跳段 · 绝对路径 · 盘符 · 空段 · 落进那几棵树 | 盘上真实的 symlink —— 它根本不碰盘 |
+//! | ① 词法 | [`fence_lexical`] | 上跳段 · 绝对路径 · 盘符 · 空段 · 写点本身就是一份会话文件 | 盘上真实的 symlink —— 它根本不碰盘 |
 //! | ② 现打 | [`fence_resolved`] | 目标根里藏一条指向别处的 symlink（**解完再判一次**） | 判定与落盘之间的时间窗（TOCTOU，见下） |
 //!
-//! ⚠ **「哪几棵树算 Claude 的」这条知识不在本模块**：`control/` 是通用层，
+//! 🔴 **〔波 5 ㈢ · 2026-09-23〕上面那句「不许落进 Claude 那几棵树」的射程被用户改窄了。**
+//!
+//! 用户 09-23 逐字：「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
+//! ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」的产品题按**丙**（统一成同一个判定）裁，
+//! 统一到**窄的那一档**：只拦那几份具体的会话文件（`projects/<proj>/<sid>.jsonl` 恰 2 段 ·
+//! `sessions/<x>.json` 恰 1 段），于是 skills · 配置 · 账号库**改得动**。
+//!
+//! | | 09-23 之前 | 今天 |
+//! |---|---|---|
+//! | 判定 | `is_inside_tree`（拒**整棵 `~/.claude*` 树**） | `is_protected_session_path`（只拒那几份会话文件） |
+//! | `~/.claude/skills/x.md` | **拒** | **放行** |
+//! | `~/.claude/settings.json` | **拒** | **放行**（与桥那一侧逐字同口径） |
+//! | `~/.claude/projects/-x/s.jsonl` | 拒 | **照旧拒** |
+//! | 依赖「此刻选中的是哪个账号」 | **是**（`resolve_home` 现打解析配置根） | **不是** —— 判定是纯结构的 |
+//!
+//! ⚠ 最后那一行顺带结掉了本模块头注下面「诚实边界」第 2 条的一半：
+//! 写侧围栏从此**不问**配置根在哪，`CLAUDE_CONFIG_DIR` 指到哪都判得一样。
+//!
+//! ⚠ **「哪几份文件算 Claude 的会话数据」这条知识不在本模块**：`control/` 是通用层，
 //! 它不该知道那个目录叫什么（`agent_locality_guard` 的针就钉在这上面）。
-//! 判定的唯一住址是适配层里的 `is_inside_tree`，本模块只是**调用它**。
+//! 判定的住址是适配层里的 `is_protected_session_path`，本模块只是**调用它**。
 //!
 //! # 🔴 诚实边界 —— 本模块买到的与**买不到**的
 //!
@@ -41,10 +59,14 @@
 //!    **兜底的是 `O_EXCL` 本身** —— 最后那一段若已存在（含它是一条 symlink），
 //!    开文件这一步直接失败，不会跟随过去写。⇒ 窗里能被利用的只剩「父目录整个被换掉」
 //!    这一形，而那需要对目标根有写权限的本地攻击者。**如实登记为未闭合。**
-//! 2. **只认得当前这一个配置根**：账号隔离（cc-acct-iso）靠切那个环境变量，
+//! 2. ✅〔波 5 ㈢ · 2026-09-23 · **本条已假，留原话当墓碑**〕
+//!    原话是「**只认得当前这一个配置根**：账号隔离（cc-acct-iso）靠切那个环境变量，
 //!    盘上可以同时有好几个账号目录，而配置根解析只答得出**此刻这一个**。
-//!    另外那几个靠「路径里有一段以那个名字开头」这条形状兜，**换个目录名就兜不住**。
-//!    如实登记（边界逐条写在那条判定自己的头注里）。
+//!    另外那几个靠「路径里有一段以那个名字开头」这条形状兜，**换个目录名就兜不住**」。
+//!    换成结构判定之后，写侧围栏**根本不问配置根在哪** ⇒ 那一维不存在了。
+//!    🔴 **但别把它读成「围栏变强了」**：它同时变窄了很多（见上面那张表）——
+//!    结掉的是「判定依赖一个会变的全局状态」这条缺陷，付出的是「整棵树」那一档的拦截面，
+//!    而那一格是**用户裁的**，不是这一刀省下来的。
 //! 3. **没有真远端**：本模块整个是本机文件系统上的路径算术 ＋ 一次落盘，
 //!    判据也全在临时目录上跑。「在一台真远端机器上跑过」这件事**本轮买不到**，
 //!    判据头注里逐条写着哪几格是判不了的。
@@ -52,7 +74,7 @@
 //!    把它接到命令面上要加子命令 ⇒ 要 bump `BUILD_ID` ⇒ 要同拍 re-embed（`99 §4` 条 19c），
 //!    那几处全在本轮写区之外。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
-use crate::agents::claudecode::paths::{is_inside_tree, resolve_home};
+use crate::agents::claudecode::paths::is_protected_session_path;
 use std::path::{Component, Path, PathBuf};
 
 /// 围栏①（词法）：**纯路径算术，不碰盘**。过了就返回「打算写到哪」。
@@ -64,9 +86,11 @@ use std::path::{Component, Path, PathBuf};
 /// - 上跳段与当前目录段 —— 上跳是逃出目标根的第一条路；当前目录段本身无害，
 ///   但留着它就等于承认「这里做路径规范化」，而规范化与安全判定混在一起正是
 ///   本仓反复踩的那种坑 ⇒ **一律拒，让调用方送干净的段进来。**
-/// - 过了上面几关之后，再判一次那几棵树 —— 目标根**自己**可能就在里面
-///   （有人把「文件管理目标」指到配置根底下），那种情况下相对段再干净也不行。
-pub fn fence_lexical(claude_home: &Path, root: &Path, rel: &str) -> Result<PathBuf, String> {
+/// - 过了上面几关之后，再判一次**写点自己是不是一份会话文件**。
+///   ⚠ 〔波 5 ㈢〕这一关此前判的是「目标根自己有没有落在那几棵树里」——
+///   用户 09-23 那一裁之后那一问**不再是拒绝理由**（把文件管理目标指到 `~/.claude`
+///   底下是合法的），换成的是「拼出来的那条路径是不是那几份具体的会话文件」。
+pub fn fence_lexical(root: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.trim().is_empty() {
         return Err("refuse write: 相对路径是空的".to_string());
     }
@@ -94,9 +118,9 @@ pub fn fence_lexical(claude_home: &Path, root: &Path, rel: &str) -> Result<PathB
             root.display()
         ));
     }
-    if is_inside_tree(claude_home, &target) {
+    if is_protected_session_path(&target) {
         return Err(format!(
-            "refuse write: 写点落在 Claude 数据源那几棵树里（{}）——\
+            "refuse write: 写点就是一份 Claude 会话数据文件（{}）——\
              管理会话文件请走历史浏览器，不走文件管理面",
             target.display()
         ));
@@ -110,16 +134,17 @@ pub fn fence_lexical(claude_home: &Path, root: &Path, rel: &str) -> Result<PathB
 /// `docs -> <配置根>`，`root/docs/x.md` 在词法上完全干净，落盘却落进了那棵树。
 ///
 /// 处置：解父目录（不解最后那一段 —— 它本来就不该存在，`O_EXCL` 会兜），
-/// 然后把「在不在目标根底下」与「是不是那几棵树」**在真路径上各判一次**。
-/// `claude_home` 与 `root` 自己也解一次：两边都解完再比，才比得对
-/// （配置根自己是条 symlink 的情况，只解一边会漏）。
+/// 然后把「在不在目标根底下」与「是不是那几份会话文件」**在真路径上各判一次**。
+/// `root` 自己也解一次：两边都解完再比，才比得对。
+///
+/// 🔴 〔波 5 ㈢〕本函数此前还收一个 `claude_home` 并把它也解一次 —— 那是
+/// 「整棵树」那一档的需要。换成结构判定之后**配置根这个入参整个不需要了**：
+/// 判定只看路径的段形状，`CLAUDE_CONFIG_DIR` 指到哪都判得一样。
+/// ⇒ 少一个入参不是整理，是**少一条会错的依赖**。
 ///
 /// ⚠ 父目录**必须已经在盘上**。本模块不建目录（那是白名单层明令禁止的），
 /// 所以「父目录不在」是一条正常的拒绝理由，不是内部错误。
-pub fn fence_resolved(claude_home: &Path, root: &Path, target: &Path) -> Result<PathBuf, String> {
-    // 解不开就用原路径：配置根在很多机器上根本不存在，那是正常的，不该在这里失败。
-    let real_home =
-        std::fs::canonicalize(claude_home).unwrap_or_else(|_| claude_home.to_path_buf());
+pub fn fence_resolved(root: &Path, target: &Path) -> Result<PathBuf, String> {
     let real_root = std::fs::canonicalize(root)
         .map_err(|e| format!("refuse write: 目标根解析不了（{}：{e}）", root.display()))?;
     let parent = target
@@ -131,14 +156,14 @@ pub fn fence_resolved(claude_home: &Path, root: &Path, target: &Path) -> Result<
     let real_parent = std::fs::canonicalize(parent)
         .map_err(|e| format!("refuse write: 父目录解析不了（{}：{e}）", parent.display()))?;
     let resolved = real_parent.join(name);
-    // ★ **顺序是承重的**：先问那几棵树，再问有没有跑出目标根。
-    //   一条 symlink 常常同时犯两样（指出去、而且指进那几棵树），两条判定谁先答，
-    //   决定了用户看到的是哪一句。**「碰了 Claude 数据源」这句更要紧**，
+    // ★ **顺序是承重的**：先问是不是会话文件，再问有没有跑出目标根。
+    //   一条 symlink 常常同时犯两样（指出去、而且指到一份会话文件上），两条判定谁先答，
+    //   决定了用户看到的是哪一句。**「碰了 Claude 会话数据」这句更要紧**，
     //   它说的是这条围栏立在这里的**全部理由**；「跑出目标根」只是越界。
     //   ⚠ 反过来排也仍然会拒 —— 但诊断会把最要紧的那件事盖掉。
-    if is_inside_tree(&real_home, &resolved) {
+    if is_protected_session_path(&resolved) {
         return Err(format!(
-            "refuse write: 解完 symlink 之后写点落进了 Claude 数据源那几棵树（{}）",
+            "refuse write: 解完 symlink 之后写点落到了一份 Claude 会话数据文件上（{}）",
             resolved.display()
         ));
     }
@@ -157,9 +182,8 @@ pub fn fence_resolved(claude_home: &Path, root: &Path, target: &Path) -> Result<
 /// 抽成单独一个函数，是为了让「围栏真的被串起来了」这件事有一个可直接喂参数的入口
 /// —— 判据不必为了验围栏而每次都真写一份文件。
 pub fn fenced_target(root: &Path, rel: &str) -> Result<PathBuf, String> {
-    let home = resolve_home();
-    let lexical = fence_lexical(&home, root, rel)?;
-    fence_resolved(&home, root, &lexical)
+    let lexical = fence_lexical(root, rel)?;
+    fence_resolved(root, &lexical)
 }
 
 /// 一次落盘没成，**是谁拦的**。
