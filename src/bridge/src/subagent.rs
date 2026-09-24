@@ -107,7 +107,7 @@ impl Backend {
                 // 认不出的落到拨号那条路 —— 而那条路只放行 `STILL_DIALED` 登记的子命令。
                 if let Some(route) = crate::backend::control::frame_query::route_argv(argv) {
                     return crate::backend::control::frame_query::run_routed(
-                        &cfg.origin_label(),
+                        &crate::origin::Origin(cfg.origin_label()),
                         route,
                     )
                     .await;

@@ -382,7 +382,7 @@ pub async fn list_remote_accounts(origin: String) -> Result<AccountsResult, Stri
     };
     // 〔`C1`〕走长连接的 `accounts-list`（不再为读一份账号清单单拨一条 SSH）。
     match crate::backend::control::frame_query::lines(
-        &cfg.origin_label(),
+        &crate::origin::Origin(cfg.origin_label()),
         "accounts-list",
         serde_json::json!({}),
     )
@@ -426,7 +426,7 @@ pub async fn list_remote_session_accounts(origin: String) -> Result<SessionAccou
     };
     // 〔`C1`〕走长连接的 `accounts-sessions` —— 此前 10 秒轮询每拍都为它拨一次 SSH。
     match crate::backend::control::frame_query::lines(
-        &cfg.origin_label(),
+        &crate::origin::Origin(cfg.origin_label()),
         "accounts-sessions",
         serde_json::json!({}),
     )

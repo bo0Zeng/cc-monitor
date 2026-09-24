@@ -25,6 +25,7 @@
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;
+use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -67,7 +68,8 @@ const LINES_BUDGET: Duration = Duration::from_secs(30);
 const PAGE_BUDGET: Duration = Duration::from_secs(60);
 
 /// 发一条帧命令，拿 `data`。
-async fn call(origin: &str, cmd: &str, args: Value, budget: Duration) -> Result<Value, String> {
+async fn call(origin: &Origin, cmd: &str, args: Value, budget: Duration) -> Result<Value, String> {
+    let origin = origin.as_wire_str();
     let Some(client) = inbound_client::client_for(origin) else {
         return Err(said(no_channel(origin)));
     };
@@ -95,8 +97,9 @@ fn said(r: Routed) -> String {
 }
 
 /// 按行那六条：`data.lines` 原样拿回（逐行、trim 过、剔空行 —— 与旧 `run_list_query` 同形）。
-pub(crate) async fn lines(origin: &str, cmd: &str, args: Value) -> Result<Vec<String>, String> {
+pub(crate) async fn lines(origin: &Origin, cmd: &str, args: Value) -> Result<Vec<String>, String> {
     let data = call(origin, cmd, args, LINES_BUDGET).await?;
+    let origin = origin.as_wire_str();
     let rows = data
         .get("lines")
         .and_then(Value::as_array)
@@ -120,7 +123,7 @@ pub(crate) struct TailPlan {
 }
 
 /// 问尾段在哪。
-pub(crate) async fn tail(origin: &str, path: &str, n: u64) -> Result<TailPlan, String> {
+pub(crate) async fn tail(origin: &Origin, path: &str, n: u64) -> Result<TailPlan, String> {
     let data = call(
         origin,
         "history-tail",
@@ -128,6 +131,7 @@ pub(crate) async fn tail(origin: &str, path: &str, n: u64) -> Result<TailPlan, S
         PAGE_BUDGET,
     )
     .await?;
+    let origin = origin.as_wire_str();
     let num = |k: &str| {
         data.get(k)
             .and_then(Value::as_u64)
@@ -161,16 +165,17 @@ pub(crate) struct Page {
 ///
 /// ⚠ 续点必须**前进**：后端回一页零字节却说没到头 ⇒ 当场报错，调用方的循环不会空转。
 pub(crate) async fn read_page(
-    origin: &str,
+    origin: &Origin,
     path: &str,
     offset: u64,
-    until: Option<u64>,
+    upto: Option<u64>,
 ) -> Result<Page, String> {
     let mut args = json!({"path": path, "offset": offset});
-    if let Some(u) = until {
+    if let Some(u) = upto {
         args["until"] = json!(u);
     }
     let data = call(origin, "history-read", args, PAGE_BUDGET).await?;
+    let origin = origin.as_wire_str();
     let text = data.get("text").and_then(Value::as_str);
     let next = data.get("next").and_then(Value::as_u64);
     let eof = data.get("eof").and_then(Value::as_bool);
@@ -193,15 +198,15 @@ pub(crate) async fn read_page(
 
 /// 读整段区间，收成逐行（trim 过、剔空行）—— 与旧 `run_list_query` 读 `--read-session` 的出参同形。
 pub(crate) async fn read_lines(
-    origin: &str,
+    origin: &Origin,
     path: &str,
     from: u64,
-    until: Option<u64>,
+    upto: Option<u64>,
 ) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     let mut offset = from;
     loop {
-        let page = read_page(origin, path, offset, until).await?;
+        let page = read_page(origin, path, offset, upto).await?;
         out.extend(
             page.text
                 .lines()
@@ -225,7 +230,7 @@ pub(crate) enum ArgvRoute {
     Read {
         path: String,
         from: u64,
-        until: Option<u64>,
+        upto: Option<u64>,
     },
 }
 
@@ -245,7 +250,7 @@ pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
         ["--read-session", path] => Some(ArgvRoute::Read {
             path: path.to_string(),
             from: 0,
-            until: None,
+            upto: None,
         }),
         // `session_skeleton::range_argv` 那一形（选项在前）。
         ["--read-session-from-offset", "--until", end, path, off] => {
@@ -255,7 +260,7 @@ pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
             Some(ArgvRoute::Read {
                 path: path.to_string(),
                 from: off,
-                until: Some(end),
+                upto: Some(end),
             })
         }
         _ => None,
@@ -263,10 +268,10 @@ pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
 }
 
 /// 按 [`route_argv`] 的结论跑那条帧查询，出逐行。
-pub(crate) async fn run_routed(origin: &str, route: ArgvRoute) -> Result<Vec<String>, String> {
+pub(crate) async fn run_routed(origin: &Origin, route: ArgvRoute) -> Result<Vec<String>, String> {
     match route {
         ArgvRoute::Lines(cmd, args) => lines(origin, cmd, args).await,
-        ArgvRoute::Read { path, from, until } => read_lines(origin, &path, from, until).await,
+        ArgvRoute::Read { path, from, upto } => read_lines(origin, &path, from, upto).await,
     }
 }
 
