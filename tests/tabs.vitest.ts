@@ -4544,6 +4544,54 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it("〔U3b · 步 8〕接上骨架 ⇒ 前端账本只留离尾巴最近的 200 条、monitor 重放缓冲只留尾巴；丢掉的滚到时按偏移要回来、只建卡不重记账", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "read_session_index") return Promise.resolve(idx(1100));
+      if (cmd === "read_session_range") {
+        const a = args as { seqBase: number; lineCount: number };
+        return Promise.resolve(
+          Array.from({ length: a.lineCount }, (_, k) => mk("big", a.seqBase + k, `u${a.seqBase + k}`)),
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+    // 尾巴 [1000,1100) 先到（钉 floor=1000），[0,1000) 后到 ⇒ 全收纳
+    tm.onLine(mk("big", 1000, "u1000"));
+    const el = peek(tm).tabs.get("big")!.streamEl;
+    Object.defineProperty(el, "scrollHeight", { value: 2000, configurable: true });
+    Object.defineProperty(el, "clientHeight", { value: 800, configurable: true });
+    tm.onBatchStart();
+    for (let s = 1001; s < 1100; s++) tm.onLine(mk("big", s, `u${s}`));
+    for (let s = 0; s < 1000; s++) tm.onLine(mk("big", s, `u${s}`));
+    tm.onBatchEnd();
+    const t = peek(tm).tabs.get("big")!;
+    expect(t.window.pendingCount).toBe(1000);
+    await settle();
+    expect(t.skeleton).not.toBeNull();
+    // ① 前端账本：只留 seq 最高的 200 条（[800,1000)）
+    expect(t.window.pendingCount).toBe(200);
+    expect(t.window.peek(1)[0].seq).toBe(800);
+    // ② monitor 重放缓冲：按 sid 登记「只留尾巴」
+    expect(vi.mocked(invoke).mock.calls.filter((c) => c[0] === "replay_keep_tail_only")).toEqual([
+      ["replay_keep_tail_only", { sessionId: "big" }],
+    ]);
+    // ③ 滚到被丢掉的那段：按偏移要回来；这些行**见过**（旁路账早记过）⇒ 只建卡，不再走 onLine
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+    const { turnEndNotifier } = await import("../src/turn-notify");
+    spy.mockClear();
+    vi.mocked(turnEndNotifier.observe).mockClear();
+    t.skeleton!.ensure(300, 2); // [298, 303)
+    await settle();
+    expect(
+      vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_range").map((c) => c[1]),
+    ).toEqual([
+      { origin: "<local>", jsonlPath: "/p/big.jsonl", offset: 2980, until: 3030, seqBase: 298, lineCount: 5 },
+    ]);
+    expect(spy.mock.calls.map((c) => (c[0] as { seq: number }).seq)).toEqual([298, 299, 300, 301, 302]);
+    expect(vi.mocked(turnEndNotifier.observe), "见过的行又走了一遍 onLine 旁路").not.toHaveBeenCalled();
+  });
+
   it("大纲跳转：点到还在占位里的一条 ⇒ 先按 uuid→seq 物化那一段再跳", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),

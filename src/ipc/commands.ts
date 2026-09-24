@@ -910,6 +910,13 @@ export const commands = {
   }) => invoke<JsonlLinePayload[]>("read_session_range", args),
 
   /**
+   * 〔U3b · `设计/10` 步 8〕这个会话**接上了骨架** ⇒ monitor 的重放缓冲只留尾巴（F5 之后也只重放尾巴，
+   * 其余按偏移要回来）。返回这次丢掉的条数。**只许在骨架接上之后调**（唯一调用点：`tabs.ts` 的骨架接入）。
+   */
+  replay_keep_tail_only: (args: { sessionId: string }) =>
+    invoke<number>("replay_keep_tail_only", args),
+
+  /**
    * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。
    * **线上是 snake_case**（`ActiveSessionPayload` 没有 `rename_all`），C04b 已论证过。
    */
