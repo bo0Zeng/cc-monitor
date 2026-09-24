@@ -71,46 +71,52 @@ pub const FRAME_BUDGET_US: u64 = 16_667;
 
 /// 每一维分到的份数：**三分之一帧**。
 ///
-/// 两个来源互相独立、会**叠加**（一份 1 MiB、里面还有一行 32 KiB 的文件两笔都付）
+/// 两个来源互相独立、会**叠加**（一份 256 KiB、里面还有一行 32 KiB 的文件两笔都付）
 /// ⇒ 两条都刚好不越线的最坏文件吃掉 2/3 帧，剩 1/3 给上屏、`shell.rs` 那两笔
 /// O(全文) 的拷贝与比较、以及用户那台比开发机慢的机器。
 pub const BUDGET_SHARE: u64 = 3;
 
 /// 一份现打读数：普通路径（生产那个 `TextEdit`）**每敲一个键**那一帧，
 /// 在 `at_bytes` 那么大的参照语料上，三趟里**最坏**那一趟的耗时。
+///
+/// 🔴〔F9 续 · 09-24 订正〕「敲一个键」逐字是**真敲**：控件有焦点、这一帧收到一个 `Event::Text`。
+/// 上一版读数在帧与帧之间 `push` 一个字，控件那一帧只是「文本变了、重排一次」；真敲键还要走
+/// 控件自己的事件路径（撤销器前后各克隆一次全文 · 字下标换字节下标 · **改完再排一次**）——
+/// 全文那一维现打贵 2.2 倍，上一版的 1 MiB 门槛因此放宽了一倍（逮到它的是经窗口生产路径量出来的
+/// 1 MiB 规整文本每键 10.7–16.7 ms，与「1 MiB 只要 7.49 ms」对不上）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Reading {
     pub at_bytes: u64,
     pub worst_us: u64,
 }
 
-/// 全文那一维的读数（每行 64 字节的规整文本；release 档；墙钟）。
+/// 全文那一维的读数（每行 64 字节的规整文本；release 档；墙钟；真敲键）。
 ///
-/// 参照档怎么挑：扫描（256 KiB · 512 KiB · 1 MiB · 2 MiB · 4 MiB）里**第一档最坏读数越过预算**
-/// 的那一档 —— 离要推的那个数最近、线性外推最短。2026-09-24 现打三次 × 三趟（负载 6–7 / 24 核）：
-/// 512 KiB 最坏 2.94 ms（没越）· **1 MiB 最坏 7.49 ms（越了）**。
-/// 来源：`tests::the_readings_behind_the_two_thresholds`，逐趟读数住 `设计/60 §9b`。
+/// 参照档怎么挑：扫描（64 · 128 · 256 · 512 KiB · 1 MiB）里**第一档最坏读数越过预算**
+/// 的那一档 —— 离要推的那个数最近、线性外推最短。2026-09-24 现打三次 × 三趟（负载 5–8 / 24 核）：
+/// 256 KiB 最坏 5.43 ms（没越）· **512 KiB 最坏 11.90 ms（越了）**。
+/// 来源：`tests::the_readings_behind_the_two_thresholds`，逐趟读数住 `设计/60 §9c 续`。
 pub const TOTAL_READING: Reading = Reading {
-    at_bytes: 1024 * 1024,
-    worst_us: 7_490,
+    at_bytes: 512 * 1024,
+    worst_us: 11_900,
 };
 
-/// 最长一行那一维的读数（整份压成一行；release 档；墙钟）。参照档挑法同上：
-/// 扫描（8 · 16 · 32 · 64 · 256 KiB）里 16 KiB 最坏 3.30 ms（没越）· **32 KiB 最坏 6.71 ms（越了）**。
+/// 最长一行那一维的读数（整份压成一行；release 档；墙钟；真敲键）。参照档挑法同上：
+/// 扫描（4 · 8 · 16 · 32 · 64 KiB）里 16 KiB 最坏 3.30 ms（没越）· **32 KiB 最坏 6.62 ms（越了）**。
 pub const LINE_READING: Reading = Reading {
     at_bytes: 32 * 1024,
-    worst_us: 6_710,
+    worst_us: 6_620,
 };
 
 /// 从一份读数推阈值：**预算 × 参照字节 ÷ 最坏耗时**，再取对数意义上最近的 2 的幂。
 ///
-/// 取 2 的幂不是为了好看：同一档语料九趟之间差到 1.7 倍（本拍现打 1 MiB 4.46–7.49 ms、
-/// 2 MiB 11.95–19.94 ms），推出来的数本来就只准到这个量级 ⇒
+/// 取 2 的幂不是为了好看：同一档语料九趟之间差到 1.4 倍（本拍现打 512 KiB 7.67–11.90 ms），
+/// 推出来的数本来就只准到这个量级 ⇒
 /// 「最近的 2 的幂」（误差 ≤ √2 倍）与读数的精度同阶，多保留的位数都是噪声。
 ///
-/// ⚠ 如实登记它的代价：本拍两个数都是**进位**进上来的（推出来 27 127 → 32 KiB、
-/// 777 683 → 1 MiB），也就是刚好不越线的文件实际吃到约 0.4 帧而不是 1/3 帧；
-/// 两条都刚好不越线的最坏文件 ≈ 6.71 ＋ 7.49 ＝ 14.2 ms，**仍在一帧之内**，余量变薄。
+/// ⚠ 如实登记它的代价：本拍推出来 27 496 → 32 KiB（进位）、244 741 → 256 KiB（进位）；
+/// 刚好不越线的文件实际吃到约 0.3–0.4 帧；两条都刚好不越线的最坏文件 ≈ 6.62 ＋ 5.43 ＝ 12.1 ms，
+/// **仍在一帧之内**。
 pub const fn derive_threshold(r: Reading) -> usize {
     let raw = (FRAME_BUDGET_US / BUDGET_SHARE) as u128 * r.at_bytes as u128 / r.worst_us as u128;
     nearest_pow2(raw) as usize
@@ -133,7 +139,7 @@ pub const fn nearest_pow2(x: u128) -> u128 {
 pub const BIG_LINE_BYTES: usize = 32 * 1024;
 
 /// 全文超过这么多字节 ⇒ 大文件模式。**住这一处**；判据钉它 == `derive_threshold(TOTAL_READING)`。
-pub const BIG_TOTAL_BYTES: usize = 1024 * 1024;
+pub const BIG_TOTAL_BYTES: usize = 256 * 1024;
 
 /// 一份文本量出来的两个数。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -407,6 +413,8 @@ pub struct Doc {
     pin: Option<Vec2>,
     laid: Vec<Laid>,
     tally: Tally,
+    /// 🔴〔F9 续〕只读（打开时就判定存不回，[`Pane::read_only`]）⇒ 全文的三个改写口一个都不开。
+    read_only: bool,
 }
 
 fn fingerprint(text: &str) -> (usize, usize) {
@@ -439,6 +447,7 @@ impl Doc {
             pin: Some(Vec2::ZERO),
             laid: Vec::new(),
             tally: Tally::default(),
+            read_only: false,
         }
     }
 
@@ -483,6 +492,9 @@ impl Doc {
 
     /// 🔴 **全文唯一的改写口**：换掉 `[range)`，行结构增量跟上，记一步撤销。
     fn replace(&mut self, text: &mut String, range: Range<usize>, with: &str, typing: bool) {
+        if self.read_only {
+            return;
+        }
         let before = (self.cur, self.anc);
         let removed = text[range.clone()].to_string();
         text.replace_range(range.clone(), with);
@@ -526,6 +538,9 @@ impl Doc {
     }
 
     fn undo(&mut self, text: &mut String) {
+        if self.read_only {
+            return;
+        }
         let Some(s) = self.undo.pop() else { return };
         let r = s.at..s.at + s.inserted.len();
         text.replace_range(r, &s.removed);
@@ -537,6 +552,9 @@ impl Doc {
     }
 
     fn redo(&mut self, text: &mut String) {
+        if self.read_only {
+            return;
+        }
         let Some(s) = self.redo.pop() else { return };
         let r = s.at..s.at + s.removed.len();
         text.replace_range(r, &s.inserted);
@@ -1153,6 +1171,10 @@ fn carried_cursor(ctx: &egui::Context, text: &str) -> usize {
 /// 只多了一个显式 id（切进大文件模式时接光标用）。
 pub fn show(ui: &mut Ui, pane: Option<&mut Pane>) {
     let Some(p) = pane else { return };
+    // 🔴〔F9 续〕打开那一刻就判定存不回 ⇒ 顶上一直摆着那句话，两支都只读。
+    if let Some(why) = &p.read_only {
+        ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), why);
+    }
     let slot = p.big.clone();
     let mut g = slot.lock();
     if g.is_none() {
@@ -1162,7 +1184,21 @@ pub fn show(ui: &mut Ui, pane: Option<&mut Pane>) {
         }
     }
     match g.as_mut() {
-        Some(doc) => doc.ui(ui, &mut p.text),
+        Some(doc) => {
+            doc.read_only = p.read_only.is_some();
+            doc.ui(ui, &mut p.text);
+        }
+        None if p.read_only.is_some() => {
+            // `&str` 这一形 `TextBuffer` 不可改：能选、能复制，敲键不落字。
+            let mut view: &str = &p.text;
+            ui.add(
+                egui::TextEdit::multiline(&mut view)
+                    .id(Id::new(NORMAL_ID))
+                    .desired_rows(VIEW_ROWS)
+                    .desired_width(f32::INFINITY)
+                    .code_editor(),
+            );
+        }
         None => {
             ui.add(
                 egui::TextEdit::multiline(&mut p.text)

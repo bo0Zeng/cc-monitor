@@ -111,11 +111,17 @@ fn one_line(n: usize) -> String {
 }
 
 fn is_file_text(t: &str) -> bool {
-    !t.starts_with("大文件模式") && !t.starts_with("这一行共")
+    !t.starts_with("大文件模式") && !t.starts_with("这一行共") && !t.starts_with("只读")
 }
 
+/// 🔴〔F9 续〕本族量的是**编辑面自己**（排版 · 编辑 · 撤销）在大文本上的形状，而 1 MiB 以上的文本
+/// 打开时会因为「存不回去」进只读（`editor::save_fits`）⇒ 这里把只读摘掉。
+/// 生产上编辑面照样会碰到 1 MiB 以上的文本（敲字 / 粘贴推过去），那时它得照样打得动字；
+/// 只读那一格自己的判据住 `editor_tests::a_file_that_cannot_be_saved_back_opens_read_only_and_says_why`。
 fn pane(text: String) -> Pane {
-    Pane::opened("/srv/big.txt", "big.txt", text)
+    let mut p = Pane::opened("/srv/big.txt", "big.txt", text);
+    p.read_only = None;
+    p
 }
 
 /// 先在一个丢掉的 `Context` 上跑一帧，让 `Doc` 立起来（钉偏移要它先在）。
@@ -745,25 +751,35 @@ fn the_readings_behind_the_two_thresholds() {
         v.1 = v.1.max(d.1);
     };
     // 普通路径（不进模式时那个 `TextEdit`，与 `show` 里那一支逐项相同）每敲一个键那一帧。
+    //
+    // 🔴〔F9 续 · 09-24 订正〕**上一版量的不是「敲一个键」**：它在帧与帧之间 `s.push('x')`，控件那一帧
+    //    只是「文本变了、重排一次」。真敲键走的是控件自己的事件路径（有焦点 ⇒ `Event::Text`）：
+    //    撤销器前后各克隆一次全文、字下标换字节下标 O(n)、**改完再排一次**（一帧两次排版）。
+    //    现打（debug，512 KiB / 每行 64 字节）：push 那一形 ~19 ms、真敲键那一形 **~61 ms**，差三倍多。
+    //    ⇒ 两个门槛的读数要按真敲键重打（`设计/60 §9c 续`）；这里改成先给焦点、再每帧送一个字。
     let normal = |text: &str| -> (f64, f64) {
         let ctx = egui::Context::default();
         let mut s = text.to_string();
         let mut w = (0.0, 0.0);
         for i in 0..5 {
-            if i >= 2 {
-                s.push('x');
-            }
             let mut inp = screen();
             inp.time = Some(i as f64 * 0.016);
+            if i >= 2 {
+                inp.events = vec![egui::Event::Text("x".into())];
+            }
             let mut out = None;
             let d = timed(|| {
                 out = Some(ctx.run_ui(inp, |ui| {
-                    ui.add(
+                    let r = ui.add(
                         egui::TextEdit::multiline(&mut s)
+                            .id(egui::Id::new("filewin-editor-text"))
                             .desired_rows(VIEW_ROWS)
                             .desired_width(f32::INFINITY)
                             .code_editor(),
                     );
+                    if i == 1 {
+                        r.request_focus();
+                    }
                 }));
             });
             if let Some(o) = out {
@@ -773,6 +789,11 @@ fn the_readings_behind_the_two_thresholds() {
                 worst(&mut w, d);
             }
         }
+        assert_eq!(
+            s.len(),
+            text.len() + 3,
+            "送的三个字没落进去 —— 量的不是敲键"
+        );
         w
     };
     // 大文件模式：点一下拿焦点，再每帧送一个字。
@@ -816,14 +837,14 @@ fn the_readings_behind_the_two_thresholds() {
             v[2].1
         )
     };
-    for kib in [256usize, 512, 1024, 2048, 4096] {
+    for kib in [64usize, 128, 256, 512, 1024] {
         let text = lines_corpus(kib * 1024, 64);
         println!(
             "〔现打·{profile}〕全文 {kib} KiB / 每行 64 字节 ⇒ 普通路径打字帧 {}",
             three(&|| normal(&text))
         );
     }
-    for kib in [8usize, 16, 32, 64, 256] {
+    for kib in [4usize, 8, 16, 32, 64] {
         let text = one_line(kib * 1024);
         println!(
             "〔现打·{profile}〕一行 {kib} KiB ⇒ 普通路径打字帧 {}",
@@ -845,6 +866,114 @@ fn the_readings_behind_the_two_thresholds() {
         println!(
             "〔现打·{profile}〕{label} ⇒ 大文件模式打字帧 {}",
             three(&|| big(&text))
+        );
+    }
+
+    // ── 〔F9 续 · 09-24〕**存得回的最大那一份**（编辑上限 ＝ 后端入方向一行，`editor::save_fits`）
+    //    **经窗口的生产路径**：打开那一帧（到货 → 立编辑面 → 判模式 → 建行表 → 排第一屏，含 `shell.rs` 每帧那一次
+    //    `Pane` 克隆）与打字帧（真点一下拿焦点、再送字）。⚠ 不含后端读盘与线上搬运那一段。
+    //    ⚠ 这一段第一版量的是 8 MiB（后端 `files-read-text` 一趟的天花板），读数记在 `设计/60 §9c`；
+    //    那一拍逮出「存不回去」之后上限定成了一行的上限，8 MiB 从此打不开，语料跟着换成这一形。
+    let window = |text: &str| -> ((f64, f64), (f64, f64), bool) {
+        let mut w = crate::filewin::shell::FileWindow::seeded(
+            crate::filewin::source::Source::remote(crate::ssh_source::RemoteConfig {
+                host: "example.invalid".into(),
+                label: "readings".into(),
+                port: 22,
+                user: "nobody".into(),
+                key_path: None,
+                backend_path: "/nonexistent/cc-monitor-backend".into(),
+                host_key_fingerprint: None,
+                addresses: Vec::new(),
+                jump: None,
+            }),
+            "/srv/data".to_string(),
+            None,
+            Vec::<crate::filewin::source::Row>::new(),
+        );
+        let ctx = egui::Context::default();
+        let mut tt = 0.0;
+        let mut run = |w: &mut crate::filewin::shell::FileWindow, ev: Vec<egui::Event>| {
+            tt += 0.5;
+            let mut inp = screen();
+            inp.time = Some(tt);
+            inp.events = ev;
+            let out = ctx.run_ui(inp, |ui| w.frame_body(ui));
+            let seen = crate::filewin::copy::testing::text_in_frame(&out);
+            out.drop_without_applying_deltas();
+            seen
+        };
+        run(&mut w, Vec::new()); // 字体图集那一帧不算
+        w.edits.deliver(crate::filewin::editor::Arrived::Text {
+            path: "/srv/data/big.txt".into(),
+            name: "big.txt".into(),
+            text: text.to_string(),
+        });
+        // 打开 ＝ 到货之后、**第一屏文件文字真画出来**为止的那几帧之和
+        //（egui 的模态框第一帧只量尺寸不画 ⇒ 通常是两帧）。
+        let is_file = |t: &str| t.len() > 8 && text.contains(t);
+        let mut seen = Vec::new();
+        let mut frames = 0;
+        let open = timed(|| {
+            while frames < 5 && !seen.iter().any(|(t, _): &(String, egui::Rect)| is_file(t)) {
+                seen = run(&mut w, Vec::new());
+                frames += 1;
+            }
+        });
+        assert!(
+            w.editing().is_some_and(|p| p.read_only.is_none()),
+            "存得回的那一份竟然进了只读"
+        );
+        let big = w.editing().is_some_and(|p| p.big.is_big());
+        let at = seen
+            .iter()
+            .find(|(t, _)| is_file(t))
+            .map(|(_, r)| r.center())
+            .expect("五帧里第一屏一行文件文字都没画");
+        for ev in click_at(at) {
+            run(&mut w, ev);
+        }
+        let mut k = (0.0, 0.0);
+        for _ in 0..3 {
+            let d = timed(|| {
+                run(&mut w, vec![egui::Event::Text("x".into())]);
+            });
+            worst(&mut k, d);
+        }
+        assert!(w.editing().unwrap().dirty(), "送的字没落进全文");
+        (open, k, big)
+    };
+    // 存得回的最大那一份：从一行的上限起，按 1 KiB 往下削到 `save_fits` 放行为止。
+    let largest = |make: &dyn Fn(usize) -> String| -> String {
+        let mut n = crate::filewin::editor::MAX_EDIT_BYTES;
+        loop {
+            let t = make(n);
+            if crate::filewin::editor::save_fits("/srv/data/big.txt", &t).is_ok() {
+                return t;
+            }
+            n -= 1024;
+        }
+    };
+    for (label, text) in [
+        ("每行 64 字节", largest(&|n| lines_corpus(n, 64))),
+        ("压成一行", largest(&one_line)),
+        (
+            "中文每行 30 字",
+            largest(&|n| ("汉字".repeat(15) + "\n").repeat(n / 91)),
+        ),
+    ] {
+        let v: Vec<_> = (0..3).map(|_| window(&text)).collect();
+        println!(
+            "〔现打·{profile}〕窗口生产路径 存得回的最大 · {label}（{} 字节，{}）⇒ 打开那一帧墙钟 {:.2} / {:.2} / {:.2} ms｜\
+             打字帧（三帧最坏）墙钟 {:.2} / {:.2} / {:.2} ms",
+            text.len(),
+            if v[0].2 { "大文件模式" } else { "普通路径" },
+            v[0].0 .0,
+            v[1].0 .0,
+            v[2].0 .0,
+            v[0].1 .0,
+            v[1].1 .0,
+            v[2].1 .0,
         );
     }
 }

@@ -40,7 +40,13 @@ fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
     );
     let why = why_not_editable(&over).expect("超上限却说改得了");
     // 上限那个数要在那句话里。
-    assert!(why.contains("256.0 K"), "那句话里没有上限那个数：{why}");
+    // 〔F9 续〕上限 256 KiB → 1 MiB（`MAX_EDIT_BYTES` 头注），`human_size` 印出来是 `1.0 M`。
+    assert!(
+        why.contains(&crate::filewin::rows::human_size(
+            crate::filewin::editor::MAX_EDIT_BYTES as u64
+        )),
+        "那句话里没有上限那个数：{why}"
+    );
     // 🔴 **「多了多少」必须在，而且不许退化。**
     //
     // 第一版这里判的是「两个 `human_size` 都在」，而生产那一版正是那么写的
@@ -379,3 +385,198 @@ fn a_full_cap_worth_of_text_still_lays_out_in_one_frame() {
 // 〔F9 2026-09-24〕第十四刀那一族判据（行索引 · 窗口写回 · 「开窗买不到」· 交给排版的字节相等 ·
 //   读数）随那组内核一起删了：它们钉的是「窗口化 `TextEdit`」那条没被选的路。
 //   落地那条路的判据住 `bigfile_tests.rs`（理由见 `editor.rs` 头注 §四）。
+
+// ═══════════════════════════════════════════════════════════════════
+// 〔F9 续 · 2026-09-24〕存得回去吗 —— 以后端入方向一行的上限为准（`设计/60 §9c 续`）
+// ═══════════════════════════════════════════════════════════════════
+
+const SAVE_PATH: &str = "/srv/data/app.conf";
+
+/// 🔴 **窗口量的那一行 == monitor 真发出去的那一行**（按最长的 id 算）。
+///
+/// 异源：另一侧是 monitor 那一侧真正编请求行的纯函数 `inbound_client::encode_request`，
+/// 不是本模块的 [`request_line_len`]。语料覆盖会被转义变长的每一类
+/// （引号 · 反斜杠 · 控制字符 · 换行 · 中文不转义）。
+/// 另一格：`id` 的最长形状（u128 毫秒十六进制 ＋ 两个 u64）装得进 [`REQUEST_ID_ROOM`]。
+#[test]
+fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
+    for content in [
+        String::new(),
+        "a=1\n".into(),
+        "引号\"反斜杠\\制表\t换行\n回车\r".into(),
+        "\u{1}\u{2}\u{1f}".repeat(100),
+        "中文不转义".repeat(1000),
+        "x".repeat(70_000),
+    ] {
+        let args = save_args(SAVE_PATH, &content);
+        let sent = crate::backend::control::inbound_client::encode_request(
+            &"0".repeat(REQUEST_ID_ROOM),
+            CMD_WRITE_TEXT,
+            &args,
+        );
+        assert!(sent.ends_with('\n'));
+        assert_eq!(
+            request_line_len(CMD_WRITE_TEXT, &args),
+            sent.len() - 1,
+            "窗口量的那一行与真编出来的那一行不一样长（内容 {} 字节）",
+            content.len()
+        );
+    }
+    let longest_id = format!("m{:x}.{}-{}", u128::MAX, u64::MAX, u64::MAX);
+    assert_eq!(
+        longest_id.len(),
+        REQUEST_ID_ROOM,
+        "id 的最长形状与留的位子对不上"
+    );
+}
+
+/// 🔴 **刚好装得下的发出去；多一个字节的本地拒、线上零条。**
+///
+/// 走真通道（生产那个 `chan::client::Client` 拨真回环口）到一台合成后端，数线上出现过几条 `files-write-text`。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_save_that_fits_goes_out_and_one_byte_more_never_leaves_the_window() {
+    let wired = crate::filewin::find::testing::wire_up(
+        "save-cap",
+        crate::filewin::find::testing::FakeBackend::new(
+            &[CMD_WRITE_TEXT],
+            crate::filewin::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    let origin = crate::filewin::source::Origin(wired.origin.clone());
+    let base = request_line_len(CMD_WRITE_TEXT, &save_args(SAVE_PATH, ""));
+    let fits = "a".repeat(MAX_EDIT_BYTES - base);
+    assert_eq!(
+        save_fits(SAVE_PATH, &fits),
+        Ok(MAX_EDIT_BYTES),
+        "夹具没造到刚好装满"
+    );
+    let over = format!("{fits}a");
+
+    write_text(&wired.line, &origin, SAVE_PATH, &fits)
+        .await
+        .expect("刚好装得下的那一份没发出去 / 被拒了");
+    assert_eq!(wired.count(CMD_WRITE_TEXT), 1, "刚好装得下的那一份没上线");
+
+    let why = write_text(&wired.line, &origin, SAVE_PATH, &over)
+        .await
+        .expect_err("多一个字节的那一份竟然存成了");
+    assert_eq!(
+        wired.count(CMD_WRITE_TEXT),
+        1,
+        "多一个字节的那一份还是上了线 —— 后端会整行丢弃、回一条不带 id 的错"
+    );
+    for n in [
+        (MAX_EDIT_BYTES + 1).to_string(),
+        MAX_EDIT_BYTES.to_string(),
+        "多了 1 字节".to_string(),
+    ] {
+        assert!(why.contains(&n), "那句话没说出「{n}」：{why}");
+    }
+}
+
+/// 🔴 **今天真实存在的那个洞：满控制字符的 256 KiB。** 大小装得下，转义之后装不下
+/// （一个字节写成 `\u00XX` 六个）⇒ **打开那一刻**就进只读、说清楚；两支（普通路径 / 大文件模式）
+/// 都不收改动；硬点「保存」也是本地拒、线上零条。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_file_that_cannot_be_saved_back_opens_read_only_and_says_why() {
+    // 大文件模式那一支：一整行 256 KiB 的控制字符（最长一行越线）。
+    let one_line = "\u{1}".repeat(256 * 1024);
+    // 普通路径那一支：同样满控制字符，但每 60 字节一行、全文 200 KiB（两条门槛都不越）。
+    let lined = ("\u{2}".repeat(59) + "\n").repeat(200 * 1024 / 60);
+    for (text, big) in [(one_line, true), (lined, false)] {
+        assert!(
+            text.len() <= MAX_EDIT_BYTES,
+            "夹具按大小就被拒了，量的不是转义那一形"
+        );
+        let mut p = Pane::opened(SAVE_PATH, "app.conf", text.clone());
+        let why = p.read_only.clone().expect("转义后装不下，打开时却没进只读");
+        let t = save_fits(SAVE_PATH, &text).unwrap_err();
+        assert!(why.contains(&t.line.to_string()) && why.contains(&MAX_EDIT_BYTES.to_string()));
+
+        // 真跑几帧：点进编辑面、敲字、回车、退格、粘贴 —— 全文一个字节都不许变。
+        let ctx = egui::Context::default();
+        let run = |ev: Vec<egui::Event>, p: &mut Pane, time: f64| {
+            let out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1280.0, 800.0),
+                    )),
+                    time: Some(time),
+                    events: ev,
+                    ..Default::default()
+                },
+                |ui| super::super::bigfile::show(ui, Some(p)),
+            );
+            let seen = crate::filewin::copy::testing::text_in_frame(&out);
+            out.drop_without_applying_deltas();
+            seen
+        };
+        let seen = run(Vec::new(), &mut p, 0.0);
+        assert_eq!(p.big.is_big(), big, "走的不是预期那一支");
+        assert!(
+            seen.iter().any(|(s, _)| s == &why),
+            "编辑面上没摆那句只读的话"
+        );
+        let at = egui::pos2(200.0, 120.0);
+        let key = |k| egui::Event::Key {
+            key: k,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let press = |down| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed: down,
+            modifiers: egui::Modifiers::NONE,
+        };
+        run(
+            vec![egui::Event::PointerMoved(at), press(true)],
+            &mut p,
+            0.5,
+        );
+        run(vec![press(false)], &mut p, 1.0);
+        run(
+            vec![
+                egui::Event::Text("X".into()),
+                key(egui::Key::Enter),
+                key(egui::Key::Backspace),
+                egui::Event::Paste("粘".into()),
+                egui::Event::Cut,
+            ],
+            &mut p,
+            1.5,
+        );
+        assert_eq!(
+            p.text,
+            text,
+            "只读的编辑面收了改动（{}）",
+            if big {
+                "大文件模式"
+            } else {
+                "普通路径"
+            }
+        );
+        assert!(!p.dirty());
+    }
+
+    // 硬存：本地拒、线上零条。
+    let wired = crate::filewin::find::testing::wire_up(
+        "save-ro",
+        crate::filewin::find::testing::FakeBackend::new(
+            &[CMD_WRITE_TEXT],
+            crate::filewin::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    let origin = crate::filewin::source::Origin(wired.origin.clone());
+    let ctl = "\u{1}".repeat(256 * 1024);
+    let why = write_text(&wired.line, &origin, SAVE_PATH, &ctl)
+        .await
+        .expect_err("满控制字符的 256 KiB 竟然存成了");
+    assert_eq!(wired.count(CMD_WRITE_TEXT), 0, "装不下的那一行还是上了线");
+    assert!(why.contains("没有发出去"), "那句话没说它没发：{why}");
+}

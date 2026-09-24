@@ -141,18 +141,24 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              它的溢出语义是「丢这一行并计数、其后补一行 `__dropped__` 说清楚」，\
              住 `relay/tee.rs::TeeSink::write_line`，**不是**本表管的那种「用户数据被截断」。",
     ),
+    (
+        "REQUEST_ID_ROOM",
+        "〔F9 续 09-24〕**一个字段最长多少字节**（请求行里 `id` 那一格的位子），不是上限：\
+             窗口量存盘那一行时按最长的 id 算，只会比真发的那一行长、不会短。\
+             它没有「超了怎么办」—— id 是 monitor 按固定形状造的，判据钉着那个最长形状恰好等于它。",
+    ),
     // ── 〔F9 · 2026-09-24〕大文件模式（`filewin/bigfile.rs`）带进来的三个 ──
     (
         "BIG_LINE_BYTES",
         "**进大文件模式的门槛**，不是上限：最长一行超过它，编辑面就换成「只排视口内的行、\
              长行只排可见段」那一面。**没有任何东西被拒、被截** —— 越过它的文件照样整份打开、\
-             照样能改能存；编辑的真上限仍是 `sftp_pool::MAX_EDIT_BYTES`（上面 `CAPS` 那一行）。\
+             照样能改能存；编辑的真上限是 `filewin/editor.rs::MAX_EDIT_BYTES`（下面 `CAPS` 那一行）。\
              数由 `bigfile::derive_threshold(LINE_READING)` 推出，判据钉「推算式 == 常量」。",
     ),
     (
         "BIG_TOTAL_BYTES",
-        "同上，全文那一维的门槛（全文超过它进大文件模式）。⚠ 今天它在生产上**够不到**：\
-             读上限 `MAX_EDIT_BYTES` 是 256 KiB < 1 MiB ⇒ 只有最长一行那条会真的开火。",
+        "同上，全文那一维的门槛（全文超过它进大文件模式）。〔F9 续〕按真敲键重打读数后 1 MiB → 256 KiB；\
+             编辑上限同拍抬到 1 MiB（`editor::MAX_EDIT_BYTES`）⇒ 这一条从此**在打开时就会开火**。",
     ),
     (
         "FRAME_BUDGET_US",
@@ -216,11 +222,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 〔F7c 收尾 09-24〕池子那一份同值的 `MAX_EDIT_BYTES`（「SFTP 在线编辑的文件体量」）随那条读文本命令一起走了。
     // 〔F7a · 第三波 09-24〕文件窗口编辑器的上限**搬回窗口**（它答「文本控件打字卡不卡」，
     //   是窗口的偏好）：每趟经 `max_bytes` 送给后端 `files-read-text`，后端按它整趟拒、不截断。
+    // 🔴〔F9 续 09-24〕256 KiB → **1 MiB**，而且它从此答的是「**存不存得回去**」：存盘把整份内容
+    //   装在一条请求行里，后端入方向一行上限就是 `inbound.rs::MAX_LINE_BYTES`（本表下面那一行）
+    //   ⇒ 本常量**就是**那个数（两 crate 引不到对方 ⇒ 对 E 读两侧源码钉相等）。一个数两处用：
+    //   打开前按大小拒 · 存之前按真序列化出来的那一行拒（`editor::save_fits`，多一个字节就不发）。
     (
         "src/bridge/src/filewin/editor.rs",
         "MAX_EDIT_BYTES",
-        256 * 1024,
-        "文件窗口编辑器能打开的文本体量（送给后端 `files-read-text` 的 `max_bytes`）",
+        1 << 20,
+        "文件窗口编辑器能打开的文本体量 ＝ 存盘那条请求行（`files-write-text`）序列化后的上限",
         "拒收+回错",
     ),
     (
@@ -846,6 +856,17 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     // `src/bridge/src/search.rs::kou_jing_guard::the_search_kou_jing_has_exactly_one_home`：
     // 它断言两侧生产段**都不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义。
     // ⇒ 这两个数搬回任何一侧，当场红。
+
+    // 对 E〔F9 续 09-24〕：窗口的编辑上限**就是**后端入方向一行的上限（存盘整份装一行）⇒ 钉相等。
+    //   窗口多给一个字节 ⇒ 本地放行、后端整行丢弃（回不带 id 的错、窗口熬满写预算才超时）；
+    //   窗口少给 ⇒ 存得回的文件被本地冤拒。两个方向都是错。
+    let e1 = by("src/bridge/src/filewin/editor.rs", "MAX_EDIT_BYTES");
+    let e2 = by("src/backend/inbound.rs", "MAX_LINE_BYTES");
+    assert_eq!(
+        e1, e2,
+        "窗口编辑上限与后端入方向一行上限漂开了（窗口 {e1} / 后端 {e2}）。\
+             存盘那条请求整份装在一行里，本地那道拒（`editor::save_fits`）拿的就是这个数。"
+    );
 
     // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。
     let c1 = by("src/backend/control/launch.rs", "MAX_FIELD_BYTES");
