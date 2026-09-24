@@ -377,42 +377,98 @@ fn local_ccm_too_old_warning() -> Option<String> {
     ))
 }
 
-/// 上一条的 **Windows 对侧** —— 它**不做**这一格预检，而且**把「没做」说出来**〔win-compile 09-09〕。
+/// 上一条的 **Windows 对侧** —— 它**真探**，而且探的是**哪一份**说得清〔ccbus-win 09-24〕。
 ///
-/// # 为什么不是「加个 cfg 静默 `return None`」
+/// # 🪦 上一版：「它**不做**这一格预检，而且**把『没做』说出来**」〔win-compile 09-09，散文墓碑〕
 ///
-/// `None` 在这条链上有一个**确定**的含义：**探过了、够新**（调用方据此不给用户任何提示）。
-/// Windows 上根本没探 —— 返回 `None` 就是把「查不了」读成「没问题」。
+/// 那一版回的是一句固定的「这一格没做预检」。它的头注自己写着解锁条件，逐字：
+/// 「今天 monitor 在 Windows 上确实没有任何 ccm 探测形态（`probe_local_ccm` 那一族整族
+/// 带 `#[cfg(not(windows))]`）；**哪天有了，这条该换成真探测，而不是继续报『没做』**」。
+/// ⇒ **那一天是 `K-R69`**：`ccm_probe::probe_binary_uncached` 直接问一个二进制
+/// `<bin> --ccm-probe`（不经 shell、跨平台），`ccm_probe::local_ccm_entry_status` 用它问
+/// **cc-monitor 自己装下去的那一份**（`~/.cc-monitor/bin/<本机 ccm 入口名>`）。
+/// 本条从此复用那一处，**不另起进程**（起进程的登记住在 `ccm_probe.rs`）。
 ///
-/// 本仓对这件事有一条反复出现的明纪律，最短的落点是 `sftp.rs` 里那个四值枚举
-/// `TargetBinary`：它的「问不出来」那一态的注释逐字写着「**不许读成上面任何一个**」，
-/// 而那条注释同时说明了它为什么**不是 `bool`**。同一句话在 `CcBusDeployReport`
-/// 那个字段的头注里叫「**假成功比失败更坏**」——用户点一次按钮换来的结果，
-/// 没有提示他就当成纯成功，而日志他不会去翻。
+/// # 它买到 / 买不到什么
 ///
-/// # 落成什么形状
-///
-/// 装**照做**（`deploy_into` 与平台无关，`FILES` 里那些文件照样落盘、照样幂等、照样留备份），
-/// 但返回一句话，由 `deploy_local_cc_bus` 原样填进报告的 `warning`，
-/// 前端 `settings/cc-bus-section.ts` 把它接在成功文案后面显示。
-/// ⇒ 用户在 Windows 上读到的是「**这一格没做预检**」，而不是什么都没有。
+/// ✅ **买到**：「cc-monitor 装的那份 `ccm` 是不是**这一版**」—— 那份自报的 `build=`
+///   与本 monitor 编进来的 `BACKEND_BUILD_ID` 逐字比；外加 [`CC_SPAWN_NEEDS`] 四条能力在不在。
+/// ❌ **买不到**：「你 PATH 上那个 `ccm` 是谁」—— `cc-spawn` 在 bash 里调的是 PATH 上的那个，
+///   而问 PATH 要走登录 shell（`bash -lic`），Windows 上没有那条路（`ccm_probe::probe_path_ccm`
+///   的 Windows 臂同样回 `None`，`KU22` 待决）。⇒ **哪怕全对也回 `Some`**：
+///   把「查的是那一份」说出来 —— `None` 在这条链上的含义是「**探过了 PATH 上那个、够新**」，
+///   Windows 上从来没探过它，回 `None` 就是把「查不了」读成「没问题」（`TargetBinary` 那条纪律）。
+/// ❌ **买不到**：Windows 上 `cc-spawn` 本身跑不跑得起来 —— 它要 tmux，而 cc-bus 的 Windows
+///   那一侧投递通道今天是显式的 rc=13（`cc-bus-adapt-windows.sh`）。本条只答「版本对不对」。
 ///
 /// ⚠ 它**不是错误**（与非 Windows 那条同一条纪律）：装本身做完了，命令仍回 `Ok`。
-/// ⚠ 清单从 [`CC_SPAWN_NEEDS`] **现取**，绝不在这里抄一份字面量 ——
-///   `the_deploy_precheck_lists_what_cc_spawn_negotiates` 钉的是「那个常量与 `cc-spawn`
-///   真正协商的一致」，抄一份就等于在它看不见的地方开了第二处。
-/// ⚠ **诚实边界**：这句话说的是「**本机**没有可查的 ccm」，不是「Windows 上没有 ccm 这种东西」。
-///   今天 monitor 在 Windows 上确实没有任何 ccm 探测形态（`probe_local_ccm` 那一族整族
-///   带 `#[cfg(not(windows))]`）；哪天有了，这条该换成真探测，而不是继续报「没做」。
 #[cfg(windows)]
 fn local_ccm_too_old_warning() -> Option<String> {
-    Some(format!(
-        "本机没有可查的 `ccm` —— **这一格没做预检**：能力探测要跑 `bash -lic`，\
-         这台机器上没有那条路，装出去的 `cc-spawn` 够不够新**问不出来**。\
-         ⚠ 「没有警告」在这里**不等于「没问题」**：`cc-spawn` 开头仍会协商 {CC_SPAWN_NEEDS:?}，\
-         缺一条就以「ccm 版本太旧」退出。请自行确认 `shared/ccm` 已同步到位\
-         （顺序：ccm 先、cc-bus 后）。"
+    let st = crate::ccm_probe::local_ccm_entry_status();
+    Some(windows_ccm_precheck(
+        st.entry.as_deref().map(|e| (e, &st.ours)),
+        env!("BACKEND_BUILD_ID"),
     ))
+}
+
+/// Windows 那条预检的**话怎么说** —— 纯函数（探测结果与期望的 build 都是入参）。
+///
+/// 抽成纯函数是为了让**五种情形在 Linux 上也判得到**：上一版的判据带 `#[cfg(windows)]`，
+/// 本仓唯一跑它的地方是云端 windows-latest；本条的判据在哪台机器上都跑。
+///
+/// `ours`：`None` = cc-monitor 那份 `ccm` 还没装下来；`Some((住址, 名片))` = 装了并问过一次。
+/// 返回值**总是一句话**（理由见 [`local_ccm_too_old_warning`] 的 Windows 臂）。
+///
+/// ⚠ 门控是 `any(windows, test)` 而不是 `#[allow(dead_code)]`：非 Windows 的生产构建里它
+///   确实没有调用方，而 `allow` 会把将来真正的死代码一并盖住（`history.rs` 那条同一个取法）。
+#[cfg(any(windows, test))]
+pub(crate) fn windows_ccm_precheck(
+    ours: Option<(&str, &crate::ccm_probe::CcmProbeResult)>,
+    want_build: &str,
+) -> String {
+    let needs = CC_SPAWN_NEEDS;
+    let path_caveat = "⚠ 查的是 **cc-monitor 装的那一份**，不是你 PATH 上那个 —— `cc-spawn` 在 bash 里调的是\
+                       PATH 上的 `ccm`，而 Windows 上问 PATH 要走登录 shell，那条路这里没有（`KU22`）。";
+    let Some((at, card)) = ours else {
+        return format!(
+            "本机还没有 cc-monitor 装的那份 `ccm`（`~/.cc-monitor/bin/`）—— 装出去的 `cc-spawn` \
+             够不够新**查不了**。⚠ 「没有警告」**不等于「没问题」**：`cc-spawn` 开头仍会协商 {needs:?}，\
+             缺一条就以「ccm 版本太旧」退出。先在设置页把本机后端装上（顺序：ccm 先、cc-bus 后）。"
+        );
+    };
+    if !card.installed {
+        return format!(
+            "问了 cc-monitor 装的那份 `ccm`（{at}），它**没答出** `--ccm-probe` —— 版本与能力**查不了**。\
+             ⚠ 这是「查不了」，不是「没问题」：`cc-spawn` 开头仍会协商 {needs:?}。"
+        );
+    }
+    let missing: Vec<&str> = needs
+        .iter()
+        .copied()
+        .filter(|c| !card.capabilities.iter().any(|x| x == c))
+        .collect();
+    let build = card.build.as_deref().unwrap_or("(没报 build)");
+    if build != want_build {
+        return format!(
+            "cc-monitor 装的那份 `ccm`（{at}）**不是这一版**：它报 build={build}，这一版 monitor \
+             期望 {want_build}。{}在设置页重装本机后端（顺序：ccm 先、cc-bus 后）。\n{path_caveat}",
+            if missing.is_empty() {
+                String::new()
+            } else {
+                format!("它还缺能力 {missing:?}（装出去的 `cc-spawn` 会以「ccm 版本太旧」退出）。")
+            }
+        );
+    }
+    if !missing.is_empty() {
+        return format!(
+            "cc-monitor 装的那份 `ccm`（{at}）是这一版（build={build}），却缺能力 {missing:?} ⇒ \
+             装出去的 `cc-spawn` 会以「ccm 版本太旧」退出 —— 这不该发生，多半是两边的清单漂了。\n{path_caveat}"
+        );
+    }
+    format!(
+        "查过 cc-monitor 装的那份 `ccm`（{at}）：是这一版（build={build}），`cc-spawn` 要的 {needs:?} 都在。\n\
+         {path_caveat}"
+    )
 }
 
 /// `cc-spawn` 开头那段能力协商要的东西 —— **与 `src/shared/cc-bus/scripts/cc-spawn` 同一份清单**。
