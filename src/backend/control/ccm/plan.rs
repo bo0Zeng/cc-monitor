@@ -664,28 +664,35 @@ pub(crate) fn build(
                 v.extend(o.passthru.iter().cloned());
             }
         }
-        let join = |v: &[String]| v.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ");
+        let mut payload = inner.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ");
+        let bare = payload.clone();
         // 🔴 **把继承来的那几个显式化** —— tmux 的 `update-environment` 默认列表不含它们，
         // 外层那句 `export` 在 tmux 进程边界上会被整个吃掉（账号注入 100% 失效，实测过）。
-        // ⚠ 前缀是一段 `export …; ` —— 载荷与自检**共用这一段**（自检要在 pane 那份环境里跑）。
-        let mut exports = String::new();
+        // ⚠ 这几行的形状（`payload = format!("export <VAR>={}; {payload}", sq(v));`）有人在逐行认：
+        //   `bridge` 那条 `KP5ED1`（`payload_tests·rs::forwarded_by_container_path`）从起点
+        //   `let mut payload = inner.iter()` 数到登记那段注释，改形状它会红。
         if account.is_empty() && !o.use_base {
             if let Some(v) = env
                 .inherited_config_dir
                 .as_deref()
                 .filter(|v| !v.is_empty())
             {
-                exports = format!("export {}={}; {exports}", env.account_env, sq(v));
+                payload = format!("export {}={}; {payload}", env.account_env, sq(v));
             }
         }
         if let Some(v) = env.anthropic_base_url.as_deref().filter(|v| !v.is_empty()) {
-            exports = format!("export ANTHROPIC_BASE_URL={}; {exports}", sq(v));
+            payload = format!("export ANTHROPIC_BASE_URL={}; {payload}", sq(v));
         }
         if let Some(v) = env.ccm_launch_id.as_deref().filter(|v| !v.is_empty()) {
-            exports = format!("export CCM_LAUNCH_ID={}; {exports}", sq(v));
+            payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));
         }
-        let payload = format!("{exports}{}", join(&inner));
-        let self_check = format!("{exports}{}", join(&dry));
+        // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
+        // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
+        let exports = &payload[..payload.len() - bare.len()];
+        let self_check = format!(
+            "{exports}{}",
+            dry.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ")
+        );
 
         // 🔴 **要了登记而登记不成，必须出声**〔`K-R48` 第二拍 09-11 补回〕。
         //
