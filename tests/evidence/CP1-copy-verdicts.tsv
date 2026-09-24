@@ -1,1 +1,187 @@
 住址	原文	裁词	依据
+src/bridge/src/filewin/copy.rs:80	复制	保留	[对外] 按钮字面
+src/bridge/src/filewin/copy.rs:217	⚠ 这一趟走的是慢路：	内部词→「⚠ 这次复制用了较慢的方式：」	[对外] 退路提示前缀（copy.rs:248 拼上原因画在窗口上）；「慢路」是内部路由名 新词:慢路
+src/bridge/src/filewin/copy.rs:472	远端已经有 {} 了，要覆盖吗？	保留	[对外] 覆盖确认标题，真在问
+src/bridge/src/filewin/copy.rs:475	覆盖	保留	[对外] 按钮
+src/bridge/src/filewin/copy.rs:478	别覆盖	保留	[对外] 按钮（action 档）
+src/bridge/src/filewin/copy.rs:493	复制 {name} {got}/{total}	保留	[对外] 进度条文字
+src/bridge/src/filewin/copy.rs:502	已经按过取消了	保留	[对外] 状态标签
+src/bridge/src/filewin/download.rs:56	下载	保留	[对外] 按钮字面
+src/bridge/src/filewin/download.rs:196	内部状态不对：现在问的不是落点	改·§2.1	[对外] DestVerdict::Rejected 经 shell.rs:1124 画在对话框上；整句讲内部状态机 新词:落点 →「出错了，请重新选择保存位置」
+src/bridge/src/filewin/editor.rs:128	编辑	保留	[对外] 按钮字面
+src/bridge/src/filewin/editor.rs:136	这是一个目录	保留	[对外] 不能编辑的原因，短
+src/bridge/src/filewin/editor.rs:140	这个名字不是合法 UTF-8，寻址不到真字节	改·§2.1	[对外] why_not_editable 进 listing.error；「寻址不到真字节」讲实现 →「文件名含非 UTF-8 字符，不能在这里编辑」
+src/bridge/src/filewin/editor.rs:153	这份 {}（{} 字节）超过编辑上限 {}，多了 {} 字节（超限**拒编而非截断** —— \n             截断过的文本存回去会写坏文件）	改·§2.4	[对外] 括号＋破折号＋markdown ** ＋首句长，一句塞结果、上限、理由 兼§2.2（「拒编而非截断」是设计论证）→「文件 {} 超过编辑上限 {}，多了 {} 字节」
+src/bridge/src/filewin/editor.rs:182	{path} 不是一份可编辑的文本（含 NUL 字节、或不是 UTF-8）。\n         ⚠ 也可能是它刚刚被换成了更大 / 二进制的内容 —— 刷新看看。	改·§2.4	[对外] 括号补充＋破折号，两句里塞了结论、竞态推测、处方 兼§2.2 →「{path} 不是文本文件，不能编辑。刚改过的话请刷新」
+src/bridge/src/filewin/find.rs:420	索引：还没问过这台机器	保留	[对外] 索引新鲜度行（ui.label），结果一句话
+src/bridge/src/filewin/find.rs:432	索引还没建过（后端声明的重走周期 {} 秒）	改·§2.1	[对外] 括号里摆的是后端内部参数且带归因「后端声明的」 兼§2.2 新词:重走周期 →「索引还没建」
+src/bridge/src/filewin/find.rs:437	索引 {} 条 · {} 字节 · {} 秒前走完 · 后端声明的重走周期 {} 秒	改·§2.1	[对外] 一行摆出条数/字节/重走周期等内部参数，「后端声明的」是归因 新词:重走周期 新词:走完 →「索引 {} 条 · {} 秒前更新」
+src/bridge/src/filewin/find.rs:441	 · 后端说该重走了	改·§2.1	[对外] 新鲜度行的拼接段；「后端说该重走了」讲内部机制 新词:重走 →「 · 需要更新」
+src/bridge/src/filewin/find.rs:445	 · 有 {} 个目录读不进去，这份索引有洞	保留	[对外] 新鲜度行拼接段，说清后果（有目录读不到、索引不全）
+src/bridge/src/filewin/find.rs:450	 · 上一趟撞到条目上限没走完，这份索引不完整	保留	[对外] 新鲜度行拼接段，结果清楚（索引不完整）
+src/bridge/src/filewin/find.rs:453	 · 浏览中的目录挂着 {} 个监听（上限 {}）	改·§2.1	[对外] 新鲜度行拼接段；监听数/上限是内部资源读数，用户用不上 新词:监听 →（删去这段）
+src/bridge/src/filewin/find.rs:463	这台机器上的索引还没建过 —— 那不是「没搜到」	保留	[对外] 命中行，一个破折号接一句防误读的话
+src/bridge/src/filewin/find.rs:466	命中 {} 条（这一趟扫了 {} 条，索引 {} 秒前建的）	保留	[对外] 命中行，括号补充只一个信号
+src/bridge/src/filewin/find.rs:470	 · 只回送了 {} 条，还有更多	保留	[对外] 命中行拼接段
+src/bridge/src/filewin/find.rs:642	后端说做完了，但没给答案 —— 那不是这条命令的契约	改·§2.2	[可达存疑] routed_text 进 round.notice 画在搜索区；「契约」是我们内部推理 新词:契约 →「后端没返回结果」
+src/bridge/src/filewin/find.rs:681	这条命令的参数形状不对（多半是两侧契约漂了）	改·§2.2	[对外] refusal() 的 hint 进 notice；「两侧契约漂了」是内部推理 兼§2.1 新词:契约 →「请求格式不对（内部错误）」
+src/bridge/src/filewin/find.rs:682	这个路径后端不认	保留	[对外] refusal hint，后端是对外词
+src/bridge/src/filewin/find.rs:683	这个目录后端打不开（权限，或者它不在那台机器上）	保留	[对外] refusal hint，括号只给原因
+src/bridge/src/filewin/find.rs:684	后端拒了这一趟	保留	[对外] refusal hint 兜底
+src/bridge/src/filewin/find.rs:686	`{cmd}` 被拒（{code}）：{hint}。后端原话：{message}	改·§2.1	[对外] 句首把内部命令名与错误码（`{cmd}`/{code}）摆给用户 新词:错误码bad_args/bad_path →「{hint}：{message}」
+src/bridge/src/filewin/find.rs:737	`{CMD_INDEX_STATUS}` 的应答读不动：{e}	改·§2.1	[对外] notice 画在窗口上；外泄内部命令名 CMD_INDEX_STATUS 新词:应答 →「读不到索引状态：{e}」
+src/bridge/src/filewin/find.rs:758	浏览名单没送到（{}）	改·§2.1	[对外] notice；「浏览名单」是内部机制名 新词:浏览名单 →（这条对用户可不报）
+src/bridge/src/filewin/find.rs:781	`{CMD_INDEX_REBUILD}` 的应答读不动：{e}	改·§2.1	[对外] notice；外泄内部命令名 CMD_INDEX_REBUILD →「重建索引失败：{e}」
+src/bridge/src/filewin/find.rs:809	`{CMD_FIND}` 的应答读不动：{e}	改·§2.1	[对外] notice；外泄内部命令名 CMD_FIND →「搜索失败：{e}」
+src/bridge/src/filewin/find.rs:857	索引走的那个根：{root}	保留	[对外] 索引根目录标签 →「索引目录：{root}」可选润色
+src/bridge/src/filewin/fonts.rs:235	§·—…→⚠⬆、。「」一上下不与东丢两个中串为之也了二些交亮代令以件份会传但位住作你侧保做儿先全八关内再写几出列刚删别到制刷前剩务动勾化半单历原去参取口只叫可台史合同名后吗含听周命和哪器回围在场址	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
+src/bridge/src/filewin/fonts.rs:236	坏型声备复外多大太失契如字存它完定容对寻少尔就尾屏己已布带帧并应建开弄引当录形往径必态慢成或截打扫把拒拖拿挂按挡换据掉接搜搬摞撞撤操改数敲整文断新旧时明是更最有服期本机权条来根框案次正段比没法洞流浏消漂	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
+src/bridge/src/filewin/fonts.rs:237	点物状现用的监盖目相看真着确秒程空窗端符第答管类索约级组经结给绝编者而能自节范落行表被西要覆见览解认许话该说读负败走起超趟跑路跳身载辑输过运还这进远送那部都里重量销闭问限除零非须首高（），：；？📁📄	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
+src/bridge/src/filewin/proc.rs:297	那个进程在开窗预算内就退了（{st}）	改·§2.1	[对外] open_in_new_process 的 Err 回给打开文件窗口的调用方；「开窗预算」是内部参数 新词:开窗预算 →「文件窗口没能打开（进程退出：{st}）」
+src/bridge/src/filewin/proc.rs:298	那个进程既没退也没在跑 —— 这一形说明上面那一跳的判法坏了	改·§2.2	[对外] 同上 Err；「这一形说明上面那一跳的判法坏了」是内部推理 →「文件窗口没能打开」
+src/bridge/src/filewin/proc.rs:299	问不到那个进程的死活：{e}	改·§2.1	[对外] 同上 Err；「问不到进程的死活」讲实现 →「文件窗口没能打开：{e}」
+src/bridge/src/filewin/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
+src/bridge/src/filewin/shell.rs:570	搜索要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] 搜索栏 say() 直接显示；整句讲实现（tokio 运行时），换词治不好 新词:tokio运行时 →「搜索启动不了，请重开这个窗口」
+src/bridge/src/filewin/shell.rs:625	上传要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error 画在窗口上；整句讲实现 新词:tokio运行时 →「上传启动不了」
+src/bridge/src/filewin/shell.rs:706	拖进来的 {} 个东西一个都认不出名字	保留	[对外] 拖入失败提示，结果一句话说清
+src/bridge/src/filewin/shell.rs:801	「{}」不是一个能用的新名字 —— 只能在同一个目录里改名，不许为空、不许带 `/`、不许和原名相同	改·§2.4	[对外] 首句 ≥30 汉字＋破折号接三条规则，一句塞完 →「「{}」不能用作新名字：不能为空、不能含 /、不能与原名相同」
+src/bridge/src/filewin/shell.rs:822	复制要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
+src/bridge/src/filewin/shell.rs:884	复制 {} 为：	保留	[对外] 对话框标题，名词性短句
+src/bridge/src/filewin/shell.rs:886	⚠ 只在同一个目录里改名 —— 名字里不许带 `/`。	保留	[对外] 输入框下提示，短句一个破折号接可操作限制
+src/bridge/src/filewin/shell.rs:891	取消	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1017	这几件写操作要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
+src/bridge/src/filewin/shell.rs:1153	往外拖要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
+src/bridge/src/filewin/shell.rs:1227	{} 改不了：{why}	保留	[对外] 结果＋原因插值
+src/bridge/src/filewin/shell.rs:1232	读远端文本要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
+src/bridge/src/filewin/shell.rs:1275	{path} 读不出来：{why}	保留	[对外] 结果＋原因插值
+src/bridge/src/filewin/shell.rs:1289	改完之后有 {} 字节，超过 {} 的上限 —— 存不回去（超限**拒编而非截断**）	改·§2.4	[对外] 破折号＋括号补充＋markdown ** 同句 兼§2.2（「拒编而非截断」是设计论证）→「改完 {} 字节，超过上限 {}，存不回去」
+src/bridge/src/filewin/shell.rs:1298	存远端文本要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
+src/bridge/src/filewin/shell.rs:1407	正在读 {p}…	保留	[对外] 进度标签
+src/bridge/src/filewin/shell.rs:1413	正在存 {p}…	保留	[对外] 进度标签
+src/bridge/src/filewin/shell.rs:1424	{} 改了还没存	保留	[对外] 对话框标题
+src/bridge/src/filewin/shell.rs:1427	关掉就丢掉你敲的那些东西了 —— 远端那份还是旧的。	保留	[对外] 后果说明，一个破折号接可理解的补充
+src/bridge/src/filewin/shell.rs:1430	丢掉，关	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1433	先别关	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1458	已经超过 {} 的上限 {} 字节 —— 存不回去	保留	[对外] 结果一句，破折号后是结论
+src/bridge/src/filewin/shell.rs:1466	已存	保留	[对外] 状态标签
+src/bridge/src/filewin/shell.rs:1468	存不回去：{why}	保留	[对外] 结果＋原因插值
+src/bridge/src/filewin/shell.rs:1480	保存	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1483	关闭	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1508	正在拖出 {name}：{} / {}	保留	[对外] 进度标签
+src/bridge/src/filewin/shell.rs:1520	已存到 {dest}（{}）	保留	[对外] 结果＋大小
+src/bridge/src/filewin/shell.rs:1525	拖到 {dest} 没成：{why}	保留	[对外] 结果＋原因插值
+src/bridge/src/filewin/shell.rs:1536	把「{}」存到哪儿？	保留	[对外] 对话框标题，body 里问句合法
+src/bridge/src/filewin/shell.rs:1541	⚠ 以 `/` 结尾 = 当成目录，原名接上去。	保留	[对外] 输入提示，可操作
+src/bridge/src/filewin/shell.rs:1543	确定	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1546	取消	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1552	那儿已经有东西了	保留	[对外] 覆盖确认标题
+src/bridge/src/filewin/shell.rs:1558	盖掉它就没有备份了，不可撤销。	保留	[对外] 后果说明
+src/bridge/src/filewin/shell.rs:1561	盖掉	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1564	取消	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1590	⚠ 只在这一个目录里 —— 不许带 `/`。	保留	[对外] 输入提示，短句一个破折号接限制
+src/bridge/src/filewin/shell.rs:1592	确定	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1595	取消	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1645	⬆ 上一级	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1648	刷新	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1659	正在列…	保留	[对外] 进度标签
+src/bridge/src/filewin/shell.rs:1674	这一屏没走后端：{why}	改·§2.1	[对外] 橙字提示；「没走后端」是在讲我们内部走哪条路，用户不关心路由 →「这个目录的列表可能不完整：{why}」
+src/bridge/src/filewin/shell.rs:1683	这个目录条目太多，只拿到了前 {} 条 —— 没看见的文件不代表它不在	保留	[对外] 结果＋一句补充，只一个破折号信号
+src/bridge/src/filewin/shell.rs:1768	搜索	保留	[对外] 控件标签
+src/bridge/src/filewin/shell.rs:1772	文件名里的一段	保留	[对外] 输入框占位
+src/bridge/src/filewin/shell.rs:1777	重建索引	保留	[对外] 按钮
+src/bridge/src/filewin/shell.rs:1782	正在搜…	保留	[对外] 进度标签
+src/bridge/src/filewin/shell.rs:1892	cc-monitor 文件 — {}	保留	[对外] 窗口标题
+src/bridge/src/filewin/transfer.rs:232	这一趟被取消了	保留	[对外] 传输被取消时进失败列表的原因，短
+src/bridge/src/filewin/transfer.rs:239	取消传输	保留	[对外] 按钮字面
+src/bridge/src/filewin/transfer.rs:575	远端已经有这 {} 个，要覆盖吗？	保留	[对外] 覆盖确认标题，真在问
+src/bridge/src/filewin/transfer.rs:576	⚠ 这一问只出现一次：勾完点确认，剩下的并行传。	保留	[对外] 确认框说明，可操作
+src/bridge/src/filewin/transfer.rs:585	覆盖勾上的	保留	[对外] 按钮
+src/bridge/src/filewin/transfer.rs:588	全都不覆盖	保留	[对外] 按钮
+src/bridge/src/filewin/transfer.rs:616	已经按过取消了，还没起的那几件不会再起	保留	[对外] 状态标签
+src/bridge/src/filewin/transfer.rs:625	上一趟 {} 件失败：{}	保留	[对外] 结果行
+src/bridge/src/filewin/transfer.rs:635	上一趟 {} 件传完、{} 件跳过	保留	[对外] 结果行
+src/bridge/src/filewin/writeops.rs:95	新建目录	保留	[对外] 按钮字面
+src/bridge/src/filewin/writeops.rs:97	改名	保留	[对外] 按钮字面
+src/bridge/src/filewin/writeops.rs:99	删除	保留	[对外] 按钮字面
+src/bridge/src/filewin/writeops.rs:101	权限	保留	[对外] 按钮字面
+src/bridge/src/filewin/writeops.rs:157	新建目录 {path}	保留	[对外] 操作描述（确认框/结果行）
+src/bridge/src/filewin/writeops.rs:159	目录	保留	[对外] 拼进删除描述的名词
+src/bridge/src/filewin/writeops.rs:159	文件	保留	[对外] 拼进删除描述的名词
+src/bridge/src/filewin/writeops.rs:160	删除{kind} {path}	保留	[对外] 操作描述
+src/bridge/src/filewin/writeops.rs:162	改名 {from} → {to}	保留	[对外] 操作描述
+src/bridge/src/filewin/writeops.rs:163	改权限 {path} → {mode:o}	保留	[对外] 操作描述，八进制权限是用户会认的写法
+src/bridge/src/filewin/writeops.rs:177	⚠ 挡住了：	保留	[对外] 被挡提示前缀
+src/bridge/src/filewin/writeops.rs:193	{FENCE_PREFIX}{} —— `{path}` 是 Claude 的会话数据，\n         动它会弄坏正在跑的那场会话。要管这些用历史浏览器。	保留	[对外] 结果＋原因＋可行的去处，两句分开；破折号只一个信号
+src/bridge/src/filewin/writeops.rs:379	在这个目录里新建一个目录，叫：	保留	[对外] 输入框标题
+src/bridge/src/filewin/writeops.rs:380	把 {} 改名为：	保留	[对外] 输入框标题
+src/bridge/src/filewin/writeops.rs:381	把 {} 的权限改成（八进制）：	保留	[对外] 输入框标题
+src/bridge/src/filewin/writeops.rs:594	这 {} 件要做吗？	保留	[对外] 确认框标题，真在问
+src/bridge/src/filewin/writeops.rs:597	⚠ 这一问只出现一次：勾完点确认。删除不可撤销。	保留	[对外] 确认框说明，短句可操作
+src/bridge/src/filewin/writeops.rs:607	做勾上的	保留	[对外] 按钮（action 档，口语不在 R5 射程）
+src/bridge/src/filewin/writeops.rs:610	都别做	保留	[对外] 按钮（action 档）
+src/bridge/src/filewin/writeops.rs:630	上一摞 {} 件没做成：{}	保留	[对外] 结果行
+src/bridge/src/filewin/writeops.rs:640	上一摞 {} 件做完、{} 件跳过	保留	[对外] 结果行
+src/bridge/src/remote_branch.rs:50	远端后端版本过旧（不支持远端分叉）——请重新部署后端后再试（src/doc/REMOTE-PHASE0-DEPLOY.md）	改·§2.1	[对外] 远端分叉失败报错；句尾外泄源码仓内文档路径 src/doc/… 兼§2.4（破折号＋两个括号）→「远端后端版本过旧，不支持分叉。请在设置里重装这台机器的后端」
+src/bridge/src/remote_branch.rs:167	源会话 id	保留	[对外] validate_fork_id 报错里的对象名
+src/bridge/src/remote_branch.rs:168	消息 uuid	内部词→「消息 ID」	[对外] validate_fork_id 报错里的对象名；uuid 是实现词 新词:uuid
+src/bridge/src/remote_history.rs:48	这个会话超过 {MAX_SESSION_BYTES} 字节上限，只读到前 {read_bytes} 字节（{lines_shown} 行）；\n         后面的内容**没有显示**。完整历史仍在远端那个 jsonl 文件里。	内部词→「会话记录文件」	[对外] 会话截断提示；jsonl 是 R1 词 兼§2.4（markdown **）→「会话超过 {} 字节上限，只显示了前 {lines_shown} 行」
+src/bridge/src/remote_history.rs:65	远端后端版本过旧（不支持历史查询）——请按 src/doc/REMOTE-PHASE0-DEPLOY.md 重新构建部署	改·§2.1	[对外] 历史查询失败报错；外泄源码仓内文档路径 src/doc/… 兼§2.3（「重新构建部署」用户做不了）→「远端后端版本过旧，不支持历史查询。请在设置里重装后端」
+src/bridge/src/remote_history.rs:242	远端那台的后端没带会话 sid 清单（版本旧）	保留	[不对外] WhyUnknown::reason 今天只进 tracing::info!（log_unknown_reasons）；注释说「将来给界面用」，那天要换掉 sid（R1）
+src/bridge/src/remote_history.rs:243	远端那一行的 sid 清单与 sessionCount 对不上（行坏了）	保留	[不对外] 同上只进日志；将来上界面要换掉 sid / sessionCount
+src/bridge/src/remote_history.rs:244	远端会话的活状态本机答不了（SessionMap 只认本机进程）	保留	[不对外] 同上只进日志；将来上界面要换掉 SessionMap 新词:SessionMap
+src/bridge/src/remote_history.rs:633	远端项目列表	保留	[不对外] log_unknown_reasons 的日志标签
+src/bridge/src/sftp.rs:471	原文件此前不存在或为空，没有可回滚的内容；刚写入的内容仍在远端，请手动清理后重试。	改·§2.3	[对外] rollback_note 拼进写后校验失败的 Err；「请手动清理后重试」派活但没说清清理什么 兼§2.4 →「写入失败。原来没有这个文件，新写的内容还留在远端 {path}」
+src/bridge/src/sftp.rs:473	已尝试回滚原文件。	保留	[对外] rollback_note，短
+src/bridge/src/sftp.rs:546	远端无 backend / 无版本标记	内部词→「远端还没装后端」	[对外] Deploy 原因会拼进「已安装后端…（{reason}）」；英文 backend 与「版本标记」是内部叫法 新词:版本标记
+src/bridge/src/sftp.rs:548	版本不符（远端 {} ≠ 期望 {expected}）	保留	[对外] 部署原因：版本不符，括号给两边版本号
+src/bridge/src/sftp.rs:579	且无版本标记	内部词→「版本信息」	[对外] marker_phrase 拼接段（进部署原因）；「版本标记」是内部叫法 新词:版本标记
+src/bridge/src/sftp.rs:581	版本标记也不符（远端 {} ≠ 期望 {expected}）	内部词→「版本信息」	[对外] marker_phrase 拼接段；「版本标记」是内部叫法 新词:版本标记
+src/bridge/src/sftp.rs:583	而版本标记说它已是 {expected}	内部词→「版本信息」	[对外] marker_phrase 拼接段；「版本标记说它…」是内部叫法 新词:版本标记
+src/bridge/src/sftp.rs:622	落点没有后端二进制（{}）	内部词→「远端没有后端程序」	[对外] 部署原因；「落点」「后端二进制」是内部叫法 新词:落点 新词:二进制
+src/bridge/src/sftp.rs:626	落点的后端二进制是 0 字节（{}）	内部词→「远端的后端程序是空文件」	[对外] 部署原因；「落点」「后端二进制」是内部叫法 新词:落点 新词:二进制
+src/bridge/src/sftp.rs:954	远端已是最新后端（{}，{arch}）：{path}，无需重装。	保留	[对外] 手动安装后端的结果，结论清楚
+src/bridge/src/sftp.rs:967	已安装后端（{}，{arch}）到 {path}（{reason}）。重连远端即可用。	保留	[对外] 安装结果＋下一步（重连即可用，已验证可行）
+src/bridge/src/sftp.rs:1000	没有可删的后端文件（{path} 及其 .build_id 都不在，可能已卸载）。	内部词→「版本文件」	[对外] 卸载结果；`.build_id` 是我们的标记文件名 新词:.build_id
+src/bridge/src/sftp.rs:1004	已删除 {} 个文件：{}。注意：若本机器仍勾选「启用」，自动部署会在下次连接时把后端装回——彻底移除请取消该机器启用 / 删除该机器后重启 monitor。	改·§2.4	[对外] 结果＋注意＋处方塞在一段，破折号＋首句长 兼§2.3 →「已删除 {} 个文件。这台机器仍是启用状态，下次连接会自动装回」
+src/bridge/src/sftp.rs:1272	远端 ~/{profile}	保留	[对外] 拼进报错的对象名（远端 profile 路径）
+src/bridge/src/sftp.rs:1276	远端 {profile} 不存在，没有 ccm 块可卸载。	保留	[对外] 卸载结果；ccm 是用户自己敲的命令名（R1b 语境内）
+src/bridge/src/sftp.rs:1280	远端 {profile} 里没有 ccm 块，无需卸载。	保留	[对外] 卸载结果
+src/bridge/src/sftp.rs:1317	已从远端 {profile} 删除 ccm 块（原文件已备份为 {backup}）。	保留	[对外] 卸载结果，括号给备份路径
+src/bridge/src/sftp.rs:1406	远端 ~/{profile}	保留	[对外] 拼进报错的对象名
+src/bridge/src/sftp.rs:1417	ccm CLI 已部署到远端 ~/{CCM_CLI_REMOTE_PATH}；{profile} 的别名块已是最新，无需改动。	保留	[对外] 部署结果
+src/bridge/src/sftp.rs:1432	（原文件已备份为 {backup}）	保留	[对外] 部署结果的拼接段（备份路径）
+src/bridge/src/sftp.rs:1469	已部署 ccm CLI 到 ~/{CCM_CLI_REMOTE_PATH}，别名块已写入 {profile}{backup_note}。\n         重连远端 ssh 终端后可用：`ccm`（起会话）/ `ccm --tmux`（tmux 里起）/ \n         `ccm --account <名>`（指定账号）。`ccm --help` 看全部修饰。	保留	[对外] 部署结果＋用法，括号是命令释义，可操作
+src/bridge/src/sftp_pool.rs:1286	远端的 sftp-server 握手时没报 `copy-data` 扩展（或修订号不是 1）	改·§2.1	[对外] CopyVerdict 经 copy.rs 慢路前缀画在窗口上；sftp-server 握手/copy-data 扩展/修订号是协议细节 新词:copy-data 新词:sftp-server →「远端不支持服务器端直接复制」
+src/bridge/src/sftp_pool.rs:1294	远端给的 SFTP 句柄含非 UTF-8 字节，库已有损解码 ⇒ 不敢照原样发回去	改·§2.1	[对外] 同上；句柄/有损解码讲实现 兼§2.2 新词:SFTP句柄 →「远端不支持服务器端直接复制」
+src/bridge/src/sftp_pool.rs:1387	{why} ⇒ 退回中转：{relayed} 字节经过了你这台机器（零流量复制没走上）	改·§2.1	[对外] 同上；「退回中转」「零流量复制没走上」讲内部路径 兼§2.4 新词:中转 新词:零流量复制 →「{why}，数据经本机转了一次（{relayed} 字节）」
+src/bridge/src/ssh_source.rs:440	超时	保留	[不对外] classify_stage 的匹配关键词（对报错原文做 contains），不上界面
+src/bridge/src/ssh_source.rs:442	指纹	保留	[不对外] classify_stage 的匹配关键词，不上界面
+src/bridge/src/ssh_source.rs:602	拨号任务异常: {je}	改·§2.1	[可达存疑] 收进拨号错误列表、可能拼进连接失败报错；「拨号任务异常」是 tokio JoinError 的实现话 新词:拨号任务 →「连接中断：{je}」
+src/bridge/src/ssh_source.rs:655	跳板 {}	保留	[对外] 连接阶段显示的端点名；跳板是用户自己配的 ssh 跳板
+src/bridge/src/ssh_source.rs:679	{}:{}（经跳板）	保留	[对外] 连接阶段显示的端点
+src/bridge/src/ssh_source.rs:845	agent 身份被拒（user={user}）	改·§2.1	[可达存疑] 鉴权失败原因进 last_err 最终上报；`user={user}` 是日志行格式 →「ssh-agent 里的密钥被拒（用户 {user}）」
+src/bridge/src/ssh_source.rs:846	agent 签名鉴权出错: {e}	保留	[可达存疑] 鉴权失败原因，ssh-agent 是用户认得的词（R1b 语境内）
+src/bridge/src/ssh_source.rs:1221	(代理没说原因)	保留	[可达存疑] 拼进「拨号代理拨不通: {why}」的兜底原因，短
+src/bridge/src/ssh_source.rs:2219	远端 [{host_label}] 发来一行 {bytes} 字节，超过单行上限 {BACKEND_FRAME_LINE_CAP} 字节，\n         这一行**已整行丢弃**。这不是网络拥塞 —— 要么该会话里有异常巨大的一条记录，\n         要么对端不是本工具的后端。重开该会话可看完整历史。	改·§2.4	[对外] 健康提示：markdown ** ＋破折号＋首句长，一段塞结果、排除项、两种归因、处方 兼§2.2 →「远端 [{host_label}] 有一条记录过大（{bytes} 字节），已跳过。重开会话可看完整历史」
+src/bridge/src/ssh_source.rs:2465	远端 [{host_label}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。	保留	[对外] 健康提示，结果＋可行处方两句
+src/bridge/src/ssh_source.rs:2478	；受影响清单**不全**，建议刷新该来源	改·§2.4	[对外] 拼接段带 markdown ** 兼§2.3（「建议刷新」）→「；受影响的会话没列全」
+src/bridge/src/ssh_source.rs:2483	远端 [{host_label}] 管道拥塞，丢了约 {dropped} 条帧，其中 {} 条是**会话状态变化**{named}\n         —— 这部分**重开会话补不回来**，请手动刷新该来源{truncated_note}。	改·§2.1	[对外] 健康提示；「帧」是协议内部单位 兼§2.4（markdown ** ＋破折号）新词:帧 →「远端 [{host_label}] 连接拥塞，{} 个会话的状态可能没更新{named}。请刷新这台机器」
+src/bridge/src/ssh_source.rs:2887	远端 [{label}] backend 版本 {reported} 与本机期望 {EXPECTED_BACKEND_BUILD_ID} 不一致，建议更新后端（后续将支持自动部署）。	内部词→后端	[对外] 版本提示里英文 backend 兼§2.2（「后续将支持自动部署」是路线图承诺）兼§2.3 →「远端 [{label}] 的后端版本过旧，请在设置里更新」
+src/bridge/src/ssh_source.rs:2890	远端 [{label}] backend 协议版本 v={reported_v} 与本机期望 v={EXPECTED_PROTO_V} 不兼容，渲染可能异常，请更新后端。	内部词→后端	[对外] 版本提示里英文 backend 兼§2.1（v= 日志格式）→「远端 [{label}] 的后端版本不兼容，请在设置里更新」
+src/bridge/src/ssh_source.rs:4196	SSH 连接/鉴权失败：{e}	保留	[对外] 测试连接结果，SSH 是用户认得的词
+src/bridge/src/ssh_source.rs:4212	SSH 与后端均正常（含控制通道往返）。	内部词→删去「（含控制通道往返）」	[对外] 测试连接结果；「控制通道」是内部通道名 新词:控制通道
+src/bridge/src/ssh_source.rs:4214	SSH 与后端正常，但该 backend **不支持控制通道**（旧版本）——                 远端起会话等功能不可用，请在设置里重装该机器的后端。	改·§2.1	[对外] 测试连接结果；「控制通道」讲内部机制＋英文 backend 兼§2.4（markdown ** ＋破折号）新词:控制通道 →「后端版本过旧，不能在远端起会话。请在设置里重装这台机器的后端」
+src/bridge/src/ssh_source.rs:4218	SSH 与后端正常，但**控制通道不通**（详见下方摘要的 control=… 段）——                 远端起会话会失败。	改·§2.1	[对外] 测试连接结果；「control=… 段」是日志格式、「控制通道」内部名 兼§2.4（markdown ＋破折号）新词:控制通道 →「后端连上了，但不能在远端起会话」
+src/bridge/src/ssh_source.rs:4225	SSH 连上了，但后端在超时内未回 hello（未部署 / 路径错 / 启动失败？）。	改·§2.1	[对外] 测试连接结果；「未回 hello」是协议帧名，括号里三个问号猜测 兼§2.4 新词:hello →「SSH 连上了，但后端没响应（可能没装或没启动）」
+src/bridge/src/ssh_source.rs:4229	SSH 连上了，但后端探测失败：{e}	保留	[对外] 测试连接结果＋原因
+src/bridge/src/ssh_source.rs:4341	(非 hello 帧: {other:?})	改·§2.1	[对外] 后端握手摘要（result.backend_hello 画在测试结果下方）；「非 hello 帧」＋Debug 转储是协议细节 新词:hello帧
+src/bridge/src/ssh_source.rs:4377	control=unsupported(backend 未声明入方向命令)	改·§2.1	[对外] 同一摘要里的 control= 段，日志键值格式 新词:入方向命令 新词:控制通道
+src/sftp/panel.ts:94	名称	保留	[对外] 排序下拉选项
+src/sftp/panel.ts:95	大小	保留	[对外] 排序下拉选项
+src/sftp/panel.ts:96	类型	保留	[对外] 排序下拉选项
+src/sftp/panel.ts:276	下载 {…}	保留	[对外] 传输进度标签
+src/sftp/panel.ts:304	上传 {…}	保留	[对外] 传输进度标签
+src/sftp/panel.ts:462	复制 {…}	保留	[对外] 传输进度标签
+src/sftp/panel.ts:483	目录	保留	[对外] 拼进删除确认的名词
+src/sftp/panel.ts:483	文件	保留	[对外] 拼进删除确认的名词
+src/sftp/panel.ts:508	上传 {…}	保留	[对外] 传输进度标签
