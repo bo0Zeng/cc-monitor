@@ -578,6 +578,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--list-projects",
     "--list-sessions",
     "--ping",
+    // 〔RM1b · 第四波〕`plugins-marketplaces` 帧命令的 CLI 面（同 `--tasks-list` 那一段的理由）。
+    "--plugins-marketplaces",
     "--read-session",
     "--read-session-from-offset",
     "--read-session-tail",

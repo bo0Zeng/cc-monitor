@@ -5,7 +5,7 @@ use super::*;
 /// 本族的帧命令 —— **题面给的**那几样（任务列表 · 插件市场），写成帧面名。
 /// 它是判据的**异源**那一侧：下面那条从 `inbound.rs` 源码里数「谁把活交给了
 /// `feature_face::answer`」，两边必须相等。
-const FAMILY: &[&str] = &["tasks-list"];
+const FAMILY: &[&str] = &["plugins-marketplaces", "tasks-list"];
 
 fn scratch(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!("rm1b-face-{tag}-{}", std::process::id()));
@@ -71,5 +71,27 @@ fn tasks_list_answers_in_lines_and_refuses_a_missing_sid() {
     assert_eq!(
         answer_at(&h, "no-such", &json!({})).unwrap_err().0,
         "bad_args"
+    );
+}
+
+#[test]
+fn plugins_marketplaces_answers_one_line_and_keeps_the_three_exits_apart() {
+    // ① 文件不在 ⇒ 一行，`file_absent: true`。
+    let h = scratch("mk-absent");
+    let v = answer_at(&h, "plugins-marketplaces", &json!({})).unwrap();
+    let rows = v["lines"].as_array().expect("lines");
+    assert_eq!(rows.len(), 1);
+    let survey: serde_json::Value = serde_json::from_str(rows[0].as_str().unwrap()).unwrap();
+    assert_eq!(survey["file_absent"], json!(true));
+    // ② 读 / 解析失败 ⇒ `failed`，**不是**空表。
+    let h = scratch("mk-broken");
+    let p = crate::observe::plugins_query::plugins_root(&h).join("known_marketplaces.json");
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(&p, "{ 不是 json").unwrap();
+    assert_eq!(
+        answer_at(&h, "plugins-marketplaces", &json!({}))
+            .unwrap_err()
+            .0,
+        "failed"
     );
 }

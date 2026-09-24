@@ -23,6 +23,8 @@ pub mod accounts_query;
 pub(crate) mod fs;
 pub mod history_query;
 pub mod search_query;
+// 〔RM1b · 第四波〕插件市场只读枚举（`plugins-marketplaces` 帧命令的本体；从 monitor `plugins.rs` 原样搬来）。
+pub(crate) mod plugins_query;
 // 〔RM1b · 第四波〕会话的任务列表（`tasks-list` 帧命令的本体；帧面宿主在顶层 `feature_face`）。
 pub(crate) mod tasks_query;
 // 〔SE1〕「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。

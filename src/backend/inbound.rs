@@ -116,6 +116,7 @@ pub const COMMANDS: &[&str] = &[
     "kill",
     "launch",
     "ping",
+    "plugins-marketplaces",
     "resolve",
     "tasks-list",
 ];
@@ -996,6 +997,20 @@ pub const REGISTRY: &[CommandSpec] = &[
     // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
     //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
     // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
+    // 〔RM1b · 第四波〕同族第二条：插件市场只读枚举（`parity_ledger` `plugins.marketplaces`）。
+    //   从 monitor `plugins.rs`（`P8a`）原样搬来，三条出口不变；应答恰一行 = 整份 survey。
+    CommandSpec {
+        name: "plugins-marketplaces",
+        doc_anchor: Some("#### `plugins-marketplaces`"),
+        codes: &["failed", "too_large"],
+        fields: &["lines"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "tasks-list",
         doc_anchor: Some("#### `tasks-list`"),

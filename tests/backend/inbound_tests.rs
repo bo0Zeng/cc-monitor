@@ -412,6 +412,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-read",
         "exit-policy-set",
         // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
+        "plugins-marketplaces",
         "tasks-list",
     ] {
         assert!(
@@ -459,6 +460,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-sessions",
         "exit-policy-read",
         "exit-policy-set",
+        "plugins-marketplaces",
         "tasks-list",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();

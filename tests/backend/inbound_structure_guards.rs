@@ -169,6 +169,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "exit-policy-read"
                 | "exit-policy-set"
                 // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
+                | "plugins-marketplaces"
                 | "tasks-list"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
@@ -226,6 +227,7 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-sessions",
         "exit-policy-read",
         "exit-policy-set",
+        "plugins-marketplaces",
         "tasks-list",
     ];
     let missing: Vec<&str> = super::REGISTRY

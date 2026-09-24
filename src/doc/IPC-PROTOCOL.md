@@ -1509,7 +1509,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 - 宿主是 `feature_face`（不是 `read_face`，理由在它头注），本体在 `observe/`。
 - 应答一律**按行**：`data = {"lines": [...]}`；整份超过 32 MiB ⇒ `too_large`（与 `C1` 同一个口径、同一个常量）。
-- CLI 面同样自动派生（`--tasks-list` …），已进 `SUBCOMMANDS`。
+- CLI 面同样自动派生（`--tasks-list` · `--plugins-marketplaces`），已进 `SUBCOMMANDS`。
 - 全在阻塞档（同步文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
 
 #### `tasks-list`：一个会话的任务列表
@@ -1526,6 +1526,20 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 - 那个 sid **没有任务目录** ⇒ 空 `lines`（诚实的空）；目录**在但读不了** ⇒ `failed`（不说成「没有任务」）。
 - 半截 / 解不成对象的文件跳过（写者持锁那一刻读到半截是正常时序）；单个文件超过 1 MiB ⇒ 跳过并 `warn!` 点名。
+
+#### `plugins-marketplaces`：这台机器登记的插件市场（**不读 stdin**）
+
+```text
+→ {"id":"p1","cmd":"plugins-marketplaces","args":{}}
+← {"kind":"reply","id":"p1","ok":true,"data":{"lines":["{\"entries\":[{\"id\":\"mk\",\"declared_plugins\":276,…}],\"file_absent\":false}"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `lines` | ← | **恰一行**：整份 survey `{entries, file_absent}`，每条 entry 六个字段 `id` / `source` / `install_location` / `last_updated` / `declared_plugins` / `declared_error`（读不出就是 `null`，不编默认值） |
+
+- 读的是 `<home>/plugins/known_marketplaces.json` 与 `<各落点>/.claude-plugin/marketplace.json`；它回答「有哪些 marketplace、从哪来、**声明**了几个插件」，**不是**「装了 / 启用了哪些」。
+- 三条出口分开：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；某一条数不出 ⇒ 那一条 `declared_plugins: null` ＋ `declared_error` 理由，整张表照出。
 
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
