@@ -922,6 +922,7 @@ src/views/panorama.ts:1410	DynamicGuess：方法调用等接收者类型未知�
 src/views/session-viewer.ts:450	（{…} 条渲染失败，首个 {…}）	保留	[对外] 状态栏里渲染失败计数，括号短
 src/views/session-viewer.ts:451	 · 首屏 {…}ms	保留	[对外] 状态栏首屏耗时；数字对用户意义有限但无病（拿不准，倾向保留）
 src/views/user-input-panel.ts:49	大纲	保留	[对外] 面板名，名词短语
+src/views/user-input-panel.ts:53	按你的输入跳转	保留	[对外] 大纲开关的 tooltip；`设计/10 §2.2b ③` 定稿原文（〔SE1〕从赋值处提成常量，文字一字未改）
 src/panorama/agent-clip.ts:42	【代码全景 → agent】下面是某一次索引的快照，不是当前事实；用之前以代码为准。	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；开头说清这是快照、以代码为准
 src/panorama/agent-clip.ts:46	索引读数：未取到（查索引状态失败）—— 这段内容的时效未知	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；如实说没取到、时效未知
 src/panorama/agent-clip.ts:47	索引读数：本仓没有索引记录 —— 这段内容的时效未知	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；如实说没有索引记录

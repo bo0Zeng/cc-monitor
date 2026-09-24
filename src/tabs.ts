@@ -39,9 +39,9 @@ import { TailWindow, type SkeletonLedger } from "./live-window";
 // 〔`设计/10` 骨架 · 子步 4〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
 import { skeletonKind } from "./height-estimate";
-// K-R45 乙（`KR45D2`）：「我说过的 N 句」。挑句子 / 界面 / 跳，三段都与历史查看器共用同一份。
-import { toUserInputEntry, type UserInputEntry } from "./views/user-input-index";
+// K-R45 乙（`KR45D2`）：「大纲」。界面 / 跳 与历史查看器共用同一份；〔SE1〕清单问后端要（`OutlineSource`）。
 import { UserInputPanel } from "./views/user-input-panel";
+import { OutlineSource } from "./views/outline-source";
 // ⚠ **实时窗口 import 历史查看器，方向是别扭的 —— 这是写区逼出来的将就，不是惯例。**
 // 共用的只有 `revealCard`（找卡→展开→滚，两条路的卡由同一份渲染器建）。把它搬进中立文件
 // 要同时改 `src/bridge/src/polling_registry.rs` 的调度点分类账（rAF/setTimeout 按文件精确对账），
@@ -507,36 +507,11 @@ export interface Tab {
    */
   processedUuids: Set<string>;
   /**
-   * K-R45 乙（`KR45D2`）：**本会话「我说过的每一句」的账本 —— 今天之前前端没有这个东西。**
-   *
-   * # 为什么非新建不可（这一段是读数，不是理由的措辞）
-   *
-   * 历史查看器那条路有 `payloads`（收集阶段全量留着），所以清单是**现算**的。
-   * 实时这条路**一条记录的文本在前端零处留存**：持有整条 payload 的只有
-   * `window: TailWindow`（只收**没渲染**的那些，`takeTail` 一取就 `splice` 出账）
-   * 与 `midBatchBuffer`（每批 flush 后置空）；已渲染那侧的 `RecordTimeline` 条目是
-   * `{seq, element, kind, toolGroup}`，**没有 `message`、没有 `uuid`**。
-   * ⇒ 记录一旦上屏，想再问它「你说了什么」就没有地方可问了。
-   *
-   * # 存什么 · 存多久 · 什么时候清
-   *
-   * - **存**：`UserInputEntry`（uuid + **截断到 80 字**的摘要 + timestamp + 序号），
-   *   **不存整条 payload** —— 那才是几十 MB 的那一份。
-   * - **存多久**：与 tab 同寿。
-   * - **什么时候清**：`closeTab`（与 `seenSeqs` / `processedUuids` / `window` 同一拍）。
-   *   归档**不清** —— 归档 tab 内容还在、还能翻，清单跟着没了才是回归。
-   *
-   * # 内存代价（现打，分母写明）
-   *
-   * 量具 `scratchpad/kr45c-ledger-cost.py`，被测对象 = 本机 `~/.claude/projects` 下
-   * **1520 份** jsonl（60.2 万行）。按 UTF-16 + 对象头的**保守上界**算：
-   * **单条 326 B**（分母 = 命中口径的 4374 条）· 每会话中位数 **0 B**、p90 **272 B**、
-   * p99 **16.6 KB**、**最大 197 KiB**（585 条，那份 jsonl 自己 49.9 MiB ⇒ 账本占 0.39%）。
-   * ⇒ 典型 <10 个 tab 的窗口最坏合计约 2 MB，**代价可接受，所以存全量摘要、不降级成只存 uuid**。
-   * ⚠ 这个数**没有上限闸**：加一个「只留最近 N 条」就是在最需要它的长会话上交一份缺斤短两的清单，
-   *   与 `KR45D1` 的「不多不少」直接冲突。真要封顶，得先有一个比 197 KiB 更疼的读数。
+   * 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源 —— **问后端要**（`--list-user-inputs`），不在前端攒。
+   * 本 tab 只持有「上次要到哪个字节」与已列出的 uuid，不存正文；摘要在面板的行上。
+   * 原先这里是 `userInputs` 旁路账本（`onLine` 一条一条攒，到达序 ≠ 对话序），已删。
    */
-  userInputs: UserInputEntry[];
+  outline: OutlineSource;
   /** 清单界面（与历史查看器**同一个类**）。开关 + 面板都挂在 `inputsEl` 里。 */
   inputsPanel: UserInputPanel;
   /**
@@ -938,6 +913,7 @@ export class TabManager {
     if (active) this.updateSentinel(active);
     // 〔`设计/10` 骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
     if (active) this.requestSkeleton(active);
+    if (active?.outline.needsFetch) this.refreshOutline(active); // 〔SE1〕大纲
     // F88b：批期 trackUsage 只更了 tab 字段没喂 chip，这里对活跃 tab 单次 flush 到 HUD
     // （批内多条 assistant 记录只刷一次，消视觉抖动）。
     this.onActiveUsageChanged?.(active?.latestModel ?? null, active?.latestPromptTokens ?? null);
@@ -1313,8 +1289,8 @@ export class TabManager {
       pending: tab.window.pendingCount,
       // ② `BranchFolder.records` —— 每条一个 {uuid,parentUuid,timestamp} 三元组,不含正文
       branchRecords: branchRecordCount(tab.branchFolder),
-      // ③ `Tab.userInputs` —— 每条一份**截断到 80 字**的摘要(字段头注里有分母)
-      userInputs: tab.userInputs.length,
+      // ③ 大纲的条数 —— 〔SE1〕清单问后端要，前端只留面板上那几行（每行一份 80 字摘要）
+      userInputs: tab.outline.count,
       midBuffer: tab.midBatchBuffer.length,
       // 〔`设计/10` 骨架〕接上没有 · 索引总条数 · 还在占位里的行数 · 占位块数（`timeline` 里含占位条目）
       skeleton: tab.skeleton
@@ -1415,12 +1391,8 @@ export class TabManager {
       tab.processedUuids.add(uuid);
     }
 
-    // K-R45 乙：记进「我说过的 N 句」的账本。
-    // 🔴 **位置是有讲究的**：放在双重去重**之后**（重投的行不许把同一句记两遍），
-    // 但在渲染门控**之前** —— 收纳（不建卡）的那些记录**也算数**，而它们恰恰是
-    // 「长会话里找不回自己刚才说过的那句话」说的那一批。放到门控之后就等于
-    // 又做了一遍「扫已渲染的」，那正是 `KR45D1` 顶掉过的那条错前提。
-    this.trackUserInput(tab, payload.message);
+    // 〔SE1〕大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
+    this.noteOutlineLine(tab);
 
     // A5：换号重启的 compact 完成检测。仅当有该 sid 的等待者才判（常态零开销）：见 compact 摘要
     // 行即 resolve 该等待者（换号重启编排随即从 compact 步进入 kill 步）。
@@ -1463,7 +1435,10 @@ export class TabManager {
       // issue #36：队列消息内容 → 折叠豁免集合
       onQueueOperation: (content: string) => tab.branchFolder.addQueuedContent(content),
       onTitleUpdate: (title: string) => this.applyAiTitle(tab, title),
-      onRealUserInput: (sid: string) => this.userActive(sid),
+      onRealUserInput: (sid: string) => {
+        this.userActive(sid);
+        this.refreshOutline(tab); // 〔SE1〕真用户输入上屏 ⇒ 大纲要新的一截
+      },
       observeForLazyEnhance: this.inBatch,
       // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
       // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
@@ -1554,21 +1529,23 @@ export class TabManager {
   }
 
   /**
-   * K-R45 乙：一条 live 记录进账本。不是用户输入 ⇒ 一个字段都不碰。
-   *
-   * 🔴 **口径不在这里判**：直接调 `toUserInputEntry` ⇒ `collectUserInputs`
-   * ⇒「什么算一条用户输入」全仓只有一个住址（那个函数的头注）。
-   * 实时这条路一次只有一条 payload，所以是「一条一条喂」，不是「整份扫一遍」。
-   *
-   * ⚠ 每来一句刷一次清单是 O(账本长度) 的对账（`setEntries` 按 uuid 就地补差值，
-   * 不整表重建）—— 账本最大实测 585 条（分母见 `Tab.userInputs` 的头注），
-   * 而它只在**用户真敲了一句**时才跑，不是每行都跑。
+   * 〔SE1〕大纲：一条 live 记录到了 —— 记一笔「又长了」（O(1)，不判是不是用户输入）。
+   * 本 tab 是 active、非批期、而且**还一次都没要过**（首个 tab 建出来时路径可能还没到）⇒ 要一次。
    */
-  private trackUserInput(tab: Tab, message: unknown): void {
-    const entry = toUserInputEntry(message, tab.userInputs.length);
-    if (!entry) return;
-    tab.userInputs.push(entry);
-    tab.inputsPanel.setEntries(tab.userInputs);
+  private noteOutlineLine(tab: Tab): void {
+    tab.outline.markStale();
+    if (!tab.outline.everFetched && !this.inBatch && this.activeId === tab.sessionId) {
+      void tab.outline.refresh();
+    }
+  }
+
+  /**
+   * 〔SE1〕大纲：向后端要新的一截（从上次的 `end` 接着要；在途就合并成一趟）。
+   * 批期不要 —— 批结束时 active tab 统一要一次，后台 tab 切进来再要（`needsFetch`）。
+   */
+  private refreshOutline(tab: Tab): void {
+    if (this.inBatch) return;
+    void tab.outline.refresh();
   }
 
   /**
@@ -1962,6 +1939,11 @@ export class TabManager {
     });
     inputsEl.append(inputsPanel.toggle, inputsPanel.panel);
     this.streamRootEl.appendChild(inputsEl);
+    // 〔SE1〕大纲的数据源：路径可能要等首条行回填（骨架 tab），所以每次要的时候现取
+    const outline = new OutlineSource(inputsPanel, () => {
+      const t = this.tabs.get(sessionId);
+      return t?.parentPath ? { origin: t.origin ?? LOCAL_ORIGIN, jsonlPath: t.parentPath } : null;
+    });
     // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
     if (this.inBatch) {
@@ -2008,7 +1990,7 @@ export class TabManager {
       midBatchBuffer: [],
       fillHandler: null,
       processedUuids: new Set(),
-      userInputs: [], // K-R45 乙：账本；口径与查看器同一个住址（collectUserInputs 的头注）
+      outline,
       inputsPanel,
       inputsEl,
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
@@ -2424,11 +2406,9 @@ export class TabManager {
 
     tab.stream.dispose();
     tab.streamEl.remove();
-    // K-R45 乙：账本与它的界面跟着走。账本持的是摘要不是 payload（量在 `Tab.userInputs`
-    // 的头注：最大 197 KiB），但留着就是「关掉的会话还挂在屏幕上」——
+    // K-R45 乙：大纲跟着走（〔SE1〕`reset` 也让在途那趟回来后不许回写）。
     // 悬浮层是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
-    tab.userInputs = [];
-    tab.inputsPanel.clear();
+    tab.outline.reset();
     tab.inputsEl.remove();
     // 显式清 Map：释放对已卸载 DOM 节点的强引用，让 GC 可早回收
     // （Map 本身也会随 Tab 对象一起回收，但显式 clear 让 DOM 引用计数立即归零）
@@ -3887,6 +3867,7 @@ export class TabManager {
     if (next) this.updateSentinel(next);
     // 〔`设计/10` 骨架〕切进来的 tab 要索引（上面刚物化过尾段 ⇒ floor 已钉）
     if (next) this.requestSkeleton(next);
+    if (next?.outline.needsFetch) this.refreshOutline(next); // 〔SE1〕大纲：有新行才要
     // D 审计 R-2:非 virgin + 不可滚 + 账本有余的 tab 没有 fill 入口(不可滚元素
     // 不产生 scroll 事件,哨兵可见却"上翻物理不可达")——切入时踢一次,rAF 自链
     // 接管直到可滚或账尽。
