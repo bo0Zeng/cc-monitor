@@ -97,8 +97,13 @@ describe("#60 最后一跳：session-idle 事件真的走到 onSessionIdle", () 
         "② 形状变了（接到别的函数）⇒ 灰灯变成归档或复活，UI 说的不是同一件事。",
     ).toBe(1);
     // 视图窗：只认自己那个 sid（多开视图窗时不许互相置灰）。
+    // 〔三入口拆分 · 住址搬家〕视图窗的 bootstrap 从 `main.ts` 搬到了自己的入口 `entry-viewer.ts`
+    // （viewer.html 不再加载 `main.ts`）。钉的那一行一字未改，只是换了文件读。
+    const viewerLines = readFileSync(resolve(srcDirOf(__dirname), "entry-viewer.ts"), "utf8")
+      .split("\n")
+      .map((l) => l.trim());
     expect(
-      lines.filter((l) => l === "if (s === sid) tabs.markTmuxIdle(s);").length,
+      viewerLines.filter((l) => l === "if (s === sid) tabs.markTmuxIdle(s);").length,
       "视图窗少了 `if (s === sid) tabs.markTmuxIdle(s);` —— 它会停留在陈旧绿灯上。",
     ).toBe(1);
   });

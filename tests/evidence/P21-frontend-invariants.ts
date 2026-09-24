@@ -75,9 +75,20 @@ export function alertCallSites(sources = productionCode()): Site[] {
 
 // ────────────────────────────── CSS 侧 ──────────────────────────────
 
-/** `src/styles.css` 剥注释后的全文。 */
+/**
+ * 应用的全部 CSS，剥注释后拼成一份。
+ *
+ * 〔三入口拆分 · 人群改定义〕原先人群就是 `src/styles.css` 这一份；拆开之后是
+ * **三个 html 的 `<link rel="stylesheet">` 清单去重** —— 那就是三个窗口真正加载的全部样式表，
+ * 没有第二份清单可漂。下游各条（规则数 > 500、fixed 选择器 == 25、包含块正控）一字未改。
+ */
 export function styleSheet(): string {
-  return stripComments(readFileSync(resolve(REPO_ROOT, "src/styles.css"), "utf8"), "ts");
+  const files = new Set<string>();
+  for (const html of ["index.html", "settings.html", "viewer.html"]) {
+    const text = readFileSync(resolve(REPO_ROOT, html), "utf8");
+    for (const m of text.matchAll(/<link rel="stylesheet" href="\/([^"]+)"/g)) files.add(m[1]);
+  }
+  return [...files].map((f) => stripComments(readFileSync(resolve(REPO_ROOT, f), "utf8"), "ts")).join("\n");
 }
 
 /** 一条 CSS 规则：选择器串 ＋ 声明体。 */

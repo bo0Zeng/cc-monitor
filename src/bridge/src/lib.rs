@@ -1842,7 +1842,7 @@ fn forget_session(
 }
 
 /// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，
-/// 加载 `index.html?viewer=<sid>` —— 前端检测到 `viewer` 参数走精简只读 bootstrap。
+/// 加载 `viewer.html?viewer=<sid>` —— 独立入口 `src/entry-viewer.ts`（三入口拆分，`设计/01 §1.2`）。
 /// 窗口已存在则前置聚焦（不重复开）。双屏 / 并排查看用。
 ///
 /// **必须 `async`**：Tauri 2 同步 `fn` 命令在**主线程**执行，而
@@ -1869,7 +1869,7 @@ async fn open_session_in_new_window(
         let _ = w.set_focus();
         return Ok(());
     }
-    let url = tauri::WebviewUrl::App(format!("index.html?viewer={session_id}").into());
+    let url = tauri::WebviewUrl::App(format!("viewer.html?viewer={session_id}").into());
     let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
         .title(if title.is_empty() {
             "cc-monitor"
@@ -1892,7 +1892,7 @@ async fn open_session_in_new_window(
 
 /// F82a（#56+#47）：把「设置」开进独立窗口（SS-3 终态：设置搬独立窗）。单例 `settings` 窗，
 /// 已存在则前置聚焦。**必须 `async`**（同 `open_session_in_new_window`：同步命令建窗死锁，见其
-/// doc + `viewer-window-investigation.md` 五坑之一）。设置窗加载 `?settings=1` → 前端 `bootstrapSettings`
+/// doc + `viewer-window-investigation.md` 五坑之一）。设置窗加载 `settings.html`（独立入口 `src/entry-settings.ts`）→ `bootstrapSettings`
 /// 精简挂载 SettingsPanel（windowMode）。设置项经既有 config 命令读写（窗口无关），无需 replay/事件流；
 /// 保存时前端广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为（跨窗同步）。
 #[tauri::command]
@@ -1905,7 +1905,7 @@ async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
         let _ = w.set_focus();
         return Ok(());
     }
-    let url = tauri::WebviewUrl::App("index.html?settings=1".into());
+    let url = tauri::WebviewUrl::App("settings.html".into());
     tauri::WebviewWindowBuilder::new(&app, label, url)
         .title("cc-monitor 设置")
         .inner_size(760.0, 820.0)
