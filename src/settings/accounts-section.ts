@@ -53,7 +53,7 @@ import {
  * apikey 那一格要显的**一个账号**。只带界面真正用得到的三样。
  *
  * ⚠⚠ `K-H2c` `KH2C1`：`configDir` 在前端是一个**不透明串** —— 前端一个字都不解析它，
- * 原样递给那条命令，由 Rust 用**全仓唯一那份规则**（`history::relay_account_id_of_dir`）
+ * 原样递给那条命令，由 Rust 用**全仓唯一那份规则**（`history::apikey_account_id_of_dir`）
  * 推出账号 id。前端自己从那个路径里取末段名，就是在长**第二份**规则，
  * ⚠ 这句话**刻意不写成代码形状** —— `accounts-section.vitest.ts` 里那条机检
  * （标题以「KH2C1 机检：前端一个字都不推账号 id」打头的那个 `it`）
@@ -1033,9 +1033,9 @@ export class AccountsSection {
    *    前端不推账号 id、也不读那份凭据文件。它失败**不挡配 key** ——
    *    那只影响状态那一行的措辞，而配 key 本身是这一格存在的理由。
    * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
-   *    （`relay_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
+   *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
    * ③ ⚠⚠ **如实记一条今天没买到的**：这一页显的是 `this.origin` 那台机器的账号，
-   *    而 `read_relay_credentials_status` / `write_relay_credentials_key` / `relay_routing_for`
+   *    而 `read_relay_credentials_status` / `write_relay_credentials_key` / `apikey_routing_for`
    *    **全是本机**的（那三条命令自己的头注逐字都写着「只答本机」）。
    *    在 `cc-acct-iso` 的布局下两边的目录末段名同名 ⇒ 实际用起来对得上，
    *    但**这一格没有任何东西钉着**。这是 `K-H2a` 起就有的形状，本轮没有把它变好也没有变坏。

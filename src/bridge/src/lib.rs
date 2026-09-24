@@ -1291,13 +1291,13 @@ pub fn run() {
             backend::control::backend_control::backend_stop,
             config::load_config,
             config::save_config,
-            // K-H2a：中转那把 key。**读那条永远只回掩码**（`KS6`）；
+            // K-H2a：apikey 表那把 key。**读那条永远只回掩码**（`KS6`）；
             // 写那条是「界面」这个第二写者，它与人手编是同一份文件的两个写者（`KS10`）。
             read_relay_credentials_status,
             write_relay_credentials_key,
-            // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走中转」。
+            // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
-            relay_routing_for,
+            apikey_routing_for,
             // K-R49：加了账号就把那条命令也落下来。写的是 monitor 自己那份别名文件
             // （`~/.cc-monitor/account-aliases.sh`，整份重写）；用户的 rc 最多多一行 `source`，
             // 而且那份 rc 由界面上的人**选**，本条不猜。
@@ -1765,7 +1765,7 @@ pub(crate) fn batch_to_payloads(
 
 /// 前端关闭 archived Tab 时调用：从 event_replay 历史里抹掉这个 session，
 /// 防止下次 F5 刷新它原地复活。
-/// `K-H2a` `KS6`：读中转那把 key 的**状态**。**永远只回掩码，不回明文。**
+/// `K-H2a` `KS6`：读 apikey 表那把 key 的**状态**。**永远只回掩码，不回明文。**
 ///
 /// ★ 这是本件里最要紧的一条：一旦回显，key 就从「只住在后端」变成
 /// 「**每次打开那个界面都往前端传一遍**」⇒ 泄漏面从一次变成无数次，
@@ -1782,7 +1782,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// # 为什么是一条**只答本机**的命令，而不是往账号列表里加两个字段
 ///
 /// 账号列表那份结构（`accounts::RemoteAccount`）**同时**装着远端账号，
-/// 而「走不走中转」这件事**只对本机成立** —— 中转是**每台机器自己的一个进程**
+/// 而「走不走 apikey 端点改写」这件事**只对本机成立** —— 中转是**每台机器自己的一个进程**
 /// （`relay/mod.rs` 自陈「独立进程」；注入的是那个 agent 进程自己的 `ANTHROPIC_BASE_URL`，
 /// 而 `payload::relay_base_url` 拼的是**回环**地址，回环是**自指**的）
 /// ⇒ 本机这一侧**在结构上答不了远端那台**。往那份结构里加字段，
@@ -1792,7 +1792,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// # 两个字段各自的射程，别读宽
 ///
 /// - `routed`：**这个 configDir 推出来的账号 id 在apikey 凭据表里有一行**。
-///   推 id 的规则只有一份（`history::relay_account_id_of_dir`），起会话那一侧调的是同一个，
+///   推 id 的规则只有一份（`history::apikey_account_id_of_dir`），起会话那一侧调的是同一个，
 ///   由 `history::tests::the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule` 钉着。
 ///   ⚠ 它**不**答「那把 key 能不能用」（要到 claude 那边才知道），
 ///   也**不**答「这次拉起会不会真注入」（那还要过 `running` 那一格）。
@@ -1802,26 +1802,30 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// ⚠ **本结构刻意不走 `ts-rs`**：`RelayCredentialsStatus` 的先例逐字记着理由 ——
 /// 导出会在 `src/generated/` **新增一个文件**，而那个目录的清单由
 /// `tests/generated-boundary-guard.vitest.ts` 逐项等号对拍，那个文件不在本件写区。
-/// ⇒ TS 侧那份是**手写镜像**（`src/accounts.ts::RelayRoutingView`），两侧字段名手动同步。
+/// ⇒ TS 侧那份是**手写镜像**（`src/accounts.ts::ApikeyRoutingView`），两侧字段名手动同步。
 /// **如实记：这一格今天没有判据对拍**（`RelayCredentialsStatus` 那条有，本条没有）。
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
-struct RelayRouting {
+struct ApikeyRouting {
     /// 传进来的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回，不是 id）。
     routed: Vec<String>,
     /// 本机中转在不在跑。射程见上。
     running: bool,
 }
 
-/// ⚠ **两个事实只从 [`history::relay_facts`] 取**（`D5 阻-1`）：这是那两个取值口的
+/// ⚠ **两个事实只从 [`history::inject_facts`] 取**（`D5 阻-1`）：这是那两个取值口的
 /// **第二个**生产消费方（第一个是起会话那一侧的 `history::relay_prefix_for_launch`），
 /// 两处走同一条缝、各有一条行为判据。直接在这里调那两个函数的写法只能靠「文本在不在」来钉，
-/// 而那一形 `D5` 已经打穿了 —— 整段理由住 `history::RelayFactSources` 的头注。
+/// 而那一形 `D5` 已经打穿了 —— 整段理由住 `history::InjectFactSources` 的头注。
 #[tauri::command]
-fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
-    let facts = history::relay_facts();
-    RelayRouting {
-        routed: history::relay_routed_subset(&config_dirs, &(facts.rows)()),
+fn apikey_routing_for(config_dirs: Vec<String>) -> ApikeyRouting {
+    let facts = history::inject_facts();
+    ApikeyRouting {
+        routed: history::apikey_routed_subset(
+            &config_dirs,
+            &(facts.rows)(),
+            history::launch_agent_id(),
+        ),
         running: (facts.running)(),
     }
 }
@@ -1846,8 +1850,8 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 ///
 /// 界面手上的账号对象**两个字段都有**（`local_accounts.rs` 的 `RawAccount { name, configDir }`），
 /// 而它们是 manifest 里**两个独立字段、可以漂开**。apikey 表按**账号 id** 索引，
-/// 而那个 id 由 [`history::relay_account_id_of_dir`] 从 `configDir` 推出来 ——
-/// **全仓只有那一份规则**，起会话那一侧（`history::relay_account_id`）调的是同一个函数。
+/// 而那个 id 由 [`history::apikey_account_id_of_dir`] 从 `configDir` 推出来 ——
+/// **全仓只有那一份规则**，起会话那一侧（`history::apikey_account_id`）调的是同一个函数。
 ///
 /// ⇒ 这条命令**只收 `configDir`，由 Rust 推 id**。收 `name`、或让 TS 自己
 /// `split('/').pop()`，都是在长出**第二份**规则，而那正是 `KH2C1` 红字禁的那件事

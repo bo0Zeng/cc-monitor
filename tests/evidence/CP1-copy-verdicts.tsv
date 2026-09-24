@@ -963,6 +963,17 @@ src/bridge/src/session_skeleton.rs:67	对面后端不认 --index（老版本，�
 src/bridge/src/session_skeleton.rs:69	索引输出被截断：实到 {got} 行，尾行声称 {claimed:?} —— 不当全量用	保留	[不对外] 同上，只进 console.info
 src/bridge/src/session_outline.rs:74	这台机器上的后端版本旧，还列不出大纲（重装后端之后就有）	保留	[对外] 〔SE1〕大纲开关灰掉时挂在提示上（前缀「大纲暂时用不了：」）；说清原因与出路，用词是术语表的「后端」
 src/bridge/src/session_outline.rs:76	大纲清单传到一半断了（只收到 {got} 条），这次先不显示	保留	[对外] 〔SE1〕同上一条（输出被截断，不当全量用）
+src/backend/relay/server.rs:450	连不上	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，短、先说结果
+src/backend/relay/server.rs:450	建立连接	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半，用户读得懂的动作名
+src/backend/relay/server.rs:451	没回应就断开了	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半
+src/backend/relay/server.rs:451	等响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半
+src/backend/relay/server.rs:452	没有回应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半
+src/backend/relay/server.rs:452	等响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半（同文第二处）
+src/backend/relay/server.rs:453	回的不是 HTTP 响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，HTTP 是 R1b 那类用户自己也这么叫的词
+src/backend/relay/server.rs:453	读响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半
+src/backend/relay/server.rs:454	读响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半（同文第二处）
+src/backend/relay/server.rs:454	一直不给最终响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半（上游只回 1xx 中间响应的那一形）
+src/backend/relay/server.rs:472	上游 {}:{} {result}。卡在{hop}这一步。	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体（claude 那一侧可能原样显示）与 stderr 那一句的骨架（设计/20 §3.1a）；两句：先说谁出了什么结果，再说卡在哪一步，无内部词、无处方
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
 src/settings/account-new-form.ts:46	新建账号	保留	[对外] 表单标题，名词短语（设计/70 §4.4）
 src/settings/account-new-form.ts:47	账号名，如 b	保留	[对外] 输入框占位，给一个例子

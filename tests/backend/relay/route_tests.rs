@@ -320,3 +320,106 @@ fn the_credentials_file_agent_is_the_same_on_both_halves() {
         "monitor 认为凭据文件的行属于 `{theirs}`，后端把它们挂在 `{ours}` 名下"
     );
 }
+
+/// monitor 侧 `payload.rs` 的源码（跨半边对拍用；这条边已在 `cross_half_edge_registry` 登记，见上一条头注）。
+const MONITOR_PAYLOAD_SRC: &str =
+    include_str!("../../../src/bridge/src/backend/control/payload.rs");
+
+/// ★★★ 🔴 **跨半边对拍**〔`设计/20 §7` 步 4 · 条 59〕：monitor 注入闸认为「登记了默认上游」的那几家
+/// （`payload.rs::AGENTS_WITH_DEFAULT_UPSTREAM`）⇔ 后端 `accounts::AGENT_UPSTREAMS` 的 agent 列，**两向集合相等**。
+///
+/// 两侧**异源**：本侧是后端运行期那张表，那一侧是 monitor 源码里那一行的**字面量**（现抠，不是 `use`）。
+/// 漂开的两个方向各有各的症状：
+/// - monitor 多一家（比如有人把 codex 加进注入闸而后端没登记）⇒ 那一家注入 `/t/` ⇒ **每一发 502**；
+/// - 后端多一家而 monitor 没跟 ⇒ 那一家永远不注入（「有它更好」白白丢了，不坏事，但与后端说的不一致）。
+#[test]
+fn the_agents_with_a_default_upstream_are_the_same_on_both_halves() {
+    let needle = "pub const AGENTS_WITH_DEFAULT_UPSTREAM: &[&str] = &[";
+    let at = guard_core::find_pinned(MONITOR_PAYLOAD_SRC, needle).unwrap_or_else(|e| {
+        panic!("在 monitor 侧 `payload.rs` 里钉不住 `AGENTS_WITH_DEFAULT_UPSTREAM` 那一行：{e}")
+    });
+    let tail = &MONITOR_PAYLOAD_SRC[at + needle.len()..];
+    let list = &tail[..tail.find(']').expect("那个数组没有收尾的 `]`")];
+    let theirs: std::collections::BTreeSet<String> = list
+        .split(',')
+        .map(|s| s.trim().trim_matches('"').to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    // 抽取器自检：抠出来的每一项都得像一个 agent 名（不是半截、不是空）。
+    assert!(!theirs.is_empty(), "抠出来是空集 —— 抽取器坏了");
+    for a in &theirs {
+        assert!(
+            segment_is_safe(a),
+            "抠出来的 {a:?} 不像一个路由段 —— 抽取器坏了"
+        );
+    }
+    let ours: std::collections::BTreeSet<String> = crate::accounts::AGENT_UPSTREAMS
+        .iter()
+        .map(|a| a.agent.to_string())
+        .collect();
+    assert_eq!(
+        theirs, ours,
+        "monitor 注入闸认为登记了默认上游的是 {theirs:?}，后端那张表登记的是 {ours:?}"
+    );
+}
+
+/// ★★★ **跨半边对拍**：monitor 真的拼出来的 `/t/` 样例（`payload.rs::RELAY_PASSTHROUGH_SAMPLE`），
+/// 本解析器读成**直通模式**、四段各落各位；再交给**生产段那张决策表**（`accounts::decide`）：
+/// 那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 502。
+///
+/// ⇒ 「monitor 注入的那一形，后端真的会照直通处理」这一截从源码到决策表一路是真的；
+/// 买不到的那一截（claude 拿到这个变量之后怎么走）见 `payload.rs` 那一段的头注（`C7`）。
+#[test]
+fn the_passthrough_sample_the_monitor_side_builds_parses_as_passthrough() {
+    let key = "pub const RELAY_PASSTHROUGH_SAMPLE: &str = \"";
+    let at = guard_core::find_pinned(MONITOR_PAYLOAD_SRC, key)
+        .unwrap_or_else(|e| panic!("monitor 侧钉不住 `RELAY_PASSTHROUGH_SAMPLE`：{e}"));
+    let rest = &MONITOR_PAYLOAD_SRC[at + key.len()..];
+    let sample = &rest[..rest.find('"').expect("那个字面量没收尾")];
+    assert!(
+        sample.starts_with("/t/") && sample.len() > 10,
+        "从 monitor 抠出来的样例不像直通路由键：{sample:?}"
+    );
+    let r = parse(&format!("{sample}/v1/messages")).expect("monitor 拼的 `/t/` 那一形解析不了");
+    // 期望值全是手写字面量。
+    assert_eq!(
+        r.mode,
+        super::super::Mode::Passthrough,
+        "`/t/` 没被读成直通"
+    );
+    assert_eq!(r.key.seg1, "claude-code");
+    assert_eq!(r.key.seg2, "acct-a");
+    assert_eq!(r.stream, "k-0123456789abcdef");
+    assert_eq!(r.rest, "/v1/messages");
+
+    // 交给生产段那张决策表（空表 = 这个号在 apikey 表里没有行，即订阅号）。
+    let table = crate::accounts::table::RoutingTable::build(std::iter::empty());
+    let ups = crate::accounts::Upstreams::from_env(&|_| None).expect("内置默认");
+    let said = |k: &super::super::RouteKey| {
+        let mut out = String::new();
+        crate::accounts::decide(&table, &ups, r.mode, k, &mut |d| {
+            out = match d {
+                super::super::Destination::Passthrough { upstream } => {
+                    format!("pass {}", upstream.host)
+                }
+                super::super::Destination::Refuse { status, .. } => format!("refuse {status}"),
+                super::super::Destination::Substitute { .. } => "substitute".to_string(),
+            }
+        });
+        out
+    };
+    assert_eq!(
+        said(&r.key),
+        "pass api.anthropic.com",
+        "登记过的那家没被直通到它自己的默认上游"
+    );
+    let codex = super::super::RouteKey {
+        seg1: "codex".to_string(),
+        seg2: r.key.seg2.clone(),
+    };
+    assert_eq!(
+        said(&codex),
+        "refuse 502 Bad Gateway",
+        "🔴 codex 走 `/t/` 没被拒 ⇒ 它的请求会被发到别家的上游"
+    );
+}
