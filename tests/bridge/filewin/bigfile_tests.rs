@@ -844,7 +844,7 @@ fn the_readings_behind_the_two_thresholds() {
             three(&|| normal(&text))
         );
     }
-    for kib in [2usize, 4, 8, 16, 32] {
+    for kib in [4usize, 8, 16, 32, 64] {
         let text = one_line(kib * 1024);
         println!(
             "〔现打·{profile}〕一行 {kib} KiB ⇒ 普通路径打字帧 {}",
