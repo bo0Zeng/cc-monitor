@@ -390,7 +390,10 @@ fn deployed_scripts_are_executable() {
     for rel in ["scripts/cc-send", "examples/cc-keepalive"] {
         let p = t.0.join("skills/cc-bus").join(rel);
         let mode = std::fs::metadata(&p).unwrap().permissions().mode();
-        assert!(mode & 0o111 != 0, "{rel} 装完不可执行等于没装（mode={mode:o}）");
+        assert!(
+            mode & 0o111 != 0,
+            "{rel} 装完不可执行等于没装（mode={mode:o}）"
+        );
     }
     let kinds = t.0.join("skills/cc-bus/examples/kinds.tsv");
     let mode = std::fs::metadata(&kinds).unwrap().permissions().mode();
