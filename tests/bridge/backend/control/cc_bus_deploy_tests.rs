@@ -225,34 +225,100 @@ fn the_deploy_precheck_lists_what_cc_spawn_negotiates() {
     );
 }
 
-/// ★★ **Windows 上「这一格没做预检」必须说出口，不许静默**〔win-compile 09-09〕。
+/// ★★ Windows 那条预检**真探了**，而且五种情形的话**互相分得开**〔ccbus-win 09-24〕。
 ///
-/// `local_ccm_too_old_warning` 的 `None` 有一个**确定**含义：**探过了、够新**
-/// （调用方据此不给用户任何提示）。而 Windows 上根本探不了（探测那一族整族
-/// 带 `#[cfg(not(windows))]`，它跑的是 `bash -lic`）⇒ 返回 `None` 就是把
-/// 「查不了」读成「没问题」，正是 `sftp.rs` 那个四值枚举 `TargetBinary` 治的病。
+/// 🪦 上一版这里是 `windows_says_the_precheck_did_not_happen_instead_of_staying_silent`
+/// （`#[cfg(windows)]`，断言那句话里有「没做预检」）。那一版的前提 ——「monitor 在 Windows 上
+/// 没有任何 ccm 探测形态」—— 在 `K-R69`（`probe_binary_uncached`）之后不成立了，
+/// 于是那句话从「诚实」变成了「过期」。⇒ 本条判的是**纯函数** `windows_ccm_precheck`，
+/// 在哪台机器上都跑（上一版只在云端 windows-latest 上跑）。
 ///
-/// ⚠ **它跑在本仓唯一跑 `cargo test` 的平台上**（云端 windows-latest）——
-///   与同一批补门的那四条判据恰好相反：那四条从此在那台机器上一次都不跑。
-/// ⚠ 射程：只买「话说没说、说没说全」。**买不到**「用户真在界面上看见了」——
-///   那一跳在 `settings/cc-bus-section.ts`，由前端那侧的判据管。
+/// 钉的是五件事：
+/// 1. 五种情形**逐对不同**（没装 · 答不出 · 不是这一版 · 缺能力 · 全对）—— 合并任意两种都是骗人；
+/// 2. 「全对」那一档**仍然说话**，而且说清查的是**那一份**、不是 PATH 上那个（`None` 的含义是
+///    「探过了 PATH 上那个」，Windows 上从来没探过它）；
+/// 3. 「不是这一版」那一档把**两边的 build 都说出来**（只说「不一致」用户不知道该往哪边对）；
+/// 4. 没装 / 答不出两档仍然把 [`CC_SPAWN_NEEDS`] 四条说全（清单现取，不抄字面量）；
+/// 5. 没有一档再说「没做预检」—— 那句话今天是假的。
+#[test]
+fn windows_precheck_really_probes_and_its_five_answers_are_distinguishable() {
+    use crate::ccm_probe::CcmProbeResult;
+    let want = "p9z-this-build";
+    let card = |installed: bool, caps: &[&str], build: Option<&str>| CcmProbeResult {
+        installed,
+        version: Some("5".into()),
+        capabilities: caps.iter().map(|c| c.to_string()).collect(),
+        build: build.map(str::to_string),
+    };
+    let at = "$HOME/.cc-monitor/bin/ccm.exe";
+    let full = card(true, CC_SPAWN_NEEDS, Some(want));
+    let dead = card(false, &[], None);
+    let old = card(true, CC_SPAWN_NEEDS, Some("p1a-older"));
+    let lacking = card(true, &["detach"], Some(want));
+    let answers = [
+        ("没装", windows_ccm_precheck(None, want)),
+        ("答不出", windows_ccm_precheck(Some((at, &dead)), want)),
+        ("不是这一版", windows_ccm_precheck(Some((at, &old)), want)),
+        ("缺能力", windows_ccm_precheck(Some((at, &lacking)), want)),
+        ("全对", windows_ccm_precheck(Some((at, &full)), want)),
+    ];
+    for (i, (a, x)) in answers.iter().enumerate() {
+        assert!(!x.is_empty(), "「{a}」那一档回了空话");
+        assert!(
+            !x.contains("没做预检"),
+            "「{a}」那一档还在说「没做预检」—— 今天它真探了：{x}"
+        );
+        for (b, y) in answers.iter().skip(i + 1) {
+            assert_ne!(x, y, "「{a}」与「{b}」说的是同一句话 —— 用户分不开");
+        }
+    }
+    let get = |k: &str| answers.iter().find(|(n, _)| *n == k).unwrap().1.clone();
+    for k in ["没装", "答不出"] {
+        for c in CC_SPAWN_NEEDS.iter().copied() {
+            assert!(
+                get(k).contains(c),
+                "「{k}」那一档没提能力 {c:?}：{}",
+                get(k)
+            );
+        }
+        assert!(
+            get(k).contains("查不了"),
+            "「{k}」没把「查不了」说出来：{}",
+            get(k)
+        );
+    }
+    let stale = get("不是这一版");
+    assert!(
+        stale.contains("p1a-older") && stale.contains(want),
+        "「不是这一版」要把两边的 build 都说出来：{stale}"
+    );
+    assert!(
+        get("缺能力").contains("tmux-size"),
+        "「缺能力」要点名缺的是哪几条：{}",
+        get("缺能力")
+    );
+    let fine = get("全对");
+    assert!(
+        fine.contains("PATH") && fine.contains("那一份"),
+        "「全对」那一档必须说清查的是 cc-monitor 那一份、不是 PATH 上那个：{fine}"
+    );
+}
+
+/// Windows 上那条生产路径**真的接到了**纯函数上：回的是一句话（`None` 会把「查不了 PATH 上那个」
+/// 读成「没问题」），且那句话出自五档之一（不再是那句固定的「没做预检」）。
 #[cfg(windows)]
 #[test]
-fn windows_says_the_precheck_did_not_happen_instead_of_staying_silent() {
+fn windows_precheck_is_wired_to_the_real_probe() {
     let w = local_ccm_too_old_warning().unwrap_or_default();
     assert!(
         !w.is_empty(),
-        "Windows 上回了 `None` —— 那是把「查不了」读成「没问题」：\
-             用户读到的是一个纯成功，而没有任何人告诉他这一格根本没检查"
+        "Windows 上回了 `None` —— 那是把「查不了」读成「没问题」"
     );
+    assert!(!w.contains("没做预检"), "生产路径还在说那句过期的话：{w}");
     assert!(
-        w.contains("没做预检"),
-        "这句话没把「**没做**」说出来 ⇒ 用户分不开它与「查过了、有问题」：{w}"
+        w.contains("cc-monitor 装的那"),
+        "话里没说清查的是哪一份：{w}"
     );
-    // 清单从常量现取（不许在那句话里抄一份字面量）⇒ 四条能力必须真的出现在话里。
-    for c in CC_SPAWN_NEEDS.iter().copied() {
-        assert!(w.contains(c), "警告里没提能力 {c:?}：{w}");
-    }
 }
 
 /// ★ 三态的**计数**要精确，且「清单外的文件」**故意不算**〔08-13 复核〕。
