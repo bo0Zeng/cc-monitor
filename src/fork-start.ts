@@ -25,6 +25,7 @@ import {
   type ForkLaunchFacts,
   type ForkLaunchInput,
 } from "./fork-launch";
+import { isLocalOrigin, type Origin } from "./ipc/origin";
 
 /** 用户在追问小窗里给的答案。只覆盖 `unknown` 的那几格。 */
 export interface ForkChoices {
@@ -81,8 +82,8 @@ export interface ForkStartDeps {
 export interface ForkStartInput {
   /** 刚分叉出来的新会话 sid。 */
   newSessionId: string;
-  /** 远端 origin；`null` = 本机。 */
-  origin: string | null;
+  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。 */
+  origin: Origin;
   /** 源会话的事实（喂给 `inferForkLaunch`）。 */
   source: ForkLaunchInput;
   /** 源会话所在的 tmux 名（用来取一个**不同**的新名）。 */
@@ -125,7 +126,7 @@ export async function startForkedSession(
   // 所以本机分叉时把 tmux 这格从追问清单里摘掉：**问一个答案会被忽略的问题，
   // 比不问更坏** —— 用户会以为自己选了，而下面的 `startLocal` 压根不看。
   const slots = slotsNeedingInput(facts).filter(
-    (s) => !(input.origin === null && s === "tmux"),
+    (s) => !(isLocalOrigin(input.origin) && s === "tmux"),
   );
 
   let choices: ForkChoices = {};
@@ -149,7 +150,7 @@ export async function startForkedSession(
   const useTmux =
     facts.tmux.kind === "known" ? facts.tmux.value : (choices.useTmux ?? false);
 
-  if (input.origin === null) {
+  if (isLocalOrigin(input.origin)) {
     // 本机：G3b-1 给 `resume_history_session` 加的 `configDir` 走这里。
     // 本机路径不管 tmux（那是 PowerShell/POSIX 拉起器自己的事）。
     await deps.startLocal({

@@ -19,6 +19,7 @@ vi.mock("../../src/panorama/api", async (importOriginal) => {
 
 import * as api from "../../src/panorama/api";
 import { PanoramaView } from "../../src/views/panorama";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const pending = <T>(): Promise<T> => new Promise<T>(() => {});
@@ -48,7 +49,7 @@ describe("F71 点文件列符号 + 文档漂移", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.replaceChildren();
-    v = new PanoramaView(() => ({ cwd: "/repo", origin: null }));
+    v = new PanoramaView(() => ({ cwd: "/repo", origin: LOCAL_ORIGIN }));
     probe(v).repo = "/repo";
   });
 

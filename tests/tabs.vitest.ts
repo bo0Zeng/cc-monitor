@@ -225,6 +225,7 @@ import {
   type TabRect,
 } from "../src/tabs";
 import type { TabCollection } from "../src/tab-collections";
+import { LOCAL_ORIGIN } from "../src/ipc/origin";
 
 // 私有字段的只读探针（TS private 仅编译期；运行时可读）。仅测试用。
 interface TMInternals {
@@ -260,10 +261,10 @@ describe("TabManager 生命周期", () => {
     tm = makeTM();
   });
 
-  it("ensureTab 默认建 live 本地 Tab（origin=null）", () => {
-    const tab = tm.ensureTab("s1", "/home/u", "p", 0, null);
+  it("ensureTab 默认建 live 本地 Tab（origin = `LOCAL_ORIGIN`）", () => {
+    const tab = tm.ensureTab("s1", "/home/u", "p", 0, LOCAL_ORIGIN);
     expect(tab.status).toBe("live");
-    expect(tab.origin).toBeNull();
+    expect(tab.origin).toBe(LOCAL_ORIGIN);
     expect(peek(tm).tabs.has("s1")).toBe(true);
   });
 
@@ -276,14 +277,14 @@ describe("TabManager 生命周期", () => {
   // === Batch5-F18：骨架 Tab ===
 
   it("createSkeletonTab 建骨架；首行到达不重建、cwd/parentPath 回填", () => {
-    tm.createSkeletonTab("sk1", "/root/proj", null);
+    tm.createSkeletonTab("sk1", "/root/proj", LOCAL_ORIGIN);
     const skeleton = peek(tm).tabs.get("sk1")!;
     expect(skeleton.status).toBe("live");
     expect(skeleton.parentPath).toBe("");
     expect(skeleton.cwd).toBe("/root/proj");
 
     // 首条真实行：同一 Tab 实例（不重建），parentPath 回填、更小 seq 的 cwd 覆盖
-    const after = tm.ensureTab("sk1", "/root/proj/sub", "/fake/sk1.jsonl", 3, null);
+    const after = tm.ensureTab("sk1", "/root/proj/sub", "/fake/sk1.jsonl", 3, LOCAL_ORIGIN);
     expect(after).toBe(skeleton);
     expect(after.parentPath).toBe("/fake/sk1.jsonl");
     expect(after.cwd).toBe("/root/proj/sub"); // seq 3 < MAX_SAFE_INTEGER → 覆盖为行内 cwd
@@ -310,9 +311,9 @@ describe("TabManager 生命周期", () => {
   // === Batch7-F24：bg 会话树状 ===
 
   it("bg tab 挂到同 cwd 交互宿主之后（先宿主后 bg）", () => {
-    tm.createSkeletonTab("host-a", "/proj/a", null, "interactive", null);
-    tm.createSkeletonTab("other", "/proj/b", null, "interactive", null);
-    tm.createSkeletonTab("bg-a1", "/proj/a", null, "bg", "评估任务");
+    tm.createSkeletonTab("host-a", "/proj/a", LOCAL_ORIGIN, "interactive", null);
+    tm.createSkeletonTab("other", "/proj/b", LOCAL_ORIGIN, "interactive", null);
+    tm.createSkeletonTab("bg-a1", "/proj/a", LOCAL_ORIGIN, "bg", "评估任务");
     const order = peek(tm).orderedIds;
     expect(order).toEqual(["host-a", "bg-a1", "other"]);
     const bg = peek(tm).tabs.get("bg-a1")!;
@@ -320,22 +321,22 @@ describe("TabManager 生命周期", () => {
   });
 
   it("孤儿 bg 先到、宿主后到 → 重锚到宿主之后", () => {
-    tm.createSkeletonTab("bg-x1", "/proj/x", null, "bg", "t1");
-    tm.createSkeletonTab("noise", "/proj/n", null, "interactive", null);
-    tm.createSkeletonTab("host-x", "/proj/x", null, "interactive", null);
+    tm.createSkeletonTab("bg-x1", "/proj/x", LOCAL_ORIGIN, "bg", "t1");
+    tm.createSkeletonTab("noise", "/proj/n", LOCAL_ORIGIN, "interactive", null);
+    tm.createSkeletonTab("host-x", "/proj/x", LOCAL_ORIGIN, "interactive", null);
     expect(peek(tm).orderedIds).toEqual(["noise", "host-x", "bg-x1"]);
   });
 
   it("同 cwd 第二个交互宿主不搬走第一个宿主已挂的 bg 子串（多宿主取第一个）", () => {
-    tm.createSkeletonTab("host-a1", "/proj/a", null, "interactive", null);
-    tm.createSkeletonTab("bg-a1", "/proj/a", null, "bg", "t1");
-    tm.createSkeletonTab("bg-a2", "/proj/a", null, "bg", "t2");
-    tm.createSkeletonTab("host-a2", "/proj/a", null, "interactive", null);
+    tm.createSkeletonTab("host-a1", "/proj/a", LOCAL_ORIGIN, "interactive", null);
+    tm.createSkeletonTab("bg-a1", "/proj/a", LOCAL_ORIGIN, "bg", "t1");
+    tm.createSkeletonTab("bg-a2", "/proj/a", LOCAL_ORIGIN, "bg", "t2");
+    tm.createSkeletonTab("host-a2", "/proj/a", LOCAL_ORIGIN, "interactive", null);
     expect(peek(tm).orderedIds).toEqual(["host-a1", "bg-a1", "bg-a2", "host-a2"]);
   });
 
   it("远端 bg 带 origin 前缀且不跨 origin 认宿主", () => {
-    tm.createSkeletonTab("h-local", "/p", null, "interactive", null);
+    tm.createSkeletonTab("h-local", "/p", LOCAL_ORIGIN, "interactive", null);
     tm.createSkeletonTab("bg-remote", "/p", "pi", "bg", "远端任务");
     // origin 不同 → 不挂本地宿主，顶层追加
     expect(peek(tm).orderedIds).toEqual(["h-local", "bg-remote"]);
@@ -453,8 +454,8 @@ describe("TabManager 生命周期", () => {
 
   it("switchTo 写回 last-active；persistLastActive=false（viewer）不写", () => {
     localStorage.removeItem("cc-monitor.last-active-sid");
-    tm.ensureTab("s-a", "/a", "p", 0, null);
-    tm.ensureTab("s-b", "/b", "p", 0, null);
+    tm.ensureTab("s-a", "/a", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("s-b", "/b", "p", 0, LOCAL_ORIGIN);
     tm.switchTo("s-b");
     expect(localStorage.getItem("cc-monitor.last-active-sid")).toBe("s-b");
 
@@ -466,20 +467,20 @@ describe("TabManager 生命周期", () => {
   });
 
   it("手动 switchTo 触发 onManualSwitch（迟到宣告不抢焦点的清 pending 钩子）", () => {
-    tm.ensureTab("m-a", "/a", "p", 0, null);
-    tm.ensureTab("m-b", "/b", "p", 0, null);
+    tm.ensureTab("m-a", "/a", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("m-b", "/b", "p", 0, LOCAL_ORIGIN);
     let fired = 0;
     tm.onManualSwitch = () => fired++;
     tm.switchTo("m-b"); // 默认 manual
     expect(fired).toBe(1);
-    tm.ensureTab("m-c", "/c", "p", 0, null); // 非首个 tab，不切换
+    tm.ensureTab("m-c", "/c", "p", 0, LOCAL_ORIGIN); // 非首个 tab，不切换
     tm.switchTo("m-a", "auto"); // auto 不触发
     expect(fired).toBe(1);
     localStorage.removeItem("cc-monitor.last-active-sid");
   });
 
   it("archiveTab：live → archived，且清空 activity（灯灭）", () => {
-    const tab = tm.ensureTab("s3", "/home", "p", 0, null);
+    const tab = tm.ensureTab("s3", "/home", "p", 0, LOCAL_ORIGIN);
     tab.activity = { status: "busy", waitingFor: null } as unknown as Tab["activity"];
     tm.archiveTab("s3");
     expect(tab.status).toBe("archived");
@@ -489,7 +490,7 @@ describe("TabManager 生命周期", () => {
   it("F91 红绿灯状态转移清陈旧类（activityLightClass 重构守护：两 toggle 每次都跑）", () => {
     // 守 F91 把 tab-bar 红绿灯抽到 session-status.ts 后仍逐字节等价：状态转移必须清掉旧的
     // 对立类（若哪天把两个 classList.toggle 之一改成条件执行，本测会红）。
-    tm.ensureTab("lt", "/x", "p", 0, null);
+    tm.ensureTab("lt", "/x", "p", 0, LOCAL_ORIGIN);
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
     tm.updateActivity("lt", "waiting", "permission prompt");
     expect(btn().classList.contains("act-waiting")).toBe(true);
@@ -538,13 +539,13 @@ describe("TabManager 生命周期", () => {
   it("归档信号早于 Tab 建立：进 pendingArchive，ensureTab 时落实归档", () => {
     tm.archiveTab("early");
     expect(peek(tm).pendingArchive.has("early")).toBe(true);
-    const tab = tm.ensureTab("early", null, "p", 0, null);
+    const tab = tm.ensureTab("early", null, "p", 0, LOCAL_ORIGIN);
     expect(tab.status).toBe("archived");
     expect(peek(tm).pendingArchive.has("early")).toBe(false);
   });
 
   it("reviveTab（本地）：archived → live，并清 pendingArchive", () => {
-    const tab = tm.ensureTab("s4", "/x", "p", 0, null);
+    const tab = tm.ensureTab("s4", "/x", "p", 0, LOCAL_ORIGIN);
     tm.archiveTab("s4");
     expect(tab.status).toBe("archived");
     tm.reviveTab("s4");
@@ -636,13 +637,13 @@ describe("TabManager 生命周期", () => {
   });
 
   it("closeTab 拒关 live Tab（守卫：仅 archived 可关）", () => {
-    tm.ensureTab("s7", "/x", "p", 0, null);
+    tm.ensureTab("s7", "/x", "p", 0, LOCAL_ORIGIN);
     tm.closeTab("s7");
     expect(peek(tm).tabs.has("s7")).toBe(true);
   });
 
   it("closeTab 关 archived Tab：移出 map + 摘 DOM", () => {
-    const tab = tm.ensureTab("s8", "/x", "p", 0, null);
+    const tab = tm.ensureTab("s8", "/x", "p", 0, LOCAL_ORIGIN);
     const streamEl = tab.streamEl;
     expect(streamEl.parentElement).not.toBeNull();
     tm.archiveTab("s8");
@@ -652,7 +653,7 @@ describe("TabManager 生命周期", () => {
   });
 
   it("closeTab 通知后端 forget_session（archived 才关）", () => {
-    tm.ensureTab("s9", "/x", "p", 0, null);
+    tm.ensureTab("s9", "/x", "p", 0, LOCAL_ORIGIN);
     tm.archiveTab("s9");
     tm.closeTab("s9");
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("forget_session", {
@@ -661,8 +662,8 @@ describe("TabManager 生命周期", () => {
   });
 
   it("switchTo：切 active + 清 unread + 加 .active 类", () => {
-    tm.ensureTab("s10", "/x", "p", 0, null); // 首个 → 自动 active
-    const tab2 = tm.ensureTab("s11", "/y", "p", 0, null);
+    tm.ensureTab("s10", "/x", "p", 0, LOCAL_ORIGIN); // 首个 → 自动 active
+    const tab2 = tm.ensureTab("s11", "/y", "p", 0, LOCAL_ORIGIN);
     tab2.unread = 5;
     expect(peek(tm).activeId).toBe("s10");
     tm.switchTo("s11");
@@ -675,7 +676,7 @@ describe("TabManager 生命周期", () => {
     peek(tm).pendingArchive.add("s12");
     tm.reviveTab("s12"); // Tab 还没建
     expect(peek(tm).pendingArchive.has("s12")).toBe(false);
-    const tab = tm.ensureTab("s12", "/x", "p", 0, null);
+    const tab = tm.ensureTab("s12", "/x", "p", 0, LOCAL_ORIGIN);
     expect(tab.status).toBe("live"); // 未被 pendingArchive 落实归档
   });
 
@@ -1042,13 +1043,13 @@ describe("TabManager 生命周期", () => {
   it("kind 升格:bg 骨架先到,interactive 宣告后到 → 升格为宿主并重锚孤儿 bg", () => {
     // 场景还原(用户截图):bg-spare 的宣告先到,父会话被建成 ⚙ 挂到同 cwd 的
     // 别的交互会话(Excel)之下;interactive 宣告后到必须升格纠正。
-    tm.createSkeletonTab("excel", "/proj/shengwu", null, "interactive", null);
-    tm.createSkeletonTab("parent", "/proj/shengwu", null, "bg", "迁移服务"); // 谎报形态先到
-    tm.createSkeletonTab("fork-empty", "/proj/shengwu", null, "bg", "迁移服务"); // 空克隆
+    tm.createSkeletonTab("excel", "/proj/shengwu", LOCAL_ORIGIN, "interactive", null);
+    tm.createSkeletonTab("parent", "/proj/shengwu", LOCAL_ORIGIN, "bg", "迁移服务"); // 谎报形态先到
+    tm.createSkeletonTab("fork-empty", "/proj/shengwu", LOCAL_ORIGIN, "bg", "迁移服务"); // 空克隆
     expect(peek(tm).orderedIds).toEqual(["excel", "parent", "fork-empty"]);
     expect(peek(tm).tabs.get("parent")!.title).toContain("⚙");
 
-    tm.createSkeletonTab("parent", "/proj/shengwu", null, "interactive", null); // 真身宣告后到
+    tm.createSkeletonTab("parent", "/proj/shengwu", LOCAL_ORIGIN, "interactive", null); // 真身宣告后到
     const p = peek(tm).tabs.get("parent")!;
     expect(p.kind).toBe("interactive");
     expect(p.title).not.toContain("⚙");
@@ -1058,8 +1059,8 @@ describe("TabManager 生命周期", () => {
   });
 
   it("kind 不降格:interactive tab 后到 bg 宣告(spare 谎报)保持交互形态", () => {
-    tm.createSkeletonTab("host2", "/proj/x", null, "interactive", null);
-    tm.createSkeletonTab("host2", "/proj/x", null, "bg", "spare 噪声");
+    tm.createSkeletonTab("host2", "/proj/x", LOCAL_ORIGIN, "interactive", null);
+    tm.createSkeletonTab("host2", "/proj/x", LOCAL_ORIGIN, "bg", "spare 噪声");
     const t = peek(tm).tabs.get("host2")!;
     expect(t.kind).toBe("interactive");
     expect(t.title).not.toContain("⚙");
@@ -1148,7 +1149,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   });
 
   it("本地归档 tab → 仍走 resume_history_session，不碰远端 runner", async () => {
-    tm.ensureTab("l1", "/home/u/p", "/p/l1.jsonl", 0, null);
+    tm.ensureTab("l1", "/home/u/p", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
     tm.archiveTab("l1");
     await (tm as unknown as { resumeTab(sid: string): Promise<void> }).resumeTab("l1");
     expect(runRemoteResume).not.toHaveBeenCalled();
@@ -1176,7 +1177,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
         ];
       return undefined;
     });
-    tm.ensureTab("l1abcdef", "/home/u/p", "/p/l1abcdef.jsonl", 0, null);
+    tm.ensureTab("l1abcdef", "/home/u/p", "/p/l1abcdef.jsonl", 0, LOCAL_ORIGIN);
     tm.archiveTab("l1abcdef");
     await (tm as unknown as { resumeTab(sid: string): Promise<void> }).resumeTab("l1abcdef");
     expect(invoke).toHaveBeenCalledWith("resume_history_session", {
@@ -1464,7 +1465,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       cmd === "list_local_tmux" ? Promise.resolve(null) : Promise.resolve(undefined),
     );
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
     expect(killBtn()?.textContent).toContain("检测 tmux");
     await flush();
@@ -1482,7 +1483,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
           ])
         : Promise.resolve(undefined),
     );
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
     expect(killBtn()?.textContent).toContain("unrelated-cc");
@@ -1511,7 +1512,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
           ])
         : Promise.resolve(undefined),
     );
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
     expect(resumeIntoBtn()?.textContent).toContain("i1-cc");
@@ -1526,7 +1527,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
           ])
         : Promise.resolve(undefined),
     );
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
     expect(resumeIntoBtn()).toBeNull();
@@ -1542,7 +1543,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
           ])
         : Promise.resolve(undefined),
     );
-    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
     expect(killBtn()?.textContent).toContain("拒绝");
@@ -1782,7 +1783,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
   });
 
   it("归档本地 tab → 仍单「Resume」(无 flyout，无 tmux/直连叶子)", () => {
-    tm.ensureTab("l1", "/home/u/p", "p", 0, null);
+    tm.ensureTab("l1", "/home/u/p", "p", 0, LOCAL_ORIGIN);
     tm.archiveTab("l1");
     rightClick("l1");
     const labels = menuLabels();
@@ -2597,7 +2598,7 @@ describe("F70 会话改动集聚合（onLine → touchedFiles / touchedFilesFor 
     tm.onLine(editLine("s-local", 3, "u3", "/proj/a.ts", null) as never); // 重复文件 → 去重
     const info = tm.touchedFilesFor("s-local");
     expect(info).not.toBeNull();
-    expect(info!.origin).toBeNull();
+    expect(info!.origin).toBe(LOCAL_ORIGIN);
     expect([...info!.files].sort()).toEqual(["/proj/a.ts", "/proj/b.rs"]);
   });
 
@@ -2617,13 +2618,13 @@ describe("F70 会话改动集聚合（onLine → touchedFiles / touchedFilesFor 
 });
 
 describe("F77 getActiveSubagentContext", () => {
-  it("活跃本地 tab → { parentPath(=sourcePath), origin:null }", () => {
+  it("活跃本地 tab → { parentPath(=sourcePath), origin: LOCAL_ORIGIN }", () => {
     const tm = makeTM();
-    tm.ensureTab("s1", "/home/u", "/p/s1.jsonl", 0, null);
+    tm.ensureTab("s1", "/home/u", "/p/s1.jsonl", 0, LOCAL_ORIGIN);
     tm.switchTo("s1");
     expect(tm.getActiveSubagentContext()).toEqual({
       parentPath: "/p/s1.jsonl",
-      origin: null,
+      origin: LOCAL_ORIGIN,
     });
   });
   it("活跃远端 tab → origin 非空（调用方据此提示不支持）", () => {
@@ -2638,7 +2639,7 @@ describe("F77 getActiveSubagentContext", () => {
   });
   it("活跃 tab 无 parentPath（骨架未回填）→ null", () => {
     const tm = makeTM();
-    tm.createSkeletonTab("sk", "/root/proj", null); // parentPath 空
+    tm.createSkeletonTab("sk", "/root/proj", LOCAL_ORIGIN); // parentPath 空
     tm.switchTo("sk");
     expect(tm.getActiveSubagentContext()).toBeNull();
   });
@@ -2661,7 +2662,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
 
   it("运行中 subagent 排在前，同档保插入序；model / 改过的文件透传", () => {
     const tm = makeTM();
-    const tab = tm.ensureTab("s1", "/proj", "/p/s1.jsonl", 0, null);
+    const tab = tm.ensureTab("s1", "/proj", "/p/s1.jsonl", 0, LOCAL_ORIGIN);
     tab.latestModel = "claude-opus-4-8";
     tab.touchedFiles.add("/proj/a.ts");
     tab.touchedFiles.add("/proj/b.ts");
@@ -2682,7 +2683,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
 
   it("无 usage / 无 agent / 无改文件 → 字段空但不报错", () => {
     const tm = makeTM();
-    tm.ensureTab("s2", "/x", "/p/s2.jsonl", 0, null);
+    tm.ensureTab("s2", "/x", "/p/s2.jsonl", 0, LOCAL_ORIGIN);
     const p = tm.peekSession("s2");
     expect(p).toEqual({ model: null, recentFiles: [], agents: [] });
   });
@@ -2829,7 +2830,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
   });
 
   it("本机活会话 ≥2 可选账号 → 出现「Restart」，点了走 `<local>`；账号清单问的是本机后端", async () => {
-    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("l1");
     await flushMicro();
     await flushMicro();
@@ -2846,7 +2847,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
   });
 
   it("本机**归档** tab 不拉账号清单（本机 Resume 不带账号选择，只有活会话才有换号重启）", async () => {
-    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
     (tm as unknown as { tabs: Map<string, { status: string }> }).tabs.get("l1")!.status = "archived";
     rightClick("l1");
     await flushMicro();
@@ -2856,7 +2857,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
   });
 
   it("本机会话精确 @ccm_sid 命中 → 编排器拿到 `<local>` ＋ 本机 resume 命令 ＋ 本机 tmux 名", async () => {
-    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
     await (tm as unknown as Priv).restartTabWithAccount("l1", "b", false);
     expect(restartSpy).toHaveBeenCalledTimes(1);
     const arg = restartSpy.mock.calls[0][0];
@@ -2872,7 +2873,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
       cmd === "list_local_tmux" ? Promise.resolve([]) : Promise.resolve(undefined),
     );
-    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
     await (tm as unknown as Priv).restartTabWithAccount("l1", "b", false);
     expect(restartSpy).not.toHaveBeenCalled();
     const toast = vi.mocked(showActionFailureToast).mock.calls.at(-1);
@@ -3129,7 +3130,7 @@ describe("LF1：↗ 只在 Windows 上出现", () => {
     for (const [os, shown] of want) {
       __setHostOsForTests(os);
       const tm = makeTM();
-      tm.ensureTab("l1", "/w", "p", 0, null);
+      tm.ensureTab("l1", "/w", "p", 0, LOCAL_ORIGIN);
       tm.createSkeletonTab("r1", "/p", "aya", "interactive", null);
       expect(peek(tm).tabButtons.get("l1"), `${os}：量具自检，tab 按钮本身得在`).toBeDefined();
       expect(focusBtnOf(tm, "l1") !== null, `${os} 本地 tab 的 ↗`).toBe(shown);
@@ -3282,7 +3283,7 @@ describe("F15 每行代价的现状基线", () => {
   });
 
   it("★ live 每来一行，BranchFolder 就被喂一次", () => {
-    tm.ensureTab("s1", "/w", "/w/s1.jsonl", 0, null);
+    tm.ensureTab("s1", "/w", "/w/s1.jsonl", 0, LOCAL_ORIGIN);
     for (let i = 1; i <= 5; i++) tm.onLine(line("s1", i) as never);
     // 抽取器自检：三处 mock 只要有一处退回空壳，这里就是 0 —— 那不是「合批做好了」。
     expect(
@@ -3300,8 +3301,8 @@ describe("F15 每行代价的现状基线", () => {
   });
 
   it("★ 后台 tab 每来一行，tab bar 就整刷一次", () => {
-    tm.ensureTab("front", "/w", "/w/front.jsonl", 0, null);
-    tm.ensureTab("bg", "/w", "/w/bg.jsonl", 0, null);
+    tm.ensureTab("front", "/w", "/w/front.jsonl", 0, LOCAL_ORIGIN);
+    tm.ensureTab("bg", "/w", "/w/bg.jsonl", 0, LOCAL_ORIGIN);
     tm.switchTo("front");
     let refreshes = 0;
     const inner = peek(tm) as unknown as { refreshTabBar: () => void };
@@ -3362,8 +3363,8 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
     const streamRootEl = document.createElement("div");
     document.body.append(streamRootEl);
     const tm2 = new TabManager(orphanBar, streamRootEl);
-    tm2.ensureTab("a", "/c", "p", 0, null);
-    tm2.ensureTab("b", "/c", "p", 0, null);
+    tm2.ensureTab("a", "/c", "p", 0, LOCAL_ORIGIN);
+    tm2.ensureTab("b", "/c", "p", 0, LOCAL_ORIGIN);
     tm2.switchTo("a");
     tm2.archiveTab("b");
     (tm2 as unknown as { refreshTabBar: () => void }).refreshTabBar();
@@ -3438,9 +3439,9 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   };
 
   it("★ P7a2-Y1：纵向拖动重排主栏（落位逐项对得上）", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null);
-    tm.ensureTab("b", "/c2", "p", 0, null);
-    tm.ensureTab("c", "/c3", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("c", "/c3", "p", 0, LOCAL_ORIGIN);
     flushBar();
     stubRects();
     expect(order()).toEqual(["a", "b", "c"]);
@@ -3451,10 +3452,10 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
 
   it("★ P7a2-Y3：拖交互 tab 时，它的 bg 子串**跟着走**（不许把树拆散）", () => {
     // 造一棵真的树：宿主 + 两个同 cwd 的 bg 子项（`placeInOrder` 会把它们锚在宿主之后）。
-    tm.ensureTab("host", "/proj/a", "p", 0, null);
-    tm.createSkeletonTab("bg1", "/proj/a", null, "bg", "t1");
-    tm.createSkeletonTab("bg2", "/proj/a", null, "bg", "t2");
-    tm.ensureTab("other", "/proj/z", "p", 0, null);
+    tm.ensureTab("host", "/proj/a", "p", 0, LOCAL_ORIGIN);
+    tm.createSkeletonTab("bg1", "/proj/a", LOCAL_ORIGIN, "bg", "t1");
+    tm.createSkeletonTab("bg2", "/proj/a", LOCAL_ORIGIN, "bg", "t2");
+    tm.ensureTab("other", "/proj/z", "p", 0, LOCAL_ORIGIN);
     flushBar();
     stubRects();
     expect(order()).toEqual(["host", "bg1", "bg2", "other"]);
@@ -3468,9 +3469,9 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   });
 
   it("★ P7a2-D：拖动时**落点看得见**，撕离那一路不指示，拖完必须清掉", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null);
-    tm.ensureTab("b", "/c2", "p", 0, null);
-    tm.ensureTab("c", "/c3", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("c", "/c3", "p", 0, LOCAL_ORIGIN);
     flushBar();
     stubRects();
     const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
@@ -3506,8 +3507,8 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   });
 
   it("★ P7a2-Y2：armed（拖出右缘）时**顺序一个字不动**", () => {
-    tm.ensureTab("a", "/c", "p", 0, null);
-    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.ensureTab("a", "/c", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     flushBar();
     stubRects();
     const before = [...order()];
@@ -3552,9 +3553,9 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
    * 坏的是**拖拽窗口之内**那一次重排 —— 所以快照要在 `mouseup` 之前比。
    */
   it("★ 6d：拖拽进行中来一条活动事件 ⇒ mouseup 之前 #tab-bar 子节点顺序一次都不变", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null); // 首个 tab ⇒ 它是 active（`switchTo(_, "auto")`）
-    tm.ensureTab("b", "/c2", "p", 0, null);
-    tm.ensureTab("c", "/c3", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN); // 首个 tab ⇒ 它是 active（`switchTo(_, "auto")`）
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("c", "/c3", "p", 0, LOCAL_ORIGIN);
     flushBar();
     stubRects();
     // 主栏子节点的「长相顺序」。用 textContent 而不是下标 —— 少一个、换一个都要能看出来。
@@ -3633,9 +3634,9 @@ describe("P7a-3 集合分组渲染", () => {
   //   「它被删了」与「它从来没有过」在盘上长得一模一样。
 
   it("★ P7a3-Y2：成员进它的组，非成员照常直接挂主栏", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null);
-    tm.ensureTab("b", "/c2", "p", 0, null);
-    tm.ensureTab("c", "/c3", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("c", "/c3", "p", 0, LOCAL_ORIGIN);
     setCols([{ id: "g1", name: "白天", members: ["a", "c"] }]);
     flushBar();
 
@@ -3654,7 +3655,7 @@ describe("P7a-3 集合分组渲染", () => {
     // 但它**从不 loadCollections** ⇒ `collections` 恒空。右键菜单里若还留着「新建集合…」，
     // 点一下就把「只含这一个」的列表写回 config.json —— 用户已有的集合全没了。
     // 同族先例就在旁边一行：「viewer 窗口共享 localStorage，禁写 last-active（防污染主窗口记忆）」。
-    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     flushBar();
     const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
     root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
@@ -3666,7 +3667,7 @@ describe("P7a-3 集合分组渲染", () => {
   });
 
   it("★ P7a3-E 反面：**拉过了就必须给入口**（否则「永远不给」也能过）", async () => {
-    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     await tm.loadCollections(); // mock 的 config 是空的 ⇒ 集合为空，但「拉过」为真
     flushBar();
     const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
@@ -3678,8 +3679,8 @@ describe("P7a-3 集合分组渲染", () => {
   });
 
   it("★ P7a3-D：组在前、未归组的在后（DoD 逐字如此，实现不许自己反过来）", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null); // 归组
-    tm.ensureTab("b", "/c2", "p", 0, null); // 散的
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN); // 归组
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN); // 散的
     setCols([{ id: "g1", name: "白天", members: ["a"] }]);
     flushBar();
     const kids = [...bar.children];
@@ -3692,8 +3693,8 @@ describe("P7a-3 集合分组渲染", () => {
 
 
   it("★ P7a3-Y3：解散集合**一个会话都不许少**", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null);
-    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     setCols([{ id: "g1", name: "白天", members: ["a"] }]);
     flushBar();
     const before = [...order()];
@@ -3708,7 +3709,7 @@ describe("P7a-3 集合分组渲染", () => {
   });
 
   it("空集合也留着 —— 刚建的集合不该看不见", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
     setCols([{ id: "g1", name: "空的", members: [] }]);
     flushBar();
     expect(bar.querySelector(".tab-group")).toBeTruthy();
@@ -3759,7 +3760,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
   });
 
   it("🔴 量具自检：这一组的「盘」真的在读写（不过这格，下面全是空转）", async () => {
-    disk = { tabBar: { pinned: [{ sid: "写进去的", title: "T" }] } };
+    disk = { tabBar: { pinned: [{ sid: "写进去的", origin: LOCAL_ORIGIN, title: "T" }] } };
     await tm.loadPinned();
     expect(peek(tm).tabs.has("写进去的"), "盘上的东西没被读进来 ⇒ 下面的复活判据全是空转").toBe(
       true,
@@ -3776,7 +3777,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
             sid: "s1",
             jsonlPath: "/p/s1.jsonl",
             cwd: "/home/u/proj",
-            origin: null,
+            origin: LOCAL_ORIGIN,
             account: "work",
             lastActiveAt: 1700000000000,
             kind: "interactive",
@@ -3797,8 +3798,8 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
 
   it("🔴 盘上那条**已经活着**时：只补 `pinned`，`status` 一个字不碰", async () => {
     // 后端 `event_replay` 可能已经先宣告了它。把一条真活着的会话按回 archived 是一句假话。
-    tm.ensureTab("s1", "/c", "/real.jsonl", 0, null);
-    disk = { tabBar: { pinned: [{ sid: "s1", title: "旧标题", jsonlPath: "/old.jsonl" }] } };
+    tm.ensureTab("s1", "/c", "/real.jsonl", 0, LOCAL_ORIGIN);
+    disk = { tabBar: { pinned: [{ sid: "s1", origin: LOCAL_ORIGIN, title: "旧标题", jsonlPath: "/old.jsonl" }] } };
     await tm.loadPinned();
     expect(tabOf("s1").status, "🔴 把活着的会话按成灰的了").toBe("live");
     expect(tabOf("s1").pinned).toBe(true);
@@ -3807,7 +3808,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
 
   it("`togglePin` ⇒ 内存翻转 ＋ **盘上真的出现/消失那一条**", async () => {
     await tm.loadPinned(); // 先取得资格
-    tm.ensureTab("s1", "/home/u/proj", "/p/s1.jsonl", 0, null);
+    tm.ensureTab("s1", "/home/u/proj", "/p/s1.jsonl", 0, LOCAL_ORIGIN);
     tm.togglePin("s1");
     await flushDisk();
     expect(tabOf("s1").pinned).toBe(true);
@@ -3825,8 +3826,8 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
   it("🔴 没 `loadPinned` 过的实例：`togglePin` 什么都不做（防静默清空）", async () => {
     // `persistPinned` 是**按当前 tab 重算整张表**写回去的 —— 没读过盘就写 = 清空。
     // 撕离出来的 viewer 窗口正是这种实例（与 `collectionsLoaded` 同一条理由）。
-    disk = { tabBar: { pinned: [{ sid: "别人固定的", title: "T" }] } };
-    tm.ensureTab("s1", "/c", "p", 0, null);
+    disk = { tabBar: { pinned: [{ sid: "别人固定的", origin: LOCAL_ORIGIN, title: "T" }] } };
+    tm.ensureTab("s1", "/c", "p", 0, LOCAL_ORIGIN);
     tm.togglePin("s1");
     await flushDisk();
     expect(tabOf("s1").pinned, "没资格就不许改内存").toBe(false);
@@ -3838,7 +3839,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
 
   it("`closeTab` 一个固定的灰 tab ⇒ 盘上那条跟着摘掉（点了 × 就不该第二天还在）", async () => {
     await tm.loadPinned();
-    tm.ensureTab("s1", "/c", "/p/s1.jsonl", 0, null);
+    tm.ensureTab("s1", "/c", "/p/s1.jsonl", 0, LOCAL_ORIGIN);
     tm.togglePin("s1");
     await flushDisk();
     expect((pinnedOnDisk() as { sid: string }[]).map((p) => p.sid)).toEqual(["s1"]);
@@ -3851,7 +3852,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
 
   it("🔴 正交：`archived` 与 `pinned` **同时成立**（`§B.3` 的主用例）", async () => {
     await tm.loadPinned();
-    tm.ensureTab("s1", "/c", "p", 0, null);
+    tm.ensureTab("s1", "/c", "p", 0, LOCAL_ORIGIN);
     tm.togglePin("s1"); // live 也能 pin（`§B.3b`：效果等它变灰才显现）
     expect(tabOf("s1").status).toBe("live");
     expect(tabOf("s1").pinned).toBe(true);
@@ -3862,7 +3863,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
 
   it("🔴 `§B.3b`：固定**不影响位置** —— `orderedIds` 一个字不许动", async () => {
     await tm.loadPinned();
-    for (const s of ["a", "b", "c"]) tm.ensureTab(s, "/c", "p", 0, null);
+    for (const s of ["a", "b", "c"]) tm.ensureTab(s, "/c", "p", 0, LOCAL_ORIGIN);
     const before = [...peek(tm).orderedIds];
     tm.togglePin("b"); // 固定中间那个
     expect(peek(tm).orderedIds, "有人把固定的排到前面去了 —— 那是被 `§B.3b` 删掉的「固定区」").toEqual(
@@ -3873,7 +3874,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
 
   it("📌 角标：`.tab.pinned` 跟着 `Tab.pinned` 走，且角标元素真的在（正反两控）", async () => {
     await tm.loadPinned();
-    tm.ensureTab("s1", "/c", "p", 0, null);
+    tm.ensureTab("s1", "/c", "p", 0, LOCAL_ORIGIN);
     const root = peek(tm).tabButtons.get("s1")!.root;
     expect(root.classList.contains("pinned"), "还没固定就显角标 ⇒ 这个类没在跟着值走").toBe(false);
     tm.togglePin("s1");
@@ -3893,7 +3894,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
           []),
       ].map((b) => b.textContent ?? "");
 
-    tm.ensureTab("s1", "/c", "p", 0, null);
+    tm.ensureTab("s1", "/c", "p", 0, LOCAL_ORIGIN);
     rightClick("s1");
     expect(labels(), "🔴 没 `loadPinned` 过就给入口 ⇒ 点一下清空用户的固定表").not.toContain(
       "📌 固定此标签",
@@ -3916,8 +3917,8 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     disk = {
       tabBar: {
         pinned: [
-          { sid: "ok", jsonlPath: "/p/ok.jsonl", title: "有记录的" },
-          { sid: "bad", jsonlPath: "", title: "没记录的" },
+          { sid: "ok", origin: LOCAL_ORIGIN, jsonlPath: "/p/ok.jsonl", title: "有记录的" },
+          { sid: "bad", origin: LOCAL_ORIGIN, jsonlPath: "", title: "没记录的" },
         ],
       },
     };
@@ -3939,7 +3940,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
   });
 
   it("resume 真接上了（`reviveTab`）⇒ 那块空态提示自己走掉", async () => {
-    disk = { tabBar: { pinned: [{ sid: "s1", jsonlPath: "/p/s1.jsonl", title: "T" }] } };
+    disk = { tabBar: { pinned: [{ sid: "s1", origin: LOCAL_ORIGIN, jsonlPath: "/p/s1.jsonl", title: "T" }] } };
     await tm.loadPinned();
     expect(tabOf("s1").streamEl.querySelector(".pin-revived-hint")).toBeTruthy();
     tm.reviveTab("s1");
@@ -4156,8 +4157,8 @@ describe("步 17·D ③ 组里的 tab 真的参与落点（`§D.2` 缺口一）"
   });
 
   it("🔴 量具自检 ＋ 正题：`tabRects()` 量到的集合 == 栏里所有 tab（**含组里的**）", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null);
-    tm.ensureTab("b", "/c1", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c1", "p", 0, LOCAL_ORIGIN);
     (tm as unknown as { collections: TabCollection[] }).collections = [
       { id: "g1", name: "白天", members: ["b"] },
     ];
@@ -4199,8 +4200,8 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
   });
 
   it("`onto` ⇒ 建组 + 入组 + 落到目标之前，三件事一次做完", () => {
-    tm.ensureTab("a", "/home/u/proj/x", "p", 0, null);
-    tm.ensureTab("b", "/home/u/proj/y", "p", 0, null);
+    tm.ensureTab("a", "/home/u/proj/x", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/home/u/proj/y", "p", 0, LOCAL_ORIGIN);
     peek(tm).applyDrop("a", { kind: "onto", sid: "b" });
     expect(colsOf().length, "没建组").toBe(1);
     expect(colsOf()[0].members, "成员不对").toEqual(["b", "a"]);
@@ -4211,8 +4212,8 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
   it("🔴 顺序没变、只有归属变了的那一拍**不许被吞掉**", () => {
     // 这是把 `applyReorder` 改成 `applyDrop` 的正题：旧实现 `if (顺序没变) return`，
     // 而「把组里的 tab 原地拖出来」恰好就是顺序不变、归属变。
-    tm.ensureTab("a", "/c1", "p", 0, null);
-    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     (tm as unknown as { collections: TabCollection[] }).collections = [
       { id: "g1", name: "白天", members: ["a"] },
     ];
@@ -4222,8 +4223,8 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
   });
 
   it("`end` ⇒ 拖出组并落到末尾", () => {
-    tm.ensureTab("a", "/c1", "p", 0, null);
-    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     (tm as unknown as { collections: TabCollection[] }).collections = [
       { id: "g1", name: "白天", members: ["a"] },
     ];
@@ -4235,8 +4236,8 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
   it("没 `loadCollections` 过的实例：归属一个字不动（顺序照常）", () => {
     // 与右键菜单那道门同一条理由：没读过盘就写，等于把用户已有的集合清空。
     peek(tm).collectionsLoaded = false;
-    tm.ensureTab("a", "/c1", "p", 0, null);
-    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
     peek(tm).applyDrop("b", { kind: "onto", sid: "a" });
     expect(colsOf(), "没读过盘还敢建组 ⇒ 下一次落盘会把用户的集合全冲掉").toEqual([]);
     expect(order(), "顺序这一半照常").toEqual(["b", "a"]);
@@ -4270,8 +4271,8 @@ describe("步 17·D ⑤ 停留 250ms 才成组（假手势打真事件链）", (
     vi.useFakeTimers();
     tm = makeTM();
     peek(tm).collectionsLoaded = true;
-    tm.ensureTab("a", "/home/u/proj/x", "p", 0, null);
-    tm.ensureTab("b", "/home/u/proj/y", "p", 0, null);
+    tm.ensureTab("a", "/home/u/proj/x", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/home/u/proj/y", "p", 0, LOCAL_ORIGIN);
     (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
     stubRect("a", 0);
     stubRect("b", 28);
@@ -4389,7 +4390,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     for (const sid of arriving) {
       // 每个 sid 一个自己的 cwd：避开 `placeInOrder` 的树状锚定（bg 挂宿主后面），
       // 这一组量的是「盘上那份顺序」，不是那棵树。
-      tm.ensureTab(sid, `/proj/${sid}`, `/p/${sid}.jsonl`, 0, null, "interactive", null);
+      tm.ensureTab(sid, `/proj/${sid}`, `/p/${sid}.jsonl`, 0, LOCAL_ORIGIN, "interactive", null);
     }
   };
 
@@ -4413,9 +4414,9 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     // 这一格**刻意**用「先造 tab 再读盘」那种摆法 —— 它证明的是
     // 「读盘 + 重排 + 重画」这套机件本身是通的，从而把下面那格的红**钉在时序上**，
     // 而不是钉在「读不出来」或「键不对」上。
-    tm.ensureTab("a", "/proj/a", "/p/a.jsonl", 0, null, "interactive", null);
-    tm.ensureTab("b", "/proj/b", "/p/b.jsonl", 0, null, "interactive", null);
-    tm.ensureTab("c", "/proj/c", "/p/c.jsonl", 0, null, "interactive", null);
+    tm.ensureTab("a", "/proj/a", "/p/a.jsonl", 0, LOCAL_ORIGIN, "interactive", null);
+    tm.ensureTab("b", "/proj/b", "/p/b.jsonl", 0, LOCAL_ORIGIN, "interactive", null);
+    tm.ensureTab("c", "/proj/c", "/p/c.jsonl", 0, LOCAL_ORIGIN, "interactive", null);
     expect(peek(tm).orderedIds, "到达序就是建出来的序").toEqual(["a", "b", "c"]);
 
     putOrderOnDisk(["c", "b", "a"]);
@@ -4524,7 +4525,7 @@ describe("步 17·C 顺序落盘：读回来那一半", () => {
     expect(orderOnDisk(), "拖完要落盘（`§C.3`：applyReorder 之后提交）").toEqual(["a", "c", "b"]);
 
     // 又来一条新会话。
-    tm.ensureTab("d", "/proj/d", "/p/d.jsonl", 0, null, "interactive", null);
+    tm.ensureTab("d", "/proj/d", "/p/d.jsonl", 0, LOCAL_ORIGIN, "interactive", null);
     expect(
       peek(tm).orderedIds,
       "🔴 后到的 tab 把用户刚拖的顺序撤销了（拿一份过期的盘去排）",

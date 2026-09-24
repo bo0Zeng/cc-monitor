@@ -117,8 +117,9 @@ import type { BranchResult } from "../generated/BranchResult";
 // ⇒ `§8` 承诺的「**`tsc` 就能验**」从这一行开始成立：给任何一个 origin 参数传 `null`
 // 现在是**编译错**，不是一次运行时报错。
 // ⚠ 本机要逐字送 `LOCAL_ORIGIN`（`"<local>"`，住 `../backend-policy.ts`）。
-// ⚠ 射程：这一条只管**入方向**。出方向那一半（`JsonlRecord` / `RemoteHealthPayload` 一族的
-//   `origin: string | null`）今天仍有 `null`，不在步 2 的写区里 —— 别读成「全仓没有 `null` 了」。
+// ⚠ 射程：这一条只管**入方向**。〔C4a〕TS 侧其余各处的 origin 也收成了同一个表示（本机 = `LOCAL_ORIGIN`，
+//   判据 `tests/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
+//   只剩生成物 `RemoteHealthPayload.origin` 一处 `string | null`（Rust 出方向，登记在那一节的 `PENDING`）。
 import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import type { UserInputsResult } from "../generated/UserInputsResult";

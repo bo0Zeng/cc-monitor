@@ -93,6 +93,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）
     "src/error-toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
+    "src/ipc/origin.ts", // 〔C4a〕本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/live-window.ts", // ensureTab：新 tab 的尾部窗口
     "src/tab-bar-drag.ts",
     "src/tab-bar-prefs.ts",
@@ -123,7 +124,6 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-session-facts.ts": ["src/cards/subagent.ts", "src/panorama/session-files.ts"],
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，经 ipc/commands 包装层要骨架索引与正文。
   "src/tab-stream-view.ts": [
-    "src/backend-policy.ts",
     "src/branch-button.ts",
     "src/branch-fold.ts",
     "src/cards/index.ts",
@@ -141,6 +141,7 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-bar-view.ts": [
     "src/account-color.ts",
     "src/accounts.ts",
+    "src/ipc/origin.ts", // 〔C4a〕远端 tab 才挂 `.remote` / 走远端那条 ↗
     "src/session-status.ts",
     "src/tab-collections.ts",
     "src/terminal-front.ts",
@@ -152,9 +153,9 @@ const DEPS: Record<string, readonly string[]> = {
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/tab-menu.ts": [
     "src/agent-profile.ts",
-    "src/backend-policy.ts",
     "src/behavior.ts",
     "src/error-toast.ts",
+    "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/launch-menu.ts",
     "src/remote-launch-run.ts",
     "src/tab-collections.ts",
@@ -171,11 +172,11 @@ const DEPS: Record<string, readonly string[]> = {
     "npm:@tauri-apps/plugin-opener",
     "src/account-restart.ts",
     "src/accounts.ts",
-    "src/backend-policy.ts",
     "src/behavior.ts",
     "src/error-toast.ts",
     "src/file-window.ts", // F78：远端会话「打开工作目录」（〔F7b〕老 SFTP 面板删了，改开文件窗口）
     "src/ipc/commands.ts",
+    "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各走哪条动作
     "src/launch-requests.ts",
     "src/remote-config.ts",
     "src/remote-launch-run.ts",

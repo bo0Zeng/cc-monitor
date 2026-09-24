@@ -28,6 +28,7 @@ import { commands } from "../ipc/commands";
 // 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
 import { LOCAL_ORIGIN } from "../backend-policy";
+import { originFromWire } from "../ipc/origin";
 // `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
 import { mintLocalTmuxName } from "../ipc/local-tmux-name";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
@@ -325,7 +326,7 @@ export class HistoryView {
       jsonlPath: entry.jsonlPath,
       displayTitle,
       subtitle,
-      origin: entry.origin,
+      origin: originFromWire(entry.origin),
       cwd: entry.projectPath, // F62：建分支后 resume 用作新终端起始目录
     });
   }
@@ -977,7 +978,7 @@ export class HistoryView {
           subtitle: s.projectName
             ? `${s.projectName}  ·  ${s.projectPath}`
             : s.projectPath,
-          origin: s.origin,
+          origin: originFromWire(s.origin),
           cwd: s.projectPath,
         });
       });
@@ -1016,7 +1017,7 @@ export class HistoryView {
           : s.projectPath,
         scrollToUuid: hit.uuid,
         // issue #28：远端命中点击走远端只读视图（origin → stream_read_remote_session）。
-        origin: s.origin,
+        origin: originFromWire(s.origin),
         cwd: s.projectPath, // F62：本地命中建分支后 resume 用
       });
     });

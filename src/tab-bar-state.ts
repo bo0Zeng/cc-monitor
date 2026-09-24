@@ -27,6 +27,7 @@
  *   而 `tests/tab-bar-state.vitest.ts` 对 `order`/`pinned` **各有一格**专盯它。
  */
 import { loadConfig, saveConfig } from "./config";
+import type { Origin } from "./ipc/origin";
 
 const KEY = "tabBar";
 
@@ -149,8 +150,12 @@ export interface PinnedTab {
   /** = `Tab.parentPath`。空串 = 这条从没收到过带路径的行（`§B.6` 第一格：降级，不是丢）。 */
   jsonlPath: string;
   cwd: string | null;
-  /** `null` = 本机（决定复活后走哪条读命令 / resume 往哪台机去）。 */
-  origin: string | null;
+  /**
+   * 哪台机器（决定复活后走哪条读命令 / resume 往哪台机去）。本机 = `LOCAL_ORIGIN`。
+   * 〔C4a · `设计/05 §8` 步 2〕上一版这里是 `null` = 本机；盘上的旧 `null` **不兼容**，
+   * 由 [`sanitizePinned`] 按坏行丢（与 Rust `Origin` 反序列化那道闸同形）。
+   */
+  origin: Origin;
   /**
    * 🔴 **非有不可**（`§3.5.7`）：缺了 resume 会静默落到默认号，
    * 撞 `accounts.ts` 那条「绝不下沉到当前号」的纪律。
@@ -193,8 +198,10 @@ function pinStrOrNull(v: unknown): string | null {
 /**
  * 清洗落盘来的固定表。形状照 `sanitizeCollections`（认不出就丢，不抛）。
  *
- * 逐条筛的三条：
+ * 逐条筛的四条：
  * 1. `sid` 是主键 —— 空的 / 重复的整条丢（重复会让同一个 tab 被复活两遍）。
+ * 1b. 〔C4a〕`origin` 不是非空字符串 ⇒ 整条丢：本机也有名字（`"<local>"`），
+ *    「没写哪台机」复活不出来 —— 猜成本机就是 `设计/05 §8` 步 2 治的那件事。
  * 2. `jsonlPath` 为空**保留**（`§4` 逐字「保留但标记降级」）—— 丢掉它等于
  *    「用户固定过的东西第二天自己没了」，那比降级坏。降级的判词住 `isDegradedPin`。
  * 3. 文件已被删的那一条要自动摘除（`§4`）—— **今天做不到**，理由写在
@@ -209,13 +216,15 @@ export function sanitizePinned(raw: unknown): PinnedTab[] {
     const o = x as Record<string, unknown>;
     const sid = pinStr(o.sid);
     if (!sid || seen.has(sid)) continue;
+    const origin = pinStr(o.origin);
+    if (!origin) continue;
     const ts = o.lastActiveAt;
     seen.add(sid);
     out.push({
       sid,
       jsonlPath: pinStr(o.jsonlPath),
       cwd: pinStrOrNull(o.cwd),
-      origin: pinStrOrNull(o.origin),
+      origin,
       account: pinStrOrNull(o.account),
       lastActiveAt: typeof ts === "number" && Number.isFinite(ts) ? ts : null,
       kind: pinStrOrNull(o.kind),

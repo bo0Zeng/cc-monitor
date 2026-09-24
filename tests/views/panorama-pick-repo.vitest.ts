@@ -22,6 +22,7 @@ vi.mock("../../src/panorama/api", async (importOriginal) => {
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import * as api from "../../src/panorama/api";
 import { PanoramaView } from "../../src/views/panorama";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 type Probe = { repo: string | null; root: HTMLElement; titleEl: HTMLElement };
@@ -32,11 +33,11 @@ const statusCalls = (): string[] => vi.mocked(api.status).mock.calls.map((c) => 
 
 describe("自己挑一个仓看", () => {
   let v: PanoramaView;
-  let session: { cwd: string; origin: string | null } | null;
+  let session: { cwd: string; origin: string } | null;
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.replaceChildren();
-    session = { cwd: "/work/repo", origin: null };
+    session = { cwd: "/work/repo", origin: LOCAL_ORIGIN };
     v = new PanoramaView(() => session);
     vi.mocked(api.status).mockResolvedValue({ symbols: 0, stale: false, indexedAt: null });
   });
@@ -69,7 +70,7 @@ describe("自己挑一个仓看", () => {
     bar(v, "pick-repo").click();
     await flush();
     v.close();
-    session = { cwd: "/work/another", origin: null }; // 期间活跃会话换了
+    session = { cwd: "/work/another", origin: LOCAL_ORIGIN }; // 期间活跃会话换了
     await v.open();
     expect(statusCalls()).toEqual(["/work/repo", "/other/proj", "/other/proj"]);
   });

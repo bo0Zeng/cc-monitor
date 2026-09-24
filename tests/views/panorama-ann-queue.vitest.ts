@@ -29,6 +29,7 @@ vi.mock("../../src/panorama/api", async (importOriginal) => {
 import * as api from "../../src/panorama/api";
 import { showActionFailureToast } from "../../src/error-toast";
 import { PanoramaView } from "../../src/views/panorama";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const ann = (id: string, status: string, author = "agent-x", origin = "Agent"): Annotation =>
@@ -55,7 +56,7 @@ describe("批注审批队列", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.replaceChildren();
-    v = new PanoramaView(() => ({ cwd: "/repo", origin: null }));
+    v = new PanoramaView(() => ({ cwd: "/repo", origin: LOCAL_ORIGIN }));
     probe(v).repo = "/repo";
   });
 

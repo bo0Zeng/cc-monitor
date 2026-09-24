@@ -44,6 +44,7 @@ import {
   type ViewerRigHandles,
 } from "../test-support/session-viewer-rig";
 import { SessionViewer } from "../../src/views/session-viewer";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 /** 一条 user 记录，`parentUuid` 串成链（本套件要 BranchFolder 看到一条正常主线）。 */
 function chained(seq: number, uuid: string, text: string): RigPayload {
@@ -65,6 +66,7 @@ async function mount(lines: RigPayload[], scrollToUuid?: string): Promise<Sessio
   await v.load({
     jsonlPath: "/p/s1.jsonl",
     displayTitle: "T",
+    origin: LOCAL_ORIGIN,
     suppressBranch: true, // 分支按钮不在本件射程里
     ...(scrollToUuid === undefined ? {} : { scrollToUuid }),
   });

@@ -39,11 +39,9 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "./remote-launch-run";
-// ⚠ **两个同名常量**：本文件要的是 `backend-policy` 那个（`"<local>"`，与 Rust
-// `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
-// `"__local__"`，是账号面自己的标记，**不是 backend origin**。导错一个不会红，只会静默查不到。
-// 〔U2〕这条原住 `tabs.ts`，随 `LOCAL_ORIGIN` 的用处一起搬来；`tab-menu.ts` / `tab-stream-view.ts` 指向这里。
-import { LOCAL_ORIGIN } from "./backend-policy";
+// 〔C4a · `设计/05 §8` 步 2〕本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
+// 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
+import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import { mintSessionTmuxName } from "./remote-launch";
 import { getBehavior } from "./behavior";
@@ -177,7 +175,7 @@ export class TabSessionActions {
     const tab = this.host.tab(sid);
     if (!tab) return;
     const behavior = await getBehavior();
-    if (tab.origin !== null) {
+    if (isRemoteOrigin(tab.origin)) {
       // A4：带账号统一走 withAccount（点击时重解析 configDir + 记 lastAccount 源②，与 history 同口径）。
       // 本地账号切换是 A7，此处忽略（withAccount 只在远端调）。
       const origin = tab.origin;
@@ -311,7 +309,7 @@ export class TabSessionActions {
     useBase: boolean,
   ): Promise<void> {
     const tab = this.host.tab(sid);
-    if (!tab || tab.origin === null) return;
+    if (!tab || isLocalOrigin(tab.origin)) return;
     const behavior = await getBehavior();
     const origin = tab.origin;
     const cwd = tab.cwd ?? "";
@@ -563,7 +561,7 @@ export class TabSessionActions {
   ): Promise<boolean> {
     // 〔`A3` 第二波〕本机会话的 origin 是 `<local>`：下面每一跳（tmux 快照 / send-keys / kill /
     // 账号清单 / 信任预检）都按 origin 分流，本机走得通；resume 那一跳在 `restartWithAccount` 里分。
-    const origin = tab.origin ?? LOCAL_ORIGIN;
+    const origin = tab.origin;
     const cwd = tab.cwd ?? "";
     const behavior = await getBehavior();
     // 解析该会话当前 tmux 名，一律新查（对齐 resumeTabTmux：attach/重启对新鲜度最敏感，防据陈旧快照误伤）。
@@ -673,7 +671,7 @@ export class TabSessionActions {
     if (!tab?.cwd) return;
     // F78：远端 Tab 的 cwd 是远端路径，本地 openPath 打不开——改成用该机配置开 SFTP 进入该目录
     // （Batch9-F29 曾从静默 no-op 改成 info 提示；现进一步真能浏览）。找不到该机配置才回退提示。
-    if (tab.origin !== null) {
+    if (isRemoteOrigin(tab.origin)) {
       const host = findHostByOrigin((await readRemoteConfig()).hosts, tab.origin);
       if (host && host.host.trim() !== "" && host.user.trim() !== "") {
         void openFileWindow(host, { dir: tab.cwd });

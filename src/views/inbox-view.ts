@@ -33,8 +33,9 @@
 import { commands, type SkillView } from "../ipc/commands";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
+import { isRemoteOrigin, type Origin } from "../ipc/origin";
 
-type CwdGetter = () => { cwd: string; origin: string | null } | null;
+type CwdGetter = () => { cwd: string; origin: Origin } | null;
 
 export class InboxView implements OverlayHandle {
   private root: HTMLDivElement | null = null;
@@ -59,13 +60,13 @@ export class InboxView implements OverlayHandle {
 
   async open(): Promise<void> {
     const info = this.getRepo();
-    if (!info || info.origin !== null) {
+    if (!info || isRemoteOrigin(info.origin)) {
       // 远端会话：计划目录在远端机上，本地读不到。
       // ⚠ 与 panorama 同一条诚实降级（它对远端也是「不索引 + 说清为什么」）。
       // 远端项目的收件箱要不要能编辑，`parity_ledger` 里记着 `Undecided`——没人裁定过。
       showActionFailureToast(
         "收件箱仅支持本地会话",
-        info?.origin
+        info !== null && isRemoteOrigin(info.origin)
           ? `当前会话来自远端机 [${info.origin}]，计划目录在那台机器上，本地读不到。切到一个本地会话再打开。`
           : "当前 tab 没有工作目录。",
       );

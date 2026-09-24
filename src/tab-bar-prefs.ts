@@ -20,6 +20,7 @@ import {
 } from "./tab-bar-state";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
+import type { Origin } from "./ipc/origin";
 
 /** 落盘偏好要宿主做的三件事。 */
 export interface TabBarPrefsHost {
@@ -28,7 +29,7 @@ export interface TabBarPrefsHost {
   createSkeletonTab(
     sessionId: string,
     cwd: string | null,
-    origin: string | null,
+    origin: Origin,
     kind: string | null,
     name: string | null,
   ): void;

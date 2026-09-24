@@ -23,6 +23,7 @@ import * as api from "../../src/panorama/api";
 import * as clip from "../../src/panorama/agent-clip";
 import { PanoramaView } from "../../src/views/panorama";
 import type { FileBubble, PanoramaLayout } from "../../src/panorama/layout";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const sym: PanoSymbol = {
@@ -75,7 +76,7 @@ describe("CP7 复制给 agent（界面接线）", () => {
         }),
       },
     });
-    v = new PanoramaView(() => ({ cwd: "/repo", origin: null }));
+    v = new PanoramaView(() => ({ cwd: "/repo", origin: LOCAL_ORIGIN }));
     probe(v).repo = "/repo";
     probe(v).applyOverview(ov, "/repo"); // 真布局：两个脊柱文件 → 两个气泡
     vi.mocked(api.status).mockResolvedValue({ stale: true, indexedAt: 1_790_000_000, symbols: 6 });

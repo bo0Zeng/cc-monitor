@@ -21,6 +21,7 @@
 import { commands } from "./ipc/commands";
 // `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
 import { mintLocalTmuxName } from "./ipc/local-tmux-name";
+import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
 import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
@@ -40,8 +41,8 @@ import type { ForkLaunchInput } from "./fork-launch";
 import { runRemoteResume, runRemoteResumeTmux } from "./remote-launch-run";
 
 export interface ForkFlowInput {
-  /** 远端 origin；`null` = 本机。 */
-  origin: string | null;
+  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。 */
+  origin: Origin;
   /** 刚分叉出来的**新**会话 sid。 */
   newSessionId: string;
   /**
@@ -105,11 +106,11 @@ export function deriveForkSource(
  * 所以本机一律按「查不出来」处理 —— 问一次，而不是拿当前账号顶替。
  */
 export async function collectForkSource(
-  origin: string | null,
+  origin: Origin,
   sid: string,
   cwd: string | null,
 ): Promise<ForkSourceFacts> {
-  if (origin === null) {
+  if (isLocalOrigin(origin)) {
     // E79：本机侧**现在有对侧探针了**（`list_local_session_accounts`，Linux 才有 ——
     // 要读 `/proc/<pid>/environ`）。此前这里硬编码「查不出来」，于是分叉一个**正跑着的**
     // 本机会话也要白弹一次追问小窗，而那个 pidfile 就在本机、monitor 明明够得着。
@@ -143,9 +144,9 @@ export async function collectForkSource(
  * 列可选账号喂给追问小窗。查不到（账号功能没启用 / 远端不可达）→ **空清单**，
  * 小窗仍然弹、仍然能选「账号 0」—— 账号列不出来不该把整条分叉路堵死。
  */
-async function listForkAccounts(origin: string | null): Promise<ForkAccountOption[]> {
+async function listForkAccounts(origin: Origin): Promise<ForkAccountOption[]> {
   try {
-    const state = origin === null ? await fetchLocalAccounts() : await fetchAccounts(origin);
+    const state = isLocalOrigin(origin) ? await fetchLocalAccounts() : await fetchAccounts(origin);
     return state.accounts
       .filter((a: Account) => isSelectable(a) && a.configDir !== null)
       .map((a: Account) => ({ name: a.name, configDir: a.configDir }));
@@ -164,7 +165,7 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
         accounts: await listForkAccounts(input.origin),
         // 远端会话惯例住在 tmux 里（断线能 attach 回来）；本机那条路根本不问 tmux
         // （`fork-start.ts` 已把这一格摘掉），所以这里给 false 也走不到。
-        defaultUseTmux: input.origin !== null,
+        defaultUseTmux: isRemoteOrigin(input.origin),
       }),
 
     startLocal: async (a) => {

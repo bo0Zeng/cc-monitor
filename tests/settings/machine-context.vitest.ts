@@ -13,28 +13,34 @@ import {
   subscribeMachine,
   __resetMachineContextForTests,
 } from "../../src/settings/machine-context";
+import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 beforeEach(() => __resetMachineContextForTests());
 
 describe("machine-context", () => {
-  it("初始是本机（null）", () => {
-    expect(getCurrentMachine()).toBeNull();
+  // 〔C4a · `设计/05 §8` 步 2〕本机是具名的 `LOCAL_ORIGIN`，不再是 `null`。
+  it("初始是本机（`LOCAL_ORIGIN`）", () => {
+    expect(getCurrentMachine()).toBe(LOCAL_ORIGIN);
   });
 
-  it("设了就读得到；空串归一成 null（select 的空 option 就是空串）", () => {
+  // 〔C4a〕上一版「空串归一成 null（= 本机）」：那是「没说」被当成本机 —— 步 2 治的正是这个
+  //   （Rust `Origin::route` 同样拒空白名）。现在空白名什么都不改。
+  it("设了就读得到；空白名不是任何一台机器 ⇒ 不切", () => {
     setCurrentMachine("aya");
     expect(getCurrentMachine()).toBe("aya");
     setCurrentMachine("");
-    expect(getCurrentMachine()).toBeNull();
+    expect(getCurrentMachine()).toBe("aya");
+    setCurrentMachine("   ");
+    expect(getCurrentMachine()).toBe("aya");
   });
 
   it("订阅者收到新值", () => {
-    const seen: (string | null)[] = [];
+    const seen: string[] = [];
     subscribeMachine((o) => seen.push(o));
     setCurrentMachine("aya");
     setCurrentMachine("nano");
-    setCurrentMachine(null);
-    expect(seen).toEqual(["aya", "nano", null]);
+    setCurrentMachine(LOCAL_ORIGIN);
+    expect(seen).toEqual(["aya", "nano", LOCAL_ORIGIN]);
   });
 
   it("★ 同值重复设置**不通知**（每次通知都是一次 ssh 往返）", () => {
@@ -44,8 +50,8 @@ describe("machine-context", () => {
     setCurrentMachine("aya");
     setCurrentMachine("aya");
     expect(fn).toHaveBeenCalledTimes(1);
-    // 空串与 null 视作同一个值（本机），来回设也不该重复通知
-    setCurrentMachine(null);
+    // 〔C4a〕切回本机通知一次；随后的空白名不是任何一台机器 ⇒ 不通知
+    setCurrentMachine(LOCAL_ORIGIN);
     setCurrentMachine("");
     expect(fn).toHaveBeenCalledTimes(2);
   });

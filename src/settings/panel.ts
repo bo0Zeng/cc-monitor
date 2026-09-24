@@ -38,6 +38,7 @@ import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { createUnknownKeysBar } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { hostOsAllows, type HostOs } from "./host-os"; // S9：本机 OS 门
 import { setCurrentMachine } from "./machine-context";
+import { LOCAL_ORIGIN } from "../ipc/origin";
 import {
   LOCAL_MACHINE_PAGE_ID,
   MACHINE_PAGE_PREFIX,
@@ -973,7 +974,7 @@ export class SettingsPanel {
               const pageEl = parts ? this.buildMachineTabs(id, parts) : element;
               router.addRoute({ id, title, element: pageEl, parentId: "machines" });
               // S4b-2：本机页一出现就让那几块 per-machine 分节先落在它上面。
-              // 这与 `machine-context` 的初始值（null = 本机）对齐 —— 否则 slot 在
+              // 这与 `machine-context` 的初始值（本机 = `LOCAL_ORIGIN`）对齐 —— 否则 slot 在
               // 用户第一次点进某台机器之前是**游离的**（不在文档里，谁也找不到它）。
               if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(element, true);
             },
@@ -1171,7 +1172,7 @@ export class SettingsPanel {
     router.onNavigate((id) => {
       if (!id.startsWith(MACHINE_PAGE_PREFIX)) return;
       const isLocal = id === LOCAL_MACHINE_PAGE_ID;
-      setCurrentMachine(isLocal ? null : id.slice(MACHINE_PAGE_PREFIX.length));
+      setCurrentMachine(isLocal ? LOCAL_ORIGIN : id.slice(MACHINE_PAGE_PREFIX.length));
       const page = router.pageContentOf(id);
       if (page) this.movePerMachineTo(page, isLocal, id);
     });

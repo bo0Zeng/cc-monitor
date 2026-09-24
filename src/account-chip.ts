@@ -34,14 +34,17 @@ import {
 import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { showActionFailureToast } from "./error-toast";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 
 // ------------------------------------------------------------ 纯函数（可测）
 
-/** 选 chip 绑定的"主远端"：第一台已配置远端。无 → null（chip 隐藏）。
- *  ⚠ `K-R59` 之前这里还排掉 `daemonless` 的主机 —— 那一档没了，不再有可排的。 */
-export function pickPrimaryOrigin(hosts: RemoteHostConfig[]): string | null {
+/** 选 chip 绑定的那台机器：第一台已配置远端；一台都没有 ⇒ **本机**（`LOCAL_ORIGIN`）。
+ *  ⚠ `K-R59` 之前这里还排掉 `daemonless` 的主机 —— 那一档没了，不再有可排的。
+ *  〔C4a · `设计/05 §8` 步 2〕上一版「无 → `null`」，调用方再把 `null` 读成「回落本机」——
+ *  两步说同一件事；`D1 阻-5` 之后「没有远端」就是「本机」，这里直接说出来。 */
+export function pickPrimaryOrigin(hosts: RemoteHostConfig[]): Origin {
   const h = hosts.find((x) => x.label || x.host);
-  return h ? h.label || h.host : null;
+  return h ? h.label || h.host : LOCAL_ORIGIN;
 }
 
 
@@ -75,7 +78,8 @@ export class AccountChip {
   readonly element: HTMLButtonElement;
   private labelSpan: HTMLElement;
   private iconEl: HTMLElement;
-  private origin: string | null = null;
+  /** chip 绑的那台机器（`refresh` 之前没意义 —— 那时 `state` 也是 `null`）。 */
+  private origin: Origin = LOCAL_ORIGIN;
   /** `D1 阻-5`：这一拍渲染的是**本机**账号吗（没有远端时回落）。 */
   private local = false;
   /** `D1 阻-5`：本机那几个 configDir 走不走 apikey 端点改写。`null` = 没问到（远端那半恒 `null`）。 */
@@ -107,18 +111,18 @@ export class AccountChip {
   async refresh(force = false): Promise<void> {
     try {
       const cfg = await readRemoteConfig();
-      this.origin = cfg.enabled ? pickPrimaryOrigin(cfg.hosts) : null;
+      this.origin = cfg.enabled ? pickPrimaryOrigin(cfg.hosts) : LOCAL_ORIGIN;
     } catch {
-      this.origin = null;
+      this.origin = LOCAL_ORIGIN;
     }
     // ★ `D1 阻-5`：**没有远端不等于没有账号** —— 本机 `~/.claude-accts/` 那份 manifest
     //   一直在，只是此前没有任何界面渲染它（`fetchLocalAccounts` 全仓生产调用方只有
     //   fork 那个小窗）。⇒ 回落到本机那一份，并把「走不走 apikey 端点改写」一起问出来。
-    this.local = !this.origin;
+    this.local = isLocalOrigin(this.origin);
     this.apikeyRouting = null;
     this.state = this.local
       ? await fetchLocalAccounts(force)
-      : await fetchAccounts(this.origin as string, force);
+      : await fetchAccounts(this.origin, force);
     // ★★ `D2 阻-7`：**本机那一档 not-ready 就整个隐藏** —— 与本件之前**逐字节相同**。
     //
     // 不加这一格的话，「没有远端 + 本机也没有 accounts.json」会从「整个隐藏」变成
@@ -208,7 +212,8 @@ export class AccountChip {
       menu.appendChild(this.menuAction("管理账号…", () => this.deps.openSettings()));
       menu.appendChild(
         this.menuAction("刷新", () => {
-          invalidateAccountsCache(this.origin ?? undefined);
+          // 本机那一半照旧清全部（账号面的本机缓存键是 `accounts.ts` 自己那个 `"__local__"`，不是 origin）。
+          invalidateAccountsCache(this.local ? undefined : this.origin);
           void this.refresh(true);
         }),
       );
@@ -332,7 +337,8 @@ export class AccountChip {
    * `!this.state`，那就又是两份判断 —— 而这一条治的正是「同一件事两处各判一次」。
    */
   private accountPickerState(): AccountsState | null {
-    if (!this.origin && !this.local) return null;
+    // 〔C4a〕上一版这里先挡「`origin` 为 `null` 且不是本机」—— 那一档只在 `refresh` 之前出现，
+    //   而那时 `state` 本来就是 `null`；`origin` 不再为 `null` 之后那道门与下一行说的是同一件事。
     return this.state;
   }
 
@@ -342,12 +348,12 @@ export class AccountChip {
    * 🔴 `D4 阻-4`：这道门**已与 [`toggleMenu`] 同源**（[`accountPickerState`]）——
    * 本机那一档从此也回得出一份，命令面板里列得出 chip 菜单里列得出的那几个号。
    *
-   * ⚠ `origin` 因此**可空**：`null` = 这份快照来自**本机**那一半。
+   * ⚠ 快照来自**本机**那一半时 `origin` 是 `LOCAL_ORIGIN`（〔C4a〕上一版是 `null`）。
    * 今天唯一的消费方 `buildAccountCommands` 只读 `accounts` / `defaultName`
    * （`account-commands.ts::AccountCommandsInput` 逐字，它连 `origin` 这个键都没有）
-   * ⇒ 放空不改任何行为；留着这个字段是为了让读的人看得出这份快照是哪一半的。
+   * ⇒ 留着这个字段是为了让读的人看得出这份快照是哪一半的。
    */
-  snapshotReady(): { origin: string | null; accounts: Account[]; defaultName: string | null } | null {
+  snapshotReady(): { origin: Origin; accounts: Account[]; defaultName: string | null } | null {
     const st = this.accountPickerState();
     if (!st) return null;
     const ui = deriveUi(st);
