@@ -380,7 +380,14 @@ pub async fn list_remote_accounts(origin: String) -> Result<AccountsResult, Stri
         Ok(c) => c,
         Err(msg) => return Ok(unavailable(msg)),
     };
-    match run_list_query(&cfg, "--list-accounts").await {
+    // 〔`C1`〕走长连接的 `accounts-list`（不再为读一份账号清单单拨一条 SSH）。
+    match crate::backend::control::frame_query::lines(
+        &cfg.origin_label(),
+        "accounts-list",
+        serde_json::json!({}),
+    )
+    .await
+    {
         Err(e) => {
             tracing::warn!("远端 [{origin}] --list-accounts 失败: {e}");
             Ok(unavailable(e))
@@ -417,7 +424,14 @@ pub async fn list_remote_session_accounts(origin: String) -> Result<SessionAccou
         Ok(c) => c,
         Err(msg) => return Ok(unavailable(msg)),
     };
-    match run_list_query(&cfg, "--session-accounts").await {
+    // 〔`C1`〕走长连接的 `accounts-sessions` —— 此前 10 秒轮询每拍都为它拨一次 SSH。
+    match crate::backend::control::frame_query::lines(
+        &cfg.origin_label(),
+        "accounts-sessions",
+        serde_json::json!({}),
+    )
+    .await
+    {
         Err(e) => {
             tracing::warn!("远端 [{origin}] --session-accounts 失败: {e}");
             Ok(unavailable(e))

@@ -103,6 +103,15 @@ impl Backend {
         match self {
             Backend::Local => run_local_query(argv),
             Backend::Remote(cfg) => {
+                // 〔`C1` · 09-24〕认得的形状走长连接（`frame_query::route_argv`）；
+                // 认不出的落到拨号那条路 —— 而那条路只放行 `STILL_DIALED` 登记的子命令。
+                if let Some(route) = crate::backend::control::frame_query::route_argv(argv) {
+                    return crate::backend::control::frame_query::run_routed(
+                        &cfg.origin_label(),
+                        route,
+                    )
+                    .await;
+                }
                 // 自由文本（路径）逐个过 `shell_quote`；子命令本身是字面量。
                 let mut args = argv[0].to_string();
                 for a in &argv[1..] {
