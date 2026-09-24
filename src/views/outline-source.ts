@@ -35,9 +35,47 @@ import type { Origin } from "../generated/Origin";
 import type { UserInputsResult } from "../generated/UserInputsResult";
 import type { OutlineFailure } from "../generated/OutlineFailure";
 import type { UserInputPanel } from "./user-input-panel";
+import type { UserInputEntry } from "../generated/UserInputEntry";
 
 /** 这份清单问的是哪台机器上的哪份会话。拿不到（tab 还没收到路径）⇒ `null`，这一趟不要。 */
 export type OutlineWhere = () => { origin: Origin; jsonlPath: string } | null;
+
+/** 骨架索引一行里大纲要的那几个键（后端 `IndexRow` 的 `u` / `x` / `ts`，`IPC-PROTOCOL.md §10.3`）。 */
+export interface OutlineIndexRow {
+  u?: string;
+  /** 这一行是一条用户输入 ⇒ 摘要；不是 ⇒ 缺。 */
+  x?: string;
+  ts?: string;
+}
+
+/** 从骨架索引里带回来的一份清单（`[0, end)` 的全量）。 */
+export interface OutlineSeed {
+  entries: UserInputEntry[];
+  end: number;
+}
+
+/**
+ * 〔SE2 · `设计/10 §9.5` 那条欠账〕**首屏的「索引」与「大纲清单」合成一趟读**：从一次**从 0 起**的骨架索引里
+ * 把大纲搬出来。
+ *
+ * 推断是**单向可靠**的（理由逐字在后端 `IndexRow::x` 的头注）：
+ * - 有**至少一个** `x` ⇒ 对面是会出它的后端 ⇒ 每一条用户输入都带着（同一个判定逐行跑）⇒ 这就是全量清单；
+ * - 一个都没有 ⇒ **分不清**「老后端」还是「真的零条」⇒ `null`，调用方照旧 `list_user_inputs(0)` 要一份。
+ * 索引要不到（`available: false`）同样 `null`。
+ */
+export function outlineSeedFromIndex(res: {
+  available: boolean;
+  end: number;
+  rows: ReadonlyArray<OutlineIndexRow>;
+} | null | undefined): OutlineSeed | null {
+  if (!res?.available || !Array.isArray(res.rows)) return null;
+  const entries: UserInputEntry[] = [];
+  for (const r of res.rows) {
+    if (r.x === undefined || !r.u) continue;
+    entries.push({ uuid: r.u, excerpt: r.x, timestamp: r.ts ?? "" });
+  }
+  return entries.length > 0 ? { entries, end: res.end } : null;
+}
 
 /**
  * 连续几次**瞬时**失败之后按结构性处理（不再要）。
@@ -116,6 +154,51 @@ export class OutlineSource {
     });
     this.inflight = run;
     return run;
+  }
+
+  /**
+   * 〔SE2〕**骨架索引在途：清单先不单独要，等它带回来。**
+   *
+   * 宿主发 `read_session_index(0)` 的同一刻调它（`tab-stream-view.ts::requestSkeleton`）。`seed` 兑现成：
+   * - 一份清单 ⇒ 整表建好、续点接上它的 `end`（**这一趟没有 `list_user_inputs(0)`**）；
+   * - `null` / 抛了（老后端 / 真的零条 / 索引失败）⇒ 照旧自己从 0 要一份。
+   * 等的期间 `refresh()` 并进同一趟（沿用在途合并）。等完：没种上 ⇒ 补一趟从 0 的 `refresh()`；
+   * 种上了 ⇒ 只有「等的期间真有新行进来（`markStale`）**而且**有人叫过」才补一趟增量 ——
+   * 批结束那一下的 `refresh()` 只是「还没要过」，种上之后它已经不成立，不为它白发一次 IPC。
+   * 已经要到过、在途、或已放弃 ⇒ 什么都不做（清单已经有了 / 正在要，索引那份不再用）。
+   */
+  awaitSeed(seed: Promise<OutlineSeed | null>): void {
+    if (this.gaveUp || this.fetched || this.inflight) {
+      seed.catch(() => {}); // 不用它也要接住它的失败（否则是一条没人处理的拒绝）
+      return;
+    }
+    const gen = this.gen;
+    let seeded = false;
+    this.stale = false;
+    const run = seed
+      .then((s) => {
+        if (gen !== this.gen || !s) return;
+        this.fetched = true;
+        this.transientFailures = 0;
+        this.uuids.clear();
+        this.panel.setEntries(s.entries);
+        for (const e of s.entries) this.uuids.add(e.uuid);
+        this.rows = s.entries.length;
+        this.end = s.end;
+        seeded = true;
+      })
+      .catch(() => {})
+      .finally(() => {
+        this.inflight = null;
+        const again = this.again;
+        this.again = false;
+        if (gen !== this.gen) {
+          if (again) void this.refresh(); // 换了会话之后有人叫过 ⇒ 那是新会话的，照要
+          return;
+        }
+        if (!seeded || (again && this.stale)) void this.refresh();
+      });
+    this.inflight = run;
   }
 
   /** 换会话 / 关 tab：清空、收起，在途那趟作废。 */
