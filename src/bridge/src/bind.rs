@@ -58,10 +58,13 @@
 //!
 //! ### ⚠ 本模块**买不到**什么（别把这一段读大）
 //!
-//! - 🔴 **今天没有任何生产代码往 `ps-await` 里写一个带令牌的 marker。**
-//!   写那一份的是本地终端进程自己（Era 2 是 PowerShell profile 里的 `__ccm_bind`），
-//!   而那条链住 `launch.rs` / `scripts/cc.ps1.tpl` —— **都不在本刀的写区**。
-//!   ⇒ 本模块今天买到的是「**接得住**」，**不是**「已经在收」。
+//! - 〔第二波 T4 订正〕步 3 落地那天这里写的是「今天没有任何生产代码往 `ps-await` 里写一个
+//!   带令牌的 marker ⇒ 本模块买到的是『接得住』，不是『已经在收』」—— **那句话到此作废**：
+//!   写入方接上了，是 monitor 拉起窗口时注入的那段令牌握手前奏
+//!   （`launch.rs::with_rbind_bind_prelude` ＋ `scripts/rbind-token-bind.ps1.tpl`，
+//!   与 `__ccm_bind` 同一条握手、只差 marker 的形状）。
+//!   ⚠ 但「那段 PowerShell 在真 Windows 上真的跑通、表里真的多了一条」**本机一格都买不到**
+//!   （没有 `pwsh`、没有 Windows）；判据只钉得住交给 PowerShell 的那段**文字**。
 //! - 🔴 **「↗ 真的把那个窗口拉到前台了」这一维本仓的 Linux 门禁一格都买不到**：
 //!   没有图形会话、没有 Windows，`find_window_by_marker_substr` 在非 Windows 上
 //!   是个恒 `None` 的桩。判据能验的是**平台无关**的那两段（marker 解令牌 · 表里查得到），
@@ -138,7 +141,7 @@ pub struct BindRegistry {
 impl BindRegistry {
     /// 启动 watcher 线程 + 心跳线程。返回 Arc 给外部持有引用。
     pub fn spawn(monitor_data_dir: PathBuf) -> Arc<Self> {
-        let await_dir = monitor_data_dir.join("ps-await");
+        let await_dir = monitor_data_dir.join(AWAIT_SUBDIR);
         let registry_dir = monitor_data_dir.join("ps-registry");
 
         for d in [&await_dir, &registry_dir] {
@@ -246,6 +249,23 @@ impl BindRegistry {
 /// 与 `token-<32hex>` 无论如何对不上；反向也一样（本函数要求前缀后**恰好** 32 个
 /// 小写十六进制字符、后面一个字节都不许有）。两条判据各钉一头，见 `bind_tests.rs`。
 pub const RBIND_TOKEN_MARKER_PREFIX: &str = "ccm-rbind-token-";
+
+/// 握手目录 `ps-await/` 的名字（相对 monitor 数据目录）。
+///
+/// 〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕**有两个写入方、一个读方**，三处必须同一个名字：
+/// 读方 = [`BindRegistry::spawn`] 监听的目录；写入方 ① = PowerShell profile 里的 `__ccm_bind`
+/// （`scripts/cc.ps1.tpl`，它在用户机器上自己拼 `ps-await`，改不动已装的那份 ⇒ 本常量**不许改值**）；
+/// 写入方 ② = `launch.rs` 在拉起窗口时注入的那段令牌握手前奏（取的就是本常量）。
+pub const AWAIT_SUBDIR: &str = "ps-await";
+
+/// 带令牌的 marker：`ccm-rbind-token-<32hex>`。形状不对 ⇒ `None`（不产一个解不回来的 marker）。
+///
+/// 与 [`rbind_token_from_marker`] 互为逆：`rbind_token_from_marker(&rbind_token_marker(t)?) == Some(t)`。
+/// **写入方只许用它拼**（`launch.rs` 的令牌握手前奏）—— 手拼一份前缀，哪天前缀改了，
+/// 本地表会静默收不到任何带令牌的条目（「拉不到窗口」与「没有令牌」同形）。
+pub fn rbind_token_marker(token: &str) -> Option<String> {
+    rbind_token_shape_ok(token).then(|| format!("{RBIND_TOKEN_MARKER_PREFIX}{token}"))
+}
 
 /// 令牌的字符数 —— **32**。
 ///
