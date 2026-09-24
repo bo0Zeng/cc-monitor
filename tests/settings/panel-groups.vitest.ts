@@ -212,9 +212,10 @@ describe("S2 设置面板分页结构", () => {
       "数据位置",
     ]);
     // ★ S4b-2：那四块**已从列表页搬到机器详情页**。
-    // ★ P2s：「backend 开关」是这一页的新成员，且**排在「连接（远端）」之前** ——
-    // 它管的是每台机（含本机），而「连接（远端）」是远端专有的 SSH 配置面。
-    expect(pageTitles("machines")).toEqual(["backend 开关", "连接（远端）"]);
+    // 🔴 〔第四波 ST2 · `70 §5.3` · 步 14〕「backend 开关」**不再单独占一块**：它并进了机器列表那一行
+    //   （四格挂在「连接（远端）」那块的列表行上，钉在 `machine-list-backend-cells.vitest.ts`）。
+    //   ⇒ 列表页的块只剩一块（列表 ＋ 添加 ＋ 全局开关 ＋ 诊断都在它里面，`§8` #10）。
+    expect(pageTitles("machines")).toEqual(["连接（远端）"]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
@@ -386,7 +387,6 @@ describe("S2 设置面板分页结构", () => {
     expect(sk!.getAttribute("aria-busy")).toBe("true");
     // 隔离没有因此被打破：那几块**都还在 DOM 里**，只是先藏着、等机器页来了就搬走。
     expect(pageTitles("machines")).toEqual([
-      "backend 开关",
       "连接（远端）",
       "账号",
       "终端集成",

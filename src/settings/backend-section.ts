@@ -117,6 +117,10 @@ export const BACKEND_COLUMNS = [
 ] as const;
 export type BackendColumn = (typeof BACKEND_COLUMNS)[number][0];
 
+/** 〔步 14〕列表里有、后端清单里没有的那一台 —— 「未登记」那一格的 ⓘ。 */
+export const BACKEND_UNREGISTERED_WHY =
+  "monitor 这次启动时没有为这台机器登记后端：远端模式没开，或者这台是启动之后才加的。重启 monitor 之后才能在这里起停。";
+
 /** 一台机在这一区里的身份。`origin` 是唯一键，`title` 只给人看。 */
 interface Machine {
   origin: string;
@@ -132,7 +136,16 @@ export class BackendSection {
    */
   private cellHosts = new Map<string, HTMLElement>();
 
-  constructor(opts: { headless?: boolean } = {}) {
+  /**
+   * 〔步 14〕寄居模式：四格挂在**机器列表那一行**上（`cellsFor`），本块自己的 `element`
+   * 只装「后端清单里有、机器列表里没有」的那几台（见 `refresh` 的头注）。
+   */
+  private readonly hosted: boolean;
+  /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
+  private registered: Set<string> | null = null;
+
+  constructor(opts: { headless?: boolean; hosted?: boolean } = {}) {
+    this.hosted = opts.hosted ?? false;
     this.element = document.createElement("div");
     this.element.className = "settings-section backend-section";
     if (!opts.headless) {
@@ -140,18 +153,20 @@ export class BackendSection {
       h.textContent = "backend 开关";
       this.element.appendChild(h);
     }
-    const hint = document.createElement("p");
-    hint.className = "settings-hint";
-    // ★ 这一句**刻意不再承诺任何一种退出行为** —— 那句话今天是**按机器分档**的
-    //   （同一台机上勾没勾、脱没脱离，四种组合各说各的），所以它住在每一行里，
-    //   由 `describeExitBehavior` 从唯一的那个家取。
-    //   ⚠ 原来这里那句「它仍会在 monitor 退出后很快自行退出」是**实测结论**，
-    //   而 K-P1 之后它只对**没脱离**的那一支成立 —— 留在这里就成了一句半假的全称。
-    hint.textContent = "每台机各一行。「退出行为」那一格写着 monitor 退出时这台机会怎样。";
-    this.element.appendChild(hint);
-    // 🔴 第二刀 步 6（`设计/70 §2.3`）：**表格式四栏** —— 状态 / 操作 / 退出行为 / 健康。
-    //   原来是一行跑句（「本机未连上 [起][停] ☐ monitor 退出时结束它」），控件嵌在散文里。
-    this.element.appendChild(BackendSection.columnHead());
+    if (!this.hosted) {
+      const hint = document.createElement("p");
+      hint.className = "settings-hint";
+      // ★ 这一句**刻意不再承诺任何一种退出行为** —— 那句话今天是**按机器分档**的
+      //   （同一台机上勾没勾、脱没脱离，四种组合各说各的），所以它住在每一行里，
+      //   由 `describeExitBehavior` 从唯一的那个家取。
+      //   ⚠ 原来这里那句「它仍会在 monitor 退出后很快自行退出」是**实测结论**，
+      //   而 K-P1 之后它只对**没脱离**的那一支成立 —— 留在这里就成了一句半假的全称。
+      hint.textContent = "每台机各一行。「退出行为」那一格写着 monitor 退出时这台机会怎样。";
+      this.element.appendChild(hint);
+      // 🔴 第二刀 步 6（`设计/70 §2.3`）：**表格式四栏** —— 状态 / 操作 / 退出行为 / 健康。
+      //   原来是一行跑句（「本机未连上 [起][停] ☐ monitor 退出时结束它」），控件嵌在散文里。
+      this.element.appendChild(BackendSection.columnHead());
+    }
     this.list = document.createElement("div");
     this.list.className = "backend-list";
     this.element.appendChild(this.list);
@@ -160,17 +175,76 @@ export class BackendSection {
 
   private list: HTMLElement;
 
-  /** 重新拉一遍机器清单 + 每台的状态。 */
+  /**
+   * 〔步 14 · `设计/70 §5.3`〕**机器列表那一行上的四格**：DAEMON 开关并进列表行，
+   * 不再单独占一块（「列表页 = 列表 ＋ 添加 ＋ 全局开关 ＋ 诊断」四样）。
+   *
+   * 每次调都建一份新的（列表每重建一次就来要一次），旧的那份随旧行一起被摘掉。
+   * 后端清单里这台若正以「列表里没有」的身份挂在本块自己的列表里，那一行当场收掉 —— 一台机只许一份四格。
+   */
+  cellsFor(origin: string): HTMLElement {
+    this.rows.get(origin)?.remove();
+    this.rows.delete(origin);
+    const cells = this.buildCells(origin);
+    this.paintOne(origin);
+    return cells;
+  }
+
+  /** 画一台：后端清单还没到 ⇒ 等 `refresh`；清单里没有 ⇒ 说没登记；有 ⇒ 问状态。 */
+  private paintOne(origin: string): void {
+    if (this.registered === null) return;
+    if (!this.registered.has(origin)) {
+      this.paintUnregistered(origin);
+      return;
+    }
+    void this.paintStatus(origin);
+  }
+
+  /**
+   * 列表里有、后端清单里没有（远端模式关着 / 改了配置还没重启 / 重名被后端改了名）。
+   * 起 / 停 / 退出行为对它都**没有把手** ⇒ 那几格不摆控件，状态那一格说清为什么。
+   */
+  private paintUnregistered(origin: string): void {
+    const cells = this.cellHosts.get(origin);
+    if (!cells) return;
+    const state = cells.querySelector<HTMLElement>(".backend-row-state");
+    if (state) {
+      state.textContent = "未登记";
+      state.dataset.on = "unregistered";
+      state.after(makeInfoIcon(BACKEND_UNREGISTERED_WHY));
+    }
+    for (const col of ["ops", "exit", "health"] as const) {
+      cells.querySelector<HTMLElement>(`[data-col="${col}"]`)?.replaceChildren();
+    }
+  }
+
+  /**
+   * 重新拉一遍机器清单 + 每台的状态。
+   *
+   * 〔步 14〕寄居模式下：清单里的每一台，机器列表那一行已经来要过四格（`cellsFor`）⇒ 只重画；
+   * **没来要过**的（后端清单与机器列表对不上的那几台：重名被后缀化、远端模式关着时列表照样列全部）
+   * ⇒ 在本块自己的列表里另起一行，不丢。列表那一行晚到时由 `cellsFor` 把这一行收掉。
+   */
   async refresh(): Promise<void> {
     const machines = await this.machines();
+    this.registered = new Set(machines.map((m) => m.origin));
     this.list.innerHTML = "";
     this.rows.clear();
-    this.cellHosts.clear();
     for (const m of machines) {
+      const hostedCells = this.hosted ? this.cellHosts.get(m.origin) : undefined;
+      if (hostedCells?.isConnected) {
+        void this.paintStatus(m.origin);
+        continue;
+      }
       const row = this.buildRow(m);
       this.rows.set(m.origin, row);
       this.list.appendChild(row);
       void this.paintStatus(m.origin);
+    }
+    if (this.hosted) {
+      for (const [origin, cells] of this.cellHosts) {
+        if (cells.isConnected && !this.registered.has(origin)) this.paintUnregistered(origin);
+      }
     }
   }
 

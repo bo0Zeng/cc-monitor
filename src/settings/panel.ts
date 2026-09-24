@@ -926,17 +926,22 @@ export class SettingsPanel {
     // 四份互不同步）。有 origin 选择器 = 它改的是某台机器的状态。
     // S4 会把这四份选择器换成「当前在哪台机器页」这个上下文。
     const machinesPage = document.createElement("div");
-    // P2s（C8）：backend 开关排在「连接（远端）」**之前** —— 它管的是**每台机**（含本机），
-    // 而下面那块是远端专有的 SSH 配置面。本机在这一区的第一行，
-    // 不为它造特例（`C1`：本地只是不走 ssh 的那一台）。
-    // 同样进 `safeBlock`：它构造时会发 IPC，失败不该把整个设置面板炸穿。
-    machinesPage.appendChild(
-      this.safeBlock("backend 开关", () => {
-        const sec = new BackendSection({ headless: true });
-        this.backendSection = sec;
-        return sec.element;
-      }),
-    );
+    // 🔴 〔第四波 ST2 · `设计/70 §5.3` · 第四刀 步 14〕**「backend 开关」不再单独占一块**：
+    //   它本来就是每台一行，并进机器列表那一行上（状态 / 操作 / 退出行为 / 健康 四格，
+    //   `BackendSection.cellsFor`）。列表页从此只剩「列表 ＋ 添加 ＋ 全局开关 ＋ 诊断」四样（`§8` #10）。
+    // ⚠ 隔离照旧（T07）：它构造失败不许把机器列表带走 —— 失败时列表行上不挂那四格，
+    //   这里亮一块「此区块加载失败」，与 `safeBlock` 同一个样子。
+    let backend: BackendSection | undefined;
+    try {
+      backend = new BackendSection({ headless: true, hosted: true });
+      this.backendSection = backend;
+    } catch (e) {
+      machinesPage.appendChild(
+        this.safeBlock("后端", () => {
+          throw e;
+        }),
+      );
+    }
     // **T07 审计阻塞 1**：这里必须在 `safeBlock` 里——`RemoteSection` 正是唯一活的同步
     // throw 宿主（构造路径含 `remote-section.ts` 那个三句话必填的 `throw`）。审计真造它抛过：
     // 裸构造会让 `new SettingsPanel` 直接炸穿、**什么都没上屏**。
@@ -947,6 +952,12 @@ export class SettingsPanel {
         // 列表里只留一行。分节不需要知道路由器长什么样，只要「开页 / 收页 / 跳过去」。
         const sec = new RemoteSection({
           headless: true,
+          rowExtras: backend && {
+            head: () => BackendSection.columnHead(),
+            cells: (origin) => backend.cellsFor(origin),
+            // 后端清单里有、机器列表里没有的那几台（重名被后缀化 / 列表还没读出来）。
+            tail: () => backend.element,
+          },
           pages: {
             machinePagesSettled: () => this.onMachinePagesSettled(),
             addMachinePage: (id, title, element, parts) => {
@@ -1262,6 +1273,10 @@ export class SettingsPanel {
 
   private revealPerMachineFallback(why: string): void {
     if (this.machinePageRegistered) return;
+    // 〔步 14〕后端那几行本该挂在机器列表的行上（列表的尾巴）。列表没建起来 ⇒ 它们无处安放，
+    //   **退回列表页上**（与下面那几块同一个兜底思路：位置不理想，但都还在、都能用）。
+    const backendRows = this.backendSection?.element;
+    if (backendRows && !backendRows.isConnected) this.perMachineFallbackHint.before(backendRows);
     // ST1「延后加载」：兜底态下这几块就摆在（落地的）列表页上、用户看得见 ⇒ 这时才放它们的第一发。
     this.loadPerMachineOnce();
     this.perMachineSlot.hidden = false;

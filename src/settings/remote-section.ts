@@ -139,9 +139,26 @@ export interface MachinePagesHost {
   machinePagesSettled?(): void;
 }
 
+/**
+ * 〔第四波 ST2 · `设计/70 §5.3` · 第四刀 步 14〕机器列表那一行上**别人挂进来的格子**。
+ *
+ * 用途只有一个：DAEMON 开关（后端的 状态 / 操作 / 退出行为 / 健康 四格）**并进列表行**，
+ * 不再在列表页上单独占一块。本分节不认识那四格长什么样 —— 只管「每一行给它留个位置」。
+ */
+export interface MachineRowExtras {
+  /** 列表最上面那一行表头。 */
+  head(): HTMLElement;
+  /** 某台机器那一行的格子。`origin` 与后端的 origin 同一套名字（本机是后端的本机名）。 */
+  cells(origin: string): HTMLElement;
+  /** 列表最下面：挂在列表里、却对不上任何一行的那几台（由宿主决定装什么）。 */
+  tail(): HTMLElement;
+}
+
 export interface RemoteSectionOptions {
   /** 被 CollapsibleGroup 包起来时传 headless: true，不渲染自己的小标题。 */
   headless?: boolean;
+  /** 〔步 14〕见 `MachineRowExtras`。不传就是老形态（行上只有名字 ＋ 状态条）。 */
+  rowExtras?: MachineRowExtras;
   /**
    * S4b：有它就把每台机器的编辑表单搬到**它自己那一页**，列表里只留一行
    * （名字 + 状态 + 点进去）。**不传就是老形态**（卡片就地折叠展开）——
@@ -232,9 +249,15 @@ export class RemoteSection {
 
   private cards: MachineCard[] = [];
 
+  /** 〔步 14〕见 `MachineRowExtras`。 */
+  private rowExtras?: MachineRowExtras;
+  /** 〔步 14〕列表尾巴（`rowExtras.tail()`）。新加的行插在它前面，它永远在最后。 */
+  private rowsTail: HTMLElement | null = null;
+
   constructor(opts: RemoteSectionOptions = {}) {
     this.headless = opts.headless ?? false;
     this.pages = opts.pages;
+    this.rowExtras = opts.rowExtras;
     this.root = this.build();
     // 步 4：`refresh()` 自己会把失败画到这一块的 banner 上（见它的 catch），
     // 这里再收一次是为了**不产生未捕获 rejection** —— 那条路的终点是状态栏，
@@ -320,6 +343,8 @@ export class RemoteSection {
     //    而它**一个 `daemonless` 字样都不含** —— 与 `readiness.notApplicable` 那一支同一档。
     //    ⇒ 撤掉写死值，照实画账本。
     renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY));
+    // 〔步 14〕后端那四格。本机在后端那套名字里叫 `LOCAL_ORIGIN`（不是本分节的 `LOCAL_MACHINE_KEY`）。
+    this.appendRowExtras(legend, LOCAL_ORIGIN);
     void this.noteLocalBackend();
     // **没有删除按钮** —— 本机删不掉，这不是「暂未实现」，是它本来就不该能删。
     return row;
@@ -373,6 +398,10 @@ export class RemoteSection {
     // id 也算进冲突，重建几次之后每台机器的 id 会一路往后飘（`devbox#2`、`devbox#3`…）。
     this.pageIdOf.clear();
     this.machinesContainer.innerHTML = "";
+    this.rowsTail = null;
+    if (this.rowExtras) {
+      this.machinesContainer.appendChild(this.guardedExtra(() => this.rowExtras!.head()));
+    }
     this.machinesContainer.appendChild(this.buildLocalRow());
     if (this.pages) {
       // 本机页的内容由宿主（panel）填 —— 它拿得到那几块 per-machine 分节，本分节拿不到。
@@ -389,6 +418,10 @@ export class RemoteSection {
     // S1：本编辑器**这次加载时**看到的 key 集合。删除判据以它为基准，
     // 而**不是**「盘上全量」—— 这正是 S2 拆页后的安全边界：一页只对自己加载过的负责。
     this.loadedKeys = hosts.map(hostKey);
+    if (this.rowExtras) {
+      this.rowsTail = this.guardedExtra(() => this.rowExtras!.tail());
+      this.machinesContainer.appendChild(this.rowsTail);
+    }
     this.renderGaps(hosts);
     this.updateEmptyHint();
   }
@@ -466,12 +499,27 @@ export class RemoteSection {
       card.setPageMode();
       this.pages.addMachinePage(id, card.displayName(), card.element, card.parts());
       this.machinePageIds.push(id);
-      this.machinesContainer.appendChild(this.buildMachineRow(card, id));
+      this.machinesContainer.insertBefore(this.buildMachineRow(card, id), this.rowsTail);
     } else {
       this.machinesContainer.appendChild(card.element);
     }
     this.updateEmptyHint();
     return card;
+  }
+
+  /** 〔步 14〕往一行上挂宿主给的格子。宿主那一侧抛了**不许把机器列表带走**（同 `safeBlock` 的隔离）。 */
+  private appendRowExtras(legend: HTMLElement, origin: string): void {
+    if (!this.rowExtras) return;
+    legend.appendChild(this.guardedExtra(() => this.rowExtras!.cells(origin)));
+  }
+
+  private guardedExtra(make: () => HTMLElement): HTMLElement {
+    try {
+      return make();
+    } catch (e) {
+      console.warn("[remote-section] 行上的附加格子没建起来：", e);
+      return document.createElement("span");
+    }
   }
 
   /**
@@ -500,6 +548,9 @@ export class RemoteSection {
     strip.className = "remote-machine-status";
     legend.appendChild(strip);
     renderStatusCells(strip, readStatus(card.persistedKey ?? hostKey(card.collect())));
+    // 〔步 14〕后端那四格。还没填地址的空白卡没有 origin ⇒ 不挂（没有后端可言）。
+    const origin = card.persistedKey ?? hostKey(card.collect());
+    if (origin) this.appendRowExtras(legend, origin);
 
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
