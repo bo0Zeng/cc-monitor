@@ -705,7 +705,7 @@ pub(crate) struct SpawnArgs {
 ///
 /// ⚠ 与 [`parse_send`] 同一条纪律：**这不是安全边界**（argv 直传不过 shell）。
 /// 它判的是「这组参数能不能构成一次**有意义且表过态**的调用」：
-/// `tool` 只许 `claude` / `codex`（枚举，不是自由文本）· `dir` 非空 ·
+/// `tool` 非空（**是哪几种 agent 不在这里判** —— 见下）· `dir` 非空 ·
 /// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）。
 #[cfg_attr(not(test), allow(dead_code))] // 同 [`spawn_for_inbound`]：登记那一拍才有生产调用方
 pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
@@ -713,12 +713,14 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
         .as_object()
         .ok_or(("invalid_args", "args 不是对象".to_string()))?;
     let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).unwrap_or("").trim();
+    // ⚠ **不在后端白名单 agent 种类**〔BS1b 09-24〕：初版这里是 `matches!(tool, <两个字面量>)`，
+    //   `agent_locality_guard::kind_dispatch_sites_are_enumerated_one_by_one` 当场红 ——
+    //   通用层里又多一处「加 agent 要跟着改」的地方。合法性归 cc-spawn 自己
+    //   （它的 `case "$tool"` 不认就 rc=2 ⇒ 这里的 `invalid_args`），与 `P4f-Y5`
+    //   「收件人合法性归 cc-bus，后端不写第二份白名单」同一条。
     let tool = s("tool");
-    if !matches!(tool, "claude" | "codex") {
-        return Err((
-            "invalid_args",
-            format!("`tool` 只许 claude / codex，给的是 {tool:?}"),
-        ));
+    if tool.is_empty() {
+        return Err(("invalid_args", "缺 `tool`".to_string()));
     }
     let dir = s("dir");
     if dir.is_empty() {
@@ -726,24 +728,23 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
     }
     let base = obj.get("base").and_then(|v| v.as_bool()).unwrap_or(false);
     let account = s("account");
-    let account = match (account.is_empty(), base) {
-        (false, false) => Some(account.to_string()),
-        (true, true) => None,
-        (false, true) => {
-            return Err((
-                "invalid_args",
-                "`account` 与 `base` 互斥 —— 要么选一个号，要么显式说就用基座".to_string(),
-            ))
-        }
-        (true, false) => {
-            return Err((
+    let account =
+        match (account.is_empty(), base) {
+            (false, false) => Some(account.to_string()),
+            (true, true) => None,
+            (false, true) => {
+                return Err((
+                    "invalid_args",
+                    "`account` 与 `base` 互斥 —— 要么选一个号，要么显式说就用基座".to_string(),
+                ))
+            }
+            (true, false) => return Err((
                 "invalid_args",
                 "`account` 与 `base:true` 必须给一个 —— 不表态的话 ccm 会落 manifest 的默认号，\
                  等于替用户选了一个他没选过的号去烧额度"
                     .to_string(),
-            ))
-        }
-    };
+            )),
+        };
     Ok(SpawnArgs {
         tool: tool.to_string(),
         dir: dir.to_string(),

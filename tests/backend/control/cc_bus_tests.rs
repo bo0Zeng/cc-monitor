@@ -364,26 +364,41 @@ fn bus_spawn_refuses_to_pick_an_account_for_the_user() {
     let ok_base = parse_spawn(&json!({"tool":"codex","dir":"/p","base":true})).unwrap();
     assert_eq!(ok_base.account, None);
     for bad in [
-        json!({"tool":"claude","dir":"/p"}),                               // 没表态
-        json!({"tool":"claude","dir":"/p","base":false}),                  // 表了个「不」
-        json!({"tool":"claude","dir":"/p","account":"a","base":true}),     // 两样都给
-        json!({"tool":"bash","dir":"/p","base":true}),                     // tool 不是枚举里的
-        json!({"tool":"claude","dir":"  ","base":true}),                   // 空目录
-        json!({"tool":"claude","base":true}),                              // 缺目录
+        json!({"tool":"claude","dir":"/p"}),              // 没表态
+        json!({"tool":"claude","dir":"/p","base":false}), // 表了个「不」
+        json!({"tool":"claude","dir":"/p","account":"a","base":true}), // 两样都给
+        json!({"tool":"  ","dir":"/p","base":true}),      // 没说起哪种
+        json!({"tool":"claude","dir":"  ","base":true}),  // 空目录
+        json!({"tool":"claude","base":true}),             // 缺目录
         json!("不是对象"),
     ] {
         let e = parse_spawn(&bad).expect_err(&format!("形状不对却放行了：{bad}"));
         assert_eq!(e.0, "invalid_args", "{bad} 的码不对：{e:?}");
     }
+    // 🔴 agent 种类**不在这里判**：一个 cc-spawn 不认的 tool 要放行到 cc-spawn，由它 rc=2 拒
+    //   （后端写第二份白名单 = 通用层又多一处「加 agent 要跟着改」，`agent_locality_guard` 钉着）。
+    assert!(
+        parse_spawn(&json!({"tool":"not-an-agent","dir":"/p","base":true})).is_ok(),
+        "后端又开始白名单 agent 种类了 —— 那是 cc-spawn 的事"
+    );
 }
 
 /// argv：`--` 一定在目录前（`dir` 叫 `--new` 也当目录）· 账号二选一照转 · 空任务不传。
 #[test]
 fn bus_spawn_argv_ends_options_before_the_directory() {
-    let a = parse_spawn(&json!({"tool":"claude","dir":"--new","account":"a1","task":"跑门禁"})).unwrap();
+    let a = parse_spawn(&json!({"tool":"claude","dir":"--new","account":"a1","task":"跑门禁"}))
+        .unwrap();
     assert_eq!(
         spawn_argv(&a),
-        ["--tool", "claude", "--account", "a1", "--", "--new", "跑门禁"]
+        [
+            "--tool",
+            "claude",
+            "--account",
+            "a1",
+            "--",
+            "--new",
+            "跑门禁"
+        ]
     );
     let b = parse_spawn(&json!({"tool":"codex","dir":"/p","base":true,"task":"  "})).unwrap();
     assert_eq!(spawn_argv(&b), ["--tool", "codex", "--base", "--", "/p"]);
@@ -394,7 +409,13 @@ fn bus_spawn_argv_ends_options_before_the_directory() {
 fn bus_spawn_reads_the_id_from_what_cc_spawn_said_and_never_guesses() {
     let said = "ccm: 预信任 /p\n已 spawn: foo_cc-2   (目录: /p  初始任务: x)\n  跟它聊: cc-send foo_cc-2 \"...\"";
     assert_eq!(spawned_id_of(said).as_deref(), Some("foo_cc-2"));
-    for bad in ["", "spawned foo_cc", "已 spawn:", "已 spawn: --help", "已 spawn: a/b"] {
+    for bad in [
+        "",
+        "spawned foo_cc",
+        "已 spawn:",
+        "已 spawn: --help",
+        "已 spawn: a/b",
+    ] {
         assert_eq!(spawned_id_of(bad), None, "{bad:?} 不该认出 id");
     }
 }
