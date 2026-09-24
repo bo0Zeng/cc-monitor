@@ -419,6 +419,114 @@ pub fn overwrite_text(root: &Path, rel: &str, bytes: &[u8]) -> Result<PathBuf, W
     Ok(real)
 }
 
+/// 复制时暂存旁名的序号（同一进程里两趟复制不撞名）。
+static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 〔F7a · 第三波 · 2026-09-24〕**同根内复制一份普通文件**。回 `(落点, 字节数)`。
+///
+/// # 🔴 它不给第三层添一个动词 —— 由已有的三个拼出来，理由是承重的
+///
+/// 标准库那个「一步复制」**仍然在第三层的禁词表上**，本函数刻意不用它，两条理由：
+///
+/// 1. 目标那一格若是一条链接，它**跟过去写**：根里一条指向会话文件的链接，
+///    就能借它把那份会话记录盖成另一份文件的内容 —— 而围栏判的是**链接本身**那条路径。
+/// 2. 目标已在时它**就地截断重写**：写到一半失败，留下的是半份旧文件、半份新内容。
+///
+/// ⇒ 拼法（三个动词都早在闭集里，**闭集一个字没变**）：
+///
+/// | 覆盖策略 | 怎么落 | 目标已在 |
+/// |---|---|---|
+/// | `overwrite = false`（缺省） | `O_EXCL` 直接开目标 | 开那一步就失败（含它只是一条链接），**一个字节不动** |
+/// | `overwrite = true`（**显式**） | `O_EXCL` 开一个同目录的暂存旁名 → 写满 → 换名上位 | 换名那一下**原子地**顶掉（顶掉的是链接本身，不跟过去） |
+///
+/// 写失败 ⇒ 删掉**我们自己刚建的那一份**（暂存旁名或新目标），原样带回原因。
+///
+/// # 围栏：三条路径各过一次
+///
+/// - `from` 走 [`fenced_existing`]（**解到底**）：复制是一次跟链接的读，
+///   根里一条指向会话文件的链接不许借它把那份会话记录复制走（与桥那一侧旧口径同：
+///   「能把正被 Claude 打开的 `jsonl` 复制走」正是那道围栏当初拦的）。
+/// - `to` 与暂存旁名走 [`fenced_target`]（只解父目录）：它们都是**作用在链接本身**上的。
+///
+/// ⚠ 只收**普通文件**：目录递归复制没做（与删除不递归同一条理由：围栏射程是一条路径）。
+/// ⚠ 新文件的权限位是进程缺省（受 umask），**不从源那里抄**；覆盖时旧目标的权限位也随它一起换掉。
+/// ⚠ TOCTOU 照旧在（同本模块头注诚实边界第 1 条）。
+pub fn copy_entry(
+    root: &Path,
+    from: &str,
+    to: &str,
+    overwrite: bool,
+) -> Result<(PathBuf, u64), WriteRefusal> {
+    let src = fenced_existing(root, from).map_err(WriteRefusal::Fenced)?;
+    let dst = fenced_target(root, to).map_err(WriteRefusal::Fenced)?;
+    if src == dst {
+        return Err(WriteRefusal::Fenced(format!(
+            "refuse write: 复制的源与目标是同一份（{}）",
+            dst.display()
+        )));
+    }
+    let is_file = std::fs::metadata(&src)
+        .map(|m| m.is_file())
+        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", src.display())))?;
+    if !is_file {
+        return Err(WriteRefusal::Fenced(format!(
+            "refuse write: {} 不是一份普通文件 —— 只复制普通文件（目录复制没做）",
+            src.display()
+        )));
+    }
+    // 落在哪：不覆盖 ⇒ 直接落目标；显式覆盖 ⇒ 先落同目录的暂存旁名（它自己也过一遍围栏）。
+    let land = if overwrite {
+        let name = Path::new(to)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| WriteRefusal::Fenced(format!("refuse write: `{to}` 没有文件名")))?;
+        let seq = COPY_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let side = format!(".{name}.ccm-copy-{}-{seq}.part", std::process::id());
+        let side_rel = Path::new(to).with_file_name(side);
+        let side_rel = side_rel
+            .to_str()
+            .ok_or_else(|| WriteRefusal::Fenced(format!("refuse write: `{to}` 不是 UTF-8")))?;
+        fenced_target(root, side_rel).map_err(WriteRefusal::Fenced)?
+    } else {
+        dst.clone()
+    };
+    let mut reader = std::fs::File::open(&src)
+        .map_err(|e| WriteRefusal::Io(format!("refuse write: 打不开源 {}：{e}", src.display())))?;
+    let mut writer = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&land)
+        .map_err(|e| {
+            WriteRefusal::Io(format!(
+                "refuse write: 新建 {} 失败（不覆盖时目标已在就停在这一步）：{e}",
+                land.display()
+            ))
+        })?;
+    let n = match std::io::copy(&mut reader, &mut writer) {
+        Ok(n) => n,
+        Err(e) => {
+            drop(writer);
+            // 只删**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在）。
+            std::fs::remove_file(&land).ok();
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 复制到一半断了（{}）：{e}",
+                land.display()
+            )));
+        }
+    };
+    drop(writer);
+    if overwrite {
+        if let Err(e) = std::fs::rename(&land, &dst) {
+            std::fs::remove_file(&land).ok();
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 换名上位 {} 失败：{e}",
+                dst.display()
+            )));
+        }
+    }
+    Ok((dst, n))
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  命令面 ——〔波 5 ㈠ · 2026-09-23〕`设计/60 §8.6` **第 2 步**
 // ══════════════════════════════════════════════════════════════════════════
@@ -511,6 +619,15 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         what: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次",
         args: &["mode", "rel", "root"],
         fields: &["mode", "path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+    // ── 〔F7a · 第三波 09-24〕`设计/60 §13`：窗口的「复制」换走通道 ──────────────────
+    ManageCommand {
+        name: "files-copy",
+        what: "同根内复制一份普通文件；**三条路径各过一遍围栏**；缺省不覆盖（`O_EXCL`），\
+               显式 `overwrite` 才经暂存旁名原子顶掉",
+        args: &["from", "overwrite", "root", "to"],
+        fields: &["bytes", "path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
     },
     ManageCommand {
@@ -643,6 +760,22 @@ fn answer_chmod(args: &serde_json::Value) -> Answer {
     Ok(serde_json::json!({ "path": path_json(&done), "mode": mode }))
 }
 
+fn answer_copy(args: &serde_json::Value) -> Answer {
+    let root = path_of(args, "root")?;
+    let from = rel_of(args, "from")?;
+    let to = rel_of(args, "to")?;
+    // 覆盖策略**显式**：不给 ⇒ 不覆盖（`O_EXCL`）；给了就必须是布尔，不猜「1」「"yes"」。
+    let overwrite = match args.get("overwrite") {
+        None => false,
+        Some(v) => v.as_bool().ok_or((
+            "bad_args",
+            "`overwrite` 只收布尔 —— 覆盖是一件要说清的事，这里不猜".to_string(),
+        ))?,
+    };
+    let (done, n) = copy_entry(&root, &from, &to, overwrite).map_err(refusal)?;
+    Ok(serde_json::json!({ "path": path_json(&done), "bytes": n }))
+}
+
 fn answer_write_text(args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
@@ -671,6 +804,7 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
         "files-delete" => answer_delete(args),
         "files-chmod" => answer_chmod(args),
         "files-write-text" => answer_write_text(args),
+        "files-copy" => answer_copy(args),
         other => Err(("bad_args", format!("`{other}` 不是文件管理写面的命令"))),
     }
 }

@@ -527,6 +527,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-mkdir",
     "--files-rename",
     "--files-write-text",
+    // 〔F7a · 第三波 09-24〕同一面第七条（同根内复制）。登记理由与上面逐字相同。
+    "--files-copy",
     "--files-browse",
     "--files-find",
     "--files-index-rebuild",

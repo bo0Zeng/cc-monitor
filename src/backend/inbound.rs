@@ -91,6 +91,7 @@ pub const COMMANDS: &[&str] = &[
     "capture-pane",
     "files-browse",
     "files-chmod",
+    "files-copy",
     "files-create",
     "files-delete",
     "files-find",
@@ -635,6 +636,21 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `files-chmod`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
         fields: &["mode", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔F7a · 第三波 09-24〕写面第七条：同根内复制（`设计/60 §13`）。与上面五条同住一个模块、
+    //   同一扇门、同档（同步文件 I/O，取消不掉）。它**不给第三层添动词**：由 `O_EXCL` 新建 ＋
+    //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `control/files_write.rs::copy_entry`）。
+    CommandSpec {
+        name: "files-copy",
+        doc_anchor: Some("#### `files-copy`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["bytes", "from", "overwrite", "path", "root", "to"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
