@@ -35,7 +35,12 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              `loop { sleep(10s); cleanup_dead() }` —— 无限、周期、无上限。\
              它清的是「死 pid 的 HWND 绑定」。**事件源存在但没用**：pid 死亡本可由内核事件\
              （Windows job object / backend 侧那套 pidfd）推回来，今天是靠 10s 扫一遍。\
-             ⚠ **退役未排期** —— 它属 Windows HWND 绑定那一族，不在本工作区的五项范围内。\
+             〔第二波 T4 09-24〕**它从此也是 ↗ 令牌路的「死绑定周期清」**（`设计/80 §0.1` ④、LF1）：\
+             `bind.rs::resolve_remote_front` 按令牌查的就是这张表，PS 死了 ⇒ 10s 内被这里清掉 ⇒ \
+             按令牌查不到 ⇒ 走标题退路、归因照「有令牌」那一句说。**节拍归 `bind.rs::BindRegistry`**\
+             （`spawn_heartbeat` 起，与 monitor 进程同寿）；↗ 那一侧**没有另起第二个节拍器** —— \
+             令牌账本（sid → 令牌）是事件驱动的（`SessionAdded` 记、`Archive` 忘），不需要周期清。\
+             ⚠ **退役未排期** —— 换内核事件源要 Windows 真机才量得了，本机一格都买不到。\
              如实记未排期，**不编一个假 owner 让它看起来有人管**。",
     ),
     (

@@ -954,3 +954,40 @@ fn the_book_has_one_writer_in_ssh_source_and_the_front_command_one_dispatcher() 
         );
     }
 }
+
+/// ★ LF1「死绑定周期清」接到 ↗ 上：**心跳一清，↗ 就不再按令牌拉那个死窗口**，
+/// 而是退到标题路、归因照「有令牌」那一句说。
+///
+/// 节拍归 `run_heartbeat`（10s，已登记在 `rust_timer_registry`）；本条直接调它每一拍做的那件事
+/// （`cleanup_dead`），不等 10 秒。⚠ `is_pid_alive` 在非 Windows 上恒 `false`
+/// ⇒ 「谁该被清」这一问本机答不了，本条买的是「清掉之后 ↗ 那一侧真的跟着变了」。
+#[test]
+fn the_heartbeat_sweep_takes_a_dead_window_out_of_the_front_dispatch() {
+    let dir = std::env::temp_dir().join(format!("ccm-t4-sweep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("ps-registry")).unwrap();
+    let reg = t3_registry(dir.clone(), vec![t3_entry(9692, &t3_marker(T3_TOK))]);
+    let cache = RemoteHwndCache::new();
+    let rescans = std::cell::Cell::new(0usize);
+    let run = || {
+        resolve_remote_front("s-sweep", Some(T3_TOK), &reg, &cache, &|_| Ok(()), &|_| {
+            rescans.set(rescans.get() + 1);
+            false
+        })
+    };
+    assert_eq!(
+        run().map(|b| b.hwnd).ok(),
+        Some(T4_TOKEN_HWND),
+        "清之前就拉不到 —— 下面那句是空转"
+    );
+    assert_eq!(rescans.get(), 0);
+    cleanup_dead(&reg);
+    let after = run();
+    let msg = after.expect_err("心跳清掉了那条，↗ 却还按令牌拉到了一个窗口");
+    assert!(
+        msg.starts_with(FRONT_FAIL_WITH_TOKEN),
+        "清掉之后的归因不是「有令牌」那一句：{msg}"
+    );
+    assert_eq!(rescans.get(), 1, "清掉之后没有退到标题路去现扫一次");
+    let _ = std::fs::remove_dir_all(&dir);
+}
