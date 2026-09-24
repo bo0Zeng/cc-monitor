@@ -439,6 +439,147 @@ pub fn xdotool_on(display: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔X1 2026-09-24〕关窗：像窗口管理器那样**请**它关，而不是替它拆
+// ════════════════════════════════════════════════════════════════════════
+//
+// # 为什么不用 `xdotool windowclose`
+//
+// 本机那版 xdotool（3.20160805）的 `windowclose` 是 **`XDestroyWindow`** —— 替窗口的主人
+// 把窗口拆掉，**不管**窗口在 `WM_PROTOCOLS` 里列没列 `WM_DELETE_WINDOW`。
+// 现打（`xev` 当靶子：它列了 `WM_DELETE_WINDOW`）：收到的是 `UnmapNotify` ＋ `DestroyNotify`，
+// **一条 `ClientMessage` 都没有**，`xev` 自己也没退。
+// ⇒ 一个 winit 窗口被外人拆掉之后，winit 下一次拿这个窗口去问 X 服务器
+// （每帧 egui 都要问一次位置）就回 `BadWindow`，而 winit 在那几处是 `unwrap()`／`expect()`
+// ⇒ **每一趟都 panic**（现打 160/160）。其中一小撮 panic 恰好落在 winit 拿着
+// 自己那把状态锁的时候 ⇒ 锁被毒化 ⇒ 析构里再 panic ⇒ **abort**（现打约一成）——
+// 那一成就是这一族「时好时坏」的全部来历。逐条读数住 `设计/60` 的「Xvfb 抖动」一节。
+//
+// # 用户那一下在真桌面上是什么
+//
+// 用户点标题栏的 ×，窗口管理器发给窗口的是一条 `ClientMessage`
+// （`WM_PROTOCOLS` / `WM_DELETE_WINDOW`，ICCCM §4.2.8.1）—— **请**窗口的主人自己关。
+// winit 收到它回 `CloseRequested`，eframe 自己收场、自己拆窗口 ⇒ 没有「窗口已经没了、
+// 别人还在问它」的那一段。Xvfb 下没有窗口管理器，于是本台架**替窗口管理器发这一条**。
+//
+// ⚠ 买不到：真窗口管理器会 reparent（窗口外面套一层框），`TranslateCoordinates`
+// 那条路在真桌面上走的是另一种几何 ⇒ 真桌面上关窗干不干净，仍然判不了。
+//
+// ⚠ 为什么手写 X11 协议而不是再加一件工具／一个依赖：xdotool 这一版**发不了**
+// 这条消息（它没有 `windowquit`），而加 crate 要动 `Cargo.toml`（不在这一路的写区）。
+// 要发的只有三条请求（两次 `InternAtom` ＋ 一次 `SendEvent`）＋ 一次往返确认，
+// 全是定长小包 ⇒ 字节布局住下面两个**纯函数**，由 `x11_wire_tests` 逐字节判。
+
+/// X11 请求里的字符串要按 4 字节补齐。
+fn pad4(n: usize) -> usize {
+    (4 - n % 4) % 4
+}
+
+/// **纯函数**：`InternAtom` 请求（opcode 16，`only_if_exists = 0`），小端。
+pub fn intern_atom_request(name: &str) -> Vec<u8> {
+    let n = name.len();
+    let words = 2 + (n + pad4(n)) / 4;
+    let mut b = Vec::with_capacity(words * 4);
+    b.push(16u8);
+    b.push(0);
+    b.extend_from_slice(&(words as u16).to_le_bytes());
+    b.extend_from_slice(&(n as u16).to_le_bytes());
+    b.extend_from_slice(&[0, 0]);
+    b.extend_from_slice(name.as_bytes());
+    b.extend(std::iter::repeat_n(0u8, pad4(n)));
+    b
+}
+
+/// **纯函数**：`SendEvent`（opcode 25）装着一条 `ClientMessage`（事件码 33，format 32）：
+/// `type = WM_PROTOCOLS`，`data[0] = WM_DELETE_WINDOW`，`data[1] = CurrentTime(0)`。
+/// 投递目标就是那个窗口，`event_mask = 0`（ICCCM：发给窗口的主人本人）。
+pub fn wm_delete_request(window: u32, wm_protocols: u32, wm_delete_window: u32) -> [u8; 44] {
+    let mut b = [0u8; 44];
+    b[0] = 25; // SendEvent
+    b[1] = 0; // propagate = False
+    b[2..4].copy_from_slice(&11u16.to_le_bytes()); // 44 字节 = 11 个字
+    b[4..8].copy_from_slice(&window.to_le_bytes()); // destination
+    b[8..12].copy_from_slice(&0u32.to_le_bytes()); // event_mask = 0
+    let e = &mut b[12..44];
+    e[0] = 33; // ClientMessage
+    e[1] = 32; // format
+    e[4..8].copy_from_slice(&window.to_le_bytes());
+    e[8..12].copy_from_slice(&wm_protocols.to_le_bytes());
+    e[12..16].copy_from_slice(&wm_delete_window.to_le_bytes());
+    // e[16..20] = CurrentTime = 0，其余三格 0。
+    b
+}
+
+/// 在 `display`（形如 `:90`）那台屏上，对窗口 `id`（`xdotool` 给的十进制）
+/// 发一条 **`WM_DELETE_WINDOW`** —— 窗口管理器关窗时发的那一条。
+///
+/// 回 `Ok(())` = 服务器**收下并处理完**了那条 `SendEvent`（后面跟一次 `GetInputFocus`
+/// 往返：X 按序处理请求，往返回来之前若有错误包，它一定先到）。
+/// ⚠ 它**不**等窗口真的消失 —— 那是窗口主人自己的事，由调用方去量
+/// （`run_native` 的裁决、退出码）。
+pub fn close_like_a_wm(display: &str, id: &str) -> Result<(), String> {
+    use std::io::Write as _;
+    let num: u32 = display
+        .strip_prefix(':')
+        .and_then(|n| n.split('.').next())
+        .and_then(|n| n.parse().ok())
+        .ok_or_else(|| format!("看不懂的 DISPLAY：{display:?}"))?;
+    let window: u32 = id
+        .trim()
+        .parse()
+        .map_err(|e| format!("窗口 id {id:?} 不是十进制整数：{e}"))?;
+    let path = format!("/tmp/.X11-unix/X{num}");
+    let mut s = std::os::unix::net::UnixStream::connect(&path)
+        .map_err(|e| format!("连不上 {path}：{e}"))?;
+    s.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .map_err(|e| e.to_string())?;
+    let io = |e: std::io::Error| format!("X11 连接读写失败：{e}");
+
+    // 握手：小端 'l'、协议 11.0、无认证（台架起 Xvfb 不带 `-auth`）。
+    s.write_all(&[b'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        .map_err(io)?;
+    let mut head = [0u8; 8];
+    s.read_exact(&mut head).map_err(io)?;
+    let extra = u16::from_le_bytes([head[6], head[7]]) as usize * 4;
+    let mut rest = vec![0u8; extra];
+    s.read_exact(&mut rest).map_err(io)?;
+    if head[0] != 1 {
+        let n = (head[1] as usize).min(rest.len());
+        return Err(format!(
+            "X 服务器拒绝了握手（状态 {}）：{}",
+            head[0],
+            String::from_utf8_lossy(&rest[..n])
+        ));
+    }
+
+    let mut intern = |name: &str| -> Result<u32, String> {
+        s.write_all(&intern_atom_request(name)).map_err(io)?;
+        let mut r = [0u8; 32];
+        s.read_exact(&mut r).map_err(io)?;
+        if r[0] != 1 {
+            return Err(format!("InternAtom({name}) 回了错误码 {}", r[1]));
+        }
+        Ok(u32::from_le_bytes([r[8], r[9], r[10], r[11]]))
+    };
+    let protocols = intern("WM_PROTOCOLS")?;
+    let delete = intern("WM_DELETE_WINDOW")?;
+
+    s.write_all(&wm_delete_request(window, protocols, delete))
+        .map_err(io)?;
+    // GetInputFocus（opcode 43）当往返栅栏：它的回复到了 ⇒ 前面那条 SendEvent 已处理完。
+    s.write_all(&[43, 0, 1, 0]).map_err(io)?;
+    let mut r = [0u8; 32];
+    s.read_exact(&mut r).map_err(io)?;
+    match r[0] {
+        1 => Ok(()),
+        0 => Err(format!(
+            "SendEvent 被 X 服务器拒了：错误码 {}（3 = BadWindow ⇒ 窗口 {window} 已经不在）",
+            r[1]
+        )),
+        k => Err(format!("往返栅栏回来的不是回复而是第 {k} 类包")),
+    }
+}
+
 /// 等一个标题含 `needle` 的窗口出现。回**所有**命中的窗口 id。
 ///
 /// ⚠ 回的是**全部**而不是第一个：数得出「恰好一个」才谈得上相等断言，
@@ -626,4 +767,43 @@ pub fn child_display() -> String {
         "这是一个**工作面**，只许由它的父判据在自己的进程里点起来（见台架头注第四节）"
     );
     std::env::var("DISPLAY").expect("父进程没把 DISPLAY 传下来 —— 这一格判不了，不是过了")
+}
+
+/// 🔴〔X1〕那两个纯函数的字节布局 —— **逐字节相等**，不是「长度对」。
+///
+/// 期望值不是拿被测函数算出来的（那是两侧同源恒真），是照 X11 协议规范逐格手写的：
+/// `InternAtom` = opcode 16 · 长度字 · 名字长 · 名字补到 4 的倍数；
+/// `SendEvent` = opcode 25 · 长度 11 · 目标 · 掩码 0 · 32 字节的 `ClientMessage`（码 33、format 32）。
+mod x11_wire_tests {
+    use super::*;
+
+    #[test]
+    fn intern_atom_request_is_byte_exact() {
+        // "WM_PROTOCOLS" 12 字节，恰好对齐 ⇒ 不补；长度 = 2 + 3 = 5 个字。
+        let mut want = vec![16u8, 0, 5, 0, 12, 0, 0, 0];
+        want.extend_from_slice(b"WM_PROTOCOLS");
+        assert_eq!(intern_atom_request("WM_PROTOCOLS"), want);
+        // "WM_DELETE_WINDOW" 16 字节；再拿一个**要补**的名字打补齐那一支（5 字节 ⇒ 补 3）。
+        assert_eq!(
+            intern_atom_request("ABCDE"),
+            vec![16u8, 0, 4, 0, 5, 0, 0, 0, b'A', b'B', b'C', b'D', b'E', 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn wm_delete_request_is_byte_exact() {
+        let got = wm_delete_request(0x0040_0004, 0x0000_01A3, 0x0000_01A4);
+        let want: [u8; 44] = [
+            25, 0, 11, 0, // SendEvent · propagate=0 · 11 个字
+            0x04, 0x00, 0x40, 0x00, // destination
+            0, 0, 0, 0, // event_mask = 0
+            33, 32, 0, 0, // ClientMessage · format 32 · sequence
+            0x04, 0x00, 0x40, 0x00, // window
+            0xA3, 0x01, 0, 0, // type = WM_PROTOCOLS
+            0xA4, 0x01, 0, 0, // data[0] = WM_DELETE_WINDOW
+            0, 0, 0, 0, // data[1] = CurrentTime
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // data[2..5]
+        ];
+        assert_eq!(got, want);
+    }
 }
