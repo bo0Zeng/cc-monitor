@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """`K-R124` 的判据本体 —— **发版那条流水线的两件事：闸没被偷偷改过 · 正文是我们写的那份。**
 
-# 它守的性质是（四句）
+# 它守的性质是（六句）
 
 1. 〔`KR114D1`，`K-R114` 09-14 立〕`release.yml` 里「发不发布」那个闸
    （`env.PUBLISH` 的**字面** ＋ 每一处「往 Release 上写」与 CI 门那一步的 `if:`）
@@ -19,6 +19,16 @@
    两向相等、且**三个落点全部被 `.gitignore` 挡着**（两向）；`build.rs` 那几处守卫的
    **出路只有这一个住址**，不许再手抄第二条产字节配方；mtime 那张安全网一条没撤。
    逐条与它买不到什么，见下面 `19c` 那一段的头注。
+5. 〔本拍 2026-09-23 立〕**本包的每一个 `[[bin]]` 都有一条登记过的入包路线**（⑭，
+   两向集合相等），主二进制恰好一个、带 `required-features` 的 bin 零命中、
+   `externalBin` ↔ 登记两向且不与本包的 bin 重名、消费侧找它的那个文件名主干
+   与产出侧**逐字同源**、而这条路线依据的**打包工具版本**钉住。
+   ⚠ 它推翻了一条写在 `Cargo.toml` 与 `filewin::proc` 头注里的报备（「安装包只装主二进制
+   与 sidecar」）—— 现打读数与机制逐条住下面 ⑭ 那一段的头注。
+6. 〔本拍 2026-09-23 立〕**产物路径的根 ↔ 两份 `.cargo/config.toml` 声明的 `target-dir`**
+   （⑮，两向集合相等）。它落地时盘上**就有现物**：搬树之后 `release.yml` 里五处还写着
+   `src/bridge/target/release/…`，而那条坏得完全静默 —— Release 建得出来、上面一个
+   安装包都没有。逐条住下面 ⑮ 那一段的头注。
 
 # 🔴 第 3 句为什么归这份判据，而不是归 `platform` 那一格
 
@@ -89,11 +99,21 @@
 """
 import collections
 import importlib.util
+import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+# ⚠ `tomllib` 是 py≥3.11 的标准库（沙箱镜像与本机现打都有；本文件刻意不引第三方 ——
+#   PyYAML 那次的账住头注）。**没有它 ⇒ ⑭/⑮ 那两组「判不了，按红记」**，
+#   绝不退化成静默跳过（那正是「地板在『变少』方向上是瞎的」的一个变形）。
+try:
+    import tomllib
+except ImportError:                                     # pragma: no cover —— py < 3.11
+    tomllib = None
 
 ROOT = Path(os.environ.get("K_R124_ROOT") or Path(__file__).resolve().parents[2])
 TARGET = Path(os.environ.get("RELEASE_WORKFLOW") or (ROOT / ".github" / "workflows" / "release.yml"))
@@ -257,6 +277,106 @@ NO_FALLBACK_FNS = [
      "与 `\"unknown\"` 同族的静默恒假"),
 ]
 
+# ══ 〔本拍 2026-09-23〕⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ═════════════════════
+#
+# 🔴 **它治的是一条当天就被推翻的报备。** 第十三刀（文件管理窗口落成独立进程）交回时
+# 逐字写着：「Tauri 安装包只装主二进制与 `externalBin` sidecar ⇒ 装机那份上
+# `resolve_window_bin()` 会找不到它并出声」，并据此把「把它打进包」记成写区外的欠账。
+#
+# **那句是假的。** 现打两趟推翻（用的是本仓这份 `src/bridge/Cargo.toml` ＋
+# `tauri.conf.json` ＋ `tauri.sidecar.conf.json`，`@tauri-apps/cli` 现锁的 2.11.2；
+# 二进制喂的是占位字节 —— 本条问的是**清单**，不是那几个字节能不能跑）：
+#   · 真 `.deb`（`npx tauri bundle --bundles deb`）：`dpkg-deb -c` 现打 `usr/bin/` 三份 ——
+#     `monitor` · **`cc-monitor-filewin`** · `cc-monitor-backend`，**同一个目录**；
+#   · NSIS 那份清单（`--target x86_64-pc-windows-msvc` 生成的 `installer.nsi`）现打逐字
+#     `File /a "/oname=cc-monitor-filewin.exe" …`，与 `${MAINBINARYNAME}.exe`（= `monitor`）
+#     同落 `$INSTDIR`。
+# ⇒ **`resolve_window_bin()` 的「exe 旁那一份」这一支在装机布局下命中。**
+#
+# 机制（读的是 `tauri-cli` 2.11.2 与 `tauri-bundler` 2.9.x 的源码，不是推论）：
+#   `interface/rust.rs::get_binaries` 把 Cargo.toml 里**每一个** `[[bin]]` 都交给打包器
+#   （`name == 包名` 或 `default-run` 的那个 `is_main = true`，其余 `false`）；而
+#   `windows/nsis/mod.rs` · `windows/msi/mod.rs` · `linux/debian.rs` 三处都写着
+#   `for bin in settings.binaries() { if !bin.main() { …和主二进制装在一处… } }`。
+#
+# 🔴 于是这一组要守的性质，与「补一条 `externalBin`」是两回事：
+#   「第二个 `[[bin]]` 进不进安装包」**本仓一个字都没配** —— 它由那把工具的行为决定
+#   ⇒ 立得住的判据是：**每一个 `[[bin]]` 都得有一条登记过的入包路线**（⑭a，两向集合相等）、
+#   那条路线的**依据**（工具版本）钉住（⑭f）、消费侧找它的那个名字与产出侧**逐字同源**（⑭e）、
+#   带 `required-features` 的 bin **零命中**（⑭c，那一形会被工具静默跳过）、
+#   以及「别顺手把它加进 `externalBin`」这条反面（⑭d）。
+#
+# ⚠ **本组买不到什么**（与本文件头注第 4 条同一条边界，别读宽）：
+#   · 它读的全是**盘上的文本**。「装机后它真在那儿」这一维，全仓唯一对着**真字节**问过的
+#     地方是 `release.yml` 的 `The .deb really ships every binary this package declares`
+#     那一步 —— 而它**只在发版那一趟跑**，且只覆盖 `.deb`。
+#   · **Windows 那两个安装包一趟都没验过**：上面那条 `installer.nsi` 读数是**生成出来的
+#     安装脚本**，不是「装完之后 `C:\Program Files\cc-monitor\` 里真有那个文件」。
+#     没有 Windows 机器、也不跑 NSIS/WiX ⇒ 那一格仍然是**判不了**，不是「通过」。
+#: 本包的 manifest —— `[[bin]]` 的唯一住址。
+BRIDGE_CARGO = "src/bridge/Cargo.toml"
+#: `externalBin` 的唯一住址（刻意不在 `tauri.conf.json` 里，理由住 `release.yml` 那一步）。
+SIDECAR_CONF = "src/bridge/tauri.sidecar.conf.json"
+#: 打包工具版本的唯一住址（两个 job 的 `npm install` / `npm ci` 都照它装）。
+PACKAGE_LOCK = "package-lock.json"
+CLI_LOCK_KEY = "node_modules/@tauri-apps/cli"
+#: 🔴 上面那条「非主 `[[bin]]` 也装」的机制，**依据就是这一版的行为**。升级它 ⇒ ⑭f 红
+#: ⇒ 那时要重读 `get_binaries` 与三个打包器里那三处 `if !bin.main()`，再动这个数。
+CLI_VERSION = "2.11.2"
+#: 🔴 本包每一个 `[[bin]]` ↔ 它进安装包的路线。⑭a 与 Cargo.toml 现打**两向集合相等**。
+#: `consumer` = 装机那份上「谁去找它」的那个文件名主干常量的住址（⑭e 逐字对拍）。
+BIN_SHIPPING = {
+    "monitor": {
+        "route": "主二进制",
+        "into": "打包器的 main binary：NSIS/MSI 落 `$INSTDIR\\monitor.exe`（`installer.nsi` "
+                "现打 `!define MAINBINARYNAME \"monitor\"` —— **不是** productName `cc-monitor`）；"
+                "deb 落 `/usr/bin/monitor`",
+        "consumer": None,
+    },
+    "cc-monitor-filewin": {
+        "route": "非主 cargo bin（`!bin.main()`）",
+        "into": "打包器把它**和主二进制装在一处**：NSIS 清单现打 "
+                "`File /a \"/oname=cc-monitor-filewin.exe\"`（⇒ `$INSTDIR`）；"
+                "deb 现打 `/usr/bin/cc-monitor-filewin`。⇒ `filewin::proc::resolve_window_bin` "
+                "的「exe 旁那一份」这一支在装机布局下命中",
+        "consumer": ("src/bridge/src/filewin/proc.rs", "BIN_STEM"),
+    },
+}
+#: 🔴 `externalBin` 那几项 ↔ 登记，两向集合相等（⑭d）。键 = 落点的**主干名**。
+#: ⚠ 它与 `BIN_SHIPPING` 的键**必须不相交** —— 本包自己的 bin 再进一次 `externalBin`，
+#:   同一个落点名就会被铺**两份**：现打过那一形，NSIS 清单里 `/oname=cc-monitor-filewin.exe`
+#:   出现**两行**（一行来自 `binaries/`、一行来自产物目录）；MSI 那边则是两个组件往
+#:   `INSTALLDIR` 装同一个文件名（WiX 的 ICE30 那一族，而 `light.exe` 没带 `-sval`
+#:   ⇒ 很可能直接红），**那一格本机验不了**。⇒ 别顺手加，本条钉着它。
+#: 🔴 **键刻意是「那个名字的住址」，不是名字本身** —— 本仓纪律：一个事实一个住址。
+#:   `cc-monitor-backend` 这个名字的家是下面那个 Rust `const`（消费侧
+#:   `local_backend::resolve_with` 找的就是它），本文件**不抄一份**，实打去读。
+FOREIGN_SIDECARS = {
+    ("src/bridge/src/backend/control/local_backend.rs", "LOCAL_BACKEND_STEM"):
+        "F05b 的本机后端，来自 `src/backend` 那棵树（**不是**本包的 `[[bin]]`）；"
+        "字节由 `release.yml` 的 `Stage local backend for externalBin` 铺进 `binaries/`",
+}
+
+# ══ 〔本拍 2026-09-23〕⑮ 产物路径的根 ↔ 声明的 `target-dir` ════════════════════════
+#
+# 🔴 **这一条落地时盘上就有现物，不用故意改坏。** 09-17 搬树（两个 cargo 工程搬进 `src/`，
+# 同拍加了仓根那份 `.cargo/config.toml`：`[build] target-dir = ".build/bridge"`）之后，
+# `release.yml` 里**五处**产物路径还写着 `src/bridge/target/release/…` —— 而最后一次发版是
+# v3.6.0（08-01，搬树之前）⇒ **一次都没人踩到过**。
+# 它坏得完全静默：三个 glob 全空 → `Get-ChildItem … -ErrorAction SilentlyContinue` 吞掉
+# 「路径不存在」→ `SHA256SUMS.txt` 空着照发 → `action-gh-release` 的 `files:` 一条都不匹配、
+# 而 `fail_on_unmatched_files` 默认 `false` ⇒ **Release 建得出来，上面一个安装包都没有。**
+# ⇒ 本条把「产物根」收成一个**两向集合相等**：`release.yml` 里每一处 cargo 产物路径的根
+#   ↔ 两份**进 git 的** `.cargo/config.toml` 声明的 `target-dir`。
+#
+# ⚠ 边界：本机个人的 `src/bridge/.cargo/`（被 `.gitignore` 挡着、不进 CI）**不在射程**；
+#   本条也不问「那个目录在 runner 上真有东西」—— 那仍然是发版那一趟才知道的事。
+CARGO_CONFIGS = [".cargo/config.toml", "src/backend/.cargo/config.toml"]
+#: ⑮ 的口径：路径里有一段**恰好**是这些之一 ⇒ 它是一条 cargo 产物路径。
+PROFILE_SEGS = {"release", "debug"}
+#: 交叉编译时 cargo 会在档位前多插一层 `<triple>/` ⇒ 剥掉它，剩下的才是产物根。
+TRIPLE_SEG = re.compile(r"^[a-z0-9_]+-(?:pc|unknown|apple)-")
+
 
 def read_rel(rel):
     """读仓内一份文件；读不到给 `None`（调用方按红记，不静默跳过）。"""
@@ -324,6 +444,113 @@ def rust_str_const(src, name):
     """抠 `const <name>: &str = "…";` 的值。抠不到给 `None`（调用方按红记）。"""
     m = re.search(r'^\s*(?:pub )?const %s: &str = "([^"]+)";' % re.escape(name), src, re.M)
     return m.group(1) if m else None
+
+
+def toml_load(rel):
+    """读仓内一份 TOML。没 `tomllib` / 读不动 / 解不动，一律给 `None`（调用方按红记）。"""
+    if tomllib is None:
+        return None
+    try:
+        with (ROOT / rel).open("rb") as f:
+            return tomllib.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def json_load(rel):
+    """读仓内一份 JSON。读不动 / 解不动给 `None`（调用方按红记）。"""
+    try:
+        with (ROOT / rel).open("rb") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def cargo_bins(doc):
+    """Cargo.toml 里 `[[bin]]` 的 `[(名字, required-features)]`。解不出给 `None`。
+
+    ⚠ `required-features` 这一栏是承重的（⑭c）：`tauri-cli::get_binaries` 对
+    「要求的 feature 这一趟没开」的 bin 是 `continue` —— **静默不进包**，一个字都不说。
+    """
+    if not isinstance(doc, dict):
+        return None
+    bins = doc.get("bin")
+    if not isinstance(bins, list):
+        return None
+    out = []
+    for b in bins:
+        if isinstance(b, dict) and isinstance(b.get("name"), str):
+            out.append((b["name"], b.get("required-features")))
+    return out
+
+
+def external_bin_stems(doc):
+    """`tauri.sidecar.conf.json` 的 `bundle.externalBin` → 落点主干名集合。解不出给 `None`。
+
+    口径与 Tauri 一致：条目是**路径**，打包时它找 `<路径>-<triple>[.exe]`、装进去时把
+    `-<triple>` 剥掉 ⇒ 装机后的文件名就是这里的最后一段（现打：`binaries/cc-monitor-backend`
+    ⇒ `$INSTDIR\\cc-monitor-backend.exe` / `/usr/bin/cc-monitor-backend`）。
+    """
+    if not isinstance(doc, dict):
+        return None
+    ext = ((doc.get("bundle") or {}) if isinstance(doc.get("bundle"), dict) else {}).get("externalBin")
+    if not isinstance(ext, list) or not all(isinstance(p, str) for p in ext):
+        return None
+    return {p.rsplit("/", 1)[-1] for p in ext}
+
+
+def declared_target_dirs():
+    """两份**进 git 的** `.cargo/config.toml` 声明的 `target-dir` → {住址: 相对仓根的路径}。
+
+    抠不到的那一份给一个说明串 —— 它必然不等于任何真路径 ⇒ 落在 ⑮ 的红那一侧，
+    **不许**当成「这一份没声明，于是不算」（那就又是一条空真）。
+    """
+    out = {}
+    for rel in CARGO_CONFIGS:
+        doc = toml_load(rel)
+        td = (doc or {}).get("build")
+        td = td.get("target-dir") if isinstance(td, dict) else None
+        if not isinstance(td, str):
+            out[rel] = "<`[build] target-dir` 抠不到：%s>" % ("没 tomllib" if tomllib is None else "键不在")
+            continue
+        # 相对路径以**那份配置的上级的上级**为基准（形状恒为 `<base>/.cargo/config.toml`）。
+        base = posixpath.dirname(posixpath.dirname(rel))
+        out[rel] = posixpath.normpath(posixpath.join(base, td))
+    return out
+
+
+def prod_path_roots(steps):
+    """`release.yml` 每一步里出现的 **cargo 产物根** → {根: [原样的那几个 token]}。
+
+    口径窄得刻意（宽了就会把不是产物的路径也判进来）：
+      · 只看每一步的 `run:` 与 `with:` 的值。**注释不在里面** —— 头注里逐字引着搬树前的
+        旧路径，那是账不是指令；`run:` 块里整行的 `#` 也在这里剥掉；
+      · Windows 那几步混用反斜杠 ⇒ 先把 `\\` 归一成 `/`；
+      · 只认「有一段**恰好**是 `release`/`debug`」的 token ⇒ `staged/…`、
+        `backend-artifacts/…`、`src/bridge/binaries/…`、`src/bridge/embedded-backends/…`
+        这些不是 cargo 产物，本条一个都不碰。
+    """
+    out = collections.defaultdict(list)
+    blobs = []
+    for _, _, st in steps:
+        run = str(st.get("run") or "")
+        blobs.append("\n".join(l for l in run.splitlines() if not l.lstrip().startswith("#")))
+        with_ = st.get("with")
+        if isinstance(with_, dict):
+            blobs.extend(str(v) for v in with_.values())
+    for blob in blobs:
+        for raw in re.split(r"[\s\"'`,|()=;]+", blob.replace("\\", "/")):
+            segs = [s for s in raw.split("/") if s]
+            hit = next((i for i, s in enumerate(segs) if s in PROFILE_SEGS), None)
+            if hit is None or hit == 0:
+                continue
+            pre = segs[:hit]
+            # 档位前面那一层是「给哪个 target 编的」：literal triple（`aarch64-unknown-…`）
+            # 或一个 shell 变量（`$t` / `$triple`）。两形都剥，剩下的才是产物根。
+            if len(pre) > 1 and (TRIPLE_SEG.match(pre[-1]) or pre[-1].startswith("$")):
+                pre = pre[:-1]
+            out["/".join(pre)].append(raw)
+    return out
 
 
 def sh_array(text, name):
@@ -923,6 +1150,130 @@ def run_checks(emit):
     except subprocess.TimeoutExpired:
         check(False, "⑬g re-embed `--check` 跑得起来且有数", "跑超时 120s —— 判不了，按红记")
 
+    # ══ 〔本拍 09-23〕⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ══════════════════════
+    cargo_doc = toml_load(BRIDGE_CARGO)
+    bins = cargo_bins(cargo_doc)
+    pkg_name = ((cargo_doc or {}).get("package") or {}).get("name")
+
+    # ── ⑭a 地板：manifest 解得出来（没 `tomllib` / 解不动 ⇒ 判不了，按红记）─────────
+    check(bins is not None and isinstance(pkg_name, str),
+          "⑭a地板·`%s` 的 `[[bin]]` 与包名解得出来" % BRIDGE_CARGO,
+          "现打 bin = %r · package.name = %r%s"
+          % (bins, pkg_name,
+             "（**这台机器上没有 `tomllib`（py<3.11）⇒ 本组判不了，按红记**）" if tomllib is None else ""))
+    if bins is None or not isinstance(pkg_name, str):
+        emit("::error::⑭ 的地板没过 —— 本组后面几条一律不算数")
+        return 1, passes[0], fails
+
+    names = {n for n, _ in bins}
+    check(len(bins) == len(names) and len(bins) > 0, "⑭a地板·bin 的名字不重复且非空",
+          "%d 个 `[[bin]]`（分母 = `%s` 里 `[[bin]]` 表的份数）：%s"
+          % (len(bins), BRIDGE_CARGO, sorted(names)))
+
+    # ── 🔴 ⑭a 本条的本体：**每一个 `[[bin]]` 都有一条登记过的入包路线**（两向集合相等）──
+    #   失效方向逐字：① 有人加第三个 `[[bin]]`（就像第十三刀加了第二个），而**没有任何人
+    #   想过它怎么进安装包、装机之后谁去找它** ⇒ 登记侧缺 ⇒ 红；② 登记里留着一个已经
+    #   不存在的 bin ⇒ 盘侧缺 ⇒ 红。**刻意不是 `>=`**：地板在「少了一个」那个方向上是瞎的，
+    #   而「少一个 bin 进不了包」正是本条要治的病。
+    registered = set(BIN_SHIPPING)
+    check(names == registered, "⑭a每个 `[[bin]]` ↔ 入包路线登记，两向集合相等",
+          "盘上有而没登记 %s · 登记了而盘上没有 %s（登记侧 = 本文件的 `BIN_SHIPPING`，"
+          "每条写着它走哪条路线 · 装机后落在哪 · 消费侧谁去找它）"
+          % (sorted(names - registered), sorted(registered - names)))
+
+    # ── ⑭b 主二进制恰好一个，而且就是登记里那一个 ───────────────────────────────────
+    #   口径与 `tauri-cli::get_binaries` 逐字同源：`name == 包名`（或 `default-run`）的
+    #   那个才是 main。⚠ 本仓**没有** `default-run`（下面顺带判它别偷偷出现 —— 出现了，
+    #   哪个 bin 是主二进制就换人，而 `installer.nsi` 的 `MAINBINARYNAME` 会跟着换）。
+    mains = {n for n in names if n == pkg_name}
+    reg_mains = {n for n, v in BIN_SHIPPING.items() if v["route"] == "主二进制"}
+    default_run = ((cargo_doc or {}).get("package") or {}).get("default-run")
+    check(mains == reg_mains and len(mains) == 1 and default_run is None,
+          "⑭b主二进制恰好一个，且与登记一致",
+          "`name == package.name`（%r）的 bin = %s · 登记的主二进制 = %s · "
+          "`package.default-run` = %r（它一有值，主二进制就换人）"
+          % (pkg_name, sorted(mains), sorted(reg_mains), default_run))
+
+    # ── ⑭c 零命中：没有任何 `[[bin]]` 带 `required-features` ────────────────────────
+    #   🔴 这一条是**零命中**那一形（不是地板）：`tauri-cli::get_binaries` 对
+    #   「required-features 这一趟没开」的 bin 逐字 `continue` ⇒ 它**静默**不进安装包，
+    #   而 `cargo build` 那边照样编得出来 ⇒ 开发树上一切正常、装机那份少一个文件。
+    gated = [(n, f) for n, f in bins if f]
+    check(not gated, "⑭c没有 `[[bin]]` 带 `required-features`（零命中）",
+          "现打 %r（分母 = 上面那 %d 个 `[[bin]]` 逐个看）—— 命中就是「这个 bin 可能"
+          "**静默**不进安装包」：`get_binaries` 对它 `continue`" % (gated, len(bins)))
+
+    # ── ⑭d `externalBin` ↔ 登记，两向集合相等；且不许与本包的 bin 重名 ─────────────
+    sc_doc = json_load(SIDECAR_CONF)
+    stems = external_bin_stems(sc_doc)
+    check(stems is not None, "⑭d地板·`%s` 的 `externalBin` 解得出来" % SIDECAR_CONF,
+          "现打 %r" % (stems,))
+    if stems is not None:
+        # 登记侧**实打去读那个住址**（不抄名字）。抠不到 ⇒ 给一个说明串，它必然不等于
+        # 任何真 stem ⇒ 落在下面那条相等的红这一侧（不许退化成「空集，于是相等」）。
+        reg_foreign = set()
+        for (rel, const), why in sorted(FOREIGN_SIDECARS.items()):
+            src = read_rel(rel)
+            got = rust_str_const(src, const) if src else None
+            check(got is not None, "⑭d地板·sidecar 名字的住址·%s 的 `const %s`" % (rel, const),
+                  "现打 %r（它是 %s）—— 抠不到就是**判不了，按红记**" % (got, why))
+            reg_foreign.add(got if got is not None else "<`%s::%s` 抠不到>" % (rel, const))
+        check(stems == reg_foreign, "⑭d`externalBin` ↔ 登记，两向集合相等",
+              "盘上有而没登记 %s · 登记了而盘上没有 %s —— 后者是**装机那份从此没有本机后端**"
+              "（`local_backend::resolve_with` 会落到 `Missing`）；前者是多了一份没人登记的 sidecar"
+              % (sorted(stems - reg_foreign), sorted(reg_foreign - stems)))
+        dup = stems & names
+        check(not dup, "⑭d`externalBin` 与本包的 `[[bin]]` 不重名（零命中）",
+              "两边都有 %s —— 重名 ＝ 同一个落点名被铺**两份**（NSIS 清单里那行 `/oname=` "
+              "会出现两次；MSI 那边是两个组件往 `INSTALLDIR` 装同一个文件名，WiX 的 ICE30 "
+              "那一族，而本机验不了）。⚠ 非主 `[[bin]]` **本来就会被装**，别再加一条"
+              % sorted(dup))
+
+    # ── ⑭e 消费侧找它的那个名字 ↔ 产出侧的 bin 名，逐字相同 ─────────────────────────
+    #   失效方向：改了 Cargo.toml 里的 `name`（或改了那个 `const`）而另一边没跟 ⇒
+    #   装机那份上 `resolve_window_bin()` 在 exe 旁找一个不存在的文件名 ⇒ 用户点那个按钮
+    #   拿到一条响亮的失败（`D11` 不留退路 ⇒ 它不会静默，但那也**不是**功能）。
+    for name, spec in sorted(BIN_SHIPPING.items()):
+        if not spec["consumer"]:
+            continue
+        rel, const = spec["consumer"]
+        src = read_rel(rel)
+        got = rust_str_const(src, const) if src else None
+        check(got == name, "⑭e消费侧的名字·%s 的 `const %s`" % (rel, const),
+              "现打 %r · Cargo.toml 里那个 `[[bin]]` 叫 %r —— 两边是同一个文件名主干，"
+              "打包器装进去时用的就是 bin 的名字（`installer.nsi` 现打 `/oname=%s.exe`）"
+              % (got, name, name))
+
+    # ── ⑭f 那条「非主 bin 也装」的机制，依据的工具版本逐字钉住 ───────────────────────
+    #   ⚠ 它买的是「**产这几个安装包的那把工具没被换掉**」，**买不到**「换了之后行为会不会变」
+    #     —— 那要人去重读源码。形状与 ⑫（门禁 ↔ 发版的工具链版本）同源。
+    lock = json_load(PACKAGE_LOCK)
+    locked = (((lock or {}).get("packages") or {}).get(CLI_LOCK_KEY) or {}).get("version")
+    check(locked == CLI_VERSION, "⑭f打包工具版本 ↔ 登记，逐字相同",
+          "`%s` 里 `%s` 现打 %r（登记 %r）—— 这一格红不等于坏了，它是一张**必须重读的传票**："
+          "`cc-monitor-filewin` 进安装包**不靠本仓任何配置**，只靠这一版 `get_binaries` ＋ "
+          "三个打包器里那三处 `if !bin.main()`（逐条读数住本文件 ⑭ 的头注）"
+          % (PACKAGE_LOCK, CLI_LOCK_KEY, locked, CLI_VERSION))
+
+    # ══ 〔本拍 09-23〕⑮ 产物路径的根 ↔ 声明的 `target-dir`，两向集合相等 ════════════
+    declared = declared_target_dirs()
+    roots = prod_path_roots(steps)
+    check(all(not v.startswith("<") for v in declared.values()),
+          "⑮地板·两份 `.cargo/config.toml` 的 `target-dir` 都抠得到",
+          "现打 %r" % (declared,))
+    check(bool(roots), "⑮地板·`release.yml` 里找得到 cargo 产物路径",
+          "现打 %d 个根（分母 = 全部 job 的 `run:`/`with:` 里带 `release`/`debug` 段的 token）：%r"
+          % (len(roots), {k: len(v) for k, v in sorted(roots.items())}))
+    want_roots = {v for v in declared.values()}
+    got_roots = set(roots)
+    check(got_roots == want_roots, "⑮产物路径的根 ↔ 声明的 `target-dir`，两向集合相等",
+          "`release.yml` 里有而没声明 %s · 声明了而本文件没用 %s（声明侧 %r；"
+          "每个根的原样 token：%r）—— 前者就是 2026-09-23 逮到的那条**静默**缺陷"
+          "（搬树之后 `src/bridge/target/release/…` 指空，三个 glob 全不匹配而只打 warning "
+          "⇒ Release 上一个安装包都没有）；后者是「那棵树的产物从此没人拿」"
+          % (sorted(got_roots - want_roots), sorted(want_roots - got_roots), declared,
+             {k: sorted(set(v))[:3] for k, v in sorted(roots.items())}))
+
     return (1 if fails else 0), passes[0], fails
 
 
@@ -945,6 +1296,16 @@ def main():
           "「配方写得一样」≠「那条命令今天跑得出字节」；⑬g 真跑的是 `--check`（只读），"
           "在一棵没铺字节的树上它只答得出「这里没有一份对不上的字节」，"
           "**不是**「字节是对的」，更不是「发版那一拍办完了」。"
+          "🔴 **⑭（本拍 09-23）那一组的边界**：它读的全是**盘上的文本**（Cargo.toml 的 "
+          "`[[bin]]` · `externalBin` · `proc.rs` 那个 `const` · `package-lock.json` 的 CLI 版本）"
+          "⇒ 买到的是「每一个 bin 都有一条登记过的入包路线、而且那条路线的依据没被换掉」，"
+          "**不是**「装机后它真在那儿」——「非主 `[[bin]]` 会被装」这件事的现打读数是"
+          "一份真 `.deb`（`usr/bin/` 三份）＋ 一份**生成出来的** `installer.nsi`，"
+          "而**Windows 上装完之后那一维一趟都没验过**（没有 Windows 机器、不跑 NSIS/WiX）；"
+          "发版那一趟另有一步对着真 `.deb` 的字节两向核一次（`release.yml` 的 "
+          "`The .deb really ships every binary this package declares`），本格不执行它。"
+          "🔴 **⑮ 的边界**：它比的是「路径的根 ↔ 声明的 `target-dir`」这两段**文本**，"
+          "**不问**那个目录在 runner 上真有没有东西。"
           "—— 逐条射程写在本文件头注）" % (n, TARGET))
     return rc
 
