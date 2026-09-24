@@ -586,3 +586,9 @@ fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
         );
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// 〔PR1 · 2026-09-24〕`设计/96 §2` 第 3 层：四个 target 横向对等 ＋ 差异两档 —— 住隔壁那份
+// ═══════════════════════════════════════════════════════════════════
+#[path = "target_parity_guard.rs"]
+mod target_parity_guard;
