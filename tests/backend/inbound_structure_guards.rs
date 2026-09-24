@@ -144,11 +144,15 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-mkdir"
                 | "files-rename"
                 | "files-write-text"
+                | "files-copy"
                 | "files-ls"
                 | "files-stat"
                 | "files-find"
                 | "files-index-rebuild"
                 | "files-index-status"
+                // 〔F7a · 第三波 09-24〕同族第七、第八条同档（同步文件 I/O / 读环境）。
+                | "files-read-text"
+                | "files-home"
                 // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
                 | "history-projects"
@@ -159,6 +163,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-tail"
                 | "accounts-list"
                 | "accounts-sessions"
+                // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
+                // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
+                | "exit-policy-read"
+                | "exit-policy-set"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -196,11 +204,14 @@ fn every_registered_command_declares_its_run_kind() {
         "files-mkdir",
         "files-rename",
         "files-write-text",
+        "files-copy",
         "files-ls",
         "files-stat",
         "files-find",
         "files-index-rebuild",
         "files-index-status",
+        "files-read-text",
+        "files-home",
         "history-projects",
         "history-read",
         "history-search",
@@ -209,6 +220,8 @@ fn every_registered_command_declares_its_run_kind() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "exit-policy-read",
+        "exit-policy-set",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()

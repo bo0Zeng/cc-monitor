@@ -349,7 +349,7 @@ fn jumping_finds_the_first_name_with_that_prefix_ignoring_case() {
 #[test]
 fn what_can_be_done_matches_a_hand_written_table() {
     use Action::*;
-    let big = crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1;
+    let big = crate::filewin::editor::MAX_EDIT_BYTES as u64 + 1;
     let file = row("f.txt", false, 3, false);
     let dir = row("d", true, 0, false);
     let huge = row("h.bin", false, big, false);

@@ -1596,15 +1596,15 @@ pub(crate) fn relay_child_args() -> Vec<String> {
 /// ★ 端口**显式传**：注入侧（`payload::RELAY_PORT`）与中转侧用同一个值。
 /// ★★ `D1 阻-3`：**凭据路径也显式传**，同一条理由。
 ///
-/// 不传的话，中转走它自己那条 `resolve_path` → `resolve_home()`，而那一条**认
+/// 不传的话，中转进程里的账号层走它自己那条 `resolve_path` → `resolve_home()`，而那一条**认
 /// `CLAUDE_CONFIG_DIR`** ⇒ monitor 是从一个**被监护进程继承来的环境变量**里
-/// 决定「中转去读哪份凭据」的。而 monitor 自己写的那份**不跟随** `claudeDir`
+/// 决定「层 2 去读哪份凭据」的。而 monitor 自己写的那份**不跟随** `claudeDir`
 /// （`creds_store::resolve_path` 头注逐字）⇒ 两侧读写的是两份文件，
-/// 症状是「界面上配好了，中转说没配」——**一个静默的 404**。
+/// 症状是「界面上配好了，账号层说没配」——**一个静默的 404**。
 /// ⇒ 由**写那份文件的那一侧**把路径说出来，别让它从环境里猜。
 ///
 /// ⚠ 它**读一次真实家目录**（`creds_store::resolve_path()` 走 `dirs::home_dir()`）——
-/// 只读，不写。拿不到家目录时那一格**缺席**（不是空串）：中转那时退回它自己那条
+/// 只读，不写。拿不到家目录时那一格**缺席**（不是空串）：账号层那时退回它自己那条
 /// `resolve_home()`，而那正是上面这段话说的那个静默 404 的成因 ⇒ 缺席这一格不许被读成「安全」。
 pub(crate) fn relay_child_envs() -> Vec<(String, String)> {
     let mut envs = vec![(
@@ -1612,7 +1612,7 @@ pub(crate) fn relay_child_envs() -> Vec<(String, String)> {
         crate::backend::control::payload::RELAY_PORT.to_string(),
     )];
     if let Some(p) = crate::creds_store::resolve_path() {
-        envs.push(("CCM_RELAY_CREDENTIALS".into(), p.display().to_string()));
+        envs.push(("CCM_APIKEY_CREDENTIALS".into(), p.display().to_string()));
     }
     envs
 }
@@ -1724,45 +1724,19 @@ pub fn stop_local_relay() -> Option<u32> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// `D7 阻-3`：退出臂里**那两条自己不会死的起法**，各收成一个具名收口点
+// `D7 阻-3`：退出臂里**那条自己不会死的起法**，收成一个具名收口点
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// 它们先前是写在 `lib.rs` 那条 `RunEvent::Exit` 臂里的两段就地代码，
-// 而守着它们的是一条**量文本**的判据 ⇒ `D7` 的刀 `T13` 把行为摘掉、文本留住 ⇒ 全绿。
-// ⇒ 抽成具名函数 + 进 `lib::ExitShutdownSinks` 那条缝之后，
-//   「勾了收几个」变成了一件**判据装替身就能数**的事（`lib::shutdown_detached_ways_on_exit`）。
+// 它先前是写在 `lib.rs` 那条 `RunEvent::Exit` 臂里的就地代码，而守着它的是一条**量文本**的判据
+// ⇒ `D7` 的刀 `T13` 把行为摘掉、文本留住 ⇒ 全绿。⇒ 抽成具名函数 + 进 `lib::ExitShutdownSinks`
+// 那条缝之后，「勾了收没收」变成了一件**判据装替身就能数**的事（`lib::shutdown_relay_on_exit`）。
 //
-// ⚠ **第三条（被监护那条）不在这里** —— 它必须留在退出臂体内，理由与残留的洞
-//   逐字写在 `lib::ExitShutdownSinks` 的头注里（写区外那条判据要求它在臂里）。
-// ⚠ 两个都返回 `bool`（「这一趟真的动手收了没有」）而不是 `Result`：
-//   **退出路上没有人接得住错误**，失败只能靠日志说出来 —— 这一格先前就是这么做的，
-//   本轮不改语义，返回值只供缝里那一行日志与判据的替身用。
+// 〔B2 · 条 66〕这里原来有**两个**收口点。常驻（脱离）那一个退役了：那个值搬到后端所在那台机器上之后，
+//   常驻的后端自己在最后一个客户走的那一刻现读、自己退（`设计/01 §3.3b ④⑥`），monitor 不再替它决定。
+// ⚠ 返回 `bool`（「这一趟真的动手收了没有」）而不是 `Result`：**退出路上没有人接得住错误**，
+//   失败只能靠日志说出来。
 
-/// 收口点 ①：**常驻（脱离）**那条起法〔`K-P1`〕。
-///
-/// 它没有 `SuperviseHandle`（那条路上**没有监护器** —— `K14` 裁的第一档），
-/// 手里只有 pid + 二进制路径 ⇒ 收它走 [`stop_local_backend`]
-///（我们起的那个直接 kill+wait；接管来的那个先核 `/proc/<pid>/exe` 再 SIGTERM）。
-///
-/// ⚠ **没脱离就什么都不做** —— 那一格由 [`is_detached`] 判，不是猜的。
-pub fn stop_detached_backend_on_exit() -> bool {
-    if !is_detached() {
-        return false;
-    }
-    match stop_local_backend() {
-        Ok(msg) => {
-            tracing::info!("退出：{msg}");
-            true
-        }
-        // **说出来**：这一格失败的后果是「用户勾了却没停」，静默就成了骗人。
-        Err(e) => {
-            tracing::warn!("退出：停常驻后端失败（{e}）—— 它还在跑");
-            false
-        }
-    }
-}
-
-/// 收口点 ②：🔴 **中转是第三个进程**〔`D2 阻-5`（`K-H2b`）〕。
+/// 收口点：🔴 **中转是第三个进程**〔`D2 阻-5`（`K-H2b`）〕。
 ///
 /// `relay/mod.rs` 自陈「独立进程」，[`stop_local_backend`] 一个字都碰不到它
 /// ⇒ 必须单独收一次。没有它，用户勾了「退出时结束它」、退出，

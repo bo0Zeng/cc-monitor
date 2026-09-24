@@ -1,11 +1,13 @@
 // P2s（定框 C8）：**每台机一份后端策略** —— 今天只有一条「monitor 退出时是否结束它」。
 //
-// # 持久化归这里，生效值归 Rust
+// # 〔B2 · 条 66 · `设计/01 §3.3b`〕那个值**不住这里**，也不住 monitor 进程里
 //
-// `config.rs` 头注逐字「Rust 端**不解释配置内容**（schema 在前端定义）」。
-// 若 Rust 也往 config.json 里读写，同一个文件就有**两个写者**，
-// 前端「读—改—写整份」的那一刻会拿一份陈旧副本把 Rust 刚写的键覆盖掉。
-// ⇒ 这里存盘，改动时与启动时把生效值**推**给 Rust（`set_backend_kill_on_exit`）。
+// 它住**后端所在那台机器**上（后端自己的状态文件，一台机器一个值），**只有后端写**。
+// 本文件与 `settings/backend-section.ts` 读它、改它都经两条后端命令
+// （`backend_exit_policy` / `set_backend_exit_policy` → 后端 `exit-policy-read` / `exit-policy-set`）。
+// ⇒ 搬家前那一套（存进 monitor 的 config.json、启动时与改动时**推**给 Rust、一条写盘串行链）
+//   **整条删掉**：留着就是第二个真相源（`§3.3b ②`）。原来那条「两个写者」的担心换了解法 ——
+//   不是「让 Rust 别写」，是「让两边写不同的文件」，后端那份前端从不碰（单写者）。
 //
 // # ⚠ 「不结束」到底等不等于「继续跑」——**今天要看它有没有真脱离**（K-P1 08-26 翻面）
 //
@@ -19,8 +21,6 @@
 // ★★ 「无人监护」这半是用户裁定的一半，不许省（DECISIONS K14 逐字：
 // 「第一档必须在 UI 上如实说『继续跑，无人监护』，这是本裁定的一半，不许只做常驻不做这句话」）。
 
-import { commands } from "./ipc/commands";
-import { loadConfig, saveConfig, type Config } from "./config";
 
 /**
  * 本机在 origin 这套命名里的名字。
@@ -31,11 +31,13 @@ import { loadConfig, saveConfig, type Config } from "./config";
  */
 export const LOCAL_ORIGIN = "<local>";
 
-/** 缺省：**不结束**（C8③ 的前半句 —— 那半是站得住的）。 */
-export const DEFAULT_KILL_ON_EXIT = false;
+// 〔B2〕缺省值（不结束）**不在这里** —— 它住后端（`control/exit_policy.rs` 的那个常量），
+//   后端回的 `killOnExit` 已经是套过缺省的生效值。这里再写一份就是两处缺省各自漂。
 
 /**
- * K-P1 KPY4：退出行为的四句话 —— **用户可见文案的唯一一个家**。
+ * K-P1 KPY4：退出行为的那几句话 —— **用户可见文案的唯一一个家**。
+ * 〔B2 · 条 66〕三句变四句：多了「读不出来」那一句（`EXIT_UNREADABLE`）。
+ * ⚠ `设计/01 §3.3b ⑤` 写的是「四句变五句」—— 那是假前提（`W20` 现打：今天是三句），本次现打仍是 3 → 4。
  *
  * ⚠ 别把它们抄进 `settings/backend-section.ts`：那正是这一格要防的事。
  * 现行判据（K-P1 之前那条）`readFileSync` 的**只有一个文件**、只剥整行注释
@@ -60,6 +62,16 @@ export const EXIT_UNATTENDED =
   "monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的";
 /** ③ 勾掉 + **没脱离**（平台不支持 / 被关掉了 / 脱离失败）⇒ 保持今天那句，一字不改。 */
 export const EXIT_SELF_DIES = "monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出";
+/**
+ * ④〔B2 · 条 66 · `设计/01 §3.3b ⑤`〕那台机器上的值**读不出来** ⇒ 按缺省（不结束）办 ——
+ * **并且说出来这不是谁选的**。
+ *
+ * ⚠ 它与「没人选过」（文件不在）**不是一回事**：没人选过就是缺省，说的是上面②③那两句；
+ * 读不出来是「有一份东西在那儿、我们读不懂」，照缺省办，但不许装作那是一个选择。
+ * 同一条道理仓里立过一次：`HEALTH_UNKNOWN` 逐字「『答不出来』不等于『没崩过』」。
+ */
+export const EXIT_UNREADABLE =
+  "那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过";
 
 // ══════════════════════════════════════════════════════════════════════════
 // K-P3 KP3C（09-04）：**那句「无人监护」后面接的那个读数。**
@@ -137,108 +149,52 @@ export function describeBackendHealth(h: BackendHealth): string {
   );
 }
 
-/** 一台机此刻的退出行为。`detached` 来自 `backend_status`（远端恒 null ⇒ 按未脱离算）。 */
+/** 后端答的「这一趟我是哪个壳」（`01 §3.3` 那一轴）。今天只有 `standalone` 真的存在。 */
+export type BackendShell = "standalone" | "folded";
+
+/** 那个值现读出来的三态（与后端 `exit_policy::Read::state` 逐字对齐）。 */
+export type ExitPolicyState = "chosen" | "absent" | "unreadable";
+
+/**
+ * 一台机此刻的退出行为。
+ *
+ * - `shell` / `policy` / `killOnExit`：**后端答的**（`exit-policy-read`）；
+ * - `detached`：来自 `backend_status`（远端恒 null ⇒ 按未脱离算）。
+ */
 export interface ExitState {
+  shell: BackendShell;
+  policy: ExitPolicyState;
   killOnExit: boolean;
   detached: boolean;
 }
 
 /**
- * 这台机现在**退出时会发生什么** —— 一句话，三档（与 K-P1 §0b-4 那张表逐格对应）。
- *
- * ★ 它是纯函数：三档在单测里逐格钉得死，不需要真起一个后端。
- * ⚠ **「无人监护」只许出现在真脱离那一档**（②）——
- * 出现在①③ 就是承诺一件做不到的事，而那正是 P2s-Y5 当初立禁令要防的东西。
- *
- * ⚠ ① 为什么**不看** `detached`：退出钩子对**两条起法都收**
- * （`lib.rs` 的 `RunEvent::Exit` 那一段：被监护的走 `stop()`，脱离的走 `stop_local_backend()`）。
- * 曾经有过第四档「已经脱离了 ⇒ 这个勾管不到它」—— 那一档是**那个缺口的产物**，
- * 缺口补上之后它就成了一句假话，随缺口一起删掉了。
- * ⚠ 残留的诚实边界（**不进文案，进日志**）：接管来的实例是按记录下来的 pid 去停的，
- * 那份记录缺了或 pid 被复用时停不掉 —— 那时 `lib.rs` 会 `warn!` 出来，而不是静默。
+ * 〔B2 · E4〕**不适用** —— 折进前端进程那一档，生命周期没得选（`01 §3.3b ⑧`）。
+ * 它**不是**那四句里的任何一句：界面拿到它就不摆那个开关、也不说那一行。
  */
-export function describeExitBehavior(s: ExitState): string {
+export const EXIT_NOT_APPLICABLE = null;
+
+/**
+ * 这台机现在**退出时会发生什么** —— 一句话，四档（外加「不适用」）。
+ *
+ * ★ 它是纯函数：每一档在单测里逐格钉得死，不需要真起一个后端。
+ * ⚠ **「无人监护」只许出现在真脱离那一档**（②）——
+ * 出现在别处就是承诺一件做不到的事，而那正是 P2s-Y5 当初立禁令要防的东西。
+ *
+ * ⚠ 判断的**顺序**是承重的：
+ * ① 壳是折进前端 ⇒ 不适用（那一档连选择都没有，说哪句都是假的）；
+ * ② 读不出来 ⇒ 说读不出来（**不看** `killOnExit` —— 那是套过缺省的值，不是谁选的）；
+ * ③ 勾上 ⇒ 会结束它（**不看** `detached`：常驻那条由后端在最后一个客户走时自己退，
+ *    被监护那条由 monitor 退出臂收）；
+ * ④ 没勾 ⇒ 看它有没有真脱离。
+ * ⚠ 曾经有过一档「已经脱离了 ⇒ 这个勾管不到它」—— 那一档是**一个缺口的产物**，
+ * 缺口补上之后它就成了一句假话，随缺口一起删掉了。
+ */
+export function describeExitBehavior(
+  s: ExitState,
+): string | typeof EXIT_NOT_APPLICABLE {
+  if (s.shell === "folded") return EXIT_NOT_APPLICABLE;
+  if (s.policy === "unreadable") return EXIT_UNREADABLE;
   if (s.killOnExit) return EXIT_KILLS;
   return s.detached ? EXIT_UNATTENDED : EXIT_SELF_DIES;
-}
-
-/** config.json 里的键。 */
-const KEY = "backendPolicy";
-
-export type BackendPolicy = Record<string, boolean>;
-
-/** 从整份 config 里取策略表；缺席/形状不对都退回空表（**不抛**——开关坏了不该拖垮设置页）。 */
-export function readPolicy(cfg: Config): BackendPolicy {
-  const raw = cfg[KEY];
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
-  const out: BackendPolicy = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === "boolean") out[k] = v;
-  }
-  return out;
-}
-
-/** 这台机退出时结不结束它。未登记 ⇒ 缺省。 */
-export function killOnExit(policy: BackendPolicy, origin: string): boolean {
-  return policy[origin] ?? DEFAULT_KILL_ON_EXIT;
-}
-
-/** 把整表推给 Rust（启动时一次）。**逐台推**——Rust 那边是 per-origin 的表，没有「整表覆盖」这个口。 */
-export async function pushPolicyToBackend(policy: BackendPolicy): Promise<void> {
-  for (const [origin, kill] of Object.entries(policy)) {
-    await commands.set_backend_kill_on_exit({ origin, kill });
-  }
-}
-
-/** 启动时：读盘 → 推给 Rust。返回读到的表，供 UI 初始化用。 */
-export async function initBackendPolicy(): Promise<BackendPolicy> {
-  const policy = readPolicy(await loadConfig());
-  await pushPolicyToBackend(policy);
-  return policy;
-}
-
-/**
- * 改一台机的策略：**先推后存**。
- *
- * 顺序是刻意的 —— 推失败就不落盘，否则盘上写着 A 而运行中是 B，
- * 下次启动才「自动修好」，中间那段时间用户看到的开关是骗人的。
- */
-/**
- * 写盘串行链〔D 阶段补审 08-11，A3〕。
- *
- * # 原来错在哪
- *
- * `setKillOnExit` 是 `push → loadConfig → 改 → saveConfig(整份)`，**四个 await 之间没有锁**。
- * 同一个复选框快点两下（或先后点两台机）：
- *
- * 1. T1 `push(A=true)` 到达 Rust；
- * 2. T2 `push(A=false)` 到达 Rust ⇒ **Rust 表 = false**；
- * 3. T2 的读—改—写先完成，盘上 = false；
- * 4. T1 的 `saveConfig` 后完成，**用它那份陈旧 cfg 覆盖回 true** ⇒ 盘上 = true。
- *
- * 结果：UI 勾 = false、运行时 = false、**盘上 = true**
- * ⇒ 下次启动 `initBackendPolicy` 把 true 推回去，**开关自己翻过来**。
- * 而且 `saveConfig(cfg)` 是整份写，会连带把这期间别的设置区写入的键一起回滚。
- *
- * ★ 讽刺的是本文件头注花了 8 行论证「不能有两个写者」—— 第二个写者出现在了
- * **前端自己的并发点击**里。
- *
- * ⇒ 用一条 promise 链把写盘串起来：**同一时刻只有一个读—改—写在跑**。
- * ⚠ 它**不跨进程**（另一个 monitor 实例照样能覆盖），那一格如实登记在件里。
- */
-let writeChain: Promise<unknown> = Promise.resolve();
-
-export async function setKillOnExit(origin: string, kill: boolean): Promise<void> {
-  if (!origin.trim()) throw new Error("origin 不许为空 —— 策略是每台机各一份的");
-  // 前一笔失败不该卡住后一笔 ⇒ 链上先吞掉错误再排队；错误仍原样抛给**本次**调用方。
-  const run = writeChain.catch(() => {}).then(async () => {
-    await commands.set_backend_kill_on_exit({ origin, kill });
-    const cfg = (await loadConfig()) as Record<string, unknown>;
-    const policy = readPolicy(cfg);
-    policy[origin] = kill;
-    cfg[KEY] = policy;
-    await saveConfig(cfg);
-  });
-  writeChain = run.catch(() => {});
-  return run;
 }

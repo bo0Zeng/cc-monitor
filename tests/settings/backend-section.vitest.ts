@@ -31,7 +31,11 @@ const calls: { name: string; args: unknown }[] = [];
 let status: Record<string, unknown> = { channel: true, pid: 42 };
 /** 按顺序喂给 `backend_status` 的前几次读数（用完退回 `status`）。 */
 let statusQueue: Record<string, unknown>[] = [];
-let stored: Record<string, unknown> = {};
+/**
+ * 〔B2〕后端 `exit-policy-read` 回的那一份（值住后端那台机器上）。`null` ⇒ 这台问不到（命令抛错）。
+ * 键名与后端 `exit_policy::wire` 逐格一致：`shell` / `state` / `killOnExit`（`reason` / `path` 本区不用）。
+ */
+let exitAnswer: Record<string, unknown> | null = null;
 
 vi.mock("../../src/ipc/commands", () => ({
   commands: {
@@ -54,14 +58,17 @@ vi.mock("../../src/ipc/commands", () => ({
       calls.push({ name: "backend_machines", args: null });
       return Promise.resolve(["<local>", "甲机"]);
     },
-    set_backend_kill_on_exit: (a: unknown) => {
-      calls.push({ name: "set_backend_kill_on_exit", args: a });
-      return Promise.resolve();
+    backend_exit_policy: (a: unknown) => {
+      calls.push({ name: "backend_exit_policy", args: a });
+      return exitAnswer === null
+        ? Promise.reject(new Error("没有控制通道"))
+        : Promise.resolve(exitAnswer);
     },
-    load_config: () => Promise.resolve(stored),
-    save_config: (a: { value: Record<string, unknown> }) => {
-      stored = a.value;
-      return Promise.resolve();
+    // 〔B2〕后端写完**读回**的那一份：这里就让「盘上」变成写进去的值，后续每一次现问都读到它。
+    set_backend_exit_policy: (a: { origin: string; kill: boolean }) => {
+      calls.push({ name: "set_backend_exit_policy", args: a });
+      exitAnswer = { shell: "standalone", state: "chosen", killOnExit: a.kill, reason: null, path: "x" };
+      return Promise.resolve(exitAnswer);
     },
   },
 }));
@@ -77,8 +84,10 @@ import { BackendSection } from "../../src/settings/backend-section";
 import { srcDirOf } from "../test-support/repo-root";
 import {
   EXIT_KILLS,
+  EXIT_NOT_APPLICABLE,
   EXIT_SELF_DIES,
   EXIT_UNATTENDED,
+  EXIT_UNREADABLE,
   HEALTH_CLEAN,
   HEALTH_CRASHED,
   HEALTH_LAST_MISSING,
@@ -110,7 +119,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   calls.length = 0;
-  stored = {};
+  exitAnswer = { shell: "standalone", state: "absent", killOnExit: false, reason: null, path: "x" };
   status = { channel: true, pid: 42 };
   statusQueue = [];
 });
@@ -119,14 +128,20 @@ describe("P2s backend 开关区", () => {
   it("★★ 三档逐格钉死：「无人监护」必须出现，且**只在真脱离那一支**出现（KPY4①）", () => {
     // ── 四种输入组合，一格一格比。**不是「包含」而是「等于」** ——
     //    「包含」会放过「在正确那句后面又加了一句错的」。
-    expect(describeExitBehavior({ killOnExit: true, detached: false })).toBe(EXIT_KILLS);
-    expect(describeExitBehavior({ killOnExit: false, detached: false })).toBe(EXIT_SELF_DIES);
-    expect(describeExitBehavior({ killOnExit: false, detached: true })).toBe(EXIT_UNATTENDED);
-    // ★ 勾上那一档**不看 `detached`** —— 退出钩子对两条起法都收
-    //   （`lib.rs` 的 `RunEvent::Exit`：被监护的走 `stop()`，脱离的走 `stop_local_backend()`）。
+    const on = (killOnExit: boolean, detached: boolean) =>
+      describeExitBehavior({ shell: "standalone", policy: "chosen", killOnExit, detached });
+    expect(on(true, false)).toBe(EXIT_KILLS);
+    expect(on(false, false)).toBe(EXIT_SELF_DIES);
+    expect(on(false, true)).toBe(EXIT_UNATTENDED);
+    // ★ 勾上那一档**不看 `detached`** —— 两条起法都会被收：
+    //   被监护的由 monitor 退出臂 `stop()`；脱离的〔B2〕由后端自己在最后一个客户走的那一刻现读、退出。
     //   ⚠ 这一格曾经是第四句「已经脱离了 ⇒ 这个勾管不到它」，那是**那个缺口的产物**；
     //   缺口补上之后它就成了假话。**这条断言就是那次订正的活体证据。**
-    expect(describeExitBehavior({ killOnExit: true, detached: true })).toBe(EXIT_KILLS);
+    expect(on(true, true)).toBe(EXIT_KILLS);
+    // 〔B2〕「没人选过」（文件不在）说的就是缺省那两句 —— 它**不是**「读不出来」。
+    expect(
+      describeExitBehavior({ shell: "standalone", policy: "absent", killOnExit: false, detached: false }),
+    ).toBe(EXIT_SELF_DIES);
 
     // ── ★ 「无人监护」只许出现在**真脱离且没勾**那一支。
     for (const [name, text] of [
@@ -162,10 +177,12 @@ describe("P2s backend 开关区", () => {
     //   而 `K-P3` 交付时这一格只由 Rust 那侧的 `the_health_copy_has_exactly_one_home` 看着
     //   （那份 vitest 当时不在它的写区）。两侧各有一条不是重复：
     //   Rust 那条的人群含 `backend_control.rs`，这一条的人群是前端那两份。
+    // 〔B2 · E3〕人群 +1：「读不出来」那一句（`设计/01 §3.3b ⑤`，三句变四句）。
     const literals = [
       EXIT_KILLS,
       EXIT_UNATTENDED,
       EXIT_SELF_DIES,
+      EXIT_UNREADABLE,
       HEALTH_UNKNOWN,
       HEALTH_CLEAN,
       HEALTH_CRASHED,
@@ -301,7 +318,9 @@ describe("P2s backend 开关区", () => {
     expect(
       row.querySelector<HTMLElement>(".backend-row-exit")?.textContent,
       "退出那一行被改了 —— 读数是**另一句话**，接上去就把那四根等号一起拽红了",
-    ).toBe(describeExitBehavior({ killOnExit: false, detached: true }));
+    ).toBe(
+      describeExitBehavior({ shell: "standalone", policy: "absent", killOnExit: false, detached: true }),
+    );
   });
 
   it("★★ K-P3b：后端**没给** `health`（旧后端）⇒ 说「答不出来」，不说「没崩过」", async () => {
@@ -330,7 +349,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     const mod = await import("../../src/ipc/commands");
     const spy = vi
-      .spyOn(mod.commands, "set_backend_kill_on_exit")
+      .spyOn(mod.commands, "set_backend_exit_policy")
       .mockRejectedValueOnce(new Error("盘满了"));
     const box = s.element.querySelector<HTMLInputElement>(".backend-row-kill input")!;
     expect(box.checked).toBe(false);
@@ -340,5 +359,161 @@ describe("P2s backend 开关区", () => {
     await flush();
     expect(box.checked, "存失败了勾还留在新位置 —— 界面在骗人").toBe(false);
     spy.mockRestore();
+  });
+  it("★★ 〔B2 · E3〕「读不出来」是第四句，它不是「选了默认」—— 而且它不看 `killOnExit`", () => {
+    for (const detached of [false, true]) {
+      for (const killOnExit of [false, true]) {
+        expect(
+          describeExitBehavior({
+            shell: "standalone",
+            policy: "unreadable",
+            killOnExit,
+            detached,
+          }),
+          "读不出来那一档说成了别的 —— `§3.3b ⑤`：「读不出来」与「用户选了默认」不是一回事，不许合并成一句",
+        ).toBe(EXIT_UNREADABLE);
+      }
+    }
+    expect(EXIT_UNREADABLE.includes("这不等于有人这么选过")).toBe(true);
+    expect(
+      EXIT_UNREADABLE.includes("无人监护"),
+      "读不出来那一句承诺了常驻 —— 它不知道那台机器会怎样",
+    ).toBe(false);
+    const four = [EXIT_KILLS, EXIT_UNATTENDED, EXIT_SELF_DIES, EXIT_UNREADABLE];
+    expect(
+      new Set(four).size,
+      "那四句里有两句一模一样 —— 两个状态被说成了一句",
+    ).toBe(4);
+  });
+
+  it("★★ 〔B2 · E4〕折进前端那一档 ⇒「不适用」，**不是**四句里的任何一句（逐格穷举）", () => {
+    const four = [EXIT_KILLS, EXIT_UNATTENDED, EXIT_SELF_DIES, EXIT_UNREADABLE];
+    let cells = 0;
+    for (const policy of ["chosen", "absent", "unreadable"] as const) {
+      for (const killOnExit of [false, true]) {
+        for (const detached of [false, true]) {
+          const said = describeExitBehavior({
+            shell: "folded",
+            policy,
+            killOnExit,
+            detached,
+          });
+          cells++;
+          expect(
+            said,
+            `折进前端那一档（${policy}/${killOnExit}/${detached}）说了一句话：${said}`,
+          ).toBe(EXIT_NOT_APPLICABLE);
+          expect(four.includes(said as string)).toBe(false);
+        }
+      }
+    }
+    expect(cells, "穷举的格数不对 —— 循环坏了").toBe(12);
+    // 反过来：独立进程那一档**一格都不许**回「不适用」（否则上面那 12 格可能是「恒回 null」骗来的绿）。
+    for (const policy of ["chosen", "absent", "unreadable"] as const) {
+      for (const killOnExit of [false, true]) {
+        for (const detached of [false, true]) {
+          expect(
+            describeExitBehavior({
+              shell: "standalone",
+              policy,
+              killOnExit,
+              detached,
+            }),
+          ).not.toBe(EXIT_NOT_APPLICABLE);
+        }
+      }
+    }
+  });
+
+  it("★★ 〔B2〕勾的值**问后端要**：盘上选过 true ⇒ 勾上、说「会结束它」", async () => {
+    exitAnswer = {
+      shell: "standalone",
+      state: "chosen",
+      killOnExit: true,
+      reason: null,
+      path: "x",
+    };
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const row = s.element.querySelector<HTMLElement>(".backend-row")!;
+    const box = row.querySelector<HTMLInputElement>(".backend-row-kill input")!;
+    expect(box.disabled).toBe(false);
+    expect(
+      box.checked,
+      "后端说选过 true，勾却没勾上 —— 画的不是那台机器上的值",
+    ).toBe(true);
+    expect(
+      row.querySelector<HTMLElement>(".backend-row-exit")?.textContent,
+    ).toBe(EXIT_KILLS);
+    const asked = calls
+      .filter((c) => c.name === "backend_exit_policy")
+      .map((c) => (c.args as { origin: string }).origin);
+    expect(asked.sort(), "每台机都该各问各的").toEqual(
+      [LOCAL_ORIGIN, "甲机"].sort(),
+    );
+  });
+
+  it("★★ 〔B2〕读不出来 ⇒ 说第四句；问不到 ⇒ 勾禁用、那一行一个字都不说", async () => {
+    exitAnswer = {
+      shell: "standalone",
+      state: "unreadable",
+      killOnExit: false,
+      reason: "不是 JSON",
+      path: "x",
+    };
+    let s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    let row = s.element.querySelector<HTMLElement>(".backend-row")!;
+    expect(
+      row.querySelector<HTMLElement>(".backend-row-exit")?.textContent,
+    ).toBe(EXIT_UNREADABLE);
+    // 问不到（没连上 / 旧后端不认那条命令）：不替那台机器说话，也不画一个看起来能用的勾。
+    exitAnswer = null;
+    s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    row = s.element.querySelector<HTMLElement>(".backend-row")!;
+    const box = row.querySelector<HTMLInputElement>(".backend-row-kill input")!;
+    expect(box.disabled, "问不到那台机器的值，勾却能点 —— 点了发到哪去？").toBe(
+      true,
+    );
+    const exit = row.querySelector<HTMLElement>(".backend-row-exit")!;
+    expect(exit.textContent, "问不到还说了一句 —— 那句话没有依据").toBe("");
+    expect(exit.dataset.exit).toBe("unasked");
+  });
+
+  it("★★ 〔B2〕改勾交后端写，画的是**写完读回来**的那一份", async () => {
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const row = s.element.querySelector<HTMLElement>(".backend-row")!;
+    const box = row.querySelector<HTMLInputElement>(".backend-row-kill input")!;
+    box.checked = true;
+    box.onchange?.(new Event("change"));
+    await flush();
+    await flush();
+    await flush();
+    const sets = calls.filter((c) => c.name === "set_backend_exit_policy");
+    expect(
+      sets.map((c) => c.args),
+      "改勾没交后端写",
+    ).toEqual([{ origin: LOCAL_ORIGIN, kill: true }]);
+    expect(
+      row.querySelector<HTMLElement>(".backend-row-exit")?.textContent,
+    ).toBe(EXIT_KILLS);
+    expect(box.checked).toBe(true);
+  });
+  it("★★ 〔B2 · E4〕后端答「折进前端」⇒ 那一行**没有**勾、也没有退出那一句（不是禁用，是不存在）", async () => {
+    exitAnswer = { shell: "folded", state: "absent", killOnExit: false, reason: null, path: null };
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const row = s.element.querySelector<HTMLElement>(".backend-row")!;
+    expect(row.querySelector(".backend-row-kill"), "折进前端那一档还摆着一个开关").toBeNull();
+    expect(row.querySelector(".backend-row-exit"), "折进前端那一档还说了一句退出行为").toBeNull();
+    // 起停与健康那几格不受影响（E4 只拿掉「退出行为」这一格）。
+    expect(row.querySelector(".backend-row-health")).not.toBeNull();
   });
 });

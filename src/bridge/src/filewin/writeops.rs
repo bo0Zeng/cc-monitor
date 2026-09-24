@@ -472,7 +472,9 @@ impl WritePrompt {
 /// [`super::copy::CopyJob::beside`] 那一条逐字的理由）。
 /// 🔴 不许是 `.` / `..` —— 它们不是名字，是**当前目录与上一级**。
 /// 拿 `..` 去 `sftp_delete` 就是让服务端对着父目录动手。
-fn clean_name(t: &str) -> Result<String, String> {
+///
+/// 〔F7b〕「新建空文件」（[`super::create`]）问的也是这一个函数 —— 两颗并排的「新建」一套规矩。
+pub(super) fn clean_name(t: &str) -> Result<String, String> {
     if t.is_empty() {
         return Err("名字是空的".to_string());
     }
@@ -508,7 +510,7 @@ fn parse_mode(t: &str) -> Result<u32, String> {
 
 /// 远端路径**恒用 `/`** 拼（同 [`super::source::parent_dir`] 那条理由：
 /// 拿 `std::path` 切远端路径，在 Windows 上会把 `\` 也当分隔符）。
-fn join_remote(dir: &str, name: &str) -> String {
+pub(super) fn join_remote(dir: &str, name: &str) -> String {
     format!("{}/{}", dir.trim_end_matches('/'), name)
 }
 

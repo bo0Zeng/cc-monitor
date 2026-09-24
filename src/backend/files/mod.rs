@@ -307,6 +307,33 @@ pub const CAPABILITIES: &[Capability] = &[
         fields: &["added", "browse_watch_cap", "rejected", "removed"],
         codes: &["bad_args", "bad_path"],
     },
+    // ── 〔F7a · 第三波 · 2026-09-24〕`设计/60 §13`：窗口换走通道的那两问 ────────────
+    //
+    // 🔴 **它们补的是「窗口进程里还不是通道」那张欠账表上的两格**（`设计/60 §12.3`）：
+    //   编辑器读一份文本（此前走 SFTP 把字节整份搬过来）· 开窗前「那台机器的 home 在哪」
+    //   （此前走 SFTP 问 `.` 解成什么）。两条都**纯读** ⇒ 进这一族，整族照旧一个字节不写。
+    // ⚠ 本族头注那句「后端买到的**只有搜索**」因此不再是全部 —— 那句话写于 `24f`，
+    //   `设计/60 §8`（薄窗口 ＋ 逻辑在后端）之后窗口的每一问都该有一条后端命令。
+    Capability {
+        name: "files.read.text",
+        what: "读一份文本进编辑器 —— **超上限整趟拒、不截断**；含 NUL / 不是 UTF-8 也拒",
+        effect: Effect::ReadsOnly,
+        impl_files: &["mod.rs", "raw.rs"],
+        targets: TARGETS,
+        args: &["max_bytes", "path"],
+        fields: &["bytes", "path", "text"],
+        codes: &["bad_args", "bad_path", "not_text", "too_large", "unreadable"],
+    },
+    Capability {
+        name: "files.home",
+        what: "后端这个进程的用户 home（绝对路径）—— 窗口开窗时「开在哪儿」那一问",
+        effect: Effect::ReadsOnly,
+        impl_files: &["mod.rs", "raw.rs"],
+        targets: TARGETS,
+        args: &[],
+        fields: &["path"],
+        codes: &["no_home"],
+    },
 ];
 
 /// **保鲜机制逐 target 的如实声明**（边界②的另一半）。
@@ -688,6 +715,151 @@ fn answer_browse(args: &serde_json::Value) -> Answer {
     }))
 }
 
+/// `files.read.text` 一趟**最多**肯交多少字节 —— 后端自己的天花板，**不是**编辑上限。
+///
+/// # 🔴 两个数，两个住址，两件事（别把它读成「编辑上限的第二份」）
+///
+/// - **编辑上限**是**调用方**的：它答的是「这个文本控件打字卡不卡」，那是窗口那一侧的
+///   语境（`设计/60 §5.4b` 逐字「那个上限该是多少、超了怎么办，要在**原生窗口的文本控件**
+///   这个语境里答」）⇒ 它住窗口，每趟经 `max_bytes` 送过来。「机制在后端 · 偏好归调用方」
+///   （同本族 `files.index.rebuild` 那条的形）。
+/// - **本常量**是后端的：它答的是「一帧应答整个进内存、整个过线，最大能多大」。
+///   推算：JSON 转义最坏把一个字节写成 6 个（`\u00XX`），8 MiB × 6 = 48 MiB，
+///   仍在应答那一帧的上限（monitor 侧读后端一行 64 MiB、通道一帧 64 MiB）之内。
+///   ⇒ 调用方要的 `max_bytes` 超过它 ⇒ `bad_args`（说清天花板是多少），**不偷偷夹小**。
+pub const READ_TEXT_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+/// `files.read.text` —— 读一份文本。**超上限整趟拒，不截断**（截断过的文本存回去会写坏文件）。
+///
+/// 三道拒，各有自己的码（调用方据此说三句不同的话，而不是一个灰按钮）：
+///
+/// | 码 | 什么时候 |
+/// |---|---|
+/// | `too_large` | `stat` 出来的大小超过 `max_bytes`；**或者**读的时候比 `stat` 时大（文件在长）|
+/// | `not_text` | 不是普通文件 · 含 NUL 字节 · 不是合法 UTF-8 |
+/// | `unreadable` | 读不到（不存在 / 没权限）|
+///
+/// ⚠ 大小判两次不是啰嗦：`stat` 与真读之间文件可以被换大，第二道用 `take(max + 1)`
+/// 读 —— 最多只多读一个字节就知道「超了」，不会把一个刚变成几个 G 的文件整个读进内存。
+/// ⚠ 它**不过会话数据围栏**：那道围栏立在写侧（「不许改坏正被 Claude 打开的那份」），
+/// 读一份会话记录进编辑框不改任何东西；存回去那一下才过围栏（写面那条会拒）。
+fn answer_read_text(args: &serde_json::Value) -> Answer {
+    let path = path_arg(args)?;
+    let max = args
+        .get("max_bytes")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or((
+            "bad_args",
+            "少了 `max_bytes`，或者它不是一个非负整数 —— 编辑上限是调用方的，每趟都要给"
+                .to_string(),
+        ))?;
+    if max == 0 || max > READ_TEXT_MAX_BYTES as u64 {
+        return Err((
+            "bad_args",
+            format!(
+                "`max_bytes` 给的是 {max} —— 只收 1..={READ_TEXT_MAX_BYTES}（后端一趟肯交的天花板）；\
+                 这里刻意不替调用方夹小：夹了，调用方以为的上限与真实的上限就是两个数"
+            ),
+        ));
+    }
+    let md = std::fs::metadata(&path)
+        .map_err(|e| ("unreadable", format!("这个路径读不到：{:?}", e.kind())))?;
+    if !md.is_file() {
+        return Err((
+            "not_text",
+            "这不是一份普通文件（目录 / 设备 / 管道），没有文本可读".to_string(),
+        ));
+    }
+    if md.len() > max {
+        return Err((
+            "too_large",
+            format!(
+                "这份 {} 字节，超过上限 {max}，多了 {} 字节 —— 超限**整趟拒，不截断**",
+                md.len(),
+                md.len() - max
+            ),
+        ));
+    }
+    let f = std::fs::File::open(&path)
+        .map_err(|e| ("unreadable", format!("这个文件打不开：{:?}", e.kind())))?;
+    let mut buf: Vec<u8> = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::Read::take(f, max + 1), &mut buf)
+        .map_err(|e| ("unreadable", format!("读到一半断了：{:?}", e.kind())))?;
+    if buf.len() as u64 > max {
+        return Err((
+            "too_large",
+            format!("读的时候它比刚才看的时候大了（已经超过上限 {max}）—— 文件正在变，整趟拒"),
+        ));
+    }
+    if buf.contains(&0) {
+        return Err((
+            "not_text",
+            "里面有 NUL 字节 —— 多半是二进制，不当文本编辑".to_string(),
+        ));
+    }
+    let n = buf.len();
+    let text = String::from_utf8(buf).map_err(|e| {
+        (
+            "not_text",
+            format!(
+                "不是合法 UTF-8（第 {} 字节起解不动）—— 不猜编码，也不有损替换",
+                e.utf8_error().valid_up_to()
+            ),
+        )
+    })?;
+    Ok(serde_json::json!({
+        "path": raw::to_json(raw::path_bytes(&path)),
+        "text": text,
+        "bytes": n,
+    }))
+}
+
+/// 后端这个进程的用户 home（环境里那一格，原样）。空串算没有。
+///
+/// ⚠ 与 SFTP 那一问（`realpath(".")`）**是同一个答案的两个出处**：sshd 起会话时按
+/// 账号库给 `HOME`、并把 SFTP 子系统的起点放在同一处；后端正是经那条 SSH 以同一个用户起的。
+/// 两者分得开的只有一形：有人在登录脚本里改了 `HOME` —— 那时本命令答的是改过之后的那个，
+/// 而那正是这台机器上其余东西（shell、Claude）认的那个。
+fn home_var() -> Option<std::ffi::OsString> {
+    let pick = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
+    #[cfg(windows)]
+    {
+        pick("HOME").or_else(|| pick("USERPROFILE"))
+    }
+    #[cfg(not(windows))]
+    {
+        pick("HOME")
+    }
+}
+
+/// `files.home` —— 这台机器上「开在 home」那个起点。
+///
+/// 🔴 **说不出就拒，不猜**：没有这一格 / 是空的 / 不是绝对路径 ⇒ `no_home`。
+/// 拿当前目录或根目录兜底，就是「窗口开出来了、却开在一个用户没要的地方」。
+fn answer_home() -> Answer {
+    home_from(home_var())
+}
+
+/// [`answer_home`] 里**有逻辑的那一段**：环境给的那一格 → 起点或拒。
+///
+/// 抽成吃参数的纯函数，是为了让「没有 / 空 / 相对」三形**喂得进去**：
+/// 判据若去改测试进程自己的环境，就是在一个多线程进程里改全局状态；
+/// 若拿同一个环境变量去对答案，两侧同源、恒真。
+fn home_from(h: Option<std::ffi::OsString>) -> Answer {
+    let h = h.filter(|v| !v.is_empty()).ok_or((
+        "no_home",
+        "后端这个进程的环境里没有 home（那一格没设或是空的）—— 说不出开在哪儿".to_string(),
+    ))?;
+    let p = std::path::PathBuf::from(h);
+    if !p.is_absolute() {
+        return Err((
+            "no_home",
+            "后端这个进程的 home 不是一条绝对路径 —— 当不了起点".to_string(),
+        ));
+    }
+    Ok(serde_json::json!({ "path": raw::to_json(raw::path_bytes(&p)) }))
+}
+
 /// 这一族的**唯一入口**。
 ///
 /// 🔴 「一条命令、一个往返」（`设计/60 §3.5.2` 的第三段）就是这个函数的形状：
@@ -704,6 +876,8 @@ pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
         "files.index.status" => answer_status(),
         "files.index.rebuild" => answer_index_rebuild(args),
         "files.browse" => answer_browse(args),
+        "files.read.text" => answer_read_text(args),
+        "files.home" => answer_home(),
         other => Err(("unknown_capability", format!("`{other}` 不是这一族的能力"))),
     }
 }

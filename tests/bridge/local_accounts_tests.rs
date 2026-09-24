@@ -824,3 +824,106 @@ async fn the_two_local_acct_iso_commands_really_ask_the_backend() {
         .expect_err("没有本机后端却拿到了片段");
     assert!(sn.contains("本机后端不在"), "{sn}");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 〔第三波 S3 · 2026-09-24〕本机 apikey 表并进清单的 `authKind` / `authReady`（主会话裁 P2：生产者一侧）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 一份本机清单：`carol` 是「设置页 apikey 那一支建出来的号」的形状 —— manifest 不说种类（落订阅）、
+/// 没有订阅凭据；`alice` 是已登录的订阅号；`dave` 是缺凭据、**不在表里**的订阅号（阴性对照）。
+/// 逐字写死（同 `fake_listing` 那条纪律：测试钉契约，不拿生产常量拼）。
+fn listing_with_an_apikey_made_account() -> String {
+    [
+        r#"{"kind":"accounts-meta","enabled":true,"acctsDir":"/h/lib","manifestPath":"/h/lib/accounts.json","updatedAt":null,"sharedStore":"/h/shared","count":4,"error":null,"accountZeroAware":true}"#,
+        r#"{"name":"zero","email":"","configDir":null,"isDefault":false,"mode":"isolated","exists":true,"loggedIn":true}"#,
+        r#"{"name":"alice","email":"a@x.edu","configDir":"/h/lib/alice","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}"#,
+        r#"{"name":"carol","email":"","configDir":"/h/lib/carol","isDefault":false,"mode":"isolated","exists":true,"loggedIn":false,"authKind":"subscription","authReady":false}"#,
+        r#"{"name":"dave","email":"","configDir":"/h/lib/dave","isDefault":false,"mode":"isolated","exists":true,"loggedIn":false,"authKind":"subscription","authReady":false}"#,
+    ]
+    .join("\n")
+}
+
+/// 用**真写入口**（`creds_store::write_key_at`，界面「配 apikey」走的那一个）写一份表，
+/// 再用**真读口**（`history::apikey_rows_at`）读回它的行。
+fn apikey_rows_written_for(sb: &Sandbox, config_dirs: &[&str]) -> Vec<String> {
+    let path = sb.0.join("apikey-table.json");
+    for d in config_dirs {
+        crate::creds_store::write_key_at(&path, d, "sk-test-fixture-not-a-real-key")
+            .expect("真写入口写不进沙箱");
+    }
+    crate::history::apikey_rows_at(&path)
+}
+
+fn listed(o: LocalAccountsOutcome) -> Vec<crate::accounts::RemoteAccount> {
+    match o {
+        LocalAccountsOutcome::Listed { accounts, .. } => accounts,
+        other => panic!("该落到 Listed 那一档：{other:?}"),
+    }
+}
+
+/// ★★ 表里有这个号的一行 ⇒ `authKind == api-key` 且就绪（可选）；不在表里的一格都不变。
+///
+/// 异源：表的一侧用真写入口写（`write_key_at`）、真读口读（`apikey_rows_at`）；
+/// 清单的一侧是后端那份出参经真解析（`classify_local_accounts`）。两侧只在「配置目录 → 账号 id」
+/// 那一份规则上相交（全仓唯一，`history::apikey_account_id_of_dir`）。
+#[test]
+fn an_account_with_a_row_in_the_apikey_table_is_an_api_key_account_and_selectable() {
+    let sb = Sandbox::new();
+    let rows = apikey_rows_written_for(&sb, &["/h/lib/carol"]);
+    assert_eq!(rows, vec!["carol".to_string()], "前提：真写入口写进去、真读口读得回那一行");
+
+    let before = listed(classify_local_accounts(QueryOutcome::Ok(
+        listing_with_an_apikey_made_account(),
+    )));
+    let after = listed(with_apikey_table(
+        classify_local_accounts(QueryOutcome::Ok(listing_with_an_apikey_made_account())),
+        &rows,
+        "claude-code",
+    ));
+    let by = |v: &[crate::accounts::RemoteAccount], n: &str| {
+        v.iter().find(|a| a.name == n).cloned().expect("少了一个号")
+    };
+    // 前提：并之前 carol 就是「未登录、选不中」那一形（否则下面的正题是空真）。
+    assert_eq!(by(&before, "carol").auth_kind, Some(crate::accounts::AuthKind::Subscription));
+    assert_eq!(by(&before, "carol").auth_ready, Some(false));
+
+    // 正题：并之后它是 api-key 号，而且就绪（界面据 `authReady` 判可选）。
+    let carol = by(&after, "carol");
+    assert_eq!(carol.auth_kind, Some(crate::accounts::AuthKind::ApiKey));
+    assert_eq!(carol.auth_ready, Some(true));
+    assert!(!carol.logged_in, "`loggedIn` 只是凭据文件在不在，这一格不许被顺手改成 true");
+
+    // 阴性对照：不在表里的号（含缺凭据的订阅号 dave、账号 0）逐字节是后端答的那一份。
+    for n in ["zero", "alice", "dave"] {
+        assert_eq!(
+            serde_json::to_string(&by(&after, n)).unwrap(),
+            serde_json::to_string(&by(&before, n)).unwrap(),
+            "{n} 不在 apikey 表里，却被改了"
+        );
+    }
+}
+
+/// 表属于 claude 那一家（`APIKEY_TABLE_AGENT`）：别家的 agent 在表里一行都没有 ⇒ 一格不并；
+/// 两个失败档原样过（没有清单就没有东西可并）。
+#[test]
+fn the_apikey_table_only_counts_for_its_own_agent_and_failures_pass_through() {
+    let sb = Sandbox::new();
+    let rows = apikey_rows_written_for(&sb, &["/h/lib/carol"]);
+    let codex = listed(with_apikey_table(
+        classify_local_accounts(QueryOutcome::Ok(listing_with_an_apikey_made_account())),
+        &rows,
+        "codex",
+    ));
+    let carol = codex.iter().find(|a| a.name == "carol").expect("carol");
+    assert_eq!(carol.auth_kind, Some(crate::accounts::AuthKind::Subscription));
+    assert_eq!(carol.auth_ready, Some(false));
+
+    for o in [
+        LocalAccountsOutcome::NoBackend("x".into()),
+        LocalAccountsOutcome::Unreadable("y".into()),
+    ] {
+        let want = o.copy();
+        let got = with_apikey_table(o, &rows, "claude-code");
+        assert_eq!(got.copy(), want, "失败档被并表改了");
+    }
+}

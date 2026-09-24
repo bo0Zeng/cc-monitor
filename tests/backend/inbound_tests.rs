@@ -388,12 +388,16 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-mkdir",
         "files-rename",
         "files-write-text",
+        "files-copy",
         "files-ls",
         "files-stat",
         "files-find",
         "files-index-status",
         "files-index-rebuild",
         "files-browse",
+        // 〔F7a · 第三波 09-24〕同族第七、第八条：`files-read-text` 读一整份文件（同步 I/O）。
+        "files-read-text",
+        "files-home",
         // 〔`C1` · 09-24〕只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
         "history-projects",
         "history-read",
@@ -403,6 +407,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
+        "exit-policy-read",
+        "exit-policy-set",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -429,12 +436,15 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-mkdir",
         "files-rename",
         "files-write-text",
+        "files-copy",
         "files-ls",
         "files-stat",
         "files-find",
         "files-index-status",
         "files-index-rebuild",
         "files-browse",
+        "files-read-text",
+        "files-home",
         "history-projects",
         "history-read",
         "history-search",
@@ -443,6 +453,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "exit-policy-read",
+        "exit-policy-set",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(

@@ -34,7 +34,7 @@ import {
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { formatTimestampShort } from "../format";
-import { openSftpPanel } from "../sftp/panel";
+import { openFileWindow } from "../file-window";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 
@@ -535,13 +535,13 @@ export function fileInputPath(input: unknown): string | null {
   return null;
 }
 
-/** F54:远端文件路径可点元素——点击 → 反查主机 cfg → 打开 SFTP 面板定位该文件。 */
+/** F54:远端文件路径可点元素——点击 → 反查主机 cfg → 在文件窗口里定位该文件(〔F7b〕原先是老 SFTP 面板)。 */
 function buildRemoteFileLink(origin: string, filePath: string): HTMLElement {
   const el = document.createElement("button");
   el.type = "button";
   el.className = "tool-file-link";
-  el.textContent = `📂 在 SFTP 打开：${filePath}`;
-  el.title = "在 SFTP 面板定位该远端文件（可预览/下载）";
+  el.textContent = `📂 在文件窗口打开：${filePath}`;
+  el.title = "在文件窗口里定位这个远端文件（可预览 / 下载）";
   el.addEventListener("click", () => void openRemoteFileInSftp(origin, filePath));
   return el;
 }
@@ -552,7 +552,7 @@ async function openRemoteFileInSftp(origin: string, filePath: string): Promise<v
     showActionFailureToast("打开文件失败", `未找到远端主机配置：${origin}`);
     return;
   }
-  openSftpPanel(cfg, filePath);
+  void openFileWindow(cfg, { revealFile: filePath });
 }
 
 /**
