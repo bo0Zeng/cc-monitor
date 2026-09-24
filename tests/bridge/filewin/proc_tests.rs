@@ -53,14 +53,20 @@ fn synthetic_request() -> OpenRequest {
         source: Source::remote(synthetic_cfg()),
         cwd: "/home/user/带空格 的目录".to_string(),
         rows: vec![
-            Row {
-                name: "子目录".to_string(),
-                path: "/home/user/带空格 的目录/子目录".to_string(),
-                is_dir: true,
-                size: 0,
-                lossy_name: false,
+            // 🔴〔补齐五项〕链接与时间两格**也进种子对拍**：它们过不了这条边界的话，
+            //    窗口第一屏就画不出那两列（上一版就是这样，登记成代价挂着）。
+            Listed {
+                row: Row {
+                    name: "子目录".to_string(),
+                    path: "/home/user/带空格 的目录/子目录".to_string(),
+                    is_dir: true,
+                    size: 0,
+                    lossy_name: false,
+                },
+                link: true,
+                mtime_secs: Some(1_700_000_000),
             },
-            Row {
+            Listed::plain(Row {
                 // 🔴 有损那一格**必须进种子对拍**：它是一个**事实**（那串字节不是合法
                 //    UTF-8），而 JSON 只装得下 `String` ⇒ 不把这一格带过去，
                 //    窗口那侧就会把一个有损名字画成一个正常名字。
@@ -69,7 +75,7 @@ fn synthetic_request() -> OpenRequest {
                 is_dir: false,
                 size: 4_097,
                 lossy_name: true,
-            },
+            }),
         ],
         reveal: Some("坏\u{FFFD}名字".to_string()),
     }

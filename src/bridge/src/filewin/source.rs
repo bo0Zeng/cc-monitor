@@ -108,18 +108,14 @@ pub struct Row {
 /// 那不是一次可能的冲突，是一次**必然**的冲突。
 ///
 /// ⇒ 形状换成「窄的那个一个字节不动，外面套一层」：
-/// [`Row`] 仍然是**过进程边界的那五格**（`proc::OpenRequest` 持的就是它，而那份文件在红线里），
-/// `Listed` 是**窗口里的一行**。⚠ 刻意**只给 `Deref`、不给 `DerefMut`**：
+/// [`Row`] 仍然是那五格，`Listed` 是**窗口里的一行**。⚠ 刻意**只给 `Deref`、不给 `DerefMut`**：
 /// 经这一层改不了里面那一行 ⇒ 「两格与那一行漂开」这件事**写都写不出来**。
 ///
-/// # ⚠ 它的代价，就一条，写在这儿而不是藏着
+/// # 过进程边界的是它，不是 [`Row`]
 ///
-/// 入口那条命令先列好、交给窗口进程的**第一屏**走的是 `Vec<Row>`（`proc.rs` 那个载荷）
-/// ⇒ 那一屏**没有这两格**（画出来就是「没有箭头、没有时间」），
-/// 第一次刷新 / 换目录之后就有了。这一格由 [`Listed::plain`] 的名字说出来，
-/// 并由 `shell_tests::the_seeded_first_screenful_admits_it_has_no_link_or_time_column` 钉着。
-/// 补它只要把 `proc::OpenRequest::rows` 换成 `Vec<Listed>`（一行），
-/// 而**那份文件不在本刀写区**。
+/// 上一版这里登记着一条代价：交给窗口进程的**第一屏**走 `Vec<Row>`，于是那一屏
+/// 没有链接与时间两格。那份文件（`proc.rs`）后来进了写区 ⇒ `proc::OpenRequest::rows`
+/// 换成了 `Vec<Listed>`，那条代价没了；`proc_tests` 的种子对拍里两格都在，丢一格就红。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Listed {
     /// 那五格。
@@ -146,6 +142,13 @@ impl Listed {
             link: false,
             mtime_secs: None,
         }
+    }
+}
+
+/// 夹具与「只交得出那五格」的路用的那一形 —— 与 [`Listed::plain`] 同义。
+impl From<Row> for Listed {
+    fn from(row: Row) -> Self {
+        Self::plain(row)
     }
 }
 
@@ -458,7 +461,7 @@ pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
 /// ⇒ 那条路上**唯一有逻辑的一段**就是这里，把它抽出来，它就有判据了。
 ///
 /// 🔴〔补齐五项 2026-09-23〕**`is_symlink` 这一格此前在这里被丢掉了。**
-/// `SftpEntry` 一直在送它（`sftp_pool.rs` 那个结构体里就有），而旧面板拿它画 `↳`
+/// `SftpEntry` 一直在送它（`sftp_pool.rs` 那个结构体里就有），而旧面板拿它画一个链接标记
 /// —— 也就是说「看不出哪个是符号链接」这条缺口在**退路**这一侧同样是
 /// 「数据在送、窗口不画」，不只主路那一侧。
 ///

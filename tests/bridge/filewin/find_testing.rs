@@ -563,7 +563,7 @@ pub fn window_on(origin: &str, cwd: &str) -> crate::filewin::shell::FileWindow {
         crate::filewin::source::Source::remote(cfg),
         cwd.to_string(),
         tokio::runtime::Handle::try_current().ok(),
-        Vec::new(),
+        Vec::<crate::filewin::source::Row>::new(),
     )
 }
 

@@ -167,7 +167,7 @@ pub fn synth_paths(n: usize, seed: u64) -> Vec<String> {
 /// 合成 `n` 行列表数据。约 1/8 是目录 —— 只影响画什么，不影响长度分布。
 ///
 /// 🔴〔补齐五项 2026-09-23〕**链接与时间两格也合成，理由是「尺子要量今天的靶子」。**
-/// 行上多了两样要画的东西（`↳` 那个标记与那一列 UTC 时间）⇒ 若这份语料
+/// 行上多了两样要画的东西（`🔗` 那个标记与那一列 UTC 时间）⇒ 若这份语料
 /// 两格全空，`scale` 那一族的帧时读数量的就是一个**已经不在盘上的界面**。
 ///
 /// ⚠ 两格**都从路径算，一格 rng 都不多抽** —— 那是刻意的：`rng` 的序一动，
@@ -182,7 +182,9 @@ pub fn synth_rows(n: usize, seed: u64) -> Vec<super::source::Listed> {
             let name = p.rsplit('/').next().unwrap_or("").to_string();
             let is_dir = rng.next_u64() % 8 == 0;
             // 从路径本身派生（不抽 rng）：约 1/17 是链接，时间摊在约 30 年的跨度上。
-            let h = p.bytes().fold(0u64, |a, b| a.wrapping_mul(31).wrapping_add(u64::from(b)));
+            let h = p
+                .bytes()
+                .fold(0u64, |a, b| a.wrapping_mul(31).wrapping_add(u64::from(b)));
             super::source::Listed {
                 link: h % 17 == 0,
                 mtime_secs: Some(1_000_000_000 + h % 900_000_000),
