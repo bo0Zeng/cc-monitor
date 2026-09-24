@@ -107,7 +107,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::source::{Row, Source};
+use super::source::{Listed, Source};
 
 /// 窗口进程那份二进制的**文件名主干**。
 ///
@@ -133,7 +133,8 @@ pub struct OpenRequest {
     /// 开在哪个目录。
     pub cwd: String,
     /// **已经列好的那一屏** —— 入口那条命令为了能出声已经列过一趟了，别打第二次往返。
-    pub rows: Vec<Row>,
+    /// 🔴〔补齐五项〕是 `Listed`（带链接与时间两格）而不是 `Row` —— 否则第一屏画不出那两列。
+    pub rows: Vec<Listed>,
     /// 开窗就高亮这一行（`None` = 不高亮）。
     pub reveal: Option<String>,
 }

@@ -514,7 +514,7 @@ fn xvfb_worker_opens_a_real_window() {
         Source::remote(synth_cfg(XVFB_ORIGIN)),
         cwd.clone(),
         None,
-        rows.clone(),
+        rows.iter().cloned().map(Into::into).collect(),
         None,
     );
 
@@ -631,7 +631,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         Source::remote(synth_cfg(XVFB_ORIGIN)),
         "/srv/xvfb-nodisp".to_string(),
         None,
-        vec![file_row("f.txt")],
+        vec![file_row("f.txt").into()],
         None,
     );
     let (verdict, why) = join_verdict(h, 30_000);
@@ -1752,7 +1752,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
         Source::remote(synth_cfg("edit-dirty")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
-        Vec::new(),
+        Vec::<Row>::new(),
     );
     // 直接把编辑面立起来（读那一跳由上面那条判据钉）。
     w.edits.deliver(crate::filewin::editor::Arrived::Text {
@@ -1805,7 +1805,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
         Source::remote(synth_cfg("edit-fence")),
         "/home/u/.claude/projects/p".to_string(),
         tokio::runtime::Handle::try_current().ok(),
-        Vec::new(),
+        Vec::<Row>::new(),
     );
     let jsonl = "/home/u/.claude/projects/p/s.jsonl";
     w.edits.deliver(crate::filewin::editor::Arrived::Text {
@@ -2150,4 +2150,108 @@ fn the_spawn_result_is_never_thrown_away() {
         at_spawn < at_check,
         "那一跳排在起进程**之前** —— 那时还没有进程可看"
     );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔补齐五项 2026-09-23〕排序下拉 · 面包屑 · 在此打开终端
+// ════════════════════════════════════════════════════════════════════════
+
+fn sized_row(name: &str, size: u64) -> Row {
+    Row {
+        name: name.to_string(),
+        path: format!("/srv/data/{name}"),
+        is_dir: false,
+        size,
+        lossy_name: false,
+    }
+}
+
+/// 🔴 **换档当场重排手上那一摞**（不是「记下来等下次列目录」）；同一档再点一次什么都不做。
+#[test]
+fn picking_a_sort_reorders_the_rows_already_on_screen() {
+    let mut w = remote_window_with_rows(
+        "/srv/data",
+        vec![sized_row("a", 1), sized_row("b", 300), sized_row("c", 20)],
+    );
+    assert_eq!(names(&w), ["a", "b", "c"]);
+    assert!(w.set_sort(SortBy::Size), "换到另一档该回 true");
+    assert_eq!(names(&w), ["b", "c", "a"], "换档之后屏幕上那一摞没重排");
+    assert!(!w.set_sort(SortBy::Size), "同一档再点一次不该算「换了」");
+    assert!(w.set_sort(SortBy::Name));
+    assert_eq!(names(&w), ["a", "b", "c"]);
+}
+
+/// 工具栏上真画出了那三样：排序下拉（带当前那一档）· 「在此打开终端」· 面包屑每一段。
+///
+/// ⚠ 判的是**这一帧画出来的文字**（生产那个 `frame_body`），不是源码里有没有那几个字面量。
+#[test]
+fn the_toolbar_really_paints_sort_breadcrumbs_and_the_terminal_button() {
+    let mut w = remote_window_with_rows("/srv/data/子目录", vec![file_row("x")]);
+    let ctx = egui::Context::default();
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let painted = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    for want in ["在此打开终端", "排序：名称", "/", "srv", "data", "子目录"] {
+        assert!(
+            painted.iter().any(|t| t == want),
+            "这一帧上没有「{want}」。画出来的是：{painted:?}"
+        );
+    }
+    // 换档之后下拉那一格跟着变（它读的是同一个状态，不是一个写死的串）。
+    w.set_sort(SortBy::Type);
+    let painted = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    assert!(painted.iter().any(|t| t == "排序：类型"));
+    assert!(!painted.iter().any(|t| t == "排序：名称"), "旧那一档还画着");
+}
+
+/// 🔴 **没有运行时的窗口点「在此打开终端」：出声，而且那句话画在窗口上**（不是静默什么都不发生）。
+#[test]
+fn opening_a_terminal_with_no_runtime_says_so_on_the_window() {
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    assert_eq!(w.term_notice(), None);
+    assert!(!w.open_terminal_here(None), "没有运行时却说发出去了");
+    let said = w.term_notice().expect("没有运行时，却一句话都没留下");
+    let ctx = egui::Context::default();
+    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let painted = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    assert!(
+        painted.iter().any(|t| t == &said),
+        "那句话没画出来：{painted:?}"
+    );
+}
+
+/// 🔴 **「在此打开终端」拼出来的那一串与旧面板逐字节相同 —— 跨语言对拍。**
+///
+/// 两侧不同源：期望串**现读** `tests/remote-launch.test.ts` 里旧面板那条判据的三行
+/// （`buildOpenTerminalCmd` 的黄金样例），本侧喂同样的三个入参。
+/// TS 那一份哪天改了行为（它的判据也就跟着改了），这里当场红 —— 不再是「有账、没自动对拍」。
+#[test]
+fn the_open_terminal_command_equals_the_old_panels_byte_for_byte() {
+    const TS: &str = include_str!("../../../tests/remote-launch.test.ts");
+    const SHELL_LINE: &str = "const shell = \"exec ${SHELL:-bash} -l\";";
+    const GOLDEN: &[(&str, &str, &str)] = &[
+        (
+            "eq(buildOpenTerminalCmd(\"/home/pi/p\"), `cd '/home/pi/p' && ${shell}`);",
+            "/home/pi/p",
+            "cd '/home/pi/p' && exec ${SHELL:-bash} -l",
+        ),
+        (
+            "eq(buildOpenTerminalCmd(\"  \"), shell);",
+            "  ",
+            "exec ${SHELL:-bash} -l",
+        ),
+        (
+            "eq(buildOpenTerminalCmd(\"/a b/c\"), `cd '/a b/c' && ${shell}`);",
+            "/a b/c",
+            "cd '/a b/c' && exec ${SHELL:-bash} -l",
+        ),
+    ];
+    guard_core::pin_line(TS, SHELL_LINE).expect("TS 那条黄金样例里 `shell` 那一行变了");
+    for (ts_line, input, want) in GOLDEN {
+        guard_core::pin_line(TS, ts_line)
+            .unwrap_or_else(|e| panic!("TS 那一侧的黄金样例变了 —— 两份漂开了：{e}"));
+        assert_eq!(build_open_terminal_cmd(input), *want, "入参 {input:?}");
+    }
+    // ⚠ 双引号那一条：模板自己**一个都不带**（`launch.rs` 拒掉含双引号的 `remote_cmd`）；
+    //   路径里自带的双引号会原样进单引号里 ⇒ 那一形由 `launch.rs` 拒、窗口出声，不在这里兜。
+    assert!(!build_open_terminal_cmd("").contains('"'));
 }

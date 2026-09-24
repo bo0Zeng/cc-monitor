@@ -297,14 +297,19 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool) -> RowHi
         ui.painter().rect_filled(band, 2.0, vis);
     }
     let inner = ui.horizontal(|ui| {
-        // 🔴〔补齐五项 2026-09-23〕**符号链接有自己的字形**（`↳`，与旧面板逐字同一个）。
+        // 🔴〔补齐五项 2026-09-23〕**符号链接有自己的字形**：`🔗`。
+        //    ⚠ **不是**旧面板那个 `↳` —— 现打：`↳` 在比例字体那条链上**装了 Noto CJK 也画不出**
+        //    （只有等宽链上的 `Hack` 有它），而行名走比例字体 ⇒ 屏幕上会是一个豆腐块。
+        //    `🔗` 住 egui 自带的 emoji 字体，**不装任何系统字体也画得出**（与 `📁`/`📄` 同一处）。
+        //    判据：`fonts_tests::installing_a_system_font_makes_the_whole_probe_renderable`
+        //    （`↳` 在探针里时它当场红，缺的正是这一个字）。
         //    在这之前这一行只问「是不是目录」，于是链接与普通文件在屏幕上**一模一样**
         //    —— 而后端与 SFTP 两条路一直都在送那一格（`source::Listed::link`）。
         // ⚠ 顺序是 `link` 先判：一条**指向目录**的链接在 `files-ls` 那侧 `kind` 是
         //   `symlink`（后端拿的是 `file_type()`，它不跟链接）⇒ `is_dir` 是 false，
         //   两格不会同时真；写成 `is_dir` 先判也对，但那会让「哪一格说话」依赖后端的实现。
         ui.label(if r.link {
-            "↳"
+            "🔗"
         } else if r.is_dir {
             "📁"
         } else {

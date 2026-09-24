@@ -156,13 +156,8 @@ pub async fn open_file_window(
         Target::Home => (super::source::resolve_remote_home(&cfg).await?, None),
     };
     // ① 先真的列一趟 —— 走共用那条池（同进程、无 IPC）。列不出来就别开窗。
-    let listed = list_remote(&cfg, &path).await?;
-    let n = listed.len();
-    // 🔴〔补齐五项 2026-09-23〕**交出去的是那五格**（`proc::OpenRequest::rows` 的类型）。
-    //    ⇒ 链接与时间那两格**过不了这条进程边界**，窗口开出来的第一屏没有它们
-    //    （第一次刷新 / 换目录之后就有了）。逐条代价与「补它只要改 `proc.rs` 一行」
-    //    住 `super::source::Listed` 头注；那份文件不在本刀写区。
-    let rows: Vec<super::source::Row> = listed.into_iter().map(|l| l.row).collect();
+    let rows = list_remote(&cfg, &path).await?;
+    let n = rows.len();
     // ② 🔴〔第十三刀 2026-09-23〕**拿着这一屏起一个独立进程。**
     //
     //    逐条理由住 `proc` 头注（用户「窗口生命周期就是销毁」那条裁决 ＋

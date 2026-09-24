@@ -515,20 +515,30 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
             { "path": "/a/also-good", "kind": "dir" },
         ],
     });
-    let e = rows_from_ls_data(&d, SortBy::default()).expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
+    let e = rows_from_ls_data(&d, SortBy::default())
+        .expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
     assert!(e.contains("第 1 条"), "报错没说是第几条：{e}");
     // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
     let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ] });
-    assert_eq!(rows_from_ls_data(&ok, SortBy::default()).unwrap().0.len(), 1);
+    assert_eq!(
+        rows_from_ls_data(&ok, SortBy::default()).unwrap().0.len(),
+        1
+    );
 }
 
 /// `truncated` 带得回来（缺了就当没截断）。
 #[test]
 fn truncation_is_carried_back_not_dropped() {
     let d = serde_json::json!({ "entries": [], "truncated": true });
-    assert!(rows_from_ls_data(&d, SortBy::default()).unwrap().1, "截断那一格被丢了");
+    assert!(
+        rows_from_ls_data(&d, SortBy::default()).unwrap().1,
+        "截断那一格被丢了"
+    );
     let d2 = serde_json::json!({ "entries": [] });
-    assert!(!rows_from_ls_data(&d2, SortBy::default()).unwrap().1, "缺了就该当没截断");
+    assert!(
+        !rows_from_ls_data(&d2, SortBy::default()).unwrap().1,
+        "缺了就该当没截断"
+    );
 }
 
 /// 🔴 **退路在，而且排在问后端之后；而且它只有一支。**
@@ -587,4 +597,383 @@ fn the_fallback_exists_and_comes_after_asking_the_backend() {
     let at_say = guard_core::pin_line(&prod, "Ok((rows, false, Some(why)))")
         .expect("退路没把原因交出去 —— 那就是一次静默降级");
     assert!(at_fb < at_say, "那句话不在退路后面（fn 体被重排过？）");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴〔补齐五项 2026-09-23〕排序 · 面包屑 · 修改时间 · 逐格表
+// ════════════════════════════════════════════════════════════════════════
+
+/// 一摞行的**序指纹**（FNV-1a 64，喂 `名字 ‖ 是不是目录 ‖ 0`）。
+///
+/// ⚠ 散列本身不是被测对象 —— 它只是把「两万行的序」压成一个能钉进判据的数。
+/// 基线那一趟用的是**逐字同一段**散列代码（见下面那条判据的头注）。
+fn order_fingerprint(v: &[Listed]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for r in v {
+        for b in r.name.bytes().chain([u8::from(r.is_dir), 0]) {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    h
+}
+
+/// 🔴 **缺省那一档（名称）与本刀之前那个写死的 `sort_rows` 逐字节同序。**
+///
+/// # 两侧不同源 —— 那个数是在**基线提交上真跑出来的**
+///
+/// 期望值 `0xb7ba462750a3cc6a` 不是由本文件里任何一行算出来的：它是在基线
+/// `2cb26ecc`（补齐五项之前，`sort_rows(v: &mut [Row])` 还是写死的那一版）的一棵临时工作树里，
+/// 对 `corpus::synth_rows(20_000, 0x5EED_0F0D)` 跑**那一版** `sort_rows` 印出来的
+/// （同一段散列代码；语料的名字与是否目录两格在两版之间逐字节相同 ——
+/// `corpus::synth_rows` 头注写着新那两格一格 rng 都不多抽）。
+///
+/// ⇒ `Name` 那一支里多出来的那个 `then_with(Equal)` 哪天被人改成真比较一格东西，
+///   这条当场红；而 `sort_rows` 整个换一种写法、只要序不变，它照样绿（它判的是行为）。
+#[test]
+fn the_default_order_is_byte_for_byte_what_it_was_before() {
+    let mut v = crate::filewin::corpus::synth_rows(20_000, 0x5EED_0F0D);
+    let before = order_fingerprint(&v);
+    sort_rows(&mut v, SortBy::default());
+    assert_eq!(
+        order_fingerprint(&v),
+        0xb7ba_4627_50a3_cc6a,
+        "缺省那一档的序与基线那一版不再逐字节相同 —— 「默认与从前一样」那句话失效了"
+    );
+    // 反空真：这份语料真的被重排了（不是本来就有序、排了等于没排）。
+    assert_ne!(
+        before, 0xb7ba_4627_50a3_cc6a,
+        "语料本来就是有序的 —— 上面那条在空转"
+    );
+    // 反空真 ②：「大小」那一档真的给出**不同**的序（`by` 这一格不是被忽略掉的）。
+    // ⚠ 「类型」那一档在这份语料上**恰好**与名称同序（现打）：合成名字里没有点，
+    //   而旧面板那个怪处让「没有点」的扩展名就是整个名字 ⇒ 按扩展名排 ＝ 按名字排。
+    //   那一档的区分力由 `sorting_by_type_matches_the_old_panel` 单独喂。
+    let mut w = v.clone();
+    sort_rows(&mut w, SortBy::Size);
+    assert_ne!(
+        order_fingerprint(&w),
+        0xb7ba_4627_50a3_cc6a,
+        "「大小」那一档排出来和名称一模一样 —— 入参没进比较器"
+    );
+}
+
+/// 🔴 **已经按名称排过的一屏，再按名称排一遍是恒等**（稳定排序 ＋ 同一个比较器）。
+///
+/// 这是 `list_dir` 那一步「池子排过一次、这里再排一次」不搅序的结构理由。
+#[test]
+fn sorting_an_already_sorted_screenful_by_name_changes_nothing() {
+    let mut once = crate::filewin::corpus::synth_rows(5_000, 7);
+    sort_rows(&mut once, SortBy::Name);
+    let mut twice = once.clone();
+    sort_rows(&mut twice, SortBy::Name);
+    assert_eq!(once, twice);
+    // 阴性对照：换一档**会**改（否则「恒等」可能来自比较器根本没在比）。
+    let mut other = once.clone();
+    sort_rows(&mut other, SortBy::Size);
+    assert_ne!(once, other);
+}
+
+fn named(name: &str, is_dir: bool, size: u64) -> Listed {
+    Listed::plain(Row {
+        name: name.to_string(),
+        path: format!("/x/{name}"),
+        is_dir,
+        size,
+        lossy_name: false,
+    })
+}
+
+fn order_of(v: &[Listed]) -> Vec<&str> {
+    v.iter().map(|r| r.name.as_str()).collect()
+}
+
+/// 「大小」那一档：目录恒在前 · 大的在前 · 一样大按名称（同旧面板 `b.size - a.size || cmpName`）。
+///
+/// ⚠ 期望序是**照着 `src/sftp/paths.ts::sortEntries` 手推**的，不是拿本函数跑一遍抄下来的。
+#[test]
+fn sorting_by_size_matches_the_old_panel() {
+    let mut v = vec![
+        named("small", false, 1),
+        named("Zdir", true, 0),
+        named("big", false, 900),
+        named("b-tie", false, 50),
+        named("a-tie", false, 50),
+        named("adir", true, 0),
+    ];
+    sort_rows(&mut v, SortBy::Size);
+    assert_eq!(
+        order_of(&v),
+        ["adir", "Zdir", "big", "a-tie", "b-tie", "small"]
+    );
+}
+
+/// 「类型」那一档：按扩展名 · 相持按名称 —— **连旧面板那个怪处一起照抄**：
+/// 名字里没有点时，`lastIndexOf` 回 `-1`、`slice(0)` 回**整个名字**，于是
+/// `README` 的「扩展名」是 `readme`，排在 `md` 后面、`rs` 前面。
+#[test]
+fn sorting_by_type_matches_the_old_panel() {
+    let mut v = vec![
+        named("b.rs", false, 0),
+        named("README", false, 0),
+        named("a.md", false, 0),
+        named("z.MD", false, 0),
+        named("a.rs", false, 0),
+        named("src", true, 0),
+    ];
+    sort_rows(&mut v, SortBy::Type);
+    assert_eq!(
+        order_of(&v),
+        ["src", "a.md", "z.MD", "README", "a.rs", "b.rs"],
+        "注意 `README` 的位置：它就是那个怪处的阴性对照 —— \
+         把「没有点就回空串」写对了的版本会把它排到文件那一段的最前面"
+    );
+}
+
+/// 下拉里那三档是**闭集**，名字与旧面板那三档一一对应，而且缺省是名称。
+#[test]
+fn the_sort_menu_is_the_three_old_panel_choices_and_defaults_to_name() {
+    assert_eq!(SortBy::default(), SortBy::Name);
+    let labels: Vec<&str> = SortBy::ALL.iter().map(|b| b.label()).collect();
+    assert_eq!(labels, ["名称", "大小", "类型"]);
+}
+
+/// 面包屑：根在最前，每一段各是一个可点的前缀；`//` 与尾巴上的 `/` 不生出空段。
+#[test]
+fn breadcrumbs_are_every_prefix_with_the_root_first() {
+    let own = |v: &[(&str, &str)]| -> Vec<(String, String)> {
+        v.iter()
+            .map(|(a, b)| ((*a).to_string(), (*b).to_string()))
+            .collect()
+    };
+    assert_eq!(
+        breadcrumbs("/home/u/带空格 的目录/"),
+        own(&[
+            ("/", "/"),
+            ("home", "/home"),
+            ("u", "/home/u"),
+            ("带空格 的目录", "/home/u/带空格 的目录"),
+        ])
+    );
+    assert_eq!(
+        breadcrumbs("/a//b"),
+        own(&[("/", "/"), ("a", "/a"), ("b", "/a/b")])
+    );
+    // 到顶与空串：恰好一格（根自己），不是零格。
+    assert_eq!(breadcrumbs("/"), own(&[("/", "/")]));
+    assert_eq!(breadcrumbs(""), own(&[("/", "/")]));
+    // 🔴 与 `parent_dir` 同一种切法：每一格的「去哪儿」再取一次上一级，正好是前一格。
+    let crumbs = breadcrumbs("/srv/a/b/c");
+    for w in crumbs.windows(2) {
+        assert_eq!(
+            parent_dir(&w[1].1),
+            w[0].1,
+            "面包屑与「上一级」两种切法漂开了"
+        );
+    }
+    // ⚠ 反斜杠**不是**分隔符（远端路径恒用 `/`）。
+    assert_eq!(breadcrumbs("/a\\b").len(), 2);
+}
+
+/// 🔴 **逆向日历算法与正向那一份互为逆** —— 两份住两个文件（`utils.rs` 那份不在本路写区），
+/// 于是「两份漂开」只能靠这一条接：往返恒等在一段稠密的日子上逐日断。
+///
+/// 两侧**不同源**：正向是 `crate::utils::days_from_civil`（另一个人写的、另一个文件），
+/// 逆向是 `source::civil_from_days`。
+#[test]
+fn the_two_date_algorithms_are_each_others_inverse() {
+    let mut checked = 0u32;
+    for y in 1899..=2101 {
+        for m in 1..=12 {
+            let dim = match m {
+                2 if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 => 29,
+                2 => 28,
+                4 | 6 | 9 | 11 => 30,
+                _ => 31,
+            };
+            for d in 1..=dim {
+                let z = crate::utils::days_from_civil(y, m, d);
+                assert_eq!(civil_from_days(z), (y, m, d), "第 {z} 天往返不回原样");
+                checked += 1;
+            }
+        }
+    }
+    // 反空真：真的走了约两百年（不是循环体一次没进）。
+    assert_eq!(
+        checked, 74_144,
+        "1899-01-01 ～ 2101-12-31 应当是 74144 天（python `date` 相减现打）"
+    );
+    // 锚：纪元那一天。
+    assert_eq!(civil_from_days(0), (1970, 1, 1));
+}
+
+/// 修改时间那一列写什么：UTC，尾巴上一个 `Z`。
+#[test]
+fn a_modification_time_is_printed_in_utc_and_says_so() {
+    assert_eq!(format_mtime(0), "1970-01-01 00:00Z");
+    // 2023-11-14T22:13:20Z（`date -u -d @1700000000` 现打）。
+    assert_eq!(format_mtime(1_700_000_000), "2023-11-14 22:13Z");
+    // 闰日。
+    assert_eq!(format_mtime(951_782_400), "2000-02-29 00:00Z");
+}
+
+/// `files-ls` 那份声明里的字段名 —— **现读后端源码**（`files.ls` 那条 `Capability` 的 `fields`）。
+fn backend_ls_fields() -> std::collections::BTreeSet<String> {
+    const CAP_LINE: &str = "name: \"files.ls\",";
+    const FIELDS_HEAD: &str = "fields: &[";
+    let prod = guard_core::production_code(include_str!("../../../src/backend/files/mod.rs"));
+    let at = guard_core::pin_line(&prod, CAP_LINE).expect("后端那条 `files.ls` 能力声明不见了");
+    let line = prod
+        .lines()
+        .skip(at)
+        .take(20)
+        .map(str::trim)
+        .find_map(|l| l.strip_prefix(FIELDS_HEAD))
+        .expect("`files.ls` 那条声明后面 20 行里没有 `fields`");
+    line.split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect()
+}
+
+/// 🔴 **后端送的每一格 ↔ 窗口这一行的哪一格** —— `row_from_ls_entry` 头注那张表的可判形态。
+///
+/// 左栏的人群**现读后端声明**（[`backend_ls_fields`]），与下面这张表**两向相等**
+/// ⇒ 后端多送一格而窗口没说它去哪 / 表里写着一格而后端早不送了，两种都红。
+/// 右栏每一格各挂一条**行为**断言（不判源码）。
+#[test]
+fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
+    const TABLE: &[(&str, &str)] = &[
+        ("entries", "那一屏有几行"),
+        ("kind", "is_dir ＋ link"),
+        ("mtime_secs", "mtime_secs（缺 ＝ None）"),
+        ("path", "path · name · lossy_name"),
+        ("size", "size（缺 ＝ 0）"),
+        ("truncated", "界面上那句「只拿到了前 N 条」"),
+    ];
+    let declared: std::collections::BTreeSet<String> =
+        TABLE.iter().map(|(k, _)| (*k).to_string()).collect();
+    assert_eq!(
+        backend_ls_fields(),
+        declared,
+        "后端 `files.ls` 声明的字段与窗口这张逐格表对不上"
+    );
+
+    // ── 右栏：逐格行为 ──
+    let one = |v: serde_json::Value| row_from_ls_entry(&v).expect("这一条该解得出来");
+    // kind：两格，不是一格。
+    let link = one(serde_json::json!({ "path": "/a/l", "kind": "symlink" }));
+    assert!(link.link && !link.is_dir, "symlink 没落成 link");
+    let dir = one(serde_json::json!({ "path": "/a/d", "kind": "dir" }));
+    assert!(dir.is_dir && !dir.link);
+    let file = one(serde_json::json!({ "path": "/a/f", "kind": "file" }));
+    assert!(!file.is_dir && !file.link);
+    // mtime_secs：原样；缺了是 None，不是 0（1970）。
+    let t =
+        one(serde_json::json!({ "path": "/a/t", "kind": "file", "mtime_secs": 1_700_000_000u64 }));
+    assert_eq!(t.mtime_secs, Some(1_700_000_000));
+    assert_eq!(file.mtime_secs, None);
+    // size：缺 ⇒ 0。
+    let s = one(serde_json::json!({ "path": "/a/s", "kind": "file", "size": 42 }));
+    assert_eq!((s.size, file.size), (42, 0));
+    // path：字节 → 名字，有损那一格跟着字节走。
+    let lossy = one(serde_json::json!({ "path": { "b16": "2f612f66ff" }, "kind": "file" }));
+    assert!(lossy.lossy_name && lossy.name.ends_with('\u{FFFD}'));
+    assert_eq!(file.name, "f");
+    // entries / truncated：由 `rows_from_ls_data` 摊开。
+    let (rows, cut) = rows_from_ls_data(
+        &serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ], "truncated": true }),
+        SortBy::default(),
+    )
+    .unwrap();
+    assert_eq!((rows.len(), cut), (1, true));
+}
+
+/// 🔴 **盘上每一处按 `/` 切远端路径的地方都在这张表里，表里也没有死行。**
+///
+/// `parent_dir` / `remote_basename` / `breadcrumbs` 那一族的头注说「多一份切法就多一种
+/// 『Windows 上 `\` 被当分隔符』的机会」—— 这一条把那句话从散文变成相等断言。
+///
+/// # 人群与口径
+///
+/// - 人群：`filewin/` 生产段（`guard_core::production_code` 剥过测试与注释）。
+/// - 算一处「切」：一行里出现 `.split('/')` · `.rsplit('/')` · `.rfind('/')` ·
+///   `.split_terminator('/')` 任一形；记成 `(文件, 所在函数)`。
+/// - ⚠ **不算**：`trim_end_matches('/')`（剥尾巴，不切）· `push('/')`（拼，不切）·
+///   `matches('/').count()`（数深度，不切）。它们不产生「哪一段是名字」的判断。
+#[test]
+fn every_place_that_splits_a_remote_path_is_declared() {
+    const SPLITS: &[&str] = &[
+        ".split('/')",
+        ".rsplit('/')",
+        ".rfind('/')",
+        ".split_terminator('/')",
+    ];
+    const FN_WORD: &str = "fn ";
+    /// `(文件, 函数, 为什么它可以切)`。
+    const DECLARED: &[(&str, &str, &str)] = &[
+        (
+            "corpus.rs",
+            "measure",
+            "合成语料的统计（深度 / 段长），不是远端路径",
+        ),
+        ("corpus.rs", "synth_rows", "合成语料取名字，不是远端路径"),
+        ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
+        ("source.rs", "parent_dir", "上一级"),
+        ("source.rs", "remote_basename", "尾段"),
+    ];
+    let dir = crate::guard_support::repo_root().join("src/bridge/src/filewin");
+    let mut found: std::collections::BTreeSet<(String, String)> = Default::default();
+    let mut files = 0usize;
+    for (path, src) in guard_core::scan_tree_excluding(&dir, &["rs"], &[]) {
+        files += 1;
+        let file = path.file_name().unwrap().to_string_lossy().to_string();
+        let prod = guard_core::production_code(&src);
+        let mut current = String::new();
+        for line in prod.lines() {
+            if let Some(name) = fn_name_on(line, FN_WORD) {
+                current = name;
+            }
+            if SPLITS.iter().any(|n| guard_core::contains_word(line, n)) {
+                found.insert((file.clone(), current.clone()));
+            }
+        }
+    }
+    assert!(
+        files >= 16,
+        "`filewin/` 只扫到 {files} 份 —— 遍历器坏了，下面那条会在空集上成立"
+    );
+    let want: std::collections::BTreeSet<(String, String)> = DECLARED
+        .iter()
+        .map(|(f, n, _)| ((*f).to_string(), (*n).to_string()))
+        .collect();
+    assert_eq!(
+        found, want,
+        "按 `/` 切远端路径的地方与登记表对不上。\n  多出来的（新写了一份切法）：{:?}\n  表里有、盘上没了的：{:?}",
+        found.difference(&want).collect::<Vec<_>>(),
+        want.difference(&found).collect::<Vec<_>>()
+    );
+}
+
+/// 这一行是不是一个函数头；是的话回函数名。
+fn fn_name_on(line: &str, fn_word: &str) -> Option<String> {
+    let t = line.trim_start();
+    let at = t.find(fn_word)?;
+    // `fn ` 之前只许是可见性 / `async` / `const` 之类的词（不许是一段表达式）。
+    let head = &t[..at];
+    if !head.split_whitespace().all(|w| {
+        matches!(
+            w,
+            "pub" | "pub(crate)" | "pub(super)" | "async" | "const" | "unsafe"
+        )
+    }) {
+        return None;
+    }
+    let rest = &t[at + fn_word.len()..];
+    let name: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    (!name.is_empty()).then_some(name)
 }

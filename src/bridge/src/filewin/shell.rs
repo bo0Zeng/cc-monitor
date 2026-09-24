@@ -86,7 +86,7 @@ use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
-use super::source::{breadcrumbs, parent_dir, Listed, Row, Source, SortBy};
+use super::source::{breadcrumbs, parent_dir, Listed, Row, SortBy, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
@@ -415,7 +415,7 @@ pub struct FileWindow {
 
 impl FileWindow {
     pub fn new(source: Source, cwd: String, rt: Option<tokio::runtime::Handle>) -> Self {
-        let w = Self::seeded(source, cwd, rt, Vec::new());
+        let w = Self::seeded(source, cwd, rt, Vec::<Listed>::new());
         w.reload();
         w
     }
@@ -428,20 +428,20 @@ impl FileWindow {
         source: Source,
         cwd: String,
         rt: Option<tokio::runtime::Handle>,
-        rows: Vec<Row>,
+        rows: impl IntoIterator<Item = impl Into<Listed>>,
     ) -> Self {
         let listing = Listing::default();
-        // 🔴 进程边界那一屏走的是 `Vec<Row>`（`proc::OpenRequest` 持的那个类型）
-        //    ⇒ 它**交不出链接与时间那两格**。`Listed::plain` 的名字就是在说这件事，
-        //    逐条代价与「补它只要改 `proc.rs` 一行」住 `source::Listed` 头注。
-        // ⚠ **这一屏刻意不再排一次**：入口那条命令走的是 SFTP，而池子自己已经按
-        //   生产契约排过（`source::list_remote` 的注释逐字），再排一遍是恒等。
+        // 🔴〔补齐五项〕进程边界那一屏走的是 `Vec<Listed>`（`proc::OpenRequest::rows`）
+        //    ⇒ 链接与时间两格**过得了这条边界**，第一屏就有。入参收 `Into<Listed>` 是为了
+        //    判据夹具照旧能喂 `Vec<Row>`（那一形 ＝ `Listed::plain`，两格都「没送」）。
+        // ⚠ **这一屏刻意不再排一次**：入口那条命令列的时候已经按缺省那一档排过
+        //   （`source::rows_from_ls_data`），再排一遍是恒等。
         //   在这儿插一次 `sort_rows` 试过一趟，读数如实记：
         //   `shell_tests::a_write_click_from_the_list_reaches_the_right_row` 当场红 ——
         //   它喂的夹具是乱序的，于是「第 1 行是哪一行」被改掉了。
         //   ⇒ 那是一次**谁都没要求的行为变更**（生产上零收益，判据上真伤），撤掉。
         //   用户换档那一下由 [`FileWindow::set_sort`] 就地重排，不经这里。
-        *listing.rows.lock().unwrap() = rows.into_iter().map(Listed::plain).collect();
+        *listing.rows.lock().unwrap() = rows.into_iter().map(Into::into).collect();
         Self {
             source,
             cwd,
@@ -579,8 +579,7 @@ impl FileWindow {
     /// ⇒ 那半句在这儿是假的。如实登记为**没做**（旧面板那颗按钮同样没有）。
     pub fn open_terminal_here(&mut self, ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
-            *self.term_notice.lock().unwrap() =
-                Some("开终端要一个 tokio 运行时，这个窗口没拿到".into());
+            *self.term_notice.lock().unwrap() = Some("终端开不了，请重开这个窗口".into());
             return false;
         };
         let origin = self.source.origin();
@@ -590,7 +589,7 @@ impl FileWindow {
         h.spawn(async move {
             let said = match crate::launch::launch_remote_terminal(origin.0, cmd).await {
                 Ok(()) => None,
-                Err(why) => Some(format!("打开终端没成：{why}")),
+                Err(why) => Some(format!("终端没打开：{why}")),
             };
             *slot.lock().unwrap() = said;
             if let Some(c) = ctx {
@@ -1818,7 +1817,10 @@ impl FileWindow {
                     for by in SortBy::ALL {
                         // ⚠ 不直接 `&mut self.sort_by`：换档要**连手上这一摞一起重排**
                         //   （`set_sort`），而那件事在这个闭包里做不了 ⇒ 收在帧尾。
-                        if ui.selectable_label(self.sort_by == by, by.label()).clicked() {
+                        if ui
+                            .selectable_label(self.sort_by == by, by.label())
+                            .clicked()
+                        {
                             pick = Some(by);
                         }
                     }
@@ -2081,7 +2083,7 @@ pub fn open_detached_seeded(
     source: Source,
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
-    rows: Vec<Row>,
+    rows: Vec<Listed>,
     // 🔴〔第十刀〕`reveal` = 开窗就高亮这一行（`None` = 不高亮）。
     //    那是老面板 `open(revealPath)` 那一形（会话工具卡 → 文件跳转）。
     reveal: Option<String>,
