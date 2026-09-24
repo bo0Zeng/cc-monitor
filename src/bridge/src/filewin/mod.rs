@@ -253,6 +253,8 @@ pub mod scale;
 pub mod shell;
 pub mod source;
 pub mod transfer;
+// 〔F7c · 第三波 09-24〕工具栏「上传」那一问（`设计/60 §13`）：选完走拖入那一条。
+pub mod upload;
 // 🔴 〔第五刀 2026-09-21〕`设计/99 §4.6.4`：那四条**写**命令在窗口上的落点
 //    （新建目录 · 删除 · 改名 · 改权限）。取消那一条住 [`transfer`]。
 pub mod writeops;

@@ -384,6 +384,8 @@ pub struct FileWindow {
     /// 「存到哪儿 / 盖掉它吗」那两问。`None` = 没在问。
     /// **UI 线程自己的**（同 [`Self::write_prompt`] 的理由：它是一个正在被编辑的草稿）。
     pull_ask: Option<super::download::Ask>,
+    /// 〔F7c · 第三波 09-24〕工具栏「上传」那一问（状态与判定全在 `upload.rs`，这里只挂着）。
+    pub upload: super::upload::UploadPrompt,
     /// 🔴〔第九刀〕编辑那一趟的共享落点（读到货 · 存结局）。
     pub edits: super::editor::EditBoard,
     /// 打开着的那一份文本。`None` = 没在编辑。**UI 线程自己的**。
@@ -471,6 +473,7 @@ impl FileWindow {
             seen_write_rounds: 0,
             pull: super::download::DownloadBoard::default(),
             pull_ask: None,
+            upload: super::upload::UploadPrompt::default(),
             edits: super::editor::EditBoard::default(),
             editing: None,
             asking_discard: false,
@@ -852,6 +855,7 @@ impl FileWindow {
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
             || self.pull_ask.is_some()
+            || self.upload.is_open()
             || self.editing.is_some()
         {
             return;
@@ -1854,6 +1858,10 @@ impl FileWindow {
             if ui.button(MKDIR_LABEL).clicked() {
                 mkdir = true;
             }
+            // 〔F7c〕「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
+            if ui.button(super::upload::UPLOAD_LABEL).clicked() {
+                self.upload.open();
+            }
             // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
             //    它在 POSIX 上恒定「失败」，而那是既定设计（逐条住 `open_terminal_here`）。
             if ui.button("在此打开终端").clicked() {
@@ -1942,6 +1950,12 @@ impl FileWindow {
         self.write_ui(ui);
         // 🔴〔第八刀〕往外拖那一摞：两问 ／ 进度 ／ 结局。同样模态、同样在前。
         self.pull_ui(ui);
+        // 〔F7c〕「上传」那一问：确定之后走拖入那一条（先一次问完覆盖，再并行传）。
+        let up_dir = self.cwd.clone();
+        if let Some(items) = self.upload.ui(ui, &up_dir) {
+            let ctx = ui.ctx().clone();
+            self.start_drop(items, Some(ctx));
+        }
         // 🔴〔第九刀〕编辑那一摞：**先消化到货，再画** ——
         //    反了的话这一帧画的是上一帧的状态（读完了却还显示「正在读」）。
         self.settle_opened_edits();

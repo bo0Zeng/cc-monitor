@@ -486,6 +486,14 @@ src/bridge/src/filewin/source.rs:763	`{cmd}` 没走通：{leg}那一段{what}，
 src/bridge/src/filewin/source.rs:766	`{cmd}` 撤了	改·§2.1	[可达存疑] 本地撤单；窗口今天没有撤单按钮走到这一格 →「已取消」
 src/bridge/src/filewin/source.rs:767	`{cmd}` 的参数这一侧就拼错了	改·§2.1	[可达存疑] 内部不变量（用法错）；句首带内部命令名 兼§2.2 →「内部错误，请重开窗口」
 src/bridge/src/filewin/source.rs:768	`{cmd}` 的应答对不上约定	改·§2.1	[可达存疑] 对端说的话解不出来；句首带内部命令名 →「后端返回的内容读不懂」
+src/bridge/src/filewin/upload.rs:28	上传	保留	[对外] 文件窗口工具栏按钮；短、动词直说
+src/bridge/src/filewin/upload.rs:61	要传的文件是空的	保留	[对外] 上传那一问点确定时框是空的，红字画在框下；说清发生了什么
+src/bridge/src/filewin/upload.rs:66	{l} 不是本机上的一份文件	保留	[对外] 同上；点名那一行路径，用户知道改哪一行
+src/bridge/src/filewin/upload.rs:70	{l} 取不到名字	保留	[对外] 同上；路径是 / 或以分隔符收尾时出现，点名那一行
+src/bridge/src/filewin/upload.rs:141	把本机的文件传到这个目录	保留	[对外] 上传那一问的标题
+src/bridge/src/filewin/upload.rs:142	本机路径（一行一个）	保留	[对外] 上传那一问输入框上方的提示；括号是用法说明不是补充
+src/bridge/src/filewin/upload.rs:150	确定	保留	[对外] 上传那一问的按钮
+src/bridge/src/filewin/upload.rs:153	取消	保留	[对外] 上传那一问的按钮
 src/bridge/src/history.rs:267	本机项目列表	保留	[不对外] log_unknown_reasons 的日志标签
 src/bridge/src/history.rs:1409	旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕	改·§2.1	[可达存疑] OLD_PATH_CANNOT_ATTACH 作 Err 回前端：attach / 拉起器 / 容器路 / K-R106 全是内部说法 兼§2.2 兼§2.4 新词:拉起器 新词:容器路 →「这台机器接不回已有会话，只能新开一个」
 src/bridge/src/history.rs:1520	没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸	改·§2.1	[可达存疑] NO_TMUX_NAME 作 Err：露出前端函数名 mintTmuxName 与「只许由…铸」的内部纪律 兼§2.2 新词:铸 →「缺少会话名，无法启动」
