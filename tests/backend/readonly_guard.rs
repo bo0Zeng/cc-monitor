@@ -1131,6 +1131,11 @@ mod spawn_registry {
              四者都是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别\
              （同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **backend 进程自身**\
              不写用户既有数据）。\
+             ★★ **ccbus-spawn 09-24：第五条到了，逐条记在这里** —— `cc-spawn`（`bus-spawn` 那条原语，\
+             **今天写好了、没登记进帧面**，登记要 bump `BUILD_ID`）。写面：**起一个真 agent 会话**\
+             （tmux ＋ claude/codex 进程，烧额度）· 登记进名册与 spawn 台账 · 预信任那个目录。\
+             仍是**被起的那个进程**在写（它内部再经 `ccm`），与用户在终端里敲 `cc-spawn` 没有区别；\
+             加它的那一刀同样被下面那条相等断言当场红、被逼回来读这一段之后才写下。\
              ⚠ 这一处口从此是**通用**的：将来经它起的每一个插件，写面都落在这一条理由底下，\
              而这条键**分不出**是哪个插件 —— 加一种新的被调命令时必须回来重读这一段，\
              没有任何机检会替你想起（`K6b` 那一族，本条就是它的活体标本）。\
@@ -1976,7 +1981,7 @@ mod g6_reach {
         cmds.dedup();
         assert_eq!(
             cmds,
-            vec!["cc-agents", "cc-kill", "cc-list", "cc-send"],
+            vec!["cc-agents", "cc-kill", "cc-list", "cc-send", "cc-spawn"],
             "经 `plugin/invoke.rs` 那个 `<非字面量>` 键转调的命令变了：{cmds:?}\n\
              ⇒ 回 `ALLOWED` 里 `plugin/invoke.rs` 那条**重读它的豁免理由**，\n\
              把新命令的写面写进去。**不许只改这个断言。**\n\
