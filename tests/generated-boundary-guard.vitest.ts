@@ -592,7 +592,9 @@ describe("C02 事件名钉死", () => {
     // 计数自检用等号：加/删事件时必须红一次，逼人来更新 TS 侧与本断言
     // 11 = 原 10 个（Rust emit → 前端 listen）+ `FRONTEND_READY`（方向相反，前端 emit →
     // Rust listen）。后者由 C02 Phase D 审计 I3 补上：C02 给它上了类型，却把名字漏在门禁外。
-    expect(pairs.length, `期望恰好 11 个事件名常量，实得 ${pairs.length}`).toBe(11);
+    // 〔C1 · 2026-09-24〕11 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）——某台远端长连接
+    // 握手完成。前端 `main.ts` 订阅它，替掉那个 10 秒账号轮询（改事件驱动）。
+    expect(pairs.length, `期望恰好 12 个事件名常量，实得 ${pairs.length}`).toBe(12);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
     const tsFiles = ["src/events.ts", "src/main.ts", "src/remote-health.ts"];

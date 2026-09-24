@@ -6,21 +6,15 @@ use std::path::{Path, PathBuf};
 /// 多一处没登记的 ⇒ 下面那条红。**登记表不是豁免清单**，是「这些我看过、
 /// 而且知道它归谁」的账。
 const REGISTERED: &[(&str, &str, &str)] = &[
-    (
-        "src/session-accounts-poll.ts",
-        "data-poll",
-        "10s 拉一次 `refreshSessionAccounts`（会话↔账号映射）。\
-             ⚠ **F14 第三刀搬家**：原来住 `main.ts`（那里一个 export 都没有 ⇒ 三条性质一条都测不了）。\
-             搬过来之后扇出有上限（4，保序）、有重入锁、窗口不可见时跳过、`stop()` 停得掉。\
-             **周期本身没变，仍是 10s**，所以这条登记照旧成立。\
-             ⚠ **F02 订正**：原文写「事件源已经存在」，实测**只有一半成立** —— \
-             本 UI 自己切号确实有回调（`onDefaultChanged → refreshSessionAccounts`），\
-             但「**别人**（另一个 monitor / 终端里的 ccm）改了账号」**没有事件源**：\
-             backend 的帧集合里**没有任何账号帧**（`Hello/Line/TmuxSessions/SessionAdded/…` 十四种，\
-             逐个数过），`--session-accounts` 是**一次性子命令查询**、不是帧。\
-             ⇒ 这 10s 补的正是那一块。退役归 **U7e**，而 U7e 的前提是**先有一种账号事件** \
-             （新帧或文件事件），不是「已经有了」。",
-    ),
+    // 🔴 〔`C1` · 2026-09-24〕**这里原来的第一条出去了**：`src/session-accounts-poll.ts` 那个
+    //    10s `refreshSessionAccounts`（data-poll）。它自己的说法栏写着退役条件 ——「先有一种账号事件
+    //    （新帧或文件事件）」—— 这一拍兑现的是两件事：两条查询搬上了已有长连接（`accounts-sessions` /
+    //    `accounts-list`，不再每拍握一次手），而「会话 ↔ 账号」只在会话起停时变、**起停本来就有帧**
+    //    （`session_added` / `session_removed` ⇒ `remote-session-added` / `session-ended`），
+    //    再加一个握手完成事件 `remote-backend-ready`。⇒ 刷新改由事件驱动（`createEventRefresher`，零定时器），
+    //    `setInterval` 删了。留着这一行，下面那条反向检查（「登记了却已经没有周期唤醒」）会当场红。
+    //    买不到的一格写在 `session-accounts-poll.ts` 头注：别处改了默认账号、而这台上没有会话起停时，
+    //    账号清单要等下一次握手 / 起停 / 本 UI 操作才刷新。
     (
         "src/views/grid-monitor.ts",
         "ui-clock",
@@ -425,7 +419,10 @@ fn every_data_poll_names_its_event_source_and_owner() {
             assert!(why.contains("退役归"), "{f} 记成 data-poll 却没说谁退役它");
         }
     }
-    assert!(polls >= 3, "只认出 {polls} 条 data-poll —— 分类抽取坏了");
+    // 〔`C1` · 09-24〕地板 `>= 3` 换成相等：今天 data-poll 恰好 **2** 条（`tabs.ts` 的 `awaitExitFor` ·
+    //   `cc-busd`）。**少的那条**是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
+    //   地板在「少了一条」这个方向上判不出是退役还是抽取坏了 —— 相等判得出，而且逼人写清是哪一条。
+    assert_eq!(polls, 2, "data-poll 条数变了（今天 2：tabs.ts · cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
 }
 
 /// **全部调度调用点的分类账**：`(相对仓根的路径, API, 处数, 这几处是什么)`。
@@ -459,7 +456,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/e2e-probe.ts", "requestAnimationFrame", 2, "★ **rAF 自链**：`sample` 每帧重排自己（起点 1 处 + 链内 1 处）。退出条件是 `stopReplayJitterProbe` 显式 `cancelAnimationFrame`。只在 e2e 探针里启用，不在正常路径上。"),
     ("src/error-toast.ts", "setTimeout", 1, "`durationMs` 后移除 toast。一次性。"),
     ("src/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② ③ `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。"),
-    ("src/session-accounts-poll.ts", "setInterval", 1, "10s `refreshSessionAccounts` —— **真 data-poll**，详见上面 `REGISTERED` 那条（事件源与退役去处都在那里）。⚠ F14 第三刀从 `main.ts` 搬来：唯一的一处，且句柄留着（`stop()`）。"),
+    // 〔`C1` · 09-24〕`src/session-accounts-poll.ts` 的 `setInterval` ×1 这一行出去了（10s 账号轮询改事件驱动，理由见 `REGISTERED` 头上那段）。
     // 〔三入口拆分 · `设计/01 §1.2`〕原先 `main.ts` 一行 3 处；代码块「复制」那段全局代理
     //   （② ③ 两处）搬进了主窗与 viewer 窗共用的 `entry-render-common.ts`（viewer 窗不再加载
     //   `main.ts`，而它也要这段代理；设置窗没有代码块，不加载它）。
