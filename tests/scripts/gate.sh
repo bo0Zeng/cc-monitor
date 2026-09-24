@@ -1508,8 +1508,17 @@ deadcode_t0=$(date +%s)
 # ⚠ 🔴 顺带修一条本格自己的腑坏：这个数原先在下面的内联脚本里**手抄了五遍**
 #   （3 处写 33、**2 处还写着更早的 41**）⇒ 终端上印出来的「恒等钉在 41」是假话，
 #   而没有任何东西会因此变红。现在它只住 `pin=` 一处。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 33，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=33; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-24（第一波合并 T3 令牌步 3）：33 → 35，涨的 2 条逐条记在这里。**
+# 两条**全部出自 `src/bridge/src/bind.rs`**，都是「接得住、还没人收」那一拍的**预期状态**：
+#   · `lookup_hwnd_for_token` —— 令牌 → HWND 的查询口。消费点（↗ 按令牌分派）是**步 4**，
+#     排在第二波 ⇒ 今天零生产调用方。**步 4 落地那一拍它会自己出列 ⇒ 本格当场红，逼人改回 34。**
+#   · `entry_from_marker_hit` —— 从 `#[cfg(windows)]` 函数体里抽出来、为的是 Linux 上也验得了
+#     （测试段有调用方）。生产调用方只在 Windows 那支 ⇒ 本格（Linux 非 test 构建）看它是死的。
+#     ⚠ 这一条**不会**自己出列；它的代价就是「平台分支抽出来可测」本身，不是漏。
+# ⚠ 这个数是**现打**的（合并后主线 `cargo check -p monitor --message-format=short`），不是 33+2 算的；
+#   两条的新旧由 `95132442:src/bridge/src/bind.rs` 里这两个函数**零命中**核过。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 35，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=35; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
