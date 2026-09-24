@@ -2,6 +2,16 @@
 //! （`设计/99 §4.6.4` 的前半，用户原话「我能连 ssh 对机器文件进行什么操作，
 //! 后端就应该能进行什么操作」）。
 //!
+//! # 🔴〔F2 · 2026-09-24〕那四条现在走**后端写面**，经通道说 `call`
+//!
+//! 下面第一节讲的是「经池子那四条 SFTP 命令调下去」—— **那是上一版**。窗口成了独立进程、
+//! 后端写面（`files-mkdir` / `files-delete` / `files-rename` / `files-chmod`，F1 落的）上线之后，
+//! [`apply_remote`] 改成经 [`super::source::ask`] 说那四条命令：`root` ＝ 那一行所在的目录，
+//! `rel` ＝ 名字（后端围栏按段判 `rel`）。**围栏的权威在后端那一侧**（与桥那一份函数体逐字节
+//! 相同）；本层那道本地预判（[`fenced_path`]）照旧留着 —— 它让踩线的那一件**一个字节都不上线**，
+//! 而那一格今天还有一条写区外的判据钉着它（`claude_data_fence_tests` 那条「旧住址最后一个消费者」）。
+//! ⚠ 下面讲池子那几节的每一句都当成**历史**读（`guard_write`、车道预算、池里那条连接）。
+//!
 //! # 🔴 一、这一层**没有**一行写代码
 //!
 //! 那四条命令在池子里早就有了（`sftp_pool` 的 `sftp_mkdir` / `sftp_delete` /
@@ -97,7 +107,7 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::ssh_source::RemoteConfig;
+use super::source::{parent_dir, remote_basename, Line, Origin};
 
 use super::source::Row;
 
@@ -292,28 +302,54 @@ where
 // 生产适配器：**一行自己的写代码都没有**
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 真做一件 —— 调池子那四条既有命令。
+/// 真做一件 —— 经通道说后端写面那四条命令（`files-mkdir` / `-delete` / `-rename` / `-chmod`）。
 ///
-/// 🔴 **为什么可以直接调一个 `#[tauri::command]`**：同进程（`super` 头注），
-/// 它同时就是一个普通 `pub async fn` ⇒ 这里不过 IPC、不过 serde，
-/// 走的是**同一个进程级连接池** ⇒ 围栏、通道预算全部照旧生效。
+/// 🔴 **路径切成 `(root, rel)`**：后端写面按「一个根 ＋ 一段相对名」收参（围栏逐段判 `rel`，
+/// 拒 `..` / 盘符 / 空段）。窗口上的写操作全都发生在**当前目录里**（改名只许同目录，
+/// 由 `clean_name` 那道闸先挡：名字里不许带 `/`），所以切法恒是「上一级 ＋ 尾段」，走
+/// [`parent_dir`] / [`remote_basename`] 那一对（不另写一份切法）。
+/// ⚠ 改名两端**不在同一个目录** ⇒ 这里当场拒（后端那一格只有一个 `root`），不猜。
 ///
-/// ⚠ 回来的 `Err` **原样**带出去（含池子那道 `guard_write` 的原话），
+/// ⚠ 回来的 `Err` **原样**带出去（后端围栏那句拒绝经 [`super::source::said`] 翻成人话），
 /// 由 [`WriteBoard::ui`] 画到窗口上 —— 这一层不改写、不摘要。
-pub async fn apply_remote(cfg: &RemoteConfig, op: &WriteOp) -> Result<(), String> {
-    match op {
-        WriteOp::Mkdir { path } => crate::sftp_pool::sftp_mkdir(cfg.clone(), path.clone()).await,
-        WriteOp::Delete { path, is_dir } => {
-            crate::sftp_pool::sftp_delete(cfg.clone(), path.clone(), *is_dir).await
-        }
+pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<(), String> {
+    let (cmd, args) = match op {
+        WriteOp::Mkdir { path } => (
+            "files-mkdir",
+            serde_json::json!({ "root": parent_dir(path), "rel": remote_basename(path) }),
+        ),
+        WriteOp::Delete { path, .. } => (
+            "files-delete",
+            serde_json::json!({ "root": parent_dir(path), "rel": remote_basename(path) }),
+        ),
         WriteOp::Rename { from, to } => {
-            crate::sftp_pool::sftp_rename(cfg.clone(), from.clone(), to.clone()).await
+            let root = parent_dir(from);
+            if parent_dir(to) != root {
+                return Err(format!("{} 只能在同一个目录里改名", op.label()));
+            }
+            (
+                "files-rename",
+                serde_json::json!({
+                    "root": root,
+                    "from": remote_basename(from),
+                    "to": remote_basename(to),
+                }),
+            )
         }
-        WriteOp::Chmod { path, mode } => {
-            crate::sftp_pool::sftp_chmod(cfg.clone(), path.clone(), *mode).await
-        }
-    }
+        WriteOp::Chmod { path, mode } => (
+            "files-chmod",
+            serde_json::json!({ "root": parent_dir(path), "rel": remote_basename(path), "mode": mode }),
+        ),
+    };
+    super::source::ask(line, origin, cmd, &args, WRITE_BUDGET)
+        .await
+        .map(|_| ())
 }
+
+/// 写面一件的往返上限（调用方给的期限，`05 §3.3.2`：说法归调用方）。
+///
+/// ⚠ 与后端那一侧无关：后端那几条都在阻塞档、开跑之后打不断；这个数只管「窗口等多久」。
+pub const WRITE_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
 // ═══════════════════════════════════════════════════════════════════════
 // 那个框：**要什么名字 / 改成什么权限**（UI 线程自己的状态）

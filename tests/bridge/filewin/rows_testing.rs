@@ -6,7 +6,7 @@ use super::*;
 /// 没有它，「物化行数恒等」在两个实现上都可能恒真，那就是一条空真判据。
 pub fn render_headless_nonvirtual(
     ctx: &egui::Context,
-    rows: &[Row],
+    rows: &[Listed],
     screen: egui::Vec2,
 ) -> RenderTally {
     let mut tally = RenderTally::default();
@@ -43,7 +43,7 @@ pub fn render_headless_nonvirtual(
 /// 给它加一个只有判据用的参数，就是把测试形状写进生产签名。
 pub fn render_headless_with_events(
     ctx: &egui::Context,
-    rows: &[Row],
+    rows: &[Listed],
     screen: egui::Vec2,
     time: f64,
     events: Vec<egui::Event>,
@@ -61,7 +61,7 @@ pub fn render_headless_with_events(
 /// （那正是「把测试形状写进生产签名」那一形）。
 pub fn render_headless_with_events_and_text(
     ctx: &egui::Context,
-    rows: &[Row],
+    rows: &[Listed],
     screen: egui::Vec2,
     time: f64,
     events: Vec<egui::Event>,

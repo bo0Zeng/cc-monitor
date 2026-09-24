@@ -148,9 +148,10 @@ async fn typing_into_the_box_puts_exactly_the_expected_hits_on_the_frame() {
     let wired = testing::wire_up(
         "b1-find-e2e",
         FakeBackend::new(COMMANDS, Declared::default()),
-    );
+    )
+    .await;
     let ctx = ctx_ready();
-    let mut w = testing::window_on(&wired.origin, &root);
+    let mut w = testing::window_on(&wired, &root);
 
     let before = w.search.rounds();
     testing::type_into_search(&ctx, &mut w, NEEDLE);
@@ -207,9 +208,10 @@ async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and
             &[CMD_FIND, CMD_INDEX_STATUS, CMD_BROWSE],
             Declared::default(),
         ),
-    );
+    )
+    .await;
     let ctx = ctx_ready();
-    let mut w = testing::window_on(&wired.origin, &root);
+    let mut w = testing::window_on(&wired, &root);
 
     let before = w.search.rounds();
     testing::type_into_search(&ctx, &mut w, NEEDLE);
@@ -281,9 +283,10 @@ async fn the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing()
     let wired = testing::wire_up(
         "b1-find-cadence",
         FakeBackend::new(COMMANDS, Declared::default()),
-    );
+    )
+    .await;
     let ctx = ctx_ready();
-    let mut w = testing::window_on(&wired.origin, &root);
+    let mut w = testing::window_on(&wired, &root);
 
     let before = w.search.rounds();
     testing::type_into_search(&ctx, &mut w, NEEDLE);
@@ -343,9 +346,10 @@ async fn a_fresh_index_is_never_rebuilt_behind_the_users_back() {
     let wired = testing::wire_up(
         "b1-find-fresh",
         FakeBackend::new(COMMANDS, declared).preindexed(&tree.root),
-    );
+    )
+    .await;
     let ctx = ctx_ready();
-    let mut w = testing::window_on(&wired.origin, &root);
+    let mut w = testing::window_on(&wired, &root);
 
     let before = w.search.rounds();
     testing::type_into_search(&ctx, &mut w, NEEDLE);
@@ -404,9 +408,10 @@ async fn a_stale_index_the_backend_flagged_gets_rebuilt() {
     let wired = testing::wire_up(
         "b1-find-stale",
         FakeBackend::new(COMMANDS, declared).preindexed(&tree.root),
-    );
+    )
+    .await;
     let ctx = ctx_ready();
-    let mut w = testing::window_on(&wired.origin, &root);
+    let mut w = testing::window_on(&wired, &root);
 
     let before = w.search.rounds();
     testing::type_into_search(&ctx, &mut w, NEEDLE);
@@ -433,15 +438,17 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
     let wired = testing::wire_up(
         "b1-find-burst",
         FakeBackend::new(COMMANDS, Declared::default()),
-    );
-    let w = testing::window_on(&wired.origin, &root);
+    )
+    .await;
+    let w = testing::window_on(&wired, &root);
     // 直接连发五趟（不经 UI —— 这一条问的是编排，不是焦点）。
     for _ in 0..5 {
         let mine = w.search.start();
         let b = w.search.clone();
         let (o, r) = (crate::origin::Origin(wired.origin.clone()), root.clone());
+        let line = wired.line.clone();
         tokio::spawn(async move {
-            run_search(b, o, r, NEEDLE.to_string(), mine, false).await;
+            run_search(b, line, o, r, NEEDLE.to_string(), mine, false).await;
         });
     }
     testing::settle(&w.search, 0, "连打那一趟").await;
@@ -501,9 +508,10 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
         let wired = testing::wire_up(
             tag,
             FakeBackend::new(COMMANDS, declared).preindexed(&tree.root),
-        );
+        )
+        .await;
         let ctx = ctx_ready();
-        let mut w = testing::window_on(&wired.origin, &root);
+        let mut w = testing::window_on(&wired, &root);
         let before = w.search.rounds();
         // 按那颗「重建索引」以外的路：直接发一趟（子串留空 ⇒ 只问状态）。
         w.fire_search(None, true);

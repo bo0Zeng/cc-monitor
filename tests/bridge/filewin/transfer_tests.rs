@@ -474,8 +474,15 @@ fn the_real_adapters_delegate_to_the_shared_pool() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
+    // 〔F2 · 2026-09-24〕「那儿有没有东西」那一问改问后端（`files-stat`，经通道）——
+    //   它不搬字节，归后端不归传输；搬字节那一件（上传）照旧走池子（`设计/60 §8.4` 未拍）。
+    assert_eq!(
+        prod.matches("sftp_pool::sftp_stat(").count(),
+        0,
+        "`probe_remote` 又回到了池子那条 `stat` —— 它不搬字节，该问后端"
+    );
     for needle in [
-        "sftp_pool::sftp_stat(",
+        "\"files-stat\"",
         "sftp_pool::sftp_upload(",
         "sftp_pool::TRANSFER_LANE_CAP",
         "pub fn lanes()",

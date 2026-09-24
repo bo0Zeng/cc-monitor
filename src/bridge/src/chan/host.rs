@@ -27,7 +27,8 @@
 //!    世界可读；不走环境变量 —— `/proc/<pid>/environ` 同用户可读、且会被孙进程继承）；
 //! 4. 外部前端从 stdin 读到它，用 [`super::dial::dial`] 连上并出示钥匙。
 //!
-//! ⚠ **第 3 步本波不做**（接进文件窗口是下一波 F2 的活）—— 本文件只交得出 [`Handoff`]。
+//! ✅〔F2 · 2026-09-24〕**第 3 步接上了**：`filewin/entry.rs` 取 [`handoff`]，`filewin/proc.rs` 把它连同
+//! 开窗种子一起写进窗口进程的 stdin（`proc::OpenRequest::handoff`），窗口进程用 [`super::dial::dial`] 拨回来。
 //! ⚠ **钥匙不进日志**：[`Handoff`] 与 `Key` 的 `Debug` 都手写成不打印内容；本文件的日志只印端口。
 //!
 //! # 买到什么

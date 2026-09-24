@@ -141,9 +141,10 @@
 //! - **索引的根是「窗口现在在看的那个目录」，不是整个 home。** 这是一个**取舍**，
 //!   写在 [`one_round`] 那里，不是设计里定的。
 //! - **命中行是只读的文字**：点不开、没有「复制」。理由住 [`super::rows::show_hit_rows`]。
-//! - **回程那一跳在判据里走的是 `InboundClient::route_reply`**（生产里由
-//!   `ssh_source` 的收帧侧调的同一个函数）⇒ **帧的反序列化那一小段不在本摞的射程里**，
-//!   它有自己的判据（同 `tests/bridge/backend/control/inbound_client_tests.rs` 那一摞的形状）。
+//! - 〔F2 · 2026-09-24〕**判据里合成后端挂在通道宿主的 `Backends` 那一格上**（真回环、真钥匙、
+//!   真 `dial`），于是「窗口 → 通道 → 路由器」这几跳在射程里；**宿主往 `inbound_client`
+//!   转交那一跳不在**（合成后端就挂在那一跳的位置上）——那一跳由 `chan_tests` 与
+//!   `inbound_client_tests` 各自那一摞判。
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -151,9 +152,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
-use crate::backend::control::inbound_client::client_for;
-use crate::origin::Origin;
+use super::source::{Line, Origin};
 
 // ═══════════════════════════════════════════════════════════════════
 // 线上命令名
@@ -630,49 +629,23 @@ pub struct Round {
 // 往返
 // ═══════════════════════════════════════════════════════════════════
 
-/// 把三态里那两种「没拿到」摊成一句给用户的话。
-///
-/// ⚠ 搜索**没有第二条路可回落** —— `设计/60 §2 档①` 逐字：SFTP 给不了搜索
-/// （协议只能递归 `READDIR`，而且没地方放索引）。
-/// ⇒ 这里不做回落决策，但**照样走共用那个分流器**（同
-/// `backend::control::cc_bus` 与 `tmux.rs` 那两处的理由）：
-/// 分流规则一有第二份实现，「被门拒绝」就会在某一份里被洗成「换条路重做」。
-pub(super) fn routed_text(r: Routed) -> String {
-    match r {
-        Routed::Done => "后端说做完了，但没给答案 —— 那不是这条命令的契约".to_string(),
-        Routed::NoChannel(why) | Routed::Refused(why) => why,
-    }
-}
-
 /// 发一条命令、拿它的 `data`。
 ///
-/// 🔴〔2026-09-22〕**它现在有两个消费者**：搜索那一摞（本模块）与
-/// **列目录**（[`super::source::list_via_backend`]）。
-/// ⚠ 「怎么跟后端说话」这件事因此横跨两个模块了 —— 如实登记：
-/// **再出现第三个消费者就把这三样（本函数 · [`refusal`] · [`routed_text`]）
-/// 抽到一个自己的落点去**，别让它一直挂在「搜索」这个名字下面。
+/// 🔴〔F2 · 2026-09-24〕**它只是 [`super::source::ask`] 的一层转交** —— 窗口进程里说 `call`
+/// 的唯一一处住那边（列目录与搜索两个消费者、写面四条都经它）。从前这里直接问进程级
+/// 登记表（`inbound_client`）并走共用分流器翻成三态；窗口成了独立进程之后那张表在这个
+/// 进程里是空的，而通道那一侧已经按 `05 §3.3.1` 分好了层（宿主调的就是那个分流器的
+/// 分层出口）⇒ 这里只剩「翻成一句人话」，翻译住 [`super::source::said`]。
 ///
-/// ⚠ 吃的是 [`Origin`]（全仓那一个「哪台机器」的类型），不是一个裸字符串 ——
-/// `origin_tests::no_new_raw_string_origin_parameters` 那条递减棘轮逐字要求新代码这么写。
+/// ⚠ 搜索**没有第二条路可回落** —— `设计/60 §2 档①` 逐字：SFTP 给不了搜索。
 pub(super) async fn call_one(
+    line: &Line,
     origin: &Origin,
     cmd: &str,
     args: Value,
     t: Duration,
-) -> Result<Value, Routed> {
-    let wire = origin.as_wire_str();
-    let Some(client) = client_for(wire) else {
-        return Err(no_channel(wire));
-    };
-    match client.call(cmd, args, t).await {
-        Ok(Some(v)) => Ok(v),
-        Ok(None) => Err(Routed::Refused(format!(
-            "`{cmd}` 回了一条没有 data 的应答 —— 与 `src/doc/IPC-PROTOCOL.md §10` 那份契约不符"
-        ))),
-        Err(e) => Err(route_call_error(&e, |code, message| {
-            refusal(cmd, code, message)
-        })),
-    }
+) -> Result<Value, String> {
+    super::source::ask(line, origin, cmd, &args, t).await
 }
 
 /// 后端拒绝时那句话。**逐档对着 `src/doc/IPC-PROTOCOL.md §10` 的错误码写。**
@@ -715,6 +688,7 @@ pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
 /// 要么后端那侧支持多根（不在本刀的写区）。
 async fn one_round(
     board: &SearchBoard,
+    line: &Line,
     origin: &Origin,
     root: &str,
     needle: &str,
@@ -724,6 +698,7 @@ async fn one_round(
 
     // ① 状态。拿不到就到此为止 —— 后面两步都要它来判。
     match call_one(
+        line,
         origin,
         CMD_INDEX_STATUS,
         serde_json::json!({}),
@@ -739,7 +714,7 @@ async fn one_round(
             }
         },
         Err(r) => {
-            round.notice = Some(routed_text(r));
+            round.notice = Some(r);
             return round;
         }
     }
@@ -754,8 +729,8 @@ async fn one_round(
     //   ⇒ 只记一句话，继续往下走。
     // ⚠ 代价如实记：每一趟查询多一次往返 ＋ 后端那侧多 `read_dir` 一个目录。
     let dirs = vec![root.to_string()];
-    if let Err(r) = call_one(origin, CMD_BROWSE, browse_args(&dirs), call_timeout()).await {
-        round.notice = Some(format!("浏览名单没送到（{}）", routed_text(r)));
+    if let Err(r) = call_one(line, origin, CMD_BROWSE, browse_args(&dirs), call_timeout()).await {
+        round.notice = Some(format!("浏览名单没送到（{r}）"));
     }
 
     // ③ 要不要重走 —— **判据是后端自己算的那两个布尔**，不是这一侧的一个周期。
@@ -767,6 +742,7 @@ async fn one_round(
     if want && board.claim_rebuild() {
         board.rebuilds.fetch_add(1, Ordering::SeqCst);
         match call_one(
+            line,
             origin,
             CMD_INDEX_REBUILD,
             rebuild_args(root),
@@ -783,6 +759,7 @@ async fn one_round(
                 }
                 // 重走完那几个数变了 —— 界面上那一行要是新的。
                 if let Ok(v2) = call_one(
+                    line,
                     origin,
                     CMD_INDEX_STATUS,
                     serde_json::json!({}),
@@ -795,7 +772,7 @@ async fn one_round(
                     }
                 }
             }
-            Err(r) => round.notice = Some(routed_text(r)),
+            Err(r) => round.notice = Some(r),
         }
         board.release_rebuild();
     }
@@ -803,12 +780,12 @@ async fn one_round(
     // ④ 查。⚠ 空子串在后端语义里是「匹配一切」⇒ 这里**不发**，
     //    否则按一下「重建索引」就会顺手拉回一千条路径。
     if !needle.is_empty() {
-        match call_one(origin, CMD_FIND, find_args(needle), call_timeout()).await {
+        match call_one(line, origin, CMD_FIND, find_args(needle), call_timeout()).await {
             Ok(v) => match decode_find(&v) {
                 Ok(o) => round.outcome = Some(o),
                 Err(e) => round.notice = Some(format!("`{CMD_FIND}` 的应答读不动：{e}")),
             },
-            Err(r) => round.notice = Some(routed_text(r)),
+            Err(r) => round.notice = Some(r),
         }
     }
     round
@@ -817,13 +794,14 @@ async fn one_round(
 /// 跑一趟搜索并把结果落进那块板子。**窗口那一侧 `spawn` 的就是它。**
 pub async fn run_search(
     board: SearchBoard,
+    line: Line,
     origin: Origin,
     root: String,
     needle: String,
     mine: u64,
     force_rebuild: bool,
 ) {
-    let round = one_round(&board, &origin, &root, &needle, force_rebuild).await;
+    let round = one_round(&board, &line, &origin, &root, &needle, force_rebuild).await;
     store_if_current(&board, mine, &needle, round);
 }
 
