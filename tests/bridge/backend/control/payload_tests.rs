@@ -568,14 +568,14 @@ fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
     );
     // ── 逐格拒 ──
     for bad in [
-        "",                                    // 空串：**坏数据不是「没有」**（Z01 的支点）
-        "0F1E2D3C4B5A69788796A5B4C3D2E1F0",    // 大写 hex：刻意不收（不许同一令牌两种写法）
-        "0f1e2d3c4b5a69788796a5b4c3d2e1f",     // 31 位
-        "0f1e2d3c4b5a69788796a5b4c3d2e1f00",   // 33 位
-        "0f1e2d3c4b5a69788796a5b4c3d2e1fg",    // 非 hex
-        "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1",  // 带连字符（UUID 形）
-        "0f1e2d3c4b5a69788796a5b4c3d2e1f ",    // 尾随空白
-        "'; rm -rf / #",                       // 注入形（长度也不对，两道都拦）
+        "",                                   // 空串：**坏数据不是「没有」**（Z01 的支点）
+        "0F1E2D3C4B5A69788796A5B4C3D2E1F0",   // 大写 hex：刻意不收（不许同一令牌两种写法）
+        "0f1e2d3c4b5a69788796a5b4c3d2e1f",    // 31 位
+        "0f1e2d3c4b5a69788796a5b4c3d2e1f00",  // 33 位
+        "0f1e2d3c4b5a69788796a5b4c3d2e1fg",   // 非 hex
+        "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1", // 带连字符（UUID 形）
+        "0f1e2d3c4b5a69788796a5b4c3d2e1f ",   // 尾随空白
+        "'; rm -rf / #",                      // 注入形（长度也不对，两道都拦）
     ] {
         let spec = PayloadSpec {
             env: &[EnvOp::ExportRbindToken { value: bad }],
@@ -598,7 +598,10 @@ fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
     // ── 形状判据本体的阴性对照：它不是「恒假」──
     assert!(rbind_token_shape_ok(TOK));
     assert!(!rbind_token_shape_ok(""));
-    assert_eq!(RBIND_TOKEN_LEN, 32, "长度常量变了 —— TS 侧那条对拍会跟着红，两处一起改");
+    assert_eq!(
+        RBIND_TOKEN_LEN, 32,
+        "长度常量变了 —— TS 侧那条对拍会跟着红，两处一起改"
+    );
 }
 
 // ═════════════════════════════════════════════════════════════════════

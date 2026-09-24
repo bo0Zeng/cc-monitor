@@ -301,12 +301,18 @@ pub enum WireTmuxOuter {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum WireEnvOp {
-    ExportConfigDir { value: String },
-    ExportModel { value: String },
+    ExportConfigDir {
+        value: String,
+    },
+    ExportModel {
+        value: String,
+    },
     /// `设计/80 §8` 步 1：启动期令牌。与 TS `launch-cli-wire.ts::WireEnvOp` 同名同序。
     /// 形状不对由 [`super::payload::render_env_ops`] fail-closed 拒（不在 wire 这一层拒 ——
     /// 拒绝理由要带 `REFUSE:` 标才走得到前端那条按标分流的逻辑）。
-    ExportRbindToken { value: String },
+    ExportRbindToken {
+        value: String,
+    },
     UnsetConfigDir,
     UnsetNestedEnv,
 }
