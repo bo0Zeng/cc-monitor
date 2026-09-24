@@ -254,6 +254,10 @@ pub mod find;
 pub mod fonts;
 pub mod rows;
 pub mod scale;
+// 🔴〔FW1+FW2 2026-09-24〕**选中态 · 键位 · 右键菜单那张表**（`设计/99 §4.21.1`）。
+//    三件问的是同一个问题（「选中了哪几行、能对它们做什么」），纯的一份住这儿；
+//    接到窗口上的那几跳住 `shell.rs`。逐条理由住那份文件的头注。
+pub mod select;
 pub mod shell;
 pub mod source;
 pub mod transfer;
