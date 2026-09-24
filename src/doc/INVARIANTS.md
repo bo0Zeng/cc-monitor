@@ -1888,3 +1888,84 @@ throttle / startup-delay），`ticker` 还要写明事件源与退役归属。
 ⚠ 升格的来历见 `设计/99 §4.10.3`。⚠ 本条**不放宽**任何既有红线：
 它是一条**新增的登记要求**，与 `§41.6` 那条铁律正交（一条管后端不许写，
 一条管 monitor 起进程不许扩散）。
+
+---
+
+## 45. webview 的权限清单**默认拒绝** —— 它是「前端碰不到机器」那一族登记表的共同前提（`99 §4.23` ④ 升格 · 用户 2026-09-24 拍板）
+
+**性质**：webview 拿得到的 Tauri 权限**只许是登记过的那一批**，清单里多一条没登记的就红；
+同时 webview 里跑的代码只许是我们自己的（`withGlobalTauri` 关着、CSP 不放开脚本执行面）。
+
+**它守的是一个前提，不是一处实现**：本仓那三张「谁能碰这台机器」的登记表 ——
+写盘（`write_site_registry`）· 远端执行（`exec_site_registry`）· 本机起进程（`write_site_registry` 的 `spawn_sites`）——
+**都只扫 Rust 源码**。它们共享一个此前没写下来的前提：**前端碰不到机器，只能 `invoke` 我们自己的命令。**
+往 webview 的清单里加一条 `fs:*` / `shell:*`，或者放开脚本执行面让注入的会话文本能 `invoke`，
+webview 就**同时绕过上面每一张表** —— 而那三张表一条都不会红，因为它们根本不看这一侧。
+⇒ 本条是那三张表的**共同前提**：它不成立，那三张表的绿就不再说明任何事。
+（本产品渲染的是**不受信的会话文本**：Claude 的输出、远端 `capture-pane` —— 脚本执行面放开的代价不是理论。）
+
+**谁在守**：`capability_registry_tests.rs::every_webview_permission_is_registered`（清单 ↔ 登记表**两向**：
+没登记的权限 · 登记了而清单里已没有的死行 · 继承这套权限的窗口模式逐字相等）＋
+`capability_registry_tests.rs::the_webview_execution_surface_stays_closed`（`withGlobalTauri` 为 `false` ·
+CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那条刻意允许的样式豁免必须在场，免得禁词在一份被整个换掉的 CSP 上空转）。
+同一个文件里的 `the_build_time_execution_surface_stays_registered` 管的是**构建／安装期**的执行面，与本条是邻居、不是本条。
+
+**违反过几次**：**真违反 0 次**（清单今天干净）。但**「没人守」被量到过两次**，都在 08-08：
+往清单加一条权限，monitor 与前端两侧的全部测试**全绿**；把 CSP 放开成 `default-src 'self' 'unsafe-inline' *`
+并打开 `withGlobalTauri`，**同样全绿**。两条判据就是那天立的；本条把它们从「一张没有要求背书的表」升成红线
+（缺条的原账：`设计/99 §4.11.2` 甲类 ④）。
+
+⚠ **它买不到的，如实登记**：
+- **只读 `capabilities/default.json` 一个文件。** Tauri 2 会加载 `capabilities/` 目录下的**全部**能力文件，
+  以及 `tauri.conf.json` 里 `app.security.capabilities` 的内联项 ⇒ **另放一份能力文件、或在配置里内联一份**，
+  今天一条都不红（登记表里 `core:window:allow-hide` 那一行的理由自己就写着「另开文件等于绕过它」）。
+  补一条「能力文件集合 == {`default.json`} 且配置里无内联能力」是否要做，交主会话（`调研/第四波记录/D0b.md §2.1`）。
+- **不判一条已登记的权限本身危不危险**（那要读语义）；`core:default` 在上游展开成了什么也不判 ——
+  上游升级时由「默认拒绝」在登记表那里当场提问。
+- 文件管理器窗口是**独立进程、不是 webview**，拿不到这份清单 ⇒ 不在本条射程里；它碰得到什么由它自己那一族判据管，不由本条背书。
+
+---
+
+## 46. 每一套检查**要么进门禁，要么登记为什么不进** —— 人群从盘上全集派生，默认拒绝（`99 §4.23` ⑤ 升格 · 主会话判 2026-09-24）
+
+**性质**：仓里写好的每一套检查 —— e2e 套件、shell 脚本的 lint、共享 crate 的测试、CI 里的每一步、
+每一条 `#[ignore]` 的判据 —— 都必须落进下面两格之一：**进门禁**（有具体的一步真的跑它），
+或者**登记在册并写清为什么进不了**（豁免行要写理由，而且豁免行不许变成死行）。
+「有人想起来就跑」不是第三种状态。
+
+**为什么不能松动**：一套**不在执行链上**的检查，与**不存在**没有区别 —— 而它比不存在更糟，
+因为它的存在会让人以为那件事有人在守。这一形在本仓**反复**出现，而且每一次都是**人**发现的，
+没有一次是被判据红出来的（逐条见下）。
+
+**与 `设计/01 §5 D5` 的关系**：`D5`（「判据的人群要从文件系统全集来，不从配置里已经承认的那批来」）
+是**横切纪律**，管的是**每一条判据**怎么取人群。本条是它落在「**检查本身**」这一族上的**红线**：
+守本条的每一张表都照 `D5` 取人群（`package.json` 里真在跑 `tests/e2e/` 的脚本 · 盘上全部 shell 脚本 ·
+`crates/*` · `ci.yml` 的每一条 `run:` · 源码里每一个 `#[ignore]`），**不从「已经接上的那批」里取** ——
+否则「第 N+1 套根本没登记」会以「N 套全对得上」的样子绿过去。
+⇒ `D5` 是方法，本条是这个方法在这一族上必须一直成立的结果；`D5` 不因本条升格而变成条。
+
+**谁在守**（一族，按它们各自管的那一类检查）：
+
+| 管哪一类 | 判据 |
+|---|---|
+| e2e 套件 | `e2e_gate_registry_tests.rs::every_e2e_suite_is_either_gated_or_registered_as_exempt` ＋ `every_exemption_still_points_at_a_real_ungated_suite`（豁免不许变死行）＋ `the_suite_count_is_the_same_number_in_all_four_places`（同一个套数的几份副本对拍） |
+| shell 脚本的 lint | `shell_lint_registry_tests.rs::every_shell_script_is_either_linted_or_registered_as_exempt` ＋ `every_exemption_still_points_at_a_real_unlinted_script` ＋ `the_coverage_floor_equals_what_is_actually_covered_today`（地板钉成**等于**，落后当场红） |
+| 共享 crate 的测试 | `shared_crate_registry_tests.rs::every_shared_crate_is_a_workspace_member` ＋ `the_gate_package_count_tracks_the_number_of_shared_crates` |
+| CI 的每一步 | `shared_crate_registry_tests.rs::every_ci_run_step_is_classified_as_local_or_unrunnable`（本地跑，或写清结构上为什么跑不了） |
+| `package.json` 的测试脚本 | `shared_crate_registry_tests.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual` |
+| `#[ignore]` 的判据 | `shared_crate_registry_tests.rs::every_ignored_test_still_has_someone_who_triggers_it`（e2e 脚本点名 · 判据 spawn · 手动登记三档；手动那一档要写清谁、什么时候跑） |
+
+**违反过几次**（每一次都是人或审计发现的，出处在各判据的模块头注）：
+1. G2 新增的那套 e2e **只有 npm 脚本、没进任何门禁** —— `ci.yml` 自陈「当时忘了接线」；
+2. shellcheck 的手写分组：08-08 实测全仓 46 个 shell 脚本**只覆盖 44**；同一条计数地板**落后过三次**（每次都是事后补）；
+3. 共享 crate 漏跑**两次**：`branch-core` 漏了 fmt/clippy；`usage-core`／`acct-core` 三样全漏、漏了两轮（「它们的测试在 CI 里等于不存在」）；
+4. 08-06 第一次把 `cargo fmt --all --check` 补进本地门禁，**两侧当场都红** —— CI 的第一个 Rust 步骤已经红了很久，而每一轮结论都写着「全绿」；次日又发现守它的那条判据自己只看得见带名字的步骤，漏了一条真门禁命令；
+5. `graylight-suite` 那一整套跨进程 e2e：CI 从不跑它、发版手测清单里零处提到它 ⇒ 唯一的触发条件是「有人想起来」。
+
+⚠ **它买不到的**：
+- **不买「进了门禁的那一步真的在跑」** —— 登记的是接线，不是执行；`#[ignore]` 那一档的手动登记尤其如此
+  （它守的是「链还连着」，不是「它们跑过了」）。
+- **不买新的一类检查**：上表每一行管一类；出现第七类检查载体（比如一种新的测试运行器）而没人给它立表，本条对它不说话 ——
+  那时要做的是给它立一张同形的表，不是指望现有六张覆盖它。
+- 设计篇那一族（`design_doc_registry`）是 2026-09-24 才补齐三档的；它里面那条对真 `调研/` 的 `#[ignore]`
+  正是按本条登记的（手动档，写清了解锁条件）。
