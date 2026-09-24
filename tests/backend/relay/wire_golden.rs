@@ -35,12 +35,12 @@
 //!   **必须有 `Some(...)` 那几格垫着** —— 由 [`GOLDEN_CASES_REACHING_UPSTREAM`]
 //!   再做一次相等断言：真到上游的格数少了，同样红。
 
-use super::accounts::table::RoutingTable;
-use super::accounts::Accounts;
 use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
 use super::server::Relay;
 use super::tee::TeeSink;
 use super::upstream::Base;
+use crate::accounts::table::RoutingTable;
+use crate::accounts::Accounts;
 use creds_core::store::AuthStyle;
 use creds_core::SecretKey;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -368,7 +368,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     let relay = Arc::new(Relay::new(
         Arc::new(Accounts::new(
             table,
-            super::accounts::Upstreams::from_env(&|_| None).expect("内置默认"),
+            crate::accounts::Upstreams::from_env(&|_| None).expect("内置默认"),
         )),
         TeeSink::new(Box::new(Sink(Arc::clone(&buf), tick))),
         DOWNSTREAM_DEADLINE,
