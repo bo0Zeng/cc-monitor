@@ -58,6 +58,8 @@ export interface TmuxOuterCase {
 
 const ACCT = "/home/u/.claude-accts/z";
 const SID = "0f1e2d3c";
+/** `设计/80 §8` 步 1：形状合法的启动期令牌（`[0-9a-f]{32}`），夹具里是常量不是现场铸的。 */
+const RBIND = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
 const base = (over: Partial<TmuxOuterCase> = {}): TmuxOuterCase => ({
   name: "",
@@ -112,6 +114,17 @@ export const TMUX_OUTER_CASES: readonly TmuxOuterCase[] = [
     cwd: "/w",
     ccmSid: SID,
     args: [AGENT_PROFILE.resumeFlag, "abc-123"],
+  }),
+  base({
+    // 🔴 `设计/80 §8.4`：`EnvOp` **容器无关** —— 同一条令牌在 tmux 那一格
+    //    也进**内层载荷**（被 `posixQuote` 一次塞进 `send-keys`），
+    //    不需要在外层 tmux 命令上另开一个槽位。这一条与
+    //    `payload-golden.json` 里那两条令牌用例合起来，就是「两条起法同一套机制」的
+    //    逐字节读数：左边是同一个 `renderFallback`，只换了 `container`。
+    name: "create：启动期令牌（容器无关 —— tmux 那一格也带，且排在 unset 之后）",
+    cwd: "/w",
+    ccmSid: SID,
+    env: [{ kind: "unset-nested-env" }, { kind: "export-rbind-token", value: RBIND }],
   }),
   base({
     name: "send-into：无 new-session、无短路（治 #76 那一格）",

@@ -44,9 +44,11 @@ const TS_HALF: &str = include_str!("../../../../../tests/launch-tmux-outer-golde
 /// **是 `assert_eq!` 不是地板**：地板在「变少」方向是瞎的，而这三格的覆盖面
 /// （create 的 cwd × ccm_sid × quoting 组合 · send-into · attach）恰恰是靠条数撑起来的。
 /// 写成相等 ⇒ 加/删用例都必须回来改这个数，改的时候人会看见它。
-const EXPECT_CASES: usize = 13;
+/// 🔴 `设计/80 §8` 步 1（2026-09-23）：13 → **14**，多的那条是「tmux 那一格也带启动期令牌」
+/// —— `§8.4` 说的「`EnvOp` 容器无关」在这三格上的逐字节读数。
+const EXPECT_CASES: usize = 14;
 
-/// 三格**每一格都得有人**。只数总条数挡不住「把 13 条全写成 create」。
+/// 三格**每一格都得有人**。只数总条数挡不住「把 14 条全写成 create」。
 const EXPECT_MODES: &[&str] = &["create", "send-into", "attach"];
 
 #[derive(Debug, Deserialize)]

@@ -252,6 +252,39 @@
       "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'claude --resume abc-123' Enter && tmux attach -t =cc-0f1e2d3c:"
     },
     {
+      "name": "create：启动期令牌（容器无关 —— tmux 那一格也带，且排在 unset 之后）",
+      "mode": "create",
+      "req": {
+        "env": [
+          {
+            "kind": "unset-nested-env"
+          },
+          {
+            "kind": "export-rbind-token",
+            "value": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+          }
+        ],
+        "cwd": null,
+        "launcher": "claude",
+        "args": [],
+        "nestedEnv": [
+          "CLAUDECODE",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_SESSION_ID",
+          "CLAUDE_CODE_CHILD_SESSION"
+        ],
+        "wrap": [],
+        "outer": {
+          "mode": "create",
+          "name": "cc-0f1e2d3c",
+          "quoting": "raw",
+          "cwd": "/w",
+          "ccmSid": "0f1e2d3c"
+        }
+      },
+      "cmd": "tmux new-session -d -s cc-0f1e2d3c -c '/w' && (tmux set-option -t =cc-0f1e2d3c: @ccm_sid 0f1e2d3c 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles on 2>/dev/null || true) && (tmux set-option -t =cc-0f1e2d3c: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && tmux send-keys -t =cc-0f1e2d3c: 'unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='\\''0f1e2d3c4b5a69788796a5b4c3d2e1f0'\\''; claude' Enter && tmux attach -t =cc-0f1e2d3c:"
+    },
+    {
       "name": "send-into：无 new-session、无短路（治 #76 那一格）",
       "mode": "send-into",
       "req": {

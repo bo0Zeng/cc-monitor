@@ -297,6 +297,50 @@ test("attach 豁免③：账号有 configDir 无名字（cliFlags→null）时 a
   eq(r.ok === true && r.cmd, "ccm attach cc-s1");
 });
 
+// ═══ `设计/80 §8` 步 1：带启动期令牌的 plan ⇒ **诚实放弃 CLI**（INVARIANTS §33 铁律#1）═══
+//
+// 🔴 为什么是「拒」而不是「吐个 flag」：`ccm` 今天没有承接 `CCM_RBIND_TOKEN` 的 flag。
+// 若 `RBIND_TOKEN_DIMENSION.cliFlags` 返回 `[]`（沉默跳过），这里会渲出一条
+// **丢了令牌**的 `ccm …` —— 命令能跑、会话能起、只有 `↗` 从此拉不到窗口，
+// 而归因指向别处。那正是 R11/R08 那族「看起来生效了，只是少带了一样东西」。
+//
+// ⚠ **这一条拦不住生产**：`tryRenderCli` 今天只供夹具（生产在 Rust 的 `ccm_invocation`）。
+// 生产那一层的闸在 `remote-launch-run.ts::renderLaunchCommand`，判据在
+// `tests/remote-launch-run.vitest.ts` 的「§8 步 1」那一组。**两处都要有。**
+const RBIND_TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
+
+test("§8 步 1：带令牌 → ok:false，且 reason 指名点姓说是 rbind-token 这个维度说不出", () => {
+  const ctx = ctxOf({ rbindToken: RBIND_TOK });
+  const r = tryRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS);
+  eq(r.ok, false, "带令牌却渲出了 CLI 命令 —— 那条命令里没有令牌，是静默丢");
+  eq(
+    r.ok === false && r.reason,
+    "维度 rbind-token 无法用 CLI 语法表达（cliFlags 返回 null）",
+    "降级理由要说得出是哪个维度（生产侧唯一的线索）",
+  );
+});
+
+test("§8 步 1 对照组：同一个 ctx 去掉令牌 ⇒ 照旧渲得出（证明上面那条不是「恒降级」）", () => {
+  const ctx = ctxOf({});
+  const r = tryRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS);
+  eq(r.ok, true, "不带令牌的 plan 不该降级 —— 否则上面那条什么也没证明");
+  eq(r.ok === true && r.cmd.includes("CCM_RBIND_TOKEN"), false, "CLI 那条路里不该有令牌");
+});
+
+test("§8 步 1：attach 那一格**不**因令牌降级（attach 分支在维度循环之前 return）", () => {
+  const ctx = ctxOf({
+    action: { kind: "attach", name: "cc-s1" },
+    container: { kind: "tmux", name: "cc-s1", nameQuoting: "quoted", mode: "attach-only" },
+    rbindToken: RBIND_TOK,
+  });
+  const r = tryRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS);
+  // ⚠ 这**不是**「attach 也带令牌」：`RBIND_TOKEN_DIMENSION.applies` 对 attach 为假，
+  //   载荷里本来就没有令牌 ⇒ 没有可丢的东西 ⇒ 不需要降级。与其余三条 attach 豁免同源。
+  eq(r.ok, true, "attach 命令里没有载荷，令牌无处可丢，不该降级");
+  eq(r.ok === true && r.cmd, "ccm attach cc-s1");
+  eq(buildLaunchPlan(ctx).env.length, 0, "attach 的载荷必须是空的");
+});
+
 if (failed > 0) {
   console.error(`\n${failed} launch-render-cli test(s) failed`);
   throw new Error(`launch-render-cli.test.ts: ${failed} failed`);

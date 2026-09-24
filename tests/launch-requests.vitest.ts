@@ -7,9 +7,21 @@
 // 而且这是 F06 论证过的设计（`Get-Command` 探测是 render-time 决策、只能在目标机做），
 // 不是半成品。函数已随之改名并返回 `void`，见 `src/doc/INVARIANTS.md` §36。
 import { describe, it, expect } from "vitest";
-import { validateLocalLaunch, planResumeDirect, planResumeTmux } from "../src/launch-requests";
+import {
+  validateLocalLaunch,
+  planResumeDirect,
+  planResumeTmux,
+  planResumeIntoExistingTmux,
+  planLauncher,
+  planAttach,
+} from "../src/launch-requests";
 import { buildLaunchPlan } from "../src/launch-plan.ts";
+import { renderFallback } from "../src/launch-render-fallback.ts";
+import { posixQuote } from "../src/shell-quote.ts";
 import type { LaunchAction, LaunchContext } from "../src/launch-plan.ts";
+
+/** `设计/80 §8` 步 1：形状合法的启动期令牌（32 个小写 hex）。 */
+const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
 describe("validateLocalLaunch（本地路径的前置校验；F06 引入、R07 改名并收成纯校验）", () => {
   it("非法 sid（含 shell 元字符 / 空串）→ throw，且抢在任何 IPC 之前（同其余 planXxx 的既有校验模式）", () => {
@@ -117,6 +129,22 @@ describe("R03：修饰只能以命名字段传入（类型层）", () => {
     }
   });
 
+  // `设计/80 §8` 步 1：第四个修饰字段（启动期令牌）也要真落进 ctx。
+  // ⚠ 上面那条判据的头注记着 M5 那个变异（`planResumeTmux` 不消费 `mods.modelOverride`
+  // ⇒ 三道门全瞎）—— 令牌这一维的同形变异后果更重：`↗` 静默失效、归因指向别处。
+  it("启动期令牌也真的落进 ctx（四条 planXxx 逐条，不只是 resume-direct）", () => {
+    const mods = { rbindToken: TOK };
+    const builds = [
+      planResumeDirect("abc-123", "/p", "claude", mods),
+      planResumeTmux("abc-123", "/p", "claude", "cc-p", mods),
+      planResumeIntoExistingTmux("abc-123", "cc-p", "claude", mods),
+      planLauncher("/p", "cc-p", "claude", mods),
+    ];
+    for (const b of builds) expect(b.ctx.rbindToken).toBe(TOK);
+    // 对照组：不传 ⇒ `undefined`（诚实的没有），不是 `""`。
+    expect(planResumeDirect("abc-123", "/p", "claude").ctx.rbindToken).toBeUndefined();
+  });
+
   it("bag 缺省 = 基座（向下兼容：不传修饰等于今天不带账号的行为）", () => {
     expect(planResumeDirect("abc-123", "/p", "claude").ctx.account).toEqual({ kind: "base" });
     expect(planResumeDirect("abc-123", "/p", "claude", {}).ctx.account).toEqual({ kind: "base" });
@@ -151,5 +179,67 @@ describe("F08 下半：远端 resume 的会话容器", () => {
       ctx.container.kind,
       "连 tmux 那条路都不是 tmux 了 —— 那上面那条判据什么也没证明",
     ).toBe("tmux");
+  });
+});
+
+// ═══ `设计/80 §8.4`：**`EnvOp` 容器无关 ⇒ 两条起法同一套机制** ════════════════
+//
+// 🔴 这一组是 `§8.4` 那张表在本仓的**现打读数**，也是整个方案 E 最要紧的那句主张：
+// 「『直接起和 tmux 用同一套机制』不是要额外做的事，**是这个设计的自动结果**」。
+// 它之所以成立，是因为令牌走 `plan.env`（载荷），而 env 注入发生在**容器之外**。
+//
+// ⇒ 判据形状：**同一个 `rbindToken` 喂给四条 planXxx，四条渲出来的串里都得有那一串。**
+// `container:{kind:"none"}`（`planResumeDirect` —— `§6.1`/`§5 方案 A` 明确不覆盖、
+// 今天 `↗` 做不到的那一档）与 `container:{kind:"tmux"}` 的三格**一视同仁**。
+//
+// ⚠ **反空真**：每一条都配一个「不传令牌 ⇒ 零命中」的对照组。少了对照组，
+// 「渲染器把令牌硬编码进去」与「令牌真的从 ctx 流过来」在这把尺子上同形。
+describe("设计/80 §8.4：EnvOp 容器无关 —— 两条起法都自动带上启动期令牌", () => {
+  /** 内层载荷里那一截的**字面形态**（手写，不从渲染器取 —— 恒等两侧同源会恒真）。 */
+  const INNER = `export CCM_RBIND_TOKEN='${TOK}'; `;
+  /** tmux 那三格的内层整条载荷会被 `posixQuote` 一次塞进 `send-keys` ⇒ 针要跟着被 quote 一层。 */
+  const INNER_IN_TMUX = posixQuote(INNER).slice(1, -1);
+
+  it("★ `container:\"none\"`（planResumeDirect）—— 今天 ↗ 做不到的那一档，自动带上了", () => {
+    const { plan } = planResumeDirect("abc-123", "/w", "claude", { rbindToken: TOK });
+    expect(plan.container).toEqual({ kind: "none" });
+    expect(plan.env).toContainEqual({ kind: "export-rbind-token", value: TOK });
+    // 逐字节：`none` 那一格没有第二层 quote，针就是内层那一截原文。
+    expect(renderFallback(plan)).toBe(
+      `unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; ${INNER}cd '/w' && claude --resume abc-123`,
+    );
+  });
+
+  it("★ tmux 那三格也带（create / send-into / new）—— 一行容器相关的代码都没写", () => {
+    const tmuxBuilds = [
+      planResumeTmux("abc-123", "/w", "claude", "cc-p", { rbindToken: TOK }),
+      planResumeIntoExistingTmux("abc-123", "cc-p", "claude", { rbindToken: TOK }),
+      planLauncher("/w", "cc-p", "claude", { rbindToken: TOK }),
+    ];
+    for (const { plan } of tmuxBuilds) {
+      expect(plan.container.kind).toBe("tmux");
+      expect(plan.env).toContainEqual({ kind: "export-rbind-token", value: TOK });
+      // 令牌进的是**内层载荷**，不是外层 tmux 命令（`§8.4`：EnvOp 作用在载荷上）。
+      expect(renderFallback(plan)).toContain(INNER_IN_TMUX);
+    }
+  });
+
+  it("★ 对照组：不传令牌 ⇒ 四条起法渲出来的串里 `CCM_RBIND_TOKEN` 零命中", () => {
+    const plans = [
+      planResumeDirect("abc-123", "/w", "claude").plan,
+      planResumeTmux("abc-123", "/w", "claude", "cc-p").plan,
+      planResumeIntoExistingTmux("abc-123", "cc-p", "claude").plan,
+      planLauncher("/w", "cc-p", "claude").plan,
+    ];
+    for (const plan of plans) {
+      expect(renderFallback(plan).split("CCM_RBIND_TOKEN")).toHaveLength(1);
+    }
+  });
+
+  it("★ attach 那一格不带（不收 mods，且维度的 action 闸是第二道同向的闸）", () => {
+    const { ctx, plan } = planAttach("cc-p");
+    expect(ctx.rbindToken).toBeUndefined();
+    expect(plan.env).toEqual([]);
+    expect(renderFallback(plan).split("CCM_RBIND_TOKEN")).toHaveLength(1);
   });
 });

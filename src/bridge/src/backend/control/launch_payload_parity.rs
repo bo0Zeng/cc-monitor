@@ -40,8 +40,9 @@ const TS_HALF: &str = include_str!("../../../../../tests/launch-payload-golden.v
 /// **是 `assert_eq!` 不是地板**（审计建议）：地板只维持到加第 11 条用例为止 ——
 /// 加到 11 之后再删掉一条，`>= 10` 照样绿。写成相等就把「地板」变成**强制触碰**：
 /// 加/删用例都必须回来改这个数，改的时候人会看见它。
-/// 2026-08-02 U8c-1 交付时 10 条。
-const EXPECT_CASES: usize = 10;
+/// 2026-08-02 U8c-1 交付时 10 条；`设计/80 §8` 步 1（2026-09-23）加了启动期令牌两条中的
+/// 一条新用例（另一条是把「四种 EnvOp 同时出现」扩成五种，不增条数）⇒ **11 条**。
+const EXPECT_CASES: usize = 11;
 
 /// `deny_unknown_fields`（审计 S2）：未知**变体**本来就会响，但未知**字段**三个层级
 /// 全都静默吞掉 —— 顶层多一个像 `nestedEnvKeys` 那样的键表就会静默漂。
@@ -90,6 +91,11 @@ enum FixtureEnvOp {
         value: String,
     },
     ExportModel {
+        #[allow(dead_code)]
+        value: String,
+    },
+    /// `设计/80 §8` 步 1：启动期令牌。
+    ExportRbindToken {
         #[allow(dead_code)]
         value: String,
     },

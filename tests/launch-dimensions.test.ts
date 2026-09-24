@@ -8,6 +8,8 @@ import {
   ACCOUNT_DIMENSION,
   MODEL_DIMENSION,
   NESTED_ENV_RESET_DIMENSION,
+  RBIND_TOKEN_DIMENSION,
+  isValidRbindToken,
   LAUNCH_DIMENSIONS,
   __testOnlyAssertDimensionOrderInvariants,
 } from "../src/launch-dimensions.ts";
@@ -322,6 +324,137 @@ test("R04④：wrap 纯数据折叠——order 升序由内向外，exec 不丢"
     rendered.startsWith("unset "),
     true,
     `env 前缀应在包裹外: ${rendered}`,
+  );
+});
+
+// ═══ `设计/80 §8` 步 1：启动期令牌（`CCM_RBIND_TOKEN`）══════════════════════════
+//
+// 🔴 这一族判据买的是三件**分开的**事，别把它们读成一件：
+//   ① 形状闸真的会拦（大写 / 长度差一 / 非 hex / 空）——不是「看起来校验了」；
+//   ② 顺序契约（令牌排在全部 unset 之后）是**模块加载即崩**的断言，不是注释纪律；
+//   ③ 渲染出来的**字节**就是那一串 —— 这一条与入库金标准
+//      （`payload-golden.json` / `tmux-outer-golden.json`）是两侧独立的说法。
+
+const TOK = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"; // 32 个小写 hex
+
+/** 造一个只差 `rbindToken` 的 ctx —— 其余一律照 `baseCtx`，好让对照组只差这一维。 */
+const tokCtx = (over: Partial<LaunchContext> = {}): LaunchContext => ({
+  ...baseCtx,
+  rbindToken: TOK,
+  ...over,
+});
+
+test("rbind-token：没令牌 → 整格不生效（载荷逐字节等于今天，这是步 1 能独立回滚的支点）", () => {
+  eq(RBIND_TOKEN_DIMENSION.applies(baseCtx), false);
+  const rendered = renderFallback(buildLaunchPlan(baseCtx));
+  eq(rendered.includes("CCM_RBIND_TOKEN"), false, `不该出现令牌: ${rendered}`);
+});
+
+// 🔴 **空值 ≠ 未设**（Z01 的支点）。这一条是本族**第一次跑就逮到东西**的那条：
+//    `applies` 初版写的是 `!!ctx.rbindToken`，于是 `rbindToken: ""` 被读成
+//    「这次不带令牌」—— 一次铸币 bug 会静默地变成「↗ 不明原因失效」。
+//    现在 `""` 会让这个维度**触发**、在 `apply` 里 throw。
+test("rbind-token：`\"\"` 是坏数据不是「没有」—— applies 为真、apply 当场 throw", () => {
+  eq(RBIND_TOKEN_DIMENSION.applies(tokCtx({ rbindToken: "" })), true);
+  // 对照组：`undefined` 才是「诚实的没有」，它**不**触发（否则上面那条只是「恒触发」）。
+  eq(RBIND_TOKEN_DIMENSION.applies(tokCtx({ rbindToken: undefined })), false);
+  throws(() => buildLaunchPlan(tokCtx({ rbindToken: "" })), "空令牌必须 throw");
+});
+
+test("rbind-token：有令牌 → applies 为真，且推出 export-rbind-token", () => {
+  const ctx = tokCtx();
+  eq(RBIND_TOKEN_DIMENSION.applies(ctx), true);
+  const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
+  RBIND_TOKEN_DIMENSION.apply(plan, ctx);
+  eq(plan.env, [{ kind: "export-rbind-token", value: TOK }]);
+});
+
+test("rbind-token：attach 那一档不带（一个 agent 进程都不起，注进去没人读）", () => {
+  eq(RBIND_TOKEN_DIMENSION.applies(tokCtx({ action: { kind: "attach", name: "cc-x" } })), false);
+  // 对照组：new 与 resume 两档都带 —— 否则上面那条只是「所有档都不带」。
+  eq(RBIND_TOKEN_DIMENSION.applies(tokCtx({ action: { kind: "new" } })), true);
+  eq(RBIND_TOKEN_DIMENSION.applies(tokCtx({ action: { kind: "resume", sid: "s1" } })), true);
+});
+
+test("rbind-token：形状闸逐格 —— 大写 / 长度差一 / 非 hex / 空 一律拒（不是「看起来校验了」）", () => {
+  // 正控先立：合法的那一个必须过（否则下面全红也说明不了什么）。
+  eq(isValidRbindToken(TOK), true);
+  const bad = [
+    TOK.toUpperCase(),          // 大写：刻意不收（本地表与 environ 读回来的串要能直接相等比较）
+    TOK.slice(0, 31),           // 31 位
+    `${TOK}0`,                  // 33 位
+    `${TOK.slice(0, 31)}g`,     // 非 hex
+    "",                         // 空
+    ` ${TOK}`,                  // 前导空白（`^…$` 锚点在不在）
+    `${TOK}\n`,                 // 尾随换行（JS 正则 `$` 的经典陷阱）
+    "0x0f1e2d3c4b5a69788796a5b",// 带 0x 前缀
+  ];
+  for (const b of bad) {
+    eq(isValidRbindToken(b), false, `这个本该被拒: ${JSON.stringify(b)}`);
+    const plan: LaunchPlan = { transport: baseCtx.transport, action: baseCtx.action, container: baseCtx.container, cwd: null, env: [], launcher: "", args: [], wrap: [] };
+    throws(
+      () => RBIND_TOKEN_DIMENSION.apply(plan, tokCtx({ rbindToken: b })),
+      `形状不对必须 throw，不许静默降级成「这次不带令牌」: ${JSON.stringify(b)}`,
+    );
+  }
+});
+
+test("rbind-token：cliFlags 恒 null —— `ccm` 说不出它 ⇒ 整条降级，不近似（INVARIANTS §33）", () => {
+  eq(RBIND_TOKEN_DIMENSION.cliFlags?.(tokCtx()), null);
+  // ⚠ 若哪天它开始吐 flag，这条会红 —— 那一拍要同时给它 `requiredCaps`
+  //   并把 `remote-launch-run.ts` 里那道分派闸一起改，否则会渲出一条 ccm 不认的 flag。
+  eq(RBIND_TOKEN_DIMENSION.requiredCaps, undefined, "今天不该声明 cap：我们根本不吐 flag");
+});
+
+test("顺序不变量：rbind-token 排在 nested-env-reset 之后（真实注册表）", () => {
+  const idx = (id: string): number => LAUNCH_DIMENSIONS.findIndex((d) => d.id === id);
+  eq(idx("rbind-token") >= 0, true, "rbind-token 不在注册表里了");
+  eq(idx("nested-env-reset") < idx("rbind-token"), true);
+});
+test("顺序不变量：rbind-token 排到 nested-env-reset 之前 → throw（证明它不是摆设）", () => {
+  const bad: LaunchDimension[] = [IDENTITY_DIMENSION, ENV_RESET_DIMENSION, ACCOUNT_DIMENSION, MODEL_DIMENSION, RBIND_TOKEN_DIMENSION, NESTED_ENV_RESET_DIMENSION];
+  throws(
+    () => __testOnlyAssertDimensionOrderInvariants(bad),
+    "rbind-token 排在 nested-env-reset 前必须 throw（否则明天多一个 unset 变体就能抹掉令牌）",
+  );
+});
+
+test("buildLaunchPlan：五种 EnvOp 同时出现时，令牌排在全部 unset 之后（顺序即契约）", () => {
+  const ctx: LaunchContext = {
+    transport: { kind: "ssh" },
+    action: { kind: "resume", sid: "s1" },
+    container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "create" },
+    cwd: null,
+    account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" },
+    launcherOverride: "claude",
+    ccmSid: undefined,
+    modelOverride: "opus",
+    rbindToken: TOK,
+  };
+  eq(buildLaunchPlan(ctx).env, [
+    { kind: "export-config-dir", value: "/home/u/.claude-accts/z" },
+    { kind: "export-model", value: "opus" },
+    { kind: "unset-nested-env" },
+    { kind: "export-rbind-token", value: TOK },
+  ]);
+});
+
+test("renderFallback：令牌渲成的字节就是 `export CCM_RBIND_TOKEN='<32hex>'; `（相等，不是包含）", () => {
+  // `container:"none"` 那一档 —— `设计/80 §8.4` 表里「今天做不到 ↗ 的那一档」。
+  const ctx: LaunchContext = {
+    transport: { kind: "ssh" },
+    action: { kind: "resume", sid: "s1" },
+    container: { kind: "none" },
+    cwd: null,
+    account: { kind: "base" },
+    launcherOverride: "claude",
+    ccmSid: undefined,
+    rbindToken: TOK,
+  };
+  eq(
+    renderFallback(buildLaunchPlan(ctx)),
+    `unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='${TOK}'; claude --resume s1`,
+    "整条载荷逐字节",
   );
 });
 
