@@ -740,7 +740,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
       expect(
         code.includes(needle),
         `前端出现了 \`${needle}\` —— 那是在长**第二份**「从 configDir 取账号 id」的规则。\n` +
-          "`relay_account_id_of_dir` 的头注逐字：两边各写一个 basename 规则，" +
+          "`apikey_account_id_of_dir` 的头注逐字：两边各写一个 basename 规则，" +
           "漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。",
       ).toBe(false);
     }

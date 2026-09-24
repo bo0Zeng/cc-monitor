@@ -137,7 +137,7 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 /// ⇒ **不用开窗 · 不用真终端 · 不用动 `paths.rs` · 不用 `set_var("HOME")` ·
 /// 不用 `--test-threads=1` · 不用 `#[ignore]`。**
 /// ★ 「做不到」也是一个断言，而那一句只对**它当时想写的那一种**判据成立
-///（同族第二次；上一次是 `RelayFactSources` 头注 ㈠ 那条「要动真实家目录」）。
+///（同族第二次；上一次是 `InjectFactSources` 头注 ㈠ 那条「要动真实家目录」）。
 ///
 /// ⇒ 今天那 3 行由**两条**判据看着，一支一条（`term` 是这条链的分叉点，两支都买）：
 /// - `term = None`（无窗口回落）⇒ `the_spawned_process_really_gets_the_relay_prefix_without_a_terminal`

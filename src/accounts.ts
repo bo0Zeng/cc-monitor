@@ -244,7 +244,7 @@ export type AccountRelayState =
   | { scope: "local"; hasRow: boolean; running: boolean };
 
 /**
- * `K-H2b` `KH2B7` 的**产出方**：问后端「这几个**本机** configDir 走不走中转」。
+ * `K-H2b` `KH2B7` 的**产出方**：问后端「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
  *
  * # 它为什么是一条只答本机的命令（而不是账号列表上的两个字段）
  *
@@ -253,7 +253,7 @@ export type AccountRelayState =
  * 就是让远端那些行也带上两个这一侧答不出来的值。
  * 命令面的登记（`relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
  *
- * ★〔第四拍〕**取数那一跳接上了**：走包装层 `commands.relay_routing_for`。
+ * ★〔第四拍〕**取数那一跳接上了**：走包装层 `commands.apikey_routing_for`。
  * ⚠ 经过如实记：第三拍它退回过一次 —— 注册一条命令会同时动两个钉死计数
  * （`parity_ledger.rs` 5 个数 + `tests/ipc/commands.vitest.ts` 两处 `144`），
  * 而后者当时不在写区。**那两个数是联动的**：注册了不调 ⇒ 前一个红；调了没注册 ⇒ 编不过。
@@ -262,7 +262,7 @@ export type AccountRelayState =
  * **不是**「那把 key 能用」；`running` 说的是「我们起过它而且没停过」，
  * **不是**「那个口上真有人听」。
  */
-export interface RelayRoutingView {
+export interface ApikeyRoutingView {
   /** 传进去的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回）。 */
   routed: string[];
   /** 本机中转在不在跑。 */
@@ -357,7 +357,7 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
  * ⚠ 名字这一半**本来就在手上**（[`localLaunchAccountNameSync`]，与取目录那半同源）——
  * 缺的从来不是数据，是**没往下传**。所以这里是把同一条规则的两半一起交出去，
  * **不是**在后端那侧从目录名反推一个名字：反推错的失效方向是 `shared/ccm` 当场 `die`
- *（退出码 2 = 一次本来能起的会话变成一条报错），与 `relay_account_id_of_dir`
+ *（退出码 2 = 一次本来能起的会话变成一条报错），与 `apikey_account_id_of_dir`
  * 那条「推错就回落」的保守方向相反。理由逐字住 `history.rs` 的 `LaunchAccount::Named::name`。
  */
 export type LocalLaunchAccountWire = Record<
@@ -443,19 +443,19 @@ export function __setLocalLaunchSnapshotForTests(
   localLaunchSnapshot = { state, pins };
 }
 
-export async function fetchLocalRelayRouting(configDirs: string[]): Promise<RelayRoutingView> {
-  return await commands.relay_routing_for({ configDirs });
+export async function fetchLocalRelayRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
+  return await commands.apikey_routing_for({ configDirs });
 }
 
 /**
  * 把上面那份读数落到**一个账号**上。
  *
  * `configDir` 缺席（账号 0）⇒ `null`：账号 0 在 manifest 里没有目录名，
- * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `relay_account_id` 的三态同形）。
+ * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `apikey_account_id` 的三态同形）。
  */
 export function localRelayStateFor(
   a: Account,
-  routing: RelayRoutingView,
+  routing: ApikeyRoutingView,
 ): AccountRelayState | undefined {
   if (!a.configDir) return undefined;
   return { scope: "local", hasRow: routing.routed.includes(a.configDir), running: routing.running };

@@ -144,7 +144,7 @@ fn relay_running_really_reads_the_handle_table() {
 // ⚠ **别在这里补一个「更聪明的文本判据」**（比如切实参表按逗号分段再比字面量）——
 //   `D4` 那一轮的修法（把判据搬出被扫文件）买到的东西正是被下一层的量法漏掉的，
 //   而两轮的量法都是「量文本」。这一族已经连着五层了，出路是**不量文本**：
-//   两个事实走 `history.rs::RelayFactSources` 那条缝，判据喂替身、断言前缀随答案变。
+//   两个事实走 `history.rs::InjectFactSources` 那条缝，判据喂替身、断言前缀随答案变。
 //
 // ⚠ 本文件上一条 `relay_running_really_reads_the_handle_table` **留着**，
 //   它买的是另一半（那个取值口自己真的读 `LOCAL_RELAY`），两者不重叠。

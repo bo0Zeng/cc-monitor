@@ -821,7 +821,7 @@ pub const RELAY_PASSTHROUGH_SAMPLE: &str = "/t/claude-code/acct-a/k-0123456789ab
 ///
 /// nonce 与 claude 事后产生的 sid **没有对应关系**。谁将来想按 sid 去 join tee 那条流，
 /// 会发现对不上。**今天不是缺陷、是债** —— 理由是现打的两个读数：
-/// 表**只按 `<account>` 索引**（`relay/table.rs` 的 `fn lookup(&self, account: &str)`），
+/// 表的键是 **(agent, 账号)** 两段（`accounts::table::RoutingTable::lookup`，条 49），`<key>` 段不在键里；
 /// `route.key` 的生产段**只喂 tee**（`relay/server.rs` 的 `tee.open` / `tee.event` 两处）
 /// ⇒ 这一段**不参与选上游、不参与选凭据**，而 tee 今天**零消费者**。
 ///
@@ -878,7 +878,7 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 ///
 /// # 为什么要有这个值
 ///
-/// 后端那张表的键今天是 **agent ＋ 账号**（`src/backend/relay/accounts/table.rs`），不是账号：
+/// 后端那张表的键今天是 **agent ＋ 账号**（`src/backend/accounts/table.rs`），不是账号：
 /// claude-code 的 3 号账号与 codex 的 3 号账号是两行。而凭据文件的格式（`creds-core`）
 /// **今天没有 agent 这一维** —— 它是界面上给 claude-code 的账号配第三方 key 时写出来的，
 /// 每一行都是这一家的。⇒ 本文件判「这个号在不在表里」时，**agent 也得对得上**，

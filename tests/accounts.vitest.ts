@@ -1018,18 +1018,18 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     }
   });
 
-  // ★★★ 规则那一段：一份**后端读数**（`RelayRoutingView`）怎么落到某一个账号上，
+  // ★★★ 规则那一段：一份**后端读数**（`ApikeyRoutingView`）怎么落到某一个账号上，
   // 以及三档**真的分得开**。喂进来的是读数的形状，**不是**直接喂 `{scope:"local",…}`
   // —— 后者会把 `localRelayStateFor` 那一格整个绕过去。
   //
   // ⚠ **取数那一跳（`invoke`）今天还没接上**，卡点写在 `accounts.ts` 那段头注里
   // （`tests/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
   // 不是「界面上真的显出来了」。
-  it("★ 产出方：问的是 `relay_routing_for`，入参是那几个 configDir", async () => {
+  it("★ 产出方：问的是 `apikey_routing_for`，入参是那几个 configDir", async () => {
     invokeMock.mockResolvedValue({ routed: ["/h/.claude-alt/acct-a"], running: true });
     const got = await fetchLocalRelayRouting(["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"]);
     // 命令名打错在生产上是**运行时** `invoke` reject（不是编译错）⇒ 在这里钉死它。
-    expect(invokeMock).toHaveBeenCalledWith("relay_routing_for", {
+    expect(invokeMock).toHaveBeenCalledWith("apikey_routing_for", {
       configDirs: ["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"],
     });
     expect(got).toEqual({ routed: ["/h/.claude-alt/acct-a"], running: true });
