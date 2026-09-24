@@ -34,7 +34,6 @@ import { LS_KEYS, safeSet } from "./local-storage";
 import {
   collectionOf,
   deleteCollection,
-  newCollectionId,
   renameCollection,
   type TabCollection,
 } from "./tab-collections";
@@ -49,18 +48,7 @@ import {
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
 // 〔U2〕`Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
 export type { Tab, TabStatus, TabsSummary } from "./tab-model";
-import {
-  applyDropToCollections,
-  collectionsEqual,
-  defaultGroupName,
-  moveTabBlock,
-  pickDropTarget,
-  tabUnderY,
-  DWELL_MS,
-  DWELL_MOVE_PX,
-  type DropTarget,
-  type TabRect,
-} from "./tab-drop";
+import type { DropTarget, TabRect } from "./tab-drop";
 // 〔U2〕落点算术搬去了 `tab-drop.ts`；原样 re-export，`tabs.vitest.ts` 的 import 面零改动。
 export {
   moveTabBlock,
@@ -78,6 +66,7 @@ import { TabMenu } from "./tab-menu";
 import { TabStore } from "./tab-store";
 import { TabStreamView } from "./tab-stream-view";
 import { TabBarPrefs } from "./tab-bar-prefs";
+import { TabBarDrag } from "./tab-bar-drag";
 import {
   abortRunningAgents,
   noteAgents,
@@ -181,54 +170,6 @@ export class TabManager {
   /** Manual override 窗口长度（ms）。issue #2 钦定 5s。 */
   private static readonly MANUAL_OVERRIDE_MS = 5000;
 
-  /**
-   * Tab 撕离（tear-off）拖拽状态机。同一时刻只允许一个拖拽，整段存这里。
-   * - mousedown（左键，非子动作按钮）记录起点 → 候选拖拽（dragging=false）
-   * - document mousemove 越过 6px 阈值 → dragging=true，建 ghost、源 Tab 变暗
-   * - 指针拖离 tab 栏右缘（clientX > barRight + 16，F33 竖栏后为横向判定）→ armed=true（松手即弹窗）
-   * - document mouseup：armed → openInNewWindow(落点)；否则取消。两种情况都抑制后续 click
-   * null = 当前无拖拽。
-   */
-  private drag: {
-    sid: string;
-    /**
-     * 〔步 17·D〕松手时的落点。**三种语义**（`§D.3`）——在这之前这里是
-     * `dropBefore?: string | null`（只有「插到谁之前」与「末尾」两种）。只在**未 armed** 时有意义。
-     */
-    dropTarget: DropTarget;
-    /** 〔步 17·D〕指针此刻压着谁（停留计时的对象）。`null` = 没压在任何 tab 上。 */
-    dwellSid: string | null;
-    /** 〔步 17·D〕停留已经攒满的那个 sid。计时器到点才写，抖动 / 换目标即清回 `null`。 */
-    dwellArmed: string | null;
-    /** 〔步 17·D〕本轮停留的锚点。指针离它超过 `DWELL_MOVE_PX` 就重新计时。 */
-    dwellX: number;
-    dwellY: number;
-    /** 〔步 17·D〕停留计时器句柄。`teardownDrag` 必须清 —— 否则它会在拖拽结束后才到点。 */
-    dwellTimer: number | null;
-    startX: number;
-    startY: number;
-    barRight: number;
-    root: HTMLElement;
-    dragging: boolean;
-    armed: boolean;
-    ghost: HTMLElement | null;
-    onMove: (e: MouseEvent) => void;
-    onUp: (e: MouseEvent) => void;
-  } | null = null;
-  /**
-   * ★ 6d：拖拽进行中有人要求刷 tab 栏 —— 记一笔，`teardownDrag` 收尾时补一次。
-   * 只是一个「有没有」，不记是谁要求的：`refreshTabBar` 本来就是整栏重刷，补一次就够。
-   */
-  private tabBarDirtyDuringDrag = false;
-  /**
-   * 拖拽撕离阈值：指针移动超过此像素才判定为"拖"，否则视为普通点击。
-   */
-  private static readonly DRAG_THRESHOLD_PX = 6;
-  /**
-   * 拖拽结束后需抑制掉紧随 mouseup 的那次 click 的 sid（避免拖完又误切 Tab）。
-   * null = 不抑制。click handler 命中后清零（一次性）。
-   */
-  private suppressClickSid: string | null = null;
 
   /**
    * P7a-1（#61）：**归档区**。`#61` 正文自陈「状态机已经有了，缺的是那个「口」」——
@@ -259,6 +200,10 @@ export class TabManager {
     private agentsPanel?: AgentsPanel,
   ) {
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
+    this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.tabButtons, {
+      refreshTabBar: () => this.refreshTabBar(),
+      openInNewWindow: (sid, screenX, screenY) => this.openInNewWindow(sid, screenX, screenY),
+    });
     this.view = new TabStreamView(this.store, streamRootEl, {
       onLine: (payload) => this.onLine(payload),
       refreshTabBar: () => this.refreshTabBar(),
@@ -294,6 +239,20 @@ export class TabManager {
   /** 右键菜单那一项：翻转固定。 */
   togglePin(sid: string): void {
     this.prefs.togglePin(sid);
+  }
+
+  /**
+   * 〔U2 · ④〕拖动排序 / 拖动成组 / 拖出去撕窗口的状态机住 `tab-bar-drag.ts`（落点算术住 `tab-drop.ts`）。
+   * 在构造体里建：它要 `barEl`（参数属性，字段初始化时还没赋上）。
+   */
+  private readonly dragger: TabBarDrag;
+
+  // ── 〔U2〕判据探针（拖拽那一份）：`tabs.vitest.ts` 直调这两个旧私有名。
+  protected tabRects(): TabRect[] {
+    return this.dragger.tabRects();
+  }
+  protected applyDrop(sid: string, target: DropTarget): void {
+    this.dragger.applyDrop(sid, target);
   }
 
   // ── 〔U2〕判据探针（落盘偏好那一份）：`tabs.vitest.ts` 直读 / 直写这三个旧私有名。
@@ -1252,308 +1211,6 @@ export class TabManager {
     if (this.store.activeId) void this.openInNewWindow(this.store.activeId);
   }
 
-  /**
-   * Tab 撕离拖拽起点（左键 mousedown）。只是"候选"：记录起点 + 挂 document 级
-   * mousemove/mouseup，等指针越过阈值才真正进入拖拽。子动作按钮（📂/↗/×）的
-   * mousedown 已 stopPropagation，不会走到这里。
-   */
-  private beginTabDrag(e: MouseEvent, sid: string, root: HTMLElement): void {
-    // 已有拖拽在进行（理论上不会，因 mouseup 会清）—— 防御性忽略。
-    if (this.drag) return;
-    // 新一轮交互开始：清掉可能残留的抑制标记，避免陈旧 flag 误吞下次 click。
-    this.suppressClickSid = null;
-
-    const barRight = this.barEl.getBoundingClientRect().right;
-    const onMove = (ev: MouseEvent): void => this.onDragMove(ev);
-    const onUp = (ev: MouseEvent): void => this.onDragUp(ev);
-    this.drag = {
-      sid,
-      startX: e.clientX,
-      startY: e.clientY,
-      barRight,
-      root,
-      dragging: false,
-      armed: false,
-      dropTarget: { kind: "end" },
-      dwellSid: null,
-      dwellArmed: null,
-      dwellX: e.clientX,
-      dwellY: e.clientY,
-      dwellTimer: null,
-      ghost: null,
-      onMove,
-      onUp,
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
-
-  /** document mousemove：阈值判定 → 起拖（建 ghost / 变暗），随后跟随 + arm 检测。 */
-  private onDragMove(e: MouseEvent): void {
-    const d = this.drag;
-    if (!d) return;
-
-    // 容错：主键已松开（mouseup 在窗口外丢失，比如拖到别的 app 上释放）→ 收尾取消，
-    // 不弹窗（落点不可信），避免 ghost 残留 + 拖拽状态卡死。下次按下会重新开始。
-    if ((e.buttons & 1) === 0) {
-      const wasDragging = d.dragging;
-      const sid = d.sid;
-      this.teardownDrag();
-      if (wasDragging) this.suppressClickSid = sid;
-      return;
-    }
-
-    if (!d.dragging) {
-      const dx = e.clientX - d.startX;
-      const dy = e.clientY - d.startY;
-      if (Math.hypot(dx, dy) <= TabManager.DRAG_THRESHOLD_PX) return;
-      // 越过阈值 → 正式起拖：阻止文本选区、建 ghost、源 Tab 变暗。
-      e.preventDefault();
-      d.dragging = true;
-      d.root.classList.add("dragging");
-      const ghost = document.createElement("div");
-      ghost.className = "tab-drag-ghost";
-      ghost.textContent = this.store.tabs.get(d.sid)?.title ?? "";
-      document.body.appendChild(ghost);
-      d.ghost = ghost;
-    }
-
-    // 跟随光标（偏右下避免压在指针正下方）。
-    if (d.ghost) {
-      d.ghost.style.left = `${e.clientX + 8}px`;
-      d.ghost.style.top = `${e.clientY + 8}px`;
-    }
-
-    // P7a-2：**纵向那根轴今天一个消费者都没有** —— arm 只看 `clientX`（见下一行）。
-    // 所以栏内重排走 `clientY`，与 tear-off 天然不争同一根轴。
-    // 〔步 17·D〕这里先更新停留状态，再算落点 —— 落点的 `onto` 那一支要读停留的结论。
-    this.updateDwell(e.clientX, e.clientY);
-    d.dropTarget = this.computeDropTarget(e.clientY);
-    // ★ **落点要看得见**〔D 阶段补审〕：只搬不指示的话，「拖动排序」是一次盲操作 ——
-    // 用户松手前不知道会落在哪，只能松开看结果、错了再拖一次。
-    // armed（拖出右缘）时不指示：那一路根本不重排，指一条不会发生的落点是在骗人。
-    this.markDropTarget(e.clientX > d.barRight + 16 ? null : d.dropTarget);
-
-    // arm：指针拖离竖栏右缘一段距离 = 松手即弹独立窗口（F33 前是下缘判定）。
-    const armed = e.clientX > d.barRight + 16;
-    if (armed !== d.armed) {
-      d.armed = armed;
-      if (d.ghost) {
-        d.ghost.classList.toggle("armed", armed);
-        d.ghost.textContent = armed
-          ? "松开 → 独立窗口"
-          : (this.store.tabs.get(d.sid)?.title ?? "");
-      }
-    }
-  }
-
-  /**
-   * 〔步 17·D · `§D.2`〕量一遍栏里每个 tab 在纵轴上占的那一段。
-   *
-   * 🔴 **`parentElement !== this.barEl` 那道过滤没了。**
-   *   `§D.2` 现打它是两个缺口之一：它把**组里的 tab 整体排除**在落点之外
-   *   ⇒ 拖不进组、也拖不出组。换成 `barEl.contains(...)`：组容器是 `barEl` 的子树，
-   *   组里的 tab 因此照常参与，而栏外的东西（撕出去的窗口等）仍然不参与。
-   *
-   * ⚠ 只量一次、返回纯数据 —— 判定逻辑在 `pickDropTarget`（纯函数，判据直接打它）。
-   *   这也顺带守住 `§3 P3`「拖拽 layout thrash：量一次、只改变化的那一个」。
-   */
-  private tabRects(): TabRect[] {
-    const out: TabRect[] = [];
-    for (const [sid, refs] of this.tabButtons) {
-      if (!this.barEl.contains(refs.root)) continue;
-      const r = refs.root.getBoundingClientRect();
-      out.push({ sid, top: r.top, height: r.height });
-    }
-    return out;
-  }
-
-  /** 〔步 17·D〕现在的落点。三种语义的判定住 `pickDropTarget`，这里只负责喂它读数。 */
-  private computeDropTarget(clientY: number): DropTarget {
-    const d = this.drag;
-    if (!d) return { kind: "end" };
-    return pickDropTarget(
-      this.tabRects(),
-      clientY,
-      new Set(this.dragBlockOf(d.sid)),
-      d.dwellArmed,
-    );
-  }
-
-  /**
-   * 〔步 17·D · `§D.4`〕停留（dwell）判定：**压住 ≥250ms 且抖动 <4px ⇒ 切进 `onto` 态**。
-   *
-   * 🔴 **必须用计时器，不能只在 `mousemove` 里数时间** —— 指针停住之后
-   *   `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满，这个手势等于没做。
-   *
-   * 三种情况清零重来（`§D.4` 逐字「一旦移出该 tab 的矩形 **或** 移动超过 4px ⇒ 退回」）：
-   * ① 换了压着的 tab；② 没压在任何 tab 上；③ 还在同一个上但离锚点超过 `DWELL_MOVE_PX`。
-   */
-  private updateDwell(clientX: number, clientY: number): void {
-    const d = this.drag;
-    if (!d) return;
-    const hovered = tabUnderY(this.tabRects(), clientY, new Set(this.dragBlockOf(d.sid)));
-    const moved = Math.hypot(clientX - d.dwellX, clientY - d.dwellY);
-    if (hovered === d.dwellSid && moved < DWELL_MOVE_PX) return; // 还在攒，别打断计时
-    d.dwellSid = hovered;
-    d.dwellArmed = null;
-    d.dwellX = clientX;
-    d.dwellY = clientY;
-    if (d.dwellTimer !== null) window.clearTimeout(d.dwellTimer);
-    d.dwellTimer = null;
-    if (hovered === null) return;
-    d.dwellTimer = window.setTimeout(() => {
-      const cur = this.drag;
-      // 计时器到点时拖拽可能已经结束 / 已经换了目标 —— 两者都不许再改状态。
-      if (!cur || cur.dwellTimer === null || cur.dwellSid !== hovered) return;
-      cur.dwellTimer = null;
-      cur.dwellArmed = hovered;
-      // **可逆可见**（`§D.4` 理由 3）：攒满的那一刻就给反馈，用户看到了再松手。
-      // 指针停着不动 ⇒ 不会再有 `mousemove` 来重算落点，所以这里自己算一次。
-      cur.dropTarget = { kind: "onto", sid: hovered };
-      if (!cur.armed) this.markDropTarget(cur.dropTarget);
-    }, DWELL_MS);
-  }
-
-  /**
-   * P7a-2：被拖的那一块 —— 交互 tab 连同它**紧跟其后**的同 `(cwd, origin)` bg 子串。
-   *
-   * ★ 为什么必须带上子串：`placeInOrder` 维护的那棵树不是装饰，它表达
-   * 「这些后台任务属于那个会话」（还带着 D-R3 的审计账）。
-   * 一次拖动就把树拆散，比不能拖更坏。
-   */
-  private dragBlockOf(sid: string): string[] {
-    const host = this.store.tabs.get(sid);
-    if (!host) return [sid];
-    const hostIsInteractive = host.kind === null || host.kind === "interactive";
-    if (!hostIsInteractive) return [sid];
-    const out = [sid];
-    const at = this.store.orderedIds.indexOf(sid);
-    for (let i = at + 1; i < this.store.orderedIds.length; i++) {
-      const t = this.store.tabs.get(this.store.orderedIds[i]);
-      if (!t) break;
-      const isBg = t.kind !== null && t.kind !== "interactive";
-      if (isBg && t.cwd !== null && t.cwd === host.cwd && t.origin === host.origin) {
-        out.push(this.store.orderedIds[i]);
-      } else break;
-    }
-    return out;
-  }
-
-  /**
-   * P7a-2 D 补审：给落点那个 tab 打标（`null` = 不指示，armed 那一路用）。
-   *
-   * 〔步 17·D · `§D.5`〕两种态两种标：`before` 顶部一条线（原样）· `onto` 整块描边 + 轻微放大。
-   * `end` 不标（原样 —— 末尾没有可以描的对象）。
-   */
-  private markDropTarget(target: DropTarget | null): void {
-    const beforeSid = target?.kind === "before" ? target.sid : null;
-    const ontoSid = target?.kind === "onto" ? target.sid : null;
-    for (const [sid, refs] of this.tabButtons) {
-      refs.root.classList.toggle("drop-before", sid === beforeSid);
-      refs.root.classList.toggle("drop-onto", sid === ontoSid);
-    }
-  }
-
-  /**
-   * 〔步 17·D〕把一次落点的**全部后果**落实：顺序 ＋ 集合归属，一拍做完。
-   *
-   * 🔴 **两件事不许分两拍** —— 顺序没变（拖回原位）但归属变了（从组里拖出来）是
-   *   真实情形；反过来也是。谁先 `return`，另一半就静默丢了。
-   *   在这之前这里叫 `applyReorder`，只管顺序、`if (没变化) return` 直接结束。
-   */
-  private applyDrop(sid: string, target: DropTarget): void {
-    const block = this.dragBlockOf(sid);
-    // ① 集合归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则的两侧）。
-    if (this.prefs.collectionsLoaded) {
-      const other = target.kind === "end" ? null : this.store.tabs.get(target.sid);
-      const nextCols = applyDropToCollections(
-        this.prefs.collections,
-        block,
-        target,
-        defaultGroupName(
-          this.store.tabs.get(sid)?.cwd ?? null,
-          other?.cwd ?? null,
-          this.prefs.collections.map((c) => c.name),
-        ),
-        newCollectionId(),
-      );
-      // 没变就不写盘：拖动是高频动作，每拖一下都改一次 `config.json` 是白写。
-      if (!collectionsEqual(this.prefs.collections, nextCols)) {
-        this.prefs.collections = nextCols; // 先改内存（下面统一重画一次），再落盘
-        void this.prefs.persistCollections(nextCols);
-      }
-    }
-    // ② 顺序。`onto` 的落位 = 插到目标**之前**（组里成员的相对次序由 `orderedIds` 定，
-    //    见 `refreshTabBar`）；`end` 是末尾。
-    const beforeSid = target.kind === "end" ? null : target.sid;
-    const next = moveTabBlock(this.store.orderedIds, block, beforeSid);
-    if (next.length !== this.store.orderedIds.length) {
-      this.refreshTabBar(); // 防御：块算错了就只重画（①可能已经改了归属）
-      return;
-    }
-    if (next.every((x, i) => x === this.store.orderedIds[i])) {
-      this.refreshTabBar();
-      return;
-    }
-    this.store.orderedIds = next;
-    this.refreshTabBar();
-    // 🔴 〔步 17·C · 2026-09-19〕**拖动的结果要落盘** —— `设计/30 §C` 逐字「今天拖了白拖」。
-    //   在这之前 `orderedIds` 的 8 个写入点零持久化，而集合（`tabCollections`）是落盘的
-    //   ⇒ 同一个栏里两种寿命：**你建的分组活过重启，你拖的顺序活不过**。
-    //   `tab-collections.ts` 立集合落盘的理由是「用户手写的真相，不是能重算的缓存」，
-    //   而拖动排序**完全符合那条判据** ⇒ 不给它同样的待遇，那条理由就是选择性适用的。
-    // ⚠ 形状照 `commitCollections`：**先改内存再落盘**（上面两行已做完），
-    //   落盘失败只记日志 —— 顺序丢一次远好过拖动卡一下。
-    void this.prefs.persistOrder();
-  }
-
-  /** 收尾：拆 document listener、清 ghost / 源 Tab 变暗、清空拖拽状态。 */
-  private teardownDrag(): void {
-    const d = this.drag;
-    if (!d) return;
-    document.removeEventListener("mousemove", d.onMove);
-    document.removeEventListener("mouseup", d.onUp);
-    // 〔步 17·D〕停留计时器必须在这里清。不清的话它会在拖拽结束之后才到点，
-    // 往一个已经收尾的状态上写 `onto` —— 而那时 `this.drag` 已是 null，
-    // 回调里的守卫会吞掉它，但计时器本身是条悬空引线（同 `pendingMenuTimers` 那条教训）。
-    if (d.dwellTimer !== null) window.clearTimeout(d.dwellTimer);
-    d.dwellTimer = null;
-    this.markDropTarget(null); // 拖拽结束必须清掉落点标记，否则它会挂在那儿
-    d.ghost?.remove();
-    d.root.classList.remove("dragging");
-    this.drag = null;
-    // ★ 6d：拖拽期间被守卫挡下的那些刷新，在这里**补一次**。
-    // 少了这一句，守卫就从「推迟」变成「静默丢弃」：会话在拖拽那一秒里跑完了，
-    // 它的 tab 会一直留在主栏假装还活着，直到下一件无关的事碰巧再刷一次栏。
-    // ⚠ 必须在 `this.drag = null` **之后** —— 否则自己被自己的守卫挡回去。
-    if (this.tabBarDirtyDuringDrag) {
-      this.tabBarDirtyDuringDrag = false;
-      this.refreshTabBar();
-    }
-  }
-
-  /** document mouseup：收尾；armed 则在落点弹独立窗口。 */
-  private onDragUp(e: MouseEvent): void {
-    const d = this.drag;
-    if (!d) return;
-    // 〔步 17·D〕落点要在 `teardownDrag` 之前取出来 —— 它会把整个 `drag` 清成 null。
-    const { dragging, armed, sid, dropTarget } = d;
-    this.teardownDrag();
-
-    if (!dragging) return; // 没越阈值 = 纯点击，交给 click handler 正常切 Tab。
-
-    // 起过拖（无论 armed 与否）都抑制紧随的 click —— 拖完不该顺带切 Tab。
-    this.suppressClickSid = sid;
-    if (armed) {
-      // ★ P7a-2-Y2：撕窗口这一路**顺序一个字不动**。两件事都做的话，
-      // 用户撕出一个窗口的同时原栏的序被改了 —— 他没要求过那件事。
-      void this.openInNewWindow(sid, e.screenX, e.screenY);
-      return;
-    }
-    this.applyDrop(sid, dropTarget);
-  }
-
   /** 单个 tab 的账号徽章就地重刷（in-flight 状态变化时用；tab 已没了就静默跳过）。 */
   private refreshAccountBadgeFor(sid: string): void {
     const refs = this.tabButtons.get(sid);
@@ -1738,10 +1395,7 @@ export class TabManager {
     // ⚠ 守的是 `d.dragging`（真起拖了）而不是 `this.drag` 在不在 —— 后者在「按下还没动」
     // 那一段也为真，那段本来就该照常刷新（它与点击没有区别）。
     // ⚠ 不是丢掉这次刷新：记一笔脏，`teardownDrag` 收尾时补一次（见那里）。
-    if (this.drag?.dragging) {
-      this.tabBarDirtyDuringDrag = true;
-      return;
-    }
+    if (this.dragger.deferRefresh()) return;
     // 1. 删
     const wanted = new Set(this.store.orderedIds);
     for (const sid of Array.from(this.tabButtons.keys())) {
@@ -1876,10 +1530,7 @@ export class TabManager {
 
     root.addEventListener("click", () => {
       // 拖拽刚结束的那次 click 不切 Tab（drag-then-release ≠ 选中）。一次性消费。
-      if (this.suppressClickSid === sid) {
-        this.suppressClickSid = null;
-        return;
-      }
+      if (this.dragger.takeSuppressedClick(sid)) return;
       this.switchTo(sid);
     });
     // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
@@ -1887,7 +1538,7 @@ export class TabManager {
       if (e.button !== 0) return;
       // 〔步 17·A〕原先这里有一条「归档区里的 tab 不参与拖拽」的例外 ——
       // 抽屉没了，那条例外自动不需要（`§A.3` 逐字「净收益」）。
-      this.beginTabDrag(e, sid, root);
+      this.dragger.begin(e, sid, root);
     });
     // 中键点击归档 Tab 也关闭（常见 UX）
     root.addEventListener("mousedown", (e) => {
