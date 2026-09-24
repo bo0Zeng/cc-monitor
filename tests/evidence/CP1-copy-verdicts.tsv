@@ -638,14 +638,14 @@ src/main.ts:455	打开设置	保留	[对外] 顶栏按钮 aria-label
 src/main.ts:468	打开历史会话浏览器	保留	[对外] 顶栏按钮 aria-label
 src/main.ts:499	打开代码全景	保留	[对外] 顶栏按钮 aria-label
 src/main.ts:513	打开多 agent 监控	保留	[对外] 顶栏按钮 aria-label
-src/main.ts:526	打开 SFTP 文件面板	保留	[对外] 顶栏按钮 aria-label；SFTP 是用户认得的协议名
+src/main.ts:507	打开文件窗口	保留	[对外] 顶栏按钮 aria-label；〔F7b〕老 SFTP 面板退役，终点换成原生文件窗口，名字跟着改
 src/main.ts:549	打开历史浏览器	保留	[对外] 命令面板条目标题
 src/main.ts:550	打开代码全景	保留	[对外] 命令面板条目标题
 src/main.ts:552	打开收件箱	保留	[对外] 命令面板条目标题
 src/main.ts:553	打开 cc-bus 驾驶舱	保留	[对外] 命令面板条目标题；cc-bus 是功能名
 src/main.ts:554	打开多 agent 监控	保留	[对外] 命令面板条目标题
 src/main.ts:555	打开设置	保留	[对外] 命令面板条目标题
-src/main.ts:556	打开 SFTP 文件面板	保留	[对外] 命令面板条目标题
+src/main.ts:537	打开文件窗口	保留	[对外] 命令面板条目标题（〔F7b〕同上）
 src/main.ts:557	最小化窗口	保留	[对外] 命令面板条目标题
 src/main.ts:558	切换全屏	保留	[对外] 命令面板条目标题
 src/main.ts:559	把对应终端窗口拉到前台	保留	[对外] 命令面板条目标题
