@@ -915,8 +915,10 @@ cell(
                         "（`.pos` 的写点 · 锁文件表达式），另有 7 份被逐字读"
                         "（`cc-peek` · `cc-commit` · `cc-bus-adapt.sh` ＋ 两份实现 ＋ "
                         "`cc-bus-agent-claude.sh` · `cc-recv` 的 sha256）＋ `SKILL.md` 那几句。"
-                        "⚠ 这棵树的其余部分（`src/shared/cc-bus/examples/` · `ccm-aliases.sh` 之类）"
-                        "本格一个字都不问；⚠ `cc-spawn`/`cc-kill`/`cc-busd` 只在那两条全目录扫里"
+                        "〔09-24 kinds/保活〕另读 `examples/kinds.tsv`（随包 kinds 表逐行过装表判、与内置对拍）"
+                        "与 `examples/cc-keepalive`（保活调用方，真跑）；scripts/ 整目录再被扫第三遍（保活零提及）。"
+                        "⚠ 这棵树的其余部分（`examples/` 里另外三份 · `ccm-aliases.sh` 之类）"
+                        "本格一个字都不问；⚠ `cc-spawn`/`cc-kill`/`cc-busd` 只在那几条全目录扫里"
                         "被**数到**，它们自己干得对不对本格问不出来"),
         "tests/evidence/": blind("本格的**尺子**就住这棵树（`evidence/W24C-ccbus-twophase-ruler.py`）"
                                  "—— 尺子不是分母。把量具算进它自己的覆盖，正是本区最高频那族病"
