@@ -2,12 +2,17 @@
 //!
 //! 今天只有一条策略：**monitor 退出时要不要主动结束这台机的 backend**，默认 **false（不主动结束）**。
 //!
-//! # 归属：为什么持久化不在这里
+//! # 〔B2 · 条 66 · `设计/01 §3.3b`〕那个值**不住 monitor** —— 本模块只是去问、去交写
 //!
-//! `config.rs` 头注逐字「Rust 端**不解释配置内容**（schema 在前端定义）」。
-//! 若这里也往 `config.json` 里读写，同一个文件就有了**两个写者** ——
-//! 前端「读—改—写」整份的那一刻，会把 Rust 刚写进去的键按一份**陈旧副本**覆盖掉。
-//! ⇒ 持久化归前端；本模块只持有**生效值**，由前端在改动时与启动时推进来。
+//! 搬家前：持久化归前端（monitor 的 `config.json`），本模块持有一张进程内的**生效值表**，
+//! 由前端在启动时与改动时推进来，退出臂读那张表。那张表正是 `E2` 点名的「启动时快照」，
+//! 而「值住看客这一侧」正是 `§3.3b ①` 那个反例的成因（C 拿自己那份默认值悄悄改掉 B 的行为）。
+//! ⇒ 值搬到**后端所在那台机器**上（后端 `control/exit_policy.rs`，只有后端写）。本模块今天只剩三件：
+//! ① [`backend_exit_policy`] —— 问那台机器（界面画勾用）；
+//! ② [`set_backend_exit_policy`] —— 交那台机器写（界面改勾用），回写完读回的那一份；
+//! ③ [`kill_on_exit_now`] —— monitor 退出臂**在决定那一刻现问**本机后端一次，按答案收它自己起的两个子进程。
+//! 三件都经同一个发送口 [`exit_policy_call`]（走分流器，登记在 `backend_route_tests::SENDERS`）。
+//! 进程内**没有**这个值的任何副本 —— 那张表连同推送它的那条 tauri 命令一起删了。
 //!
 //! # ⚠ 「不主动结束」到底等不等于「继续跑」—— **今天要看它有没有真脱离**〔`K-P1` 08-26 翻面〕
 //!
@@ -39,6 +44,11 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
+use crate::backend::control::inbound_client;
+use crate::origin::Origin;
+use serde_json::{json, Value};
+
 /// ── `K-P1 KPY4`：退出行为的四句话。**用户可见文案的家在 TS 那侧**
 /// （`src/backend-policy.ts` 的 `EXIT_*`），这里这四条只为**逐字对拍**而存在。
 ///
@@ -56,8 +66,11 @@ pub const EXIT_UNATTENDED: &str =
     "monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的";
 /// ③ 勾掉 + **没脱离**（平台不支持 / 被关掉了 / 脱离失败）⇒ **保持今天那句，一字不改**。
 pub const EXIT_SELF_DIES: &str = "monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出";
+/// ④〔B2 · 条 66 · `§3.3b ⑤`〕那台机器上的值**读不出来** ⇒ 按缺省办，并说出来这不是谁选的。
+pub const EXIT_UNREADABLE: &str =
+    "那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过";
 
-/// 那三句的顺序**与 TS 那侧逐条对齐**。对拍判据按名字取、按内容比，条数也比。
+/// 那四句（〔B2〕三句 ＋ 读不出来那一句）的顺序**与 TS 那侧逐条对齐**。对拍判据按名字取、按内容比，条数也比。
 ///
 /// ⚠ 曾经有过第四档（「已经脱离了 ⇒ 这个勾管不到它」）。它是**一个缺口的产物**：
 /// 退出钩子当时只收被监护的那条路。缺口补上（`lib.rs` 的 `RunEvent::Exit` 现在两条都收）
@@ -66,6 +79,7 @@ pub const EXIT_COPY: &[(&str, &str)] = &[
     ("EXIT_KILLS", EXIT_KILLS),
     ("EXIT_UNATTENDED", EXIT_UNATTENDED),
     ("EXIT_SELF_DIES", EXIT_SELF_DIES),
+    ("EXIT_UNREADABLE", EXIT_UNREADABLE),
 ];
 
 /// ── `K-P3 KP3C`：那句「无人监护」后面接的那个**读数**。用户可见文案的家同样在 TS 那侧
@@ -111,33 +125,105 @@ pub const HEALTH_COPY: &[(&str, &str)] = &[
 pub const CROSS_LANGUAGE_COPY: &[(&str, &[(&str, &str)])] =
     &[("EXIT_COPY", EXIT_COPY), ("HEALTH_COPY", HEALTH_COPY)];
 
-fn table() -> &'static Mutex<HashMap<String, bool>> {
-    static T: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
-    T.get_or_init(|| Mutex::new(HashMap::new()))
-}
+/// 问 / 改那台机器上的值时的期限（界面那两条）。远端要走一趟 SSH 长连接，给宽一点。
+const EXIT_POLICY_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// 缺省：**不主动结束**（`C8`③ 的前半句 —— 那半是站得住的）。
-pub const DEFAULT_KILL_ON_EXIT: bool = false;
+/// monitor 退出臂那一问的期限。**monitor 正在退**：问不到就按缺省办，不许把退出拖住。
+/// 本机后端读一份小文件就回，这个数是上界不是节拍（问的是本机那条已经连着的流）。
+const EXIT_ASK_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
 
-/// 这台机的后端，monitor 退出时要不要主动结束。
-pub fn kill_on_exit(origin: &str) -> bool {
-    table()
-        .lock()
-        .ok()
-        .and_then(|t| t.get(origin).copied())
-        .unwrap_or(DEFAULT_KILL_ON_EXIT)
-}
-
-/// 前端推进来的生效值（改动时 + 启动时各推一次）。
-#[tauri::command]
-pub fn set_backend_kill_on_exit(origin: String, kill: bool) -> Result<(), String> {
-    if origin.trim().is_empty() {
-        return Err("origin 不许为空 —— 策略是 per-host 的，没有「全局」这一档".into());
+/// 三件事共用的发送口（形状照 `frame_query::call`）：没通道 / 旧后端不认 / 调用失败，各说各的话。
+async fn exit_policy_call(
+    origin: &Origin,
+    cmd: &str,
+    args: Value,
+    budget: std::time::Duration,
+) -> Result<Value, String> {
+    let origin = origin.as_wire_str();
+    let Some(client) = inbound_client::client_for(origin) else {
+        return Err(said(no_channel(origin)));
+    };
+    if !client.accepts(cmd) {
+        return Err(format!(
+            "[{origin}] 的后端还不认 `{cmd}` —— 「退出行为」搬到后端那台机器上之后才有这条命令，重装那台机器的后端就有了"
+        ));
     }
-    let mut t = table().lock().map_err(|e| format!("锁毒化: {e}"))?;
-    tracing::info!("backend 策略：origin={origin} kill_on_exit={kill}");
-    t.insert(origin, kill);
-    Ok(())
+    let data = client.call(cmd, args, budget).await.map_err(|e| {
+        said(route_call_error(&e, |code, message| {
+            format!("[{origin}] `{cmd}` 失败（{code}）：{message}")
+        }))
+    })?;
+    data.ok_or_else(|| format!("[{origin}] `{cmd}` 的应答没有 data —— 两端契约对不上"))
+}
+
+/// 三态里给人看的那句话（同 `frame_query::said`）。`Done` 在本族走不到。
+fn said(r: Routed) -> String {
+    match r {
+        Routed::NoChannel(s) | Routed::Refused(s) => s,
+        Routed::Done => "问退出策略出了内部错误，没有拿到结果".to_string(),
+    }
+}
+
+/// 〔B2〕问那台机器：「退出行为」那个值现在是什么。回后端那份原样（`shell` / `state` / `killOnExit` / …）。
+#[tauri::command]
+pub async fn backend_exit_policy(origin: Origin) -> Result<Value, String> {
+    // 本机与远端**同一条路**（都是那台机器那条长连接，`C1`）；`route` 只用来拦空白名 ——
+    // 「没给名字」不是本机（`origin.rs::Origin::route` 头注）。两臂之后没有分叉。
+    let _ = origin.route("backend_exit_policy")?;
+    exit_policy_call(&origin, "exit-policy-read", json!({}), EXIT_POLICY_BUDGET).await
+}
+
+/// 〔B2〕交那台机器写那个值。回**写完读回来**的那一份。
+#[tauri::command]
+pub async fn set_backend_exit_policy(origin: Origin, kill: bool) -> Result<Value, String> {
+    // 同上一条：`route` 只拦空白名 —— 策略是每台机器一份的，没有「全局」这一档。
+    let _ = origin.route("set_backend_exit_policy")?;
+    tracing::info!(
+        "交 [{}] 的后端写退出策略：killOnExit={kill}",
+        origin.as_wire_str()
+    );
+    exit_policy_call(
+        &origin,
+        "exit-policy-set",
+        json!({ "killOnExit": kill }),
+        EXIT_POLICY_BUDGET,
+    )
+    .await
+}
+
+/// 从后端那份应答里取生效值。形状不对 ⇒ `None`（调用方按缺省办并出声）。
+pub(crate) fn kill_from_answer(data: &Value) -> Option<bool> {
+    data.get("killOnExit").and_then(Value::as_bool)
+}
+
+/// 〔B2 · `§3.3b ④`〕**monitor 退出臂在决定那一刻现问一次**：这台机器要不要跟着结束。
+///
+/// 只问、不记：每次调用都真发一条 `exit-policy-read`，本模块没有任何地方存它的答案。
+/// 问不到（没通道 / 超时 / 旧后端）⇒ **按缺省（不结束）办，并出声** —— 那不等于有人这么选过。
+pub fn kill_on_exit_now(origin: &Origin) -> bool {
+    let asked = tauri::async_runtime::block_on(exit_policy_call(
+        origin,
+        "exit-policy-read",
+        json!({}),
+        EXIT_ASK_BUDGET,
+    ));
+    match asked.as_ref().map(kill_from_answer) {
+        Ok(Some(k)) => k,
+        Ok(None) => {
+            tracing::warn!(
+                "退出：[{}] 的退出策略应答形状不对 ⇒ 按缺省（不结束）办",
+                origin.as_wire_str()
+            );
+            false
+        }
+        Err(e) => {
+            tracing::warn!(
+                "退出：问不到 [{}] 的退出策略（{e}）⇒ 按缺省（不结束）办 —— 这不等于有人这么选过",
+                origin.as_wire_str()
+            );
+            false
+        }
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════════

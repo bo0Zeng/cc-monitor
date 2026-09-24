@@ -2446,9 +2446,11 @@ fn the_exit_path_really_stops_the_local_backend() {
         )
     });
     // ── P2s 翻面新增的两条 ──────────────────────────────────────────
-    let policy_at = guard_core::find_pinned(body, "kill_on_exit(").unwrap_or_else(|e| {
+    // 〔B2 · 条 66〕读策略那一处从「读一张推进来的表」换成「现问本机后端」（`kill_on_exit_now(`）。
+    //   形状不变：仍是 `let <名> = …(` 一行，下面那几条位置 / 绑定名判据一格没动。
+    let policy_at = guard_core::find_pinned(body, "kill_on_exit_now(").unwrap_or_else(|e| {
         panic!(
-            "退出臂里没有读 `kill_on_exit(` —— 它在**无条件**收本机后端。\n\
+            "退出臂里没有现问 `kill_on_exit_now(` —— 它在**无条件**收本机后端。\n\
                  那与 `C8`③「默认不 kill」直接冲突：用户什么都没设就被杀后端，\n\
                  而开关默认是关着的。（锚点诊断：{e}）"
         )

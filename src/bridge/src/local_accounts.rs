@@ -537,7 +537,7 @@ pub(crate) fn classify_local_trust(outcome: QueryOutcome) -> crate::accounts::Ac
 /// 本机那一侧的入口 —— 由 `accounts::check_account_trust` 在 `origin == <local>` 时调。
 ///
 /// **不单开一条 Tauri 命令**：远端那条本来就吃 `origin`，本机只是 `origin` 的另一个取值
-/// （`C1`「本地 = 不走 ssh 的远端」；同 `set_backend_kill_on_exit` 那一族的形）。
+/// （`C1`「本地 = 不走 ssh 的远端」；同 `backend_policy::backend_exit_policy` 那一族的形）。
 pub(crate) async fn local_account_trust(
     config_dir: Option<String>,
     cwd: String,

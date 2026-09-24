@@ -242,7 +242,14 @@ fn local_and_remote_are_exactly_complementary() {
 // ⚠ **这个数是跑出来的**：把上限临时改成 0、让本条印出现打的 85，再照它写
 //   （现打那一行逐字「裸字符串 origin 参数现打 85 处，上限 0」）。
 //   86 − 1 = 85 恰好也对得上，但「算出来恰好相等」不是判据（本仓治过的同形病）。
-const ORIGIN_MIGRATION_CEILING: usize = 85;
+//
+// 🔴 **〔B2 · 条 66 · 2026-09-24〕85 → 83，降的 2 处记在这里**：「退出行为」那个值搬到后端那台机器上，
+//    monitor 侧那两处裸字符串 origin 随原来那条推送链一起没了 ——
+//      · 推生效值的那条 tauri 命令（`origin: String`）退役；
+//      · 读进程内那张表的 `kill_on_exit(origin: &str)` 退役。
+//    新的两条命令（`backend_exit_policy` / `set_backend_exit_policy`）与退出臂那一问**一开始就收 `Origin`**，
+//    不进本条人群。⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 83 处，上限 0」。
+const ORIGIN_MIGRATION_CEILING: usize = 83;
 
 #[test]
 fn no_new_raw_string_origin_parameters() {
