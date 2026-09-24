@@ -484,6 +484,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 2. **定向事件 target-kind 对齐**（viewer 适用；settings **N/A**——无会话流、跨窗同步用广播）：给单个 viewer 窗口定向投递（如 `replay_session_to_window`）用 Rust `emit_to(EventTarget::webview_window(label))` ↔ 前端 `getCurrentWebviewWindow().listen`（`bindEvents({windowScoped:true})`）。**禁止**用 `&str` 目标（→`EventTarget::AnyLabel`）配模块级 `listen`（→`Any`）—— Tauri 2 按 kind 匹配，`Any` 监听命不中 `AnyLabel` 发射，事件静默丢弃。**广播**（前端 `emit()` / Rust `AppHandle::emit`，`Any`）是通配，模块级 `listen`（`Any`）收得到——settings 的 `settings-applied` 跨窗同步正走广播↔模块级 listen（Any↔Any），恰好避开该坑。
 3. **异步 `listen`/`bindEvents` 必须先注册再触发 emit**（viewer 适用；settings 因 emit 只在用户开窗后保存才发生、远晚于主窗口启动注册，无竞态）：`listen()` 异步注册，注册完成前后端 emit 的事件会丢。
 4. **精简模式 CSS 不能塌 grid 行**（viewer + settings 都适用，解法不同）：`display:none` 一个 grid **item**（如 viewer 的 `#tab-bar`）会把它从 grid 移除、剩余 item 前移落行 → viewer 必须只为剩余 item 定义对应行数（`auto 1fr 24px`）。settings 换了个更稳的解法：`body.settings-window-mode` 直接 `display:none` 隐藏 grid **容器** `#app` 整块（非其内 item，无前移塌缩），面板 `position:fixed` 脱流铺满。
+   〔订正 · U1 · 2026-09-24〕**settings 那一半已不适用**：三入口拆分之后设置窗是独立入口 `settings.html`（`entry-settings.ts`），页面里**没有** `#app`、也没有 `body.settings-window-mode` ⇒ 不再是「精简模式」，不存在要塌的 grid。本项今天只约束 viewer（`viewer.html` ＋ `entry-viewer.ts`）。三窗各自的模块图与 CSS 清单由 `tests/entry-graphs.vitest.ts` 钉。
 5. **关窗要 `core:window:allow-close` 能力**（settings 适用；任何前端调 `getCurrentWindow().close()` 的窗口都适用）：该 JS API 走 `plugin:window|close`，受 ACL 门控，而 `core:window:default` **只含 getter 类权限、不含 `allow-close`**（同理 minimize/set-fullscreen 也得显式加）。capability 的 `windows` 列了该窗口标签还不够，**必须**把 `core:window:allow-close` 加进 `permissions`，否则 ×/取消/Esc 关窗被 ACL 拒、`void` 吞掉 → 点了没反应（系统标题栏原生 X 仍可关，更隐蔽）。
 6. **复用 `dispatcher` 的独立窗口必须自调 `dispatcher.start()` + `applyOverrides`**（settings 适用；任何含 overlay / 快捷键录制的独立窗口都适用）：设置窗有**自己的** dispatcher 实例；`dispatcher.start()` 是唯一挂 window keydown 的地方（快捷键录制的按键捕获 + Esc 经 overlay LIFO 逐层关都在其中）。不调 → 窗内快捷键编辑器录制收不到键、Esc 无法关嵌套 overlay。**别手搓 window 级 Esc 监听**——它会与栈内 overlay 的 Esc 双触发（既关 overlay 又关整窗）。让面板作 overlay 栈底（`pushOverlay`），其 `handleEsc`→关窗。
 
@@ -1752,6 +1753,22 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 **必需 token 带前导点是有意的**：护栏是子串扫描、**不剥注释**。只要求裸 `create_new(true)` 的话，
 模块文档里那句「`create_new(true)` = O_EXCL」就能把要求喂饱 —— 实测过（G2 的 N5 变异）：
 把代码换成 `.create(true)` 之后那条要求**照样通过**，只有行为测试红。带上点就只能由**调用**满足。
+
+> **〔订正 · F1 · 2026-09-24 · 用户裁「现在只允许后端的文件管理部分写文件」＋「文件管理器可以改 `~/.claude` 里的东西」〕**
+> 上面的「现措辞」与两层表**已不是全貌**：步 23b（09-19）起白名单层多了 `control/files_write.rs`，
+> F1（09-24）又把它移到**第三层**。今天的护栏是**三层**（`readonly_guard.rs`）：
+>
+> | 层 | 范围 | 判据 |
+> |---|---|---|
+> | 默认层 | 除下面两层外所有后端生产源码 | 写模式一条都不许出现（未变） |
+> | 白名单层 | `control/fork_write.rs` | 只许 `O_EXCL` 新建（同上表） |
+> | **第三层（文件管理写面）** | **恰好** `control/files_write.rs` | 改动动词是**闭集**（建目录 · 删文件 · 删空目录 · 改名 · 改权限 · 覆盖写；**不含递归删**）· **每一处改动之前先过围栏** · **只从文件管理面来**（后端里引用得到它的文件 == `{inbound.rs}`，够得到它的命令 == 写面登记的那几条） |
+>
+> ⇒ 本节的**措辞**因此改为：**后端只有文件管理那一面可以改动用户的文件，且每一处先过会话文件围栏；
+> 其余后端代码仍不许写，`fork_write` 仍只许 `O_EXCL` 新建。**
+> 围栏（`is_protected_session_file`）只拦正在用的会话记录（`projects/<proj>/<sid>.jsonl`、`sessions/<x>.json`），
+> `~/.claude` 里的 skills / 配置 / 账号库**可以改**——这是用户那条裁决的原意，不是放松。
+> ⚠ TOCTOU 未闭合（判定与动手之间有窗；改名「目标已在就拒」是先看再改）—— 如实登记，不当成已解。
 
 ### 41.5 兼容与部署
 

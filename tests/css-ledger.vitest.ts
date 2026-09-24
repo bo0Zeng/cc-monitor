@@ -73,7 +73,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import stylelint from "stylelint";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildLedger,
   cssClassesOf,
@@ -98,8 +98,15 @@ const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
  * ⚠ 别把地板往上抬成快照 —— 那会让每一次正常改动都红在一个与被守性质无关的数上。
  */
 const FLOORS = {
-  /** `src` 下的 CSS 文件份数（现打 2：`styles.css` ＋ `styles/tokens.css`）。 */
-  cssFiles: 2,
+  /**
+   * `src` 下的 CSS 文件份数。〔三入口拆分 · 人群改定义〕原先现打 2（`styles.css` ＋ `styles/tokens.css`），
+   * 按窗口 / 按层切开之后现打 **10**（`styles.css` ＋ `styles/` 下 9 份：layers · reset · tokens · layout ·
+   * shared · settings-shared · main · settings · viewer）。人群的**定义**没变（仍是 `src/**\/*.css` 全体，
+   * 与 `npm run lint:css` 的 glob 同一批，由格 ④ 对拍），变的是份数 ⇒ 地板跟着抬到 8：
+   * 留在 2 的话，丢掉 8 份文件这条也不会叫。「每份都被某个窗口的 html 链到」住 `tests/entry-graphs.vitest.ts`。
+   * 同一拍现打：类名 780 · 代码侧引用 858 · z-index 39 · 悬空 162 —— 与拆之前**逐项相等**（拆文件只搬家，不改账）。
+   */
+  cssFiles: 8,
   /** CSS 选择器里的类名个数（现打 777）。 */
   cssClasses: 600,
   /** `z-index` 声明条数（现打 39）。 */
@@ -219,7 +226,8 @@ const KNOWN_DEAD: readonly { name: string; why: string }[] = [
  * `tests/eslint-baseline.vitest.ts` 的头注逐字登记过「本条不管 stylelint，登记在此，不假装覆盖了」，
  * 而 `ci.yml` 那一步是 `npm run lint:css || true`（结构上不会红）。本格接的就是那半格。
  */
-const STYLELINT_CEILING = 47;
+// 〔2026-09-24 U1 合并那一拍棘 47 → 39〕三入口 ＋ CSS 拆 10 份 ＋ 层真包进去之后现打 39（现打，不是 47−8 算的）。
+const STYLELINT_CEILING = 39;
 
 /**
  * ★ **靠前缀（而不是靠直接住址）才解释得通的 CSS 类名个数**上限。现打 **35**（分母 777）。
@@ -590,5 +598,284 @@ describe("S25 ④ stylelint 报错总数（递减棘轮）", () => {
     ).toBeTruthy();
     expect(Number(m?.[1]), "`ci.yml` 里的数与 `STYLELINT_CEILING` 漂了").toBe(STYLELINT_CEILING);
     denom("④", 1, "处 CI 侧散文（与判据常量对上了）");
+  });
+});
+
+// ═══════════════════════════ ⑤ 层真包进去（`设计/41 §3` · 件 2）═══════════════════════════
+//
+// 〔三入口拆分那一拍新装〕`设计/41` 抬头的订正逐字：「7 个层只有 `reset`/`tokens` 真包进去
+// （**无层样式赢过所有有层的**，收益还没到手）」。本格钉的就是那一句的反面，两条：
+//
+// ⑤a **恒等**：`src` 下每一份 CSS 里的每一条规则，外层 at-rule 链上都有一个 `@layer` ——
+//     无层规则的条数 == 0。一条漏网的无层规则会**压过所有有层的**（与特异度无关），
+//     正是订正里说的那个病。
+// ⑤b **恒等**：用到的每个层名都在 `layers.css` 那句声明里，且那句声明的次序 == 下面这张表。
+//     拼错一个层名不会报错 —— 浏览器会**悄悄新开一层、排在所有声明过的层之后**，于是那一块
+//     压过一切。这一形没有任何别的东西会叫。
+//
+// 买到 / 买不到：
+// - ✅ 源码层面零无层规则、零野层名、层序与设计一致。构建产物（含第三方 CSS 被
+//   `vite.config.ts` 的插件包进 `vendor` 那一步）另由 `tests/entry-graphs.vitest.ts` 对产物再判一次。
+// - ❌ **每条规则进的是不是「对的」那一层**（该进 `states` 的还在 `components`）判不了 ——
+//   那要语义。今天 `base` / `states` / `utilities` 三层是空的，理由写在 `设计/41` 末尾追加的那一节。
+
+/** 层的设计次序（`设计/41 §3` 七层 ＋ 第三方那一层 `vendor`，排在 `reset` 之后、我们所有层之前）。 */
+const LAYER_ORDER = ["reset", "vendor", "tokens", "base", "layout", "components", "states", "utilities"] as const;
+
+interface LayerScan {
+  /** 判过的规则条数（分母）。 */
+  rules: number;
+  /** 不在任何 `@layer` 里的规则：选择器 → 所在行。 */
+  unlayered: string[];
+  /** 用到的层名（`@layer x {` 块与 `@layer a, b;` 语句里出现的）。 */
+  used: string[];
+  /** `@layer a, b, …;` 语句按出现次序。 */
+  statements: string[][];
+  /** 真装着规则的层（`@layer x { … }` 块的名字）。 */
+  blocks: string[];
+}
+
+/** 扫一份 CSS：每条规则在不在层里、用了哪些层名。注释与字符串里的花括号不算。 */
+export function scanLayers(css: string, file: string): LayerScan {
+  const out: LayerScan = { rules: 0, unlayered: [], used: [], statements: [], blocks: [] };
+  const stack: string[] = [];
+  let buf = "";
+  let line = 1;
+  let inRule = 0;
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (c === "\n") line++;
+    if (c === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      const stop = end === -1 ? css.length : end + 2;
+      for (let k = i; k < stop; k++) if (css[k] === "\n") line++;
+      i = stop - 1;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const end = css.indexOf(c, i + 1);
+      buf += css.slice(i, end + 1);
+      i = end;
+      continue;
+    }
+    if (inRule > 0) {
+      if (c === "{") inRule++;
+      if (c === "}") inRule--;
+      continue;
+    }
+    if (c === ";") {
+      const m = /^@layer\s+([^{]+)$/.exec(buf.trim());
+      if (m) {
+        const names = m[1].split(",").map((s) => s.trim());
+        out.statements.push(names);
+        out.used.push(...names);
+      }
+      buf = "";
+      continue;
+    }
+    if (c === "{") {
+      const prelude = buf.trim().replace(/\s+/g, " ");
+      buf = "";
+      if (prelude.startsWith("@")) {
+        const m = /^@layer\s+([\w-]+)$/.exec(prelude);
+        if (m) {
+          out.used.push(m[1]);
+          out.blocks.push(m[1]);
+        }
+        // @keyframes / @font-face 的内部不是规则
+        if (/^@(?:-webkit-)?keyframes\b|^@font-face\b/.test(prelude)) {
+          inRule = 1;
+          continue;
+        }
+        stack.push(prelude);
+        continue;
+      }
+      out.rules++;
+      if (!stack.some((a) => a.startsWith("@layer "))) out.unlayered.push(`${file}:${line}  ${prelude.slice(0, 60)}`);
+      inRule = 1;
+      continue;
+    }
+    if (c === "}") {
+      stack.pop();
+      buf = "";
+      continue;
+    }
+    buf += c;
+  }
+  return out;
+}
+
+describe("S25 ⑤ 层真包进去（设计/41 §3 · 件 2）", () => {
+  it("⑤a 每一条规则都在某个 @layer 里（无层规则 == 0）", () => {
+    const led = ledger();
+    let rules = 0;
+    const unlayered: string[] = [];
+    for (const f of led.cssFiles) {
+      const s = scanLayers(readFileSync(resolve(REPO_ROOT, f), "utf8"), f);
+      rules += s.rules;
+      unlayered.push(...s.unlayered);
+    }
+    // 反空真：扫到的规则条数掉到地板以下 ⇒ 扫描器坏了，下面那条零命中地绿
+    expect(rules, `只判到 ${rules} 条规则 —— 扫描器坏了`).toBeGreaterThan(900);
+    expect(
+      unlayered,
+      "这些规则不在任何 `@layer` 里 —— **无层样式赢过所有有层的**（与特异度无关），\n" +
+        "它们会悄悄压过层里的一切。放进它该在的那一层（多半是 `components`）。",
+    ).toEqual([]);
+    denom("⑤", rules, `条规则（${led.cssFiles.length} 份 CSS，无层 0）`);
+  });
+
+  it("⑤b 层名都在声明里、声明次序 == 设计（拼错的层名会悄悄排到最后、压过一切）", () => {
+    const led = ledger();
+    const decl = scanLayers(readFileSync(resolve(REPO_ROOT, "src/styles/layers.css"), "utf8"), "layers.css");
+    expect(decl.statements, "`layers.css` 里应该恰好一句 `@layer …;` 声明").toHaveLength(1);
+    expect(decl.statements[0], "层的次序与 `设计/41 §3`（＋ vendor）不一致").toEqual([...LAYER_ORDER]);
+    const wild: string[] = [];
+    const used = new Set<string>();
+    for (const f of led.cssFiles) {
+      const sc = scanLayers(readFileSync(resolve(REPO_ROOT, f), "utf8"), f);
+      for (const n of sc.used) if (!(LAYER_ORDER as readonly string[]).includes(n)) wild.push(`${f}: @layer ${n}`);
+      for (const n of sc.blocks) used.add(n);
+    }
+    expect(wild, "这些层名没在声明里 —— 浏览器会给它新开一层、排在所有声明过的层之后").toEqual([]);
+    // 分母：今天真有规则落进的层（base / states / utilities 空着，理由见 `设计/41` 末尾追加的那一节）
+    for (const must of ["reset", "tokens", "layout", "components"]) expect(used.has(must), `没有任何文件用到 \`${must}\` 层`).toBe(true);
+    // `vendor` 不在源码里 —— 它由 `vite.config.ts` 的插件在构建时包上（产物那一侧由 entry-graphs 判）
+    denom("⑤", used.size, `个层真装着规则（${[...used].sort().join(" · ")}），零野层名`);
+  });
+
+  /**
+   * `设计/41 §4` · 件 3：最小重置里要有表单控件那一族。订正里那句「`@layer reset` 里只有
+   * `box-sizing` ＋ `html/body`，button/input 那一族没有」就是本条的反面。
+   * ⚠ 这是**存在性**钉子：买到「那几条声明在、而且在 `reset` 层里」，**买不到**它们在真窗口里
+   * 让哪些控件变了样（要目视；静态普查的读数写在 `reset.css` 那条规则的注释里）。
+   */
+  it("⑤c reset 层里有表单控件的最小重置（四种控件继承字体与颜色；button 抹底抹边）", () => {
+    const css = readFileSync(resolve(REPO_ROOT, "src/styles/reset.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+    const body = /@layer\s+reset\s*\{([\s\S]*)\}\s*$/.exec(css.trim())?.[1] ?? "";
+    expect(body.length, "reset.css 里切不出 `@layer reset { … }` —— 下面几条对着空串").toBeGreaterThan(100);
+    const rules = [...body.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+      sels: m[1].split(",").map((x) => x.trim()),
+      decls: m[2].replace(/\s+/g, " "),
+    }));
+    const find = (sel: string, decl: RegExp): boolean => rules.some((r) => r.sels.includes(sel) && decl.test(r.decls));
+    for (const el of ["button", "input", "select", "textarea"]) {
+      expect(find(el, /font:\s*inherit/), `reset 层里没有给 \`${el}\` 继承字体`).toBe(true);
+      expect(find(el, /color:\s*inherit/), `reset 层里没有给 \`${el}\` 继承颜色`).toBe(true);
+    }
+    expect(find("button", /background:\s*none/) && find("button", /border:\s*0/), "reset 层里没有抹掉 button 的原生底与边").toBe(true);
+    denom("⑤", rules.length, "条 reset 规则（表单控件那一族在）");
+  });
+
+  it("⑤ 死值验：扫描器认得出无层规则与野层名，也不把 @keyframes 的帧当规则", () => {
+    const bad = scanLayers(
+      "@layer components { .ok { color: red; } }\n.leak { color: red; }\n@layer componets { .typo { x: y; } }\n@keyframes k { 0% { opacity: 0; } }",
+      "<变异体>",
+    );
+    expect(bad.rules, "变异体里 3 条规则（帧不算）").toBe(3);
+    expect(bad.unlayered.map((u) => u.replace(/^.*?\s{2}/, ""))).toEqual([".leak"]);
+    expect(bad.used.filter((n) => !(LAYER_ORDER as readonly string[]).includes(n))).toEqual(["componets"]);
+    denom("⑤", 3, "条变异体规则（1 条无层、1 个野层名，都逮到了）");
+  });
+});
+
+// ═══════════════════════════ ⑥ 容器查询取代写死宽度（`设计/41 §6` · 件 5）═══════════════════════════
+//
+// 两件事绑在一起（`设计/41 §6` 逐字「两件事都要做，不能只做一件」）：
+//   CSS 侧 —— 消息列的宿主 `.stream` 是名为 `stream` 的行内尺寸容器；
+//   JS 侧 —— `src/height-estimate.ts` 的 `COL_W` 不再写死 780，而是在那个容器里实测。
+// 本格钉三条：
+//   ⑥a `.stream` 的规则里声明了 `container: stream / inline-size`（名字与轴都对）；
+//   ⑥b `COL_W` 真的是量出来的：它的初始化里建了 `.stream > .stream-content`、挂进 `#message-stream`、
+//       读了宽度 —— 且**没有**再出现 `const COL_W = <数字>` 那一形；
+//   ⑥c 量不到时的回退值 == `tokens.css` 的 `--stream-max-width`（原先只有一句注释「若列宽 token 改动需同步这里」）。
+// 买到 / 买不到：
+// - ✅ 两侧的住址与回退值不漂。
+// - ❌ 真引擎里量出来的数对不对、列被压窄时估高是否更准 —— 要真窗口（本机无图形会话）。
+// - ❌ 拉窗口之后 `COL_W` 不重算（只在模块求值时量一次），理由写在 `height-estimate.ts` 那条注释里。
+
+function colWInit(src: string): string {
+  const i = src.indexOf("const COL_W");
+  if (i < 0) return "";
+  const end = src.indexOf(";\n", src.indexOf("})(", i));
+  return end < 0 ? src.slice(i, i + 200) : src.slice(i, end + 1);
+}
+
+describe("S25 ⑥ 容器查询取代写死宽度（设计/41 §6 · 件 5）", () => {
+  const css = readFileSync(resolve(REPO_ROOT, "src/styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+  const est = readFileSync(resolve(REPO_ROOT, "src/height-estimate.ts"), "utf8");
+
+  it("⑥a `.stream` 是名为 stream 的行内尺寸容器", () => {
+    // ⚠ 前界用**后行断言**、不吃掉那个 `}`：相邻两条规则共用一个 `}`，吃掉它 ⇒ matchAll 每隔一条漏一条
+    //   （`tests/evidence/P21-frontend-invariants.ts` 的 `cssRules` 头注记过同一个坑；本条第一版又踩了一次，
+    //   `.stream` 恰好落在被漏掉的那一半里，当场「找不到」）。
+    const rules = [...css.matchAll(/(?<=^|[{};])\s*([^{};@]+)\{([^{}]*)\}/g)]
+      .map((m) => ({ sel: m[1], body: m[2] }))
+      .filter((m) => m.sel.split(",").map((x) => x.trim()).includes(".stream"));
+    expect(rules.length, "styles.css 里找不到 `.stream { … }` —— 下面那条对着空气").toBeGreaterThan(0);
+    const decl = rules.map((m) => /(?:^|;)\s*container\s*:\s*([^;]+)/.exec(m.body)?.[1].trim()).find(Boolean);
+    expect(decl, "`.stream` 没有声明 `container` —— 列宽没有容器可查").toBe("stream / inline-size");
+    denom("⑥", rules.length, "条 `.stream` 规则（其中一条声明了 container: stream / inline-size）");
+  });
+
+  it("⑥b `COL_W` 是在那个容器里量出来的，不是写死的", () => {
+    const init = colWInit(est);
+    expect(init.length, "height-estimate.ts 里切不出 `const COL_W …` 那一段").toBeGreaterThan(100);
+    expect(/const COL_W\s*(?::\s*number)?\s*=\s*\d+\s*;/.test(est), "`COL_W` 又写成了一个裸数字").toBe(false);
+    for (const [what, re] of [
+      ["挂进 #message-stream", /getElementById\("message-stream"\)/],
+      ["建 .stream", /className\s*=\s*"stream"/],
+      ["建 .stream-content", /className\s*=\s*"stream-content"/],
+      ["读宽度", /getBoundingClientRect\(\)\.width/],
+      ["量完撤掉", /\.remove\(\)/],
+    ] as const) {
+      expect(re.test(init), `COL_W 的初始化里缺「${what}」`).toBe(true);
+    }
+    denom("⑥", 5, "处实测要件（挂进消息流 · .stream · .stream-content · 读宽 · 撤掉）");
+  });
+
+  /**
+   * ⑥d **行为**：上面三条只证明「代码长成了量的样子」，这一条证明「量出来的数真的进了估高」。
+   * jsdom 没有布局 ⇒ 把 `getBoundingClientRect` 换成「`.stream-content` 宽 400」，重新求值模块，
+   * 再对一张正文卡估高：必须按 400 折行，而不是 780。
+   * 反空真：同一段文字按 400 与按 780 算出来的高度必须不同，否则本条对宽度不敏感、判不出任何东西。
+   */
+  it("⑥d 行为：列被压到 400px 时，估高按 400 折行（探针量完就撤）", async () => {
+    const host = document.createElement("div");
+    host.id = "message-stream";
+    document.body.appendChild(host);
+    const orig = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      const w = this.classList.contains("stream-content") ? 400 : 0;
+      return { width: w, height: 0, top: 0, left: 0, right: w, bottom: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      vi.resetModules();
+      const m = await import("../src/height-estimate.ts");
+      const text = "字".repeat(60) + "x".repeat(400);
+      const card = document.createElement("div");
+      card.className = "card card-assistant";
+      card.innerHTML = `<div class="card-header">h</div><div class="card-body"><div class="block-text"><p>${text}</p></div></div>`;
+      const LH = 15 * 1.65;
+      const at400 = 22 + m.fallbackTextHeight(text, 15, LH, 400) + 10;
+      const at780 = 22 + m.fallbackTextHeight(text, 15, LH, 780) + 10;
+      expect(at400, "这段文字按 400 与 780 折行一样高 —— 本条对宽度不敏感").not.toBe(at780);
+      expect(m.estimateStreamNodeHeight(card), "估高没用上量出来的列宽").toBeCloseTo(at400);
+      expect(host.children.length, "探针没撤掉 —— 消息流里多了一个空的 .stream").toBe(0);
+      denom("⑥", 400, "px 的假列宽被估高用上了（对照 780 高度不同）");
+    } finally {
+      Element.prototype.getBoundingClientRect = orig;
+      host.remove();
+      vi.resetModules();
+    }
+  });
+
+  it("⑥c 量不到时的回退值 == tokens.css 的 --stream-max-width", () => {
+    const fb = /\}\)\((\d+)\);\s*$/.exec(colWInit(est))?.[1];
+    const tok = /--stream-max-width:\s*(\d+)px/.exec(readFileSync(resolve(REPO_ROOT, "src/styles/tokens.css"), "utf8"))?.[1];
+    expect(fb, "切不出 COL_W 的回退值").toBeTruthy();
+    expect(tok, "tokens.css 里切不出 --stream-max-width").toBeTruthy();
+    expect(Number(fb), "COL_W 的回退值与 --stream-max-width 漂了").toBe(Number(tok));
+    denom("⑥", Number(fb), "px（COL_W 回退值 == --stream-max-width）");
   });
 });

@@ -1,0 +1,48 @@
+/**
+ * 最小重置（`设计/41 §4`）。三个窗口都加载。
+ *
+ * 零影响的证明（包 `reset` 层那天现打，搬家不改变它）：`box-sizing` 全文只有 2 处声明，
+ * 另一处是具体元素（特异度远高于 `*`）⇒ 放进最低的 `reset` 层不改变任何一格。
+ */
+@layer reset {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* 〔`设计/41 §4` · 件 3〕表单控件的最小重置。
+     病根：没有重置的体系里，**忘了写样式的控件以浏览器原生外观出现**（浅灰底 ＋ 立体边框
+     ＋ 13.33px 字），在暖色暗主题上极其突兀 —— `.user-inputs-toggle` 就是这么来的。
+     放在最低的 `reset` 层 ⇒ 任何一条组件规则（不论特异度）都压得过它，它只接住「漏写」的那些。
+
+     ⚠ **与 `设计/41 §4` 那段示意的一处有意偏离**：`background: none; border: 0` 只给 `button`，
+     **不给** `input` / `select` / `textarea`。理由：文本框与下拉框抹掉底色和边框之后，漏写样式的那一个
+     不是「朴素」而是**看不见**（一段没有框的空白）。静态普查：文本类控件的建元素处 158 个，
+     其中 32 个自身类上没有背景 / 边框 / 字体 / 颜色里的至少一项，要靠祖先上下文规则（如
+     `.accounts-row-actions button`）才有样式 —— 这 32 个里哪些真的漏了，**静态判不了，要目视**。
+     字体与颜色两项对它们一律继承（纯收益：不再是 13.33px、不再是 UA 默认色）。 */
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    background: none;
+    border: 0;
+  }
+
+  /* 可点才给手形；禁用态保留默认箭头（`设计/41 §4` 示意写的是裸 `button`，那样禁用按钮也是手形） */
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+}

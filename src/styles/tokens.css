@@ -66,6 +66,9 @@
  * 原始值（`--c-neutral-900` 那种），组件里写的还是 `var(--bg)`，800 处引用一处不动。
  */
 
+/* 〔三入口拆分〕原先由 `styles.css` 用 `@import "./styles/tokens.css" layer(tokens)` 引进来；
+   现在三个 html 直接链本文件，层由本文件自己声明（链进来的文件没有 `layer()` 这个写法）。 */
+@layer tokens {
 :root {
   /* === 颜色令牌（Anthropic warm gray-brown，参照 claude.ai 暗色） === */
   --bg: #2b2a27; /* warm dark，主背景 */
@@ -205,4 +208,5 @@
   --z-modal: 400; /* 模态 + 背板 + 命令面板 */
   --z-toast: 500; /* 提示条 / tooltip（必须能压过模态，否则提示看不见） */
   --z-drag: 600; /* 拖拽幽灵、拖宽参考线（必须在最上） */
+}
 }

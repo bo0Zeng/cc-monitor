@@ -2336,12 +2336,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    ⇒ 散文里这三处（README 1 · `ssh_source.rs` 2）全是**病史与墓碑**，该留；
         //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
         //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
-        // 🔴 〔波 4 合并时补〕`set_char_range` 是 **egui 上游的 API**（`builder.rs` 里
-        //   调它把光标写回去），本仓代码里当然没有这个名字。`filewin/editor.rs` 那一段点它，
-        //   是为了说清「在 layouter 里只排 40 行会让光标下标被当成全文绝对下标用、
-        //   **每帧毁一次**」—— 那是「假的只排视口内」里最坏的一种。
-        //   ⇒ 按本条第 ③ 条出路（仓外名字）登记。
-        ("src/bridge/src/filewin/editor.rs", "set_char_range", 1),
         ("src/bridge/README.md", "daemonless_stream_loop", 1),
         ("src/bridge/src/ssh_source.rs", "daemonless_stream_loop", 2),
         (
@@ -3164,6 +3158,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    真要修，同拍要核的还有 `:1463` 那处**同形**的显式 push 与它那条
         //    「四个根下 186 + build.rs 1」的分母自述（那句今天也已经陈了）。
         ("src/bridge/build.rs", "c_cross_note", 2),
+        // 〔BS1 · ccbus-win 09-24〕Windows 预检从「说没做」换成真探测（`K-R69` 的
+        //   `probe_binary_uncached`）⇒ 旧测试整条改写，头注逐字引旧名说明它为什么不在了。
+        (
+            "tests/bridge/backend/control/cc_bus_deploy_tests.rs",
+            "windows_says_the_precheck_did_not_happen_instead_of_staying_silent",
+            1,
+        ),
     ];
 
     let corpus = dead_name_corpus();
@@ -3415,6 +3416,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/backend/control/local_backend.rs", 1),
         ("src/bridge/src/backend/control/payload.rs", 1),
         ("src/bridge/src/backend/control/tmux.rs", 7),
+        ("src/bridge/src/cc_bus_deploy.rs", 1),
         ("src/bridge/src/ccm_cli_contract.rs", 1),
         // 🔴〔本机侧退役 2026-09-23〕文件管理器「本机」那一侧整条退役，
         //   `source.rs` 的头注上留了一块墓碑：**4 处标记**（一处是墓碑正文那一句，
@@ -3437,6 +3439,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/readonly_guard.rs", 2),
         ("tests/bridge/backend/control/backend_kill_tests.rs", 1),
         ("tests/bridge/backend/control/backend_send_keys_tests.rs", 1),
+        ("tests/bridge/backend/control/cc_bus_deploy_tests.rs", 1),
         ("tests/bridge/backend/control/cc_bus_tests.rs", 2),
         ("tests/bridge/backend/control/inbound_client_tests.rs", 1),
         (

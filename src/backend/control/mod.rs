@@ -9,8 +9,8 @@
 //!   `readonly_guard::WRITE_WHITELIST_MODULES`，**别在散文里再抄一份数**。
 //! - [`files_write`]（步 23b，09-19）：**写文件系统**（`O_EXCL` 在用户指定的文件管理目标下
 //!   新建一份此前不存在的文件）。红线 I7 的第二个洞口，`设计/60 §6.5.2 A` 拍板的那个
-//!   「带围栏的模块」。⚠ 它**今天还没有调用方** —— 本轮只落「模块 ＋ 围栏 ＋ 判据」，
-//!   接命令面要 bump `BUILD_ID`＋re-embed（`99 §4` 条 19c），在那一轮的写区里。
+//!   「带围栏的模块」。〔订正 · F1 · p2o〕已接命令面（`files-create` ＋ 改动既有数据的五件），
+//!   并已从白名单层搬到 `readonly_guard` 第三层（「改，但每一处先过围栏、且只从文件管理面来」）。
 //! - [`tmux_hook`]：**改 tmux server 状态**（`tmux set-hook -g`）+ **发信号**（`SIGUSR1`）。
 //! - [`gate`]（F03）：**§34 Gate 2（identity）在本侧的承载** —— 探一次 tmux 拿回
 //!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在共享的 `gate-core`（定框 C1）。
