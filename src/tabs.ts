@@ -1197,9 +1197,34 @@ export class TabManager {
         })
         .then((payloads) => {
           if (this.tabs.get(tab.sessionId) !== tab) return;
-          for (const p of payloads) this.onLine(p);
+          this.feedHistoryRows(tab, payloads);
         })
         .catch((e: unknown) => console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e));
+    }
+  }
+
+  /**
+   * 按偏移取回的**历史**行喂进 `onLine` —— 必须按**重放**的语义喂，不能按 live：
+   * live 语义下历史 user 卡会触发 `userActive`（自动切 tab / 拉前 monitor）、
+   * 历史的轮次结束会弹系统通知、每条 `recordAdded` 都重算一次主线。
+   * ⇒ 对这一个 tab 走一遍批：`inBatch` 置位（`userActive` / `turnEndNotifier` 都认它）、
+   * 折叠层进批模式；喂完把批期缓冲的中部插入一次挂载、折叠层 flush。
+   * 若此刻本来就在一个真批里（启动重放未完），只喂不收 —— 真批的 `onBatchEnd` 会收。
+   */
+  private feedHistoryRows(tab: Tab, payloads: JsonlLinePayload[]): void {
+    if (payloads.length === 0) return;
+    const wasBatch = this.inBatch;
+    this.inBatch = true;
+    tab.branchFolder.setBatchMode(true);
+    try {
+      for (const p of payloads) this.onLine(p);
+    } finally {
+      this.inBatch = wasBatch;
+      if (!wasBatch) {
+        this.flushMidBatchBuffer(tab);
+        tab.branchFolder.flushPending();
+        tab.branchFolder.setBatchMode(false);
+      }
     }
   }
 

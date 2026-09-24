@@ -4517,6 +4517,17 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     await settle();
     const rendered = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq).sort((x, y) => x - y);
     expect(rendered).toEqual([98, 99, 100, 101, 102, 103, 104]);
+    // 🔴 取回的是**历史**：按重放语义建卡 —— sink 不接 onRealUserInput（历史 user 卡不许自动切 tab），
+    //    轮次结束检测按批期短路（不许为历史弹系统通知）
+    for (const c of spy.mock.calls.filter((c) => (c[0] as { seq: number }).seq >= 100 && (c[0] as { seq: number }).seq <= 102)) {
+      expect((c[2] as { onRealUserInput?: unknown }).onRealUserInput).toBeUndefined();
+    }
+    const { turnEndNotifier } = await import("../src/turn-notify");
+    const obs = vi.mocked(turnEndNotifier.observe).mock.calls.filter(
+      (c) => (c[2] as { seq: number }).seq >= 100 && (c[2] as { seq: number }).seq <= 102,
+    );
+    expect(obs.length).toBe(3);
+    expect(obs.every((c) => c[3] === true), "历史行按 live 喂了 ⇒ 会为旧轮次弹通知").toBe(true);
     // 150 不在这一段里 ⇒ 没被要
     expect(ranges.some((c) => (c[1] as { seqBase: number }).seqBase === 150)).toBe(false);
   });
