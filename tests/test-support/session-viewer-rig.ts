@@ -42,7 +42,7 @@
 import { expect, vi } from "vitest";
 
 /** 灌给 `invoke` 的那一整块 chunk。每个用例在 `mount()` 里塞，`installViewerRig()` 清空。 */
-export const viewerRig: { chunk: unknown[] } = { chunk: [] };
+export const viewerRig: { chunk: unknown[]; index?: unknown } = { chunk: [] };
 
 /**
  * `@tauri-apps/api/core` 的替身。
@@ -66,6 +66,8 @@ export function tauriCoreMock(): Record<string, unknown> {
         ch.onmessage?.(viewerRig.chunk);
         return viewerRig.chunk.length;
       }
+      // 〔U3b〕骨架索引：没塞就回 undefined（== 今天所有既有用例的形状：查看器不接骨架）
+      if (cmd === "read_session_index") return viewerRig.index;
       return undefined;
     }),
   };
@@ -153,6 +155,7 @@ export interface ViewerRigHandles {
 export function installViewerRig(): ViewerRigHandles {
   document.body.replaceChildren();
   viewerRig.chunk = [];
+  viewerRig.index = undefined;
   let queue: FrameRequestCallback[] = [];
   vi.stubGlobal(
     "ResizeObserver",
