@@ -478,8 +478,8 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/tab-bar-drag.ts", "setTimeout", 1, "⑪ ★ 〔步 17·D · 2026-09-19〕`updateDwell` 的**停留计时器**（`DWELL_MS` = 250ms，`设计/30 §D.4`）：拖动时压住某个 tab 满 250ms ⇒ 落点从 `before` 切成 `onto`（与它成组）。**一次性、非取数**：每次换目标 / 抖动超 4px 都先 `clearTimeout` 再重排，`teardownDrag` 收尾时无条件清（判据 `tests/tabs.vitest.ts` 「步 17·D ⑤」那组用 `vi.getTimerCount()` 数在飞的定时器，死值验刀 21 钉着）。⚠ 它**非有不可**：指针停住之后 `mousemove` 就不再来了，靠事件驱动的话「停留」永远攒不满。"),
     // 〔U2 · 拆 `tabs.ts` 子步 12〕tab 栏视图搬进 `tab-bar-view.ts` ⇒ 原 rAF ③ 与 setTimeout ⑩（同一个 `scheduleTabBarRefresh` 的两支）跟着走（下两行）：
     //   `tabs.ts` rAF 3 = 2 ＋ 1 · setTimeout 1 = 0 ＋ 1（`tabs.ts` 的 setTimeout 那一行因此整行删掉）。
-    ("src/tab-bar-view.ts", "requestAnimationFrame", 1, "③ ★ F15：`scheduleTabBarRefresh` —— live 路上后台 tab 的 unread 徽标**帧末合批**（原来每来一行整刷一次 bar）。排一次位，不是自链。⚠ 只合批这一处，用户动作触发的十几个调用点仍是同步的（合批对它们无收益，反而把「点完立刻看到」变成「下一帧」）。"),
-    ("src/tab-bar-view.ts", "setTimeout", 1, "⑩ ★ F15：`scheduleTabBarRefresh` 的**无 rAF 兜底**，0ms、一次性。"),
+    ("src/tab-bar-view.ts", "requestAnimationFrame", 1, "③ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`） —— live 路上后台 tab 的 unread 徽标**帧末合批**（原来每来一行整刷一次 bar）。排一次位，不是自链。⚠ 只合批这一处，用户动作触发的十几个调用点仍是同步的（合批对它们无收益，反而把「点完立刻看到」变成「下一帧」）。"),
+    ("src/tab-bar-view.ts", "setTimeout", 1, "⑩ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`）的**无 rAF 兜底**，0ms、一次性。"),
     // 〔U2 · 拆 `tabs.ts` 子步 4〕右键菜单控件搬进 `tab-context-menu.ts` ⇒ 原 ⑤ ⑥ ⑦ 三处跟着走（下一行）：11 = 8 ＋ 3，一处没多一处没少。
     ("src/tab-context-menu.ts", "setTimeout", 3, "① ② hover 菜单的 150ms 开 / 250ms 关延时（二级 flyout；`closeTabContextMenu` 统一清）③ 0ms 下一拍挂右键菜单关闭监听。都是一次性 UI 延时，不取数。"),
     // 〔U2 · 拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
