@@ -45,6 +45,7 @@
 //!   ＋ `temp_root` / `current_uid`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉）
 //! - [`pidwatch`]：`pidfd_open` + [`pidwatch::watch_pid_until_exit`]
 //! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）
+//! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 〔C2〕拨号代理没配私钥路径时用
 //! - [`shell`]：`posix_shell`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉 ——
 //!   那两处 `Command::new("sh")` 正是 `K-R52` 立表时挂在 A2「真漏」堆上的头两条）
 //!
@@ -65,3 +66,4 @@ pub(crate) mod pidwatch;
 pub(crate) mod proc;
 pub(crate) mod shell;
 pub(crate) mod signal;
+pub(crate) mod ssh_agent;
