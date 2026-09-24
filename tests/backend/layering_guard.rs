@@ -40,7 +40,21 @@ mod tests {
     /// control 侧没有这个信号，硬要它自己发现只能靠轮询 —— 而本件的**全部目的**就是
     /// 把 `shared/ccm` 那条每秒轮询消掉（用户 08-14：「不要轮询」「ccm 做到必须走后端」）。
     /// 反过来做只是把轮询从 ccm 搬到后端。
+    ///
+    /// 〔`设计/80 §8.7` 步 2，09-22〕`identity_tag::rbind_token_of` 的答案**与上面两条同型，
+    /// 而且更强一格**：触发时机同样是「某个 pidfile 出现 / 原地换了 sid」
+    /// （`sessions/` inotify 观测到的事实），而这一次连**要读的那个 pid** 都只有那一刻在手
+    /// —— `(pid, sid)` 是从那份 pidfile 的文件名与内容里同时拿到的。
+    /// control 侧没有这个信号，硬要它自己发现只能靠轮询，与 §41 零定时器铁律正面冲突；
+    /// 而那条轮询正是 `U-NP④` 那一拍花力气消掉的那一条（用户 08-14 逐字「不要轮询」）。
+    ///
+    /// ⚠ **为什么住 `control/identity_tag.rs` 而不是让 observe 侧自己读那个环境变量**：
+    /// 那个文件是「会话身份」这件事的**唯一住址** —— `/proc/<pid>/environ` 那次读、
+    /// 形状白名单、「令牌不许承载任何权限语义」那条纪律，全在它的头注里。
+    /// 搬到 observe 侧会把身份判定拆成两家，而 `设计/80 §8.3` 那张「零件都在盘上」的表
+    /// 点名的就是这个文件。
     const ALLOWED_OBSERVE_TO_CONTROL: &[&str] = &[
+        "crate::control::identity_tag::rbind_token_of",
         "crate::control::identity_tag::tag",
         "crate::control::tmux_hook::install_hooks",
     ];

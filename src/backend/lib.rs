@@ -326,6 +326,32 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
 ///   本轮**没做** —— 本工作树没铺 `src/bridge/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的仍是「这棵树上没有一份对不上的字节」。
+///
+/// ★★ **欠着一笔 bump：`设计/80 §8.7` 步 2（`rbind-token`）** —— 本轮**刻意不 bump**。
+/// 照 F66 那条「待 bump」的先例，把账挂在看得见的地方。
+///
+/// **这一刀真的动了线上面，三处**：① `hello.capabilities` 多一条 `rbind-token`
+/// （那一帧的线上字节真的变了）；② 多认一条流 flag `--with-rbind-token`；
+/// ③ `session_added` 多一个 additive 字段 `rbind_token`（**没索要时字节不变**）。
+/// 按本谱系里 p1v-attachable 的先例（那次只加了一个 additive wire 字段就 bump 了），
+/// **该 bump**。
+///
+/// **那为什么这一拍不 bump —— 三条，缺一条我就该顺手 bump 了**：
+/// ① 🔴 **这一刀单独上线什么都不改变。** `§8.7` 明写「1 与 2 之间有顺序依赖
+///    （没有 token 进环境，后端读不到）」：步 1（往启动命令里注这个变量）与
+///    步 3（本地半认这个 marker）都还没做，monitor 侧也还不发那条 flag
+///    ⇒ 现在 bump 只会让**每一台**已部署的远端被判 stale、白重装一轮，
+///    换回来一个今天一定是空的字段。这正是 p1w 那一段逐字记过的判法
+///    （「没有『已部署的远端缺这些能力』这笔欠账，而无谓的 bump 会让所有远端被判 stale、
+///    白重装一轮」）。
+/// ② **这一波是多棵树并行**（步 1 在另一棵工作树上）。两棵树各 bump 一次 =
+///    一次合并冲突 ＋ 一个谁也说不清的版本号。**bump 是发版那一拍的动作，不是步的动作。**
+/// ③ 本工作树没铺 `src/bridge/embedded-backends/`，`release-gate` 的 ⑬「bump 的同拍要
+///    re-embed」在这里只答得出「这棵树上没有一份对不上的字节」⇒ 真 bump 也买不到那一半。
+///
+/// ⇒ **解锁条件（发版那一拍，同轮做完）**：步 1／3 落地、monitor 侧开始发
+/// `--with-rbind-token` 之后，bump 到 `p2o-rbind-token`（或那一波的合并版本号）
+/// ＋ **同拍 re-embed**。**在那之前这条能力在已部署的远端上是休眠的 —— 这是刻意的。**
 pub const BUILD_ID: &str = "p2n-files-rebuild-and-browse";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
@@ -501,7 +527,32 @@ pub const SUBCOMMANDS: &[&str] = &[
 /// 加新能力 token 时，必须同时给它的 flag 加剥离分支，否则声明它 = 埋死循环
 /// （monitor 发对应 flag → 本后端不剥 → 当查询退出 → 无 hello → 重连死循环）。
 /// **此硬约束由 `every_capability_token_is_strippable` 测试代码强制**（不再只是约定）。
-pub const CAPABILITIES: &[&str] = &["bg", "tail-only"];
+///
+/// # 🔴 `rbind-token`〔`设计/80 §8.7` 步 2，2026-09-22〕—— 它为什么住**这一张**表
+///
+/// `设计/80 §8` 的方案 E 要把「会话身份」从 tmux 上解绑：起会话的那一方注一个
+/// `CCM_RBIND_TOKEN`，后端从 `/proc/<pid>/environ` 读出来、随 `session_added` 报回去。
+/// `§8.6 ④` 逐字要求「**能力协商** ＋ 老后端诚实降级」。
+///
+/// **为什么「字段在不在」自己不够**：`session_added` 上**没有** `rbind_token`
+/// 会同时表达两件相反的事 ——「**这台后端不报令牌**」（老后端）与
+/// 「**这条会话真的没有令牌**」（不是 monitor 起的，`§8.5 ②` 那个布尔）。
+/// 一个缺席的字段分不开它们，而它们要的动作不同（降级回标题路 / 说一句准确的话）。
+/// ⇒ 协商必须在**握手**那一层。
+///
+/// **为什么落在 `capabilities` 而不是 `emits`**：`rbind_token` 是**既有帧上的一个字段**，
+/// 不是一个新帧 kind —— 而 `emits` 的取值空间是帧 kind（`wire.rs` 那个字段的头注逐字），
+/// 把一个字段名塞进去是在那张表上说假话。
+///
+/// **它的 flag 是真的，不是为了喂饱护栏编出来的**（`wire.rs` 里 hello 那个
+/// 「我做得到什么」面的头注逐字警告过「被迫编一个假 flag（更坏）」）：`--with-rbind-token` 让报令牌这件事
+/// **默认关、由客户端显式索要**。依据是 `§8.6 ③` —— 令牌是**敏感数据**，
+/// 默认不往 wire 上放，只有真要做 ↗ 关联的那个客户端才请它。
+/// 它与 `--with-bg` 是同一族语义（「这条流多报一样东西」），`split_stream_flags` 照样剥它
+/// ⇒ `every_capability_token_is_strippable` 拿到的是一条**真** flag。
+// ⚠ **排序照字典序**（不是按加入时间）：`capability_ledger_guard::the_stream_flag_list_keeps_its_own_narrow_semantics`
+// 拿汇总那侧（排过序）与本表**逐项相等**。
+pub const CAPABILITIES: &[&str] = &["bg", "rbind-token", "tail-only"];
 
 // ══════════════════ 步 `8a`：能力清单的**汇总** —— `设计/96 §2` 第 2 层 ══════════════════
 //
@@ -910,7 +961,11 @@ pub const EMITS: &[&str] = &[
 ];
 
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。
-pub const STREAM_FLAGS: &[&str] = &["--with-bg", "--tail-only"];
+///
+/// 〔`设计/80 §8.7` 步 2，09-22〕`--with-rbind-token`：客户端**显式索要**
+/// `session_added` 上的 `rbind_token`（`CCM_RBIND_TOKEN`）。默认关的理由是
+/// 「令牌是敏感数据」（`§8.6 ③`），整段论证住 [`CAPABILITIES`] 的头注。
+pub const STREAM_FLAGS: &[&str] = &["--with-bg", "--tail-only", "--with-rbind-token"];
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
@@ -921,14 +976,20 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--scope",
 ];
 
-/// 从 argv 剥离流模式 flag，返回（剩余参数, with_bg, tail_only）。
+/// 从 argv 剥离流模式 flag，返回（剩余参数, with_bg, tail_only, with_rbind_token）。
 ///
 /// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。
-pub fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, bool, bool) {
+///
+/// ⚠ 返回值已经是**三个并列的裸布尔**〔`设计/80 §8.7` 步 2 加的第三个〕。
+/// 再加第四个之前先把它们收成一个结构体 —— 位置型布尔到四个就开始靠记性调用了。
+/// **本轮刻意没有顺手收**：那是一次会波及 `main.rs` 与 11 处夹具的形状变更，
+/// 与「把身份从 tmux 上解绑」不是同一件活，硬塞进来只会让这一刀读不清。
+pub fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, bool, bool, bool) {
     let with_bg = args.iter().any(|a| a == "--with-bg");
     let tail_only = args.iter().any(|a| a == "--tail-only");
+    let with_rbind_token = args.iter().any(|a| a == "--with-rbind-token");
     args.retain(|a| !STREAM_FLAGS.contains(&a.as_str()));
-    (args, with_bg, tail_only)
+    (args, with_bg, tail_only, with_rbind_token)
 }
 
 /// 剥完流 flag 之后：这些参数该进查询模式，还是该进流模式？

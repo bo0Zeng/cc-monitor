@@ -645,7 +645,16 @@ jobs:
           # 今天实测构成（逐组现打，不倒推）：
           # **76 = tests/e2e/*.sh 30 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
           #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + pre-commit 1**。
-          [ "$N" -ge 77 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 77）"; exit 1; }
+          # **2026-09-23 `设计/80 §8.7` 步 2 棘到 78** —— 新增 `tests/e2e/backend-rbind-token.sh`：
+          # 真起后端看 `session_added` 帧里有没有启动期令牌（`CCM_RBIND_TOKEN`）。
+          # ★ 与前几次同形：**不是地板落后**，是同一拍加文件、同一拍棘 ——
+          #   `shell_lint_registry` 那条**恒等**判据当场红并直接给出「该写几」。
+          # ⚠ 本拍**只动了这一个数**：那套 e2e 故意**没有**登记成 `package.json` 的 `test:*`，
+          #   也没有加 `assert-pass-floor` 那一行（那是另一条计数地板，待拍板）。
+          # 今天实测构成（逐组现打，不倒推）：
+          # **78 = tests/e2e/*.sh 31 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
+          #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + tests/hooks/* 2**。
+          [ "$N" -ge 78 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 78）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 

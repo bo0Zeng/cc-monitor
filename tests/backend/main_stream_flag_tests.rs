@@ -16,6 +16,11 @@ fn every_capability_token_is_strippable() {
         match token {
             "bg" => "--with-bg",
             "tail-only" => "--tail-only",
+            // 〔`设计/80 §8.7` 步 2，09-22〕启动期令牌那一条。
+            // ⚠ 它的 flag **不是为了喂饱本条判据编出来的** ——
+            // 默认关、由客户端显式索要，因为令牌是敏感数据（`§8.6 ③`）；
+            // 整段论证住 `lib.rs::CAPABILITIES` 的头注。
+            "rbind-token" => "--with-rbind-token",
             other => panic!(
                 "CAPABILITIES 声明了 token `{other}` 但此处无 flag 映射——加新能力必须在此登记它的 flag 并确认 split_stream_flags 剥离它（否则埋 §26 死循环）"
             ),
@@ -23,7 +28,7 @@ fn every_capability_token_is_strippable() {
     }
     for &token in super::CAPABILITIES {
         let flag = flag_of(token);
-        let (rest, _, _) = split_stream_flags(v(&[flag]));
+        let (rest, _, _, _) = split_stream_flags(v(&[flag]));
         assert!(
             rest.is_empty(),
             "能力 token `{token}` 的 flag `{flag}` 未被 split_stream_flags 剥离 → §26 死循环"
@@ -34,31 +39,53 @@ fn every_capability_token_is_strippable() {
 /// F25 DoD ③：流模式 flag 剥离后不残留（不会误入查询模式判定）。
 #[test]
 fn flags_are_stripped_and_detected() {
-    let (rest, bg, tail) = split_stream_flags(v(&["--with-bg", "--tail-only"]));
+    let (rest, bg, tail, rbind) = split_stream_flags(v(&["--with-bg", "--tail-only"]));
     assert!(
         rest.is_empty(),
         "剥净 → 流模式（!args.is_empty() 为 false）"
     );
     assert!(bg);
     assert!(tail);
-    let (rest, bg, tail) = split_stream_flags(v(&["--tail-only"]));
+    assert!(
+        !rbind,
+        "没发 `--with-rbind-token` 就不该置位 —— 令牌默认不上 wire（`设计/80 §8.6 ③`）"
+    );
+    let (rest, bg, tail, rbind) = split_stream_flags(v(&["--tail-only"]));
     assert!(rest.is_empty());
     assert!(!bg);
     assert!(tail);
-    let (rest, bg, tail) = split_stream_flags(v(&[]));
+    assert!(!rbind);
+    let (rest, bg, tail, rbind) = split_stream_flags(v(&[]));
     assert!(rest.is_empty());
     assert!(!bg);
     assert!(!tail);
+    assert!(!rbind);
+    // ★ 〔`设计/80 §8.7` 步 2〕第三条 flag 自己那一格：**剥得干净 ＋ 只置自己那一位**。
+    // 两半都要断：只断“置位了”会漏掉 §26 那条（不剥 ⇒ 当查询退出 ⇒ 无 hello），
+    // 只断“剥干净了”会漏掉“剥掉了但忘了抬位”（那会让客户端永远收不到令牌、而没任何信号）。
+    let (rest, bg, tail, rbind) = split_stream_flags(v(&["--with-rbind-token"]));
+    assert!(
+        rest.is_empty(),
+        "`--with-rbind-token` 没被剥干净 → §26 死循环"
+    );
+    assert!(
+        rbind,
+        "剥掉了却没置位 ⇒ 客户端永远收不到 `rbind_token`，而且没有任何信号"
+    );
+    assert!(!bg, "三条 flag 互不干扰");
+    assert!(!tail, "三条 flag 互不干扰");
 }
 
 /// 查询参数与流 flag 互不干扰：查询参数原样保留（顺带守住"flag 混进查询
 /// 命令行也不会破坏查询"的边角）。
 #[test]
 fn query_args_pass_through() {
-    let (rest, bg, tail) = split_stream_flags(v(&["--read-session", "/p/s.jsonl", "--with-bg"]));
+    let (rest, bg, tail, rbind) =
+        split_stream_flags(v(&["--read-session", "/p/s.jsonl", "--with-bg"]));
     assert_eq!(rest, v(&["--read-session", "/p/s.jsonl"]));
     assert!(bg);
     assert!(!tail);
+    assert!(!rbind);
 }
 
 /// ★★ `KR86D1` 的**接线那一半**：`--capture-pane` 真的**够得到**那条原语。

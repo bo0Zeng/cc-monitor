@@ -290,6 +290,46 @@ pub enum Frame {
         status: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
+        /// 🔴 **`设计/80 §8.7` 步 2（additive）：这条会话的启动期令牌**
+        /// （`CCM_RBIND_TOKEN`，`[0-9a-f]{32}`）。
+        ///
+        /// # 它是干什么的：把「↗ 拉前终端」从 tmux 上解绑
+        ///
+        /// ↗ 需要的全部东西是一个映射 `(sid) → (本地 HWND)`。今天那个映射靠 tmux 会话级
+        /// option `@ccm_sid` ＋ `set-titles-string` 合成的窗口标题，**跨五跳、无回执**
+        /// （`设计/80 §3` 性质 4/5）。`§8.1` 的判断逐字：「tmux 不是在做**发现身份**，
+        /// 是在做**把身份广播到本地**」—— 而广播这件事本仓已经有一条有分帧、双向的通道，
+        /// 就是这个协议。⇒ 起会话的那一方注一个随机令牌，**本地**用它绑 HWND，
+        /// **远端**后端从 `/proc/<pid>/environ` 读出来经本字段报回，↗ 做一次 join。
+        /// 读侧住 `control::identity_tag::rbind_token_of`（那份头注是这条路的论证正文）。
+        ///
+        /// # 消费侧口径（三句，缺一句就会读错）
+        ///
+        /// ① **缺席 ≠ 「这台后端不报令牌」。** 这两件事由**握手**分开：
+        ///    hello 的 `capabilities` 含 `rbind-token` ⇒ 这台后端报得出；
+        ///    不含（老后端）⇒ **诚实降级**回今天的标题路，**不能假装有**。
+        /// ② 声明了能力、客户端也发了 `--with-rbind-token`，而本字段仍然缺席
+        ///    ⇒ 「**这条会话真的没有令牌**」= 它不是 monitor 起的（用户自己裸 `ssh` 进去
+        ///    敲 `claude` 那一档，`§8.6 ①`）。这一句就是 `§8.5 ②` 要的那个布尔 ——
+        ///    归因从「四档猜」收成一句准确的话，**不需要往远端打 RPC 去猜**。
+        /// ③ 🔴 **它不承载任何权限语义**（`§8.6 ③` 逐字）：只是一个不可猜的关联 id。
+        ///    拿到它顶多能让某人的 ↗ 拉错窗口，**不能越权**。别拿它当鉴权材料。
+        ///
+        /// # 为什么**默认不发**（skip_if_none 之外还有一道 flag）
+        ///
+        /// 令牌是敏感数据。生产路只在客户端显式发 `--with-rbind-token` 时才读它
+        /// （`observe::watcher::ReaderState::with_rbind_token`）⇒ **没索要的客户端
+        /// 收到的字节与本字段加进来之前一字不差**（`wire_tests` 里 present/absent 两条
+        /// 合起来钉住这一格；仓外 aterm 那份按精确字节对的 fixture 因此不受影响）。
+        ///
+        /// # ⚠ 它今天**到不了 monitor**
+        ///
+        /// `§8.7` 的步 1（往启动命令里注这个变量）与步 3（本地半认这个 marker）
+        /// 都不在这一刀里，而 `monitor` 的 `ssh_source::parse_frame` 也还没读本字段。
+        /// ⇒ 本字段今天买到的是「**后端报得出、协商谈得成**」，
+        /// **不是**「↗ 已经不依赖 tmux 了」。别把这两句读成一句。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        rbind_token: Option<String>,
     },
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。

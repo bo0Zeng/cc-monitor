@@ -116,7 +116,7 @@ async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
-    let (args_rest, with_bg, tail_only) = split_stream_flags(args);
+    let (args_rest, with_bg, tail_only, with_rbind_token) = split_stream_flags(args);
     let args = args_rest;
     if is_query_mode(&args) {
         // 一次性查询模式：--search 全文搜索（#28）/
@@ -199,11 +199,21 @@ async fn main() {
     let hello = build_hello(&agent_home);
 
     match mode {
-        listen::Mode::Stdio => run_over_stdio(hello, agent_home, with_bg, tail_only).await,
+        listen::Mode::Stdio => {
+            run_over_stdio(hello, agent_home, with_bg, tail_only, with_rbind_token).await
+        }
         listen::Mode::Listen { port, token } => {
             // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
             tokio::select! {
-                _ = serve_listening(port, token, hello, agent_home, with_bg, tail_only) => {}
+                _ = serve_listening(
+                    port,
+                    token,
+                    hello,
+                    agent_home,
+                    with_bg,
+                    tail_only,
+                    with_rbind_token,
+                ) => {}
                 _ = shutdown_signal() => {
                     tracing::info!("shutdown signal received; exiting");
                 }
@@ -291,7 +301,13 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
 ///
 /// ⚠ 本函数体是 `K-P1` 之前 `main()` 的那一段**原样搬过来的**，一行行为都没改 ——
 /// 常驻是**加一条载体**，不是把这条改掉。改这一段之前先问：另一条载体要不要跟着改？
-async fn run_over_stdio(hello: Frame, agent_home: PathBuf, with_bg: bool, tail_only: bool) {
+async fn run_over_stdio(
+    hello: Frame,
+    agent_home: PathBuf,
+    with_bg: bool,
+    tail_only: bool,
+    with_rbind_token: bool,
+) {
     let mut stdout = BufWriter::new(tokio::io::stdout());
     // U6b-3：写 + flush 一步到位，**并拿到 `HelloFlushed` 见证**。
     // 那个见证是 `inbound::spawn` 的必填参数 ⇒「reader 抢在 Hello 之前起来」
@@ -322,7 +338,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, with_bg: bool, tail_o
 
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
-    let (rx, poke) = observe::watcher::spawn(agent_home, with_bg, tail_only);
+    let (rx, poke) = observe::watcher::spawn(agent_home, with_bg, tail_only, with_rbind_token);
 
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
     //
@@ -557,6 +573,7 @@ async fn serve_listening(
     agent_home: PathBuf,
     with_bg: bool,
     tail_only: bool,
+    with_rbind_token: bool,
 ) {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
@@ -592,7 +609,8 @@ async fn serve_listening(
     };
 
     let (mut idle_rx, mut idle_poke) = {
-        let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only);
+        let (rx, poke) =
+            observe::watcher::spawn(agent_home.clone(), with_bg, tail_only, with_rbind_token);
         set_slot(Some(poke.clone()));
         (Some(rx), Some(poke))
     };
@@ -628,7 +646,7 @@ async fn serve_listening(
                 }
                 idle_rx = None;
                 let Attached { reader, writer, hello_flushed } = att;
-                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only);
+                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only, with_rbind_token);
                 set_slot(Some(poke.clone()));
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
@@ -668,7 +686,7 @@ async fn serve_listening(
             Some(()) = done_rx.recv() => {
                 tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
                 busy.store(false, Ordering::SeqCst);
-                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only);
+                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only, with_rbind_token);
                 set_slot(Some(poke.clone()));
                 idle_rx = Some(rx);
                 idle_poke = Some(poke);
