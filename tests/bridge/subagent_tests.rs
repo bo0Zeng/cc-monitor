@@ -1,4 +1,6 @@
-use super::{choose_subagent, extract_agent_id};
+use super::{
+    choose_subagent, extract_agent_id, local_failure_kind, QueryFailure, UNKNOWN_ARGUMENT,
+};
 use crate::backend::observe::local_query::{run_query, QueryOutcome};
 use std::path::PathBuf;
 
@@ -378,4 +380,52 @@ fn agent_id_comes_off_the_file_name() {
     assert_eq!(got.as_deref(), Some("9f3"));
     // 不是 `agent-` 开头 ⇒ 没有 id（调用方 `unwrap_or_default()` 成空串）。
     assert_eq!(extract_agent_id(&PathBuf::from("/r/other.jsonl")), None);
+}
+
+/// 〔C2 · SE1 欠账〕本机那条的**种类**在失败那一层当场定：退出 2 ＋ 后端印的 `unknown argument: <子命令>`
+/// ⇒ 老后端；其余 ⇒ 传输。另一侧异源：那句话的前缀从**后端源码**里现抠（`history_query.rs` 的
+/// `unknown argument: {other}` 与 `query error: {e}` 两处拼出来的就是本机 stderr 那一行）。
+#[test]
+fn a_local_backend_that_does_not_know_the_subcommand_is_old_not_broken() {
+    let sub = "--list-user-inputs";
+    let line = format!("cc-monitor-backend query error: {UNKNOWN_ARGUMENT}{sub}\n");
+    assert_eq!(
+        local_failure_kind(Some(2), &line, sub),
+        QueryFailure::OldBackend
+    );
+    // 退出码不是 2 ⇒ 不是「不认这条子命令」那一形
+    assert_eq!(
+        local_failure_kind(Some(1), &line, sub),
+        QueryFailure::Transport
+    );
+    assert_eq!(
+        local_failure_kind(None, &line, sub),
+        QueryFailure::Transport
+    );
+    // 不认的是**别的**参数（选项拼错 / 新选项）⇒ 子命令本身它认得 ⇒ 不许判老后端
+    let other = "cc-monitor-backend query error: unknown argument: --from\n";
+    assert_eq!(
+        local_failure_kind(Some(2), other, sub),
+        QueryFailure::Transport
+    );
+    // 别的 exit 2（参数缺失）⇒ 传输
+    assert_eq!(
+        local_failure_kind(
+            Some(2),
+            "cc-monitor-backend query error: no query argument\n",
+            sub
+        ),
+        QueryFailure::Transport
+    );
+    // 异源：后端源码里真这么拼
+    let hq = include_str!("../../src/backend/observe/history_query.rs");
+    assert!(
+        guard_core::find_pinned(hq, "Err(format!(\"unknown argument: {other}\"))").is_ok(),
+        "后端 `history_query` 不再这样报不认的子命令 —— `UNKNOWN_ARGUMENT` 那一侧要跟着改"
+    );
+    assert!(
+        hq.contains("eprintln!(\"cc-monitor-backend query error: {e}\");"),
+        "后端 `history_query` 不再把错误原样印进 stderr —— 本机「老后端」那一档从此认不出"
+    );
+    assert!(UNKNOWN_ARGUMENT.starts_with("unknown argument"));
 }

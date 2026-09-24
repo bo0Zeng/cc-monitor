@@ -43,14 +43,13 @@ pub struct UserInputEntry {
 ///
 /// | 种类 | 是什么 | 前端怎么办 |
 /// |---|---|---|
-/// | `oldBackend` | 对面回的第一行不是 `user_inputs` 头（老后端 0 字节退出 / 回了 hello / 回了别的形状） | **结构性**：再要一定还是这样 ⇒ 不再要，灰掉说原因 |
-/// | `truncated` | 有头，但没尾 / 尾行条数对不上 / 中间一行坏了 | **瞬时**：下一次触发再要 |
-/// | `transport` | 查询本身失败（起不了本机后端进程、ssh 连不上、超时、后端退出码非 0 —— 含「越过 EOF」） | **瞬时**：下一次触发再要 |
+/// | `oldBackend` | 对面回的第一行不是 `user_inputs` 头（老后端 0 字节退出 / 回了别的形状），或查询自己就带出「老后端」（本机退出 2 ＋ `unknown argument` · 远端首行 hello · 长连接不认） | **结构性**：再要一定还是这样 ⇒ 不再要，灰掉说原因 |
+/// | `truncated` | 有头，但没尾 / 尾行条数对不上 / 中间一行坏了，或查询自己带出「截断」（远端单行超上限被拒收） | **瞬时**：下一次触发再要 |
+/// | `transport` | 查询本身失败的其余情形（起不了本机后端进程、ssh 连不上、超时、后端退出码非 0 且不是 `unknown argument` —— 含「越过 EOF」） | **瞬时**：下一次触发再要 |
 ///
-/// ⚠ 如实登记两处**分错档**的（都是往「瞬时」那边错，代价是多试几次、到上限就停，不会一直试）：
-/// ① 远端**很老**的后端进流模式回 hello，`run_list_query` 在它那一层就报了错 ⇒ 到这里是 `transport`；
-/// ② 本机后端过旧（开发树里常见）不认这条子命令 ⇒ 退出 2 ⇒ `transport`。
-///   两者要分对得让 `subagent::Backend::query` 把错误分类带出来 —— 那是它的共用签名，本路不改。
+/// 〔C2〕先前这里登记着两处**分错档**（很老的远端后端回 hello · 本机后端过旧退出 2，都落进 `transport`），
+/// 病根是「`subagent::Backend::query` 只回一句话」。那个签名改成带种类（`subagent::QueryFailure`）之后，
+/// 两处都在失败发生的那一层当场定成 `oldBackend`；本侧只做「查询的种类 ⇒ 大纲的种类」那一步映射。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
@@ -173,9 +172,10 @@ fn precheck(jsonl_path: &str) -> Result<(), String> {
 
 /// 一趟查询的结果 → 回包。**纯函数**：分类（[`OutlineFailure`]）只有这一个住址。
 ///
-/// 查询本身失败（`Err`）一律 `transport`；查询成功但输出不对，按 [`parse_user_inputs_output`] 的判定分档。
+/// 查询本身失败（`Err`）按**查询自己带出来的种类**分档（[`crate::subagent::QueryFailure`]，逐档映射、不看文字）；
+/// 查询成功但输出不对，按 [`parse_user_inputs_output`] 的判定分档。
 pub(crate) fn outline_result(
-    queried: Result<Vec<String>, String>,
+    queried: Result<Vec<String>, crate::subagent::QueryError>,
     from_offset: u64,
 ) -> UserInputsResult {
     let unavailable = |failure: OutlineFailure, reason: String| UserInputsResult {
@@ -190,7 +190,7 @@ pub(crate) fn outline_result(
     // （增量失败时前端从 0 重要一次）。
     let lines = match queried {
         Ok(l) => l,
-        Err(e) => return unavailable(OutlineFailure::Transport, e),
+        Err(e) => return unavailable(outline_kind(e.kind), e.message),
     };
     match parse_user_inputs_output(&lines) {
         Ok((from, end, entries)) => UserInputsResult {
@@ -202,6 +202,16 @@ pub(crate) fn outline_result(
             entries,
         },
         Err(u) => unavailable(u.kind(), u.reason()),
+    }
+}
+
+/// 查询的种类 ⇒ 大纲的种类。**穷尽 `match`、零通配**：查询那边多一档，这里当场编不过。
+pub(crate) fn outline_kind(k: crate::subagent::QueryFailure) -> OutlineFailure {
+    use crate::subagent::QueryFailure;
+    match k {
+        QueryFailure::OldBackend => OutlineFailure::OldBackend,
+        QueryFailure::Truncated => OutlineFailure::Truncated,
+        QueryFailure::Transport => OutlineFailure::Transport,
     }
 }
 

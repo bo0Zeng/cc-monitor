@@ -161,7 +161,7 @@ pub async fn read_session_index(
     // 「后端不在 / 查询失败」对骨架来说**同一个处置**：没有索引，退回尾部窗口 —— 原因原样带给前端显示。
     let lines = match backend.query(&argv).await {
         Ok(l) => l,
-        Err(e) => return Ok(unavailable(e)),
+        Err(e) => return Ok(unavailable(e.message)),
     };
     Ok(match parse_index_output(&lines) {
         Ok((from, end, rows)) => SessionIndexResult {
