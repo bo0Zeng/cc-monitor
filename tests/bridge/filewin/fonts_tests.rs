@@ -292,7 +292,7 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let files = drawn_files();
     assert_eq!(
         files.len(),
-        12,
+        13,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
@@ -304,16 +304,19 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
           它是「这一下不可撤销」的唯一出口，变成豆腐块的时候用户会照点〕\
          〔第十三刀 09-23：**这个数一格没动，而 `filewin/` 多了两份文件** ——\
           `proc.rs` 与 `win_main.rs` 进了排除名单（它们一个字都不画在 egui 上，\
-          逐条理由与那条现打读数「收进来 249 → 355」住 `drawn_files`）〕\
+          逐条理由与那条现打读数「收进来 249 → 355」住 `drawn_files`）〕
+         〔FW1+FW2 09-24：12 → 13，多的是 `select.rs`（右键菜单上「打开」「删除这 N 项」、\
+          做不了时那几句、打字跳转没找到那一句 —— 都画在 egui 上）〕\
          —— 现在是 {}，人群变了就重新论证一遍",
         files.len()
     );
     let scanned = label_chars();
     assert_eq!(
         scanned.len(),
-        314,
+        320,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
          `24f` 第四刀之前是 130）。\
+         〔FW1+FW2 09-24：314 → 320，恰好 ＋6、零 −（`事 任 何 头 选 项`，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
          〔F2 09-24：306 → 314，＋11 −3（逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
          〔补齐五项 09-23：298 → 306，恰好 ＋8、零 −（`小 序 排 此 称 终 请 🔗`，\
           逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
@@ -371,9 +374,11 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &prop(), PROBE).len(),
-        303,
+        309,
         "比例字体下画不出的字数变了（2026-09-21 现打 238 / 探针 {} 字；\
          第五刀之前是 194 / 205、`24f` 第四刀之前是 121 / 130）\
+         〔FW1+FW2 09-24：303 → **309**，探针 314 → 320 字 —— ＋6 ＝ 新进来的 6 个汉字\
+          （`事 任 何 头 选 项`，来路住 `fonts.rs` 的 `PROBE` 上方）不装字体全画不出；现打〕\
          〔F2 09-24：294 → **303**，探针 306 → 314 字 —— ＋9 ＝ ＋11 −2：新进来的 11 个汉字全画不出；\
           走掉的 `§ 但 案` 里 `§` 本来就画得出（拉丁 1 区），`但 案` 画不出 ⇒ 只减 2〕\
          〔补齐五项 09-23：287 → **294**，探针 298 → 306 字 —— **＋7 不是 ＋8**：\
@@ -394,10 +399,11 @@ fn without_a_cjk_font_the_probe_is_almost_entirely_unrenderable() {
     );
     assert_eq!(
         super::unrenderable(&ctx, &mono(), PROBE).len(),
-        302,
+        308,
         "等宽字体下画不出的字数变了（2026-09-22 现打 300 —— 那时比比例少**两**个\
          （`→` 与第十二刀新进来的 `⇒`）；今天少**一**个，理由见下方本机侧退役那一条；\
          第五刀之前是 193、`24f` 第四刀之前是 120）\
+         〔FW1+FW2 09-24：302 → **308**，与比例那一格同一个 ＋6；309 − 308 = 1 那条关系没动〕\
          〔第十三刀 09-23：300 → 291，与比例那一格**同一个 −9**，\
           而「比比例少两个」这条关系一格没动〕\
          〔F2 09-24：293 → **302**，与比例那一格同一个 ＋9；303 − 302 = 1 那条关系没动〕\
