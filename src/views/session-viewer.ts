@@ -30,6 +30,9 @@ import {
   type StreamSink,
 } from "../render-stream-record";
 import { UnrenderedRanges } from "../render-window";
+// 〔U3b〕查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
+import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
+import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../generated/BranchResult";
@@ -152,6 +155,13 @@ export class SessionViewer {
   private payloads: JsonlLinePayload[] = [];
   private unrendered: UnrenderedRanges | null = null;
   private uuidToIdx = new Map<string, number>();
+  /**
+   * 〔U3b〕骨架层：没渲染的 seq 区间由占位顶住（滚动条一开始就是全会话的），滚到哪物化哪。
+   * `null` = 没接上（本机后端不在 / 老后端 / Codex 会话 / seq 对不上）⇒ 行为与之前逐字相同。
+   * ⚠ 查看器仍然**全量收正文**（大纲 / 分叉折叠要全量记录，SE1 那一路在把大纲搬到后端）——
+   * 骨架在这里买的是滚动条与「只建可见区」，**不是**内存。
+   */
+  private skeleton: SkeletonView | null = null;
   private renderCtx: RenderContext | null = null;
   private renderSink: StreamSink | null = null;
   private folder: BranchFolder | null = null;
@@ -255,6 +265,11 @@ export class SessionViewer {
       onQueueOperation: (content) => queuedContents.push(content),
       onTitleUpdate: () => {}, // viewer 标题静态,不消费 ai-title
     };
+    // 〔U3b〕骨架索引与正文**并行**要（索引是另一个后端进程，~0.1 s / 50 MB）；接骨架在首屏之后。
+    const origin = opts.origin ?? LOCAL_ORIGIN;
+    const indexP = commands
+      .read_session_index({ origin, jsonlPath: opts.jsonlPath, fromOffset: 0 })
+      .catch((e: unknown) => ({ available: false, reason: String(e), from: 0, end: 0, rows: [] }));
     const channel = new Channel<JsonlLinePayload[]>();
     channel.onmessage = (chunk) => {
       if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
@@ -333,9 +348,67 @@ export class SessionViewer {
       this.streamEl.addEventListener("scroll", this.onScrollFill, { passive: true });
       // R1(D 审计):短会话首屏不足一屏时永远不会有 scroll 事件——主动踢一脚自链
       requestAnimationFrame(() => void this.maybeFillAbove());
+      // 〔U3b〕索引到了就接骨架（首屏已经在了，不等它）
+      void indexP.then((res) => this.attachSkeleton(gen, res));
     } catch (e) {
       this.statusEl.textContent = `加载失败：${String(e)}`;
     }
+  }
+
+  /** 升序 payloads 里第一个 `seq >= x` 的下标 */
+  private idxAtSeq(x: number): number {
+    let l = 0;
+    let r = this.payloads.length;
+    while (l < r) {
+      const m = (l + r) >>> 1;
+      if (this.payloads[m].seq < x) l = m + 1;
+      else r = m;
+    }
+    return l;
+  }
+
+  /**
+   * 〔U3b〕接骨架。先对拍 seq 空间（抽几条 payload，它们的 uuid 在索引里必须落在同一个 seq 上 ——
+   * 查看器两条读路子步 1 起按可计行编号；Codex 会话 / 读完之间文件被改写 ⇒ 对不上就不接），
+   * 再把 `UnrenderedRanges` 的每个洞翻成 seq 区间画成占位：洞 `[a,b)` 的 seq 区间从上一个已渲染记录的
+   * 下一行起、到下一个已渲染记录为止（夹在中间的不可显示行一并归进去，高为 0）。
+   */
+  private attachSkeleton(
+    gen: number,
+    res: SessionIndexResult | undefined,
+  ): void {
+    if (!res || !this.stream || this.loadGeneration !== gen || !this.unrendered || !this.renderCtx) return;
+    const got = ledgerFromIndex(res);
+    if (!got.ok) {
+      console.info(`[session-viewer] 骨架未接：${got.reason}`);
+      return;
+    }
+    const ledger = got.ledger;
+    let checked = 0;
+    for (const p of this.payloads) {
+      const u = (p.message as { uuid?: unknown }).uuid;
+      if (typeof u !== "string") continue;
+      if (ledger.uuidToSeq.get(u) !== p.seq) {
+        console.warn(`[session-viewer] 骨架未接：seq ${p.seq} 在索引里是 ${String(ledger.uuidToSeq.get(u))}`);
+        return;
+      }
+      if (++checked >= 8) break;
+    }
+    const n = this.payloads.length;
+    const gaps = this.unrendered.holes.map(([a, b]): [number, number] => [
+      a === 0 ? ledger.base : this.payloads[a - 1].seq + 1,
+      b < n ? this.payloads[b].seq : ledger.endSeq,
+    ]);
+    const view = new SkeletonView(ledger, this.streamEl, this.renderSink!.timeline, {
+      materialize: (lo, hi) => {
+        this.renderRange(this.idxAtSeq(lo), this.idxAtSeq(hi));
+        this.rebuildFold();
+      },
+    });
+    view.attachGaps(gaps);
+    this.skeleton = view;
+    view.fillVisible();
+    this.updateStatus(n);
   }
 
   /** F39:渲染 payload 下标区间 [lo,hi)(逐条 renderStreamRecord,二分插入保序) */
@@ -473,6 +546,11 @@ export class SessionViewer {
    * 批后自链复检(R1:零高批/短内容场景没有 scroll 事件可依赖)。
    */
   private async maybeFillAbove(): Promise<void> {
+    // 〔U3b〕接上骨架 ⇒ 不再「从顶上往上一批批补」，只物化与视口相交的那段占位（不自链）
+    if (this.skeleton) {
+      if (this.skeleton.fillVisible() > 0) this.updateStatus(this.payloads.length);
+      return;
+    }
     if (this.renderingBatch || !this.unrendered || this.unrendered.isEmpty) return;
     if (!this.shouldFill()) return;
     // 选区守卫(Phase G 终审:与 tabs.fillAbove 对齐)——补批的 unwrapAll/rebuildFold
@@ -531,7 +609,12 @@ export class SessionViewer {
   private scrollToMessage(uuid: string): HTMLElement | null {
     // F39:目标还没渲染(非首屏路径调进来,如未来的重复定位)→ 先渲染目标岛
     const idx = this.uuidToIdx.get(uuid);
-    if (idx !== undefined && this.unrendered?.contains(idx)) {
+    // 〔U3b〕接上骨架 ⇒ 岛也经骨架物化（占位要跟着切开，不许在占位中间凭空插一段卡）
+    const seq = idx !== undefined ? this.payloads[idx]?.seq : undefined;
+    if (this.skeleton && seq !== undefined && this.skeleton.isPending(seq)) {
+      this.skeleton.ensure(seq, 100);
+      this.updateStatus(this.payloads.length);
+    } else if (idx !== undefined && this.unrendered?.contains(idx)) {
       this.renderRange(Math.max(0, idx - 100), Math.min(this.payloads.length, idx + 100));
       this.rebuildFold();
       this.updateStatus(this.payloads.length);
@@ -572,6 +655,9 @@ export class SessionViewer {
       this.stream.dispose();
       this.stream = null;
     }
+    // 〔U3b〕骨架随会话走
+    this.skeleton?.dispose();
+    this.skeleton = null;
     // F39:释放增量渲染状态(payloads 可达 37MB 量级)
     this.payloads = [];
     this.unrendered = null;
