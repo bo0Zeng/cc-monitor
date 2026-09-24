@@ -2,33 +2,25 @@
 //! 「中转层不要有账号, 账号就账号中转就中转」。
 //!
 //! 设计里早就是这一句（`设计/01 §2.5`「中转 ≠ 账号」· `设计/20 §9` 那张两层小结 ·
-//! `§6` 命名推论「不许用『中转』指 ②」）。没落地的是**物理位置**：层 2 住在
-//! `src/backend/relay/accounts/`，就在层 1 的目录底下。本文件把「两层之间到底连着什么」
-//! 钉成**四条两向集合相等**，不用地板。
+//! `§6` 命名推论「不许用『中转』指 ②」）。先前没落地的是**物理位置**：层 2 住在
+//! `src/backend/relay/accounts/`，就在层 1 的目录底下。2026-09-24 搬到了 `src/backend/accounts/`。
+//! 本文件把「两层之间到底连着什么」钉成**四条**，不用地板：
 //!
-//! # 四条，各钉一件
-//!
-//! | # | 它问什么 | 两侧各是谁 |
+//! | # | 它问什么 | 形态 |
 //! |---|---|---|
-//! | ㈠ | 层 2 的根在哪、有哪几份文件 | 盘上**现推**（唯一一份 `impl Destinations for` 的那个模块）⇔ [`ACCOUNT_LAYER_FILES`] |
-//! | ㈡ | `relay/` 目录里**住着**几份层 2 的文件 | 盘上现扫的交集 ⇔ [`RESIDENT_IN_RELAY`] |
-//! | ㈢ | 层 1 的生产段**点名**层 2 的地方 | 盘上现数（词表从层 2 的声明**现推**）⇔ [`LAYER_ONE_NAMES_LAYER_TWO`] |
-//! | ㈣ | 层 2 用到层 1 的哪几样（**接口面有多窄**） | 盘上现解析的路径 ⇔ [`CONTRACT`] |
+//! | ㈠ | 层 2 的根在哪、有哪几份文件 | 盘上**现推**（唯一一份 `impl Destinations for` 的那个模块）⇔ [`ACCOUNT_LAYER_FILES`]，两向相等 |
+//! | ㈡ | `relay/` 目录里**住着**几份层 2 的文件 | **零命中**（两个人群各自非空，交集为空）|
+//! | ㈢ | 层 1 的生产段**点名**层 2 的地方 | **零命中**（词表从层 2 的声明**现推**，非空；层 1 的人群非空）|
+//! | ㈣ | 层 2 用到层 1 的哪几样（**接口面有多窄**） | 盘上现解析的路径 ⇔ [`CONTRACT`]，两向相等 |
 //!
-//! # 🔴 ㈡ 与 ㈢ 今天**不是零**，而这是照实登记，不是豁免
+//! # ㈡ ㈢ 为什么是零命中而不是登记表
 //!
-//! 搬家（层 2 离开 `relay/`）今天**落不了地**，挡它的是写区外的两处，逐条现打：
-//!
-//! 1. `tests/backend/readonly_guard.rs::BACKEND_CORE_MODULES` —— 它与 `lib.rs` 的模块声明
-//!    **两向集合相等**。后端顶层新开一个模块，那条当场红（现打逐字：「`lib.rs` 有而登记没有：
-//!    ["accounts"] ⇒ 🔴 新加的模块没人看」）。那份文件本波归另一路。
-//! 2. `src/backend/main.rs` 里 `--relay` 那一臂调的是 `relay::run` —— 起进程时把两层接起来的
-//!    那一处（今天是 [`LAYER_ONE_NAMES_LAYER_TWO`] 里 `listen.rs` 那两行）得搬到它那里。
-//!
-//! ⇒ 两处放行那天的改法是**机械的**：`git mv` 那棵树 ＋ 上面两处各一行 ＋ `lib.rs` 一行声明
-//!   ＋ 删掉 `relay/mod.rs` 那行 `mod accounts;` ⇒ ㈡ ㈢ 两张表**清空**，本文件变成零命中形态。
-//!   **那一天之前，这两张表是一份「中转层里还有多少账号」的逐条账，而不是一份放行名单**：
-//!   往里多加一行 = 层 1 又多认识了层 2 一样东西 —— 那是**倒退**，不许。
+//! 搬家之前这两条是两张**残留表**（`relay/` 里住着 4 份层 2 文件 · 层 1 点名层 2 3 处），
+//! 头注写明「那是一份逐条账，不是放行名单」。搬家那天两张表清空，**表本身也删了**：
+//! 留一张空表等于给「往里加一行」留了一个看起来合法的口子。
+//! ⇒ 今天谁让层 1 认识层 2 一样东西、或往 `relay/` 下放回一份层 2 文件，本条当场红，
+//!   而改法只有一条：**把那件事交给层 2**（请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，
+//!   进程装配在 `accounts::run_relay`）。
 //!
 //! # 买不到什么（照实写）
 //!
@@ -38,7 +30,9 @@
 //! - ㈣ 认的是 `use` 与 `crate::` / `super::` / `self::` 起头的**路径**。一个先 `use` 进来、
 //!   再以**别名**用的项，它按 `use` 那一行记（记的是真名），不按别名记 —— 这是对的；
 //!   但 `use super::*` 这种**通配**它展不开，会当成一项 `*` 记下来并让相等断言当场红
-//!   （宁可红，不假装看懂了）。
+//!   （宁可红，不假装看懂了）。它按「`use` 这个**词**」找语句：字符串里恰好有一个独立的
+//!   `use` 词，会把它到下一个 `;` 之间当成一条 `use` 去解析（多半解析不出路径、被丢掉），
+//!   那一段里的行内路径因此漏扫。
 //! - 四条都**不买**「层 2 做得对」：那张决策表答得对不对由 `table_tests` 与 `wire_golden` 负责。
 
 #[cfg(test)]
@@ -52,49 +46,30 @@ mod tests {
     /// ㈠ 层 2 那棵树里的文件（相对**层 2 的根**）。**相等，不是地板**。
     const ACCOUNT_LAYER_FILES: &[&str] = &["creds.rs", "mod.rs", "policy.rs", "table.rs"];
 
-    /// ㈡ `relay/` 目录里**住着的**层 2 文件（相对 `src/backend/`）。
-    ///
-    /// 🔴 **搬家那天清空**（挡它的两处见模块头注）。今天这四行是「中转层里还有账号」的**物证**。
-    const RESIDENT_IN_RELAY: &[&str] = &[
-        "relay/accounts/creds.rs",
-        "relay/accounts/mod.rs",
-        "relay/accounts/policy.rs",
-        "relay/accounts/table.rs",
-    ];
-
-    /// ㈢ 层 1 的生产段里**点名**层 2 的地方：`(文件, 名字, 处数)`。
-    ///
-    /// 🔴 **搬家那天清空**。今天剩的两件都不是「搬字节」的活，而是 Rust / 进程装配的机械产物：
-    /// - `relay/mod.rs` 那行 `mod accounts;` —— 子模块只能由父模块声明（`comm_boundary_registry`
-    ///   里 `relay/mod.rs` 那一行的裁词逐字记着这件事）；
-    /// - `relay/listen.rs::run` 把 `accounts::Boot` 递进 `run_with` —— 起进程时把两层接起来。
-    ///   `run_with` 以下，层 1 只见得到 `Startup` / `Ready` / `Destinations` 三个契约口。
-    const LAYER_ONE_NAMES_LAYER_TWO: &[(&str, &str, usize)] = &[
-        ("relay/listen.rs", "Boot", 1),
-        ("relay/listen.rs", "accounts", 1),
-        ("relay/mod.rs", "accounts", 1),
-    ];
-
     /// ㈣ 层 2 用到的层 1 的东西（相对 `crate::relay::` 的路径）—— **接口面就这么宽**。
     ///
     /// | 项 | 为什么层 2 要它 |
     /// |---|---|
     /// | `Destinations` · `Destination` · `AuthSwap` · `Mode` · `RouteKey` | 请求路径上那一问一答（`设计/20 §2`）|
     /// | `Startup` · `Ready` | 启动路径上那两步（起监听前验配置 · 起监听后交出 `Destinations`）|
-    /// | `upstream::Base` | 一行的上游是什么 —— 层 1 的**传输原语**，层 2 解析它、焊进行里、原样交回 |
-    /// | `route::segment_is_safe` | 「这个账号 id 当得了路由段吗」与层 1 切键用的是**同一个谓词**（`route.rs` 头注逐字论证过为什么不许各写一份）|
+    /// | `run` | `--relay` 进程的装配（`accounts::run_relay` 把 `Boot` 递进层 1 的入口）。依赖方向只许层 2 → 层 1，所以装配住这一侧 |
+    /// | `Base` | 一行的上游是什么 —— 层 1 的**传输原语**，层 2 解析它、焊进行里、原样交回 |
+    /// | `segment_is_safe` | 「这个账号 id 当得了路由段吗」与层 1 切键用的是**同一个谓词**（`route.rs` 头注逐字论证过为什么不许各写一份）|
     ///
+    /// ⚠ 后两项经 `relay/mod.rs` 的 `pub(crate) use` 交出去（`upstream` / `route` 两个模块本身仍私有）
+    ///   ⇒ 契约面上的每一样都住那一个文件。
     /// ⚠ 多一项 = 层 2 又伸手拿了层 1 一样东西（要来这里说清为什么）；少一项 = 表腐了。
     const CONTRACT: &[&str] = &[
         "AuthSwap",
+        "Base",
         "Destination",
         "Destinations",
         "Mode",
         "Ready",
         "RouteKey",
         "Startup",
-        "route::segment_is_safe",
-        "upstream::Base",
+        "run",
+        "segment_is_safe",
     ];
 
     // ── 语料 ────────────────────────────────────────────────────────────────
@@ -357,7 +332,7 @@ mod tests {
 
     /// ★★★ 「**中转层里不要有账号**」—— 四条两向集合相等（逐条见模块头注那张表）。
     #[test]
-    fn the_relay_layer_holds_no_accounts_beyond_the_itemised_residue() {
+    fn the_relay_layer_holds_no_accounts() {
         let files = crate_production();
         let root = account_layer_root(&files);
         let l2_mod = module_of_dir(&root);
@@ -381,49 +356,60 @@ mod tests {
              加/减了文件就回来改 `ACCOUNT_LAYER_FILES`，并重读下面三条 —— 它们的人群都从这里来。"
         );
 
-        // ㈡ `relay/` 里住着几份层 2：盘上的交集 ⇔ 登记。
-        let resident: BTreeSet<String> = layer_two
+        // ㈡ `relay/` 里住着几份层 2：**零命中**。反空真：两个人群各自非空（交集为空不是因为扫不到）。
+        let relay_files: Vec<&(String, String)> = files
             .iter()
-            .map(|(rel, _)| rel.clone())
+            .filter(|(rel, _)| rel.starts_with(&format!("{RELAY_DIR}/")))
+            .collect();
+        assert!(
+            relay_files.len() >= 7 && !layer_two.is_empty(),
+            "人群取空了：`relay/` 扫到 {} 份、层 2 扫到 {} 份 —— 下面的「交集为空」此刻在空转",
+            relay_files.len(),
+            layer_two.len()
+        );
+        let resident: Vec<&String> = layer_two
+            .iter()
+            .map(|(rel, _)| rel)
             .filter(|rel| rel.starts_with(&format!("{RELAY_DIR}/")))
             .collect();
-        let resident_reg: BTreeSet<String> =
-            RESIDENT_IN_RELAY.iter().map(|s| (*s).to_string()).collect();
-        assert_eq!(
-            resident, resident_reg,
-            "`relay/` 目录里住着的层 2 文件与登记对不上。\n\
-             🔴 搬家落地了 ⇒ 盘上这一侧变空 ⇒ 把 `RESIDENT_IN_RELAY` 清空（本条就成了零命中形态）。\n\
-             🔴 盘上多出来一份 ⇒ 层 2 又往中转层底下放了东西 —— **那是倒退**，别往表里加行，把它挪出去。"
+        assert!(
+            resident.is_empty() && !root.starts_with(&format!("{RELAY_DIR}/")),
+            "🔴 层 2 又住回了中转层底下（根 `{root}`）：{resident:?}\n\
+             用户逐字：「中转层不要有账号, 账号就账号中转就中转」。把它挪回 `src/backend/accounts/`。"
         );
 
-        // ㈢ 层 1 点名层 2：盘上现数 ⇔ 登记。
+        // ㈢ 层 1 点名层 2：**零命中**。反空真：词表非空、且同一把尺子在层 2 自己的文件里数得到那些词。
         let vocab = layer_two_vocabulary(&layer_two);
         assert!(
             vocab.len() >= 5 && vocab.contains("Accounts") && vocab.contains("RoutingTable"),
             "层 2 的词表只推出 {vocab:?} —— 推法坏了，下面那条在空转"
         );
-        let mut named: BTreeSet<(String, String, usize)> = BTreeSet::new();
-        for (rel, prod) in &files {
-            if !rel.starts_with(&format!("{RELAY_DIR}/")) || rel.starts_with(&root) {
-                continue;
-            }
+        // 词表里除 `accounts`（模块自己的名字，它自己的代码里不必出现）之外，每个词都得在层 2
+        // 自己的生产段里被**同一把尺子**数到 —— 数不到就是尺子瞎了，下面的零命中是空真。
+        let unseen: Vec<&String> = vocab
+            .iter()
+            .filter(|w| *w != "accounts")
+            .filter(|w| !layer_two.iter().any(|(_, prod)| count_word(prod, w) > 0))
+            .collect();
+        assert!(
+            unseen.is_empty(),
+            "同一把尺子在层 2 自己的文件里数不到这些词：{unseen:?} —— 尺子是瞎的"
+        );
+        let mut named: Vec<String> = Vec::new();
+        for (rel, prod) in &relay_files {
             for w in &vocab {
                 let n = count_word(prod, w);
                 if n > 0 {
-                    named.insert((rel.clone(), w.clone(), n));
+                    named.push(format!("{rel}: `{w}` ×{n}"));
                 }
             }
         }
-        let named_reg: BTreeSet<(String, String, usize)> = LAYER_ONE_NAMES_LAYER_TWO
-            .iter()
-            .map(|(f, w, n)| ((*f).to_string(), (*w).to_string(), *n))
-            .collect();
-        assert_eq!(
-            named, named_reg,
-            "层 1（`relay/` 里层 2 之外那几份）的生产段点名层 2 的地方与登记对不上。\n\
-             🔴 盘上多出来的 = 中转层又认识了账号层一样东西 ⇒ **别往表里加行**，\n\
-                把那件事交给层 2（请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`）。\n\
-             登记里有而盘上没有 = 表腐了（或者搬家落地了 ⇒ 清空这张表）。"
+        assert!(
+            named.is_empty(),
+            "🔴 中转层（`relay/` 的生产段）点名了账号层：\n  {}\n\
+             **别加例外** —— 把那件事交给层 2：请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，\
+             进程装配在 `accounts::run_relay`。",
+            named.join("\n  ")
         );
 
         // ㈣ 层 2 用到层 1 的哪几样：盘上现解析 ⇔ 登记。

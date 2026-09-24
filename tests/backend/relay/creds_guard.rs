@@ -101,35 +101,47 @@ mod tests {
     /// 加一处日志就要来加一行，那正是要的 —— 逼你说清「这一行记的是什么」。
     const LOG_SITES: &[(&str, &str, &str)] = &[
         (
-            "listen.rs",
+            "relay/listen.rs",
             "[relay] cannot set connection deadline",
             "装期限失败",
         ),
-        ("listen.rs", "[relay] refusing", "在途连接顶满，回 503"),
         (
-            "listen.rs",
+            "relay/listen.rs",
+            "[relay] refusing",
+            "在途连接顶满，回 503",
+        ),
+        (
+            "relay/listen.rs",
             "[relay] connection ended",
             "一条连接以错误收尾",
         ),
         (
-            "listen.rs",
+            "relay/listen.rs",
             "[relay] cannot spawn connection thread",
             "起线程失败",
         ),
-        ("server.rs", "[relay] upstream connect failed", "连不上上游"),
         (
-            "listen.rs",
+            "relay/server.rs",
+            "[relay] upstream connect failed",
+            "连不上上游",
+        ),
+        (
+            "relay/listen.rs",
             "[relay] bad upstream base url",
             "上游基址解析不了",
         ),
         (
-            "listen.rs",
+            "relay/listen.rs",
             "[relay] cannot bind loopback port",
             "端口起不来",
         ),
-        ("listen.rs", "[relay] listening on", "起来了，监听在哪"),
         (
-            "listen.rs",
+            "relay/listen.rs",
+            "[relay] listening on",
+            "起来了，监听在哪",
+        ),
+        (
+            "relay/listen.rs",
             "[relay] listening (addr unknown",
             "起来了但问不到地址",
         ),
@@ -202,9 +214,13 @@ mod tests {
         ),
     ];
 
-    fn relay_dir() -> std::path::PathBuf {
-        crate::guard_support::src_root().join("relay")
-    }
+    /// 日志白名单的人群：**两层都在** —— 层 1（`relay/`）与层 2（`accounts/`）。
+    ///
+    /// ⚠ 〔2026-09-24 层 2 搬出 `relay/`〕先前人群是 `relay/` 一棵树，层 2 住在它底下所以顺带被扫。
+    ///   搬走之后只扫 `relay/` 的话，层 2 那 12 行日志会**掉出扫描面** —— 它们记的恰恰是
+    ///   凭据文件那一侧的事，是 `KS4` 最该看着的那一批。⇒ 两棵根明写在这里，
+    ///   并由判据本体断言「盘上有日志的根 ⇔ 登记表里出现的根 ⇔ 本表」三方相等。
+    const LOG_ROOTS: &[&str] = &["relay", "accounts"];
 
     /// 整个 backend crate 的生产段（逐文件）。`KS2` 的人群是**整个 crate**，不是 `relay/` ——
     /// 「取明文的地方恰好一处」这句话的分母如果只到 `relay/`，
@@ -338,7 +354,7 @@ mod tests {
         // 期望的全集：**判据这边自己**从闭集派生一遍（与生产段那一份异源）。
         let want_clear: std::collections::BTreeSet<String> = AuthStyle::ALL
             .iter()
-            .filter_map(|s| crate::relay::accounts::auth_header_of(*s))
+            .filter_map(|s| crate::accounts::auth_header_of(*s))
             .map(|(n, _)| n.to_ascii_lowercase())
             .collect();
         assert!(
@@ -350,7 +366,7 @@ mod tests {
         let base = crate::relay::upstream::Base::parse("https://api.example.com").expect("base");
         let mut wrote = 0usize;
         for style in AuthStyle::ALL.iter().copied() {
-            let table = crate::relay::accounts::table::RoutingTable::build(std::iter::once((
+            let table = crate::accounts::table::RoutingTable::build(std::iter::once((
                 "a".to_string(),
                 "acct".to_string(),
                 base.clone(),
@@ -362,9 +378,8 @@ mod tests {
                 seg2: "acct".to_string(),
             };
             let mut seen: Option<(Option<&'static str>, Vec<String>)> = None;
-            let upstreams =
-                crate::relay::accounts::Upstreams::from_env(&|_| None).expect("内置默认");
-            crate::relay::accounts::decide(
+            let upstreams = crate::accounts::Upstreams::from_env(&|_| None).expect("内置默认");
+            crate::accounts::decide(
                 &table,
                 &upstreams,
                 crate::relay::Mode::Substitute,
@@ -540,7 +555,13 @@ mod tests {
     /// ★★ `KS4`：中转记日志走**白名单**。
     #[test]
     fn every_log_line_in_the_relay_only_carries_registered_fields() {
-        let files = guard_core::scan_tree!(&relay_dir(), &["rs"]);
+        let root = crate::guard_support::src_root();
+        let mut files = Vec::new();
+        for r in LOG_ROOTS {
+            let got = guard_core::scan_tree!(&root.join(r), &["rs"]);
+            assert!(!got.is_empty(), "`{r}/` 一份文件都没扫到 —— 取法坏了");
+            files.extend(got);
+        }
         assert!(
             files.len() >= 8,
             "只扫到 {} 个文件 —— 取法坏了，本断言在空转",
@@ -553,10 +574,12 @@ mod tests {
             // ⚠⚠ 〔`设计/20 §7` 步 1〕先前这里取的是 `file_name()`（**只有文件名**）。
             //    层 2 搬进 `relay/accounts/` 之后那样取会得出 `mod.rs` —— 一个
             //    **指不准是谁**的住址（`relay/mod.rs` 与 `relay/accounts/mod.rs` 同名）。
-            //    ⇒ 改成**相对 `relay/` 的路径**。这是**收紧**：登记表里那一栏从此
+            //    ⇒ 改成**相对路径**。这是**收紧**：登记表里那一栏从此
             //    点得到唯一一份文件，改不改都不会让一条日志悄悄换个家。
+            //    〔2026-09-24〕层 2 搬到 `src/backend/accounts/` 之后，基准从 `relay/` 换成
+            //    `src/backend/`（两棵根都相对它），层 1 那几行的住址栏因此多了 `relay/` 前缀。
             let name = path
-                .strip_prefix(relay_dir())
+                .strip_prefix(&root)
                 .unwrap_or(path)
                 .to_string_lossy()
                 .replace('\\', "/");
@@ -612,6 +635,23 @@ mod tests {
             found.len(),
             LOG_SITES.len(),
             found
+        );
+        // ★ 〔层 2 搬出 `relay/` 那一拍〕**两层的日志都在扫描面里**：盘上扫到日志的根
+        //   ⇔ 登记表里出现的根 ⇔ `LOG_ROOTS`，三方相等。少了一棵 = 那一层的日志掉出白名单。
+        let root_of = |f: &str| f.split('/').next().unwrap_or("").to_string();
+        let on_disk_roots: std::collections::BTreeSet<String> =
+            found.iter().map(|(f, _)| root_of(f)).collect();
+        let registered_roots: std::collections::BTreeSet<String> =
+            LOG_SITES.iter().map(|(f, _, _)| root_of(f)).collect();
+        let want_roots: std::collections::BTreeSet<String> =
+            LOG_ROOTS.iter().map(|r| (*r).to_string()).collect();
+        assert_eq!(
+            on_disk_roots, want_roots,
+            "盘上扫到日志的根与 `LOG_ROOTS` 对不上 —— 某一层的日志掉出了扫描面（或多出一棵没登记的树）"
+        );
+        assert_eq!(
+            registered_roots, want_roots,
+            "登记表里出现的根与 `LOG_ROOTS` 对不上"
         );
         // ★ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕**前缀按层分，两向**：
         //   住层 2（`accounts/`）的那几行 ⇔ 前缀是 `[apikey]`；其余（层 1）⇔ 前缀是 `[relay]`。

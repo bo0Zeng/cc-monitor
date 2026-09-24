@@ -66,8 +66,7 @@
 //!
 //! 这两句读起来像，差别正是 `KH2` 要守的全部。
 
-use super::super::route::segment_is_safe;
-use super::super::upstream::Base;
+use crate::relay::{segment_is_safe, Base};
 use creds_core::store::{AccountEntry, AuthStyle, AuthStyleSetting};
 
 // ★★ 🔴 〔`设计/20 §7` 步 2〕**`mod sealed` 删掉了** —— 换来的东西写在这里
@@ -436,5 +435,5 @@ pub(crate) fn build(
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/relay/table_tests.rs"]
+#[path = "../../../tests/backend/accounts/table_tests.rs"]
 mod tests;

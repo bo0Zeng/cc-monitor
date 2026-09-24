@@ -311,10 +311,10 @@ pub(super) fn run_reading(
 /// 本函数今天**只剩一件事**：把「真取值器」与 `run_with` 接上。接线本身（哪个变量
 /// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了
 /// —— 本函数这一行今天是**判不了**的那一格，登记住址件文件 §8.18.3。
-pub fn run(home: &std::path::Path, _args: &[String]) -> i32 {
-    // ★ **层 1 点名层 2 的唯一一处**（外加 `relay/mod.rs` 那行模块声明）：把它的启动那只手递进去。
-    //   搬家那天这一行跟着走 —— 它是「起进程时把两层接起来」那件事，不是搬字节。
+pub(crate) fn run(home: &std::path::Path, _args: &[String], startup: &dyn Startup) -> i32 {
+    // ★ 层 2 那只手是**调用方递进来的**（`accounts::run_relay`，`--relay` 的装配口）——
+    //   本层**叫不出**它的名字。先前这里写死 `super::accounts::Boot`：层 2 搬出 `relay/` 那一拍删的。
     run_reading(&|k| std::env::var(k).ok(), home, &|p, get, h| {
-        run_with(p, get, h, &super::accounts::Boot)
+        run_with(p, get, h, startup)
     })
 }

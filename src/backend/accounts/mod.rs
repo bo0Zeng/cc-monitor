@@ -49,8 +49,7 @@ pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key
 
 pub(crate) use policy::Reload;
 
-use super::upstream::Base;
-use super::{AuthSwap, Destination, Destinations, Mode, Ready, RouteKey, Startup};
+use crate::relay::{AuthSwap, Base, Destination, Destinations, Mode, Ready, RouteKey, Startup};
 use creds_core::store::AuthStyle;
 use std::io::Write;
 use table::{RoutingTable, Row};
@@ -138,11 +137,24 @@ impl Upstreams {
     }
 }
 
+/// **`--relay` 这个进程的装配口**：层 1 的入口 ＋ 层 2 那只手。`main.rs` 的 `--relay` 那一臂调它。
+///
+/// # 它为什么住层 2（而不是层 1）
+///
+/// 装配要同时叫得出两层的名字。依赖方向只许层 2 → 层 1（层 2 本来就用层 1 的契约类型），
+/// 反过来就是「中转层里有账号」—— 那正是用户 2026-09-24 那句话要拆掉的。
+/// ⇒ 层 1 的 `run` 收一个 `&dyn Startup`，本函数把 [`Boot`] 递进去；层 1 的生产段里
+///   **一个层 2 的名字都没有**（`relay::account_layer_guard` ㈢ 零命中）。
+///
+/// ⚠ 它**不是**第二条入口：`--relay` 只有这一臂，本函数一行逻辑都没有，只做接线。
+pub fn run_relay(home: &std::path::Path, args: &[String]) -> i32 {
+    crate::relay::run(home, args, &Boot)
+}
+
 /// 层 2 在 `--relay` 启动路径上交给层 1 的那一只手（[`Startup`]）。
 ///
-/// ★ **层 1 点名层 2 的地方只剩这一个名字**（外加 `relay/mod.rs` 里那行模块声明）：
-/// 起进程的那一处把它递给 `listen::run_with`，此后层 1 只见得到 `Startup` / `Ready` /
-/// `Destinations` 三个契约口。钉这一条的判据：`account_layer_guard`（两向集合相等）。
+/// ★ 层 1 **叫不出**它的名字：[`run_relay`] 把它递进层 1 的 `run`，层 1 只见得到
+/// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`account_layer_guard`（㈢ 零命中）。
 pub(crate) struct Boot;
 
 impl Startup for Boot {

@@ -4,13 +4,13 @@ use super::*;
 //    ⚠⚠ 〔`设计/20 §7` 步 1〕`table` / `creds` 这两条先前是**跟着 `super::*` 蹭进来的**
 //    —— 那时 `server.rs` 自己引着它们。层 2 搬走之后层 1 不再认识那两个模块，
 //    判据要用就得自己写明白：**判据的人群从哪来，要看得见**。
-use super::super::accounts::creds;
-use super::super::accounts::{self, table::RoutingTable, Accounts};
 use super::super::listen::{
-    listen, resolve_port, run, run_reading, run_with, serve, RelayExec, DOWNSTREAM_DEADLINE,
+    listen, resolve_port, run_reading, run_with, serve, RelayExec, DOWNSTREAM_DEADLINE,
     UPSTREAM_DEADLINE,
 };
 use super::super::upstream;
+use crate::accounts::creds;
+use crate::accounts::{self, table::RoutingTable, Accounts};
 use creds_core::SecretKey;
 use std::io::BufRead;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
@@ -1410,7 +1410,13 @@ fn relay_child_process_entry_point() {
     // ⚠ home 走**生产段那条**解析（`resolve_home` 认 `CLAUDE_CONFIG_DIR`）——
     //   而凭据那份文件的位置由 `CCM_RELAY_CREDENTIALS` 覆盖，父进程一定会设它
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
-    std::process::exit(run(&crate::agents::claudecode::paths::resolve_home(), &[]));
+    // ⚠ 〔层 2 搬出 `relay/` 那一拍〕走的是 `main.rs` 的 `--relay` 那一臂**真调的那一个**
+    //   （`accounts::run_relay` = 层 1 的 `run` ＋ 层 2 那只手），不是层 1 的 `run` 本身 ——
+    //   后者今天要调用方递一个 `Startup` 进来，判据自己递就不是生产段那条接线了。
+    std::process::exit(crate::accounts::run_relay(
+        &crate::agents::claudecode::paths::resolve_home(),
+        &[],
+    ));
 }
 
 /// 一个跑在**真子进程**里的中转，连同它 stdout / stderr 的全量收集面。

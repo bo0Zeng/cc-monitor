@@ -314,7 +314,7 @@ fn the_credentials_file_agent_is_the_same_on_both_halves() {
     let tail = &MONITOR_PAYLOAD_RS[at + needle.len()..];
     let theirs = &tail[..tail.find('"').expect("那个字面量没有收尾的引号")];
     assert!(!theirs.is_empty(), "抠出来的是空串 —— 抽取器坏了");
-    let ours = crate::relay::accounts::CREDENTIALS_FILE_AGENT;
+    let ours = crate::accounts::CREDENTIALS_FILE_AGENT;
     assert_eq!(
         theirs, ours,
         "monitor 认为凭据文件的行属于 `{theirs}`，后端把它们挂在 `{ours}` 名下"
