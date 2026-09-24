@@ -250,6 +250,15 @@ export class AccountsSection {
      * （本机那一页压根不会包含只对远端有意义的分节）。
      */
     subscribeMachine((origin) => this.followMachine(origin));
+    // ST1「延后加载」：构造期不再 `void this.init()` —— 见 `loadNow()`。
+  }
+
+  /**
+   * ST1「延后加载」（`设计/70 §5.3` 判据 2：**子页内容只在该子页可见时才发 I/O**）：
+   * 构造期不再发 I/O；宿主（`panel.ts`）在**某台机器的子页第一次可见**时调它。
+   * 重开设置后宿主会再调一次（重开要看新读数）。
+   */
+  loadNow(): void {
     void this.init();
   }
 
