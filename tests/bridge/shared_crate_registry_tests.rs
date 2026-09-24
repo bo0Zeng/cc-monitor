@@ -1055,6 +1055,11 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             "xvfb_worker_real_pointer_events_on_a_row",
             "真 X 鼠标事件那一趟：由 `rows_tests.rs` 的 `scenario_b()` spawn 子进程跑",
         ),
+        (
+            "xvfb_worker_real_keys_on_the_window",
+            "〔FW1+FW2 09-24〕真 X 键盘那一趟：由 `shell_keys_tests.rs` 的 \
+             `a_real_x_keyboard_drives_the_list` spawn 子进程跑",
+        ),
     ];
 
     let repo = crate::guard_support::repo_root().to_path_buf();

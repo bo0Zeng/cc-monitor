@@ -385,6 +385,7 @@ src/bridge/src/filewin/fonts.rs:255	·—…→⚠⬆、。「」一上下不与
 src/bridge/src/filewin/fonts.rs:256	够大太失契如字存它完定容对寻小少尔就尾屏已布带帧并序应建开弄引当录形往径必态成或截打扫把拒拖拼拿挂按挡换据掉排接搜摞撞撤操改数敲整文断新旧时明是更最有期本机权条来样根框次正此段比没法洞浏消漂点版物状现	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:257	用的监盖目相看真着确秒称程空窗端符第答管类索约级组终经结给绝编者而能节范落行表被西要覆见览解认许话该说请读负败走起超趟跑路跳身载辑输过运还这进远连送通道那部都里重销错闭问限除非面须首高（），：；？📁📄🔗	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
+src/bridge/src/filewin/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/proc.rs:297	那个进程在开窗预算内就退了（{st}）	改·§2.1	[对外] open_in_new_process 的 Err 回给打开文件窗口的调用方；「开窗预算」是内部参数 新词:开窗预算 →「文件窗口没能打开（进程退出：{st}）」
 src/bridge/src/filewin/proc.rs:298	那个进程既没退也没在跑 —— 这一形说明上面那一跳的判法坏了	改·§2.2	[对外] 同上 Err；「这一形说明上面那一跳的判法坏了」是内部推理 →「文件窗口没能打开」
 src/bridge/src/filewin/proc.rs:299	问不到那个进程的死活：{e}	改·§2.1	[对外] 同上 Err；「问不到进程的死活」讲实现 →「文件窗口没能打开：{e}」
@@ -489,6 +490,16 @@ src/bridge/src/filewin/source.rs:763	`{cmd}` 没走通：{leg}那一段{what}，
 src/bridge/src/filewin/source.rs:766	`{cmd}` 撤了	改·§2.1	[可达存疑] 本地撤单；窗口今天没有撤单按钮走到这一格 →「已取消」
 src/bridge/src/filewin/source.rs:767	`{cmd}` 的参数这一侧就拼错了	改·§2.1	[可达存疑] 内部不变量（用法错）；句首带内部命令名 兼§2.2 →「内部错误，请重开窗口」
 src/bridge/src/filewin/source.rs:768	`{cmd}` 的应答对不上约定	改·§2.1	[可达存疑] 对端说的话解不出来；句首带内部命令名 →「后端返回的内容读不懂」
+src/bridge/src/filewin/select.rs:446	打开	保留	[对外] 右键菜单项（目录），动词
+src/bridge/src/filewin/select.rs:458	删除这 {n} 项	保留	[对外] 右键菜单项（多选时），动词＋数量，一眼看清会删几项
+src/bridge/src/filewin/select.rs:508	还没有选中任何一项	保留	[对外] 按 Delete / F2 而一项都没选时画在窗口上，一句说清
+src/bridge/src/filewin/select.rs:509	选中的里有名字读不出来的，这几项删不了	保留	[对外] 多选里混着有损名时按 Delete 的回话；说清原因与结果
+src/bridge/src/filewin/select.rs:510	一次只能打开一项，现在选中了 {n} 项	保留	[对外] 多选时按回车的回话
+src/bridge/src/filewin/select.rs:511	一次只能改一个名字，现在选中了 {n} 项	保留	[对外] 多选时按 F2 的回话
+src/bridge/src/filewin/select.rs:512	「{}」对选中的这几项做不了	保留	[对外] 兜底回话，{} 是菜单项的字（打开 / 改名 …）
+src/bridge/src/filewin/shell.rs:463	对选中的这几项没有能做的事	保留	[对外] 右键菜单一项都没有时摆的那一句（有损名那一档）
+src/bridge/src/filewin/shell.rs:1958	没有以「{prefix}」开头的项	保留	[对外] 打字跳转没找到时画在窗口上
+src/bridge/src/filewin/shell.rs:2233	已选 {n} 项	保留	[对外] 工具栏上的选中计数
 src/bridge/src/history.rs:267	本机项目列表	保留	[不对外] log_unknown_reasons 的日志标签
 src/bridge/src/history.rs:1409	旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕	改·§2.1	[可达存疑] OLD_PATH_CANNOT_ATTACH 作 Err 回前端：attach / 拉起器 / 容器路 / K-R106 全是内部说法 兼§2.2 兼§2.4 新词:拉起器 新词:容器路 →「这台机器接不回已有会话，只能新开一个」
 src/bridge/src/history.rs:1520	没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸	改·§2.1	[可达存疑] NO_TMUX_NAME 作 Err：露出前端函数名 mintTmuxName 与「只许由…铸」的内部纪律 兼§2.2 新词:铸 →「缺少会话名，无法启动」

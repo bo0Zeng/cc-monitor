@@ -843,7 +843,7 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     // 接的命令从 `used` 里消失 ⇒ 差集非空 ⇒ 会红；但少扫**全部**就两边都空了）。
     assert_eq!(
         files.len(),
-        18,
+        19,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\
@@ -854,6 +854,8 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
           一条池子命令都不碰 ⇒ 下面 `used` 那一摞不因它变）〕—— \
          〔F9 09-24（与 F7b 同拍合并，现打 18）多的是 **bigfile**（大文件模式；它一条池子命令都不碰 ——\
           读上限仍经 `editor.rs` 那一处 `MAX_EDIT_BYTES`）〕—— \
+         〔FW1+FW2 09-24：18 → 19（与 F7b / F9 同拍合并，现打 19），多的是 **select**（选中态 · 键位 · \
+          右键菜单那张表；它一条池命令都不碰，写操作经 `shell.rs` 那几个 `begin_*` 走）〕—— \
          不等就是射程变了，先查扫描面再改这个数",
         files.len()
     );
