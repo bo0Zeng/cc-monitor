@@ -88,7 +88,7 @@
 //!    但「在界面上从零造一份文本」是另一个交互题（要先问名字）。
 //! 3. **本机那一侧不能编辑** —— 两条命令都是远端的。本机文本要另一条路。
 //! 4. **没有语法高亮 / 行号 / 查找替换** —— 那是一个编辑器，不是这一刀。
-
+//!
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -375,6 +375,161 @@ pub async fn write_text(
     content: &str,
 ) -> Result<(), String> {
     crate::sftp_pool::sftp_write_text(cfg.clone(), path.to_string(), content.to_string()).await
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 只排视口内的行：行索引 · 那一扇窗 · 它到底买到了什么
+//
+// 🔴 **这一组今天一个生产调用方都没有** —— 逐条理由住头注 §四.5。
+//    它在这里是为了把 §四 那几条结论**钉成判据**（相等断言），
+//    而不是为了假装「只排视口内」已经接上了。
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 一份文本的**行起点**（字节偏移）。
+///
+/// 🔴 它是「只排视口内」的**唯一**几何来源：`ScrollArea::show_rows` 只会说
+/// 「第 a..b 行可见」，把那一段**行号**翻成**字节区间**要靠这张表。
+///
+/// ⚠ 「行」在这里逐字是「**按 `\n` 切出来的段**」，与 epaint 切段的单位
+/// **刻意同一个**（`fonts.rs:1297-1302`）—— 两边用不同的单位就会出现
+/// 「我以为开了窗、epaint 那边还是一整段」的静默态。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineIndex {
+    /// `starts[i]` = 第 `i` 行第一个字节的偏移。**恒非空**（`starts[0] == 0`）。
+    starts: Vec<usize>,
+    len: usize,
+}
+
+impl LineIndex {
+    /// 扫一遍全文建表。O(n)，一趟。
+    pub fn build(text: &str) -> Self {
+        let mut starts = Vec::with_capacity(text.len() / 48 + 1);
+        starts.push(0);
+        for (i, _) in text.match_indices('\n') {
+            starts.push(i + 1);
+        }
+        Self {
+            starts,
+            len: text.len(),
+        }
+    }
+
+    /// 有几行。⚠ 末尾那个 `\n` 之后算**一个空行**（与编辑器的通行读法一致）。
+    pub fn lines(&self) -> usize {
+        self.starts.len()
+    }
+
+    pub fn total_bytes(&self) -> usize {
+        self.len
+    }
+
+    /// 第 `line` 行第一个字节的偏移（越界 ⇒ 文本末尾）。
+    pub fn line_start(&self, line: usize) -> usize {
+        self.starts.get(line).copied().unwrap_or(self.len)
+    }
+
+    /// 第 `line` 行**内容**的末尾 —— **不含那个 `\n`**。
+    ///
+    /// ⚠ 不含换行这一条是承重的：喂给 `TextEdit` 的窗口末尾多一个 `\n`
+    /// 会在屏幕上多出一个空行，而那个空行**在全文里不存在** ⇒ 用户会以为
+    /// 文件末尾多了一行，接着去删它。
+    pub fn line_content_end(&self, line: usize) -> usize {
+        match self.starts.get(line + 1) {
+            // 下一行的起点减一 = 这一行那个 `\n` 的位置。
+            Some(&next) => next - 1,
+            None => self.len,
+        }
+    }
+
+    /// 最长那一行有多少字节。
+    ///
+    /// 🔴 头注 §四.3(c) 那个「该加的第二个量」就是它，而它同时是两件事的答案：
+    /// epaint 不可再分的排版单位（§四.1c）· 一扇窗至少要装多少（§四.2 第 10 条）。
+    pub fn longest_line(&self) -> usize {
+        (0..self.lines())
+            .map(|i| self.line_content_end(i) - self.line_start(i))
+            .max()
+            .unwrap_or(0)
+    }
+}
+
+/// 视口那一扇窗：**全文里只有这几行会被交给排版**。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Window {
+    /// 可见的行号区间（半开）。
+    pub lines: std::ops::Range<usize>,
+    /// 那几行在全文里的字节区间（半开，**不含末行那个 `\n`**）。
+    pub bytes: std::ops::Range<usize>,
+}
+
+impl Window {
+    pub fn byte_len(&self) -> usize {
+        self.bytes.end - self.bytes.start
+    }
+}
+
+/// 把 `ScrollArea::show_rows` 给的那个行号区间翻成一扇窗。
+///
+/// ⚠ 入参会被**夹进**合法范围（`show_rows` 给的 `max_row` 会比总行数多一 ——
+/// 见 `scroll_area.rs:996` 那个 `+ 1`）。夹不住的话 [`window_text`] 会切片越界 panic。
+pub fn window_of(idx: &LineIndex, visible: std::ops::Range<usize>) -> Window {
+    let total = idx.lines();
+    let first = visible.start.min(total - 1);
+    let last = visible.end.clamp(first + 1, total);
+    Window {
+        lines: first..last,
+        bytes: idx.line_start(first)..idx.line_content_end(last - 1),
+    }
+}
+
+/// 那一扇窗里的字 —— **零拷贝**，这是「只排视口内」真正省下东西的那一步。
+pub fn window_text<'a>(text: &'a str, w: &Window) -> &'a str {
+    &text[w.bytes.clone()]
+}
+
+/// 把改过的那一扇窗**写回全文**。
+///
+/// 🔴 这是整条路上唯一会改用户数据的一步 ⇒ 它必须**逐字节可逆**，
+/// 由 [`tests::splicing_a_window_back_is_byte_exact`] 钉住
+/// （包括「改长了 / 改短了 / 删掉几行 / 里头有中文」四形）。
+///
+/// ⚠ 调用方在这之后必须**重建 [`LineIndex`]** —— 行结构可能变了。
+/// 本函数刻意**不**替调用方重建：那会让「一次编辑要重扫全文」这笔开销
+/// 藏在一个看起来免费的函数里。
+pub fn splice_window(text: &mut String, w: &Window, edited: &str) {
+    text.replace_range(w.bytes.clone(), edited);
+}
+
+/// 「只排视口内」对**这一份文件**买到了多少。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WindowingPayoff {
+    /// 最坏那一扇窗要装多少字节（滑遍所有起始行取最大）。
+    pub worst_window_bytes: usize,
+    pub total_bytes: usize,
+}
+
+impl WindowingPayoff {
+    /// 🔴 **买不到东西吗** —— 最坏那扇窗还是得装下全文。
+    ///
+    /// 这一条就是头注 §四.2 第 10 条那个洞，**钉成一条相等断言**而不是散文：
+    /// 一份压成一行的 256 KiB JSON 上它回 `true`，而开窗对它
+    /// **一毫秒都省不下来**（现打 release 1.11–1.46 ms vs 整份同值）。
+    pub fn buys_nothing(&self) -> bool {
+        self.worst_window_bytes >= self.total_bytes
+    }
+}
+
+/// 滑遍所有起始行，算最坏那一扇窗。O(行数)。
+pub fn windowing_payoff(idx: &LineIndex, rows_per_screen: usize) -> WindowingPayoff {
+    let rows = rows_per_screen.max(1);
+    let worst = (0..idx.lines())
+        .map(|i| window_of(idx, i..i + rows).byte_len())
+        .max()
+        .unwrap_or(0);
+    WindowingPayoff {
+        worst_window_bytes: worst,
+        total_bytes: idx.total_bytes(),
+    }
 }
 
 #[cfg(test)]
