@@ -38,6 +38,7 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "./remote-launch-run";
+// ⚠ 要的是 `backend-policy` 那个（`"<local>"`），不是 `accounts.ts` 里同名的 `"__local__"`（理由见 `tabs.ts` 那条注释）。
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
 import { mintSessionTmuxName } from "./remote-launch";
