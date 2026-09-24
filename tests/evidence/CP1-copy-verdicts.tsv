@@ -1,4 +1,54 @@
 住址	原文	裁词	依据
+src/account-chip.ts:50	未连远端	保留	[对外] 账号 chip 标签，短而清楚
+src/account-chip.ts:54	backend 需更新	内部词→后端（backend）	[对外] 账号 chip 标签；设计/91 §3.1 对外叫「后端」，英文 backend 夹在中文标签里 →「后端需更新」
+src/account-chip.ts:56	未启用	保留	[对外] 账号 chip 标签
+src/account-chip.ts:59	未启用	保留	[对外] 账号 chip 标签
+src/account-commands.ts:47	账号：设 {…} 为当前账号{…}	保留	[对外] 命令面板条目标题，动宾清楚
+src/account-commands.ts:60	账号：管理…	保留	[对外] 命令面板条目标题
+src/account-restart.ts:84	\n注意：该账号尚未信任此目录，CC 可能在弹出的终端里询问是否信任。	保留	[对外] 换号重启确认框里的提醒；CC 是用户自己用的工具名，提醒可操作
+src/account-restart.ts:93	用账号「{…}」重启此会话？\n\n	保留	[对外] 换号重启确认框首句，先说结果、是真问句
+src/account-restart.ts:94	会中断当前回合：先请求会话优雅退出（最多等 ~10s），再结束旧进程（tmux 会话 {…}），	改·§2.4	[对外] 确认框第二句逐步复述内部流程（优雅退出→结束旧进程→resume），两处括号补充＋首句过长 兼§2.1（tmux 会话名是我们的实现细节）→「会中断当前回合，约 10 秒后用新账号接着这个会话」
+src/account-restart.ts:95	然后用新账号 resume 同一会话。	改·§2.4	[对外] 与上一截是同一句（流程复述），随上一截一起改
+src/account-restart.ts:97	\n将先在【旧账号】上 /compact（命中旧缓存更省），可能耗时数分钟。	保留	[对外] 确认框补充：先 /compact、可能耗时数分钟，对用户可操作；括号理由短
+src/accounts.ts:120	过旧	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
+src/accounts.ts:120	不支持账号	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
+src/accounts.ts:472	in-place 模式：cc-monitor 不支持对它按会话切号	判不了	[对外] 账号徽标 title；「in-place 模式」是账号配置里的模式名，用户是否在自己的配置里亲手写过这个词（R1b 限用）还是纯内部叫法，得等术语对照表拍板 新词:in-place 模式
+src/accounts.ts:482	这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 	改·§2.4	[对外] 账号徽标 title：破折号＋长首句，一句里讲清「有什么＋我们怎么做（ANTHROPIC_BASE_URL 指向中转、中转换 key）」兼§2.1 →「已配置：本机会话经本机中转发送请求」
+src/accounts.ts:483	ANTHROPIC_BASE_URL 指向本机中转，由中转按账号换上这一行的 key。\n	改·§2.4	[对外] 与上一截同一句，复述中转换 key 的实现 兼§2.1
+src/accounts.ts:484	⚠ 它保证的是「请求发得到中转、中转按这一行转发」；	改·§2.2	[对外] 在 tooltip 里论证「它保证的是什么」，写给开发看的边界论证 兼§2.4 →「key 是否有效，要等第一次请求才知道」
+src/accounts.ts:485	那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。	改·§2.2	[对外] 与上一截同一句（保证边界的论证）
+src/accounts.ts:493	这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被**当场拒**	改·§2.4	[对外] 徽标 title：markdown `**当场拒**` 在 title 属性里原样显示＋破折号＋括号长补充 兼§2.2
+src/accounts.ts:494	（不是静默失败：中转没起来与网络坏了在 claude 那边长得一模一样，	改·§2.2	[对外] 括号里是设计论证（为什么在起会话一侧拦、与网络坏了长得一样）兼§2.4
+src/accounts.ts:495	所以这一条在起会话那一侧就拦下来）。请先起本机后端。	改·§2.2	[对外] 设计论证的收尾；末句「请先起本机后端」可操作可留 →「本机中转没在运行，起会话会失败。先启动本机后端。」
+src/accounts.ts:501	apikey 凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。	改·§2.4	[对外] 徽标 title：markdown `**…**` 原样显示＋`⇒` 符号推理式 →「凭据文件里没有这个账号，不会替它配置请求地址」
+src/accounts.ts:502	要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 	保留	[对外] 用户自己能做的配置指引（给账号加一行端点＋key），可操作
+src/accounts.ts:503	shell 环境里配好第三方端点。	保留	[对外] 上一句指引的收尾，可操作
+src/accounts.ts:505	cc-monitor 今天只给**本机**会话配 base URL；**远端**这一半还不做	改·§2.2	[对外] 「今天只给本机…远端这一半还不做」是路线图/设计论证，markdown `**` 原样显示 兼§2.4
+src/accounts.ts:506	（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上	改·§2.2	[对外] 括号里论证「把 key 送到远端是另一件事」＋ `⇒` 推理符号 兼§2.4
+src/accounts.ts:507	自己配好第三方端点。	保留	[对外] 可操作的收尾（在远端机器上配好第三方端点）
+src/accounts.ts:508	cc-monitor 只在两件事都成立时替它配端点（base URL）：① apikey 凭据文件里有这个	改·§2.4	[对外] 列条件的长句＋括号补充，开头「cc-monitor 只在两件事都成立时」是机制解说 兼§2.1
+src/accounts.ts:509	账号 id 的一行；② 本机中转在跑。**这一处没被告知它属于哪一半、那两条成不成立**，	改·§2.2	[对外] 「这一处没被告知它属于哪一半」是内部推理（本函数拿不到什么参数），markdown 原样显示 兼§2.4
+src/accounts.ts:510	所以不替它下判断。	改·§2.2	[对外] 与上一截同一句（不下判断的理由）→「无法判断端点是否已配置」
+src/accounts.ts:515	这个号用 API key 鉴权，不看 ~/.claude 里的订阅凭据 —— 所以它可以被设为当前账号、	改·§2.4	[对外] 徽标 title：破折号＋「所以…」推理链，一句里讲鉴权方式＋能设为当前＋能起会话
+src/accounts.ts:516	会话也起得来。但请求要发得出去还差一格：	改·§2.4	[对外] 与上一截同一句；「还差一格」口语 →「但还没配置请求地址：」
+src/accounts.ts:518	\n没配好就起会话，请求会在 claude 那边报鉴权失败。	保留	[对外] 说清后果（请求会报鉴权失败），短
+src/accounts.ts:525	该账号尚未登录——请在终端里用它 /login	保留	[对外] 未登录徽标 title；/login 是用户在 CC 里自己敲的命令，可操作
+src/accounts.ts:541	用该账号打开一个远端终端（api-key 号不需要 /login，要在里面配好端点环境变量）	保留	[对外] 按钮 title，括号里是可操作细节
+src/accounts.ts:546	用该账号打开一个远端终端（在里面 /login）	保留	[对外] 按钮 title
+src/accounts.ts:779	无法换号重启：tmux 标记丢了	改·§2.1	[对外] 对话框标题；「tmux 标记」是我们打在 tmux 上的会话标记（@ccm_sid），属 R1b 第 2 条「我们对 tmux 的用法」→「无法换号重启：找不到这个会话所在的终端」
+src/accounts.ts:788	无法换号重启	保留	[对外] 对话框标题
+src/accounts.ts:1201	这一节只把这台机器上的账号清单列出来（只读）；在这里改不了它们。	保留	[对外] 账号区块说明，说清只读
+src/agent-profile.ts:74	（一个都没有）	保留	[可达存疑] 拼进「问不到 agent 的画像」报错的名单占位；这一截本身无病（外层句子不在存疑带）
+src/backend-policy.ts:57	monitor 退出时会结束它	保留	[对外] 后端退出策略说明短句；monitor 是产品名
+src/backend-policy.ts:60	monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的	保留	[对外] 说清会发生什么（继续跑、崩了不重起、下次接上），分号断句、无括号破折号
+src/backend-policy.ts:62	monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出	保留	[对外] 同族短句
+src/backend-policy.ts:98	上次崩没崩：答不出来 —— 今天没有任何东西在跨 monitor 进程地记它崩没崩，而「答不出来」不等于「没崩过」	改·§2.2	[对外] 「今天没有任何东西在跨 monitor 进程地记它」是内部推理，破折号接论证 兼§2.4 →「上次是否崩溃：没有记录」
+src/backend-policy.ts:101	这次 monitor 开着以来：它一次都没崩过（读坏了 {misread} 次不算它崩 —— 那是我们这一侧的读端）	改·§2.2	[对外] 括号里「那是我们这一侧的读端」是内部推理 兼§2.4 →「这次打开以来没有崩溃过」
+src/backend-policy.ts:104	这次 monitor 开着以来：它崩过 {crashed} 次，最后一次是「{last}」	保留	[对外] 本句无病；⚠ {last} 灌进来的是 ledger_line 日志行（ui-copy-discipline 的 BACKEND_SIDE_DEBT 已登记），病在填充物不在本句
+src/backend-policy.ts:106	那一行没留下来	改·§2.1	[对外] 「那一行」指的是内部日志行，用户不知道是哪一行 →「没有留下原因」
+src/branch-button.ts:43	从这一轮创建分支（复制到这条为止 → 新会话，原会话不变，可 resume）	保留	[对外] 分支按钮 title，括号里是有用细节；resume 是 CC 用户认得的词
+src/branch-button.ts:45	从这一轮创建分支 —— ⚠ 这条属于**被 ESC 回退掉的**分支。\n	改·§2.4	[对外] title 属性里的 markdown `**被 ESC 回退掉的**` 会原样显示星号，外加破折号 →「从这一轮创建分支。这一轮已被 ESC 回退。」
+src/branch-button.ts:46	分叉会把那条你当初放弃的对话复活成一个新会话（原会话仍然不变）。	保留	[对外] 说清后果，括号短
 src/bridge/src/filewin/copy.rs:80	复制	保留	[对外] 按钮字面
 src/bridge/src/filewin/copy.rs:217	⚠ 这一趟走的是慢路：	内部词→「⚠ 这次复制用了较慢的方式：」	[对外] 退路提示前缀（copy.rs:248 拼上原因画在窗口上）；「慢路」是内部路由名 新词:慢路
 src/bridge/src/filewin/copy.rs:472	远端已经有 {} 了，要覆盖吗？	保留	[对外] 覆盖确认标题，真在问
@@ -176,6 +226,83 @@ src/bridge/src/ssh_source.rs:4225	SSH 连上了，但后端在超时内未回 he
 src/bridge/src/ssh_source.rs:4229	SSH 连上了，但后端探测失败：{e}	保留	[对外] 测试连接结果＋原因
 src/bridge/src/ssh_source.rs:4341	(非 hello 帧: {other:?})	改·§2.1	[对外] 后端握手摘要（result.backend_hello 画在测试结果下方）；「非 hello 帧」＋Debug 转储是协议细节 新词:hello帧
 src/bridge/src/ssh_source.rs:4377	control=unsupported(backend 未声明入方向命令)	改·§2.1	[对外] 同一摘要里的 control= 段，日志键值格式 新词:入方向命令 新词:控制通道
+src/cards/api-error.ts:77	 · 重试 {…}/{…}	保留	[对外] API 失败卡片里的重试计数
+src/cards/api-error.ts:88	网络/服务异常	保留	[对外] API 失败卡片兜底原因
+src/cards/api-error.ts:109	网络/服务异常	保留	[对外] API 失败卡片兜底原因
+src/events.ts:585	[perf] === 启动管线 timeline (前端 performance.now ms · window={…}) ===	保留	[不对外] 启动管线 perf timeline 行，经 console.info / frontend_perf_log 进开发者日志
+src/events.ts:589	[perf]   first jsonl-batch in   T+{…} (+{…}) ← 后端 replay 完成	保留	[不对外] perf timeline 开发者日志行
+src/events.ts:591	[perf]   batch payloads drained T+{…} (+{…}) ← drain 全部 {…} 条	保留	[不对外] perf timeline 开发者日志行
+src/events.ts:592	[perf]   onBatchEnd fired       T+{…} (+{…}) ← 300ms grace 后真正切 live	保留	[不对外] perf timeline 开发者日志行
+src/events.ts:595	[perf]   建卡 rendered={…} · 收纳 deferred={…} · drained={…}(累计)	保留	[不对外] perf timeline 开发者日志行
+src/events.ts:596	[perf]   ── 总耗时（DOM → 加载完成）：{…}ms ──	保留	[不对外] perf timeline 开发者日志行
+src/first-run-hint.ts:171	关掉这次的提示	保留	[对外] 关闭按钮的 aria-label，清楚
+src/fork-launch.ts:61	源会话已退出：账号只记在 pidfile 里（进程一退就没了），	改·§2.1	[对外] 经 describeSlot 拼进「账号：需要你选一次 —— {why}」；pidfile 是 R1 词，整句在解释我们把账号记在哪 兼§2.2 →「原会话已结束，查不到它当时用的账号」
+src/fork-launch.ts:62	会话文件本身与它所在路径都不带账号信息	改·§2.2	[对外] 与上一截同一句：论证会话文件为什么不带账号信息，是内部推理
+src/fork-launch.ts:68	会话记录里的 cwd	内部词→工作目录（cwd）	[对外] 拼进「工作目录：跟原会话一致（据…）」；cwd 是开发者缩写，同一行标签已叫「工作目录」→「据会话记录」
+src/fork-launch.ts:80	源会话进程的 pidfile	内部词→原会话的进程（pidfile）	[对外] 拼进「账号：跟原会话一致（据…）」；pidfile 在 R1 词表 →「据原会话的进程」
+src/fork-launch.ts:88	tmux 会话清单	保留	[对外] 「tmux 会话清单」是用户自己也会这么叫的东西（R1b 语境内）
+src/fork-launch.ts:102	账号	保留	[对外] 分叉启动维度标签
+src/fork-launch.ts:102	是否在 tmux 里跑	保留	[对外] 分叉启动维度标签；tmux 在 R1b 语境内
+src/fork-launch.ts:102	工作目录	保留	[对外] 分叉启动维度标签
+src/fork-launch.ts:105	{…}：跟原会话一致（据{…}）	保留	[对外] 模板句本身无病（「据」后填充物单独裁）
+src/fork-launch.ts:106	{…}：需要你选一次 —— {…}	保留	[对外] 短句＋破折号接原因，可操作
+src/keybindings/actions.ts:96	已上线：H 打开历史后切「全文」模式（暂无独立快捷键）	保留	[对外] 快捷键编辑器里的说明，可操作
+src/keybindings/actions.ts:149	标签页	保留	[对外] 快捷键分类表头
+src/keybindings/actions.ts:150	终端	保留	[对外] 快捷键分类表头
+src/keybindings/actions.ts:151	应用	保留	[对外] 快捷键分类表头
+src/keybindings/actions.ts:152	行为	保留	[对外] 快捷键分类表头
+src/keybindings/actions.ts:153	面板	保留	[对外] 快捷键分类表头
+src/keybindings/actions.ts:154	账号	保留	[对外] 快捷键分类表头
+src/keybindings/registry.ts:78	未绑定	保留	[对外] 快捷键未绑定时的显示名
+src/launcher-diagnostics.ts:111	这条命令似乎绕开了 ccm——账号/模型偏好不会随它生效。想要这些好处的话，改填 ccm（或含 ccm 的自定义命令），或用下面的生成器拼一条。	改·§2.4	[对外] 启动命令诊断提示：破折号＋括号补充两信号，「想要这些好处的话」口吻绕；ccm 是用户自己敲的命令（R1b 语境内）→「这条命令没经过 ccm，账号和模型偏好不会生效。可改填 ccm，或用下面的生成器生成一条。」
+src/launcher-diagnostics.ts:141	（先填个别名名字）	保留	[对外] 别名生成器输出位的占位提示，短
+src/launcher-diagnostics.ts:147	（别名名字只能用字母/数字/下划线，且不能以数字开头——如 alphacct）	保留	[对外] 别名名字校验提示，规则可操作
+src/launcher-diagnostics.ts:259	这台机器的 shell 配置（那一行 source 加进哪份）：	改·§2.4	[对外] 下拉框标签：括号里「那一行 source 加进哪份」才是这个控件的真意思（91 §2.6 那条「括号里是正文」同族）→「写入哪个 shell 配置文件：」
+src/launcher-diagnostics.ts:318	别名文件：{…}	保留	[对外] 别名报告首行，带路径
+src/launcher-diagnostics.ts:321	这份文件里会有 {…} 条：{…}	保留	[对外] 别名报告
+src/launcher-diagnostics.ts:322	这份文件里一条命令都没有（这台机器上还没有账号）	保留	[对外] 别名报告空态，括号短而有用
+src/launcher-diagnostics.ts:327	已写入。	保留	[对外] 结果短句
+src/launcher-diagnostics.ts:328	shell 配置里那一行也加好了。	保留	[对外] 结果短句
+src/launcher-diagnostics.ts:388	装	保留	[对外] 动词碎片，拼成「装别名块中…」「装失败：…」；本截无病（外层「别名块」不在存疑带）
+src/launcher-diagnostics.ts:388	卸	保留	[对外] 动词碎片，拼成「卸别名块中…」「卸失败：…」
+src/launcher-diagnostics.ts:451	装	保留	[对外] 同上动词碎片的实参
+src/launcher-diagnostics.ts:462	卸	保留	[对外] 同上动词碎片的实参
+src/launcher-diagnostics.ts:536	--agent（默认 {…}，省略）	保留	[对外] 命令生成器下拉项；--agent 是用户会敲进命令的参数
+src/launcher-diagnostics.ts:580	先填一个合法的别名名字（字母/数字/下划线，不能以数字开头）。	保留	[对外] 别名名字非法时的提示，可操作
+src/main.ts:455	打开设置	保留	[对外] 顶栏按钮 aria-label
+src/main.ts:468	打开历史会话浏览器	保留	[对外] 顶栏按钮 aria-label
+src/main.ts:499	打开代码全景	保留	[对外] 顶栏按钮 aria-label
+src/main.ts:513	打开多 agent 监控	保留	[对外] 顶栏按钮 aria-label
+src/main.ts:526	打开 SFTP 文件面板	保留	[对外] 顶栏按钮 aria-label；SFTP 是用户认得的协议名
+src/main.ts:549	打开历史浏览器	保留	[对外] 命令面板条目标题
+src/main.ts:550	打开代码全景	保留	[对外] 命令面板条目标题
+src/main.ts:552	打开收件箱	保留	[对外] 命令面板条目标题
+src/main.ts:553	打开 cc-bus 驾驶舱	保留	[对外] 命令面板条目标题；cc-bus 是功能名
+src/main.ts:554	打开多 agent 监控	保留	[对外] 命令面板条目标题
+src/main.ts:555	打开设置	保留	[对外] 命令面板条目标题
+src/main.ts:556	打开 SFTP 文件面板	保留	[对外] 命令面板条目标题
+src/main.ts:557	最小化窗口	保留	[对外] 命令面板条目标题
+src/main.ts:558	切换全屏	保留	[对外] 命令面板条目标题
+src/main.ts:559	把对应终端窗口拉到前台	保留	[对外] 命令面板条目标题
+src/main.ts:560	开 / 关 Task 面板	保留	[对外] 命令面板条目标题
+src/main.ts:561	切到下一个 Tab	保留	[对外] 命令面板条目标题
+src/main.ts:562	切到上一个 Tab	保留	[对外] 命令面板条目标题
+src/main.ts:579	切到会话：{…}{…}	保留	[对外] 命令面板条目标题
+src/panorama/layout.ts:146	· 未归类	保留	[对外] 代码全景里未归类分组的标签
+src/panorama/layout.ts:426	{…} 处调用未解析	保留	[对外] 覆盖不全提示的分项
+src/panorama/layout.ts:427	{…} 文件解析失败	保留	[对外] 覆盖不全提示的分项
+src/panorama/layout.ts:428	覆盖不全：{…}（静态分析已知缺口）	保留	[对外] 覆盖不全提示，括号短而说清性质
+src/remote-health.ts:31	⚠ 远端管道拥塞	内部词→连接（管道）	[对外] toast 标题；「远端管道」是我们事件流通道的内部叫法，用户不知道哪根管道 →「⚠ 远端连接拥塞」新词:管道
+src/remote-health.ts:33	⚠ 远端后端版本不符	保留	[对外] toast 标题；「后端」是 91 §3.1 定的对外词
+src/remote-health.ts:35	远端降级模式	保留	[对外] toast 标题
+src/remote-health.ts:37	⚠ 远端历史快照拉取失败	保留	[对外] toast 标题；「历史快照」可懂
+src/remote-health.ts:39	⚠ 远端提示	保留	[对外] toast 兜底标题
+src/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
+src/remote-launch-run.ts:363	本机不开终端窗口，命令已复制	保留	[对外] toast 标题，先说结果
+src/remote-launch-run.ts:364	本机不开终端窗口，请手动复制以下命令	保留	[对外] toast 标题；「手动复制」是用户当场能做且有效的事
+src/remote-launch-run.ts:484	backend 未给理由	内部词→后端（backend）	[可达存疑] 作为 refused/fallback 的 reason 返回、可能进 toast；英文 backend →「后端没说明原因」
+src/render.ts:79	<button type="button" class="code-copy" data-copy>复制</button>	保留	[对外] 代码块复制按钮
+src/render.ts:107	<button type="button" class="code-copy" data-copy>复制</button>	保留	[对外] 代码块复制按钮
 src/settings/accounts-section.ts:588	将在远端「{…}」的终端里运行：\n\n{…}\n\n	保留	[对外] 危险操作的 confirm 首段：说清在哪台机器跑什么命令，先说结果
 src/settings/accounts-section.ts:590	命令在你看得见的终端里执行、需你亲手确认；工具自带备份，可 rollback。继续？	改·§2.4	[对外] 一句塞三件事（在哪执行＋要你确认＋自带备份可撤）且夹英文 rollback 新词:rollback →「命令会在远端终端里执行，出错可撤回。继续？」
 src/settings/accounts-section.ts:1115	片段不完整（缺 BEGIN/END 围栏），先别贴 —— 在远端跑一次 `cc-acct-iso verify` 看是什么状况。	改·§2.4	[对外] 括号补充＋破折号＋处方三合一 兼§2.3 新词:围栏 →「片段不完整，别贴。」细节另起一句
@@ -380,3 +507,63 @@ src/sftp/panel.ts:462	复制 {…}	保留	[对外] 传输进度标签
 src/sftp/panel.ts:483	目录	保留	[对外] 拼进删除确认的名词
 src/sftp/panel.ts:483	文件	保留	[对外] 拼进删除确认的名词
 src/sftp/panel.ts:508	上传 {…}	保留	[对外] 传输进度标签
+src/tabs.ts:268	组 {…}	保留	[对外] 新建标签组的默认名
+src/tabs.ts:3344	重启到「{…}」——不提供「不指定账号」这一项：重启作用于已在某账号下运行的活会话，不是待迁移的老会话	改·§2.2	[对外] 右键菜单项 title：破折号后在论证「为什么不提供不指定账号这一项」，是写给开发的设计理由 兼§2.4 →「用账号「X」重启这个会话」
+src/tabs.ts:3349	杀掉旧进程，用账号「{…}」resume 同一会话（中断当前回合、丢进程内状态）	保留	[对外] 子菜单 title：动作＋括号里的后果（中断回合），后果对用户有用
+src/tabs.ts:3355	先在【旧账号】上 /compact（命中旧缓存更省）再换号重启——比换号后再压缩便宜	改·§2.4	[对外] 子菜单 title：括号理由＋破折号又说一遍「更便宜」，同一个理由说两遍 →「先在旧账号上压缩上下文再换号重启，更省」
+src/tabs.ts:3589	\n\n⚠ 未检测到会话身份标记（@ccm_sid）——「{…}」是按工作目录猜的，可能不是本 tab 的会话，甚至可能是同目录里另一个正在运行的 Claude。建议在远端重装 ccm 助手后再操作。	改·§2.1	[对外] 91 §2.1 逐字点名的那个标本：@ccm_sid · ccm 助手外泄，按工作目录猜的内部推理，末尾「建议重装 ccm 助手」派活 兼§2.3 兼§2.4 →「⚠ 找不到这个会话的终端标记，按工作目录匹配到「X」，可能不是这个标签页的会话。」
+src/tabs.ts:3597	本机	保留	[对外] 位置词碎片
+src/tabs.ts:3597	远端	保留	[对外] 位置词碎片
+src/tabs.ts:3599	该会话里 Claude 已退出（只剩空 tmux shell）；kill 掉这个残留会话。杀掉后 tab 转归档、可 Resume（若是该机唯一会话，可能要等下次重连对账才归档）。	改·§2.4	[对外] 确认框正文：两处括号补充＋三件事（已退出、要 kill、之后会怎样）一段说完；「重连对账」是内部机制名 兼§2.1 新词:对账 →「Claude 已退出，只剩空终端。结束它后这个标签页会转为归档，可以 Resume。」
+src/tabs.ts:3600	将终止{…}这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。	保留	[对外] 确认框正文，说清后果；tmux 会话在 R1b 语境内
+src/tabs.ts:3605	杀死会话「{…}」（机器 {…}）？\n\n{…}\n此操作不可恢复。{…}	保留	[对外] 破坏性确认框，先问、再说后果、再说不可恢复
+src/tabs.ts:3611	本机	保留	[对外] 位置词碎片
+src/tabs.ts:3611	远端 [{…}]	保留	[对外] 位置词碎片
+src/tabs.ts:3639	该机的远端配置缺 host / user（在设置 → 连接 补全后可用）	保留	[对外] toast 原因，括号里给出去哪补，可操作
+src/tabs.ts:3640	未找到该机的远端配置（在设置 → 连接 添加后可用）	保留	[对外] toast 原因，括号里给出去哪加，可操作
+src/tabs.ts:4242	取消后：这个会话变灰之后，关掉 app 再打开就没了	内部词→结束（变灰）	[对外] 菜单项 title；「变灰」正是设计/30 §3.5.2 禁的指代不明状态词 →「取消后：会话结束后关掉 app，它就不在了」
+src/tabs.ts:4243	固定后：关掉 app 再打开它还在（灰着，可 resume）。位置不变 —— pin 管的是「别丢」，不是「排前面」	内部词→可重连（灰着）	[对外] 菜单项 title；「灰着」是 R1 禁用词 兼§2.4（括号＋破折号＋「pin 管的是别丢不是排前面」的解释腔）→「固定后：关掉 app 再打开它还在，可 resume。」
+src/tabs.ts:4444	等待操作：{…}	保留	[对外] 标签页 tooltip
+src/tabs.ts:4448	↳ 从 {…} fork 而来	保留	[对外] 标签页 tooltip；fork 是 CC 用户认得的词
+src/tabs.ts:4731	invoke 超时 {…}ms（后端 Win32 调用可能卡住）	改·§2.1	[可达存疑] 拉前超时的 Error，被 catch 后进「拉前失败」toast；invoke / Win32 调用是实现层，括号里是内部猜测 新词:invoke 新词:Win32 →「切到终端窗口超时」
+src/tabs.ts:4770	拉前失败	内部词→切到终端窗口失败（拉前）	[对外] toast 标题；「拉前」是自造缩略（拉到前台），用户不这么叫 新词:拉前
+src/tabs.ts:4776	拉前失败	内部词→切到终端窗口失败（拉前）	[对外] toast 标题；同上 新词:拉前
+src/tabs.ts:4782	拉前失败	内部词→切到终端窗口失败（拉前）	[对外] toast 标题；同上 新词:拉前
+src/tabs.ts:4788	这个会话没有可拉前的终端	内部词→可切换过去的终端（拉前）	[对外] toast 标题；「可拉前」自造缩略 新词:拉前 →「这个会话没有可切换过去的终端」
+src/tabs.ts:4797	这个会话不在（本工具的）tmux 里	保留	[对外] toast 标题；tmux 在 R1b 语境内，括号限定短
+src/tabs.ts:4828	invoke 超时 {…}ms（后端 Win32 调用可能卡住）	改·§2.1	[可达存疑] 同 4731：invoke / Win32 调用外泄 新词:invoke 新词:Win32 →「切到终端窗口超时」
+src/turn-notify.ts:118	Claude 完成一轮 — {…}	保留	[对外] 系统通知标题：Claude 完成一轮＋标签名；破折号只是分隔
+src/turn-notify.ts:118	会话已回到等待输入状态。	保留	[对外] 系统通知正文，短
+src/views/command-bar.ts:92	命令栏	保留	[对外] 命令栏输入框 aria-label
+src/views/grid-monitor.ts:348	未知	保留	[对外] 状态兜底值
+src/views/grid-monitor.ts:350	{…}（等待：{…}）	保留	[对外] 状态＋等待项
+src/views/history.ts:319	(未知项目)	保留	[对外] 历史浏览器项目名兜底
+src/views/history.ts:527	项目	保留	[对外] 模式切换按钮名
+src/views/history.ts:527	按项目名 / 标题过滤（本地，即时）	保留	[对外] 模式切换按钮 title，括号短而有用
+src/views/history.ts:528	全文	保留	[对外] 模式切换按钮名
+src/views/history.ts:528	搜索所有会话的消息内容（回车触发）	保留	[对外] 模式切换按钮 title
+src/views/history.ts:1323	{…} 个会话	保留	[对外] 项目分组统计 chip
+src/views/history.ts:1331	隐藏 {…}	保留	[对外] 项目分组统计 chip
+src/views/inbox-view.ts:126	 ｜ 读文件失败：{…}	保留	[对外] 状态栏追加的失败原因
+src/views/inbox-view.ts:169	关闭	保留	[对外] 关闭按钮 aria-label
+src/views/panorama.ts:925	签名	保留	[对外] 代码全景节点详情的字段名（开发者视图，术语对口）
+src/views/panorama.ts:926	全限定 id	保留	[对外] 代码全景节点详情的字段名
+src/views/panorama.ts:927	位置	保留	[对外] 代码全景节点详情的字段名
+src/views/panorama.ts:928	语言	保留	[对外] 代码全景节点详情的字段名
+src/views/panorama.ts:929	类型	保留	[对外] 代码全景节点详情的字段名
+src/views/panorama.ts:1142	（邻域为空）	保留	[对外] 子图空态
+src/views/panorama.ts:1146	（没有反向可达的调用者）	保留	[对外] 影响面空态；「反向可达的调用者」在代码全景语境里对口
+src/views/panorama.ts:1230	文件	保留	[对外] 文件详情字段名
+src/views/panorama.ts:1232	符号数	保留	[对外] 文件详情字段名
+src/views/panorama.ts:1233	子系统	保留	[对外] 文件详情字段名
+src/views/panorama.ts:1234	入口点	保留	[对外] 文件详情字段名
+src/views/panorama.ts:1234	是（entry point）	保留	[对外] 字段值，括号里英文原名对开发者有用
+src/views/panorama.ts:1396	精确	保留	[对外] 置信度标签
+src/views/panorama.ts:1398	启发	保留	[对外] 置信度标签
+src/views/panorama.ts:1400	动态猜测	保留	[对外] 置信度标签
+src/views/panorama.ts:1406	Exact：全局唯一名匹配（不代表验证过 import/作用域）	内部词→精确（Exact）	[对外] 置信度 hint 开头是枚举标识符 Exact，而同一处标签已显示「精确」→「精确：全局唯一名匹配（未验证 import/作用域）」新词:Exact/Heuristic/DynamicGuess（枚举名）
+src/views/panorama.ts:1408	Heuristic：多候选，启发式选定	内部词→启发（Heuristic）	[对外] 置信度 hint 开头是枚举标识符 →「启发：多个候选，按启发式选定」
+src/views/panorama.ts:1410	DynamicGuess：方法调用等接收者类型未知，尽力猜测	内部词→动态猜测（DynamicGuess）	[对外] 置信度 hint 开头是枚举标识符 →「动态猜测：接收者类型未知，尽力猜测」
+src/views/session-viewer.ts:450	（{…} 条渲染失败，首个 {…}）	保留	[对外] 状态栏里渲染失败计数，括号短
+src/views/session-viewer.ts:451	 · 首屏 {…}ms	保留	[对外] 状态栏首屏耗时；数字对用户意义有限但无病（拿不准，倾向保留）
+src/views/user-input-panel.ts:49	大纲	保留	[对外] 面板名，名词短语
