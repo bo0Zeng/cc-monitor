@@ -2174,60 +2174,23 @@ async fn bring_terminal_to_front(
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
-/// Feature ②：拉对应**远端** Tab 的本地终端窗口（远端会话需在远端启用 ccm wrapper，
-/// 由它设 `ccm-rbind-<sid>` 窗口标题让 monitor 绑定本地 HWND）。
+/// Feature ②：拉对应**远端** Tab 的本地终端窗口。
 ///
-/// 流程：sid → 查 RemoteHwndCache（纯内存，session_added 时扫窗口绑定）→ 校验复合
-/// 指纹（verify_binding：IsWindow + owner_pid + procStart）→ activate。镜像
-/// `bring_terminal_to_front`，但走远端缓存。**必须 async + spawn_blocking** 隔离
-/// Win32 sync 调用（INVARIANT § 10）。
+/// 〔`设计/80 §8.7` 步 4 / 步 5，第二波 T4〕分派整条搬进 `bind::bring_remote_front`
+/// （**唯一分派点**：先令牌 `sid → token → HWND`、后标题 `ccm-rbind-<sid>` 退路；
+/// 失败说的话只由「这个 sid 有没有启动令牌」一个布尔决定）。本命令只剩「拿两份 State、
+/// 挪到阻塞线程池」—— **必须 async + spawn_blocking** 隔离 Win32 sync 调用（INVARIANT § 10）。
 #[tauri::command]
 async fn bring_remote_terminal_to_front(
     session_id: String,
     cache: tauri::State<'_, Arc<bind::RemoteHwndCache>>,
+    registry: tauri::State<'_, Arc<bind::BindRegistry>>,
 ) -> Result<(), String> {
     let cache = cache.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        // 先查缓存；没命中就**点击时现扫一次**（marker 还挂在窗口标题上就能即时绑）。
-        // 覆盖：① eager 扫描时机错过；② 用户 /resume 切到别的 sid——wrapper 会把
-        // marker 重刷成当前 sid，这里现扫即可绑上。try_bind 是同步 Win32，已在
-        // spawn_blocking 里（INVARIANT § 10）。
-        let mut binding = match cache.lookup(&session_id) {
-            Some(b) => b,
-            None => {
-                cache.try_bind_with_retry(
-                    &session_id,
-                    bind::ON_DEMAND_BIND_ATTEMPTS,
-                    bind::ON_DEMAND_BIND_STEP_MS,
-                );
-                cache
-                    .lookup(&session_id)
-                    .ok_or_else(|| "未绑定窗口（远端会话需在远端启用 ccm wrapper）".to_string())?
-            }
-        };
-        // 缓存命中但校验失败（终端已关 / HWND 易主）→ forget + 现扫重绑一次再试。
-        // 场景：关掉终端后重新 ssh + tmux attach——新终端标题仍带 marker（tmux 会话级
-        // set-titles 持久，attach 时重推 #T），死缓存不失效重扫的话 ↗ 就永远失灵。
-        if bind::verify_binding(&binding).is_err() {
-            cache.forget(&session_id);
-            // #41(残):verify-fail 重绑路原是**单发** try_bind——F75 只给上面 cache-miss 路加了重试,
-            // 这条(重新 attach、旧绑定失效)漏了。镜像兄弟路用 try_bind_with_retry,覆盖"刚 attach、
-            // 新窗口 ccm-rbind 标题还没四跳传过来"的窗口期(否则重绑单扫落空 → 弹"未扫到新窗口")。
-            cache.try_bind_with_retry(
-                &session_id,
-                bind::ON_DEMAND_BIND_ATTEMPTS,
-                bind::ON_DEMAND_BIND_STEP_MS,
-            );
-            binding = cache.lookup(&session_id).ok_or_else(|| {
-                "原绑定终端已关闭，且未扫到新的 ccm-rbind 窗口（请确认已重新 attach 且终端标题带 marker）"
-                    .to_string()
-            })?;
-            bind::verify_binding(&binding)?;
-        }
-        bind::activate(binding.hwnd)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    let registry = registry.inner().clone();
+    tokio::task::spawn_blocking(move || bind::bring_remote_front(&session_id, &registry, &cache))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 // === v1.7：PowerShell profile cc 集成 IPC ===

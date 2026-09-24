@@ -889,6 +889,9 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
     );
 
     let ci = ci_yaml::live_lines();
+    let local_gate =
+        std::fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
+            .expect("读不到 tests/scripts/gate.sh");
     // `npm test` 用 `&&` 串起来的那些，也算「CI 会跑」。
     let chained = scripts
         .iter()
@@ -906,8 +909,15 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
             return true;
         }
         // ① `assert-pass-floor.sh <后缀>`；② CI 直接 `bash tests/e2e/xxx.sh`（`exec-bits` 就是这样）。
+        // ③ 〔第二波 T4 09-24〕本机门禁 `tests/scripts/gate.sh` 的 `run_e2e <后缀> `（`find_pinned`：恰好一处）。
+        //   那是每趟出货都跑的闸 —— 登记成「手测」会是假话（`MANUAL` 的语义是「没有自动触发器」，
+        //   本文件下面那段第三档的头注逐字同一条理由）。令牌那两套（`backend-rbind-token` ·
+        //   `rbind-token-endtoend`）走的就是这一条：`ci.yml` 的计数地板那一行待拍板，本机门禁先接上。
         if let Some(suffix) = name.strip_prefix("test:") {
             if ci.contains(&format!("assert-pass-floor.sh {suffix} ")) {
+                return true;
+            }
+            if guard_core::find_pinned(&local_gate, &format!("run_e2e {suffix} ")).is_ok() {
                 return true;
             }
         }

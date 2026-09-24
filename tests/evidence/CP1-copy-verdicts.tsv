@@ -881,12 +881,9 @@ src/tabs.ts:4243	固定后：关掉 app 再打开它还在（灰着，可 resume
 src/tabs.ts:4444	等待操作：{…}	保留	[对外] 标签页 tooltip
 src/tabs.ts:4448	↳ 从 {…} fork 而来	保留	[对外] 标签页 tooltip；fork 是 CC 用户认得的词
 src/tabs.ts:4731	invoke 超时 {…}ms（后端 Win32 调用可能卡住）	改·§2.1	[可达存疑] 拉前超时的 Error，被 catch 后进「拉前失败」toast；invoke / Win32 调用是实现层，括号里是内部猜测 新词:invoke 新词:Win32 →「切到终端窗口超时」
-src/tabs.ts:4770	拉前失败	内部词→切到终端窗口失败（拉前）	[对外] toast 标题；「拉前」是自造缩略（拉到前台），用户不这么叫 新词:拉前
-src/tabs.ts:4776	拉前失败	内部词→切到终端窗口失败（拉前）	[对外] toast 标题；同上 新词:拉前
-src/tabs.ts:4782	拉前失败	内部词→切到终端窗口失败（拉前）	[对外] toast 标题；同上 新词:拉前
-src/tabs.ts:4788	这个会话没有可拉前的终端	内部词→可切换过去的终端（拉前）	[对外] toast 标题；「可拉前」自造缩略 新词:拉前 →「这个会话没有可切换过去的终端」
-src/tabs.ts:4797	这个会话不在（本工具的）tmux 里	保留	[对外] toast 标题；tmux 在 R1b 语境内，括号限定短
 src/tabs.ts:4828	invoke 超时 {…}ms（后端 Win32 调用可能卡住）	改·§2.1	[可达存疑] 同 4731：invoke / Win32 调用外泄 新词:invoke 新词:Win32 →「切到终端窗口超时」
+src/terminal-front.ts:34	本机不能切到终端窗口	保留	[对外] toast 标题：非 Windows 上按 ↗ 的快捷键 / 命令面板时说的实话（按钮本身不渲）；用的是术语表给「拉前」定的说法「切到终端窗口」
+src/terminal-front.ts:35	只有 Windows 上的 cc-monitor 能把会话的终端窗口切到前台。	保留	[对外] 上一条的正文：一句说清哪里能用，不讲实现（不提 Win32 / 桩），不派活
 src/turn-notify.ts:118	Claude 完成一轮 — {…}	保留	[对外] 系统通知标题：Claude 完成一轮＋标签名；破折号只是分隔
 src/turn-notify.ts:118	会话已回到等待输入状态。	保留	[对外] 系统通知正文，短
 src/views/command-bar.ts:92	命令栏	保留	[对外] 命令栏输入框 aria-label
@@ -948,6 +945,8 @@ src/views/panorama.ts:1538	待审	保留	[对外] 批注审批侧栏分节标题
 src/views/panorama.ts:1539	已生效	保留	[对外] 批注审批侧栏分节标题
 src/bridge/src/bind.rs:300	{RBIND_TOKEN_MARKER_PREFIX}<32hex 已隐去>	保留	[不对外] 日志里 marker 的脱敏形
 src/bridge/src/bind.rs:304	{}{RBIND_TOKEN_MARKER_PREFIX}<已隐去>	保留	[不对外] 日志里窗口标题的脱敏形
+src/bridge/src/bind.rs:1050	这个会话是 cc-monitor 启动的，但找不到它的终端窗口	保留	[对外] 点 ↗ 切不到终端窗口时 toast 正文的开头（bind.rs::resolve_remote_front 的归因，会话由 cc-monitor 启动的那一档）；说的是用户看得见的事，不露内部词，短句无破折号
+src/bridge/src/bind.rs:1053	这个会话不是 cc-monitor 启动的，找不到它的终端窗口	保留	[对外] 同上一条的另一档（会话不是 cc-monitor 启动的，比如在自己开的终端里直接运行）；与上一条只差「是 / 不是」，归因只由这一位决定
 src/bridge/src/chan/router.rs:146	回 Welcome 写不出去：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/bridge/src/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/bridge/src/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
