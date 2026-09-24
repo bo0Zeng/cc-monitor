@@ -1008,11 +1008,20 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 /// 后者靠人真跑。**别把这段读成「以后会自动跑」**：它们仍不在 CI 里（要真 tmux/真进程）。
 fn every_ignored_test_still_has_someone_who_triggers_it() {
     /// 不由 e2e 驱动、**刻意手动**的，逐条写清谁在什么时候跑它。
-    const MANUAL: &[(&str, &str)] = &[(
-        "f63_real_data_ledger",
-        "不是 e2e：它要本机真实历史数据（头注记着 771 会话 / 643MB 的基线），\
+    const MANUAL: &[(&str, &str)] = &[
+        (
+            "f63_real_data_ledger",
+            "不是 e2e：它要本机真实历史数据（头注记着 771 会话 / 643MB 的基线），\
              跑法写在自己的头注里，属于「改 F63 解析时人工重算的台账」",
-    )];
+        ),
+        (
+            "loopback_roundtrip_through_the_proxy",
+            "〔C2 09-24〕不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd）＋ 一份编好的本机后端当拨号代理。\
+             触发器是读数脚本 `tests/evidence/C2-dial-loopback.py --monitor`（它起 sshd、设好 `CCM_DIAL_PROXY` 与 \
+             `C2_LOOPBACK` 再按名字跑这一条，并核输出里那句 `C2-LOOPBACK-MONITOR ok`）。门禁沙箱里起不了 sshd ⇒ 进不了门禁。\
+             谁什么时候跑：改 `dial_host` / `ssh_link` / 后端 `dial/` 的那一拍，交付前跑一趟、把输出贴进报告。",
+        ),
+    ];
 
     // ── 🔴 第三档触发器：**由同一个 crate 里的判据 spawn 子进程去跑**〔2026-09-21 加〕
     //

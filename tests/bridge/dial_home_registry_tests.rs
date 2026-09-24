@@ -21,23 +21,16 @@ fn repo_root() -> PathBuf {
 /// ⚠ 第二栏是**锚点**处数，不是 `DIAL_SITES` 那个**调用点**处数 —— 两个数不是一回事，
 /// 模块头注「两个数别读混」那一节写着为什么不合并。
 const SITES: &[(&str, usize, &str, &str)] = &[
+    // 〔C2 09-24〕`ssh_source.rs`（3）与 `port_forward.rs`（1）两行**整行删了**：拨号与端口转发搬进了后端的
+    // 拨号代理（`src/backend/dial/`），这两份文件里一处锚点都不剩。剩下的三处是 `ssh_source.rs` 那三处
+    // **原样搬过去**的（竞速握手 · 跳板上握手 · 跳板开隧道），住 `inproc_dial.rs`、只服务 SFTP。
     (
-        "ssh_source.rs",
+        "inproc_dial.rs",
         3,
-        "界面进程里真正跑 SSH 握手的那一处（`client::connect(`）· \
-             跳板上跑握手的那一处（`client::connect_stream(`）· \
-             跳板开隧道的那一处（`channel_open_direct_tcpip(`）。\
-             这三处就是「界面自己在拨号」这句话的全部机器形态。",
-        "`K-P6` 第 4 拍（A 类剩余：跳板 · 测试连接跟代理走）落地那天 —— \
+        "界面进程里**最后一份**跑 SSH 握手的代码（`client::connect(`）· 跳板上跑握手（`client::connect_stream(`）· \
+             跳板开隧道（`channel_open_direct_tcpip(`）—— 原样搬自 `ssh_source.rs`，唯一调用方是 `sftp.rs`（`F7c` 独占）。",
+        "`F7c` 把 SFTP 换到拨号代理上的那天（`设计/05 §13.5`：池预算与红线 I7 那一裁先定）—— \
              那一天这一行整行删掉，家变成空集，`russh` 同拍从 `src/bridge/Cargo.toml` 里走。",
-    ),
-    (
-        "port_forward.rs",
-        1,
-        "端口转发：每条转发一条独立 SSH 会话，隧道由 `channel_open_direct_tcpip(` 开出去。\
-             它要的是**原始字节**，而消费者不是界面 ⇒ `R32` 裁定零把它归在 C 类。",
-        "`K-P6` 第 2 拍（C 类：SFTP + 端口转发**整个动作**搬进后端）落地那天 —— \
-             字节根本不回界面，这一行随之整行删掉，家收成一元。",
     ),
 ];
 

@@ -3,7 +3,10 @@
 """C2：**拨号代理（`<后端> --dial`）对着一台真 sshd 的现打**（`设计/05 §13`）。
 
 跑法（仓根下，先 `cd src/backend && cargo build`）：
-    python3 tests/evidence/C2-dial-loopback.py [后端二进制路径]
+    python3 tests/evidence/C2-dial-loopback.py [--monitor] [后端二进制路径]
+
+`--monitor`：八项之后再跑一趟**界面那一侧**（`dial_host_tests::loopback_roundtrip_through_the_proxy`，
+平时 `#[ignore]`）—— 宿主起真代理、成员读真应答，界面进程里零 russh。
 
 它起一台**临时的回环 sshd**（本用户身份、随机端口、临时 host key 与客户端钥匙、`UsePAM no`），
 对拨号代理逐条下请求，核它回的每一行。**不进门禁**（门禁的沙箱里没有 sshd 可起）——
@@ -55,7 +58,9 @@ def dial(bin_path, req, stdin=b"", env_extra=None, env_drop=()):
 
 
 def main():
-    bin_path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_BIN
+    args = [a for a in sys.argv[1:] if a != "--monitor"]
+    with_monitor = "--monitor" in sys.argv[1:]
+    bin_path = args[0] if args else DEFAULT_BIN
     sshd = shutil.which("sshd") or "/usr/sbin/sshd"
     if not os.path.isfile(bin_path) or not os.path.isfile(sshd):
         print(f"环境不满足：后端 {bin_path} / sshd {sshd}")
@@ -164,6 +169,15 @@ def main():
         fw.wait(timeout=10)
         check("ack 之后接两条连接、各报一行", first["ok"] and codes == [200, 200] and rest == [{"accepted": 1}, {"accepted": 2}], (first, codes, rest))
         check("stdin EOF 就收工、本地口释放", fw.returncode == 0 and socket.socket().connect_ex(("127.0.0.1", lp)) != 0, fw.returncode)
+
+        if with_monitor:
+            print("⑨ 界面那一侧（dial_host → 真代理 → 真 sshd）")
+            env = {**os.environ, "CCM_DIAL_PROXY": bin_path,
+                   "C2_LOOPBACK": json.dumps({"host": "127.0.0.1", "port": port, "user": user, "key_path": f"{d}/client_key", "proxy": bin_path})}
+            r = subprocess.run(["cargo", "test", "-p", "monitor", "--lib", "loopback_roundtrip_through_the_proxy", "--", "--ignored", "--nocapture"],
+                               cwd=os.path.join(ROOT, "src", "bridge"), env=env, capture_output=True, text=True, timeout=1200)
+            check("字节流 · 收全 · 阶段 ＋ 指纹 全经宿主", "C2-LOOPBACK-MONITOR ok" in r.stdout and "1 passed" in r.stdout,
+                  (r.stdout[-800:], r.stderr[-800:]))
     finally:
         for p in procs:
             p.terminate()
