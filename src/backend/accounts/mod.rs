@@ -301,6 +301,18 @@ impl Destinations for Accounts {
     }
 }
 
+/// 层 2 `Refuse` 的两个码 —— **只有这一处**〔`设计/20 §3.1a` ②〕。
+///
+/// ⚠ 它们与层 1 自己造的那几个码（503 在飞上界 · 504 传输失败，住 `relay` 那一侧）
+/// **必须两两不相交**（`D7`：同码 ⇒ agent 分不清是我们配错了还是上游挂了）。
+/// 钉这一条的判据住层 1 那边（`server_tests::every_status_we_make_has_one_home_and_the_three_groups_are_disjoint`，
+/// 它扫整个 crate 的生产段，本文件在它的人群里）。
+///
+/// `/s/` 表里没这一行（`§3.1` 第 2 行）。
+const NO_ROW: &str = "404 Not Found";
+/// `/t/` 表里没这一行、而这个 agent 没登记默认上游（`§3.1` 第 4 行）。
+const AGENT_NOT_REGISTERED: &str = "502 Bad Gateway";
+
 /// `20 §3.1` 那张决策表**本身**，从「谁持锁、什么时候重载」里剥出来。
 ///
 /// ★ 剥出来只为一件事：判据要能**拿生产段这一份**去问，而不是自己再写一份同构的
@@ -330,7 +342,7 @@ pub(crate) fn decide(
             //   今天这三条靠的是：本支**只答 `Refuse`**，而层 1 手里没有任何可以回落的值
             //   （每 agent 一行的默认上游住本层，层 1 一个上游字面量都没有，`table_guard` 那条两向相等断言钉着）。
             act(Destination::Refuse {
-                status: "404 Not Found",
+                status: NO_ROW,
                 why: "代入模式要求表里有这一行",
             });
         }
@@ -362,7 +374,7 @@ pub(crate) fn decide(
             //   能选的只有「回落到某一家」（那条 🔴 明禁，后果逐字是「把 codex 的请求发给
             //   Anthropic」）与「拒」。选拒。
             None => act(Destination::Refuse {
-                status: "502 Bad Gateway",
+                status: AGENT_NOT_REGISTERED,
                 why: "这个 agent 没有登记上游",
             }),
         },
