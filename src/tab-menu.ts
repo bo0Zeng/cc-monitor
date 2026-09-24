@@ -49,8 +49,10 @@ import { TMUX_CACHE_TTL_MS, type TabSessionActions } from "./tab-session-actions
 /** F74c(#60-B)：cwd 回退串味风险提示（attach 到可能是同目录别的会话前）。 */
 function warnCwdFallbackAttach(): void {
   showActionFailureToast(
-    "未检测到会话身份标记",
-    "该 tmux 会话没有 @ccm_sid 标记，可能连到同目录里其它会话；建议在远端重装 ccm 助手以精确匹配。",
+    // 〔U2 · 按 `terms.json` 改词〕不说标记（`@ccm_sid` 禁：说后果「认不出是哪个会话」），
+    //   不派「重装 ccm 助手」这件用户做了也未必好的活（「ccm 助手」禁；CP1 口径 §2.3）。
+    "认不出这是哪个会话",
+    "这个 tmux 会话是按工作目录匹配到的，可能是同目录里的另一个会话。",
     { level: "info", durationMs: 8000 },
   );
 }

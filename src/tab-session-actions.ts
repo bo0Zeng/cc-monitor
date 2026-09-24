@@ -630,7 +630,8 @@ export class TabSessionActions {
     opts?: { confirm?: (message: string) => boolean; idle?: boolean },
   ): void {
     const caveat = viaCwd
-      ? `\n\n⚠ 未检测到会话身份标记（@ccm_sid）——「${tmuxName}」是按工作目录猜的，可能不是本 tab 的会话，甚至可能是同目录里另一个正在运行的 Claude。建议在远端重装 ccm 助手后再操作。`
+      ? // 〔U2 · 按 `terms.json` ＋ CP1 台账改词〕不说标记、不派「重装 ccm 助手」；「可能杀到别的 Claude」这条后果必须留着。
+        `\n\n⚠ 认不出这是哪个会话：「${tmuxName}」是按工作目录匹配到的，可能是同目录里另一个正在运行的 Claude。`
       : "";
     // idle-tmux（灰 tab）：claude 已退、只剩空 shell，文案别再说"正在运行的 Claude"；
     // 杀掉这个残留 tmux → tab 转归档（archived）→ 即可 Resume（给灰态一个出口，治 UX 审计 #1）。
@@ -719,7 +720,7 @@ export function bringTerminalToFront(sessionId: string): Promise<void> {
   ]).catch((e) => {
     console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
     // P4.5: 改走统一 toast stack（去掉单例 #bring-terminal-toast 的"先到先被覆盖"问题）。
-    showActionFailureToast("拉前失败", String(e?.message ?? e));
+    showActionFailureToast("切到终端窗口失败", String(e?.message ?? e));
   });
 }
 
@@ -751,7 +752,7 @@ export function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
     ),
   ]).catch((e) => {
     console.warn(`bring_remote_terminal_to_front ${sessionId} failed:`, e);
-    showActionFailureToast("拉前失败", String(e?.message ?? e));
+    showActionFailureToast("切到终端窗口失败", String(e?.message ?? e));
   });
 }
 
