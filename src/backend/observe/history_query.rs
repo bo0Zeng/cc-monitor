@@ -667,6 +667,17 @@ pub(crate) struct IndexRow {
     /// 它们渲染成一行 summary（或并进工具组），与正文长短无关。
     #[serde(skip_serializing_if = "is_zero")]
     pub(crate) fd: u32,
+    /// 〔SE2〕这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略。
+    ///
+    /// 判定只住 [`crate::observe::user_inputs::user_input_of`]（与 `--list-user-inputs` **同一个函数**），
+    /// 摘要同 `excerpt`、uuid 就是本行的 `u`。有了它，首屏的「索引」与「大纲清单」合成一趟读：
+    /// 前端见到索引里**有** `x` ⇒ 对面是会出它的后端、每一条用户输入都带着 ⇒ 不再单独要清单；
+    /// 一个 `x` 都没有 ⇒ 分不清「老后端」还是「真的零条」⇒ 照旧要一份（形状登记 `IPC-PROTOCOL.md §10.3`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) x: Option<String>,
+    /// 〔SE2〕同上那一行的 `timestamp`（空串 ⇒ 省略；清单那边的空串 == 这里缺席）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ts: Option<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -695,6 +706,11 @@ pub(crate) fn index_row(line: &[u8], offset: u64, len: u64) -> IndexRow {
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
     row.sc = v.get("isSidechain").and_then(|b| b.as_bool()) == Some(true);
     row.mt = v.get("isMeta").and_then(|b| b.as_bool()) == Some(true);
+    // 〔SE2〕大纲那一项（判定只住 `user_inputs`；这里只搬字段）
+    if let Some(ui) = crate::observe::user_inputs::user_input_of(&v) {
+        row.x = Some(ui.excerpt);
+        row.ts = Some(ui.timestamp).filter(|t| !t.is_empty());
+    }
     // 正文在哪：user/assistant 在 `message.content`（字符串或块数组）；system 在顶层 `content`。
     let content = v
         .get("message")
