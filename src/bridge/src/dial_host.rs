@@ -361,13 +361,18 @@ impl ForwardLink {
     }
 }
 
-/// 起一条端口转发（F58）。
+/// 起一条端口转发（F58）。收的是**机器标签**：查那台的配置是宿主的事（`C4`），
+/// 调用方（`port_forward.rs`，通信层成员）手里只有一个地址。
 pub(crate) async fn forward(
-    cfg: &RemoteConfig,
+    origin: &crate::origin::Origin,
     local_port: u16,
     remote_host: &str,
     remote_port: u16,
 ) -> Result<ForwardLink, String> {
+    let origin = origin.as_wire_str();
+    let cfg = crate::load_remote_config_by_label(origin)
+        .ok_or_else(|| format!("未找到远端配置: {origin}"))?;
+    let cfg = &cfg;
     let req = request(
         cfg,
         "forward",
@@ -381,7 +386,7 @@ pub(crate) async fn forward(
     )?;
     let (link, _) = open(cfg, &req, "forward", &mut |_| {})
         .await
-        .map_err(|(e, _)| e)?;
+        .map_err(|(e, _)| format!("连接 {origin} 失败: {e}"))?;
     Ok(ForwardLink { link })
 }
 

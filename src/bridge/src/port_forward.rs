@@ -1,5 +1,11 @@
 //! F58 本地端口转发管理台(-L)。把远端机(或其内网)端口映到本机 `127.0.0.1:localPort`。
 //!
+//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔C2 · 2026-09-24，`设计/05 §13.7`〕
+//!
+//! 端口转发是纯字节搬运（本机口 ↔ 远端口），C2 之后本文件只剩命令面与转发账：绑口、开隧道、
+//! 读配置、起进程全在宿主 `dial_host.rs` 与后端的拨号代理里 ⇒ 十一条现打全绿，照 `Q6`「甲」收回。
+//! 登记那一侧在 `tests/bridge/comm_boundary_registry_tests.rs` 的 `REGISTERED`（两向集合相等）。
+//!
 //! 〔C2 · `设计/05 §13`〕**绑口与隧道都不在界面进程里了**：每条转发起一个拨号代理
 //! （`<本机后端> --dial`，`use: forward`），由它绑本机回环口、每接进一条连接开一条 direct-tcpip、
 //! 双向对拷（竞速 / 跳板 / 鉴权与别的链路同一份，住后端 `dial/`）。本文件只剩三个命令面 ＋ 一张转发账：
@@ -86,12 +92,14 @@ fn validate_spec(spec: &ForwardSpec) -> Result<(), String> {
 #[tauri::command]
 pub async fn start_forward(spec: ForwardSpec) -> Result<String, String> {
     validate_spec(&spec)?;
-    let cfg = crate::load_remote_config_by_label(&spec.origin)
-        .ok_or_else(|| format!("未找到远端配置: {}", spec.origin))?;
-    let mut link =
-        crate::dial_host::forward(&cfg, spec.local_port, &spec.remote_host, spec.remote_port)
-            .await
-            .map_err(|e| format!("连接 {} 失败: {e}", spec.origin))?;
+    // 查那台远端的配置、起代理 —— 都是宿主的事（`C4` 读配置 · `C5` 起进程），本文件只交一个机器标签。
+    let mut link = crate::dial_host::forward(
+        &crate::origin::Origin(spec.origin.clone()),
+        spec.local_port,
+        &spec.remote_host,
+        spec.remote_port,
+    )
+    .await?;
     let conn_count = Arc::new(AtomicU64::new(0));
     let counter = Arc::clone(&conn_count);
     let origin = spec.origin.clone();
