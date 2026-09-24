@@ -351,6 +351,7 @@ mod tests {
         let mut wrote = 0usize;
         for style in AuthStyle::ALL.iter().copied() {
             let table = crate::relay::accounts::table::RoutingTable::build(std::iter::once((
+                "a".to_string(),
                 "acct".to_string(),
                 base.clone(),
                 Some(SecretKey::new("sk-WELD-PROBE")),
@@ -361,8 +362,11 @@ mod tests {
                 seg2: "acct".to_string(),
             };
             let mut seen: Option<(Option<&'static str>, Vec<String>)> = None;
+            let upstreams =
+                crate::relay::accounts::Upstreams::from_env(&|_| None).expect("内置默认");
             crate::relay::accounts::decide(
                 &table,
+                &upstreams,
                 crate::relay::Mode::Substitute,
                 &key,
                 &mut |d| {

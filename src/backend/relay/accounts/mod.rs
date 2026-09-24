@@ -11,28 +11,37 @@
 //! `RouteKey{ seg1, seg2 }` 两个不透明段（条 48 · `01 §2.1 C1`）——
 //! 把它们读成 agent 与账号是**本模块**的事，就在下面 [`Accounts::resolve`] 里。
 //!
-//! # ⚠ 今天这一层还欠什么（照实登记，别读成「做完了」）
+//! # 🔴 表的键是 agent ＋ 账号，默认上游每 agent 一行，未登记直接拒〔条 49 / 条 59 / 条 60〕
 //!
-//! - **`seg1`（agent）今天还不承重**：查表仍然只按 `seg2`。改它是**条 49**
-//!   （表的键改成 agent＋账号 · 默认上游每 agent 一行住 `agents/` · 未登记直接拒绝），
-//!   而条 49 是 `99 §4` 里 **14-ii** 的同拍前置，不是本拍（14-i 逐字要求「零行为变化」）。
-//!   ⇒ 本拍**故意**保持「claude 的 3 号账号与 codex 的 3 号账号是同一行」这个今天的行为，
-//!   并把它写在这里，免得下一个人以为条 49 已经落地。
-//! - **`DEFAULT_UPSTREAM` 还是一个进程级的默认**，不是每 agent 一格（条 59）。同上，14-ii。
-//! - **`/t/` ＋ 表里无行 ⇒ 恒 502**（`decide` 最后那一支）。`§3.1` 第 4 行要「按 `seg1`
-//!   取该 agent 的默认上游」，而那张表就是条 59 那一格 ⇒ 今天每个 `seg1` 都算未登记。
-//!   🔴 **这是照那条 🔴「不许回落到某一个写死的常量」做的 fail-closed，不是没做完**；
-//!   条 59 落地那天只需把「查那张表」填进去，**形状不用改**。
+//! 先前这里逐字自陈两笔欠账：「`seg1`（agent）今天还不承重：查表仍然只按 `seg2`」·
+//! 「`DEFAULT_UPSTREAM` 还是一个进程级的默认」。后果是具体的：**claude 的 3 号账号与
+//! codex 的 3 号账号是同一行**，而它是「让所有会话都过中转」那一刀的硬前置 ——
+//! 不先拆，codex 会话一注入就**每一发都错发到 Anthropic**。今天三件一起落：
 //!
-//! # ⚠ `设计/20 §7` 步 3 的「怎么验」那一栏与 `§3.1` 第 4 行**今天互斥**，取后者
+//! | 改什么 | 今天是 | 住址 |
+//! |---|---|---|
+//! | 表的键 | `(seg1, seg2)` 两段都是键，一段都不省 | `table::RoutingTable::lookup` |
+//! | 默认上游 | **每 agent 一行**：`agent → (环境旋钮, 内置默认)`；进程级的那个常量**整删** | [`AGENT_UPSTREAMS`] |
+//! | 未登记的 agent | `/t/` 无行 ⇒ **502**；`/s/` 无行 ⇒ 404（不变）。**不回落到任何一家** | [`decide`] 最后那一支 |
 //!
-//! `§7` 步 3 的验收逐字是「`/t/` ＋ 表里无行 ⇒ **真的发到默认上游**且 auth 头逐字节原样」。
-//! 而 `§3.1` 第 4 行（**2026-09-18 拍板 (b) 甲，比 `§7` 那张表新**）逐字加了
-//! 🔴「**不许回落到某一个写死的常量**」。两句话在「每 agent 一行的默认上游」那张表
-//! 落地之前**不可能同时成立** —— 而那张表是条 59、住 `agents/`、属 14-ii。
-//! ⇒ 本拍取**新的那一句**（fail-closed），并把「auth 头逐字节原样」那一格
-//! 落在 `§3.1` **第 3 行**上验（`/t/` ＋ 表里**有**行 ⇒ 绝不代入，客户端那份原样上去）——
-//! 那一格今天验得了，判据是 `wire_golden` 的第 ⑤ 格。
+//! ⚠ **「未登记 ⇒ 502」不是没做完，是照 `§3.1` 第 4 行那条 🔴「不许回落到某一个写死的常量」
+//! 做的 fail-closed** —— 先前它对**每一个** `seg1` 都成立（那张表还不存在），今天只对
+//! 表里没有的那几家成立。别把它改成「查不到就透传」：透传到哪一家？那正是要拆掉的那个回落。
+//!
+//! ⚠ **今天表里只登记了一家**（`claude-code`）。codex **刻意没登记** —— 它的默认上游
+//! 是哪一个、它认不认 base URL 的覆盖，本仓**零证据**（`C7`：不起真 agent），
+//! 而把一个猜的值写进这张表，就是把「未登记直接拒」换成「静默发去一个猜的地方」。
+//! 登记它的那一天，改的只是这张表多一行，**形状不用改**。
+//!
+//! # ⚠ `设计/20 §7` 步 3 的「怎么验」那一栏与 `§3.1` 第 4 行 —— 今天**不再互斥**
+//!
+//! `§7` 步 3 的验收逐字是「`/t/` ＋ 表里无行 ⇒ **真的发到默认上游**且 auth 头逐字节原样」，
+//! 而 `§3.1` 第 4 行（拍板 (b) 甲，比 `§7` 新）逐字加了「**不许回落到某一个写死的常量**」。
+//! 先前两句在「每 agent 一行的默认上游」那张表落地之前不可能同时成立，本层取了后者（恒 502）。
+//! 那张表今天落了 ⇒ **两句同时成立**：登记过的 agent 走**它自己那一行**（不是某一个进程级常量），
+//! 未登记的仍是 502。两格的判据住 `tests/backend/relay/table_tests.rs`
+//! （`decide` 被直接问，不经网络）；`wire_golden` 那一格用的 `seg1` 是一个**未登记**的名字，
+//! 仍钉着 502 那一半。
 
 pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（层 2 搬家带过来的）
 mod policy; // 热重载（`20 §4`：`accounts/policy.rs`）
@@ -46,28 +55,87 @@ use creds_core::store::AuthStyle;
 use std::io::Write;
 use table::{RoutingTable, Row};
 
-/// 上游基址的环境变量名。**它住层 2** —— `20 §4`「常量跟着职责走」那一条。
+/// 凭据文件（`relay-credentials.json`）里那些行**挂在哪个 agent 名下**。
 ///
-/// ⚠ 它今天仍是**进程级**的一个旋钮。条 60 要把它改成「每家一个」（跟着 `agents::Adapter`
-/// 走），那与条 59 同拍、归 14-ii。
-pub(crate) const ENV_UPSTREAM: &str = "CCM_RELAY_UPSTREAM";
+/// # 为什么要有这个值（条 49 拆键之后必然冒出来的一格）
+///
+/// 表的键改成 `(agent, 账号)` 之后，装表那一步得知道每一行属于谁 ——
+/// 而 `creds-core` 那份文件格式**今天没有 agent 这一维**（只有账号 id）。
+/// 那份文件是界面上给 **claude-code 的账号**配第三方 key 时写出来的 ⇒ 它的每一行今天都是这一家的。
+///
+/// ⚠ **它是一个事实的两处写法之一**：monitor 那一侧决定「这次拉起要不要注入」时问的是同一个问题
+/// （`src/bridge/src/backend/control/payload.rs::APIKEY_TABLE_AGENT`）。两处由一条跨半边判据
+/// 对拍（`table_tests::the_credentials_file_agent_is_the_same_on_both_halves`），它读的是
+/// **对方那份源码里的字面量**，不是拿本常量去比本常量。
+/// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，
+/// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
+pub(crate) const CREDENTIALS_FILE_AGENT: &str = "claude-code";
 
-/// 没配 [`ENV_UPSTREAM`] 时用的上游。**它住层 2**。
+/// 一家 agent 在层 2 里登记的那一行：**它的默认上游从哪儿来**〔条 59 / 条 60〕。
 ///
-/// # 🔴 `20 §4` 要的是「整删它，换成 `agents/` 里每 agent 一格」—— 那一刀**不在本拍**
-///
-/// 那是条 59（用户 2026-09-18 逐字「写死，跟着适配层」），而 `99 §4` 把条 49/59/60
-/// 整包排在 **14-ii** 的同拍前置里。本拍（14-i）逐字要求**零行为变化**，而
-/// 「未登记的 agent 直接拒绝」是一次**有**行为变化的改动。
-/// ⇒ 本拍只做搬家：把它从层 1 挪到层 2，**值与语义一个字节不动**。
-///
-/// ⇒ 搬完之后层 1 里**没有任何可以回落的默认值**。这一句有判据钉着：
-/// `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`。
-const DEFAULT_UPSTREAM: &str = "https://api.anthropic.com";
+/// 三格焊在一起，理由与 `table::Row` 把上游、key、鉴权头形状焊在一起是同一条：
+/// 分开取就写得出「A 家的旋钮配 B 家的默认值」。
+pub(crate) struct AgentUpstream {
+    /// 路由键第 1 段的那个值（monitor 侧 `adapter::…::id()` 的产物，`RELAY_ROUTE_SAMPLE` 首段）。
+    pub(crate) agent: &'static str,
+    /// 盖掉内置默认的那个环境变量名。**每家一个**（条 60：不留「覆盖哪一家说不清」的全局旋钮）。
+    pub(crate) env: &'static str,
+    /// 没配 `env` 时这一家发到哪儿。
+    pub(crate) fallback: &'static str,
+}
 
-/// 解析「这个进程的默认上游」。认不出就是 `None`，调用方**出声并退 2**，不回落。
-pub(crate) fn upstream_default(env: Option<&str>) -> Option<Base> {
-    Base::parse(env.unwrap_or(DEFAULT_UPSTREAM)).ok()
+/// ★★ **每 agent 一行的默认上游表**。不在这里的 agent = **未登记** ⇒ `/t/` 无行回 502。
+///
+/// 🔴 **它替掉的是一个进程级常量**（先前的 `DEFAULT_UPSTREAM`）：那一个值对每个 `seg1` 都成立，
+/// 于是「codex 的请求发给 Anthropic」在层 2 里写得出来。今天那个 URL 字面量只作为
+/// **claude-code 这一行的一格**存在 —— `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
+/// 数着它的处数（层 2 恰好登记那几处，层 1 零处）。
+///
+/// ⚠ 环境变量名 `CCM_RELAY_UPSTREAM` **没改名**：它今天只盖 claude-code 这一家（先前它盖整个进程，
+/// 而进程里只有这一家在用它），`src/doc/IPC-PROTOCOL.md` 那一行逐字点着这个名字。
+/// 改名要与那份契约同拍，**不在本拍**。
+pub(crate) const AGENT_UPSTREAMS: &[AgentUpstream] = &[AgentUpstream {
+    agent: CREDENTIALS_FILE_AGENT,
+    env: "CCM_RELAY_UPSTREAM",
+    fallback: "https://api.anthropic.com",
+}];
+
+/// [`AGENT_UPSTREAMS`] 解析之后的样子：`agent → Base`。**一个进程一份**，首次装表与每次重载共用。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Upstreams {
+    by_agent: std::collections::BTreeMap<&'static str, Base>,
+}
+
+impl Upstreams {
+    /// 读每一家的环境旋钮、解析成 `Base`。**任何一家认不出就是 `None`** ——
+    /// 调用方出声并退 2，不跳过那一家、不回落到别家的值。
+    ///
+    /// ⚠ 取值器是**注入的**（与 `listen::run_reading` 同一条纪律：判据不许去改进程环境）。
+    /// ⚠ 为什么是「一家坏了整个起不来」而不是「那一家当未登记」：后者会把一次打错字
+    ///   变成「那一家的每一发都 502」，而进程照常跑着、启动日志里只有一行 —— 那是静默降级。
+    pub(crate) fn from_env(get: &dyn Fn(&str) -> Option<String>) -> Option<Self> {
+        let mut by_agent = std::collections::BTreeMap::new();
+        for a in AGENT_UPSTREAMS {
+            let raw = get(a.env);
+            let base = Base::parse(raw.as_deref().unwrap_or(a.fallback)).ok()?;
+            by_agent.insert(a.agent, base);
+        }
+        // 凭据文件那一家必须登记过，否则那份文件里的行**没有默认上游可取**。
+        // 这是一条构造期的事实，由 `table_tests` 那条相等断言钉着；这里只是不让它静默成立。
+        by_agent
+            .contains_key(CREDENTIALS_FILE_AGENT)
+            .then_some(Self { by_agent })
+    }
+
+    /// 这一家的默认上游。**未登记就是 `None`**，不许拿别家的顶上。
+    pub(crate) fn of(&self, agent: &str) -> Option<&Base> {
+        self.by_agent.get(agent)
+    }
+
+    /// 凭据文件那一家的默认上游。构造时已经查过它在 ⇒ 这里拿得到。
+    fn of_credentials_file(&self) -> &Base {
+        &self.by_agent[CREDENTIALS_FILE_AGENT]
+    }
 }
 
 /// 层 2 的实现：一张**可重载**的路由表。
@@ -75,20 +143,23 @@ pub(crate) fn upstream_default(env: Option<&str>) -> Option<Base> {
 /// ⚠ 这两个字段先前住 `struct Relay`（层 1）。搬过来之后层 1 那个结构体里
 /// 只剩下一个 `dest: Arc<dyn Destinations>` —— 层 2 整块藏在它后面（`20 §4`）。
 pub(crate) struct Accounts {
-    /// 账号段 → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
+    /// `(agent, 账号)` → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
     ///
     /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
     /// 而本结构体**整个没有** `derive(Debug)`（`KS1` 的第二道）。
     table: std::sync::RwLock<RoutingTable>,
+    /// 每 agent 一行的默认上游（条 59）。`/t/` 无行时按 `seg1` 查它；重载时给没写 `base_url` 的行取值。
+    upstreams: Upstreams,
     /// 重载源。`None` = 判据自己造的表（不从文件来）⇒ 永不重载。
     reload: Option<Reload>,
 }
 
 impl Accounts {
-    /// 从一张已经装好的表起一层账号层。
-    pub(crate) fn new(table: RoutingTable) -> Self {
+    /// 从一张已经装好的表 ＋ 那张每 agent 一行的默认上游起一层账号层。
+    pub(crate) fn new(table: RoutingTable, upstreams: Upstreams) -> Self {
         Self {
             table: std::sync::RwLock::new(table),
+            upstreams,
             reload: None,
         }
     }
@@ -142,8 +213,11 @@ impl Accounts {
             // 印记也**不更新** —— 下次请求进来还会再试一次，人把文件改回来就自动恢复。
             return;
         }
-        let (table, rejected, notes) =
-            table::build(std::mem::take(&mut loaded.accounts), r.upstream_default());
+        let (table, rejected, notes) = table::build(
+            std::mem::take(&mut loaded.accounts),
+            CREDENTIALS_FILE_AGENT,
+            self.upstreams.of_credentials_file(),
+        );
         // 重载也要**出声**：静默换掉一张表，与静默丢掉一行是同一族。
         // ⚠ `K-R1`：`notes` 也要跟着走这一趟 —— 一次重载把某一行改成非默认行为
         //   （加了路径前缀 / 换了鉴权头形状）而**只有第一次启动才说**的话，
@@ -165,8 +239,8 @@ impl Destinations for Accounts {
     ///
     /// # 这里把两个不透明段读成业务名 —— 就这一处
     ///
-    /// `seg1` = agent（⚠ 今天**还不参与查表**，见模块头注：那是条 49 / 14-ii）·
-    /// `seg2` = 账号 ⇒ 表的索引键。
+    /// `seg1` = agent · `seg2` = 账号 ⇒ **两段一起**是表的索引键（条 49）；
+    /// `seg1` 另外还是「每 agent 一行的默认上游」那张表的键（条 59）。
     ///
     /// # 表里有那一行时答什么
     ///
@@ -179,7 +253,7 @@ impl Destinations for Accounts {
         // ⚠ 这个读锁活到本函数返回为止 —— 而 `resolve` 的契约禁止调用方在 `act` 里做
         //   流式转发（见 `Destinations::resolve` 头注第 2 条硬约束）⇒ 锁不跨 `pump`。
         let table = self.table.read().expect("lock");
-        decide(&table, mode, key, act);
+        decide(&table, &self.upstreams, mode, key, act);
     }
 }
 
@@ -190,12 +264,14 @@ impl Destinations for Accounts {
 /// ⇒ **实现只有这一份**，没有第二本账。
 pub(crate) fn decide(
     table: &RoutingTable,
+    upstreams: &Upstreams,
     mode: Mode,
     key: &RouteKey,
     act: &mut dyn FnMut(Destination<'_>),
 ) {
-    let account = key.seg2.as_str();
-    match (mode, table.lookup(account)) {
+    // ★ 两个不透明段在这里、**只在这里**被读成业务名。
+    let (agent, account) = (key.seg1.as_str(), key.seg2.as_str());
+    match (mode, table.lookup(agent, account)) {
         // ── `/s/` 有行 ⇒ 鉴权由这一行说了算（三种处置见 `dispatch_auth`）─────
         (Mode::Substitute, Some(row)) => dispatch_auth(row, act),
 
@@ -208,7 +284,7 @@ pub(crate) fn decide(
             //     · 不许回落到默认上游 —— 「配错了」与「没配」会变成同一个结果；
             //     · 不许在这里「顺手补一行」。
             //   今天这三条靠的是：本支**只答 `Refuse`**，而层 1 手里没有任何可以回落的值
-            //   （它连 `DEFAULT_UPSTREAM` 都看不见了，`table_guard` 那条两向相等断言钉着）。
+            //   （每 agent 一行的默认上游住本层，层 1 一个上游字面量都没有，`table_guard` 那条两向相等断言钉着）。
             act(Destination::Refuse {
                 status: "404 Not Found",
                 why: "代入模式要求表里有这一行",
@@ -229,27 +305,23 @@ pub(crate) fn decide(
         }
 
         // ── `/t/` 无行 ⇒ 按 `seg1` 取该 agent 的默认上游；未登记 ⇒ **502** ────────
-        (Mode::Passthrough, None) => {
+        (Mode::Passthrough, None) => match upstreams.of(agent) {
             // 🔴 **`§3.1` 第 4 行（2026-09-18 拍板 (b) 甲）逐字：「按 `seg1` 取该 agent
             //   的默认上游；`seg1` 未登记 ⇒ `Refuse { "502", "这个 agent 没有登记上游" }`。
             //   **不许回落到某一个写死的常量**」。
             //
-            // ⚠⚠ **今天那张「每 agent 一行」的表还不存在** —— 它是**条 59**
-            //   （用户逐字「写死，跟着适配层」⇒ `agents::Adapter` 上加一格），
-            //   而 `99 §4` 把条 49/59/60 整包排在 **14-ii** 的同拍前置里，且它的家在
-            //   `src/backend/agents/`（`01 §3.2`），**不在本拍的写区**。
-            //   ⇒ 今天**每一个 `seg1` 都是「未登记」**，本支恒答 502。
-            //
-            // ★ 这不是偷懒，是**照那条 🔴 做**：能选的只有两条 ——
-            //   ① 回落到进程级的 `DEFAULT_UPSTREAM`（那条 🔴 明禁，而且它的后果逐字是
-            //      「把 codex 的请求发给 Anthropic」）；② fail-closed。选②。
-            //   条 59 落地那天，这一支从「恒 502」变成「查 `agents/` 那一格，查不到才 502」，
-            //   **形状不用改**。
-            act(Destination::Refuse {
+            // ① 登记过 ⇒ 发到**这一家自己那一行**，下游那份鉴权头逐字节原样上去
+            //   （`/t/` 从来不代入）。⚠ 取的是 `upstreams.of(agent)`，**不是**某一个进程级的值 ——
+            //   那个进程级常量今天整删了。
+            Some(base) => act(Destination::Passthrough { upstream: base }),
+            // ② 未登记 ⇒ **502**。★ 这不是没做完，是照那条 🔴 做的 fail-closed：
+            //   能选的只有「回落到某一家」（那条 🔴 明禁，后果逐字是「把 codex 的请求发给
+            //   Anthropic」）与「拒」。选拒。
+            None => act(Destination::Refuse {
                 status: "502 Bad Gateway",
                 why: "这个 agent 没有登记上游",
-            });
-        }
+            }),
+        },
     }
 }
 
@@ -376,7 +448,7 @@ fn headers_to_clear() -> &'static [&'static str] {
 pub(crate) fn load_credentials(
     get: &dyn Fn(&str) -> Option<String>,
     home: &std::path::Path,
-    default_base: &Base,
+    upstreams: &Upstreams,
     out: &mut dyn Write,
 ) -> (
     RoutingTable,
@@ -393,7 +465,11 @@ pub(crate) fn load_credentials(
     //   与「哪几行进不去、为什么」都是它算出来的。
     //   ⚠ `take` 是因为 `AccountEntry` 里装着 `SecretKey`，而那个类型**刻意不给 `Clone`**
     //     （`K-H2a`：少一条能复制明文的路就少一个出口）⇒ 只能把所有权交出去。
-    let (table, rejected, notes) = table::build(std::mem::take(&mut loaded.accounts), default_base);
+    let (table, rejected, notes) = table::build(
+        std::mem::take(&mut loaded.accounts),
+        CREDENTIALS_FILE_AGENT,
+        upstreams.of_credentials_file(),
+    );
     creds::announce(&loaded, table.len(), &rejected, &notes, out);
     (table, path, stamp)
 }

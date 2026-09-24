@@ -1,6 +1,10 @@
 use super::*;
 use creds_core::store;
 
+/// 判据里这些行挂在谁名下。**名字刻意不是任何一家真 agent** —— 本文件量的是
+/// 「键有两段」这件事本身，与哪家是登记过的无关（那一格在下面单独量）。
+const AGENT: &str = "agent-under-test";
+
 fn base(u: &str) -> Base {
     Base::parse(u).expect("夹具的 base 应当解析得了")
 }
@@ -19,13 +23,14 @@ fn two_accounts_land_in_two_rows_each_with_its_own_upstream_and_key() {
                     "acct-b":{"api_key":"KEY-B"}
                 }}"#,
         ),
+        AGENT,
         &base("https://default.invalid"),
     );
     assert!(bad.is_empty(), "不该有装不进去的行：{:?}", bad.len());
     assert_eq!(t.len(), 2);
 
-    let a = t.lookup("acct-a").expect("A 应当查得到");
-    let b = t.lookup("acct-b").expect("B 应当查得到");
+    let a = t.lookup(AGENT, "acct-a").expect("A 应当查得到");
+    let b = t.lookup(AGENT, "acct-b").expect("B 应当查得到");
     // ★★ **反空真排最前**〔`D1` 一并修〕：两行的 key 必须**不同**，
     //    否则下面「各用各的」整族断言恒真。先前它排在最后。
     assert_ne!(
@@ -52,17 +57,18 @@ fn two_accounts_land_in_two_rows_each_with_its_own_upstream_and_key() {
 fn an_account_that_is_not_in_the_table_resolves_to_nothing() {
     let (t, _, _) = build(
         entries(r#"{"accounts":{"acct-a":{"api_key":"KEY-A"}}}"#),
+        AGENT,
         &base("https://default.invalid"),
     );
     // 分母 = 我列出的这 4 个不存在的 id。
     for miss in ["acct-b", "default", "", "ACCT-A"] {
         assert!(
-            t.lookup(miss).is_none(),
+            t.lookup(AGENT, miss).is_none(),
             "{miss:?} 不在表里，却查到了一行 —— 那就是回落"
         );
     }
     // ★ 非空对照承重：同一张表、同一把尺子，**存在**的那一条查得到。
-    assert!(t.lookup("acct-a").is_some(), "这把尺子是瞎的");
+    assert!(t.lookup(AGENT, "acct-a").is_some(), "这把尺子是瞎的");
 }
 
 /// **进不了表的两形，都要出声**，而且不许静默回落。
@@ -76,6 +82,7 @@ fn a_row_that_cannot_be_reached_or_cannot_be_parsed_is_rejected_out_loud() {
                     "good":{"api_key":"K3"}
                 }}"#,
         ),
+        AGENT,
         &base("https://default.invalid"),
     );
     // ★★ **承重的那条排最前**〔`D1` 一并修，08-28〕：
@@ -83,14 +90,17 @@ fn a_row_that_cannot_be_reached_or_cannot_be_parsed_is_rejected_out_loud() {
     //    ⇒ `D1-M6` 实测红在前面那条，**这一句一次都没被求值**。
     //    本件这是**第二次**同形（`KH2` 那两条已经修过一次）⇒ 全件扫过一遍。
     assert!(
-        t.lookup("ok-id").is_none(),
+        t.lookup(AGENT, "ok-id").is_none(),
         "打错的端点回落到了默认上游 —— 那比 404 坏得多"
     );
     // 同族的另一半：id 装不下的那条也不许在表里。
-    assert!(t.lookup("bad.id").is_none(), "id 当不了路由段的那条进了表");
+    assert!(
+        t.lookup(AGENT, "bad.id").is_none(),
+        "id 当不了路由段的那条进了表"
+    );
 
     assert_eq!(t.len(), 1, "只有 `good` 该进表");
-    assert!(t.lookup("good").is_some());
+    assert!(t.lookup(AGENT, "good").is_some());
     assert_eq!(bad.len(), 2, "两条都该被说出去：{}", bad.len());
     let ids: Vec<&str> = bad.iter().map(|r| r.id.as_str()).collect();
     assert!(ids.contains(&"bad.id"), "id 装不下那条没被说出去");
@@ -103,18 +113,19 @@ fn a_row_that_cannot_be_reached_or_cannot_be_parsed_is_rejected_out_loud() {
 fn the_legacy_single_key_file_becomes_exactly_one_reachable_row() {
     let (t, bad, _) = build(
         entries(r#"{"api_key":"LEGACY"}"#),
+        AGENT,
         &base("https://api.example.invalid"),
     );
     // ★★ **承重的那条排最前**〔`D1` 一并修〕：它是「**有名字的行**，不是默认行」
     //    这句话的全部内容 —— 先前它排在最后。
     assert!(
-        t.lookup("anything-else").is_none(),
+        t.lookup(AGENT, "anything-else").is_none(),
         "别的账号段也查到了那一行 —— 那它就成了「默认行」，正是 `KH2` 禁的回落"
     );
     assert!(bad.is_empty());
     assert_eq!(t.len(), 1);
     let row = t
-        .lookup(store::LEGACY_ACCOUNT_ID)
+        .lookup(AGENT, store::LEGACY_ACCOUNT_ID)
         .expect("default 应当查得到");
     assert_eq!(row.base().host_header(), "api.example.invalid");
     assert_eq!(
@@ -131,10 +142,11 @@ fn the_legacy_single_key_file_becomes_exactly_one_reachable_row() {
 fn a_row_can_exist_and_still_have_no_key_of_its_own() {
     let (t, bad, _) = build(
         entries(r#"{"accounts":{"sub-only":{"base_url":"https://sub.invalid"}}}"#),
+        AGENT,
         &base("https://default.invalid"),
     );
     assert!(bad.is_empty());
-    let row = t.lookup("sub-only").expect("行应当在");
+    let row = t.lookup(AGENT, "sub-only").expect("行应当在");
     assert!(row.key().is_none(), "这一行不该有 key");
     assert_eq!(row.base().host_header(), "sub.invalid");
     // ★ `K-R1`：没写 `auth_style` 的那一行落到默认 ⇒ 一份旧文件的行为一个字节不变。
@@ -156,14 +168,15 @@ fn each_row_carries_its_own_auth_style_and_a_missing_one_means_the_default() {
                     "as-local":{"base_url":"http://127.0.0.1:11434/v1","auth_style":"none"}
                 }}"#,
         ),
+        AGENT,
         &base("https://default.invalid"),
     );
     assert!(bad.is_empty(), "不该有装不进去的行：{}", bad.len());
     assert_eq!(t.len(), 3);
 
-    let x = t.lookup("as-xapikey").expect("x-api-key 那一行");
-    let d = t.lookup("as-default").expect("没写的那一行");
-    let l = t.lookup("as-local").expect("本地那一行");
+    let x = t.lookup(AGENT, "as-xapikey").expect("x-api-key 那一行");
+    let d = t.lookup(AGENT, "as-default").expect("没写的那一行");
+    let l = t.lookup(AGENT, "as-local").expect("本地那一行");
     // ★★ 反空真：三行的形状两两不同（否则下面整族断言恒真）。
     assert_ne!(x.auth_style(), d.auth_style());
     assert_ne!(x.auth_style(), l.auth_style());
@@ -195,20 +208,21 @@ fn a_row_whose_auth_style_makes_no_sense_is_rejected_out_loud() {
                     "good":{"api_key":"K3","auth_style":"bearer"}
                 }}"#,
         ),
+        AGENT,
         &base("https://default.invalid"),
     );
     // ★★ **承重的那两条排最前**：它们不许静默回落进表。
     assert!(
-        t.lookup("typo").is_none(),
+        t.lookup(AGENT, "typo").is_none(),
         "认不出的 auth_style 被回落成默认了 —— 症状是一条查不出来的 401"
     );
     assert!(
-        t.lookup("contradiction").is_none(),
+        t.lookup(AGENT, "contradiction").is_none(),
         "「不发任何头」与「配了 key」同时在，却被挑了一句执行 —— 那是替人猜意思"
     );
     // ★ 非空对照：好的那条进得去（不是恒拒）。
     assert_eq!(t.len(), 1, "只有 `good` 该进表");
-    assert!(t.lookup("good").is_some(), "这把尺子是瞎的");
+    assert!(t.lookup(AGENT, "good").is_some(), "这把尺子是瞎的");
 
     // 两条的**理由不同** —— 合成一句的话，其中一句在另一形上是假的指引。
     let why = |id: &str| {
@@ -236,25 +250,26 @@ fn a_plaintext_upstream_is_only_allowed_on_loopback() {
                     "tls-anywhere":{"api_key":"K4","base_url":"https://1.2.3.4/v1"}
                 }}"#,
         ),
+        AGENT,
         &base("https://default.invalid"),
     );
     // ★★ 承重的排最前：明文 + 非回环的两条**一条都不许进表**。
     assert!(
-        t.lookup("off-loopback").is_none(),
+        t.lookup(AGENT, "off-loopback").is_none(),
         "明文 http 打到公网地址进了表 —— 那一行的 key 会明着过网线"
     );
     assert!(
-        t.lookup("private-lan").is_none(),
+        t.lookup(AGENT, "private-lan").is_none(),
         "内网也不是回环：那把 key 仍然明着过网线，只是网线短一点"
     );
     // ★ 非空对照（两格，各自单断）：回环上的明文放行，非回环上的 TLS 也放行
     //   ⇒ 本条判的是「明文 **且** 非回环」这个合，不是其中任一个。
     assert!(
-        t.lookup("on-loopback").is_some(),
+        t.lookup(AGENT, "on-loopback").is_some(),
         "回环上的明文被拒了 —— 那把本地部署这一格整个关掉了"
     );
     assert!(
-        t.lookup("tls-anywhere").is_some(),
+        t.lookup(AGENT, "tls-anywhere").is_some(),
         "TLS 打到公网被拒了 —— 本条把 `裁-1` 反过来读了"
     );
     assert_eq!(t.len(), 2);
@@ -284,6 +299,7 @@ fn a_row_that_still_works_but_behaves_differently_gets_a_note() {
                     "xapikey":{"api_key":"K3","auth_style":"x-api-key"}
                 }}"#,
         ),
+        AGENT,
         &base("https://default.invalid"),
     );
     assert!(bad.is_empty(), "这三条都该进表：{}", bad.len());
@@ -334,4 +350,220 @@ fn every_auth_style_other_than_the_default_gets_announced() {
     said.sort();
     said.dedup();
     assert_eq!(said.len(), n, "有两个形状共用了同一句话：{said:?}");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  条 49 / 条 59 / 条 60：表的键是 agent ＋ 账号 · 默认上游每 agent 一行 · 未登记直接拒
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 期望值一律**手写字面量**（`"claude-code"` · `"CCM_RELAY_UPSTREAM"` · 那条官方 URL 的主机名），
+// 不拿被测的 `CREDENTIALS_FILE_AGENT` / `AGENT_UPSTREAMS` 去算 —— 拿被测常量写期望值再拿它去读，
+// 两侧同源，恒真。
+
+use super::super::{decide, Upstreams, AGENT_UPSTREAMS, CREDENTIALS_FILE_AGENT};
+use crate::relay::{Destination, Mode, RouteKey};
+
+/// 问一次生产段那张决策表，把答案压成一个好比对的形状。
+#[derive(Debug, PartialEq, Eq)]
+enum Said {
+    Refuse(&'static str),
+    Passthrough(String),
+    /// `(上游主机, 要写的那个头值)`。
+    Substitute(String, Option<String>),
+}
+
+fn ask(t: &RoutingTable, u: &Upstreams, mode: Mode, seg1: &str, seg2: &str) -> Said {
+    let key = RouteKey {
+        seg1: seg1.to_string(),
+        seg2: seg2.to_string(),
+    };
+    let mut out = None;
+    decide(t, u, mode, &key, &mut |d| {
+        out = Some(match d {
+            Destination::Refuse { status, .. } => Said::Refuse(status),
+            Destination::Passthrough { upstream } => Said::Passthrough(upstream.host_header()),
+            Destination::Substitute { upstream, auth } => Said::Substitute(
+                upstream.host_header(),
+                auth.write.map(|(_, v)| v.to_string()),
+            ),
+        });
+    });
+    out.expect("层 2 一次都没答")
+}
+
+/// 没有任何环境变量时那一份（每家取内置默认）。
+fn upstreams_without_env() -> Upstreams {
+    Upstreams::from_env(&|_| None).expect("内置默认必须解析得了")
+}
+
+/// ★★★ **条 49 的正主**：同一个账号 id 挂在两家名下 = **两行**，各带各的上游与 key；
+/// 第三家拿同一个 id 来查 ⇒ **查不到**（`/s/` 回 404，一个字节不发上游）。
+///
+/// 先前 `lookup` 只收账号 ⇒ 这里的三问会拿到**同一行**：claude 的 3 号与 codex 的 3 号是一个东西。
+#[test]
+fn the_same_account_id_under_two_agents_is_two_rows_and_a_third_agent_finds_neither() {
+    let a = base("https://a.invalid");
+    let b = base("https://b.invalid");
+    let t = RoutingTable::build([
+        (
+            "agent-one".to_string(),
+            "3".to_string(),
+            a,
+            Some(creds_core::SecretKey::new("KEY-ONE")),
+            AuthStyle::DEFAULT,
+        ),
+        (
+            "agent-two".to_string(),
+            "3".to_string(),
+            b,
+            Some(creds_core::SecretKey::new("KEY-TWO")),
+            AuthStyle::DEFAULT,
+        ),
+    ]);
+    // 反空真排最前：两行真的是两行（不是后一行把前一行盖掉了）。
+    assert_eq!(
+        t.len(),
+        2,
+        "同一个账号 id 在两家名下只剩一行 ⇒ 键里没有 agent"
+    );
+
+    let u = upstreams_without_env();
+    assert_eq!(
+        ask(&t, &u, Mode::Substitute, "agent-one", "3"),
+        Said::Substitute("a.invalid".into(), Some("Bearer KEY-ONE".into()))
+    );
+    assert_eq!(
+        ask(&t, &u, Mode::Substitute, "agent-two", "3"),
+        Said::Substitute("b.invalid".into(), Some("Bearer KEY-TWO".into())),
+        "第二家拿到的不是它自己那一行 ⇒ 表仍然只按账号查"
+    );
+    // ★ 最坏失效形态的那一格：第三家（今天它就是 codex 的位置）拿同一个 id ⇒ 404，不是「借一行」。
+    assert_eq!(
+        ask(&t, &u, Mode::Substitute, "agent-three", "3"),
+        Said::Refuse("404 Not Found"),
+        "第三家查到了别家的 3 号 ⇒ 那就是「拿 A 的 key 发 B 的请求」"
+    );
+}
+
+/// ★★ 凭据文件装表那条真路（`build`）：每一行挂在**交进来的那一家**名下，别家查不到。
+#[test]
+fn rows_loaded_from_the_credentials_file_belong_to_the_agent_they_were_loaded_under() {
+    let (t, bad, _) = build(
+        entries(r#"{"accounts":{"acct-a":{"api_key":"KEY-A"}}}"#),
+        "claude-code",
+        &base("https://default.invalid"),
+    );
+    assert!(bad.is_empty());
+    assert!(
+        t.lookup("claude-code", "acct-a").is_some(),
+        "这把尺子是瞎的（装进去的那一行自己都查不到）"
+    );
+    assert!(
+        t.lookup("codex", "acct-a").is_none(),
+        "codex 名下查到了 claude-code 的那一行 ⇒ 键里没有 agent"
+    );
+}
+
+/// ★★★ **条 59 ＋ 「未登记直接拒」**：`/t/` ＋ 表里无行 ⇒ **登记过的那家**发到它**自己那一行**，
+/// **未登记的**回 502。两格用同一把尺子量，互为对照。
+///
+/// 🔴 那个 502 **不许**变成「透传到某一家」：那正是 `设计/20 §3.1` 第 4 行那条 🔴 禁的回落。
+#[test]
+fn passthrough_without_a_row_goes_to_that_agents_own_upstream_and_an_unregistered_agent_is_refused()
+{
+    let t = RoutingTable::build(std::iter::empty());
+    let u = upstreams_without_env();
+    assert_eq!(
+        ask(&t, &u, Mode::Passthrough, "claude-code", "acct-anything"),
+        Said::Passthrough("api.anthropic.com".into()),
+        "登记过的那家在 `/t/` 无行时没有发到它自己的默认上游"
+    );
+    assert_eq!(
+        ask(&t, &u, Mode::Passthrough, "codex", "acct-anything"),
+        Said::Refuse("502 Bad Gateway"),
+        "🔴 未登记的 agent 没被拒 ⇒ 它的请求被发到了某一家的上游"
+    );
+    // `/s/` 无行仍是 404（`§3.1` 第 2 行，一字不改），与 agent 登没登记无关。
+    for agent in ["claude-code", "codex"] {
+        assert_eq!(
+            ask(&t, &u, Mode::Substitute, agent, "acct-anything"),
+            Said::Refuse("404 Not Found"),
+            "{agent}：`/s/` 无行该是 404"
+        );
+    }
+}
+
+/// ★★ **条 60：每家一个环境旋钮**，而且它**只盖那一家**。
+///
+/// 取值器按**手写的变量名**答话 ⇒ 名字写错 / 读错了家，下面当场对不上。
+#[test]
+fn each_agents_env_knob_overrides_only_that_agents_default() {
+    let got = Upstreams::from_env(&|k| {
+        (k == "CCM_RELAY_UPSTREAM").then(|| "http://127.0.0.1:1/pfx".to_string())
+    })
+    .expect("回环明文是合法上游");
+    let cc = got.of("claude-code").expect("claude-code 该登记着");
+    assert_eq!(cc.host_header(), "127.0.0.1:1");
+    assert_eq!(cc.path, "/pfx", "旋钮里那段路径前缀被丢掉了");
+    // 非空对照：不设旋钮时是内置默认 —— 证明上面那格不是「恒等于取值器的值」。
+    let dflt = upstreams_without_env();
+    assert_eq!(
+        dflt.of("claude-code").expect("登记着").host_header(),
+        "api.anthropic.com"
+    );
+    assert_ne!(got, dflt);
+    // 认不出 ⇒ `None`（调用方出声退 2），不跳过、不回落。
+    assert!(Upstreams::from_env(&|_| Some("ftp://x".to_string())).is_none());
+    // 未登记的那家：查不到，不是拿别家的顶上。
+    assert!(got.of("codex").is_none());
+}
+
+/// ★ 那张每家一行的表**自己的形状**：家名不重 · 旋钮不重 · 凭据文件那一家在表里。
+///
+/// ⚠ 这是一条**构造期**断言（表是一个 `const`），它买的是「加第二家时不会把旋钮抄成同一个」。
+#[test]
+fn the_per_agent_upstream_table_has_no_duplicate_agent_or_knob_and_holds_the_credentials_file_agent(
+) {
+    let agents: std::collections::BTreeSet<&str> =
+        AGENT_UPSTREAMS.iter().map(|a| a.agent).collect();
+    let knobs: std::collections::BTreeSet<&str> = AGENT_UPSTREAMS.iter().map(|a| a.env).collect();
+    assert!(
+        !AGENT_UPSTREAMS.is_empty(),
+        "表是空的 ⇒ 每一家都未登记，下面几条空转"
+    );
+    assert_eq!(agents.len(), AGENT_UPSTREAMS.len(), "同一家登记了两行");
+    assert_eq!(
+        knobs.len(),
+        AGENT_UPSTREAMS.len(),
+        "两家共用一个环境旋钮 ⇒ 盖一家等于盖两家"
+    );
+    assert!(
+        agents.contains("claude-code"),
+        "凭据文件那一家（手写 `claude-code`）不在表里 ⇒ 文件里的行没有默认上游可取"
+    );
+}
+
+/// ★★★ **跨半边对拍**：「凭据文件那些行属于哪一家」在后端（本层）与 monitor（起会话时
+/// 判「要不要注入」那一格）**是同一个值**。
+///
+/// 两侧**异源**：本侧是 `CREDENTIALS_FILE_AGENT`，那一侧是 `payload.rs` 源码里
+/// `APIKEY_TABLE_AGENT` 那一行的**字面量**（`include_str!` 现抠，不是 `use`）。
+/// 漂开的症状：monitor 给 A 家注入 `/s/A/…`，而本层把那一行挂在 B 家名下 ⇒ **每一发 404**。
+///
+/// ⚠ 买不到：monitor 那一侧**真的拿它去判了**。那一格由 monitor 自己的判据量
+/// （`payload_tests` 里「别家同一个账号 id 不注入」那一条）。
+#[test]
+fn the_credentials_file_agent_is_the_same_on_both_halves() {
+    let pay = include_str!("../../../src/bridge/src/backend/control/payload.rs");
+    let needle = "pub const APIKEY_TABLE_AGENT: &str = \"";
+    let at = guard_core::find_pinned(pay, needle).unwrap_or_else(|e| {
+        panic!("在 monitor 侧 `payload.rs` 里钉不住 `APIKEY_TABLE_AGENT` 那一行：{e}")
+    });
+    let tail = &pay[at + needle.len()..];
+    let theirs = &tail[..tail.find('"').expect("那个字面量没有收尾的引号")];
+    assert!(!theirs.is_empty(), "抠出来的是空串 —— 抽取器坏了");
+    assert_eq!(
+        theirs, CREDENTIALS_FILE_AGENT,
+        "monitor 认为凭据文件的行属于 `{theirs}`，后端把它们挂在 `{CREDENTIALS_FILE_AGENT}` 名下"
+    );
 }

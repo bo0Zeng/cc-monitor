@@ -21,8 +21,22 @@ use std::sync::mpsc;
 /// ⚠ 走的是**生产段那条真实的层 2**（`Accounts`），不是判据自己造的一个假 `Destinations`
 /// —— 造一个假的就等于「量的不是生产段那张决策表」。
 fn dest_of(table: RoutingTable) -> Arc<dyn super::super::Destinations> {
-    Arc::new(Accounts::new(table))
+    Arc::new(Accounts::new(table, upstreams_without_env()))
 }
+
+/// 没有任何环境变量时那一份「每 agent 一行的默认上游」—— 走生产段那条真实的解析。
+fn upstreams_without_env() -> accounts::Upstreams {
+    accounts::Upstreams::from_env(&|_| None).expect("内置默认必须解析得了")
+}
+
+/// 判据里那些行挂在谁名下（条 49：表的键是 agent ＋ 账号）。
+///
+/// ⚠ **它与 `send_request` 里那些 URL 的首段逐字对应**，名字刻意不是任何一家登记过的 agent ——
+/// 这些判据量的是「表里有行」那几格，与哪家登没登记无关。
+/// 子进程那几条读的是凭据文件，文件里的行挂在 claude-code 名下，所以它们的 URL 首段是那个名字。
+const TEST_AGENT: &str = "agentA";
+/// 第二家（`routes_two_keys…` 用它证「两个键走同一个进程」）。
+const TEST_AGENT_B: &str = "agentB";
 
 /// 拿**生产段那张决策表**（`accounts::decide`，与 `Accounts::resolve` 同一份实现）
 /// 问一次，再把答案交给生产段那个渲染函数，返回它吐出来的那串字节。
@@ -38,26 +52,33 @@ fn render_via_layer_two(
     body_len: usize,
 ) -> String {
     let key = super::super::RouteKey {
-        // `seg1` 今天不参与查表（条 49 / 14-ii 才让它承重）⇒ 这里随便给一个。
-        seg1: "a".to_string(),
+        // 条 49：`seg1` 今天是键的一半 ⇒ 必须是这张表里那些行挂的那一家。
+        seg1: TEST_AGENT.to_string(),
         seg2: account.to_string(),
     };
     let mut out = None;
-    accounts::decide(t, super::super::Mode::Substitute, &key, &mut |d| {
-        out = Some(match d {
-            Destination::Refuse { status, .. } => {
-                panic!("{account} 那一行该在表里，层 2 却答了 Refuse {status}")
-            }
-            Destination::Passthrough { upstream } => {
-                render_upstream_request(head, rest, upstream, None, body_len)
-            }
-            // 〔`P16` 2026-09-22〕层 2 交下来的是一个 `AuthSwap`（头名 ＋ 完整头值 ＋
-            // 要丢的头名全集），层 1 照写 ⇒ 这里原样把它递进渲染，**不许在判据里自己凑一份**。
-            Destination::Substitute { upstream, auth } => {
-                render_upstream_request(head, rest, upstream, Some(&auth), body_len)
-            }
-        });
-    });
+    let upstreams = upstreams_without_env();
+    accounts::decide(
+        t,
+        &upstreams,
+        super::super::Mode::Substitute,
+        &key,
+        &mut |d| {
+            out = Some(match d {
+                Destination::Refuse { status, .. } => {
+                    panic!("{account} 那一行该在表里，层 2 却答了 Refuse {status}")
+                }
+                Destination::Passthrough { upstream } => {
+                    render_upstream_request(head, rest, upstream, None, body_len)
+                }
+                // 〔`P16` 2026-09-22〕层 2 交下来的是一个 `AuthSwap`（头名 ＋ 完整头值 ＋
+                // 要丢的头名全集），层 1 照写 ⇒ 这里原样把它递进渲染，**不许在判据里自己凑一份**。
+                Destination::Substitute { upstream, auth } => {
+                    render_upstream_request(head, rest, upstream, Some(&auth), body_len)
+                }
+            });
+        },
+    );
     String::from_utf8(out.expect("层 2 一次都没答")).expect("utf8")
 }
 
@@ -90,16 +111,45 @@ fn table_of(rows: &[(&str, &Base, Option<&str>)]) -> RoutingTable {
 fn table_of_styled(
     rows: &[(&str, &Base, Option<&str>, creds_core::store::AuthStyle)],
 ) -> RoutingTable {
-    RoutingTable::build(
-        rows.iter()
-            .map(|(id, b, k, s)| ((*id).to_string(), (*b).clone(), k.map(SecretKey::new), *s)),
+    table_under(
+        &rows
+            .iter()
+            .map(|(id, b, k, s)| (TEST_AGENT, *id, *b, *k, *s))
+            .collect::<Vec<_>>(),
     )
+}
+
+/// 最底下那一版：每一行**自己说**挂在哪一家名下（条 49）。走的仍是生产段那条真实的 `RoutingTable::build`。
+fn table_under(
+    rows: &[(
+        &str,
+        &str,
+        &Base,
+        Option<&str>,
+        creds_core::store::AuthStyle,
+    )],
+) -> RoutingTable {
+    RoutingTable::build(rows.iter().map(|(agent, id, b, k, s)| {
+        (
+            (*agent).to_string(),
+            (*id).to_string(),
+            (*b).clone(),
+            k.map(SecretKey::new),
+            *s,
+        )
+    }))
 }
 
 /// 判据里最常用的那张表：两个账号段，都指向同一个假上游，都不配 key
 /// （⇒ 走「原样转发」那一支，与 `K-H1` 甲半的既有判据逐字同形）。
 fn two_accounts_no_key(base: &Base) -> RoutingTable {
-    table_of(&[(ACCT_A, base, None), (ACCT_B, base, None)])
+    // ⚠ 条 49 之后「两个键」是两对 `(agent, 账号)`：`routes_two_keys…` 打的是
+    //   `/s/agentA/acctA` 与 `/s/agentB/acctB`，所以两行各挂一家。
+    let d = creds_core::store::AuthStyle::DEFAULT;
+    table_under(&[
+        (TEST_AGENT, ACCT_A, base, None, d),
+        (TEST_AGENT_B, ACCT_B, base, None, d),
+    ])
 }
 
 /// 一个只属于本判据的临时目录。**名字中性**（不含被断言的字面），
@@ -1529,7 +1579,7 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 
     let mut c = send_request(
         relay.addr,
-        "/s/agentA/acctA/sid-AAA/v1/messages",
+        "/s/claude-code/acctA/sid-AAA/v1/messages",
         &format!("Authorization: Bearer {SENTINEL}\r\n"),
     );
     let mut got = Vec::new();
@@ -1636,7 +1686,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     // ⚠ `K-H2`：账号段是 `default` —— 这份夹具走的是**顶层一把 key** 那个旧形状
     //   （`K-H2a` 交付时的样子），它被读成一条 id 逐字是 `default` 的**有名字的行**。
     //   ⇒ 本条同时是「旧文件升级之后照常能用」的端到端判据。
-    let mut c = send_request(relay.addr, "/s/agentA/default/sid-AAA/v1/messages", "");
+    let mut c = send_request(relay.addr, "/s/claude-code/default/sid-AAA/v1/messages", "");
     let mut got = Vec::new();
     c.read_to_end(&mut got).expect("read");
     let downstream = String::from_utf8_lossy(&got).to_string();
@@ -1653,7 +1703,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     );
     let (bad_len, _) = send_raw(
         relay.addr,
-        "POST /s/agentA/default/sid-AAA/v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: 7abc\r\n\r\n",
+        "POST /s/claude-code/default/sid-AAA/v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: 7abc\r\n\r\n",
     );
     assert!(
         bad_len.starts_with("HTTP/1.1 400"),
@@ -1939,7 +1989,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     for acct in ["acct-a", "acct-b"] {
         let mut c = send_request(
             relay.addr,
-            &format!("/s/agentA/{acct}/sid-{acct}/v1/messages"),
+            &format!("/s/claude-code/{acct}/sid-{acct}/v1/messages"),
             "",
         );
         let mut got = Vec::new();
@@ -1992,7 +2042,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     // ── ㈡ 表里没有的账号段 ⇒ **两个上游那本账都一次都没涨**，然后才是 404 ──
     let (not_found, _) = send_raw(
         relay.addr,
-        "GET /s/agentA/acct-nope/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        "GET /s/claude-code/acct-nope/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
     );
     assert_eq!(
         up_a.auth_values.lock().expect("lock").len(),
@@ -2012,7 +2062,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     // ── ㈢ **502 那一支**（`K-H2a` 留下的那一格，本件补上）──────────
     let (bad_gateway, _) = send_raw(
         relay.addr,
-        "GET /s/agentA/acct-dead/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        "GET /s/claude-code/acct-dead/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
     );
     assert!(
         bad_gateway.starts_with("HTTP/1.1 502"),
@@ -2298,7 +2348,7 @@ fn one_relay_process_serves_both_keys_and_shares_its_tee_sequence() {
     for key in ["sid-AAA", "sid-BBB"] {
         let mut c = send_request(
             relay.addr,
-            &format!("/s/agentA/acctA/{key}/v1/messages?beta=true"),
+            &format!("/s/claude-code/acctA/{key}/v1/messages?beta=true"),
             "",
         );
         let mut got = Vec::new();
@@ -2951,12 +3001,22 @@ fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
 /// 里的「**env**」是假的 —— 它调的是**纯函数** `resolve_config` 的**参数**，
 /// **一个环境变量都没读过**。今天的名字只说它证得了的那一半：默认值 + **入参**盖得住。
 /// 「哪个环境变量喂给哪个配置位」由 `each_env_var_name_goes_into_its_own_config_slot` 守。
+/// 〔条 59/60〕上游那一格今天是「每家一个旋钮」：取值器按**手写的变量名**答话。
+fn upstream_knob(v: &str) -> impl Fn(&str) -> Option<String> + '_ {
+    move |k| (k == "CCM_RELAY_UPSTREAM").then(|| v.to_string())
+}
+
+/// 取 claude-code 那一家解析出来的上游（手写家名 —— 不拿被测常量算）。
+fn cc(u: &accounts::Upstreams) -> Base {
+    u.of("claude-code").expect("claude-code 该登记着").clone()
+}
+
 #[test]
 fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
-    let (port, base) = resolve_config(None, None).expect("默认配置应当成立");
+    let (port, u) = resolve_config(None, &|_| None).expect("默认配置应当成立");
     assert_eq!(port, 8788, "默认端口");
     assert_eq!(
-        base,
+        cc(&u),
         Base {
             tls: true,
             host: "api.anthropic.com".to_string(),
@@ -2968,11 +3028,11 @@ fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
         "默认上游"
     );
 
-    let (port, base) =
-        resolve_config(Some("19999"), Some("http://127.0.0.1:1")).expect("env 覆盖应当成立");
+    let (port, u) = resolve_config(Some("19999"), &upstream_knob("http://127.0.0.1:1"))
+        .expect("env 覆盖应当成立");
     assert_eq!(port, 19999, "CCM_RELAY_PORT 必须盖得住默认");
     assert_eq!(
-        base,
+        cc(&u),
         Base {
             tls: false,
             host: "127.0.0.1".to_string(),
@@ -2984,10 +3044,10 @@ fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
 
     // ★★ `K-R1`：`CCM_RELAY_UPSTREAM` 里那一段**路径前缀**也盖得住 ——
     //    先前它在这一层就被丢掉了（`Base` 存不下），而这一格此前零判据。
-    let (_, base) = resolve_config(None, Some("https://gw.example.com/anthropic"))
+    let (_, u) = resolve_config(None, &upstream_knob("https://gw.example.com/anthropic"))
         .expect("带前缀的默认上游应当成立");
     assert_eq!(
-        base,
+        cc(&u),
         Base {
             tls: true,
             host: "gw.example.com".to_string(),
@@ -2998,10 +3058,10 @@ fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
     );
     // 反空真：这把尺子分得出「带前缀」与「不带」（不是恒相等）。
     assert_ne!(
-        resolve_config(None, Some("https://gw.example.com/anthropic"))
+        resolve_config(None, &upstream_knob("https://gw.example.com/anthropic"))
             .expect("带前缀")
             .1,
-        resolve_config(None, Some("https://gw.example.com"))
+        resolve_config(None, &upstream_knob("https://gw.example.com"))
             .expect("不带前缀")
             .1
     );
@@ -3009,13 +3069,13 @@ fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
     // 端口读不懂 ⇒ **回默认**，不是 0、也不是崩。
     for bad in ["not-a-port", "70000", "-1", ""] {
         assert_eq!(
-            resolve_config(Some(bad), None).expect("应当回默认").0,
+            resolve_config(Some(bad), &|_| None).expect("应当回默认").0,
             8788,
             "读不懂的端口 {bad:?} 必须回默认"
         );
     }
     // 基址不认识 ⇒ None（调用方据此退 2）。
-    assert!(resolve_config(None, Some("ftp://x")).is_none());
+    assert!(resolve_config(None, &upstream_knob("ftp://x")).is_none());
 }
 
 /// ★★ `重要-3(D2)`：`run()` 那一层的**接线** —— 哪个环境变量喂给哪个配置位。
@@ -3035,12 +3095,16 @@ fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
 /// 「`run()` 真的读了那两个环境变量」今天**判不了**，登记住址件文件 §8.18.9。
 #[test]
 fn each_env_var_name_goes_into_its_own_config_slot() {
+    // ⚠ 〔条 60〕执行体的第 2 个位今天是**取值器本身**，不是「上游那个变量的值」：
+    //   上游旋钮每家一个、名字住层 2 那张表，层 1 只把取值器原样递过去。
+    //   ⇒ 本条量两件事：① 端口位读的是 `CCM_RELAY_PORT`；② 递下去的取值器**就是**入口收到的
+    //   那一个（拿它问上游那个变量名，答回来的是**入口那个取值器**的答案）。
     let seen: std::sync::Mutex<Vec<(Option<String>, Option<String>)>> =
         std::sync::Mutex::new(Vec::new());
-    let exec: &RelayExec<'_> = &|p, u, _get, _home| {
+    let exec: &RelayExec<'_> = &|p, get, _home| {
         seen.lock()
             .expect("lock")
-            .push((p.map(str::to_string), u.map(str::to_string)));
+            .push((p.map(str::to_string), get("CCM_RELAY_UPSTREAM")));
         7
     };
 
@@ -3057,7 +3121,7 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
             Some("CCM_RELAY_PORT".to_string()),
             Some("CCM_RELAY_UPSTREAM".to_string())
         )],
-        "第 1 个配置位必须读 CCM_RELAY_PORT，第 2 个必须读 CCM_RELAY_UPSTREAM"
+        "第 1 个配置位必须读 CCM_RELAY_PORT；递下去的取值器必须是入口收到的那一个"
     );
 
     // ㈡ 两个变量都没设 ⇒ 两个位都是 None，不是把变量名当默认值塞进去。
@@ -3068,6 +3132,19 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
         seen.lock().expect("lock").clone(),
         vec![(None, None)],
         "没设环境变量时两个配置位都该是 None"
+    );
+
+    // ㈢ 上游那个变量名**每家一个**，而读它的是层 2：拿层 2 那张表问一遍，它问的正是那个名字。
+    //    （期望值仍是手写字面量；被测的是 `Upstreams::from_env` 真的去问了它。）
+    let asked: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let _ = accounts::Upstreams::from_env(&|k| {
+        asked.lock().expect("lock").push(k.to_string());
+        None
+    });
+    assert_eq!(
+        asked.lock().expect("lock").clone(),
+        vec!["CCM_RELAY_UPSTREAM".to_string()],
+        "层 2 该问的上游旋钮（今天只登记了 claude-code 一家）不是这一个"
     );
 }
 
@@ -3082,12 +3159,11 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
 fn relay_entry_exit_code_within_5s(port_env: Option<String>, upstream_env: Option<String>) -> i32 {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(run_with(
-            port_env.as_deref(),
-            upstream_env.as_deref(),
-            &|_| None,
-            &nowhere_home(),
-        ));
+        let get = move |k: &str| match upstream_env.as_deref() {
+            Some(v) if k == "CCM_RELAY_UPSTREAM" => Some(v.to_string()),
+            _ => None,
+        };
+        let _ = tx.send(run_with(port_env.as_deref(), &get, &nowhere_home()));
     });
     rx.recv_timeout(std::time::Duration::from_secs(5))
         .expect("`--relay` 入口必须**返回** —— 超时说明它没退出，而是进了 serve()")
@@ -3112,9 +3188,12 @@ fn the_relay_entry_exits_with_two_when_it_cannot_start() {
     // ★ 先断「端口真被 env 盖住了」，**再**去调入口 —— 不然入口会去绑**别的**端口，
     //   绑得上就进 serve() 永不返回。这一条把那一形挡在门外，报错也更准。
     assert_eq!(
-        resolve_config(Some(&port.to_string()), Some("http://127.0.0.1:1"))
-            .expect("配置应当成立")
-            .0,
+        resolve_config(
+            Some(&port.to_string()),
+            &upstream_knob("http://127.0.0.1:1")
+        )
+        .expect("配置应当成立")
+        .0,
         port,
         "端口必须被 env 盖住，否则下一步绑的是别的端口"
     );
@@ -3478,7 +3557,7 @@ fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
     let relay = spawn_relay_child_with_creds(up.addr, &creds);
 
     // ① 起手：那个还没配的账号 **404**（非空对照排最前 —— 证明这把尺子分得出两种结局）。
-    let mut c = send_request(relay.addr, "/s/agentA/acctLate/sid-1/v1/messages", "");
+    let mut c = send_request(relay.addr, "/s/claude-code/acctLate/sid-1/v1/messages", "");
     let mut got = String::new();
     c.read_to_string(&mut got).expect("read");
     assert!(
@@ -3499,7 +3578,7 @@ fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
     .expect("重写凭据夹具");
 
     // ③ 同一个中转进程、同一条路：这一发必须**走通**，且带的是新那一行的 key。
-    let mut c2 = send_request(relay.addr, "/s/agentA/acctLate/sid-1/v1/messages", "");
+    let mut c2 = send_request(relay.addr, "/s/claude-code/acctLate/sid-1/v1/messages", "");
     let mut got2 = String::new();
     c2.read_to_string(&mut got2).expect("read");
     assert!(
@@ -3538,7 +3617,7 @@ fn a_broken_credentials_file_keeps_the_last_good_table_instead_of_emptying_it() 
     let relay = spawn_relay_child_with_creds(up.addr, &creds);
 
     // 非空对照：起手这一发走得通（否则下面「仍然走得通」是空真）。
-    let mut c = send_request(relay.addr, "/s/agentA/acctA/sid-1/v1/messages", "");
+    let mut c = send_request(relay.addr, "/s/claude-code/acctA/sid-1/v1/messages", "");
     let mut got = String::new();
     c.read_to_string(&mut got).expect("read");
     assert!(got.starts_with("HTTP/1.1 200"), "起手就不通：{got:?}");
@@ -3547,7 +3626,7 @@ fn a_broken_credentials_file_keeps_the_last_good_table_instead_of_emptying_it() 
     std::fs::write(&creds, b"{ \"accounts\": { \"acctA\": { } ").expect("写坏文件");
 
     // 正题：**仍然走得通** —— 上一张能用的表还在。
-    let mut c2 = send_request(relay.addr, "/s/agentA/acctA/sid-2/v1/messages", "");
+    let mut c2 = send_request(relay.addr, "/s/claude-code/acctA/sid-2/v1/messages", "");
     let mut got2 = String::new();
     c2.read_to_string(&mut got2).expect("read");
     assert!(
