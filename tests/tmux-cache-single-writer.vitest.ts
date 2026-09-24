@@ -136,7 +136,9 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
 
   it("★ TabManager 类内只剩一个取数点，且它就是写缓存的那一个", () => {
     const src = stripLineComments(readFileSync(join(SRC, HOME), "utf8"));
-    const fetches = (src.match(PATTERNS[0]) ?? []).length;
+    // 〔C4a · 子步 2〕原先只数裸 `invoke` 那一形（`PATTERNS[0]`）：那一处收进了包装层，这里改数两形之和
+    //   —— 只数一形的话「取数点换了写法」就会被读成「取数点没了」。
+    const fetches = PATTERNS.reduce((a, re) => a + (src.match(re) ?? []).length, 0);
     const writes = (src.match(/this\.tmuxCache\.set\(/g) ?? []).length;
 
     expect(

@@ -392,7 +392,7 @@ describe("C04a 命令名钉死", () => {
     }
 
     // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(132) // **〔F7c 收尾 09-24〕−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔B2 · 条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **〔合并 AL1〕+2（同上）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **〔A3 第二波〕+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **〔SE1〕+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **〔U3b〕+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **〔`设计/60 §4 戊` · `24e` 第二刀 · 09-20〕+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C 收尾 · 09-20〕−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **〔`设计/60 §5.4c` · 09-20〕+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C · 09-20〕−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // ／／ **〔步 23b · 09-20〕+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** //；**`设计/50` −4（那四条用量命令的声明整块删了）** //；**K-R109 +1（render_local_attach）—— ⚠ 本文件里跟着新命令走的是**三个**数，不是两个：`RUST_COMMAND_COUNT` · `TS_LITERAL_COMMAND_COUNT` · 这一个。派工单只点了前两个** //；**K-R69 +1（local_ccm_entry_status）**//；**K-R49 +1（write_account_aliases）**//；**K-H2b +1（apikey_routing_for：本件把它落进包装层而不是散在 `accounts.ts` —— 落哪儿会不会红是两个不同的数：散在别处只动上面那两个，进包装层**多动这一个**）** //；**K-H2a +2（read_apikey_credentials_status / write_apikey_credentials_key）** // P4c +2（cc_bus_broadcast / cc_bus_kill）; // devbench F03 +3（list_skills/read_skill_file/write_skill_file）；U8a-2c-1 +1（backend_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）；**P2s +5（set_backend_kill_on_exit / backend_status / backend_start / backend_stop / backend_machines：每台机一个后端开关，C8）** P3t-Y2b +1（local_tmux_names）；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**；**`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove：用户级 PATH 那一格，`R85`/`R87`/`R88`）**
+    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(142) // **〔C4a · 子步 2〕+10（`tab-session-actions.ts` / `accounts.ts` 那 16 处裸 `invoke` 调的命令里没进包装层的十条补齐：open_session_in_new_window · bring_terminal_to_front · bring_remote_terminal_to_front · forget_session · bring_monitor_to_front · list_remote_accounts · list_local_accounts · list_remote_session_accounts · check_account_trust · list_session_activity）⇒ **142 == `RUST_COMMAND_COUNT`，第一次全部经包装层**；Rust / TS 字面量两个数不动** // **〔F7c 收尾 09-24〕−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔B2 · 条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **〔合并 AL1〕+2（同上）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **〔A3 第二波〕+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **〔SE1〕+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **〔U3b〕+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **〔`设计/60 §4 戊` · `24e` 第二刀 · 09-20〕+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C 收尾 · 09-20〕−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **〔`设计/60 §5.4c` · 09-20〕+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C · 09-20〕−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // ／／ **〔步 23b · 09-20〕+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** //；**`设计/50` −4（那四条用量命令的声明整块删了）** //；**K-R109 +1（render_local_attach）—— ⚠ 本文件里跟着新命令走的是**三个**数，不是两个：`RUST_COMMAND_COUNT` · `TS_LITERAL_COMMAND_COUNT` · 这一个。派工单只点了前两个** //；**K-R69 +1（local_ccm_entry_status）**//；**K-R49 +1（write_account_aliases）**//；**K-H2b +1（apikey_routing_for：本件把它落进包装层而不是散在 `accounts.ts` —— 落哪儿会不会红是两个不同的数：散在别处只动上面那两个，进包装层**多动这一个**）** //；**K-H2a +2（read_apikey_credentials_status / write_apikey_credentials_key）** // P4c +2（cc_bus_broadcast / cc_bus_kill）; // devbench F03 +3（list_skills/read_skill_file/write_skill_file）；U8a-2c-1 +1（backend_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）；**P2s +5（set_backend_kill_on_exit / backend_status / backend_start / backend_stop / backend_machines：每台机一个后端开关，C8）** P3t-Y2b +1（local_tmux_names）；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**；**`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove：用户级 PATH 那一格，`R85`/`R87`/`R88`）**
   });
 
   // 标题里的数原先写着 112，而断言早就是 119 了（Z05 起 120；local-as-remote L3a 起 121）——**标题也是记录**，
@@ -970,7 +970,7 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
 // ══════════════════════════════════════════════════════════════════════════
 
 /** `origin` 参数现打的处数。**恒等**，不是地板 —— 地板在「变少」方向是瞎的。 */
-const ORIGIN_PARAM_COUNT = 33; // 〔B2 · 条 66〕+1（推生效值那一条退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 各带一个 `origin` +2）； 〔SE1〕+1（list_user_inputs 带一个 `origin: Origin`）； 〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range 各带一个 `origin: Origin`）
+const ORIGIN_PARAM_COUNT = 36; // 〔C4a · 子步 2〕+3（list_remote_accounts · list_remote_session_accounts · check_account_trust 各带一个 `origin: Origin`，随裸 `invoke` 收进包装层）； 〔B2 · 条 66〕+1（推生效值那一条退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 各带一个 `origin` +2）； 〔SE1〕+1（list_user_inputs 带一个 `origin: Origin`）； 〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range 各带一个 `origin: Origin`）
 
 /**
  * 从一段包装层文本里摘出每一处 `origin` 参数：`{ optional, type }`。
@@ -1127,7 +1127,7 @@ const PENDING: Record<string, string> = {
 };
 
 /** 基线之后现打的人群条数（带类型标注、名字带 origin 的声明）。 */
-const POPULATION = 175;
+const POPULATION = 178; // 〔C4a 子步 2〕+3：包装层新进的 list_remote_accounts / list_remote_session_accounts / check_account_trust 各带一个 `origin: Origin`
 
 interface Decl {
   /** `文件::宿主.名字`（宿主 = 外层接口 / 类 / 类型别名 / 函数名；顶层是 `<top>`）。 */
@@ -1219,17 +1219,21 @@ function originDecls(rel: string, src: string): Decl[] {
 
 /** 全部前端 TS（含生成物）。复用本文件的 `walk`（**不另起一个遍历**：`scanning-guard-registry` 的棘轮数着
  *  「做目录遍历的测试文件」，另起一份就多一个）；两个 Rust 工程住 `src/` 下，里面没有前端 TS，照样排掉。 */
+let originCorpusMemo: Decl[] | null = null;
 function originCorpus(): Decl[] {
+  // 解析全树要几秒；本节四条共用一份（每条各解析一遍在负载高时会撞 vitest 的 5 秒上限）。
+  if (originCorpusMemo) return originCorpusMemo;
   const all: Decl[] = [];
   for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
     const rel = f.slice(REPO_ROOT.length + 1);
     if (rel.startsWith("src/bridge/") || rel.startsWith("src/backend/")) continue;
     all.push(...originDecls(rel, readFileSync(f, "utf8")));
   }
+  originCorpusMemo = all;
   return all;
 }
 
-describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ 生成物）", () => {
+describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ 生成物）", { timeout: 30_000 }, () => {
   it("★★ 装得下 `null` 的 origin 声明 == 登记的待办（两向；今天只剩生成物一处）", () => {
     const found = originCorpus()
       .filter((d) => d.nullable)
@@ -1295,5 +1299,60 @@ describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ �
         `干净写法 ${src} 被判成违例 —— 假红比不查更坏`,
       ).toEqual([]);
     }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+//  〔C4a · 第四波 · 子步 2〕**裸 `invoke` 只在包装层** —— 零命中带正控
+//
+// 基线 `3c3a094e` 现打：`commands.ts` 之外还有 **16 处**裸 `invoke`（`tab-session-actions.ts` 11 ·
+// `accounts.ts` 5），它们调的命令里有 10 条根本不在包装层 ⇒ 名字 / 实参形状 / 返回类型三样都没人钉。
+// 这一拍把它们收进来，本节钉住「不许再长出来」。与 `generated-boundary-guard.vitest.ts` 那条
+// 「直接 import invoke 的生产文件恰好 1 个」**异源**：那条量 `import` 语句，本条量**调用点**
+// （命名空间导入 `import * as core` 之后 `core.invoke(` 那一形 import 那条看不见，本条的第三格补上）。
+// ══════════════════════════════════════════════════════════════════════════
+
+/** 一段（已剥注释的）TS 里直呼 `invoke(` 的处数。前面是标识符字符或 `.` 的不算（`myinvoke(` / `this.invoke(`）。 */
+function bareInvokeSites(code: string): number {
+  return [...code.matchAll(/(?<![A-Za-z0-9_$.])invoke\s*(?:<[\s\S]{0,200}?>)?\s*\(/g)].length;
+}
+
+describe("〔C4a〕裸 invoke 只在包装层", () => {
+  it("★★ 全仓生产 TS 里直呼 invoke 的文件 == { 包装层 }，且包装层里的处数 == 条目数（正控）", () => {
+    const perFile = new Map<string, number>();
+    for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+      if (f.includes(".test.") || f.includes(".vitest.")) continue;
+      const n = bareInvokeSites(stripComments(readFileSync(f, "utf8"), "ts"));
+      if (n > 0) perFile.set(f.slice(REPO_ROOT.length + 1), n);
+    }
+    expect(
+      [...perFile.keys()].sort(),
+      "包装层之外又有人直呼 `invoke` 了 —— 那等于两条路并存：名字 / 实参 / 返回类型三样没人钉。\n" +
+        "出路：在 `src/ipc/commands.ts` 加一个条目（键名 == 命令名 == 字面量），调用点改 `commands.x(…)`。",
+    ).toEqual([WRAPPER_FILE]);
+    // 正控：同一个识别器在包装层上数得出每个条目那一处（塌成 0 ⇒ 上面那条是拿空集比出的绿）。
+    expect(perFile.get(WRAPPER_FILE), "识别器在包装层上数出的处数 != 条目数").toBe(
+      Object.keys(commands).length,
+    );
+  });
+
+  it("★ 没有绕开 `invoke` 这个名字的第二条路（命名空间导入 / 全局注入对象）", () => {
+    const offenders: string[] = [];
+    for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+      if (f.includes(".test.") || f.includes(".vitest.")) continue;
+      const code = stripComments(readFileSync(f, "utf8"), "ts");
+      if (/import\s*\*\s*as\s+\w+\s+from\s*["']@tauri-apps\/api\/core["']/.test(code)) offenders.push(`${f} · import *`);
+      if (/__TAURI(?:_INTERNALS)?__/.test(code)) offenders.push(`${f} · __TAURI__`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("★ 识别器阳性三形 ＋ 阴性三形", () => {
+    expect(bareInvokeSites('await invoke("x");')).toBe(1);
+    expect(bareInvokeSites('invoke<Record<string, number>>("x", a);')).toBe(1);
+    expect(bareInvokeSites("invoke(cmd, args);"), "动态命令名也是直呼").toBe(1);
+    expect(bareInvokeSites("invokeLaunchOrCopyFallback(origin, cmd);")).toBe(0);
+    expect(bareInvokeSites("this.invoke(x); myinvoke(y);")).toBe(0);
+    expect(bareInvokeSites("commands.invoke_thing();")).toBe(0);
   });
 });
