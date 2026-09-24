@@ -2705,6 +2705,37 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "an_empty_path_is_refused_without_opening_a_window",
             1,
         ),
+        // 🔴〔本机侧退役 2026-09-23〕用户裁「本地不需要文件管理器」，而那条裁决与
+        //    `INVARIANTS §40 追加` 的「天然不对称白名单」第一条逐字一致
+        //    ⇒ 文件管理器的本机侧整条删了。下面**三条判据随它一起走**，
+        //    墓碑正文（存在过什么 · 谁裁的 · 白名单原文 · 买不到什么）住
+        //    `src/bridge/src/filewin/source.rs` 的头注。
+        //    ⚠ 点名的理由是「让随它们走掉的**检出力**有一份可读的账」——
+        //      这三条各钉一件不重复的事（阴性对照 · 同真同假 · 整条执行链）。
+        //      同轮还删了六条，那六条**刻意没点名**（名字里逐字带着 `the_local_side_…`，
+        //      点出来只是把同一句话说六遍）⇒ 它们不在这张表里，如实登记这个口径。
+        (
+            "src/bridge/src/filewin/source.rs",
+            "a_window_that_started_local_has_nowhere_to_go_back_to",
+            1,
+        ),
+        (
+            "src/bridge/src/filewin/source.rs",
+            "the_button_shows_up_exactly_when_the_jump_would_work",
+            1,
+        ),
+        (
+            "src/bridge/src/filewin/source.rs",
+            "a_real_click_on_the_go_back_button_walks_the_whole_chain",
+            1,
+        ),
+        // 🔴 同一轮：`parent_dir` 从「吃 `&Source`、两侧两个算法」收成「吃一条字符串」
+        //    ⇒ 那条判据的名字里「本机那一支」那半不成立了，改了名。旧名逐字留着。
+        (
+            "tests/bridge/filewin/source_tests.rs",
+            "walking_up_uses_slashes_on_the_remote_side_and_the_platform_on_the_local_side",
+            1,
+        ),
         // 🔴 〔`K-R48` 第二拍 09-11〕下面这 9 行全是同一件事的账：`shared/ccm` 那个 bash
         //    脚本与它那一族判据删了（`K33`：「不要有什么 bash 脚本」），而**散文里那几处
         //    点名它们的句子留着是有用的**（它们说的正是「这个东西为什么不在了」）
@@ -3379,6 +3410,11 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/backend/control/payload.rs", 1),
         ("src/bridge/src/backend/control/tmux.rs", 7),
         ("src/bridge/src/ccm_cli_contract.rs", 1),
+        // 🔴〔本机侧退役 2026-09-23〕文件管理器「本机」那一侧整条退役，
+        //   `source.rs` 的头注上留了一块墓碑：**4 处标记**（一处是墓碑正文那一句，
+        //   另三处各挂在一条**随功能一起走掉的判据**的名字上 ——
+        //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
+        ("src/bridge/src/filewin/source.rs", 4),
         ("src/bridge/src/history.rs", 1),
         ("src/bridge/src/launch.rs", 1),
         ("src/bridge/src/lib.rs", 1),
@@ -3414,6 +3450,9 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/crates/guard-core/lib_tests.rs", 1),
         ("tests/bridge/doc_claim_registry_tests.rs", 1),
         ("tests/bridge/filewin/entry_tests.rs", 1),
+        // 🔴〔本机侧退役 2026-09-23〕`parent_dir` 只剩一个算法 ⇒ 那条判据改了名
+        //   （旧名尾巴上那半判的是本机那一支）。旧名逐字留着说明「它为什么改了」。
+        ("tests/bridge/filewin/source_tests.rs", 1),
         ("tests/bridge/parity_ledger_tests.rs", 5),
         ("tests/bridge/plugin_class_registry_tests.rs", 2),
         ("tests/bridge/polling_registry_tests.rs", 1),

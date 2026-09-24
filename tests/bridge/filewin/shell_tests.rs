@@ -17,6 +17,13 @@ fn synth_cfg(label: &str) -> crate::ssh_source::RemoteConfig {
     }
 }
 
+/// 实景台架那两份 worker 与它们的父判据**共用的**那台合成远端的名字。
+///
+/// 🔴 抽成一个常量是承重的：父判据拿它算出期望的窗口标题、worker 拿它开窗，
+/// 两处各写一份字面量时「标题里含那个名字」这一比会在两处一起改错时**恒真**。
+#[cfg(not(windows))]
+const XVFB_ORIGIN: &str = "xvfb-origin";
+
 /// 造一棵**结构**上像样的临时目录树（名字全合成）。回 `(根, 根下那个子目录)`。
 fn synth_tree(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!(
@@ -45,22 +52,11 @@ fn names(w: &FileWindow) -> Vec<String> {
         .collect()
 }
 
-/// 骨架真的立得起来：本机源、列一个真目录、状态进得去。
-/// ⚠ **这条不开窗**（本机无图形会话）—— 它买的是「窗口状态机与数据面接得上」。
-#[test]
-fn a_local_window_loads_its_directory_without_a_display() {
-    let (root, _) = synth_tree("load");
-    let w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
-    assert_eq!(names(&w), vec!["sub", "f.txt"]);
-    assert!(w.listing.error.lock().unwrap().is_none());
-    std::fs::remove_dir_all(&root).ok();
-}
-
 /// 远端源拿不到运行时就**出声**，不假装列了个空目录。
 #[test]
 fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
     let w = FileWindow::new(
-        Source::Remote(Box::new(synth_cfg("synthetic-origin"))),
+        Source::remote(synth_cfg("synthetic-origin")),
         "/tmp".into(),
         None,
     );
@@ -69,59 +65,49 @@ fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
     assert!(e.is_some(), "没有运行时却没报错 —— 那是静默的空列表");
 }
 
-/// 反空真：错误目录必须留下错误，不是一个空列表。
-#[test]
-fn a_bad_local_path_surfaces_an_error() {
-    let w = FileWindow::new(
-        Source::Local,
-        "/definitely/not/a/real/path/9f3a".into(),
-        None,
-    );
-    assert!(w.listing.rows.lock().unwrap().is_empty());
-    assert!(w.listing.error.lock().unwrap().is_some());
-}
-
 /// `Source::label()` 是窗口标题的来源，别让它回空串。
+///
+/// ⚠ 从前这条还判一格「本机那一格逐字是『本机』两个中文字」——
+/// 本机侧退役之后那一格不存在了（`source.rs` 头注那块墓碑）。
 #[test]
 fn every_source_has_a_non_empty_label() {
-    assert_eq!(Source::Local.label(), "本机");
-    assert_eq!(
-        Source::Remote(Box::new(synth_cfg("tagged"))).label(),
-        "tagged"
-    );
+    assert_eq!(Source::remote(synth_cfg("tagged")).label(), "tagged");
     // `label` 为空时回退到 `host`（`RemoteConfig::origin_label` 的契约）。
     let mut anon = synth_cfg("");
     anon.label.clear();
-    assert_eq!(Source::Remote(Box::new(anon)).label(), "example.invalid");
+    assert_eq!(Source::remote(anon).label(), "example.invalid");
 }
 
 // ════════════════════════════════════════════════════════════════════════
 // 第二刀 · ② 那条链：**列它的目录 → 能往下走 → 退得回来**
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 **「能往下走」这件事有判据了。**
+/// 🔴 **「能往下走、退得回来」这件事有判据了。**
 ///
-/// 本机那一侧跑的是**真的**（真目录、真 `read_dir`），所以这条买到的是**行为**，
-/// 不是「源码里有个叫 navigate 的函数」。远端那一侧结构上走的是同一条
-/// [`FileWindow::navigate_to`]，只是它的 `reload()` 分派到 `list_remote`
-/// —— 那一段的读数买不到（红线不许起真连接），委派有判据（`source_tests`）。
+/// # ⚠〔2026-09-23〕它换了构造器，**买到的东西缩了一格，如实记**
+///
+/// 从前这条跑在**本机侧的真目录**上（真 `read_dir`），于是它顺带买到
+/// 「进去之后列的是 `sub` 的内容，不是上一层留下的」那一格相等断言。
+/// 本机侧退役之后窗口只看远端，而远端列目录**跑不了真的**
+/// （本仓红线不许起真连接）⇒ 那一格的**读数买不到了**。
+///
+/// ⇒ 换成 [`FileWindow::seeded`]（那个构造器正是为「屏幕上先有行」存在的），
+/// 本条今天钉的是**换目录这件事本身**：点开一个目录 ⇒ `cwd` 换成那一行的路径；
+/// 退一级 ⇒ `cwd` 换回来（`parent_dir` 那条纯函数有自己的判据，住 `source_tests`）。
+/// ⚠ 「换了目录上一屏要被清掉」由 `changing_directory_clears_the_previous_rows_...`
+/// 单独钉 —— 别读成本条还在判列表内容。
 #[test]
 fn double_clicking_a_directory_walks_into_it_and_up_walks_back() {
-    let (root, sub) = synth_tree("walk");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    let mut w = remote_window_with_rows("/srv/data", vec![dir_row("sub"), file_row("f.txt")]);
     assert_eq!(names(&w), vec!["sub", "f.txt"]);
 
     // `sub` 是第 0 行（目录在前）。点开它。
     assert!(w.activate(0), "点开一个目录却没换目录");
-    assert_eq!(w.cwd, sub.to_string_lossy().to_string());
-    // 相等断言：进去之后列的是 `sub` 的内容，不是上一层留下的。
-    assert_eq!(names(&w), vec!["deeper", "inner.txt"]);
+    assert_eq!(w.cwd, "/srv/data/sub");
 
     // 退回上一级。
     w.navigate_up();
-    assert_eq!(w.cwd, root.to_string_lossy().to_string());
-    assert_eq!(names(&w), vec!["sub", "f.txt"]);
-    std::fs::remove_dir_all(&root).ok();
+    assert_eq!(w.cwd, "/srv/data");
 }
 
 /// 点一个**文件**：什么都不做。
@@ -131,8 +117,7 @@ fn double_clicking_a_directory_walks_into_it_and_up_walks_back() {
 /// 屏幕上出现一条莫名其妙的红字。⇒ 明确的不动。
 #[test]
 fn clicking_a_file_does_nothing_rather_than_cd_into_it() {
-    let (root, _) = synth_tree("file");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    let mut w = remote_window_with_rows("/srv/data", vec![dir_row("sub"), file_row("f.txt")]);
     let before = w.cwd.clone();
     // 第 1 行是 `f.txt`（目录在前 ⇒ 第 0 行是 `sub`）。
     assert!(!w.activate(1), "点文件竟然换了目录");
@@ -140,17 +125,15 @@ fn clicking_a_file_does_nothing_rather_than_cd_into_it() {
     assert!(w.listing.error.lock().unwrap().is_none());
     // 越界也不许 panic（列表随时可能刚被刷短）。
     assert!(!w.activate(999));
-    std::fs::remove_dir_all(&root).ok();
 }
 
 /// 到顶了就停住 —— 不许一路 `..` 走出文件系统。
 #[test]
 fn walking_up_from_the_top_stays_at_the_top() {
-    let remote = Source::Remote(Box::new(synth_cfg("r")));
-    assert_eq!(parent_dir(&remote, "/"), "/");
-    assert_eq!(parent_dir(&remote, "/a"), "/");
+    assert_eq!(parent_dir("/"), "/");
+    assert_eq!(parent_dir("/a"), "/");
 
-    let mut w = FileWindow::new(remote, "/".into(), None);
+    let mut w = FileWindow::new(Source::remote(synth_cfg("r")), "/".into(), None);
     w.navigate_up();
     assert_eq!(w.cwd, "/", "从根再往上走，路径变了");
 }
@@ -161,12 +144,12 @@ fn walking_up_from_the_top_stays_at_the_top() {
 /// 而用户会对着 B 的路径删 A 的东西。
 #[test]
 fn changing_directory_clears_the_previous_rows_instead_of_leaving_them_up() {
-    let (root, _) = synth_tree("clear");
-    // 起点是个真目录 ⇒ 列表非空；再换到一个**远端**目录（没有运行时 ⇒ 列不出来）。
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    // 起点是**先播好的一屏** ⇒ 列表非空；再换一个目录（没有运行时 ⇒ 列不出来）。
+    // ⚠ 从前这里的起点是本机一棵真目录树（`FileWindow::new(Source::Local, …)`），
+    //   本机侧退役之后换成 `seeded` —— 本条要的从来只是「屏幕上先有行」。
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
     assert!(!w.listing.rows.lock().unwrap().is_empty());
 
-    w.source = Source::Remote(Box::new(synth_cfg("r")));
     w.navigate_to("/somewhere/else".into());
     assert!(
         w.listing.rows.lock().unwrap().is_empty(),
@@ -177,7 +160,6 @@ fn changing_directory_clears_the_previous_rows_instead_of_leaving_them_up() {
         w.listing.error.lock().unwrap().is_some(),
         "列不出来却既没有行也没有错 —— 那是静默的空目录"
     );
-    std::fs::remove_dir_all(&root).ok();
 }
 
 /// 🔴 **迟到的那一份不许盖掉新目录的内容。**
@@ -250,26 +232,6 @@ fn a_listing_in_flight_is_visible_as_loading() {
     assert!(!l.is_loading());
 }
 
-/// 「本机」那颗按钮：`list_local` 今天唯一的**用户可达**入口。
-#[test]
-fn the_local_button_switches_the_window_to_the_local_side() {
-    let (root, _) = synth_tree("localbtn");
-    let mut w = FileWindow::new(
-        Source::Remote(Box::new(synth_cfg("r"))),
-        "/remote/dir".into(),
-        None,
-    );
-    assert!(w.source.is_remote());
-    w.go_local(root.to_string_lossy().to_string());
-    assert!(!w.source.is_remote());
-    assert_eq!(names(&w), vec!["sub", "f.txt"]);
-    assert!(
-        w.listing.error.lock().unwrap().is_none(),
-        "切到本机之后还挂着远端那条报错"
-    );
-    std::fs::remove_dir_all(&root).ok();
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // 第二刀 · ③ `§5.4d` 在窗口这一侧接得上吗
 // ════════════════════════════════════════════════════════════════════════
@@ -277,11 +239,7 @@ fn the_local_button_switches_the_window_to_the_local_side() {
 /// 拖进来的本机路径 → 待传清单：**目标目录就是当前目录**，名字取 basename。
 #[test]
 fn dropped_paths_become_pending_uploads_into_the_current_directory() {
-    let w = FileWindow::new(
-        Source::Remote(Box::new(synth_cfg("r"))),
-        "/srv/data".into(),
-        None,
-    );
+    let w = FileWindow::new(Source::remote(synth_cfg("r")), "/srv/data".into(), None);
     let got = w.pending_for(&["/home/u/a.txt".to_string(), "/home/u/dir/b.bin".to_string()]);
     assert_eq!(
         got.iter()
@@ -295,21 +253,10 @@ fn dropped_paths_become_pending_uploads_into_the_current_directory() {
     );
 }
 
-/// 本机那一侧**不接**拖入 —— 本机拖本机是「复制文件」，那是另一件事，本刀不做。
-#[test]
-fn dropping_onto_the_local_side_yields_nothing_to_upload() {
-    let w = FileWindow::new(Source::Local, "/tmp".into(), None);
-    assert!(w.pending_for(&["/home/u/a.txt".to_string()]).is_empty());
-}
-
 /// 接不上就**出声**：远端源 ＋ 没有运行时 ⇒ 不许静默吞掉一摞文件。
 #[test]
 fn a_drop_with_no_runtime_says_so_instead_of_swallowing_the_files() {
-    let mut w = FileWindow::new(
-        Source::Remote(Box::new(synth_cfg("r"))),
-        "/srv/data".into(),
-        None,
-    );
+    let mut w = FileWindow::new(Source::remote(synth_cfg("r")), "/srv/data".into(), None);
     let items = w.pending_for(&["/home/u/a.txt".to_string()]);
     assert_eq!(items.len(), 1);
     *w.listing.error.lock().unwrap() = None;
@@ -323,8 +270,9 @@ fn a_drop_with_no_runtime_says_so_instead_of_swallowing_the_files() {
 /// 传完一趟要重列目录（新文件得出现），而且**只重列一次**。
 #[test]
 fn finishing_a_drop_round_triggers_exactly_one_reload() {
-    let (root, _) = synth_tree("round");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    // ⚠ 本条要的只是「有一个窗口」（它数的是那个消化计数器），
+    //   从前拿本机一棵真目录树当窗口；本机侧退役之后换 `seeded`。
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
     assert!(!w.settle_finished_drops(), "一趟都没跑却说要重列");
 
     w.board.finish(crate::filewin::transfer::DropOutcome {
@@ -335,7 +283,6 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
     });
     assert!(w.settle_finished_drops(), "跑完一趟却不重列");
     assert!(!w.settle_finished_drops(), "同一趟重列了第二次");
-    std::fs::remove_dir_all(&root).ok();
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -345,12 +292,7 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
 /// 造一个「看着某个远端目录、列表里有几行」的窗口。**不起连接**
 /// （`host` 是 `.invalid`，而且这几条一次 `reload` 都不触发远端那一支）。
 fn remote_window_with_rows(cwd: &str, rows: Vec<Row>) -> FileWindow {
-    let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("r"))),
-        cwd.to_string(),
-        None,
-        rows,
-    );
+    let mut w = FileWindow::seeded(Source::remote(synth_cfg("r")), cwd.to_string(), None, rows);
     *w.listing.error.lock().unwrap() = None;
     w.tally = crate::filewin::rows::RenderTally::default();
     w
@@ -411,20 +353,6 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
     assert!(w.copy_prompt().is_none());
 }
 
-/// 本机那一侧**出声**：`copy-data` 是 SFTP 协议的扩展，本机复制压根不经 SFTP。
-#[test]
-fn the_local_side_refuses_to_copy_and_says_why() {
-    let (root, _) = synth_tree("copylocal");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
-    *w.listing.error.lock().unwrap() = None;
-    assert!(!w.begin_copy(1), "本机那一侧竟然摆出了「复制为」框");
-    assert!(
-        w.listing.error.lock().unwrap().is_some(),
-        "本机那一侧点了复制，屏幕上一句话都没有 —— 那与「点了没反应」分不开"
-    );
-    std::fs::remove_dir_all(&root).ok();
-}
-
 /// 接不上就**出声**：远端源 ＋ 没有运行时 ⇒ 不许静默吞掉一趟复制。
 #[test]
 fn a_copy_with_no_runtime_says_so_instead_of_doing_nothing() {
@@ -478,8 +406,8 @@ fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
 /// 复制跑完一趟要重列目录（复制出来的那份得出现），而且**只重列一次**。
 #[test]
 fn finishing_a_copy_round_triggers_exactly_one_reload() {
-    let (root, _) = synth_tree("copyround");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    // ⚠ 同 `finishing_a_drop_round_triggers_exactly_one_reload`：换了构造器，判的没变。
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
     assert!(!w.settle_finished_copies(), "一趟都没跑却说要重列");
 
     w.copy_board
@@ -489,7 +417,6 @@ fn finishing_a_copy_round_triggers_exactly_one_reload() {
         });
     assert!(w.settle_finished_copies(), "跑完一趟却不重列");
     assert!(!w.settle_finished_copies(), "同一趟重列了第二次");
-    std::fs::remove_dir_all(&root).ok();
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -566,9 +493,13 @@ fn join_verdict(
 fn xvfb_worker_opens_a_real_window() {
     use crate::filewin::rows::testing::xvfb;
     let display = xvfb::child_display();
-    let (root, _) = synth_tree("xvfb-open");
-    let cwd = root.to_string_lossy().to_string();
-    let rows = list_local(&root).expect("列那棵临时目录树 —— 这一格的前提");
+    // 🔴〔2026-09-23 本机侧退役〕**种子从「真目录树」换成「合成的几行」。**
+    //    从前这里 `synth_tree()` 造一棵临时目录树、`list_local()` 列一趟当种子。
+    //    窗口今天只看远端 ⇒ 那棵树没有对应的一侧了。
+    //    ⚠ 这一换**不减读数**：`open_detached_seeded` 从来就不列目录（种子是给它的），
+    //      这一格买的是「窗口真的起来了 ＋ 标题 ＋ 几何 ＋ 循环干净退出」。
+    let cwd = "/srv/xvfb-open".to_string();
+    let rows = vec![dir_row("sub"), file_row("f.txt")];
     xvfb::emit("a.seed_rows", rows.len());
 
     // 🔴〔第十三刀〕**印出自己的 pid**：「一趟一个进程」那条判据靠它做反空真锚
@@ -577,7 +508,13 @@ fn xvfb_worker_opens_a_real_window() {
     xvfb::emit("a.pid", std::process::id());
     let req0 = open_requested();
     let opened0 = windows_opened();
-    let h = open_detached_seeded(Source::Local, cwd.clone(), None, rows.clone(), None);
+    let h = open_detached_seeded(
+        Source::remote(synth_cfg(XVFB_ORIGIN)),
+        cwd.clone(),
+        None,
+        rows.clone(),
+        None,
+    );
 
     let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 20_000);
     xvfb::emit("a.window_count", ids.len());
@@ -673,7 +610,6 @@ fn xvfb_worker_opens_a_real_window() {
     // 它在新形态下由 `proc_tests` 那两条买（当场死掉的进程回一句非空的原因），
     // 而**不是**由实景台架买 —— 如实登记，别以为它跟着搬过去了。
     let _ = (cwd, rows);
-    std::fs::remove_dir_all(&root).ok();
 }
 
 /// **实景工作面（阴性对照）**：`DISPLAY` 指着一台**不存在**的 X 服务器。
@@ -688,20 +624,18 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         "阴性对照的前提没建立：{display} 上**真有**一台 X 服务器 —— \
          这一格判不了（它要的正是「一台都没有」）"
     );
-    let (root, _) = synth_tree("xvfb-nodisp");
-    let rows = list_local(&root).expect("列那棵临时目录树 —— 这一格的前提");
+    // 种子换成合成的几行（同 `xvfb_worker_opens_a_real_window` 那条理由）。
     let h = open_detached_seeded(
-        Source::Local,
-        root.to_string_lossy().to_string(),
+        Source::remote(synth_cfg(XVFB_ORIGIN)),
+        "/srv/xvfb-nodisp".to_string(),
         None,
-        rows,
+        vec![file_row("f.txt")],
         None,
     );
     let (verdict, why) = join_verdict(h, 30_000);
     xvfb::emit("n.run_native", verdict);
     xvfb::emit("n.reason_len", why.chars().count());
     xvfb::emit("n.reason", why.replace('\n', " "));
-    std::fs::remove_dir_all(&root).ok();
 }
 
 /// 实景子进程的读数 —— 🔴〔第十三刀 2026-09-23〕**一趟变三趟。**
@@ -804,7 +738,9 @@ fn the_native_window_really_comes_up_on_a_real_graphics_session() {
         run.reading("a.window_count")
     );
     let name = run.reading("a.window_name");
-    let label = Source::Local.label();
+    // 🔴 标题里那个串与 worker 那一侧**同一个来源**（同一个常量喂同一个
+    //    `Source::label()`）—— 两处各写一份字面量的话，这一比会变成恒真。
+    let label = Source::remote(synth_cfg(XVFB_ORIGIN)).label();
     assert!(
         name.contains(&label),
         "窗口标题是 {name:?}，里面没有 `Source::label()` 给的 {label:?} —— \
@@ -1040,6 +976,9 @@ fn the_windows_branch_hands_process_dpi_to_tauri() {
 // ════════════════════════════════════════════════════════════════════════
 
 /// 一行**目录**（第五刀起目录也能改名/删除/改权限，只是不能复制）。
+///
+/// ⚠〔2026-09-23〕导航那两条判据现在也吃它：本机侧退役之前它们走的是
+/// 本机一棵真目录树（那棵树自带一个真目录），今天走 `seeded` ＋ 这一行。
 fn dir_row(name: &str) -> Row {
     Row {
         name: name.to_string(),
@@ -1130,39 +1069,6 @@ fn a_lossy_name_or_an_out_of_range_row_is_refused_by_the_second_gate() {
     assert!(w.write_prompt().is_none());
 }
 
-/// 本机那一侧**四条都拒，而且出声** —— 它们走的是远端那四条 SFTP 命令。
-#[test]
-fn the_local_side_refuses_all_four_write_ops_and_says_why() {
-    let (root, _) = synth_tree("writelocal");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
-    for (what, refused) in [
-        ("新建目录", {
-            *w.listing.error.lock().unwrap() = None;
-            !w.begin_mkdir()
-        }),
-        ("改名", {
-            *w.listing.error.lock().unwrap() = None;
-            !w.begin_rename(0)
-        }),
-        ("权限", {
-            *w.listing.error.lock().unwrap() = None;
-            !w.begin_chmod(0)
-        }),
-        ("删除", {
-            *w.listing.error.lock().unwrap() = None;
-            !w.begin_delete(0, None)
-        }),
-    ] {
-        assert!(refused, "本机那一侧竟然接了「{what}」");
-        assert!(
-            w.listing.error.lock().unwrap().is_some(),
-            "本机那一侧点了「{what}」，屏幕上一句话都没有 —— 与「点了没反应」分不开"
-        );
-    }
-    assert!(w.write_prompt().is_none());
-    std::fs::remove_dir_all(&root).ok();
-}
-
 /// 🔴 输入不合法 ⇒ **框留着 ＋ 出声**，不静默收掉（同 `confirm_copy` 那一条）。
 #[test]
 fn an_impossible_input_keeps_the_write_box_up_and_says_why() {
@@ -1198,14 +1104,13 @@ fn an_impossible_input_keeps_the_write_box_up_and_says_why() {
 /// 一摞写操作跑完要重列目录（新目录要出现、删掉的要消失），而且**只重列一次**。
 #[test]
 fn finishing_a_write_round_triggers_exactly_one_reload() {
-    let (root, _) = synth_tree("writeround");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    // ⚠ 同上那两条：换了构造器，判的没变。
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
     assert!(!w.settle_finished_writes(), "一摞都没跑却说要重列");
     w.write_board
         .finish(crate::filewin::writeops::WriteOutcome::default());
     assert!(w.settle_finished_writes(), "跑完一摞却不重列");
     assert!(!w.settle_finished_writes(), "同一摞重列了第二次");
-    std::fs::remove_dir_all(&root).ok();
 }
 
 /// 🔴 **被围栏挡住那句话真的被画在窗口上**（不是 `tracing`）。
@@ -1217,8 +1122,8 @@ fn finishing_a_write_round_triggers_exactly_one_reload() {
 /// ⚠ 这一条是完成判据「围栏那一条要有阴性对照 …… 而且窗口上**要出声**」的那半。
 #[test]
 fn the_fence_line_really_gets_painted_on_the_window() {
-    let (root, _) = synth_tree("writefence");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
+    // ⚠ 换了构造器（本机侧退役）。本条要的只是「有一个窗口能画一帧」。
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
     let ctx = egui::Context::default();
     let blocked = crate::filewin::writeops::fence_notice(
         &crate::filewin::writeops::WriteOp::Delete {
@@ -1244,7 +1149,6 @@ fn the_fence_line_really_gets_painted_on_the_window() {
         !painted.iter().any(|t| t.contains("这句话根本没人画过它")),
         "量具在乱认"
     );
-    std::fs::remove_dir_all(&root).ok();
 }
 
 /// 🔴 **命中那一摞交不出任何一个下标** —— 那三条写胶水索引的是另一摞东西。
@@ -1369,7 +1273,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
     use crate::filewin::writeops::{DELETE_LABEL, FENCE_PREFIX};
     let jsonl = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("e2e-fence"))),
+        Source::remote(synth_cfg("e2e-fence")),
         "/home/u/.claude/projects/dash-proj".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         vec![Row {
@@ -1448,199 +1352,24 @@ async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第六刀 2026-09-21〕「本机」那颗按钮原本是**一扇单向门**
+// 🔴〔第六刀 2026-09-21 · **整摞退役 2026-09-23**〕「本机」那颗按钮
 // ════════════════════════════════════════════════════════════════════════
 //
-// # 缺陷的形状（现打，不是推测）
+// 这里原来有 3 条判据，钉的是「点一下『本机』还回得来」那条往返
+// （以及它当初修掉的那扇单向门）。2026-09-23 用户裁掉了整个本机侧
+// ⇒ 3 条随功能一起走了。存在过什么 · 谁裁的 · 那条白名单原文，
+// **完整记述只有一份**，住 `src/bridge/src/filewin/source.rs` 的头注（那块墓碑）。
 //
-// `go_local` 那一句 `self.source = Source::Local;` 把 `Source::Remote` 那个枚举格
-// **盖掉了** —— 而 `RemoteConfig` 就住在那个格子里。窗口上没有第二条路能把它拿回来：
-// 没有第二条 `#[tauri::command]`（`entry_tests` 钉着「恰好 1 条」）、没有 `go_remote`、
-// 界面上本机态那一格只是个 `ui.label("本机")`。
-// ⇒ **用户点一下「本机」，这个窗口就再也回不到远端**，只能关掉、回老面板重开一个。
+// ⚠ **随它们一起走掉的检出力，如实点名**（三条各自独占的那一刀）：
+// ⑤「没有来处也报回去成功了」· ③「按钮恒画 ⇒ 画了点了没反应」·
+// ④「只摘掉界面那颗按钮、函数留着」。
+// 这三刀今天**打不到任何东西** —— 靶子（那一对函数与那颗按钮）不在了，
+// 不是「判据少了三条、缺陷还在」。
 //
-// ⚠ 而它此前**一条判据都没有** —— 不是「判据红了没人管」，是那件事没人在看。
-// 同一形在本会话里已经出现过一次（标签页顺序存盘那条，也是零判据）。
+// ⚠ 而**方法**留下来了，并且本刀又用了一遍：一条判据挣不挣得到它的位子，
+// 看的是「有没有只有它才红的那一刀」；而一条判据该不该删，看的是
+// **它的靶子还在不在** —— 两个问题不一样，混起来就会把真判据当兼容债删掉。
 //
-// # 这一摞分四条，各钉一件（少一条会怎样，逐条写在各自头上）
-//
-// # 这一摞是 **3 条**，不是 4 条 —— 而那是量出来的
-//
-// 先写了 4 条，然后拿**六把刀**挨个验「这一条有没有只有它才红的那一格」：
-//
-// | 刀（各改坏一处） | 阴性对照 | 同真同假 ＋ 落点 | 执行链 |
-// |---|---|---|---|
-// | ① `go_local` 不记来处（＝**原本那条缺陷**） | ok | 🔴 | 🔴 |
-// | ② 回到 `/` 而不是离开时那儿 | ok | 🔴 | 🔴 |
-// | ③ `return_label` 恒回 `Some`（按钮恒画） | 🔴 | 🔴 | ok |
-// | ④ **只摘掉界面那颗按钮，函数留着** | ok | ok | 🔴 |
-// | ⑤ 没有来处也报「回去成功了」 | 🔴 | ok | ok |
-// | ⑥ 目录回对了，但回到了另一台机器 | ok | 🔴 | ok |
-//
-// 🔴 原先还有第 4 条（`..._lands_on_the_very_directory_we_left`，单判「回去落在离开时那儿」）——
-// **六把刀里它一格独占都没有**，能红它的 ①②⑥ 全被「同真同假」那条覆盖。
-// ⇒ 按「判据该变少」那条裁决，把它那两句独特断言（第一趟就判相等 · 回来那一侧的机器身份）
-// 并进了第 ③ 步，然后删掉它。**检出力一格没丢**（同一套刀复验过）。
-//
-// ⚠ 方法本身是这一摞的产出：「这条判据挣不挣得到它的位子」= **有没有只有它才红的那一刀**。
-// 光看「它绿着」或「它红了」都答不了这个问题。
-//
-// | 留下的 3 条 | 它钉的那一形 | 它独占的那一刀 |
-// |---|---|---|
-// | `a_window_that_started_local_has_nowhere_to_go_back_to` | 🔴 **阴性对照**：没有来处时那条路不该通 | ⑤ |
-// | `the_button_shows_up_exactly_when_the_jump_would_work` | 「按钮画了但点了没反应」这个静默态不成立 ＋ 回去的落点与机器身份 | ③⑥ |
-// | `a_real_click_on_the_go_back_button_walks_the_whole_chain` | 🔴 **不跳任何一跳**：真合成一次点击 | ④ |
-
-/// 🔴 **阴性对照**：一开始就是本机侧的窗口，**没有来处**。
-///
-/// 少了它，上一条可以靠一个「恒有来处」的实现全绿 —— 那时本机侧的窗口上会画出
-/// 一颗回不去任何地方的按钮（点下去什么都不发生，或者跳到一份空配置上）。
-#[test]
-fn a_window_that_started_local_has_nowhere_to_go_back_to() {
-    let (root, _) = synth_tree("nowhere");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
-    assert!(w.return_label().is_none(), "本机侧开的窗口凭空有了一个来处");
-    assert!(
-        !w.go_remote(),
-        "没有来处却「回去」成功了 —— 那它回到哪儿去了？"
-    );
-    assert!(!w.source.is_remote(), "没有来处的那一跳把侧改了");
-    assert_eq!(w.cwd, root.to_string_lossy(), "没有来处的那一跳把路径改了");
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-/// 🔴 **按钮在不在** 与 **跳得成不成** 是同一个条件。
-///
-/// 失效形状是个静默态：两处各写一份条件 ⇒ 「按钮画出来了，点了没反应」。
-/// ⇒ 本条把 `return_label()`（界面看的那一个）与 `go_remote()`（真跳的那一个）
-/// 在**四种状态**上对拍成同真同假。
-#[test]
-fn the_button_shows_up_exactly_when_the_jump_would_work() {
-    let (root, _) = synth_tree("iff");
-    let local = root.to_string_lossy().to_string();
-    // ① 远端态：按钮不该在（那时画的是「本机」那颗），跳也不该成。
-    let mut w = FileWindow::new(
-        Source::Remote(Box::new(synth_cfg("m1"))),
-        "/a/b".into(),
-        None,
-    );
-    assert_eq!(w.return_label().is_some(), false, "远端态就已经有来处了");
-    // ② 走开：按钮该在，标签**就是那台机器的名字**（相等，不是「非空」）。
-    w.go_local(local.clone());
-    assert_eq!(w.return_label().as_deref(), Some("m1"));
-    assert_eq!(
-        w.return_label().unwrap(),
-        synth_cfg("m1").origin_label(),
-        "按钮上那个名字不是 `origin_label()` —— 那就是给「哪台机器」造了第二种表达"
-    );
-    // ③ 跳成之后：**第一趟就要落在离开时那个目录上**（相等，不是「是远端就行」——
-    //    一个把 `cwd` 设成 `/` 的实现对用户是「你刚翻到的那一层没了」），
-    //    而且要回到**同一台机器**；来处用掉了，按钮该没了。
-    assert!(w.go_remote(), "回不去 —— 那就是那扇单向门还在");
-    assert!(w.source.is_remote(), "回来了但侧没换回远端");
-    assert_eq!(
-        w.cwd, "/a/b",
-        "回来了，但不是离开时那个目录 —— 用户刚翻到的那一层被扔了"
-    );
-    assert_eq!(
-        match &w.source {
-            Source::Remote(cfg) => cfg.origin_label(),
-            Source::Local => "本机".into(),
-        },
-        "m1",
-        "回到了另一台机器上 —— 来处那份 `cfg` 没被原样放回去"
-    );
-    assert!(w.return_label().is_none(), "回来了，来处却还挂着");
-    // ④ 再走开一次：这件事可重复（不是一次性的）。
-    w.go_local(local);
-    assert_eq!(
-        w.return_label().as_deref(),
-        Some("m1"),
-        "第二次走开就记不住了"
-    );
-    assert!(w.go_remote(), "第二次回不去");
-    assert_eq!(w.cwd, "/a/b");
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-/// 🔴🔴 **整条链一趟走完**：真点一下那颗「回 <机器名>」→ 窗口真回到远端那个目录。
-///
-/// # 为什么上面三条不够
-///
-/// 那三条调的是 `go_remote()` 这个**函数**。而「`frame_body` 里那颗按钮真的画出来了、
-/// 真的接到这个函数上」是**另一件事** —— 本仓那条「判据不在执行链上就等于不存在」
-/// 在本会话里已经抓到过同一形（波 β：`frame_body` 那三跳两头都有判据、中间没人看）。
-/// ⇒ 本条在真 `egui::Context` 上合成一次指针点击，不跳任何一跳。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_real_click_on_the_go_back_button_walks_the_whole_chain() {
-    let (root, _) = synth_tree("chain");
-    let deep = "/srv/deep/where-i-was";
-    let mut w = FileWindow::new(
-        Source::Remote(Box::new(synth_cfg("clickbox"))),
-        deep.into(),
-        tokio::runtime::Handle::try_current().ok(),
-    );
-    w.go_local(root.to_string_lossy().to_string());
-    let label = format!("回 {}", w.return_label().expect("走开之后没有来处"));
-
-    let ctx = egui::Context::default();
-    // 第一帧：建字体图集 ＋ 让上一帧的 widget 表有内容（egui 的命中测试按上一帧做）。
-    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    let painted = crate::filewin::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1280.0, 800.0),
-        0.1,
-        Vec::new(),
-        |ui| w.frame_body(ui),
-    );
-    let hits = crate::filewin::copy::testing::rects_of(&painted, &label);
-    assert_eq!(
-        hits.len(),
-        1,
-        "这一帧上没有那颗「{label}」（实得 {} 处）—— 工具栏那一格没画它，\
-         或者它的标签与 `return_label()` 拼出来的不是同一个串",
-        hits.len()
-    );
-    let pos = hits[0].center();
-
-    // 第二帧：移上去；第三帧：真按下去。
-    let _ = crate::filewin::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1280.0, 800.0),
-        0.2,
-        vec![egui::Event::PointerMoved(pos)],
-        |ui| w.frame_body(ui),
-    );
-    let _ = crate::filewin::copy::testing::painted_text(
-        &ctx,
-        egui::vec2(1280.0, 800.0),
-        0.3,
-        vec![
-            egui::Event::PointerMoved(pos),
-            egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: true,
-                modifiers: egui::Modifiers::default(),
-            },
-            egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers: egui::Modifiers::default(),
-            },
-        ],
-        |ui| w.frame_body(ui),
-    );
-
-    assert!(
-        w.source.is_remote(),
-        "真点了那颗按钮，窗口还在本机侧 —— 那一跳没接到 `go_remote` 上"
-    );
-    assert_eq!(w.cwd, deep, "点回去了，但落错了目录");
-    let _ = std::fs::remove_dir_all(&root);
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // 🔴〔第八刀 2026-09-22〕往外拖 —— 行上那颗「下载」到窗口那两问
 // ════════════════════════════════════════════════════════════════════════
@@ -1657,7 +1386,7 @@ async fn a_real_click_on_the_go_back_button_walks_the_whole_chain() {
 async fn a_real_click_on_download_opens_the_destination_question() {
     use crate::filewin::download::{Ask, DOWNLOAD_LABEL};
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("pull-e2e"))),
+        Source::remote(synth_cfg("pull-e2e")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         vec![Row {
@@ -1755,7 +1484,7 @@ async fn confirming_onto_an_existing_file_switches_to_the_overwrite_question() {
     );
 
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("pull-ow"))),
+        Source::remote(synth_cfg("pull-ow")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         vec![Row {
@@ -1791,26 +1520,6 @@ async fn confirming_onto_an_existing_file_switches_to_the_overwrite_question() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// 本机那一侧**出声拒**，不静默 —— 同 `the_local_side_refuses_to_copy_and_says_why` 的口径。
-#[test]
-fn the_local_side_has_nothing_to_drag_out_and_says_so() {
-    let (root, _) = synth_tree("pull-local");
-    let mut w = FileWindow::new(Source::Local, root.to_string_lossy().to_string(), None);
-    // 本机侧列得出真行（否则下面那一比是空真的）。
-    assert!(!names(&w).is_empty(), "本机侧一行都没列出来");
-    assert!(!w.begin_pull(0), "本机侧竟然摆出了落点框");
-    let e = w
-        .listing
-        .error
-        .lock()
-        .unwrap()
-        .clone()
-        .expect("本机侧拒了却一个字都没说 —— 那与「点了没反应」同形");
-    assert!(e.contains("本机"), "那句话没说清为什么：{e}");
-    assert!(w.pull_ask().is_none());
-    let _ = std::fs::remove_dir_all(&root);
-}
-
 /// 🔴 目录与有损名那两行上**一颗「下载」都不画**。
 ///
 /// # 它补的洞是量出来的（刀③）
@@ -1825,7 +1534,7 @@ fn the_local_side_has_nothing_to_drag_out_and_says_so() {
 async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
     use crate::filewin::download::DOWNLOAD_LABEL;
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("pull-gate"))),
+        Source::remote(synth_cfg("pull-gate")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         vec![
@@ -1869,7 +1578,7 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
     // 🔴 阴性对照：**能拉的那一行上它必须画出来** ——
     //    少了这一半，上面那一比可以靠「哪一行都不画」全绿（那时这个功能根本不存在）。
     let mut w2 = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("pull-gate-ok"))),
+        Source::remote(synth_cfg("pull-gate-ok")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         vec![Row {
@@ -1909,7 +1618,7 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
 async fn a_real_click_on_edit_fires_the_read() {
     use crate::filewin::editor::EDIT_LABEL;
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("edit-e2e"))),
+        Source::remote(synth_cfg("edit-e2e")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         vec![Row {
@@ -1988,7 +1697,7 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
     use crate::filewin::editor::EDIT_LABEL;
     let big = crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1;
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("edit-big"))),
+        Source::remote(synth_cfg("edit-big")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         vec![Row {
@@ -2038,7 +1747,7 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("edit-dirty"))),
+        Source::remote(synth_cfg("edit-dirty")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         Vec::new(),
@@ -2091,7 +1800,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("edit-fence"))),
+        Source::remote(synth_cfg("edit-fence")),
         "/home/u/.claude/projects/p".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         Vec::new(),
@@ -2163,7 +1872,7 @@ async fn revealing_a_deep_row_scrolls_by_arithmetic_without_materialising_everyt
     let rows = many_rows(n);
     let want = rows[target].name.clone();
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("reveal-deep"))),
+        Source::remote(synth_cfg("reveal-deep")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         rows,
@@ -2234,7 +1943,7 @@ async fn revealing_a_deep_row_scrolls_by_arithmetic_without_materialising_everyt
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn with_no_reveal_no_row_is_highlighted() {
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("reveal-none"))),
+        Source::remote(synth_cfg("reveal-none")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         many_rows(50),
@@ -2260,7 +1969,7 @@ async fn the_jump_happens_once_not_every_frame() {
     let rows = many_rows(100);
     let want = rows[42].name.clone();
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("reveal-once"))),
+        Source::remote(synth_cfg("reveal-once")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         rows,
@@ -2286,7 +1995,7 @@ async fn the_jump_happens_once_not_every_frame() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_reveal_target_that_is_gone_says_so_and_drops_the_highlight() {
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("reveal-gone"))),
+        Source::remote(synth_cfg("reveal-gone")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         many_rows(10),
@@ -2308,15 +2017,18 @@ async fn a_reveal_target_that_is_gone_says_so_and_drops_the_highlight() {
     assert!(w.reveal_name().is_none(), "找不到那一行，高亮却还挂着");
 }
 
-/// 换目录 / 换机器 ⇒ 高亮清掉。
+/// 换目录 ⇒ 高亮清掉。
 ///
 /// 🔴 留着的后果具体：新目录里**恰好同名**的另一个文件会被高亮，
 /// 而用户会以为那就是他要找的那个。
+///
+/// ⚠〔2026-09-23〕从前这条还判「**换机器**那两条路同样」（`go_local` / `go_remote`
+/// 各清一次）。本机侧退役之后一个窗口的机器**一辈子只有一台** ——
+/// 换机器那件事不存在了，不是那两格没人看了。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn navigating_away_drops_the_highlight() {
-    let (root, _) = synth_tree("reveal-nav");
     let mut w = FileWindow::seeded(
-        Source::Remote(Box::new(synth_cfg("reveal-nav"))),
+        Source::remote(synth_cfg("reveal-nav")),
         "/srv/data".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         many_rows(10),
@@ -2325,15 +2037,6 @@ async fn navigating_away_drops_the_highlight() {
     assert!(w.reveal_name().is_some());
     w.navigate_to("/srv/other".into());
     assert!(w.reveal_name().is_none(), "换了目录高亮还挂着");
-
-    // 换机器那两条路同样。
-    w.set_reveal("f000003.txt");
-    w.go_local(root.to_string_lossy().to_string());
-    assert!(w.reveal_name().is_none(), "切到本机高亮还挂着");
-    w.set_reveal("f000003.txt");
-    assert!(w.go_remote(), "回不去远端 —— 本条的前提变了");
-    assert!(w.reveal_name().is_none(), "回远端高亮还挂着");
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 // ════════════════════════════════════════════════════════════════════════

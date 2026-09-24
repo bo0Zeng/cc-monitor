@@ -331,7 +331,8 @@ impl CancelDesk {
 /// **一个 `await` 都没有**（它只锁一次取消登记表、翻一个 `AtomicBool`）
 /// ⇒ `block_on` 立刻返回，不阻塞画帧。
 /// ⚠ 换成「往看板里塞一个 tokio `Handle`」的话，**画一帧就依赖一个运行时**，
-/// 而本机那一侧（`Source::Local`）压根没有运行时（`FileWindow::rt` 是 `Option`）。
+/// 而窗口手上**不一定有**一个（`FileWindow::rt` 是 `Option`，理由住它自己那一格；
+/// 从前那条理由是「本机那一侧压根没有运行时」，本机侧 2026-09-23 退役了）。
 ///
 /// ⚠ 没注册过的 id 在池子那侧是 no-op（那条命令的注释逐字）⇒ 重复按取消无害。
 pub fn forward_cancel(ids: &[String]) {

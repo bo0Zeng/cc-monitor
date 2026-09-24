@@ -50,7 +50,7 @@ fn synthetic_cfg() -> RemoteConfig {
 
 fn synthetic_request() -> OpenRequest {
     OpenRequest {
-        source: Source::Remote(Box::new(synthetic_cfg())),
+        source: Source::remote(synthetic_cfg()),
         cwd: "/home/zbl/带空格 的目录".to_string(),
         rows: vec![
             Row {
@@ -88,8 +88,14 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     assert_eq!(got.cwd, want.cwd, "cwd 漂了 —— 窗口会开在别处");
     assert_eq!(got.reveal, want.reveal, "reveal 漂了 —— 高亮落在别的行上");
     assert_eq!(got.rows, want.rows, "那一屏漂了");
-    match (&got.source, &want.source) {
-        (Source::Remote(a), Source::Remote(b)) => {
+    // 🔴〔2026-09-23 本机侧退役〕**这里少了一次「判别式过得去吗」的比对。**
+    //    从前 `Source` 是个两格枚举，这一段要先 `match` 出两侧都是 `Remote`
+    //    （对不上就 `panic!("源的判别式没过得去")`），下面还单独喂一份
+    //    `Source::Local` 的种子对拍它那一格。`Source` 收成 newtype 之后
+    //    **判别式这个概念不存在了** ⇒ 那两处不是被删掉的判据，是它们判的东西没了。
+    {
+        let (a, b) = (got.source.cfg(), want.source.cfg());
+        {
             assert_eq!(
                 (
                     &a.host,
@@ -114,21 +120,7 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
                 "远端配置漂了 —— 窗口会去连另一台机器（或者连不上而说不清为什么）"
             );
         }
-        other => panic!("源的判别式没过得去：{other:?}"),
     }
-    // 本机那一支也要过得去（窗口自己那颗「本机」按钮之后会用到它）。
-    let local = OpenRequest {
-        source: Source::Local,
-        cwd: "/tmp".to_string(),
-        rows: Vec::new(),
-        reveal: None,
-    };
-    let back = decode_request(&encode_request(&local).expect("本机那一支序列化不了"))
-        .expect("本机那一支读不动");
-    assert!(
-        matches!(back.source, Source::Local),
-        "本机那一支的判别式过不去 —— 窗口会以为自己在看一台远端"
-    );
     // ★ 反向自检：**线上那份字节里真的装着那几个值**。
     //   少了这一比，一个「原样回传入参」的假实现照样绿（encode/decode 都不走 serde）。
     for needle in ["10.0.0.7", "带空格 的目录", "id_ed25519"] {
@@ -252,7 +244,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
     let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var(BIN_ENV, stdin_eating_stand_in());
     let req = OpenRequest {
-        source: Source::Local,
+        source: Source::remote(synthetic_cfg()),
         cwd: "/tmp".to_string(),
         rows: Vec::new(),
         reveal: None,
@@ -383,7 +375,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
     std::fs::write(&fake, b"not an ELF at all\n").expect("写不出来");
     std::env::set_var(BIN_ENV, &fake);
     let e = open_in_new_process(&OpenRequest {
-        source: Source::Local,
+        source: Source::remote(synthetic_cfg()),
         cwd: dir.to_string_lossy().to_string(),
         rows: Vec::new(),
         reveal: None,
