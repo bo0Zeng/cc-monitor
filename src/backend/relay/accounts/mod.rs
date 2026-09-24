@@ -50,7 +50,7 @@ pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key
 pub(crate) use policy::Reload;
 
 use super::upstream::Base;
-use super::{AuthSwap, Destination, Destinations, Mode, RouteKey};
+use super::{AuthSwap, Destination, Destinations, Mode, Ready, RouteKey, Startup};
 use creds_core::store::AuthStyle;
 use std::io::Write;
 use table::{RoutingTable, Row};
@@ -65,7 +65,7 @@ use table::{RoutingTable, Row};
 ///
 /// ⚠ **它是一个事实的两处写法之一**：monitor 那一侧决定「这次拉起要不要注入」时问的是同一个问题
 /// （`src/bridge/src/backend/control/payload.rs::APIKEY_TABLE_AGENT`）。两处由一条跨半边判据
-/// 对拍（`table_tests::the_credentials_file_agent_is_the_same_on_both_halves`），它读的是
+/// 对拍（`route_tests::the_credentials_file_agent_is_the_same_on_both_halves`，住那里的理由见它头注），它读的是
 /// **对方那份源码里的字面量**，不是拿本常量去比本常量。
 /// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，
 /// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
@@ -135,6 +135,38 @@ impl Upstreams {
     /// 凭据文件那一家的默认上游。构造时已经查过它在 ⇒ 这里拿得到。
     fn of_credentials_file(&self) -> &Base {
         &self.by_agent[CREDENTIALS_FILE_AGENT]
+    }
+}
+
+/// 层 2 在 `--relay` 启动路径上交给层 1 的那一只手（[`Startup`]）。
+///
+/// ★ **层 1 点名层 2 的地方只剩这一个名字**（外加 `relay/mod.rs` 里那行模块声明）：
+/// 起进程的那一处把它递给 `listen::run_with`，此后层 1 只见得到 `Startup` / `Ready` /
+/// `Destinations` 三个契约口。钉这一条的判据：`account_layer_guard`（两向集合相等）。
+pub(crate) struct Boot;
+
+impl Startup for Boot {
+    fn check(&self, get: &dyn Fn(&str) -> Option<String>) -> Option<Box<dyn Ready>> {
+        Upstreams::from_env(get).map(|u| Box::new(u) as Box<dyn Ready>)
+    }
+}
+
+impl Ready for Upstreams {
+    /// 读一次凭据 → 装表 → 出声 → 起账号层 → 接上热重载。
+    ///
+    /// ⚠ 这五步先前**长在层 1 的 `run_with` 里**（逐个直呼本层的名字）；今天是本层的私事。
+    fn into_destinations(
+        self: Box<Self>,
+        get: &dyn Fn(&str) -> Option<String>,
+        home: &std::path::Path,
+        out: &mut dyn Write,
+    ) -> std::sync::Arc<dyn Destinations> {
+        let (table, creds_path, stamp) = load_credentials(get, home, &self, out);
+        // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
+        // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
+        std::sync::Arc::new(
+            Accounts::new(table, *self).reloading_from(Reload::new(creds_path, stamp)),
+        )
     }
 }
 

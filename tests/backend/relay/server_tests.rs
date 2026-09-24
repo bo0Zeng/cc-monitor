@@ -7,7 +7,7 @@ use super::*;
 use super::super::accounts::creds;
 use super::super::accounts::{self, table::RoutingTable, Accounts};
 use super::super::listen::{
-    listen, resolve_config, run, run_reading, run_with, serve, RelayExec, DOWNSTREAM_DEADLINE,
+    listen, resolve_port, run, run_reading, run_with, serve, RelayExec, DOWNSTREAM_DEADLINE,
     UPSTREAM_DEADLINE,
 };
 use super::super::upstream;
@@ -3001,81 +3001,26 @@ fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
 /// 里的「**env**」是假的 —— 它调的是**纯函数** `resolve_config` 的**参数**，
 /// **一个环境变量都没读过**。今天的名字只说它证得了的那一半：默认值 + **入参**盖得住。
 /// 「哪个环境变量喂给哪个配置位」由 `each_env_var_name_goes_into_its_own_config_slot` 守。
-/// 〔条 59/60〕上游那一格今天是「每家一个旋钮」：取值器按**手写的变量名**答话。
-fn upstream_knob(v: &str) -> impl Fn(&str) -> Option<String> + '_ {
-    move |k| (k == "CCM_RELAY_UPSTREAM").then(|| v.to_string())
-}
-
-/// 取 claude-code 那一家解析出来的上游（手写家名 —— 不拿被测常量算）。
-fn cc(u: &accounts::Upstreams) -> Base {
-    u.of("claude-code").expect("claude-code 该登记着").clone()
-}
-
 #[test]
 fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
-    let (port, u) = resolve_config(None, &|_| None).expect("默认配置应当成立");
-    assert_eq!(port, 8788, "默认端口");
+    // ⚠ 〔「中转层里没有账号」的前置〕本条先前还量**上游**那一格（默认值 · 旋钮盖得住 ·
+    //   路径前缀不丢 · 认不出回 `None`）。那是**层 2 的配置**，今天由层 2 自己解析 ——
+    //   四格原样搬去了 `table_tests::each_agents_env_knob_overrides_only_that_agents_default`
+    //   （手写字面量期望、带前缀与不带的非空对照都在那边）。本条只剩层 1 自己的端口。
+    assert_eq!(resolve_port(None), 8788, "默认端口");
     assert_eq!(
-        cc(&u),
-        Base {
-            tls: true,
-            host: "api.anthropic.com".to_string(),
-            port: 443,
-            // ★ `K-R1`：默认上游**没有**路径前缀 —— 官方端点就挂在根上，
-            //   而客户端自己会发 `/v1/messages`。这一格是手写字面量，不是算出来的。
-            path: String::new()
-        },
-        "默认上游"
+        resolve_port(Some("19999")),
+        19999,
+        "CCM_RELAY_PORT 必须盖得住默认"
     );
-
-    let (port, u) = resolve_config(Some("19999"), &upstream_knob("http://127.0.0.1:1"))
-        .expect("env 覆盖应当成立");
-    assert_eq!(port, 19999, "CCM_RELAY_PORT 必须盖得住默认");
-    assert_eq!(
-        cc(&u),
-        Base {
-            tls: false,
-            host: "127.0.0.1".to_string(),
-            port: 1,
-            path: String::new()
-        },
-        "CCM_RELAY_UPSTREAM 必须盖得住默认"
-    );
-
-    // ★★ `K-R1`：`CCM_RELAY_UPSTREAM` 里那一段**路径前缀**也盖得住 ——
-    //    先前它在这一层就被丢掉了（`Base` 存不下），而这一格此前零判据。
-    let (_, u) = resolve_config(None, &upstream_knob("https://gw.example.com/anthropic"))
-        .expect("带前缀的默认上游应当成立");
-    assert_eq!(
-        cc(&u),
-        Base {
-            tls: true,
-            host: "gw.example.com".to_string(),
-            port: 443,
-            path: "/anthropic".to_string()
-        },
-        "默认上游里那一段路径前缀被丢掉了"
-    );
-    // 反空真：这把尺子分得出「带前缀」与「不带」（不是恒相等）。
-    assert_ne!(
-        resolve_config(None, &upstream_knob("https://gw.example.com/anthropic"))
-            .expect("带前缀")
-            .1,
-        resolve_config(None, &upstream_knob("https://gw.example.com"))
-            .expect("不带前缀")
-            .1
-    );
-
     // 端口读不懂 ⇒ **回默认**，不是 0、也不是崩。
     for bad in ["not-a-port", "70000", "-1", ""] {
         assert_eq!(
-            resolve_config(Some(bad), &|_| None).expect("应当回默认").0,
+            resolve_port(Some(bad)),
             8788,
             "读不懂的端口 {bad:?} 必须回默认"
         );
     }
-    // 基址不认识 ⇒ None（调用方据此退 2）。
-    assert!(resolve_config(None, &upstream_knob("ftp://x")).is_none());
 }
 
 /// ★★ `重要-3(D2)`：`run()` 那一层的**接线** —— 哪个环境变量喂给哪个配置位。
@@ -3163,7 +3108,12 @@ fn relay_entry_exit_code_within_5s(port_env: Option<String>, upstream_env: Optio
             Some(v) if k == "CCM_RELAY_UPSTREAM" => Some(v.to_string()),
             _ => None,
         };
-        let _ = tx.send(run_with(port_env.as_deref(), &get, &nowhere_home()));
+        let _ = tx.send(run_with(
+            port_env.as_deref(),
+            &get,
+            &nowhere_home(),
+            &accounts::Boot,
+        ));
     });
     rx.recv_timeout(std::time::Duration::from_secs(5))
         .expect("`--relay` 入口必须**返回** —— 超时说明它没退出，而是进了 serve()")
@@ -3188,12 +3138,7 @@ fn the_relay_entry_exits_with_two_when_it_cannot_start() {
     // ★ 先断「端口真被 env 盖住了」，**再**去调入口 —— 不然入口会去绑**别的**端口，
     //   绑得上就进 serve() 永不返回。这一条把那一形挡在门外，报错也更准。
     assert_eq!(
-        resolve_config(
-            Some(&port.to_string()),
-            &upstream_knob("http://127.0.0.1:1")
-        )
-        .expect("配置应当成立")
-        .0,
+        resolve_port(Some(&port.to_string())),
         port,
         "端口必须被 env 盖住，否则下一步绑的是别的端口"
     );

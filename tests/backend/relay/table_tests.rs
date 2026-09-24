@@ -360,7 +360,7 @@ fn every_auth_style_other_than_the_default_gets_announced() {
 // 不拿被测的 `CREDENTIALS_FILE_AGENT` / `AGENT_UPSTREAMS` 去算 —— 拿被测常量写期望值再拿它去读，
 // 两侧同源，恒真。
 
-use super::super::{decide, Upstreams, AGENT_UPSTREAMS, CREDENTIALS_FILE_AGENT};
+use super::super::{decide, Upstreams, AGENT_UPSTREAMS};
 use crate::relay::{Destination, Mode, RouteKey};
 
 /// 问一次生产段那张决策表，把答案压成一个好比对的形状。
@@ -540,30 +540,5 @@ fn the_per_agent_upstream_table_has_no_duplicate_agent_or_knob_and_holds_the_cre
     assert!(
         agents.contains("claude-code"),
         "凭据文件那一家（手写 `claude-code`）不在表里 ⇒ 文件里的行没有默认上游可取"
-    );
-}
-
-/// ★★★ **跨半边对拍**：「凭据文件那些行属于哪一家」在后端（本层）与 monitor（起会话时
-/// 判「要不要注入」那一格）**是同一个值**。
-///
-/// 两侧**异源**：本侧是 `CREDENTIALS_FILE_AGENT`，那一侧是 `payload.rs` 源码里
-/// `APIKEY_TABLE_AGENT` 那一行的**字面量**（`include_str!` 现抠，不是 `use`）。
-/// 漂开的症状：monitor 给 A 家注入 `/s/A/…`，而本层把那一行挂在 B 家名下 ⇒ **每一发 404**。
-///
-/// ⚠ 买不到：monitor 那一侧**真的拿它去判了**。那一格由 monitor 自己的判据量
-/// （`payload_tests` 里「别家同一个账号 id 不注入」那一条）。
-#[test]
-fn the_credentials_file_agent_is_the_same_on_both_halves() {
-    let pay = include_str!("../../../src/bridge/src/backend/control/payload.rs");
-    let needle = "pub const APIKEY_TABLE_AGENT: &str = \"";
-    let at = guard_core::find_pinned(pay, needle).unwrap_or_else(|e| {
-        panic!("在 monitor 侧 `payload.rs` 里钉不住 `APIKEY_TABLE_AGENT` 那一行：{e}")
-    });
-    let tail = &pay[at + needle.len()..];
-    let theirs = &tail[..tail.find('"').expect("那个字面量没有收尾的引号")];
-    assert!(!theirs.is_empty(), "抠出来的是空串 —— 抽取器坏了");
-    assert_eq!(
-        theirs, CREDENTIALS_FILE_AGENT,
-        "monitor 认为凭据文件的行属于 `{theirs}`，后端把它们挂在 `{CREDENTIALS_FILE_AGENT}` 名下"
     );
 }

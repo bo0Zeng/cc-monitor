@@ -66,7 +66,7 @@
 //!
 //! 这两句读起来像，差别正是 `KH2` 要守的全部。
 
-use super::super::route;
+use super::super::route::segment_is_safe;
 use super::super::upstream::Base;
 use creds_core::store::{AccountEntry, AuthStyle, AuthStyleSetting};
 
@@ -323,7 +323,7 @@ fn note_for_auth_style(style: AuthStyle) -> Option<&'static str> {
 /// ⚠ 本节的标题先前逐字是「**两条**『装不进去』的判断」，而 `K-R1` 之后是四条。
 /// 「报一个基数也是复述」（`brief` 13b）：标题里那个数会在下一次加判断时**自动变成假话**。
 ///
-/// 1. **账号 id 当不了路由段** —— 走 [`route::segment_is_safe`]，
+/// 1. **账号 id 当不了路由段** —— 走 [`segment_is_safe`]，
 ///    与 `route::parse` 用的是**同一个谓词**（`route.rs` 头注逐字论证过为什么不许各写一份）。
 ///    装不下的那条**永远匹配不上**任何请求，进表只会变成一行死行。
 /// 2. **`base_url` 解析不了** —— 走 `Base::parse`。
@@ -366,7 +366,7 @@ pub(crate) fn build(
     let mut notes: Vec<Note> = Vec::new();
 
     for e in entries {
-        if !route::segment_is_safe(&e.id) {
+        if !segment_is_safe(&e.id) {
             rejected.push(Rejected {
                 id: e.id,
                 why: WHY_ID_UNUSABLE,
