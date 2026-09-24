@@ -82,149 +82,82 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
     );
 }
 
-/// 远端那条路上唯一有逻辑的一段：**六个字段一个都不许掉**。
-/// **这是真行为判据**（不是判源码）—— 它不需要网络。
-///
-/// 🔴〔补齐五项 2026-09-23〕**这条判据此前漏了一格，而那一格正是一条真缺口。**
-/// 它原来只对拍五格（判词逐字「五个字段一个都不许掉」），而 `SftpEntry`
-/// 一直在送 `is_symlink` —— 于是「退路那一屏也看不出哪个是符号链接」
-/// 在这条判据上**一点痕迹都没有**：夹具里 `is_symlink: true` 摆在那儿，
-/// 没有任何一侧读它。⇒ 现在对拍的是整个 [`Listed`]（六格），
-/// 那一格漂开当场红。
-#[test]
-fn the_sftp_entry_mapping_carries_every_field() {
-    let e = crate::sftp_pool::SftpEntry {
-        name: "\u{FFFD}odd".to_string(),
-        path: "/remote/dir/\u{FFFD}odd".to_string(),
-        is_dir: false,
-        is_symlink: true,
-        size: 4242,
-        lossy_name: true,
-    };
-    let r = row_from_sftp_entry(e);
-    assert_eq!(
-        r,
-        Listed {
-            row: Row {
-                name: "\u{FFFD}odd".to_string(),
-                path: "/remote/dir/\u{FFFD}odd".to_string(),
-                is_dir: false,
-                size: 4242,
-                // 🔴 有损名必须一路传到行上 —— 写操作要靠它灰置。
-                lossy_name: true,
-            },
-            // 🔴 符号链接那一格：SFTP 这条**退路**也送得出它，别在这儿丢掉。
-            link: true,
-            // ⚠ `None` 是「SFTP 交不出这一格」，不是「这个文件没有时间」
-            //    （`SftpEntry` 里压根没有 mtime）。
-            mtime_secs: None,
-        }
-    );
-}
+// 〔F2 · 2026-09-24〕这里原先有一条「`SftpEntry` → 行的映射六格一格不许掉」的判据。
+// 窗口进程不再经 SFTP 列目录（没有退路，`D11`）⇒ 那个映射函数连同这条判据一起走了；
+// 「后端送的每一格落到行上哪一格」由下面那张逐格表（`files.ls` 的声明现读）接着管。
 
-/// ⚠ **判源码是代理，不是标的**（`tests/bridge/sftp_tests.rs` 同款如实标注）。
+/// 🔴 **整棵 `filewin/` 上「列一个远端目录」恰好两处，全是问后端 `files-ls`；池子那条列目录命令零处。**
 ///
-/// 买的是：远端列目录**走的是共用那条池**，没有人在本模块里另开一条。
-/// 买不到：那条池今天真连得上、连上之后回的东西对不对。
+/// 〔F2 · 2026-09-24〕上一版这里是两条：「`list_remote` 调的是共用池」＋「池子那条列目录命令
+/// 整棵树恰好一处（`source.rs`）」。窗口改成只经通道说 `call` 之后，那条路整条摘了 ⇒ 判据翻面：
+///
+/// - 问后端 `files-ls` 的地方（`CMD_LS` 这个名字被用到的地方）恰好两处：
+///   `source.rs`（窗口进程里那一次，[`list_via_backend`]）与 `entry.rs`（开窗前那一屏，
+///   monitor 进程里经通道宿主的同一个句柄）。**两向相等**，多一处 / 少一处都红。
+/// - 池子那条列目录命令在整棵树的生产段里**零处**（零命中守卫，带反向自检）。
+/// - 自己开连接 / 借会话的写法**零处**。
+///
+/// ⚠ 判源码是代理：买的是「只有这两处在问、而且问的是后端」；「后端答得对」由
+/// [`listing_has_no_second_road_when_the_backend_refuses`] 那条行为判据买。
 #[test]
-fn the_remote_path_delegates_to_the_shared_pool_instead_of_rolling_its_own() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/source.rs"));
-    let at = prod
-        .find("pub async fn list_remote")
-        .expect("生产段里找不到 `list_remote` —— 抽取器坏了，本条此刻无效");
-    let body = &prod[at..];
-    let end = body.find("\n}").map(|i| i + 2).unwrap_or(body.len());
-    let body = &body[..end];
-    assert!(
-        body.contains("sftp_pool::sftp_list_dir"),
-        "`list_remote` 不再调共用池的 `sftp_list_dir` 了 —— \
-             那意味着这里长出了第二条列远端目录的路（也就是第二个连接池）"
-    );
-    assert!(
-        !body.contains("connect_sftp") && !body.contains("read_dir"),
-        "`list_remote` 里出现了自己建连接 / 自己 read_dir 的痕迹"
-    );
-}
-
-/// 🔴 **第二刀把上面那条从「一个函数体」扩到「整棵 `filewin/`」。**
-///
-/// 上一版只看 `list_remote` 那一个函数体。它接不住的那一形，正是这一刀会长出来的：
-/// 新加的入口（`entry.rs`）或传输层（`transfer.rs`）里**另开一条**列远端目录的路
-/// —— 那个函数体一个字都不会变，而池被拆成了两份。
-///
-/// ⇒ 判「整棵树上列远端目录的路**恰好一条**」：
-/// `sftp_list_dir` 的调用形状在整棵 `filewin/` 的生产段里出现**恰好 1 次**，
-/// 而且那 1 次在 `source.rs` 里。
-///
-/// ⚠ 买的是「只有一条路，且那条路调共用池」；
-/// 买不到那条池今天连得上（红线不许起真连接）。
-#[test]
-fn the_whole_filewin_tree_has_exactly_one_way_to_list_a_remote_directory() {
+fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() {
     let root = crate::guard_support::crate_src_root().join("filewin");
     let files = guard_core::files_by_extension(&root, "rs");
-    // 反空真①：扫描面没塌。这棵树今天 **9** 份
-    //（copy/corpus/entry/mod/rows/scale/shell/source/transfer）——
-    //〔第三刀 09-20〕`copy.rs` 进来之后从 8 变 9，这个地板跟着抬。
     assert!(
-        files.len() >= 9,
+        files.len() >= 16,
         "`filewin/` 下只扫到 {} 份 `.rs`（{files:?}）—— 扫描面塌了，下面几条在空转",
         files.len()
     );
-    for must in [
-        "source.rs",
-        "shell.rs",
-        "entry.rs",
-        "transfer.rs",
-        "copy.rs",
-    ] {
-        assert!(
-            files.iter().any(|f| f == must),
-            "扫描面里没有 `{must}` —— 抽取器坏了"
-        );
-    }
-
-    let needle = format!("sftp_pool::sftp_{}(", "list_dir");
-    let mut where_: Vec<(String, usize)> = Vec::new();
+    let ask_ls = "CMD_LS";
+    let pool_ls = format!("sftp_pool::sftp_{}(", "list_dir");
+    let mut asking: Vec<(String, bool)> = Vec::new();
     let mut total_prod = 0usize;
     for f in &files {
         let src = std::fs::read_to_string(root.join(f)).expect("read filewin rs");
         let prod = guard_core::production_code(&src);
         total_prod += prod.len();
-        let n = prod.matches(needle.as_str()).count();
-        if n > 0 {
-            where_.push((f.clone(), n));
+        // 定义那一行（`pub const CMD_LS`）不算「问」。
+        let uses = prod
+            .lines()
+            .filter(|l| {
+                guard_core::contains_word(l, ask_ls) && !guard_core::contains_word(l, "const")
+            })
+            .count();
+        if uses > 0 {
+            asking.push((f.clone(), true));
         }
-        // 自己开连接 / 自己 read_dir 远端，一处都不许有。
+        assert_eq!(
+            prod.matches(pool_ls.as_str()).count(),
+            0,
+            "`filewin/{f}` 的生产段里又出现了池子那条列目录命令 —— `D11`：没有退路"
+        );
         for banned in ["connect_sftp", "russh_sftp", "SftpSession", "with_sftp("] {
             assert!(
                 !prod.contains(banned),
-                "`filewin/{f}` 的生产段里出现了 `{banned}` —— \
-                 这棵树不许自己碰连接／通道，远端那一侧只能走 `sftp_pool` 那几条既有命令"
+                "`filewin/{f}` 的生产段里出现了 `{banned}` —— 这棵树不许自己碰连接／通道"
             );
         }
     }
-    // 反空真②：剥法没把整棵树剥没。
     assert!(
         total_prod > 20_000,
         "整棵树的生产段只剩 {total_prod} 字节 —— 剥法坏了"
     );
-
+    asking.sort();
     assert_eq!(
-        where_,
-        vec![("source.rs".to_string(), 1usize)],
-        "列远端目录的路不再是「`source.rs` 里恰好一条」—— 实得 {where_:?}。\n\
-         多一处就是多一个「怎么列远端」的答案；而这棵树上每一条自己开的路，\n\
-         都会把 `设计/60 §5.4a` 那条「6 − 4 = 2 格永远留给浏览」的预算拆成两份。"
+        asking,
+        vec![
+            ("entry.rs".to_string(), true),
+            ("source.rs".to_string(), true)
+        ],
+        "问后端列目录的地方不再是「`entry.rs` 与 `source.rs` 各一处」"
     );
-
-    // 反空真③：这把尺子认得出「多一处」。
-    let fake = format!("fn x() {{ {needle} }}\n{needle}");
+    // 反向自检：这把尺子认得出池子那条命令（否则上面那条零命中恒真）。
+    let fake = format!("fn x() {{ {pool_ls} }}");
     assert_eq!(
         guard_core::production_code(&fake)
-            .matches(needle.as_str())
+            .matches(pool_ls.as_str())
             .count(),
-        2
+        1
     );
 }
 
@@ -541,62 +474,59 @@ fn truncation_is_carried_back_not_dropped() {
     );
 }
 
-/// 🔴 **退路在，而且排在问后端之后；而且它只有一支。**
+/// 🔴〔F2 · 2026-09-24〕**后端说不行 ⇒ 列目录就是失败，没有第二条路**（`D11`）。
 ///
-/// ⚠ 同上，判源码是代理：`list_dir` 那条路要一条真后端通道才走得完，
-/// 而判据不许在进程级登记表上种一个 `<local>` 通道
-///（那张表是**进程内全局**的，`inbound_client` 自己的头注记着两条判据在同一个键上
-/// 起真后端会互相看见对方登记的通道 ⇒ 种它就是给别的判据下毒）。
-///
-/// # 🔴〔2026-09-23 本机侧退役〕**退路从两支变一支，而本条的三个断言都换了写法**
-///
-/// 从前这里逐支钉（`list_local(` = 本机那条 · `list_remote(` = 远端那条），
-/// 而三处匹配全是**裸的**（`prod.find("…")` / `body.contains("…")`）。
-/// 本机那一侧不在了（`source.rs` 头注那块墓碑）⇒ 少一支；顺带把三处
-/// 换成 `guard_core::pin_line`（**整行相等**）：
-///
-/// - 裸子串匹配的病形是「匹配单位比事实小」—— `body.find("list_remote(")` 在这份
-///   文件上**现打命中 2 处**（`list_dir` 体内那一处 ＋ 下面 `pub async fn list_remote(`
-///   那一行），于是「退路排在问后端之后」那句话可能锚在**函数声明**上，
-///   而那是恒真的（声明永远在后面）。⚠ 这不是假想：换成 `find_pinned` 的那一趟
-///   它当场以「命中 2 处，断言指不明是哪一处」红了。
-/// - `needle_anchor_registry` 那条递减棘轮今天**零富余** ⇒ 新写一处裸匹配当场红。
-///   本条这一换让那个数**往下走三格**，不是持平。
-///
-/// ⚠ 整行相等买到什么、买不到什么：买到「那一行逐字是这样」（缩进被 `trim` 掉）；
-/// **买不到**「这一行在语义上属于 `list_dir`」—— 那靠它与 `fn` 那一行的**行序**。
-#[test]
-fn the_fallback_exists_and_comes_after_asking_the_backend() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/source.rs"));
-    let at_fn = guard_core::pin_line(
-        &prod,
-        // ⚠ 钉的是**函数头那一行**（签名被 rustfmt 折成多行之后，整条签名不再是「一行」）。
-        //   `pub async fn list_dir(` 在这份文件里恰好一行，`pin_line` 自带那道自检。
-        "pub async fn list_dir(",
+/// 上一版这里是反面：「退路在、排在问后端之后、只有一支」（源码代理，钉三行的行序）。
+/// 退路拿掉之后它换成**行为**判据 —— 挂一台合成后端（真回环、真钥匙、真 `dial`）：
+/// ① 后端答得出 ⇒ 一屏回来，而且**是后端那一份**（名字与大小逐格相等）；
+/// ② 后端拒（目录读不进去）⇒ `Err`，那句话里带着后端的码 —— 不是一屏空的、不是「退回去自己列」。
+/// ③ 线上恰好一条 `files-ls`（没有第二趟、也没有别的命令被悄悄发出去）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn listing_has_no_second_road_when_the_backend_refuses() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    let root = synth_tree();
+    let wired = wire_up(
+        "source-ls",
+        FakeBackend::new(&[CMD_LS], Declared::default()),
     )
-    .expect("`list_dir` 的签名不在生产段里（或者它换了形状）");
-    let at_ask = guard_core::pin_line(
-        &prod,
-        "match list_via_backend(&source.origin(), dir, LS_LIMIT, by).await {",
-    )
-    .expect("`list_dir` 里没有问后端那一跳 —— 那它就不是主路了");
-    let at_fb = guard_core::pin_line(
-        &prod,
-        "let mut rows = list_remote(source.cfg(), dir).await?;",
-    )
-    .expect("那条退路不在了（或者它换了形状 —— 那就把这一行一起改）");
-    // 🔴 三行的**顺序**是承重的：`fn` → 问后端 → 退路。
-    assert!(
-        at_fn < at_ask && at_ask < at_fb,
-        "三行的顺序不对（fn {at_fn} / 问后端 {at_ask} / 退路 {at_fb}）—— \
-         退路排在问后端之前的话，后端那条主路永远走不到"
+    .await;
+    let cfg = crate::ssh_source::RemoteConfig {
+        host: "example.invalid".into(),
+        label: wired.origin.clone(),
+        port: 22,
+        user: "nobody".into(),
+        key_path: None,
+        backend_path: "/nonexistent".into(),
+        host_key_fingerprint: None,
+        addresses: Vec::new(),
+        jump: None,
+    };
+    let src = Source::remote(cfg);
+    let dir = root.to_string_lossy().to_string();
+    // ① 后端答得出。
+    let (rows, cut) = list_dir(&wired.line, &src, &dir, SortBy::default())
+        .await
+        .expect("后端答得出，窗口这一侧却失败了");
+    let want = list_local(&root).expect("合成树列得出来");
+    assert_eq!(
+        rows.iter()
+            .map(|r| (r.name.clone(), r.size, r.is_dir))
+            .collect::<Vec<_>>(),
+        want.iter()
+            .map(|r| (r.name.clone(), r.size, r.is_dir))
+            .collect::<Vec<_>>(),
+        "经通道回来的那一屏与后端那一侧看见的不等"
     );
-    // 🔴 退路必须**交出一句话**（`ListVerdict` 是 `Some`）——
-    //    静默降级与成功在屏幕上长得一样。
-    let at_say = guard_core::pin_line(&prod, "Ok((rows, false, Some(why)))")
-        .expect("退路没把原因交出去 —— 那就是一次静默降级");
-    assert!(at_fb < at_say, "那句话不在退路后面（fn 体被重排过？）");
+    assert!(!rows.is_empty(), "合成树是空的 —— 上面那条相等在空集上成立");
+    assert!(!cut);
+    // ② 后端拒 ⇒ 失败，带码。
+    let e = list_dir(&wired.line, &src, "/definitely/not/here", SortBy::default())
+        .await
+        .expect_err("后端拒了，窗口却交出了一屏");
+    assert!(e.contains("unreadable"), "那句话里没有后端的码：{e}");
+    // ③ 线上恰好两条 `files-ls`（① 一条、② 一条），没有别的。
+    assert_eq!(wired.cmds(), [CMD_LS, CMD_LS]);
+    std::fs::remove_dir_all(&root).ok();
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -821,7 +751,12 @@ fn a_modification_time_is_printed_in_utc_and_says_so() {
 fn backend_ls_fields() -> std::collections::BTreeSet<String> {
     const CAP_LINE: &str = "name: \"files.ls\",";
     const FIELDS_HEAD: &str = "fields: &[";
-    let prod = guard_core::production_code(include_str!("../../../src/backend/files/mod.rs"));
+    // ⚠ **运行期读**，不是 `include_str!`：后者是一条 monitor → backend 的**编译期**边，
+    //   要进 `cross_half_edge_registry` 那张表（写区外）；这一条只要今天那份声明的文本。
+    let raw =
+        std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/files/mod.rs"))
+            .expect("读不到后端那份 `files/mod.rs`");
+    let prod = guard_core::production_code(&raw);
     let at = guard_core::pin_line(&prod, CAP_LINE).expect("后端那条 `files.ls` 能力声明不见了");
     let line = prod
         .lines()

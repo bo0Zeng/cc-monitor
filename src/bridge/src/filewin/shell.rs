@@ -86,7 +86,7 @@ use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
-use super::source::{breadcrumbs, parent_dir, Listed, Row, SortBy, Source};
+use super::source::{breadcrumbs, parent_dir, Line, Listed, Row, SortBy, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
@@ -174,6 +174,9 @@ pub fn local_home() -> String {
         .unwrap_or_else(|| ".".to_string())
 }
 
+/// 没连上通道时，每一件要问后端的事说的那一句（`D11`：不退回 SFTP、不静默）。
+pub const NO_LINE: &str = "这个窗口没连上后端，请重开窗口";
+
 /// 「在此打开终端」要在那台远端上跑的那一串。
 ///
 /// # 🔴 它是**第二份**实现，如实登记（第一份在 TS 里）
@@ -221,11 +224,8 @@ pub struct Listing {
     pub epoch: Arc<AtomicU64>,
     /// 还有几趟列目录在飞。0 = 列完了。
     pub inflight: Arc<AtomicU64>,
-    /// 🔴〔第十二刀〕上一趟**走没走成主路**（问后端）。`None` = 走成了。
-    ///
-    /// 退了路要**出声** —— 逐条理由住 `source::ListVerdict`。
-    /// 一次静默降级与一次成功在屏幕上长得一样，而代价（分层退回前端）是真的。
-    pub verdict: Arc<Mutex<super::source::ListVerdict>>,
+    // 〔F2 · 2026-09-24〕这里原先还有一格「上一趟走没走成主路」（退路那一句话的落点）。
+    // 退路整条拿掉之后（`D11`，理由住 `source.rs` 那一节）那一格没有可说的了，一起摘掉。
     /// 🔴 上一趟**被后端截断了吗**。
     ///
     /// 它必须画出来：「这个目录里就这么多」与「后端只给了前 N 条」
@@ -240,28 +240,26 @@ impl Default for Listing {
             error: Arc::new(Mutex::new(None)),
             epoch: Arc::new(AtomicU64::new(0)),
             inflight: Arc::new(AtomicU64::new(0)),
-            verdict: Arc::new(Mutex::new(None)),
             truncated: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
 
-/// 落一趟**经后端**的列目录（比 [`store_if_current`] 多两格：裁决与截断）。
+/// 落一趟**经后端**的列目录（比 [`store_if_current`] 多一格：截断）。
 ///
-/// 🔴 与它**刻意是两个函数**：旧那条路（退路 / 无运行时）交不出这两格，
-/// 而给它们编一个「不知道」的第三态，只会让「没问过」与「问了没被截断」混在一起。
+/// 🔴 与它**刻意是两个函数**：没问成的那几形（无运行时 / 无通道）交不出这一格，
+/// 而给它编一个「不知道」的第三态，只会让「没问过」与「问了没被截断」混在一起。
 pub fn store_listed_if_current(
     l: &Listing,
     mine: u64,
-    r: Result<(Vec<Listed>, bool, super::source::ListVerdict), String>,
+    r: Result<(Vec<Listed>, bool), String>,
 ) -> bool {
     match r {
-        Ok((rows, truncated, verdict)) => {
-            // ⚠ 先写这两格再落行：落行那一步会判号并可能整份丢掉，
-            //   而这两格描述的是**同一趟**，不许一半落一半不落。
+        Ok((rows, truncated)) => {
+            // ⚠ 落行那一步会判号并可能整份丢掉，而截断那一格描述的是**同一趟**，
+            //   不许一半落一半不落 ⇒ 只在真落了之后写它。
             let kept = store_if_current(l, mine, Ok(rows));
             if kept {
-                *l.verdict.lock().unwrap() = verdict;
                 l.truncated.store(truncated, Ordering::SeqCst);
             }
             kept
@@ -344,6 +342,11 @@ pub struct FileWindow {
     /// 起窗那条路（`super::proc`）与判据都可能手上没有运行时，而那时它要**出声**
     /// （[`Self::reload`] 里那一支），不许假装列了个空目录。
     pub rt: Option<tokio::runtime::Handle>,
+    /// 🔴〔F2 · 2026-09-24〕**通道**：窗口进程够后端的唯一一条路（`source::Line`）。
+    ///
+    /// 是 `Option` 的理由与 [`Self::rt`] 同：判据里大量窗口不连后端（只画行、只点按钮）。
+    /// 没有它的时候，每一件要问后端的事都**出声**（[`NO_LINE`]），不静默、不退回 SFTP（`D11`）。
+    pub line: Option<Line>,
     /// `设计/60 §5.4d`：拖入那一摞的状态机（**先一次问完，再并行传**）。
     pub board: DropBoard,
     /// 已经消化过几趟拖入。`board.rounds()` 走在它前面 ⇒ 该重列一次目录了。
@@ -420,6 +423,11 @@ impl FileWindow {
         w
     }
 
+    /// 接上通道（`proc::child_main` 拨通之后调；判据里接一台合成后端）。
+    pub fn attach_line(&mut self, line: Line) {
+        self.line = Some(line);
+    }
+
     /// 带着**已经列好的那一屏**建窗 —— [`super::entry::open_file_window`] 走这条。
     ///
     /// 🔴 为什么要有它：那条命令为了能在 webview 那侧**出声**（目录列不出来就别开窗），
@@ -449,6 +457,7 @@ impl FileWindow {
             tally: RenderTally::default(),
             hits_tally: HitTally::default(),
             rt,
+            line: None,
             board: DropBoard::default(),
             seen_rounds: 0,
             copy_board: CopyBoard::default(),
@@ -478,15 +487,21 @@ impl FileWindow {
         let cwd = self.cwd.clone();
         // 🔴〔第十二刀 2026-09-22〕**先问后端，问不到才退回旧路** ——
         //    用户指令的第 1 步，逐条理由住 `source.rs` 那一段头注。
+        // 🔴〔F2 · 2026-09-24〕「问不到才退回旧路」那半句**拿掉了**（`D11`）：只问后端。
         match &self.rt {
             // ── 有运行时 ⇒ 主路（`files-ls` on 这个 origin）───────────
             Some(h) => {
+                // 🔴〔F2〕有运行时但没连上通道 ⇒ 出声（`D11`：不退回 SFTP）。
+                let Some(line) = self.line.clone() else {
+                    store_if_current(&l, mine, Err(NO_LINE.into()));
+                    return;
+                };
                 let source = self.source.clone();
                 // ⚠ 带**这一刻**选的那一档走。用户在飞行途中换了档 ⇒ [`Self::set_sort`]
                 //   会把落地的那一摞就地重排，所以两种顺序都不会错。
                 let by = self.sort_by;
                 h.spawn(async move {
-                    let r = super::source::list_dir(&source, &cwd, by).await;
+                    let r = super::source::list_dir(&line, &source, &cwd, by).await;
                     store_listed_if_current(&l, mine, r);
                 });
             }
@@ -703,12 +718,16 @@ impl FileWindow {
             self.search.say("搜索要一个 tokio 运行时，这个窗口没拿到");
             return false;
         };
+        let Some(line) = self.line.clone() else {
+            self.search.say(NO_LINE);
+            return false;
+        };
         let mine = self.search.start();
         let board = self.search.clone();
         let origin = self.source.origin();
         let root = self.cwd.clone();
         h.spawn(async move {
-            find::run_search(board, origin, root, needle, mine, force_rebuild).await;
+            find::run_search(board, line, origin, root, needle, mine, force_rebuild).await;
         });
         true
     }
@@ -758,6 +777,11 @@ impl FileWindow {
                 Some("上传要一个 tokio 运行时，这个窗口没拿到".into());
             return false;
         };
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            return false;
+        };
+        let origin = self.source.origin();
         let cfg = cfg.clone();
         let board = self.board.clone();
         // 🔴 **把窗口交给看板**，它自己会在「有问题要问 / 进度动了 / 跑完了」时敲一下。
@@ -767,38 +791,45 @@ impl FileWindow {
         //    上一摞按过取消 ⇒ 这一摞一件都起不来，而屏幕上看起来是「拖进去没反应」。
         board.cancels().reset();
         h.spawn(async move {
-            let probe_cfg = cfg.clone();
             let up_cfg = cfg.clone();
             let ask_board = board.clone();
             let up_board = board.clone();
-            let out = super::transfer::run_drop(
-                items,
-                super::transfer::lanes(),
-                move |p| {
-                    let cfg = probe_cfg.clone();
-                    async move { super::transfer::probe_remote(&cfg, &p.remote_path).await }
-                },
-                move |clashes| {
-                    let rx = ask_board.ask(clashes);
-                    async move { rx.await.unwrap_or_default() }
-                },
-                move |p| {
-                    let cfg = up_cfg.clone();
-                    let b = up_board.clone();
-                    // 🔴〔第五刀〕**取消那道闸在这儿**：按过取消之后，还没起的那几件
-                    //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
-                    //   （两件事一个落点，理由住 `launch_unless_cancelled`）。
-                    async move {
-                        let desk = b.cancels();
-                        let name = p.name.clone();
-                        super::transfer::launch_unless_cancelled(&desk, &name, |id| async move {
-                            super::transfer::upload_remote(&cfg, &p, &b, &id).await
-                        })
-                        .await
-                    }
-                },
-            )
-            .await;
+            let out =
+                super::transfer::run_drop(
+                    items,
+                    super::transfer::lanes(),
+                    move |p| {
+                        let line = line.clone();
+                        let origin = origin.clone();
+                        async move {
+                            super::transfer::probe_remote(&line, &origin, &p.remote_path).await
+                        }
+                    },
+                    move |clashes| {
+                        let rx = ask_board.ask(clashes);
+                        async move { rx.await.unwrap_or_default() }
+                    },
+                    move |p| {
+                        let cfg = up_cfg.clone();
+                        let b = up_board.clone();
+                        // 🔴〔第五刀〕**取消那道闸在这儿**：按过取消之后，还没起的那几件
+                        //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
+                        //   （两件事一个落点，理由住 `launch_unless_cancelled`）。
+                        async move {
+                            let desk = b.cancels();
+                            let name = p.name.clone();
+                            super::transfer::launch_unless_cancelled(
+                                &desk,
+                                &name,
+                                |id| async move {
+                                    super::transfer::upload_remote(&cfg, &p, &b, &id).await
+                                },
+                            )
+                            .await
+                        }
+                    },
+                )
+                .await;
             board.finish(out);
         });
         true
@@ -955,6 +986,11 @@ impl FileWindow {
                 Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
             return false;
         };
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            return false;
+        };
+        let origin = self.source.origin();
         let cfg = cfg.clone();
         let board = self.copy_board.clone();
         // 🔴 把窗口交给看板（同 `start_drop`）：进度与裁决都是从 tokio 那条线程写进来的，
@@ -963,13 +999,16 @@ impl FileWindow {
         // 🔴〔第五刀〕新的一趟 ⇒ 取消台复位（同 [`Self::start_drop`] 那条理由）。
         board.cancels().reset();
         h.spawn(async move {
-            let probe_cfg = cfg.clone();
             let copy_cfg = cfg.clone();
             let ask_board = board.clone();
             let run_board = board.clone();
             let out = super::copy::run_copy(
                 job,
-                move |j| async move { super::copy::probe_target(&probe_cfg, &j).await },
+                move |j| {
+                    let line = line.clone();
+                    let origin = origin.clone();
+                    async move { super::copy::probe_target(&line, &origin, &j).await }
+                },
                 move |j| {
                     let rx = ask_board.ask(j);
                     async move { rx.await.unwrap_or(false) }
@@ -1146,18 +1185,20 @@ impl FileWindow {
         if ops.is_empty() {
             return false;
         }
-        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("这几件写操作要一个 tokio 运行时，这个窗口没拿到".into());
             return false;
         };
-        let cfg = cfg.clone();
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            return false;
+        };
+        let origin = self.source.origin();
         let board = self.write_board.clone();
         board.attach(ctx);
         h.spawn(async move {
             let ask_board = board.clone();
-            let run_cfg = cfg.clone();
             let out = super::writeops::run_writes(
                 ops,
                 move |asking| {
@@ -1165,8 +1206,9 @@ impl FileWindow {
                     async move { rx.await.unwrap_or_default() }
                 },
                 move |op| {
-                    let cfg = run_cfg.clone();
-                    async move { super::writeops::apply_remote(&cfg, &op).await }
+                    let line = line.clone();
+                    let origin = origin.clone();
+                    async move { super::writeops::apply_remote(&line, &origin, &op).await }
                 },
             )
             .await;
@@ -1434,18 +1476,21 @@ impl FileWindow {
             ));
             return false;
         }
-        let cfg = self.source.cfg();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some("存远端文本要一个 tokio 运行时，这个窗口没拿到".into());
             return false;
         };
-        let cfg = cfg.clone();
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            return false;
+        };
+        let origin = self.source.origin();
         let board = self.edits.clone();
         board.attach(ctx);
         board.begin_save(&p.path);
         h.spawn(async move {
-            let r = super::editor::write_text(&cfg, &p.path, &p.text).await;
+            let r = super::editor::write_text(&line, &origin, &p.path, &p.text).await;
             board.deliver_save(r);
         });
         true
@@ -1866,15 +1911,7 @@ impl FileWindow {
         if let Some(e) = self.listing.error.lock().unwrap().clone() {
             ui.colored_label(egui::Color32::RED, e);
         }
-        // 🔴〔第十二刀〕**退了路要出声。** 一次静默降级与一次成功在屏幕上长得一样，
-        //    而代价是真的：这一屏不是后端列的，是 monitor 自己开一条 SFTP 列的
-        //    ⇒ 没有 `kind`（分不出符号链接）、没有截断读数、也不是「后端做前端拿结果」。
-        if let Some(why) = self.listing.verdict.lock().unwrap().clone() {
-            ui.colored_label(
-                egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
-                format!("这一屏没走后端：{why}"),
-            );
-        }
+        // 〔F2〕这里原先画「这一屏没走后端：…」（退路那一句）。退路没了，那一句也没了。
         // 🔴 截断也要出声 —— 「这个目录里就这么多」与「后端只给了前 N 条」
         //    在屏幕上长得一样，而用户会据此以为某个文件不存在。
         if self.listing.truncated.load(Ordering::SeqCst) {
@@ -2063,7 +2100,7 @@ pub fn open_detached(
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
-    open_detached_seeded(source, cwd, rt, Vec::new(), None)
+    open_detached_seeded(source, cwd, rt, None, Vec::new(), None)
 }
 
 /// 同 [`open_detached`]，但**带着已经列好的那一屏**开窗。
@@ -2083,6 +2120,8 @@ pub fn open_detached_seeded(
     source: Source,
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
+    // 🔴〔F2〕通道（`None` = 判据那一形：不连后端）。
+    line: Option<Line>,
     rows: Vec<Listed>,
     // 🔴〔第十刀〕`reveal` = 开窗就高亮这一行（`None` = 不高亮）。
     //    那是老面板 `open(revealPath)` 那一形（会话工具卡 → 文件跳转）。
@@ -2101,6 +2140,9 @@ pub fn open_detached_seeded(
             opts,
             Box::new(move |cc| {
                 let mut w = FileWindow::seeded(source, cwd, rt, rows);
+                if let Some(line) = line {
+                    w.attach_line(line);
+                }
                 // 🔴〔第十刀〕开窗就高亮那一行。**在这里设而不是进 `seeded` 的签名** ——
                 //    `seeded` 有 5 处调用点（判据 4 处），而 reveal 只有开窗那一条路用得上。
                 if let Some(name) = reveal {

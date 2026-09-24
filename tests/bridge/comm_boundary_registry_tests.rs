@@ -187,9 +187,51 @@ const REGISTERED: &[(&str, &str)] = &[
 /// （`fn.call(this, …)` 那一族），那是假红；而 Rust 那一侧今天**零个**真调用点。
 /// ⇒ 这一格是一笔欠账：F2 落第一个真调用点时，`X6` 的人群要扩到 Rust 前端那一侧。
 /// 住址在 `设计/05` 末尾「面 A 的第一个外部客户端：通道」的欠账那一节，不在这里抄第二份。
-/// ⚠ 留着这个形态而不是等到那天再加：**空表也要有住址**，
-/// 否则 `X6` 落地那天没有地方写人群，只能现编一个 —— 那正是本仓治的「人群靠目录」。
-const ENTRIES: &[(&str, &str)] = &[];
+///
+/// 🔴〔F2 · 2026-09-24〕**那一天到了**：文件窗口（`src/bridge/src/filewin/`）是第一个真调用点
+/// （`source::ask`）。表从两列扩成三列 —— 第二列是**这个入口的前端语料住在哪一种语言里**：
+/// `call` / `subscribe` 这两个裸词在 TS 语料里另有与本通道无关的同名调用
+/// （`launcher-diagnostics.ts` 的本地 `call(true)`、`session-accounts-poll.ts` 的 `subscribe(() => …)`），
+/// 按语言分人群才不假红。Rust 那一侧的人群是 [`RUST_FRONTENDS`]。
+const ENTRIES: &[(&str, &str, &str)] = &[
+    (
+        "call",
+        "rs",
+        "一次性请求（`05 §3.3.0` 的 `Comms::call`）—— 期限由调用方给（`Budget`，绝对时刻）",
+    ),
+    (
+        "subscribe",
+        "rs",
+        "订阅（`Comms::subscribe`）—— 窗口今天零处（生产上零条流，`chan/host.rs` 头注）",
+    ),
+];
+
+/// `X6` 的 **Rust 前端语料**：`(目录前缀, 摘掉的文件, 为什么摘)`。
+///
+/// ⚠ 摘掉的那一份是 **monitor 那一侧**的入口（`entry.rs`）：它调的是通道宿主注入给路由器的
+/// 那个句柄（`Backends::call`，入参是「这一跳还剩多少」的 `Duration`），不是前端的 `Comms::call`。
+const RUST_FRONTENDS: &[(&str, &[&str], &str)] = &[(
+    "src/bridge/src/filewin/",
+    &["src/bridge/src/filewin/entry.rs"],
+    "`entry.rs` 住 monitor 进程，调的是宿主句柄 `Backends::call`，不是前端的 `Comms::call`",
+)];
+
+/// 一份文件是不是某个入口的前端语料（按 [`ENTRIES`] 第二列的语言分）。
+fn is_frontend_for(rel: &str, lang: &str, member_paths: &BTreeSet<&str>) -> bool {
+    if member_paths.contains(rel) {
+        return false;
+    }
+    match lang {
+        "ts" => rel.ends_with(".ts"),
+        "rs" => {
+            rel.ends_with(".rs")
+                && RUST_FRONTENDS.iter().any(|(root, skip, _)| {
+                    rel.len() > root.len() && &rel[..root.len()] == *root && !skip.contains(&rel)
+                })
+        }
+        _ => false,
+    }
+}
 
 /// 成员标记：一份文件属于通信层，当且仅当它的文本里带着这个词。
 ///
@@ -1589,7 +1631,7 @@ fn c3_the_word_transport_never_crosses_the_boundary() {
         ENTRIES.len(),
         ENTRIES
             .iter()
-            .map(|(n, _)| *n)
+            .map(|(n, _, _)| *n)
             .collect::<BTreeSet<_>>()
             .len(),
         "入口表里有重名 —— 人群会被数两遍"
@@ -2179,19 +2221,26 @@ fn call_sites_without_budget(text: &str, entry: &str) -> Vec<String> {
 fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     let pop = boundary();
     let member_paths: BTreeSet<&str> = pop.iter().map(|m| m.rel.as_str()).collect();
-    let front: Vec<(String, String)> = corpus()
-        .into_iter()
-        .filter(|(rel, _)| rel.ends_with(".ts") && !member_paths.contains(rel.as_str()))
-        .collect();
-    // 抽取器自检：前端语料真的在（人群为空不等于语料为空）。
+    let all = corpus();
+    // 抽取器自检：两种语言的前端语料都真的在（人群为空不等于语料为空）。
     assert!(
-        front.iter().any(|(rel, _)| rel == "src/tabs.ts"),
+        all.iter()
+            .any(|(rel, _)| rel == "src/tabs.ts" && is_frontend_for(rel, "ts", &member_paths)),
         "前端语料里找不到 `src/tabs.ts` —— 语料面坏了，本条此刻在空转"
+    );
+    assert!(
+        all.iter()
+            .any(|(rel, _)| rel == "src/bridge/src/filewin/source.rs"
+                && is_frontend_for(rel, "rs", &member_paths)),
+        "Rust 前端语料里找不到 `filewin/source.rs`（窗口进程那一处 `call`）—— 语料面坏了"
     );
     let mut offenders: Vec<String> = Vec::new();
     let mut sites = 0usize;
-    for (entry, _) in ENTRIES {
-        for (rel, text) in &front {
+    for (entry, lang, _) in ENTRIES {
+        for (rel, text) in all
+            .iter()
+            .filter(|(rel, _)| is_frontend_for(rel, lang, &member_paths))
+        {
             let prod = production_of(rel, text);
             let head = format!("{entry}(");
             sites += prod.matches(head.as_str()).count();
@@ -2206,6 +2255,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
          `设计/05 §3.3.2`：**说法归调用方**。库里的默认期限 =\n\
          「这条路该等多久」没有任何调用方想过（`§9`：那 8 条无期限路径连实测分布都没有）。",
         offenders.join("\n")
+    );
+    // 🔴〔F2〕调用点**条数恒等**（不是地板）：今天恰好 1 处（`filewin/source.rs::ask`）。
+    //    变多 ＝ 窗口里长出了第二处说 `call` 的地方（期限的住址跟着分家）；
+    //    变少 ＝ 那一处没了 —— 上面那条零违例会在零个调用点上**恒绿**。
+    assert_eq!(
+        sites, 1,
+        "前端对通信层入口的调用点不再恰好一处（实得 {sites}）"
     );
     assert_eq!(
         call_sites_without_budget("await call(origin, op, payload);\n", "call").len(),
@@ -2408,7 +2464,11 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
     }
     if ENTRIES
         .iter()
-        .any(|(e, _)| !call_sites_without_budget(prod, e).is_empty())
+        // 〔F2〕人群与 `X6` 同一个口径（按入口的语言分前端语料），不另写一份。
+        .any(|(e, lang, _)| {
+            is_frontend_for(rel, lang, &BTreeSet::new())
+                && !call_sites_without_budget(prod, e).is_empty()
+        })
     {
         out.insert("X6");
     }

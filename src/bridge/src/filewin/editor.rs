@@ -393,16 +393,34 @@ pub async fn read_text(
     crate::sftp_pool::sftp_read_text_for_edit(cfg.clone(), path.to_string()).await
 }
 
-/// 存回去。
+/// 存回去 —— 〔F2 · 2026-09-24〕经通道说后端写面那条 `files-write-text`。
 ///
-/// 🔴 **围栏在池子那一层**（`sftp_write_text` 第一行 `guard_write`）⇒ 本模块
+/// 🔴 **围栏在后端那一层**（写面那道会话数据围栏，与桥那一份函数体逐字节相同）⇒ 本模块
 /// 不自己判一遍（判定只有一个家）。踩线时那句拒绝原样落进 [`Pane::last_save`]。
+/// ⚠ 上一版这里调的是池子那条写文本命令（SFTP）；读那一半（[`read_text`]）**仍走 SFTP**：
+/// 后端今天没有「读一份文本」的命令，而把字节从那台机器搬到这个窗口是一次**跨机传输**
+/// （`设计/60 §8.4` 未拍）—— 登记在 `boundary_tests::Kind::Transfer`。
+/// ⚠ 路径切成 `(root, rel)` 与写面其余四条同形（[`super::writeops::apply_remote`] 头注）。
 pub async fn write_text(
-    cfg: &crate::ssh_source::RemoteConfig,
+    line: &super::source::Line,
+    origin: &super::source::Origin,
     path: &str,
     content: &str,
 ) -> Result<(), String> {
-    crate::sftp_pool::sftp_write_text(cfg.clone(), path.to_string(), content.to_string()).await
+    let args = serde_json::json!({
+        "root": super::source::parent_dir(path),
+        "rel": super::source::remote_basename(path),
+        "content": content,
+    });
+    super::source::ask(
+        line,
+        origin,
+        "files-write-text",
+        &args,
+        super::writeops::WRITE_BUDGET,
+    )
+    .await
+    .map(|_| ())
 }
 
 // ═══════════════════════════════════════════════════════════════════════

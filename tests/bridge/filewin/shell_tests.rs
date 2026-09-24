@@ -514,6 +514,7 @@ fn xvfb_worker_opens_a_real_window() {
         Source::remote(synth_cfg(XVFB_ORIGIN)),
         cwd.clone(),
         None,
+        None,
         rows.iter().cloned().map(Into::into).collect(),
         None,
     );
@@ -630,6 +631,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
     let h = open_detached_seeded(
         Source::remote(synth_cfg(XVFB_ORIGIN)),
         "/srv/xvfb-nodisp".to_string(),
+        None,
         None,
         vec![file_row("f.txt").into()],
         None,
@@ -1287,6 +1289,17 @@ async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
         }],
     );
     assert!(w.rt.is_some(), "这一条要一个运行时，否则它卡在另一支上");
+    // 〔F2〕写面走通道 ⇒ 挂一台合成后端（它声明了 `files-delete`）。本条要证的是
+    //   **本地那道预判把它挡在上线之前** ⇒ 最后断这台后端一行都没收到。
+    let wired = crate::filewin::find::testing::wire_up(
+        "e2e-fence",
+        crate::filewin::find::testing::FakeBackend::new(
+            &["files-delete"],
+            crate::filewin::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    w.attach_line(wired.line.clone());
     let ctx = egui::Context::default();
 
     // 第一帧：建字体图集 ＋ 让上一帧的 widget 表有内容（命中测试按上一帧做）。
@@ -1351,6 +1364,12 @@ async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
     // 而且**没问过人**：那一问会教用户「这是可以删的」，答完了它照样做不了。
     assert_eq!(out.asked, 0, "受保护的那一件被摆到人面前问了");
     assert!(!w.write_board.is_asking());
+    // 〔F2〕线上一行都没有 —— 挡在上线之前，不是后端替它挡的。
+    assert!(
+        wired.cmds().is_empty(),
+        "受保护那一件上了线：{:?}",
+        wired.cmds()
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1803,11 +1822,22 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
 async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
     let mut w = FileWindow::seeded(
         Source::remote(synth_cfg("edit-fence")),
-        "/home/u/.claude/projects/p".to_string(),
+        "/srv/refuse".to_string(),
         tokio::runtime::Handle::try_current().ok(),
         Vec::<Row>::new(),
     );
-    let jsonl = "/home/u/.claude/projects/p/s.jsonl";
+    // 〔F2〕存那一趟走后端写面（`files-write-text`）。合成后端对 `root` 里带 `refuse` 的
+    //   一律按围栏那一档拒（`refused`）—— 本条要的是「拒了 ⇒ 原话画上、字不丢」。
+    let wired = crate::filewin::find::testing::wire_up(
+        "edit-fence",
+        crate::filewin::find::testing::FakeBackend::new(
+            &["files-write-text"],
+            crate::filewin::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    w.attach_line(wired.line.clone());
+    let jsonl = "/srv/refuse/s.jsonl";
     w.edits.deliver(crate::filewin::editor::Arrived::Text {
         path: jsonl.into(),
         name: "s.jsonl".into(),
@@ -1816,7 +1846,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().unwrap() = "改坏它\n".into();
 
-    // 真发一趟存 —— 那条路会被池子第一行的 `guard_write` 当场拒（不碰线）。
+    // 真发一趟存 —— 后端那一侧当场拒。
     assert!(w.save_edit(None), "那趟存一次都没发出去");
     for _ in 0..200 {
         if w.edits.saves() > 0 {
@@ -1828,8 +1858,8 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
     let p = w.editing().expect("存失败之后编辑面不见了");
     match p.last_save.clone() {
         Some(Err(why)) => assert!(
-            why.contains("拒绝写 Claude 数据源文件"),
-            "拒的不是围栏那一句（那说明它先去拨线了）：{why}"
+            why.contains("refused") && why.contains("refuse write"),
+            "拒的不是后端那一句：{why}"
         ),
         other => panic!("往一条受保护路径上存，结局却是 {other:?}"),
     }

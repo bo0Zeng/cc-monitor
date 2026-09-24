@@ -78,6 +78,16 @@ fn synthetic_request() -> OpenRequest {
             }),
         ],
         reveal: Some("坏\u{FFFD}名字".to_string()),
+        handoff: synthetic_handoff(),
+    }
+}
+
+/// 一份合成交接件：回环地址 ＋ 一把**合成**钥匙（不是任何一个真口的钥匙）。
+fn synthetic_handoff() -> crate::chan::host::Handoff {
+    crate::chan::host::Handoff {
+        addr: "127.0.0.1:9".parse().expect("合法地址"),
+        key: crate::chan::wire::Key("k".repeat(64)),
+        frame: 1 << 20,
     }
 }
 
@@ -127,6 +137,15 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
             );
         }
     }
+    // 🔴〔F2〕交接件整份过得去（地址 · 帧长 · 钥匙），否则窗口拨不回来。
+    assert_eq!(got.handoff.addr, want.handoff.addr, "交接件的地址漂了");
+    assert_eq!(got.handoff.frame, want.handoff.frame, "交接件的帧长漂了");
+    assert!(got.handoff.key == want.handoff.key, "交接件的钥匙漂了");
+    // 🔴 钥匙**不进日志**：整份种子的 `Debug` 里找不到它（`Handoff` / `Key` 的 `Debug` 手写成不打印）。
+    assert!(
+        !format!("{want:?}").contains(&want.handoff.key.0),
+        "开窗种子的 `Debug` 把钥匙打出来了 —— 哪天一条 `tracing!(\"{{:?}}\")` 就把它带进日志"
+    );
     // ★ 反向自检：**线上那份字节里真的装着那几个值**。
     //   少了这一比，一个「原样回传入参」的假实现照样绿（encode/decode 都不走 serde）。
     for needle in ["10.0.0.7", "带空格 的目录", "id_ed25519"] {
@@ -254,6 +273,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         cwd: "/tmp".to_string(),
         rows: Vec::new(),
         reveal: None,
+        handoff: synthetic_handoff(),
     };
     let mut pids: Vec<u32> = Vec::new();
     let mut codes: Vec<String> = Vec::new();
@@ -385,6 +405,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
         cwd: dir.to_string_lossy().to_string(),
         rows: Vec::new(),
         reveal: None,
+        handoff: synthetic_handoff(),
     })
     .expect_err("拿一个不是二进制的文件当窗口进程，居然报了成功");
     println!("  现打：{e}");

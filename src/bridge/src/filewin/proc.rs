@@ -88,23 +88,18 @@
 //! # 🔴 四、它**买不到**什么（逐条，别读宽）
 //! ═══════════════════════════════════════════════════════════════════════
 //!
-//! - 🔴 **后端那条通道，独立进程今天够不着。这是本刀最大的一格，现打确认过：**
-//!   - `inbound_client::client_for` 问的是一张**进程级**登记表，而那张表是由
-//!     `ssh_source` 的 `stream_loop`（远端）与 `local_backend_host` 的接流那一段（本机）
-//!     填的 ⇒ **新进程里它是空的**。
-//!   - **本机那一侧连不上**，理由不是没写代码：常驻后端那个回环口**一次只服务一条流**，
-//!     monitor 占着的时候第二个来客拿到的是 `stream-busy`（两侧同一个字面量，
-//!     `local_backend_host` 与后端 `listen` 各持一份、有判据逐字对拍）。
-//!   - **远端那一侧更远**：那台机器上的后端住在 monitor 手里那条 SSH 流里，
-//!     换个进程就不是同一条流。
-//!   ⇒ 于是窗口进程里 `files-ls` / `files-find` 那一族拿到的是「没有可用的控制通道」。
-//!   **列目录**靠 `super::source::list_dir` 那条**已申报的退路**（旧那两条，
-//!   退路不静默、界面上一行橙字）；**搜索**那一族没有退路（`设计/60 §2 档①`：
-//!   SFTP 给不了搜索）⇒ 它在窗口里出声说不通，**不静默**。
-//!   🔴 这一格**不是本刀能关的**：`设计/60 §8.5` 自己就登记着「独立进程要有一条
-//!   自己的 IPC 才够得着那条长连接（或者由 monitor 代理转发）」，并裁「那一格与
-//!   `§8.4` 的传输那一格**可以是同一条通道** ⇒ 两件事应当一起裁，别分两次」。
-//!   ⇒ 照它办：**本刀不新开通道**，把这一格如实登记，等那次合裁。
+//! - ✅〔F2 · 2026-09-24〕**后端那条通道 —— 这一格关了。** 上一版这里登记着「独立进程今天
+//!   够不着后端」（进程级登记表在新进程里是空的 · 本机常驻后端一次只服务一条流 · 远端后端
+//!   住在 monitor 手里那条 SSH 流里），于是列目录靠一条申报过的 SFTP 退路。
+//!   现在种子里多了交接件（`chan::host::Handoff`，**只走 stdin**），[`child_main`] 先拨回
+//!   monitor 的通道口（`chan::dial::dial`），拨不通就**不开窗**（`D11`：没有退路）；
+//!   之后读侧与写面每一条都经那条线说 `call`（`super::source::ask`）。
+//!   ⚠ 仍买不到：**订阅**（生产上零条流，`chan/host.rs` 头注）· **断线重拨**（`chan/client.rs`
+//!   头注：断了就断了，之后每一件都会出声说没走通）。
+//! - 🔴 **同一台远端仍可能被拨第二条 SSH 连接 —— 只在真搬字节时**：跨机传输
+//!   （上传 · 往外拖 · 读文本进编辑器）与同机复制仍走窗口进程自己那份池
+//!   （`设计/60 §8.4` 未拍 / 后端缺 `files-copy`，逐条住 `boundary_tests::WINDOW_SIDE`）。
+//!   下面这一条讲的就是那份池：
 //! - 🔴 **同一台远端会被拨第二条 SSH 连接** —— `§4.8.2` 拒付的那个代价，
 //!   今天由这条裁决付掉了：`sftp_pool::pool` 是进程级 `OnceLock` ⇒ 窗口进程里是
 //!   **另一份**池 ⇒ `设计/60 §5.4a` 那套「一条连接 · 6 通道闸 · 4 传输车道闸，
@@ -139,6 +134,12 @@ pub const BIN_ENV: &str = "CCM_FILEWIN_BIN";
 
 /// 一次开窗的**全部**输入 —— 它整份过一次进程边界（走 stdin，见模块头注 §三）。
 ///
+/// 🔴〔F2 · 2026-09-24〕多了 [`Self::handoff`]：通道的交接件（回环地址 ＋ **钥匙** ＋ 帧长）。
+/// 它**只走 stdin** —— 不走 argv（`/proc/<pid>/cmdline` 世界可读）、不走环境变量
+/// （`/proc/<pid>/environ` 同用户可读、且会被孙进程继承），理由与 `chan/host.rs` 头注
+/// 「钥匙怎么交接」第 3 步逐字同一条。⚠ 本类型的 `Debug` 会打到 `Handoff` 那一格，
+/// 而 `Handoff` / `Key` 的 `Debug` 都手写成不打印钥匙 —— 钥匙不进日志。
+///
 /// 🔴 字段与 `super::shell::FileWindow::seeded` ＋ `set_reveal` 的入参**一一对应**，
 /// 刻意不多不少：多一个字段就是一处「窗口那侧能有、而开窗这条路给不了」的缝。
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -152,6 +153,8 @@ pub struct OpenRequest {
     pub rows: Vec<Listed>,
     /// 开窗就高亮这一行（`None` = 不高亮）。
     pub reveal: Option<String>,
+    /// 🔴〔F2〕窗口进程拿它拨回 monitor 那个通道口（`chan::dial::dial`）。
+    pub handoff: crate::chan::host::Handoff,
 }
 
 /// 种子 → 字节。**纯函数**（判据两向对拍）。
@@ -370,6 +373,9 @@ fn reap_later(child: crate::spawn_managed::ManagedChild) {
 // 子进程那一侧
 // ═══════════════════════════════════════════════════════════════════
 
+/// 拨回 monitor 那个通道口（回环）的期限。回环上连一次 ＋ 一来一回的认证，给得很宽。
+pub const DIAL_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// 种子解不出来时的退出码。
 pub const EXIT_BAD_SEED: i32 = 2;
 /// 窗口没立起来时的退出码。
@@ -412,10 +418,25 @@ pub fn child_main() -> i32 {
             return EXIT_WINDOW_FAILED;
         }
     };
+    // 🔴〔F2 · 2026-09-24〕**先拨通道，拨不通就别开窗**（`D11`：没有退路 ——
+    //    不许「连不上就退回 SFTP 自己列」）。期限是这里给的（`05 §3.3.2`：说法归调用方）。
+    use crate::chan::wire::{Budget, CancelToken};
+    let budget = Budget {
+        until: std::time::Instant::now() + DIAL_BUDGET,
+        cancel: CancelToken::new(),
+    };
+    let line = match rt.block_on(crate::chan::dial::dial(&req.handoff, budget)) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("窗口连不上主程序：{e}");
+            return EXIT_WINDOW_FAILED;
+        }
+    };
     let h = super::shell::open_detached_seeded(
         req.source,
         req.cwd,
         Some(rt.handle().clone()),
+        Some(line),
         req.rows,
         req.reveal,
     );

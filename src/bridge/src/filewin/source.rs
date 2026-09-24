@@ -1,4 +1,4 @@
-//! `24e` 数据面：**列一个目录**。只有一侧 —— 远端，走已有的 SFTP 那一套。
+//! `24e` 数据面：**列一个目录**。只有一侧 —— 远端；〔F2 · 2026-09-24〕经通道问那台机器上的后端。
 //!
 //! # 🪦 本机侧退役（2026-09-23）：「本机」那一侧存在过，现在不在了
 //!
@@ -40,25 +40,21 @@
 //!   用户裁的是「本地不需要文件管理器」，不是「窗口不许碰本机盘」。
 //! - `src/sftp/` 那块**旧面板**一个字节没动（它的退役是另一刀，排在补齐 7 项功能之后）。
 //!
-//! # 🔴 远端这一侧刻意**不新写传输代码**
+//! # 🔴〔F2 · 2026-09-24〕列目录**只经通道问后端**（逐条理由住下面「窗口进程只说 `call`」那一节）
 //!
-//! [`list_remote`] 直接 `await` [`crate::sftp_pool::sftp_list_dir`] ——
-//! 那是个 `#[tauri::command]`，但它同时就是一个普通的 `pub async fn`。
-//! **同进程**（见 `super` 的头注）⇒ 这里是一次普通函数调用，**不过 IPC、不过 serde**，
-//! 而且走的是**同一个进程级连接池**（`sftp_pool.rs::pool`）⇒ 不会多拨一条 SSH。
+//! 上一版这里写的是「远端这一侧直接 `await` 池子那条列目录命令（同进程、同一个连接池）」。
+//! 窗口改成独立进程之后那句话早就只对一半（换进程就换一份池），F2 这一拍把那条路整条摘了。
 //!
-//! # ⚠ 排序：一个契约，盘上有两份实现 —— 而**显示序**这一半在本刀收成了一份
+//! # ⚠ 排序：一个契约，盘上有两份实现 —— 而**显示序**这一半只有一个家
 //!
 //! 「目录在前，再按名称小写排」这条契约，生产侧的落点是
 //! `sftp_pool.rs::sort_entries`。它是**私有**的 ⇒ 本模块调不到，
 //! 只能再写一份 [`sort_rows`]。
 //!
-//! 🔴 **如实登记这个缝，连同它这一刀变窄到什么程度**：
-//! 退路那条（`sftp_list_dir`）回来的东西**在池子里已经排过一次**（生产实现），
-//! 而 [`list_dir`] 现在**两支都再过一遍 [`sort_rows`]** ——
-//! 于是「**屏幕上那一屏是什么序**」这件事在窗口这一侧只有一个家。
-//! [`tests::the_two_orderings_agree_on_a_synthetic_set`] 把**两条路的真实输出**
-//! 对拍成相等，所以「两份漂开」这件事照旧有判据；
+//! 🔴 **如实登记这个缝**：后端不排（它答的是目录项，不是一屏）⇒ 窗口这一侧的显示序
+//! 只经 [`sort_rows`]；池子那一份今天只服务旧面板。
+//! [`tests::the_two_orderings_agree_on_a_synthetic_set`] 把两份契约对拍成相等，
+//! 所以「两份漂开」这件事照旧有判据；
 //! 而「排两次会不会把序搅了」有一条结构上的答案：`slice::sort_by` 是**稳定**的，
 //! 把同一个比较器再作用一次在已经有序的那一摞上是恒等
 //! （[`tests::sorting_an_already_sorted_screenful_by_name_changes_nothing`] 现打钉着）。
@@ -196,7 +192,7 @@ impl Source {
         self.0.origin_label()
     }
 
-    /// 这一趟问的是**哪台机器** —— 走 [`crate::origin::Origin`]，全仓那一个类型。
+    /// 这一趟问的是**哪台机器** —— 走 [`Origin`]（`chan::wire` 再导出的全仓那一个类型）。
     ///
     /// 🔴 它与 [`Source::label`] **刻意分开两个函数**：`label` 是给人看的，
     /// 而这一个是**寻址用的**。两者今天由同一个 `origin_label()` 喂
@@ -210,8 +206,8 @@ impl Source {
     /// ⚠ 这里用 `origin_label()`，与 `ssh_source` 的 `stream_loop` 登记时
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
     /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
-    pub fn origin(&self) -> crate::origin::Origin {
-        crate::origin::Origin(self.0.origin_label())
+    pub fn origin(&self) -> Origin {
+        Origin(self.0.origin_label())
     }
 }
 
@@ -453,38 +449,9 @@ pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
     Ok(out)
 }
 
-/// `SftpEntry` → [`Listed`] 的映射。
-///
-/// 🔴 **抽成具名函数是为了让它可判。** [`list_remote`] 整条路要真远端才跑得起来，
-/// 而本仓红线不许起真连接（`tests/bridge/sftp_tests.rs` 逐字：
-/// 「跑不了真路（要先连上远端 / 红线不许起真连接）」）
-/// ⇒ 那条路上**唯一有逻辑的一段**就是这里，把它抽出来，它就有判据了。
-///
-/// 🔴〔补齐五项 2026-09-23〕**`is_symlink` 这一格此前在这里被丢掉了。**
-/// `SftpEntry` 一直在送它（`sftp_pool.rs` 那个结构体里就有），而旧面板拿它画一个链接标记
-/// —— 也就是说「看不出哪个是符号链接」这条缺口在**退路**这一侧同样是
-/// 「数据在送、窗口不画」，不只主路那一侧。
-///
-/// ⚠ `mtime_secs` 照旧是 `None`，而那**不是丢掉**：`SftpEntry` 里压根没有这一格
-/// （SFTP 那条路交不出它）⇒ 这是 [`Listed::mtime_secs`] 头注里那个
-/// 「没送」与「没有」的区别的实例。
-pub fn row_from_sftp_entry(e: crate::sftp_pool::SftpEntry) -> Listed {
-    Listed {
-        row: Row {
-            name: e.name,
-            path: e.path,
-            is_dir: e.is_dir,
-            size: e.size,
-            lossy_name: e.lossy_name,
-        },
-        link: e.is_symlink,
-        mtime_secs: None,
-    }
-}
-
 /// 远端 `.` 解出来的那条路径能不能当**起点**用。
 ///
-/// # 🔴 抽成纯函数的理由与 [`row_from_sftp_entry`] 同一条
+/// # 🔴 抽成纯函数的理由
 ///
 /// [`resolve_remote_home`] 整条路要真远端才跑得起来（本仓红线不许起真连接）
 /// ⇒ 那条路上**唯一有逻辑的一段**就是这里，把它抽出来，它就有判据了。
@@ -531,62 +498,46 @@ pub async fn resolve_remote_home(cfg: &RemoteConfig) -> Result<String, String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 🔴〔第十二刀 2026-09-22〕**后端做，前端拿结果** —— 用户指令的第一步
+// 🔴〔F2 · 波二 · 2026-09-24〕**窗口进程只说 `call`** —— 经 F3 那条通道
 // ═══════════════════════════════════════════════════════════════════════
 //
-// 用户 2026-09-22 逐字：「文件管理器不应该全部依赖前端 / 应该像我们现在一样的架构 /
-// **即后端做, 前端拿结果, 这样才能 0 流量**」。
-// 设计稿住 `设计/60 §8`；本段是它的**第 1 步**（只读那一侧，无裁决前置）。
+// 用户逐字：「甲, 窗口变成独立前端. 我说了后端要模块化, 即原生后端+文件管理后端.
+// 现在先解耦清楚. 然后 monitor 可以打开文件管理器的前端」；「D11：后端是给定的，不要退路」。
 //
-// # 为什么这一步不需要任何裁决
+// # 形状
 //
-// 后端**已经有** `files.ls`（`src/backend/files/mod.rs::CAPABILITIES`），而它
-// **今天零消费者**。接上去是纯增量，`readonly_guard` 那 4259 行一行不动
-//（`files.ls` 的 `effect` 是 `ReadsOnly`）。
+// 窗口进程（`proc::child_main`）从 stdin 拿到交接件（`chan::host::Handoff`：回环地址 ＋
+// 钥匙 ＋ 帧长），用 `chan::dial::dial` 连上 monitor 那个通道口，换一个
+// `chan::client::Client`（[`Line`]）。此后读侧与写面**每一条**都经 [`ask`] 说
+// `call(origin, op, payload, budget)`，由 monitor 那一侧的路由器转给 `inbound_client`
+// ——本机与远端同一条路。
 //
-// # 🔴 为什么是「主路 ＋ 申报过的退路」而不是「把旧路删掉」
+// # 🔴 没有退路（`D11`）
 //
-// 后端**不是恒在的**，两条现打的理由：
-// - **后端没推上去 / 没起来**，而 SSH 本身是通的。
-// - 还有一条形状上的：窗口**可能没有 tokio 运行时**（判据里大量
-//   `FileWindow::seeded(…, None, rows)`）⇒ 问不了后端。
-//   ⚠ 这一条的**后果**在本机侧退役之后变了：从前没有运行时还能退回本机 `read_dir`，
-//     今天它只剩一种结局 —— 出声（`shell::FileWindow::reload` 那一支）。
-//
-// ⚠ 从前这一节还有第三条理由，逐字「**本机**：`build.rs` 那句警告 ……
-//   裸可执行文件起不了本机后端」。那一条**随本机侧一起退役**：
-//   本机没有后端这件事仍然是真的，但这个窗口不再往本机看 ⇒ 它不是这里的退路理由了。
-//
-// ⇒ 形状照本仓现成的那个（`sftp_pool::CopyVerdict`：走了快路回 `None`，
-//   **退了路回一句话**）：[`ListVerdict`]。**退路不许静默** —— 那正是
-//   「零流量退化成 2× 流量」当初要出声的同一条纪律。
+// 上一版这里是「先问后端，问不到就退回 SFTP 并出声」（那一格的裁决类型叫 `ListVerdict`，
+// 退路走池子那条列目录命令）。**整条拿掉了**：问不到就是错，原话画在窗口上。
+// 窗口进程里列目录这件事从此只有一条路、一份排序（[`sort_rows`]）。
+// 那条退路的判据（「退路在、排在问后端之后、只有一支」）随它一起换成了反面：
+// `source_tests::listing_has_no_second_road_when_the_backend_refuses`（行为）＋
+// `boundary_tests` 的窗口侧登记表（池子那条列目录命令不在表里 ⇒ 写上就红）。
 //
 // # ⚠ 这一步**没有**做到什么（别读宽）
 //
-// - **两份实现还在**，只是降级成了退路。「两份变一份」要等到后端恒在那天
-//   （那是另一件事，不是这一刀）。
-// - **写那一族一条都没搬**（`设计/60 §8.3` 那道政策题还没拍）。
-// - **`Row` 仍然持字符串不持字节** —— 后端那一侧已经走原始字节了
-//   （`files.ls` 的 `path` 是 `{"b16":…}` 或字符串），而这一侧还在入口处
-//   有损转一次。改 `Row` 会动到六个模块与四十来条判据 ⇒ 单独一刀。
-//   ⚠ 但 [`Row::lossy_name`] 这一格**当场变准了**：从前是
-//   「名字里含 U+FFFD」（一个**猜**，真叫这个名字的文件会被误判），
-//   现在是「那串字节不是合法 UTF-8」（**事实**）。
+// - **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消 · 读一份文本进编辑器）：`设计/60 §8.4` 未拍，
+//   题面逐字「上传/跨机传输不做」。逐条登记在 `boundary_tests::Kind::Transfer`。
+// - **同机复制仍走 SFTP**：后端今天没有 `files-copy` 这条命令（写面是那六条），
+//   窗口一侧补不出来 ⇒ 登记在 `boundary_tests::Kind::BackendLacks`，交主会话。
+// - **开窗时解 home**（[`resolve_remote_home`]）仍走 SFTP，而且它**住 monitor 那一侧**
+//   （入口命令调它）：后端没有「这台机器的 home 是哪儿」这一问（`hello.homes` 今天恒空）。
+// - **`Row` 仍然持字符串不持字节**（改它要动六个模块与四十来条判据，单独一刀）。
 
 /// 那条线上命令的名字。⚠ 能力名是 `files.ls`，线上名是 `files-ls`
 /// （两者刻意不同形，同 `find.rs` 头注那条）。
 pub const CMD_LS: &str = "files-ls";
 
-/// 一趟列目录**走没走成主路**。`None` = 后端答的；`Some(说明)` = 退了路。
-///
-/// 🔴 与 `sftp_pool::CopyVerdict` 同形、同理由：一次静默降级与一次成功
-/// 在屏幕上长得一样，而代价（这里是「分层退回前端」，那里是「2× 流量」）是真的。
-pub type ListVerdict = Option<String>;
-
 /// 一趟 `files-ls` 回来的 `entries` 里的**一条** → [`Listed`]。
 ///
-/// 🔴 **抽成具名函数是为了让它可判**（同 [`row_from_sftp_entry`] 的理由）：
-/// [`list_via_backend`] 整条路要一条真后端通道才跑得起来，
+/// 🔴 **抽成具名函数是为了让它可判**：[`list_via_backend`] 整条路要一条通道才跑得起来，
 /// 而那条路上**唯一有逻辑的一段**就是这里。
 ///
 /// # 🔴 逐格说明 —— **这张表现在是一条判据，不是散文**
@@ -652,15 +603,21 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
 ///
 /// ⚠ 本函数**自己没有逻辑**，判的那一段住 [`row_from_ls_entry`]。
 pub async fn list_via_backend(
-    origin: &crate::origin::Origin,
+    line: &Line,
+    origin: &Origin,
     dir: &str,
     limit: usize,
     by: SortBy,
 ) -> Result<(Vec<Listed>, bool), String> {
     let args = serde_json::json!({ "path": dir, "limit": limit });
-    let d = super::find::call_one(origin, CMD_LS, args, std::time::Duration::from_secs(20))
-        .await
-        .map_err(super::find::routed_text)?;
+    let d = ask(
+        line,
+        origin,
+        CMD_LS,
+        &args,
+        std::time::Duration::from_secs(20),
+    )
+    .await?;
     rows_from_ls_data(&d, by)
 }
 
@@ -702,42 +659,115 @@ pub fn rows_from_ls_data(d: &serde_json::Value, by: SortBy) -> Result<(Vec<Liste
 /// （`ScrollArea::show_rows`），一次拿多少不影响帧时，只影响一次往返的大小。
 pub const LS_LIMIT: usize = 50_000;
 
-/// 列一个目录 —— **先问后端，问不到就退回旧路并出声**。
+/// 列一个目录 —— **只问后端**（`D11`：没有退路）。
 ///
-/// 回 `(行, 截断了吗, 走没走成主路)`。逐条理由住本段上方那一节。
-///
-/// 🔴〔补齐五项 2026-09-23〕**`by` 这一格让两支走同一个显示序。**
-/// 退路那一支回来的东西在池子里按「目录在前、名称小写」排过一次
-/// ⇒ 用户选了「大小」的时候，不在这儿再排一遍就会**静默忽略他的选择**
-/// （而屏幕上那个下拉写着「大小」）。
+/// 回 `(行, 截断了吗)`。问不到 ⇒ 那句原话（[`said`] 翻过的）原样交出去。
 pub async fn list_dir(
+    line: &Line,
     source: &Source,
     dir: &str,
     by: SortBy,
-) -> Result<(Vec<Listed>, bool, ListVerdict), String> {
-    match list_via_backend(&source.origin(), dir, LS_LIMIT, by).await {
-        Ok((rows, truncated)) => Ok((rows, truncated, None)),
-        Err(why) => {
-            // ── 退路：旧那条路，原样 ────────────────────────────────
-            // ⚠ 本机那一侧退役之后这里**只剩一支**（从前是两支）。
-            //   `#[allow]` 一个字都不要：少一支不是少一个判据，
-            //   是那一支要判的东西整条不在了（头注那块墓碑）。
-            let mut rows = list_remote(source.cfg(), dir).await?;
-            sort_rows(&mut rows, by);
-            Ok((rows, false, Some(why)))
-        }
-    }
+) -> Result<(Vec<Listed>, bool), String> {
+    list_via_backend(line, &source.origin(), dir, LS_LIMIT, by).await
 }
 
-/// 列一个**远端**目录 —— 直接调 `sftp_pool`，同进程、无 IPC。
-pub async fn list_remote(cfg: &RemoteConfig, dir: &str) -> Result<Vec<Listed>, String> {
-    let entries = crate::sftp_pool::sftp_list_dir(cfg.clone(), dir.to_string()).await?;
-    // `sftp_list_dir` 内部已按生产契约排过序 ⇒ **本函数不再排一次**。
-    // ⚠ 显示序那一步由 [`list_dir`] 统一做（用户选的那一档）—— 它对
-    //   `Name` 那一档是恒等（稳定排序作用在已经有序的那一摞上），
-    //   对另两档才真的重排。两件事刻意分层：本函数答「那个目录里有什么」，
-    //   `list_dir` 答「屏幕上按什么序摆」。
-    Ok(entries.into_iter().map(row_from_sftp_entry).collect())
+// ═══════════════════════════════════════════════════════════════════════
+// 🔴〔F2〕窗口进程够后端的**唯一一处** `call`
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 寻址键：`chan::wire` 再导出的全仓那一个「哪台机器」类型。
+pub use crate::chan::wire::Origin;
+
+/// 窗口进程手里那条通道（克隆便宜，共享同一条回环连接）。
+pub type Line = crate::chan::client::Client;
+
+/// 发一条命令、拿它的 `data`（JSON）。
+///
+/// 🔴 **窗口进程里说 `call` 的只有这一处**（`X6` 的 Rust 那一侧人群就是它）：
+/// 期限由调用方给（`t`），这里只把它换成**绝对时刻**的 `Budget`（`05 §3.3.2`）——
+/// 一个期限常量都不住在这儿。
+///
+/// ⚠ 载荷在这里才被当成 JSON：通道对它不透明（`C1`），宿主那一侧把它原样交给
+/// `inbound_client`，回来的那一份也是 JSON。`null` ⇒ 当成契约不符（写面与读侧那几条
+/// 都回一个对象）。
+pub async fn ask(
+    line: &Line,
+    origin: &Origin,
+    cmd: &str,
+    args: &serde_json::Value,
+    t: std::time::Duration,
+) -> Result<serde_json::Value, String> {
+    use crate::chan::wire::{Body, Budget, CancelToken, Comms, Op};
+    let budget = Budget {
+        until: std::time::Instant::now() + t,
+        cancel: CancelToken::new(),
+    };
+    let payload =
+        Body(serde_json::to_vec(args).map_err(|e| format!("`{cmd}` 的参数拼不出来：{e}"))?);
+    let op = Op(cmd.to_string());
+    let body = line
+        .call(origin, &op, payload, budget)
+        .await
+        .map_err(|e| said(cmd, &e))?;
+    let v: serde_json::Value =
+        serde_json::from_slice(&body.0).map_err(|e| format!("`{cmd}` 的应答读不动：{e}"))?;
+    if v.is_null() {
+        return Err(format!("`{cmd}` 回了一条空应答，和约定的不一样"));
+    }
+    Ok(v)
+}
+
+/// 通道那三层失败（`05 §3.3.1`）→ 窗口上那一句话。**穷尽 `match`，不许 `_ =>`。**
+///
+/// 🔴 对端说了话（`Peer{Refused}`）时 body 是宿主那一侧拼的 `{"code","message"}`
+/// （`backend_route::layer_call_error` 逐字），翻成人话走 [`super::find::refusal`] ——
+/// 与从前经 `inbound_client` 直连时**同一个翻译**，一句都没换。
+///
+/// ⚠ `reach` 那一格要说出来：`Sent` / `Unknown` 的意思是「对面可能已经做了」，
+/// 对写面那几条这一句是承重的（用户据此决定要不要再点一次）。
+pub fn said(cmd: &str, e: &crate::chan::wire::CallError) -> String {
+    use crate::chan::wire::{CallError, HopFault, OursFault, PeerFault, Reach};
+    match e {
+        CallError::Peer { why } => match why {
+            PeerFault::Refused { body } => {
+                match serde_json::from_slice::<serde_json::Value>(&body.0) {
+                    Ok(v) => super::find::refusal(
+                        cmd,
+                        v.get("code")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or(""),
+                        v.get("message")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or(""),
+                    ),
+                    Err(_) => format!("`{cmd}` 被拒：{}", String::from_utf8_lossy(&body.0)),
+                }
+            }
+            PeerFault::Unsupported => format!("那台机器上的后端不认 `{cmd}`，多半是版本旧了"),
+        },
+        CallError::Hop { at, reach, why } => {
+            let what = match why {
+                HopFault::Unreachable => "连不上",
+                HopFault::Dropped => "断了",
+                HopFault::Overrun => "超时了",
+            };
+            let did = match reach {
+                Reach::NotSent => "这一趟没发出去",
+                Reach::Sent | Reach::Unknown => "对面可能已经做了",
+            };
+            let leg = if at.idx == 0 {
+                "窗口到主程序"
+            } else {
+                "主程序到后端"
+            };
+            format!("`{cmd}` 没走通：{leg}那一段{what}，{did}")
+        }
+        CallError::Ours { why } => match why {
+            OursFault::Cancelled => format!("`{cmd}` 撤了"),
+            OursFault::Misuse => format!("`{cmd}` 的参数这一侧就拼错了"),
+            OursFault::Broken => format!("`{cmd}` 的应答对不上约定"),
+        },
+    }
 }
 
 #[cfg(test)]
