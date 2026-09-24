@@ -2676,6 +2676,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔SR1a · 2026-09-24〕`--dial` 那条分派臂删了，守它「接得到」的判据随入口换成链路四条而改名。
+        (
+            "tests/backend/main_argv_table_guard.rs",
+            "the_dial_arm_is_actually_wired_into_the_dispatch",
+            1,
+        ),
         // 🔴 〔C2 · 2026-09-24〕拨号搬进后端的拨号代理之后，界面侧 `K-P6b` 那一版的三条判据随它们守的东西一起删了：
         //    回落登记（回落删了，`D11`）· 请求行按蛇形键写（请求改由宿主 `dial_host` 造，判据搬去那边且改成与后端异源）·
         //    代理只从两处解析（解析多了「自释放那一份」一处）。留下的那几句说的正是「它们为什么不在了」⇒ 第②条出路。
@@ -3599,6 +3605,8 @@ fn every_prose_tombstone_mark_is_registered() {
         // `ssh_source_dial_move_judge.rs` 三块（回落表那条判据 · 请求行那条 · 解析两处那条，随拨号搬家删掉）。
         ("src/bridge/src/inproc_dial.rs", 1),
         ("tests/bridge/ssh_source_dial_move_judge.rs", 3),
+        // 〔SR1a · 2026-09-24〕`--dial` 删了那一拍：守它的判据改名留的墓碑。
+        ("tests/backend/main_argv_table_guard.rs", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/bridge/src/sftp.rs", 6), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/profile_installer.rs", 2), // 〔AL1〕+1：`AccountAliasReport` 那一句

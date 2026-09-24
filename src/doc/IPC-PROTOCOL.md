@@ -407,6 +407,8 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `overflow` | `dropped: u64`, `lost?`, `lost_truncated?` | issue #32：后端发送通道被慢/卡的 SSH 管道反压、丢了 `dropped` 帧的哨兵信号（通道排空到能再容纳时发一次）→ monitor 经 SS-F `remote-health` 事件 toast 提示用户可能丢实时行。<br>★ **`lost`（audit-0805 F03，additive）**：`[{kind, subject?}]` —— 那批丢帧里**不可恢复**的那些的身份。⚠ 下面 `#入方向` 那句「出方向丢一帧**可恢复**（行还在远端 jsonl 里）」**只对内容帧成立**：`line`/`turn_end`/`tmux_sessions` 丢了别处还有，而 `session_added`/`session_removed`/`tmux_session_closed`/`session_status` 是**一次差分的结果、别处不存在** —— 只知道「丢了 N 条」是没法重同步的。⇒ 本字段给那些帧带上 `kind` 与 `subject`（sid / tmux 会话名），客户端据此**精确重取那几个主体**。空集时**不序列化**（旧客户端看到的字节与从前一字不差）。<br>★ **`lost_truncated`（additive，bool）**：身份表**有界**（后端侧 `LOST_IDENTITY_CAP = 64`）。超出的那些**仍计入 `dropped`**，只是不再留身份并置本位 —— **不是静默截断**。置位 = 「这份清单不全，理性做法是整体重取快照」。为 `false` 时不序列化 |
 | `reply` | `id`, `ok`, `data?`, `code?`, `message?` | **U6b-1**：**入方向命令的应答**。它刻意**复用出方向的 `kind` tag 空间**（不另开一条流），所以它在本表里有一行 —— 而它的完整语义（信封、`id` 不透明性、超时后登记谁摘、逐命令的 `data` 形状与错误码）住在下面的「入方向」小节。⚠ **本行只是清册登记**，不重复那一节的内容（同一份契约不许两处各写一份）。⚠ 〔F06c 补〕它此前**只活在那一节的示例里、本表没有它的行** —— 仓外 aterm 的 KDoc 里那个错的帧数就是数本表数出来的 |
 | `cancelled` | `id` | **U6b-1**：某条入方向命令**被取消了**（`id` = 被取消的那条）。同 `reply`：复用 tag 空间、完整语义在「入方向」小节（含「不可取消」时为什么回 `reply{ok:false,code:"not_cancellable"}` 而不是本帧）。⚠ 〔F06c 补〕同上，此前本表无此行 |
+| `link_data` | `link`, `data` | **〔SR1a〕一条链路的下行字节**（`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB）。只在客户端开了链路（`link-open`）之后才出现；链路上的字节与 C2 拨号代理的 stdout 逐字节同形。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「链路四条」 |
+| `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
 
 ### 入方向：流连接上的命令信封（U6b-1）
 
@@ -1522,6 +1524,64 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | 取消 | 客户端杀 exec | `cancel` 命令 |
 | 代价 | 为一次极小的 RPC 单开一整条 SSH exec | 复用已有连接 |
 
+#### 链路四条（〔SR1a〕2026-09-24）—— **本机只常驻一个后端，所有 SSH 连接由它持有并复用**
+
+用户裁「改成单一常驻后端」：monitor 不再每条链路起一个 `--dial` 子进程（C2 那一版），而是经它与**本机常驻后端**之间
+**这条已有的流**开「链路」。后端把到同一台远端的所有链路**复用在一条 SSH 连接上**（按拨号身份：`host · port · user ·
+key_path · host_key_fingerprint · 竞速地址 · 跳板`；最后一条链路走了连接就断，没有空闲定时器）。
+
+**一条链路上的字节 = C2 拨号代理原来的 stdout，逐字节同形**：`stages=true` 时若干行 `{"stage":{…}}` → **恰好一行** ack
+`{"ok","error","fingerprint","endpoint","v":2,"uses":[…]}` → `stream` 原样双向字节 · `capture` 一行 `{"stdout","stderr","exit_status"}` 后结束 ·
+`forward` 每接进一条连接一行 `{"accepted":n}`。上行（`link-data`）= 原来子进程的 stdin；`link-close` = 原来「界面走了」。
+
+**流控**：下行逐链路信用 —— `link-open` 给初始窗口，后端发一块扣一块，扣不到就等；客户端读走之后 `link-credit` 还回来
+⇒ 一条不读的链路在这条流上最多占一个窗口，堵不住别的链路、别的帧与应答。上行一次一块：`link-data` 的应答在那块**写进链路之后**才回。
+**链路属于开它的那条流连接**：连接没了（monitor 走了）⇒ 它开的链路全部收掉。四条都是 `Run::Builtin`，**只在帧面**（CLI 面不派生：一次性进程没有「连接」可言）。
+
+#### `link-open`：开一条链路
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"link":"<不透明 id，客户端给、客户端负责唯一>","window":<初始信用，字节；缺省 1 MiB，夹在 [32 KiB, 16 MiB]>,"dial":{DialRequest}}` |
+| `data` | 无（登记上、任务起了就回 `ok` —— **不等拨通**：拨通与否在链路字节里那一行 ack） |
+
+`dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward）·
+capture{max_bytes,abort_marker} · forward{local_port,remote_host,remote_port} · stages · probe`，外加 **`agent_sock`**（Unix：客户端此刻的
+`SSH_AUTH_SOCK` —— 常驻后端活得比任何一个客户端都长，它自己身上那份可能早就不指向活的 agent；缺席 = 用后端自己的环境）。
+`probe` / `stages` 的链路**不进连接池**（测试连接要看的就是一次真拨号）。
+`use:"subsystem"` **留口不开**（SFTP 进常驻后端是 SR1b 的事）⇒ 回 `unsupported_use`。
+错误 code：`invalid_args` · `unsupported_use` · `duplicate_link` · `too_many_links`（每连接 256 条）。
+
+#### `link-data`：往链路里送一块上行字节
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"link","data":"<base64；解码后 ≤ 32 KiB>"}` |
+| `data` | 无。应答在这一块**写进链路之后**才回（背压：客户端同一条链路同时只该有一块在途） |
+
+就地分派（不进独立任务）⇒ 同一条链路的块按到达顺序写。错误 code：`invalid_args` · `no_such_link` · `link_busy`（上行队列满 —— 客户端没守「一次一块」）· `link_closed`。
+
+#### `link-credit`：还下行信用
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"link","bytes":<客户端读走了多少>}` |
+| `data` | 无 |
+
+monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux.rs`）⇒ 没人读的链路不还，后端的下行泵停在信号量上。
+累计信用夹在 16 MiB 以内（多还只让它自己的流控松一点，不撑爆）。错误 code：`invalid_args` · `no_such_link`。
+
+#### `link-close`：关一条链路
+
+| 方向 | 形状 |
+|---|---|
+| `args` | `{"link"}` |
+| `data` | 无 |
+
+那条链路的拨号 / 服务 / 两台泵一起收掉；关一条不存在的链路是幂等的（同 `cancel`）。错误 code：`invalid_args`。
+它就是 C2 那一版「界面走了、子进程的管子断了」：`stream` 的对拷就地停、`forward` 放掉本机口并收掉在飞的隧道；
+那条 SSH 连接**不跟着断**（别的链路可能还在用它 —— 最后一条走了它才断）。monitor 侧的链路句柄被丢时自动发这一条。
+
 ### argv 三分（U6b-2）
 
 后端认识的每个 `--token` 恰好属于三类之一：
@@ -1901,6 +1961,12 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 - 读数：`tests/evidence/C2-dial-loopback.py` 对真回环 sshd 八项（竞速 · 严格指纹 · 流与收工 · 跳板 · agent · 转发）。
 - ⚠ 后端行为变了（多了用法与字段），**子命令集不变** ⇒ 合并时 bump `BUILD_ID`，否则开发树里按旧 id 释放出来的
   老代理会被界面判成「本机后端太旧」。
+
+**〔SR1a · 2026-09-24〕`--dial` 这条子命令删了。** 上面 `K-P6b` 与 C2 两段是它当时的样子，**原文不改**；今天以这里为准：
+拨号挪进**本机那一个常驻后端**，经流上的链路做（本节「入方向」里的「链路四条」）—— 不再每条链路起一个进程，
+`CCM_DIAL_REQUEST` / `CCM_DIAL_PROXY` 两个环境变量随之退场。请求的形状一个字没改（从环境变量搬进 `link-open` 的 `dial` 字段，
+多一个可选的 `agent_sock`），链路上的应答与 C2 代理的 stdout 逐字节同形。常驻后端不在 ⇒ monitor **报**，不起代理进程、不进程内拨（`D11`）。
+⚠ 子命令集少了一条 ⇒ `build_id_guard` 红，合并时 bump `BUILD_ID`。
 
 ⚠ 加一条 CLI 命令要动**两处**：`inbound::REGISTRY`（实现与分派臂）+ `main::SUBCOMMANDS`
 （`is_query_mode` 的闸门）。只动前者的后果是**静默的** —— 后端把它当未知 flag、

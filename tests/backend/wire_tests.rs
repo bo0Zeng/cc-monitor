@@ -329,6 +329,21 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             "reply",
         ),
         (Frame::Cancelled { id: "r1".into() }, "cancelled"),
+        // 〔SR1a〕链路两帧（逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
+        (
+            Frame::LinkData {
+                link: "L".into(),
+                data: "AA==".into(),
+            },
+            "link_data",
+        ),
+        (
+            Frame::LinkEnd {
+                link: "L".into(),
+                error: None,
+            },
+            "link_end",
+        ),
     ];
 
     // ★ 人群自检：**样本必须覆盖 `Frame` 的每一个变体**〔audit-0805 08-06〕。
@@ -373,6 +388,62 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
              已覆盖：{kinds:?}",
         kinds.len()
     );
+}
+
+/// 〔SR1a〕★ W1：链路两帧的**逐字节**金标准。`link_end` 的 `error` 缺席时不上线（正常收尾）。
+#[test]
+fn link_frames_have_exactly_these_bytes() {
+    let cases = [
+        (
+            Frame::LinkData {
+                link: "m1.0-3".into(),
+                data: b64_encode(b"hi\n"),
+            },
+            "{\"kind\":\"link_data\",\"link\":\"m1.0-3\",\"data\":\"aGkK\"}\n",
+        ),
+        (
+            Frame::LinkEnd {
+                link: "m1.0-3".into(),
+                error: None,
+            },
+            "{\"kind\":\"link_end\",\"link\":\"m1.0-3\"}\n",
+        ),
+        (
+            Frame::LinkEnd {
+                link: "m1.0-3".into(),
+                error: Some("读链路下行失败".into()),
+            },
+            "{\"kind\":\"link_end\",\"link\":\"m1.0-3\",\"error\":\"读链路下行失败\"}\n",
+        ),
+    ];
+    for (f, want) in cases {
+        assert_eq!(to_line(&f).unwrap(), want);
+    }
+}
+
+/// 〔SR1a〕base64 编解码对 **RFC 4648 §10** 的七条标准向量（异源 = RFC；monitor 侧那一份拿同一组向量核自己）。
+#[test]
+fn b64_matches_the_rfc_4648_test_vectors() {
+    let vectors = [
+        ("", ""),
+        ("f", "Zg=="),
+        ("fo", "Zm8="),
+        ("foo", "Zm9v"),
+        ("foob", "Zm9vYg=="),
+        ("fooba", "Zm9vYmE="),
+        ("foobar", "Zm9vYmFy"),
+    ];
+    for (plain, enc) in vectors {
+        assert_eq!(b64_encode(plain.as_bytes()), enc, "编 {plain:?}");
+        assert_eq!(b64_decode(enc).unwrap(), plain.as_bytes(), "解 {enc:?}");
+    }
+    // 全 256 个字节值来回一趟。
+    let all: Vec<u8> = (0..=255u8).collect();
+    assert_eq!(b64_decode(&b64_encode(&all)).unwrap(), all);
+    // 坏形一律拒（不猜）。
+    for bad in ["A", "AA=", "A===", "Zg==Zg==", "Zm9v!A==", "===="] {
+        assert!(b64_decode(bad).is_err(), "{bad:?} 该被拒");
+    }
 }
 
 /// backend-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid"}`，**无 byte_offset**

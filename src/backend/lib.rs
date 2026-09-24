@@ -33,7 +33,7 @@ mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 
 mod cc_bus_boundary_guard; // P4f-Y2：backend 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
-pub mod dial; // K-P6b：`--dial` 代理进程 —— backend 那条长连接流的 SSH 握手住这里（**只此一处**，判据在它自己的测块）
+pub mod dial; // K-P6b / C2 / 〔SR1a〕：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力（`设计/96 §2.9`）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
@@ -495,32 +495,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--exit-policy-read",
     "--exit-policy-set",
     "--backend-probe",
-    // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
-    // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都
-    // 看得见，而那份 JSON 里有主机名、用户名、私钥**路径**；`/proc/<pid>/environ` 只有本人
-    // （与 root）读得到。
-    //
-    // 〔订正 2026-09-10 —— 本格原话逐字：「配置从 stdin 第一行进 ——不走 argv，因为 argv
-    //  在同机任何用户的 `ps` 里都看得见。」它记的是**第一版**的形状，代码早就改掉了。
-    //  这是同一次文档漂移的**第三份副本**（前两份在 `src/doc/IPC-PROTOCOL.md` §10，09-10 已订正）。
-    //  🔴 它**不是**同族的「前提翻了」，是纯粹的漂移：没有任何前提翻，只是这一处没跟着改。
-    //
-    //  证据（09-10 在本树现打的读数，不是从代码推的）：本仓 debug 构建的
-    //  `cc-monitor-backend --dial` 跑两趟 ——
-    //  ① 不设 `CCM_DIAL_REQUEST`、stdin 给 `/dev/null` ⇒ **退出码 2**，stdout **0 字节**，
-    //     stderr 逐字 `dial: 环境变量 CCM_DIAL_REQUEST 没设（或是空的）—— 界面没交请求`；
-    //  ② **把那份 JSON 原样喂进 stdin 第一行**、仍不设那个环境变量 ⇒ **还是退出码 2、
-    //     stdout 还是 0 字节、还是同一句话**
-    //  ⇒ 「stdin 第一行」那条路今天**一个字节都不被读**。
-    //  ⚠ 两趟都是 **Linux gnu debug 构建**，不是 Windows local_backend。
-    //
-    //  为什么改：`dial/mod.rs` 头注自陈 —— `ssh_source` 有一条判据逐字禁止它自己往流里写
-    //  （写的能力在 `U8a-2a` 整个交给了 `ParkedWriter`），硬走 stdin 就得去放宽那条判据，
-    //  代价不值。换成环境变量之后 `stdin` **纯粹**是要搬的字节。〕
-    //
-    // 它住这张表里的理由与 `--relay` 逐字相同：`is_query_mode` 那道闸门读的是本表，
-    // 不登记就会被当成未知 flag 静默进流模式。
-    "--dial",
+    // 〔SR1a · 09-24〕`--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
+    // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
+    // 〔墓碑 —— 那一行原来的理由要点：「**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
+    //  `CCM_DIAL_REQUEST`，argv 与 stdin 都不走」。〕⚠ 摘这一行会让 `build_id_guard` 红 —— 本路**不 bump**，合并那一拍统一做。
     // 〔步 `24f` 第二刀 09-20〕`files-read` 这一族的 CLI 面。登记在这里的理由与上面
     // 那几条逐字相同 —— `is_query_mode` 那道**闸门**读的就是本表；不在表里 ⇒ 当未知 flag
     // ⇒ 打一行 warn 之后照常进流模式，调用方拿到的是一堆 jsonl 行而不是它要的应答。
@@ -1348,6 +1326,10 @@ pub const EMITS: &[&str] = &[
     // P5：与上一份快照差分算出的**正向死亡帧**。登记 = 承诺真发（已接线，见 watcher.rs
     // 的 `diff_closed`）。monitor 收到即 retire、绕过 miss 计数；旧 monitor 忽略未知 kind。
     "tmux_session_closed",
+    // 〔SR1a〕链路的下行字节与收尾（`dial/link.rs` 的两台泵真发，登记 = 承诺真发）。
+    // 只在 monitor 开了链路之后才出现；旧 monitor / 仓外 aterm 不认这两个 kind ⇒ 忽略（additive）。
+    "link_data",
+    "link_end",
 ];
 
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。

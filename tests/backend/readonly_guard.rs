@@ -177,7 +177,10 @@ mod tests {
         ),
         ("common", "两边都要、又不含平台原语的纯工具"),
         ("control", "控制面 —— 会改变世界，或产出改变世界的计划"),
-        ("dial", "`--dial` 代理进程：那条长连接流的 SSH 握手只此一处"),
+        (
+            "dial",
+            "SSH 的一切：握手 · 连接池 · 链路（〔SR1a〕常驻后端经流上的 `link-*` 替界面拨号并复用连接）—— 只此一处",
+        ),
         (
             "files",
             "〔步 24f〕`files-read` 这一族：常驻文件名索引 ＋ 一族**只读**能力 —— \
@@ -3487,13 +3490,13 @@ mod g6_dependency_signoff {
             "russh",
             DEPS,
             UNMEASURED,
-            "`K-P6b`：`--dial` 那条代理臂的 SSH 客户端（传输层握手 · publickey 鉴权 · \
-             开 channel）。与 monitor 侧**同版本同 feature 集**（`0.61.1` / `ring` / \
+            "`K-P6b` / 〔SR1a〕：`dial/` 的 SSH 客户端（传输层握手 · publickey / agent 鉴权 · \
+             开 channel；SR1a 起跑在常驻后端里，经流上的 `link-*` 链路）。与 monitor 侧**同版本同 feature 集**（`0.61.1` / `ring` / \
              `flate2` / `rsa`），provider 就是本表上面 `rustls` 那条已经在用的 `ring`。\
              ⚠ **本档是「未量」不是「没写面」**：私钥由 `russh::keys::load_secret_key` \
              **读**一个路径（读不是写），而它建不建缓存 / 写不写 known_hosts \
              **我没有扫过它的源码** —— backend 侧这条路不传 known_hosts 路径、\
-             host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
+             host key 校验由 `dial::connect::Checker` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
              ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做",
         ),
@@ -4364,8 +4367,8 @@ mod remote_write_layer {
             FAMILY_SUBSYSTEM,
             "在 SSH 连接上开一个**子系统** —— `ssh-connection` 协议里这是**唯一**一个动作，\
              而 SFTP 就是一个子系统名。换一份 crate、换一套方法名，这一步躲不掉；\
-             反过来，backend 今天**没有任何理由**去开子系统（它那条 `--dial` 臂开的是 \
-             session channel，不是子系统）⇒ 这一条今天在树上恒零，出现即越线。",
+             反过来，backend 今天**没有任何理由**去开子系统（它的拨号 —— 〔SR1a〕起是流上的 `link-*` 链路 —— 开的是 \
+             session channel 与 direct-tcpip，不是子系统）⇒ 这一条今天在树上恒零，出现即越线。",
         ),
         (
             FAMILY_SUBSYSTEM,
