@@ -289,6 +289,9 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（设计/41 §
  * 但**多一处少一处都要有人看见** —— 多出来的多半是词法器又错位了。
  */
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
+  // 〔SE2〕查找面板按模式切大纲清单的开合（大纲那一半的 `hidden` 从 `UserInputPanel` 自己手里交给了面板）。
+  "src/views/session-find.ts:237":
+    "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
   "src/error-toast.ts:135":
     "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",
   // ⚠ 〔2026-09-19〕`606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
