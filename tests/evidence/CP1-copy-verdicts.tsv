@@ -1138,3 +1138,9 @@ src/views/panorama.ts:1459	复制给 agent	保留	[对外] 按钮名（CP7），
 src/views/panorama.ts:1789	人写	保留	[对外] 批注来源标签（CP6）：人亲手写的
 src/views/panorama.ts:1791	agent 提议	保留	[对外] 批注来源标签（CP6）：agent 提的，批准后仍是它，与人写的分开
 src/views/panorama.ts:1793	来源未记录	保留	[对外] 批注来源标签（CP6）：旧文件没记来源，如实说不猜
+src/bridge/src/filewin/create.rs:41	新建空文件	保留	[对外] 按钮字面（〔F7b〕窗口工具栏，老面板「新建文件」的对应物；「空」字说清它不带内容）
+src/bridge/src/filewin/create.rs:66	在这个目录里新建一个空文件，叫：	保留	[对外] 输入框标题（与「新建目录」那个框同形）
+src/bridge/src/filewin/create.rs:153	新建不了，请重开这个窗口	保留	[对外] 窗口没有运行环境时画在工具栏下；结果一句 ＋ 用户做得到的一步（同「终端开不了，请重开这个窗口」）
+src/bridge/src/filewin/create.rs:191	⚠ 只在这一个目录里 —— 不许带 `/`。已有同名的就不建，不会盖掉它。	保留	[对外] 输入提示：前半与「新建目录」框逐字同，后半说清「新建不是覆盖」
+src/bridge/src/filewin/create.rs:193	确定	保留	[对外] 按钮
+src/bridge/src/filewin/create.rs:196	取消	保留	[对外] 按钮
