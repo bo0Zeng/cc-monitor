@@ -336,7 +336,8 @@ mod tests {
     pub(super) const MUTATING_FACE_MODULES: &[(&str, &str)] = &[(
         "control/files_write.rs",
         "文件管理面的写原语（`设计/60 §8.6` 第 2、3 步）：`O_EXCL` 新建 · 建目录 · 改名 · \
-         删文件或空目录 · 改权限 · 覆盖写。每一件都先过 Claude 会话数据围栏 \
+         删文件或空目录 · 改权限 · 覆盖写 · 〔F7a 09-24〕同根内复制（由 `O_EXCL` 新建 ＋ 换名 ＋ \
+         删自己刚建的那一份拼成，**不添动词**）。每一件都先过 Claude 会话数据围栏 \
          （`agents::claudecode::paths::is_protected_session_path`，与桥那一侧函数体逐字相同）\
          ＋ 词法 ＋ 解 symlink 再判；会跟链接的两件（改权限 · 覆盖写）连最后一段也解到底。\
          线上入口只有 `inbound.rs` 那几条 `files-*` 写命令（`MANAGE_COMMANDS` 逐条登记）",
@@ -369,6 +370,12 @@ mod tests {
     /// 顶上那一条过得了围栏，底下藏着的一份会话文件照样被一起删掉（理由全文在
     /// 那个模块的 `delete_entry` 头注）。要做就得逐条目过围栏，那是一个新形状，要单独论证。
     /// ⚠ `fs::symlink(` 带左括号：不带的话它是 `symlink_metadata` 的前缀，会自伤。
+    ///
+    /// 🔴〔F7a · 第三波 09-24〕本层**有了复制**（`files-copy`），而一步复制那个动词**照旧在这张表上**：
+    /// 它目标是链接时跟过去写（围栏判的是链接本身那条路径 ⇒ 一条指向会话文件的链接就能借它
+    /// 盖掉那份记录），目标已在时就地截断重写（半途失败留半份）。复制由 `O_EXCL` 新建 ＋ 换名 ＋
+    /// 删自己刚建的那一份**拼出来**（`control/files_write.rs::copy_entry` 头注逐条），
+    /// ⇒ [`MUTATING_FACE_VERBS`] 一个字没变。
     pub(super) const MUTATING_FACE_STILL_FORBIDDEN: &[&str] = &[
         "remove_dir_all",
         "fs::copy",

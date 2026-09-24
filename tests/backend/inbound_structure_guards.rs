@@ -144,6 +144,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-mkdir"
                 | "files-rename"
                 | "files-write-text"
+                | "files-copy"
                 | "files-ls"
                 | "files-stat"
                 | "files-find"
@@ -199,6 +200,7 @@ fn every_registered_command_declares_its_run_kind() {
         "files-mkdir",
         "files-rename",
         "files-write-text",
+        "files-copy",
         "files-ls",
         "files-stat",
         "files-find",
