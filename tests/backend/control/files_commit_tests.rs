@@ -196,7 +196,29 @@ fn the_wire_face_requires_an_explicit_overwrite_and_knows_only_its_command() {
     assert!(e.1.contains("overwrite"), "{}", e.1);
     let e = answer_wire("files-create", &serde_json::json!({})).expect_err("不是这一面的");
     assert_eq!(e.0, "bad_args");
-    assert_eq!(commit_command_names(), vec!["files-commit-upload"]);
+    assert_eq!(
+        commit_command_names(),
+        vec![
+            "files-commit-upload",
+            "files-stage-chunk",
+            "files-commit-text"
+        ]
+    );
+    // 表里每一条，分派都够得到（空参数 ⇒ 拒在参数那一关、码在它自己的登记里，不是「不认这条命令」那句）。
+    for c in COMMIT_COMMANDS {
+        let e = answer_wire(c.name, &serde_json::json!({})).expect_err("空参数该拒");
+        assert!(
+            ["bad_args", "bad_path"].contains(&e.0) && c.codes.contains(&e.0),
+            "{}：{e:?}",
+            c.name
+        );
+        assert!(
+            !e.1.contains("不是上传提交那一面的命令"),
+            "{} 分派不到：{}",
+            c.name,
+            e.1
+        );
+    }
 }
 
 // ═══ 孤儿扫（`设计/60 §13.2 ④`：暂存区清理只靠事件 —— 这一格的事件是「一次提交成功」）═══
@@ -277,4 +299,357 @@ fn a_successful_commit_is_the_event_that_sweeps() {
             .exists(),
         "提交成功了，老孤儿还在 —— 「提交」那个事件没接上扫"
     );
+}
+
+// ═══ 〔F9c · 第四波〕存盘的块：`files-stage-chunk` ＋ `files-commit-text` ═══
+
+/// 一台还**没有**暂存区的 home ＋ 一个目标根（块那一条要自己建暂存区）。
+fn bare_rig(tag: &str) -> (PathBuf, PathBuf) {
+    let base = temp_dir(tag);
+    let home = base.join("home");
+    let root = base.join("root");
+    std::fs::create_dir_all(&home).expect("建 home");
+    std::fs::create_dir_all(&root).expect("建目标根");
+    (home, root)
+}
+
+/// 经线上那一面送一块（`content` 走 `b16`：块里可以有任何字节）。
+fn send_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Answer {
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    answer_stage_at(
+        home,
+        &serde_json::json!({ "key": key, "seq": seq, "content": { "b16": hex } }),
+    )
+}
+
+/// 经线上那一面提交。
+fn send_commit(home: &Path, key: &str, chunks: u64, bytes: u64, root: &Path, rel: &str) -> Answer {
+    answer_commit_text_at(
+        home,
+        &serde_json::json!({
+            "key": key, "chunks": chunks, "bytes": bytes,
+            "root": root.to_string_lossy(), "rel": rel,
+        }),
+    )
+}
+
+/// 暂存区里这个键还剩哪几块（按名字逐个问 —— 本族用例块号都在 0..16 里；
+/// 不列目录：测试段裸遍历目录归 `scanning_guard_registry` 管，这里用不着）。
+fn chunks_left(home: &Path, key: &str) -> Vec<String> {
+    (0..16)
+        .map(|seq| chunk_name(key, seq))
+        .filter(|n| std::fs::symlink_metadata(home.join(STAGING_DIR).join(n)).is_ok())
+        .collect()
+}
+
+/// 一段形状不平凡的合成字节（每块长度不同、含 0 与高位字节）。
+fn body(n: usize, seed: u8) -> Vec<u8> {
+    (0..n)
+        .map(|i| (i as u8).wrapping_mul(31).wrapping_add(seed))
+        .collect()
+}
+
+/// ★ 块名两向：规范形认得、键与块号解得回；别的形状（非规范块号 · 坏键 · 上传件）一个不认。
+#[test]
+fn the_chunk_name_is_recognised_exactly_both_ways() {
+    for seq in [0u64, 1, 9, 10, 4096, u64::MAX] {
+        let n = chunk_name(KEY, seq);
+        assert_eq!(parse_chunk_name(&n), Some((KEY, seq)), "{n}");
+    }
+    for bad in [
+        format!("{KEY}.01{CHUNK_SUFFIX}"),
+        format!("{KEY}.{CHUNK_SUFFIX}"),
+        format!("{KEY}.-1{CHUNK_SUFFIX}"),
+        format!("{KEY}.1a{CHUNK_SUFFIX}"),
+        format!("{KEY}{PART_SUFFIX}"),
+        format!("{KEY}.0.part"),
+        format!("{}.0{CHUNK_SUFFIX}", KEY.to_uppercase()),
+        format!("x.0{CHUNK_SUFFIX}"),
+        format!("{KEY}.99999999999999999999999{CHUNK_SUFFIX}"),
+    ] {
+        assert_eq!(parse_chunk_name(&bad), None, "该拒的块名放过了：{bad}");
+    }
+}
+
+/// 🔴 **拼回来 == 原文，而且与 `files-write-text` 写出同一个结果**（同一个原语：原地覆盖）。
+///
+/// 另一侧异源：同样的字节经写面 `overwrite_text` 直接写进一份孪生文件，逐项比 —— 内容、权限位、
+/// 链接仍是链接且写穿到它指向的那份。成功之后这一键的块零剩；暂存区由第一块自己建。
+#[cfg(unix)]
+#[test]
+fn staged_chunks_commit_back_byte_for_byte_like_a_plain_write() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let (home, root) = bare_rig("ctext");
+    let parts = [body(700, 1), body(1, 2), body(65_537, 3), body(12, 4)];
+    let whole: Vec<u8> = parts.concat();
+    for rel in ["plain.txt", "twin.txt", "real.txt"] {
+        std::fs::write(root.join(rel), b"old contents").unwrap();
+        std::fs::set_permissions(root.join(rel), std::fs::Permissions::from_mode(0o640)).unwrap();
+    }
+    std::os::unix::fs::symlink("real.txt", root.join("link.txt")).unwrap();
+
+    for (rel, key) in [
+        ("plain.txt", KEY),
+        ("link.txt", "fedcba9876543210fedcba9876543210"),
+    ] {
+        for (i, p) in parts.iter().enumerate() {
+            let got = send_chunk(&home, key, i as u64, p).expect("送块该成");
+            assert_eq!(got["bytes"], p.len() as u64);
+        }
+        let got = send_commit(
+            &home,
+            key,
+            parts.len() as u64,
+            whole.len() as u64,
+            &root,
+            rel,
+        )
+        .expect("提交该成");
+        assert_eq!(got["bytes"], whole.len() as u64);
+        assert!(
+            chunks_left(&home, key).is_empty(),
+            "提交成功了，块还在：{:?}",
+            chunks_left(&home, key)
+        );
+    }
+    overwrite_text(&root, "twin.txt", &whole).expect("孪生那一份直接写");
+
+    let mode = |rel: &str| {
+        std::fs::metadata(root.join(rel))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o7777
+    };
+    assert_eq!(
+        std::fs::read(root.join("plain.txt")).unwrap(),
+        whole,
+        "拼回来的不是原文"
+    );
+    assert_eq!(
+        std::fs::read(root.join("plain.txt")).unwrap(),
+        std::fs::read(root.join("twin.txt")).unwrap()
+    );
+    assert_eq!(
+        mode("plain.txt"),
+        mode("twin.txt"),
+        "权限位与直接写的那一份不同 —— 不是原地覆盖"
+    );
+    assert_eq!(mode("plain.txt"), 0o640);
+    assert!(
+        std::fs::symlink_metadata(root.join("link.txt"))
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "链接被换成了一份普通文件 —— 那是改名上位，不是原地覆盖"
+    );
+    assert_eq!(
+        std::fs::read(root.join("real.txt")).unwrap(),
+        whole,
+        "没写穿链接"
+    );
+}
+
+/// 🔴 **块对不上 ⇒ 拒，目标一个字节没动，而且这一键的块照样删干净**。
+///
+/// 五形：缺中间一块 · 报的总长多了 · 报的总长少了 · 多出第 `chunks` 块 · 某一块是一条链接。
+#[cfg(unix)]
+#[test]
+fn a_mismatched_set_of_chunks_is_refused_and_the_target_is_untouched() {
+    let (home, root) = bare_rig("cmis");
+    let target = root.join("t.txt");
+    std::fs::write(&target, b"keep me exactly").unwrap();
+    let outside = root.join("outside.bin");
+    std::fs::write(&outside, b"xyz").unwrap();
+    let a = body(10, 7);
+    let b = body(20, 8);
+    let c = body(30, 9);
+    type Setup<'a> = Box<dyn Fn(&Path, &str) + 'a>;
+    let stage = |h: &Path, k: &str, seq: u64, p: &[u8]| {
+        send_chunk(h, k, seq, p).expect("送块");
+    };
+    let cases: Vec<(&str, Setup, u64, u64, &str)> = vec![
+        (
+            "缺中间一块",
+            Box::new(|h: &Path, k: &str| {
+                stage(h, k, 0, &a);
+                stage(h, k, 2, &c);
+            }),
+            3,
+            60,
+            "io_failed",
+        ),
+        (
+            "总长报多了",
+            Box::new(|h: &Path, k: &str| {
+                stage(h, k, 0, &a);
+                stage(h, k, 1, &b);
+            }),
+            2,
+            31,
+            "io_failed",
+        ),
+        (
+            "总长报少了",
+            Box::new(|h: &Path, k: &str| {
+                stage(h, k, 0, &a);
+                stage(h, k, 1, &b);
+            }),
+            2,
+            29,
+            "io_failed",
+        ),
+        (
+            "多出一块",
+            Box::new(|h: &Path, k: &str| {
+                stage(h, k, 0, &a);
+                stage(h, k, 1, &b);
+                stage(h, k, 2, &c);
+            }),
+            2,
+            30,
+            "io_failed",
+        ),
+        (
+            "一块是链接",
+            Box::new(|h: &Path, k: &str| {
+                stage(h, k, 0, &a);
+                std::os::unix::fs::symlink(&outside, h.join(STAGING_DIR).join(chunk_name(k, 1)))
+                    .unwrap();
+            }),
+            2,
+            13,
+            "refused",
+        ),
+    ];
+    for (i, (what, setup, chunks, bytes, code)) in cases.iter().enumerate() {
+        let key = format!("{:032x}", i + 1);
+        setup(&home, &key);
+        let e = send_commit(&home, &key, *chunks, *bytes, &root, "t.txt").expect_err(what);
+        assert_eq!(&e.0, code, "{what}：{}", e.1);
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"keep me exactly",
+            "{what}：目标被动了"
+        );
+        assert!(
+            chunks_left(&home, &key).iter().all(|n| {
+                std::fs::symlink_metadata(home.join(STAGING_DIR).join(n))
+                    .unwrap()
+                    .file_type()
+                    .is_symlink()
+            }),
+            "{what}：拒了之后这一键的块还在：{:?}",
+            chunks_left(&home, &key)
+        );
+    }
+    assert_eq!(
+        std::fs::read(&outside).unwrap(),
+        b"xyz",
+        "链接指向的那份被动了"
+    );
+}
+
+/// ★ 同一块只写一次（`O_EXCL`）：重发 ⇒ `io_failed`，第一次写进去的原样；块的落点上摆一条链接 ⇒ 不跟过去。
+#[cfg(unix)]
+#[test]
+fn a_chunk_is_written_once_and_never_through_a_link() {
+    let (home, root) = bare_rig("conce");
+    send_chunk(&home, KEY, 0, b"first").expect("第一次");
+    let e = send_chunk(&home, KEY, 0, b"second").expect_err("重发该拒");
+    assert_eq!(e.0, "io_failed", "{}", e.1);
+    assert_eq!(
+        std::fs::read(home.join(STAGING_DIR).join(chunk_name(KEY, 0))).unwrap(),
+        b"first"
+    );
+
+    let outside = root.join("precious.txt");
+    std::fs::write(&outside, b"keep").unwrap();
+    std::os::unix::fs::symlink(&outside, home.join(STAGING_DIR).join(chunk_name(KEY, 1))).unwrap();
+    let e = send_chunk(&home, KEY, 1, b"evil").expect_err("落点是链接该拒");
+    assert_eq!(e.0, "io_failed", "{}", e.1);
+    assert_eq!(
+        std::fs::read(&outside).unwrap(),
+        b"keep",
+        "跟着链接写出去了"
+    );
+}
+
+/// ★ 提交先过写面那道围栏：会话文件 / 上跳 / 不存在的目标 ⇒ 拒、盘上零改动、块照样删掉。
+#[test]
+fn a_text_commit_goes_through_the_write_fence() {
+    let (home, root) = bare_rig("cfence");
+    let proj = root.join("projects").join("-x");
+    std::fs::create_dir_all(&proj).unwrap();
+    let session = proj.join("s.jsonl");
+    std::fs::write(&session, b"{}\n").unwrap();
+    for (i, rel) in ["projects/-x/s.jsonl", "../escape.txt", "nope.txt"]
+        .iter()
+        .enumerate()
+    {
+        let key = format!("{:032x}", 0xa0 + i);
+        send_chunk(&home, &key, 0, b"payload").unwrap();
+        let e = send_commit(&home, &key, 1, 7, &root, rel).expect_err(rel);
+        assert!(e.0 == "refused" || e.0 == "io_failed", "{rel}：{e:?}");
+        assert!(chunks_left(&home, &key).is_empty(), "{rel}：块没删");
+    }
+    assert_eq!(std::fs::read(&session).unwrap(), b"{}\n");
+    assert!(
+        !root.join("nope.txt").exists(),
+        "不存在的目标被新建了 —— 存盘只改已在的文件"
+    );
+    assert!(!root.parent().unwrap().join("escape.txt").exists());
+}
+
+/// ★ 参数边：坏键拒在碰盘之前（暂存区都不建）· 空块 · 缺块号 · 超过读得回的天花板 · 块数越界。
+#[test]
+fn the_chunk_commands_refuse_bad_arguments_before_touching_the_disk() {
+    let (home, root) = bare_rig("cargs");
+    let e = send_chunk(&home, "../../../../etc/passwd/xxxxxxxxxxx", 0, b"x").expect_err("坏键");
+    assert_eq!(e.0, "refused");
+    assert!(!home.join(".cc-monitor").exists(), "坏键也把暂存区建出来了");
+    let e = answer_stage_at(
+        &home,
+        &serde_json::json!({"key": KEY, "seq": 0, "content": ""}),
+    )
+    .expect_err("空块");
+    assert_eq!(e.0, "bad_args");
+    let e = answer_stage_at(&home, &serde_json::json!({"key": KEY, "content": "x"}))
+        .expect_err("缺块号");
+    assert_eq!(e.0, "bad_args");
+    let cap = crate::files::READ_TEXT_MAX_BYTES as u64;
+    for (chunks, bytes) in [(1, cap + 1), (0, 5), (6, 5)] {
+        let e = send_commit(&home, KEY, chunks, bytes, &root, "t.txt").expect_err("该拒");
+        assert_eq!(e.0, "bad_args", "chunks={chunks} bytes={bytes}：{}", e.1);
+    }
+    // 正控：恰好到天花板的那一个数本身放得过参数这一关（后面才因为块不在而拒）。
+    let e = send_commit(&home, KEY, 1, cap, &root, "t.txt").expect_err("块不在");
+    assert_eq!(e.0, "io_failed", "{}", e.1);
+}
+
+/// ★ 孤儿扫认得块的形状：老的删；新的留；调用方那个键的留；非规范块号不碰。
+#[test]
+fn the_sweep_also_collects_stale_chunks() {
+    let (home, _root) = rig("sweepchunk");
+    let now: u64 = 2_000_000_000;
+    let old = now - STAGING_STALE_SECS - 1;
+    let fresh = now - STAGING_STALE_SECS + 60;
+    let dir = home.join(STAGING_DIR);
+    let k_old = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let k_fresh = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    let names = [
+        (chunk_name(k_old, 3), old),
+        (chunk_name(k_fresh, 0), fresh),
+        (chunk_name(KEY, 0), old),
+        (format!("{k_old}.03{CHUNK_SUFFIX}"), old),
+    ];
+    for (n, t) in &names {
+        std::fs::write(dir.join(n), b"z").unwrap();
+        set_mtime(&dir.join(n), *t);
+    }
+    let gone = sweep_stale(&home, now, KEY);
+    assert_eq!(gone, vec![chunk_name(k_old, 3)]);
+    for (n, _) in &names[1..] {
+        assert!(dir.join(n).exists(), "{n} 被扫了");
+    }
 }

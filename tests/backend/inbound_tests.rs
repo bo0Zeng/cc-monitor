@@ -461,6 +461,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     for c in [
         "files-create",
         "files-commit-upload",
+        "files-stage-chunk",
+        "files-commit-text",
         "files-chmod",
         "files-delete",
         "files-mkdir",
@@ -510,6 +512,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "capture-pane",
         "files-create",
         "files-commit-upload",
+        "files-stage-chunk",
+        "files-commit-text",
         "files-chmod",
         "files-delete",
         "files-mkdir",

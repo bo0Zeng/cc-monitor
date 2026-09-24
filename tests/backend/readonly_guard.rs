@@ -348,7 +348,10 @@ mod tests {
         "上传的提交（`设计/60 §13`）：把 `~/.cc-monitor/staging/<key>.part` 改名上位到用户指定的目标。\
          先过写面那道围栏（`files_write::fenced_target`，借用、不抄）；不覆盖那一支先 `O_EXCL` 占位再改名上位\
          （改名失败撤掉自己那个 0 字节占位）。暂存件路径由本模块自己拼、`key` 只收 32 位十六进制 ⇒ \
-         调用方指不到暂存区之外的源。线上入口只有 `inbound.rs` 那一条 `files-commit-upload`（`COMMIT_COMMANDS`）",
+         调用方指不到暂存区之外的源。〔F9c · 第四波〕存盘装不进一行时的块：`O_EXCL` 新建 \
+         `<key>.<seq>.chunk`（暂存区不在就先过围栏再建目录）· 读回拼起来交写面 `overwrite_text` 原地覆盖（不添动词）· \
+         删这一键的块（先过以暂存区为根的围栏）。线上入口只有 `inbound.rs` 那三条 \
+         `files-commit-upload` / `files-stage-chunk` / `files-commit-text`（`COMMIT_COMMANDS`）",
     )];
 
     /// 第三层模块**能用**的改动动词（`fs::` 之后那个词）。**闭集**。

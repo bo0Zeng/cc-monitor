@@ -93,6 +93,7 @@ pub const COMMANDS: &[&str] = &[
     "exit-policy-set",
     "files-browse",
     "files-chmod",
+    "files-commit-text",
     "files-commit-upload",
     "files-copy",
     "files-create",
@@ -105,6 +106,7 @@ pub const COMMANDS: &[&str] = &[
     "files-mkdir",
     "files-read-text",
     "files-rename",
+    "files-stage-chunk",
     "files-stat",
     "files-write-text",
     "history-projects",
@@ -820,6 +822,32 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   把它挪进用户目标的**那一下**在这里 —— 用户逐字「现在只允许后端的文件管理部分写文件」。
     //   处理器住 `control/files_commit.rs`（`readonly_guard` 第三层第二个登记的模块），
     //   本文件照旧是那一层唯一的门。阻塞档：同步文件系统 I/O（围栏的 `canonicalize` ＋ 改名）。
+    // ── 〔F9c · 第四波〕存盘装不进一条请求行时：逐块进暂存区 ＋ 读回拼起来原地覆盖 ──────────
+    //   同住 `control/files_commit.rs`（第三层第二个模块），阻塞档理由同上一条。
+    CommandSpec {
+        name: "files-stage-chunk",
+        doc_anchor: Some("#### `files-stage-chunk`"),
+        codes: &["bad_args", "io_failed", "refused"],
+        fields: &["bytes", "content", "key", "seq"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_commit::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-commit-text",
+        doc_anchor: Some("#### `files-commit-text`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["bytes", "chunks", "key", "path", "rel", "root"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_commit::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-commit-upload",
         doc_anchor: Some("#### `files-commit-upload`"),
