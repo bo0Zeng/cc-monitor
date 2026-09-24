@@ -207,24 +207,49 @@ fn a_missing_dir_is_an_error_not_an_empty_list() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴〔第七刀 2026-09-21〕远端 home 那一跳 —— `sftp_realpath` 在窗口这侧的落点
+// 🔴〔第七刀 2026-09-21〕远端 home 那一跳 ——〔F7a · 第三波 09-24〕问的是后端 `files-home`
 // ════════════════════════════════════════════════════════════════════════
 //
-// `resolve_remote_home` 整条路要真远端（红线不许起真连接）⇒ 它自己**没有逻辑**，
-// 有逻辑的那一段抽成了 `start_dir_from_realpath`，判据全落在它身上。
-// 失败路径那一半（问不到就别开窗）住 `entry_tests` 那条。
+// 问 home 那一趟要一个起着的后端（`entry.rs` 的 `ask_home`）⇒ 它自己**没有逻辑**，
+// 有逻辑的两段抽成了 `home_from_reply`（解字节）与 `start_dir_from_home`（能不能当起点），
+// 判据全落在它们身上。失败路径那一半（问不到就别开窗）住 `entry_tests` 那条。
+// ⚠ 第七刀那一版问的是 SFTP 的 `realpath(".")`；「服务端」「对面」这些字眼说的都是那台机器。
+
+/// 〔F7a〕后端那条应答 → 起点：字符串 · `b16`（合法 UTF-8 的）两形都收；
+/// 不是合法 UTF-8 / 缺 `path` / 形状不对 ⇒ **报错**，不有损解码去开一个别处的窗。
+#[test]
+fn the_home_reply_is_decoded_as_bytes_and_refused_when_it_cannot_address_a_directory() {
+    assert_eq!(
+        home_from_reply(&serde_json::json!({ "path": "/home/u/" })).unwrap(),
+        "/home/u"
+    );
+    // `/home/u` 的十六进制形 —— 后端对非 UTF-8 才出这一形，但合法的也得收。
+    assert_eq!(
+        home_from_reply(&serde_json::json!({ "path": { "b16": "2f686f6d652f75" } })).unwrap(),
+        "/home/u"
+    );
+    for (bad, what) in [
+        (
+            serde_json::json!({ "path": { "b16": "2f686fff" } }),
+            "不是合法 UTF-8",
+        ),
+        (serde_json::json!({}), "缺 `path`"),
+        (serde_json::json!({ "path": 7 }), "形状不对"),
+        (serde_json::json!({ "path": "relative/home" }), "相对路径"),
+    ] {
+        let e = home_from_reply(&bad).expect_err(&format!("{what} 竟然被当成了起点"));
+        assert!(!e.trim().is_empty(), "{what} 的报错是空串");
+    }
+}
 
 /// 规矩的服务端回一条绝对路径 ⇒ 原样当起点。
 #[test]
 fn an_absolute_answer_becomes_the_start_directory() {
-    assert_eq!(start_dir_from_realpath("/home/zbl").unwrap(), "/home/zbl");
+    assert_eq!(start_dir_from_home("/home/zbl").unwrap(), "/home/zbl");
     // 周围的空白不算内容（SFTP 的实现里见过带尾换行的）。
-    assert_eq!(
-        start_dir_from_realpath("  /srv/data\n").unwrap(),
-        "/srv/data"
-    );
+    assert_eq!(start_dir_from_home("  /srv/data\n").unwrap(), "/srv/data");
     // 根自己是合法起点。
-    assert_eq!(start_dir_from_realpath("/").unwrap(), "/");
+    assert_eq!(start_dir_from_home("/").unwrap(), "/");
 }
 
 /// 末尾那个 `/` 剥掉 —— **一个规范形**，而它**不是**承重的。
@@ -247,13 +272,13 @@ fn an_absolute_answer_becomes_the_start_directory() {
 /// **不是**「否则某个功能会坏」。本条断的就是这一件，不多说。
 #[test]
 fn a_trailing_slash_is_normalised_away_into_one_canonical_form() {
-    assert_eq!(start_dir_from_realpath("/srv/data/").unwrap(), "/srv/data");
+    assert_eq!(start_dir_from_home("/srv/data/").unwrap(), "/srv/data");
     // 根那一格**不能**被剥成空串。
-    assert_eq!(start_dir_from_realpath("///").unwrap(), "/");
+    assert_eq!(start_dir_from_home("///").unwrap(), "/");
     // 两种写法归一（这就是「一种写法」那句话的相等断言）。
     assert_eq!(
-        start_dir_from_realpath("/srv/data/").unwrap(),
-        start_dir_from_realpath("/srv/data").unwrap()
+        start_dir_from_home("/srv/data/").unwrap(),
+        start_dir_from_home("/srv/data").unwrap()
     );
 
     // 🔴 把那个假前提**钉成读数**：`parent_dir` 自己就吃得下尾斜杠
@@ -261,7 +286,7 @@ fn a_trailing_slash_is_normalised_away_into_one_canonical_form() {
     assert_eq!(
         parent_dir("/srv/data/"),
         parent_dir("/srv/data"),
-        "`parent_dir` 不再自己吃尾斜杠了 —— 那么 `start_dir_from_realpath` 里剥那一步\
+        "`parent_dir` 不再自己吃尾斜杠了 —— 那么 `start_dir_from_home` 里剥那一步\
          就从「规范形」升级成「承重」，回头把上面那段墓碑重写"
     );
 }
@@ -273,7 +298,7 @@ fn a_trailing_slash_is_normalised_away_into_one_canonical_form() {
 #[test]
 fn an_answer_we_cannot_use_as_a_start_is_an_error_not_a_blank_window() {
     for bad in ["", "   ", "\n", "home/zbl", "./x", "C:\\Users\\zbl"] {
-        let e = start_dir_from_realpath(bad).expect_err(&format!("`{bad:?}` 竟然被当成了合法起点"));
+        let e = start_dir_from_home(bad).expect_err(&format!("`{bad:?}` 竟然被当成了合法起点"));
         assert!(!e.trim().is_empty(), "`{bad:?}` 的报错是空串");
         // 报错里要带上对面那句原文（否则用户不知道是谁答错了）。
         if !bad.trim().is_empty() {

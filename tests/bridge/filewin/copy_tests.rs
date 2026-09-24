@@ -21,19 +21,6 @@ fn row(name: &str, is_dir: bool, lossy: bool) -> Row {
     }
 }
 
-/// 🔴 **那句退路原文的样子** —— 逐字照 `sftp_pool::copy_remote_path` 结尾那个
-/// `format!` 拼出来的形状（「为什么退」＋「⇒ 退回中转：N 字节经过了你这台机器」）。
-///
-/// ⚠ 这里是**合成**的一句，不是从那边 `include!` 过来的 —— 两处会不会漂，
-/// 由秤 F3（`tests/bridge/sftp_copy_f3_tests.rs`，门禁 `f3-copy` 那一格）钉着；
-/// 本文件钉的是**这一层不许改写它**，所以拿什么串进来不重要，
-/// **出去的必须逐字含着它**。
-fn slow_path_words() -> String {
-    "远端的 sftp-server 握手时没报 `copy-data` 扩展（或修订号不是 1）\
-     ⇒ 退回中转：8388608 字节经过了你这台机器（零流量复制没走上）"
-        .to_string()
-}
-
 /// 一台**时序台架**（形状照 `transfer_tests::Tape`）：谁在什么号上发生了什么。
 #[derive(Default)]
 struct Tape {
@@ -87,11 +74,13 @@ async fn the_probe_and_the_question_both_come_before_anything_is_copied() {
             *seen.lock().unwrap() = Some(j);
             async move { true } // 人答「覆盖」
         },
-        |_| {
+        |_, overwrite| {
             let t = &tape;
             async move {
                 t.mark("launch");
-                Ok(None)
+                // 〔F7a〕问过且答了「覆盖」⇒ 覆盖策略就是 `true`。
+                assert!(overwrite, "人答了「覆盖」，发出去的却不是覆盖策略");
+                Ok(7)
             }
         },
     )
@@ -122,7 +111,7 @@ async fn the_probe_and_the_question_both_come_before_anything_is_copied() {
         out,
         CopyOutcome::Done {
             asked: true,
-            verdict: None
+            bytes: 7
         }
     );
 }
@@ -139,9 +128,11 @@ async fn a_target_that_is_not_there_yet_asks_nobody() {
             asked.fetch_add(1, O::SeqCst);
             async move { true }
         },
-        |_| {
+        |_, overwrite| {
             launched.fetch_add(1, O::SeqCst);
-            async move { Ok(None) }
+            // 🔴〔F7a〕没问过 ⇒ **不覆盖**（后端 `O_EXCL`）：探完之后才冒出来的同名文件照样不会被盖掉。
+            assert!(!overwrite, "没问过人，发出去的却是覆盖策略");
+            async move { Ok(3) }
         },
     )
     .await;
@@ -151,7 +142,7 @@ async fn a_target_that_is_not_there_yet_asks_nobody() {
         out,
         CopyOutcome::Done {
             asked: false,
-            verdict: None
+            bytes: 3
         }
     );
 }
@@ -164,9 +155,9 @@ async fn answering_no_means_the_copy_never_starts() {
         job(),
         |_| async move { true },
         |_| async move { false },
-        |_| {
+        |_, _| {
             launched.fetch_add(1, O::SeqCst);
-            async move { Ok(None) }
+            async move { Ok(0) }
         },
     )
     .await;
@@ -179,31 +170,28 @@ async fn answering_no_means_the_copy_never_starts() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 正题二：**裁决不许被吞** —— 类型上、运行时、以及界面上
+// 正题二：**结局不许被吞** —— 运行时，以及界面上
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 `sftp_pool` 那一层交上来的 [`CopyVerdict`] **原样**出现在结果里。
-///
-/// 两个方向各一趟（快路 `None` / 退路 `Some(原文)`）—— 只判一个方向的话，
-/// 把 `verdict` 硬写成 `None` 的实现在快路那一趟上照样绿。
+/// 后端报的复制字节数**原样**出现在结果里（两个值各一趟 —— 只判一个值的话，
+/// 把 `bytes` 硬写成那个值的实现照样绿）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_verdict_from_the_pool_comes_back_untouched() {
-    for want in [None, Some(slow_path_words())] {
-        let w = want.clone();
+async fn the_byte_count_from_the_backend_comes_back_untouched() {
+    for want in [0u64, 8_388_608] {
         let out = run_copy(
             job(),
             |_| async move { false },
             |_| async move { true },
-            move |_| async move { Ok(w) },
+            move |_, _| async move { Ok(want) },
         )
         .await;
         assert_eq!(
             out,
             CopyOutcome::Done {
                 asked: false,
-                verdict: want.clone()
+                bytes: want
             },
-            "裁决在这一层被改写了 —— 它是「这一趟走的是哪条路」的唯一来源"
+            "字节数在这一层被改写了"
         );
     }
 }
@@ -215,112 +203,73 @@ async fn a_failure_comes_back_with_the_message_the_pool_gave() {
         job(),
         |_| async move { false },
         |_| async move { true },
-        |_| async move { Err("远端 copy-data 失败（PermissionDenied）: 不许写".to_string()) },
+        |_, _| async move { Err("`files-copy` 被拒（refused）：refuse write: 围栏".to_string()) },
     )
     .await;
     assert_eq!(
         out,
-        CopyOutcome::Failed("远端 copy-data 失败（PermissionDenied）: 不许写".to_string())
+        CopyOutcome::Failed("`files-copy` 被拒（refused）：refuse write: 围栏".to_string())
     );
 }
 
-/// 🔴 **退路那句话要原样进到「要说给用户听的那一句」里，而且是警告档。**
+/// 〔F7a〕成功那一句说出**复制了几个字节**与**在哪儿复制的**，而且**不是**警告档；
+/// 失败那一句带原文、**是**警告档（阴性对照：两档不许画成一样）。
 ///
-/// 相等断言（不是「包含某个词」）：这一层的活就是把那句话套一个前缀，
-/// 多改一个字都是在改写下层的读数。
+/// 🔴 第三刀那条「退路要原样出声」随 SFTP 那条路一起没了（模块头注逐条）：
+/// 后端在那台机器上复制，没有会过网的第二条路，也就没有「慢路」这句话可喊。
 #[test]
-fn the_slow_path_notice_repeats_the_pools_own_words_verbatim() {
-    let why = slow_path_words();
+fn the_done_notice_says_how_many_bytes_and_where_and_is_quiet() {
     let n = outcome_notice(&CopyOutcome::Done {
         asked: true,
-        verdict: Some(why.clone()),
+        bytes: 8_388_608,
     });
-    assert_eq!(n.text, format!("{SLOW_PATH_PREFIX}{why}"));
-    assert!(n.loud, "退了路却不是警告档 —— 那一行会混在普通提示里");
-    // 那句话里那个**字节数**必须一路带到界面上（`设计/60 §5` 第二段逐字要的就是它）。
-    assert!(
-        n.text.contains("8388608 字节经过了你这台机器"),
-        "退路那句话里的过网字节数掉了：{}",
-        n.text
+    assert_eq!(
+        n.text,
+        "复制完成：8388608 字节，在那台机器上复制的，没经过你这台机器"
     );
+    assert!(!n.loud, "复制成了是它该有的样子，不是警告");
+    let f = outcome_notice(&CopyOutcome::Failed("原话".into()));
+    assert_eq!(f.text, "复制失败：原话");
+    assert!(f.loud, "失败不是警告档 —— 那一行会混在普通提示里");
 }
 
-/// 🔴 **阴性对照**：快路**不喊**。
-///
-/// 没有这一条，上面那条可能只是「每一趟都摆一句警告」——
-/// 那样「慢路」这个信号就等于没有（用户每次都看见同一行字）。
+/// 🔴 **那句话真的被画到窗口上了**（生产那个 [`CopyBoard::ui`]，从这一帧的 galley 读回来）；
+/// 「在跑」时画一行「正在那台机器上复制」，而**不画**取消那颗按钮 ——
+/// 后端那一趟取消不掉，画出来就是一颗按了没用的按钮（阴性对照同一把尺子）。
 #[test]
-fn the_fast_path_says_something_quiet_and_is_not_a_warning() {
-    let n = outcome_notice(&CopyOutcome::Done {
-        asked: false,
-        verdict: None,
-    });
-    assert!(!n.loud, "零流量是它该有的样子，不是警告");
-    assert!(
-        !n.text.contains(SLOW_PATH_PREFIX),
-        "快路那一趟也说了「走的是慢路」：{}",
-        n.text
-    );
-}
-
-/// 🔴 **这一刀最要紧的一条：那句话真的被画到窗口上了。**
-///
-/// 它走的是**生产那个** [`CopyBoard::ui`]，从 egui 这一帧交出去的 galley 里
-/// 把文字读回来（量具与它买不到什么见 `copy_testing.rs` 头注）。
-///
-/// ⚠ 与上面那两条 `outcome_notice` 判据**买的不是同一样东西**
-/// （`真相源/99 §9.5` 刀 2 复打记的正是这一形）：
-/// 那两条买「这句话拼得对」，**看不见**「`ui()` 里那一支被 `if false` 关掉了」；
-/// 这一条买「这一帧真的把它交出去排版了」，**看不见**「话拼得对不对」。两条都要。
-///
-/// 同一把尺子带一条**阴性对照**：快路那一趟，它必须**读不到**那个前缀。
-#[test]
-fn the_slow_path_notice_really_gets_painted_on_the_window() {
-    let why = slow_path_words();
+fn the_outcome_and_the_running_line_really_get_painted_and_no_cancel_button_is() {
     let screen = egui::vec2(1280.0, 800.0);
-
-    // ── 退路那一趟：画得出来 ──────────────────────────────────────────
     let ctx = egui::Context::default();
     let board = CopyBoard::default();
-    board.finish(CopyOutcome::Done {
-        asked: true,
-        verdict: Some(why.clone()),
-    });
-    // 第一帧建字体图集，第二帧才是稳定的读数。
+    board.begin("big.bin.copy");
     let _ = painted_text(&ctx, screen, 0.0, Vec::new(), |ui| board.ui(ui));
-    let slow = painted_text(&ctx, screen, 0.1, Vec::new(), |ui| board.ui(ui));
+    let running = painted_text(&ctx, screen, 0.1, Vec::new(), |ui| board.ui(ui));
     assert!(
-        !slow.is_empty(),
-        "这一帧一个字都没画出来 —— 量具塌了，下面两比在空转"
+        !running.is_empty(),
+        "这一帧一个字都没画出来 —— 量具塌了，下面几比在空转"
     );
     assert!(
-        painted_contains(&slow, SLOW_PATH_PREFIX),
-        "退了路，窗口上却找不到「{SLOW_PATH_PREFIX}」这句话 —— \
-         那就是 `设计/60 §5` 第二段禁止的那一形：静默花掉 2× 带宽。\n\
-         这一帧画出来的是：{:?}",
-        slow.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
+        painted_contains(&running, "正在那台机器上复制 big.bin.copy"),
+        "在跑却没说在跑：{:?}",
+        running.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
     );
     assert!(
-        painted_contains(&slow, "8388608 字节经过了你这台机器"),
-        "「多少字节过了这台机器」没画出来 —— 只说「慢路」不说数，等于没说"
+        !painted_contains(&running, super::super::transfer::CANCEL_LABEL),
+        "画了取消那颗按钮 —— 后端那一趟取消不掉，那是一颗按了没用的按钮"
     );
-
-    // ── 🔴 阴性对照：快路那一趟，同一把尺子读不到 ─────────────────────
-    let ctx2 = egui::Context::default();
-    let fast = CopyBoard::default();
-    fast.finish(CopyOutcome::Done {
+    board.finish(CopyOutcome::Done {
         asked: false,
-        verdict: None,
+        bytes: 42,
     });
-    let _ = painted_text(&ctx2, screen, 0.0, Vec::new(), |ui| fast.ui(ui));
-    let quiet = painted_text(&ctx2, screen, 0.1, Vec::new(), |ui| fast.ui(ui));
+    let done = painted_text(&ctx, screen, 0.2, Vec::new(), |ui| board.ui(ui));
     assert!(
-        !quiet.is_empty(),
-        "对照组这一帧一个字都没画 —— 那下面这一比恒真"
+        painted_contains(&done, "复制完成：42 字节"),
+        "结局没画出来：{:?}",
+        done.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
     );
     assert!(
-        !painted_contains(&quiet, SLOW_PATH_PREFIX),
-        "零流量那一趟也喊了「走的是慢路」—— 这把尺子恒真，上面那一比买不到东西"
+        !painted_contains(&done, "正在那台机器上复制"),
+        "跑完了还说在跑"
     );
 }
 
@@ -358,7 +307,7 @@ fn the_path_we_probe_is_the_one_that_would_get_overwritten() {
 }
 
 /// 🔴 egui **只在有事发生时才画下一帧** ⇒ 三个时刻都要敲窗口：
-/// **有问题要问** · **进度动了** · **跑完了**。
+/// **有问题要问** · **起了一趟**（〔F7a〕后端没有进度，换成「在跑」那一下）· **跑完了**。
 ///
 /// ⚠ 判的是 `Context::has_requested_repaint()`（egui 自己那个标志，＝ 行为），
 /// 不是「源码里有 `request_repaint` 这行字」。
@@ -374,15 +323,15 @@ fn the_copy_board_pokes_the_window_whenever_something_happened() {
             }) as Box<dyn Fn(&CopyBoard)>,
         ),
         (
-            "进度动了",
-            Box::new(|b: &CopyBoard| b.progress("big.bin.copy", 1, 2)) as Box<dyn Fn(&CopyBoard)>,
+            "起了一趟",
+            Box::new(|b: &CopyBoard| b.begin("big.bin.copy")) as Box<dyn Fn(&CopyBoard)>,
         ),
         (
             "跑完了",
             Box::new(|b: &CopyBoard| {
                 b.finish(CopyOutcome::Done {
                     asked: false,
-                    verdict: None,
+                    bytes: 0,
                 })
             }) as Box<dyn Fn(&CopyBoard)>,
         ),
@@ -418,8 +367,10 @@ fn the_copy_board_pokes_the_window_whenever_something_happened() {
 #[test]
 fn a_copy_board_with_no_window_still_records_and_does_not_panic() {
     let board = CopyBoard::default();
-    board.progress("x", 3, 9);
+    board.begin("x");
+    assert_eq!(board.running().as_deref(), Some("x"));
     board.finish(CopyOutcome::Skipped);
+    assert_eq!(board.running(), None, "跑完了还挂着「在跑」");
     assert_eq!(board.rounds(), 1);
     assert_eq!(board.last(), Some(CopyOutcome::Skipped));
 }
@@ -460,7 +411,7 @@ fn a_copy_job_is_a_rename_inside_the_same_directory() {
     );
     assert!(
         CopyJob::beside("/srv/a", "/srv", "a").is_none(),
-        "复制成自己过了 —— `copy_remote_path` 会先删 `to` 再换名，那等于把源删了"
+        "复制成自己过了 —— 覆盖那一形是拿一份复制品顶掉目标，这里就是顶掉源自己"
     );
 }
 
@@ -481,7 +432,7 @@ fn only_plain_files_with_addressable_names_can_be_copied() {
     assert!(is_copyable(&row("big.bin", false, false)));
     assert!(
         !is_copyable(&row("adir", true, false)),
-        "目录能复制 —— `copy-data` 吃的是文件句柄，目录递归不在这一层"
+        "目录能复制 —— 后端 `files-copy` 只复制普通文件，目录递归不在这一层"
     );
     assert!(
         !is_copyable(&row("\u{FFFD}odd", false, true)),
@@ -490,17 +441,89 @@ fn only_plain_files_with_addressable_names_can_be_copied() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 委派：**不许自己拼传输，也不许绕过那条池的入口**
+// 委派：〔F7a · 第三波 09-24〕**经通道问后端 `files-copy`，本层一行复制逻辑都没有**
 // ════════════════════════════════════════════════════════════════════════
+
+/// 一件复制 → 线上参数：`root` = 源的上一级、`from` / `to` = 两个尾段、覆盖策略原样；
+/// 目标不在源的同一个目录 ⇒ **报错不发**（防「当前目录」与「那一行的路径」写法不一致时落到别处）。
+#[test]
+fn copy_args_split_the_paths_like_the_other_writes_and_refuse_a_second_directory() {
+    assert_eq!(
+        copy_args(&job(), true).unwrap(),
+        serde_json::json!({
+            "root": "/srv/data",
+            "from": "big.bin",
+            "to": "big.bin.copy",
+            "overwrite": true,
+        })
+    );
+    assert_eq!(copy_args(&job(), false).unwrap()["overwrite"], false);
+    let elsewhere = CopyJob {
+        from: "/srv/data/big.bin".into(),
+        to: "/srv/other/big.bin".into(),
+        name: "big.bin".into(),
+    };
+    assert!(
+        copy_args(&elsewhere, false).is_err(),
+        "目标在另一个目录，竟然拼出了参数 —— 那会把文件放到他没在看的地方"
+    );
+    // 正控：`beside` 造出来的（含当前目录带尾斜杠那一形）都拼得出来。
+    let j = CopyJob::beside("/srv/data/big.bin", "/srv/data/", "x").unwrap();
+    assert_eq!(copy_args(&j, false).unwrap()["root"], "/srv/data");
+}
+
+/// ★ 经真回环口、真钥匙到合成后端：线上那一行逐格相等；回的字节数原样带回；
+/// 后端拒 ⇒ 原话；旧后端不认 ⇒ 一个字节都不发。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    let wired = wire_up(
+        "copy-wire",
+        FakeBackend::new(&[CMD_COPY], Declared::default()),
+    )
+    .await;
+    let origin = crate::filewin::source::Origin(wired.origin.clone());
+    let n = copy_remote(&wired.line, &origin, &job(), true)
+        .await
+        .expect("一趟干净的复制被拒了");
+    assert_eq!(n, 42, "回的字节数不是后端报的那个");
+    assert_eq!(
+        wired.log.lock().unwrap().clone(),
+        vec![serde_json::json!({
+            "cmd": CMD_COPY,
+            "args": {"root": "/srv/data", "from": "big.bin", "to": "big.bin.copy", "overwrite": true},
+        })],
+        "线上那一行不是「根 ＋ 两个尾段 ＋ 覆盖策略」"
+    );
+    let fenced = CopyJob {
+        from: "/srv/refuse/a".into(),
+        to: "/srv/refuse/b".into(),
+        name: "b".into(),
+    };
+    let e = copy_remote(&wired.line, &origin, &fenced, false)
+        .await
+        .expect_err("后端拒了，这一层却说成了");
+    assert!(e.contains("refuse write"), "拒的不是后端那一句：{e}");
+    let old = wire_up("copy-wire-old", FakeBackend::new(&[], Declared::default())).await;
+    let e = copy_remote(
+        &old.line,
+        &crate::filewin::source::Origin(old.origin.clone()),
+        &job(),
+        false,
+    )
+    .await
+    .expect_err("旧后端不认这条命令，竟然复制成了");
+    assert!(e.contains("版本旧"), "旧后端那一形没说清：{e}");
+    assert_eq!(old.count(CMD_COPY), 0);
+}
 
 /// ⚠ **判源码是代理，不是标的**（同 `transfer_tests` / `source_tests` 的如实标注）。
 ///
-/// 买的是：复制走的是 `sftp_pool::sftp_copy` 那条既有命令 ——
-/// 于是 `guard_write` 两道围栏、`register_cancel`、`lease_raw`（车道 ＋ 通道预算）
-/// 全都照旧生效，本模块一行传输代码都没有。
-/// 买不到：那条命令今天真连得上。
+/// 买的是：复制经 `source::ask` 说后端那条命令（窗口进程够后端的唯一一处），
+/// 探测借 `transfer::probe_remote`（「那儿有没有东西」只有一个口径）；
+/// SFTP 池子、进度通道、取消台一样都不碰。买不到：一台真远端上那一趟真跑过。
 #[test]
-fn the_real_adapter_delegates_to_the_pools_own_copy_command() {
+fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
     let prod = guard_core::production_code(include_str!("../../../src/bridge/src/filewin/copy.rs"));
     guard_core::assert_no_test_code("filewin/copy.rs", &prod);
     assert!(
@@ -508,7 +531,7 @@ fn the_real_adapter_delegates_to_the_pools_own_copy_command() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
-    for needle in ["sftp_pool::sftp_copy(", "transfer::probe_remote("] {
+    for needle in ["source::ask(", "transfer::probe_remote("] {
         assert_eq!(
             prod.matches(needle).count(),
             1,
@@ -517,28 +540,23 @@ fn the_real_adapter_delegates_to_the_pools_own_copy_command() {
             prod.matches(needle).count()
         );
     }
-    // 🔴 自己开连接 / 自己借裸通道 / 绕过那条入口直呼核心，一个都不许有。
-    //    `copy_remote_path(` 尤其要挡：绕过 `sftp_copy` 就等于同时丢掉
-    //    两道 `guard_write`（Claude 数据源围栏）与 `register_cancel`（取消登记）。
+    // 针拼出来，免得命中本文件自己的说明。
+    let pool = format!("sftp_{}::", "pool");
     for banned in [
-        "connect_sftp",
-        "russh_sftp",
-        "SftpSession",
-        "with_sftp(",
-        "lease_raw",
-        "lease_transfer",
+        pool.as_str(),
+        "tauri::ipc::Channel",
+        "CancelDesk",
+        "launch_unless_cancelled",
         "copy_remote_path(",
         "guard_write(",
-        // 探测「目标在不在」只许借 `transfer::probe_remote`，不许在这一层
-        // 再拨一次 `sftp_stat`（「stat 失败算不算存在」那一档会漂）。
-        "sftp_pool::sftp_stat(",
+        "is_protected_claude_data_path",
     ] {
         assert!(
             !prod.contains(banned),
-            "生产段里出现了 `{banned}` —— 这一层不许自己碰连接／通道／围栏，\
-             它该做的只有「问一次、起一趟、把裁决摆出来」那三件"
+            "生产段里出现了 `{banned}` —— 复制在后端，这一层不许自己碰传输／围栏／取消，\
+             它该做的只有「问一次、起一趟、把结局摆出来」那三件"
         );
     }
     // 反空真：这把尺子认得出「有」。
-    assert!(prod.contains("sftp_pool::sftp_copy("));
+    assert!(prod.contains("source::ask("));
 }

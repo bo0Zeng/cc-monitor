@@ -91,13 +91,16 @@ pub const COMMANDS: &[&str] = &[
     "capture-pane",
     "files-browse",
     "files-chmod",
+    "files-copy",
     "files-create",
     "files-delete",
     "files-find",
+    "files-home",
     "files-index-rebuild",
     "files-index-status",
     "files-ls",
     "files-mkdir",
+    "files-read-text",
     "files-rename",
     "files-stat",
     "files-write-text",
@@ -640,6 +643,21 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔F7a · 第三波 09-24〕写面第七条：同根内复制（`设计/60 §13`）。与上面五条同住一个模块、
+    //   同一扇门、同档（同步文件 I/O，取消不掉）。它**不给第三层添动词**：由 `O_EXCL` 新建 ＋
+    //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `control/files_write.rs::copy_entry`）。
+    CommandSpec {
+        name: "files-copy",
+        doc_anchor: Some("#### `files-copy`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["bytes", "from", "overwrite", "path", "root", "to"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-write-text",
         doc_anchor: Some("#### `files-write-text`"),
@@ -754,6 +772,42 @@ pub const REGISTRY: &[CommandSpec] = &[
         codes: &["bad_path", "unreadable"],
         fields: &["kind", "mtime_secs", "path", "readonly", "size"],
         takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // ── 〔F7a · 第三波 · 2026-09-24〕`设计/60 §13`：窗口换走通道的那两问 ────────────────
+    //
+    // 🔴 **同一族（`files-read`）的第七、第八条，整族照旧纯读**：编辑器读一份文本 ·
+    //   开窗前「那台机器的 home 在哪」。此前窗口为这两问各拨一条 SFTP（`设计/60 §12.3`
+    //   那张欠账表），现在经通道问后端 —— 窗口进程够后端**只剩通道**这一条路。
+    // ⚠ `run` 与同族那六条逐字同形（名字从 `r.cmd` 来）；同在 `Run::Blocking`、同样取消不掉。
+    CommandSpec {
+        name: "files-read-text",
+        doc_anchor: Some("#### `files-read-text`"),
+        codes: &[
+            "bad_args",
+            "bad_path",
+            "not_text",
+            "too_large",
+            "unreadable",
+        ],
+        fields: &["bytes", "max_bytes", "path", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "files-home",
+        doc_anchor: Some("#### `files-home`"),
+        codes: &["no_home"],
+        fields: &["path"],
+        takes_input: false,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
                 .map(Some)
