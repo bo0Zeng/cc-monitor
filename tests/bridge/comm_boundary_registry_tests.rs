@@ -679,7 +679,7 @@ fn population_claimed_in_prose(module_src: &str) -> usize {
 const LAYER_TWO_PREFIX: &str = "src/backend/accounts/apikey/"; // 〔`A3` 第二波〕层 2 从账号域根收窄到 `apikey/` 子树（`accounts/iso.rs` 不是层 2）
 
 /// 层 2 今天有几份文件。**相等，不是地板** —— 多一份就回来改这个数并重读下面那条。
-const LAYER_TWO_FILES: usize = 4; // 〔`A3` 第二波〕中途 4 → 5（`acct_iso.rs` 当时落在层 2 根底下）→ 回到 4：层 2 收进 `accounts/apikey/` 子树，`accounts/iso.rs` 不在这个前缀里。
+const LAYER_TWO_FILES: usize = 5; // 〔RM1a · 第四波〕4 → 5：多了 `file_face.rs`（这台机器上那份凭据文件的帧面读写口，层 2 自己的状态）。〔`A3` 第二波〕中途 4 → 5（`acct_iso.rs` 当时落在层 2 根底下）→ 回到 4：层 2 收进 `accounts/apikey/` 子树，`accounts/iso.rs` 不在这个前缀里。
 
 /// ★★ **成员资格说的是「这份文件里的代码属于层 1」，不是「它的模块子树都属于层 1」。**
 ///

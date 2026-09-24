@@ -272,15 +272,8 @@ fn rows_that_cannot_be_a_route_segment_are_not_reported() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// 写口的临时文件名是确定的（`<FILE_NAME>.<pid>.tmp`）⇒ 直接问那一个名字在不在，不遍历目录。
 fn assert_no_residue(dir: &Path) {
-    if !dir.exists() {
-        return;
-    }
-    let left: Vec<String> = std::fs::read_dir(dir)
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with(".tmp"))
-        .collect();
-    assert!(left.is_empty(), "留下了临时文件：{left:?}");
+    let tmp = dir.join(format!("{}.{}.tmp", store::FILE_NAME, std::process::id()));
+    assert!(!tmp.exists(), "留下了临时文件：{}", tmp.display());
 }
