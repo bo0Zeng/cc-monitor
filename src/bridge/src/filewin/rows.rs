@@ -454,14 +454,10 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Ma
     );
     // ⚠ `Id` 按**行下标**造（不是按名字）：下标随滚动是绝对的、且同一行跨帧稳定，
     //   而名字会重（同名文件在不同目录、或列表里刚好两行同名）。
-    // 🔴〔FW1〕`Sense::CLICK` 而**不是** `Sense::click()`：后者带 `FOCUSABLE`，
-    //    点一下这一行就把键盘焦点给了它，而 egui 对「有焦点的控件」会拿方向键去挪焦点
-    //    （`Memory` 的 `focus_direction`）⇒ 按 ↓ 同时挪了我们的光标和 egui 的焦点框。
-    //    行不需要 egui 的焦点：键盘归列表这件事由窗口在点行那一刻明说（清掉焦点）。
     let row = ui.interact(
         full,
         ui.id().with(("filewin-row", index)),
-        egui::Sense::CLICK,
+        egui::Sense::click(),
     );
     let mods = ui.input(|i| i.modifiers);
     RowHit {
