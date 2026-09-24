@@ -234,7 +234,8 @@ enum Kind {
     Channel,
     /// 线上类型（`chan::wire::*`，`05 §3.3` 那一套）。**题面要的就是它。**
     Wire,
-    /// 🔴 **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消 · 读一份文本进编辑器）—— `设计/60 §8.4` 未拍，
+    /// 🔴 **跨机传输仍走 SFTP**（上传 · 往外拖 · 取消；〔F7a 09-24〕读一份文本进编辑器那一条已换成后端
+    /// `files-read-text`）—— `设计/60 §8.4` 未拍，
     /// 题面逐字「上传/跨机传输不做」。⚠ 这一类在，窗口进程就仍然拨第二条 SSH（只在真搬字节时）。
     Transfer,
     /// 🔴 **后端今天没有这条命令**：同机复制（写面那六条里没有 `files-copy`）。
@@ -289,11 +290,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("chan::wire::PeerFault", Kind::Wire),
     ("chan::wire::Reach", Kind::Wire),
     // ── 跨机传输（§8.4 未拍）──
-    ("sftp_pool::MAX_EDIT_BYTES", Kind::Transfer),
     ("sftp_pool::TRANSFER_LANE_CAP", Kind::Transfer),
     ("sftp_pool::sftp_cancel_transfer", Kind::Transfer),
     ("sftp_pool::sftp_download", Kind::Transfer),
-    ("sftp_pool::sftp_read_text_for_edit", Kind::Transfer),
     ("sftp_pool::sftp_upload", Kind::Transfer),
     ("ssh_source::RemoteConfig", Kind::Transfer),
     // ── 后端缺命令 ──
@@ -527,8 +526,10 @@ fn every_declared_edge_falls_in_a_live_category() {
             debt(Fence),
             debt(Terminal)
         ),
-        (7, 2, 1, 1),
-        "窗口进程里「还不是通道」的那几类条数变了（传输 · 后端缺命令 · 本地围栏 · 本机动作）"
+        (5, 2, 1, 1),
+        "窗口进程里「还不是通道」的那几类条数变了（传输 · 后端缺命令 · 本地围栏 · 本机动作）\
+         〔F7a 09-24〕传输 7 → 5：编辑器读文本那两条（池子那条读文本命令 ＋ 它的上限常量）换成后端 \
+         `files-read-text`，上限常量搬回窗口（`editor::MAX_EDIT_BYTES`）"
     );
 }
 

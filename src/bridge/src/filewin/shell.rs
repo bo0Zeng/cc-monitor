@@ -1399,7 +1399,6 @@ impl FileWindow {
     /// **连那趟往返都不发** —— 而且把**为什么**说出来。
     /// 逐条理由住 `editor.rs` 头注「超了怎么办」那一节。
     pub fn begin_edit(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
-        let cfg = self.source.cfg();
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
@@ -1419,13 +1418,18 @@ impl FileWindow {
                 Some("读远端文本要一个 tokio 运行时，这个窗口没拿到".into());
             return false;
         };
-        let cfg = cfg.clone();
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            return false;
+        };
+        let origin = self.source.origin();
         let board = self.edits.clone();
         board.attach(ctx);
         board.begin_open(&row.path);
         h.spawn(async move {
             use super::editor::Arrived;
-            let got = super::editor::read_text(&cfg, &row.path).await;
+            // 〔F7a〕读文本经通道问后端（`files-read-text`），不再拨 SFTP。
+            let got = super::editor::read_text(&line, &origin, &row.path).await;
             board.deliver(match got {
                 Ok(Some(text)) => Arrived::Text {
                     path: row.path.clone(),
@@ -1475,7 +1479,7 @@ impl FileWindow {
             *self.listing.error.lock().unwrap() = Some(format!(
                 "改完之后有 {} 字节，超过 {} 的上限 —— 存不回去（超限**拒编而非截断**）",
                 p.text.len(),
-                super::rows::human_size(crate::sftp_pool::MAX_EDIT_BYTES as u64)
+                super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64)
             ));
             return false;
         }
@@ -1646,7 +1650,7 @@ impl FileWindow {
                     egui::Color32::RED,
                     format!(
                         "已经超过 {} 的上限 {} 字节 —— 存不回去",
-                        super::rows::human_size(crate::sftp_pool::MAX_EDIT_BYTES as u64),
+                        super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64),
                         -pane.headroom()
                     ),
                 );

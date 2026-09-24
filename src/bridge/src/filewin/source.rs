@@ -714,24 +714,81 @@ pub async fn ask(
     args: &serde_json::Value,
     t: std::time::Duration,
 ) -> Result<serde_json::Value, String> {
+    ask_coded(line, origin, cmd, args, t)
+        .await
+        .map_err(|f| f.said)
+}
+
+/// 一趟 [`ask_coded`] 没成：**对端说的码**（只有「对端拒了」那一形有）＋ 那句人话。
+///
+/// 🔴〔F7a · 第三波 2026-09-24〕为什么要把码留下来：编辑器读文本那一问，后端的
+/// `too_large` / `not_text` 与「连不上」是**两件事**（前者说「这份不是一份能编辑的文本」，
+/// 后者说「这一趟没走通」），而 [`said`] 翻完之后只剩一句话 —— 分它们就只能猜字符串前缀。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Failed {
+    /// 对端拒绝时它给的那个码（`None` = 不是对端拒的：没走通 / 这一侧拼错 / 对端不认这条命令）。
+    pub code: Option<String>,
+    /// 给人看的那句话（[`said`] 翻过的，或这一侧自己的那句）。
+    pub said: String,
+}
+
+impl Failed {
+    fn local(said: String) -> Self {
+        Self { code: None, said }
+    }
+}
+
+/// 与 [`ask`] 同一件事，失败时**把对端的码一起交出来**（[`Failed`]）。
+///
+/// 🔴 **窗口进程里说 `call` 的仍然只有一处 —— 就是这里**：[`ask`] 是它的一层薄壳
+/// （只把码丢掉）。「期限由调用方给、这里只换成绝对时刻」那一条同 [`ask`] 头注。
+pub async fn ask_coded(
+    line: &Line,
+    origin: &Origin,
+    cmd: &str,
+    args: &serde_json::Value,
+    t: std::time::Duration,
+) -> Result<serde_json::Value, Failed> {
     use crate::chan::wire::{Body, Budget, CancelToken, Comms, Op};
     let budget = Budget {
         until: std::time::Instant::now() + t,
         cancel: CancelToken::new(),
     };
-    let payload =
-        Body(serde_json::to_vec(args).map_err(|e| format!("`{cmd}` 的参数拼不出来：{e}"))?);
+    let payload = Body(
+        serde_json::to_vec(args)
+            .map_err(|e| Failed::local(format!("`{cmd}` 的参数拼不出来：{e}")))?,
+    );
     let op = Op(cmd.to_string());
     let body = line
         .call(origin, &op, payload, budget)
         .await
-        .map_err(|e| said(cmd, &e))?;
-    let v: serde_json::Value =
-        serde_json::from_slice(&body.0).map_err(|e| format!("`{cmd}` 的应答读不动：{e}"))?;
+        .map_err(|e| Failed {
+            code: refused_code(&e),
+            said: said(cmd, &e),
+        })?;
+    let v: serde_json::Value = serde_json::from_slice(&body.0)
+        .map_err(|e| Failed::local(format!("`{cmd}` 的应答读不动：{e}")))?;
     if v.is_null() {
-        return Err(format!("`{cmd}` 回了一条空应答，和约定的不一样"));
+        return Err(Failed::local(format!(
+            "`{cmd}` 回了一条空应答，和约定的不一样"
+        )));
     }
     Ok(v)
+}
+
+/// 对端拒了的那一形里，它给的那个码。别的形一律 `None`（**不猜**）。
+pub fn refused_code(e: &crate::chan::wire::CallError) -> Option<String> {
+    use crate::chan::wire::{CallError, PeerFault};
+    match e {
+        CallError::Peer {
+            why: PeerFault::Refused { body },
+        } => serde_json::from_slice::<serde_json::Value>(&body.0)
+            .ok()?
+            .get("code")?
+            .as_str()
+            .map(str::to_string),
+        _ => None,
+    }
 }
 
 /// 通道那三层失败（`05 §3.3.1`）→ 窗口上那一句话。**穷尽 `match`，不许 `_ =>`。**

@@ -1,5 +1,10 @@
 //! `24e` 第九刀：**改一份远端文本** —— `sftp_read_text_for_edit` ＋ `sftp_write_text`。
 //!
+//! 🔴〔F7a · 第三波 2026-09-24〕**读写两半都经通道问后端了**：写那一半 F2 已换成
+//! `files-write-text`；读那一半这一拍换成 `files-read-text`（[`read_text`]）。标题里那两条
+//! 池子命令是第九刀当时的住址，下面几节讲「上限」「超了怎么办」的推理照旧成立 ——
+//! 变的只是「最终护栏」住哪：从池子那边的解码函数换成后端那条命令（它自己判两次大小）。
+//!
 //! ═══════════════════════════════════════════════════════════════════════
 //! # 🔴 一、`设计/60 §5.4b` 把两个问题**指名**留给了这一刀
 //! ═══════════════════════════════════════════════════════════════════════
@@ -17,7 +22,7 @@
 //! 老面板的做法是把那一行灰置 —— 而「灰置」与「这个功能坏了」在屏幕上同形。
 //!
 //! 🔴 **而那三件里最常见的那一件，窗口自己就判得出来**：列目录回来的每一行
-//! 都带着 `size` ⇒ [`why_not_editable`] 按 [`crate::sftp_pool::MAX_EDIT_BYTES`]
+//! 都带着 `size` ⇒ [`why_not_editable`] 按 [`MAX_EDIT_BYTES`]
 //! 在**本地**判「太大」，**连那趟往返都不发**，而且把那个数说给用户听
 //! （「这份 1.2 M 超过 256 K 的编辑上限」）。
 //!
@@ -25,8 +30,8 @@
 //! （「这不是一份文本文件」）⇒ **三件事分成了两句人话，零签名改动、零额外往返。**
 //!
 //! ⚠ 如实登记它**买不到**什么：远端那个文件在「我们读 `size`」与「我们真去读它」
-//! 之间被换掉（变大 / 变成二进制）⇒ 本地预判会放它过去，而池子那边的
-//! `decode_editable` 仍然是最终护栏（它冗余复核大小，正是为这个竞态）。
+//! 之间被换掉（变大 / 变成二进制）⇒ 本地预判会放它过去，而〔F7a〕后端 `files-read-text`
+//! 仍然是最终护栏（它在那台机器上再判两次大小，正是为这个竞态；第九刀时这一格住池子那边）。
 //! ⇒ **本地预判是一句话的来源，不是一道围栏。**
 //!
 //! ## 问题一「**这个量该多大**」—— 本刀**不动它**，并写清为什么
@@ -120,7 +125,16 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::sftp_pool::MAX_EDIT_BYTES;
+/// 编辑上限（256 KiB）。**超上限拒编而非截断**（截断过的文本当编辑源会写坏文件）。
+///
+/// 🔴〔F7a · 第三波 2026-09-24〕**住址从池子搬到了窗口这里，而这是它该住的地方**：
+/// `设计/60 §5.4b` 逐字「那个上限该是多少、超了怎么办，要在**原生窗口的文本控件**这个语境里答」
+/// —— 它答的是「这个编辑框打字卡不卡」，是窗口的偏好，不是后端的机制。
+/// ⇒ 每趟经 `max_bytes` 送给后端 `files-read-text`（后端按它拒、不截断；后端另有自己的
+/// 一趟天花板，那是另一个数、另一件事）。这个数经第九刀复核过，理由住本模块头注「这个量该多大」。
+/// ⚠ 池子那边 `sftp_pool.rs` 里还有一份同值的常量 —— 那是老面板那条读文本命令自己的，
+/// 窗口不再借它（`boundary_tests` 窗口那张表里它那一行这一拍删了）；那条命令随 SFTP 收成只做传输一起走。
+pub const MAX_EDIT_BYTES: usize = 256 * 1024;
 
 use super::source::Row;
 
@@ -170,7 +184,7 @@ pub fn is_editable(r: &Row) -> bool {
     why_not_editable(r).is_none()
 }
 
-/// 池子回了 `None` 之后那句话。
+/// 后端说「不可编辑」之后那句话（第九刀时是池子回了 `None`）。
 ///
 /// 🔴 **「太大」不在这里** —— 那一档由 [`why_not_editable`] 在发往返**之前**挡掉。
 /// 走到这儿还是 `None`，剩下的可能只有两种，而它们是同一句人话。
@@ -239,8 +253,9 @@ impl Pane {
         MAX_EDIT_BYTES as i64 - self.text.len() as i64
     }
 
-    /// 🔴 **敲超上限了吗。** 存回去会被池子拒（`decode_editable` 的最终护栏），
-    /// 所以要在屏幕上先说，而不是等存的时候才失败。
+    /// 🔴 **敲超上限了吗。** 〔F7a 订正〕存回去那一下**后端不拦大小**（写面 `files-write-text`
+    /// 没有上限）—— 拦的是本窗口：超上限的内容存回去之后，下次就读不回来编辑了（读那一问按上限拒）。
+    /// 所以要在屏幕上先说，并且不发那一趟。
     pub fn over_cap(&self) -> bool {
         self.text.len() > MAX_EDIT_BYTES
     }
@@ -277,7 +292,7 @@ pub enum Arrived {
         name: String,
         text: String,
     },
-    /// 池子说它不可编辑（那句话由 [`not_text_notice`] 给）。
+    /// 后端说它不可编辑（那句话由 [`not_text_notice`] 给）。
     NotText { path: String },
     /// 下层那句原话（连不上 / 没权限 …）。
     Failed { path: String, why: String },
@@ -382,24 +397,55 @@ impl EditBoard {
     }
 }
 
-/// 读一份远端文本。
+/// 读文本那条线上命令的名字（后端 `files-read` 族第七条）。
+pub const CMD_READ_TEXT: &str = "files-read-text";
+
+/// 读一份文本那一趟的往返上限（调用方给的期限，`05 §3.3.2`）。
+pub const READ_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// 读一份远端文本 —— 〔F7a · 第三波 2026-09-24〕经通道问后端 `files-read-text`。
 ///
-/// 回值：`Ok(Some(文本))` / `Ok(None)` = 池子说它不可编辑（那句话由
-/// [`not_text_notice`] 给）/ `Err` = 下层那句原话。
+/// 回值：`Ok(Some(文本))` / `Ok(None)` = 后端说它不可编辑（那句话由
+/// [`not_text_notice`] 给）/ `Err` = 那句原话（没走通 / 读不到 …）。
+///
+/// ⚠ 上一版这里调的是池子那条读文本命令（SFTP 把字节整份搬过来）；那是窗口进程里
+/// 「跨机传输」那一类欠账的一条。现在字节**在那台机器上**读、只把文本经通道交回来。
+/// ⚠ 有逻辑的那一段（哪几个码算「不可编辑」）住 [`text_from_reply`]。
 pub async fn read_text(
-    cfg: &crate::ssh_source::RemoteConfig,
+    line: &super::source::Line,
+    origin: &super::source::Origin,
     path: &str,
 ) -> Result<Option<String>, String> {
-    crate::sftp_pool::sftp_read_text_for_edit(cfg.clone(), path.to_string()).await
+    let args = serde_json::json!({ "path": path, "max_bytes": MAX_EDIT_BYTES });
+    text_from_reply(super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await)
+}
+
+/// 后端那一趟的结局 → 编辑器那三形。**纯函数**（判得动）。
+///
+/// - 回了 `text` ⇒ `Some(文本)`；回了却没有 `text` ⇒ 契约不符，报错（**不当成空文本**：
+///   空编辑框存回去就是把那份文件清空）。
+/// - 🔴 对端拒、码是 `too_large` / `not_text` ⇒ `None`：那是「这份不是一份能编辑的文本」，
+///   不是「这一趟没走通」—— 两者分开说（[`not_text_notice`] 那句话里连竞态那一形都说了）。
+/// - 其余一律 `Err`（那句话原样）。
+pub fn text_from_reply(
+    r: Result<serde_json::Value, super::source::Failed>,
+) -> Result<Option<String>, String> {
+    match r {
+        Ok(d) => d
+            .get("text")
+            .and_then(serde_json::Value::as_str)
+            .map(|t| Some(t.to_string()))
+            .ok_or_else(|| format!("`{CMD_READ_TEXT}` 的应答里没有 `text`，和约定的不一样")),
+        Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
+        Err(f) => Err(f.said),
+    }
 }
 
 /// 存回去 —— 〔F2 · 2026-09-24〕经通道说后端写面那条 `files-write-text`。
 ///
 /// 🔴 **围栏在后端那一层**（写面那道会话数据围栏，与桥那一份函数体逐字节相同）⇒ 本模块
 /// 不自己判一遍（判定只有一个家）。踩线时那句拒绝原样落进 [`Pane::last_save`]。
-/// ⚠ 上一版这里调的是池子那条写文本命令（SFTP）；读那一半（[`read_text`]）**仍走 SFTP**：
-/// 后端今天没有「读一份文本」的命令，而把字节从那台机器搬到这个窗口是一次**跨机传输**
-/// （`设计/60 §8.4` 未拍）—— 登记在 `boundary_tests::Kind::Transfer`。
+/// ⚠ 上一版这里调的是池子那条写文本命令（SFTP）。读那一半（[`read_text`]）〔F7a〕也换成了后端。
 /// ⚠ 路径切成 `(root, rel)` 与写面其余四条同形（[`super::writeops::apply_remote`] 头注）。
 pub async fn write_text(
     line: &super::source::Line,

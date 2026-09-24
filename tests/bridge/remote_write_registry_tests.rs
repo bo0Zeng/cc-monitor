@@ -791,29 +791,6 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
              ⚠ 不静默覆盖那一半在**窗口这一层**（`download::Ask` 那两问），\
              因为「那儿有没有东西」是一次**本机** IO，池子那边看不见也不该看见。",
         ),
-        (
-            "MAX_EDIT_BYTES",
-            "常量",
-            "🔴 **编辑上限（256 KiB）** —— 窗口拿它在**本地**判「太大」，\
-             而那正是 `设计/60 §5.4b` 指名留给 `24e` 的「超了怎么办」那一问的答案：\
-             `sftp_read_text_for_edit` 回的 `None` 把三件事压成一件，而列目录回来的\
-             每一行都带着 `size` ⇒ 最常见的那一档**连那趟往返都不发**就答完了。\
-             ⚠ **两处不是两个真相源**：窗口那一侧是同一个常量的一次借用，\
-             不许在那边另写一个数（`byte_cap_registry` 按源码文本钉这一个的值）。\
-             ⚠ 它是**一句话的来源，不是一道围标** —— 读 `size` 与真去读之间文件\
-             被换大了这一形，仍由池子那边 `decode_editable` 的冗余复核守着。",
-        ),
-        (
-            "sftp_read_text_for_edit",
-            "命令",
-            "读一份远端小文本供编辑。落点 `filewin::editor::read_text`，全树恰好一处。\
-             🔴 它回的 `Option<String>` 把**三件事压成一件**（太大 / 含 NUL / 非 UTF-8）\
-             ⇒ 拿到 `None` 说不出为什么。第九刀的答复是**不改签名**：\
-             窗口手上已经有那一行的 `size` ⇒ 「太大」那一档在**发往返之前**\
-             就答完了（`editor::why_not_editable`），剩下两种本来就是同一句人话。\
-             逐条理由住 `editor.rs` 头注「超了怎么办」那一节。\
-             ⚠ 它**不写任何路径**（纯读）⇒ 不进 `REMOTE_WRITES`。",
-        ),
         // ── 传输那一族（第二~三刀）─────────────────────────────────────
         (
             "sftp_upload",
@@ -915,10 +892,11 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     }
     used.sort();
     // 抽取器自检②：**处数地板**。剥法把生产段剥没了 ⇒ 两边都空 ⇒ 相等断言恒真。
-    // 〔F7a · 第三波 09-24〕地板改成相等：10 → 9（少了 `sftp_realpath`：开窗前解 home 换成后端 `files-home`）。
+    // 〔F7a · 第三波 09-24〕地板改成相等：10 → 9（少了 `sftp_realpath`：开窗前解 home 换成后端 `files-home`）
+    //   → 7（少了读文本那条命令与它的上限常量：换成后端 `files-read-text`，常量搬回 `editor.rs`）。
     assert_eq!(
         used.len(),
-        9,
+        7,
         "抠到 {} 处 `sftp_pool::…` 引用 —— 与现打的条数不等：抽取器坏了，或接线变了（实得 {used:?}）",
         used.len()
     );
@@ -995,12 +973,15 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         ("sftp_write_text", "files-write-text"),
         // 〔F7a · 第三波 09-24〕开窗前解 home（此前住 monitor 那一侧、单拨一条 SFTP）。
         ("sftp_realpath", "files-home"),
+        // 〔F7a · 第三波 09-24〕编辑器读一份文本（此前 SFTP 把字节整份搬过来；上限常量随之搬回窗口）。
+        ("sftp_read_text_for_edit", "files-read-text"),
     ];
     assert_eq!(
         declared_cmds.len(),
-        5,
+        4,
         "窗口今天接了 {} 条池子命令（〔F2 09-24〕13 → 6：上传 · 往外拖 · 取消 · 读文本进编辑器 ·\
-         同机复制 · 开窗前解 home；〔F7a 09-24〕6 → 5：开窗前解 home 换成后端 `files-home`）",
+         同机复制 · 开窗前解 home；〔F7a 09-24〕6 → 5：开窗前解 home 换成后端 `files-home`；\
+         5 → 4：读文本进编辑器换成后端 `files-read-text`）",
         declared_cmds.len()
     );
     let missing: std::collections::BTreeSet<&str> = commands

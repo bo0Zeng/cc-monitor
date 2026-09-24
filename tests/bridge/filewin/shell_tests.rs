@@ -1653,8 +1653,12 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
 /// 🔴🔴 **整条链一趟走完**：真点一下行上那颗「编辑」→ 那趟读真的发出去了。
 ///
 /// 五跳：`frame_body` → `show_file_rows` → `RenderTally::edit_clicked` →
-/// `apply_edit_click` → `begin_edit`。⚠ 读本身连不上（`.invalid`），
-/// 本条买的是「那一趟**发出去了**」（`edits.opening()` 有值），不是「读到了」。
+/// `apply_edit_click` → `begin_edit`。
+///
+/// 🔴〔F7a · 第三波 09-24〕**本条从「发出去了」升级成「读到了」**：读那一问换成经通道问后端
+/// （`files-read-text`）之后，合成后端（真回环口、真钥匙、真 `dial`）答得了它 ⇒ 链子一直走到
+/// 编辑面立起来；线上那一行的参数逐格读回（`path` 原样 · `max_bytes` == 窗口那个上限）。
+/// 第九刀那一版读走 SFTP、连不上（`.invalid`），只买得到「那一趟发出去了」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_real_click_on_edit_fires_the_read() {
     use crate::filewin::editor::EDIT_LABEL;
@@ -1670,6 +1674,15 @@ async fn a_real_click_on_edit_fires_the_read() {
             lossy_name: false,
         }],
     );
+    let wired = crate::filewin::find::testing::wire_up(
+        "edit-e2e",
+        crate::filewin::find::testing::FakeBackend::new(
+            &[crate::filewin::editor::CMD_READ_TEXT],
+            crate::filewin::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    w.attach_line(wired.line.clone());
     assert!(w.editing().is_none(), "什么都没点就有编辑面了");
     assert_eq!(w.edits.opens(), 0);
     let ctx = egui::Context::default();
@@ -1728,6 +1741,30 @@ async fn a_real_click_on_edit_fires_the_read() {
         w.edits.opens() > 0 || w.edits.opening().is_some(),
         "真点了「{EDIT_LABEL}」，那趟读一次都没发出去 —— 胶水那一跳断了"
     );
+    // 〔F7a〕等它到货，然后编辑面真的立起来，内容就是后端那一趟交回来的。
+    for _ in 0..400 {
+        if w.edits.opens() > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(w.settle_opened_edits(), "读的那一趟没到货");
+    let p = w.editing().expect("读到了却没立起编辑面");
+    assert_eq!(
+        p.text, "text of /srv/data/app.conf",
+        "编辑面里的不是后端交回来的那份"
+    );
+    assert_eq!(
+        wired.log.lock().unwrap().clone(),
+        vec![serde_json::json!({
+            "cmd": crate::filewin::editor::CMD_READ_TEXT,
+            "args": {
+                "path": "/srv/data/app.conf",
+                "max_bytes": crate::filewin::editor::MAX_EDIT_BYTES,
+            },
+        })],
+        "线上那一行不是「那一行的路径 ＋ 窗口的编辑上限」"
+    );
 }
 
 /// 🔴 **太大的那一行：一颗按钮都不画，而点这一行也不会发往返 —— 但会出声。**
@@ -1736,7 +1773,7 @@ async fn a_real_click_on_edit_fires_the_read() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
     use crate::filewin::editor::EDIT_LABEL;
-    let big = crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1;
+    let big = crate::filewin::editor::MAX_EDIT_BYTES as u64 + 1;
     let mut w = FileWindow::seeded(
         Source::remote(synth_cfg("edit-big")),
         "/srv/data".to_string(),

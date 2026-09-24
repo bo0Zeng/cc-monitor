@@ -36,7 +36,7 @@ fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
         "big.log",
         false,
         false,
-        crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1,
+        crate::filewin::editor::MAX_EDIT_BYTES as u64 + 1,
     );
     let why = why_not_editable(&over).expect("超上限却说改得了");
     // 上限那个数要在那句话里。
@@ -54,10 +54,13 @@ fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
     );
     // 精确字节数也要在（`human_size` 在边界上分不开两个值）。
     assert!(
-        why.contains(&format!("{} 字节", crate::sftp_pool::MAX_EDIT_BYTES + 1)),
+        why.contains(&format!(
+            "{} 字节",
+            crate::filewin::editor::MAX_EDIT_BYTES + 1
+        )),
         "那句话里没有这份文件的精确字节数：{why}"
     );
-    // 而「拒编而非截断」这条契约要说出来（`sftp_pool::MAX_EDIT_BYTES` 头注逐字）。
+    // 而「拒编而非截断」这条契约要说出来（`editor::MAX_EDIT_BYTES` 头注逐字；第九刀时那句话住池子那份同名常量上）。
     assert!(
         why.contains("拒编"),
         "没说清为什么不是「截断给你看」：{why}"
@@ -71,7 +74,7 @@ fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
         "exact",
         false,
         false,
-        crate::sftp_pool::MAX_EDIT_BYTES as u64,
+        crate::filewin::editor::MAX_EDIT_BYTES as u64,
     );
     assert_eq!(why_not_editable(&exact), None, "正好到上限那一份被拒了");
 }
@@ -99,7 +102,7 @@ fn the_button_and_the_reason_are_one_judgement() {
             "big",
             false,
             false,
-            crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1,
+            crate::filewin::editor::MAX_EDIT_BYTES as u64 + 1,
         ),
     ];
     // 反空真：两种答案都要出现。
@@ -129,6 +132,92 @@ fn the_not_text_notice_covers_what_is_left_after_the_size_check() {
     assert!(!n.contains("上限"), "把「太大」也塞进这句话了：{n}");
     // 竞态那一形要提 —— 否则用户会对着一个刚变大的文件反复点。
     assert!(n.contains("刷新"), "没给出下一步：{n}");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 〔F7a · 第三波 09-24〕读那一半经通道问后端 `files-read-text`
+// ═══════════════════════════════════════════════════════════════════
+
+/// 后端那一趟的结局 → 三形（纯函数）：`too_large` / `not_text` 是「不可编辑」（`None`），
+/// 别的拒与没走通是 `Err`（原话），回了却没有 `text` 是 `Err`（**不当成空文本**）。
+#[test]
+fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
+    use crate::filewin::source::Failed;
+    let failed = |code: Option<&str>, said: &str| Failed {
+        code: code.map(str::to_string),
+        said: said.to_string(),
+    };
+    assert_eq!(
+        text_from_reply(Ok(
+            serde_json::json!({ "text": "hi\n", "path": "/a", "bytes": 3 })
+        )),
+        Ok(Some("hi\n".to_string()))
+    );
+    for code in ["too_large", "not_text"] {
+        assert_eq!(
+            text_from_reply(Err(failed(Some(code), "x"))),
+            Ok(None),
+            "`{code}` 没落成「不可编辑」"
+        );
+    }
+    // 阴性对照：别的码 / 没有码（没走通）⇒ 原话，**不许**也压成「不可编辑」。
+    for code in [Some("unreadable"), Some("bad_args"), None] {
+        assert_eq!(
+            text_from_reply(Err(failed(code, "那句原话"))),
+            Err("那句原话".to_string()),
+            "`{code:?}` 被压成了「不可编辑」—— 连不上与不是文本在屏幕上就分不开了"
+        );
+    }
+    assert!(
+        text_from_reply(Ok(serde_json::json!({ "path": "/a" }))).is_err(),
+        "回了却没有 `text`，竟然当成了一份文本（空编辑框存回去就是把文件清空）"
+    );
+}
+
+/// ★ 经真回环口、真钥匙到合成后端：那几形各落各的；线上每一趟都带着窗口那个上限。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shape() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    let wired = wire_up(
+        "edit-read",
+        FakeBackend::new(&[CMD_READ_TEXT], Declared::default()),
+    )
+    .await;
+    let origin = crate::filewin::source::Origin(wired.origin.clone());
+    let got = |p: &'static str| {
+        let line = wired.line.clone();
+        let origin = origin.clone();
+        async move { read_text(&line, &origin, p).await }
+    };
+    assert_eq!(
+        got("/srv/a.md").await,
+        Ok(Some("text of /srv/a.md".to_string()))
+    );
+    assert_eq!(got("/srv/binary.bin").await, Ok(None));
+    assert_eq!(got("/srv/huge.log").await, Ok(None));
+    let e = got("/srv/gone.txt").await.expect_err("读不到竟然成了");
+    assert!(e.contains(CMD_READ_TEXT), "那句原话没说是哪条命令：{e}");
+    let log = wired.log.lock().unwrap().clone();
+    assert_eq!(log.len(), 4, "线上该恰好四趟：{log:?}");
+    for r in &log {
+        assert_eq!(r["cmd"], CMD_READ_TEXT);
+        assert_eq!(
+            r["args"]["max_bytes"].as_u64(),
+            Some(MAX_EDIT_BYTES as u64),
+            "有一趟没带窗口的编辑上限：{r}"
+        );
+    }
+    // 对端不认这条命令（旧后端）⇒ 原话，而且**一个字节都不发**（能力协商）。
+    let old = wire_up("edit-read-old", FakeBackend::new(&[], Declared::default())).await;
+    let e = read_text(
+        &old.line,
+        &crate::filewin::source::Origin(old.origin.clone()),
+        "/srv/a.md",
+    )
+    .await
+    .expect_err("旧后端不认这条命令，竟然读到了");
+    assert!(e.contains("版本旧"), "旧后端那一形没说清：{e}");
+    assert_eq!(old.count(CMD_READ_TEXT), 0);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -180,7 +269,7 @@ fn a_failed_save_keeps_every_character_the_user_typed() {
 /// 敲超上限 ⇒ **屏幕上先说**，不等存的时候才失败。
 #[test]
 fn typing_past_the_cap_is_visible_before_the_save_fails() {
-    let cap = crate::sftp_pool::MAX_EDIT_BYTES;
+    let cap = crate::filewin::editor::MAX_EDIT_BYTES;
     let mut p = Pane::opened("/srv/a.txt", "a.txt", "x".into());
     assert!(!p.over_cap());
     assert_eq!(p.headroom(), cap as i64 - 1);
@@ -229,7 +318,7 @@ fn typing_past_the_cap_is_visible_before_the_save_fails() {
 ///   但它印出来那个毫秒数**不许**再被当成每帧代价。逐条住 `editor.rs` 头注 §四.0。
 #[test]
 fn a_full_cap_worth_of_text_still_lays_out_in_one_frame() {
-    let cap = crate::sftp_pool::MAX_EDIT_BYTES;
+    let cap = crate::filewin::editor::MAX_EDIT_BYTES;
     // 造一段**满上限**的文字，带换行（单行 256 KiB 与多行的排版代价不是一回事，
     // 而真实文本是多行的）。
     let line = "远端配置的一行 abcdefghijklmnopqrstuvwxyz 0123456789\n";
@@ -426,7 +515,7 @@ fn splicing_a_window_back_is_byte_exact() {
 /// 证明这把尺子量得出差别，不是两边都恒真。
 #[test]
 fn windowing_buys_nothing_on_a_file_that_is_one_long_line() {
-    let cap = crate::sftp_pool::MAX_EDIT_BYTES;
+    let cap = crate::filewin::editor::MAX_EDIT_BYTES;
 
     const ROWS: usize = 40; // 一屏大约这么多行
 
@@ -635,7 +724,7 @@ fn the_readings_behind_only_laying_out_the_viewport() {
         format!("{:.2}–{:.2} ms", v[0], v[v.len() - 1])
     };
 
-    let cap = crate::sftp_pool::MAX_EDIT_BYTES;
+    let cap = crate::filewin::editor::MAX_EDIT_BYTES;
 
     // ── 内存：排一帧要多少（现打，不是估）────────────────────────
     //
