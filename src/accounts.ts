@@ -254,7 +254,7 @@ export type AccountRelayState =
  * 中转是**每台机器自己的一个进程**，注入的又是回环地址（自指）⇒ 「本机这台的中转
  * 在不在跑」这个问题，本机这一侧**在结构上答不了远端那台**。往账号列表里加字段，
  * 就是让远端那些行也带上两个这一侧答不出来的值。
- * 命令面的登记（`relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
+ * 命令面的登记（`apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
  *
  * ★〔第四拍〕**取数那一跳接上了**：走包装层 `commands.apikey_routing_for`。
  * ⚠ 经过如实记：第三拍它退回过一次 —— 注册一条命令会同时动两个钉死计数

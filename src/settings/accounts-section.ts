@@ -8,7 +8,7 @@
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
-import { commands, type RelayCredentialsStatus } from "../ipc/commands";
+import { commands, type ApikeyCredentialsStatus } from "../ipc/commands";
 import {
   fetchAccounts,
   // `N-F1b`：本机那条路。**读口与文案都不是本件新造的** —— `fetchLocalAccounts` 自
@@ -90,7 +90,7 @@ export interface RelayKeyAccount {
  * - 文件读坏了**不许静默当成「没配」**。
  * - `KH2C3`：**顶层那一把**（历史格式那一行）单独一行显 —— 它说的不是任何一个账号。
  */
-export function renderApikeyFileBlock(status: RelayCredentialsStatus): HTMLElement {
+export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElement {
   const box = document.createElement("div");
   box.className = "relay-key-block";
 
@@ -995,7 +995,7 @@ export class AccountsSection {
   /** 唯一那一处把 key 交给后端的地方（行上的「保存」与表单的「建好后写」都走它）。 */
   private async writeApikey(key: string, configDir: string, name: string): Promise<void> {
     try {
-      await commands.write_relay_credentials_key({ key, configDir });
+      await commands.write_apikey_credentials_key({ key, configDir });
       showActionFailureToast("已写入 apikey", `${name} 的 apikey 已写进 apikey 表。`, {
         level: "info",
         durationMs: 3000,
@@ -1020,7 +1020,7 @@ export class AccountsSection {
    * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
    *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
    * ③ ⚠⚠ **如实记一条今天没买到的**：这一页显的是 `this.origin` 那台机器的账号，
-   *    而 `read_relay_credentials_status` / `write_relay_credentials_key` / `apikey_routing_for`
+   *    而 `read_apikey_credentials_status` / `write_apikey_credentials_key` / `apikey_routing_for`
    *    **全是本机**的（那三条命令自己的头注逐字都写着「只答本机」）。
    *    在 `cc-acct-iso` 的布局下两边的目录末段名同名 ⇒ 实际用起来对得上，
    *    但**这一格没有任何东西钉着**。这是 `K-H2a` 起就有的形状，本轮没有把它变好也没有变坏。
@@ -1040,7 +1040,7 @@ export class AccountsSection {
       .map((a) => ({ name: a.name, configDir: a.configDir, routed: routed.includes(a.configDir) }));
     let fileBlock: HTMLElement;
     try {
-      fileBlock = renderApikeyFileBlock(await commands.read_relay_credentials_status());
+      fileBlock = renderApikeyFileBlock(await commands.read_apikey_credentials_status());
     } catch (e) {
       fileBlock = document.createElement("div");
       fileBlock.className = "relay-key-problem";

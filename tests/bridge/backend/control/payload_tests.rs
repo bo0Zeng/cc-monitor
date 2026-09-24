@@ -1370,7 +1370,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
              钉着，与本条数的是两件事。";
     const NOT_WIRED_TS: &str =
         "TS 兜底渲染器服务的是**远端**那族（`tryRenderCli` 拒了之后的回落），\
-             而本件 `§0e` 裁四明写只保本机、远端那一半 `判不了`（要先给 `creds.relay-key` 找到主人）。";
+             而本件 `§0e` 裁四明写只保本机、远端那一半 `判不了`（要先给 `creds.apikey` 找到主人）。";
     const NOT_WIRED_WINDOW: &str =
         "开窗那一跳给的是**终端进程**的 env（`backend_bin_env_for_window`），\
              而 agent 进程的 env 由它里面那条命令串自己带 ⇒ 同一件事在 A/B 两处已经做了，\

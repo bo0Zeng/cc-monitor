@@ -111,7 +111,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("read_apikey_credentials_status"),
     kind: "tauri 命令",
     why: "读 apikey 凭据文件的状态（路径 · 权限 · 读没读坏）",
-    state: "pending",
+    state: "done",
   },
   {
     old: "write_relay_credentials_key",
@@ -120,7 +120,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("write_apikey_credentials_key"),
     kind: "tauri 命令",
     why: "往 apikey 凭据文件里给某个账号写一把 key",
-    state: "pending",
+    state: "done",
   },
   {
     old: "RelayCredentialsStatus",
@@ -129,7 +129,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("ApikeyCredentialsStatus"),
     kind: "类型",
     why: "上一条命令的返回形状",
-    state: "pending",
+    state: "done",
   },
   {
     old: "relay.routing",
@@ -138,7 +138,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("apikey.routing"),
     kind: "能力 id",
     why: "`apikey_routing_for` 那条命令归的能力：问「这几个本机账号在 apikey 表里有没有行」",
-    state: "pending",
+    state: "done",
   },
   {
     old: "creds.relay-key",
@@ -147,7 +147,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     freshRe: ident("creds.apikey"),
     kind: "能力 id",
     why: "配第三方 API key 那一族命令归的能力",
-    state: "pending",
+    state: "done",
   },
   // ── 前端 ───────────────────────────────────────────────────────────────────
   {
