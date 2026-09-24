@@ -978,3 +978,7 @@ src/backend/accounts/table.rs:288	这一条用 Authorization: Bearer 头把 key 
 src/backend/accounts/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/backend/accounts/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
+src/bridge/src/local_accounts.rs:525	本机后端没有返回信任状态	保留	[可达存疑] 本机信任预检一行都没答时的原因；唯一消费者（换号重启 account-restart.ts）只看 available/trusted、不渲染 error，短而直接
+src/bridge/src/local_accounts.rs:528	本机后端不在，查不出这个账号是否信任过该目录：{reason}	保留	[可达存疑] 同上一行的消费者；说清是哪一种失败（后端不在）＋ 带上找过哪些路径
+src/bridge/src/local_accounts.rs:531	本机后端的信任查询失败（退出码 {code:?}）：{}	保留	[可达存疑] 同上；退出码与后端原话原样带出，便于排查 兼§2.1（退出码是实现细节，但它在消费者那里不渲染）
+src/bridge/src/local_accounts.rs:553	本机信任查询没能跑完：{e}	保留	[可达存疑] 同上；阻塞线程池 join 失败的兜底（几乎不可达）

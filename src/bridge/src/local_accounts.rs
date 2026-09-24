@@ -493,6 +493,67 @@ pub async fn list_local_accounts() -> Result<AccountsResult, String> {
 mod tests;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 〔`A3` 第二波〕本机的「这个账号信任过这个目录吗」—— `accounts.trust` 的本机对侧
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 本机那一跳的 argv。**不过 shell**：远端那条要 `shell_quote`（`accounts::trust_args`），
+/// 是因为它拼成一整串交给 SSH；本机直接 exec，参数原样是 argv 的一格。
+///
+/// 账号 0（`None`）走 `--account-trust-zero`、**不传路径** —— 与远端那条同一条规矩
+/// （后端那边路径写死 `$HOME/.claude.json`，这条命令连「任意文件读」的面都没有）。
+pub(crate) fn local_trust_argv<'a>(config_dir: Option<&'a str>, cwd: &'a str) -> Vec<&'a str> {
+    match config_dir {
+        None => vec!["--account-trust-zero", cwd],
+        Some(c) => vec!["--account-trust", c, cwd],
+    }
+}
+
+/// 把一次本机 `--account-trust*` 的结局折成 [`crate::accounts::AccountTrustResult`]。
+///
+/// **纯函数**（不起进程）⇒ 三档各能正面断言。解析与远端那条共用
+/// `accounts::trust_from_lines`；差别只在「够不着」与「查询失败」这两档怎么说 ——
+/// **都不许**说成「未信任」：调用方（换号重启）对 `available:false` 只是不提示，不拦。
+pub(crate) fn classify_local_trust(outcome: QueryOutcome) -> crate::accounts::AccountTrustResult {
+    match outcome {
+        QueryOutcome::Ok(stdout) => {
+            let lines: Vec<String> = stdout
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_string)
+                .collect();
+            crate::accounts::trust_from_lines(&lines, "本机后端没有返回信任状态")
+        }
+        QueryOutcome::NoBackend(reason) => crate::accounts::trust_unavailable(format!(
+            "本机后端不在，查不出这个账号是否信任过该目录：{reason}"
+        )),
+        QueryOutcome::Failed { code, stderr } => crate::accounts::trust_unavailable(format!(
+            "本机后端的信任查询失败（退出码 {code:?}）：{}",
+            stderr.trim()
+        )),
+    }
+}
+
+/// 本机那一侧的入口 —— 由 `accounts::check_account_trust` 在 `origin == <local>` 时调。
+///
+/// **不单开一条 Tauri 命令**：远端那条本来就吃 `origin`，本机只是 `origin` 的另一个取值
+/// （`C1`「本地 = 不走 ssh 的远端」；同 `set_backend_kill_on_exit` 那一族的形）。
+pub(crate) async fn local_account_trust(
+    config_dir: Option<String>,
+    cwd: String,
+) -> crate::accounts::AccountTrustResult {
+    tokio::task::spawn_blocking(move || {
+        classify_local_trust(run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &local_trust_argv(config_dir.as_deref(), &cwd),
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        ))
+    })
+    .await
+    .unwrap_or_else(|e| crate::accounts::trust_unavailable(format!("本机信任查询没能跑完：{e}")))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // E79：本机的「某个 sid 现在跑在哪个账号下」
 // ─────────────────────────────────────────────────────────────────────────────
 
