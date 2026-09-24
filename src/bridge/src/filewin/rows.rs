@@ -31,7 +31,7 @@ use egui::{ScrollArea, Ui};
 use super::copy::{is_copyable, COPY_LABEL};
 use super::download::{is_downloadable, DOWNLOAD_LABEL};
 use super::editor::{is_editable, EDIT_LABEL};
-use super::source::Row;
+use super::source::{format_mtime, Listed};
 use super::writeops::{is_writable, CHMOD_LABEL, DELETE_LABEL, RENAME_LABEL};
 
 /// 一行的高度（不含 item spacing）。与 `真相源/99` 那趟原型同值，
@@ -146,7 +146,7 @@ pub struct RowHit {
 /// `scroll_offset_y`：`None` = 由 egui 自己管（生产）；`Some(y)` = 钉死偏移（量帧时用）。
 pub fn show_file_rows(
     ui: &mut Ui,
-    rows: &[Row],
+    rows: &[Listed],
     tally: &mut RenderTally,
     scroll_offset_y: Option<f32>,
     reveal: Option<&str>,
@@ -285,7 +285,7 @@ pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut HitTally) {
 /// ⚠ 买不到的那一半照旧写在这儿：**真机上鼠标双击能不能触发，本机判不了**
 /// （`XDG_SESSION_TYPE=tty`，没有图形会话，也就没有真事件源）。
 /// 这里买到的是「**egui 收到这样一串事件之后，认出来的是哪一行**」。
-fn paint_one_row(ui: &mut Ui, index: usize, r: &Row, revealed: bool) -> RowHit {
+fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool) -> RowHit {
     // 🔴〔第十刀〕**就是这个文件** —— 一块背景色。
     //    与 `RenderTally::revealed_row` 在同一处写下（见那个字段的头注）。
     if revealed {
@@ -297,10 +297,27 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Row, revealed: bool) -> RowHit {
         ui.painter().rect_filled(band, 2.0, vis);
     }
     let inner = ui.horizontal(|ui| {
-        ui.label(if r.is_dir { "📁" } else { "📄" });
+        // 🔴〔补齐五项 2026-09-23〕**符号链接有自己的字形**（`↳`，与旧面板逐字同一个）。
+        //    在这之前这一行只问「是不是目录」，于是链接与普通文件在屏幕上**一模一样**
+        //    —— 而后端与 SFTP 两条路一直都在送那一格（`source::Listed::link`）。
+        // ⚠ 顺序是 `link` 先判：一条**指向目录**的链接在 `files-ls` 那侧 `kind` 是
+        //   `symlink`（后端拿的是 `file_type()`，它不跟链接）⇒ `is_dir` 是 false，
+        //   两格不会同时真；写成 `is_dir` 先判也对，但那会让「哪一格说话」依赖后端的实现。
+        ui.label(if r.link {
+            "↳"
+        } else if r.is_dir {
+            "📁"
+        } else {
+            "📄"
+        });
         ui.label(&r.name);
         if !r.is_dir {
             ui.label(human_size(r.size));
+        }
+        // 🔴〔补齐五项〕**什么时候改的。** `None` = 这条路没送这一格（SFTP 那条退路、
+        //    或者进程边界那一屏）⇒ **一个字都不画**，不画一个编出来的时间。
+        if let Some(t) = r.mtime_secs {
+            ui.label(format_mtime(t));
         }
         if r.lossy_name {
             // 非 UTF-8 名：SFTP 那侧寻址不到真字节 ⇒ 写操作要灰置。
@@ -458,7 +475,7 @@ impl RowButtons {
 /// ⚠ 找下标那一趟是 O(n)，但它**只在一次 reveal 里跑一遍，不是每帧** ——
 /// 谁把它挪进每帧就撞上 `设计/60 §4 戊` 那条纪律
 /// （「「egui 扛得住」的主语是 `show_rows`」，对照组 10 万行 83.6 ms/帧）。
-pub fn reveal_index(rows: &[Row], name: &str) -> Option<usize> {
+pub fn reveal_index(rows: &[Listed], name: &str) -> Option<usize> {
     rows.iter().position(|r| r.name == name)
 }
 
@@ -501,7 +518,7 @@ pub fn human_size(n: u64) -> String {
 /// ⇒ 交给 GPU 的活不随行数涨，**它不是 64 万行的风险点**。
 pub fn render_headless(
     ctx: &egui::Context,
-    rows: &[Row],
+    rows: &[Listed],
     screen: egui::Vec2,
     scroll_offset_y: f32,
 ) -> RenderTally {

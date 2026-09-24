@@ -86,7 +86,7 @@ use super::copy::{is_copyable, CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
-use super::source::{parent_dir, Row, Source};
+use super::source::{breadcrumbs, parent_dir, Listed, Row, Source, SortBy};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
@@ -174,13 +174,44 @@ pub fn local_home() -> String {
         .unwrap_or_else(|| ".".to_string())
 }
 
+/// 「在此打开终端」要在那台远端上跑的那一串。
+///
+/// # 🔴 它是**第二份**实现，如实登记（第一份在 TS 里）
+///
+/// 旧面板那颗同名按钮走的是 `src/remote-launch.ts::buildOpenTerminalCmd`，
+/// 逐字：`cd <quoted> && exec ${SHELL:-bash} -l`（`cwd` 为空 ⇒ 只有后半段）。
+/// 窗口这一侧在 Rust 里，够不着那一份 ⇒ 这里是第二份。
+///
+/// **两份漂开的症状**：两个面板上同名的按钮把你落在不同的目录 / 不同的 shell 里。
+/// 接住它的今天**只有一条**：本函数那两档由 `shell_tests` 钉成**逐字节相等**，
+/// 期望串与 TS 那一行**逐字相同**。⚠ 这不是一条跨语言判据 ——
+/// 真要那个，得在 `.vitest.ts` 那一侧加一份共享黄金夹具，而
+/// **`.vitest.ts` 在本刀的红线里**。⇒ 登记为「有账、没自动对拍」，
+/// 而它的**到期日是确定的**：旧面板退役那一刀 TS 那一份会跟着一起走，
+/// 那时这一份就成了唯一一份。
+///
+/// ⚠ 引号走 `shell_quote_core::posix_quote` —— Rust 侧唯一那一份
+/// （`quote_singleton_guard` 钉着「只许一个实现」）。**不许在这儿自己拼单引号。**
+///
+/// ⚠ **不用双引号**：`launch.rs` 会拒掉含双引号的 `remote_cmd`
+/// （PowerShell 原生传参畸变那道防线）—— 那一条与 TS 那份注释逐字同源。
+pub fn build_open_terminal_cmd(cwd: &str) -> String {
+    let shell = "exec ${SHELL:-bash} -l";
+    let c = cwd.trim();
+    if c.is_empty() {
+        shell.to_string()
+    } else {
+        format!("cd {} && {shell}", shell_quote_core::posix_quote(c))
+    }
+}
+
 /// 列目录这件事的**共享落点** —— 一次列目录要写的东西全在这儿。
 ///
 /// 🔴 抽成一个结构是因为它要被**两条线程**看：UI 线程读，tokio 那条写。
 /// 散成四个 `Arc` 时「哪几个字段必须一起更新」只写在注释里，没有人守着。
 #[derive(Clone)]
 pub struct Listing {
-    pub rows: Arc<Mutex<Vec<Row>>>,
+    pub rows: Arc<Mutex<Vec<Listed>>>,
     pub error: Arc<Mutex<Option<String>>>,
     /// 🔴 **换目录的序号。** 每次 [`FileWindow::navigate_to`] +1。
     ///
@@ -222,7 +253,7 @@ impl Default for Listing {
 pub fn store_listed_if_current(
     l: &Listing,
     mine: u64,
-    r: Result<(Vec<Row>, bool, super::source::ListVerdict), String>,
+    r: Result<(Vec<Listed>, bool, super::source::ListVerdict), String>,
 ) -> bool {
     match r {
         Ok((rows, truncated, verdict)) => {
@@ -243,7 +274,7 @@ pub fn store_listed_if_current(
 ///
 /// 回值 = 真的落盘了。**自由函数**（不吃 `FileWindow`）⇒ 不用开窗、不用网络就判得动，
 /// 而它正是生产那条路上唯一写 `rows` 的地方（见 [`Listing::start`]）。
-pub fn store_if_current(l: &Listing, mine: u64, r: Result<Vec<Row>, String>) -> bool {
+pub fn store_if_current(l: &Listing, mine: u64, r: Result<Vec<Listed>, String>) -> bool {
     // ⚠ 先减在飞数，再判号 —— 不管这一份要不要，它都已经落地了。
     l.inflight.fetch_sub(1, Ordering::SeqCst);
     if l.epoch.load(Ordering::SeqCst) != mine {
@@ -356,6 +387,21 @@ pub struct FileWindow {
     editing: Option<super::editor::Pane>,
     /// 关窗那一问正摆着吗（改了没存）。
     asking_discard: bool,
+    /// 🔴〔补齐五项 2026-09-23〕**按什么排**（工具栏那个下拉的状态）。
+    ///
+    /// 缺省是 [`SortBy::Name`]，也就是本刀之前那个写死的序（逐字节相同，
+    /// 判据住 `source_tests::the_default_order_is_byte_for_byte_what_it_was_before`）。
+    pub sort_by: SortBy,
+    /// 🔴〔补齐五项〕「在此打开终端」那一下**说了什么**（`None` = 没点过 / 上一下没话说）。
+    ///
+    /// # 为什么这一格非有不可
+    ///
+    /// 那条命令在 **POSIX 上恒定失败**（`launch.rs::POSIX_NO_TERMINAL_WINDOW`：
+    /// 「本机不是 Windows，刻意不替你挑终端模拟器」），在 Windows 上也可能失败
+    /// （那台远端的配置没存全）。一次失败与一次成功在屏幕上长得一样
+    /// ⇒ 用户点了按钮、什么都没发生、也没有一句话 —— 那正是本仓的头号病形。
+    /// ⇒ 结果落在这一格，界面上画出来，判据读同一个值。
+    term_notice: Arc<Mutex<Option<String>>>,
     /// 🔴〔第十刀〕**「就是这个文件」** —— 要高亮的那一行的名字 ＋ 滚过去了没有。
     ///
     /// 它是 `P3`（老面板退役）的最后一格功能前置：老面板 `open(revealPath)`
@@ -385,7 +431,17 @@ impl FileWindow {
         rows: Vec<Row>,
     ) -> Self {
         let listing = Listing::default();
-        *listing.rows.lock().unwrap() = rows;
+        // 🔴 进程边界那一屏走的是 `Vec<Row>`（`proc::OpenRequest` 持的那个类型）
+        //    ⇒ 它**交不出链接与时间那两格**。`Listed::plain` 的名字就是在说这件事，
+        //    逐条代价与「补它只要改 `proc.rs` 一行」住 `source::Listed` 头注。
+        // ⚠ **这一屏刻意不再排一次**：入口那条命令走的是 SFTP，而池子自己已经按
+        //   生产契约排过（`source::list_remote` 的注释逐字），再排一遍是恒等。
+        //   在这儿插一次 `sort_rows` 试过一趟，读数如实记：
+        //   `shell_tests::a_write_click_from_the_list_reaches_the_right_row` 当场红 ——
+        //   它喂的夹具是乱序的，于是「第 1 行是哪一行」被改掉了。
+        //   ⇒ 那是一次**谁都没要求的行为变更**（生产上零收益，判据上真伤），撤掉。
+        //   用户换档那一下由 [`FileWindow::set_sort`] 就地重排，不经这里。
+        *listing.rows.lock().unwrap() = rows.into_iter().map(Listed::plain).collect();
         Self {
             source,
             cwd,
@@ -409,6 +465,8 @@ impl FileWindow {
             edits: super::editor::EditBoard::default(),
             editing: None,
             asking_discard: false,
+            sort_by: SortBy::default(),
+            term_notice: Arc::new(Mutex::new(None)),
             reveal: None,
         }
     }
@@ -424,8 +482,11 @@ impl FileWindow {
             // ── 有运行时 ⇒ 主路（`files-ls` on 这个 origin）───────────
             Some(h) => {
                 let source = self.source.clone();
+                // ⚠ 带**这一刻**选的那一档走。用户在飞行途中换了档 ⇒ [`Self::set_sort`]
+                //   会把落地的那一摞就地重排，所以两种顺序都不会错。
+                let by = self.sort_by;
                 h.spawn(async move {
-                    let r = super::source::list_dir(&source, &cwd).await;
+                    let r = super::source::list_dir(&source, &cwd, by).await;
                     store_listed_if_current(&l, mine, r);
                 });
             }
@@ -464,6 +525,79 @@ impl FileWindow {
     pub fn navigate_up(&mut self) {
         let up = parent_dir(&self.cwd);
         self.navigate_to(up);
+    }
+
+    /// 换一种排序，并**把手上这一摞就地重排**。回值 = 真的换了（同一档 ⇒ `false`）。
+    ///
+    /// # 🔴 为什么不是「记下来，下次列目录的时候用」
+    ///
+    /// 那样点了下拉之后屏幕上一动不动，要等用户自己按一下刷新 ——
+    /// 而「点了没反应」与「这个目录本来就是这个序」在屏幕上分不开。
+    ///
+    /// # ⚠ 为什么不是「每帧排一次」
+    ///
+    /// `设计/60 §4 戊` 那条纪律：64 万行那一档每帧一次 `sort` 直接把帧时打穿
+    /// （虚拟滚动省的是**画**，不是遍历）。⇒ 排序只在两个时刻发生：
+    /// **一屏落地**（[`super::source::list_dir`]）与**用户换档**（这里）。
+    pub fn set_sort(&mut self, by: SortBy) -> bool {
+        if self.sort_by == by {
+            return false;
+        }
+        self.sort_by = by;
+        super::source::sort_rows(&mut self.listing.rows.lock().unwrap(), by);
+        true
+    }
+
+    /// 「在此打开终端」那一下说了什么（`None` = 没话说）。判据与界面看同一个值。
+    pub fn term_notice(&self) -> Option<String> {
+        self.term_notice.lock().unwrap().clone()
+    }
+
+    /// 在**当前这个目录**里给用户开一个真终端。回值 = 真的发出去了。
+    ///
+    /// # 🔴 它为什么直接 `await` 那条 `#[tauri::command]`
+    ///
+    /// 与 [`super::source::list_remote`] 同一条理由（住 `source` 头注）：
+    /// `launch::launch_remote_terminal` 同时就是一个普通的 `pub async fn`，
+    /// 而窗口与 app 在**同一份代码**里编出来 ⇒ 这里是一次普通函数调用，
+    /// 不过 IPC、不过 serde。它是全仓**唯一**的开窗出口
+    /// （`launcher_identity_registry` 把它记成 `L2`），所以这里不许另拼一条 `ssh`。
+    ///
+    /// ⚠ 这条边是**新长出来的一条** app 侧依赖 ⇒ 同一拍进了
+    /// `boundary_tests::REGISTERED`（`Kind::Terminal`）。那张表少一行就红。
+    ///
+    /// # ⚠ 它在 Linux 上**恒定「失败」，而那不是缺陷**
+    ///
+    /// POSIX 上 `launch_powershell_window` 回的是 `POSIX_NO_TERMINAL_WINDOW`
+    /// （逐字：「刻意不替你挑终端模拟器」）—— 那是一条**既定设计**，不是没做完。
+    /// 旧面板那颗同名按钮今天是同一个结局（它把那句话丢进一个 toast）。
+    /// ⇒ 本窗口把那句话摆在工具栏下面（[`Self::term_notice`]），**不假装成功**。
+    ///
+    /// ⚠ **买不到什么，两条**：① 真有一个终端窗口弹出来 —— 那要 Windows
+    /// ＋ 一个图形会话，本机两样都没有；② 那句话里「命令已复制」的**复制**那一半
+    /// 是前端剪贴板兜底干的活（`remote-launch-run.ts`），**这个窗口没有它**
+    /// ⇒ 那半句在这儿是假的。如实登记为**没做**（旧面板那颗按钮同样没有）。
+    pub fn open_terminal_here(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(h) = self.rt.clone() else {
+            *self.term_notice.lock().unwrap() =
+                Some("开终端要一个 tokio 运行时，这个窗口没拿到".into());
+            return false;
+        };
+        let origin = self.source.origin();
+        let cmd = build_open_terminal_cmd(&self.cwd);
+        let slot = self.term_notice.clone();
+        *slot.lock().unwrap() = None;
+        h.spawn(async move {
+            let said = match crate::launch::launch_remote_terminal(origin.0, cmd).await {
+                Ok(()) => None,
+                Err(why) => Some(format!("打开终端没成：{why}")),
+            };
+            *slot.lock().unwrap() = said;
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        });
+        true
     }
 
     /// 点开第 `i` 行。**目录进去，文件不动。**
@@ -970,7 +1104,9 @@ impl FileWindow {
     fn writable_row(&mut self, i: usize) -> Option<Row> {
         let rows = self.listing.rows.lock().unwrap();
         match rows.get(i) {
-            Some(r) if is_writable(r) => Some(r.clone()),
+            // ⚠ 交出去的是**那五格**（`Listed::row`）：写那四条命令要的是路径与是不是目录，
+            //   链接与时间两格它们一格都不读 ⇒ 别把整个 `Listed` 递给它们。
+            Some(r) if is_writable(r) => Some(r.row.clone()),
             _ => None,
         }
     }
@@ -1158,7 +1294,12 @@ impl FileWindow {
         board.attach(ctx);
         let src = src_path.to_string();
         let to = dest.to_string();
-        let name = src.rsplit('/').next().unwrap_or(&src).to_string();
+        // ⚠ 走 `source::remote_basename`（**那一对**里的尾段那一份）——
+        //   这里原先是第四份 `rsplit('/')`，而那一对的头注逐字说了
+        //   「多一份就多一种『Windows 上 `\` 被当分隔符』的机会」。
+        //   盘上每一处按 `/` 切的地方由
+        //   `source_tests::every_place_that_splits_a_remote_path_is_declared` 逐条钉着。
+        let name = super::source::remote_basename(&src).to_string();
         board.begin(&name);
         h.spawn(async move {
             let desk = board.cancels();
@@ -1218,7 +1359,9 @@ impl FileWindow {
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                Some(r) => r.clone(),
+                // ⚠ 拿的是**那五格**（同 `writable_row`）：读一份文本要的是路径、
+                //   名字与大小，链接与时间两格它一格都不读。
+                Some(r) => r.row.clone(),
                 None => return false,
             }
         };
@@ -1640,7 +1783,15 @@ impl FileWindow {
         // `super::source` 头注那块墓碑。
         // ⚠ **帧尾消化 `mkdir` 这一格照旧留着**：它与那两颗按钮是同一个借用理由，
         //   而「新建目录」那条功能一个字没动。别顺手把它也内联回闭包里。
+        // 🔴〔补齐五项 2026-09-23〕**这个闭包里一个跳转都不做，三件事全收在帧尾。**
+        //    理由与 `mkdir` 那一格逐字相同（上面那一节）：闭包借着 `&mut self` 的一部分
+        //    ⇒ 在里面调 `self.navigate_to` / `self.set_sort` / `self.open_terminal_here`
+        //    编不过。`⬆ 上一级` 与 `刷新` 两颗**例外**：它们调的那两个方法
+        //    在这个闭包里借得出来（现状如此，别读成「跳转可以在闭包里做」）。
         let mut mkdir = false;
+        let mut go: Option<String> = None;
+        let mut pick: Option<SortBy> = None;
+        let mut term = false;
         ui.horizontal(|ui| {
             if ui.button("⬆ 上一级").clicked() {
                 self.navigate_up();
@@ -1653,14 +1804,62 @@ impl FileWindow {
             if ui.button(MKDIR_LABEL).clicked() {
                 mkdir = true;
             }
-            ui.label(format!("{} : {}", self.source.label(), self.cwd));
+            // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
+            //    它在 POSIX 上恒定「失败」，而那是既定设计（逐条住 `open_terminal_here`）。
+            if ui.button("在此打开终端").clicked() {
+                term = true;
+            }
+            // 🔴〔补齐五项〕**排序那个下拉** —— 旧面板表头上那个 `<select>` 的对应物。
+            //    ⚠ 人群走 `SortBy::ALL`，**不在这儿另写一份名单**：写第二份的症状是
+            //      「加了一档但下拉里没有」，而那是编译器看不见的。
+            egui::ComboBox::from_id_salt("filewin-sort")
+                .selected_text(format!("排序：{}", self.sort_by.label()))
+                .show_ui(ui, |ui| {
+                    for by in SortBy::ALL {
+                        // ⚠ 不直接 `&mut self.sort_by`：换档要**连手上这一摞一起重排**
+                        //   （`set_sort`），而那件事在这个闭包里做不了 ⇒ 收在帧尾。
+                        if ui.selectable_label(self.sort_by == by, by.label()).clicked() {
+                            pick = Some(by);
+                        }
+                    }
+                });
             if self.listing.is_loading() {
                 ui.spinner();
                 ui.label("正在列…");
             }
         });
+        // 🔴〔补齐五项〕**面包屑** —— 从 `/a/b/c/d` 回 `/a` 只要一下，不用点四次「上一级」。
+        //    ⚠ 路径切分走 `source::breadcrumbs`（与 `parent_dir` / `remote_basename`
+        //      同住一处，逐条理由住那个函数的头注）—— 这一行**不许自己切**。
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("{} :", self.source.label()));
+            for (seg, full) in breadcrumbs(&self.cwd) {
+                // 当前这一级**不画成按钮**：点它什么都不会发生（`navigate_to` 同路径直接返回）
+                // ⇒ 画成按钮就是一颗点了没反应的按钮。
+                if full == self.cwd {
+                    ui.strong(seg);
+                } else if ui.small_button(seg).clicked() {
+                    go = Some(full);
+                }
+            }
+        });
         if mkdir {
             self.begin_mkdir();
+        }
+        if let Some(by) = pick {
+            self.set_sort(by);
+        }
+        if let Some(path) = go {
+            self.navigate_to(path);
+        }
+        if term {
+            let ctx = ui.ctx().clone();
+            self.open_terminal_here(Some(ctx));
+        }
+        // 🔴〔补齐五项〕开终端那一下说的话 —— **摆着不走**（同字体那条：
+        //    它是一个「到你换台机器 / 换个系统为止都成立的状态」，不是一次性事件）。
+        if let Some(said) = self.term_notice() {
+            ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), said);
         }
         if let Some(e) = self.listing.error.lock().unwrap().clone() {
             ui.colored_label(egui::Color32::RED, e);

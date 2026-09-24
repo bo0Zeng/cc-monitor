@@ -49,7 +49,7 @@
 
 use super::corpus;
 use super::rows::{render_headless, RenderTally};
-use super::source::Row;
+use super::source::Listed;
 
 /// 视口：1280×800，与 `真相源/99` 那趟原型同值。
 pub const SCREEN: (f32, f32) = (1280.0, 800.0);
@@ -94,7 +94,7 @@ pub fn rss_kib() -> u64 {
 }
 
 /// 量一趟。`frames` 帧里每帧把滚动偏移往下推一屏，**真的在滚**。
-pub fn measure(rows: &[Row], frames: usize) -> F1 {
+pub fn measure(rows: &[Listed], frames: usize) -> F1 {
     let screen = egui::vec2(SCREEN.0, SCREEN.1);
     let ctx = egui::Context::default();
 
