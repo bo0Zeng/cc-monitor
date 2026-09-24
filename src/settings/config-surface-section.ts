@@ -221,6 +221,8 @@ export class ConfigSurfaceSection {
   private notForThisMachine!: HTMLElement;
   private last: ConfigSurfaceReport | null = null;
   private unsubscribeMachine?: () => void;
+  /** 〔ST2〕本机那一套里最后一格：装终端集成时留下的 `$PROFILE` 备份在哪。 */
+  private backups!: HTMLElement;
 
   constructor() {
     this.element = this.build();
@@ -333,6 +335,13 @@ export class ConfigSurfaceSection {
     this.scopesBox.className = "config-surface-scopes";
     host.appendChild(this.scopesBox);
 
+    // 〔ST2 · `70 §10.2` / `§11.3.2`〕「PowerShell profile 备份」从「数据位置」搬到这里：
+    //   它和上面那张表里的 `$PROFILE` 行讲的是同一件事（cc-monitor 动过你哪些文件），
+    //   原来住在两个不同的顶层页。没备份过就整块不出现。
+    this.backups = document.createElement("div");
+    this.backups.dataset.profileBackups = "";
+    host.appendChild(this.backups);
+
     return root;
   }
 
@@ -409,12 +418,47 @@ export class ConfigSurfaceSection {
       this.last = r;
       this.copyBtn.disabled = false;
       this.render(r);
+      await this.loadBackups();
     } catch (e) {
       this.last = null;
       this.copyBtn.disabled = true;
       this.body.textContent = `扫描失败：${String(e)}`;
       showActionFailureToast("扫描配置面", String(e));
     }
+  }
+
+  /**
+   * 〔ST2〕`$PROFILE` 备份那一格。数据来自同一条 `get_data_paths`（`data_paths.rs` 是逐个落盘位置的唯一权威枚举点）。
+   * 读不到 ⇒ 说读不到（不许拿「没有备份」糊过去 —— 那是替用户下一个没做过的结论）；
+   * 一个备份都没有 ⇒ 整块不出现。
+   */
+  private async loadBackups(): Promise<void> {
+    this.backups.replaceChildren();
+    let dirs: { path: string }[];
+    try {
+      const d = await commands.get_data_paths();
+      dirs = Array.isArray(d?.profileBackupDirs) ? d.profileBackupDirs : [];
+    } catch (e) {
+      const why = document.createElement("div");
+      why.className = "settings-hint";
+      why.textContent = `读不到 PowerShell profile 备份在哪：${String(e)}`;
+      this.backups.appendChild(why);
+      return;
+    }
+    if (dirs.length === 0) return;
+    const title = document.createElement("div");
+    title.className = "settings-subtitle";
+    title.textContent = "PowerShell profile 备份";
+    const note = document.createElement("div");
+    note.className = "settings-hint";
+    note.textContent = "装终端集成时，原来的 profile 先备份到同目录的 .ccm-backup-<时间戳>。想撤回就用它。";
+    const list = document.createElement("ul");
+    for (const d of dirs) {
+      const li = document.createElement("li");
+      li.textContent = d.path;
+      list.appendChild(li);
+    }
+    this.backups.append(title, note, list);
   }
 
   private render(r: ConfigSurfaceReport): void {

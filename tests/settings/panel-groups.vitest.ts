@@ -68,7 +68,7 @@ vi.mock("../../src/settings/remote-section", () => ({
 }));
 vi.mock("../../src/settings/data-section", () => ({
   DataSection: class {
-    element = document.createElement("div");
+    element = Object.assign(document.createElement("div"), { id: "stub-data-section" });
     refresh = dataRefresh;
     // `设计/70 §1.3 B`（步 2）：真 DataSection 的第一发 I/O 由宿主在
     // 「这一页首次可见」时通过 `loadNow()` 放行 —— stub 必须履行同一份契约，
@@ -78,7 +78,7 @@ vi.mock("../../src/settings/data-section", () => ({
 }));
 vi.mock("../../src/settings/diagnostics-section", () => ({
   DiagnosticsSection: class {
-    element = document.createElement("div");
+    element = Object.assign(document.createElement("div"), { id: "stub-diagnostics-section" });
     loadNow = vi.fn();
   },
 }));
@@ -186,7 +186,8 @@ describe("S2 设置面板分页结构", () => {
     // S6 已把 cc-bus 驾驶舱移出设置（它是运营视图不是设置，§1-1）。
     // 它现在的入口是命令面板（不加第 7 个顶栏图标，理由见 views/cc-bus-view.ts 头注）。
     // 🔴 〔ST2 · 用户 09-24 裁「并进机器页，删掉顶层页」〕「改动足迹」顶层页没了 ⇒ 顶层只剩两个。
-    expect(navTitles()).toEqual(["应用", "机器"]);
+    // 〔ST2 · `70 §6` #3 · 步 15〕「应用」下挂三个子页（替掉原来的两个折叠组）。
+    expect(navTitles()).toEqual(["应用", "外观", "日志", "数据位置", "机器"]);
   });
 
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
@@ -199,19 +200,21 @@ describe("S2 设置面板分页结构", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();
-    expect(pageTitles("app")).toEqual([
-      "行为",
-      "快捷键",
-      "外观", // 折叠组
-      "字体",
-      "颜色",
-      "日志与数据", // 折叠组
-      "Claude 数据目录",
-      // `70 §10.3`：「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）。
-      "日志",
-      // `70 §10.2`：同组里已经有一块叫「Claude 数据目录」，两个「数据」并排 ⇒ 改「数据位置」。
-      "数据位置",
-    ]);
+    // 🔴 〔ST2 · `70 §6` #3 · 步 15〕两个折叠组（外观 · 日志与数据）换成「应用」下的三个子页。
+    //   「日志」「数据位置」那两块各自独占一页 ⇒ 块不再自带标题（页头就是它的名字，§8 #11 不重名）。
+    expect(pageTitles("app")).toEqual(["行为", "快捷键"]);
+    expect(pageTitles("app-appearance")).toEqual(["字体", "颜色"]);
+    // `70 §10.3`：「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
+    expect(pageTitles("app-logs")).toEqual([]);
+    expect(pageTitles("app-data")).toEqual(["Claude 数据目录"]);
+    // 那两块真的在它们各自那一页上（只是不带块标题）。
+    for (const [id, cls] of [
+      ["app-logs", "#stub-diagnostics-section"],
+      ["app-data", "#stub-data-section"],
+    ] as const) {
+      const page = document.querySelector<HTMLElement>(`.settings-page[data-route-id="${id}"]`)!;
+      expect(page.querySelector(cls), `${id} 页上没有它那一块`).not.toBeNull();
+    }
     // ★ S4b-2：那四块**已从列表页搬到机器详情页**。
     // 🔴 〔第四波 ST2 · `70 §5.3` · 步 14〕「backend 开关」**不再单独占一块**：它并进了机器列表那一行
     //   （四格挂在「连接（远端）」那块的列表行上，钉在 `machine-list-backend-cells.vitest.ts`）。
@@ -324,10 +327,13 @@ describe("S2 设置面板分页结构", () => {
     // 字段还在、契约还在，只是放行的时机换成了「这一页首次可见」。
     expect(dataRefresh, "落地页是「机器」⇒ 打开设置不许碰「应用」页的 I/O").not.toHaveBeenCalled();
     expect(dataLoadNow, "还没点进「应用」⇒ 连第一发都不许放").not.toHaveBeenCalled();
-    // 点进「应用」——这一刻才放行。**相等断言的反向锚**：上面那两条若因为
+    // 点进「数据位置」——这一刻才放行。**相等断言的反向锚**：上面那两条若因为
     // 字段被漏赋值（`this.dataSection` 是 undefined）而绿，这一条会红。
+    // 〔ST2 · 步 15〕它今天是「应用」下的子页（原来在「应用」页的折叠组里）。
     document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
-    expect(dataLoadNow, "点进「应用」之后第一发必须真的放出去").toHaveBeenCalled();
+    expect(dataLoadNow, "点「应用」本身不该放数据位置那一发").not.toHaveBeenCalled();
+    document.querySelector<HTMLButtonElement>("#settings-tab-app-data")!.click();
+    expect(dataLoadNow, "点进「数据位置」之后第一发必须真的放出去").toHaveBeenCalled();
   });
 
   it("★ 本机页上不出现只对远端有意义的块（S4a 那个半截状态的解药）", async () => {

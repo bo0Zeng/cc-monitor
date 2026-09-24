@@ -754,7 +754,6 @@ src/settings/config-surface-section.ts:460	不含 cc-bus 钩子字样	保留	[�
 src/settings/data-section.ts:117	正在读这台机器上的数据位置…	保留	[对外] 加载骨架文案
 src/settings/data-section.ts:143	monitor 持久化	内部词→「cc-monitor 自己的数据」	[对外] 卡片标题用了实现词「持久化」新词:持久化
 src/settings/data-section.ts:154	WebView2 用户数据	保留	[对外] 卡片标题；WebView2 是用户系统上真实存在、目录名里就带着的组件（R1b 语境）
-src/settings/data-section.ts:165	PowerShell profile 备份	保留	[对外] 卡片标题；PowerShell profile 是用户自己的文件
 src/settings/data-section.ts:185	卸载 monitor	保留	[对外] 提示条的加粗片段，拼起来是一句完整的话
 src/settings/data-section.ts:186	 默认	保留	[对外] 提示条拼接片段
 src/settings/data-section.ts:187	不清	保留	[对外] 提示条的加粗片段
@@ -841,17 +840,13 @@ src/settings/panel.ts:163	「Claude 数据目录」—— monitor 监听的 .cla
 src/settings/panel.ts:164	默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。	保留	[对外] 默认值＋生效条件
 src/settings/panel.ts:166	「终端集成」—— 把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 	改·§2.4	[对外] 与下一截拼成一句：破折号＋做什么＋为什么＋括号补充三合一 新词:注入
 src/settings/panel.ts:167	Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。	改·§2.1	[对外] 「双向绑定」是实现机制，括号里夹英文 work 兼§2.4 新词:双向绑定 →「装好后『拉前终端』按钮才能用。可一键安装/卸载。」
-src/settings/panel.ts:170	字体（正文 / 等宽 / 字号）+ 颜色（10 个语义 token：背景 / 卡片 / 文字 / user / assistant 等）。	内部词→「颜色（背景 / 卡片 / 文字 等 10 种）」	[对外] 「语义 token」是设计系统内部词 新词:语义 token
-src/settings/panel.ts:171	配一次基本不再动，所以默认收起。	改·§2.2	[对外] 解释为什么默认收起的设计理由 → 删
 src/settings/panel.ts:174	「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 	改·§2.4	[对外] 破折号起头，一句里塞了连接方式＋数据源替换＋行为不变 兼§2.1
 src/settings/panel.ts:175	jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n	改·§2.1	[对外] 「jsonl-watcher 作为数据源」整句在讲实现，R1 jsonl 命中 新词:watcher →「远端会话和本机会话显示方式相同」
 src/settings/panel.ts:176	关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。	保留	[对外] 默认＋生效条件，用户可操作
 src/settings/panel.ts:177	配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。	内部词→「缺主机、用户或后端路径」	[对外] 配置键名 backendPath 新词:backendPath
-src/settings/panel.ts:183	「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。\n\n	保留	[对外] 术语定义＋用途，一句
 src/settings/panel.ts:184	「数据位置」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / 	内部词→「monitor 自己写入的所有文件位置」	[对外] 「持久化路径」是实现词 新词:持久化
 src/settings/panel.ts:185	WebView2 UserDataFolder / localStorage keys 等。每项可点 [打开] 直接到文件管理器。	内部词→去掉「localStorage keys」「UserDataFolder」	[对外] 浏览器存储键与 WebView2 的内部目录名，用户在界面上找不到对应物 新词:localStorage 新词:UserDataFolder
 src/settings/panel.ts:186	纯展示，无危险操作。	保留	[对外] 短句
-src/settings/panel.ts:192	\n\n【行为】	保留	[对外] tooltip 分节标题
 src/settings/panel.ts:194	\n\n【快捷键】	保留	[对外] tooltip 分节标题
 src/settings/panel.ts:201	\n\n【终端集成】	保留	[对外] tooltip 分节标题
 src/settings/panel.ts:524	显示后台任务会话	保留	[对外] 「需重启生效」条子上的设置名
@@ -863,7 +858,6 @@ src/settings/panel.ts:702	账号	保留	[对外] 页签名
 src/settings/panel.ts:703	工具	保留	[对外] 页签名
 src/settings/panel.ts:706	足迹	保留	[对外] 页签名
 src/settings/panel.ts:745	外观	保留	[对外] 折叠组标题
-src/settings/panel.ts:766	日志与数据	保留	[对外] 折叠组标题
 src/settings/panel.ts:795	应用	保留	[对外] 页面名
 src/settings/panel.ts:989	正在列这台机器上的账号 / 工具…	保留	[对外] 加载骨架文案
 src/settings/panel.ts:998	机器列表这一块没能建起来	改·§2.1	[对外] 兜底提示的原因在讲界面构件没建起来（实现层失败），拼进兜底句后更长 →「机器列表加载失败」
@@ -1197,3 +1191,8 @@ src/settings/data-section.ts:52	删了会丢	保留	[对外] 数据位置每行�
 src/settings/data-section.ts:54	可随手删	保留	[对外] 数据位置每行「缓存」那一格
 src/settings/data-section.ts:56	类别未知（{…}）	保留	[对外] 后端将来加第三类时的原样兜底（不整页炸、不假装认识）
 src/settings/data-section.ts:213	标着「可随手删」的下次用到时会重建；标着「删了会丢」的是你设过的东西。	保留	[对外] 数据位置卸载说明里补的一句：那一格怎么读
+src/settings/panel.ts:166	字体（正文 / 等宽 / 字号）+ 颜色（背景 / 卡片 / 文字 / 成功 / 警告 / 错误）。改了当场生效。	保留	[对外] 外观子页 ⓘ（ST2 步 15）：去掉了「10 个语义 token」与已撤的 user / assistant、「所以默认收起」（折叠组没了）
+src/settings/panel.ts:179	「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。	保留	[对外] 日志子页 ⓘ：术语定义＋用途，一句
+src/settings/panel.ts:188	【行为】	保留	[对外] 应用页 ⓘ 分节标题
+src/settings/panel.ts:205	日志	保留	[对外] 「应用」下的子页名（ST2 步 15，70 §6 #3 折叠组 → parentId 子项）
+src/settings/panel.ts:206	数据位置	保留	[对外] 「应用」下的子页名（ST2 步 15）

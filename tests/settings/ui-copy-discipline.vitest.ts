@@ -202,7 +202,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
     await p.open();
     await tick();
     // 两个顶层页 + 本机子页都走一遍（〔ST2〕顶层「改动足迹」已删）—— 只看落地页等于只判了一部分。
-    for (const id of ["app", "machine:（本机）", "machines"]) {
+    for (const id of ["app", "app-appearance", "app-logs", "app-data", "machine:（本机）", "machines"]) {
       const btn = document.querySelector<HTMLButtonElement>(
         `[id="settings-tab-${id}"]`,
       );

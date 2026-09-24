@@ -46,6 +46,14 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
  * ⇒ 想清干净的人只能整个目录一起删、或者一个都不敢删。
  * ⚠ 后端加第三类时**不许整页炸**，也不许假装认识它 —— 原样说出来。
  */
+/**
+ * 〔ST2 · `70 §11.3.2`〕日志目录那一行的名字 —— 这一行**不自带 [打开]**，改成指向「日志」那一页
+ * （那一页自己有「打开日志目录」；两处都给就是界面层的重复，而且两处给的还不是同一个数）。
+ * ⚠ 跨语言常量：Rust 那侧 `data_paths.rs::LOGS_DIR_LABEL` 同名同值，由 `data-section.vitest.ts` 读那份源码对拍。
+ * ⚠ 修在界面层：**不许**从后端那份枚举里删掉这一行（`INVARIANTS §2.1` 的唯一权威枚举点）。
+ */
+export const LOGS_DIR_LABEL = "logs/";
+
 export function describeDataClass(c: DataClass): string {
   switch (c) {
     case "truth":
@@ -181,16 +189,9 @@ export class DataSection {
       );
     }
 
-    // 卡片 3：PowerShell profile 备份（只在装过 cc 集成时出现）
-    if (data.profileBackupDirs.length > 0) {
-      this.mainBody.appendChild(
-        this.buildBlock({
-          title: "PowerShell profile 备份",
-          subtitle: "v1.7.10+ 装 cc 集成时自动备份 profile 到同目录的 .ccm-backup-<时间戳>",
-          items: data.profileBackupDirs,
-        }),
-      );
-    }
+    // 〔ST2 · `70 §10.2` · `§11.3.2`〕原来的卡片 3「PowerShell profile 备份」**搬去本机「足迹」栏**：
+    //   它和足迹那张表里的 `$PROFILE` 行讲的是同一件事（「cc-monitor 动过你哪些文件」），
+    //   原来住在两个不同的顶层页。`INVARIANTS §4`：备份是「写 profile」那条铁律的产物。
 
     // 卡片 4：浏览器 localStorage
     this.mainBody.appendChild(this.buildLocalStorageBlock());
@@ -289,16 +290,15 @@ export class DataSection {
     }
     li.appendChild(meta);
 
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "settings-data-item-open";
-    open.textContent = info.exists ? "打开" : "—";
-    open.disabled = !info.exists;
-    open.title = info.exists ? `打开 ${info.path}` : "文件 / 目录不存在";
-    if (info.exists) {
-      open.addEventListener("click", () => void openItem(info.path));
+    if (info.label === LOGS_DIR_LABEL) {
+      // 〔ST2〕日志目录：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
+      const see = document.createElement("span");
+      see.dataset.seeAlso = "logs";
+      see.textContent = "在「日志」页里打开";
+      li.appendChild(see);
+    } else {
+      li.appendChild(this.buildOpenButton(info));
     }
-    li.appendChild(open);
 
     // 完整路径单独一行（小字 + ellipsis）
     const pathRow = document.createElement("div");
@@ -308,6 +308,19 @@ export class DataSection {
     li.appendChild(pathRow);
 
     return li;
+  }
+
+  private buildOpenButton(info: DataPathInfo): HTMLElement {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "settings-data-item-open";
+    open.textContent = info.exists ? "打开" : "—";
+    open.disabled = !info.exists;
+    open.title = info.exists ? `打开 ${info.path}` : "文件 / 目录不存在";
+    if (info.exists) {
+      open.addEventListener("click", () => void openItem(info.path));
+    }
+    return open;
   }
 
   private buildLocalStorageBlock(): HTMLElement {

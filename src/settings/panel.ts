@@ -30,7 +30,6 @@ import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只�
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
 import { DriftLedgerSection } from "./drift-ledger-section"; // U-CC1：数据面漂移记账（只读、按需一次、不轮询）
 import { DiagnosticsSection } from "./diagnostics-section";
-import { CollapsibleGroup } from "./collapsible-group";
 import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
 // E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
@@ -164,8 +163,7 @@ const TERMINAL_INTEGRATION_INFO_TEXT =
   "Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。";
 
 const APPEARANCE_INFO_TEXT =
-  "字体（正文 / 等宽 / 字号）+ 颜色（10 个语义 token：背景 / 卡片 / 文字 / user / assistant 等）。" +
-  "配一次基本不再动，所以默认收起。";
+  "字体（正文 / 等宽 / 字号）+ 颜色（背景 / 卡片 / 文字 / 成功 / 警告 / 错误）。改了当场生效。";
 
 const REMOTE_INFO_TEXT =
   "「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 " +
@@ -176,29 +174,37 @@ const REMOTE_INFO_TEXT =
 // 🔴 `70 §10.3`/`§10.2` 改名 ＋ `§2.4` 纪律：两块的名字跟着改（「诊断」→「日志」·
 // 「数据存储」→「数据位置」），并且把 `tracing` 这个**内部标识符**拿掉
 //（`91 §2.1` 那一族 —— 用户不需要知道我们用的是哪个日志库）。
-const DIAG_STORAGE_INFO_TEXT =
-  "「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。\n\n" +
+// 〔ST2 · 步 15〕两块各成一个子页之后，这段说明也拆成两段，各归各页。
+const LOGS_INFO_TEXT =
+  "「日志」—— 让后端把细节写进日志文件，出问题时拿得到一份能发给作者的记录。";
+const DATA_PLACES_INFO_TEXT =
   "「数据位置」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / " +
   "WebView2 UserDataFolder / localStorage keys 等。每项可点 [打开] 直接到文件管理器。" +
   "纯展示，无危险操作。";
 
-// F82b（#56+#47）：4 组终态的合并 tooltip——外观并了 行为/快捷键、集成并了 诊断&存储，
-// group 级 tooltip 把原分组说明拼一起（子分节各带小标题导航）。
-const APPEARANCE_GROUP_INFO_TEXT =
-  APPEARANCE_INFO_TEXT +
-  "\n\n【行为】" +
-  BEHAVIOR_INFO_TEXT +
-  "\n\n【快捷键】" +
-  KEYBINDINGS_INFO_TEXT;
-// S2：「日志与数据」页内折叠组的文案 = 数据目录 + 诊断/存储（正好是它的三块内容）。
-const LOGS_AND_DATA_INFO_TEXT =
-  DATA_DIR_INFO_TEXT + "\n\n" + DIAG_STORAGE_INFO_TEXT;
+// 〔ST2 · 步 15〕「应用」页自己剩下的两块（行为 / 快捷键）的说明。原来它们拼在「外观」那个折叠组的 ⓘ 里
+// （F82b：外观并了 行为 / 快捷键），折叠组撤掉之后各归各页。
+const APP_PAGE_INFO_TEXT =
+  "【行为】" + BEHAVIOR_INFO_TEXT + "\n\n【快捷键】" + KEYBINDINGS_INFO_TEXT;
 // S2：机器页的文案 = 怎么连上远端 + 这台机上的启动器集成。
 const MACHINES_PAGE_INFO_TEXT =
   REMOTE_INFO_TEXT + "\n\n【终端集成】" + TERMINAL_INTEGRATION_INFO_TEXT;
 // S2 删除：原 `REMOTE_GROUP_INFO_TEXT` 描述的是那个「留空占位」的空组（F82b 拍板的 4 组之一，
 // 后被 A3 借去放账号）。它逐字写着「当前尚无独立项…留空占位」「在上面的『连接』组」——
 // 那个组和那个「上面」都不存在了，留着就是一句会误导人的话。
+
+/**
+ * 〔第四波 ST2 · `设计/70 §6` #3 · 第四刀 步 15〕「应用」下的三个**子页**（`parentId: "app"`）。
+ *
+ * 原来是「应用」页里两个默认收起的折叠组（外观 · 日志与数据）叠在路由分页之上：
+ * 找「字体大小」要 4 步（点应用 → 往下找 → 展开外观 → 找到那一行）。两套隐藏机制叠着 ⇒
+ * 用**已有的** `parentId` 一层子项替掉折叠组：点「外观」就到。
+ */
+const APP_SUBPAGES = {
+  appearance: { id: "app-appearance", title: "外观" },
+  logs: { id: "app-logs", title: "日志" },
+  data: { id: "app-data", title: "数据位置" },
+} as const;
 
 /** S2：落地页 id。主计划 §2.3 指定为「机器」。 */
 const SETTINGS_LANDING_ROUTE = "machines";
@@ -859,44 +865,60 @@ export class SettingsPanel {
     appPage.appendChild(
       this.safeBlock("快捷键", () => this.buildKeybindingsGroup()),
     );
-    const appearance = new CollapsibleGroup({
-      // id 沿用 F82b 那个：字体+颜色这两块的归属没变，用户此前的折叠状态该跟过来。
-      id: "appearance-4grp",
-      title: "外观",
-      defaultCollapsed: true,
-      infoTooltip: APPEARANCE_GROUP_INFO_TEXT,
+    router.addRoute({
+      id: "app",
+      title: "应用",
+      element: appPage,
+      infoTooltip: APP_PAGE_INFO_TEXT,
     });
-    appearance.appendChild(
+
+    // 🔴 〔第四波 ST2 · `70 §6` #3 · 步 15〕原来这里是两个默认收起的折叠组（外观 · 日志与数据）。
+    //   换成「应用」下的三个子页（`APP_SUBPAGES`）：点「外观」就到，不再「翻页 ＋ 展开」两层藏。
+    // ① 外观（字体 ＋ 颜色）。
+    const appearancePage = document.createElement("div");
+    appearancePage.appendChild(
       this.buildGroup(
         "字体",
         FIELDS.filter((f) => f.group === "font"),
       ),
     );
-    appearance.appendChild(
+    appearancePage.appendChild(
       this.buildGroup(
         "颜色",
         FIELDS.filter((f) => f.group === "color"),
       ),
     );
-    appPage.appendChild(appearance.element);
-
-    // 「日志与数据」——主计划 §2.3 逐字指定的折叠组。读一次就够的东西。
-    const logsAndData = new CollapsibleGroup({
-      id: "logs-and-data",
-      title: "日志与数据",
-      defaultCollapsed: true,
-      infoTooltip: LOGS_AND_DATA_INFO_TEXT,
+    router.addRoute({
+      ...APP_SUBPAGES.appearance,
+      element: appearancePage,
+      parentId: "app",
+      infoTooltip: APPEARANCE_INFO_TEXT,
     });
-    logsAndData.appendChild(this.buildDataGroup());
-    // 🔴 `70 §10.3`：「诊断」→「日志」。**让名**给 `§5.3` 那个改名，否则设置面板里
+
+    // ② 日志。🔴 `70 §10.3`：「诊断」→「日志」。**让名**给 `§5.3` 那个改名，否则设置面板里
     // 会同时有两个「诊断」（一个是「这台机器还缺什么」，一个是 monitor 的日志开关）。
-    logsAndData.appendChild(
-      this.safeBlock("日志", () => {
-        const sec = new DiagnosticsSection({ headless: true });
-        this.logsSection = sec;
-        return sec.element;
-      }),
+    // 〔步 15〕这一页只有这一块 ⇒ 块不再自带标题（页头已经是「日志」，两个同名标题叠着是重名，`§8` #11）。
+    const logsPage = document.createElement("div");
+    logsPage.appendChild(
+      this.safeBlock(
+        "日志",
+        () => {
+          const sec = new DiagnosticsSection({ headless: true });
+          this.logsSection = sec;
+          return sec.element;
+        },
+        { untitled: true },
+      ),
     );
+    router.addRoute({
+      ...APP_SUBPAGES.logs,
+      element: logsPage,
+      parentId: "app",
+      infoTooltip: LOGS_INFO_TEXT,
+    });
+    this.loadOnFirstVisit(APP_SUBPAGES.logs.id, () => this.logsSection?.loadNow());
+
+    // ③ 数据位置（＋ Claude 数据目录：「monitor 读哪、存哪」两件位置上的事放一页）。
     // 🔴 步 3b（`70 §10.2` 差项 2 · `§10.4` 第一刀）：**这一块原先的 `new` 在 `safeBlock` 外面。**
     // 原文是 `const dataSection = new DataSection(...)` 裸构造，`safeBlock` 只包住了
     // `() => dataSection.element` 那个 thunk —— 而 thunk 不可能抛。
@@ -904,20 +926,27 @@ export class SettingsPanel {
     //   那条纪律在这里**漏了一块**。现在 `new` 挪进 thunk 里，与它的九个兄弟同形。
     // ⚠ 字段仍然在 build 时赋值（`open()` 那边 `?.refresh()` 靠它）——
     //   构造失败时留 `undefined`，与 `remoteSection` 那一格同一个约定。
-    logsAndData.appendChild(
-      this.safeBlock("数据位置", () => {
-        const sec = new DataSection({ headless: true });
-        this.dataSection = sec;
-        return sec.element;
-      }),
+    const dataPage = document.createElement("div");
+    dataPage.appendChild(this.buildDataGroup());
+    dataPage.appendChild(
+      this.safeBlock(
+        "数据位置",
+        () => {
+          const sec = new DataSection({ headless: true });
+          this.dataSection = sec;
+          return sec.element;
+        },
+        { untitled: true },
+      ),
     );
-    appPage.appendChild(logsAndData.element);
-    router.addRoute({ id: "app", title: "应用", element: appPage });
-    // 步 2：这一页的 I/O（日志 2 发 + 数据位置 1 发）挂到「这一页首次可见」上。
-    this.loadOnFirstVisit("app", () => {
-      this.logsSection?.loadNow();
-      this.dataSection?.loadNow();
+    router.addRoute({
+      ...APP_SUBPAGES.data,
+      element: dataPage,
+      parentId: "app",
+      infoTooltip: DATA_DIR_INFO_TEXT + "\n\n" + DATA_PLACES_INFO_TEXT,
     });
+    // 步 2：I/O 挂到「这一页首次可见」上 —— 〔步 15〕从「应用」一页三发，拆成两个子页各自的那几发。
+    this.loadOnFirstVisit(APP_SUBPAGES.data.id, () => this.dataSection?.loadNow());
 
     // ---- 机器：改**某一台机器**的状态 ----
     //
@@ -1591,9 +1620,20 @@ export class SettingsPanel {
    * `safeBlock` 覆盖同步路径，**不声明白屏问题已全解**。异步那半边留给 T07 的
    * 对抗性审计去核；覆盖不到就如实说没守，这是本工作区的纪律。
    */
-  private safeBlock(title: string, build: () => HTMLElement): HTMLElement {
+  private safeBlock(
+    title: string,
+    build: () => HTMLElement,
+    opts: { untitled?: boolean } = {},
+  ): HTMLElement {
     try {
-      return this.titledSection(title, build());
+      // 〔ST2 · 步 15〕`untitled`：这一块独占一个子页，页头已经是它的名字 ⇒ 块不再自带标题
+      //   （同名标题叠两层是 `§8` #11 那种重名）。失败时照旧带标题 —— 那一刻得说清是哪一块坏了。
+      const body = build();
+      if (!opts.untitled) return this.titledSection(title, body);
+      const wrap = document.createElement("div");
+      wrap.className = "settings-group";
+      wrap.appendChild(body);
+      return wrap;
     } catch (e) {
       const wrap = document.createElement("div");
       wrap.className = "settings-group settings-block-failed";
