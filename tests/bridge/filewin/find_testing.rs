@@ -415,6 +415,36 @@ impl FakeBackend {
                     )
                 }
             }
+            // 〔F7a · 第三波 09-24〕读一份文本：按路径里的字眼演后端那几形
+            //   （`binary` ⇒ `not_text` · `huge` ⇒ `too_large` · `gone` ⇒ `unreadable`），其余交回
+            //   `text of <path>` —— 判据要的是「窗口发了什么、怎么落那几形」，不是真读盘。
+            "files-read-text" => {
+                let Some(p) = args.get("path").and_then(|v| v.as_str()) else {
+                    return (
+                        false,
+                        Some("bad_path".into()),
+                        Some("少了 `path`".into()),
+                        None,
+                    );
+                };
+                for (word, code) in [
+                    ("binary", "not_text"),
+                    ("huge", "too_large"),
+                    ("gone", "unreadable"),
+                ] {
+                    if p.contains(word) {
+                        return (false, Some(code.into()), Some(format!("{code}：{p}")), None);
+                    }
+                }
+                let text = format!("text of {p}");
+                let n = text.len();
+                (
+                    true,
+                    None,
+                    None,
+                    Some(serde_json::json!({ "path": p, "text": text, "bytes": n })),
+                )
+            }
             // 〔F2〕写面五条：**只记下来、不落盘**（判据要的是「窗口发了哪一条、参数长什么样」），
             //   `root` 里带 `refuse` 的一律按后端围栏那一档拒（`refused`）。
             "files-mkdir" | "files-delete" | "files-rename" | "files-chmod"
