@@ -375,7 +375,14 @@ pub const PROTO_VERSION: u32 = 1;
 /// ⚠ 旧后端配新 shim ⇒ 容器路内层缺 `ccm` 那个词（入口②的老病复发）⇒ **必须**让已部署的远端被判 stale。
 /// 照 p1v 的先例（只改行为/wire、不改子命令 ⇒ bump 但**不**往 `SUBCOMMAND_HISTORY` 加行）。
 /// ★ re-embed 归发版那一拍。
-pub const BUILD_ID: &str = "p2q-no-ccm-self";
+///
+/// ★★★ **p2r-apikey-naming**（2026-09-24，第三波 R3 合并那一拍）：**子命令集一个没变，是行为变了** ——
+/// 账号层读的凭据文件 `relay-credentials.json` → `apikey-credentials.json`、环境变量
+/// `CCM_RELAY_CREDENTIALS` → `CCM_APIKEY_CREDENTIALS`、`CCM_RELAY_UPSTREAM` → `CCM_AGENT_UPSTREAM_CLAUDE_CODE`
+/// （用户裁「不要把账号和中转混为一谈」，不留兼容读旧名）。
+/// ⚠ 新 monitor 递新变量名、旧后端不认 ⇒ 回头读旧文件名 ⇒ 界面配好了、请求静默 404 ⇒ **必须**让已部署的后端被判 stale。
+/// 线上字节不变（`wire_golden` 未动）。照 p1v 先例不往 `SUBCOMMAND_HISTORY` 加行。
+pub const BUILD_ID: &str = "p2r-apikey-naming";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

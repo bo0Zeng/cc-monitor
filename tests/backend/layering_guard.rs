@@ -687,8 +687,9 @@ mod tests {
     ///
     /// 人群是 `observe/` 与 `control/` 两层（`plugin/` 归判据 ③，人群不重叠）。
     /// 中转对外**只有一个口**：`relay/mod.rs` 里那一行 `pub(crate) use server::run;`。
-    /// 谁绕过它去引 `crate::relay::table` / `crate::relay::upstream`，
-    /// 中转的内部结构就变成了公共契约 —— 之后 `table.rs` 想换个形状都得先问一圈。
+    /// 谁绕过它去引 `crate::relay::server` / `crate::relay::upstream`，
+    /// 中转的内部结构就变成了公共契约 —— 之后 `upstream.rs` 想换个形状都得先问一圈。
+    /// （路由表是账号层的，住 `accounts::apikey::table`，不在 `relay/` 里。）
     ///
     /// # ⚠ 这一支够不到哪儿（如实登记，别读成「全体没有」）
     ///
@@ -696,7 +697,7 @@ mod tests {
     /// `src/` 顶层那几个文件（`main.rs` · `listen.rs` · `wire.rs` …）**不在人群里**，
     /// 而且就算放进来也扫不到：`mod relay;` 声明在 `main.rs`，它写的是**裸** `relay::run`，
     /// 而 `refs_to_layer` 的锚点是 `crate::relay` / `super::super::relay`。
-    /// ⇒ 顶层文件伸手进 `relay::table::…` 这一形，**本判据看不见**。留作跟进件，不在本件买。
+    /// ⇒ 顶层文件伸手进 `relay::upstream::…` 这一形，**本判据看不见**。留作跟进件，不在本件买。
     #[test]
     fn no_layer_may_reach_into_relay_internals() {
         let mut bad: Vec<String> = Vec::new();
@@ -814,12 +815,16 @@ mod tests {
         );
 
         // 探针二：`control` 形状的文件伸手进 `relay` 内部。
-        let t2 = write_probe_tree("b", "pub fn y() { crate::relay::table::look(); }\n", clean);
+        let t2 = write_probe_tree(
+            "b",
+            "pub fn y() { crate::relay::upstream::look(); }\n",
+            clean,
+        );
         let f2 = layer_sources_at(&t2, "x");
         assert_collection_is_complete_at(&t2, "x", &f2);
         let hit2 = violating_edges(&f2, D2_REACHING_INTO_RELAY);
         assert!(
-            hit2.iter().any(|h| h.contains("crate::relay::table")),
+            hit2.iter().any(|h| h.contains("crate::relay::upstream")),
             "判据 ② 对一条真的 →relay 内部边没出声 —— 它此刻是空转的。实得：{hit2:?}"
         );
         assert!(

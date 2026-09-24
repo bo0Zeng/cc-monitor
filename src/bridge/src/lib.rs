@@ -1293,8 +1293,8 @@ pub fn run() {
             config::save_config,
             // K-H2a：apikey 表那把 key。**读那条永远只回掩码**（`KS6`）；
             // 写那条是「界面」这个第二写者，它与人手编是同一份文件的两个写者（`KS10`）。
-            read_relay_credentials_status,
-            write_relay_credentials_key,
+            read_apikey_credentials_status,
+            write_apikey_credentials_key,
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             apikey_routing_for,
@@ -1775,14 +1775,14 @@ pub(crate) fn batch_to_payloads(
 /// ★ 这是本件里最要紧的一条：一旦回显，key 就从「只住在后端」变成
 /// 「**每次打开那个界面都往前端传一遍**」⇒ 泄漏面从一次变成无数次，
 /// 每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
-/// ⇒ 返回类型 [`creds_store::RelayCredentialsStatus`] **在类型上就装不下明文**，
+/// ⇒ 返回类型 [`creds_store::ApikeyCredentialsStatus`] **在类型上就装不下明文**，
 /// 由 `the_status_type_cannot_carry_the_plaintext` 钉住。
 #[tauri::command]
-fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus, String> {
+fn read_apikey_credentials_status() -> Result<creds_store::ApikeyCredentialsStatus, String> {
     creds_store::read_status()
 }
 
-/// `K-H2b` `KH2B7`：界面问「**这几个本机账号，起会话时会不会走本机中转**」。
+/// `K-H2b` `KH2B7`：界面问「**这几个本机账号在 apikey 表里有没有行、本机中转在不在跑**」。
 ///
 /// # 为什么是一条**只答本机**的命令，而不是往账号列表里加两个字段
 ///
@@ -1792,7 +1792,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// 而 `payload::relay_base_url` 拼的是**回环**地址，回环是**自指**的）
 /// ⇒ 本机这一侧**在结构上答不了远端那台**。往那份结构里加字段，
 /// 就是让远端那些行也带上两个这一侧答不出来的值。
-/// 命令面的登记（`relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
+/// 命令面的登记（`apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
 ///
 /// # 两个字段各自的射程，别读宽
 ///
@@ -1804,11 +1804,11 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 /// - `running`：**我们起过本机中转而且没停过**，**不是**「那个口上真有人听」
 ///   （`local_backend_host::relay_running` 头注逐字写了那两个分家的窗口）。
 ///
-/// ⚠ **本结构刻意不走 `ts-rs`**：`RelayCredentialsStatus` 的先例逐字记着理由 ——
+/// ⚠ **本结构刻意不走 `ts-rs`**：`ApikeyCredentialsStatus` 的先例逐字记着理由 ——
 /// 导出会在 `src/generated/` **新增一个文件**，而那个目录的清单由
 /// `tests/generated-boundary-guard.vitest.ts` 逐项等号对拍，那个文件不在本件写区。
 /// ⇒ TS 侧那份是**手写镜像**（`src/accounts.ts::ApikeyRoutingView`），两侧字段名手动同步。
-/// **如实记：这一格今天没有判据对拍**（`RelayCredentialsStatus` 那条有，本条没有）。
+/// **如实记：这一格今天没有判据对拍**（`ApikeyCredentialsStatus` 那条有，本条没有）。
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 struct ApikeyRouting {
@@ -1867,7 +1867,7 @@ fn apikey_routing_for(config_dirs: Vec<String>) -> ApikeyRouting {
 /// `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕，**那个名字全仓零定义**，
 /// 而这句话是当现状在说。
 #[tauri::command]
-fn write_relay_credentials_key(key: String, config_dir: String) -> Result<(), String> {
+fn write_apikey_credentials_key(key: String, config_dir: String) -> Result<(), String> {
     creds_store::write_key(&config_dir, &key)
 }
 

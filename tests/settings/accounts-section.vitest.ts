@@ -41,7 +41,7 @@ import {
   type MachineStatus,
 } from "../../src/settings/machine-status";
 import { computeGaps, summarizeGaps } from "../../src/settings/readiness";
-import type { RelayCredentialsStatus } from "../../src/ipc/commands";
+import type { ApikeyCredentialsStatus } from "../../src/ipc/commands";
 import { showActionFailureToast } from "../../src/error-toast";
 import * as accounts from "../../src/accounts";
 import type { AccountsState, Account } from "../../src/accounts";
@@ -575,7 +575,7 @@ function accountColorSlotFor(name: string): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// K-H2a：中转那把第三方 API key 的**前端那一半**（`KS6` 永不回显 / `KS9` 路径 /
+// K-H2a：账号的第三方 API key（apikey 表）的**前端那一半**（`KS6` 永不回显 / `KS9` 路径 /
 // `KS11` 界面出声 / `KS7` 不进前端整份读写的那份配置）。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("K-H2a：第三方 API key 的前端一半", () => {
@@ -583,11 +583,11 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
   //   而 `import.meta.url` 在这套 transform 下不是 file: scheme（实测 `The URL must be of scheme file`）。
   const src = () => readFileSync("src/settings/accounts-section.ts", "utf8");
 
-  function status(p: Partial<RelayCredentialsStatus> = {}): RelayCredentialsStatus {
+  function status(p: Partial<ApikeyCredentialsStatus> = {}): ApikeyCredentialsStatus {
     return {
       configured: true,
       masked: "sk-a**********WXYZ",
-      path: "/h/.claude/work/relay-credentials.json",
+      path: "/h/.claude/work/apikey-credentials.json",
       notice: null,
       problem: null,
       ...p,
@@ -604,7 +604,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
 
   it("KS6：输入框**从不预填** —— 已配置时也一样，要改就重新输", () => {
     const el = renderApikeyEditor(ACCTS[0], () => {}).editor;
-    const input = el.querySelector<HTMLInputElement>("input.relay-key-input");
+    const input = el.querySelector<HTMLInputElement>("input.accounts-row-apikey-input");
     expect(input, "那个输入框不见了 —— 下面的断言会零命中地绿").toBeTruthy();
     expect(input!.value).toBe("");
     // 它是密码框（截图 / 录屏那两个出口）。
@@ -645,24 +645,24 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     const warned = renderApikeyFileBlock(
       status({ notice: "同机器上的别人也读得到它（mode 是 0644…）。怎么修：跑 `chmod 600 …`" }),
     );
-    const n = warned.querySelector(".relay-key-notice");
+    const n = warned.querySelector(".apikey-file-notice");
     expect(n, "过宽了却没在界面上显出来").toBeTruthy();
     expect(n!.textContent).toContain("chmod 600");
-    expect(renderApikeyFileBlock(status()).querySelector(".relay-key-notice")).toBeNull();
+    expect(renderApikeyFileBlock(status()).querySelector(".apikey-file-notice")).toBeNull();
   });
 
   it("KS9：那份文件的路径要显出来 —— 能手编但没人知道在哪 = 不能手编", () => {
     const el = renderApikeyFileBlock(status());
-    expect(el.textContent).toContain("relay-credentials.json");
-    expect(el.querySelector(".relay-key-path")?.getAttribute("title")).toContain("编辑器");
+    expect(el.textContent).toContain("apikey-credentials.json");
+    expect(el.querySelector(".apikey-file-path")?.getAttribute("title")).toContain("编辑器");
   });
 
   it("文件读坏了要说出来，**不许静默当成「没配」**", () => {
     const el = renderApikeyFileBlock(
       status({ configured: false, masked: "", problem: "凭据文件不是合法 JSON（…）" }),
     );
-    expect(el.querySelector(".relay-key-problem")?.textContent).toContain("不是合法 JSON");
-    expect(renderApikeyFileBlock(status()).querySelector(".relay-key-problem")).toBeNull();
+    expect(el.querySelector(".apikey-file-problem")?.textContent).toContain("不是合法 JSON");
+    expect(renderApikeyFileBlock(status()).querySelector(".apikey-file-problem")).toBeNull();
   });
 
   it("存一次：明文原样交给回调，交完输入框**立刻清空**", () => {
@@ -670,13 +670,13 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     const el = renderApikeyEditor(ACCTS[1], (k: string) => {
       seen.push(k);
     }).editor;
-    const input = el.querySelector<HTMLInputElement>("input.relay-key-input")!;
+    const input = el.querySelector<HTMLInputElement>("input.accounts-row-apikey-input")!;
     input.value = "  sk-ant-TYPED-BY-HAND  ";
-    el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
+    el.querySelector<HTMLButtonElement>("button.accounts-row-apikey-save")!.click();
     expect(seen).toEqual(["sk-ant-TYPED-BY-HAND"]);
     expect(input.value, "存完输入框没清空 —— 明文在 DOM 里留着").toBe("");
     // 空输入不触发（否则会把 key 存成空串，等于悄悄清掉用户的配置）。
-    el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
+    el.querySelector<HTMLButtonElement>("button.accounts-row-apikey-save")!.click();
     expect(seen).toEqual(["sk-ant-TYPED-BY-HAND"]);
   });
 
@@ -696,8 +696,8 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
       [one, "sk-ant-FOR-ONE"],
       [two, "sk-ant-FOR-TWO"],
     ] as const) {
-      el.querySelector<HTMLInputElement>("input.relay-key-input")!.value = key;
-      el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
+      el.querySelector<HTMLInputElement>("input.accounts-row-apikey-input")!.value = key;
+      el.querySelector<HTMLButtonElement>("button.accounts-row-apikey-save")!.click();
     }
     expect(seen).toEqual([
       ["sk-ant-FOR-ONE", "/h/.claude-alt/dir-one"],
@@ -709,7 +709,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(renderApikeyEditor(ACCTS[0], () => {}).editor.textContent).toContain("n1：apikey 表里已经有它那一行");
     // 非空对照：routed=false 那个必须翻面（这把尺子分得出两种结局）。
     expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).toContain("n2：apikey 表里还没有它那一行");
-    const legacy = renderApikeyFileBlock(status()).querySelector(".relay-key-legacy");
+    const legacy = renderApikeyFileBlock(status()).querySelector(".apikey-file-legacy");
     expect(legacy?.textContent, "顶层那一把没有单独显").toContain("sk-a**********WXYZ");
     expect(legacy!.textContent).toContain("不再往那一格写");
     // 编辑格里**不许**出现顶层那一把 —— 那会被读成这个号的状态。
@@ -729,7 +729,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     );
     invokeMock.mockImplementation((cmd: unknown) =>
       Promise.resolve(
-        cmd === "read_relay_credentials_status"
+        cmd === "read_apikey_credentials_status"
           ? status()
           : cmd === "apikey_routing_for"
             ? { routed: ["/h/.claude-alt/dir-one"] }
@@ -748,8 +748,8 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(editors[1].hidden).toBe(false);
     expect(editors[1].textContent).toContain("n2");
     // 表外还挂着文件那一块（路径 / 顶层那一把）。
-    expect(el.querySelector(".relay-key-block .relay-key-path")?.textContent).toContain(
-      "relay-credentials.json",
+    expect(el.querySelector(".apikey-file-block .apikey-file-path")?.textContent).toContain(
+      "apikey-credentials.json",
     );
   });
 
@@ -761,7 +761,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
         code.includes(needle),
         `前端出现了 \`${needle}\` —— 那是在长**第二份**「从 configDir 取账号 id」的规则。\n` +
           "`apikey_account_id_of_dir` 的头注逐字：两边各写一个 basename 规则，" +
-          "漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。",
+          "漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。",
       ).toBe(false);
     }
     // ★ 非空对照：这把尺子**认得出**东西（不是恒 false）。
@@ -774,7 +774,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     );
     // ★ 正题的另一半：那条命令**确实**收到了 configDir（不是「什么都没传所以没推 id」）。
     expect(
-      /write_relay_credentials_key\(\{\s*key,\s*configDir\s*\}\)/.test(code),
+      /write_apikey_credentials_key\(\{\s*key,\s*configDir\s*\}\)/.test(code),
       "那条写命令没把 configDir 一起交出去 —— 后端就只能落到顶层那一格",
     ).toBe(true);
   });
@@ -783,7 +783,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     const code = src();
     // ① 前端拿到的明文只出现在一处出口。
     const calls = [...code.matchAll(/commands\.(\w+)\(/g)].map((m) => m[1]);
-    expect(calls, "一条命令调用都没扫到 —— 抽取器坏了").toContain("write_relay_credentials_key");
+    expect(calls, "一条命令调用都没扫到 —— 抽取器坏了").toContain("write_apikey_credentials_key");
     expect(
       calls.filter((c) => c === "save_config"),
       "账号这一组里出现了 `save_config` —— key 有可能被塞进前端「读—改—写」整份的那份配置",
@@ -1606,7 +1606,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
       if (cmd === "launch_remote_terminal" && opts.launchFails) {
         return Promise.reject(new Error("没有终端"));
       }
-      if (cmd === "read_relay_credentials_status") {
+      if (cmd === "read_apikey_credentials_status") {
         return Promise.resolve({ configured: false, masked: "", path: "/h/x.json", notice: null, problem: null });
       }
       return Promise.resolve(undefined);
@@ -1641,7 +1641,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
     expect((launches[0][1] as { remoteCmd: string }).remoteCmd).toBe(want.ok ? want.cmd : "∅");
     // 号还没出现 ⇒ 一个字节都不写，但屏幕上说得出在等谁。
-    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
     expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
     expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
 
@@ -1655,7 +1655,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
 
-    const writes = calls.filter(([c]) => c === "write_relay_credentials_key");
+    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
     expect(writes.map(([, a]) => a)).toEqual([{ key: "sk-ant-FOR-B", configDir: B_DIR }]);
     expect(el.querySelector(".accounts-new-pending"), "写完了还挂着「等」那一行").toBeNull();
     expect(el.querySelector("select")).toBeNull();
@@ -1673,7 +1673,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     );
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
-    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
   });
 
   it("「放弃」把等着的那把 key 丢掉：之后号出现也不写", async () => {
@@ -1689,7 +1689,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     );
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
-    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
   });
 });
 
@@ -1789,11 +1789,11 @@ describe("S3：本机页新建账号", () => {
     await submit(el, "b", "sk-ant-FOR-B");
     const want = buildAcctIsoCmd({ kind: "add-apply", name: "b" });
     expect(writeText).toHaveBeenCalledWith(want.ok ? want.cmd : "∅");
-    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
     expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
     expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
     await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
-    const writes = calls.filter(([c]) => c === "write_relay_credentials_key");
+    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
     expect(writes.map(([, a]) => a)).toEqual([{ key: "sk-ant-FOR-B", configDir: B_DIR }]);
     expect(el.querySelector(".accounts-new-pending")).toBeNull();
   });
@@ -1805,7 +1805,7 @@ describe("S3：本机页新建账号", () => {
     expect(writeText).toHaveBeenCalled();
     expect(el.querySelector(".accounts-new-pending")).toBeNull();
     await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
-    expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+    expect(calls.some(([c]) => c === "write_apikey_credentials_key")).toBe(false);
   });
 
   it("★ 两种出错的提示分得开：既定设计是 info、真失败是 error，且标题不同", async () => {
