@@ -212,9 +212,9 @@ impl Selection {
     }
 }
 
-/// 方向键 ↑↓（`by` = ±1）、Home / End 之后光标该落在第几行。
+/// 方向键 ↑↓（`by` = ±1）之后光标该落在第几行。
 ///
-/// 没有光标时：↓ 与 Home 落第一行、↑ 与 End 落最后一行（「从哪头进来」的常规手感）。
+/// 没有光标时：↓ 落第一行、↑ 落最后一行（「从哪头进来」的常规手感）。
 /// 到头了就停在头上（**不绕回**：绕回去的话按住 ↓ 会在长列表里无声地转圈）。
 pub fn step_target(len: usize, cursor: Option<usize>, by: isize) -> Option<usize> {
     if len == 0 {
@@ -234,6 +234,18 @@ pub fn step_target(len: usize, cursor: Option<usize>, by: isize) -> Option<usize
             (c + by).clamp(0, last as isize) as usize
         }
     })
+}
+
+/// Home / End 之后光标该落在第几行（空列表 ⇒ `None`）。
+///
+/// ⚠ **不走** [`step_target`] 挪一个「很大的步」：那一版在「还没有光标」时
+/// 按 End 落在**第一行**（没光标时正步长从头进）—— 判据当场逮到的就是这一形。
+pub fn edge_target(len: usize, end: bool) -> Option<usize> {
+    match (len, end) {
+        (0, _) => None,
+        (n, true) => Some(n - 1),
+        (_, false) => Some(0),
+    }
 }
 
 /// 光标挪到第 `i` 行之后，列表要不要滚、滚到哪儿（像素偏移）。`None` = 它已经在视野里，**别动**

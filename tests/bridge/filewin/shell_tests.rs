@@ -1221,7 +1221,7 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
             )),
             ..Default::default()
         },
-        |ui| crate::filewin::rows::show_file_rows(ui, &rows, &mut rt, Some(0.0), None),
+        |ui| crate::filewin::rows::show_file_rows(ui, &rows, &mut rt, Some(0.0), None, None),
     );
     out.drop_without_applying_deltas();
     assert_eq!(rt.rows_materialized, 1);

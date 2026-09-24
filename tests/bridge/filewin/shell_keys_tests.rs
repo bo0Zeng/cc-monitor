@@ -1,0 +1,735 @@
+//! 〔FW1+FW2 · 2026-09-24〕键盘 · 多选 · 右键菜单 **接到窗口上**的判据。
+//!
+//! 🔴 这一摞**每一条都真跑生产那个 `frame_body`**，喂的是 egui 的合成事件
+//! （按键 / 带修饰键的点击 / 右键）—— 零件（`select.rs`）各自的判据住 `select_tests`；
+//! 这里看的是**胶水**：`frame_body` → `show_file_rows` → `RenderTally` →
+//! `apply_keys` / `apply_pick_click` / `apply_menu_click` → `perform` → 那几个 `begin_*`。
+//! 零件全绿而这一跳断了的那一形（本仓第一刀栽过：判据钉的是副本），只有这一摞看得见。
+//!
+//! ⚠ 买不到：**真键盘 / 真鼠标**（本机无图形会话）。真 X 键盘事件那一格住本文件末尾，
+//! 走 Xvfb 台架（XTEST 注进去的真 X 事件 → winit → egui → 这张键位表）。
+
+use super::*;
+use crate::filewin::copy::testing::{rects_of, text_in_frame, PaintedText};
+use crate::filewin::select::Action;
+
+const SCREEN: egui::Vec2 = egui::vec2(1280.0, 800.0);
+
+fn synth_cfg(label: &str) -> crate::ssh_source::RemoteConfig {
+    crate::ssh_source::RemoteConfig {
+        host: "example.invalid".into(),
+        label: label.into(),
+        port: 22,
+        user: "nobody".into(),
+        key_path: None,
+        backend_path: "/nonexistent/cc-monitor-backend".into(),
+        host_key_fingerprint: None,
+        addresses: Vec::new(),
+        jump: None,
+    }
+}
+
+fn row(name: &str, is_dir: bool, size: u64, lossy: bool) -> Row {
+    Row {
+        name: name.to_string(),
+        path: format!("/srv/data/{name}"),
+        is_dir,
+        size,
+        lossy_name: lossy,
+    }
+}
+
+fn file(name: &str) -> Row {
+    row(name, false, 9, false)
+}
+
+fn dir(name: &str) -> Row {
+    row(name, true, 0, false)
+}
+
+/// 一个看着 `/srv/data`、列表里有这几行、**不连任何东西**的窗口。
+fn window(rows: Vec<Row>) -> FileWindow {
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("keys")),
+        "/srv/data".to_string(),
+        None,
+        rows,
+    );
+    *w.listing.error.lock().unwrap() = None;
+    w
+}
+
+/// 驱动器：一帧一帧喂**生产那个** `frame_body`。时钟每帧走一秒 ——
+/// 两帧里各点一下**永远**不会被 egui 认成双击（双击窗是 0.3 秒）。
+struct Drive {
+    ctx: egui::Context,
+    t: f64,
+}
+
+impl Drive {
+    fn new() -> Self {
+        Self {
+            ctx: egui::Context::default(),
+            t: 0.0,
+        }
+    }
+
+    /// 跑一帧，`mods` 是这一帧**按着的**修饰键。
+    fn frame_mods(
+        &mut self,
+        w: &mut FileWindow,
+        events: Vec<egui::Event>,
+        mods: egui::Modifiers,
+    ) -> Vec<PaintedText> {
+        self.t += 1.0;
+        // egui 的「这一帧按着哪几个修饰键」是跨帧的状态，由 `ModifiersChanged` 事件改
+        // ⇒ 每帧开头都明说一次（不说就沿用上一帧的，Ctrl 会「粘」到下一次点击上）。
+        let mut all = vec![egui::Event::ModifiersChanged(mods)];
+        all.extend(events);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN)),
+            time: Some(self.t),
+            events: all,
+            ..Default::default()
+        };
+        let out = self.ctx.run_ui(input, |ui| w.frame_body(ui));
+        let painted = text_in_frame(&out);
+        out.drop_without_applying_deltas();
+        painted
+    }
+
+    fn frame(&mut self, w: &mut FileWindow, events: Vec<egui::Event>) -> Vec<PaintedText> {
+        self.frame_mods(w, events, egui::Modifiers::NONE)
+    }
+
+    /// 按一个键（按下即可；`intents` 只认按下）。
+    fn key(&mut self, w: &mut FileWindow, k: egui::Key, m: egui::Modifiers) -> Vec<PaintedText> {
+        self.frame(
+            w,
+            vec![egui::Event::Key {
+                key: k,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: m,
+            }],
+        )
+    }
+
+    /// 在 `name` 那一行的名字上点一下（`button` 左 / 右），按着 `mods`。
+    /// 两帧：先移过去（命中测试按上一帧的 widget 表做），再按下松开。
+    fn click_name(
+        &mut self,
+        w: &mut FileWindow,
+        name: &str,
+        button: egui::PointerButton,
+        mods: egui::Modifiers,
+    ) -> egui::Pos2 {
+        let painted = self.frame(w, Vec::new());
+        let at = rects_of(&painted, name);
+        assert_eq!(
+            at.len(),
+            1,
+            "这一帧上「{name}」出现了 {} 次 —— 落点算不出来，下面判的不是这一行",
+            at.len()
+        );
+        let pos = at[0].center();
+        self.frame(w, vec![egui::Event::PointerMoved(pos)]);
+        self.frame_mods(
+            w,
+            vec![
+                egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed: true,
+                    modifiers: mods,
+                },
+                egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed: false,
+                    modifiers: mods,
+                },
+            ],
+            mods,
+        );
+        pos
+    }
+
+    fn pick(&mut self, w: &mut FileWindow, name: &str, mods: egui::Modifiers) {
+        self.click_name(w, name, egui::PointerButton::Primary, mods);
+    }
+}
+
+fn picked(w: &FileWindow) -> Vec<String> {
+    w.selection().names()
+}
+
+fn set(names: &[&str]) -> Vec<String> {
+    let mut v: Vec<String> = names.iter().map(|s| s.to_string()).collect();
+    v.sort();
+    v
+}
+
+const NONE: egui::Modifiers = egui::Modifiers::NONE;
+const CTRL: egui::Modifiers = egui::Modifiers::COMMAND;
+const SHIFT: egui::Modifiers = egui::Modifiers::SHIFT;
+
+// ════════════════════════════════════════════════════════════════════════
+// 多选：点一下 / Ctrl / Shift —— 经真事件、经生产那一帧
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 单击 · Ctrl+单击 · Shift+单击，**每一下都经 `frame_body`**，选中态逐步两向相等；
+/// 而且下一帧**画出来的**选中色恰好落在那几行上（`RenderTally::picked_rows`）。
+#[test]
+fn clicks_with_modifiers_pick_exactly_those_rows_and_paint_exactly_those() {
+    let mut w = window(vec![
+        file("a.bin"),
+        file("b.bin"),
+        file("c.bin"),
+        dir("sub"),
+        file("z.bin"),
+    ]);
+    let mut d = Drive::new();
+    d.frame(&mut w, Vec::new());
+    assert!(picked(&w).is_empty(), "什么都没点就有选中");
+
+    d.pick(&mut w, "b.bin", NONE);
+    assert_eq!(picked(&w), set(&["b.bin"]));
+    d.pick(&mut w, "sub", CTRL);
+    assert_eq!(picked(&w), set(&["b.bin", "sub"]));
+    d.pick(&mut w, "z.bin", SHIFT);
+    assert_eq!(
+        picked(&w),
+        set(&["sub", "z.bin"]),
+        "Shift 没从锚（sub）扩到 z.bin"
+    );
+    d.pick(&mut w, "a.bin", CTRL);
+    assert_eq!(picked(&w), set(&["a.bin", "sub", "z.bin"]));
+
+    // 下一帧：选中色画在哪几行（下标）—— 与选中态**逐项相等**。
+    d.frame(&mut w, Vec::new());
+    assert_eq!(
+        w.tally.picked_rows,
+        vec![0, 3, 4],
+        "画出来的选中色与选中态对不上"
+    );
+    assert_eq!(
+        w.tally.cursor_row,
+        Some(0),
+        "光标那一圈没画在最后点的那一行"
+    );
+    // 选中不止一项 ⇒ 工具栏上说几项。
+    let painted = d.frame(&mut w, Vec::new());
+    assert_eq!(rects_of(&painted, "已选 3 项").len(), 1, "没说选中了几项");
+}
+
+/// 单击**不动目录**（双击才动）—— 选中是单击的事，别让它顺手把人带走。
+#[test]
+fn a_single_click_on_a_directory_selects_it_and_stays_put() {
+    let mut w = window(vec![dir("sub"), file("a.bin")]);
+    let mut d = Drive::new();
+    d.pick(&mut w, "sub", NONE);
+    assert_eq!(picked(&w), set(&["sub"]));
+    assert_eq!(w.cwd, "/srv/data", "单击一下目录就进去了");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// FW1：每个键位一格
+// ════════════════════════════════════════════════════════════════════════
+
+/// ↓ / ↑：光标一行一行走，**只选光标那一行**；到头停住。
+#[test]
+fn arrow_down_and_up_walk_the_cursor_and_pick_only_it() {
+    let mut w = window(vec![file("a.bin"), file("b.bin"), file("c.bin")]);
+    let mut d = Drive::new();
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    assert_eq!(picked(&w), set(&["a.bin"]), "没有光标时 ↓ 该落第一行");
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    assert_eq!(picked(&w), set(&["c.bin"]));
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    assert_eq!(picked(&w), set(&["c.bin"]), "到底了没停住");
+    d.key(&mut w, egui::Key::ArrowUp, NONE);
+    assert_eq!(picked(&w), set(&["b.bin"]));
+    assert_eq!(w.selection().cursor(), Some("b.bin"));
+}
+
+/// Shift+↓ / Shift+↑：从锚扩选。
+#[test]
+fn shift_arrows_extend_from_the_anchor() {
+    let mut w = window(vec![
+        file("a.bin"),
+        file("b.bin"),
+        file("c.bin"),
+        file("d.bin"),
+    ]);
+    let mut d = Drive::new();
+    d.pick(&mut w, "b.bin", NONE);
+    d.key(&mut w, egui::Key::ArrowDown, SHIFT);
+    d.key(&mut w, egui::Key::ArrowDown, SHIFT);
+    assert_eq!(picked(&w), set(&["b.bin", "c.bin", "d.bin"]));
+    d.key(&mut w, egui::Key::ArrowUp, SHIFT);
+    assert_eq!(picked(&w), set(&["b.bin", "c.bin"]));
+}
+
+/// Home / End：跳到头 / 尾，而且**列表真的滚过去了**（光标那一行落在这一帧的物化区间里）。
+#[test]
+fn home_and_end_jump_and_scroll_the_row_into_view() {
+    let rows: Vec<Row> = (0..400).map(|i| file(&format!("f{i:04}.bin"))).collect();
+    let mut w = window(rows);
+    let mut d = Drive::new();
+    d.frame(&mut w, Vec::new());
+    let (f0, l0) = (w.tally.first_row, w.tally.last_row);
+    assert!(l0 < 399, "这一屏竟然放得下 400 行 —— 下面那一比不携带信息");
+    d.key(&mut w, egui::Key::End, NONE);
+    assert_eq!(picked(&w), set(&["f0399.bin"]));
+    assert!(
+        w.tally.first_row <= 399 && 399 < w.tally.last_row,
+        "End 之后最后一行不在物化区间 [{}, {}) 里 —— 光标跑到屏幕外了",
+        w.tally.first_row,
+        w.tally.last_row
+    );
+    assert_ne!(w.tally.first_row, f0, "没滚");
+    d.key(&mut w, egui::Key::Home, NONE);
+    assert_eq!(picked(&w), set(&["f0000.bin"]));
+    assert_eq!(w.tally.first_row, 0, "Home 之后没滚回顶上");
+    // 🔴 在视野里挪一步 ⇒ **不滚**（每按一下都滚，就把用户自己的滚动按住了）。
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    assert_eq!(w.tally.first_row, 0, "光标还在视野里，列表却滚了");
+    let _ = l0;
+}
+
+/// Alt+↑：上一级。
+#[test]
+fn alt_up_goes_to_the_parent_directory() {
+    let mut w = window(vec![file("a.bin")]);
+    let mut d = Drive::new();
+    d.key(&mut w, egui::Key::ArrowUp, egui::Modifiers::ALT);
+    assert_eq!(w.cwd, "/srv", "Alt+↑ 没回上一级");
+    // 换了目录 ⇒ 选中态清空（新目录里同名的不是同一样东西）。
+    assert!(picked(&w).is_empty());
+}
+
+/// 回车：目录进去 · 文件走编辑（这个窗口没运行时 ⇒ 编辑那一支**出声**）· 多选时说一次只能开一项。
+#[test]
+fn enter_opens_a_directory_edits_a_file_and_refuses_a_bunch() {
+    let mut w = window(vec![dir("sub"), file("a.txt"), file("b.txt")]);
+    let mut d = Drive::new();
+    // 文件：落到 `begin_edit`（它出声：没有运行时）。
+    d.pick(&mut w, "a.txt", NONE);
+    d.key(&mut w, egui::Key::Enter, NONE);
+    let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
+    assert!(e.contains("运行时"), "回车没落到编辑那一支：{e:?}");
+    assert_eq!(w.cwd, "/srv/data");
+    // 多选：出声，不动。
+    d.pick(&mut w, "b.txt", CTRL);
+    d.key(&mut w, egui::Key::Enter, NONE);
+    assert_eq!(
+        w.key_notice(),
+        Some(crate::filewin::select::refusal(Action::Open, 2).as_str())
+    );
+    // 目录：进去。
+    d.pick(&mut w, "sub", NONE);
+    d.key(&mut w, egui::Key::Enter, NONE);
+    assert_eq!(w.cwd, "/srv/data/sub", "回车没进目录");
+}
+
+/// F2：一项 ⇒ 改名框摆出来、预填那一项；两项 ⇒ 出声、不摆框。
+#[test]
+fn f2_renames_one_and_refuses_two() {
+    let mut w = window(vec![file("a.bin"), file("b.bin")]);
+    let mut d = Drive::new();
+    d.pick(&mut w, "a.bin", NONE);
+    d.pick(&mut w, "b.bin", CTRL);
+    d.key(&mut w, egui::Key::F2, NONE);
+    assert!(w.write_prompt().is_none(), "选了两项按 F2 竟然摆出了改名框");
+    assert_eq!(
+        w.key_notice(),
+        Some(crate::filewin::select::refusal(Action::Rename, 2).as_str())
+    );
+    d.pick(&mut w, "b.bin", NONE);
+    d.key(&mut w, egui::Key::F2, NONE);
+    let p = w.write_prompt().expect("F2 没摆出改名框").clone();
+    assert_eq!(p.src_name, "b.bin");
+    assert_eq!(p.text, "b.bin");
+    assert!(
+        w.key_notice().is_none(),
+        "改名框摆出来了，上一句「做不了」还挂着"
+    );
+}
+
+/// Ctrl+A：全选（两向相等），而且那一帧**画出来的**选中色盖满了视野里每一行。
+#[test]
+fn ctrl_a_picks_everything() {
+    let names = ["a.bin", "b.bin", "c.bin", "sub"];
+    let mut w = window(vec![
+        file("a.bin"),
+        file("b.bin"),
+        file("c.bin"),
+        dir("sub"),
+    ]);
+    let mut d = Drive::new();
+    d.key(&mut w, egui::Key::A, CTRL);
+    assert_eq!(picked(&w), set(&names));
+    assert_eq!(w.tally.picked_rows, vec![0, 1, 2, 3]);
+}
+
+/// 打字跳转：敲「ze」跳到 zeta（不分大小写）；停一秒以上再敲一个不存在的开头 ⇒ **出声**。
+#[test]
+fn typing_jumps_to_the_first_name_with_that_prefix() {
+    let mut w = window(vec![file("alpha"), file("Zeta.txt"), file("zulu")]);
+    let mut d = Drive::new();
+    d.frame(&mut w, vec![egui::Event::Text("z".into())]);
+    assert_eq!(picked(&w), set(&["Zeta.txt"]));
+    // ⚠ 驱动器每帧走一秒 ⇒ 下一个字**正好**隔一秒（不算停顿，接着攒）。
+    d.frame(&mut w, vec![egui::Event::Text("u".into())]);
+    assert_eq!(picked(&w), set(&["zulu"]), "「zu」没接着攒");
+    // 停两秒 ⇒ 重来；「q」谁都不是 ⇒ 出声，选中不动。
+    d.t += 2.0;
+    let _ = d.frame(&mut w, vec![egui::Event::Text("q".into())]);
+    let painted = d.frame(&mut w, Vec::new());
+    assert_eq!(picked(&w), set(&["zulu"]));
+    assert!(
+        painted.iter().any(|(t, _)| t == "没有以「q」开头的项"),
+        "没找到却一句话都没画"
+    );
+}
+
+/// 🔴 键盘**不抢**：搜索框里正在打字 / 有模态框摆着 / 画的是命中那一摞 —— 三形各按一下 ↓，选中态都不动。
+/// 反空真：同一个窗口、同一个键，闸都撤掉之后 ↓ 真的动了。
+#[test]
+fn keys_do_not_leak_past_a_focused_field_a_modal_or_the_hit_list() {
+    let mut w = window(vec![file("a.bin"), file("b.bin")]);
+    let mut d = Drive::new();
+    // ① 模态框（新建目录那个框）。
+    assert!(w.begin_mkdir());
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    d.key(&mut w, egui::Key::Delete, NONE);
+    assert!(picked(&w).is_empty(), "模态框摆着，↓ 却动了列表");
+    w.cancel_write();
+    // ② 搜索框里有字 ⇒ 画的是命中那一摞，而且搜索框拿着焦点。
+    crate::filewin::find::testing::type_into_search(&d.ctx, &mut w, "a");
+    assert!(w.showing_hits());
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    assert!(picked(&w).is_empty(), "搜索框里正在打字，↓ 却动了列表");
+    // ③ 清空搜索框（还拿着焦点）⇒ 画回目录列表，但字仍归搜索框。
+    w.query.clear();
+    assert!(!w.showing_hits());
+    assert!(d.ctx.egui_wants_keyboard_input(), "前提：搜索框还拿着焦点");
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    assert!(picked(&w).is_empty(), "搜索框拿着焦点，↓ 却动了列表");
+    // 反空真：点一下列表里的行 ⇒ 焦点交回列表 ⇒ ↓ 真的动了。
+    d.pick(&mut w, "a.bin", NONE);
+    assert!(
+        !d.ctx.egui_wants_keyboard_input(),
+        "点了行，焦点却没交回列表"
+    );
+    d.key(&mut w, egui::Key::ArrowDown, NONE);
+    assert_eq!(picked(&w), set(&["b.bin"]));
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🔴 选中态 == 批量那一摞（Delete 键 → 一次问完 → 线上）
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴🔴 **选中哪几项，删的就是哪几项 —— 逐项相等，两向。**
+///
+/// 走的是生产那一整条：真合成 Ctrl+点击选中三项 → 按 Delete → `perform` →
+/// `start_writes` → `run_writes`（围栏 → **一次问完**）→ 看板上摆着的那一问 →
+/// 答「做」→ 通道 → 合成后端收到的那几行 `files-delete`。
+///
+/// 两侧**异源**：期望是手写的三个名字；实得一侧是「问的那一摞」与「线上那几行」。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_batch_that_reaches_the_wire_is_exactly_the_selection() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    let wired = wire_up(
+        "keys-batch",
+        FakeBackend::new(&["files-delete", "files-ls"], Declared::default()),
+    )
+    .await;
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("keys-batch")),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![
+            file("a.bin"),
+            file("b.bin"),
+            file("c.bin"),
+            dir("sub"),
+            file("d.bin"),
+        ],
+    );
+    w.attach_line(wired.line.clone());
+    let mut d = Drive::new();
+    d.pick(&mut w, "a.bin", NONE);
+    d.pick(&mut w, "c.bin", CTRL);
+    d.pick(&mut w, "sub", CTRL);
+    let want = set(&["a.bin", "c.bin", "sub"]);
+    assert_eq!(picked(&w), want, "前提：选中态没选成那三项");
+
+    d.key(&mut w, egui::Key::Delete, NONE);
+    for _ in 0..400 {
+        if w.write_board.is_asking() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let asking = w.write_board.asking();
+    let asked: Vec<String> = {
+        let mut v: Vec<String> = asking
+            .iter()
+            .map(|op| match op {
+                crate::filewin::writeops::WriteOp::Delete { path, .. } => {
+                    crate::filewin::source::remote_basename(path).to_string()
+                }
+                other => panic!("批量那一摞里混进了别的操作：{other:?}"),
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    assert_eq!(asked, want, "问的那一摞与选中态不等（两向）");
+    // 目录那一项带着「是目录」走（删目录与删文件是两条不同的远端调用）。
+    assert!(asking.iter().any(|op| matches!(
+        op,
+        crate::filewin::writeops::WriteOp::Delete { path, is_dir: true } if path == "/srv/data/sub"
+    )));
+    assert!(
+        wired.cmds().is_empty(),
+        "还没答就上了线：{:?}",
+        wired.cmds()
+    );
+
+    assert!(w.write_board.settle(true));
+    for _ in 0..400 {
+        if w.write_board.rounds() > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let out = w.write_board.last().expect("那一摞没跑完");
+    assert_eq!(out.ok, 3, "实得 {out:?}");
+    let on_wire: Vec<String> = {
+        let mut v: Vec<String> = wired
+            .log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r["cmd"] == "files-delete")
+            .map(|r| r["args"]["rel"].as_str().unwrap_or("").to_string())
+            .collect();
+        v.sort();
+        v
+    };
+    assert_eq!(
+        on_wire, want,
+        "线上那几行 files-delete 与选中态不等（两向）"
+    );
+    // 跑完 ⇒ 选中清掉（那几个名字已经不在了），下一帧重列。
+    d.frame(&mut w, Vec::new());
+    assert!(picked(&w).is_empty(), "删完了选中还挂着那几个名字");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// FW2：右键菜单 == 当前选中能做的动作（两向）
+// ════════════════════════════════════════════════════════════════════════
+
+/// 摆着的菜单上**画出来的**那几段字（只收整个落在菜单那一块里的，免得收到底下的行）。
+fn menu_texts(d: &Drive, w: &FileWindow, painted: &[PaintedText]) -> Vec<String> {
+    let m = w.menu().expect("菜单没摆出来");
+    let area = d
+        .ctx
+        .memory(|mem| mem.area_rect(FileWindow::menu_id(m.serial)))
+        .expect("菜单那一块没有矩形 —— 它没被画出来");
+    let mut v: Vec<String> = painted
+        .iter()
+        .filter(|(_, r)| area.contains_rect(*r))
+        .map(|(t, _)| t.clone())
+        .collect();
+    v.sort();
+    v
+}
+
+/// 右键点 `target`（先按 `pre` 那几下选好），跑到菜单真画出来那一帧，回菜单上的字。
+fn open_menu(
+    rows: Vec<Row>,
+    pre: &[(&str, egui::Modifiers)],
+    target: &str,
+) -> (Drive, FileWindow, Vec<String>) {
+    let mut w = window(rows);
+    let mut d = Drive::new();
+    for (n, m) in pre {
+        d.pick(&mut w, n, *m);
+    }
+    d.click_name(&mut w, target, egui::PointerButton::Secondary, NONE);
+    assert!(w.menu().is_some(), "右键点了「{target}」，菜单没摆出来");
+    // 第一帧是 egui 弹层的「量尺寸」那一趟（不画）⇒ 再跑一帧才是真画。
+    let painted = d.frame(&mut w, Vec::new());
+    let texts = menu_texts(&d, &w, &painted);
+    (d, w, texts)
+}
+
+/// 🔴🔴 **菜单项 == 当前选中能做的动作 —— 逐格手写，两向相等。**
+///
+/// 期望一侧是**手写**的字（不调 `actions_for`，否则两侧同源恒真）；
+/// 实得一侧是 egui 这一帧**真画在菜单那一块里**的字。
+#[test]
+fn the_menu_lists_exactly_what_the_selection_allows() {
+    let big = crate::sftp_pool::MAX_EDIT_BYTES as u64 + 1;
+    let lossy = "\u{FFFD}x";
+    // (情形, 行, 先选, 右键点谁, 菜单上该有的字)
+    let cases: Vec<(
+        &str,
+        Vec<Row>,
+        Vec<(&str, egui::Modifiers)>,
+        &str,
+        Vec<&str>,
+    )> = vec![
+        (
+            "一个普通文件",
+            vec![file("a.bin"), file("f.txt")],
+            vec![],
+            "f.txt",
+            vec!["编辑", "复制", "下载", "改名", "权限", "删除"],
+        ),
+        (
+            "一个目录",
+            vec![file("a.bin"), dir("sub")],
+            vec![],
+            "sub",
+            vec!["打开", "改名", "权限", "删除"],
+        ),
+        (
+            "一个超编辑上限的文件",
+            vec![file("a.bin"), row("h.bin", false, big, false)],
+            vec![],
+            "h.bin",
+            vec!["复制", "下载", "改名", "权限", "删除"],
+        ),
+        (
+            "一个有损名文件",
+            vec![file("a.bin"), row(lossy, false, 3, true)],
+            vec![],
+            lossy,
+            vec![MENU_EMPTY],
+        ),
+        (
+            "右键落在选中里：两项",
+            vec![file("a.bin"), file("b.bin"), file("c.bin")],
+            vec![("a.bin", NONE), ("c.bin", CTRL)],
+            "c.bin",
+            vec!["删除这 2 项"],
+        ),
+        (
+            "右键落在选中外：换成只选它",
+            vec![file("a.bin"), file("b.bin"), dir("c")],
+            vec![("a.bin", NONE), ("b.bin", CTRL)],
+            "c",
+            vec!["打开", "改名", "权限", "删除"],
+        ),
+        (
+            "两项混着有损名",
+            vec![row(lossy, false, 3, true), file("b.bin"), file("c.bin")],
+            vec![(lossy, NONE), ("c.bin", CTRL)],
+            "c.bin",
+            vec![MENU_EMPTY],
+        ),
+    ];
+    for (what, rows, pre, target, want) in cases {
+        let (_, _, got) = open_menu(rows, &pre, target);
+        let mut want: Vec<String> = want.iter().map(|s| s.to_string()).collect();
+        want.sort();
+        assert_eq!(
+            got, want,
+            "「{what}」那一格：菜单上画的与该有的不等（两向）"
+        );
+    }
+}
+
+/// 🔴 菜单上**每一项点下去都落到了对的地方**（对一个普通文件、一个目录）。
+///
+/// 一项一格：点完之后窗口状态里那件事**恰好**发生在右键点的那一行上。
+#[test]
+fn every_menu_item_lands_on_the_row_it_was_opened_for() {
+    type Check = fn(&FileWindow) -> Result<(), String>;
+    let on_file: Vec<(&str, Check)> = vec![
+        ("编辑", |w| {
+            let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
+            e.contains("运行时").then_some(()).ok_or(e)
+        }),
+        ("复制", |w| match w.copy_prompt() {
+            Some(p) if p.src_name == "f.txt" => Ok(()),
+            other => Err(format!("{other:?}")),
+        }),
+        ("下载", |w| match w.pull_ask() {
+            Some(a) if a.src_name() == "f.txt" => Ok(()),
+            other => Err(format!("{other:?}")),
+        }),
+        ("改名", |w| match w.write_prompt() {
+            Some(p) if p.src_name == "f.txt" && p.text == "f.txt" => Ok(()),
+            other => Err(format!("{other:?}")),
+        }),
+        ("权限", |w| match w.write_prompt() {
+            Some(p) if p.src_name == "f.txt" && p.text.is_empty() => Ok(()),
+            other => Err(format!("{other:?}")),
+        }),
+        ("删除", |w| {
+            // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
+            let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
+            e.contains("运行时").then_some(()).ok_or(e)
+        }),
+    ];
+    for (label, check) in on_file {
+        let (mut d, mut w, texts) = open_menu(vec![file("a.bin"), file("f.txt")], &[], "f.txt");
+        assert!(
+            texts.iter().any(|t| t == label),
+            "菜单上没有「{label}」：{texts:?}"
+        );
+        click_menu_item(&mut d, &mut w, label);
+        assert!(w.menu().is_none(), "点了「{label}」菜单还摆着");
+        check(&w).unwrap_or_else(|e| panic!("点了「{label}」之后状态不对：{e}"));
+    }
+    // 目录：「打开」⇒ 进去。
+    let (mut d, mut w, _) = open_menu(vec![file("a.bin"), dir("sub")], &[], "sub");
+    click_menu_item(&mut d, &mut w, "打开");
+    assert_eq!(w.cwd, "/srv/data/sub");
+}
+
+/// 在菜单上点 `label` 那一项（两帧：移过去 · 按下松开）。
+fn click_menu_item(d: &mut Drive, w: &mut FileWindow, label: &str) {
+    let painted = d.frame(w, Vec::new());
+    let area = d
+        .ctx
+        .memory(|mem| mem.area_rect(FileWindow::menu_id(w.menu().unwrap().serial)))
+        .unwrap();
+    let hits: Vec<egui::Rect> = rects_of(&painted, label)
+        .into_iter()
+        .filter(|r| area.contains_rect(*r))
+        .collect();
+    assert_eq!(hits.len(), 1, "菜单上「{label}」不是恰好一处");
+    let pos = hits[0].center();
+    d.frame(w, vec![egui::Event::PointerMoved(pos)]);
+    d.frame(w, crate::filewin::rows::testing::click_at(pos));
+}
+
+/// 点菜单外面 ⇒ 菜单收掉，**什么都不做**；右键点另一行 ⇒ 换成那一行的菜单（不是只关不开）。
+#[test]
+fn clicking_elsewhere_closes_the_menu_and_another_right_click_reopens_it() {
+    let (mut d, mut w, _) = open_menu(vec![file("a.bin"), dir("sub"), file("f.txt")], &[], "f.txt");
+    let first = w.menu().unwrap().serial;
+    // 在另一行上右键 ⇒ 新菜单（对它说话）。
+    d.click_name(&mut w, "sub", egui::PointerButton::Secondary, NONE);
+    let m = w.menu().expect("第二次右键只把菜单关了，没开新的");
+    assert_ne!(m.serial, first);
+    assert_eq!(picked(&w), set(&["sub"]));
+    assert!(m.actions.contains(&Action::Open));
+    // 点空白处（列表下面远处）⇒ 收掉、什么都不做。
+    let far = egui::pos2(600.0, 760.0);
+    d.frame(&mut w, vec![egui::Event::PointerMoved(far)]);
+    d.frame(&mut w, crate::filewin::rows::testing::click_at(far));
+    assert!(w.menu().is_none(), "点了别处菜单还摆着");
+    assert_eq!(w.cwd, "/srv/data", "点别处关菜单，竟然顺手做了一件事");
+    assert!(w.write_prompt().is_none() && w.copy_prompt().is_none());
+}

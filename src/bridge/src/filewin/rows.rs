@@ -85,6 +85,31 @@ pub struct RenderTally {
     /// 这一颗走 `download` 那两问（**本机**落点）。合成一个就得再编一个
     /// 「点的是什么」的枚举，而两支的下一跳完全不同。
     pub download_clicked: Option<usize>,
+    /// 🔴〔FW2〕这一帧哪一行被**单击**了（整行那块，不是按钮），带着当时按着的修饰键。
+    ///
+    /// 与 [`Self::clicked`]（**双击** = 打开）刻意分开：单击改选中态，双击才动目录。
+    /// 双击的第一下照样落在这里 —— 那正是文件管理器的手感（先选中，再打开）。
+    pub picked_click: Option<(usize, egui::Modifiers)>,
+    /// 🔴〔FW2〕这一帧哪一行被**右键**点了（`None` = 没有）。菜单摆在哪儿由窗口读指针位置。
+    pub menu_clicked: Option<usize>,
+    /// 🔴〔FW2〕这一帧被画成「**选中**」的那几行（下标，按画的顺序）。
+    ///
+    /// 与 [`Self::revealed_row`] 同一条理由：背景色判据看不见 ⇒ 这一格是那件事的
+    /// **可判读出**，而且与那块背景色在**同一处**写下（`paint_one_row` 前面同一个 `if`）。
+    /// ⚠ 只含**真被画出来的**那几行（虚拟滚动）—— 它不是「选中了几项」，是「这一帧画了几块选中色」。
+    pub picked_rows: Vec<usize>,
+    /// 🔴〔FW1〕这一帧被画成「**键盘光标**」的那一行（`None` = 光标不在视野里 / 没有光标）。
+    pub cursor_row: Option<usize>,
+}
+
+/// 〔FW1+FW2〕一行在选中态里是什么样子 —— [`paint_one_row`] 要的那两格。
+///
+/// ⚠ 刻意不把 [`super::select::Selection`] 整个递进 `paint_one_row`：画一行的函数
+/// 只需要知道「我被选中了吗 · 我是光标吗」，不需要知道选中态怎么记。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Mark {
+    pub picked: bool,
+    pub cursor: bool,
 }
 
 /// 命中那一摞这一趟画了什么。
@@ -132,6 +157,10 @@ pub struct RowHit {
     pub download: bool,
     /// 〔第九刀〕这一行的「编辑」被**单击**了。
     pub edit: bool,
+    /// 〔FW2〕整行那块被**单击**了（带修饰键）。
+    pub picked: Option<egui::Modifiers>,
+    /// 〔FW2〕整行那块被**右键**点了。
+    pub menu: bool,
 }
 
 /// 画一屏文件行。**这里是 `show_rows`，改成 `show` 会被判据当场逮住。**
@@ -144,12 +173,16 @@ pub struct RowHit {
 /// **别再为了省一个参数把它抄回去。**
 ///
 /// `scroll_offset_y`：`None` = 由 egui 自己管（生产）；`Some(y)` = 钉死偏移（量帧时用）。
+///
+/// `picked`〔FW1+FW2〕：选中态（`None` = 这一趟不画选中，判据那几条量虚拟滚动的就这么喂）。
+/// ⚠ 每一行只问两次集合查找（`is_picked` / `is_cursor`），**只对真被画出来的行问**。
 pub fn show_file_rows(
     ui: &mut Ui,
     rows: &[Listed],
     tally: &mut RenderTally,
     scroll_offset_y: Option<f32>,
     reveal: Option<&str>,
+    picked: Option<&super::select::Selection>,
 ) {
     tally.total_rows = rows.len();
     let mut area = ScrollArea::vertical().auto_shrink([false; 2]);
@@ -168,7 +201,23 @@ pub fn show_file_rows(
             if revealed {
                 tally.revealed_row = Some(i);
             }
-            let hit = paint_one_row(ui, i, r, revealed);
+            let mark = picked.map_or(Mark::default(), |s| Mark {
+                picked: s.is_picked(&r.name),
+                cursor: s.is_cursor(&r.name),
+            });
+            if mark.picked {
+                tally.picked_rows.push(i);
+            }
+            if mark.cursor {
+                tally.cursor_row = Some(i);
+            }
+            let hit = paint_one_row(ui, i, r, revealed, mark);
+            if let Some(m) = hit.picked {
+                tally.picked_click = Some((i, m));
+            }
+            if hit.menu {
+                tally.menu_clicked = Some(i);
+            }
             if hit.activated {
                 tally.clicked = Some(i);
             }
@@ -285,16 +334,24 @@ pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut HitTally) {
 /// ⚠ 买不到的那一半照旧写在这儿：**真机上鼠标双击能不能触发，本机判不了**
 /// （`XDG_SESSION_TYPE=tty`，没有图形会话，也就没有真事件源）。
 /// 这里买到的是「**egui 收到这样一串事件之后，认出来的是哪一行**」。
-fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool) -> RowHit {
+fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool, mark: Mark) -> RowHit {
+    let band_rect = egui::Rect::from_min_size(
+        ui.cursor().min,
+        egui::vec2(ui.available_width(), ROW_HEIGHT),
+    );
     // 🔴〔第十刀〕**就是这个文件** —— 一块背景色。
     //    与 `RenderTally::revealed_row` 在同一处写下（见那个字段的头注）。
-    if revealed {
+    // 🔴〔FW2〕**选中**用同一块选中色（与 `RenderTally::picked_rows` 在调用方同一个 `if` 里记下）。
+    if revealed || mark.picked {
         let vis = ui.visuals().selection.bg_fill;
-        let band = egui::Rect::from_min_size(
-            ui.cursor().min,
-            egui::vec2(ui.available_width(), ROW_HEIGHT),
-        );
-        ui.painter().rect_filled(band, 2.0, vis);
+        ui.painter().rect_filled(band_rect, 2.0, vis);
+    }
+    // 🔴〔FW1〕**键盘光标**：一圈描边（不是底色 —— Ctrl 取消选中之后光标还在那一行，
+    //    那时它没有底色，只剩这一圈；两件事在屏幕上分得开）。
+    if mark.cursor {
+        let stroke = ui.visuals().selection.stroke;
+        ui.painter()
+            .rect_stroke(band_rect, 2.0, stroke, egui::StrokeKind::Inside);
     }
     let inner = ui.horizontal(|ui| {
         // 🔴〔补齐五项 2026-09-23〕**符号链接有自己的字形**：`🔗`。
@@ -397,12 +454,19 @@ fn paint_one_row(ui: &mut Ui, index: usize, r: &Listed, revealed: bool) -> RowHi
     );
     // ⚠ `Id` 按**行下标**造（不是按名字）：下标随滚动是绝对的、且同一行跨帧稳定，
     //   而名字会重（同名文件在不同目录、或列表里刚好两行同名）。
+    // 🔴〔FW1〕`Sense::CLICK` 而**不是** `Sense::click()`：后者带 `FOCUSABLE`，
+    //    点一下这一行就把键盘焦点给了它，而 egui 对「有焦点的控件」会拿方向键去挪焦点
+    //    （`Memory` 的 `focus_direction`）⇒ 按 ↓ 同时挪了我们的光标和 egui 的焦点框。
+    //    行不需要 egui 的焦点：键盘归列表这件事由窗口在点行那一刻明说（清掉焦点）。
     let row = ui.interact(
         full,
         ui.id().with(("filewin-row", index)),
-        egui::Sense::click(),
+        egui::Sense::CLICK,
     );
+    let mods = ui.input(|i| i.modifiers);
     RowHit {
+        picked: row.clicked().then_some(mods),
+        menu: row.secondary_clicked(),
         activated: row.double_clicked(),
         copy: btns.copy.is_some_and(|b| b.clicked()),
         rename: btns.rename.is_some_and(|b| b.clicked()),
@@ -535,7 +599,7 @@ pub fn render_headless(
     let out = ctx.run_ui(input, |ui| {
         // 🔴 调的是**生产那个函数**，不是它的副本 —— 见 `show_file_rows` 的注释。
         let mut t = RenderTally::default();
-        show_file_rows(ui, rows, &mut t, Some(scroll_offset_y), None);
+        show_file_rows(ui, rows, &mut t, Some(scroll_offset_y), None, None);
         tally = t;
     });
     out.drop_without_applying_deltas();
