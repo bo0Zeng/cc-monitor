@@ -418,16 +418,23 @@ mod tests {
         let calls = mutation_calls();
         let mut starts: Vec<usize> = Vec::new();
         let mut at = 0usize;
-        for line in prod.split_inclusive('\n') {
-            let l = line.trim_end();
-            if l.split_whitespace().next().is_some_and(|w| w == "fn")
-                || l.split_whitespace().take(2).collect::<Vec<_>>() == ["pub", "fn"]
+        // ⚠ 循环变量刻意**不叫 `line`**：`needle_anchor_registry` 的语料变量识别是**按名字、
+        //   整份文件**算的，本文件别处有一句 `let t = line.trim()`（与这里无关的另一个作用域）——
+        //   这里要是也叫 `line`，那一句会被连带认成语料派生，两处**旧的** `t.strip_prefix("…")`
+        //   就被算进那条零富余的递减棘轮（现打：22 > 20，红在桥那一侧）。
+        for fn_row in prod.split_inclusive('\n') {
+            let fn_row_t = fn_row.trim_end();
+            if fn_row_t
+                .split_whitespace()
+                .next()
+                .is_some_and(|w| w == "fn")
+                || fn_row_t.split_whitespace().take(2).collect::<Vec<_>>() == ["pub", "fn"]
             {
-                if !line.starts_with(' ') && !line.starts_with('\t') {
+                if !fn_row.starts_with(' ') && !fn_row.starts_with('\t') {
                     starts.push(at);
                 }
             }
-            at += line.len();
+            at += fn_row.len();
         }
         let mut bounds: Vec<(usize, usize)> = Vec::new();
         let head_end = starts.first().copied().unwrap_or(prod.len());
