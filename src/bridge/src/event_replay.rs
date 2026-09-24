@@ -65,7 +65,7 @@ struct Inner {
 ///    单会话留下的字节 p50 1.50 MB、最大 2.45 MB（全留时最大的那份 95 MB）。
 ///
 /// ⚠ 这些数是**记录行的字节**，不是 `JsonlLinePayload` 在堆上的真大小（解析后的结构体
-///    另有开销，未量）；量具与读数在 `设计/10 §9`。
+///    另有开销，未量）；量具与读数在 `设计/10 §10`。
 pub const REPLAY_TAIL_KEEP: usize = 600;
 
 /// 修剪的摊还余量：一个会话超过 `KEEP + SLACK` 才修剪回 `KEEP`。
@@ -372,7 +372,7 @@ impl EventReplay {
     /// 只留尾巴 [`REPLAY_TAIL_KEEP`] 条。当场修剪一次；返回这次丢掉的条数。幂等。
     ///
     /// ⚠ 登记是**单向**的：之后若索引再拿不到（远端断线 / 后端被换成老版本），F5 之后那个 tab
-    /// 只剩尾巴，上翻到头就没了 —— 要等索引恢复。如实登记在 `设计/10 §9` 的「买不到」。
+    /// 只剩尾巴，上翻到头就没了 —— 要等索引恢复。如实登记在 `设计/10 §10` 的「买不到」。
     pub fn keep_tail_only(&self, session_id: &str) -> usize {
         let mut inner = self.inner.lock();
         let n = inner
