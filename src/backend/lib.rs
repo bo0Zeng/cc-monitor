@@ -363,7 +363,13 @@ pub const PROTO_VERSION: u32 = 1;
 /// 两个命令面各 ＋6（写面只从 `inbound.rs` 那一扇门进，见 `files::module_boundary_guard`）；
 /// ② `hello.capabilities` 的 `rbind-token` 从此有人认、有人发。
 /// ★ re-embed 归发版那一拍（同 p2d…p2n 的登记）；本机 `--native` 那份由合并那一拍重打。
-pub const BUILD_ID: &str = "p2o-files-write-and-rbind-token";
+///
+/// ★★★ **p2p-readface-outline-acctiso-spawn-504**（2026-09-24，第二波合并那一拍）：
+/// 子命令 ＋21 —— C1 只读查询面八条上帧面（及其自动派生的 CLI 面）· SE1 `--list-user-inputs` ·
+/// A3 `--acct-iso-status` / `--acct-iso-shellinit` · BS1b `bus-spawn`（两个命令面）；
+/// ＋ 一处**行为**变更（R2：中转层 1 传输失败回 504 并说清卡在哪一步）。
+/// ★ re-embed 归发版那一拍（同 p2d…p2o）。
+pub const BUILD_ID: &str = "p2p-readface-outline-acctiso-spawn-504";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
