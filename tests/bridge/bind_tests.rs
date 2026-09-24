@@ -664,3 +664,293 @@ fn the_launch_token_value_never_reaches_a_log_macro() {
         "过了脱敏的 `tracing!` 不是 2 处 —— 要么调用点搬家了、要么本条抽错了"
     );
 }
+
+// ═══════ `设计/80 §8.7` 步 4 / 步 5（第二波 T4）：↗ 远端那一格的分派 ═══════════════════
+//
+// 🔴 **下面每一条都是平台无关的那一段**：`verify` 与 `rescan` 注入成假的，判的是分派本身
+//    （哪条路先、什么时候退、失败说哪句话）。「窗口真的到了前台」本机一格都买不到。
+
+const T4_TOKEN_HWND: isize = 0x4321 + 9692; // = t3_entry(9692, …) 的 hwnd
+const T4_TITLE_CACHED: isize = 0x9001;
+const T4_TITLE_RESCANNED: isize = 0x9002;
+
+fn t4_title_binding(hwnd: isize) -> SidHwndBinding {
+    SidHwndBinding {
+        hwnd,
+        owner_pid: 1,
+        owner_proc_start: 0,
+        ps_pid: 0,
+        ps_proc_start: String::new(),
+        title_at_bind: "ccm-rbind-s".into(),
+        registered_at: 0,
+    }
+}
+
+/// 一格真值表的入参。`table_hit`：本地表里有没有这个令牌那一条（没令牌时它也在表里 —— 正好验「没令牌就不去查」）。
+#[derive(Clone, Copy, Debug)]
+struct T4Case {
+    has_token: bool,
+    table_hit: bool,
+    token_ok: bool,
+    title_cached: bool,
+    rescan_finds: bool,
+    title_ok: bool,
+}
+
+/// 跑一格：返回（结果, 现扫次数）。
+fn t4_run(c: T4Case) -> (Result<SidHwndBinding, String>, usize) {
+    let dir = std::env::temp_dir().join("ccm-t4-dispatch");
+    let entries = if c.table_hit {
+        vec![t3_entry(9692, &t3_marker(T3_TOK))]
+    } else {
+        vec![]
+    };
+    let reg = t3_registry(dir, entries);
+    let cache = RemoteHwndCache::new();
+    if c.title_cached {
+        cache
+            .by_sid
+            .write()
+            .insert("s".into(), t4_title_binding(T4_TITLE_CACHED));
+    }
+    let rescans = std::cell::Cell::new(0usize);
+    let verify = |b: &SidHwndBinding| -> Result<(), String> {
+        let ok = if b.hwnd == T4_TOKEN_HWND {
+            c.token_ok
+        } else {
+            c.title_ok
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(format!("假校验：{:#x} 不在了", b.hwnd))
+        }
+    };
+    let rescan = |sid: &str| -> bool {
+        rescans.set(rescans.get() + 1);
+        if c.rescan_finds {
+            cache
+                .by_sid
+                .write()
+                .insert(sid.to_string(), t4_title_binding(T4_TITLE_RESCANNED));
+        }
+        c.rescan_finds
+    };
+    let tok = c.has_token.then_some(T3_TOK);
+    let r = resolve_remote_front("s", tok, &reg, &cache, &verify, &rescan);
+    (r, rescans.get())
+}
+
+/// 规格 —— **独立于生产代码手写的**判定表：期望拿到哪个 hwnd（`Err` = 拉不到）、现扫几次。
+fn t4_spec(c: T4Case) -> (Option<isize>, usize) {
+    if c.has_token && c.table_hit && c.token_ok {
+        return (Some(T4_TOKEN_HWND), 0); // 令牌路命中：一次现扫都不许有（那是 4 秒的白等）
+    }
+    // 标题退路，与改之前 `lib.rs` 那一段逐步相同
+    if c.title_cached {
+        if c.title_ok {
+            return (Some(T4_TITLE_CACHED), 0);
+        }
+        // 缓存那个校验不过 ⇒ 忘掉、现扫一次、再校验
+        return if c.rescan_finds && c.title_ok {
+            (Some(T4_TITLE_RESCANNED), 1)
+        } else {
+            (None, 1)
+        };
+    }
+    if !c.rescan_finds {
+        return (None, 1);
+    }
+    if c.title_ok {
+        (Some(T4_TITLE_RESCANNED), 1)
+    } else {
+        (None, 2) // 扫到了、校验不过 ⇒ 忘掉再扫一次、仍不过
+    }
+}
+
+/// ★★ 步 4 ＋ 步 5 的正题：**2⁶ = 64 格真穷举**，每一格对上独立手写的规格；
+/// 失败那几格说的话**只由 `has_token` 一个布尔决定**（`§8.5 ②`）。
+#[test]
+fn the_front_dispatch_goes_token_first_then_title_and_blames_only_the_token_bit() {
+    let mut n = 0usize;
+    let mut errs_with = 0usize;
+    let mut errs_without = 0usize;
+    for bits in 0u8..64 {
+        let b = |i: u8| bits & (1 << i) != 0;
+        let c = T4Case {
+            has_token: b(0),
+            table_hit: b(1),
+            token_ok: b(2),
+            title_cached: b(3),
+            rescan_finds: b(4),
+            title_ok: b(5),
+        };
+        let (got, rescans) = t4_run(c);
+        let (want_hwnd, want_rescans) = t4_spec(c);
+        assert_eq!(
+            got.as_ref().ok().map(|b| b.hwnd),
+            want_hwnd,
+            "{c:?} 拿到的窗口不对：{got:?}"
+        );
+        assert_eq!(rescans, want_rescans, "{c:?} 现扫次数不对");
+        if let Err(msg) = got {
+            // ③ 归因只看一个布尔：开头二选一，而且**只**由 has_token 决定。
+            let with = msg.starts_with(FRONT_FAIL_WITH_TOKEN);
+            let without = msg.starts_with(FRONT_FAIL_WITHOUT_TOKEN);
+            assert!(
+                with != without,
+                "{c:?} 的失败说法两种开头都不是 / 都是：{msg}"
+            );
+            assert_eq!(
+                with, c.has_token,
+                "{c:?} 的失败归因与「有没有令牌」对不上：{msg}"
+            );
+            // 令牌那个窗口「在表里、但校验不过」⇒ 把校验说的原因带出来（不是只说「关了」）
+            let gone = c.has_token && c.table_hit && !c.token_ok;
+            assert_eq!(
+                msg.contains(&format!("{:#x}", T4_TOKEN_HWND)),
+                gone,
+                "{c:?}：令牌窗口校验不过的原因该带出来、且只在那一格带：{msg}"
+            );
+            if c.has_token {
+                errs_with += 1
+            } else {
+                errs_without += 1
+            }
+        }
+        n += 1;
+    }
+    assert_eq!(n, 64);
+    // 反空真：两类失败都真的出现过（否则上面那条「只由一个布尔决定」是零命中的绿）。
+    assert!(
+        errs_with > 0 && errs_without > 0,
+        "失败格只出现了一类：带令牌 {errs_with} · 不带 {errs_without}"
+    );
+}
+
+/// ★ 账本三件事：记 · 以 `None` 重新宣告 ⇒ 删（旧令牌不许粘着）· 忘。
+#[test]
+fn the_token_book_forgets_on_a_tokenless_reannounce() {
+    let book = RbindTokenBook::new();
+    book.note("s1", Some(T3_TOK));
+    assert_eq!(book.token_of("s1").as_deref(), Some(T3_TOK));
+    book.note("s1", None);
+    assert_eq!(
+        book.token_of("s1"),
+        None,
+        "重新宣告成「没令牌」之后旧令牌还粘着 —— ↗ 会拉到不属于它的窗口"
+    );
+    book.note("s2", Some(T3_TOK));
+    book.forget("s2");
+    assert_eq!(book.token_of("s2"), None);
+}
+
+/// ★ 远端会话归档（`Archive`）⇒ 令牌跟着忘；只是闲了（`Idle`）⇒ 不忘。口径与那条标题绑定**同一条**。
+///
+/// ⚠ 用的是进程里那本全局账本 ⇒ sid 取本条独有的名字，不与别的判据串味。
+#[test]
+fn archiving_a_remote_session_takes_its_token_out_of_the_book_but_idling_does_not() {
+    let cache = RemoteHwndCache::new();
+    let (a, i) = ("t4-archive-only-sid", "t4-idle-only-sid");
+    remote_rbind_tokens().note(a, Some(T3_TOK));
+    remote_rbind_tokens().note(i, Some(T3_TOK));
+    cache.apply_remote_disposition(a, &crate::ssh_source::RemovedDisposition::Archive);
+    cache.apply_remote_disposition(
+        i,
+        &crate::ssh_source::RemovedDisposition::Idle {
+            origin: "aya".into(),
+        },
+    );
+    assert_eq!(
+        remote_rbind_tokens().token_of(a),
+        None,
+        "会话归档了、令牌还在账本里"
+    );
+    assert_eq!(
+        remote_rbind_tokens().token_of(i).as_deref(),
+        Some(T3_TOK),
+        "会话只是闲了，令牌却被忘了"
+    );
+    remote_rbind_tokens().forget(i);
+}
+
+/// ★★ LF1「远端绑定落盘」：**monitor 重启之后 ↗ 照样按令牌拉得到** —— 不靠新的落盘文件。
+///
+/// `令牌 → HWND` 那一半从 `ps-registry/*.json` 重载（生产那条 `scan_registry_dir`）；
+/// `sid → 令牌` 那一半是重连后 `SessionAdded` 重新喂进来的（这里用 `note` 模拟那一下）。
+/// ⚠ 本条不证「重连后后端一定会再宣告」—— 那是 `ssh_source` 重连那一段的事，另有判据。
+#[test]
+fn after_a_monitor_restart_the_token_path_still_resolves_from_disk() {
+    let dir = std::env::temp_dir().join(format!("ccm-t4-restart-{}", std::process::id()));
+    let reg_dir = dir.join("ps-registry");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&reg_dir).unwrap();
+    std::fs::write(
+        reg_dir.join("9692.json"),
+        serde_json::to_string(&t3_entry(9692, &t3_marker(T3_TOK))).unwrap(),
+    )
+    .unwrap();
+    // —— 「重启」：一张全新的表，只从盘上读 ——
+    let reg = t3_registry(
+        dir.clone(),
+        scan_registry_dir(&reg_dir).into_values().collect(),
+    );
+    let book = RbindTokenBook::new();
+    book.note("s-after-restart", Some(T3_TOK));
+    let rescans = std::cell::Cell::new(0usize);
+    let got = resolve_remote_front(
+        "s-after-restart",
+        book.token_of("s-after-restart").as_deref(),
+        &reg,
+        &RemoteHwndCache::new(),
+        &|_| Ok(()),
+        &|_| {
+            rescans.set(rescans.get() + 1);
+            false
+        },
+    );
+    assert_eq!(
+        got.map(|b| b.hwnd).ok(),
+        Some(T4_TOKEN_HWND),
+        "重启之后按令牌拉不到了 —— 持久化那一维断了"
+    );
+    assert_eq!(rescans.get(), 0, "令牌路走得通却还去现扫了标题");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// ★ 接线（**文本**这一层）：写账本的那一处、读账本的那一处，各恰好一处。
+///
+/// - 写：`ssh_source` 收 `SessionAdded` 那一臂把 `rbind_token` 记进账本；
+/// - 读：`lib.rs` 的 ↗ 命令只剩一句 `bind::bring_remote_front(`，**不许**再自己内联一段标题路
+///   （那会长出第二个分派点：一个先令牌、一个只看标题）。
+#[test]
+fn the_book_has_one_writer_in_ssh_source_and_the_front_command_one_dispatcher() {
+    let ssh = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    assert!(
+        ssh.len() > 50_000,
+        "ssh_source 生产段只抽到 {} 字节 —— 抽取器坏了",
+        ssh.len()
+    );
+    guard_core::find_pinned(
+        &ssh,
+        "remote_rbind_tokens().note(&sid, rbind_token.as_deref())",
+    )
+    .expect("ssh_source 里「把 wire 上的令牌记进账本」那一句不是恰好一处");
+    let lib = guard_core::production_code(include_str!("../../src/bridge/src/lib.rs"));
+    let start = lib
+        .find("async fn bring_remote_terminal_to_front(")
+        .expect("lib.rs 里找不到 ↗ 远端命令");
+    let body = &lib[start..];
+    let body = &body[..body.find("\n}\n").expect("找不到函数体收尾")];
+    assert_eq!(
+        body.matches("bind::bring_remote_front(").count(),
+        1,
+        "↗ 命令没走唯一分派点：\n{body}"
+    );
+    for inlined in ["try_bind_with_retry", "verify_binding", ".lookup("] {
+        assert!(
+            !body.contains(inlined),
+            "↗ 命令里又内联了一段 `{inlined}` —— 第二个分派点：\n{body}"
+        );
+    }
+}

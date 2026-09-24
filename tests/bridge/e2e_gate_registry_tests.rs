@@ -229,7 +229,8 @@ fn every_exemption_still_points_at_a_real_ungated_suite() {
 /// 〔第二波 T4 09-24〕**自称「进的是本机门禁」的豁免，本机门禁里真得跑它** —— 两向集合相等。
 ///
 /// 左 = `EXEMPT` 里理由写着 `本机门禁 \`tests/scripts/gate.sh\`` 的那几套；
-/// 右 = `tests/scripts/gate.sh` 里**行首** `run_e2e <套名> <数>` 的套名，减去 `ci.yml` 已有地板行的那几套。
+/// 右 = `package.json` 里跑 e2e 的套中，`ci.yml` 没有地板行、而 `tests/scripts/gate.sh` 里
+/// `run_e2e <套名> ` **恰好一处**的那几套。
 /// 两侧**异源**：左边是本文件的登记，右边是门禁脚本的现物。
 ///
 /// 它逮两形：① 有人把 `gate.sh` 那一行删了/改了名，豁免还挂着「进了本机门禁」⇒ 左多右少；
@@ -243,17 +244,14 @@ fn an_exemption_that_claims_the_local_gate_is_really_run_there() {
         std::fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
             .expect("读不到 tests/scripts/gate.sh");
     let floored = floored();
-    let mut right: Vec<String> = gate
-        .lines()
-        .filter_map(|l| l.strip_prefix("run_e2e "))
-        .filter_map(|rest| {
-            let mut it = rest.split_whitespace();
-            match (it.next(), it.next()) {
-                (Some(n), Some(k)) if k.chars().all(|c| c.is_ascii_digit()) => Some(n.to_string()),
-                _ => None,
-            }
-        })
+    // 人群 = `package.json` 里跑 e2e 的套（`assert-pass-floor.sh` 只认 npm 脚本，
+    // `gate.sh` 跑得动的一定在这里面）；判据 = `gate.sh` 里 `run_e2e <套名> ` 那一句**恰好一处**
+    // （`find_pinned`：零处 / 两处都不算「在跑」）。
+    let mut right: Vec<String> = e2e_suites()
+        .into_iter()
+        .map(|(n, _)| n)
         .filter(|n| !floored.contains(n))
+        .filter(|n| guard_core::find_pinned(&gate, &format!("run_e2e {n} ")).is_ok())
         .collect();
     right.sort();
     let mut left: Vec<String> = EXEMPT

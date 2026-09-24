@@ -1364,7 +1364,8 @@ invoke("muslbuild", NOWHERE,
        "缺的是：zig 0.14.0 ＋ cargo-zigbuild 0.23.0 ＋ 两个 musl target —— 装得上，但那是一笔"
        "**本拍量不了**的账（沙箱断网，`gh run view` 做不到）⇒ 不猜，明着登记欠着")
 invoke("deadcode", NOWHERE,
-       "本格是 `cargo check -p monitor` **非 test 构建**里 `never used` 的**恒等棘轮**（钉在 36）。"
+       "本格是 `cargo check -p monitor` **非 test 构建**里 `never used` 的**恒等棘轮**（钉的数只住 `gate.sh` 那一行 `pin=`；"
+       "〔第二波 T4 订正〕这里原先抄着一个 36，而那时 `pin` 早已是 35 —— 散文副本必腐，删了数不删话）。"
        "云端那几趟 clippy 跑的是 `--all-targets`（含 test 档，那些函数有调用方）⇒ **量的不是同一个数**，"
        "也没有任何一处棘轮。⇒ 这一维云端零覆盖")
 invoke("ccbus-twophase", NOWHERE,

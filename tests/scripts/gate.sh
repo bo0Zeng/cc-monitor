@@ -1519,8 +1519,19 @@ deadcode_t0=$(date +%s)
 #     ⚠ 这一条**不会**自己出列；它的代价就是「平台分支抽出来可测」本身，不是漏。
 # ⚠ 这个数是**现打**的（合并后主线 `cargo check -p monitor --message-format=short`），不是 33+2 算的；
 #   两条的新旧由 `95132442:src/bridge/src/bind.rs` 里这两个函数**零命中**核过。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 35，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=35; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-24（第二波 T4 令牌步 4）：35 → 34，降的 1 条逐条记在这里。**
+# **又是那条刻意的耦合按设计开火了，而且上面那段逐字预告过它**：
+#   「`lookup_hwnd_for_token` …… **步 4 落地那一拍它会自己出列 ⇒ 本格当场红，逼人改回 34。**」
+# 吃它的是 `src/bridge/src/bind.rs::resolve_remote_front`（↗ 远端那一格的唯一分派点，
+#   先令牌 `sid → token → HWND`、后标题退路），生产调用链是
+#   `lib.rs::bring_remote_terminal_to_front` → `bind::bring_remote_front` → 它 ⇒ 那一条出列。
+# ⚠ `entry_from_marker_hit` **仍在这 34 条里**，上面那段也逐字预告过「这一条**不会**自己出列」——
+#   它的生产调用方只在 `#[cfg(windows)]` 那支，本格量的是 Linux 非 test 构建。
+# ⚠ 这个数是**现打**的（本工作树 `w2/t4`，`cargo check -p monitor --message-format=short | grep -c "never used"`
+#   = 34，同一趟 `grep bind.rs` 只剩 `entry_from_marker_hit` / `find_window_by_marker_substr` /
+#   `process_creation_filetime` 三条），不是 35−1 算的。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
