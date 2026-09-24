@@ -424,17 +424,24 @@ export class McpSection {
   private async reload(): Promise<void> {
     const startOrigin = this.origin; // 捕获调用时机器：await 期间用户切走则丢弃这次本地结果（防旧结果盖新选中）
     const dir = this.currentDir();
-    this.listBox.replaceChildren();
+    // ST1「切机器 pending」：切回本机时这一格原先是空的，与「本机没有 MCP 配置」分不开 ⇒ 先说在读。
+    const loading = document.createElement("div");
+    loading.className = "settings-hint mcp-loading";
+    loading.setAttribute("aria-busy", "true");
+    loading.textContent = "读取本机的 MCP 配置…";
+    this.listBox.replaceChildren(loading);
     let entries: McpServerEntry[];
     try {
       entries = await commands.read_mcp_servers({
         projectDir: dir || null,
       });
     } catch (e) {
+      loading.remove();
       if (this.origin !== startOrigin) return; // 期间已切走 → 静默丢弃
       showActionFailureToast("读取 MCP 配置失败", String(e));
       return;
     }
+    // 成功那一支不用撤：`renderList` 自己会整格重画（`replaceChildren`）。
     if (this.origin !== startOrigin) return; // 期间已切走 → 丢弃这次结果，不盖当前选中
     this.renderList(entries, dir, false);
   }

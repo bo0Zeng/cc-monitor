@@ -47,6 +47,7 @@ import * as accounts from "../../src/accounts";
 import type { AccountsState, Account } from "../../src/accounts";
 // `K-R49`：命令名的规则只有一个住址 —— 断言里不许再手抄一份 `<名>cc`。
 import { suggestAliasName } from "../../src/launcher-diagnostics";
+import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
 import { buildAcctIsoCmd } from "../../src/settings/acct-deploy";
 
 function acct(p: Partial<Account>): Account {
@@ -113,6 +114,7 @@ async function mount(): Promise<HTMLElement> {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  __resetMachineContextForTests();
   readRemoteConfigMock.mockReset().mockResolvedValue({ enabled: true, hosts: [host()] });
   // `K-R49`：本机那一支现在会挂一块「按账号生成命令」，它**挂上去就先预览一次**
   // （`write_account_aliases` + `dryRun`）。默认回 `undefined` 会让它当场 TypeError，
@@ -1451,6 +1453,31 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
     expect(calls.some(([c]) => c === "write_relay_credentials_key")).toBe(false);
+  });
+});
+
+
+// ST1「切机器 pending」（`设计/70 §6` #5）：切到另一台 = 这一块重读一趟（远端是一次 SSH 往返），
+// 这段时间这一块原先是**空的** —— 与「这台没有账号」分不开。
+describe("ST1 切机器 pending：账号那一块", () => {
+  it("切到 aya、读还在路上：挂一行 aria-busy 的「正在读 aya 的账号」；回来就撤", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host(), host({ label: "gpd" })] });
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    expect(el.querySelector("[data-pending=accounts]"), "前提：读完了不该还挂着").toBeNull();
+    let release!: (v: AccountsState) => void;
+    fetchAccountsMock.mockReturnValue(new Promise((r) => (release = r)));
+    setCurrentMachine("gpd");
+    await new Promise((r) => setTimeout(r, 0));
+    const busy = el.querySelector<HTMLElement>("[data-pending=accounts]");
+    expect(busy, "读在路上时这一块是空的").toBeTruthy();
+    expect(busy!.getAttribute("aria-busy")).toBe("true");
+    expect(busy!.textContent).toContain("gpd");
+    release(state({ origin: "gpd", accounts: [acct({ name: "g1" })], defaultName: "g1" }));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(el.querySelector("[data-pending=accounts]")).toBeNull();
+    expect(el.querySelector(".accounts-table")?.textContent).toContain("g1");
   });
 });
 

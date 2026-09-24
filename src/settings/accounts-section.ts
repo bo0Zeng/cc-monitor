@@ -341,6 +341,23 @@ export class AccountsSection {
 
   private async reload(force: boolean): Promise<void> {
     this.body.innerHTML = "";
+    // 🔴 ST1「切机器 pending」（`设计/70 §6` #5）：一次切机器 = 这一块重读一趟（远端是一次 SSH 往返）。
+    //    原先这段时间这一块是**空的** —— 与「这台机器没有账号」在屏幕上分不开。
+    //    ⇒ 先挂一行「正在读」，读回来（成或败）那一刻撤掉。
+    const pending = document.createElement("div");
+    pending.className = "accounts-info";
+    pending.dataset.pending = "accounts";
+    pending.setAttribute("aria-busy", "true");
+    pending.textContent = `正在读 ${this.origin ?? "本机"} 的账号…`;
+    this.body.appendChild(pending);
+    try {
+      await this.reloadInner(force);
+    } finally {
+      pending.remove();
+    }
+  }
+
+  private async reloadInner(force: boolean): Promise<void> {
     if (!this.origin) {
       // `N-F1b`：这里原先逐字印
       // 「没有已配置的远端。账号功能在远端 Linux 上——先在「连接」组配一台远端。」
