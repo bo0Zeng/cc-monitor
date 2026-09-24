@@ -177,30 +177,54 @@ fn stream_from_offset_until_is_half_open() {
 }
 
 #[test]
-fn from_offset_options_parse_strictly() {
+fn from_offset_args_parse_strictly_and_in_any_order() {
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    let parse = |v: &[&str]| {
+        let a = s(v);
+        parse_from_offset_args(&a).map(|(o, p)| (o, p.into_iter().cloned().collect::<Vec<_>>()))
+    };
+    // 老形状（无选项）零回归
     assert_eq!(
-        parse_from_offset_opts(&s(&[])).unwrap(),
-        FromOffsetOpts::default()
+        parse(&["/p.jsonl", "0"]).unwrap(),
+        (FromOffsetOpts::default(), s(&["/p.jsonl", "0"]))
     );
+    // 选项在后
     assert_eq!(
-        parse_from_offset_opts(&s(&["--index", "--until", "42"])).unwrap(),
-        FromOffsetOpts {
-            index: true,
-            until: Some(42)
-        }
+        parse(&["/p.jsonl", "5", "--index", "--until", "42"]).unwrap(),
+        (
+            FromOffsetOpts {
+                index: true,
+                until: Some(42)
+            },
+            s(&["/p.jsonl", "5"])
+        )
+    );
+    // 🔴 选项在前（monitor 就这么发：老后端会把 `--index` 当路径、零字节失败）
+    assert_eq!(
+        parse(&["--index", "/p.jsonl", "5"]).unwrap(),
+        (
+            FromOffsetOpts {
+                index: true,
+                until: None
+            },
+            s(&["/p.jsonl", "5"])
+        )
     );
     assert!(
-        parse_from_offset_opts(&s(&["--until"])).is_err(),
+        parse(&["/p.jsonl", "0", "--until"]).is_err(),
         "--until 缺值"
     );
     assert!(
-        parse_from_offset_opts(&s(&["--until", "x"])).is_err(),
+        parse(&["--until", "x", "/p.jsonl", "0"]).is_err(),
         "--until 非数字"
     );
     assert!(
-        parse_from_offset_opts(&s(&["--indx"])).is_err(),
-        "写错的尾随参数必须报错"
+        parse(&["/p.jsonl", "0", "--indx"]).is_err(),
+        "写错的选项必须报错"
+    );
+    assert!(
+        parse(&["/p.jsonl", "0", "extra"]).is_err(),
+        "多余的位置参数必须报错"
     );
 }
 

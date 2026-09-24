@@ -45,19 +45,21 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
             Some(p) => read_session(agent_home, p),
             None => Err("--read-session requires <jsonl_path> argument".into()),
         },
-        Some("--read-session-from-offset") => match (args.get(1), args.get(2)) {
-            (Some(p), Some(o)) => match o.parse::<u64>() {
-                Ok(o) => match parse_from_offset_opts(&args[3..]) {
-                    Ok(opts) if opts.index => session_index(agent_home, p, o, opts.until),
-                    Ok(opts) => read_session_from_offset(agent_home, p, o, opts.until),
-                    Err(e) => Err(e),
+        Some("--read-session-from-offset") => match parse_from_offset_args(&args[1..]) {
+            Ok((opts, pos)) => match (pos.first(), pos.get(1)) {
+                (Some(p), Some(o)) => match o.parse::<u64>() {
+                    Ok(o) if opts.index => session_index(agent_home, p, o, opts.until),
+                    Ok(o) => read_session_from_offset(agent_home, p, o, opts.until),
+                    Err(_) => Err(
+                        "--read-session-from-offset <jsonl_path> <offset>: offset must be a number"
+                            .into(),
+                    ),
                 },
-                Err(_) => Err(
-                    "--read-session-from-offset <jsonl_path> <offset>: offset must be a number"
-                        .into(),
+                _ => Err(
+                    "--read-session-from-offset requires <jsonl_path> <offset> arguments".into(),
                 ),
             },
-            _ => Err("--read-session-from-offset requires <jsonl_path> <offset> arguments".into()),
+            Err(e) => Err(e),
         },
         Some(other) => Err(format!("unknown argument: {other}")),
         None => Err("no query argument".into()),
@@ -406,16 +408,27 @@ fn stream_from_offset<W: std::io::Write>(
 /// 索引从 `offset` 起算 ⇒ 冷启动传 0 拿全量；续传传上次的 `end` 拿增量（`设计/10 §5 B`：
 /// 「续传令牌只能用字节偏移」）。与透传字节是同一个读、两种出法。
 ///
-/// ⚠ 未知的尾随参数**报错**（不静默忽略）：老 monitor 从不带尾随参数，新 monitor 只带这两个；
+/// ⚠ 未知的 `--选项` 与多余的位置参数都**报错**（不静默忽略）：老 monitor 从不带，新 monitor 只带这两个；
 /// 多出来的一定是写错了，而静默忽略会让它拿到一份形状不对的输出还以为成功。
+///
+/// # 🔴 选项可以写在位置参数**前面** —— 而 monitor 就该这么写（让老后端**快速失败**）
+///
+/// 老后端只看 `args[1]`/`args[2]`：把 `--index` 写在路径**后面**，老后端会把**整份会话**透传回来
+/// （弱网上几十 MB，只为了让 monitor 看一眼首行认出「它不会」）。写在**前面**，老后端拿路径当 offset
+/// 解析 ⇒ `offset must be a number` ⇒ **零字节、退出 2**。新后端两种位置都认。
+/// （现打：基线 `3662e17` 的 release 后端对一份 50 955 695 字节的会话 —— 选项在后 stdout 50 955 695 字节 /
+/// 退出 0；选项在前 stdout 0 字节 / 退出 2。）
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct FromOffsetOpts {
     pub(crate) index: bool,
     pub(crate) until: Option<u64>,
 }
 
-pub(crate) fn parse_from_offset_opts(rest: &[String]) -> Result<FromOffsetOpts, String> {
+pub(crate) fn parse_from_offset_args(
+    rest: &[String],
+) -> Result<(FromOffsetOpts, Vec<&String>), String> {
     let mut opts = FromOffsetOpts::default();
+    let mut pos: Vec<&String> = Vec::new();
     let mut it = rest.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -428,14 +441,21 @@ pub(crate) fn parse_from_offset_opts(rest: &[String]) -> Result<FromOffsetOpts, 
                     .map_err(|_| "--until <end>: end must be a number")?;
                 opts.until = Some(v);
             }
-            other => {
+            other if other.starts_with("--") => {
                 return Err(format!(
                     "--read-session-from-offset: unknown option {other}"
                 ))
             }
+            _ => pos.push(a),
         }
     }
-    Ok(opts)
+    if pos.len() > 2 {
+        return Err(format!(
+            "--read-session-from-offset takes <jsonl_path> <offset>, got {} positional arguments",
+            pos.len()
+        ));
+    }
+    Ok((opts, pos))
 }
 
 /// `--read-session-from-offset <path> <offset> --index [--until <end>]`：**骨架索引**。

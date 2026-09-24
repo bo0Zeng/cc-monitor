@@ -119,3 +119,35 @@ fn path_precheck_rejects_traversal_and_non_jsonl() {
     assert!(precheck("/a/b.txt").is_err());
     assert!(precheck("/a/b.jsonl").is_ok());
 }
+
+/// 🔴 选项必须在位置参数**前面**：老后端只看 `args[1]`（路径）/`args[2]`（offset），若那两格恰好是
+/// `<path> <offset>`，它会把整份会话透传回来（现打 50 955 695 字节）。
+#[test]
+fn argv_puts_options_first_so_old_backends_fail_with_zero_bytes() {
+    // 索引：老后端拿 args[2]（路径）当 offset ⇒ 解析失败、零字节退出 2
+    let idx = index_argv("/p/s.jsonl", 7);
+    assert_eq!(
+        idx,
+        vec!["--read-session-from-offset", "--index", "/p/s.jsonl", "7"]
+    );
+    assert!(
+        idx[2].parse::<u64>().is_err(),
+        "老后端会把 args[2] 当 offset 成功解析：{idx:?}"
+    );
+    // 取正文：老后端拿 args[1]（`--until`）当路径 ⇒ 围栏拒、零字节退出 2
+    let rng = range_argv("/p/s.jsonl", 7, 99);
+    assert_eq!(
+        rng,
+        vec![
+            "--read-session-from-offset",
+            "--until",
+            "99",
+            "/p/s.jsonl",
+            "7"
+        ]
+    );
+    assert!(
+        rng[1].starts_with("--"),
+        "args[1] 不是选项 ⇒ 老后端会真去读：{rng:?}"
+    );
+}
