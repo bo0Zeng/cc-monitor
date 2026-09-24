@@ -241,6 +241,20 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
     last_nudged != 0 && last_nudged == packed
 }
 
+/// 〔U2 · 第三波〕远端会话一宣告就起的那条 `remote-bind-scan` 线程（每 ~0.6s 扫一次
+/// `ccm-rbind-<sid>` 标题、最多 ~9s）**要不要起**。带启动令牌的会话**不起**：
+///
+/// - ↗ 对它先走 `令牌 → HWND`（`bind::resolve_remote_front` 的第一条路），用不着标题；
+/// - 不在 tmux 里的令牌会话**根本没有谁去设** `ccm-rbind-<sid>` 这个标题
+///   （设它的是 tmux 外层的 `set-titles-string`）⇒ 那 15 次扫描注定白跑 9 秒；
+/// - 在 tmux 里的令牌会话也不必预扫：令牌那扇窗关了、退到标题路时，点 ↗ 那一刻
+///   `try_bind_with_retry` 会现扫（`ON_DEMAND_BIND_*`，最多 4s）—— 预扫只省那一次现扫的等待。
+///
+/// 没令牌（老后端 / 不是 cc-monitor 启动的）⇒ 照旧预扫：标题路是它唯一的路。
+pub(crate) fn wants_title_prescan(rbind_token: Option<&str>) -> bool {
+    rbind_token.is_none()
+}
+
 /// ST1：设置窗的标签（`open_settings_window` 建它时用的同一个串）。
 pub(crate) const SETTINGS_WINDOW_LABEL: &str = "settings";
 /// 主窗的标签（`tauri.conf.json` 里那一个）。
@@ -926,6 +940,12 @@ pub fn run() {
                                 for sid in change.added {
                                     // audit-fixes F03.2：会话（重新）变活 → 清 idle 灰灯标记（resume/新会话）。
                                     ssh_source::clear_idle(&sid);
+                                    // 〔U2〕带启动令牌的会话不预扫标题（理由见 `wants_title_prescan`）。
+                                    // 令牌账本先于这条 `added` 记好（`ssh_source` 收 `SessionAdded` 时先 `note` 再发）。
+                                    let token = bind::remote_rbind_tokens().token_of(&sid);
+                                    if !wants_title_prescan(token.as_deref()) {
+                                        continue;
+                                    }
                                     let cache = remote_cache_for_emitter.clone();
                                     let spawn_res = std::thread::Builder::new()
                                         .name("remote-bind-scan".into())
@@ -2504,3 +2524,7 @@ mod remote_config_tests;
 #[cfg(test)]
 #[path = "../../../tests/bridge/lib_window_lifecycle_tests.rs"]
 mod window_lifecycle_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/bridge/lib_remote_bind_prescan_tests.rs"]
+mod remote_bind_prescan_tests;
