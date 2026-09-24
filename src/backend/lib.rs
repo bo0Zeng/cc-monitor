@@ -779,6 +779,33 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
     },
 ];
 
+/// 一条 [`TargetGap`] 属于哪一档 —— 〔PR1 · 2026-09-24〕「差异」要分两档登记，**不许合成一档**。
+///
+/// # 为什么非分不可
+///
+/// 两档要的**下一步动作相反**：结构上没有的那一格，正确的结局是**永远留在表里**；
+/// 欠着的那一格，正确的结局是**有一天被删掉**（`P19` 删 `agent` 那一行就是这一形）。
+/// 混成一档 ⇒ 读表的人分不清「这一行该不该有人去还」，而「欠着」会被读成「本来就这样」——
+/// 那正是 `真相源/30` 与 `no_timer_guard` 各栽过一次的静默缩水。
+///
+/// ⚠ 与 `parity_ledger`（本机 ↔ 远端那条轴）的 `NaturallyAsymmetric` / `ParityDebt` 是**同一对**，
+/// 只是轴换成了编译 target。两张表不合并：轴不同，人群不同。
+///
+/// # 判准（写死在这里，判据按它查 `why` 的措辞）
+///
+/// - [`GapKind::Structural`]：这条能力的**名字与定义**就绑在一个那个 target 上不存在、也不打算补的
+///   机制上（例：tmux 的 `base-index`）。那边将来若长出等价物，它是**另一条能力、另立一行**，
+///   不是把这一条补上。⇒ `why` 要说出「不跨过去 / 不照搬」，**不许**再说「暂时不做」（那是对欠账的措辞）。
+/// - [`GapKind::Owed`]：这条能力本身与机制无关，那个 target **该有**而今天没有。
+///   ⇒ `why` 要说出谁来还、什么时候还（「暂时不做」也算答复，但要写出来）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum GapKind {
+    /// 这个 target **结构上**没有这条能力。
+    Structural,
+    /// **欠着**：该有、今天没有、写明将来怎么还。
+    Owed,
+}
+
 /// 一条**逐能力**的豁免：这一面在这个 target 上**做不到**这一条能力。
 ///
 /// # 🔴 它为什么必须存在（而上一版没有它）
@@ -799,6 +826,8 @@ pub struct TargetGap {
     pub capability: &'static str,
     /// 哪个 target 上做不到。
     pub target: Target,
+    /// 🔴 **哪一档**：结构上没有 · 欠着。两档不许合成一档（[`GapKind`] 头注）。
+    pub kind: GapKind,
     /// 🔴 **为什么做不到 ＋ 将来怎么办。** 不许留空（判据有长度地板）。
     pub why: &'static str,
 }
@@ -826,30 +855,36 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         family: "ccm-launcher",
         capability: "tmux",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "Windows 上没有 tmux（也不打算装）。将来由 **Windows 自己的后台服务**               承担「会话活在前端之外」这件事〔用户 2026-09-21 拍板〕，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "attach",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在               ⇒ 等那个后台服务落地时一并给出等价物〔同上裁决〕，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "detach",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "「把会话留在后台」今天是 `tmux detach`。同 `attach`，等那个后台服务，**暂时不做**。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux-size",
         target: Target::Windows,
-        why: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条**。**暂时不做**。",
+        kind: GapKind::Structural,
+        why: "给 tmux 那个窗格定尺寸。没有 tmux 就没有这一格；将来那个后台服务里              「会话的终端多大」是另一种形状，**不照搬这一条** ⇒ 这一条本身不跨过去；\
+              那个后台服务里的尺寸若要有，是**另一条**能力、另立一行〔PR1 分档：结构〕。",
     },
     TargetGap {
         family: "ccm-launcher",
         capability: "tmux-base",
         target: Target::Windows,
+        kind: GapKind::Structural,
         why: "tmux 的窗格编号基数（`base-index`）。它是 tmux 自己的配置面，              Windows 上连对应概念都没有 ⇒ **不是推后，是这一条本身不该跨过去**。",
     },
     // ── `ccm-launcher` × Windows：**真机现打补上的三条**〔2026-09-21〕 ───────
@@ -866,6 +901,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         family: "ccm-launcher",
         capability: "bus-register",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "**硬链在 tmux 上，不是自己做不到**：`argv.rs` 两道闸串着 —— \
               `--bus-register` 要 `--detach`，而 `--detach` 要 `--tmux`。\
               真机现打（Win11）把两个 bus 脚本都种齐、排掉「脚本缺失」这个变量之后，\
@@ -877,6 +913,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         family: "ccm-launcher",
         capability: "ccm-sid",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "**被接受、零效果、而且不出声** —— 这一条比别的几条更该单记。\
               `--ccm-sid` 解析进 `Opts` 之后只在**容器（tmux）那条路**上被消费\
               （`Container.ccm_sid` → `tmux set-option @ccm_sid_expect`），\
@@ -925,6 +962,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         family: "ccm-launcher",
         capability: "base-url-across-tmux",
         target: Target::Windows,
+        kind: GapKind::Owed,
         why: "把中转地址跨 tmux 会话传下去。载体没了这一条就没了；              将来那个后台服务要自己回答「地址怎么传给它起的会话」，**暂时不做**。",
     },
 ];
