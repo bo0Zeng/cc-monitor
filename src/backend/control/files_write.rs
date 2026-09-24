@@ -162,6 +162,41 @@ pub fn fenced_target(root: &Path, rel: &str) -> Result<PathBuf, String> {
     fence_resolved(&home, root, &lexical)
 }
 
+/// 一次落盘没成，**是谁拦的**。
+///
+/// # 🔴 为什么要分这两档（不是分类癖，是线上那一面分得出码才有意义）
+///
+/// 接命令面那一拍逼出来的：围栏拒绝与盘上出错是**两件对调用方意义完全不同**的事 ——
+/// 前者是「这条路径本来就不许写」（换条路径才有意义），后者是「路径没问题，
+/// 这一次没写成」（重试才有意义）。此前两者都压成一个 `String`，
+/// 线上那一面只能靠**猜字符串前缀**去分它们，而那是会漂的。
+///
+/// ⚠ 分档**不放宽任何东西**：两档都是 `Err`，两档都不落盘。
+#[derive(Debug)]
+pub enum WriteRefusal {
+    /// 围栏拦的（词法那道 或 解完 symlink 那道）。
+    Fenced(String),
+    /// 围栏放行了，盘上这一步没成（目标已存在 · 父目录不可写 · 盘满 …）。
+    Io(String),
+}
+
+impl WriteRefusal {
+    /// 线上错误码。**闭集两个**，与 [`MANAGE_COMMANDS`] 那一栏逐字对得上。
+    pub fn code(&self) -> &'static str {
+        match self {
+            WriteRefusal::Fenced(_) => "refused",
+            WriteRefusal::Io(_) => "io_failed",
+        }
+    }
+
+    /// 给人看的那句话（原样来自围栏／系统，本层不改写）。
+    pub fn message(&self) -> &str {
+        match self {
+            WriteRefusal::Fenced(m) | WriteRefusal::Io(m) => m.as_str(),
+        }
+    }
+}
+
 /// **唯一的写盘处**：在用户指定的目标根底下，新建一份此前不存在的文件。
 ///
 /// `create_new(true)` = `O_EXCL`：目标已经在了（哪怕它只是一条 symlink）就失败，
@@ -169,18 +204,160 @@ pub fn fenced_target(root: &Path, rel: &str) -> Result<PathBuf, String> {
 /// **新增一份此前不存在的文件，不算「改动用户既有数据」。**
 ///
 /// 返回真正落盘的那个绝对路径（解完 symlink 的）。
-pub fn create_new_file(root: &Path, rel: &str, bytes: &[u8]) -> Result<PathBuf, String> {
+pub fn create_new_file(root: &Path, rel: &str, bytes: &[u8]) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
-    let target = fenced_target(root, rel)?;
+    let target = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
     let mut f = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&target)
-        .map_err(|e| format!("refuse write: 新建 {} 失败：{e}", target.display()))?;
+        .map_err(|e| {
+            WriteRefusal::Io(format!("refuse write: 新建 {} 失败：{e}", target.display()))
+        })?;
     // 写失败（盘满等）也要把原因带回去 —— 静默的半截文件比报错糟得多。
-    f.write_all(bytes)
-        .map_err(|e| format!("refuse write: 写 {} 失败：{e}", target.display()))?;
+    f.write_all(bytes).map_err(|e| {
+        WriteRefusal::Io(format!("refuse write: 写 {} 失败：{e}", target.display()))
+    })?;
     Ok(target)
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  命令面 ——〔波 5 ㈠ · 2026-09-23〕`设计/60 §8.6` **第 2 步**
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 🔴 **这一步不花用户那句「允许」**，`§8.6` 第 2 步逐字：
+//   「它的射程：`O_EXCL` 新建一份**此前不存在**的文件；不删、不改名、不覆盖、不建目录
+//    🔴 **`readonly_guard` 一行不动** —— 它早就在白名单上
+//    ⇒ 这一步只是把一个做好了没接的东西接上」。
+//   本节兑现的就是那一句：上面那些函数**一个字节没改射程**，
+//   下面加的全是「把参数收进来、把答案交出去」。
+//
+// 🔴 **「窄」不是靠命令面窄 —— 这一条是现打改过来的，原来那句话是假的。**
+//   本节第一版写的是「只上帧面、不上 CLI 面」。**做不到**：
+//   `cli_control::cli_exposed` 逐字是 `!matches!(spec.run, Run::Builtin)` ——
+//   一条命令进了 `inbound::REGISTRY` 且不是那个硬臂，CLI 面就**自动**认得它
+//  （现打：加完之后 `every_cli_exposed_command_is_in_the_query_mode_gate` 当场红，
+//   逐字点名 `["--files-create"]`）。⇒ 两个宿主共用同一个 `run`，
+//   那正是 `设计/60 §8.1` 说的「一份代码两种宿主」。
+//   ⇒ **窄在别的地方**：`readonly_guard` 第三层判的是「**谁引用得到这个模块**」
+//   （= 只有这一面的登记入口），不是「谁发得出命令」。别把两者混起来读。
+//
+// ⚠ 本节**买不到**什么：接上的是「命令面够得到这份原语」这一跳。
+//   「真远端那台机器上跑过」本轮**没有**（同本模块头注第 3 条），
+//   本机跑得到的是本机文件系统上的那一趟。
+
+/// 这一面回一条什么：成功交 JSON，失败交 `(code, message)`。
+///
+/// ⚠ 与 `inbound::CmdResult` / `files::Answer` **逐字同形**（一进一出、
+/// `(码, 话)` 的错误信封）——接线那一拍才不用改形状。
+pub type Answer = Result<serde_json::Value, (&'static str, String)>;
+
+/// 文件管理**写**面的一条线上命令。
+///
+/// # ⚠ 它**刻意不叫** `Capability`，也刻意不进 `lib.rs::CAPABILITY_FACES`
+///
+/// `设计/96 §2` 那份汇总清单是**产品面**的登记（`CapabilityKind` 两类、
+/// 逐 target 的对等断言），加一个面要动 `lib.rs::CAPABILITY_FACES` ——
+/// 那处**在本刀写区之外**，已如实报备。
+/// ⇒ 本表今天只当「线上契约的数据形态」用（判据按它对拍 `inbound::REGISTRY`
+/// 与 `IPC-PROTOCOL.md §10`），**别把它读成「这一面已经进了能力清单」**。
+pub struct ManageCommand {
+    /// 线上命令名（连字符那一套，与 `inbound::REGISTRY` 逐字相同）。
+    pub name: &'static str,
+    /// 它做什么。
+    pub what: &'static str,
+    /// 入方向参数名。
+    pub args: &'static [&'static str],
+    /// 出方向字段名。
+    pub fields: &'static [&'static str],
+    /// 本命令自己可能回的 code。
+    pub codes: &'static [&'static str],
+}
+
+/// 🔴 **文件管理写面的唯一住址。**
+///
+/// `readonly_guard` 第三层那条「只从声明过的那一面来」判的就是这张表 ——
+/// 表里没有的名字，`inbound::REGISTRY` 上也不许有对应的一条。
+pub const MANAGE_COMMANDS: &[ManageCommand] = &[ManageCommand {
+    name: "files-create",
+    what: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
+    args: &["content", "rel", "root"],
+    fields: &["bytes", "path"],
+    codes: &["bad_args", "bad_path", "io_failed", "refused"],
+}];
+
+/// 本面声明的线上命令名。
+pub fn manage_command_names() -> Vec<&'static str> {
+    MANAGE_COMMANDS.iter().map(|c| c.name).collect()
+}
+
+/// 取一个**路径**参数（字符串 或 `{"b16": …}`，与 `files-read` 那一族同一口径）。
+fn path_of(
+    args: &serde_json::Value,
+    key: &str,
+) -> Result<std::path::PathBuf, (&'static str, String)> {
+    let v = args.get(key).ok_or((
+        "bad_path",
+        format!("少了 `{key}` —— 它要么是一个字符串，要么是 `{{\"b16\": \"<十六进制>\"}}`"),
+    ))?;
+    let bytes = crate::files::raw::from_json(v).ok_or((
+        "bad_path",
+        format!(
+            "`{key}` 的形状不对 —— 只认字符串或 `{{\"b16\": \"<十六进制>\"}}`；\
+             这里刻意不「尽力而为」地猜，猜错一个字节就是往另一个地方落盘"
+        ),
+    ))?;
+    if bytes.is_empty() {
+        return Err(("bad_path", format!("`{key}` 是空的")));
+    }
+    Ok(crate::files::raw::to_path_buf(&bytes))
+}
+
+/// `files-create` —— 把两道围栏与那一处 `O_EXCL` 落盘接到线上。
+///
+/// ⚠ `rel` **只收 UTF-8 字符串**，这是一条真实的局限而不是疏忽：
+/// [`fence_lexical`] 的入参就是 `&str`（它要逐段判上跳 / 盘符 / 空段），
+/// 把它改成收裸字节是**动围栏本体**，不是接线该顺手做的事。⇒ 如实登记。
+/// 目标**根**那一侧没有这个限制（它走 `b16` 那条路）。
+fn answer_create(args: &serde_json::Value) -> Answer {
+    let root = path_of(args, "root")?;
+    let rel = args
+        .get("rel")
+        .and_then(serde_json::Value::as_str)
+        .ok_or((
+            "bad_args",
+            "少了 `rel`，或者它不是一个字符串 —— 这一格**只收 UTF-8**（围栏本体按段判，\
+             入参就是 `&str`）。非 UTF-8 的名字本面今天做不到，如实说，不猜"
+                .to_string(),
+        ))?
+        .to_string();
+    // 不给 `content` ⇒ 新建一份**空文件**（那正是「新建空文件」这件事的形状）。
+    let bytes = match args.get("content") {
+        None => Vec::new(),
+        Some(v) => crate::files::raw::from_json(v).ok_or((
+            "bad_args",
+            "`content` 的形状不对 —— 只认字符串或 `{\"b16\": \"<十六进制>\"}`".to_string(),
+        ))?,
+    };
+    let landed = create_new_file(&root, &rel, &bytes).map_err(|e| {
+        // 🔴 码由那个枚举自己答，**不在这里猜字符串前缀** —— 理由住 [`WriteRefusal`]。
+        (e.code(), e.message().to_string())
+    })?;
+    Ok(serde_json::json!({
+        "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
+        "bytes": bytes.len(),
+    }))
+}
+
+/// 这一面的**唯一入口**（形状照 `files::answer_wire`）。
+///
+/// 🔴 分派写成一个对 [`MANAGE_COMMANDS`] 的 `match`，而「表里有、分派没有」
+/// 那种静默的不可用由判据钉住（本仓 `p1t-removal-cause` 那次真 bug 就是这一形）。
+pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
+    match wire_name {
+        "files-create" => answer_create(args),
+        other => Err(("bad_args", format!("`{other}` 不是文件管理写面的命令"))),
+    }
 }
 
 #[cfg(test)]
