@@ -700,7 +700,7 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
 ///
 /// 量法是**对照**：同一个函数、同一条路径，只有「表里有没有这一行」不同。
 #[test]
-fn an_account_with_no_row_in_the_relay_table_is_not_routed_through_the_relay() {
+fn an_account_with_no_row_in_the_apikey_table_is_not_routed_through_the_relay() {
     let rows = vec!["acct-a".to_string()];
     // ① 表里有这一行 ⇒ 注入（非空对照：证明这把尺子不是恒 `None`）。
     let got = apikey_endpoint_for(Some("acct-a"), &rows, true, Some("sid-1"), "claude-code")
