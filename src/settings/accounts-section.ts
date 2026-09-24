@@ -35,8 +35,8 @@ import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
-// 〔AL1 · 2026-09-24〕别名那一块搬去了机器页「本机 → 工具 → 别名」（`设计/70 §3.3` · `设计/71`）。
-import { buildUserPathBlock } from "../launcher-diagnostics";
+// 〔AL1 · 2026-09-24〕别名那一块与用户级 PATH 那一格都搬去了机器页「本机 → 工具 → 别名」
+// （`设计/70 §3.3` · `设计/71`）—— 两者是同一个问题（「这台机器的终端怎么找到 ccm」）的两条路。
 import { SETTINGS_APPLIED_EVENT } from "./events";
 // Phase G：这两格此前**没有任何生产者**，见下面 `note()` 的注释。
 // `N-F2`：本机那条路也要写进同一本账 ⇒ 连本机那个 key 一起取，别在这儿长第二个名字。
@@ -493,13 +493,8 @@ export class AccountsSection {
     AccountsSection.line(box, "accounts-hint accounts-local-hint", LOCAL_ACCOUNTS_COPY.scopeHint);
     // 〔AL1 · 2026-09-24〕这里原来挂着「按账号生成命令」那一块（`K-R49`）。它搬去了机器页
     // 「本机 → 工具 → 别名」，并且不再是「账号表的投影」—— 别名清单归用户（`设计/71 §8`）。
-    // 🔴 `K-R135`（`R85`）：用户级 PATH 那一格 —— 与「别名」那一块里的 rc 别名块是
-    //    **同一个问题的两条路**（「怎么让这台机器上敲得到 ccm」：POSIX 走 rc 别名块，
-    //    Windows 走用户级 PATH）。〔AL1〕别名块搬去机器页之后它仍留在这里，那一格的文案说清了另一条路在哪。
-    // ⚠ **同样挂在 `this.body` 上，不是挂进 `box`（`.accounts-local`）** ——
-    //    理由与上面那一块逐字相同：`NF1bD2` 断的是「`.accounts-local` 子树里的汉字
-    //    全部来自 `LOCAL_ACCOUNTS_COPY`」，而这一块的文案有自己的家。
-    this.body.appendChild(buildUserPathBlock());
+    // 〔AL1 · 2026-09-24〕`K-R135` 那一格（用户级 PATH）也跟着别名块搬去了机器页「别名」里
+    // （Windows 本机上，第一次展开那一块时建）。
   }
 
   /**
