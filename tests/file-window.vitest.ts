@@ -92,6 +92,7 @@ const ENTRIES: readonly string[] = [
   "src/main.ts · home", // 顶栏 / 命令面板：只有一台远端时直开
   "src/main.ts · home", // 顶栏 / 命令面板：多台时选单里点一台
   "src/settings/machine-card.ts · home", // 机器页「文件」按钮
+  "src/tabs.ts · 目录", // 远端会话「打开工作目录」（老面板 initialDir，F78）
 ];
 
 describe("F7b 入口人群", () => {
