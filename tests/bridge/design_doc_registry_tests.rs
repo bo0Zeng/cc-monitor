@@ -404,17 +404,11 @@ fn the_partial_tier_judge_has_teeth_on_a_synthetic_corpus() {
 #[test]
 fn every_index_row_falls_into_exactly_one_tier() {
     let rows = index_rows();
-    // 正控：真索引里三档**各自非空**。某一档空了 ⇒ 要么抠法坏了，要么那一档的判词在空转。
-    for (t, what) in [
-        (Tier::Live, "✅ 活"),
-        (Tier::Partial, "⚠ 部分作废"),
-        (Tier::Dead, "🚫 整篇作废"),
-    ] {
-        assert!(
-            rows.iter().any(|(_, s)| tier_of(s) == Some(t)),
-            "真索引里一行「{what}」都没认出 —— 分档器或抠法坏了（那一档的判词此刻在空转）"
-        );
-    }
+    // ⚠ 这里**刻意不要求三档各自非空**：「今天没有一篇 ⚠」是一个合法的盘面
+    //   （D0 对账 16:1x 就把 ⚠ 那一档清空了，第一版的「三档各非空」正控当场误红）。
+    //   反空真靠两处，都不依赖盘面：① 分档器坏了 ⇒ 每一行都落进 `unclassified` ⇒ 下面照红；
+    //   ② 行集非空由 `the_extractor_really_sees_the_status_column` 管；
+    //   三档各自认得出由 `the_partial_tier_judge_has_teeth_on_a_synthetic_corpus` 在合成夹具上管。
     let v = judge_tiers(&rows, |_| String::new());
     assert!(
         v.unclassified.is_empty(),
