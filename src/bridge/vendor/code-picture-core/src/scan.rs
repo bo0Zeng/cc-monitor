@@ -35,6 +35,69 @@ fn is_linked_worktree(dir: &Path) -> bool {
 
 /// F11:扫全部**受支持语言**的源文件(按扩展名判定语言)。返回 (仓库相对路径, 语言)。
 /// 非源码 / 未支持扩展名的文件被忽略。取代原 `rust_files`,让索引管线多语言就绪。
+/// 这个文件是**测试 / 示例 / 夹具**吗?
+///
+/// 🔴 **架构图讲的是产品的结构,测试不是产品的结构。**
+/// 不分开的话测试会主导整张图 —— 实测 code-picture 自己的模块图里
+/// `code-picture-core/tests`(262 符号)是**最大的节点**,
+/// 而一个 TS 仓里 `core/src/__tests__` 跨 80 个文件也是一大团。
+/// 更糟的是它会造出「生产代码调测试」这种假边(测试辅助函数与生产函数重名撞出来的)。
+///
+/// ⚠ **只用来画图**。`callers` / `impact` 里测试是**真实的调用者** ——
+/// 「我改这个,哪些测试会红」正是那两个查询该答的,不该滤。
+///
+/// 判据是路径与文件名的**约定**,九门通用:
+/// * 路径里有 `tests` / `test` / `__tests__` / `spec` / `__mocks__` /
+///   `benches` / `examples` / `fixtures` / `testdata` 这一段;
+/// * 文件名形如 `*_test.*` · `*.test.*` · `*.spec.*` · `test_*.py` ·
+///   `*Test.java` · `*Tests.cs`。
+///
+/// ⚠ 认不出的:Rust 的**同文件内** `#[cfg(test)] mod tests` —— 它住在生产文件里,
+/// 路径判据看不见。那部分符号仍会算进产品侧(偏多,不偏少)。
+pub fn is_test_file(rel: &str) -> bool {
+    let (dirs, name) = match rel.rsplit_once('/') {
+        Some((d, n)) => (d, n),
+        None => ("", rel),
+    };
+    // 目录段:大小写无关
+    if dirs.split('/').any(|s| {
+        matches!(
+            s.to_ascii_lowercase().as_str(),
+            "tests"
+                | "test"
+                | "__tests__"
+                | "spec"
+                | "__mocks__"
+                | "benches"
+                | "examples"
+                | "fixtures"
+                | "testdata"
+        )
+    }) {
+        return true;
+    }
+    // 文件名:`a.test.ts` / `a.spec.ts` 这种中缀
+    let lower = name.to_ascii_lowercase();
+    if lower.contains(".test.") || lower.contains(".spec.") {
+        return true;
+    }
+    let stem = name.split('.').next().unwrap_or(name);
+    // `graph_test.rs` · `test_foo.py`
+    if stem.ends_with("_test") || stem.ends_with("_tests") || stem.starts_with("test_") {
+        return true;
+    }
+    // ⚠ Java/C# 的 `FooTest` / `FooTests` 要看**原始大小写** ——
+    // 小写化之后 `latest.rs` 也以 "test" 结尾,会被误判。
+    for suffix in ["Test", "Tests"] {
+        if let Some(head) = stem.strip_suffix(suffix) {
+            if !head.is_empty() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub fn source_files(repo: &Path) -> Vec<(String, Lang)> {
     let mut out = Vec::new();
     walk_source(repo, repo, &mut out);

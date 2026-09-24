@@ -2,6 +2,8 @@
 
 pub mod anchor;
 pub mod annotations;
+pub mod cfg;
+pub mod diagram;
 pub mod docs;
 pub mod engine;
 pub mod git;
@@ -10,6 +12,8 @@ pub mod index;
 pub mod lang;
 pub mod mcp;
 pub mod model;
+pub mod pdg;
+pub mod precise;
 pub mod rank;
 pub mod scan;
 pub mod symbols;
