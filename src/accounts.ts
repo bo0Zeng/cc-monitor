@@ -20,6 +20,9 @@ import type { LaunchModifiers } from "./launch-plan";
 // 源：`src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
 // （它每次生成都跑一遍 `history.rs::LaunchAccount` 的生产反序列化器验一次）。
 import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
+// 〔`A3` 第二波〕backend 的本机 origin（`"<local>"`）—— 与本文件自己那个 `LOCAL_ORIGIN`
+// （`"__local__"`，账号面的缓存键）**不是同一个值**，所以换个名字导进来，别让两者在读者眼里混成一个。
+import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "./backend-policy";
 
 // ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
 //
@@ -768,12 +771,21 @@ export function shouldShowAccountBadge(
  * ⇒ 本函数的「是」精确读作「**这个进程的环境里带着本工具铸的身份标记**」，
  * 不读作「一定是本工具直接拉起的」。文案也按这个强度写，不许写强。
  */
-export function restartLocateFailureMessage(row: SessionAccount | undefined): {
+export function restartLocateFailureMessage(
+  row: SessionAccount | undefined,
+  opts: { local?: boolean } = {},
+): {
   title: string;
   body: string;
 } {
   // ⚠ `undefined`（老后端不出这个键）与 `null`（backend 说「不作数」）在这里是同一件事。
   const carriesOurLaunchMark = Boolean(row && row.alive && row.launchId);
+  // 〔`A3` 第二波〕最后那句补救**只对远端成立**：本机归档 tab 的 Resume 不带账号选择
+  // （走 `localLaunchAccountSync`，沿用这条会话上次的号），「把此会话切到账号 X」在本机不存在。
+  // 对本机说那句话，是在指一条走不通的路。
+  const tail = opts.local
+    ? "本机归档后的 Resume 沿用这条会话上次的账号，换号只对本工具在 tmux 里起的会话做得到。"
+    : "可先归档后用右键「把此会话切到账号 X」。";
   if (carriesOurLaunchMark) {
     return {
       title: "无法换号重启：tmux 标记丢了",
@@ -781,14 +793,13 @@ export function restartLocateFailureMessage(row: SessionAccount | undefined): {
         "这条会话的进程里带着本工具铸的身份标记，说明它是从本工具这条路起来的；" +
         "但它现在不在本工具的 tmux 里——多半是 tmux 会话被重建过、或 @ccm_sid 标记丢了。" +
         "换号重启要往那个 tmux 里发按键，定位不到就不能动手（乱猜会杀错会话）。" +
-        "可先归档后用右键「把此会话切到账号 X」。",
+        tail,
     };
   }
   return {
     title: "无法换号重启",
     body:
-      "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——" +
-      "可先归档后用右键「把此会话切到账号 X」。",
+      "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——" + tail,
   };
 }
 
@@ -1082,8 +1093,14 @@ interface CacheEntry<T> {
 const accountsCache = new Map<string, CacheEntry<AccountsState>>();
 const sessionAccountsCache = new Map<string, CacheEntry<SessionAccount[]>>();
 
-/** 取某台远端的账号状态（带 TTL 缓存）。force=true 或缓存过期时重发。 */
+/** 取某台远端的账号状态（带 TTL 缓存）。force=true 或缓存过期时重发。
+ *
+ * 〔`A3` 第二波〕`origin` 是 backend 的本机 origin（`<local>`）⇒ 转给 [`fetchLocalAccounts`]
+ * （问本机后端的 `--list-accounts`）。在此之前它会拿 `<local>` 去问 `list_remote_accounts`，
+ * 回来一句「远端 '<local>' 未配置」—— 本机换号重启与它的菜单都经这里，那句话会让本机
+ * 恒显示「没有可选账号」。 */
 export async function fetchAccounts(origin: string, force = false): Promise<AccountsState> {
+  if (origin === BACKEND_LOCAL_ORIGIN) return fetchLocalAccounts(force);
   const now = Date.now();
   const cached = accountsCache.get(origin);
   if (!force && cached && now - cached.at < ACCOUNTS_TTL_MS) return cached.value;

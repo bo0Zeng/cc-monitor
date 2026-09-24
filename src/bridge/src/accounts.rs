@@ -447,12 +447,23 @@ pub async fn list_remote_session_accounts(origin: String) -> Result<SessionAccou
 /// **Z01**：`config_dir` 为 `None` = 账号 0 ⇒ 走后端的 `--account-trust-zero`
 /// （它的 `.claude.json` 在 `$HOME`，不在任何 config dir 里）。**不要**为此传空串：
 /// 空串会被后端判成不安全路径并拒掉，用户看到的是一句莫名其妙的错。
+///
+/// # 〔`A3` 第二波〕本机那一侧：同一条命令，按 `origin` 分流
+///
+/// `origin == <local>`（`inbound_client::LOCAL_ORIGIN`）⇒ 不走 SSH，exec **本机后端**的
+/// 同一条子命令（`--account-trust` / `--account-trust-zero`，参数走 argv 不过 shell），
+/// 解析与远端那条共用 [`trust_from_lines`]。实现住 `local_accounts::local_account_trust`，
+/// 与 `list_local_accounts` 同一种调用法。⇒ 能力 `accounts.trust` 从此两侧都有
+/// （账本 `LEDGER` 这一行记 `Side::Both`，并在 `ORIGIN_TAKING_BOTH` 里登记理由）。
 #[tauri::command]
 pub async fn check_account_trust(
     origin: String,
     config_dir: Option<String>,
     cwd: String,
 ) -> Result<AccountTrustResult, String> {
+    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
+        return Ok(crate::local_accounts::local_account_trust(config_dir, cwd).await);
+    }
     let cfg = match cfg_for(&origin)? {
         Ok(c) => c,
         Err(msg) => return Ok(unavailable(msg)),
@@ -464,24 +475,36 @@ pub async fn check_account_trust(
             tracing::warn!("远端 [{origin}] --account-trust 失败: {e}");
             Ok(unavailable(e))
         }
-        Ok(lines) => {
-            // backend 的硬错误走 stderr + exit 2，stdout 无行 → 视为不可用（不阻断编排，
-            // 由调用方按"未知信任状态"处理：只警告不拦截）
-            let Some(first) = lines.first() else {
-                return Ok(unavailable(
-                    "远端未返回信任状态（backend 版本过旧或该 configDir 被拒）",
-                ));
-            };
-            match serde_json::from_str::<AccountTrustResult>(first) {
-                Ok(mut r) => {
-                    r.available = true;
-                    r.error = None;
-                    Ok(r)
-                }
-                Err(e) => Ok(unavailable(format!("信任状态解析失败: {e}"))),
-            }
-        }
+        // backend 的硬错误走 stderr + exit 2，stdout 无行 → 视为不可用（不阻断编排，
+        // 由调用方按"未知信任状态"处理：只警告不拦截）
+        Ok(lines) => Ok(trust_from_lines(
+            &lines,
+            "远端未返回信任状态（backend 版本过旧或该 configDir 被拒）",
+        )),
     }
+}
+
+/// `--account-trust*` 的出参折成 [`AccountTrustResult`] —— **两侧共用的那一份解析**。
+///
+/// 远端那条（SSH 回来的行）与本机那条（`local_accounts::local_account_trust`，本机后端
+/// stdout 的行）都走这里；两侧的差别只剩「行从哪来」与「一行都没有时怎么说」（`empty`）。
+pub(crate) fn trust_from_lines(lines: &[String], empty: &str) -> AccountTrustResult {
+    let Some(first) = lines.first() else {
+        return unavailable(empty);
+    };
+    match serde_json::from_str::<AccountTrustResult>(first) {
+        Ok(mut r) => {
+            r.available = true;
+            r.error = None;
+            r
+        }
+        Err(e) => unavailable(format!("信任状态解析失败: {e}")),
+    }
+}
+
+/// 同一条对象的 `available:false` 形 —— 给本机那一侧用（远端那侧在本文件里直接调私有的 `unavailable`）。
+pub(crate) fn trust_unavailable(msg: String) -> AccountTrustResult {
+    unavailable(msg)
 }
 
 #[cfg(test)]

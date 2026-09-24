@@ -1401,6 +1401,9 @@ pub fn run() {
             accounts::list_remote_accounts,
             local_accounts::list_local_accounts,
             local_accounts::list_local_session_accounts, // E79：本机版「某会话属于哪个账号」
+            // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧（问本机后端）。
+            local_accounts::check_local_acct_iso,
+            local_accounts::local_acct_iso_shellinit,
             accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,

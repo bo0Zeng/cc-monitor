@@ -148,67 +148,67 @@ mod tests {
         (
             // ⚠ 〔`设计/20 §7` 步 1〕它**搬家了**：热重载整块归层 2，住址从
             //   `server.rs` 变成 `accounts/mod.rs`。话一个字没改。
-            "accounts/mod.rs",
+            "accounts/apikey/mod.rs",
             "[apikey] 凭据文件读不成表，**保留上一张表不动**",
             "`D2 阻-2`：重载时解析失败 —— **不把表换成空**（空表 = 全部 404），\
              留住上一张能用的、只出声。这一形是「表可重载」之后新长出来的",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] credentials file:",
             "凭据文件在哪（`KS9` 路径文档化）",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] credentials problem:",
             "文件读不动 / 解析不了",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] credentials permissions too wide:",
             "权限过宽（`KS11`）",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] how to fix:",
             "怎么修（`KS11` 要求两样都有）",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] credentials permissions unknown:",
             "查不出权限，也要出声",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] credentials: this account cannot be used:",
             "一条账号进不了路由表（id 当不了路由段 / `base_url` 解析不了）—— \
              `K-H2`：静默丢一行的症状是「我明明配了，中转永远 404」",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] credentials: configured",
             "配了 —— **只印这个布尔与进得了表的条数**，不印长度、不印掩码",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] credentials: auth_style must be one of:",
             "有一条的 `auth_style` 认不出时，把认得的那几个**现算**着印出来（`K-R1`）——\
              它是给正在排错的人看的最后一句话，所以不许是一份会变旧的字面量清单",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] credentials: this account is not on the default path:",
             "一条**进了表、但行为与默认不同**的账号（`K-R1`：带了路径前缀 / 换了鉴权头形状）。\
              它与上面那条「cannot be used」是两件事：这一条**照发**，只是发出去的字节不同 ⇒ \
              它错了的症状是上游的 404 / 401，与「上游挂了」同形，必须在启动时说出来",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] credentials: not configured",
             "没配",
         ),
         (
-            "accounts/creds.rs",
+            "accounts/apikey/creds.rs",
             "[apikey] create that file to configure one",
             "没配时印模板",
         ),
@@ -220,7 +220,9 @@ mod tests {
     ///   搬走之后只扫 `relay/` 的话，层 2 那 12 行日志会**掉出扫描面** —— 它们记的恰恰是
     ///   凭据文件那一侧的事，是 `KS4` 最该看着的那一批。⇒ 两棵根明写在这里，
     ///   并由判据本体断言「盘上有日志的根 ⇔ 登记表里出现的根 ⇔ 本表」三方相等。
-    const LOG_ROOTS: &[&str] = &["relay", "accounts"];
+    // 〔`A3` 第二波〕层 2 的根从 `accounts` 收窄成 `accounts/apikey`：`accounts/` 是账号**域**，
+    // 其中 `iso.rs`（账号隔离工具的查询）**不是**中转的层 2，不进本白名单的人群。
+    const LOG_ROOTS: &[&str] = &["relay", "accounts/apikey"];
 
     /// 整个 backend crate 的生产段（逐文件）。`KS2` 的人群是**整个 crate**，不是 `relay/` ——
     /// 「取明文的地方恰好一处」这句话的分母如果只到 `relay/`，
@@ -323,7 +325,7 @@ mod tests {
     /// 按构造成立 ⇒ 拿两个定义对拍就是**两侧同源的恒等 = 恒真**，本仓逐字禁过。
     /// ⇒ 本条改判**真走一遍层 2 拿到的那个 `AuthSwap`**：
     ///
-    /// 1. 每一种 `AuthStyle` 各配一行，过**生产段那条真实的** `accounts::decide`；
+    /// 1. 每一种 `AuthStyle` 各配一行，过**生产段那条真实的** `accounts::apikey::decide`；
     /// 2. 它说要写的那个头名，必须在它**自己那一份** `clear` 里；
     /// 3. 🔴 **射程不许缩**：`clear` 必须是**全集** —— 判据自己独立地从
     ///    `AuthStyle::ALL` ＋ `auth_header_of` 派生一遍期望值去比。
@@ -354,7 +356,7 @@ mod tests {
         // 期望的全集：**判据这边自己**从闭集派生一遍（与生产段那一份异源）。
         let want_clear: std::collections::BTreeSet<String> = AuthStyle::ALL
             .iter()
-            .filter_map(|s| crate::accounts::auth_header_of(*s))
+            .filter_map(|s| crate::accounts::apikey::auth_header_of(*s))
             .map(|(n, _)| n.to_ascii_lowercase())
             .collect();
         assert!(
@@ -366,7 +368,7 @@ mod tests {
         let base = crate::relay::upstream::Base::parse("https://api.example.com").expect("base");
         let mut wrote = 0usize;
         for style in AuthStyle::ALL.iter().copied() {
-            let table = crate::accounts::table::RoutingTable::build(std::iter::once((
+            let table = crate::accounts::apikey::table::RoutingTable::build(std::iter::once((
                 "a".to_string(),
                 "acct".to_string(),
                 base.clone(),
@@ -378,8 +380,9 @@ mod tests {
                 seg2: "acct".to_string(),
             };
             let mut seen: Option<(Option<&'static str>, Vec<String>)> = None;
-            let upstreams = crate::accounts::Upstreams::from_env(&|_| None).expect("内置默认");
-            crate::accounts::decide(
+            let upstreams =
+                crate::accounts::apikey::Upstreams::from_env(&|_| None).expect("内置默认");
+            crate::accounts::apikey::decide(
                 &table,
                 &upstreams,
                 crate::relay::Mode::Substitute,
@@ -459,8 +462,9 @@ mod tests {
         //    而「把 key 拼成头值」必须拿着 `SecretKey` ⇒ 它只能在层 2。
         //    ⇒ 层 1 从此**碰不到明文**。这一格因此比先前**更紧**，不是搬松了。
         assert!(
-            header_sites[0].ends_with(".rs:0") || header_sites[0].contains("accounts/mod.rs"),
-            "唯一那处不在 `accounts/mod.rs`（层 2 拼头值那一行）而在 {} —— 靶子挪了。\n\
+            header_sites[0].ends_with(".rs:0")
+                || header_sites[0].contains("accounts/apikey/mod.rs"),
+            "唯一那处不在 `accounts/apikey/mod.rs`（层 2 拼头值那一行）而在 {} —— 靶子挪了。\n\
              ⚠ 它**不许**回到层 1：那会让 `creds-core` 的类型重新爬上层 1 的类型面（`C2`）。",
             header_sites[0]
         );
@@ -638,13 +642,34 @@ mod tests {
         );
         // ★ 〔层 2 搬出 `relay/` 那一拍〕**两层的日志都在扫描面里**：盘上扫到日志的根
         //   ⇔ 登记表里出现的根 ⇔ `LOG_ROOTS`，三方相等。少了一棵 = 那一层的日志掉出白名单。
-        let root_of = |f: &str| f.split('/').next().unwrap_or("").to_string();
+        // 〔`A3` 第二波〕根不再都是一段（`accounts/apikey` 两段）⇒ 按 `LOG_ROOTS` 认前缀，不按第一段切。
+        let root_of = |f: &str| {
+            LOG_ROOTS
+                .iter()
+                .find(|r| f.starts_with(&format!("{r}/")))
+                .map(|r| (*r).to_string())
+                .unwrap_or_else(|| f.split('/').next().unwrap_or("").to_string())
+        };
         let on_disk_roots: std::collections::BTreeSet<String> =
             found.iter().map(|(f, _)| root_of(f)).collect();
         let registered_roots: std::collections::BTreeSet<String> =
             LOG_SITES.iter().map(|(f, _, _)| root_of(f)).collect();
         let want_roots: std::collections::BTreeSet<String> =
             LOG_ROOTS.iter().map(|r| (*r).to_string()).collect();
+        // 〔`A3` 第二波〕白名单圈的非中转那一棵，**恰好**是层 2 的根（盘上现推，住 `account_layer_guard`）——
+        //   不是整个账号域：`accounts/iso.rs`（账号隔离工具的查询）不是中转的层 2，不进本白名单。
+        let l2_root = super::super::account_layer_guard::tests::layer_two_root_from_disk();
+        let non_relay: Vec<&str> = LOG_ROOTS
+            .iter()
+            .copied()
+            .filter(|r| *r != "relay")
+            .collect();
+        assert_eq!(
+            non_relay,
+            vec![l2_root.trim_end_matches('/')],
+            "中转日志白名单圈的账号那棵（`LOG_ROOTS`）不等于层 2 的根 `{l2_root}` —— \
+             圈大了就把账号域里别的块（iso）也算成了中转的层 2"
+        );
         assert_eq!(
             on_disk_roots, want_roots,
             "盘上扫到日志的根与 `LOG_ROOTS` 对不上 —— 某一层的日志掉出了扫描面（或多出一棵没登记的树）"
@@ -658,7 +683,7 @@ mod tests {
         //   `--relay` 一个进程承载两层，先前两层共用 `[relay]` ⇒ 读日志的人判不出是哪一层出的事。
         //   ⚠ 反空真：两边都得**非空**，否则「前缀按层分」在一个只剩一层的表上恒真。
         //   ⚠ 本条量的是**登记表**；登记表与盘上逐条对上由下面那一段钉着（同一条判据里）。
-        let is_layer_two = |f: &str| f.starts_with("accounts/");
+        let is_layer_two = |f: &str| f.starts_with("accounts/apikey/");
         let two = LOG_SITES.iter().filter(|(f, _, _)| is_layer_two(f)).count();
         let one = LOG_SITES.len() - two;
         assert!(

@@ -2777,6 +2777,108 @@ describe("A5 compact waiter（awaitCompactFor + onLine 检测）", () => {
   });
 });
 
+// 〔`A3` 第二波〕**本机换号重启**：菜单与编排入口都对本机 tab 开放，origin 取 backend 的 `<local>`。
+// 死值验对照：把 `restartTabWithAccount` 开头那条改回 `tab.origin === null ⇒ return false`、
+// 或把右键那一行改回 `origin !== null && t`，下面各红一条。
+describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
+  const restartSpy = restartWithAccount as unknown as ReturnType<typeof vi.fn>;
+  type Priv = { restartTabWithAccount(sid: string, name: string, c: boolean): Promise<boolean> };
+  let tm: TabManager;
+  const TWO_LOCAL = {
+    available: true,
+    error: null,
+    meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 2, error: null },
+    accounts: [
+      { name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+      { name: "b", email: "b@x", configDir: "/h/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true },
+    ],
+  };
+  const localSess = (over: Record<string, unknown> = {}) => ({
+    name: "proj-cc",
+    path: "/w",
+    command: "claude",
+    attached: false,
+    windows: 1,
+    sid: "l1",
+    ...over,
+  });
+  const rightClick = (sid: string): void => {
+    (tm as unknown as { tabButtons: Map<string, { root: HTMLElement }> }).tabButtons
+      .get(sid)!
+      .root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+  };
+  const menuItems = (): HTMLButtonElement[] =>
+    [
+      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+    ] as HTMLButtonElement[];
+  const invokedCmds = (): string[] =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    invalidateAccountsCache();
+    tm = makeTM();
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+      if (cmd === "list_local_accounts") return Promise.resolve(TWO_LOCAL);
+      if (cmd === "list_local_tmux") return Promise.resolve([localSess()]);
+      return Promise.resolve(undefined);
+    });
+  });
+
+  it("本机活会话 ≥2 可选账号 → 出现「Restart」，点了走 `<local>`；账号清单问的是本机后端", async () => {
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    rightClick("l1");
+    await flushMicro();
+    await flushMicro();
+    await flushMicro();
+    expect(menuItems().map((b) => b.textContent)).toContain("Restart（换号重启）");
+    // 账号清单那一跳问的是**本机**（`list_local_accounts`），不是拿 `<local>` 去问远端。
+    expect(invokedCmds()).toContain("list_local_accounts");
+    expect(invokedCmds()).not.toContain("list_remote_accounts");
+    menuItems().find((b) => b.textContent === "直接重启")?.click();
+    await flushMicro();
+    expect(restartSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: "<local>", sessionId: "l1", accountName: "z", compactFirst: false }),
+    );
+  });
+
+  it("本机**归档** tab 不拉账号清单（本机 Resume 不带账号选择，只有活会话才有换号重启）", async () => {
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    (tm as unknown as { tabs: Map<string, { status: string }> }).tabs.get("l1")!.status = "archived";
+    rightClick("l1");
+    await flushMicro();
+    await flushMicro();
+    expect(invokedCmds()).not.toContain("list_local_accounts");
+    expect(menuItems().map((b) => b.textContent)).not.toContain("Restart（换号重启）");
+  });
+
+  it("本机会话精确 @ccm_sid 命中 → 编排器拿到 `<local>` ＋ 本机 resume 命令 ＋ 本机 tmux 名", async () => {
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    await (tm as unknown as Priv).restartTabWithAccount("l1", "b", false);
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+    const arg = restartSpy.mock.calls[0][0];
+    expect(arg.origin).toBe("<local>");
+    expect(arg.tmuxName).toBe("proj-cc");
+    expect(arg.accountName).toBe("b");
+    expect(arg.launcher).toBe(""); // getBehavior 的 mock：resumeCommandLocal = ""（远端那条是 "cct"）
+    expect(invokedCmds()).toContain("list_local_tmux");
+    expect(invokedCmds()).not.toContain("list_remote_tmux");
+  });
+
+  it("本机会话不在本工具 tmux 里 → 拒重启，提示**不指**本机不存在的那条补救路", async () => {
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+      cmd === "list_local_tmux" ? Promise.resolve([]) : Promise.resolve(undefined),
+    );
+    tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, null);
+    await (tm as unknown as Priv).restartTabWithAccount("l1", "b", false);
+    expect(restartSpy).not.toHaveBeenCalled();
+    const toast = vi.mocked(showActionFailureToast).mock.calls.at(-1);
+    expect(toast?.[0]).toBe("无法换号重启");
+    expect(String(toast?.[1])).not.toContain("把此会话切到账号 X");
+  });
+});
+
 describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动手）", () => {
   const restartSpy = restartWithAccount as unknown as ReturnType<typeof vi.fn>;
   type Priv = { restartTabWithAccount(sid: string, name: string, c: boolean): Promise<void> };

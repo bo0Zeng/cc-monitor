@@ -493,6 +493,67 @@ pub async fn list_local_accounts() -> Result<AccountsResult, String> {
 mod tests;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 〔`A3` 第二波〕本机的「这个账号信任过这个目录吗」—— `accounts.trust` 的本机对侧
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 本机那一跳的 argv。**不过 shell**：远端那条要 `shell_quote`（`accounts::trust_args`），
+/// 是因为它拼成一整串交给 SSH；本机直接 exec，参数原样是 argv 的一格。
+///
+/// 账号 0（`None`）走 `--account-trust-zero`、**不传路径** —— 与远端那条同一条规矩
+/// （后端那边路径写死 `$HOME/.claude.json`，这条命令连「任意文件读」的面都没有）。
+pub(crate) fn local_trust_argv<'a>(config_dir: Option<&'a str>, cwd: &'a str) -> Vec<&'a str> {
+    match config_dir {
+        None => vec!["--account-trust-zero", cwd],
+        Some(c) => vec!["--account-trust", c, cwd],
+    }
+}
+
+/// 把一次本机 `--account-trust*` 的结局折成 [`crate::accounts::AccountTrustResult`]。
+///
+/// **纯函数**（不起进程）⇒ 三档各能正面断言。解析与远端那条共用
+/// `accounts::trust_from_lines`；差别只在「够不着」与「查询失败」这两档怎么说 ——
+/// **都不许**说成「未信任」：调用方（换号重启）对 `available:false` 只是不提示，不拦。
+pub(crate) fn classify_local_trust(outcome: QueryOutcome) -> crate::accounts::AccountTrustResult {
+    match outcome {
+        QueryOutcome::Ok(stdout) => {
+            let lines: Vec<String> = stdout
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_string)
+                .collect();
+            crate::accounts::trust_from_lines(&lines, "本机后端没有返回信任状态")
+        }
+        QueryOutcome::NoBackend(reason) => crate::accounts::trust_unavailable(format!(
+            "本机后端不在，查不出这个账号是否信任过该目录：{reason}"
+        )),
+        QueryOutcome::Failed { code, stderr } => crate::accounts::trust_unavailable(format!(
+            "本机后端的信任查询失败（退出码 {code:?}）：{}",
+            stderr.trim()
+        )),
+    }
+}
+
+/// 本机那一侧的入口 —— 由 `accounts::check_account_trust` 在 `origin == <local>` 时调。
+///
+/// **不单开一条 Tauri 命令**：远端那条本来就吃 `origin`，本机只是 `origin` 的另一个取值
+/// （`C1`「本地 = 不走 ssh 的远端」；同 `set_backend_kill_on_exit` 那一族的形）。
+pub(crate) async fn local_account_trust(
+    config_dir: Option<String>,
+    cwd: String,
+) -> crate::accounts::AccountTrustResult {
+    tokio::task::spawn_blocking(move || {
+        classify_local_trust(run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &local_trust_argv(config_dir.as_deref(), &cwd),
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        ))
+    })
+    .await
+    .unwrap_or_else(|e| crate::accounts::trust_unavailable(format!("本机信任查询没能跑完：{e}")))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // E79：本机的「某个 sid 现在跑在哪个账号下」
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -591,4 +652,121 @@ pub async fn list_local_session_accounts() -> Result<crate::accounts::SessionAcc
     })
     .await
     .map_err(|e| format!("list_local_session_accounts join 失败: {e}"))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 远端那两条（`acct_iso_deploy.rs::check_remote_acct_iso` / `remote_acct_iso_shellinit`）
+// 吃 `RemoteConfig`、经 SSH 跑一串 shell；本机这两条**问本机后端**
+// （`--acct-iso-status` / `--acct-iso-shellinit`，住后端账号层 `accounts/iso.rs`），
+// 与 `list_local_accounts` 同一种调用法 —— `NR2`「claude 真实跑在哪台机器，账号就归那台的后端管」。
+// 出参类型与远端那条**逐字相同**（`AcctIsoStatus` / 片段文本），前端按同一个形状读。
+
+/// 后端 stderr 那一行 `{code,message}` 里的 `message`；解析不了就原样带回（不猜）。
+fn backend_message(stderr: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(stderr.trim())
+        .ok()
+        .and_then(|v| {
+            v.get("message")
+                .and_then(|m| m.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| stderr.trim().to_string())
+}
+
+/// `--acct-iso-status` 的结局 → `AcctIsoStatus` —— **纯函数**。
+///
+/// 「没装」是 `Ok(installed:false)`（后端 exit 0 的那一支），不是 `Err`；
+/// `Err` 只给「问不出来」的两档（后端不在 / 查询失败 / 出参读不懂），且**不许**说成「没装」。
+pub(crate) fn classify_local_acct_iso(
+    outcome: QueryOutcome,
+) -> Result<crate::acct_iso_deploy::AcctIsoStatus, String> {
+    let stdout = match outcome {
+        QueryOutcome::Ok(s) => s,
+        QueryOutcome::NoBackend(reason) => {
+            return Err(format!(
+                "本机后端不在，查不出这台机器装没装 cc-acct-iso：{reason}"
+            ))
+        }
+        QueryOutcome::Failed { code, stderr } => {
+            return Err(format!(
+                "本机后端查不出 cc-acct-iso 装没装（退出码 {code:?}）：{}",
+                backend_message(&stderr)
+            ))
+        }
+    };
+    let v: serde_json::Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("本机后端回的 cc-acct-iso 状态读不懂：{e}"))?;
+    let installed = v
+        .get("installed")
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| "本机后端回的 cc-acct-iso 状态里没有 installed".to_string())?;
+    Ok(crate::acct_iso_deploy::AcctIsoStatus {
+        installed,
+        path: v.get("path").and_then(|p| p.as_str()).map(str::to_string),
+        vendor_id: crate::acct_iso_deploy::vendor_id().to_string(),
+    })
+}
+
+/// `acct-iso.check` 的本机对侧：这台机器装没装 `cc-acct-iso`。
+#[tauri::command]
+pub async fn check_local_acct_iso() -> Result<crate::acct_iso_deploy::AcctIsoStatus, String> {
+    tokio::task::spawn_blocking(|| {
+        classify_local_acct_iso(run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &["--acct-iso-status"],
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        ))
+    })
+    .await
+    .map_err(|e| format!("本机 cc-acct-iso 查询没能跑完：{e}"))?
+}
+
+/// `--acct-iso-shellinit` 的结局 → 片段 —— **纯函数**。
+///
+/// 围栏校验与远端那条**同一个判定**（`acct_iso_deploy::shellinit_fence_state`），
+/// 只是话按本机说（远端那句「先在『维护』里部署」对本机是一条走不通的路 ——
+/// 本机的安装口今天不存在，`LOCAL_ACCOUNTS_COPY.emptyNext` 逐字写着）。
+pub(crate) fn classify_local_shellinit(outcome: QueryOutcome) -> Result<String, String> {
+    use crate::acct_iso_deploy::{shellinit_fence_state, FenceState};
+    use crate::acct_iso_deploy::{SHELLINIT_FENCE_BEGIN, SHELLINIT_FENCE_END};
+    let out = match outcome {
+        QueryOutcome::Ok(s) => s,
+        QueryOutcome::NoBackend(reason) => {
+            return Err(format!("本机后端不在，拿不到这台机器的 rc 片段：{reason}"))
+        }
+        QueryOutcome::Failed { stderr, .. } => {
+            return Err(format!(
+                "本机没能产出 rc 片段：{}",
+                backend_message(&stderr)
+            ))
+        }
+    };
+    match shellinit_fence_state(&out) {
+        FenceState::Complete => Ok(out),
+        FenceState::Truncated => Err(format!(
+            "本机产出的 rc 片段不完整（有 {SHELLINIT_FENCE_BEGIN:?} 但没有 {SHELLINIT_FENCE_END:?}），\
+             可能被截断了。别贴：半截片段会让登录 shell 报错。请重试。"
+        )),
+        FenceState::Missing => Err(format!(
+            "本机没能产出 rc 片段（输出里没有 {SHELLINIT_FENCE_BEGIN:?}）。\
+             常见原因：这台机器还没跑过 `cc-acct-iso init`。"
+        )),
+    }
+}
+
+/// `acct-iso.shellinit` 的本机对侧：这台机器的 `cc-acct-iso shellinit` 片段（**只读**，不代写 rc）。
+#[tauri::command]
+pub async fn local_acct_iso_shellinit() -> Result<String, String> {
+    tokio::task::spawn_blocking(|| {
+        classify_local_shellinit(run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &["--acct-iso-shellinit"],
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        ))
+    })
+    .await
+    .map_err(|e| format!("本机 rc 片段查询没能跑完：{e}"))?
 }

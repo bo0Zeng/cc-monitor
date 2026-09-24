@@ -274,8 +274,9 @@ mod tests {
             welds.len()
         );
         assert!(
-            welds[0].contains("accounts/table.rs") || welds[0].contains("accounts\\table.rs"),
-            "唯一那一处不在 `accounts/table.rs` 而在 {} —— 靶子挪了",
+            welds[0].contains("accounts/apikey/table.rs")
+                || welds[0].contains("accounts\\apikey\\table.rs"),
+            "唯一那一处不在 `accounts/apikey/table.rs` 而在 {} —— 靶子挪了",
             welds[0]
         );
 
@@ -284,11 +285,11 @@ mod tests {
         //   **访问器收成 `pub(super)`** —— 那是编译器买的，不是本条买的。
         //   本条今天断的是「焊接点没有溜出层 2」。
         let table = table_production();
-        let inside = sites_layout_blind(&[("accounts/table.rs".to_string(), table)], WELD);
+        let inside = sites_layout_blind(&[("accounts/apikey/table.rs".to_string(), table)], WELD);
         assert_eq!(
             inside.len(),
             1,
-            "`accounts/table.rs` 里的焊接点不是恰好一处（实得 {} 处）。",
+            "`accounts/apikey/table.rs` 里的焊接点不是恰好一处（实得 {} 处）。",
             inside.len()
         );
     }
@@ -396,7 +397,8 @@ mod tests {
     fn layer_one_has_no_default_upstream_to_fall_back_to() {
         let files = crate_production();
         // 层 2 的人群：`accounts/` 底下那几份。层 1 = `relay/` 里**除它之外**的。
-        let is_layer_two = |p: &str| p.contains("accounts/") || p.contains("accounts\\");
+        let is_layer_two =
+            |p: &str| p.contains("accounts/apikey/") || p.contains("accounts\\apikey\\"); // 〔`A3` 第二波〕层 2 收窄到 `accounts/apikey/`（`accounts/iso.rs` 不是层 2）
         let in_relay = |p: &str| p.contains("relay/") || p.contains("relay\\");
 
         // 两根针：常量名 ＋ 它的值。**两根都数**，免得有人只搬走名字、把字面量留在原地。
@@ -421,7 +423,7 @@ mod tests {
         assert!(
             revived.is_empty(),
             "进程级的默认上游常量又回来了：{revived:?}\n\
-             🔴 默认上游是**每 agent 一行**（`accounts::AGENT_UPSTREAMS`）；一个对所有 agent \
+             🔴 默认上游是**每 agent 一行**（`accounts::apikey::AGENT_UPSTREAMS`）；一个对所有 agent \
              都成立的值，就是「未登记的 agent 回落到某一家」那条被明禁的路。"
         );
         for (needle, want, why) in LAYER_TWO_SITES {
@@ -472,7 +474,7 @@ mod tests {
     /// 第二版钉的是一串含缩进的源码字面
     /// （`let mut up = {\n        let table = relay.table.read()`），
     /// 而两层解耦之后 **`server.rs` 里根本没有 `relay.table` 这个东西了** ——
-    /// 那把锁归层 2，由 `accounts::Accounts::resolve` 自己持有，活到它返回为止。
+    /// 那把锁归层 2，由 `accounts::apikey::Accounts::resolve` 自己持有，活到它返回为止。
     ///
     /// ⇒ 性质换了一个说法，**一格没松**：
     /// 「读锁不跨 `pump`」 ⇔ **层 1 交给 `resolve` 的那个闭包里不许出现 `pump(`**
@@ -531,8 +533,10 @@ mod tests {
         // ★ 另一半在层 2：那把读锁**恰好一处**取，而且就在 `resolve` 里。
         let (_, accounts) = files
             .iter()
-            .find(|(p, _)| p.ends_with("accounts/mod.rs") || p.ends_with("accounts\\mod.rs"))
-            .expect("扫不到 `accounts/mod.rs` —— 取法坏了，本条按红处理");
+            .find(|(p, _)| {
+                p.ends_with("accounts/apikey/mod.rs") || p.ends_with("accounts\\apikey\\mod.rs")
+            })
+            .expect("扫不到 `accounts/apikey/mod.rs` —— 取法坏了，本条按红处理");
         assert_eq!(
             accounts.matches("self.table.read()").count(),
             1,

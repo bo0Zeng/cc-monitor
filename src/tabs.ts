@@ -3578,6 +3578,9 @@ export class TabManager {
     sid: string,
     status: TabStatus,
   ): Promise<void> {
+    // 〔`A3` 第二波〕本机归档 tab 不带账号选择（本机 Resume 走那条会话上次的号，
+    // 见 `accounts.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
+    if (origin === LOCAL_ORIGIN && status === "archived") return;
     const gen = tabMenuGeneration; // 捕获这一代菜单
     const accountOptions = await enumerateAccountModifiers(origin);
     if (gen !== tabMenuGeneration) return; // 菜单已换/已关
@@ -3675,8 +3678,9 @@ export class TabManager {
       });
   }
 
-  /** A5：活跃远端会话换号重启——先解析该会话当前所在的 tmux 名（send-keys/kill 目标），再走
-   *  `restartWithAccount` 编排（§5）。会话不在本工具 tmux（非本工具起/已漂移）→ 提示无法重启。 */
+  /** A5：活跃会话换号重启——先解析该会话当前所在的 tmux 名（send-keys/kill 目标），再走
+   *  `restartWithAccount` 编排（§5）。会话不在本工具 tmux（非本工具起/已漂移）→ 提示无法重启。
+   *  〔`A3` 第二波〕本机会话（`origin === null`）也走这一条，origin 取 `<local>`。 */
   private async restartTabWithAccount(
     sid: string,
     accountName: string,
@@ -3684,7 +3688,7 @@ export class TabManager {
     confirmFn?: (msg: string) => boolean,
   ): Promise<boolean> {
     const tab = this.tabs.get(sid);
-    if (!tab || tab.origin === null) return false; // 本地会话 A7 前不支持
+    if (!tab) return false;
     // D 审计（重要）：同一 sid 的并发重启会互相打架——A 已 kill+resume 起了新 claude，B 的
     // awaitExit 看到新 claude 仍在 → 超时降级 kill → 把刚起来的新会话又杀了再 resume 一遍
     // （还多弹一个终端窗口）。点击到弹确认之间有多个 await（getBehavior/list_remote_tmux/
@@ -3726,8 +3730,9 @@ export class TabManager {
     compactFirst: boolean,
     confirmFn?: (msg: string) => boolean,
   ): Promise<boolean> {
-    if (tab.origin === null) return false;
-    const origin = tab.origin;
+    // 〔`A3` 第二波〕本机会话的 origin 是 `<local>`：下面每一跳（tmux 快照 / send-keys / kill /
+    // 账号清单 / 信任预检）都按 origin 分流，本机走得通；resume 那一跳在 `restartWithAccount` 里分。
+    const origin = tab.origin ?? LOCAL_ORIGIN;
     const cwd = tab.cwd ?? "";
     const behavior = await getBehavior();
     // 解析该会话当前 tmux 名，一律新查（对齐 resumeTabTmux：attach/重启对新鲜度最敏感，防据陈旧快照误伤）。
@@ -3756,7 +3761,9 @@ export class TabManager {
       // 身份 token（`launchId`）说得出这条会话是不是从本工具这条路起来的，于是这里**拿它做
       // 决定**：选哪一条成因、给哪一句补救。判据见 `accounts.ts::restartLocateFailureMessage`
       // 头注与 `accounts.vitest.ts`；本处的接线由 `tabs.vitest.ts` 那两条对照钉着。
-      const msg = restartLocateFailureMessage(this.sessionAccountsByS.get(sid));
+      const msg = restartLocateFailureMessage(this.sessionAccountsByS.get(sid), {
+        local: origin === LOCAL_ORIGIN,
+      });
       showActionFailureToast(msg.title, msg.body, { level: "info", durationMs: 8000 });
       return false;
     }
@@ -3766,7 +3773,10 @@ export class TabManager {
       cwd,
       tmuxName: live.name,
       accountName,
-      launcher: await resolveResumeCommand(origin, behavior.resumeCommandRemote),
+      launcher:
+        origin === LOCAL_ORIGIN
+          ? behavior.resumeCommandLocal
+          : await resolveResumeCommand(origin, behavior.resumeCommandRemote),
       compactFirst,
       // `confirmFn` 保留为可选参数（批量对齐曾用 `() => true` 跳过逐会话确认，随 F09 一并删除）；
       // 唯一现存调用点（右键菜单的 Restart flyout）不传 → 仍走 restartWithAccount 自带的破坏性二次确认。
@@ -4619,9 +4629,8 @@ export class TabManager {
         void this.resolveLocalKillMenuItem(sid);
       }
       // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
-      if (origin !== null && t) {
-        void this.appendAccountMenuItems(origin, sid, t.status);
-      }
+      // 〔`A3` 第二波〕本机 tab 也进来（`<local>`）—— 只拿「换号重启」那一项，见 appendAccountMenuItems。
+      if (t) void this.appendAccountMenuItems(origin ?? LOCAL_ORIGIN, sid, t.status);
     });
 
     return { root, label, badge, acctBadge, cwdBtn, pinBadge };
