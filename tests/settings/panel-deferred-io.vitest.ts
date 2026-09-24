@@ -154,6 +154,15 @@ function expandDrift(): void {
 /** 登记表 ④：点进某台机器的子页才该出现的那一发（步 14a 之后「足迹」住那儿）。 */
 const MACHINE_PAGE_IPC = ["config_surface_report"] as const;
 
+/** 〔ST2 · 步 15〕「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
+const LOGS_PAGE_IPC = ["get_diagnostics_config", "get_log_file_info"] as const;
+const DATA_PAGE_IPC = ["get_data_paths"] as const;
+
+/** 点左侧导航的某一项。 */
+function visit(id: string): void {
+  document.querySelector<HTMLButtonElement>(`[id="settings-tab-${id}"]`)!.click();
+}
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const uniq = (xs: string[]) => [...new Set(xs)].sort();
 
@@ -190,24 +199,37 @@ describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () 
     }
   });
 
-  it("点进「应用」⇒ **恰好**多出那三发（日志 2 · 数据位置 1）", async () => { // 〔AL1〕从前是五发
+  it("〔ST2 · 步 15〕「应用」那三发拆到两个子页：日志 ⇒ 恰好日志两发 · 数据位置 ⇒ 恰好那一发 · 应用 / 外观 ⇒ 零发", async () => {
     new SettingsPanel({ windowMode: true });
     await tick();
-    const mark = ipc.calls.length;
-    document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
+    let mark = ipc.calls.length;
+    visit("app");
+    visit("app-appearance");
     await tick();
-    expect(since(mark)).toEqual(uniq([...APP_PAGE_IPC]));
+    expect(since(mark), "「应用」与「外观」两页上没有要读的东西").toEqual([]);
+    mark = ipc.calls.length;
+    visit("app-logs");
+    await tick();
+    expect(since(mark)).toEqual(uniq([...LOGS_PAGE_IPC]));
+    mark = ipc.calls.length;
+    visit("app-data");
+    await tick();
+    expect(since(mark)).toEqual(uniq([...DATA_PAGE_IPC]));
+    // 两页合起来 == 原来「应用」那一趟的三发（拆开不许丢、也不许多）。
+    expect(uniq([...LOGS_PAGE_IPC, ...DATA_PAGE_IPC])).toEqual(uniq([...APP_PAGE_IPC]));
   });
 
-  it("再点一次「应用」⇒ 一发都不许多（幂等：切页不是轮询）", async () => {
+  it("再点一次那两个子页 ⇒ 一发都不许多（幂等：切页不是轮询）", async () => {
     const p = new SettingsPanel({ windowMode: true });
     void p;
     await tick();
-    document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
+    visit("app-logs");
+    visit("app-data");
     await tick();
     const mark = ipc.calls.length;
-    document.querySelector<HTMLButtonElement>("#settings-tab-machines")!.click();
-    document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
+    visit("machines");
+    visit("app-logs");
+    visit("app-data");
     await tick();
     expect(since(mark)).toEqual([]);
   });
@@ -264,12 +286,14 @@ describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () 
   it("🔴 重开一次设置 ⇒ 那几页的第一发**重新算**（不是永远只发一次）", async () => {
     const p = new SettingsPanel({ windowMode: true });
     await tick();
-    document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
+    visit("app-logs");
+    visit("app-data");
     await tick();
     await p.open();
     await tick();
     const mark = ipc.calls.length;
-    document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
+    visit("app-logs");
+    visit("app-data");
     await tick();
     // 重开之后再点进「应用」要拿到**新读数** —— 否则用户改了外部状态、重开设置
     // 看到的还是上一次那份，而界面上看不出来。

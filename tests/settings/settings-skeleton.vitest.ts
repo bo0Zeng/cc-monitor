@@ -103,7 +103,7 @@ async function openAllPages(): Promise<HTMLElement> {
   const p = new SettingsPanel({ windowMode: true });
   await p.open();
   await tick();
-  for (const id of ["app", "machine:（本机）", "machines"]) {
+  for (const id of ["app", "app-appearance", "app-logs", "app-data", "machine:（本机）", "machines"]) {
     document.querySelector<HTMLButtonElement>(`[id="settings-tab-${id}"]`)?.click();
     await tick();
   }

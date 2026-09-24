@@ -416,8 +416,48 @@ describe("ConfigSurfaceSection", () => {
     invokeMock.mockResolvedValue(report());
     const s = new ConfigSurfaceSection();
     await s.refresh();
-    for (const call of invokeMock.mock.calls) {
-      expect(call[0]).toBe("config_surface_report");
-    }
+    // 〔ST2〕读面两条：配置面那一条 ＋ 「PowerShell profile 备份」那一格借的 `get_data_paths`（也是只读）。
+    const names = new Set(invokeMock.mock.calls.map((c) => c[0]));
+    expect([...names].sort()).toEqual(["config_surface_report", "get_data_paths"]);
+  });
+});
+
+describe("〔ST2 · `70 §10.2` · 步 15〕「PowerShell profile 备份」搬进本机「足迹」", () => {
+  const answer = (dirs: unknown) => (cmd: string) =>
+    cmd === "get_data_paths"
+      ? Promise.resolve({ monitorDataDir: "/h", entries: [], webviewUserDataDir: null, profileBackupDirs: dirs })
+      : Promise.resolve(report());
+
+  it("★ 有备份 ⇒ 这一格出现，每一个备份目录的路径都以纯文本上屏", async () => {
+    invokeMock.mockImplementation(
+      answer([{ path: "/h/Documents/PowerShell" }, { path: "/h/Documents/WindowsPowerShell" }]),
+    );
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const box = s.element.querySelector<HTMLElement>("[data-profile-backups]")!;
+    expect(box.querySelector(".settings-subtitle")?.textContent).toBe("PowerShell profile 备份");
+    expect([...box.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+      "/h/Documents/PowerShell",
+      "/h/Documents/WindowsPowerShell",
+    ]);
+  });
+
+  it("★ 一个备份都没有 ⇒ 整块不出现（不是画一个空标题）", async () => {
+    invokeMock.mockImplementation(answer([]));
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    expect(s.element.querySelector("[data-profile-backups]")!.childElementCount).toBe(0);
+  });
+
+  it("★★ 读不到 ⇒ 说读不到，不拿「没有备份」糊过去；上面那张表不受影响", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "get_data_paths" ? Promise.reject(new Error("盘坏了")) : Promise.resolve(report()),
+    );
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const box = s.element.querySelector<HTMLElement>("[data-profile-backups]")!;
+    expect(box.textContent).toContain("读不到 PowerShell profile 备份在哪");
+    expect(box.textContent).toContain("盘坏了");
+    expect(s.element.querySelectorAll(".config-surface-row").length, "备份那一格读不到把表也带走了").toBe(1);
   });
 });
