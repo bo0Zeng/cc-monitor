@@ -86,10 +86,17 @@ fn docs_on_disk() -> BTreeSet<String> {
 
 /// 那一篇**自己**声明了整篇作废吗 —— 只看抬头那一段（前 12 行），
 /// 因为篇中提到「某一节作废」不等于整篇作废。
+///
+/// 🔴 〔D0b 09-24〕抬头这一侧**也先剥强调符**，与索引那一侧（[`strip_emphasis`] 的头注）同一个理由：
+/// 判的是「声明了没有」，`**加粗**` 是排版。现打逼出来的：第四波 D0 对账把 `50`／`61` 的抬头
+/// 改写成「🚫 **整篇作废 —— 已结单。**」—— 两篇照旧自称整篇作废，而不剥星号时
+/// `every_doc_marked_dead_in_the_index_really_declares_itself_dead` 判它们「抬头没有那句声明」。
+/// 那一红在**排版**上、不在**语义**上 ⇒ 修判据的维度，不去改文档迁就判据。
 fn declares_itself_dead(name: &str) -> bool {
     let p = design_dir().join(name);
     let s = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不动 {}：{e}", p.display()));
     let head: String = s.lines().take(12).collect::<Vec<_>>().join("\n");
+    let head = strip_emphasis(&head);
     guard_core::contains_word(&head, "已作废") || head.contains(&dead_mark())
 }
 
