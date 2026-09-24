@@ -2001,6 +2001,12 @@ export class TabManager {
     const fillHandler = (): void => {
       if (this.activeId !== sessionId) return;
       const t = this.tabs.get(sessionId);
+      // 〔`设计/10` 骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
+      // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
+      if (t?.skeleton) {
+        t.skeleton.fillVisible();
+        return;
+      }
       if (t && t.streamEl.scrollTop <= TabManager.TOP_TRIGGER_PX) this.fillAbove(t);
     };
     streamEl.addEventListener("scroll", fillHandler, { passive: true });

@@ -4521,6 +4521,18 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(ranges.some((c) => (c[1] as { seqBase: number }).seqBase === 150)).toBe(false);
   });
 
+  it("滚动：接上骨架后**每次**滚动都交给 fillVisible —— 不再只在离顶 800px 内才补（占位可以在中部）", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
+    );
+    const t = replay("scroll");
+    await settle();
+    const spy = vi.spyOn(t.skeleton!, "fillVisible");
+    Object.defineProperty(t.streamEl, "scrollTop", { value: 5000, configurable: true });
+    t.streamEl.dispatchEvent(new Event("scroll"));
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
   it("大纲跳转：点到还在占位里的一条 ⇒ 先按 uuid→seq 物化那一段再跳", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       Promise.resolve(cmd === "read_session_index" ? idx(300) : undefined),
