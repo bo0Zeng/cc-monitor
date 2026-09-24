@@ -200,6 +200,12 @@ const LAYOUT_READERS: &[(&str, &str, &str)] = &[
          与 F03b（收件箱编辑的纵深②）两段澄清共用它。",
     ),
     (
+        // 🔴 〔波 5 ㈢ · 2026-09-23〕后端那一侧的**逐字副本**。
+        "src/backend/agents/claudecode/paths.rs",
+        "paths::is_protected_session_file：**同一个判定**在后端那个 crate 里的逐字副本",
+        "用户 2026-09-23 逐字裁「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」         ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」按**丙**（统一成同一个判定）裁，         统一到**窄的那一档** —— 后端写侧此前问的是 `paths::is_inside_tree`         （拒**整棵 `~/.claude*` 树**），今天问的是本行这一份。         🔴 **为什么它不是第二份判定**：两个 crate 之间**没有共享落点** ——         `src/backend` 刻意不在 monitor 那个 workspace 里（它有自己的 `Cargo.lock`，         那条隔离是真架构约束，见它 `Cargo.toml` 头注），而新立一个共享 crate 会动         门禁那句 `run_gate_sum cargo 9`，并且 `设计/60 §8.8` 记着上一次         「把围栏搬成共享 crate」**当天就被撤回**。         ⇒ 处置：函数体**逐字节相同**，并由          [`the_backend_copy_of_this_fence_is_byte_identical`] 钉成相等断言；         后端那棵树里还有一份同形的（`files_write_tests` 里那条），两侧各自跑得起来。         ⚠ 两侧刻意**不同名**：同名会让下面那条「`pub fn is_protected_claude_data_path`         全仓恰好一次」的断言红，而那条断言是对的。",
+    ),
+    (
         "src/bridge/src/sftp.rs",
         "sftp::is_safe_remote_jsonl：**方向相反**的那一道",
         "它的正题恰恰是「**只许**删 `projects/**/*.jsonl`」——\
@@ -210,6 +216,66 @@ const LAYOUT_READERS: &[(&str, &str, &str)] = &[
          `remove_remote_file` 那一行逐字记着这件事。",
     ),
 ];
+
+/// 🔴🔴 **两个 crate 里那两份判定的函数体，逐字节相同。**〔波 5 ㈢ · 2026-09-23〕
+///
+/// # 为什么是「两份逐字副本」而不是「一份共享实现」
+///
+/// 两棵树之间没有共享落点：`src/backend` **刻意不在** monitor 那个 workspace 里
+///（它有自己的 `Cargo.lock`，那条隔离是真架构约束），新立一个共享 crate 会动门禁那句
+/// `run_gate_sum cargo 9`，而 `设计/60 §8.8` 记着上一次「把围栏搬成共享 crate」
+/// **当天就被撤回**（`0ea1aa06`）。
+/// ⇒ 能买到的最强形状是「两份**逐字**副本 ＋ 一条相等断言」：**分叉不可能悄悄发生**。
+///
+/// # 它钉的是函数体，不是函数名
+///
+/// 两侧刻意不同名（`is_protected_claude_data_path` ↔ `is_protected_session_file`）——
+/// 同名会让 [`the_protected_path_judgement_has_exactly_one_home`] 那条
+/// 「定义恰好一处」红，而那条断言是对的：桥这一侧的**住址**仍然只有一个。
+///
+/// # ⚠ 它**买不到**什么
+///
+/// - 它钉「两段字节一样」，**不钉「这段字节判得对」** —— 后者是
+///   [`the_fence_refuses_every_protected_shape_and_passes_every_ordinary_one`] 那一半，
+///   而那一半只跑桥这一侧的那一份。后端那一份的行为由后端那棵树自己的判据跑
+///   （`files_write_tests::the_session_file_predicate_answers_both_ways`）。
+///   ⇒ **两侧各有行为判据 ＋ 中间一条字节相等** 才是完整的三段，别把其中任何一条读成全部。
+/// - 抽取靠「签名 → 第一个 `{` → 第一个行首 `}`」。哪一侧把函数体里写进一个行首的
+///   右大括号（字符串里、或者注释里），抽取会提前收尾 —— 那一形会以**相等断言红**的方式
+///   暴露（截短的一侧与另一侧不等），不会静默。如实登记。
+#[test]
+fn the_backend_copy_of_this_fence_is_byte_identical() {
+    fn body(src: &str, sig: &str) -> String {
+        let at = src
+            .find(sig)
+            .unwrap_or_else(|| panic!("语料里找不到 `{sig}` —— 抽取坏了，本条此刻在空转"));
+        let open = src[at..].find('{').expect("找不到函数体开头") + at;
+        let close = src[open..].find("\n}\n").expect("找不到函数体结尾") + open;
+        src[open + 1..close + 1].to_string()
+    }
+    let root = repo_root();
+    let theirs = std::fs::read_to_string(root.join("src/backend/agents/claudecode/paths.rs"))
+        .expect("读后端那一份 —— 读不到就是搬走了，同轮摘登记");
+    let mine = std::fs::read_to_string(root.join(FENCE_HOME)).expect("读本族那一份");
+    // 针**运行时拼**：写成字面量的话本文件自己就成了第三处住址。
+    let a = body(&mine, &format!("pub fn is_protected_claude_{}_path(", "data"));
+    let b = body(&theirs, &format!("pub fn is_protected_session_{}(", "file"));
+    // 反空真：抽出来的必须是真代码（`rfind` 是这段判定的骨架）。
+    assert!(
+        a.len() > 400 && a.contains("rfind"),
+        "本族那一份抽出来只有 {} 字节 —— 抽取坏了，下面那条相等在空转",
+        a.len()
+    );
+    assert_eq!(
+        a, b,
+        "🔴 **两份会话围栏分叉了。**\n\
+         这两段函数体必须逐字节相同 —— 它们是**同一个判定**。\n\
+         ⇒ 处置：改了一侧就把同一段字节抄到另一侧。\n\
+         ★ 分叉的代价不是重复代码，是**两份会给出不同答案**：同一次「往 `~/.claude` 里写」\n\
+         在后端那条路与桥那条路上结果不同，而界面上看不出这个区别 ——\n\
+         `设计/60 §8.7` 逐字记着这个后果，而这一刀治的就是它。"
+    );
+}
 
 /// 🔴 **「这是不是受保护路径」这一问，全仓只有一个家。**
 ///
