@@ -53,6 +53,12 @@ const SUMMARY = resolve(REPO, "coverage/coverage-summary.json");
  */
 const PER_FILE_FLOORS = [
   ["src/tabs.ts", 64, 69.9, 54, 59.7],
+  // 〔U2 · 2026-09-24〕`tabs.ts` 拆成 13 份，它原先那一格地板护着的代码大半搬走了 ⇒ 搬去的四份大的各自接一格
+  //   （同一套纪律：当前值下方 ~5 点，实测一起写下）。`tabs.ts` 那一行不动（今天实测 79.0 / 67.4，高于原地板）。
+  ["src/tab-stream-view.ts", 85, 90.8, 78, 83.9],
+  ["src/tab-session-actions.ts", 62, 67.5, 59, 64.7],
+  ["src/tab-menu.ts", 66, 71.4, 70, 75.4],
+  ["src/tab-bar-view.ts", 82, 87.5, 72, 77.4],
   ["src/views/history.ts", 63, 68.8, 45, 50.0],
   ["src/views/panorama.ts", 51, 56.5, 19, 24.8],
   ["src/settings/panel.ts", 75, 80.6, 50, 55.6],
