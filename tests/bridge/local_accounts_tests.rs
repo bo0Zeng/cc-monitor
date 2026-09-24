@@ -870,7 +870,11 @@ fn listed(o: LocalAccountsOutcome) -> Vec<crate::accounts::RemoteAccount> {
 fn an_account_with_a_row_in_the_apikey_table_is_an_api_key_account_and_selectable() {
     let sb = Sandbox::new();
     let rows = apikey_rows_written_for(&sb, &["/h/lib/carol"]);
-    assert_eq!(rows, vec!["carol".to_string()], "前提：真写入口写进去、真读口读得回那一行");
+    assert_eq!(
+        rows,
+        vec!["carol".to_string()],
+        "前提：真写入口写进去、真读口读得回那一行"
+    );
 
     let before = listed(classify_local_accounts(QueryOutcome::Ok(
         listing_with_an_apikey_made_account(),
@@ -884,14 +888,20 @@ fn an_account_with_a_row_in_the_apikey_table_is_an_api_key_account_and_selectabl
         v.iter().find(|a| a.name == n).cloned().expect("少了一个号")
     };
     // 前提：并之前 carol 就是「未登录、选不中」那一形（否则下面的正题是空真）。
-    assert_eq!(by(&before, "carol").auth_kind, Some(crate::accounts::AuthKind::Subscription));
+    assert_eq!(
+        by(&before, "carol").auth_kind,
+        Some(crate::accounts::AuthKind::Subscription)
+    );
     assert_eq!(by(&before, "carol").auth_ready, Some(false));
 
     // 正题：并之后它是 api-key 号，而且就绪（界面据 `authReady` 判可选）。
     let carol = by(&after, "carol");
     assert_eq!(carol.auth_kind, Some(crate::accounts::AuthKind::ApiKey));
     assert_eq!(carol.auth_ready, Some(true));
-    assert!(!carol.logged_in, "`loggedIn` 只是凭据文件在不在，这一格不许被顺手改成 true");
+    assert!(
+        !carol.logged_in,
+        "`loggedIn` 只是凭据文件在不在，这一格不许被顺手改成 true"
+    );
 
     // 阴性对照：不在表里的号（含缺凭据的订阅号 dave、账号 0）逐字节是后端答的那一份。
     for n in ["zero", "alice", "dave"] {
@@ -915,7 +925,10 @@ fn the_apikey_table_only_counts_for_its_own_agent_and_failures_pass_through() {
         "codex",
     ));
     let carol = codex.iter().find(|a| a.name == "carol").expect("carol");
-    assert_eq!(carol.auth_kind, Some(crate::accounts::AuthKind::Subscription));
+    assert_eq!(
+        carol.auth_kind,
+        Some(crate::accounts::AuthKind::Subscription)
+    );
     assert_eq!(carol.auth_ready, Some(false));
 
     for o in [
