@@ -292,7 +292,7 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
     let files = drawn_files();
     assert_eq!(
         files.len(),
-        12,
+        13,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
@@ -305,6 +305,7 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
          〔第十三刀 09-23：**这个数一格没动，而 `filewin/` 多了两份文件** ——\
           `proc.rs` 与 `win_main.rs` 进了排除名单（它们一个字都不画在 egui 上，\
           逐条理由与那条现打读数「收进来 249 → 355」住 `drawn_files`）〕\
+         〔F7b 09-24：12 → 13，多的是 `create.rs`（「新建空文件」那颗按钮与它那个框）〕\
          —— 现在是 {}，人群变了就重新论证一遍",
         files.len()
     );

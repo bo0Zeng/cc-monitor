@@ -16,7 +16,7 @@ import { Channel } from "@tauri-apps/api/core";
 import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
-import { openSftpPanel } from "../sftp/panel";
+import { openFileWindow } from "../file-window";
 import { invalidateCcmProbeCache } from "../ccm-probe";
 import { buildRemoteAliasPaste } from "./machine-aliases"; // 〔MC1〕② 别名：远端那一半只给手贴
 import { recordFacet, type MachineFacet } from "./machine-status";
@@ -480,19 +480,19 @@ export class MachineCard {
       () => void this.onPushPubkey(pushKeyBtn),
     );
     connRow.appendChild(pushKeyBtn);
-    // F48：打开该台的 SFTP 文件面板（独立 overlay）。
+    // F48：在原生文件窗口里打开这一台（〔F7b〕老 SFTP 面板退役，终点换成 `file-window.ts`）。
     connRow.appendChild(
       mkBtn(
         "文件",
         "",
-        "打开 SFTP 文件面板（浏览 / 上传 / 下载 / 管理远端文件）",
+        "在文件窗口里打开这台机器（浏览 / 上传 / 下载 / 管理远端文件）",
         () => {
           const cfg = this.collect();
           if (!cfg.host || !cfg.user) {
-            this.renderTestResult(null, "请先填好 host / user 再打开文件面板。");
+            this.renderTestResult(null, "请先填好 host / user 再打开文件窗口。");
             return;
           }
-          openSftpPanel(cfg);
+          void openFileWindow(cfg);
         },
       ),
     );

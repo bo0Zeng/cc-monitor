@@ -233,6 +233,8 @@
 
 pub mod copy;
 pub mod corpus;
+// 🔴〔F7b 2026-09-24〕**新建空文件** —— 老面板 7 项里写侧那一项（`files-create`，经通道）。
+pub mod create;
 // 🔴〔第八刀 2026-09-21〕**往外拖** —— `sftp_download` 在窗口上的落点
 //    （`设计/60 §5` 第 6 步那条欠账逐字「往外拖（下载）没做」）。
 pub mod download;
