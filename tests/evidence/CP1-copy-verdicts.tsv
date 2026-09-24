@@ -127,15 +127,6 @@ src/backend/plugin/invoke.rs:106	字符编码那一档，三个键一起进（�
 src/backend/plugin/probe.rs:78	找到的这个程序不是 `{want}`：它的身份行报的是 `{saw}`。\n                 ⚠ 这不是「它太旧」，是**找错了程序** —— 多半是 PATH 上有个同名的无关命令。	改·§2.2	[可达存疑] 插件探测被拒的原因，回到界面；⚠ 后那句「这不是『它太旧』」是在反驳一个用户没提的推断，**markdown** 与破折号 兼§2.4 新词:身份行 →「找到的 `{want}` 不对：它报的是 `{saw}`，PATH 上可能有个同名的别的程序」
 src/backend/plugin/probe.rs:86	`{plugin}` 装的这份缺能力 `{token}`（它自己报的版本：{}）。\n                 ⚠ 这**不是**「调用失败」—— 那个程序好好的，是它这一版还不会做这一件事，\n                 换一份新的就行。	改·§2.2	[可达存疑] 同上；「这不是『调用失败』—— 那个程序好好的」是论证，**markdown** 兼§2.4 新词:能力token →「`{plugin}` 这一版不支持 `{token}`（版本 {}），请更新」
 src/backend/plugin/probe.rs:89	<没报>	保留	[可达存疑] 同上一句里的版本占位碎片
-src/backend/relay/accounts/creds.rs:86	读不动凭据文件：{e}	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；短、先说结果
-src/backend/relay/accounts/table.rs:236	账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）	内部词→用在请求地址里（路由段）	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号里的约束可操作 新词:路由段
-src/backend/relay/accounts/table.rs:245	base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；字段名 base_url 是用户自己写的键，两句：结果＋两种修法，可操作
-src/backend/relay/accounts/table.rs:249	auth_style 写的不是这个中转认得的值之一（认得的那几个见下面那行现算的清单）	改·§2.2	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号「认得的那几个见下面那行现算的清单」泄了实现（现算） 兼§2.4 →「auth_style 的值认不出，可用值见下一行」
-src/backend/relay/accounts/table.rs:257	这一条的 auth_style 说不发任何鉴权头，同一条却配了 api_key —— 两句话说的是相反的事，删掉其中一句	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；指出配置自相矛盾并给出修法，用户的配置用户能改
-src/backend/relay/accounts/table.rs:261	base_url 带路径前缀 ⇒ 上游收到的是「那个前缀 + 客户端自己的真路径」。若前缀与客户端的路径头一段重了，上游会看到重复的那一段（中转不替你合并）	改·§2.4	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；⇒ 记号＋括号补充＋两长句，一句里塞了发生什么＋后果＋我们不做什么
-src/backend/relay/accounts/table.rs:269	这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；说明性的一句（今天默认不印）
-src/backend/relay/accounts/table.rs:273	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短
-src/backend/relay/accounts/table.rs:277	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处
 src/branch-button.ts:43	从这一轮创建分支（复制到这条为止 → 新会话，原会话不变，可 resume）	保留	[对外] 分支按钮 title，括号里是有用细节；resume 是 CC 用户认得的词
 src/branch-button.ts:45	从这一轮创建分支 —— ⚠ 这条属于**被 ESC 回退掉的**分支。\n	改·§2.4	[对外] title 属性里的 markdown `**被 ESC 回退掉的**` 会原样显示星号，外加破折号 →「从这一轮创建分支。这一轮已被 ESC 回退。」
 src/branch-button.ts:46	分叉会把那条你当初放弃的对话复活成一个新会话（原会话仍然不变）。	保留	[对外] 说清后果，括号短
@@ -188,9 +179,6 @@ src/bridge/src/backend/control/backend_launch.rs:160	远端就地 resume 失败�
 src/bridge/src/backend/control/backend_launch.rs:171	会话名或载荷为空 —— 拒绝发出（坏数据不是缺省）	改·§2.2	[对外] SendIntoResponse::refused 回前端；括号里「坏数据不是缺省」是设计格言当报错 兼§2.1（载荷） 新词:载荷 →「会话名或内容为空，没有发送」
 src/bridge/src/backend/control/backend_launch.rs:199	backend 回报未键入却没给错误码 —— 协议漂移，不再用另一条路重做	改·§2.2	[对外] 同 backend_kill.rs:91（协议漂移 / 另一条路） 兼§2.1（backend） 新词:协议漂移
 src/bridge/src/backend/control/backend_launch.rs:202	{e} —— ⚠ 应答形状不认识时无法判断载荷有没有落进去，因此不再用另一条路重键入	改·§2.2	[对外] 同 backend_kill.rs:94 兼§2.4 新词:应答形状
-src/bridge/src/backend/control/backend_route.rs:77	远端后端没声明 `{cmd}` 能力（它声明的是 {offered:?}）—— 多半是旧版本	改·§2.1	[对外] NoChannel 经 tmux.rs no_channel_message 进 Err；能力名 `{cmd}` 与 Rust Debug 格式 {offered:?} 原样外露 兼§2.4（括号＋破折号） 新词:能力声明 →「这台机器的后端版本太旧，不支持这个操作」
-src/bridge/src/backend/control/backend_route.rs:80	入方向同时在等的命令已达上限，这条没入队	内部词→（删「入方向」）	[对外] 经 no_channel_message 进 Err；「入方向」是内部通道名 新词:入方向 →「待处理的命令太多，这条没发出」
-src/bridge/src/backend/control/backend_route.rs:85	{e} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n                 请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」
 src/bridge/src/backend/control/backend_route.rs:96	[{origin}] 没有可用的控制通道（backend 未在场或长连接未握手）	改·§2.1	[对外] 经 tmux.rs no_channel_message 进 Err；「控制通道」「长连接未握手」是实现名，另有英文 backend 新词:控制通道 新词:握手 →「{origin} 的后端没连上」
 src/bridge/src/backend/control/backend_send_keys.rs:53	远端未安装 tmux	保留	[对外] 同 backend_kill.rs:60
 src/bridge/src/backend/control/backend_send_keys.rs:54	远端会话已不存在（可能已被终止）	保留	[对外] 同 backend_kill.rs:61
@@ -980,3 +968,13 @@ src/bridge/src/cc_bus_deploy.rs:464	cc-monitor 装的那份 `ccm`（{at}）是�
 src/bridge/src/cc_bus_deploy.rs:469	查过 cc-monitor 装的那份 `ccm`（{at}）：是这一版（build={build}），`cc-spawn` 要的 {needs:?} 都在。\n\n         {path_caveat}	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；{needs:?} Debug 形 ＋ build= 上屏
 src/bridge/src/session_skeleton.rs:67	对面后端不认 --index（老版本，需要重装后端才有骨架索引）	保留	[不对外] 只进 console.info（tabs.ts 骨架未接的原因），界面行为逐字不变
 src/bridge/src/session_skeleton.rs:69	索引输出被截断：实到 {got} 行，尾行声称 {claimed:?} —— 不当全量用	保留	[不对外] 同上，只进 console.info
+src/backend/accounts/creds.rs:86	读不动凭据文件：{e}	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；短、先说结果（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/table.rs:255	账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）	内部词→用在请求地址里（路由段）	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号里的约束可操作 新词:路由段（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/table.rs:264	base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；字段名 base_url 是用户自己写的键，两句：结果＋两种修法，可操作（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/table.rs:268	auth_style 写的不是账号层认得的值之一（认得的那几个见下面那行现算的清单）	改·§2.2	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号「认得的那几个见下面那行现算的清单」泄了实现（现算） 兼§2.4 →「auth_style 的值认不出，可用值见下一行」（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/table.rs:276	这一条的 auth_style 说不发任何鉴权头，同一条却配了 api_key —— 两句话说的是相反的事，删掉其中一句	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；指出配置自相矛盾并给出修法，用户的配置用户能改（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/table.rs:280	base_url 带路径前缀 ⇒ 上游收到的是「那个前缀 + 客户端自己的真路径」。若前缀与客户端的路径头一段重了，上游会看到重复的那一段（中转不替你合并）	改·§2.4	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；⇒ 记号＋括号补充＋两长句，一句里塞了发生什么＋后果＋我们不做什么（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/table.rs:288	这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；说明性的一句（今天默认不印）（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
