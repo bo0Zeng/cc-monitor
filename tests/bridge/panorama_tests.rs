@@ -247,3 +247,108 @@ fn the_upstream_gap_for_issue_79_is_written_down_here() {
         "那句区分被改掉了 —— 它正是本件的正题"
     );
 }
+
+/// `设计/97` **CP5**：批注的状态必须是**数据**，不是文案 —— 审批队列的承重前提。
+///
+/// 全景页的「批注审批」按钮把 `propose` / `approve` / `list` 接上了人手；它只有在
+/// core **真的**按 `status` 决定 agent 看不看得见时才有意义。本条在**真引擎**上走一遍：
+///
+/// 1. agent 提议（`propose_annotation`）→ 人那一侧 `list_annotations` 看得见、状态 `Proposed`；
+///    agent 那一侧（`annotations_for` 与 `node().annotations`，后者就是全景详情读的那份）**看不见**。
+/// 2. 人批准（`approve_annotation`）→ agent 那一侧恰好看见这一条。
+/// 3. **CP5 的死值实验本身**：人写一条（Active，agent 看得见）→ 直接把它的侧车文件改成
+///    `Proposed` → agent 那一侧必须**立刻看不见**。`设计/97` 预言「今天做会发现看得到」——
+///    本条现打证明**看不到**（状态机住 `engine.rs`，不在 `annotations.rs`）。
+///
+/// 买到：「待审 = agent 看不见」这句按钮提示有真引擎兜底。
+/// **买不到**：CP6 —— 批准之后它与人写的都是 `Active`，数据上分不开（只剩 `author` 自由文本）；
+/// 那要上游加字段，本条不替它钉。改侧车文件走 `serde_json` 结构化改字段，不做子串替换。
+#[test]
+fn proposed_annotations_stay_invisible_to_agents_until_approved() {
+    let base = std::env::temp_dir();
+    let repo = base.join("cc-monitor-cp5-ann-repo");
+    let store = base.join("cc-monitor-cp5-ann-store");
+    std::fs::remove_dir_all(&repo).ok();
+    std::fs::remove_dir_all(&store).ok();
+    std::fs::create_dir_all(&repo).unwrap();
+    std::fs::write(repo.join("lib.rs"), "pub fn f() {}\npub fn g() {}\n").unwrap();
+    let arc = engine_for_with_store(repo.to_str().unwrap(), Some(store.clone())).expect("open");
+    {
+        let mut g = arc.lock().unwrap();
+        g.index().expect("index");
+        let f = "lib.rs#f".to_string();
+        let agent_sees = |g: &Engine, sym: &String| -> Vec<String> {
+            let via_for: Vec<String> = g.annotations_for(sym).into_iter().map(|a| a.id).collect();
+            let via_node: Vec<String> = g
+                .node(sym)
+                .expect("符号应在索引里")
+                .annotations
+                .into_iter()
+                .map(|a| a.id)
+                .collect();
+            assert_eq!(
+                via_for, via_node,
+                "annotations_for 与 node().annotations 两条读路不该分叉"
+            );
+            via_for
+        };
+
+        // 1. 提议 → 人看得见（Proposed），agent 看不见。
+        let pid = g
+            .propose_annotation("lib.rs", Some("f"), "agent 觉得这里要改", "agent-x")
+            .expect("propose");
+        let listed: Vec<(String, model::AnnotationStatus)> = g
+            .list_annotations()
+            .into_iter()
+            .map(|a| (a.id, a.status))
+            .collect();
+        assert_eq!(
+            listed,
+            vec![(pid.clone(), model::AnnotationStatus::Proposed)]
+        );
+        assert_eq!(
+            agent_sees(&g, &f),
+            Vec::<String>::new(),
+            "待审的提议漏给了 agent"
+        );
+
+        // 2. 批准 → agent 恰好看见这一条。
+        assert!(
+            g.approve_annotation(&pid).expect("approve"),
+            "批准一条存在的提议应回 true"
+        );
+        assert_eq!(agent_sees(&g, &f), vec![pid.clone()]);
+        assert!(
+            !g.approve_annotation("0000").expect("approve"),
+            "不存在的 id 应回 false"
+        );
+
+        // 3. 死值实验：人写的（Active）→ 侧车文件改成 Proposed → agent 立刻看不见。
+        let gsym = "lib.rs#g".to_string();
+        let hid = g
+            .add_annotation("lib.rs", Some("g"), "人写的", "me")
+            .expect("add");
+        assert_eq!(agent_sees(&g, &gsym), vec![hid.clone()]);
+        let side = repo
+            .join(".codepicture")
+            .join("annotations")
+            .join(format!("{hid}.json"));
+        let mut v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&side).expect("读侧车"))
+                .expect("侧车是 JSON");
+        assert_eq!(
+            v["status"],
+            serde_json::json!("Active"),
+            "侧车里的状态字段名/取值变了"
+        );
+        v["status"] = serde_json::json!("Proposed");
+        std::fs::write(&side, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        assert_eq!(
+            agent_sees(&g, &gsym),
+            Vec::<String>::new(),
+            "侧车改成未审之后 agent 仍看得见 —— 「需人审」只是文案"
+        );
+    }
+    std::fs::remove_dir_all(&repo).ok();
+    std::fs::remove_dir_all(&store).ok();
+}
