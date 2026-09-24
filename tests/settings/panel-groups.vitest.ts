@@ -180,12 +180,13 @@ function navTitles(): string[] {
 }
 
 describe("S2 设置面板分页结构", () => {
-  it("导航 = 应用 / 机器 / 改动足迹 / cc-bus（按序）", () => {
+  it("导航 = 应用 / 机器（按序）", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
-    // S6 已把 cc-bus 驾驶舱移出设置（它是运营视图不是设置，§1-1）⇒ 顶层回到计划里的 3 个。
+    // S6 已把 cc-bus 驾驶舱移出设置（它是运营视图不是设置，§1-1）。
     // 它现在的入口是命令面板（不加第 7 个顶栏图标，理由见 views/cc-bus-view.ts 头注）。
-    expect(navTitles()).toEqual(["应用", "机器", "改动足迹"]);
+    // 🔴 〔ST2 · 用户 09-24 裁「并进机器页，删掉顶层页」〕「改动足迹」顶层页没了 ⇒ 顶层只剩两个。
+    expect(navTitles()).toEqual(["应用", "机器"]);
   });
 
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
@@ -215,7 +216,8 @@ describe("S2 设置面板分页结构", () => {
     // 🔴 〔第四波 ST2 · `70 §5.3` · 步 14〕「backend 开关」**不再单独占一块**：它并进了机器列表那一行
     //   （四格挂在「连接（远端）」那块的列表行上，钉在 `machine-list-backend-cells.vitest.ts`）。
     //   ⇒ 列表页的块只剩一块（列表 ＋ 添加 ＋ 全局开关 ＋ 诊断都在它里面，`§8` #10）。
-    expect(pageTitles("machines")).toEqual(["连接（远端）"]);
+    // 〔ST2〕顶层「改动足迹」删掉之后，漂移记账那一块并进这一页（诊断那一族，跨机器）。
+    expect(pageTitles("machines")).toEqual(["连接（远端）", "未识别的数据"]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
@@ -230,9 +232,9 @@ describe("S2 设置面板分页结构", () => {
       // 🔴 `70 §10.1`（步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
       "足迹",
     ]);
-    // `70 §10.1`（步 14a）：「配置面审计」→ 改名「足迹」并搬进机器子页 ⇒ 这一页只剩一块。
-    // ⚠ `§10.5` #1 **判不了**：这个顶层页还留不留（剩下那块也没有 origin）——本件不定。
-    expect(pageTitles("footprint")).toEqual(["数据面漂移记账"]);
+    // `70 §10.1`（步 14a）：「配置面审计」→ 改名「足迹」并搬进机器子页。
+    // 🔴 〔ST2〕`§10.5` #1 用户裁了：顶层「改动足迹」页**删掉**，剩下那一块并进机器页。
+    expect(document.querySelector('.settings-page[data-route-id="footprint"]')).toBeNull();
     // cc-bus 已不在设置里（S6）—— 连页都不该存在。
     expect(
       document.querySelector('.settings-page[data-route-id="cc-bus"]'),
@@ -388,6 +390,7 @@ describe("S2 设置面板分页结构", () => {
     // 隔离没有因此被打破：那几块**都还在 DOM 里**，只是先藏着、等机器页来了就搬走。
     expect(pageTitles("machines")).toEqual([
       "连接（远端）",
+      "未识别的数据",
       "账号",
       "终端集成",
       "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点

@@ -138,8 +138,18 @@ const APP_PAGE_IPC_ON_REOPEN = [
   "get_data_paths",
 ] as const;
 
-/** 登记表 ③：点进「改动足迹」才该出现的那一发。 */
+/**
+ * 登记表 ③：**展开「未识别的数据」**才该出现的那一发。
+ * 〔ST2〕顶层「改动足迹」页删了，漂移记账并进机器列表页，是个默认收起的 `<details>`。
+ */
 const FOOTPRINT_IPC = ["drift_ledger_report"] as const;
+
+/** 〔ST2〕展开机器列表页上那块「未识别的数据」。 */
+function expandDrift(): void {
+  const box = document.querySelector<HTMLDetailsElement>("[data-drift-ledger]")!;
+  box.open = true;
+  box.dispatchEvent(new Event("toggle"));
+}
 
 /** 登记表 ④：点进某台机器的子页才该出现的那一发（步 14a 之后「足迹」住那儿）。 */
 const MACHINE_PAGE_IPC = ["config_surface_report"] as const;
@@ -202,21 +212,29 @@ describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () 
     expect(since(mark)).toEqual([]);
   });
 
-  it("点进「改动足迹」⇒ 恰好多出漂移记账那一发", async () => {
+  it("〔ST2〕展开「未识别的数据」⇒ 恰好多出漂移记账那一发；再合上再展开 ⇒ 一发不多", async () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     const mark = ipc.calls.length;
-    document.querySelector<HTMLButtonElement>("#settings-tab-footprint")!.click();
+    expandDrift();
     await tick();
     expect(since(mark)).toEqual(uniq([...FOOTPRINT_IPC]));
+    const mark2 = ipc.calls.length;
+    const box = document.querySelector<HTMLDetailsElement>("[data-drift-ledger]")!;
+    box.open = false;
+    box.dispatchEvent(new Event("toggle"));
+    expandDrift();
+    await tick();
+    expect(since(mark2), "展开第二次又读了一趟 —— 收起 / 展开不是刷新").toEqual([]);
   });
 
-  it("🔴 步 14a：「足迹」那一发跟着**机器子页**走，不跟顶层「改动足迹」页走", async () => {
+  it("🔴 步 14a：「足迹」那一发跟着**机器子页**走", async () => {
     new SettingsPanel({ windowMode: true });
     await tick();
-    // 顶层「改动足迹」页上**不再**有它（它搬到机器子页去了）。
+    // 〔ST2〕顶层「改动足迹」页已删 —— 连那颗导航按钮都不该有。
+    expect(document.querySelector("#settings-tab-footprint")).toBeNull();
     let mark = ipc.calls.length;
-    document.querySelector<HTMLButtonElement>("#settings-tab-footprint")!.click();
+    expandDrift();
     await tick();
     expect(since(mark)).not.toContain("config_surface_report");
     // 点进本机页才发。

@@ -201,14 +201,20 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     await tick();
-    // 三个顶层页 + 本机子页都走一遍 —— 只看落地页等于只判了三分之一。
-    for (const id of ["app", "footprint", "machine:（本机）", "machines"]) {
+    // 两个顶层页 + 本机子页都走一遍（〔ST2〕顶层「改动足迹」已删）—— 只看落地页等于只判了一部分。
+    for (const id of ["app", "machine:（本机）", "machines"]) {
       const btn = document.querySelector<HTMLButtonElement>(
         `[id="settings-tab-${id}"]`,
       );
       btn?.click();
       await tick();
     }
+    // 〔ST2〕漂移记账并进机器列表页、默认收起 ⇒ 展开它，让它那几句也进被扫的 DOM。
+    const drift = document.querySelector<HTMLDetailsElement>("[data-drift-ledger]");
+    expect(drift, "机器列表页上没有「未识别的数据」那一块").not.toBeNull();
+    drift!.open = true;
+    drift!.dispatchEvent(new Event("toggle"));
+    await tick();
     const root = document.querySelector<HTMLElement>(".settings-panel")!;
     const copy = visibleCopy(root);
     // 量具自检：扫到的文字量要够大。零字节时下面那条「一条都不许命中」是空转。

@@ -187,8 +187,8 @@ describe("T07 分区块隔离（真行为）", () => {
     // S2 后判据从「四个折叠组」换成「四页都在」：折叠组只剩两个（外观 / 日志与数据），
     // 而「一块坏不影响其余」这条性质现在体现在**页面结构完整**上。
     const pages = [...document.querySelectorAll(".settings-page")];
-    // S6 后顶层是 3 页（cc-bus 已移出设置）。
-    expect(pages.length, "三页都该在").toBe(3);
+    // S6 后顶层是 3 页（cc-bus 已移出设置）；〔ST2〕「改动足迹」并进机器页 ⇒ 2 页。
+    expect(pages.length, "两页都该在").toBe(2);
     expect(
       document.querySelector(".accounts-section-stub"),
       "账号块不受影响",

@@ -89,7 +89,8 @@ export class DriftLedgerSection {
   constructor() {
     this.element = this.build();
     // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
-    // 这一块住「改动足迹」页，而落地页是「机器」⇒ 原来那句 `void this.refresh()`
+    // 这一块原住「改动足迹」页（〔ST2〕今天在机器列表页一个收起的 `<details>` 里，第一次展开才读），
+    // 而落地页是「机器」⇒ 原来那句 `void this.refresh()`
     // 是每次打开设置都白发的一趟 `drift_ledger_report`。
     // `§10.4` 那一行逐字点了它：判据 #3「非落地页零 I/O」今天正是被那三块
     // **外加 `drift-ledger`** 打破的。
@@ -109,10 +110,12 @@ export class DriftLedgerSection {
 
     const hint = document.createElement("div");
     hint.className = "settings-hint";
+    // 〔ST2〕顶层「改动足迹」页删了，这一块搬到机器列表页 ⇒ 不再说「这一页」；
+    //   「只读、按需读一次，不后台轮询」是**我们的设计承诺**（`70 §10.1` 差项 3 同一种病）⇒ 拿掉。
+    //   「计数在本进程内，重启归零」留着 —— 头注逐字：这一点必须在页面上说，否则会被当成历史统计。
     hint.textContent =
-      "这一页列出 cc-monitor 在本次运行里遇到的、看不懂的东西。" +
-      "看不懂就降级是刻意的（对它们告警会刷屏），但降级本身不该是无声的 —— " +
-      "这一页就是那个声音。只读、按需读一次，不后台轮询；计数在本进程内，重启归零。";
+      "cc-monitor 这次运行里遇到的、没认出来的数据（多半是 Claude Code 出了新格式）。" +
+      "没认出来的部分照常降级显示，这里把它们列出来。计数只算这次运行，重启 monitor 就归零。";
     root.appendChild(hint);
 
     const bar = document.createElement("div");
