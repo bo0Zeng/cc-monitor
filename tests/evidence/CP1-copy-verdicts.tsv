@@ -12,22 +12,22 @@ src/account-restart.ts:95	然后用新账号 resume 同一会话。	改·§2.4	[
 src/account-restart.ts:97	\n将先在【旧账号】上 /compact（命中旧缓存更省），可能耗时数分钟。	保留	[对外] 确认框补充：先 /compact、可能耗时数分钟，对用户可操作；括号理由短
 src/accounts.ts:120	过旧	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
 src/accounts.ts:120	不支持账号	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
-src/accounts.ts:472	in-place 模式：cc-monitor 不支持对它按会话切号	判不了	[对外] 账号徽标 title；「in-place 模式」是账号配置里的模式名，用户是否在自己的配置里亲手写过这个词（R1b 限用）还是纯内部叫法，得等术语对照表拍板 新词:in-place 模式
+src/accounts.ts:472	in-place 模式：cc-monitor 不支持对它按会话切号	保留	[对外] 账号徽标 title。术语表（src/shared/copy/terms.json「in-place」）：限用词 —— 这种账号只有亲手敲过 cc-acct-iso init --default-in-place 才会有（cc-monitor 从不建它），cc-acct-iso 自己的提示也叫它 in-place ⇒ 用户认得；此处正是在说它为什么不能按会话切换，语境合。CP1 原裁「判不了」（等术语表），CP2a 据术语表改裁 新词:in-place 模式
 src/accounts.ts:482	这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 	改·§2.4	[对外] 账号徽标 title：破折号＋长首句，一句里讲清「有什么＋我们怎么做（ANTHROPIC_BASE_URL 指向中转、中转换 key）」兼§2.1 →「已配置：本机会话经本机中转发送请求」
 src/accounts.ts:483	ANTHROPIC_BASE_URL 指向本机中转，由中转按账号换上这一行的 key。\n	改·§2.4	[对外] 与上一截同一句，复述中转换 key 的实现 兼§2.1
 src/accounts.ts:484	⚠ 它保证的是「请求发得到中转、中转按这一行转发」；	改·§2.2	[对外] 在 tooltip 里论证「它保证的是什么」，写给开发看的边界论证 兼§2.4 →「key 是否有效，要等第一次请求才知道」
 src/accounts.ts:485	那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。	改·§2.2	[对外] 与上一截同一句（保证边界的论证）
-src/accounts.ts:493	这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被**当场拒**	改·§2.4	[对外] 徽标 title：markdown `**当场拒**` 在 title 属性里原样显示＋破折号＋括号长补充 兼§2.2
+src/accounts.ts:493	这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被当场拒掉	改·§2.4	[对外] 徽标 title：破折号＋括号长补充 兼§2.2（ST1 已去掉 `**当场拒**` 的星号，其余病未治）
 src/accounts.ts:494	（不是静默失败：中转没起来与网络坏了在 claude 那边长得一模一样，	改·§2.2	[对外] 括号里是设计论证（为什么在起会话一侧拦、与网络坏了长得一样）兼§2.4
 src/accounts.ts:495	所以这一条在起会话那一侧就拦下来）。请先起本机后端。	改·§2.2	[对外] 设计论证的收尾；末句「请先起本机后端」可操作可留 →「本机中转没在运行，起会话会失败。先启动本机后端。」
-src/accounts.ts:501	apikey 凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。	改·§2.4	[对外] 徽标 title：markdown `**…**` 原样显示＋`⇒` 符号推理式 →「凭据文件里没有这个账号，不会替它配置请求地址」
+src/accounts.ts:501	apikey 凭据文件里没有这个账号的一行 ⇒ cc-monitor 不会替它配 base URL。	改·§2.4	[对外] 徽标 title：`⇒` 符号推理式（ST1 已去掉星号） →「凭据文件里没有这个账号，不会替它配置请求地址」
 src/accounts.ts:502	要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 	保留	[对外] 用户自己能做的配置指引（给账号加一行端点＋key），可操作
 src/accounts.ts:503	shell 环境里配好第三方端点。	保留	[对外] 上一句指引的收尾，可操作
-src/accounts.ts:505	cc-monitor 今天只给**本机**会话配 base URL；**远端**这一半还不做	改·§2.2	[对外] 「今天只给本机…远端这一半还不做」是路线图/设计论证，markdown `**` 原样显示 兼§2.4
+src/accounts.ts:505	cc-monitor 今天只给本机会话配 base URL；远端这一半还不做	改·§2.2	[对外] 「今天只给本机…远端这一半还不做」是路线图/设计论证（ST1 已去掉星号）
 src/accounts.ts:506	（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上	改·§2.2	[对外] 括号里论证「把 key 送到远端是另一件事」＋ `⇒` 推理符号 兼§2.4
 src/accounts.ts:507	自己配好第三方端点。	保留	[对外] 可操作的收尾（在远端机器上配好第三方端点）
 src/accounts.ts:508	cc-monitor 只在两件事都成立时替它配端点（base URL）：① apikey 凭据文件里有这个	改·§2.4	[对外] 列条件的长句＋括号补充，开头「cc-monitor 只在两件事都成立时」是机制解说 兼§2.1
-src/accounts.ts:509	账号 id 的一行；② 本机中转在跑。**这一处没被告知它属于哪一半、那两条成不成立**，	改·§2.2	[对外] 「这一处没被告知它属于哪一半」是内部推理（本函数拿不到什么参数），markdown 原样显示 兼§2.4
+src/accounts.ts:509	账号 id 的一行；② 本机中转在跑。这一处没被告知它属于哪一半、那两条成不成立，	改·§2.2	[对外] 「这一处没被告知它属于哪一半」是内部推理（本函数拿不到什么参数）（ST1 已去掉星号）
 src/accounts.ts:510	所以不替它下判断。	改·§2.2	[对外] 与上一截同一句（不下判断的理由）→「无法判断端点是否已配置」
 src/accounts.ts:515	这个号用 API key 鉴权，不看 ~/.claude 里的订阅凭据 —— 所以它可以被设为当前账号、	改·§2.4	[对外] 徽标 title：破折号＋「所以…」推理链，一句里讲鉴权方式＋能设为当前＋能起会话
 src/accounts.ts:516	会话也起得来。但请求要发得出去还差一格：	改·§2.4	[对外] 与上一截同一句；「还差一格」口语 →「但还没配置请求地址：」
@@ -78,6 +78,7 @@ src/backend/control/ccm/argv.rs:335	--bus-note 需要配合 --bus-register（不
 src/backend/control/ccm/argv.rs:340	非法 --tmux-size: '{}'（要 <宽>x<高>，如 220x50，且均为正整数）	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号给格式与例子，可操作
 src/backend/control/ccm/argv.rs:345	agent={} 不支持 resume（无 resume flag）	改·§2.1	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；`agent=` 是日志行 key=value 格式，括号「无 resume flag」重复 兼§2.4 →「{} 不支持 resume」
 src/backend/control/ccm/mod.rs:119	ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\\n	改·§2.2	[对外] ccm 撞名时的报错（execute 出口与 --print 吐出的 printf 都会打到终端）；「C14：spawn 就是起」是内部条款号与设计论证，破折号后「拒绝静默接回别人的会话」也是论证 兼§2.4 新词:C14 →「ccm: tmux 会话名 %s 已被占用」
+src/backend/control/ccm/mod.rs:127	ccm: 会话 %s 里的命令起不来，原因见上一行。没有接进去，也没有登记；会话还在，可以进去看。\\n	保留	[对外] CC1：ccm 容器路自检没过时打到终端（cc-spawn 原样转给调用方）；先说结果，原因交给上一行被叫那一趟自己的原话，再说没做什么、现场在哪；无破折号/括号/内部词
 src/backend/control/ccm/mod.rs:143	\n用法：ccm [new|resume <sid>|attach <会话名>] [选项…] [-- 透传给 agent 的参数…]	改·§2.1	[对外] ccm --help 正文；「后端本身的一次性模式…常驻模式是同一个二进制接流」讲架构，「tmux 容器」「容器路」「@ccm_sid_expect」「issue #75 的逃生口」「平价预言机」都是内部名/自造比喻 兼§2.5 兼§2.2 新词:容器路 新词:平价预言机 新词:意图标 新词:一次性模式
 src/backend/control/ccm/mod.rs:465	CCM_ENV 非空，而它是一段任意 shell，只有 shell 解释得了	改·§2.2	[对外] WHY_SHELL_* 作为 {why} 拼进 exec_shell 的报错（sh 不在时打到终端）；讲的是「我们为什么非得经 shell」的内部推理，含 `set -f; exec $cmd` / display-message / 容器路 等实现 兼§2.1 新词:容器路 新词:身份配方
 src/backend/control/ccm/mod.rs:468	后端答出的是一整条命令串，要靠 shell 拆成词才跑得了（`set -f; exec $cmd`）	改·§2.2	[对外] WHY_SHELL_* 作为 {why} 拼进 exec_shell 的报错（sh 不在时打到终端）；讲的是「我们为什么非得经 shell」的内部推理，含 `set -f; exec $cmd` / display-message / 容器路 等实现 兼§2.1 新词:容器路 新词:身份配方
@@ -114,6 +115,8 @@ src/backend/inbound.rs:798	命令处理器 panic 了；backend 仍在跑	内部�
 src/backend/lib.rs:695	本族目录下**零**平台 `cfg`（本轮现打：`src/backend/files/` 递归 \n                       `grep cfg(target_os|windows|unix|target_family` 零命中）\n                       ⇒ 四个 target 同一份源码。另有本族自己那条更强的：每条能力的 \n                       `Capability::targets` 与 `TARGETS` 做**集合相等**（边界②）。	保留	[不对外] CAPABILITY_FACES 的 target_basis 字段，capability_ledger() 只读 family 与 declares，本字段生产段无读者，是判据/文档用的论证
 src/backend/lib.rs:706	`split_stream_flags` 是对 argv 的**纯函数**（`retain` + 两次 \n                       `iter().any`），整份实现零平台 `cfg` ⇒ 四个 target 上逐字同一份。	保留	[不对外] CAPABILITY_FACES 的 target_basis 字段，capability_ledger() 只读 family 与 declares，本字段生产段无读者，是判据/文档用的论证
 src/backend/lib.rs:715	四个 target 上**这一面都做得到**（起会话 · 认账号 · 选模型 · 传 cwd \n                       那几条在直路上是**原生动作**：`set_var` / `set_current_dir` / \n                       `Command::new` ＋ `#[cfg(not(unix))]` 那条「起它 · 等它 · 透传退出码」\n                       的回退，一步都不经 shell）。⚠ **但不是每一条都做得到** —— \n                       tmux 那一族 6 条在 Windows 上做不到，逐条登记在 `TARGET_GAPS`。\n                       〔2026-09-21 改判：上一版这一栏写的是「四个 target 都编得过」，\n                        而用户把本轴从「编得过」改成了「做得到」⇒ 那句依据不再回答本轴的问题。\n                        「编得过」仍然是真的（两处平台分叉各带 `#[cfg(not(unix))]` 回退分支），\n                        但它归第 1 层那个跨 target 编译门禁。〕\n                       🔴 **〔`P19` 09-22 订正一句账〕** \n                       上一版括号里那句「**不依赖任何 Unix 专有设施**」，\n                        在写下的那一刻对 `codex` 那一支就是假的。\n                        〔⚠ 这句被订正的原话**刻意在源码里连着写**：本轮差点栽在自己的 grep 上 —— \n                         初稿把它断在了 Unix 与「专有设施」之间（Rust 的续行反斜杠），\n                         于是拿「Unix 空格 专有」当针去 grep 全仓**零命中**，\n                         而零命中看起来和「这句话仓里没有」一模一样。\n                         下一个人要找这笔账，靠的就是它在源码里连着。〕\n                        `control/ccm/mod.rs::exec_direct` 从前只要 `needs_bus_id(agent)` 为真\n                        就把**整条**改走 `sh -c`，而它对 codex 恒真 ⇒ 真机现打 \n                        `--agent codex --launcher hostname` → `EXIT=4 program not found`\n                        （`真相源/106 §3.3`；同一个 launcher 在 `--agent claude` 那趟 `EXIT=0`）。\n                        `P19` 把那道闸收窄成「那段配方**真有事可做**时」—— 配方整段裹在 \n                        `if [ -n "${TMUX:-}" ]` 里，`$TMUX` 空则它一个字不做 ⇒ \n                        Windows 上（`$TMUX` 恒空）直路不再请 shell 进来，**那句话才开始成立**。\n                        ⚠ **今天仍然非得要 POSIX shell 的两条，它们不在上面那四条里，逐条写明**：\n                        ① `CCM_ENV` 非空（那是一段任意 shell，只有 shell 解释得了）；\n                        ② `resume` 且后端答出一整条命令串（要 shell 拆词：`set -f; exec $cmd`）。\n                        两条都**不假装做得到** —— 只是从今天起说得出口（`no_shell:` ＋ 逐条归因，\n                        `D7`）。\n                        🚫 **这一栏买不到的那一维（别读成已验证）**：\n                        `cargo check --all-targets --target x86_64-pc-windows-gnu` ＋ \n                        `needs_shell` 那张判定表买到的是「**源码里没有那条 Unix 依赖了**」；\n                        「在真 Win11 上 `--agent codex` 真的 `EXIT=0`」**没买到** —— \n                        那要那台独占的 Win11 虚拟机，`P19` 一个字节都没去动它。\n                        能接上的只有一条推理（写出来，别当读数）：claude 那一支的 `EXIT=0` 是 \n                        09-21 真机现打的，而 codex 今天走的是**同一段原生代码、动作还更少**\n                        （`nested_env("codex")` 是空的）。	保留	[不对外] CAPABILITY_FACES 的 target_basis 字段，capability_ledger() 只读 family 与 declares，本字段生产段无读者，是判据/文档用的论证
+src/backend/lib.rs:1157	帧面每一条命令四个 target 上**都编得进去**（`inbound::REGISTRY` 零平台 `cfg`）；\n                       做不做得到按它**自己声明的码**分：`codes` 里有 `no_tmux` 的，在平台确证没有 tmux 的 \n                       target 上做不到 —— 与生产里填 `hello.unavailable` 的是同一个函数（`unavailable_from`）。	保留	[不对外] COMMAND_FACES 的 target_basis 字段（PR1），同 CAPABILITY_FACES 那几条：生产段无读者，是判据/文档用的论证
+src/backend/lib.rs:1167	`SUBCOMMANDS` 四个 target 上逐字同一张表；经 `cli_control::spec_for` 派生到 \n                       `REGISTRY` 的那几条，做不做得到跟着帧面那一条走。CLI 独有的那几条**没有任何逐 target \n                       声明**（例：`--tmux-notify` 在 Windows 上没人会调它，但声明里说不出来）⇒ 判成处处都在。	保留	[不对外] COMMAND_FACES 的 target_basis 字段（PR1），同 CAPABILITY_FACES 那几条：生产段无读者，是判据/文档用的论证
 src/backend/platform/pidwatch/mod.rs:131	本平台没有「进程死了会有人被叫醒」这条腿：pidfd 看守未实现（真形态是 \n     OpenProcess + WaitForSingleObject，属 U4b）⇒ 后端崩了不会有任何东西发现它，\n     也不会有任何一行账记下来。自愈在本平台上结构性不成立 —— 这是如实降级，不是漏洞。	改·§2.2	[可达存疑] 今天 #[allow(dead_code)]、self_healing_caveat() 没有调用方；但它的设计用途就是「说出口」给用户（KP3D），接线那天即对外。满纸内部推理：「这条腿」「pidfd 看守」「OpenProcess + WaitForSingleObject」「属 U4b」「一行账」「如实降级，不是漏洞」 兼§2.1 兼§2.5 新词:腿 新词:如实降级 新词:U4b 新词:pidfd →「在这个平台上，后端意外退出后不会自动重启」
 src/backend/plugin/discover.rs:89	找不到 `{name}`：查过 {}，以及 PATH 上的 {path_dirs} 个目录。{hint}	保留	[可达存疑] 插件（cc-bus 等）找不到时的报错，回到设置页对应区；先说结果，「PATH 上的 N 个目录」是用户认得的
 src/backend/plugin/discover.rs:91	<没有可查的固定位置：HOME 也没有>	保留	[可达存疑] 同上一句里的占位碎片；可读
@@ -192,7 +195,6 @@ src/bridge/src/backend/control/cc_bus.rs:325	不在	保留	[对外] 同一处 if
 src/bridge/src/backend/control/cc_bus.rs:376	读 ~/.cc-bus	保留	[对外] local_shell_read 的 what 参数，拼进超时/失败报错；~/.cc-bus 是用户自己机器上的路径，可说
 src/bridge/src/backend/control/cc_bus.rs:636	\n[cc-monitor] ⚠ 远端输出超过 {cap} 字节上限，以上内容已截断。\n             命令本身已经执行完毕，**不要重试**。	改·§2.4	[对外] 追加在读出的输出末尾给用户看（注释明写）；markdown `**不要重试**` ＋ `[cc-monitor]` 日志式前缀 兼§2.1（日志行格式） →「输出超过 {cap} 字节，后面截掉了。命令已执行完，不用重试。」
 src/bridge/src/backend/control/cc_bus.rs:777	这台机器上找不到可用的 `bash` —— cc-bus 的本机读面**跑不起来**。\n\n         ⚠ 这**不是**「一个 agent 都没有」：清单根本没去读，有没有是**不知道**。\n\n         已经找过（顺序即优先级）：\n{list}\n\n         ⚠ **刻意不去 `PATH` 上碰运气**：Windows 的进程创建把 `C:\\Windows\\System32`\n         排在 `PATH` 之前，而 WSL 功能开着却没装发行版时那里有一个 `bash.exe` 存根 ——\n         按裸名找到的多半正是它，跑起来什么都不做就退（那正是本件的病根）。\n\n         装一份 Git for Windows，或把 `{BASH_OVERRIDE_VAR}` 指向你要用的那个 `bash.exe`。	改·§2.2	[对外] 找不到 bash 的报错；「刻意不去 PATH 上碰运气…那正是本件的病根」是设计论证 兼§2.1（本机读面） 兼§2.4（markdown＋破折号＋多段） 新词:读面 →「找不到可用的 bash。已找过：{list}。装 Git for Windows，或设 {BASH_OVERRIDE_VAR} 指向 bash.exe。」
-src/bridge/src/backend/control/cc_bus.rs:986	本机还不能{what}：cc-bus 的这一面在本机没有对侧（backend 侧没有它的原语）。\n\n         读面（清单 / 在线 / inbox）与写面里的发消息 / 广播 / 收掉今天都通了；\n\n         剩下这一条等的是**后端先长出那条原语**，不是等谁记得接线。	改·§2.2	[对外] 「等的是后端先长出那条原语，不是等谁记得接线」是内部进度论证 兼§2.1（原语/对侧/读面/写面/backend） 兼§2.4（markdown） 新词:原语 新词:对侧 新词:读面 新词:写面 →「本机暂不支持{what}。」
 src/bridge/src/backend/control/cc_bus.rs:1017	{}上问不到 `{id}` 在不在线：{why}\n\n         ⚠ 这是**问不到**，不是**不在线** —— 别把它读成一盏灭灯。	改·§2.4	[对外] markdown ＋ 破折号 ＋ 「别把它读成一盏灭灯」自造比喻 兼§2.5 →「{机器}上查不到 {id} 是否在线：{why}」
 src/bridge/src/backend/control/cc_bus.rs:1185	已广播给 {ok} 个**已登记** agent（问不到谁在线，所以全发了）	改·§2.4	[对外] 广播结果；markdown `**已登记**` ＋ 括号里解释为什么 →「已广播给 {ok} 个已登记的 agent（无法确认谁在线）」
 src/bridge/src/backend/control/cc_bus.rs:1187	已广播给 {ok} 个**在线** agent	改·§2.4	[对外] markdown `**在线**` 会把星号原样显示（ui-copy-discipline 的 markdown 形状）→ 去星号即可
@@ -217,8 +219,7 @@ src/bridge/src/backend/control/cc_bus.rs:1465	{id} 的**登记摘掉了，会话
 src/bridge/src/backend/control/cc_bus.rs:1468	{id} 没有被收掉：backend 说它既没杀会话、也没摘登记（多半这个名字根本不在总线上）	内部词→后端（backend）	[对外] 英文 backend 夹在中文报错里；界面统一叫「后端」（91 §3.1）
 src/bridge/src/backend/control/cc_bus.rs:1471	收掉 {id} 的应答形状不认识（缺 `killed` / `stale_only`）—— 这一端与那一端的契约漂开了；\n             ⚠ **不知道它到底动没动**，别当成「没杀成」重来一次	改·§2.1	[对外] 字段名 `killed` / `stale_only` 与「契约漂开」外泄 兼§2.2 兼§2.4（markdown＋破折号＋括号） 新词:应答形状 新词:契约 →「不确定 {id} 有没有被收掉，先别重试。」
 src/bridge/src/backend/control/cc_bus.rs:1495	`{id}` **没有被收掉**	改·§2.4	[对外] outcome 片段；markdown `**没有被收掉**`
-src/bridge/src/backend/control/cc_bus.rs:1545	spawn 一个 agent	内部词→启动（spawn）	[对外] refuse_local_write 的 what 片段，拼成「本机还不能spawn 一个 agent」 新词:spawn
-src/bridge/src/backend/control/ccm_invocation.rs:57	远端未装 ccm	内部词→后端助手（ccm）	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；ccm 是我们的助手名（91 §2.1 原例「ccm 助手」） 新词:ccm
+src/bridge/src/backend/control/ccm_invocation.rs:57	远端未装 ccm	内部词→后端（ccm）	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；ccm 是我们的助手名（91 §2.1 原例「ccm 助手」） 新词:ccm 〔CP2a 据术语表改：原换法「后端助手」与 terms.json「ccm」相抵 —— 讲机器上装的那个程序时说「后端」，「ccm 助手」是禁词（设计/70 §5）〕
 src/bridge/src/backend/control/ccm_invocation.rs:67	本地路径不走 CLI 渲染器	改·§2.1	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；「CLI 渲染器」是实现名（注释自承今天产不出来） 新词:CLI渲染器
 src/bridge/src/backend/control/ccm_invocation.rs:68	远端 ccm 缺能力 {c}	改·§2.1	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；ccm ＋ 能力名 {c} 外泄 新词:ccm 新词:能力
 src/bridge/src/backend/control/ccm_invocation.rs:70	send-into（idle-tmux 就地复用）无 CLI 等价语法，诚实降级	改·§2.1	[可达存疑] Refusal::reason：远端路只进 console.debug（remote-launch-run.ts:135），本机拉起只进 tracing::debug，唯 render_local_attach 的 Err 会回前端；send-into / idle-tmux 就地复用 / CLI 等价语法 全是实现名 兼§2.2（「诚实降级」内部行话） 新词:send-into 新词:诚实降级
@@ -789,7 +790,7 @@ src/settings/machine-card.ts:1025	安装后端中	保留	[对外] 按钮忙碌�
 src/settings/machine-card.ts:1027	已装	保留	[对外] 组件状态小标
 src/settings/machine-card.ts:1027	装失败	保留	[对外] 组件状态小标
 src/settings/machine-card.ts:1047	卸载后端中	保留	[对外] 按钮忙碌态
-src/settings/machine-card.ts:1069	卸载 ccm 中	判不了	[对外] ccm 被 91 §2.1 点名为内部名，但机器卡上它是用户要装/卸的组件、按钮就叫它；换成什么对外词需要产品拍板（术语对照表 91 §5.2④ 还没有）
+src/settings/machine-card.ts:1069	卸载 ccm 中	保留	[对外] 机器卡按钮的进行中文字。术语表（terms.json「ccm」）：限用词 —— 讲 shell 里敲的 ccm 命令时许说，此处卸的正是 ~/.bashrc 里让 shell 认得 ccm 的那一段 ⇒ 语境合。按钮该不该改叫「移除 shell 里的 ccm 命令」列成了要问用户的一句（terms.json 该条 ask）。CP1 原裁「判不了」，CP2a 据术语表改裁
 src/settings/machine-card.ts:1152	backend 响应正常{…}	内部词→「后端响应正常」	[对外] 英文 backend，91 §3.1 定对外说「后端」新词:backend（英文）
 src/settings/machine-card.ts:1153	backend 未响应 / 未部署	内部词→「后端未响应或未安装」	[对外] 英文 backend 新词:backend（英文）
 src/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
@@ -900,12 +901,9 @@ src/tabs.ts:4243	固定后：关掉 app 再打开它还在（灰着，可 resume
 src/tabs.ts:4444	等待操作：{…}	保留	[对外] 标签页 tooltip
 src/tabs.ts:4448	↳ 从 {…} fork 而来	保留	[对外] 标签页 tooltip；fork 是 CC 用户认得的词
 src/tabs.ts:4731	invoke 超时 {…}ms（后端 Win32 调用可能卡住）	改·§2.1	[可达存疑] 拉前超时的 Error，被 catch 后进「拉前失败」toast；invoke / Win32 调用是实现层，括号里是内部猜测 新词:invoke 新词:Win32 →「切到终端窗口超时」
-src/tabs.ts:4770	拉前失败	内部词→切到终端窗口失败（拉前）	[对外] toast 标题；「拉前」是自造缩略（拉到前台），用户不这么叫 新词:拉前
-src/tabs.ts:4776	拉前失败	内部词→切到终端窗口失败（拉前）	[对外] toast 标题；同上 新词:拉前
-src/tabs.ts:4782	拉前失败	内部词→切到终端窗口失败（拉前）	[对外] toast 标题；同上 新词:拉前
-src/tabs.ts:4788	这个会话没有可拉前的终端	内部词→可切换过去的终端（拉前）	[对外] toast 标题；「可拉前」自造缩略 新词:拉前 →「这个会话没有可切换过去的终端」
-src/tabs.ts:4797	这个会话不在（本工具的）tmux 里	保留	[对外] toast 标题；tmux 在 R1b 语境内，括号限定短
 src/tabs.ts:4828	invoke 超时 {…}ms（后端 Win32 调用可能卡住）	改·§2.1	[可达存疑] 同 4731：invoke / Win32 调用外泄 新词:invoke 新词:Win32 →「切到终端窗口超时」
+src/terminal-front.ts:34	本机不能切到终端窗口	保留	[对外] toast 标题：非 Windows 上按 ↗ 的快捷键 / 命令面板时说的实话（按钮本身不渲）；用的是术语表给「拉前」定的说法「切到终端窗口」
+src/terminal-front.ts:35	只有 Windows 上的 cc-monitor 能把会话的终端窗口切到前台。	保留	[对外] 上一条的正文：一句说清哪里能用，不讲实现（不提 Win32 / 桩），不派活
 src/turn-notify.ts:118	Claude 完成一轮 — {…}	保留	[对外] 系统通知标题：Claude 完成一轮＋标签名；破折号只是分隔
 src/turn-notify.ts:118	会话已回到等待输入状态。	保留	[对外] 系统通知正文，短
 src/views/command-bar.ts:92	命令栏	保留	[对外] 命令栏输入框 aria-label
@@ -941,6 +939,7 @@ src/views/panorama.ts:1410	DynamicGuess：方法调用等接收者类型未知�
 src/views/session-viewer.ts:450	（{…} 条渲染失败，首个 {…}）	保留	[对外] 状态栏里渲染失败计数，括号短
 src/views/session-viewer.ts:451	 · 首屏 {…}ms	保留	[对外] 状态栏首屏耗时；数字对用户意义有限但无病（拿不准，倾向保留）
 src/views/user-input-panel.ts:49	大纲	保留	[对外] 面板名，名词短语
+src/views/user-input-panel.ts:53	按你的输入跳转	保留	[对外] 大纲开关的 tooltip；`设计/10 §2.2b ③` 定稿原文（〔SE1〕从赋值处提成常量，文字一字未改）
 src/panorama/agent-clip.ts:42	【代码全景 → agent】下面是某一次索引的快照，不是当前事实；用之前以代码为准。	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；开头说清这是快照、以代码为准
 src/panorama/agent-clip.ts:46	索引读数：未取到（查索引状态失败）—— 这段内容的时效未知	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；如实说没取到、时效未知
 src/panorama/agent-clip.ts:47	索引读数：本仓没有索引记录 —— 这段内容的时效未知	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；如实说没有索引记录
@@ -949,8 +948,6 @@ src/panorama/agent-clip.ts:51	 · ⚠ 索引已陈旧：源文件在这次索引
 src/panorama/agent-clip.ts:57	看不见：未取到全仓覆盖读数（全景没加载完）—— 漏了多少未知	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「看不见」行，没取到就明说
 src/panorama/agent-clip.ts:59	看不见：全仓 {…} 处调用未解析 · {…} 个文件解析失败	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「看不见」行，只计数
 src/panorama/agent-clip.ts:60	 · 全景图只画了 {…}/{…} 个文件	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4 画了几个文件 / 全仓几个
-src/panorama/agent-clip.ts:77	分不清：本符号 {…} 条直接边里 {…} 条不是确定的	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「分不清」行，只计数
-src/panorama/agent-clip.ts:78	（启发 {…} · 动态猜测 {…}），确定 {…} 条	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；「分不清」的分项计数
 src/panorama/agent-clip.ts:95	仓：{…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；字段标签
 src/panorama/agent-clip.ts:96	对象：符号 {…}（{…} · {…} · {…}:{…}-{…}）	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；字段标签
 src/panorama/agent-clip.ts:98	签名：{…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；字段标签
@@ -968,6 +965,8 @@ src/views/panorama.ts:1538	待审	保留	[对外] 批注审批侧栏分节标题
 src/views/panorama.ts:1539	已生效	保留	[对外] 批注审批侧栏分节标题
 src/bridge/src/bind.rs:300	{RBIND_TOKEN_MARKER_PREFIX}<32hex 已隐去>	保留	[不对外] 日志里 marker 的脱敏形
 src/bridge/src/bind.rs:304	{}{RBIND_TOKEN_MARKER_PREFIX}<已隐去>	保留	[不对外] 日志里窗口标题的脱敏形
+src/bridge/src/bind.rs:1050	这个会话是 cc-monitor 启动的，但找不到它的终端窗口	保留	[对外] 点 ↗ 切不到终端窗口时 toast 正文的开头（bind.rs::resolve_remote_front 的归因，会话由 cc-monitor 启动的那一档）；说的是用户看得见的事，不露内部词，短句无破折号
+src/bridge/src/bind.rs:1053	这个会话不是 cc-monitor 启动的，找不到它的终端窗口	保留	[对外] 同上一条的另一档（会话不是 cc-monitor 启动的，比如在自己开的终端里直接运行）；与上一条只差「是 / 不是」，归因只由这一位决定
 src/bridge/src/chan/router.rs:146	回 Welcome 写不出去：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/bridge/src/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/bridge/src/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
@@ -977,23 +976,124 @@ src/bridge/src/chan/wire.rs:218	第 {} 跳卡在 `{}`：{why:?}（发出去了�
 src/bridge/src/chan/wire.rs:221	对端答「不行」：{why:?}	改·§2.1	[可达存疑] 同上；{why:?} 把枚举名原样上屏
 src/bridge/src/chan/wire.rs:222	本侧：{why:?}	改·§2.1	[可达存疑] 同上；「本侧」＋ 枚举名
 src/bridge/src/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
-src/bridge/src/cc_bus_deploy.rs:430	⚠ 查的是 **cc-monitor 装的那一份**，不是你 PATH 上那个 —— `cc-spawn` 在 bash 里调的是\n                       PATH 上的 `ccm`，而 Windows 上问 PATH 要走登录 shell，那条路这里没有（`KU22`）。	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；`KU22` 工单号上屏 ＋「问 PATH 要走登录 shell」是内部推理 兼§2.2 兼§2.4（markdown ** 原样）
-src/bridge/src/cc_bus_deploy.rs:434	本机还没有 cc-monitor 装的那份 `ccm`（`~/.cc-monitor/bin/`）—— 装出去的 `cc-spawn` \n             够不够新**查不了**。⚠ 「没有警告」**不等于「没问题」**：`cc-spawn` 开头仍会协商 {needs:?}，\n             缺一条就以「ccm 版本太旧」退出。先在设置页把本机后端装上（顺序：ccm 先、cc-bus 后）。	改·§2.4	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；markdown ** 原样 ＋ ⚠ ＋「没有警告不等于没问题」强调腔；{needs:?} 把数组 Debug 形上屏 兼§2.1
-src/bridge/src/cc_bus_deploy.rs:441	问了 cc-monitor 装的那份 `ccm`（{at}），它**没答出** `--ccm-probe` —— 版本与能力**查不了**。\n             ⚠ 这是「查不了」，不是「没问题」：`cc-spawn` 开头仍会协商 {needs:?}。	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；`--ccm-probe` 内部旗标 ＋ {needs:?} Debug 形上屏 兼§2.4
-src/bridge/src/cc_bus_deploy.rs:450	(没报 build)	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；build 缺席时的占位，短
-src/bridge/src/cc_bus_deploy.rs:453	cc-monitor 装的那份 `ccm`（{at}）**不是这一版**：它报 build={build}，这一版 monitor \n             期望 {want_build}。{}在设置页重装本机后端（顺序：ccm 先、cc-bus 后）。\n{path_caveat}	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；`build=` 版本标识串原样上屏 兼§2.4（markdown **）
-src/bridge/src/cc_bus_deploy.rs:458	它还缺能力 {missing:?}（装出去的 `cc-spawn` 会以「ccm 版本太旧」退出）。	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；{missing:?} 把数组 Debug 形上屏
-src/bridge/src/cc_bus_deploy.rs:464	cc-monitor 装的那份 `ccm`（{at}）是这一版（build={build}），却缺能力 {missing:?} ⇒ \n             装出去的 `cc-spawn` 会以「ccm 版本太旧」退出 —— 这不该发生，多半是两边的清单漂了。\n{path_caveat}	改·§2.2	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；「这不该发生，多半是两边的清单漂了」是内部推理 兼§2.1（{missing:?}、build=）
-src/bridge/src/cc_bus_deploy.rs:469	查过 cc-monitor 装的那份 `ccm`（{at}）：是这一版（build={build}），`cc-spawn` 要的 {needs:?} 都在。\n\n         {path_caveat}	改·§2.1	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；{needs:?} Debug 形 ＋ build= 上屏
 src/bridge/src/session_skeleton.rs:67	对面后端不认 --index（老版本，需要重装后端才有骨架索引）	保留	[不对外] 只进 console.info（tabs.ts 骨架未接的原因），界面行为逐字不变
 src/bridge/src/session_skeleton.rs:69	索引输出被截断：实到 {got} 行，尾行声称 {claimed:?} —— 不当全量用	保留	[不对外] 同上，只进 console.info
-src/backend/accounts/creds.rs:86	读不动凭据文件：{e}	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；短、先说结果（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/table.rs:255	账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）	内部词→用在请求地址里（路由段）	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号里的约束可操作 新词:路由段（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/table.rs:264	base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；字段名 base_url 是用户自己写的键，两句：结果＋两种修法，可操作（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/table.rs:268	auth_style 写的不是账号层认得的值之一（认得的那几个见下面那行现算的清单）	改·§2.2	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号「认得的那几个见下面那行现算的清单」泄了实现（现算） 兼§2.4 →「auth_style 的值认不出，可用值见下一行」（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/table.rs:276	这一条的 auth_style 说不发任何鉴权头，同一条却配了 api_key —— 两句话说的是相反的事，删掉其中一句	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；指出配置自相矛盾并给出修法，用户的配置用户能改（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/table.rs:280	base_url 带路径前缀 ⇒ 上游收到的是「那个前缀 + 客户端自己的真路径」。若前缀与客户端的路径头一段重了，上游会看到重复的那一段（中转不替你合并）	改·§2.4	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；⇒ 记号＋括号补充＋两长句，一句里塞了发生什么＋后果＋我们不做什么（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/table.rs:288	这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；说明性的一句（今天默认不印）（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
-src/backend/accounts/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/bridge/src/session_outline.rs:74	这台机器上的后端版本旧，还列不出大纲（重装后端之后就有）	保留	[对外] 〔SE1〕大纲开关灰掉时挂在提示上（前缀「大纲暂时用不了：」）；说清原因与出路，用词是术语表的「后端」
+src/bridge/src/session_outline.rs:76	大纲清单传到一半断了（只收到 {got} 条），这次先不显示	保留	[对外] 〔SE1〕同上一条（输出被截断，不当全量用）
+src/backend/relay/server.rs:450	连不上	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，短、先说结果
+src/backend/relay/server.rs:450	建立连接	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半，用户读得懂的动作名
+src/backend/relay/server.rs:451	没回应就断开了	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半
+src/backend/relay/server.rs:451	等响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半
+src/backend/relay/server.rs:452	没有回应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半
+src/backend/relay/server.rs:452	等响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半（同文第二处）
+src/backend/relay/server.rs:453	回的不是 HTTP 响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半，HTTP 是 R1b 那类用户自己也这么叫的词
+src/backend/relay/server.rs:453	读响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半
+src/backend/relay/server.rs:454	读响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；哪一跳那半（同文第二处）
+src/backend/relay/server.rs:454	一直不给最终响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半（上游只回 1xx 中间响应的那一形）
+src/backend/relay/server.rs:472	上游 {}:{} {result}。卡在{hop}这一步。	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体（claude 那一侧可能原样显示）与 stderr 那一句的骨架（设计/20 §3.1a）；两句：先说谁出了什么结果，再说卡在哪一步，无内部词、无处方
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
+src/settings/account-new-form.ts:46	新建账号	保留	[对外] 表单标题，名词短语（设计/70 §4.4）
+src/settings/account-new-form.ts:47	账号名，如 b	保留	[对外] 输入框占位，给一个例子
+src/settings/account-new-form.ts:48	接入方式	保留	[对外] 单选组的读屏标签（设计/70 §4.4 原词）
+src/settings/account-new-form.ts:49	订阅	保留	[对外] 单选项，用户自己也这么叫
+src/settings/account-new-form.ts:50	创建后弹出终端，在那个终端里用这个号 /login。	保留	[对外] 选了订阅之后的一句说明：会发生什么、用户要做什么；/login 是 claude 自己的命令名
+src/settings/account-new-form.ts:51	第三方 apikey	保留	[对外] 单选项；「中转」不指账号（用户裁：账号就账号、中转就中转）
+src/settings/account-new-form.ts:53	创建后弹出终端建好账号目录；这个号出现在下面的账号列表里时（终端跑完点「刷新」），	保留	[对外] apikey 那一支的说明前半：key 什么时候写进去（与后半同一句，运行期拼接）
+src/settings/account-new-form.ts:54	这把 key 自动写进 apikey 表。在那之前 key 只留在这个窗口里，关掉 monitor 就没了。	保留	[对外] apikey 那一支的说明后半：key 在写进去之前住哪、会不会丢
+src/settings/account-new-form.ts:55	粘贴 API key	保留	[对外] 密码框占位
+src/settings/account-new-form.ts:56	高级：从旧凭据快照导入（免重登）	保留	[对外] 折叠标题，沿用旧维护区的叫法
+src/settings/account-new-form.ts:57	旧凭据快照路径	保留	[对外] 输入框占位
+src/settings/account-new-form.ts:58	将在终端里运行：	保留	[对外] 命令预览的头一行，先说在哪跑
+src/settings/account-new-form.ts:59	（填好账号名后显示将运行的命令）	保留	[对外] 预览区空态
+src/settings/account-new-form.ts:60	清空	保留	[对外] 按钮：清掉表单三格
+src/settings/account-new-form.ts:61	创建	保留	[对外] 主按钮（非红色，设计/70 §4.3 ②）
+src/settings/account-new-form.ts:69	这个号的命令名会是 {…}	保留	[对外] 表单里的一行提示，取代原先那句「去设置 → 行为」的散文导航（设计/70 §4.3 ⑤）
+src/settings/panel.ts:912	账号	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
+src/settings/panel.ts:940	插件（marketplace）	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
+src/settings/panel.ts:947	cc-bus 钩子	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
+src/settings/panel.ts:1504	终端集成	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
+src/settings/panel.ts:742	外观或 Claude 数据目录有改动还没保存。	保留	[对外] ST1 未保存关窗拦截那一条的正文：先说发生了什么，后面跟三颗按钮（保存并关闭 / 丢弃改动 / 继续编辑）
+src/backend/accounts/apikey/creds.rs:86	读不动凭据文件：{e}	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；短、先说结果（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/apikey/table.rs:255	账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）	内部词→用在请求地址里（路由段）	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号里的约束可操作 新词:路由段（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/apikey/table.rs:264	base_url 是明文 http 而主机不是本机回环 —— 那会把这一行的 key 明着发上网线。要么换 https，要么把上游放到本机回环上	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；字段名 base_url 是用户自己写的键，两句：结果＋两种修法，可操作（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/apikey/table.rs:268	auth_style 写的不是账号层认得的值之一（认得的那几个见下面那行现算的清单）	改·§2.2	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号「认得的那几个见下面那行现算的清单」泄了实现（现算） 兼§2.4 →「auth_style 的值认不出，可用值见下一行」（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/apikey/table.rs:276	这一条的 auth_style 说不发任何鉴权头，同一条却配了 api_key —— 两句话说的是相反的事，删掉其中一句	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；指出配置自相矛盾并给出修法，用户的配置用户能改（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/apikey/table.rs:280	base_url 带路径前缀 ⇒ 上游收到的是「那个前缀 + 客户端自己的真路径」。若前缀与客户端的路径头一段重了，上游会看到重复的那一段（中转不替你合并）	改·§2.4	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；⇒ 记号＋括号补充＋两长句，一句里塞了发生什么＋后果＋我们不做什么（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/apikey/table.rs:288	这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；说明性的一句（今天默认不印）（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/apikey/table.rs:292	这一条用 x-api-key 头把 key 交给上游（不是默认那种），而客户端自带的鉴权头会被丢掉	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；括号短（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/backend/accounts/apikey/table.rs:296	这一条一个鉴权头都不发，客户端自带的那份也不转发 —— 这是给不校验凭据的本地部署用的那一档	保留	[可达存疑] 中转（relay）启动/重载时写到自己 stdout 的公告行（creds.rs::announce，英文前缀＋这句中文），给手编凭据文件的人看；破折号接的是用途说明，一处（A1 搬家：住址 relay/accounts/ → accounts/，裁词照搬）
+src/bridge/src/local_accounts.rs:525	本机后端没有返回信任状态	保留	[可达存疑] 本机信任预检一行都没答时的原因；唯一消费者（换号重启 account-restart.ts）只看 available/trusted、不渲染 error，短而直接
+src/bridge/src/local_accounts.rs:528	本机后端不在，查不出这个账号是否信任过该目录：{reason}	保留	[可达存疑] 同上一行的消费者；说清是哪一种失败（后端不在）＋ 带上找过哪些路径
+src/bridge/src/local_accounts.rs:531	本机后端的信任查询失败（退出码 {code:?}）：{}	保留	[可达存疑] 同上；退出码与后端原话原样带出，便于排查 兼§2.1（退出码是实现细节，但它在消费者那里不渲染）
+src/bridge/src/local_accounts.rs:553	本机信任查询没能跑完：{e}	保留	[可达存疑] 同上；阻塞线程池 join 失败的兜底（几乎不可达）
+src/accounts.ts:787	本机归档后的 Resume 沿用这条会话上次的账号，换号只对本工具在 tmux 里起的会话做得到。	保留	[对外] 换号重启定位失败时本机那一支的补救句（A3 第二波）；说清本机能做什么、做不到什么；tmux 属 R1b「用户自己也这么叫」
+src/accounts.ts:788	可先归档后用右键「把此会话切到账号 X」。	保留	[对外] 换号重启定位失败时远端那一支的补救句（原文逐字，A3 第二波只是把它抽成一个变量、本机那支换一句）
+src/backend/accounts/iso.rs:64	这台机器上还没装 cc-acct-iso。	保留	[可达存疑] 本机「找不到 cc-acct-iso」那句话的尾巴（前半「查过哪些地方」由 plugin::discover 拼）；进 --acct-iso-status 的 looked 与 --acct-iso-shellinit 的 not_installed 信封，短而直接
+src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
+src/bridge/src/backend/control/cc_bus.rs:1483	已派生 {id}\n{said}	保留	[对外] 设置页 cc-bus 区派生成功的回执：新会话名 ＋ cc-spawn 自己的回显，无病
+src/bridge/src/backend/control/cc_bus.rs:1485	已派生，但没认出新会话的名字。会话应该已经在运行，请不要重试，到 cc-bus 名单里找它。\n{said}	保留	[对外] 派生成功但没认出会话名：先说结果（已派生）、再说该做什么（不要重试、去名单里找），无星号无破折号
+src/bridge/src/backend/control/cc_bus.rs:1487	派生的回应格式认不出来，不确定会话有没有起来。请先看一眼 cc-bus 名单，不要直接重试。	保留	[对外] 派生回值形状认不出时的话：说清不确定起没起、给出下一步，无内部词
+src/bridge/src/backend/control/cc_bus.rs:1538	没有派生	保留	[对外] 派生失败时拼进「后端通道没起来 / 后端太旧」那两句的结局片段（describe_no_channel_for / describe_backend_too_old_for）；短、无星号
+src/bridge/src/cc_bus_deploy.rs:434	这里查的是 cc-monitor 自己装的那一份 ccm。cc-spawn 实际调用的是 PATH 上的 ccm，\n                       在 Windows 上查不到那一个是哪一份。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:438	本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。\n             cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:444	问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。\n             cc-spawn 启动时需要 ccm 支持：{needs}。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:453	未知	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；ccm 没报版本时的占位词，短
+src/bridge/src/cc_bus_deploy.rs:458	它还缺少：{}，cc-spawn 会因此退出。	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:461	cc-monitor 装的 ccm（{at}）不是这一版：它的版本是 {build}，这一版需要 {want_build}。\n             {lack}请在设置页重装本机后端，再装 cc-bus。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:467	cc-monitor 装的 ccm（{at}）版本对，但缺少：{}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/bridge/src/cc_bus_deploy.rs:471	cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{path_caveat}	保留	[对外] Windows 上 cc-bus 部署预检的话（设置页可见）；〔BS1b 09-24 按台账改过〕无 markdown 星号、能力清单用顿号连写（不上 {:?} 数组形）、无工单号、无内部推理；先说结果再说该做什么
+src/backend/read_face.rs:149	结果超过 {LINES_CAP_BYTES} 字节上限，没有返回（至少 {size} 字节）	保留	[可达存疑] 帧面只读查询（history-*/accounts-*）按行应答超上限时的命令级报错，monitor 原样带进「远端查询失败」那句；平白说出上限与没返回，无内部词、无论证
+src/bridge/src/backend/control/frame_query.rs:49	换号前的信任预检：不在题面八条里；用户点一次换号才发一次，不在任何轮询上	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
+src/bridge/src/backend/control/frame_query.rs:51	同上一行（账号 0 那一形）	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
+src/bridge/src/backend/control/frame_query.rs:54	只剩 `--index` 那一形（会话骨架索引）：不在题面八条里、帧面没有对应命令。\n         同一个子命令的 `--until` 那一形（按区间取正文）已经走 `history-read`，不在这里拨	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
+src/bridge/src/backend/control/frame_query.rs:93	查询出了内部错误，没有拿到结果	保留	[可达存疑] 只读查询分流器落到「已完成」那一档时的兜底话（按构造走不到）；平白说出了事、没拿到结果，无内部词
+src/panorama/agent-clip.ts:81	分不清：本符号 {…} 条直接边里 {…} 条按名字凑	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「分不清」行，只计数
+src/panorama/agent-clip.ts:82	（启发 {…} · 动态猜测 {…}），动态派发 {…} 条，确定 {…} 条	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；「分不清」的分项计数，动态派发单列（候选完整，不算分不清）
+src/views/panorama.ts:1686	派发	保留	[对外] 置信度标签（动态派发），与「精确 / 启发 / 动态猜测」同列
+src/views/panorama.ts:1698	动态派发：候选是某个 trait / 接口在仓内的全部实现，运行时才定是哪一个	保留	[对外] 置信度 hint，说清派发与按名字凑的区别；trait / 接口是开发者自己的词
+src/panorama/agent-clip.ts:99	仓：{…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；字段标签
+src/panorama/agent-clip.ts:149	对象：图「{…}」（kind={…}）	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；住址：图的人读名 ＋ 注册表 id（给 agent 定位用）
+src/panorama/agent-clip.ts:149	 · 中心符号 {…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；住址：调用子图的中心符号
+src/panorama/agent-clip.ts:151	诚实信号：{…}	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4 那一行原样带上
+src/panorama/diagram-honesty.ts:20	{…}：不适用	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；这张图不量这一格时如实说不适用，不写 0
+src/panorama/diagram-honesty.ts:24	看不见	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；格名
+src/panorama/diagram-honesty.ts:24	处调用	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；计量单位
+src/panorama/diagram-honesty.ts:25	分不清	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；格名
+src/panorama/diagram-honesty.ts:25	处调用	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；计量单位
+src/panorama/diagram-honesty.ts:26	滤掉	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；格名
+src/panorama/diagram-honesty.ts:26	条全靠名字凑的连接	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；计量单位，说清滤掉的是什么
+src/panorama/diagram-honesty.ts:27	排除	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；格名
+src/panorama/diagram-honesty.ts:27	个测试符号	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；计量单位
+src/panorama/diagram-honesty.ts:30	省略：不适用	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；这张图没有节点上限时如实说不适用
+src/panorama/diagram-honesty.ts:31	省略 {…} 个节点（{…} 个符号）、{…} 条连接	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；因节点上限没画的量
+src/panorama/diagram-honesty.ts:33	读索引没出错	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；读库那一格的正常态
+src/panorama/diagram-honesty.ts:33	读索引出错 {…} 处，这张图不完整	保留	[对外] 选图下方常驻的诚实信号那一行的一格（CP4），只计数，来自上游 Honesty；读库出错时说清后果
+src/panorama/diagram-render.ts:88	派发	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；动态派发
+src/panorama/diagram-render.ts:88	分不清?	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；按名字凑的候选，带问号
+src/panorama/diagram-render.ts:89	{…} {…} 选 1	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；歧义边的候选数（N 选 1）
+src/panorama/diagram-render.ts:111	{…}×派发	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；一捆全是动态派发
+src/panorama/diagram-render.ts:113	{…}×分不清?	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；一捆全是按名字凑的
+src/panorama/diagram-render.ts:116	{…} 确定	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；混合一捆的成分
+src/panorama/diagram-render.ts:117	{…} 派发	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；混合一捆的成分
+src/panorama/diagram-render.ts:118	{…} 分不清	保留	[对外] 图上连接的标签，写出可信度成分（CP3），与上游 Mermaid 同一套说法；混合一捆的成分
+src/panorama/diagram-render.ts:361	{…} 符号 / {…} 文件	保留	[对外] 团/模块节点的副标题，规模计数
+src/panorama/diagram-render.ts:395	实现	保留	[对外] 类图里实现关系的标签
+src/panorama/diagram-render.ts:403	…还有 {…} 项	保留	[对外] 类型节点里成员太多时的截断说明
+src/panorama/diagram-view.ts:115	读不到图种清单	保留	[对外] 选图那一块的界面文字；取注册表失败的提示标题，正文是后端原话
+src/panorama/diagram-view.ts:155	「{…}」要以一个符号为中心：先在搜索或文件详情里点一个符号。	保留	[对外] 选图那一块的界面文字；需要符号的图没选符号时的说明，告诉人下一步点哪里
+src/panorama/diagram-view.ts:164	画图中…	保留	[对外] 选图那一块的界面文字；加载态
+src/panorama/diagram-view.ts:174	画不出这张图：{…}	保留	[对外] 选图那一块的界面文字；后端报错时的说明，后面接上游原话
+src/panorama/diagram-view.ts:220	只看确定的连接	保留	[对外] 选图那一块的界面文字；旋钮名
+src/panorama/diagram-view.ts:220	全靠名字凑、一条确定的都没有的连接不画；滤掉多少写在图下面	保留	[对外] 选图那一块的界面文字；旋钮的 title 提示
+src/panorama/diagram-view.ts:221	排除测试	保留	[对外] 选图那一块的界面文字；旋钮名
+src/panorama/diagram-view.ts:221	架构讲的是产品的结构；排掉多少写在图下面	保留	[对外] 选图那一块的界面文字；旋钮的 title 提示
+src/panorama/diagram-view.ts:240	复制给 agent	保留	[对外] 按钮名（CP7），与节点详情里的同名按钮一致
+src/panorama/diagram-view.ts:243	复制 Mermaid	保留	[对外] 选图那一块的界面文字；按钮名；Mermaid 是开发者认得的格式名
+src/panorama/diagram-view.ts:286	这一版还画不出这种形状的图（shape={…}）。可以点「复制 Mermaid」拿到上游画好的文本。	保留	[对外] 选图那一块的界面文字；新形状的诚实降级：说清画不出、给出路；shape 名附上便于对照上游
+src/panorama/diagram-view.ts:311	{…} · {…} 个文件 · {…} 个符号	保留	[对外] 选图那一块的界面文字；下钻侧栏的副标题
+src/panorama/diagram-view.ts:331	{…} 个字段 · {…} 个方法	保留	[对外] 选图那一块的界面文字；下钻侧栏的副标题
+src/views/panorama.ts:1117	复制给 agent	保留	[对外] 按钮名（CP7），与节点详情里的同名按钮一致
+src/views/panorama.ts:1459	复制给 agent	保留	[对外] 按钮名（CP7），与节点详情里的同名按钮一致
+src/views/panorama.ts:1789	人写	保留	[对外] 批注来源标签（CP6）：人亲手写的
+src/views/panorama.ts:1791	agent 提议	保留	[对外] 批注来源标签（CP6）：agent 提的，批准后仍是它，与人写的分开
+src/views/panorama.ts:1793	来源未记录	保留	[对外] 批注来源标签（CP6）：旧文件没记来源，如实说不猜

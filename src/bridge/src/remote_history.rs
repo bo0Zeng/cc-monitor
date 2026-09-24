@@ -16,20 +16,19 @@ use crate::history::{HistoryProject, HistorySessionEntry};
 use crate::messages::JsonlRecord;
 use crate::parser::parse_line;
 use crate::ssh_source::{self, RemoteConfig};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::BufReader;
 
 /// 查询超时：列举类命令整体限时（远端扫盘 + 传输）。
 const LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// 读单会话：不设整体超时（会话可能大、流式合法耗时），但 (a) 每次 read_line 加
-/// 单次超时，防"连接活着却永不来数据"卡死；(b) 总字节上限兜底，防无 EOF / 无换行
-/// 的巨型损坏文件吃爆内存。
+/// 读单会话：不设整体超时（会话可能大、合法耗时），总字节上限兜底。
+/// 〔`C1` · 09-24〕单次读的期限从此是**每一页**的期限（`frame_query` 的 `PAGE_BUDGET`，60s，
+/// 与原来这里的单次 `read_line` 超时同值）；原先那个常量随逐次拨号一起删了。
 ///
 /// ⚠〔audit-0805 F06〕**这里原本还有一句「正常会话毫秒级、远小于上限」——那句今天是假的。**
 /// 实测本机最大会话 **270,103,105 字节 / 92,967 行**（就是那次审计对话本身），
 /// 已经**越过** 256 MiB 这条线 1,667,649 字节；57 MB 以上的会话有 5 个，不是孤例。
 /// ⇒ 上限**会被真实数据打到**，所以「打到之后怎么办」不能是静默。
-const READ_LINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
 
 /// 超限时给用户的话〔audit-0805 F06，定框 **E4/E5**〕。
@@ -65,7 +64,17 @@ const OLD_BACKEND_MSG: &str =
     "远端后端版本过旧（不支持历史查询）——请按 src/doc/REMOTE-PHASE0-DEPLOY.md 重新构建部署";
 
 /// 跑一条列举类查询，收集全部输出行（带整体超时 + 旧版检测）。
+///
+/// 🔴 〔`C1` · 2026-09-24〕**它从此只是「还在逐次拨号的那几条」的路**：题面那八条只读查询
+/// 已上长连接（`backend::control::frame_query`），这里**只放行** `frame_query::STILL_DIALED`
+/// 登记的子命令 —— 八条里任何一条从这里漏出去都会被当场拒掉，而不是悄悄再拨一次 SSH。
 pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, String> {
+    let sub = args.split_whitespace().next().unwrap_or_default();
+    if !crate::backend::control::frame_query::dial_allowed(sub) {
+        return Err(format!(
+            "`{sub}` 已经走长连接了，不许再为它单拨一条 SSH（这是本程序的 bug，不是远端的问题）"
+        ));
+    }
     let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.backend_path), args);
     let collect = async {
         let stream = ssh_source::connect_and_exec_cmd(cfg, &cmd).await?;
@@ -128,26 +137,32 @@ pub async fn search_remote_all(
     if cfgs.is_empty() {
         return Vec::new();
     }
-    // 参数对所有台一致（不含 cfg），构建一次。经 shell_quote 防注入；backend 侧再做 projects/ 白名单校验。
-    let mut args = format!("--search {}", ssh_source::shell_quote(query));
+    // 参数对所有台一致（不含 cfg），构建一次。〔`C1`〕走长连接的 `history-search`，
+    // 选项是 JSON 字段、不再拼 shell 串（后端把它们摊回 CLI 那一臂同一个解析）。
+    let mut args = serde_json::json!({ "query": query, "limit": limit });
     if include_tools {
-        args.push_str(" --include-tools");
+        args["include_tools"] = serde_json::json!(true);
     }
     if let Some(s) = scope {
         if s == "user" || s == "assistant" {
-            args.push_str(" --scope ");
-            args.push_str(s);
+            args["scope"] = serde_json::json!(s);
         }
     }
     if after_ms > 0 {
-        args.push_str(&format!(" --after-ms {after_ms}"));
+        args["after_ms"] = serde_json::json!(after_ms);
     }
-    args.push_str(&format!(" --limit {limit}"));
 
     // R9：并发 fan-out——各台查询独立、无序要求，join_all 同时查所有台（墙钟从 Σ 降到 max）。
-    // 借用 cfg/args 即可（join_all 在当前任务并发 poll，不需 'static/Send）。逐台错误仍隔离。
+    // 逐台错误仍隔离。〔`C1`〕每台走它自己那条长连接，不再各拨一条 SSH。
     let results =
-        futures::future::join_all(cfgs.iter().map(|cfg| run_list_query(cfg, &args))).await;
+        futures::future::join_all(cfgs.iter().map(|cfg| {
+            let origin = crate::origin::Origin(cfg.origin_label());
+            let args = args.clone();
+            async move {
+                crate::backend::control::frame_query::lines(&origin, "history-search", args).await
+            }
+        }))
+        .await;
     let mut out = Vec::new();
     for (cfg, res) in cfgs.iter().zip(results) {
         let origin = cfg.origin_label();
@@ -551,7 +566,14 @@ pub async fn list_remote_history_projects() -> Result<RemoteProjectsResult, Stri
         &cfgs,
         &metadata,
         &NoLivenessOracleYet,
-        |cfg: RemoteConfig| async move { run_list_query(&cfg, "--list-projects").await },
+        |cfg: RemoteConfig| async move {
+            crate::backend::control::frame_query::lines(
+                &crate::origin::Origin(cfg.origin_label()),
+                "history-projects",
+                serde_json::json!({}),
+            )
+            .await
+        },
     )
     .await
     .map(FanoutOutcome::into_wire)
@@ -728,8 +750,13 @@ pub(crate) async fn stream_remote_history_sessions(
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("非法项目目录名: {project_dir}"));
     }
-    let args = format!("--list-sessions {}", ssh_source::shell_quote(&project_dir));
-    let lines = run_list_query(&cfg, &args).await?;
+    // 〔`C1`〕走长连接的 `history-sessions`（不再为展开一个项目单拨一条 SSH）。
+    let lines = crate::backend::control::frame_query::lines(
+        &crate::origin::Origin(cfg.origin_label()),
+        "history-sessions",
+        serde_json::json!({ "project_dir": project_dir }),
+    )
+    .await?;
     // 条目级元数据（star/rename/hide）按 session_id 存本地，远端会话同样适用
     let metadata = crate::history::load_metadata().unwrap_or_default();
     let origin_label = cfg.origin_label();
@@ -788,97 +815,68 @@ pub(crate) async fn stream_read_remote_session(
         .strip_suffix(".jsonl")
         .unwrap_or(file_name)
         .to_string();
-    let args = format!("--read-session {}", ssh_source::shell_quote(&jsonl_path));
-    let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.backend_path), args);
-    let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
-    // F06：`+ 1` 是为了**能分辨「到限」与「正好读完」** —— 只 take(MAX) 的话，
-    // 到限时 read_line 返回 0，与正常 EOF 完全同形，于是静默截断。
-    let mut reader = BufReader::new(stream.take(MAX_SESSION_BYTES + 1));
+    // 〔`C1` · 2026-09-24〕走长连接的 `history-read`，按字节分页（一页 ≤1 MiB、切在行尾），
+    // 不再为读一份会话单拨一条 SSH。总量上限（F06）与逐行口径一个字没动。
+    let origin = cfg.origin_label();
+    let wire_origin = crate::origin::Origin(origin.clone());
     let mut read_bytes: u64 = 0;
-    let mut buf = String::new();
-    let mut line_buf: Vec<u8> = Vec::new();
     let mut cwd_seen: Option<String> = None;
     let mut chunk: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
     let mut total = 0u32;
-    let mut next_seq: u64 = 0;
-    let mut first_line = true;
+    // 〔U3b〕seq = **可计行号**（同本机那一支，住址 `session_skeleton·rs::LineNumberer`）
+    let mut numberer = crate::session_skeleton::LineNumberer::default();
+    let mut offset: u64 = 0;
     loop {
-        // ★〔G 审计〕原来是无界 `read_line`。下面那条 `MAX_SESSION_BYTES` 是**总量**且
-        // **读完再判** —— 一条 10 GiB 的行会在 `read_line` 返回**之前**就把内存吃光，
-        // 那条总量检查根本轮不到跑。这正是后端侧 `inbound.rs` 头注逐字警告的
-        // 「上限必须在**读的时候**生效，不能读完再判」，而当时那次实测是 RSS 6 MiB → 518 MiB。
-        // ⇒ 补一层**单行**上限（与后端出方向单行同量），总量那条保持不动。
-        let n = match tokio::time::timeout(
-            READ_LINE_TIMEOUT,
-            ssh_source::read_capped_line(
-                &mut reader,
-                &mut line_buf,
-                ssh_source::BACKEND_FRAME_LINE_CAP,
-            ),
+        let page = crate::backend::control::frame_query::read_page(
+            &wire_origin,
+            &jsonl_path,
+            offset,
+            None,
         )
-        .await
-        .map_err(|_| "读取远端会话超时（单次读取卡住）".to_string())?
-        .map_err(|e| format!("读取远端会话失败: {e}"))?
-        {
-            ssh_source::CappedLine::Eof => break,
-            // 超单行上限与超总量**同一档处置**（截断+说清）：都是「这份会话读不完整了，
-            // 而且明说为什么」。措辞分开，因为用户要采取的动作不同。
-            ssh_source::CappedLine::TooLong(bytes) => {
-                return Err(format!(
-                    "远端会话里有一行 {bytes} 字节，超过单行上限 {} —— 已停止读取。\
-                     这不是会话太大（那会报另一句），是**单条记录**异常巨大，多半该直接看源文件。",
-                    ssh_source::BACKEND_FRAME_LINE_CAP
-                ));
-            }
-            ssh_source::CappedLine::Line => {
-                buf.clear();
-                buf.push_str(&String::from_utf8_lossy(&line_buf));
-                buf.len()
-            }
-        };
-        read_bytes += n as u64;
+        .await?;
+        read_bytes += page.next - offset;
         if read_bytes > MAX_SESSION_BYTES {
             // F06：**不许静默截断**。同一份数据走后端的 `--fork-session` 会硬报错，
             // 走这条路却假装读完了 —— 定框 E5 要的是「同一份数据走不同路得到同一个答案」。
             return Err(session_truncated_message(read_bytes, total));
         }
-        let trimmed = buf.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if first_line {
-            first_line = false;
-            if is_old_backend_hello(trimmed) {
-                return Err(OLD_BACKEND_MSG.to_string());
+        for line in page.text.lines() {
+            // 与本地 stream_read_session_jsonl 同口径：parse + displayable 过滤 + per-file seq
+            // 〔U3b〕先占号、后过滤（住址 `session_skeleton·rs::numbered_displayable`）。
+            // 〔合并 C1＋U3b〕C1 把读法换成帧面分页之后，原先按首行认「老后端 hello」那一格由帧面的
+            //   能力协商接管（旧后端不认 `history-read` ⇒ 发之前就说「后端还不认」，不会拿到 hello 行）。
+            let Some((seq, rec)) =
+                crate::session_skeleton::numbered_displayable(&mut numberer, line, parse_line)
+            else {
+                continue;
+            };
+            if let JsonlRecord::User { cwd, .. } = &rec {
+                if cwd_seen.is_none() {
+                    cwd_seen = cwd.clone();
+                }
+            }
+            chunk.push(crate::bridge::JsonlLinePayload {
+                session_id: session_id.clone(),
+                cwd: cwd_seen.clone(),
+                path: jsonl_path.clone(),
+                seq,
+                origin: Some(origin.clone()),
+                message: rec,
+            });
+            total += 1;
+            if chunk.len() >= CHUNK_SIZE {
+                let full = std::mem::replace(&mut chunk, Vec::with_capacity(CHUNK_SIZE));
+                if on_chunk.send(full).is_err() {
+                    tracing::info!(
+                        "stream_read_remote_session({session_id}): 前端取消于 {total} 条"
+                    );
+                    return Ok(total);
+                }
             }
         }
-        // 与本地 stream_read_session_jsonl 同口径：parse + displayable 过滤 + per-file seq
-        let rec = match parse_line(trimmed) {
-            Ok(Some(r)) if r.is_displayable() => r,
-            _ => continue,
-        };
-        if let JsonlRecord::User { cwd, .. } = &rec {
-            if cwd_seen.is_none() {
-                cwd_seen = cwd.clone();
-            }
-        }
-        let seq = next_seq;
-        next_seq += 1;
-        chunk.push(crate::bridge::JsonlLinePayload {
-            session_id: session_id.clone(),
-            cwd: cwd_seen.clone(),
-            path: jsonl_path.clone(),
-            seq,
-            origin: Some(cfg.origin_label()),
-            message: rec,
-        });
-        total += 1;
-        if chunk.len() >= CHUNK_SIZE {
-            let full = std::mem::replace(&mut chunk, Vec::with_capacity(CHUNK_SIZE));
-            if on_chunk.send(full).is_err() {
-                tracing::info!("stream_read_remote_session({session_id}): 前端取消于 {total} 条");
-                return Ok(total);
-            }
+        offset = page.next;
+        if page.eof {
+            break;
         }
     }
     if !chunk.is_empty() {

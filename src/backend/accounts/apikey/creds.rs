@@ -228,5 +228,5 @@ pub(crate) fn announce(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/accounts/creds_tests.rs"]
+#[path = "../../../../tests/backend/accounts/apikey/creds_tests.rs"]
 mod tests;

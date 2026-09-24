@@ -9,9 +9,10 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { setDiag, restartHint } = vi.hoisted(() => ({
+const { setDiag, restartHint, getDiag } = vi.hoisted(() => ({
   setDiag: vi.fn(),
   restartHint: { value: "none" as "none" | "needs_restart" },
+  getDiag: { fail: null as Error | null },
 }));
 
 vi.mock("../../src/ipc/commands", () => ({
@@ -21,7 +22,7 @@ vi.mock("../../src/ipc/commands", () => ({
       return Promise.resolve(restartHint.value);
     },
     get_diagnostics_config: () =>
-      Promise.resolve({
+      getDiag.fail ? Promise.reject(getDiag.fail) : Promise.resolve({
         log_enabled: true,
         log_level: "info",
         error_toast: true,
@@ -42,7 +43,8 @@ import {
 /** 切一下「启用 log 文件」复选框，等异步 save 落地。 */
 async function toggleLogEnabled(): Promise<void> {
   const sec = new DiagnosticsSection();
-  await Promise.resolve();
+  sec.loadNow();
+  await new Promise((r) => setTimeout(r, 0));
   const cb = sec.element.querySelector<HTMLInputElement>(
     'input[type="checkbox"]',
   )!;
@@ -75,5 +77,50 @@ describe("诊断分节 → 「需重启」常驻条", () => {
     await toggleLogEnabled();
     expect(setDiag).toHaveBeenCalled();
     expect(restartReasons()).toEqual([]);
+  });
+});
+
+// `70 §11.4` 那处真缺陷 ＋ `§8` 判据 #2：读不到当前设置时，三个控件**不许**顶着构造期默认值给人点。
+describe("日志分节：读不到当前设置 ⇒ 说出来，并且三个控件读回来之前不可交互", () => {
+  beforeEach(() => {
+    getDiag.fail = null;
+    document.body.replaceChildren();
+  });
+  const controls = (el: HTMLElement) => [
+    ...el.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input[type=checkbox], select"),
+  ];
+
+  it("还没读：三个都灰着（构造期那几个默认值不是后端的真状态）", () => {
+    const sec = new DiagnosticsSection();
+    expect(controls(sec.element).length, "控件找不到 —— 下面是空真").toBe(3);
+    expect(controls(sec.element).every((c) => c.disabled)).toBe(true);
+  });
+
+  it("读成功：三个都亮起、没有失败那一行", async () => {
+    const sec = new DiagnosticsSection();
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controls(sec.element).every((c) => !c.disabled)).toBe(true);
+    expect(sec.element.querySelector(".settings-banner-show")).toBeNull();
+  });
+
+  it("读失败：原因落在这一块上，三个继续灰着", async () => {
+    getDiag.fail = new Error("后端没起来");
+    const sec = new DiagnosticsSection();
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controls(sec.element).every((c) => c.disabled)).toBe(true);
+    expect(sec.element.querySelector(".settings-banner-show")?.textContent).toContain("后端没起来");
+  });
+
+  it("先读成功、再读失败：三个重新灰掉（上一次的值此刻已经不能当真）", async () => {
+    const sec = new DiagnosticsSection();
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controls(sec.element).every((c) => !c.disabled), "前提：先得亮起来").toBe(true);
+    getDiag.fail = new Error("第二次读挂了");
+    [...sec.element.querySelectorAll("button")].find((b) => b.textContent === "刷新信息")!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(controls(sec.element).every((c) => c.disabled)).toBe(true);
   });
 });

@@ -1,0 +1,46 @@
+{
+  "说明": [
+    "对外文案表（设计/91 §5.1 · §5.1.1 四个决定）。在表里 = 对外，不在表里 = 不对外，没有第三种。",
+    "key = <面>.<场景>.<变体>，三段，每段小写开头的 camel；key 是标识符，不许出现在界面上。",
+    "kind 五档：title（页面名 / 区块标题，名词短语）· control（复选框 / 开关 / 输入框标签）· action（按钮）· body（正文）· error（报错）。由写文案的人填，不由扫描器猜。",
+    "zh 里的插值点只许具名（{origin}），不许 {} / {0}；args 显式登记，与 zh 里出现的占位符两向相等。",
+    "waive：这一条对某条规矩的豁免（规矩号 → 理由）。豁免了却没违反 ⇒ 红（死豁免）。规矩表在 src/shared/copy/rules.json。",
+    "生产代码只经 src/copy-table.ts 的 copyText(key, {…}) 取文，key 必须是字面量；表里的 key 与代码里的引用两向相等（tests/copy/copy-table.vitest.ts）。",
+    "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
+  ],
+  "entries": {
+    "panePreview.head.title": {
+      "kind": "title",
+      "zh": "预览画面 · [{origin}] tmux: {target}",
+      "args": ["origin", "target"]
+    },
+    "panePreview.head.refresh": {
+      "kind": "action",
+      "zh": "重新抓取",
+      "args": []
+    },
+    "panePreview.head.close": {
+      "kind": "action",
+      "zh": "关闭",
+      "args": []
+    },
+    "panePreview.body.loading": {
+      "kind": "body",
+      "zh": "抓取中…",
+      "args": []
+    },
+    "panePreview.body.empty": {
+      "kind": "body",
+      "zh": "（画面为空）",
+      "args": [],
+      "waive": {
+        "C-L4": "显示在终端画面框里：括号把它和真画面区分开 —— 真画面里可能恰好就有「画面为空」这四个字。"
+      }
+    },
+    "panePreview.capture.failed": {
+      "kind": "error",
+      "zh": "预览画面失败",
+      "args": []
+    }
+  }
+}

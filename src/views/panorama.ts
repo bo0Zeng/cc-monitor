@@ -49,8 +49,21 @@ import {
   type FileBubble,
 } from "../panorama/layout";
 import { clipForFile, clipForSymbol, type CoverageReading, type IndexStamp } from "../panorama/agent-clip";
+import { DiagramPane, type DiagramHost } from "../panorama/diagram-view";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
+
+/**
+ * 文件详情要的那几样。气泡给得全（score / 符号数）；从团/模块图下钻进来的文件只有路径与所属节点，
+ * 缺的格子就不显示（不编一个数）。
+ */
+type FileRef = {
+  file: string;
+  subsystem: string;
+  isEntry: boolean;
+  score?: number;
+  symbols?: number;
+};
 
 /** main.ts 注入的活跃仓信息取值器（读活跃 tab 的 cwd/origin）。 */
 type RepoInfoGetter = () => { cwd: string; origin: string | null } | null;
@@ -123,7 +136,14 @@ export class PanoramaView implements OverlayHandle {
   private panOrigin = { x: 0, y: 0 };
   private movedDuringPress = false;
 
+  // PN1b 选图（`设计/97 §7`）：「图」那一整块住 `panorama/diagram-view.ts`，这里只当宿主。
+  private diagram: DiagramPane;
+  /** 选中的符号 / 文件 —— 切图时跟着走（调用子图以符号为中心；团/模块图聚焦含该文件的节点）。 */
+  private selSymbol: string | null = null;
+  private selFile: string | null = null;
+
   constructor(private getRepo: RepoInfoGetter) {
+    this.diagram = new DiagramPane(this.diagramHost());
     this.root = this.build();
     // 全局 resize：仅在打开时重算 canvas 尺寸并重画（隐藏时 no-op）。
     window.addEventListener("resize", () => {
@@ -146,7 +166,9 @@ export class PanoramaView implements OverlayHandle {
     this.isOpen = true;
     dispatcher.pushOverlay(this);
     this.resizeCanvas();
+    const kinds = this.diagram.ensureKinds();
     await this.evaluateRepo();
+    await kinds;
   }
 
   close(): void {
@@ -182,7 +204,7 @@ export class PanoramaView implements OverlayHandle {
     }
     const info = this.getRepo();
     if (!info || !info.cwd) {
-      this.repo = null;
+      this.switchRepo(null);
       this.updateRepoChrome();
       this.showMessage(
         "无可索引的仓库",
@@ -192,7 +214,7 @@ export class PanoramaView implements OverlayHandle {
     }
     if (info.origin !== null) {
       // 远端会话：代码在远端机，本地 code-picture 索引不到（诚实提示，不索引）。
-      this.repo = null;
+      this.switchRepo(null);
       this.updateRepoChrome();
       this.showMessage(
         "全景仅支持本地仓库",
@@ -205,7 +227,7 @@ export class PanoramaView implements OverlayHandle {
 
   /** 把视图指向某个本地仓：同仓且已加载过 → 直接复用（hide 不卸载的意义），否则加载。 */
   private async showRepo(repo: string): Promise<void> {
-    this.repo = repo;
+    this.switchRepo(repo);
     this.updateRepoChrome();
     if (this.loadedRepo === repo && this.overview && this.layout) {
       this.hideMessage();
@@ -213,6 +235,66 @@ export class PanoramaView implements OverlayHandle {
       return;
     }
     await this.load(repo);
+  }
+
+  /** 换仓：选中对象与图都属于上一个仓 ⇒ 清掉，图回到气泡视图。 */
+  private switchRepo(repo: string | null): void {
+    if (repo === this.repo) return;
+    this.repo = repo;
+    this.selSymbol = null;
+    this.selFile = null;
+    this.diagram.repoChanged();
+  }
+
+  /** 选图那一块的宿主接口（`DiagramHost`）。 */
+  private diagramHost(): DiagramHost {
+    return {
+      repo: () => this.repo,
+      selectedSymbol: () => this.selSymbol,
+      selectedFile: () => this.selFile,
+      // 先同步记下选中（调用方紧接着就按它重画），再去开详情（异步）
+      selectSymbol: (id) => {
+        this.selSymbol = id;
+        void this.openNodeDetail(id);
+      },
+      showList: (title, subtitle, items) => this.showSideList(title, subtitle, items),
+      openFile: (file, group) =>
+        this.openFileDetail(
+          this.layout?.bubbles.find((b) => b.file === file) ?? { file, subsystem: group, isEntry: false },
+        ),
+      openSymbol: (id) => void this.openNodeDetail(id),
+      stamp: (repo) => this.stampOf(repo),
+      copyButton: (label, key, make) => this.copyButton(label, key, make),
+      toast: (title, body) => showActionFailureToast(title, body),
+    };
+  }
+
+  /** 侧栏列一组可点的条目（团/模块的成员文件、类型的方法）。 */
+  private showSideList(
+    title: string,
+    subtitle: string,
+    items: { label: string; title?: string; onClick: () => void }[],
+  ): void {
+    this.openSidebar();
+    this.sidebarEl.replaceChildren();
+    this.sidebarEl.appendChild(this.sidebarHeader(title, subtitle));
+    if (items.length === 0) {
+      this.sidebarEl.appendChild(makeSideNote("（没有可列的条目）"));
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "panorama-sym-list";
+    list.dataset.pano = "side-list";
+    for (const it of items) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "panorama-edge-row";
+      row.textContent = it.label;
+      row.title = it.title ?? it.label;
+      row.addEventListener("click", it.onClick);
+      list.appendChild(row);
+    }
+    this.sidebarEl.appendChild(list);
   }
 
   /** 标题写清当前看的是哪个仓、从哪来的；「跟随会话」只在手选时出现。 */
@@ -453,6 +535,7 @@ export class PanoramaView implements OverlayHandle {
     this.followBtn.style.display = "none";
     this.followBtn.addEventListener("click", () => void this.followSession());
     bar.appendChild(this.followBtn);
+    bar.appendChild(this.diagram.select);
 
     this.searchInput = document.createElement("input");
     this.searchInput.type = "search";
@@ -539,6 +622,7 @@ export class PanoramaView implements OverlayHandle {
     clearBtn.addEventListener("click", () => this.clearHighlight());
     this.highlightBarEl.appendChild(clearBtn);
     view.appendChild(this.highlightBarEl);
+    view.appendChild(this.diagram.bar);
 
     // 主体：画布 + 侧栏
     const body = document.createElement("div");
@@ -566,6 +650,7 @@ export class PanoramaView implements OverlayHandle {
     this.messageEl.className = "panorama-message";
     this.messageEl.style.display = "none";
     this.canvasWrap.appendChild(this.messageEl);
+    this.canvasWrap.appendChild(this.diagram.overlay);
 
     body.appendChild(this.canvasWrap);
 
@@ -995,6 +1080,8 @@ export class PanoramaView implements OverlayHandle {
         this.renderSidebarStatus(`未找到符号：${id}`);
         return;
       }
+      this.selSymbol = id;
+      this.diagram.selectionChanged();
       this.renderNodeDetail(nv, stamp);
     } catch (e) {
       if (seq !== this.searchSeq) return;
@@ -1027,7 +1114,7 @@ export class PanoramaView implements OverlayHandle {
       const repo = this.repo;
       const coverage = this.coverageReading();
       detail.appendChild(
-        this.copyForAgentButton(() =>
+        this.copyButton("复制给 agent", "copy-agent", () =>
           clipForSymbol(
             { repo, stamp, coverage },
             s,
@@ -1099,7 +1186,7 @@ export class PanoramaView implements OverlayHandle {
       foot.className = "panorama-ann-foot";
       const author = document.createElement("span");
       author.className = "panorama-ann-author";
-      author.textContent = a.author + (a.status === "Proposed" ? " · 待批准" : "");
+      author.textContent = `${a.author} · ${originLabel(a.origin)}` + (a.status === "Proposed" ? " · 待批准" : "");
       foot.appendChild(author);
       const del = document.createElement("button");
       del.type = "button";
@@ -1327,8 +1414,10 @@ export class PanoramaView implements OverlayHandle {
 
   // === 文件详情（点气泡）===
 
-  private openFileDetail(b: FileBubble): void {
+  private openFileDetail(b: FileRef): void {
     if (!this.repo) return; // 远端/无仓无从查符号（纵深防御，正常靠 message 遮罩挡住点击）
+    this.selFile = b.file;
+    this.diagram.selectionChanged();
     this.openSidebar();
     this.sidebarEl.replaceChildren();
     this.sidebarEl.appendChild(this.sidebarHeader(basename(b.file), b.subsystem));
@@ -1338,8 +1427,8 @@ export class PanoramaView implements OverlayHandle {
     const meta = document.createElement("div");
     meta.className = "panorama-node-meta";
     appendMetaRow(meta, "文件", b.file, true);
-    appendMetaRow(meta, "score", fmtScore(b.score), false);
-    appendMetaRow(meta, "符号数", String(b.symbols), false);
+    if (b.score !== undefined) appendMetaRow(meta, "score", fmtScore(b.score), false);
+    if (b.symbols !== undefined) appendMetaRow(meta, "符号数", String(b.symbols), false);
     appendMetaRow(meta, "子系统", b.subsystem, false);
     if (b.isEntry) appendMetaRow(meta, "入口点", "是（entry point）", false);
     detail.appendChild(meta);
@@ -1355,7 +1444,7 @@ export class PanoramaView implements OverlayHandle {
   }
 
   /** F71：拉某文件的符号列表填进 symWrap。竞态用 searchSeq 代际防串（切文件/搜索作废本次）。 */
-  private async loadFileSymbols(b: FileBubble, symWrap: HTMLElement): Promise<void> {
+  private async loadFileSymbols(b: FileRef, symWrap: HTMLElement): Promise<void> {
     if (!this.repo) return;
     const repo = this.repo;
     const file = b.file;
@@ -1367,7 +1456,9 @@ export class PanoramaView implements OverlayHandle {
       // CP7：文件那一级的「复制给 agent」（符号列表到手之后才有东西可复制）。
       const coverage = this.coverageReading();
       symWrap.appendChild(
-        this.copyForAgentButton(() => clipForFile({ repo, stamp, coverage }, b, syms)),
+        this.copyButton("复制给 agent", "copy-agent", () =>
+          clipForFile({ repo, stamp, coverage }, { ...b, symbols: b.symbols ?? syms.length }, syms),
+        ),
       );
       if (syms.length === 0) {
         symWrap.appendChild(makeSideNote("该文件无已索引符号（符号太少 / 解析失败 / 非代码文件）。"));
@@ -1512,7 +1603,10 @@ export class PanoramaView implements OverlayHandle {
         foot.className = "panorama-ann-foot";
         const who = document.createElement("span");
         who.className = "panorama-ann-author";
-        who.textContent = `${a.author} · ${a.symbol ? `${a.file}#${a.symbol}` : `${a.file}（文件级）`}`;
+        who.dataset.origin = a.origin;
+        who.textContent =
+          `${a.author} · ${originLabel(a.origin)} · ` +
+          (a.symbol ? `${a.file}#${a.symbol}` : `${a.file}（文件级）`);
         foot.appendChild(who);
         if (pending) {
           const ok = document.createElement("button");
@@ -1582,16 +1676,23 @@ export class PanoramaView implements OverlayHandle {
     };
   }
 
-  /** 「复制给 agent」按钮。文本点的那一刻才拼，但拼进去的读数都是渲染时定格的那份。 */
-  private copyForAgentButton(make: () => string): HTMLButtonElement {
+  /** 复制按钮（「复制给 agent」/「复制 Mermaid」共用）。文本点的那一刻才拼，但拼进去的读数都是渲染时定格的那份。 */
+  private copyButton(label: string, key: string, make: () => string): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "panorama-btn";
-    btn.dataset.pano = "copy-agent";
-    btn.textContent = "复制给 agent";
-    btn.title = "复制一段能贴进对话的文本：带仓、对象、索引读数，以及看不见 / 分不清多少";
+    btn.dataset.pano = key;
+    btn.textContent = label;
+    btn.title =
+      label === "复制给 agent"
+        ? "复制一段能贴进对话的文本：带仓、对象、索引读数，以及看不见 / 分不清多少"
+        : "复制上游画好的 Mermaid 原文";
     btn.addEventListener("click", () => {
       const text = make();
+      if (text === "") {
+        showActionFailureToast("没有可复制的内容", "图还没画出来。");
+        return;
+      }
       const clip = navigator.clipboard;
       if (!clip) {
         showActionFailureToast("复制失败", "这个环境没有剪贴板接口。");
@@ -1600,7 +1701,7 @@ export class PanoramaView implements OverlayHandle {
       clip.writeText(text).then(
         () => {
           btn.textContent = "已复制 ✓";
-          window.setTimeout(() => (btn.textContent = "复制给 agent"), 1500);
+          window.setTimeout(() => (btn.textContent = label), 1500);
         },
         (e: unknown) => showActionFailureToast("复制失败", String(e)),
       );
@@ -1678,10 +1779,27 @@ function fmtScore(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+/**
+ * CP6：批注是谁说的（上游 `Annotation.origin`，批准只改状态不改它）。
+ * 已生效那一节里「人写的」与「agent 提议、人批准的」必须分得开 —— 后者不是人的指示。
+ */
+function originLabel(o: Annotation["origin"]): string {
+  switch (o) {
+    case "Human":
+      return "人写";
+    case "Agent":
+      return "agent 提议";
+    case "Unrecorded":
+      return "来源未记录";
+  }
+}
+
 function confidenceLabel(c: Confidence): string {
   switch (c) {
     case "Exact":
       return "精确";
+    case "Dispatch":
+      return "派发";
     case "Heuristic":
       return "启发";
     case "DynamicGuess":
@@ -1692,6 +1810,8 @@ function confidenceHint(c: Confidence): string {
   switch (c) {
     case "Exact":
       return "Exact：全局唯一名匹配（不代表验证过 import/作用域）";
+    case "Dispatch":
+      return "动态派发：候选是某个 trait / 接口在仓内的全部实现，运行时才定是哪一个";
     case "Heuristic":
       return "Heuristic：多候选，启发式选定";
     case "DynamicGuess":

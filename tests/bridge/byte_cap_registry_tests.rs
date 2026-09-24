@@ -53,6 +53,12 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "TRIM_SLACK",
+        "〔U3b〕**条数**不是体量：重放缓冲里一个「只留尾巴」的会话要**多出**这么多条才修剪一次\
+             （`event_replay·rs::push_and_trim`）—— 量的是摊还节奏，不是容量。\
+             容量那一格是 `REPLAY_TAIL_KEEP`（也是条数），两者之和就是那一档的上界。",
+    ),
+    (
         "CHANNEL_CAPACITY",
         "**条数**不是体量（mpsc 通道能排多少帧）。它的溢出语义由 `Overflow` 帧管，见 F03。",
     ),
@@ -315,17 +321,9 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         // 这是唯一一处调用方**明确**依赖宽容降级的地方。
         "截断+说清",
     ),
-    (
-        "src/bridge/src/backend/control/cc_bus.rs",
-        "CONTROL_REPLY_CAP",
-        64 * 1024,
-        "发消息 / spawn 的回显（是一句确认，不是数据）",
-        // ★★〔G 审计改档〕原登记「拒收+回错」，那是**危险的行为回归**：
-        // 这两条命令**有副作用**（agent 已经起来了 / 消息已经投递了），
-        // 此时因回显太长回 Err，用户看到「失败」会重试 ⇒ **起两个 agent 在真烧额度**。
-        // ⇒ 分界不是「哪个更严格」，是**截断有没有毒**：回显的截断从来不影响副作用。
-        "截断+说清",
-    ),
+    // 〔BS1b 09-24〕这里原先登记着 `cc_bus.rs` 的控制类回显上限（发消息 / spawn 的回显，64 KiB，截断+说清）。
+    //   发消息 `K-R98`、派生 BS1b 先后改走后端原语，那两条回显不再经 SSH 读 ⇒ 常量随最后一个用户删了。
+    //   「截断没毒、回 Err 有毒（用户会重试、再起一个 agent）」那条理由今天住在 `OnOverflow::Truncate` 的头注里。
     (
         "src/bridge/src/mcp.rs",
         "REMOTE_CLAUDE_JSON_CAP",
@@ -385,6 +383,28 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "MAX_LINE_BYTES",
         1 << 20,
         "入方向单行",
+        "拒收+回错",
+    ),
+    // 〔`C1` · 09-24〕只读查询的帧面宿主那三个数（一帧应答要整个进内存、整个过线）。
+    (
+        "src/backend/read_face.rs",
+        "READ_PAGE_BYTES",
+        1 << 20,
+        "`history-read` 一页（一帧应答）的正文字节数",
+        "索引截断（不丢数据）",
+    ),
+    (
+        "src/backend/read_face.rs",
+        "LINE_CAP_BYTES",
+        32 << 20,
+        "`history-read` 里单独一行比一页还长时最多续读多长",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/read_face.rs",
+        "LINES_CAP_BYTES",
+        32 << 20,
+        "按行那六条帧查询（`history-projects` 等）整份输出",
         "拒收+回错",
     ),
     // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：backend 的 Claude 知识搬进
@@ -997,11 +1017,20 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
 ///
 /// 只有一种正当情况：上限是**参数**，真值由调用方给（而调用方给的是具名常量）。
 const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
+    // 〔`C1` · 09-24〕`history_query::read_page` 的一页上限是入参；唯一调用点
+    // （`read_face.rs`）给的是具名常量 `READ_PAGE_BYTES`（已在 `CAPS` 里）。
+    // ⚠ 不是静默截断：读满一页就停、**回续点 `next`**，调用方循环到 `eof` —— 一个字节都不丢。
+    (
+        "src/backend/observe/history_query.rs",
+        "page as u64",
+        "`read_page` 的一页上限是入参，调用方给 `read_face::READ_PAGE_BYTES`（已在 `CAPS` 里）；\
+             读满即停并回续点，由调用方翻下一页 —— 分页，不是截断。",
+    ),
     (
         "src/bridge/src/backend/control/cc_bus.rs",
         "cap + 1",
-        "`exec_read` 是三条命令共用的助手，上限是入参。三个调用点给的都是具名常量\
-             （`INBOX_READ_CAP` / `CONTROL_REPLY_CAP` ×2），那三个已在 `CAPS` 里。",
+        "`exec_read` 是远端读的助手，上限是入参。〔BS1b 09-24〕今天只剩一个调用点（读 inbox），\
+             给的是具名常量 `INBOX_READ_CAP`，已在 `CAPS` 里。",
     ),
     (
         "src/backend/common/fs.rs",

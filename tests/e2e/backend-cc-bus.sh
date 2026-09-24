@@ -308,6 +308,155 @@ _dk 'bad/id' >/dev/null
 chk "  非法 id ⇒ invalid_args（由 cc-kill 自己拒，白名单只有一份）" \
   "$(jq -r .code < "$SANDBOX/kerr.txt" 2>/dev/null)" "invalid_args"
 
+echo "[16] ★ bus-spawn：本机派生走后端原语（BS1b）—— 真跑 cc-spawn，启动器是假 agent"
+# ⚠ 后端起插件前先 `env_clear()`，只放行白名单 ＋ `CC_BUS_*`/`CCBUS_*` 两个前缀
+#   （`plugin::invoke::INHERITED_ENV_KEYS`）⇒ `CCSPAWN_LAUNCH` / `CCM_BIN` 这类测试钩子**到不了** cc-spawn。
+#   ⇒ 本格改从 **PATH** 与 **HOME**（两者都在白名单里）喂，而且 PATH 是**收窄过的**
+#   （`$_SB` ＋ tmux 垫片 ＋ 系统目录，**不含**用户的 `~/.local/bin` / `~/.cc-monitor/bin`）：
+#   沙箱 HOME 里没有 `~/.cc-monitor/bin/`、PATH 上也没有 `cc-monitor-backend` ⇒ cc-spawn 按查找次序
+#   落到 PATH 上的 `ccm`（= 本工作树刚 build 的那一份，按名字 `ccm` 走入口①），它再起 PATH 上的
+#   `claude`（= 下面那个只记参数然后 sleep 的假 agent）。
+# ⚠ 为什么是 `ccm` 这个名字而不是 `cc-monitor-backend`〔BS1b 首跑现打，写区外的一个真缺陷〕：
+#   走入口②（`cc-monitor-backend ccm …`）时，ccm 在 pane 里**重新起自己**那一跳丢了 `ccm` 这个词
+#   ⇒ pane 里逐字是 `cc-monitor-backend --cwd … --launcher claude …` ⇒「unknown argument: --cwd」，
+#   会话是一个空 bash，而 cc-spawn **rc=0 且登记上了总线**（假成功）。住址 `control/ccm/plan.rs`，
+#   不在本件写区 ⇒ 已报备，本格按入口①跑，不替它洗绿。
+_SB="$SANDBOX/spawnbin"; _SH="$SANDBOX/spawnhome"; _SW="$SANDBOX/spawnwork"
+mkdir -p "$_SB" "$_SH" "$_SW/proj"
+ln -sf "$D" "$_SB/ccm"
+_SPATH="$_SB:$_SHIM:/usr/local/bin:/usr/bin:/bin"
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "%s/agent-args.txt"\nsleep 300\n' "$_SW" > "$_SB/claude"
+chmod +x "$_SB/claude"
+# 🔴🔴 **启动器是在 tmux 的 pane 里按名字找的**：pane 里 `claude` 解析到谁，决定了会不会起一个
+#   用户**真的** claude（带着任务文本、用他的账号烧额度）。现打：pane 的环境取自**起会话的那个
+#   tmux 客户端**（只改服务端全局 PATH，pane 里看到的仍是客户端那份；本机 `~/.local/bin/claude`
+#   就是真的那个）。⇒ 两道闸：
+#   ① 隔离服务端的全局 PATH / HOME 也换成沙箱的（兜底：有哪一跳没带客户端环境时仍落在沙箱里）；
+#   ② **起飞前自检**：用与派生那一趟**同样的客户端环境**在同一台服务端上开一个 pane 问
+#      `command -v claude`，不是 `$_SB/claude` 就**整格不跑**（记一条 FAIL），
+#      绝不在没证明是假 agent 的时候派生。
+tmux set-environment -g PATH "$_SPATH"
+tmux set-environment -g HOME "$_SH"
+# ⚠ 自检的 tmux **客户端**要带与派生那一趟同样的 PATH / HOME：新会话的环境取自**客户端**
+#   （现打：只改服务端全局 PATH，pane 里看到的仍是客户端那份），而派生那一趟的客户端是 ccm，
+#   它的 PATH / HOME 就是下面 `_ds` 交给后端的那一份（后端按白名单原样传下去）。
+env HOME="$_SH" PATH="$_SPATH" \
+  tmux new-session -d -s spawncanary -c /tmp "command -v claude > '$_SW/which.txt'; sleep 30"
+for _i in 1 2 3 4 5 6 7 8 9 10; do [ -s "$_SW/which.txt" ] && break; sleep 0.3; done
+tmux kill-session -t '=spawncanary' 2>/dev/null || true
+_which="$(cat "$_SW/which.txt" 2>/dev/null)"
+chk "起飞前：隔离服务端的 pane 里 claude 解析到假 agent" "$_which" "$_SB/claude"
+_ds() {
+  printf '%s' "$1" | env HOME="$_SH" PATH="$_SPATH" CLAUDE_CONFIG_DIR="$CLA" \
+    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" CC_BUS_SCRIPTS="$SCRIPTS" CC_BUS_TIMEOUT_SECS=40 \
+    "$TIMEOUT" 60 "$D" --bus-spawn 2>"$SANDBOX/serr.txt"
+}
+if [ "$_which" != "$_SB/claude" ]; then
+  echo "  !! 自检没过 —— 本格不派生（宁可少判，也不在用户的 claude 上起会话）"
+else
+_s1="$(_ds "{\"tool\":\"claude\",\"dir\":\"$_SW/proj\",\"task\":\"跑一遍门禁\",\"base\":true}")"
+chk "★ spawned=true" "$(printf '%s' "$_s1" | jq -r .spawned 2>/dev/null)" "true"
+chk "★ 回值里认出了新会话的 id" "$(printf '%s' "$_s1" | jq -r .id 2>/dev/null)" "proj_cc"
+chk "  会话真的起了（隔离 socket 上）" "$(tmux has-session -t '=proj_cc' 2>/dev/null && echo 在 || echo 没有)" "在"
+for _i in 1 2 3 4 5 6 7 8 9 10; do [ -s "$_SW/agent-args.txt" ] && break; sleep 0.3; done
+chk "  初始任务作为参数送到了启动器" "$(tr -d '\n' < "$_SW/agent-args.txt" 2>/dev/null)" "跑一遍门禁"
+chk "  登记进了总线名册" "$(cut -f1 "$BUS/agents.tsv" 2>/dev/null | grep -cx proj_cc || true)" "1"
+_ds '{"tool":"claude","dir":"/tmp"}' >/dev/null
+chk "★ 账号不表态 ⇒ invalid_args（不替用户选默认号）" "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "invalid_args"
+_ds "{\"tool\":\"not-an-agent\",\"dir\":\"$_SW/proj\",\"base\":true}" >/dev/null
+chk "★ 不认的 tool ⇒ 由 cc-spawn 自己拒成 invalid_args（后端不写第二份白名单）" \
+  "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "invalid_args"
+chk "  …而且没起出第二个会话" "$(tmux has-session -t '=proj_cc-2' 2>/dev/null && echo 起了 || echo 没起)" "没起"
+fi
+echo "[17] ★ ccm 在 pane 里重起自己：入口①（名叫 ccm）与入口②（cc-monitor-backend ccm …）同形（CC1）"
+# 〔BS1b 现打〕走入口②时，pane 里那一跳逐字是 `cc-monitor-backend --cwd … --launcher …`
+#   —— **丢了 `ccm` 这个词** ⇒「unknown argument: --cwd」、pane 退回空 bash，而 cc-spawn 照报 rc=0
+#   还登记上了总线（假成功）。本格两个入口各真跑一次 cc-spawn，把 pane 里真正执行的那条 argv 抓出来比。
+# ⚠ **两个入口是同一份 wrapper 换个名字**：它把「自己被怎么叫」（`$0` ＋ argv）按 NUL 逐字落一个文件，
+#   再用**同一个 argv0**（`exec -a`）交给真二进制 ⇒ ccm 看到的入口就是那个名字，而我们看到的是
+#   **真实产物**（cc-spawn 怎么叫它的、pane 里怎么叫它的），不是任何一个拼串函数的自述。
+# ⚠ 启动器用**绝对路径**的假 agent（`CCSPAWN_LAUNCH`）⇒ pane 里不按名字找，碰不到用户真的 claude。
+_EW="$SANDBOX/entrywork"
+mkdir -p "$_EW/e1" "$_EW/e2" "$_EW/e3" "$_EW/bin" "$_EW/proj" "$_EW/bus"/{inbox,state,log,queue}
+for _e in e1/ccm e2/cc-monitor-backend e3/ccm; do
+  printf '#!/bin/bash\nprintf "%%s\\0" "$0" "$@" > "%s/call.$$"\nexec -a "$0" "%s" "$@"\n' \
+    "$_EW/$(dirname "$_e")" "$D" > "$_EW/$_e"
+  chmod +x "$_EW/$_e"
+done
+printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$PWD/agent-args.$PPID"\nexec sleep 300\n' > "$_EW/bin/fake-agent"
+chmod +x "$_EW/bin/fake-agent"
+_sp() {  # $1.. = 额外的 VAR=值；目录与任务两个入口一样（那样内层参数才可能逐字相等）
+  env -u TMUX -u TMUX_PANE -u CC_BUS_ID -u CCM_SELF HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
+      CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" CCM_NO_PRETRUST=1 \
+      CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$@" \
+      "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/proj" "任务乙"
+}
+# 判据：每个入口的调用按内容分三类（探针 `--ccm-probe` / 建会话那趟 `--detach` / 其余 = pane 里那一跳；
+#   带 `--print` 的是自检那一趟，单列）。「入口前缀」**从 cc-spawn 那一趟的真实 argv 里现取**：
+#   两个入口的建会话 argv 取最长公共后缀 = cc-spawn 交给 ccm 的那串，余下的前段就是各自的入口前缀
+#   ⇒ 判据里**不写死** `ccm` 这个词。要求：pane 那一跳 = 各自入口前缀 ＋ 同一串参数（逐字节）。
+_entry_judge() {
+  python3 - "$_EW/e1" "$_EW/e2" <<'PY'
+import glob, sys
+def calls(d):
+    return [open(f, 'rb').read().split(b'\0')[:-1] for f in sorted(glob.glob(d + '/call.*'))]
+def split(cs):
+    outer = [c for c in cs if b'--detach' in c]
+    rest = [c for c in cs if b'--ccm-probe' not in c and b'--detach' not in c]
+    return outer, [c for c in rest if b'--print' not in c]
+(o1, p1), (o2, p2) = split(calls(sys.argv[1])), split(calls(sys.argv[2]))
+if len(o1) != 1 or len(o2) != 1:
+    print(f"建会话那趟不是恰好各一次：{len(o1)}/{len(o2)}"); sys.exit()
+if len(p1) != 1 or len(p2) != 1:
+    print(f"pane 里那一跳不是恰好各一次：{len(p1)}/{len(p2)}"); sys.exit()
+o1, o2, p1, p2 = o1[0], o2[0], p1[0], p2[0]
+k = 0
+while k < min(len(o1), len(o2)) and o1[-1 - k] == o2[-1 - k]:
+    k += 1
+pre1, pre2 = o1[:len(o1) - k], o2[:len(o2) - k]
+if p1[:len(pre1)] != pre1 or p2[:len(pre2)] != pre2:
+    print(f"pane 那一跳没走 cc-spawn 叫它的那个入口：入口前缀 {pre1!r}/{pre2!r}，pane 实得 {p1!r}/{p2!r}"); sys.exit()
+t1, t2 = p1[len(pre1):], p2[len(pre2):]
+print("同形" if t1 == t2 else f"参数不同：{t1!r} ≠ {t2!r}")
+PY
+}
+_wait_agent() {  # 等到第 $1 个假 agent 真的起来（入口② 修前永远等不到，给 3 秒上限）
+  for _i in $(seq 1 30); do
+    [ "$(find "$_EW/proj" -maxdepth 1 -name 'agent-args.*' | wc -l)" -ge "$1" ] && break; sleep 0.1
+  done
+}
+_o1="$(_sp CCM_BIN="$_EW/e1/ccm" 2>"$_EW/err1.txt")"; _r1=$?
+_wait_agent 1
+_o2="$(_sp CCM_BIN="$_EW/e2/cc-monitor-backend" 2>"$_EW/err2.txt")"; _r2=$?
+_wait_agent 2
+_n1="$(printf '%s\n' "$_o1" | sed -n 's/^已 spawn: \([^ ]*\).*/\1/p')"
+_n2="$(printf '%s\n' "$_o2" | sed -n 's/^已 spawn: \([^ ]*\).*/\1/p')"
+chk "  对照：入口① cc-spawn rc=0" "$_r1" "0"
+chk "★ 入口② cc-spawn rc=0" "$_r2" "0"
+chk "★★ pane 里那一跳：两个入口 = 各自入口前缀 ＋ **逐字节同一串**参数" "$(_entry_judge)" "同形"
+chk "★ 两个入口的 pane 都真的起到了 agent（任务原样送达）" \
+  "$(cat "$_EW/proj"/agent-args.* 2>/dev/null | grep -cx '任务乙')" "2"
+chk "  两个入口都登记上了总线（各一条）" \
+  "$(cut -f1 "$_EW/bus/agents.tsv" 2>/dev/null | grep -cxF -e "${_n1:-<无>}" -e "${_n2:-<无>}")" "2"
+
+echo "[17b] ★ pane 里起的东西当场报参数错误 ⇒ cc-spawn **不许**报成功、**不许**登记（CC1）"
+# 造一个「不认这套参数」的入口（旧副本的形状：认不得就 exit 2），经 `CCM_SELF` 让 ccm 在 pane 里叫它
+#（`CCM_SELF` 是既有契约：内层载荷用「我是被当作什么叫的」那个名字）。
+printf '#!/bin/bash\necho "ccm(旧副本): 未知选项: $1" >&2\nexit 2\n' > "$_EW/bin/old-ccm"
+chmod +x "$_EW/bin/old-ccm"
+mkdir -p "$_EW/bad"
+_ob="$(env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
+      CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" CCM_NO_PRETRUST=1 \
+      CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
+      CCM_BIN="$_EW/e3/ccm" CCM_SELF="$_EW/bin/old-ccm" \
+      "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/bad" "任务丙" 2>"$_EW/errb.txt")"; _rb=$?
+for _i in $(seq 1 30); do tmux capture-pane -p -t '=bad_cc:' 2>/dev/null | grep -q '未知选项' && break; sleep 0.1; done
+chk "  前提：pane 里那一跳真的当场报了参数错误（不是本格没打到）" \
+  "$(tmux capture-pane -p -t '=bad_cc:' 2>/dev/null | grep -c '未知选项')" "1"
+chk "★ cc-spawn 退出码非 0（不是假成功）" "$([ "$_rb" -ne 0 ] && echo 非0 || echo "0（假成功）")" "非0"
+chk "★ 没有登记上总线" "$(cut -f1 "$_EW/bus/agents.tsv" 2>/dev/null | grep -cx 'bad_cc' || true)" "0"
+chk "  也没有报「已 spawn」" "$(printf '%s\n' "$_ob" | grep -c '^已 spawn: ' || true)" "0"
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

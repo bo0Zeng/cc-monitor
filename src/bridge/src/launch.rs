@@ -137,7 +137,7 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 /// ⇒ **不用开窗 · 不用真终端 · 不用动 `paths.rs` · 不用 `set_var("HOME")` ·
 /// 不用 `--test-threads=1` · 不用 `#[ignore]`。**
 /// ★ 「做不到」也是一个断言，而那一句只对**它当时想写的那一种**判据成立
-///（同族第二次；上一次是 `RelayFactSources` 头注 ㈠ 那条「要动真实家目录」）。
+///（同族第二次；上一次是 `InjectFactSources` 头注 ㈠ 那条「要动真实家目录」）。
 ///
 /// ⇒ 今天那 3 行由**两条**判据看着，一支一条（`term` 是这条链的分叉点，两支都买）：
 /// - `term = None`（无窗口回落）⇒ `the_spawned_process_really_gets_the_relay_prefix_without_a_terminal`
@@ -360,6 +360,74 @@ fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> R
 #[cfg(windows)]
 pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
     Err("POSIX 本地拉起不适用于 Windows 宿主（Windows 本地属 L2 的 PowerShell 分支）".into())
+}
+
+/// `设计/80 §8.7` 步 3 收尾（第二波 T4）：**本地半的生产写入方**的模板。见文件头注。
+const RBIND_BIND_PRELUDE_TPL: &str = include_str!("../scripts/rbind-token-bind.ps1.tpl");
+
+/// 把令牌握手前奏渲出来：剥掉模板里的整行注释、填两个占位符（都按 PowerShell 单引号字面量转义）。
+///
+/// # 为什么需要它（T3 交接的那个 🔴）
+///
+/// 步 3 让 `bind.rs` **接得住**带令牌的 marker（`ccm-rbind-token-<32hex>` → 表里多记一个
+/// `rbind_token`），但**没有任何生产代码往 `ps-await/` 里写这样一份** —— Era 2 唯一的写入方是
+/// PowerShell profile 里的 `__ccm_bind`，它写的是 `ccm-bind-<PID>-<8hex>`。
+/// ⇒ 步 4（↗ 改走 `sid → token → HWND`）没有这一段就是空转：表里永远查不到令牌。
+///
+/// # 形状
+///
+/// - marker 由 [`crate::bind::rbind_token_marker`] 拼（与 `bind.rs` 解它的那一侧同一个前缀常量），
+///   令牌形状不对 ⇒ `Err`（**不**产一段写着解不回来的 marker 的前奏）。
+/// - 目录 = `monitor_data_dir/`[`crate::bind::AWAIT_SUBDIR`] —— 与 `BindRegistry::spawn` 监听的是同一个常量。
+/// - 模板里以 `#` 开头的整行不进产物：`-EncodedCommand` 的长度是 UTF-16LE 再 base64，
+///   注释会白白吃掉 Windows 命令行 32767 字符的额度。
+pub(crate) fn render_rbind_bind_prelude(
+    token: &str,
+    monitor_data_dir: &std::path::Path,
+) -> Result<String, String> {
+    let marker = crate::bind::rbind_token_marker(token).ok_or_else(|| {
+        "refuse launch: 启动令牌形状不对（应为 32 个小写十六进制字符）".to_string()
+    })?;
+    let await_dir = monitor_data_dir.join(crate::bind::AWAIT_SUBDIR);
+    let body: String = RBIND_BIND_PRELUDE_TPL
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    Ok(body
+        .replace("{{MARKER}}", &ps_quote(&marker))
+        .replace("{{AWAIT_DIR}}", &ps_quote(&await_dir.to_string_lossy())))
+}
+
+/// 给一条要在新窗口里跑的 PowerShell 命令接上令牌握手前奏。
+///
+/// - `token = None` ⇒ **逐字节原样返回**（`attach` 那一格、以及账号部署那些不起 agent 进程的调用方）。
+/// - `token = Some(形状不对)` ⇒ `Err`：前端铸币口与载荷渲染器都各有一道同形闸，走到这里还是坏的
+///   说明是一次编程错误，宁可当场拒，也不要拉起一个本地半注定登记不上的窗口。
+/// - `monitor_data_dir = None`（解析不出数据目录）⇒ **不接前奏、照常拉起**，并打一句不带值的警告。
+///   这一段只为 ↗ 服务；为它挡住用户真正要跑的命令是本末倒置。那时 ↗ 会如实说
+///   「带着令牌、本地没登记到它的窗口」（`bind.rs` 的分派）。
+pub(crate) fn with_rbind_bind_prelude(
+    ps_command: String,
+    token: Option<&str>,
+    monitor_data_dir: Option<&std::path::Path>,
+) -> Result<String, String> {
+    let Some(tok) = token else {
+        return Ok(ps_command);
+    };
+    let Some(dir) = monitor_data_dir else {
+        if !crate::bind::rbind_token_shape_ok(tok) {
+            return Err("refuse launch: 启动令牌形状不对（应为 32 个小写十六进制字符）".into());
+        }
+        tracing::warn!(
+            "launch: 解析不出 monitor 数据目录 —— 本次拉起不接令牌握手前奏（↗ 将按令牌找不到窗口）"
+        );
+        return Ok(ps_command);
+    };
+    Ok(format!(
+        "{}{ps_command}",
+        render_rbind_bind_prelude(tok, dir)?
+    ))
 }
 
 /// 构造远端拉起的 PowerShell 命令体（不含 `-EncodedCommand` 编码）。
@@ -659,8 +727,18 @@ fn ssh_client_available() -> bool {
 /// F53 launcher 共用——remote_cmd 语义由前端 `remote-launch.ts` 的各 build 函数决定）。
 /// `remote_cmd` 前端已过 sid 白名单 / launcher denylist / POSIX 引号，本侧再验一层
 /// （控制字符 / 双引号 / 长度）——双层防线。
+///
+/// 〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbind_token`：这次拉起铸的**启动期令牌**
+/// （前端 `remote-launch-run.ts` 从真正交出去渲染的那份 plan 里取，不另铸）。
+/// 有值 ⇒ 在命令前面接令牌握手前奏（[`with_rbind_bind_prelude`]），让这个新窗口以
+/// `ccm-rbind-token-<令牌>` 为 marker 登记进 `bind.rs` 那张表 —— ↗ 的 `sid → token → HWND`
+/// join 的本地一半从此有生产写入方。缺省（旧调用方 / `attach`）⇒ 行为逐字节同从前。
 #[tauri::command]
-pub async fn launch_remote_terminal(origin: String, remote_cmd: String) -> Result<(), String> {
+pub async fn launch_remote_terminal(
+    origin: String,
+    remote_cmd: String,
+    rbind_token: Option<String>,
+) -> Result<(), String> {
     // ★★ **本机也走这条**〔用户裁定 08-12：「attach 暂时就用纯 linux bash 以及 windows 的
     // PowerShell + Windows Terminal」〕。
     //
@@ -674,7 +752,10 @@ pub async fn launch_remote_terminal(origin: String, remote_cmd: String) -> Resul
     //   在自己的 bash 里执行。**这不是失败**，前端有专门的标题分档（`POSIX_NO_WINDOW_MARKER`）。
     if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         return tokio::task::spawn_blocking(move || {
-            launch_powershell_window(&remote_cmd, None)?;
+            let data_dir = crate::paths::resolve_monitor_data_dir();
+            let ps_command =
+                with_rbind_bind_prelude(remote_cmd, rbind_token.as_deref(), data_dir.as_deref())?;
+            launch_powershell_window(&ps_command, None)?;
             tracing::info!("launch: local terminal (no ssh)");
             Ok::<(), String>(())
         })
@@ -695,6 +776,9 @@ pub async fn launch_remote_terminal(origin: String, remote_cmd: String) -> Resul
             );
         }
         let ps_command = build_remote_ssh_ps_command(&cfg, &remote_cmd)?;
+        let data_dir = crate::paths::resolve_monitor_data_dir();
+        let ps_command =
+            with_rbind_bind_prelude(ps_command, rbind_token.as_deref(), data_dir.as_deref())?;
         launch_powershell_window(&ps_command, None)?;
         tracing::info!("launch: remote terminal via ssh origin={origin}");
         Ok(())

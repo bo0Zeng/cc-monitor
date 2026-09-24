@@ -42,11 +42,8 @@ import { FirstRunHint } from "./first-run-hint";
 import { LOCAL_MACHINE_KEY, readStatus } from "./settings/machine-status";
 import { hostOs } from "./settings/host-os";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
-import {
-  collectAccountRows,
-  createGatedPoller,
-  type GatedPoller,
-} from "./session-accounts-poll";
+import { openSettingsWindow } from "./settings/open-settings"; // ST1：点「设置」有反馈（不 import 设置面板）
+import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
@@ -210,10 +207,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   // TDZ；但这条"届时早已初始化"的保证依赖"这中间没有 await 会提前执行到回调"这条隐式不变量，
   // 谁在中间插一个真会被调用的 await 就有踩 TDZ 的风险，需要留意。
   const accountChip = new AccountChip({
-    openSettings: () => void commands.open_settings_window(),
-    // 切号后立刻重算一次：currentByOrigin 只由下面这条 10s 轮询喂，不主动刷的话会有最长 10s 的
-    // 反向窗口——chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
-    onDefaultChanged: () => void refreshSessionAccounts(),
+    openSettings: () => void openSettingsWindow(),
+    // 切号后立刻重算一次：currentByOrigin 只由下面那个事件驱动的刷新器喂，不主动刷的话
+    // chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
+    onDefaultChanged: () => accountsRefresher.request(true),
   });
   status.appendChild(accountChip.element);
   void accountChip.refresh();
@@ -225,9 +222,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 关上的"反向窗口"从并发侧重开）。加 in-flight 递增序号门：每次进入 ++refreshSeq 取本地 mySeq，
   // 写 setSessionAccounts 前若 refreshSeq 已被更晚一次进入推大（mySeq !== refreshSeq）→ 丢弃本次。
   // ⚠ 句柄留着：F14 第三刀之前这个 interval 的句柄是**丢掉的**，全仓没人停得了它。
-  let sessionAccountsPoller: GatedPoller | null = null;
   let refreshSeq = 0;
-  const refreshSessionAccounts = async (): Promise<void> => {
+  const refreshSessionAccounts = async (forceAccounts: boolean): Promise<void> => {
     const mySeq = ++refreshSeq;
     try {
       const cfg = await readRemoteConfig();
@@ -243,6 +239,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       const { rows, emailByName, readyOrigins, currentByOrigin } = await collectAccountRows(
         cfg.hosts,
         { fetchSessionAccounts, fetchAccounts, currentAccountForBadge },
+        undefined,
+        forceAccounts,
       );
       // A4：sid → lastAccount（源②）。本机 history-metadata 读一次（远端会话的 lastAccount 也
       // 由 cc-monitor 记在本机），live 探测不到时徽章兜底显「上次用本工具起」。失败 → 空表降级。
@@ -259,15 +257,21 @@ window.addEventListener("DOMContentLoaded", async () => {
       console.warn("refreshSessionAccounts failed:", e);
     }
   };
-  // audit-0805 F14 第三刀：原来是 `void refresh(); window.setInterval(…, 10_000)` ——
-  // 句柄丢弃（全仓 `clearInterval` 只有 grid-monitor 一处）、无重入锁（单轮 >10s 会摞轮次）、
-  // 无可见性门控（`document.hidden` 全仓零命中）。三条都由 `createGatedPoller` 接管。
-  // ⚠ 不是新增周期唤醒（定框 E6）：**替换**了原来那一个，且净减少唤醒。
-  sessionAccountsPoller = createGatedPoller({
-    intervalMs: 10_000,
-    tick: refreshSessionAccounts,
+  // 🔴 〔`C1` · 2026-09-24〕那个 10 秒轮询**删了**（理由整段在 `session-accounts-poll.ts` 头注）：
+  // 两条查询搬上了已有的长连接，而「会话 ↔ 账号」只在会话起停时变 —— 那本来就有事件。
+  // ⇒ 刷新改由事件驱动，零定时器：
+  //   · `remote-backend-ready`：某台远端的长连接握手完成（启动 / 重连）⇒ 强制刷账号清单，
+  //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）；
+  //   · `remote-session-added` / `session-ended`：会话起停；
+  //   · 本 UI 切号：上面 `onDefaultChanged`。
+  const accountsRefresher = createEventRefresher(refreshSessionAccounts);
+  accountsRefresher.request();
+  void listen("remote-backend-ready", () => {
+    accountsRefresher.request(true);
+    void accountChip.refresh(true);
   });
-  sessionAccountsPoller.start();
+  void listen("remote-session-added", () => accountsRefresher.request());
+  void listen("session-ended", () => accountsRefresher.request());
 
   // Batch5-F19（G 验收）：用户手动切过 tab 后，迟到的远端宣告不再补切抢焦点
   tabs.onManualSwitch = () => {
@@ -431,7 +435,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   settingsTrigger.title = "设置 (,)";
   settingsTrigger.setAttribute("aria-label", "打开设置");
   settingsTrigger.addEventListener("click", () => {
-    void commands.open_settings_window(); // F82a：开独立设置窗口（非浮层）
+    void openSettingsWindow(settingsTrigger); // F82a：开独立设置窗口（非浮层）· ST1：点了有反馈
   });
   document.getElementById("app")?.appendChild(settingsTrigger);
 
@@ -529,7 +533,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "open-inbox", title: "打开收件箱", keywords: "inbox 收件箱 计划 planned-build 注入", run: () => { if (!inboxView.isVisible()) void inboxView.open(); } },
       { id: "open-cc-bus", title: "打开 cc-bus 驾驶舱", keywords: "cc-bus bus agent 驾驶舱 通信", run: () => { if (!ccBusView.isVisible()) ccBusView.open(); } },
       { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
-      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void commands.open_settings_window() },
+      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
       { id: "open-sftp", title: "打开 SFTP 文件面板", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
       { id: "win-minimize", title: "最小化窗口", keywords: "minimize 最小化", hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
       { id: "win-fullscreen", title: "切换全屏", keywords: "fullscreen 全屏", hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
@@ -545,7 +549,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         snapshot: accountChip.snapshotReady(),
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
-        openSettings: () => void commands.open_settings_window(),
+        openSettings: () => void openSettingsWindow(),
       }),
     );
     // 切到会话（来自 F91 只读投影 snapshotSessions）
@@ -637,7 +641,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 「点得进那张清单」= 打开设置窗口（清单住在它的「远端」那一节）。
       // ⚠ 今天**只能到窗口这一格**：`open_settings_window` 不收参数，
       //   直达那一节要动 `src/bridge` 与 `settings/panel.ts`，都在本件写区外。
-      openList: () => void commands.open_settings_window(),
+      openList: () => void openSettingsWindow(),
     });
     const reload = async (): Promise<void> => {
       try {
@@ -669,7 +673,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
-  dispatcher.bind("app.open-settings", () => void commands.open_settings_window()); // F82a：开独立设置窗口
+  dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => {
     if (historyView.isVisible()) historyView.close();
     else void historyView.open();

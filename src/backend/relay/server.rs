@@ -48,7 +48,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 // ⚠ 上游的环境旋钮与默认值**先搬去层 2**（`20 §4`「常量跟着职责走」），**再被条 59 整删**成
-//   每 agent 一行的表（`accounts::AGENT_UPSTREAMS`）。层 1 里**没有任何可以回落的默认上游**
+//   每 agent 一行的表（`accounts::apikey::AGENT_UPSTREAMS`）。层 1 里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（层 1 零处 ＋ 层 2 恰好登记那几处），不是一条散文。
 
@@ -103,6 +103,42 @@ const TEE_DECODE_CAP: usize = 8 * 1024 * 1024;
 /// `std::io::Read::read` 本来就是「有多少给多少」，不循环凑满。
 const READ_CHUNK: usize = 64 * 1024;
 
+// ══ 层 1 **自己造**的状态码 —— 每个码只有这一处住址〔`设计/20 §3.1a` ②，`D2`〕═══════════
+//
+// `20 §3.1a` 那两条可机检的形状：① 我们自己造的三组码 —— 层 2 `Refuse`（404/502）·
+// 在飞上界（503）· 层 1 传输失败（504）—— **两两不相交**；② 它们**只有一处常量**，
+// 不许散在各个返回点上（否则「可区分」这件事第二天就会被人不小心撞掉）。
+// ⇒ 层 1 的码全在下面这几行；层 2 那两个住 `accounts` 那一侧（层 1 不认识它们）。
+// 钉这两条的判据：`server_tests::every_status_we_make_has_one_home_and_the_three_groups_are_disjoint`
+// （盘上扫出来的状态码字面量 ⇔ 登记表，两向相等；登记表里三组两两不相交）。
+
+/// 下游请求**读不懂**（头坏了 / `Content-Length` 读不懂）。
+const BAD_REQUEST: &str = "400 Bad Request";
+/// 下游用了 chunked 请求体（本中转只收定长请求体）。
+const LENGTH_REQUIRED: &str = "411 Length Required";
+/// 下游请求体超 `BODY_CAP`。
+const PAYLOAD_TOO_LARGE: &str = "413 Payload Too Large";
+/// 路径**根本不是路由的形状**。与层 2 那个 404（表里没这一行）同属「路由不成立」一组，
+/// 下游读到的字节逐字节相同 —— 这是 `wire_golden` ③④ 两格钉着的**今天的行为**。
+const NOT_A_ROUTE: &str = "404 Not Found";
+/// 在飞连接顶满（`INFLIGHT_CONNECTIONS`）或起不了连接线程。**「我们这侧现在吃不下」**。
+///
+/// ⚠ 名字刻意不带 `CAP`/`MAX`/`LIMIT`/`BYTES`（理由见 `INFLIGHT_CONNECTIONS` 头注：
+/// 那几个词是 `byte_cap_registry` 的钩子）。
+pub(super) const BUSY: &str = "503 Service Unavailable";
+/// 🔴 **层 1 自己的传输失败**：上游连不上 · 没回应 · 回的不是 HTTP 响应〔`设计/20 §3.1a`〕。
+///
+/// # 为什么是 504，不是先前的 502
+///
+/// 502 已经被层 2 的 `Refuse`（「这个 agent 没有登记上游」）占着，而 `D7` 要求
+/// 「路由不成立」与「上游不在」**可区分**：同码 ⇒ agent 分不清是我们配错了还是上游挂了。
+/// 502 · 503 都被占了，504 与它们同属网关族，是剩下唯一一个语义不冲突的码。
+///
+/// ⚠ **这一格是为可区分性付的账**（`20 §3.1a` 逐字认下的）：504 的字面语义是「上游**超时**」，
+/// 而「连不上」「回的不是 HTTP」都不是超时。能把几种失败分开的只有 body 里那句 `why`
+/// （见 [`UpstreamFailure`]）—— 上游自己也会答 5xx 并被原样转发，码本身永远消不掉那一重歧义。
+const UPSTREAM_FAILED: &str = "504 Gateway Timeout";
+
 /// 〔`P16` 2026-09-22〕**`DOWNSTREAM_DEADLINE` 的那个值搬去 `listen.rs` 了** —— 墓碑。
 ///
 /// `设计/01 §2.1 C4` 逐字把「**期限值**」也算进那句「凭据、配置、路由表、期限值
@@ -141,7 +177,7 @@ pub(super) fn apply_downstream_deadline(
 }
 
 /// 上游**中间响应**（1xx）最多容忍几条〔回修轮之五 08-25，D3 `重要-1(D3)`〕。
-/// 超了回 502：那已经不是一个正常的上游。
+/// 超了回 [`UPSTREAM_FAILED`]（先前是 502）：那已经不是一个正常的上游。
 const INTERIM_RESPONSES_ALLOWED: usize = 8;
 
 /// 中转的运行期状态。**一个进程一份**，跨连接共享。
@@ -269,7 +305,26 @@ impl Relay {
 }
 
 pub(super) fn respond_status(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
-    let body = format!("{status}\n");
+    respond_body(down, status, format!("{status}\n"))
+}
+
+/// 层 1 传输失败那一格：状态行 ＋ **一句说得清是谁、卡在哪的话**（`20 §3.1a`：`why` 两句）。
+///
+/// ⚠ 只有 [`UPSTREAM_FAILED`] 走这里。`Refuse` 的 `why` **仍然不上线**：那几格的下游字节
+/// 由 `wire_golden` 逐字节钉着，本拍不动线上已有的字节，只给新长出来的这一格配话。
+fn respond_upstream_failed(down: &mut TcpStream, why: &UpstreamFailure) -> std::io::Result<()> {
+    // ⚠ 只印上游的主机与端口 ＋ 一句固定文案，**永不印请求头**（`K9` 裁定四第 1 条）。
+    let upstream_failure = why.for_log();
+    eprintln!("[relay] upstream failed: {upstream_failure}");
+    let said = why.sentence();
+    respond_body(
+        down,
+        UPSTREAM_FAILED,
+        format!("{UPSTREAM_FAILED}\n{said}\n"),
+    )
+}
+
+fn respond_body(down: &mut TcpStream, status: &str, body: String) -> std::io::Result<()> {
     let head = format!(
         "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
@@ -324,17 +379,109 @@ pub(super) fn respond_and_drain(down: &mut TcpStream, status: &str) -> std::io::
 /// | 结局 | 下游看到 | 上游收到过字节吗 |
 /// |---|---|---|
 /// | `Sent` | 上游那条响应，逐块透传 | 是 |
-/// | `Refused` | 我们自己造的那句状态行（今天只有 `404 Not Found`） | **否** |
-/// | `Unreachable` | `502 Bad Gateway` | 否（连都没连上） |
+/// | `Refused` | 层 2 给的那句状态行（404 / 502，住 `accounts` 那一侧） | **否** |
+/// | `Unreachable` | [`UPSTREAM_FAILED`]（504）＋ 一句 `why` | 否（连都没连上） |
 /// | `WriteFailed` | **什么都没有**（连接以错误收尾，`serve` 印一句） | **是**（已经发过一截） |
 ///
 /// ⚠ 最后两条**刻意分开**：`WriteFailed` 那一路我们已经往上游发过字节了，
 /// 这条连接的结局不由我们编 —— 回一个 502 等于替上游说它没收到。
+/// 〔`20 §3.1a` 那一拍没动这一支：它的理由是「字节已经出去了」，与码是哪一个无关。〕
 enum Answered {
-    Sent(Conn),
+    /// 已连上、请求已写完。带着**这是谁**（后面等响应那一段失败时 `why` 要说得出来）。
+    Sent(Conn, Who),
     Refused(&'static str),
-    Unreachable(std::io::Error),
+    Unreachable(UpstreamFailure),
     WriteFailed(std::io::Error),
+}
+
+/// 层 1 传输失败时那句 `why` 的两半：**上游是谁 · 卡在哪一跳**〔`设计/20 §3.1a`〕。
+///
+/// # 它刻意只带这几样
+///
+/// - 上游：**主机 ＋ 端口**。`Base` 里那段路径前缀**不带** —— 那是凭据文件里的内容，
+///   与 `table::Note::what` 刻意不印前缀是同一条理由。
+/// - 哪一跳：一个固定文案（[`FailedAt`]）。
+/// - 底层那条 `io::Error` **只进 stderr**，不进回给下游的字节（那是实现细节，`01 §6.9`：
+///   对外的话不出现内部词）。
+pub(super) struct UpstreamFailure {
+    who: Who,
+    at: FailedAt,
+    cause: Option<std::io::Error>,
+}
+
+/// 上游是谁：主机 ＋ 端口（**不带**路径前缀，理由见 [`UpstreamFailure`]）。
+///
+/// ⚠ 它是从层 2 借给我们的那个 `&Base` 上**现抄**的一份：那个借用活不出层 2 的锁
+/// （`Destinations::resolve` 的契约），而「等响应」那一段在锁外。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Who {
+    host: String,
+    port: u16,
+}
+
+impl Who {
+    fn of(base: &Base) -> Self {
+        Self {
+            host: base.host.clone(),
+            port: base.port,
+        }
+    }
+}
+
+/// 传输失败卡在哪一跳。**每一支一句固定文案**，先说结果、再说卡在哪（`01 §6.9`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FailedAt {
+    /// 连接都没建立起来（拒绝连接 · 名字解析不了 · TLS 握手失败 · 连接超时）。
+    Connect,
+    /// 请求发过去了，对方没回响应就把连接关了。
+    ClosedBeforeAnswer,
+    /// 请求发过去了，等响应时出错或超时。
+    NoAnswer,
+    /// 对方回的不是认得出的 HTTP 响应。
+    NotHttp,
+    /// 对方只回中间响应（1xx），一直不给最终响应。
+    OnlyInterim,
+}
+
+impl FailedAt {
+    /// 这一跳的那句话。**两句**：结果 · 卡在哪。
+    pub(super) fn words(self) -> (&'static str, &'static str) {
+        match self {
+            FailedAt::Connect => ("连不上", "建立连接"),
+            FailedAt::ClosedBeforeAnswer => ("没回应就断开了", "等响应"),
+            FailedAt::NoAnswer => ("没有回应", "等响应"),
+            FailedAt::NotHttp => ("回的不是 HTTP 响应", "读响应"),
+            FailedAt::OnlyInterim => ("一直不给最终响应", "读响应"),
+        }
+    }
+}
+
+impl UpstreamFailure {
+    fn new(who: &Who, at: FailedAt, cause: Option<std::io::Error>) -> Self {
+        Self {
+            who: who.clone(),
+            at,
+            cause,
+        }
+    }
+
+    /// 回给下游的那句话。底层错误**不在这里**（见 [`UpstreamFailure`] 头注）。
+    pub(super) fn sentence(&self) -> String {
+        let (result, hop) = self.at.words();
+        format!(
+            "上游 {}:{} {result}。卡在{hop}这一步。",
+            self.who.host, self.who.port
+        )
+    }
+
+    /// 进 stderr 的那一行：回给下游的那句话 ＋ 底层错误（有的话）。
+    fn for_log(&self) -> String {
+        let said = self.sentence();
+        match &self.cause {
+            Some(e) => format!("{said}（{e}）"),
+            None => said,
+        }
+    }
 }
 
 /// 把一个**成立**的目的地兑现成一条「已连上、请求已写完」的上游连接。
@@ -359,7 +506,10 @@ fn send_upstream(
 ) -> Answered {
     let mut up = match upstream::connect(base, deadline) {
         Ok(c) => c,
-        Err(e) => return Answered::Unreachable(e),
+        Err(e) => {
+            let who = Who::of(base);
+            return Answered::Unreachable(UpstreamFailure::new(&who, FailedAt::Connect, Some(e)));
+        }
     };
     let wrote = (|| -> std::io::Result<()> {
         up.write_all(&render_upstream_request(head, rest, base, auth, body.len()))?;
@@ -369,7 +519,7 @@ fn send_upstream(
         up.flush()
     })();
     match wrote {
-        Ok(()) => Answered::Sent(up),
+        Ok(()) => Answered::Sent(up, Who::of(base)),
         Err(e) => Answered::WriteFailed(e),
     }
 }
@@ -385,16 +535,16 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let mut down_r = BufReader::new(down);
 
     let Some(raw_head) = http1::read_head(&mut down_r, HEAD_CAP)? else {
-        return respond_and_drain(&mut down_w, "400 Bad Request");
+        return respond_and_drain(&mut down_w, BAD_REQUEST);
     };
     let Some(head) = http1::parse_request(&raw_head) else {
-        return respond_and_drain(&mut down_w, "400 Bad Request");
+        return respond_and_drain(&mut down_w, BAD_REQUEST);
     };
     if head.is_chunked_body() {
-        return respond_and_drain(&mut down_w, "411 Length Required");
+        return respond_and_drain(&mut down_w, LENGTH_REQUIRED);
     }
     let Some(r) = route::parse(&head.target) else {
-        return respond_and_drain(&mut down_w, "404 Not Found");
+        return respond_and_drain(&mut down_w, NOT_A_ROUTE);
     };
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
@@ -407,11 +557,11 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         http1::BodyLen::Exact(n) => match http1::read_exact_body(&mut down_r, n, BODY_CAP)? {
             Some(b) => b,
             // 超 `BODY_CAP`：一个字节都没读过（连接上还压着那 n 字节）⇒ 说清楚再关。
-            None => return respond_and_drain(&mut down_w, "413 Payload Too Large"),
+            None => return respond_and_drain(&mut down_w, PAYLOAD_TOO_LARGE),
         },
         http1::BodyLen::Absent => Vec::new(),
         // **有这个头但读不懂** ⇒ 400，**不许**当成「没有请求体」往上游发一条空体。
-        http1::BodyLen::Unparsable => return respond_and_drain(&mut down_w, "400 Bad Request"),
+        http1::BodyLen::Unparsable => return respond_and_drain(&mut down_w, BAD_REQUEST),
     };
 
     relay.served.fetch_add(1, Ordering::SeqCst);
@@ -448,7 +598,7 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
                 relay.upstream_deadline,
             ),
             // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
-            // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::dispatch_auth`）。
+            // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::apikey::dispatch_auth`）。
             // ★★ 上游与 key 取自**同一个变体**，不是两个各自取的值。
             Destination::Substitute { upstream, auth } => send_upstream(
                 upstream,
@@ -463,14 +613,12 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // 层 2 必须**恰好答一次**（契约写在 `Destinations::resolve` 头注里）。
     // 一次都不答 ＝ 下游会拿到一个没有任何 HTTP 响应的 FIN，那正是 `阻-3(D3)`
     // 点名的静默拒绝 ⇒ 宁可在这里当场炸，也不静默。
-    let mut up = match answered.expect("层 2 一次都没答 —— `Destinations::resolve` 的契约被破了")
+    let (mut up, who) = match answered
+        .expect("层 2 一次都没答 —— `Destinations::resolve` 的契约被破了")
     {
-        Answered::Sent(up) => up,
+        Answered::Sent(up, who) => (up, who),
         Answered::Refused(status) => return respond_and_drain(&mut down_w, status),
-        Answered::Unreachable(e) => {
-            eprintln!("[relay] upstream connect failed: {e}");
-            return respond_status(&mut down_w, "502 Bad Gateway");
-        }
+        Answered::Unreachable(why) => return respond_upstream_failed(&mut down_w, &why),
         // 写的过程中断了（上游中途关连接那一路）⇒ **原样往上传**，
         // 由 `serve()` 那句 `[relay] connection ended` 收尾。⚠ 这一支**不回状态码**：
         // 我们已经往上游发过字节了，这条连接的结局不由我们编。
@@ -489,24 +637,42 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   **原样转给上游**（它不在逐跳表里）⇒ 合规的上游正好回 100，正中这一形。
     //
     // 今天：1xx 一律**读掉丢弃**再读下一条，直到拿到非 1xx 的那条；
-    // 超过 `INTERIM_RESPONSES_ALLOWED` 条就回 502（那已经不是一个正常的上游）。
+    // 超过 `INTERIM_RESPONSES_ALLOWED` 条就回 [`UPSTREAM_FAILED`]（那已经不是一个正常的上游）。
     // ⚠ `101 Switching Protocols` 也是 1xx：本中转**不支持**协议升级
     //   （`Upgrade` / `Connection` 都在逐跳表里、根本转不到上游），真收到 101 就会
     //   继续往下读，而其后是隧道字节不是 HTTP 头 ⇒ `parse_response` 失败 ⇒ **502**。
     //   那是个**定义好的**结局，不是「当成最终响应发下去」。
+    //
+    // 🔴 〔`设计/20 §3.1a`〕这一段的四种失败**全是层 1 自己的传输失败**（上游不答 / 答的不是
+    //   HTTP），先前三支回 502、读出错那一支**什么都不回**（`?` 往上抛，下游拿到一个没有
+    //   任何 HTTP 响应的 FIN）。今天四支一律回 [`UPSTREAM_FAILED`] ＋ 一句说得清卡在哪的话。
+    //   ⚠ 读出错那一支（上游读期限到了 / 连接被重置）从「静默 FIN」变成「504 ＋ why」：
+    //     `05 §4.5.3` ① 逐字「把传输失败翻成一个 HTTP 响应，原样回给 agent」。
+    //     下游那一侧此刻**一个字节都还没收到**（响应头还没写），所以回一个状态码不会与已发的字节打架。
     let (headers, raw_resp) = {
         let mut interim = 0usize;
         loop {
-            let Some(raw) = http1::read_response_head(&mut up, HEAD_CAP)? else {
-                return respond_status(&mut down_w, "502 Bad Gateway");
+            let fail = |at, cause| UpstreamFailure::new(&who, at, cause);
+            let raw = match http1::read_response_head(&mut up, HEAD_CAP) {
+                Ok(Some(raw)) => raw,
+                Ok(None) => {
+                    let why = fail(FailedAt::ClosedBeforeAnswer, None);
+                    return respond_upstream_failed(&mut down_w, &why);
+                }
+                Err(e) => {
+                    return respond_upstream_failed(&mut down_w, &fail(FailedAt::NoAnswer, Some(e)))
+                }
             };
             let Some((status, headers)) = http1::parse_response(&raw) else {
-                return respond_status(&mut down_w, "502 Bad Gateway");
+                return respond_upstream_failed(&mut down_w, &fail(FailedAt::NotHttp, None));
             };
             if http1::is_interim_status(&status) {
                 interim += 1;
                 if interim > INTERIM_RESPONSES_ALLOWED {
-                    return respond_status(&mut down_w, "502 Bad Gateway");
+                    return respond_upstream_failed(
+                        &mut down_w,
+                        &fail(FailedAt::OnlyInterim, None),
+                    );
                 }
                 continue;
             }
@@ -632,7 +798,7 @@ fn pump<R: Read, W: Write>(
 /// 并把后者登记成射程外、说那是 `K-H2` 正文的活。**`K-H2` 已签收，那一格没人接。**
 ///
 /// **今天盘上的真话**：
-/// 1. **换哪个头由那一行的 `auth_style` 定**（见 `accounts::auth_header_of`，`P16` 搬去层 2 了）——
+/// 1. **换哪个头由那一行的 `auth_style` 定**（见 `accounts::apikey::auth_header_of`，`P16` 搬去层 2 了）——
 ///    〔用 09-04〕逐字要「api做成通用的」⇒ 只押一种鉴权头 = 只接得上一半的上游，
 ///    而押错的症状是 **401**，与「key 打错了」同形。
 /// 2. **这一行有自己的 key 时，客户端那份鉴权头一律不转发** ——
@@ -666,7 +832,7 @@ fn render_upstream_request(
     //      而同源那件事**更紧了一格**：先前是「一个变体的两个字段」，今天是
     //      「一个变体的**一个**字段」⇒ 连「从同一个变体里取两个、但取错搭配」都写不出来。
     //
-    //  `auth` 的三态与它们各自的字节，整张表住 `accounts::dispatch_auth` 的头注：
+    //  `auth` 的三态与它们各自的字节，整张表住 `accounts::apikey::dispatch_auth` 的头注：
     //    `None`                            ⇒ 下游那份鉴权头**原样转发**
     //    `Some(AuthSwap{ write: Some(_) })` ⇒ 丢掉 `clear` 那几份，写层 2 算好的那一条
     //    `Some(AuthSwap{ write: None })`    ⇒ 丢掉 `clear` 那几份，**一个头都不写**
@@ -683,7 +849,7 @@ fn render_upstream_request(
     // ★ 这一趟要不要把客户端自带的鉴权头收掉 —— **答案就是「层 2 答的是不是 `Substitute`」**。
     //   ⚠⚠ 这一行先前是个复合条件 `(key.is_some() && auth_header_of(style).is_some())
     //      || style == NoAuth`，头注逐字警告过「两个条件都要，缺一格就漏一形」。
-    //      那个判断**整条搬进层 2 的那一个 `match`** 了（`accounts::dispatch_auth`），
+    //      那个判断**整条搬进层 2 的那一个 `match`** 了（`accounts::apikey::dispatch_auth`），
     //      层 1 这边因此再也没有第二处可以判错 —— 少一处能判错的地方，不是少一条判断。
     //   ⚠ 〔`P16`〕**丢哪几个头**也跟着搬走了（`AuthSwap::clear`）：层 1 从此
     //      连那份名单都没有 ⇒ 它也不可能自己凑一份缩水的。
@@ -705,7 +871,7 @@ fn render_upstream_request(
     }
     // ★★ **层 1 只照写。** 头名与**完整**头值都是层 2 算好的（`AuthSwap::write`）——
     //    层 1 不知道那个串里有没有前缀、是不是一把 key，它只看见一个串。
-    //    ⚠⚠ 〔`P16` 2026-09-22〕把明文取出来的那一句**搬去层 2 了**（`accounts::dispatch_auth`）。
+    //    ⚠⚠ 〔`P16` 2026-09-22〕把明文取出来的那一句**搬去层 2 了**（`accounts::apikey::dispatch_auth`）。
     //      搬的是住址不是处数：`creds_guard` 那条「恰好 1 处」的相等断言一个字节没动
     //      （它扫整个 crate，不写死文件名），`PLAINTEXT_EXIT_SITES` 只改了住址栏。
     //      ⇒ 层 1 从此**碰不到明文**，这是 `C2` 买到的一格实质东西，不只是类型好看。
@@ -723,8 +889,8 @@ fn render_upstream_request(
 ///
 /// | 搬走的 | 新家 | 为什么不能留在这一层 |
 /// |---|---|---|
-/// | `const AUTH_HEADER_NAMES`（换头前先丢掉哪几个头） | `accounts::headers_to_clear()`，**由映射派生**，不再是手写名单 | 它与那个映射之间原本靠一条判据焊着，而映射按 `C2` 必须去层 2 ⇒ 焊缝会**跨层**，而缺焊的症状是同名鉴权头出现两次、上游谁赢没有定义 |
-/// | `fn auth_header_of`（`AuthStyle` → `(头名, 前缀)`） | `accounts::auth_header_of` | 它的入参是 `creds_core::store::AuthStyle` ⇒ 按 `C2`（不许依赖业务 crate）它**不可能**住这一层 |
+/// | `const AUTH_HEADER_NAMES`（换头前先丢掉哪几个头） | `accounts::apikey::headers_to_clear()`，**由映射派生**，不再是手写名单 | 它与那个映射之间原本靠一条判据焊着，而映射按 `C2` 必须去层 2 ⇒ 焊缝会**跨层**，而缺焊的症状是同名鉴权头出现两次、上游谁赢没有定义 |
+/// | `fn auth_header_of`（`AuthStyle` → `(头名, 前缀)`） | `accounts::apikey::auth_header_of` | 它的入参是 `creds_core::store::AuthStyle` ⇒ 按 `C2`（不许依赖业务 crate）它**不可能**住这一层 |
 ///
 /// ⚠ **不许在这一层重建任何一个。** 层 1 今天连「有哪几个鉴权头」都不知道 ——
 /// 那正是 `P16` 买到的东西：它拿到 `AuthSwap` 就照丢照写，没有第二处可以判错、

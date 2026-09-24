@@ -57,6 +57,10 @@ pub mod events {
     /// 让 batch mode 事件驱动（回填在途不提前退出），替代纯 300ms 静默启发式。
     /// 不进 replay buffer。
     pub const SNAPSHOT_INFLIGHT: &str = "snapshot-inflight";
+    /// 〔`C1` · 2026-09-24〕某台远端的长连接握手完成、入方向能问话了（`{origin}`）。
+    /// 前端的账号刷新（替掉那个 10 秒轮询）据此强制拉一次 —— 在这之前问只会拿到「没有控制通道」。
+    /// 每次（重）连上各发一次；不进 replay buffer。
+    pub const REMOTE_BACKEND_READY: &str = "remote-backend-ready";
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。

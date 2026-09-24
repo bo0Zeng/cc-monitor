@@ -1,0 +1,11 @@
+{"type":"user","uuid":"s-0","message":{"role":"user","content":"a"}}
+
+   	
+﻿
+{"type":"permission-mode","permissionMode":"default","uuid":"s-1"}
+
+﻿{"type":"assistant","uuid":"s-2","message":{"role":"assistant","content":[{"type":"text","text":"b"}]}}
+{"type":"system","uuid":"s-3","content":"c"}
+{"type":"user"
+{"type":"user","uuid":"s-4","message":{"role":"user","content":"d"}}
+{"type":"assistant","uuid":"s-torn"

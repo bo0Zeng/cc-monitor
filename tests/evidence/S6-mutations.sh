@@ -85,7 +85,7 @@ cut "M5 丙·branchRecords 写死 0" "$TABS" \
   "branchRecords: 0,"
 
 cut "M6 丙·userInputs 写死 0" "$TABS" \
-  "userInputs: tab.userInputs.length," \
+  "userInputs: tab.outline.count," \
   "userInputs: 0,"
 
 cut "M7 丙·pending 写死 0" "$TABS" \

@@ -9,8 +9,8 @@ use super::super::listen::{
     UPSTREAM_DEADLINE,
 };
 use super::super::upstream;
-use crate::accounts::creds;
-use crate::accounts::{self, table::RoutingTable, Accounts};
+use crate::accounts::apikey::creds;
+use crate::accounts::apikey::{self as accounts, table::RoutingTable, Accounts};
 use creds_core::SecretKey;
 use std::io::BufRead;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
@@ -38,7 +38,7 @@ const TEST_AGENT: &str = "agentA";
 /// 第二家（`routes_two_keys…` 用它证「两个键走同一个进程」）。
 const TEST_AGENT_B: &str = "agentB";
 
-/// 拿**生产段那张决策表**（`accounts::decide`，与 `Accounts::resolve` 同一份实现）
+/// 拿**生产段那张决策表**（`accounts::apikey::decide`，与 `Accounts::resolve` 同一份实现）
 /// 问一次，再把答案交给生产段那个渲染函数，返回它吐出来的那串字节。
 ///
 /// ⚠⚠ 判据**不自己判**「这一行该不该换头 / 要不要丢掉客户端那份」——
@@ -1081,12 +1081,13 @@ fn an_interim_1xx_response_is_skipped_instead_of_being_sent_as_the_final_one() {
 ///
 /// 上一条判据只喂到 **2** 条 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
 /// 整支拿掉，上一条照样绿，而真机后果是一个坏上游能让中转在那个循环里**一直读下去**。
-/// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **502**。
+/// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **504**
+/// （`设计/20 §3.1a`：层 1 自己的传输失败；先前这一格回 502，与层 2 `Refuse` 撞码）。
 ///
 /// ⚠ 期望值 `9` 是**手写字面量**，不是拿 `INTERIM_RESPONSES_ALLOWED` 算的
 /// —— 拿被测常量算期望值，改了常量本条会跟着漂、永远绿。
 #[test]
-fn too_many_interim_responses_are_refused_with_502() {
+fn too_many_interim_responses_are_refused_with_504() {
     // 9 条 1xx（上限是 8）。分母：`"HTTP/1.1 100 Continue\r\n\r\n"` 重复 9 次。
     let script = concat!(
         "HTTP/1.1 100 Continue\r\n\r\n",
@@ -1110,8 +1111,12 @@ fn too_many_interim_responses_are_refused_with_502() {
     let mut got = String::new();
     c.read_to_string(&mut got).expect("read");
     assert!(
-        got.starts_with("HTTP/1.1 502"),
-        "1xx 多到超过上限就该回 502（拿到的是：{got:?}）"
+        got.starts_with("HTTP/1.1 504 Gateway Timeout\r\n"),
+        "1xx 多到超过上限就该回 504（拿到的是：{got:?}）"
+    );
+    assert!(
+        got.contains("一直不给最终响应。卡在读响应这一步。"),
+        "504 那一发没说清卡在哪（拿到的是：{got:?}）"
     );
 }
 
@@ -1411,9 +1416,9 @@ fn relay_child_process_entry_point() {
     //   而凭据那份文件的位置由 `CCM_RELAY_CREDENTIALS` 覆盖，父进程一定会设它
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
     // ⚠ 〔层 2 搬出 `relay/` 那一拍〕走的是 `main.rs` 的 `--relay` 那一臂**真调的那一个**
-    //   （`accounts::run_relay` = 层 1 的 `run` ＋ 层 2 那只手），不是层 1 的 `run` 本身 ——
+    //   （`accounts::apikey::run_relay` = 层 1 的 `run` ＋ 层 2 那只手），不是层 1 的 `run` 本身 ——
     //   后者今天要调用方递一个 `Startup` 进来，判据自己递就不是生产段那条接线了。
-    std::process::exit(crate::accounts::run_relay(
+    std::process::exit(crate::accounts::apikey::run_relay(
         &crate::agents::claudecode::paths::resolve_home(),
         &[],
     ));
@@ -1669,7 +1674,8 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 /// # 它**证不了**什么
 ///
 /// - 上游那一跳之后的事（TLS、真 API）—— `C7` 禁「绝不起真 claude」。
-/// - 502 那条错误支（要一台死掉的上游，得再起一个子进程）。**登记为没测**。
+/// - 上游连不上那条错误支（要一台死掉的上游，得再起一个子进程）。**登记为没测**
+///   〔下一条 `each_account_gets_its_own_key_…` 的 ㈢ 补上了；今天那一支回 504，`设计/20 §3.1a`〕。
 #[test]
 fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
     // 金丝雀取一个**不可能自然出现**的串，且**不含任何路径成分**
@@ -1819,7 +1825,7 @@ const EPHEMERAL_FLOOR: u16 = 32768;
 /// 后果具体：`acct-dead` 那一行的 `base_url` 指着的不再是「没人听」，
 /// 而是**另一个真在听的进程**。若那个进程恰好是**中转自己**，
 /// 它会收到一条没有 `/s/` 前缀的 `GET /v1/messages`
-/// ⇒ `route::parse` 回 `None` ⇒ **404**，而期望是 502。
+/// ⇒ `route::parse` 回 `None` ⇒ **404**，而期望是 504（`设计/20 §3.1a` 之前是 502）。
 ///
 /// 🔴 2026-09-22 门禁现打抓到过一次这一形（`each_account_gets_its_own_key_…`
 /// 实得 `HTTP/1.1 404 Not Found` ＋ `Content-Length: 14`）。
@@ -1936,12 +1942,12 @@ fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
 ///
 /// ★ **①比②更要紧**：② 是 `K-H2a` 已经买到的，① 是本件新增的风险。
 ///
-/// # ⚠ 它顺带补上了 `K-H2a` 留下的**502 那一格**
+/// # ⚠ 它顺带补上了 `K-H2a` 留下的**连不上上游那一格**
 ///
 /// 件计划逐字记着 `K-H2a` 的诚实边界：「**502 那条错误支没测**（已测 404/400）」。
 /// 这里第三个账号 `acct-dead` 的 `base_url` 指着一个**没人监听**的回环端口
-/// ⇒ `row.connect()` 失败 ⇒ 走 `respond_status(…, "502 Bad Gateway")` 那一支，
-/// 而它的 stderr 那一行（`upstream connect failed: {e}`）也一并进了下面四个出口的扫描面。
+/// ⇒ 连上游失败 ⇒ 走「层 1 传输失败」那一支（`设计/20 §3.1a` 之后回 **504**，先前是 502），
+/// 而它的 stderr 那一行（`[relay] upstream failed: …`）也一并进了下面四个出口的扫描面。
 ///
 /// # ⚠ 它**仍然没有**补上的那一格
 ///
@@ -2065,14 +2071,14 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
         "表里查不到的账号段该回 404：{not_found:?}"
     );
 
-    // ── ㈢ **502 那一支**（`K-H2a` 留下的那一格，本件补上）──────────
+    // ── ㈢ **连不上上游那一支**（`K-H2a` 留下的那一格；`设计/20 §3.1a` 之后回 504）──────────
     let (bad_gateway, _) = send_raw(
         relay.addr,
         "GET /s/claude-code/acct-dead/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
     );
     assert!(
-        bad_gateway.starts_with("HTTP/1.1 502"),
-        "上游连不上那一支该回 502：{bad_gateway:?}\n\
+        bad_gateway.starts_with("HTTP/1.1 504"),
+        "上游连不上那一支该回 504：{bad_gateway:?}\n\
          ★ 实得 404 时**先分辨是哪一种** —— 中转的两处 404 回的字节逐字节相同：\n\
            ① 表里没有 `acct-dead`（`decide` 的 `Refuse`，`why` 是「代入模式要求表里有这一行」）；\n\
            ② 那条「没人听」的端口上**其实有人听**，而那个人回了 404\n\
@@ -2195,7 +2201,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
 ///
 /// # 死值验落在哪一格
 ///
-/// 把 `accounts::auth_header_of`（`P16` 之后住层 2）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
+/// 把 `accounts::apikey::auth_header_of`（`P16` 之后住层 2）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
 /// （形状对、恒答默认那张脸）⇒ 本条的 `x-api-key` 那几格当场红，
 /// 而**默认那一行**那几格仍绿 ⇒ 这一刀是**单断**，不是目录级塌陷。
 ///
@@ -3342,7 +3348,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_the_relay_with_that_ac
 ///    本条只走它算内容的那两步，写盘由 monitor 侧那几条既有判据分管。
 ///
 /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
-/// （`history::relay_account_id_of_dir`，住 monitor，backend 够不着）——
+/// （`history::apikey_account_id_of_dir`，住 monitor，backend 够不着）——
 /// 那一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for` 钉。
 /// **本条从「已经有了一个 id」那一刻接手。**
 #[cfg(unix)]
@@ -3663,6 +3669,339 @@ fn the_dead_port_is_one_the_kernel_can_never_hand_out() {
             println!(
                 "〔读数〕读不到 /proc/sys/net/ipv4/ip_local_port_range（{e}）\
                  ⇒ 「本机下界不低于 {EPHEMERAL_FLOOR}」这一格本趟**判不了**"
+            );
+        }
+    }
+}
+
+// ============================================================ `设计/20 §3.1a`：层 1 自己的传输失败回 504
+
+/// 一个**读完请求、回一串给定字节、然后按 `hold` 决定关不关**的假上游。
+///
+/// `hold = true`：回完之后**攥着连接不放**（一个字节都不再写），给「等响应超时」那一格用。
+/// 只接一条连接 —— 每条判据自己起一个。
+fn spawn_replying_upstream(reply: &'static [u8], hold: bool) -> SocketAddr {
+    let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Some(Ok(mut s)) = listener.incoming().next() else {
+            return;
+        };
+        let mut r = BufReader::new(s.try_clone().expect("clone"));
+        let mut clen = 0usize;
+        loop {
+            let mut h = String::new();
+            let n = r.read_line(&mut h).unwrap_or(0);
+            if n == 0 || h == "\r\n" {
+                break;
+            }
+            if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                clen = v.trim().parse().unwrap_or(0);
+            }
+        }
+        // 把请求体读干净 ⇒ 关的时候发 FIN 不是 RST（理由同 `spawn_fake_upstream`）。
+        let mut body = vec![0u8; clen];
+        let _ = r.read_exact(&mut body);
+        let _ = s.write_all(reply);
+        let _ = s.flush();
+        if hold {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        }
+    });
+    addr
+}
+
+/// 起一个中转，上游期限**由判据给**（「等响应超时」那一格要一个短期限，不能等 10 分钟）。
+fn spawn_relay_with_upstream_deadline(
+    up: SocketAddr,
+    upstream_deadline: std::time::Duration,
+) -> SocketAddr {
+    let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
+    let relay = Arc::new(Relay::new(
+        dest_of(two_accounts_no_key(&base)),
+        TeeSink::new(Box::new(std::io::sink())),
+        DOWNSTREAM_DEADLINE,
+        upstream_deadline,
+    ));
+    let listener = listen(0).expect("listen");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || serve(listener, relay));
+    addr
+}
+
+/// ★★★ `设计/20 §3.1a`：**层 1 自己的传输失败回 504，body 里一句话说清上游是谁、卡在哪一跳。**
+///
+/// # 分母：五跳，逐跳一格
+///
+/// | 跳 | 怎么造 | 先前下游拿到什么 |
+/// |---|---|---|
+/// | 建立连接 | 上游指着一个没人听的端口 | 502 |
+/// | 没回应就断开 | 上游读完请求一个字节不回就关 | 502 |
+/// | 等响应超时 | 上游读完请求攥着不回，中转的上游期限设 300ms | **什么都没有**（`?` 往上抛，静默 FIN）|
+/// | 回的不是 HTTP | 上游回一行垃圾 | 502 |
+/// | 只有中间响应 | 上游回 9 条 `100 Continue`（上限 8） | 502（那一格另有一条专门的判据） |
+///
+/// # 期望值是**手写字面量**
+///
+/// 状态行与那句话都是本条手写的，不是拿 `server::FailedAt::words` 算的 —— 拿被测函数算期望值，
+/// 改了文案本条会跟着漂、永远绿。
+///
+/// # 与层 2 那两个码**不同**（`D7` 可区分性）
+///
+/// 同一个中转、同一张表：表里没这一行 ⇒ 404；上游连不上 ⇒ 504。两个码不同，本条末尾顺带断一次。
+#[test]
+fn layer_one_transport_failures_answer_504_saying_who_and_where() {
+    const STATUS_LINE: &str = "HTTP/1.1 504 Gateway Timeout\r\n";
+
+    // ① 建立连接：没人听的端口。
+    let dead = a_port_nobody_listens_on();
+    let (relay, _r, _t) = spawn_relay(SocketAddr::new(LOOPBACK, dead));
+    let (got, _) = send_raw(
+        relay,
+        "GET /s/agentA/acctA/sid-1/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+    );
+    assert!(got.starts_with(STATUS_LINE), "① 连不上该回 504：{got:?}");
+    let want = format!("上游 127.0.0.1:{dead} 连不上。卡在建立连接这一步。");
+    assert!(
+        got.contains(&want),
+        "① 没说清是谁、卡在哪：want {want:?} got {got:?}"
+    );
+    // ★ 可区分性（`D7`）：**同一个中转**上，表里没有的那一行回的是 404，不是 504。
+    let (miss, _) = send_raw(
+        relay,
+        "GET /s/agentA/nosuch/sid-1/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+    );
+    assert!(
+        miss.starts_with("HTTP/1.1 404 Not Found\r\n"),
+        "同一个中转上「表里没这一行」该回 404：{miss:?}"
+    );
+
+    // ② 没回应就断开。
+    let up = spawn_replying_upstream(b"", false);
+    let (relay, _r, _t) = spawn_relay(up);
+    let (got, _) = send_raw(
+        relay,
+        "GET /s/agentA/acctA/sid-2/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+    );
+    assert!(
+        got.starts_with(STATUS_LINE),
+        "② 上游不回就关该回 504：{got:?}"
+    );
+    let want = format!(
+        "上游 127.0.0.1:{} 没回应就断开了。卡在等响应这一步。",
+        up.port()
+    );
+    assert!(got.contains(&want), "② want {want:?} got {got:?}");
+
+    // ③ 等响应超时：先前这一格**一个 HTTP 字节都不回**。
+    let up = spawn_replying_upstream(b"", true);
+    let relay = spawn_relay_with_upstream_deadline(up, std::time::Duration::from_millis(300));
+    let (got, _) = send_raw(
+        relay,
+        "GET /s/agentA/acctA/sid-3/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+    );
+    assert!(
+        got.starts_with(STATUS_LINE),
+        "③ 等响应超时该回 504（先前是静默 FIN）：{got:?}"
+    );
+    let want = format!("上游 127.0.0.1:{} 没有回应。卡在等响应这一步。", up.port());
+    assert!(got.contains(&want), "③ want {want:?} got {got:?}");
+
+    // ④ 回的不是 HTTP。
+    let up = spawn_replying_upstream(b"garbage\r\n\r\n", false);
+    let (relay, _r, _t) = spawn_relay(up);
+    let (got, _) = send_raw(
+        relay,
+        "GET /s/agentA/acctA/sid-4/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+    );
+    assert!(
+        got.starts_with(STATUS_LINE),
+        "④ 回的不是 HTTP 该回 504：{got:?}"
+    );
+    let want = format!(
+        "上游 127.0.0.1:{} 回的不是 HTTP 响应。卡在读响应这一步。",
+        up.port()
+    );
+    assert!(got.contains(&want), "④ want {want:?} got {got:?}");
+    // ⑤「只有中间响应」那一跳由 `too_many_interim_responses_are_refused_with_504` 量。
+}
+
+/// 本 crate 生产段里**每一个** HTTP 状态码字面量的住址〔`设计/20 §3.1a` ②，`D2`〕。
+///
+/// `(相对 src/backend 的文件, 字面量, 属于哪一组)`。**手写**，与盘上现扫出来的两向相等。
+/// 同一个字面量出现两行 = 两个家（今天只有 404：层 1 的「路径不是路由形状」与层 2 的
+/// 「表里没这一行」同属「路由不成立」一组，下游读到的字节逐字节相同 —— `wire_golden` ③④）。
+const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
+    (
+        "relay/server.rs",
+        "400 Bad Request",
+        StatusGroup::Unreadable,
+    ),
+    (
+        "relay/server.rs",
+        "411 Length Required",
+        StatusGroup::Unreadable,
+    ),
+    (
+        "relay/server.rs",
+        "413 Payload Too Large",
+        StatusGroup::Unreadable,
+    ),
+    ("relay/server.rs", "404 Not Found", StatusGroup::NoRoute),
+    (
+        "accounts/apikey/mod.rs",
+        "404 Not Found",
+        StatusGroup::NoRoute,
+    ),
+    (
+        "accounts/apikey/mod.rs",
+        "502 Bad Gateway",
+        StatusGroup::NoRoute,
+    ),
+    (
+        "relay/server.rs",
+        "503 Service Unavailable",
+        StatusGroup::Busy,
+    ),
+    (
+        "relay/server.rs",
+        "504 Gateway Timeout",
+        StatusGroup::UpstreamFailed,
+    ),
+];
+
+/// 我们自己造的码分几组（`20 §3.1a` 那张表 ＋ 下游请求读不懂那一组）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum StatusGroup {
+    /// 下游的请求读不懂（400 / 411 / 413）。`20 §3.1a` 没列它：那是**下游**的错，与三组都不相干。
+    Unreadable,
+    /// 路由不成立（层 2 `Refuse` ＋ 层 1 的「路径不是路由形状」）。
+    NoRoute,
+    /// 在飞上界 —— 我们这侧现在吃不下。
+    Busy,
+    /// 层 1 自己的传输失败 —— 上游那侧。
+    UpstreamFailed,
+}
+
+/// 一段源码里所有形如 `"NNN Xxx…"` 的字符串字面量（HTTP 状态行的码 ＋ 原因短语）。
+fn status_literals(src: &str) -> Vec<String> {
+    let b = src.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i + 6 <= b.len() {
+        if b[i] == b'"'
+            && b[i + 1].is_ascii_digit()
+            && b[i + 2].is_ascii_digit()
+            && b[i + 3].is_ascii_digit()
+            && b[i + 4] == b' '
+            && b[i + 5].is_ascii_uppercase()
+        {
+            if let Some(end) = src[i + 1..].find('"') {
+                out.push(src[i + 1..i + 1 + end].to_string());
+                i += end + 2;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// ★★★ `设计/20 §3.1a` 那两条可机检的形状：
+/// ① 我们自己造的三组码（层 2 `Refuse` · 在飞上界 · 层 1 传输失败）**两两不相交**；
+/// ② 每个码**只有一处常量**，不散在各个返回点上。
+///
+/// # 量法（两向相等，不是地板）
+///
+/// - 盘上：扫 `src/backend` 整棵树的**生产段**，抠出每一个 `"NNN Xxx"` 字面量，记 `(文件, 字面量)`；
+/// - 登记：[`STATUS_HOMES`]（手写）；
+/// - 两边做**多重集相等**。散到返回点上的第二处（比如谁又在某个返回点写一遍 `"502 Bad Gateway"`）
+///   会让盘上多一行 ⇒ 红。
+///
+/// 然后在登记表上断：三组的码**恰好**是 `20 §3.1a` 那张表的值（相等，手写字面量），且两两不相交。
+#[test]
+fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
+    // 尺子自检（反空真）：认得该认的、不认不该认的。
+    assert_eq!(
+        status_literals(
+            r#"a("404 Not Found"); b = "504 Gateway Timeout"; c = "x 404 Not"; "12 Ab""#
+        ),
+        vec![
+            "404 Not Found".to_string(),
+            "504 Gateway Timeout".to_string()
+        ]
+    );
+
+    let root = crate::guard_support::src_root();
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(files.len() >= 30, "只扫到 {} 份 —— 取法坏了", files.len());
+    let mut on_disk: Vec<(String, String)> = Vec::new();
+    for (p, raw) in &files {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for lit in status_literals(&crate::guard_support::production_code(raw)) {
+            on_disk.push((rel.clone(), lit));
+        }
+    }
+    on_disk.sort();
+    let mut registered: Vec<(String, String)> = STATUS_HOMES
+        .iter()
+        .map(|(f, l, _)| ((*f).to_string(), (*l).to_string()))
+        .collect();
+    registered.sort();
+    assert_eq!(
+        on_disk, registered,
+        "盘上的状态码字面量与 `STATUS_HOMES` 对不上（多重集相等）。\n\
+         盘上多一行 = 有人把一个码**散到了返回点上**（`20 §3.1a` ②：只许有一处常量）；\n\
+         登记多一行 = 表腐了。"
+    );
+
+    // 三组的码 —— 期望值手写（`20 §3.1a` 那张表）。
+    let code = |l: &str| l[..3].parse::<u16>().expect("三位数");
+    let codes_of = |g: StatusGroup| -> std::collections::BTreeSet<u16> {
+        STATUS_HOMES
+            .iter()
+            .filter(|(_, _, x)| *x == g)
+            .map(|(_, l, _)| code(l))
+            .collect()
+    };
+    let set = |v: &[u16]| {
+        v.iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<u16>>()
+    };
+    assert_eq!(
+        codes_of(StatusGroup::NoRoute),
+        set(&[404, 502]),
+        "路由不成立那一组"
+    );
+    assert_eq!(codes_of(StatusGroup::Busy), set(&[503]), "在飞上界那一组");
+    assert_eq!(
+        codes_of(StatusGroup::UpstreamFailed),
+        set(&[504]),
+        "层 1 传输失败那一组"
+    );
+    assert_eq!(
+        codes_of(StatusGroup::Unreadable),
+        set(&[400, 411, 413]),
+        "请求读不懂那一组"
+    );
+    // ① 两两不相交（`D7`：同码 ⇒ 分不清是我们配错了还是上游挂了）。
+    let groups = [
+        StatusGroup::Unreadable,
+        StatusGroup::NoRoute,
+        StatusGroup::Busy,
+        StatusGroup::UpstreamFailed,
+    ];
+    for (i, a) in groups.iter().enumerate() {
+        for b in &groups[i + 1..] {
+            let both: Vec<u16> = codes_of(*a).intersection(&codes_of(*b)).copied().collect();
+            assert!(
+                both.is_empty(),
+                "{a:?} 与 {b:?} 共用了码 {both:?} —— 可区分性没了"
             );
         }
     }

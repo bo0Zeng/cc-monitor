@@ -41,6 +41,7 @@
 //! ⚠ 别把这段读成「`#79` 做完了」：**代码分析那半齐了**（`P7b` 08-12 补上最后缺的
 //! 函数级调用子图 + 影响面），**整条 issue 没完** —— 缺的正是上面这半。
 
+use code_picture_core::diagram::{self, DiagramKind, DiagramKindInfo, DiagramRequest};
 use code_picture_core::{model, Engine, EngineOpts};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -356,6 +357,48 @@ pub async fn panorama_remove_doc_link(
         e.remove_doc_link(&doc, &target).map_err(|e| e.to_string())
     })
     .await?
+}
+
+// === PN1b:选图(`设计/97 §7`)—— 图种与图都**原样透出**上游的注册表与 `Diagram` ===
+//
+// 本侧**不写任何图种的名字**:有哪些图、每张要什么输入、画出什么形状,全在上游
+// `diagram::registry`;前端按**形状**渲染。上游加一种已有形状的新图 ⇒ 这里零改动。
+
+/// 图种注册表(原样)。不碰引擎 —— 注册表是编进二进制的常量表,与仓无关。
+#[tauri::command]
+pub async fn panorama_diagram_kinds() -> Result<Vec<DiagramKindInfo>, String> {
+    Ok(diagram::kinds())
+}
+
+/// 一张画好的图 + 它的 Mermaid 渲染。
+///
+/// `mermaid` 给两条路用:「复制给 agent」,以及前端遇到**这一版还画不出的形状**时的兜底
+/// (界面如实说画不出、给复制)。前端**不许**解析它重建边(`设计/97` CP1)。
+#[derive(serde::Serialize)]
+pub struct PanoramaDiagram {
+    diagram: diagram::Diagram,
+    mermaid: String,
+}
+
+/// 画一张图。`kind` 认不出、缺符号、符号不存在都是**错误**(上游 `DiagramError` 的原话),
+/// 不回落成别的图。`request` 里这张图不认的旋钮被上游忽略;拼错的字段名被拒。
+#[tauri::command]
+pub async fn panorama_diagram(
+    repo: String,
+    kind: String,
+    request: DiagramRequest,
+) -> Result<PanoramaDiagram, String> {
+    with_engine(repo, move |e| draw_view(e, &kind, &request)).await?
+}
+
+/// `panorama_diagram` 的核心（抽出以便在真引擎上单测，不经全局池与真数据目录）。
+fn draw_view(e: &Engine, kind: &str, request: &DiagramRequest) -> Result<PanoramaDiagram, String> {
+    let kind = DiagramKind::from_id(kind).map_err(|e| e.to_string())?;
+    let d = e.draw(kind, request).map_err(|e| e.to_string())?;
+    Ok(PanoramaDiagram {
+        mermaid: diagram::to_mermaid(&d),
+        diagram: d,
+    })
 }
 
 #[cfg(test)]
