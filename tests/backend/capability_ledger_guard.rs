@@ -91,9 +91,15 @@ const ROSTER: &[(&str, &str)] = &[
     // ── `files-read`（`files/mod.rs`，`设计/96 §2.9` 那张表）──────────────────────
     ("files-read", "files.browse"),
     ("files-read", "files.find"),
+    // 〔F7a · 第三波 09-24〕我看过这条能力，它该在清单里：窗口「开在 home」那一问经通道问后端
+    // （`设计/60 §13`；此前 monitor 为它单拨一条 SFTP）。纯读，资产轴，四个 target 都有。
+    ("files-read", "files.home"),
     ("files-read", "files.index.rebuild"),
     ("files-read", "files.index.status"),
     ("files-read", "files.ls"),
+    // 〔F7a · 第三波 09-24〕同上：编辑器读一份文本经通道问后端（此前 SFTP 整份搬字节）。
+    // 纯读，超上限整趟拒不截断，上限由调用方给、后端有自己的天花板。
+    ("files-read", "files.read.text"),
     ("files-read", "files.stat"),
     // ── `stream-flags`（`lib.rs`，`设计/96 §2` 射程：**协议**轴）────────────────────
     ("stream-flags", "bg"),

@@ -51,12 +51,18 @@ use crate::files::index::tests::resident_lock;
 /// 本条判据跟着绿 —— 那一节就是本条的真相源。
 /// ⚠ **不许**为了让某一侧变绿而从这张表里摘一个名字：摘掉就等于宣布
 /// 「设计里从来没有那条能力」，而那正是本条两向对拍要挡的另一向。
+///
+/// ⚠〔F7a · 第三波 09-24〕末尾两条（`files.home` · `files.read.text`）的出处是 `设计/60 §13`
+/// （窗口换走通道的那两问），**`设计/96 §2.9` 那张表还没跟上** —— 那一篇不在 F7a 的写区，
+/// 已报备主会话同拍补表。在补上之前，这两条的「设计那一侧」住 `60 §13`。
 const REGISTERED: &[&str] = &[
     "files.browse",
     "files.find",
+    "files.home",
     "files.index.rebuild",
     "files.index.status",
     "files.ls",
+    "files.read.text",
     "files.stat",
 ];
 
@@ -748,6 +754,14 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     let _serial = crate::files::index::testing::serial();
     crate::files::index::rebuild_once(&fx.root).expect("本格独占跑，抢不到就是并发保护写错了");
 
+    // 〔F7a〕`files.read.text` 的两份夹具 —— 放在那棵树**之外**（免得动了树的形状）。
+    let text_dir = std::env::temp_dir().join(format!("ccm-f7a-args-{}", std::process::id()));
+    std::fs::create_dir_all(&text_dir).expect("建夹具目录");
+    let text_a = text_dir.join("a.txt");
+    let text_b = text_dir.join("b.txt");
+    std::fs::write(&text_a, b"alpha\n").expect("铺 a");
+    std::fs::write(&text_b, b"beta\n").expect("铺 b");
+
     // 🔴 探针表：`(能力, 被测参数, 甲, 乙)` —— 甲乙只差那一个键，答案必须不同。
     //   ⚠ 顺序承重：`files.browse` 会往 overlay 里加东西、`files.index.rebuild` 会把
     //   常驻那一份整份换掉 ⇒ 两者都排在 `files.find` 之后，免得前一条把后一条的地基抽了。
@@ -801,6 +815,19 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&fx.root) }),
             serde_json::json!({ "path": p(&sub) }),
         ),
+        // 〔F7a〕同族第七条：两份不同内容的文本 · 同一份在两个上限下（一个放得下、一个放不下）。
+        (
+            "files.read.text",
+            "path",
+            serde_json::json!({ "path": p(&text_a), "max_bytes": 1000 }),
+            serde_json::json!({ "path": p(&text_b), "max_bytes": 1000 }),
+        ),
+        (
+            "files.read.text",
+            "max_bytes",
+            serde_json::json!({ "path": p(&text_a), "max_bytes": 1000 }),
+            serde_json::json!({ "path": p(&text_a), "max_bytes": 1 }),
+        ),
     ];
 
     // ── ① 分区恒等：探针表 ↔ `args` 声明，逐条能力**两向相等** ─────────────
@@ -850,7 +877,12 @@ fn every_declared_arg_is_really_read_by_the_parser() {
         );
         checked += 1;
     }
-    assert!(checked >= 7, "只行使了 {checked} 对探针 —— 本条在空转");
+    // 〔F7a〕探针对数恒等：8 → 10（`files.read.text` 的 `path` · `max_bytes` 两对）。
+    assert_eq!(
+        checked, 10,
+        "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
+    );
+    std::fs::remove_dir_all(&text_dir).ok();
 
     // ── ③ 阴性对照：**没声明**的参数必须不起作用 ───────────────────────────
     //
@@ -1183,5 +1215,208 @@ fn the_declared_error_codes_are_not_ghosts() {
             declared.contains(&"unreadable") && declared.contains(&"bad_path"),
             "`{cap}` 的错误码表漏了它真的会回的那几个"
         );
+    }
+}
+
+// ══════════════════════ 〔F7a · 第三波 09-24〕第七、第八条 ══════════════════════
+//
+// `设计/60 §13`：窗口换走通道的那两问。每条都**正控 ＋ 阴性对照同拍**：只验「该拒的拒了」，
+// 一个恒 `Err` 的实现也全绿；只验「该成的成了」，一个不设上限的实现也全绿。
+
+/// 一个本格独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
+fn f7a_dir(tag: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("ccm-f7a-{tag}-{}", std::process::id()));
+    std::fs::remove_dir_all(&d).ok();
+    std::fs::create_dir_all(&d).expect("建夹具目录");
+    d
+}
+
+fn path_json(p: &std::path::Path) -> serde_json::Value {
+    serde_json::Value::String(p.to_str().expect("夹具路径是 ASCII").to_string())
+}
+
+/// ★ 放得下的那一份**整份、逐字节**回来；回参的键 == 声明的 `fields`（两向）。
+#[test]
+fn a_text_under_the_cap_comes_back_whole_and_its_keys_are_the_declared_fields() {
+    let d = f7a_dir("rt-ok");
+    let f = d.join("note.md");
+    let body = "第一行\n second line\n\ttab\n";
+    std::fs::write(&f, body).expect("铺");
+    let v = answer(
+        "files.read.text",
+        &serde_json::json!({ "path": path_json(&f), "max_bytes": 4096 }),
+    )
+    .expect("一份放得下的 UTF-8 文本被拒了");
+    assert_eq!(
+        v["text"].as_str(),
+        Some(body),
+        "回来的文本与盘上那份不逐字节相等"
+    );
+    assert_eq!(v["bytes"].as_u64(), Some(body.len() as u64));
+    let got: std::collections::BTreeSet<&str> = v
+        .as_object()
+        .expect("对象")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let declared: std::collections::BTreeSet<&str> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.read.text")
+        .expect("在表里")
+        .fields
+        .iter()
+        .copied()
+        .collect();
+    assert_eq!(
+        got, declared,
+        "`files.read.text` 真回出去的键与声明的 `fields` 对不上"
+    );
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 🔴 **超上限整趟拒、不截断** —— 恰好在上限上的那一份照收，多一个字节就拒，
+/// 而且拒的那一趟**一个字都不交**（不是交半份）。
+#[test]
+fn one_byte_over_the_cap_is_refused_whole_and_exactly_at_the_cap_is_not() {
+    let d = f7a_dir("rt-cap");
+    let f = d.join("n.txt");
+    std::fs::write(&f, "x".repeat(100)).expect("铺");
+    let at = answer(
+        "files.read.text",
+        &serde_json::json!({ "path": path_json(&f), "max_bytes": 100 }),
+    )
+    .expect("恰好等于上限的那一份被拒了 —— 上限是「最多」，不是「少于」");
+    assert_eq!(at["bytes"].as_u64(), Some(100));
+    let over = answer(
+        "files.read.text",
+        &serde_json::json!({ "path": path_json(&f), "max_bytes": 99 }),
+    );
+    match over {
+        Err(("too_large", m)) => assert!(
+            m.contains("多了 1 字节"),
+            "拒了，但那句话没说多了多少（用户据此知道要删掉多少）：{m}"
+        ),
+        other => panic!("🔴 超上限一个字节没被整趟拒（截断了？）：{other:?}"),
+    }
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// 三形「不是文本」各自落 `not_text`；读不到落 `unreadable`；参数形状落各自的码。
+/// ⚠ 最后一条是**两向集合相等**：造得出来的码 == 声明的码（多一个是幽灵、少一个是没声明）。
+#[test]
+fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
+    let d = f7a_dir("rt-codes");
+    let nul = d.join("nul.bin");
+    std::fs::write(&nul, b"ab\0cd").expect("铺");
+    let bad = d.join("latin1.txt");
+    std::fs::write(&bad, [0x63u8, 0x61, 0x66, 0xE9]).expect("铺"); // 「café」的 Latin-1 字节
+    let big = d.join("big.txt");
+    std::fs::write(&big, "y".repeat(10)).expect("铺");
+    let gone = d.join("gone.txt");
+    let ceiling = crate::files::READ_TEXT_MAX_BYTES as u64;
+    let cases: Vec<(serde_json::Value, &str)> = vec![
+        (
+            serde_json::json!({ "path": path_json(&nul), "max_bytes": 100 }),
+            "not_text",
+        ),
+        (
+            serde_json::json!({ "path": path_json(&bad), "max_bytes": 100 }),
+            "not_text",
+        ),
+        (
+            serde_json::json!({ "path": path_json(&d), "max_bytes": 100 }),
+            "not_text",
+        ),
+        (
+            serde_json::json!({ "path": path_json(&big), "max_bytes": 9 }),
+            "too_large",
+        ),
+        (
+            serde_json::json!({ "path": path_json(&gone), "max_bytes": 100 }),
+            "unreadable",
+        ),
+        (serde_json::json!({ "max_bytes": 100 }), "bad_path"),
+        (serde_json::json!({ "path": path_json(&big) }), "bad_args"),
+        (
+            serde_json::json!({ "path": path_json(&big), "max_bytes": 0 }),
+            "bad_args",
+        ),
+        (
+            serde_json::json!({ "path": path_json(&big), "max_bytes": ceiling + 1 }),
+            "bad_args",
+        ),
+    ];
+    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for (args, want) in &cases {
+        let got = answer("files.read.text", args);
+        assert!(
+            matches!(got, Err((c, _)) if c == *want),
+            "`files.read.text` 对 {args} 该回 `{want}`，回的是 {got:?}"
+        );
+        seen.insert(want);
+    }
+    // 正控：天花板本身是收的（对一份小文件）—— 不然上面那一条「超天花板」证不了边界在哪。
+    assert!(
+        answer(
+            "files.read.text",
+            &serde_json::json!({ "path": path_json(&big), "max_bytes": ceiling })
+        )
+        .is_ok(),
+        "`max_bytes` 恰好等于天花板被拒了"
+    );
+    let declared: std::collections::BTreeSet<&str> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.read.text")
+        .expect("在表里")
+        .codes
+        .iter()
+        .copied()
+        .collect();
+    assert_eq!(seen, declared, "造得出来的码与声明的码不是同一个集合");
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// ★ `files.home`：有就交、说不出就拒（没有 / 空 / 相对 三形），**不拿别处兜底**。
+///
+/// ⚠ 喂的是纯函数 [`super::home_from`]，不去改测试进程的环境（理由在它的头注）。
+/// 活的那一趟另判一格：本机这台后端真答得出一条**绝对**路径（正控，不与环境对答案）。
+#[test]
+fn home_is_given_when_the_environment_has_one_and_refused_otherwise() {
+    let ok = super::home_from(Some("/home/someone".into())).expect("一条绝对路径被拒了");
+    assert_eq!(ok["path"].as_str(), Some("/home/someone"));
+    let keys: std::collections::BTreeSet<&str> = ok
+        .as_object()
+        .expect("对象")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let declared: std::collections::BTreeSet<&str> = CAPABILITIES
+        .iter()
+        .find(|c| c.name == "files.home")
+        .expect("在表里")
+        .fields
+        .iter()
+        .copied()
+        .collect();
+    assert_eq!(
+        keys, declared,
+        "`files.home` 回出去的键与声明的 `fields` 对不上"
+    );
+    for (h, what) in [
+        (None, "没有"),
+        (Some(std::ffi::OsString::new()), "空串"),
+        (Some("relative/home".into()), "相对路径"),
+    ] {
+        let got = super::home_from(h);
+        assert!(
+            matches!(got, Err(("no_home", _))),
+            "home 是「{what}」时没有回 `no_home`，回的是 {got:?} —— 那就是在猜一个起点"
+        );
+    }
+    #[cfg(unix)]
+    {
+        let live = answer("files.home", &serde_json::json!({})).expect("本机这台后端说不出 home");
+        let p = live["path"].as_str().expect("本机 home 是 UTF-8");
+        assert!(p.starts_with('/'), "本机答出来的 home 不是绝对路径：{p}");
     }
 }

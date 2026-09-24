@@ -149,6 +149,9 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-find"
                 | "files-index-rebuild"
                 | "files-index-status"
+                // 〔F7a · 第三波 09-24〕同族第七、第八条同档（同步文件 I/O / 读环境）。
+                | "files-read-text"
+                | "files-home"
                 // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
                 | "history-projects"
@@ -201,6 +204,8 @@ fn every_registered_command_declares_its_run_kind() {
         "files-find",
         "files-index-rebuild",
         "files-index-status",
+        "files-read-text",
+        "files-home",
         "history-projects",
         "history-read",
         "history-search",
