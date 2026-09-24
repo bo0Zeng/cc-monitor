@@ -19,6 +19,7 @@
  * 详情里如实呈现每条边的 `confidence`（Exact/Heuristic/DynamicGuess，非 sound）。
  */
 
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import * as api from "../panorama/api";
 import {
   clampDepth,
@@ -81,6 +82,9 @@ export class PanoramaView implements OverlayHandle {
   private searchInput!: HTMLInputElement;
   private sidebarEl!: HTMLElement;
   private refreshBtn!: HTMLButtonElement;
+  // 自己挑仓：标题（显示当前看的是哪个仓、是手选还是跟随会话）+「跟随会话」按钮。
+  private titleEl!: HTMLElement;
+  private followBtn!: HTMLButtonElement;
   // F70：会话高亮图例条 + 文本（默认隐藏）。
   private highlightBarEl!: HTMLElement;
   private highlightTextEl!: HTMLElement;
@@ -93,6 +97,11 @@ export class PanoramaView implements OverlayHandle {
   private loadedRepo: string | null = null;
   /** 当前视图针对的仓（远端时为 null）。搜索/刷新/详情都用它。 */
   private repo: string | null = null;
+  /**
+   * 人手选的仓（「换仓…」）。非 null 时**压过**会话工作目录，关了再开也还是它，
+   * 直到点「跟随会话」。它只能是本机目录（系统选目录对话框给的），故不走远端判断。
+   */
+  private repoOverride: string | null = null;
   /** 加载代际号，防 repo 切换时旧异步结果覆盖新的（竞态）。 */
   private loadSeq = 0;
   /** 搜索代际号（同上）。 */
@@ -167,9 +176,14 @@ export class PanoramaView implements OverlayHandle {
   // === 打开时决定：远端提示 / 复用 / 加载 ===
 
   private async evaluateRepo(): Promise<void> {
+    if (this.repoOverride !== null) {
+      await this.showRepo(this.repoOverride);
+      return;
+    }
     const info = this.getRepo();
     if (!info || !info.cwd) {
       this.repo = null;
+      this.updateRepoChrome();
       this.showMessage(
         "无可索引的仓库",
         "当前没有活跃会话，或活跃会话没有已知工作目录。切到一个本地会话再打开全景。",
@@ -179,20 +193,59 @@ export class PanoramaView implements OverlayHandle {
     if (info.origin !== null) {
       // 远端会话：代码在远端机，本地 code-picture 索引不到（诚实提示，不索引）。
       this.repo = null;
+      this.updateRepoChrome();
       this.showMessage(
         "全景仅支持本地仓库",
         `当前会话来自远端机 [${info.origin}]，代码不在本机，无法建立本地 code-picture 索引。切到一个本地会话再打开全景。`,
       );
       return;
     }
-    this.repo = info.cwd;
-    // 同仓且已加载过 → 直接复用（hide 不卸载的意义）。
-    if (this.loadedRepo === info.cwd && this.overview && this.layout) {
+    await this.showRepo(info.cwd);
+  }
+
+  /** 把视图指向某个本地仓：同仓且已加载过 → 直接复用（hide 不卸载的意义），否则加载。 */
+  private async showRepo(repo: string): Promise<void> {
+    this.repo = repo;
+    this.updateRepoChrome();
+    if (this.loadedRepo === repo && this.overview && this.layout) {
       this.hideMessage();
       this.scheduleDraw();
       return;
     }
-    await this.load(info.cwd);
+    await this.load(repo);
+  }
+
+  /** 标题写清当前看的是哪个仓、从哪来的；「跟随会话」只在手选时出现。 */
+  private updateRepoChrome(): void {
+    const src = this.repoOverride !== null ? "手选" : "跟随会话";
+    this.titleEl.textContent = this.repo ? `代码全景 · ${basename(this.repo)}（${src}）` : "代码全景";
+    this.titleEl.title = this.repo ?? "";
+    this.followBtn.style.display = this.repoOverride !== null ? "" : "none";
+  }
+
+  /**
+   * 「换仓…」：系统选目录对话框 → 手选仓压过会话工作目录。取消 = 什么都不变。
+   * 买到：不开一个会话也能看任意本机仓。**买不到**：远端机上的仓（代码不在本机，索引不到）；
+   * 手选期间从别处点「在全景高亮本会话改动」，高亮会对着手选的仓算
+   * （不在本仓的文件会在图例里如实数成「不在本仓」，不会假装命中）。
+   */
+  private async pickRepo(): Promise<void> {
+    let picked: string | string[] | null;
+    try {
+      picked = await openDialog({ directory: true, multiple: false, title: "选一个本机仓看代码全景" });
+    } catch (e) {
+      showActionFailureToast("打不开选目录对话框", String(e));
+      return;
+    }
+    if (typeof picked !== "string" || picked === "") return;
+    this.repoOverride = picked;
+    await this.evaluateRepo();
+  }
+
+  /** 「跟随会话」：撤掉手选，回到活跃会话的工作目录。 */
+  private async followSession(): Promise<void> {
+    this.repoOverride = null;
+    await this.evaluateRepo();
   }
 
   /** 索引（如需）+ 拉 overview + 算布局 + 适配视口。 */
@@ -377,10 +430,29 @@ export class PanoramaView implements OverlayHandle {
     closeBtn.addEventListener("click", () => this.close());
     bar.appendChild(closeBtn);
 
-    const title = document.createElement("span");
-    title.className = "panorama-title";
-    title.textContent = "代码全景";
-    bar.appendChild(title);
+    this.titleEl = document.createElement("span");
+    this.titleEl.className = "panorama-title";
+    this.titleEl.textContent = "代码全景";
+    bar.appendChild(this.titleEl);
+
+    const pickBtn = document.createElement("button");
+    pickBtn.type = "button";
+    pickBtn.className = "panorama-btn";
+    pickBtn.dataset.pano = "pick-repo";
+    pickBtn.textContent = "换仓…";
+    pickBtn.title = "自己挑一个本机目录看全景（不跟着活跃会话的工作目录走）";
+    pickBtn.addEventListener("click", () => void this.pickRepo());
+    bar.appendChild(pickBtn);
+
+    this.followBtn = document.createElement("button");
+    this.followBtn.type = "button";
+    this.followBtn.className = "panorama-btn";
+    this.followBtn.dataset.pano = "follow-session";
+    this.followBtn.textContent = "跟随会话";
+    this.followBtn.title = "撤掉手选的仓，回到活跃会话的工作目录";
+    this.followBtn.style.display = "none";
+    this.followBtn.addEventListener("click", () => void this.followSession());
+    bar.appendChild(this.followBtn);
 
     this.searchInput = document.createElement("input");
     this.searchInput.type = "search";
