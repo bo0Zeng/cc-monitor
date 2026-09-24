@@ -52,6 +52,17 @@ fn ack_line_cap() -> u64 {
 /// 顺序：`CCM_DIAL_PROXY` → exe 旁（发版包）→ 本机后端自释放的那一份（开发构建内嵌时）。
 /// 三处都没有 ⇒ `Err`，调用方**原样报出去**（`D11`）。
 pub(crate) fn resolve_proxy() -> Result<PathBuf, String> {
+    // 找到一次就记住：每条一次性查询都要拿链路，而「自释放那一份」那条路顺手会放本机 `ccm` 入口
+    // （`resolve_or_extract` 的副作用）—— 那是一次写盘，不该每次查询都来一遍。找不到不记（下次再找，装好了就好了）。
+    static FOUND: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    if let Some(p) = FOUND.get() {
+        return Ok(p.clone());
+    }
+    let p = resolve_proxy_uncached()?;
+    Ok(FOUND.get_or_init(|| p).clone())
+}
+
+fn resolve_proxy_uncached() -> Result<PathBuf, String> {
     use crate::backend::control::local_backend::{self, Resolved};
     if let Some(raw) = std::env::var_os(DIAL_PROXY_ENV) {
         let p = PathBuf::from(raw);
