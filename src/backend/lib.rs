@@ -386,7 +386,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p2s-files-copy-exit-policy**（2026-09-24，第三波 F7a ＋ B2 合并那一拍）：子命令 ＋10 ——
 /// F7a `files-copy` / `files-read-text` / `files-home`，B2 `exit-policy-read` / `exit-policy-set`（两个命令面）；
 /// ＋ B2 行为：常驻后端最后一条流断开时现读 `backend.json` 决定退不退（读到「结束」就自己退）。
-pub const BUILD_ID: &str = "p2s-files-copy-exit-policy";
+///
+/// ★★★ **p2t-commit-upload-dial-v2**（2026-09-24，第三波收尾）：子命令 ＋2（F7c `files-commit-upload`，两个命令面）
+/// ＋ C2 行为：`--dial` 成为界面进程拨 SSH 的唯一代理（stream / capture / forward 三种用法、ack v2、ssh-agent 鉴权）。
+pub const BUILD_ID: &str = "p2t-commit-upload-dial-v2";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
