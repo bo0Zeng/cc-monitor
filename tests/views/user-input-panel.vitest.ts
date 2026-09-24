@@ -34,15 +34,14 @@
  */
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { UserInputPanel } from "../../src/views/user-input-panel";
-import type { UserInputEntry } from "../../src/views/user-input-index";
+import type { UserInputEntry } from "../../src/generated/UserInputEntry";
 
 const HINT = "这一条还没加载出来 —— 上翻到更早的消息之后再点";
 
-const entry = (uuid: string, excerpt: string, i = 0): UserInputEntry => ({
+const entry = (uuid: string, excerpt: string): UserInputEntry => ({
   uuid,
   excerpt,
   timestamp: "2026-09-10T00:00:00.000Z",
-  payloadIndex: i,
 });
 
 interface Fixture {
@@ -123,29 +122,41 @@ describe("K-R45 清单面板：🔴 跳成功了，标记与提示都要跟着�
   });
 });
 
-describe("K-R45 清单面板：换一份清单时，已经标上的那一行不许被顺手抹掉", () => {
-  // ★ 实时那条路每来一句用户输入就调一次 `setEntries`。整表重建会把标记连带清掉 ——
-  //   那是「只加不减」的**镜像形**：一次**假的「减」**（这一行明明还是跳不过去的）。
-  it("追加了新的一句 ⇒ 旧行还是同一个 DOM 节点，标记与提示都还在", () => {
-    f.panel.setEntries([entry("u1", "第一句", 0)]);
+describe("SE1 清单面板：追加一截时，已经标上的那一行不许被顺手抹掉", () => {
+  // ★ 清单从后端**增量**要（从上次的 end 接着要一截）⇒ 新来的走 `appendEntries`。
+  //   整表重建会把标记连带清掉 —— 「只加不减」的**镜像形**：一次假的「减」。
+  it("追加了新的一句 ⇒ 旧行还是同一个 DOM 节点，标记与提示都还在，编号接着往下数", () => {
+    f.panel.setEntries([entry("u1", "第一句")]);
     const first = f.rows()[0];
     first.click(); // 落空 ⇒ 标上
     expect(first.dataset.unjumpable).toBe("1");
 
-    f.panel.setEntries([entry("u1", "第一句", 0), entry("u2", "第二句", 1)]);
+    f.panel.appendEntries([entry("u2", "第二句")]);
 
     expect(f.rows().length).toBe(2);
     expect(f.rows()[0], "旧行被整表重建换成了新节点 ⇒ 标记必然丢").toBe(first);
     expect(f.rows()[0].dataset.unjumpable).toBe("1");
     expect(f.rows()[0].title).toBe(HINT);
     expect(f.rows()[1].textContent).toBe("2. 第二句");
+    expect(f.panel.toggle.textContent).toBe("大纲 · 2");
   });
 
-  it("换成完全不同的一份清单 ⇒ 旧行不许留下（序号与 uuid 都要跟着换）", () => {
+  it("setEntries 换成完全不同的一份（冷启动 / 文件被重写）⇒ 旧行不许留下，序号从 1 起", () => {
     f.panel.setEntries([entry("u1", "第一句"), entry("u2", "第二句")]);
     f.panel.setEntries([entry("n1", "新会话唯一一句")]);
     expect(f.rows().map((r) => r.dataset.inputUuid)).toEqual(["n1"]);
     expect(f.rows()[0].textContent).toBe("1. 新会话唯一一句");
+  });
+
+  it("要不到 ⇒ 清空、灰掉、原因挂在开关的提示上；之后要到了 ⇒ 提示还原", () => {
+    f.panel.setEntries([entry("u1", "第一句")]);
+    f.panel.setUnavailable("本机后端不在");
+    expect(f.rows().length).toBe(0);
+    expect(f.panel.toggle.disabled).toBe(true);
+    expect(f.panel.toggle.title).toContain("本机后端不在");
+    f.panel.setEntries([entry("u1", "第一句")]);
+    expect(f.panel.toggle.disabled).toBe(false);
+    expect(f.panel.toggle.title).toBe("按你的输入跳转");
   });
 });
 

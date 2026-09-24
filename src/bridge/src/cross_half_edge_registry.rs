@@ -176,6 +176,25 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/control/ccm/plan.rs",
         "★★〔`K-R106` 09-13 新增〕上一条的**下半程**：读懂之后它接进**哪一个**会话。         钉的是 `Plan::Attach` 那一行的**整行渲染**，而承重的不只是 `tmux attach` 四个字，         还有 `=名:` 那个**精确匹配形** —— 裸 `-t <名>` 按「精确名 → 名字开头 → glob」解析，         会打到兄弟会话上（`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 实测）。         ⇒ 「接进刚建的那个会话」这句话的后半截只有读后端源码才验得了。",
     ),
+    (
+        "monitor→backend",
+        "tests/bridge/session_outline_tests.rs",
+        "src/backend/observe/user_inputs.rs",
+        "★〔SE1 · `设计/10 §2.2b ⑥` 09-24 新增〕**大纲清单的线上词两侧同形** —— \
+         `session_outline::tests::the_wire_words_match_what_the_backend_source_writes`。\
+         头尾的 `kind`（`user_inputs` / `user_inputs_end`）与行上的三个键，写侧是后端 \
+         `write_user_inputs` 的 `writeln!` 与 `UserInputRow`，读侧是 monitor 的 \
+         `parse_user_inputs_output` 与 `UserInputEntry`。失效方向**很安静**：后端改一个字， \
+         monitor 把每一份真清单都认成「老后端」⇒ 大纲永远灰着，而两侧各自的判据全绿。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/session_outline_tests.rs",
+        "src/backend/observe/history_query.rs",
+        "★〔SE1 09-24 新增〕上一条的**argv 那一半**：monitor 的 `user_inputs_argv` 发的 \
+         子命令名与 `--from`，必须是后端 `history_query::run` 那条臂与 \
+         `parse_user_inputs_args` 真认的那两个字面量 —— 两处各写一份，只有同时读两侧才验得了。",
+    ),
     // ── backend → monitor（2 条）：backend 的判据去读 monitor ────────────────────
     (
         "backend→monitor",

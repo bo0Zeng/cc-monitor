@@ -238,3 +238,16 @@ npx vitest run tests/scale2-height-truth.vitest.ts             # 12 格：证明
 本轮动手**前**（12 passed）与动手**后**（12 passed）各跑一次，两次都绿。
 本轮往 `src/cards/index.ts` 加的全是纯计数（三处整数加法），
 `createElement` / `textContent` / `innerHTML` / `className` 一个字都没碰。
+
+---
+
+## 6. 〔2026-09-24 · SE1〕第三个账本换了来源（本节只追加）
+
+- **§0 引的那段原话已随字段一起删掉**：`Tab.userInputs` 那个旁路账本与它的头注在 SE1 删了
+  （`设计/10 §2.2b ⑤`）。大纲的清单改问后端要（`--list-user-inputs`），前端只剩
+  `views/outline-source.ts::OutlineSource`（记 `end` 与已列 uuid）＋ 面板上那几行 80 字摘要。
+  §0 的判词（「文本前端零处留存」不成立，破口在 tool_result）与这个账本无关，**不受影响**。
+- **快照字段名 `userInputs` 没改**，读数换成 `tab.outline.count`（= 后端清单的条数）。
+  丙那组判据跟着改：收纳的旧行**不再**让它涨（它只看后端说什么）⇒ 「再喂两条」那一格
+  `6 / 5 / 3` → `6 / 4 / 3`；三个数仍互不相同（接错线照样当场红）。
+- `S6-mutations.sh` 的 M6 锚跟着换成 `userInputs: tab.outline.count,`；**8 刀仍 8 刀全红**（SE1 现打）。

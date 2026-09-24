@@ -23,5 +23,7 @@ pub mod accounts_query;
 pub(crate) mod fs;
 pub mod history_query;
 pub mod search_query;
+// 〔SE1〕「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
 pub(crate) mod turn_detect;
+pub(crate) mod user_inputs;
 pub mod watcher;
