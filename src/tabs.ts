@@ -119,6 +119,7 @@ export {
 } from "./tab-drop";
 export type { DropTarget, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
+import { TabStore } from "./tab-store";
 import {
   abortRunningAgents,
   noteAgents,
@@ -198,87 +199,35 @@ function branchRecordCount(folder: BranchFolder): number {
 }
 
 export class TabManager {
-  private tabs = new Map<string, Tab>();
-  /** 按插入顺序的 sessionId 数组，与 this.tabs.keys() 顺序一致但避免每次 Array.from */
-  private orderedIds: string[] = [];
   /**
-   * 〔步 17·C · 2026-09-21〕**盘上那份顺序（`tabBar.order`），启动读一次之后留着。**
-   *
-   * 🔴 **它是「一份意图」，不是一次性的动作** —— 这就是那个 no-op 的修法所在
-   *   （成因与现打见 `loadOrder` 头注）。tab 是**陆续**到的，所以这份顺序必须活过
-   *   整个启动窗口期，每来一个 tab 就再应用一次（`placeInOrder` → `applySavedOrder`）。
-   * ⚠ 里面**允许有今天不存在的 sid**（被删的 / 还没宣告到的）——
-   *   它们进不了 `orderedIds`（`applySavedOrder` 按 `present` 筛），所以不会造出假 tab；
-   *   上界由 `ORDER_CAP` 在读的那一侧管。
-   * ⚠ 用户一拖，盘上那份就**过期**了 ⇒ `persistOrder` 落盘的同时把这里同步成新的那张，
-   *   否则后到的 tab 会拿一份旧顺序把用户刚拖的一下撤销。
+   * 〔U2 · ①〕**会话状态账住 `tab-store.ts`** —— tab 集合 · 顺序 · 当前 tab · 早到信号暂存 · 账号快照 ·
+   * 任务快照，外加「变了」那唯一一份订阅。本类与拆出去的几份都读写同一个实例。
    */
-  private savedOrder: string[] = [];
+  private readonly store = new TabStore();
+
+  // ── 〔U2〕判据探针：这几样拆之前是本类的私有字段，`tabs.vitest.ts` 按名字直读（`activeId` 还直写）。
+  //    值住 store，这里只是同名别名；`protected` 只为不让 `noUnusedLocals` 把「只被判据读」的访问器当死代码。
+  protected get tabs(): Map<string, Tab> {
+    return this.store.tabs;
+  }
+  protected get activeId(): string | null {
+    return this.store.activeId;
+  }
+  protected set activeId(v: string | null) {
+    this.store.activeId = v;
+  }
+  protected get orderedIds(): string[] {
+    return this.store.orderedIds;
+  }
+  protected get pendingArchive(): Set<string> {
+    return this.store.pendingArchive;
+  }
+  protected get pendingTmuxIdle(): Set<string> {
+    return this.store.pendingTmuxIdle;
+  }
+
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   private tabButtons = new Map<string, TabButtonRefs>();
-  /** A3：远端 live 探测的会话账号归属（sid → 探测行）。main.ts 定期喂。 */
-  /**
-   * E73：sid → **attach 进去对人有没有意义**（来自 pidfile 的 `attachable`，经后端帧透传）。
-   *
-   * 只记**显式 false** 的那些。缺席 = 可以 —— 存量会话与旧后端一律照旧，零迁移。
-   *
-   * # 为什么单独一张表而不是 `Tab` 的字段
-   *
-   * 加字段要动 `ensureTab` 的位置参数列车（R03 刚把那种形状收拾过一轮），而这就是
-   * 「某个 sid 的一条会话级元信息」—— 与 `sessionAccountsByS` 同形，放这儿更合身。
-   */
-  private notAttachableSids = new Set<string>();
-
-  private sessionAccountsByS = new Map<string, SessionAccount>();
-  /** A3：账号名 → 邮箱（徽章 tooltip 用）。 */
-  private accountEmailByName = new Map<string, string>();
-  /** A4：sid → lastAccount（history-metadata）。徽章源②：live 探测不到时兜底。main.ts 定期喂。 */
-  private accountLastByS = new Map<string, string>();
-  /** A4/§7：账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
-  private accountReadyOrigins = new Set<string>();
-  /** account-ux U5：origin → 当前账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。
-   *  **只放 isSelectable 的账号**（main.ts 侧过滤）：不可选的当前账号对齐必失败，指着它说"你不一致"
-   *  是假信息，且与 U1 `resolveFollowAccount`「不可选就下沉」的语义保持一致。 */
-  private currentByOrigin = new Map<string, string>();
-  private activeId: string | null = null;
-  /**
-   * v2.2 (issue #12): 当前是否在 batch 模式（启动重放 jsonl-batch 期间）。
-   * batch 模式中 ensureTab 创建的新 Tab 也要把 BranchFolder 设成 batch。
-   *
-   * P5.2 B 重构：inPrependMode / pendingPrependFragment / source flag 全删 —— 前端
-   * 改用 RecordTimeline 按 seq binary-insert，DOM 位置由 seq 决定不受 emit 顺序影响。
-   * 仍保留 inBatch 是因为它控两件事：(1) lazy hljs 注册 (2) BranchFolder.batchMode。
-   */
-  private inBatch = false;
-  /**
-   * issue #11: 每个 sid 当前 task 列表（由 ensureTab 拉初次快照 + task-update 事件
-   * 更新）。切 Tab 时把对应 sid 的快照喂给全局 TasksPanel。
-   */
-  private tasksBySid = new Map<string, TaskEntry[]>();
-  /**
-   * issue #19：归档信号（session-ended）可能早于 replay 把该 sid 的 Tab 建出来。
-   * archiveTab 时若 Tab 还不存在，记进这里；ensureTab 建 Tab 时回查、落实归档。
-   *
-   * issue #20 后 session-ended 已改进 events.ts 的 queue 与行同序处理（否则补发
-   * 归档会被后续 drain 的远端行 un-archive 吃掉），正常路径下 ended 不会再早于
-   * 行到达——本集合降级为防御层（§ 17a 双层防御），保留兜“ended 先于该 sid 任何
-   * 行”的异常序。
-   */
-  private pendingArchive = new Set<string>();
-  /**
-   * audit-fixes F03.2：灰灯（idle-tmux）信号早于 Tab 建出时暂存（同 pendingArchive 模式）。
-   * F5 frontend-ready 重放会重发 SESSION_IDLE，可能早于骨架 remote-added 建 Tab——不暂存则
-   * markTmuxIdle no-op、灰灯丢。ensureTab 建 Tab 时落实（除非同时 pendingArchive→归档优先）。
-   */
-  private pendingTmuxIdle = new Set<string>();
-  /**
-   * issue #23：红绿灯信号早于 Tab 建出来时暂存（同 pendingArchive 的时序竞争模式：
-   * session-activity 同步派发，而建 Tab 的行走异步 queue/drain）。ensureTab 时落实。
-   */
-  private pendingActivity = new Map<
-    string,
-    { status: string; waitingFor: string | null }
-  >();
   /**
    * v2.4 issue #2：用户在终端真敲键 → 自动切到对应 Tab 的开关。
    * 默认 true，从 config.json (autoFollowUserActive) 加载。
@@ -410,28 +359,30 @@ export class TabManager {
   constructor(
     private barEl: HTMLElement,
     private streamRootEl: HTMLElement,
-    /** 任何 Tab 增/减/状态变化后回调；宿主用它驱动状态栏等外部 UI */
-    private onTabsChanged?: (summary: TabsSummary) => void,
+    /** 任何 Tab 增/减/状态变化后回调；宿主用它驱动状态栏等外部 UI。〔U2〕它是 store 那一份订阅的第一个订阅者。 */
+    onTabsChanged?: (summary: TabsSummary) => void,
     /** issue #11: 全局 TasksPanel，切 Tab / 收事件时由 TabManager 喂数据 */
     private tasksPanel?: TasksPanel,
     /** issue #23: 全局 AgentsPanel（subagent 列表 + 各自状态灯），喂数方式同 tasksPanel */
     private agentsPanel?: AgentsPanel,
-  ) {}
+  ) {
+    if (onTabsChanged) this.store.subscribe(onTabsChanged);
+  }
 
   /**
    * 〔U2 · ⑤〕会话动作住 `tab-session-actions.ts`（tab 层唯一的 IPC 出口）。它只要宿主给四样读数 / 回调。
    */
   private readonly actions = new TabSessionActions({
-    tab: (sid) => this.tabs.get(sid),
+    tab: (sid) => this.store.tabs.get(sid),
     isAttachable: (sid) => this.isAttachable(sid),
-    sessionAccount: (sid) => this.sessionAccountsByS.get(sid),
+    sessionAccount: (sid) => this.store.sessionAccountsByS.get(sid),
     refreshAccountBadgeFor: (sid) => this.refreshAccountBadgeFor(sid),
   });
 
   /** 〔U2 · ⑤〕右键菜单里放哪几项住 `tab-menu.ts`；点下去做事直接交给上面那份 `actions`。 */
   private readonly menu = new TabMenu(
     {
-      tab: (sid) => this.tabs.get(sid),
+      tab: (sid) => this.store.tabs.get(sid),
       isAttachable: (sid) => this.isAttachable(sid),
       collectionsLoaded: () => this.collectionsLoaded,
       collections: () => this.collections,
@@ -488,30 +439,19 @@ export class TabManager {
     return this.actions.openInNewWindow(sid, screenX, screenY);
   }
 
-  private notifyChanged(): void {
-    if (!this.onTabsChanged) return;
-    let live = 0;
-    let archived = 0;
-    for (const t of this.tabs.values()) {
-      if (t.status === "archived") archived += 1;
-      else live += 1;
-    }
-    this.onTabsChanged({ total: this.tabs.size, live, archived });
-  }
-
   /**
    * v2.2 (issue #12): 启动重放（jsonl-batch）开始时调一次。所有现有 Tab 的
    * BranchFolder 切到 batch 模式 —— 后续 recordAdded 只 push 不算 mainBranch。
-   * 重放期 ensureTab 新创建的 Tab 也会自动进 batch（看 this.inBatch）。
+   * 重放期 ensureTab 新创建的 Tab 也会自动进 batch（看 this.store.inBatch）。
    *
    * P5.2 B 重构：删了 inPrependMode / pendingToolGroup 清零 —— 前端用 timeline
    * 按 seq 排序，tool-group 合并改后处理（看左邻居），不再需要 chunk 边界协调。
    */
   onBatchStart(): void {
-    this.inBatch = true;
+    this.store.inBatch = true;
     // P5.5 B 重构：lazy 通过 ctx.lazy 传到 renderMarkdown —— onLine 构造 ctx 时
-    // 用 this.inBatch 设置。不再依赖 setRenderLazyMode 全局开关。
-    for (const t of this.tabs.values()) {
+    // 用 this.store.inBatch 设置。不再依赖 setRenderLazyMode 全局开关。
+    for (const t of this.store.tabs.values()) {
       t.branchFolder.setBatchMode(true);
       // Batch13-F40a:deferMode 已退役——重放期旧记录根本不建卡(收纳进 tab.window),
       // "视口上方插入"次数为 0,比"延后到一帧"更强(INVARIANTS §21.3)。
@@ -523,8 +463,8 @@ export class TabManager {
    * 然后切回 live 模式。后续真实时新消息按 timeline 路径走。
    */
   onBatchEnd(): void {
-    this.inBatch = false;
-    for (const t of this.tabs.values()) {
+    this.store.inBatch = false;
+    for (const t of this.store.tabs.values()) {
       // F40b R-1:先把批期缓冲的中部插入一次挂载(内含 unwrapAll/rebuildNow),
       // 再走既有 flushPending/reconcile
       this.flushMidBatchBuffer(t);
@@ -543,7 +483,7 @@ export class TabManager {
     }
     // Batch13-F40a:active tab 不足一屏(或还是 virgin)→ 立即补物化到可见;
     // 其余 virgin 后台 tab 进空闲物化队列(逐个串行,避免并发建卡风暴)。
-    const active = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    const active = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (active && active.window.pendingCount > 0) {
       // 步 3：「够不够一屏」改读**真实布局**（见 `contentReachesBottom` 的头注）。
       const notFilled = !this.contentReachesBottom(active);
@@ -554,10 +494,10 @@ export class TabManager {
     }
     // D 审计 S-5:archived 死会话不进后台物化队列(纯浪费;switchTo 命中 virgin
     // 已有同步物化兜底)。
-    this.materializeQueue = [...this.tabs.entries()]
+    this.materializeQueue = [...this.store.tabs.entries()]
       .filter(
         ([sid, t]) =>
-          sid !== this.activeId &&
+          sid !== this.store.activeId &&
           t.status !== "archived" &&
           t.window.floorSeq === null &&
           t.window.pendingCount > 0,
@@ -728,7 +668,7 @@ export class TabManager {
     void commands
       .read_session_index({ origin, jsonlPath, fromOffset: 0 })
       .then(async (res) => {
-        if (this.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
+        if (this.store.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
         tab.skeletonFetch = "done";
         const got = ledgerFromIndex(res);
         if (!got.ok) {
@@ -741,7 +681,7 @@ export class TabManager {
           const more = await commands.read_session_index({ origin, jsonlPath, fromOffset: got.end });
           if (more.available) got.ledger.append(more.rows);
         }
-        if (this.tabs.get(tab.sessionId) !== tab) return;
+        if (this.store.tabs.get(tab.sessionId) !== tab) return;
         this.attachSkeleton(tab, got.ledger);
       })
       .catch((e: unknown) => {
@@ -789,7 +729,7 @@ export class TabManager {
     }
     tab.skeleton = view;
     this.updateSentinel(tab);
-    if (this.activeId === tab.sessionId) view.fillVisible();
+    if (this.store.activeId === tab.sessionId) view.fillVisible();
     // 〔U3b · `设计/10` 步 8〕骨架接上 ⇒ 正文不必再驻留：丢掉的那些滚到时按偏移要回来。
     // ① 前端账本只留离已渲染尾巴最近的一批（第一次上翻不用等 IPC）；
     // ② monitor 的重放缓冲只留尾巴（F5 之后也只重放尾巴，其余同样按偏移要）。
@@ -843,7 +783,7 @@ export class TabManager {
           lineCount: b - a,
         })
         .then((payloads) => {
-          if (this.tabs.get(tab.sessionId) !== tab) return;
+          if (this.store.tabs.get(tab.sessionId) !== tab) return;
           // 没见过的 ⇒ 走 `onLine` 全套（旁路记账、去重、门控）；
           // 见过的 ⇒ 旁路账早记过了、去重会把它拒掉 ⇒ 只建卡（meta 那几类照旧不建）。
           const fresh = payloads.filter((p) => !tab.seenSeqs.has(p.seq));
@@ -867,13 +807,13 @@ export class TabManager {
    */
   private feedHistoryRows(tab: Tab, payloads: JsonlLinePayload[]): void {
     if (payloads.length === 0) return;
-    const wasBatch = this.inBatch;
-    this.inBatch = true;
+    const wasBatch = this.store.inBatch;
+    this.store.inBatch = true;
     tab.branchFolder.setBatchMode(true);
     try {
       for (const p of payloads) this.onLine(p);
     } finally {
-      this.inBatch = wasBatch;
+      this.store.inBatch = wasBatch;
       if (!wasBatch) {
         this.flushMidBatchBuffer(tab);
         tab.branchFolder.flushPending();
@@ -933,8 +873,8 @@ export class TabManager {
       this.renderingFill = false;
     }
     requestAnimationFrame(() => {
-      if (this.activeId !== tab.sessionId) return;
-      const t = this.tabs.get(tab.sessionId);
+      if (this.store.activeId !== tab.sessionId) return;
+      const t = this.store.tabs.get(tab.sessionId);
       if (!t || t.window.pendingCount === 0) return;
       const e = t.streamEl;
       if (e.scrollTop <= TabManager.TOP_TRIGGER_PX || e.scrollHeight - e.clientHeight <= 1) {
@@ -952,7 +892,7 @@ export class TabManager {
    * `branchRecordCount` 的头注与 `tests/evidence/S6-memory-ledger.md` 里。
    */
   debugSnapshot(): string {
-    const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (!tab) return JSON.stringify({ active: null });
     const el = tab.streamEl;
     const statusText = document.getElementById("status-bar")?.textContent ?? "";
@@ -1020,10 +960,10 @@ export class TabManager {
     this.materializeScheduled = true;
     const run = (): void => {
       this.materializeScheduled = false;
-      const tab = this.tabs.get(sid);
+      const tab = this.store.tabs.get(sid);
       // 只物化仍是 virgin 的(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
       // 账本继续收纳,批结束会重新排队。
-      if (tab && !this.inBatch && tab.window.floorSeq === null) {
+      if (tab && !this.store.inBatch && tab.window.floorSeq === null) {
         this.materializeTail(tab);
       }
       this.scheduleIdleMaterialize();
@@ -1084,7 +1024,7 @@ export class TabManager {
 
     // Batch14-F42：turn-end 系统通知。放在双重去重之后（重投行不重报）、
     // 渲染管线之前（通知与渲染/收纳互相独立）。批量重放由 inBatch 短路。
-    turnEndNotifier.observe(payload.session_id, tab.title, payload, this.inBatch);
+    turnEndNotifier.observe(payload.session_id, tab.title, payload, this.store.inBatch);
 
     // issue #23（第二增量）：配对 agent 工具调用，喂 AgentsPanel
     this.trackAgents(tab, payload.message);
@@ -1107,7 +1047,7 @@ export class TabManager {
         this.userActive(sid);
         this.refreshOutline(tab); // 〔SE1〕真用户输入上屏 ⇒ 大纲要新的一截
       },
-      observeForLazyEnhance: this.inBatch,
+      observeForLazyEnhance: this.store.inBatch,
       // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
       // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
       // ⇒ 实时 tab 上没有入口。按钮本体是共享组件（off-main 的呈现区分也在那里）。
@@ -1139,13 +1079,13 @@ export class TabManager {
     // D 审计 C-1(近 virgin 竞态):批后 rIC 队列还没轮到该 tab 就来了真 live 行——
     // 若直接 pinFloor(新行 seq),账本里整段历史会被钉死滞留(F40a 无再物化入口)。
     // 先物化尾段(takeTail 顺带钉 floor),live 行(seq 恒更新)再照常 admit。
-    if (tab.window.floorSeq === null && !this.inBatch && tab.window.pendingCount > 0) {
+    if (tab.window.floorSeq === null && !this.store.inBatch && tab.window.pendingCount > 0) {
       this.materializeTail(tab);
     }
     const floor = tab.window.floorSeq;
     let render: boolean;
     if (floor === null) {
-      render = !this.inBatch || this.activeId === tab.sessionId;
+      render = !this.store.inBatch || this.store.activeId === tab.sessionId;
       if (render) tab.window.pinFloor(payload.seq);
     } else {
       render = tab.window.admit(payload.seq);
@@ -1156,10 +1096,10 @@ export class TabManager {
     // ——大增量批的老块)→ 缓冲,onBatchEnd 一次挂载,消逐帧上方插入(§21)。
     // 离线期真新消息:unread 照计(粒度=记录,与逐条渲染的 inserted 判定在
     // tool-group 合并上略有偏差,99+ 封顶下可接受)。
-    if (render && this.inBatch && payload.seq < tab.timeline.maxSeq) {
+    if (render && this.store.inBatch && payload.seq < tab.timeline.maxSeq) {
       tab.midBatchBuffer.push(payload);
       // 徽标刷新攒到批末 flush 一次(D 审计:600 条缓冲 = 600 次全 bar 巡检)
-      if (this.activeId !== tab.sessionId) tab.unread += 1;
+      if (this.store.activeId !== tab.sessionId) tab.unread += 1;
       return;
     }
     if (!render) {
@@ -1177,14 +1117,14 @@ export class TabManager {
       toolUseElements: tab.toolUseElements,
       pendingToolResults: tab.pendingToolResults,
       // P5.5：batch 期间走 lazy hljs（代码块占位 + IntersectionObserver 触发再补跑）
-      lazy: this.inBatch,
+      lazy: this.store.inBatch,
     };
     const beforeSize = tab.timeline.size;
     renderContentRecord(payload, ctx, sink);
     const inserted = tab.timeline.size > beforeSize;
 
     // unread 计数：只有真新 entry 入 timeline 才算（tool-group 合并到旧 group 不算）
-    if (inserted && this.activeId !== tab.sessionId) {
+    if (inserted && this.store.activeId !== tab.sessionId) {
       tab.unread += 1;
       // ★ F15：**帧末合批**，不是逐行整刷。
       // 这里是 live 路上每来一行都会走到的地方，而 `refreshTabBar` 是整条 bar 的重刷；
@@ -1202,7 +1142,7 @@ export class TabManager {
    */
   private noteOutlineLine(tab: Tab): void {
     tab.outline.markStale();
-    if (!tab.outline.everFetched && !this.inBatch && this.activeId === tab.sessionId) {
+    if (!tab.outline.everFetched && !this.store.inBatch && this.store.activeId === tab.sessionId) {
       void tab.outline.refresh();
     }
   }
@@ -1212,7 +1152,7 @@ export class TabManager {
    * 批期不要 —— 批结束时 active tab 统一要一次，后台 tab 切进来再要（`needsFetch`）。
    */
   private refreshOutline(tab: Tab): void {
-    if (this.inBatch) return;
+    if (this.store.inBatch) return;
     void tab.outline.refresh();
   }
 
@@ -1223,81 +1163,6 @@ export class TabManager {
    * 首条行回填；pendingArchive/pendingActivity 落实、batch 模式继承均沿用。
    * 已存在同 sid Tab 时为 no-op（幂等，重连重发 session_added 无害）。
    */
-  /**
-   * Batch7-F24 树状排序：bg tab 插到同 (cwd, origin) 交互宿主（及其既有 bg 子项）
-   * 之后；无宿主则追加末尾。交互 tab 创建时反向重锚——把已存在的同 (cwd, origin)
-   * bg tab 拉到自己身后（骨架清单里 bg 可能先于宿主出现）。父子判定 v1 = cwd
-   * 归属（pidfile 无 parentSessionId 字段，精确父子留 backlog）。
-   */
-  /**
-   * 〔步 17·C · 2026-09-21〕新 tab 落位 = **先按树摆（`placeInTree`），再按盘上那份顺序摆**。
-   *
-   * 🔴 **这一层是那个 no-op 的第二半修法**：tab 是陆续到的，而 `loadOrder` 只跑一次
-   *   ⇒ 只在 `loadOrder` 里应用一次，**后到的每一个 tab 都会落到末尾**，
-   *   盘上给它留的那一格永远用不上（现打：会话到齐后顺序 == 到达序）。
-   * ⚠ 包成两层而不是往 `placeInTree` 里塞一句：它有 3 个 `return` 出口，
-   *   逐个补一句就是下一次「补漏了一个出口」。
-   * ⚠ 这里**只动 `orderedIds`、不碰 DOM** —— 拖拽期间的重画抑制（★ 6d）由
-   *   `refreshTabBar` 那道守卫管，与本函数无关（今天 `placeInTree` 也是这个形状）。
-   */
-  private placeInOrder(tab: Tab): void {
-    this.placeInTree(tab);
-    this.applySavedOrder();
-  }
-
-  private placeInTree(tab: Tab): void {
-    const isBg = tab.kind !== null && tab.kind !== "interactive";
-    const sameHost = (t: Tab | undefined): boolean =>
-      !!t && t.cwd !== null && t.cwd === tab.cwd && t.origin === tab.origin;
-    if (isBg && tab.cwd) {
-      // 找宿主（交互 + 同 cwd/origin）——插到宿主连同其已有 bg 子串之后
-      for (let i = 0; i < this.orderedIds.length; i++) {
-        const t = this.tabs.get(this.orderedIds[i]);
-        if (sameHost(t) && (t!.kind === null || t!.kind === "interactive")) {
-          let j = i + 1;
-          while (j < this.orderedIds.length) {
-            const c = this.tabs.get(this.orderedIds[j]);
-            if (sameHost(c) && c!.kind !== null && c!.kind !== "interactive") j++;
-            else break;
-          }
-          this.orderedIds.splice(j, 0, tab.sessionId);
-          return;
-        }
-      }
-      this.orderedIds.push(tab.sessionId);
-      return;
-    }
-    // 交互 tab：追加，再把**真孤儿** bg 子项拉到身后（保持原相对序）。
-    // 已紧跟在先到宿主（同 cwd/origin 交互 tab）之后的 bg 子串不动——
-    // 计划契约"多宿主取第一个"（审计 D-R3：第二个同 cwd 交互会话不许搬走
-    // 第一个宿主已挂好的子树）。
-    this.orderedIds.push(tab.sessionId);
-    if (tab.cwd) {
-      const orphans: string[] = [];
-      let anchored = false; // 当前扫描位置是否处于"sameHost 宿主的 bg 子串"内
-      for (const sid of this.orderedIds) {
-        if (sid === tab.sessionId) continue;
-        const t = this.tabs.get(sid);
-        const isBg = !!t && t.kind !== null && t.kind !== "interactive";
-        if (!isBg) {
-          anchored = sameHost(t) && (t!.kind === null || t!.kind === "interactive");
-          continue;
-        }
-        if (sameHost(t)) {
-          if (!anchored) orphans.push(sid);
-          // anchored 保持——宿主的 bg 子串延续
-        } else {
-          anchored = false; // 异族 bg 打断子串
-        }
-      }
-      if (orphans.length) {
-        this.orderedIds = this.orderedIds.filter((sid) => !orphans.includes(sid));
-        const at = this.orderedIds.indexOf(tab.sessionId) + 1;
-        this.orderedIds.splice(at, 0, ...orphans);
-      }
-    }
-  }
-
   createSkeletonTab(
     sessionId: string,
     cwd: string | null,
@@ -1307,8 +1172,8 @@ export class TabManager {
     // E73：`null` = 没说（旧 backend / 存量会话）= 视为可以。只有显式 `false` 才记账。
     attachable: boolean | null = null,
   ): void {
-    if (attachable === false) this.notAttachableSids.add(sessionId);
-    else this.notAttachableSids.delete(sessionId);
+    if (attachable === false) this.store.notAttachableSids.add(sessionId);
+    else this.store.notAttachableSids.delete(sessionId);
     this.ensureTab(sessionId, cwd, "", Number.MAX_SAFE_INTEGER, origin, kind, name);
   }
 
@@ -1321,12 +1186,12 @@ export class TabManager {
    *（源头是 pidfile 的同名布尔，契约见 `src/doc/IPC-PROTOCOL.md` §9.3）。
    */
   isAttachable(sid: string): boolean {
-    return !this.notAttachableSids.has(sid);
+    return !this.store.notAttachableSids.has(sid);
   }
 
   /** Batch5-F19：启动 active 选择用（last-active 是否已有 tab）。 */
   hasTab(sessionId: string): boolean {
-    return this.tabs.has(sessionId);
+    return this.store.tabs.has(sessionId);
   }
 
   /**
@@ -1335,7 +1200,7 @@ export class TabManager {
    * 本地 code-picture 索引不到，全景侧据此显式提示不索引）。**additive getter，只读，不改既有逻辑。**
    */
   activeRepoInfo(): { cwd: string; origin: string | null } | null {
-    const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (!tab || !tab.cwd) return null;
     return { cwd: tab.cwd, origin: tab.origin };
   }
@@ -1348,7 +1213,7 @@ export class TabManager {
   touchedFilesFor(
     sid: string,
   ): { cwd: string; origin: null; files: string[] } | null {
-    const tab = this.tabs.get(sid);
+    const tab = this.store.tabs.get(sid);
     if (!tab || !tab.cwd || tab.origin !== null) return null;
     return { cwd: tab.cwd, origin: null, files: [...tab.touchedFiles] };
   }
@@ -1369,16 +1234,16 @@ export class TabManager {
     readyOrigins: Set<string> = new Set(),
     currentByOrigin: Map<string, string> = new Map(),
   ): void {
-    this.sessionAccountsByS = new Map();
+    this.store.sessionAccountsByS = new Map();
     for (const r of rows) {
-      if (r.sessionId) this.sessionAccountsByS.set(r.sessionId, r);
+      if (r.sessionId) this.store.sessionAccountsByS.set(r.sessionId, r);
     }
-    this.accountEmailByName = emailByName;
-    this.accountLastByS = lastAccountByS;
-    this.accountReadyOrigins = readyOrigins;
-    this.currentByOrigin = currentByOrigin;
+    this.store.accountEmailByName = emailByName;
+    this.store.accountLastByS = lastAccountByS;
+    this.store.accountReadyOrigins = readyOrigins;
+    this.store.currentByOrigin = currentByOrigin;
     for (const [sid, refs] of this.tabButtons) {
-      const tab = this.tabs.get(sid);
+      const tab = this.store.tabs.get(sid);
       if (tab) this.updateAccountBadge(refs, sid, tab);
     }
   }
@@ -1398,19 +1263,19 @@ export class TabManager {
       refs.acctBadge.className = "tab-acct-badge";
       refs.acctBadge.style.display = "none";
     };
-    if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) return hide();
+    if (!shouldShowAccountBadge(tab.origin, this.store.accountReadyOrigins)) return hide();
     const b = sessionBadge(
       sid,
       tab.origin,
-      this.sessionAccountsByS,
-      this.accountEmailByName,
-      this.accountLastByS,
+      this.store.sessionAccountsByS,
+      this.store.accountEmailByName,
+      this.store.accountLastByS,
     );
     if (!b || !b.account) return hide(); // 未知账号（源③）→ 退 hover；顺带把 b.account 窄化为 string
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
     refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost: b.source === "last" }));
-    const current = tab.origin ? this.currentByOrigin.get(tab.origin) ?? null : null;
+    const current = tab.origin ? this.store.currentByOrigin.get(tab.origin) ?? null : null;
     const mismatch = detectAccountMismatch(b.account, current);
     refs.acctBadge.title = mismatch ? `${b.tooltip} · 与当前账号「${current}」不一致` : b.tooltip;
     refs.acctBadge.style.display = "";
@@ -1418,7 +1283,7 @@ export class TabManager {
 
   snapshotSessions(): GridSessionSnapshot[] {
     const out: GridSessionSnapshot[] = [];
-    for (const tab of this.tabs.values()) {
+    for (const tab of this.store.tabs.values()) {
       let running = 0;
       for (const a of tab.agents.values()) {
         if (a.status === "running") running += 1;
@@ -1440,7 +1305,7 @@ export class TabManager {
             : null,
         unread: tab.unread,
         kind: tab.kind,
-        account: this.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
+        account: this.store.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
       });
     }
     return out;
@@ -1461,7 +1326,7 @@ export class TabManager {
       account: s.account,
       mismatch: detectAccountMismatch(
         s.account,
-        s.origin ? this.currentByOrigin.get(s.origin) ?? null : null,
+        s.origin ? this.store.currentByOrigin.get(s.origin) ?? null : null,
       ),
     }));
     return JSON.stringify(sessions);
@@ -1473,7 +1338,7 @@ export class TabManager {
    * 未知 sid → null（选中会话恰好消失时调用方据此清选中）。
    */
   peekSession(sessionId: string): SessionPeek | null {
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
     const agents = [...tab.agents.values()]
       .map((a) => ({ label: a.label, status: a.status }))
@@ -1511,7 +1376,7 @@ export class TabManager {
     kind: string | null = null,
     bgName: string | null = null,
   ): Tab {
-    let tab = this.tabs.get(sessionId);
+    let tab = this.store.tabs.get(sessionId);
     if (tab) {
       // SSH 重连：远端会话掉线时被 flush 归档过，现在又收到它的行 = backend 在重放 = 会话仍
       // 活着 → 复活成 live。必须放在 ensureTab 里（在 onLine 的 seq 去重 return 之前），否则整段
@@ -1541,9 +1406,9 @@ export class TabManager {
         tab.kind = "interactive";
         tab.bgName = null;
         tab.title = this.computeTitle(tab);
-        const i = this.orderedIds.indexOf(sessionId);
-        if (i >= 0) this.orderedIds.splice(i, 1);
-        this.placeInOrder(tab);
+        const i = this.store.orderedIds.indexOf(sessionId);
+        if (i >= 0) this.store.orderedIds.splice(i, 1);
+        this.store.placeInOrder(tab);
         this.refreshTabBar();
       }
       // Batch5-F18：骨架 Tab（无行创建）的 parentPath 为空——首条带路径的行回填，
@@ -1584,7 +1449,7 @@ export class TabManager {
     const inputsPanel = new UserInputPanel({
       // 〔`设计/10` 骨架 · 子步 4〕骨架接上之后，「还没加载」的那条先按 uuid→seq 物化出来再跳。
       jumpTo: (uuid) => {
-        const sk = this.tabs.get(sessionId)?.skeleton;
+        const sk = this.store.tabs.get(sessionId)?.skeleton;
         const seq = sk?.ledger.uuidToSeq.get(uuid);
         if (sk && seq !== undefined && sk.isPending(seq)) sk.ensure(seq);
         return revealCard(streamEl, uuid);
@@ -1595,20 +1460,20 @@ export class TabManager {
     this.streamRootEl.appendChild(inputsEl);
     // 〔SE1〕大纲的数据源：路径可能要等首条行回填（骨架 tab），所以每次要的时候现取
     const outline = new OutlineSource(inputsPanel, () => {
-      const t = this.tabs.get(sessionId);
+      const t = this.store.tabs.get(sessionId);
       return t?.parentPath ? { origin: t.origin ?? LOCAL_ORIGIN, jsonlPath: t.parentPath } : null;
     });
     // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
-    if (this.inBatch) {
+    if (this.store.inBatch) {
       branchFolder.setBatchMode(true);
     }
 
     // v2.3.0 issue #11: 异步 fetch 初始 task 快照。task-update 事件路径并行更新
     // tasksBySid，两路收敛到同一份数据；若 sid 是 active 同步推给全局 panel。
     void fetchSessionTasks(sessionId).then((tasks) => {
-      this.tasksBySid.set(sessionId, tasks);
-      if (this.activeId === sessionId) {
+      this.store.tasksBySid.set(sessionId, tasks);
+      if (this.store.activeId === sessionId) {
         this.tasksPanel?.setSession(sessionId, tasks);
       }
     });
@@ -1648,7 +1513,7 @@ export class TabManager {
       inputsPanel,
       inputsEl,
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
-      activity: this.pendingActivity.get(sessionId) ?? null,
+      activity: this.store.pendingActivity.get(sessionId) ?? null,
       tmuxIdle: false, // audit-fixes F03.2：默认非灰；pendingTmuxIdle 在下方落实
       agents: new Map(),
       touchedFiles: new Set(), // F70：会话改动集，onLine 增量累进
@@ -1656,12 +1521,12 @@ export class TabManager {
       latestModel: null,
       latestUsageSeq: -1,
     };
-    this.pendingActivity.delete(sessionId);
+    this.store.pendingActivity.delete(sessionId);
     // F40b:上翻补批触发器(passive 只读滚动位置;handler 内判 active,后台 tab
     // 的程序化滚动/尺寸变化不触发补批)
     const fillHandler = (): void => {
-      if (this.activeId !== sessionId) return;
-      const t = this.tabs.get(sessionId);
+      if (this.store.activeId !== sessionId) return;
+      const t = this.store.tabs.get(sessionId);
       // 〔`设计/10` 骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
       // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
       if (t?.skeleton) {
@@ -1680,8 +1545,8 @@ export class TabManager {
     // ⚠ 三道门都不可少：① 只给 active tab 补（后台 tab 0×0 → 真实尺寸那一跳不是
     // 「用户拉窗口」）；② 账本空了不补；③ 已经满屏了不补（否则每次 RO 都白干一轮）。
     stream.onViewportResize = (): void => {
-      if (this.activeId !== sessionId) return;
-      const t = this.tabs.get(sessionId);
+      if (this.store.activeId !== sessionId) return;
+      const t = this.store.tabs.get(sessionId);
       if (!t || t.window.pendingCount === 0) return;
       // 〔`设计/10` 骨架〕接上了 ⇒ 视口变大露出的是占位，只物化露出来的那段
       if (t.skeleton) {
@@ -1695,18 +1560,18 @@ export class TabManager {
     // issue #19：若该 sid 的归档信号先于本次建 Tab 到达（见 archiveTab），落实归档，
     // 避免重载后已结束会话复活成关不掉的 live Tab。本地 un-archive（上方 origin!==null
     // 那条）不适用，故归档后续 replay 行也不会把它复活。
-    if (this.pendingArchive.delete(sessionId)) {
+    if (this.store.pendingArchive.delete(sessionId)) {
       tab.status = "archived";
       tab.activity = null; // 同 archiveTab：死会话不留陈旧灯/tooltip
-      this.pendingTmuxIdle.delete(sessionId); // 归档优先：真 tmux 没了，灰灯作废
-    } else if (this.pendingTmuxIdle.delete(sessionId)) {
+      this.store.pendingTmuxIdle.delete(sessionId); // 归档优先：真 tmux 没了，灰灯作废
+    } else if (this.store.pendingTmuxIdle.delete(sessionId)) {
       // audit-fixes F03.2：灰灯信号早于建 Tab（F5 重放乱序）→ 落实为 idle-tmux 灰点。
       tab.tmuxIdle = true;
     }
-    this.tabs.set(sessionId, tab);
-    this.placeInOrder(tab);
+    this.store.tabs.set(sessionId, tab);
+    this.store.placeInOrder(tab);
 
-    if (this.activeId === null) {
+    if (this.store.activeId === null) {
       // "auto"：首个 Tab 的激活不是用户手势，不该占用 5s manualOverride 抑制
       // auto-follow（G5 验收 S-1）
       this.switchTo(sessionId, "auto");
@@ -1763,13 +1628,13 @@ export class TabManager {
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
   archiveTab(sessionId: string): void {
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       // issue #19：Tab 还没被 ensureTab 建出来（归档信号早于 replay 行到达）——
       // 记下待归档，建 Tab 时落实。否则这里直接 return 会静默丢弃归档 → 僵尸 live Tab。
-      this.pendingArchive.add(sessionId);
-      this.pendingActivity.delete(sessionId); // issue #23：死会话的暂存灯一并清
-      this.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：归档优先，清暂存灰灯
+      this.store.pendingArchive.add(sessionId);
+      this.store.pendingActivity.delete(sessionId); // issue #23：死会话的暂存灯一并清
+      this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：归档优先，清暂存灰灯
       return;
     }
     if (tab.status === "archived") return;
@@ -1797,9 +1662,9 @@ export class TabManager {
    * 会话首启、jsonl 行尚未建 Tab）则 no-op：随后 jsonl-batch 建的新 Tab 默认即 live。
    */
   reviveTab(sessionId: string): void {
-    this.pendingArchive.delete(sessionId);
-    this.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：复活即清暂存灰灯
-    const tab = this.tabs.get(sessionId);
+    this.store.pendingArchive.delete(sessionId);
+    this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：复活即清暂存灰灯
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) return;
     if (tab.origin !== null) return; // 仅本地；远端复活走 ensureTab 见行路径
     if (tab.status !== "archived") return;
@@ -1818,9 +1683,9 @@ export class TabManager {
    * （claude 再产活动，非 queue 的次要信号）/ reviveTab（本地）/ archiveTab（tmux 真没了）。
    */
   markTmuxIdle(sessionId: string): void {
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) {
-      this.pendingTmuxIdle.add(sessionId);
+      this.store.pendingTmuxIdle.add(sessionId);
       return;
     }
     if (tab.status === "archived") return; // 归档优先，不回置灰
@@ -1841,10 +1706,10 @@ export class TabManager {
     waitingFor: string | null,
   ): void {
     const act = status === null ? null : { status, waitingFor };
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) {
-      if (act) this.pendingActivity.set(sessionId, act);
-      else this.pendingActivity.delete(sessionId);
+      if (act) this.store.pendingActivity.set(sessionId, act);
+      else this.store.pendingActivity.delete(sessionId);
       return;
     }
     // archived 不更新（审计：心跳清死会话后磁盘残留 PID.json 被重扫会推陈旧
@@ -1876,7 +1741,7 @@ export class TabManager {
    *  批期不即时喂 chip（onBatchEnd 单次 flush）；实时流则即时刷活跃会话。 */
   private trackUsage(tab: Tab, message: unknown, seq: number): void {
     if (!noteUsage(tab, message, seq)) return;
-    if (!this.inBatch && tab.sessionId === this.activeId) {
+    if (!this.store.inBatch && tab.sessionId === this.store.activeId) {
       this.onActiveUsageChanged?.(tab.latestModel, tab.latestPromptTokens);
     }
   }
@@ -1893,7 +1758,7 @@ export class TabManager {
 
   /** agents 变化 → 若是 active Tab 同步给全局面板 */
   private agentsChanged(tab: Tab): void {
-    if (this.activeId === tab.sessionId) {
+    if (this.store.activeId === tab.sessionId) {
       this.agentsPanel?.setSession(tab.sessionId, [...tab.agents.values()]);
     }
   }
@@ -1920,15 +1785,15 @@ export class TabManager {
    * forget 后该 session 不会在下次 F5 刷新时被 event_replay 重放复活。
    */
   closeTab(sessionId: string): void {
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) return;
     if (tab.status !== "archived") return;
 
-    const wasActive = this.activeId === sessionId;
-    const idx = this.orderedIds.indexOf(sessionId);
+    const wasActive = this.store.activeId === sessionId;
+    const idx = this.store.orderedIds.indexOf(sessionId);
     // 优先切到后一个 Tab，否则前一个
     const fallbackId =
-      this.orderedIds[idx + 1] ?? this.orderedIds[idx - 1] ?? null;
+      this.store.orderedIds[idx + 1] ?? this.store.orderedIds[idx - 1] ?? null;
 
     tab.stream.dispose();
     tab.streamEl.remove();
@@ -1951,9 +1816,9 @@ export class TabManager {
     if (tab.fillHandler) tab.streamEl.removeEventListener("scroll", tab.fillHandler);
     tab.timeline.dispose();
     tab.branchFolder.dispose();
-    this.tasksBySid.delete(sessionId);
-    this.tabs.delete(sessionId);
-    if (idx >= 0) this.orderedIds.splice(idx, 1);
+    this.store.tasksBySid.delete(sessionId);
+    this.store.tabs.delete(sessionId);
+    if (idx >= 0) this.store.orderedIds.splice(idx, 1);
     // 〔步 17·B〕**关掉 = 取消固定。**
     //
     // pin 的语义是「别丢」（`§B.3b`），而 `×` 是用户**明确说要丢**。两者撞上时以后者为准 ——
@@ -1973,7 +1838,7 @@ export class TabManager {
       if (fallbackId !== null) {
         this.switchTo(fallbackId);
       } else {
-        this.activeId = null;
+        this.store.activeId = null;
         // issue #11: 关掉最后一个 Tab → panel 进入 null session 状态
         this.tasksPanel?.setSession(null, []);
         this.agentsPanel?.setSession(null, []);
@@ -1991,12 +1856,12 @@ export class TabManager {
    * 快捷键 Ctrl+Tab / Ctrl+Shift+Tab 用。
    */
   cycleActive(delta: 1 | -1): void {
-    const ids = this.orderedIds;
+    const ids = this.store.orderedIds;
     if (ids.length === 0) return;
-    const idx = this.activeId ? ids.indexOf(this.activeId) : -1;
+    const idx = this.store.activeId ? ids.indexOf(this.store.activeId) : -1;
     const nextIdx = ((idx + delta) % ids.length + ids.length) % ids.length;
     const targetId = ids[nextIdx];
-    if (targetId && targetId !== this.activeId) {
+    if (targetId && targetId !== this.store.activeId) {
       this.switchTo(targetId);
     }
   }
@@ -2006,10 +1871,10 @@ export class TabManager {
    * N 大于现有 Tab 数 → 静默忽略；N 对应 Tab 已经 active → 无操作。
    */
   jumpToIndex(oneBasedIdx: number): void {
-    const ids = this.orderedIds;
+    const ids = this.store.orderedIds;
     if (oneBasedIdx < 1 || oneBasedIdx > ids.length) return;
     const targetId = ids[oneBasedIdx - 1];
-    if (targetId && targetId !== this.activeId) {
+    if (targetId && targetId !== this.store.activeId) {
       this.switchTo(targetId);
     }
   }
@@ -2022,8 +1887,8 @@ export class TabManager {
    * 之后 ensureTab 时会从 tasksBySid 拿数据；fetchSessionTasks 拿到的也是同样数据。
    */
   updateTasks(sessionId: string, tasks: TaskEntry[]): void {
-    this.tasksBySid.set(sessionId, tasks);
-    if (this.activeId === sessionId) {
+    this.store.tasksBySid.set(sessionId, tasks);
+    if (this.store.activeId === sessionId) {
       this.tasksPanel?.setSession(sessionId, tasks);
     }
   }
@@ -2054,13 +1919,13 @@ export class TabManager {
     // v2.6 修回归：B 重构后 render-stream-record 删了 source="live" 过滤参数，
     // chunked replay batch 期间的历史 user 消息会触发本方法 → 反复自动切 tab。
     // 在这里加 inBatch 守卫等价 v2.5 的 source==="live" 检查。
-    if (this.inBatch) return;
+    if (this.store.inBatch) return;
     if (!this.autoFollowUserActive) return;
     if (Date.now() < this.manualOverrideUntil) return;
-    const tab = this.tabs.get(sessionId);
+    const tab = this.store.tabs.get(sessionId);
     if (!tab) return;
     if (tab.status === "archived") return;
-    if (this.activeId === sessionId) {
+    if (this.store.activeId === sessionId) {
       // 已经在这个 tab 但用户开了"拉前 monitor"也照拉
       if (this.bringMonitorToFront) bringMonitorToFront();
       return;
@@ -2071,10 +1936,10 @@ export class TabManager {
 
   /** 快捷键 Ctrl+W：当前活跃 Tab 是 archived 才关，live 不动 */
   closeActiveIfArchived(): void {
-    if (!this.activeId) return;
-    const tab = this.tabs.get(this.activeId);
+    if (!this.store.activeId) return;
+    const tab = this.store.tabs.get(this.store.activeId);
     if (tab && tab.status === "archived") {
-      this.closeTab(this.activeId);
+      this.closeTab(this.store.activeId);
     }
   }
 
@@ -2089,34 +1954,34 @@ export class TabManager {
       });
       return;
     }
-    if (!this.activeId) return;
-    const tab = this.tabs.get(this.activeId);
+    if (!this.store.activeId) return;
+    const tab = this.store.tabs.get(this.store.activeId);
     if (!tab || tab.status === "archived") return;
     // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；本地 Tab → 原 sid_hwnd_cache 路径。
     if (tab.origin !== null) {
-      void bringRemoteTerminalToFront(this.activeId);
+      void bringRemoteTerminalToFront(this.store.activeId);
     } else {
-      void bringTerminalToFront(this.activeId);
+      void bringTerminalToFront(this.store.activeId);
     }
   }
 
   /** 快捷键 Ctrl+Shift+E：打开当前活跃 Tab 的工作目录到系统文件管理器 */
   openActiveTabCwd(): void {
-    if (!this.activeId) return;
-    void this.openTabCwd(this.activeId);
+    if (!this.store.activeId) return;
+    void this.openTabCwd(this.store.activeId);
   }
 
   /** F77：活跃 tab 的子 agent 加载上下文（parentPath + origin）——main.ts 点 agent 行时用它
    *  调 `load_subagent`。无活跃 tab / 无 parentPath → null；远端会话 origin!==null（不支持，调用方提示）。 */
   getActiveSubagentContext(): { parentPath: string; origin: string | null } | null {
-    const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    const tab = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
     if (!tab || !tab.parentPath) return null;
     return { parentPath: tab.parentPath, origin: tab.origin };
   }
 
   /** issue #10 快捷键 Ctrl+Shift+N：把当前活跃 Tab 在独立只读窗口打开 */
   openActiveInNewWindow(): void {
-    if (this.activeId) void this.openInNewWindow(this.activeId);
+    if (this.store.activeId) void this.openInNewWindow(this.store.activeId);
   }
 
   /**
@@ -2180,7 +2045,7 @@ export class TabManager {
       d.root.classList.add("dragging");
       const ghost = document.createElement("div");
       ghost.className = "tab-drag-ghost";
-      ghost.textContent = this.tabs.get(d.sid)?.title ?? "";
+      ghost.textContent = this.store.tabs.get(d.sid)?.title ?? "";
       document.body.appendChild(ghost);
       d.ghost = ghost;
     }
@@ -2209,7 +2074,7 @@ export class TabManager {
         d.ghost.classList.toggle("armed", armed);
         d.ghost.textContent = armed
           ? "松开 → 独立窗口"
-          : (this.tabs.get(d.sid)?.title ?? "");
+          : (this.store.tabs.get(d.sid)?.title ?? "");
       }
     }
   }
@@ -2290,18 +2155,18 @@ export class TabManager {
    * 一次拖动就把树拆散，比不能拖更坏。
    */
   private dragBlockOf(sid: string): string[] {
-    const host = this.tabs.get(sid);
+    const host = this.store.tabs.get(sid);
     if (!host) return [sid];
     const hostIsInteractive = host.kind === null || host.kind === "interactive";
     if (!hostIsInteractive) return [sid];
     const out = [sid];
-    const at = this.orderedIds.indexOf(sid);
-    for (let i = at + 1; i < this.orderedIds.length; i++) {
-      const t = this.tabs.get(this.orderedIds[i]);
+    const at = this.store.orderedIds.indexOf(sid);
+    for (let i = at + 1; i < this.store.orderedIds.length; i++) {
+      const t = this.store.tabs.get(this.store.orderedIds[i]);
       if (!t) break;
       const isBg = t.kind !== null && t.kind !== "interactive";
       if (isBg && t.cwd !== null && t.cwd === host.cwd && t.origin === host.origin) {
-        out.push(this.orderedIds[i]);
+        out.push(this.store.orderedIds[i]);
       } else break;
     }
     return out;
@@ -2333,13 +2198,13 @@ export class TabManager {
     const block = this.dragBlockOf(sid);
     // ① 集合归属跟着落点宿主走（`§D.7` 的「拖出组」与「拖进组」是同一条规则的两侧）。
     if (this.collectionsLoaded) {
-      const other = target.kind === "end" ? null : this.tabs.get(target.sid);
+      const other = target.kind === "end" ? null : this.store.tabs.get(target.sid);
       const nextCols = applyDropToCollections(
         this.collections,
         block,
         target,
         defaultGroupName(
-          this.tabs.get(sid)?.cwd ?? null,
+          this.store.tabs.get(sid)?.cwd ?? null,
           other?.cwd ?? null,
           this.collections.map((c) => c.name),
         ),
@@ -2354,16 +2219,16 @@ export class TabManager {
     // ② 顺序。`onto` 的落位 = 插到目标**之前**（组里成员的相对次序由 `orderedIds` 定，
     //    见 `refreshTabBar`）；`end` 是末尾。
     const beforeSid = target.kind === "end" ? null : target.sid;
-    const next = moveTabBlock(this.orderedIds, block, beforeSid);
-    if (next.length !== this.orderedIds.length) {
+    const next = moveTabBlock(this.store.orderedIds, block, beforeSid);
+    if (next.length !== this.store.orderedIds.length) {
       this.refreshTabBar(); // 防御：块算错了就只重画（①可能已经改了归属）
       return;
     }
-    if (next.every((x, i) => x === this.orderedIds[i])) {
+    if (next.every((x, i) => x === this.store.orderedIds[i])) {
       this.refreshTabBar();
       return;
     }
-    this.orderedIds = next;
+    this.store.orderedIds = next;
     this.refreshTabBar();
     // 🔴 〔步 17·C · 2026-09-19〕**拖动的结果要落盘** —— `设计/30 §C` 逐字「今天拖了白拖」。
     //   在这之前 `orderedIds` 的 8 个写入点零持久化，而集合（`tabCollections`）是落盘的
@@ -2381,9 +2246,9 @@ export class TabManager {
     //   不同步的话，`savedOrder` 还是启动时读到的那份**旧**顺序，而它每来一个新 tab
     //   就会被再应用一次（`placeInOrder`）⇒ **后到的一个 tab 能把用户刚拖的一下整张撤销**。
     //   放在 `await` 之前：落盘失败也照样同步 —— 内存里那张已经是用户看见的事实了。
-    this.savedOrder = [...this.orderedIds];
+    this.store.savedOrder = [...this.store.orderedIds];
     try {
-      await setTabOrder(this.orderedIds);
+      await setTabOrder(this.store.orderedIds);
     } catch (e) {
       console.warn("[tab-bar] 顺序落盘失败:", e);
     }
@@ -2401,7 +2266,7 @@ export class TabManager {
    *
    * 在这之前它是这么写的：
    * ```ts
-   * const saved = await getTabOrder(new Set(this.orderedIds));  // ← alive = 此刻的 tab 集
+   * const saved = await getTabOrder(new Set(this.store.orderedIds));  // ← alive = 此刻的 tab 集
    * if (saved.length === 0) return;
    * ```
    * **它在唯一那个调用点上恒等于 no-op。** `main.ts` 里那一行是
@@ -2423,32 +2288,8 @@ export class TabManager {
    */
   async loadOrder(): Promise<void> {
     // `null` = 这一趟不按存活过滤（理由见 `getTabOrder` 头注与上面那段）。
-    this.savedOrder = await getTabOrder(null);
-    if (this.applySavedOrder()) this.refreshTabBar();
-  }
-
-  /**
-   * 把 `savedOrder`（盘上那份意图）应用到**此刻真的存在**的 tab 上。
-   * 返回「顺序有没有真的变」—— 没变就别让调用方白重画一次栏。
-   *
-   * 🔴 **`present` 这道过滤是「不凭空造 tab」那条的落点**：盘上提到而今天不在的 sid
-   *   （被删的会话 / **还没宣告到的会话**）在这里被跳过 —— 它**留在 `savedOrder` 里**，
-   *   等它真的到了，`placeInOrder` 再应用一次就会把它放回自己那一格。
-   *   ⚠ 这正是它不能在读的那一刻被摘掉的原因：摘掉就再也等不到了。
-   * ⚠ **盘上没提到的排在后面**、且保持它们此刻的相对次序（`loadOrder` 头注逐字）。
-   */
-  private applySavedOrder(): boolean {
-    if (this.savedOrder.length === 0) return false;
-    const present = new Set(this.orderedIds);
-    const head = this.savedOrder.filter((sid) => present.has(sid));
-    if (head.length === 0) return false;
-    const inHead = new Set(head);
-    const next = [...head, ...this.orderedIds.filter((sid) => !inHead.has(sid))];
-    // 恒等就早退。`next` 与 `orderedIds` 必然同长（两边都是 `orderedIds` 的重排），
-    // 所以逐位比一遍就够。
-    if (next.every((x, i) => x === this.orderedIds[i])) return false;
-    this.orderedIds = next;
-    return true;
+    this.store.savedOrder = await getTabOrder(null);
+    if (this.store.applySavedOrder()) this.refreshTabBar();
   }
 
   /** 收尾：拆 document listener、清 ghost / 源 Tab 变暗、清空拖拽状态。 */
@@ -2500,13 +2341,13 @@ export class TabManager {
   /** 单个 tab 的账号徽章就地重刷（in-flight 状态变化时用；tab 已没了就静默跳过）。 */
   private refreshAccountBadgeFor(sid: string): void {
     const refs = this.tabButtons.get(sid);
-    const tab = this.tabs.get(sid);
+    const tab = this.store.tabs.get(sid);
     if (refs && tab) this.updateAccountBadge(refs, sid, tab);
   }
 
   /** account-ux U8：当前活跃会话 sid（只读投影，供 Ctrl+K / 快捷键判定"对当前会话做某事"）。 */
   activeSessionId(): string | null {
-    return this.activeId;
+    return this.store.activeId;
   }
 
   /**
@@ -2519,20 +2360,20 @@ export class TabManager {
    *   不互相锁死（不然 auto 调 switchTo 又设 override 自己就被锁了）。
    */
   switchTo(sessionId: string, source: "manual" | "auto" = "manual"): void {
-    if (!this.tabs.has(sessionId)) return;
-    if (this.activeId === sessionId) return;
+    if (!this.store.tabs.has(sessionId)) return;
+    if (this.store.activeId === sessionId) return;
 
     // 切 active 走 .active class（CSS visibility 控制），避免 display:none/block
     // 触发整棵子树重建 layout tree 卡顿。详 styles.css 的 .stream 注释。
-    for (const [sid, t] of this.tabs) {
+    for (const [sid, t] of this.store.tabs) {
       t.streamEl.classList.toggle("active", sid === sessionId);
       // K-R45 乙：清单悬浮层与它那条流**同进同出**。漏掉这一句 = 所有 tab 的清单
       // 一起挂在屏幕上，而且点下去找的是别人的流（`revealCard` 只在自己的 streamEl 里找）。
       t.inputsEl.classList.toggle("active", sid === sessionId);
     }
-    const next = this.tabs.get(sessionId);
+    const next = this.store.tabs.get(sessionId);
     if (next) next.unread = 0;
-    this.activeId = sessionId;
+    this.store.activeId = sessionId;
     // Batch13-F40a:命中 virgin tab(启动重放全收纳,还没建过卡)→ 同步物化尾段,
     // 避免切过去一片空白(R-3:有界循环补到可滚,防工具密集会话一轮近空屏)。
     // 非 virgin tab 不动(上翻补批属 F40b)。
@@ -2567,7 +2408,7 @@ export class TabManager {
     // 面板整表 re-render 推到下一帧——让 .active 的 visibility 切换先绘制出来（切 Tab 即时
     // 跟手），重活下一帧再做。期间又切走则跳过（不把面板/滚动落到已非 active 的会话上）。
     requestAnimationFrame(() => {
-      if (this.activeId !== sessionId) return;
+      if (this.store.activeId !== sessionId) return;
       next?.stream.scrollToBottom();
       // ★ 步 3：**第二帧再贴一次**（对齐 `session-viewer.ts:82` 已有的同一修法）。
       //
@@ -2580,18 +2421,18 @@ export class TabManager {
       // 切走了则上面那道 `activeId` 守卫已经挡住。真要更细，得让 `MessageStream` 出一个
       // 「只重贴、不改粘底态」的入口 —— 那是另一件事，别在这一步顺手扩。
       requestAnimationFrame(() => {
-        if (this.activeId !== sessionId) return;
-        this.tabs.get(sessionId)?.stream.scrollToBottom();
+        if (this.store.activeId !== sessionId) return;
+        this.store.tabs.get(sessionId)?.stream.scrollToBottom();
       });
       // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
-      this.tasksPanel?.setSession(sessionId, this.tasksBySid.get(sessionId) ?? []);
+      this.tasksPanel?.setSession(sessionId, this.store.tasksBySid.get(sessionId) ?? []);
       // issue #23: agents 面板同步切到新 active Tab
       this.agentsPanel?.setSession(
         sessionId,
-        [...(this.tabs.get(sessionId)?.agents.values() ?? [])],
+        [...(this.store.tabs.get(sessionId)?.agents.values() ?? [])],
       );
       // F88b：HUD context% chip 切到新 active 会话的最新 usage（无带 usage 记录 → null → 隐藏）
-      const nt = this.tabs.get(sessionId);
+      const nt = this.store.tabs.get(sessionId);
       this.onActiveUsageChanged?.(nt?.latestModel ?? null, nt?.latestPromptTokens ?? null);
     });
   }
@@ -2680,7 +2521,7 @@ export class TabManager {
    * 启动时把固定的 tab **复活**出来。宿主在 `loadCollections` 之后调一次。
    *
    * ⚠ **2026-09-21 订正**：这儿原先写着「必须在 `loadOrder` **之前**」，理由是
-   *   「`loadOrder` 用 `getTabOrder(new Set(this.orderedIds))` 按今天真的存在的 sid 过滤，
+   *   「`loadOrder` 用 `getTabOrder(new Set(this.store.orderedIds))` 按今天真的存在的 sid 过滤，
    *   复活的 tab 得先存在，位置才排得回来」。**那个理由连着那道读时过滤一起没了**
    *   （`loadOrder` 头注记着为什么它是个 no-op）：顺序现在是一份**留着的意图**
    *   （`savedOrder`），复活出来的 tab 走 `createSkeletonTab` → `placeInOrder` 时
@@ -2705,10 +2546,10 @@ export class TabManager {
     const list = await getPinned();
     this.pinnedRecords = new Map(list.map((p) => [p.sid, p]));
     for (const p of list) {
-      const existed = this.tabs.get(p.sid);
+      const existed = this.store.tabs.get(p.sid);
       if (!existed) {
         this.createSkeletonTab(p.sid, p.cwd, p.origin, p.kind, p.name);
-        const t = this.tabs.get(p.sid);
+        const t = this.store.tabs.get(p.sid);
         if (!t) continue;
         // 没有活进程 ⇒ 灰着。`archiveTab` 那条路要求 tab 已在事件流里，这里是**凭空造**，
         // 所以直接置位；两者最终形态一致（`.tab.archived` 那条 CSS 本来就有）。
@@ -2780,8 +2621,8 @@ export class TabManager {
       origin: tab.origin,
       // `§3.5.7`：缺了 resume 会静默落到默认号。两个源都读不到 ⇒ `null`＝没记到，不是默认号。
       account:
-        this.sessionAccountsByS.get(tab.sessionId)?.account ??
-        this.accountLastByS.get(tab.sessionId) ??
+        this.store.sessionAccountsByS.get(tab.sessionId)?.account ??
+        this.store.accountLastByS.get(tab.sessionId) ??
         prev?.account ??
         null,
       lastActiveAt: tab.status === "live" ? Date.now() : prev?.lastActiveAt ?? null,
@@ -2807,8 +2648,8 @@ export class TabManager {
    */
   private async persistPinned(): Promise<void> {
     const next: PinnedTab[] = [];
-    for (const sid of this.orderedIds) {
-      const tab = this.tabs.get(sid);
+    for (const sid of this.store.orderedIds) {
+      const tab = this.store.tabs.get(sid);
       if (tab?.pinned) next.push(this.pinRecordFor(tab));
     }
     this.pinnedRecords = new Map(next.map((p) => [p.sid, p]));
@@ -2826,7 +2667,7 @@ export class TabManager {
    *   这是唯一的入口。
    */
   togglePin(sid: string): void {
-    const tab = this.tabs.get(sid);
+    const tab = this.store.tabs.get(sid);
     if (!tab || !this.pinnedLoaded) return;
     tab.pinned = !tab.pinned;
     this.refreshTabBar();
@@ -2844,7 +2685,7 @@ export class TabManager {
   private pinIsDegraded(sid: string): boolean {
     const rec = this.pinnedRecords.get(sid);
     if (!rec || !isDegradedPin(rec)) return false;
-    return (this.tabs.get(sid)?.parentPath ?? "") === "";
+    return (this.store.tabs.get(sid)?.parentPath ?? "") === "";
   }
 
 
@@ -2908,7 +2749,7 @@ export class TabManager {
       return;
     }
     // 1. 删
-    const wanted = new Set(this.orderedIds);
+    const wanted = new Set(this.store.orderedIds);
     for (const sid of Array.from(this.tabButtons.keys())) {
       if (!wanted.has(sid)) {
         const refs = this.tabButtons.get(sid)!;
@@ -2939,8 +2780,8 @@ export class TabManager {
       .filter((e) => e.classList.contains("tab-group"))
       .pop();
     if (lastGroup) cursors.set(this.barEl, lastGroup);
-    for (const sid of this.orderedIds) {
-      const tab = this.tabs.get(sid);
+    for (const sid of this.store.orderedIds) {
+      const tab = this.store.tabs.get(sid);
       if (!tab) continue;
       let refs = this.tabButtons.get(sid);
       if (!refs) {
@@ -2961,7 +2802,7 @@ export class TabManager {
       cursors.set(host, refs.root);
     }
 
-    this.notifyChanged();
+    this.store.notify();
   }
 
   private createTabButton(sid: string): TabButtonRefs {
@@ -3015,7 +2856,7 @@ export class TabManager {
     focusBtn.title = "调出对应终端 (`)";
     focusBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const t = this.tabs.get(sid);
+      const t = this.store.tabs.get(sid);
       if (!t || t.status === "archived") return;
       // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
       // 本地 Tab → 走原 sid_hwnd_cache 路径。
@@ -3057,7 +2898,7 @@ export class TabManager {
     // 中键点击归档 Tab 也关闭（常见 UX）
     root.addEventListener("mousedown", (e) => {
       if (e.button !== 1) return;
-      const t = this.tabs.get(sid);
+      const t = this.store.tabs.get(sid);
       if (t?.status === "archived") {
         e.preventDefault();
         this.closeTab(sid);
@@ -3073,7 +2914,7 @@ export class TabManager {
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
-    refs.root.classList.toggle("active", sid === this.activeId);
+    refs.root.classList.toggle("active", sid === this.store.activeId);
     refs.root.classList.toggle("archived", tab.status === "archived");
     // 〔步 17·B〕固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
     // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
@@ -3104,7 +2945,7 @@ export class TabManager {
       titleParts.push(`↳ 从 ${tab.forkedFromSessionId.slice(0, 8)} fork 而来`);
     }
     refs.root.title = titleParts.join("\n");
-    const unread = tab.unread > 0 && sid !== this.activeId;
+    const unread = tab.unread > 0 && sid !== this.store.activeId;
     refs.root.classList.toggle("has-unread", unread);
 
     if (refs.label.textContent !== tab.title) {
