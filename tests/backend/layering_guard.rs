@@ -79,7 +79,7 @@ mod tests {
     /// ⚠ **类型也要登记，不只是函数**：`Done` / `NotRun` 出现在调用方的签名与 `match` 里，
     /// 它们和函数一样是接口面。漏登记等于「接口只算函数」——那是个会腐的口径。
     const ALLOWED_INTO_PLUGIN: &[(&str, &str, &str)] = &[
-        // 〔`A3` 第二波〕账号层经本口起 `cc-acct-iso shellinit`（`accounts/acct_iso.rs`）。
+        // 〔`A3` 第二波〕账号层经本口起 `cc-acct-iso shellinit`（`accounts/iso.rs`）。
         // 四条边与 `control` 那几条同一套形状；码 → 语义的映射留在调用方（`shellinit_outcome`）。
         (
             "accounts",
@@ -463,7 +463,7 @@ mod tests {
     /// 是**让每一条边被人看见一次**。
     ///
     /// 〔`A3` 第二波〕扫描面加了 **`accounts/`**：账号层从这一拍起经本口起 `cc-acct-iso`
-    /// （`accounts/acct_iso.rs`），不把它纳进来，那几条边就落在盲区里、本条照绿。
+    /// （`accounts/iso.rs`），不把它纳进来，那几条边就落在盲区里、本条照绿。
     ///
     /// ⚠ 扫的是 **`control/` 与 `observe/` 两层**，不只是 control ——
     /// 「今天只有 control 在用」是**读数**，不是性质。观测层哪天伸手过来（它一旦这么做，

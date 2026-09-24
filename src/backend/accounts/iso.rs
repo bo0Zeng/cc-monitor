@@ -165,5 +165,5 @@ pub fn answer(args: &[String]) -> Answer {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/accounts/acct_iso_tests.rs"]
+#[path = "../../../tests/backend/accounts/iso_tests.rs"]
 mod tests;

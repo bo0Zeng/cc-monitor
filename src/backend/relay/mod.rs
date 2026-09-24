@@ -262,7 +262,7 @@ mod upstream;
 #[path = "../../../tests/backend/relay/wire_golden.rs"]
 mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节金标准（三条线各一份手写期望）
 
-/// `--relay` 的层 1 入口。**层 2 那只手由调用方递进来**（`accounts::run_relay`）——
+/// `--relay` 的层 1 入口。**层 2 那只手由调用方递进来**（`accounts::apikey::run_relay`）——
 /// 本层叫不出它的名字（`account_layer_guard` ㈢ 零命中）。
 pub(crate) use listen::run;
 

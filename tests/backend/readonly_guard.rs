@@ -1605,7 +1605,7 @@ mod spawn_registry {
              键仍是 `<非字面量>`、仍分不出是哪个插件 ⇒ **加这一条不会红**，\
              是人回来读了这一段才写下的。下一个使用者同理。\
              ★★ **〔`A3` 第二波 09-24〕第三个使用者到了，逐条记在这里** —— 账号层 \
-             `accounts/acct_iso.rs` 经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
+             `accounts/iso.rs`经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
              写面：**只读** —— `cmd_shellinit` 全是 `printf`，不写任何文件（vendored 那份 \
              `src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso` 逐行可查）；它读 manifest 与 \
              `~/.cc-acct-iso/config`，要 `HOME` / `PATH`（都在继承白名单里）。\
@@ -2913,7 +2913,7 @@ mod error_envelope_registry {
              ⇒ 键集那条判据的窗口必须够得着下一行（见 `every_envelope_carries_both_keys`）。",
         ),
         (
-            "accounts/acct_iso.rs",
+            "accounts/iso.rs",
             "serde_json::json!({\"code\": code, \"message\": message})",
             "〔`A3` 第二波〕本机 `cc-acct-iso` 两问的失败信封（一个闭包 `fail`，四档码共用）",
             "与 `observe/accounts_query.rs` 那份**同形不同家**：它住账号层（`accounts/`），\
