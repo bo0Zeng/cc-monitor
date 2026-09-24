@@ -1603,7 +1603,14 @@ mod spawn_registry {
              （`K-R2` PM 审计 §六㈡ 已端上去），本条**不替它回答**。\
              ⚠⚠ 而这正是这条键的病在**第二个使用者**身上复发：\
              键仍是 `<非字面量>`、仍分不出是哪个插件 ⇒ **加这一条不会红**，\
-             是人回来读了这一段才写下的。下一个使用者同理。",
+             是人回来读了这一段才写下的。下一个使用者同理。\
+             ★★ **〔`A3` 第二波 09-24〕第三个使用者到了，逐条记在这里** —— 账号层 \
+             `accounts/acct_iso.rs` 经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
+             写面：**只读** —— `cmd_shellinit` 全是 `printf`，不写任何文件（vendored 那份 \
+             `src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso` 逐行可查）；它读 manifest 与 \
+             `~/.cc-acct-iso/config`，要 `HOME` / `PATH`（都在继承白名单里）。\
+             ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`；下面那条「恰好四条」只数 \
+             `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。",
             "缩性质",
             "键能分得出「哪个插件、哪条被调命令」的那天（今天是 `<非字面量>`，四条命令共用一个键）。\
              ⚠ 在那之前，本条的覆盖面由 [`super::g6_reach`] 那一格钉着：\
@@ -2904,6 +2911,15 @@ mod error_envelope_registry {
             "账号一族的**用法错**信封（两处）",
             "同上一行，另一档：参数不齐那一支。它与 `message` 分在两行上\
              ⇒ 键集那条判据的窗口必须够得着下一行（见 `every_envelope_carries_both_keys`）。",
+        ),
+        (
+            "accounts/acct_iso.rs",
+            "serde_json::json!({\"code\": code, \"message\": message})",
+            "〔`A3` 第二波〕本机 `cc-acct-iso` 两问的失败信封（一个闭包 `fail`，四档码共用）",
+            "与 `observe/accounts_query.rs` 那份**同形不同家**：它住账号层（`accounts/`），\
+             而那份住 observe、`control/` 的出口按分层它也引不到 ⇒ 收成一份要先动分层，\
+             同 `K-R103`「不收」那条的理由。⚠ 它**只产出**信封、不自己写 stderr —— \
+             写出去那一下在 `main.rs::emit_answer`（账号层的输出受中转日志白名单管，查询输出不是日志）。",
         ),
         (
             "observe/history_query.rs",
