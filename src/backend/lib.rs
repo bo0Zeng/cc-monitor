@@ -897,6 +897,9 @@ pub struct TargetGap {
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
 ///
+/// 〔FW5 · 09-24〕**14 → 16**：`files-chmod` × Windows（帧面 ＋ CLI 面各一行，档 = 结构），
+/// 由 `no_unix_mode` 码 × [`unix_mode_bits_on`] 现推出来（表尾那一段）。
+///
 /// 〔PR1 · 09-24〕**8 → 14**：命令面并进第 3 层之后，帧面 3 条 ＋ CLI 面 3 条（`capture-pane` /
 /// `kill` / `launch` × Windows）被那条横向两向相等**现推出来**、逐条登记在表尾。下面那段账说的是
 /// `ccm-launcher` 那 8 条：
@@ -1090,6 +1093,30 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         why: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
               派生到同一条登记）⇒ 同一个理由，将来与帧面那一行同拍还，**暂时不做**。",
     },
+    // ── 〔FW5 · 第四波 · 2026-09-24〕`files-chmod` × Windows：`设计/96 §8.5` 待拍 3 ────────────
+    //
+    // PR1 报告「买不到 1」逐字：`change_mode` 在非 unix 上恒回失败，而 `files-chmod` 的 `codes`
+    // 说不出「这个平台没有」⇒ 本条判它处处都在。FW5 给它声明了 `no_unix_mode`，现推段按
+    // `unix_mode_bits_on` × 这个码把它从 Windows 上摘掉 ⇒ 这两行是**现推出来**、再补理由与档。
+    // 档：**结构** —— 这条能力的名字与定义就是「改 unix 权限位」（低 12 位的 rwx/suid/sgid/sticky），
+    // Windows 没有这个机制（那边是 ACL 与只读属性）；那边若要「改访问权限」是另一条能力、另立一行。
+    TargetGap {
+        family: "wire-commands",
+        capability: "files-chmod",
+        target: Target::Windows,
+        kind: GapKind::Structural,
+        why: "改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\
+              （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\
+              ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--files-chmod",
+        target: Target::Windows,
+        kind: GapKind::Structural,
+        why: "与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+              派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。",
+    },
 ];
 
 /// [`CAPABILITIES`] 的名单，包成 [`CapabilityFace::declares`] 要的形状。
@@ -1165,6 +1192,29 @@ pub const fn tmux_platform_of(t: Target) -> TmuxPlatform {
     }
 }
 
+/// 〔FW5 · 第四波〕编译 target → 那个平台**有没有 unix 权限位**（`files-chmod` 那一格的载体）。
+///
+/// 与 [`tmux_platform_of`] 并列的第二根平台轴，同一条纪律：**只把 [`Target`] 接到一个编译期就成立的事实上**，
+/// 不另立平台知识 —— 事实是「`change_mode` 那一支是 `#[cfg(unix)]`」，本函数与它对不对得上由
+/// `target_parity_guard::the_unix_mode_axis_agrees_with_what_this_binary_was_compiled_with`（本机一格）
+/// 与下面那条 `#[cfg(windows)]` 编译期断言（Windows 一格）各钉一半。
+///
+/// ⚠ macOS 是 unix（有权限位）⇒ `true`；本仓那一列今天纯声明（同本段头注）。
+pub const fn unix_mode_bits_on(t: Target) -> bool {
+    match t {
+        Target::Windows => false,
+        Target::LinuxGnu | Target::LinuxMusl | Target::MacOs => true,
+    }
+}
+
+/// ★ 只在 Windows 编译时存在：[`unix_mode_bits_on`] 说 Windows 没有 unix 权限位，
+/// 而这份二进制确实不是 unix（`change_mode` 编进去的是回 [`NO_UNIX_MODE`] 那一支）。
+#[cfg(windows)]
+const _: () = assert!(
+    !unix_mode_bits_on(Target::Windows) && !cfg!(unix),
+    "Target 轴说 Windows 有 unix 权限位，或者这份 Windows 二进制竟然是 unix —— 两根轴分叉了"
+);
+
 /// ★ 只在 Windows 编译时存在：[`tmux_platform_of`] 给 Windows 的档 == 那份二进制真编进去的 [`TMUX_PLATFORM`]。
 ///
 /// 同 `TMUX_PLATFORM` 旁边那条：本机（Linux）门禁上它**不存在**，开口的时刻是
@@ -1184,14 +1234,25 @@ fn tmux_by_platform(t: Target) -> Option<bool> {
     tmux_present(tmux_platform_of(t), None)
 }
 
-/// 帧面命令里，在 target `t` 上**平台默认做不到**的那几条（`codes` 里声明了 `no_tmux` 的）。
+/// 帧面命令里，在 target `t` 上**平台默认做不到**的那几条（`codes` 里声明了 `no_tmux` 的 ·
+/// 〔FW5〕声明了 [`NO_UNIX_MODE`] 且那个 target 没有 unix 权限位的）。
 ///
-/// 读的就是生产里填 `hello.unavailable` 的那一个函数（[`unavailable_from`]），不另写判准。
+/// tmux 那一维读的就是生产里填 `hello.unavailable` 的那一个函数（[`unavailable_from`]），不另写判准；
+/// unix 权限位那一维同形：**谁声明会回那个码，谁就依赖那个机制**，从 `codes` 现推，不抄名单。
 fn wire_commands_unavailable_on(t: Target) -> Vec<String> {
-    unavailable_from(tmux_by_platform(t))
+    let mut out: Vec<String> = unavailable_from(tmux_by_platform(t))
         .into_iter()
         .map(|u| u.command)
-        .collect()
+        .collect();
+    if !unix_mode_bits_on(t) {
+        out.extend(
+            inbound::REGISTRY
+                .iter()
+                .filter(|s| s.codes.contains(&NO_UNIX_MODE))
+                .map(|s| s.name.to_string()),
+        );
+    }
+    out
 }
 
 /// `ccm-launcher`：载体是 tmux 的那几条，在平台确证没有 tmux 的 target 上摘掉。
@@ -1467,6 +1528,17 @@ use std::path::PathBuf;
 /// 查不到就红（`the_declared_code_is_one_the_registry_already_declares`）⇒
 /// 谁把那边的拼写改了，这边不会静默跟丢。
 pub const NO_TMUX: &str = "no_tmux";
+
+/// 〔FW5 · 第四波 · 2026-09-24〕命令级 code —— **「这个平台没有 unix 权限位」**。
+///
+/// 只有 `files-chmod` 声明它（`control/files_write.rs::change_mode` 在非 unix 上回它）。
+/// 与 [`NO_TMUX`] 同形：真相是 `inbound::REGISTRY` 里命令自己登记的 `codes`，本常量只拿去查那张表；
+/// target 轴（[`unix_mode_bits_on`] × 这个码）由此现推「Windows 上没有 `files-chmod`」
+/// ——`设计/96 §8.5` 待拍 3 那一格（「得让它的声明带一个『这个平台没有』的码」）。
+///
+/// ⚠ 运行期那条轴（`hello.unavailable`，[`unavailable_here`] 今天不接线）**本刀没动**：
+/// 它的判准住 [`unavailable_from`]，只看 tmux。要接那天同拍把这一维加进去。
+pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 /// `K-P4`：这台机器上**做不到**的命令 —— **纯判定那一半**（不碰世界 ⇒ 可拿合成读数驱动）。
 ///
