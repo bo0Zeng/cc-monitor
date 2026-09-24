@@ -35,7 +35,27 @@ const LH_PROSE = 15 * 1.65; // --font-size-prose × --line-height-prose
 const LH_BASE = 14 * 1.55;
 const LH_MONO = 13 * 1.55;
 
-const COL_W = 780; // --stream-max-width
+// 〔`设计/41 §6` · `设计/10`「`COL_W = 780` 改成从容器实测」〕列宽不再写死：模块求值时在 `#message-stream`
+// 里临时摆一个生产形状的 `.stream > .stream-content`（`.stream` 是名为 `stream` 的尺寸容器，见 styles.css），
+// 量出真列宽 = min(`--stream-max-width`, 流宽 − 两侧内边距) 立刻撤掉。
+// 量不到（jsdom 没有布局 / 该窗口没有消息流）才退回 780 —— 那个数与 tokens.css 的 `--stream-max-width`
+// 由 `tests/css-ledger.vitest.ts` 格 ⑥ 对拍。
+// ⚠ 买不到：**只量一次**。拉窗口之后不重算 —— 要跟着变，得把本常量改成调用时量，动的是本文件别处
+//   （`USER_BODY_W` 与各估高调用点），不在这一拍的写区。影响面只是「从没渲染过的卡」的初值
+//   （`contain-intrinsic-size: auto` 渲染过一次就用真值），即滚动条精度。
+const COL_W: number = ((fallback: number): number => {
+  const host = typeof document === "undefined" ? null : document.getElementById("message-stream");
+  if (!host) return fallback;
+  const probe = document.createElement("div");
+  probe.className = "stream";
+  const col = document.createElement("div");
+  col.className = "stream-content";
+  probe.appendChild(col);
+  host.appendChild(probe);
+  const w = col.getBoundingClientRect().width;
+  probe.remove();
+  return w > 0 ? w : fallback;
+})(780);
 const USER_BODY_W = COL_W * 0.8 - 34; // 气泡 max-width 80% - padding 16×2 - border 2
 const SUMMARY_H = 38; // 折叠 <details> 只剩 summary 行
 const CODE_BAR_H = 30; // .code-bar(copy 按钮撑高)+ border

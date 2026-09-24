@@ -63,7 +63,6 @@ import {
   cssRules,
   fixedPortals,
   fixedSelectors,
-  mainCode,
   opaqueKeySites,
   productionCode,
   storageKeys,
@@ -385,9 +384,12 @@ describe("P21 ⑤ 条 21.2：`.stream` 家族在 CSS 里不许出现 `overflow-a
 // ═══════════════════════════ ⑥ 条 22.2 / 22.3 / 22.6 ═══════════════════════════
 
 describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
-  const MAIN = mainCode(SOURCES);
-  const VIEWER = topLevelFnBody(MAIN, "bootstrapViewer");
-  const SETTINGS = topLevelFnBody(MAIN, "bootstrapSettings");
+  // 〔三入口拆分 · 住址搬家〕两个精简 bootstrap 从 `main.ts` 搬到了各自的入口模块
+  // （`viewer.html → entry-viewer.ts`、`settings.html → entry-settings.ts`，`设计/01 §1.2`）。
+  // 切函数体的尺子与下面四条断言一字未改，只是换了文件读。
+  const codeOf = (file: string): string => SOURCES.find((s) => s.file === file)?.code ?? "";
+  const VIEWER = topLevelFnBody(codeOf("src/entry-viewer.ts"), "bootstrapViewer");
+  const SETTINGS = topLevelFnBody(codeOf("src/entry-settings.ts"), "bootstrapSettings");
 
   it("分母：两个 bootstrap 的函数体都切出来了", () => {
     expect(VIEWER, "`bootstrapViewer` 的函数体切不出来 —— 下面三条全是空转").not.toBeNull();

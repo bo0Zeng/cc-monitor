@@ -366,19 +366,26 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     // ⚠ 匹配单位是**一整行选择器**，不是子串 —— `scanning-guard-registry.vitest.ts` 那条
     // 递减棘轮逐字说了为什么（子串比事实小 ⇒ 把事实撑大的改动从缝里溜过去而判据照样绿：
     // 比如有人写 `.account-picker-status.warn .x { … }`，子串照样命中而那格根本没上色）。
-    const cssLines = readFileSync(`${REPO_ROOT}/src/styles.css`, "utf8")
-      .split("\n")
-      .map((l) => l.trim());
+    // 〔三入口拆分 · 人群改定义〕原先读 `src/styles.css` 一份；拆开之后读**那个窗口真正加载的
+    // 全部样式表**（它的 html 里 `<link rel="stylesheet">` 清单，按序拼起来）。chip 住主窗状态栏
+    // ⇒ 读主窗那份；账号表住设置窗 ⇒ 读设置窗那份。判红条件一字未改。
+    const windowCssLines = (html: string): string[] =>
+      [...readFileSync(`${REPO_ROOT}/${html}`, "utf8").matchAll(/<link rel="stylesheet" href="\/([^"]+)"/g)]
+        .flatMap((m) => readFileSync(`${REPO_ROOT}/${m[1]}`, "utf8").split("\n"))
+        .map((l) => l.trim());
+    const cssLines = windowCssLines("index.html");
+    const settingsCssLines = windowCssLines("settings.html");
     // 抽取器自检：先确认这把尺子够得着这个文件（不然下面两条是空真）。
-    expect(cssLines.length, "读到的 styles.css 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
-    expect(cssLines, "读到的不是 styles.css —— 连基准那条规则都没有").toContain(
+    expect(cssLines.length, "读到的主窗 CSS 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
+    expect(settingsCssLines.length, "读到的设置窗 CSS 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
+    expect(cssLines, "读到的不是主窗 CSS —— 连基准那条规则都没有").toContain(
       ".account-picker-status {",
     );
     expect(cssLines, "`.account-picker-status.warn` 没有 CSS 宿主 ⇒ chip 那格的警示态与正常态长得一模一样").toContain(
       ".account-picker-status.warn {",
     );
     // 同职第二处也一起钉住（设置那张表），免得「治了这一处、没治所有同职的地方」。
-    expect(cssLines, "设置那张账号表的 `.accounts-row-badge.warn` 宿主没了 —— 同一套约定的另一半").toContain(
+    expect(settingsCssLines, "设置那张账号表的 `.accounts-row-badge.warn` 宿主没了 —— 同一套约定的另一半").toContain(
       ".accounts-row-badge.warn {",
     );
   });
