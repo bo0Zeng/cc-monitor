@@ -252,9 +252,14 @@ export class RemoteSection {
     // `readRemoteConfig()` reject 时这个方法是 `void this.refresh()` 掉的一个
     // 未捕获 rejection ⇒ 一个机器页都不会注册，而宿主那边只看得到「什么都没来」。
     // `finally` 让两条路都经过这里。
+    // 🔴 `70 §1` 那个「自己从 ☐ 跳到 ☑」的复选框（`§8` 判据 #2）：读回来之前**不可交互**。
+    //    否则用户在它变之前以为它是关的、点一下，结果是把它关掉（而他以为自己在打开）。
+    //    读失败就一直灰着 —— 那一刻它显示的值不是盘上的值，点它就是写一个假状态回去。
+    this.enabledCheckbox.disabled = true;
     try {
       this.original = await readRemoteConfig();
       this.enabledCheckbox.checked = this.original.enabled;
+      this.enabledCheckbox.disabled = false;
       this.rebuildCards(this.original.hosts);
       this.hideBanner();
       void this.populateAliases();

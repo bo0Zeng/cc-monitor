@@ -71,6 +71,8 @@ export class DiagnosticsSection {
   private pathSpan!: HTMLSpanElement;
   private sizeSpan!: HTMLSpanElement;
   private openFileBtn!: HTMLButtonElement;
+  /** `70 §11.3.3`：读不到当前设置时，原因落在这一块上（不再只进 console）。 */
+  private readFailLine!: HTMLElement;
 
   constructor(opts: DiagnosticsSectionOptions = {}) {
     this.headless = opts.headless ?? false;
@@ -116,6 +118,14 @@ export class DiagnosticsSection {
       heading.appendChild(makeInfoIcon(DIAGNOSTICS_INFO_TEXT));
       group.appendChild(heading);
     }
+
+    // 🔴 `70 §11.4` 那处真缺陷 ＋ `§8` 判据 #2（「没有复选框在加载后自己改状态」）：
+    //    读失败原先只 `console.warn` ⇒ 三个控件**静默显示构造期默认值**，用户一点就把
+    //    假状态写回去 —— 与 `§1` 那个「启用远端模式」自己从 ☐ 跳到 ☑ 是**同一种伤**。
+    //    ⇒ 失败落在这一块上，并且三个控件在**读回来之前不可交互**（见 `setControlsReady`）。
+    this.readFailLine = document.createElement("div");
+    this.readFailLine.className = "settings-banner";
+    group.appendChild(this.readFailLine);
 
     // 1. 启用 log 文件 toggle
     const logRow = document.createElement("label");
@@ -258,7 +268,15 @@ export class DiagnosticsSection {
     btnRow.appendChild(refreshBtn);
     group.appendChild(btnRow);
 
+    this.setControlsReady(false);
     return group;
+  }
+
+  /** 三个会写回后端的控件：读回来之前一律不可交互（`70 §8` 判据 #2 的形状）。 */
+  private setControlsReady(ready: boolean): void {
+    for (const c of [this.logEnabledCheckbox, this.levelSelect, this.errorToastCheckbox]) {
+      c.disabled = !ready;
+    }
   }
 
   /** 从后端拉当前配置 + log 文件信息，刷新 UI */
@@ -269,8 +287,14 @@ export class DiagnosticsSection {
       this.logEnabledCheckbox.checked = cfg.log_enabled;
       this.levelSelect.value = cfg.log_level;
       this.errorToastCheckbox.checked = cfg.error_toast;
+      this.readFailLine.textContent = "";
+      this.readFailLine.classList.remove("settings-banner-show");
+      this.setControlsReady(true);
     } catch (e) {
-      console.warn("get_diagnostics_config failed:", e);
+      // 这一路本来就会失败（`INVARIANTS §15`：日志子系统失败不许挡启动）⇒ 界面必须答得出「读不到」。
+      this.setControlsReady(false);
+      this.readFailLine.textContent = `读不到当前的日志设置（${String(e)}），下面三项先不能改。点「刷新信息」重试。`;
+      this.readFailLine.classList.add("settings-banner-show");
     }
     try {
       const info = await commands.get_log_file_info();
