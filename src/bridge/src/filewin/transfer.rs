@@ -387,15 +387,29 @@ where
 // 生产适配器：**一行自己的传输代码都没有**
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 「远端已经有这条路径了吗」—— 调既有命令 `sftp_pool::sftp_stat`。
+/// 「远端已经有这条路径了吗」—— 〔F2 · 2026-09-24〕经通道问后端 `files-stat`。
 ///
 /// ⚠ `stat` 失败一律按「不存在」读（同旧面板 `uploadDropped` 的口径：
 /// 不可读与不存在在这一步分不开，而按「存在」处理会**无端多问一次**）。
-pub async fn probe_remote(cfg: &crate::ssh_source::RemoteConfig, remote_path: &str) -> bool {
-    crate::sftp_pool::sftp_stat(cfg.clone(), remote_path.to_string())
-        .await
-        .is_ok()
+/// ⚠ 上一版问的是池子那条 `stat`（SFTP）；这一问不搬字节 ⇒ 它归后端，不归传输。
+pub async fn probe_remote(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    remote_path: &str,
+) -> bool {
+    super::source::ask(
+        line,
+        origin,
+        "files-stat",
+        &serde_json::json!({ "path": remote_path }),
+        PROBE_BUDGET,
+    )
+    .await
+    .is_ok()
 }
+
+/// 一次「那儿有没有东西」的往返上限（调用方给的期限，`05 §3.3.2`）。
+pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// 真起一件上传 —— 调既有命令 `sftp_pool::sftp_upload`。
 ///

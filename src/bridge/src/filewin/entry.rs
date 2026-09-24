@@ -53,7 +53,7 @@
 use crate::ssh_source::RemoteConfig;
 
 use super::proc::{open_in_new_process, OpenRequest};
-use super::source::{list_remote, Source};
+use super::source::Source;
 
 /// 这一趟要落在哪儿。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -75,7 +75,7 @@ pub enum Target {
 /// （本仓红线不许起真连接）⇒ 优先级选错了哪一支，在失败路径上**看不出来**
 /// （两支回的是同一句池错误 —— 第七刀那条判据栽过同一形）。
 /// 抽出来之后它零 IO、三支都判得到。
-/// ⇒ 同 `source::row_from_sftp_entry` / `start_dir_from_realpath` 那条方法学。
+/// ⇒ 同 `source::start_dir_from_realpath` / `row_from_ls_entry` 那条方法学。
 ///
 /// # 为什么照抄老面板那个优先级
 ///
@@ -155,8 +155,13 @@ pub async fn open_file_window(
         // 只有这一支要 IO ⇒ 它留在 async 这一侧。
         Target::Home => (super::source::resolve_remote_home(&cfg).await?, None),
     };
-    // ① 先真的列一趟 —— 走共用那条池（同进程、无 IPC）。列不出来就别开窗。
-    let rows = list_remote(&cfg, &path).await?;
+    // 🔴〔F2 · 2026-09-24〕通道没起来 ⇒ 开不了窗（`D11`：窗口只有这一条路够后端）。
+    let handoff = crate::chan::host::handoff()
+        .ok_or_else(|| "主程序的通道口没起来，文件窗口够不着后端".to_string())?;
+    let source = Source::remote(cfg);
+    // ① 先真的列一趟 —— 〔F2〕问那台机器上的后端，**与窗口里那一次走同一条路**：
+    //    通道宿主注入给路由器的那个句柄（`chan::host::InboundBackends`）。列不出来就别开窗。
+    let rows = list_first_screen(&source, &path).await?;
     let n = rows.len();
     // ② 🔴〔第十三刀 2026-09-23〕**拿着这一屏起一个独立进程。**
     //
@@ -169,15 +174,50 @@ pub async fn open_file_window(
     //    🔴 `D11`：一条退路都没有。起不了独立进程就是错，照实报（`proc` 里那几档
     //      各自带着自己的原因），**不许**退回同进程开一个。
     let pid = open_in_new_process(&OpenRequest {
-        source: Source::remote(cfg),
+        source,
         cwd: path,
         rows,
         reveal,
+        handoff,
     })
     .map_err(|why| format!("窗口没起来：{why}"))?;
     tracing::info!("文件窗口起在进程 {pid} 上（{n} 行已经交给它了）");
     Ok(n)
 }
+
+/// 开窗之前那一屏 —— 问后端 `files-ls`，经通道宿主的生产句柄（monitor 进程里）。
+///
+/// 🔴 **为什么不是自己拨一次通道**：这一段就住在 monitor 进程里，路由器身后那个句柄
+/// （`InboundBackends`）就在手边；绕一圈回环口只多一跳、零收益。它与窗口里那一次
+/// **落在同一个句柄上**（`inbound_client` → 那台机器的后端），不是两条路。
+/// ⚠ 失败那句话走 [`super::source::said`] —— 与窗口里那一次**同一个翻译**。
+async fn list_first_screen(
+    source: &Source,
+    dir: &str,
+) -> Result<Vec<super::source::Listed>, String> {
+    use crate::chan::router::Backends as _;
+    use crate::chan::wire::{Body, CancelToken, Op};
+    let cmd = super::source::CMD_LS;
+    let args = serde_json::json!({ "path": dir, "limit": super::source::LS_LIMIT });
+    let payload =
+        Body(serde_json::to_vec(&args).map_err(|e| format!("`{cmd}` 的参数拼不出来：{e}"))?);
+    let body = crate::chan::host::InboundBackends
+        .call(
+            source.origin(),
+            Op(cmd.to_string()),
+            payload,
+            FIRST_SCREEN_BUDGET,
+            CancelToken::new(),
+        )
+        .await
+        .map_err(|e| super::source::said(cmd, &e))?;
+    let d: serde_json::Value =
+        serde_json::from_slice(&body.0).map_err(|e| format!("`{cmd}` 的应答读不动：{e}"))?;
+    super::source::rows_from_ls_data(&d, super::source::SortBy::default()).map(|(rows, _)| rows)
+}
+
+/// 开窗前那一屏的往返上限（调用方给的期限）。
+const FIRST_SCREEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
 #[cfg(test)]
 #[path = "../../../../tests/bridge/filewin/entry_tests.rs"]
