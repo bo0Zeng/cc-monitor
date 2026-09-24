@@ -708,7 +708,7 @@ export class RemoteSection {
     enabledRow.appendChild(enabledLabel);
     enabledRow.appendChild(
       makeInfoIcon(
-        "勾选后 monitor 启动时会**额外**用 SSH 连下列每台机器作为数据源（与本地聚合）。\n" +
+        "勾选后 monitor 启动时会额外用 SSH 连下列每台机器作为数据源（与本地聚合）。\n" +
           "⚠ 需重启 monitor 才生效。某台配置不完整时后端跳过该台。列表为空 = 等于关闭。",
       ),
     );

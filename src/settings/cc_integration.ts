@@ -455,7 +455,7 @@ export class CcIntegrationSection {
     body.style.marginTop = "4px";
     body.textContent =
       "profile.ps1（CurrentUserAllHosts）是合法的 PowerShell profile 位置——所有 host 都会读它。" +
-      "如果你**故意**装在那里（比如想让 VSCode 终端 / ISE / SSH 也用 cc），保留即可。" +
+      "如果你是故意装在那里（比如想让 VSCode 终端 / ISE / SSH 也用 cc），保留即可。" +
       "如果是 v1.7.0/1.7.1 残留 或 重复安装（同时也在 $PROFILE 装了一份），建议清理其中一份避免重复定义：";
     warn.appendChild(body);
     const list = document.createElement("ul");
