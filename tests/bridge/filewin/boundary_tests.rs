@@ -250,8 +250,10 @@ enum Kind {
     Host,
     /// monitor 那一侧：起进程那个全仓唯一出口（`exec_site_registry` 管着）。
     Spawn,
-    /// monitor 那一侧：开窗前解 home（后端没有这一问，`hello.homes` 今天恒空）＋ 那条命令的入参类型。
-    HomeAndConfig,
+    /// monitor 那一侧：那条命令的入参类型（那台机器的配置）。
+    /// 〔F7a · 第三波 09-24〕这一类原先还装着「开窗前解 home」（走 SFTP，后端没有这一问）——
+    /// 现在问后端 `files-home`，走的是 `Host` 那一类的同一个句柄 ⇒ 这一类只剩配置，改了名。
+    Config,
 }
 
 /// monitor 那一侧的函数（`entry.rs` 整份之外）。**点名，不靠目录。**
@@ -260,7 +262,6 @@ const MONITOR_FNS: &[(&str, &str)] = &[
     ("proc.rs", "write_seed"),
     ("proc.rs", "open_in_new_process"),
     ("proc.rs", "reap_later"),
-    ("source.rs", "resolve_remote_home"),
 ];
 
 /// monitor 那一侧整份算的文件。
@@ -317,8 +318,7 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("spawn_managed::ManagedChild", Kind::Spawn),
     ("spawn_managed::StderrSink", Kind::Spawn),
     ("spawn_managed::spawn_managed_cmd", Kind::Spawn),
-    ("sftp_pool::sftp_realpath", Kind::HomeAndConfig),
-    ("ssh_source::RemoteConfig", Kind::HomeAndConfig),
+    ("ssh_source::RemoteConfig", Kind::Config),
 ];
 
 /// 一段生产代码 → `(函数名, 那一块)`。函数外的行归 `""`。
@@ -500,7 +500,7 @@ fn every_declared_edge_falls_in_a_live_category() {
         (Terminal, WINDOW_SIDE),
         (Host, MONITOR_SIDE),
         (Spawn, MONITOR_SIDE),
-        (HomeAndConfig, MONITOR_SIDE),
+        (Config, MONITOR_SIDE),
     ] {
         let n = side.iter().filter(|(_, kk)| *kk == k).count();
         assert!(

@@ -62,7 +62,8 @@ pub enum Target {
     Dir(String),
     /// 进 `dir` 并高亮 `name` 那一行（老面板 `revealPath`，F54）。
     Reveal { dir: String, name: String },
-    /// 都没说 ⇒ 问远端 `realpath('.')`（第七刀）。**只有这一支要 IO。**
+    /// 都没说 ⇒ 问那台机器上的后端 `files-home`（第七刀立的这一支；〔F7a〕从 SFTP 换成了后端）。
+    /// **只有这一支要多一趟 IO。**
     Home,
 }
 
@@ -75,7 +76,7 @@ pub enum Target {
 /// （本仓红线不许起真连接）⇒ 优先级选错了哪一支，在失败路径上**看不出来**
 /// （两支回的是同一句池错误 —— 第七刀那条判据栽过同一形）。
 /// 抽出来之后它零 IO、三支都判得到。
-/// ⇒ 同 `source::start_dir_from_realpath` / `row_from_ls_entry` 那条方法学。
+/// ⇒ 同 `source::home_from_reply` / `row_from_ls_entry` 那条方法学。
 ///
 /// # 为什么照抄老面板那个优先级
 ///
@@ -123,8 +124,12 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 /// 归谁解释是 `sftp_realpath` 的事，在这里猜一个默认值就是把两处的规矩写成两份）」。
 ///
 /// **那条理由是对的，而它现在被满足了，不是被推翻了** —— 我们没有在这里猜一个默认值，
-/// 我们去问了那个唯一权威（[`super::source::resolve_remote_home`] → `sftp_realpath`）。
+/// 我们去问了那个唯一权威（[`ask_home`] → 那台机器上的后端 `files-home`）。
 /// 「在这里猜」与「去问那个说得上话的」是两件事，上一版只有前者可选，所以它选了回错。
+///
+/// 🔴〔F7a · 第三波 2026-09-24〕**问的对象换了：从 SFTP 换成后端。** 第七刀那一版问的是
+/// SFTP 的 `realpath(".")`（monitor 为这一问单拨一条 SFTP）；现在经通道宿主的同一个句柄
+/// 问后端 `files-home`，与下面列第一屏那一趟**同一条路**。⇒ monitor 这一侧开窗一个 SFTP 都不拨了。
 ///
 /// ## 为什么必须有这一格
 ///
@@ -148,17 +153,17 @@ pub async fn open_file_window(
     path: String,
     reveal_file: Option<String>,
 ) -> Result<usize, String> {
+    let source = Source::remote(cfg);
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
     let (path, reveal) = match plan_target(&path, reveal_file.as_deref())? {
         Target::Dir(d) => (d, None),
         Target::Reveal { dir, name } => (dir, Some(name)),
-        // 只有这一支要 IO ⇒ 它留在 async 这一侧。
-        Target::Home => (super::source::resolve_remote_home(&cfg).await?, None),
+        // 只有这一支要 IO ⇒ 它留在 async 这一侧。〔F7a〕问的是后端，不是 SFTP。
+        Target::Home => (ask_home(&source).await?, None),
     };
     // 🔴〔F2 · 2026-09-24〕通道没起来 ⇒ 开不了窗（`D11`：窗口只有这一条路够后端）。
     let handoff = crate::chan::host::handoff()
         .ok_or_else(|| "主程序的通道口没起来，文件窗口够不着后端".to_string())?;
-    let source = Source::remote(cfg);
     // ① 先真的列一趟 —— 〔F2〕问那台机器上的后端，**与窗口里那一次走同一条路**：
     //    通道宿主注入给路由器的那个句柄（`chan::host::InboundBackends`）。列不出来就别开窗。
     let rows = list_first_screen(&source, &path).await?;
@@ -195,12 +200,35 @@ async fn list_first_screen(
     source: &Source,
     dir: &str,
 ) -> Result<Vec<super::source::Listed>, String> {
+    let args = serde_json::json!({ "path": dir, "limit": super::source::LS_LIMIT });
+    let d = host_ask(source, super::source::CMD_LS, &args).await?;
+    super::source::rows_from_ls_data(&d, super::source::SortBy::default()).map(|(rows, _)| rows)
+}
+
+/// 〔F7a · 第三波 2026-09-24〕开窗前「那台机器的 home 在哪」—— 问后端 `files-home`。
+///
+/// 与 [`list_first_screen`] **同一条路**（[`host_ask`]）；有逻辑的那一段（解字节 ＋ 判能不能当起点）
+/// 住 [`super::source::home_from_reply`]，本函数自己没有逻辑。
+async fn ask_home(source: &Source) -> Result<String, String> {
+    let d = host_ask(source, super::source::CMD_HOME, &serde_json::json!({})).await?;
+    super::source::home_from_reply(&d)
+}
+
+/// monitor 这一侧问后端的**唯一一处**：经通道宿主注入给路由器的那个生产句柄。
+///
+/// 🔴 **为什么不是自己拨一次通道**：这一段就住在 monitor 进程里，路由器身后那个句柄
+/// （`InboundBackends`）就在手边；绕一圈回环口只多一跳、零收益。
+/// ⚠ 失败那句话走 [`super::source::said`] —— 与窗口里那一次**同一个翻译**（话里带着命令名，
+/// 于是「是问 home 那一跳还是列目录那一跳没走通」在报错上分得开）。
+async fn host_ask(
+    source: &Source,
+    cmd: &str,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
     use crate::chan::router::Backends as _;
     use crate::chan::wire::{Body, CancelToken, Op};
-    let cmd = super::source::CMD_LS;
-    let args = serde_json::json!({ "path": dir, "limit": super::source::LS_LIMIT });
     let payload =
-        Body(serde_json::to_vec(&args).map_err(|e| format!("`{cmd}` 的参数拼不出来：{e}"))?);
+        Body(serde_json::to_vec(args).map_err(|e| format!("`{cmd}` 的参数拼不出来：{e}"))?);
     let body = crate::chan::host::InboundBackends
         .call(
             source.origin(),
@@ -211,12 +239,10 @@ async fn list_first_screen(
         )
         .await
         .map_err(|e| super::source::said(cmd, &e))?;
-    let d: serde_json::Value =
-        serde_json::from_slice(&body.0).map_err(|e| format!("`{cmd}` 的应答读不动：{e}"))?;
-    super::source::rows_from_ls_data(&d, super::source::SortBy::default()).map(|(rows, _)| rows)
+    serde_json::from_slice(&body.0).map_err(|e| format!("`{cmd}` 的应答读不动：{e}"))
 }
 
-/// 开窗前那一屏的往返上限（调用方给的期限）。
+/// 开窗前那两问（home · 第一屏）各自的往返上限（调用方给的期限）。
 const FIRST_SCREEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
 #[cfg(test)]
