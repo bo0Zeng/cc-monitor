@@ -1781,7 +1781,8 @@ run_e2e ccm-rbind-title  8
 #   第 281–284（`--print` 纯性，第 281 数「假后端被调几次」⇒ 原生实现恒 0，**空真**）。
 #
 # ⚠ **新增判据落在别处，不在这四格里**：backend 那格 676 → 677（容器路三条转发那条）。
-run_e2e ccm-cli               46
+# 〔2026-09-24 第二波 MC1〕46 → 48：新增两格「设了 CCM_SELF 也不被读」＋ 正控（后端只认 self_invocation）。
+run_e2e ccm-cli               48
 # 🔴 〔`K-R61` 09-11〕39 → **42**：C 组加了三格（`capabilities=` 声明
 #    `base-url-across-tmux` · 容器载荷真带 `export ANTHROPIC_BASE_URL=` · 反空真）。
 #    判法是 `exact` ⇒ 这个数不改，涨了照样红。**同一拍要改三处**（本行 + `ci.yml` 的
