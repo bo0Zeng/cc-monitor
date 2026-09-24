@@ -1004,15 +1004,15 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
 // 「那份会话文件一个字节没动」「目标没被顺手建出来」—— 回了 `Err` 不算数。
 
 /// 目录里有没有复制留下的暂存旁名（`.<名>.ccm-copy-<pid>-<序号>.part`）。
-fn copy_leftovers(dir: &Path) -> Vec<String> {
-    let mut out: Vec<String> = std::fs::read_dir(dir)
-        .expect("列目录")
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .filter(|n| n.contains(".ccm-copy-"))
-        .collect();
-    out.sort();
-    out
+///
+/// ⚠ **不列目录**（`scanning_guard_registry` 不许测试段裸遍历目录）：旁名的形状是确定的，
+/// 本进程造过的序号是 `0..COPY_SEQ` ⇒ 逐个按名字问「在不在」。
+fn copy_leftovers(dir: &Path, name: &str) -> Vec<String> {
+    let upto = COPY_SEQ.load(std::sync::atomic::Ordering::Relaxed);
+    (0..upto)
+        .map(|seq| format!(".{name}.ccm-copy-{}-{seq}.part", std::process::id()))
+        .filter(|n| std::fs::symlink_metadata(dir.join(n)).is_ok())
+        .collect()
 }
 
 /// ★ 缺省不覆盖：复制出来逐字节相等；目标已在 ⇒ `io_failed`、**两份都一个字节没动**。
@@ -1039,9 +1039,9 @@ fn copy_lands_a_byte_exact_copy_and_never_overwrites_unless_asked() {
         "源被动了"
     );
     assert!(
-        copy_leftovers(&root).is_empty(),
+        copy_leftovers(&root, "b.md").is_empty(),
         "留下了暂存旁名：{:?}",
-        copy_leftovers(&root)
+        copy_leftovers(&root, "b.md")
     );
     std::fs::remove_dir_all(&base).ok();
 }
@@ -1075,11 +1075,13 @@ fn explicit_overwrite_replaces_the_link_itself_and_leaves_no_side_file() {
         bytes,
         "🔴 会话记录被经由链接改写了"
     );
-    assert!(
-        copy_leftovers(&root).is_empty(),
-        "留下了暂存旁名：{:?}",
-        copy_leftovers(&root)
-    );
+    for n in ["b.md", "ln.md"] {
+        assert!(
+            copy_leftovers(&root, n).is_empty(),
+            "留下了暂存旁名：{:?}",
+            copy_leftovers(&root, n)
+        );
+    }
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -1115,7 +1117,11 @@ fn copy_is_fenced_on_the_source_the_target_and_through_a_link() {
         bytes,
         "🔴 会话被动了"
     );
-    assert!(copy_leftovers(&root.join("projects/-x")).is_empty());
+    assert!(copy_leftovers(&root.join("projects/-x"), "new.jsonl").is_empty());
+    assert!(
+        copy_leftovers(&root, "stolen.md").is_empty()
+            && copy_leftovers(&root, "stolen.jsonl").is_empty()
+    );
     std::fs::remove_dir_all(&base).ok();
 }
 
