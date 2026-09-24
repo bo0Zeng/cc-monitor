@@ -177,7 +177,19 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 出方向却有十个字段。声明成收输入 ⇒ `--files-index-status` 会挂在那儿等 EOF，
     /// 而它恰恰是「这台机器上的索引新鲜不新鲜」那条**探活式**问话。
     /// ⚠ 同族另外三条（`files-ls` / `files-stat` / `files-find`）**要**输入，不在这张表里。
-    const NO_INPUT_TODAY: &[&str] = &["bus-list", "bus-state", "files-index-status", "ping"];
+    ///
+    /// 〔`C1` · 09-24〕只读查询面进来三条，**同一形**（无入参、有输出字段 `lines`）：
+    /// `history-projects`（列全部项目）· `accounts-list` · `accounts-sessions`
+    /// （账号库目录走默认解析，帧面不收 `--accts-dir`）。同族另外五条要输入，不在表里。
+    const NO_INPUT_TODAY: &[&str] = &[
+        "accounts-list",
+        "accounts-sessions",
+        "bus-list",
+        "bus-state",
+        "files-index-status",
+        "history-projects",
+        "ping",
+    ];
     let declared: Vec<&str> = REGISTRY
         .iter()
         .filter(|s| !s.takes_input)

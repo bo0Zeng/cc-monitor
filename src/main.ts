@@ -43,11 +43,7 @@ import { LOCAL_MACHINE_KEY, readStatus } from "./settings/machine-status";
 import { hostOs } from "./settings/host-os";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./settings/open-settings"; // ST1：点「设置」有反馈（不 import 设置面板）
-import {
-  collectAccountRows,
-  createGatedPoller,
-  type GatedPoller,
-} from "./session-accounts-poll";
+import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
@@ -212,9 +208,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 谁在中间插一个真会被调用的 await 就有踩 TDZ 的风险，需要留意。
   const accountChip = new AccountChip({
     openSettings: () => void openSettingsWindow(),
-    // 切号后立刻重算一次：currentByOrigin 只由下面这条 10s 轮询喂，不主动刷的话会有最长 10s 的
-    // 反向窗口——chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
-    onDefaultChanged: () => void refreshSessionAccounts(),
+    // 切号后立刻重算一次：currentByOrigin 只由下面那个事件驱动的刷新器喂，不主动刷的话
+    // chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
+    onDefaultChanged: () => accountsRefresher.request(true),
   });
   status.appendChild(accountChip.element);
   void accountChip.refresh();
@@ -226,9 +222,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 关上的"反向窗口"从并发侧重开）。加 in-flight 递增序号门：每次进入 ++refreshSeq 取本地 mySeq，
   // 写 setSessionAccounts 前若 refreshSeq 已被更晚一次进入推大（mySeq !== refreshSeq）→ 丢弃本次。
   // ⚠ 句柄留着：F14 第三刀之前这个 interval 的句柄是**丢掉的**，全仓没人停得了它。
-  let sessionAccountsPoller: GatedPoller | null = null;
   let refreshSeq = 0;
-  const refreshSessionAccounts = async (): Promise<void> => {
+  const refreshSessionAccounts = async (forceAccounts: boolean): Promise<void> => {
     const mySeq = ++refreshSeq;
     try {
       const cfg = await readRemoteConfig();
@@ -244,6 +239,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       const { rows, emailByName, readyOrigins, currentByOrigin } = await collectAccountRows(
         cfg.hosts,
         { fetchSessionAccounts, fetchAccounts, currentAccountForBadge },
+        undefined,
+        forceAccounts,
       );
       // A4：sid → lastAccount（源②）。本机 history-metadata 读一次（远端会话的 lastAccount 也
       // 由 cc-monitor 记在本机），live 探测不到时徽章兜底显「上次用本工具起」。失败 → 空表降级。
@@ -260,15 +257,21 @@ window.addEventListener("DOMContentLoaded", async () => {
       console.warn("refreshSessionAccounts failed:", e);
     }
   };
-  // audit-0805 F14 第三刀：原来是 `void refresh(); window.setInterval(…, 10_000)` ——
-  // 句柄丢弃（全仓 `clearInterval` 只有 grid-monitor 一处）、无重入锁（单轮 >10s 会摞轮次）、
-  // 无可见性门控（`document.hidden` 全仓零命中）。三条都由 `createGatedPoller` 接管。
-  // ⚠ 不是新增周期唤醒（定框 E6）：**替换**了原来那一个，且净减少唤醒。
-  sessionAccountsPoller = createGatedPoller({
-    intervalMs: 10_000,
-    tick: refreshSessionAccounts,
+  // 🔴 〔`C1` · 2026-09-24〕那个 10 秒轮询**删了**（理由整段在 `session-accounts-poll.ts` 头注）：
+  // 两条查询搬上了已有的长连接，而「会话 ↔ 账号」只在会话起停时变 —— 那本来就有事件。
+  // ⇒ 刷新改由事件驱动，零定时器：
+  //   · `remote-backend-ready`：某台远端的长连接握手完成（启动 / 重连）⇒ 强制刷账号清单，
+  //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）；
+  //   · `remote-session-added` / `session-ended`：会话起停；
+  //   · 本 UI 切号：上面 `onDefaultChanged`。
+  const accountsRefresher = createEventRefresher(refreshSessionAccounts);
+  accountsRefresher.request();
+  void listen("remote-backend-ready", () => {
+    accountsRefresher.request(true);
+    void accountChip.refresh(true);
   });
-  sessionAccountsPoller.start();
+  void listen("remote-session-added", () => accountsRefresher.request());
+  void listen("session-ended", () => accountsRefresher.request());
 
   // Batch5-F19（G 验收）：用户手动切过 tab 后，迟到的远端宣告不再补切抢焦点
   tabs.onManualSwitch = () => {

@@ -2681,6 +2681,14 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 🔴 〔`C1` · 2026-09-24〕快照改走长连接（`history-tail` 给那张图）之后，
+        //    解析 `--read-session-tail` 首行 meta 的那个函数与它的两条判据一起删了；
+        //    留下的那一句说的正是「它为什么不在了」⇒ 第②条出路：贴墓碑 ＋ 记账。
+        (
+            "tests/bridge/ssh_source_snapshot_tail_tests.rs",
+            "parse_snapshot_meta",
+            1,
+        ),
         // 🔴 〔步 8 · 归属 2026-09-19〕**三处，同一件事**：`inbound_client.rs` 真的挪进
         //    `backend/control/` 了 ⇒ 那张「表外但归这一半」的登记表（`EXTRA_BACKEND_FILES`）
         //    与它的僵尸检查（`the_extra_backend_files_are_not_ghosts`）**一起删掉**——
@@ -3487,6 +3495,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/polling_registry_tests.rs", 1),
         ("tests/bridge/sftp_tests.rs", 3),
         ("tests/bridge/shared_crate_registry_tests.rs", 1),
+        // 〔`C1` · 09-24〕快照那一格的墓碑（`parse_snapshot_meta` 随改走长连接删了）。
+        ("tests/bridge/ssh_source_snapshot_tail_tests.rs", 1),
         ("tests/bridge/structural_scan_tests.rs", 1),
         ("tests/bridge/subagent_tests.rs", 1),
         ("tests/bridge/tmux_backend_gate_guard_tests.rs", 3),

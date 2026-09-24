@@ -129,6 +129,14 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "observe/search_query.rs",
         include_str!("../../src/backend/observe/search_query.rs"),
     ),
+    // 〔`C1` · 09-24〕只读查询的帧面宿主。它不做 match 分派，但把 `history-search` 的
+    // JSON 选项摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit` 那几个 token
+    // （解析走 CLI 那一臂同一个 `parse_opts`）⇒ 派生的文件集把它扫了进来。登记，不改判据：
+    // 那几个 token 本来就在 IPC-PROTOCOL.md 里，它们从此也在这里受对拍。
+    (
+        "read_face.rs",
+        include_str!("../../src/backend/read_face.rs"),
+    ),
     // 它不做 match 分派，只在用法串里提自己的名字 —— 但 D 审计正是把一个
     // `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 藏在这里绕过了护栏。
     // 放宽后的探测把它揪了出来。

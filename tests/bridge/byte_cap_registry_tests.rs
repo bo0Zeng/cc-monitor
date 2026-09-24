@@ -385,6 +385,28 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "入方向单行",
         "拒收+回错",
     ),
+    // 〔`C1` · 09-24〕只读查询的帧面宿主那三个数（一帧应答要整个进内存、整个过线）。
+    (
+        "src/backend/read_face.rs",
+        "READ_PAGE_BYTES",
+        1 << 20,
+        "`history-read` 一页（一帧应答）的正文字节数",
+        "索引截断（不丢数据）",
+    ),
+    (
+        "src/backend/read_face.rs",
+        "LINE_CAP_BYTES",
+        32 << 20,
+        "`history-read` 里单独一行比一页还长时最多续读多长",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/read_face.rs",
+        "LINES_CAP_BYTES",
+        32 << 20,
+        "按行那六条帧查询（`history-projects` 等）整份输出",
+        "拒收+回错",
+    ),
     // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：backend 的 Claude 知识搬进
     // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
     // 两格同时红（「有上限没登记」+「登记的那个算不出值」）。**登记表的键随搬迁同轮改。**
@@ -995,6 +1017,15 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
 ///
 /// 只有一种正当情况：上限是**参数**，真值由调用方给（而调用方给的是具名常量）。
 const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
+    // 〔`C1` · 09-24〕`history_query::read_page` 的一页上限是入参；唯一调用点
+    // （`read_face.rs`）给的是具名常量 `READ_PAGE_BYTES`（已在 `CAPS` 里）。
+    // ⚠ 不是静默截断：读满一页就停、**回续点 `next`**，调用方循环到 `eof` —— 一个字节都不丢。
+    (
+        "src/backend/observe/history_query.rs",
+        "page as u64",
+        "`read_page` 的一页上限是入参，调用方给 `read_face::READ_PAGE_BYTES`（已在 `CAPS` 里）；\
+             读满即停并回续点，由调用方翻下一页 —— 分页，不是截断。",
+    ),
     (
         "src/bridge/src/backend/control/cc_bus.rs",
         "cap + 1",
