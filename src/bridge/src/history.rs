@@ -1925,50 +1925,32 @@ fn apikey_account_id(account: Option<&LaunchAccount>) -> Option<String> {
     }
 }
 
-/// 上一条的**纯派生半** —— 「一个 configDir 对应apikey 表里哪个 id」。
+/// 「一个 configDir 对应 apikey 表里哪个 id」。
 ///
-/// ★ 抽出来的理由是**只许有一份**：界面那一侧（徽章要显「这个号走不走 apikey 端点改写」）问的是
-/// **同一个问题**，而它手上也只有 configDir。两边各写一个 basename 规则，
-/// 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
-///
-/// ⚠⚠ **界面那一侧今天还没有人调它** —— 那条把这个事实端给前端的路（一条只答本机的
-/// tauri 命令）**本轮做到一半退回了**：新注册一条命令会让 `parity_ledger.rs` 的
-/// `every_tauri_command_is_declared_in_the_ledger` 当场红（实测报文逐字：
-/// 「这些命令已注册但**没进平价对账表**：["apikey_routing_for"]」），
-/// 而那个文件**不在 `K-H2b` 的写区**。⇒ 本函数今天只有起会话那一侧一个调用方；
-/// 它被抽出来是为了「接的时候只有一份规则」，**不是**已经接上了。经过住件文件 `§4`。
-pub(crate) fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
-    std::path::Path::new(config_dir.trim())
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(str::to_string)
-}
+/// 〔C4c · 第四波 4B〕**规则搬进了 `acct-core`**（`acct_core::apikey_account_id_of_dir`）：后端出账号清单时
+/// 并表也要问这一句，而后端不链接本 crate。这里只是把那一份引进来，本 crate 里的调用点（起会话那一侧 ·
+/// `apikey_routing_for` · 写 key 那两处）照旧写 `history::apikey_account_id_of_dir(`，一行判定都不在这里。
+pub(crate) use acct_core::apikey_account_id_of_dir;
 
 /// `KH2B7` 的**纯派生半**：给一批 configDir 与一张 id 表，答「哪几个在 apikey 表里有行」。
 ///
-/// ★ 抽成纯函数的理由与本模块另外两次一样：`apikey_rows()` 要读盘、`relay_running()` 要读进程状态，
-/// 而**这条规则本身**（怎么从 configDir 推 id、怎么和表比）不该只能对着真实的家目录跑。
+/// 〔C4c · 第四波 4B〕**规则搬进了 `acct-core`**（`acct_core::apikey_routed_subset`，后端出账号清单时并表调同一份）。
+/// 本函数只绑上一格：本 crate 这一侧「凭据文件里的行属于哪一家」是 `payload::APIKEY_TABLE_AGENT`
+/// （后端那一侧绑它自己的 `CREDENTIALS_FILE_AGENT`，两处字面量由既有判据对拍）。
 ///
-/// ⚠ **它答的是「表里有没有这一行」，不是「这个 key 能不能用」** —— 后者要到 claude 那边才知道。
-/// ⚠ 也不是「这次拉起会不会真的注入」：那还要过 `relay_running` 那一格（`apikey_endpoint_for`）。
-///
-/// 🔴 〔条 49 · `设计/90 §1.2`〕「有行」说的是 **(agent, 账号) 这一对**：apikey 凭据文件里的行
-/// 只属于 `payload::APIKEY_TABLE_AGENT` 那一家。先前本函数只比账号 id、**不看 agent** ⇒
-/// 起会话的若是别家（它在表里一行都没有），界面会说「这个号走 apikey 端点改写」而起会话那一侧不注入。
-/// ⇒ `agent` 不是那一家 ⇒ 空集，与 `payload::apikey_endpoint_for` 的判法逐格同答。
+/// ⚠ **它答的是「表里有没有这一行」，不是「这个 key 能不能用」**；也不是「这次拉起会不会真的注入」
+/// （那还要过 `relay_running` 那一格，`apikey_endpoint_for`）。
 pub(crate) fn apikey_routed_subset(
     config_dirs: &[String],
     rows: &[String],
     agent: &str,
 ) -> Vec<String> {
-    if agent != crate::backend::control::payload::APIKEY_TABLE_AGENT {
-        return Vec::new();
-    }
-    config_dirs
-        .iter()
-        .filter(|d| apikey_account_id_of_dir(d).is_some_and(|id| rows.iter().any(|r| *r == id)))
-        .cloned()
-        .collect()
+    acct_core::apikey_routed_subset(
+        config_dirs,
+        rows,
+        agent,
+        crate::backend::control::payload::APIKEY_TABLE_AGENT,
+    )
 }
 
 /// 起本机会话时写进中转路由键第 1 段的那个 agent 名（适配器的 `id()`；读它的是账号层）。**起会话那一侧与界面那一侧共用这一处**，

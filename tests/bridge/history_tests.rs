@@ -3687,6 +3687,61 @@ fn the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule() {
     assert!(apikey_routed_subset(&["".to_string()], &rows, "claude-code").is_empty());
 }
 
+/// ★★ 〔C4c · 第四波 4B〕**那两条 apikey 规则只有一个家：`acct-core`**。
+///
+/// 要求住址：`设计/01 §5` D1「**一个判定只有一个家**」。C4c 之前它们住本文件，后端出账号清单要并表时
+/// 够不着（后端不链接 monitor）⇒ 搬进两边都链接的 `acct-core`。本条钉搬完之后的形状（两半异源地扫）：
+/// - monitor 与后端两棵生产树里 `fn apikey_account_id_of_dir` 的**定义**零处（monitor 只 `use` 进来）；
+/// - `fn apikey_routed_subset` 的定义在两棵树里恰好一处（本 crate 的 `history.rs`），且它的函数体
+///   **调** `acct_core::apikey_routed_subset(`（只绑「表属于哪一家」那一格，自己不比表）；
+/// - 反空真：同一个识别器在 `acct-core` 的源码上两条定义各数得出恰好 1。
+#[test]
+fn the_two_apikey_rules_are_defined_only_in_acct_core() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let count_def = |src: &str, name: &str| {
+        guard_core::production_code(src)
+            .matches(&format!("fn {name}("))
+            .count()
+    };
+    let mut id_defs = Vec::new();
+    let mut subset_defs = Vec::new();
+    for dir in [root.join("src"), root.join("../backend")] {
+        for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
+            let rel = p.to_string_lossy().replace('\\', "/");
+            for _ in 0..count_def(&src, "apikey_account_id_of_dir") {
+                id_defs.push(rel.clone());
+            }
+            for _ in 0..count_def(&src, "apikey_routed_subset") {
+                subset_defs.push((rel.clone(), src.clone()));
+            }
+        }
+    }
+    assert!(
+        id_defs.is_empty(),
+        "「configDir → id」那条规则在两半里又长出了定义：{id_defs:?}"
+    );
+    assert_eq!(
+        subset_defs.len(),
+        1,
+        "`apikey_routed_subset` 在两半里的定义不是恰好一处：{:?}",
+        subset_defs.iter().map(|(p, _)| p).collect::<Vec<_>>()
+    );
+    let (at, src) = &subset_defs[0];
+    assert!(at.ends_with("src/history.rs"), "那一处不在 history.rs：{at}");
+    let prod = guard_core::production_code(src);
+    let body_at = prod.find("fn apikey_routed_subset(").unwrap();
+    let body = &prod[body_at..];
+    let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
+    assert!(
+        body.contains("acct_core::apikey_routed_subset("),
+        "monitor 那一个不再是调 acct-core 的绑定 —— 它自己在比表：{body}"
+    );
+    // 反空真：识别器在规则真正的家上认得出两条定义。
+    let core = std::fs::read_to_string(root.join("crates/acct-core/src/lib.rs")).unwrap();
+    assert_eq!(count_def(&core, "apikey_account_id_of_dir"), 1);
+    assert_eq!(count_def(&core, "apikey_routed_subset"), 1);
+}
+
 /// ★★★ 〔条 49 · `设计/90 §1.2`〕**界面那一侧判「有行」也看 agent**，与起会话那一侧逐格同答。
 ///
 /// 量法是**对照**：同一张表、同一批 configDir，只有 agent 不同；再拿起会话那一侧的判断口
