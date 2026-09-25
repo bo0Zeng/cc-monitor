@@ -1,11 +1,11 @@
-//! 账号层（层 2）从哪儿拿 key，以及**拿之前先查一次它的权限**。层 1（中转）手里没有 key。
+//! 上游选择从哪儿拿 key，以及**拿之前先查一次它的权限**。中转手里没有 key。
 //!
 //! # `KS9`：这条路上**没有前端**
 //!
 //! 本模块只做三件事：算出路径 · 读那个文件 · 解析。
 //! 它不依赖任何 IPC / 界面 / 帧 —— 所以「**只放一份文件进去、一次界面都不开**」
 //! 这句话在这里是**结构上成立**的，不是靠一条测试证的。
-//! 判据 `the_apikey_layer_loads_the_key_from_a_hand_written_file_alone` 走的就是这条真实的路。
+//! 判据 `upstream_selection_loads_the_key_from_a_hand_written_file_alone` 走的就是这条真实的路。
 //!
 //! # `KS11`：读之前查权限，**过宽出声、不拒绝**
 //!
@@ -135,7 +135,7 @@ pub(crate) fn announce(
     // ⚠ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕本层每一行日志的前缀是 `[apikey]`，**不是** `[relay]`：
     //   `--relay` 这一个进程同时承载两层，而先前两层的日志共用一个 `[relay]` —— 读日志的人
     //   分不出「中转（搬字节）出事了」还是「apikey 那张表出事了」，影响面就判不出来。
-    //   `[relay]` 只留给层 1 自己那几行（监听 · 连上游 · 在途上界）。
+    //   `[relay]` 只留给中转自己那几行（监听 · 连上游 · 在途上界）。
     // ① 路径 —— `KS9` 的「文档化」就落在这一行。**总是印**，配没配都印。
     let _ = writeln!(out, "[apikey] credentials file: {}", loaded.path.display());
     n += 1;
@@ -229,5 +229,5 @@ pub(crate) fn announce(
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/accounts/apikey/creds_tests.rs"]
+#[path = "../../../../tests/backend/accounts/upstream/creds_tests.rs"]
 mod tests;

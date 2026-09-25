@@ -20,7 +20,7 @@
 //! # 逐次拨号那条路没有了〔C4d · 第四波 4B〕
 //!
 //! 不在帧面上的一次性查询从前落到 `remote_history.rs` 的逐次拨号那条路（`run_list_query`〔散文墓碑〕），
-//! 而那条路只放行一张「仍拨号」的表 —— C4c 起那张表就是空的（最后两条随账号层上了帧面）。
+//! 而那条路只放行一张「仍拨号」的表 —— C4c 起那张表就是空的（最后两条随账号域上了帧面）。
 //! 主会话 09-25 裁删：那条路、那张表与那道闸门一起没了。认不出帧命令的查询**当场说**（`subagent·rs::Backend::query`），
 //! 不拨号、不回落；「新长一条逐次拨号的查询」从此在代码里无处可落（判据在 `frame_query_tests.rs`）。
 
@@ -49,7 +49,7 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--list-user-inputs", "history-user-inputs"),
     // 〔SR1a × SE2〕会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
     ("--find-in-session", "history-find"),
-    // 〔C4c · 第四波 4B〕换号前的信任预检（主会话裁：随账号层一起上帧面）。两形合进**一条**帧命令
+    // 〔C4c · 第四波 4B〕换号前的信任预检（主会话裁：随账号域一起上帧面）。两形合进**一条**帧命令
     //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
     ("--account-trust", "accounts-trust"),
     ("--account-trust-zero", "accounts-trust"),

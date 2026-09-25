@@ -994,6 +994,8 @@ fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
 /// K-R12 `J1` 的判据本体：**下溢红、恰好绿、过溢绿**。
 ///
 /// 与上一条分开写，是因为上一条量的是「处置对不对」，这一条量的是「那条不等号的方向」。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn the_underflow_predicate_only_fires_downward() {
     assert!(
@@ -1052,6 +1054,8 @@ fn the_underflow_predicate_only_fires_downward() {
 /// 🔴 **本条守的是「别漏」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
 /// 行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`：同样这两条脚本对真 tmux 3.4
 /// 私有 socket 打过，改前段数 1、改后各回各的 N。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
     let prod = crate::guard_support::production_code(include_str!(
