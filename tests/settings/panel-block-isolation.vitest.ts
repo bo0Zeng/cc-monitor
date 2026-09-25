@@ -61,11 +61,7 @@ vi.mock("../../src/settings/diagnostics-section", () => ({
     element = document.createElement("div");
   },
 }));
-vi.mock("../../src/settings/cc_integration", () => ({
-  CcIntegrationSection: class {
-    element = document.createElement("div");
-  },
-}));
+// 〔AL1c · 4B〕`cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
 vi.mock("../../src/settings/mcp-section", () => ({
   McpSection: class {
     element = document.createElement("div");
@@ -144,8 +140,8 @@ import { __setHostOsForTests } from "../../src/settings/host-os";
 import { setBehavior } from "../../src/behavior";
 import { beforeEach, afterEach } from "vitest";
 
-// S9：jsdom 的 UA 含 `linux`，非 Windows 上「终端集成」那块**根本不构造**
-// ⇒ 不置覆盖值的话，本套隔离测试就少守一块。钉成 windows，守的是完整那组。
+// S9：jsdom 的 UA 含 `linux`。从前非 Windows 上「终端集成」那块**根本不构造**，钉成 windows 为的是守完整那组；
+// 〔AL1c〕那块并进了「别名」、两个平台都构造 ⇒ 这一钉只是沿用本文件一直以来的 Windows 形态。
 beforeEach(() => __setHostOsForTests("windows"));
 afterEach(() => __setHostOsForTests(null));
 
