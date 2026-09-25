@@ -393,13 +393,41 @@ export function localLaunchAccountSync(sid: string | null): LocalLaunchAccountWi
   //
   // ⚠ 载荷里**带什么**一个字没改（`K-R95` `§0b`：只改「谁渲染它」）：
   // 仍是「说不出就缺席，绝不猜」，仍不回落到「当前账号」。
-  return picked?.configDir
+  return picked?.configDir ? namedLocalAccountWire(picked.configDir, name) : undefined;
+}
+
+/** 具名账号 → 本机载荷上的 `account`（名字与目录一起交，`K-R53`）。键名与判别值都来自生成物（`K-R95`）。 */
+export function namedLocalAccountWire(configDir: string, name: string): LocalLaunchAccountWire {
+  return {
+    [LOCAL_LAUNCH_ACCOUNT_WIRE.tag]: LOCAL_LAUNCH_ACCOUNT_WIRE.named,
+    [LOCAL_LAUNCH_ACCOUNT_WIRE.configDir]: configDir,
+    [LOCAL_LAUNCH_ACCOUNT_WIRE.name]: name,
+  };
+}
+
+/** 本机载荷上 `account` 那一格能装的三种形状之二（第三种 = 缺席 = 没表态）。 */
+export type LocalAccountWire =
+  | Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.tag, typeof LOCAL_LAUNCH_ACCOUNT_WIRE.base>
+  | LocalLaunchAccountWire
+  | (Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.tag, typeof LOCAL_LAUNCH_ACCOUNT_WIRE.named> &
+      Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.configDir, string>);
+
+/**
+ * 〔FE1〕**用户显式选的那一格** → 本机载荷上的 `account`（分叉小窗 · 换号重启菜单）。
+ *
+ * - `configDir === null` = 账号 0 ⇒ `base`（后端产出 `unset CLAUDE_CONFIG_DIR`）—— **不是省略**：
+ *   省略 = 没表态 = 一个字都不注入，会被 shell rc 里的默认号顶掉（Phase G 抓出的静默串号）。
+ * - 具名：名字说得出就一起交（`K-R53`）；说不出（分叉继承的是源会话的**目录**）⇒ 只交目录，
+ *   后端诚实短路回旧路，**绝不从目录名反推**（`accounts.ts` 的 Z01：空值 ≠ 未设）。
+ */
+export function explicitLocalAccountWire(configDir: string | null, name: string | null): LocalAccountWire {
+  if (configDir === null) return { [LOCAL_LAUNCH_ACCOUNT_WIRE.tag]: LOCAL_LAUNCH_ACCOUNT_WIRE.base };
+  return name === null
     ? {
         [LOCAL_LAUNCH_ACCOUNT_WIRE.tag]: LOCAL_LAUNCH_ACCOUNT_WIRE.named,
-        [LOCAL_LAUNCH_ACCOUNT_WIRE.configDir]: picked.configDir,
-        [LOCAL_LAUNCH_ACCOUNT_WIRE.name]: name,
+        [LOCAL_LAUNCH_ACCOUNT_WIRE.configDir]: configDir,
       }
-    : undefined;
+    : namedLocalAccountWire(configDir, name);
 }
 
 /**

@@ -716,6 +716,26 @@
       "kind": "error",
       "zh": "问不出 {machine} 上已有哪些 tmux 会话。新会话的名字可能撞上已有的、接进别的会话里，所以这次没有起。原因：{reason}",
       "args": ["machine", "reason"]
+    },
+    "localResume.build.failed": {
+      "kind": "error",
+      "zh": "无法构造 resume 命令",
+      "args": []
+    },
+    "localResume.launch.failed": {
+      "kind": "error",
+      "zh": "恢复失败",
+      "args": []
+    },
+    "localResume.restart.failed": {
+      "kind": "error",
+      "zh": "本机没能用新账号拉起会话",
+      "args": []
+    },
+    "localResume.fork.failed": {
+      "kind": "error",
+      "zh": "起分叉会话失败",
+      "args": []
     }
   }
 }

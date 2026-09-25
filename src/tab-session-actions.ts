@@ -19,17 +19,9 @@
  * 换成 `this.host.…`（同一个值，换了个取法）。
  */
 import { openPath } from "@tauri-apps/plugin-opener";
-import {
-  restartLocateFailureMessage,
-  withAccount,
-  type SessionAccount,
-  localLaunchAccountSync,
-  localLaunchAccountNameSync,
-  recordLocalLaunchAccount,
-  primeLocalLaunchAccounts,
-} from "./accounts";
+import { restartLocateFailureMessage, withAccount, type SessionAccount } from "./accounts";
+import { resumeLocalSession } from "./local-resume";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
-import { validateLocalLaunch } from "./launch-requests";
 import { showActionFailureToast } from "./error-toast";
 import {
   runRemoteResume,
@@ -43,7 +35,6 @@ import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, type RecordProbe } from "./session-reads";
 import { lastAccounts } from "./history-reads";
-import { mintSessionTmuxName } from "./remote-launch";
 import { listingFromFetch, mintFromListing, refuseUnmintable } from "./tmux-name-mint";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。〔F7b〕老 SFTP 面板删了。
@@ -253,70 +244,15 @@ export class TabSessionActions {
       );
       return;
     }
-    try {
-      // F06：走一遍本地 IR 构造，sid 校验先于 resume_history_session 这次 invoke（不代表本函数
-      // 此前完全没有过 IPC——上面 `getBehavior()` 已经读过一次 config；构造失败与拉起失败分两个
-      // catch，headline 对齐远端 `runRemoteResume` 的"无法构造 resume 命令"/"拉起失败"两分）。
-      validateLocalLaunch({ kind: "resume", sid }, tab.cwd ?? "");
-    } catch (err) {
-      showActionFailureToast("无法构造 resume 命令", String(err));
-      return;
-    }
-    // ★★ P3t-Y2b：本机 resume 也进 tmux（POSIX；Windows 那侧后端不读这个名字，`C12`）。
-    //
-    // 名字**必须**由 `mintSessionTmuxName` 铸 —— 它 = 基名 `<项目名>-cc` + `mintTmuxName` 的避让，
-    // 而 `mintTmuxName` 是全仓唯一带撞名避让的铸造口（F13）。
-    // Rust 侧刻意拒绝自己铸名：在那边补一个默认值就是 F13 修掉的坑第三次。
-    //
-    // ⚠ **这里第一版直接写了 `mintTmuxName(`${sid.slice(0,8)}-cc`, …)`** —— 那等于**又抄了一份
-    // 基名规则**，正是 F13 收敛掉的那个重复（我在上一句里刚写完「唯一铸造口」）。
-    // `session_name_registry` 当场判红（它数的就是「谁在产 `-cc` 基名」）。⇒ 改用现成的那个。
-    // 🔴 `K-R96`（用户 09-12 `R55`「要是可读的名字 / 不要id」）：基名从 `<sid8>-cc`
-    //    换成 `<项目名>-cc`（从 cwd 派生）⇒ 这里要给的是 **cwd**，不是 sid。
-    //    sid 一格没丢：它骑在 `@ccm_sid` 上（后端建会话时 `set-option` 写），
-    //    而本仓认会话从来就只问那个、不问名字前缀。
-    //
-    // `existing` 从 `commands.list_local_tmux()` 来（就在下面几行）。
-    // 〔K-R19 订正 09-03〕这里原先写的是 `local_tmux_names()`，**全仓零定义**：
-    // 真名从来就是 `list_local_tmux`（Rust 侧 `tmux.rs::list_local_tmux`）。
-    // ⚠ 它回 `null` 表示**不知道**（本机后端通道
-    // 没起 / 还没推过帧），不是「一个名字都没占」。不知道的时候**不铸名**、不传 `tmuxName`
-    // ⇒ 后端诚实降级回旧路（不进容器）。硬要铸就是「不避让」，那正是 issue #76
-    //「静默接进第一个会话，而用户以为开了新的」。
-    // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍，见那个取值口的头注）。
-    primeLocalLaunchAccounts();
-    let tmuxName: string | null = null;
-    try {
-      const sessions = await commands.list_local_tmux();
-      if (sessions)
-        tmuxName = mintSessionTmuxName(tab.cwd ?? "", new Set(sessions.map((s) => s.name)));
-    } catch {
-      // 读不到就当不知道 —— 与上面同一条纪律，绝不退化成空集。
-      tmuxName = null;
-    }
-    try {
-      // ★★ `K-H2b` `D1 阻-1`：**账号这一格先前是空的** —— 这条是 tab 栏那条主路，
-      //    而它一个账号都不传 ⇒ ① 起会话落到 shell rc 里那个默认号上（静默串号）；
-      //    ② 中转那一格永远拼不出路由键（没有账号 id ⇒ 不注入）。
-      //    取值口只有一个（`accounts.ts::localLaunchAccountSync`，就在下面几行调着）：
-      //    〔K-R19 订正 09-03〕原先写的是 `resolveLocalLaunchAccount`，**全仓零定义**；
-      //    钉这件事的那条判据（`commands.vitest.ts`）逐字写的就是 `localLaunchAccountSync`。
-      //    resume 走那条会话上次的 pin，
-      //    说不出就**缺席**（逐字节旧行为），绝不回落到「当前账号」——那是 #75 的形状。
-      await commands.resume_history_session({
-        sessionId: sid,
-        cwd: tab.cwd ?? "",
-        launcher: behavior.resumeCommandLocal || null,
-        tmuxName,
-        account: localLaunchAccountSync(sid),
-      });
-      // `D3 阻-2`：**本机这条路也要往 pin 里写** —— 在此之前 `recordLastAccount` 的两个
-      //   生产调用点结构上只走远端 ⇒ 本机那一份上次账号表恒空 ⇒ 上面那句「pin 优先」
-      //   在本机永远走不到。⚠ 不等待（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
-      recordLocalLaunchAccount(sid, localLaunchAccountNameSync(sid));
-    } catch (err) {
-      showActionFailureToast("恢复失败", String(err));
-    }
+    // 〔FE1〕本机 resume 的编排只有一份（`local-resume.ts`）：校验 sid → 铸名 → 起 → 记 pin。
+    //   这里先前逐字抄着一份（连同内联的「列本机 tmux → 铸名」六行），注释里记着 #75 · #76 ·
+    //   `D1 阻-1` · `D3 阻-2` 四次「这里修了、那里漏了」。账号跟随这条会话上次的号（同远端 `follow`）。
+    await resumeLocalSession({
+      sid,
+      cwd: tab.cwd ?? "",
+      account: { kind: "follow" },
+      launcher: behavior.resumeCommandLocal,
+    });
   }
 
   /**

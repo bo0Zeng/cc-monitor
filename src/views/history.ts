@@ -29,8 +29,8 @@ import { commands } from "../ipc/commands";
 import { LOCAL_ORIGIN } from "../backend-policy";
 import { originFromWire } from "../ipc/origin";
 import { searchAllMachines } from "./history-search";
-// `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
-import { mintLocalTmuxName } from "../ipc/local-tmux-name";
+// 〔FE1〕本机 resume 的编排只有一份（铸名 · 账号 · 记 pin 都在里面）。
+import { resumeLocalSession } from "../local-resume";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
 // `K-R92`：那三格是三态（`null` = 不知道，不是 0）。排序档与加减都只许从这里走 ——
 // JS 会安静地把 `null` 当 0（`Number(null)` / `null > 0` / `null + 1`），那正是本件在治的病。
@@ -45,7 +45,6 @@ import {
   withAccount,
   localLaunchAccountSync,
   localLaunchAccountNameSync,
-  recordLocalLaunchAccount,
   primeLocalLaunchAccounts,
   rememberLocalLaunch,
 } from "../accounts";
@@ -1669,43 +1668,10 @@ export class HistoryView {
         },
       );
     } else {
-      // F06：走一遍本地 IR 构造，sid 校验先于任何 IPC 往返（同其余 planXxx 早有的
-      // isValidSessionId 检查）；构造失败与拉起失败分两个 catch，headline 对齐远端
-      // `runRemoteResume` 的"无法构造 resume 命令"/"拉起失败"两分，不再共用一个"恢复失败"。
-      primeLocalLaunchAccounts(); // `D1 阻-1`：同上，不等待
-      try {
-        validateLocalLaunch({ kind: "resume", sid: ctx.sessionId }, ctx.cwd);
-      } catch (err) {
-        showActionFailureToast("无法构造 resume 命令", String(err));
-        return;
-      }
-      try {
-        // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→默认）
-        const behavior = await getBehavior();
-        // ★★ `K-R46`：**这条路先前一个 tmux 名都不传** —— 而后端**故意**拒绝自己铸名
-        //    （`history.rs` 的 `NO_TMUX_NAME`）⇒ 名字为 `None` ⇒ 渲染器早退 ⇒ 后端如实
-        //    降级回旧路 ⇒ 起出来的会话**不在一个具名 tmux 容器里**，于是 `list_local_tmux`
-        //    那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）
-        //    对它一个都给不出来。tab 栏那条 resume 早就传了，历史页这条没有 ——
-        //    **架构上一条路、行为上两条**，本件补的就是这个。
-        //    ⚠ 铸名与「不知道就不铸」两格住 `ipc/local-tmux-name.ts`，别在这里重写。
-        //    〔`K-R96` 09-12〕名字从 cwd 派生（`<项目名>-cc`，用户 `R55` 裁定一）。
-        const tmuxName = await mintLocalTmuxName(ctx.cwd);
-        // ★★ `K-H2b` `D1 阻-1`：账号这一格先前是空的（历史页 resume 那条主路）。
-        //    取值口只有一个（`resolveLocalLaunchAccount`），resume 走那条会话上次的 pin ——
-        //    与上面远端那条 `withAccount(..., {follow:{lastAccount}})` **同形**。
-        await commands.resume_history_session({
-          sessionId: ctx.sessionId,
-          cwd: ctx.cwd,
-          launcher: behavior.resumeCommandLocal || null,
-          tmuxName,
-          account: localLaunchAccountSync(ctx.sessionId),
-        });
-        // `D3 阻-2`：本机这条路也要往 pin 里写（同 `tabs.ts` 那处，理由见取值口头注）。
-        recordLocalLaunchAccount(ctx.sessionId, localLaunchAccountNameSync(ctx.sessionId));
-      } catch (err) {
-        showActionFailureToast("恢复失败", String(err));
-      }
+      // 〔FE1〕本机 resume 的编排只有一份（`local-resume.ts`）：校验 sid → 铸名 → 起 → 记 pin。
+      //   这里先前逐字抄着一份（`K-R46` 补铸名 · `K-H2b` 补账号 · `D3 阻-2` 补记 pin，三次都是
+      //   「tab 栏那条早有了、这条没有」）。账号跟随这条会话上次的号 —— 与上面远端那条 `follow` **同形**。
+      await resumeLocalSession({ sid: ctx.sessionId, cwd: ctx.cwd, account: { kind: "follow" } });
     }
   }
 

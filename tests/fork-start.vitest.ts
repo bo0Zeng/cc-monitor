@@ -21,7 +21,7 @@ type AskFn = ForkStartDeps["ask"];
 function deps(over: { ask?: AskFn } = {}) {
   return {
     ask: vi.fn<AskFn>(over.ask ?? (async () => ({}))),
-    startLocal: vi.fn(async (_a: LocalArgs) => {}),
+    startLocal: vi.fn(async (_a: LocalArgs) => true),
     startRemote: vi.fn(async (_a: RemoteArgs) => true),
   };
 }
@@ -213,6 +213,28 @@ describe("tmux 名", () => {
     expect(d.startRemote.mock.calls[0][0].tmuxName).toBe("p-fork-cc-2");
   });
 
+  // 〔FE1〕`设计/01 §5` D4：远端名单**没问到**（`null`）而要进 tmux ⇒ 不起、抛给 `runForkFlow` 出声。
+  //   先前 `?? []`：空集铸 `-fork-cc`，不避让（#76 的形状）。正控：上面「避让已占用的名字」那条（名单问到了）。
+  it("★ 〔FE1〕名单没问到（null）且要进 tmux ⇒ 抛（不起），不拿空集铸名", async () => {
+    const d = deps();
+    await expect(
+      startForkedSession(
+        { newSessionId: "n", takenTmuxNames: null, origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
+        asDeps(d),
+      ),
+    ).rejects.toThrow(/没有起/);
+    expect(d.startRemote).not.toHaveBeenCalled();
+  });
+
+  it("正控：名单没问到但**不进 tmux** ⇒ 照起（名单只在铸名时要）", async () => {
+    const d = deps();
+    await startForkedSession(
+      { newSessionId: "n", takenTmuxNames: null, origin: "devbox", source: { ...LIVE, liveTmuxName: "" } },
+      asDeps(d),
+    );
+    expect(d.startRemote.mock.calls[0][0].tmuxName).toBeNull();
+  });
+
   it("源会话不在 tmux 里 → 新的也不进 tmux（tmuxName 为 null）", async () => {
     const d = deps();
     await startForkedSession(
@@ -238,6 +260,26 @@ describe("Phase G：远端拉起失败不许被读成成功", () => {
       asDeps(d),
     );
     expect(r).toBe("failed");
+  });
+
+  // 〔FE1〕本机那一跳与远端同形：`startLocal` 失败时自己出声并回 `false`（`local-resume.ts`），
+  //   编排器据此回 `failed` —— 否则调用点接着弹「✓ 已起来」，同屏一条失败一条成功。
+  it("★ 〔FE1〕startLocal 回 false → failed；回 true → started", async () => {
+    const d = deps();
+    d.startLocal.mockImplementation(async () => false);
+    expect(
+      await startForkedSession(
+        { newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: LIVE },
+        asDeps(d),
+      ),
+    ).toBe("failed");
+    const ok = deps();
+    expect(
+      await startForkedSession(
+        { newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: LIVE },
+        asDeps(ok),
+      ),
+    ).toBe("started");
   });
 
   it("startRemote 回 true → started", async () => {

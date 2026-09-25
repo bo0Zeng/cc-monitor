@@ -7,7 +7,10 @@ vi.mock("../src/remote-launch-run", () => ({
   runRemoteResumeTmux: vi.fn().mockResolvedValue(true),
 }));
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../src/accounts", () => ({
+// 〔FE1〕本机那一跳走 `local-resume.ts`，它从 `accounts.ts` 取载荷形状（`explicitLocalAccountWire`，
+//   键名来自生成物）⇒ 那几个纯函数用真的，只桩有 IO 的这几条。
+vi.mock("../src/accounts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/accounts")>()),
   fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
   accountConfigDir: vi.fn(),
   recordLastAccount: vi.fn().mockResolvedValue(undefined),
