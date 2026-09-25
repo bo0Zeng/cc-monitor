@@ -1,0 +1,53 @@
+{
+  "accounts-list": {
+    "accounts": [
+      {
+        "authKind": "subscription",
+        "authReady": false,
+        "configDir": null,
+        "email": "",
+        "exists": true,
+        "isDefault": false,
+        "loggedIn": false,
+        "mode": "isolated",
+        "name": "zero"
+      },
+      {
+        "authKind": "subscription",
+        "authReady": true,
+        "configDir": "<root>/accts/acct-a",
+        "email": "a@x",
+        "exists": true,
+        "isDefault": true,
+        "loggedIn": true,
+        "mode": "isolated",
+        "name": "a"
+      },
+      {
+        "authKind": "api-key",
+        "authReady": true,
+        "configDir": "<root>/accts/acct-b",
+        "email": "",
+        "exists": true,
+        "isDefault": false,
+        "loggedIn": false,
+        "mode": "isolated",
+        "name": "b"
+      }
+    ],
+    "meta": {
+      "acctsDir": "<root>/accts",
+      "count": 3,
+      "enabled": true,
+      "error": null,
+      "manifestPath": "<root>/accts/accounts.json",
+      "sharedStore": "<root>/shared",
+      "updatedAt": "t0"
+    },
+    "notice": null
+  },
+  "accounts-trust": {
+    "known": true,
+    "trusted": true
+  }
+}

@@ -247,6 +247,7 @@ const SCAN: &[&str] = &[
     "tests/account-availability-guard.vitest.ts",
     "tests/account-base-semantics.vitest.ts",
     "tests/account-chip.vitest.ts",
+    "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
     "tests/app-grid-claims.vitest.ts",
     "tests/backend/agent_boundary_guard.rs",
@@ -450,6 +451,7 @@ const SCAN: &[&str] = &[
     "tests/settings/base-wording-guard.vitest.ts",
     "tests/settings/data-section.vitest.ts",
     "tests/settings/facet-producer-guard.vitest.ts",
+    "tests/settings/mcp-sync.vitest.ts", // 〔AS1〕
     "tests/settings/open-settings.vitest.ts",
     "tests/settings/plugins-section.vitest.ts",
     "tests/settings/remote-section.vitest.ts",
@@ -489,6 +491,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/panorama_tests.rs",
     "tests/backend/control/transfer_tests.rs",
+    "tests/backend/dial_compress_tests.rs",
     "tests/backend/dial_link_tests.rs",
     "tests/backend/feature_face_tests.rs",
     "tests/backend/files/browse_watch_tests.rs",
@@ -499,6 +502,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/footprint_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
+    "tests/backend/mcp_sync_tests.rs", // 〔AS1〕
     "tests/backend/observe/accounts_query_tests.rs",
     "tests/backend/observe/history_query_f07_tests.rs",
     "tests/backend/observe/history_query_index_tests.rs",
@@ -549,6 +553,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/local_backend_host_tests.rs",
     "tests/bridge/local_lines_tests.rs",
     "tests/bridge/logging_tests.rs",
+    "tests/bridge/mcp_sync_tests.rs", // 〔AS1〕
     "tests/bridge/mcp_tests.rs",
     "tests/bridge/panorama_call_tests.rs",
     "tests/bridge/panorama_tests.rs",
@@ -787,6 +792,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/bridge/sftp_tests.rs",
         "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
         Trigger::Filter { by: "tests/evidence/SR1b-sftp-loopback.py", needle: "sr1b_loopback_deploy_and_transfer_through_the_resident_backend" },
+    ),
+    (
+        "tests/backend/dial_compress_tests.rs",
+        "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced",
+        Trigger::Filter { by: "tests/evidence/NT1-net-loopback.py", needle: "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced" },
     ),
 ];
 

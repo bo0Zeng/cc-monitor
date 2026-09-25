@@ -730,17 +730,35 @@ pub const TOOLS: &[ToolSpec] = &[
         display_name: "项目 MCP 配置",
         installable: true,
         uninstallable: true,
-        carriers: &[Carrier {
-            what: "现场生成的一段 JSON，写进你选定的那个项目目录",
-            source: ToolSource::Generated,
-            destination: ToolDestination::ProjectRelative(".mcp.json"),
-            touches: &[TouchedFile {
-                path: ".mcp.json",
-                host: HostScope::ProjectDir,
-                note: Some("相对你选定的项目目录"),
-                effect: TouchEffect::OwnedFile,
-            }],
-        }],
+        carriers: &[
+            Carrier {
+                what: "现场生成的一段 JSON，写进你选定的那个项目目录",
+                source: ToolSource::Generated,
+                destination: ToolDestination::ProjectRelative(".mcp.json"),
+                touches: &[TouchedFile {
+                    path: ".mcp.json",
+                    host: HostScope::ProjectDir,
+                    note: Some("相对你选定的项目目录"),
+                    effect: TouchEffect::OwnedFile,
+                }],
+            },
+            // 〔AS1 · 第四波 4B〕**推 / 拉**（`设计/96` 的 B，用户 09-24 V111 · V112）：同一份文件的**第二个写入来源** ——
+            //   内容不是这台机器上现场编的，是从另一台机器那份里**原样**拷来的条目（`mcp_sync.rs`）。
+            //   落点、写法（经那台后端 `files-put`）与上一格同一个；单列一格是为了让「这个 app 动过你哪些文件」
+            //   那一页说得出「有些条目是从别的机器搬来的」（`96 §4`：每个写点都要在足迹里可见）。
+            //   远端那台的足迹栏按那台机器问（RM1a），这一格的 `host` 与上一格同是项目目录 —— 在哪台上就算哪台的。
+            Carrier {
+                what: "推 / 拉：另一台机器那份 .mcp.json 里你勾的条目，原样合进这台机器上你选定的项目目录",
+                source: ToolSource::Generated,
+                destination: ToolDestination::ProjectRelative(".mcp.json"),
+                touches: &[TouchedFile {
+                    path: ".mcp.json",
+                    host: HostScope::ProjectDir,
+                    note: Some("相对你在推 / 拉那一块里选定的项目目录；只加 / 盖你勾的那几条，别的条目不动"),
+                    effect: TouchEffect::OwnedFile,
+                }],
+            },
+        ],
     },
     // ═══ 〔`K-R62` 09-11〕**从第三档升上来的第一项** ═══
     //

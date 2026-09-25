@@ -505,6 +505,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        // 〔C4c · 第四波 4B〕信任预检：读一份 manifest ＋ 一份 `.claude.json`（同步文件 I/O），同族同档。
+        "accounts-trust",
         // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
@@ -525,6 +527,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-peek",
         "files-put",
         "files-delete-session",
+        // 〔AS1 · 第四波 4B〕MCP 同步的判定：逐条 stat ＋ PATH 上找名字。
+        "mcp-sync-plan",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -580,6 +584,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "accounts-trust", // 〔C4c〕
         "exit-policy-read",
         "exit-policy-set",
         "plugins-marketplaces",
@@ -594,6 +599,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-peek",
         "files-put",
         "files-delete-session",
+        // 〔AS1 · 第四波 4B〕MCP 同步的判定，阻塞档。
+        "mcp-sync-plan",
         // 〔SR1b〕传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
         "transfer-upload",
         "transfer-download",

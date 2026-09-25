@@ -1465,11 +1465,10 @@ CAS → 相同不写 → 备份 → 同目录 `O_EXCL` 暂存旁名写满、换�
 **只有后端写**。前端要读要改都经下面两条命令；monitor 自己的 `config.json` 里**不再有它**，
 monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改动时把生效值推给 monitor」的 tauri 命令整条退役）。
 
-两条命令回同一个形状：
+两条命令回同一个形状（〔S5 · 第四波〕原来还有一格 `shell`，恒 `"standalone"`；「折进前端进程」那一档已放弃（V105），那一格随之删掉）：
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `shell` | ← | 这一趟后端是哪个壳。今天恒 `"standalone"`（独立进程）；折进前端进程的那一档今天不存在，哪天有了它要答 `"folded"`，界面据此把整格说成「不适用」 |
 | `state` | ← | 三态：`"chosen"`（有人选过）· `"absent"`（文件不在 = 没人选过）· `"unreadable"`（文件在但读不出来 / 家目录解析不出来）。🔴 后两态**不许合并** —— 「读不出来」不等于「有人选了默认」 |
 | `killOnExit` | ↔ | 生效值。`chosen` 时是选的那个；另两态是缺省 `false`（不结束）。`exit-policy-set` 的入参也是它 |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来。其余为 `null` |
@@ -1479,7 +1478,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 ```text
 → {"id":"x1","cmd":"exit-policy-read"}
-← {"kind":"reply","id":"x1","ok":true,"data":{"shell":"standalone","state":"absent","killOnExit":false,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
+← {"kind":"reply","id":"x1","ok":true,"data":{"state":"absent","killOnExit":false,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
 ```
 
 **没有错误码**：读不出来是一个**状态**，照样 `ok:true` 回 `state:"unreadable"` ＋ `reason`。
@@ -1489,7 +1488,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 ```text
 → {"id":"x2","cmd":"exit-policy-set","args":{"killOnExit":true}}
-← {"kind":"reply","id":"x2","ok":true,"data":{"shell":"standalone","state":"chosen","killOnExit":true,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
+← {"kind":"reply","id":"x2","ok":true,"data":{"state":"chosen","killOnExit":true,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
 ```
 
 回的是**写完之后再读一遍**的那一份（盘上的事实，不是「我以为写进去了」）。
@@ -1622,6 +1621,36 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 **错误码**：`bad_args`（不是数组 / 相对路径 / 给了路径没给字样）· `too_large`（超过条数上限）。
 ⚠ **CLI 面也有它**（`--footprint-probe`），入参从 stdin 读。
 
+#### `mcp-sync-plan`：MCP 资产同步的判定（AS1 · 第四波 4B，2026-09-24，**只读**）
+
+用户裁（`设计/96` 的 B）：「各管各的，只有显式推 / 拉」· 推 / 拉之前先给看差异，对面有不同就问盖不盖 ·
+「内容，原样拷过去并标出可疑项」、不替用户改写。本条是那一件的**判定**：两份原文进，差异 ＋ 可疑项 ＋「写哪几条」出。
+由**要被写的那一台**的后端跑 —— 可疑项里「有没有这个路径 / 这个命令」是那台机器上的事实。
+原文由调用方经 `files-peek` 读来，写经 `files-put`（`expect` = 看差异时读到的那一份）；**本条一个字节都不读、不写用户文件**。
+
+```text
+→ {"id":"m1","cmd":"mcp-sync-plan","args":{"source":"{\"mcpServers\":{\"fs\":{\"command\":\"/opt/fs\"}}}","target":null}}
+← {"kind":"reply","id":"m1","ok":true,"data":{"rows":[{"name":"fs","state":"new","suspects":[{"kind":"abs-path","field":"command","value":"/opt/fs","there":"absent"}]}],"write":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `source` | → | 拷出来的那一份原文（字符串，必给） |
+| `target` | → | 要写进去的那一份原文；那份文件不存在 ⇒ `null`（**必给**：缺席不当成不存在） |
+| `take` | → | 可缺席。用户勾了哪几条（条目名数组）；给了才答 `write` |
+| `overwrite` | → | 可缺席。`take` 里哪几条**说了要盖掉对面不同的那一条**；给了它就必须给 `take`，且是它的子集 |
+| `rows` | ← | 每个条目名一行 `{name, state, suspects}`。`state` 闭集：`new`（对面没有）· `same`（值相等，键序无关）· `differs` · `only-there`（只在对面，**永远不碰**）。`suspects` 只在 `new` / `differs` 上有：`{kind, field, value, there}` —— `kind` 闭集 `abs-path` · `command-missing` · `command-relative`；`field` 是 `command` / `args[i]` / `env.<键>` / `cwd`；`there` 闭集 `present` · `absent` · `foreign`（不是这台那种系统的路径写法）· `unknown`，`command-relative` 那种是 `null` |
+| `write` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要写的条目名（排序）：`same` 不写、`new` 写、`differs` 在 `overwrite` 里才写 |
+
+可疑项的规则：只看 stdio 那四个字段（`url` / `headers` 不看）。`abs-path` = 字段值是绝对路径（POSIX `/…` 或 Windows `X:\…` / `X:/…` / `\\…`），或 `--opt=<绝对路径>` 的右边是；
+`command-missing` = `command` 是裸名字、且这个**后端进程**的 `PATH` 上找不到同名文件（有 `PATHEXT` 就按它补后缀；找得到不标）；
+`command-relative` = `command` 带分隔符却不是绝对路径。⚠ `PATH` 是后端进程的，不是用户登录 shell 的。
+
+**错误码**：`bad_args`（缺 / 类型不对 · `take` 里有拷出来那一份里没有的名字 · `overwrite` 不是 `take` 的子集）·
+`bad_file`（任一份不是合法 JSON / 最外层不是对象 / `mcpServers` 不是对象 —— 不拿骨架比、也不覆盖）·
+`needs_consent`（`take` 里有 `differs` 的一条没在 `overwrite` 里点名 —— **整趟拒**，不静默跳过）。
+⚠ **CLI 面也有它**（`--mcp-sync-plan`），入参从 stdin 读。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。
@@ -1632,7 +1661,7 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `history-sessions` | `--list-sessions` | 按行 |
 | `history-search` | `--search` | 按行 |
 | `history-subagents` | `--list-subagents` | 按行 |
-| `accounts-list` | `--list-accounts` | 按行 |
+| `accounts-list` | `--list-accounts` | 〔C4c〕成品（`{meta, accounts, notice}`） |
 | `accounts-sessions` | `--session-accounts` | 按行 |
 | `history-read` | `--read-session` · `--read-session-from-offset`（不带 `--index`） | 按字节分页 |
 | `history-tail` | `--read-session-tail` 的那张「尾段在哪」的图 | 四个数 |
@@ -1695,16 +1724,39 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `parent` | → | 父会话 jsonl 路径（`projects/` 围栏照旧；越界 ⇒ `path_refused`，推不出目录 ⇒ `bad_parent`） |
 | `lines` | ← | 每候选一行 `{path, description, timestamp}`，同 `--list-subagents`（只列不挑） |
 
-#### `accounts-list`：账号清单（**不读 stdin**）
+#### `accounts-list`：账号清单（〔C4c · 第四波 4B〕**出成品**）
 
 ```text
-→ {"id":"q5","cmd":"accounts-list","args":{}}
-← {"kind":"reply","id":"q5","ok":true,"data":{"lines":["{\"kind\":\"accounts-meta\",…}", "{\"name\":…}", …]}}
+→ {"id":"q5","cmd":"accounts-list","args":{"agent":"claude-code"}}
+← {"kind":"reply","id":"q5","ok":true,"data":{"meta":{"enabled":true,…},"accounts":[{"name":…,"authKind":…,"authReady":…},…],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `lines` | ← | 同 `--list-accounts`：首行 `accounts-meta`，其后每账号一行。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
+| `agent` | → | 必填：这次起会话的是哪一家（适配器 id）。只有它是这台机器 apikey 表的那一家时，表里的行才算数（条 49） |
+| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`）。账号库目录走默认解析，**帧面不收 `--accts-dir`** |
+| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；**并上了这台机器自己那份 apikey 表**：表里有行的号 `authKind` 是 `api-key`、`authReady` 按 `acct_core::auth_ready`（规则住 `acct-core`，CLI 那一臂不并表） |
+| `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（cc-acct-iso 写侧旧）时的一句话；否则 `null` |
+
+**错误码**：`bad_args`（缺 `agent`）· `too_large`。
+⚠ 〔C4c〕此前应答是 `{"lines": [...]}`（与 CLI 逐行同形）、并表在 monitor 做且只并本机；老后端仍回旧形状 ⇒ 新界面当场认出「两端契约对不上」。
+
+#### `accounts-trust`：换号前的信任预检（〔C4c · 第四波 4B〕替掉逐次拨号的 `--account-trust` / `--account-trust-zero`）
+
+```text
+→ {"id":"q7","cmd":"accounts-trust","args":{"configDir":"/home/u/.claude-alt/a","cwd":"/home/u/proj"}}
+← {"kind":"reply","id":"q7","ok":true,"data":{"trusted":true,"known":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `configDir` | → | 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**（读 `$HOME/.claude.json`，不收路径） |
+| `cwd` | → | 要预检的工作目录（必填） |
+| `trusted` | ← | 这个账号接受过该目录的信任对话框 |
+| `known` | ← | 这个账号的 `.claude.json` 里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认） |
+
+**错误码**：`bad_args` · `unsafe_config_dir` · `unknown_config_dir` · `manifest_unavailable` · `no_home` · `failed`（读 / 解析那个账号的配置文件失败等 agent 那一层的码一律落它，原因原样带着 —— 通用层不认 agent 的名字）。
+与 `--account-trust` / `--account-trust-zero` 是**同一个函数的两个宿主**；CLI 面照例自动派生一个 `--accounts-trust`（stdin 一段 JSON）。
 
 #### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
 
@@ -1926,8 +1978,22 @@ CLI 面随之自动多一条 `--history-find`。
 #### 链路四条（〔SR1a〕2026-09-24）—— **本机只常驻一个后端，所有 SSH 连接由它持有并复用**
 
 用户裁「改成单一常驻后端」：monitor 不再每条链路起一个 `--dial` 子进程（C2 那一版），而是经它与**本机常驻后端**之间
-**这条已有的流**开「链路」。后端把到同一台远端的所有链路**复用在一条 SSH 连接上**（按拨号身份：`host · port · user ·
-key_path · host_key_fingerprint · 竞速地址 · 跳板`；最后一条链路走了连接就断，没有空闲定时器）。
+**这条已有的流**开「链路」。后端把到同一台远端的所有链路**复用在同一族 SSH 连接上**（按拨号身份：`host · port · user ·
+key_path · host_key_fingerprint · 竞速地址 · 跳板`；〔NT1〕默认一条、按需多开至多 3 条；最后一条链路走了连接就断，没有空闲定时器）。
+
+〔NT1 · 2026-09-24，用户 V23「今天每台机器只有一条连接可以看情况多开. 智能一点」〕**一族连接怎么多开、怎么收**（`dial/pool.rs`）——
+线上字节一个没变，只是后端那一侧的放置：
+- 交互（`stream` · `capture` · `files`）落在**最老的有空格的**那条上；所有成员的通道闸都满了 ⇒ 多开一条（每条连接 8 格 session 通道）。
+- 远端回拒一条 session 通道（sshd `MaxSessions`，原话 `no more sessions`）⇒ 那条连接**学到上限**（空格作废，不摘它）、换一条放。
+- 传输（`transfer-*`）：主连接上有长流 ⇒ 另开**一条批量连接**（批量字节不排在交互字节前面），它**被主连接托着**：长流在它就在、
+  主连接没了它随之断；主连接上没有长流 ⇒ 传输就在主连接上。
+- 封顶 3 条（主连接 · 批量 · 溢出）；到顶了就等一格还回来（零定时器）。
+- 传输的 sftp 会话用完**停进它那条连接的一个空位**（连同那一格许可），下一趟传输先取它（1 个往返验活，省下开通道的 4 个）；
+  别的放置借不到格时先挤掉它。空位不托连接。
+- 在一条连接上等远端回话（开通道 / 验活）时**链路被关**（界面的握手期限到点）⇒ 当它可能是黑洞，从族里摘掉（摘掉 ≠ 关掉），
+  下一条链路拨新的 —— 不再等 keepalive 连错三次（约 90 s）才换。
+- 压缩：判准住 `dial/connect.rs::compression_for`（回环不压 · 内核量到的握手往返 ≥ 5 ms 才压 · 读不到就压），
+  **今天闸关着**（`RUSSH_ZLIB_SOUND = false`：russh 0.61 的 zlib 解压一包最多交出约两倍包长，真 sshd 上强开压缩会在第一条通道上卡死）。
 
 **一条链路上的字节 = C2 拨号代理原来的 stdout，逐字节同形**：`stages=true` 时若干行 `{"stage":{…}}` → **恰好一行** ack
 `{"ok","error","fingerprint","endpoint","v":2,"uses":[…]}` → `stream` 原样双向字节 · `capture` 一行 `{"stdout","stderr","exit_status"}` 后结束 ·

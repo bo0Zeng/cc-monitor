@@ -21,7 +21,7 @@
   ⑤ 续传：暂存件先放前 N 字节 ⇒ sftp-server 记下的这一趟写入字节数 == 总长 − N
   ⑥ 撤：上传撤 ⇒ 暂存件删；下载撤 ⇒ `.part` 留
   ⑦ 下载：落地逐字节对、`.part` 不留；远端不存在 ⇒ failed、`.part` 不留；本机落点是会话文件 ⇒ refused、零写
-  ⑧ 一条连接：长流 ＋ files 链路 ＋ 全部传输期间 sshd **恰好一次**鉴权、**恰好一条** TCP
+  ⑧ 〔NT1 改〕长流 ＋ files 链路一条、全部传输分道一条：sshd **恰好两次**鉴权、**恰好两条** TCP
   ⑨ 子系统留口仍不开：use=subsystem ⇒ unsupported_use
 
 退出码：0 = 全过 · 1 = 有一条不对 · 3 = 起不来 sshd / 找不到二进制（环境不满足，不是被测对象坏了）
@@ -394,9 +394,12 @@ def main():
         r = be.call("transfer-download", {"dial": base, "remote_path": rsrc, "local_path": sess})
         check("本机落点是会话文件 ⇒ refused、零写", bool(r) and not r["ok"] and r.get("code") == "refused" and not os.listdir(os.path.dirname(sess)), r)
 
-        print("⑧ 一条连接")
-        check("sshd 只鉴权了一次（长流 ＋ files ＋ 六趟起跑的传输）", auths() - a0 == 1, auths() - a0)
-        check("恰好一条 TCP", established(port) == 1, established(port))
+        # 〔NT1 · 2026-09-24〕长流在时传输分道（`dial/pool.rs`：主连接上有长流 ⇒ 传输另开一条批量连接，
+        #   被主连接托着、之后的传输都复用它）⇒ 长流 ＋ files 一条、六趟传输一条：恰好两次鉴权、两条 TCP。
+        #   分道本身的读数（下载期间长流回声 314 → 116 ms）住 `NT1-net-loopback.py` ①⑤。
+        print("⑧ 两条连接（长流 ＋ files 一条 · 传输分道一条）")
+        check("sshd 鉴权恰好两次（长流 ＋ files ＋ 六趟起跑的传输；传输那条只握一次手）", auths() - a0 == 2, auths() - a0)
+        check("恰好两条 TCP", established(port) == 2, established(port))
 
         print("⑨ 子系统留口不开")
         r = be.open("sub", {**base, "use": "subsystem"})

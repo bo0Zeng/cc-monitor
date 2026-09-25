@@ -38,8 +38,11 @@ vi.mock("../../src/ipc/commands", () => ({
             return Promise.resolve([...ipc.registered]);
           case "backend_status":
             return Promise.resolve({ channel: true, pid: 7 });
-          case "backend_exit_policy":
-            return Promise.resolve({ shell: "standalone", state: "absent", killOnExit: false });
+          // 〔C4c · 第四波 4B〕「退出行为」那一问改走通道：一发 `chan_call`（op = `exit-policy-read`），回后端那份字节。
+          case "chan_call": {
+            const u = new TextEncoder().encode(JSON.stringify({ state: "absent", killOnExit: false }));
+            return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
+          }
           case "list_ssh_host_aliases":
             return Promise.resolve([]);
           default:

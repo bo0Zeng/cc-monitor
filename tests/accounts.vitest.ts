@@ -56,7 +56,15 @@ import {
 } from "../src/accounts";
 import { enumerateAccountModifiers } from "../src/launch-menu";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
-import { chanArgsJson, isChanCall, linesReply, NO_CHANNEL, type ChanCallArgs } from "./test-support/chan-fake";
+import {
+  accountReadCalls,
+  chanArgsJson,
+  isChanCall,
+  linesReply,
+  NO_CHANNEL,
+  withAccountReads,
+  type ChanCallArgs,
+} from "./test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
@@ -422,15 +430,14 @@ describe("modelByAccount config 读写（F07）", () => {
 
 describe("fetchAccounts TTL 缓存", () => {
   // 〔`A3` 第二波〕backend 的本机 origin（`<local>`）⇒ 问本机后端，不拿它去问远端。
-  // 死值验对照：把 `fetchAccounts` 开头那条 `if (isLocalOrigin(origin))` 摘掉 ⇒
-  // 第一次发的是 `list_remote_accounts`、带着 `{ origin: "<local>" }`，本条红。
-  it("A3：`<local>` 走本机那条（`list_local_accounts`），不是拿 `<local>` 去问远端", async () => {
+  // 〔C4c · 第四波 4B〕本机与远端同一条路：经通道问 `<local>` 那条长连接的 `accounts-list`（后端出成品）。
+  it("A3 / C4c：`<local>` 经通道问本机后端（`accounts-list` 发给 `<local>`），不是拿 `<local>` 去问远端配置", async () => {
     __resetAccountsCacheForTest();
     loadCfg.mockResolvedValue({});
-    invokeMock.mockResolvedValue({ available: true, error: null, meta: null, accounts: [acct({})] });
+    invokeMock.mockImplementation(withAccountReads(() => ({ available: true, error: null, meta: null, accounts: [acct({})] })));
     const st = await fetchAccounts("<local>");
     expect(invokeMock).toHaveBeenCalledTimes(1);
-    expect(invokeMock.mock.calls[0][0]).toBe("list_local_accounts");
+    expect(accountReadCalls(invokeMock.mock.calls, "list_local_accounts")).toHaveLength(1);
     expect(st.available).toBe(true);
     // 与 `fetchLocalAccounts` 共用同一格缓存（账号面的本机键），TTL 内不重发。
     await fetchAccounts("<local>");
@@ -439,21 +446,21 @@ describe("fetchAccounts TTL 缓存", () => {
   });
   it("首次 fetch 命中 invoke，TTL 内不重发", async () => {
     loadCfg.mockResolvedValue({});
-    invokeMock.mockResolvedValue({ available: true, error: null, meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null }, accounts: [acct({})] });
+    invokeMock.mockImplementation(withAccountReads(() => ({ available: true, error: null, meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null }, accounts: [acct({})] })));
     await fetchAccounts("devbox");
     await fetchAccounts("devbox");
     expect(invokeMock).toHaveBeenCalledTimes(1); // 第二次走缓存
   });
   it("force=true 强制重发", async () => {
     loadCfg.mockResolvedValue({});
-    invokeMock.mockResolvedValue({ available: true, error: null, meta: null, accounts: [] });
+    invokeMock.mockImplementation(withAccountReads(() => ({ available: true, error: null, meta: null, accounts: [] })));
     await fetchAccounts("devbox");
     await fetchAccounts("devbox", true);
     expect(invokeMock).toHaveBeenCalledTimes(2);
   });
   it("invalidate 后重发", async () => {
     loadCfg.mockResolvedValue({});
-    invokeMock.mockResolvedValue({ available: true, error: null, meta: null, accounts: [] });
+    invokeMock.mockImplementation(withAccountReads(() => ({ available: true, error: null, meta: null, accounts: [] })));
     await fetchAccounts("devbox");
     invalidateAccountsCache("devbox");
     await fetchAccounts("devbox");
@@ -461,14 +468,14 @@ describe("fetchAccounts TTL 缓存", () => {
   });
   it("invoke throw（远端没配）→ available:false 不崩", async () => {
     loadCfg.mockResolvedValue({});
-    invokeMock.mockRejectedValue("远端 'x' 未配置");
+    invokeMock.mockImplementation(withAccountReads(() => (Promise.reject("远端 'x' 未配置"))));
     const s = await fetchAccounts("x");
     expect(s.available).toBe(false);
     expect(s.error).toContain("未配置");
   });
   it("把 config 的 defaultName 合进 state", async () => {
     loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
-    invokeMock.mockResolvedValue({ available: true, error: null, meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/x", updatedAt: null, sharedStore: null, count: 2, error: null }, accounts: [acct({ name: "z", isDefault: true }), acct({ name: "b" })] });
+    invokeMock.mockImplementation(withAccountReads(() => ({ available: true, error: null, meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/x", updatedAt: null, sharedStore: null, count: 2, error: null }, accounts: [acct({ name: "z", isDefault: true }), acct({ name: "b" })] })));
     const s = await fetchAccounts("devbox");
     expect(s.defaultName).toBe("b");
     expect(effectiveDefault(s)?.name).toBe("b");
@@ -711,7 +718,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   });
   it("可选账号 + sessionId → run({configDir, accountName}) + 记 lastAccount", async () => {
     loadCfg.mockResolvedValue({});
-    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
+    invokeMock.mockImplementation(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })]))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", "z", run, { sessionId: "s1" });
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
@@ -722,7 +729,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   });
   it("可选账号但无 sessionId（新会话）→ run({configDir, accountName})，不记账", async () => {
     loadCfg.mockResolvedValue({});
-    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
+    invokeMock.mockImplementation(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })]))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", "z", run, {});
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
@@ -730,7 +737,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   });
   it("不可选账号 → onUnselectable + run({} 三字段皆 undefined)（退化默认）、不记账", async () => {
     loadCfg.mockResolvedValue({});
-    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", loggedIn: false })]));
+    invokeMock.mockImplementation(withAccountReads(() => (okRaw([acct({ name: "z", loggedIn: false })]))));
     const run = vi.fn().mockResolvedValue(undefined);
     const onUnsel = vi.fn();
     await withAccount("devbox", "z", run, { sessionId: "s1", onUnselectable: onUnsel });
@@ -740,7 +747,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   });
   it("账号库不可用（fetch reject）→ 退化默认 run({} 三字段皆 undefined) + onUnselectable", async () => {
     loadCfg.mockResolvedValue({});
-    invokeMock.mockRejectedValue(new Error("boom"));
+    invokeMock.mockImplementation(withAccountReads(() => (Promise.reject(new Error("boom")))));
     const run = vi.fn().mockResolvedValue(undefined);
     const onUnsel = vi.fn();
     await withAccount("devbox", "z", run, { onUnselectable: onUnsel });
@@ -751,9 +758,9 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   // ---- account-ux U2：跟随模式（opt-in opts.follow）----
   it("follow：lastAccount 可选 → run(它的 configDir) + 记 lastAccount（粘性压过 current）", async () => {
     loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
-    invokeMock.mockResolvedValue(
-      okRaw([acct({ name: "z", configDir: "/h/z" }), acct({ name: "b", configDir: "/h/b" })]),
-    );
+    invokeMock.mockImplementation(withAccountReads(() => (
+      okRaw([acct({ name: "z", configDir: "/h/z" }), acct({ name: "b", configDir: "/h/b" })])
+    )));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined }); // last=z 压过 current=b
@@ -764,9 +771,9 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   });
   it("follow：既有 pin 不可选 → 下沉 current 起会话，但**不记账**（保住原 pin，U3 审计 重要-1 clobber 防护）", async () => {
     loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
-    invokeMock.mockResolvedValue(
-      okRaw([acct({ name: "z", loggedIn: false }), acct({ name: "b", configDir: "/h/b" })]),
-    );
+    invokeMock.mockImplementation(withAccountReads(() => (
+      okRaw([acct({ name: "z", loggedIn: false }), acct({ name: "b", configDir: "/h/b" })])
+    )));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
     expect(run).toHaveBeenCalledWith({ configDir: "/h/b", accountName: "b", modelOverride: undefined }); // z 不可选 → 用 current=b 起
@@ -775,7 +782,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   });
   it("follow：无既有 pin（no-owner）→ 落 current → 记 current（become sticky，决策②）", async () => {
     loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
-    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
+    invokeMock.mockImplementation(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })]))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", null, run, { sessionId: "s1", follow: {} }); // 无 pin
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
@@ -786,16 +793,16 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   });
   it("follow 迁移守卫：无 lastAccount + 老 config 仅 defaultName → 解析出当前账号", async () => {
     loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
-    invokeMock.mockResolvedValue(
-      okRaw([acct({ name: "z", configDir: "/h/z" }), acct({ name: "b", configDir: "/h/b" })]),
-    );
+    invokeMock.mockImplementation(withAccountReads(() => (
+      okRaw([acct({ name: "z", configDir: "/h/z" }), acct({ name: "b", configDir: "/h/b" })])
+    )));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", null, run, { follow: {} });
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
   });
   it("follow：last 与 current 都不可选 → run({} 三字段皆 undefined) 落基座，不 toast、不记账", async () => {
     loadCfg.mockResolvedValue({}); // 无 defaultName
-    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", loggedIn: false })])); // 唯一账号不可选
+    invokeMock.mockImplementation(withAccountReads(() => (okRaw([acct({ name: "z", loggedIn: false })])))); // 唯一账号不可选
     const run = vi.fn().mockResolvedValue(undefined);
     const onUnsel = vi.fn();
     await withAccount("devbox", null, run, {
@@ -809,7 +816,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   });
   it("follow：新会话无 sessionId → run({configDir, accountName}) 但不记账", async () => {
     loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
-    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
+    invokeMock.mockImplementation(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })]))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", null, run, { follow: {} });
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
@@ -826,14 +833,14 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   // （不是只测过 getModelForAccount/setModelForAccount 自己的存取逻辑）。
   it("F07：可选账号 + 配了模型偏好 → run 收到真实 modelOverride", async () => {
     loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus" } } });
-    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
+    invokeMock.mockImplementation(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })]))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", "z", run, {});
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: "opus" });
   });
   it("F07：可选账号但未配模型偏好 → run 收到 undefined（不是空串/不是 throw）", async () => {
     loadCfg.mockResolvedValue({ accounts: { modelByAccount: { b: "sonnet" } } }); // 只有 b 有偏好
-    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
+    invokeMock.mockImplementation(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })]))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", "z", run, {});
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
@@ -958,7 +965,7 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
     // **不是重写一遍 filter** —— 这里驱动的是 `enumerateAccountModifiers`，
     // 也就是 `tabs.ts` 渲染 flyout 时真正调的那个函数（它只过 `selectableAccounts`）。
     loadCfg.mockResolvedValue({});
-    invokeMock.mockResolvedValue({
+    invokeMock.mockImplementation(withAccountReads(() => ({
       available: true,
       error: null,
       meta: {
@@ -971,7 +978,7 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
         error: null,
       },
       accounts: [acct({ name: "z" }), apiKey()],
-    });
+    })));
     const opts = await enumerateAccountModifiers("devbox");
     expect(opts.map((o) => (o.kind === "account" ? o.name : "base"))).toEqual(["base", "z", "api"]);
   });

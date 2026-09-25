@@ -79,18 +79,49 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 search_query::search_into(home, query, &rest, out).map_err(|e| ("failed", e))
             })
         }
-        "accounts-list" | "accounts-sessions" => {
-            let which = if cmd == "accounts-list" {
-                accounts_query::FrameAccounts::List
-            } else {
-                accounts_query::FrameAccounts::BySession
-            };
-            let rows = accounts_query::lines_for_frame(home, which);
+        "accounts-sessions" => {
+            let rows =
+                accounts_query::lines_for_frame(home, accounts_query::FrameAccounts::BySession);
             let size: usize = rows.iter().map(|l| l.len() + 1).sum();
             if size > LINES_CAP_BYTES {
                 return Err(too_large(size));
             }
             Ok(json!({ "lines": rows }))
+        }
+        // 〔C4c · 第四波 4B〕账号清单**出成品**（主会话裁：账号层读自己那台的 apikey 表、agent 随请求带）：
+        //   monitor 那一份行解析 / 降级说明 / 本机并表（`local_accounts::with_apikey_table`）删了〔散文墓碑〕，界面经通道直接问。
+        //   并的是**这台机器自己**那份表（与 `apikey-read` · 中转里的账号层同一个出处）—— 远端从此第一次并上它自己的表。
+        "accounts-list" => {
+            let agent = str_arg(args, "agent")?;
+            let rows = crate::accounts::apikey::file_face::rows_at(
+                &crate::accounts::apikey::file_face::machine_path(),
+            );
+            let v = accounts_query::list_product(
+                &rows,
+                agent,
+                crate::accounts::apikey::CREDENTIALS_FILE_AGENT,
+            );
+            let size = v.to_string().len();
+            if size > LINES_CAP_BYTES {
+                return Err(too_large(size));
+            }
+            Ok(v)
+        }
+        // 〔C4c · 第四波 4B〕换号前的信任预检上帧面（替掉最后两条仍逐次拨号的子命令）。
+        //   `configDir` 缺席 / `null` ⇒ 账号 0；拒绝码原样（CLI 那一臂同一个函数）。
+        "accounts-trust" => {
+            let cwd = str_arg(args, "cwd")?;
+            let config_dir = match args.get("configDir") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(s)) => Some(s.as_str()),
+                Some(_) => {
+                    return Err((
+                        "bad_args",
+                        "`configDir` 要一个字符串或 null（null = 账号 0）".to_string(),
+                    ))
+                }
+            };
+            accounts_query::trust_product(config_dir, cwd).map_err(|(c, m)| (trust_code(&c), m))
         }
         "history-read" => {
             let path = str_arg(args, "path")?;
@@ -213,6 +244,20 @@ fn lines(f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>) -
         .filter(|l| !l.is_empty())
         .collect();
     Ok(json!({ "lines": rows }))
+}
+
+/// `accounts-trust` 的拒绝码（CLI 那一臂给的是 `String`）→ 帧面的 `&'static str`。**闭集，与 `inbound.rs`
+/// 那一块的 `codes` 同一张**；认不出的一律 `failed`（不把一个没登记的码漏上线）。
+fn trust_code(c: &str) -> &'static str {
+    // ⚠ agent 那一层自己的码（读 / 解析那家的配置文件失败）**不在表里**：通用层不认任何一家 agent 的名字
+    //   （`agent_boundary_guard`）⇒ 它们落 `failed`，原因那句原样带着。
+    const KNOWN: &[&str] = &[
+        "unsafe_config_dir",
+        "unknown_config_dir",
+        "manifest_unavailable",
+        "no_home",
+    ];
+    KNOWN.iter().find(|k| **k == c).copied().unwrap_or("failed")
 }
 
 fn too_large(size: usize) -> (&'static str, String) {

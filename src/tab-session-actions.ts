@@ -41,6 +41,7 @@ import {
 // 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { commands } from "./ipc/commands";
+import { probeSessionRecord, type RecordProbe } from "./session-reads";
 import { mintSessionTmuxName } from "./remote-launch";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。〔F7b〕老 SFTP 面板删了。
@@ -179,14 +180,14 @@ export class TabSessionActions {
    * 判定住那台的后端（只收 sid），这里只读答案 —— 前端不做文件存在性探测（`30 §B.6`）。
    */
   private async recordStillThere(tab: Tab): Promise<boolean> {
-    let probe: { present: boolean; root: string };
+    let probe: RecordProbe;
     try {
-      probe = await commands.probe_session_record({ origin: tab.origin, sessionId: tab.sessionId });
+      // 〔C4c · 第四波 4B〕经通道直接问那台后端的 `history-record`（`session-reads.ts::probeSessionRecord`）。
+      probe = await probeSessionRecord(tab.origin, tab.sessionId);
     } catch {
+      // 问不到 / 形状不对（旧后端）同「不知道」：只有一个明明白白的 `present: false` 才拦。
       return true;
     }
-    // 形状不对（旧宿主 / 桩）同「问不到」：只有一个明明白白的 `present: false` 才拦。
-    if (typeof probe?.present !== "boolean") return true;
     this.host.markRecord(tab.sessionId, probe.present);
     if (probe.present) return true;
     showActionFailureToast(

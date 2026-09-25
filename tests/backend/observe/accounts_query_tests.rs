@@ -1736,3 +1736,263 @@ fn an_inherited_launch_id_is_never_reported_as_the_childs_own_identity() {
              那么上面两格的 `null` 证明不了防冒名在起作用（全抹掉也是这个读数）。"
     );
 }
+
+// ============================================================================
+// 〔C4c · 第四波 4B〕帧面出成品：`accounts-list`（并上这台机器自己那份 apikey 表）· `accounts-trust`
+// ============================================================================
+//
+// 要求住址：`设计/05 §8` 步 5「一次性请求那半收口成 `call` —— 按能力分批」· `设计/01 §5` D1「一个判定只有一个家」·
+// 用户裁决 V107「中转（层 1）＋ 账号层住本机常驻后端进程」—— 主会话据此裁「账号层读自己那台的 apikey 表、
+// 两条规则搬进 `acct-core`、agent 随请求带」。夹具只造结构（目录名 ＋ 占位 manifest），不采真账号数据。
+
+/// 夹具：账号库（一个账号 0 ＋ 两个隔离号，`acct-a` 有订阅凭据、`acct-b` 没有）。回 `(root, accts)`。
+fn c4c_fixture(tag: &str, with_zero: bool) -> (PathBuf, PathBuf) {
+    let root = tmpdir(tag);
+    let accts = root.join("accts");
+    let a = accts.join("acct-a");
+    fs::create_dir_all(&a).unwrap();
+    fs::write(a.join(".credentials.json"), "{}").unwrap();
+    fs::create_dir_all(accts.join("acct-b")).unwrap();
+    fs::create_dir_all(root.join("shared")).unwrap();
+    let zero = if with_zero {
+        r#"{"name":"zero","isDefault":false},"#
+    } else {
+        ""
+    };
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"updatedAt":"t0","sharedStore":"{s}","accounts":[{zero}
+                {{"name":"a","email":"a@x","configDir":"{a}","isDefault":true}},
+                {{"name":"b","configDir":"{b}"}}]}}"#,
+            s = root.join("shared").display(),
+            a = a.display(),
+            b = accts.join("acct-b").display(),
+        ),
+    );
+    (root, accts)
+}
+
+/// ★★ 成品里的账号 == CLI 那一臂逐行打印的账号（同一夹具、两个出口；表里没行时逐条相等），
+/// meta == CLI 首行去掉 `kind` / `accountZeroAware`；成品顶层键集合恒等 `{meta, accounts, notice}`。
+#[test]
+fn the_list_product_carries_exactly_what_the_cli_arm_prints() {
+    let (root, accts) = c4c_fixture("c4c-same", true);
+    let cli = list_accounts(&accts);
+    let product = list_product_at(&accts, &[], "claude-code", "claude-code");
+    let keys: Vec<&String> = product.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["accounts", "meta", "notice"], "成品顶层键集合变了");
+    let mut cli_meta = meta(&cli);
+    let o = cli_meta.as_object_mut().unwrap();
+    assert_eq!(o.remove("kind"), Some(serde_json::json!("accounts-meta")));
+    assert_eq!(o.remove("accountZeroAware"), Some(serde_json::json!(true)));
+    assert_eq!(product["meta"], cli_meta, "成品 meta 与 CLI 首行不是同一份");
+    let cli_rows: Vec<serde_json::Value> = cli[1..]
+        .iter()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(product["accounts"], serde_json::Value::Array(cli_rows));
+    assert_eq!(
+        product["accounts"].as_array().unwrap().len(),
+        3,
+        "夹具三个号"
+    );
+    assert!(product["notice"].is_null(), "有账号 0 却出了缺账号 0 那句");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★★ **apikey 表真并上了**：表里有 `acct-b` 那一行 ⇒ 它（没有订阅凭据）变成 `api-key` 且可选；
+/// 别家 agent ⇒ 一格不动；空表 ⇒ 一格不动；表里的 id 对不上任何号 ⇒ 一格不动。
+#[test]
+fn the_list_product_merges_this_machines_apikey_table_per_agent() {
+    let (root, accts) = c4c_fixture("c4c-table", true);
+    let row_b = |v: &serde_json::Value| {
+        v["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == "b")
+            .cloned()
+            .unwrap()
+    };
+    let merged = list_product_at(
+        &accts,
+        &["acct-b".to_string()],
+        "claude-code",
+        "claude-code",
+    );
+    let b = row_b(&merged);
+    assert_eq!(
+        b["authKind"],
+        acct_core::AUTH_KIND_API_KEY,
+        "表里有行却没按 api-key 算"
+    );
+    assert_eq!(b["authReady"], true, "api-key 号不看订阅凭据，应当可选");
+    assert_eq!(b["loggedIn"], false, "订阅凭据那一格照旧是 stat 结果");
+    // 表里的行只动它那一个号。
+    let a = merged["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["name"] == "a")
+        .cloned()
+        .unwrap();
+    assert_eq!(a["authKind"], acct_core::AUTH_KIND_SUBSCRIPTION);
+    for (rows, agent, why) in [
+        (vec!["acct-b".to_string()], "codex", "别家的号不许借这张表"),
+        (Vec::new(), "claude-code", "空表"),
+        (
+            vec!["acct-z".to_string()],
+            "claude-code",
+            "表里的 id 对不上任何号",
+        ),
+    ] {
+        let b = row_b(&list_product_at(&accts, &rows, agent, "claude-code"));
+        assert_eq!(b["authKind"], acct_core::AUTH_KIND_SUBSCRIPTION, "{why}");
+        assert_eq!(b["authReady"], false, "{why}");
+    }
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★ 缺账号 0 ⇒ `notice` 是一句话（不带「远端」—— 本机远端同一条路）；没启用 ⇒ `null`。
+#[test]
+fn the_list_product_says_when_account_zero_is_missing() {
+    let (root, accts) = c4c_fixture("c4c-nozero", false);
+    let v = list_product_at(&accts, &[], "claude-code", "claude-code");
+    let n = v["notice"].as_str().expect("缺账号 0 却没出那一句");
+    assert!(n.contains("账号 0") && !n.contains("远端"), "{n}");
+    let off = list_product_at(&root.join("nope"), &[], "claude-code", "claude-code");
+    assert_eq!(off["meta"]["enabled"], false);
+    assert!(off["notice"].is_null(), "没启用谈不上缺账号 0");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★ 信任预检成品：`{trusted, known}` 两格与 CLI 那一臂同一个函数的答案一致；不在 manifest 的目录照旧拒。
+#[test]
+fn the_trust_product_answers_through_the_same_function_as_the_cli_arm() {
+    let (root, accts) = c4c_fixture("c4c-trust", true);
+    let a = accts.join("acct-a");
+    fs::write(
+        a.join(".claude.json"),
+        r#"{"projects":{"/w/p":{"hasTrustDialogAccepted":true},"/w/q":{}}}"#,
+    )
+    .unwrap();
+    let dir = a.to_string_lossy().to_string();
+    assert_eq!(
+        trust_product_at(&accts, Some(&dir), "/w/p").unwrap(),
+        serde_json::json!({"trusted": true, "known": true})
+    );
+    assert_eq!(
+        trust_product_at(&accts, Some(&dir), "/w/q").unwrap(),
+        serde_json::json!({"trusted": false, "known": true})
+    );
+    assert_eq!(
+        trust_product_at(&accts, Some(&dir), "/w/r").unwrap(),
+        serde_json::json!({"trusted": false, "known": false})
+    );
+    // 与 CLI 那一臂逐格对拍（同一个函数，两个出口）。
+    let cli: serde_json::Value =
+        serde_json::from_str(&account_trust(&accts, &dir, "/w/p").unwrap()).unwrap();
+    assert_eq!(cli["trusted"], true);
+    assert_eq!(cli["known"], true);
+    let outside = root.join("elsewhere").to_string_lossy().to_string();
+    assert_eq!(
+        trust_product_at(&accts, Some(&outside), "/w/p")
+            .unwrap_err()
+            .0,
+        "unknown_config_dir",
+        "不在 manifest 里的目录不许读（任意文件读原语）"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★★ **跨语言金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
+/// 那份金样的另一个读者是 TS 解码器（`tests/accounts-decode.vitest.ts`）⇒ 两侧异源：后端改一个键名本条红，
+/// TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
+#[test]
+fn the_account_products_match_the_cross_language_golden() {
+    let (root, accts) = c4c_fixture("c4c-golden", true);
+    fs::write(
+        accts.join("acct-a").join(".claude.json"),
+        r#"{"projects":{"/w/p":{"hasTrustDialogAccepted":true}}}"#,
+    )
+    .unwrap();
+    let dir = accts.join("acct-a").to_string_lossy().to_string();
+    let got = serde_json::json!({
+        "accounts-list": list_product_at(&accts, &["acct-b".to_string()], "claude-code", "claude-code"),
+        "accounts-trust": trust_product_at(&accts, Some(&dir), "/w/p").unwrap(),
+    });
+    let got: serde_json::Value = serde_json::from_str(
+        &got.to_string()
+            .replace(&root.to_string_lossy().to_string(), "<root>"),
+    )
+    .unwrap();
+    let want: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/accounts.golden.json"))
+            .expect("金样不是合法 JSON");
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(
+        got,
+        want,
+        "帧面成品与跨语言金样不一致。现打：\n{}",
+        serde_json::to_string_pretty(&got).unwrap()
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// 〔S5 · 第四波〕同一份账号 manifest，**两个读者**读出同一张表 —— 带不带 UTF-8 BOM 都一样
+// ════════════════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：`调研/第四波记录/WN1.md §1` 件 F，逐字「账号库 manifest 带 UTF-8 BOM ⇒ 整块当空表」
+// （`真相源/106 §3.4` 那次真机读数：PS 5.1 `-Encoding UTF8` 与记事本默认写 BOM）。
+//
+// 后端读这份文件的有两处：`control/ccm/plan.rs::AccountTable::load`（`ccm --account` 那一条，09-21 已修）
+// 与本文件的 `load_manifest`（`--list-accounts` ⇒ 账号页）。前者修了、后者没修 ⇒ 同一台 Windows 上
+// `ccm --account work` 起得来，账号页却说「没启用多账号」。
+// ⇒ 判据不钉「某一个读者剥了 BOM」，钉**两个读者读出的号两向相等**：以后谁再长出第三种读法、
+//   或其中一个改了解析口径，这里当场红。两侧异源：两份各自的解析代码，同一份盘上字节。
+#[test]
+fn both_readers_of_the_manifest_see_the_same_accounts() {
+    let body = r#"{"version":1,"accounts":[{"name":"work","configDir":"/w"},{"name":"play","configDir":"/p","isDefault":true}]}"#;
+    for (tag, bytes) in [
+        ("plain", body.to_string()),
+        ("bom", format!("\u{FEFF}{body}")),
+    ] {
+        let root = tmpdir(&format!("two-readers-{tag}"));
+        let accts = root.join("accts");
+        write_manifest(&accts, &bytes);
+        // 夹具先自证：带 BOM 那一份真的以 EF BB BF 开头（否则这一格在量一个没有 BOM 的文件）。
+        let raw = fs::read(accts.join("accounts.json")).unwrap();
+        assert_eq!(
+            raw.starts_with(&[0xEF, 0xBB, 0xBF]),
+            tag == "bom",
+            "夹具不对：{tag}"
+        );
+
+        let mut ours: Vec<String> = load_manifest(&accts)
+            .unwrap_or_else(|e| panic!("`--list-accounts` 那个读者读不动（{tag}）：{e}"))
+            .accounts
+            .into_iter()
+            .map(|a| a.name)
+            .collect();
+        let path = accts.join("accounts.json");
+        let mut ccm: Vec<String> =
+            crate::control::ccm::plan::AccountTable::load(path.to_str().unwrap())
+                .accounts
+                .into_iter()
+                .map(|a| a.name)
+                .collect();
+        ours.sort();
+        ccm.sort();
+        assert_eq!(
+            ours, ccm,
+            "同一份 manifest（{tag}），账号页那个读者与 `ccm --account` 那个读者读出的号不一样"
+        );
+        assert_eq!(
+            ours,
+            vec!["play".to_string(), "work".to_string()],
+            "（{tag}）两边都读漏了"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+}
