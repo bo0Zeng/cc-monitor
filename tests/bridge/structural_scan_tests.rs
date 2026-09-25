@@ -2688,7 +2688,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/bridge/lib_remote_config_tests.rs",
             "legacy_single_object_one_host",
-            1,
+            2, // 〔合并 JA1〕+1：JA1 点址那一行（它当时登记「待主会话裁」，本路裁完挂墓碑）
         ),
         // 🔴 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端（V107），monitor 另起中转那一族删了；
         //    层 1 名字登记表里那一行注释逐字记着「哪两个名字被谁接替」⇒ 第②条出路。
@@ -3672,7 +3672,7 @@ fn every_prose_tombstone_mark_is_registered() {
     /// **不许**为了让本条变绿就把标记删掉 —— 删掉的是账，不是病。
     const REGISTERED: &[(&str, usize)] = &[
         // 〔S5 · 第四波 · V41〕`parse_remote_hosts` 旧单对象那一支与守它的测试删了，接替它的判据头注挂一块。
-        ("tests/bridge/lib_remote_config_tests.rs", 1),
+        ("tests/bridge/lib_remote_config_tests.rs", 2), // 〔合并 JA1〕+1：JA1 点址那一行
         // 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端，monitor 另起中转那一族删了；层 1 名字表那一行注释挂一块。
         ("tests/naming/account-vs-relay-naming.vitest.ts", 1),
         // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
