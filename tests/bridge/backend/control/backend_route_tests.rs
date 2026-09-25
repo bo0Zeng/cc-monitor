@@ -191,6 +191,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
     //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
     ("footprint_remote.rs", Verdict::UsesRouter),
+    // ★ 〔AS1 · 第四波 4B〕MCP 推 / 拉：请**要被写的那一台**的后端判（`mcp-sync-plan`），经 `mcp_sync.rs::BackendJudge::plan`
+    //   这一口；读 / 写那两跳走 `user_files.rs::BackendDoor`（已登记）。形状与理由逐字同上几条。
+    ("mcp_sync.rs", Verdict::UsesRouter),
     // ★ 〔RW1 · 第四波 · 2026-09-24〕**第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
     //   （`user_files.rs::BackendDoor`：`files-home` / `files-peek` / `files-put` / `files-rename` /
     //   `files-chmod` / `files-delete-session`）。用户裁「只允许后端的文件管理部分写文件」也管本机
@@ -198,6 +201,11 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   **照样走分流器**（`route_call_error` ＋ `no_channel`），理由与 `frame_query.rs` 那条逐字相同；
     //   它要的 `stale` 那一档是从分流器递回来的 `(code, message)` 里认的，不自己 match 错误枚举。
     ("user_files.rs", Verdict::UsesRouter),
+    // 〔RM1e · 第四波 4B〕**代码全景那一问**（`panorama_call.rs::ask_once`，帧命令 `panorama`）：
+    //   远端回「没装 / 太旧」（`not_installed` / `unsupported`）要**按码**推字节再问一次，而 `frame_query::call`
+    //   把码压进了一句话 ⇒ 自己发、码从分流器递回的 `(code, message)` 里认（与 `user_files.rs` 同一形），
+    //   不自己 match 错误枚举。它**没有第二条路可回落**（推字节不是回落：推完问的还是同一条命令）。
+    ("panorama_call.rs", Verdict::UsesRouter),
     // ★ 〔SR1b · 第四波〕传输台的中继（`sftp_pool.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。

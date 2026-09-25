@@ -44,6 +44,7 @@ pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消�
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
 pub mod listen; // K-P1：常驻监听口 —— 脱离宿主之后还能被找到 / 被问到 / 被接上（纯判定住这里，接受循环住 main.rs）
+pub mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面 `mcp-sync-plan`（差异 · 可疑项 · 写哪几条；只读，写经文件管理那一面）
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -436,7 +437,16 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p3d-sftp-resident**（2026-09-24，第四波 SR1b 合并那一拍）：子命令 ＋4 —— `ch:transfer-upload` / `-download` / `-start` / `-stop`
 /// （传输台搬进后端，只在帧面）。＋ 线上：链路多一种用途 `use:"files"`（sftp 子系统上的一问一答）· 新出方向帧 `transfer`。
 /// 界面进程从此零 SSH（V89）：旧后端不认 `files` 用途 ⇒ 部署 / 传输全断 ⇒ 必须判 stale。
-pub const BUILD_ID: &str = "p3d-sftp-resident";
+///
+/// ★★★ **p3e-shapes-cas-withbg**（2026-09-25，第四波 RM1e ＋ C4b ＋ CF1 合并那一拍）：子命令集不变，**行为**变更 ——
+/// RM1e `files-delete` 多收可选 `expect`、多回 `stale`（旧后端会忽略 expect 照删 ⇒ CAS 是空的）；
+/// C4b `history-index` / `history-user-inputs` / `history-find` / `plugins-marketplaces` 四条应答形状变成后端出成品；
+/// CF1 本机常驻后端起参统一加 `--with-bg`（adopt 只比 build_id ⇒ 不 bump 会接上按旧起参起的后端，bg 会话内容缺）。
+/// 照 p1v 先例不加历史行。
+///
+/// ★★★ **p3f-mcp-sync-exitwire**（2026-09-25，第四波 AL1d ＋ S5 ＋ AS1 合并那一拍）：子命令 ＋1 —— AS1 `mcp-sync-plan`（两个命令面）。
+/// ＋ 行为：S5 `exit-policy-*` 线上删 `shell` 字段 · `ccm` 直路给了 `--ccm-sid` 而无令牌时 stderr 说一句 · `--list-accounts` 认带 BOM 的 manifest。
+pub const BUILD_ID: &str = "p3f-mcp-sync-exitwire";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -552,6 +562,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--relay-status",
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
     "--footprint-probe",
+    // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
+    // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--mcp-sync-plan",
     "--backend-probe",
     // 〔SR1a · 09-24〕`--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
@@ -1048,18 +1061,16 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "ccm-sid",
         target: Target::Windows,
         kind: GapKind::Owed,
-        why: "**被接受、零效果、而且不出声** —— 这一条比别的几条更该单记。\
-              `--ccm-sid` 解析进 `Opts` 之后只在**容器（tmux）那条路**上被消费\
-              （`Container.ccm_sid` → `tmux set-option @ccm_sid_expect`），\
-              而 `Plan::Direct` 里**根本没有这个字段**（现打 0 次）⇒ Windows 上只有直路，\
-              于是这个旗标进得来、什么都不做、一个字不说。真机现打：`--print` 带与不带 \
-              `--ccm-sid` 输出**逐字节相等**。\
-              🔴 而它的三个兄弟旗标（`--detach` / `--tmux-size` / `--bus-register`）**都有闸**，\
-              只有它没有 ⇒ 这不只是 Windows 的缺口，是那一排校验漏了一格。\
-              ⚠ **刻意不在这里顺手加闸**：`--ccm-sid` 是一条**已声明的启动维度**\
-              （`launch-dimensions.ts` 的 `cliFlags` ＋ `launch-cli-golden.ts` 那张 `ALL_CAPS` \
-              金标准矩阵）⇒ 加闸会动到那张矩阵的契约，那是设计题不是一行修复。\
-              **将来**：先裁「这个旗标在没有 tmux 时该报错还是该有直路语义」，再改。",
+        why: "〔S5 · 第四波 09-24〕**直路语义已定，Windows 上仍欠在读侧。** \
+              从前：`--ccm-sid` 只在容器（tmux）那条路上被消费（`Container.ccm_sid` → \
+              `tmux set-option @ccm_sid_expect`），直路上被接受、零效果、不出声。\
+              主会话裁：**不报错**（报错 ＝ 让它依赖 tmux，撞 V63），直路语义走启动期令牌 \
+              （`control/ccm/plan.rs::DirectIdentity`：有合格的 `CCM_RBIND_TOKEN` ⇒ 由它承载；\
+              没有 ⇒ 说一句、照常起）。\
+              🔴 **而令牌那条路的读侧在 Windows 上不通**：后端从 agent 进程的环境里读令牌 \
+              （`identity_tag::rbind_token_of` → `platform::proc::proc_env_var`），非 Linux 恒 `Unreadable` \
+              （`WN1.md §1` 件 E：要读对方 PEB，未做）⇒ 令牌注进去了也读不回来 ⇒ 这一格在 Windows 上仍是欠账。\
+              **将来**：件 E（Windows 上读别的进程的环境）落地那一拍，这一行跟着删；在那之前暂时不做。",
     },
     // ── 🔴 〔散文墓碑〕〔`P19` 09-22〕**`agent` 那一条豁免删了，原话留在这里** ──────
     //

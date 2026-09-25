@@ -761,7 +761,7 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
   // ── 〔第三波 S3〕本机派生也要能选账号（BS1b 留下的：本机那一格不拉账号列表 ⇒ 只能「不指定」）──
   const LOCAL = {
     ...ACCTS,
-    origin: "__local__",
+    origin: LOCAL_ORIGIN, // 〔C4b〕账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
     accounts: [
       { name: "w", email: "w@x", configDir: "/l/w", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
       { name: "off", email: "", configDir: "/l/o", isDefault: false, mode: "isolated", exists: true, loggedIn: false },

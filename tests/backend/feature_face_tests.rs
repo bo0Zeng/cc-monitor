@@ -81,13 +81,13 @@ fn tasks_list_answers_in_lines_and_refuses_a_missing_sid() {
 }
 
 #[test]
-fn plugins_marketplaces_answers_one_line_and_keeps_the_three_exits_apart() {
-    // ① 文件不在 ⇒ 一行，`file_absent: true`。
+fn plugins_marketplaces_answers_the_survey_itself_and_keeps_the_three_exits_apart() {
+    // ① 文件不在 ⇒ 〔C4b〕应答就是 survey（成品），`file_absent: true`、键集合恒等。
     let h = scratch("mk-absent");
-    let v = answer_at(&h, "plugins-marketplaces", &json!({})).unwrap();
-    let rows = v["lines"].as_array().expect("lines");
-    assert_eq!(rows.len(), 1);
-    let survey: serde_json::Value = serde_json::from_str(rows[0].as_str().unwrap()).unwrap();
+    let survey = answer_at(&h, "plugins-marketplaces", &json!({})).unwrap();
+    let mut keys: Vec<&String> = survey.as_object().expect("成品是一个对象").keys().collect();
+    keys.sort();
+    assert_eq!(keys, ["entries", "file_absent"], "survey 的成品形状变了");
     assert_eq!(survey["file_absent"], json!(true));
     // ② 读 / 解析失败 ⇒ `failed`，**不是**空表。
     let h = scratch("mk-broken");
@@ -99,5 +99,45 @@ fn plugins_marketplaces_answers_one_line_and_keeps_the_three_exits_apart() {
             .unwrap_err()
             .0,
         "failed"
+    );
+}
+
+/// ★★〔C4b · 第四波 4B〕**跨语言金样**：`plugins-marketplaces` 对一份夹具家目录的成品 ==
+/// `tests/__fixtures__/plugins-survey.golden.json`（夹具临时目录那一截换成 `<home>` 再比）。
+///
+/// 那份金样的另一个读者是界面的解码器（`tests/settings/plugins-section.vitest.ts` 读同一份文件、逐字段断言）
+/// ⇒ 两侧**异源**：后端改一个键名 ⇒ 本条红；界面解码器改一个键名 ⇒ 那边红。夹具只造结构（占位名、占位时间）。
+#[test]
+fn the_survey_product_matches_the_cross_language_golden() {
+    let h = scratch("c4b-golden");
+    let plugins = crate::observe::plugins_query::plugins_root(&h);
+    let good = h.join("mk-good");
+    std::fs::create_dir_all(good.join(".claude-plugin")).unwrap();
+    std::fs::write(
+        good.join(".claude-plugin").join("marketplace.json"),
+        r#"{"plugins":[{"name":"a"},{"name":"b"}]}"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(&plugins).unwrap();
+    std::fs::write(
+        plugins.join("known_marketplaces.json"),
+        format!(
+            r#"{{"a-good":{{"source":{{"source":"github","repo":"o/r"}},"installLocation":{:?},"lastUpdated":"2026-01-01T00:00:00Z"}},"b-bad":{{"installLocation":"/nonexistent/c4b"}}}}"#,
+            good.to_string_lossy()
+        ),
+    )
+    .unwrap();
+    let v = answer_at(&h, "plugins-marketplaces", &json!({})).unwrap();
+    let got: serde_json::Value =
+        serde_json::from_str(&v.to_string().replace(&*h.to_string_lossy(), "<home>")).unwrap();
+    let want: serde_json::Value =
+        serde_json::from_str(include_str!("../__fixtures__/plugins-survey.golden.json"))
+            .expect("金样不是合法 JSON");
+    let _ = std::fs::remove_dir_all(&h);
+    assert_eq!(
+        got,
+        want,
+        "帧面成品与跨语言金样不一致。现打：\n{}",
+        serde_json::to_string_pretty(&got).unwrap()
     );
 }

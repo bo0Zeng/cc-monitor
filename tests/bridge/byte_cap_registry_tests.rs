@@ -62,6 +62,17 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              （内核 `TCP_INFO` 量到的握手往返 ≥ 它才压）。它不限任何字节总量、不截任何东西。",
     ),
     (
+        "STATUS_CONTROL_C_EXIT",
+        "〔S5 · 第四波 09-24 · `设计/00 §1.5.3`〕**退出码**不是体量：Windows 的 NTSTATUS \
+             `0xC000013A`（被控制台事件打死）。`backend_policy·rs::exit_status` 拿它认出那一种死法、说人话，\
+             不限任何东西的大小。",
+    ),
+    (
+        "PUSH_MODE",
+        "〔RM1e 09-24〕**权限位**不是体量：全景小程序推到远端 `~/.cc-monitor/bin/` 时给的 unix 模式（`0o755`，\
+             `panorama_bytes·rs::push_to`）。",
+    ),
+    (
         "LINK_STEP",
         "〔SR1a 09-24〕**步长**不是体量：monitor 往链路里送上行字节时一次切多大（`link_mux·rs::LinkStream` 的 \
              `poll_write`）。多出来的留给调用方下一次写 —— **不丢、不截**，它不限任何总量。\
@@ -95,6 +106,12 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "CHANNEL_CAPACITY",
         "**条数**不是体量（mpsc 通道能排多少帧）。它的溢出语义由 `Overflow` 帧管，见 F03。",
+    ),
+    (
+        "LOCAL_LINES_CAPACITY",
+        "〔CF1 · 第四波 09-24〕**件数**不是体量：本机内容通道（`local_lines·rs`）能排多少帧。与 `CHANNEL_CAPACITY` 同族 ——\
+             量的是队列深度。满了是**背压**（读循环停在送上 ⇒ 不再读 ⇒ 本机后端写阻塞），**不丢、不截**，\
+             它不限任何一段用户数据的字节数（一帧的字节上限是 `BACKEND_FRAME_LINE_CAP`，本表 `CAPS` 那一行）。",
     ),
     (
         "LIMIT_MAX",

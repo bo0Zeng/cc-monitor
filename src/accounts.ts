@@ -19,10 +19,11 @@ import type { LaunchModifiers } from "./launch-plan";
 // 源：`src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
 // （它每次生成都跑一遍 `history.rs::LaunchAccount` 的生产反序列化器验一次）。
 import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
-// 〔`A3` 第二波〕backend 的本机 origin（`"<local>"`）—— 与本文件自己那个 `LOCAL_ORIGIN`
-// （`"__local__"`，账号面的缓存键）**不是同一个值**，所以换个名字导进来，别让两者在读者眼里混成一个。
-import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "./backend-policy";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+// 〔C4b · 第四波〕本机只有一个表示：`LOCAL_ORIGIN`（`"<local>"`，经 `ipc/origin.ts` 转出）。
+// 本文件先前自己还有一个同名的 `"__local__"`（账号面的缓存键 ＋ 本机 `AccountsState.origin`）——
+// 那是账号面本机 / 远端各走一条命令时留下的第二种写法；`设计/00 §2.5 ①`（账号面本机与远端同一条路、
+// 一个 Origin 类型）之下它装的就是「哪台机器」本身，没有第二个概念 ⇒ 退役，缓存键与 origin 同一个值。
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, linesOf } from "./ipc/chan-caller";
 
@@ -86,7 +87,8 @@ export interface SessionAccount {
 
 /** 账号功能在某台远端的整体状态（UI 直接消费）。 */
 export interface AccountsState {
-  origin: string;
+  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。也是账号缓存的键 —— 〔C4b〕两者从此是同一个值。 */
+  origin: Origin;
   available: boolean;
   error: string | null;
   meta: AccountsMeta | null;
@@ -444,7 +446,7 @@ export function __setLocalLaunchSnapshotForTests(
 
 export async function fetchLocalApikeyRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
   // 〔RM1a〕那条命令收了 origin；本函数照旧只问本机（名字里的 `Local` 就是这一格）。
-  return await commands.apikey_routing_for({ origin: BACKEND_LOCAL_ORIGIN, configDirs });
+  return await commands.apikey_routing_for({ origin: LOCAL_ORIGIN, configDirs });
 }
 
 /**
@@ -964,7 +966,7 @@ export async function resolvePendingLocalLaunches(nowMs: number = Date.now()): P
 
   // 〔C4a〕经通道问本机后端（`fetchSessionAccounts` 那一处，`force`：刚起的会话不许被 8 秒缓存挡住）。
   //   查不到（Windows / 没有本机后端 / 没有控制通道）⇒ 空行集 ⇒ 下面一条都命不中 = 不猜，待办留着等下一次事件。
-  const rows: SessionAccount[] = await fetchSessionAccounts(BACKEND_LOCAL_ORIGIN, true);
+  const rows: SessionAccount[] = await fetchSessionAccounts(LOCAL_ORIGIN, true);
 
   const still: PendingLocalLaunch[] = [];
   for (const p of pendingLocalLaunches) {
@@ -1092,8 +1094,8 @@ const sessionAccountsCache = new Map<string, CacheEntry<SessionAccount[]>>();
  * （问本机后端的 `--list-accounts`）。在此之前它会拿 `<local>` 去问 `list_remote_accounts`，
  * 回来一句「远端 '<local>' 未配置」—— 本机换号重启与它的菜单都经这里，那句话会让本机
  * 恒显示「没有可选账号」。 */
-export async function fetchAccounts(origin: string, force = false): Promise<AccountsState> {
-  if (origin === BACKEND_LOCAL_ORIGIN) return fetchLocalAccounts(force);
+export async function fetchAccounts(origin: Origin, force = false): Promise<AccountsState> {
+  if (isLocalOrigin(origin)) return fetchLocalAccounts(force);
   const now = Date.now();
   const cached = accountsCache.get(origin);
   if (!force && cached && now - cached.at < ACCOUNTS_TTL_MS) return cached.value;
@@ -1130,24 +1132,6 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
   return state;
 }
 
-/**
- * L3a（local-as-remote）：取**本机**的账号状态 —— `fetchAccounts` 的本地对侧。
- *
- * ⚠ `N-F1c`（09-05）之后这句话变了：`list_local_accounts` **不再直接读磁盘，而是问本机后端**
- * （`backend::observe::local_query::run_query(…, &["--list-accounts"])`，与远端那条同一套解析、
- * 不同传输；`K-R71` 09-12 之前它住 `backend::control::`）——
- * 裁定住 `first-run/DECISIONS.md` `NR2`〔用 09-05〕：**claude 进程真实跑在哪台机器，
- * 账号就归那台机器的后端管**。⇒ 它**会起一个短命子进程**，而「后端不在」是一个
- * 明写出来的档（`LocalAccountsOutcome::NoBackend`），**不许渲染成「你没有账号」**。
- * 〔旧文逐字，留作来历：「后端 `list_local_accounts` 直接读 `$HOME/.claude-alt/accounts.json`
- * （只读、不起进程）」——「直接读」与「不起进程」两句今天都不成立。〕
- * **返回类型与远端那条逐字段相同** ⇒ 上层拿到的 `AccountsState` 形状一致，
- * 这正是 §40「本地 = 不走 ssh 的远端」在这一格上的意思。
- *
- * `origin` 用一个固定哨兵：本机只有一台，没有「哪台」这个维度。
- * 走同一个缓存 Map（TTL 相同）——本地读盘虽便宜，但缓存语义一致比省那点 IO 更要紧。
- */
-export const LOCAL_ORIGIN = "__local__";
 
 /**
  * `N-F1b` `NF1bD2`：**本机那条路上的界面文案，只此一家。**
@@ -1211,6 +1195,23 @@ export const LOCAL_ACCOUNTS_COPY = {
   scopeHint: "这一节只把这台机器上的账号清单列出来（只读）；在这里改不了它们。",
 } as const;
 
+/**
+ * L3a（local-as-remote）：取**本机**的账号状态 —— `fetchAccounts` 的本地对侧。
+ *
+ * ⚠ `N-F1c`（09-05）之后这句话变了：`list_local_accounts` **不再直接读磁盘，而是问本机后端**
+ * （`backend::observe::local_query::run_query(…, &["--list-accounts"])`，与远端那条同一套解析、
+ * 不同传输；`K-R71` 09-12 之前它住 `backend::control::`）——
+ * 裁定住 `first-run/DECISIONS.md` `NR2`〔用 09-05〕：**claude 进程真实跑在哪台机器，
+ * 账号就归那台机器的后端管**。⇒ 它**会起一个短命子进程**，而「后端不在」是一个
+ * 明写出来的档（`LocalAccountsOutcome::NoBackend`），**不许渲染成「你没有账号」**。
+ * 〔旧文逐字，留作来历：「后端 `list_local_accounts` 直接读 `$HOME/.claude-alt/accounts.json`
+ * （只读、不起进程）」——「直接读」与「不起进程」两句今天都不成立。〕
+ * **返回类型与远端那条逐字段相同** ⇒ 上层拿到的 `AccountsState` 形状一致，
+ * 这正是 §40「本地 = 不走 ssh 的远端」在这一格上的意思。
+ *
+ * 〔C4b〕`origin` 就是 `LOCAL_ORIGIN`（先前是本文件自己的 `"__local__"` 哨兵，已退役）；
+ * 走同一个缓存 Map、同一个键空间（TTL 相同）——缓存语义一致比省那点 IO 更要紧。
+ */
 export async function fetchLocalAccounts(force = false): Promise<AccountsState> {
   const now = Date.now();
   const cached = accountsCache.get(LOCAL_ORIGIN);

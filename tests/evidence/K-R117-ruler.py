@@ -155,6 +155,9 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # ─────────────────────── ③ 装 MCP / skill 等 ───────────────────────
     ("mcp.write", (B3, "K34", "「包括安装 skill / MCP 等等」")),
     ("mcp.remove", (B3, "K34", "同上，撤那一侧")),
+    # 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B · V111/V112）：把另一台那份 `.mcp.json` 里勾的条目装到这台 ——
+    #   与 `mcp.write` 同一件事（写的是同一份文件、经同一份规划），只是条目来自另一台机器。
+    ("mcp.sync", (B3, "K34+V111+V112", "「装 MCP」的跨机那一形：条目原样从另一台拷来，写之前看差异、不同的要点了才盖")),
     ("cc-bus.deploy", (B3, "K34",
                        "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
     ("cc-bus.install-state", (B3, "K34", "同上，查装态那一半")),
@@ -208,7 +211,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("mcp.read", (NA, "—", "读 MCP 配置")),
     ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
     ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
-    ("plugins.marketplaces", (NA, "—", "列插件市场 —— 只读枚举")),
+    # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
+    #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
     ("port-forward", (NA, "—", "端口转发")),
     ("apikey.routing", (NA, "—", "问这几个本机账号在 apikey 表里有没有行（＋本机中转在不在跑）")),
     ("search.history", (NA, "—", "搜索")),
@@ -302,11 +306,14 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
     ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
        "`ccm.install`/`ccm.uninstall` 的远端半」。现打这四条的住址恰好都在 `sftp.rs`")),
     ("S2", ("①-本机半", (
-        "cc_integration_install",
-        "cc_integration_preview",
-        "cc_integration_scan_path",
-        "cc_integration_status",
-        "cc_integration_uninstall",
+        # 〔AL1d · 第四波 4B〕别名块那三条并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`），
+        #   能力 id 不动（`ccm.install` / `ccm.uninstall` / `ccm.install-ui`，理由见账本那几行）⇒ 归处不动（S2）。
+        #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
+        "aliases_block_install",
+        "aliases_block_remove",
+        "aliases_block_render",
+        # 〔AL1d〕`cc_integration_install` / `_preview` / `_scan_path` / `_status` / `_uninstall` 五条退役：
+        #   装 / 卸 / 预览接给上面三条；状态与扫一份并进 `aliases_read`（它归 S4，能力 `alias.manage`）。
         "ccm_user_path_add",
         "ccm_user_path_remove",
         "ccm_user_path_status",
@@ -364,6 +371,10 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   因为它描述的那个现实变了。
         "cc_bus_install_state",
         "deploy_local_cc_bus",
+        # 〔AS1 · 第四波 4B〕MCP 推 / 拉（能力 `mcp.sync`，归档同 `mcp.write` 在 ③）：写的是同一份 `.mcp.json`、
+        #   经同一份规划（`mcp.rs::plan_project_mcp`）⇒ 与下面那两条同一件。
+        "mcp_sync_apply",
+        "mcp_sync_preview",
         "remove_project_mcp_server",
         "write_project_mcp_server",
         "write_skill_file",

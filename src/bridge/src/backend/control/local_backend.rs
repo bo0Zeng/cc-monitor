@@ -1359,7 +1359,7 @@ pub fn start_if_present(
     // 「本机 = 不走 ssh 的远端」（`INVARIANTS §40`）：远端一连上就 attach 通道，本机同理。
     let h = supervise_with_stdio(
         bin.clone(),
-        vec!["--tail-only".into()],
+        LOCAL_STREAM_ARGS.iter().map(|a| a.to_string()).collect(),
         Vec::new(),
         CrashLimits::default(),
         Arc::new(|| {
@@ -1446,6 +1446,17 @@ fn read_capped_line_sync<R: std::io::BufRead>(
     }
 }
 
+/// 〔CF1 · 2026-09-24〕本机后端的**流模式起参** —— 两条载体（stdio 监护 · 常驻脱离）共用这一份。
+///
+/// - `--tail-only`：连接不重放历史，历史由 monitor 经旁路快照拉（与远端同一套：`ssh_source::LineIntake`）。
+///   本机内容消费者据此认定「这条流恒为 tail-only」（`ssh_source::LOCAL_STREAM_TAIL_ONLY`）。
+/// - `--with-bg`：bg 会话也宣告、也发行 —— 本机会话内容从这条流来之后，少了它 bg 会话的内容就静默没了
+///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
+///
+/// 两个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
+/// 由判据对拍后端源码。
+pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg"];
+
 /// P3 刀 1 的**唯一**吸收点：本机后端推来的帧里，哪些要进账本。
 ///
 /// # 为什么抽成函数〔`P3` 08-12〕
@@ -1471,10 +1482,17 @@ fn read_capped_line_sync<R: std::io::BufRead>(
 ///   **只会等到超时**。开链路（`link-open`）要这条应答，所以这一格在这一拍补上。
 /// - `link_data` / `link_end` ⇒ 交 [`crate::link_mux`]（链路的 monitor 这一侧）。
 /// - 〔SR1b〕`transfer` ⇒ 交 [`crate::sftp_pool::deliver`]（传输台的中继）。
+///
+/// 〔CF1 · 2026-09-24〕**内容三种（`line` · `session_added` · `session_removed`）原样交回调用方**
+/// （返回 `Some`），由读循环送进 `crate::local_lines`（再进与远端同一个 `LineIntake`）。
+/// 此前这三种落在最后那个 `_ => {}` 里整个丢掉（注释逐字「本机会话走本地 watcher」）——
+/// 那是「同一批 jsonl 同机读两遍、第二遍扔掉」的那一半（`真相源/10 §7.1`）。
+/// ⚠ 交回而不是在这里就地送：两条读循环一条是 tokio 任务、一条是裸线程，送法不同（`local_lines` 头注）。
+/// 其余帧仍就地吸收，返回 `None`。
 pub(crate) fn absorb_local_frame(
     frame: crate::ssh_source::InboundFrame,
     client: Option<&std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
-) {
+) -> Option<crate::ssh_source::InboundFrame> {
     use crate::ssh_source::InboundFrame;
     match frame {
         // P3 刀 1：**本机的 tmux 帧也要收**。backend 的 `watch_loop` 周期跑本机 `tmux ls`
@@ -1526,9 +1544,13 @@ pub(crate) fn absorb_local_frame(
             }
         }
         // 〔U4b · 第四波 · G3〕本机活会话的容器事实：与远端流同一个口（`session_facts`）、同一个事件。
-        //   本机会话的其余事实（起停、行）照旧走本地 watcher —— 这条流上只取容器这一格。
-        InboundFrame::SessionAdded { sid, container, .. } => {
-            crate::session_facts::note_container(&sid, container);
+        // 〔CF1 · 2026-09-24〕记完容器，这一帧**照样交回**读循环 —— 它的 `path` / `lines` 是本机旁路快照的起点
+        //   （本机会话的行从此走这条流，见下面内容三种那一臂）；本机会话的起停仍归 `session_map`。
+        f @ InboundFrame::SessionAdded { .. } => {
+            if let InboundFrame::SessionAdded { sid, container, .. } = &f {
+                crate::session_facts::note_container(sid, *container);
+            }
+            return Some(f);
         }
         InboundFrame::Reply {
             id,
@@ -1557,9 +1579,12 @@ pub(crate) fn absorb_local_frame(
             total,
             end,
         } => crate::sftp_pool::deliver(&id, got, total, end),
-        // 其余帧（会话 / 行 / hello …）本机这条流今天不消费（本机会话走本地 watcher）。
+        // 〔CF1〕内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
+        f @ (InboundFrame::Line { .. } | InboundFrame::SessionRemoved { .. }) => return Some(f),
+        // 其余帧（hello · 会话状态 · 溢出 …）本机这条流今天不消费。
         _ => {}
     }
+    None
 }
 
 /// 〔U4b · 第四波 · G2〕本机收割器的对账状态（跨帧累计缺失计数）。一份常驻：本机只有一条后端流，
@@ -1574,7 +1599,7 @@ fn local_reaper_state() -> &'static std::sync::Mutex<crate::tmux_reconcile::Reco
 ///
 /// 与远端 `stream_loop` 的 `TmuxSessions` 臂同一个判定：观测无效（`Skip`）⇒ 本帧不算；有效 ⇒
 /// `reconcile_step`（去抖 `RETIRE_MISS_THRESHOLD` 拍）。`tracked` 与 `pre_bound` 都是**本机 idle 集**：
-/// 本机活会话的死活由本地 watcher 的 pidfile 判，不归这里管（远端 `tracked` 里的 `announced` 在本机没有对应物）；
+/// 本机活会话的死活由 monitor 的 `session_map`（pidfile）判，不归这里管（远端 `tracked` 里的 `announced` 在本机没有对应物）；
 /// idle sid 的 `@ccm_sid` 在原文里出现过 = 铁证绑过 tmux ⇒ 直接播种 `ever_bound`（同远端那条 D 审计②）。
 pub(crate) fn local_idle_retirements(
     state: &mut crate::tmux_reconcile::ReconcileState,
@@ -1717,7 +1742,10 @@ pub(crate) fn local_stdio_consumer(
             None
         };
         let Some(witness) = witness else {
-            absorb_local_frame(frame, registered.as_ref());
+            // 〔CF1〕交回来的内容帧送进本机内容通道 —— 这是裸线程 ⇒ `_blocking` 那一形。
+            if let Some(f) = absorb_local_frame(frame, registered.as_ref()) {
+                crate::local_lines::deliver_blocking(f);
+            }
             continue;
         };
         // 日志取自**帧**而不是 client —— `InboundClient` 的 `commands` 是私有的，
@@ -1750,6 +1778,8 @@ pub(crate) fn local_stdio_consumer(
         // 〔SR1b〕经它开的传输也一律收场（后端的票表随那条流一起撤了）。
         crate::sftp_pool::fail_owned_by(mine, "本机后端的流断了（stdio 载体）");
     }
+    // 〔CF1〕告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
+    crate::local_lines::stream_ended_blocking();
     // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
     //   —— 而那一行只在 `BackendHello::from_hello_frame` 给出见证之后才跑得到。
     //   ⇒ 这一维是**观测**，不是默认值：把它在这里读一次，别在别处猜。
@@ -1949,7 +1979,7 @@ pub fn start_or_extract(
     // 「本机 = 不走 ssh 的远端」（`INVARIANTS §40`）：远端一连上就 attach 通道，本机同理。
     let h = supervise_with_stdio(
         bin.clone(),
-        vec!["--tail-only".into()],
+        LOCAL_STREAM_ARGS.iter().map(|a| a.to_string()).collect(),
         envs,
         CrashLimits::default(),
         Arc::new(|| {

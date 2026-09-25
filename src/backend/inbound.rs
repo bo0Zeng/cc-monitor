@@ -133,6 +133,8 @@ pub const COMMANDS: &[&str] = &[
     "link-credit",
     "link-data",
     "link-open",
+    // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
+    "mcp-sync-plan",
     // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
     "panorama",
     "ping",
@@ -767,7 +769,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "exit-policy-read",
         doc_anchor: Some("#### `exit-policy-read`"),
         codes: &[],
-        fields: &["killOnExit", "path", "reason", "shell", "state"],
+        fields: &["killOnExit", "path", "reason", "state"],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::control::exit_policy::answer_read()))),
     },
@@ -775,7 +777,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "exit-policy-set",
         doc_anchor: Some("#### `exit-policy-set`"),
         codes: &["bad_args", "io_failed"],
-        fields: &["killOnExit", "path", "reason", "shell", "state"],
+        fields: &["killOnExit", "path", "reason", "state"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::exit_policy::answer_set(&r.args)
@@ -856,6 +858,21 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔AS1 · 第四波 4B〕**MCP 资产同步的判定**（`设计/96` 的 B，用户 09-24 V111 · V112）：两份原文进、
+    //   差异四态 ＋ 可疑项（带这台机器的事实）＋「写哪几条」出。由**要被写的那一台**跑（事实是那台的）。
+    //   只读：原文由 monitor 经 `files-peek` 读来，写经 `files-put`（CAS）—— 本条一个字节都不落盘。阻塞档（`stat`）。
+    CommandSpec {
+        name: "mcp-sync-plan",
+        doc_anchor: Some("#### `mcp-sync-plan`"),
+        codes: &["bad_args", "bad_file", "needs_consent"],
+        fields: &["overwrite", "rows", "source", "take", "target", "write"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::mcp_sync::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "files-create",
         doc_anchor: Some("#### `files-create`"),
@@ -903,9 +920,10 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "files-delete",
         doc_anchor: Some("#### `files-delete`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
         // 〔FW5〕`recursive`（入）· `removed`（出）：显式才删整棵树，逐条目过围栏。
-        fields: &["path", "recursive", "rel", "removed", "root"],
+        // 〔RM1e〕`expect`（入）：给了 ⇒ 盘上逐字节等于它才删一份普通文件，否则 `stale`。
+        fields: &["expect", "path", "recursive", "rel", "removed", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
@@ -1312,7 +1330,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-find",
         doc_anchor: Some("#### `history-find`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["include_tools", "limit", "lines", "path", "query"],
+        fields: &["hits", "include_tools", "limit", "path", "query", "total"], // 〔C4b〕应答出成品：`lines` ⇒ `total` / `hits`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
@@ -1324,7 +1342,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-index",
         doc_anchor: Some("#### `history-index`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["lines", "offset", "path", "until"],
+        fields: &["end", "from", "offset", "path", "rows", "until"], // 〔C4b〕应答出成品：`lines` ⇒ `from` / `end` / `rows`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
@@ -1336,7 +1354,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-user-inputs",
         doc_anchor: Some("#### `history-user-inputs`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["from", "lines", "path"],
+        fields: &["end", "entries", "from", "path"], // 〔C4b〕应答出成品：`lines` ⇒ `from` / `end` / `entries`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
@@ -1388,12 +1406,12 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
     // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
     // 〔RM1b · 第四波〕同族第二条：插件市场只读枚举（`parity_ledger` `plugins.marketplaces`）。
-    //   从 monitor `plugins.rs`（`P8a`）原样搬来，三条出口不变；应答恰一行 = 整份 survey。
+    //   从 monitor `plugins.rs`（`P8a`）原样搬来，三条出口不变；〔C4b〕应答 = 整份 survey（成品，不再裹成一行）。
     CommandSpec {
         name: "plugins-marketplaces",
         doc_anchor: Some("#### `plugins-marketplaces`"),
         codes: &["failed", "too_large"],
-        fields: &["lines"],
+        fields: &["entries", "file_absent"],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)

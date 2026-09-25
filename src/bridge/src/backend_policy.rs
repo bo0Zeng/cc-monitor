@@ -164,7 +164,7 @@ fn said(r: Routed) -> String {
     }
 }
 
-/// 〔B2〕问那台机器：「退出行为」那个值现在是什么。回后端那份原样（`shell` / `state` / `killOnExit` / …）。
+/// 〔B2〕问那台机器：「退出行为」那个值现在是什么。回后端那份原样（`state` / `killOnExit` / `reason` / `path`）。
 #[tauri::command]
 pub async fn backend_exit_policy(origin: Origin) -> Result<Value, String> {
     // 本机与远端**同一条路**（都是那台机器那条长连接，`C1`）；`route` 只用来拦空白名 ——
@@ -418,13 +418,33 @@ pub fn death_kind(d: &Death) -> &'static str {
     }
 }
 
+/// Windows 的 `STATUS_CONTROL_C_EXIT`：进程被**控制台事件**（Ctrl+C / Ctrl+Break / 关控制台窗口）
+/// 打死时的退出码。按 `i32` 读（`ExitStatus::code()` 的视角）是 `-1073741510`。
+///
+/// 〔S5 · 第四波 · `设计/00 §1.5.3` 死亡账说人话〕平台无关地比：POSIX 上的退出码只有 0–255，
+/// 这个值在构造上不会出现 ⇒ 不需要 `cfg`。
+pub const STATUS_CONTROL_C_EXIT: u32 = 0xC000013A;
+
+/// 上面那个码的人话（`00 §1.5.3` 逐字）。进界面（`last_brief`）也进日志（`ledger_line`），同一个来源。
+pub const CONSOLE_CTRL_EXIT_SAID: &str = "被控制台事件杀死 —— 可能是那个弹出的终端窗口被关了";
+
+/// 一个退出码的说法：认得的码说人话，其余照旧是裸码。**判定只住这里**（`Refused` 与 `Crashed` 两臂共用）。
+fn exit_code_said(code: i32) -> String {
+    // `as u32` 是按位重解释，不是数值换算：-1073741510_i32 的位型就是 0xC000013A。
+    if code as u32 == STATUS_CONTROL_C_EXIT {
+        CONSOLE_CTRL_EXIT_SAID.to_string()
+    } else {
+        format!("exit {code}")
+    }
+}
+
 /// 那一行上的**退出状态**（`KP3A`① 要的两样之一）。
 pub fn exit_status(d: &Death) -> String {
     match d {
         Death::NeverStarted { .. } => "没有退出状态（进程从来没存在过）".to_string(),
-        Death::Refused { code } => format!("exit {code}"),
+        Death::Refused { code } => exit_code_said(*code),
         Death::Crashed { how } => match how {
-            Outcome::Exited(code) => format!("exit {code}"),
+            Outcome::Exited(code) => exit_code_said(*code),
             Outcome::Signalled(sig) => format!("signal {sig}"),
             Outcome::NeverSpawned => "没有退出状态".to_string(),
         },
@@ -465,7 +485,8 @@ pub fn death_copy(d: &Death) -> String {
     }
 }
 
-/// 界面上「最后一次」那一格：**判定 ＋ 退出状态**，一句短话（如「崩了，exit -1073741510」）。
+/// 界面上「最后一次」那一格：**判定 ＋ 退出状态**，一句短话（如「崩了，exit -1073741819」；
+/// 认得的码说人话，见 [`exit_code_said`]）。
 ///
 /// 〔第四波 ST2 · 步 7〕它替掉的是原来直接进界面的整条 [`ledger_line`]：那是**日志行格式**
 ///（`[死亡账] origin=… 判定=… 退出状态=… —— …`），`70 §2.4` 逐字禁它进界面。

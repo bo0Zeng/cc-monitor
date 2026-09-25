@@ -253,7 +253,8 @@ pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 impl WriteRefusal {
     /// 线上错误码。**闭集四个**，与 [`MANAGE_COMMANDS`] 那一栏逐字对得上
-    /// （〔FW5〕第三个只有 `files-chmod` 会回，也只有它声明；〔RW1〕第四个 `stale` 只有 `files-put` 会回）。
+    /// （〔FW5〕第三个只有 `files-chmod` 会回，也只有它声明；〔RW1〕第四个 `stale` 只有 `files-put` 会回
+    /// ——〔RM1e〕`files-delete` 带 `expect` 那一形也回它，也声明了）。
     pub fn code(&self) -> &'static str {
         match self {
             WriteRefusal::Fenced(_) => "refused",
@@ -411,6 +412,63 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
         std::fs::remove_file(&target)
     };
     done.map_err(|e| WriteRefusal::Io(format!("refuse write: 删 {} 失败：{e}", target.display())))?;
+    Ok(target)
+}
+
+/// 〔RM1e · 第四波〕**带 CAS 的删一份文件**：盘上那份逐字节 == `expect` 才删，否则一个字节不动。
+///
+/// 读改写那一族（`files-put` 的 `expect`）缺的最后一格：调用方「读到的是这一份 ⇒ 删它」，
+/// 从前只能先 `files-peek` 核、再 `files-delete` 删，核与删之间整整一趟往返的窗。
+/// 这里把「核」挪到删的同一个进程里、紧贴着删那一下（窗缩到本函数里那两行之间 —— TOCTOU 照旧如实登记，
+/// 同本模块头注诚实边界第 1 条）。
+///
+/// 目标**必须是普通文件**（不跟链接地看）：是目录 / 链接 / 别的 ⇒ `Fenced`（CAS 比的是一份文件的字节，
+/// 链接的字节是它指向的那一份 —— 删的却是链接本身，两者对不上，不给这一形）。
+/// 不在 ⇒ `Stale`（读的时候还在）；在但不等 ⇒ `Stale`。与 [`delete_entry`] 同一道围栏、同一个删的动词。
+pub fn delete_file_expecting(
+    root: &Path,
+    rel: impl AsRef<Path>,
+    expect: &[u8],
+) -> Result<PathBuf, WriteRefusal> {
+    let target = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let md = match std::fs::symlink_metadata(&target) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WriteRefusal::Stale(format!(
+                "refuse delete: {} 已经不在了（读的时候还在）—— 什么都没删，重读再来",
+                target.display()
+            )))
+        }
+        Err(e) => {
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 读不到 {}：{e}",
+                target.display()
+            )))
+        }
+    };
+    if !md.is_file() {
+        return Err(WriteRefusal::Fenced(format!(
+            "refuse delete: {} 不是一份普通文件 —— 带 `expect` 的删只收普通文件（不收目录、不收链接）",
+            target.display()
+        )));
+    }
+    let current = std::fs::read(&target)
+        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不出 {}：{e}", target.display())))?;
+    if current.is_empty() && md.len() > 0 {
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: {}",
+            hollow_read(&target, md.len())
+        )));
+    }
+    if current != expect {
+        return Err(WriteRefusal::Stale(format!(
+            "refuse delete: {} 在你读过之后被改过了 —— 一个字节没删，重读再来",
+            target.display()
+        )));
+    }
+    std::fs::remove_file(&target).map_err(|e| {
+        WriteRefusal::Io(format!("refuse write: 删 {} 失败：{e}", target.display()))
+    })?;
     Ok(target)
 }
 
@@ -1277,10 +1335,11 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         name: "files-delete",
         what:
             "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；〔FW5〕显式 `recursive: true` \
-               才删整棵树 —— 逐条目过围栏，任一条被拒整趟不动（`delete_tree`）",
-        args: &["recursive", "rel", "root"],
+               才删整棵树 —— 逐条目过围栏，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \
+               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）",
+        args: &["expect", "recursive", "rel", "root"],
         fields: &["path", "removed"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
     ManageCommand {
         name: "files-chmod",
@@ -1441,8 +1500,32 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
             "`recursive` 只收布尔 —— 删整棵树是一件要说清的事，这里不猜".to_string(),
         ))?,
     };
+    // 〔RM1e〕CAS **显式**：不给 ⇒ 射程与此前一个字节不差。给了 ⇒ 只删一份普通文件、盘上逐字节等于它才删。
+    //   `null` 拒（删的前提就是它在 —— 「我读的时候它不在」没有可删的东西）；与 `recursive` 同给拒（CAS 只对一份文件）。
+    let expect = match args.get("expect") {
+        None => None,
+        Some(serde_json::Value::Null) => {
+            return Err((
+                "bad_args",
+                "`expect` 不收 `null` —— 带 `expect` 的删说的是「读到的是这一份，删它」，不在就没有可删的".to_string(),
+            ))
+        }
+        Some(v) => Some(bytes_of(v, "expect")?),
+    };
+    if recursive && expect.is_some() {
+        return Err((
+            "bad_args",
+            "`expect` 与 `recursive` 不能同给 —— CAS 比的是一份文件的字节，整棵树没有「那一份」"
+                .to_string(),
+        ));
+    }
     let (done, removed) = if recursive {
         delete_tree(&root, &rel).map_err(refusal)?
+    } else if let Some(want) = expect.as_deref() {
+        (
+            delete_file_expecting(&root, &rel, want).map_err(refusal)?,
+            1,
+        )
     } else {
         (delete_entry(&root, &rel).map_err(refusal)?, 1)
     };

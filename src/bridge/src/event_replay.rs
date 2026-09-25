@@ -95,7 +95,7 @@ const CHUNK_PAUSE_MS: u64 = 10;
 
 /// v2.4.2 issue #2: incremental batch 切换到 chunked emit 的阈值。
 ///
-/// watcher 一次 process_file 读到的行数 >= 此值时（典型场景：用户
+/// 一次攒出来的批 >= 此值时（典型场景：用户
 /// `claude --resume <sid>` 灌历史），后端把这批走 jsonl-batch 切块 emit；
 /// 否则（用户日常敲键 1-N 行）走 jsonl-line 单条 live emit 保持低延迟。
 ///
@@ -116,76 +116,15 @@ impl EventReplay {
         }
     }
 
-    /// watcher 一次 process_file 收集到的 batch 入口。
-    ///
-    /// **未 ready 时**（启动 replay 还没触发）：仅 push history buffer，等
-    /// `frontend-ready` 时 `replay_and_mark_ready` 一并发。
-    ///
-    /// **已 ready 时**（debouncer 监听阶段 / chunked replay 进行中）：按 batch
-    /// 大小分流：
-    /// - `< INCREMENTAL_BATCH_THRESHOLD`：逐条 `emit(JSONL_LINE)`，保持实时低延迟
-    /// - `>= INCREMENTAL_BATCH_THRESHOLD`：切块 `emit(JSONL_BATCH)`，触发前端
-    ///   batch 模式（lazy hljs）。/resume 历史灌入场景。
-    ///
-    /// P5.4 B 重构：删了原 `replaying` flag 路径 —— 前端 RecordTimeline 按 seq
-    /// 自动排序，chunked replay 期间 watcher 新行直接 emit jsonl-line 即可，
-    /// 前端 timeline.insert 会放到正确位置（不再需要 catch-up tail 兜底）。
-    pub fn on_line_batch<R: Runtime>(
-        &self,
-        handle: &AppHandle<R>,
-        payloads: Vec<JsonlLinePayload>,
-    ) {
-        if payloads.is_empty() {
-            return;
-        }
-
-        // 先持锁 push history + 看 ready 状态
-        let (ready, big_batch) = {
-            let mut inner = self.inner.lock();
-            push_and_trim(&mut inner, &payloads);
-            (inner.ready, payloads.len() >= INCREMENTAL_BATCH_THRESHOLD)
-        };
-
-        if !ready {
-            // 启动 replay 还没触发：仅 push history，frontend-ready 时统一发。
-            return;
-        }
-
-        if !big_batch {
-            // 小 batch：逐条 jsonl-line（保留实时低延迟语义）
-            for p in payloads {
-                if let Err(e) = handle.emit(events::JSONL_LINE, &p) {
-                    tracing::warn!("emit jsonl-line failed: {e}");
-                }
-            }
-            return;
-        }
-
-        // 大 batch：切块 jsonl-batch（前端按 seq 自动排，无 head/older 区分）。
-        //
-        // Batch5-F17：块序列 spawn 到 async_runtime、块间 tokio::time::sleep
-        // （原地 std::thread::sleep 会睡 tokio worker，INVARIANT § 10）。
-        //
-        // ⚠ spawn = 本函数返回≠emit 完成：与其他通道（如 session-ended）的相对
-        // 顺序不保证。**顺序敏感的调用方必须用 `on_line_batch_awaited`**——
-        // ssh_source 的边界/断连 flush 若走本入口，迟到的行会把刚归档的远端
-        // Tab 复活成僵尸 live（F17 审计 R1）。本入口仅供本地 watcher std 线程。
-        let n = payloads.len();
-        let chunks = build_chunks(&payloads);
-        let chunk_total = chunks.len() as u32;
-        tracing::info!(
-            "[perf] incremental batch chunked: total={n}, chunks={chunk_total} (likely /resume or large append)"
-        );
-        let handle = handle.clone();
-        tauri::async_runtime::spawn(async move {
-            emit_chunks(&handle, chunks, chunk_total).await;
-        });
-    }
-
-    /// `on_line_batch` 的 await 变体（Batch5-F17 审计 R1）：大 batch 的块序列
-    /// **在调用方任务内发完才返回**——ssh_source 的攒批 flush 用它，保证行 emit
-    /// 严格先于随后的 SessionRemoved/断连归档（issue #20 / FIX 2 的顺序契约），
+    /// 行进重放缓冲的**唯一**入口：先进 `history`，ready 之后按批大小分流发出去 ——
+    /// 小批（< [`INCREMENTAL_BATCH_THRESHOLD`]）逐条 `jsonl-line`，大批切块 `jsonl-batch`。
+    /// 大 batch 的块序列**在调用方任务内发完才返回**（Batch5-F17 审计 R1）——`ssh_source` 的攒批 flush
+    /// 用它，保证行 emit 严格先于随后的 SessionRemoved/断连归档（issue #20 / FIX 2 的顺序契约），
     /// 同时对后端帧流形成天然背压（emit 期间不再收帧）。
+    ///
+    /// 〔CF1 · 2026-09-24〕原来还有一份不 await、把块序列 spawn 出去的孪生（只供本机 watcher 那条
+    /// std 线程用，`真相源/10 §7.2`「五段逻辑字面重复」）。本机内容改走后端的帧之后它零调用方，删了；
+    /// 名字里的 `_awaited` 留着是为了不在十几路同时改的时候改一个到处被点名的符号。
     pub async fn on_line_batch_awaited<R: Runtime>(
         &self,
         handle: &AppHandle<R>,
@@ -224,7 +163,7 @@ impl EventReplay {
     /// 1. 切块（性能：避免单次 emit 几千条 IPC 序列化卡主线程）
     /// 2. **末块先发**：让用户立刻看到最新内容（DOM 自然 stickToBottom 到最新）
     /// 3. 块间小 pause：让 IPC 派发线程喘息，watcher 新行可以在缝隙间 emit
-    ///    （直接走 on_line_batch live 路径，前端 timeline 自动排序，**无需 catch-up**）
+    ///    （直接走 on_line_batch_awaited 的实时那一支，前端 timeline 自动排序，**无需 catch-up**）
     ///
     /// v1.7.13: 之前对每条 history 单独 `emit(JSONL_LINE, p)` —— N=3000 时
     /// Tauri IPC 每次 emit 都有序列化 + 派发 overhead，实测 ~400ms 阻塞主线程。
@@ -245,7 +184,7 @@ impl EventReplay {
 
         // 阶段 1：拿 snapshot + 立即置 ready
         // P5.4 B 重构：no more replaying flag。chunked emit 期间 watcher 真新行
-        // 直接走 on_line_batch live 路径（ready=true）→ emit jsonl-line → 前端
+        // 直接走 on_line_batch_awaited 的实时那一支（ready=true）→ emit jsonl-line → 前端
         // timeline 按 seq 自动排序到正确位置。不需要 catch-up tail。
         let snapshot: Vec<JsonlLinePayload> = {
             let mut inner = self.inner.lock();
@@ -309,10 +248,10 @@ impl EventReplay {
     ///
     /// 独立窗口（`viewer-<sid>`）打开后调用：主窗口的全局 replay 早已发过，新窗口错过了，
     /// 这里从 buffer 里挑该 sid 的历史，按 `build_chunks`（末块先发）只发给这一个窗口。
-    /// **seq 与实时 `jsonl-line` 同空间**（都是 watcher 的 per-file seq），所以新窗口前端把
+    /// **seq 与实时 `jsonl-line` 同空间**（都是后端给的行号），所以新窗口前端把
     /// 定向历史 + 实时增量混进同一个 RecordTimeline 时顺序天然正确（重叠由前端 seq 去重）。
     ///
-    /// 仅活跃 session 的历史在 buffer 里（watcher 只 tail 活跃 jsonl）；archived session
+    /// 仅活跃 session 的历史在 buffer 里（后端只宣告、只 tail 活跃会话）；archived session
     /// 走前端一次性文件读路径，不经此函数。
     pub fn replay_session_to_window<R: Runtime>(
         &self,

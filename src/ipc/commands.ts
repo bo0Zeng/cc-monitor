@@ -124,16 +124,11 @@ import type { BranchResult } from "../generated/BranchResult";
 // ⚠ 本机要逐字送 `LOCAL_ORIGIN`（`"<local>"`，住 `../backend-policy.ts`）。
 // ⚠ 射程：这一条只管**入方向**。〔C4a〕TS 侧其余各处的 origin 也收成了同一个表示（本机 = `LOCAL_ORIGIN`，
 //   判据 `tests/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
-//   只剩生成物 `RemoteHealthPayload.origin` 一处 `string | null`（Rust 出方向，登记在那一节的 `PENDING`）。
+//   〔C4b〕生成物 `RemoteHealthPayload.origin` 那最后一处也改成了 `string`（那一节的 `PENDING` 从此为空）。
 import type { Origin } from "../generated/Origin";
-import type { SessionIndexResult } from "../generated/SessionIndexResult";
-import type { UserInputsResult } from "../generated/UserInputsResult";
-import type { FindResult } from "../generated/FindResult";
 import type { SessionRecordProbe } from "../generated/SessionRecordProbe";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
-import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
-import type { CcStatusResponse } from "../generated/CcStatusResponse";
 import type { ConnectStage } from "../generated/ConnectStage";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
@@ -141,7 +136,6 @@ import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
-import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
 import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
 import type { CcBusInstallState } from "../generated/CcBusInstallState";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
@@ -179,7 +173,6 @@ import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { PanoramaStatus } from "../generated/PanoramaStatus";
-import type { ProfileScan } from "../generated/ProfileScan";
 import type { PushResult } from "../generated/PushResult";
 import type { RemoteProjectsResult } from "../generated/RemoteProjectsResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
@@ -187,6 +180,8 @@ import type { SearchIndexStatus } from "../generated/SearchIndexStatus";
 import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { McpServerEntry } from "../generated/McpServerEntry";
+import type { McpSyncApplied } from "../generated/McpSyncApplied";
+import type { McpSyncPreview } from "../generated/McpSyncPreview";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
@@ -248,28 +243,8 @@ export const commands = {
   /** 读 `cc_get_auto_launch`。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   cc_get_auto_launch: () => invoke<AutoLaunchConfig>("cc_get_auto_launch"),
 
-  /** PowerShell profile cc 集成：装。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  cc_integration_install: (args: {
-    path: string;
-    commandName: string;
-    includeCcFunction: boolean;
-  }) => invoke<void>("cc_integration_install", args),
-
-  /** 预览将写入 profile 的代码（含 BEGIN/END marker）。 */
-  cc_integration_preview: (args: { commandName: string; includeCcFunction: boolean }) =>
-    invoke<CcPreviewResponse>("cc_integration_preview", args),
-
-  /** 扫一个指定 profile 路径。 */
-  cc_integration_scan_path: (args: { path: string; commandName: string }) =>
-    invoke<ProfileScan>("cc_integration_scan_path", args),
-
-  /** PowerShell profile cc 集成的总状态。`commandName` 在 Rust 侧是 `Option<String>` ⇒ 可省。 */
-  cc_integration_status: (args?: { commandName?: string }) =>
-    invoke<CcStatusResponse>("cc_integration_status", args),
-
-  /** PowerShell profile cc 集成：卸。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  cc_integration_uninstall: (args: { path: string }) =>
-    invoke<void>("cc_integration_uninstall", args),
+  // 〔AL1d · 第四波 4B〕这里原来是「终端集成」那五条（`cc_integration_*`）：并进了 `aliases_*` 同一族命令面
+  //   （状态 ＋ 扫一份 → `aliases_read` · 预览 → `aliases_block_render` · 装 / 卸 → `aliases_block_install` / `aliases_block_remove`）。
 
   /** 写 `cc_set_auto_launch`。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   cc_set_auto_launch: (args: { enabled: boolean }) => invoke<void>("cc_set_auto_launch", args),
@@ -401,8 +376,12 @@ export const commands = {
   aliases_render: (args: { aliases: Alias[]; shell: Shell }) =>
     invoke<AliasRender>("aliases_render", args),
 
-  /** 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。 */
-  aliases_read: (args: { shell: Shell }) => invoke<AliasListing>("aliases_read", args),
+  /**
+   * 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。
+   * 〔AL1d〕启动文件候选各带别名块的现状 ＋ 完成拉前握手的终端数；`rcPath` = 人另指的一份（过围栏后并进候选）。
+   */
+  aliases_read: (args: { shell: Shell; rcPath?: string | null }) =>
+    invoke<AliasListing>("aliases_read", args),
 
   /**
    * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
@@ -410,6 +389,20 @@ export const commands = {
    */
   aliases_install: (args: { aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
     invoke<AliasInstallReport>("aliases_install", args),
+
+  /**
+   * 〔AL1d · 第四波 4B〕**别名块**（`cc` / `cct` · `__ccm_bind`）第①跳：纯 —— 块 → 代码（装进一份空文件会写成什么）。
+   * 两种方言都答，方言由 `rcPath` 那份文件的扩展名定（后端判，与装那一跳同一个判法）；`withCc` 只对 PowerShell 有意义。
+   */
+  aliases_block_render: (args: { rcPath: string; withCc: boolean }) =>
+    invoke<string>("aliases_block_render", args),
+
+  /** 〔AL1d〕别名块装进人选的那份启动文件（方言按那份文件的扩展名定）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  aliases_block_install: (args: { rcPath: string; withCc: boolean }) =>
+    invoke<void>("aliases_block_install", args),
+
+  /** 〔AL1d〕别名块卸掉（整块删，块外一个字节不动）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  aliases_block_remove: (args: { rcPath: string }) => invoke<void>("aliases_block_remove", args),
 
   /**
    * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
@@ -793,12 +786,8 @@ export const commands = {
   // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
   drift_ledger_report: (args: { origin: Origin }) =>
     invoke<DriftLedgerReport>("drift_ledger_report", args),
-  // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。
-  // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
-  // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。
-  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `plugins-marketplaces`（本机逐字 `LOCAL_ORIGIN`）。
-  list_plugin_marketplaces: (args: { origin: Origin }) =>
-    invoke<MarketplaceSurvey>("list_plugin_marketplaces", args),
+  // 〔C4b · 第四波 4B〕P8a 的 marketplace 面（`list_plugin_marketplaces`〔散文墓碑〕）退役：经通道直接说帧命令
+  //   `plugins-marketplaces`，后端出成品（`src/settings/plugins-section.ts::fetchSurvey`）。
   // PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。
   // ⚠ **只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）⇒ 它是本仓**唯一**往
   // `<claude_dir>` 写的口子，必须由**用户显式点击**触发，绝不放进任何自动路径。
@@ -865,13 +854,8 @@ export const commands = {
     origin: Origin;
   }) => invoke<SubagentLoadResult>("load_subagent", args),
 
-  /**
-   * 〔`设计/10` 骨架 · 子步 3〕**骨架索引**：从字节 `fromOffset` 起（冷启动 0 / 续传传上次的 `end`）。
-   * 跑的是后端 `--read-session-from-offset … --index`（`IPC-PROTOCOL.md §10.3`）。
-   * `available: false` **不是错误**：对面是不认 `--index` 的老后端 / 本机后端不在 ⇒ 调用方退回尾部窗口。
-   */
-  read_session_index: (args: { origin: Origin; jsonlPath: string; fromOffset: number }) =>
-    invoke<SessionIndexResult>("read_session_index", args),
+  // 〔C4b · 第四波 4B〕骨架索引那一条（`read_session_index`〔散文墓碑〕）退役：经通道直接说帧命令 `history-index`，
+  //   后端出成品（`src/session-reads.ts::readSessionIndex`）。
 
   /**
    * 〔`设计/10` 骨架 · 子步 3〕**按偏移取一段正文** `[offset, until)` —— 两端、`seqBase`、`lineCount`
@@ -893,21 +877,8 @@ export const commands = {
   replay_keep_tail_only: (args: { sessionId: string }) =>
     invoke<number>("replay_keep_tail_only", args),
 
-  /**
-   * 〔SE1 · `设计/10 §2.2b ⑥`〕**大纲的数据源**：「你说过的话」清单，从字节 `fromOffset` 起
-   * （冷启动 0 / 增量传上次的 `end`）。跑的是后端 `--list-user-inputs`（`IPC-PROTOCOL.md §10.4`）。
-   * 判定只住后端。`available: false` **不是错误**：老后端 / 本机后端不在 / 输出被截断 ⇒ 大纲灰掉、原因挂提示上。
-   */
-  list_user_inputs: (args: { origin: Origin; jsonlPath: string; fromOffset: number }) =>
-    invoke<UserInputsResult>("list_user_inputs", args),
-
-  /**
-   * 〔SE2 · `设计/10 §6 步 6`〕**会话内查找**（Ctrl+F）：在这一份会话里找 `query`，命中按文件序。
-   * 跑的是后端 `--find-in-session`（`IPC-PROTOCOL.md §10.5`；口径与全局搜索同一份）。
-   * `available: false` **不是错误**：老后端 / 本机后端不在 / 输出被截断 ⇒ 面板那一行状态说清原因。
-   */
-  find_in_session: (args: { origin: Origin; jsonlPath: string; query: string; includeTools: boolean }) =>
-    invoke<FindResult>("find_in_session", args),
+  // 〔C4b · 第四波 4B〕大纲清单与会话内查找那两条（`list_user_inputs` / `find_in_session`〔散文墓碑〕）退役：
+  //   经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 
   /**
    * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。
@@ -970,7 +941,7 @@ export const commands = {
 
   /**
    * 〔B2 · 条 66〕问那台机器的后端：「退出行为」那个值现在是什么（值住那台机器上，`设计/01 §3.3b`）。
-   * Rust 那边是后端回的不透明 JSON（`shell` / `state` / `killOnExit` / `reason` / `path`）⇒ **桶②**，
+   * Rust 那边是后端回的不透明 JSON（`state` / `killOnExit` / `reason` / `path`）⇒ **桶②**，
    * 形状由 `settings/backend-section.ts` 的 `readExitAnswer` 逐格取、缺一格就当问不到。
    * `origin` 本机是 `"<local>"`（见 `backend-policy.ts` 的 `LOCAL_ORIGIN`，两侧有判据对拍）。
    */
@@ -1119,6 +1090,25 @@ export const commands = {
     name: string;
     server: unknown;
   }) => invoke<void>("write_project_mcp_server", args),
+
+  /**
+   * 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B）：看差异。`from` 那台 `fromDir` 的 `.mcp.json` 拷到
+   * `to` 那台 `toDir` 会发生什么 —— 判定由 `to` 那台的后端做（`mcp-sync-plan`）。两台都是 `Origin`，本机逐字 `LOCAL_ORIGIN`。
+   */
+  mcp_sync_preview: (args: { from: Origin; fromDir: string; to: Origin; toDir: string }) =>
+    invoke<McpSyncPreview>("mcp_sync_preview", args),
+  /**
+   * 〔AS1〕写：把勾的那几条原样合进 `to` 那台那份（`overwrite` = 对面不同、用户说了要盖的那几条）。
+   * `sourceText` / `targetText` 原样送回看差异时拿到的那两份（后者是 CAS 期望：对面在那之后变了 ⇒ 一个字节不写）。
+   */
+  mcp_sync_apply: (args: {
+    to: Origin;
+    toDir: string;
+    sourceText: string;
+    targetText: string | null;
+    take: string[];
+    overwrite: string[];
+  }) => invoke<McpSyncApplied>("mcp_sync_apply", args),
 
   // ════════════════════════════════════════════════════════════════════════
   // 〔C4a · 子步 2〕**最后十条**：原先在 `tab-session-actions.ts`（tab 层）与 `accounts.ts`

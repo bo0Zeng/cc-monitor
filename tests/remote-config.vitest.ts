@@ -19,6 +19,8 @@ import {
   hostKey,
   patchRemoteConfig,
   pickResumeCommand,
+  readRemoteConfig,
+  REMOTE_CONFIG_UNRECOGNIZED,
   type RemoteConfig,
   type RemoteHostConfig,
 } from "../src/remote-config";
@@ -255,5 +257,43 @@ describe("S1：整表覆盖那条路必须**不可达**", () => {
     expect(src).toContain("async function writeRemoteConfig");
     expect(src).not.toContain("export async function writeRemoteConfig");
     expect(src).not.toMatch(/export\s*\{[^}]*\bwriteRemoteConfig\b/);
+  });
+});
+
+/**
+ * 〔S5 · 第四波〕要求住址：`调研/设计/99 §1` V41「不为旧配置留兼容」· D4（不许把认不出静默当成空）。
+ *
+ * `remote` 段没有 `hosts` 列表（旧的单台写法 / `hosts` 写成别的类型 / 只有 `enabled`）⇒ **认不出**：
+ * 一台都不给（不猜那是哪台）、并带上那一句。对照：`hosts: []` 是合法的零台、没有 `remote` 段是「没配」，两者都不带那一句。
+ * Rust 那一侧同一个判准：`tests/bridge/lib_remote_config_tests.rs::a_remote_section_without_a_hosts_array_is_refused_not_emptied`。
+ */
+describe("〔S5 · V41〕remote 段认不出", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("★ 没有 hosts 列表 ⇒ 一台都不给，并说认不出", async () => {
+    for (const remote of [
+      { enabled: true, host: "pi.local", user: "pi", backendPath: "/x" },
+      { enabled: true, hosts: { host: "pi.local" } },
+      { enabled: true },
+    ]) {
+      vi.mocked(loadConfig).mockResolvedValue({ remote } as unknown as Awaited<
+        ReturnType<typeof loadConfig>
+      >);
+      const got = await readRemoteConfig();
+      expect(got.hosts, JSON.stringify(remote)).toEqual([]);
+      expect(got.unrecognized, JSON.stringify(remote)).toBe(REMOTE_CONFIG_UNRECOGNIZED);
+    }
+    expect(REMOTE_CONFIG_UNRECOGNIZED.startsWith("远端配置认不出：")).toBe(true);
+  });
+
+  it("对照：hosts: [] 与没有 remote 段都不带那一句", async () => {
+    for (const cfg of [{ remote: { enabled: true, hosts: [] } }, {}]) {
+      vi.mocked(loadConfig).mockResolvedValue(
+        cfg as unknown as Awaited<ReturnType<typeof loadConfig>>,
+      );
+      const got = await readRemoteConfig();
+      expect(got.hosts).toEqual([]);
+      expect(got.unrecognized, JSON.stringify(cfg)).toBeUndefined();
+    }
   });
 });

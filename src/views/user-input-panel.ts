@@ -29,8 +29,8 @@
  * ⇒ 判据住 `user-input-panel.vitest.ts`「先跳空、后来跳得过去」那一格，
  *   活体读数（真会发生的那条转移）住 `live-user-inputs.vitest.ts`。
  */
-// 〔SE1〕条目的形状由后端定（`session_outline.rs::UserInputEntry` 的生成物）；判定只住后端。
-import type { UserInputEntry } from "../generated/UserInputEntry";
+// 〔SE1〕条目的形状由后端定（〔C4b〕后端帧应答的成品，TS 形状住 `session-reads.ts`）；判定只住后端。
+import type { UserInputEntry } from "../session-reads";
 
 /**
  * 这块界面的名字 —— **`大纲`**（`设计/10 §2.2b ③` 定名，步 2）。
