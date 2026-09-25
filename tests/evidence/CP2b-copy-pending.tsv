@@ -145,8 +145,6 @@ src/bridge/src/user_files.rs	未抽
 src/bridge/src/verified_write.rs	未抽
 src/panorama-engine/main.rs	射程外：全景独立小程序（另一个可执行文件）
 src/settings/backend-section.ts	未抽
-src/settings/cc-bus-hooks-section.ts	未抽
-src/settings/cc-bus-section.ts	未抽
 src/settings/config-surface-section.ts	未抽
 src/settings/data-section.ts	未抽
 src/settings/diagnostics-section.ts	未抽

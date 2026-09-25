@@ -6921,6 +6921,529 @@
       "kind": "control",
       "zh": "系统默认",
       "args": []
+    },
+    "ccBus.spawn.failed": {
+      "kind": "error",
+      "zh": "派生失败：{e}",
+      "args": ["e"]
+    },
+    "ccBus.spawn.done": {
+      "kind": "body",
+      "zh": "已派生。",
+      "args": []
+    },
+    "ccBus.spawn.running": {
+      "kind": "body",
+      "zh": "派生中…",
+      "args": []
+    },
+    "ccBus.spawn.confirmBody": {
+      "kind": "body",
+      "zh": "{changed}将在 {machine} 的 {dir} 上用{account}派生一个 {tool}——这会起一个真实 agent 进程并消耗额度。再点一次「确认派生」执行。",
+      "args": ["changed", "machine", "dir", "account", "tool"]
+    },
+    "ccBus.spawn.changed": {
+      "kind": "body",
+      "zh": "参数已改动，请重新确认：",
+      "args": []
+    },
+    "ccBus.spawn.confirm": {
+      "kind": "action",
+      "zh": "确认派生",
+      "args": []
+    },
+    "ccBus.spawn.needDir": {
+      "kind": "error",
+      "zh": "请先填工作目录。",
+      "args": []
+    },
+    "ccBus.spawn.go": {
+      "kind": "action",
+      "zh": "派生",
+      "args": []
+    },
+    "ccBus.row.kill": {
+      "kind": "action",
+      "zh": "收掉",
+      "args": []
+    },
+    "ccBus.broadcast.failed": {
+      "kind": "error",
+      "zh": "广播失败：{e}",
+      "args": ["e"]
+    },
+    "ccBus.broadcast.done": {
+      "kind": "body",
+      "zh": "已广播给 {n} 个",
+      "args": ["n"]
+    },
+    "ccBus.broadcast.confirm": {
+      "kind": "body",
+      "zh": "广播给 {n} 个 agent？\n\n{text}",
+      "args": ["n", "text"]
+    },
+    "ccBus.kill.failed": {
+      "kind": "error",
+      "zh": "收掉失败：{e}",
+      "args": ["e"]
+    },
+    "ccBus.kill.done": {
+      "kind": "body",
+      "zh": "已收掉 {id}",
+      "args": ["id"]
+    },
+    "ccBus.kill.confirm": {
+      "kind": "action",
+      "zh": "确认收掉 {id}",
+      "args": ["id"]
+    },
+    "ccBus.acctLabel.none": {
+      "kind": "body",
+      "zh": "不指定账号",
+      "args": []
+    },
+    "ccBus.acctLabel.named": {
+      "kind": "body",
+      "zh": "账号 {value}",
+      "args": ["value"]
+    },
+    "ccBus.send.failed": {
+      "kind": "error",
+      "zh": "发送失败：{e}",
+      "args": ["e"]
+    },
+    "ccBus.send.done": {
+      "kind": "body",
+      "zh": "已发送（对方空闲会被敲门，在忙则靠它的 Stop 钩子兜底）。",
+      "args": []
+    },
+    "ccBus.inbox.failed": {
+      "kind": "error",
+      "zh": "读收件箱失败：{e}",
+      "args": ["e"]
+    },
+    "ccBus.inbox.empty": {
+      "kind": "body",
+      "zh": "收件箱是空的。",
+      "args": []
+    },
+    "ccBus.loadInbox.reading": {
+      "kind": "body",
+      "zh": "读取中…",
+      "args": []
+    },
+    "ccBus.check.failed": {
+      "kind": "error",
+      "zh": "查不到（{e}）",
+      "args": ["e"]
+    },
+    "ccBus.check.offline": {
+      "kind": "body",
+      "zh": "不在线",
+      "args": []
+    },
+    "ccBus.check.online": {
+      "kind": "body",
+      "zh": "在线",
+      "args": []
+    },
+    "ccBus.check.running": {
+      "kind": "body",
+      "zh": "检查中…",
+      "args": []
+    },
+    "ccBus.row.killHint": {
+      "kind": "body",
+      "zh": "杀掉这个 agent 的会话与进程树 —— 不可撤销",
+      "args": []
+    },
+    "ccBus.row.send": {
+      "kind": "action",
+      "zh": "发送",
+      "args": []
+    },
+    "ccBus.row.messageHint": {
+      "kind": "control",
+      "zh": "发给它一条消息…",
+      "args": []
+    },
+    "ccBus.row.inbox": {
+      "kind": "action",
+      "zh": "收件箱",
+      "args": []
+    },
+    "ccBus.row.check": {
+      "kind": "action",
+      "zh": "检查",
+      "args": []
+    },
+    "ccBus.row.onlineUnknown": {
+      "kind": "body",
+      "zh": "在线未知",
+      "args": []
+    },
+    "ccBus.row.sep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "ccBus.row.unregistered": {
+      "kind": "body",
+      "zh": "未登记",
+      "args": []
+    },
+    "ccBus.row.selfRegistered": {
+      "kind": "body",
+      "zh": "自行登记",
+      "args": []
+    },
+    "ccBus.row.spawned": {
+      "kind": "body",
+      "zh": "派生",
+      "args": []
+    },
+    "ccBus.row.timeUnknown": {
+      "kind": "body",
+      "zh": "时间未知",
+      "args": []
+    },
+    "ccBus.render.empty": {
+      "kind": "body",
+      "zh": "这台机器上没有登记过的 cc-bus agent（或未装 cc-bus）。",
+      "args": []
+    },
+    "ccBus.summary.sep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "ccBus.summary.notOnline": {
+      "kind": "body",
+      "zh": "「登记」不等于「在线」",
+      "args": []
+    },
+    "ccBus.summary.skipped": {
+      "kind": "body",
+      "zh": "{skipped} 条无法解析（已跳过）",
+      "args": ["skipped"]
+    },
+    "ccBus.summary.unregistered": {
+      "kind": "body",
+      "zh": "另有 {n} 个派生过但未登记",
+      "args": ["n"]
+    },
+    "ccBus.summary.spawned": {
+      "kind": "body",
+      "zh": "其中派生的 {n} 个",
+      "args": ["n"]
+    },
+    "ccBus.summary.registered": {
+      "kind": "body",
+      "zh": "登记 {n} 个",
+      "args": ["n"]
+    },
+    "ccBus.reload.readFailed": {
+      "kind": "error",
+      "zh": "读取失败：{e}",
+      "args": ["e"]
+    },
+    "ccBus.reload.reading": {
+      "kind": "body",
+      "zh": "读取中…",
+      "args": []
+    },
+    "ccBus.spawn.accountNamed": {
+      "kind": "control",
+      "zh": "账号：{n}",
+      "args": ["n"]
+    },
+    "ccBus.spawn.accountNone": {
+      "kind": "control",
+      "zh": "账号：不指定，不注入任何账号",
+      "args": []
+    },
+    "ccBus.machine.noRemote": {
+      "kind": "body",
+      "zh": "未配置远端 —— 可以先看本机的 cc-bus。",
+      "args": []
+    },
+    "ccBus.machine.local": {
+      "kind": "control",
+      "zh": "本机",
+      "args": []
+    },
+    "ccBus.spawn.task": {
+      "kind": "control",
+      "zh": "初始任务（可选）",
+      "args": []
+    },
+    "ccBus.spawn.dir": {
+      "kind": "control",
+      "zh": "工作目录：那台机器上的绝对路径",
+      "args": []
+    },
+    "ccBus.spawn.intro": {
+      "kind": "body",
+      "zh": "在上面选中的那台机器的某个目录开一个独立 agent。走那台机器上的 cc-spawn：同目录已有活会话就复用，没有才新建。注意这会起一个真实的 agent 进程并消耗账号额度，所以要点两次确认。",
+      "args": [],
+      "waive": {
+        "C-T1": "cc-spawn 是那台机器上真实的命令名，用户在终端里就叫它这个"
+      }
+    },
+    "ccBus.spawn.title": {
+      "kind": "title",
+      "zh": "派生新 agent",
+      "args": []
+    },
+    "ccBus.deploy.failed": {
+      "kind": "error",
+      "zh": "装到本机失败",
+      "args": []
+    },
+    "ccBus.deploy.done": {
+      "kind": "body",
+      "zh": "已装到 {dest}（写了 {written} 个文件{bak}）",
+      "args": ["dest", "written", "bak"]
+    },
+    "ccBus.deploy.backup": {
+      "kind": "body",
+      "zh": "；旧的已备份到 {backup}",
+      "args": ["backup"]
+    },
+    "ccBus.deploy.unchanged": {
+      "kind": "body",
+      "zh": "已是最新：{dest}（{unchanged} 个文件都一致，未写盘）",
+      "args": ["dest", "unchanged"]
+    },
+    "ccBus.deploy.running": {
+      "kind": "action",
+      "zh": "装…",
+      "args": []
+    },
+    "ccBus.install.unknown": {
+      "kind": "error",
+      "zh": "读不到本机安装状态：{e}（这不等于「没装」）",
+      "args": ["e"]
+    },
+    "ccBus.refreshInstallState.install": {
+      "kind": "action",
+      "zh": "装到本机",
+      "args": []
+    },
+    "ccBus.install.stale": {
+      "kind": "body",
+      "zh": "本机装的不是这一版：{differing} 个内容不同、{missing} 个缺失。点一下更新（覆盖前自动留备份）",
+      "args": ["differing", "missing"]
+    },
+    "ccBus.install.update": {
+      "kind": "action",
+      "zh": "更新 · 差 {n} 个文件",
+      "args": ["n"]
+    },
+    "ccBus.install.upToDateHint": {
+      "kind": "body",
+      "zh": "本机装的就是这一版（点了也不会写盘）",
+      "args": []
+    },
+    "ccBus.install.upToDate": {
+      "kind": "action",
+      "zh": "已是最新",
+      "args": []
+    },
+    "ccBus.install.missing": {
+      "kind": "body",
+      "zh": "本机还没装 cc-bus（装到 ~/.claude/skills/cc-bus/）",
+      "args": []
+    },
+    "ccBus.build.notRead": {
+      "kind": "body",
+      "zh": "尚未读取。",
+      "args": []
+    },
+    "ccBus.build.installHint": {
+      "kind": "body",
+      "zh": "把仓内那份 cc-bus 装到 ~/.claude/skills/cc-bus/（幂等；覆盖前自动留备份）",
+      "args": []
+    },
+    "ccBus.build.install": {
+      "kind": "action",
+      "zh": "装到本机",
+      "args": []
+    },
+    "ccBus.build.read": {
+      "kind": "action",
+      "zh": "读取",
+      "args": []
+    },
+    "ccBus.build.broadcast": {
+      "kind": "action",
+      "zh": "广播",
+      "args": []
+    },
+    "ccBus.build.broadcastHint": {
+      "kind": "control",
+      "zh": "广播给所有 agent…",
+      "args": []
+    },
+    "ccBus.build.machine": {
+      "kind": "control",
+      "zh": "机器",
+      "args": []
+    },
+    "ccBus.build.intro": {
+      "kind": "body",
+      "zh": "只读查看远端 cc-bus 上登记过的 agent。可以给某个 agent 发消息、看它的收件箱。「登记」不等于「在线」：名单只说明它曾经登记过，要确认某个还活着请点那一行的「检查」。本面板不做后台轮询，只在你点「读取」时发一次请求。",
+      "args": []
+    },
+    "ccBusHooks.diag.bare": {
+      "kind": "body",
+      "zh": "裸命令形态",
+      "args": []
+    },
+    "ccBusHooks.diag.explicit": {
+      "kind": "body",
+      "zh": "$HOME 显式路径形态",
+      "args": []
+    },
+    "ccBusHooks.diag.source": {
+      "kind": "body",
+      "zh": "诊断对象：{source}",
+      "args": ["source"]
+    },
+    "ccBusHooks.remote.failed": {
+      "kind": "error",
+      "zh": "远端诊断失败：{e}",
+      "args": ["e"]
+    },
+    "ccBusHooks.checkRemote.checking": {
+      "kind": "body",
+      "zh": "检查中…",
+      "args": []
+    },
+    "ccBusHooks.local.failed": {
+      "kind": "error",
+      "zh": "本机诊断失败：{e}",
+      "args": ["e"]
+    },
+    "ccBusHooks.origin.unknown": {
+      "kind": "body",
+      "zh": "{machine}：不在已配置的远端里",
+      "args": ["machine"]
+    },
+    "ccBusHooks.origin.localPage": {
+      "kind": "body",
+      "zh": "本机页：没有远端可诊断",
+      "args": []
+    },
+    "ccBusHooks.origins.none": {
+      "kind": "body",
+      "zh": "未配置远端。",
+      "args": []
+    },
+    "ccBusHooks.origins.noneOption": {
+      "kind": "control",
+      "zh": "未配置远端",
+      "args": []
+    },
+    "ccBusHooks.snippet.notReady": {
+      "kind": "body",
+      "zh": "先等诊断读完。",
+      "args": []
+    },
+    "ccBusHooks.snippet.activation": {
+      "kind": "body",
+      "zh": "改完新开一个会话才生效（当前会话不会重读它）。",
+      "args": []
+    },
+    "ccBusHooks.snippet.merge": {
+      "kind": "body",
+      "zh": "要合并进去，不是整份覆盖。那里可能还有别的工具的钩子，覆盖会把它们删掉。",
+      "args": []
+    },
+    "ccBusHooks.snippet.target": {
+      "kind": "body",
+      "zh": "~/.claude/settings.json 的 hooks 段",
+      "args": []
+    },
+    "ccBusHooks.snippet.bare": {
+      "kind": "control",
+      "zh": "裸命令：简洁，要求它在 PATH 上",
+      "args": []
+    },
+    "ccBusHooks.snippet.explicit": {
+      "kind": "control",
+      "zh": "$HOME 显式路径：不依赖 PATH，要求它确实装在那儿",
+      "args": []
+    },
+    "ccBusHooks.snippet.title": {
+      "kind": "title",
+      "zh": "待贴片段 · 按本机现状生成",
+      "args": []
+    },
+    "ccBusHooks.build.notChecked": {
+      "kind": "body",
+      "zh": "尚未检查。",
+      "args": []
+    },
+    "ccBusHooks.build.checkRemote": {
+      "kind": "action",
+      "zh": "检查远端",
+      "args": []
+    },
+    "ccBusHooks.build.remote": {
+      "kind": "title",
+      "zh": "远端",
+      "args": []
+    },
+    "ccBusHooks.build.checking": {
+      "kind": "body",
+      "zh": "检查中…",
+      "args": []
+    },
+    "ccBusHooks.build.local": {
+      "kind": "title",
+      "zh": "本机",
+      "args": []
+    },
+    "ccBusHooks.build.whyNotWrite": {
+      "kind": "body",
+      "zh": "为什么不替你写：~/.claude/settings.json 是一份共享的全局配置。你自己的编辑器、别的工具、别的 skill 都可能在动它，cc-monitor 单方面改它有可能覆盖掉你或它们的改动。cc-bus 自己的安装脚本同样不碰它（它只软链命令、建目录，然后把钩子片段打印出来让你自己贴）。所以这里给你诊断结果和现成片段，最后一步由你来做。",
+      "args": []
+    },
+    "ccBusHooks.build.intro": {
+      "kind": "body",
+      "zh": "cc-bus 要两个钩子才能自动收信：SessionStart → cc-register 上总线，Stop → cc-bus-stop-hook 兜底收信。这里只做诊断，并生成一段待贴文本。",
+      "args": []
+    },
+    "ccBusHooks.state.unknown": {
+      "kind": "body",
+      "zh": "未知状态（{unknownKind}）",
+      "args": ["unknownKind"]
+    },
+    "ccBusHooks.state.indirect": {
+      "kind": "body",
+      "zh": "无法判断。钩子里出现了它，但不是被直接执行的：{command}",
+      "args": ["command"]
+    },
+    "ccBusHooks.state.brokenPath": {
+      "kind": "body",
+      "zh": "装了但路径不存在：{path}",
+      "args": ["path"]
+    },
+    "ccBusHooks.state.explicit": {
+      "kind": "body",
+      "zh": "已装（显式路径：{path}）",
+      "args": ["path"]
+    },
+    "ccBusHooks.state.onPath": {
+      "kind": "body",
+      "zh": "已装（走 PATH）",
+      "args": []
+    },
+    "ccBusHooks.state.missing": {
+      "kind": "body",
+      "zh": "未装",
+      "args": []
     }
   }
 }
