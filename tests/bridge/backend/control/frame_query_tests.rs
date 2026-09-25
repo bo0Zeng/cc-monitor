@@ -272,6 +272,16 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "history-last-accounts",
         "sid → 上次用哪个号起（账号徽章回落 · 带账号 resume 前现读）；从前是 monitor 读那份文件",
     ),
+    // 〔SU1 · 第四波 4C · V116〕skill 卸的「看」那一半：生来就走通道（没有过 monitor 那一条）。
+    (
+        "skill-installs",
+        "这台记着的、从别处装来的 skill：后端应答就是成品 `{installs}`，界面 `settings/assets-section.ts::decodeInstalls` 按形状收",
+    ),
+    (
+        "skill-uninstall-plan",
+        "卸之前看：逐文件的态与「要不要问」都是那台后端答的成品，界面 `settings/assets-section.ts::decodeUninstallPlan` 按形状收。\
+         ⚠ monitor 自己**另有**一处问它（带 `take` 的那一问，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那不是替界面转",
+    ),
 ];
 
 /// 〔C4c · 第四波 4B〕**monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
@@ -279,12 +289,20 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
 /// 它们同时在 [`CHANNELED_ELSEWHERE`] 里（界面那一问已走通道）；下面那条判据里 monitor 生产段的字面量
 /// 从此 == `BORN_ON_FRAME` 那一次 ＋ 本表登记的处数（两向相等：多一处 = 又长出一个替界面转的发送点；
 /// 少一处 = monitor 那件自己的事不问了，这一行馊了）。
-const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[(
-    "exit-policy-read",
-    1,
-    "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`，`设计/01 §3.3b ④`）：\
-     monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
-)];
+const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
+    (
+        "exit-policy-read",
+        1,
+        "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`，`设计/01 §3.3b ④`）：\
+         monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
+    ),
+    (
+        "skill-uninstall-plan",
+        1,
+        "〔SU1〕卸那一趟真要删之前，带 `take` / `confirm` 再问一次「真要删哪几个」（`skill_install.rs::uninstall_with`）：\
+         它的 `delete` / `forget` 是 monitor 自己编排删与摘记录要的，不给界面（同装那一侧 `skill-install-plan` 带 `take` 那一问）",
+    ),
+];
 
 /// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {

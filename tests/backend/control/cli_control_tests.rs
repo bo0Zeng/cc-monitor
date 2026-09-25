@@ -257,6 +257,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "assets-catalog",
         // 〔C4d · 第四波 4B〕sid → 上次用哪个号起：无入参（读本机那份注解文件）。
         "history-last-accounts",
+        // 〔SU1 · 第四波 4C〕这台记着的、从别处装来的 skill：无入参（读本机那份装记录）。
+        "skill-installs",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()
