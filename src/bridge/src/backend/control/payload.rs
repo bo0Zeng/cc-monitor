@@ -738,7 +738,7 @@ pub fn route_key_for_session(sid: Option<&str>) -> String {
 /// `only_one_place_in_this_file_exports_the_relay_base_url` 数着〕。
 ///
 /// ⚠ **那条判据的人群只有本文件**（它 `include_str!("payload.rs")`）—— 别把它读成「全仓唯一一处」。
-/// 〔US1〕后端 `control/ccm/plan.rs::base_url_export` 是另一处（`ccm` 把继承来的地址转进新 pane），同形、各自一个 crate。
+/// 〔US1〕后端 `control/ccm/plan.rs::base_url_word` 是另一处（`ccm` 把继承来的地址转进新 pane），同形、各自一个 crate。
 pub fn relay_env_prefix_posix(base_url: &str) -> String {
     // 〔RK1〕钥匙那一段是**读钥匙文件的命令替换**（见 [`RELAY_KEY_FILE_REL`]）：两段常量各自单引号，
     //   中间只有那一个固定的 `$(cat …)` 会被 shell 展开 ⇒ URL 里别的字节一个都不会被解释。

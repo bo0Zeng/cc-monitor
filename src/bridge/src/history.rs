@@ -1350,8 +1350,8 @@ fn ask_launch_endpoint(
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>>
 {
     Box::pin(async move {
-        let host =
-            host.unwrap_or_else(|| crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string());
+        let host = host
+            .unwrap_or_else(|| crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string());
         crate::apikey_remote::call(&host, CMD_LAUNCH_ENDPOINT, args).await
     })
 }
@@ -1497,7 +1497,9 @@ pub(crate) async fn relay_endpoint_on(
     match ep.when_down {
         Some(WhenDown::Refuse) => Err(relay_down_refusal(&where_, ep.account.as_deref(), &why)),
         _ => {
-            tracing::info!("{where_}中转不在（{why}）⇒ 这一发照旧直连（`/t/` 那一格是「有它更好」）");
+            tracing::info!(
+                "{where_}中转不在（{why}）⇒ 这一发照旧直连（`/t/` 那一格是「有它更好」）"
+            );
             Ok(None)
         }
     }

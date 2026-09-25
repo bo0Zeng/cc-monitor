@@ -2490,7 +2490,10 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
 
     // ①b 只换一个号 ⇒ 路由键的账号段跟着变（`D6 阻-2`：acct-b 的会话不许拿 acct-a 的 key）。
     let got_b = relay_prefix_for_launch(&action, Some(&acct_b)).expect("这一档不该报错");
-    assert!(got.contains("/acct-a/") && got_b.contains("/acct-b/"), "{got:?} · {got_b:?}");
+    assert!(
+        got.contains("/acct-a/") && got_b.contains("/acct-b/"),
+        "{got:?} · {got_b:?}"
+    );
 
     // ② 只把「表里有没有这一行」翻过来 ⇒ 空串（不注入，逐字节旧路）。
     fake_table(&["someone-else"], true);
@@ -2523,7 +2526,10 @@ fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
         .collect();
     assert_eq!(keys.len(), 3, "三次拉起问了 {} 次", keys.len());
     assert_eq!(keys[0], "sid-9");
-    assert!(keys[1] != keys[2] && !keys[1].starts_with("sid-"), "新开的 key 不是 nonce：{keys:?}");
+    assert!(
+        keys[1] != keys[2] && !keys[1].starts_with("sid-"),
+        "新开的 key 不是 nonce：{keys:?}"
+    );
     assert!(n1.contains("ANTHROPIC_BASE_URL") && n1.contains(&keys[1]) && n2.contains(&keys[2]));
 }
 
@@ -2546,7 +2552,10 @@ fn a_launch_whose_backend_cannot_be_asked_is_refused_not_guessed() {
             all_sessions: all_sessions_off,
         });
         let e = relay_prefix_for_launch(&action, Some(&acct)).expect_err("问不到却起出去了");
-        assert!(e.contains("问不到本机后端") && e.contains("没有控制通道"), "{e}");
+        assert!(
+            e.contains("问不到本机后端") && e.contains("没有控制通道"),
+            "{e}"
+        );
     }
     let _g = override_inject_facts(InjectFactSources {
         endpoint: fake_ep,
@@ -2581,7 +2590,10 @@ fn the_production_relay_facts_are_those_take_points() {
     );
     assert!(
         std::ptr::fn_addr_eq(live.windows, platform_is_windows as fn() -> bool)
-            && std::ptr::fn_addr_eq(PRODUCTION_INJECT_FACTS.windows, platform_is_windows as fn() -> bool),
+            && std::ptr::fn_addr_eq(
+                PRODUCTION_INJECT_FACTS.windows,
+                platform_is_windows as fn() -> bool
+            ),
         "生产上「这台机是不是 Windows」不再由 `platform_is_windows` 答"
     );
     assert!(
@@ -2671,12 +2683,16 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
             }
         }
     }
-    assert!(found.is_empty(), "两条 apikey 规则在两半里又长出了定义：{found:?}");
+    assert!(
+        found.is_empty(),
+        "两条 apikey 规则在两半里又长出了定义：{found:?}"
+    );
     let core_prod = guard_core::production_code(
         &std::fs::read_to_string(root.join("crates/acct-core/src/lib.rs")).unwrap(),
     );
     for d in defs {
-        guard_core::find_pinned(&core_prod, d).unwrap_or_else(|e| panic!("acct-core 里 `{d}` 不是恰好一处：{e}"));
+        guard_core::find_pinned(&core_prod, d)
+            .unwrap_or_else(|e| panic!("acct-core 里 `{d}` 不是恰好一处：{e}"));
     }
 }
 
@@ -2702,13 +2718,23 @@ fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
     });
     fake_table(&["acct-a"], false);
     let e = relay_prefix_for_launch(&action, Some(&acct_a)).expect_err("中转没起来却照旧渲染");
-    assert!(e.contains("中转没在听") && e.contains(LOCAL_RELAY_NOT_LISTENING), "错误得说出真正的原因：{e}");
+    assert!(
+        e.contains("中转没在听") && e.contains(LOCAL_RELAY_NOT_LISTENING),
+        "错误得说出真正的原因：{e}"
+    );
     // `/t/` 那一格（账号 0、开关开）同样不在 ⇒ 直连，不拒。
-    assert_eq!(relay_prefix_for_launch(&action, Some(&LaunchAccount::Base)).unwrap(), "");
+    assert_eq!(
+        relay_prefix_for_launch(&action, Some(&LaunchAccount::Base)).unwrap(),
+        ""
+    );
     // 非空对照：只把「中转在不在」翻过来，两格都注入。
     fake_table(&["acct-a"], true);
-    assert!(relay_prefix_for_launch(&action, Some(&acct_a)).unwrap().contains("/s/"));
-    assert!(relay_prefix_for_launch(&action, Some(&LaunchAccount::Base)).unwrap().contains("/t/claude-code/0/"));
+    assert!(relay_prefix_for_launch(&action, Some(&acct_a))
+        .unwrap()
+        .contains("/s/"));
+    assert!(relay_prefix_for_launch(&action, Some(&LaunchAccount::Base))
+        .unwrap()
+        .contains("/t/claude-code/0/"));
 }
 
 /// ★★★ **接线判据**：`launch_local` **真正交出去的那一串**以中转前缀打头。
@@ -3628,9 +3654,8 @@ fn fake_asks() -> Vec<(Option<String>, serde_json::Value)> {
     FAKE_ASKS.with(|v| std::mem::take(&mut *v.borrow_mut()))
 }
 
-type EpFut = std::pin::Pin<
-    Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>,
->;
+type EpFut =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>>;
 
 /// 替身本体：照后端决策表的几格作答（`/s/` 有行 ⇒ refuse；开关开且登记 ⇒ `/t/` direct；撞名 ⇒ 不注入）。
 fn fake_ep(host: Option<String>, a: serde_json::Value) -> EpFut {
@@ -3654,8 +3679,10 @@ fn fake_ep(host: Option<String>, a: serde_json::Value) -> EpFut {
             _ => Some("_".to_string()),
         };
         match label.filter(|l| !has(l)) {
-            Some(l) => serde_json::json!({"baseUrl": format!("http://127.0.0.1:8788/t/{agent}/{l}/{key}"),
-                "listening": listening, "whenDown": "direct", "account": null}),
+            Some(l) => {
+                serde_json::json!({"baseUrl": format!("http://127.0.0.1:8788/t/{agent}/{l}/{key}"),
+                "listening": listening, "whenDown": "direct", "account": null})
+            }
             None => none,
         }
     } else {
@@ -3830,11 +3857,17 @@ mod relay_endpoint_rig {
 }
 
 /// 〔US1〕那台后端答的成品（`launch-endpoint`）。
-fn rl1_answer(url: Option<&str>, listening: bool, when_down: Option<&str>, account: Option<&str>) -> serde_json::Value {
+fn rl1_answer(
+    url: Option<&str>,
+    listening: bool,
+    when_down: Option<&str>,
+    account: Option<&str>,
+) -> serde_json::Value {
     serde_json::json!({"baseUrl": url, "listening": listening, "whenDown": when_down, "account": account})
 }
 
-const RL1_S_URL: &str = "http://127.0.0.1:8788/s/claude-code/acct-a/11111111-2222-3333-4444-555555555555";
+const RL1_S_URL: &str =
+    "http://127.0.0.1:8788/s/claude-code/acct-a/11111111-2222-3333-4444-555555555555";
 const RL1_T_URL: &str = "http://127.0.0.1:8788/t/claude-code/0/k-1";
 
 fn rl1_named(id: &str) -> LaunchAccount {
@@ -3873,7 +3906,11 @@ fn a_launch_that_needs_no_relay_sends_no_relay_command() {
         None,
     ));
     assert_eq!(got, Ok(None));
-    assert_eq!(*rig.seen.lock().expect("lock"), vec!["launch-endpoint"], "不注入却发了中转命令");
+    assert_eq!(
+        *rig.seen.lock().expect("lock"),
+        vec!["launch-endpoint"],
+        "不注入却发了中转命令"
+    );
 }
 
 /// R1 ②：成品说「注入 `/s/`、那台的中转在听」⇒ 原样交出地址；**不起第二个**（零条 `relay-*`）。
@@ -3882,7 +3919,10 @@ fn an_apikey_row_on_a_listening_machine_gets_the_substitute_url_without_an_ensur
     let _f = rl1_facts(rl1_off);
     let rig = relay_endpoint_rig::rig(
         "rl1-host-up",
-        vec![("launch-endpoint", rl1_answer(Some(RL1_S_URL), true, Some("refuse"), Some("acct-a")))],
+        vec![(
+            "launch-endpoint",
+            rl1_answer(Some(RL1_S_URL), true, Some("refuse"), Some("acct-a")),
+        )],
     );
     let got = tauri::async_runtime::block_on(relay_endpoint_on(
         &crate::origin::Origin(rig.host.clone()),
@@ -3901,11 +3941,26 @@ fn a_silent_machine_gets_its_relay_started_and_waited_for_before_the_url_is_hand
     let rig = relay_endpoint_rig::rig(
         "rl1-host-start",
         vec![
-            ("launch-endpoint", rl1_answer(Some(RL1_S_URL), false, Some("refuse"), Some("acct-a"))),
-            ("relay-status", serde_json::json!({"port": 8788, "listening": false})),
-            ("relay-ensure", serde_json::json!({"port": 8788, "listening": false, "started": true})),
-            ("relay-status", serde_json::json!({"port": 8788, "listening": false})),
-            ("relay-status", serde_json::json!({"port": 8788, "listening": true})),
+            (
+                "launch-endpoint",
+                rl1_answer(Some(RL1_S_URL), false, Some("refuse"), Some("acct-a")),
+            ),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": false}),
+            ),
+            (
+                "relay-ensure",
+                serde_json::json!({"port": 8788, "listening": false, "started": true}),
+            ),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": false}),
+            ),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": true}),
+            ),
         ],
     );
     let got = tauri::async_runtime::block_on(relay_endpoint_on(
@@ -3917,7 +3972,13 @@ fn a_silent_machine_gets_its_relay_started_and_waited_for_before_the_url_is_hand
     assert_eq!(got.as_deref(), Some(RL1_S_URL));
     assert_eq!(
         *rig.seen.lock().expect("lock"),
-        vec!["launch-endpoint", "relay-status", "relay-ensure", "relay-status", "relay-status"]
+        vec![
+            "launch-endpoint",
+            "relay-status",
+            "relay-ensure",
+            "relay-status",
+            "relay-status"
+        ]
     );
 }
 
@@ -3928,9 +3989,18 @@ fn an_apikey_row_whose_machine_cannot_start_a_relay_refuses_the_launch() {
     let rig = relay_endpoint_rig::rig(
         "rl1-host-dead",
         vec![
-            ("launch-endpoint", rl1_answer(Some(RL1_S_URL), false, Some("refuse"), Some("acct-a"))),
-            ("relay-status", serde_json::json!({"port": 8788, "listening": false})),
-            ("relay-ensure", serde_json::json!({"port": 8788, "listening": false, "started": false})),
+            (
+                "launch-endpoint",
+                rl1_answer(Some(RL1_S_URL), false, Some("refuse"), Some("acct-a")),
+            ),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": false}),
+            ),
+            (
+                "relay-ensure",
+                serde_json::json!({"port": 8788, "listening": false, "started": false}),
+            ),
         ],
     );
     let err = tauri::async_runtime::block_on(relay_endpoint_on(
@@ -3941,7 +4011,11 @@ fn an_apikey_row_whose_machine_cannot_start_a_relay_refuses_the_launch() {
     .expect_err("中转起不来还放行了一个 apikey 号");
     assert_eq!(
         err,
-        relay_down_refusal("[rl1-host-dead] ", Some("acct-a"), crate::remote_relay::RELAY_NOT_STARTED)
+        relay_down_refusal(
+            "[rl1-host-dead] ",
+            Some("acct-a"),
+            crate::remote_relay::RELAY_NOT_STARTED
+        )
     );
     assert_eq!(
         *rig.seen.lock().expect("lock"),
@@ -3957,9 +4031,18 @@ fn a_passthrough_launch_whose_relay_cannot_start_goes_direct_instead_of_failing(
     let rig = relay_endpoint_rig::rig(
         "rl1-host-t",
         vec![
-            ("launch-endpoint", rl1_answer(Some(RL1_T_URL), false, Some("direct"), None)),
-            ("relay-status", serde_json::json!({"port": 8788, "listening": false})),
-            ("relay-ensure", serde_json::json!({"port": 8788, "listening": false, "started": false})),
+            (
+                "launch-endpoint",
+                rl1_answer(Some(RL1_T_URL), false, Some("direct"), None),
+            ),
+            (
+                "relay-status",
+                serde_json::json!({"port": 8788, "listening": false}),
+            ),
+            (
+                "relay-ensure",
+                serde_json::json!({"port": 8788, "listening": false, "started": false}),
+            ),
         ],
     );
     let got = tauri::async_runtime::block_on(relay_endpoint_on(
@@ -3968,7 +4051,10 @@ fn a_passthrough_launch_whose_relay_cannot_start_goes_direct_instead_of_failing(
         None,
     ));
     assert_eq!(got, Ok(None));
-    assert_eq!(*rig.seen.lock().expect("lock"), vec!["launch-endpoint", "relay-status", "relay-ensure"]);
+    assert_eq!(
+        *rig.seen.lock().expect("lock"),
+        vec!["launch-endpoint", "relay-status", "relay-ensure"]
+    );
 }
 
 /// R1 ⑥〔US1〕：成品形状对不上（多一格 · 缺一格 · `whenDown` 认不出 · `baseUrl` 与 `whenDown` 不同有无）⇒ 抛「两端契约对不上」，

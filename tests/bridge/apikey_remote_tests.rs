@@ -55,8 +55,16 @@ fn gp1_the_read_arms_stay_local_and_the_write_arm_goes_to_that_machines_backend(
     let src = own_production();
     // 〔US1 · 4D〕读的那两个分派（`status_on` / `rows_on`）退役：读者换成那台后端（界面经通道问 `apikey-read` /
     //   `apikey-routing`，起会话问 `launch-endpoint`）。本模块生产段从此零本机读口（零命中带正控：写臂那一行在）。
-    for gone in ["status_on", "rows_on", "creds_store::read_status", "inject_facts"] {
-        assert!(!guard_core::contains_word(&src, gone), "读口又回到了 monitor：`{gone}`");
+    for gone in [
+        "status_on",
+        "rows_on",
+        "creds_store::read_status",
+        "inject_facts",
+    ] {
+        assert!(
+            !guard_core::contains_word(&src, gone),
+            "读口又回到了 monitor：`{gone}`"
+        );
     }
     let (local, remote) = arms_of(&src, "pub(crate) async fn write_key_on(");
     assert!(
@@ -287,7 +295,6 @@ fn the_remote_arm_says_what_went_wrong_without_the_plaintext() {
         .expect_err("说不出账号 id 还说写成了");
     assert!(err.contains("说不出这是哪个账号"), "实得：{err}");
     assert!(!err.contains(PLAIN), "报错里带着明文：{err}");
-
 }
 
 #[test]

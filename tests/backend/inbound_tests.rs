@@ -620,7 +620,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "panorama",
         "apikey-key-set",
         "apikey-read",
-        "apikey-routing", // 〔US1〕
+        "apikey-routing",  // 〔US1〕
         "launch-endpoint", // 〔US1〕
         "relay-ensure",
         "relay-status",

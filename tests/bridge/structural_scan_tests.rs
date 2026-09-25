@@ -2455,11 +2455,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "local_is_posix",
             1,
         ),
-        (
-            "src/bridge/src/backend/control/payload.rs",
-            "the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect",
-            1,
-        ),
+        // 〔US1 · 4D〕`payload.rs` 点 `the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect` 那一行摘了：
+        //   那段散文随路由构造口（与它的跨半边样例）一起走了 —— 路由语法进了共享 crate `relay-route-core`。
         ("src/bridge/src/bind.rs", "handle_await_files", 1),
         (
             // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
@@ -2501,23 +2498,15 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 〔GP1 · 第四波〕这里原来一行 `creds_store_tests.rs` 点 `a_temp_file_is_born_owner_only` 的存量：
         //   那段散文随 `KS5` 两条源码判据（切 monitor 写口的函数体）一起走了 —— 写口去了后端。
-        (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
-            "tests/bridge/creds_store_tests.rs",
-            "the_ui_hands_the_write_command_a_config_dir_not_a_name",
-            1,
-        ),
+        // 〔US1 · 4D〕`creds_store_tests.rs` 点 `the_ui_hands_the_write_command_a_config_dir_not_a_name` 那一行摘了：
+        //   那段散文住在「写侧那一行正是起会话那一侧找的那一行」判据的头注里，判据随读者换成后端搬去了后端。
         ("src/bridge/src/history.rs", "launch_identity_prefix", 1),
         // 〔C4d · 第四波 4B〕`("src/bridge/src/history.rs", "list_history_sessions_in_project", 2)` 那一行摘了：点它的两句（模块头注
         //   「两级懒加载」那一段 · 那条已删命令的头注）随历史清单整轴搬进本机常驻后端一起删了（头注重写成 `〔C4d〕` 那一段）。
         ("src/bridge/src/history.rs", "read_session_jsonl", 1),
         ("tests/bridge/history_tests.rs", "relay_key_for", 1),
-        (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
-            "tests/bridge/history_tests.rs",
-            "the_two_inputs_at_the_call_site_are_still_the_two_take_points",
-            1,
-        ),
+        // 〔US1 · 4D〕`history_tests.rs` 点 `the_two_inputs_at_the_call_site_are_still_the_two_take_points` 那一行摘了：
+        //   那段病史散文随注入侧那几条判据整段重写（缝里的两格事实并成「问那台后端」一格）。
         ("src/bridge/src/history.rs", "up_to_message_id", 1),
         ("src/bridge/src/local_backend_host.rs", "futex_do_wait", 1),
         (
@@ -2720,6 +2709,46 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("src/bridge/src/creds_store.rs", "check_base_url", 1),
+        // 〔US1 · 第四波 4D〕上游选择那半从 monitor 搬走（读侧 · 人群 · 中转在不在），点旧名的散文挂墓碑。
+        (
+            "src/backend/accounts/upstream/file_face.rs",
+            "apikey_rows_at",
+            1,
+        ),
+        ("src/bridge/src/apikey_remote.rs", "rows_from_wire", 1),
+        ("src/bridge/src/apikey_remote.rs", "status_from_wire", 1),
+        ("src/bridge/src/creds_store.rs", "read_status_at", 1),
+        (
+            "src/bridge/src/local_backend_host.rs",
+            "relay_listening_at",
+            1,
+        ),
+        (
+            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "apikey_rows_at",
+            1,
+        ),
+        (
+            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for",
+            1,
+        ),
+        (
+            "tests/bridge/apikey_remote_tests.rs",
+            "the_read_answer_is_parsed_from_the_fields_the_backend_declares",
+            1,
+        ),
+        ("tests/bridge/creds_store_tests.rs", "read_status_at", 1),
+        (
+            "tests/bridge/creds_store_tests.rs",
+            "what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for",
+            1,
+        ),
+        (
+            "tests/bridge/local_backend_host_tests.rs",
+            "relay_running_really_asks_the_loopback_port",
+            1,
+        ),
         ("src/bridge/src/creds_store.rs", "write_key_at", 1),
         (
             "tests/backend/accounts/upstream/file_face_tests.rs",
@@ -4265,7 +4294,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/relay/route_tests.rs", 1), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("tests/bridge/backend/control/payload_tests.rs", 2), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("tests/bridge/local_backend_host_tests.rs", 1), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
-];
+    ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。
     ///

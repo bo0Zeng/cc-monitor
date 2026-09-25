@@ -107,7 +107,6 @@ fn brace_block(src: &str, at: usize) -> Option<&str> {
     None
 }
 
-
 // 〔GP1 · 第四波〕这里原来是两条写路判据（`KS10` 交错写不吃人手编的 · `K-R1` 配 key 不吃同一行的
 // `auth_style` / `base_url`），打的是 monitor 那侧的写口。写者换成了那台的后端 ⇒ 两条原样搬去后端那一份写口：
 // `file_face_tests::gp1_a_program_write_keeps_everything_the_human_put_there` ·

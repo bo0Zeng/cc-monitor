@@ -141,7 +141,10 @@ fn an_unparseable_file_is_refused_and_left_byte_for_byte() {
         "读口把读坏了的文件报成了没问题：{r}"
     );
     // 〔US1〕「表里有哪几行」不再出线（`rows_at` 一份）：读坏了 ⇒ 零条。
-    assert!(r.get("rows").is_none(), "`rows` 又回到了 `apikey-read` 的应答里：{r}");
+    assert!(
+        r.get("rows").is_none(),
+        "`rows` 又回到了 `apikey-read` 的应答里：{r}"
+    );
     assert!(rows_at_with(&f, &|_| None).is_empty());
     assert_no_residue(f.parent().unwrap());
     let _ = std::fs::remove_dir_all(&home);
@@ -494,7 +497,11 @@ fn us1_the_rows_are_exactly_what_the_table_builder_keeps() {
     assert_eq!(store::read_accounts(&doc).len(), 5, "正控：五行都读得到");
     assert_eq!(rows_at_with(&path, &|_| None), vec!["good".to_string()]);
     // 默认上游旋钮认不出（那一刻中转也起不来）⇒ 零条；文件解析不了 ⇒ 零条。
-    assert!(rows_at_with(&path, &|k| (k == "CCM_AGENT_UPSTREAM_CLAUDE_CODE").then(|| "not a url".into())).is_empty());
+    assert!(
+        rows_at_with(&path, &|k| (k == "CCM_AGENT_UPSTREAM_CLAUDE_CODE")
+            .then(|| "not a url".into()))
+        .is_empty()
+    );
     std::fs::write(&path, "{ not json").unwrap();
     assert!(rows_at_with(&path, &|_| None).is_empty());
     let _ = std::fs::remove_dir_all(&dir);
@@ -510,9 +517,15 @@ fn us1_a_widened_file_is_called_out_and_an_owner_only_one_is_not() {
     let p = dir.join("apikey-credentials.json");
     std::fs::write(&p, b"{\n  \"api_key\": \"sk-ant-HAND-PLACED\"\n}\n").expect("写夹具");
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).expect("收窄");
-    assert!(read_at(&p)["notice"].is_null(), "只给本人的文件被报了权限问题 —— 那条提醒会变成噪音");
+    assert!(
+        read_at(&p)["notice"].is_null(),
+        "只给本人的文件被报了权限问题 —— 那条提醒会变成噪音"
+    );
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("放宽");
-    let notice = read_at(&p)["notice"].as_str().expect("过宽了必须出声").to_string();
+    let notice = read_at(&p)["notice"]
+        .as_str()
+        .expect("过宽了必须出声")
+        .to_string();
     assert!(notice.contains("chmod 600"), "没说清怎么修：{notice}");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -529,11 +542,20 @@ fn us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
     let s1 = read_at(&p);
     assert_eq!(s1["configured"], json!(true));
     assert!(!s1.to_string().contains("0123456789"), "回了明文：{s1}");
-    assert!(s1["masked"].as_str().unwrap().contains('*'), "掩码里没有遮蔽符：{s1}");
+    assert!(
+        s1["masked"].as_str().unwrap().contains('*'),
+        "掩码里没有遮蔽符：{s1}"
+    );
     std::fs::write(&p, b"{\"api_key\": }").expect("改坏");
     let s2 = read_at(&p);
     assert_eq!(s2["configured"], json!(false));
-    assert!(s2["problem"].as_str().expect("读坏了必须有说法").contains("手编"), "没告诉人这是一份手编的文件：{s2}");
+    assert!(
+        s2["problem"]
+            .as_str()
+            .expect("读坏了必须有说法")
+            .contains("手编"),
+        "没告诉人这是一份手编的文件：{s2}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -547,7 +569,13 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
     let p = dir.join("apikey-credentials.json");
     let ask = |d: &str| json!({"agent":"claude-code","account":{"kind":"named","configDir":d},"key":"k-1","allSessions":false});
     // 非空对照排最前：还没写的时候，成品说「不注入」。
-    assert!(answer_launch_with(&ask("/h/.claude-alt/acct-one"), &rows_at_with(&p, &|_| None), &|_| true).unwrap()["baseUrl"].is_null());
+    assert!(answer_launch_with(
+        &ask("/h/.claude-alt/acct-one"),
+        &rows_at_with(&p, &|_| None),
+        &|_| true
+    )
+    .unwrap()["baseUrl"]
+        .is_null());
     answer_set_at(&p, &json!({"account":"acct-one","key":"KEY-FOR-ONE"})).expect("写");
     let rows = rows_at_with(&p, &|_| None);
     assert_eq!(
@@ -555,11 +583,17 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
         json!("http://127.0.0.1:8788/s/claude-code/acct-one/k-1"),
         "写口写下的那一行，起会话的成品没用上（表里：{rows:?}）"
     );
-    assert!(answer_launch_with(&ask("/h/.claude-alt/acct-two"), &rows, &|_| true).unwrap()["baseUrl"].is_null());
+    assert!(
+        answer_launch_with(&ask("/h/.claude-alt/acct-two"), &rows, &|_| true).unwrap()["baseUrl"]
+            .is_null()
+    );
     assert_eq!(
         answer_routing_with(&json!({"agent":"claude-code","configDirs":["/h/.claude-alt/acct-one","/h/.claude-alt/acct-two"]}), &rows, &|_| true).unwrap()["routed"],
         json!(["/h/.claude-alt/acct-one"])
     );
-    assert!(!rows.iter().any(|r| r == store::LEGACY_ACCOUNT_ID), "写口落在 `default` 那一行上：{rows:?}");
+    assert!(
+        !rows.iter().any(|r| r == store::LEGACY_ACCOUNT_ID),
+        "写口落在 `default` 那一行上：{rows:?}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
