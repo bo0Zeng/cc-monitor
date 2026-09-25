@@ -1,12 +1,8 @@
 //! issue #16 P1a：远端历史浏览的 monitor 侧。
 //!
-//! 每条查询走**独立 SSH 连接**一次性 exec `<backend_path> --list-projects` 等
-//! （方案权衡见 issue #16 计划评论：历史浏览用户驱动低频，握手开销可接受，
-//! 完全不碰稳定的流式路径；连接建立复用 `ssh_source::connect_session` 全套
-//! 指纹校验/鉴权）。
-//!
-//! 旧后端兼容：不认参数的旧版会照常进流模式、首行发 hello 帧——这里检测
-//! `"kind":"hello"` 即返回明确的"backend 版本过旧"错误（优雅降级，前端 toast）。
+//! 〔C4d · 第四波 4B 订正〕这里原先写着「每条查询走**独立 SSH 连接**一次性 exec `<backend_path> --list-projects` 等」
+//! ＋「首行是 hello 就报 backend 版本过旧」—— 那是 issue #16 P1a 的形状。`C1`（09-24）起查询全走那台的长连接
+//! （`backend::control::frame_query`，老后端由帧面的能力协商说「还不认」），逐次拨号那条路 C4d 删了。
 //!
 //! 只读铁律（INVARIANT § 1）：本模块只读远端；resume/delete 对远端在前端禁用。
 //! INVARIANTS § 25：本路径是一次性读取（非 at-least-once 行流），SessionViewer
@@ -16,10 +12,6 @@ use crate::history::{HistoryProject, HistorySessionEntry};
 use crate::messages::JsonlRecord;
 use crate::parser::parse_line;
 use crate::ssh_source::{self, RemoteConfig};
-use tokio::io::BufReader;
-
-/// 查询超时：列举类命令整体限时（远端扫盘 + 传输）。
-const LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// 读单会话：不设整体超时（会话可能大、合法耗时），总字节上限兜底。
 /// 〔`C1` · 09-24〕单次读的期限从此是**每一页**的期限（`frame_query` 的 `PAGE_BUDGET`，60s，
@@ -54,83 +46,9 @@ pub(crate) fn require_cfg_by_label(label: &str) -> Result<RemoteConfig, String> 
         .ok_or_else(|| format!("远端 '{label}' 未配置或未启用"))
 }
 
-/// 旧后端检测：查询命令的输出行不可能含 wire 的 `"kind":"hello"`（查询模式
-/// 输出裸 JSON 对象 / 裸 jsonl 行）；出现即说明远端后端不认参数、进了流模式。
-fn is_old_backend_hello(line: &str) -> bool {
-    line.contains(r#""kind":"hello""#) || line.contains(r#""kind": "hello""#)
-}
-
-const OLD_BACKEND_MSG: &str =
-    "远端后端版本过旧（不支持历史查询）——请按 src/doc/REMOTE-PHASE0-DEPLOY.md 重新构建部署";
-
-/// 跑一条列举类查询，收集全部输出行（带整体超时 + 旧版检测）。
-///
-/// 🔴 〔`C1` · 2026-09-24〕**它从此只是「还在逐次拨号的那几条」的路**：题面那八条只读查询
-/// 已上长连接（`backend::control::frame_query`），这里**只放行** `frame_query::STILL_DIALED`
-/// 登记的子命令 —— 八条里任何一条从这里漏出去都会被当场拒掉，而不是悄悄再拨一次 SSH。
-pub(crate) async fn run_list_query(
-    cfg: &RemoteConfig,
-    args: &str,
-) -> Result<Vec<String>, crate::subagent::QueryError> {
-    use crate::subagent::QueryError;
-    let sub = args.split_whitespace().next().unwrap_or_default();
-    if !crate::backend::control::frame_query::dial_allowed(sub) {
-        return Err(QueryError::transport(format!(
-            "`{sub}` 已经走长连接了，不许再为它单拨一条 SSH（这是本程序的 bug，不是远端的问题）"
-        )));
-    }
-    let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.backend_path), args);
-    let collect = async {
-        let stream = ssh_source::connect_and_exec_cmd(cfg, &cmd)
-            .await
-            .map_err(QueryError::transport)?;
-        let mut reader = BufReader::new(stream);
-        let mut lines = Vec::new();
-        // ★〔G 审计〕原来是无界 `read_line` —— 与 F10b 修掉的那三处**同一个量**
-        // （backend 出方向单行），只是当时的人群只扫了 `ssh_source.rs`。
-        // 外面那层 `LIST_TIMEOUT` 拦不住它：对端 30s 内不吐换行地灌字节，
-        // `buf` 就是无界堆分配（backend 侧同形态实测 RSS 6 MiB → 518 MiB）。
-        let mut buf: Vec<u8> = Vec::new();
-        loop {
-            let text = match ssh_source::read_capped_line(
-                &mut reader,
-                &mut buf,
-                ssh_source::BACKEND_FRAME_LINE_CAP,
-            )
-            .await
-            .map_err(|e| QueryError::transport(format!("读取远端输出失败: {e}")))?
-            {
-                ssh_source::CappedLine::Eof => break, // EOF = 命令结束
-                // 一次性查询的输出行是 JSON 记录，超上限说明对端不对劲。
-                // **拒收+回错**：这条路有调用方接得住错，不像帧读那样只能横向报告。
-                ssh_source::CappedLine::TooLong(bytes) => {
-                    return Err(QueryError::truncated(format!(
-                        "远端输出的单行 {bytes} 字节，超过上限 {} —— 拒收，不拿截断的结果当完整的用",
-                        ssh_source::BACKEND_FRAME_LINE_CAP
-                    )));
-                }
-                ssh_source::CappedLine::Line => String::from_utf8_lossy(&buf).into_owned(),
-            };
-            let line = text.trim();
-            if line.is_empty() {
-                continue;
-            }
-            if lines.is_empty() && is_old_backend_hello(line) {
-                return Err(QueryError::old_backend(OLD_BACKEND_MSG.to_string()));
-            }
-            lines.push(line.to_string());
-        }
-        Ok(lines)
-    };
-    tokio::time::timeout(LIST_TIMEOUT, collect)
-        .await
-        .map_err(|_| {
-            QueryError::transport(format!(
-                "远端查询超时（{}s）: {args}",
-                LIST_TIMEOUT.as_secs()
-            ))
-        })?
-}
+// 〔C4d · 第四波 4B〕逐次拨号那条路（`run_list_query`〔散文墓碑〕与它的老后端识别、超时）删了：
+//   `frame_query` 那张「仍拨号」的表 C4c 起就是空的 ⇒ 它一条都放不过去；主会话 09-25 裁删，
+//   唯一调用方（`subagent·rs::Backend::query` 的远端回落）同拍改成「没有帧命令就当场说」。
 
 // 〔C4a · 第四波〕远端全文搜索的 fan-out（issue #28）**搬到前端**：`src/views/history-search.ts`
 //   对每台远端经通道说帧命令 `history-search`、逐行解释、补 `origin`、与本机索引合并 ——

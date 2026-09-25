@@ -37,7 +37,7 @@ const FORK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// 旧后端掉进流模式的判据：查询模式的输出不可能含 wire 的 `"kind":"hello"`。
 ///
-/// **两种写法都要认**（Phase G 审计：原来只认无空格那条，而 `remote_history::is_old_backend_hello`
+/// **两种写法都要认**（Phase G 审计：原来只认无空格那条，而 `remote_history::is_old_backend_hello`〔散文墓碑〕（C4d 已删）
 /// 认两条 —— 注释却写着「同一判据」，是句错话）。序列化器今天产的是无空格那条，
 /// 所以 `abort_marker` 用它（`abort_marker` 只能给一个子串，且要能在**半行**上命中、不等换行）；
 /// 判定时两条都查，免得哪天序列化器换了写法就退化成「等 30s 超时」。

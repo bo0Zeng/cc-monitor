@@ -1612,7 +1612,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     // 头注把「把一整条流读进内存」（事实）与「`.read_to_end`」（拼法）写成了等号，
     // 而本文件上方刚花十几行论证过同一个病根。**同一个 commit 里，同一句话又犯了一次。**
     //
-    // 漏出来的是活的：`remote_history.rs::run_list_query` 无界 `read_line`
+    // 漏出来的是活的：逐次拨号那条路 `run_list_query`〔散文墓碑〕（C4d 已删）当年无界 `read_line`
     // （只有外层 30s 超时兜着），三个 `#[tauri::command]` 调用方，生产路径；
     // 以及 `stream_read_remote_session` —— 它有 `MAX_SESSION_BYTES` 总量，
     // 但那是**读完再判**，一条超大行在 `read_line` 返回前就把内存吃光了。
