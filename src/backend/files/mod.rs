@@ -752,13 +752,53 @@ pub const SHA256_HEX_LEN: usize = 64;
 /// 拿它比「盘上此刻那一份」、写成之后对新内容再算一次交回去。住读族这一侧，是因为读族不许伸手进写面
 /// （写面只有 `inbound.rs` 一扇门），反过来写面借读族一个纯函数不开新门。
 pub fn content_sha256(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    let d = ring::digest::digest(&ring::digest::SHA256, bytes);
-    let mut out = String::with_capacity(SHA256_HEX_LEN);
-    for b in d.as_ref() {
-        let _ = write!(out, "{b:02x}");
+    let mut d = ContentDigest::new();
+    d.update(bytes);
+    d.finish()
+}
+
+/// 〔FW1 · 第四波 4D〕[`content_sha256`] 的**流式**那一形（同一个算法、同一种十六进制）：上传一边传一边算整份的摘要
+/// （`control/transfer.rs::upload_to_staging`），提交那一侧对暂存件逐块读着算（[`file_sha256`]）—— 几个 G 的文件不整份进内存。
+pub struct ContentDigest(ring::digest::Context);
+
+impl ContentDigest {
+    pub fn new() -> Self {
+        ContentDigest(ring::digest::Context::new(&ring::digest::SHA256))
     }
-    out
+    pub fn update(&mut self, bytes: &[u8]) {
+        self.0.update(bytes);
+    }
+    /// 64 位小写十六进制。
+    pub fn finish(self) -> String {
+        use std::fmt::Write as _;
+        let d = self.0.finish();
+        let mut out = String::with_capacity(SHA256_HEX_LEN);
+        for b in d.as_ref() {
+            let _ = write!(out, "{b:02x}");
+        }
+        out
+    }
+}
+
+impl Default for ContentDigest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 〔FW1〕一份文件的 [`content_sha256`]，**逐块读**（64 KiB 一块）。读不出 ⇒ 原样的 IO 错。
+pub fn file_sha256(path: &std::path::Path) -> std::io::Result<String> {
+    use std::io::Read as _;
+    let mut f = std::fs::File::open(path)?;
+    let mut d = ContentDigest::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            return Ok(d.finish());
+        }
+        d.update(&buf[..n]);
+    }
 }
 
 /// `files.read.text` —— 读一份文本。**超上限整趟拒，不截断**（截断过的文本存回去会写坏文件）。

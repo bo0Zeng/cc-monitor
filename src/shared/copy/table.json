@@ -10464,6 +10464,16 @@
       "zh": "；",
       "args": []
     },
+    "rsFilewinTransfer.ui.redone": {
+      "kind": "error",
+      "zh": "传上去的那份中间有坏的一段，已整份重传：{names}",
+      "args": ["names"]
+    },
+    "rsFilewinTransfer.upload.noDigest": {
+      "kind": "error",
+      "zh": "传输台没交回摘要，没法比对，没有写进目标。请重开 app 再传。",
+      "args": []
+    },
     "rsFilewinTransfer.ui.failed": {
       "kind": "body",
       "zh": "上一趟 {n} 件失败：{failed}",

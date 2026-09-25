@@ -411,7 +411,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `sessions_replayed` | —（无载荷） | **〔U4b · 第四波〕这台机器的活会话清单报完了**：`watch_loop` 的 Phase 1（同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**，排在 Phase 1 所有帧之后、Phase 2 任何帧之前（同一个 sink、同一条线程）；`sessions/` 不在也照发（清单是空的，也是说完了）。**为什么要它**：客户端手里有一条「固定」的会话条目而这台还没报过它时，得分清「这台还没说完」（显示**说不清**）与「说完了、里面没有它」（显示**已结束**）—— `设计/30 §3.5.7a` 那张表的判据，此前线上没有任何东西分得开。丢了不可恢复（`overflow.lost` 带身份、subject 无）：客户端停在「说不清」，不会被说成已结束。monitor 收到发前端 `origin-sessions-listed {origin}`（与 `remote-session-added` 同一条线程、同序）|
 | `link_data` | `link`, `data` | **〔SR1a〕一条链路的下行字节**（`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB）。只在客户端开了链路（`link-open`）之后才出现；链路上的字节与 C2 拨号代理的 stdout 逐字节同形。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「链路四条」 |
 | `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
-| `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes"}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
+| `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes","sha256"?}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`（〔FW1 · 第四波 4D〕`sha256` 只有上传那一路有：整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
 
 ### 入方向：流连接上的命令信封（U6b-1）
 
@@ -1336,7 +1336,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 #### `files-commit-upload`：把暂存区里一份传完的上传件挪进目标（F7c，2026-09-24）
 
 ```text
-→ {"id":"w7","cmd":"files-commit-upload","args":{"key":"0123456789abcdef0123456789abcdef","root":"/home/u/docs","rel":"a.bin","overwrite":false}}
+→ {"id":"w7","cmd":"files-commit-upload","args":{"key":"0123456789abcdef0123456789abcdef","root":"/home/u/docs","rel":"a.bin","overwrite":false,"expect":{"sha256":"<transfer 帧 end.sha256>"}}}
 ← {"kind":"reply","id":"w7","ok":true,"data":{"path":"/home/u/docs/a.bin","bytes":1048576}}
 ```
 
@@ -1348,6 +1348,7 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 | `key` | → | 暂存件的键：**恰好 32 位小写十六进制**。暂存件路径由后端自己拼（`$HOME/.cc-monitor/staging/<key>.part`），调用方指不到暂存区之外任何文件 |
 | `root` / `rel` | → | 目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；〔FN1〕「会话文件那一问」删了） |
 | `overwrite` | → | 🔴 **必须给**（`true` / `false`），不给默认值。`false` ⇒ 先 `O_EXCL` 占位（目标已在 ⇒ `io_failed`），再改名上位；`true` ⇒ 直接改名上位（同盘原子） |
+| `expect` | → | 〔FW1 · 第四波 4D〕🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：传输台上传时对**本机那份整份**算的摘要（`transfer` 帧 `end.sha256`，窗口原样交来）。改名上位**之前**对暂存件整份算一遍：不等 ⇒ `stale`、目标一个字节不动、**坏暂存件删掉**（调用方从 0 重传）；缺了 / 形状不对 ⇒ `bad_args`。为什么：续传只对尾块，看不见「前缀 ＋ 洞 ＋ 尾巴」（失败后晚到的写在中间留的洞，`设计/60 §7` 第 8 条） |
 | `path` | ← | 落点（父目录解过 symlink 的那一个） |
 | `bytes` | ← | 暂存件的字节数（改名不搬字节，这个数就是它在盘上的长度） |
 

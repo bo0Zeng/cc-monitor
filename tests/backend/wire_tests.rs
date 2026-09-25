@@ -458,8 +458,19 @@ fn transfer_frames_have_exactly_these_bytes() {
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000}\n",
         ),
         (
-            f(Some(crate::wire::TransferEnd::Done { bytes: 1000000 })),
+            f(Some(crate::wire::TransferEnd::Done {
+                bytes: 1000000,
+                sha256: None,
+            })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000}}\n",
+        ),
+        // 〔FW1 · 第四波 4D〕上传那一路的传完带整份摘要（提交时的对拍依据）；下载那一路没有 ⇒ 上一格原样不上线。
+        (
+            f(Some(crate::wire::TransferEnd::Done {
+                bytes: 1000000,
+                sha256: Some("ab".repeat(32)),
+            })),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000,\"sha256\":\"abababababababababababababababababababababababababababababababab\"}}\n",
         ),
         (
             f(Some(crate::wire::TransferEnd::Failed { why: "写暂存件失败".into() })),

@@ -105,10 +105,11 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-commit-upload",
         what:
-            "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；不覆盖时 `O_EXCL` 占位再改名上位）",
-        args: &["key", "overwrite", "rel", "root"],
+            "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；〔FW1〕先核整份摘要 `expect: {sha256}`，\
+             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）",
+        args: &["expect", "key", "overwrite", "rel", "root"],
         fields: &["bytes", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
     // ── 〔F9c · 第四波〕存盘装不进一行时的两步（头注「第二种件」一节）──────────────
     ManageCommand {
@@ -155,12 +156,18 @@ pub fn staged_path(home: &Path, key: &str) -> Result<PathBuf, WriteRefusal> {
 /// **提交**：暂存件 → 目标。成功回 `(落点, 字节数)`。
 ///
 /// 第一件事是过路径解析（第三层 ③ 逐函数扫这个顺序）。
+///
+/// 〔FW1 · 第四波 4D · 主会话裁 09-25〕**改名上位之前先对整份摘要**：暂存件的 SHA-256 必须等于 `expect_sha256`
+/// （传输台对本机那份一边传一边算的，窗口原样交来）。不等 ⇒ 这份暂存件是坏的（「前缀 ＋ 洞 ＋ 尾巴」：失败后晚到的写
+/// 在中间留了洞、续传的尾块对拍看不见 —— `设计/60 §7` 第 8 条；或任何别的坏前缀）⇒ **删掉它**（留着只会被下一次续传接上）、
+/// `stale`、目标一个字节不动；调用方从 0 重传。⚠ 核与改名之间仍有窗（暂存区是我们自己的目录，窗里没人该碰它；如实登记）。
 pub fn commit_upload(
     home: &Path,
     key: &str,
     root: &Path,
     rel: &str,
     overwrite: bool,
+    expect_sha256: &str,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
     let dest = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let staged = staged_path(home, key)?;
@@ -178,6 +185,26 @@ pub fn commit_upload(
         )));
     }
     let bytes = meta.len();
+    let got = crate::files::file_sha256(&staged).map_err(|e| {
+        WriteRefusal::Io(format!(
+            "refuse write: 暂存件读不出来（{}：{e}）",
+            staged.display()
+        ))
+    })?;
+    if got != expect_sha256 {
+        let staging = home.join(STAGING_DIR);
+        let removed = resolve_in_root(&staging, format!("{key}{PART_SUFFIX}"))
+            .ok()
+            .is_some_and(|at| std::fs::remove_file(at).is_ok());
+        return Err(WriteRefusal::Stale(format!(
+            "refuse write: 传上来的那份和本机那份对不上（中间有坏块）—— 目标一个字节没动，{}，要从头重传",
+            if removed {
+                "坏的暂存件已删掉"
+            } else {
+                "坏的暂存件没删掉（下一次上传会先对尾块、对不上就从头来）"
+            }
+        )));
+    }
     if overwrite {
         std::fs::rename(&staged, &dest).map_err(|e| {
             WriteRefusal::Io(format!(
@@ -471,7 +498,9 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
             "bad_args",
             "少了 `overwrite`（true / false）—— 覆盖不覆盖不给默认值".to_string(),
         ))?;
-    let (landed, bytes) = commit_upload(home, &key, &root, &rel, overwrite)
+    // 〔FW1〕整份摘要**必给**（传输台 done 帧交的那个）：没有「不核就上位」这一形。
+    let expect = sha256_expect_of(args)?;
+    let (landed, bytes) = commit_upload(home, &key, &root, &rel, overwrite, &expect)
         .map_err(|e| (e.code(), e.message().to_string()))?;
     // 暂存区清理「孤儿」那一格的事件：一次提交成功（`设计/60 §13.2 ④`）。
     let now = std::time::SystemTime::now()

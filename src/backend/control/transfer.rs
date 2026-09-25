@@ -269,7 +269,11 @@ async fn drain_sent_writes(rf: &mut sftp::RemoteFile) {
     }
 }
 
-/// 🔴 **上传的唯一形状**：本机文件 → 暂存件 `~/.cc-monitor/staging/<key>.part`。回传完的字节数。
+/// 🔴 **上传的唯一形状**：本机文件 → 暂存件 `~/.cc-monitor/staging/<key>.part`。回传完的字节数 ＋ 整份的摘要。
+///
+/// 〔FW1 · 第四波 4D · 主会话裁 09-25〕**摘要是提交那一下的对拍依据**：一边传一边对本机那份逐字节算 SHA-256
+/// （续传时先把前缀 `[0, 接上的位置)` 在本机读一遍算进去 —— 本机盘速，不过网）；远端后端改名上位之前对暂存件算一遍，
+/// 不等 ⇒ 拒并删掉那份暂存件。尾块对拍只看尾巴，看不见「前缀 ＋ 洞 ＋ 尾巴」（`设计/60 §7` 第 8 条）；整份摘要看得见任何一种坏前缀。
 ///
 /// 暂存区不在就建最后那一段（上一级 `~/.cc-monitor` 不在 ⇒ 报错，**不顺手建** —— D11：后端是给定的，提交也要它在）。
 /// 孤儿不在这里扫（远端后端 `files_commit::sweep_stale`，每次提交成功时顺手扫）。
@@ -279,7 +283,7 @@ pub(crate) async fn upload_to_staging(
     key: &str,
     cancel: &Cancel,
     on_progress: &Sink<'_>,
-) -> Result<u64, String> {
+) -> Result<(u64, String), String> {
     let total = tokio::fs::metadata(local_path)
         .await
         .map(|m| m.len())
@@ -316,6 +320,23 @@ pub(crate) async fn upload_to_staging(
     rf.seek(std::io::SeekFrom::Start(resume_from))
         .await
         .map_err(|e| format!("暂存件定位到 {resume_from} 失败: {e}"))?;
+    // 〔FW1〕续传：接上的那一截前缀在本机读一遍算进摘要（与发出去的那一份逐字节同源：同一个本机文件）。
+    let mut digest = crate::files::ContentDigest::new();
+    if resume_from > 0 {
+        lf.seek(std::io::SeekFrom::Start(0))
+            .await
+            .map_err(|e| format!("本地 {local_path} 定位到 0 失败: {e}"))?;
+        let mut left = resume_from;
+        let mut buf = vec![0u8; CHUNK];
+        while left > 0 {
+            let want = left.min(CHUNK as u64) as usize;
+            lf.read_exact(&mut buf[..want])
+                .await
+                .map_err(|e| format!("读本地 {local_path} 的前缀失败: {e}"))?;
+            digest.update(&buf[..want]);
+            left -= want as u64;
+        }
+    }
     lf.seek(std::io::SeekFrom::Start(resume_from))
         .await
         .map_err(|e| format!("本地 {local_path} 定位到 {resume_from} 失败: {e}"))?;
@@ -338,6 +359,7 @@ pub(crate) async fn upload_to_staging(
             rf.write_all(&buf[..n])
                 .await
                 .map_err(|e| format!("写暂存件失败: {e}"))?;
+            digest.update(&buf[..n]);
             done += n as u64;
             if done - last_report >= PROGRESS_EVERY {
                 last_report = done;
@@ -358,7 +380,7 @@ pub(crate) async fn upload_to_staging(
     match core {
         Ok(done) => {
             on_progress(done, total);
-            Ok(done)
+            Ok((done, digest.finish()))
         }
         Err(e) => {
             // 🔴 撤 ⇒ 删（用户说了不要）；失败 ⇒ 留（续传的本钱，在我们自己的目录里）。
@@ -716,7 +738,7 @@ impl Desk {
             };
             let r = run(&dial, job, &cancel, &sink).await;
             let end = match r {
-                Ok(bytes) => TransferEnd::Done { bytes },
+                Ok((bytes, sha256)) => TransferEnd::Done { bytes, sha256 },
                 Err(_) if cancel.is_set() => TransferEnd::Cancelled,
                 Err(why) => TransferEnd::Failed { why },
             };
@@ -762,15 +784,25 @@ async fn forward_progress(
 }
 
 /// 一趟：拨号 ＋ 开会话（过传输车道；这一段可以被撤当场打断）→ 按单子传。
-async fn run(dial: &Dial, job: Job, cancel: &Cancel, sink: &Sink<'_>) -> Result<u64, String> {
+/// 回传完的字节数；上传那一路另带整份的摘要（提交时的对拍依据），下载那一路 `None`。
+async fn run(
+    dial: &Dial,
+    job: Job,
+    cancel: &Cancel,
+    sink: &Sink<'_>,
+) -> Result<(u64, Option<String>), String> {
     let session = tokio::select! {
         s = sftp::open_for_transfer(dial) => s?,
         _ = cancel.wait() => return Err("已取消".to_string()),
     };
     match job {
-        Job::Upload { local, key } => upload_to_staging(&session, &local, &key, cancel, sink).await,
+        Job::Upload { local, key } => upload_to_staging(&session, &local, &key, cancel, sink)
+            .await
+            .map(|(n, sha)| (n, Some(sha))),
         Job::Download { remote, local } => {
-            download_to_local(&session, &remote, &local, cancel, sink).await
+            download_to_local(&session, &remote, &local, cancel, sink)
+                .await
+                .map(|n| (n, None))
         }
     }
 }

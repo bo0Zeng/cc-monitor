@@ -544,8 +544,13 @@ pub enum Frame {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum TransferEnd {
-    /// 传完了。
-    Done { bytes: u64 },
+    /// 传完了。〔FW1 · 第四波 4D〕上传那一路带 `sha256`（整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当
+    /// `expect`，远端后端改名上位之前对暂存件核一遍）；下载那一路没有（不上线）。
+    Done {
+        bytes: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sha256: Option<String>,
+    },
     /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
     Failed { why: String },
     /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路的 `.part` 留着。
