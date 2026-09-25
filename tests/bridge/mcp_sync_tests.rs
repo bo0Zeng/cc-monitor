@@ -247,10 +247,12 @@ fn nothing_judged_writable_means_nothing_written_and_a_refusal_reaches_the_user(
 fn a_reply_that_breaks_the_contract_is_an_error_not_a_guess() {
     let (a, b) = (temp_home("as1-bad-a"), temp_home("as1-bad-b"));
     std::fs::write(a.join(".mcp.json"), SOURCE).unwrap();
+    // 每一格只缺**一样**东西（缺两样的话，放掉其中一道闸照样红 —— 那一刀就量不出那道闸）。
     for bad in [
         json!({}),
-        json!({ "rows": [{ "name": "x" }] }),
-        json!({ "rows": [{ "name": "x", "state": "new", "suspects": [{ "kind": "abs-path" }] }] }),
+        json!({ "rows": [{ "name": "x", "suspects": [] }] }),
+        json!({ "rows": [{ "name": "x", "state": "new" }] }),
+        json!({ "rows": [{ "name": "x", "state": "new", "suspects": [{ "kind": "abs-path", "value": "/v" }] }] }),
     ] {
         let err = run(preview_with(
             &DiskDoor::new(&a),
