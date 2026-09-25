@@ -13,6 +13,7 @@
 import {
   applyDropToCollections,
   collectionsEqual,
+  dropRefusal,
   defaultGroupName,
   moveTabBlock,
   pickDropTarget,
@@ -24,7 +25,7 @@ import {
 } from "./tab-drop";
 import { newCollectionId } from "./tab-collections";
 import type { TabStore } from "./tab-store";
-import type { TabBarPrefs } from "./tab-bar-prefs";
+import { sayCollectionRefusal, type TabBarPrefs } from "./tab-bar-prefs";
 
 /** 拖拽要宿主做的两件事。 */
 export interface TabBarDragHost {
@@ -386,6 +387,9 @@ export class TabBarDrag {
         ),
         newCollectionId(),
       );
+      // 〔TL2 · E13〕该进组却没进（到上界）⇒ 说出来；顺序那一半照常做。
+      const why = dropRefusal(nextCols, block, target);
+      if (why) sayCollectionRefusal(why);
       // 没变就不写盘：拖动是高频动作，每拖一下都改一次 `config.json` 是白写。
       if (!collectionsEqual(this.prefs.collections, nextCols)) {
         this.prefs.collections = nextCols; // 先改内存（下面统一重画一次），再落盘

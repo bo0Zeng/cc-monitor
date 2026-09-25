@@ -25,6 +25,7 @@
  * **一个 tab 只属一个集合**（`U4` 正文建议「不能，保持树形，别一上来就做图」）。
  */
 import { loadConfig, saveConfig } from "./config";
+import { copyText } from "./copy-table";
 
 const KEY = "tabCollections";
 
@@ -154,6 +155,46 @@ export function addMember(
 /** 从**所有**集合里移出 `sid`（它最多在一个里，但按集合语义写成幂等的）。 */
 export function removeMember(list: readonly TabCollection[], sid: string): TabCollection[] {
   return list.map((c) => ({ ...c, members: c.members.filter((m) => m !== sid) }));
+}
+
+/**
+ * 〔TL2 · E13〕到上界时**为什么没做** —— 纯判定，给调用方出声用。
+ *
+ * `createCollection` / `addMember` 到上界照旧**原样返回**（数据层的性质不变，判据钉在上界常量上）；
+ * 从前两个调用方（右键菜单 · 拖放）拿到原样返回就一句话都不说 —— 撞 `设计/01 §5 D4`「一条都不许静默忽略」。
+ * ⇒ 判定住这里（一个家），说那一句的是调用方（[`collectionRefusalText`] 出句子）。
+ */
+export type CollectionRefusal =
+  | { kind: "collections-full" }
+  | { kind: "members-full"; name: string };
+
+/** 想新建一个集合：到上界 ⇒ 拒绝原因；没到 ⇒ `null`。 */
+export function createRefusal(list: readonly TabCollection[]): CollectionRefusal | null {
+  return list.length >= COLLECTION_CAP ? { kind: "collections-full" } : null;
+}
+
+/** 想把 `sid` 加进集合 `id`：那个集合满了、而 `sid` 又不在里面 ⇒ 拒绝原因；否则 `null`（不存在的集合不归这里说）。 */
+export function memberRefusal(
+  list: readonly TabCollection[],
+  id: string,
+  sid: string,
+): CollectionRefusal | null {
+  const c = list.find((x) => x.id === id);
+  if (!c || c.members.includes(sid.trim()) || c.members.length < MEMBER_CAP) return null;
+  return { kind: "members-full", name: c.name };
+}
+
+/** 拒绝原因 → 对用户说的那一句（文案表 `tabCollections.full.*`）。 */
+export function collectionRefusalText(r: CollectionRefusal): { title: string; body: string } {
+  return r.kind === "collections-full"
+    ? {
+        title: copyText("tabCollections.full.collectionsTitle"),
+        body: copyText("tabCollections.full.collectionsBody", { cap: String(COLLECTION_CAP) }),
+      }
+    : {
+        title: copyText("tabCollections.full.membersTitle", { name: r.name }),
+        body: copyText("tabCollections.full.membersBody", { cap: String(MEMBER_CAP) }),
+      };
 }
 
 /** `sid` 属于哪个集合（`null` = 不属于任何一个）。 */

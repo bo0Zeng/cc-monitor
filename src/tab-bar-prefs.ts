@@ -9,7 +9,14 @@
  * 字段与方法逐字从 `tabs.ts` 搬来，唯一的改写：刷 tab 栏 · 建骨架 tab · resume 三样换成 `this.host.…`。
  * 顺序那份「意图」本身（`savedOrder`）与落位运算住 `TabStore`，这里只管读盘 / 落盘。
  */
-import { getCollections, setCollections, type TabCollection } from "./tab-collections";
+import {
+  collectionRefusalText,
+  getCollections,
+  setCollections,
+  type CollectionRefusal,
+  type TabCollection,
+} from "./tab-collections";
+import { showActionFailureToast } from "./error-toast";
 import {
   getPinned,
   getTabOrder,
@@ -23,6 +30,16 @@ import { ENDED, UNSEEN, isLive } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
+
+/**
+ * 〔TL2 · E13〕集合到上界、这一下没做成 ⇒ 说一句（`设计/01 §5 D4`「一条都不许静默忽略」）。
+ * 判定住 `tab-collections.ts`（`createRefusal` / `memberRefusal`）与 `tab-drop.ts::dropRefusal`，句子住文案表；
+ * 两个入口（右键菜单 · 拖放）都经这一处说。
+ */
+export function sayCollectionRefusal(r: CollectionRefusal): void {
+  const { title, body } = collectionRefusalText(r);
+  showActionFailureToast(title, body, { level: "info", durationMs: 6000 });
+}
 
 /** 落盘偏好要宿主做的三件事。 */
 export interface TabBarPrefsHost {

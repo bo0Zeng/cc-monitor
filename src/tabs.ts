@@ -54,6 +54,7 @@ import { TabMenu } from "./tab-menu";
 import { TabStore } from "./tab-store";
 import { TabStreamView } from "./tab-stream-view";
 import { TabBarPrefs } from "./tab-bar-prefs";
+import { collectionOf, removeMember } from "./tab-collections";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView } from "./tab-bar-view";
 import { TabRouter } from "./tab-router";
@@ -988,6 +989,13 @@ export class TabManager {
       void this.prefs.persistPinned();
     }
     this.prefs.clearPinHint(sessionId);
+    // 〔TL2 · E13〕**关掉 = 出组**，与上面「关掉 = 取消固定」同一条理由：`×` 是用户明确说要丢。
+    // 不摘的话它的 sid 永远留在组成员里（重启后这个 tab 不再出现，而成员表一直算着它，直到上界）。
+    // ⚠ 只有真在组里才写盘（同上：没在组里的 tab 关一下不该顺手改 `config.json`）。
+    if (collectionOf(this.prefs.collections, sessionId)) {
+      this.prefs.collections = removeMember(this.prefs.collections, sessionId);
+      void this.prefs.persistCollections(this.prefs.collections);
+    }
 
     // 让后端 event_replay 把这个 session 的历史也丢掉
     forgetSession(sessionId);

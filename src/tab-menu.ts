@@ -17,10 +17,13 @@ import {
   addMember,
   collectionOf,
   createCollection,
+  createRefusal,
+  memberRefusal,
   newCollectionId,
   removeMember,
   type TabCollection,
 } from "./tab-collections";
+import { sayCollectionRefusal } from "./tab-bar-prefs";
 import {
   enumerateAccountModifiers,
   type AccountModifierOption,
@@ -93,11 +96,19 @@ export class TabMenu {
       .filter((col) => col.id !== here?.id)
       .map((col) => ({
         label: col.name,
-        onClick: () => void this.host.commitCollections(addMember(this.host.collections(), col.id, sid)),
+        onClick: () => {
+          // 〔TL2 · E13〕那个集合满了 ⇒ 说出来（`addMember` 照旧原样返回，不写盘）。
+          const why = memberRefusal(this.host.collections(), col.id, sid);
+          if (why) return sayCollectionRefusal(why);
+          void this.host.commitCollections(addMember(this.host.collections(), col.id, sid));
+        },
       }));
     joinItems.push({
       label: "新建集合…",
       onClick: () => {
+        // 〔TL2 · E13〕到上界先说，再问名字（不让用户白填一次）。
+        const full = createRefusal(this.host.collections());
+        if (full) return sayCollectionRefusal(full);
         const name = window.prompt("新集合名:");
         if (!name?.trim()) return;
         const id = newCollectionId();

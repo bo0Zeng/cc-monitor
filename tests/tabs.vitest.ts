@@ -231,7 +231,7 @@ import {
   type Tab,
   type TabRect,
 } from "../src/tabs";
-import type { TabCollection } from "../src/tab-collections";
+import { COLLECTION_CAP, MEMBER_CAP, type TabCollection } from "../src/tab-collections";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../src/tab-session-state";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -3709,6 +3709,67 @@ describe("P7a-3 集合分组渲染", () => {
     expect(labels.join("|")).toContain("加入集合");
   });
 
+  // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」。右键菜单那两条入口到上界要出声（正反各一格）。
+  it("〔TL2 · E13〕右键「新建集合…」集合数到上界 ⇒ 不弹输入框、说一句；差一个 ⇒ 照常弹", async () => {
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    await tm.loadCollections();
+    const prompt = vi.spyOn(window, "prompt").mockReturnValue(null);
+    const clickNew = (): void => {
+      flushBar();
+      const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+      root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+      const btn = [...document.querySelectorAll(".tab-context-menu button")].find(
+        (e) => e.textContent === "新建集合…",
+      ) as HTMLButtonElement | undefined;
+      expect(btn, "菜单里要有「新建集合…」（否则本判据在空转）").toBeTruthy();
+      btn!.click();
+      document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    };
+    const many = (n: number): TabCollection[] =>
+      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}`, members: [] }));
+    setCols(many(COLLECTION_CAP));
+    clickNew();
+    expect(prompt, "满了还让用户白填一次名字").not.toHaveBeenCalled();
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual(["没有建新集合"]);
+
+    vi.mocked(showActionFailureToast).mockClear();
+    setCols(many(COLLECTION_CAP - 1));
+    clickNew();
+    expect(prompt, "没满就该照常问名字（正控）").toHaveBeenCalledTimes(1);
+    expect(showActionFailureToast).not.toHaveBeenCalled();
+    prompt.mockRestore();
+  });
+
+  it("〔TL2 · E13〕右键「加入集合 › 某组」那一组满了 ⇒ 说一句、不写盘；没满 ⇒ 加进去", async () => {
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    await tm.loadCollections();
+    const join = (): void => {
+      flushBar();
+      const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+      root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+      const btn = [...document.querySelectorAll(".tab-context-menu button")].find(
+        (e) => e.textContent === "满的",
+      ) as HTMLButtonElement | undefined;
+      expect(btn, "菜单里要有那一组（否则本判据在空转）").toBeTruthy();
+      btn!.click();
+      document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    };
+    const filled = (n: number): TabCollection[] => [
+      { id: "g", name: "满的", members: Array.from({ length: n }, (_, i) => `m${i}`) },
+    ];
+    setCols(filled(MEMBER_CAP));
+    join();
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual(["没有加进「满的」"]);
+    expect(home(tm).prefs.collections[0].members.includes("a")).toBe(false);
+
+    vi.mocked(showActionFailureToast).mockClear();
+    setCols(filled(MEMBER_CAP - 1));
+    join();
+    await Promise.resolve();
+    expect(showActionFailureToast).not.toHaveBeenCalled();
+    expect(home(tm).prefs.collections[0].members.includes("a"), "没满就该加进去（正控）").toBe(true);
+  });
+
   it("★ P7a3-D：组在前、未归组的在后（DoD 逐字如此，实现不许自己反过来）", () => {
     tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN); // 归组
     tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN); // 散的
@@ -3883,6 +3944,33 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     tm.closeTab("s1");
     await flushDisk();
     expect(pinnedOnDisk(), "关掉了还留在盘上 ⇒ 下次开 app 它又回来了").toEqual([]);
+  });
+
+  // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`；「关掉 = 出组」与上面「关掉 = 取消固定」同一条理由（`§B` · `×` 是用户明确说要丢）。
+  it("〔TL2 · E13〕`closeTab` 一个在组里的灰 tab ⇒ 组里摘掉它、写一次盘；不在组里的 ⇒ 零写盘（正控）", async () => {
+    await tm.loadCollections();
+    tm.ensureTab("s1", "/c", "/p/s1.jsonl", 0, LOCAL_ORIGIN);
+    tm.ensureTab("s2", "/c", "/p/s2.jsonl", 0, LOCAL_ORIGIN);
+    tm.ensureTab("s3", "/c", "/p/s3.jsonl", 0, LOCAL_ORIGIN);
+    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["s1", "s2"] }];
+    const saves = (): number =>
+      vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "save_config").length;
+
+    tm.archiveTab("s3");
+    const before = saves();
+    tm.closeTab("s3");
+    await flushDisk();
+    expect(saves() - before, "不在组里的 tab 关一下就改了 config.json").toBe(0);
+
+    tm.archiveTab("s1");
+    tm.closeTab("s1");
+    await flushDisk();
+    expect(home(tm).prefs.collections[0].members, "关掉了还留在组成员里（E13）").toEqual(["s2"]);
+    expect(saves() - before, "出组要落盘，且只写一次").toBe(1);
+    expect(
+      (disk.tabCollections as TabCollection[])[0].members,
+      "盘上那份没跟上 ⇒ 重启后它又占着一个成员位",
+    ).toEqual(["s2"]);
   });
 
   it("🔴 正交：`archived` 与 `pinned` **同时成立**（`§B.3` 的主用例）", async () => {
@@ -4266,6 +4354,41 @@ describe("步 17·D ④ 一次落点把顺序与归属**一起**落实（`applyD
     home(tm).dragger.applyDrop("a", { kind: "end" });
     expect(order()).toEqual(["b", "a"]);
     expect(colsOf()[0].members).toEqual([]);
+  });
+
+  // 〔TL2 · E13〕要求住址：`设计/01 §5 D4`「一条都不许静默忽略」—— 到上界时这一下没做成，要说出来（正反各一格）。
+  it("〔TL2 · E13〕拖进一个满了的组 ⇒ 说一句「没有加进」；差一个没满 ⇒ 不出声、加进去", () => {
+    const full = Array.from({ length: MEMBER_CAP }, (_, i) => `m${i}`);
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["b", ...full.slice(1)] }];
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    expect(colsOf()[0].members.includes("a"), "满了还加进去了 ⇒ 上界没守住").toBe(false);
+    const said = vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]));
+    expect(said, "满了却一句话都没说（E13）").toEqual(["没有加进「白天」"]);
+
+    vi.clearAllMocks();
+    home(tm).prefs.collections = [{ id: "g1", name: "白天", members: ["b", ...full.slice(2)] }];
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    expect(colsOf()[0].members.includes("a"), "差一个没满 ⇒ 该加进去").toBe(true);
+    expect(showActionFailureToast, "没满却出声了（正控）").not.toHaveBeenCalled();
+  });
+
+  it("〔TL2 · E13〕集合数到上界时拖放建组 ⇒ 说一句「没有建新集合」；差一个 ⇒ 建出来、不出声", () => {
+    const many = (n: number): TabCollection[] =>
+      Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `组${i}`, members: [] }));
+    tm.ensureTab("a", "/c1", "p", 0, LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", 0, LOCAL_ORIGIN);
+    home(tm).prefs.collections = many(COLLECTION_CAP);
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    expect(colsOf().length).toBe(COLLECTION_CAP);
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[0]))).toEqual(["没有建新集合"]);
+
+    vi.clearAllMocks();
+    home(tm).prefs.collections = many(COLLECTION_CAP - 1);
+    home(tm).dragger.applyDrop("a", { kind: "onto", sid: "b" });
+    expect(colsOf().length, "差一个没满 ⇒ 该建出来").toBe(COLLECTION_CAP);
+    expect(showActionFailureToast).not.toHaveBeenCalled();
   });
 
   it("没 `loadCollections` 过的实例：归属一个字不动（顺序照常）", () => {
