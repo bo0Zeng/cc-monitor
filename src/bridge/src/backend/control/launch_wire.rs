@@ -60,7 +60,7 @@ pub struct CliRenderRequest {
     /// 前端那一侧从 `K-R53` 起是**三态判别联合**（`ccm-probe.ts`：`installed` /
     /// `not-installed` / `unknown`，`unknown` 连缓存都不进，理由住那个文件的头注）。
     /// 而这里只有 `Some`/`None` ⇒ `unknown` **一过线就被压成「没装」**
-    /// ⇒ 后端回 `Refusal::NotInstalled`（逐字「远端未装 ccm」）。
+    /// ⇒ 后端回 `Refusal::NotInstalled`（逐字「远端还没装后端」，住文案表 `rsCcmInvocation.refusal.notInstalled`）。
     /// **一次 ssh 抖动，用户被告知「那台机器上没有 ccm」** —— 正是 `K-R53` 治掉的那一形，
     /// 只不过它换到了线上：值那一侧分得开，线上又合回去了。
     ///

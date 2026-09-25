@@ -62,7 +62,6 @@ src/backend/wire.rs	射程外：常驻端 crate（没有文案表读口；题面
 src/bridge/crates/creds-core/src/perm.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
 src/bridge/crates/creds-core/src/store.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
 src/bridge/crates/guard-core/src/lib.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
-src/bridge/src/backend/control/ccm_invocation.rs	未抽
 src/bridge/src/backend/control/frame_query.rs	C4d 在改这一带，留最后一批
 src/bridge/src/history.rs	C4d 在改这一带，留最后一批
 src/bridge/src/local_accounts.rs	C4d 在改这一带，留最后一批
