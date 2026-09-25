@@ -224,6 +224,7 @@ import {
   type TabRect,
 } from "../src/tabs";
 import type { TabCollection } from "../src/tab-collections";
+import { ENDED, LIVE, RECONNECTABLE } from "../src/tab-session-state";
 import type { TabStore } from "../src/tab-store";
 import type { TabBarView } from "../src/tab-bar-view";
 import type { TabBarDrag } from "../src/tab-bar-drag";
@@ -261,14 +262,14 @@ describe("TabManager 生命周期", () => {
 
   it("ensureTab 默认建 live 本地 Tab（origin = `LOCAL_ORIGIN`）", () => {
     const tab = tm.ensureTab("s1", "/home/u", "p", 0, LOCAL_ORIGIN);
-    expect(tab.status).toBe("live");
+    expect(tab.state).toEqual(LIVE);
     expect(tab.origin).toBe(LOCAL_ORIGIN);
     expect(home(tm).store.tabs.has("s1")).toBe(true);
   });
 
   it("ensureTab 远端 Tab（origin!==null）也建成 live", () => {
     const tab = tm.ensureTab("s2", "/home", "p", 0, "pi");
-    expect(tab.status).toBe("live");
+    expect(tab.state).toEqual(LIVE);
     expect(tab.origin).toBe("pi");
   });
 
@@ -277,7 +278,7 @@ describe("TabManager 生命周期", () => {
   it("createSkeletonTab 建骨架；首行到达不重建、cwd/parentPath 回填", () => {
     tm.createSkeletonTab("sk1", "/root/proj", LOCAL_ORIGIN);
     const skeleton = home(tm).store.tabs.get("sk1")!;
-    expect(skeleton.status).toBe("live");
+    expect(skeleton.state).toEqual(LIVE);
     expect(skeleton.parentPath).toBe("");
     expect(skeleton.cwd).toBe("/root/proj");
 
@@ -303,7 +304,7 @@ describe("TabManager 生命周期", () => {
   it("归档信号早于骨架建立：骨架落实 pendingArchive 为 archived", () => {
     tm.archiveTab("sk-late");
     tm.createSkeletonTab("sk-late", null, "pi");
-    expect(home(tm).store.tabs.get("sk-late")!.status).toBe("archived");
+    expect(home(tm).store.tabs.get("sk-late")!.state).toEqual(ENDED);
   });
 
   // === Batch7-F24：bg 会话树状 ===
@@ -481,7 +482,7 @@ describe("TabManager 生命周期", () => {
     const tab = tm.ensureTab("s3", "/home", "p", 0, LOCAL_ORIGIN);
     tab.activity = { status: "busy", waitingFor: null } as unknown as Tab["activity"];
     tm.archiveTab("s3");
-    expect(tab.status).toBe("archived");
+    expect(tab.state).toEqual(ENDED);
     expect(tab.activity).toBeNull();
   });
 
@@ -538,100 +539,96 @@ describe("TabManager 生命周期", () => {
     tm.archiveTab("early");
     expect(home(tm).store.pendingArchive.has("early")).toBe(true);
     const tab = tm.ensureTab("early", null, "p", 0, LOCAL_ORIGIN);
-    expect(tab.status).toBe("archived");
+    expect(tab.state).toEqual(ENDED);
     expect(home(tm).store.pendingArchive.has("early")).toBe(false);
   });
 
   it("reviveTab（本地）：archived → live，并清 pendingArchive", () => {
     const tab = tm.ensureTab("s4", "/x", "p", 0, LOCAL_ORIGIN);
     tm.archiveTab("s4");
-    expect(tab.status).toBe("archived");
+    expect(tab.state).toEqual(ENDED);
     tm.reviveTab("s4");
-    expect(tab.status).toBe("live");
+    expect(tab.state).toEqual(LIVE);
   });
 
   it("reviveTab 不碰远端 Tab（origin!==null 门控）→ 仍 archived", () => {
     const tab = tm.ensureTab("s5", "/x", "p", 0, "pi");
     tm.archiveTab("s5");
     tm.reviveTab("s5");
-    expect(tab.status).toBe("archived");
+    expect(tab.state).toEqual(ENDED);
   });
 
-  // ── audit-fixes F03.2：idle-tmux 灰灯生命周期 ──
-  it("F03.2 markTmuxIdle：置灰点，status 仍 live（第三态、非归档）", () => {
+  // ── audit-fixes F03.2：可重连（claude 退、tmux 在）生命周期 ──
+  // 〔U4〕原先这一组断言 `tmuxIdle` ＋ `status`（可重连时 status 仍 live）；两轴之后直接断 `state`。
+  it("F03.2 markTmuxIdle：进可重连 —— 死 ＋ 容器还在（不是已结束）", () => {
     const tab = tm.ensureTab("gi1", "/x", "p", 0, "pi");
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
     tm.markTmuxIdle("gi1");
-    expect(tab.tmuxIdle).toBe(true);
-    expect(tab.status).toBe("live"); // 不归档
+    expect(tab.state).toEqual(RECONNECTABLE);
     expect(btn().classList.contains("tmux-idle")).toBe(true);
     expect(btn().classList.contains("archived")).toBe(false);
   });
 
-  it("F03.2 收到活动信号清灰（claude 复活）——activity 值不变也清且重绘", () => {
+  it("F03.2 收到活动信号回到活（claude 复活）——activity 值不变也回且重绘", () => {
     const tab = tm.ensureTab("gi2", "/x", "p", 0, "pi");
     tm.updateActivity("gi2", "busy", null); // 先有一次 busy
     tm.markTmuxIdle("gi2");
-    expect(tab.tmuxIdle).toBe(true);
+    expect(tab.state).toEqual(RECONNECTABLE);
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
-    // 同值 busy 再来一次（activity 无变化）——灰灯仍须清、类须去掉（早退前清灰的守护）
+    // 同值 busy 再来一次（activity 无变化）——仍须回到活、类须去掉（早退前转移的守护）
     tm.updateActivity("gi2", "busy", null);
-    expect(tab.tmuxIdle).toBe(false);
+    expect(tab.state).toEqual(LIVE);
     expect(btn().classList.contains("tmux-idle")).toBe(false);
   });
 
-  it("F03.2 远端复活清灰（主信号）：idle-tmux tab 又收后端重宣告/行 → ensureTab 清灰", () => {
-    // D 审计修：清灰不能只靠 session-activity（非 queue、null-activity backend 下永不清 →
-    // 活跃流式会话永久卡灰）。ensureTab（远端重宣告/行 = claude 复活，queue 内保序）是主信号。
+  it("F03.2 远端复活（主信号）：可重连的 tab 又收后端重宣告/行 → ensureTab 回到活", () => {
+    // D 审计修：不能只靠 session-activity（非 queue、null-activity backend 下永远不来 →
+    // 活跃流式会话永久卡在可重连）。ensureTab（远端重宣告/行 = claude 复活，queue 内保序）是主信号。
     const tab = tm.ensureTab("gr1", "/x", "p", 0, "pi");
     tm.markTmuxIdle("gr1");
-    expect(tab.tmuxIdle).toBe(true);
+    expect(tab.state).toEqual(RECONNECTABLE);
     // 复活：backend 重放该会话的行（或重宣告）→ 同 sid ensureTab
     tm.ensureTab("gr1", "/x", "p", 1, "pi");
-    expect(tab.tmuxIdle).toBe(false); // 删 ensureTab 里的清灰块则此断言红
-    expect(tab.status).toBe("live");
+    expect(tab.state).toEqual(LIVE); // 删 ensureTab 里那条「远端见行」转移则此断言红
   });
 
-  it("F03.2 归档优先：archiveTab 清灰（tmux 真没了）", () => {
+  it("F03.2 已结束优先：archiveTab 把可重连改成已结束（tmux 真没了）", () => {
     const tab = tm.ensureTab("gi3", "/x", "p", 0, "pi");
     tm.markTmuxIdle("gi3");
-    expect(tab.tmuxIdle).toBe(true);
+    expect(tab.state).toEqual(RECONNECTABLE);
     tm.archiveTab("gi3");
-    expect(tab.status).toBe("archived");
-    expect(tab.tmuxIdle).toBe(false);
+    expect(tab.state).toEqual(ENDED);
   });
 
-  it("F03.2 archived 的 Tab 不被 markTmuxIdle 回置灰", () => {
+  it("F03.2 已结束的 Tab 不被 markTmuxIdle 改回可重连", () => {
     const tab = tm.ensureTab("gi4", "/x", "p", 0, "pi");
     tm.archiveTab("gi4");
-    tm.markTmuxIdle("gi4"); // 归档后迟到的 idle 信号——忽略
-    expect(tab.tmuxIdle).toBe(false);
-    expect(tab.status).toBe("archived");
+    tm.markTmuxIdle("gi4"); // 已结束后迟到的 idle 信号——忽略
+    expect(tab.state).toEqual(ENDED);
   });
 
-  it("F03.2 灰灯信号早于 Tab：进 pendingTmuxIdle，ensureTab 落实为灰", () => {
+  it("F03.2 可重连信号早于 Tab：进 pendingTmuxIdle，ensureTab 落实为可重连", () => {
     tm.markTmuxIdle("gi5"); // Tab 尚未建
     expect(home(tm).store.pendingTmuxIdle.has("gi5")).toBe(true);
     const tab = tm.ensureTab("gi5", "/x", "p", 0, "pi");
-    expect(tab.tmuxIdle).toBe(true);
+    expect(tab.state).toEqual(RECONNECTABLE);
     expect(home(tm).store.pendingTmuxIdle.has("gi5")).toBe(false);
   });
 
-  it("F03.2 归档优先于暂存灰灯：pendingArchive + pendingTmuxIdle 同在时建成 archived", () => {
+  it("F03.2 已结束优先于暂存的可重连：pendingArchive + pendingTmuxIdle 同在时建成已结束", () => {
     tm.markTmuxIdle("gi6");
     tm.archiveTab("gi6"); // 二者都在暂存
-    expect(home(tm).store.pendingTmuxIdle.has("gi6")).toBe(false); // archive 清掉暂存灰
+    expect(home(tm).store.pendingTmuxIdle.has("gi6")).toBe(false); // archive 清掉暂存
     const tab = tm.ensureTab("gi6", "/x", "p", 0, "pi");
-    expect(tab.status).toBe("archived");
-    expect(tab.tmuxIdle).toBe(false);
+    expect(tab.state).toEqual(ENDED);
   });
 
   it("远端 Tab 掉线归档后再收到行（ensureTab）→ 见行复活成 live", () => {
     const tab = tm.ensureTab("s6", "/x", "p", 0, "pi");
     tm.archiveTab("s6");
-    expect(tab.status).toBe("archived");
+    expect(tab.state).toEqual(ENDED);
     tm.ensureTab("s6", "/x", "p", 1, "pi"); // backend 重连重放
-    expect(tab.status).toBe("live");
+    expect(tab.state).toEqual(LIVE);
   });
 
   it("closeTab 拒关 live Tab（守卫：仅 archived 可关）", () => {
@@ -675,7 +672,7 @@ describe("TabManager 生命周期", () => {
     tm.reviveTab("s12"); // Tab 还没建
     expect(home(tm).store.pendingArchive.has("s12")).toBe(false);
     const tab = tm.ensureTab("s12", "/x", "p", 0, LOCAL_ORIGIN);
-    expect(tab.status).toBe("live"); // 未被 pendingArchive 落实归档
+    expect(tab.state).toEqual(LIVE); // 未被 pendingArchive 落实归档
   });
 
   // === Batch13-F40a：尾部优先门控 / 物化（D 审计 C-3 补测） ===
@@ -2815,7 +2812,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
 
   it("本机**归档** tab 不拉账号清单（本机 Resume 不带账号选择，只有活会话才有换号重启）", async () => {
     tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
-    home(tm).store.tabs.get("l1")!.status = "archived";
+    home(tm).store.tabs.get("l1")!.state = ENDED;
     rightClick("l1");
     await flushMicro();
     await flushMicro();
@@ -3750,7 +3747,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     };
     await tm.loadPinned();
     const t = tabOf("s1");
-    expect(t.status, "没有活进程 ⇒ 灰着（`§B.5` 逐字）").toBe("archived");
+    expect(t.state, "没有活进程 ⇒ 已结束（`§B.5` 逐字）").toEqual(ENDED);
     expect(t.pinned, "复活出来的当然是固定的").toBe(true);
     expect(t.title, "🔴 标题要用存下来的那份 —— 不等读文件（`§B.5` 逐字）").toBe("存下来的标题");
     expect(t.parentPath, "jsonlPath 是复活的必需品，没落到 tab 上等于白存").toBe("/p/s1.jsonl");
@@ -3762,7 +3759,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     tm.ensureTab("s1", "/c", "/real.jsonl", 0, LOCAL_ORIGIN);
     disk = { tabBar: { pinned: [{ sid: "s1", origin: LOCAL_ORIGIN, title: "旧标题", jsonlPath: "/old.jsonl" }] } };
     await tm.loadPinned();
-    expect(tabOf("s1").status, "🔴 把活着的会话按成灰的了").toBe("live");
+    expect(tabOf("s1").state, "🔴 把活着的会话按成已结束了").toEqual(LIVE);
     expect(tabOf("s1").pinned).toBe(true);
     expect(tabOf("s1").parentPath, "活着那条的真路径不许被盘上的旧值覆盖").toBe("/real.jsonl");
   });
@@ -3815,10 +3812,10 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     await tm.loadPinned();
     tm.ensureTab("s1", "/c", "p", 0, LOCAL_ORIGIN);
     tm.togglePin("s1"); // live 也能 pin（`§B.3b`：效果等它变灰才显现）
-    expect(tabOf("s1").status).toBe("live");
+    expect(tabOf("s1").state).toEqual(LIVE);
     expect(tabOf("s1").pinned).toBe(true);
     tm.archiveTab("s1");
-    expect(tabOf("s1").status, "四种组合的第四格 —— pin 唯一真正生效的那一格").toBe("archived");
+    expect(tabOf("s1").state, "四种组合的第四格 —— pin 唯一真正生效的那一格").toEqual(ENDED);
     expect(tabOf("s1").pinned, "🔴 归档把 pin 冲掉了 ⇒ 正交性破了，主用例没了").toBe(true);
   });
 

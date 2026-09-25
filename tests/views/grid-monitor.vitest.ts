@@ -18,14 +18,14 @@ import {
 } from "../../src/views/grid-monitor";
 import type { GridSessionSnapshot } from "../../src/session-status";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
+import { ENDED, LIVE, RECONNECTABLE } from "../../src/tab-session-state";
 
 const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   sessionId: "s",
   title: "t",
   origin: LOCAL_ORIGIN,
   cwd: null,
-  status: "live",
-  tmuxIdle: false,
+  state: LIVE,
   activityStatus: null,
   waitingFor: null,
   runningAgents: 0,
@@ -63,7 +63,7 @@ describe("F91 groupSessionsByOrigin", () => {
 describe("F91 sortSessionsInGroup", () => {
   it("活会话先于归档；活内 waiting>busy>idle/shell>未知；同档稳定", () => {
     const sorted = sortSessionsInGroup([
-      snap({ sessionId: "arch", status: "archived" }),
+      snap({ sessionId: "arch", state: ENDED }),
       snap({ sessionId: "idle", activityStatus: "idle" }),
       snap({ sessionId: "unknown", activityStatus: null }),
       snap({ sessionId: "wait", activityStatus: "waiting" }),
@@ -87,9 +87,9 @@ describe("F91 sortSessionsInGroup", () => {
   });
   it("audit-fixes F03.2：idle-tmux 排在所有活会话之后、归档之前", () => {
     const sorted = sortSessionsInGroup([
-      snap({ sessionId: "arch", status: "archived" }),
+      snap({ sessionId: "arch", state: ENDED }),
       // idle-tmux：status 仍 live、activityStatus 可为任意陈旧值——tmuxIdle 优先降到 8
-      snap({ sessionId: "tidle", tmuxIdle: true, activityStatus: "busy" }),
+      snap({ sessionId: "tidle", state: RECONNECTABLE, activityStatus: "busy" }),
       snap({ sessionId: "busy", activityStatus: "busy" }),
     ]);
     expect(sorted.map((s) => s.sessionId)).toEqual(["busy", "tidle", "arch"]);
@@ -99,10 +99,12 @@ describe("F91 sortSessionsInGroup", () => {
 describe("F91 summarizeSessions", () => {
   it("机器数（本机算一台）/ 活会话数 / 运行中 agent 总数", () => {
     const r = summarizeSessions([
-      snap({ origin: LOCAL_ORIGIN, status: "live", runningAgents: 2 }),
-      snap({ origin: LOCAL_ORIGIN, status: "archived", runningAgents: 0 }),
-      snap({ origin: "h1", status: "live", runningAgents: 1 }),
-      snap({ origin: "h1", status: "live", runningAgents: 0 }),
+      snap({ origin: LOCAL_ORIGIN, state: LIVE, runningAgents: 2 }),
+      snap({ origin: LOCAL_ORIGIN, state: ENDED, runningAgents: 0 }),
+      snap({ origin: "h1", state: LIVE, runningAgents: 1 }),
+      snap({ origin: "h1", state: LIVE, runningAgents: 0 }),
+      // 〔U4〕可重连：claude 已经没了 ⇒ 按活性不算活（改两轴之前它借着 status: live 被算进来）
+      snap({ origin: "h1", state: RECONNECTABLE, runningAgents: 0 }),
     ]);
     expect(r).toEqual({ machines: 2, liveSessions: 3, runningAgents: 3 });
   });
@@ -158,7 +160,7 @@ describe("F91 GridMonitorView", () => {
     document.body.replaceChildren();
     const source = mkSource([
       // activityStatus=busy（会加 act 类）但 tmuxIdle=true → 灰类必须叠上、CSS 源序覆写。
-      snap({ sessionId: "gi", title: "灰会话", origin: "pi", tmuxIdle: true, activityStatus: "busy" }),
+      snap({ sessionId: "gi", title: "灰会话", origin: "pi", state: RECONNECTABLE, activityStatus: "busy" }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
@@ -443,9 +445,9 @@ describe("UP1 机器总览按行更新", () => {
   const base = (): GridSessionSnapshot[] => [
     snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", activityStatus: "busy", runningAgents: 2, totalAgents: 3 }),
     snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", contextPct: 85, unread: 4 }),
-    snap({ sessionId: "l3", title: "本机三", status: "archived" }),
+    snap({ sessionId: "l3", title: "本机三", state: ENDED }),
     snap({ sessionId: "p1", title: "派一", origin: "pi", activityStatus: "waiting", waitingFor: "permission prompt" }),
-    snap({ sessionId: "p2", title: "派二", origin: "pi", tmuxIdle: true, kind: "bg" }),
+    snap({ sessionId: "p2", title: "派二", origin: "pi", state: RECONNECTABLE, kind: "bg" }),
     snap({ sessionId: "n1", title: "诺一", origin: "nano", cwd: "/srv", unread: 120 }),
     snap({ sessionId: "n2", title: "诺二", origin: "nano", contextPct: 12 }),
   ];
@@ -546,7 +548,7 @@ describe("UP1 机器总览按行更新", () => {
       const steps: ((s: GridSessionSnapshot[]) => void)[] = [
         (s) => {
           s[0].runningAgents = 0;
-          s[2].status = "live";
+          s[2].state = LIVE;
         },
         (s) => {
           s.splice(4, 1); // p2 没了
