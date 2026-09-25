@@ -191,6 +191,11 @@ mod tests {
              那个数的唯一住址是 `files::CAPABILITIES`（被两向对拍钉着）。同 `comm-boundary` \
              那一格 09-21 的处置：**不是把数改对，是把抄来的第二份摘掉**。",
         ),
+        (
+            "feature_face",
+            "〔RM1b · 第四波〕功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
+             本体在 `observe/`，它只解 `args`、装应答。**零写盘**",
+        ),
         ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
         ("inbound", "流连接上的入方向（信封 / 分派 / 取消）"),
         ("listen", "常驻监听口的纯判定（接受循环在 main.rs）"),
@@ -340,7 +345,8 @@ mod tests {
         "control/files_write.rs",
         "文件管理面的写原语（`设计/60 §8.6` 第 2、3 步）：`O_EXCL` 新建 · 建目录 · 改名 · \
          删文件或空目录 · 改权限 · 覆盖写 · 〔F7a 09-24〕同根内复制（由 `O_EXCL` 新建 ＋ 换名 ＋ \
-         删自己刚建的那一份拼成，**不添动词**）。每一件都先过 Claude 会话数据围栏 \
+         删自己刚建的那一份拼成，**不添动词**）· 〔FW5 09-24〕递归删（计划趟逐条目过围栏、\
+         执行趟只删计划里的且每条当场再判，由删文件 ＋ 删空目录拼成，**不添动词**）。每一件都先过 Claude 会话数据围栏 \
          （`agents::claudecode::paths::is_protected_session_path`，与桥那一侧函数体逐字相同）\
          ＋ 词法 ＋ 解 symlink 再判；会跟链接的两件（改权限 · 覆盖写）连最后一段也解到底。\
          线上入口只有 `inbound.rs` 那几条 `files-*` 写命令（`MANAGE_COMMANDS` 逐条登记）",
@@ -351,7 +357,10 @@ mod tests {
         "上传的提交（`设计/60 §13`）：把 `~/.cc-monitor/staging/<key>.part` 改名上位到用户指定的目标。\
          先过写面那道围栏（`files_write::fenced_target`，借用、不抄）；不覆盖那一支先 `O_EXCL` 占位再改名上位\
          （改名失败撤掉自己那个 0 字节占位）。暂存件路径由本模块自己拼、`key` 只收 32 位十六进制 ⇒ \
-         调用方指不到暂存区之外的源。线上入口只有 `inbound.rs` 那一条 `files-commit-upload`（`COMMIT_COMMANDS`）",
+         调用方指不到暂存区之外的源。〔F9c · 第四波〕存盘装不进一行时的块：`O_EXCL` 新建 \
+         `<key>.<seq>.chunk`（暂存区不在就先过围栏再建目录）· 读回拼起来交写面 `overwrite_text` 原地覆盖（不添动词）· \
+         删这一键的块（先过以暂存区为根的围栏）。线上入口只有 `inbound.rs` 那三条 \
+         `files-commit-upload` / `files-stage-chunk` / `files-commit-text`（`COMMIT_COMMANDS`）",
     )];
 
     /// 第三层模块**能用**的改动动词（`fs::` 之后那个词）。**闭集**。
@@ -367,19 +376,27 @@ mod tests {
         "write",
     ];
 
-    /// 第三层模块里**只许住在本层**的两个**非改动**词。刻意不进全局 `READ_ONLY`：
+    /// 第三层模块里**只许住在本层**的三个**非改动**词。刻意不进全局 `READ_ONLY`：
     ///
     /// - `symlink_metadata` —— 一次**读**（不跟链接地看一眼），改名「目标已在就拒」与
     ///   删除「是文件还是目录」都靠它。进全局只读表就是给全后端多一个读动词，
     ///   而 `files::answer_stat` 头注逐字把那件事叫做「放宽一条红线」—— 本刀不替它做那个决定。
     /// - `Permissions` —— 一个类型，只在「改权限」那一处被构造。
-    const MUTATING_FACE_AUX: &[&str] = &["Permissions", "symlink_metadata"];
+    /// - 〔FW5 · 第四波 · **2 → 3**〕`MetadataExt` —— unix 那个读元数据扩展（取设备号）。
+    ///   递归删的计划趟靠它判「这棵树有没有跨挂载点」（跨了 ⇒ 整趟拒，不走进另一个文件系统去删）。
+    ///   它是**读**；刻意不进全局只读表，理由同 `symlink_metadata`（不替全后端放一个读动词）。
+    ///   ⚠ **改动动词闭集（[`MUTATING_FACE_VERBS`]）一个没加**：递归删由「删文件」「删空目录」
+    ///   两个既有动词逐条拼出，那个一步递归删的库函数照旧在 [`MUTATING_FACE_STILL_FORBIDDEN`] 上。
+    const MUTATING_FACE_AUX: &[&str] = &["MetadataExt", "Permissions", "symlink_metadata"];
 
     /// 第三层模块**仍然不许**出现的东西。
     ///
-    /// 🔴 **递归删**在这里：围栏的射程是**一条路径**，递归删动的是一整棵子树 ——
-    /// 顶上那一条过得了围栏，底下藏着的一份会话文件照样被一起删掉（理由全文在
-    /// 那个模块的 `delete_entry` 头注）。要做就得逐条目过围栏，那是一个新形状，要单独论证。
+    /// 🔴 **一步递归删**在这里：围栏的射程是**一条路径**，它动的是一整棵子树 ——
+    /// 顶上那一条过得了围栏，底下藏着的一份会话文件照样被一起删掉；而且它的遍历不经过我们的围栏，
+    /// 删的是「那一刻盘上的东西」不是「判过的东西」。
+    /// 〔FW5 · 第四波〕递归删**做了，但不靠它**：`control/files_write.rs::delete_tree` 两趟、
+    /// 逐条目过围栏、只用两个既有动词（设计住 `调研/第四波记录/FW5.md` 第一节）；
+    /// 「列举之后的改动在列举之后再过一次围栏」由 [`MUTATING_FACE_LISTERS`] 那条判据钉。
     /// ⚠ `fs::symlink(` 带左括号：不带的话它是 `symlink_metadata` 的前缀，会自伤。
     ///
     /// 🔴〔F7a · 第三波 09-24〕本层**有了复制**（`files-copy`），而一步复制那个动词**照旧在这张表上**：
@@ -402,6 +419,126 @@ mod tests {
 
     /// 围栏调用的针。**本层模块的围栏入口只有这两个**（其余两道被它们串着）。
     const FENCE_CALLS: &[&str] = &["fenced_target(", "fenced_existing("];
+
+    /// 目录列举的针。
+    const LISTING_CALL: &str = "read_dir(";
+
+    /// ★ 〔FW5 · 第四波 · 2026-09-24〕第三层模块里**列目录**的函数，逐条登记 `(模块, 函数名, why)`。
+    ///
+    /// # 它补的是判据 ③ 看不见的那一形
+    ///
+    /// ③ 按函数判「第一个改动之前先有一次围栏」。一个函数**先**判顶上那一条、**再**列出底下整摞、
+    /// 然后一条一条删 —— ③ 照样绿，而底下每一条**都没过围栏**（递归删最该防的正是这一形：
+    /// 顶上的目录干净，底下藏着一份会话文件）。
+    ///
+    /// ⇒ 两条判据：
+    /// 1. **人群恒等**（两向）：本层模块里出现 [`LISTING_CALL`] 的函数，集合 == 本表。
+    ///    新长出一个列目录的函数而没登记 ⇒ 红（它得先说清它列完之后做什么）。
+    /// 2. **列举之后的改动，在列举之后必须再过一次围栏**（[`mutations_after_listing_unfenced`]）：
+    ///    函数里第一次列举之后的第一个改动，与那次列举之间要有一次围栏调用。
+    ///    本表今天三条：一条**只列不删**（递归删的计划趟），两条**逐条目先判后删**（暂存区孤儿扫 · 提交后收块）。
+    ///
+    /// ⚠ 漏判面同 ③：它判顺序，判不了「删的就是判过的那一个」（数据流）——
+    ///   那一半靠 `files_write_tests` 里递归删的行为判据（会话文件在树里 ⇒ 整趟拒、盘上一个字节没动）。
+    pub(super) const MUTATING_FACE_LISTERS: &[(&str, &str, &str)] = &[
+        // 〔SR1a 合主线 a0b9a8e0 时现打补登〕F9c 的 `drop_chunks` 与 FW5 这张表同波各自落地、两边都绿，
+        // 合在一起才红（主线 a0b9a8e0 上这一条就是红的）。形状与 `sweep_stale` 同一族：逐条目先判后删。
+        (
+            "control/files_commit.rs",
+            "drop_chunks",
+            "一次存盘提交之后收掉这个键的全部块：列暂存区、按名字认，每一条先 `fenced_target`（以暂存区为根）再删 —— 逐条目先判后删",
+        ),
+        (
+            "control/files_commit.rs",
+            "sweep_stale",
+            "暂存区孤儿扫：列暂存区，每一条先 `fenced_target`（以暂存区为根）再删 —— 逐条目先判后删",
+        ),
+        (
+            "control/files_write.rs",
+            "plan_tree_within",
+            "递归删的计划趟：只列、逐条目过围栏、**一个改动都没有**；删那一下住 `remove_planned`（先过它自己那一条的围栏）",
+        ),
+    ];
+
+    /// 按**顶格** `fn` / `pub fn` 把一份生产段切成函数块，回 `(块起点, 块终点)`；
+    /// 第一块是第一个函数之前的那一段。[`unfenced_mutations`] 与列举那条判据共用这一份切法。
+    fn fn_chunks(prod: &str) -> Vec<(usize, usize)> {
+        let mut starts: Vec<usize> = Vec::new();
+        let mut at = 0usize;
+        // ⚠ 循环变量刻意**不叫 `line`**（理由住 [`unfenced_mutations`] 那一段注释）。
+        for fn_row in prod.split_inclusive('\n') {
+            let fn_row_t = fn_row.trim_end();
+            let is_fn_head = fn_row_t
+                .split_whitespace()
+                .next()
+                .is_some_and(|w| w == "fn")
+                || fn_row_t.split_whitespace().take(2).collect::<Vec<_>>() == ["pub", "fn"];
+            let at_column_zero = !fn_row.starts_with(' ') && !fn_row.starts_with('\t');
+            if is_fn_head && at_column_zero {
+                starts.push(at);
+            }
+            at += fn_row.len();
+        }
+        let mut bounds: Vec<(usize, usize)> = Vec::new();
+        let head_end = starts.first().copied().unwrap_or(prod.len());
+        bounds.push((0, head_end));
+        for (i, st) in starts.iter().enumerate() {
+            let end = starts.get(i + 1).copied().unwrap_or(prod.len());
+            bounds.push((*st, end));
+        }
+        bounds
+    }
+
+    /// 一个函数块的函数名（`fn` 之后、`(` 或 `<` 之前那个词）；第一块（函数之前那一段）回空串。
+    fn fn_name_of(chunk: &str) -> String {
+        let head = chunk.lines().next().unwrap_or("");
+        head.split("fn ")
+            .nth(1)
+            .map(|t| {
+                t.chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// 出现目录列举的函数名（判据 1 的一侧）。
+    pub(super) fn listing_fns(prod: &str) -> Vec<String> {
+        fn_chunks(prod)
+            .into_iter()
+            .map(|(a, b)| &prod[a..b])
+            .filter(|c| c.contains(LISTING_CALL))
+            .map(fn_name_of)
+            .collect()
+    }
+
+    /// 判据 2：列举之后、**列举与改动之间没有围栏**的那几处，逐条回 `函数名 → 那个改动`。
+    pub(super) fn mutations_after_listing_unfenced(prod: &str) -> Vec<String> {
+        let calls = mutation_calls();
+        let mut bad = Vec::new();
+        for (a, b) in fn_chunks(prod) {
+            let chunk = &prod[a..b];
+            let Some(r) = chunk.find(LISTING_CALL) else {
+                continue;
+            };
+            let after = &chunk[r..];
+            let first_mut = calls
+                .iter()
+                .filter_map(|c| after.find(c.as_str()).map(|k| (k, c.clone())))
+                .min_by_key(|(k, _)| *k);
+            let Some((mk, which)) = first_mut else {
+                continue;
+            };
+            let fenced_between = FENCE_CALLS
+                .iter()
+                .filter_map(|f| after.find(f))
+                .any(|fk| fk < mk);
+            if !fenced_between {
+                bad.push(format!("{}  →  {which}", fn_name_of(chunk)));
+            }
+        }
+        bad
+    }
 
     /// 改动动词在源码里的**调用形**（[`unfenced_mutations`] 找的就是这些）。
     ///
@@ -507,32 +644,12 @@ mod tests {
     /// 必须已经出现一次 [`FENCE_CALLS`] 里的调用。第一个 `fn` 之前的改动一律算没过围栏。
     pub(super) fn unfenced_mutations(prod: &str) -> Vec<String> {
         let calls = mutation_calls();
-        let mut starts: Vec<usize> = Vec::new();
-        let mut at = 0usize;
-        // ⚠ 循环变量刻意**不叫 `line`**：`needle_anchor_registry` 的语料变量识别是**按名字、
+        // 〔FW5〕切块抽成了 [`fn_chunks`]（列举那条判据共用同一份切法，一条形状一个住址）。
+        // ⚠ 那份切法里的循环变量刻意**不叫 `line`**：`needle_anchor_registry` 的语料变量识别是**按名字、
         //   整份文件**算的，本文件别处有一句 `let t = line.trim()`（与这里无关的另一个作用域）——
-        //   这里要是也叫 `line`，那一句会被连带认成语料派生，两处**旧的** `t.strip_prefix("…")`
+        //   那里要是也叫 `line`，那一句会被连带认成语料派生，两处**旧的** `t.strip_prefix("…")`
         //   就被算进那条零富余的递减棘轮（现打：22 > 20，红在桥那一侧）。
-        for fn_row in prod.split_inclusive('\n') {
-            let fn_row_t = fn_row.trim_end();
-            let is_fn_head = fn_row_t
-                .split_whitespace()
-                .next()
-                .is_some_and(|w| w == "fn")
-                || fn_row_t.split_whitespace().take(2).collect::<Vec<_>>() == ["pub", "fn"];
-            let at_column_zero = !fn_row.starts_with(' ') && !fn_row.starts_with('\t');
-            if is_fn_head && at_column_zero {
-                starts.push(at);
-            }
-            at += fn_row.len();
-        }
-        let mut bounds: Vec<(usize, usize)> = Vec::new();
-        let head_end = starts.first().copied().unwrap_or(prod.len());
-        bounds.push((0, head_end));
-        for (i, st) in starts.iter().enumerate() {
-            let end = starts.get(i + 1).copied().unwrap_or(prod.len());
-            bounds.push((*st, end));
-        }
+        let bounds = fn_chunks(prod);
         let mut bad = Vec::new();
         for (a, b) in bounds {
             let chunk = &prod[a..b];
@@ -692,6 +809,17 @@ mod tests {
                         "第三层模块 {} 里有改动**没先过围栏**：\n  {}\n\n\
                          判准逐字：「改，但**每一处都先过围栏**、且只从声明过的那一面来」。\n\
                          ⇒ 在那个函数里、第一个改动之前调一次 `fenced_target(` 或 `fenced_existing(`。",
+                        path.display(),
+                        bad.join("\n  ")
+                    );
+                }
+                // 〔FW5〕列举之后的改动，在列举之后必须再过一次围栏（[`MUTATING_FACE_LISTERS`] 头注）。
+                let bad = mutations_after_listing_unfenced(&guard_core::production_code(&src));
+                if !bad.is_empty() {
+                    panic!(
+                        "第三层模块 {} 里有函数**列完目录之后没再过围栏就动手**：\n  {}\n\n\
+                         顶上判过一次不算数 —— 列出来的每一条都要自己过围栏\n\
+                         （递归删最该防的正是这一形：顶上的目录干净，底下藏着一份会话文件）。",
                         path.display(),
                         bad.join("\n  ")
                     );
@@ -1204,6 +1332,43 @@ mod tests {
         }
     }
 
+    /// 🔴〔FW5 · 第四波〕**第三层里列目录的函数，集合恒等于登记表（两向）。**
+    ///
+    /// 两侧异源：一侧是两份模块的**源码文本**（剥注释后按函数切块、找 [`LISTING_CALL`]），
+    /// 一侧是 [`MUTATING_FACE_LISTERS`] 这张手写登记表。
+    #[test]
+    fn the_listing_functions_in_the_mutating_face_are_exactly_the_registered_ones() {
+        let src_dir = crate::guard_support::src_root();
+        let mut found = std::collections::BTreeSet::new();
+        for (rel, _) in MUTATING_FACE_MODULES {
+            let src = std::fs::read_to_string(src_dir.join(rel)).expect("读第三层模块");
+            let prod = guard_core::production_code(&src);
+            for f in listing_fns(&prod) {
+                found.insert(((*rel).to_string(), f));
+            }
+        }
+        let want: std::collections::BTreeSet<(String, String)> = MUTATING_FACE_LISTERS
+            .iter()
+            .map(|(m, f, _)| ((*m).to_string(), (*f).to_string()))
+            .collect();
+        assert!(!want.is_empty(), "登记表空了 —— 下面那条相等在空集上成立");
+        assert_eq!(
+            found,
+            want,
+            "\n第三层里列目录的函数与登记表对不上。\n  \
+             盘上有、表里没有（🔴 新长出一个列目录的函数 —— 先说清它列完之后做什么，再登记）：{:?}\n  \
+             表里有、盘上没有（改名 / 删了 ⇒ 同轮改表）：{:?}",
+            found.difference(&want).collect::<Vec<_>>(),
+            want.difference(&found).collect::<Vec<_>>()
+        );
+        for (m, f, why) in MUTATING_FACE_LISTERS {
+            assert!(
+                why.chars().count() >= 20,
+                "`{m}::{f}` 没写清它列完之后做什么"
+            );
+        }
+    }
+
     /// 🔴 **第三层每一个判定，在合成样本上正反各喂一遍。**
     ///
     /// 在真树上判不够：「判定采到了而且全过」与「判定什么都没采到」输出一样。
@@ -1248,6 +1413,38 @@ mod tests {
             .len(),
             1,
             "一个函数里的围栏替另一个函数作了保 —— 切块失效"
+        );
+        // 〔FW5〕⑤ 列举之后没再过围栏 —— 阳性：顶上判一次、列出来整摞删（③ 对这一形是绿的）。
+        let top_only = "pub fn f(r: &Path) {\n    let t = fenced_target(r, \"a\")?;\n    for e in std::fs::read_dir(&t)? {\n        std::fs::remove_file(e?.path()).ok();\n    }\n}\n";
+        assert!(
+            unfenced_mutations(top_only).is_empty(),
+            "样本本身喂歪了：这一形本该骗得过 ③（那正是 ⑤ 存在的理由）"
+        );
+        assert_eq!(
+            mutations_after_listing_unfenced(top_only).len(),
+            1,
+            "顶上判一次、底下整摞删 —— ⑤ 没认出来"
+        );
+        assert_eq!(
+            listing_fns(top_only),
+            vec!["f".to_string()],
+            "列举函数的人群没采到"
+        );
+        // ⑤ 阴性：列出来之后每一条先判后删 ⇒ 零条。
+        assert!(
+            mutations_after_listing_unfenced(
+                "pub fn f(r: &Path) {\n    for e in std::fs::read_dir(r)? {\n        let t = fenced_target(r, e?.file_name())?;\n        std::fs::remove_file(&t).ok();\n    }\n}\n"
+            )
+            .is_empty(),
+            "逐条目先判后删的样本被误报了"
+        );
+        // ⑤ 阴性：只列不删 ⇒ 零条（计划趟那一形）。
+        assert!(
+            mutations_after_listing_unfenced(
+                "pub fn f(r: &Path) {\n    for e in std::fs::read_dir(r)? {\n        let _ = e;\n    }\n}\n"
+            )
+            .is_empty(),
+            "只列不删的样本被误报了"
         );
         // ② 表外的改动在本层照旧禁。
         for pat in MUTATING_FACE_STILL_FORBIDDEN {

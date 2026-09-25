@@ -387,7 +387,7 @@ fn a_full_cap_worth_of_text_still_lays_out_in_one_frame() {
 //   落地那条路的判据住 `bigfile_tests.rs`（理由见 `editor.rs` 头注 §四）。
 
 // ═══════════════════════════════════════════════════════════════════
-// 〔F9 续 · 2026-09-24〕存得回去吗 —— 以后端入方向一行的上限为准（`设计/60 §9c 续`）
+// 〔F9c · 第四波〕存盘：装得进一行的一条 `files-write-text`；装不进的分块走暂存区（`调研/第四波记录/F9c.md`）
 // ═══════════════════════════════════════════════════════════════════
 
 const SAVE_PATH: &str = "/srv/data/app.conf";
@@ -396,10 +396,11 @@ const SAVE_PATH: &str = "/srv/data/app.conf";
 ///
 /// 异源：另一侧是 monitor 那一侧真正编请求行的纯函数 `inbound_client::encode_request`，
 /// 不是本模块的 [`request_line_len`]。语料覆盖会被转义变长的每一类
-/// （引号 · 反斜杠 · 控制字符 · 换行 · 中文不转义）。
+/// （引号 · 反斜杠 · 控制字符 · 换行 · 中文不转义）；三条命令（整份一行 · 一块 · 提交）各量一遍。
 /// 另一格：`id` 的最长形状（u128 毫秒十六进制 ＋ 两个 u64）装得进 [`REQUEST_ID_ROOM`]。
 #[test]
 fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
+    let key = "0123456789abcdef0123456789abcdef";
     for content in [
         String::new(),
         "a=1\n".into(),
@@ -408,19 +409,27 @@ fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
         "中文不转义".repeat(1000),
         "x".repeat(70_000),
     ] {
-        let args = save_args(SAVE_PATH, &content);
-        let sent = crate::backend::control::inbound_client::encode_request(
-            &"0".repeat(REQUEST_ID_ROOM),
-            CMD_WRITE_TEXT,
-            &args,
-        );
-        assert!(sent.ends_with('\n'));
-        assert_eq!(
-            request_line_len(CMD_WRITE_TEXT, &args),
-            sent.len() - 1,
-            "窗口量的那一行与真编出来的那一行不一样长（内容 {} 字节）",
-            content.len()
-        );
+        for (cmd, args) in [
+            (CMD_WRITE_TEXT, save_args(SAVE_PATH, &content)),
+            (CMD_STAGE_CHUNK, stage_args(key, u64::MAX, &content)),
+            (
+                CMD_COMMIT_TEXT,
+                commit_args(SAVE_PATH, key, 17, content.len()),
+            ),
+        ] {
+            let sent = crate::backend::control::inbound_client::encode_request(
+                &"0".repeat(REQUEST_ID_ROOM),
+                cmd,
+                &args,
+            );
+            assert!(sent.ends_with('\n'));
+            assert_eq!(
+                request_line_len(cmd, &args),
+                sent.len() - 1,
+                "`{cmd}`：窗口量的那一行与真编出来的那一行不一样长（内容 {} 字节）",
+                content.len()
+            );
+        }
     }
     let longest_id = format!("m{:x}.{}-{}", u128::MAX, u64::MAX, u64::MAX);
     assert_eq!(
@@ -430,153 +439,220 @@ fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
     );
 }
 
-/// 🔴 **刚好装得下的发出去；多一个字节的本地拒、线上零条。**
-///
-/// 走真通道（生产那个 `chan::client::Client` 拨真回环口）到一台合成后端，数线上出现过几条 `files-write-text`。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_save_that_fits_goes_out_and_one_byte_more_never_leaves_the_window() {
-    let wired = crate::filewin::find::testing::wire_up(
-        "save-cap",
-        crate::filewin::find::testing::FakeBackend::new(
-            &[CMD_WRITE_TEXT],
-            crate::filewin::find::testing::Declared::default(),
-        ),
-    )
-    .await;
-    let origin = crate::filewin::source::Origin(wired.origin.clone());
-    let base = request_line_len(CMD_WRITE_TEXT, &save_args(SAVE_PATH, ""));
-    let fits = "a".repeat(MAX_EDIT_BYTES - base);
+/// 🔴 **逐字转义长度 == `serde_json` 的**，对**全部** Unicode 标量值（异源：`serde_json::to_string`）。
+#[test]
+fn the_per_char_escape_length_matches_serde_json_for_every_scalar_value() {
+    let mut checked = 0u32;
+    for c in (0u32..=0x10FFFF).filter_map(char::from_u32) {
+        let mut buf = [0u8; 4];
+        let real = serde_json::to_string(c.encode_utf8(&mut buf) as &str)
+            .unwrap()
+            .len()
+            - 2;
+        assert_eq!(escaped_len(c), real, "U+{:04X}", c as u32);
+        checked += 1;
+    }
     assert_eq!(
-        save_fits(SAVE_PATH, &fits),
-        Ok(MAX_EDIT_BYTES),
-        "夹具没造到刚好装满"
+        checked,
+        0x110000 - 0x800,
+        "码位没走全（应当是全部标量值：去掉代理区 2048 个）"
     );
+}
+
+/// 🔴 **切块三条性质一起钉，合起来恰好刻画「贪心取满」那一种切法**（不是切成一字一块的空真）：
+/// ① 拼回来逐字节 == 原文；② 每块真编出来的请求行（`encode_request`，最长 id、块号按最大）≤ 一行上限；
+/// ③ 除最后一块，每块再添下一块的第一个字，那一行就越线。语料覆盖每一种转义长度（1 · 2 · 3 · 4 · 6 字节）。
+#[test]
+fn chunks_reassemble_exactly_each_fits_one_line_and_each_is_filled() {
+    let key = "0123456789abcdef0123456789abcdef";
+    let line_of = |chunk: &str| {
+        crate::backend::control::inbound_client::encode_request(
+            &"0".repeat(REQUEST_ID_ROOM),
+            CMD_STAGE_CHUNK,
+            &stage_args(key, u64::MAX, chunk),
+        )
+        .len()
+            - 1
+    };
+    let mixed: String = (0..400_000u32)
+        .map(|i| {
+            [
+                'a', '"', '\\', '\n', '\u{1}', '中', '🦀', 'é', '\u{7f}', '\u{2028}',
+            ][(i * 7 % 10) as usize]
+        })
+        .collect();
+    for (label, text) in [
+        ("纯 ASCII 3 MiB", "abcdefgh".repeat(3 * 1024 * 1024 / 8)),
+        ("满控制字符 1 MiB（×6）", "\u{1}".repeat(1024 * 1024)),
+        ("中文 2 MiB", "汉".repeat(2 * 1024 * 1024 / 3)),
+        ("混合", mixed),
+        ("刚好一块", "x".repeat(chunk_budget())),
+    ] {
+        let chunks = plan_chunks(&text, chunk_budget());
+        assert_eq!(chunks.concat(), text, "{label}：拼回来不是原文");
+        assert!(
+            chunks.iter().all(|c| !c.is_empty()),
+            "{label}：切出了空块（后端拒空块）"
+        );
+        for (i, c) in chunks.iter().enumerate() {
+            assert!(
+                line_of(c) <= SAVE_LINE_CAP,
+                "{label}：第 {i} 块那一行 {} 字节，越过一行上限 {SAVE_LINE_CAP}",
+                line_of(c)
+            );
+            if let Some(next) = chunks.get(i + 1) {
+                let first = next.chars().next().unwrap();
+                assert!(
+                    line_of(&format!("{c}{first}")) > SAVE_LINE_CAP,
+                    "{label}：第 {i} 块没取满（再添一个字还装得下）"
+                );
+            }
+        }
+    }
+    assert_eq!(
+        plan_chunks(&"x".repeat(chunk_budget()), chunk_budget()).len(),
+        1
+    );
+    assert_eq!(
+        plan_chunks(&"x".repeat(chunk_budget() + 1), chunk_budget()).len(),
+        2
+    );
+}
+
+/// 起一台合成后端（认得存盘那三条命令），交回线、`origin`、以及它最近一次提交拼出来的那一份。
+async fn save_rig(
+    tag: &str,
+    refuse_stage_at: Option<u64>,
+) -> (
+    crate::filewin::find::testing::Wired,
+    crate::filewin::source::Origin,
+    std::sync::Arc<std::sync::Mutex<Option<(String, String)>>>,
+) {
+    let mut be = crate::filewin::find::testing::FakeBackend::new(
+        &[CMD_WRITE_TEXT, CMD_STAGE_CHUNK, CMD_COMMIT_TEXT],
+        crate::filewin::find::testing::Declared::default(),
+    );
+    be.refuse_stage_at = refuse_stage_at;
+    let committed = be.committed.clone();
+    let wired = crate::filewin::find::testing::wire_up(tag, be).await;
+    let origin = crate::filewin::source::Origin(wired.origin.clone());
+    (wired, origin, committed)
+}
+
+/// 🔴 **刚好装得进一行的一条 `files-write-text`、零块；多一个字节的整份分块走暂存区，合成后端拼回 == 原文。**
+///
+/// 走真通道（生产那个 `chan::client::Client` 拨真回环口）到一台合成后端，数线上出现过的命令序列。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_chunks() {
+    let (wired, origin, committed) = save_rig("save-split", None).await;
+    let base = request_line_len(CMD_WRITE_TEXT, &save_args(SAVE_PATH, ""));
+    let fits = "a".repeat(SAVE_LINE_CAP - base);
+    assert!(fits_one_line(SAVE_PATH, &fits), "夹具没造到刚好装满");
     let over = format!("{fits}a");
+    assert!(!fits_one_line(SAVE_PATH, &over));
 
     write_text(&wired.line, &origin, SAVE_PATH, &fits)
         .await
-        .expect("刚好装得下的那一份没发出去 / 被拒了");
-    assert_eq!(wired.count(CMD_WRITE_TEXT), 1, "刚好装得下的那一份没上线");
+        .expect("刚好装得进一行的那一份没存成");
+    assert_eq!(
+        wired.cmds(),
+        vec![CMD_WRITE_TEXT],
+        "刚好装得进一行的那一份没走一条写"
+    );
 
+    write_text(&wired.line, &origin, SAVE_PATH, &over)
+        .await
+        .expect("多一个字节的那一份没存成");
+    let n = plan_chunks(&over, chunk_budget()).len();
+    let mut want = vec![CMD_WRITE_TEXT.to_string()];
+    want.extend(std::iter::repeat_n(CMD_STAGE_CHUNK.to_string(), n));
+    want.push(CMD_COMMIT_TEXT.to_string());
+    assert_eq!(
+        wired.cmds(),
+        want,
+        "多一个字节的那一份不是「逐块 ＋ 一次提交」"
+    );
+    assert_eq!(n, 2, "多一个字节只该多出一块");
+    let got = committed
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("合成后端没收到一次成功的提交");
+    assert_eq!(got.0, SAVE_PATH);
+    assert!(
+        got.1 == over,
+        "拼回来的不是原文（{} vs {} 字节）",
+        got.1.len(),
+        over.len()
+    );
+}
+
+/// 🔴 **最坏的那一形存得回：满上限的控制字符**（一个字节转义成六个 ⇒ 上一版打开即只读）。
+/// 经真通道逐块送、提交，合成后端拼回 == 原文；一个编辑面照样可改（只读那一档随它的前提一起删了）。
+/// 阴性对照：多一个字节 ⇒ 本地拒、线上零新增，那句话带着两个数。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
+    let (wired, origin, committed) = save_rig("save-worst", None).await;
+    let text = "\u{1}".repeat(MAX_EDIT_BYTES);
+    let mut p = Pane::opened(SAVE_PATH, "app.conf", text.clone());
+    assert!(!p.over_cap());
+    write_text(&wired.line, &origin, SAVE_PATH, &p.text)
+        .await
+        .expect("满上限的控制字符没存成");
+    let n = wired.count(CMD_STAGE_CHUNK);
+    assert_eq!(n, plan_chunks(&text, chunk_budget()).len());
+    assert_eq!(wired.count(CMD_COMMIT_TEXT), 1);
+    assert_eq!(wired.count(CMD_WRITE_TEXT), 0);
+    assert!(
+        committed
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|(_, t)| *t == text),
+        "拼回来的不是原文"
+    );
+    p.mark_saved();
+    assert!(!p.dirty());
+
+    let over = format!("{text}\u{1}");
+    let before = wired.cmds().len();
     let why = write_text(&wired.line, &origin, SAVE_PATH, &over)
         .await
-        .expect_err("多一个字节的那一份竟然存成了");
-    assert_eq!(
-        wired.count(CMD_WRITE_TEXT),
-        1,
-        "多一个字节的那一份还是上了线 —— 后端会整行丢弃、回一条不带 id 的错"
-    );
-    for n in [
+        .expect_err("超上限的那一份竟然存成了");
+    assert_eq!(wired.cmds().len(), before, "超上限的那一份还是上了线");
+    for want in [
         (MAX_EDIT_BYTES + 1).to_string(),
         MAX_EDIT_BYTES.to_string(),
         "多了 1 字节".to_string(),
+        "没有发出去".to_string(),
     ] {
-        assert!(why.contains(&n), "那句话没说出「{n}」：{why}");
+        assert!(why.contains(&want), "那句话没说出「{want}」：{why}");
     }
 }
 
-/// 🔴 **今天真实存在的那个洞：满控制字符的 256 KiB。** 大小装得下，转义之后装不下
-/// （一个字节写成 `\u00XX` 六个）⇒ **打开那一刻**就进只读、说清楚；两支（普通路径 / 大文件模式）
-/// 都不收改动；硬点「保存」也是本地拒、线上零条。
+/// 🔴 **送到一半断了 ⇒ 不发提交，那句话说第几段、共几段、原话**；编辑框的字一个不丢。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_file_that_cannot_be_saved_back_opens_read_only_and_says_why() {
-    // 大文件模式那一支：一整行 256 KiB 的控制字符（最长一行越线）。
-    let one_line = "\u{1}".repeat(256 * 1024);
-    // 普通路径那一支：同样满控制字符，但每 60 字节一行、全文 200 KiB（两条门槛都不越）。
-    let lined = ("\u{2}".repeat(59) + "\n").repeat(200 * 1024 / 60);
-    for (text, big) in [(one_line, true), (lined, false)] {
-        assert!(
-            text.len() <= MAX_EDIT_BYTES,
-            "夹具按大小就被拒了，量的不是转义那一形"
-        );
-        let mut p = Pane::opened(SAVE_PATH, "app.conf", text.clone());
-        let why = p.read_only.clone().expect("转义后装不下，打开时却没进只读");
-        let t = save_fits(SAVE_PATH, &text).unwrap_err();
-        assert!(why.contains(&t.line.to_string()) && why.contains(&MAX_EDIT_BYTES.to_string()));
-
-        // 真跑几帧：点进编辑面、敲字、回车、退格、粘贴 —— 全文一个字节都不许变。
-        let ctx = egui::Context::default();
-        let run = |ev: Vec<egui::Event>, p: &mut Pane, time: f64| {
-            let out = ctx.run_ui(
-                egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        egui::vec2(1280.0, 800.0),
-                    )),
-                    time: Some(time),
-                    events: ev,
-                    ..Default::default()
-                },
-                |ui| super::super::bigfile::show(ui, Some(p)),
-            );
-            let seen = crate::filewin::copy::testing::text_in_frame(&out);
-            out.drop_without_applying_deltas();
-            seen
-        };
-        let seen = run(Vec::new(), &mut p, 0.0);
-        assert_eq!(p.big.is_big(), big, "走的不是预期那一支");
-        assert!(
-            seen.iter().any(|(s, _)| s == &why),
-            "编辑面上没摆那句只读的话"
-        );
-        let at = egui::pos2(200.0, 120.0);
-        let key = |k| egui::Event::Key {
-            key: k,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: egui::Modifiers::NONE,
-        };
-        let press = |down| egui::Event::PointerButton {
-            pos: at,
-            button: egui::PointerButton::Primary,
-            pressed: down,
-            modifiers: egui::Modifiers::NONE,
-        };
-        run(
-            vec![egui::Event::PointerMoved(at), press(true)],
-            &mut p,
-            0.5,
-        );
-        run(vec![press(false)], &mut p, 1.0);
-        run(
-            vec![
-                egui::Event::Text("X".into()),
-                key(egui::Key::Enter),
-                key(egui::Key::Backspace),
-                egui::Event::Paste("粘".into()),
-                egui::Event::Cut,
-            ],
-            &mut p,
-            1.5,
-        );
-        assert_eq!(
-            p.text,
-            text,
-            "只读的编辑面收了改动（{}）",
-            if big {
-                "大文件模式"
-            } else {
-                "普通路径"
-            }
-        );
-        assert!(!p.dirty());
-    }
-
-    // 硬存：本地拒、线上零条。
-    let wired = crate::filewin::find::testing::wire_up(
-        "save-ro",
-        crate::filewin::find::testing::FakeBackend::new(
-            &[CMD_WRITE_TEXT],
-            crate::filewin::find::testing::Declared::default(),
-        ),
-    )
-    .await;
-    let origin = crate::filewin::source::Origin(wired.origin.clone());
-    let ctl = "\u{1}".repeat(256 * 1024);
-    let why = write_text(&wired.line, &origin, SAVE_PATH, &ctl)
+async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
+    let (wired, origin, committed) = save_rig("save-broken", Some(2)).await;
+    let text = "\u{1}".repeat(2 * 1024 * 1024);
+    let total = plan_chunks(&text, chunk_budget()).len();
+    assert!(total > 3, "夹具切不出第三块");
+    let mut p = Pane::opened(SAVE_PATH, "app.conf", "old".into());
+    p.text = text.clone();
+    let why = write_text(&wired.line, &origin, SAVE_PATH, &p.text)
         .await
-        .expect_err("满控制字符的 256 KiB 竟然存成了");
-    assert_eq!(wired.count(CMD_WRITE_TEXT), 0, "装不下的那一行还是上了线");
-    assert!(why.contains("没有发出去"), "那句话没说它没发：{why}");
+        .expect_err("第三块断了却存成了");
+    p.mark_failed(why.clone());
+    assert_eq!(
+        wired.cmds(),
+        vec![CMD_STAGE_CHUNK; 3],
+        "断在第三块之后还在发（或发了提交）"
+    );
+    assert!(committed.lock().unwrap().is_none());
+    assert!(
+        why.contains(&format!("第 3 段（共 {total} 段）")) && why.contains("盘满了"),
+        "那句话没说清断在哪、为什么：{why}"
+    );
+    assert_eq!(p.text, text, "存失败清掉了编辑框");
+    assert!(p.dirty());
 }

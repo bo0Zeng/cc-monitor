@@ -34,8 +34,36 @@ import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 //    正确方向是把 Rust 侧改成 enum（让源更严），**但那是类型收紧、不属于 C01 范围**，
 //    已登记。在那之前 `kind` 在 TS 侧是 `string`。
 // `ts-rs` 一个类型一个文件，所以是两条 import（本文件其余 import 不带扩展名，这里对齐）。
+import type { DataClass } from "../generated/DataClass";
 import type { DataPathInfo } from "../generated/DataPathInfo";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
+
+/**
+ * 〔第四波 ST2 · 用户 09-24 裁「真相 / 缓存列提前做」〕每一行那一格「删了会怎样」。
+ *
+ * 值来自后端 `data_paths.rs::DataPathInfo.class`（非可选枚举，`INVARIANTS §2.1` 那两类）。
+ * 它治的是 `70 §11.5.2` 写下的那笔代价：用户**看得见每个文件多大，却看不出哪个删了会丢东西**
+ * ⇒ 想清干净的人只能整个目录一起删、或者一个都不敢删。
+ * ⚠ 后端加第三类时**不许整页炸**，也不许假装认识它 —— 原样说出来。
+ */
+/**
+ * 〔ST2 · `70 §11.3.2`〕日志目录那一行的名字 —— 这一行**不自带 [打开]**，改成指向「日志」那一页
+ * （那一页自己有「打开日志目录」；两处都给就是界面层的重复，而且两处给的还不是同一个数）。
+ * ⚠ 跨语言常量：Rust 那侧 `data_paths.rs::LOGS_DIR_LABEL` 同名同值，由 `data-section.vitest.ts` 读那份源码对拍。
+ * ⚠ 修在界面层：**不许**从后端那份枚举里删掉这一行（`INVARIANTS §2.1` 的唯一权威枚举点）。
+ */
+export const LOGS_DIR_LABEL = "logs/";
+
+export function describeDataClass(c: DataClass): string {
+  switch (c) {
+    case "truth":
+      return "删了会丢";
+    case "cache":
+      return "可随手删";
+    default:
+      return `类别未知（${String(c)}）`;
+  }
+}
 
 /** 一个 `<strong>` —— 让「强调」由 DOM 结构承担，而不是由字符串里的标记承担（`70 §2.3`）。 */
 function strong(text: string): HTMLElement {
@@ -161,16 +189,9 @@ export class DataSection {
       );
     }
 
-    // 卡片 3：PowerShell profile 备份（只在装过 cc 集成时出现）
-    if (data.profileBackupDirs.length > 0) {
-      this.mainBody.appendChild(
-        this.buildBlock({
-          title: "PowerShell profile 备份",
-          subtitle: "v1.7.10+ 装 cc 集成时自动备份 profile 到同目录的 .ccm-backup-<时间戳>",
-          items: data.profileBackupDirs,
-        }),
-      );
-    }
+    // 〔ST2 · `70 §10.2` · `§11.3.2`〕原来的卡片 3「PowerShell profile 备份」**搬去本机「足迹」栏**：
+    //   它和足迹那张表里的 `$PROFILE` 行讲的是同一件事（「cc-monitor 动过你哪些文件」），
+    //   原来住在两个不同的顶层页。`INVARIANTS §4`：备份是「写 profile」那条铁律的产物。
 
     // 卡片 4：浏览器 localStorage
     this.mainBody.appendChild(this.buildLocalStorageBlock());
@@ -189,6 +210,8 @@ export class DataSection {
       " 默认",
       strong("不清"),
       "这些数据。想彻底清除（星标 / 颜色配置 / WebView2 cache 等）请手动删除上面的目录。",
+      // 〔ST2〕那一格怎么读：只想腾空间的话，删「可随手删」的就够了。
+      "标着「可随手删」的下次用到时会重建；标着「删了会丢」的是你设过的东西。",
     );
     this.mainBody.appendChild(note);
   }
@@ -245,6 +268,14 @@ export class DataSection {
     desc.textContent = info.description;
     li.appendChild(desc);
 
+    // 〔ST2〕「删了会怎样」那一格。类别进 DOM（`data-class`），判据与用户看的是同一份值。
+    // ⚠ 不挂类名：它只要一段字，不要样式（`css-ledger` ③ 是棘轮，新造一个没规则的类名会抬它）。
+    li.dataset.class = info.class;
+    const cls = document.createElement("span");
+    cls.dataset.dataClass = info.class;
+    cls.textContent = describeDataClass(info.class);
+    li.appendChild(cls);
+
     const meta = document.createElement("span");
     meta.className = "settings-data-item-meta";
     if (info.exists) {
@@ -259,16 +290,15 @@ export class DataSection {
     }
     li.appendChild(meta);
 
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "settings-data-item-open";
-    open.textContent = info.exists ? "打开" : "—";
-    open.disabled = !info.exists;
-    open.title = info.exists ? `打开 ${info.path}` : "文件 / 目录不存在";
-    if (info.exists) {
-      open.addEventListener("click", () => void openItem(info.path));
+    if (info.label === LOGS_DIR_LABEL) {
+      // 〔ST2〕日志目录：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
+      const see = document.createElement("span");
+      see.dataset.seeAlso = "logs";
+      see.textContent = "在「日志」页里打开";
+      li.appendChild(see);
+    } else {
+      li.appendChild(this.buildOpenButton(info));
     }
-    li.appendChild(open);
 
     // 完整路径单独一行（小字 + ellipsis）
     const pathRow = document.createElement("div");
@@ -278,6 +308,19 @@ export class DataSection {
     li.appendChild(pathRow);
 
     return li;
+  }
+
+  private buildOpenButton(info: DataPathInfo): HTMLElement {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "settings-data-item-open";
+    open.textContent = info.exists ? "打开" : "—";
+    open.disabled = !info.exists;
+    open.title = info.exists ? `打开 ${info.path}` : "文件 / 目录不存在";
+    if (info.exists) {
+      open.addEventListener("click", () => void openItem(info.path));
+    }
+    return open;
   }
 
   private buildLocalStorageBlock(): HTMLElement {

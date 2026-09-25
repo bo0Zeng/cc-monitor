@@ -427,6 +427,34 @@ pub fn merge_account_key(
     out
 }
 
+/// 〔第四波 ST2 · `设计/70 §4.4`〕把**某一条**的 `base_url` 并进一份刚从盘上读回来的文档，其余键一个不动。
+///
+/// 形状与 [`merge_account_key`] 逐条相同（clone-then-replace 两层、签名逼调用方说清改哪一条），
+/// 只是这一格不是凭据：`base_url` 是明文端点，不经 `SecretKey`。
+/// ⚠ 本 crate 不解析它（不认识 HTTP，见 [`read_accounts`] 头注）—— 形状对不对由账号层装表时判、并出声。
+pub fn merge_account_base_url(
+    current: &Map<String, Value>,
+    id: &str,
+    base_url: &str,
+) -> Map<String, Value> {
+    let mut out = current.clone();
+    let mut accounts = match out.get(ACCOUNTS_FIELD).and_then(Value::as_object) {
+        Some(m) => m.clone(),
+        None => Map::new(),
+    };
+    let mut entry = match accounts.get(id).and_then(Value::as_object) {
+        Some(m) => m.clone(),
+        None => Map::new(),
+    };
+    entry.insert(
+        BASE_URL_FIELD.to_string(),
+        Value::String(base_url.trim().to_string()),
+    );
+    accounts.insert(id.to_string(), Value::Object(entry));
+    out.insert(ACCOUNTS_FIELD.to_string(), Value::Object(accounts));
+    out
+}
+
 /// **`KS10` 的正主**：把 key 并进一份**刚从盘上读回来的**文档，其余键一个不动。
 ///
 /// # 它为什么收 `current` 而不是收一个 `&mut self`

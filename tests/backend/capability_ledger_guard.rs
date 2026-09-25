@@ -553,8 +553,10 @@ fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
 
     assert_eq!(
         gaps.len(),
-        14,
-        "逐能力豁免现打 {} 条（〔PR1 · 09-24〕**14** = 下面那 8 条 ＋ 命令面 6 条：\n\
+        16,
+        "逐能力豁免现打 {} 条（〔FW5 · 09-24〕**16** = PR1 那 14 条 ＋ `files-chmod` / `--files-chmod` × Windows 2 条\n\
+          —— 那条命令声明了 `no_unix_mode` 之后被现推出来，档 = 结构，理由住 `lib.rs` 表尾。\n\
+         〔PR1 · 09-24〕**14** = 下面那 8 条 ＋ 命令面 6 条：\n\
           · 帧面 `capture-pane` / `kill` / `launch` × Windows 3 条、CLI 面同名 3 条 ——\n\
             不是新裁的，是命令面并进第 3 层之后被横向两向相等**现推出来**的，理由住 `lib.rs` 表尾。\n\
          2026-09-22 现打 8，全在 `ccm-launcher` × Windows：\n\

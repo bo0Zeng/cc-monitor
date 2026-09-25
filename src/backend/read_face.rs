@@ -129,6 +129,23 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                     .map_err(|e| ("failed", e))
             })
         }
+        // 〔SR1a × SE2 · 09-24〕会话内查找（Ctrl+F，SE2 的 `--find-in-session`）随骨架索引与大纲一起上帧面。
+        // `limit` 超封顶按封顶算、缺席取缺省 —— 与 CLI 那一臂的 `parse_find_args` 同一对常量。
+        "history-find" => {
+            use crate::observe::search_query::{FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
+            let path = str_arg(args, "path")?;
+            let query = str_arg(args, "query")?;
+            let include_tools = args
+                .get("include_tools")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let limit = u64_arg(args, "limit")?
+                .map_or(FIND_DEFAULT_LIMIT, |n| (n as usize).min(FIND_MAX_LIMIT));
+            lines(|out| {
+                history_query::find_in_session_into(home, path, query, include_tools, limit, out)
+                    .map_err(|e| ("failed", e))
+            })
+        }
         "history-tail" => {
             let path = str_arg(args, "path")?;
             let n = u64_arg(args, "n")?.ok_or(("bad_args", "缺 `n`".to_string()))?;

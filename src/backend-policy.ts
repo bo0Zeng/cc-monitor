@@ -100,22 +100,37 @@ export const EXIT_UNREADABLE =
 // ══════════════════════════════════════════════════════════════════════════
 
 /**
- * ① 账上一条都没有 ⇒ **答不出来**。
+ * ① 账上一条都没有 ⇒ **无记录**。
  *
- * ⚠ 这一句刻意不说「没崩过」。今天那本账**不跨 monitor 进程**
+ * ⚠ 这一格刻意不说「没崩过」。今天那本账**不跨 monitor 进程**
  * （唯一的持久账 `~/.cc-monitor/bin/wrap.log` 现打 2 行、停在 07-08、两行都 rc=0，
  * 而且仓里没有任何一处写它 —— 一本没有写者的孤账）。
+ *
+ * 🔴 〔第四波 ST2 · `设计/70 §2.3` · 第二刀 步 6〕原来这一格是 40 字的一整句
+ * （「上次崩没崩：答不出来 —— 今天没有任何东西在跨 monitor 进程地记它崩没崩，而……」）。
+ * `§2.2` 逐字：**区分本身是对的，不能一起扫掉** ⇒ 区分保留、换成界面状态：
+ * 格子里只写「— 无记录」，那句「为什么这不等于没崩过」进 ⓘ（[`HEALTH_UNKNOWN_WHY`]）。
  */
-export const HEALTH_UNKNOWN =
-  "上次崩没崩：答不出来 —— 今天没有任何东西在跨 monitor 进程地记它崩没崩，而「答不出来」不等于「没崩过」";
-/** ② 记到过事，但**一次崩溃都没有**。读坏了那一格单独说，它不算崩。 */
-export const HEALTH_CLEAN =
-  "这次 monitor 开着以来：它一次都没崩过（读坏了 {misread} 次不算它崩 —— 那是我们这一侧的读端）";
-/** ③ 崩过。带次数与最后那一行。 */
-export const HEALTH_CRASHED =
-  "这次 monitor 开着以来：它崩过 {crashed} 次，最后一次是「{last}」";
-/** ④ 崩过但那一行没留住（表被清过 / 锁毒化）—— 也要说出口，不许拿空串糊过去。 */
-export const HEALTH_LAST_MISSING = "那一行没留下来";
+export const HEALTH_UNKNOWN = "— 无记录";
+/**
+ * ①′ 「无记录」那一格的 ⓘ —— **那条区分的全部内容住这里**（`§2.2`：不许一起扫掉）。
+ * 只在 TS 这一侧（Rust 那侧的 `describe_health` 不产它），所以不进跨语言表。
+ */
+export const HEALTH_UNKNOWN_WHY =
+  "这里只记这次 monitor 开着以来的退出，关掉 monitor 就清零。所以「无记录」不等于「没崩过」。";
+/** ② 记到过事，但**一次崩溃都没有**。读坏了几次、被拒几次进 `[详情]`（[`HEALTH_DETAIL`]）。 */
+export const HEALTH_CLEAN = "没崩过（这次 monitor 开着以来）";
+/** ③ 崩过。带次数与最后那一次的**短摘要**（判定 ＋ 退出状态，后端 `last_brief`，不是账行）。 */
+export const HEALTH_CRASHED = "⚠ 崩过 {crashed} 次 · 最后一次：{last}";
+/** ④ 崩过但那一次没留住（表被清过 / 锁毒化）—— 也要说出口，不许拿空串糊过去。 */
+export const HEALTH_LAST_MISSING = "没留下记录";
+/**
+ * ⑤ `[详情]` 里那一段：四个计数**分开**列（「读坏了」不许被算成一次崩溃），外加完整记录去哪看。
+ * 只在 TS 这一侧（界面专用），不进跨语言表。
+ */
+// ⚠ 一个字面量写完、不拆成两段相加：「只许有一个家」那条判据按整串找它（拆开就零命中地红）。
+export const HEALTH_DETAIL =
+  "这次 monitor 开着以来：崩了 {crashed} 次 · 被拒 {refused} 次 · 没起来 {neverStarted} 次 · 读坏了 {misread} 次。读坏是 monitor 这一侧的事，不算它崩。每一次的完整记录在日志文件里。";
 
 /**
  * 一台机的死亡账**读数**。四个计数分开装 —— 「读坏了」不许被算成一次崩溃。
@@ -142,11 +157,23 @@ export interface BackendHealth {
 export function describeBackendHealth(h: BackendHealth): string {
   const seen = h.crashed + h.refused + h.neverStarted + h.misread;
   if (seen === 0) return HEALTH_UNKNOWN;
-  if (h.crashed === 0) return HEALTH_CLEAN.replace("{misread}", String(h.misread));
+  if (h.crashed === 0) return HEALTH_CLEAN;
   return HEALTH_CRASHED.replace("{crashed}", String(h.crashed)).replace(
     "{last}",
     h.last ?? HEALTH_LAST_MISSING,
   );
+}
+
+/**
+ * `[详情]` 里那一段。**账上一条都没有 ⇒ `null`**（那时格子里是「— 无记录」＋ ⓘ，没有详情可展开）。
+ */
+export function describeHealthDetail(h: BackendHealth): string | null {
+  const seen = h.crashed + h.refused + h.neverStarted + h.misread;
+  if (seen === 0) return null;
+  return HEALTH_DETAIL.replace("{crashed}", String(h.crashed))
+    .replace("{refused}", String(h.refused))
+    .replace("{neverStarted}", String(h.neverStarted))
+    .replace("{misread}", String(h.misread));
 }
 
 /** 后端答的「这一趟我是哪个壳」（`01 §3.3` 那一轴）。今天只有 `standalone` 真的存在。 */
