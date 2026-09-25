@@ -94,7 +94,7 @@
 //!    把它接到命令面上要加子命令 ⇒ 要 bump `BUILD_ID` ⇒ 要同拍 re-embed（`99 §4` 条 19c），
 //!    那几处全在本轮写区之外。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
-use crate::agents::claudecode::paths::is_protected_session_path;
+use crate::agents::claudecode::paths::{is_protected_session_path, session_file_for_delete};
 use std::path::{Component, Path, PathBuf};
 
 /// 围栏①（词法）：**纯路径算术，不碰盘**。过了就返回「打算写到哪」。
@@ -237,6 +237,9 @@ pub enum WriteRefusal {
     /// 线上码 [`NO_UNIX_MODE`] 同时是 `files-chmod` 声明过的命令级码，`lib.rs` 那条
     /// target 轴的现推读的就是它（`设计/96 §8.5` 待拍 3）。
     Unsupported(String),
+    /// 〔RW1 · 第四波〕读改写的**写那一半**发现：盘上那份已经不是调用方读到的那一份了
+    /// （`files-put` 的 `expect` 对不上）⇒ 一个字节没写。调用方该**重读重算**，不是重试同一份。
+    Stale(String),
 }
 
 /// 〔FW5〕命令级码：**这个平台没有 unix 权限位**。只有 `files-chmod` 声明它。
@@ -249,22 +252,24 @@ pub enum WriteRefusal {
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 impl WriteRefusal {
-    /// 线上错误码。**闭集三个**，与 [`MANAGE_COMMANDS`] 那一栏逐字对得上
-    /// （第三个只有 `files-chmod` 会回，也只有它声明）。
+    /// 线上错误码。**闭集四个**，与 [`MANAGE_COMMANDS`] 那一栏逐字对得上
+    /// （〔FW5〕第三个只有 `files-chmod` 会回，也只有它声明；〔RW1〕第四个 `stale` 只有 `files-put` 会回）。
     pub fn code(&self) -> &'static str {
         match self {
             WriteRefusal::Fenced(_) => "refused",
             WriteRefusal::Io(_) => "io_failed",
             WriteRefusal::Unsupported(_) => NO_UNIX_MODE,
+            WriteRefusal::Stale(_) => "stale",
         }
     }
 
     /// 给人看的那句话（原样来自围栏／系统，本层不改写）。
     pub fn message(&self) -> &str {
         match self {
-            WriteRefusal::Fenced(m) | WriteRefusal::Io(m) | WriteRefusal::Unsupported(m) => {
-                m.as_str()
-            }
+            WriteRefusal::Fenced(m)
+            | WriteRefusal::Io(m)
+            | WriteRefusal::Unsupported(m)
+            | WriteRefusal::Stale(m) => m.as_str(),
         }
     }
 }
@@ -618,7 +623,9 @@ pub fn delete_tree(root: &Path, rel: impl AsRef<Path>) -> Result<(PathBuf, usize
             );
             match e {
                 WriteRefusal::Fenced(_) => WriteRefusal::Fenced(said),
-                WriteRefusal::Io(_) | WriteRefusal::Unsupported(_) => WriteRefusal::Io(said),
+                WriteRefusal::Io(_) | WriteRefusal::Unsupported(_) | WriteRefusal::Stale(_) => {
+                    WriteRefusal::Io(said)
+                }
             }
         })?;
         removed += 1;
@@ -734,6 +741,459 @@ pub fn copy_entry(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  〔RW1 · 第四波 · 2026-09-24〕用户文件的读改写 ＋ 删历史会话
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 🔴 用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管**：
+//   monitor 进程从此不直接写用户文件（rc 里的别名块 · PowerShell `$PROFILE` ·
+//   项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/` · cc-bus 收件箱 · 删历史会话），
+//   本机与远端**同一条路**：经通道问那台机器上的后端（`call(origin, …)`），落盘只在这里。
+//
+// 🔴 **写的规则只有这一份**：monitor 那一侧从前的 `fenced_block::apply`（读 → 计划 → 相同不写 →
+//   备份 → 原子替换 → 回读比对 → 回滚）搬到了 [`put_text`]；monitor 那一侧只剩「读 · 算 · 交」。
+//   读与写之间隔着一次往返 ⇒ 写那一半**必须**带「我读到的是哪一份」（`expect`），对不上就一个字节不写
+//   （[`WriteRefusal::Stale`]）。没有「不问就盖」这一形。
+//
+// 🔴 **闭集一个动词没加**：替换 = `O_EXCL` 新建暂存旁名 ＋ 写满 ＋ 换名上位（与 [`copy_entry`]
+//   覆盖那一支同一个拼法）；备份 = `O_EXCL` 新建一份写进内存里的原文（一步复制那个动词仍在禁表上）；
+//   沿用原权限位 = 改权限；补父目录 = 逐级建目录（每一级各过一遍围栏）。
+//
+// 🔴 **删会话是会话文件围栏唯一的例外**（[`delete_session`]）：它**只收 sid**，落点由适配层按 sid 找
+//   （`agents::claudecode::paths::session_file_for_delete`），不收路径 ⇒ 调用方表达不出「另一份文件」。
+//   `readonly_guard` 第三层的围栏针因此多一根 `fenced_session_file(`，判据钉它在生产树里恰好被调用一处。
+
+/// 读改写里**读那一半**交回去的东西。
+#[derive(Debug, PartialEq, Eq)]
+pub struct Peeked {
+    /// 读的是哪一份（最后一段是链接时是解到底的那一份）。
+    pub path: PathBuf,
+    /// `None` = **确定不存在**（与「读不出来」分得开：后者是 `Err`）。
+    pub text: Option<String>,
+}
+
+/// `files-peek` 一趟肯交的上限。
+///
+/// ⚠ 为什么不是 `files-read-text` 那个 8 MiB：读改写的写那一半要把**新内容 ＋ 读到的那一份**
+/// 装进同一行请求，而后端一行上限是 `inbound::MAX_LINE_BYTES`（1 MiB）。
+/// 两份各 256 KiB、再给 JSON 转义留出余量 ⇒ 读得回来的，写得回去。
+/// 更大的文件 ⇒ `too_large`，说清楚，不截断。
+pub const PEEK_MAX_BYTES: usize = 256 * 1024;
+
+/// 一次读改写的**读那一半**：与写**同一道围栏**（词法 ＋ 父目录解开；最后一段在盘上就解到底），
+/// 于是「读的那一份」与「写的那一份」是同一个落点。
+///
+/// 不在 ⇒ `Ok(text: None)`；在但不是普通文件 / 不是 UTF-8 / 超上限 ⇒ 拒（码见 [`answer_peek`]）。
+pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static str, String)> {
+    let rel = rel.as_ref();
+    let at = fenced_target(root, rel).map_err(|m| ("refused", m))?;
+    match std::fs::symlink_metadata(&at) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Peeked {
+                path: at,
+                text: None,
+            })
+        }
+        Err(e) => return Err(("io_failed", format!("读不到 {}：{e}", at.display()))),
+        Ok(_) => {}
+    }
+    let real = fenced_existing(root, rel).map_err(|m| ("refused", m))?;
+    let md = std::fs::metadata(&real)
+        .map_err(|e| ("io_failed", format!("读不到 {}：{e}", real.display())))?;
+    if !md.is_file() {
+        return Err((
+            "refused",
+            format!("{} 不是一份普通文件 —— 读改写只收普通文件", real.display()),
+        ));
+    }
+    if md.len() > PEEK_MAX_BYTES as u64 {
+        return Err((
+            "too_large",
+            format!(
+                "{} 有 {} 字节，超过读改写一趟的上限 {PEEK_MAX_BYTES} —— 不截断（截断的那一份写回去就是把尾巴删了）",
+                real.display(),
+                md.len()
+            ),
+        ));
+    }
+    let bytes = std::fs::read(&real)
+        .map_err(|e| ("io_failed", format!("读不出 {}：{e}", real.display())))?;
+    if bytes.is_empty() && md.len() > 0 {
+        return Err(("io_failed", hollow_read(&real, md.len())));
+    }
+    let text = String::from_utf8(bytes).map_err(|_| {
+        (
+            "not_text",
+            format!("{} 不是 UTF-8 文本 —— 读改写只收文本", real.display()),
+        )
+    })?;
+    Ok(Peeked {
+        path: real,
+        text: Some(text),
+    })
+}
+
+/// 「盘上有字节、读出来却是空的」那一句（v1.7.9 那次事故：OneDrive 占位 / 杀毒软件锁着）。
+///
+/// 🔴 继续走的后果是拿「空 ＋ 新内容」整份盖掉原文 —— 读改写的读那一半与写那一半都在这里停。
+/// 从前住 monitor 的 `fenced_block::LocalFile::read`〔散文墓碑〕，〔RW1〕随写规则一起搬到后端。
+fn hollow_read(p: &Path, on_disk: u64) -> String {
+    format!(
+        "{} 在盘上有 {on_disk} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。",
+        p.display()
+    )
+}
+
+/// 一次 [`put_text`] 做了什么。
+#[derive(Debug, PartialEq, Eq)]
+pub struct Put {
+    /// 落点（最后一段是链接时是解到底的那一份 —— **改的是真文件，不把用户的链接换成一份普通文件**）。
+    pub path: PathBuf,
+    /// 写进去几个字节（没写时是新内容的长度）。
+    pub bytes: usize,
+    /// 真的写了吗。算出来的内容与盘上逐字节相同 ⇒ `false`，一个字节不动。
+    pub changed: bool,
+    /// 这份文件是这一次新建的。
+    pub created: bool,
+    /// 原文另存在哪（没要备份 / 原来不存在 / 原来是空的 ⇒ `None`）。
+    pub backup: Option<PathBuf>,
+}
+
+/// 暂存旁名 / 备份名的序号（同一进程里两趟不撞名）。
+static PUT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 🔴 **用户文件整份替换的那一个序列**（从前 monitor 的 `fenced_block::apply`，今天只有这一份）：
+///
+/// ① 需要时逐级补父目录 → ② 过围栏 → ③ **CAS**：盘上那份必须逐字节等于 `expect`（`None` = 必须不存在）
+/// → ④ 与新内容逐字节相同 ⇒ 不写 → ⑤ 要备份就 `O_EXCL` 另存原文 → ⑥ 同目录暂存旁名写满、换名上位
+/// → ⑦ 回读逐字节比对 → 不符就回滚（原来在 ⇒ 把原文换回去；原来不在 ⇒ 删掉刚建的）。
+///
+/// ⚠ TOCTOU 照旧在（同本模块头注诚实边界第 1 条）：③ 与 ⑥ 之间有一个窗。窗里被别人改了，
+///    ⑥ 会把那一次改动盖掉 —— CAS 缩小的是「monitor 读 → 后端写」那一整趟往返的窗，不是这一个。
+pub fn put_text(
+    root: &Path,
+    rel: impl AsRef<Path>,
+    bytes: &[u8],
+    expect: Option<&[u8]>,
+    keep_backup: bool,
+    parents: bool,
+) -> Result<Put, WriteRefusal> {
+    let rel = rel.as_ref();
+    if parents {
+        make_parents(root, rel)?;
+    }
+    let at = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let existed = match std::fs::symlink_metadata(&at) {
+        Ok(_) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => {
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 读不到 {}：{e}",
+                at.display()
+            )))
+        }
+    };
+    let (dst, current, perms) = if existed {
+        let real = fenced_existing(root, rel).map_err(WriteRefusal::Fenced)?;
+        let md = std::fs::metadata(&real).map_err(|e| {
+            WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display()))
+        })?;
+        if !md.is_file() {
+            return Err(WriteRefusal::Fenced(format!(
+                "refuse write: {} 不是一份普通文件 —— 整份替换只收普通文件",
+                real.display()
+            )));
+        }
+        let cur = std::fs::read(&real).map_err(|e| {
+            WriteRefusal::Io(format!("refuse write: 读不出 {}：{e}", real.display()))
+        })?;
+        if cur.is_empty() && md.len() > 0 {
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: {}",
+                hollow_read(&real, md.len())
+            )));
+        }
+        (real, Some(cur), Some(md.permissions()))
+    } else {
+        (at, None, None)
+    };
+    if current.as_deref() != expect {
+        return Err(WriteRefusal::Stale(match (&current, expect) {
+            (None, Some(_)) => format!(
+                "refuse write: {} 已经不在了（读的时候还在）—— 一个字节没写，重读再来",
+                dst.display()
+            ),
+            (Some(_), None) => format!(
+                "refuse write: {} 现在已经在了（读的时候还不在）—— 一个字节没写，重读再来",
+                dst.display()
+            ),
+            _ => format!(
+                "refuse write: {} 在你读过之后被改过了 —— 一个字节没写，重读再来",
+                dst.display()
+            ),
+        }));
+    }
+    if current.as_deref() == Some(bytes) {
+        return Ok(Put {
+            path: dst,
+            bytes: bytes.len(),
+            changed: false,
+            created: false,
+            backup: None,
+        });
+    }
+    let backup = match current.as_deref() {
+        Some(orig) if keep_backup && !orig.is_empty() => {
+            Some(land_backup(root, rel, orig, perms.clone())?)
+        }
+        _ => None,
+    };
+    swap_in(root, rel, bytes, perms.clone())?;
+    let back = std::fs::read(&dst);
+    if back.as_deref().ok() != Some(bytes) {
+        let why = match &back {
+            Ok(b) => format!(
+                "回读 {} 字节，与写进去的 {} 字节不一致",
+                b.len(),
+                bytes.len()
+            ),
+            Err(e) => format!("写完读不回来（{e}）"),
+        };
+        let undone = match current.as_deref() {
+            Some(orig) => swap_in(root, rel, orig, perms).is_ok(),
+            None => remove_created(root, rel).is_ok(),
+        };
+        let note = match (existed, undone, &backup) {
+            (true, true, _) => "原文件已恢复。".to_string(),
+            (false, true, _) => "刚建出来的那份已删掉。".to_string(),
+            (true, false, Some(b)) => format!("恢复原文件也失败了，原文备份在 {}。", b.display()),
+            (true, false, None) => "恢复原文件也失败了，请打开它看一眼。".to_string(),
+            (false, false, _) => "刚建出来的那份没删掉，请手动删掉它。".to_string(),
+        };
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: 写后校验失败（{}）：{why}。{note}",
+            dst.display()
+        )));
+    }
+    Ok(Put {
+        path: dst,
+        bytes: bytes.len(),
+        changed: true,
+        created: !existed,
+        backup,
+    })
+}
+
+/// 逐级补出 `rel` 的父目录。**每一级各过一遍围栏**；已经在（目录，或指向目录的链接）就跳过。
+///
+/// ⚠ 只给 [`put_text`] 用、且只在调用方**显式**要了（`parents: true`）时跑 ——
+/// 「顺手把中间几层补出来」不是缺省行为（`files-mkdir` 照旧只建最后那一段）。
+fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
+    let Some(parent) = rel.parent() else {
+        return Ok(());
+    };
+    let mut acc = PathBuf::new();
+    for comp in parent.components() {
+        acc.push(comp);
+        let at = fenced_target(root, &acc).map_err(WriteRefusal::Fenced)?;
+        match std::fs::metadata(&at) {
+            Ok(m) if m.is_dir() => continue,
+            Ok(_) => {
+                return Err(WriteRefusal::Fenced(format!(
+                    "refuse write: {} 已经在了、但不是目录",
+                    at.display()
+                )))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::create_dir(&at).map_err(|e| {
+                    WriteRefusal::Io(format!("refuse write: 建目录 {} 失败：{e}", at.display()))
+                })?;
+            }
+            Err(e) => {
+                return Err(WriteRefusal::Io(format!(
+                    "refuse write: 读不到 {}：{e}",
+                    at.display()
+                )))
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 把 `bytes` **原子地**换上 `rel` 那一格：同目录 `O_EXCL` 暂存旁名 → 写满 → （沿用原权限位）→ 换名上位。
+/// 最后一段在盘上就解到底（改真文件，不换掉链接）；失败删掉自己的暂存旁名。
+fn swap_in(
+    root: &Path,
+    rel: &Path,
+    bytes: &[u8],
+    perms: Option<std::fs::Permissions>,
+) -> Result<PathBuf, WriteRefusal> {
+    use std::io::Write as _;
+    let at = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let dst = if std::fs::symlink_metadata(&at).is_ok() {
+        fenced_existing(root, rel).map_err(WriteRefusal::Fenced)?
+    } else {
+        at
+    };
+    // 🔴 Windows：换名上位会让目标**换成暂存旁名的 ACL**（`MoveFileExW` 语义）—— v1.7.9 那次事故
+    //   （用户读不了自己的 `$PROFILE`）正是这一形，从前 monitor 那一侧靠 `ReplaceFileW` 保住。
+    //   后端没有那条平台原语 ⇒ 已在的目标在 Windows 上**就地覆盖写**（ACL / ADS / 创建时间都留着）。
+    //   ⚠ 代价如实写：这一支**不是原子的**（写到一半断电会留半份），兜底是调用方要的备份 ＋ 回读比对 ＋ 回滚。
+    #[cfg(windows)]
+    if std::fs::symlink_metadata(&dst).is_ok() {
+        let _ = &perms;
+        std::fs::write(&dst, bytes).map_err(|e| {
+            WriteRefusal::Io(format!("refuse write: 写 {} 失败：{e}", dst.display()))
+        })?;
+        return Ok(dst);
+    }
+    let name = dst.file_name().ok_or_else(|| {
+        WriteRefusal::Fenced(format!("refuse write: `{}` 没有文件名", rel.display()))
+    })?;
+    let seq = PUT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // 〔FW5 之后〕名字可以不是 UTF-8 ⇒ 旁名按 `OsString` 拼，不经 `str`。
+    let mut side_name = std::ffi::OsString::from(".");
+    side_name.push(name);
+    side_name.push(format!(".ccm-put-{}-{seq}.part", std::process::id()));
+    let side = dst.with_file_name(side_name);
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&side)
+        .map_err(|e| {
+            WriteRefusal::Io(format!(
+                "refuse write: 新建暂存旁名 {} 失败：{e}",
+                side.display()
+            ))
+        })?;
+    if let Err(e) = f.write_all(bytes) {
+        drop(f);
+        std::fs::remove_file(&side).ok();
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: 写暂存旁名 {} 失败：{e}",
+            side.display()
+        )));
+    }
+    drop(f);
+    if let Some(p) = perms {
+        if let Err(e) = std::fs::set_permissions(&side, p) {
+            std::fs::remove_file(&side).ok();
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 给暂存旁名沿用原权限位失败（{}）：{e}",
+                side.display()
+            )));
+        }
+    }
+    if let Err(e) = std::fs::rename(&side, &dst) {
+        std::fs::remove_file(&side).ok();
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: 换名上位 {} 失败：{e}",
+            dst.display()
+        )));
+    }
+    Ok(dst)
+}
+
+/// 另存一份原文：`<名>.ccm-backup-<毫秒>-<序号>`，落在 `rel` 旁边（`O_EXCL`，沿用原权限位）。
+fn land_backup(
+    root: &Path,
+    rel: &Path,
+    original: &[u8],
+    perms: Option<std::fs::Permissions>,
+) -> Result<PathBuf, WriteRefusal> {
+    use std::io::Write as _;
+    let name = rel.file_name().ok_or_else(|| {
+        WriteRefusal::Fenced(format!("refuse write: `{}` 没有文件名", rel.display()))
+    })?;
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let seq = PUT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut bak_name = name.to_os_string();
+    bak_name.push(format!(".ccm-backup-{ms}-{seq}"));
+    let bak_rel = rel.with_file_name(bak_name);
+    let bak = fenced_target(root, &bak_rel).map_err(WriteRefusal::Fenced)?;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&bak)
+        .map_err(|e| {
+            WriteRefusal::Io(format!(
+                "refuse write: 备份 {} 没建成，原文件没动：{e}",
+                bak.display()
+            ))
+        })?;
+    if let Err(e) = f.write_all(original) {
+        drop(f);
+        std::fs::remove_file(&bak).ok();
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: 写备份 {} 失败，原文件没动：{e}",
+            bak.display()
+        )));
+    }
+    drop(f);
+    if let Some(p) = perms {
+        std::fs::set_permissions(&bak, p).ok();
+    }
+    Ok(bak)
+}
+
+/// 回滚那一支：删掉**这一趟自己刚建出来**的那一份（只在「原来不存在」时调）。
+fn remove_created(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
+    let at = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    std::fs::remove_file(&at)
+        .map_err(|e| WriteRefusal::Io(format!("refuse write: 删 {} 失败：{e}", at.display())))
+}
+
+/// 🔴 **删一份历史会话 —— 会话文件围栏唯一的例外。只收 sid。**
+///
+/// 落点由适配层按 sid 在本机记录树里找（[`session_file_for_delete`]：找 → 解到底 → 恰是
+/// `<项目>/<sid>.jsonl` → 必须是会话文件的形状）。别的写一律不许碰会话文件（[`fenced_target`] 拒），
+/// 这一条是「用户在历史浏览器里明确点了删」那一件事，**也只有这一件**。
+pub fn delete_session(sid: &str) -> Result<PathBuf, WriteRefusal> {
+    delete_session_with(sid, session_file_for_delete)
+}
+
+/// [`delete_session`] 的本体。`locate` 由调用方给（生产侧 = 适配层那一份；判据拿临时目录当 home），
+/// 删之前**必须**先过 [`fenced_session_file`]。
+pub fn delete_session_with(
+    sid: &str,
+    locate: impl FnOnce(&str) -> Result<PathBuf, String>,
+) -> Result<PathBuf, WriteRefusal> {
+    let target = fenced_session_file(sid, locate).map_err(WriteRefusal::Fenced)?;
+    std::fs::remove_file(&target).map_err(|e| {
+        WriteRefusal::Io(format!(
+            "refuse write: 删会话 {} 失败：{e}",
+            target.display()
+        ))
+    })?;
+    Ok(target)
+}
+
+/// 删会话那一条**自己的**围栏：落点只能是 `locate(sid)` 找到的那一份，而且**它必须是**
+/// 会话文件的形状、文件名恰是 `<sid>.jsonl`（`locate` 换成什么都骗不过这两问）。
+fn fenced_session_file(
+    sid: &str,
+    locate: impl FnOnce(&str) -> Result<PathBuf, String>,
+) -> Result<PathBuf, String> {
+    let p = locate(sid)?;
+    let want = format!("{sid}.jsonl");
+    if p.file_name() != Some(std::ffi::OsStr::new(&want)) {
+        return Err(format!(
+            "refuse delete: 找到的那一份（{}）不叫 {want}",
+            p.display()
+        ));
+    }
+    if !is_protected_session_path(&p) {
+        return Err(format!(
+            "refuse delete: {} 不是一份会话记录 —— 这一条只删会话",
+            p.display()
+        ));
+    }
+    Ok(p)
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  命令面 ——〔波 5 ㈠ · 2026-09-23〕`设计/60 §8.6` **第 2 步**
 // ══════════════════════════════════════════════════════════════════════════
 //
@@ -845,6 +1305,29 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         args: &["content", "rel", "root"],
         fields: &["bytes", "path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+    // ── 〔RW1 · 第四波 09-24〕用户文件的读改写 ＋ 删历史会话（用户裁「只管用户的文件、本机也管」）──
+    ManageCommand {
+        name: "files-peek",
+        what: "读改写的**读那一半**：与写同一道围栏；不在 ⇒ `exists: false`（与「读不出来」分得开）",
+        args: &["rel", "root"],
+        fields: &["exists", "path", "text"],
+        codes: &["bad_args", "bad_path", "io_failed", "not_text", "refused", "too_large"],
+    },
+    ManageCommand {
+        name: "files-put",
+        what: "整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \
+               回读比对 → 不符回滚** —— 用户文件的写规则只有这一份",
+        args: &["backup", "content", "expect", "parents", "rel", "root"],
+        fields: &["backup", "bytes", "changed", "created", "path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
+    },
+    ManageCommand {
+        name: "files-delete-session",
+        what: "删一份历史会话 —— **会话文件围栏唯一的例外**；**只收 sid**，落点由后端按 sid 在记录树里找",
+        args: &["sid"],
+        fields: &["path"],
+        codes: &["bad_args", "io_failed", "refused"],
     },
 ];
 
@@ -1013,6 +1496,84 @@ fn answer_write_text(args: &serde_json::Value) -> Answer {
     Ok(serde_json::json!({ "path": path_json(&done), "bytes": bytes.len() }))
 }
 
+/// 取一个**正文**参数（字符串或 `{"b16": …}`）。
+fn bytes_of(v: &serde_json::Value, key: &str) -> Result<Vec<u8>, (&'static str, String)> {
+    crate::files::raw::from_json(v).ok_or((
+        "bad_args",
+        format!("`{key}` 的形状不对 —— 只认字符串或 `{{\"b16\": \"<十六进制>\"}}`"),
+    ))
+}
+
+/// 取一个**可缺席的布尔**：不给 ⇒ `false`；给了就必须是布尔（不猜 `1` / `"yes"`）。
+fn flag_of(args: &serde_json::Value, key: &str) -> Result<bool, (&'static str, String)> {
+    match args.get(key) {
+        None => Ok(false),
+        Some(v) => v.as_bool().ok_or(("bad_args", format!("`{key}` 只收布尔"))),
+    }
+}
+
+fn answer_peek(args: &serde_json::Value) -> Answer {
+    let root = path_of(args, "root")?;
+    let rel = rel_of(args, "rel")?;
+    let got = peek_text(&root, &rel)?;
+    Ok(serde_json::json!({
+        "path": path_json(&got.path),
+        "exists": got.text.is_some(),
+        "text": got.text,
+    }))
+}
+
+fn answer_put(args: &serde_json::Value) -> Answer {
+    let root = path_of(args, "root")?;
+    let rel = rel_of(args, "rel")?;
+    let content = args.get("content").ok_or((
+        "bad_args",
+        "少了 `content` —— 整份替换不给默认值（默认成空等于把那份文件清空）".to_string(),
+    ))?;
+    let content = bytes_of(content, "content")?;
+    // 🔴 `expect` **必给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」。
+    //    缺席 ⇒ 拒 —— 没有「不问就盖」这一形（理由住本节头注）。
+    let expect = match args.get("expect") {
+        None => return Err((
+            "bad_args",
+            "少了 `expect` —— 读改写的写那一半必须说清读到的是哪一份（`null` = 读的时候不存在）"
+                .to_string(),
+        )),
+        Some(serde_json::Value::Null) => None,
+        Some(v) => Some(bytes_of(v, "expect")?),
+    };
+    let backup = flag_of(args, "backup")?;
+    let parents = flag_of(args, "parents")?;
+    let done =
+        put_text(&root, &rel, &content, expect.as_deref(), backup, parents).map_err(refusal)?;
+    Ok(serde_json::json!({
+        "path": path_json(&done.path),
+        "bytes": done.bytes,
+        "changed": done.changed,
+        "created": done.created,
+        "backup": done.backup.as_deref().map(path_json),
+    }))
+}
+
+fn answer_delete_session(args: &serde_json::Value) -> Answer {
+    // 🔴 **只收 sid**：多给任何一个键都拒 —— 这一条是会话文件围栏唯一的例外，
+    //    「顺手也收一个路径」那一形连表达的机会都不给。
+    if let Some(obj) = args.as_object() {
+        if let Some(extra) = obj.keys().find(|k| k.as_str() != "sid") {
+            return Err((
+                "bad_args",
+                format!("`files-delete-session` 只收 `sid`，多给了 `{extra}`"),
+            ));
+        }
+    }
+    let sid = args
+        .get("sid")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(("bad_args", "少了 `sid`，或者它不是一个字符串".to_string()))?;
+    let done = delete_session(sid).map_err(refusal)?;
+    Ok(serde_json::json!({ "path": path_json(&done) }))
+}
+
 /// 这一面的**唯一入口**（形状照 `files::answer_wire`）。
 ///
 /// 🔴 分派写成一个对 [`MANAGE_COMMANDS`] 的 `match`，而「表里有、分派没有」
@@ -1026,6 +1587,9 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
         "files-chmod" => answer_chmod(args),
         "files-write-text" => answer_write_text(args),
         "files-copy" => answer_copy(args),
+        "files-peek" => answer_peek(args),
+        "files-put" => answer_put(args),
+        "files-delete-session" => answer_delete_session(args),
         other => Err(("bad_args", format!("`{other}` 不是文件管理写面的命令"))),
     }
 }

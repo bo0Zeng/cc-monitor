@@ -338,8 +338,19 @@ pub fn resolve_editable(spec: &SkillSpec, cwd: &Path, requested: &Path) -> Resul
 // ───────────────────────── IPC（F03：收件箱编辑入口的后端那半）─────────────────────────
 //
 // ⚠ 这一层**只做三件事**：列出 skill 与它的实例 · 读那个可编辑文件 · 写那个可编辑文件。
-// 写必须过 [`resolve_editable`] 的三道围栏 + `verified_write` 的读回比对。
 // **仍然不跑任何 skill 命令**（模块头注那条红线由 `the_host_never_spawns_anything` 钉着）。
+//
+// 🔴 〔RW1 · 第四波 · 2026-09-24〕用户裁「远端（和本机，同一条路）的 `INBOX.txt` 编辑 / 删除条目，
+//   经那台机器后端的文件管理那一面写，写入规则与别名 / skill / MCP 同一份」：
+//   - 三条命令都吃 `origin`；**读与写都经那台机器的后端**（`user_files`：`files-peek` / `files-put`），
+//     本机不再 `fs::write` ＋ `verified_write`（回读比对 · 回滚那一份规则住后端）。
+//   - 写带 **`expected`**（打开时读到的那一份）：agent 下一轮会读它、处置它、清空它 ——
+//     人在改的时候 agent 可能已经改过盘上那一份，照旧整份盖过去就会**把 agent 的处置悄悄冲掉**。
+//     对不上 ⇒ 后端回 `stale`、一个字节不写，这里说清楚。
+//   - 围栏：本机仍是 [`resolve_editable`] 的三道（`canonicalize` 之后做集合判定 ·
+//     Claude 数据纵深 · 目标必须已存在）；远端路径在这台机器上 `canonicalize` 不了 ⇒
+//     [`remote_editable_rel`] 做**逐字**集合判定（请求的那条路径必须恰是声明算出来的那一条），
+//     解链接 ＋ 「不许落进会话文件」由那台机器的后端围栏再判一次。
 
 /// 一个 skill 的当前状态（给 UI 用）。
 #[derive(serde::Serialize)]
@@ -377,57 +388,223 @@ fn views(cwd: &Path) -> Vec<SkillView> {
         .collect()
 }
 
+/// 远端那台机器上的 `a/b`（POSIX 拼法，远端路径不许借本机的 `Path`）。
+fn remote_join(base: &str, tail: &str) -> String {
+    format!(
+        "{}/{}",
+        base.trim_end_matches('/'),
+        tail.trim_start_matches('/')
+    )
+}
+
+/// 〔RW1〕远端版的 [`views`]：**同一套规则**（发现 · 实例 · 可编辑集合），问的是那台机器的后端。
+///
+/// ⚠ 如实登记一格：远端的「Claude 配置根」按 `<后端的 home>/.claude` 算 —— 那台机器上若设了
+/// `CLAUDE_CONFIG_DIR`，发现那一步会答「不在场」（本机那一侧用的是 [`crate::paths::resolve_claude_dir`]）。
+async fn remote_views(
+    door: &impl crate::user_files::Door,
+    cwd: &str,
+) -> Result<Vec<SkillView>, String> {
+    let claude_dir = remote_join(&door.home().await?, ".claude");
+    let mut out = Vec::new();
+    for spec in SKILLS {
+        let expected = match &spec.discover {
+            Discover::ClaudeSkill { dir, probe_file } => remote_join(
+                &remote_join(&remote_join(&claude_dir, "skills"), dir),
+                probe_file,
+            ),
+            Discover::CwdPath { path } => remote_join(cwd, path),
+        };
+        let missing_reason = match door.stat_kind(&expected).await? {
+            Some(_) => None,
+            None => Some(
+                Presence::Missing {
+                    skill: spec.id.to_string(),
+                    expected: PathBuf::from(&expected),
+                }
+                .describe(),
+            ),
+        };
+        let root = remote_join(cwd, spec.artifacts.root);
+        let mut names = Vec::new();
+        for (name, is_dir) in door.list_dir(&root).await.unwrap_or_default() {
+            if is_dir
+                && door
+                    .stat_kind(&remote_join(
+                        &remote_join(&root, &name),
+                        spec.artifacts.instance_marker,
+                    ))
+                    .await?
+                    .is_some()
+            {
+                names.push(name);
+            }
+        }
+        names.sort();
+        out.push(SkillView {
+            id: spec.id.to_string(),
+            label: spec.label.to_string(),
+            missing_reason,
+            instances: names,
+            editable: spec
+                .editable
+                .iter()
+                .map(|f| remote_join(&root, f))
+                .collect(),
+        });
+    }
+    Ok(out)
+}
+
+/// 〔RW1〕远端的可编辑集合判定：`requested` 必须**逐字**是声明算出来的那一条（[`SkillSpec::editable`]
+/// 相对 [`Artifacts::root`]），回它相对 `cwd` 的那一段（交给后端当 `rel`，后端的围栏再判一次）。
+///
+/// ⚠ 远端路径在这台机器上 `canonicalize` 不了 ⇒ 这里**只做逐字相等**，不做「解析后再判」——
+/// 解链接那一半由那台机器的后端做（`files-peek` / `files-put` 的围栏：解到底、不许跑出 `cwd`、不许是会话文件）。
+pub fn remote_editable_rel(spec: &SkillSpec, cwd: &str, requested: &str) -> Result<String, String> {
+    let root = remote_join(cwd, spec.artifacts.root);
+    let hit = spec
+        .editable
+        .iter()
+        .find(|f| remote_join(&root, f) == requested)
+        .ok_or_else(|| {
+            format!(
+                "拒绝写入：{requested} 不在 `{}` 的可编辑集合里（声明的是 {:?}，相对 {}）",
+                spec.id, spec.editable, spec.artifacts.root
+            )
+        })?;
+    if crate::claude_data_fence::is_protected_claude_data_path(requested) {
+        return Err(format!(
+            "拒绝写入：{requested} 是 Claude 的数据文件（jsonl/pidfile）—— 声明表把它列进 editable 也不行。"
+        ));
+    }
+    Ok(remote_join(spec.artifacts.root, hit)
+        .trim_start_matches('/')
+        .to_string())
+}
+
+/// 一次读写落在哪台机器、哪个根、哪一段（本机：`cwd` 解开之后；远端：逐字）。
+fn target_of(
+    route: crate::origin::Route<'_>,
+    spec: &SkillSpec,
+    cwd: &str,
+    path: &str,
+) -> Result<(crate::user_files::BackendDoor, String, String), String> {
+    match route {
+        crate::origin::Route::Local => {
+            let real = resolve_editable(spec, Path::new(cwd), Path::new(path))?;
+            let root = Path::new(cwd)
+                .canonicalize()
+                .map_err(|e| format!("解析项目目录失败：{cwd} — {e}"))?;
+            let rel = real
+                .strip_prefix(&root)
+                .map_err(|_| {
+                    format!(
+                        "拒绝写入：{} 不在项目目录 {} 里",
+                        real.display(),
+                        root.display()
+                    )
+                })?
+                .to_string_lossy()
+                .into_owned();
+            Ok((
+                crate::user_files::BackendDoor::new(crate::origin::Origin::local()),
+                root.to_string_lossy().into_owned(),
+                rel,
+            ))
+        }
+        crate::origin::Route::Remote(host) => Ok((
+            crate::user_files::BackendDoor::new(crate::origin::Origin(host.to_string())),
+            cwd.to_string(),
+            remote_editable_rel(spec, cwd, path)?,
+        )),
+    }
+}
+
+fn spec_of(skill_id: &str) -> Result<&'static SkillSpec, String> {
+    SKILLS
+        .iter()
+        .find(|s| s.id == skill_id)
+        .ok_or_else(|| format!("未知 skill：{skill_id}"))
+}
+
 /// 列出所有接入的 skill 及其状态。
 #[tauri::command]
-pub async fn list_skills(cwd: String) -> Result<Vec<SkillView>, String> {
-    Ok(views(Path::new(&cwd)))
+pub async fn list_skills(
+    origin: crate::origin::Origin,
+    cwd: String,
+) -> Result<Vec<SkillView>, String> {
+    match origin.route("list_skills")? {
+        crate::origin::Route::Local => Ok(views(Path::new(&cwd))),
+        crate::origin::Route::Remote(host) => {
+            let door = crate::user_files::BackendDoor::new(crate::origin::Origin(host.to_string()));
+            remote_views(&door, &cwd).await
+        }
+    }
 }
 
 /// 读一个可编辑文件。**必须先过围栏** —— 读也过，免得它变成一个任意文件读取口。
+/// 〔RW1〕读经那台机器的后端（与写同一道围栏）；交回去的全文就是写回时的 `expected`。
 #[tauri::command]
 pub async fn read_skill_file(
+    origin: crate::origin::Origin,
     cwd: String,
     skill_id: String,
     path: String,
 ) -> Result<String, String> {
-    let spec = SKILLS
-        .iter()
-        .find(|s| s.id == skill_id)
-        .ok_or_else(|| format!("未知 skill：{skill_id}"))?;
-    let real = resolve_editable(spec, Path::new(&cwd), Path::new(&path))?;
-    std::fs::read_to_string(&real).map_err(|e| format!("读取失败：{} — {e}", real.display()))
+    let spec = spec_of(&skill_id)?;
+    let (door, root, rel) = target_of(origin.route("read_skill_file")?, spec, &cwd, &path)?;
+    read_editable(&door, &root, &rel).await
 }
 
-/// 写一个可编辑文件：**围栏 → 备份 → 写 → 读回比对 → 不符就回滚**。
+/// 写一个可编辑文件：**围栏 → 经后端 CAS 写（备份在内存 · 原子替换 · 回读比对 · 不符回滚）**。
 ///
-/// ⚠ 复用 `verified_write::verify_and_rollback`，**不自己造第四份写入实现** ——
-/// 那个模块的头注逐字记着本仓曾有 4 处独立实现且校验强度不一致（两处只比长度）。
+/// `expected` 是打开时读到的那一份：盘上那一份在这之后被改过（多半是 agent 处置了其中几条）⇒
+/// 一个字节不写，原话说清。
 #[tauri::command]
 pub async fn write_skill_file(
+    origin: crate::origin::Origin,
     cwd: String,
     skill_id: String,
     path: String,
     content: String,
+    expected: String,
 ) -> Result<(), String> {
-    let spec = SKILLS
-        .iter()
-        .find(|s| s.id == skill_id)
-        .ok_or_else(|| format!("未知 skill：{skill_id}"))?;
-    let real = resolve_editable(spec, Path::new(&cwd), Path::new(&path))?;
+    let spec = spec_of(&skill_id)?;
+    let (door, root, rel) = target_of(origin.route("write_skill_file")?, spec, &cwd, &path)?;
+    write_editable(&door, &root, &rel, &content, &expected).await
+}
 
-    // 备份：读不到就当空（文件必然存在 —— 围栏要求 canonicalize 成功）。
-    let backup = std::fs::read_to_string(&real).unwrap_or_default();
-    std::fs::write(&real, &content).map_err(|e| format!("写入失败：{} — {e}", real.display()))?;
+/// 读那一份（经门）。**不存在就拒** —— 本功能是「编辑收件箱」，不是「创建任意文件」。
+async fn read_editable(
+    door: &impl crate::user_files::Door,
+    root: &str,
+    rel: &str,
+) -> Result<String, String> {
+    door.peek(root, rel).await?.text.ok_or_else(|| {
+        format!(
+            "{} 上没有这份文件：{root}/{rel}（文件必须已存在）",
+            door.machine()
+        )
+    })
+}
 
-    let read_target = real.clone();
-    let rollback_target = real.clone();
-    crate::verified_write::verify_and_rollback(
-        &content,
-        || std::fs::read_to_string(&read_target).map_err(|e| format!("{e}")),
-        || {
-            let _ = std::fs::write(&rollback_target, &backup);
-        },
-    )
+/// 写那一份（经门，CAS）。`stale` ⇒ 说清是「打开之后被改过」，不是「写失败」。
+async fn write_editable(
+    door: &impl crate::user_files::Door,
+    root: &str,
+    rel: &str,
+    content: &str,
+    expected: &str,
+) -> Result<(), String> {
+    match door.put(root, rel, content, Some(expected), false, false).await {
+        Ok(_) => Ok(()),
+        Err(crate::user_files::Refused::Stale(why)) => Err(format!(
+            "收件箱在你打开之后被改过（多半是 agent 处置了其中几条）—— 这次没写，免得把那些改动冲掉。\
+             先把你的改动复制出来，关掉再打开收件箱，再贴回去。（{why}）"
+        )),
+        Err(e) => Err(e.said()),
+    }
 }
 
 #[cfg(test)]

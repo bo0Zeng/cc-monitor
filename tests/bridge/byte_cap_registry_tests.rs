@@ -268,6 +268,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "窗口存盘时一条请求行（`files-write-text` 整份 / `files-stage-chunk` 一块）序列化后的长度",
         "分块（不丢数据）",
     ),
+    // 〔RW1 · 第四波 09-24〕用户文件读改写的写那一半（`files-put`）整份装一行请求 ⇒ 本侧先按真序列化出来的
+    //   那一行拒（多一个字节就不发），数就是后端入方向一行的上限（下面「对 R」钉相等）。
+    (
+        "src/bridge/src/user_files.rs",
+        "REQUEST_LINE_CAP",
+        1 << 20,
+        "`user_files` 发给后端的一条写面请求（`files-put` 新内容 ＋ 读到的那一份同装一行）序列化后的上限",
+        "拒收+回错",
+    ),
     (
         "src/bridge/src/ssh_source.rs",
         "SNAPSHOT_MAX_BYTES",
@@ -497,6 +506,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "READ_TEXT_MAX_BYTES",
         8 * 1024 * 1024,
         "`files-read-text` 调用方给的 `max_bytes` 最大能多大（一帧应答整份进内存、整份过线）",
+        "拒收+回错",
+    ),
+    // 〔RW1 · 第四波 09-24〕用户文件读改写的**读那一半**一趟肯交多少。写那一半要把新内容与
+    //   读到的那一份装进同一行请求（后端一行 `MAX_LINE_BYTES` = 1 MiB）⇒ 两份各 256 KiB、给转义留余量。
+    (
+        "src/backend/control/files_write.rs",
+        "PEEK_MAX_BYTES",
+        256 * 1024,
+        "`files-peek` 一趟读回的文本（读改写的读那一半；写回时与新内容同装一行请求）",
         "拒收+回错",
     ),
     // 〔`C1` · 09-24〕只读查询的帧面宿主那三个数（一帧应答要整个进内存、整个过线）。
@@ -984,6 +1002,15 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
         f1, f2,
         "窗口存盘一行的上限与后端入方向一行上限漂开了（窗口 {f1} / 后端 {f2}）。\
              分块那一支按它切（`editor::plan_chunks`），每块那一行都得装进后端的一行。"
+    );
+
+    // 对 R〔RW1 · 第四波 09-24〕：`user_files` 本侧那道拒用的就是后端入方向一行的上限 ⇒ 钉相等。
+    //   多给 ⇒ 本侧放行、后端整行丢弃；少给 ⇒ 写得回去的文件被本侧冤拒。
+    //   〔合并 F9c〕上一版比的是 `e2`（那时它是后端入方向一行）；F9c 把 `e2` 改指读天花板，这一对改比 `f2`。
+    let r1 = by("src/bridge/src/user_files.rs", "REQUEST_LINE_CAP");
+    assert_eq!(
+        r1, f2,
+        "`user_files::REQUEST_LINE_CAP` 与后端入方向一行上限漂开了（monitor {r1} / 后端 {f2}）"
     );
 
     // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。
