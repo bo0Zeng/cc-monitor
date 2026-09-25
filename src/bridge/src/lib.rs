@@ -1285,8 +1285,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            backend_policy::backend_exit_policy,
-            backend_policy::set_backend_exit_policy,
+            // 〔C4c〕「退出行为」问 / 交写那两条退役：设置页经通道说 `exit-policy-read` / `exit-policy-set`。
             backend::control::backend_control::backend_machines,
             backend::control::backend_control::backend_status,
             backend::control::backend_control::backend_start,

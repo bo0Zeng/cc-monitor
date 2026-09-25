@@ -238,7 +238,30 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          只在转、核两格 —— 核验搬到唯一的消费者 `src/session-reads.ts::decodeRecord`（缺一格仍是契约坏了，不读成「不在」），\
          命令与发送端（`frame_query::record`）删了",
     ),
+    // 〔C4c · 第四波 4B〕`C4b.md §6.6` A 组第二批：`app.backend-policy`（S5 进主线后前置满足）。
+    (
+        "exit-policy-read",
+        "〔B2〕问那台机器「退出行为」那个值：monitor 那条命令（`backend_exit_policy`）只在拦空白名 ＋ 转 ＋ 原样交回，\
+         解释本来就在界面（`settings/backend-section.ts::readExitAnswer`）⇒ 设置页经通道直接问，命令删了。\
+         ⚠ monitor 自己**另有**一处问它（退出臂，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那不是替界面转",
+    ),
+    (
+        "exit-policy-set",
+        "〔B2〕交那台机器写那个值：同上一行（`set_backend_exit_policy` 删了），画的仍是后端写完读回来的那一份",
+    ),
 ];
+
+/// 〔C4c · 第四波 4B〕**monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
+///
+/// 它们同时在 [`CHANNELED_ELSEWHERE`] 里（界面那一问已走通道）；下面那条判据里 monitor 生产段的字面量
+/// 从此 == `BORN_ON_FRAME` 那一次 ＋ 本表登记的处数（两向相等：多一处 = 又长出一个替界面转的发送点；
+/// 少一处 = monitor 那件自己的事不问了，这一行馊了）。
+const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[(
+    "exit-policy-read",
+    1,
+    "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`，`设计/01 §3.3b ④`）：\
+     monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
+)];
 
 /// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {
@@ -411,6 +434,13 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
         "从后端 `inbound.rs` 只数到 {} 条帧命令 —— 抽取坏了",
         registered.len()
     );
+    for (op, _, why) in ASKED_BY_MONITOR_ITSELF {
+        assert!(!why.trim().is_empty(), "`{op}` 没写理由");
+        assert!(
+            CHANNELED_ELSEWHERE.iter().any(|(c, _)| c == op),
+            "`{op}` 登记成「monitor 自己也问」，却不在 `CHANNELED_ELSEWHERE` 里"
+        );
+    }
     for (op, why) in CHANNELED_ELSEWHERE {
         assert!(!why.trim().is_empty(), "`{op}` 没写理由");
         assert!(registered.contains(*op), "`{op}` 不是后端登记的帧命令");
@@ -418,11 +448,17 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             !MOVED.iter().any(|(_, c)| c == op),
             "`{op}` 是 `C1` 那一族的，该登记在 `CHANNELED`"
         );
-        // 〔C4c〕生在帧面上的那几条在 `BORN_ON_FRAME` 里各有一次字面量（判据的一侧，不是发送点）。
+        // 〔C4c〕生在帧面上的那几条在 `BORN_ON_FRAME` 里各有一次字面量（判据的一侧，不是发送点）；
+        //   monitor 自己也问的那几条另有登记的处数（`ASKED_BY_MONITOR_ITSELF`）。
         let on_frame = BORN_ON_FRAME.iter().filter(|c| **c == *op).count();
+        let itself: usize = ASKED_BY_MONITOR_ITSELF
+            .iter()
+            .filter(|(c, _, _)| c == op)
+            .map(|(_, n, _)| *n)
+            .sum();
         assert_eq!(
             monitor_literal_count(op),
-            on_frame,
+            on_frame + itself,
             "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
         );
     }

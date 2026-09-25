@@ -67,20 +67,20 @@ fn the_exit_answer_is_read_from_the_backend_shape_and_nothing_else() {
     }
 }
 
-#[test]
-fn an_empty_origin_is_refused() {
-    let r = tauri::async_runtime::block_on(set_backend_exit_policy(Origin("  ".into()), true));
-    assert!(
-        r.is_err(),
-        "空 origin 必须拒。放过它等于悄悄造出一档「全局策略」，而那一档哪台机器都不是。"
-    );
-}
+// 〔C4c · 第四波 4B〕「空 origin 必须拒」那一条（驱动 Tauri 命令 `set_backend_exit_policy`〔散文墓碑〕里的 `origin.route`）随命令退役：
+//   设置页经通道问；空白名那一档由通道那一跳 `chan/webview.rs::chan_call` 的 `Origin::route` 当场按「用法错」拒（判据在 `webview_tests`）。
 
-/// 没有通道的那台机器：问与写都**明说**问不到，不编一个值。退出臂那一问按缺省（不结束）。
+/// 没有通道的那台机器：退出臂那一问**明说**问不到，按缺省（不结束）办，不编一个值。
+/// 〔C4c〕界面那两问（问 / 写）改走通道之后，这里只剩退出臂那一问（monitor 自己的事）。
 #[test]
 fn without_a_channel_nothing_is_made_up() {
     let o = Origin("这台机从来没连上过-b2".into());
-    let r = tauri::async_runtime::block_on(backend_exit_policy(o.clone()));
+    let r = tauri::async_runtime::block_on(exit_policy_call(
+        &o,
+        "exit-policy-read",
+        serde_json::json!({}),
+        std::time::Duration::from_secs(1),
+    ));
     assert!(r.is_err(), "没通道却答出了一个值：{r:?}");
     assert!(!kill_on_exit_now(&o), "问不到必须按缺省（不结束）办");
 }
