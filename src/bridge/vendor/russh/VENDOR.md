@@ -14,10 +14,68 @@ SSH 压缩按已写好的判准开。缺陷的现打与判准住 `调研/第四�
 - 许可 **Apache-2.0**（`Cargo.toml` 的 `license`）。`.crate` 里没带许可全文 ⇒ 本目录的 `LICENSE-APACHE` 是副本特有的一份
   （Apache-2.0 §4(a)「随分发附一份许可」），正文取自本机缓存 `serde-1.0.228/LICENSE-APACHE`（同一份 Apache-2.0 条款）。
 
-## 本拍：原样，还没接上
+## 改了什么（只此一处：`src/compression.rs::Decompress::decompress`）
 
-这一拍只把原样副本放进仓（与 `.crate` 逐字节同），**没有任何清单指向它**。修与接在下一拍，
-这样 `git log -p` 上修了哪几行一眼可见。
+上游那一段（原样）：
+
+```rust
+loop {
+    let n_in_ = z.total_in() as usize - n_in;      // ← 本轮调用之前的进度
+    let n_out_ = z.total_out() as usize - n_out;
+    let d = z.decompress(&input[n_in_..], &mut output[n_out_..], flush);
+    match d? {
+        flate2::Status::Ok | flate2::Status::BufError => {
+            let consumed_all_input = n_in_ == input.len();   // ← 判断用的还是调用之前的
+            let output_full = n_out_ == output.len();
+            if !output_full && consumed_all_input { break; }
+            ...
+```
+
+**缺陷**：收尾判断用的是本轮调用**之前**的进度。输出缓冲起步 = 包长 L：第 1 次调用吃光输入、填满 L，判断看的是 `(0, 0)` ⇒ 继续；
+第 2 次调用没空位（`BufError`），判断看的是 `(全部输入, L)` ⇒ 满 ⇒ 扩成 2L；第 3 次调用填满 2L，判断看的还是 `(全部输入, L)`
+⇒「没满、输入吃光」⇒ **收工**。一包最多交出 2L，余下的留在解压器里、拼进下一包 ⇒ 包流错位。
+可压比 > 2 的包（会话 jsonl 3–5 倍）几乎每一包都中；真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上一开压缩，
+第一条通道的确认就被吃掉、会话卡死（`调研/第四波记录/NT1.md §1.1a` 现打）。`0.61.2` 的 `compression.rs` 与 `0.61.1` 逐字相同，升级不解决。
+
+**补丁**（`git log -p -- src/bridge/vendor/russh/src/compression.rs` 看得到逐行，共 +11 行、0 行删）：
+
+1. 调用之后重取 `n_in_` / `n_out_`（遮蔽调用前那两个），收尾判断用它们；
+2. 多一格「还有空位而这一轮一字未动 ⇒ 收工」防空转（输入被截断时解压器在等不存在的下文；原码在这一形上同样会空转，
+   改用调用后的进度之后要自己挡）；
+3. 改处挂 `CZ1 PATCH` 起头的醒目注释（Apache-2.0 §4(b)：被改过的文件要写明改过）。
+
+`Cargo.toml` **不改**（`version` 仍 `0.61.1`：`[patch.crates-io]` 要求副本版本满足后端的依赖声明）。
+上游自带的「解出来的一包不许超过 `MAXIMUM_DECOMPRESSED_PACKET_LEN`」那两道检查（扩缓冲封顶 · 收尾报 `PacketSize`）一字未动。
+
+## 怎么接的
+
+- 后端 `src/backend/Cargo.toml`：依赖那一行不动（`russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }`），
+  末尾 `[patch.crates-io] russh = { path = "../bridge/vendor/russh" }`。lock 的差只有 russh 那一块丢了 `source` / `checksum`（= path 来源），
+  其余包一个版本都没动（`crypto-bigint 0.7.3` 那一形照旧：别让 cargo 重解析，见后端 `Cargo.toml` 头注）。
+- 闸 `src/backend/dial/connect.rs::RUSSH_ZLIB_SOUND` 开（`true`）：判准（`compression_for`）的答案落到连接上。
+- **不进任何 workspace**：monitor 的 `[workspace]` 不列它、也没有成员依赖它；它只作为后端（独立 crate）的 path 依赖被编。
+  它自带的 `tests/` `examples/` `benches/` 原样留着、**不在任何门里跑**（跑它们要 dev 依赖，断网解析不动）。
+- ⚠ path 依赖**不压 lint**（registry 来的依赖 cargo 会 `--cap-lints`，path 的不会）⇒ 编后端时会多看见一条上游自带的警告
+  （`src/server/encrypted.rs` 的 `unused import: super::super::*`，服务端那半、我们不编它的用法）。**不在副本里修**：修了就是改出自己的版本。
+
+## 判据（住 `tests/backend/dial_compress_tests.rs`，后端 `cargo test` 那一格跑）
+
+| 判据 | 判什么 |
+|---|---|
+| `the_gate_matches_what_russh_really_does`（Z5） | 闸 == russh 自己的 zlib 一来一回对不对（两向）；单包 ＋ 同一对压 / 解器连走三包 |
+| `the_vendored_russh_differs_from_the_crate_only_where_registered`（V1） | 盘上文件集合 == 下面三张表（两向）；每一份的 sha256 == 登记；改过的恰好 `{src/compression.rs}` |
+| `the_russh_patch_is_really_wired`（V2） | `[patch.crates-io]` 恰好这一条 · 声明 / 副本 / lock 三处版本相等 · lock 那一块没有 `source` |
+| `zr_real_sshd_…`（ZR，`#[ignore]`，`tests/evidence/NT1-net-loopback.py --compress` 触发） | 真 sshd 上强开压缩：载荷逐字节同、线上字节 < 不压那趟的一半 |
+
+改补丁 ⇒ 同拍改下面「改过的文件」那一行的补后指纹（`sha256sum src/compression.rs`），否则 V1 红。
+
+## 上游修好之后怎么撤
+
+1. 核上游新版的 `Decompress::decompress` 真修了：先把后端清单的 russh 升到那一版、**暂不删补丁**，
+   把 `[patch.crates-io]` 两行注释掉跑 Z5 —— 绿（闸开 == 解压对）才算上游修好；红就是没修，别撤。
+2. 删 `[patch.crates-io]` 那两行（连同块头注释）与本目录 `src/bridge/vendor/russh/`；lock 跟着升级落回 registry 来源。
+3. 删 V1 / V2 两条判据与后端 `[dev-dependencies]` 里只为 V1 加的 `sha2`（`readonly_guard` 签字表那一行同拍摘）。
+4. Z5 与闸原样留着（它们守的是「闸 == russh 实况」，与 russh 从哪来无关）。
 
 ## 原样文件清单（sha256，逐份取自 `.crate`）
 
@@ -111,6 +169,7 @@ a0097c9ca46d518d454328e26e4339fb813767befd17ca7bf6b2418f9748bf6b  tests/test_rek
 
 <!-- 改过的文件 起 -->
 ```text
+src/compression.rs  774b59e33ff0746e2898d896074bcf800ab167f7174750c20ddfca69ada03c2c  a6203a3b2ac629fc2f7418e844edb1fdcfbc0df17465cddea284efc027175284
 ```
 <!-- 改过的文件 止 -->
 
