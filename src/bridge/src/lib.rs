@@ -108,8 +108,8 @@ mod ccm_probe;
 mod ssh_source;
 // 〔C2 · `设计/05 §13`〕拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
 mod ssh_link;
-// 〔C2〕界面进程里最后一份 russh 拨号 —— 只剩 SFTP（`F7c`）一个用户，换走即删。
-mod inproc_dial;
+// 〔SR1b · 2026-09-24〕`inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
+//   SFTP 进了本机常驻后端（`src/backend/dial/sftp.rs`），**界面进程零 SSH**（用户 V89）。
 // 〔C2 → SR1a〕拨号的宿主：配置 → 请求 · 经本机常驻后端开链路 · 链路交给 `ssh_link`。
 mod dial_host;
 // 〔SR1a〕链路的 monitor 这一侧：在本机后端那条流上多路复用到各远端的字节流（`link-*`）。
@@ -181,8 +181,8 @@ mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只�
 mod rust_timer_registry; // F09：monitor **Rust 侧**周期唤醒清账（`polling_registry` 明确留下的那半）
 mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历（自匹配这一族的收口）
 mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
-#[cfg(test)]
-mod sftp_move_ledger; // K-R78：那 14 处 SFTP 拨号今天各自卡在哪（乙为什么没搬 + 甲现打的四条挡路石；整体 cfg(test)）
+                           // 〔SR1b · 2026-09-24〕`sftp_move_ledger`〔散文墓碑〕（K-R78：那 14 处 SFTP 拨号今天各自卡在哪 —— 乙为什么没搬 + 甲的四条挡路石）
+                           //   **退役**：那 14 处全搬了（界面进程零 SFTP，V89），底账要记的那件事做完了；它的挡路石各自怎么被拆的写在 SR1b 的记录里。
 #[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免

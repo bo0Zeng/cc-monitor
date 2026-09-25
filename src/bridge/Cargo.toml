@@ -134,31 +134,10 @@ notify = "6"
 notify-debouncer-mini = "0.4"
 walkdir = "2"
 
-# SSH-remote Phase 0 (issue #15) S3：先证明 russh 能在 windows-msvc 下编译 + LTO 链接。
-# 默认 crypto backend 是 aws-lc-rs（需 NASM/cmake，windows 上易失败）；
-# 改用 default-features=false + ring 纯 Rust/汇编后端规避（见 ssh_source.rs 顶部注释）。
-# flate2/rsa 是 russh 默认开的非 crypto-backend feature，手动保留以维持等价行为。
-russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
-# SFTP 写（issue #29 自动部署 / #28 后续）：russh-sftp 是 transport-agnostic（吃 channel
-# 的 AsyncRead+AsyncWrite 流），与 russh 版本解耦——只需 request_subsystem("sftp") 后把
-# channel.into_stream() 交给它。
-# 🔴〔步 23b · 2026-09-19〕**2 → 3**：`设计/60 §6.5.3` 现打核过 5 个候选，选定的是
-# `russh-sftp` **3.0.0**（Apache-2.0，非 GPL —— 用户 2026-09-19 的「不要 GPL」这一条现打核过）。
-# 那一节里全部的论证都是对着 3.x 做的（传输泛型 `new<S>` · `tokio` 不开 `net` feature
-# ⇒ 它结构上开不了 socket，传输只能由调用方喂）。换版本掉回去会被
-# `tests/bridge/sftp_tests.rs::the_sftp_dependency_is_really_on_russh_sftp_three` 逮住。
-# ⚠ **现打复核过一条不变的事实**：3.0.0 **仍然无** posix-rename@openssh 扩展
-# （2.3.0 与 3.0.0 两份源码里 `posix-rename` 零命中）⇒ sftp.rs 的近似原子写
-# 「写 .tmp → 旧目标 rename 成 .bak → rename → 清 .bak」**这一版照旧成立，不许当成已解决**。
-russh-sftp = "3"
-# 版本钉死规避 pre-release 解析地雷：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
-# 它们要 primefield 0.14.0-rc.9。但 cargo 默认会在 0.14.0-rc.* 区间内取最新
-# = primefield 0.14.0-rc.10（2026-06-04 刚发），rc.10 改了 ff trait 拆分
-# （primefield::ff::Field vs elliptic_curve::Field），与 rc.9 的 p256/p521 不兼容
-# → p256/p521 编译失败（E0277 FieldElement: elliptic_curve::Field not satisfied）。
-# 我们不直接用 primefield，这里仅作为 resolver 杠杆把它钉回 rc.9。
-# 详见 ssh_source.rs 顶部 crypto-backend 注释 + issue #15 S3 报告。
-primefield = "=0.14.0-rc.9"
+# 〔SR1b · 2026-09-24〕**`russh` / `russh-sftp` / `primefield` 三行出了本清单：界面进程零 SSH**（用户 V89
+# 「SFTP 进本机常驻后端」；SR1a 已把其余拨号搬进本机常驻后端）。那三行的来历（ring 后端 · 3.0.0 选型 ·
+# primefield rc.9 的解析杠杆）逐字搬进了 `../backend/Cargo.toml` 那两行的注释旁边 —— 那一侧今天是唯一的 SSH 客户端。
+# 终点判据：`dial_home_registry` 的二值旗（`russh` 不在界面 manifest 里）翻面、`the_monitor_manifest_names_no_ssh_crate` 零命中。
 
 tokio = { version = "1", features = ["full"] }
 # 远端 fan-out 并发（R9）：join_all 同时查所有已配置远端，借用不需 'static/Send。

@@ -514,6 +514,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "一条链路手里的信用（= 在途下行字节）：`link-open` 的初始窗口与累计 `link-credit`",
         "拒收+回错",
     ),
+    // 〔SR1b 09-24〕部署读版本标记 / 入口 shim 那一问的上限（经本机后端 `files` 链路的 `read`，`max` 就是它）。
+    (
+        "src/bridge/src/sftp.rs",
+        "MARKER_READ_MAX",
+        64 * 1024,
+        "部署时读回的一份小文件（`.build_id` / `.vendor_id` 标记 · `ccm` 入口 shim；它们都是几十字节）",
+        "拒收+回错",
+    ),
     // 〔SR1b 09-24〕SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (
         "src/backend/dial/sftp.rs",

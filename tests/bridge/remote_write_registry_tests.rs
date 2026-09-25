@@ -31,67 +31,26 @@ fn write_prims() -> Vec<String> {
 }
 
 /// 落地何方。**刻意是封闭集合** —— 多出第三种就得回来论证。
-/// 〔SR1b · 2026-09-24〕「本机」那一档摘了：它唯一的成员（下载落地）随传输台搬进了本机常驻后端 ——
-/// 持 SFTP 会话的文件里今天没有一处写本机（「封闭集合不许长草」那条逐字要这一刀）。
-const LANDINGS: &[&str] = &["远端"];
+/// 〔SR1b · 2026-09-24〕**两档都摘了**：「本机」那一档唯一的成员（下载落地）随传输台搬进本机常驻后端；
+/// 「远端」那一档随 monitor 零 SFTP 会话一起空了（部署经本机后端的 `files` 链路，写只许两处）。
+/// 「封闭集合不许长草」那条逐字要这一刀 —— 哪天 monitor 又拿到一个 SFTP 会话，先回来答它落在哪。
+const LANDINGS: &[&str] = &[];
 
 /// `(相对 src 的文件, 函数, 落地何方, 写什么 + 路径由谁定 + 什么围栏着)`
 ///
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面第一条红。
 #[allow(clippy::type_complexity)]
 const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
-    // ---- sftp.rs：路径全部由**代码**定（部署落点 / 已知配置文件），不是用户选的 ----
-    (
-        "sftp.rs",
-        "upload_atomic",
-        "远端",
-        "近原子替换的核心：写 `.tmp` → 备份旧文件为 `.bak` → rename 上位。\
-             **路径由调用方给**，而调用方全是「代码定路径」那一族（backend 落点 / `.mcp.json` /\
-             `sftp_write_text` 转发过来的用户选路径）。⚠ 本函数自己**不设围栏** ——\
-             用户选路径那条链的围栏在入口 `sftp_pool::sftp_write_text` 上（见下面第三条判据）。",
-    ),
-    (
-        "sftp.rs",
-        "ensure_dir_all",
-        "远端",
-        "逐级 `create_dir`（best-effort，已存在就忽略）。路径由调用方给，\
-             用在部署与 helper 安装的固定落点上。",
-    ),
-    (
-        "sftp.rs",
-        "uninstall_remote_backend",
-        "远端",
-        "删远端后端二进制。路径**由代码定**（`backend_binary()` 的落点），不接受用户输入。",
-    ),
-    // 〔RW1 · 第四波 09-24〕这里原来有 `sftp.rs` 的 `remove_remote_file`〔散文墓碑〕一行（F11：删一份远端会话 jsonl，自带一道
-    //   方向相反的结构守卫）。F11 改经远端后端删（`files-delete-session`，只收 sid）之后它零调用方、删了 ⇒ 摘行。
-    // 〔AL1 · 2026-09-24〕从前这里是 `install_remote_ccm_helper`〔散文墓碑〕一行（它自己逐级 `create_dir`）。
-    // 「备份 → 原子写 → 回读 → 回滚」收成 `fenced_block::apply` 一份之后，远端 rc / 入口的
-    // 写盘只剩 `SftpFile` 的两个原语 —— 装/卸两个命令一个裸写原语都不再有。
-    (
-        "sftp.rs",
-        "put_atomic",
-        "远端",
-        "`SftpFile` 的原子替换：逐级 `create_dir` 上级目录（相对远端 home，已存在就忽略）\
-             ＋ `upload_atomic`。**路径由代码定**：远端 rc（`.bashrc` 这类，只许 home 下的一个文件名，\
-             `remote_profile_name` 拒 `/`、`\\`、`..`）或入口的固定落点。回滚也走它（把原文写回）。",
-    ),
-    (
-        "sftp.rs",
-        "delete_created",
-        "远端",
-        "`SftpFile` 的删除：只在「这份文件原本不存在、这一次新建的、写完读回来不对」时删掉刚建的那份。\
-             **路径由代码定**（同上两种落点）。",
-    ),
-    // ---- sftp_pool.rs：文件面板，路径**由用户选** ⇒ 全部要过 Claude 数据围栏 ----
-    // 〔F7c 收尾 09-24〕这一段走了五行：老上传核心〔已删：`upload_inner`〕与四条写命令
-    //   〔已删：`sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_chmod`〕（老面板删了、窗口改走后端写面）。
-    // 〔第四波 S4〕零流量复制的核心那一行随它的命令与秤 F3 一起退役了（窗口的复制走后端 `files-copy`）。
-    // ---- 〔F7c · 第三波 09-24〕`设计/60 §13`：上传**只写暂存区**，路径**由代码定** ----
-    // 〔SR1b · 2026-09-24〕`sftp_pool.rs` 那三行（`upload_to_staging`〔散文墓碑〕 · 建暂存区那一个 · `download_inner`〔散文墓碑〕）
-    //   随传输台**整段搬进了本机常驻后端**：远端那两处写经 `dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`，
-    //   后端 `readonly_guard::remote_write_layer` 钉），本机落地那一处进了第三层 `control/transfer.rs`。
-    //   `sftp_pool.rs` 今天只剩中继，一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
+    // 🔴 〔SR1b · 2026-09-24〕**表空了：monitor 进程一个 SFTP 会话都不拿**（用户 V89「SFTP 进本机常驻后端」）。
+    //   从前这里五行都在 `sftp.rs`：原子上传的核心 · 逐级建目录 · 卸载后端 · 入口那两个 `fenced_block::Store` 原语
+    //   （`upload_atomic`〔散文墓碑〕· `SftpFile`〔散文墓碑〕那一对）。执行那一半整段进了本机后端 `dial/sftp.rs`
+    //   （写只许 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`，每处先过 `fenced_remote`，由后端
+    //   `readonly_guard::remote_write_layer` 钉）；monitor 这一侧只剩判定，经 `dial_host::RemoteFs` 一问一答。
+    //   ⇒ 本表的人群根（`capability_holders`）今天是**空集**，由 `the_remote_write_capability_is_still_confined_to_three_files`
+    //   钉成零命中（带正控）。更早那几段的来历（F10 / F11 / F89a 经远端后端 · 传输台进后端）见 git 历史。
+    // 更早摘掉的几行各留一块：F11 那条远端直删 `remove_remote_file`〔散文墓碑〕（RW1 改经远端后端删）·
+    //   入口助手自己逐级建目录的 `install_remote_ccm_helper`〔散文墓碑〕（AL1 收进 `fenced_block::apply`）·
+    //   传输台那两处 `upload_to_staging`〔散文墓碑〕· `download_inner`〔散文墓碑〕（SR1b 进本机后端 `control/transfer.rs`）。
 ];
 
 /// 从三个「持有 SFTP 会话」的文件里抠出 `(文件, 函数)` —— 函数体内调了写原语。
@@ -110,7 +69,7 @@ fn write_sites() -> Vec<(String, String)> {
             //
             // ⚠ **不许用前缀白名单**〔本条首跑就红在这里〕：第一版列了
             // `["pub async fn ", "pub fn ", "async fn ", "fn "]`，**漏掉 `pub(crate) async fn`** ——
-            // 于是 `sftp.rs::ensure_dir_all`（正是这个可见性）没起新作用域，
+            // 于是 `sftp.rs` 里那个逐级建目录的助手（正是这个可见性；〔SR1b〕它随执行那一半搬去了本机后端）没起新作用域，
             // 它那处 `create_dir` 被记到**上一个函数** `read_profile_text` 头上，
             // 而那个函数一个写原语都没有。诊断当场点名了 `read_profile_text`。
             // ⇒ 改成**按结构判**：在 `fn ` 之前的东西必须全是可见性/修饰符 token。
@@ -196,12 +155,12 @@ fn capability_holders() -> Vec<String> {
 #[test]
 fn every_write_primitive_in_a_capability_holder_is_classified() {
     let sites = write_sites();
+    // 〔SR1b · 2026-09-24〕地板（「只抠到 N 处写点 —— 抽取器坏了」）翻成**零命中**：人群根（持 SFTP 会话的文件）
+    //   今天是空集 ⇒ 写点也是零。「抽取器没瞎」那一半由下面那条人群根判据的正控钉（同一把针喂合成语料必亮）。
+    //   〔从前的读数史：08-10 实测 10；步 23b +1 = 11；`sftp_chmod` +1 = 12；RW1 / SR1b 搬走之后 6 → 0。〕
     assert!(
-        sites.len() >= 5,
-        "只抠到 {} 处写点（08-10 实测 10；〔步 23b 09-20〕+1 = 11；\
-             〔`设计/60 §5.4c` 09-20〕`sftp_chmod` +1 = **12**；〔RW1 / SR1b 09-24〕远端三族与传输台搬走之后现打 **6**，地板 8 → 5）\
-             —— 抽取器坏了，本条此刻是空转的",
-        sites.len()
+        sites.is_empty(),
+        "monitor 里又有持 SFTP 会话的文件在调写原语了：{sites:?} —— 远端写只许住本机后端 `dial/sftp.rs`"
     );
     let missing: Vec<String> = sites
         .iter()
@@ -546,30 +505,14 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
     let root = repo_root();
     // `(入口所在文件, 入口名, 它该转发到的已登记写点)`
     const ROUTES: &[(&str, &str, &str)] = &[
-        // 〔F7c 收尾 09-24〕池子那两条 IPC 写入口〔已删：`sftp_write_text` · `sftp_upload`〕删了；
-        //   上传今天的入口是传输台的开单口（窗口经通道说 `transfer-upload`），它转发到只写暂存区的那一个写点。
-        // 〔SR1b〕`transfer_call → upload_to_staging` 那条边随两头搬进本机后端摘了（中继零 SFTP 会话）。
-        ("sftp.rs", "deploy_remote_backend", "upload_atomic"),
-        // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写那一行走了：F89a 按用户裁「按推荐改」改经远端后端写，
-        //   那个分支函数（`write_remote_mcp_server`）今天一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
-        // 〔RW1 · 第四波 09-24〕`remote_history.rs::delete_remote_history_session` 那一行走了：它今天经远端后端删
-        //   （`files-delete-session`），一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
-        // ★〔G 审计补的两条〕它们都持会话 / 往用户给的路径写远端，却因为
-        // 「自己不调裸写原语」而进不了按能力边界派生的人群 ——
-        // **正是本条（接线层）存在的理由**：两个层，一条边。
-        (
-            "acct_iso_deploy.rs",
-            "deploy_remote_acct_iso",
-            "ensure_dir_all",
-        ),
-        // 〔RW1 · 第四波 09-24〕装 / 卸远端 rc 两条命令（F10）从这里走了：它们今天经那台远端的**后端**写
-        //   （`user_files::BackendDoor` → `files-peek` / `files-put`），一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
-        //   `SftpFile` 只剩 F08 部署那一个用户（`put_ccm_entry`，入口 `deploy_remote_backend` 那一行上面已经在）。
-        // 〔第四波 S4〕零流量复制那条边（命令 → 复制核心）随两头一起退役了。
+        // 〔SR1b · 2026-09-24〕**空了**：`deploy_remote_backend → upload_atomic` · `deploy_remote_acct_iso → ensure_dir_all`
+        //   两条边的后半跳（monitor 里的 SFTP 写点）整段进了本机后端；按钮今天经 `dial_host::RemoteFs` 交给后端执行，
+        //   「按钮 ↔ 真实写点」那条边跨进了后端那棵树（它的写点由后端 `readonly_guard::remote_write_layer` 钉）。
+        // 〔RW1 · 第四波 09-24〕更早走掉的几条（F89a · F11 · F10 经远端后端写）见 git 历史。
     ];
     // 〔AL1〕**落点类型**：一个 `fenced_block::Store` 的远端实现，它的写原语方法全在 `REMOTE_WRITES` 里。
-    // 入口「造了它」＝ 入口把写交给了它（序列 `fenced_block::apply` 不认识任何落点）。
-    const STORES: &[(&str, &[&str])] = &[("SftpFile", &["put_atomic", "delete_created"])];
+    // 〔SR1b〕今天空：那个落点类型（`RemoteFile`，从前叫 `SftpFile`）的写经本机后端，不在本表人群里。
+    const STORES: &[(&str, &[&str])] = &[];
     for (ty, methods) in STORES {
         for m in *methods {
             assert!(
@@ -623,22 +566,43 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
 /// [`capability_holders`] 的头注。
 #[test]
 fn the_remote_write_capability_is_still_confined_to_three_files() {
+    // 〔SR1b · 2026-09-24〕**三 → 零**：monitor 进程一个 SFTP 会话都不拿（用户 V89）。名字里那个 three 是立表那天的数，
+    //   刻意没改（别处按名字引用它）；活的数住在下面那条断言里。
     let holders = capability_holders();
     assert_eq!(
         holders,
-        // 〔SR1b〕4 → 3：`sftp_pool.rs` 走了（传输台进本机常驻后端，它只剩中继）。
-        vec![
-            "acct_iso_deploy.rs".to_string(),
-            "mcp.rs".to_string(),
-            "sftp.rs".to_string(),
-        ],
-        "持有 SFTP 会话的文件变了（实得 {holders:?}）。\n\n\
-                     ★ **那是本表人群的根** —— 多一个文件就意味着「往别人机器上写」这个能力\n\
-                     扩散到了一个本表没在看的地方。请：\n\
-                     ① 把新文件加进这里，并让它的写点进 `REMOTE_WRITES`；\n\
-                     ② 如果它只**读**（`mcp.rs` 就是这样，它持会话但零写原语），\n\
-                        在登记里写明这一点 —— 「持有能力但不用它写」本身是个值得记的事实。\n\
-                     ⚠ 少一个也红：那说明某处远端写退役了，登记要跟着删（别留僵尸账）。"
+        Vec::<String>::new(),
+        "monitor 里又有文件拿到了 SFTP 会话：{holders:?}\n\n\
+         ★ 用户 V89：SFTP 住本机常驻后端、界面进程零 SSH。远端写只许住后端 `dial/sftp.rs`（只许两处）；\
+         monitor 要远端文件就走 `dial_host::RemoteFs`（部署）或 `transfer-*`（传输）。"
+    );
+    // 正控：同一把针（会话类型名 · crate 路径 · 两个取会话的出处）喂合成语料，每一根都亮 —— 零命中不是瞎了。
+    let ty = format!("Sftp{}", "Session");
+    let opens = format!("connect_{}(", "sftp");
+    let borrows = format!("with_{}(", "sftp");
+    let crate_path = format!("russh{}sftp", "_");
+    for (needle, sample) in [
+        (&ty, format!("fn f(s: &{ty}) {{}}")),
+        (
+            &opens,
+            format!("async fn g(c: &C) {{ let x = {opens}c).await; }}"),
+        ),
+        (
+            &borrows,
+            format!("async fn h() {{ {borrows}|s| async {{}}).await; }}"),
+        ),
+        (&crate_path, format!("use {crate_path}::client;")),
+    ] {
+        assert!(
+            sample.contains(needle.as_str()),
+            "正控语料里没有 `{needle}` —— 正控本身坏了"
+        );
+    }
+    // 扫描面没塌（零命中 ≠ 没扫）：`src/bridge/src` 生产段的份数有地板。
+    let n = guard_core::scan_tree!(&repo_root().join("src/bridge/src"), &["rs"]).len();
+    assert!(
+        n >= 100,
+        "只扫到 {n} 份 monitor 源文件 —— 扫描面塌了，零命中在空转"
     );
 }
 
@@ -1136,6 +1100,7 @@ fn a_fenced_write_refuses_before_it_touches_the_wire() {
 
 /// 一处远端写写的是什么。**闭集，刻意没有「用户文件」这一档。**
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // 〔SR1b〕今天零成员（上面那张表空了）；闭集的形状留着，不是豁免。
 enum RemoteLands {
     /// F08：我们的部署物（后端二进制 · 标记 · 入口 shim · 我们的脚本目录）—— 用户裁「留在 SFTP」。
     OwnDeployment,
@@ -1150,28 +1115,16 @@ enum RemoteLands {
 }
 
 const REMOTE_CLASS: &[(&str, &str, RemoteLands)] = &[
-    ("sftp.rs", "upload_atomic", RemoteLands::OwnDeployment),
-    ("sftp.rs", "ensure_dir_all", RemoteLands::OwnDeployment),
-    (
-        "sftp.rs",
-        "uninstall_remote_backend",
-        RemoteLands::OwnDeployment,
-    ),
-    // `SftpFile` 今天只剩 F08 那一个用户（`put_ccm_entry`：`~/.local/bin/ccm` 那三行入口）。
-    ("sftp.rs", "put_atomic", RemoteLands::OwnDeployment),
-    ("sftp.rs", "delete_created", RemoteLands::OwnDeployment),
-    // 〔合并 S4〕`sftp_pool.rs` 那一行复制核心（`sftp_copy` 的 SFTP 零流量复制）的待收已兑现：S4 删了那套裸通道件。
-    // 〔SR1b · 2026-09-24〕`sftp_pool.rs` 三行（暂存区两处 `OwnStaging` · 下载落地那一格 `Pending`，指名 SR1b）**兑现**：
-    //   传输台整段搬进了本机常驻后端（暂存区的写只许经 `dial/sftp.rs`；本机落地进了第三层 `control/transfer.rs`）。
+    // 〔SR1b · 2026-09-24〕空：上面那张表空了（monitor 零 SFTP 会话），分类跟着空。F08 那五行（部署物）
+    //   随执行搬进本机后端；「部署物」那一档的落点今天由后端的写根（`~/.cc-monitor/bin/`）答。
 ];
 
 #[test]
 fn every_remaining_sftp_write_lands_outside_the_users_files() {
     let registered: Vec<(&str, &str)> = REMOTE_WRITES.iter().map(|(f, n, _, _)| (*f, *n)).collect();
-    assert!(
-        !registered.is_empty(),
-        "远端写表空了 —— 下面那条相等在空集上成立"
-    );
+    // 〔SR1b〕表空了（monitor 零 SFTP 会话）⇒ 下面那条相等今天在两侧空集上成立 —— **这一次空集就是事实**，
+    //   不是空转：人群根的零命中由 `the_remote_write_capability_is_still_confined_to_three_files` 带正控钉着。
+    assert!(registered.is_empty(), "远端写表又长出来了：{registered:?}");
     let unclassified: Vec<String> = registered
         .iter()
         .filter(|(f, n)| !REMOTE_CLASS.iter().any(|(cf, cn, _)| cf == f && cn == n))
