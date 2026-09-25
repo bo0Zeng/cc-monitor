@@ -56,38 +56,6 @@ src/backend/control/cc_bus.rs:277	活?	保留	[不对外] 解析 cc-agents 输�
 src/backend/control/cc_bus.rs:278	已退	保留	[不对外] 解析 cc-agents 输出状态列的匹配串（映射成 true/false/null 进 JSON），不是展示文本
 src/backend/control/cc_bus.rs:622	已杀会话	保留	[不对外] 在 cc-kill 的 stdout/stderr 里找它自己说的话，匹配串，只决定 killed/stale_only 两个布尔
 src/backend/control/cc_bus.rs:623	已摘掉	保留	[不对外] 在 cc-kill 的 stdout/stderr 里找它自己说的话，匹配串，只决定 killed/stale_only 两个布尔
-src/backend/control/ccm/argv.rs:156	{name} 需要一个值	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；短、先说结果
-src/backend/control/ccm/argv.rs:157	{name} 需要一个值	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；同上
-src/backend/control/ccm/argv.rs:159	{name} 需要一个值，但拿到的是 '{v}'（像是漏了参数）	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号是一句可操作的提示
-src/backend/control/ccm/argv.rs:214	resume 需要 <sid>	内部词→<会话ID>	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；`<sid>` 是 R1 词 sid
-src/backend/control/ccm/argv.rs:222	attach 需要 <会话名>	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；tmux 会话名是用户自己也这么叫的（R1b）
-src/backend/control/ccm/argv.rs:290	未知选项: {other}（用 --help 看用法）	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号给出下一步，可操作
-src/backend/control/ccm/argv.rs:294	多余的位置参数: {other}（动作只能是 new/resume/attach 且必须在最前）	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号里的约束可操作
-src/backend/control/ccm/argv.rs:310	未知 agent: {}（支持 {}）	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号列出可选值
-src/backend/control/ccm/argv.rs:316	--account 与 --base 互斥	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；短
-src/backend/control/ccm/argv.rs:319	--detach 需要配合 --tmux（非容器路径没有会话可 detach）	改·§2.2	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号里「非容器路径没有会话可 detach」是内部路由论证 新词:容器路径 →「--detach 只能和 --tmux 一起用」
-src/backend/control/ccm/argv.rs:322	--tmux-size 需要配合 --tmux	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；短
-src/backend/control/ccm/argv.rs:326	--tmux=<名> 与 --tmux-base=<基名> 互斥（前者不避让、后者避让，同时给等于没说清要哪个）	改·§2.4	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号里装的是不可操作的理由且用行话「避让」，R2 细节要么可操作要么不说 新词:避让 →「--tmux=<名> 与 --tmux-base=<基名> 只能给一个」
-src/backend/control/ccm/argv.rs:331	--bus-register 需要配合 --detach（不 detach 那条随后 exec 进 attach，登记做不成）	改·§2.1	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号讲实现「随后 exec 进 attach」 兼§2.4 →「--bus-register 需要配合 --detach」
-src/backend/control/ccm/argv.rs:335	--bus-note 需要配合 --bus-register（不登记的话这行备注没有去处）	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号的理由是用户层面的（备注无处可去），一句话
-src/backend/control/ccm/argv.rs:340	非法 --tmux-size: '{}'（要 <宽>x<高>，如 220x50，且均为正整数）	保留	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；括号给格式与例子，可操作
-src/backend/control/ccm/argv.rs:345	agent={} 不支持 resume（无 resume flag）	改·§2.1	[对外] ccm 命令行的用法错误，用户在终端里敲 ccm 时直接看到；`agent=` 是日志行 key=value 格式，括号「无 resume flag」重复 兼§2.4 →「{} 不支持 resume」
-src/backend/control/ccm/mod.rs:119	ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\\n	改·§2.2	[对外] ccm 撞名时的报错（execute 出口与 --print 吐出的 printf 都会打到终端）；「C14：spawn 就是起」是内部条款号与设计论证，破折号后「拒绝静默接回别人的会话」也是论证 兼§2.4 新词:C14 →「ccm: tmux 会话名 %s 已被占用」
-src/backend/control/ccm/mod.rs:127	ccm: 会话 %s 里的命令起不来，原因见上一行。没有接进去，也没有登记；会话还在，可以进去看。\\n	保留	[对外] CC1：ccm 容器路自检没过时打到终端（cc-spawn 原样转给调用方）；先说结果，原因交给上一行被叫那一趟自己的原话，再说没做什么、现场在哪；无破折号/括号/内部词
-src/backend/control/ccm/mod.rs:143	\n用法：ccm [new|resume <sid>|attach <会话名>] [选项…] [-- 透传给 agent 的参数…]	改·§2.1	[对外] ccm --help 正文；「后端本身的一次性模式…常驻模式是同一个二进制接流」讲架构，「tmux 容器」「容器路」「@ccm_sid_expect」「issue #75 的逃生口」「平价预言机」都是内部名/自造比喻 兼§2.5 兼§2.2 新词:容器路 新词:平价预言机 新词:意图标 新词:一次性模式
-src/backend/control/ccm/mod.rs:465	CCM_ENV 非空，而它是一段任意 shell，只有 shell 解释得了	改·§2.2	[对外] WHY_SHELL_* 作为 {why} 拼进 exec_shell 的报错（sh 不在时打到终端）；讲的是「我们为什么非得经 shell」的内部推理，含 `set -f; exec $cmd` / display-message / 容器路 等实现 兼§2.1 新词:容器路 新词:身份配方
-src/backend/control/ccm/mod.rs:468	后端答出的是一整条命令串，要靠 shell 拆成词才跑得了（`set -f; exec $cmd`）	改·§2.2	[对外] WHY_SHELL_* 作为 {why} 拼进 exec_shell 的报错（sh 不在时打到终端）；讲的是「我们为什么非得经 shell」的内部推理，含 `set -f; exec $cmd` / display-message / 容器路 等实现 兼§2.1 新词:容器路 新词:身份配方
-src/backend/control/ccm/mod.rs:601	ccm: 没带 --tmux 时 --ccm-sid 不打标；这个会话要靠环境变量 CCM_RBIND_TOKEN 认，而现在没有它 —— 会话照常起，但 monitor 切不到它的终端窗口	保留	[对外] 〔S5 · 99 §4.4 --ccm-sid 直路〕直路上给了 --ccm-sid 而环境里没有令牌时打到终端（stderr，不报错）；读者是手敲 ccm 的人，点名变量名是他能去补的那一样；先说没做什么、再说靠什么认、最后说后果，一个破折号
-src/backend/control/ccm/mod.rs:471	codex 的 cc-bus 身份配方要现问一次 tmux（`display-message -p '#S'`），而这一趟真在 tmux 里	改·§2.2	[对外] WHY_SHELL_* 作为 {why} 拼进 exec_shell 的报错（sh 不在时打到终端）；讲的是「我们为什么非得经 shell」的内部推理，含 `set -f; exec $cmd` / display-message / 容器路 等实现 兼§2.1 新词:容器路 新词:身份配方
-src/backend/control/ccm/mod.rs:473	attach 的实现就是一条渲好的 `tmux attach` 命令串	改·§2.2	[对外] WHY_SHELL_* 作为 {why} 拼进 exec_shell 的报错（sh 不在时打到终端）；讲的是「我们为什么非得经 shell」的内部推理，含 `set -f; exec $cmd` / display-message / 容器路 等实现 兼§2.1 新词:容器路 新词:身份配方
-src/backend/control/ccm/mod.rs:476	容器路的收尾是一段自带节拍的 shell 串（兜底轮询 / attach / cc-bus 登记）	改·§2.2	[对外] WHY_SHELL_* 作为 {why} 拼进 exec_shell 的报错（sh 不在时打到终端）；讲的是「我们为什么非得经 shell」的内部推理，含 `set -f; exec $cmd` / display-message / 容器路 等实现 兼§2.1 新词:容器路 新词:身份配方
-src/backend/control/ccm/mod.rs:523	{NO_SHELL}: 这一趟非得经 POSIX shell（sh -c）—— {why}	改·§2.1	[对外] sh 不在时 ccm 打到终端的整句「ccm: 起不来 —— no_shell: 这一趟非得经 POSIX shell（sh -c）—— {why}：{e}」；机器码 no_shell 外泄，两个破折号＋括号 兼§2.2 兼§2.4 →「ccm: 找不到 sh，这次启动要用它：{e}」
-src/backend/control/ccm/mod.rs:557	无法进入目录: {}	保留	[对外] ccm 终端报错；短、先说结果
-src/backend/control/ccm/mod.rs:560	没有可执行的启动器	保留	[对外] ccm 终端报错；「启动器」对应 --launcher 选项，用户认得
-src/backend/control/ccm/mod.rs:564	起 '{prog}'	保留	[对外] 碎片，拼成「ccm: 起不来 —— 起 '{prog}'：{e}」；这一截本身无病
-src/backend/control/ccm/plan.rs:265	(那份 manifest 解析不动：它在盘上、有内容，但不是合法 JSON{})	内部词→账号清单（manifest）	[对外] 账号不可用时列可用账号那一格（ccm 终端报错）；manifest 是实现名，其余可读 新词:manifest
-src/backend/control/ccm/plan.rs:266	；⚠ 若是在 Windows 上用 PowerShell 存的，先看看有没有 UTF-8 BOM	改·§2.3	[对外] 同上一句的尾巴；账号清单由部署写进远端，BOM 若有是我们写坏的，却让用户去查 BOM（R4：没在现场验证过可行）
-src/backend/control/ccm/plan.rs:270	(无账号库)	保留	[对外] 同上，短
 src/backend/control/identity_tag.rs:299	tmux set-option 退出码 {st}	保留	[不对外] Outcome::Failed 的载荷；Outcome 头注逐字「调用方今天丢弃它，但日志与测试要看得见」
 src/backend/control/identity_tag.rs:300	起不来 tmux：{e}	保留	[不对外] Outcome::Failed 的载荷；Outcome 头注逐字「调用方今天丢弃它，但日志与测试要看得见」
 src/backend/dial/connect.rs:90	超时	保留	[不对外] 〔C2〕dial::connect::classify_stage 的匹配关键词（搬自 ssh_source.rs 同一函数），不上界面

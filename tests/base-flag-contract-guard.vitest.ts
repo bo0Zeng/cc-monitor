@@ -38,6 +38,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { loadTable } from "./copy/copy-support.ts";
 import { resolve } from "node:path";
 import { ACCOUNT_DIMENSION } from "../src/launch-dimensions";
 import type { LaunchContext } from "../src/launch-plan";
@@ -85,7 +86,9 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
   });
 
   it("`--account` 与 `--base` 互斥仍在 ccm 里（否则可能同时 export + unset，顺序决定结果）", () => {
-    expect(ccmArgv).toContain("--account 与 --base 互斥");
+    // 〔CP2c〕那句话进了文案表（`src/shared/copy/table.json`）：判的是「argv.rs 在那一格取这句」＋「这句说的是互斥」。
+    expect(ccmArgv).toContain('"beArgv.validate.accountAndBase"');
+    expect(loadTable()["beArgv.validate.accountAndBase"]?.zh).toContain("--account 与 --base 互斥");
   });
 
   /**
