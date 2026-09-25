@@ -124,6 +124,7 @@ async function bootstrapViewer(sid: string): Promise<void> {
   });
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
+  dispatcher.bind("session.find", () => tabs.openFind()); // 〔SE2〕独立窗口里的那一个 tab 也能 Ctrl+F
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
 

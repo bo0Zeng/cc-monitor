@@ -21,13 +21,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 
+/**
+ * 〔SE2〕骨架索引的替身：`null` = 回 `undefined`（== SE1 那几格的形状：索引要不到）；
+ * 否则回一份索引，`rows[k]` 就是 seq k（大纲那几个键由用例逐行写明 —— 异源：不拿前端算的去对前端）。
+ */
+const indexStub = vi.hoisted(() => ({ rows: null as null | Array<Record<string, unknown>> }));
+
 // --- 只 mock「会真的去碰机器」的那几样；渲染管线保持真身 ---
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../test-support/session-viewer-rig");
   return {
-    invoke: vi.fn(async (cmd: string, args: { fromOffset: number }) =>
-      cmd === "list_user_inputs" ? rig.answerListUserInputs(args) : undefined,
-    ),
+    invoke: vi.fn(async (cmd: string, args: { fromOffset: number }) => {
+      if (cmd === "list_user_inputs") return rig.answerListUserInputs(args);
+      if (cmd === "read_session_index" && indexStub.rows && args.fromOffset === 0) {
+        const rows = indexStub.rows;
+        return { available: true, from: 0, end: rows.length, rows };
+      }
+      return undefined;
+    }),
   };
 });
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValue(undefined) }));
@@ -105,7 +116,10 @@ beforeEach(() => {
   tm = new TabManager(barEl, streamRootEl);
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  indexStub.rows = null;
+});
 
 describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => {
   /**
@@ -301,6 +315,73 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
   });
 });
 
+describe("SE2 首屏：索引顺带出大纲 ⇒ 同一份文件只读一遍", () => {
+  /** 造一份 `[0, n)` 的索引：每行一个 uuid `u<k>`；`inputs` 里的那几行带大纲的键（`x` 摘要 / `ts`）。 */
+  function indexWith(n: number, inputs: Record<number, string>): Array<Record<string, unknown>> {
+    return Array.from({ length: n }, (_, k) => ({
+      o: k,
+      n: 1,
+      t: "user",
+      u: `u${k}`,
+      ...(inputs[k] !== undefined ? { x: inputs[k], ts: `t${k}` } : {}),
+    }));
+  }
+  const indexCalls = (): unknown[] =>
+    vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_index").map((c) => c[1]);
+
+  function replay(): void {
+    tm.onBatchStart();
+    feed(userLine(100, "u100", "最新那一句"));
+    feed(userLine(1, "u1", "很久以前那一句"));
+    tm.onBatchEnd();
+  }
+
+  it("🔴 索引里带了大纲 ⇒ `list_user_inputs` 一次都不发（从 0 那趟省掉），面板 == 索引给的", async () => {
+    indexStub.rows = indexWith(101, { 1: "很久以前那一句", 100: "最新那一句" });
+    // 反证台子：清单那条若被问到，会回一份**不同的**清单 —— 面板若长成它，就是没用上索引
+    outlineBackend.entries = [outlineEntry("list-only", "只有清单那条才会给")];
+    replay();
+    await settleOutline();
+    expect(indexCalls(), "索引真的发了（从 0）").toEqual([
+      { origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 },
+    ]);
+    expect(outlineCalls()).toEqual([]);
+    expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100"]);
+    expect(rowsOf().map((r) => r.textContent)).toEqual(["1. 很久以前那一句", "2. 最新那一句"]);
+    expect(toggleOf().textContent).toBe("大纲 · 2");
+  });
+
+  it("种上之后，真用户输入上屏 ⇒ 从索引的 end 接着要增量（不是从 0）", async () => {
+    indexStub.rows = indexWith(101, { 1: "a", 100: "b" });
+    replay();
+    await settleOutline();
+    expect(outlineCalls()).toEqual([]);
+    outlineBackend.entries = Array.from({ length: 102 }, (_, k) => outlineEntry(`z${k}`));
+    feed(userLine(101, "u101", "刚说的"));
+    await settleOutline();
+    expect(outlineCalls()).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 101 }]);
+    expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100", "z101"]);
+  });
+
+  it("🔴 索引里一个 `x` 都没有（老后端 / 真的零条，分不清）⇒ 照旧自己从 0 要**恰好一次**", async () => {
+    indexStub.rows = indexWith(101, {});
+    outlineBackend.entries = [outlineEntry("u1"), outlineEntry("u100")];
+    replay();
+    await settleOutline();
+    expect(indexCalls().length).toBe(1);
+    expect(outlineCalls()).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 }]);
+    expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100"]);
+  });
+
+  it("索引要不到（回包不对 / 失败）⇒ 同上，从 0 要恰好一次", async () => {
+    outlineBackend.entries = [outlineEntry("u1")];
+    replay();
+    await settleOutline();
+    expect(indexCalls().length, "索引那一趟照发").toBe(1);
+    expect(outlineCalls()).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 }]);
+  });
+});
+
 describe("KR45D2 跳：后端给的清单，点到哪一条", () => {
   async function tailFirst(): Promise<void> {
     outlineBackend.entries = [outlineEntry("u1", "很久以前那一句"), outlineEntry("u100", "最新那一句")];
@@ -386,7 +467,7 @@ describe("KR45D2 清单跟着 tab 走", () => {
     expect(outlineCalls().map((a) => (a as { jsonlPath: string }).jsonlPath)).toContain("/p/s1.jsonl");
   });
 
-  it("关掉 tab ⇒ 清单清空、悬浮层摘掉；在途那趟回来也不许回写", async () => {
+  it("关掉 tab ⇒ 清单清空、查找面板摘掉；在途那趟回来也不许回写", async () => {
     outlineBackend.entries = [outlineEntry("u1")];
     feed(userLine(1, "u1", "第一句"));
     const overlay = overlayOf("s1");
@@ -394,7 +475,7 @@ describe("KR45D2 清单跟着 tab 走", () => {
     tm.archiveTab("s1"); // 只有 archived 的 tab 关得掉
     tm.closeTab("s1"); // 此刻 list_user_inputs 还在途
     await settleOutline();
-    expect(streamRootEl.querySelectorAll(".live-user-inputs").length).toBe(0);
+    expect(streamRootEl.querySelectorAll(".session-find").length).toBe(0);
     expect(overlay.querySelectorAll(".user-input-row").length, "关掉之后迟到的清单回写了").toBe(0);
   });
 });
@@ -402,11 +483,11 @@ describe("KR45D2 清单跟着 tab 走", () => {
 /**
  * 与上面那几格**是一对，各买各的**：上面量的是「JS 这边把 `.active` 翻对了没有」，
  * 这一格量的是「CSS 那边真有宿主」—— jsdom **不加载** `styles.css`，
- * 把 `.live-user-inputs` 那几条规则整段删掉，上面**一格都不会红**，
+ * 把 `.session-find` 那几条规则整段删掉，上面**一格都不会红**，
  * 而真实后果是每个 tab 的清单**一起挂在屏幕上**（`.active` 翻得再对也没用）。
  * 同形先例：`session-viewer-user-inputs.vitest.ts` 里三条共用规则那一格。
  */
-describe("KR45D2 实时那块悬浮层在 styles.css 里真有宿主", () => {
+describe("KR45D2 · SE2 实时那块查找面板（大纲在里面）在 styles.css 里真有宿主", () => {
   it("两条规则都在，而且靠 visibility 收起（不是 display —— 切 tab 要 0 reflow）", () => {
     const cssLines = readFileSync(`${REPO_ROOT}/src/styles.css`, "utf8")
       .split("\n")
@@ -415,14 +496,14 @@ describe("KR45D2 实时那块悬浮层在 styles.css 里真有宿主", () => {
     expect(cssLines.length, "读到的 styles.css 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
     expect(cssLines, "读到的不是 styles.css —— 连基准那条规则都没有").toContain(".stream {");
 
-    expect(cssLines, "悬浮层没有 CSS 宿主 ⇒ 每个 tab 的清单一起挂在屏幕上").toContain(
-      ".live-user-inputs {",
+    expect(cssLines, "面板没有 CSS 宿主 ⇒ 每个 tab 的面板一起挂在屏幕上").toContain(".session-find {");
+    expect(cssLines, "没有 .active 那条 ⇒ 切过去的那个 tab 的面板也显示不出来").toContain(
+      ".session-find.active {",
     );
-    expect(cssLines, "没有 .active 那条 ⇒ 切过去的那个 tab 的清单也显示不出来").toContain(
-      ".live-user-inputs.active {",
-    );
+    // 〔SE2〕旧的独立悬浮层整块删了（`设计/10 §2.2b ④`）：规则零命中（正控 = 上面那条 `.session-find {` 命中）
+    expect(cssLines.filter((l) => l.startsWith(".live-user-inputs"))).toEqual([]);
 
-    const open = cssLines.indexOf(".live-user-inputs {");
+    const open = cssLines.indexOf(".session-find {");
     const body = cssLines.slice(open + 1, cssLines.indexOf("}", open));
     expect(body, "默认不 hidden ⇒ 非 active 的 tab 的清单照样挂在屏幕上").toContain(
       "visibility: hidden;",
@@ -430,7 +511,7 @@ describe("KR45D2 实时那块悬浮层在 styles.css 里真有宿主", () => {
     // 🔴 与 `.stream` 同一条纪律：切 active 不许走 display（整棵子树重建 layout tree）。
     expect(
       body.filter((l) => /^display\s*:/.test(l)),
-      "`.live-user-inputs` 里出现了 display ⇒ 切 tab 从 0 reflow 退回整棵子树重建",
+      "`.session-find` 里出现了 display ⇒ 切 tab 从 0 reflow 退回整棵子树重建",
     ).toEqual([]);
   });
 });

@@ -122,6 +122,7 @@ import type { BranchResult } from "../generated/BranchResult";
 import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import type { UserInputsResult } from "../generated/UserInputsResult";
+import type { FindResult } from "../generated/FindResult";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -864,6 +865,14 @@ export const commands = {
    */
   list_user_inputs: (args: { origin: Origin; jsonlPath: string; fromOffset: number }) =>
     invoke<UserInputsResult>("list_user_inputs", args),
+
+  /**
+   * 〔SE2 · `设计/10 §6 步 6`〕**会话内查找**（Ctrl+F）：在这一份会话里找 `query`，命中按文件序。
+   * 跑的是后端 `--find-in-session`（`IPC-PROTOCOL.md §10.5`；口径与全局搜索同一份）。
+   * `available: false` **不是错误**：老后端 / 本机后端不在 / 输出被截断 ⇒ 面板那一行状态说清原因。
+   */
+  find_in_session: (args: { origin: Origin; jsonlPath: string; query: string; includeTools: boolean }) =>
+    invoke<FindResult>("find_in_session", args),
 
   /**
    * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。

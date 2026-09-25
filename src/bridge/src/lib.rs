@@ -187,6 +187,8 @@ mod subagent;
 mod session_skeleton;
 // 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源：问后端要「你说过的话」清单。
 mod session_outline;
+// 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）：问后端要这一份会话里的命中。
+mod session_find;
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
 mod tasks;
@@ -1385,6 +1387,7 @@ pub fn run() {
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
             session_skeleton::replay_keep_tail_only,
             session_outline::list_user_inputs,
+            session_find::find_in_session,
             remote_history::list_remote_history_projects,
             // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
             // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
