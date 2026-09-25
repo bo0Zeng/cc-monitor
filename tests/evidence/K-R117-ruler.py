@@ -179,6 +179,9 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("app.window.session", (NA, "—", "窗口动作")),
     ("app.window.settings", (NA, "—", "窗口动作")),
     ("audit.config-surface", (NA, "—", "配置面审计页的**读**侧（它报告安装面，不改它）")),
+    # 〔AS2 · 第四波 4B · V113〕资产目录同步：只记各台有哪些 skill / MCP、在后端之间自动对上（写的是后端自己的目录文件）；
+    #   **不往任何机器装东西**（「装到这台」要用户点，走 ③ 那几条的路）⇒ 不是装口。
+    ("assets.catalog", (NA, "—", "资产目录（V113「目录自动同步，装要你点」）：只同步「有哪些、定义是什么」，不装")),
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
     ("cc-bus.cockpit", (NA, "—", "cc-bus 驾驶舱的读 / 发消息，不是装 cc-bus")),
     ("creds.apikey", (NA, "—", "账号的第三方 API key —— 账号层自己的状态文件（本机 monitor 写，远端那台的后端写，〔RM1a〕），不是往用户环境里装东西")),

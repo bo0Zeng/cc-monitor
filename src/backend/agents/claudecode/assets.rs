@@ -25,8 +25,8 @@ pub(crate) const PROJECT_MCP_FILE: &str = ".mcp.json";
 const SERVERS_KEY: &str = "mcpServers";
 /// 一份项目 `.mcp.json` 的读取上限（手写的配置，远不到这个量级；超了说出来，不截断）。
 const MAX_PROJECT_MCP_BYTES: u64 = 4 * 1024 * 1024;
-/// `SKILL.md` 只读头部这么多字节找 `description:`（头部 front matter 在最前面）。
-const SKILL_DOC_HEAD_BYTES: u64 = 64 * 1024;
+/// `SKILL.md` 的读取上限（找头部 `description:` 用；手写的说明远不到这个量级）。超了 ⇒ 不取说明、说出来。
+const SKILL_DOC_MAX_BYTES: u64 = 1024 * 1024;
 
 /// 这台机器上 skill 的根：`<配置根>/skills`。
 pub(crate) fn skills_root() -> Option<PathBuf> {
@@ -88,21 +88,35 @@ pub(crate) fn scan_skills_at(root: &Path, out: &mut Sightings) {
         if name.starts_with('.') {
             continue;
         }
-        let description = skill_description(&path.join(SKILL_DOC));
+        let doc = path.join(SKILL_DOC);
+        let description = match skill_description(&doc) {
+            Ok(d) => d,
+            Err(e) => {
+                out.problems.push(format!(
+                    "读 {} 失败：{e}（这个 skill 没取到说明）",
+                    doc.display()
+                ));
+                None
+            }
+        };
         out.skills.push((name, path, description));
     }
     out.skills.sort_by(|a, b| a.0.cmp(&b.0));
 }
 
-/// `SKILL.md` 头部 front matter（`---` 包着的那一段）里的 `description:`。没有就 `None`。
-fn skill_description(doc: &Path) -> Option<String> {
-    let bytes = read_head(doc, SKILL_DOC_HEAD_BYTES)?;
+/// `SKILL.md` 头部 front matter（三个 `-` 包着的那一段）里的 `description:`。没有这份文件 / 没有那一格 ⇒ `Ok(None)`；
+/// 读不出来（超上限 / 不是常规文件 / 权限）⇒ `Err`（调用方说出来）。
+fn skill_description(doc: &Path) -> Result<Option<String>, String> {
+    if !doc.exists() {
+        return Ok(None);
+    }
+    let bytes = read_regular_capped(doc, SKILL_DOC_MAX_BYTES)?;
     let text = String::from_utf8_lossy(&bytes);
     let mut lines = text.lines();
     // front matter 的围栏是一行三个 `-`（写成 `repeat` 是为了不让协议对拍把它认成一个 `--子命令` 字面量）。
     let fence = "-".repeat(3);
     if lines.next().map(str::trim) != Some(fence.as_str()) {
-        return None;
+        return Ok(None);
     }
     for line in lines {
         if line.trim() == fence {
@@ -110,26 +124,10 @@ fn skill_description(doc: &Path) -> Option<String> {
         }
         if let Some(v) = line.strip_prefix("description:") {
             let v = v.trim().trim_matches(|c| c == '"' || c == '\'').trim();
-            return (!v.is_empty()).then(|| v.to_string());
+            return Ok((!v.is_empty()).then(|| v.to_string()));
         }
     }
-    None
-}
-
-/// 只读头部 `cap` 字节（常规文件才读）。
-fn read_head(p: &Path, cap: u64) -> Option<Vec<u8>> {
-    use std::io::Read as _;
-    let meta = std::fs::metadata(p).ok()?;
-    if !meta.is_file() {
-        return None;
-    }
-    let mut buf = Vec::new();
-    std::fs::File::open(p)
-        .ok()?
-        .take(cap)
-        .read_to_end(&mut buf)
-        .ok()?;
-    Some(buf)
+    Ok(None)
 }
 
 /// 项目级 MCP：`.claude.json` 的 `projects` 键 × 各自的 `<dir>/.mcp.json`。
@@ -175,8 +173,9 @@ pub(crate) fn scan_mcp_at(claude_json: &Path, out: &mut Sightings) {
         let v = match parsed {
             Ok(v) => v,
             Err(e) => {
-                out.problems
-                    .push(format!("读 {} 失败：{e}", file.display()));
+                let why = format!("读 {} 失败：{e}", file.display());
+                tracing::warn!("资产目录：{why}");
+                out.problems.push(why);
                 continue;
             }
         };

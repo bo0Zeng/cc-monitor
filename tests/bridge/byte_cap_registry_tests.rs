@@ -637,6 +637,49 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`footprint-probe` 查钩子字样时读的那份 settings 文件多大",
         "降级+说清",
     ),
+    // 〔AS2 · 第四波 4B〕资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
+    (
+        "src/backend/agents/claudecode/assets.rs",
+        "MAX_PROJECT_MCP_BYTES",
+        4 * 1024 * 1024,
+        "资产目录扫描时读一份项目 `.mcp.json`",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/agents/claudecode/assets.rs",
+        "SKILL_DOC_MAX_BYTES",
+        1024 * 1024,
+        "资产目录扫描时读一个 skill 的 `SKILL.md`（只为取 `description:`）—— 读它的函数把错交给调用方，调用方记进 `problems`",
+        "硬报错",
+    ),
+    (
+        "src/backend/asset_catalog.rs",
+        "CATALOG_MAX_BYTES",
+        16 * 1024 * 1024,
+        "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/asset_catalog.rs",
+        "SKILL_MAX_FILE_BYTES",
+        4 * 1024 * 1024,
+        "算一个 skill 的摘要时读其中一个文件（超了只记长度，`summary.truncated` 说出来）",
+        "降级+说清",
+    ),
+    (
+        "src/backend/asset_sync.rs",
+        "PULL_MAX_BYTES",
+        16 * 1024 * 1024,
+        "同步时从远端拉回来的那一份目录（capture 的 stdout）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/asset_sync.rs",
+        "PUSH_MAX_BYTES",
+        96 * 1024,
+        "同步时一趟推给远端的载荷（管进一条 `sh -c` 命令，受 `MAX_ARG_STRLEN` 限）；多台切块，单台超了不推、说出来",
+        "跳过+说清",
+    ),
     // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：backend 的 Claude 知识搬进
     // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
     // 两格同时红（「有上限没登记」+「登记的那个算不出值」）。**登记表的键随搬迁同轮改。**

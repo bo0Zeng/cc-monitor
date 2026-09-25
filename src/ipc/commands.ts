@@ -182,6 +182,7 @@ import type { ResolvedHost } from "../generated/ResolvedHost";
 import type { SearchIndexStatus } from "../generated/SearchIndexStatus";
 import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
+import type { AssetsSynced } from "../generated/AssetsSynced";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
@@ -785,6 +786,12 @@ export const commands = {
    */
   config_surface_report: (args: { origin: Origin }) =>
     invoke<ConfigSurfaceReport>("config_surface_report", args),
+
+  /**
+   * 〔AS2 · 第四波 4B · V113〕资产目录同步：让本机常驻后端对 `origin` 那台做一趟「拉 · 并 · 推」
+   * （本机那一页逐字 `LOCAL_ORIGIN` ⇒ 对它够得到的每一台各一趟）。回每一趟的结局 ＋ 可达表（origin ↔ 目录里的机器 id）。
+   */
+  assets_sync: (args: { origin: Origin }) => invoke<AssetsSynced>("assets_sync", args),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
   drift_ledger_report: (args: { origin: Origin }) =>

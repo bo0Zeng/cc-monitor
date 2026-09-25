@@ -106,14 +106,14 @@ pub fn push_command(backend: &str, payload: &str) -> String {
 
 /// 一趟对一台的结局（线上 `synced[]` 的一行）。
 fn outcome(
-    origin: &str,
+    key: &str,
     peer: Option<&str>,
     changed: bool,
     pushed: usize,
     errors: &[String],
 ) -> Value {
     json!({
-        "origin": origin,
+        "origin": key,
         "peer": peer,
         "changed": changed,
         "pushed": pushed,
@@ -153,15 +153,17 @@ pub fn push_plan(mine: &Value, theirs: &Value) -> (Vec<Vec<Value>>, Vec<String>)
             continue;
         }
         let len = m.to_string().len();
-        if len > PUSH_MAX_BYTES {
-            too_big.push(format!(
-                "机器 {id} 的目录有 {len} 字节，超过一趟能推的 {PUSH_MAX_BYTES} —— 这一台没推过去"
-            ));
-            continue;
-        }
         if cur_len + len > PUSH_MAX_BYTES && !cur.is_empty() {
             chunks.push(std::mem::take(&mut cur));
             cur_len = 0;
+        }
+        if len > PUSH_MAX_BYTES {
+            let why = format!(
+                "机器 {id} 的目录太大（{len} 字节，一趟最多 {PUSH_MAX_BYTES}），这一台没推过去"
+            );
+            tracing::warn!("资产目录：{why}");
+            too_big.push(why);
+            continue;
         }
         cur_len += len + 1;
         cur.push(m.clone());
@@ -181,9 +183,10 @@ async fn fold_blocking(fold: &Fold, args: Value) -> Result<Value, String> {
         .map_err(|(c, m)| format!("本机目录（{c}）：{m}"))
 }
 
-/// 对一台做一趟 ①–③。回（本机目录因此变了没有, 结局那一行）。
+/// 对一台做一趟 ①–③。`key` 是可达表的键（monitor 交来的 origin 串，本后端只当不透明的键用）。
+/// 回（本机目录因此变了没有, 结局那一行）。
 async fn sync_one(
-    origin: &str,
+    key: &str,
     r: &Reach,
     fold: &Fold,
     remote: &dyn Remote,
@@ -197,29 +200,23 @@ async fn sync_one(
             Err(e) => {
                 return (
                     false,
-                    outcome(
-                        origin,
-                        None,
-                        false,
-                        0,
-                        &[format!("对面答的目录认不出来：{e}")],
-                    ),
+                    outcome(key, None, false, 0, &[format!("对面答的目录认不出来：{e}")]),
                 )
             }
         },
-        Err(e) => return (false, outcome(origin, None, false, 0, &[e])),
+        Err(e) => return (false, outcome(key, None, false, 0, &[e])),
     };
     let peer = theirs
         .get("self")
         .and_then(Value::as_str)
         .map(str::to_string);
-    if let Some(row) = lock(table).get_mut(origin) {
+    if let Some(row) = lock(table).get_mut(key) {
         row.peer = peer.clone();
     }
     // ② 并
     let mine = match fold_blocking(fold, json!({ "catalog": theirs })).await {
         Ok(v) => v,
-        Err(e) => return (false, outcome(origin, peer.as_deref(), false, 0, &[e])),
+        Err(e) => return (false, outcome(key, peer.as_deref(), false, 0, &[e])),
     };
     let changed = mine
         .get("changed")
@@ -242,7 +239,7 @@ async fn sync_one(
     }
     (
         changed,
-        outcome(origin, peer.as_deref(), changed, pushed, &errors),
+        outcome(key, peer.as_deref(), changed, pushed, &errors),
     )
 }
 

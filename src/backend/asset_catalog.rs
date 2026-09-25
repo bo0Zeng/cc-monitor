@@ -200,22 +200,26 @@ pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
     let mut f = Fnv::default();
     f.part(KIND_SKILL.as_bytes());
     let (mut files, mut bytes) = (0usize, 0u64);
-    let (mut truncated, mut binary) = (false, false);
+    let mut binary = false;
+    // 摘要没能按全部内容算的那几处（降级要说清是哪一个，不是只给一个布尔）。
+    let mut notice: Vec<String> = Vec::new();
     let walk = walkdir::WalkDir::new(dir)
         .follow_links(false)
         .min_depth(1)
         .sort_by_file_name();
     for ent in walk {
-        let Ok(ent) = ent else {
-            truncated = true;
-            continue;
+        let ent = match ent {
+            Ok(e) => e,
+            Err(e) => {
+                notice.push(format!("走目录时有一处读不出来：{e}"));
+                continue;
+            }
         };
-        let ft = ent.file_type();
-        if ft.is_dir() {
+        if ent.file_type().is_dir() {
             continue;
         }
         if files >= SKILL_MAX_FILES {
-            truncated = true;
+            notice.push(format!("文件超过 {SKILL_MAX_FILES} 个，后面的没进摘要"));
             break;
         }
         files += 1;
@@ -226,22 +230,18 @@ pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
             .to_string_lossy()
             .replace('\\', "/");
         f.part(rel.as_bytes());
-        // 链接：跟到底看它是什么（装到别处时拷过去的是内容，不是链接）；指向目录的不下去，记一笔 `truncated`。
-        let meta = match std::fs::metadata(ent.path()) {
-            Ok(m) if m.is_file() => m,
+        // 链接：跟到底看它是什么（装到别处时拷过去的是内容，不是链接）；指向目录的不下去。
+        let len = match std::fs::metadata(ent.path()) {
+            Ok(m) if m.is_file() => m.len(),
             _ => {
-                truncated = true;
+                notice.push(format!(
+                    "{rel} 不是普通文件（指向目录的链接 / 特殊文件），没进摘要"
+                ));
                 f.part(b"not-a-file");
                 continue;
             }
         };
-        let len = meta.len();
         bytes += len;
-        if len > SKILL_MAX_FILE_BYTES {
-            truncated = true;
-            f.part(b"len").part(&len.to_le_bytes());
-            continue;
-        }
         match crate::common::fs::read_regular_capped(ent.path(), SKILL_MAX_FILE_BYTES) {
             Ok(body) => {
                 if body.contains(&0) || std::str::from_utf8(&body).is_err() {
@@ -249,9 +249,9 @@ pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
                 }
                 f.part(&body);
             }
-            Err(_) => {
-                truncated = true;
-                f.part(b"unreadable");
+            Err(error) => {
+                notice.push(format!("{rel} 只按长度算进摘要：{error}"));
+                f.part(b"len").part(&len.to_le_bytes());
             }
         }
     }
@@ -265,7 +265,8 @@ pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
             "files": files,
             "bytes": bytes,
             "binary": binary,
-            "truncated": truncated,
+            "truncated": !notice.is_empty(),
+            "notice": notice,
         }),
     }
 }
@@ -528,7 +529,7 @@ pub fn read_at(path: &Path) -> Read {
     match serde_json::from_slice::<Catalog>(&bytes) {
         Ok(c) if c.v == FORMAT_V => Read::Ok(c),
         Ok(c) => Read::Unreadable(format!(
-            "{} 的格式版本是 {}（这个后端只认 {FORMAT_V}）—— 多半是更新的后端写的，不覆盖",
+            "{} 是更新版本的后端写的（格式 {}，这个后端只认 {FORMAT_V}），没有覆盖它",
             path.display(),
             c.v
         )),
