@@ -198,7 +198,9 @@ BYTE_LINES = [
                 "`build.rs::embed_backends` 的 `include_bytes!` ⇒ 进 exe 本体",
     },
     {
-        "plat": "本机 Linux",
+        # 〔V132 · TL2〕本机 Linux 只承诺 x86_64（这一格的 runner 就是 x86_64 的 `ubuntu-latest`）；
+        #   本机 (Linux, aarch64) 不承诺 —— 名字逐字与账本 `PROMISED` 同改（⑨a 两向靠它）。
+        "plat": "本机 Linux x86_64",
         "runner": ("build-linux", "ubuntu-latest"),
         "steps": [
             ("build-linux", "Place embedded backends"),

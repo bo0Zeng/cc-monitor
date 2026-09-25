@@ -132,10 +132,11 @@ fn choose_answers_every_cell_of_both_tables() {
         // 行 2（Windows, aarch64）：用户 09-18「不含 arm64」⇒ 无产线。
         (Backend, Local, k(Windows, Aarch64), Unsupported),
         (Backend, Remote, k(Windows, Aarch64), Unsupported),
-        // 行 3 / 4（Linux）：远端承诺；本机 Linux 用户 09-18「算」。
+        // 行 3 / 4（Linux）：远端承诺；本机 Linux 用户 09-18「算」——〔V132 · 09-25〕只算 x86_64，
+        //   本机 (Linux, aarch64) 用户原话「不承诺」。
         (Backend, Local, k(Linux, X86_64), Give),
         (Backend, Remote, k(Linux, X86_64), Give),
-        (Backend, Local, k(Linux, Aarch64), Give),
+        (Backend, Local, k(Linux, Aarch64), NotPromised),
         (Backend, Remote, k(Linux, Aarch64), Give),
         // 行 5 / 6（macOS）：无产线。
         (Backend, Local, k(Mac, X86_64), Unsupported),
@@ -146,6 +147,7 @@ fn choose_answers_every_cell_of_both_tables() {
         (Panorama, Remote, k(Linux, X86_64), Give),
         (Panorama, Remote, k(Linux, Aarch64), Give),
         (Panorama, Local, k(Linux, X86_64), Give),
+        (Panorama, Local, k(Linux, Aarch64), NotPromised),
         // 〔RM1f〕全景 Windows x86_64 有原生产线（`release.yml` 的 `Stage native panorama for self-extract`）：本机承诺、远端不做。
         (Panorama, Local, k(Windows, X86_64), Give),
         (Panorama, Remote, k(Windows, X86_64), NotPromised),
@@ -189,6 +191,14 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         },
         Refusal::NotPromisedHere {
             os: "Windows".into(),
+            arch: "x86_64".into(),
+            route: Route::Remote,
+        },
+        // 〔V132〕本机那一句：同一形、另一句话（远端那句「只在本机用得上」对本机是假话）。
+        Refusal::NotPromisedHere {
+            os: "Linux".into(),
+            arch: "arm64".into(),
+            route: Route::Local,
         },
         Refusal::NotCarried {
             os: "Linux".into(),
@@ -217,7 +227,12 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             Refusal::UnsupportedMachine { os, arch } | Refusal::NotCarried { os, arch } => {
                 assert!(s.contains(os.as_str()) && s.contains(arch.as_str()), "{s}")
             }
-            Refusal::NotPromisedHere { os } => assert!(s.contains(os.as_str()), "{s}"),
+            Refusal::NotPromisedHere { os, arch, route } => {
+                assert!(s.contains(os.as_str()), "{s}");
+                if *route == Route::Local {
+                    assert!(s.contains(arch.as_str()), "本机那句要说出是哪种架构：{s}");
+                }
+            }
             Refusal::OsUnknown { why } | Refusal::ArchUnknown { why } => {
                 assert!(s.contains(why.as_str()), "{s}")
             }
@@ -242,7 +257,15 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             Refusal::UnsupportedMachine { .. } => "不为这种机器准备",
             Refusal::OsUnknown { .. } => "是什么系统",
             Refusal::ArchUnknown { .. } => "处理器架构",
-            Refusal::NotPromisedHere { .. } => "只在本机用得上",
+            Refusal::NotPromisedHere {
+                route: Route::Remote,
+                ..
+            } => "只在本机用得上",
+            // 〔V132〕V132 那句「这台不在承诺里」。
+            Refusal::NotPromisedHere {
+                route: Route::Local,
+                ..
+            } => "不在承诺里",
             Refusal::NotCarried { .. } => "没有带",
         };
         assert!(
@@ -254,7 +277,7 @@ fn every_refusal_names_the_machine_and_what_it_is() {
     assert_eq!(
         said.len(),
         cases.len() * 2,
-        "五形 × 两件产物里有两句说成了同一句"
+        "五形（不承诺那一形分本机 / 远端两句）× 两件产物里有两句说成了同一句"
     );
 }
 
@@ -511,5 +534,92 @@ fn musl_bytes_only_ever_land_on_linux_cells() {
     assert!(
         body.lines().filter(|l| l.contains("musl_")).count() >= 2,
         "pick 里一处 musl 都没找到 —— 切歪了"
+    );
+}
+
+// ═══ 〔V132 · TL2〕承诺面：账本 == 代码（两向）══════════════════════════════════════════
+
+/// 〔V132〕承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），
+/// 代码那一份是 `byte_table::promised`。两份必须两向相等：
+///
+/// 要求住址：用户裁决 **`V132`**（`设计/99 §1`，2026-09-25）原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」——
+/// 「本机 (Linux, aarch64) 不承诺 …… 承诺表与门禁 `platform` 格如实写『不承诺』」；`设计/01 §6.7a` 表 B「承诺是 (键 × origin) 的属性」。
+///
+/// 人群 = 表 A 里有后端产线的每个键（`LINES`，盘上现读，不手抄）× 两个 origin；每一格恰好落在账本的
+/// `PROMISE_FACE` 或 `NOT_PROMISED` 之一（两表不相交、并起来 == 人群），且落在前者 ⇔ `promised(route, key)` 为真。
+/// 异源：账本是 Python 源码里的字面量，代码是 Rust 的 `matches!`；期望不从被测函数生成。
+#[test]
+fn the_promise_face_in_the_ledger_equals_the_code() {
+    let ledger = read("tests/evidence/K-G4-platform-ledger.py");
+    let table = |name: &str| -> BTreeSet<(String, String, String)> {
+        let at = ledger
+            .find(&format!("\n{name} = ["))
+            .unwrap_or_else(|| panic!("账本里找不到 `{name} = [`"));
+        let body = &ledger[at..];
+        let body = &body[..body.find("\n]").expect("那张表没收尾")];
+        let mut out = BTreeSet::new();
+        for line in body.lines() {
+            let t = line.trim_start();
+            if !t.starts_with("(\"") {
+                continue;
+            }
+            let q: Vec<&str> = t.split('"').collect();
+            // ("Local", "Linux", "x86_64", …  ⇒ q[1] q[3] q[5]
+            assert!(q.len() >= 6, "认不出这一行：{t}");
+            out.insert((q[1].to_string(), q[3].to_string(), q[5].to_string()));
+        }
+        assert!(
+            !out.is_empty(),
+            "`{name}` 读出来是空的 —— 下面的两向相等会空真"
+        );
+        out
+    };
+    let face = table("PROMISE_FACE");
+    let not = table("NOT_PROMISED");
+    assert!(
+        face.is_disjoint(&not),
+        "同一格既承诺又不承诺：{:?}",
+        face.intersection(&not).collect::<Vec<_>>()
+    );
+    let os_name = |o: Os| match o {
+        Os::Linux => "Linux",
+        Os::Windows => "Windows",
+        Os::Mac => "macOS",
+    };
+    let arch_name = |a: Arch| match a {
+        Arch::X86_64 => "x86_64",
+        Arch::Aarch64 => "aarch64",
+    };
+    let mut population = BTreeSet::new();
+    let mut code_yes = BTreeSet::new();
+    for &(product, key) in LINES {
+        if product != Product::Backend {
+            continue;
+        }
+        for (route, rname) in [(Route::Local, "Local"), (Route::Remote, "Remote")] {
+            let cell = (
+                rname.to_string(),
+                os_name(key.os).to_string(),
+                arch_name(key.arch).to_string(),
+            );
+            population.insert(cell.clone());
+            if promised(route, key) {
+                code_yes.insert(cell);
+            }
+        }
+    }
+    let ledger_all: BTreeSet<_> = face.union(&not).cloned().collect();
+    assert_eq!(
+        ledger_all, population,
+        "账本两张表并起来 ≠ 表 A 有产线的键 × 两个 origin（有格子没表态，或表态了不存在的格子）"
+    );
+    assert_eq!(
+        code_yes, face,
+        "代码 `promised` 放行的格 ≠ 账本 `PROMISE_FACE`（两向）"
+    );
+    // V132 那一格点名：它必须在「不承诺」里（上面两向相等已蕴含，单列一句让读报文的人看得懂）。
+    assert!(
+        not.contains(&("Local".into(), "Linux".into(), "aarch64".into())),
+        "V132：本机 (Linux, aarch64) 不在「不承诺」里"
     );
 }
