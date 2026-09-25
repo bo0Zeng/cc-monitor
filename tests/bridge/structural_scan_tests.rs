@@ -2520,7 +2520,9 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("tests/bridge/panorama_tests.rs", "guard_doc_rel", 1),
-        ("src/bridge/src/panorama.rs", "symbols_in_file", 3),
+        // 〔RM1c · 第四波〕`src/bridge/src/panorama.rs` 那 3 处 `symbols_in_file` 的存量行**摘了**：
+        //   独立全景小程序（`src/panorama-engine/main.rs`）的 op 表里有了这个名字（代码侧活了），
+        //   那几句散文从此不再「只活在散文里」。
         (
             // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
             "tests/bridge/panorama_seam_registry_tests.rs",
