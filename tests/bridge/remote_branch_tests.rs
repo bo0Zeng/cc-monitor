@@ -108,6 +108,7 @@ fn spaced_hello_is_also_detected() {
     assert!(e.contains("版本过旧"), "got: {e}");
 }
 
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
 #[test]
 fn fork_ids_are_whitelisted() {
     assert!(validate_fork_id("sid", "0473c3a0-1111-2222-3333-444455556666").is_ok());

@@ -269,6 +269,8 @@ fn aggregate_proxyjump_and_dedup() {
 }
 
 /// allowlist：合法字符通过，含空格 / 选项前缀 / shell 元字符的别名被拒。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
 #[test]
 fn is_safe_alias_allowlist() {
     assert!(is_safe_alias("pi"));

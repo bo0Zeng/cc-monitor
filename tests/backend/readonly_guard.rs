@@ -2704,6 +2704,8 @@ mod capture_is_read_only {
     }
 
     /// ★★ 正题①（**值级**）：这一处发出去的 argv 逐元素就是那条只读形。
+    ///
+    /// 〔IV1 · V121〕`INVARIANTS §49`（tmux 打印通道必须是 UTF-8）的邻居：`capture-pane` 实测不在那一条的人群里，这里钉着的第一个元素（那个旗）是额外的；本条的主住址仍是只读铁律。
     #[test]
     fn the_argv_this_site_emits_is_read_only_element_by_element() {
         let argv = crate::control::capture_pane::capture_argv("=某会话:");
