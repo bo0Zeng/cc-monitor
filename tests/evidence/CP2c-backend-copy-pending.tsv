@@ -12,9 +12,6 @@ src/backend/common/fs.rs	未抽
 src/backend/common/session_snapshot.rs	未抽
 src/backend/control/capture_pane.rs	C4e 在改（tmux 三条成品化），留最后一批
 src/backend/control/cc_bus.rs	C4e 在改（tmux 三条成品化），留最后一批
-src/backend/control/ccm/argv.rs	未抽
-src/backend/control/ccm/mod.rs	未抽
-src/backend/control/ccm/plan.rs	未抽
 src/backend/control/exit_policy.rs	未抽
 src/backend/control/files_commit.rs	FN1 在改（去数据围栏），留最后一批
 src/backend/control/files_write.rs	FN1 在改（去数据围栏），留最后一批
