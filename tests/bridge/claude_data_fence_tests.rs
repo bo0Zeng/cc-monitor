@@ -389,8 +389,8 @@ fn the_protected_path_judgement_has_exactly_one_home() {
         defs,
         vec![FENCE_HOME.to_string()],
         "`{def_sig}` 的定义不止一处、或者不住 `{FENCE_HOME}` 了（实得 {defs:?}）。\n\
-         ★ 「一个家」这件事是编译器答案的那一半：`sftp_pool` 里那一行是 `pub use`\n\
-         （转出住址，不是第二个家），由 [`the_old_address_is_down_to_its_last_consumer`] 数着。"
+         ★ 「一个家」这件事是编译器答案的那一半：〔第四波 S4〕`sftp_pool` 里那一行转出住址已经删了，\n\
+         旧写法零命中由 [`the_old_address_is_gone`] 钉着。"
     );
 
     for (f, which, why) in LAYOUT_READERS {
@@ -461,89 +461,54 @@ fn the_fence_cannot_reach_the_wire() {
 //  四、旧住址的递减棘轮
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 还在走 `sftp_pool` 那个**转出住址**的文件。**恰好一份，只许变短。**
-const OLD_ADDRESS_HOLDOUTS: &[(&str, &str)] = &[(
-    "src/bridge/src/filewin/writeops.rs",
-    "`fenced_path` 逐字写着 `sftp_pool::is_protected_claude_data_path`。\
-     `filewin/` 那棵树本轮在别人的写区里（那五条文件操作刚接到窗口上）⇒ 本轮不碰它。\
-     ⚠ 它**问的是同一个函数**（`pub use` 是编译器保证的同一份），\
-     所以这不是「第二份判定」，只是「第二个写法」。",
-)];
-
-/// 🔴 **旧住址是一条递减棘轮，不是一个永久别名。**
+/// 🔴 **旧住址那条递减棘轮走到底了：零。**
 ///
-/// `sftp_pool` 里那行 `pub use` 只为还没改过来的消费者存在。本条钉两件事：
-/// ① 还在用旧住址的文件集合**逐条相等**（多一份 ⇒ 有人往回写了；
-///    少一份 ⇒ 那一份改过来了 ⇒ **连那行 `pub use` 一起删**，别留成用不上的豁免）；
-/// ② `sftp_pool.rs` 里**没有**第二份定义（只许有那一行 `pub use`）。
-///
-/// ⚠ 本条会在「那一份改过来」的那天变红 —— **那是设计如此**：
-/// 它要求删掉转出住址这件事和改调用点同一拍做，而不是把一个死别名留在盘上。
+/// 〔步 H2 09-21〕拆出本家之后，`sftp_pool` 里留过一行 `pub use`（转出住址），只为一个还没改过来的
+/// 消费者（`filewin/writeops.rs::fenced_path`）。〔第四波 S4〕那一处改指本家，那行转出**同一拍删掉**
+/// ——「棘轮只许往下走，不许留死别名」。本条从「恰好一份」改成钉终点：
+/// ① `src/bridge/src` 生产段里旧写法（`sftp_pool::` 前缀那一种）**零命中**，带同一个谓词的正控；
+/// ② `sftp_pool.rs` 里**既没有**转出、**也没有**第二份定义。
 #[test]
-fn the_old_address_is_down_to_its_last_consumer() {
+fn the_old_address_is_gone() {
     let root = repo_root();
     // 拼出来的针（同上）：`sftp_pool::is_protected_claude_data_path` 这个**旧写法**。
     let old = format!("sftp_{}::is_protected_claude_data_path", "pool");
-    let mut holdouts: Vec<String> = Vec::new();
+    // 正控：同一个谓词在一段合成的旧写法上必须命中（否则零命中是因为针拼错了）。
+    let fake = format!("let hit = crate::{old}(p);");
+    assert!(
+        guard_core::production_code(&fake).contains(old.as_str()),
+        "谓词在合成的旧写法上都不命中 —— 下面那个零不可信"
+    );
     let files = guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]);
     assert!(
         files.len() >= 100,
         "`src/bridge/src` 只采到 {} 份 `.rs`（2026-09-21 现打 112）—— 扫描面坏了",
         files.len()
     );
-    for (path, src) in &files {
-        let prod = guard_core::production_code(src);
-        if prod.contains(old.as_str()) {
-            holdouts.push(
-                path.strip_prefix(&root)
-                    .unwrap_or(path)
-                    .to_string_lossy()
-                    .replace('\\', "/"),
-            );
-        }
-    }
-    holdouts.sort();
-    let mut declared: Vec<String> = OLD_ADDRESS_HOLDOUTS
+    let mut holdouts: Vec<String> = files
         .iter()
-        .map(|(f, _)| f.to_string())
+        .filter(|(_, src)| guard_core::production_code(src).contains(old.as_str()))
+        .map(|(path, _)| {
+            path.strip_prefix(&root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
         .collect();
-    declared.sort();
+    holdouts.sort();
     assert_eq!(
-        declared,
         holdouts,
-        "还在走旧住址（`{old}`）的文件与登记对不上。\n  \
-         登记了而盘上没有：{:?} —— 🔴 **那一份改过来了 ⇒ 同一拍把 `sftp_pool.rs` 里\n  \
-         那行 `pub use` 与这里这一行一起删掉**（棘轮只许往下走，不许留死别名）。\n  \
-         盘上有而没登记：{:?} —— 有人往回写了旧住址；新代码一律走 \n  \
-         `claude_data_fence::is_protected_claude_data_path`。",
-        declared
-            .iter()
-            .filter(|d| !holdouts.contains(d))
-            .collect::<Vec<_>>(),
-        holdouts
-            .iter()
-            .filter(|h| !declared.contains(h))
-            .collect::<Vec<_>>()
+        Vec::<String>::new(),
+        "有人往回写了旧住址（`{old}`）—— 新代码一律走 `claude_data_fence::is_protected_claude_data_path`"
     );
-    // ② 池子里只许有那行 `pub use`，不许有第二份定义。
     let pool = std::fs::read_to_string(root.join("src/bridge/src/sftp_pool.rs"))
         .expect("sftp_pool.rs 读不到");
     let pool_prod = guard_core::production_code(&pool);
     let def = format!("fn is_protected_claude_{}_path", "data");
+    let reexport = format!("claude_data_fence::is_protected_claude_{}_path", "data");
     assert!(
-        !pool_prod.contains(&def),
-        "`sftp_pool.rs` 里又长出了一份 `{def}` —— 那是第二个家。\
-         判定的家是 `{FENCE_HOME}`，池子那边只许有一行 `pub use`。"
-    );
-    let reexport = format!(
-        "pub use crate::claude_data_fence::is_protected_claude_{}_path",
-        "data"
-    );
-    assert!(
-        pool_prod.contains(&reexport),
-        "`sftp_pool.rs` 里那行转出住址不见了，而 {} 还在用旧写法 —— \
-         那边此刻编译不过。要么把它一起改掉（连本条这一行删掉），要么把 `pub use` 留着。",
-        holdouts.join(" / ")
+        !pool_prod.contains(&def) && !pool_prod.contains(&reexport),
+        "`sftp_pool.rs` 里又长出了那道判定（定义或转出）—— 判定的家是 `{FENCE_HOME}`，池子不许再有它的住址"
     );
 }
 

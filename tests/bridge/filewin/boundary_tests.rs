@@ -300,7 +300,11 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     //   `sftp_cancel_transfer`〔散文墓碑〕 随复制走后端（F7a，不可取消）一起走掉（`transfer::forward_cancel` 删了）。
     ("ssh_source::RemoteConfig", Kind::Transfer),
     // ── 本地预判围栏 ──
-    ("sftp_pool::is_protected_claude_data_path", Kind::Fence),
+    // 〔第四波 S4〕改指围栏本家（池子里那行转出住址删了）；仍是同一个函数、同一笔欠账。
+    (
+        "claude_data_fence::is_protected_claude_data_path",
+        Kind::Fence,
+    ),
     // ── 本机动作 ──
     ("launch::launch_remote_terminal", Kind::Terminal),
 ];

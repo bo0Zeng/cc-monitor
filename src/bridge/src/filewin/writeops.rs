@@ -38,7 +38,7 @@
 //!   本层被绕过（有人直接调 [`apply_remote`]、或者路径在这两步之间才变成受保护的），
 //!   它照旧挡。它的原话会经 [`WriteOutcome::failed`] **原样**画到窗口上。
 //!
-//! 🔴 **两道问的是同一个函数** `sftp_pool::is_protected_claude_data_path`
+//! 🔴 **两道问的是同一个函数** `claude_data_fence::is_protected_claude_data_path`
 //! ⇒ 判定不会漂。漂得动的只有文案，而文案两处是因为**两层各自要说话**。
 //!
 //! ⚠ **本模块一个字节都不改那道围栏** —— 「要不要把它拆成独立一族」是
@@ -199,12 +199,12 @@ pub const FENCE_PREFIX: &str = "⚠ 挡住了：";
 /// 这一件踩到 Claude 数据围栏的**那一条路径**（`None` = 一条都没踩）。
 ///
 /// 🔴 它**逐条问** [`WriteOp::paths`]，而不是只问第一条 —— 理由逐字住那个函数。
-/// 🔴 判定走的是 `sftp_pool::is_protected_claude_data_path`，**全仓那一个**
+/// 🔴 判定走的是 `claude_data_fence::is_protected_claude_data_path`，**全仓那一个**
 /// （本模块不许有第二份判定；池子入口那道 `guard_write` 问的也是它）。
 pub fn fenced_path(op: &WriteOp) -> Option<&str> {
     op.paths()
         .into_iter()
-        .find(|p| crate::sftp_pool::is_protected_claude_data_path(p))
+        .find(|p| crate::claude_data_fence::is_protected_claude_data_path(p))
 }
 
 /// 被挡住那一句话。**画在窗口上**，不是 `tracing`。

@@ -441,8 +441,8 @@ pub fn ruler_self_check(ctx: &egui::Context, fid: &egui::FontId) -> Option<Strin
 /// `None` = 量具当场自证过，且 [`PROBE`] 里每一个字在**两个字族**下都画得出来。
 /// `Some(说明)` = 出了问题；说明是**纯 ASCII 起头**的一句人话，直接画到窗口上。
 ///
-/// 🔴 刻意不是 `bool`，也不是 `Result<(), ()>` —— 与
-/// `sftp_pool::copy_remote_path` 同一个形：**静默退化在类型上就做不到**。
+/// 🔴 刻意不是 `bool`，也不是 `Result<(), ()>` —— 与从前池子里零流量复制那一条的裁决类型
+/// 同一个形（〔第四波 S4〕那一条已退役，形状留在这里）：**静默退化在类型上就做不到**。
 pub fn verify(ctx: &egui::Context, attempt: &Attempt) -> Option<String> {
     let families = [
         ("proportional", egui::FontId::proportional(14.0)),
