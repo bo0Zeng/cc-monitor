@@ -150,7 +150,8 @@ export class BackendSection {
     this.element.className = "settings-section backend-section";
     if (!opts.headless) {
       const h = document.createElement("h3");
-      h.textContent = "backend 开关";
+      // 〔ST2〕原来是「backend 开关」—— `backend` 是术语表禁词（对外叫「后端」，`terms.json`）。
+      h.textContent = "后端";
       this.element.appendChild(h);
     }
     if (!this.hosted) {
