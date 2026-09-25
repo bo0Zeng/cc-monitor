@@ -929,6 +929,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "age_secs",
             "browse_watch_cap",
             "browse_watches",
+            "cold_first_build_secs",
             "entries",
             "index_missing",
             "resident_bytes",

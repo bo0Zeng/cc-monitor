@@ -13,7 +13,7 @@
 //! 硬前置写在 `设计/15 §3.2` 那张「池化的硬冲突」表第 3 条：**必须有 per-session
 //! channel 上限（建议 ≤6）**，因为 OpenSSH `MaxSessions` 默认 10。
 //!
-//! # 形状照秤 F3 办（`tests/bridge/sftp_copy_f3_tests.rs`）
+//! # 形状照秤 F3 办（〔第四波 S4〕那一杆随零流量复制退役删了，形状的说明留在这里）
 //!
 //! 同一套构件、同一种取法：**进程内一台讲 SFTP v3 裸字节的合成服务端**
 //! （`russh_sftp::server::run` 跨一对 `tokio::io::duplex`）· **编译期拼的合成语料**
@@ -38,7 +38,8 @@
 //!   `MaxSessions` 到底肯给几条通道、多通道在真链路上的吞吐、`open_sftp_channel`
 //!   那三个往返的真实代价 —— **一条都没答**。本秤买的是「我们这一侧的闸与偏移对不对」。
 //! - **它不判 `OriginPool` 那一层。** `OriginPool` 攥着一条真 SSH 连接，本进程里
-//!   构造不出来。被判的是它的**全部策略**所在的 [`ChannelSet`]（两道闸 · 复用 · 世代），
+//!   构造不出来。被判的是它的**全部策略**所在的 [`ChannelSet`]（通道闸 · 复用 · 世代；
+//!   〔第四波 S4〕车道闸随浏览离开 SFTP 退役了），
 //!   以及两条传输核心 `download_inner` / `upload_to_staging`（〔F7c 收尾 09-24〕上传那一条从直写目标的旧核心换成了只写暂存区的这一条）。
 //!   `OriginPool` 剩下的部分是**接线**：把 `connect_sftp` 的结果喂给上面两者。
 //!   ⚠ 那几行接线**没有判据**，如实登记在这里。
@@ -55,7 +56,6 @@ use russh_sftp::protocol::{Attrs, Data, FileAttributes, Handle, Status, StatusCo
 
 use super::{
     download_inner, staging_part, upload_to_staging, ChannelSet, SESSION_CHANNEL_CAP, STAGING_DIR,
-    TRANSFER_LANE_CAP,
 };
 
 // ═══ ① 合成服务端：一张内存表 ＋ **逐条记偏移** ════════════════════════════════
@@ -415,11 +415,11 @@ fn counting_opener() -> (Arc<AtomicUsize>, impl Fn() -> FakeChan) {
 /// **相等，不是地板**：复用整个坏掉时这个数是 20，写成 `<= 20` 两种都绿。
 #[tokio::test]
 async fn twenty_sequential_leases_open_exactly_one_channel() {
-    let set: ChannelSet<FakeChan> = ChannelSet::new(6, 4);
+    let set: ChannelSet<FakeChan> = ChannelSet::new(6);
     let (opens, mk) = counting_opener();
     for _ in 0..20 {
         let l = set
-            .lease(|| async { Ok(mk()) })
+            .lease_transfer(|| async { Ok(mk()) })
             .await
             .expect("借通道应当成功");
         assert_eq!(*l.get(), FakeChan(0), "复用的应当恒是第 0 条那一条");
@@ -438,10 +438,13 @@ async fn twenty_sequential_leases_open_exactly_one_channel() {
 /// 它每个 origin 白占远端一格 `MaxSessions`（全部预算的 1/6），而**功能上毫无差别**。
 #[tokio::test]
 async fn the_seeded_channel_is_the_one_handed_out_first() {
-    let set: ChannelSet<FakeChan> = ChannelSet::new(6, 4);
+    let set: ChannelSet<FakeChan> = ChannelSet::new(6);
     let (opens, mk) = counting_opener();
     set.seed(FakeChan(999));
-    let l = set.lease(|| async { Ok(mk()) }).await.expect("借通道");
+    let l = set
+        .lease_transfer(|| async { Ok(mk()) })
+        .await
+        .expect("借通道");
     assert_eq!(
         *l.get(),
         FakeChan(999),
@@ -469,7 +472,7 @@ async fn the_seeded_channel_is_the_one_handed_out_first() {
 async fn the_channel_gate_pins_the_peak_at_the_cap_and_queues_the_rest() {
     const CAP: usize = 6;
     const WANT: usize = CAP * 3;
-    let set: Arc<ChannelSet<FakeChan>> = Arc::new(ChannelSet::new(CAP, 4));
+    let set: Arc<ChannelSet<FakeChan>> = Arc::new(ChannelSet::new(CAP));
     let opens = Arc::new(AtomicUsize::new(0));
     // 放行用**标志 + 让出**，不用 `Notify` —— `notify_waiters` 只叫醒**此刻已在等**的，
     // 排队那一批是分批醒过来的，漏一个就挂死在这里。
@@ -482,7 +485,7 @@ async fn the_channel_gate_pins_the_peak_at_the_cap_and_queues_the_rest() {
             (set.clone(), opens.clone(), release.clone(), done.clone());
         tasks.push(tokio::spawn(async move {
             let _l = set
-                .lease(|| async { Ok(FakeChan(opens.fetch_add(1, Ordering::SeqCst))) })
+                .lease_transfer(|| async { Ok(FakeChan(opens.fetch_add(1, Ordering::SeqCst))) })
                 .await
                 .expect("借通道");
             while !release.load(Ordering::SeqCst) {
@@ -524,65 +527,8 @@ async fn the_channel_gate_pins_the_peak_at_the_cap_and_queues_the_rest() {
     assert_eq!(s.peak, CAP, "全程高水位应当始终是 {CAP}，实得 {s:?}");
 }
 
-/// 🔴 **车道闸恒等 —— 「边传边浏览」那句话的机器面。**
-///
-/// 场景：`(cap=6, lane_cap=4)`，先塞 10 条**传输**，再来 1 次**浏览**。
-///
-/// 收敛后在借的应当**恰好 5**（4 传输 ＋ 1 浏览）。
-/// **把车道闸拆掉，这个数是 6** —— 6 条传输把通道占满，浏览那一次永远排队，
-/// 而档③ 第一行要的就是它不排队。两个数差得开，这就是这条判据的全部。
-///
-/// ⚠ 次序也钉在这里：`lease_transfer` 里若把车道闸挪到通道闸**之后**，
-/// 6 条传输会先把通道抢光再去等车道 ⇒ 同样读到 6。
-#[tokio::test]
-async fn the_transfer_lane_gate_keeps_room_for_browsing() {
-    const CAP: usize = 6;
-    const LANES: usize = 4;
-    let set: Arc<ChannelSet<FakeChan>> = Arc::new(ChannelSet::new(CAP, LANES));
-    let opens = Arc::new(AtomicUsize::new(0));
-    let release = Arc::new(AtomicBool::new(false));
-
-    for _ in 0..10 {
-        let (set, opens, release) = (set.clone(), opens.clone(), release.clone());
-        tokio::spawn(async move {
-            let _l = set
-                .lease_transfer(|| async { Ok(FakeChan(opens.fetch_add(1, Ordering::SeqCst))) })
-                .await
-                .expect("借传输通道");
-            while !release.load(Ordering::SeqCst) {
-                tokio::task::yield_now().await;
-            }
-        });
-    }
-    let converged = spin_until(|| set.stats().in_use == LANES).await;
-    assert!(converged, "传输在借数一直没到 {LANES} —— 台架没跑起来");
-    assert_eq!(
-        set.stats().in_use,
-        LANES,
-        "10 条传输应当被车道闸卡在 {LANES} 条（不是通道闸的 {CAP}）"
-    );
-
-    // 浏览这一次**必须当场借到** —— 这就是「边传边浏览」。
-    let browse = tokio::time::timeout(
-        Duration::from_secs(30),
-        set.lease(|| async { Ok(FakeChan(opens.fetch_add(1, Ordering::SeqCst))) }),
-    )
-    .await
-    .expect("传输占满车道时，浏览**不该**排队等到超时")
-    .expect("借浏览通道");
-    let s = set.stats();
-    assert_eq!(
-        s.in_use,
-        LANES + 1,
-        "在借的应当恰好是 {} 条传输 ＋ 1 次浏览 = {}，实得 {s:?}。\n\
-         读到 {CAP} ⇒ 车道闸没生效（或者它被挪到了通道闸后面）",
-        LANES,
-        LANES + 1
-    );
-    assert_eq!(s.lane_cap, LANES, "读数里的车道闸应当就是建池时那个数");
-    drop(browse);
-    release.store(true, Ordering::SeqCst);
-}
+// 〔第四波 S4〕这里原先是**车道闸恒等**那一条（`(cap=6, lane_cap=4)`，10 条传输 ＋ 1 次浏览 ⇒ 在借恰好 5）。
+//   浏览离开 SFTP 之后池里只剩传输，车道闸没有要保护的东西了 ⇒ 闸与这一条一起退役。
 
 /// 🔴 **反向：通道闸真的会挡人**（而不是只把数记小）。
 ///
@@ -601,12 +547,12 @@ async fn the_transfer_lane_gate_keeps_room_for_browsing() {
 #[tokio::test]
 async fn the_gate_actually_blocks_once_every_channel_is_out() {
     const CAP: usize = 3;
-    let set: Arc<ChannelSet<FakeChan>> = Arc::new(ChannelSet::new(CAP, 2));
+    let set: Arc<ChannelSet<FakeChan>> = Arc::new(ChannelSet::new(CAP));
     let opens = Arc::new(AtomicUsize::new(0));
     let mut held = Vec::new();
     for _ in 0..CAP {
         held.push(
-            set.lease(|| async { Ok(FakeChan(opens.fetch_add(1, Ordering::SeqCst))) })
+            set.lease_transfer(|| async { Ok(FakeChan(opens.fetch_add(1, Ordering::SeqCst))) })
                 .await
                 .expect("借通道"),
         );
@@ -618,7 +564,7 @@ async fn the_gate_actually_blocks_once_every_channel_is_out() {
         let (set, opens, got) = (set.clone(), opens.clone(), got.clone());
         tokio::spawn(async move {
             let _l = set
-                .lease(|| async { Ok(FakeChan(opens.fetch_add(1, Ordering::SeqCst))) })
+                .lease_transfer(|| async { Ok(FakeChan(opens.fetch_add(1, Ordering::SeqCst))) })
                 .await
                 .expect("借通道");
             got.store(true, Ordering::SeqCst);
@@ -661,15 +607,21 @@ async fn the_gate_actually_blocks_once_every_channel_is_out() {
 /// 相等读数：`opened` 从 1 变 2（新开了一条），而不是 1（把死的那条又发了一遍）。
 #[tokio::test]
 async fn a_channel_returned_after_invalidate_does_not_go_back_into_the_pool() {
-    let set: ChannelSet<FakeChan> = ChannelSet::new(6, 4);
+    let set: ChannelSet<FakeChan> = ChannelSet::new(6);
     let (opens, mk) = counting_opener();
-    let l = set.lease(|| async { Ok(mk()) }).await.expect("借通道");
+    let l = set
+        .lease_transfer(|| async { Ok(mk()) })
+        .await
+        .expect("借通道");
     assert_eq!(set.stats().opened, 1);
 
     set.invalidate(); // 连接死了
     drop(l); // 在飞的那条这会儿才回来
 
-    let l2 = set.lease(|| async { Ok(mk()) }).await.expect("再借一条");
+    let l2 = set
+        .lease_transfer(|| async { Ok(mk()) })
+        .await
+        .expect("再借一条");
     assert_eq!(
         set.stats().opened,
         2,
@@ -683,24 +635,16 @@ async fn a_channel_returned_after_invalidate_does_not_go_back_into_the_pool() {
     assert_eq!(opens.load(Ordering::SeqCst), 2, "opener 应当被调用 2 次");
 }
 
-/// 🔴 **生产那两个数就是被上面这几条量过的那两个数。**
+/// 🔴 **生产那个数就是被上面这几条量过的那个数。**
 ///
-/// 上面的判据用的是 `(6, 4)` / `(3, 2)` 这些**判据自己给的**参数 ——
-/// 若生产侧那两个常量是别的值，上面全绿而盘上仍然可能是「1 条通道、0 条车道」。
-/// ⇒ 这一条把两者接上，并把「浏览永远留得出几格」写成一个相等读数。
+/// 上面的判据用的是 `6` / `3` 这些**判据自己给的**参数 ——
+/// 若生产侧那个常量是别的值，上面全绿而盘上仍然可能是「1 条通道」。
+/// ⇒ 这一条把两者接上。〔第四波 S4〕车道闸退役之后只剩这一个数。
 #[test]
 fn the_production_gates_are_the_ones_this_scale_measured() {
     assert_eq!(
         SESSION_CHANNEL_CAP, 6,
         "per-session channel 上限应当是 6（`设计/15 §3.2` 表第 3 条「建议 ≤6」的上界）"
-    );
-    assert_eq!(TRANSFER_LANE_CAP, 4, "传输车道上限应当是 4");
-    assert_eq!(
-        SESSION_CHANNEL_CAP - TRANSFER_LANE_CAP,
-        2,
-        "**永远留给浏览的格子数**应当是 2。\n\
-         它是 `设计/60 §2 档③` 第一行那句「边传边浏览」在盘上的全部本钱：\n\
-         这个差一旦变成 0，传输就能把通道占满，那句话当场变回 ❌。"
     );
 }
 

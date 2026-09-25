@@ -13,6 +13,8 @@
 //!   每一格写清等哪一路、消费者住哪，**并要求那个消费者此刻真的在盘上**。
 //!   ⇒ 那一路合进来、消费者一走，那一格当场红 ⇒ 删它是一件机械活（名字、住址都在表上）。
 //!   这与 `sftp_pool.rs` 里 `is_protected_claude_data_path` 那行转出住址「递减棘轮 ＋ 最后一个消费者」同形。
+//! - 〔第四波 S4〕**收到底了**：最后一条待收（零流量复制，消费者是门禁 `f3-copy` 那一格）连同那一格退役，
+//!   池子**零条** `#[tauri::command]`，暂存区之外**零处**远端写。那行转出住址也同拍删了。
 //!
 //! # 三条判据，都是两向相等
 //!
@@ -37,20 +39,14 @@ pub(super) const PENDING: &[(&str, &str, &str, &str, &str)] = &[
     //   〔已删：`sftp_realpath` · `sftp_list_dir` · `sftp_stat` · `sftp_cancel_transfer`〔散文墓碑〕 · `sftp_download` ·
     //   `sftp_upload` · `sftp_read_text_for_edit`〔散文墓碑〕 · `sftp_write_text` · `sftp_mkdir` · `sftp_rename` ·
     //   `sftp_delete` · `sftp_chmod`〕连同它们的 Tauri 注册、`commands.ts` 包装、`parity_ledger` 行一起走了。
-    //   ⚠ 剩下这一条的消费者**不是代码**：门禁 `f3-copy` 那一格（秤 F3）量的是它的核心 `copy_remote_path`；
-    //   窗口的复制已经走后端 `files-copy`（F7a）。删它要连那一格一起退役（`gate.sh` 29 格 → 28），
-    //   而那一处不在本路授权里 ⇒ 等主会话。
-    (
-        "sftp_copy",
-        "命令",
-        "主会话（门禁 f3-copy 那一格退役）",
-        "tests/scripts/gate.sh",
-        "run_gate f3-copy",
-    ),
+    // 〔第四波 S4〕最后一行（零流量复制那条命令，消费者是门禁 `f3-copy` 那一格）连同那一格一起退役
+    //   （`gate.sh` 29 格 → 28），它挂的那个写函数一起删了 ⇒ **表空：池子零条 Tauri 命令**。
+    //   表留着、今天是空的：它只许变短，而它已经短到底了 —— 池子哪天再长出一条命令，下面判据 1 当场红。
 ];
 
 /// 碰远端写原语、而**不在**传输核心里的函数：`(函数, 它挂在哪条待收命令名下)`。
-pub(super) const PENDING_WRITERS: &[(&str, &str)] = &[("copy_remote_path", "sftp_copy")];
+/// 〔第四波 S4〕唯一那一行（零流量复制的核心）随它挂的那条命令一起删了 ⇒ 空。
+pub(super) const PENDING_WRITERS: &[(&str, &str)] = &[];
 
 /// 传输核心里**唯二**碰远端写原语的函数（都只写暂存区）。
 const STAGING_WRITERS: &[&str] = &["ensure_staging_dir", "upload_to_staging"];
@@ -133,9 +129,8 @@ fn tauri_commands(prod: &str) -> BTreeSet<String> {
 fn every_pool_tauri_command_is_pending_and_the_transfer_core_has_none() {
     let prod = pool_production();
     let got = tauri_commands(&prod);
-    // 〔F7c 收尾 09-24〕地板 2 → 1：收尾之后池子只剩 `sftp_copy` 一条（下面那条相等才是判据，这个数只守抽取器）。
-    //   量具自检另喂一段合成语料，证明抽取器认得出不止一条。
-    assert!(!got.is_empty(), "一条 Tauri 命令都没抠到 —— 抽取器坏了");
+    // 〔F7c 收尾 09-24〕地板 2 → 1。〔第四波 S4〕人群到零了 ⇒ 地板删掉（它会把正确的「零条」判成抽取器坏了）；
+    //   抽取器靠下面那段合成语料守（正控：认得出两条、认得出不带属性的那一条不是命令）。
     assert_eq!(
         tauri_commands(
             "#[tauri::command]\npub async fn a() {}\n#[tauri::command]\npub fn b() {}\nfn c() {}\n"

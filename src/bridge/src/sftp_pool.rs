@@ -22,10 +22,10 @@
 //! 分离,不共用——面板操作永不影响会话流。池按 origin 键、取用时校活性、死则重建。
 //! - **一条连接 ＋ 一池通道**〔🔴 步 24 改，原文是「per-origin 锁串行化」〕:
 //!   每 host 仍只拨**一条** SSH 连接，但在它上面按需开多条 SFTP 子系统通道
-//!   （[`SESSION_CHANNEL_CAP`] 封顶、空闲复用、借不到就排队）⇒ **边传边浏览成立**、
-//!   并发传输成立。传输另走一道更窄的车道闸（[`TRANSFER_LANE_CAP`]），
-//!   好让浏览永远留得出格子。原来那句「同 host 不能边传边浏览、不能并发两个传输
-//!   (刻意 v1 取舍)」**今天不成立了**，`设计/60 §2 档③` 第一行点的就是它。
+//!   （[`SESSION_CHANNEL_CAP`] 封顶、空闲复用、借不到就排队）⇒ 并发传输成立。
+//!   〔第四波 S4〕从前另有一道更窄的「传输车道闸」，为的是给**浏览**留格子；
+//!   浏览早已不在 SFTP 上（窗口经通道问后端 `files-*`），池里只剩传输 ⇒ 那道闸连同
+//!   浏览用的借法一起退役了。
 //! - **非 UTF-8 文件名**:后端**不拦**对 lossy 名(含 U+FFFD)的写(russh-sftp 已有损解码,
 //!   无法寻址真字节)——靠 F48 UI 灰置这些项;`lossy_name` 字段供前端判定。
 //! - **空闲回收**:池连接空闲不主动回收(一台机一条 SFTP,YAGNI);死连按需重建
@@ -36,25 +36,11 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 
-use serde::Serialize;
 use tokio::sync::Mutex;
 
 use crate::claude_data_fence::guard_write;
 use crate::sftp::{connect_sftp, SftpConn};
 use crate::ssh_source::RemoteConfig;
-
-/// 🔴 **转出住址，不是第二个家。**
-///
-/// 判定的家是 [`crate::claude_data_fence`]（`pub fn` 全仓恰一处，由
-/// `claude_data_fence_tests::the_protected_path_judgement_has_exactly_one_home` 钉着）。
-/// 这一行只为**一个**还没改过来的消费者存在：`filewin::writeops::fenced_path`
-/// 逐字写着 `sftp_pool::is_protected_claude_data_path`，而 `filewin/` 本轮在别人的写区里
-/// （第五刀刚落地）⇒ 本轮不碰它，改用这一行把它接住。
-///
-/// ⚠ 它是一条**递减棘轮**：还在用旧住址的文件**恰好一份**，
-/// 由 `claude_data_fence_tests::the_old_address_is_down_to_its_last_consumer` 钉成相等断言。
-/// 那一份改过来的那天，**连这一行一起删** —— 别让它留成一个用不上的豁免。
-pub use crate::claude_data_fence::is_protected_claude_data_path;
 
 // === 连接池 ===
 //
@@ -71,7 +57,7 @@ pub use crate::claude_data_fence::is_protected_claude_data_path;
 //         同 host 上任何两件事都排成一队，一条 8 GB 的下载期间面板整个不动。
 //   此刻：`origin → Arc<OriginPool>`，**一条 SSH 连接 ＋ 一池 SFTP 通道**。
 //         借通道靠信号量（[`SESSION_CHANNEL_CAP`]），归还即进空闲栈复用。
-//         传输另走一道更窄的闸（[`TRANSFER_LANE_CAP`]），**浏览永远有格子**。
+//         〔第四波 S4〕当年另有一道更窄的传输车道闸给浏览留格子；浏览离开 SFTP 之后它退役了。
 //
 // ⚠ **硬前置照 `设计/15 §3.2` 那张表第 3 条办**（那一条点名「方案里必须有
 //   per-session channel 上限」）—— 上限、它的来历与它买不到的东西，
@@ -113,24 +99,11 @@ pub use crate::claude_data_fence::is_protected_claude_data_path;
 /// - **它不防连接泄漏**（`设计/15 §3.2` 同一张表第 1 条那件事）：
 ///   `Handle::drop` 是 no-op，丢掉 `SftpConn` 并不等于把连接关掉。本池
 ///   [`OriginPool::invalidate`] 丢的是**我们这侧的引用**，远端那格靠 sshd 自己回收。
-/// - **它不给卡住的传输装期限**（同表第 4 条点名的那一格）：一条传输占着车道不放，
-///   本上限只保证它最多占 1 格、浏览那 2 格动不了它。⚠ 唯一现成的兜底是
+/// - **它不给卡住的传输装期限**（同表第 4 条点名的那一格）：一条传输占着通道不放，
+///   本上限只保证它最多占 1 格。⚠ 唯一现成的兜底是
 ///   `russh-sftp` 自带的**每请求 10 秒**超时（现打 3.0.0 `client::Config::default()`
 ///   的 `request_timeout_secs: 10`）—— 它管单个请求，不管整趟传输。
 pub const SESSION_CHANNEL_CAP: usize = 6;
-
-/// **传输车道上限**：同时最多几条**传输**（download / upload / 复制退路）占着通道。
-///
-/// # 为什么不等于 [`SESSION_CHANNEL_CAP`]
-///
-/// 档③ 第一条要的是「**边传边浏览**」。一条传输能跑几十分钟，列一次目录几十毫秒 ——
-/// 让传输把 6 格占满，「边传边浏览」只是从「1 条就卡」变成「6 条才卡」，
-/// 那句话仍然是假的。⇒ 传输另有一道更窄的闸，**浏览永远剩 `6 - 4 = 2` 格**。
-///
-/// ⚠ 两道闸**叠加**：一条传输同时占 1 格车道 ＋ 1 格通道。
-/// ⚠ 4 不是「最优并发度」—— 那要真机吞吐读数，本仓没有。它只是「留得出 2 格给浏览」
-///   这个约束下的一个值；真要调，先量。
-pub const TRANSFER_LANE_CAP: usize = 4;
 
 /// 池里的**一条 SFTP 通道**。两个变体的差别只有一个：通道是**哪来的**。
 ///
@@ -159,7 +132,7 @@ impl PooledChannel {
 
 /// 一格通道池的读数快照。
 ///
-/// ★ **生产侧也读它**（[`ChannelSet::lease`] 末尾那句 `debug!`）—— 刻意不做成
+/// ★ **生产侧也读它**（[`ChannelSet::lease_transfer`] 末尾那句 `debug!`）—— 刻意不做成
 /// 「只给判据看的仪表」：那样它在非 test 构建里就是死字段，而门禁 `deadcode`
 /// 那一格是**恒等**钉死的条数。仪表要么真有人读，要么别装。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -173,8 +146,6 @@ pub struct ChannelStats {
     pub peak: usize,
     /// 通道闸（= 建池时给的那个数）。
     pub cap: usize,
-    /// 传输车道闸。`cap - lane_cap` 就是**永远留给浏览的格子数**。
-    pub lane_cap: usize,
 }
 
 struct ChannelSetInner<C> {
@@ -191,35 +162,27 @@ struct ChannelSetInner<C> {
     generation: AtomicU64,
 }
 
-/// 一条 SSH 连接上的 SFTP 通道集合：**两道闸 · 空闲复用 · 读数可取**。
-///
-/// # 两道闸，叠加
+/// 一条 SSH 连接上的 SFTP 通道集合：**一道闸 · 空闲复用 · 读数可取**。
 ///
 /// - **通道闸**（`cap`，生产值 [`SESSION_CHANNEL_CAP`]）：谁要通道都得过它 ——
 ///   它对着的是远端的 `MaxSessions`。
-/// - **车道闸**（`lane_cap`，生产值 [`TRANSFER_LANE_CAP`]）：**只有传输**再过一道 ——
-///   它对着的是「边传边浏览」，把 `cap - lane_cap` 格永久留给浏览。
 ///
-/// ⚠ **车道闸刻意长在这里、不长在 `OriginPool` 上。** 理由是判据的形状，不是风格：
-/// `OriginPool` 攥着一条真 SSH 连接，要一台真 sshd 才构造得出来 ⇒ 车道闸挂在它身上，
-/// 「传输占满时浏览还进不进得来」这件事就**一条判据都写不出来**。
-/// 挂在本类型上之后，那句话是一个**相等读数**：
-/// 10 条传输 ＋ 1 次浏览、`(cap=6, lane_cap=4)` ⇒ 在借的恰好是 **5**（4 传输 ＋ 1 浏览）。
-/// 少了车道闸那个数是 6（6 条传输把格子占满、浏览永远排队）——**两个数差得开**。
+/// 〔第四波 S4〕从前还有一道**车道闸**（只有传输过、把几格永久留给浏览）；浏览离开 SFTP
+/// 之后池里只剩传输，那道闸没有要保护的东西了 ⇒ 连同浏览用的借法一起退役。
+///
+/// ⚠ **策略刻意长在这里、不长在 `OriginPool` 上**：`OriginPool` 攥着一条真 SSH 连接，
+/// 要一台真 sshd 才构造得出来 ⇒ 闸挂在它身上就一条判据都写不出来。
 ///
 /// # 泛型参数 `C` 同理
 ///
 /// 生产实例是 `ChannelSet<PooledChannel>`；判据拿 `ChannelSet<…>` 配一条
-/// **讲真 SFTP 字节的合成会话**（`tests/bridge/sftp_pool_f4_tests.rs` 那台台架，
-/// 照秤 F3 的形状办）。被判的是**同一个类型的同一个方法**，不是它的抄件。
+/// **讲真 SFTP 字节的合成会话**（`tests/bridge/sftp_pool_f4_tests.rs` 那台台架）。
+/// 被判的是**同一个类型的同一个方法**，不是它的抄件。
 pub struct ChannelSet<C> {
     inner: Arc<ChannelSetInner<C>>,
     /// 通道闸。**借不到就 await**（不是报错）—— 那个 await 就是「队列」。
     permits: Arc<tokio::sync::Semaphore>,
-    /// 车道闸，只有传输过。
-    lanes: Arc<tokio::sync::Semaphore>,
     cap: usize,
-    lane_cap: usize,
 }
 
 /// 一条借出去的通道。**drop 即归还**（凭据回信号量、通道回空闲栈）。
@@ -230,20 +193,11 @@ pub struct Leased<C> {
     inner: Arc<ChannelSetInner<C>>,
     /// 通道闸凭据。drop 即归还 —— 排队等通道的下一个人由此被唤醒。
     _permit: tokio::sync::OwnedSemaphorePermit,
-    /// 车道闸凭据（只有传输那一路有）。同样 drop 即归还。
-    _lane: Option<tokio::sync::OwnedSemaphorePermit>,
 }
 
 impl<C> Leased<C> {
     pub fn get(&self) -> &C {
-        self.chan
-            .as_ref()
-            .expect("借据在 drop 之前恒持有通道（`discard` 消耗 self）")
-    }
-
-    /// 这条通道**不许再回池**（它跟着已死的连接一起废了）。
-    pub fn discard(mut self) {
-        self.chan = None;
+        self.chan.as_ref().expect("借据在 drop 之前恒持有通道")
     }
 }
 
@@ -261,19 +215,9 @@ impl<C> Drop for Leased<C> {
 }
 
 impl<C> ChannelSet<C> {
-    /// `cap` = 通道闸，`lane_cap` = 传输车道闸。
-    ///
-    /// # 断言 `lane_cap < cap`，不是在挑剔风格
-    ///
-    /// 两者相等 ⇒ 传输占得满全部通道 ⇒ 「浏览永远留得出格子」这句话当场作废，
-    /// 而**代码照样跑、判据照样绿**（`in_use` 那个恒等会跟着一起变）。
-    /// ⇒ 这个前提只能由构造处守，守不住就炸在建池那一刻，而不是某天用户点不动面板。
-    pub fn new(cap: usize, lane_cap: usize) -> Self {
-        assert!(
-            lane_cap < cap && lane_cap > 0,
-            "车道闸 {lane_cap} 必须真窄于通道闸 {cap}（且非 0）—— \
-             等于它就等于没有车道闸：传输能把通道占满，「边传边浏览」那句话就是假的"
-        );
+    /// `cap` = 通道闸。0 ⇒ 谁都借不到、每一趟传输永远排队 ⇒ 炸在建池那一刻。
+    pub fn new(cap: usize) -> Self {
+        assert!(cap > 0, "通道闸是 0 —— 谁都借不到，每一趟传输都会永远排队");
         Self {
             inner: Arc::new(ChannelSetInner {
                 idle: std::sync::Mutex::new(Vec::new()),
@@ -283,9 +227,7 @@ impl<C> ChannelSet<C> {
                 generation: AtomicU64::new(0),
             }),
             permits: Arc::new(tokio::sync::Semaphore::new(cap)),
-            lanes: Arc::new(tokio::sync::Semaphore::new(lane_cap)),
             cap,
-            lane_cap,
         }
     }
 
@@ -295,7 +237,6 @@ impl<C> ChannelSet<C> {
             in_use: self.inner.in_use.load(Ordering::SeqCst),
             peak: self.inner.peak.load(Ordering::SeqCst),
             cap: self.cap,
-            lane_cap: self.lane_cap,
         }
     }
 
@@ -310,70 +251,19 @@ impl<C> ChannelSet<C> {
         }
     }
 
-    /// 占一格预算但**不要通道**（裸通道那一路：`copy-data` 要的是 `RawSftpSession`，
-    /// 它带着那一趟握手协商到的 `copy_data` 读数，复用等于把一次协商当永久事实）。
-    ///
-    /// ⚠ **不计入 `opened`**：那个数专门用来判「空闲复用有没有生效」，
-    /// 把不进池的通道混进去，那个恒等就读不懂了。
-    pub async fn reserve(&self) -> Result<tokio::sync::OwnedSemaphorePermit, String> {
-        self.permits
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| "SFTP 通道预算已关闭".to_string())
-    }
-
-    /// 占一格**车道**但不要通道（裸通道那一路：它自己去开 `RawSftpSession`）。
-    /// ⚠ 调用方必须**先**要它、**再** [`ChannelSet::reserve`]，次序同
-    /// [`ChannelSet::lease_transfer`]。
-    pub async fn reserve_lane(&self) -> Result<tokio::sync::OwnedSemaphorePermit, String> {
-        self.lanes
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| "SFTP 传输车道已关闭".to_string())
-    }
-
-    /// 借一条**浏览用**的通道：只过通道闸。
-    /// **借不到就排队等**（`acquire_owned().await`）—— 那个等待就是「队列」。
-    pub async fn lease<F, Fut>(&self, open: F) -> Result<Leased<C>, String>
-    where
-        F: FnOnce() -> Fut,
-        Fut: std::future::Future<Output = Result<C, String>>,
-    {
-        self.lease_inner(None, open).await
-    }
-
-    /// 借一条**传输用**的通道：**先过车道闸，再过通道闸**。
-    ///
-    /// ⚠ 次序是承重的。反过来（先通道后车道）⇒ `cap` 条传输先把通道全占住、
-    /// 再一起去等车道 —— 浏览那几格当场蒸发，而车道闸的全部意义就是留住它们。
-    /// 这一条由 `tests/bridge/sftp_pool_f4_tests.rs` 那个「在借恰好 5 不是 6」的
-    /// 相等读数钉着：把下面这行 `lanes` 挪到 `reserve()` 之后，那个数就变成 6。
+    /// 借一条**传输用**的通道：过通道闸。**借不到就排队等**（`acquire_owned().await`）——
+    /// 那个等待就是「队列」。〔第四波 S4〕池里只剩传输，这是唯一的借法。
     pub async fn lease_transfer<F, Fut>(&self, open: F) -> Result<Leased<C>, String>
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<C, String>>,
     {
-        let lane = self
-            .lanes
+        let permit = self
+            .permits
             .clone()
             .acquire_owned()
             .await
-            .map_err(|_| "SFTP 传输车道已关闭".to_string())?;
-        self.lease_inner(Some(lane), open).await
-    }
-
-    async fn lease_inner<F, Fut>(
-        &self,
-        lane: Option<tokio::sync::OwnedSemaphorePermit>,
-        open: F,
-    ) -> Result<Leased<C>, String>
-    where
-        F: FnOnce() -> Fut,
-        Fut: std::future::Future<Output = Result<C, String>>,
-    {
-        let permit = self.reserve().await?;
+            .map_err(|_| "SFTP 通道预算已关闭".to_string())?;
         let generation = self.inner.generation.load(Ordering::SeqCst);
         let reused = self.inner.idle.lock().ok().and_then(|mut v| v.pop());
         let chan = match reused {
@@ -389,19 +279,17 @@ impl<C> ChannelSet<C> {
         self.inner.peak.fetch_max(now, Ordering::SeqCst);
         let s = self.stats();
         tracing::debug!(
-            "SFTP 通道借出：已开 {} 条、在借 {}、高水位 {}、通道闸 {}、车道闸 {}",
+            "SFTP 通道借出：已开 {} 条、在借 {}、高水位 {}、通道闸 {}",
             s.opened,
             s.in_use,
             s.peak,
-            s.cap,
-            s.lane_cap
+            s.cap
         );
         Ok(Leased {
             chan: Some(chan),
             generation,
             inner: self.inner.clone(),
             _permit: permit,
-            _lane: lane,
         })
     }
 
@@ -414,31 +302,20 @@ impl<C> ChannelSet<C> {
     }
 }
 
-/// 一个 origin 的池格：**一条 SSH 连接 ＋ 它上面的一池 SFTP 通道（自带两道闸）**。
+/// 一个 origin 的池格：**一条 SSH 连接 ＋ 它上面的一池 SFTP 通道（自带通道闸）**。
 struct OriginPool {
     /// 懒建的底层连接。**整份 `sftp_pool.rs` 里 `connect_sftp` 只出现在
     /// [`OriginPool::conn`] 一处**（此前 5 处；`sftp_move_ledger::DIAL_CENSUS` 数的就是它）。
     conn: Mutex<Option<Arc<SftpConn>>>,
-    /// 两道闸都住在这里面（见 [`ChannelSet`] 头注里「车道闸为什么不长在 `OriginPool` 上」）。
+    /// 通道闸住在这里面（见 [`ChannelSet`] 头注里「策略为什么不长在 `OriginPool` 上」）。
     channels: ChannelSet<PooledChannel>,
-}
-
-/// 一条**裸**通道的借据（`copy-data` 那一路）。三个 `_` 字段的用途就是「活着」。
-struct RawLease {
-    /// 车道凭据：退路那一支是真的在搬字节，它就是一条传输。
-    _lane: tokio::sync::OwnedSemaphorePermit,
-    /// 通道凭据：裸通道在远端同样占一格 `MaxSessions`，不分高层裸层。
-    _slot: tokio::sync::OwnedSemaphorePermit,
-    /// 保活：裸通道跑在这条连接上，它一 drop 连接就断。
-    _conn: Arc<SftpConn>,
-    rs: crate::sftp::RawSftp,
 }
 
 impl OriginPool {
     fn new() -> Self {
         Self {
             conn: Mutex::new(None),
-            channels: ChannelSet::new(SESSION_CHANNEL_CAP, TRANSFER_LANE_CAP),
+            channels: ChannelSet::new(SESSION_CHANNEL_CAP),
         }
     }
 
@@ -467,24 +344,10 @@ impl OriginPool {
         }
     }
 
-    /// 借一条**传输用**通道：两道闸都过（次序与理由见 [`ChannelSet::lease_transfer`]）。
+    /// 借一条**传输用**通道（过通道闸，见 [`ChannelSet::lease_transfer`]）。
     async fn lease_transfer(&self, cfg: &RemoteConfig) -> Result<Leased<PooledChannel>, String> {
         let conn = self.conn(cfg).await?;
         self.channels.lease_transfer(|| Self::opener(conn)).await
-    }
-
-    /// 借一条裸通道发 `copy-data`。两道闸同样都过。
-    async fn lease_raw(&self, cfg: &RemoteConfig) -> Result<RawLease, String> {
-        let lane = self.channels.reserve_lane().await?;
-        let slot = self.channels.reserve().await?;
-        let conn = self.conn(cfg).await?;
-        let rs = conn.open_raw_sftp().await?;
-        Ok(RawLease {
-            _lane: lane,
-            _slot: slot,
-            _conn: conn,
-            rs,
-        })
     }
 
     /// 这一格整个作废：连接 ＋ 它上面全部通道。下次借用干净重连。
@@ -553,61 +416,8 @@ const CHUNK: usize = 32 * 1024;
 /// 进度上报节流:每 ≥256KB 报一次（避免刷爆 Channel),外加起止各一次。
 const PROGRESS_EVERY: u64 = 256 * 1024;
 
-#[derive(Serialize, Clone, Debug)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct TransferProgress {
-    /// C03：同 `SftpEntry.size` —— 传输字节数，2^53-1 ≈ 8 PB 够用；显式收窄不回落 `bigint`。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub transferred: u64,
-    /// 总字节;下载时=远端 size,上传时=本地 size。未知(极少)为 0。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub total: u64,
-}
-
-/// 取消令牌注册表:transfer_id → flag。**transfer_id 必须全局唯一(前端用 uuid)**——
-/// 并发复用同 id 会互相覆盖 flag(D 审计 R2)。用 std::sync::Mutex(map ops 无 await,
-/// 可在 [`CancelGuard::drop`] 里同步清理,修 future 被 abort 时的泄漏 = D 审计 S4)。
-fn cancels() -> &'static std::sync::Mutex<HashMap<String, Arc<AtomicBool>>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<HashMap<String, Arc<AtomicBool>>>> =
-        std::sync::OnceLock::new();
-    C.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
-}
-
-/// 注册取消令牌,返回 (flag, guard)。guard 一 drop(命令 future 正常完成 **或被 abort**)
-/// 就按 `Arc::ptr_eq` 从表里摘除本次的 flag——ptr_eq 保证不误删并发同 id 的他人 flag。
-struct CancelGuard {
-    id: String,
-    flag: Arc<AtomicBool>,
-}
-impl Drop for CancelGuard {
-    fn drop(&mut self) {
-        if let Ok(mut m) = cancels().lock() {
-            if m.get(&self.id).is_some_and(|f| Arc::ptr_eq(f, &self.flag)) {
-                m.remove(&self.id);
-            }
-        }
-    }
-}
-
-fn register_cancel(id: &str) -> (Arc<AtomicBool>, CancelGuard) {
-    let flag = Arc::new(AtomicBool::new(false));
-    if let Ok(mut m) = cancels().lock() {
-        m.insert(id.to_string(), flag.clone());
-    }
-    (
-        flag.clone(),
-        CancelGuard {
-            id: id.to_string(),
-            flag,
-        },
-    )
-}
-
-fn report(ch: &tauri::ipc::Channel<TransferProgress>, transferred: u64, total: u64) {
-    let _ = ch.send(TransferProgress { transferred, total });
-}
+// 〔第四波 S4〕老的 Tauri 那一路（`TransferProgress` 进度通道 · 按 id 登记的取消旗）随最后一条
+//   用它的命令 `sftp_copy` 一起删了：传输台的进度走 `watch_ticket` 那条流、撤就是停订。
 
 /// 下载核心。**语料是一个 SFTP 会话**（不是 `cfg`）——借通道那一段留在
 /// [`sftp_download`] 里，好让判据能拿一台合成 SFTP 服务端直接喂它
@@ -1287,278 +1097,12 @@ pub async fn transfer_call(
     }
 }
 
-// === 步 23b：远端内部复制 —— 零流量走 `copy-data`，协商不到就退路 **并出声** ===
-
-/// 一次远端内部复制的裁决。
-///
-/// - `None` ⇒ 走了 `copy-data`，**一个文件字节都没经过这台机器**；
-/// - `Some(说明)` ⇒ **退了路**，那一句就是要摆到用户眼前的话（含实际过网字节数）。
-///
-/// ★ 刻意**不是 `bool`**：`设计/60 §5` 第二段逐字「不许静默退化成 2× 流量 ——
-/// 用户看得见『这一趟走的是慢路』」。一个 `bool` 到了界面上还得由界面去编一句话，
-/// 而**慢路为什么慢**（没协商到扩展 / 句柄不是 UTF-8 / 服务端判 `OP_UNSUPPORTED`）
-/// 只有这一层答得出。把那句话做成返回值的一部分 ⇒ 静默退化在类型上就做不到。
-pub type CopyVerdict = Option<String>;
-
-/// 远端内部复制的核心。**语料由调用方给**（一个裸会话），所以它在判据里
-/// 既走得了「服务端支持」这一路、也走得了「服务端不支持」那一路 —— 秤 F3 两个方向。
-///
-/// # 两条路
-///
-/// **快路**（`rs.copy_data == true` 且两个句柄都能逐字节回送）：
-/// `open(src,READ)` · `open(tmp,CREATE|EXCLUDE|WRITE)` · 一条 `copy-data` · `close` ×2
-/// · 换名上位。**客户端侧 `SSH_FXP_READ` / `SSH_FXP_WRITE` / `SSH_FXP_DATA` 恒 0 条。**
-///
-/// **退路**（协商不到 / 句柄非 UTF-8 / 服务端回 `OP_UNSUPPORTED`）：
-/// 逐块 `read` → `write` 中转。字节走「远端 → 你的机器 → 远端」，**就是 2× 流量**，
-/// 与 `设计/60 §5` 说的「下载再上传」同一件事、同一个代价。
-///
-/// ⚠ **与「下载再上传」的实现差异如实记**：这里**不落本机磁盘**（块在内存里转手），
-/// 省掉一趟本机读写；过网字节数与落盘版**一模一样**，所以「不许静默 2×」那条
-/// 承诺的对象没变。选它的理由：不必再造一处本机临时文件的落点与清理
-/// （那会多一处 `write_site_registry` 管辖的本机写面）。
-///
-/// # 落地纪律照 [`upload_inner`]
-///
-/// 先写 `<to>.part`（**EXCLUDE** 创建，防 symlink 预置 clobber，同 `upload_atomic`）
-/// → 成功后删旧 → rename 上位。**半途失败绝不在正名上留半截文件**。
-///
-/// # 它不守什么（逐条，别读大）
-///
-/// - **只复制一个普通文件**。目录递归不在这一层（`copy-data` 自己也只吃文件句柄；
-///   本机 `sftp` 客户端现打同样拒：`Cannot copy non-regular file: %s`）。
-/// - **退路没有取消点之外的断点续传**：取消/失败即清 `.part`，下次从头。
-/// - 服务端报了 `copy-data` 却回**别的**错误状态（权限 / 磁盘满）⇒ **原样报错，不退路**。
-///   退路只接「协商不到」那一族 —— 拿退路去盖真实故障，会把「远端满了」伪装成「慢了点」。
-pub async fn copy_remote_path(
-    rs: &crate::sftp::RawSftp,
-    from: &str,
-    to: &str,
-    cancel: &AtomicBool,
-    progress: &(dyn Fn(u64, u64) + Sync),
-) -> Result<CopyVerdict, String> {
-    use russh_sftp::protocol::{Packet, StatusCode};
-
-    let total = rs
-        .raw
-        .stat(from.to_string())
-        .await
-        .ok()
-        .and_then(|a| a.attrs.size)
-        .unwrap_or(0);
-    progress(0, total);
-
-    let tmp = format!("{to}.part");
-    let _ = rs.raw.remove(tmp.clone()).await; // best-effort 清残留/预置
-
-    let h_src = rs
-        .raw
-        .open(
-            from.to_string(),
-            russh_sftp::protocol::OpenFlags::READ,
-            attrs_empty(),
-        )
-        .await
-        .map_err(|e| format!("打开远端源 {from} 失败: {e}"))?
-        .handle;
-    let h_dst = match rs
-        .raw
-        .open(
-            tmp.clone(),
-            russh_sftp::protocol::OpenFlags::CREATE
-                | russh_sftp::protocol::OpenFlags::EXCLUDE
-                | russh_sftp::protocol::OpenFlags::WRITE,
-            attrs_empty(),
-        )
-        .await
-    {
-        Ok(h) => h.handle,
-        Err(e) => {
-            let _ = rs.raw.close(h_src).await;
-            return Err(format!("创建远端 {tmp} 失败: {e}"));
-        }
-    };
-
-    // ── 选路。**三个岔口，每个都留一句给用户的话** ──────────────────────────
-    let mut verdict: CopyVerdict = if !rs.copy_data {
-        Some("远端的 sftp-server 握手时没报 `copy-data` 扩展（或修订号不是 1）".to_string())
-    } else if handle_is_lossy(&h_src) || handle_is_lossy(&h_dst) {
-        // russh-sftp 解 SFTP 的 `string` 字段时对非 UTF-8 走 `from_utf8_lossy`
-        // （现打核过 3.0.0 那份取 string 的辅助函数）⇒ 句柄里的字节被换成了 U+FFFD，
-        // **再发回去就不是同一个句柄**。OpenSSH 的句柄是 4 字节大端的句柄序号，
-        // 序号 ≥ 0x80 时末字节就不是合法 UTF-8 ⇒ 同一条会话开到 128 个以上句柄才碰得到。
-        // ⚠ 这一条是**库的既有缺陷**（`read`/`write`/`close` 同样受影响），不是本路新增；
-        //   但 `copy-data` 是唯一一处**我们自己把句柄再序列化一遍**的地方 ⇒ 这里必须判。
-        Some("远端给的 SFTP 句柄含非 UTF-8 字节，库已有损解码 ⇒ 不敢照原样发回去".to_string())
-    } else {
-        None
-    };
-
-    let core = async {
-        if verdict.is_none() {
-            let body: Vec<u8> = crate::sftp::CopyDataExtension {
-                read_from_handle: h_src.clone(),
-                read_from_offset: 0,
-                read_data_length: 0, // 0 = 一直读到 EOF（现打验过，见 sftp.rs 那张突变表）
-                write_to_handle: h_dst.clone(),
-                write_to_offset: 0,
-            }
-            .try_into()?;
-            match rs.raw.extended(crate::sftp::COPY_DATA, body).await {
-                Ok(Packet::Status(s)) if s.status_code == StatusCode::Ok => return Ok(0u64),
-                Ok(Packet::Status(s)) if s.status_code == StatusCode::OpUnsupported => {
-                    verdict = Some(
-                        "远端报了 `copy-data`，可真发过去它回 `SSH_FX_OP_UNSUPPORTED`".to_string(),
-                    );
-                }
-                Ok(Packet::Status(s)) => {
-                    // 真实故障（权限 / 空间 / 路径）—— **不拿退路去盖它**。
-                    return Err(format!(
-                        "远端 copy-data 失败（{:?}）: {}",
-                        s.status_code, s.error_message
-                    ));
-                }
-                Ok(_) => return Err("远端对 copy-data 回了个非 STATUS 包".to_string()),
-                Err(e) => return Err(format!("发 copy-data 失败: {e}")),
-            }
-        }
-        // ── 退路：逐块中转。**这里每一块都是真的 2× 流量** ──────────────────
-        let mut off: u64 = 0;
-        let mut last_report: u64 = 0;
-        loop {
-            if cancel.load(Ordering::SeqCst) {
-                return Err("已取消".to_string());
-            }
-            let chunk = match rs.raw.read(h_src.clone(), off, CHUNK as u32).await {
-                Ok(d) => d.data,
-                Err(russh_sftp::client::error::Error::Status(s))
-                    if s.status_code == StatusCode::Eof =>
-                {
-                    break
-                }
-                Err(e) => return Err(format!("读远端源失败: {e}")),
-            };
-            if chunk.is_empty() {
-                break;
-            }
-            let n = chunk.len() as u64;
-            rs.raw
-                .write(h_dst.clone(), off, chunk)
-                .await
-                .map_err(|e| format!("写远端目标失败: {e}"))?;
-            off += n;
-            if off - last_report >= PROGRESS_EVERY {
-                last_report = off;
-                progress(off, total);
-            }
-        }
-        Ok(off)
-    }
-    .await;
-
-    let _ = rs.raw.close(h_src).await;
-    let _ = rs.raw.close(h_dst).await;
-
-    let relayed = match core {
-        Ok(n) => n,
-        Err(e) => {
-            let _ = rs.raw.remove(tmp.clone()).await; // 清半成品 .part
-            return Err(e);
-        }
-    };
-
-    // 目标原文件在此之前完好无损；此后才删旧 + 换名（russh-sftp 的 rename 不覆盖）。
-    if rs.raw.stat(to.to_string()).await.is_ok() {
-        rs.raw
-            .remove(to.to_string())
-            .await
-            .map_err(|e| format!("删旧 {to} 失败: {e}"))?;
-    }
-    rs.raw
-        .rename(tmp.clone(), to.to_string())
-        .await
-        .map_err(|e| format!("rename {tmp} → {to} 失败: {e}"))?;
-    progress(total.max(relayed), total);
-
-    // 退路那句话在这里才**装上读数** —— 「慢」不是形容词，是一个字节数。
-    Ok(verdict
-        .map(|why| format!("{why} ⇒ 退回中转：{relayed} 字节经过了你这台机器（零流量复制没走上）")))
-}
-
-/// 一个空属性块（`SSH_FXP_OPEN` 的 attrs 位图全 0）。
-///
-/// 抽成函数**不是**为了省字：`russh_sftp::protocol::FileAttributes::empty()` 在
-/// `copy_remote_path` 里要写两遍，而那两处必须一模一样（一处带了 permissions
-/// 就会在 `EXCLUDE` 创建时改变落地权限）。
-fn attrs_empty() -> russh_sftp::protocol::FileAttributes {
-    russh_sftp::protocol::FileAttributes::empty()
-}
-
-/// 这个 SFTP 句柄是不是已经被库有损解码过了（含 U+FFFD ⇒ 原字节回不去）。
-///
-/// 与从前那个判文件名的（`is_lossy_name`〔散文墓碑〕，随列目录命令删了）同一条性质、**刻意不复用那一个**：那个判的是**文件名**
-/// （有损只影响显示），这个判的是**句柄**（有损意味着「发回去就是另一个句柄」）。
-/// 两个判据的后果完全不同，共用一个名字会让下一个人以为改一处就够。
-fn handle_is_lossy(handle: &str) -> bool {
-    handle.contains('\u{FFFD}')
-}
-
-/// 远端内部复制。**零流量优先，退路必出声。**
-///
-/// 返回 `null` = 服务端内部复制（`copy-data`），一个文件字节都没过网；
-/// 返回一串话 = **退了路**，那串话就是要给用户看的（已含实际过网字节数）。
-///
-/// `from`（源）与 `to`（目标）**各过一次** `guard_write` —— 照 [`sftp_rename`] 的先例：
-/// 既不许把 Claude 的会话文件复制走，也不许复制成一个 Claude 数据源名
-/// （往正被 Claude 打开的 jsonl 上盖一份复制品，和覆写它一样会损坏会话）。
-/// ★ **池化那一段刻意留在本函数体内、不抽 `copy_inner`**（`download_inner` /
-/// `upload_inner` 那两条是抽出去的）。理由是判据的形状，不是风格：
-/// `remote_write_registry::the_ipc_entry_points_route_through_a_registered_write_site`
-/// 那张路由表是 `(入口所在文件, 入口名, 它该转发到的已登记写点)` **一跳**的 ——
-/// 中间多垫一层 `copy_inner`，「按钮 ↔ 真实写点」那条边就表达不出来，
-/// 而那条边正是那一条判据存在的全部理由（「两个不同的层，一条边」）。
-/// ⇒ 让 `sftp_copy` 的函数体里**直接点名** `copy_remote_path`。
-///
-/// **不走 `with_sftp` 的重试**：同 `download_inner` / `upload_inner`，
-/// 半途失败不静默从头重来（`.part` 已清，重来由用户决定）。
-#[tauri::command]
-pub async fn sftp_copy(
-    cfg: RemoteConfig,
-    from: String,
-    to: String,
-    transfer_id: String,
-    on_progress: tauri::ipc::Channel<TransferProgress>,
-) -> Result<CopyVerdict, String> {
-    guard_write(&from)?;
-    guard_write(&to)?;
-    let (cancel, _guard) = register_cancel(&transfer_id); // _guard 摘除注册项(含 abort)
-    let r = async {
-        let pool = pool_for(&cfg.origin_label()).await;
-        // 🔴 **快路一个字节都没多付**：这里换掉的只是「怎么拿到那条裸通道」——
-        // 从「抢 per-origin 独占锁」换成「拿一格车道 ＋ 一格通道预算」。
-        // `copy_remote_path` 的语料仍然是一个裸会话，选路、包面、退路出声**逐字未动**
-        // （秤 F3 两个方向照跑）。变的是：复制期间别的操作不再被这台 host 上的锁挡住。
-        let lease = pool.lease_raw(&cfg).await?;
-        let report_to = |done: u64, total: u64| report(&on_progress, done, total);
-        copy_remote_path(&lease.rs, &from, &to, &cancel, &report_to).await
-    }
-    .await;
-    if let Err(e) = &r {
-        evict_if_dead(&cfg.origin_label(), e).await; // R1:死连不留在槽里毒化后续
-    }
-    r
-}
+// 〔第四波 S4〕步 23b 那条远端内部复制（`copy-data` 零流量 ＋ 出声的退路）连同它的 Tauri 命令、
+//   裸通道借据与秤 F3 一起退役：窗口的复制早已走后端 `files-copy`（F7a），池里只剩传输。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/sftp_pool_tests.rs"]
 mod tests;
-
-/// **秤 F3**（`设计/17 §6.9`）：零流量复制的对拍，正反两个方向。
-/// 刻意**另立一个模块**而不是塞进上面那份 —— 它自带一个合成 SFTP 服务端与一层
-/// 按字节数包的计数流，是一台**台架**，与 `sftp_pool_tests` 那些单点判据不同族。
-#[cfg(test)]
-#[path = "../../../tests/bridge/sftp_copy_f3_tests.rs"]
-mod copy_f3_tests;
 
 /// **秤 F4**（`设计/60 §2 档③`）：多通道池那三件事的对拍 ——
 /// 边传边浏览 · 并发/队列 · 断点续传。同 F3，它也是一台**台架**

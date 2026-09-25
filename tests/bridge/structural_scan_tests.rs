@@ -3297,7 +3297,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_chmod_attrs_never_put_a_size_on_the_wire",
             1,
         ),
-        ("src/bridge/src/sftp_pool.rs", "is_lossy_name", 1),
+        // 〔第四波 S4〕`sftp_pool.rs` 那一处（句柄有损判定的头注里点着从前那个判文件名的函数）随它所在的
+        //   零流量复制一段整块删了 ⇒ 这一行走了（被守的那件事整段退役，不是墓碑被人擦掉）。
         (
             "tests/bridge/filewin/boundary_tests.rs",
             "sftp_cancel_transfer",
@@ -3704,7 +3705,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),
         ("src/bridge/src/filewin/writeops.rs", 1),
-        ("src/bridge/src/sftp_pool.rs", 1),
+        // 〔第四波 S4〕`sftp_pool.rs` 1 → 0（行删）：那块墓碑随零流量复制一段整块删了，理由同 `TOMBSTONED` 那一行。
         ("tests/bridge/filewin/boundary_tests.rs", 2),
         ("tests/bridge/filewin/transfer_tests.rs", 1),
         ("tests/bridge/sftp_family_registry_tests.rs", 2),
@@ -3714,6 +3715,11 @@ fn every_prose_tombstone_mark_is_registered() {
         //   选中那张表里「批量改权限没做」那一格（做了）。
         ("src/backend/control/files_write.rs", 1),
         ("src/bridge/src/filewin/select.rs", 1),
+        // 〔第四波 S4〕快捷键预留位 `app.search-history` 删了（历史全文搜索从没独立快捷键、预留位不留）：
+        //   清单那一处 ＋ 清单头注一处 ＋ 编辑器那枚「未上线」标签的遗址一处，逐处挂了墓碑。
+        ("src/keybindings/actions.ts", 2),
+        ("src/keybindings/editor.ts", 1),
+        ("tests/keybindings/actions.vitest.ts", 1),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

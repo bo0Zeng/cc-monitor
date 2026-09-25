@@ -3,7 +3,7 @@ use super::*;
 // 🔴 **围栏那一族的判据已经不在本文件了**〔步 H2 09-21，用户裁「拆」〕。
 // `guard_write` 与 `is_protected_claude_data_path` 搬去了 `crate::claude_data_fence`，
 // 它们的判据跟着搬进 `tests/bridge/claude_data_fence_tests.rs`（两条原样保留、并各自
-// 补了相等断言那一半）。本文件从此只放**池子自己**那几件事：死连分类 · 取消登记 · 下载落点的围栏。
+// 补了相等断言那一半）。本文件从此只放**池子自己**那几件事：死连分类 · 下载落点的围栏（〔第四波 S4〕取消登记那一条随它测的表删了）。
 //
 // 〔F7c 收尾 09-24〕可编辑性（`decode_editable_guards`〔散文墓碑〕）· 有损名（`lossy_name_detection`〔散文墓碑〕）·
 // 排序（`list_dir_sort_dirs_first_then_lowercase`〔散文墓碑〕）· 改权限的线上形状
@@ -20,24 +20,8 @@ fn dead_conn_classification() {
     assert!(!looks_like_dead_conn("permission denied"));
 }
 
-#[test]
-fn cancel_guard_ptr_eq_no_cross_delete() {
-    // D 审计 R2/S4:同 id 两次注册,第一个 guard drop 用 ptr_eq 不误删第二个的 flag。
-    let (_f1, g1) = register_cancel("dup-id");
-    let (f2, _g2) = register_cancel("dup-id"); // 覆盖 map 里的 flag = f2
-    drop(g1); // g1 的 flag != map 现存(f2)→ ptr_eq 不成立→不删
-    assert!(
-        cancels().lock().unwrap().contains_key("dup-id"),
-        "g1 drop 不该误删 f2 的注册项"
-    );
-    // f2 仍可被取消(标志翻转可达)
-    f2.store(true, std::sync::atomic::Ordering::SeqCst);
-    drop(_g2);
-    assert!(
-        !cancels().lock().unwrap().contains_key("dup-id"),
-        "g2 drop 摘除自己的项"
-    );
-}
+// 〔第四波 S4〕这里原先是「取消登记按 `ptr_eq` 摘、不误删同 id 他人」那一条：它测的那张按 id 的取消表
+//   是老 Tauri 传输那一路的，最后一个用它的命令（零流量复制）退役时一起删了；传输台撤就是停订。
 
 // ═════════════════════════════════════════════════════════════════════════════
 // `设计/60 §5.4c`：`sftp_chmod` 发上线的那个 `SETSTAT` 包，**不许带 size**

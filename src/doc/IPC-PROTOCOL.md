@@ -979,6 +979,7 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 ← {"kind":"reply","id":"f4","ok":true,"data":{
      "index_missing":false,"entries":20220,"resident_bytes":2544180,"unreadable_dirs":3,
      "truncated":false,"age_secs":12,"rewalk_interval_secs":300,"stale":false,
+     "cold_first_build_secs":10,
      "browse_watches":4,"browse_watch_cap":64}}
 ```
 
@@ -994,6 +995,7 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 | `stale` | ← | `age_secs > rewalk_interval_secs` |
 | `browse_watches` | ← | 此刻给「用户正在浏览的那几个目录」挂着几个 watch |
 | `browse_watch_cap` | ← | 最多挂几个。全挂挂不住：本机 `inotify` 每用户上限现打 262144，而 home 下 640413 条目，且非特权拿不到全文件系统监听 |
+| `cold_first_build_secs` | ← | 〔第四波 S4 · `设计/99 §2 Q5`〕后端**声明**的冷启动首建大约要几秒（今天 10，出处见 `index.rs::COLD_FIRST_BUILD_SECS`：一台 NVMe 上 `find` 的冷缓存读数取上整，**代理指标、不是实测**）。与 `rewalk_interval_secs` 分开：周期性重走是热的，后端刚起那一趟是冷的、用户看得见 ⇒ 窗口在 `index_missing` 那一趟的重走期间显示「正在建索引（首次约 N 秒）」 |
 
 🔴 **「重走」这件事后端自己不做** —— 后端那条零定时器铁律不许它长出节拍
 （`设计/60 §3.5.2a`：机制在后端、偏好由后端声明、**节拍在调用方**）。

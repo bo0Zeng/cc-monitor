@@ -1370,17 +1370,6 @@ body.settings-window-mode .settings-panel {
   width: 50%;
 }
 
-.kb-editor-tag-coming {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 0 6px;
-  font-size: 11px;
-  background: var(--overlay-hover);
-  color: var(--text-faint);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-}
-
 .kb-editor-chord {
   padding: 8px 6px;
   font-family: var(--font-mono);
