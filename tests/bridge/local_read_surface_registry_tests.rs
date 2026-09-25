@@ -33,9 +33,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/history.rs",
         "payload",
-        5,
-        "把 `CLAUDE_CONFIG_DIR` 拼进**启动命令串**：`validate_config_dir_posix`(1031) · \
-             `validate_config_dir_ps`(1054/1057) · `config_dir_prefix_ps`(1102/1111)。\
+        2,
+        "把 `CLAUDE_CONFIG_DIR` 拼进**启动命令串**：`config_dir_prefix_ps`(1102/1111)。\
+             〔CP2b · 4C〕`validate_config_dir_posix` / `validate_config_dir_ps` 那三行是拒绝的话里提到这个变量名，\
+             话搬进了文案表（`rsHistory.configDir.invalid`），源码里只剩取文口 ⇒ 5 → 2。\
              ⚠ **不属读面**，随 F06/F07 走。",
     ),
     (
