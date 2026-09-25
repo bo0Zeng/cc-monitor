@@ -5,7 +5,7 @@
 function __ccm_bind {
     # 在这个 PowerShell session 里向 cc-monitor 注册 (PS_PID -> 当前 console hwnd) 映射。
     # 已注册 + 进程指纹一致 → 直接返回（avoid title flicker on every invocation）。
-    $ccmDir = Join-Path $env:USERPROFILE '.claude\work'
+    $ccmDir = {{MONITOR_DATA_DIR}}
     $regFile = Join-Path $ccmDir "ps-registry\$PID.json"
     $autoLaunchFile = Join-Path $ccmDir 'auto-launch.json'
 

@@ -78,7 +78,7 @@ fn powershell_golden() {
         r"if (Test-Path -LiteralPath 'C:\Users\u\.cc-monitor/aliases.ps1') { . 'C:\Users\u\.cc-monitor/aliases.ps1' }"
     );
     // 与自带 `cc` 同形这一句**不是**抄来的：从那份模板现渲染一个 `cc`，逐行比骨架。
-    let cc = crate::profile_installer::render_cc_code("cc", true);
+    let cc = crate::profile_installer::render_cc_code("cc", true, std::path::Path::new("/_"));
     for fixed in [
         "    [CmdletBinding()] param(",
         "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs",
