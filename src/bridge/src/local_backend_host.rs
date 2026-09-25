@@ -569,6 +569,19 @@ fn spawn_detached(
         .env(LISTEN_TOKEN_ENV, token)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null());
+    // 〔NT2 · S1 · `设计/15 §4.7 S1`〕stderr 仍是 null（理由见下），但交它一份自己的诊断文件路径 ⇒ 它把 fd 2
+    //   接进一份有上限、滚动的文件（后端 `stderr_log.rs`），设置「日志」里看得到。**只这条载体交**：被监护那条的
+    //   stderr 已经进本进程的滚动日志（`StderrSink::ToLog`），交了反而分成两处。目录由这里建好（后端只新建文件、不建目录）；
+    //   拿不到数据目录 / 建不了目录 ⇒ 不交，后端照旧不落盘（不猜路径）。
+    if let Some(p) = crate::paths::resolve_monitor_data_dir()
+        .map(|d| crate::logging::backend_stderr_log_path(&d))
+        .filter(|p| {
+            p.parent()
+                .is_some_and(|d| std::fs::create_dir_all(d).is_ok())
+        })
+    {
+        cmd.env(crate::logging::BACKEND_STDERR_LOG_ENV, p);
+    }
     // ★★ 三条策略（`00 §1.5.2`）—— 「三样一起才叫脱离」里的两样现在写在这儿：
     // · `Hidden` —— 脱离起来的后端**绝不该**在用户桌面上留一个黑框（那个框可关，
     //   一关就是 `CTRL_CLOSE_EVENT` ⇒ 常驻当场没了，而它的全部意义就是「常驻」）。
