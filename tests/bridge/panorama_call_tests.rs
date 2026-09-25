@@ -351,15 +351,20 @@ fn only_missing_or_old_bytes_trigger_exactly_one_push_and_one_retry() {
     for code in ["not_installed", "unsupported"] {
         let asks = Answers::new(vec![coded(code), Ok(json!({"ok": 1}))]);
         let pushed = RefCell::new(0usize);
+        let announced = RefCell::new(0usize);
         let got = futures::executor::block_on(ask_or_push(
             || asks.next(),
+            || *announced.borrow_mut() += 1,
             || {
+                // 〔RM1f · P1〕「正在装」那一句恰在推之前说过一次。
+                assert_eq!(*announced.borrow(), 1, "推之前没说「正在装」");
                 *pushed.borrow_mut() += 1;
                 std::future::ready(Ok(()))
             },
         ));
         assert_eq!(got, Ok(json!({"ok": 1})), "{code}");
         assert_eq!((*pushed.borrow(), *asks.asked.borrow()), (1, 2), "{code}");
+        assert_eq!(*announced.borrow(), 1, "{code}：「正在装」说了不止一次");
     }
     // 其余码与「没发出去」（没有码）：一次都不推，只问一次。
     let others = [
@@ -377,8 +382,10 @@ fn only_missing_or_old_bytes_trigger_exactly_one_push_and_one_retry() {
         let want = first.clone().map_err(|a| a.said);
         let asks = Answers::new(vec![first]);
         let pushed = RefCell::new(0usize);
+        let announced = RefCell::new(0usize);
         let got = futures::executor::block_on(ask_or_push(
             || asks.next(),
+            || *announced.borrow_mut() += 1,
             || {
                 *pushed.borrow_mut() += 1;
                 std::future::ready(Ok(()))
@@ -386,6 +393,11 @@ fn only_missing_or_old_bytes_trigger_exactly_one_push_and_one_retry() {
         ));
         assert_eq!(got, want);
         assert_eq!((*pushed.borrow(), *asks.asked.borrow()), (0, 1));
+        assert_eq!(
+            *announced.borrow(),
+            0,
+            "〔RM1f · P1〕不推就不该说「正在装」"
+        );
     }
 }
 
@@ -396,6 +408,7 @@ fn a_push_that_does_not_help_or_fails_is_said_not_looped() {
     let pushed = RefCell::new(0usize);
     let e = futures::executor::block_on(ask_or_push(
         || asks.next(),
+        || {},
         || {
             *pushed.borrow_mut() += 1;
             std::future::ready(Ok(()))
@@ -411,6 +424,7 @@ fn a_push_that_does_not_help_or_fails_is_said_not_looped() {
     let asks = Answers::new(vec![coded("not_installed")]);
     let e = futures::executor::block_on(ask_or_push(
         || asks.next(),
+        || {},
         || std::future::ready(Err("围栏拒了".to_string())),
     ))
     .unwrap_err();
@@ -595,4 +609,27 @@ async fn a_cancelled_ticket_drops_the_ask_and_says_so() {
     assert!(dup.is_err(), "同一张票第二问没被拒：{dup:?}");
     assert!(panorama_cancel(t3.clone()));
     assert_eq!(first.await.expect("task"), Err(CANCELLED_SAID.to_string()));
+}
+
+/// ★〔RM1f · P1b〕「正在装」那一句：走远端健康通道（`kind` 是前端标题表认得的那一个），
+/// 说的是哪台机器（机器名，不是 `<local>` 这类内部串），带着「装好会自己接着答」。
+#[test]
+fn the_install_notice_names_the_machine_and_rides_the_health_channel() {
+    let p = install_notice("box1");
+    assert_eq!(p.origin, "box1");
+    assert_eq!(p.kind, INSTALL_NOTICE_KIND);
+    assert!(
+        p.message.contains("box1") && p.message.contains("正在"),
+        "{}",
+        p.message
+    );
+    // 前端 `remote-health.ts` 的标题表认得这个 kind（异源：读 TS 源码）。
+    let ts = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../remote-health.ts"),
+    )
+    .expect("读 src/remote-health.ts");
+    assert!(
+        ts.contains(&format!("case \"{INSTALL_NOTICE_KIND}\":")),
+        "前端标题表不认 `{INSTALL_NOTICE_KIND}` —— 那一句会落进通用的「远端提示」标题"
+    );
 }
