@@ -5,7 +5,7 @@
  *
  * | # | 这件事 | 谁在调（生产） | 拆到 |
  * |---|---|---|---|
- * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（归档/灰灯/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `getActiveSubagentContext` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（从记录里抽事实） |
+ * | ① | **会话状态账**：tab 集合 · 顺序 · 当前 tab · 早于 tab 到达的信号暂存（已结束/可重连/红绿灯）· 账号快照 · 任务快照 · 「变了」那一份订阅 | `main.ts` / `entry-viewer.ts` 把 `events.ts` 的事件喂进来（`onLine` · `archiveTab` · `reviveTab` · `markTmuxIdle` · `updateActivity` · `updateTasks` · `createSkeletonTab` · `setSessionAccounts`）；`main.ts` 读投影（`snapshotSessions` · `peekSession` · `hasTab` · `activeRepoInfo` · `touchedFilesFor` · `getActiveSubagentContext` · `activeSessionId`） | `tab-store.ts`（store）· `tab-model.ts`（`Tab` 形状与标题）· `tab-session-facts.ts`（从记录里抽事实）· `tab-session-state.ts`（〔U4〕会话状态的两个轴：活性 × 可恢复性，转移与谓词） |
  * | ② | **路由**：切到哪个 tab、谁有权切（手动 5s 保护 · 自动跟随）、记住上次的 tab | `main.ts` 快捷键 / 命令面板 / 启动选 active（`switchTo` · `cycleActive` · `jumpToIndex` · `applyBehavior` · `persistLastActive` · `onManualSwitch`）；`onLine` 里真用户输入（`userActive`） | `tab-router.ts` |
  * | ③ | **实时流视图**：每个 tab 的流 DOM、按 seq 门控建卡、尾部窗口 / 骨架 / 上翻补批 / 哨兵 / 大纲、重放批 | `events.ts` → `onBatchStart` · `onLine` · `onBatchEnd`；`main.ts` DEV 探针 `debugSnapshot` | `tab-stream-view.ts` |
  * | ④ | **tab 栏视图**：按钮 · 徽章 · 分组 · 拖动排序与成组 · 固定 · 顺序落盘 | 用户手势；`main.ts` 启动 `loadCollections` · `loadPinned` · `loadOrder` | `tab-bar-view.ts` · `tab-bar-drag.ts` · `tab-drop.ts`（纯落点算术）· `tab-bar-prefs.ts`（集合 / 固定 / 顺序三份落盘） |
@@ -33,9 +33,10 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
+import { ENDED, LIVE, RECONNECTABLE, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // 〔U2〕`Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
-export type { Tab, TabStatus, TabsSummary } from "./tab-model";
+export type { Tab, TabsSummary } from "./tab-model";
 // 〔U2〕落点算术搬去了 `tab-drop.ts`；原样 re-export，`tabs.vitest.ts` 的 import 面零改动。
 export {
   moveTabBlock,
@@ -442,8 +443,7 @@ export class TabManager {
         title: tab.title,
         origin: tab.origin,
         cwd: tab.cwd,
-        status: tab.status,
-        tmuxIdle: tab.tmuxIdle, // audit-fixes F03.2：cell 灰灯与 tab-bar 同源
+        state: tab.state, // 〔U4〕两轴原样交出去：cell 与 tab-bar 读同一份、经同一组谓词
         activityStatus: tab.activity?.status ?? null,
         waitingFor: tab.activity?.waitingFor ?? null,
         runningAgents: running,
@@ -462,15 +462,15 @@ export class TabManager {
 
   /**
    * auto-e2e F-E0:全会话状态一行 JSON——Tier1/Tier2 断言出口(经 e2e-probe Ctrl+Alt+F10 触发 →
-   * fe_perf 日志)。复用 `snapshotSessions`(已含 status/tmuxIdle/origin/account),派生 `mismatch`
+   * fe_perf 日志)。复用 `snapshotSessions`(已含两轴状态/origin/account),派生 `mismatch`
    * (detectAccountMismatch:活会话账号与该 origin 当前账号确知且不一致)。**不动 `debugSnapshot`
    * 形状**(f40-suite 依赖它),这是并列的第二个探针出口。生产不接线,方法本身无副作用/无落盘。
    */
   debugSessionsSnapshot(): string {
     const sessions = this.snapshotSessions().map((s) => ({
       sid: s.sessionId.slice(0, 8),
-      status: s.status,
-      tmuxIdle: s.tmuxIdle,
+      liveness: s.state.liveness,
+      recoverability: s.state.recoverability,
       origin: s.origin,
       account: s.account,
       mismatch: detectAccountMismatch(
@@ -541,20 +541,19 @@ export class TabManager {
       // 活着 → 复活成 live。必须放在 ensureTab 里（在 onLine 的 seq 去重 return 之前），否则整段
       // 重放全被去重时连第一条行都走不到翻转。**仅远端**：本地归档由 PID 判活驱动，不靠「收到行」
       // 翻转，避免会话退出时尾写把已归档的本地 Tab 误复活（远端掉线归档是连接驱动，无此风险）。
-      if (tab.status === "archived" && isRemoteOrigin(tab.origin)) {
-        tab.status = "live";
+      //
+      // audit-fixes F03.2（D 审计修）：远端**可重连**的 tab 又收到后端重宣告 / jsonl 行 = claude
+      // 复活（backend 只对活 pidfile 重宣告并推行；真 idle 会话已从 remote_active 移出、不重宣告也不
+      // 推行）。这是「可重连 → 活」的**主**信号（queue 内、与行保序，SESSION_IDLE 恒排在会话末行之后，
+      // 故复活行/重宣告严格晚于 idle）。不能只靠 session-activity：那是非 queue 同步派发、且
+      // null-activity 的后端（远端 v1 无 status 字段）下永远不来 → 活跃流式会话永久卡在可重连。
+      //
+      // 〔U4〕上面两件事原先是两段（`status` 翻 live · `tmuxIdle` 清 false），因为两个轴挤在两个字段里；
+      //   两轴之后它们是同一条转移：「远端见行」把**死了的**（已结束 / 可重连）翻回活（`nextState`）。
+      if (isRemoteOrigin(tab.origin) && this.applyState(tab, "remote-line")) {
         this.prefs.clearPinHint(sessionId); // 〔步 17·B〕远端复活：空态提示的对象没了
         this.refreshTabBar();
-      }
-      // audit-fixes F03.2（D 审计修）：远端 idle-tmux tab 又收到后端重宣告 / jsonl 行 = claude
-      // 复活（backend 只对活 pidfile 重宣告并推行；真 idle 会话已从 remote_active 移出、不重宣告也不
-      // 推行）→ 清灰。这是清灰的**主**信号（queue 内、与行保序，SESSION_IDLE 恒排在会话末行之后，
-      // 故复活行/重宣告严格晚于 idle）。不能只靠 session-activity 清灰：那是非 queue 同步派发、且
-      // null-activity 的后端（远端 v1 无 status 字段）下永不清 → 活跃流式会话永久卡灰。
-      if (tab.tmuxIdle) {
-        tab.tmuxIdle = false;
-        this.refreshTabBar();
-        this.emitTabStateProbe(tab); // F-E1:远端复活清灰(idle→live)
+        this.emitTabStateProbe(tab); // F-E1:远端复活(死 → 活)
       }
       // v2.22.2 kind 冲突消解:同一 sid 可能有多份 pidfile(实证:cc-backend 的
       // bg-spare 备用进程复用**父会话的 sid**写 kind=bg)——宣告到达顺序不定,
@@ -620,7 +619,7 @@ export class TabManager {
       aiTitle: null,
       forkedFromSessionId: null, // issue #63①:onLine 见首条 forkedFrom 记录时锁定
       origin,
-      status: "live",
+      state: LIVE, // 〔U4〕见了行 / 宣告了才建 ⇒ 活着；早到的死亡信号在下面落实
       // 〔步 17·B〕**不做自动固定**（照 `tab-collections.ts` 那条「手动建，不要自动」的先例，
       // `§B.7` 逐字）。盘上固定过的那些由 `loadPinned` 在复活时置回 true。
       pinned: false,
@@ -645,7 +644,6 @@ export class TabManager {
       inputsEl,
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.store.pendingActivity.get(sessionId) ?? null,
-      tmuxIdle: false, // audit-fixes F03.2：默认非灰；pendingTmuxIdle 在下方落实
       agents: new Map(),
       touchedFiles: new Set(), // F70：会话改动集，onLine 增量累进
       latestPromptTokens: null, // F88b：HUD context% 数据；onLine 捕获带 usage 的 assistant 记录
@@ -658,12 +656,12 @@ export class TabManager {
     // 避免重载后已结束会话复活成关不掉的 live Tab。本地 un-archive（上方 origin!==null
     // 那条）不适用，故归档后续 replay 行也不会把它复活。
     if (this.store.pendingArchive.delete(sessionId)) {
-      tab.status = "archived";
+      tab.state = ENDED;
       tab.activity = null; // 同 archiveTab：死会话不留陈旧灯/tooltip
-      this.store.pendingTmuxIdle.delete(sessionId); // 归档优先：真 tmux 没了，灰灯作废
+      this.store.pendingTmuxIdle.delete(sessionId); // 已结束优先：真 tmux 没了，暂存的可重连作废
     } else if (this.store.pendingTmuxIdle.delete(sessionId)) {
-      // audit-fixes F03.2：灰灯信号早于建 Tab（F5 重放乱序）→ 落实为 idle-tmux 灰点。
-      tab.tmuxIdle = true;
+      // audit-fixes F03.2：可重连信号早于建 Tab（F5 重放乱序）→ 落实。
+      tab.state = RECONNECTABLE;
     }
     this.store.tabs.set(sessionId, tab);
     this.store.placeInOrder(tab);
@@ -709,21 +707,34 @@ export class TabManager {
   }
 
   /**
-   * auto-e2e F-E1:tab 生命周期状态转移探针。在**真值点**(markTmuxIdle 置灰 / archiveTab 归档 /
-   * reviveTab 复活 / ensureTab 远端复活清灰)emit 可 grep 的 `[e2e] tab-state` 行,gray-light 全链
-   * 套件按它断言 live→tmuxIdle=1(灰)→archived 序列(跨进程整链,单测碰不到)。self-gate
+   * auto-e2e F-E1:tab 生命周期状态转移探针。在**真值点**(markTmuxIdle 进可重连 / archiveTab 进已结束 /
+   * reviveTab 复活 / ensureTab 远端复活)emit 可 grep 的 `[e2e] tab-state` 行,gray-light 全链
+   * 套件按它断言 活→可重连→已结束 序列(跨进程整链,单测碰不到)。self-gate
    * `import.meta.env.DEV`:生产构建整支(含模板串)被 vite 消除。
+   * 〔U4〕行里两个键就是两个轴（原先是 `status=… tmuxIdle=…`）；`tests/e2e/graylight-suite.sh` 的两条 grep 同拍改，
+   *   两边对得上由 `tests/tab-session-state.vitest.ts` 对拍。
    */
   private emitTabStateProbe(tab: Tab): void {
     if (!import.meta.env.DEV) return;
     e2eLog(
-      `[e2e] tab-state sid=${tab.sessionId.slice(0, 8)} status=${tab.status} tmuxIdle=${
-        tab.tmuxIdle ? 1 : 0
+      `[e2e] tab-state sid=${tab.sessionId.slice(0, 8)} liveness=${tab.state.liveness} recoverability=${
+        tab.state.recoverability ?? "-"
       } origin=${isLocalOrigin(tab.origin) ? "local" : tab.origin}`,
     );
   }
 
-  /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
+  /**
+   * 〔U4〕会话状态**只经这一处改**：转移表住 `tab-session-state.ts::nextState`，这里只落值。
+   * 返回「变没变」—— 调用方据此决定要不要重画、打探针、做各自的副作用。
+   */
+  private applyState(tab: Tab, ev: StateEvent): boolean {
+    const next = nextState(tab.state, ev);
+    if (next === tab.state) return false;
+    tab.state = next;
+    return true;
+  }
+
+  /** session 退出（~/.claude/sessions/<PID>.json 被删）且容器也没了 —— 已结束，内容保留 */
   archiveTab(sessionId: string): void {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
@@ -731,19 +742,18 @@ export class TabManager {
       // 记下待归档，建 Tab 时落实。否则这里直接 return 会静默丢弃归档 → 僵尸 live Tab。
       this.store.pendingArchive.add(sessionId);
       this.store.pendingActivity.delete(sessionId); // issue #23：死会话的暂存灯一并清
-      this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：归档优先，清暂存灰灯
+      this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：已结束优先，清暂存的可重连
       return;
     }
-    if (tab.status === "archived") return;
-    tab.status = "archived";
-    // issue #23：会话结束 → 灯灭（CSS 上 archived 本就隐藏 .live-dot，这里保持状态干净）
+    // 活 / 可重连 ⇒ 已结束；已经是已结束 ⇒ 不变（`nextState`）。
+    if (!this.applyState(tab, "ended")) return;
+    // issue #23：会话结束 → 灯灭（CSS 上 `.ended` 本就隐藏 .live-dot，这里保持状态干净）
     tab.activity = null;
-    tab.tmuxIdle = false; // audit-fixes F03.2：归档优先——tmux 真没了，清灰点保持状态干净
     this.sweepRunningAgents(tab); // 会话死了，running agent 必然中止
     // P5.2 B 重构后无 pendingToolGroup —— archive 不需要打断 tool-group 累积
     // （tool-group 合并改后处理，看 timeline 邻居；archive 后无新 record 入 timeline）。
     this.refreshTabBar();
-    this.emitTabStateProbe(tab); // F-E1:归档(tmux 也没了 → archived)
+    this.emitTabStateProbe(tab); // F-E1:已结束(tmux 也没了)
   }
 
   /**
@@ -764,20 +774,20 @@ export class TabManager {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return;
     if (isRemoteOrigin(tab.origin)) return; // 仅本地；远端复活走 ensureTab 见行路径
-    if (tab.status !== "archived") return;
-    tab.status = "live";
+    if (!this.applyState(tab, "started")) return; // 死 ⇒ 活；已经活着 ⇒ 不变
     this.prefs.clearPinHint(sessionId); // 〔步 17·B〕真接上了 ⇒ 那块「只能 resume」的空态该走了
     this.refreshTabBar();
-    this.emitTabStateProbe(tab); // F-E1:本地复活(archived→live)
+    this.emitTabStateProbe(tab); // F-E1:本地复活(死 → 活)
   }
 
   /**
-   * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux 第三态）。
+   * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → **可重连**（死 ＋ 容器还在）。
    * 后端 emitter 收 backend removed 且 `@ccm_sid` present 时 emit `session-idle` 驱动（**不**
-   * 归档、不 forget，故 status 仍 live，仅灯变灰）。Tab 未建（F5 重放乱序）则暂存待 ensureTab
-   * 落实。archived 的 Tab 不置灰（真 tmux 没了才归档，归档优先）。无变化不重绘。清灰四处：
+   * 归档、不 forget）。Tab 未建（F5 重放乱序）则暂存待 ensureTab 落实。已结束的 Tab 不回到可重连
+   * （真 tmux 没了才裁已结束，已结束优先）。无变化不重绘。离开可重连四处：
    * ensureTab（**主**：远端 tab 又收后端重宣告/行 = 复活，queue 内保序）/ updateActivity
    * （claude 再产活动，非 queue 的次要信号）/ reviveTab（本地）/ archiveTab（tmux 真没了）。
+   * 〔U4〕改之前这里只置 `tmuxIdle = true`、`status` 留在 live —— 活性一轴说了假话。
    */
   markTmuxIdle(sessionId: string): void {
     const tab = this.store.tabs.get(sessionId);
@@ -785,11 +795,10 @@ export class TabManager {
       this.store.pendingTmuxIdle.add(sessionId);
       return;
     }
-    if (tab.status === "archived") return; // 归档优先，不回置灰
-    if (tab.tmuxIdle) return; // 无变化不重绘
-    tab.tmuxIdle = true;
+    // 活 ⇒ 可重连；已经死了（可重连 / 已结束）⇒ 不变（`nextState`）。
+    if (!this.applyState(tab, "idle")) return;
     this.refreshTabBar();
-    this.emitTabStateProbe(tab); // F-E1:灰灯(claude 退但 tmux 在,status 仍 live)
+    this.emitTabStateProbe(tab); // F-E1:可重连(claude 退但 tmux 在)
   }
 
   /**
@@ -809,14 +818,13 @@ export class TabManager {
       else this.store.pendingActivity.delete(sessionId);
       return;
     }
-    // archived 不更新（审计：心跳清死会话后磁盘残留 PID.json 被重扫会推陈旧
-    // activity，archived tab 会挂上过期的 waiting tooltip——灯本身被 CSS 隐藏）。
-    if (tab.status === "archived") return;
+    // 已结束不更新（审计：心跳清死会话后磁盘残留 PID.json 被重扫会推陈旧
+    // activity，已结束的 tab 会挂上过期的 waiting tooltip——灯本身被 CSS 隐藏）。
+    if (isResumeOnly(tab.state)) return;
     // audit-fixes F03.2：收到活动信号 = claude 活着（远端 activity 仅在 claude 存活时由
-    // backend 推）→ 清灰灯。必须放在下方「无变化早退」之前：复活后首个 activity 未必与灰前
-    // 的陈旧 activity 值不同，否则灰点被早退跳过、清不掉。清了灰即使 activity 没变也要重绘。
-    const clearedIdle = tab.tmuxIdle && act !== null;
-    if (clearedIdle) tab.tmuxIdle = false;
+    // backend 推）→ 可重连回到活。必须放在下方「无变化早退」之前：复活后首个 activity 未必与
+    // 之前的陈旧 activity 值不同，否则被早退跳过、回不到活。回到活即使 activity 没变也要重绘。
+    const clearedIdle = act !== null && this.applyState(tab, "activity");
     if (
       tab.activity?.status === act?.status &&
       tab.activity?.waitingFor === act?.waitingFor
@@ -878,13 +886,14 @@ export class TabManager {
 
   /**
    * 关闭 Tab：销毁 stream DOM、从 Map 中移除、通知后端 forget 历史、必要时切到相邻 Tab。
-   * 仅允许关闭 archived 状态的 Tab，避免误关运行中的会话。
+   * 仅允许关闭**已结束**（只能 resume）的 Tab，避免误关运行中的会话（`tab-session-state.ts::isResumeOnly`；
+   * 可重连的不在其中 —— 与改两轴之前逐条相同）。
    * forget 后该 session 不会在下次 F5 刷新时被 event_replay 重放复活。
    */
   closeTab(sessionId: string): void {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return;
-    if (tab.status !== "archived") return;
+    if (!isResumeOnly(tab.state)) return;
 
     const wasActive = this.store.activeId === sessionId;
     const idx = this.store.orderedIds.indexOf(sessionId);
@@ -990,11 +999,11 @@ export class TabManager {
     if (this.router.bringMonitorToFront) bringMonitorToFront();
   }
 
-  /** 快捷键 Ctrl+W：当前活跃 Tab 是 archived 才关，live 不动 */
+  /** 快捷键 Ctrl+W：当前活跃 Tab 已结束才关，活着 / 可重连的不动（同 `closeTab`） */
   closeActiveIfArchived(): void {
     if (!this.store.activeId) return;
     const tab = this.store.tabs.get(this.store.activeId);
-    if (tab && tab.status === "archived") {
+    if (tab && isResumeOnly(tab.state)) {
       this.closeTab(this.store.activeId);
     }
   }
@@ -1012,7 +1021,8 @@ export class TabManager {
     }
     if (!this.store.activeId) return;
     const tab = this.store.tabs.get(this.store.activeId);
-    if (!tab || tab.status === "archived") return;
+    // 〔U4〕还有终端可去（活着，或可重连：登录 shell 的 ssh 窗还在）才拉。
+    if (!tab || !hasTerminal(tab.state)) return;
     // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；本地 Tab → 原 sid_hwnd_cache 路径。
     if (isRemoteOrigin(tab.origin)) {
       void bringRemoteTerminalToFront(this.store.activeId);

@@ -262,7 +262,7 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
   later: string;
   earlier: string;
   n?: number;
-  kind: "list" | "harmless" | "defect?" | "U4" | "ST3";
+  kind: "list" | "harmless" | "defect?" | "ST3";
   why: string;
 }[] = [
   // ── src/styles.css：本路判过的 7 条 ──
@@ -312,16 +312,16 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
     why: "结构上打不到同一个元素：diff 行不在 `.code-block pre` 里（后一条规则头注逐字：`.code-block` 的 transparent 覆盖不 scope 到 `.block-diff`，所以才单写一条防御）。",
   },
   // ── src/styles.css：tab 规则（U4 写区，未判）──
-  { file: "src/styles.css", later: ".tab-pin", earlier: ".tab:not(.pinned) .tab-pin", kind: "U4", why: "未判：tab 规则在 U4 写区" },
-  { file: "src/styles.css", later: ".tab-title", earlier: ".tab.archived .tab-title", kind: "U4", why: "未判：tab 规则在 U4 写区" },
-  { file: "src/styles.css", later: ".live-dot", earlier: ".tab.archived .live-dot", kind: "U4", why: "未判：tab 规则在 U4 写区" },
-  { file: "src/styles.css", later: ".tab-badge", earlier: ".tab .tab-badge", kind: "U4", why: "未判：tab 规则在 U4 写区" },
-  { file: "src/styles.css", later: ".tab-close", earlier: ".tab:not(.archived) .tab-close", kind: "U4", why: "未判：tab 规则在 U4 写区" },
-  { file: "src/styles.css", later: ".tab-close:hover", earlier: ".tab:not(.archived) .tab-close", kind: "U4", why: "未判：tab 规则在 U4 写区" },
-  { file: "src/styles.css", later: ".tab-focus", earlier: ".tab.archived .tab-focus", n: 2, kind: "U4", why: "未判：tab 规则在 U4 写区" },
-  { file: "src/styles.css", later: ".tab-focus:hover", earlier: ".tab.archived .tab-focus", kind: "U4", why: "未判：tab 规则在 U4 写区" },
-  { file: "src/styles.css", later: ".tab-cwd", earlier: ".tab.archived .tab-cwd", n: 2, kind: "U4", why: "未判：tab 规则在 U4 写区" },
-  { file: "src/styles.css", later: ".tab-cwd:hover", earlier: ".tab.archived .tab-cwd", kind: "U4", why: "未判：tab 规则在 U4 写区" },
+  { file: "src/styles.css", later: ".tab-pin", earlier: ".tab:not(.pinned) .tab-pin", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
+  { file: "src/styles.css", later: ".tab-title", earlier: ".tab.ended .tab-title", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
+  { file: "src/styles.css", later: ".live-dot", earlier: ".tab.ended .live-dot", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
+  { file: "src/styles.css", later: ".tab-badge", earlier: ".tab .tab-badge", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
+  { file: "src/styles.css", later: ".tab-close", earlier: ".tab:not(.ended) .tab-close", kind: "harmless", why: "〔U4 判〕同属性只有 `display`（`n: 2` 里另一处是只设 `font-size` 的那条，不相交）；高特异度那条赢正是作者要的：× 只在已结束时露出，已结束时 ↗ / 📂 藏起来" },
+  { file: "src/styles.css", later: ".tab-close:hover", earlier: ".tab:not(.ended) .tab-close", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
+  { file: "src/styles.css", later: ".tab-focus", earlier: ".tab.ended .tab-focus", n: 2, kind: "harmless", why: "〔U4 判〕同属性只有 `display`（`n: 2` 里另一处是只设 `font-size` 的那条，不相交）；高特异度那条赢正是作者要的：× 只在已结束时露出，已结束时 ↗ / 📂 藏起来" },
+  { file: "src/styles.css", later: ".tab-focus:hover", earlier: ".tab.ended .tab-focus", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
+  { file: "src/styles.css", later: ".tab-cwd", earlier: ".tab.ended .tab-cwd", n: 2, kind: "harmless", why: "〔U4 判〕同属性只有 `display`（`n: 2` 里另一处是只设 `font-size` 的那条，不相交）；高特异度那条赢正是作者要的：× 只在已结束时露出，已结束时 ↗ / 📂 藏起来" },
+  { file: "src/styles.css", later: ".tab-cwd:hover", earlier: ".tab.ended .tab-cwd", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
   // ── src/styles/settings.css（ST3 写区，未判）──
   ...(
     [
