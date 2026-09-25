@@ -17,6 +17,15 @@
 use super::*;
 use crate::control::files_write::overwrite_text;
 
+/// 〔FW1〕此刻暂存区里这个键那份暂存件的整份摘要（提交时的 `expect`）。没有 / 键不合法 ⇒ 全零串（那几条判的是别的拒）。
+fn staged_sha(home: &Path, key: &str) -> String {
+    staged_path(home, key)
+        .ok()
+        .and_then(|p| std::fs::read(p).ok())
+        .map(|b| content_sha256(&b))
+        .unwrap_or_else(|| "0".repeat(crate::control::files_write::SHA256_HEX_LEN))
+}
+
 /// 一个本轮独占的临时目录（`tag` 区分用例，`pid` 区分并发跑的进程）。
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-fc-{tag}-{}", std::process::id()));
@@ -68,7 +77,8 @@ fn commit_without_overwrite_lands_the_staged_bytes_and_consumes_them() {
     let (home, root) = rig("land");
     let body = b"\x00staged\xffbytes\n".to_vec();
     let staged = stage(&home, KEY, &body);
-    let (landed, n) = commit_upload(&home, KEY, &root, "a.bin", false).expect("该落进去");
+    let (landed, n) = commit_upload(&home, KEY, &root, "a.bin", false, &staged_sha(&home, KEY))
+        .expect("该落进去");
     assert_eq!(n, body.len() as u64);
     assert_eq!(std::fs::read(&landed).expect("读落点"), body);
     assert!(
@@ -83,7 +93,8 @@ fn commit_without_overwrite_refuses_an_existing_target_and_touches_nothing() {
     let (home, root) = rig("clash");
     let staged = stage(&home, KEY, b"new");
     std::fs::write(root.join("a.txt"), b"old").unwrap();
-    let e = commit_upload(&home, KEY, &root, "a.txt", false).expect_err("该拒");
+    let e = commit_upload(&home, KEY, &root, "a.txt", false, &staged_sha(&home, KEY))
+        .expect_err("该拒");
     assert_eq!(
         e.code(),
         "io_failed",
@@ -93,7 +104,8 @@ fn commit_without_overwrite_refuses_an_existing_target_and_touches_nothing() {
     assert_eq!(std::fs::read(root.join("a.txt")).unwrap(), b"old");
     assert_eq!(std::fs::read(&staged).unwrap(), b"new", "暂存件被动了");
     // 换个名字再提交 ⇒ 成（暂存件还在，就是为这一步留的）。
-    commit_upload(&home, KEY, &root, "b.txt", false).expect("换名再提交该成");
+    commit_upload(&home, KEY, &root, "b.txt", false, &staged_sha(&home, KEY))
+        .expect("换名再提交该成");
     assert_eq!(std::fs::read(root.join("b.txt")).unwrap(), b"new");
 }
 
@@ -103,10 +115,11 @@ fn commit_with_overwrite_replaces_the_target_whole() {
     let (home, root) = rig("over");
     stage(&home, KEY, b"new-content");
     std::fs::write(root.join("a.txt"), b"old-and-longer-content").unwrap();
-    commit_upload(&home, KEY, &root, "a.txt", true).expect("该换掉");
+    commit_upload(&home, KEY, &root, "a.txt", true, &staged_sha(&home, KEY)).expect("该换掉");
     assert_eq!(std::fs::read(root.join("a.txt")).unwrap(), b"new-content");
     stage(&home, KEY, b"fresh");
-    commit_upload(&home, KEY, &root, "c.txt", true).expect("目标不在也该落");
+    commit_upload(&home, KEY, &root, "c.txt", true, &staged_sha(&home, KEY))
+        .expect("目标不在也该落");
     assert_eq!(std::fs::read(root.join("c.txt")).unwrap(), b"fresh");
 }
 
@@ -131,7 +144,8 @@ fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
         ),
         (base.as_path(), "/abs.bin", PathBuf::from("/abs.bin")),
     ] {
-        let e = commit_upload(&home, KEY, root, rel, true).expect_err("该被围栏拒");
+        let e = commit_upload(&home, KEY, root, rel, true, &staged_sha(&home, KEY))
+            .expect_err("该被围栏拒");
         assert_eq!(e.code(), "refused", "`{rel}` 不是围栏拒的：{}", e.message());
         assert!(
             !would_land.exists(),
@@ -141,8 +155,15 @@ fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
     }
     assert_eq!(std::fs::read(&staged).unwrap(), b"would clobber a session");
     // 〔FN1 · V119〕正控：同一份暂存件提交到会话文件那个位置 ⇒ 落得进去。
-    commit_upload(&home, KEY, &proj, "abc.jsonl", false)
-        .expect("🔴 V119：提交到会话文件的位置被拒了");
+    commit_upload(
+        &home,
+        KEY,
+        &proj,
+        "abc.jsonl",
+        false,
+        &staged_sha(&home, KEY),
+    )
+    .expect("🔴 V119：提交到会话文件的位置被拒了");
     assert_eq!(
         std::fs::read(proj.join("abc.jsonl")).unwrap(),
         b"would clobber a session"
@@ -153,7 +174,8 @@ fn commit_goes_through_the_fence_and_leaves_the_disk_alone_when_refused() {
 #[test]
 fn a_missing_or_linked_staged_file_is_refused() {
     let (home, root) = rig("missing");
-    let e = commit_upload(&home, KEY, &root, "a.bin", false).expect_err("没有暂存件");
+    let e = commit_upload(&home, KEY, &root, "a.bin", false, &staged_sha(&home, KEY))
+        .expect_err("没有暂存件");
     assert_eq!(e.code(), "io_failed", "{}", e.message());
     assert!(
         !root.join("a.bin").exists(),
@@ -168,7 +190,8 @@ fn a_missing_or_linked_staged_file_is_refused() {
             home.join(STAGING_DIR).join(format!("{KEY}{PART_SUFFIX}")),
         )
         .unwrap();
-        let e = commit_upload(&home, KEY, &root, "b.bin", true).expect_err("链接当源");
+        let e = commit_upload(&home, KEY, &root, "b.bin", true, &staged_sha(&home, KEY))
+            .expect_err("链接当源");
         assert_eq!(e.code(), "refused", "{}", e.message());
         assert!(!root.join("b.bin").exists());
         assert_eq!(std::fs::read(&secret).unwrap(), b"not yours");
@@ -180,7 +203,8 @@ fn a_missing_or_linked_staged_file_is_refused() {
 fn a_bad_key_is_refused_before_anything_lands() {
     let (home, root) = rig("badkey");
     for bad in ["../../x", "ABCDEF0123456789ABCDEF0123456789", "short"] {
-        let e = commit_upload(&home, bad, &root, "a.bin", false).expect_err("该拒");
+        let e = commit_upload(&home, bad, &root, "a.bin", false, &staged_sha(&home, bad))
+            .expect_err("该拒");
         assert_eq!(e.code(), "refused", "{bad:?}：{}", e.message());
     }
     assert!(
@@ -294,6 +318,7 @@ fn a_successful_commit_is_the_event_that_sweeps() {
             "root": root.to_string_lossy(),
             "rel": "landed.bin",
             "overwrite": false,
+            "expect": {"sha256": content_sha256(b"payload")},
         }),
     )
     .expect("提交该成");
@@ -713,4 +738,32 @@ fn a_chunked_save_over_a_changed_file_is_stale_like_the_one_line_save() {
     )
     .expect_err("没给 expect 竟然收了");
     assert_eq!(e.0, "bad_args");
+}
+
+/// 〔FW1 · 第四波 4D〕提交的整份摘要：**必给**（缺 ⇒ `bad_args`）；对不上 ⇒ `stale`、目标一个字节没动、坏暂存件删掉；
+/// 对得上 ⇒ 照旧上位。要求住址：主会话裁 09-25「`files-commit-upload` 必给 `expect:{sha256}` → 远端后端改名上位前核，
+/// 不等 ⇒ stale、删坏暂存件」· `设计/60 §7` 第 8 条。
+#[test]
+fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {
+    let (home, root) = rig("fw1-digest");
+    let body = b"the whole staged file".to_vec();
+    let staged = stage(&home, KEY, &body);
+    let e = answer_commit_at(
+        &home,
+        &serde_json::json!({"key": KEY, "root": root.to_string_lossy(), "rel": "a.bin", "overwrite": false}),
+    )
+    .expect_err("没给 expect 竟然上位了");
+    assert_eq!(e.0, "bad_args");
+    assert!(staged.exists(), "参数拒了却动了暂存件");
+    let mut wrong = body.clone();
+    wrong[3] ^= 1;
+    let e = commit_upload(&home, KEY, &root, "a.bin", false, &content_sha256(&wrong))
+        .expect_err("摘要对不上竟然上位了");
+    assert_eq!(e.code(), "stale", "{}", e.message());
+    assert!(!root.join("a.bin").exists(), "摘要对不上却落进了目标");
+    assert!(!staged.exists(), "坏暂存件没删");
+    let staged = stage(&home, KEY, &body);
+    commit_upload(&home, KEY, &root, "a.bin", false, &content_sha256(&body)).expect("对得上该上位");
+    assert_eq!(std::fs::read(root.join("a.bin")).unwrap(), body);
+    assert!(!staged.exists());
 }

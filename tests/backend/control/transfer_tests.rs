@@ -114,10 +114,12 @@ async fn the_bytes_land_at_the_staging_part_verbatim() {
     let local = tmp.file("b.bin", &body);
     let got = std::sync::Mutex::new(Vec::<(u64, u64)>::new());
     let sink = |a: u64, b: u64| got.lock().unwrap().push((a, b));
-    let n = upload_to_staging(&s, &local, KEY, &Cancel::default(), &sink)
+    let (n, sha) = upload_to_staging(&s, &local, KEY, &Cancel::default(), &sink)
         .await
         .unwrap();
     assert_eq!(n, body.len() as u64);
+    // 〔FW1〕整份摘要 == 本机那份的（另一份实现对拍，异源）。
+    assert_eq!(sha, sha2_hex(&body), "上传交的摘要不是本机那份的");
     assert_eq!(
         fs.lock().unwrap().bytes(&staging_part(KEY)),
         Some(body.clone())
@@ -173,7 +175,7 @@ async fn a_failed_upload_keeps_the_part_and_the_retry_resumes_from_its_tail() {
         g.yield_per_write = 0;
         g.write_offsets.clear();
     }
-    upload_to_staging(&s, &local, KEY, &Cancel::default(), &no_progress)
+    let (_, sha) = upload_to_staging(&s, &local, KEY, &Cancel::default(), &no_progress)
         .await
         .expect("续传该成");
     assert_eq!(
@@ -181,6 +183,8 @@ async fn a_failed_upload_keeps_the_part_and_the_retry_resumes_from_its_tail() {
         Some(&(have as u64)),
         "续传没从尾块接上"
     );
+    // 〔FW1〕续传那一趟交的也是**整份**的摘要（前缀在本机读一遍算进去），不是只算接上之后那一截。
+    assert_eq!(sha, sha2_hex(&body), "续传交的摘要没把前缀算进去");
     assert_eq!(fs.lock().unwrap().bytes(&staging_part(KEY)), Some(body));
 }
 
@@ -653,7 +657,12 @@ async fn progress_frames_start_now_coalesce_and_end_with_the_final_one() {
             p.total = 100;
         });
     }
-    ptx.send_modify(|p| p.end = Some(TransferEnd::Done { bytes: 100 }));
+    ptx.send_modify(|p| {
+        p.end = Some(TransferEnd::Done {
+            bytes: 100,
+            sha256: None,
+        })
+    });
     let mut rest = Vec::new();
     while let Some(f) = rx.recv().await {
         rest.push(f);
@@ -667,9 +676,88 @@ async fn progress_frames_start_now_coalesce_and_end_with_the_final_one() {
     match rest.last() {
         Some(Frame::Transfer {
             got: 100,
-            end: Some(TransferEnd::Done { bytes: 100 }),
+            end: Some(TransferEnd::Done { bytes: 100, .. }),
             ..
         }) => {}
         other => panic!("最后一格不是终局：{other:?}"),
+    }
+}
+
+/// 另一份 SHA-256 实现（`sha2`，只在测试期链接）—— 异源对拍。
+fn sha2_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// 〔FW1 · 第四波 4D〕**「前缀 ＋ 洞 ＋ 尾巴」尾块对拍看不见，提交那一下看得见**（`设计/60 §7` 第 8 条 · 主会话裁 09-25）。
+///
+/// 要求住址：`设计/60 §4.3`「只看长度会缝出一个坏文件」＋ §7 第 8 条「续传的尾块对拍看不见中间的洞 …… 要堵得换对拍方式」。
+/// 形状（逐步，台架与真盘各半）：① 上传到半路坏了、暂存件留着；② 在暂存件**中间**改坏一截（演「失败后晚到的写留下的洞」，
+/// 尾巴原样）；③ 重拖 ⇒ 尾块对得上、**照样续传**（这一步证「尾块对拍确实看不见」—— 正控，不是缺陷被修掉的地方）；
+/// ④ 把合成服务端上那份暂存件原样落到一个真 home 的暂存区里，拿上传交的摘要去 `commit_upload` ⇒ `stale`、目标不在、
+/// 坏暂存件被删；⑤ 阴性：同样的流程不改坏 ⇒ 提交成、落地逐字节 == 本机那份。
+#[tokio::test]
+async fn a_hole_the_tail_probe_cannot_see_is_caught_by_the_commit() {
+    for corrupt in [true, false] {
+        let fs = rig::home(false, true);
+        let s = rig::session_on(fs.clone()).await;
+        let tmp = Tmp::dir(if corrupt { "hole" } else { "hole-neg" });
+        let body = rig::corpus(300_000);
+        let local = tmp.file("h.bin", &body);
+        fs.lock().unwrap().fail_write_after = Some(4);
+        upload_to_staging(&s, &local, KEY, &Cancel::default(), &no_progress)
+            .await
+            .expect_err("半路坏");
+        let part = staging_part(KEY);
+        let have = fs.lock().unwrap().bytes(&part).expect("暂存件该留着").len();
+        // 洞落在 `[have/4, have/4 + 1000)`：have ≥ 2 块时它整个在尾块 `[have − 块, have)` 之前 ⇒ 尾块对拍看不见它。
+        assert!(have >= 2 * CHUNK, "夹具没造出够长的前缀（{have}）");
+        let hole = have / 4..have / 4 + 1000;
+        assert!(hole.end <= have - CHUNK, "洞碰到了尾块，这条就判不出「尾块看不见」");
+        if corrupt {
+            let mut g = fs.lock().unwrap();
+            let e = g.files.get_mut(&part).unwrap();
+            for b in &mut e.bytes[hole] {
+                *b ^= 0xA5;
+            }
+        }
+        {
+            let mut g = fs.lock().unwrap();
+            g.fail_write_after = None;
+            g.write_offsets.clear();
+        }
+        let (n, sha) = upload_to_staging(&s, &local, KEY, &Cancel::default(), &no_progress)
+            .await
+            .expect("续传该成");
+        assert_eq!(n, body.len() as u64);
+        assert_eq!(
+            fs.lock().unwrap().write_offsets.first(),
+            Some(&(have as u64)),
+            "尾块对拍该照样放行续传（它看不见中间那一截 —— 本条要证的正是这一格）"
+        );
+        let home = tmp.path("home");
+        let staging = home.join(crate::control::files_commit::STAGING_DIR);
+        std::fs::create_dir_all(&staging).unwrap();
+        let staged_bytes = fs.lock().unwrap().bytes(&part).unwrap();
+        std::fs::write(staging.join(format!("{KEY}.part")), &staged_bytes).unwrap();
+        let root = tmp.path("dest");
+        std::fs::create_dir_all(&root).unwrap();
+        let r =
+            crate::control::files_commit::commit_upload(&home, KEY, &root, "h.bin", false, &sha);
+        if corrupt {
+            let e = r.expect_err("中间有洞的暂存件竟然上位了");
+            assert_eq!(e.code(), "stale", "{}", e.message());
+            assert!(!root.join("h.bin").exists(), "坏的那份落进了目标");
+            assert!(
+                !staging.join(format!("{KEY}.part")).exists(),
+                "坏暂存件没删 —— 下一次续传会接在它上面"
+            );
+        } else {
+            r.expect("没改坏的那份该提交成");
+            assert_eq!(std::fs::read(root.join("h.bin")).unwrap(), body);
+        }
     }
 }

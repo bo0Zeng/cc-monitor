@@ -282,7 +282,7 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
         asked: 0,
         skipped: 0,
         ok: 1,
-        failed: Vec::new(),
+        ..Default::default()
     });
     assert!(w.settle_finished_drops(), "跑完一趟却不重列");
     assert!(!w.settle_finished_drops(), "同一趟重列了第二次");
