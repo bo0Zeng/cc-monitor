@@ -152,14 +152,6 @@ src/bridge/src/subagent.rs	C4d 在改这一带，留最后一批
 src/bridge/src/tool_registry.rs	C4d 在改这一带，留最后一批
 src/bridge/src/user_files.rs	未抽
 src/bridge/src/verified_write.rs	未抽
-src/cards/api-error.ts	未抽
-src/cards/bash.ts	未抽
-src/cards/compact.ts	未抽
-src/cards/diff.ts	未抽
-src/cards/index.ts	未抽
-src/cards/interactive.ts	未抽
-src/cards/slash.ts	未抽
-src/cards/subagent.ts	未抽
 src/entry-render-common.ts	未抽
 src/entry-viewer.ts	未抽
 src/error-toast.ts	未抽
@@ -169,10 +161,6 @@ src/fork-ask.ts	未抽
 src/fork-flow.ts	未抽
 src/fork-launch.ts	未抽
 src/format.ts	未抽
-src/ipc/chan-caller.ts	未抽
-src/keybindings/actions.ts	未抽
-src/keybindings/editor.ts	未抽
-src/keybindings/registry.ts	未抽
 src/launch-dimensions.ts	未抽
 src/launch-menu.ts	未抽
 src/launch-render-cli.ts	未抽
@@ -181,12 +169,6 @@ src/launch-requests.ts	未抽
 src/launcher-diagnostics.ts	未抽
 src/main.ts	未抽
 src/panorama-engine/main.rs	射程外：全景独立小程序（另一个可执行文件）
-src/panorama/agent-clip.ts	未抽
-src/panorama/api.ts	未抽
-src/panorama/diagram-honesty.ts	未抽
-src/panorama/diagram-render.ts	未抽
-src/panorama/diagram-view.ts	未抽
-src/panorama/layout.ts	未抽
 src/paste-block.ts	未抽
 src/remote-config.ts	未抽
 src/remote-health.ts	未抽
