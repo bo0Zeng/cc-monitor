@@ -1551,8 +1551,13 @@ deadcode_t0=$(date +%s)
 #   同拍删的零流量复制一段（命令 · 核心 · 裸通道借据 · 老 Tauri 进度通道 · 取消登记表）**不带走也不带来**死代码：
 #   它们删之前在生产上都有调用方（那条命令），删之后整块不在了。
 # ⚠ 这个数是**现打**的（本工作树 `w4/s4`，`cargo check -p monitor --message-format=short | grep -c "never used"` = 34），不是 36−2 算的。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 34，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=34; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 35，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+# 🔴 **2026-09-24（第四波 SR1b 合并）：34 → 35，现打，逐条记**：多的一条是 `dial_host.rs::RemoteFs::home`（`method home is never used`）。
+#    生产侧不读它（`open` 里只核「后端答出了起始目录」）；唯一的读者是真 sshd 那条 `#[ignore]` 读数用例
+#    （`sftp_tests::sr1b_loopback_deploy_and_transfer_through_the_resident_backend` 断言「起始目录就是 sshd 给的那个」）。
+#    ⚠ 没改成 `#[cfg(test)]`：那会把 `src/bridge/src` 的「测试专用支撑项」顶到 16（`structural_scan` 的只许降棘轮，上限 15）——
+#    两条纪律冲突时，动**允许说清理由再改的**这一个数，不动只许降的那一个。
+         bash -c 'pin=35; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
