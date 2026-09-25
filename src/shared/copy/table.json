@@ -696,6 +696,16 @@
       "kind": "body",
       "zh": "留意：{value}",
       "args": ["value"]
+    },
+    "askDialog.buttons.ok": {
+      "kind": "action",
+      "zh": "确定",
+      "args": []
+    },
+    "askDialog.buttons.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
     }
   }
 }
