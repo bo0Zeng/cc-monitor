@@ -246,7 +246,7 @@ mod tests {
     /// **后者今天由 `KH2`/`KH4` 那几条行为判据守**（它们量的是真转发落到哪个端点、带了哪把 key），
     /// 不由本条守。别把「恰好 1 处」读成「表一定是对的」。
     #[test]
-    fn the_only_place_that_welds_an_upstream_to_a_key_is_inside_layer_two() {
+    fn the_only_place_that_welds_an_upstream_to_a_key_is_inside_upstream_selection() {
         let files = crate_production();
         // 采集面自检：整个 crate 的 .rs 不止几个（相等地板会误伤，这里用有理由的下界）。
         assert!(
@@ -306,7 +306,7 @@ mod tests {
     /// **性质一格没松，换了个说法**：先前是「只有表里那一行连得出去」，
     /// 今天是「**只有层 2 答的那一个目的地连得出去**」——
     /// 而「层 1 自己造不出一个 `Base` 来连」由隔壁那条
-    /// [`layer_one_has_no_default_upstream_to_fall_back_to`] 的两向相等断言兜。
+    /// [`the_relay_has_no_default_upstream_to_fall_back_to`] 的两向相等断言兜。
     /// ⇒ 本条 ＋ 那条，合起来才等于先前那一句。**单看本条会把它读得比实际强。**
     ///
     /// # 没有这一条会漏掉什么（这就是它不是冗余的理由）
@@ -394,16 +394,16 @@ mod tests {
     /// 「层 1 里零处」单独立着是典型的空真（针拼错、人群取空，一样绿）。
     /// ⇒ 同一把尺子在**层 2** 里必须数到**恰好 1 处**：数不到就说明尺子瞎了，当场红。
     #[test]
-    fn layer_one_has_no_default_upstream_to_fall_back_to() {
+    fn the_relay_has_no_default_upstream_to_fall_back_to() {
         let files = crate_production();
         // 层 2 的人群：`accounts/` 底下那几份。层 1 = `relay/` 里**除它之外**的。
-        let is_layer_two =
+        let is_upstream_selection =
             |p: &str| p.contains("accounts/upstream/") || p.contains("accounts\\upstream\\"); // 〔`A3` 第二波〕层 2 收窄到 `accounts/upstream/`（`accounts/iso.rs` 不是层 2）
         let in_relay = |p: &str| p.contains("relay/") || p.contains("relay\\");
 
         // 两根针：常量名 ＋ 它的值。**两根都数**，免得有人只搬走名字、把字面量留在原地。
         // 期望处数是**显式登记的**（不是「>0 就算」）—— 多一处就要来加一行，说清它是什么。
-        const LAYER_TWO_SITES: &[(&str, usize, &str)] = &[
+        const UPSTREAM_SELECTION_SITES: &[(&str, usize, &str)] = &[
             (
                 "AGENT_UPSTREAMS",
                 2,
@@ -426,25 +426,26 @@ mod tests {
              🔴 默认上游是**每 agent 一行**（`accounts::upstream::AGENT_UPSTREAMS`）；一个对所有 agent \
              都成立的值，就是「未登记的 agent 回落到某一家」那条被明禁的路。"
         );
-        for (needle, want, why) in LAYER_TWO_SITES {
+        for (needle, want, why) in UPSTREAM_SELECTION_SITES {
             let hits = sites(&files, needle);
-            let layer_two: Vec<&String> = hits.iter().filter(|p| is_layer_two(p)).collect();
-            let layer_one: Vec<&String> = hits
+            let selection: Vec<&String> =
+                hits.iter().filter(|p| is_upstream_selection(p)).collect();
+            let relay_side: Vec<&String> = hits
                 .iter()
-                .filter(|p| in_relay(p) && !is_layer_two(p))
+                .filter(|p| in_relay(p) && !is_upstream_selection(p))
                 .collect();
             // ★ 非空对照（这一条**先断**）：尺子在层 2 里数得到，它才不是瞎的。
             assert_eq!(
-                layer_two.len(),
+                selection.len(),
                 *want,
                 "`{needle}` 在层 2（`relay/accounts/`）里应当**恰好 {want} 处**（{why}），\
-                 实得 {}：{layer_two:?}\n\
+                 实得 {}：{selection:?}\n\
                  数不到 ⇒ 这把尺子是瞎的，下面那条「层 1 零处」就是空真。",
-                layer_two.len()
+                selection.len()
             );
             assert!(
-                layer_one.is_empty(),
-                "层 1（`relay/` 里 `accounts/` 之外）出现了 `{needle}`：{layer_one:?}\n\
+                relay_side.is_empty(),
+                "层 1（`relay/` 里 `accounts/` 之外）出现了 `{needle}`：{relay_side:?}\n\
                  ⚠ 有那个值，「查不到就回落到它」就又写得出来了，而最坏的失效形态是\n\
                  **codex 的请求被发给 Anthropic**（`设计/20 §3.1` 拍板 (b) 甲逐字点名）。",
             );
@@ -492,7 +493,7 @@ mod tests {
     ///   给 `dest` 改个名字就会打红。合法出路是**同一拍把这里一起改**，
     ///   不许把针放宽（放宽不可逆）。
     #[test]
-    fn the_layer_two_lock_does_not_outlive_the_streaming_pump() {
+    fn the_upstream_selection_lock_does_not_outlive_the_streaming_pump() {
         let files = crate_production();
         let (_, server) = files
             .iter()

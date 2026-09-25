@@ -8,7 +8,7 @@
 //!
 //! | # | 它问什么 | 形态 |
 //! |---|---|---|
-//! | ㈠ | 层 2 的根在哪、有哪几份文件 | 盘上**现推**（唯一一份 `impl Destinations for` 的那个模块）⇔ [`ACCOUNT_LAYER_FILES`]，两向相等 |
+//! | ㈠ | 层 2 的根在哪、有哪几份文件 | 盘上**现推**（唯一一份 `impl Destinations for` 的那个模块）⇔ [`UPSTREAM_SELECTION_FILES`]，两向相等 |
 //! | ㈡ | `relay/` 目录里**住着**几份层 2 的文件 | **零命中**（两个人群各自非空，交集为空）|
 //! | ㈢ | 层 1 的生产段**点名**层 2 的地方 | **零命中**（词表从层 2 的声明**现推**，非空；层 1 的人群非空）|
 //! | ㈣ | 层 2 用到层 1 的哪几样（**接口面有多窄**） | 盘上现解析的路径 ⇔ [`CONTRACT`]，两向相等 |
@@ -49,7 +49,7 @@ pub(super) mod tests {
     // 〔RM1a · 第四波〕+`file_face.rs`：这台机器上那份凭据文件的帧面读写口（`apikey-key-set` / `apikey-read`）。
     // 它是层 2 自己的状态、同一份文件、同一套格式 ⇒ 住层 2 这棵树；它用到层 1 的只有 `segment_is_safe`
     // （已在 [`CONTRACT`] 里），接口面一项没变宽。
-    const ACCOUNT_LAYER_FILES: &[&str] = &[
+    const UPSTREAM_SELECTION_FILES: &[&str] = &[
         "creds.rs",
         "file_face.rs",
         "mod.rs",
@@ -116,7 +116,7 @@ pub(super) mod tests {
     ///
     /// ★ 为什么不写死成一个常量：写死的话，「层 2 在哪」与「层 2 有哪几份」两侧同源，
     ///   搬了家而忘了改常量，本文件会继续去扫一个空目录 —— 恒绿。
-    fn account_layer_root(files: &[(String, String)]) -> String {
+    fn upstream_selection_root(files: &[(String, String)]) -> String {
         // ⚠ 用有边界的计数（`count_word`），不用裸子串：`impl Destinations for` 的两端都是标识符字符，
         //   裸子串会把 `impl DestinationsForX` 这种认成一处（`needle_anchor_registry` 那条递减棘轮治的正是这一族）。
         let hits: Vec<(&String, usize)> = files
@@ -142,8 +142,8 @@ pub(super) mod tests {
     /// 层 2 的模块路径（`crate::` 之后的段），由它的根目录现算。
     /// 〔`A3` 第二波〕层 2 的根（盘上现推）交给兄弟判据用 —— `creds_guard` 拿它核
     /// 「中转日志白名单圈的账号那棵，恰好是层 2 这棵子树」，不自己再写第二把推法。
-    pub(in crate::relay) fn layer_two_root_from_disk() -> String {
-        account_layer_root(&crate_production())
+    pub(in crate::relay) fn upstream_selection_root_from_disk() -> String {
+        upstream_selection_root(&crate_production())
     }
 
     /// 层 2 根目录的最后一段（`accounts/upstream/` ⇒ `upstream`）：它自己的模块名，现推不写死。
@@ -209,14 +209,14 @@ pub(super) mod tests {
     ///
     /// ⚠ 只收**类型级**的名字，不收函数名：函数名里有 `build` / `load` / `new` 这类通用词，
     ///   层 1 自己就有 `.load(SeqCst)` —— 收进来就是假阳，而假阳会训练人绕开判据。
-    fn layer_two_vocabulary(layer_two: &[&(String, String)]) -> BTreeSet<String> {
+    fn upstream_selection_vocabulary(selection: &[&(String, String)]) -> BTreeSet<String> {
         let mut out: BTreeSet<String> = BTreeSet::new();
         out.insert("accounts".to_string());
         // 〔RN1 · V114〕这里原先还硬插层 2 自己的模块名（`apikey`）。模块改名 `upstream` 之后它与中转自己的
         //   `relay::upstream`（传输原语 `Base`）同名 ⇒ 在 ㈢ 里当场假红，**不再插**。射程不变窄：中转要点名
         //   层 2，路径必经 `accounts`（上一行）；「`use` 进来再以裸模块名用」那一写法的 `use` 行本身也带 `accounts`。
         //   账号域内部那条（iso ↔ 层 2）仍要这个名字 ⇒ 由那条判据自己从根目录现推、单独加（[`module_name_of_root`]）。
-        for (_, prod) in layer_two {
+        for (_, prod) in selection {
             for line in prod.lines() {
                 let t = guard_core::strip_visibility(line.trim_start());
                 for kw in ["struct ", "enum ", "trait ", "const ", "static ", "type "] {
@@ -351,12 +351,12 @@ pub(super) mod tests {
     }
 
     /// ㈣ 层 2 这批文件用到的层 1 的项（相对 `crate::relay::`）。
-    fn contract_used(layer_two: &[&(String, String)], l2_mod: &[String]) -> BTreeSet<String> {
+    fn contract_used(selection: &[&(String, String)], sel_mod: &[String]) -> BTreeSet<String> {
         let relay = vec![RELAY_DIR.to_string()];
         let mut out = BTreeSet::new();
-        for (rel, prod) in layer_two {
+        for (rel, prod) in selection {
             for abs in paths_in(rel, prod) {
-                if abs.starts_with(&relay) && !abs.starts_with(l2_mod) && abs.len() > 1 {
+                if abs.starts_with(&relay) && !abs.starts_with(sel_mod) && abs.len() > 1 {
                     out.insert(abs[1..].join("::"));
                 }
             }
@@ -370,26 +370,26 @@ pub(super) mod tests {
     #[test]
     fn the_relay_layer_holds_no_accounts() {
         let files = crate_production();
-        let root = account_layer_root(&files);
-        let l2_mod = module_of_dir(&root);
-        let layer_two: Vec<&(String, String)> = files
+        let root = upstream_selection_root(&files);
+        let sel_mod = module_of_dir(&root);
+        let selection: Vec<&(String, String)> = files
             .iter()
             .filter(|(rel, _)| rel.starts_with(&root))
             .collect();
 
         // ㈠ 层 2 那棵树有哪几份：盘上现推 ⇔ 登记。
-        let on_disk: BTreeSet<String> = layer_two
+        let on_disk: BTreeSet<String> = selection
             .iter()
             .map(|(rel, _)| rel[root.len()..].to_string())
             .collect();
-        let registered: BTreeSet<String> = ACCOUNT_LAYER_FILES
+        let registered: BTreeSet<String> = UPSTREAM_SELECTION_FILES
             .iter()
             .map(|s| (*s).to_string())
             .collect();
         assert_eq!(
             on_disk, registered,
             "层 2（根 `{root}`，由唯一那处 `impl Destinations for` 现推）的文件对不上登记。\n\
-             加/减了文件就回来改 `ACCOUNT_LAYER_FILES`，并重读下面三条 —— 它们的人群都从这里来。"
+             加/减了文件就回来改 `UPSTREAM_SELECTION_FILES`，并重读下面三条 —— 它们的人群都从这里来。"
         );
 
         // ㈡ `relay/` 里住着几份层 2：**零命中**。反空真：两个人群各自非空（交集为空不是因为扫不到）。
@@ -398,12 +398,12 @@ pub(super) mod tests {
             .filter(|(rel, _)| rel.starts_with(&format!("{RELAY_DIR}/")))
             .collect();
         assert!(
-            relay_files.len() >= 7 && !layer_two.is_empty(),
+            relay_files.len() >= 7 && !selection.is_empty(),
             "人群取空了：`relay/` 扫到 {} 份、层 2 扫到 {} 份 —— 下面的「交集为空」此刻在空转",
             relay_files.len(),
-            layer_two.len()
+            selection.len()
         );
-        let resident: Vec<&String> = layer_two
+        let resident: Vec<&String> = selection
             .iter()
             .map(|(rel, _)| rel)
             .filter(|rel| rel.starts_with(&format!("{RELAY_DIR}/")))
@@ -415,7 +415,7 @@ pub(super) mod tests {
         );
 
         // ㈢ 层 1 点名层 2：**零命中**。反空真：词表非空、且同一把尺子在层 2 自己的文件里数得到那些词。
-        let vocab = layer_two_vocabulary(&layer_two);
+        let vocab = upstream_selection_vocabulary(&selection);
         assert!(
             vocab.len() >= 5 && vocab.contains("Accounts") && vocab.contains("RoutingTable"),
             "层 2 的词表只推出 {vocab:?} —— 推法坏了，下面那条在空转"
@@ -425,7 +425,7 @@ pub(super) mod tests {
         let unseen: Vec<&String> = vocab
             .iter()
             .filter(|w| *w != "accounts")
-            .filter(|w| !layer_two.iter().any(|(_, prod)| count_word(prod, w) > 0))
+            .filter(|w| !selection.iter().any(|(_, prod)| count_word(prod, w) > 0))
             .collect();
         assert!(
             unseen.is_empty(),
@@ -449,7 +449,7 @@ pub(super) mod tests {
         );
 
         // ㈣ 层 2 用到层 1 的哪几样：盘上现解析 ⇔ 登记。
-        let used = contract_used(&layer_two, &l2_mod);
+        let used = contract_used(&selection, &sel_mod);
         let contract: BTreeSet<String> = CONTRACT.iter().map(|s| (*s).to_string()).collect();
         assert_eq!(
             used, contract,
@@ -463,7 +463,7 @@ pub(super) mod tests {
     /// 也**不**把它们不该认的认进来。没有这一条，尺子坏成恒空之后上面那条照样可能绿
     /// （㈢ ㈣ 两侧都空的那一形）。
     #[test]
-    fn the_rulers_of_the_account_layer_guard_are_not_blind() {
+    fn the_rulers_of_the_upstream_selection_guard_are_not_blind() {
         // 数词：认完整标识符，不认子串。
         assert_eq!(
             count_word("use super::accounts; let x = accounts::Boot;", "accounts"),
@@ -548,26 +548,28 @@ pub(super) mod tests {
     #[test]
     fn the_two_halves_of_the_account_domain_do_not_reference_each_other() {
         let files = crate_production();
-        let l2_root = account_layer_root(&files);
-        let l2_mod = module_of_dir(&l2_root);
+        let sel_root = upstream_selection_root(&files);
+        let sel_mod = module_of_dir(&sel_root);
         let domain_root = {
-            let mut segs = l2_mod.clone();
+            let mut segs = sel_mod.clone();
             segs.pop();
             assert!(
                 !segs.is_empty(),
-                "层 2 根 `{l2_root}` 没有上一级 —— 它不在任何账号域底下"
+                "层 2 根 `{sel_root}` 没有上一级 —— 它不在任何账号域底下"
             );
             format!("{}/", segs.join("/"))
         };
         let domain_mod_rs = format!("{domain_root}mod.rs");
-        let layer_two: Vec<&(String, String)> = files
+        let selection: Vec<&(String, String)> = files
             .iter()
-            .filter(|(rel, _)| rel.starts_with(&l2_root))
+            .filter(|(rel, _)| rel.starts_with(&sel_root))
             .collect();
         let others: Vec<&(String, String)> = files
             .iter()
             .filter(|(rel, _)| {
-                rel.starts_with(&domain_root) && !rel.starts_with(&l2_root) && *rel != domain_mod_rs
+                rel.starts_with(&domain_root)
+                    && !rel.starts_with(&sel_root)
+                    && *rel != domain_mod_rs
             })
             .collect();
 
@@ -586,7 +588,7 @@ pub(super) mod tests {
              `ACCOUNT_DOMAIN_OTHER_FILES`，并想清楚它属于哪一块"
         );
         assert!(
-            !layer_two.is_empty() && !others.is_empty(),
+            !selection.is_empty() && !others.is_empty(),
             "有一块是空的 —— 下面的零命中在空转"
         );
 
@@ -609,12 +611,12 @@ pub(super) mod tests {
         );
 
         // 两块的名字。`accounts` 是域名，两块都住在它底下 ⇒ 不作判据词（路径那一半已经分得开）。
-        let mut l2_vocab = layer_two_vocabulary(&layer_two);
-        l2_vocab.remove("accounts");
-        // 层 2 自己的模块名（盘上现推）：iso 一侧不许点它。中转那条（㈢）不收它 —— 见 `layer_two_vocabulary` 头注。
-        let l2_mod_name = module_name_of_root(&l2_root);
-        l2_vocab.insert(l2_mod_name.clone());
-        let mut iso_vocab = layer_two_vocabulary(&others);
+        let mut sel_vocab = upstream_selection_vocabulary(&selection);
+        sel_vocab.remove("accounts");
+        // 层 2 自己的模块名（盘上现推）：iso 一侧不许点它。中转那条（㈢）不收它 —— 见 `upstream_selection_vocabulary` 头注。
+        let sel_mod_name = module_name_of_root(&sel_root);
+        sel_vocab.insert(sel_mod_name.clone());
+        let mut iso_vocab = upstream_selection_vocabulary(&others);
         iso_vocab.remove("accounts");
         let iso_mods: Vec<Vec<String>> =
             others.iter().map(|(rel, _)| module_of_file(rel)).collect();
@@ -624,10 +626,10 @@ pub(super) mod tests {
             }
         }
         assert!(
-            l2_vocab.contains(&l2_mod_name)
-                && l2_vocab.contains("Accounts")
+            sel_vocab.contains(&sel_mod_name)
+                && sel_vocab.contains("Accounts")
                 && iso_vocab.contains("iso"),
-            "词表推空了：层 2 {l2_vocab:?} · iso {iso_vocab:?}"
+            "词表推空了：层 2 {sel_vocab:?} · iso {iso_vocab:?}"
         );
 
         // 正控：同一个 `cross_refs` 对合成文本必须命中（两个方向各一刀）。
@@ -640,7 +642,7 @@ pub(super) mod tests {
             "fn f() { super::super::iso::answer(&[]); }\n".to_string(),
         );
         assert!(
-            !cross_refs(&[&fake_iso], &[l2_mod.clone()], &l2_vocab).is_empty(),
+            !cross_refs(&[&fake_iso], &[sel_mod.clone()], &sel_vocab).is_empty(),
             "正控：iso 引层 2 没被认出来"
         );
         assert!(
@@ -648,14 +650,14 @@ pub(super) mod tests {
             "正控：层 2 引 iso 没被认出来"
         );
 
-        let fwd = cross_refs(&others, &[l2_mod.clone()], &l2_vocab);
+        let fwd = cross_refs(&others, &[sel_mod.clone()], &sel_vocab);
         assert!(
             fwd.is_empty(),
             "🔴 账号隔离那一块（iso）引用了中转的层 2：\n  {}\n\
              用户逐字「账号就账号, 中转就中转」—— 账号域里给中转当层 2 的那一块，别的块不许认识它。",
             fwd.join("\n  ")
         );
-        let back = cross_refs(&layer_two, &iso_mods, &iso_vocab);
+        let back = cross_refs(&selection, &iso_mods, &iso_vocab);
         assert!(
             back.is_empty(),
             "🔴 中转的层 2 引用了账号隔离那一块（iso）：\n  {}",

@@ -37,7 +37,7 @@ fn file_in(home: &Path) -> PathBuf {
 const PLAIN: &str = "sk-FIXTURE-0123456789abcdef-NOT-A-REAL-KEY";
 
 #[test]
-fn a_written_row_is_really_loaded_by_the_account_layer() {
+fn a_written_row_is_really_loaded_by_upstream_selection() {
     let home = temp_dir("load");
     let f = file_in(&home);
     std::fs::create_dir_all(&home).unwrap();

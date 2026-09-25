@@ -153,7 +153,7 @@ fn the_answers_are_parsed_from_the_fields_the_backend_declares() {
 }
 
 #[test]
-fn this_module_knows_no_account_layer_name() {
+fn this_module_knows_no_upstream_selection_name() {
     let prod = own_production();
     // 正控：同一把尺子在隔壁那份（账号层那一半）上数得到。
     let apikey = guard_core::production_code(include_str!("../../src/bridge/src/apikey_remote.rs"));

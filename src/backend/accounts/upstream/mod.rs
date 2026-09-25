@@ -3,7 +3,7 @@
 //! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/upstream/`：`accounts/` 是账号**域**，
 //! 它下面「挂在 `--relay` 进程上当层 2 的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
 //! 不共用一张登记表（用户「账号就账号, 中转就中转」）。两块互不引用，由
-//! `account_layer_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
+//! `upstream_selection_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
 //!
 //! # 它知道什么、不知道什么
 //!
@@ -97,7 +97,7 @@ pub(crate) struct AgentUpstream {
 ///
 /// 🔴 **它替掉的是一个进程级常量**（先前的 `DEFAULT_UPSTREAM`）：那一个值对每个 `seg1` 都成立，
 /// 于是「codex 的请求发给 Anthropic」在层 2 里写得出来。今天那个 URL 字面量只作为
-/// **claude-code 这一行的一格**存在 —— `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
+/// **claude-code 这一行的一格**存在 —— `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 /// 数着它的处数（层 2 恰好登记那几处，层 1 零处）。
 ///
 /// 环境变量名 `CCM_AGENT_UPSTREAM_CLAUDE_CODE`〔R3 改名；先前叫中转的名字 —— 旧名见 `设计/20` R3 那一段〕：
@@ -155,7 +155,7 @@ impl Upstreams {
 /// 装配要同时叫得出两层的名字。依赖方向只许层 2 → 层 1（层 2 本来就用层 1 的契约类型），
 /// 反过来就是「中转层里有账号」—— 那正是用户 2026-09-24 那句话要拆掉的。
 /// ⇒ 层 1 的 `run` 收一个 `&dyn Startup`，本函数把 [`Boot`] 递进去；层 1 的生产段里
-///   **一个层 2 的名字都没有**（`relay::account_layer_guard` ㈢ 零命中）。
+///   **一个层 2 的名字都没有**（`relay::upstream_selection_guard` ㈢ 零命中）。
 ///
 /// ⚠ 它**不是**第二条入口：`--relay` 只有这一臂，本函数一行逻辑都没有，只做接线。
 pub fn run_relay(home: &std::path::Path, args: &[String]) -> i32 {
@@ -174,7 +174,7 @@ pub fn host_relay(home: &std::path::Path) -> String {
 /// 层 2 在 `--relay` 启动路径上交给层 1 的那一只手（[`Startup`]）。
 ///
 /// ★ 层 1 **叫不出**它的名字：[`run_relay`] 把它递进层 1 的 `run`，层 1 只见得到
-/// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`account_layer_guard`（㈢ 零命中）。
+/// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`upstream_selection_guard`（㈢ 零命中）。
 pub(crate) struct Boot;
 
 impl Startup for Boot {

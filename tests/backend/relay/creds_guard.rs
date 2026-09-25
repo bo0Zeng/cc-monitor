@@ -684,9 +684,10 @@ mod tests {
             LOG_SITES.iter().map(|(f, _, _)| root_of(f)).collect();
         let want_roots: std::collections::BTreeSet<String> =
             LOG_ROOTS.iter().map(|r| (*r).to_string()).collect();
-        // 〔`A3` 第二波〕白名单圈的非中转那一棵，**恰好**是层 2 的根（盘上现推，住 `account_layer_guard`）——
+        // 〔`A3` 第二波〕白名单圈的非中转那一棵，**恰好**是层 2 的根（盘上现推，住 `upstream_selection_guard`）——
         //   不是整个账号域：`accounts/iso.rs`（账号隔离工具的查询）不是中转的层 2，不进本白名单。
-        let l2_root = super::super::account_layer_guard::tests::layer_two_root_from_disk();
+        let sel_root =
+            super::super::upstream_selection_guard::tests::upstream_selection_root_from_disk();
         let non_relay: Vec<&str> = LOG_ROOTS
             .iter()
             .copied()
@@ -694,8 +695,8 @@ mod tests {
             .collect();
         assert_eq!(
             non_relay,
-            vec![l2_root.trim_end_matches('/')],
-            "中转日志白名单圈的账号那棵（`LOG_ROOTS`）不等于层 2 的根 `{l2_root}` —— \
+            vec![sel_root.trim_end_matches('/')],
+            "中转日志白名单圈的账号那棵（`LOG_ROOTS`）不等于层 2 的根 `{sel_root}` —— \
              圈大了就把账号域里别的块（iso）也算成了中转的层 2"
         );
         assert_eq!(
@@ -711,8 +712,11 @@ mod tests {
         //   `--relay` 一个进程承载两层，先前两层共用 `[relay]` ⇒ 读日志的人判不出是哪一层出的事。
         //   ⚠ 反空真：两边都得**非空**，否则「前缀按层分」在一个只剩一层的表上恒真。
         //   ⚠ 本条量的是**登记表**；登记表与盘上逐条对上由下面那一段钉着（同一条判据里）。
-        let is_layer_two = |f: &str| f.starts_with("accounts/upstream/");
-        let two = LOG_SITES.iter().filter(|(f, _, _)| is_layer_two(f)).count();
+        let is_upstream_selection = |f: &str| f.starts_with("accounts/upstream/");
+        let two = LOG_SITES
+            .iter()
+            .filter(|(f, _, _)| is_upstream_selection(f))
+            .count();
         let one = LOG_SITES.len() - two;
         assert!(
             two > 0 && one > 0,
@@ -721,7 +725,7 @@ mod tests {
         for (file, head, _) in LOG_SITES {
             assert_eq!(
                 head.starts_with("[apikey] "),
-                is_layer_two(file),
+                is_upstream_selection(file),
                 "{file} “{head}”：前缀与它住的那一层对不上。\n\
                  层 2（apikey / 账号）的日志用 `[apikey]`，层 1（中转，搬字节）用 `[relay]` —— \
                  **不许用中转的名字说账号层的事**（`设计/20 §6`）。"
