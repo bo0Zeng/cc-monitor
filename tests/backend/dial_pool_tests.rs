@@ -50,13 +50,18 @@ fn fake() -> Fake {
 }
 
 /// 拨号计数器 ＋ 一次放置。
+///
+/// ⚠ 带一道 5 s 的**兜底**（不是判据 —— 判据全是次数 / 条数）：死值验现打过，把「分道」那一格砍掉之后放置不是答错，
+/// 而是**永远等下去**（族里没有能放的成员、判准又说不该多开）⇒ 判据挂住而不是红。挂住 ⇒ 这里 panic ⇒ 红。
 async fn place(pool: &Pool<Fake>, key: &str, lane: Lane, dials: &AtomicUsize) -> Placed<Fake> {
-    pool.place(key, lane, || async {
+    let placing = pool.place(key, lane, || async {
         dials.fetch_add(1, Ordering::SeqCst);
         Ok::<Fake, String>(fake())
-    })
-    .await
-    .expect("假拨号不会失败")
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), placing)
+        .await
+        .expect("放置挂住了：该放下的没放下（判准说该等、却没有任何东西会叫醒它）")
+        .expect("假拨号不会失败")
 }
 
 /// 让出几轮，给别的任务一个机会（判「它还在等」用：等 = 没完成，不是墙钟）。
