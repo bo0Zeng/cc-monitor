@@ -2681,6 +2681,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔S5 · 第四波 · V41〕`parse_remote_hosts` 旧单对象那一支删了，守它的测试随之删；
+        //    接替它的判据头注逐字说那条旧测试守的是什么 ⇒ 第②条出路。
+        (
+            "tests/bridge/lib_remote_config_tests.rs",
+            "legacy_single_object_one_host",
+            1,
+        ),
         // 🔴 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端（V107），monitor 另起中转那一族删了；
         //    层 1 名字登记表里那一行注释逐字记着「哪两个名字被谁接替」⇒ 第②条出路。
         (
@@ -3662,6 +3669,8 @@ fn every_prose_tombstone_mark_is_registered() {
     /// 不是（量具脚本里的针、讲机制的散文）⇒ 同样记一笔，并在旁边写清它是哪一类。
     /// **不许**为了让本条变绿就把标记删掉 —— 删掉的是账，不是病。
     const REGISTERED: &[(&str, usize)] = &[
+        // 〔S5 · 第四波 · V41〕`parse_remote_hosts` 旧单对象那一支与守它的测试删了，接替它的判据头注挂一块。
+        ("tests/bridge/lib_remote_config_tests.rs", 1),
         // 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端，monitor 另起中转那一族删了；层 1 名字表那一行注释挂一块。
         ("tests/naming/account-vs-relay-naming.vitest.ts", 1),
         // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：

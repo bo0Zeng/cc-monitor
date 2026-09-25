@@ -548,6 +548,7 @@ src/bridge/src/launch.rs:370	远端命令	保留	[可达存疑] validate_launch_
 src/bridge/src/launch.rs:630	本机不是 Windows：cc-monitor **刻意不替你挑终端模拟器**（会话容器是 tmux）——\n     命令已复制，在你自己的 bash 里粘贴执行即可。这是既定设计，不是没做完。	改·§2.2	[对外] POSIX 下开不了终端窗口的提示：「这是既定设计，不是没做完」是防御性论证 兼§2.4（markdown **刻意不替你挑终端模拟器** ＋ 括号 ＋ 破折号）→「命令已复制，请在你的终端里粘贴执行。」
 src/bridge/src/lib.rs:611	本机后端没起来	保留	[对外] 系统通知标题，短（「没起来」偏口语，CP2 可换「没有启动」）
 src/bridge/src/lib.rs:1896	cc-monitor 设置	保留	[对外] 设置窗口标题
+src/bridge/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] 〔S5 · V41〕REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
 src/bridge/src/local_accounts.rs:248	manifest 不是合法 JSON：{e}	内部词→「账号清单」（manifest）	[对外] 设置页本机账号一节的错误说明；manifest 是内部对账号清单文件的叫法 新词:manifest
 src/bridge/src/local_accounts.rs:266	manifest schema 版本 {v} 不受支持（本机只认 1）	内部词→「账号清单格式版本」（manifest schema）	[对外] 同上；括号里「本机只认 1」可保留作可核对信息 新词:manifest 新词:schema
 src/bridge/src/local_accounts.rs:281	manifest 缺 version 字段（或不是数字）	内部词→「账号清单」（manifest / version 字段）	[对外] 同上 新词:manifest
