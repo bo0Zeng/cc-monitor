@@ -490,6 +490,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/panorama_tests.rs",
     "tests/backend/control/transfer_tests.rs",
+    "tests/backend/dial_compress_tests.rs",
     "tests/backend/dial_link_tests.rs",
     "tests/backend/feature_face_tests.rs",
     "tests/backend/files/browse_watch_tests.rs",
@@ -782,6 +783,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/bridge/sftp_tests.rs",
         "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
         Trigger::Filter { by: "tests/evidence/SR1b-sftp-loopback.py", needle: "sr1b_loopback_deploy_and_transfer_through_the_resident_backend" },
+    ),
+    (
+        "tests/backend/dial_compress_tests.rs",
+        "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced",
+        Trigger::Filter { by: "tests/evidence/NT1-net-loopback.py", needle: "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced" },
     ),
 ];
 

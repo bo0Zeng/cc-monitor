@@ -3,9 +3,10 @@
 """NT1：**SSH 按需多开 · 压缩 · sftp 通道开销** —— 对着真 sshd 的现打（本机回环，零 root）。
 
 跑法（仓根下，先 `cd src/backend && cargo build`）：
-    python3 tests/evidence/NT1-net-loopback.py [--readings-only] [--only 1,2,…] [后端二进制路径]
+    python3 tests/evidence/NT1-net-loopback.py [--readings-only] [--only 1,2,…] [--compress] [后端二进制路径]
 
 `--readings-only`：只印读数、不判（给**旧**二进制跑 A/B 基线用：旧的不该多开，判了必红）。
+`--compress`：多跑 ⑥ —— 对着甲台跑 `dial_compress_tests::zr_…`（`#[ignore]`，强制压 / 强制不压各一趟），再读 sshd 日志核协商结果。
 
 它起两台**临时的回环 sshd**（本用户身份、随机端口、临时 host key 与客户端钥匙、`UsePAM no`、`LogLevel DEBUG1`，
 sftp 子系统起始目录钉在临时目录 —— 同 `SR1b-sftp-loopback.py`）：甲台 `MaxSessions 10`（默认值），乙台 `MaxSessions 2`
@@ -23,6 +24,8 @@ sftp 子系统起始目录钉在临时目录 —— 同 `SR1b-sftp-loopback.py`�
   ② 预算满：长流 ＋ 8 条重叠的 capture（每条连接的通道闸 8 格）⇒ 全部跑通、鉴权 **恰好 2**
   ③ 远端 MaxSessions=2（乙台）：长流 ＋ 3 条重叠的 capture ⇒ 全部跑通（被拒的那一条挪到新连接上）、鉴权 **恰好 2**；sshd 的拒绝原话
   ④ 压缩（回环）：sshd 日志里我们这几条连接的协商结果全是 `compression: none`（回环不开，判准只有 `connect.rs::compression_for`）
+  ⑥（`--compress`）强制压 vs 不压（真 sshd）：sshd 日志按先后 `none` · `zlib@openssh.com`；今天 russh 0.61 的 zlib 解压有缺陷（闸
+     `connect.rs::RUSSH_ZLIB_SOUND` 关着）⇒ 压的那趟卡在第一条通道上、收不全 —— 这一格就是闸为什么关着的真 sshd 读数
   ⑤ 弱网读数（甲台经整形代理，DELAY 单程 · BPS 每方向）：下载 16 MiB 期间长流上的回声延迟 · 顺序小文件下载每件耗时 ·
      首条 / 复用 capture 耗时（握手成本）—— 只印、不判（墙钟读数）；顺序 6 趟小下载的 sftp 子系统请求次数 **恰好 1**（判，计数）
 
@@ -281,6 +284,7 @@ def pct(xs, p):
 def main():
     argv = sys.argv[1:]
     readings_only = "--readings-only" in argv
+    compress_mode = "--compress" in argv
     only = None
     if "--only" in argv:
         only = {int(x) for x in argv[argv.index("--only") + 1].split(",")}
@@ -431,6 +435,17 @@ def main():
             subs = a.text().count("subsystem request for sftp") - sub0
             check("顺序 6 趟小下载 ⇒ sshd 记下的 sftp 子系统请求恰好 1 次（空闲会话复用；基线 6 次）", subs == 1, subs)
             be.call("link-close", {"link": "s5"})
+        if compress_mode:
+            print("⑥ 压缩（强制，真 sshd）：dial_compress_tests::zr_…（#[ignore]）")
+            k0 = len([ln for ln in a.text().splitlines() if "kex: client->server" in ln])
+            env = {**os.environ, "NT1_COMPRESS": json.dumps({"host": "127.0.0.1", "port": a.port, "user": user, "key_path": f"{d}/client_key"})}
+            r = subprocess.run(["cargo", "test", "--lib", "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced", "--", "--ignored", "--nocapture"],
+                               cwd=os.path.join(ROOT, "src", "backend"), env=env, capture_output=True, text=True, timeout=3000)
+            line = next((ln for ln in r.stdout.splitlines() if ln.startswith("NT1-COMPRESS")), "")
+            print(f"  read {line}")
+            check("读数用例本身过（不压那趟收全；闸关着 ⇒ 压的那趟 30 s 内收不全 —— russh 0.61 解压缺陷；闸开着 ⇒ 线上字节 < 一半）", "1 passed" in r.stdout, (r.stdout[-800:], r.stderr[-800:]))
+            kex = [ln.split("compression:")[1].split()[0] for ln in a.text().splitlines() if "kex: client->server" in ln and "compression:" in ln][k0:]
+            check("sshd 那一侧协商结果：不压那趟 none、压的那趟 zlib@openssh.com（按先后）", kex == ["none", "zlib@openssh.com"], kex)
     finally:
         if be:
             be.close()
