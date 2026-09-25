@@ -771,6 +771,421 @@
       "kind": "error",
       "zh": "没卸成：{reason}",
       "args": ["reason"]
+    },
+    "control.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "tmuxControl.target.empty": {
+      "kind": "error",
+      "zh": "没有指定 tmux 会话，这次没有执行。",
+      "args": []
+    },
+    "control.channel.localDown": {
+      "kind": "error",
+      "zh": "本机后端没有运行，这次没有执行。本机后端起来之后再试。",
+      "args": []
+    },
+    "control.channel.remoteDown": {
+      "kind": "error",
+      "zh": "连不上 {machine} 的后端，这次没有执行。等它连上之后再试。",
+      "args": ["machine"]
+    },
+    "control.channel.oldBackend": {
+      "kind": "error",
+      "zh": "{machine} 的后端版本不对，需要更新。",
+      "args": ["machine"]
+    },
+    "control.channel.unsure": {
+      "kind": "error",
+      "zh": "不知道 {machine} 那边做完了没有：连接断了，或者等回复超时。刷新会话列表后再决定要不要重试。",
+      "args": ["machine"]
+    },
+    "control.channel.cancelled": {
+      "kind": "error",
+      "zh": "这次操作已撤回。",
+      "args": []
+    },
+    "control.channel.broken": {
+      "kind": "error",
+      "zh": "这次操作没有完成，cc-monitor 内部出错了。",
+      "args": []
+    },
+    "control.reply.unreadable": {
+      "kind": "error",
+      "zh": "{machine} 的后端回的内容读不懂。多半是两边版本不一致，需要更新它。",
+      "args": ["machine"]
+    },
+    "tmuxControl.capture.noTmux": {
+      "kind": "error",
+      "zh": "抓取不了 {target} 的画面：那台机器上起不来 tmux（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.noServer": {
+      "kind": "error",
+      "zh": "抓取不了 {target} 的画面：那台机器上没有在运行的 tmux（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.noSuchSession": {
+      "kind": "error",
+      "zh": "抓取不了 {target} 的画面：这个会话不存在，可能刚结束（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.badName": {
+      "kind": "error",
+      "zh": "抓取不了 {target} 的画面：后端不接受这个会话名（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.failed": {
+      "kind": "error",
+      "zh": "抓取 {target} 的画面失败了，tmux 的原话：{detail}",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.capture.otherCode": {
+      "kind": "error",
+      "zh": "抓取 {target} 的画面被拒：{code}：{detail}",
+      "args": ["target", "code", "detail"]
+    },
+    "tmuxControl.capture.noReason": {
+      "kind": "error",
+      "zh": "抓取 {target} 的画面被拒，没有给出原因。",
+      "args": ["target"]
+    },
+    "tmuxControl.kill.badName": {
+      "kind": "error",
+      "zh": "结束不了 {target}：后端不接受这个会话名（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.noTmux": {
+      "kind": "error",
+      "zh": "结束不了 {target}：那台机器上起不来 tmux（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.noSuchSession": {
+      "kind": "error",
+      "zh": "{target} 已经不在了，可能已经结束（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.wrongOwner": {
+      "kind": "error",
+      "zh": "没有结束 {target}：认不出它是 cc-monitor 管理的会话。为了不误伤你自己的 tmux 会话，这次拒绝了（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.tooManyWindows": {
+      "kind": "error",
+      "zh": "没有结束 {target}：它里面多开了别的窗口。为了不丢掉那些窗口，这次拒绝了（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.failed": {
+      "kind": "error",
+      "zh": "结束 {target} 失败了，tmux 的原话：{detail}",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.otherCode": {
+      "kind": "error",
+      "zh": "结束 {target} 被拒：{code}：{detail}",
+      "args": ["target", "code", "detail"]
+    },
+    "tmuxControl.kill.noReason": {
+      "kind": "error",
+      "zh": "结束 {target} 被拒，没有给出原因。",
+      "args": ["target"]
+    },
+    "tmuxControl.kill.notConfirmed": {
+      "kind": "error",
+      "zh": "{machine} 的后端没有确认 {target} 已经结束。这次按没结束处理，刷新会话列表后再决定要不要重试。",
+      "args": ["machine", "target"]
+    },
+    "tmuxControl.keys.badRequest": {
+      "kind": "error",
+      "zh": "发送不了按键给 {target}：后端不接受这个请求（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.noTmux": {
+      "kind": "error",
+      "zh": "发送不了按键给 {target}：那台机器上起不来 tmux（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.noSuchSession": {
+      "kind": "error",
+      "zh": "发送不了按键给 {target}：这个会话不存在，可能刚结束（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.createFailed": {
+      "kind": "error",
+      "zh": "发送不了按键给 {target}：那台机器上建会话失败了（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.unconfirmed": {
+      "kind": "error",
+      "zh": "按键未必送到了 {target}：会话在，但发送失败（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.wrongOwner": {
+      "kind": "error",
+      "zh": "没有发送按键给 {target}：认不出它是 cc-monitor 管理的会话。为了不误伤你自己的 tmux 会话，这次拒绝了（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.otherCode": {
+      "kind": "error",
+      "zh": "发送按键给 {target} 被拒：{code}：{detail}",
+      "args": ["target", "code", "detail"]
+    },
+    "tmuxControl.keys.noReason": {
+      "kind": "error",
+      "zh": "发送按键给 {target} 被拒，没有给出原因。",
+      "args": ["target"]
+    },
+    "tmuxControl.keys.notConfirmed": {
+      "kind": "error",
+      "zh": "{machine} 的后端没有确认按键已经送到 {target}。这次按没送到处理，不会换一条路重发。",
+      "args": ["machine", "target"]
+    },
+    "tmuxControl.resume.emptyInput": {
+      "kind": "error",
+      "zh": "会话名或要键入的内容是空的，这次没有发出去。",
+      "args": []
+    },
+    "ccBus.id.invalid": {
+      "kind": "error",
+      "zh": "agent 名不合法，没有发出去：{id}",
+      "args": ["id"]
+    },
+    "ccBus.online.notInstalled": {
+      "kind": "error",
+      "zh": "问不到 {id} 在不在线：那台机器上找不到 cc-bus（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.online.timedOut": {
+      "kind": "error",
+      "zh": "问不到 {id} 在不在线：列名单超时了（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.online.otherCode": {
+      "kind": "error",
+      "zh": "问不到 {id} 在不在线：{code}：{detail}",
+      "args": ["id", "code", "detail"]
+    },
+    "ccBus.online.noReason": {
+      "kind": "error",
+      "zh": "问不到 {id} 在不在线，后端没有给出原因。",
+      "args": ["id"]
+    },
+    "ccBus.online.unknown": {
+      "kind": "error",
+      "zh": "问不到 {id} 在不在线：它不在 {machine} 的总线名单里，或者那边问不到 tmux。这是问不到，不是不在线。",
+      "args": ["id", "machine"]
+    },
+    "ccBus.send.empty": {
+      "kind": "error",
+      "zh": "消息是空的，没有发出去。",
+      "args": []
+    },
+    "ccBus.send.invalidArgs": {
+      "kind": "error",
+      "zh": "{id} 的消息没有发出去：cc-bus 不接受这个收件人或这组参数（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.send.notInstalled": {
+      "kind": "error",
+      "zh": "{id} 的消息没有发出去：那台机器上找不到 cc-bus（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.send.rejected": {
+      "kind": "error",
+      "zh": "{id} 的消息没有发出去：被 cc-bus 的路由规则拦下了（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.send.timedOut": {
+      "kind": "error",
+      "zh": "不确定 {id} 的消息发出去没有：发送超时了（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.send.tooLong": {
+      "kind": "error",
+      "zh": "{id} 的消息没有发出去：正文太长，一次装不下（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.send.otherCode": {
+      "kind": "error",
+      "zh": "{id} 的消息没有发出去：{code}：{detail}",
+      "args": ["id", "code", "detail"]
+    },
+    "ccBus.send.noReason": {
+      "kind": "error",
+      "zh": "{id} 的消息没有发出去，后端没有给出原因。",
+      "args": ["id"]
+    },
+    "ccBus.send.delivered": {
+      "kind": "body",
+      "zh": "已投递给 {id}",
+      "args": ["id"]
+    },
+    "ccBus.send.offline": {
+      "kind": "body",
+      "zh": "已投递给 {id}，但它当前不在线。消息留在收件箱里，它下次起来才会读到。",
+      "args": ["id"]
+    },
+    "ccBus.send.ghost": {
+      "kind": "body",
+      "zh": "已投递给 {id}，但这个名字没在总线上登记过。今天没有进程会读它的收件箱，名字打错了吗？",
+      "args": ["id"]
+    },
+    "ccBus.send.unknownLive": {
+      "kind": "body",
+      "zh": "已投递给 {id}，在不在线问不到。",
+      "args": ["id"]
+    },
+    "ccBus.kill.invalidArgs": {
+      "kind": "error",
+      "zh": "没有收掉 {id}：cc-bus 不接受这个名字（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.kill.notInstalled": {
+      "kind": "error",
+      "zh": "没有收掉 {id}：那台机器上找不到 cc-bus（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.kill.timedOut": {
+      "kind": "error",
+      "zh": "不知道 {id} 收掉了没有：执行超时了。先刷新名单再决定要不要重来（{detail}）",
+      "args": ["id", "detail"]
+    },
+    "ccBus.kill.otherCode": {
+      "kind": "error",
+      "zh": "没有收掉 {id}：{code}：{detail}",
+      "args": ["id", "code", "detail"]
+    },
+    "ccBus.kill.noReason": {
+      "kind": "error",
+      "zh": "没有收掉 {id}，后端没有给出原因。",
+      "args": ["id"]
+    },
+    "ccBus.kill.unsure": {
+      "kind": "error",
+      "zh": "{machine} 的后端回的内容读不懂，不知道 {id} 收掉了没有。先刷新名单再决定，不要直接重来。",
+      "args": ["machine", "id"]
+    },
+    "ccBus.kill.killed": {
+      "kind": "body",
+      "zh": "已收掉 {id}，会话与进程树都结束了。",
+      "args": ["id"]
+    },
+    "ccBus.kill.staleOnly": {
+      "kind": "body",
+      "zh": "{id} 的登记摘掉了，会话没动：这个名字今天挂在别人的会话上。",
+      "args": ["id"]
+    },
+    "ccBus.kill.nothing": {
+      "kind": "body",
+      "zh": "{id} 没有被收掉：会话没结束，登记也没摘。多半这个名字不在总线上。",
+      "args": ["id"]
+    },
+    "ccBus.spawn.noTool": {
+      "kind": "error",
+      "zh": "没选派生哪种 agent。",
+      "args": []
+    },
+    "ccBus.spawn.noDir": {
+      "kind": "error",
+      "zh": "工作目录是空的，没有派生。",
+      "args": []
+    },
+    "ccBus.spawn.badAccount": {
+      "kind": "error",
+      "zh": "账号名不合法，没有派生：{account}",
+      "args": ["account"]
+    },
+    "ccBus.spawn.invalidArgs": {
+      "kind": "error",
+      "zh": "没有派生：cc-bus 不接受这组参数（{detail}）",
+      "args": ["detail"]
+    },
+    "ccBus.spawn.notInstalled": {
+      "kind": "error",
+      "zh": "没有派生：那台机器上找不到 cc-bus（{detail}）",
+      "args": ["detail"]
+    },
+    "ccBus.spawn.timedOut": {
+      "kind": "error",
+      "zh": "派生超时了，会话可能已经起来了。先看一眼 cc-bus 名单，不要直接重试（{detail}）",
+      "args": ["detail"]
+    },
+    "ccBus.spawn.otherCode": {
+      "kind": "error",
+      "zh": "没有派生：{code}：{detail}",
+      "args": ["code", "detail"]
+    },
+    "ccBus.spawn.noReason": {
+      "kind": "error",
+      "zh": "没有派生，后端没有给出原因。",
+      "args": []
+    },
+    "ccBus.spawn.unsure": {
+      "kind": "error",
+      "zh": "派生的回应读不懂，不确定会话有没有起来。请先看一眼 cc-bus 名单，不要直接重试。",
+      "args": []
+    },
+    "ccBus.spawn.done": {
+      "kind": "body",
+      "zh": "已派生 {id}\n{said}",
+      "args": ["id", "said"]
+    },
+    "ccBus.spawn.noName": {
+      "kind": "body",
+      "zh": "已派生，但没认出新会话的名字。会话应该已经在运行，请不要重试，到 cc-bus 名单里找它。\n{said}",
+      "args": ["said"]
+    },
+    "ccBus.broadcast.empty": {
+      "kind": "error",
+      "zh": "广播内容是空的，没有发出去。",
+      "args": []
+    },
+    "ccBus.broadcast.invalidArgs": {
+      "kind": "error",
+      "zh": "没有广播：后端不接受这组参数（{detail}）",
+      "args": ["detail"]
+    },
+    "ccBus.broadcast.notInstalled": {
+      "kind": "error",
+      "zh": "没有广播：那台机器上找不到 cc-bus（{detail}）",
+      "args": ["detail"]
+    },
+    "ccBus.broadcast.timedOut": {
+      "kind": "error",
+      "zh": "没有广播：列名单超时了（{detail}）",
+      "args": ["detail"]
+    },
+    "ccBus.broadcast.otherCode": {
+      "kind": "error",
+      "zh": "没有广播：{code}：{detail}",
+      "args": ["code", "detail"]
+    },
+    "ccBus.broadcast.noReason": {
+      "kind": "error",
+      "zh": "没有广播，后端没有给出原因。",
+      "args": []
+    },
+    "ccBus.broadcast.done": {
+      "kind": "body",
+      "zh": "已广播给 {sent} 个在线的 agent，跳过 {skipped} 个不在线的。",
+      "args": ["sent", "skipped"]
+    },
+    "ccBus.broadcast.doneFailed": {
+      "kind": "body",
+      "zh": "已广播给 {sent} 个在线的 agent，跳过 {skipped} 个不在线的。{failed} 个失败：{who}",
+      "args": ["sent", "skipped", "failed", "who"]
+    },
+    "ccBus.broadcast.doneUnknown": {
+      "kind": "body",
+      "zh": "已广播给 {sent} 个已登记的 agent。问不到谁在线，所以全发了。",
+      "args": ["sent"]
+    },
+    "ccBus.broadcast.doneUnknownFailed": {
+      "kind": "body",
+      "zh": "已广播给 {sent} 个已登记的 agent。问不到谁在线，所以全发了。{failed} 个失败：{who}",
+      "args": ["sent", "failed", "who"]
     }
   }
 }

@@ -1,6 +1,6 @@
 //! F03（unify-launch）：探测远端是否已装 `ccm`（F02 统一启动 CLI）及其能力集，供前端
 //! `src/ccm-probe.ts` 决定走 CLI 渲染器还是兜底渲染器。一次性 headless SSH exec，照
-//! `tmux.rs::capture_remote_pane` 的范式（通道 B，不干扰前台终端、不涉及后端）。
+//! 当年 F60 抓屏那条（`capture_remote_pane`〔散文墓碑〕，〔C4e〕已迁到界面经通道问）的范式（通道 B，不干扰前台终端、不涉及后端）。
 
 use crate::ssh_source;
 use serde::Serialize;

@@ -45,6 +45,7 @@ import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { probeCcm } from "./ccm-probe";
 import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
+import { sendInto, type SendIntoOutcome } from "./tmux-control";
 import { AGENT_PROFILE } from "./agent-profile";
 import { deriveTmuxName, mintTmuxName } from "./remote-launch";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-render-facts";
@@ -588,8 +589,8 @@ export async function runRemoteResumeTmux(
  *    ⇒ monitor 侧超时 ⇒ 回落 ⇒ **载荷第二次被键入**，而这次落进一个**已经在跑 claude 的 pane**
  *    ⇒ 那条 `env … claude --resume …` 被当成 **prompt 提交**、写进对话历史、**不可撤销**。
  *
- *  ⇒ 分流判定**不在这里**，它住 Rust 侧的 `backend/control/backend_route.rs`（与 `kill`/`send-keys`
- *  共用一份），这里只读它翻出来的 `mayFallBack`。
+ *  ⇒ 分流判定**不在这里**：〔C4e〕它住 `ipc/chan-caller.ts::provablyNotSent`（`tmux-control.ts::sendInto` 调它），
+ *  与 Rust 侧 `backend/control/backend_route.rs::route_call_error` 同一条规则、跨语言金样钉着两份；这里只读它的三态结局。
  *
  *  ⚠ **`"refused"` 要 toast**（改了原来那条「绝不 toast」的纪律）：回落是用户看不出区别的，
  *  所以不该吵；而**拒绝**意味着这次就地 resume 没做成，用户必须知道 —— 否则他会以为成功了。
@@ -603,25 +604,12 @@ export async function runRemoteResumeTmux(
  *  **同样的坏输入在回落那条路上照样被拒**，不再有「换条路糊过去」这个出口。
  *  ⚠ 诚实边界：本条说的是「两条路的拒绝口径同源」，**不是**「回落那一跳不会重做」——
  *  重做安不安全仍由 `mayFallBack` 那条判定（F14）负责，一个字没动。 */
-async function sendIntoViaBackend(
-  origin: string,
-  name: string,
-  plan: LaunchPlan,
-): Promise<{ verdict: "typed" | "fallback" | "refused"; reason?: string }> {
+async function sendIntoViaBackend(origin: string, name: string, plan: LaunchPlan): Promise<SendIntoOutcome> {
+  let payload: string;
   try {
-    const payload = await commands.render_launch_payload({
+    payload = await commands.render_launch_payload({
       req: buildPayloadRenderRequest(plan),
     });
-    const res = await commands.backend_send_into({ req: { origin, name, payload } });
-    if (res.typed) return { verdict: "typed" };
-    const reason = res.reason ?? "backend 未给理由";
-    if (res.mayFallBack) {
-      console.debug(`[F14] send-into 回落到整串（证明没发出去）：${reason}`);
-      return { verdict: "fallback", reason };
-    }
-    // ★ 不许回落：backend 说过话，或我们无法证明它没执行。
-    console.debug(`[F14] send-into 被拒，**不回落**：${reason}`);
-    return { verdict: "refused", reason };
   } catch (e) {
     // ★★ P1：这里原来把**两件事**混成一件，注释是这么写的 ——
     //   「两者都在后端那一跳之前 ⇒ 能证明什么都没发出去 ⇒ 可回落」
@@ -636,7 +624,7 @@ async function sendIntoViaBackend(
     // 分法：Rust 的**业务拒绝**都经 `payload::refuse()` 打了 `REFUSE:` 标
     //（那侧有判据 `every_business_rejection_is_tagged` 钉住「一条都不许裸写」）。
     // 带标 ⇒ 坏输入，换条路渲染只会把坏输入糊过去 ⇒ **refused，不回落**。
-    // 不带标 ⇒ IPC/序列化异常 ⇒ 通道问题，与载荷本身无关 ⇒ 照旧 fallback。
+    // 不带标 ⇒ IPC/序列化异常 ⇒ 还没到后端那一跳，与载荷本身无关 ⇒ 照旧 fallback。
     //
     // ⚠ 诚实边界：这是**字符串约定不是类型**（全仓 70 个 tauri command 的错误都是 `String`，
     // 本件不在这里开第一个结构化的口 —— 那是 `U6`）。手写一个带同样前缀的普通错误串会被误判。
@@ -645,9 +633,16 @@ async function sendIntoViaBackend(
       console.debug(`[P1] send-into 载荷渲染被拒，**不回落**（同一道闸只会再拒一次）：${raw}`);
       return { verdict: "refused", reason: raw };
     }
-    console.debug(`[F14] send-into 回落到整串（通道异常，尚未发出）：${raw}`);
+    console.debug(`[F14] send-into 回落到整串（载荷渲染那一跳异常，还没发往后端）：${raw}`);
     return { verdict: "fallback", reason: raw };
   }
+  // 〔C4e · 第四波 4C〕键入那一跳经 `tmux-control.ts::sendInto` 直接问那台机器的后端（`launch{mode:"send-into"}`）；
+  //   此前是 monitor 的 `backend_send_into`〔散文墓碑〕。「能不能回落」那条判定（F14）随之搬到 `ipc/chan-caller.ts::provablyNotSent`，
+  //   与 Rust `backend_route::route_call_error` 同一条规则、跨语言金样钉着两份。
+  const sent = await sendInto(origin, name, payload);
+  if (sent.verdict === "fallback") console.debug(`[F14] send-into 回落到整串（证明没发出去）：${sent.reason}`);
+  if (sent.verdict === "refused") console.debug(`[F14] send-into 被拒，**不回落**：${sent.reason}`);
+  return sent;
 }
 
 /** F03：往一个**已存在的空 tmux**（idle-tmux：claude 已退、只剩交互 shell 的 `<sid8>-cc`）就地
@@ -716,7 +711,7 @@ export async function runRemoteResumeIntoExistingTmux(
  * # 与远端那条的差别只有两处，其余逐字共用
  *
  * ① **载荷那半共用**：同一个 `planResumeIntoExistingTmux` + 同一个 `sendIntoViaBackend`
- *    + 同一条 `backend_send_into`（它 `client_for(&origin)`，**本来就传输无关**）。
+ *    + 同一条 `tmux-control.ts::sendInto`（〔C4e〕经通道问那台机器的后端，**本来就传输无关**；此前是 monitor 的 `backend_send_into`〔散文墓碑〕）。
  *    这就是 `C1`「差别只允许出现在传输这一跳」的样子。
  * ② **attach 那半本机做不到，而且是结构性的**：`launch_remote_terminal` 只会
  *    `ssh + PowerShell`，而 POSIX 本机 `launch.rs` 逐字「**不开 GUI 终端窗口**」——

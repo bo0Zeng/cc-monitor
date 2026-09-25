@@ -2,7 +2,14 @@
 // confirm/awaitCompact 注入 → 不碰 window.confirm、不真延时。重点锁：kill 失败必须中止不续 resume。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// 〔C4e · 第四波 4C〕送键与杀会话从两条 Tauri 命令（`tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕）改成界面经通道直接说
+//   后端的 `launch` / `kill`（`src/tmux-control.ts`）。本文件判的是换号重启的**编排**，不是通道那一跳 ⇒ 生产 `invoke` 换成一层
+//   翻译（`chan-fake.ts::tmuxControlShim`）：那两发 `chan_call` 照旧按旧名字交给 `invokeMock`，下面的断言一个字不用改。
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", async () => {
+  const { tmuxControlShim } = await import("./test-support/chan-fake");
+  return { invoke: tmuxControlShim(invokeMock, "tmux_send_keys") };
+});
 vi.mock("../src/remote-launch-run", () => ({
   runRemoteResumeTmux: vi.fn().mockResolvedValue(true),
 }));
@@ -15,13 +22,11 @@ vi.mock("../src/accounts", () => ({
   getModelForAccount: vi.fn().mockResolvedValue(undefined), // F07：默认无模型偏好
 }));
 
-import { invoke } from "@tauri-apps/api/core";
 import { runRemoteResumeTmux } from "../src/remote-launch-run";
 import { accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "../src/accounts";
 import { restartWithAccount, type RestartWithAccountOpts } from "../src/account-restart";
 import { showActionFailureToast } from "../src/error-toast";
 
-const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const resumeTmux = runRemoteResumeTmux as unknown as ReturnType<typeof vi.fn>;
 const acctConfigDir = accountConfigDir as unknown as ReturnType<typeof vi.fn>;
 const recordLast = recordLastAccount as unknown as ReturnType<typeof vi.fn>;
@@ -97,10 +102,12 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
   it("③ compactFirst → 先 send /compact → 等完成 → kill → resume", async () => {
     const awaitCompact = vi.fn().mockResolvedValue(true);
     await restartWithAccount(baseOpts({ compactFirst: true, awaitCompact }));
+    // 〔C4e〕`/compact` 那一发从前省略 `enter`（缺省 = 带回车）；今天它是 mode `send-into`，翻译过来 `enter: true` 写明。
     expect(invokeMock).toHaveBeenCalledWith("tmux_send_keys", {
       origin: "aya",
       target: "cc-s1abcdef",
       keys: "/compact",
+      enter: true,
     });
     expect(awaitCompact).toHaveBeenCalled();
     expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", expect.anything());

@@ -1,26 +1,15 @@
-use super::*;
-
-#[test]
-fn killed_from_reply_reads_the_flag_and_refuses_to_guess() {
-    assert_eq!(
-        killed_from_reply(Some(&serde_json::json!({ "killed": true }))),
-        Ok(true)
-    );
-    assert_eq!(
-        killed_from_reply(Some(&serde_json::json!({ "killed": false }))),
-        Ok(false)
-    );
-    // ★ 缺字段 / 类型不对 / 无 body 一律是**协议漂移**，不是「没杀成」。
-    for bad in [
-        serde_json::json!({}),
-        serde_json::json!({ "killed": "yes" }),
-        serde_json::json!({ "session": "x-cc" }),
-    ] {
-        let r = killed_from_reply(Some(&bad));
-        assert!(r.is_err(), "{bad} 应当报协议漂移，而不是被读成 false");
-    }
-    assert!(killed_from_reply(None).is_err());
-}
+//! 〔C4e · 第四波 4C〕**「谁在建 tmux 会话 ↔ 后端 kill 的形状门」那一族判据**。
+//!
+//! 守的要求：`INVARIANTS §34`（三道门：名字形状 · 身份 · 窗口）在创建那一侧的反面 ——
+//! 「建得出来、主路杀不掉」的名字不许被铸出来（F04b / F15 立的那一条，`INVARIANTS §33b` 三问里的创建路径）。
+//!
+//! 本文件原本挂在杀会话的 monitor 发送端 `backend_kill.rs`〔散文墓碑〕下面，一起住着那个发送端自己的几条单元判据
+//! （读 `killed` 那一格 · 两条后端命令的拒绝文案同形）。C4e 把杀会话迁到界面（`src/tmux-control.ts::killSession`
+//! 经通道直接说后端的 `kill`），发送端删了：
+//! - 它自己的那几条随它退役 —— 「读 `killed` 不许猜」搬到 TS `decodeKilled`，「拒绝码逐码一句」搬到 TS 那张表
+//!   （`tests/tmux-control.vitest.ts`，码集合取自跨语言金样 `tests/__fixtures__/tmux-control.golden.json`）；
+//! - **本文件剩下的两条不跟着走**（它们守的与 monitor 里有没有发送端无关），文件原地不动，改挂在
+//!   `backend/control/mod.rs` 的测试段（`kill_name_tests`）。
 
 /// 「创建路径」的登记表：`(路径, 判定, 理由)`。
 ///
@@ -464,15 +453,29 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
 /// - **它不判那三份副本说得对不对** —— 只判「那句话在不在」与「代码里那条路在不在」一致。
 #[test]
 fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
-    let tmux_rs = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/tmux.rs"
-    ));
-    let at = tmux_rs
-        .find("pub async fn kill_remote_tmux(")
-        .expect("找不到 kill 命令 —— 签名变了就把本条一起改");
-    let body = &tmux_rs[at..];
-    let end = body.find("\n}\n").map(|k| k + 3).unwrap_or(body.len());
-    let fallback_alive = body[..end].contains("connect_and_exec_cmd");
+    // 〔C4e · 第四波 4C〕「那条过渡期回落还在不在」原来读的是 `tmux.rs` 里杀会话那条 Tauri 命令的函数体
+    //   （体里有没有 `connect_and_exec_cmd`）。那条命令整个迁到界面删了 ⇒ 问题换成**整棵 monitor 生产段**里
+    //   还有没有一处自己拼杀会话的 shell 串（`kill-session`）—— 界面那一侧结构上没有 SSH，回落只可能长回 monitor。
+    //   正控：同一识别器在后端 `control/kill.rs` 的生产段上认得出那个动词（那是真杀会话的那一处）。
+    let verb = ["kill", "session"].join("-");
+    let mut monitor_prod = String::new();
+    for (_, one_file) in guard_core::scan_tree_excluding(
+        &crate::guard_support::repo_root().join("src/bridge/src"),
+        &["rs"],
+        &[],
+    ) {
+        monitor_prod.push_str(&guard_core::strip_comment_lines(
+            &guard_core::production_code(&one_file),
+        ));
+    }
+    let fallback_alive = guard_core::contains_word(&monitor_prod, &verb);
+    assert!(
+        guard_core::contains_word(
+            &guard_core::production_code(include_str!("../../../../src/backend/control/kill.rs")),
+            &verb
+        ),
+        "正控失败：后端 `control/kill.rs` 的生产段里认不出 `{verb}` —— 识别器瞎了，上面那个「不在」不可信"
+    );
 
     // ── 人群：遍历 `doc/`（递归），**不是**一张手写清单 ────────────────
     let root = crate::guard_support::repo_root();
@@ -523,7 +526,7 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
         !said.is_empty(),
         fallback_alive,
         "代码与耐久文档对不上了：\n\
-             · `kill_remote_tmux` 里还有一次性 SSH 的第二条路吗 = {fallback_alive}\n\
+             · monitor 生产段里还有自己拼杀会话 shell 串的第二条路吗 = {fallback_alive}\n\
              · `doc/` 里还写着那句话的（分母 = 遍历到的 {} 份 `.md`）= {said:?}\n\
              ⚠ 如果是**删掉了那条路**：那句话要一起改，否则下一个读者会以为\n\
              「没有后端的远端」还有一条路可走 —— 而那正是 C7 说的过渡期已经结束。\n\
@@ -534,47 +537,7 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
     );
 }
 
-/// 两条路的拒绝文案必须说同一件事 —— 同一个拒绝在两条路上说两种话，
-/// 用户会以为是两个不同的问题。
-///
-/// # `K-R72`（09-12）：**换了对照面，不是删掉判据**
-///
-/// 本条原名 `the_refusal_wording_matches_the_ssh_path`，反向锚点断的是  〔散文墓碑〕
-/// 「monitor 侧那条一次性 SSH 回落里这几句话还在」。**那条 SSH 路整块删了** ⇒
-/// 「两条路」若还指它就是一句假话，而它守的性质（**同一个拒绝只许有一种说法**）没有消失：
-/// 今天用户碰得到的两条路是 **kill 与 send-keys 这两条后端命令**，
-/// 各有一份 `refusal_text` ⇒ 对照面换成兄弟命令那一份。
-///
-/// ⚠ 顺带收紧了一格：对照面过 [`guard_core::production_code`]，
-/// **兄弟文件自己的测试里抄一份同样的串糊弄不过去**（原来那半是整份源码 `contains`）。
-///
-/// ⚠ `too_many_windows` **不参与对照** —— 它是 kill 独有的一档
-/// （send-keys 不删除任何东西，窗口数与它无关，`admit` / `admit_destructive` 是两个入口）。
-/// 它自己那句「下一步该干什么」单独钉。
-#[test]
-fn the_refusal_wording_matches_the_sibling_command() {
-    let sibling = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/backend_send_keys.rs"
-    ));
-    for (code, needle) in [
-        ("no_tmux", "远端未安装 tmux"),
-        ("no_such_session", "远端会话已不存在（可能已被终止）"),
-        ("wrong_owner", "可能不是本工具管理的会话"),
-    ] {
-        let mine = refusal_text(code, "m");
-        assert!(
-            mine.contains(needle),
-            "`{code}` 的文案里没有 {needle:?}：{mine}"
-        );
-        assert!(
-            sibling.contains(needle),
-            "`backend_send_keys.rs` 的生产段里已经没有 {needle:?} 了 —— \
-                 两条后端命令的文案漂了，要么一起改，要么本条判据该跟着改"
-        );
-    }
-    assert!(
-        refusal_text("too_many_windows", "m").contains("请到该 tmux 里自行处理"),
-        "`too_many_windows` 少了「下一步该干什么」那半句 —— \
-             它是 kill 独有的一档，没有兄弟命令替它兜"
-    );
-}
+// 〔C4e · 第四波 4C〕这里原来住着「两条后端命令的拒绝文案说同一件事」（`the_refusal_wording_matches_the_sibling_command`〔散文墓碑〕，
+//   对照 monitor 里杀会话与送键两个发送端各自那份 `refusal_text`）。两个发送端都迁到界面删了，
+//   拒绝码 → 一句话从此只有 `src/tmux-control.ts` 一份（按动作分表：结束会话 · 发按键），
+//   「逐码一句、两两不同、带会话名与后端原话」由 `tests/tmux-control.vitest.ts` 钉着。
