@@ -1597,7 +1597,8 @@ fn claims() -> Vec<Claim> {
             }),
         },
         // 〔AS2 · 第四波 4B · V113〕资产目录里「装到这台」的 skill：装口是 `skill_install_apply`（经那台后端 `files-put`）；
-        //   **没有卸口**（`uninstall: None`，负向扫描守着：这个家里长出一个 `uninstall… / remove… / strip… / purge…` 就红）。
+        // 〔SU1 · 第四波 4C · V116〕卸口 `skill_uninstall_apply`（只删装记录里那几个文件，经那台后端 `files-delete` 带 `expect`）。
+        //   〔墓碑 —— AS2 那一版这里是 `uninstall: None`，负向扫描守着「家里长出 `uninstall…` 就红」；SU1 落卸口那一拍它当场红了（`uninstall_with`），照它说的登记。〕
         Claim {
             tool: "skill-install",
             home: Some(ImplHome {
@@ -1608,7 +1609,10 @@ fn claims() -> Vec<Claim> {
                 addr: "skill_install.rs::skill_install_apply",
                 definition: "pub async fn skill_install_apply(\n    to: Origin,\n    name: String,\n    source: Vec<SkillFile>,\n    target: Vec<SkillTargetText>,\n    take: Vec<String>,\n    overwrite: Vec<String>,\n) -> Result<SkillInstallApplied, String> {",
             }),
-            uninstall: None,
+            uninstall: Some(ImplSite {
+                addr: "skill_install.rs::skill_uninstall_apply",
+                definition: "pub async fn skill_uninstall_apply(\n    to: Origin,\n    dir: String,\n    seen: Vec<SkillTargetText>,\n    take: Vec<String>,\n    confirm: Vec<String>,\n) -> Result<SkillUninstallApplied, String> {",
+            }),
         },
         Claim {
             tool: "posix-rc-aliases",

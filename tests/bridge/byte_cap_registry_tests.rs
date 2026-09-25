@@ -666,6 +666,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
+    // 〔SU1 · 第四波 4C〕skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
+    (
+        "src/backend/skill_ledger.rs",
+        "MAX_BYTES",
+        4 * 1024 * 1024,
+        "后端自有的 skill 装记录 `~/.cc-monitor/skill-installs.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
     (
         "src/backend/asset_catalog.rs",
         "SKILL_MAX_FILE_BYTES",

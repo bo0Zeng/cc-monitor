@@ -1348,6 +1348,7 @@ pub fn run() {
             // 〔AS2〕skill「装到这台」：看差异 ＋ 写（来源那台读、被写那台判、经被写那台后端 files-put 写）。
             skill_install::skill_install_preview,
             skill_install::skill_install_apply,
+            skill_install::skill_uninstall_apply,
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）

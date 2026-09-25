@@ -467,12 +467,9 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
 // 一个字节都不写：删经 monitor → 这台后端 `files-delete`（`expect` = 这里回的 `seen` 那一份）；摘记录经 `skill-install-record`。
 
 /// 卸时一个记着的文件在盘上的样子（线上名）。**闭集**：界面文案表按它逐键给字。
-pub const UNINSTALL_STATES: &[&str] = &[
-    UNINSTALL_GONE,
-    UNINSTALL_INTACT,
-    UNINSTALL_MODIFIED,
-    UNINSTALL_UNREADABLE,
-];
+// ⚠ 逐字写成字面量（不引用下面四个常量）：界面与 monitor 的判据按「这一行的引号」从源码现抠人群。
+//   四个常量与这一行对不上由 `uninstall_judges_every_recorded_file_as_it_is_on_disk_now` 的闭集两向那一条逮。
+pub const UNINSTALL_STATES: &[&str] = &["gone", "intact", "modified", "unreadable"];
 /// 已经不在了（从记录里摘掉就行）。
 pub const UNINSTALL_GONE: &str = "gone";
 /// 在、是文本、摘要 == 装时写进去的那一份。
