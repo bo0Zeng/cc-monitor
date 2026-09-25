@@ -81,7 +81,7 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  */
 const LOCAL_PAGE_IPC = [
   "config_surface_report", // 足迹（步 14a）
-  "drift_ledger_report", // 〔ST2〕未识别的数据（原顶层「改动足迹」那一块；只有本机那一栏读）
+  "drift_ledger_report", // 〔ST2〕未识别的数据（原顶层「改动足迹」那一块）；〔ST3〕按这台去问
   "load_config", // 账号：先读远端清单（落地页也读它 —— 这里量的是「新增」那一段）
   "list_local_accounts", // 账号（本机那一支）
   "cc_integration_status", // 终端集成（Windows）
@@ -106,6 +106,8 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
   // 〔RM1b · 第四波〕插件那块也跟着机器走了（`plugins-marketplaces` 按 origin 问那台后端）。
   "list_plugin_marketplaces",
   "config_surface_report",
+  // 〔ST3〕「未识别的数据」按机器分：切到 aya 由它自己的订阅重读，按 aya 去问，恰好一发。
+  "drift_ledger_report",
 ];
 /**
  * 第一次可见就是 aya：per-machine 那一批放一次，**每一发恰好一次**。
@@ -115,6 +117,7 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
  */
 const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "config_surface_report", // 足迹：〔ST2〕按 aya 去问
+  "drift_ledger_report", // 未识别的数据：〔ST3〕按 aya 去问
   "load_config", // 账号：读远端清单
   "list_remote_accounts", // 账号：aya 那一台
   "cc_integration_status",

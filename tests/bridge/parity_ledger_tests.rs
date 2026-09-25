@@ -319,9 +319,10 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("get_session_tasks", "session.tasks", Side::Both),
     // 〔RM1a · 第四波〕收 `origin` ⇒ `Both`：远端那一栏问那台机器的后端（`footprint-probe`），判定同一份 `build_rows`。
     ("config_surface_report", "audit.config-surface", Side::Both),
-    // U-CC1：漂移记账是**进程内**的全局账本，本地行与远端行都经同一个
+    // U-CC1：漂移记账是**进程内**的账本，本地行与远端行都经同一个
     // `parse_line`（`lib.rs::batch_to_payloads`）喂进来 ⇒ 一个读口就覆盖两侧，
-    // 天然 `Both`，不需要远端对侧命令。
+    // 天然 `Both`，不需要远端对侧命令。〔ST3〕账按机器分、读口收 `origin` 只答那一台
+    // （仍是 monitor 自己的命令、不经后端），登记见 `ORIGIN_TAKING_BOTH`。
     ("drift_ledger_report", "audit.drift-ledger", Side::Both),
     // P8a：插件面只读枚举。〔RM1b · 第四波〕按 origin 问那台机器的后端 `plugins-marketplaces` ⇒ 两侧都服务。
     (
@@ -741,6 +742,12 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
         "〔RL1 · 第四波〕这次拉起的中转地址按**那台机器**的事实答：本机两件事走起会话那一侧那条缝，\
              远端问那台的账号层（`apikey-read`）与中转（`relay-status` / 用到才 `relay-ensure`）。命令体对 origin 不做远端假设 —— \
              分派住 `history::relay_endpoint_on`，判断只在 `payload::relay_endpoint_for` 一处。",
+    ),
+    (
+        "drift_ledger_report",
+        "〔ST3 · 第四波〕「未识别的数据」：两台的记录都在 monitor 进程里解析、在同一个进程里记账，\
+             账本第一层键是 origin。命令体对 origin 不做远端假设 —— 它只用 origin 选「读哪一台那一本」，\
+             不经后端、不拨号；`route` 只拦空白名。",
     ),
     (
         "apikey_routing_for",
