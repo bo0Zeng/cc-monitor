@@ -388,62 +388,6 @@ src/bridge/src/filewin/fonts.rs:287	●＋双另右好己底忙恰标栏自页	�
 src/bridge/src/filewin/fonts.rs:288	处搬板留老	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字）
 src/bridge/src/filewin/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕预览那几个字）
 src/bridge/src/filewin/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
-src/bridge/src/filewin/shell.rs:570	搜索要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] 搜索栏 say() 直接显示；整句讲实现（tokio 运行时），换词治不好 新词:tokio运行时 →「搜索启动不了，请重开这个窗口」
-src/bridge/src/filewin/shell.rs:625	上传要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error 画在窗口上；整句讲实现 新词:tokio运行时 →「上传启动不了」
-src/bridge/src/filewin/shell.rs:706	拖进来的 {} 个东西一个都认不出名字	保留	[对外] 拖入失败提示，结果一句话说清
-src/bridge/src/filewin/shell.rs:801	「{}」不是一个能用的新名字 —— 只能在同一个目录里改名，不许为空、不许带 `/`、不许和原名相同	改·§2.4	[对外] 首句 ≥30 汉字＋破折号接三条规则，一句塞完 →「「{}」不能用作新名字：不能为空、不能含 /、不能与原名相同」
-src/bridge/src/filewin/shell.rs:822	复制要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
-src/bridge/src/filewin/shell.rs:884	复制 {} 为：	保留	[对外] 对话框标题，名词性短句
-src/bridge/src/filewin/shell.rs:886	⚠ 只在同一个目录里改名 —— 名字里不许带 `/`。	保留	[对外] 输入框下提示，短句一个破折号接可操作限制
-src/bridge/src/filewin/shell.rs:891	取消	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1017	这几件写操作要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
-src/bridge/src/filewin/shell.rs:1153	往外拖要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
-src/bridge/src/filewin/shell.rs:1227	{} 改不了：{why}	保留	[对外] 结果＋原因插值
-src/bridge/src/filewin/shell.rs:1232	读远端文本要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
-src/bridge/src/filewin/shell.rs:1275	{path} 读不出来：{why}	保留	[对外] 结果＋原因插值
-src/bridge/src/filewin/shell.rs:1289	改完之后有 {} 字节，超过 {} 的上限 —— 存不回去（超限**拒编而非截断**）	改·§2.4	[对外] 破折号＋括号补充＋markdown ** 同句 兼§2.2（「拒编而非截断」是设计论证）→「改完 {} 字节，超过上限 {}，存不回去」
-src/bridge/src/filewin/shell.rs:1298	存远端文本要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error；整句讲实现 新词:tokio运行时
-src/bridge/src/filewin/shell.rs:1407	正在读 {p}…	保留	[对外] 进度标签
-src/bridge/src/filewin/shell.rs:1413	正在存 {p}…	保留	[对外] 进度标签
-src/bridge/src/filewin/shell.rs:1424	{} 改了还没存	保留	[对外] 对话框标题
-src/bridge/src/filewin/shell.rs:1427	关掉就丢掉你敲的那些东西了 —— 远端那份还是旧的。	保留	[对外] 后果说明，一个破折号接可理解的补充
-src/bridge/src/filewin/shell.rs:1430	丢掉，关	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1433	先别关	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1458	已经超过 {} 的上限 {} 字节 —— 存不回去	保留	[对外] 结果一句，破折号后是结论
-src/bridge/src/filewin/shell.rs:1466	已存	保留	[对外] 状态标签
-src/bridge/src/filewin/shell.rs:1468	存不回去：{why}	保留	[对外] 结果＋原因插值
-src/bridge/src/filewin/shell.rs:1480	保存	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1483	关闭	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1508	正在拖出 {name}：{} / {}	保留	[对外] 进度标签
-src/bridge/src/filewin/shell.rs:1520	已存到 {dest}（{}）	保留	[对外] 结果＋大小
-src/bridge/src/filewin/shell.rs:1525	拖到 {dest} 没成：{why}	保留	[对外] 结果＋原因插值
-src/bridge/src/filewin/shell.rs:1536	把「{}」存到哪儿？	保留	[对外] 对话框标题，body 里问句合法
-src/bridge/src/filewin/shell.rs:1541	⚠ 以 `/` 结尾 = 当成目录，原名接上去。	保留	[对外] 输入提示，可操作
-src/bridge/src/filewin/shell.rs:1543	确定	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1546	取消	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1552	那儿已经有东西了	保留	[对外] 覆盖确认标题
-src/bridge/src/filewin/shell.rs:1558	盖掉它就没有备份了，不可撤销。	保留	[对外] 后果说明
-src/bridge/src/filewin/shell.rs:1561	盖掉	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1564	取消	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1590	⚠ 只在这一个目录里 —— 不许带 `/`。	保留	[对外] 输入提示，短句一个破折号接限制
-src/bridge/src/filewin/shell.rs:1592	确定	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1595	取消	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1645	⬆ 上一级	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1648	刷新	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1659	正在列…	保留	[对外] 进度标签
-src/bridge/src/filewin/shell.rs:1683	这个目录条目太多，只拿到了前 {} 条 —— 没看见的文件不代表它不在	保留	[对外] 结果＋一句补充，只一个破折号信号
-src/bridge/src/filewin/shell.rs:1768	搜索	保留	[对外] 控件标签
-src/bridge/src/filewin/shell.rs:1772	文件名里的一段	保留	[对外] 输入框占位
-src/bridge/src/filewin/shell.rs:1777	重建索引	保留	[对外] 按钮
-src/bridge/src/filewin/shell.rs:1782	正在搜…	保留	[对外] 进度标签
-src/bridge/src/filewin/shell.rs:1892	cc-monitor 文件 — {}	保留	[对外] 窗口标题
-src/bridge/src/filewin/shell.rs:583	终端开不了，请重开这个窗口	保留	[对外] 「在此打开终端」没有运行环境时画在工具栏下；结果一句 ＋ 用户做得到的一步
-src/bridge/src/filewin/shell.rs:593	终端没打开：{why}	保留	[对外] 结果＋原因插值（原因来自 launch_remote_terminal 的原话）
-src/bridge/src/filewin/shell.rs:1809	在此打开终端	保留	[对外] 工具栏按钮，与旧面板同名
-src/bridge/src/filewin/shell.rs:1816	排序：{}	保留	[对外] 排序下拉的当前档标签
-src/bridge/src/filewin/source.rs:286	名称	保留	[对外] 排序下拉选项
-src/bridge/src/filewin/source.rs:287	大小	保留	[对外] 排序下拉选项
-src/bridge/src/filewin/source.rs:288	类型	保留	[对外] 排序下拉选项
 src/bridge/src/filewin/transfer.rs:232	这一趟被取消了	保留	[对外] 传输被取消时进失败列表的原因，短
 src/bridge/src/filewin/transfer.rs:239	取消传输	保留	[对外] 按钮字面
 src/bridge/src/filewin/transfer.rs:575	远端已经有这 {} 个，要覆盖吗？	保留	[对外] 覆盖确认标题，真在问
@@ -453,41 +397,6 @@ src/bridge/src/filewin/transfer.rs:588	全都不覆盖	保留	[对外] 按钮
 src/bridge/src/filewin/transfer.rs:616	已经按过取消了，还没起的那几件不会再起	保留	[对外] 状态标签
 src/bridge/src/filewin/transfer.rs:625	上一趟 {} 件失败：{}	保留	[对外] 结果行
 src/bridge/src/filewin/transfer.rs:635	上一趟 {} 件传完、{} 件跳过	保留	[对外] 结果行
-src/bridge/src/filewin/writeops.rs:95	新建目录	保留	[对外] 按钮字面
-src/bridge/src/filewin/writeops.rs:97	改名	保留	[对外] 按钮字面
-src/bridge/src/filewin/writeops.rs:99	删除	保留	[对外] 按钮字面
-src/bridge/src/filewin/writeops.rs:101	权限	保留	[对外] 按钮字面
-src/bridge/src/filewin/writeops.rs:157	新建目录 {path}	保留	[对外] 操作描述（确认框/结果行）
-src/bridge/src/filewin/writeops.rs:214	删除目录 {path}（连同里面全部内容）	保留	[对外] 确认框/结果行的操作描述；〔FW5〕删目录连同内容，括号把「会删掉里面全部」说在确认前
-src/bridge/src/filewin/writeops.rs:215	删除文件 {path}	保留	[对外] 操作描述（原先由「删除{kind}」拼出，〔FW5〕拆成两句整话）
-src/bridge/src/filewin/writeops.rs:162	改名 {from} → {to}	保留	[对外] 操作描述
-src/bridge/src/filewin/writeops.rs:163	改权限 {path} → {mode:o}	保留	[对外] 操作描述，八进制权限是用户会认的写法
-src/bridge/src/filewin/writeops.rs:177	⚠ 挡住了：	保留	[对外] 被挡提示前缀
-src/bridge/src/filewin/writeops.rs:193	{FENCE_PREFIX}{} —— `{path}` 是 Claude 的会话数据，\n         动它会弄坏正在跑的那场会话。要管这些用历史浏览器。	保留	[对外] 结果＋原因＋可行的去处，两句分开；破折号只一个信号
-src/bridge/src/filewin/writeops.rs:379	在这个目录里新建一个目录，叫：	保留	[对外] 输入框标题
-src/bridge/src/filewin/writeops.rs:380	把 {} 改名为：	保留	[对外] 输入框标题
-src/bridge/src/filewin/writeops.rs:381	把 {} 的权限改成（八进制）：	保留	[对外] 输入框标题
-src/bridge/src/filewin/writeops.rs:525	把这 {} 项的权限改成（八进制）：	保留	[对外] 批量改权限的输入框标题〔FW5〕，与单项那句同形
-src/bridge/src/filewin/writeops.rs:594	这 {} 件要做吗？	保留	[对外] 确认框标题，真在问
-src/bridge/src/filewin/writeops.rs:597	⚠ 这一问只出现一次：勾完点确认。删除不可撤销。	保留	[对外] 确认框说明，短句可操作
-src/bridge/src/filewin/writeops.rs:607	做勾上的	保留	[对外] 按钮（action 档，口语不在 R5 射程）
-src/bridge/src/filewin/writeops.rs:610	都别做	保留	[对外] 按钮（action 档）
-src/bridge/src/filewin/writeops.rs:630	上一摞 {} 件没做成：{}	保留	[对外] 结果行
-src/bridge/src/filewin/writeops.rs:640	上一摞 {} 件做完、{} 件跳过	保留	[对外] 结果行
-src/bridge/src/filewin/shell.rs:178	这个窗口没连上后端，请重开窗口	保留	[对外] 窗口没拿到通道时每一件要问后端的事都说这一句；结果 ＋ 用户做得到的一步
-src/bridge/src/filewin/source.rs:743	`{cmd}` 被拒：{}	改·§2.1	[对外] 对端拒绝而 body 读不成 JSON 时的兜底；句首把内部命令名摆给用户（与 find.rs 那句 refusal 同族） →「被拒：{}」
-src/bridge/src/filewin/source.rs:746	那台机器上的后端不认 `{cmd}`，多半是版本旧了	改·§2.1	[对外] 后端没声明这条命令；句中带内部命令名 →「那台机器上的后端版本旧了，不支持这个操作」
-src/bridge/src/filewin/source.rs:750	连不上	保留	[对外] 「没走通」那句的拼接段（传输错三种之一）
-src/bridge/src/filewin/source.rs:751	断了	保留	[对外] 「没走通」那句的拼接段
-src/bridge/src/filewin/source.rs:752	超时了	保留	[对外] 「没走通」那句的拼接段
-src/bridge/src/filewin/source.rs:755	这一趟没发出去	保留	[对外] 「没走通」那句的拼接段：告诉用户这一下没生效、可以再点
-src/bridge/src/filewin/source.rs:756	对面可能已经做了	保留	[对外] 「没走通」那句的拼接段：写面那几条据此决定要不要再点，承重
-src/bridge/src/filewin/source.rs:759	窗口到主程序	保留	[对外] 「没走通」那句的拼接段：断在哪一段
-src/bridge/src/filewin/source.rs:761	主程序到后端	保留	[对外] 「没走通」那句的拼接段：断在哪一段
-src/bridge/src/filewin/source.rs:763	`{cmd}` 没走通：{leg}那一段{what}，{did}	改·§2.1	[对外] 句首把内部命令名摆给用户 →「没走通：{leg}那一段{what}，{did}」
-src/bridge/src/filewin/source.rs:766	`{cmd}` 撤了	改·§2.1	[可达存疑] 本地撤单；窗口今天没有撤单按钮走到这一格 →「已取消」
-src/bridge/src/filewin/source.rs:767	`{cmd}` 的参数这一侧就拼错了	改·§2.1	[可达存疑] 内部不变量（用法错）；句首带内部命令名 兼§2.2 →「内部错误，请重开窗口」
-src/bridge/src/filewin/source.rs:768	`{cmd}` 的应答对不上约定	改·§2.1	[可达存疑] 对端说的话解不出来；句首带内部命令名 →「后端返回的内容读不懂」
 src/bridge/src/filewin/upload.rs:28	上传	保留	[对外] 文件窗口工具栏按钮；短、动词直说
 src/bridge/src/filewin/upload.rs:61	要传的文件是空的	保留	[对外] 上传那一问点确定时框是空的，红字画在框下；说清发生了什么
 src/bridge/src/filewin/upload.rs:66	{l} 不是本机上的一份文件	保留	[对外] 同上；点名那一行路径，用户知道改哪一行
@@ -505,16 +414,6 @@ src/bridge/src/filewin/select.rs:536	选中的里有名字读不出来的，这�
 src/bridge/src/filewin/select.rs:510	一次只能打开一项，现在选中了 {n} 项	保留	[对外] 多选时按回车的回话
 src/bridge/src/filewin/select.rs:511	一次只能改一个名字，现在选中了 {n} 项	保留	[对外] 多选时按 F2 的回话
 src/bridge/src/filewin/select.rs:512	「{}」对选中的这几项做不了	保留	[对外] 兜底回话，{} 是菜单项的字（打开 / 改名 …）
-src/bridge/src/filewin/shell.rs:463	对选中的这几项没有能做的事	保留	[对外] 右键菜单一项都没有时摆的那一句（有损名那一档）
-src/bridge/src/filewin/shell.rs:1958	没有以「{prefix}」开头的项	保留	[对外] 打字跳转没找到时画在窗口上
-src/bridge/src/filewin/shell.rs:2233	已选 {n} 项	保留	[对外] 工具栏上的选中计数
-src/bridge/src/filewin/shell.rs:1929	有一份文本开着	保留	[对外] 〔FW34〕关标签页被拒时括号里那一格（「这个标签页还没忙完（…），先别关」）：说是哪一件
-src/bridge/src/filewin/shell.rs:1932	有一问还没答	保留	[对外] 〔FW34〕同上：那个标签页上有一个确认框 / 输入框摆着
-src/bridge/src/filewin/shell.rs:1935	正在读写 {p}	保留	[对外] 〔FW34〕同上：读 / 存一份文本在飞
-src/bridge/src/filewin/shell.rs:1938	正在复制 {n}	保留	[对外] 〔FW34〕同上：一趟复制在跑
-src/bridge/src/filewin/shell.rs:1941	正在下载 {n}	保留	[对外] 〔FW34〕同上：一趟下载在跑
-src/bridge/src/filewin/shell.rs:1945	正在上传 {}	保留	[对外] 〔FW34〕同上：列出在传的那几个名字
-src/bridge/src/filewin/shell.rs:1948	有写操作还没回话	保留	[对外] 〔FW34〕同上：删 / 改名 / 建目录 / 改权限那一摞还没回来
 src/bridge/src/history.rs:267	本机项目列表	保留	[不对外] log_unknown_reasons 的日志标签
 src/bridge/src/history.rs:1409	旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕	改·§2.1	[可达存疑] OLD_PATH_CANNOT_ATTACH 作 Err 回前端：attach / 拉起器 / 容器路 / K-R106 全是内部说法 兼§2.2 兼§2.4 新词:拉起器 新词:容器路 →「这台机器接不回已有会话，只能新开一个」
 src/bridge/src/history.rs:1520	没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸	改·§2.1	[可达存疑] NO_TMUX_NAME 作 Err：露出前端函数名 mintTmuxName 与「只许由…铸」的内部纪律 兼§2.2 新词:铸 →「缺少会话名，无法启动」
@@ -857,10 +756,8 @@ src/bridge/src/filewin/rows.rs:369	🔗	保留	[对外] 纯符号串（99 §1 V9
 src/bridge/src/filewin/rows.rs:371	📁	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：行首图标
 src/bridge/src/filewin/rows.rs:373	📄	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：行首图标
 src/bridge/src/filewin/rows.rs:388	⚠	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：行首图标
-src/bridge/src/filewin/shell.rs:1967	、	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/bridge/src/filewin/transfer.rs:709	；	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/bridge/src/filewin/workspace.rs:71	＋	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：按钮上的符号
 src/bridge/src/filewin/workspace.rs:72	×	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：按钮上的符号
 src/bridge/src/filewin/workspace.rs:74	● 	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：忙碌标记
-src/bridge/src/filewin/writeops.rs:810	；	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/bridge/src/skill_install.rs:261	、	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换

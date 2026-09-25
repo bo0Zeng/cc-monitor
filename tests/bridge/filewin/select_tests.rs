@@ -405,9 +405,18 @@ fn menu_labels_are_the_row_buttons_labels() {
     assert_eq!(Edit.label(1), crate::filewin::editor::EDIT_LABEL);
     assert_eq!(Copy.label(1), crate::filewin::copy::COPY_LABEL);
     assert_eq!(Download.label(1), crate::filewin::download::DOWNLOAD_LABEL);
-    assert_eq!(Rename.label(1), crate::filewin::writeops::RENAME_LABEL);
-    assert_eq!(Chmod.label(1), crate::filewin::writeops::CHMOD_LABEL);
-    assert_eq!(Delete.label(1), crate::filewin::writeops::DELETE_LABEL);
+    assert_eq!(
+        Rename.label(1),
+        crate::filewin::writeops::RENAME_LABEL.as_str()
+    );
+    assert_eq!(
+        Chmod.label(1),
+        crate::filewin::writeops::CHMOD_LABEL.as_str()
+    );
+    assert_eq!(
+        Delete.label(1),
+        crate::filewin::writeops::DELETE_LABEL.as_str()
+    );
     assert_eq!(Delete.label(3), "删除这 3 项");
     assert_eq!(Chmod.label(3), "改这 3 项的权限");
     assert_eq!(Open.label(1), OPEN_LABEL);

@@ -1019,7 +1019,11 @@ fn only_the_writable_rows_get_the_three_write_buttons_painted() {
 
     let want = rows.iter().filter(|r| is_writable(r)).count();
     assert_eq!(want, 3, "语料自己变了：能写的行数应当是 3（目录也能写）");
-    for label in [RENAME_LABEL, DELETE_LABEL, CHMOD_LABEL] {
+    for label in [
+        RENAME_LABEL.as_str(),
+        DELETE_LABEL.as_str(),
+        CHMOD_LABEL.as_str(),
+    ] {
         let got = rects_of(&painted, label);
         assert_eq!(
             got.len(),
@@ -1035,11 +1039,12 @@ fn only_the_writable_rows_get_the_three_write_buttons_painted() {
     // 🔴 目录那一行：三颗写按钮**有**，而「复制」**没有**。两个判准真的不一样。
     let copies = rects_of(&painted, COPY_LABEL);
     assert_eq!(copies.len(), 2, "能复制的行数应当是 2");
-    let renames = rects_of(&painted, RENAME_LABEL);
+    let renames = rects_of(&painted, RENAME_LABEL.as_str());
     assert!(
         renames[0].center().y < copies[0].center().y,
-        "第 0 行（目录）上没有「{RENAME_LABEL}」，或者它上面竟然有「{COPY_LABEL}」—— \
-         目录能改名/删除/改权限，但 `copy-data` 吃的是文件句柄"
+        "第 0 行（目录）上没有「{}」，或者它上面竟然有「{COPY_LABEL}」—— \
+         目录能改名/删除/改权限，但 `copy-data` 吃的是文件句柄",
+        RENAME_LABEL.as_str()
     );
 }
 
@@ -1069,11 +1074,11 @@ fn clicking_each_write_button_comes_back_as_that_rows_index() {
     for (row_index, button_slot) in [(0usize, 0usize), (2usize, 2usize)] {
         for (label, pick) in [
             (
-                RENAME_LABEL,
+                RENAME_LABEL.as_str(),
                 (|t: &RenderTally| t.rename_clicked) as fn(&RenderTally) -> Option<usize>,
             ),
-            (DELETE_LABEL, |t: &RenderTally| t.delete_clicked),
-            (CHMOD_LABEL, |t: &RenderTally| t.chmod_clicked),
+            (DELETE_LABEL.as_str(), |t: &RenderTally| t.delete_clicked),
+            (CHMOD_LABEL.as_str(), |t: &RenderTally| t.chmod_clicked),
         ] {
             let ctx = egui::Context::default();
             let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());

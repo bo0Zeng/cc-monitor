@@ -174,7 +174,7 @@ impl Preview {
     /// 发一趟 `files-read-text`。没运行时 / 没通道 ⇒ 出声，不发。
     fn fire(&mut self, pane: &FileWindow, path: String, ctx: Option<egui::Context>) {
         let (Some(h), Some(line)) = (pane.rt.clone(), pane.line.clone()) else {
-            self.view = View::Said(NO_LINE.into());
+            self.view = View::Said(NO_LINE.to_string());
             self.want = None;
             return;
         };

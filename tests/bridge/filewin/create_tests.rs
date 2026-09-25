@@ -82,7 +82,7 @@ async fn clicking_the_toolbar_button_puts_up_the_box() {
     w.cancel_new_file();
     let painted = frame_with_rects(&ctx, &mut w, Vec::new());
     let mk =
-        crate::filewin::copy::testing::rects_of(&painted, crate::filewin::writeops::MKDIR_LABEL);
+        crate::filewin::copy::testing::rects_of(&painted, &crate::filewin::writeops::MKDIR_LABEL);
     let _ = frame_with_rects(
         &ctx,
         &mut w,
@@ -233,7 +233,7 @@ fn no_line_says_so_instead_of_doing_nothing() {
     assert!(!w.confirm_new_file(None), "没连上后端却说发出去了");
     assert_eq!(
         w.listing.error.lock().unwrap().as_deref(),
-        Some(NO_LINE),
+        Some(NO_LINE.as_str()),
         "没连上后端，说的不是那一句"
     );
     assert!(w.new_file_prompt().is_some(), "发不出去，框却收掉了");
