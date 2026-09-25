@@ -931,7 +931,7 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 /// 每一行都是这一家的。⇒ 本文件判「这个号在不在表里」时，**agent 也得对得上**，
 /// 否则别家拿同一个账号 id 起会话会被注入一条后端必回 404 的路由（或更早那一版：错发到 Anthropic）。
 ///
-/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::apikey::CREDENTIALS_FILE_AGENT`，
+/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::upstream::CREDENTIALS_FILE_AGENT`，
 /// 由后端那条 `the_credentials_file_agent_is_the_same_on_both_halves` 现抠**本行的字面量**对拍；
 /// 本侧再由 `payload_tests` 钉它等于 claude-code 那个适配器的 `id()`（两侧异源）。
 pub const APIKEY_TABLE_AGENT: &str = "claude-code";
@@ -1018,12 +1018,12 @@ fn endpoint_in(
 /// # 🔴 这张表为什么是注入闸的一半（codex 那一刀）
 ///
 /// `/t/` 表里无行时，后端按路由键第 1 段取**那一家自己的**默认上游；没登记 ⇒ 502
-/// （`accounts::apikey::decide`）。而 `01 §2.5` 那条同拍前置逐字是「否则非 Anthropic 的 agent 带着中转地址
+/// （`accounts::upstream::decide`）。而 `01 §2.5` 那条同拍前置逐字是「否则非 Anthropic 的 agent 带着中转地址
 /// 起来、表里又没有它 ⇒ **每一发都错发到 Anthropic**」。后端那一侧今天已经 fail-closed（502），
 /// 但「注入之后每一发都 502」对用户而言与「会话起不来」同形 ⇒ **注入闸在这一侧就不注**：
 /// 不在这张表里的 agent 一个字节都不注入，照旧直连。
 ///
-/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::apikey::AGENT_UPSTREAMS` 那张表的 agent 列，
+/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::upstream::AGENT_UPSTREAMS` 那张表的 agent 列，
 /// 由后端那条 `the_agents_with_a_default_upstream_are_the_same_on_both_halves` 现抠**本行的字面量**
 /// 做两向集合相等（异源：一侧是后端运行期的表，一侧是本文件的源码文本）。
 /// ⚠ codex **刻意不在这里**：它的默认上游本仓零证据（后端那张表头注逐字）。

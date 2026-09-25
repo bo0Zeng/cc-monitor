@@ -221,7 +221,7 @@
 //! 给层 2 的两样契约件 · 〔RM1a〕帧面 `relay-*` 那两个处理器。
 //! `crate::relay::server::…` / `crate::relay::upstream::…` 这类**一条都不许**：
 //! 一旦有人这么引，中转的内部结构就变成了公共契约，之后 `upstream.rs` 想换形状都得先问一圈。
-//! （路由表不在本层 —— 它是账号层的，住 `accounts::apikey::table`。）
+//! （路由表不在本层 —— 它是账号层的，住 `accounts::upstream::table`。）
 //! 真要新开口子 ⇒ 加在那一行旁边，并在 `layering_guard` 里配一张**非空**登记表。
 //!
 //! ## 🔴 诚实边界：这三条钉的是 **import 图**，不是**运行期调用图**
@@ -272,7 +272,7 @@ mod upstream;
 #[path = "../../../tests/backend/relay/wire_golden.rs"]
 mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节金标准（三条线各一份手写期望）
 
-/// `--relay` 的层 1 入口。**层 2 那只手由调用方递进来**（`accounts::apikey::run_relay`）——
+/// `--relay` 的层 1 入口。**层 2 那只手由调用方递进来**（`accounts::upstream::run_relay`）——
 /// 本层叫不出它的名字（`account_layer_guard` ㈢ 零命中）。
 pub(crate) use listen::{host, run};
 

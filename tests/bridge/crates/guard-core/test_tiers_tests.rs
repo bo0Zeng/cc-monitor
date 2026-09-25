@@ -61,7 +61,7 @@ const UNIT: &[&str] = &[
     "tests/account-restart.vitest.ts",
     "tests/accounts.vitest.ts",
     "tests/backend-policy.vitest.ts",
-    "tests/backend/accounts/apikey/table_tests.rs",
+    "tests/backend/accounts/upstream/table_tests.rs",
     "tests/backend/accounts/iso_tests.rs",
     "tests/backend/agents/claudecode/liveness_tests.rs",
     "tests/backend/agents/claudecode/records_tests.rs",
@@ -478,8 +478,8 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
-    "tests/backend/accounts/apikey/creds_tests.rs",
-    "tests/backend/accounts/apikey/file_face_tests.rs",
+    "tests/backend/accounts/upstream/creds_tests.rs",
+    "tests/backend/accounts/upstream/file_face_tests.rs",
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/fake_tests.rs",
     "tests/backend/agents_tests.rs",

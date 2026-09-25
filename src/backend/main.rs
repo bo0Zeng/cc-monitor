@@ -139,7 +139,7 @@ async fn main() {
             // K-H1：HTTP 中转。**常驻**，起来就不返回；配置面只有环境变量。
             // K-H2a：多传一个 `agent_home` —— 这个进程的账号层（层 2）要从 `<home>/work/` 下
             // 读那份凭据文件。**不新开子命令、不动 `SUBCOMMANDS`** ⇒ 不逼出 BUILD_ID bump。
-            Some("--relay") => accounts::apikey::run_relay(&agent_home, &args),
+            Some("--relay") => accounts::upstream::run_relay(&agent_home, &args),
             // 〔SR1a〕`--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
@@ -181,7 +181,7 @@ async fn main() {
     //   （monitor 起本机后端时交；远端经 SSH exec 起的流模式没人交 ⇒ 不开，远端中转另有住处）。
     //   放在选载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
     //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
-    tracing::info!("{}", accounts::apikey::host_relay(&agent_home));
+    tracing::info!("{}", accounts::upstream::host_relay(&agent_home));
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
     //

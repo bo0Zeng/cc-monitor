@@ -13,7 +13,7 @@
 //! # `K-H2a` 裁四：**本机这一份只有这一侧写**
 //!
 //! 本模块只写 **monitor 所在那台机器**上的那一份。〔RM1a · 第四波〕裁四原话「backend 只读」收窄了：
-//! 远端那台机器上的那一份由那台的后端写（`src/backend/accounts/apikey/file_face.rs`，帧面 `apikey-key-set`），
+//! 远端那台机器上的那一份由那台的后端写（`src/backend/accounts/upstream/file_face.rs`，帧面 `apikey-key-set`），
 //! 后端因此也开了 `harden`，「backend 写不了这份文件」不再是编译器兜的。
 //! ⇒ 每台机器上的程序写者仍然恰好一个；monitor **从不**让本机后端写本机这一份
 //! （`lib.rs::write_apikey_credentials_key` 按 origin 分两臂，本机那一臂只进本模块）。
@@ -205,7 +205,7 @@ pub(crate) fn write_key(
 /// 〔第四波 ST2 · `设计/70 §4.4`〕`base_url` 那一格在**写之前**的形状关。
 ///
 /// 〔RM1a〕规则本身搬进了 `creds_core::store::check_base_url_shape`：远端那一份由那台的后端写
-/// （`accounts/apikey/file_face.rs`），两个写者要**同一条**形状关，不许各写一份。本函数只转一手。
+/// （`accounts/upstream/file_face.rs`），两个写者要**同一条**形状关，不许各写一份。本函数只转一手。
 /// ⚠ 形状不对 ⇒ **整次写都不做**（key 也不落）：半截写进去，用户看到的是「key 配上了、端点没配上」。
 fn check_base_url(raw: &str) -> Result<(), String> {
     store::check_base_url_shape(raw)

@@ -164,7 +164,7 @@ mod tests {
         (
             "accounts",
             "账号层（apikey 端点改写）：那张 `(agent, 账号)` 表 · 每 agent 一行的默认上游 · \
-             中转进程里**只读**那份凭据文件 · 热重载。〔RM1a〕另有 `apikey/file_face.rs` 那一份\
+             中转进程里**只读**那份凭据文件 · 热重载。〔RM1a〕另有 `upstream/file_face.rs` 那一份\
              在帧面上写**这台机器上**的那份凭据文件（账号层自己的状态，第四层登记）。\
              2026-09-24 从 `relay/` 底下搬出来（「中转层不要有账号」），在那之前它就在本护栏的人群里",
         ),
@@ -648,7 +648,7 @@ mod tests {
          线上入口只有 `inbound.rs` 的 `exit-policy-set`（＋ 派生的 CLI 面）",
         ),
         (
-            "accounts/apikey/file_face.rs",
+            "accounts/upstream/file_face.rs",
             "〔RM1a · 第四波〕账号层（层 2）那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
              文件名 / 格式 / 落点都是本仓定的、只有中转进程里的账号层读它 ⇒ 账号层**自己的**状态，\
              不是用户数据（判清全文 `调研/第四波记录/RM1a.md §1`）。写的那一刻读盘 → 只改一条账号那一格 → \
@@ -698,7 +698,7 @@ mod tests {
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
     const OWN_STATE_WRITERS: &[(&str, &str)] = &[
         ("control/exit_policy.rs", "exit_policy::answer_set"),
-        ("accounts/apikey/file_face.rs", "file_face::answer_set"),
+        ("accounts/upstream/file_face.rs", "file_face::answer_set"),
         // 〔AS2〕三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
         // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许 `inbound.rs` 碰。
         ("asset_catalog.rs", "asset_catalog::answer_"),
@@ -3925,7 +3925,7 @@ mod g6_dependency_signoff {
              ★ **它自己有两处写面**：`perm.rs` 的 `make_private`（收窄既有文件的权限）与 \
              `create_private`（建一个只给本人的新文件），都在那个 feature 后面。\
              〔RM1a · 第四波〕本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
-             （账号层自己的状态文件，第四层登记的 `accounts/apikey/file_face.rs`），\
+             （账号层自己的状态文件，第四层登记的 `accounts/upstream/file_face.rs`），\
              「出生即只给本人」只有 `create_private` 这一份实现 ⇒ 就是要它写。\
              先前「编译器保证写不了」那一格换成下面这条判据：写半边在本 crate 生产段的引用处 == 那一份。\
              边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",
@@ -4445,7 +4445,7 @@ mod g6_dependency_signoff {
 
     /// 🔴 〔RM1a · 第四波〕**`creds-core` 那条「就是要它写」的边界判据**：它的写半边
     /// （`perm::create_private` · `perm::make_private`）在本 crate 生产段里的引用处，
-    /// **恰好**是第四层登记的那一份 `accounts/apikey/file_face.rs`（两向集合相等）。
+    /// **恰好**是第四层登记的那一份 `accounts/upstream/file_face.rs`（两向集合相等）。
     ///
     /// # 它顶替的是哪一格
     ///
@@ -4490,9 +4490,10 @@ mod g6_dependency_signoff {
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
-        let want: std::collections::BTreeSet<String> = ["accounts/apikey/file_face.rs".to_string()]
-            .into_iter()
-            .collect();
+        let want: std::collections::BTreeSet<String> =
+            ["accounts/upstream/file_face.rs".to_string()]
+                .into_iter()
+                .collect();
         assert_eq!(
             found, want,
             "`creds-core` 的写半边（建私有文件 / 收窄权限）在本 crate 生产段里的引用处对不上：\n\

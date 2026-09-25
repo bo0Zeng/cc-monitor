@@ -811,7 +811,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["account", "baseUrl", "key", "masked", "path"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::accounts::apikey::file_face::answer_set(&r.args)
+            crate::accounts::upstream::file_face::answer_set(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -823,7 +823,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["configured", "masked", "notice", "path", "problem", "rows"],
         takes_input: false,
         run: Run::Blocking(|_r| {
-            crate::accounts::apikey::file_face::answer_read()
+            crate::accounts::upstream::file_face::answer_read()
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

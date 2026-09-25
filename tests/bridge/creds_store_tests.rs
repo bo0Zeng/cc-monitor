@@ -518,7 +518,7 @@ const PLAINTEXT_EXIT_SITES: &[(&str, usize, &str)] = &[
     (
         "expose_for_auth_header(",
         1,
-        "src/backend/accounts/apikey/mod.rs",
+        "src/backend/accounts/upstream/mod.rs",
     ),
     (
         "expose_for_persisting(",
