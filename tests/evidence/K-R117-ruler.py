@@ -208,7 +208,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("mcp.read", (NA, "—", "读 MCP 配置")),
     ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
     ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
-    ("plugins.marketplaces", (NA, "—", "列插件市场 —— 只读枚举")),
+    # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
+    #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
     ("port-forward", (NA, "—", "端口转发")),
     ("apikey.routing", (NA, "—", "问这几个本机账号在 apikey 表里有没有行（＋本机中转在不在跑）")),
     ("search.history", (NA, "—", "搜索")),
