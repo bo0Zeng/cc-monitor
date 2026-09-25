@@ -99,7 +99,7 @@ describe("PN1b 选图（界面）", () => {
   it("P2 团/模块图：请求只带这张图声明的旋钮；画出节点；诚实信号那一行 == 上游 honesty 的人话", async () => {
     vi.mocked(api.diagram).mockResolvedValue(fx.view(fx.clustersDiagram));
     await choose(v, "k-clusters");
-    expect(lastReq()).toEqual(["/repo", "k-clusters", { max_nodes: 12, certain_only: true, exclude_tests: true }]);
+    expect(lastReq()).toEqual([{ origin: LOCAL_ORIGIN, path: "/repo" }, "k-clusters", { max_nodes: 12, certain_only: true, exclude_tests: true }]);
     expect([...probe(v).root.querySelectorAll(".panorama-diagram-canvas [data-node]")].length).toBe(3);
     expect(q<HTMLElement>(v, '[data-pano="diagram-honesty"]').textContent).toBe(honestyLine(fx.honestyFull));
     // 图例常驻（CP3）
@@ -115,10 +115,10 @@ describe("PN1b 选图（界面）", () => {
     box.checked = false;
     box.dispatchEvent(new Event("change"));
     await flush();
-    expect(lastReq()).toEqual(["/repo", "k-clusters", { max_nodes: 12, certain_only: false, exclude_tests: true }]);
+    expect(lastReq()).toEqual([{ origin: LOCAL_ORIGIN, path: "/repo" }, "k-clusters", { max_nodes: 12, certain_only: false, exclude_tests: true }]);
     vi.mocked(api.diagram).mockResolvedValue(fx.view(fx.typeDiagram));
     await choose(v, "k-types");
-    expect(lastReq()).toEqual(["/repo", "k-types", { max_nodes: 12 }]);
+    expect(lastReq()).toEqual([{ origin: LOCAL_ORIGIN, path: "/repo" }, "k-types", { max_nodes: 12 }]);
     const shown = (k: string): boolean => (q<HTMLElement>(v, `[data-pano="knob-${k}"]`).parentElement as HTMLElement).style.display !== "none";
     expect(["certain_only", "exclude_tests", "max_nodes"].map(shown)).toEqual([false, false, true]);
   });
@@ -128,10 +128,10 @@ describe("PN1b 选图（界面）", () => {
     await flush();
     vi.mocked(api.diagram).mockResolvedValue(fx.view(fx.callDiagram));
     await choose(v, "k-calls");
-    expect(lastReq()).toEqual(["/repo", "k-calls", { symbol: "src/a/x.rs#f", certain_only: true }]);
+    expect(lastReq()).toEqual([{ origin: LOCAL_ORIGIN, path: "/repo" }, "k-calls", { symbol: "src/a/x.rs#f", certain_only: true }]);
     (q<SVGGElement>(v, '[data-node="src/b/z.rs#g"]')).dispatchEvent(new MouseEvent("click"));
     await flush();
-    expect(lastReq()).toEqual(["/repo", "k-calls", { symbol: "src/b/z.rs#g", certain_only: true }]);
+    expect(lastReq()).toEqual([{ origin: LOCAL_ORIGIN, path: "/repo" }, "k-calls", { symbol: "src/b/z.rs#g", certain_only: true }]);
   });
 
   it("P5 新形状：如实说「这一版还画不出」，诚实信号照常，复制 Mermaid 拿到上游原文", async () => {
@@ -155,7 +155,7 @@ describe("PN1b 选图（界面）", () => {
     expect(rows.map((r) => r.textContent)).toEqual(["src/a/x.rs", "src/a/y.rs"]);
     (rows[1] as HTMLButtonElement).click();
     await flush();
-    expect(api.symbolsInFile).toHaveBeenLastCalledWith("/repo", "src/a/y.rs");
+    expect(api.symbolsInFile).toHaveBeenLastCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/a/y.rs");
     expect([...probe(v).root.querySelectorAll(".panorama-diagram-canvas [data-focus]")].map((n) => n.getAttribute("data-node"))).toEqual(
       ["src_a"],
     );
@@ -169,7 +169,7 @@ describe("PN1b 选图（界面）", () => {
     expect(rows.map((r) => r.textContent)).toEqual(["A（类型本身）", "go()"]);
     (rows[1] as HTMLButtonElement).click();
     await flush();
-    expect(api.node).toHaveBeenLastCalledWith("/repo", "src/a/x.rs#A::go");
+    expect(api.node).toHaveBeenLastCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/a/x.rs#A::go");
   });
 
   it("P8 复制给 agent（图）：住址 · 索引读数 · 诚实信号 · Mermaid 原文，逐行相等", async () => {

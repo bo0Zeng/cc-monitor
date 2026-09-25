@@ -27,6 +27,8 @@ import type { SessionStartedPayload } from "./generated/SessionStartedPayload";
 import type { TasksUpdatePayload } from "./generated/TasksUpdatePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
 import type { RemoteSessionAddedPayload } from "./generated/RemoteSessionAddedPayload";
+import type { SessionContainerPayload } from "./generated/SessionContainerPayload";
+import type { OriginSessionsListedPayload } from "./generated/OriginSessionsListedPayload";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
 export type {
@@ -78,6 +80,16 @@ export interface EventHandlers {
       name: string | null;
     },
   ) => void;
+  /**
+   * 〔U4b · 第四波〕活会话住在什么容器里（`session-container`，本机与远端同一个事件）。
+   * 进 queue：与 `remote-added` / 行保序（先建 tab、再落容器；早到的由 TabManager 暂存）。
+   */
+  onSessionContainer?: (sessionId: string, container: string) => void;
+  /**
+   * 〔U4b · 第四波〕某台机器的活会话清单报完了（`origin-sessions-listed`）。进 queue：排在那台的
+   * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过（`设计/30 §3.5.7a`）。
+   */
+  onOriginSessionsListed?: (origin: string) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
    * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
@@ -133,7 +145,10 @@ type QueueItem =
       attachable: boolean | null;
       cwd: string | null;
       name: string | null;
-    };
+    }
+  // 〔U4b · 第四波〕容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
+  | { kind: "container"; sessionId: string; container: string }
+  | { kind: "listed"; origin: string };
 
 /**
  * 批量调度参数。replay 会一次性 emit 数千条 jsonl-line，同步处理会阻塞 click 派发数秒
@@ -362,6 +377,10 @@ export async function bindEvents(
           cwd: item.cwd,
           name: item.name,
         });
+      } else if (item.kind === "container") {
+        handlers.onSessionContainer?.(item.sessionId, item.container);
+      } else if (item.kind === "listed") {
+        handlers.onOriginSessionsListed?.(item.origin);
       }
     } catch (e) {
       // v2.1.1: try/catch 防御 —— 单条 record 处理出错不能冻死整个 replay
@@ -533,6 +552,24 @@ export async function bindEvents(
         cwd: e.payload.cwd ?? null,
         name: e.payload.name ?? null,
       });
+      ensureScheduled();
+    }),
+  );
+
+  // 〔U4b · 第四波〕活会话的容器 ＋ 某台清单报完了：同进 queue（与宣告 / 行保序）。
+  registrations.push(
+    sub<SessionContainerPayload>("session-container", (e) => {
+      queue.push({
+        kind: "container",
+        sessionId: e.payload.session_id,
+        container: e.payload.container,
+      });
+      ensureScheduled();
+    }),
+  );
+  registrations.push(
+    sub<OriginSessionsListedPayload>("origin-sessions-listed", (e) => {
+      queue.push({ kind: "listed", origin: e.payload.origin });
       ensureScheduled();
     }),
   );

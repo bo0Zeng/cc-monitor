@@ -98,7 +98,7 @@ describe("CP7 复制给 agent（界面接线）", () => {
     } as NodeView);
     await probe(v).openNodeDetail("src/a.rs#f");
     await flush();
-    expect(api.status).toHaveBeenCalledWith("/repo"); // 读数与详情同一刻取
+    expect(api.status).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }); // 读数与详情同一刻取
     copyBtn(v)!.click();
     await flush();
     expect(written.length).toBe(1);
@@ -119,7 +119,7 @@ describe("CP7 复制给 agent（界面接线）", () => {
     const bubble = probe(v).layout!.bubbles[0];
     probe(v).openFileDetail(bubble);
     await flush();
-    expect(api.symbolsInFile).toHaveBeenCalledWith("/repo", "src/a.rs");
+    expect(api.symbolsInFile).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "src/a.rs");
     copyBtn(v)!.click();
     await flush();
     expect(written.length).toBe(1);

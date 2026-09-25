@@ -569,6 +569,75 @@ fn model_export_is_quoted() {
     );
 }
 
+/// 〔RL1 · 第四波〕R2：`EnvOp::ExportRelayBaseUrl` **只经那一个出口渲**、**形状不对就拒**。
+///
+/// 异源在哪：合法的那一侧**不手写**，由构造口 `relay_base_url_in`（两种前缀 × 几个端口 × 几组段）现产；
+/// 校验口 `relay_base_url_shape_ok` 必须**全收**，渲出来的字节必须**逐字节等于** `relay_env_prefix_posix(那一串)` ＋ launcher。
+/// 坏形逐格拒（带 `REFUSE:` 标）—— 渲错了的症状是「claude 每一发都连不上」，与网络故障同形。
+#[test]
+fn the_relay_url_env_op_renders_through_the_one_exporter_and_refuses_every_other_shape() {
+    let mut good = Vec::new();
+    for mode in [RouteMode::Substitute, RouteMode::Passthrough] {
+        for port in [1u16, RELAY_PORT, 65535] {
+            for (a, b, c) in [
+                ("claude-code", "acct-a", "k-0123456789abcdef"),
+                ("claude-code", "0", "11111111-2222-3333-4444-555555555555"),
+            ] {
+                good.push(relay_base_url_in(mode, port, a, b, c).expect("构造口"));
+            }
+        }
+    }
+    assert_eq!(good.len(), 12, "正控人群没造齐");
+    for url in &good {
+        assert!(
+            relay_base_url_shape_ok(url),
+            "构造口产的 {url:?} 被校验口拒了 —— 两口不是互逆"
+        );
+        let spec = PayloadSpec {
+            env: &[EnvOp::ExportRelayBaseUrl { value: url }],
+            cwd: None,
+            launcher: "claude",
+            args: &[],
+            wrap: &[],
+        };
+        assert_eq!(
+            render_payload(&spec).expect("合法地址不该拒"),
+            format!("{}claude", relay_env_prefix_posix(url))
+        );
+    }
+    for bad in [
+        "",
+        "http://localhost:8788/s/claude-code/acct-a/k", // 不是那个回环字面量
+        "https://127.0.0.1:8788/s/claude-code/acct-a/k", // 协议
+        "http://127.0.0.1:0/s/claude-code/acct-a/k",    // 端口 0
+        "http://127.0.0.1:70000/s/claude-code/acct-a/k", // 端口越界
+        "http://127.0.0.1:/s/claude-code/acct-a/k",     // 端口空
+        "http://127.0.0.1:+88/s/claude-code/acct-a/k",  // 端口带符号
+        "http://127.0.0.1:8788/x/claude-code/acct-a/k", // 别的前缀
+        "http://127.0.0.1:8788/s/claude-code/acct-a",   // 少一段
+        "http://127.0.0.1:8788/s/claude-code/acct-a/k/v1", // 多一段
+        "http://127.0.0.1:8788/s/claude-code/acct-a/k/", // 尾斜杠
+        "http://127.0.0.1:8788/s/claude-code/acct-a/k?x=1", // 查询串
+        "http://127.0.0.1:8788/s/claude-code/acct'a/k", // 引号
+        "http://127.0.0.1:8788/s/claude-code/../k",     // 点段
+        "http://127.0.0.1:8788/s/claude-code/acct-a/k; rm -rf ~", // 注入形
+    ] {
+        assert!(!relay_base_url_shape_ok(bad), "坏形 {bad:?} 被校验口收了");
+        let spec = PayloadSpec {
+            env: &[EnvOp::ExportRelayBaseUrl { value: bad }],
+            cwd: None,
+            launcher: "claude",
+            args: &[],
+            wrap: &[],
+        };
+        let r = render_payload(&spec);
+        assert!(
+            r.as_ref().is_err_and(|e| e.starts_with(REFUSE_TAG)),
+            "坏形 {bad:?} 没被带 REFUSE 标地拒：{r:?}"
+        );
+    }
+}
+
 /// ★★ `设计/80 §8` 步 1：启动期令牌那一格 —— **形状闸是 fail-closed 的 `Err`，不是宽容渲染**。
 ///
 /// 为什么这一格要比 [`model_export_is_quoted`] 严：模型名渲错了，远端 `claude`

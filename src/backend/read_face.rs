@@ -158,6 +158,12 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 "end": plan.end,
             }))
         }
+        // 〔U4b · 第四波〕这条会话的记录还在不在（resume 之前问；本体住 `history_query::record_in`）。
+        "history-record" => {
+            let sid = str_arg(args, "sid")?;
+            let probe = history_query::record_in(home, sid).map_err(|e| ("bad_args", e))?;
+            Ok(json!({ "present": probe.present, "root": probe.root }))
+        }
         other => Err(("bad_args", format!("本族不认识 `{other}`"))),
     }
 }

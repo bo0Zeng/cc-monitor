@@ -397,6 +397,25 @@ pub(crate) fn winner_order(
 /// 只登记不扩，上面那条恒等判据会当场红（名单里有、门控不看它）。
 const KNOWN_CAPABILITY_TOKENS: &[&str] = &["bg", "rbind-token", "tail-only"];
 
+/// U-CC1 第四个面的写点：hello 里**不认识的**能力 token 记一笔。〔ST3〕记在 `origin`（那台远端）名下。
+/// 只记账，行为一字不改（不认识的 token 本来就按保守缺省忽略）。
+fn note_unknown_capabilities(
+    origin: &crate::origin::Origin,
+    capabilities: &[String],
+    build_id: &str,
+) {
+    for t in capabilities {
+        if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
+            crate::drift_ledger::record(
+                origin,
+                crate::drift_ledger::DriftFace::UnknownBackendToken,
+                &format!("capabilities:{t}"),
+                Some(&format!("build_id={build_id}")),
+            );
+        }
+    }
+}
+
 /// 三位流模式 flag：`(with_bg, tail_only, with_rbind_token)`。
 ///
 /// 🔴 〔步 3〕元组从 2 元扩成 3 元。**扩它会连带 [`should_upgrade_reconnect`]** ——
@@ -788,6 +807,33 @@ pub fn remove_tmux_line(raw: &str, name: &str) -> String {
 
 pub fn find_tmux_origin_for_sid(sid: &str) -> Option<String> {
     tmux_origin_for_sid(&snapshot_tmux_by_origin(), sid)
+}
+
+/// 〔U4b · 第四波 · G2〕**只在一个 origin 那份 `tmux ls` 原文里**找 `@ccm_sid == sid`（纯函数）。
+///
+/// 本机那一臂要问的是「**本机**的 tmux 里还有没有它」—— 不许跨 origin 猜：sid 在别的机器的原文里出现
+/// （拷过去的会话、同 sid 的 resume）说的是那台机器，不是本机。远端那一臂仍用
+/// [`find_tmux_origin_for_sid`]（它本来就要知道「在哪台」，答案会被 `mark_idle(origin, …)` 记下）。
+pub(crate) fn tmux_origin_for_sid_at(
+    by_origin: &std::collections::HashMap<String, String>,
+    at: &crate::origin::Origin,
+    sid: &str,
+) -> Option<String> {
+    let key = at.as_wire_str();
+    let raw = by_origin.get(key)?;
+    crate::backend::control::tmux::parse_tmux_ls(raw)
+        .iter()
+        .any(|s| s.sid.as_deref() == Some(sid))
+        .then(|| key.to_string())
+}
+
+/// [`tmux_origin_for_sid_at`] 读本机那一格（`<local>`）的生产包装。
+pub fn find_local_tmux_origin_for_sid(sid: &str) -> Option<String> {
+    let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+    let raw = tmux_raw_for(origin)?;
+    let one: std::collections::HashMap<String, String> =
+        std::iter::once((origin.to_string(), raw)).collect();
+    tmux_origin_for_sid_at(&one, &crate::origin::Origin(origin.to_string()), sid)
 }
 
 /// audit-fixes F03.2（D 审计②覆盖缺口）：backend-removed 到达时的分流决策。emitter 收 removed 后
@@ -1533,7 +1579,13 @@ pub enum InboundFrame {
         /// 而 `§8.7` 逐字警告「**不要先做 4**」—— 先改 UI 分派会造出一段
         /// 「令牌还没有、判断已经改」的窗口期。本字段今天买到的是「**键到手了**」。
         rbind_token: Option<String>,
+        /// 〔U4b · 第四波，additive〕这条活会话住在什么容器里（`tmux` / `none`）。
+        /// 缺席 / 不认识的取值 ⇒ `None` = 不知道（**不是**「不在 tmux 里」）。
+        /// 交给 `session_facts::note_container`（本机那条流同一个口）。
+        container: Option<crate::session_facts::Container>,
     },
+    /// 〔U4b · 第四波〕后端的活会话清单报完了（Phase 1 走完）。无载荷。
+    SessionsReplayed,
     /// Batch9-F27：会话 status 变化（p1g backend；远端红绿灯）。
     SessionStatus {
         sid: String,
@@ -1756,8 +1808,14 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 // 即**本地那张 `token → HWND` 表用的同一条**。两处各写一遍的后果是
                 // join 在某些取值上静默失配，而失配与「没有令牌」在界面上同形。
                 rbind_token: opt("rbind_token").filter(|t| crate::bind::rbind_token_shape_ok(t)),
+                // 〔U4b〕两个字面量之外一律当不知道（`Container::from_wire`）。
+                container: opt("container")
+                    .as_deref()
+                    .and_then(crate::session_facts::Container::from_wire),
             })
         }
+        // 〔U4b · 第四波〕additive 新帧，无载荷。旧后端不发 ⇒ 这条分支永不命中，固定的 tab 停在「说不清」。
+        "sessions_replayed" => Some(InboundFrame::SessionsReplayed),
         "session_status" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
             let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
@@ -1918,6 +1976,7 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "session_added",
     "session_removed",
     "session_status",
+    "sessions_replayed",
     "tmux_session_closed",
     "tmux_sessions",
     "transfer",
@@ -2315,13 +2374,12 @@ async fn flush_lines(
         .iter()
         .map(|l| (l.session_id.clone(), l.seq))
         .collect();
-    let payloads = crate::batch_to_payloads(lines, Some(host_label.to_string()));
+    // 〔ST3〕同一个 origin 既是载荷上的机器名、也是看不懂的行记账的那台。
+    let origin = crate::origin::Origin(host_label.to_string());
+    let payloads = crate::batch_to_payloads(lines, &origin);
     replay.on_line_batch_awaited(app, payloads).await;
     // 〔C2〕发出去了才推续点（连续才推，见 `snapshot_resume::note_flushed`）。
-    crate::snapshot_resume::note_flushed(
-        &crate::origin::Origin(host_label.to_string()),
-        flushed.iter().map(|(s, q)| (s.as_str(), *q)),
-    );
+    crate::snapshot_resume::note_flushed(&origin, flushed.iter().map(|(s, q)| (s.as_str(), *q)));
 }
 
 /// [`run`] 的内层流循环：connect → exec backend → 逐帧 dispatch。**所有**提前返回
@@ -2619,15 +2677,12 @@ async fn stream_loop(
                 // U-CC1：记下**我们不认识的**能力 token。多半是远端后端比 monitor 新
                 // （自动部署会把它拉回同一个 build，但手工装 / 关了自动部署的用户会长期不一致）。
                 // 只记账，行为一字不改：不认识的 token 本来就按保守缺省忽略。
-                for t in &capabilities {
-                    if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
-                        crate::drift_ledger::record(
-                            crate::drift_ledger::DriftFace::UnknownBackendToken,
-                            &format!("capabilities:{t}"),
-                            Some(&format!("build_id={build_id}")),
-                        );
-                    }
-                }
+                // 〔ST3〕记在这台名下。
+                note_unknown_capabilities(
+                    &crate::origin::Origin(host_label.clone()),
+                    &capabilities,
+                    &build_id,
+                );
                 // 标记本次连接已健康(收到 backend hello)，供 run() 重连循环判定是否重置退避。
                 connected.store(true, Ordering::Release);
                 // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端
@@ -2726,6 +2781,7 @@ async fn stream_loop(
                 status,
                 waiting_for,
                 rbind_token,
+                container,
             }) => {
                 // 🔴 〔`设计/80 §8.7` 步 4，第二波 T4〕**记进令牌账本 —— ↗ 从此按它分派。**
                 //
@@ -2783,6 +2839,9 @@ async fn stream_loop(
                 if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &payload) {
                     tracing::warn!("ssh_source remote-session-added emit failed: {e}");
                 }
+                // 〔U4b · 第四波〕容器事实交 `session_facts`（本机那条流同一个口、同一个事件）。
+                //   排在 `remote-session-added` 之后：前端先建 tab、再落容器（早到的也有暂存兜着）。
+                crate::session_facts::note_container(&sid, container);
                 // Batch8-F26：tail-only 下历史改走旁路快照——宣告带 path 即入队
                 // （无 path = 会话刚起还没写 jsonl → 无历史可拉，后续行天然从
                 // tail 全量到达，无需快照）。队列按 sid 幂等（重复宣告不重拉）。
@@ -3056,6 +3115,22 @@ async fn stream_loop(
                     &serde_json::json!({ "origin": host_label, "reason": "accounts_changed" }),
                 ) {
                     tracing::warn!("remote-backend-ready（accounts_changed）emit failed: {e}");
+                }
+            }
+            // 〔U4b · 第四波〕那台的活会话清单报完了 ⇒ 发前端 `origin-sessions-listed`。
+            //   与上面 `remote-session-added` 同一条线程、同序 emit ⇒ 前端收到它时，这台全部的活会话都已宣告过。
+            //   前端据此把这台「固定、却没被报过」的 tab 从说不清落到已结束（`设计/30 §3.5.7a`）。
+            Some(InboundFrame::SessionsReplayed) => {
+                tracing::info!(
+                    "sessions-replayed: [{host_label}] 活会话清单报完了 → 已 emit 给前端"
+                );
+                if let Err(e) = app.emit(
+                    crate::bridge::events::ORIGIN_SESSIONS_LISTED,
+                    &crate::bridge::OriginSessionsListedPayload {
+                        origin: crate::origin::Origin(host_label.clone()),
+                    },
+                ) {
+                    tracing::warn!("origin-sessions-listed emit failed: {e}");
                 }
             }
             // 〔SR1a〕链路帧只该出现在**本机后端**那条流上（monitor 只在那里开链路）。

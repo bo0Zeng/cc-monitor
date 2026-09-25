@@ -79,7 +79,7 @@ describe("S27 · 断网门禁的 crate 缓存", () => {
     expect(existsSync(join(HERE, "evidence", "S27-cache-manifest.md"))).toBe(true);
   });
 
-  it("本机缓存里，今天两份 lock ＋ `23a` 那 26 条，一条都不缺", () => {
+  it("本机缓存里，今天那几份 lock（〔RM1c〕多了全景小程序那一份）＋ `23a` 那 26 条，一条都不缺", () => {
     const { report, why } = runMeter();
 
     // ── 判不了 · 理由一：这台机器上没有 python3 / 量具跑不起来 ──────────

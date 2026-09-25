@@ -1,3 +1,8 @@
+//! # 要求住址：`INVARIANTS §33b`「跨语言一致性靠什么保住」（Rust 载荷渲染与 TS 入库金标准逐字节对拍）
+//!
+//! 核原文：`INVARIANTS §33b` 逐字「**入库夹具 + 两侧各自与它比**，不是注释」·「⚠ **两侧都必须有计数自检**」—— 本族判 Rust 渲染与
+//! `payload-golden.json` 逐条相等、TS 半边仍在断言、用例数相等；嵌套 env 键那两条补「Rust 照抄 TS 输入」那一格。〔JA1 点址 2026-09-24〕
+
 use super::*;
 
 fn fixture() -> Fixture {

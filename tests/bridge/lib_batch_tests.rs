@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §18.1`（看不懂的行记在哪台的账上）＋ `INVARIANTS §28`（远端行带 origin）
+//!
+//! 核原文：`INVARIANTS §18.1` 逐字「账本第一层键是 origin，每台机器只看得到自己那一份」—— `lib.rs::batch_to_payloads`
+//! 把看不懂的行记在这一批的 origin 名下（V104「漂移记账按机器分开」）；`INVARIANTS §28` 逐字「上 wire（每条远端行带 `origin`）」
+//! —— 远端行带那台的名字。连 JSON 都不成立的行跳过、不 panic，对 `§18.1` 那条的抢救口径。〔JA1 点址 2026-09-24〕
+
 use super::*;
 use std::path::PathBuf;
 
@@ -33,7 +39,7 @@ fn filters_non_displayable_and_survives_malformed() {
         jline("s-abc", 7, malformed),
     ];
 
-    let payloads = batch_to_payloads(lines, None);
+    let payloads = batch_to_payloads(lines, &crate::origin::Origin::local());
 
     // 只有 displayable user 行进 payload
     assert_eq!(payloads.len(), 1, "只应保留 1 条 displayable 记录");
@@ -44,11 +50,11 @@ fn filters_non_displayable_and_survives_malformed() {
         Some("/home/me/proj"),
         "extract_cwd 应取出 user.cwd"
     );
-    // 本地（origin=None）行不带 origin。
+    // 本机那台的行载荷上不带 origin（线上形状与原来 `None` 那一档逐字相同）。
     assert_eq!(payloads[0].origin, None, "本地行 origin 应为 None");
 }
 
-/// origin=Some(host) 时每条 payload 都带上该标签（远端 Tab 标题前缀用）。
+/// 远端那台的 origin ⇒ 每条 payload 都带上它的名字（远端 Tab 标题前缀用）。
 #[test]
 fn origin_is_propagated_to_payloads() {
     let displayable_user = r#"{
@@ -59,11 +65,52 @@ fn origin_is_propagated_to_payloads() {
             "cwd":"/home/pi/proj"
         }"#;
     let lines = vec![jline("s-remote", 0, displayable_user)];
-    let payloads = batch_to_payloads(lines, Some("pi".to_string()));
+    let payloads = batch_to_payloads(lines, &crate::origin::Origin("pi".to_string()));
     assert_eq!(payloads.len(), 1);
     assert_eq!(
         payloads[0].origin.as_deref(),
         Some("pi"),
         "远端行 origin 必须透传 host 标签"
+    );
+}
+
+/// 〔ST3〕★ 接缝：批里看不懂的行记在**这一批的 origin** 名下，不在本机名下（两向）。
+///
+/// 本机 watcher 与 `ssh_source·rs::flush_lines` 都经这一个口；原先它收 `Option<String>`，
+/// 记账那一刻不知道是哪台 ⇒ 远端的行全记进了一本不分机器的账。
+#[test]
+fn unreadable_lines_are_booked_under_the_batch_origin() {
+    use crate::drift_ledger::{snapshot, DriftFace};
+    let find = |o: &crate::origin::Origin, key: &str| {
+        snapshot(o)
+            .into_iter()
+            .find(|f| f.face == DriftFace::UnknownRecordType)
+            .and_then(|f| f.entries.into_iter().find(|e| e.key == key))
+    };
+    let remote = crate::origin::Origin("st3-batch-probe".to_string());
+    let local = crate::origin::Origin::local();
+    let _ = batch_to_payloads(
+        vec![jline("s-r", 0, r#"{"type":"st3-batch-remote-probe"}"#)],
+        &remote,
+    );
+    let _ = batch_to_payloads(
+        vec![jline("s-l", 0, r#"{"type":"st3-batch-local-probe"}"#)],
+        &local,
+    );
+    assert!(
+        find(&remote, "st3-batch-remote-probe").is_some(),
+        "远端那批没记在那台名下"
+    );
+    assert!(
+        find(&local, "st3-batch-local-probe").is_some(),
+        "本机那批没记在本机名下"
+    );
+    assert!(
+        find(&local, "st3-batch-remote-probe").is_none(),
+        "远端那批记进了本机那一本"
+    );
+    assert!(
+        find(&remote, "st3-batch-local-probe").is_none(),
+        "本机那批记进了远端那一本"
     );
 }

@@ -15,6 +15,6 @@ exists: boolean, aliases: Array<Alias>,
  */
 unparsed: Array<string>, 
 /**
- * 这台机器上找得到的 shell 配置候选（「那一行 source 加进哪份」）。
+ * 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」）。
  */
 rcCandidates: Array<AccountAliasRc>, };

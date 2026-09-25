@@ -119,6 +119,8 @@ pub const COMMANDS: &[&str] = &[
     "history-index",
     "history-projects",
     "history-read",
+    // 〔U4b · 第四波〕这条会话的记录还在不在（resume 一跳先问，`设计/01 §6.2` 最后一条）。
+    "history-record",
     "history-search",
     "history-sessions",
     "history-subagents",
@@ -131,6 +133,8 @@ pub const COMMANDS: &[&str] = &[
     "link-credit",
     "link-data",
     "link-open",
+    // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
+    "panorama",
     "ping",
     "plugins-marketplaces",
     "relay-ensure",
@@ -1275,6 +1279,20 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔U4b · 第四波〕resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
+    // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `branch_core::find_session_file`）。
+    CommandSpec {
+        name: "history-record",
+        doc_anchor: Some("#### `history-record`"),
+        codes: &["bad_args"],
+        fields: &["present", "root", "sid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "history-read",
         doc_anchor: Some("#### `history-read`"),
@@ -1394,6 +1412,27 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
+    },
+    // ── 〔RM1c · 第四波〕代码全景（用户 09-24 V108 选 B）────────────────────────────
+    //
+    // 后端**不链**引擎：经插件通用调用口起那个只装引擎的独立小程序（`control/panorama.rs`），
+    // 解析发生在被起的那个进程里；索引落这台机器上后端自己的数据目录。
+    // ⚠ 只说查询语义：`op` 只许 `control::panorama::OPS` 里的词（`protocol_doc_guard` 那条 `P7c-2` 约束）。
+    // ⚠ 阻塞档：起一个进程、等它退出（建索引可到分钟级）。`cancel` 命中回 `not_cancellable`（不撒谎）。
+    CommandSpec {
+        name: "panorama",
+        doc_anchor: Some("#### `panorama`"),
+        codes: &[
+            "bad_args",
+            "not_installed",
+            "unsupported",
+            "timed_out",
+            "too_large",
+            "failed",
+        ],
+        fields: &["args", "op", "repo", "result"],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::panorama::answer(&r.args).map(Some)),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
     // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。

@@ -96,7 +96,7 @@ impl Engine {
         annotations::ensure_gitignore(&dot)?;
         let idx = Index::open(&dot.join("index.db"))?;
         // F72:批注恒仓内、与 index 落点解耦。**不** create_dir_all(保 lazy = 消费方 D20 生命线)。
-        let annotations_dir = repo.join(".codepicture").join("annotations");
+        let annotations_dir = repo.join(annotations::ANNOTATIONS_REL);
         Ok(Engine {
             repo: repo.to_path_buf(),
             annotations_dir,
@@ -246,15 +246,4 @@ pub(super) fn guard_rel(rel: &str) -> Result<(), Box<dyn Error>> {
         return Err(format!("路径越界或非法:{}", rel).into());
     }
     Ok(())
-}
-
-/// 批注 id:内容哈希(file|symbol|body),确定性;status 不入哈希 → approve 不改 id。
-/// ⚠ `DefaultHasher` 跨 Rust 版本不保证稳定;id 是提交进 git 的侧车文件名,换工具链后同内容
-/// 再 `add` 会算出新 id(生成重复文件而非覆盖,旧文件成孤儿)。要跨版本稳定可换固定算法。
-pub(super) fn annotation_id(file: &str, symbol: Option<&str>, body: &str) -> String {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    file.hash(&mut h);
-    symbol.hash(&mut h);
-    body.hash(&mut h);
-    format!("{:x}", h.finish())
 }

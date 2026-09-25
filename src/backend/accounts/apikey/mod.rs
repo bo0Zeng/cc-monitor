@@ -162,6 +162,15 @@ pub fn run_relay(home: &std::path::Path, args: &[String]) -> i32 {
     crate::relay::run(home, args, &Boot)
 }
 
+/// 〔RL1 · V107〕**流模式常驻后端里的中转装配口**：层 1 的 `host` ＋ 层 2 那只手。`main.rs` 流模式那一处调它。
+///
+/// 与 [`run_relay`] 同一条理由住层 2：装配要同时叫得出两层，依赖只许层 2 → 层 1。
+/// 交没交端口、起没起来由层 1 答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
+/// 取值器是**真环境**（与 `--relay` 那条 `run` 同一个来源）。回一句给宿主日志看的话。
+pub fn host_relay(home: &std::path::Path) -> String {
+    crate::relay::host(&|k| std::env::var(k).ok(), home, &Boot).to_string()
+}
+
 /// 层 2 在 `--relay` 启动路径上交给层 1 的那一只手（[`Startup`]）。
 ///
 /// ★ 层 1 **叫不出**它的名字：[`run_relay`] 把它递进层 1 的 `run`，层 1 只见得到

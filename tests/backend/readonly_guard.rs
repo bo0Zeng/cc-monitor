@@ -2211,7 +2211,15 @@ mod spawn_registry {
              `src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso` 逐行可查）；它读 manifest 与 \
              `~/.cc-acct-iso/config`，要 `HOME` / `PATH`（都在继承白名单里）。\
              ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`；下面那条「恰好四条」只数 \
-             `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。",
+             `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。\
+             ★★ **〔RM1c · 第四波 09-24〕第四个使用者到了，逐条记在这里** —— 代码全景 \
+             `control/panorama.rs` 经这一处口起**只装引擎的独立小程序 `cc-monitor-panorama`**\
+             （用户 V108 选 B：后端本体零引擎，解析在被起的那个进程里）。每次两趟：`--probe`（只打三行字）\
+             ＋ 一个 op。写面：**只写索引**，落后端交给它的 `--store`（`~/.cc-monitor/panorama/`，\
+             后端自己的数据目录，**不是用户文件**）；被分析的仓**一个字节不写**（小程序自己的判据 \
+             `nothing_lands_inside_the_analysed_repo` 钉着），写用户文件的那六个引擎方法它**零调用**\
+             （`the_program_never_calls_an_engine_method_that_writes_user_files`，零命中 ＋ 正控）。\
+             ⚠ 同样**加这一条不会红** —— 是人回来读了这一段才写下的。",
             "缩性质",
             "键能分得出「哪个插件、哪条被调命令」的那天（今天是 `<非字面量>`，四条命令共用一个键）。\
              ⚠ 在那之前，本条的覆盖面由 [`super::g6_reach`] 那一格钉着：\
@@ -3139,13 +3147,9 @@ mod g6_staged_zero {
             "—",
             "本 crate",
         ),
-        (
-            "plugin/probe.rs",
-            "negotiate",
-            "backend 生产段里**跨文件消费者 0 个**（`main.rs` 那处是英文文档注释，不是调用）",
-            "—",
-            "本 crate",
-        ),
+        // 〔RM1c · 第四波〕`plugin/probe.rs::negotiate` 那一行**摘了**：接线那天到了 ——
+        //   `control/panorama.rs`（代码全景小程序的能力协商）是它第一个跨文件生产消费者，
+        //   下面那条判据当场红，正是这张表承诺的「接线那天该红」。条数 7 → 6。
         // 🔴 〔波 5 ㈢ · 2026-09-23〕**这一条是刚刚变成零的，不是一直是零。**
         //
         // 用户 09-23 逐字裁「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
@@ -3216,10 +3220,11 @@ mod g6_staged_zero {
     /// ★ 正题一：表里每条的住址今天真的在，且那个名字真的还在那份文件里（**幽灵检查**）。
     #[test]
     fn the_staged_zero_registry_has_no_ghost_entries() {
+        // 〔RM1c · 第四波〕7 → 6：`negotiate` 接上了生产（见表里那段摘除说明）。
         assert_eq!(
             STAGED_ZERO.len(),
-            7,
-            "这一族的登记表从 7 条变成 {} 条了 —— 加成员是好事，\
+            6,
+            "这一族的登记表从 6 条变成 {} 条了 —— 加成员是好事，\
              但每加一条都要说清「被钉的那个零逐字是什么」与「接线那天为什么该红」",
             STAGED_ZERO.len()
         );
@@ -3285,9 +3290,9 @@ mod g6_staged_zero {
             }
         }
         assert_eq!(
-            checked, 4,
+            checked, 3,
             "只核了 {checked} 条「今天没有判据」的欠账（登记时是 3 条，\
-             波 5 ㈢ 09-23 加了 `is_inside_tree` 之后是 4 条）—— \
+             波 5 ㈢ 09-23 加了 `is_inside_tree` 之后是 4 条，〔RM1c〕`negotiate` 接上生产摘掉之后回到 3 条）—— \
              筛选条件与登记表脱节了，本条在空转"
         );
         assert!(

@@ -54,7 +54,7 @@ describe("P7b 多跳子图 / 影响面", () => {
     } as SubGraph);
     el(".panorama-subgraph-go").click();
     await flush();
-    expect(api.subgraph).toHaveBeenCalledWith("/repo", "r", 1);
+    expect(api.subgraph).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "r", 1);
     expect(layerHeads()).toEqual(["第 1 跳（1 条）", "第 2 跳（1 条）"]);
   });
 
@@ -68,7 +68,7 @@ describe("P7b 多跳子图 / 影响面", () => {
     } as ImpactSet);
     el(".panorama-impact-go").click();
     await flush();
-    expect(api.impact).toHaveBeenCalledWith("/repo", "r");
+    expect(api.impact).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "r");
     // 深度 > 1 的层要真的分出来 —— 只有一跳的话它就退化成 callers 了。
     expect(layerHeads()).toEqual(["第 1 跳（1 条）", "第 2 跳（1 条）"]);
   });

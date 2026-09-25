@@ -106,6 +106,7 @@ import type { Alias } from "../generated/Alias";
 import type { AliasInstallReport } from "../generated/AliasInstallReport";
 import type { AliasListing } from "../generated/AliasListing";
 import type { AliasRender } from "../generated/AliasRender";
+import type { Shell } from "../generated/Shell";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
@@ -128,6 +129,7 @@ import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import type { UserInputsResult } from "../generated/UserInputsResult";
 import type { FindResult } from "../generated/FindResult";
+import type { SessionRecordProbe } from "../generated/SessionRecordProbe";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -138,7 +140,7 @@ import type { CcmProbeResult } from "../generated/CcmProbeResult";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
-import type { DriftFaceReport } from "../generated/DriftFaceReport";
+import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
 import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
 import type { CcBusInstallState } from "../generated/CcBusInstallState";
@@ -334,19 +336,6 @@ export const commands = {
     limit: number | null;
   }) => invoke<SearchResponse>("search_history", args),
 
-  /** F72：批准一条 Proposed 批注。 */
-  panorama_approve_annotation: (args: { repo: string; id: string }) =>
-    invoke<boolean>("panorama_approve_annotation", args),
-
-  /** F72：新增批注，返回批注 id。 */
-  panorama_add_annotation: (args: {
-    repo: string;
-    file: string;
-    symbol: string | null;
-    body: string;
-    author: string;
-  }) => invoke<string>("panorama_add_annotation", args),
-
   /**
    * devbench F03：列出接入的 skill 及其状态。
    *
@@ -408,18 +397,34 @@ export const commands = {
    * 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。
    * 预览与「复制去手贴」都只调这一条，后端一个字节都不写。
    */
-  aliases_render: (args: { aliases: Alias[] }) =>
+  // 〔AL1c〕`shell` 必给：同一份清单渲染 / 读 / 写成哪种 shell 的方言（`71 §4.4`），不留缺省（缺了就是替人猜）。
+  aliases_render: (args: { aliases: Alias[]; shell: Shell }) =>
     invoke<AliasRender>("aliases_render", args),
 
   /** 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。 */
-  aliases_read: () => invoke<AliasListing>("aliases_read"),
+  aliases_read: (args: { shell: Shell }) => invoke<AliasListing>("aliases_read", args),
 
   /**
    * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
    * ⚠ `rcPath` 可选且没有默认值：用户的 shell 配置是哪一份只能由界面上的人选。
    */
-  aliases_install: (args: { aliases: Alias[]; rcPath?: string | null }) =>
+  aliases_install: (args: { aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
     invoke<AliasInstallReport>("aliases_install", args),
+
+  /**
+   * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
+   * `result` 的形状随 `op` 而定（与本机那几条逐字同形）⇒ 这里是 `unknown`，由 `panorama/api.ts` 按 op 收窄。
+   */
+  panorama_call: (args: { origin: Origin; op: string; repo: string | null; args: unknown }) =>
+    invoke<unknown>("panorama_call", args),
+
+  /**
+   * 〔RM1d · 第四波〕批注 / 文档关联的**写**（V110「引擎只算、文件管理来写」）：问那台机器要编辑计划、
+   * 经那台机器后端的文件管理落盘（本机远端同一条）。`op` ∈ `add_annotation` · `propose_annotation` ·
+   * `approve_annotation` · `remove_annotation` · `write_doc_link` · `remove_doc_link`；回的值随 op 而定。
+   */
+  panorama_edit: (args: { origin: Origin; repo: string; op: string; args: unknown }) =>
+    invoke<unknown>("panorama_edit", args),
 
   /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
   panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>
@@ -465,25 +470,8 @@ export const commands = {
   panorama_overview: (args: { repo: string; budget?: number | null }) =>
     invoke<Overview>("panorama_overview", args),
 
-  /** F72：提一条待审批注，返回 id。 */
-  panorama_propose_annotation: (args: {
-    repo: string;
-    file: string;
-    symbol: string | null;
-    body: string;
-    author: string;
-  }) => invoke<string>("panorama_propose_annotation", args),
-
   /** 全量重建索引。 */
   panorama_reindex: (args: { repo: string }) => invoke<IndexStats>("panorama_reindex", args),
-
-  /** F72：删批注。 */
-  panorama_remove_annotation: (args: { repo: string; id: string }) =>
-    invoke<boolean>("panorama_remove_annotation", args),
-
-  /** 删一条文档链接。 */
-  panorama_remove_doc_link: (args: { repo: string; doc: string; target: string }) =>
-    invoke<boolean>("panorama_remove_doc_link", args),
 
   /** 按名子串搜符号 → 拿全限定 id。`limit` 是 `Option<usize>` ⇒ `number | null`。 */
   panorama_search: (args: { repo: string; query: string; limit?: number | null }) =>
@@ -514,10 +502,6 @@ export const commands = {
     files: string[];
     ranges: [number, number][];
   }) => invoke<string[]>("panorama_touching", args),
-
-  /** 写一条文档链接。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  panorama_write_doc_link: (args: { repo: string; doc: string; target: string }) =>
-    invoke<void>("panorama_write_doc_link", args),
 
   // 〔第四波 S4〕`sftp_copy`（远端内部复制，步 23b）的包装随那条命令退役删了：窗口的复制走后端 `files-copy`。
 
@@ -625,12 +609,16 @@ export const commands = {
     invoke<ApikeyRoutingView>("apikey_routing_for", args),
 
   /**
-   * 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个。
-   * **本机拒**（本机那一个由 monitor 监护）。⚠ 今天界面上没有调用方 —— 自动触发点（远端链路握手完成 /
-   * 起远端会话）不在 RM1a 写区，交主会话接。
+   * 〔RL1 · 第四波〕这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（`null` = 不注入，照旧直连）。
+   * 远端那台**用到才起**它的中转；apikey 号的中转起不来 ⇒ reject（拒绝起会话，说得出是哪台）。
+   * 判断只在后端 `payload::relay_endpoint_for` 一处；前端拿到地址原样放进载荷（`export-relay-base-url`）。
+   * 它接替了 RM1a 那条零调用方的 `relay_ensure`。
    */
-  relay_ensure: (args: { origin: Origin }) =>
-    invoke<{ listening: boolean; started: boolean }>("relay_ensure", args),
+  relay_endpoint_for_launch: (args: {
+    origin: Origin;
+    account: { kind: "base" } | { kind: "named"; configDir: string; name?: string } | null;
+    sid: string | null;
+  }) => invoke<string | null>("relay_endpoint_for_launch", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),
@@ -695,6 +683,14 @@ export const commands = {
      */
     tmuxName?: string | null;
   }) => invoke<void>("resume_history_session", args),
+
+  /**
+   * 〔U4b · 第四波〕**resume 之前问：这条会话的记录还在那台机器上吗**（`设计/01 §6.2` 最后一条）。
+   * 判定住那台的后端（`history-record`，只收 sid）；本机与远端同一个口。**问不到 ⇒ reject**：
+   * 调用方当「不知道」，**不当「不在」**。返回值字段被真消费 ⇒ 生成物（桶③）。
+   */
+  probe_session_record: (args: { origin: Origin; sessionId: string }) =>
+    invoke<SessionRecordProbe>("probe_session_record", args),
 
   /** **本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形（本机没有 SSH 那一跳）。
    *
@@ -794,7 +790,9 @@ export const commands = {
   config_surface_report: (args: { origin: Origin }) =>
     invoke<ConfigSurfaceReport>("config_surface_report", args),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
-  drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
+  // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
+  drift_ledger_report: (args: { origin: Origin }) =>
+    invoke<DriftLedgerReport>("drift_ledger_report", args),
   // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。
   // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
   // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。

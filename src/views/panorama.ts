@@ -21,7 +21,8 @@
 
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import * as api from "../panorama/api";
-import { isRemoteOrigin, type Origin } from "../ipc/origin";
+import type { RepoAt } from "../panorama/api";
+import { isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import {
   clampDepth,
   layerImpact,
@@ -109,8 +110,15 @@ export class PanoramaView implements OverlayHandle {
   private viewport: Viewport = { x: 0, y: 0, scale: 1 };
   /** 已成功加载/索引的仓（活跃仓不变则重开复用，不再重索引）。 */
   private loadedRepo: string | null = null;
-  /** 当前视图针对的仓（远端时为 null）。搜索/刷新/详情都用它。 */
+  /** 〔RM1c〕上面那个仓在哪台机器上（同一个路径在两台机器上是两个仓）。 */
+  private loadedOrigin: Origin = LOCAL_ORIGIN;
+  /** 当前视图针对的仓（**那台机器上**的路径；无仓时为 null）。搜索/刷新/详情都用它。 */
   private repo: string | null = null;
+  /**
+   * 〔RM1c · 第四波〕当前仓在哪台机器上。本机走进程内那几条命令，远端问那台的后端
+   * （`panorama/api.ts`）。与 `repo` 一起换（`switchRepo`）。
+   */
+  private origin: Origin = LOCAL_ORIGIN;
   /**
    * 人手选的仓（「换仓…」）。非 null 时**压过**会话工作目录，关了再开也还是它，
    * 直到点「跟随会话」。它只能是本机目录（系统选目录对话框给的），故不走远端判断。
@@ -170,6 +178,8 @@ export class PanoramaView implements OverlayHandle {
     const kinds = this.diagram.ensureKinds();
     await this.evaluateRepo();
     await kinds;
+    // 〔RM1c〕上面那一趟按打开那一刻的机器取；定下仓之后若换了机器，这一趟按新机器补取（同机器是空操作）。
+    await this.diagram.ensureKinds();
   }
 
   close(): void {
@@ -200,7 +210,8 @@ export class PanoramaView implements OverlayHandle {
 
   private async evaluateRepo(): Promise<void> {
     if (this.repoOverride !== null) {
-      await this.showRepo(this.repoOverride);
+      // 手选的仓只能是本机目录（系统选目录对话框给的）。
+      await this.showRepo(this.repoOverride, LOCAL_ORIGIN);
       return;
     }
     const info = this.getRepo();
@@ -213,24 +224,16 @@ export class PanoramaView implements OverlayHandle {
       );
       return;
     }
-    if (isRemoteOrigin(info.origin)) {
-      // 远端会话：代码在远端机，本地 code-picture 索引不到（诚实提示，不索引）。
-      this.switchRepo(null);
-      this.updateRepoChrome();
-      this.showMessage(
-        "全景仅支持本地仓库",
-        `当前会话来自远端机 [${info.origin}]，代码不在本机，无法建立本地 code-picture 索引。切到一个本地会话再打开全景。`,
-      );
-      return;
-    }
-    await this.showRepo(info.cwd);
+    // 〔RM1c · 第四波〕远端会话不再挡在门外：索引与图在那台机器上算（那台的后端起全景小程序），
+    // 线上只回结构化结果。〔RM1d〕批注 / 文档关联的写本机远端同一条（那台算、那台后端的文件管理写）。
+    await this.showRepo(info.cwd, info.origin);
   }
 
-  /** 把视图指向某个本地仓：同仓且已加载过 → 直接复用（hide 不卸载的意义），否则加载。 */
-  private async showRepo(repo: string): Promise<void> {
-    this.switchRepo(repo);
+  /** 把视图指向某台机器上的某个仓：同仓且已加载过 → 直接复用（hide 不卸载的意义），否则加载。 */
+  private async showRepo(repo: string, origin: Origin): Promise<void> {
+    this.switchRepo(repo, origin);
     this.updateRepoChrome();
-    if (this.loadedRepo === repo && this.overview && this.layout) {
+    if (this.loadedRepo === repo && this.loadedOrigin === origin && this.overview && this.layout) {
       this.hideMessage();
       this.scheduleDraw();
       return;
@@ -239,18 +242,28 @@ export class PanoramaView implements OverlayHandle {
   }
 
   /** 换仓：选中对象与图都属于上一个仓 ⇒ 清掉，图回到气泡视图。 */
-  private switchRepo(repo: string | null): void {
-    if (repo === this.repo) return;
+  private switchRepo(repo: string | null, origin: Origin = LOCAL_ORIGIN): void {
+    if (repo === this.repo && origin === this.origin) return;
     this.repo = repo;
+    this.origin = origin;
     this.selSymbol = null;
     this.selFile = null;
+    // 〔RM1c〕同一个路径可能换了一台机器 ⇒ 飞在路上的搜索 / 详情 / 高亮一律作废
+    //（它们的「仓没变」校验只比路径）。
+    this.searchSeq++;
+    this.highlightSeq++;
     this.diagram.repoChanged();
+  }
+
+  /** 〔RM1c〕这个路径在当前那台机器上（`panorama/api.ts` 的入口都吃它）。 */
+  private at(path: string): RepoAt {
+    return { origin: this.origin, path };
   }
 
   /** 选图那一块的宿主接口（`DiagramHost`）。 */
   private diagramHost(): DiagramHost {
     return {
-      repo: () => this.repo,
+      repo: () => (this.repo ? this.at(this.repo) : null),
       selectedSymbol: () => this.selSymbol,
       selectedFile: () => this.selFile,
       // 先同步记下选中（调用方紧接着就按它重画），再去开详情（异步）
@@ -264,7 +277,7 @@ export class PanoramaView implements OverlayHandle {
           this.layout?.bubbles.find((b) => b.file === file) ?? { file, subsystem: group, isEntry: false },
         ),
       openSymbol: (id) => void this.openNodeDetail(id),
-      stamp: (repo) => this.stampOf(repo),
+      stamp: (at) => this.stampOf(at.path),
       copyButton: (label, key, make) => this.copyButton(label, key, make),
       toast: (title, body) => showActionFailureToast(title, body),
     };
@@ -301,8 +314,10 @@ export class PanoramaView implements OverlayHandle {
   /** 标题写清当前看的是哪个仓、从哪来的；「跟随会话」只在手选时出现。 */
   private updateRepoChrome(): void {
     const src = this.repoOverride !== null ? "手选" : "跟随会话";
-    this.titleEl.textContent = this.repo ? `代码全景 · ${basename(this.repo)}（${src}）` : "代码全景";
-    this.titleEl.title = this.repo ?? "";
+    // 〔RM1c〕远端仓在标题上带机器名（同一个路径在两台机器上是两个仓）。
+    const where = isRemoteOrigin(this.origin) ? ` · 远端 ${this.origin}` : "";
+    this.titleEl.textContent = this.repo ? `代码全景 · ${basename(this.repo)}${where}（${src}）` : "代码全景";
+    this.titleEl.title = this.repo ? api.repoLabel(this.at(this.repo)) : "";
     this.followBtn.style.display = this.repoOverride !== null ? "" : "none";
   }
 
@@ -343,7 +358,7 @@ export class PanoramaView implements OverlayHandle {
     this.updateHighlightLegend(0, 0);
     this.showLoading("检查索引状态…");
     try {
-      const st = await api.status(repo);
+      const st = await api.status(this.at(repo));
       if (seq !== this.loadSeq) return;
       // F69（补 D20：代码分析默认关、每仓手动开启）：门只卡**首次启用**——从未索引
       // （symbols===0）= 未启用本仓分析 → **不自动扫描**，给显式「建立索引」手势。
@@ -367,11 +382,11 @@ export class PanoramaView implements OverlayHandle {
       // opt-in——避免静默展示过期图）。非陈旧直接加载。
       if (st.stale) {
         this.showLoading("索引已陈旧，重建中…");
-        await api.index(repo);
+        await api.index(this.at(repo));
         if (seq !== this.loadSeq) return;
       }
       this.showLoading("加载全景…");
-      const ov = await api.overview(repo);
+      const ov = await api.overview(this.at(repo));
       if (seq !== this.loadSeq) return;
       this.applyOverview(ov, repo);
     } catch (e) {
@@ -388,10 +403,10 @@ export class PanoramaView implements OverlayHandle {
     this.hideMessage();
     this.showLoading("首次建立索引中…（大仓较慢，请稍候）");
     try {
-      await api.index(repo);
+      await api.index(this.at(repo));
       if (seq !== this.loadSeq) return;
       this.showLoading("加载全景…");
-      const ov = await api.overview(repo);
+      const ov = await api.overview(this.at(repo));
       if (seq !== this.loadSeq) return;
       this.applyOverview(ov, repo);
     } catch (e) {
@@ -405,6 +420,7 @@ export class PanoramaView implements OverlayHandle {
   private applyOverview(ov: Overview, repo: string): void {
     this.overview = ov;
     this.loadedRepo = repo;
+    this.loadedOrigin = this.origin;
     this.layout = computeLayout(ov);
     this.hideLoading();
     this.updateBanner();
@@ -434,7 +450,7 @@ export class PanoramaView implements OverlayHandle {
    */
   async highlightSession(files: string[]): Promise<void> {
     if (!this.repo) {
-      showActionFailureToast("无法高亮", "当前不是本地仓库视图，无法高亮会话改动。");
+      showActionFailureToast("无法高亮", "当前没有在看的仓库，无法高亮会话改动。");
       return;
     }
     if (files.length === 0) {
@@ -449,7 +465,7 @@ export class PanoramaView implements OverlayHandle {
     }
     const seq = ++this.highlightSeq; // 独立世代号（不借 loadSeq，免卡 refresh 按钮）
     try {
-      const ids = await api.touching(repo, files, []);
+      const ids = await api.touching(this.at(repo), files, []);
       // 三重校验：本次高亮未被更晚的高亮作废 / 仓没变 / 布局还在（切仓由 this.repo!==repo 兜）。
       if (seq !== this.highlightSeq || this.repo !== repo || !this.layout) return;
       const touched = touchedFilesFromIds(ids);
@@ -480,10 +496,10 @@ export class PanoramaView implements OverlayHandle {
     this.refreshBtn.disabled = true;
     this.showLoading("重建索引中…");
     try {
-      await api.reindex(repo);
+      await api.reindex(this.at(repo));
       if (seq !== this.loadSeq) return;
       this.showLoading("加载全景…");
-      const ov = await api.overview(repo);
+      const ov = await api.overview(this.at(repo));
       if (seq !== this.loadSeq) return;
       this.applyOverview(ov, repo);
     } catch (e) {
@@ -1016,7 +1032,7 @@ export class PanoramaView implements OverlayHandle {
     this.openSidebar();
     this.renderSidebarStatus("搜索中…");
     try {
-      const syms = await api.search(repo, query, 40);
+      const syms = await api.search(this.at(repo), query, 40);
       if (seq !== this.searchSeq || this.repo !== repo) return;
       this.renderSearchResults(query, syms);
     } catch (e) {
@@ -1075,7 +1091,7 @@ export class PanoramaView implements OverlayHandle {
     this.renderSidebarStatus("加载符号详情…");
     try {
       // 索引读数与节点详情**同一刻取**：「复制给 agent」要说清这份详情是哪一次索引的（CP7）。
-      const [nv, stamp] = await Promise.all([api.node(repo, id), this.stampOf(repo)]);
+      const [nv, stamp] = await Promise.all([api.node(this.at(repo), id), this.stampOf(repo)]);
       if (seq !== this.searchSeq || this.repo !== repo) return;
       if (!nv) {
         this.renderSidebarStatus(`未找到符号：${id}`);
@@ -1117,7 +1133,7 @@ export class PanoramaView implements OverlayHandle {
       detail.appendChild(
         this.copyButton("复制给 agent", "copy-agent", () =>
           clipForSymbol(
-            { repo, stamp, coverage },
+            { repo: api.repoLabel(this.at(repo)), stamp, coverage },
             s,
             nv.callers,
             nv.callees,
@@ -1194,7 +1210,7 @@ export class PanoramaView implements OverlayHandle {
       del.className = "panorama-btn panorama-ann-del";
       del.textContent = "删除";
       del.addEventListener("click", () =>
-        void this.mutateAnnotation(() => api.removeAnnotation(this.repo ?? "", a.id), s.id),
+        void this.mutateAnnotation(() => api.removeAnnotation(this.at(this.repo ?? ""), a.id), s.id),
       );
       foot.appendChild(del);
       row.appendChild(foot);
@@ -1215,7 +1231,7 @@ export class PanoramaView implements OverlayHandle {
       const bodyText = ta.value.trim();
       if (!bodyText) return;
       void this.mutateAnnotation(
-        () => api.addAnnotation(this.repo ?? "", s.file, symbolSegForAnnotation(s.id), bodyText, "me"),
+        () => api.addAnnotation(this.at(this.repo ?? ""), s.file, symbolSegForAnnotation(s.id), bodyText, "me"),
         s.id,
       );
     });
@@ -1246,7 +1262,7 @@ export class PanoramaView implements OverlayHandle {
     btn.addEventListener("click", () => {
       const doc = input.value.trim();
       if (!doc) return;
-      void this.mutateAnnotation(() => api.writeDocLink(this.repo ?? "", doc, s.id), s.id);
+      void this.mutateAnnotation(() => api.writeDocLink(this.at(this.repo ?? ""), doc, s.id), s.id);
     });
     form.appendChild(btn);
     sec.appendChild(form);
@@ -1335,11 +1351,11 @@ export class PanoramaView implements OverlayHandle {
       try {
         if (what === "subgraph") {
           const depth = clampDepth(Number(depthSel.value));
-          const sgv = await api.subgraph(repo, symbol, depth);
+          const sgv = await api.subgraph(this.at(repo), symbol, depth);
           if (mine !== gen) return; // 期间点了别的，这次的结果作废
           render(layerSubGraph(sgv, symbol), "（邻域为空）");
         } else {
-          const imp = await api.impact(repo, symbol);
+          const imp = await api.impact(this.at(repo), symbol);
           if (mine !== gen) return;
           render(layerImpact(imp), "（没有反向可达的调用者）");
         }
@@ -1416,7 +1432,7 @@ export class PanoramaView implements OverlayHandle {
   // === 文件详情（点气泡）===
 
   private openFileDetail(b: FileRef): void {
-    if (!this.repo) return; // 远端/无仓无从查符号（纵深防御，正常靠 message 遮罩挡住点击）
+    if (!this.repo) return; // 无仓无从查符号（纵深防御，正常靠 message 遮罩挡住点击）
     this.selFile = b.file;
     this.diagram.selectionChanged();
     this.openSidebar();
@@ -1451,14 +1467,18 @@ export class PanoramaView implements OverlayHandle {
     const file = b.file;
     const seq = ++this.searchSeq;
     try {
-      const [syms, stamp] = await Promise.all([api.symbolsInFile(repo, file), this.stampOf(repo)]);
+      const [syms, stamp] = await Promise.all([api.symbolsInFile(this.at(repo), file), this.stampOf(repo)]);
       if (seq !== this.searchSeq || this.repo !== repo) return;
       symWrap.replaceChildren();
       // CP7：文件那一级的「复制给 agent」（符号列表到手之后才有东西可复制）。
       const coverage = this.coverageReading();
       symWrap.appendChild(
         this.copyButton("复制给 agent", "copy-agent", () =>
-          clipForFile({ repo, stamp, coverage }, { ...b, symbols: b.symbols ?? syms.length }, syms),
+          clipForFile(
+            { repo: api.repoLabel(this.at(repo)), stamp, coverage },
+            { ...b, symbols: b.symbols ?? syms.length },
+            syms,
+          ),
         ),
       );
       if (syms.length === 0) {
@@ -1480,7 +1500,7 @@ export class PanoramaView implements OverlayHandle {
   /** F71：文档漂移面板——列仓里 .md 指向已失效的悬空链接（doc → target + reason）。 */
   private async showDrift(): Promise<void> {
     if (!this.repo) {
-      showActionFailureToast("无法查漂移", "当前不是本地仓库视图（远端或无仓）。");
+      showActionFailureToast("无法查漂移", "当前没有在看的仓库。");
       return;
     }
     const repo = this.repo;
@@ -1488,7 +1508,7 @@ export class PanoramaView implements OverlayHandle {
     this.openSidebar();
     this.renderSidebarStatus("检查文档漂移…");
     try {
-      const items = await api.drift(repo);
+      const items = await api.drift(this.at(repo));
       if (seq !== this.searchSeq || this.repo !== repo) return;
       this.sidebarEl.replaceChildren();
       this.sidebarEl.appendChild(this.sidebarHeader("文档漂移", `${items.length} 处悬空链接`));
@@ -1542,7 +1562,7 @@ export class PanoramaView implements OverlayHandle {
    */
   private async showAnnotationQueue(): Promise<void> {
     if (!this.repo) {
-      showActionFailureToast("无法列批注", "当前不是本地仓库视图（远端或无仓）。");
+      showActionFailureToast("无法列批注", "当前没有在看的仓库。");
       return;
     }
     const repo = this.repo;
@@ -1550,7 +1570,7 @@ export class PanoramaView implements OverlayHandle {
     this.openSidebar();
     this.renderSidebarStatus("读取批注…");
     try {
-      const all = await api.listAnnotations(repo);
+      const all = await api.listAnnotations(this.at(repo));
       if (seq !== this.searchSeq || this.repo !== repo) return;
       this.renderAnnotationQueue(repo, all);
     } catch (e) {
@@ -1643,8 +1663,8 @@ export class PanoramaView implements OverlayHandle {
     try {
       const existed =
         what === "approve"
-          ? await api.approveAnnotation(repo, id)
-          : await api.removeAnnotation(repo, id);
+          ? await api.approveAnnotation(this.at(repo), id)
+          : await api.removeAnnotation(this.at(repo), id);
       if (!existed) {
         showActionFailureToast("那条批注已不在", `id ${id} 在盘上已经没有了（可能别处先删了）。已重新列出。`);
       }
@@ -1659,7 +1679,7 @@ export class PanoramaView implements OverlayHandle {
   /** 当前仓的索引读数。取不到 → null（文本里如实说「未取到」，不省掉那一行）。 */
   private async stampOf(repo: string): Promise<IndexStamp | null> {
     try {
-      const st = await api.status(repo);
+      const st = await api.status(this.at(repo));
       return st ? { indexedAt: st.indexedAt, stale: st.stale } : null;
     } catch {
       return null;
