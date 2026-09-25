@@ -3142,6 +3142,7 @@ dependencies = [
  "notify",
  "notify-debouncer-mini",
  "parking_lot",
+ "relay-route-core",
  "search-core",
  "serde",
  "serde_json",

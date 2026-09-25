@@ -166,3 +166,35 @@ fn us1_the_routing_answer_is_the_routed_dirs_and_the_probe() {
         assert!(matches!(answer_routing_with(&bad, &rows, &|_| true), Err(("bad_args", _))), "{bad}");
     }
 }
+
+/// ★★ 跨语言金样：三条成品（`apikey-read` · `apikey-routing` · `launch-endpoint`）对同一份夹具 ==
+/// `tests/__fixtures__/apikey.golden.json`（夹具根替换成 `<root>`）。另一个读者是 TS 解码器（`tests/apikey-reads.vitest.ts`）
+/// ⇒ 两侧异源：后端改一个键名本条红，TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
+/// 守的要求：`设计/05 §14.3`「线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
+#[test]
+fn us1_the_apikey_products_match_the_cross_language_golden() {
+    let root = std::env::temp_dir().join(format!("ccm-us1-golden-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("apikey-credentials.json");
+    std::fs::write(&path, r#"{"accounts":{"work":{"api_key":"sk-golden-0123456789"},"bad-url":{"api_key":"K","base_url":"ftp://x"}}}"#).unwrap();
+    let rows = super::super::file_face::rows_at_with(&path, &|_| None);
+    let mut read = super::super::file_face::read_at(&path);
+    // 权限那一句随跑的机器的 umask 变（不是形状）⇒ 金样里固定成 null。
+    read["notice"] = Value::Null;
+    let got = json!({
+        "apikey-read": read,
+        "apikey-routing": answer_routing_with(
+            &json!({"agent":"claude-code","configDirs":["/h/.claude-accts/work","/h/.claude-accts/bad-url","/h/.claude-accts/me"]}),
+            &rows, &|_| true).unwrap(),
+        "launch-endpoint": answer_launch_with(
+            &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/work","name":"work"},"key":"k-1","allSessions":false}),
+            &rows, &|_| false).unwrap(),
+    });
+    let got: Value =
+        serde_json::from_str(&got.to_string().replace(&root.to_string_lossy().to_string(), "<root>")).unwrap();
+    let want: Value = serde_json::from_str(include_str!("../../../__fixtures__/apikey.golden.json")).expect("金样不是合法 JSON");
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(!got.to_string().contains("sk-golden"), "明文进了成品");
+    assert_eq!(got, want, "帧面成品与跨语言金样不一致。现打：\n{}", serde_json::to_string_pretty(&got).unwrap());
+}
