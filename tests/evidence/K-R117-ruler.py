@@ -184,9 +184,10 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("creds.apikey", (NA, "—", "账号的第三方 API key —— 账号层自己的状态文件（本机 monitor 写，远端那台的后端写，〔RM1a〕），不是往用户环境里装东西")),
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
-    ("relay.machine", (NA, "—",
-                       "〔RM1a〕问 / 起**远端那台**的中转进程（`relay_ensure`）—— 同 `backend.lifecycle`，是**跑**它，"
-                       "不是**装**它：起的是那台已部署后端的 `--relay`，一个字节都不往用户环境里落")),
+    # 〔RL1 · 第四波〕`relay.machine`（`relay_ensure`）退役，换成 `relay.launch-endpoint`：
+    ("relay.launch-endpoint", (NA, "—",
+                               "〔RL1〕起会话前问「这一条要不要注入中转地址、注哪个」，远端用到才起那台的中转"
+                               "（`relay_endpoint_for_launch`）—— 是**跑**它、拼一条命令的前缀，不往用户环境里落任何东西")),
     ("comm.face-a.call", (NA, "—",
                           "〔C4a〕通信层面 A 在 Tauri IPC 那一跳的命令（`chan_call`）—— 只搬不透明字节，"
                           "装什么、查什么装态都不是它的事")),
