@@ -293,8 +293,6 @@ export class SettingsPanel {
   private banner!: HTMLElement;
   /** issue #3 (A): 「数据位置」展示区（`70 §10.2` 改名）。打开面板时 refresh 一次拉最新 stat */
   private dataSection?: DataSection;
-  /** `70 §10.1`（步 14a）：「足迹」——已从顶层「改动足迹」页搬进机器子页第五栏。 */
-  private footprintSection?: ConfigSurfaceSection;
   /** `70 §10.3` 改名后的「日志」块。步 2 要在「应用」页首次可见时叫醒它。 */
   private logsSection?: DiagnosticsSection;
   /** issue #15 (S6): 远端 (SSH) 配置区。打开面板时 refresh 一次拉最新 config */
@@ -1002,10 +1000,9 @@ export class SettingsPanel {
               // ST1「延后加载」：per-machine 那几块是**单例**、跟着机器子页搬 ⇒ 任意一台机器的
               //   子页第一次可见时放一次（`loadPerMachineOnce` 自己去重）；之后切机器由各块
               //   自己的 `subscribeMachine` 重读。
-              this.pageLoaders.set(id, [
-                () => this.footprintSection?.loadNow(),
-                () => this.loadPerMachineOnce(),
-              ]);
+              // 〔ST2〕「足迹」也并进那一批单例：它今天按机器去问（远端也有真栏），
+              //   切机器由它自己的订阅重读 —— 与账号 / MCP 同一个形状，不再每台机器页各放一发。
+              this.pageLoaders.set(id, [() => this.loadPerMachineOnce()]);
               // ★ S4b-3b-2：远端机器页拆成横向四栏（主计划 §2.3）。
               // 复用 `SettingsRouter`（横向 + 无页头）而不是另造 tab 原语 ——
               // 「同一时刻只有一栏可见 + aria + 方向键 + 不重复注册」与左侧导航
@@ -1121,17 +1118,14 @@ export class SettingsPanel {
       //    「面」「审计」是**我们这侧**的词（`91 §2.1` 那一族）；且它要和顶层页
       //    「改动足迹」同一个口径，而不是页叫足迹、块叫审计。
       //
-      // ⚠ `appliesTo: "both"` 而**远端那一页上它不画表** —— 今天后端那条读口不收 origin
-      //   （`§10.1` ②），照原样画就是拿本机的答案冒充 aya 的。那一格由
-      //   `ConfigSurfaceSection.applyOriginGate()` 负责说实话，头注在那边。
+      // 〔ST2 · 用户 09-24 裁「远端也有真栏」〕`appliesTo: "both"`：远端那一页上它**按那台机器去问**
+      //   （读口归 RM1a）；答复的 `origin` 与所问对不上 ⇒ 说这台还答不了，不拿本机的答案冒充
+      //   （`ConfigSurfaceSection.readFootprint` / `answersFor` 头注）。
       {
         appliesTo: "both",
         tab: "footprint",
-        el: this.safeBlock("足迹", () => {
-          const sec = new ConfigSurfaceSection();
-          this.footprintSection = sec;
-          return sec.element;
-        }),
+        // 〔ST2〕字段 `footprintSection` 删了：它唯一的读者（每台机器页各放一发）随上面那次合批一起没了。
+        ...this.loadableBlock("足迹", () => new ConfigSurfaceSection()),
       },
     ];
     for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);

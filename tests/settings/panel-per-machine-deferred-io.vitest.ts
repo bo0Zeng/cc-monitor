@@ -96,15 +96,21 @@ const LOCAL_PAGE_IPC = [
  * 已经放过一次之后切到 aya：只有**跟着机器走、切换即重读**的那一块（MCP）重读。
  * 账号那块也订阅了机器，但它只认「已加载的远端清单里有的那台」—— 录音机下清单是空的 ⇒ 不读；
  * cc-bus 钩子切机器**刻意不发**（它的既有语义：远端诊断只在点「检查远端」时发）。
- * 足迹在远端页上不发（`applyOriginGate`：今天的读口不收 origin）。
+ * 〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹在远端页上**也去问**（按 aya 那台，回声不对就说答不了）——
+ *   它并进了 per-machine 那一批单例，切机器由它自己的订阅重读，恰好一发。
  */
-const SWITCH_TO_AYA_IPC: readonly string[] = ["list_mcp_project_dirs", "read_remote_mcp_servers"];
+const SWITCH_TO_AYA_IPC: readonly string[] = [
+  "list_mcp_project_dirs",
+  "read_remote_mcp_servers",
+  "config_surface_report",
+];
 /**
  * 第一次可见就是 aya：per-machine 那一批放一次，**每一发恰好一次**。
  * ⚠ 代价如实写：「终端集成」「插件」两块只对本机有意义（远端页上是藏着的），
  *   但它们与其余几块是同一批单例、同一个时刻放 ⇒ 这里也读了（都是本机读，不走 SSH）。
  */
 const FIRST_VISIT_AYA_IPC: readonly string[] = [
+  "config_surface_report", // 足迹：〔ST2〕按 aya 去问
   "load_config", // 账号：读远端清单
   "list_remote_accounts", // 账号：aya 那一台
   "cc_integration_status",
