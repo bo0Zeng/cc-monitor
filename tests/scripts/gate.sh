@@ -33,13 +33,13 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕29 格
+# │ 〔自述·格数〕30 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
-# │   winchk · winchk-backend · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm ·
+# │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity ·
 # │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend
@@ -87,6 +87,8 @@
 # │ 〔自述·现物〕`winchk-backend` 那一格没有独立的判据文件 —— 它就是一趟
 # │   `cargo check --all-targets`，target 是 `x86_64-pc-windows-gnu`，跑在
 # │   `src/backend` 那个 workspace 上（`K-R122` 09-14 第 18 格）。
+# │ 〔自述·现物〕`winlink` 那一格没有独立的判据文件 —— 它就是一趟 `cargo build --bins`，
+# │   target 是 `x86_64-pc-windows-gnu`，跑在 `src/bridge` 那个 workspace 的 `-p monitor` 上（WIN1 第四波 4D 第 30 格）。
 # │ 〔自述·现物〕`deadcode` 那一格没有独立的判据文件 —— 它就是一趟 `cargo check -p monitor`
 # │   加一个递减棘轮，判定逐字写在下面那一行 `run_gate deadcode` 的内联脚本里（第 15 格）。
 # │ 〔自述·现物〕`tsc` 那一格没有独立的判据文件 —— 它就是一趟 `tsc --noEmit`
@@ -1353,6 +1355,26 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/bridge` 那棵树由上面 winchk 那一格盖' \
          bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
 
+# ── `winlink`：**monitor 在 Windows 上链不链得起来**（WIN1 · 第四波 4D，第 30 格）──
+#
+# 守的要求：用户裁决 **V115**（「Win11 虚拟机可以当真机测试资源」）那一趟 RT1 现打出来的 F1 ——
+# `RT1.md §8` 逐字「`-gnu` 交叉编 monitor **两个 profile 都链不过**：`monitor_lib.dll`（`[lib] crate-type`
+# 里的 `cdylib`）导出序号超 65535（release 125 946 / dev 241 784）。门禁 `winchk` 只 `cargo check`，看不见」。
+# ⇒ 上面 `winchk` 那一格的分母逐字写着「买不到『链接得起来』（`check` 不链接）」—— 这一格补的就是那半。
+#
+# ## 它买什么 / 不买什么
+#   · 买：`-p monitor` 的**两个二进制**（`monitor` 主窗 ＋ `cc-monitor-filewin` 文件窗口）在
+#     `x86_64-pc-windows-gnu` 上**真走一趟链接器**、链得出 `.exe`。`[lib]` 那一格收成 `rlib` 之后
+#     不再产 dll（WIN1：全仓没有移动端，`cdylib` / `staticlib` 两格零消费者）；有人把 `cdylib` 加回来
+#     ⇒ 这里当场红在 `export ordinal too large`（死值验住 `第四波记录/WIN1.md`）。
+#   · ⚠ 只链、不跑：「链出来的 exe 在 Windows 上起得来」要真机（`RT1.md` 那台虚拟机），本格判不了。
+#   · ⚠ `-gnu` 不是 `-msvc`：发版那一格是 `windows-latest` 原生构建，MSVC 链接器那一类本格盖不到。
+#   · ⚠ dev profile；release 那一档的链接本格不跑（`RT1-build-win.py` 走 release，它不在门禁上）。
+#   · ⚠ 内嵌的本机后端字节此时**不在**（`native-backend/` 没铺）⇒ 链进去的是「没带后端」那一形，
+#     与 `winchk` 同一形；带字节的那一形要 `RT1-build-win.py`。
+run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）只有绿/红两态。射程 = `-p monitor` 的两个二进制（`monitor` · `cc-monitor-filewin`）**真链接**一趟；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · test 档不链（那一半归 `winchk` 的 `check`）' \
+         bash -c 'cd src/bridge && cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu 2>&1 && echo "winlink: 1 passed"'
+
 # 9 个包 = `monitor` + 8 个共享 crate（〔TL1〕`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。
 run_gate_sum cargo 9 bash -c 'cd src/bridge && cargo test --workspace --lib 2>&1'
 
@@ -2073,7 +2095,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
     # 🔴 第二波 T4（09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
   #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
-  echo "GATE: OK —— 29 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend），可以出货"
+  echo "GATE: OK —— 30 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend），可以出货"
   gate_print_blind
   exit 0
 fi
