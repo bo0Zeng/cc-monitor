@@ -38,112 +38,32 @@
  * 抓一屏 20 秒；结束 / 发按键 / 就地恢复 10 秒 —— 与它们上一个住址（monitor 那几个发送端）同值。
  */
 import { copyText } from "./copy-table";
-import { chan, ChanError, type CallError } from "./ipc/chan";
-import { budgetWithin, jsonBody, provablyNotSent, readJson, refusalOf } from "./ipc/chan-caller";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import {
+  ControlError,
+  exactKeys,
+  isObj,
+  machineName,
+  saidOfControl,
+  settle,
+  unreadable,
+  type Refusals,
+} from "./control-said";
+import { chan } from "./ipc/chan";
+import { budgetWithin, jsonBody, provablyNotSent } from "./ipc/chan-caller";
+import type { Origin } from "./ipc/origin";
+
+// 〔C4e 批 3〕这一层与 `src/cc-bus-control.ts` 说的是同一件事的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 ·
+//   `settle`）搬进了 `src/control-said.ts`；本文件的调用方照旧从这里取那两样。
+export { ControlError, saidOfControl };
 
 /** 抓一屏的期限（见头注）。 */
 const CAPTURE_BUDGET_MS = 20_000;
 /** 结束 / 发按键 / 就地恢复的期限（见头注）。 */
 const CONTROL_BUDGET_MS = 10_000;
 
-/**
- * 一次控制动作没做成。`message` 就是给人看的那一句（已经说成人话）；`detail` 只进日志；
- * `error` 是通道那一跳分好层的结局（失败出在通道上时才有）—— 就地恢复据它判能不能回落。
- * 调用方拿 [`saidOfControl`] 取那一句，不自己拼。
- */
-export class ControlError extends Error {
-  readonly detail: string;
-  readonly error: CallError | undefined;
-  constructor(said: string, detail: string, error?: CallError) {
-    super(said);
-    this.name = "ControlError";
-    this.detail = detail;
-    this.error = error;
-  }
-}
-
-/** 一次控制动作失败 ⇒ 给人看的那一句。本文件抛的是 [`ControlError`]；别的（调用方自己的错）原样取 `message`。 */
-export function saidOfControl(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
-
-/** 成品的键集合恰好是 `keys`（多一格 / 缺一格都不收）。 */
-function exactKeys(v: Record<string, unknown>, keys: readonly string[]): boolean {
-  const got = Object.keys(v).sort();
-  const want = [...keys].sort();
-  return got.length === want.length && got.every((k, i) => k === want[i]);
-}
-
-function machineName(origin: Origin): string {
-  return isLocalOrigin(origin) ? copyText("tmuxControl.machine.local") : origin;
-}
-
 /** 空目标先拒（Gate 1 的本地那一格）。 */
 function rejectEmptyTarget(target: string): void {
   if (target === "") throw new ControlError(copyText("tmuxControl.target.empty"), "空的 tmux 目标，一个字节都没发");
-}
-
-/** 应答形状不对 ⇒ 抛（哪一格不对只进 `detail`）。 */
-function unreadable(origin: Origin, op: string, what: string): ControlError {
-  return new ControlError(copyText("tmuxControl.reply.unreadable", { machine: machineName(origin) }), `${op} 的应答${what}`);
-}
-
-/**
- * 通道三层里「对端说不行」之外的那几层 ⇒ 一句话（几个动作共用：它们说的都是「这台机器够不够得着、答没答」）。
- * `peer/refused` 不在这里 —— 那一层的话按动作分，调用方传进来。
- */
-function saidOfTransport(origin: Origin, err: CallError): string {
-  switch (err.layer) {
-    case "hop":
-      if (err.reach === "NotSent") {
-        return isLocalOrigin(origin)
-          ? copyText("tmuxControl.channel.localDown")
-          : copyText("tmuxControl.channel.remoteDown", { machine: origin });
-      }
-      return copyText("tmuxControl.channel.unsure", { machine: machineName(origin) });
-    case "peer":
-      // `unsupported`：那台后端事前就说不认这条命令（比这条动作老）。`refused` 由调用方先接走，走不到这里。
-      return copyText("tmuxControl.channel.oldBackend", { machine: machineName(origin) });
-    case "ours":
-      return err.why === "Cancelled" ? copyText("tmuxControl.channel.cancelled") : copyText("tmuxControl.channel.broken");
-  }
-}
-
-/** 一个动作怎么说「被拒」：拒绝码 ⇒ 一句 · 拒绝体读不出来 ⇒ 一句。 */
-interface Refusals {
-  byCode(code: string, detail: string): string;
-  noReason(): string;
-}
-
-/**
- * 等一发控制类帧命令的结局，拿成品（JSON 值）。
- * 失败 ⇒ 抛 [`ControlError`]（那一句已经按层 / 按码说好了；通道上的失败带着分好层的 `error`）。
- *
- * ⚠ `chan.call` 那一下**留在各调用点、操作名写字面量**，不收进这里：`frame_query_tests` 按
- * `chan.call(` 的字面量操作名数「前端经通道说哪几条」，`comm_boundary_registry` 的 `X6` 按调用点核「期限显式给了」——
- * 收成一处拿变量传操作名，两条判据都会瞎。
- */
-async function settle(origin: Origin, op: string, sent: Promise<Uint8Array>, refusals: Refusals): Promise<unknown> {
-  let body: Uint8Array;
-  try {
-    body = await sent;
-  } catch (e) {
-    if (!(e instanceof ChanError)) throw e;
-    const err = e.error;
-    if (err.layer === "peer" && err.why === "refused") {
-      const r = refusalOf(err.body);
-      throw new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), `${op} 被拒：${r ? r.code : "拒绝体读不出来"}`, err);
-    }
-    throw new ControlError(saidOfTransport(origin, err), `${op}：${e.message}`, err);
-  }
-  try {
-    return readJson(body);
-  } catch {
-    throw unreadable(origin, op, "不是 JSON");
-  }
 }
 
 // ─── 抓一屏 ───

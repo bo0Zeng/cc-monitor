@@ -22,6 +22,9 @@
 // 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
 import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
+// 〔C4e · 第四波 4C〕查在线 · 发消息 · 收掉 · 派生 · 广播五件经通道直接问那台机器的后端（原是五条 Tauri 命令）。
+import { agentOnline, broadcast, killAgent, sendMessage, spawnAgent } from "../cc-bus-control";
+import { saidOfControl } from "../control-said";
 import { showActionFailureToast } from "../error-toast";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
 // 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
@@ -553,13 +556,13 @@ export class CcBusSection {
     stateEl.className = "cc-bus-online cc-bus-online-checking";
     stateEl.textContent = "检查中…";
     try {
-      const online = await commands.check_cc_bus_agent_online({ origin, id });
+      const online = await agentOnline(origin, id);
       stateEl.className = `cc-bus-online cc-bus-online-${online ? "yes" : "no"}`;
       stateEl.textContent = online ? "在线" : "不在线";
     } catch (e) {
       // 查失败 ≠ 不在线，必须区分开，否则会把"网络抖了一下"报成"agent 死了"
       stateEl.className = "cc-bus-online cc-bus-online-error";
-      stateEl.textContent = `查不到（${String(e)}）`;
+      stateEl.textContent = `查不到（${saidOfControl(e)}）`;
     } finally {
       btn.disabled = false;
     }
@@ -603,11 +606,11 @@ export class CcBusSection {
     if (!origin || !text.trim()) return;
     btn.disabled = true;
     try {
-      await commands.cc_bus_send({ origin, id, text });
+      // 〔C4e〕那一句由成品的三态说（在线 / 不在线 / 名字没登记过 / 问不到），不再一律「已发送」。
+      box.textContent = await sendMessage(origin, id, text);
       input.value = "";
-      box.textContent = "已发送（对方空闲会被敲门，在忙则靠它的 Stop 钩子兜底）。";
     } catch (e) {
-      box.textContent = `发送失败：${String(e)}`;
+      box.textContent = `发送失败：${saidOfControl(e)}`;
     } finally {
       btn.disabled = false;
     }
@@ -652,11 +655,10 @@ export class CcBusSection {
     this.disarmKill();
     btn.disabled = true;
     try {
-      const out = await commands.cc_bus_kill({ origin, id });
-      detail.textContent = out || `已收掉 ${id}`;
+      detail.textContent = await killAgent(origin, id);
       await this.reload();
     } catch (e) {
-      detail.textContent = `收掉失败: ${String(e)}`;
+      detail.textContent = `收掉失败: ${saidOfControl(e)}`;
       btn.disabled = false;
     }
   }
@@ -674,11 +676,10 @@ export class CcBusSection {
     if (!window.confirm(`广播给 ${n} 个 agent？\n\n${text}`)) return;
     this.broadcastBtn.disabled = true;
     try {
-      const out = await commands.cc_bus_broadcast({ origin, text });
-      this.statusEl.textContent = out || `已广播给 ${n} 个`;
+      this.statusEl.textContent = await broadcast(origin, text);
       this.broadcastInput.value = "";
     } catch (e) {
-      this.statusEl.textContent = `广播失败: ${String(e)}`;
+      this.statusEl.textContent = `广播失败: ${saidOfControl(e)}`;
     } finally {
       this.broadcastBtn.disabled = false;
     }
@@ -725,19 +726,17 @@ export class CcBusSection {
     this.spawnBtn.disabled = true;
     this.spawnOut.textContent = "派生中…";
     try {
-      const out = await commands.cc_bus_spawn({
-        origin,
+      this.spawnOut.textContent = await spawnAgent(origin, {
         dir,
         task: this.spawnTask.value,
         tool: this.spawnTool.value,
-        // 空串 = 显式基座。后端把它翻成 `--base`，**不存在"什么都不传"这一档**。
+        // 空串 = 显式基座（发 `base:true`）。**不存在"什么都不传"这一档**。
         account: this.spawnAcct.value,
       });
-      this.spawnOut.textContent = out || "已派生。";
       // 派生完顺手刷新名单——这是**用户动作触发**的一次读，不是后台轮询
       await this.reload();
     } catch (e) {
-      this.spawnOut.textContent = `派生失败：${String(e)}`;
+      this.spawnOut.textContent = `派生失败：${saidOfControl(e)}`;
     } finally {
       this.spawnBtn.disabled = false;
     }

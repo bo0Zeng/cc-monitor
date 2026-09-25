@@ -196,28 +196,6 @@ export interface UserPathStatus {
 }
 
 export const commands = {
-  /** 往 bus 上某个 agent 发一条消息。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
-  cc_bus_send: (args: { origin: string; id: string; text: string }) =>
-    invoke<string>("cc_bus_send", args),
-  /** P4c（#77/#78）：向**所有**已登记 agent 广播。爆炸半径大 —— UI 侧确认必须带数字。 */
-  cc_bus_broadcast: (args: { origin: string; text: string }) =>
-    invoke<string>("cc_bus_broadcast", args),
-  /** P4c（#77/#78）：收掉一个 agent。**破坏性且不可撤销** —— UI 侧两步确认。 */
-  cc_bus_kill: (args: { origin: string; id: string }) => invoke<string>("cc_bus_kill", args),
-
-  /**
-   * 在某目录派生一个协作 agent。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。
-   * `account` 空串 = **显式基座**（后端翻成 `--base`）——**不存在「什么都不传」这一档**。
-   */
-  cc_bus_spawn: (args: {
-    origin: string;
-    dir: string;
-    task: string;
-    tool: string;
-    // Rust 侧是 `Option<String>`；TS 侧传**空串**表示显式基座（后端翻成 `--base`）。
-    account: string;
-  }) => invoke<string>("cc_bus_spawn", args),
-
   /** 读 `cc_get_auto_launch`。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   cc_get_auto_launch: () => invoke<AutoLaunchConfig>("cc_get_auto_launch"),
 
@@ -617,10 +595,6 @@ export const commands = {
 
   /** log 目录与文件清单。`current_size_bytes`/`size_bytes` 是**字节数**、`modified_ms` 是**毫秒时间戳**——两个量纲的上限论证在 Rust 侧分开写（C03 纪律）。 */
   get_log_file_info: () => invoke<LogFileInfo>("get_log_file_info"),
-
-  /** 某个 bus agent 在不在线。返回 `Result<bool, String>` ⇒ 原始类型。 */
-  check_cc_bus_agent_online: (args: { origin: string; id: string }) =>
-    invoke<boolean>("check_cc_bus_agent_online", args),
 
   /** 部署内嵌的后端到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   /** 部署远端后端（〔MC1〕连同 `ccm` 入口，一次）。 */

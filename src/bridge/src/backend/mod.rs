@@ -145,8 +145,9 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "control",
         "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\
          cc-bus 的驾驶舱：读状态（`read_cc_bus_state` / `read_cc_bus_inbox`）＋\
-         **起 / 杀 / 发**（`cc_bus_spawn` / `cc_bus_kill` / `cc_bus_send` / `cc_bus_broadcast`）。\
+         **起 / 杀 / 发**（`cc_bus_spawn` / `cc_bus_kill` / `cc_bus_send` / `cc_bus_broadcast`〔散文墓碑〕）。\
          后四条是**真控制面**（起进程、杀进程、投递），归 `control`。\
+         〔C4e · 第四波 4C〕那四条（连同查在线）已迁到界面经通道直接说后端的 `bus-*`，这里只剩读状态两条与读路径上的 shell 读。\
          ⚠ 本拍**只挪住址**，一个字都没动「它属于哪一类」那件事。",
     ),
     (

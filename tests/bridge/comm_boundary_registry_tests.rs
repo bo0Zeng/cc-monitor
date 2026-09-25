@@ -2459,13 +2459,15 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    显式给期限）。
     //    〔C4e〕19 → 22：`tmux-control.ts` 的 `killSession`（`kill`）· `sendKeys` · `sendInto`（都是 `launch`）——
     //    杀会话 / 送键 / 就地 resume 三条 Tauri 命令改走通道；每处显式给期限（操作名留在调用点写字面量，见 `settle` 头注）。
+    //    〔C4e〕22 → 27：`cc-bus-control.ts` 五处（`bus-list` 查在线 · `bus-send` · `bus-kill` · `bus-spawn` · `bus-broadcast`）——
+    //    cc-bus 驾驶舱的写面从 monitor 的五条 Tauri 命令改走通道；每处显式给期限。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 22usize),
+            ("chan.call", 27usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

@@ -114,11 +114,10 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 它发的是 `probe_backend` 里那条 `ping`：只把成败渲染成 `control=ok(..ms)` /
     // `control=failed(..)` 的诊断串，**不做任何回落决策** ⇒ 没有「该不该回落」这个问题。
     ("ssh_source.rs", Verdict::ProbeOnlyNoFallbackDecision),
-    // ★ P4f 08-13：**本机 cc-bus 写面**（`cc_bus_send` 对 `<local>`）走后端的
-    // `bus-send` 原语。它没有第二条路可回落（本机 shell 写面正是 `P4a` 拒掉的东西），
-    // 两档结果都只渲染成给用户的一句话 —— 但**照样走分流器**：
-    // 分流规则有第二份实现的那天，「被门拒绝」就会在某一份里被洗成「换条路重做」。
-    ("cc_bus.rs", Verdict::UsesRouter),
+    // 〔C4e · 第四波 4C〕**`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
+    //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/cc-bus-control.ts`，广播的挑人也搬进了后端 `bus-broadcast`），
+    //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
+    //   「monitor 里写面一条路都不剩」由 `cc_bus_tests.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
     // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（`capture_via_backend`〔散文墓碑〕，〔C4e〕已删）
     //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 本件删净了），
     //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：

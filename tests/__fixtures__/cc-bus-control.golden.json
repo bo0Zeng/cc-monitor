@@ -5,6 +5,10 @@
     "界面侧（tests/cc-bus-control.vitest.ts）：请求体 == 这里那一份 · 解码器读同一份成品 · 同一份码集合逐码说出一句各不相同的话。",
     "内容是结构占位（agent 名 alpha_cc / gone_cc / x_cc，正文 hi），不含真会话正文。"
   ],
+  "ids": {
+    "ok": ["alpha_cc", "proj_cc-2", "a", "A_1", "cc-monitor"],
+    "bad": ["", "--help", "-x", "a b", "a;rm", "a$x", "a:b", "a.b", "a/b", "é"]
+  },
   "input": {
     "ccList": "ID               TMUX              待读\nalpha_cc         alpha_cc:0.0      2\ngone_cc          gone_cc:0.0       0\nx_cc             x_cc:0.0          1\n",
     "sessions": [["alpha_cc", "sid-1"], ["x_cc", ""]]
