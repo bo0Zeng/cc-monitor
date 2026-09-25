@@ -1181,8 +1181,10 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     // 抽取器自检：剥完还得看得见东西（否则下面整条是空真）。
     // 门槛现打（09-02，剥完的字节数）：`history.rs` ≈ 48.7k（原文 213k）· `payload.rs` ≈ 8.2k（原文 88k）
     // —— 门槛按现打值往下留一档，不贴着写。
+    // 〔C4d · 第四波 4B〕`history.rs` 那一格 30k → 20k：历史清单与注解那一族搬进本机常驻后端，剥完现打 29,494 字节
+    //   （起会话那几段一字未动 —— 本条要读的 export 都在那几段里）；按现打值往下留一档。
     assert!(
-        hist.len() > 30_000 && pay.len() > 5_000,
+        hist.len() > 20_000 && pay.len() > 5_000,
         "剥完只剩 history={} payload={} 字节 —— 剥法坏了，本条会零命中地绿",
         hist.len(),
         pay.len()

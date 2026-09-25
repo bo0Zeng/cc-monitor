@@ -175,7 +175,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # ─────────────────────────── 非装面 ───────────────────────────
     # 下面每一条都是「它不是装 / 卸 / 查装态的动作」。理由一律给**它到底在干什么**，
     # 不写「与安装无关」这种同义反复。
-    ("accounts.last-used", (NA, "—", "读账号最近用过谁")),
+    # 〔墓碑 · 第四波 C4d〕`accounts.last-used` · `history.list-projects` · `history.list-sessions` · `history.metadata` 四条随历史跨机 join
+    #   与注解读写搬进本机常驻后端（前端 `chan.call(<local>, …)`）⇒ 已不在 `LEDGER` 里，按 `usage.*` 同一个理由摘掉。
     # 〔墓碑 · 第四波 C4c〕`accounts.list` · `accounts.trust` · `app.backend-policy` 三条随对应 Tauri 命令改走通道
     #   （前端 `chan.call` 直接问后端 `accounts-list` / `accounts-trust` / `exit-policy-read|set`）⇒ 已不在 `LEDGER` 里，按 `usage.*` 同一个理由摘掉。
     # 〔墓碑 · 第四波 C4a〕`accounts.session-accounts` 随「某会话属哪个账号」远端 · 本机两条 Tauri 命令退役
@@ -209,9 +210,6 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
                                "装什么、查什么装态都不是它的事")),
     ("history.branch", (NA, "—", "会话历史")),
     ("history.delete", (NA, "—", "会话历史")),
-    ("history.list-projects", (NA, "—", "会话历史")),
-    ("history.list-sessions", (NA, "—", "会话历史")),
-    ("history.metadata", (NA, "—", "会话历史")),
     ("history.read-session", (NA, "—", "会话历史")),
     ("hooks.diagnose", (NA, "—",
                         "**只诊断**钩子，不装它（`TouchEffect::GenerateOnly`：产品自己不动手）")),

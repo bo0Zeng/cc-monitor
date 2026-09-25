@@ -193,3 +193,40 @@ fn this_module_holds_no_sync_rule() {
     );
     assert!(backend.contains("push_plan("));
 }
+
+/// 〔C4d · 第四波 4B〕跨半边：可达表登记那一条 —— 本侧发的三格 ＋ 读回的那一格 == 后端 `REGISTRY` 里 `remote-reach` 声明的 `fields`（两向），
+/// 且那条命令真在后端命令镜子里；发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
+///
+/// 守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 1 条）「可达表 origin → {dial, backend_path, 对面 id} 由 monitor 在
+/// 远端流握手成功那一刻交给本机后端」—— C4d 让它对每台远端都成立（不只认资产目录的那几台）。
+#[test]
+fn the_reach_registration_sends_what_the_backend_registers() {
+    let inbound =
+        std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/inbound.rs"))
+            .expect("读后端 inbound.rs");
+    let at = inbound
+        .find(&format!("name: \"{REACH_CMD}\""))
+        .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{REACH_CMD}`"));
+    let block = &inbound[at..at + inbound[at..].find("run:").expect("那一条的 run")];
+    let fields_line = block
+        .lines()
+        .find(|l| l.trim_start().starts_with("fields:"))
+        .expect("fields 那一行");
+    let declared: std::collections::BTreeSet<String> = fields_line
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect();
+    let args = args_for(&cfg()).unwrap();
+    let mut used: std::collections::BTreeSet<String> =
+        args.as_object().unwrap().keys().cloned().collect();
+    used.insert("reach".to_string());
+    assert_eq!(
+        declared, used,
+        "本侧发 / 读的字段与后端 `remote-reach` 声明的不相等（两向）"
+    );
+    let commands_block = &inbound[inbound.find("pub const COMMANDS").unwrap()..];
+    let commands_block = &commands_block[..commands_block.find("];").unwrap()];
+    assert!(commands_block.contains(&format!("\"{REACH_CMD}\"")));
+}

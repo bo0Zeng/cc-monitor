@@ -39,11 +39,8 @@ fn analyze_extracts_excerpt_title_cwd_count() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-#[test]
-fn truncate_is_char_safe() {
-    assert_eq!(truncate_chars("中文字符串", 3), "中文字");
-    assert_eq!(truncate_chars("ab", 120), "ab");
-}
+// 〔C4d〕`truncate_is_char_safe` 随被测的 `truncate_chars`〔散文墓碑〕一起退役：摘录改用 `search_core::truncate_excerpt`，
+//   「不劈码点」由 search-core 自己的判据守（`tests/bridge/crates/search-core/lib_tests.rs`）；本文件下面 C4d 那一节钉摘录的整形。
 
 /// Batch11-F32：sessionKind:"bg" 探测 → isBg。
 #[test]
@@ -216,5 +213,95 @@ fn list_sessions_rejects_symlink_escape() {
     symlink(&outside, projects.join("sneaky")).unwrap();
     // canonicalize 前缀校验解析 symlink 后落在 projects/ 外 → 拒绝
     assert!(list_sessions(&tmp, "sneaky").is_err());
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// 〔C4d · 第四波 4B〕会话清单那一行从此是本机与远端共用的唯一口径 —— 补上的三格 ＋ 摘录清洗
+// ════════════════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条）「本机后端 … 出成品 …（join 只一个家）」——
+// 本机会话清单从 monitor 那份（经记录解析器）换到这一行，monitor 那份有的三格这里要有，否则本机用户换读者那一刻丢 fork 树与改名后的标题。
+
+/// ★ fork 关系（首条带 `forkedFrom` 的 user / assistant）· `custom-title` 取最新 · 开始时刻取首条时间戳。
+#[test]
+fn c4d_the_row_carries_fork_parent_custom_title_and_first_timestamp() {
+    let tmp = std::env::temp_dir().join(format!("ccm-c4d-row-{}", std::process::id()));
+    let dir = fixture_project(&tmp, "proj-c4d");
+    let p = write_jsonl(
+        &dir,
+        "child.jsonl",
+        &[
+            r#"{"type":"file-history-snapshot","messageId":"x"}"#,
+            r#"{"type":"user","timestamp":"2026-09-25T01:02:03.456Z","cwd":"/w","forkedFrom":{"sessionId":"parent-sid","messageUuid":"m-1"},"message":{"role":"user","content":"<system-reminder>注入</system-reminder>占位问题\n第二行"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-09-25T01:02:04.000Z","forkedFrom":{"sessionId":"other","messageUuid":"m-2"},"message":{"role":"assistant","content":[]}}"#,
+            r#"{"type":"ai-title","aiTitle":"旧标题"}"#,
+            r#"{"type":"custom-title","customTitle":"改过的名字"}"#,
+        ],
+    );
+    let v = analyze_session(&p);
+    assert_eq!(v["forkedFromSessionId"], "parent-sid", "取首条那一个");
+    assert_eq!(v["forkedFromMessageUuid"], "m-1");
+    assert_eq!(v["aiTitle"], "改过的名字", "custom-title 在后 ⇒ 取它");
+    assert_eq!(
+        v["startedAtMs"],
+        crate::observe::search_query::parse_iso8601_ms("2026-09-25T01:02:03.456Z").unwrap()
+    );
+    assert_eq!(
+        v["firstUserExcerpt"], "占位问题 第二行",
+        "注入包装剥掉、换行折成空格"
+    );
+    // 没有 forkedFrom / 没有时间戳 ⇒ 两格 null、开始时刻退回文件时刻（不是 0）。
+    let q = write_jsonl(
+        &dir,
+        "plain.jsonl",
+        &[r#"{"type":"user","message":{"role":"user","content":"[Request interrupted by user]"}}"#],
+    );
+    let w = analyze_session(&q);
+    assert_eq!(w["forkedFromSessionId"], serde_json::Value::Null);
+    assert_eq!(w["forkedFromMessageUuid"], serde_json::Value::Null);
+    assert!(
+        w["startedAtMs"].as_i64().unwrap() > 0,
+        "没有时间戳也不许报 0"
+    );
+    assert_eq!(w["firstUserExcerpt"], "", "纯中断标记不是用户说的话");
+    // 摘录超长 ⇒ 120 个字符 ＋ `…`。
+    let long = "字".repeat(130);
+    let line = format!(r#"{{"type":"user","message":{{"role":"user","content":"{long}"}}}}"#);
+    let r = write_jsonl(&dir, "long.jsonl", &[line.as_str()]);
+    let x = analyze_session(&r);
+    assert_eq!(x["firstUserExcerpt"], format!("{}…", "字".repeat(120)));
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// ★ 这一行的键集合恒等（本机与远端两个出口读的是同一行；多一格 / 少一格 ⇒ 下游 join 那一层对不上）。
+#[test]
+fn c4d_the_row_has_exactly_these_keys() {
+    let tmp = std::env::temp_dir().join(format!("ccm-c4d-keys-{}", std::process::id()));
+    let dir = fixture_project(&tmp, "proj-keys");
+    let p = write_jsonl(
+        &dir,
+        "k.jsonl",
+        &[r#"{"type":"user","message":{"content":"x"}}"#],
+    );
+    let v = analyze_session(&p);
+    let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        vec![
+            "aiTitle",
+            "cwd",
+            "firstUserExcerpt",
+            "forkedFromMessageUuid",
+            "forkedFromSessionId",
+            "isBg",
+            "jsonlPath",
+            "messageCountApprox",
+            "sessionId",
+            "startedAtMs",
+            "updatedAtMs",
+        ]
+    );
     std::fs::remove_dir_all(&tmp).ok();
 }

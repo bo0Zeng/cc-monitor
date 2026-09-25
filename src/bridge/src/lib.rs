@@ -19,7 +19,6 @@
 //! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
 mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的是 monitor 自己那份别名文件，不是用户的 rc
-mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 CLAUDE_CONFIG_DIR
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
 mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上那一刻 / 看机器页前把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定）
@@ -67,7 +66,7 @@ mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monito
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 mod launch;
-mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
+mod local_accounts; // L3a 起：本机账号层 —— 今天只剩 `acct-iso` 两问的本机对侧（〔C4d〕本机清单的参照实现删了）
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
@@ -1268,10 +1267,9 @@ pub fn run() {
             // 给 Tauri 命令暴露 state。
             //
             // **v1.7.4 修回归**：v1.6.7 撤 bring_terminal_to_front 时把
-            // `app.manage(session_map.clone())` 也删了，但 history 命令
-            // （list_history_projects / list_history_sessions_in_project）也接
+            // `app.manage(session_map.clone())` 也删了，但当年的历史清单命令也接
             // `State<Arc<SessionMap>>`，导致历史浏览器打不开，报"state not managed
-            // for field `map`"。这里补回去。
+            // for field `map`"。这里补回去。〔C4d〕那两条命令退役了（清单归本机后端），`SessionMap` 仍有别的命令接。
             app.manage(session_map.clone());
             app.manage(replay.clone());
             app.manage(bind_registry.clone());
@@ -1381,14 +1379,14 @@ pub fn run() {
             get_log_file_info,
             open_log_file,
             open_log_dir,
-            history::list_history_projects,
-            history::stream_history_sessions_in_project,
+            // 〔C4d · 第四波 4B〕历史清单两条（本机项目 · 展开一个项目）与远端项目清单、改注解、上次账号表那五条退役：
+            //   join 与注解搬进本机常驻后端（`history-projects` / `history-sessions` / `history-annotate` / `history-last-accounts`），
+            //   界面经通道问（`src/history-reads.ts`）。
             history::stream_read_session_jsonl,
             // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的调用点（〔C4b〕骨架索引那一条改走通道）。
             session_skeleton::read_session_range,
             session_skeleton::read_session_lines,
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
-            remote_history::list_remote_history_projects,
             // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
             // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
             sftp::install_remote_alias_block,
@@ -1402,8 +1400,6 @@ pub fn run() {
             acct_iso_deploy::remote_acct_iso_shellinit,
             history::delete_history_session,
             history::create_branch_session,
-            history::update_history_metadata,
-            history::list_last_accounts,
             history::resume_history_session,
             // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
             history::new_local_session,
@@ -1773,7 +1769,7 @@ async fn read_apikey_credentials_status(
 ///
 /// # 为什么是一条**只答本机**的命令，而不是往账号列表里加两个字段
 ///
-/// 账号列表那份结构（`accounts::RemoteAccount`）**同时**装着远端账号，
+/// 账号列表那份结构（当年的 `accounts::RemoteAccount`〔散文墓碑〕，今天是后端成品 ＋ `src/accounts.ts::Account`）**同时**装着远端账号，
 /// 而「走不走 apikey 端点改写」这件事**只对本机成立** —— 中转是**每台机器自己的一个进程**
 /// （`relay/mod.rs` 自陈「独立进程」；注入的是那个 agent 进程自己的 `ANTHROPIC_BASE_URL`，
 /// 而 `payload::relay_base_url` 拼的是**回环**地址，回环是**自指**的）

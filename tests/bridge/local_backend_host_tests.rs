@@ -124,10 +124,15 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     let envs = relay_host_envs();
     let mut keys: Vec<&str> = envs.iter().map(|(k, _)| k.as_str()).collect();
     keys.sort_unstable();
+    // 〔C4d · 第四波 4B〕+1 格 `CCM_HISTORY_METADATA`：历史注解的读写者换成本机后端，那份文件的路径同样显式交。
     assert_eq!(
         keys,
-        vec!["CCM_APIKEY_CREDENTIALS", "CCM_RELAY_PORT"],
-        "交给本机后端的环境不是恰好中转那两格（多一格 = 夹带；少一格 = 端口或凭据路径靠后端自己猜）"
+        vec![
+            "CCM_APIKEY_CREDENTIALS",
+            "CCM_HISTORY_METADATA",
+            "CCM_RELAY_PORT"
+        ],
+        "交给本机后端的环境不是恰好那三格（多一格 = 夹带；少一格 = 端口 / 凭据路径 / 注解路径靠后端自己猜）"
     );
     let get = |k: &str| envs.iter().find(|(kk, _)| kk == k).map(|(_, v)| v.clone());
     assert_eq!(
@@ -139,6 +144,13 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
         get("CCM_APIKEY_CREDENTIALS"),
         crate::creds_store::resolve_path().map(|p| p.display().to_string()),
         "凭据路径不是 monitor 写它的那条路 —— 两侧读写两份文件，症状是一个静默的 404"
+    );
+    // 🔴 〔C4d〕注解路径**就是** monitor 从前读写那份文件的那一个（同一个函数算）—— 用户的星标 / 改名 / 隐藏一条不丢，
+    //   前提是后端读写的恰是这一份（主会话 09-25 裁「文件留在原处、同一路径」）。
+    assert_eq!(
+        get("CCM_HISTORY_METADATA"),
+        crate::history::metadata_path().map(|p| p.display().to_string()),
+        "注解路径不是 monitor 从前读写的那一份 —— 换读写者那一刻用户的注解看起来就全丢了"
     );
 
     let prod =
@@ -3978,4 +3990,29 @@ fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
             "take_start_refusal()",
         ],
     );
+}
+
+/// 〔C4d · 第四波 4B〕monitor 交注解路径用的环境变量名 == 后端认的那一个（两侧对拍；读后端源码现抠，运行期读、不是编译期边）。
+///
+/// 守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条，逐字）「文件留在原处、同一路径，不迁移、一条不丢」——
+/// 名字一漂，后端就收不到路径 ⇒ 明说不知道注解在哪（不会丢，但界面上注解全成了「不知道」）。
+#[test]
+fn the_annotation_path_env_name_is_the_one_the_backend_reads() {
+    let backend = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/history_annotations.rs"),
+    )
+    .expect("读后端那份源码");
+    let prod = guard_core::production_code(&backend);
+    let at = guard_core::find_pinned(&prod, "pub(crate) const ENV_PATH: &str = \"")
+        .unwrap_or_else(|e| panic!("后端那一侧的环境变量名常量不是恰好一处：{e}"));
+    let rest = &prod[at + "pub(crate) const ENV_PATH: &str = \"".len()..];
+    let name = &rest[..rest.find('"').expect("常量没收尾")];
+    let envs = relay_host_envs();
+    assert!(
+        envs.iter().any(|(k, _)| k == name),
+        "后端认 `{name}`，monitor 交的键是 {:?} —— 两侧对不上，后端收不到注解路径",
+        envs.iter().map(|(k, _)| k).collect::<Vec<_>>()
+    );
+    // 反空真：这把尺子分得出「不是那个名字」。
+    assert!(!envs.iter().any(|(k, _)| k == "CCM_HISTORY_METADATA_X"));
 }
