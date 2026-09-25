@@ -2,14 +2,14 @@
 //!
 //! | 先前 | 今天 | 它是什么 |
 //! |---|---|---|
-//! | `r.agent` | `r.key.seg1` | 路径第 1 段 —— 层 1 不解释它 |
-//! | `r.account` | `r.key.seg2` | 路径第 2 段 —— 层 1 不解释它 |
-//! | `r.key` | `r.stream` | 路径第 3 段 —— 层 1 那条流的名字 |
+//! | `r.agent` | `r.key.seg1` | 路径第 1 段 —— 中转不解释它 |
+//! | `r.account` | `r.key.seg2` | 路径第 2 段 —— 中转不解释它 |
+//! | `r.key` | `r.stream` | 路径第 3 段 —— 中转那条流的名字 |
 //! | （没有） | `r.mode` | 哪个前缀进来的 |
 //!
 //! **断言的内容一条没改** —— 改的只是怎么称呼那几个槽位。下面散文里仍然出现
 //! 「agent」「账号」这两个词：那是**在说槽位里装的是什么**（规格的语言），
-//! 不是在说层 1 的类型里有这两个名字。〔条 61：`C1` 的人群不含注释。〕
+//! 不是在说中转的类型里有这两个名字。〔条 61：`C1` 的人群不含注释。〕
 
 use super::*;
 
@@ -28,7 +28,7 @@ fn strips_the_prefix_and_keeps_the_rest_verbatim() {
 ///
 /// # 它钉的是哪一句
 ///
-/// `20 §0` 逐字：「路由的线格式已经是对的，四个槽位不用动 —— 要动的只是层 1 怎么称呼
+/// `20 §0` 逐字：「路由的线格式已经是对的，四个槽位不用动 —— 要动的只是中转怎么称呼
 /// 它们」。⇒ 加 `/t/` **不许**顺手换段序、不许多剥一段、不许对某一段放宽白名单。
 ///
 /// # ⚠ 分母：本条量的是**这两条**（`/s/` 与 `/t/`），不是「所有前缀」
@@ -284,22 +284,22 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
     );
 }
 
-/// ★★★ **跨半边对拍**：「凭据文件那些行属于哪一家」在后端（层 2 的
-/// `accounts::apikey::CREDENTIALS_FILE_AGENT`）与 monitor（起会话时判「要不要改写 apikey 端点」那一格，
+/// ★★★ **跨半边对拍**：「凭据文件那些行属于哪一家」在后端（上游选择的
+/// `accounts::upstream::CREDENTIALS_FILE_AGENT`）与 monitor（起会话时判「要不要改写 apikey 端点」那一格，
 /// `payload.rs::APIKEY_TABLE_AGENT`）**是同一个值**〔条 49〕。
 ///
 /// 两侧**异源**：本侧是后端那个常量，那一侧是 `payload.rs` 源码里那一行的**字面量**
 /// （`include_str!` 现抠，不是 `use`）。漂开的症状：monitor 给 A 家注入 `/s/A/…`，
 /// 而后端把那些行挂在 B 家名下 ⇒ **每一发 404**。
 ///
-/// # ⚠ 它为什么住在**层 1** 的判据文件里（照实写）
+/// # ⚠ 它为什么住在**中转**的判据文件里（照实写）
 ///
-/// 它钉的是层 2 的一个事实，本该住 `table_tests.rs`。挪过来只为一件事：
+/// 它钉的是上游选择的一个事实，本该住 `table_tests.rs`。挪过来只为一件事：
 /// **跨半边的编译期边**有一张默认拒绝的登记表（`src/bridge/src/cross_half_edge_registry.rs`），
 /// 而 `route_tests.rs → payload.rs` 这条边**已经登记着**（上面那条对拍用的就是它）。
 /// 在 `table_tests.rs` 里再开一条 = 新登记一条边，而那张表不在本拍的写区。
-/// ⇒ 复用这一条，**边的集合一格不变**。它只读层 2 那一个常量，层 1 的生产段不因此多认识层 2 一个字
-/// （`account_layer_guard` 只扫生产段，判据段不在它的人群里）。
+/// ⇒ 复用这一条，**边的集合一格不变**。它只读上游选择那一个常量，中转的生产段不因此多认识上游选择一个字
+/// （`upstream_selection_guard` 只扫生产段，判据段不在它的人群里）。
 ///
 /// ⚠ 买不到：monitor 那一侧**真的拿它去判了**。那一格由 monitor 自己的判据量
 /// （`payload_tests::another_agent_with_the_same_account_id_is_not_routed_to_that_row`）。
@@ -314,7 +314,7 @@ fn the_credentials_file_agent_is_the_same_on_both_halves() {
     let tail = &MONITOR_PAYLOAD_RS[at + needle.len()..];
     let theirs = &tail[..tail.find('"').expect("那个字面量没有收尾的引号")];
     assert!(!theirs.is_empty(), "抠出来的是空串 —— 抽取器坏了");
-    let ours = crate::accounts::apikey::CREDENTIALS_FILE_AGENT;
+    let ours = crate::accounts::upstream::CREDENTIALS_FILE_AGENT;
     assert_eq!(
         theirs, ours,
         "monitor 认为凭据文件的行属于 `{theirs}`，后端把它们挂在 `{ours}` 名下"
@@ -326,7 +326,7 @@ const MONITOR_PAYLOAD_SRC: &str =
     include_str!("../../../src/bridge/src/backend/control/payload.rs");
 
 /// ★★★ 🔴 **跨半边对拍**〔`设计/20 §7` 步 4 · 条 59〕：monitor 注入闸认为「登记了默认上游」的那几家
-/// （`payload.rs::AGENTS_WITH_DEFAULT_UPSTREAM`）⇔ 后端 `accounts::apikey::AGENT_UPSTREAMS` 的 agent 列，**两向集合相等**。
+/// （`payload.rs::AGENTS_WITH_DEFAULT_UPSTREAM`）⇔ 后端 `accounts::upstream::AGENT_UPSTREAMS` 的 agent 列，**两向集合相等**。
 ///
 /// 两侧**异源**：本侧是后端运行期那张表，那一侧是 monitor 源码里那一行的**字面量**（现抠，不是 `use`）。
 /// 漂开的两个方向各有各的症状：
@@ -353,7 +353,7 @@ fn the_agents_with_a_default_upstream_are_the_same_on_both_halves() {
             "抠出来的 {a:?} 不像一个路由段 —— 抽取器坏了"
         );
     }
-    let ours: std::collections::BTreeSet<String> = crate::accounts::apikey::AGENT_UPSTREAMS
+    let ours: std::collections::BTreeSet<String> = crate::accounts::upstream::AGENT_UPSTREAMS
         .iter()
         .map(|a| a.agent.to_string())
         .collect();
@@ -364,7 +364,7 @@ fn the_agents_with_a_default_upstream_are_the_same_on_both_halves() {
 }
 
 /// ★★★ **跨半边对拍**：monitor 真的拼出来的 `/t/` 样例（`payload.rs::RELAY_PASSTHROUGH_SAMPLE`），
-/// 本解析器读成**直通模式**、四段各落各位；再交给**生产段那张决策表**（`accounts::apikey::decide`）：
+/// 本解析器读成**直通模式**、四段各落各位；再交给**生产段那张决策表**（`accounts::upstream::decide`）：
 /// 那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 502。
 ///
 /// ⇒ 「monitor 注入的那一形，后端真的会照直通处理」这一截从源码到决策表一路是真的；
@@ -393,11 +393,11 @@ fn the_passthrough_sample_the_monitor_side_builds_parses_as_passthrough() {
     assert_eq!(r.rest, "/v1/messages");
 
     // 交给生产段那张决策表（空表 = 这个号在 apikey 表里没有行，即订阅号）。
-    let table = crate::accounts::apikey::table::RoutingTable::build(std::iter::empty());
-    let ups = crate::accounts::apikey::Upstreams::from_env(&|_| None).expect("内置默认");
+    let table = crate::accounts::upstream::table::RoutingTable::build(std::iter::empty());
+    let ups = crate::accounts::upstream::Upstreams::from_env(&|_| None).expect("内置默认");
     let said = |k: &super::super::RouteKey| {
         let mut out = String::new();
-        crate::accounts::apikey::decide(&table, &ups, r.mode, k, &mut |d| {
+        crate::accounts::upstream::decide(&table, &ups, r.mode, k, &mut |d| {
             out = match d {
                 super::super::Destination::Passthrough { upstream } => {
                     format!("pass {}", upstream.host)
