@@ -982,8 +982,10 @@ fn the_exit_arm_collects_no_relay() {
         2,
         "正控：退出臂里 `kill_on_exit_now(` 不是恰好一处 —— 臂切错了，下面的零命中是空真"
     );
+    // ⚠ 刻意是**子串**不是词边界：`contains_word` 认不出 `relay_running` / `relay_host_envs` 这种
+    //   带下划线的名字（死值验 M6 第一版就是这么绿的：臂里插一句 `relay_running()` 它照过）。
     assert!(
-        !guard_core::contains_word(body, "relay"),
+        body.split("relay").count() == 1,
         "退出臂里又出现了 `relay` —— 有人又在这条臂里收中转了。\n\
          中转住本机常驻后端进程里，随它按「退出行为」留或退（V107）；monitor 再收一次就是第二个决策处。\n实得臂体：{body}"
     );

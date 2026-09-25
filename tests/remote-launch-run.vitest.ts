@@ -17,6 +17,8 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteLauncher,
   runRemoteAttach, POSIX_NO_WINDOW_MARKER,
+  // 〔RL1〕拉起之前问中转地址的那一口（attach 那一道闸直接量它）。
+  withRelayEndpoint,
   // 🔴 `设计/80 §8.7` 步 3：全仓唯一的启动期令牌铸币口。
   mintRbindToken,
   // 🔴 `K-R109` `KR109D3`：wire 上那两态同形，是「兜底那条路走得到」的第一环。
@@ -1184,11 +1186,16 @@ describe("RL1 中转地址进远端载荷", () => {
     for (const r of reqs) expect(relayOps(r)).toEqual([]);
   });
 
-  it("★ attach 一个 agent 都不起 ⇒ 不问中转地址", async () => {
+  it("★ attach 一个 agent 都不起 ⇒ 不问中转地址（执行器那一层 ＋ `withRelayEndpoint` 自己那一道闸）", async () => {
     const { asked } = route(() => Promise.resolve(URL_FROM_BACKEND));
     stubClipboard(vi.fn().mockResolvedValue(undefined));
     await runRemoteAttach("devbox", "a1-cc");
     expect(asked).toEqual([]);
+    // 执行器今天不经它，但它是导出的口 —— 拿 attach 的 plan 直接喂，闸本身要挡得住（死值验 T2 第一版只量到上面那半）。
+    const { ctx, plan } = planAttach("a2-cc");
+    const out = await withRelayEndpoint("devbox", ctx, plan);
+    expect(asked).toEqual([]);
+    expect(out).toBe(plan);
   });
 
   it("★ 后端拒了（apikey 号的中转起不来）⇒ 不拉起、toast 带那句理由", async () => {
