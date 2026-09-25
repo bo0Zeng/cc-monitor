@@ -28,6 +28,7 @@ use crate::messages::JsonlRecord;
 ///
 /// 〔ST3〕`origin` = 这一行是从哪台机器读来的。**只用于记账**（看不懂的东西记在那台名下），
 /// 解析本身与它无关。没有缺省：缺省记在本机名下 = 远端的记录悄悄记成本机的。
+/// 每个调用方记在哪台，登记在 `drift_ledger_tests.rs::FEEDERS`（两向相等）。
 pub fn parse_line(
     origin: &crate::origin::Origin,
     raw: &str,
