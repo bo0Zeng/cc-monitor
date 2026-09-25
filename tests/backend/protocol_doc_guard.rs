@@ -119,6 +119,12 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "asset_sync.rs",
         include_str!("../../src/backend/asset_sync.rs"),
     ),
+    // 〔C4d · 第四波 4B〕历史跨机 join：本机后端在远端跑 `--list-projects` / `--list-sessions`（那台的 CLI 老子命令）——
+    //   同 `asset_sync.rs`：它不分派，是**发**这两个子命令的一方；登记之后那两个字面量受对拍约束。
+    (
+        "history_join.rs",
+        include_str!("../../src/backend/history_join.rs"),
+    ),
     (
         "observe/history_query.rs",
         include_str!("../../src/backend/observe/history_query.rs"),

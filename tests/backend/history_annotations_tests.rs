@@ -150,7 +150,10 @@ fn an_unreadable_file_is_never_overwritten() {
         ));
     }
     // 临时文件没留下（写口的临时文件名是 `<那份文件名>.<pid>.ccm-tmp`）。
-    let tmp = d.join(format!("history-metadata.json.{}.ccm-tmp", std::process::id()));
+    let tmp = d.join(format!(
+        "history-metadata.json.{}.ccm-tmp",
+        std::process::id()
+    ));
     assert!(!tmp.exists(), "拒写之后留下了临时文件");
     let _ = std::fs::remove_dir_all(&d);
 }

@@ -1313,12 +1313,19 @@ fn extract_cwd_from_head(p: &Path) -> Option<String> {
     None
 }
 
-/// 单个会话的元数据提取（整文件扫描，跑在远端 CPU 上）：
+/// 单个会话的元数据提取（整文件扫描，跑在那台机器的 CPU 上）：
 /// - messageCountApprox = 非空行数
-/// - firstUserExcerpt = 首条"真用户输入"的前 120 字符（跳过 isMeta / 工具结果 /
-///   interrupt 标记，对齐本地口径的精简版）
-/// - aiTitle = 最后一条 ai-title 记录（Claude 会多次更新，取最新）
+/// - firstUserExcerpt = 首条"真用户输入"（跳过 isMeta / 工具结果 / 纯中断标记，剥 CLI 注入的包装）的前 120 字符
+///   （换行折成空格、超了加 `…`）
+/// - aiTitle = 最后一条标题记录（`ai-title` 的 `aiTitle` 与 CC v2.1.x 起的 `custom-title` 的 `customTitle`，取最新）
 /// - cwd = 首个带 cwd 的记录
+/// - startedAtMs = 首条 user / assistant 记录的 `timestamp`；一条都解析不出 ⇒ 文件建立时刻（拿不到 ⇒ 修改时刻）
+/// - forkedFromSessionId / forkedFromMessageUuid = 首条带 `forkedFrom` 的 user / assistant 记录（`/branch` 分叉来的）
+///
+/// 〔C4d · 第四波 4B〕**这一行从此是本机与远端共用的唯一口径**：本机的历史会话清单此前由 monitor 进程内自己扫
+/// （`history·rs::analyze_jsonl`〔散文墓碑〕，经记录解析器），与这里的「精简版」各算各的 —— 开始时刻 / 摘录 / 标题 / fork 关系
+/// 四格两边不一样。历史跨机 join 进了本机后端之后本机也读这一行 ⇒ 把 monitor 那份有、这里没有的三格（fork 关系 ·
+/// `custom-title` · 首条时间戳）补进来，摘录的清洗与截断改用 `search-core` 那一份（与全文搜索同一个家）。条数仍是「非空行数」。
 fn analyze_session(p: &Path) -> serde_json::Value {
     let session_id = p
         .file_stem()
@@ -1328,6 +1335,8 @@ fn analyze_session(p: &Path) -> serde_json::Value {
     let mut excerpt = String::new();
     let mut ai_title: Option<String> = None;
     let mut cwd: Option<String> = None;
+    let mut started_at: Option<i64> = None;
+    let mut forked: Option<(String, String)> = None;
     // Batch11-F32：CC 2.1.x 后台分身会话（←/bg/退出转后台 fork 出的 worker）——
     // 记录级 sessionKind:"bg" 是官方 resume 选择器同款识别信号（内部字段无兼容
     // 承诺，缺失=false 安全降级）。历史列表标 ⚙ 徽标防 resume 选错克隆。
@@ -1359,10 +1368,28 @@ fn analyze_session(p: &Path) -> serde_json::Value {
                     }
                 }
             }
-            match v.get("type").and_then(|t| t.as_str()) {
+            let kind = v.get("type").and_then(|t| t.as_str());
+            if matches!(kind, Some("user") | Some("assistant")) {
+                if started_at.is_none() {
+                    started_at = v
+                        .get("timestamp")
+                        .and_then(|t| t.as_str())
+                        .and_then(crate::observe::search_query::parse_iso8601_ms);
+                }
+                if forked.is_none() {
+                    forked = forked_from(&v);
+                }
+            }
+            match kind {
                 Some("ai-title") => {
                     if let Some(t) = v.get("aiTitle").and_then(|t| t.as_str()) {
                         ai_title = Some(t.to_string()); // 取最新（持续覆盖）
+                    }
+                }
+                // CC v2.1.x 起标题记录改名 `custom-title` / `customTitle`（旧的 `ai-title` 在历史记录里仍会出现，两个都认）。
+                Some("custom-title") => {
+                    if let Some(t) = v.get("customTitle").and_then(|t| t.as_str()) {
+                        ai_title = Some(t.to_string());
                     }
                 }
                 Some("user")
@@ -1370,8 +1397,9 @@ fn analyze_session(p: &Path) -> serde_json::Value {
                         && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true) =>
                 {
                     if let Some(text) = user_text(&v) {
-                        if !text.starts_with("[Request interrupted") {
-                            excerpt = truncate_chars(&text, 120);
+                        let cleaned = search_core::clean_user_text(&text);
+                        if !cleaned.is_empty() {
+                            excerpt = search_core::truncate_excerpt(&cleaned, 120);
                         }
                     }
                 }
@@ -1379,17 +1407,32 @@ fn analyze_session(p: &Path) -> serde_json::Value {
             }
         }
     }
+    let (forked_sid, forked_uuid) = match forked {
+        Some((s, u)) => (Some(s), Some(u)),
+        None => (None, None),
+    };
     serde_json::json!({
         "sessionId": session_id,
         "jsonlPath": p.to_string_lossy(),
-        "startedAtMs": created_ms_or_mtime(p),
+        "startedAtMs": started_at.unwrap_or_else(|| created_ms_or_mtime(p)),
         "updatedAtMs": mtime_ms(p),
         "messageCountApprox": count,
         "firstUserExcerpt": excerpt,
         "aiTitle": ai_title,
         "cwd": cwd,
         "isBg": is_bg,
+        "forkedFromSessionId": forked_sid,
+        "forkedFromMessageUuid": forked_uuid,
     })
+}
+
+/// 一条记录的 `forkedFrom`（`/branch` 分叉出来的会话，每条复制过来的记录都带着）→ (源会话 id, 分叉处的消息 uuid)。
+fn forked_from(v: &serde_json::Value) -> Option<(String, String)> {
+    let f = v.get("forkedFrom")?;
+    Some((
+        f.get("sessionId")?.as_str()?.to_string(),
+        f.get("messageUuid")?.as_str()?.to_string(),
+    ))
 }
 
 /// user 记录的纯文本内容：message.content 为字符串直接用；为数组取首个 text 块。
@@ -1411,10 +1454,8 @@ fn user_text(v: &serde_json::Value) -> Option<String> {
     None
 }
 
-/// 按字符截断（不劈 UTF-8 码点；中文场景 byte 截断会 panic/乱码）。
-fn truncate_chars(s: &str, max: usize) -> String {
-    s.chars().take(max).collect()
-}
+// 〔C4d〕按字符截断的那一份（`truncate_chars`〔散文墓碑〕）没了读者：摘录改用 `search_core::truncate_excerpt`（同样不劈码点，
+//   另把换行折成空格、超了加 `…` —— 与本机那条路从前的口径、与全文搜索的标题摘录同一个家）。
 
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/history_query_tests.rs"]

@@ -112,6 +112,38 @@ pub(crate) struct Adapter {
     /// ⚠ 收进注册表而不是让 `asset_catalog.rs` 直呼 `agents::<名>::` —— 理由与 [`Adapter::account_env`] 同一条：
     /// 后者会让 `agent_locality_guard` 判据④的读数（只许降）凭空上涨。
     pub(crate) assets: Option<AssetFace>,
+    /// 〔C4d · 第四波 4B〕这一家的**合成历史**面：它的会话不在「按项目目录分」的记录树里（Codex 按日期分），
+    /// 历史清单要由通用层按 cwd 分组合成项目。`None` = 这一家的历史走记录树那一条（Claude）或没有历史。
+    ///
+    /// ⚠ 收进注册表而不是让 `history_join.rs` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
+    pub(crate) history: Option<HistoryFace>,
+}
+
+/// 〔C4d〕一家的合成历史面：函数指针（同 [`Adapter::home`]，不立 trait）。
+#[derive(Clone, Copy)]
+pub(crate) struct HistoryFace {
+    /// 这台机器上这一家的会话（没装 ⇒ 空）。
+    pub(crate) sessions: fn() -> Vec<SynthSession>,
+    /// 一份会话的首条真用户话（列表摘要）。
+    pub(crate) excerpt: fn(&Path) -> String,
+}
+
+/// 〔C4d〕合成历史里的一个会话（通用层按 `cwd` 分组成项目）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SynthSession {
+    pub sid: String,
+    pub path: PathBuf,
+    /// 分组键；缺 ⇒ 空串（归「(<kind>)」组）。
+    pub cwd: String,
+    pub mtime_ms: i64,
+}
+
+/// 〔C4d〕注册表里有合成历史面的每一家：`(kind, 面)`（注册序）。
+pub(crate) fn history_faces() -> Vec<(&'static str, HistoryFace)> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.history.map(|h| (a.kind, h)))
+        .collect()
 }
 
 /// 〔AS2〕一家的资产面：函数指针（同 [`Adapter::home`]，不立 trait）。两件知识：怎么扫 · skill 住哪。
@@ -160,12 +192,12 @@ pub(crate) fn skills_root() -> Option<PathBuf> {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
     //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY) },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

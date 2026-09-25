@@ -215,6 +215,12 @@ mod tests {
              注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
+            "history_join",
+            "〔C4d · 第四波 4B〕历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（记录树 ＋ 合成历史 ＋ \
+             pidfile 判活 ＋ 远端经 `remote_ask`，并上注解）。它归 backend-core 是因为主会话 09-25 裁「join 只一个家，在本机常驻后端」。\
+             **零写盘**：注解只读（`history_annotations::load`）",
+        ),
+        (
             "remote_ask",
             "〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
              帧面 `remote-reach`。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\

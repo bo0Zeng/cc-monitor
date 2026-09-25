@@ -3617,6 +3617,16 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ), // 〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑
         ("src/bridge/src/local_accounts.rs", "list_from_dir", 1), // 〔C4d〕本机账号参照实现删了，点旧名的散文挂墓碑
         ("tests/bridge/local_accounts_tests.rs", "list_from_dir", 1), // 〔C4d〕本机账号参照实现删了，点旧名的散文挂墓碑
+        (
+            "tests/backend/read_face_tests.rs",
+            "line_shaped_answers_carry_the_rows",
+            1,
+        ), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
+        (
+            "tests/backend/observe/history_query_tests.rs",
+            "truncate_is_char_safe",
+            1,
+        ), // 〔C4d〕摘录截断改用 search-core，旧判据名挂墓碑
     ];
 
     let corpus = dead_name_corpus();
@@ -4065,6 +4075,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/exec_site_registry_tests.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/bridge/remote_history_tests.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/backend/observe/accounts_query_tests.rs", 1), // 〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑
+        ("src/backend/agents/codex/history.rs", 2), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
+        ("src/backend/observe/history_query.rs", 2), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
+        ("tests/backend/observe/history_query_tests.rs", 1), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
+        ("tests/backend/read_face_tests.rs", 1), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

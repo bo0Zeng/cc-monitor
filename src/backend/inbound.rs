@@ -1422,28 +1422,37 @@ pub const REGISTRY: &[CommandSpec] = &[
     //
     // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
     //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
+    // 〔C4d · 第四波 4B〕这两条**出成品**：历史跨机 join 的唯一的家（`history_join.rs`）—— 这台（记录树 ＋ 合成历史 ＋ pidfile 判活）
+    //   或可达表里的那一台（`remote_ask` 问它的 CLI 老子命令 `--list-projects` / `--list-sessions`），并上这台的注解。
+    //   真异步（远端那一跳要等）；本机扫盘那一段挪到阻塞线程池（`history_join::blocking`）。
     CommandSpec {
         name: "history-projects",
         doc_anchor: Some("#### `history-projects`"),
-        codes: &["failed", "too_large"],
-        fields: &["lines"],
-        takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::read_face::answer(&r.cmd, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+        codes: &["bad_args", "failed", "too_large", "unreachable"],
+        fields: &["notice", "origin", "rows"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::history_join::answer_projects(r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {
         name: "history-sessions",
         doc_anchor: Some("#### `history-sessions`"),
-        codes: &["bad_args", "failed", "too_large"],
-        fields: &["lines", "project_dir"],
+        codes: &["bad_args", "failed", "too_large", "unreachable"],
+        fields: &["notice", "origin", "project_dir", "rows"],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::read_face::answer(&r.cmd, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::history_join::answer_sessions(r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {

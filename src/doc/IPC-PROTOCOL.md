@@ -1859,28 +1859,41 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 - 八条全在阻塞档（做文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
 - 失败的 code 都是**命令级**的；读失败 `failed`，参数缺或类型不对 `bad_args`。
 
-#### `history-projects`：列全部项目（**不读 stdin**）
+#### `history-projects`：列全部项目（〔C4d · 第四波 4B〕**出成品**：并上注解 ＋ 判活，远端经本机后端问）
+
+历史跨机 join 的唯一的家是**本机常驻后端**（主会话 09-25 裁；实现 `history_join.rs`）。`origin` 缺席 = 这台机器：记录树里的项目（`--list-projects` 那一行）＋ 合成历史（Codex 按 cwd 分组，项目键 `codex:<cwd>`）＋ 这台后端自己判活（pidfile）；
+`origin` 给了 = 可达表里的那一台（`remote-reach` 登记的）：本机后端沿池里那条 SSH 在那台跑 `--list-projects`（CLI 老子命令，stdout 形状一个字节没变 ⇒ **那台的后端不必升级**），判活「不知道」。
+两支都并上**这台**的注解（`history-annotate` 那一份：星标数 / 隐藏数；读不到 ⇒ 两个数 `null`、`notice` 说为什么）。项目按「活的 → 有星标的 → 最近动过的」排。
 
 ```text
-→ {"id":"q1","cmd":"history-projects","args":{}}
-← {"kind":"reply","id":"q1","ok":true,"data":{"lines":["{\"dirName\":…}", …]}}
+→ {"id":"q1","cmd":"history-projects","args":{"origin":"dev"}}
+← {"kind":"reply","id":"q1","ok":true,"data":{"rows":[{"projectPath":"/home/u/proj","projectName":"proj","projectDir":"-home-u-proj","sessionCount":3,"starredCount":1,"hiddenCount":0,"lastActivity":1727250000000,"hasLive":null,"origin":"dev"}],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `lines` | ← | 每项目一行，形状同 `--list-projects`（含 `sessionIds`） |
+| `origin` | → | 可缺席：那台的名字（可达表的键）。缺席 = 这台 |
+| `rows` | ← | 每项目一行：`projectPath` · `projectName` · `projectDir`（懒加载的键，原样交回 `history-sessions`）· `sessionCount` · `starredCount` / `hiddenCount`（`null` = 不知道，**不是 0**）· `lastActivity`（毫秒）· `hasLive`（`null` = 这条路上答不了）· `origin`（远端那台才有） |
+| `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
 
-#### `history-sessions`：列一个项目下的会话
+**错误码**：`bad_args`（`origin` 空串 / 不是串）· `failed`（这台的记录树读不动）· `unreachable`（可达表里没有那一台 / 那台问不出来 —— 带那台的名字与原因）· `too_large`。
+⚠ **CLI 面也有它**（`--history-projects`，入参从 stdin 读）；一次性进程的可达表是空的 ⇒ 只答得了这台。
+
+#### `history-sessions`：列一个项目下的会话（〔C4d · 第四波 4B〕**出成品**，同上）
 
 ```text
-→ {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj"}}
-← {"kind":"reply","id":"q2","ok":true,"data":{"lines":["{\"sessionId\":…}", …]}}
+→ {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj","origin":"dev"}}
+← {"kind":"reply","id":"q2","ok":true,"data":{"rows":[{"sessionId":"0f…","projectPath":"/home/u/proj","projectName":"proj","aiTitle":null,"firstUserExcerpt":"…","startedAt":1727250000000,"updatedAt":1727250001000,"jsonlPath":"/home/u/.claude/projects/-home-u-proj/0f….jsonl","isLive":null,"messageCountApprox":12,"isBg":false,"starred":false,"customTitle":null,"hidden":false,"origin":"dev"}],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `project_dir` | → | 项目目录名（不是路径；含分隔符 / `..` ⇒ `failed`） |
-| `lines` | ← | 每会话一行，形状同 `--list-sessions` |
+| `project_dir` | → | `history-projects` 给的那个项目键：记录树的项目目录名（不是路径；含分隔符 / `..` ⇒ `bad_args`），或合成历史的 `<kind>:<cwd>`（只在这台） |
+| `origin` | → | 同 `history-projects` |
+| `rows` | ← | 每会话一行：`sessionId` · `projectPath` · `projectName` · `aiTitle` · `firstUserExcerpt` · `startedAt` / `updatedAt`（毫秒）· `jsonlPath` · `isLive`（`null` = 答不了）· `messageCountApprox` · `isBg` · `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（`/branch` 分叉来的才有）· `origin`（远端那台才有） |
+| `notice` | ← | 同 `history-projects` |
+
+**错误码**：`bad_args` · `failed` · `unreachable` · `too_large`。⚠ 远端那一支在那台跑 `--list-sessions <project_dir>`。
 
 #### `history-search`：全文搜索
 
