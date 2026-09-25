@@ -59,36 +59,8 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
     );
 }
 
-/// 〔RL1 · V107〕M3：**`relay_running` 真的去连那个口**，不是一个常量、也不是一张内存表。
-///
-/// 先前它读 monitor 自己的句柄表（`真相源/70 §7b`：跨 monitor 重启认不出上一次那一个）。
-/// 中转住进本机常驻后端之后，monitor 手里没有句柄 ⇒ 判准换成「回环上那个口有没有人在听」
-/// （与远端 `relay-status` 同一个判准）。
-///
-/// ① 行为：本条自己开一个口 ⇒ `relay_listening_at` 答真；关掉 ⇒ 答假（异源：口是本条开的，不是被测函数开的）。
-/// ② 生产那一格问的是**注入侧那个常量**（`payload::RELAY_PORT`）：⚠ 这一格是**文本**，如实登记 ——
-///    按行为量要在判据里去碰 8788，而这台机器上用户自己的中转可能正听着它（红线：不碰用户的东西）。
-///    绕过形态：把 `RELAY_PORT` 换成另一个常量 ⇒ 本格红；在函数体里算出来扔掉、另问一个口 ⇒ 本格照绿。
-#[test]
-fn relay_running_really_asks_the_loopback_port() {
-    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("开一个口");
-    let port = l.local_addr().expect("地址").port();
-    assert!(relay_listening_at(port), "口上明明有人在听，它说没有");
-    drop(l);
-    assert!(
-        !relay_listening_at(port),
-        "口已经关了，它还说有人在听 —— 那是一个常量"
-    );
-
-    let prod =
-        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
-    let body = braced_block(&prod, "pub fn relay_running() -> bool", 0, 400);
-    assert_eq!(
-        body.trim_matches(|c: char| c == '{' || c == '}' || c.is_whitespace()),
-        "relay_listening_at(crate::backend::control::payload::RELAY_PORT)",
-        "`relay_running` 问的不再只是注入侧那个口"
-    );
-}
+// 〔US1 · 第四波 4D〕M3（`relay_running_really_asks_the_loopback_port`〔散文墓碑〕）随 `relay_running` 一起退役：
+//   本机中转在不在由本机常驻后端自己答（RK1 的差分探针），monitor 这一侧不再连回环口。
 
 // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
 //    这条判据整条删了**，新住址是 `history.rs` 里那**三条**判据

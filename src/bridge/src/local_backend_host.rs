@@ -1553,24 +1553,8 @@ pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
     envs
 }
 
-/// 起会话那一侧问的「**这台机器上**的中转在不在」—— 回环上连一次注入侧那个口。
-///
-/// ⚠ **诚实边界**（与远端 `relay-status` 同一条）：连得上 = **有人在听**，**不是**「听的是我们的中转」。
-/// 它比先前那一版（「我起过它而且没停过」，只看 monitor 自己的内存）真：跨 monitor 重启、
-/// 常驻后端按退出行为退了、后端里的中转 bind 失败 —— 这几形今天都答得对。
-/// 连一次回环：没人听时内核当场回 `ECONNREFUSED`，不等。
-pub fn relay_running() -> bool {
-    relay_listening_at(crate::backend::control::payload::RELAY_PORT)
-}
-
-/// 上一条剥掉「哪个口」之后的那一半（判据用它喂一个自己开的口）。
-pub(crate) fn relay_listening_at(port: u16) -> bool {
-    std::net::TcpStream::connect(std::net::SocketAddr::from((
-        std::net::Ipv4Addr::LOCALHOST,
-        port,
-    )))
-    .is_ok()
-}
+// 〔US1 · 第四波 4D〕`relay_running` / `relay_listening_at`〔散文墓碑〕退役：本机中转在不在由本机常驻后端自己答
+//   （`launch-endpoint` · `apikey-routing` 的成品里那一格，判准是 RK1 的差分探针 —— 「口上有人 ≠ 我们的中转」那条诚实边界随之收掉）。
 
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」

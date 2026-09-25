@@ -112,20 +112,19 @@ branch-core = { path = "crates/branch-core" }
 codex-token-core = { path = "crates/codex-token-core" }
 acct-core = { path = "crates/acct-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
-# ★ `features = ["harden"]` —— 〔GP1 · 第四波〕monitor **不再写**这份文件（本机那一份的写者换成本机常驻后端，
-#   主会话 09-25 裁「每台机器一个写者 ＝ 那台的后端」），开它今天只为**读那一半**：Windows 上量 DACL
-#   （`perm::probe` 的 `all(windows, feature = "harden")` 那一臂；不开 ⇒ 本机 Windows 上界面那一格恒「读不了 DACL」）。
-#   写半边（`create_private` / `make_private`）在 monitor 生产段**零调用**，判据
-#   `creds_store_tests::gp1_the_monitor_never_reaches_the_credentials_write_half` 钉着（编译器兜不住了，由它兜）。
-# 〔墓碑 —— 从前这里写「monitor 是唯一会写这份文件的一侧，所以只有这里开它；backend 那侧刻意不开」：
-#   RM1a 起后端也开了（远端那一份由那台后端写），GP1 起 monitor 不写了。〕
-creds-core = { path = "crates/creds-core", features = ["harden"] }
+# 〔US1 · 第四波 4D〕**不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（US1 起本机那份的状态
+#   由本机常驻后端答 `apikey-read`）这份文件，只用 `store::FILE_NAME` 算「本 monitor 认的那一份在哪」（`creds_store::resolve_path`）。
+#   「monitor 写不了这份文件」从判据兜换回**编译器兜**：写半边（`perm::create_private` / `make_private`）只在 `harden` 下存在。
+# 〔墓碑 —— GP1 那一版开着它「只为 Windows 上读 DACL」（`perm::probe` 那一臂）：读者随 `creds_store::read_status`〔散文墓碑〕一起没了。〕
+creds-core = { path = "crates/creds-core" }
 
 # P4c：**POSIX 单引号 quote 的唯一 Rust 实现**（P4b 之前叫 `launch-core`，那时它还持有
 # 载荷编译器与 ccm 调用行的决策内核 —— 那两样 P4b 已归位 `src/backend/control/`）。
 # ⚠ 原注释说「backend 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起后端的
 # `control/tmux_hook.rs::sq` 就在调它，那也是它今天唯一的后端用量。
 shell-quote-core = { path = "crates/shell-quote-core" }
+# 〔US1 · 4D〕中转门牌（端口 · 钥匙文件路径 · 路由语法）的唯一住址，与后端同一份（`设计/20 §5` 目标）。
+relay-route-core = { path = "crates/relay-route-core" }
 # F03：**§34 Gate 2（identity）的唯一实现**——「这个 tmux 会话是不是本工具管的」。
 # monitor 与后端共用同一份判定（定框 C1），防「把 send-keys/kill 搬进后端时静默丢掉一道门」。
 gate-core = { path = "crates/gate-core" }

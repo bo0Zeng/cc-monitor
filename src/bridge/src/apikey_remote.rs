@@ -8,8 +8,8 @@
 //!
 //! | origin | 谁写那份文件 | 谁读（界面状态 / 行） |
 //! |---|---|---|
-//! | 本机 | **本机常驻后端**（帧面 `apikey-key-set`，与远端同一条路）| monitor 自己（`creds_store::read_status` · 起会话那一侧同步读行）|
-//! | 某台远端 | 那台机器的后端（帧面 `apikey-key-set` / `apikey-read`，`src/backend/accounts/upstream/file_face.rs`）| 同左（`apikey-read`）|
+//! | 本机 | **本机常驻后端**（帧面 `apikey-key-set`，与远端同一条路）| 〔US1〕同左：界面经通道问 `apikey-read` / `apikey-routing`，起会话问 `launch-endpoint` |
+//! | 某台远端 | 那台机器的后端（帧面 `apikey-key-set` / `apikey-read`，`src/backend/accounts/upstream/file_face.rs`）| 同左 |
 //!
 //! ⇒ **每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端**（主会话 09-25 裁；`调研/第四波记录/GP1.md §3`）。
 //! 〔墓碑 —— RM1a 那一版本机那一臂进 `creds_store::write_key`〔散文墓碑〕、「从不把 `apikey-key-set` 发给本机后端」，
@@ -42,7 +42,6 @@
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;
-use crate::creds_store::ApikeyCredentialsStatus;
 use crate::origin::{Origin, Route};
 use serde_json::{json, Value};
 
@@ -130,68 +129,19 @@ fn path_from_wire(host: &str, d: &Value) -> Result<std::path::PathBuf, String> {
         })
 }
 
-/// 读那台机器上那份文件的状态（只回掩码）。
-pub(crate) async fn status_on(origin: &Origin) -> Result<ApikeyCredentialsStatus, String> {
-    match origin.route("read_apikey_credentials_status")? {
-        Route::Local => crate::creds_store::read_status(),
-        Route::Remote(host) => status_from_wire(host, &call(host, CMD_READ, json!({})).await?),
-    }
-}
-
-/// 那台机器的表里有哪几条账号 id。本机走起会话那一侧**同一条缝**（`history::inject_facts`）——
-/// 那个取值口只许经那条缝被够到（`payload_tests` 数着），绕过去就是第二个没人数得出来的调用点。
-pub(crate) async fn rows_on(origin: &Origin) -> Result<Vec<String>, String> {
-    match origin.route("apikey_routing_for")? {
-        Route::Local => Ok((crate::history::inject_facts().rows)()),
-        Route::Remote(host) => rows_from_wire(host, &call(host, CMD_READ, json!({})).await?),
-    }
-}
-
-/// `apikey-read` 的应答 → 界面那份状态。形状不对 ⇒ 报错（**不许**退化成「没配」）。
-pub(crate) fn status_from_wire(host: &str, d: &Value) -> Result<ApikeyCredentialsStatus, String> {
-    let bad =
-        |what: &str| format!("[{host}] `{CMD_READ}` 的应答形状不对：{what} —— 两端契约对不上");
-    let opt_str = |k: &str| -> Result<Option<String>, String> {
-        match d.get(k) {
-            None | Some(Value::Null) => Ok(None),
-            Some(Value::String(s)) => Ok(Some(s.clone())),
-            Some(_) => Err(bad(&format!("`{k}` 不是字符串"))),
-        }
-    };
-    Ok(ApikeyCredentialsStatus {
-        configured: d
-            .get("configured")
-            .and_then(Value::as_bool)
-            .ok_or_else(|| bad("缺 `configured`"))?,
-        masked: opt_str("masked")?.ok_or_else(|| bad("缺 `masked`"))?,
-        path: opt_str("path")?.ok_or_else(|| bad("缺 `path`"))?,
-        notice: opt_str("notice")?,
-        problem: opt_str("problem")?,
-    })
-}
-
-/// `apikey-read` 的应答 → 行 id 表。
-pub(crate) fn rows_from_wire(host: &str, d: &Value) -> Result<Vec<String>, String> {
-    d.get("rows")
-        .and_then(Value::as_array)
-        .and_then(|a| {
-            a.iter()
-                .map(|v| v.as_str().map(str::to_string))
-                .collect::<Option<Vec<_>>>()
-        })
-        .ok_or_else(|| {
-            format!("[{host}] `{CMD_READ}` 的应答里 `rows` 不是字符串数组 —— 两端契约对不上")
-        })
-}
+// 〔US1 · 第四波 4D〕读状态（`status_on` / `status_from_wire`）与「表里有哪几行」（`rows_on` / `rows_from_wire`）〔散文墓碑〕退役：
+//   界面经 `chan.call` 直接问那台机器的后端 `apikey-read` / `apikey-routing`（`src/apikey-reads.ts`），
+//   起会话那一侧问 `launch-endpoint`（`history::relay_endpoint_on`）—— 人群只剩后端 `file_face::rows_at` 一份。
 
 /// 发送口（形状照 `backend_policy::exit_policy_call`）：没通道 / 旧后端不认 / 调用失败，各说各的话。
-async fn call(host: &str, cmd: &str, args: Value) -> Result<Value, String> {
+/// 〔US1〕起会话那一侧问 `launch-endpoint` 也走这一个（`history::ask_launch_endpoint`）—— 同一族（上游选择的帧面），不另写一份。
+pub(crate) async fn call(host: &str, cmd: &str, args: Value) -> Result<Value, String> {
     let Some(client) = inbound_client::client_for(host) else {
         return Err(said(no_channel(host)));
     };
     if !client.accepts(cmd) {
         return Err(format!(
-            "[{host}] 的后端还不认 `{cmd}` —— 上游选择那份凭据文件按机器读写之后才有这条命令，\
+            "[{host}] 的后端还不认 `{cmd}` —— 那台机器的后端比这个 monitor 老，\
              重装那台机器的后端就有了"
         ));
     }
