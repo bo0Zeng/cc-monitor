@@ -2102,9 +2102,21 @@ fn live_session_ids_are_the_pidfiles_whose_process_is_still_there() {
     let sessions = home.join("sessions");
     fs::create_dir_all(&sessions).unwrap();
     let me = std::process::id();
-    fs::write(sessions.join(format!("{me}.json")), r#"{"sessionId":"live-sid","cwd":"/w"}"#).unwrap();
-    fs::write(sessions.join("4194304.json"), r#"{"sessionId":"dead-sid","cwd":"/w"}"#).unwrap();
-    fs::write(sessions.join("notapid.json"), r#"{"sessionId":"ignored","cwd":"/w"}"#).unwrap();
+    fs::write(
+        sessions.join(format!("{me}.json")),
+        r#"{"sessionId":"live-sid","cwd":"/w"}"#,
+    )
+    .unwrap();
+    fs::write(
+        sessions.join("4194304.json"),
+        r#"{"sessionId":"dead-sid","cwd":"/w"}"#,
+    )
+    .unwrap();
+    fs::write(
+        sessions.join("notapid.json"),
+        r#"{"sessionId":"ignored","cwd":"/w"}"#,
+    )
+    .unwrap();
     let got = live_session_ids(&home);
     assert_eq!(
         got,

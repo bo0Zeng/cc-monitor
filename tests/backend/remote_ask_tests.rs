@@ -142,9 +142,11 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
         calls[0].0,
         reach_args("dev", "10.0.0.2", "/opt/c c/ccm")["dial"]
     );
+    // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 死值验 A3：那样两侧同源，拿掉引号也恒绿）。
+    // 逐格单引号；格内的 `'` 写成 `'\''`（POSIX 单引号里没有转义：先关、给一个转义过的单引号、再开）。
     assert_eq!(
         calls[0].1,
-        command_line("/opt/c c/ccm", &["--list-sessions", "-home-u-it's"])
+        r#"'/opt/c c/ccm' '--list-sessions' '-home-u-it'\''s'"#
     );
 }
 
