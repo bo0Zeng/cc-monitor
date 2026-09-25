@@ -711,6 +711,7 @@ src/remote-health.ts:33	⚠ 远端后端版本不符	保留	[对外] toast 标�
 src/remote-health.ts:35	远端降级模式	保留	[对外] toast 标题
 src/remote-health.ts:37	⚠ 远端历史快照拉取失败	保留	[对外] toast 标题；「历史快照」可懂
 src/remote-health.ts:39	⚠ 远端提示	保留	[对外] toast 兜底标题
+src/remote-health.ts:40	正在装代码全景组件	保留	[对外] 〔RM1f〕远端健康通道那一条 toast 的标题（`kind = panorama-install`）：推代码全景组件之前说一声，正文说哪台、约多大、装好会自己接着答；不是故障所以不带 ⚠，四类病都不中
 src/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
 src/remote-launch-run.ts:363	本机不开终端窗口，命令已复制	保留	[对外] toast 标题，先说结果
 src/remote-launch-run.ts:364	本机不开终端窗口，请手动复制以下命令	保留	[对外] toast 标题；「手动复制」是用户当场能做且有效的事

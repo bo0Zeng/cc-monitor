@@ -91,10 +91,17 @@ impl Asked {
 /// 〔RM1e〕问一次；撞上「缺 / 旧」⇒ 推一次、再问一次。**推最多一次，问最多两次。**
 ///
 /// `ask` / `push` 由调用方给（生产侧 = 那台后端 ＋ `panorama_bytes::push_to`；判据用替身数次数）。
-pub(crate) async fn ask_or_push<A, FA, P, FP>(mut ask: A, push: P) -> Result<Value, String>
+/// 〔RM1f〕`announce`：**真要推之前**说一声（生产侧 = 远端健康通道上那句「正在把代码全景组件装到 <机器>」）——
+/// 推是同步等的（发版 20 MB，慢链路上几十秒起），不说的话界面上只有那一问在转圈。恰在推之前、恰一次；不推就不说。
+pub(crate) async fn ask_or_push<A, FA, N, P, FP>(
+    mut ask: A,
+    announce: N,
+    push: P,
+) -> Result<Value, String>
 where
     A: FnMut() -> FA,
     FA: std::future::Future<Output = Result<Value, Asked>>,
+    N: FnOnce(),
     P: FnOnce() -> FP,
     FP: std::future::Future<Output = Result<(), String>>,
 {
@@ -102,6 +109,7 @@ where
         Err(a) if a.wants_bytes() => a,
         other => return other.map_err(|a| a.said),
     };
+    announce();
     push().await.map_err(|e| {
         format!(
             "{}\n—— 试着把代码全景组件推到那台机器上，没成：{e}",
@@ -261,6 +269,7 @@ pub(crate) fn frame_args(op: &str, repo: Option<&str>, args: Option<Value>) -> V
 /// 〔RM1f〕`ticket`：给了 ⇒ 这一问能被 [`panorama_cancel`] 撤掉（头注「可取消」一节）；不给 ⇒ 等到结局为止。
 #[tauri::command]
 pub async fn panorama_call(
+    app: tauri::AppHandle,
     origin: Origin,
     op: String,
     repo: Option<String>,
@@ -268,7 +277,7 @@ pub async fn panorama_call(
     ticket: Option<String>,
 ) -> Result<Value, String> {
     let _ = origin.route("panorama_call")?;
-    let asked = ask(&origin, &op, repo.as_deref(), args);
+    let asked = ask(&app, &origin, &op, repo.as_deref(), args);
     match ticket {
         None => asked.await,
         Some(t) => with_ticket(t, asked).await,
@@ -396,7 +405,9 @@ async fn ask_once(
 }
 
 /// 问一次（两条命令共用）；远端回「缺 / 旧」⇒ 推字节再问一次（头注〔RM1e〕那一节）。
+/// 〔RM1f〕`app`：推之前在远端健康通道上说一声（[`INSTALL_NOTICE_KIND`]）。
 async fn ask(
+    app: &tauri::AppHandle,
     origin: &Origin,
     op: &str,
     repo: Option<&str>,
@@ -411,15 +422,40 @@ async fn ask(
     let _pushing = lock.lock().await;
     ask_or_push(
         || ask_once(origin, op, repo, args.clone()),
+        || announce_install(app, origin.as_wire_str()),
         || crate::panorama_bytes::push_to(origin),
     )
     .await
+}
+
+/// 〔RM1f〕远端健康通道上那一句的 `kind`（前端 `remote-health.ts` 的标题表认它）。
+pub(crate) const INSTALL_NOTICE_KIND: &str = "panorama-install";
+
+/// 〔RM1f〕那一句说什么（纯函数，判据直接比）。
+pub(crate) fn install_notice(origin: &str) -> crate::bridge::RemoteHealthPayload {
+    let who = crate::backend::control::cc_bus::machine_label(origin);
+    crate::bridge::RemoteHealthPayload {
+        origin: origin.to_string(),
+        kind: INSTALL_NOTICE_KIND.to_string(),
+        message: format!(
+            "{who} 上还没有这一版的代码全景组件，正在把它装上去（约 20 MB，慢链路上要等一会儿）。装好之后这一问会自己接着答。"
+        ),
+    }
+}
+
+/// 〔RM1f〕真要推之前说一声（远端健康通道，一条 toast）。发不出去只记日志 —— 推照推。
+fn announce_install(app: &tauri::AppHandle, origin: &str) {
+    use tauri::Emitter;
+    if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, install_notice(origin)) {
+        tracing::warn!("[{origin}] 「正在装代码全景组件」那一句没发出去：{e}");
+    }
 }
 
 /// 〔RM1d〕写批注 / 文档关联：问那台机器要计划、经那台机器后端的文件管理落盘（头注 ①–⑤）。
 /// `op` 只许 [`EDITS`] 第一列；回的 `value` 与本机进程内那几条写命令的返回值同形（id / 在不在 / `null`）。
 #[tauri::command]
 pub async fn panorama_edit(
+    app: tauri::AppHandle,
     origin: Origin,
     repo: String,
     op: String,
@@ -441,12 +477,12 @@ pub async fn panorama_edit(
     // `panorama.rs::plan_local`）。**落盘两边同一扇门**（那台机器后端的文件管理）。
     let local = origin.is_local();
     let value = edit_via(&door, &repo, || {
-        let (origin, repo, args) = (origin.clone(), repo.clone(), args.clone());
+        let (app, origin, repo, args) = (app.clone(), origin.clone(), repo.clone(), args.clone());
         async move {
             if local {
                 crate::panorama::plan_local(repo, plan_op, args).await
             } else {
-                ask(&origin, plan_op, Some(&repo), Some(args)).await
+                ask(&app, &origin, plan_op, Some(&repo), Some(args)).await
             }
         }
     })
@@ -455,7 +491,7 @@ pub async fn panorama_edit(
         let refreshed = if local {
             crate::panorama::refresh_doc_links_local(repo.clone()).await
         } else {
-            ask(&origin, REFRESH_DOC_LINKS, Some(&repo), None)
+            ask(&app, &origin, REFRESH_DOC_LINKS, Some(&repo), None)
                 .await
                 .map(|_| ())
         };
