@@ -27,7 +27,9 @@ vi.mock("../../src/ipc/commands", () => ({
       get: (_t, name: string) => (...args: unknown[]) => {
         ipcCalls.push(name);
         void args;
-        return Promise.resolve(ipcReplies.get(name));
+        // 〔W5-UI〕设成 Error ⇒ 这条命令 reject（测失败路径出不出声）。
+        const r = ipcReplies.get(name);
+        return r instanceof Error ? Promise.reject(r) : Promise.resolve(r);
       },
     },
   ),
@@ -473,6 +475,28 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const calls = vi.mocked(saveConfig).mock.calls;
     const last = calls[calls.length - 1]![0] as Record<string, unknown>;
     expect(last.keepMe).toBe(1);
+  });
+
+  // 〔W5-UI · 设计/70 §7 #4〕读 `~/.ssh/config` 失败与「真没有别名」原先同形（空下拉 ＋「未找到」）。
+  it("导入下拉：读别名清单失败 ⇒ 说读不了（原因原样），不说「未找到」；真没有 ⇒ 说未找到（正控）", async () => {
+    // 从 section 自己的 DOM 里取（不是私有字段）：那块提示原先根本没挂进 DOM —— 取字段会假绿。
+    const hint = (sec: RemoteSection): string =>
+      [...sec.element.querySelectorAll<HTMLElement>(".settings-hint")].map((e) => e.textContent ?? "").join("|");
+    ipcReplies.set("list_ssh_host_aliases", new Error("perm-denied-sshcfg"));
+    try {
+      const bad = await mount([mkH("a", "1.1.1.1")]);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(hint(bad)).toContain("读不了 ~/.ssh/config");
+      expect(hint(bad)).toContain("perm-denied-sshcfg");
+      expect(hint(bad)).not.toContain("未在 ~/.ssh/config 找到");
+      ipcReplies.set("list_ssh_host_aliases", []);
+      const none = await mount([mkH("a", "1.1.1.1")]);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(hint(none)).toContain("未在 ~/.ssh/config 找到");
+      expect(hint(none)).not.toContain("读不了");
+    } finally {
+      ipcReplies.delete("list_ssh_host_aliases");
+    }
   });
 
   it("★ 渲染机器列表：后端调用**不随机器数增长**（状态灯绝不引入轮询）", async () => {

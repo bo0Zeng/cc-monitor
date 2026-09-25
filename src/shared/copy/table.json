@@ -721,6 +721,31 @@
       "kind": "body",
       "zh": "{machine} 上的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
       "args": ["machine"]
+    },
+    "accounts.lastAccount.notRecorded": {
+      "kind": "error",
+      "zh": "没记下这次用的账号",
+      "args": []
+    },
+    "accounts.lastAccount.notRecordedBody": {
+      "kind": "body",
+      "zh": "会话照常起了；下次恢复这条会话时不会自动选「{account}」。原因：{e}",
+      "args": ["account", "e"]
+    },
+    "settingsPanel.claudeDir.pickFailed": {
+      "kind": "error",
+      "zh": "选目录的窗口打不开：{e}。可以直接在输入框里填路径。",
+      "args": ["e"]
+    },
+    "remote.import.listFailed": {
+      "kind": "error",
+      "zh": "读不了 ~/.ssh/config：{e}。可以点「添加机器」手动填写。",
+      "args": ["e"]
+    },
+    "machineAliases.autoLaunch.unreadable": {
+      "kind": "error",
+      "zh": "读不到这项设置：{e}",
+      "args": ["e"]
     }
   }
 }
