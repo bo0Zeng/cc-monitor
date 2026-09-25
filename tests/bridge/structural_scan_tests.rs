@@ -3730,7 +3730,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/spawn_managed.rs", 2),
         ("src/bridge/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 1),
-        ("src/doc/INVARIANTS.md", 5), // 〔RW1〕+1：§1 例外 3 那道远端删会话守卫（写区外，只挂墓碑 ＋ 一句订正）
+        ("src/doc/INVARIANTS.md", 6), // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
         ("src/doc/IPC-PROTOCOL.md", 4),
         // 〔AL1 · 2026-09-24〕+1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
         ("src/settings/accounts-section.ts", 2),
