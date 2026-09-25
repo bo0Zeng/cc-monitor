@@ -2,6 +2,7 @@
 //! `src/ccm-probe.ts` 决定走 CLI 渲染器还是兜底渲染器。一次性 headless SSH exec，照
 //! `tmux.rs::capture_remote_pane` 的范式（通道 B，不干扰前台终端、不涉及后端）。
 
+use crate::copy_table::copy_text;
 use crate::ssh_source;
 use serde::Serialize;
 use tokio::io::{AsyncReadExt, BufReader};
@@ -265,15 +266,19 @@ fn probe_spawned(
 /// （未装是正常状态之一，不是异常）。
 #[tauri::command]
 pub async fn probe_ccm_cli(origin: String) -> Result<CcmProbeResult, String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
+    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+        copy_text(
+            "rsCcmProbe.probe.noConfig",
+            &[("machine", &format!("{:?}", origin))],
+        )
+    })?;
     let stream = ssh_source::connect_and_exec_cmd(&cfg, CCM_PROBE_CMD).await?;
     let mut reader = BufReader::new(stream);
     let mut buf: Vec<u8> = Vec::new();
     reader
         .read_to_end(&mut buf)
         .await
-        .map_err(|e| format!("探测 ccm 失败: {e}"))?;
+        .map_err(|e| copy_text("rsCcmProbe.probe.failed", &[("e", &e.to_string())]))?;
     Ok(parse_probe_output(&String::from_utf8_lossy(&buf)))
 }
 
@@ -367,26 +372,28 @@ pub fn render_path_ccm_hint(
     entry: Option<&str>,
 ) -> String {
     let ours_card = describe_card(ours);
-    let where_ours = entry.unwrap_or("（还没装下来）");
+    let not_installed = copy_text("rsCcmProbe.hint.notInstalled", &[]);
+    let where_ours = entry.unwrap_or(&not_installed);
     match verdict {
         PathCcmVerdict::Ours => String::new(),
-        PathCcmVerdict::NotOurs => format!(
-            "🔴 你 PATH 上那个 `ccm` **不是** cc-monitor 装的这一份。\n\
-             · 它自报：{}\n\
-             · 我们这一份：{ours_card}（在 {where_ours}）\n\
-             ⇒ 你在终端里敲 `ccm`（以及任何调 `ccm` 的别名）走到的是**它**，不是我们这一份。\n\
-             产品**不动它**：要不要删、什么时候删，由你自己定。想让终端认我们这一份，\n\
-             要么把它挪开、要么让上面那个目录排在 PATH 前面、要么用下面生成的那条命令\n\
-             （它显式指向我们这一份，不靠 PATH 撞运气）。",
-            describe_card(on_path)
+        PathCcmVerdict::NotOurs => copy_text(
+            "rsCcmProbe.hint.notOurs",
+            &[
+                ("theirs", &(describe_card(on_path)).to_string()),
+                ("ours", &ours_card.to_string()),
+                ("where", &where_ours.to_string()),
+            ],
         ),
-        PathCcmVerdict::Absent => format!(
-            "你 PATH 上没有 `ccm`。我们这一份在 {where_ours}（{ours_card}）——\n\
-             下面生成的那条命令会显式指向它，不需要你改 PATH。"
+        PathCcmVerdict::Absent => copy_text(
+            "rsCcmProbe.hint.absent",
+            &[
+                ("where", &where_ours.to_string()),
+                ("ours", &ours_card.to_string()),
+            ],
         ),
-        PathCcmVerdict::Undetermined => format!(
-            "说不出你 PATH 上那个 `ccm` 是谁 —— **我们自己这一份没探到**（{where_ours}）。\n\
-             这是「查不了」，不是「你缺了什么」。"
+        PathCcmVerdict::Undetermined => copy_text(
+            "rsCcmProbe.hint.undetermined",
+            &[("where", &where_ours.to_string())],
         ),
     }
 }
@@ -395,12 +402,20 @@ pub fn render_path_ccm_hint(
 /// 措辞里混进路径会让读的人以为判据比的是它〔固定项 12 那条 `6g` 的同族〕。
 fn describe_card(r: &CcmProbeResult) -> String {
     if !r.installed {
-        return "探不到（没有一个答得出 `--ccm-probe` 的 ccm）".to_string();
+        return copy_text("rsCcmProbe.card.notFound", &[]);
     }
-    format!(
-        "version={} · {} 项能力",
-        r.version.as_deref().unwrap_or("(没报版本)"),
-        r.capabilities.len()
+    copy_text(
+        "rsCcmProbe.card.summary",
+        &[
+            (
+                "version",
+                &(r.version
+                    .as_deref()
+                    .unwrap_or(&copy_text("rsCcmProbe.card.noVersion", &[])))
+                .to_string(),
+            ),
+            ("count", &(r.capabilities.len()).to_string()),
+        ],
     )
 }
 

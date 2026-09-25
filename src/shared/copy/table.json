@@ -13051,6 +13051,371 @@
       "kind": "error",
       "zh": "起 {bin} 失败：{e}",
       "args": ["bin", "e"]
+    },
+    "rsLaunch.remote.taskFailed": {
+      "kind": "error",
+      "zh": "拉起终端任务失败：{e}",
+      "args": ["e"]
+    },
+    "rsLaunch.remote.noOpenSsh": {
+      "kind": "error",
+      "zh": "本机未检测到 OpenSSH 客户端（ssh.exe）——请安装 Windows 可选功能「OpenSSH 客户端」",
+      "args": []
+    },
+    "rsLaunch.remote.noConfig": {
+      "kind": "error",
+      "zh": "未找到远端配置：{machine}",
+      "args": ["machine"]
+    },
+    "rsLaunch.posix.noTerminalWindow": {
+      "kind": "body",
+      "zh": "本机不是 Windows：cc-monitor 刻意不替你挑终端模拟器，会话在 tmux 里。命令已复制，请在你自己的 bash 里粘贴执行。",
+      "args": []
+    },
+    "rsLaunch.refuse.jumpNotFound": {
+      "kind": "error",
+      "zh": "拒绝启动：跳板配置未找到：{jumpLabel}",
+      "args": ["jumpLabel"]
+    },
+    "rsLaunch.refuse.jumpSelf": {
+      "kind": "error",
+      "zh": "拒绝启动：跳板不能指向自己",
+      "args": []
+    },
+    "rsLaunch.refuse.host": {
+      "kind": "error",
+      "zh": "拒绝启动：host 含非法字符：{host}",
+      "args": ["host"]
+    },
+    "rsLaunch.refuse.user": {
+      "kind": "error",
+      "zh": "拒绝启动：user 含非法字符：{user}",
+      "args": ["user"]
+    },
+    "rsLaunch.refuse.doubleQuote": {
+      "kind": "error",
+      "zh": "拒绝启动：远端命令含双引号，PowerShell 5.1 传参会把它改坏。启动参数请改用单引号写法，或使用复制粘贴回退",
+      "args": []
+    },
+    "rsLaunch.what.remoteCmd": {
+      "kind": "body",
+      "zh": "远端命令",
+      "args": []
+    },
+    "rsLaunch.refuse.badToken": {
+      "kind": "error",
+      "zh": "拒绝启动：启动令牌形状不对（应为 32 个小写十六进制字符）",
+      "args": []
+    },
+    "rsLaunch.local.notOnWindows": {
+      "kind": "error",
+      "zh": "POSIX 本地启动不适用于 Windows，Windows 本机走 PowerShell",
+      "args": []
+    },
+    "rsLaunch.local.spawnFailed": {
+      "kind": "error",
+      "zh": "启动本地命令失败：{e}",
+      "args": ["e"]
+    },
+    "rsLaunch.what.localCmd": {
+      "kind": "body",
+      "zh": "本地命令",
+      "args": []
+    },
+    "rsLaunch.refuse.control": {
+      "kind": "error",
+      "zh": "拒绝启动：{what}含控制字符",
+      "args": ["what"]
+    },
+    "rsLaunch.refuse.tooLong": {
+      "kind": "error",
+      "zh": "拒绝启动：{what}过长（{len} > {max}）",
+      "args": ["what", "len", "max"]
+    },
+    "rsLaunch.refuse.empty": {
+      "kind": "error",
+      "zh": "拒绝启动：{what}为空",
+      "args": ["what"]
+    },
+    "rsLaunch.refuse.jumpHost": {
+      "kind": "error",
+      "zh": "拒绝启动：跳板 host 含非法字符：{jumpHost}",
+      "args": ["jumpHost"]
+    },
+    "rsLaunch.refuse.jumpUser": {
+      "kind": "error",
+      "zh": "拒绝启动：跳板 user 含非法字符：{jumpUser}",
+      "args": ["jumpUser"]
+    },
+    "rsPanoramaCall.edit.notRefreshed": {
+      "kind": "error",
+      "zh": "文档关联已经写进去了，但全景里的关联没跟着刷新（{e}）。点「刷新」重建一次就能看到",
+      "args": ["e"]
+    },
+    "rsPanoramaCall.edit.opSep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "rsPanoramaCall.edit.unknownOp": {
+      "kind": "error",
+      "zh": "不认识的全景写入 {op}（认得的：{edits}）",
+      "args": ["op", "edits"]
+    },
+    "rsPanoramaCall.install.remote": {
+      "kind": "body",
+      "zh": "{who} 上还没有这一版的代码全景组件，正在把它装上去。约 20 MB，慢链路上要等一会儿；装好之后这一问会自己接着答。",
+      "args": ["who"]
+    },
+    "rsPanoramaCall.install.local": {
+      "kind": "body",
+      "zh": "本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后这一问会自己接着答。",
+      "args": []
+    },
+    "rsPanoramaCall.call.failed": {
+      "kind": "error",
+      "zh": "{who} 的代码全景没答上来（{code}）：{message}",
+      "args": ["who", "code", "message"]
+    },
+    "rsPanoramaCall.call.emptyReply": {
+      "kind": "error",
+      "zh": "{who} 的代码全景回了一条空应答，两端版本对不上",
+      "args": ["who"]
+    },
+    "rsPanoramaCall.call.noResult": {
+      "kind": "error",
+      "zh": "{who} 的代码全景应答里没有结果，两端版本对不上",
+      "args": ["who"]
+    },
+    "rsPanoramaCall.call.unavailable": {
+      "kind": "error",
+      "zh": "代码全景在这台上用不了",
+      "args": []
+    },
+    "rsPanoramaCall.call.internal": {
+      "kind": "error",
+      "zh": "代码全景这一问出了内部错误，没有拿到结果",
+      "args": []
+    },
+    "rsPanoramaCall.ticket.busy": {
+      "kind": "error",
+      "zh": "代码全景：取消票 {ticket} 还有一问没答完，这一问没有发出去。界面应当每一问一张新票",
+      "args": ["ticket"]
+    },
+    "rsPanoramaCall.cancel.done": {
+      "kind": "body",
+      "zh": "已取消（后端那一趟已经停下）",
+      "args": []
+    },
+    "rsPanoramaCall.edit.gaveUp": {
+      "kind": "error",
+      "zh": "{last}\n连着 {attempts} 趟都是算完之后盘上那份又变了，先停下。过一会儿再点一次。",
+      "args": ["last", "attempts"]
+    },
+    "rsPanoramaCall.edit.badPlan": {
+      "kind": "error",
+      "zh": "代码全景组件交回的编辑计划形状不对（{e}），两端版本对不上：{raw}",
+      "args": ["e", "raw"]
+    },
+    "rsPanoramaCall.push.stillSays": {
+      "kind": "error",
+      "zh": "已经把这一版的代码全景组件推过去了，那台机器仍然说：{said}",
+      "args": ["said"]
+    },
+    "rsPanoramaCall.push.failed": {
+      "kind": "error",
+      "zh": "{said}\n—— 试着把代码全景组件推到那台机器上，没成：{e}",
+      "args": ["said", "e"]
+    },
+    "rsPanoramaBytes.local.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录 —— 不知道把代码全景组件放到哪",
+      "args": []
+    },
+    "rsPanoramaBytes.local.noBuild": {
+      "kind": "error",
+      "zh": "这一版没有带给本机的代码全景组件。开发构建里一份都不带，发版产物才有",
+      "args": []
+    },
+    "rsPanoramaBytes.push.noBuild": {
+      "kind": "error",
+      "zh": "这一版没有带给 {os} / {arch} 的代码全景组件（只带 Linux x86_64 / aarch64；开发构建里一份都不带，发版产物才有）",
+      "args": ["os", "arch"]
+    },
+    "rsPanoramaBytes.push.noConfig": {
+      "kind": "error",
+      "zh": "找不到 {label} 的远端配置",
+      "args": ["label"]
+    },
+    "rsPanoramaBytes.push.taskFailed": {
+      "kind": "error",
+      "zh": "放本机代码全景组件的任务没能跑完：{e}",
+      "args": ["e"]
+    },
+    "rsPanoramaBytes.uname.failed": {
+      "kind": "error",
+      "zh": "问那台机器是什么系统没问成，退出码 {code}：{detail}",
+      "args": ["code", "detail"]
+    },
+    "rsPanoramaBytes.uname.badShape": {
+      "kind": "error",
+      "zh": "问那台机器是什么系统，答的不是「系统 架构」两段：{out}",
+      "args": ["out"]
+    },
+    "rsByteTable.key.unreadable": {
+      "kind": "error",
+      "zh": "它的回答认不出：「{reply}」",
+      "args": ["reply"]
+    },
+    "rsByteTable.key.said": {
+      "kind": "error",
+      "zh": "它答「{said}」",
+      "args": ["said"]
+    },
+    "rsByteTable.key.noAnswer": {
+      "kind": "error",
+      "zh": "它没有答",
+      "args": []
+    },
+    "rsFootprintRemote.call.internal": {
+      "kind": "error",
+      "zh": "查这台机器的足迹时出了内部错误，没有拿到结果",
+      "args": []
+    },
+    "rsFootprintRemote.call.noData": {
+      "kind": "error",
+      "zh": "[{host}] 的后端应答里没有数据，两端版本对不上",
+      "args": ["host"]
+    },
+    "rsFootprintRemote.call.failed": {
+      "kind": "error",
+      "zh": "[{host}] 查足迹失败：{message}",
+      "args": ["host", "message"]
+    },
+    "rsFootprintRemote.call.tooOld": {
+      "kind": "error",
+      "zh": "[{host}] 的后端太旧，还不认这条命令。远端的足迹要后端答，重装那台机器的后端就有了",
+      "args": ["host"]
+    },
+    "rsFootprintRemote.wire.hooksNotObject": {
+      "kind": "error",
+      "zh": "hooks 不是对象",
+      "args": []
+    },
+    "rsFootprintRemote.wire.entryNotString": {
+      "kind": "error",
+      "zh": "entries 里有一项不是字符串",
+      "args": []
+    },
+    "rsFootprintRemote.wire.kindOther": {
+      "kind": "error",
+      "zh": "kind 是 {other}",
+      "args": ["other"]
+    },
+    "rsFootprintRemote.wire.kindMissing": {
+      "kind": "error",
+      "zh": "kind 缺了",
+      "args": []
+    },
+    "rsFootprintRemote.wire.statNotObject": {
+      "kind": "error",
+      "zh": "stat 不是对象",
+      "args": []
+    },
+    "rsFootprintRemote.wire.badShape": {
+      "kind": "body",
+      "zh": "[{host}] 的后端回的内容不对：{what}。两端版本对不上",
+      "args": ["host", "what"]
+    },
+    "rsFootprintRemote.wire.noAgentHomeIsDir": {
+      "kind": "error",
+      "zh": "[{host}] 的后端应答里没有「家目录是不是目录」。两端版本对不上",
+      "args": ["host"]
+    },
+    "rsFootprintRemote.wire.noAgentHome": {
+      "kind": "error",
+      "zh": "[{host}] 的后端应答里没有家目录这一项，两端版本对不上",
+      "args": ["host"]
+    },
+    "rsFootprintRemote.wire.noHome": {
+      "kind": "error",
+      "zh": "[{host}] 那台后端进程没有 HOME（也没有 USERPROFILE），解不了 ~/…，这台的足迹查不了",
+      "args": ["host"]
+    },
+    "rsFootprintRemote.wire.noEnv": {
+      "kind": "error",
+      "zh": "[{host}] 的后端应答里没有 env 这一项，两端版本对不上",
+      "args": ["host"]
+    },
+    "rsCcmProbe.card.noVersion": {
+      "kind": "body",
+      "zh": "没报版本",
+      "args": []
+    },
+    "rsCcmProbe.card.summary": {
+      "kind": "body",
+      "zh": "version={version} · {count} 项能力",
+      "args": ["version", "count"]
+    },
+    "rsCcmProbe.card.notFound": {
+      "kind": "body",
+      "zh": "没找到",
+      "args": []
+    },
+    "rsCcmProbe.hint.undetermined": {
+      "kind": "body",
+      "zh": "查不到 PATH 上的 ccm：cc-monitor 自带的那份没找到（{where}）",
+      "args": ["where"]
+    },
+    "rsCcmProbe.hint.absent": {
+      "kind": "body",
+      "zh": "你 PATH 上没有 ccm。cc-monitor 这一份在 {where}（{ours}）。下面生成的那条命令会显式指向它，不需要你改 PATH。",
+      "args": ["where", "ours"]
+    },
+    "rsCcmProbe.hint.notOurs": {
+      "kind": "body",
+      "zh": "PATH 上的 ccm 不是 cc-monitor 装的那份，终端里敲 ccm 会用到它。\n· 它自报：{theirs}\n· cc-monitor 这一份：{ours}，在 {where}\ncc-monitor 不动它，要不要删、什么时候删由你决定。想让终端用 cc-monitor 这一份：把它挪开，或让上面那个目录排在 PATH 前面，或用下面生成的那条命令。",
+      "args": ["theirs", "ours", "where"]
+    },
+    "rsCcmProbe.hint.notInstalled": {
+      "kind": "body",
+      "zh": "还没装下来",
+      "args": []
+    },
+    "rsCcmProbe.probe.failed": {
+      "kind": "error",
+      "zh": "探测 ccm 失败：{e}",
+      "args": ["e"]
+    },
+    "rsCcmProbe.probe.noConfig": {
+      "kind": "error",
+      "zh": "未找到远端配置：{machine}",
+      "args": ["machine"]
+    },
+    "rsLib.log.none": {
+      "kind": "error",
+      "zh": "没有 log 文件（log 文件未启用或还没产生）",
+      "args": []
+    },
+    "rsLib.front.unbound": {
+      "kind": "error",
+      "zh": "会话 {sessionId} 没有绑定窗口。用 cc 命令启动 claude 才能把它的窗口提到前面；cc 集成的安装见设置面板。",
+      "args": ["sessionId"]
+    },
+    "rsLib.settings.windowTitle": {
+      "kind": "title",
+      "zh": "cc-monitor 设置",
+      "args": []
+    },
+    "rsLib.aliases.noHome": {
+      "kind": "error",
+      "zh": "找不到 home 目录",
+      "args": []
+    },
+    "rsLib.run.localBackendDown": {
+      "kind": "error",
+      "zh": "本机后端没起来",
+      "args": []
     }
   }
 }
