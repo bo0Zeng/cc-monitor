@@ -20,8 +20,16 @@
 //!
 //! ⚠ 不要从"这里有个模块"推断"Codex 支持完整"。
 
+// 〔C4d · 第四波 4B〕历史清单那一面（会话枚举 ＋ 首条真用户话）：本机的 Codex 合成项目 / 会话从 monitor 搬进后端。
+pub(crate) mod history;
 pub(crate) mod parse;
 pub(crate) mod resume;
+
+/// 〔C4d〕这一家的历史清单面（注册表 `Adapter.history` 那一格；通用层经注册表够到它，不直呼本模块）。
+pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFace {
+    sessions: history::sessions,
+    excerpt: history::first_user_excerpt,
+};
 // 〔`设计/50` 删用量〕**原 `pub(crate) mod usage;` 删了。**
 // `agents/codex/usage.rs` 是用量**聚合轴**（②）的 Codex 半：它的唯一调用方是
 // 用量聚合那条一次性查询的入口（Claude 段之后硬接的那一句），而那份文件随 ② 轴整轴退役。

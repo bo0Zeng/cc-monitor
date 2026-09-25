@@ -35,14 +35,17 @@ vi.mock("../../src/behavior", () => ({ getBehavior: () => ({}) }));
 vi.mock("../../src/format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { invoke } from "@tauri-apps/api/core";
+// 〔C4d〕历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
+import { historyCalls, withHistoryReads, type HistoryRead } from "../test-support/chan-fake";
 import { HistoryView } from "../../src/views/history";
 import { LS_KEYS } from "../../src/local-storage";
 import { showActionFailureToast } from "../../src/error-toast";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
-function countCalls(cmd: string): number {
-  return invokeMock.mock.calls.filter((c) => c[0] === cmd).length;
+function countCalls(cmd: HistoryRead): number {
+  // 〔C4d〕一次远端 fan-out 按那一发 `list_remote_mcp_origins` 算（逐台 N 发不重复计）；本机那一问 = 不带 origin 的 `history-projects`。
+  return historyCalls(invokeMock.mock.calls, cmd).length;
 }
 
 // 后端 list_remote_history_projects 返回 { projects, failedHosts }（F76）。
@@ -51,12 +54,12 @@ function setupInvoke(
   failedHosts: string[] = [],
 ): void {
   invokeMock.mockReset();
-  invokeMock.mockImplementation((cmd: string) => {
+  invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
     if (cmd === "list_history_projects") return Promise.resolve([]);
     if (cmd === "list_remote_history_projects")
       return Promise.resolve({ projects, failedHosts });
     return Promise.resolve(undefined);
-  });
+  }));
 }
 
 // 一个远端项目样本（origin=host 让它归远端段、进 remoteCache）。
@@ -143,12 +146,12 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
 
     // 过期后再抓时全部台失败（reject）
     now += 40_000;
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_history_projects") return Promise.resolve([]);
       if (cmd === "list_remote_history_projects")
         return Promise.reject(new Error("all hosts down"));
       return Promise.resolve(undefined);
-    });
+    }));
     view.close();
     await view.open();
 
@@ -239,11 +242,11 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     );
     const view = new HistoryView(); // 新实例 hydrate 上次成功快照
     invokeMock.mockReset();
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_history_projects") return Promise.resolve([]);
       if (cmd === "list_remote_history_projects") return Promise.reject(new Error("all down"));
       return Promise.resolve(undefined);
-    });
+    }));
     await view.open();
     const inner = view as unknown as ViewInternals;
     expect(showActionFailureToast).toHaveBeenCalled();
@@ -271,28 +274,24 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
       hasLive: null,
     };
     invokeMock.mockReset();
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_history_projects") return Promise.resolve([localProj]);
       if (cmd === "list_remote_history_projects")
         return Promise.resolve({ projects: [], failedHosts: [] });
       return Promise.resolve(undefined);
-    });
+    }));
     await view.open();
     await (view as unknown as { loadProjectSessions(p: unknown): Promise<void> })
       .loadProjectSessions(localProj);
 
-    const calls = invokeMock.mock.calls.filter(
-      (c) => c[0] === "stream_history_sessions_in_project",
-    );
-    expect(calls.length, "本地项目该走本机那条流式命令").toBe(1);
-    const args = calls[0][1] as { projectDir: string };
+    // 〔C4d〕展开一个项目 = 一发 `history-sessions`（问本机常驻后端）；本地项目不带 origin。
+    const calls = historyCalls(invokeMock.mock.calls, "stream_history_sessions_in_project");
+    expect(calls.length, "本地项目该问本机后端那一问").toBe(1);
     expect(
-      args.projectDir,
+      calls[0].projectDir,
       "前端加工了 projectDir —— 它只该原样搬运后端给的目录名",
     ).toBe("-w-alpha");
-    // 远端那条命令一次都不该被调（本地项目没有 origin）。
-    expect(
-      invokeMock.mock.calls.filter((c) => c[0] === "stream_remote_history_sessions").length,
-    ).toBe(0);
+    // 本地项目那一问不带 origin（请求体里没有这一格 ⇒ 译回旧形参是 `<local>`）。
+    expect(calls[0].origin).toBe("<local>");
   });
 });

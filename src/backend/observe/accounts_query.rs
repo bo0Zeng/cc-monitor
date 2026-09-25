@@ -671,26 +671,11 @@ pub(crate) fn list_product_at(
     serde_json::json!({ "meta": meta, "accounts": accounts, "notice": notice })
 }
 
-/// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
-fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
-    // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
-    // （`account: null` + `bare: true`），现在它有名字了。
-    let by_dir: Vec<(Option<String>, String)> = load_manifest(accts_dir)
-        .map(|m| {
-            m.accounts
-                .into_iter()
-                .filter_map(|a| match a.config_dir.as_deref() {
-                    None => Some((None, a.name)),
-                    Some(c) if is_safe_config_dir(c) => {
-                        Some((Some(norm_dir(c).to_string()), a.name))
-                    }
-                    Some(_) => None,
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let mut out: Vec<SessionRow> = Vec::new();
+/// pidfile 目录里每一份**读得出来**的 `(pid, 内容)` —— 上限、跳过要说清，逐字搬自 [`session_accounts`] 那一段循环头
+/// （〔C4d · 第四波 4B〕抽出来是为了让「这台机器上哪几个会话活着」（[`live_session_ids`]）与账号归属读**同一批** pidfile，
+/// 而 pidfile 目录这件 agent 知识的调用点仍然只有这一处 —— `agent_locality_guard` 的 `ADAPTER_CALL_SITES` 不涨）。
+fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
+    let mut out = Vec::new();
     let dir = crate::agents::claudecode::paths::sessions_root(agent_home);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return Vec::new(); // 没有 sessions/ → 零行（exit 0）
@@ -738,6 +723,50 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
             Ok(v) => v,
             Err(_) => continue,
         };
+        out.push((pid, v));
+    }
+    out
+}
+
+/// 〔C4d · 第四波 4B〕**这台机器上此刻活着的会话**（sid 集合）—— 历史跨机 join 的本机判活真相源。
+///
+/// 从前本机历史清单的「活没活」由 monitor 的 `SessionMap` 答（它由本后端 watcher 的起停帧喂）；join 进了本机后端之后
+/// 由这台后端自己答：pidfile 里的会话 id ＋ 进程还是不是**同一个**（`platform::proc::session_alive`：存在性 ＋ 有 `procStart`
+/// 时对拍启动时刻 —— 与 watcher 加会话那一道闸同一个平台原语，**不是**账号归属那道更严的「缺 `procStart` 就不认」）。
+pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<String> {
+    pidfiles(agent_home)
+        .into_iter()
+        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
+        .filter_map(|(_, v)| {
+            v.get("sessionId")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
+fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
+    // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
+    // （`account: null` + `bare: true`），现在它有名字了。
+    let by_dir: Vec<(Option<String>, String)> = load_manifest(accts_dir)
+        .map(|m| {
+            m.accounts
+                .into_iter()
+                .filter_map(|a| match a.config_dir.as_deref() {
+                    None => Some((None, a.name)),
+                    Some(c) if is_safe_config_dir(c) => {
+                        Some((Some(norm_dir(c).to_string()), a.name))
+                    }
+                    Some(_) => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut out: Vec<SessionRow> = Vec::new();
+    for (pid, v) in pidfiles(agent_home) {
         let sid = v.get("sessionId").and_then(|x| x.as_str());
         let cwd = v.get("cwd").and_then(|x| x.as_str());
         // 判活必须过 procStart 身份对拍：PID 会被复用，陈旧 pidfile 的 PID 可能已被

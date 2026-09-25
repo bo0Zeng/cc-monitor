@@ -14,24 +14,9 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //    改问本机后端要 `--list-projects`（住 `backend/observe/local_query.rs`）——
     //    这正是那条登记自己写着的退役条件，逐字兑现。⚠ **分条这件事因此付了息**：
     //    它当初就是为了让「迁完了」这件事在账上看得见，而今天它确实少了一行。
-    (
-        "src/history.rs",
-        "fence",
-        2,
-        "`stream_history_sessions_in_project` 的**路径围栏** —— 它解析 records 根，\
-             把前端传回的**编码目录名**落到根之内并验它没跑出去（`refuse: … outside …`），与下面那条同形。\
-             〔`K-R97` 09-12〕入参从绝对路径改成目录名之后**这两行照旧、口径没变**：\
-             解析根是为了**定位与设栏**，不是去读内容。\
-             ⚠ **刻意保留、不属退役范围**（纵深防御，理由同那条 `fence`）。",
-    ),
-    (
-        "src/history.rs",
-        "no-counterpart",
-        1,
-        "`list_history_projects` 的 **codex 变体**(232)。⚠ **不属**「今天能退役」的范围：\
-             实测后端的 `history_query.rs` 里 **codex / kinds / agent_kind 零命中** ——\
-             `--list-projects` 只服务 claude。退役条件 = backend 侧补上 codex 的项目枚举（DG3 那一族）。",
-    ),
+    // 〔C4d · 第四波 4B〕`src/history.rs` 两行摘了：`fence` 2（展开一个项目的路径围栏）与 `no-counterpart` 1（Codex 合成项目）——
+    //   本机历史清单整段搬进本机常驻后端（`history-sessions` 出成品；Codex 枚举进后端 `agents/codex/history.rs`，
+    //   `no-counterpart` 那一行自己写的退役条件「backend 侧补上 codex 的项目枚举」兑现了）。9 → 6。
     (
         "src/history.rs",
         "fence",
@@ -402,20 +387,9 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              它用 `home_dir()` 只是为了「每个用户各一份」。写侧登记在 `write_site_registry` 的\
              `local_backend.rs::extract_embedded_to`；释放出来的文件按 build_id 命名 ⇒ 幂等、不覆盖别版",
     ),
-    (
-        "local_accounts.rs",
-        "local_accts_dir",
-        "账号隔离目录",
-        "账号面；写侧在 `write_site_registry`。\
-             🔴 **`N-F1c`（09-05）起这一处零生产调用方** —— 本机账号读口改成问后端\
-             （`--list-accounts`），账号库在哪由后端自己解析（它还认 `ACCTS_DIR=` 覆盖，\
-             这一处从来不认）。留着不是忘了删：`ACCTS_DIR_NAME` 这个三方共用的契约名\
-             全仓只有一条逐字判据钉着，而那条判据正是靠调用这一处才够得到它 ⇒ \
-             删它 = 删那条判据 = 降强度。**退役条件**：那条契约判据搬进 `acct-core` 之后，\
-             这一处与它一起删，本表这一行同拍去掉。\
-             ⚠ 本表回答的是「有没有人管」，而这一处今天**仍然真的伸手进了 home**\
-             （判据按生产段里的 `home_dir()` 取人群，不按「有没有人调它」）⇒ 它必须留在表里",
-    ),
+    // 〔C4d · 第四波 4B〕`("local_accounts.rs", "local_accts_dir")` 那一行同拍去掉 —— 它自己写的退役条件兑现了：
+    //   钉契约目录名的那条判据搬到了后端（`accounts_query_tests.rs::the_accounts_library_lives_under_the_contract_directory_name`，
+    //   对 `acct-core` 的常量与后端缺省解析那一处），本机那份参照实现连同这一处 `home_dir()` 一起删了。
     (
         "mcp.rs",
         "claude_json_candidates",
