@@ -4,10 +4,11 @@
 //!
 //! | 判据 | 它钉的那一形 | 少了它会怎样 |
 //! |---|---|---|
-//! | [`a_protected_path_is_blocked_before_anything_is_asked_or_done`] | 围栏在**问与做之前**：踩线的既不进问答也不进 `apply` | 用户会被问「要删这个吗」，答「删」之后才被拒 —— 而那一问已经教他「这是可以删的」 |
-//! | [`a_rename_is_fenced_on_both_of_its_paths`] | **两路径各过一遍** | 能把任意文件改名**成** `<远端>/projects/<proj>/<sid>.jsonl`，盖掉正被 Claude 打开的会话 |
-//! | [`an_ordinary_path_really_gets_through_the_fence`] | 🔴 **阴性对照** —— 围栏不是「什么都挡」 | 上面两条可以靠「一律拒」全绿，而那时窗口一件事都干不了 |
-//! | [`a_refusal_from_the_backend_fence_comes_back_as_a_sentence`] | 〔F2〕**第二道**（后端写面那道围栏）拒了，那句话原样回到窗口上 | 被拒与「成功」/ 空串分不开 |
+//! | [`a_session_file_path_is_asked_and_done_like_any_other`] | 〔FN1 · V119〕会话文件 / pidfile / subagent / 项目目录那几件**照问照做**（不许有东西在问答之前拦它们） | 用户「文件管理器全部都可以改. 不需要任何围栏」没落地：窗口上点删除什么都不发生 |
+//! | [`a_refusal_from_the_backend_fence_comes_back_as_a_sentence`] | 〔F2〕后端写面拒了（〔FN1〕今天只剩路径解析那几形），那句话原样回到窗口上 | 被拒与「成功」/ 空串分不开 |
+//!
+//! 〔FN1 · V119〕这张表原来前三行是本地围栏那三条（踩线的不问不做 · 改名两条路径各过一遍 · 普通路径的阴性对照），
+//! 靶子（本地预判）删了，三条一起退役。
 //! | [`the_real_adapter_speaks_the_backend_write_face_with_root_and_rel`] | 〔F2〕四件各发哪条命令、参数切成 `(root, rel)`（读线上真到的那几行） | 发错命令 / 切错路径，后端那一侧落在别处 |
 //! | [`the_question_is_asked_exactly_once_for_the_whole_batch`] | N 件只问一次，且顺序是 问 → 做 | 每件弹一次（旧面板 `uploadDropped` 那一形） |
 //! | [`nothing_is_touched_when_the_answer_is_no`] | 「问过了」与「做了」分得开 | 「问了但照做」在读数上看不出来 |
@@ -23,15 +24,10 @@ use std::sync::atomic::{AtomicUsize, Ordering as O};
 
 use super::*;
 
-/// 一条**受保护**的路径（`is_protected_claude_data_path` 的结构判定：
-/// `projects/` 下恰两段、以 `.jsonl` 收尾）。
-fn protected() -> String {
+/// 一条会话记录形状的路径（`projects/` 下恰两段、以 `.jsonl` 收尾）。
+/// 〔FN1 · V119〕它从前叫「受保护的路径」；今天它与别的路径同一条路。
+fn session_path() -> String {
     "/home/u/.claude/projects/dash-proj/abc-123.jsonl".to_string()
-}
-
-/// 一条普通路径（同一棵树下，但**不是**那个结构）。
-fn ordinary() -> String {
-    "/home/u/.claude/projects/dash-proj/notes.md".to_string()
 }
 
 fn row(name: &str, is_dir: bool, lossy: bool) -> Listed {
@@ -78,30 +74,41 @@ impl Applied {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 🔴 正题一：围栏 —— **两个方向都有判据**
+// 🔴 正题一〔FN1 · V119 翻面〕：会话文件那一行与别的行**同一条路**
 // ════════════════════════════════════════════════════════════════════════
+//
+// 这里原来是「围栏 —— 两个方向都有判据」三条：受保护路径不问不做而且出声 · 改名两条路径各过一遍 ·
+// 普通路径必须过（阴性对照）。用户 V119「文件管理器全部都可以改. 不需要任何围栏」⇒ 本地那道预判删了，
+// 三条的靶子一起不在了；换成下面这一条 —— 它钉的是**反方向**：会话文件形状的路径不许再被任何东西挡在问答与 `apply` 之外。
 
-/// 🔴 受保护路径上的删除 / 改名 / 改权限 ⇒ **一件都不做，一句都不问，而且出声**。
+/// 🔴〔FN1 · V119〕会话文件 / pidfile / subagent 记录 / 项目目录上的删除 · 改权限 · 改名 ⇒
+/// 该问的（删除 · 改权限）**照问一次**，答「做」就**原样交到 `apply`**；不问的（改名）直接交。
 ///
-/// 三件一起喂：漏掉任何一种操作的那一形，只喂一种是看不见的。
+/// 反空真：`asked` 必须恰是那两件要问的（不是 0 —— 0 就是有东西在问答之前把它们拦了）。
+/// 住址：用户裁决 V119（`设计/99 §1`）原话「文件管理器全部都可以改. 不需要任何围栏」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_protected_path_is_blocked_before_anything_is_asked_or_done() {
+async fn a_session_file_path_is_asked_and_done_like_any_other() {
     let asked = AtomicUsize::new(0);
     let applied = Applied::default();
     let ops = vec![
         WriteOp::Delete {
-            path: protected(),
+            path: session_path(),
             is_dir: false,
             raw: None,
         },
         WriteOp::Chmod {
-            path: protected(),
-            mode: 0o000,
+            path: "/home/u/.claude/sessions/4321.json".to_string(),
+            mode: 0o600,
             raw: None,
         },
         WriteOp::Rename {
-            from: protected(),
-            to: "/home/u/gone.jsonl".to_string(),
+            from: "/home/u/.claude/projects/dash-proj/abc-123/subagents/agent-1.jsonl".to_string(),
+            to: "/home/u/.claude/projects/dash-proj/abc-123/subagents/agent-2.jsonl".to_string(),
+            raw: None,
+        },
+        WriteOp::Delete {
+            path: "/home/u/.claude/projects/dash-proj".to_string(),
+            is_dir: true,
             raw: None,
         },
     ];
@@ -109,7 +116,7 @@ async fn a_protected_path_is_blocked_before_anything_is_asked_or_done() {
         ops.clone(),
         |a| {
             asked.fetch_add(a.len(), O::SeqCst);
-            async move { a } // 就算有人答「全做」也不该有东西做
+            async move { a } // 全答「做」
         },
         |op| {
             applied.0.lock().unwrap().push(op);
@@ -117,143 +124,18 @@ async fn a_protected_path_is_blocked_before_anything_is_asked_or_done() {
         },
     )
     .await;
-
-    assert_eq!(
-        applied.seen(),
-        Vec::new(),
-        "受保护路径上竟然真的动了手：{:?}",
-        applied.seen()
-    );
     assert_eq!(
         asked.load(O::SeqCst),
-        0,
-        "受保护的那几件被摆到人面前问了 —— 那一问会教用户「这是可以删的」，\
-         而答完之后它照样做不了"
+        3,
+        "要问的那三件（两件删除 ＋ 一件改权限）没有恰好都摆到人面前 —— 有东西在问答之前把它们拦了"
     );
-    assert_eq!(out.blocked.len(), 3, "三件都该被挡，实得 {:?}", out.blocked);
-    assert_eq!(out.ok, 0);
-    assert_eq!(out.asked, 0);
-    // **出声**：每一句都点名那条路径，而且带着那个前缀（界面按它画成警告色）。
-    for line in &out.blocked {
-        assert!(
-            line.starts_with(FENCE_PREFIX),
-            "被挡那句话没有前缀 `{FENCE_PREFIX}`：{line}"
-        );
-        assert!(
-            line.contains(&protected()),
-            "被挡那句话没点名是哪条路径：{line}"
-        );
-    }
-}
-
-/// 🔴 **改名那一形：两个参数各过一遍围栏。**
-///
-/// 这一条对着 `remote_write_registry::a_two_path_write_entry_fences_both_of_its_paths`
-/// 的同一个洞 —— 那一条是死值验 `M7` 逼出来的（删掉 `guard_write(&to)?`
-/// 全仓一条不红）。本层要是只看 `paths()` 的第一条，就能把任意文件
-/// **改名成**一个 Claude 数据源名，盖掉正被打开的会话。
-#[test]
-fn a_rename_is_fenced_on_both_of_its_paths() {
-    let into = WriteOp::Rename {
-        from: "/srv/data/x.bin".to_string(),
-        to: protected(),
-        raw: None,
-    };
-    let outof = WriteOp::Rename {
-        from: protected(),
-        to: "/srv/data/x.bin".to_string(),
-        raw: None,
-    };
-    assert_eq!(
-        fenced_path(&into),
-        Some(protected().as_str()),
-        "把普通文件**改名成**一个 Claude 数据源名没被挡 —— \
-         那与覆写那份 jsonl 一样会损坏会话"
-    );
-    assert_eq!(
-        fenced_path(&outof),
-        Some(protected().as_str()),
-        "把正在用的会话文件**改名走**没被挡"
-    );
-    // 两侧都干净 ⇒ 过。反空真：这把尺子不是恒回 `Some`。
-    assert_eq!(
-        fenced_path(&WriteOp::Rename {
-            from: "/srv/data/x.bin".to_string(),
-            to: "/srv/data/y.bin".to_string(),
-            raw: None,
-        }),
-        None
-    );
-    // **处数自检**：改名真的问了两条路径，不是一条。
-    assert_eq!(
-        into.paths().len(),
-        2,
-        "改名只交出一条路径 —— 围栏就只问得到一半"
-    );
-    assert_eq!(
-        WriteOp::Delete {
-            path: protected(),
-            is_dir: true,
-            raw: None,
-        }
-        .paths()
-        .len(),
-        1
-    );
-}
-
-/// 🔴 **阴性对照**：普通路径必须**真的过**，而且 `apply` 真的收到了它。
-///
-/// 没有这一条，上面两条可以靠「一律拒」全绿 —— 而那时这个窗口一件事都干不了，
-/// 屏幕上却只有一句「挡住了」。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_ordinary_path_really_gets_through_the_fence() {
-    let applied = Applied::default();
-    let ops = vec![
-        WriteOp::Mkdir {
-            path: "/srv/data/newdir".to_string(),
-        },
-        WriteOp::Delete {
-            path: ordinary(),
-            is_dir: false,
-            raw: None,
-        },
-        WriteOp::Chmod {
-            path: ordinary(),
-            mode: 0o644,
-            raw: None,
-        },
-        WriteOp::Rename {
-            from: ordinary(),
-            to: "/home/u/.claude/projects/dash-proj/notes2.md".to_string(),
-            raw: None,
-        },
-    ];
-    for op in &ops {
-        assert_eq!(
-            fenced_path(op),
-            None,
-            "普通路径被围栏挡了：{}（那条围栏的判定是**结构**判定，\
-             `projects/` 下恰两段 ＋ `.jsonl` 收尾 —— 同一棵树下的普通文件不该中）",
-            op.label()
-        );
-    }
-    let out = run_writes(
-        ops.clone(),
-        |a| async move { a }, // 全答「做」
-        |op| {
-            applied.0.lock().unwrap().push(op);
-            async move { Ok(()) }
-        },
-    )
-    .await;
     assert_eq!(
         applied.seen(),
         ops,
-        "过了围栏的那几件没有原样交到 `apply` 手上"
+        "🔴 V119：会话文件那几件没有原样交到 `apply` 手上"
     );
-    assert_eq!(out.ok, 4);
-    assert!(out.blocked.is_empty(), "实得 {:?}", out.blocked);
+    assert_eq!((out.asked, out.ok, out.skipped), (3, 4, 0), "{out:?}");
+    assert!(out.failed.is_empty(), "{out:?}");
 }
 
 /// 🔴〔F2 · 2026-09-24〕**后端那道围栏拒了，那句话原样回到窗口上** —— 不是被吞掉。
@@ -456,13 +338,13 @@ async fn a_batch_with_nothing_dangerous_asks_nobody() {
 
 /// 🔴 那一问回来的东西**只起「准不准」的作用** —— 它没法凭空塞进一件新操作。
 ///
-/// 少了这条过滤，一个坏掉（或被改坏）的看板就能把一件**没过围栏**的操作
-/// 递进 `apply`，而围栏那一段已经跑完了。
+/// 少了这条过滤，一个坏掉（或被改坏）的看板就能把一件**调用方没交给它**的操作递进 `apply`。
+/// 〔FN1〕从前的说法是「没过围栏的操作」；围栏删了，这条过滤的理由没变（人点的是哪几件，就只做哪几件）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_answer_cannot_smuggle_in_an_operation_nobody_fenced() {
     let applied = Applied::default();
     let smuggled = WriteOp::Delete {
-        path: protected(),
+        path: session_path(),
         is_dir: false,
         raw: None,
     };
@@ -792,7 +674,6 @@ fn a_finished_round_is_observable_and_keeps_its_words() {
     let out = WriteOutcome {
         asked: 1,
         skipped: 0,
-        blocked: vec!["挡了一件".into()],
         ok: 1,
         failed: vec![("删除文件 /a".into(), "boom".into())],
     };
@@ -1016,3 +897,99 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
         WritePrompt::for_chmod_many("/srv/data", &[&a])
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔GP1 · 第四波〕改权限那个框显示现值
+//
+// 要求住址：`设计/60 §7`（改权限时显示现值）· `调研/第四波记录/FW5.md §四`（缺后端读口，已报备）·
+// `调研/第四波记录/GP1.md §5`（P2）。后端那一半（`files-stat` 送 `mode`）的判据住后端
+// `files::tests::gp1_stat_reports_the_declared_fields_and_the_real_mode_bits`。
+// ═══════════════════════════════════════════════════════════════════════
+
+/// P2：现值那一句 ＋ 预填 == 手写表（一项 · 多项同 · 多项不同 · 有一项读不到 · 空摞）。
+#[test]
+fn gp1_the_chmod_box_says_the_current_mode_and_prefills_only_what_it_really_read() {
+    let r = |line: &str, prefill: Option<&str>| ModeReadout {
+        line: line.to_string(),
+        prefill: prefill.map(str::to_string),
+    };
+    let cells: [(&[Option<u32>], ModeReadout); 6] = [
+        (&[Some(0o644)], r("现在是 644", Some("644"))),
+        (&[Some(0o4755)], r("现在是 4755", Some("4755"))),
+        (&[Some(0o750), Some(0o750)], r("现在是 750", Some("750"))),
+        (
+            &[Some(0o750), Some(0o644)],
+            r("这几项现在的权限不一样", None),
+        ),
+        (&[Some(0o644), None], r("读不到现在的权限", None)),
+        (&[], r("读不到现在的权限", None)),
+    ];
+    for (modes, want) in cells {
+        assert_eq!(mode_readout(modes), want, "mode_readout({modes:?})");
+    }
+}
+
+/// P2′：应答里的 `mode` 怎么读 —— 缺席 / 类型不对 / 超出低 12 位 ⇒ 当读不到（不猜一个值）。
+#[test]
+fn gp1_the_mode_is_read_from_the_stat_reply_or_not_at_all() {
+    assert_eq!(mode_of(&serde_json::json!({"mode": 420})), Some(0o644));
+    assert_eq!(
+        mode_of(&serde_json::json!({"size": 1})),
+        None,
+        "非 unix 那台不送 ⇒ 读不到"
+    );
+    assert_eq!(mode_of(&serde_json::json!({"mode": "644"})), None);
+    assert_eq!(mode_of(&serde_json::json!({"mode": -1})), None);
+    assert_eq!(mode_of(&serde_json::json!({"mode": 0o10000})), None);
+}
+
+/// P2″：预填至多一次；用户已经动过那一栏 ⇒ 不盖；清空之后不再被塞回去。
+#[test]
+fn gp1_the_current_mode_is_prefilled_at_most_once_and_never_over_what_you_typed() {
+    let a = row("a.bin", false, false);
+    let got = mode_readout(&[Some(0o640)]);
+    let mut p = WritePrompt::for_chmod("/srv/data", &a);
+    assert_eq!(p.text, "", "框摆出来时空着（现值还没答回来）");
+    apply_prefill(&mut p, &got);
+    assert_eq!(p.text, "640");
+    p.text.clear();
+    apply_prefill(&mut p, &got);
+    assert_eq!(p.text, "", "用户清空之后又被塞回去了");
+    // 用户先动了手 ⇒ 不盖。
+    let mut q = WritePrompt::for_chmod("/srv/data", &a);
+    q.text = "7".into();
+    apply_prefill(&mut q, &got);
+    assert_eq!(q.text, "7");
+    // 各项不同 ⇒ 不预填（替用户挑一个就是猜）。
+    let mut m = WritePrompt::for_chmod_many("/srv/data", &[&a, &a]);
+    apply_prefill(&mut m, &mode_readout(&[Some(0o600), Some(0o644)]));
+    assert_eq!(m.text, "");
+    // 读回来的值原样确认 ⇒ 出的那一件就是原值（点确认 = 不变，不会静默改坏）。
+    p.text = "640".into();
+    assert_eq!(
+        p.to_op().expect("合法"),
+        WriteOp::Chmod {
+            path: "/srv/data/a.bin".into(),
+            mode: 0o640,
+            raw: None,
+        }
+    );
+}
+
+/// P2‴：现值那一趟的代数 —— 框换了之后，上一个框晚到的答案不许落到新框上。
+#[test]
+fn gp1_a_late_answer_for_an_old_box_never_lands_on_the_new_one() {
+    let probe = ModeProbe::default();
+    let old = probe.start();
+    let new = probe.start();
+    probe.land(old, vec![Some(0o777)]);
+    assert_eq!(probe.readout(), None, "旧框那一趟的答案落到了新框上");
+    probe.land(new, vec![Some(0o600)]);
+    assert_eq!(
+        probe.readout().map(|r| r.line),
+        Some("现在是 600".to_string())
+    );
+}
+
+// P2⁗（现值那一趟真上线、按盘上真文件答）住 `shell_tests.rs::gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire`：
+// 它要在临时目录里铺真文件、设真权限位，本文件留在单元层（`test_tiers` 分区）。
