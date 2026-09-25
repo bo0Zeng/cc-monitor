@@ -1851,8 +1851,13 @@ fn apikey_routing_for(config_dirs: Vec<String>) -> ApikeyRouting {
 /// `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕，**那个名字全仓零定义**，
 /// 而这句话是当现状在说。
 #[tauri::command]
-fn write_apikey_credentials_key(key: String, config_dir: String) -> Result<(), String> {
-    creds_store::write_key(&config_dir, &key)
+fn write_apikey_credentials_key(
+    key: String,
+    config_dir: String,
+    // 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL。缺席 = 用默认上游（不碰那一格）。
+    base_url: Option<String>,
+) -> Result<(), String> {
+    creds_store::write_key(&config_dir, &key, base_url.as_deref())
 }
 
 /// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。
