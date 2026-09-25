@@ -508,6 +508,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "plugins-marketplaces",
         "tasks-list",
+        // 〔RM1c · 第四波〕代码全景：起一个进程、等它退出（建索引可到分钟级）。
+        "panorama",
         // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
         "apikey-key-set",
         "apikey-read",
@@ -573,6 +575,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-set",
         "plugins-marketplaces",
         "tasks-list",
+        "panorama",
         "apikey-key-set",
         "apikey-read",
         "relay-ensure",
