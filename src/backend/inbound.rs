@@ -841,7 +841,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "relay-status",
         doc_anchor: Some("#### `relay-status`"),
-        codes: &["bad_args"],
+        codes: &["bad_args", "not_ours"],
         fields: &["listening", "port"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -853,7 +853,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "relay-ensure",
         doc_anchor: Some("#### `relay-ensure`"),
-        codes: &["bad_args", "spawn_failed", "unsupported"],
+        codes: &["bad_args", "not_ours", "spawn_failed", "unsupported"],
         fields: &["listening", "pid", "port", "started"],
         takes_input: true,
         run: Run::Blocking(|r| {
