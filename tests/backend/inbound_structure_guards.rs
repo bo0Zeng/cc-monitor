@@ -176,6 +176,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-tail"
                 | "accounts-list"
                 | "accounts-sessions"
+                | "accounts-trust" // 〔C4c〕信任预检：读 manifest ＋ `.claude.json`，同档
                 // 〔B2 · 条 66〕「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
@@ -271,6 +272,7 @@ fn every_registered_command_declares_its_run_kind() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "accounts-trust", // 〔C4c〕
         "exit-policy-read",
         "exit-policy-set",
         "plugins-marketplaces",

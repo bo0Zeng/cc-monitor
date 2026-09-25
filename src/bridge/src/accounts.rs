@@ -1,20 +1,16 @@
-//! A2 monitor 侧：远端多账号（cc-acct-iso）的**只读**查询命令。
+//! 账号清单的**形状**（`AccountsMeta` / `RemoteAccount` / `AuthKind` / `AccountsResult`）。
 //!
-//! 账号 = 一个 `CLAUDE_CONFIG_DIR`。本模块只把远端后端的三个只读命令包装成
-//! Tauri command，**不做任何注入、不落任何盘**（注入是 A4、UI 是 A3）。
+//! 〔C4c · 第四波 4B〕本模块**不再有任何一条 Tauri 命令**：A2 那两条账号清单（远端 `list_remote_accounts`、
+//! 本机那条在 `local_accounts.rs`）与换号前的信任预检（`check_account_trust`）退役 —— 前端经通道直接说帧命令
+//! `accounts-list` / `accounts-trust`，**那台机器的后端出成品**（`src/backend/observe/accounts_query.rs::list_product`，
+//! 并表规则住 `acct-core`）。这里那一份行解析（`parse_accounts_lines`）· 降级说明（`degraded_notice`）· 〔散文墓碑〕
+//! trust 拼参与解析〔散文墓碑〕一起删了。
 //!
-//! # 「不可用」不是错误
-//! 旧后端不认这三个命令（`unknown argument` → exit 2 / 无输出）。
-//! 这种情况一律回 `available:false + error:<人话>`，
-//! **而不是** `Err`——前端据此把账号功能整体降级隐藏，不弹错误（设计文档 §7 降级矩阵）。
-//! 只有「这台远端根本没配」才回 `Err`（那是调用方的 bug）。
+//! 留下的只有形状：`RemoteAccount` / `AuthKind` 仍是 TS 侧 `Account` / `AuthKind` 的生成源（`src/generated/`），
+//! 本机那份参照实现（`local_accounts.rs::list_from_dir`，零生产调用方、只被判据驱动，理由见它的头注）仍产出这份结构。
 //!
 //! # 凭据边界
 //! backend 侧已保证不输出任何凭据/密钥内容（见 `accounts_query.rs` 模块文档）。
-//! 本模块只做反序列化与转发，不额外读任何文件。
-
-use crate::remote_history::run_list_query;
-use crate::ssh_source;
 
 /// `--list-accounts` 的首行 meta。
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -73,7 +69,11 @@ pub enum AuthKind {
 /// 在此之前两侧靠一行「对齐 A2 的返回结构」的注释对齐 —— 那句注释是纪律，不是判据：
 /// 往一侧加字段没有任何门禁会红。现在往这里加字段而不跑 `npm run gen:types`，
 /// `generated-boundary-guard` + CI 的 `git diff --exit-code -- src/generated/` 会红。
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+// 〔C4c · 第四波 4B〕它**不再从线上反序列化**（清单由那台机器的后端出成品、界面严格收，
+// `src/accounts.ts::decodeAccountsList`）⇒ `Deserialize` 与那两个「宽容反序列化」的帮手〔散文墓碑〕一起摘了：
+// 那两个帮手治的是「monitor 逐行解析时一格硬错会让整个账号静默消失」，今天 monitor 这一侧一行都不解析。
+// （写成 `//` 而不是文档注释：ts-rs 会把文档注释抄进 `src/generated/RemoteAccount.ts`。）
+#[derive(serde::Serialize, Debug, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
@@ -105,67 +105,16 @@ pub struct RemoteAccount {
     /// ⚠ 它是 `Option` **不是**为了给「未知」留一档语义：这一维上「未知」没有真值
     /// （判可用 = 放宽订阅号的缺凭据保护；判不可用 = 今天所有账号立刻不可选）。
     /// 它是 `Option` 只因为**线上真的会缺**（monitor 连任意版本的远端后端）。
-    #[serde(
-        default,
-        deserialize_with = "lenient_auth_kind",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub auth_kind: Option<AuthKind>,
     /// **K-A1：「鉴权方式这一维不再阻塞它被选中」。`None` = 旧 backend ⇒ 回落到 `logged_in`。**
     ///
     /// 规则的唯一住址是 `acct_core::auth_ready`，两个生产者都调它。
     /// ⚠ `true` **不等于**「真能连上」（`KA6a`），也不等于「凭据有效」（`KA6b`）。
-    #[serde(
-        default,
-        deserialize_with = "lenient_auth_ready",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub auth_ready: Option<bool>,
-}
-
-/// **宽容**反序列化 `authReady`：认不出的形状 ⇒ `None`，**不是**硬错。
-///
-/// # 为什么它也要一份（自审补的：同职的地方要一起治，不能只治撞到的那一处）
-///
-/// 与 [`lenient_auth_kind`] **同一个失效模式**：这一族里任何一个字段一旦硬错，
-/// `parse_accounts_lines` 的「坏行跳过」策略会让**整个账号从列表里消失**
-/// —— 而少一行是用户看不见、也没法修的那种坏。
-/// `bool` 今天不太可能变形状，但这个理由**不该由字段类型来担保** ——
-/// 担保它的是「远端后端的版本我们控制不了」这件事，而那对两个字段一模一样。
-fn lenient_auth_ready<'de, D>(d: D) -> Result<Option<bool>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    // 用 `Value` 收，再自己判形状：不是 bool 就当「对面没说」。
-    let raw = <Option<serde_json::Value> as serde::Deserialize>::deserialize(d)?;
-    Ok(raw.and_then(|v| v.as_bool()))
-}
-
-/// **宽容**反序列化 `authKind`：认不出的值 ⇒ `None`，**不是**硬错。
-///
-/// # 为什么必须宽容（这条是被一次实测逼出来的，不是防御性编程）
-///
-/// serde 对未知 enum variant 是**硬错**，而 `parse_accounts_lines` 的策略逐字是
-/// 「认不出的行**跳过**而不是整体失败」⇒ 写侧（`cc-acct-iso`，另一门语言、另一个发布节奏）
-/// 哪天先加了 `bedrock`，读侧还没升，那个账号就**整行从列表里消失**。
-/// 静默少一行比判错 kind 坏得多 —— 用户看不见的东西没法修。
-/// 实测记录：`tests::an_unrecognized_auth_kind_does_not_silently_drop_the_account`
-/// 在加本函数**之前**就是红的（实得 1 个账号，期望 2 个）。
-///
-/// 「认不出」与「对面没说」都落 `None`，因为它们**该走同一条路**：
-/// 当订阅、保留「缺凭据 ⇒ 不可选」那道保护（看得见、可修）。
-/// 闭集与分类规则仍然只有一处住址（`acct_core::AUTH_KINDS` + `AuthKind::from_manifest`），
-/// 本函数只加「不认识就说不知道」这一条策略。
-fn lenient_auth_kind<'de, D>(d: D) -> Result<Option<AuthKind>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let raw = <Option<String> as serde::Deserialize>::deserialize(d)?;
-    Ok(raw
-        .filter(|s| acct_core::AUTH_KINDS.contains(&s.as_str()))
-        .map(|s| AuthKind::from_manifest(Some(&s))))
 }
 
 impl AuthKind {
@@ -188,22 +137,6 @@ impl AuthKind {
     }
 }
 
-impl RemoteAccount {
-    /// 〔第三波 S3〕把「本机 apikey 表里有没有这个号的一行」并进 `authKind` / `authReady`。
-    ///
-    /// 两条规则都不住这里：分类是 `acct_core::auth_kind_with_apikey_table`，就绪是 `acct_core::auth_ready`
-    /// —— 本函数只把结论落回这份结构。**分类没变就一个字节都不动**（没行的订阅号逐字节是后端答的那一份）。
-    pub(crate) fn apply_apikey_table(&mut self, in_apikey_table: bool) {
-        let from_manifest = self.auth_kind.unwrap_or_default().as_contract_str();
-        let kind = acct_core::auth_kind_with_apikey_table(from_manifest, in_apikey_table);
-        if kind == from_manifest {
-            return;
-        }
-        self.auth_kind = Some(AuthKind::from_manifest(Some(kind)));
-        self.auth_ready = Some(acct_core::auth_ready(kind, self.logged_in));
-    }
-}
-
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsResult {
@@ -215,231 +148,6 @@ pub struct AccountsResult {
     /// Z01：**能用但有缺**时的人话说明（前端应显示）。`available` 仍是 true——
     /// 降级不是不可用。`None` = 无缺。**绝不静默降级**是这条字段存在的全部理由。
     pub notice: Option<String>,
-}
-
-/// Z01：列表虽然拿到了，但远端版本旧到「账号 0 看不见」时的人话说明。
-/// 两种旧法要分开说，因为要用户做的事不一样（更新 backend vs 更新 cc-acct-iso）。
-pub(crate) fn degraded_notice(meta: &AccountsMeta, accounts: &[RemoteAccount]) -> Option<String> {
-    if !meta.enabled {
-        return None; // 压根没启用多账号，谈不上缺账号 0
-    }
-    if !meta.account_zero_aware {
-        return Some(
-            "远端后端版本较旧：它不认识账号 0（未设 CLAUDE_CONFIG_DIR 的那个默认登录），             列表里会少这一行。更新远端后端后即可看到。"
-                .into(),
-        );
-    }
-    if !accounts.iter().any(|a| a.config_dir.is_none()) {
-        return Some(
-            "远端 cc-acct-iso 版本较旧：它的 accounts.json 里没有账号 0（未设              CLAUDE_CONFIG_DIR 的那个默认登录）。在远端跑一次 'cc-acct-iso sync --apply'              （或重新部署 cc-acct-iso）即可补上。"
-                .into(),
-        );
-    }
-    None
-}
-
-/// `--account-trust` 结果：目标账号是否已信任某目录（换号 resume 前的预检）。
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountTrustResult {
-    #[serde(default)]
-    pub available: bool,
-    pub error: Option<String>,
-    /// 已接受该目录的信任对话框。
-    #[serde(default)]
-    pub trusted: bool,
-    /// 该 cwd 在这个账号的 `.claude.json` 里有记录。`false` ⇒ 首次进入，大概率会弹确认。
-    #[serde(default)]
-    pub known: bool,
-}
-
-/// 解析 `--list-accounts` 的输出行（首行 meta + 每账号一行）。纯函数，供单测。
-/// 认不出的行**跳过**而不是整体失败（backend 将来可能加新 kind）。
-pub(crate) fn parse_accounts_lines(lines: &[String]) -> (Option<AccountsMeta>, Vec<RemoteAccount>) {
-    let mut meta = None;
-    let mut accounts = Vec::new();
-    for line in lines {
-        let v: serde_json::Value = match serde_json::from_str(line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        if v.get("kind").and_then(|k| k.as_str()) == Some("accounts-meta") {
-            if let Ok(m) = serde_json::from_value::<AccountsMeta>(v) {
-                meta = Some(m);
-            }
-            continue;
-        }
-        if let Ok(a) = serde_json::from_value::<RemoteAccount>(v) {
-            accounts.push(a);
-        }
-    }
-    (meta, accounts)
-}
-
-/// 拼 trust 查询的参数串。纯函数，供单测（拼命令行是注入面，必须能直接断言）。
-pub(crate) fn trust_args(config_dir: Option<&str>, cwd: &str) -> String {
-    match config_dir {
-        // 账号 0：**不传路径**。backend 那边路径是写死的 $HOME/.claude.json ⇒
-        // 这条命令连「任意文件读」的面都没有。
-        None => format!("--account-trust-zero {}", ssh_source::shell_quote(cwd)),
-        Some(c) => format!(
-            "--account-trust {} {}",
-            ssh_source::shell_quote(c),
-            ssh_source::shell_quote(cwd)
-        ),
-    }
-}
-
-fn unavailable<T: Default>(msg: impl Into<String>) -> T
-where
-    T: HasAvailability,
-{
-    let mut t = T::default();
-    t.set_unavailable(msg.into());
-    t
-}
-
-pub(crate) trait HasAvailability {
-    fn set_unavailable(&mut self, msg: String);
-}
-impl HasAvailability for AccountsResult {
-    fn set_unavailable(&mut self, msg: String) {
-        self.available = false;
-        self.error = Some(msg);
-    }
-}
-impl HasAvailability for AccountTrustResult {
-    fn set_unavailable(&mut self, msg: String) {
-        self.available = false;
-        self.error = Some(msg);
-    }
-}
-
-/// 取某台远端的配置。
-///
-/// 🔴 `K-R59`（定框 `K35`）：这里原来还有一个早返回 —— `cfg.daemonless` 为真时直接判
-/// 「无账号能力」。那一档没了（**没有「没有后端」这回事**）⇒ 早返回一起走，
-/// 前端 `deriveUi` 里那一支 `kind: "hidden"` 也随之下岗（它只由这条串产出）。
-fn cfg_for(origin: &str) -> Result<Result<ssh_source::RemoteConfig, String>, String> {
-    let cfg = crate::load_remote_config_by_label(origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
-    Ok(Ok(cfg))
-}
-
-/// 列出某台远端的账号（读 `$ACCTS_DIR/accounts.json`）。
-#[tauri::command]
-pub async fn list_remote_accounts(origin: String) -> Result<AccountsResult, String> {
-    let cfg = match cfg_for(&origin)? {
-        Ok(c) => c,
-        Err(msg) => return Ok(unavailable(msg)),
-    };
-    // 〔`C1`〕走长连接的 `accounts-list`（不再为读一份账号清单单拨一条 SSH）。
-    match crate::backend::control::frame_query::lines(
-        &crate::origin::Origin(cfg.origin_label()),
-        "accounts-list",
-        serde_json::json!({}),
-    )
-    .await
-    {
-        Err(e) => {
-            tracing::warn!("远端 [{origin}] --list-accounts 失败: {e}");
-            Ok(unavailable(e))
-        }
-        Ok(lines) => {
-            if lines.is_empty() {
-                // 旧后端不认该参数 → exit 2 且 stdout 无输出
-                return Ok(unavailable(
-                    "远端后端不支持账号查询（版本过旧）——请更新 backend",
-                ));
-            }
-            let (meta, accounts) = parse_accounts_lines(&lines);
-            if meta.is_none() {
-                return Ok(unavailable(
-                    "远端返回的账号数据无法解析（backend 版本不匹配？）",
-                ));
-            }
-            let notice = meta.as_ref().and_then(|m| degraded_notice(m, &accounts));
-            Ok(AccountsResult {
-                available: true,
-                error: None,
-                meta,
-                accounts,
-                notice,
-            })
-        }
-    }
-}
-
-// 〔C4a · 第四波〕A2 那条「某台远端上正在跑的会话各属于哪个账号」的 Tauri 命令**退役**：
-//   本机那条（`local_accounts.rs` 里 E79 那条）一起退役，两条收成**一条路** ——
-//   前端经通道（`chan::webview::chan_call`）直接说帧命令 `accounts-sessions`，逐行解释只剩
-//   `src/accounts.ts::parseSessionAccountLines` 一处（`SessionAccount` / `SessionAccountsResult`
-//   这两个类型的家随之搬到那边，这里一并删掉）。
-
-/// 换号前预检：目标账号是否已信任该工作目录。
-/// `config_dir` 必须来自 `list_remote_accounts` 的返回值（backend 侧还会再校验一次）。
-///
-/// **Z01**：`config_dir` 为 `None` = 账号 0 ⇒ 走后端的 `--account-trust-zero`
-/// （它的 `.claude.json` 在 `$HOME`，不在任何 config dir 里）。**不要**为此传空串：
-/// 空串会被后端判成不安全路径并拒掉，用户看到的是一句莫名其妙的错。
-///
-/// # 〔`A3` 第二波〕本机那一侧：同一条命令，按 `origin` 分流
-///
-/// `origin == <local>`（`inbound_client::LOCAL_ORIGIN`）⇒ 不走 SSH，exec **本机后端**的
-/// 同一条子命令（`--account-trust` / `--account-trust-zero`，参数走 argv 不过 shell），
-/// 解析与远端那条共用 [`trust_from_lines`]。实现住 `local_accounts::local_account_trust`，
-/// 与 `list_local_accounts` 同一种调用法。⇒ 能力 `accounts.trust` 从此两侧都有
-/// （账本 `LEDGER` 这一行记 `Side::Both`，并在 `ORIGIN_TAKING_BOTH` 里登记理由）。
-#[tauri::command]
-pub async fn check_account_trust(
-    origin: String,
-    config_dir: Option<String>,
-    cwd: String,
-) -> Result<AccountTrustResult, String> {
-    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        return Ok(crate::local_accounts::local_account_trust(config_dir, cwd).await);
-    }
-    let cfg = match cfg_for(&origin)? {
-        Ok(c) => c,
-        Err(msg) => return Ok(unavailable(msg)),
-    };
-    // 位置参数必须各自 posix 引用后再拼进命令行
-    let args = trust_args(config_dir.as_deref(), &cwd);
-    match run_list_query(&cfg, &args).await {
-        Err(e) => {
-            tracing::warn!("远端 [{origin}] --account-trust 失败: {e}");
-            Ok(unavailable(e.message))
-        }
-        // backend 的硬错误走 stderr + exit 2，stdout 无行 → 视为不可用（不阻断编排，
-        // 由调用方按"未知信任状态"处理：只警告不拦截）
-        Ok(lines) => Ok(trust_from_lines(
-            &lines,
-            "远端未返回信任状态（backend 版本过旧或该 configDir 被拒）",
-        )),
-    }
-}
-
-/// `--account-trust*` 的出参折成 [`AccountTrustResult`] —— **两侧共用的那一份解析**。
-///
-/// 远端那条（SSH 回来的行）与本机那条（`local_accounts::local_account_trust`，本机后端
-/// stdout 的行）都走这里；两侧的差别只剩「行从哪来」与「一行都没有时怎么说」（`empty`）。
-pub(crate) fn trust_from_lines(lines: &[String], empty: &str) -> AccountTrustResult {
-    let Some(first) = lines.first() else {
-        return unavailable(empty);
-    };
-    match serde_json::from_str::<AccountTrustResult>(first) {
-        Ok(mut r) => {
-            r.available = true;
-            r.error = None;
-            r
-        }
-        Err(e) => unavailable(format!("信任状态解析失败: {e}")),
-    }
-}
-
-/// 同一条对象的 `available:false` 形 —— 给本机那一侧用（远端那侧在本文件里直接调私有的 `unavailable`）。
-pub(crate) fn trust_unavailable(msg: String) -> AccountTrustResult {
-    unavailable(msg)
 }
 
 #[cfg(test)]

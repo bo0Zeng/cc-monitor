@@ -36,6 +36,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../src/views/history";
 import { runRemoteResume } from "../../src/remote-launch-run";
 import { invalidateAccountsCache } from "../../src/accounts";
+import { withAccountReads } from "../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runRemote = runRemoteResume as unknown as ReturnType<typeof vi.fn>;
@@ -91,7 +92,7 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
   // 走的是"跟随解析"分支——补一条"跟随解析真命中当前账号时 accountName 真的转传"的集成测试。
   it("远端搜索卡片 resume（跟随解析命中当前账号）→ runRemoteResume 收到真实 configDir + accountName", async () => {
     invalidateAccountsCache(); // fetchAccounts 有模块级缓存，防陈旧缓存挡住下面的自定义 mock
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withAccountReads((cmd: string) => {
       if (cmd === "list_remote_accounts") {
         return Promise.resolve({
           available: true,
@@ -102,7 +103,7 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
       }
       if (cmd === "list_last_accounts") return Promise.resolve({}); // 无既有 pin → 落 current
       return Promise.resolve(undefined);
-    });
+    }));
     const view = new HistoryView();
     const card = buildCard(view, searchSession({ origin: "hostA" }));
     card.querySelector<HTMLButtonElement>(".search-session-resume")!.click();

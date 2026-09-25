@@ -1,0 +1,117 @@
+/**
+ * 〔C4c · 第四波 4B〕后端账号那两条帧命令的**成品** ⇒ 界面要的形状（按形状收，不解释）。
+ *
+ * - `accounts-list` ⇒ [`decodeAccountsList`]：`{meta, accounts, notice}`，并表（apikey 表 ⇒ `authKind` / `authReady`）
+ *   **已在那台机器的后端做完**（`src/backend/observe/accounts_query.rs::list_product`，规则住 `acct-core`）；
+ * - `accounts-trust` ⇒ [`decodeTrust`]：`{trusted, known}`。
+ *
+ * 为什么单独一个文件：`tests/account-availability-guard.vitest.ts`（KAY4）数着「生产段里谁在读账号的鉴权字段」——
+ * 收成品那一格必须逐字段核类型（读到了才核得了），它是**收**，不是**判**：可用性仍只由 `accounts.ts::isSelectable` 答。
+ * 放在这里、在那张登记表里单独一行，两件事分得开。
+ * 跨语言金样 `tests/__fixtures__/accounts.golden.json` 钉着后端出的形状与这里收的形状（`tests/accounts-decode.vitest.ts`）。
+ */
+import type { Account, AccountsMeta, AuthKind } from "./accounts";
+
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+const sameKeys = (o: Record<string, unknown>, want: readonly string[]): boolean => {
+  const got = Object.keys(o).sort();
+  const w = [...want].sort();
+  return got.length === w.length && got.every((k, i) => k === w[i]);
+};
+const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
+const AUTH_KINDS: readonly AuthKind[] = ["subscription", "api-key"];
+
+/**
+ * 〔C4c · 第四波 4B〕后端 `accounts-list` 的成品 ⇒ 界面那三格。**严格收**（口径同 C4b 的 `decodeSurvey`）：
+ * 顶层 / `meta` / 每个账号的键集合都要恒等，类型逐格核；多一格、缺一格、类型不对 ⇒ 抛「两端契约对不上」——
+ * 不替后端补一个值（那会把一个坏掉的号悄悄变成一个能选的号）。老后端回的 `{"lines": […]}` 也落这里。
+ * 跨语言金样 `tests/__fixtures__/accounts.golden.json` 钉着两侧。
+ */
+export function decodeAccountsList(v: unknown): {
+  meta: AccountsMeta;
+  accounts: Account[];
+  notice: string | null;
+} {
+  const bad = (what: string): never => {
+    throw new Error(`账号清单的应答形状不对（${what}）—— 两端契约对不上`);
+  };
+  if (!isObj(v) || !sameKeys(v, ["meta", "accounts", "notice"])) return bad("顶层");
+  const m = v.meta;
+  if (
+    !isObj(m) ||
+    !sameKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error"]) ||
+    typeof m.enabled !== "boolean" ||
+    typeof m.acctsDir !== "string" ||
+    typeof m.manifestPath !== "string" ||
+    !nullableStr(m.updatedAt) ||
+    !nullableStr(m.sharedStore) ||
+    typeof m.count !== "number" ||
+    !nullableStr(m.error)
+  ) {
+    return bad("meta");
+  }
+  if (!Array.isArray(v.accounts)) return bad("accounts");
+  if (!nullableStr(v.notice)) return bad("notice");
+  const accounts: Account[] = v.accounts.map((a, i) => {
+    if (
+      !isObj(a) ||
+      !sameKeys(a, [
+        "name",
+        "email",
+        "configDir",
+        "isDefault",
+        "mode",
+        "exists",
+        "loggedIn",
+        "authKind",
+        "authReady",
+      ]) ||
+      typeof a.name !== "string" ||
+      typeof a.email !== "string" ||
+      !nullableStr(a.configDir) ||
+      typeof a.isDefault !== "boolean" ||
+      typeof a.mode !== "string" ||
+      typeof a.exists !== "boolean" ||
+      typeof a.loggedIn !== "boolean" ||
+      !AUTH_KINDS.includes(a.authKind as AuthKind) ||
+      typeof a.authReady !== "boolean"
+    ) {
+      return bad(`第 ${i} 个账号`);
+    }
+    return {
+      name: a.name,
+      email: a.email,
+      configDir: a.configDir,
+      isDefault: a.isDefault,
+      mode: a.mode,
+      exists: a.exists,
+      loggedIn: a.loggedIn,
+      authKind: a.authKind as AuthKind,
+      authReady: a.authReady,
+    };
+  });
+  const meta: AccountsMeta = {
+    enabled: m.enabled,
+    acctsDir: m.acctsDir,
+    manifestPath: m.manifestPath,
+    updatedAt: m.updatedAt,
+    sharedStore: m.sharedStore,
+    count: m.count,
+    error: m.error,
+  };
+  return { meta, accounts, notice: v.notice };
+}
+
+/** 〔C4c〕后端 `accounts-trust` 的成品 ⇒ `{trusted, known}`。严格收（同上）。 */
+export function decodeTrust(v: unknown): { trusted: boolean; known: boolean } {
+  if (
+    !isObj(v) ||
+    !sameKeys(v, ["trusted", "known"]) ||
+    typeof v.trusted !== "boolean" ||
+    typeof v.known !== "boolean"
+  ) {
+    throw new Error("信任预检的应答形状不对 —— 两端契约对不上");
+  }
+  return { trusted: v.trusted, known: v.known };
+}

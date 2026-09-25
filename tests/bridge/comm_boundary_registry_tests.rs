@@ -2440,11 +2440,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔C4b · 第四波 4B〕2 → 5：`session-reads.ts` 的三问（`history-index` / `history-user-inputs` / `history-find`，
     //    会话读面那三条从 monitor 的 Tauri 命令改走通道；每处显式给期限）。5 → 6：`settings/plugins-section.ts::fetchSurvey`
     //    （`plugins-marketplaces`）。
+    // 〔C4c · 第四波 4B〕6 → 8：`accounts.ts::fetchAccounts`（`accounts-list`）· `accounts.ts::checkTrust`（`accounts-trust`）——
+    //    账号清单与信任预检从 monitor 的三条 Tauri 命令改走通道；每处显式给期限。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 6usize),
+            ("chan.call", 8usize),
             ("subscribe", 1usize)
         ]
         .into_iter()

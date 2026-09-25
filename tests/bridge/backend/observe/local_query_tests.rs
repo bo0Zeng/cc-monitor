@@ -54,16 +54,18 @@ async fn a_short_circuit_cannot_fake_the_honest_degrade() {
     // 〔C4a · 第四波〕这里原先驱动的是 E79 那条「本机会话属于哪个账号」—— 它随「本机与远端同一条路」
     //   改走通道、整条退役了 ⇒ 换成**同一种调用形状**的另一个调用方 `list_local_accounts`
     //   （同样 exec 本机后端、同样把「后端不在」折成带理由的 `available:false`）。性质一格没降。
-    let r = crate::local_accounts::list_local_accounts()
+    // 〔C4c · 第四波 4B〕`list_local_accounts` 也随「本机与远端同一条路」改走通道、整条退役了 ⇒ 再换成**同一种调用形状**的
+    //   另一个调用方 `check_local_acct_iso`（同样 exec 本机后端；「后端不在」折成带理由的 `Err`，不许折成「没装」）。
+    //   性质一格没降：短路（`return Ok(不装)`）给不出那句理由 ⇒ 区分得开。
+    let why = crate::local_accounts::check_local_acct_iso()
         .await
-        .expect("这条路的诚实降级是 Ok(available=false)，不该是 Err");
-    assert!(!r.available, "没有本机后端却报 available=true");
+        .expect_err(
+            "没有本机后端却答出了「装没装」——\n\
+             ⇒ 那条查询根本没发生（被短路了），而扫源码的守卫看不见这种错：调用那行文字还在。",
+        );
     assert!(
-        r.error.is_some(),
-        "`list_local_accounts` 返回了「空但成功」——\n\
-             没有本机后端时它**必须说出理由**（定框 §5：tagged 返回 + reason）。\n\
-             ⇒ 拿不出 reason 就意味着**那条查询根本没发生**（被短路了），\n\
-             而扫源码的守卫看不见这种错：调用那行文字还在。"
+        why.contains("本机后端不在"),
+        "没有本机后端时它**必须说出理由**（定框 §5：tagged 返回 + reason），实得：{why}"
     );
 }
 

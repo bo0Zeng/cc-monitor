@@ -47,7 +47,7 @@ import {
   __setLocalLaunchSnapshotForTests,
   type AccountsState,
 } from "../../src/accounts";
-import { isChanCall, linesReply } from "../test-support/chan-fake";
+import { isChanCall, linesReply, withAccountReads } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -130,7 +130,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
       exists: true,
       loggedIn: true,
     };
-    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+    invokeMock.mockImplementation(withAccountReads((cmd: string, args: unknown) => {
       // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
       //   〔C4a〕经通道问本机后端 `accounts-sessions`（原先是 E79 那条已退役的本机 Tauri 命令）。
       if (isChanCall(cmd, args, "accounts-sessions")) {
@@ -155,7 +155,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         default:
           return Promise.resolve({});
       }
-    });
+    }));
 
     // ⚠ **快照要先喂热**：`primeLocalLaunchAccounts` 是**不等待**地踢出去的
     //   （多等一拍会撞那两条只放行一个微任务的 DOM 判据，见 `localLaunchAccountSync` 头注），
@@ -218,7 +218,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     // fetchAccounts 有模块级缓存(30s TTL)——上一条用例已经用默认 mock 值给 "hostA" 缓存过一次
     // (不含 available 字段的错误响应)，不清掉这里会命中陈旧缓存、永远走不到下面的自定义 mock。
     invalidateAccountsCache();
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withAccountReads((cmd: string) => {
       if (cmd === "list_remote_accounts") {
         return Promise.resolve({
           available: true,
@@ -228,7 +228,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         });
       }
       return Promise.resolve(undefined);
-    });
+    }));
     const view = new HistoryView();
     const row = buildRow(view, entry({ origin: "hostA" }), proj({ origin: "hostA" }));
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));

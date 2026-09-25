@@ -68,7 +68,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
-import type { ApikeyRoutingView, RawAccountsResult, TrustResult } from "../accounts";
+import type { ApikeyRoutingView } from "../accounts";
 
 export interface ApikeyCredentialsStatus {
   /** 配了没配。 */
@@ -1122,21 +1122,9 @@ export const commands = {
   /** 把监控窗口拉到最前。**桶①**。 */
   bring_monitor_to_front: () => invoke<void>("bring_monitor_to_front"),
 
-  /** 某台远端的账号清单。**桶③**（手写形状 `RawAccountsResult`，住 `accounts.ts`，理由见那里）。 */
-  list_remote_accounts: (args: { origin: Origin }) =>
-    invoke<RawAccountsResult>("list_remote_accounts", args),
-
-  /** 本机账号清单（问本机后端 `--list-accounts`）。**桶③**，同上。 */
-  list_local_accounts: () => invoke<RawAccountsResult>("list_local_accounts"),
-
   // 〔C4a · 子步 3〕远端那条「某会话跑在哪个账号下」退役（子步 2 刚收进来，子步 3 连同本机那条一起改走通道）。
-
-  /**
-   * 换号前的目录信任预检。**桶③**（手写 `TrustResult`，住 `accounts.ts`）。
-   * `configDir: null` = 问账号 0（后端走 `--account-trust-zero`）—— **绝不传空串**（Z01）。
-   */
-  check_account_trust: (args: { origin: Origin; configDir: string | null; cwd: string }) =>
-    invoke<TrustResult>("check_account_trust", args),
+  // 〔C4c · 第四波 4B〕账号清单两条（远端 / 本机）与换号前的信任预检退役：前端经通道直接说帧命令
+  //   `accounts-list` / `accounts-trust`（`src/accounts.ts::fetchAccounts` / `checkTrust`），后端出成品。
 
   /** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。**桶③**（生成物）。 */
   list_session_activity: () => invoke<SessionActivityPayload[]>("list_session_activity"),

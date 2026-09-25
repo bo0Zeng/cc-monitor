@@ -1,8 +1,8 @@
 // A3：多账号（cc-acct-iso）前端 store —— 账号模型的**单一真相**。
 //
 // 账号 = 一个 CLAUDE_CONFIG_DIR。本模块：
-//   1. 包装 A2 的只读查询（list_remote_accounts / check_account_trust 两条 Tauri 命令 ＋
-//      〔C4a〕经通道的 `accounts-sessions`），带 per-origin TTL 缓存 + 手动刷新。
+//   1. 问那台机器（本机也一样）的后端：〔C4c〕账号清单 `accounts-list` · 信任预检 `accounts-trust` ·
+//      〔C4a〕`accounts-sessions` —— 三条都经通道（`chan.call`），带 per-origin TTL 缓存 + 手动刷新。
 //   2. 存/取"我这台 cc-monitor 起新会话时用哪个账号"（config.json 的 accounts.defaultName）。
 //   3. 提供纯函数（降级判定 / 会话徽章映射）供 UI 与 vitest。
 //
@@ -25,7 +25,9 @@ import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
 // 一个 Origin 类型）之下它装的就是「哪台机器」本身，没有第二个概念 ⇒ 退役，缓存键与 origin 同一个值。
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { chan } from "./ipc/chan";
-import { budgetWithin, jsonBody, linesOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
+import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
+import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 
 // ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
 //
@@ -41,6 +43,10 @@ import { budgetWithin, jsonBody, linesOf } from "./ipc/chan-caller";
 export type Account = RemoteAccount;
 export type { AuthKind };
 
+/**
+ * 那台机器的账号库（manifest）的概况 —— 〔C4c〕后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。
+ * 〔C4c〕`accountZeroAware` 那一格退役：出成品的后端按构造认得账号 0（老后端回的是旧形状，当场认出）。
+ */
 export interface AccountsMeta {
   enabled: boolean;
   acctsDir: string;
@@ -49,17 +55,6 @@ export interface AccountsMeta {
   sharedStore: string | null;
   count: number;
   error: string | null;
-  /** Z01：远端后端认不认「configDir 缺席 = 账号 0」。旧后端不出这个键 ⇒ undefined。 */
-  accountZeroAware?: boolean;
-}
-
-export interface RawAccountsResult {
-  available: boolean;
-  error: string | null;
-  meta: AccountsMeta | null;
-  accounts: Account[];
-  /** Z01：能用但有缺（远端版本旧到看不见账号 0）时的人话说明。 */
-  notice?: string | null;
 }
 
 export interface SessionAccount {
@@ -1088,48 +1083,75 @@ interface CacheEntry<T> {
 const accountsCache = new Map<string, CacheEntry<AccountsState>>();
 const sessionAccountsCache = new Map<string, CacheEntry<SessionAccount[]>>();
 
-/** 取某台远端的账号状态（带 TTL 缓存）。force=true 或缓存过期时重发。
+/**
+ * 取那台机器（**本机也一样**）的账号状态（带 TTL 缓存）。force=true 或缓存过期时重发。
  *
- * 〔`A3` 第二波〕`origin` 是 backend 的本机 origin（`<local>`）⇒ 转给 [`fetchLocalAccounts`]
- * （问本机后端的 `--list-accounts`）。在此之前它会拿 `<local>` 去问 `list_remote_accounts`，
- * 回来一句「远端 '<local>' 未配置」—— 本机换号重启与它的菜单都经这里，那句话会让本机
- * 恒显示「没有可选账号」。 */
+ * 〔C4c · 第四波 4B〕**走通道，后端出成品**：`chan.call(origin, "accounts-list", {agent}, …)` —— 帧命令直接问那台机器的后端
+ * （本机那台由 `<local>` 那条长连接答），应答就是界面要的形状（[`decodeAccountsList`] 按形状收，不解释）。
+ * 在此之前是两条 Tauri 命令（远端 `list_remote_accounts` 走帧面、本机 `list_local_accounts` 每次 exec 一次性后端），
+ * monitor 在两条路上各把行解析一遍、本机那条另并一次 apikey 表 —— 那一份解释与并表整个挪进了后端
+ * （`observe/accounts_query.rs::list_product`，规则住 `acct-core`），远端从此也并上**它自己**那份表。
+ *
+ * `agent`：这次起会话的是哪一家（适配器 id）。并表只认那一家的行（条 49），后端不猜 ⇒ 由这里带过去。
+ * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到 / 形状对不上）⇒ `available:false` ＋ 一句人话（通道那一层的说法
+ * 住 `ipc/chan-caller.ts::saidOf`，不在账号面再写一份）；「不可用」不是错误（前端据此降级，不弹错）。
+ */
 export async function fetchAccounts(origin: Origin, force = false): Promise<AccountsState> {
-  if (isLocalOrigin(origin)) return fetchLocalAccounts(force);
   const now = Date.now();
   const cached = accountsCache.get(origin);
   if (!force && cached && now - cached.at < ACCOUNTS_TTL_MS) return cached.value;
 
-  let raw: RawAccountsResult;
+  let state: AccountsState;
   try {
-    raw = await commands.list_remote_accounts({ origin });
+    const body = jsonBody({ agent: launchAgentId() });
+    const budget = budgetWithin(ACCOUNTS_BUDGET_MS);
+    const reply = await chan.call(origin, "accounts-list", body, budget);
+    const got = decodeAccountsList(readJson(reply));
+    state = {
+      origin,
+      available: true,
+      error: null,
+      meta: got.meta,
+      accounts: got.accounts,
+      defaultName: await getDefaultName(),
+      // Z01：后端说的「能用但有缺」（manifest 里没有账号 0）。
+      notice: got.notice,
+    };
   } catch (e) {
-    // Rust 侧只有"该远端根本没配"才 Err；当作不可用而非崩溃
-    const state: AccountsState = {
+    state = {
       origin,
       available: false,
-      error: String(e),
+      error: saidOf(e, ACCOUNTS_OLD_BACKEND),
       meta: null,
       accounts: [],
       defaultName: null,
       notice: null,
     };
-    accountsCache.set(origin, { at: now, value: state });
-    return state;
   }
-  const defaultName = await getDefaultName();
-  const state: AccountsState = {
-    origin,
-    available: raw.available,
-    error: raw.error,
-    meta: raw.meta,
-    accounts: raw.accounts ?? [],
-    defaultName,
-    // Z01：后端算好的降级说明（旧 backend / 旧 cc-acct-iso ⇒ 列表里少了账号 0）。
-    notice: raw.notice ?? null,
-  };
   accountsCache.set(origin, { at: now, value: state });
   return state;
+}
+
+/**
+ * 账号清单那一问的期限：30 秒 —— 与它上一个住址（monitor 侧 `frame_query` 的 `LINES_BUDGET`）同值：
+ * 盖的是「那台后端读一份 manifest ＋ stat 各账号目录 ＋ 读一份 apikey 表 ＋ 回程」，不含握手（长连接早就连着）。
+ */
+const ACCOUNTS_BUDGET_MS = 30_000;
+/** 信任预检那一问的期限：30 秒 —— 与它上一个住址（逐次拨号那条的 `LIST_TIMEOUT`）同值。 */
+const TRUST_BUDGET_MS = 30_000;
+
+/** 那台后端比「账号清单上帧面」还老（不认这条命令）时的那句话。含「过旧」⇒ [`deriveUi`] 落「需更新」那一档。 */
+const ACCOUNTS_OLD_BACKEND = "那台机器的后端版本过旧，还不认账号清单这一问 —— 重装那台机器的后端就有了";
+
+/**
+ * 这次起会话的是哪一家（适配器 id，后端并 apikey 表时认它）。**值从后端来**：生成物里的 `ACTIVE_AGENT`
+ * 与那一行的 `adapterId`（`src/bridge/src/adapter.rs` 那张表），与 monitor 侧 `history::launch_agent_id`
+ * 同一个事实（起会话那一侧写进中转路由键第 1 段的就是它）。表里没有 ⇒ 抛（不回落到任何一家）。
+ */
+function launchAgentId(): string {
+  const got = lookupAgentProfile(ACTIVE_AGENT);
+  if (!got.known) throw new Error(got.message);
+  return got.facts.adapterId;
 }
 
 
@@ -1196,56 +1218,14 @@ export const LOCAL_ACCOUNTS_COPY = {
 } as const;
 
 /**
- * L3a（local-as-remote）：取**本机**的账号状态 —— `fetchAccounts` 的本地对侧。
+ * 取**这台机器**的账号状态 —— 〔C4c〕就是 `fetchAccounts(LOCAL_ORIGIN, …)`：本机与远端同一条路、同一个缓存键空间。
  *
- * ⚠ `N-F1c`（09-05）之后这句话变了：`list_local_accounts` **不再直接读磁盘，而是问本机后端**
- * （`backend::observe::local_query::run_query(…, &["--list-accounts"])`，与远端那条同一套解析、
- * 不同传输；`K-R71` 09-12 之前它住 `backend::control::`）——
- * 裁定住 `first-run/DECISIONS.md` `NR2`〔用 09-05〕：**claude 进程真实跑在哪台机器，
- * 账号就归那台机器的后端管**。⇒ 它**会起一个短命子进程**，而「后端不在」是一个
- * 明写出来的档（`LocalAccountsOutcome::NoBackend`），**不许渲染成「你没有账号」**。
- * 〔旧文逐字，留作来历：「后端 `list_local_accounts` 直接读 `$HOME/.claude-alt/accounts.json`
- * （只读、不起进程）」——「直接读」与「不起进程」两句今天都不成立。〕
- * **返回类型与远端那条逐字段相同** ⇒ 上层拿到的 `AccountsState` 形状一致，
- * 这正是 §40「本地 = 不走 ssh 的远端」在这一格上的意思。
- *
- * 〔C4b〕`origin` 就是 `LOCAL_ORIGIN`（先前是本文件自己的 `"__local__"` 哨兵，已退役）；
- * 走同一个缓存 Map、同一个键空间（TTL 相同）——缓存语义一致比省那点 IO 更要紧。
+ * 〔来历〕L3a 起它是 `fetchAccounts` 的本地对侧（`list_local_accounts`：`N-F1c` 之后 exec 一次本机后端的
+ * `--list-accounts`，另在 monitor 里并一次本机 apikey 表）；C4b 把缓存键统一成 `LOCAL_ORIGIN`；C4c 把两条路合成一条
+ * （问 `<local>` 那条长连接的 `accounts-list`，并表挪进后端）。名字留着：设置页 / chip / 起会话三处读作「这台机器的账号」。
  */
 export async function fetchLocalAccounts(force = false): Promise<AccountsState> {
-  const now = Date.now();
-  const cached = accountsCache.get(LOCAL_ORIGIN);
-  if (!force && cached && now - cached.at < ACCOUNTS_TTL_MS) return cached.value;
-
-  let raw: RawAccountsResult;
-  try {
-    raw = await commands.list_local_accounts();
-  } catch (e) {
-    // Rust 侧只有「取不到 HOME」才 Err；当作不可用而非崩溃（与远端那条同处理）。
-    const state: AccountsState = {
-      origin: LOCAL_ORIGIN,
-      available: false,
-      error: String(e),
-      meta: null,
-      accounts: [],
-      defaultName: null,
-      notice: null,
-    };
-    accountsCache.set(LOCAL_ORIGIN, { at: now, value: state });
-    return state;
-  }
-  const defaultName = await getDefaultName();
-  const state: AccountsState = {
-    origin: LOCAL_ORIGIN,
-    available: raw.available,
-    error: raw.error,
-    meta: raw.meta,
-    accounts: raw.accounts ?? [],
-    defaultName,
-    notice: raw.notice ?? null,
-  };
-  accountsCache.set(LOCAL_ORIGIN, { at: now, value: state });
-  return state;
+  return fetchAccounts(LOCAL_ORIGIN, force);
 }
 
 /**
@@ -1351,18 +1331,29 @@ export interface TrustResult {
   error: string | null;
 }
 /**
- * Z01：`configDir` 传 `null` = 问账号 0（后端走 `--account-trust-zero`，它的
- * `.claude.json` 在 `$HOME`）。**绝不传空串**——那会被后端判成不安全路径拒掉。
+ * Z01：`configDir` 传 `null` = 问账号 0（它的 `.claude.json` 在那台机器的 `$HOME`）。**绝不传空串**——那会被后端判成不安全路径拒掉。
+ *
+ * 〔C4c · 第四波 4B〕**走通道**：`chan.call(origin, "accounts-trust", {configDir, cwd}, …)`，本机与远端同一条路。
+ * 在此之前是 Tauri 命令 `check_account_trust`：远端每问一次经本机后端开一条链路、在那台 exec 一次后端（最后两条仍逐次拨号的
+ * 子命令），本机每问一次 exec 一次性本机后端。失败一律 `available:false` ＋ 一句人话（调用方按「未知信任状态」只警告不拦）。
  */
 export async function checkTrust(
-  origin: string,
+  origin: Origin,
   configDir: string | null,
   cwd: string,
 ): Promise<TrustResult> {
   try {
-    return await commands.check_account_trust({ origin, configDir, cwd });
+    const body = jsonBody({ configDir, cwd });
+    const budget = budgetWithin(TRUST_BUDGET_MS);
+    const reply = await chan.call(origin, "accounts-trust", body, budget);
+    return { available: true, error: null, ...decodeTrust(readJson(reply)) };
   } catch (e) {
-    return { available: false, trusted: false, known: false, error: String(e) };
+    return {
+      available: false,
+      trusted: false,
+      known: false,
+      error: saidOf(e, "那台机器的后端版本过旧，还不认信任预检这一问 —— 重装那台机器的后端就有了"),
+    };
   }
 }
 

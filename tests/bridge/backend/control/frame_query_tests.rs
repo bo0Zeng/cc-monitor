@@ -18,11 +18,15 @@ const DESIGN_EIGHT: &[&str] = &[
     "--read-session-from-offset",
     // 〔SR1a × SE2〕协调方加的：`--find-in-session` 一起搬。
     "--find-in-session",
+    // 〔C4c · 第四波 4B〕主会话裁「仍在拨号的 `--account-trust` / `--account-trust-zero`」随账号层上帧面（异源：题面那一句）。
+    "--account-trust",
+    "--account-trust-zero",
 ];
 
 /// 〔SR1a〕拨号那条路从此只放行这两条（题面「`STILL_DIALED` 缩到只剩真该拨号的」—— 点一次换号才发一次）。
-/// **异源**：抄自题面与 `STILL_DIALED` 那两行的理由，不从表派生。
-const STILL_DIALED_WANT: &[&str] = &["--account-trust", "--account-trust-zero"];
+/// 〔C4c · 第四波 4B〕**零条**：那两条随账号层上了帧面（题面 C4c「仍在拨号的 `--account-trust` / `--account-trust-zero`」）。
+/// **异源**：抄自题面，不从表派生。
+const STILL_DIALED_WANT: &[&str] = &[];
 
 fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut v: Vec<String> = v.into_iter().collect();
@@ -67,13 +71,16 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
         "搬上帧面的子命令与题面那几条不相等"
     );
     // 〔U4b〕右边还要并上「生在帧面上」的那几条（没有被替掉的拨号子命令，见 `BORN_ON_FRAME`）。
+    // 〔C4c〕右列按**集合**比：信任预检两形合进一条帧命令（`accounts-trust` 在右列出现两次）。
+    let mut right = sorted(
+        MOVED
+            .iter()
+            .map(|(_, c)| c.to_string())
+            .chain(BORN_ON_FRAME.iter().map(|c| c.to_string())),
+    );
+    right.dedup();
     assert_eq!(
-        sorted(
-            MOVED
-                .iter()
-                .map(|(_, c)| c.to_string())
-                .chain(BORN_ON_FRAME.iter().map(|c| c.to_string()))
-        ),
+        right,
         backend_read_face_commands(),
         "monitor 这边以为搬上去的帧命令，与后端真登记的对不上"
     );
@@ -201,6 +208,17 @@ const CHANNELED: &[(&str, &str)] = &[
         "history-find",
         "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search-core`），monitor 那份核头尾删了",
     ),
+    // 〔C4c · 第四波 4B〕账号层那两条（主会话裁：账号层读自己那台的 apikey 表、规则搬进 `acct-core`、agent 随请求带）。
+    (
+        "accounts-list",
+        "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
+         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/accounts.ts::fetchAccounts` 问、按形状收，本机与远端同一条路",
+    ),
+    (
+        "accounts-trust",
+        "后端出成品 `{trusted, known}`（CLI 那一臂同一个函数）；替掉最后两条逐次拨号的 `--account-trust*`，\
+         界面经 `src/accounts.ts::checkTrust` 问",
+    ),
 ];
 
 /// 〔C4b · 第四波 4B〕**帧面只读查询那一族之外**、同样改成「前端经通道直接问、后端出成品」的帧命令 ——
@@ -226,13 +244,11 @@ fn backend_registered_commands() -> std::collections::BTreeSet<String> {
 ///
 /// 〔C4b · 第四波 4B〕逐行重裁过（`调研/第四波记录/C4b.md §1`）：判准照旧是「业务解释只有一个家」，
 /// 正路是「解释挪进后端、直接出成品」。九行里三行做到了（挪进了 [`CHANNELED`]）；下面六行**逐条写清卡在哪**。
+/// 〔C4c · 第四波 4B〕主会话裁六行的去向：`accounts-list` 做了（挪进 [`CHANNELED`]）；`history-projects` /
+/// `history-sessions` 的设计写在 `调研/第四波记录/C4c.md §3`（「本机后端问远端后端」那一跳今天不存在，报备中）；
+/// `history-read` / `history-subagents` 等后端二次拆包；`history-tail` 归 CF2。⇒ 今天五行。
 const HELD_BACK: &[(&str, &str)] = &[
-    (
-        "accounts-list",
-        "行解析与降级说明挪得进后端，卡在**本机那一侧要并 apikey 表**：并的规则（`history::apikey_routed_subset`）\
-         与「这次起会话的是哪一家 agent」住 monitor 起会话那一侧；挪进后端 = 规则搬进 `acct-core`、agent 随请求带过去、\
-         本机后端读它自己那份凭据文件（V107：账号层住本机常驻后端）—— 是账号层的一次搬家，不是本拍能顺手做的",
-    ),
+    // 〔C4c · 第四波 4B〕`accounts-list` 那一行挪进了 [`CHANNELED`]（账号层搬家做了：后端出成品、并它自己那份表）。
     (
         "history-projects",
         "每一行要并**本机**的注解（星标 / 隐藏计数，`history-metadata.json` 住 monitor 数据目录）＋ 本机判活（`SessionMap`）\
@@ -335,7 +351,8 @@ fn chan_ops_in(
 /// （C4a 立它时是 C1 那八条；SR1a 同波又搬上来三条 ⇒ 今天十一条。）
 #[test]
 fn the_eight_are_partitioned_into_channeled_and_held_back() {
-    let moved = sorted(MOVED.iter().map(|(_, c)| c.to_string()));
+    let mut moved = sorted(MOVED.iter().map(|(_, c)| c.to_string()));
+    moved.dedup(); // 〔C4c〕信任预检两形合进一条帧命令
     let mut both: Vec<String> = CHANNELED
         .iter()
         .chain(HELD_BACK)
@@ -400,12 +417,14 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     }
     let mut still_sent_by_monitor: Vec<String> = Vec::new();
     for (op, _) in MOVED.iter().map(|(_, c)| (*c, ())) {
-        // `MOVED` 那一行自己就是一次字面量出现。
-        if monitor_literal_count(op) > 1 {
+        // `MOVED` 那几行自己就是字面量出现（〔C4c〕信任预检两形合进一条帧命令 ⇒ 那一条在表里出现两次）。
+        let in_moved = MOVED.iter().filter(|(_, c)| *c == op).count();
+        if monitor_literal_count(op) > in_moved {
             still_sent_by_monitor.push(op.to_string());
         }
     }
     still_sent_by_monitor.sort();
+    still_sent_by_monitor.dedup();
     assert_eq!(
         still_sent_by_monitor,
         sorted(HELD_BACK.iter().map(|(c, _)| c.to_string())),
