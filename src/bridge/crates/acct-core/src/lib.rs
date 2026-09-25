@@ -106,8 +106,9 @@ pub fn auth_kind_from_manifest(raw: Option<&str>) -> &'static str {
 /// 「这个号是什么种类」只许有一个家（主会话裁 D1）。界面各处（徽章 / 按钮 / 下拉）照读 `authKind`，
 /// 一份新判定都不长；可选性也经 [`auth_ready`] 跟着对上。
 ///
-/// ⚠ 只有**本机**那个生产者（monitor 的 `local_accounts.rs`）喂得出第二个输入 —— apikey 表是本机的。
-/// 远端清单今天不经这一格（远端建的 apikey 号，key 写在本机的表里、远端会话用不上，归「key 送到远端」那件事）。
+/// 〔C4c · 第四波 4B〕喂第二个输入的是**那台机器自己的后端**（`accounts-list` 出成品时读它自己那份 apikey 表，
+/// 本机远端同一条路）。〔旧文要点：「只有本机那个生产者（monitor 的 `local_accounts.rs`）喂得出第二个输入，
+/// 远端清单今天不经这一格」—— RM1a 起每台机器一份表、那台后端读写，C4c 起清单由那台后端并表。〕
 pub fn auth_kind_with_apikey_table(
     manifest_kind: &'static str,
     in_apikey_table: bool,
@@ -117,6 +118,43 @@ pub fn auth_kind_with_apikey_table(
     } else {
         manifest_kind
     }
+}
+
+/// 〔C4c · 第四波 4B · 从 monitor `history.rs` 搬来〕「一个 configDir 对应 apikey 表里哪个 id」
+/// —— 路径的最后一段（`Path::file_name`，逐字节照搬旧那一份）。**这是这条规则的唯一住址**：
+/// monitor（起会话那一侧 · `apikey_routing_for` · 写 key 那两处）与后端（`accounts-list` 出成品时并表）
+/// 调的是这一份。两边各写一个 basename 规则，漂开的那天症状是「账号页说走 apikey 端点改写、
+/// 起会话时没走」，而两边看起来都没错。
+pub fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
+    std::path::Path::new(config_dir.trim())
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(str::to_string)
+}
+
+/// 〔C4c · 第四波 4B · 从 monitor `history.rs` 搬来〕给一批 configDir 与这台机器 apikey 表里的 id，
+/// 答「哪几个号在表里有行」。**这是这条规则的唯一住址**（同上一条的两个调用方）。
+///
+/// 「有行」说的是 **(agent, 账号) 这一对**〔条 49 · `设计/90 §1.2`〕：凭据文件里的行只属于
+/// `table_agent` 那一家（monitor 传 `payload::APIKEY_TABLE_AGENT`、后端传
+/// `accounts::apikey::CREDENTIALS_FILE_AGENT`，两处字面量由既有判据对拍）⇒ `agent` 不是那一家 ⇒ 空集。
+///
+/// ⚠ 它答的是「表里有没有这一行」，**不是**「这个 key 能不能用」，也不是「这次拉起会不会真的注入」
+/// （那还要过「中转在不在跑」那一格）。
+pub fn apikey_routed_subset(
+    config_dirs: &[String],
+    rows: &[String],
+    agent: &str,
+    table_agent: &str,
+) -> Vec<String> {
+    if agent != table_agent {
+        return Vec::new();
+    }
+    config_dirs
+        .iter()
+        .filter(|d| apikey_account_id_of_dir(d).is_some_and(|id| rows.iter().any(|r| *r == id)))
+        .cloned()
+        .collect()
 }
 
 /// 「鉴权方式这一维**不再阻塞**这个号被选中」。**这是这条规则的唯一住址** ——

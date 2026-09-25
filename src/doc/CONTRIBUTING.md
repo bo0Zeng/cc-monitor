@@ -16,7 +16,7 @@
 **全套必做**：
 
 ```bash
-# 假设撤掉 BindRegistry State + cc_integration_status IPC
+# 假设撤掉 BindRegistry State + aliases_read IPC（它是 BindRegistry 今天在命令面上的消费者之一）
 cd src/bridge
 
 # 1. State 消费者全 grep
@@ -27,10 +27,10 @@ grep -rn 'BindRegistry' src/
 grep -rn 'app.manage(bind_registry' src/
 
 # 3. IPC handler 注册全 grep
-grep -rn 'cc_integration_status' src/
+grep -rn 'aliases_read' src/
 
 # 4. 前端 invoke 依赖全 grep
-cd .. && grep -rn 'invoke<.*"cc_integration_status"' src/
+cd .. && grep -rn 'invoke<.*"aliases_read"' src/
 
 # 5. 跨进程文件 IO 全 grep（如果撤的是文件协议）
 grep -rn 'ps-await\|ps-registry' src/bridge/src/ src/

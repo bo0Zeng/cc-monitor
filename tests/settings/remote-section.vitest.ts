@@ -1007,3 +1007,33 @@ describe("ST1：「启用远端模式」读回来之前不可点", () => {
     spy.mockRestore();
   });
 });
+
+// 〔S5 · 第四波〕要求住址：`调研/设计/99 §1` V41「不为旧配置留兼容」；主会话 09-24 裁
+// 「认不出就不显示那台、在机器页顶上一句『远端配置认不出：…』」。
+describe("〔S5 · V41〕remote 段认不出 ⇒ 机器列表顶上说一句、一台都不显示", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("★ 旧的单台写法：那一句常驻显示，机器卡片零张；认得出的那份不显示它", async () => {
+    type Cfg = Awaited<ReturnType<typeof loadConfig>>;
+    vi.mocked(loadConfig).mockResolvedValue({
+      remote: { enabled: true, host: "pi.local", user: "pi", backendPath: "/x" },
+    } as unknown as Cfg);
+    let sec = new RemoteSection({ headless: true });
+    await new Promise((r) => setTimeout(r, 0));
+    let note = sec.element.querySelector<HTMLElement>(".remote-config-unrecognized");
+    expect(note, "找不到那一句的元素 —— 下面全是空真").toBeTruthy();
+    expect(note!.textContent).toBe(remoteConfigModule.REMOTE_CONFIG_UNRECOGNIZED);
+    expect(note!.classList.contains("settings-banner-show"), "那一句没显示出来").toBe(true);
+    expect(
+      sec.element.querySelectorAll(".remote-machine:not(.remote-machine-local)").length,
+      "认不出还显示了机器 —— 那是在猜",
+    ).toBe(0);
+
+    vi.mocked(loadConfig).mockResolvedValue({ remote: { enabled: true, hosts: [] } } as unknown as Cfg);
+    sec = new RemoteSection({ headless: true });
+    await new Promise((r) => setTimeout(r, 0));
+    note = sec.element.querySelector<HTMLElement>(".remote-config-unrecognized");
+    expect(note!.classList.contains("settings-banner-show")).toBe(false);
+    expect(note!.textContent).toBe("");
+  });
+});

@@ -125,14 +125,16 @@ pub const HEALTH_COPY: &[(&str, &str)] = &[
 pub const CROSS_LANGUAGE_COPY: &[(&str, &[(&str, &str)])] =
     &[("EXIT_COPY", EXIT_COPY), ("HEALTH_COPY", HEALTH_COPY)];
 
-/// 问 / 改那台机器上的值时的期限（界面那两条）。远端要走一趟 SSH 长连接，给宽一点。
-const EXIT_POLICY_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+// 〔C4c · 第四波 4B〕界面那两条（问 / 改那台机器上的值）的期限 `EXIT_POLICY_BUDGET`〔散文墓碑〕随那两条 Tauri 命令一起走了：
+//   设置页经通道直接问后端（期限同值 10 秒，住 `settings/backend-section.ts`）。
 
 /// monitor 退出臂那一问的期限。**monitor 正在退**：问不到就按缺省办，不许把退出拖住。
 /// 本机后端读一份小文件就回，这个数是上界不是节拍（问的是本机那条已经连着的流）。
 const EXIT_ASK_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
 
-/// 三件事共用的发送口（形状照 `frame_query::call`）：没通道 / 旧后端不认 / 调用失败，各说各的话。
+/// 发送口（形状照 `frame_query::call`）：没通道 / 旧后端不认 / 调用失败，各说各的话。
+/// 〔C4c · 第四波 4B〕今天只剩一个调用方 —— 退出臂那一问（[`kill_on_exit_now`]，**monitor 自己的事**，不是替界面转）；
+/// 界面那两条（问 / 改）改走通道了。
 async fn exit_policy_call(
     origin: &Origin,
     cmd: &str,
@@ -164,32 +166,9 @@ fn said(r: Routed) -> String {
     }
 }
 
-/// 〔B2〕问那台机器：「退出行为」那个值现在是什么。回后端那份原样（`shell` / `state` / `killOnExit` / …）。
-#[tauri::command]
-pub async fn backend_exit_policy(origin: Origin) -> Result<Value, String> {
-    // 本机与远端**同一条路**（都是那台机器那条长连接，`C1`）；`route` 只用来拦空白名 ——
-    // 「没给名字」不是本机（`origin.rs::Origin::route` 头注）。两臂之后没有分叉。
-    let _ = origin.route("backend_exit_policy")?;
-    exit_policy_call(&origin, "exit-policy-read", json!({}), EXIT_POLICY_BUDGET).await
-}
-
-/// 〔B2〕交那台机器写那个值。回**写完读回来**的那一份。
-#[tauri::command]
-pub async fn set_backend_exit_policy(origin: Origin, kill: bool) -> Result<Value, String> {
-    // 同上一条：`route` 只拦空白名 —— 策略是每台机器一份的，没有「全局」这一档。
-    let _ = origin.route("set_backend_exit_policy")?;
-    tracing::info!(
-        "交 [{}] 的后端写退出策略：killOnExit={kill}",
-        origin.as_wire_str()
-    );
-    exit_policy_call(
-        &origin,
-        "exit-policy-set",
-        json!({ "killOnExit": kill }),
-        EXIT_POLICY_BUDGET,
-    )
-    .await
-}
+// 〔C4c · 第四波 4B〕〔B2〕那两条 Tauri 命令（问「退出行为」那个值 · 交那台机器写它：`backend_exit_policy` /
+//   `set_backend_exit_policy`〔散文墓碑〕）退役：它们只在「拦空白名 ＋ 转一条 `exit-policy-read` / `exit-policy-set` ＋ 原样交回」，
+//   解释本来就在界面那一侧（`settings/backend-section.ts::readExitAnswer`）⇒ 设置页经通道直接问，本机与远端同一条路。
 
 /// 从后端那份应答里取生效值。形状不对 ⇒ `None`（调用方按缺省办并出声）。
 pub(crate) fn kill_from_answer(data: &Value) -> Option<bool> {
@@ -418,13 +397,33 @@ pub fn death_kind(d: &Death) -> &'static str {
     }
 }
 
+/// Windows 的 `STATUS_CONTROL_C_EXIT`：进程被**控制台事件**（Ctrl+C / Ctrl+Break / 关控制台窗口）
+/// 打死时的退出码。按 `i32` 读（`ExitStatus::code()` 的视角）是 `-1073741510`。
+///
+/// 〔S5 · 第四波 · `设计/00 §1.5.3` 死亡账说人话〕平台无关地比：POSIX 上的退出码只有 0–255，
+/// 这个值在构造上不会出现 ⇒ 不需要 `cfg`。
+pub const STATUS_CONTROL_C_EXIT: u32 = 0xC000013A;
+
+/// 上面那个码的人话（`00 §1.5.3` 逐字）。进界面（`last_brief`）也进日志（`ledger_line`），同一个来源。
+pub const CONSOLE_CTRL_EXIT_SAID: &str = "被控制台事件杀死 —— 可能是那个弹出的终端窗口被关了";
+
+/// 一个退出码的说法：认得的码说人话，其余照旧是裸码。**判定只住这里**（`Refused` 与 `Crashed` 两臂共用）。
+fn exit_code_said(code: i32) -> String {
+    // `as u32` 是按位重解释，不是数值换算：-1073741510_i32 的位型就是 0xC000013A。
+    if code as u32 == STATUS_CONTROL_C_EXIT {
+        CONSOLE_CTRL_EXIT_SAID.to_string()
+    } else {
+        format!("exit {code}")
+    }
+}
+
 /// 那一行上的**退出状态**（`KP3A`① 要的两样之一）。
 pub fn exit_status(d: &Death) -> String {
     match d {
         Death::NeverStarted { .. } => "没有退出状态（进程从来没存在过）".to_string(),
-        Death::Refused { code } => format!("exit {code}"),
+        Death::Refused { code } => exit_code_said(*code),
         Death::Crashed { how } => match how {
-            Outcome::Exited(code) => format!("exit {code}"),
+            Outcome::Exited(code) => exit_code_said(*code),
             Outcome::Signalled(sig) => format!("signal {sig}"),
             Outcome::NeverSpawned => "没有退出状态".to_string(),
         },
@@ -465,7 +464,8 @@ pub fn death_copy(d: &Death) -> String {
     }
 }
 
-/// 界面上「最后一次」那一格：**判定 ＋ 退出状态**，一句短话（如「崩了，exit -1073741510」）。
+/// 界面上「最后一次」那一格：**判定 ＋ 退出状态**，一句短话（如「崩了，exit -1073741819」；
+/// 认得的码说人话，见 [`exit_code_said`]）。
 ///
 /// 〔第四波 ST2 · 步 7〕它替掉的是原来直接进界面的整条 [`ledger_line`]：那是**日志行格式**
 ///（`[死亡账] origin=… 判定=… 退出状态=… —— …`），`70 §2.4` 逐字禁它进界面。
