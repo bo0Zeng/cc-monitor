@@ -120,14 +120,14 @@ DevTools Network tab 看不到 Tauri IPC（不走 HTTP）。要看 IPC：
 
 ```powershell
 cd src/bridge
-cargo test --workspace --exclude code-picture-core   # ★ 后端全量（见下方警告）
+cargo test --workspace   # ★ 后端全量（见下方警告）
 cargo test --lib profile_installer                   # 单个模块
 cargo test --lib -- --nocapture                      # 看 println! 输出
 ```
 
 > ⚠ **`--lib` 那种跑法不是全量**〔08-06 订正〕：它只覆盖**根包**，
 > 六个共享 crate（`guard-core` / `gate-core` / `shell-quote-core` / …）一条都不跑。
-> 上面那条 `--workspace --exclude code-picture-core` 与 `ci.yml` 的 `rust` job **逐字相同**，
+> 上面那条 `--workspace` 与 `ci.yml` 的 `rust` job **逐字相同**（〔TL1 · 4C〕从前带 `--exclude code-picture-core`，vendor 不再是成员之后删了），
 > 由 `doc_claim_registry_tests.rs::the_backend_test_command_in_the_docs_matches_ci` 钉住。
 >
 > **本机还必须跑的（CI 里有、或 CI 根本跑不到的）**：
@@ -142,7 +142,7 @@ cargo test --lib -- --nocapture                      # 看 println! 输出
 
 | 层 | 跑法 | 覆盖 |
 |---|---|---|
-| node 纯函数断言(`src/**/*.test.ts`,**15 组**) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/pricing/session-backend/panorama-session-files/**launch-dimensions**/**launch-render-cli** 纯逻辑。<br>**这张清单的单一事实源是 `tests/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES`**(U0 2026-08-01 起机检:套件集合↔`package.json`↔`npm test` 链三方对拍)。本行是给人读的副本 —— 原写「14 组」且漏了后两个,正是副本漂移 |
+| node 纯函数断言(`src/**/*.test.ts`,**14 组**) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/pricing/session-backend/panorama-session-files/**launch-dimensions** 纯逻辑(〔LR1〕`launch-render-cli` 那一组随 TS 渲染器删了)。<br>**这张清单的单一事实源是 `tests/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES`**(U0 2026-08-01 起机检:套件集合↔`package.json`↔`npm test` 链三方对拍)。本行是给人读的副本 —— 原写「14 组」且漏了后两个,正是副本漂移 |
 | vitest + jsdom(`src/**/*.vitest.ts`;条数以 `npm run test:dom` 实跑为准,**别在文档里存副本** —— 这个数在仓里有 4-5 份拷贝、注定漂,见 BACKLOG E65) | `npm run test:dom`(覆盖率 `npm run coverage`) | DOM/生命周期/mock 协作:tabs 门控与物化、TailWindow、UnrenderedRanges、RecordTimeline、估高、路由表、探针纯函数、settings 面板分组、mcp-section、grid-monitor、command-bar、账号徽章/灰灯 等 |
 | E2E 套件(`npm run test:f40` = `tests/e2e/f40-suite.sh`；⚠ 它会往 `~/.claude/` 写 fixture，**本机受限环境别跑**) | **手动**,Linux Xvfb + `tauri dev`(前置见 [tests/e2e/README.md](../../tests/e2e/README.md)) | 整机行为:启动门控/贴底/上翻补批/fork 折叠/抖动密度绊线 |
 

@@ -72,6 +72,10 @@ pub struct BlockState {
     pub present: bool,
     /// 块头上的版本串（PowerShell 那一对才有；POSIX 那一对恒 `None`）。
     pub version: Option<String>,
+    /// 〔TL1 · 4C〕块在、而版本串不是这一版模板的那个 ⇒ `true`（只有 PowerShell 那一对有版本串）。
+    /// v3 起模板结尾多一行接上别名文件（`设计/71 §6.1`）—— 装着 v2 的人**重装一次**才带上那一行，界面据此提示。
+    /// 「这一版是哪个」只从模板本身读（[`current_block_version`]），不另写一份字面量。
+    pub outdated: bool,
     /// 块外已有的同名函数（与 [`CC_FUNCTION_NAME`] 同名）。
     pub conflicting_functions: Vec<String>,
     /// 🔴 〔`K-R62`〕**「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
@@ -92,9 +96,13 @@ pub fn block_state(path: &Path, raw: &str) -> BlockState {
     let flavor = Shell::of_target(path);
     let content = strip_bom(raw);
     let (present, version) = block_presence(flavor, content);
+    let outdated = present
+        && flavor == Shell::PowerShell
+        && version.as_deref() != current_block_version().as_deref();
     BlockState {
         present,
         version,
+        outdated,
         conflicting_functions: find_conflicting_functions(flavor, content, CC_FUNCTION_NAME),
         manual_cleanup_hint: match flavor {
             Shell::PowerShell => String::new(),
@@ -233,12 +241,12 @@ fn mentions_ccm(line: &str) -> bool {
     false
 }
 
-/// 这一行是不是 cc-monitor 自己的围栏标记（三对全认）。
+/// 这一行是不是 cc-monitor 自己的围栏标记（每一对都认）。
 ///
-/// 认的是**共同前缀** `# === cc-monitor`，而不是三对里的某一对 —— 三对分别是
-/// `profile_installer` 的 `BEGIN_MARKER`、`sftp` 的 `CCM_PROFILE_BEGIN`、
-/// `account_aliases` 的 `RC_BEGIN`。这一格问的是「这一行是不是**我们的**边界」，
-/// 那个答案对三对是同一个。
+/// 认的是**共同前缀** `# === cc-monitor`，而不是某一对 —— 今天是 `profile_installer` 的 `BEGIN_MARKER`
+/// 与 `sftp` 的 `CCM_PROFILE_BEGIN` 两对；〔TL1 · 4C〕从前还有 `account_aliases` 包 rc 里那一行 source 的第三对
+/// （那一步退役了，用户盘上可能还留着那一块 —— 共同前缀照样认得它是**我们的**边界，不当成用户的裸行）。
+/// 这一格问的是「这一行是不是**我们的**边界」，那个答案对每一对是同一个。
 fn fence_marker(line: &str) -> Option<bool> {
     let l = line.trim_start();
     if !l.starts_with("# === cc-monitor") {
@@ -984,6 +992,11 @@ pub async fn uninstall_from_profile(
     })
     .await
     .map(|_| ())
+}
+
+/// 〔TL1 · 4C〕这一版模板的块头版本串（`scripts/cc.ps1.tpl` 第一行 `BEGIN vN` 那个 `vN`）—— 版本号的唯一住址是模板本身。
+pub(crate) fn current_block_version() -> Option<String> {
+    find_block_version(CC_TEMPLATE).1
 }
 
 // === 内部 helpers ===

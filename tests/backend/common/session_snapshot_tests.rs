@@ -123,6 +123,8 @@ fn the_stale_read_door_never_appears_in_production_code() {
 /// （那边今天只剩 `display-message` 一处，它那条判据也随之收成一个动词）。
 /// 为什么这一条只能是「扫源码」、以及它守不住什么，见 `control/gate.rs` 同名判据的头注
 /// （行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`）。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
     const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
@@ -159,6 +161,8 @@ fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
 }
 
 /// ★ `K-R12 J1`：段数下溢 ⇒ 整行不当好数据（本处这一侧）。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn a_tab_starved_line_is_dropped_instead_of_becoming_a_session() {
     // 通道被改写：TAB 变 `_` ⇒ 整行只切出 1 段。
