@@ -114,8 +114,8 @@ src/bridge/crates/creds-core/src/store.rs:144	凭据文件不是合法 JSON（{e
 src/bridge/crates/creds-core/src/store.rs:149	凭据文件的顶层不是一个 JSON 对象。正确形状见模板：{TEMPLATE}	改·§2.4	[可达存疑] 报错里原样拼进整份多行模板 {TEMPLATE}，首句之后是几百字 JSON →「凭据文件的顶层必须是一个 JSON 对象」，模板另给入口
 src/bridge/src/account_aliases.rs:239	# （当前一条别名都没有）\n	保留	[对外] 生成文件里清单为空时那一行注释，短
 src/bridge/src/account_aliases.rs:561	别名文件和盘上那份一模一样，没有重写。	保留	[对外] 写入结果的补充说明，先说结果
-src/bridge/src/account_aliases.rs:568	{rc_raw} 里加了一行 source（要撤就把 cc-monitor 那一小块整块删掉）。	保留	[对外] 写入结果：说清动了用户哪份文件、怎么撤；括号是撤法，不是论证
-src/bridge/src/account_aliases.rs:571	{rc_raw} 里已经接上了这份文件，没有再动它。	保留	[对外] 写入结果，短
+src/bridge/src/account_aliases.rs:449	{rc_raw} 还没接上这份文件：在下面给它装上别名块就接上了。不想装别名块的话，自己把这一行加进去：{line}	保留	[对外] 写入结果：〔TL1 · 71 §6.1〕选了 rc 只查不写 —— 先说结果（没接上），再给两条出路（装别名块 · 自己贴那一行），不替人写
+src/bridge/src/account_aliases.rs:444	{rc_raw} 已经接上了这份文件。	保留	[对外] 写入结果，短（〔TL1〕选了 rc 只查不写，原「…没有再动它」那半句随之不再需要）
 src/bridge/src/account_aliases.rs:575	新开一个终端就能用；当前终端要先执行一次 . {}	保留	[对外] 生效方式，一句一件事
 src/bridge/src/mcp_sync.rs:169	对面的后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。	保留	[对外] 〔AS1〕MCP 推 / 拉：对面后端的应答缺格 / 类型不对（多半版本不一样）时的那一句；先说结果，第二句说后果，不露命令名与字段名
 src/bridge/src/mcp_sync.rs:250	{machine} 上那份配置在你看差异之后又被改过了，这一趟一个字节都没写。重新看一次差异再决定。	保留	[对外] 〔AS1〕MCP 推 / 拉：写的那一刻对面那份已不是看差异时那一份（CAS 拒）；说清发生了什么、没写、下一步是用户做得了的「重新看一次差异」
@@ -303,9 +303,6 @@ src/bridge/src/fenced_block.rs:129	落盘走 SFTP（upload_atomic + 远端备份
 src/bridge/src/fenced_block.rs:133	本机 Windows 的 PowerShell profile	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:134	整块 PowerShell 代码（scripts/cc.ps1.tpl 渲染）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:144	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:418	**一行** source，指向 ~/.cc-monitor/aliases.sh（内容住在那份生成文件里）	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:150	🔴 唯一**没有卸口**的一套（K-R62 §0b 那张表的「卸」一栏逐字「部分」）；\n                     也是唯一「围栏里只有一行、真内容在别处」的一套 —— 它刻意用另一对标记，\n                     与别的套共用标记就会「装一个把另一个整块替换掉」	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:157	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:158	整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（sftp.rs::CCM_WRAPPER_SNIPPET）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:167	与 `remote-posix-block` **只差落盘那一跳**（本地原子替换 vs SFTP）：\n                     内容、围栏、合块与剥块的实现全共用；与 `local-windows-ps` 只差**方言**\n                     （分岔在 profile_installer.rs::plan_install / \n                     profile_installer.rs::plan_uninstall，落盘与备份回滚那一整套共用）。\n                     ⇒ 补这一格没有把三套变成四套。判据 \n                     profile_installer_tests.rs::the_local_posix_port_is_byte_for_byte_the_remote_one	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/fenced_block.rs:271	原文件已恢复。	保留	[对外] 写失败 / 写后校验失败那句的后半句（fenced_block::undo_note），只说真发生了的事，短
@@ -592,7 +589,7 @@ src/bridge/src/tool_registry.rs:1076	app 装的	保留	[对外] 环境档名，�
 src/bridge/src/tool_registry.rs:1077	app 该自带 —— 今天还没有装口	内部词→「应随 app 提供（安装功能暂未提供）」	[对外] 环境档名；「装口」是内部说法 新词:装口
 src/bridge/src/tool_registry.rs:1078	你自己装 —— 缺了我们提示你	保留	[对外] 环境档名，破折号后一句说清我们做什么
 src/bridge/src/tool_registry.rs:1079	app 只查	保留	[对外] 环境档名，短
-src/bridge/src/tool_registry.rs:1425	**不是「装到别处的工具」，所以不属本表的语义** —— 它是 **vendored 进 cc-monitor \n         二进制**的 crate（`src/bridge/vendor/code-picture-core`），`panorama.rs` 直接 \n         `use Engine` 调它画图。没有 `destination`、没有安装动作、卸载它等于重新编译 monitor。\n\n         🔴 **〔RM1f 09-25〕上面这一句过期了**：monitor 摘掉了内嵌引擎（V108 后半句），今天它是只装引擎的\n         **独立小程序** `cc-monitor-panorama`（`src/panorama-engine`），随 monitor 的字节带着，本机放到\n         `~/.cc-monitor/bin/`（`panorama_bytes::place_local`）、远端推到那台的 `~/.cc-monitor/bin/`（`push_to`）——\n         那是**有落点**的部署物。它该不该像 `backend` 那样进 `TOOLS`（两个载体、两个落点），**已报备、本件没改**；\n         在那之前本条的「不属本表」只对「vendored 进二进制」那个旧身份成立。\n\n         ⚠ 它另有一个身份是 **MCP server（code-picture 的 Agent head，给 Claude 用）**，\n         那一个确实「装到别处」—— 但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 \n         server 条目），是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / \n         `config_surface.rs` 里 `code-picture` 零命中）。\n\n         ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\n         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\n         🔴 **〔条 67 · 2026-09-18〕这个名字曾经有第三个身份，现在没有了**：\n         `src/backend/sidecars/codepicture/` 那一层的**独立进程**（2 008 行）已整棵删除\n         （用户逐字「不在现在设计里的全部删掉」），环境闭集里那条 `code-picture-sidecar` 同拍摘了。\n         ⇒ **本条现在回到只有两个身份**：vendored 进二进制的 crate（就是本条说的这一份）\n         ＋ MCP server 那个头。⚠ `K-R65` 当初补那一句买到的道理**仍然成立**：\n         一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔RM1f：正文补了一段「上面这一句过期了」—— monitor 摘了内嵌引擎，它今天是有落点的独立小程序；裁词不变〕
+src/bridge/src/tool_registry.rs:1514	**这个名字今天只剩一个身份不属本表：MCP server（code-picture 的 Agent head，给 Claude 用）** —— \n         它确实「装到别处」，但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 server 条目），\n         是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / `config_surface.rs` 里 `code-picture` 零命中）。\n\n         ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\n         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\n         〔TL1 · 4C〕它的另外两个身份都不在这里了：① **vendored 进 monitor 二进制的 crate**（原先本条的主理由：\n         「没有 `destination`、没有安装动作、卸载它等于重新编译 monitor」）—— RM1f 起 monitor 摘掉了内嵌引擎（V108 后半句），这个身份没了；\n         它变成只装引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`），本机放到 `~/.cc-monitor/bin/`、远端推到那台的 \n         `~/.cc-monitor/bin/` —— 那是**有落点的部署物**，进了 [`TOOLS`]（`id: "panorama"`，两个载体）。\n         ② **独立进程那一层**（`src/backend/sidecars/codepicture/`，条 67 · 2026-09-18 整棵删了，环境闭集里那条 `code-picture-sidecar` 同拍摘了）。\n\n         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔TL1：改写 —— 小程序那一身份进了 TOOLS（panorama），「vendored 进二进制」那一身份 RM1f 起没了，只剩 MCP head 不属本表；裁词不变〕
 src/bridge/src/tool_registry.rs:1441	**不由 cc-monitor 安装** —— 它是用户自己装在 `<claude_dir>/skills/planned-build/` 的 \n         skill，cc-monitor 只**读它的产物**（计划文件）并允许编辑那个收件箱。\n\n         ⇒ 它在 `skill_host::SKILLS` 里（接入的 skill），**不在**本表里（受管工具）。\n         ★ 这两个集合**有交集但不是同一张表**（今天交集只有 `cc-bus`）——\n         devbench 的账本 L4 原写「同一张表的两个视图」是**错的**，已订正。\n\n         它的 `SkillSpec.install` 如实记 `NotSupported` 并说明归 F06。	保留	[不对外] NOT_MANAGED 登记表理由
 src/bridge/src/verified_write.rs:54	长度相同（{} 字节）但内容不同，首个差异在第 {} 字节。\n             这类损坏（字节翻转 / 编码变形 / CRLF↔LF 等长替换）只比长度是查不出来的。	改·§2.2	[可达存疑] 写后校验失败的报错：第二句「这类损坏…只比长度是查不出来的」是在为校验手段辩护 兼§2.4（括号列举）→「写入后校验不一致：第 {at} 字节起内容不同」
 src/bridge/src/verified_write.rs:61	长度不匹配：期望 {} 字节，实际 {} 字节。	保留	[可达存疑] 写后校验失败，短而可核对
@@ -804,8 +801,8 @@ src/settings/panel.ts:157	改即生效，无需重启。点 [改] 后按下你�
 src/settings/panel.ts:163	「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。	保留	[对外] 术语定义：破折号引定义、括号列子目录，是用户在磁盘上看得见的目录
 src/settings/panel.ts:164	默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。	保留	[对外] 默认值＋生效条件
 src/settings/panel.ts:167	Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。	改·§2.1	[对外] 「双向绑定」是实现机制，括号里夹英文 work 兼§2.4 新词:双向绑定 →「装好后『拉前终端』按钮才能用。可一键安装/卸载。」
-src/settings/panel.ts:174	「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 	改·§2.4	[对外] 破折号起头，一句里塞了连接方式＋数据源替换＋行为不变 兼§2.1
-src/settings/panel.ts:175	jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n	改·§2.1	[对外] 「jsonl-watcher 作为数据源」整句在讲实现，R1 jsonl 命中 新词:watcher →「远端会话和本机会话显示方式相同」
+src/settings/panel.ts:172	「远端 (SSH)」：monitor 经 SSH 连到远端主机，把那台机器上的会话也列进来。	保留	[对外] 〔TL1 · 4C〕按 CP1 裁词改过（原「—— … 由远端后端取代本地 jsonl-watcher 作为数据源」：破折号起头、一句塞三件 · 讲实现）：拆成两句，先说做什么
+src/settings/panel.ts:173	远端会话和本机会话显示方式相同。\n\n	保留	[对外] 〔TL1 · 4C〕按 CP1 裁词改过（原「jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）」§2.1）：取裁词原句
 src/settings/panel.ts:176	关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。	保留	[对外] 默认＋生效条件，用户可操作
 src/settings/panel.ts:177	配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。	内部词→「缺主机、用户或后端路径」	[对外] 配置键名 backendPath 新词:backendPath
 src/settings/panel.ts:184	「数据位置」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / 	内部词→「monitor 自己写入的所有文件位置」	[对外] 「持久化路径」是实现词 新词:持久化
@@ -990,7 +987,7 @@ src/settings/machine-aliases.ts:281	清空表单	保留	[对外] 按钮
 src/settings/machine-aliases.ts:282	为每个账号加一条	保留	[对外] 按钮（一次性的便利动作，title 里说清不会跟着账号表自动增删）
 src/settings/machine-aliases.ts:298	还没生成。	保留	[对外] 复制门的理由，短
 src/settings/machine-aliases.ts:300	清单里有不合格的，先改好。	保留	[对外] 复制门的理由；「先改好」是用户自己的清单、他改得了
-src/settings/machine-aliases.ts:311	这台机器的 shell 配置（那一行 source 加进哪份）：	保留	[对外] 下拉的标签（从 launcher-diagnostics.ts 原样搬来）；括号说清下拉决定什么
+src/settings/machine-aliases.ts:74	这台机器的 shell 配置（别名块装进哪份）：	保留	[对外] 下拉的标签（从 launcher-diagnostics.ts 原样搬来）；括号说清下拉决定什么 〔TL1：只决定别名块装进哪份，括号跟着改〕
 src/settings/machine-aliases.ts:312	写入	保留	[对外] 按钮
 src/settings/machine-aliases.ts:324	装别名块	保留	[对外] 按钮
 src/settings/machine-aliases.ts:325	装	保留	[对外] 动词碎片，拼成「装别名块中…」「装失败：…」
@@ -1255,7 +1252,7 @@ src/settings/machine-aliases.ts:67	~/.bashrc（或你实际用的 shell 配置�
 src/settings/machine-aliases.ts:68	source 它，或开一个新终端。	保留	[对外] 〔AL1c〕POSIX 手贴后的生效方式，原样搬进平台措辞表（文字没变）
 src/settings/machine-aliases.ts:73	$PROFILE（PowerShell 启动时读的那份脚本）	保留	[对外] 〔AL1c〕PowerShell 手贴的落点提示；$PROFILE / PowerShell 是用户自己也这么叫的词，括号里说清它是什么
 src/settings/machine-aliases.ts:74	开一个新的 PowerShell 窗口。	保留	[对外] 〔AL1c〕PowerShell 手贴后的生效方式，一句一件事
-src/settings/machine-aliases.ts:75	这台机器的 PowerShell 配置（那一行加进哪份 $PROFILE）：	保留	[对外] 〔AL1c〕下拉的标签，与 POSIX 那一句同形
+src/settings/machine-aliases.ts:85	这台机器的 PowerShell 配置（别名块装进哪份 $PROFILE）：	保留	[对外] 〔AL1c〕下拉的标签，与 POSIX 那一句同形 〔TL1：这个下拉今天只决定别名块装进哪份（接上别名文件那一行只住别名块里，71 §6.1），括号跟着改〕
 src/settings/machine-aliases.ts:76	名字，如 alphacc	保留	[对外] 〔AL1c〕名字输入框占位（PowerShell 上没有 tmux，例子不用 alphacct）
 src/settings/panel.ts:163	「别名」—— 一个名字加一组 ccm 参数，在终端里敲这个名字就等于敲 ccm 加上这组参数。	保留	[对外] 〔AL1c〕机器页 ⓘ 里「别名」一节的第一句：说清它是什么（终端集成并进来了，节名跟着改）
 src/settings/panel.ts:164	Windows 上这一块还管终端集成：把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 	改·§2.4	[对外] 〔AL1c〕原「终端集成」那一句前面加了一截「Windows 上这一块还管终端集成：」，余下逐字不变；与下一截拼成一句：破折号＋做什么＋为什么＋括号补充三合一 新词:注入
@@ -1288,6 +1285,7 @@ src/settings/machine-aliases.ts:590	已装别名块	保留	[对外] 〔AL1d〕�
 src/settings/machine-aliases.ts:591	还不存在，写入时新建	保留	[对外] 〔AL1d〕启动文件下拉的状态标签（原「{…}（还不存在，写入时新建）」拆成标签）
 src/settings/machine-aliases.ts:728	{…}失败：{…}	保留	[对外] 〔AL1d〕装 / 卸别名块失败：动词＋原因（与改写前同形，只是换了拼接位置）
 src/settings/machine-aliases.ts:744	将装进 {…} 的别名块	保留	[对外] 〔AL1d〕预览浮层标题：装进哪份文件
+src/settings/machine-aliases.ts:691	。这是旧版的别名块，点「重装别名块」换成新版（新版会自动接上你的别名）	保留	[对外] 〔TL1 · 4C〕别名块状态行的续句（PowerShell v2 块）：先说是什么（旧版），再说怎么办（点那颗钮），括号说换了得到什么
 src/bridge/src/panorama_call.rs:263	代码全景这一问出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1e〕分流器 Done 那一臂的兜底（本族走不到）；同 backend_policy.rs / apikey_remote.rs 那一句的形
 src/bridge/src/panorama_call.rs:305	{who} 的代码全景没答上来（{code}）：{message}	保留	[对外] 〔RM1e〕那台机器的全景失败原话：{who} 是「本机」或机器名，{code} 是后端的错误码（not_installed / unsupported / timed_out …，同 frame_query 那一句「查询失败（code）」的形，用户据此能跟着报错走），{message} 是后端那句人话
 src/tab-stream-view.ts:967	↑ 更早的消息 · 上翻加载	保留	[对外] 〔CF2〕实时 tab 顶端哨兵：账本空了、下面可能还有，上翻会按行号去取；与既有「↑ 还有 N 条更早消息 · 上翻加载」同一口吻

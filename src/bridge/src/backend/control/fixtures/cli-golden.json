@@ -588,6 +588,165 @@
       },
       "ok": false,
       "out": "维度 account 需要远端 ccm 能力 account，但它不支持"
+    },
+    {
+      "name": "print-parity:resumeTmuxWithIdentity",
+      "req": {
+        "isSsh": true,
+        "caps": [
+          "new",
+          "resume",
+          "attach",
+          "tmux",
+          "account",
+          "model",
+          "cwd",
+          "agent",
+          "launcher",
+          "ccm-sid",
+          "print",
+          "detach",
+          "tmux-size"
+        ],
+        "action": {
+          "kind": "resume",
+          "sid": "p1"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "cc-p1",
+          "send_into": false
+        },
+        "cwd": "/tmp",
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": "p1",
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude"
+      },
+      "ok": true,
+      "out": "ccm resume p1 --tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
+    },
+    {
+      "name": "print-parity:newTmuxCustomLauncher",
+      "req": {
+        "isSsh": true,
+        "caps": [
+          "new",
+          "resume",
+          "attach",
+          "tmux",
+          "account",
+          "model",
+          "cwd",
+          "agent",
+          "launcher",
+          "ccm-sid",
+          "print",
+          "detach",
+          "tmux-size"
+        ],
+        "action": {
+          "kind": "new"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "cc-proj",
+          "send_into": false
+        },
+        "cwd": "/home/pi/my proj",
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "CCMPROBE",
+        "defaultLauncher": "claude"
+      },
+      "ok": true,
+      "out": "ccm new --tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
+    },
+    {
+      "name": "print-parity:attach",
+      "req": {
+        "isSsh": true,
+        "caps": [
+          "new",
+          "resume",
+          "attach",
+          "tmux",
+          "account",
+          "model",
+          "cwd",
+          "agent",
+          "launcher",
+          "ccm-sid",
+          "print",
+          "detach",
+          "tmux-size"
+        ],
+        "action": {
+          "kind": "attach",
+          "name": "cc-p1"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "cc-p1",
+          "send_into": false
+        },
+        "cwd": null,
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "claude",
+        "defaultLauncher": "claude"
+      },
+      "ok": true,
+      "out": "ccm attach cc-p1"
+    },
+    {
+      "name": "print-parity:resumeTmuxWithModel",
+      "req": {
+        "isSsh": true,
+        "caps": [
+          "new",
+          "resume",
+          "attach",
+          "tmux",
+          "account",
+          "model",
+          "cwd",
+          "agent",
+          "launcher",
+          "ccm-sid",
+          "print",
+          "detach",
+          "tmux-size"
+        ],
+        "action": {
+          "kind": "resume",
+          "sid": "p1"
+        },
+        "container": {
+          "kind": "tmux",
+          "name": "cc-p1",
+          "send_into": false
+        },
+        "cwd": "/tmp",
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": "p1",
+        "model": "opus",
+        "launcher": "claude",
+        "defaultLauncher": "claude"
+      },
+      "ok": true,
+      "out": "ccm resume p1 --tmux=cc-p1 --ccm-sid=p1 --base --model opus --cwd /tmp"
     }
   ]
 }

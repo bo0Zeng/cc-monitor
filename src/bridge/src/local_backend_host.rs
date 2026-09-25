@@ -1449,7 +1449,7 @@ pub fn start_local_backend() -> StartOutcome {
         crate::byte_table::Route::Local,
         this_machine,
     )
-    .map_err(|r| r.say("本机"))
+    .map_err(|r| r.say(crate::byte_table::Product::Backend, "本机"))
     .and_then(|p| match p.build_id {
         Some(id) => Ok((id, p.bytes)),
         None => Err("这一份本机后端的字节说不出自己是哪一版，没有拿它来起".to_string()),

@@ -1928,6 +1928,7 @@ async fn aliases_read(
 /// 〔RW1 · 第四波 09-24〕落盘经**本机后端**的文件管理那一面（`user_files::BackendDoor`），
 /// home 也问它 ⇒ 那边的测试拿替身门当后端，结构上碰不到真实家目录。
 /// 〔AL1c〕`shell` 定写哪一种（别名文件 ＋ 它的写法）；`rc_path` 那份文件的方言由它自己的扩展名定。
+/// 〔TL1 · 4C〕`rc_path` 今天**只查**（接没接上），不往里写（`设计/71 §6.1`：source 那一行只住别名块里）。
 #[tauri::command]
 async fn aliases_install(
     aliases: Vec<account_aliases::Alias>,

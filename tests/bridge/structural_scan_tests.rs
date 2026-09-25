@@ -2691,6 +2691,14 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔TL1 · 4C〕代装 rc 那一行 source 的那一跳退役（`设计/71 §6.1`：接上别名文件的那一行只住别名块里）；
+        //   两处散文逐字点它讲来历（「配对之后怎么拼」写过三份那一段 · 写规则只有一个住址那条的死值验说明）。
+        ("src/bridge/src/fenced_block.rs", "ensure_rc_source_line", 1),
+        (
+            "tests/bridge/fenced_block_tests.rs",
+            "ensure_rc_source_line",
+            1,
+        ),
         // 〔CF2 · 第四波 4B〕重放缓冲分档取消，读数里「只留尾巴的会话数」那个字段改名 `sessions`；新字段的文档点旧名讲来历。
         ("src/bridge/src/event_replay.rs", "tail_only_sessions", 1),
         //   头注「容量」那一段讲分档的来历，点原来那个登记方法名。
@@ -3990,7 +3998,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔AL1 · 2026-09-24〕规则收成一份那一拍新贴的两块墓碑（本机配对 helper · 远端回滚措辞 helper）。
         // 〔RW1 · 第四波 09-24〕1 → 4：本机原语 `LocalFile` 与它的同步门面 `apply_local` 随「用户文件改经后端写」
         //   整块走了，头注一处 ＋ 原住址一块墓碑（两个名字）= +3。
-        ("src/bridge/src/fenced_block.rs", 4),
+        ("src/bridge/src/fenced_block.rs", 5), // 〔TL1 · 4C〕4 → 5：「拼接写过三份」那一段点代装 rc 那一跳（已退役）的旧名
         // 〔RW1 · 第四波 09-24〕F11 改经远端后端删：远端那一支的头注一块（住址并进 C4a 那一行，〔合并〕两边各 +1）。
         // 〔RW1 · 第四波 09-24〕本机分叉改成 exec 本机后端 `--fork-session`：本机那一支的头注一块。
         ("src/bridge/src/remote_branch.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
@@ -4099,6 +4107,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/crates/guard-core/lib_tests.rs", 1),
         ("tests/bridge/doc_claim_registry_tests.rs", 1),
         ("tests/bridge/filewin/entry_tests.rs", 1),
+        ("tests/bridge/fenced_block_tests.rs", 1), // 〔TL1 · 4C〕新：写规则那条的死值验说明点代装 rc 那一跳（已退役）的旧名
         // 🔴〔本机侧退役 2026-09-23〕`parent_dir` 只剩一个算法 ⇒ 那条判据改了名
         //   （旧名尾巴上那半判的是本机那一支）。旧名逐字留着说明「它为什么改了」。
         ("tests/bridge/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）

@@ -850,6 +850,31 @@
       "zh": "这一版 cc-monitor 没有带 {os} / {arch} 的后端，所以装不到 {machine}。发布版带着它。",
       "args": ["machine", "os", "arch"]
     },
+    "panorama.refused.unsupportedMachine": {
+      "kind": "error",
+      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 今天不为这种机器准备代码全景组件。那台机器上看不了代码全景。",
+      "args": ["machine", "os", "arch"]
+    },
+    "panorama.refused.osUnknown": {
+      "kind": "error",
+      "zh": "问不出 {machine} 是什么系统，不知道该给它哪一份代码全景组件。查了什么：问过它，{why}。",
+      "args": ["machine", "why"]
+    },
+    "panorama.refused.archUnknown": {
+      "kind": "error",
+      "zh": "问不出 {machine} 是什么处理器架构，挑不出该给它的代码全景组件。查了什么：问过它，{why}。",
+      "args": ["machine", "why"]
+    },
+    "panorama.refused.notPromisedHere": {
+      "kind": "error",
+      "zh": "{machine} 是 {os} 机器，这一种的代码全景组件今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
+      "args": ["machine", "os"]
+    },
+    "panorama.refused.notCarried": {
+      "kind": "error",
+      "zh": "这一版 cc-monitor 没有带 {os} / {arch} 的代码全景组件，所以装不到 {machine}。发布版带着它。",
+      "args": ["machine", "os", "arch"]
+    },
     "assets.panel.hint": {
       "kind": "body",
       "zh": "这里列出别的机器上有、这台还没有或不一样的 skill 和 MCP。目录在各台之间自动对上，装要你点。",

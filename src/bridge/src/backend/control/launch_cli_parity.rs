@@ -1,8 +1,21 @@
-//! U8c-2c-1：`backend::control::ccm_invocation::render_ccm_invocation` **↔** TS `tryRenderCli`
-//! 的**逐字节对拍**。
+//! `backend::control::launch_wire::render_ccm_launch`（生产命令）**↔** 入库夹具
+//! `fixtures/cli-golden.json` 的**逐字节对拍**。
 //!
-//! 机制与 `launch_payload_parity.rs` 完全相同（入库夹具，两侧各自与它比，
+//! 机制与 `launch_payload_parity.rs` 相同（入库夹具，两侧各自与它比，
 //! 绝不让 Rust 去调 TS 现场生成 —— 那是 U7-4 的自洽夹具病根）。
+//!
+//! # 〔LR1 · U8c-3〕左边换了：从「TS 渲染器的产出」换成「手写期望」
+//!
+//! TS 那份 `ccm …` 渲染器（`tryRenderCli`）已删 —— 生产从 U8c-2c-2 起只走 Rust。
+//! 这份夹具**没跟着删**，因为它一直在钉两件事，只有第一件随渲染器走：
+//! 1. 两种语言渲出同一行 —— 另一种语言没了，这一件没了（已知代价）。
+//! 2. **生产的 TS 请求构造（`buildCliRenderRequest`）→ 线 → 生产 wire 类型 → 生产命令**
+//!    这一整条。它与 TS 渲染器无关：没有它，下面 `Case::req` 注释里那几个 wire 映射变异
+//!    与请求构造上的变异全都静默（样子是「降级到载荷那条，门禁全绿」）。
+//!
+//! ⇒ `out` 由 `src/launch-cli-golden.ts` 用例表里**手写**（前 16 条是 TS 渲染器最后一次
+//! 跑出、与本条逐字节对过的原样），`req` 仍由生产请求构造现产。
+//! 改 Rust 渲染器的产出 ⇒ 本条红 ⇒ 回去改用例表里的期望 —— 那一步是人做的，这是它的全部意义。
 //!
 //! ⚠ **ok 与 refusal 两类都比**：只比 ok 的话，「该降级却渲染出来了」抓不到，
 //! 而那正是 §33 铁律要防的形态。
@@ -13,26 +26,9 @@ const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 
 /// 与 `launch_payload_parity` 同理：写成相等而不是地板，加/删用例被迫回来改这个数。
 ///
-/// 🔴 `K-R95` `KR95D2`（纪律 ⑱）：本件把前端那几格「自己写死的说法」删掉、改从后端取，
-/// **这 16 例一例没少**，仍旧逐字节钉着那一份产出。夹具数变少 ⇒ 这一行当场红。
-const EXPECT_CASES: usize = 16;
-
-/// 🔴 `K-R95`：前端**还留着**的那两句降级理由，逐字节钉在后端那份上。
-///
-/// # 为什么还留着（这是登记在案的边界，不是漏了）
-///
-/// 本件把八句降级理由里的六句搬进生成物 `src/generated/launch-render-facts.ts`。
-/// 剩下两句（两条「维度 …」闸门）搬不动 —— `tests/launch-render-cli.vitest.ts` 那两条判据
-/// 是**按措辞 grep 源码**钉的（「各恰好一处」＋ 必须是 `` return { ok: false, reason: `…` } ``
-/// 这个模板形），而那个文件不在本件写区。⇒ 搬走它们会让那两条判据当场假红。
-///
-/// ⚠ 那正好是 `KR95D1` 点名的失效方向（「判前端源码里还有没有那几个字符串 = 判写法」），
-/// 本条**不重蹈**：它不是查「那几个字在不在」，而是拿**后端现场产出的措辞**去比
-/// —— 改 Rust 的措辞而不改 TS ⇒ 红；两边一起改 ⇒ 绿。
-const TS_CLI_RENDERER: &str = include_str!("../../../../launch-render-cli.ts");
-
-/// 🔴 `K-R95`：本机拉起载荷里「哪个号」那一格的**取值口**。
-const TS_ACCOUNTS: &str = include_str!("../../../../accounts.ts");
+/// 🔴 〔LR1〕16 → 20：`ccm-print-parity` 那四个场景搬进来当用例（那套 e2e 从本夹具按名取行，
+/// 取代它原先现场跑的 TS 渲染器）。原 16 例一例没少。
+const EXPECT_CASES: usize = 20;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
