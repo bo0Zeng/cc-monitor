@@ -9,6 +9,11 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beContract.malformed.say": {
+      "kind": "error",
+      "zh": "请求格式不对：{detail}",
+      "args": ["detail"]
+    },
     "panePreview.head.title": {
       "kind": "title",
       "zh": "预览画面 · [{origin}] tmux: {target}",

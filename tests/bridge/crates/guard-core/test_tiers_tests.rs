@@ -331,6 +331,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/config_surface_tests.rs",
     "tests/bridge/copy_table_tests.rs",
     "tests/bridge/crates/acct-core/lib_tests.rs",
+    "tests/bridge/crates/copy-core/lib_tests.rs",
     "tests/bridge/crates/creds-core/lib_tests.rs",
     "tests/bridge/crates/guard-core/lib_tests.rs",
     "tests/bridge/crates/guard-core/test_tiers_tests.rs",
@@ -592,6 +593,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/utils_tests.rs",
     // 〔CF1 · 09-24〕`tests/bridge/watcher_tests.rs` 随 monitor 自己那套 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。
     "tests/copy-verdicts-ledger.vitest.ts",
+    "tests/copy/backend-copy-pending.vitest.ts",
     "tests/eslint-baseline.vitest.ts",
     "tests/naming/account-vs-relay-naming.vitest.ts",
     "tests/node-suite-registry-guard.vitest.ts",

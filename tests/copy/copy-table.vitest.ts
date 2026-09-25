@@ -111,6 +111,11 @@ export function refsIn(file: string, text: string): { refs: Ref[]; problems: str
 /** Rust 取文口自己住的文件：它里头的 `copy_text` 是定义，不是引用。 */
 const RS_HOME = "src/bridge/src/copy_table.rs";
 const RS_FN = "copy_text";
+/**
+ * 〔CP2c〕取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
+ * key 不是字面量 —— 它是转发，不是引用）。它们不进「引用」一侧。
+ */
+const RS_DEFINITIONS = new Set([RS_HOME, "src/bridge/crates/copy-core/src/lib.rs"]);
 
 /** 剥掉 `//` 行注释（字符串里的 `//` 不算）。块注释本仓生产段不用来写代码，按行注释剥足够。 */
 function stripRustLineComments(text: string): string {
@@ -242,8 +247,16 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     .filter((f) => new RegExp(`\\b${FN}\\b`).test(f.text))
     .map((f) => refsIn(f.file, f.text));
   // 〔DP1〕Rust 读口的调用点。
-  const rsFiles = productionRsFiles("src/bridge/src");
+  // 〔CP2c · 第四波 4C〕射程从 monitor crate 扩到常驻后端与子 crate（后端也读同一份表、自己出句子 ——
+  //   `设计/91 §5.1` 决定 2「一份文件，两侧各读，零转换」；理由住 `调研/第四波记录/CP2c.md §2`）。
+  //   取文实现本身住 `copy-core`，monitor 的 `copy_table.rs` 只剩转发 ⇒ 这两份是定义不是引用，不进人群。
+  const rsFiles = [
+    ...productionRsFiles("src/bridge/src"),
+    ...productionRsFiles("src/backend"),
+    ...productionRsFiles("src/bridge/crates"),
+  ];
   const rsAll = rsFiles
+    .filter((f) => !RS_DEFINITIONS.has(f.file))
     .filter((f) => new RegExp(`\\b${RS_FN}\\b`).test(f.text))
     .map((f) => rustRefsIn(f.file, f.text));
   const rsRefs = rsAll.flatMap((x) => x.refs);
@@ -254,6 +267,12 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     expect(rsFiles.length, "一个 .rs 都没扫到").toBeGreaterThan(100);
     expect(rsFiles.map((f) => f.file)).toContain(RS_HOME);
     expect(rsRefs.length, "一个 copy_text 调用点都没找到 —— 读口没接上，或者读法坏了").toBeGreaterThan(0);
+     // 〔CP2c〕三棵树各自真的扫到了、也各自读到了调用点（扩根那一步没接上时，下面的两向相等会在缺角的集合上成立）。
+    for (const [root, n] of [["src/backend/", 100], ["src/bridge/crates/", 10]] as const) {
+      expect(rsFiles.filter((f) => f.file.startsWith(root)).length, `${root} 下一个 .rs 都没扫到`).toBeGreaterThan(n);
+    }
+    expect(rsRefs.some((r) => r.file.startsWith("src/backend/")), "常驻后端一个 copy_text 调用点都没读到").toBe(true);
+    for (const d of RS_DEFINITIONS) expect(rsFiles.map((f) => f.file)).toContain(d);
   });
 
   it("正控：扫到了生产源码，也扫到了取文口自己", () => {
