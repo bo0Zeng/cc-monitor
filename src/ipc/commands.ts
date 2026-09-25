@@ -638,9 +638,8 @@ export const commands = {
   remove_project_mcp_server: (args: { origin: Origin; projectDir: string; name: string }) =>
     invoke<void>("remove_project_mcp_server", args),
 
-  /** 把某 sid 的历史定向重放到当前窗口（viewer 用，不发 frontend-ready）。**桶①**。 */
-  replay_session_to_window: (args: { sessionId: string }) =>
-    invoke<void>("replay_session_to_window", args),
+  // 〔CF2 · 第四波 4B〕独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
+  //   `session-lines/<sid>`（`chan.subscribe`），留存由那条订阅当场交。
 
   /** `ssh -G` 解析一个别名。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   resolve_ssh_host: (args: { alias: string }) => invoke<ResolvedHost>("resolve_ssh_host", args),
@@ -1104,9 +1103,13 @@ export const commands = {
   // 全仓 TS 只有本文件直呼 `invoke`（判据 `commands.vitest.ts` 末尾「裸 invoke 只在包装层」那一节）。
   // ════════════════════════════════════════════════════════════════════════
 
-  /** issue #10：把某会话在一个独立只读窗口（`viewer-<sid>`）里打开。`x`/`y` = 拖拽撕离的落点。**桶①**。 */
+  /**
+   * issue #10：把某会话在一个独立只读窗口（`viewer-<sid>`）里打开。`x`/`y` = 拖拽撕离的落点。**桶①**。
+   * 〔CF2〕`origin`：窗口自己订那个会话的流（`session-lines/<sid>`），要知道它在哪台机器上。
+   */
   open_session_in_new_window: (args: {
     sessionId: string;
+    origin: Origin;
     title: string;
     x?: number;
     y?: number;
@@ -1153,4 +1156,19 @@ export const commands = {
    */
   chan_call: (args: { origin: Origin; op: string; payload: number[]; leftMs: number }) =>
     invoke<ArrayBuffer>("chan_call", args),
+
+  /**
+   * 〔CF2 · 第四波 4B〕**通道 `subscribe` 在 Tauri IPC 这一跳上的三条命令**（`chan/webview.rs`）。
+   * ⚠ 调用方**不直接用它们**：一律经 `src/ipc/chan.ts` 的 `chan.subscribe(origin, kind, from, want, sink)`
+   * （编号、窗口作用域的交格事件、解码都住那里）。`id` 由那一侧给（每页从 1 起）。**不回错**：说不了的在流里原位说。
+   */
+  chan_subscribe: (args: {
+    origin: Origin;
+    kind: string;
+    from: number[] | null;
+    want: number;
+    id: number;
+  }) => invoke<void>("chan_subscribe", args),
+  chan_want: (args: { id: number; more: number }) => invoke<void>("chan_want", args),
+  chan_stop: (args: { id: number }) => invoke<void>("chan_stop", args),
 } as const;

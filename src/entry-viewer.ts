@@ -1,5 +1,5 @@
 /**
- * **独立只读窗**的入口（`viewer.html?viewer=<sid>` 加载它）。`设计/01 §1.2`：只含 tab 管理 ＋ 渲染栈。
+ * **独立只读窗**的入口（`viewer.html?viewer=<sid>&origin=<机器>` 加载它）。`设计/01 §1.2`：只含 tab 管理 ＋ 渲染栈。
  *
  * 🔴 本窗的模块图里**没有**设置面板 / 历史 / 全景 / SFTP / 命令栏 —— 判据是
  * `tests/entry-graphs.vitest.ts`（真跑 `vite build`，对本入口 chunk 的传递闭包做零命中断言），
@@ -10,7 +10,7 @@
 import "./entry-common"; // 全局错误捕获（模块副作用）
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands } from "./ipc/commands";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { basename } from "./format"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区；〔F7b〕随老面板退役从 sftp/paths 搬来）
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
@@ -39,7 +39,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (status) status.textContent = "独立只读视图：URL 缺 ?viewer=<sid>";
     return;
   }
-  await bootstrapViewer(sid);
+  // 〔CF2〕这个会话在哪台机器上（会话流 `subscribe(origin, kind)` 的寻址键）。缺 ⇒ 本机（旧的开窗 URL 只带 sid）。
+  const rawOrigin = new URLSearchParams(location.search).get("origin");
+  const origin: Origin = rawOrigin === null || rawOrigin === "" || isLocalOrigin(rawOrigin) ? LOCAL_ORIGIN : rawOrigin;
+  await bootstrapViewer(sid, origin);
 });
 
 /**
@@ -49,11 +52,12 @@ window.addEventListener("DOMContentLoaded", async () => {
  * （tab 栏 / 设置 / 历史，由 `body.viewer-mode` CSS 控制）→ 自动继承分支折叠 /
  * 启动滚动消抖 / tool-group 合并 等全部渲染能力。
  *
- * 数据：实时 `jsonl-line` 广播本就到所有窗口（按 sid 过滤）；历史走定向
- * `replay_session_to_window`（与实时同 seq 空间）。两者重叠由 `seen` set 按 seq 去重。
- * **不发 `frontend-ready`** —— 那会触发后端对所有窗口的全量 replay。
+ * 数据：〔CF2 · 第四波 4B〕订一条会话流 `session-lines/<sid>`（通道 `subscribe`，只要这一个会话）——
+ * 留存由这条订阅当场交、之后的实时行接着交（与主窗口同一个 seq 空间）。原来的定向重放命令
+ * （`replay_session_to_window`〔散文墓碑〕）与实时广播事件一起退役。重叠由 `seen` set 按 seq 去重。
+ * **不发 `frontend-ready`** —— 那是主窗口那几条整台机器的订阅的就绪点。
  */
-async function bootstrapViewer(sid: string): Promise<void> {
+async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   document.body.classList.add("viewer-mode");
   // Batch14-F42：viewer 是独立 webview（自带一份 notifier 单例）且广播行照收——
   // 只让主窗口发通知，否则重复通知 + "用户正聚焦 viewer"时主窗口误发。
@@ -128,12 +132,12 @@ async function bootstrapViewer(sid: string): Promise<void> {
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
 
-  // 定向 replay 与实时广播可能重叠 → 按 per-file seq 去重。
+  // 留存与实时行可能重叠 → 按 per-file seq 去重。
   const seen = new Set<number>();
   let titleCwdSeq = Number.POSITIVE_INFINITY; // 顶栏标题取最早 cwd（项目根），同 tab.cwd 口径
-  // **必须 await**：listener 注册完成前调 replay 会丢事件（实测白屏只剩状态栏）。
-  // **windowScoped:true**：定向 replay 用 emit_to(本窗口)，须用窗口作用域监听才收得到
-  // （模块级 listen 是 Any 监听，命不中定向发射）。详 BindEventsOptions.windowScoped。
+  // **必须 await**：起停事件的监听注册完、会话流订阅登记好再往下走。
+  // **windowScoped:true**：起停事件照旧按窗口作用域监听（详 BindEventsOptions.windowScoped）；
+  // 会话流的格由通道按窗口定向交（`chan.ts`）。
   await bindEvents(
     {
       onLine: (e) => {
@@ -160,17 +164,10 @@ async function bootstrapViewer(sid: string): Promise<void> {
       },
       onBatchStart: () => tabs.onBatchStart(),
       onBatchEnd: () => tabs.onBatchEnd(),
+      onStreamGap: (o) => tabs.onStreamGap(o),
     },
-    { windowScoped: true },
+    { windowScoped: true, streams: [{ origin, kind: `session-lines/${sid}` }] },
   );
 
   bindErrorToast();
-
-  // 拉本 sid 的历史（定向 emit 到本窗口）。不发 frontend-ready。
-  try {
-    await commands.replay_session_to_window({ sessionId: sid });
-  } catch (e) {
-    console.error("viewer: replay_session_to_window failed:", e);
-    statusMsg.textContent = `加载失败：${String(e)}`;
-  }
 }

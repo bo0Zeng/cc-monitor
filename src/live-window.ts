@@ -114,6 +114,19 @@ export class TailWindow {
     if (this.below.kind === "failed") this.below = { kind: "maybe" };
   }
 
+  /**
+   * 〔CF2〕会话流里丢过格（`gap`）⇒ 账本里还没上屏的那些**不可信**（它们之间可能夹着洞，而 seq 里本来就有
+   * 不显示的记录占的号，前端从 seq 看不出哪里缺）⇒ 整份出账，之后往上翻按行号重新取（`below` 回到 `maybe`）。
+   * 返回丢掉的条数。
+   */
+  dropPending(): number {
+    const n = this.pending.length;
+    this.pending = [];
+    this.dirty = false;
+    if (this.below.kind === "none" || this.below.kind === "failed") this.below = { kind: "maybe" };
+    return n;
+  }
+
   /** 压低水位(幂等取 min——物化/直渲只会让窗口向下扩) */
   pinFloor(seq: number): void {
     this.floor = this.floor === null ? seq : Math.min(this.floor, seq);

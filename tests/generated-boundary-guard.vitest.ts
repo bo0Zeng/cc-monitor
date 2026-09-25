@@ -145,6 +145,7 @@ describe("C01 边界生成物", () => {
       // 往一侧加字段没有任何门禁会红。
       "AuthKind.ts",
       "AutoLaunchConfig.ts", // C04d 批5a
+      "BatchEdge.ts", //              〔CF2 · 第四波 4B〕会话流里成批那一段的边界（`SessionStreamFrame` 的传递依赖）
       "BranchResult.ts", // C04d 批6a
       "CcBusAgent.ts", // C04d 批5a（CcBusState 的传递依赖）
       // PS1：本机部署 cc-bus 的结果（写了几个 / 跳过几个 / 备份在哪 —— 三种说法不合并）。
@@ -183,7 +184,8 @@ describe("C01 边界生成物", () => {
       "HooksReport.ts", //            C04d 批3
       "ImportGroup.ts", // C04d 批5c
       "ImportMember.ts", // C04d 批5c（ImportGroup 的传递依赖）
-      "JsonlBatchPayload.ts", //      C04c
+      // 〔CF2 · 第四波 4B〕"JsonlBatchPayload.ts" 走了：`jsonl-batch` 事件退役，会话内容改走通道 `subscribe`
+      //   （流里一格的体是 `SessionStreamFrame`）。
       "JsonlLinePayload.ts", //       C04c
       "JsonlRecord.ts", //            C04c（**线定义本身**：wire == serde_json::to_string(它)）
       "LegacyProfileEntry.ts", // C04d 批5a（**非 pub**，CcStatusResponse 的传递依赖）
@@ -220,6 +222,7 @@ describe("C01 边界生成物", () => {
       "SessionLinesPage.ts", //       〔CF2 · 第四波 4B〕按行号取回的那一段（`read_session_lines`）
       "SessionRecordProbe.ts", //     〔U4b〕resume 之前问记录还在不在的答案
       "SessionStartedPayload.ts", //  C02
+      "SessionStreamFrame.ts", //     〔CF2 · 第四波 4B〕会话内容流里一格的体（`{"line": …}` / `{"batch": …}`）
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
       // 〔F7c 收尾 09-24〕"SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
@@ -613,7 +616,9 @@ describe("C02 事件名钉死", () => {
     // 握手完成。前端 `main.ts` 订阅它，替掉那个 10 秒账号轮询（改事件驱动）。
     // 〔U4b · 第四波〕12 → 14：`SESSION_CONTAINER`（"session-container"，活会话的容器）·
     // `ORIGIN_SESSIONS_LISTED`（"origin-sessions-listed"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
-    expect(pairs.length, `期望恰好 14 个事件名常量，实得 ${pairs.length}`).toBe(14);
+    // 〔CF2 · 第四波 4B〕14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
+    //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/ipc/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
+    expect(pairs.length, `期望恰好 12 个事件名常量，实得 ${pairs.length}`).toBe(12);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
     const tsFiles = ["src/events.ts", "src/main.ts", "src/remote-health.ts"];

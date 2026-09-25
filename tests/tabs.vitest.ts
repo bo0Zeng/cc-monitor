@@ -4998,8 +4998,10 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
       ...(origin ? { origin } : {}),
       message: { type: "assistant", uuid: `${sid}-${seq}` } as never,
     }) as never;
+  // ⚠ 等的是 rAF（`fillAbove` 补完一批靠 `requestAnimationFrame` 自链复检，jsdom 里约 16ms 一拍）——
+  //   只让几个 0ms 宏任务过去等不到它：上一条的自链会漏进下一条的计数（首跑现打过一次）。
   const settle = async (): Promise<void> => {
-    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 20));
   };
   const asks = () =>
     vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_lines").map((c) => c[1]);
@@ -5091,6 +5093,59 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
       (c) => (c[0] as { seq: number }).seq,
     );
     expect(rendered, "见过的那一条也要上屏（放回账本 ⇒ 补批建卡）").toContain(240);
+  });
+
+  it("★ S3′：会话流丢过格（`onStreamGap`）⇒ 那台机器的 tab：账本整份出账、从见过的最大行号 + 1 起往后取到 eof；别的机器的 tab 不动", async () => {
+    const pages = new Map<string, number>();
+    vi.mocked(invoke).mockImplementation(((
+      cmd: string,
+      a?: { jsonlPath: string; from: number; until?: number },
+    ) => {
+      if (cmd !== "read_session_lines") return Promise.resolve(undefined);
+      // 往后那一问（不给 until）：每份会话两段，第二段到 eof
+      const n = (pages.get(a!.jsonlPath) ?? 0) + 1;
+      pages.set(a!.jsonlPath, n);
+      const sid = a!.jsonlPath.slice(3, -6); // "/p/<sid>.jsonl"
+      const from = a!.from;
+      return Promise.resolve({
+        from,
+        next: from + 2,
+        eof: n >= 2,
+        payloads: [mk(sid, from), mk(sid, from + 1)],
+      });
+    }) as never);
+    tm.onLine(mk("head", 1));
+    tm.onLine(mk("gp", 100)); // 钉 floor = 100
+    tm.onBatchStart();
+    for (let s = 50; s < 55; s++) tm.onLine(mk("gp", s)); // < floor ⇒ 收纳进账本
+    tm.onBatchEnd();
+    tm.onLine(mk("far", 7, "box"));
+    const t = home(tm).store.tabs.get("gp")!;
+    const far = home(tm).store.tabs.get("far")!;
+    expect(t.window.pendingCount).toBeGreaterThan(0);
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+    spy.mockClear();
+    tm.onStreamGap("<local>");
+    expect(t.window.pendingCount, "账本没出账 —— 里面可能夹着洞").toBe(0);
+    await settle();
+    // 本机那台上的两个 tab 都补（丢的是哪几个会话流里说不出来）；各自从自己见过的最大行号 + 1 起、到 eof 为止
+    const of = (path: string) =>
+      asks()
+        .filter((a) => (a as { jsonlPath: string }).jsonlPath === path)
+        .map((a) => (a as { from: number; until?: number }));
+    expect(of("/p/gp.jsonl")).toEqual([
+      { origin: "<local>", jsonlPath: "/p/gp.jsonl", from: 101 },
+      { origin: "<local>", jsonlPath: "/p/gp.jsonl", from: 103 },
+    ]);
+    expect(of("/p/head.jsonl").map((a) => a.from)).toEqual([2, 4]);
+    const rendered = spy.mock.calls
+      .map((c) => c[0] as { seq: number; session_id: string })
+      .filter((p) => p.session_id === "gp")
+      .map((p) => p.seq);
+    expect(rendered).toEqual([101, 102, 103, 104]);
+    expect(far.seenSeqs.has(7), "别的机器的 tab 被动了").toBe(true);
+    expect(asks().every((a) => (a as { jsonlPath: string }).jsonlPath !== "/p/far.jsonl")).toBe(true);
   });
 
   it("★ L4：取回的历史行不把已结束的远端 tab 翻活；实时远端行照旧翻活（正控）", async () => {

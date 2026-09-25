@@ -317,7 +317,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 - **Win32 同步调用**：`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` / `OpenProcess` 等（窗口枚举 / 进程查询 / shell execute 可能数十 ms 到秒级）
 - **文件系统 IO**：`history.rs` 全部 IPC（`list_history_projects` / `stream_history_sessions_in_project` / `stream_read_session_jsonl`）也走 spawn_blocking —— 扫几十个项目 / 读几 MB jsonl 都属此类
 - **`std::process::Command::spawn`**：spawn 外部进程（如 resume 的 wt.exe / powershell.exe 跑 `cc`/`claude --resume`，v2.8.1 起）
-- **async task 内禁止 `std::thread::sleep` / 同步阻塞**（issue #20 增补）：`tauri::async_runtime::spawn` 的 task 里节流用 `tokio::time::sleep(..).await`，真长阻塞走 spawn_blocking。一次同步 sleep 压住一个 tokio worker，worker 数有限，攒多了饿死全部 async 任务（`replay_and_mark_ready` 为此 async 化；重放缓冲的入口 `on_line_batch_awaited` 大 batch 路径块间用 `tokio::time::sleep`、**发完才返回** —— 行 emit 因此严格先于随后的 SessionRemoved 归档。〔CF1 · 2026-09-24〕原先还有一份把块序列 spawn 出去、「返回≠emit 完成」的孪生入口，只供本机 watcher 用，随它一起删了）
+- **async task 内禁止 `std::thread::sleep` / 同步阻塞**（issue #20 增补）：`tauri::async_runtime::spawn` 的 task 里节流用 `tokio::time::sleep(..).await`，真长阻塞走 spawn_blocking。一次同步 sleep 压住一个 tokio worker，worker 数有限，攒多了饿死全部 async 任务（F5 的重放为此 async 化 —— 今天是 `event_replay·rs::ready_point`；重放缓冲的入口 `on_line_batch_awaited` 大 batch 路径块间用 `tokio::time::sleep`、**发完才返回** —— 行 emit 因此严格先于随后的 SessionRemoved 归档。〔CF1 · 2026-09-24〕原先还有一份把块序列 spawn 出去、「返回≠emit 完成」的孪生入口，只供本机 watcher 用，随它一起删了）
 
 **为什么不能松动**：Tauri 的 `#[tauri::command] fn`（非 async）跑在 IPC 派发线程上。一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）。即便代码"看起来快"（如 read_dir + stat 几百次），磁盘冷状态下也能轻松超过 100ms 阈值。
 
@@ -528,8 +528,8 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 独立窗口（`viewer-<sid>` `bootstrapViewer` / `settings` `bootstrapSettings`）依赖下列契约，违反任一条都会让窗口白屏 / 卡死 / 收不到数据 / 关不掉——**全是"静默失败"**（不报错，只是白屏 / 收不到 / 卡死 / 点了没反应），极难凭看代码发现，都是实测踩出来的。**任何新独立窗口照抄这套脚手架，逐条对照适用性。**
 
 1. **开窗 IPC 必须 `async`**（viewer + settings 都适用）：`open_session_in_new_window` / `open_settings_window` 等创建 `WebviewWindow` 的命令必须是 `async fn`。Tauri 2 同步 `fn` 命令在**主线程**执行，而 `WebviewWindowBuilder::build()` 内部把创建派发到主线程并阻塞等 → 在主线程等主线程 = 死锁（新窗口白屏 + 整个 app 卡死连关闭都点不了）。
-2. **定向事件 target-kind 对齐**（viewer 适用；settings **N/A**——无会话流、跨窗同步用广播）：给单个 viewer 窗口定向投递（如 `replay_session_to_window`）用 Rust `emit_to(EventTarget::webview_window(label))` ↔ 前端 `getCurrentWebviewWindow().listen`（`bindEvents({windowScoped:true})`）。**禁止**用 `&str` 目标（→`EventTarget::AnyLabel`）配模块级 `listen`（→`Any`）—— Tauri 2 按 kind 匹配，`Any` 监听命不中 `AnyLabel` 发射，事件静默丢弃。**广播**（前端 `emit()` / Rust `AppHandle::emit`，`Any`）是通配，模块级 `listen`（`Any`）收得到——settings 的 `settings-applied` 跨窗同步正走广播↔模块级 listen（Any↔Any），恰好避开该坑。
-3. **异步 `listen`/`bindEvents` 必须先注册再触发 emit**（viewer 适用；settings 因 emit 只在用户开窗后保存才发生、远晚于主窗口启动注册，无竞态）：`listen()` 异步注册，注册完成前后端 emit 的事件会丢。
+2. **定向事件 target-kind 对齐**（viewer 适用；settings **N/A**——无会话流、跨窗同步用广播）：给单个窗口定向投递（〔CF2 · 第四波 4B〕今天是会话流的交格：`chan/webview.rs::WebviewSink` 发 `chan-items`，主窗口与 viewer 都是定向）用 Rust `emit_to(EventTarget::webview_window(label))` ↔ 前端 `getCurrentWebviewWindow().listen`（`src/ipc/chan.ts` 那一处；起停事件仍是广播，viewer 照旧 `bindEvents({windowScoped:true})`）。**禁止**用 `&str` 目标（→`EventTarget::AnyLabel`）配模块级 `listen`（→`Any`）—— Tauri 2 按 kind 匹配，`Any` 监听命不中 `AnyLabel` 发射，事件静默丢弃。**广播**（前端 `emit()` / Rust `AppHandle::emit`，`Any`）是通配，模块级 `listen`（`Any`）收得到——settings 的 `settings-applied` 跨窗同步正走广播↔模块级 listen（Any↔Any），恰好避开该坑。
+3. **异步 `listen`/`bindEvents` 必须先注册再触发 emit**（viewer 适用；settings 因 emit 只在用户开窗后保存才发生、远晚于主窗口启动注册，无竞态）：`listen()` 异步注册，注册完成前后端 emit 的事件会丢。〔CF2〕会话流的订阅（`bindEvents` 的 `streams`）在起停监听全部注册完之后才登记 —— 订阅一登记，句柄就可能开始交格。
 4. **精简模式 CSS 不能塌 grid 行**（viewer + settings 都适用，解法不同）：`display:none` 一个 grid **item**（如 viewer 的 `#tab-bar`）会把它从 grid 移除、剩余 item 前移落行 → viewer 必须只为剩余 item 定义对应行数（`auto 1fr 24px`）。settings 换了个更稳的解法：`body.settings-window-mode` 直接 `display:none` 隐藏 grid **容器** `#app` 整块（非其内 item，无前移塌缩），面板 `position:fixed` 脱流铺满。
    〔订正 · U1 · 2026-09-24〕**settings 那一半已不适用**：三入口拆分之后设置窗是独立入口 `settings.html`（`entry-settings.ts`），页面里**没有** `#app`、也没有 `body.settings-window-mode` ⇒ 不再是「精简模式」，不存在要塌的 grid。本项今天只约束 viewer（`viewer.html` ＋ `entry-viewer.ts`）。三窗各自的模块图与 CSS 清单由 `tests/entry-graphs.vitest.ts` 钉。
 5. **关窗要 `core:window:allow-close` 能力**（settings 适用；任何前端调 `getCurrentWindow().close()` 的窗口都适用）：该 JS API 走 `plugin:window|close`，受 ACL 门控，而 `core:window:default` **只含 getter 类权限、不含 `allow-close`**（同理 minimize/set-fullscreen 也得显式加）。capability 的 `windows` 列了该窗口标签还不够，**必须**把 `core:window:allow-close` 加进 `permissions`，否则 ×/取消/Esc 关窗被 ACL 拒、`void` 吞掉 → 点了没反应（系统标题栏原生 X 仍可关，更隐蔽）。
@@ -647,7 +647,7 @@ Batch8-F25/26 起（p1f 后端 + tail-only）：后端连接时把各文件 seq 
 - **F5 重发必须先于 replay**：`remote-session-added` 不进 replay buffer，F5 后远端
   骨架/bg 元数据/初始灯全靠 frontend-ready 时 `ssh_source::reannounce_all` 重发；
   "宣告先于该会话的行"契约在 F5 路径的唯一保证是 lib.rs frontend-ready 处理器里
-  reannounce 调用**先于** `replay_and_mark_ready` 的顺序（同一 task 内顺序 emit +
+  reannounce 调用**先于** `event_replay·rs::ready_point`（〔CF2〕F5 重放的就绪点）的顺序（同一 task 内顺序 emit +
   前端同 queue FIFO）。改动该顺序 = 破坏骨架先行契约。
 - **status 缺失恒为"未知"**：pidfile 无 `status`（旧 CC）→ 帧不带 → 前端 `act=null`
   不加灯类——双端一字一致（与 §26 "kind 缺失恒视为交互"同族的保守缺省规则）。

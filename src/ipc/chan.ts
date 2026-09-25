@@ -26,11 +26,29 @@
  *   `ours`（我们自己错）。monitor 交回来的是回环那条同一份线上形状（`wire::err_to_wire`），这里解回三层；
  *   解不出来的一律 `ours/Broken`（对端说的话解不出来 = 内部不变量破了），**不猜**。
  *
+ * # 〔CF2 · 第四波 4B〕`subscribe(origin, kind, from, want)`
+ *
+ * ```text
+ * 调用方 ──chan.subscribe(origin, kind, from, want, sink)──▶ 本文件 ──包装层 chan_subscribe──▶ monitor（句柄）
+ *        ◀── sink(items) ── 本文件 ◀── 窗口作用域的 Tauri 事件 `chan-items` {sub, items} ──
+ *        ── sub.want(n) / sub.stop() ──▶ chan_want / chan_stop
+ * ```
+ *
+ * - **不返回 `Result`**（`§3.3.5`）：订一台现在看不见的机器是合法的 —— 第一格 `unseen`；说不了的原位 `closed`。
+ *   登记那一跳本身失败（包装层抛）⇒ 原位 `closed{ours: Broken}`，返回的 `Sub` 是一个撤了的。
+ * - **编号本文件给**（每页从 1 起）：格可能先于登记那一跳的应答到达 —— 编号与 `sink` 先记在这里才不丢。
+ * - **体是文本**：webview 这一跳是 Tauri 事件（JSON），二进制过不来 ⇒ 句柄的字节按 UTF-8 原样装成字符串。
+ *   本文件**不解析**它（`closed{peer}` 的体同）；读它的是调用方（`events.ts`）。
+ * - **credit**：`want` 由调用方给（它知道自己还能吃多少）；本文件只转交，不排队、不丢 ——
+ *   丢是句柄那一侧的事，丢了它原位给 `gap`（`§3.3.4`「丢必须说」）。
+ * - 解不出的一格 ⇒ 交一格 `closed{ours: Broken}` 并撤掉这条订阅（对端说的话解不出来 = 不变量破了），**不猜**。
+ *
  * # 买不到
  *
- * - **没有 `subscribe`**：webview 这一侧本拍零条流。
  * - **不买对端撤活**（同上）· **不买重连**（这一跳是进程内 IPC，没有「连接」可断）。
+ * - **`subscribe` 没有续传**：webview 页面一重载 JS 状态全没，游标无处可存 ⇒ 句柄对 `from` 原位说用法错。
  */
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { commands } from "./commands";
 import type { Origin } from "./origin";
 
@@ -146,7 +164,97 @@ function whenAborted(signal: AbortSignal): { promise: Promise<never>; dispose: (
   };
 }
 
-/** 前端对通信层的说法（`§3.1`：前端只有两个动作；webview 这一侧今天只有 `call`）。 */
+/** `§3.3.4` 流里的一格（webview 这一跳的样子：体是文本，见头注）。 */
+export type Item =
+  | { t: "frame"; seq: number; body: string }
+  | { t: "gap"; fromSeq: number; toSeq: number }
+  | { t: "unseen"; at: { idx: number; tag: HopTag }; why: HopFault }
+  | { t: "seen"; from: Uint8Array | null }
+  | { t: "closed"; by: { peer: string } | { ours: OursFault } };
+
+/** 一条订阅往回说的两个动作（`§3.3.0` 的 `Sub`）。 */
+export interface Sub {
+  /** 背压信号：订阅方报「我还能吃多少」（credit，累加）。 */
+  want(more: number): void;
+  /** 撤订阅（本地撤单）：之后一格都不再交给 sink。 */
+  stop(): void;
+}
+
+const BROKEN_ITEM: Item = { t: "closed", by: { ours: "Broken" } };
+
+const isNat = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+/**
+ * monitor 交来的一格（`chan/webview.rs::WebviewItem` 的线上形状，跨语言金样
+ * `tests/__fixtures__/chan-webview-items.golden.json`）⇒ `Item`。认不出 ⇒ `null`（调用方按「坏了」处置）。
+ */
+export function decodeItem(raw: unknown): Item | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  switch (o.t) {
+    case "frame":
+      return isNat(o.seq) && typeof o.body === "string" ? { t: "frame", seq: o.seq, body: o.body } : null;
+    case "gap":
+      return isNat(o.from_seq) && isNat(o.to_seq) && o.from_seq <= o.to_seq
+        ? { t: "gap", fromSeq: o.from_seq, toSeq: o.to_seq }
+        : null;
+    case "unseen":
+      return isNat(o.idx) &&
+        typeof o.tag === "string" &&
+        HOP_TAGS.includes(o.tag) &&
+        typeof o.why === "string" &&
+        HOP_FAULTS.includes(o.why)
+        ? { t: "unseen", at: { idx: o.idx, tag: o.tag as HopTag }, why: o.why as HopFault }
+        : null;
+    case "seen": {
+      if (o.from === null) return { t: "seen", from: null };
+      const f = o.from;
+      return Array.isArray(f) && f.every((b) => Number.isInteger(b) && b >= 0 && b <= 255)
+        ? { t: "seen", from: Uint8Array.from(f as number[]) }
+        : null;
+    }
+    case "closed_by_peer":
+      return typeof o.body === "string" ? { t: "closed", by: { peer: o.body } } : null;
+    case "closed_by_ours":
+      return typeof o.why === "string" && OURS_FAULTS.includes(o.why)
+        ? { t: "closed", by: { ours: o.why as OursFault } }
+        : null;
+    default:
+      return null;
+  }
+}
+
+/** 本页的订阅：编号 ⇒ 交格的那个 sink（编号每页从 1 起，见头注）。 */
+const sinks = new Map<number, (items: Item[]) => void>();
+let nextSubId = 1;
+let listening: Promise<unknown> | null = null;
+
+/** 一次投递（`{sub, items}`）⇒ 解码后交给那条订阅的 sink。解不出的 ⇒ 交 `Broken` 并撤掉。 */
+function dispatchDelivery(raw: unknown): void {
+  if (raw === null || typeof raw !== "object") return;
+  const { sub, items } = raw as { sub?: unknown; items?: unknown };
+  if (!isNat(sub)) return;
+  const sink = sinks.get(sub);
+  if (!sink) return; // 撤了之后才到的格：本地撤单立即，之后一格都不交
+  const out: Item[] = [];
+  let broken = !Array.isArray(items);
+  for (const it of Array.isArray(items) ? (items as unknown[]) : []) {
+    const d = decodeItem(it);
+    if (d === null) {
+      broken = true;
+      break;
+    }
+    out.push(d);
+  }
+  if (broken) {
+    sinks.delete(sub);
+    void commands.chan_stop({ id: sub }).catch(() => {});
+    out.push(BROKEN_ITEM);
+  }
+  if (out.length > 0) sink(out);
+}
+
+/** 前端对通信层的说法（`§3.1`：前端只有两个动作）。 */
 export const chan = {
   /**
    * 一次性请求。失败一定抛一个 [`ChanError`]，**永远不会**「返回一个空答案」。
@@ -180,5 +288,47 @@ export const chan = {
     } finally {
       abort.dispose();
     }
+  },
+
+  /**
+   * 订阅（`§3.3.0`）。**不失败**：说不了的在流里原位说（`§3.3.5`）。返回时 monitor 那一侧已经登记好了
+   * （调用方可以放心地接着做「会触发交格」的事，比如发 `frontend-ready`）。
+   * `from`：续传游标（不透明；webview 这一跳的句柄不支持，给了就原位 `closed`）。`want`：一开始能吃多少格。
+   */
+  async subscribe(
+    origin: Origin,
+    kind: string,
+    from: Uint8Array | null,
+    want: number,
+    sink: (items: Item[]) => void,
+  ): Promise<Sub> {
+    listening ??= getCurrentWebviewWindow().listen<unknown>("chan-items", (e) => {
+      dispatchDelivery(e.payload);
+    });
+    const id = nextSubId++;
+    sinks.set(id, sink);
+    const sub: Sub = {
+      want: (more) => {
+        if (!sinks.has(id) || more <= 0) return;
+        void commands.chan_want({ id, more }).catch(() => {});
+      },
+      stop: () => {
+        if (!sinks.delete(id)) return;
+        void commands.chan_stop({ id }).catch(() => {});
+      },
+    };
+    try {
+      await listening;
+      await commands.chan_subscribe({
+        origin,
+        kind,
+        from: from === null ? null : Array.from(from),
+        want,
+        id,
+      });
+    } catch {
+      if (sinks.delete(id)) sink([BROKEN_ITEM]);
+    }
+    return sub;
   },
 };

@@ -400,16 +400,25 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
     expect((SETTINGS ?? "").length, "`bootstrapSettings` 切得太短").toBeGreaterThan(300);
   });
 
-  it("★ 22.3：viewer 必须**先** `await bindEvents` 再 `replay_session_to_window`", () => {
+  // 〔CF2 · 第四波 4B〕viewer 不再单独调定向重放命令（`replay_session_to_window` 退役）：会话流经 `bindEvents` 的
+  //   `streams` 选项订（`session-lines/<sid>`，留存由那条订阅当场交）。「先注册再触发」这一条的两半因此换了住址：
+  //   ① viewer 这一侧：订阅**只**经 `await bindEvents(…, { streams })`；② `events.ts` 那一侧：所有 listen 注册完
+  //   （`await Promise.all(registrations)`）之后才 `chan.subscribe(`（订阅一登记，句柄就可能开始交格）。
+  it("★ 22.3：viewer 的会话流**只**经 `await bindEvents(…, { streams })` 订；`bindEvents` 里先注册完 listen 再订", () => {
     const body = VIEWER ?? "";
     const bind = body.indexOf("await bindEvents(");
-    const replay = body.indexOf("replay_session_to_window");
     expect(bind, "`bootstrapViewer` 里找不到 `await bindEvents(` —— 要么改名了，要么 `await` 被摘了").toBeGreaterThan(-1);
-    expect(replay, "`bootstrapViewer` 里找不到 `replay_session_to_window`").toBeGreaterThan(-1);
+    expect(/streams:\s*\[/.test(body.slice(bind)), "`bootstrapViewer` 的 `bindEvents` 没带 `streams` —— 独立窗口收不到会话内容").toBe(true);
+    expect(body.includes("replay_session_to_window"), "退役的定向重放命令又回来了").toBe(false);
+    const ev = codeOf("src/events.ts");
+    const registered = ev.indexOf("await Promise.all(registrations)");
+    const subscribed = ev.indexOf("chan.subscribe(");
+    expect(registered, "`events.ts` 里找不到 `await Promise.all(registrations)`").toBeGreaterThan(-1);
+    expect(subscribed, "`events.ts` 里找不到 `chan.subscribe(`").toBeGreaterThan(-1);
     expect(
-      bind < replay,
-      "条 22.3：`listen()` 是**异步注册**，注册完成前后端 emit 的事件会**静默丢**\n" +
-        "（实测症状：viewer 白屏只剩状态栏）。⇒ `bindEvents` 必须 `await` 完再调 replay。",
+      registered < subscribed,
+      "条 22.3：`listen()` 是**异步注册**，注册完成前 emit 的事件会**静默丢**（实测症状：viewer 白屏只剩状态栏）。\n" +
+        "⇒ 起停事件的监听必须 `await` 注册完，才订会话流（订阅一登记，句柄就可能开始交格）。",
     ).toBe(true);
   });
 

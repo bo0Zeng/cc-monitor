@@ -1,5 +1,7 @@
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
+import { chan, type Item, type Sub } from "./ipc/chan";
+import type { Origin } from "./ipc/origin";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src/bridge/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
@@ -19,8 +21,8 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // 那段理由本身也有一处方向反了（C02 audit I4 已订正）：这个边界上
 // **Rust 的 `JsonlRecord` 就是线定义**（wire == `serde_json::to_string(它)`），
 // 而 TS 侧那份手抄反而**更窄**（8 vs 12 个 variant），所以方向是让 TS 对齐 Rust。
-import type { JsonlBatchPayload } from "./generated/JsonlBatchPayload";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
+import type { SessionStreamFrame } from "./generated/SessionStreamFrame";
 import type { SessionEndedPayload } from "./generated/SessionEndedPayload";
 import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
 import type { SessionStartedPayload } from "./generated/SessionStartedPayload";
@@ -32,7 +34,6 @@ import type { OriginSessionsListedPayload } from "./generated/OriginSessionsList
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
 export type {
-  JsonlBatchPayload,
   JsonlLinePayload,
   SessionEndedPayload,
   SessionIdlePayload,
@@ -117,13 +118,39 @@ export interface EventHandlers {
    * "idle"/"shell"=等输入 / "waiting"=等弹窗决定（waiting_for 细分原因）。
    */
   onSessionActivity?: (payload: SessionActivityPayload) => void;
+  /**
+   * 〔CF2 · 第四波 4B〕那台机器的会话流里**丢了几格**（没 credit 时句柄丢了、原位报的 `gap`，`设计/05 §3.3.4`）。
+   * 丢的是哪几个会话的哪几行，流里说不出来（一条订阅里混着多个会话）⇒ 宿主对那台机器的每个 tab 按行号补
+   * （`TabManager.onStreamGap`）。进 queue：与行保序（丢在哪两格之间，补就从那里起）。
+   */
+  onStreamGap?: (origin: Origin) => void;
+}
+
+/**
+ * 〔CF2 · 第四波 4B〕**会话流一开始给多少 credit**（格数；一格 = 一行或一个批边界）。
+ *
+ * 它就是这一侧队列的上界（`设计/05 §3.3.4` 级 1 在 webview 这一跳第一次成立）：句柄交出去的格
+ * 不会多于我们给的 credit，而每处理掉一格还一格（`want`，按 drain 一片批量还）。
+ * 取 20 000：与原来一次 F5 重放的量级相当（每个会话 ≤ 750 条 × 十几二十个会话）——
+ * 小了，F5 重放会一次次停下来等 credit（慢，但不丢）；大了，前端落后时的队列跟着长。
+ * 落后超过一整个窗口的实时行被句柄丢掉、原位报 `gap`（`onStreamGap` 按行号补）。
+ */
+export const STREAM_WINDOW = 20_000;
+
+/** 〔CF2〕一条会话流订阅在本文件里的账：还没还的 credit。`sub` 在登记那一跳回来之前是 `null`。 */
+interface StreamHold {
+  sub: Sub | null;
+  owed: number;
 }
 
 /** queue 中的不同事件类型，drain 按 kind 派发 */
 type QueueItem =
-  | { kind: "payload"; payload: JsonlLinePayload }
-  | { kind: "batch-start" }
-  | { kind: "batch-end" }
+  // 〔CF2〕流里来的三种带 `grant`：处理掉它就还那条订阅一格 credit。
+  | { kind: "payload"; payload: JsonlLinePayload; grant?: StreamHold }
+  | { kind: "batch-start"; grant?: StreamHold }
+  | { kind: "batch-end"; grant?: StreamHold }
+  // 〔CF2〕那台机器的流里丢了几格（`gap`）。
+  | { kind: "gap"; origin: Origin }
   | { kind: "ended"; sessionId: string }
   // audit-fixes F03.2：灰灯（idle-tmux）——与 ended 同 queue 保序，见 onSessionIdle。
   | { kind: "idle"; sessionId: string }
@@ -243,6 +270,12 @@ export interface BindEventsOptions {
    * 主窗口只收广播（`Any`），保持模块 `listen` 即可，不传此项。
    */
   windowScoped?: boolean;
+  /**
+   * 〔CF2 · 第四波 4B〕要订的会话流：`(origin, kind)`（`kind` = `session-lines` 整台机器 · `session-lines/<sid>` 一个会话）。
+   * 会话内容**只**从这里来（原来的 `jsonl-line` / `jsonl-batch` 两个事件已退役）。在其余监听都注册完之后订，
+   * `bindEvents` 返回时 monitor 那一侧已经登记好（主界面接着发 `frontend-ready` 就是它们的就绪点）。
+   */
+  streams?: ReadonlyArray<{ origin: Origin; kind: string }>;
 }
 
 /**
@@ -341,7 +374,23 @@ export async function bindEvents(
     }
   };
 
+  // 〔CF2〕处理掉的流格攒着还 credit（每片 drain 末尾还一次，不是逐格一次 IPC）。
+  const owedHolds = new Set<StreamHold>();
+  const flushGrants = (): void => {
+    for (const h of owedHolds) {
+      if (h.sub && h.owed > 0) {
+        h.sub.want(h.owed);
+        h.owed = 0;
+      }
+    }
+    owedHolds.clear();
+  };
+
   const dispatchItem = (item: QueueItem): void => {
+    if ("grant" in item && item.grant) {
+      item.grant.owed += 1;
+      owedHolds.add(item.grant);
+    }
     try {
       if (item.kind === "payload") {
         // 在 batch-end 延迟窗口内来 payload → 续期 timer 保持 batch 模式
@@ -381,6 +430,8 @@ export async function bindEvents(
         handlers.onSessionContainer?.(item.sessionId, item.container);
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin);
+      } else if (item.kind === "gap") {
+        handlers.onStreamGap?.(item.origin);
       }
     } catch (e) {
       // v2.1.1: try/catch 防御 —— 单条 record 处理出错不能冻死整个 replay
@@ -414,6 +465,7 @@ export async function bindEvents(
         break;
       }
     }
+    flushGrants();
     if (queue.length > 0) {
       // 让出主线程一跳再处理下一批（`MessageChannel`，探不到才退回 `setTimeout`）
       yieldToDrain();
@@ -455,49 +507,58 @@ export async function bindEvents(
     }),
   );
 
-  registrations.push(
-    sub<JsonlLinePayload>("jsonl-line", (e) => {
-      queue.push({ kind: "payload", payload: e.payload });
-      // Batch5-F17 突发检测兜底：jsonl-line 没有 batch 哨兵包裹，任何突发源
-      // （历史上是远端 snapshot 逐帧，未来任何新源）积压到阈值就主动进 batch
-      // 模式——哨兵插队到队首，让剩余积压走 defer/lazy 路径而不是逐条全量渲染。
-      // 已在 batch 模式或哨兵已入队则不重复；退出走 drain 清空后的 grace 补排。
-      if (!inBatchMode && !burstArmed && queue.length > BURST_ENTER_THRESHOLD) {
-        burstArmed = true;
-        queue.unshift({ kind: "batch-start" });
+  // 〔CF2 · 第四波 4B〕会话内容**不再是** `jsonl-line` / `jsonl-batch` 两个事件：走通道的 `subscribe`
+  //   （本函数末尾按 `opts.streams` 订）。一格 = 一行（`{"line": …}`）或成批那一段的边界（`{"batch": …}`）。
+  //   进 queue 的样子与原来逐字相同：行 ⇒ payload；批边界 ⇒ batch-start / batch-end 哨兵。
+  const onStreamItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+    for (const it of items) {
+      if (it.t === "frame") {
+        let f: SessionStreamFrame | null = null;
+        try {
+          f = JSON.parse(it.body) as SessionStreamFrame;
+        } catch {
+          f = null;
+        }
+        if (f !== null && typeof f === "object" && "line" in f) {
+          queue.push({ kind: "payload", payload: f.line, grant: hold });
+          // Batch5-F17 突发检测兜底：逐行来的实时格没有 batch 哨兵包裹，任何突发源
+          // （历史上是远端 snapshot 逐帧，未来任何新源）积压到阈值就主动进 batch
+          // 模式——哨兵插队到队首，让剩余积压走 defer/lazy 路径而不是逐条全量渲染。
+          // 已在 batch 模式或哨兵已入队则不重复；退出走 drain 清空后的 grace 补排。
+          if (!inBatchMode && !burstArmed && queue.length > BURST_ENTER_THRESHOLD) {
+            burstArmed = true;
+            queue.unshift({ kind: "batch-start" });
+          }
+        } else if (f !== null && typeof f === "object" && "batch" in f) {
+          if (f.batch === "start") {
+            if (perf.firstJsonlBatch === undefined) {
+              perf.firstJsonlBatch = performance.now();
+              console.info(`[perf] first stream batch received @ ${perf.firstJsonlBatch.toFixed(0)}ms`);
+            }
+            queue.push({ kind: "batch-start", grant: hold });
+          } else {
+            // 每块末尾一个 —— 300ms grace 内有新 payload / 新块都续期
+            queue.push({ kind: "batch-end", grant: hold });
+          }
+        } else {
+          // 两端契约对不上的一格：不猜，记一笔；它占过 credit，照还。
+          console.warn("[events] 会话流里一格读不懂，跳过：", it.body.slice(0, 200));
+          hold.owed += 1;
+          owedHolds.add(hold);
+        }
+      } else if (it.t === "gap") {
+        console.warn(`[events] 会话流 [${origin}] 丢了第 ${it.fromSeq}..${it.toSeq} 格（前端落后了）—— 按行号补`);
+        queue.push({ kind: "gap", origin });
+      } else if (it.t === "unseen") {
+        console.info(`[events] 会话流 [${origin}]：那台机器现在看不见（${it.why}）`);
+      } else if (it.t === "seen") {
+        console.info(`[events] 会话流 [${origin}]：又看得见了`);
+      } else {
+        console.warn(`[events] 会话流 [${origin}] 关了：`, it.by);
       }
-      ensureScheduled();
-    }),
-  );
-
-  // v1.7.13: 启动时 replay 用 jsonl-batch 一次性发整个 history（替代之前的
-  // N 次单条 jsonl-line emit，省 200-400ms 启动 IPC overhead）。
-  // v2.2 (issue #12): 包裹 batch-start / batch-end 哨兵，让 TabManager 在
-  // 重放期把 BranchFolder 切 batch 模式（每条 push 不算），结束后 flush 一次。
-  //
-  // P5.2 B 重构：chunkIndex / chunkTotal 不再参与**渲染顺序**（所有 payload 走单一
-  // 路径，前端 timeline 按 seq 排序）；但 chunkIndex===0 仍是 batch-start 哨兵的
-  // 触发条件（下方 :389,ARCHITECTURE §1 依赖它）——不是死字段（Phase G 终审勘误）。
-  registrations.push(
-    sub<JsonlBatchPayload>("jsonl-batch", (e) => {
-      if (perf.firstJsonlBatch === undefined) {
-        perf.firstJsonlBatch = performance.now();
-        console.info(
-          `[perf] first jsonl-batch received @ ${perf.firstJsonlBatch.toFixed(0)}ms · chunk ${e.payload.chunkIndex + 1}/${e.payload.chunkTotal} payload=${e.payload.payloads.length}`,
-        );
-      }
-      // 第一块触发 batch-start（后续块在 grace 续期内被视作同一 batch）。
-      if (e.payload.chunkIndex === 0) {
-        queue.push({ kind: "batch-start" });
-      }
-      for (const p of e.payload.payloads) {
-        queue.push({ kind: "payload", payload: p });
-      }
-      // 每块末尾发 batch-end —— 300ms grace 内有新 payload / 新块都续期
-      queue.push({ kind: "batch-end" });
-      ensureScheduled();
-    }),
-  );
+    }
+    ensureScheduled();
+  };
 
   // session-ended 必须进 queue 与行事件同序处理（issue #20）：之前同步派发，会
   // 抢在积压的 replay 行之前执行 —— 归档刚落实，后续 drain 的远端行就命中
@@ -590,6 +651,17 @@ export async function bindEvents(
 
   // 等所有 listener 在 Rust 侧注册完成再返回（防 emit-before-listen 丢事件）。
   await Promise.all(registrations);
+
+  // 〔CF2 · 第四波 4B〕会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
+  //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
+  await Promise.all(
+    (opts.streams ?? []).map(async ({ origin, kind }) => {
+      const hold: StreamHold = { sub: null, owed: 0 };
+      hold.sub = await chan.subscribe(origin, kind, null, STREAM_WINDOW, (items) =>
+        onStreamItems(origin, hold, items),
+      );
+    }),
+  );
 }
 
 /**
