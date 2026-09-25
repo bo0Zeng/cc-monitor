@@ -334,6 +334,8 @@ fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
 }
 
 /// 〔搬自 `ccm-cli` 名字校验那一族〕—— 会话名会被拼进 tmux 目标语法，是一条注入面。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
 #[test]
 fn a_session_name_that_would_confuse_tmux_is_refused() {
     assert!(validate_tmux_name("ok-name").is_ok());
