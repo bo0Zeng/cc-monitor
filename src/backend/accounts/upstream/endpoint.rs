@@ -31,6 +31,7 @@
 //! ⚠ ① 与 ⑥ 的降级**刻意不同**，而且从此写在线上（`whenDown`）—— 「把这两种降级写成一样是最容易犯的错」（`20 §3.2`）。
 
 use super::CREDENTIALS_FILE_AGENT;
+use copy_core::copy_text;
 use relay_route_core::{base_url, segment_is_safe, RouteMode, PORT};
 use serde_json::{json, Value};
 
@@ -155,13 +156,19 @@ pub(crate) fn answer_launch_with(
     if !segment_is_safe(key) {
         return Err((
             "bad_args",
-            format!("`key` {key:?} 当不了路由段（只许字母数字、`-`、`_`，1–128 个字节）"),
+            copy_text(
+                "beUpstreamEndpoint.key.notSegment",
+                &[("key", &format!("{key:?}"))],
+            ),
         ));
     }
-    let all_sessions = args
-        .get("allSessions")
-        .and_then(Value::as_bool)
-        .ok_or(("bad_args", "缺 `allSessions`（要一个布尔）".to_string()))?;
+    let all_sessions = args.get("allSessions").and_then(Value::as_bool).ok_or((
+        "bad_args",
+        copy_text(
+            "beUpstreamEndpoint.args.missingBool",
+            &[("k", "allSessions")],
+        ),
+    ))?;
     let account = account_arg(args)?;
     // 「这一家登记了默认上游没有」与中转装表同一个出处（`Upstreams::from_env` ← 适配层那一格，NT2 · V25）：
     //   旋钮认不出那一刻中转也起不来 ⇒ 当「没登记」（`/t/` 不注入；`/s/` 那一格不看它）。
@@ -216,7 +223,10 @@ pub(crate) fn answer_routing_with(
         })
         .ok_or((
             "bad_args",
-            "缺 `configDirs`（要一个字符串数组）".to_string(),
+            copy_text(
+                "beUpstreamEndpoint.args.missingStrings",
+                &[("k", "configDirs")],
+            ),
         ))?;
     Ok(json!({
         "routed": acct_core::apikey_routed_subset(&dirs, routed, agent, CREDENTIALS_FILE_AGENT),
@@ -225,14 +235,14 @@ pub(crate) fn answer_routing_with(
 }
 
 fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(k)
-        .and_then(Value::as_str)
-        .ok_or(("bad_args", format!("缺 `{k}`（要一个字符串）")))
+    args.get(k).and_then(Value::as_str).ok_or((
+        "bad_args",
+        copy_text("beUpstreamEndpoint.args.missingString", &[("k", k)]),
+    ))
 }
 
 /// 线上 `account` → [`LaunchAccount`]。认不出的形 ⇒ `bad_args`（不猜成「没表态」）。
 fn account_arg(args: &Value) -> Result<LaunchAccount, (&'static str, String)> {
-    let bad = |why: &str| ("bad_args", format!("`account` {why}"));
     match args.get("account") {
         None | Some(Value::Null) => Ok(LaunchAccount::Undeclared),
         Some(Value::Object(o)) => match o.get("kind").and_then(Value::as_str) {
@@ -243,10 +253,30 @@ fn account_arg(args: &Value) -> Result<LaunchAccount, (&'static str, String)> {
                 .map(|d| LaunchAccount::Named {
                     config_dir: d.to_string(),
                 })
-                .ok_or_else(|| bad("是 named 却没有字符串 `configDir`")),
-            _ => Err(bad("的 `kind` 只认 `named` / `base`")),
+                .ok_or_else(|| {
+                    (
+                        "bad_args",
+                        copy_text(
+                            "beUpstreamEndpoint.account.namedNoDir",
+                            &[("field", "account")],
+                        ),
+                    )
+                }),
+            _ => Err((
+                "bad_args",
+                copy_text(
+                    "beUpstreamEndpoint.account.badKind",
+                    &[("field", "account")],
+                ),
+            )),
         },
-        Some(_) => Err(bad("要一个对象或 null")),
+        Some(_) => Err((
+            "bad_args",
+            copy_text(
+                "beUpstreamEndpoint.account.badShape",
+                &[("field", "account")],
+            ),
+        )),
     }
 }
 

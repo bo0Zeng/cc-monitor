@@ -33,6 +33,7 @@
 //! 坏行只回错误、**绝不结束进程**。
 
 use crate::wire::{Frame, Request};
+use copy_core::copy_text;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -259,7 +260,9 @@ where
                     err(
                         &overflow_id,
                         "line_too_long",
-                        &format!("单行超过上限 {MAX_LINE_BYTES} 字节，已整行丢弃"),
+                        &crate::common::contract::malformed(&format!(
+                            "request line over {MAX_LINE_BYTES} bytes, dropped whole"
+                        )),
                     ),
                 )
                 .await;
@@ -413,7 +416,7 @@ async fn handle_line(
                     Ok(res) => res,
                     Err(e) => Err((
                         "handler_panicked".to_string(),
-                        format!("阻塞处理器没能正常结束：{e}"),
+                        copy_text("beInbound.handleLine.internal", &[("e", &e.to_string())]),
                     )),
                 }
             };
@@ -521,8 +524,7 @@ fn dispatch(
                 let _ = replies.try_send(err(
                     &req.id,
                     "not_cancellable",
-                    "这条命令是同步阻塞的（已经在起进程/动 tmux），停不下来 —— \
-                     等它自己的应答，别当它没发生",
+                    &copy_text("beInbound.dispatch.cannotCancel", &[]),
                 ));
                 return Disposition::Done;
             }
@@ -557,13 +559,19 @@ fn dispatch(
                 Run::Builtin => Disposition::Reply(err(
                     &req.id,
                     "unknown_command",
-                    &format!("内建命令 `{other}` 没有在 dispatch 里被处理 —— 这是本后端的 bug"),
+                    &copy_text(
+                        "beInbound.dispatch.unhandled",
+                        &[("other", &other.to_string())],
+                    ),
                 )),
             },
             None => Disposition::Reply(err(
                 &req.id,
                 "unknown_command",
-                &format!("未知命令 `{other}`"),
+                &copy_text(
+                    "beInbound.dispatch.unknown",
+                    &[("other", &other.to_string())],
+                ),
             )),
         },
     }
@@ -1992,7 +2000,11 @@ async fn spawn_handler<F, Fut>(
     if lock(&running).contains_key(&id) {
         send(
             &replies,
-            err(&id, "duplicate_id", "同一个 id 还有命令在跑；换一个"),
+            err(
+                &id,
+                "duplicate_id",
+                &crate::common::contract::malformed("a command with this id is still running"),
+            ),
         )
         .await;
         return;
@@ -2048,7 +2060,7 @@ async fn spawn_handler<F, Fut>(
                 .send(err(
                     &id_sup,
                     "handler_panicked",
-                    "命令处理器 panic 了；backend 仍在跑",
+                    &copy_text("beInbound.spawnHandler.crashed", &[]),
                 ))
                 .await;
         }

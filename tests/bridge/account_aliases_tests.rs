@@ -580,10 +580,16 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
 /// 反向：用法里那几个「每次取值都不同」的（第三档）不许混进来。
 #[test]
 fn every_alias_flag_is_a_real_ccm_flag() {
-    let usage_src = std::fs::read_to_string(
+    // 〔CP2c〕`--help` 正文进了文案表（`beCcm.usage.body`）：后端 ccm 那份源码取的就是这一条，正文从表里读。
+    let ccm_src = std::fs::read_to_string(
         crate::guard_support::repo_root().join("src/backend/control/ccm/mod.rs"),
     )
-    .expect("读后端 ccm 用法");
+    .expect("读后端 ccm 源码");
+    assert!(
+        ccm_src.contains("\"beCcm.usage.body\""),
+        "后端 ccm 的 `--help` 不再取文案表里那一条 —— 下面读的就不是它的用法了"
+    );
+    let usage_src = crate::copy_table::copy_text("beCcm.usage.body", &[]);
     let from = guard_core::find_pinned(&usage_src, "选项\n").expect("用法里「选项」那一段锚不住");
     let usage = &usage_src[from..];
     for (flag, _) in ALIAS_FLAGS {

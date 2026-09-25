@@ -4152,6 +4152,13 @@ mod g6_dependency_signoff {
              边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",
         ),
         (
+            "copy-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "〔CP2c〕对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
+             与 monitor、creds-core 共用同一份；仓内 crate，现打 0 处写面",
+        ),
+        (
             "gate-core",
             DEPS,
             MEASURED_CLEAN,

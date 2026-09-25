@@ -21,6 +21,7 @@ members = [
     "crates/search-core",
     "crates/shell-quote-core",
     "crates/codex-token-core",
+    "crates/copy-core",
 ]
 exclude = ["vendor/code-picture-core"]
 
@@ -111,6 +112,8 @@ uuid = { version = "1", features = ["v4"] }
 branch-core = { path = "crates/branch-core" }
 codex-token-core = { path = "crates/codex-token-core" }
 acct-core = { path = "crates/acct-core" }
+# 〔CP2c〕对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
+copy-core = { path = "crates/copy-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
 # 〔US1 · 第四波 4D〕**不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（US1 起本机那份的状态
 #   由本机常驻后端答 `apikey-read`）这份文件，只用 `store::FILE_NAME` 算「本 monitor 认的那一份在哪」（`creds_store::resolve_path`）。

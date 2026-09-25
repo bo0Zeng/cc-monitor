@@ -468,11 +468,26 @@ impl FailedAt {
     /// 这一跳的那句话。**两句**：结果 · 卡在哪。
     pub(super) fn words(self) -> (&'static str, &'static str) {
         match self {
-            FailedAt::Connect => ("连不上", "建立连接"),
-            FailedAt::ClosedBeforeAnswer => ("没回应就断开了", "等响应"),
-            FailedAt::NoAnswer => ("没有回应", "等响应"),
-            FailedAt::NotHttp => ("回的不是 HTTP 响应", "读响应"),
-            FailedAt::OnlyInterim => ("一直不给最终响应", "读响应"),
+            FailedAt::Connect => (
+                copy_core::copy_static!("beServer.words.cantConnect"),
+                copy_core::copy_static!("beServer.words.hopConnect"),
+            ),
+            FailedAt::ClosedBeforeAnswer => (
+                copy_core::copy_static!("beServer.words.closedBeforeAnswer"),
+                copy_core::copy_static!("beServer.words.hopWait"),
+            ),
+            FailedAt::NoAnswer => (
+                copy_core::copy_static!("beServer.words.noAnswer"),
+                copy_core::copy_static!("beServer.words.hopWait"),
+            ),
+            FailedAt::NotHttp => (
+                copy_core::copy_static!("beServer.words.notHttp"),
+                copy_core::copy_static!("beServer.words.hopRead"),
+            ),
+            FailedAt::OnlyInterim => (
+                copy_core::copy_static!("beServer.words.onlyInterim"),
+                copy_core::copy_static!("beServer.words.hopRead"),
+            ),
         }
     }
 }
@@ -489,9 +504,14 @@ impl UpstreamFailure {
     /// 回给下游的那句话。底层错误**不在这里**（见 [`UpstreamFailure`] 头注）。
     pub(super) fn sentence(&self) -> String {
         let (result, hop) = self.at.words();
-        format!(
-            "上游 {}:{} {result}。卡在{hop}这一步。",
-            self.who.host, self.who.port
+        copy_core::copy_text(
+            "beServer.sentence.say",
+            &[
+                ("host", &self.who.host),
+                ("port", &self.who.port.to_string()),
+                ("result", result),
+                ("hop", hop),
+            ],
         )
     }
 

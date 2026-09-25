@@ -61,7 +61,7 @@ pub(crate) fn answer_with(
     if !hook_paths.is_empty() && needles.is_empty() {
         return Err((
             "bad_args",
-            "`hooks.paths` 给了而 `hooks.needles` 是空的 —— 查什么字样没说".to_string(),
+            crate::common::contract::malformed("`hooks.paths` given but `hooks.needles` is empty"),
         ));
     }
     let home = get("HOME")
@@ -144,25 +144,35 @@ fn paths_arg(v: Option<&Value>, name: &str) -> Result<Vec<PathBuf>, (&'static st
     let Some(v) = v else {
         return Ok(Vec::new());
     };
-    let arr = v
-        .as_array()
-        .ok_or(("bad_args", format!("`{name}` 要一个字符串数组")))?;
+    let arr = v.as_array().ok_or((
+        "bad_args",
+        crate::common::contract::malformed(&format!("`{name}` must be an array of strings")),
+    ))?;
     if arr.len() > MAX_PATHS {
         return Err((
             "too_large",
-            format!("`{name}` 给了 {} 条，一趟最多 {MAX_PATHS} 条", arr.len()),
+            crate::common::contract::malformed(&format!(
+                "`{name}` has {arr_count} entries, at most {MAX_PATHS} per call",
+                arr_count = arr.len()
+            )),
         ));
     }
     arr.iter()
         .map(|x| {
-            let s = x
-                .as_str()
-                .ok_or(("bad_args", format!("`{name}` 里有一项不是字符串")))?;
+            let s = x.as_str().ok_or((
+                "bad_args",
+                crate::common::contract::malformed(&format!("`{name}` has a non-string entry")),
+            ))?;
             let p = PathBuf::from(s);
             if p.is_absolute() {
                 Ok(p)
             } else {
-                Err(("bad_args", format!("`{name}` 里 {s:?} 不是绝对路径")))
+                Err((
+                    "bad_args",
+                    crate::common::contract::malformed(&format!(
+                        "`{name}`: {s:?} is not an absolute path"
+                    )),
+                ))
             }
         })
         .collect()
@@ -173,16 +183,17 @@ fn needles_arg(v: Option<&Value>) -> Result<Vec<String>, (&'static str, String)>
     let Some(v) = v else {
         return Ok(Vec::new());
     };
-    let arr = v
-        .as_array()
-        .ok_or(("bad_args", "`hooks.needles` 要一个字符串数组".to_string()))?;
+    let arr = v.as_array().ok_or((
+        "bad_args",
+        crate::common::contract::malformed("`hooks.needles` must be an array of strings"),
+    ))?;
     if arr.len() > MAX_NEEDLES {
         return Err((
             "too_large",
-            format!(
-                "`hooks.needles` 给了 {} 个，一趟最多 {MAX_NEEDLES} 个",
-                arr.len()
-            ),
+            crate::common::contract::malformed(&format!(
+                "`hooks.needles` has {arr_count} entries, at most {MAX_NEEDLES} per call",
+                arr_count = arr.len()
+            )),
         ));
     }
     arr.iter()
@@ -190,7 +201,9 @@ fn needles_arg(v: Option<&Value>) -> Result<Vec<String>, (&'static str, String)>
             Some(s) if !s.is_empty() => Ok(s.to_string()),
             _ => Err((
                 "bad_args",
-                "`hooks.needles` 里有一项不是非空字符串".to_string(),
+                crate::common::contract::malformed(
+                    "`hooks.needles` has an entry that is not a non-empty string",
+                ),
             )),
         })
         .collect()
