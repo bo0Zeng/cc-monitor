@@ -233,6 +233,16 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "文件窗口编辑器能打开的文本体量 ＝ 存盘那条请求行（`files-write-text`）序列化后的上限",
         "拒收+回错",
     ),
+    // 〔FW34 · 第四波 09-24〕预览自己的上限（**刻意不借编辑上限**：预览跟着光标走，↑↓ 一路按下去
+    //   每一步都是一趟 `files-read-text`；编辑上限是「点了编辑」那一下的量）。
+    //   超了：**不读**，面板上说「有 N，预览只看 M 以内的文件」；不截一半来预览（截断的文本会被当成全文）。
+    (
+        "src/bridge/src/filewin/preview.rs",
+        "PREVIEW_MAX_BYTES",
+        64 * 1024,
+        "文件窗口预览一份文本的体量（每挪一次光标一趟）",
+        "拒收+回错",
+    ),
     (
         "src/bridge/src/ssh_source.rs",
         "SNAPSHOT_MAX_BYTES",

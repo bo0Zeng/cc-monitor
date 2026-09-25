@@ -157,6 +157,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //    ⚠ 本表仍然只是**申报**，不是守卫 —— 别再把它当挡箭牌。
     ("sftp_pool.rs", "download_inner", None, "把远端文件落到**用户选的本机路径**（保存对话框 / 落点框）；围栏在入口 `sftp_download` 第一行"),
     ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
+    // 〔FW34 · 第四波 09-24〕文件窗口的书签：锁旁件（空文件，只拿来上锁）＋ 它所在的目录。
+    //   书签文件本身走上面那条原子写原语（`filewin/bookmarks.rs::mutate`）。
+    ("bookmarks.rs", "lock_store", None,
+     "monitor 自己的状态：文件窗口书签的锁旁件（`<数据目录>/filewin-bookmarks.json.lock`，空文件）"),
     ("utils.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
     // ── `K-P1`：常驻那条路要写两样东西。**都不是安装动作** —— 写的是 monitor 自己的目录。
     ("local_backend_host.rs", "ensure_listen_token", None,

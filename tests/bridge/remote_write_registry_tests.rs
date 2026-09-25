@@ -763,7 +763,10 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     assert_eq!(
         files.len(),
         // 〔F7c · 合主线 09-24〕主线 19 → 20，多的是 `upload.rs`（工具栏「上传」那一问；一个池子符号都不碰）。
-        20,
+        // 〔FW34 · 第四波 09-24〕20 → 21，多的是 `bookmarks.rs`（书签：monitor 自己的状态文件，一个池子符号都不碰）；
+        //   21 → 22，多的是 `workspace.rs`（标签页 ＋ 双栏 ＋ 复制到另一栏；复制经通道问后端 `files-copy`，一个池子符号都不碰）。
+        //   22 → 23，多的是 `preview.rs`（预览：经通道问后端 `files-read-text`，一个池子符号都不碰）。
+        23,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\
