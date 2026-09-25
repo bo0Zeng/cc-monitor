@@ -426,6 +426,226 @@
       "kind": "error",
       "zh": "没写成：{reason}",
       "args": ["reason"]
+    },
+    "assets.panel.hint": {
+      "kind": "body",
+      "zh": "这里列出别的机器上有、这台还没有或不一样的 skill 和 MCP。目录在各台之间自动对上，装要你点。",
+      "args": []
+    },
+    "assets.panel.refresh": {
+      "kind": "action",
+      "zh": "重新对一遍",
+      "args": []
+    },
+    "assets.load.loading": {
+      "kind": "body",
+      "zh": "正在对目录…",
+      "args": []
+    },
+    "assets.load.failed": {
+      "kind": "error",
+      "zh": "读不到这台的资产目录：{reason}",
+      "args": ["reason"]
+    },
+    "assets.load.tooOld": {
+      "kind": "error",
+      "zh": "这台机器上的后端版本旧。重装后端之后就有资产目录。",
+      "args": []
+    },
+    "assets.load.shape": {
+      "kind": "error",
+      "zh": "资产目录的形状对不上。多半是后端与界面版本不一致。",
+      "args": []
+    },
+    "assets.load.problem": {
+      "kind": "body",
+      "zh": "这台有一处没读出来：{reason}",
+      "args": ["reason"]
+    },
+    "assets.sync.failed": {
+      "kind": "error",
+      "zh": "这次没和别的机器对上：{reason}",
+      "args": ["reason"]
+    },
+    "assets.sync.oneFailed": {
+      "kind": "error",
+      "zh": "和 {machine} 没对上：{reason}",
+      "args": ["machine", "reason"]
+    },
+    "assets.list.empty": {
+      "kind": "body",
+      "zh": "别的机器上有的，这台都有了。",
+      "args": []
+    },
+    "assets.here.missing": {
+      "kind": "body",
+      "zh": "这台没有",
+      "args": []
+    },
+    "assets.here.differs": {
+      "kind": "body",
+      "zh": "这台有同名的，内容不一样",
+      "args": []
+    },
+    "assets.here.same": {
+      "kind": "body",
+      "zh": "这台有一样的",
+      "args": []
+    },
+    "assets.kind.skill": {
+      "kind": "body",
+      "zh": "skill",
+      "args": []
+    },
+    "assets.kind.mcp": {
+      "kind": "body",
+      "zh": "MCP",
+      "args": []
+    },
+    "assets.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "assets.from.machine": {
+      "kind": "body",
+      "zh": "来自 {machine}",
+      "args": ["machine"]
+    },
+    "assets.from.project": {
+      "kind": "body",
+      "zh": "来自 {machine} 的 {project}",
+      "args": ["machine", "project"]
+    },
+    "assets.from.unreachable": {
+      "kind": "body",
+      "zh": "那台现在没连上，装不了",
+      "args": []
+    },
+    "assets.install.action": {
+      "kind": "action",
+      "zh": "装到这台",
+      "args": []
+    },
+    "assets.mcp.dirPlaceholder": {
+      "kind": "control",
+      "zh": "装进这台的哪个项目目录",
+      "args": []
+    },
+    "assets.mcp.dirMissing": {
+      "kind": "error",
+      "zh": "先填这台机器上的项目目录。",
+      "args": []
+    },
+    "assets.mcp.gone": {
+      "kind": "body",
+      "zh": "来源那份配置里已经没有这一条了。",
+      "args": []
+    },
+    "assets.preview.action": {
+      "kind": "action",
+      "zh": "看差异",
+      "args": []
+    },
+    "assets.preview.loading": {
+      "kind": "body",
+      "zh": "正在读两边…",
+      "args": []
+    },
+    "assets.preview.failed": {
+      "kind": "error",
+      "zh": "看差异失败：{reason}",
+      "args": ["reason"]
+    },
+    "assets.take.overwrite": {
+      "kind": "control",
+      "zh": "盖掉 {machine} 上那一条",
+      "args": ["machine"]
+    },
+    "assets.apply.action": {
+      "kind": "action",
+      "zh": "装到 {machine}",
+      "args": ["machine"]
+    },
+    "assets.apply.mcpDone": {
+      "kind": "body",
+      "zh": "已写到 {path}",
+      "args": ["path"]
+    },
+    "assets.apply.skillDone": {
+      "kind": "body",
+      "zh": "已装到 {dir}，写了 {n} 个文件。",
+      "args": ["dir", "n"]
+    },
+    "assets.apply.unchanged": {
+      "kind": "body",
+      "zh": "{machine} 上已经是这样了，没有写。",
+      "args": ["machine"]
+    },
+    "assets.apply.failed": {
+      "kind": "error",
+      "zh": "没装成：{reason}",
+      "args": ["reason"]
+    },
+    "assets.apply.chmodFailed": {
+      "kind": "error",
+      "zh": "这几个的执行位没设上：{paths}",
+      "args": ["paths"]
+    },
+    "assets.skill.head": {
+      "kind": "body",
+      "zh": "装进 {dir}",
+      "args": ["dir"]
+    },
+    "assets.skill.blocked": {
+      "kind": "error",
+      "zh": "这台上那一份盖不了：{reason}",
+      "args": ["reason"]
+    },
+    "assets.suspect.executable": {
+      "kind": "body",
+      "zh": "这是一个可执行的文件。",
+      "args": []
+    },
+    "assets.suspect.binary": {
+      "kind": "body",
+      "zh": "来源那台读不出它的原文，装不过去。",
+      "args": []
+    },
+    "assets.suspect.absPresent": {
+      "kind": "body",
+      "zh": "里面有绝对路径 {value}，{machine} 上也有这个路径。",
+      "args": ["value", "machine"]
+    },
+    "assets.suspect.absAbsent": {
+      "kind": "body",
+      "zh": "里面有绝对路径 {value}，{machine} 上没有这个路径。",
+      "args": ["value", "machine"]
+    },
+    "assets.suspect.absForeign": {
+      "kind": "body",
+      "zh": "里面有绝对路径 {value}，{machine} 的系统不认这种写法。",
+      "args": ["value", "machine"]
+    },
+    "assets.suspect.absUnknown": {
+      "kind": "body",
+      "zh": "里面有绝对路径 {value}，查不到 {machine} 上有没有。",
+      "args": ["value", "machine"]
+    },
+    "assets.suspect.commandMissing": {
+      "kind": "body",
+      "zh": "{machine} 的后端在它的 PATH 上找不到 {value}。你登录后的 shell 可能找得到。",
+      "args": ["machine", "value"]
+    },
+    "assets.suspect.commandUnknown": {
+      "kind": "body",
+      "zh": "查不了 {machine} 上有没有 {value}：它的后端没有 PATH。",
+      "args": ["machine", "value"]
+    },
+    "assets.suspect.other": {
+      "kind": "body",
+      "zh": "留意：{value}",
+      "args": ["value"]
     }
   }
 }

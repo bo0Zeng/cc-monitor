@@ -916,8 +916,8 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "assets-sync",
         doc_anchor: Some("#### `assets-sync`"),
-        codes: &["bad_args"],
-        fields: &["backend", "dial", "origin", "reach", "synced"],
+        codes: &["bad_args", "io_failed"],
+        fields: &["backend", "dial", "origin", "reach", "self", "synced"],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -956,9 +956,11 @@ pub const REGISTRY: &[CommandSpec] = &[
             "too_large",
         ],
         fields: &[
+            "base",
             "dir",
             "name",
             "overwrite",
+            "prefix",
             "root",
             "rows",
             "source",

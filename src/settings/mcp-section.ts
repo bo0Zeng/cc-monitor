@@ -14,6 +14,7 @@ import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast";
 import { McpSyncPanel } from "./mcp-sync";
+import type { AssetInstallApi } from "./assets-section";
 
 export type McpScope = "user" | "local" | "project";
 // C04d 批 5b：改用生成物（源 `mcp.rs`）。
@@ -114,6 +115,21 @@ const SCOPE_LABEL: Record<McpScope, string> = {
   local: "本项目(local)",
   project: "项目 .mcp.json",
 };
+
+/**
+ * 〔AS2 · 第四波 4B · V113〕机器页「资产目录」那一块（`assets-section.ts`）要的「装」命令，**从这里递出去**：
+ * 「装 MCP / skill」那一件在前端的落点钉在本文件（`tests/evidence/K-R117-ruler.py` 的 `R9a` 名单，只许缩），
+ * 资产目录那一块自己不另立一份。MCP 那两条就是 AS1 推 / 拉那两条原样；skill 那两条是 AS2 的。
+ */
+export function assetInstallApi(): AssetInstallApi {
+  return {
+    dirs: (a) => commands.list_mcp_project_dirs(a),
+    mcpPreview: (a) => commands.mcp_sync_preview(a),
+    mcpApply: (a) => commands.mcp_sync_apply(a),
+    skillPreview: (a) => commands.skill_install_preview(a),
+    skillApply: (a) => commands.skill_install_apply(a),
+  };
+}
 
 export class McpSection {
   readonly element: HTMLElement;

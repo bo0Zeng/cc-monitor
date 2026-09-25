@@ -158,6 +158,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B · V111/V112）：把另一台那份 `.mcp.json` 里勾的条目装到这台 ——
     #   与 `mcp.write` 同一件事（写的是同一份文件、经同一份规划），只是条目来自另一台机器。
     ("mcp.sync", (B3, "K34+V111+V112", "「装 MCP」的跨机那一形：条目原样从另一台拷来，写之前看差异、不同的要点了才盖")),
+    # 〔AS2 · 第四波 4B · V113〕skill「装到这台」：资产目录里别的机器有的 skill，用户点了才装到这台 `<skill 根>/<名>/`。
+    ("skill.install", (B3, "K34+V112+V113", "「装 skill」：文件原样从来源那台拷来，写之前看差异、不同的要点了才盖（装要你点）")),
     ("cc-bus.deploy", (B3, "K34",
                        "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
     ("cc-bus.install-state", (B3, "K34", "同上，查装态那一半")),
@@ -378,6 +380,9 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   经同一份规划（`mcp.rs::plan_project_mcp`）⇒ 与下面那两条同一件。
         "mcp_sync_apply",
         "mcp_sync_preview",
+        # 〔AS2 · 第四波 4B〕skill「装到这台」（能力 `skill.install`，③）：写的是这台 `<skill 根>/<名>/`，与 cc-bus 那一格同一件（装 skill）。
+        "skill_install_apply",
+        "skill_install_preview",
         "remove_project_mcp_server",
         "write_project_mcp_server",
         "write_skill_file",

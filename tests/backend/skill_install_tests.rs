@@ -127,6 +127,23 @@ fn the_four_states_and_the_consent_gate_are_as1s_own() {
         ]
     );
     assert_eq!(v["write"], Value::Null, "没给 take 不答写哪几个");
+    assert_eq!(
+        (v["base"].clone(), v["prefix"].clone()),
+        (json!(d.display().to_string()), json!("demo")),
+        "skill 根在 ⇒ 写落点就是它，前缀是名字"
+    );
+    // skill 根不在 ⇒ 落点退到上一层（配置根），前缀带上 skills 那一段
+    let fresh = d.join("no-skills-yet");
+    let w = answer_plan_with(
+        &no_facts(),
+        Some(&fresh),
+        &json!({"name": "demo", "source": src(&[("a.md", Some("a"), false)])}),
+    )
+    .unwrap();
+    assert_eq!(
+        (w["base"].clone(), w["prefix"].clone()),
+        (json!(d.display().to_string()), json!("no-skills-yet/demo"))
+    );
     // CAS 期望：只回这一趟拷的那几个路径在这台上的原文
     assert_eq!(
         v["target"],

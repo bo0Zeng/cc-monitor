@@ -1700,12 +1700,12 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 「目录自动同步」那一半（V113）：`设计/01 §3.5`「观测方沿它本来就拥有的那条连接去拉被观测方」。只有**本机常驻后端**有意义（SSH 连接与可达表都住在它的进程里）。
 一趟对一台远端：① 在池里那条连接上多开一个 exec 通道，capture `<远端后端> --assets-catalog`（远端现扫、记下、回它的整份）；
 ② 并进本机目录（同 `assets-catalog-merge`）；③ 远端缺的 / 比远端新的那几台快照（不含远端自己那格）经 `printf '%s\n' '<json>' | <远端后端> --assets-catalog-merge` 推过去（一块 ≤ 96 KiB，单台超了那一台不推、说出来）；
-④ 本机目录因这一趟变了 ⇒ 对可达表里其余每台各做一趟（只一层）。**不往任何机器装东西**（装要用户点）。
+④ 本机目录因这一趟变了（或开头那一次现扫发现本机自己那份变了）⇒ 对可达表里其余每台各做一趟（只一层）。**不往任何机器装东西**（装要用户点）。
 不起远端的流模式（流模式会往 tmux 装指向自己 pid 的全局 hook，一个用完就退的流会把真流的 hook 盖掉）；老远端不认子命令会进流模式 —— capture 见到 hello 就收工、报「太旧」。
 
 ```text
 → {"id":"s1","cmd":"assets-sync","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"},"backend":"/home/u/.cc-monitor/bin/ccm"}}
-← {"kind":"reply","id":"s1","ok":true,"data":{"synced":[{"origin":"dev","peer":"4c…","changed":true,"pushed":1,"error":null}],"reach":[{"origin":"dev","machine":"4c…"}]}}
+← {"kind":"reply","id":"s1","ok":true,"data":{"self":"9f…","synced":[{"origin":"dev","peer":"4c…","changed":true,"pushed":1,"error":null}],"reach":[{"origin":"dev","machine":"4c…"}]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1714,9 +1714,10 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `dial` | → | 给了 `origin` 就必给：那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。本条会把 `use` 改成 `capture` |
 | `backend` | → | 给了 `origin` 就必给：那台上后端的路径 |
 | `synced` | ← | 每一趟一行 `{origin, peer, changed, pushed, error}`：`peer` 是那台目录的 `self`；`changed` 本机目录因这一趟变了没有；`pushed` 推过去几台快照；`error` 那一趟哪里没办成（`null` = 全办成了） |
+| `self` | ← | 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>` |
 | `reach` | ← | 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）—— 界面据它把目录里的机器 id 对回 origin |
 
-**错误码**：`bad_args`（`origin` 空串 · 给了 `origin` 缺 `dial` / `backend` · 给了 `dial` / `backend` 没给 `origin` · 可达表满）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
+**错误码**：`bad_args`（`origin` 空串 · 给了 `origin` 缺 `dial` / `backend` · 给了 `dial` / `backend` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
@@ -1755,6 +1756,7 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `source` | → | `skill-read` 读到的 `[{path, text, exec}]`（`text` 可为 `null` = 装不过去的那一个） |
 | `take` / `overwrite` | → | 可缺席，语义同 `mcp-sync-plan`（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名） |
 | `root` / `dir` | ← | 这台 skill 的根 / 要写进去的目录 |
+| `base` / `prefix` | ← | 写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>`。skill 根在 ⇒ `base` 就是它；不在 ⇒ 是它的上一层（配置根），由 `parents` 建出来 |
 | `rows` | ← | 每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集同 `mcp-sync-plan`；`suspects` 只在 `new` / `differs` 上有 `{kind, value, there}` —— `kind` 闭集 `executable`（有执行位或 `#!` 开头）· `binary`（来源读不出原文）· `abs-path`（文本里的绝对路径，`there` 闭集同 `mcp-sync-plan`）· `command-missing`（`#!/usr/bin/env X` 的 `X` 在这台后端的 `PATH` 上找不到）；`blocked` = 这台上那一份盖不了的原因（不是文本等），否则 `null` |
 | `target` | ← | 这一趟拷的那几个路径在这台上现有的原文 `[{path, text}]` —— 写的时候当 CAS 期望 |
 | `write` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序） |

@@ -207,11 +207,18 @@ const CHANNELED: &[(&str, &str)] = &[
 /// `(帧命令, 为什么迁、迁了之后解释住哪)`。它们不在 [`MOVED`] 里（不是 `C1` 那一族），但前端 `chan.call` 的
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
-const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[(
-    "plugins-marketplaces",
-    "`feature_face`（RM1b）那一族：后端应答就是整份 survey（成品），monitor 那条命令（`list_plugin_marketplaces`）\
-     只在核「恰一行 ＋ 严格形状」—— 核验搬到唯一的消费者 `settings/plugins-section.ts::decodeSurvey`，命令与 `plugins.rs` 删了",
-)];
+const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    (
+        "plugins-marketplaces",
+        "`feature_face`（RM1b）那一族：后端应答就是整份 survey（成品），monitor 那条命令（`list_plugin_marketplaces`）\
+         只在核「恰一行 ＋ 严格形状」—— 核验搬到唯一的消费者 `settings/plugins-section.ts::decodeSurvey`，命令与 `plugins.rs` 删了",
+    ),
+    (
+        "assets-catalog",
+        "〔AS2 · 4B · V113〕资产目录：生来就走通道（没有过 monitor 那一条）—— 后端应答就是成品（整份目录 ＋「这台缺什么」的判定），\
+         界面 `settings/assets-section.ts::decodeCatalog` 按形状收",
+    ),
+];
 
 /// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {

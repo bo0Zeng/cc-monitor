@@ -450,7 +450,8 @@ const SCAN: &[&str] = &[
     "tests/settings/base-wording-guard.vitest.ts",
     "tests/settings/data-section.vitest.ts",
     "tests/settings/facet-producer-guard.vitest.ts",
-    "tests/settings/mcp-sync.vitest.ts", // 〔AS1〕
+    "tests/settings/assets-section.vitest.ts", // 〔AS2〕
+    "tests/settings/mcp-sync.vitest.ts",       // 〔AS1〕
     "tests/settings/open-settings.vitest.ts",
     "tests/settings/plugins-section.vitest.ts",
     "tests/settings/remote-section.vitest.ts",
@@ -556,7 +557,8 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/local_backend_host_tests.rs",
     "tests/bridge/local_lines_tests.rs",
     "tests/bridge/logging_tests.rs",
-    "tests/bridge/mcp_sync_tests.rs", // 〔AS1〕
+    "tests/bridge/mcp_sync_tests.rs",      // 〔AS1〕
+    "tests/bridge/skill_install_tests.rs", // 〔AS2〕
     "tests/bridge/mcp_tests.rs",
     "tests/bridge/panorama_call_tests.rs",
     "tests/bridge/panorama_tests.rs",

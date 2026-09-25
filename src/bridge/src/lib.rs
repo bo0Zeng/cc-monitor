@@ -102,6 +102,7 @@ mod spawn_managed;
 // 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
 mod skill_host;
+mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：只编排 I/O（来源那台 skill-read → 被写那台 skill-install-plan 判 → files-put 带 expect），判定住后端
 mod user_files; // RW1（第四波）：monitor 够用户文件的唯一开口 —— 读·算·交给那台机器的后端，自己一个字节不落盘
 mod verified_write; // T01：统一的「备份→写→读回比对→回滚」；本机侧从长度比对升级为内容比对
                     // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
@@ -1343,6 +1344,9 @@ pub fn run() {
             mcp_sync::mcp_sync_apply,
             // 〔AS2 · 第四波 4B · V113〕资产目录同步：看机器页前让本机常驻后端对那一台（本机那一页 = 每一台）做一趟。
             asset_sync::assets_sync,
+            // 〔AS2〕skill「装到这台」：看差异 ＋ 写（来源那台读、被写那台判、经被写那台后端 files-put 写）。
+            skill_install::skill_install_preview,
+            skill_install::skill_install_apply,
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
