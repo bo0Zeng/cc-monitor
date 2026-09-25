@@ -703,7 +703,8 @@ pub async fn stream_read_session_jsonl(
         for line in reader.lines().map_while(Result::ok) {
             let Some((seq, rec)) =
                 crate::session_skeleton::numbered_displayable(&mut numberer, &line, |b| {
-                    crate::parser::parse_for_kind(kind, b)
+                    // 〔ST3〕这一支是 `route` 之后的本机那一支 ⇒ `origin` 就是本机。
+                    crate::parser::parse_for_kind(kind, &origin, b)
                 })
             else {
                 continue;
@@ -2645,6 +2646,8 @@ fn analyze_jsonl(
     // （两种空格形态；仅徽标用途，误报面可忽略）。
     let mut is_bg = false;
 
+    // 〔ST3〕本机历史清单只读本机文件 ⇒ 看不懂的行记在本机名下。
+    let local = crate::origin::Origin::local();
     let reader = BufReader::new(file);
     for line in reader.lines().map_while(Result::ok) {
         let trimmed = line.trim();
@@ -2657,7 +2660,7 @@ fn analyze_jsonl(
         {
             is_bg = true;
         }
-        let rec = match parse_line(trimmed) {
+        let rec = match parse_line(&local, trimmed) {
             Ok(Some(r)) => r,
             _ => continue,
         };

@@ -104,16 +104,141 @@ fn an_empty_key_is_labelled() {
 /// 全局那两个入口只是纯函数的薄壳 —— 至少走一次，别让它们成为未覆盖的分叉。
 #[test]
 fn the_global_entry_points_delegate_to_the_pure_ones() {
-    // 用一个**本测试专属**的键：全局账本会被别的测试写，只断言「我这条在」。
+    // 用一个**本测试专属**的键与机器名：全局账本会被别的测试写，只断言「我这条在」。
     let key = "u-cc1-delegation-probe";
-    record(DriftFace::UnknownBackendToken, key, Some("s"));
-    let found = snapshot()
+    let probe = Origin("st3-delegation-probe".into());
+    record(&probe, DriftFace::UnknownBackendToken, key, Some("s"));
+    let found = snapshot(&probe)
         .into_iter()
         .find(|f| f.face == DriftFace::UnknownBackendToken)
         .and_then(|f| f.entries.into_iter().find(|e| e.key == key));
     let e = found.expect("全局 record/snapshot 没接上纯函数");
     assert!(e.count >= 1);
     assert_eq!(e.first_sample.as_deref(), Some("s"));
+}
+
+// ── 〔ST3〕按机器分 ─────────────────────────────────────────────────────────
+
+use crate::origin::Origin;
+
+fn key_set(v: &[DriftFaceReport]) -> std::collections::BTreeSet<(DriftFace, String)> {
+    v.iter()
+        .flat_map(|f| f.entries.iter().map(move |e| (f.face, e.key.clone())))
+        .collect()
+}
+
+/// ★ J1：两台各记一笔 ⇒ 各自的快照**恰好**是自己那一笔（两向集合相等），没记过的那台 ⇒ 空。
+#[test]
+fn each_machine_sees_exactly_its_own_book() {
+    let mut book = Book::new();
+    let local = Origin::local();
+    let aya = Origin("aya".into());
+    record_in_book(
+        &mut book,
+        &local,
+        DriftFace::UnknownSessionKind,
+        "workflow",
+        None,
+    );
+    record_in_book(
+        &mut book,
+        &aya,
+        DriftFace::UnknownRecordType,
+        "mode",
+        Some("{}"),
+    );
+    record_in_book(
+        &mut book,
+        &aya,
+        DriftFace::UnknownBackendToken,
+        "capabilities:x",
+        None,
+    );
+    let want = |xs: &[(DriftFace, &str)]| -> std::collections::BTreeSet<(DriftFace, String)> {
+        xs.iter().map(|(f, k)| (*f, k.to_string())).collect()
+    };
+    assert_eq!(
+        key_set(&snapshot_in_book(&book, &local)),
+        want(&[(DriftFace::UnknownSessionKind, "workflow")]),
+        "本机那一本不是恰好本机那一笔"
+    );
+    assert_eq!(
+        key_set(&snapshot_in_book(&book, &aya)),
+        want(&[
+            (DriftFace::UnknownRecordType, "mode"),
+            (DriftFace::UnknownBackendToken, "capabilities:x"),
+        ]),
+        "aya 那一本不是恰好 aya 那两笔"
+    );
+    assert!(
+        snapshot_in_book(&book, &Origin("gpd".into())).is_empty(),
+        "没记过的那台答出了东西 —— 拿别台的账冒充它"
+    );
+}
+
+/// 同一个键在两台上**各数各的**（计数与首见样例都不串台）。
+#[test]
+fn the_same_key_counts_separately_per_machine() {
+    let mut book = Book::new();
+    let local = Origin::local();
+    let aya = Origin("aya".into());
+    record_in_book(
+        &mut book,
+        &aya,
+        DriftFace::UnknownRecordType,
+        "mode",
+        Some("aya-1"),
+    );
+    record_in_book(
+        &mut book,
+        &aya,
+        DriftFace::UnknownRecordType,
+        "mode",
+        Some("aya-2"),
+    );
+    record_in_book(
+        &mut book,
+        &local,
+        DriftFace::UnknownRecordType,
+        "mode",
+        Some("local-1"),
+    );
+    let first = |o: &Origin| snapshot_in_book(&book, o)[0].entries[0].clone();
+    assert_eq!(
+        (first(&aya).count, first(&aya).first_sample.as_deref()),
+        (2, Some("aya-1"))
+    );
+    assert_eq!(
+        (first(&local).count, first(&local).first_sample.as_deref()),
+        (1, Some("local-1"))
+    );
+}
+
+/// 有界是**每台每面**：一台触顶不挤占另一台。
+#[test]
+fn one_machine_overflowing_does_not_touch_another() {
+    let mut book = Book::new();
+    let aya = Origin("aya".into());
+    for i in 0..(MAX_KEYS + 3) {
+        record_in_book(
+            &mut book,
+            &aya,
+            DriftFace::UnknownRecordType,
+            &format!("t{i}"),
+            None,
+        );
+    }
+    record_in_book(
+        &mut book,
+        &Origin::local(),
+        DriftFace::UnknownRecordType,
+        "fresh",
+        None,
+    );
+    assert!(snapshot_in_book(&book, &aya)[0].overflowed);
+    let local = snapshot_in_book(&book, &Origin::local());
+    assert!(!local[0].overflowed, "aya 触顶连带本机那一本也标了溢出");
+    assert_eq!(local[0].entries[0].key, "fresh");
 }
 
 /// ★ 每个面都必须说清楚「看不懂时会发生什么」—— 诊断面直接显示这句话。
@@ -146,5 +271,26 @@ fn every_face_states_its_consequence() {
         faces.len(),
         "`DriftFace` 有 {variants} 个变体，本条只覆盖了 {} 个 —— 新增面必须来这里写后果",
         faces.len()
+    );
+}
+
+/// 〔ST3〕读口：答的是所问那台、回包带回那台；空白名（「没说」）拒收，不许被当成某一台。
+#[test]
+fn the_read_side_answers_the_asked_machine_and_echoes_it() {
+    let probe = Origin("st3-read-probe".into());
+    record(&probe, DriftFace::UnknownRecordType, "st3-read-key", None);
+    let r = tauri::async_runtime::block_on(drift_ledger_report(probe.clone()))
+        .expect("读口拒了一台正常的机器");
+    assert_eq!(r.origin, probe, "回包没带回所问那台");
+    assert!(key_set(&r.faces).contains(&(DriftFace::UnknownRecordType, "st3-read-key".to_string())));
+    let other =
+        tauri::async_runtime::block_on(drift_ledger_report(Origin("st3-read-other".into())))
+            .unwrap();
+    assert!(other.faces.is_empty(), "问另一台却答出了探针那台的账");
+    let err = tauri::async_runtime::block_on(drift_ledger_report(Origin("  ".into())))
+        .expect_err("空白名被当成了某一台");
+    assert!(
+        err.contains("drift_ledger_report"),
+        "拒收的话没点名是哪条命令：{err}"
     );
 }
