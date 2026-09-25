@@ -15,7 +15,7 @@
 # # 它量什么
 #
 # 两侧各跑一遍**门禁里那条同样的** `cargo test`（插桩版、单独的 target 目录，不碰日常构建）：
-#   bridge  —— `cd src/bridge && cargo test --workspace --exclude code-picture-core --lib`（= 门禁 `cargo` 那一格）
+#   bridge  —— `cd src/bridge && cargo test --workspace --lib`（= 门禁 `cargo` 那一格）
 #   backend —— `cd src/backend && cargo test`（= 门禁 `backend` 那一格）
 # 测试里 spawn 出去的子进程（后端二进制、`current_exe` 起的子测试）也是插桩的，它们的 `.profraw` 一并算进来。
 # 报告的人群是**生产源码**：`src/bridge/src` · `src/bridge/crates/*/src` · `src/backend`；
@@ -133,7 +133,7 @@ print("%d/%d 行（%.1f%%）· 生产源文件 %d 份" % (t["covered"], t["count
 }
 
 case "$which_side" in
-  bridge | both) run_side bridge src/bridge --workspace --exclude code-picture-core --lib ;;
+  bridge | both) run_side bridge src/bridge --workspace --lib ;;
 esac
 case "$which_side" in
   backend | both) run_side backend src/backend ;;

@@ -613,17 +613,14 @@ run_gate() {
 #      `shared_crate_registry::the_gate_package_count_tracks_the_number_of_shared_crates`
 #      用 `find_pinned` 钉的就是那个前缀、**要求全文唯一**，抄一次它当场判红。现打栽过。）
 #
-# ⚠⚠ **`--exclude code-picture-core` 是承重的，不许删成裸 `--workspace`。**
-# PM 08-27 现打三个数：`--lib` **1195** · 裸 `--workspace --lib` **1299** ·
-# 带 exclude **1274** —— 差恰好 **25**，就是 vendor 那 25 条。
-# 而 `C7` 逐字：「vendor `code-picture-core` **不动**」⇒ 裸 `--workspace` 会把 25 条
-# **我们无权修**的判据拉进出货门禁：它们哪天红了我们修不了也不许修，
-# 那是一道**我们满足不了的闸**，比没有闸更坏。
-#
-# ⚠ 另记一条**反直觉**的读数（`己1-f9` 独立跟进，本处不修）：
-# `src/bridge/Cargo.toml:22` **明明写着** `exclude = ["vendor/code-picture-core"]`，
-# **而 cargo 不认** —— `cargo metadata --no-deps` 的权威 member 名单 9 个里就有它。
-# ⇒「配置里写了 exclude」**≠**「cargo 认它被排除了」，所以这里必须再显式排一次。
+# 〔TL1 · 4C 拍板 ③〕这里从前写着「`--exclude code-picture-core` 是承重的，不许删成裸 `--workspace`」——
+#   08-27 现打那时 vendor 是 monitor 的 path 依赖，cargo 把它算成成员（`[workspace] exclude` 对 path 依赖不生效），
+#   裸 `--workspace` 会多拉进 vendor 那 25 条我们无权修的判据（`C7`「vendor 不动」）。
+#   RM1f 起 monitor 不再依赖它（链它的只剩 `src/panorama-engine`）⇒ 它不再是成员，那条 `--exclude` 只剩一条
+#   cargo warning（`excluded package(s) not found`）⇒ 删了；裸 `--workspace` 现打就是 9 个成员（`monitor` ＋ 8 个共享 crate）。
+#   🔴 **谁在守「vendor 别再被拉回来」**（死值验现打：往 monitor 清单加回那条 path 依赖 ⇒ `cargo metadata` 成员 9 → 10）：
+#   一是 `shared_crate_registry::the_windows_cross_target_signal_covers_only_the_backend` ③（monitor 清单零 vendor 依赖，那一刀当场红）；
+#   二是下面这一格的**包数相等**（那个 9：成员 10 ⇒ 合计行包数对不上 ⇒ 红；⚠ 这里刻意不抄那一行的逐字前缀 —— `find_pinned` 要它全文唯一）。
 #
 # ⚠ **CI 那一侧没跟着改**（`ci.yml` 不在 `K-H2a` 的写区）⇒ 从此**本地门禁比 CI 严**。
 #   别把「本地绿」读成「CI 也会绿」。
@@ -1246,7 +1243,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #（成因：那棵树的 path 依赖指进 `../../src/bridge`，`cargo fmt --all` 顺着它们走出去；
 #  `cargo metadata --no-deps` 的 `workspace_members` 现打**只有 1 个**，两者不是一回事。）
 # ⇒ 加 `--all` 会把 vendor 那棵**我们无权修**的树拉进出货门禁 —— 与下面 `cargo` 那一格
-#   `--exclude code-picture-core` 要避开的是同一件事（`C7` 逐字「vendor `code-picture-core` **不动**」）：
+#   从前 `--exclude code-picture-core` 要避开的是同一件事（`C7` 逐字「vendor `code-picture-core` **不动**」；〔TL1〕那条 exclude 随 vendor 退出 workspace 删了）：
 #   **一道我们满足不了的闸，比没有闸更坏。**
 # ⚠ 不加 `--all` 时 `cargo metadata` 那 11 个一个都不进来（同一趟 `-v` 现打：rustfmt 只收
 #   `src/backend/main.rs` 一个根），读数 6 处不变 ⇒ **少的只有别人家那棵树。**
@@ -1356,8 +1353,8 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/bridge` 那棵树由上面 winchk 那一格盖' \
          bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
 
-# 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
-run_gate_sum cargo 9 bash -c 'cd src/bridge && cargo test --workspace --exclude code-picture-core --lib 2>&1'
+# 9 个包 = `monitor` + 8 个共享 crate（〔TL1〕`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。
+run_gate_sum cargo 9 bash -c 'cd src/bridge && cargo test --workspace --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/bridge/embedded-backends/` 铺没铺。
 #

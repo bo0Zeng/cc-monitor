@@ -994,6 +994,8 @@ fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
 /// K-R12 `J1` 的判据本体：**下溢红、恰好绿、过溢绿**。
 ///
 /// 与上一条分开写，是因为上一条量的是「处置对不对」，这一条量的是「那条不等号的方向」。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn the_underflow_predicate_only_fires_downward() {
     assert!(
@@ -1052,6 +1054,8 @@ fn the_underflow_predicate_only_fires_downward() {
 /// 🔴 **本条守的是「别漏」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
 /// 行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`：同样这两条脚本对真 tmux 3.4
 /// 私有 socket 打过，改前段数 1、改后各回各的 N。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
     let prod = crate::guard_support::production_code(include_str!(
@@ -1585,6 +1589,15 @@ fn imposter_by_cmdline() {
         AddTimeVerdict::Imposter("cmdline"),
         "time check passing must not mask a non-claude cmdline"
     );
+    // 〔TL1 · 4C〕并进来的样本（原 `agents/claudecode/liveness_tests.rs`，那一族退役）：
+    // 编辑器 · 登录 shell · sshd 会话 —— PID 被复用时最常见的那几种「明显不像」。
+    for foreign in ["/usr/bin/vim", "bash -l", "sshd: u@pts/0"] {
+        assert_eq!(
+            add_time_verdict(None, None, None, None, Some(foreign)),
+            AddTimeVerdict::Imposter("cmdline"),
+            "{foreign}"
+        );
+    }
 }
 
 #[test]
@@ -1619,6 +1632,10 @@ fn claude_like_cmdlines_pass() {
         "claude --resume abc",
         "/usr/bin/node /home/u/.local/bin/claude",
         "NODE_OPTIONS=x node cli.js",
+        // 〔TL1 · 4C〕只看得见解释器那一形（`liveness.rs` 头注：词表里有 `node` 就是为它）——
+        // 解释器不在行首；从前这一格没人量（「`node` 只认行首」那一刀两族都放过）。
+        "/usr/bin/node cli.js",
+        "node index.js",
         "Claude", // case-insensitive
     ] {
         assert_eq!(

@@ -104,7 +104,7 @@ pub enum ToolSource {
     EmbeddedText { repo_path: &'static str },
     /// 仓内目录，运行期读（`cc-bus` 的 `src/shared/cc-bus/`）。
     RepoDir { repo_path: &'static str },
-    /// vendored 目录 + 指纹（`cc-acct-iso`、`code-picture-core`）。
+    /// vendored 目录 + 指纹（`cc-acct-iso`；〔TL1〕`code-picture-core` 从前也列在这里，它从没以这个形状进过 `TOOLS`，今天全景小程序那一条是 `EmbeddedBinary`）。
     Vendored {
         repo_path: &'static str,
         fingerprint_file: &'static str,
@@ -719,6 +719,51 @@ pub const TOOLS: &[ToolSpec] = &[
                         "路径由该连接的「backend 路径」配置项决定——**不是**固定的 ~/.local/bin/ccm-backend。\
                          ⚠ 它在那台机器上就是**那台机器的本地后端**（`K36`），\
                          「远端」说的是「相对这台 monitor」，不是它的身份",
+                    ),
+                    effect: TouchEffect::OwnedFile,
+                }],
+            },
+        ],
+    },
+    // 〔TL1 · 4C〕**代码全景小程序**（`cc-monitor-panorama`，`src/panorama-engine`）—— RM1f 起它是**有落点的部署物**：
+    //   monitor 摘掉了内嵌引擎（V108 后半句），本机与远端的全景都由那台机器的后端经插件口起它。
+    //   同 `backend` 那一形：一份代码、两个载体 —— 本机那份由 `panorama_bytes::place_local` 放、远端那份由 `panorama_bytes::push_to` 推，
+    //   都只在那台后端答「没装 / 太旧」时才放（V108「只传给开过远端全景的机器」）。
+    //   `uninstallable: false`：今天没有「卸掉全景组件」这条口（卸后端那条 `sftp.rs::uninstall_remote_backend` 不碰它），如实声明。
+    //   〔墓碑 —— 这之前它住 [`NOT_MANAGED`]，理由是「vendored 进 monitor 二进制、没有落点」；那个身份 RM1f 起没了，见那一条。〕
+    ToolSpec {
+        id: "panorama",
+        display_name: "代码全景组件（只装全景引擎的小程序，本机与远端各放一份）",
+        installable: true,
+        uninstallable: false,
+        carriers: &[
+            Carrier {
+                what: "放在本机的那一份：这一份产物按本机系统带着的原生小程序（Linux 上没带原生的就用 musl 那份），本机后端第一次答「没装」时放下来（`panorama_bytes::place_local`）",
+                source: ToolSource::EmbeddedBinary {
+                    repo_path: "src/bridge/native-backend/cc-monitor-panorama",
+                },
+                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/cc-monitor-panorama"),
+                touches: &[TouchedFile {
+                    path: "~/.cc-monitor/bin/cc-monitor-panorama",
+                    host: HostScope::Client,
+                    note: Some(
+                        "本机后端找它的第二个候选（后端 `control/panorama.rs::fixed_candidates`）；Windows 上文件名带 `.exe`。\
+                         字节与盘上那份逐字节相同就不重写（`local_backend::place_local_panorama`）",
+                    ),
+                    effect: TouchEffect::OwnedFile,
+                }],
+            },
+            Carrier {
+                what: "推给远端那台机器的那一份（`embedded-backends/` 里交叉编译的 musl 小程序，按那台的系统与架构挑），那台后端答「没装 / 太旧」时推过去（`panorama_bytes::push_to`）",
+                source: ToolSource::EmbeddedBinary {
+                    repo_path: "embedded-backends",
+                },
+                destination: ToolDestination::RemoteHomeRelative(".cc-monitor/bin/cc-monitor-panorama"),
+                touches: &[TouchedFile {
+                    path: "~/.cc-monitor/bin/cc-monitor-panorama",
+                    host: HostScope::Remote,
+                    note: Some(
+                        "只推给开过远端代码全景的机器；经那台的本机常驻后端文件链路写，写完读回逐字节比对（`sftp::upload_verified`）",
                     ),
                     effect: TouchEffect::OwnedFile,
                 }],
@@ -1348,9 +1393,11 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // ⚠ 留墓碑是因为它的来历本身是一条教训：`K38` 逐字只举了两样（`account` · `cc-bus`），
     //   这一项是**用户当拍凭记忆点出来的**（「不是还有 code picture 吗」）——
     //   「app 自带的是哪几样」这个人群此前真的没有住址。那个教训今天仍然成立。
-    // ⚠ 与 [`NOT_MANAGED`] 里那条 `code-picture` **不是同一个东西**：那条说的是
-    //   **vendored 进 monitor 二进制的 crate**（21 条命令、14 条在用），**它还在，没删**。
-    //   同名两身份，删掉的是「独立进程那一份」。
+    // ⚠ 与 [`NOT_MANAGED`] 里那条 `code-picture` **不是同一个东西**：那条当时说的是
+    //   **vendored 进 monitor 二进制的 crate**（21 条命令、14 条在用），**它当时还在，没删**。
+    //   同名两身份，删掉的是「独立进程那一份」。〔TL1 · 4C〕RM1f 起 vendored 那一身份也没了：引擎住进
+    //   独立小程序 `cc-monitor-panorama`，由后端经插件口起 —— 那是上面 `id: "panorama"` 那一条（有落点的部署物），
+    //   与这里删掉的「独立进程那一层」不是一回事（那一层是 app 随产品起的常驻侧车，这一份是按需起的一问一进程）。
     // 🔴 〔`K-R62` 09-11〕**`posix-rc-aliases` 从这里搬走了 —— 这是它的墓碑。**
     //
     // ⚠ 〔`K-R65` 09-11 补一句〕下面这段原文里那个档名**今天已经不存在了**（`K38` 删了
@@ -1477,26 +1524,17 @@ pub fn environment() -> Vec<EnvEntry> {
 pub const NOT_MANAGED: &[(&str, &str)] = &[
     (
         "code-picture",
-        "**不是「装到别处的工具」，所以不属本表的语义** —— 它是 **vendored 进 cc-monitor \
-         二进制**的 crate（`src/bridge/vendor/code-picture-core`），`panorama.rs` 直接 \
-         `use Engine` 调它画图。没有 `destination`、没有安装动作、卸载它等于重新编译 monitor。\n\
-         🔴 **〔RM1f 09-25〕上面这一句过期了**：monitor 摘掉了内嵌引擎（V108 后半句），今天它是只装引擎的\
-         **独立小程序** `cc-monitor-panorama`（`src/panorama-engine`），随 monitor 的字节带着，本机放到\
-         `~/.cc-monitor/bin/`（`panorama_bytes::place_local`）、远端推到那台的 `~/.cc-monitor/bin/`（`push_to`）——\
-         那是**有落点**的部署物。它该不该像 `backend` 那样进 `TOOLS`（两个载体、两个落点），**已报备、本件没改**；\
-         在那之前本条的「不属本表」只对「vendored 进二进制」那个旧身份成立。\n\
-         ⚠ 它另有一个身份是 **MCP server（code-picture 的 Agent head，给 Claude 用）**，\
-         那一个确实「装到别处」—— 但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 \
-         server 条目），是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / \
-         `config_surface.rs` 里 `code-picture` 零命中）。\n\
+        "**这个名字今天只剩一个身份不属本表：MCP server（code-picture 的 Agent head，给 Claude 用）** —— \
+         它确实「装到别处」，但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 server 条目），\
+         是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / `config_surface.rs` 里 `code-picture` 零命中）。\n\
          ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\
          用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\
-         🔴 **〔条 67 · 2026-09-18〕这个名字曾经有第三个身份，现在没有了**：\
-         `src/backend/sidecars/codepicture/` 那一层的**独立进程**（2 008 行）已整棵删除\
-         （用户逐字「不在现在设计里的全部删掉」），环境闭集里那条 `code-picture-sidecar` 同拍摘了。\
-         ⇒ **本条现在回到只有两个身份**：vendored 进二进制的 crate（就是本条说的这一份）\
-         ＋ MCP server 那个头。⚠ `K-R65` 当初补那一句买到的道理**仍然成立**：\
-         一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。",
+         〔TL1 · 4C〕它的另外两个身份都不在这里了：① **vendored 进 monitor 二进制的 crate**（原先本条的主理由：\
+         「没有 `destination`、没有安装动作、卸载它等于重新编译 monitor」）—— RM1f 起 monitor 摘掉了内嵌引擎（V108 后半句），这个身份没了；\
+         它变成只装引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`），本机放到 `~/.cc-monitor/bin/`、远端推到那台的 \
+         `~/.cc-monitor/bin/` —— 那是**有落点的部署物**，进了 [`TOOLS`]（`id: \"panorama\"`，两个载体）。\
+         ② **独立进程那一层**（`src/backend/sidecars/codepicture/`，条 67 · 2026-09-18 整棵删了，环境闭集里那条 `code-picture-sidecar` 同拍摘了）。\n\
+         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。",
     ),
     (
         "planned-build",
