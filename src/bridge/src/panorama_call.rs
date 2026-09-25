@@ -23,7 +23,7 @@
 //!    `{value, edit: {rel, before, after, parents}}`，一个字节不写）→
 //! ② `edit = null` ⇒ 盘上已经是想要的样子，原样回 `value` →
 //! ③ `after` 是全文 ⇒ 同一台后端的 `files-put`（`root` = 仓、`expect = before`、`parents`）；
-//!    `after = null` ⇒ 先 `files-peek` 核「盘上还是 `before`」再 `files-delete` →
+//!    `after = null` ⇒ 同一台后端的 `files-delete`（〔RM1e〕带 `expect = before`：盘上不是那一份就不删）→
 //! ④ `stale`（盘上那份在算与写之间被别人改了）⇒ 回 ① 重算，最多 `user_files::EDIT_ATTEMPTS` 趟 →
 //! ⑤ 文档关联那两种写成之后 `refresh_doc_links`（让文档关联的查询跟上；只写索引）。
 //! 落盘只经 `user_files::Door`（monitor 碰用户文件的唯一开口）；**写的规则只住后端**，这里只「问 · 交」。
@@ -46,7 +46,8 @@
 //! # 诚实边界
 //!
 //! - 打不断：后端那一侧是阻塞档（`cancel` 回 `not_cancellable`）；这边等到期限为止。
-//! - 删批注**没有 CAS**（`files-delete` 不收 `expect`）：删前 `peek` 核一遍，核与删之间仍有一个窗口。
+//! - 〔RM1e〕删批注的 CAS 闭合在后端那一侧（核与删在同一个函数里紧挨着，窗只剩那两行之间 —— 后端写面头注那条 TOCTOU）。
+//!   〔墓碑 —— RM1d 那一版这里写着「删批注**没有 CAS**（`files-delete` 不收 `expect`）：删前 `peek` 核一遍，核与删之间仍有一个窗口」。〕
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client::client_for;
@@ -216,14 +217,17 @@ where
                 }
             }
             None => {
-                // 删没有 CAS ⇒ 先核盘上还是算的那一份；不是 ⇒ 当 `stale` 重算。
-                let now = door.peek(repo, &edit.rel).await?;
-                if now.text != edit.before {
-                    last = format!("{} 在算完之后变了", now.path);
-                    continue;
+                // 〔RM1e〕删也带 CAS（`files-delete` 的 `expect`）：盘上不再是算的那一份 ⇒ 后端回 `stale` ⇒ 重算。
+                // 〔墓碑 —— RM1d 那一版先 `door.peek` 核、再删，核与删之间整整一趟往返的窗。〕
+                // `after = None` 而 `before = None` 上面已按「没事可做」回了 ⇒ 这里 `before` 恒在。
+                let Some(expect) = edit.before.as_deref() else {
+                    return Ok(planned.value);
+                };
+                match door.delete(repo, &edit.rel, expect).await {
+                    Ok(()) => return Ok(planned.value),
+                    Err(Refused::Stale(s)) => last = s,
+                    Err(e @ (Refused::Other(_) | Refused::Peer { .. })) => return Err(e.said()),
                 }
-                door.delete(repo, &edit.rel).await?;
-                return Ok(planned.value);
             }
         }
     }

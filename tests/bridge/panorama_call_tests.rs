@@ -190,9 +190,10 @@ fn stale_means_plan_again_not_write_anyway() {
     std::fs::remove_dir_all(&h).ok();
 }
 
-/// ★ 删（`after = null`）：盘上还是算的那一份 ⇒ 删；已经变了 ⇒ 不删、重算。
+/// ★ 删（`after = null`）：交给门的 `expect` 就是计划的 `before`；门回 `stale`（盘上不是那一份）⇒ 不删、重算；
+/// 〔RM1e〕**删前零 `peek`** —— CAS 在写口（后端 `files-delete` 的 `expect`）闭合，不再先核一趟再删。
 #[test]
-fn delete_checks_the_disk_still_holds_what_was_planned() {
+fn delete_hands_the_planned_bytes_to_the_door_as_expect() {
     let h = temp_home("pc-del");
     let repo = h.display().to_string();
     std::fs::write(h.join("a.json"), "old").unwrap();
@@ -206,9 +207,17 @@ fn delete_checks_the_disk_still_holds_what_was_planned() {
     assert_eq!(
         *plans.asked.borrow(),
         2,
-        "盘上不是计划里那一份 ⇒ 先重算，不删"
+        "门说盘上不是计划里那一份 ⇒ 重算，不硬删"
     );
-    assert_eq!(door.deleted.borrow().as_slice(), &["a.json".to_string()]);
+    assert_eq!(
+        door.deleted.borrow().as_slice(),
+        &[
+            ("a.json".to_string(), "stale-view".to_string()),
+            ("a.json".to_string(), "old".to_string()),
+        ],
+        "每一次删都带着那一份计划的 before 交给门"
+    );
+    assert_eq!(*door.peeked.borrow(), 0, "删那一支又先 peek 了一趟");
     assert!(!h.join("a.json").exists());
     std::fs::remove_dir_all(&h).ok();
 }

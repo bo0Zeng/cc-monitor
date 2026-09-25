@@ -1251,6 +1251,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 |---|---|---|
 | `root` / `rel` | → | 目标根 ＋ 相对段。**删的是链接本身**，不跟过去 |
 | `recursive` | → | 〔FW5 · 第四波〕布尔，**缺省 `false`**。不给 ⇒ 射程与此前一个字节不差（非空目录 ⇒ `io_failed`）；给了不是布尔 ⇒ `bad_args`（不猜） |
+| `expect` | → | 〔RM1e · 第四波〕可选，字符串或 `{"b16": …}`：「我读到的是这一份」。给了 ⇒ 目标必须是一份**普通文件**（目录 / 链接 ⇒ `refused`），盘上逐字节等于它才删；不等或已经不在 ⇒ `stale`，一个字节不动。`null` ⇒ `bad_args`；与 `recursive: true` 同给 ⇒ `bad_args`。不给 ⇒ 行为不变 |
 | `path` | ← | 删掉的那一项 |
 | `removed` | ← | 这一趟真删掉了几条（含目标自己；不递归那一支恒 `1`） |
 
