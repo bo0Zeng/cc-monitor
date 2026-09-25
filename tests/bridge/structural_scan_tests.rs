@@ -2808,6 +2808,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "install_preserves_explicit_acl_entries",
             1,
         ),
+        // 〔RW1 · 第四波 09-24〕本机用户文件的原子写原语随「用户文件改经后端写」删了（`$PROFILE` / `.mcp.json`）。
+        ("src/bridge/README.md", "atomic_write_string", 1),
+        (
+            "src/bridge/src/profile_installer.rs",
+            "atomic_write_string",
+            2,
+        ),
+        (
+            "tests/bridge/write_site_registry_tests.rs",
+            "atomic_write_string",
+            1,
+        ),
         (
             "tests/backend/control/files_write_tests.rs",
             "install_preserves_explicit_acl_entries",
@@ -3609,6 +3621,10 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔RW1 · 第四波 09-24〕1 → 4：本机原语 `LocalFile` 与它的同步门面 `apply_local` 随「用户文件改经后端写」
         //   整块走了，头注一处 ＋ 原住址一块墓碑（两个名字）= +3。
         ("src/bridge/src/fenced_block.rs", 4),
+        // 〔RW1 · 第四波 09-24〕项目 `.mcp.json` 的本机写原语删了（改经后端写）。
+        ("src/bridge/src/mcp.rs", 1),
+        // 〔RW1 · 第四波 09-24〕写点表摘掉那三行时留的一块。
+        ("tests/bridge/write_site_registry_tests.rs", 1),
         // 〔RW1 · 第四波 09-24〕「盘上有字节却读到空」那一道从 monitor 的 `LocalFile::read` 搬到后端 `hollow_read`。
         ("src/backend/control/files_write.rs", 1),
         // 〔RW1 · 第四波 09-24〕Windows ACL 那条判据从 monitor 搬去后端：两头各一块墓碑。
@@ -3620,7 +3636,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/ssh_source_dial_move_judge.rs", 3),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/bridge/src/sftp.rs", 6), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        ("src/bridge/src/profile_installer.rs", 2), // 〔AL1〕+1：`AccountAliasReport` 那一句
+        ("src/bridge/src/profile_installer.rs", 5), // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
         ("src/bridge/src/verified_write.rs", 2),
         ("tests/bridge/remote_write_registry_tests.rs", 7), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
@@ -3634,7 +3650,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/wire.rs", 1),
         // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
-        ("src/bridge/README.md", 6), // 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("src/bridge/README.md", 7), // 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 7：`atomic_write_string` 那一节
         ("src/bridge/build.rs", 1),
         ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
         // 〔BS1b 09-24〕6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝

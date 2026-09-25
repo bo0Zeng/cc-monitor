@@ -266,7 +266,8 @@ jsonl 行先于 `sessions/<PID>.json` 落地时，`active_filter` 返 false → 
 ### `config.rs::atomic_replace` 用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
 `std::fs::rename` 在 Windows 上 dst 存在时失败（POSIX rename atomic overwrite 行为在 Windows 上没有）。MoveFileExW 是 Windows 原生原子替换 API，专门设计来实现"覆盖现有文件"语义。
 
-### `profile_installer::atomic_write_string` 用 `ReplaceFileW` 而非 `MoveFileExW`
+### `profile_installer::atomic_write_string`〔散文墓碑〕 用 `ReplaceFileW` 而非 `MoveFileExW`
+〔RW1 · 第四波 2026-09-24〕**那个原语已删**：用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ `$PROFILE` / rc / 项目 `.mcp.json` 改经后端写（`user_files` → `files-put`）。下面这条「替换要保住 dst 的 explicit ACE」的性质跟着搬到了后端（`control/files_write.rs` 的 `swap_in`：Windows 上已在的目标就地覆盖写）。以下是原文：
 `MoveFileExW(tmp, dst)` 用 tmp 的 ACL 覆盖 dst → 用户 explicit ACE 丢失（Documents 重定向到非默认盘的用户读不了自己的 profile）。**ReplaceFileW 专门设计来保留 dst 的 ACL/ADS/创建时间**。这是 Windows 文档明确推荐用于"替换配置文件"的 API。详 [doc/INVARIANTS § 4](../`src/doc/INVARIANTS.md`#4-profile-等用户文件写入--replacefilew--backup--写后校验)。
 
 ### `history::resume_impl` 用 `powershell.exe -NoExit -EncodedCommand`（v2.8.1 修复）

@@ -598,7 +598,8 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
 //
 // ## 机制
 //
-// [`atomic_write_string`] 走 `std::fs::write`，写的是**不带 BOM 的 UTF-8**。
+// 那时的落盘原语 `atomic_write_string`〔散文墓碑〕走 `std::fs::write`，写的是**不带 BOM 的 UTF-8**
+// （〔RW1〕今天落盘在后端 `files-put`，同样原样写字节、不加 BOM）。
 // 而 **Windows PowerShell 5.1 把不带 BOM 的 `.ps1` 按系统 ANSI 代码页解**
 // （这台机器上是 GBK）。一个 UTF-8 的 CJK 字符被当成 GBK 解，末尾会剩下一个
 // **落单的前导字节**，它把紧随其后的换行吃掉 ⇒ 下一行被并进注释。
@@ -618,9 +619,8 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
 // ## 修法：**只给 PowerShell 那一支加 BOM**
 //
 // BOM 是 Microsoft 自己对 PS 5.1 脚本的建议编码，PS 5.1 / PS 7 / Notepad / VSCode
-// 都认。⚠ **不能加在 [`atomic_write_string`] 里** —— 那个函数还有两个调用方
-// （`mcp.rs` 写 `.mcp.json`、`account_aliases.rs` 写一份 shell 脚本），
-// 给 JSON 和 `.sh` 加 BOM 是往别人身上引入同族的病。
+// 都认。⚠ **不能加在落盘那一层** —— 那一层还有别的用户（项目 `.mcp.json`、别名那份 shell 脚本；
+// 〔RW1〕今天那一层是后端的 `files-put`，照样是这几家共用），给 JSON 和 `.sh` 加 BOM 是往别人身上引入同族的病。
 // ⇒ 分岔点放在**方言**这一层（[`encode_for_disk`] / [`strip_bom`]），与
 // 「写什么」那一处分岔（[`plan_install`]）同一条线。
 
@@ -1219,76 +1219,11 @@ fn sanitize_command_name(name: &str) -> String {
     }
 }
 
-/// 原子写文件：写 .tmp 后用 `ReplaceFileW` 一步替换，**保留 dst 原有 ACL**。
-///
-/// v1.7.9 及之前用三步 `write(tmp) -> remove(path) -> rename(tmp, path)` 非原子，
-/// 中途失败原文件丢失。v1.7.10 一开始改 MoveFileExW，但 MoveFileExW 仍把 tmp
-/// 文件 ACL 写到 dst —— 如果 dst 父目录没给当前用户 explicit ACE（如用户把
-/// Documents 重定向到非默认盘），用户自己都会读不了。
-///
-/// 正解：`ReplaceFileW(dst, src, ...)` —— 这个 API 专门做"原子替换内容但保留
-/// dst 的 ACL / ADS / 创建时间"。Windows 文档明确推荐用它替换配置文件。
-///
-/// dst 不存在时 ReplaceFileW 会失败，fallback 到普通 rename（首次安装场景）。
-/// tmp 文件名加 PID + 时间戳避免并行写碰撞。
-pub(crate) fn atomic_write_string(path: &PathBuf, content: &str) -> std::io::Result<()> {
-    let ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let mut tmp = path.clone();
-    let fname = tmp
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "profile.ps1".to_string());
-    tmp.set_file_name(format!("{fname}.ccm-tmp-{ms}-{}", std::process::id()));
-    std::fs::write(&tmp, content)?;
-    let r = atomic_replace_path(&tmp, path);
-    if r.is_err() {
-        // 替换失败：清掉 tmp 不留垃圾
-        let _ = std::fs::remove_file(&tmp);
-    }
-    r
-}
-
-#[cfg(windows)]
-fn atomic_replace_path(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows::core::PCWSTR;
-    use windows::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_WRITE_THROUGH};
-
-    let to_wide = |p: &std::path::Path| -> Vec<u16> {
-        p.as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    };
-    let src_w = to_wide(src);
-    let dst_w = to_wide(dst);
-
-    if !dst.exists() {
-        // dst 不存在 ReplaceFileW 会失败；首次安装直接 rename（新文件 ACL 继承
-        // 父目录，这是 Windows 创建文件的正常行为，没东西可保留）
-        return std::fs::rename(src, dst);
-    }
-
-    unsafe {
-        ReplaceFileW(
-            PCWSTR(dst_w.as_ptr()),
-            PCWSTR(src_w.as_ptr()),
-            PCWSTR::null(),
-            REPLACEFILE_WRITE_THROUGH,
-            None,
-            None,
-        )
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.message().to_string()))
-    }
-}
-
-#[cfg(not(windows))]
-fn atomic_replace_path(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    std::fs::rename(src, dst)
-}
+// 〔RW1 · 第四波 09-24〕这里原来是本机用户文件的原子写原语 `atomic_write_string`〔散文墓碑〕与它的
+// 两份平台副本 `atomic_replace_path`〔散文墓碑〕（Windows `ReplaceFileW` 保 ACL · POSIX `rename`）。
+// 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ `$PROFILE` / rc / 别名文件 / 项目 `.mcp.json`
+// 全改经后端写（`user_files`），三件零调用方 ⇒ 走。「Windows 上替换要保住 explicit ACE」那条性质
+// 跟着写搬到了后端（`control/files_write.rs::swap_in` 的 `cfg(windows)` 那一支）。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/profile_installer_tests.rs"]

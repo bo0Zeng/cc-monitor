@@ -110,12 +110,11 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //    source 的唯一落盘漏斗）。用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几件改经本机后端
     //    （`user_files::edit` → `files-peek` / `files-put`），本进程**一个字节都不落** ⇒ 三行随原语一起走了。
     //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `control/files_write.rs::put_text`。
-    ("profile_installer.rs", "atomic_write_string", Some("ccm"),
-     "临时文件 + rename 的原语（〔RW1〕本机 ccm 那几件改经后端之后，只剩 `mcp.rs::write_json_atomic` 一个直调者）"),
-    ("profile_installer.rs", "atomic_replace_path", Some("ccm"),
-     "跨设备回退的 rename。⚠ 这是**四份平台原语副本之一**，四份都已登记在 `atomic_replace_registry`（承接 C10）——本条不重复判它，只记它是个写点"),
-    ("mcp.rs", "write_json_atomic", Some("project-mcp"),
-     "写项目级 MCP 服务器配置（`TOOLS` 里 `project-mcp` 那条的真落点）"),
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来还有三行：`profile_installer.rs` 的 `atomic_write_string`〔散文墓碑〕 /
+    //    `atomic_replace_path`（本机用户文件的原子写原语，申报成 `ccm` 的安装动作）与 `mcp.rs` 的
+    //    `write_json_atomic`（`project-mcp` 那条的真落点）。`$PROFILE` / rc / 项目 `.mcp.json` 全改经后端写
+    //    （`user_files` → `files-put`），三件零调用方、删了 ⇒ 三行随之走。那两个工具的装 / 卸动作今天在后端落盘，
+    //    本表（monitor 进程的写盘人群）里**不再有它们** —— 那正是用户那一裁要的形状。
     // ── 不是安装动作：写的是 monitor 自己的东西
     ("bind.rs", "spawn", None, "monitor 自己的运行时目录/落地文件"),
     ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
@@ -383,9 +382,13 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
         );
     }
     // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
-    assert!(
-        checked >= 3,
-        "申报表里只有 {checked} 条「安装动作」（08-07 实测 5）—— \
+    // 〔RW1 · 第四波 09-24〕5 → 2（地板改成相等）：`ccm` 的三行（`fenced_block.rs::put_atomic` 与
+    //   `profile_installer.rs` 两个原语）与 `project-mcp` 的一行随「用户文件改经后端写」走了，
+    //   剩 `local_backend.rs::install_local_ccm_entry`（`ccm`，写的是我们自己的目录）·
+    //   `cc_bus_deploy.rs::deploy_into`（`cc-bus`）。
+    assert_eq!(
+        checked, 2,
+        "申报表里的「安装动作」条数变了（实得 {checked}）—— \
              要么真收口了（那很好，把这个数调下来），要么有人把它们改成了 `None` 绕过对拍。"
     );
 }
