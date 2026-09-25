@@ -40,9 +40,9 @@ pub(crate) type EndpointAnswer = Result<Value, (&'static str, String)>;
 /// 账号 0（不注入 `CLAUDE_CONFIG_DIR` 那一档）在 `/t/` 路由里的账号段。只是标签（`/t/` 从不查它的 key）。
 pub(crate) const BASE_ACCOUNT_SEGMENT: &str = "0";
 
-/// 〔F5 · 主会话 4D 裁〕起会话时**没表态**是哪个号（没有账号层的机器上本机起会话就是这一形）在 `/t/` 里的账号段。
+/// 〔F5 · 主会话 4D 裁〕起会话时**没表态**是哪个号（没装 cc-acct-iso 的机器上本机起会话就是这一形）在 `/t/` 里的账号段。
 ///
-/// 不借账号 0 的 `0`：没表态 ≠ 账号 0（有账号层的机器上，没表态时 pane 落到 shell rc 里那个默认号上），
+/// 不借账号 0 的 `0`：没表态 ≠ 账号 0（装了 cc-acct-iso 的机器上，没表态时 pane 落到 shell rc 里那个默认号上），
 /// 流标签不该替它说是哪个号。与表里某一行同名的风险同 `0`，由决策表第 ⑤ 行挡。
 pub(crate) const UNDECLARED_ACCOUNT_SEGMENT: &str = "_";
 

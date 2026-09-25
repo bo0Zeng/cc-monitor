@@ -27,6 +27,8 @@ vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../../src/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
 import { readFileSync } from "node:fs";
+// 〔US1〕API key 那两问改走通道（`chan_call`，op = `apikey-read` / `apikey-routing`）：判据按 op 分派、回成品字节。
+import { chanArgsJson, chanReply, isChanCall } from "../test-support/chan-fake";
 import {
   AccountsSection,
   renderApikeyEditor,
@@ -41,7 +43,7 @@ import {
   type MachineStatus,
 } from "../../src/settings/machine-status";
 import { computeGaps, summarizeGaps } from "../../src/settings/readiness";
-import type { ApikeyCredentialsStatus } from "../../src/ipc/commands";
+import type { ApikeyCredentialsStatus } from "../../src/apikey-reads";
 import { showActionFailureToast } from "../../src/error-toast";
 import * as accounts from "../../src/accounts";
 import type { AccountsState, Account } from "../../src/accounts";
@@ -727,12 +729,12 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
         defaultName: "n1",
       }),
     );
-    invokeMock.mockImplementation((cmd: unknown) =>
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
       Promise.resolve(
-        cmd === "read_apikey_credentials_status"
-          ? status()
-          : cmd === "apikey_routing_for"
-            ? { routed: ["/h/.claude-accts/dir-one"] }
+        isChanCall(cmd, args, "apikey-read")
+          ? chanReply(status())
+          : isChanCall(cmd, args, "apikey-routing")
+            ? chanReply({ routed: ["/h/.claude-accts/dir-one"], running: true })
             : undefined,
       ),
     );
@@ -1250,7 +1252,7 @@ describe("S3：本机那一支接上 A3 的两条本机命令", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔第三波 S3〕本机清单上的徽章接上本机那一半的两格事实（`apikey_routing_for`）。
+// 〔第三波 S3〕本机清单上的徽章接上本机那一半的两格事实（〔US1〕经通道 `apikey-routing`）。
 // `accountStatusBadge` 的 `{ scope: "local" }` 三档自 `K-H2b` 起「有实现、没接线」。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("S3：本机清单的徽章说本机那一半的真话", () => {
@@ -1266,8 +1268,10 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     setCurrentMachine(LOCAL_ORIGIN);
     fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [KEYED], defaultName: "k" }));
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "apikey_routing_for" && routing ? routing() : Promise.resolve(undefined),
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
+      isChanCall(cmd, args, "apikey-routing") && routing
+        ? routing().then(chanReply)
+        : Promise.resolve(undefined),
     );
     const el = await mount();
     return el.querySelector<HTMLElement>(".accounts-local-row-badge")!;
@@ -1278,10 +1282,12 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
     expect(b.textContent).toBe(
       accounts.accountStatusBadge(KEYED, { scope: "local", hasRow: true, running: true }).text,
     );
-    const asked = invokeMock.mock.calls.filter(([c]) => c === "apikey_routing_for");
+    const asked = invokeMock.mock.calls.filter(([c, a]) => isChanCall(c as string, a, "apikey-routing"));
     expect(asked).toHaveLength(1);
-    // 〔RM1a〕那条命令收了 origin；本机这一页问的仍是本机（逐字送后端那个本机串）。
-    expect(asked[0][1]).toEqual({ origin: LOCAL_ORIGIN, configDirs: [KEYED.configDir] });
+    // 本机这一页问的仍是本机（逐字送后端那个本机串）；`agent` 随请求带（后端不猜是哪一家）。
+    const a = asked[0][1] as Parameters<typeof chanArgsJson>[0];
+    expect(a.origin).toBe(LOCAL_ORIGIN);
+    expect(chanArgsJson(a)).toEqual({ agent: "claude-code", configDirs: [KEYED.configDir] });
   });
 
   it("★ 表里有它 ＋ 中转没跑 ⇒ 「中转未运行」；表里没它 ⇒ 说表里没它 —— 三档两两不同", async () => {
@@ -1609,8 +1615,8 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
       if (cmd === "launch_remote_terminal" && opts.launchFails) {
         return Promise.reject(new Error("没有终端"));
       }
-      if (cmd === "read_apikey_credentials_status") {
-        return Promise.resolve({ configured: false, masked: "", path: "/h/x.json", notice: null, problem: null });
+      if (isChanCall(cmd as string, args, "apikey-read")) {
+        return Promise.resolve(chanReply({ configured: false, masked: "", path: "/h/x.json", notice: null, problem: null }));
       }
       return Promise.resolve(undefined);
     });

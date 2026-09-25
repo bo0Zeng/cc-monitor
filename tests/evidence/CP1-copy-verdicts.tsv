@@ -317,8 +317,6 @@ src/bridge/src/config_surface.rs:779	项目级	保留	[对外] 设置作用域�
 src/bridge/src/config_surface.rs:780	<项目目录>/.claude/settings.json 与 settings.local.json	保留	[对外] 路径模板，是用户自己机器上的文件路径
 src/bridge/src/config_surface.rs:788	优先级最高	保留	[对外] 优先级说明，短
 src/bridge/src/config_surface.rs:473	cc-monitor 旧版放的：认出是它放的就删，认不出的不动	保留	[对外] 〔GP1〕足迹那一页「我们对它做什么」一列（旧版入口那一行）
-src/bridge/src/creds_store.rs:101	读不动这份文件：{e}	保留	[对外] 凭据文件读失败，结果＋原因，短
-src/bridge/src/creds_store.rs:132	{how}。怎么修：{fix}	保留	[对外] 骨架「{how}。怎么修：{fix}」，干净；病在灌进来的 how/fix 本身（见 perm.rs）
 src/backend/accounts/upstream/file_face.rs:178	{how}。怎么修：{fix}	保留	[对外] 〔RM1a〕远端那台机器上那份凭据文件的权限提醒（`apikey-read` 的 notice，回到设置页那一块）；骨架与 creds_store.rs 那一句同文、干净，病在灌进来的 how/fix 本身（见 perm.rs）
 src/bridge/src/apikey_remote.rs:152	读写第三方 API key 时出了内部错误，没有拿到结果	保留	[可达存疑] 〔RM1a〕分流器 Done 那一臂的兜底（本族走不到）；说的是用户做的事（读写 API key）＋结果，短，同 backend_policy.rs 那一句的形
 src/bridge/src/remote_relay.rs:68	本机的中转住在本机后端进程里（随它起、随它按「退出行为」留或退），不在这里另起一个	保留	[可达存疑] 〔RL1 · V107〕`ensure_on` 对本机的拒绝（界面零调用方，本机那一臂只在内部走到）；说的是结果＋原因。「中转」是中转的正名（terms.json）
@@ -1279,7 +1277,6 @@ src/settings/panel.ts:1545	Claude 数据目录	保留	[对外] 落盘失败 / �
 src/settings/panel.ts:1733	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/panel.ts:1763	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/account-new-form.ts:86	Base URL，留空用默认上游	保留	[对外] 加账号表单 apikey 那一支的 Base URL 输入框占位（ST2 · 70 §4.4 线框里那一格）
-src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」中转正名、「apikey 端点改写」上游选择正名（terms.json）
 src/bridge/src/remote_relay.rs:82	那台的后端没有起中转（口上没人在听，它也没起进程）	保留	[对外] 〔RL1〕上一句里「为什么」那一格：relay-ensure 回 started:false
 src/bridge/src/remote_relay.rs:85	那台的后端起了一个中转，但等了一会儿它还没在那个口上听	保留	[对外] 〔RL1〕上一句里「为什么」那一格：起了进程、有界地等完了口上仍没人
 src/backend/control/files_write.rs:724	回读 {} 字节，与写进去的 {} 字节不一致	保留	[对外] files-put 写后校验失败那句的中段（RW1：用户文件的写规则从 monitor 的 fenced_block::apply 搬来后端），两个数都是用户看得懂的字节数
@@ -1396,3 +1393,7 @@ src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP
 src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
 src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
 src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：接不上的原因
+src/apikey-reads.ts:93	那台机器的后端版本过旧，还不认这一问（API key 那两问上帧面之后才有）—— 重装那台机器的后端就有了	保留	[对外] 〔US1〕API key 那两问改走通道之后，老后端不认 `apikey-read` / `apikey-routing` 时设置页那一行；结果＋原因＋下一步，与账号清单那句 ACCOUNTS_OLD_BACKEND 同形
+src/bridge/src/history.rs:1453	本机后端里的中转没在那个口上听（多半是口被别的程序占着，原因在本机后端的日志里）	保留	[对外] 〔US1〕本机 apikey 号起会话、本机后端里的中转不在听时那句「为什么」（嵌进下面那条拒绝里）；说得出最常见的原因与去哪看
+src/bridge/src/history.rs:1475	本机	保留	[对外] 〔US1〕拒绝 / 问不到那两句里「哪台机器」那一格的本机叫法（远端是 `[主机] `）
+src/bridge/src/history.rs:1511	apikey 端点改写不可用：账号 {account:?} 在{where_}的 apikey 表里有一行，\n         但{where_}的中转没在听（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败，而真正的原因在我们这一侧。\n\n         ⇒ 先让那台机器的后端（本机：设置 → 本机后端）与它的中转起来再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔US1〕apikey 号的中转不在 ⇒ 拒绝起会话（本机与远端同一句，接替 payload.rs 本机那句与 history.rs 远端那句）；结果＋原因＋下一步，点名那台机器与那个号。「中转」中转正名、「apikey 端点改写」上游选择正名（terms.json）
