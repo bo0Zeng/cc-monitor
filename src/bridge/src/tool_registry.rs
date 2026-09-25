@@ -292,6 +292,10 @@ pub enum TouchEffect {
     /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
     /// 这一页的全部价值是可信告知，在自己的主张上失信比不做这一页更坏。
     IndirectWrite,
+    /// 〔GP1 · 第四波〕**cc-monitor 旧版放在这儿的那一份，今天要清掉**：认出是它放的（记号见 `ccm_legacy`）就删，
+    /// 认不出的一个字节都不动。它不是「拥有」（[`Self::OwnedFile`] 那句「部署时整体覆盖」对它是假话）——
+    /// 我们不再往这儿写，只在看见旧的那一份时收回它。`设计/01 §6.7b`「三件都要在足迹里有入口」。
+    RetiredLegacy,
 }
 
 /// **同一个东西的一种载体** —— 「它这一份怎么产出来、落到哪、碰哪些文件」。
@@ -450,6 +454,16 @@ pub const TOOLS: &[ToolSpec] = &[
                         note: Some("或用户在部署向导里选的其它 profile"),
                         host: HostScope::Remote,
                         effect: TouchEffect::FencedBlock,
+                    },
+                    // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版入口落在这儿（09-11 前是 bash 启动器、之后是三行 shim）。
+                    TouchedFile {
+                        path: "~/.local/bin/ccm",
+                        note: Some(
+                            "旧版 cc-monitor 放的入口（今天入口在 ~/.cc-monitor/bin/ccm）：部署后端时、连上那台时各看一眼，\
+                             认出是 cc-monitor 放的就删，认不出的不动",
+                        ),
+                        host: HostScope::Remote,
+                        effect: TouchEffect::RetiredLegacy,
                     },
                 ],
             },

@@ -692,7 +692,17 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
             "终端里的 ccm 入口已放好（~/.cc-monitor/bin/ccm；装了别名块的终端里直接能用）。"
         }
     };
-    Ok(format!("{backend_msg}{entry}"))
+    // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删
+    //   （经那台的后端、带 CAS；那一格在 SFTP 两个写根之外）。没东西 ⇒ 不多说一句；查不成 ⇒ 说出来，不挡部署。
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
+    let legacy = match crate::ccm_legacy::sweep(&door).await {
+        Ok(s) => s.say(),
+        Err(e) => format!(
+            "旧版入口 ~/{} 这一次没查成：{e}",
+            crate::ccm_legacy::LEGACY_REL
+        ),
+    };
+    Ok(format!("{backend_msg}{entry}{legacy}"))
 }
 
 /// 卸载远端后端（设置面板「卸载后端」按钮）：删后端二进制。
@@ -832,7 +842,9 @@ use crate::backend::control::local_backend::ccm_entry_shim;
 /// 〔SR1b · 2026-09-24〕`.local/bin/ccm` → **`.cc-monitor/bin/ccm`**：远端写只许两处（V89），入口是部署物，
 /// 落进部署那一根；这也正是 `设计/01 §6.7b`（用户 09-18「落点选 `~/.cc-monitor/bin`，两边尽量同形」）的落点，
 /// 本机那一条早就在那儿。PATH：自带别名块（`src/shared/ccm-aliases.sh`）把 `~/.cc-monitor/bin` 排进去。
-/// ⚠ 旧的 `~/.local/bin/ccm` **不删也不再更新**（那一格在两个写根之外）：它指的是同一个后端，照旧能用。
+/// 〔GP1 · 第四波〕旧的 `~/.local/bin/ccm` 今天**删**（`设计/01 §6.7b` 迁移 ② ③；认出是我们放的才删，经那台后端，
+/// 那一格在两个写根之外）—— 住 `crate::ccm_legacy`，部署按钮与连上那一刻各扫一次。
+/// 〔墓碑 —— SR1b 那一版这里写「旧的 `~/.local/bin/ccm` **不删也不再更新**」。〕
 const CCM_CLI_REMOTE_PATH: &str = ".cc-monitor/bin/ccm";
 
 /// 纯函数：把 `snippet` 合进 profile 内容的 BEGIN/END 块（可单测）。
