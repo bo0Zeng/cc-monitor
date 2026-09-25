@@ -37,6 +37,7 @@
 //! `handle` 里那一句 `relay.dest.resolve(r.mode, &r.key, …)` —— 递过去的是两个
 //! **不透明段**（条 48），拿回来的是一个 `Destination`，**照做，不做任何判断**。
 
+use super::door;
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
 use super::tee::{SseSplitter, TeeSink};
@@ -48,7 +49,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 // ⚠ 上游的环境旋钮与默认值**先搬去上游选择**（`20 §4`「常量跟着职责走」），**再被条 59 整删**成
-//   每 agent 一行的表（`accounts::upstream::AGENT_UPSTREAMS`）。中转里**没有任何可以回落的默认上游**
+//   每 agent 一行的表（`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层）。中转里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（中转零处 ＋ 上游选择恰好登记那几处），不是一条散文。
 
@@ -225,6 +226,9 @@ pub(crate) struct Relay {
     /// `Destination` 就照做。它**问不出**「表里有几行」「那一行的 key 是什么」
     /// 「有没有默认上游」—— 那些词在这一层根本不存在。
     dest: Arc<dyn Destinations>,
+    /// 〔RK1〕这扇门的钥匙（`door.rs`）。**由监听面交下来**（`listen::prepare` 绑上口之后读回或铸）。
+    /// ⚠ 字段名刻意不叫那个会被 `table_guard` 当成「进程级凭据」的字面：它不是上游的凭据，是**下游进门**的钥匙。
+    door: door::Key,
     tee: TeeSink,
     /// 下游那条 socket 的读写期限。**由后端交下来**（`C4`：值归后端 · 执行归本层）。
     ///
@@ -260,12 +264,14 @@ impl Relay {
     /// —— 中转从此不认识「表」这个东西。
     pub(crate) fn new(
         dest: Arc<dyn Destinations>,
+        door: door::Key,
         tee: TeeSink,
         downstream_deadline: std::time::Duration,
         upstream_deadline: std::time::Duration,
     ) -> Self {
         Self {
             dest,
+            door,
             tee,
             downstream_deadline,
             upstream_deadline,
@@ -354,6 +360,20 @@ fn respond_body(down: &mut TcpStream, status: &str, body: String) -> std::io::Re
 /// 这一支不追求「一定送达」，只把常见那一形（请求已经整条发出来了）从静默变成有声。
 pub(super) fn respond_and_drain(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
     let r = respond_status(down, status);
+    drain_arrived(down);
+    r
+}
+
+/// 同 [`respond_and_drain`]，只是体里多一句为什么〔RK1：门拒绝那几格要说清是哪一问拒的，
+/// 否则 403「钥匙不对」与 403「带了 Origin」在下游那一侧读起来一样〕。
+fn respond_body_and_drain(down: &mut TcpStream, status: &str, body: String) -> std::io::Result<()> {
+    let r = respond_body(down, status, body);
+    drain_arrived(down);
+    r
+}
+
+/// 上两条共用的「排掉已经到了的」那一半（理由整段在 [`respond_and_drain`] 头注）。
+fn drain_arrived(down: &mut TcpStream) {
     let _ = down.set_nonblocking(true);
     let mut sink = [0u8; 4096];
     let mut left = HEAD_CAP;
@@ -367,7 +387,6 @@ pub(super) fn respond_and_drain(down: &mut TcpStream, status: &str) -> std::io::
         }
     }
     let _ = down.set_nonblocking(false);
-    r
 }
 
 /// 上游选择答完那一刻，中转手里的**四种**结局。
@@ -540,10 +559,22 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let Some(head) = http1::parse_request(&raw_head) else {
         return respond_and_drain(&mut down_w, BAD_REQUEST);
     };
+    // 🔴 〔RK1 · `INVARIANTS §48.1a`〕**进门三问排在一切之前**（读请求体之前、问上游选择之前）：
+    //   Origin ⇒ 403 · Host 非回环 ⇒ 421 · 钥匙不对 ⇒ 403。过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`
+    //   ⇒ 「钥匙对、表里没这一行」仍是 404，与 403 可分。钥匙不进上游（转上去的是剥之后的路径）、不进 tee、不进日志。
+    let target = match door::admit(&head, &relay.door) {
+        door::Verdict::Pass(rest) => rest,
+        refused => {
+            let (status, why) = refused.refusal().expect("非 Pass 那几格都有拒绝的说法");
+            // ⚠ 只印是哪一问拒的，**永不印请求头 / 路径**（`K9` 裁定四第 1 条；路径里可能正是一把错钥匙）。
+            eprintln!("[relay] refused at the door: {status}");
+            return respond_body_and_drain(&mut down_w, status, format!("{status}\n{why}\n"));
+        }
+    };
     if head.is_chunked_body() {
         return respond_and_drain(&mut down_w, LENGTH_REQUIRED);
     }
-    let Some(r) = route::parse(&head.target) else {
+    let Some(r) = route::parse(&target) else {
         return respond_and_drain(&mut down_w, NOT_A_ROUTE);
     };
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。

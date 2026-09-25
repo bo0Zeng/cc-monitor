@@ -296,187 +296,11 @@ fn fn_body_end(lines: &[&str], start: usize) -> usize {
         .unwrap_or(lines.len())
 }
 
-/// ★ 正题三：**用户选路径的远端写必须过 Claude 数据防误伤围栏**。
-///
-/// # 它补的洞
-///
-/// `sftp_pool.rs` 头注逐字承诺「**SFTP 写命令拒碰 Claude 数据源文件**
-/// （往正被 Claude 打开的 jsonl 写会损坏会话）」。
-/// 〔步 H2 09-21〕那句话里的**住址**变了（守卫搬去了 `crate::claude_data_fence`，
-/// 池子这边只剩一行 `pub use`），而**承诺一个字没动** —— 本条钉的也一直是那个承诺，
-/// 不是那个住址：它判的是「函数体里出现 `guard_write`」这个形态，
-/// 而 `guard_write` 现在是一行 `use` 引进来的同一个函数。
-///
-/// 08-10 实测：那句话今天**是真的** —— `sftp_write_text` / `sftp_upload` / `sftp_mkdir` /
-/// `sftp_rename` / `sftp_delete` 五个入口全都调了 `guard_write`
-/// （〔步 23b 09-20〕**+ `sftp_copy` = 六个**，同样两个参数各过一次；
-/// 〔`设计/60 §5.4c` 09-20〕**+ `sftp_chmod` = 七个**，它只有一个路径参数）。
-/// ⚠ 但**在本条之前没有任何判据钉着它**：删掉任一处 `guard_write?`，
-/// 全仓判据一条不红，而那台远端机上正被 Claude 打开的 jsonl 就能被面板删掉。
-///
-/// ⚠ 失效模式如实登记：本条钉的是「函数体里出现 `guard_write`」这个**形态**，
-/// 钉不了「围栏用对了路径」（比如过的是 `from` 而写的是 `to`）。
-/// `sftp_rename` 那处「两个参数各过一次」是靠**登记说明**写清的，不是机检。
-#[test]
-fn a_user_chosen_remote_write_passes_the_claude_data_fence() {
-    let root = repo_root();
-    let raw = std::fs::read_to_string(root.join("src/bridge/src/sftp_pool.rs"))
-        .expect("sftp_pool.rs 读不到");
-    let prod = guard_core::production_code(&raw);
-    // 用户选路径的写入口 = 那六条 `#[tauri::command]` 写命令。
-    // ⚠ 人群写死在这里是**刻意的**：「哪些路径是用户选的」没有语法特征，
-    //   而这几条是 F47 文件面板的全部写口。第五条判据盯着这个前提别变。
-    // 🔴 〔步 23b · 09-20〕**五 → 六**：`sftp_copy`（零流量复制）。它的 `from` 与 `to`
-    //   **各过一次** `guard_write`，照 `sftp_rename` 的先例 —— 既不许把 Claude 的会话文件
-    //   复制走，也不许复制成一个 Claude 数据源名（往正被 Claude 打开的 jsonl 上盖一份
-    //   复制品，与覆写它一样会损坏会话）。
-    //   ⚠ **本条只钉「函数体里出现 `guard_write`」这个形态**（头注里那条失效模式），
-    //   所以「两个参数各过一次」这件事在 `sftp_copy` 上同样**不是机检**，是登记说明。
-    // 🔴 〔`设计/60 §5.4c` · 09-20〕**六 → 七**：`sftp_chmod`（改权限位）。
-    //   它只有**一个**路径参数 ⇒ 归本条（单路径那一档），`guard_write` 在函数第一行。
-    //   ⚠ **它不进下面那条双路径判据的人群**，而那不是漏掉：那一条的人群逐字是
-    //   「签名里有两个路径参数」的写入口，`sftp_chmod` 按构造不满足。
-    //   把它塞进去会让那一条去找一个叫 `from`/`to` 的参数、当场 `panic!` ——
-    //   那是**误伤**，不是覆盖。两条判据各管各的那一半，这里写死，免得下一个人来「补全」。
-    const USER_CHOSEN_ENTRIES: &[&str] = &[
-        // 〔F7c 收尾 09-24〕八 → 二。走掉的七条〔已删：`sftp_download` · `sftp_write_text` · `sftp_upload` ·
-        //   `sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_chmod`〕随老面板与窗口改走通道删了。
-        //   🔴 下载那道**本机落点**围栏没有跟着走：它今天住传输台的开单口 `transfer_call`
-        //   （窗口经通道说 `transfer-download`，开单时就过 `guard_write(&local)`），所以那一格换成它。
-        // 〔第四波 S4〕二 → 一：零流量复制那一条随门禁那一格退役删了。
-        "transfer_call",
-    ];
-    let lines: Vec<&str> = prod.lines().collect();
-    let mut unfenced = Vec::new();
-    let mut checked = 0usize;
-    for entry in USER_CHOSEN_ENTRIES {
-        let Some(start) = lines.iter().position(|l| {
-            let t = l.trim_start();
-            t.starts_with(&format!("pub async fn {entry}("))
-                || t.starts_with(&format!("pub fn {entry}("))
-        }) else {
-            panic!(
-                "找不到写入口 `{entry}` —— 它改名或搬走了。\
-                     人群写死在本条里（见头注），改名就得把这里一起改。"
-            );
-        };
-        checked += 1;
-        // 函数体到下一个顶层 `fn` / `#[tauri::command]` 为止。
-        let end = fn_body_end(&lines, start);
-        let body = lines[start..end].join("\n");
-        // ⚠ **必须排除定义行**〔G 审计逮到的〕：`fn guard_write(path: &str) …`
-        // 里也含 `guard_write`。第一版只判 `body.contains("guard_write")`，
-        // 而窗口终止条件又漏掉了非 `pub` 的顶层 `fn` ⇒ `sftp_write_text` 的窗口
-        // 把 `guard_write` 的**定义**吞了进来 ⇒ 删掉它真正那次调用，本条**照样绿**。
-        // 那正是本条自称要消灭的假绿，五处里有一处没修上。
-        let called = body
-            .lines()
-            .any(|l| l.contains("guard_write(") && !l.trim_start().starts_with("fn "));
-        if !called {
-            unfenced.push(format!("  sftp_pool.rs::{entry}"));
-        }
-    }
-    assert_eq!(
-        checked,
-        USER_CHOSEN_ENTRIES.len(),
-        "只找到 {checked} 个写入口 —— 抽取器坏了"
-    );
-    assert!(
-        unfenced.is_empty(),
-        "这些**用户选路径**的远端写没过 Claude 数据防误伤围栏：\n{}\n\n\
-             ★ `sftp_pool.rs` 头注逐字承诺「**SFTP 写命令拒碰 Claude 数据源文件**\n\
-             （往正被 Claude 打开的 jsonl 写会损坏会话）」。\n\
-             少一道 `guard_write?` 的后果是：那台远端机上**正在跑的会话**的 jsonl\n\
-             能被文件面板删掉/覆盖掉，而 monitor 这边只会看到会话突然坏了。\n\
-             ⚠ 这道围栏是**防手滑不是合规**（头注原话）—— 但它是唯一一道。",
-        unfenced.join("\n")
-    );
-}
-
-/// ★ 正题三·下半：**两个路径参数的写入口，两个参数各自过一次围栏。**
-///
-/// # 🔴 它补的洞是死值验现打出来的，不是想出来的
-///
-/// 上面那一条的头注逐字登记了自己的失效模式：
-///
-/// > 本条钉的是「函数体里出现 `guard_write`」这个**形态**，钉不了「围栏用对了路径」
-/// > （比如过的是 `from` 而写的是 `to`）。`sftp_rename` 那处「两个参数各过一次」
-/// > 是靠**登记说明**写清的，不是机检。
-///
-/// 〔步 23b 死值验 `M7` 现打〕把 `sftp_copy` 里的 `guard_write(&to)?` **整行删掉**
-/// ⇒ 上面那一条 **rc=0、5 passed，一条没红**。后果是具体的：
-/// 用户可以把任意文件**复制成** `<远端>/projects/<proj>/<sid>.jsonl`，
-/// 盖掉那台机器上**正被 Claude 打开**的会话文件 —— 与覆写它一样会损坏会话，
-/// 而那正是 `guard_write` 存在的全部理由。
-///
-/// ⇒ 那条登记说明从此**有牙**：人群是「签名里有两个路径参数」的那几条写入口，
-/// 逐条要求它们的函数体里**两个参数名各自**出现在一次 `guard_write(` 里。
-///
-/// ⚠ **它仍然钉不了什么**（如实登记，不假装覆盖）：
-/// ① 参数名换了（`from`/`to` → `src`/`dst`）要回来改这张表 —— 人群按参数名取样，
-///    没有别的可机判特征；改名会让本条**红**（`panic!` 点名），不会静默；
-/// ② 它判「那个名字出现在 `guard_write(` 这一行里」，判不了**求值顺序**
-///    （先写后判那种写法它看不见）。那一维要的是数据流分析，本仓没有。
-#[test]
-fn a_two_path_write_entry_fences_both_of_its_paths() {
-    let root = repo_root();
-    let raw = std::fs::read_to_string(root.join("src/bridge/src/sftp_pool.rs"))
-        .expect("sftp_pool.rs 读不到");
-    let prod = guard_core::production_code(&raw);
-    let lines: Vec<&str> = prod.lines().collect();
-    // `(入口名, 那两个路径参数)`。**两条都是「源与目标」那一形**：
-    // 既不许把 Claude 的会话文件搬走/复制走，也不许搬成/复制成一个 Claude 数据源名。
-    // ⚠〔第四波 S4〕**人群今天是空集**：最后一条（零流量复制的 `from` / `to`）随门禁那一格退役删了。
-    //   表与本条留着，是「池子哪天再长出一条源与目标的写入口」时它得来这里登记的那一格
-    //   （新命令落不进登记 ⇒ `sftp_family_registry_tests.rs` 那条「Tauri 命令 == 待收（空）」当场红）。
-    //   今天本条**判不了任何东西**，如实写在这里，不假装覆盖。
-    const TWO_PATH_ENTRIES: &[(&str, [&str; 2])] = &[
-        // 〔F7c 收尾 09-24〕`sftp_rename`〔散文墓碑〕那一行随它走了（改名今天是后端 `files-rename`）。
-    ];
-    let mut checked = 0usize;
-    let mut bad = Vec::new();
-    for (entry, params) in TWO_PATH_ENTRIES {
-        let Some(start) = lines.iter().position(|l| {
-            let t = l.trim_start();
-            t.starts_with(&format!("pub async fn {entry}("))
-                || t.starts_with(&format!("pub fn {entry}("))
-        }) else {
-            panic!(
-                "找不到写入口 `{entry}` —— 它改名或搬走了。\
-                 人群与参数名都写死在本条里（见头注失效模式①），改名就得把这里一起改。"
-            );
-        };
-        checked += 1;
-        let end = fn_body_end(&lines, start);
-        let body = lines[start..end].join("\n");
-        for p in params {
-            // 必须是**调用**，不是定义行（同上面那一条踩过的坑）。
-            let fenced = body.lines().any(|l| {
-                !l.trim_start().starts_with("fn ")
-                    && l.contains("guard_write(")
-                    && l.contains(&format!("&{p}"))
-            });
-            if !fenced {
-                bad.push(format!("  sftp_pool.rs::{entry} 的 `{p}`"));
-            }
-        }
-    }
-    assert_eq!(
-        checked,
-        TWO_PATH_ENTRIES.len(),
-        "只找到 {checked} 个双路径写入口 —— 抽取器坏了"
-    );
-    assert!(
-        bad.is_empty(),
-        "这几个路径参数**没有各自**过一次 `guard_write`：\n{}\n\n\
-         ★ 「函数体里有 `guard_write`」不等于「每一条路径都过了」。\n\
-         少的那一侧的后果是具体的：`to` 没过 ⇒ 能把任意文件改名/复制成\n\
-         `<远端>/projects/<proj>/<sid>.jsonl`，盖掉那台机器上**正被 Claude 打开**的会话；\n\
-         `from` 没过 ⇒ 能把正在用的会话文件从 Claude 底下搬走。\n\
-         ⚠ 这一条是死值验 `M7` 逼出来的：在它之前，删掉 `guard_write(&to)?` **全仓一条不红**。",
-        bad.join("\n")
-    );
-}
+// 〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕这里原来是「正题三」两条：用户选路径的远端写必须过 Claude 数据防误伤围栏
+//   （写死的写入口人群，函数体里必须有那道拒绝）· 两个路径参数的写入口两个参数各自过一次（死值验 `M7` 逼出来的那条）。
+//   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 那道拒绝（`claude_data_fence` 里的拒绝那一半）连同它最后一个调用方
+//   （`sftp_pool::transfer_call` 开下载单那一判）删了；两条的人群在那之前已经是「一条」与「零条」，今天都是零 ⇒ 靶子不在，一起退役。
+//   ⚠ 退役的是**围栏的存在性**这一维；池子里再长出命令（写或读）仍由下面那条两分判据与 `sftp_family_registry_tests` 逼它归档。
 
 /// ★ 正题四：**接线层** —— 对外 IPC 入口必须真的转发到一个已登记的原语点。
 ///
@@ -881,7 +705,7 @@ const NON_WRITING_COMMANDS: &[(&str, &str, &str)] = &[
 ///
 /// # 它补的洞：「现打有几处写操作」此前是**写死**的
 ///
-/// 第三条判据（`a_user_chosen_remote_write_passes_the_claude_data_fence`）的人群是
+/// 第三条判据（〔FN1〕已退役，见上面那块注释）的人群是
 /// 七个写死的名字。它钉得住「这七条各自有围栏」，钉不住「今天恰好就是这七条」。
 /// ⇒ 加第 14 条命令而它是写命令 ⇒ 那七个名字里没有它 ⇒ **全仓一条不红**，
 /// 而它写的是用户选的远端路径。
@@ -946,8 +770,7 @@ fn every_pool_command_is_either_a_registered_write_or_a_registered_read() {
          ★ 落在两堆之外意味着：它要么是一条**没人回来读它围栏**的写命令\n\
          （后果：那台远端机上正被 Claude 打开的 jsonl 能被它删掉 / 改走 / 改成不可读），\n\
          要么是一条读命令而没人写下「为什么它不需要围栏」。\n\
-         ⇒ 处置：写命令 ⇒ 加进 `a_user_chosen_remote_write_passes_the_claude_data_fence`\n\
-         的 `USER_CHOSEN_ENTRIES` 并在函数第一行加 `guard_write`（两个路径参数的加两次）；\n\
+         ⇒ 处置：写命令 ⇒ 〔FN1 · V119〕池子不该再长写命令（SFTP 只做传输，写经后端文件管理面）—— 先问能不能不要；\n\
          读命令 ⇒ 加进 `NON_WRITING_COMMANDS` 并写清理由。",
         all.iter()
             .filter(|c| !covered.contains(c))
@@ -987,107 +810,8 @@ fn every_pool_command_is_either_a_registered_write_or_a_registered_read() {
     }
 }
 
-/// 🔴 **围栏在「发往返之前」就出声 —— 这一条判的是顺序，不是存在。**
-///
-/// # 它补的洞
-///
-/// 第三条判据的头注逐字登记着它自己的失效模式，其中一条是：
-///
-/// > 它判「那个名字出现在 `guard_write(` 这一行里」，判不了**求值顺序**
-/// > （先写后判那种写法它看不见）。那一维要的是数据流分析，本仓没有。
-///
-/// 完整的数据流分析本仓确实没有，而**这一刀要的那一维不需要它**：
-/// 围栏要的是「拒绝发生在**拿到连接之前**」，而「拿连接」在这个文件里只有两个出处
-/// （`pool_for` 自己拨/取那条 SSH 连接 · `with_sftp` 从池里借）——
-/// 那是 `sftp_pool.rs` 头注写着的结构事实，不是一张按名字列的白名单。
-/// ⇒ 逐条比**行号**：`guard_write` 第一次出现必须早于它俩第一次出现。
-///
-/// # 为什么这一维值钱
-///
-/// 把 `guard_write(&path)?` 挪到拿连接那一行之后，第三条判据**照样绿**
-/// （那一行还在函数体里），而行为变了：连接拨出去了、通道借走了、
-/// 甚至 `metadata` 那一问已经上过线了，踩线的那条路径才被拒。
-/// `src/doc/INVARIANTS.md` `§1` 的 F47 澄清段逐字要的是「绝无自动/后台写」——
-/// 一条已经上了线的请求，事后再说「我拒绝」不是同一件事。
-///
-/// ⚠ 它钉不了什么：① 同一行里的求值顺序；
-/// ② 围栏与拿连接**之间**新插进来的别的网络动作（本条只比这两个锚点的先后）。
-/// ⇒ 两条都是「行号锚点」这个量具的上限，不是漏掉。
-#[test]
-fn a_fenced_write_refuses_before_it_touches_the_wire() {
-    let pool = std::fs::read_to_string(repo_root().join("src/bridge/src/sftp_pool.rs"))
-        .expect("sftp_pool.rs 读不到");
-    let prod = guard_core::production_code(&pool);
-    let lines: Vec<&str> = prod.lines().collect();
-    // 「拿连接」的两个出处（运行时拼，免得命中本文件自己的说明）。
-    let wire: Vec<String> = [("with_", "sftp("), ("pool_", "for(")]
-        .iter()
-        .map(|(a, b)| format!("{a}{b}"))
-        .collect();
-    let mut checked = 0usize;
-    let mut late = Vec::new();
-    let mut unreached = Vec::new();
-    for cmd in pool_commands() {
-        let Some(start) = lines.iter().position(|l| {
-            let t = l.trim_start();
-            t.starts_with(&format!("pub async fn {cmd}("))
-                || t.starts_with(&format!("pub fn {cmd}("))
-        }) else {
-            panic!("命令 `{cmd}` 的签名找不到 —— 抽取器坏了");
-        };
-        let end = fn_body_end(&lines, start);
-        let body: Vec<&str> = lines[start..end].to_vec();
-        let at_guard = body
-            .iter()
-            .position(|l| l.contains("guard_write(") && !l.trim_start().starts_with("fn "));
-        let at_wire = body
-            .iter()
-            .position(|l| wire.iter().any(|w| l.contains(w.as_str())));
-        let Some(g) = at_guard else {
-            continue; // 不带围栏的是读命令，归上面那条两分判据
-        };
-        checked += 1;
-        match at_wire {
-            None => unreached.push(format!("  sftp_pool.rs::{cmd}")),
-            Some(w) if g >= w => late.push(format!(
-                "  sftp_pool.rs::{cmd} —— 围栏在函数体第 {} 行，拿连接在第 {} 行",
-                g + 1,
-                w + 1
-            )),
-            Some(_) => {}
-        }
-    }
-    // 抽取器自检：人群必须恰好是那七条带围栏的写命令（与两分那条判据同一个数）。
-    assert_eq!(
-        // 〔F7c 收尾 09-24〕8 → 1。〔第四波 S4〕1 → 0：池子零条 Tauri 命令（`pool_commands` 带正控）。
-        //   ⚠ 今天本条的人群是空集、判不了任何东西 —— 它留着是给「池子再长出一条写命令」那一天的。
-        checked,
-        0,
-        "只找到 {checked} 条带围栏的命令（2026-09-21 现打 **8**：远端那七条 ＋ `sftp_download`\n\
-         那一条**本机**落点〔当日补，来历见它的函数注释：三张账首尾相接推诿，末端一句假话〕）\n\
-         —— 抽取器坏了，本条此刻在空转"
-    );
-    // 反空真：「拿连接」那个锚点必须真的在每一条里命中，否则 `g < w` 恒真地过。
-    assert!(
-        unreached.is_empty(),
-        "这几条写命令的函数体里**找不到「拿连接」那个锚点**：\n{}\n\n\
-         ★ 那不是「它不上网」，更可能是本条的锚点过期了 —— \n\
-         池子换了拿连接的写法之后，本条会对**每一条**都恒真地绿。\n\
-         ⇒ 先读 `sftp_pool.rs` 头注那一节（连接分离 + 通道预算），再改锚点。",
-        unreached.join("\n")
-    );
-    assert!(
-        late.is_empty(),
-        "这几条写命令**先拨了线才判围栏**：\n{}\n\n\
-         ★ 第三条判据对这一形是**瞎的**（`guard_write` 那一行还在函数体里，它照样绿）。\n\
-         而行为变了：连接拨出去了、通道借走了、甚至已经问过一次 `metadata`，\n\
-         踩线的那条路径才被拒。\n\
-         ⚠ `src/doc/INVARIANTS.md` `§1` 的 F47 澄清段逐字要的是「绝无自动/后台写」——\n\
-         一条已经上了线的请求，事后再说「我拒绝」不是同一件事。\n\
-         ⇒ 处置：把 `guard_write` 放回函数第一行（两个路径参数的两行都放前面）。",
-        late.join("\n")
-    );
-}
+// 〔FN1 · V119〕这里原来有一条「围栏在发往返之前就出声」（带拒绝那一道的池命令里，拒绝必须早于拿连接）。
+//   自第四波 S4 起它的人群就是零（池子零条命令），FN1 把那道拒绝本身删了 ⇒ 靶子不在，退役。
 
 // ══════════════════════════════════════════════════════════════════════════
 // 🔴 〔RW1 · 第四波 · 2026-09-24〕**monitor 进程不经 SFTP 直写用户文件** —— 远端那一半的分类闭集

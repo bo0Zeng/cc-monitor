@@ -223,7 +223,7 @@ fn write_at(
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。
     let current = read_doc(path)?.unwrap_or_default();
     let merged = store::merge_account_key(&current, id, key);
-    // 同 monitor 那一侧 `creds_store::write_key_at`：同一个合并函数、只改这一条的那一格。
+    // 同一个合并函数、只改这一条的那一格。〔GP1 · 第四波〕本机那一份也由（本机）后端的这一处写，monitor 那侧的写口删了。
     let merged = match base_url {
         Some(url) => store::merge_account_base_url(&merged, id, url),
         None => merged,

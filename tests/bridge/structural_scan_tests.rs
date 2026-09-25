@@ -2499,12 +2499,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "locality_is_derivable_from_destination_today",
             1,
         ),
-        (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
-            "tests/bridge/creds_store_tests.rs",
-            "a_temp_file_is_born_owner_only",
-            1,
-        ),
+        // 〔GP1 · 第四波〕这里原来一行 `creds_store_tests.rs` 点 `a_temp_file_is_born_owner_only` 的存量：
+        //   那段散文随 `KS5` 两条源码判据（切 monitor 写口的函数体）一起走了 —— 写口去了后端。
         (
             // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/bridge/creds_store_tests.rs",
@@ -2705,6 +2701,47 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/bridge/src/event_replay.rs", "keep_tail_only", 1),
         // 〔CF2〕F5 那份重放换成就绪点（`ready_point`）：头注表里 ＋ 新函数的文档里点旧名讲来历。
         ("src/bridge/src/event_replay.rs", "replay_and_mark_ready", 2),
+        // 〔GP1 · 第四波〕F5 对账要按机器分已结束 / 说不清 ⇒ 远端 sid 清单连同 origin 一起交、改名；新函数文档点旧名讲来历。
+        (
+            "src/bridge/src/event_replay.rs",
+            "buffered_remote_session_ids",
+            1,
+        ),
+        // 〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端：monitor 那侧写口（`write_key_at` · `check_base_url`）与
+        //   「本机那一臂不发帧」那条判据退役；讲来历的散文与搬去后端的三条判据的出处各挂一块。
+        (
+            "src/bridge/src/apikey_remote.rs",
+            "the_local_arm_never_sends_the_key_to_a_backend",
+            1,
+        ),
+        (
+            "tests/bridge/apikey_remote_tests.rs",
+            "the_local_arm_never_sends_the_key_to_a_backend",
+            1,
+        ),
+        ("src/bridge/src/creds_store.rs", "check_base_url", 1),
+        ("src/bridge/src/creds_store.rs", "write_key_at", 1),
+        (
+            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "write_key_at",
+            1,
+        ),
+        ("tests/backend/relay/server_tests.rs", "write_key_at", 1),
+        (
+            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "a_program_write_keeps_everything_the_human_put_there",
+            1,
+        ),
+        (
+            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style",
+            1,
+        ),
+        (
+            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "the_write_side_no_longer_targets_the_legacy_top_level_slot",
+            1,
+        ),
         // 🔴 〔RM1f · V108 后半句〕monitor 摘掉内嵌引擎：`panorama.rs` 与它的判据文件删了，三处散文里的旧名挂墓碑。
         ("src/panorama-engine/main.rs", "collect_symbols_in_file", 1),
         (
@@ -2965,6 +3002,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "src/backend/agents/claudecode/paths.rs",
             "is_safe_remote_jsonl",
+            1,
+        ),
+        // 〔FN1 · 第四波 4C · V119〕后端那份会话形状判定不再是写侧围栏，改名成它真在答的那一问（`is_session_record_*`）；
+        //   新名字的文档点两个旧名讲来历（同一行、同一块墓碑）。
+        (
+            "src/backend/agents/claudecode/paths.rs",
+            "is_protected_session_file",
+            1,
+        ),
+        (
+            "src/backend/agents/claudecode/paths.rs",
+            "is_protected_session_path",
             1,
         ),
         ("src/bridge/README.md", "is_safe_remote_jsonl", 1),
@@ -3961,7 +4010,17 @@ fn every_prose_tombstone_mark_is_registered() {
     const REGISTERED: &[(&str, usize)] = &[
         // 〔CF2 · 第四波 4B〕重放缓冲分档取消：头注里旧的登记方法名 ＋ 读数那个旧字段名各一块；
         //   会话流收口成 `subscribe`：头注表里 ＋ `ready_point` 文档里点原来那个重放方法名各一块。
-        ("src/bridge/src/event_replay.rs", 4),
+        ("src/bridge/src/event_replay.rs", 5), // 〔GP1〕+1：远端 sid 清单改名（连同 origin 一起交）那一块
+        // 〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端：monitor 那侧写口 · `platform_fs::make_private` ·
+        //   「本机那一臂不发帧」判据退役，讲来历的散文逐处一块；搬去后端的三条判据的出处各一块。
+        ("src/bridge/src/apikey_remote.rs", 2),
+        ("src/bridge/src/config.rs", 1),
+        ("src/bridge/src/creds_store.rs", 3),
+        ("src/bridge/src/platform_fs.rs", 1),
+        ("tests/backend/accounts/upstream/file_face_tests.rs", 4),
+        ("tests/backend/relay/server_tests.rs", 1),
+        ("tests/bridge/apikey_remote_tests.rs", 1),
+        ("tests/bridge/creds_store_tests.rs", 1),
         // 〔CF2〕`jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
         //   状态消费者矩阵那一行一块。
         ("src/bridge/src/bridge.rs", 1),
@@ -4003,7 +4062,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔RW1 · 第四波 09-24〕本机分叉改成 exec 本机后端 `--fork-session`：本机那一支的头注一块。
         ("src/bridge/src/remote_branch.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔RW1 · 第四波 09-24〕远端删会话那道结构守卫随 F11 改经后端删走了：方向相反那一问的两处说明。
-        ("src/backend/agents/claudecode/paths.rs", 1),
+        ("src/backend/agents/claudecode/paths.rs", 2), // 〔FN1〕+1：会话形状判定改名（`is_session_record_*`），旧名挂一块
         ("src/bridge/src/claude_data_fence.rs", 2),
         ("tests/bridge/history_tests.rs", 11), // 〔RW1〕+2：本机分叉那几组判据换掉时留的块 ·〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // 〔RW1 · 第四波 09-24〕项目 `.mcp.json` 的本机写原语删了（改经后端写）。
@@ -4030,7 +4089,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/verified_write.rs", 3), // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
         ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
         // 〔SR1b〕+2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。
-        ("tests/bridge/remote_write_registry_tests.rs", 12), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删 · 〔SR1b 子步 3〕+2：写点表整张空了，`sftp.rs` 那一对原语（原子上传 · 入口落点类型）的旧名
+        ("tests/bridge/remote_write_registry_tests.rs", 11), // 〔FN1 · V119〕−1：双路径写入口那张表整条判据退役，表里那块墓碑（一个旧池命令名）随之走了 · 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删 · 〔SR1b 子步 3〕+2：写点表整张空了，`sftp.rs` 那一对原语（原子上传 · 入口落点类型）的旧名
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
         ("tests/bridge/backend/control/local_backend_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·
@@ -4064,7 +4123,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 14), // 〔C4c〕+1：记录那一问的 Tauri 命令与答案形状退役，原处留一块 // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端 ·〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("src/bridge/src/launch.rs", 1),
-        ("src/bridge/src/lib.rs", 8), // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
+        ("src/bridge/src/lib.rs", 9), // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
         ("src/bridge/src/local_backend_host.rs", 1),
         ("src/bridge/src/local_origin_registry.rs", 2), // 〔C4c〕+1：分诊债表里账号面那一行还掉了
         ("src/bridge/src/spawn_managed.rs", 2),
@@ -4178,7 +4237,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/settings/backend-section.ts", 1),
         // 〔RN1 · 第四波 4C · V114〕改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
         //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的 V114 那张表按这块标记放行这两行）。
-        ("src/backend/accounts/upstream/mod.rs", 1),
+        // 〔NT2 · V25〕+1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
+        ("src/backend/accounts/upstream/mod.rs", 2),
         ("src/backend/relay/mod.rs", 1),
         ("src/bridge/src/ssh_source.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("src/bridge/src/subagent.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑

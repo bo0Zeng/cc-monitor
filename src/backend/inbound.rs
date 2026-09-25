@@ -841,7 +841,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "relay-status",
         doc_anchor: Some("#### `relay-status`"),
-        codes: &["bad_args"],
+        codes: &["bad_args", "not_ours"],
         fields: &["listening", "port"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -853,7 +853,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "relay-ensure",
         doc_anchor: Some("#### `relay-ensure`"),
-        codes: &["bad_args", "spawn_failed", "unsupported"],
+        codes: &["bad_args", "not_ours", "spawn_failed", "unsupported"],
         fields: &["listening", "pid", "port", "started"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -1362,7 +1362,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-stat",
         doc_anchor: Some("#### `files-stat`"),
         codes: &["bad_path", "unreadable"],
-        fields: &["kind", "mtime_secs", "path", "readonly", "size"],
+        // 〔GP1 · 第四波〕+`mode`（能力 `files.stat` 同拍加的那一格；非 unix 缺席）。
+        fields: &["kind", "mode", "mtime_secs", "path", "readonly", "size"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -1500,7 +1501,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-record",
         doc_anchor: Some("#### `history-record`"),
         codes: &["bad_args"],
-        fields: &["present", "root", "sid"],
+        // 〔GP1 · 第四波〕+`configDir`（可选入参：这次 resume 要用的账号根）。
+        fields: &["configDir", "present", "root", "sid"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)

@@ -2455,7 +2455,7 @@ fn only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix()
     )
     .unwrap();
     assert_eq!(
-        p, "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; ",
+        p, "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/claude-code/acct-a/sid-1'; ",
         "api-key 号的命令没带上中转 base URL —— 那条线还是没接"
     );
     // ② 表里没有这一行（订阅号）⇒ **空串**，命令逐字节与本件之前相同。
@@ -2494,7 +2494,7 @@ fn only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix()
     .unwrap();
     assert_eq!(
         ps,
-        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
+        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/claude-code/acct-a/sid-1'; "
     );
 }
 
@@ -2667,7 +2667,7 @@ fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
     answer(&["acct-a"], true, true);
     let ps = relay_prefix_for_launch(&action, Some(&acct_a)).expect("这一档不该报错");
     assert_eq!(
-        ps, "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; ",
+        ps, "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/claude-code/acct-a/sid-1'; ",
         "\n「这台机是不是 Windows」这个答案没被用上 —— 调用点把那一格写死了。\n\
              生产后果：Windows 上中转前缀渲染成 POSIX 形态（`export …` 塞进 PowerShell 串）\n\
              ⇒ 中转注入在 Windows 上整个失效，而 Windows 运行时行为本件在「判不了」里\n\
@@ -2696,8 +2696,10 @@ fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
     //
     // ⇒ 与 `term` 那条链同一条纪律：**分叉点上的两支都要喂**，不许只买一支。
     let key_seg = |prefix: &str| -> String {
+        // 〔RK1〕钥匙段插在两段单引号之间（`'http://…/'"$(cat …)"'/s/…'`）⇒ 路由那一截是**最后**一段被单引号包住的。
         let url = prefix
             .split('\'')
+            .rev()
             .nth(1)
             .unwrap_or_else(|| panic!("前缀里没有被单引号包住的 URL：{prefix:?}"));
         url.rsplit('/')
@@ -4180,13 +4182,13 @@ fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
     });
     assert_eq!(
         relay_prefix_for_launch(&action, Some(&named)).unwrap(),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/t/claude-code/acct-sub/sid-1'; ",
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/t/claude-code/acct-sub/sid-1'; ",
         "开关开着，订阅号该走 `/t/`"
     );
     // 账号 0 走固定标签；调用方没表态 ⇒ 说不出是哪个号 ⇒ 不注入。
     assert_eq!(
         relay_prefix_for_launch(&action, Some(&LaunchAccount::Base)).unwrap(),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/t/claude-code/0/sid-1'; "
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/t/claude-code/0/sid-1'; "
     );
     assert_eq!(relay_prefix_for_launch(&action, None).unwrap(), "");
 }

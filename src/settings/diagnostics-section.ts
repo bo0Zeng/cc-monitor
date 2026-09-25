@@ -19,6 +19,7 @@ import { withPending } from "./pending";
 import { showActionFailureToast } from "../error-toast";
 import { formatBytes } from "../format";
 import { markRestartNeeded } from "./restart-notice"; // S7：待生效改动的唯一去处
+import { openPath } from "@tauri-apps/plugin-opener";
 
 // C04d 批 4：四个类型换成生成物（源 `logging.rs`）。手写版与生成物**逐字等价**
 // ——这一批零漂移，价值是防将来漂。
@@ -71,6 +72,10 @@ export class DiagnosticsSection {
   private pathSpan!: HTMLSpanElement;
   private sizeSpan!: HTMLSpanElement;
   private openFileBtn!: HTMLButtonElement;
+  /** 〔NT2 · S1〕本机常驻后端（脱离那条载体）的输出：路径 · 大小 · 打开。 */
+  private backendSpan!: HTMLSpanElement;
+  private openBackendBtn!: HTMLButtonElement;
+  private backendPath: string | null = null;
   /** `70 §11.3.3`：读不到当前设置时，原因落在这一块上（不再只进 console）。 */
   private readFailLine!: HTMLElement;
 
@@ -236,6 +241,32 @@ export class DiagnosticsSection {
     sizeRow.appendChild(this.sizeSpan);
     group.appendChild(sizeRow);
 
+    // 5. 〔NT2 · S1 · `15 §4.7 S1`〕本机常驻后端的输出。它脱离 monitor 常驻时没有别的地方可说话
+    //    （拨号的 host key 警告、中转起不来的原因都在它那里）⇒ 它自己落一份有上限、滚动的文件，这里看得到。
+    const backendRow = document.createElement("div");
+    backendRow.className = "settings-row settings-row-stack";
+    const backendLabel = document.createElement("span");
+    backendLabel.className = "settings-label";
+    backendLabel.textContent = "本机后端的输出";
+    backendRow.appendChild(backendLabel);
+    this.backendSpan = document.createElement("span");
+    this.backendSpan.className = "settings-cc-autolaunch-path-value";
+    this.backendSpan.style.fontFamily = "var(--font-mono, monospace)";
+    this.backendSpan.style.fontSize = "11px";
+    this.backendSpan.style.wordBreak = "break-all";
+    this.backendSpan.textContent = "—";
+    backendRow.appendChild(this.backendSpan);
+    this.openBackendBtn = document.createElement("button");
+    this.openBackendBtn.type = "button";
+    this.openBackendBtn.className = "settings-btn settings-btn-secondary";
+    this.openBackendBtn.textContent = "打开";
+    this.openBackendBtn.disabled = true;
+    this.openBackendBtn.addEventListener("click", () =>
+      void withPending(this.openBackendBtn, "打开中…", () => this.openBackendFile()),
+    );
+    backendRow.appendChild(this.openBackendBtn);
+    group.appendChild(backendRow);
+
     const btnRow = document.createElement("div");
     btnRow.className = "settings-cc-profile-buttons";
     this.openFileBtn = document.createElement("button");
@@ -308,9 +339,31 @@ export class DiagnosticsSection {
         this.sizeSpan.textContent = "—";
         this.openFileBtn.disabled = true;
       }
+      // 〔NT2 · S1〕本机后端那一份（新在前；有旧的一份也不列 —— 打开目录就看得见）。
+      const latest = info.backend_stderr[0];
+      if (latest) {
+        this.backendPath = latest.path;
+        this.backendSpan.textContent = `${latest.path}（${formatBytes(latest.size_bytes)}）`;
+        this.backendSpan.title = latest.path;
+        this.openBackendBtn.disabled = false;
+      } else {
+        this.backendPath = null;
+        this.backendSpan.textContent =
+          "（还没有 —— 本机后端跟着 monitor 起停时，它的输出就在上面那份日志里）";
+        this.openBackendBtn.disabled = true;
+      }
     } catch (e) {
       console.warn("get_log_file_info failed:", e);
       this.pathSpan.textContent = `（读不到日志目录：${String(e)}）`;
+    }
+  }
+
+  private async openBackendFile(): Promise<void> {
+    if (!this.backendPath) return;
+    try {
+      await openPath(this.backendPath);
+    } catch (e) {
+      showActionFailureToast("打开本机后端的输出失败", String(e));
     }
   }
 
