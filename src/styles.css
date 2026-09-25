@@ -2164,9 +2164,8 @@
    渲染：浅灰底、黑字、系统边框。那不是"没来得及美化"，是**一处白底控件贴在深色界面上**。
    ⚠ 长相本身在沙箱里验不了（jsdom 无布局无渲染）—— 与 `.session-find` 同一条诚实边界。
    有判据的只有「规则在不在」。
-   ⚠ 声明与 `.tab-archive-toggle` 同族（同一套 token、同样的 2px/8px 小按钮），
-   刻意不抽公共类：那两个按钮住在两个不相干的界面里，抽出来只会让下一个改其中一个的人
-   连带改坏另一个。 */
+   〔AR1〕原先这里说它与归档抽屉的折叠钮「同族、刻意不抽公共类」—— 那颗钮随抽屉删了
+   （`设计/30 §A`），今天它没有同族。 */
 .user-inputs-toggle {
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
@@ -2426,32 +2425,15 @@
   align-items: center;
 }
 
-/* P7a-1（#61）：独立归档区。灰 tab 从主栏挪进这里，要用时点开捞回来。
-   ⚠ 归档区是 #tab-bar 的**兄弟**（TabManager 自己插的），不是它的子元素 ——
-   主栏那条 tear-off 判定线（barEl 的右边界）对它没有意义，故抽屉里的 tab 不挂拖拽。 */
-/* 🔴 S24 止血（三条，逐条都有真引擎读数，见 `tests/evidence/S24-css-readings.md`）：
-   ① `grid-area: archive` —— 认领 `#app` 模板里那条具名行。不认领就开隐式行，
-      后果是「偷消息流 35px + 画到状态栏下面」。
-   ② `width: var(--tab-bar-w)` —— `tabs`/`archive` 那一列是 `auto`（intrinsic），
-      列宽取该列所有 item 的 max-content。抽屉里是会话标题，**实测 3 个归档 tab 就把
-      整列从 150px 撑到 296px**，消息流跟着右移、变窄。抽屉是 tab 栏的附属，
-      宽度就该跟着 `--tab-bar-w`（`#tab-bar-resizer` 的 `left` 也是这么跟的）。
-   ③ `max-height` + `overflow-y` —— `archive` 行是 `auto`，不封顶的话抽屉能把
-      `minmax(0,1fr)` 那行（tab 栏）压到 0。封顶后最坏情况是抽屉自己出滚动条。
-   ⚠ 这一刀**只治「偷高度 + 画错地方」**。归档这个概念整个怎么处置归 `设计/99` 步 17
-     （`设计/30` 三刀），别在这里顺手重做交互。 */
-/* 🔴 S24：`tabs.ts` 现打写着 `archiveWrap.hidden = archived === 0`（逐字注释：
-   「一条都没有就整块不显：一个空抽屉只会占地方」），但上面那条 `display: flex`
-   是**作者层**的，压过 UA 的 `[hidden]{display:none}` ⇒ 那句 `hidden` 一直是空写。
-   实测：0 个归档会话时抽屉照样占 35px。这正是 `styles/tokens.css` 抬头那条
-   「不参与布局用 `hidden` 属性、CSS 里禁止对这些元素写 `display`」要防的形状；
-   既然 `display` 这里必须写，就得把 `[hidden]` 显式补回来。 */
-/* 🔴 〔步 17·A · 2026-09-19〕这里原先有一段 S30 写的说明，讲 `.tab-archive-list`
+/* 🔴 〔步 17·A · 2026-09-19〕这里原先是归档抽屉 `.tab-archive*` 的几条规则，
+   连同三段说明（P7a-1 抽屉是 `#tab-bar` 的兄弟、不挂拖拽 · S24 止血三条：认领 `archive`
+   具名行 / 宽度跟 `--tab-bar-w` / 封顶高度 · S24 `hidden` 被作者层 `display` 盖掉），
+   以及一段 S30 写的说明，讲 `.tab-archive-list`
    的 `hidden` 是空写、归档抽屉的折叠从来没生效、箭头在骗人。
    **那条缺陷随抽屉一起消失了** —— 用户 2026-09-19 逐字「没有归档这个东西，
    不要归档，就是灰 tab。现在的归档是错误的，甚至是 bug 的来源，全部删掉」。
    `设计/30 §A` 抬头本来就写着「已定：删归档抽屉」，这一刀是步 17 的 A。
-   ⚠ `css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD` 里那条登记要一起摘。 */
+   `css-conventions.vitest.ts` 的 `HIDDEN_KNOWN_BAD` 里那条登记同拍摘了（那张表今天是空的）。 */
 
 /* P7a-2 D 补审：拖动排序的落点指示。被拖的那块会插到这个 tab **之前**。
    只搬不指示的话，「拖动排序」是一次盲操作 —— 松手前不知道会落在哪。 */

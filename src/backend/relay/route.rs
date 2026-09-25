@@ -38,9 +38,8 @@
 //! ⚠ **四个槽位一格没动** ⇒ [`segment_is_safe`] 一字不改，`parse` 只多剥一次前缀
 //! （`20 §0`：线格式本来就是对的，要动的只是中转怎么称呼它们）。
 //!
-//! ⚠ **今天没有任何人往 `/t/` 上发流量** —— 注入侧仍然只拼 `/s/`
-//! （`payload.rs::RELAY_ROUTE_SAMPLE`，本文件那条跨半边对拍判据现读它）。
-//! 打开注入是 `99 §4` 的 **14-ii**，而且逐字要求「**必须带开关，默认关**」。
+//! ⚠ `/t/` 的流量挂在全量注入开关后面（默认关，`设计/20 §7` 步 4）。〔US1〕注入哪个地址由上游选择
+//! `accounts/upstream/endpoint.rs` 拼（`relay_route_core::base_url`，与本文件切的是同一份语法）。
 //!
 //! # ⚠ `<account>` 那一段是 `K-H2` 加的，理由与代价逐条记这里
 //!
@@ -89,53 +88,35 @@ impl Route {
     }
 }
 
-/// 一段路由键里允许的字符 —— 白名单，不是黑名单。
+/// 一段路由键里允许的字符 —— 白名单，不是黑名单（ASCII 字母数字与 `-` `_`，1..=128 字节）。
 ///
 /// 收窄到这几类是**故意的**：路由键要参与日志与 tee 行，放开任意字节等于给
-/// 「把控制字符 / 换行塞进 tee 流」开一条路。`.` 与 `/` **不在**白名单里 ⇒
-/// `..` 这种段根本构造不出来。
+/// 「把控制字符 / 换行塞进 tee 流」开一条路。`.` 与 `/` **不在**白名单里 ⇒ `..` 这种段根本构造不出来。
 ///
-/// ★ 它是 `pub(crate)` 的，理由是**同一条性质只许有一个实现**〔`K-H2`〕：
-/// 装路由表的时候要判「这个账号 id 当得了路由段吗」，那与本函数问的是
-/// **同一个问题**。两边各写一份，漂开的那天没有任何东西会说，
-/// 而症状是「文件里配了一条账号，请求永远 404」这种查不出来的形状。
-pub(crate) fn segment_is_safe(seg: &str) -> bool {
-    !seg.is_empty()
-        && seg.len() <= 128
-        && seg
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-}
-
-/// 两个前缀 ＋ 它们各自的模式。**闭集，唯一住址** —— 散文里不许再抄一份
-/// （`brief` 13b）。要印出来就现算这张表。
-const PREFIXES: &[(&str, super::Mode)] = &[
-    ("/s/", super::Mode::Substitute),
-    ("/t/", super::Mode::Passthrough),
-];
+/// ★ 同一条性质只许有一个实现〔`K-H2`〕：装路由表时判「这个账号 id 当得了路由段吗」与本函数问的是同一个问题。
+/// 〔US1 · 4D〕它与两个前缀、拼 / 拆路由一起住共享 crate `relay_route_core`（`设计/20 §5` 目标）：
+/// monitor 那一侧（起会话身份 token · 载荷里中转地址的校验）与这里 `use` 同一份，先前的「两侧各写一份、样例对拍」退役。
+/// 那个 crate 不是业务 crate（没有账号 / 凭据的名字），本文件是通信层成员也可以依赖它（`05 §2` `C2`）。
+pub(crate) use relay_route_core::segment_is_safe;
 
 /// 解析 `/<前缀>/<seg1>/<seg2>/<seg3>/<rest>`。不是这个形状就返回 `None`（调用方回 404）。
 ///
 /// ⚠ 四个槽位**一格没动**（`20 §0`：线格式本来就是对的），动的只是中转怎么称呼它们。
-/// ⇒ `segment_is_safe` 一字不动，`parse` 只是多认一个前缀、并把模式一起交出去。
+/// 〔US1〕前缀闭集与切法住 `relay_route_core::parse_target`（唯一住址）；本函数只把共享 crate 的模式
+/// 换成中转自己的契约类型 `super::Mode`（上游选择收的是它）。
 pub(crate) fn parse(target: &str) -> Option<Route> {
-    let (mode, after) = PREFIXES
-        .iter()
-        .find_map(|(p, m)| target.strip_prefix(p).map(|rest| (*m, rest)))?;
-    let (seg1, after) = after.split_once('/')?;
-    let (seg2, after) = after.split_once('/')?;
-    let (seg3, rest) = after.split_once('/')?;
-    if !segment_is_safe(seg1) || !segment_is_safe(seg2) || !segment_is_safe(seg3) {
-        return None;
-    }
+    let p = relay_route_core::parse_target(target)?;
     Some(Route {
-        mode,
-        key: super::RouteKey {
-            seg1: seg1.to_string(),
-            seg2: seg2.to_string(),
+        mode: match p.mode {
+            relay_route_core::RouteMode::Substitute => super::Mode::Substitute,
+            relay_route_core::RouteMode::Passthrough => super::Mode::Passthrough,
         },
-        stream: seg3.to_string(),
-        rest: format!("/{rest}"),
+        key: super::RouteKey {
+            seg1: p.seg1.to_string(),
+            seg2: p.seg2.to_string(),
+        },
+        stream: p.seg3.to_string(),
+        rest: format!("/{}", p.rest),
     })
 }
 

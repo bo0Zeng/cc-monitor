@@ -76,6 +76,7 @@ const UNIT: &[&str] = &[
     "tests/backend/platform/shell_tests.rs",
     "tests/backend/plugin/probe_tests.rs",
     "tests/backend/relay/http1_tests.rs",
+    "tests/backend/relay/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/backend/relay/tee_tests.rs",
     "tests/backend/relay/upstream_tests.rs",
     "tests/branch-button.vitest.ts",
@@ -93,6 +94,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/crates/codex-token-core/lib_tests.rs",
     "tests/bridge/crates/creds-core/store_tests.rs",
     "tests/bridge/crates/gate-core/lib_tests.rs",
+    "tests/bridge/crates/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
     "tests/bridge/crates/search-core/lib_tests.rs",
     "tests/bridge/crates/shell-quote-core/lib_tests.rs",
     "tests/bridge/filewin/corpus_tests.rs",
@@ -216,6 +218,7 @@ const UNIT: &[&str] = &[
     "tests/views/history-cache.test.ts",
     "tests/views/history-close-stops-retry.vitest.ts",
     "tests/views/history-counted.vitest.ts",
+    "tests/views/history-state-chip.vitest.ts", // 〔AR1〕历史状态词只住 sessionState.*
     "tests/views/history-filter-collapse.vitest.ts",
     "tests/views/history-index-wait.vitest.ts",
     "tests/views/history-prefs.test.ts",
@@ -247,6 +250,7 @@ const SCAN: &[&str] = &[
     "tests/account-base-semantics.vitest.ts",
     "tests/account-chip.vitest.ts",
     "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
+    "tests/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
     "tests/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
     "tests/app-grid-claims.vitest.ts",
@@ -292,8 +296,6 @@ const SCAN: &[&str] = &[
     "tests/backend/relay/bind_guard.rs",
     "tests/backend/relay/creds_guard.rs",
     "tests/backend/relay/framer_tests.rs",
-    "tests/backend/relay/nodelay_guard.rs",
-    "tests/backend/relay/route_tests.rs",
     "tests/backend/relay/table_guard.rs",
     "tests/backend/single_stream_guard.rs",
     "tests/backend/target_parity_guard.rs",
@@ -326,6 +328,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/claude_data_fence_tests.rs",
     "tests/bridge/config_surface_tests.rs",
     "tests/bridge/copy_table_tests.rs",
+    "tests/bridge/creds_store_tests.rs", // 〔US1〕读侧那几条（读真文件）搬去后端 ⇒ 只剩源码扫描（INTEGRATION → SCAN）
     "tests/bridge/crates/acct-core/lib_tests.rs",
     "tests/bridge/crates/copy-core/lib_tests.rs",
     "tests/bridge/crates/creds-core/lib_tests.rs",
@@ -481,6 +484,7 @@ const SCAN: &[&str] = &[
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/upstream/creds_tests.rs",
+    "tests/backend/accounts/upstream/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream/file_face_tests.rs",
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/fake_tests.rs",
@@ -559,7 +563,6 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/chan/chan_tests.rs",
     "tests/bridge/comm_boundary_registry_tests.rs",
     "tests/bridge/crates/creds-core/perm_tests.rs",
-    "tests/bridge/creds_store_tests.rs",
     // 〔GP1 · 第四波〕旧版 `~/.local/bin/ccm` 那一份：替身门在临时目录上真读真删。
     "tests/bridge/ccm_legacy_tests.rs",
     "tests/bridge/data_paths_tests.rs",

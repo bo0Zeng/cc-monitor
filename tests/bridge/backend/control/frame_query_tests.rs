@@ -272,6 +272,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "history-last-accounts",
         "sid → 上次用哪个号起（账号徽章回落 · 带账号 resume 前现读）；从前是 monitor 读那份文件",
     ),
+    // 〔US1 · 第四波 4D〕`05 §14.3` B 组：API key 那两问（`creds.apikey` 读 · `apikey.routing`）—— 后端出成品，界面经 `src/apikey-reads.ts` 问。
+    (
+        "apikey-read",
+        "那台机器上那份凭据文件的状态（只回掩码）：monitor 那条命令（`read_apikey_credentials_status`）本机自己读文件、远端转这一条          —— 本机那一份读者删了，界面按形状严格收（`apikey-reads.ts::decodeApikeyStatus`，跨语言金样 `apikey.golden.json`）。         ⚠ monitor 自己**另有**一处问它（写 key 之前核路径，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那不是替界面转",
+    ),
+    (
+        "apikey-routing",
+        "这几个号在那台的表里有没有行 · 那台的中转在不在：monitor 那条命令（`apikey_routing_for`）本机自己读凭据文件 ＋ 连回环口、         远端转 `apikey-read` 的 `rows` ＋ `relay-status`，再调 `acct-core` 那条规则 —— 人群与判准整个搬进后端（`accounts/upstream/endpoint.rs`），命令删了",
+    ),
     // 〔SU1 · 第四波 4C · V116〕skill 卸的「看」那一半：生来就走通道（没有过 monitor 那一条）。
     (
         "skill-installs",
@@ -357,6 +366,12 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         1,
         "退出臂在决定那一刻现问一次（`backend_policy::kill_on_exit_now`，`设计/01 §3.3b ④`）：\
          monitor 自己要不要跟着收那台后端 —— 它的答案不给界面",
+    ),
+    (
+        "apikey-read",
+        1,
+        "〔GP1 · US1〕写 key 之前核「那台后端写的就是本 monitor 认的那一份」（`apikey_remote::send_key` 只读 `path`，\
+         `CCM_DATA_DIR` 隔离跑时接错后端 ⇒ 拒写）—— 它的答案不给界面",
     ),
     (
         "skill-uninstall-plan",

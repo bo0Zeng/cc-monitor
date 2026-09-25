@@ -1344,13 +1344,9 @@ pub fn run() {
             backend::control::backend_control::backend_stop,
             config::load_config,
             config::save_config,
-            // K-H2a：apikey 表那把 key。**读那条永远只回掩码**（`KS6`）；
-            // 写那条是「界面」这个第二写者，它与人手编是同一份文件的两个写者（`KS10`）。
-            read_apikey_credentials_status,
+            // K-H2a：apikey 表那把 key 的写（`KS10`）。〔US1〕读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
             write_apikey_credentials_key,
-            // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
-            // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
-            apikey_routing_for,
+            // 〔RL1 · US1〕起会话那一发注入哪个中转地址：转交那台后端的成品（`launch-endpoint`）＋ 远端用到才起。
             relay_endpoint_for_launch,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
             // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
@@ -1785,92 +1781,17 @@ pub(crate) fn batch_to_payloads(
     payloads
 }
 
-/// 前端关闭 archived Tab 时调用：从 event_replay 历史里抹掉这个 session，
-/// 防止下次 F5 刷新它原地复活。
-/// `K-H2a` `KS6`：读 apikey 表那把 key 的**状态**。**永远只回掩码，不回明文。**
-///
-/// ★ 这是本件里最要紧的一条：一旦回显，key 就从「只住在后端」变成
-/// 「**每次打开那个界面都往前端传一遍**」⇒ 泄漏面从一次变成无数次，
-/// 每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
-/// ⇒ 返回类型 [`creds_store::ApikeyCredentialsStatus`] **在类型上就装不下明文**，
-/// 由 `the_status_type_cannot_carry_the_plaintext` 钉住。
-///
-/// 〔RM1a · 第四波〕**收 `origin`**：本机读 monitor 自己那一份（原样），远端问那台机器的后端
-/// （`apikey-read`）—— 远端账号页显的从此是**那台机器上**那份文件的状态，不再是本机的。
-/// 回的仍是同一个**装不下明文**的类型。
-#[tauri::command]
-async fn read_apikey_credentials_status(
-    origin: origin::Origin,
-) -> Result<creds_store::ApikeyCredentialsStatus, String> {
-    apikey_remote::status_on(&origin).await
-}
+// 〔US1 · 第四波 4D〕`read_apikey_credentials_status`〔散文墓碑〕退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-read`
+//   （`src/apikey-reads.ts::readApikeyStatus`，本机与远端同一条路），monitor 那一份状态读者与转发一起删。
 
-/// `K-H2b` `KH2B7`：界面问「**这几个本机账号在 apikey 表里有没有行、本机中转在不在跑**」。
-///
-/// # 为什么是一条**只答本机**的命令，而不是往账号列表里加两个字段
-///
-/// 账号列表那份结构（当年的 `accounts::RemoteAccount`〔散文墓碑〕，今天是后端成品 ＋ `src/accounts.ts::Account`）**同时**装着远端账号，
-/// 而「走不走 apikey 端点改写」这件事**只对本机成立** —— 中转是**每台机器自己的一个进程**
-/// （`relay/mod.rs` 自陈「独立进程」；注入的是那个 agent 进程自己的 `ANTHROPIC_BASE_URL`，
-/// 而 `payload::relay_base_url` 拼的是**回环**地址，回环是**自指**的）
-/// ⇒ 本机这一侧**在结构上答不了远端那台**。往那份结构里加字段，
-/// 就是让远端那些行也带上两个这一侧答不出来的值。
-/// 命令面的登记（`apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
-///
-/// # 两个字段各自的射程，别读宽
-///
-/// - `routed`：**这个 configDir 推出来的账号 id 在apikey 凭据表里有一行**。
-///   推 id 的规则只有一份（`history::apikey_account_id_of_dir`），起会话那一侧调的是同一个，
-///   由 `history::tests::the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule` 钉着。
-///   ⚠ 它**不**答「那把 key 能不能用」（要到 claude 那边才知道），
-///   也**不**答「这次拉起会不会真注入」（那还要过 `running` 那一格）。
-/// - `running`：**我们起过本机中转而且没停过**，**不是**「那个口上真有人听」
-///   （`local_backend_host::relay_running` 头注逐字写了那两个分家的窗口）。
-///
-/// ⚠ **本结构刻意不走 `ts-rs`**：`ApikeyCredentialsStatus` 的先例逐字记着理由 ——
-/// 导出会在 `src/generated/` **新增一个文件**，而那个目录的清单由
-/// `tests/generated-boundary-guard.vitest.ts` 逐项等号对拍，那个文件不在本件写区。
-/// ⇒ TS 侧那份是**手写镜像**（`src/accounts.ts::ApikeyRoutingView`），两侧字段名手动同步。
-/// **如实记：这一格今天没有判据对拍**（`ApikeyCredentialsStatus` 那条有，本条没有）。
-#[derive(serde::Serialize, Debug, Clone, Default)]
-#[serde(rename_all = "camelCase")]
-struct ApikeyRouting {
-    /// 传进来的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回，不是 id）。
-    routed: Vec<String>,
-    /// 本机中转在不在跑。射程见上。
-    running: bool,
-}
-
-/// ⚠ **两个事实只从 [`history::inject_facts`] 取**（`D5 阻-1`）：这是那两个取值口的
-/// **第二个**生产消费方（第一个是起会话那一侧的 `history::relay_prefix_for_launch`），
-/// 两处走同一条缝、各有一条行为判据。直接在这里调那两个函数的写法只能靠「文本在不在」来钉，
-/// 而那一形 `D5` 已经打穿了 —— 整段理由住 `history::InjectFactSources` 的头注。
-///
-/// # 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**
-///
-/// 上面「只答本机」那段理由的前提是「本机这一侧在结构上答不了远端那台」—— 今天远端那台的后端
-/// 自己答得了：表里有哪几行（上游选择，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
-/// 两件事**各问各的**（`apikey_remote::rows_on` / `remote_relay::running_on`，两个模块互不引用），
-/// 只在这里拼成一份给界面。本机那一臂两件事都照旧走 [`history::inject_facts`] 那条缝。
-/// 〔RL1〕两台的 `running` 今天是**同一个判准**：「那个口上有人在听」（本机那一格也改成回环连一次）。
-#[tauri::command]
-async fn apikey_routing_for(
-    origin: origin::Origin,
-    config_dirs: Vec<String>,
-) -> Result<ApikeyRouting, String> {
-    let rows = apikey_remote::rows_on(&origin).await?;
-    let running = remote_relay::running_on(&origin).await?;
-    Ok(ApikeyRouting {
-        routed: history::apikey_routed_subset(&config_dirs, &rows, history::launch_agent_id()),
-        running,
-    })
-}
+// 〔US1 · 第四波 4D〕`apikey_routing_for`〔散文墓碑〕与它的答案结构退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-routing`
+//   （`src/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
 
 /// 〔RL1 · 第四波〕**这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址**（`null` = 不注入）。
 ///
 /// 前端拉起远端会话（与本机「就地 resume」那一格）之前问它一次，拿到地址就作为载荷里的一条
-/// `export-relay-base-url` 交给 `render_launch_payload`。判断只在 `payload::relay_endpoint_for` 一处；
-/// 远端那一臂**用到才起**那台的中转（`history::relay_endpoint_on` 头注）。
+/// `export-relay-base-url` 交给 `render_launch_payload`。〔US1〕判断在那台机器的后端（`launch-endpoint` 出成品）；
+/// 这里只转交、照成品执行，远端那一臂**用到才起**那台的中转（`history::relay_endpoint_on` 头注）。
 /// ⚠ 它接替了 RM1a 那条 `relay_ensure(origin)`（零调用方）：「让那台有一个中转」今天只在「要注入」时才发生，
 /// 不再单独暴露给界面。
 #[tauri::command]

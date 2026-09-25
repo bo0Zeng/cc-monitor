@@ -531,6 +531,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔RM1a · 第四波〕上游选择那份凭据文件的两条：同步文件 I/O（读 / 原子写那一份）。
         "apikey-key-set",
         "apikey-read",
+        // 〔US1 · 第四波 4D〕上游选择出的两份成品：读一份凭据文件 ＋ 装一次表 ＋（要注入时）回环上探一次中转，同步阻塞。
+        "apikey-routing",
+        "launch-endpoint",
         // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程。
         "relay-ensure",
         "relay-status",
@@ -623,6 +626,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "panorama",
         "apikey-key-set",
         "apikey-read",
+        "apikey-routing",  // 〔US1〕
+        "launch-endpoint", // 〔US1〕
         "relay-ensure",
         "relay-status",
         "footprint-probe",

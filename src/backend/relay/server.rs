@@ -65,7 +65,9 @@ pub(super) const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
 /// 默认端口。形状抄 `control/cc_bus.rs` 的 `timeout_secs()`：**写死一个默认 + 环境变量能盖**。
 /// 端口被占怎么办本仓零先例 ⇒ 本刀的处置是**起不来就退出并出声**，不自己换端口。
-pub(super) const DEFAULT_PORT: u16 = 8788;
+/// 〔US1 · 4D〕值只住共享 crate `relay_route_core::PORT`（monitor 起本机后端交的 `CCM_RELAY_PORT` 是同一个 const）——
+/// 先前这里与 monitor `payload::RELAY_PORT` 是同一个数的两处写法、零对拍。
+pub(super) const DEFAULT_PORT: u16 = relay_route_core::PORT;
 
 /// 同时在途的下游连接数上限〔回修轮之五 08-25，D3 `阻-3(D3)` 的**做得到的那一半**〕。
 ///

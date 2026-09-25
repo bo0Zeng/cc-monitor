@@ -18,7 +18,7 @@
 import { localApikeyEndpointStateFor, deriveUi, currentWorkingAccount, accountColorsActive, isSelectable, accountStatusBadge, type AccountsState, type Account } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, invalidateAccountsCache } from "./account-reads";
 import { setDefaultName } from "./account-prefs";
-import type { ApikeyRoutingView } from "./apikey-routing-view";
+import type { ApikeyRoutingView } from "./apikey-reads";
 import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { showActionFailureToast } from "./error-toast";
