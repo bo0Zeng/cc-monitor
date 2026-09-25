@@ -11,24 +11,24 @@
 //! 收回来的只有 JSON。⇒ 只钉前三个，「backend 自己链了引擎」这种实现照样绿。
 //!
 //! ★ 本条把那一层变成**静态可判**的形状：一个地址空间要能解析，
-//! 前提是**引擎被链进了它**。⇒ 钉两件事：**谁链**（lock 里有没有那个包）·
-//! **谁取用**（生产段里有几处打开引擎）。
+//! 前提是**引擎被链进了它**。⇒ 本条钉**谁链**（lock 里有没有那个包）；
+//! **谁取用**（生产段里有几处打开引擎）住 monitor 侧 `panorama_seam_registry::engine_port_scope`（见下「取用面不在这里了」）。
 //!
 //! # 今天的读数（就是下面那两张登记表的内容，别在这段散文里复述第二遍）
 //!
-//! 人群 = 本仓今天的三个 `Cargo.lock`（monitor 那棵 · backend 那棵 · 独立全景小程序那棵）+ 三棵源码树的生产段（〔RM1f〕＋小程序那一棵）
-//! + `src/bridge/crates/` 下每个共享 crate 的 manifest。
+//! 人群 = 本仓今天的三个 `Cargo.lock`（monitor 那棵 · backend 那棵 · 独立全景小程序那棵）
+//! + `src/bridge/crates/` 下每个共享 crate 的 manifest。〔TL1〕三棵源码树的生产段那一半随取用面挪走了。
 //!
 //! # ⚠ 它认不出什么（逐条写，别读成全覆盖）
 //!
 //! - **不判「远端那台机器上真起了解析进程」** —— 那半是 `K-R2` 那三个指纹的活，
 //!   而它们自己也只买到「判据形状 + 阴性对照」，没买到端到端真跨机。
 //! - **不判运行期**。静态处数不等于运行期的地址空间数：同一处代码被两个进程各跑一遍，
-//!   照样是两条 SQLite 连接。堵那一格靠的是「backend 这一棵**不许链**」这半，
-//!   不是「处数恰好一处」这半。
+//!   照样是两条 SQLite 连接。堵那一格靠的是「backend 这一棵**不许链**」这半（本条），
+//!   不是「处数恰好一处」那半（`engine_port_scope`）。
 //! - **第三棵树〔RM1c · 第四波〕已经来了，而且登记了**：`src/panorama-engine/`（只装引擎的独立小程序
 //!   `cc-monitor-panorama`，用户 09-24 V108 选 B —— 后端经插件通用调用口按需起它，
-//!   解析发生在**被起的那个进程**里，正是下面正题②失败文案指的那条路）。它自己一份 lock，
+//!   解析发生在**被起的那个进程**里 —— 原正题②失败文案指的就是这条路）。它自己一份 lock，
 //!   进了 [`tests::LOCKS`] 与 [`tests::ENGINE_LINKED_BY`]。
 //!   〔改前原话逐字：「**第三棵树今天不存在** —— S2（本仓自己出一个薄 local_backend crate）
 //!   落地那天会出现一棵新的树、一份新的 lock。」〕
@@ -40,29 +40,27 @@
 //!   不按「文件里出现过这个名字」认 —— 同一条形状让
 //!   `exclude = ["vendor/code-picture-core"]`（那是 workspace 成员身份，不是依赖）
 //!   不会被误读成链接（件文件 `§0c` 逐字点过这两个 `vendor` 字样是两件事）。
-//! - **与 monitor 侧 `panorama_seam_registry` 有一处重叠，如实说**：那边的
-//!   `the_engine_is_opened_in_exactly_one_place` 〔RM1f 起〕只看小程序 `main.rs` 一个文件、
-//!   `the_engine_type_does_not_escape_the_panorama_module` 看 monitor 那一棵树（零导入）。
-//!   本条第三格把「恰好一处」量到**整棵小程序树 ＋ 整棵 monitor 树的生产段**上（超集），
-//!   而本条真正新买的是后端那半与**跨树的链接登记**。
-//!   ⇒ 若 `KW2D4` 落地成「每棵树合起来恰好一处」（`engine_port_scope` 今天已经是这个形状），本条第三格就是第二份真相，
-//!   该合并的是它们，不是各留一半（留给主会话裁）。
+//! - **取用面不在这里了**〔TL1 · 4C · 2026-09-25〕：原先还有两条正题钉「谁取用」（生产段里有几处打开引擎）——
+//!   正题②「backend 那棵树零处」与正题③「小程序那棵树恰一处 ＋ monitor 那棵树零处」
+//!   （后者改名前叫 `the_monitor_tree_keeps_exactly_one_parse_entrance`〔散文墓碑〕）。它们与 monitor 侧
+//!   `panorama_seam_registry::engine_port_scope`（每一棵我们编的树 × 两根针的住址表 == 只有小程序 `main.rs`）
+//!   ＋ `the_engine_is_opened_in_exactly_one_place`（`main.rs` 里恰一次）是**同一件事的两份真相**（本头注原先就写着「该合并的是它们」）。
+//!   `99 §6` 第 13 条现量：六刀（小程序多开一处 · monitor 开一处 / 导入一处 · 后端开一处 / 导入一处 · 小程序零处）里
+//!   凡红②③的，那两条都红 —— ②③没有独占格 ⇒ 删，取用面只剩 monitor 侧那一份（读数在 `调研/第四波记录/TL1.md` 件 2）。
+//!   ⚠ 两条一起删不是顺手：原头注「删任何一格之前先读这一段」说②的「零」要靠③那个「非空的 1」证明采集器没瞎 ——
+//!   只删③，②就成了空真；而 `engine_port_scope` 的「非空」由住址表 == `{全景小程序:main.rs}` 自带。
+//! ⇒ 本条今天只钉**链接面**（谁的 lock 里有引擎 · 哪个共享 crate 声明了引擎依赖），一个性质一个住址。
 //!
 //! # 🔴 删任何一格之前先读这一段（变异实测逼出来的，不是风格）
 //!
-//! backend 那一格断的是**空集**（今天后端一处都没有）⇒ 采集器被打瞎时它**照样绿**。
-//! 09-04 实测：把 [`tests::open_sites`] 改成恒返空集 ⇒ **只有 monitor 那一格红**
-//! （它的期望是**非空的 1**），backend 那一格一声不吭。
-//! ⇒ **这两格必须一起在**：删掉 monitor 那一格，backend 那一格当场退化成空真，
-//! 而退化之后它看起来与守着的时候一模一样。
-//! 同理，[`tests::lock_has_engine`] 被打瞎时接住它的是那条**相等断言**（不是地板）——
+//! [`tests::lock_has_engine`] 被打瞎时接住它的是那条**相等断言**（不是地板）——
 //! 登记表清空或采集器变瞎，两种都让它红，这是**故意的 fail-closed**。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     /// 仓根（`src/backend` 的上级）。
     ///
@@ -82,11 +80,6 @@ mod tests {
             format!("code{d}picture{d}core", d = "-"),
             format!("code{u}picture{u}core", u = "_"),
         )
-    }
-
-    /// 打开引擎那一处的形状。
-    fn open_needle() -> String {
-        format!("Engine{}open", "::")
     }
 
     /// **登记表①**：今天哪几份 `Cargo.lock` 是一个「可能解析代码的地址空间」的账本。
@@ -150,24 +143,6 @@ mod tests {
         key == dashed || key == underscored
     }
 
-    /// 某棵树的生产段里，打开引擎那一处出现了几次（按文件逐个报，好读诊断）。
-    fn open_sites(root: &Path, needle: &str) -> Vec<(String, usize)> {
-        let mut out: Vec<(String, usize)> = Vec::new();
-        for (p, src) in guard_core::scan_tree!(root, &["rs"]) {
-            let rel = p
-                .strip_prefix(root)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let n = guard_core::production_code(&src).matches(needle).count();
-            if n > 0 {
-                out.push((rel, n));
-            }
-        }
-        out.sort();
-        out
-    }
-
     /// ★ 正题①（**链接面**）：引擎只许被链进**登记过的那几个地址空间**。
     ///
     /// 这一格就是第四个指纹的静态形态：链进来 = 能在自己的地址空间里解析。
@@ -200,86 +175,7 @@ mod tests {
              这正是 `KW2D3` 要分开的那两件事（是被起的那个进程解析的，\
              还是宿主自己链着引擎解析的）。先回答「这一侧凭什么需要引擎」，再谈改表。\n\
              **少了的**：引擎搬走了（或那份 lock 挪了位）⇒ 摘登记；\
-             也可能是读法坏了，那样本条与下面两条一起在空转。"
-        );
-    }
-
-    /// ★ 正题②（**取用面 · backend 这一棵**）：backend 的生产段一处都不许打开引擎。
-    ///
-    /// 与上一条**主语不同**，谁也替不了谁：上一条看账本（链没链），本条看代码（取用没取用）。
-    /// 「依赖在、一行都不调」是真会发生的中间态（`K-R2` 实测过：不真调的话 rustc
-    /// 根本不链那个 rlib，量出来是个假的便宜）—— 那时上一条已经红，而本条仍绿；
-    /// 反过来，有人从别处（第三棵树的 re-export）拿到引擎类型时，本条红而上一条可能仍绿。
-    #[test]
-    fn the_backend_tree_never_parses_in_its_own_address_space() {
-        let (_, underscored) = engine_names();
-        let root = crate::guard_support::src_root();
-        let opens = open_sites(&root, &open_needle());
-        assert!(
-            opens.is_empty(),
-            "backend 的生产段里出现了打开引擎那一处：{opens:?}\n\
-             ⇒ 那意味着解析发生在**backend 自己的进程**里，而不是被起的那个进程里。\n\
-             件文件 `§0b` 论据三逐字：monitor 一处 + backend 一处 = **两个进程各持一条连接**，\n\
-             而那正是 `panorama.rs` 自己记着的那条真事故（对同一索引库并发写）。\n\
-             要让后端有全景能力，走**起一个进程**那条路（那条路的账在起进程点表上），\n\
-             不是把引擎链进来。"
-        );
-        // 类型面：引擎类型要跑进来，必然先出现在 `use` 上（monitor 侧那条同形判据的教训 ——
-        // 整词匹配 `Engine` 会误伤字符串字面量里给人看的文案）。
-        let mut importers: Vec<String> = Vec::new();
-        for (p, src) in guard_core::scan_tree!(&root, &["rs"]) {
-            if guard_core::contains_word(&guard_core::production_code(&src), &underscored) {
-                importers.push(
-                    p.strip_prefix(&root)
-                        .unwrap_or(&p)
-                        .to_string_lossy()
-                        .replace('\\', "/"),
-                );
-            }
-        }
-        assert!(
-            importers.is_empty(),
-            "引擎类型进了后端的生产段：{importers:?}\n\
-             ⇒ 同上一段：这一棵树不许在自己的地址空间里解析。"
-        );
-    }
-
-    /// ★ 正题③（**取用面 · 小程序这一棵 ＋ monitor 这一棵**）：解析入口**恰好一处**，住小程序里；monitor 零处。
-    ///
-    /// 它是件文件 `§3` 点名要的那一刀（「合成 monitor 侧多一处解析入口 ⇒ 红」）的落点。
-    /// 〔RM1f · V108 后半句〕`KW2D1` 那个分叉落地了（monitor 摘掉内嵌引擎）：那「恰好一处」搬进了
-    /// `src/panorama-engine/`，monitor 那棵变成**零处**。⚠ 头注「删任何一格之前先读这一段」说的那条
-    /// fail-closed 照旧成立：小程序那一格的期望是**非空的 1**，采集器被打瞎时是它先红，
-    /// backend 与 monitor 那两格的「零」才不是空真。
-    /// 〔改前测试名 `the_monitor_tree_keeps_exactly_one_parse_entrance`〔散文墓碑〕，期望是「monitor 树恰好 1 处」。〕
-    #[test]
-    fn the_engine_program_keeps_exactly_one_parse_entrance_and_the_monitor_none() {
-        let program = repo_root().join("src/panorama-engine");
-        let in_program = open_sites(&program, &open_needle());
-        assert_eq!(
-            in_program.iter().map(|(_, n)| n).sum::<usize>(),
-            1,
-            "全景小程序的生产段里打开引擎的处数不是 1：{in_program:?}\n\
-             **0 处**：取用口又搬走了（或采集器瞎了 —— 那样下面 monitor 那格的「零」是空真）；\
-             **多于 1**：第二处 = 第二条 SQLite 连接（同一索引库并发写的那条真事故）。"
-        );
-        let root = repo_root().join("src/bridge").join("src");
-        let files = guard_core::scan_tree!(&root, &["rs"]);
-        // 反空真：monitor 那棵树读不到（路径挪了 / 只剩几个文件）⇒ 下面会零命中地绿。
-        // 地板 90 · 现打 105（量于本件基点 `d305ffa`）—— 留 15 的余量，
-        // 好让「正当地删掉几个文件」不至于误红；余量再大就挡不住「静默缩水」了。
-        assert!(
-            files.len() >= 90,
-            "monitor 树只扫到 {} 个 `.rs` —— 跨树那一份没读到，本条在空转",
-            files.len()
-        );
-        let opens = open_sites(&root, &open_needle());
-        let total: usize = opens.iter().map(|(_, n)| n).sum();
-        assert_eq!(
-            total, 0,
-            "monitor 树的生产段里又出现了打开引擎那一处（{total} 处）：{opens:?}\n\
-             ⇒ 〔RM1f〕monitor 已经摘掉内嵌引擎（V108 后半句）：本机全景也经本机后端起小程序。\
-             monitor 再开一处 = 解析回到宿主自己的地址空间，而且与小程序那一处是**两条连接**。"
+             也可能是读法坏了，那样本条在空转（下面阴性对照针一那格会先红）。"
         );
     }
 
@@ -320,17 +216,17 @@ mod tests {
         );
     }
 
-    /// ★ 阴性对照：**四根针各单断一格 + 反向不误伤**。
+    /// ★ 阴性对照：**两根针各单断一格 + 反向不误伤**。
     ///
-    /// 为什么要一格一格断：上面四条各有自己的采集器，只喂一个样本的话，
+    /// 为什么要一格一格断：上面两条各有自己的采集器，只喂一个样本的话，
     /// 任何一根悄悄失效都被别的盖住（本仓「N 个独立源只断一次」踩过）。
-    /// ⚠ 它证的是「**这四根针**认得出用这四种形状写的违规样本」，
+    /// 〔TL1〕原先是四根：取用面那两根（处数 · 导入）随正题②③挪走了，它们的正控住 `engine_port_scope` 第二条。
+    /// ⚠ 它证的是「**这两根针**认得出用这两种形状写的违规样本」，
     /// **不是**「本条认得出任何一种把解析搬到本机侧的实现」——
     /// 认不出的那几样逐条写在本模块头注里。
     #[test]
     fn the_locus_guard_actually_bites() {
         let (dashed, underscored) = engine_names();
-        let needle = open_needle();
 
         // ① 针一单断（链接面）：backend 的 lock 里长出引擎那个包 ⇒ 认得出。
         let synthetic_lock = format!("[[package]]\nname = \"{dashed}\"\nversion = \"0.1.0\"\n",);
@@ -372,38 +268,6 @@ mod tests {
                 &underscored
             ),
             "针二把注释行当成了依赖声明"
-        );
-
-        // ③ 针三单断（取用面的计数）：合成「多一处解析入口」⇒ 数得出来是 2。
-        let two_entrances = format!(
-            "fn a() {{ let e = {needle}(&k, o); }}\nfn b() {{ let e2 = {needle}(&k2, o2); }}\n"
-        );
-        assert_eq!(
-            guard_core::production_code(&two_entrances)
-                .matches(needle.as_str())
-                .count(),
-            2,
-            "针三瞎了：合成的第二处解析入口没被数到"
-        );
-        // 反向：注释里的那一处不算（`panorama.rs` 的注释里就写着这个词，
-        // 不剥注释的话 monitor 那一格今天就会红成 5 处）。
-        let commented = format!("// 这里讲的是 {needle} 很轻，不扫描\n");
-        assert_eq!(
-            guard_core::production_code(&commented)
-                .matches(needle.as_str())
-                .count(),
-            0,
-            "针三把注释里的提及数成了取用点"
-        );
-
-        // ④ 针四单断（类型面）：`use` 进来认得出，而字符串里给人看的文案不许误命中。
-        assert!(
-            guard_core::contains_word(&format!("use {underscored}::Engine;"), &underscored),
-            "针四瞎了：引擎类型的导入没被认出来"
-        );
-        assert!(
-            !guard_core::contains_word(&format!("let s = \"{underscored}x\";"), &underscored),
-            "针四把撑大了的词当成了导入 —— 匹配单位比事实小的那一族"
         );
 
         // ⑤ 登记表不许空：空了的话上面那两条相等断言会把「一个都没有」也判绿。

@@ -87,18 +87,18 @@ jobs:
       # 步骤都没有**，它们的 8+4 条测试在 CI 里等于不存在。根因就是没有 `[workspace]`
       # —— 每加一个 crate 都要人记得补三处。**现在补不补由 cargo 自己决定。**
       #
-      # ⚠ `--exclude code-picture-core`：vendor 那个 crate 是成员的 path 依赖，
-      # cargo 会把它也算成 workspace 成员（`[workspace] exclude` 对 path 依赖**不生效**，
-      # 实测）。这里显式排除 ⇒ **不动 vendor 一个字节**（红线），它自己那 25 条测试
-      # 仍由下面那条独立步骤跑。
+      # ⚠ 〔TL1 · 4C〕这里从前带 `--exclude code-picture-core`：vendor 那个 crate 曾是 monitor 的 path 依赖、
+      # cargo 把它算成 workspace 成员（`[workspace] exclude` 对 path 依赖**不生效**，实测），显式排除才不动它。
+      # RM1f 起 monitor 不再依赖它（链它的只剩 `src/panorama-engine`）⇒ 它不再是成员，那条 `--exclude` 只剩一条
+      # cargo warning ⇒ 删了。vendor 自己的测试仍由下面那条独立步骤在 `src/panorama-engine` 里跑。
       - name: cargo fmt --check（整个 workspace）
         run: cargo fmt --all --check
 
       - name: cargo clippy（整个 workspace，vendor 除外）
-        run: cargo clippy --workspace --exclude code-picture-core --all-targets
+        run: cargo clippy --workspace --all-targets
 
       - name: cargo test（整个 workspace，vendor 除外）
-        run: cargo test --workspace --exclude code-picture-core
+        run: cargo test --workspace
 
       # C05（rust-ts-boundary）：**生成物必须最新**。上一步的 `cargo test --workspace` 会跑
       # `ts-rs` 的导出测试、把 `src/generated/**` 重新写一遍；这里断言它与已提交的版本一致。
@@ -195,7 +195,7 @@ jobs:
             librsvg2-dev
 
       - name: cargo test（整个 workspace，vendor 除外；Linux 执行面）
-        run: cargo test --workspace --exclude code-picture-core
+        run: cargo test --workspace
 
   frontend:
     name: Frontend typecheck + build
@@ -722,7 +722,8 @@ jobs:
       #    两条桌面侧 SSH 回落的 builder，回落删净 ⇒ 它连命令串都取不到、跑不起来。
       #    ★ 四处这次是 `e2e_gate_registry::the_suite_count_is_the_same_number_in_all_four_places`
       #    当场逮出来的（我先只改了 `echo` 那一处）—— **那条判据买的正是这一刻。**
-      # G-A **覆盖面地板**：19 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
+      # G-A **覆盖面地板**：20 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
+      #      〔TL1 · 4C〕19 → 20：`p3t-local-tmux` 接回执行链（四处一起改）。
       #      〔用量下线 09-18〕20 → 19：删了 `usage-probe`。⚠ 这是那个数的**第四份** ——
       #      判据自己警告过「同一个数在 `ci.yml` 里存了四份，别只改报错的那一处」，本次就是漏跟这一份。
       # （U0 2026-08-01 订正：本行与下面 `:313` 原写「8」，是 E82 订正下方散文时漏跟的两处，
@@ -820,7 +821,7 @@ jobs:
       #      那一格同一笔账：**先得有人在跑这把尺子，地板定多少才谈得上是不是判据。**
       #    ⚠ 那次「涨了而地板没跟」的活体就在上面几行（`D1` 实得 173 / 地板 126，绿着挂了一整拍）
       #      —— `exact` 治的正是它，但**只在 `gate.sh` 那 4 条上治住了**。**4/23。**
-      - name: G-A/G-C 覆盖面地板（19 套真机套件都必须带断言数地板）
+      - name: G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）
         run: |
           set -euo pipefail
           # 只数**真正的调用行**（`run: bash tests/e2e/…`）——本步骤自己那几行 grep 也含这个脚本名，
@@ -829,7 +830,7 @@ jobs:
           echo "带地板的 e2e 步骤数 = ${N:-0}"
           # **2026-08-13 P0b-Y2 棘到 21**：两套新增的全链前置套件此前是**裸 `run:`**——
           # 没有地板 ⇒ 断言被删空照样绿，正是这套机制立起来要防的那件事（我自己刚犯了一次）。
-          [ "${N:-0}" -ge 19 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 19）——有套件被改回裸 npm run 或被删掉"; exit 1; }
+          [ "${N:-0}" -ge 20 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 20）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
           #
           # 🔴🔴 **读这张清单之前先读这四行 —— 这里是本仓「同一个量不许两处各写一份」
@@ -883,11 +884,11 @@ jobs:
                       "ccm-rbind-title 8" "backend-fork 10" "inbound-frames 33" \
                       "ccm-contract-parity 45" "backend-gate2 34" "local-backend 14" \
                       "backend-sessions-rewatch 5" "backend-tmux-late-server 2" \
-                      "cc-bus-queue-drain 43" "backend-cc-bus 50"; do
+                      "cc-bus-queue-drain 43" "backend-cc-bus 50" "p3t-local-tmux 10"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
-          echo "19 套逐个对上（套件名 + 地板值）"  # 〔`K-R48` 第二拍〕23 → 21：删了 ccm-acceptance / ccm-pretrust；〔`K-R72`〕21 → 20：删了 tmux-guarded；〔用量下线 09-18〕20 → 19：删了 usage-probe
+          echo "20 套逐个对上（套件名 + 地板值）"  # 〔TL1〕19 → 20：接回 p3t-local-tmux；〔`K-R48` 第二拍〕23 → 21：删了 ccm-acceptance / ccm-pretrust；〔`K-R72`〕21 → 20：删了 tmux-guarded；〔用量下线 09-18〕20 → 19：删了 usage-probe
 
       - name: exec-bit guard (src/shared/** shebang files must be 100755 in git)
         run: bash tests/e2e/exec-bit-guard.sh
@@ -1221,6 +1222,15 @@ jobs:
       # 它要的 debug backend 上面那步已经编好了。
       - name: backend 分叉（G2 `--fork-session`）
         run: bash tests/e2e/assert-pass-floor.sh backend-fork 10
+
+      # 〔TL1 · 4C · 2026-09-25〕本机拉起真的建出 tmux 会话（`P3t-Y5`）：这套从前**只有脚本、没有任何执行链引用**
+      #    （不在 `package.json` ⇒ 这张地板表与 `e2e_gate_registry` 都看不见它；TQ1 现打逮到）。4C 现打 10 过 / 0 败 ⇒ 接回。
+      #    它要上面那步编好的 debug backend（软链成 `ccm`）＋ 本 job 装的 tmux；命令串取自 monitor 那条
+      #    `#[ignore]` 渲染出口（`history_tests.rs` 那一条，要 `src/bridge` 的测试编译 —— 本 job 本来就编）。
+      #    ⚠ 它跑在 `bash -lic` 里（生产送法）：runner 的登录 shell 若把 PATH 重排到 shim 前面，脚本顶上两道前置会 ABORT（退出码 2），
+      #      不会降级去起真 claude 或打到别的 tmux server —— 那一红是环境的，不是被测对象的。真 runner 上没跑过（本机现打）。
+      - name: 本机拉起真建出 tmux 会话（P3t-Y5）
+        run: bash tests/e2e/assert-pass-floor.sh p3t-local-tmux 10
 
       # 🔴 **2026-09-09 `CI-J1`：下面三套是从 `e2e-tmux` **搬**过来的，不是新增。**
       #    三条调用行（套件名 + 地板值）**逐字未动**，只换了住的 job。它们要的
