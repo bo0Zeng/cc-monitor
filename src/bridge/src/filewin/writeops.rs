@@ -84,11 +84,15 @@
 //!   ⇒ 「N 个只问一次」这条性质由 [`run_writes`] 自己的判据按 `N > 1` 喂，
 //!   而**生产路径上今天喂不出 N > 1**。如实记成一条边界：本刀买的是
 //!   「多选长出来那天，它自动落在一次问完这条路上」，不是「今天已经多选了」。
-//! - **目录递归删除没做**：`sftp_delete` 的 `is_dir` 走的是 `remove_dir`
-//!   （只删空目录，非空由服务端报错）。递归要一条新的池命令，不在本刀写区。
-//! - **改权限没有「当前是多少」可显示**：[`super::source::Row`] 里没有 mode
-//!   （`SftpEntry` 也没有）⇒ 那个框**空着开**，刻意不预填一个猜出来的值
-//!   （预填错了而用户直接点确认 = 静默改坏权限）。
+//! - ✅〔FW5 · 第四波〕~~目录递归删除没做~~：删**目录**现在带 `recursive: true` 走后端
+//!   `files-delete`（连同里面全部内容；后端逐条目过围栏，树里藏着会话文件 ⇒ 整趟拒）。
+//!   原话「`sftp_delete` 的 `is_dir` 走的是 `remove_dir`，递归要一条新的池命令」是 SFTP 那一版的事。
+//! - **改权限没有「当前是多少」可显示**：[`super::source::Row`] 里没有 mode，
+//!   〔FW5 现打〕后端 `files-ls` / `files-stat` 两条读口也都不送权限位 ⇒ 那个框**空着开**，
+//!   刻意不预填一个猜出来的值（预填错了而用户直接点确认 = 静默改坏权限）。补读口在后端 `files/mod.rs`，已报备。
+//! - ✅〔FW5〕~~多选只有删除~~：多选也给「权限」（一个框、一个八进制数、出 N 件、一次问完）。
+//! - ✅〔FW5〕~~有损名一律不许写~~：带着原始字节（`Listed::raw_name`）的有损名能改名 · 删除 · 改权限（相对段发 b16）；
+//!   **进一个有损名的目录 · 复制 / 下载 / 编辑有损名**仍然做不到（那几条用的是整条路径字符串，要把窗口的路径换成字节，单独一刀）。
 //! - **往外拖（`sftp_download`）与文本编辑（`sftp_read_text_for_edit`〔散文墓碑〕 /
 //!   `sftp_write_text`）不在本刀射程里**，登记在此：前者是另一个交互题（选目标目录），
 //!   后者要一个编辑器面，而 `设计/60 §5.4b`（大文件编辑改流式）至今没做、形状没定。
@@ -109,7 +113,7 @@ use std::sync::{Arc, Mutex};
 
 use super::source::{parent_dir, remote_basename, Line, Origin};
 
-use super::source::Row;
+use super::source::Listed;
 
 /// 行上／工具栏上那几颗按钮的字面。**唯一住址** —— 判据按同一个常量去找它画出来的字。
 pub const MKDIR_LABEL: &str = "新建目录";
@@ -124,15 +128,32 @@ pub const CHMOD_LABEL: &str = "权限";
 /// 列表画不画那三颗按钮（[`super::rows`]）与状态机接不接那一跳
 /// （[`super::shell::FileWindow::begin_rename`] 那一族），问的都是这一个函数。
 ///
-/// 一档不能：**有损名** —— 非 UTF-8 文件名经库有损解码之后**寻址不到真字节**
-/// （同旧面板 `panel.ts::mkRowBtn` 的 `disabled = e.lossyName`）。
+/// 一档不能：**有损名而且手上没有它的原始字节** —— 非 UTF-8 文件名经库有损解码之后
+/// 那个字符串**寻址不到真字节**（同旧面板 `panel.ts::mkRowBtn` 的 `disabled = e.lossyName`）。
 /// 拿一个含 U+FFFD 的名字去删，删中的是**另一个**文件，或者什么都删不中。
+///
+/// 🔴〔FW5 · 第四波〕**有损名但带着原始字节**（[`Listed::raw_name`]，后端 `files-ls` 送的就是字节）
+/// ⇒ **能写**：发给后端的相对段走 `{"b16": …}`（[`rel_json`]），寻址的是那几个真字节，不是显示串。
+/// 此前这一档一律灰置 —— 乱码名的文件在窗口上改不了名、删不掉，而「改成一个读得出的名字」正是它最常要的那一下。
 ///
 /// ⚠ 与 [`super::copy::is_copyable`] **刻意不是同一个函数**：目录**能**改名 /
 /// 删除 / 改权限，但**不能**零流量复制（`copy-data` 吃的是文件句柄）。
 /// 合成一个就得让目录那一档在四个按钮上做不同的事，而那正是「一个函数两种语义」。
-pub fn is_writable(r: &Row) -> bool {
-    !r.lossy_name
+pub fn is_writable(r: &Listed) -> bool {
+    !r.lossy_name || r.raw_name.is_some()
+}
+
+/// 〔FW5〕一个名字发给后端写面时的形状：有原始字节 ⇒ `{"b16": …}`；否则就是那个字符串。
+///
+/// 🔴 **有损名只许走字节那一支** —— 把显示串（含 U+FFFD）发过去就是对另一个名字动手；
+/// 这一条由 [`is_writable`] 在上游挡（有损而没有字节 ⇒ 不许写），这里不再兜第二份判定。
+pub fn rel_json(shown: &str, raw: Option<&[u8]>) -> serde_json::Value {
+    match raw {
+        Some(b) => {
+            serde_json::json!({ super::find::HEX_KEY: b.iter().map(|x| format!("{x:02x}")).collect::<String>() })
+        }
+        None => serde_json::Value::String(shown.to_string()),
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -142,16 +163,33 @@ pub fn is_writable(r: &Row) -> bool {
 /// 一件待做的写操作。**刻意是封闭枚举** —— 多出第五种就得回来论证
 /// （而且要同拍进那张「窗口用了池子哪几条命令」的登记，见
 /// `remote_write_registry_tests.rs::the_file_window_uses_exactly_the_pool_commands_it_registers`）。
+///
+/// 〔FW5〕`raw` = 那一项**名字**（`path` / `from` 的尾段）的原始字节，只在有损名时是 `Some`。
+/// 它是操作的一部分（进 `PartialEq`）：两个不同字节的有损名可能解成**同一个**显示串，
+/// 少了它，两件操作在「一次问完」那一步里分不开（`allowed.contains` 会认错）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WriteOp {
     /// 在当前目录里新建一个目录。
     Mkdir { path: String },
-    /// 删一项。`is_dir` 分 `rmdir` / `rm`（同 `sftp_delete` 的签名）。
-    Delete { path: String, is_dir: bool },
-    /// 同一个目录里改名。
-    Rename { from: String, to: String },
+    /// 删一项。〔FW5〕`is_dir` ⇒ **连同里面全部内容**（后端 `files-delete` 带 `recursive: true`，
+    /// 逐条目过围栏，树里藏着会话文件 ⇒ 整趟拒）；文件 / 链接 ⇒ 只删它自己。
+    Delete {
+        path: String,
+        is_dir: bool,
+        raw: Option<Vec<u8>>,
+    },
+    /// 同一个目录里改名。`raw` 是 `from` 的尾段字节（`to` 是框里敲的，恒 UTF-8）。
+    Rename {
+        from: String,
+        to: String,
+        raw: Option<Vec<u8>>,
+    },
     /// 改权限位。`mode` 是 unix mode 的低 12 位。
-    Chmod { path: String, mode: u32 },
+    Chmod {
+        path: String,
+        mode: u32,
+        raw: Option<Vec<u8>>,
+    },
 }
 
 impl WriteOp {
@@ -167,7 +205,7 @@ impl WriteOp {
             WriteOp::Mkdir { path } => vec![path.as_str()],
             WriteOp::Delete { path, .. } => vec![path.as_str()],
             WriteOp::Chmod { path, .. } => vec![path.as_str()],
-            WriteOp::Rename { from, to } => vec![from.as_str(), to.as_str()],
+            WriteOp::Rename { from, to, .. } => vec![from.as_str(), to.as_str()],
         }
     }
 
@@ -175,12 +213,12 @@ impl WriteOp {
     pub fn label(&self) -> String {
         match self {
             WriteOp::Mkdir { path } => format!("新建目录 {path}"),
-            WriteOp::Delete { path, is_dir } => {
-                let kind = if *is_dir { "目录" } else { "文件" };
-                format!("删除{kind} {path}")
-            }
-            WriteOp::Rename { from, to } => format!("改名 {from} → {to}"),
-            WriteOp::Chmod { path, mode } => format!("改权限 {path} → {mode:o}"),
+            WriteOp::Delete {
+                path, is_dir: true, ..
+            } => format!("删除目录 {path}（连同里面全部内容）"),
+            WriteOp::Delete { path, .. } => format!("删除文件 {path}"),
+            WriteOp::Rename { from, to, .. } => format!("改名 {from} → {to}"),
+            WriteOp::Chmod { path, mode, .. } => format!("改权限 {path} → {mode:o}"),
         }
     }
 
@@ -318,11 +356,18 @@ pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<
             "files-mkdir",
             serde_json::json!({ "root": parent_dir(path), "rel": remote_basename(path) }),
         ),
-        WriteOp::Delete { path, .. } => (
-            "files-delete",
-            serde_json::json!({ "root": parent_dir(path), "rel": remote_basename(path) }),
-        ),
-        WriteOp::Rename { from, to } => {
+        // 〔FW5〕目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过围栏）；文件 ⇒ 不带（射程同此前）。
+        WriteOp::Delete { path, is_dir, raw } => {
+            let mut a = serde_json::json!({
+                "root": parent_dir(path),
+                "rel": rel_json(remote_basename(path), raw.as_deref()),
+            });
+            if *is_dir {
+                a["recursive"] = serde_json::Value::Bool(true);
+            }
+            ("files-delete", a)
+        }
+        WriteOp::Rename { from, to, raw } => {
             let root = parent_dir(from);
             if parent_dir(to) != root {
                 return Err(format!("{} 只能在同一个目录里改名", op.label()));
@@ -331,19 +376,44 @@ pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<
                 "files-rename",
                 serde_json::json!({
                     "root": root,
-                    "from": remote_basename(from),
+                    "from": rel_json(remote_basename(from), raw.as_deref()),
                     "to": remote_basename(to),
                 }),
             )
         }
-        WriteOp::Chmod { path, mode } => (
+        WriteOp::Chmod { path, mode, raw } => (
             "files-chmod",
-            serde_json::json!({ "root": parent_dir(path), "rel": remote_basename(path), "mode": mode }),
+            serde_json::json!({
+                "root": parent_dir(path),
+                "rel": rel_json(remote_basename(path), raw.as_deref()),
+                "mode": mode,
+            }),
         ),
     };
-    super::source::ask(line, origin, cmd, &args, WRITE_BUDGET)
+    super::source::ask(line, origin, cmd, &args, budget_for(op))
         .await
         .map(|_| ())
+}
+
+/// 〔FW5〕这一件的往返上限：删目录（整棵树）放宽到 [`TREE_BUDGET`]，其余照旧 [`WRITE_BUDGET`]。
+pub fn budget_for(op: &WriteOp) -> std::time::Duration {
+    match op {
+        WriteOp::Delete { is_dir: true, .. } => TREE_BUDGET,
+        _ => WRITE_BUDGET,
+    }
+}
+
+/// 〔FW5〕删一整棵树的往返上限。后端那一趟在阻塞档（开跑之后打不断），上限十万条、
+/// 每条两次围栏 ⇒ 给它比单件写宽一档的等待；**这个数只管「窗口等多久」**，不管后端跑多久。
+pub const TREE_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// 〔FW5〕删这一行的那一件（有损名带着原始字节）。窗口上「删除」那一跳（单删 · 批量删）只经这一处拼。
+pub fn delete_op(r: &Listed) -> WriteOp {
+    WriteOp::Delete {
+        path: r.path.clone(),
+        is_dir: r.is_dir,
+        raw: r.raw_name.clone(),
+    }
 }
 
 /// 写面一件的往返上限（调用方给的期限，`05 §3.3.2`：说法归调用方）。
@@ -363,10 +433,17 @@ pub const WRITE_BUDGET: std::time::Duration = std::time::Duration::from_secs(20)
 pub enum PromptKind {
     /// 在 `dir` 里新建一个目录，框里输的是名字。
     Mkdir,
-    /// 把 `from` 改成同一个目录里的另一个名字。
-    Rename { from: String },
-    /// 把 `path` 的权限改成框里那个八进制数。
-    Chmod { path: String },
+    /// 把 `from` 改成同一个目录里的另一个名字（`raw` = `from` 尾段的原始字节，有损名才有）。
+    Rename { from: String, raw: Option<Vec<u8>> },
+    /// 〔FW5〕把**这几项**的权限改成框里那个八进制数（一项 = 单改；N 项 = 批量改，一次问完）。
+    Chmod { targets: Vec<ChmodTarget> },
+}
+
+/// 〔FW5〕改权限那个框里的一项：路径 ＋ 名字的原始字节（有损名才有）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChmodTarget {
+    pub path: String,
+    pub raw: Option<Vec<u8>>,
 }
 
 /// 「要什么名字 / 改成什么权限」那个框 —— **UI 线程自己的状态**，
@@ -395,10 +472,14 @@ impl WritePrompt {
     }
 
     /// 改名那个框 —— 缺省填**原名**（同旧面板 `panel.ts::rename` 的 `prompt(…, e.name)`）。
-    pub fn for_rename(dir: &str, r: &Row) -> Self {
+    ///
+    /// 〔FW5〕有损名缺省填的是**显示串**（含 U+FFFD）：用户要的正是把它改成一个读得出的名字；
+    /// 寻址旧名走 `raw` 那几个真字节，不走这个显示串。
+    pub fn for_rename(dir: &str, r: &Listed) -> Self {
         Self {
             kind: PromptKind::Rename {
                 from: r.path.clone(),
+                raw: r.raw_name.clone(),
             },
             dir: dir.to_string(),
             src_name: r.name.clone(),
@@ -408,13 +489,33 @@ impl WritePrompt {
 
     /// 改权限那个框 —— **空着开**。理由住本模块头注最后一节
     /// （列表里没有 mode 可读，预填一个猜出来的值而用户直接点确认 = 静默改坏权限）。
-    pub fn for_chmod(dir: &str, r: &Row) -> Self {
+    ///
+    /// 🔴〔FW5〕「显示现值」**今天做不到**：后端 `files-ls` / `files-stat` 两条读口都不送权限位
+    /// （现打两条的 `fields`），窗口没有任何一条路拿得到它；补读口在后端 `files/mod.rs`，不在本路写区，已报备。
+    pub fn for_chmod(dir: &str, r: &Listed) -> Self {
+        Self::for_chmod_many(dir, &[r])
+    }
+
+    /// 〔FW5〕**批量改权限**那个框：N 项共用一个八进制数，出 N 件，走「一次问完」。
+    ///
+    /// ⚠ 空摞 ⇒ 一个 `targets` 为空的框（[`Self::to_ops`] 会拒它，不会出零件却说「做完了」）。
+    pub fn for_chmod_many(dir: &str, rows: &[&Listed]) -> Self {
         Self {
             kind: PromptKind::Chmod {
-                path: r.path.clone(),
+                targets: rows
+                    .iter()
+                    .map(|r| ChmodTarget {
+                        path: r.path.clone(),
+                        raw: r.raw_name.clone(),
+                    })
+                    .collect(),
             },
             dir: dir.to_string(),
-            src_name: r.name.clone(),
+            // 多项时框上那一行按件数说（[`Self::heading`]），不拼名字。
+            src_name: match rows {
+                [one] => one.name.clone(),
+                _ => String::new(),
+            },
             text: String::new(),
         }
     }
@@ -424,42 +525,67 @@ impl WritePrompt {
         match &self.kind {
             PromptKind::Mkdir => "在这个目录里新建一个目录，叫：".to_string(),
             PromptKind::Rename { .. } => format!("把 {} 改名为：", self.src_name),
+            PromptKind::Chmod { targets } if targets.len() > 1 => {
+                format!("把这 {} 项的权限改成（八进制）：", targets.len())
+            }
             PromptKind::Chmod { .. } => format!("把 {} 的权限改成（八进制）：", self.src_name),
         }
     }
 
-    /// 框里那几个字变成一件真操作。
+    /// 框里那几个字变成**恰好一件**真操作（批量改权限那一形请走 [`Self::to_ops`]）。
     ///
     /// # Errors
     ///
     /// 回的是**一句给用户的话**（调用方据此出声，且把框留着）——
     /// 静默收掉的话，用户点了确认什么都没发生，与成功长得一模一样。
     pub fn to_op(&self) -> Result<WriteOp, String> {
+        let mut ops = self.to_ops()?;
+        match ops.len() {
+            1 => Ok(ops.remove(0)),
+            n => Err(format!("这个框一次出 {n} 件，不是一件")),
+        }
+    }
+
+    /// 〔FW5〕框里那几个字变成**这一摞**真操作：新建目录 / 改名恒一件；改权限 = 框里那几项各一件。
+    ///
+    /// # Errors
+    ///
+    /// 同 [`Self::to_op`]：一句给用户的话，框留着。
+    pub fn to_ops(&self) -> Result<Vec<WriteOp>, String> {
         let t = self.text.trim();
         match &self.kind {
             PromptKind::Mkdir => {
                 let name = clean_name(t)?;
-                Ok(WriteOp::Mkdir {
+                Ok(vec![WriteOp::Mkdir {
                     path: join_remote(&self.dir, &name),
-                })
+                }])
             }
-            PromptKind::Rename { from } => {
+            PromptKind::Rename { from, raw } => {
                 let name = clean_name(t)?;
                 let to = join_remote(&self.dir, &name);
-                if &to == from {
+                // ⚠ 有损名：显示串相等不等于名字没变（旧名的真字节不是这几个字）⇒ 只对无损名判「就是原名」。
+                if &to == from && raw.is_none() {
                     return Err(format!("「{name}」就是它现在的名字 —— 改名没有要改的东西"));
                 }
-                Ok(WriteOp::Rename {
+                Ok(vec![WriteOp::Rename {
                     from: from.clone(),
                     to,
-                })
+                    raw: raw.clone(),
+                }])
             }
-            PromptKind::Chmod { path } => {
+            PromptKind::Chmod { targets } => {
                 let mode = parse_mode(t)?;
-                Ok(WriteOp::Chmod {
-                    path: path.clone(),
-                    mode,
-                })
+                if targets.is_empty() {
+                    return Err("没有要改权限的项".to_string());
+                }
+                Ok(targets
+                    .iter()
+                    .map(|c| WriteOp::Chmod {
+                        path: c.path.clone(),
+                        mode,
+                        raw: c.raw.clone(),
+                    })
+                    .collect())
             }
         }
     }

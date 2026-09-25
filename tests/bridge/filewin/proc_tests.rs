@@ -65,17 +65,22 @@ fn synthetic_request() -> OpenRequest {
                 },
                 link: true,
                 mtime_secs: Some(1_700_000_000),
+                raw_name: None,
             },
-            Listed::plain(Row {
-                // 🔴 有损那一格**必须进种子对拍**：它是一个**事实**（那串字节不是合法
-                //    UTF-8），而 JSON 只装得下 `String` ⇒ 不把这一格带过去，
-                //    窗口那侧就会把一个有损名字画成一个正常名字。
-                name: "坏\u{FFFD}名字".to_string(),
-                path: "/home/user/带空格 的目录/坏\u{FFFD}名字".to_string(),
-                is_dir: false,
-                size: 4_097,
-                lossy_name: true,
-            }),
+            Listed {
+                // 〔FW5〕有损名的**原始字节**也要过这条边界：丢了它，窗口那侧这一行退回「不许写」。
+                raw_name: Some(b"\xe5\x9d\x8f\xff\xe5\x90\x8d\xe5\xad\x97".to_vec()),
+                ..Listed::plain(Row {
+                    // 🔴 有损那一格**必须进种子对拍**：它是一个**事实**（那串字节不是合法
+                    //    UTF-8），而 JSON 只装得下 `String` ⇒ 不把这一格带过去，
+                    //    窗口那侧就会把一个有损名字画成一个正常名字。
+                    name: "坏\u{FFFD}名字".to_string(),
+                    path: "/home/user/带空格 的目录/坏\u{FFFD}名字".to_string(),
+                    is_dir: false,
+                    size: 4_097,
+                    lossy_name: true,
+                })
+            },
         ],
         reveal: Some("坏\u{FFFD}名字".to_string()),
         handoff: synthetic_handoff(),

@@ -29,10 +29,11 @@
 //! 每一帧只问「这一行被选中了吗」（[`Selection::is_picked`]，一次 `BTreeSet` 查找），
 //! 而且只问那几十行真被画出来的（虚拟滚动，`rows.rs` 头注那条纪律）。
 //!
-//! # 三、批量只有「删除」一条，理由逐条
+//! # 三、批量有「删除」「权限」两条，理由逐条
 //!
 //! `writeops::run_writes` 吃的是 `Vec<WriteOp>`（「批量底层已做好」说的就是它）：
-//! 围栏 → **一次问完** → 串行做。N 件删除正好是它的形状。
+//! 围栏 → **一次问完** → 串行做。N 件删除正好是它的形状；〔FW5〕N 件改权限也是
+//! （框里输**一个**八进制数，出 N 件，确认框逐件列出）。
 //! 另外几件**刻意是单选**：
 //!
 //! | 动作 | 为什么只对一项 |
@@ -41,7 +42,13 @@
 //! | 复制 | 「复制为」那个框要**一个**新名字 |
 //! | 下载 | 「存到哪儿」那一问按**一份**文件问（`download::Ask::for_row`）|
 //! | 改名 | 要**一个**新名字 |
-//! | 权限 | 那个框今天按**一行**摆（`writeops::WritePrompt::for_chmod`）；批量改权限要给那个框换形状，而 `writeops.rs` 不在本路写区 ⇒ **没做**，如实登记 |
+//! | ~~权限~~ | 〔散文墓碑〕〔FW5 · 第四波〕原话「那个框今天按**一行**摆；批量改权限要给那个框换形状，而 `writeops.rs` 不在本路写区 ⇒ **没做**」—— 框换成了 N 行（`writeops::WritePrompt::for_chmod_many`），**已做** |
+//!
+//! # 四、〔FW5〕选中态的键：有损名按**原始字节**记
+//!
+//! 两个不同字节的有损名（`a\xff` 与 `a\xfe`）解出来是**同一个**显示串 `a�`。按显示串记选中，
+//! 点一个就等于选中两个 —— 删一个删掉两个。⇒ 选中态的键走 [`pick_key`]：无损名 = 名字本身；
+//! 有损名 = `\0b16:<十六进制>`（名字里不可能有 NUL，与任何真名字都撞不上）。
 
 use std::collections::BTreeSet;
 
@@ -50,6 +57,19 @@ use super::download::is_downloadable;
 use super::editor::is_editable;
 use super::source::Listed;
 use super::writeops::is_writable;
+
+/// 〔FW5〕一行在选中态里的**键**（理由住本模块头注 §四）。
+///
+/// ⚠ 无损名回借用（每帧对每一行真被画出来的行问一次 —— 那几十行不分配）；有损名才拼一个串。
+pub fn pick_key(r: &Listed) -> std::borrow::Cow<'_, str> {
+    match &r.raw_name {
+        Some(b) if r.lossy_name => std::borrow::Cow::Owned(format!(
+            "\0b16:{}",
+            b.iter().map(|x| format!("{x:02x}")).collect::<String>()
+        )),
+        _ => std::borrow::Cow::Borrowed(r.name.as_str()),
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // 选中态
@@ -113,7 +133,7 @@ impl Selection {
     /// 光标在这一摞里的下标（O(n)，只在按键那一刻调）。
     pub fn cursor_index(&self, rows: &[Listed]) -> Option<usize> {
         let c = self.cursor.as_deref()?;
-        rows.iter().position(|r| r.name == c)
+        rows.iter().position(|r| pick_key(r) == c)
     }
 
     /// 选中那几行的下标，**按列表顺序**（批量那一摞按这个序排，问的时候也按这个序摆）。
@@ -127,7 +147,7 @@ impl Selection {
         }
         rows.iter()
             .enumerate()
-            .filter(|(_, r)| self.picked.contains(&r.name))
+            .filter(|(_, r)| self.picked.contains(pick_key(r).as_ref()))
             .map(|(i, _)| i)
             .collect()
     }
@@ -143,7 +163,7 @@ impl Selection {
             return false;
         };
         let before = self.clone();
-        let name = r.name.clone();
+        let name = pick_key(r).into_owned();
         if mods.shift {
             if let Some(a) = self.anchor_index(rows) {
                 self.span(rows, a, i);
@@ -170,16 +190,16 @@ impl Selection {
         let Some(r) = rows.get(i) else {
             return;
         };
-        if !self.picked.contains(&r.name) {
+        if !self.picked.contains(pick_key(r).as_ref()) {
             self.click(rows, i, egui::Modifiers::NONE);
         }
     }
 
     /// Ctrl+A：这一摞全选。光标不动（没有光标 ⇒ 放在第一行）。
     pub fn select_all(&mut self, rows: &[Listed]) {
-        self.picked = rows.iter().map(|r| r.name.clone()).collect();
+        self.picked = rows.iter().map(|r| pick_key(r).into_owned()).collect();
         if self.cursor_index(rows).is_none() {
-            self.cursor = rows.first().map(|r| r.name.clone());
+            self.cursor = rows.first().map(|r| pick_key(r).into_owned());
         }
         self.anchor = self.cursor.clone();
     }
@@ -195,7 +215,7 @@ impl Selection {
         } else {
             egui::Modifiers::NONE
         };
-        let name = r.name.clone();
+        let name = pick_key(r).into_owned();
         self.click(rows, i, mods);
         self.cursor = Some(name);
         true
@@ -203,12 +223,15 @@ impl Selection {
 
     fn anchor_index(&self, rows: &[Listed]) -> Option<usize> {
         let a = self.anchor.as_deref()?;
-        rows.iter().position(|r| r.name == a)
+        rows.iter().position(|r| pick_key(r) == a)
     }
 
     fn span(&mut self, rows: &[Listed], a: usize, b: usize) {
         let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
-        self.picked = rows[lo..=hi].iter().map(|r| r.name.clone()).collect();
+        self.picked = rows[lo..=hi]
+            .iter()
+            .map(|r| pick_key(r).into_owned())
+            .collect();
     }
 }
 
@@ -436,8 +459,9 @@ pub enum Action {
     /// 往外拖（「存到哪儿」那一问）。
     Download,
     Rename,
+    /// 改权限 —— 〔FW5〕对一项或多项（头注 §三）。
     Chmod,
-    /// 删除 —— **唯一**一件对多项做的（头注 §三）。
+    /// 删除 —— 对一项或多项（头注 §三）。
     Delete,
 }
 
@@ -454,6 +478,7 @@ impl Action {
             Action::Copy => super::copy::COPY_LABEL.to_string(),
             Action::Download => super::download::DOWNLOAD_LABEL.to_string(),
             Action::Rename => super::writeops::RENAME_LABEL.to_string(),
+            Action::Chmod if n > 1 => format!("改这 {n} 项的权限"),
             Action::Chmod => super::writeops::CHMOD_LABEL.to_string(),
             Action::Delete if n > 1 => format!("删除这 {n} 项"),
             Action::Delete => super::writeops::DELETE_LABEL.to_string(),
@@ -491,10 +516,11 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
             }
         }
         many => {
-            // 🔴 多项只有删除，而且要**每一项都能写**才给：
+            // 🔴 多项只有权限与删除，而且要**每一项都能写**才给：
             //    给「删除这 3 项」却只删 2 项（有损名那一项悄悄跳过），
             //    与「选中态 == 批量那一摞」这条相等正相反。
             if many.iter().all(|r| is_writable(r)) {
+                out.push(Action::Chmod);
                 out.push(Action::Delete);
             }
         }
@@ -507,6 +533,7 @@ pub fn refusal(action: Action, n: usize) -> String {
     match (action, n) {
         (_, 0) => "还没有选中任何一项".to_string(),
         (Action::Delete, _) => "选中的里有名字读不出来的，这几项删不了".to_string(),
+        (Action::Chmod, _) if n > 1 => "选中的里有名字读不出来的，这几项改不了权限".to_string(),
         (Action::Open | Action::Edit, _) => format!("一次只能打开一项，现在选中了 {n} 项"),
         (Action::Rename, _) if n > 1 => format!("一次只能改一个名字，现在选中了 {n} 项"),
         (a, _) => format!("「{}」对选中的这几项做不了", a.label(n)),

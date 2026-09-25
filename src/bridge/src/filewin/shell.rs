@@ -96,7 +96,7 @@ use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
 use super::select::{self, Action, Intent, Selection, TypeAhead};
-use super::source::{breadcrumbs, parent_dir, Line, Listed, Row, SortBy, Source};
+use super::source::{breadcrumbs, parent_dir, Line, Listed, SortBy, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
@@ -1198,11 +1198,22 @@ impl FileWindow {
 
     /// 摆出「把第 `i` 行的权限改成」那个框。回值 = 真的摆出来了。
     pub fn begin_chmod(&mut self, i: usize) -> bool {
-        let Some(row) = self.writable_row(i) else {
+        self.begin_chmod_rows(&[i])
+    }
+
+    /// 〔FW5〕摆出「把这几行的权限改成」那个框（批量改权限；一行时与 [`Self::begin_chmod`] 同一个框）。
+    /// 有一行不能写 ⇒ **整摞不摆**（同 [`Self::delete_picked`] 那条理由）。
+    pub fn begin_chmod_rows(&mut self, idx: &[usize]) -> bool {
+        let Some(rows) = idx
+            .iter()
+            .map(|&i| self.writable_row(i))
+            .collect::<Option<Vec<_>>>()
+        else {
             return false;
         };
-        self.write_prompt = Some(WritePrompt::for_chmod(&self.cwd, &row));
-        true
+        let refs: Vec<&super::source::Listed> = rows.iter().collect();
+        self.write_prompt = Some(WritePrompt::for_chmod_many(&self.cwd, &refs));
+        !refs.is_empty()
     }
 
     /// 🔴 **删除不经那个框** —— 它不向用户要任何输入，它要的是一次**确认**，
@@ -1213,25 +1224,19 @@ impl FileWindow {
         let Some(row) = self.writable_row(i) else {
             return false;
         };
-        self.start_writes(
-            vec![WriteOp::Delete {
-                path: row.path,
-                is_dir: row.is_dir,
-            }],
-            ctx,
-        )
+        self.start_writes(vec![super::writeops::delete_op(&row)], ctx)
     }
 
     /// 第 `i` 行，且它**能被写**。`None` ⇒ 不接（越界 / 有损名）。
     ///
     /// ⚠ 从前这句话是「越界 / 有损名 / **本机源**，已出声」—— 本机源那一档不在了
     /// （同 [`Self::begin_mkdir`] 那条）。它不是**静默**掉的：那个状态写不出来。
-    fn writable_row(&mut self, i: usize) -> Option<Row> {
+    fn writable_row(&mut self, i: usize) -> Option<super::source::Listed> {
         let rows = self.listing.rows.lock().unwrap();
         match rows.get(i) {
-            // ⚠ 交出去的是**那五格**（`Listed::row`）：写那四条命令要的是路径与是不是目录，
-            //   链接与时间两格它们一格都不读 ⇒ 别把整个 `Listed` 递给它们。
-            Some(r) if is_writable(r) => Some(r.row.clone()),
+            // 〔FW5〕交出去的是**整个 `Listed`**：此前只交那五格（链接与时间写操作不读），
+            //   现在写操作要读 `raw_name`（有损名的原始字节，改名 · 删除 · 改权限都走它）。
+            Some(r) if is_writable(r) => Some(r.clone()),
             _ => None,
         }
     }
@@ -1249,14 +1254,15 @@ impl FileWindow {
         let Some(p) = self.write_prompt.clone() else {
             return false;
         };
-        let op = match p.to_op() {
-            Ok(op) => op,
+        // 〔FW5〕批量改权限那个框一次出 N 件 ⇒ `to_ops`（新建目录 / 改名恒一件）。
+        let ops = match p.to_ops() {
+            Ok(ops) => ops,
             Err(why) => {
                 *self.listing.error.lock().unwrap() = Some(why);
                 return false;
             }
         };
-        if !self.start_writes(vec![op], ctx) {
+        if !self.start_writes(ops, ctx) {
             return false;
         }
         self.write_prompt = None;
@@ -2120,7 +2126,8 @@ impl FileWindow {
             (Action::Copy, [i]) => self.begin_copy(*i),
             (Action::Download, [i]) => self.begin_pull(*i),
             (Action::Rename, [i]) => self.begin_rename(*i),
-            (Action::Chmod, [i]) => self.begin_chmod(*i),
+            // 〔FW5〕一项或多项：同一个框（多项时框上说件数）。
+            (Action::Chmod, _) => self.begin_chmod_rows(&idx),
             // `actions_for` 只对恰好一项给出单项动作 ⇒ 这一支走不到；
             // 真走到了也**出声**，不静默。
             _ => {
@@ -2142,10 +2149,7 @@ impl FileWindow {
                 self.key_notice = Some(select::refusal(Action::Delete, idx.len()));
                 return false;
             };
-            ops.push(WriteOp::Delete {
-                path: row.path,
-                is_dir: row.is_dir,
-            });
+            ops.push(super::writeops::delete_op(&row));
         }
         self.start_writes(ops, ctx)
     }

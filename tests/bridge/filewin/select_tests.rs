@@ -355,6 +355,11 @@ fn what_can_be_done_matches_a_hand_written_table() {
     let huge = row("h.bin", false, big, false);
     let lossy = row("\u{FFFD}x", false, 3, true);
     let lossy_dir = row("\u{FFFD}d", true, 0, true);
+    // 〔FW5〕有损名**带着原始字节**（后端 `files-ls` 送的就是字节）⇒ 三件写操作放开。
+    let lossy_raw = Listed {
+        raw_name: Some(b"\xffx".to_vec()),
+        ..row("\u{FFFD}x", false, 3, true)
+    };
     let cases: Vec<(&str, Vec<&Listed>, Vec<Action>)> = vec![
         ("空", vec![], vec![]),
         (
@@ -368,11 +373,25 @@ fn what_can_be_done_matches_a_hand_written_table() {
             vec![&huge],
             vec![Copy, Download, Rename, Chmod, Delete],
         ),
-        ("一个有损名文件", vec![&lossy], vec![]),
-        ("一个有损名目录", vec![&lossy_dir], vec![Open]),
-        ("两项全可写", vec![&file, &dir], vec![Delete]),
-        ("三项全可写", vec![&file, &dir, &huge], vec![Delete]),
+        ("一个有损名文件（没有原始字节）", vec![&lossy], vec![]),
+        (
+            "一个有损名目录（没有原始字节）",
+            vec![&lossy_dir],
+            vec![Open],
+        ),
+        (
+            "一个有损名文件（带原始字节）",
+            vec![&lossy_raw],
+            vec![Rename, Chmod, Delete],
+        ),
+        ("两项全可写", vec![&file, &dir], vec![Chmod, Delete]),
+        ("三项全可写", vec![&file, &dir, &huge], vec![Chmod, Delete]),
         ("两项混着有损名", vec![&file, &lossy], vec![]),
+        (
+            "两项混着带字节的有损名",
+            vec![&file, &lossy_raw],
+            vec![Chmod, Delete],
+        ),
     ];
     for (what, picked, want) in cases {
         assert_eq!(actions_for(&picked), want, "「{what}」那一格不对");
@@ -390,6 +409,7 @@ fn menu_labels_are_the_row_buttons_labels() {
     assert_eq!(Chmod.label(1), crate::filewin::writeops::CHMOD_LABEL);
     assert_eq!(Delete.label(1), crate::filewin::writeops::DELETE_LABEL);
     assert_eq!(Delete.label(3), "删除这 3 项");
+    assert_eq!(Chmod.label(3), "改这 3 项的权限");
     assert_eq!(Open.label(1), OPEN_LABEL);
 }
 
@@ -406,4 +426,41 @@ fn every_refusal_says_something() {
     }
     let uniq: std::collections::BTreeSet<&String> = said.iter().collect();
     assert_eq!(uniq.len(), said.len(), "几种做不了说的是同一句话：{said:?}");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔FW5〕有损名按原始字节记选中（头注 §四）
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 两个**不同字节**的有损名解成**同一个**显示串 —— 点一个，只选中那一个。
+///
+/// 按显示串记的话，点一下就选中两行，按 Delete 删掉两个文件（「选中态 == 批量那一摞」的反面）。
+#[test]
+fn two_lossy_names_that_look_the_same_are_still_two_picks() {
+    let mk = |raw: &[u8]| Listed {
+        raw_name: Some(raw.to_vec()),
+        ..row("a\u{FFFD}", false, 1, true)
+    };
+    let rows = vec![mk(b"a\xff"), mk(b"a\xfe"), row("b.txt", false, 1, false)];
+    assert_eq!(rows[0].name, rows[1].name, "前提：两行的显示串相同");
+    let mut s = Selection::default();
+    s.click(&rows, 0, egui::Modifiers::NONE);
+    assert_eq!(
+        s.picked_indices(&rows),
+        vec![0],
+        "🔴 点一个有损名，选中了两行"
+    );
+    s.click(&rows, 1, egui::Modifiers::COMMAND);
+    assert_eq!(s.picked_indices(&rows), vec![0, 1]);
+    s.click(&rows, 0, egui::Modifiers::COMMAND);
+    assert_eq!(
+        s.picked_indices(&rows),
+        vec![1],
+        "取消一个，另一个也跟着没了"
+    );
+    assert_eq!(s.cursor_index(&rows), Some(0), "光标认错了行");
+    // 无损名的键就是名字本身（那一族判据按名字断言，不许被这一刀改掉）。
+    assert_eq!(pick_key(&rows[2]), "b.txt");
+    // 有损而没有字节 ⇒ 退回显示串（它反正不许写，选中只用来看）。
+    assert_eq!(pick_key(&row("x\u{FFFD}", false, 1, true)), "x\u{FFFD}");
 }
