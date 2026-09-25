@@ -2681,6 +2681,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 🔴 〔C4b · 第四波 4B〕`accounts.ts` 那个 `"__local__"` 合进 `LOCAL_ORIGIN`（`设计/00 §2.5 ①`），
+        //    钉「两者刻意不同」的那条判据随之改成钉合了之后的形状；TS 那一节点它旧名讲来历 ⇒ 第②条出路。
+        (
+            "tests/ipc/commands.vitest.ts",
+            "the_two_same_named_local_origin_constants_stay_deliberately_different",
+            1,
+        ),
+        (
+            "tests/bridge/backend_policy_tests.rs",
+            "the_two_same_named_local_origin_constants_stay_deliberately_different",
+            1,
+        ),
         // 🔴 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端（V107），monitor 另起中转那一族删了；
         //    层 1 名字登记表里那一行注释逐字记着「哪两个名字被谁接替」⇒ 第②条出路。
         (
@@ -3804,7 +3816,9 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/tool_registry_environment_tests.rs", 1),
         ("tests/evidence/K-R20-C-deadname-census.py", 1),
         ("tests/evidence/S29-legacy-compat-census.py", 11),
-        ("tests/ipc/commands.vitest.ts", 4), // 〔AL1〕+2：K-R49 增量账里 `write_account_aliases` 那两行
+        ("tests/ipc/commands.vitest.ts", 5), // 〔AL1〕+2：K-R49 增量账里 `write_account_aliases` 那两行 // 〔C4b〕+1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名
+        // 〔C4b · 第四波 4B〕`"__local__"` 合进 `LOCAL_ORIGIN`，「两个同名常量刻意不同」那条判据改成钉合了之后的形状，旧名挂一块。
+        ("tests/bridge/backend_policy_tests.rs", 1),
         // 〔F7c 收尾 09-24〕SFTP 那一族收到只剩传输：删掉的命令 / 函数 / 判据名在这几份里逐处挂了墓碑。
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),

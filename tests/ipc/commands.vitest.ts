@@ -1111,9 +1111,8 @@ describe("`设计/05 §8` 步 2：origin 去 null 化（入方向）", () => {
  *   `SessionHits` 一族，Rust 侧 `skip_serializing_if`）用「缺省 = 本机」，那是 Rust 出方向的事，
  *   在 TS 这边只在消费处经 `ipc/origin.ts::originFromWire` 收成一个表示。
  * - 换个名字装同一件事（`host: string | null`）—— 词是 `origin`，改名就出人群。
- * - `accounts.ts` 自己那个 `LOCAL_ORIGIN = "__local__"`（账号面的缓存键）**仍在**：
- *   `backend_policy_tests.rs::the_two_same_named_local_origin_constants_stay_deliberately_different`
- *   逐字钉着「两者刻意不同、合并是一次设计变更」，那条判据不在本拍写区 —— 登记给主会话拍板。
+ * - 〔C4b 订正〕上一版这里记着「`accounts.ts` 自己那个 `LOCAL_ORIGIN = "__local__"`（账号面的缓存键）**仍在**」——
+ *   C4b 按 `设计/00 §2.5 ①` 裁「合」：它已退役，判据住本文件下一节（「本机只有一个表示」）。
  */
 
 /**
@@ -1297,6 +1296,68 @@ describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ �
         originDecls("probe.ts", src).filter((d) => d.nullable),
         `干净写法 ${src} 被判成违例 —— 假红比不查更坏`,
       ).toEqual([]);
+    }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+//  〔C4b · 第四波 4B〕**本机只有一个表示** —— `"__local__"` 零命中带正控
+//
+// C4a 之后 TS 侧本机只剩 `LOCAL_ORIGIN`（`"<local>"`，住 `backend-policy.ts`），唯一的例外是
+// `accounts.ts` 自己那个同名的 `"__local__"`（账号缓存键 ＋ 本机 `AccountsState.origin`）。它的来历：
+// 账号面本机 / 远端各走一条命令，本机那条的结果需要一个缓存键，而那时本机还没有具名的 origin。
+// `设计/00 §2.5 ①`（账号面本机与远端同一条路、一个 Origin 类型）之下它装的就是「哪台机器」本身 ⇒ 合。
+// 旧判据 `backend_policy_tests.rs::the_two_same_named_local_origin_constants_stay_deliberately_different`〔散文墓碑〕
+// 钉的是「合并之前别顺手改」—— 合并就是它要等的那一次设计变更，它随之改成下面这两条的 Rust 那一侧。
+//
+// 判据（按 TS 语法树认**字符串字面量**，注释与模板里的字不算 —— 注释里讲历史是正当的）：
+// 1. `"__local__"` 字面量在全部前端 TS（含生成物）里**零命中**；
+// 2. `"<local>"` 字面量所在的文件 == `{ src/backend-policy.ts }`（**正控 ＋ 唯一家**：同一识别器在真树上认得出本机那个值，
+//    而且它只有一个家 —— 哪个调用点自己再写一遍 `"<local>"` 也红）；
+// 3. 识别器阳性 / 阴性对照。
+// ══════════════════════════════════════════════════════════════════════════
+
+/** 一段 TS 里值恰为 `want` 的字符串字面量（`"…"` / `'…'` / 无插值模板）处数 —— 按语法树认，注释不算。 */
+function stringLiteralHits(rel: string, src: string, want: string): number {
+  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  let n = 0;
+  const visit = (node: ts.Node): void => {
+    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && node.text === want) n += 1;
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return n;
+}
+
+/** 全部前端 TS（含生成物）里，值恰为 `want` 的字符串字面量落在哪几份文件。复用本文件的 `walk`。 */
+function filesWithLiteral(want: string): string[] {
+  const out: string[] = [];
+  for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+    const rel = f.slice(REPO_ROOT.length + 1);
+    if (rel.startsWith("src/bridge/") || rel.startsWith("src/backend/")) continue;
+    if (stringLiteralHits(rel, readFileSync(f, "utf8"), want) > 0) out.push(rel);
+  }
+  return out.sort();
+}
+
+describe("〔C4b〕本机只有一个表示（`\"__local__\"` 退役）", { timeout: 30_000 }, () => {
+  it("★★ `\"__local__\"` 字面量零命中；`\"<local>\"` 字面量恰好住一个家（正控）", () => {
+    expect(
+      filesWithLiteral("__local__"),
+      "本机的第二种写法又长出来了 —— 本机只有 `LOCAL_ORIGIN`（经 `ipc/origin.ts` 导），账号缓存键也用它",
+    ).toEqual([]);
+    expect(
+      filesWithLiteral(LOCAL_ORIGIN),
+      "本机 origin 的字面量不止一个家（或识别器在真树上瞎了）—— 调用点一律导 `LOCAL_ORIGIN`，不许再写一遍",
+    ).toEqual(["src/backend-policy.ts"]);
+  });
+
+  it("★ 识别器阳性三形 ＋ 阴性两形", () => {
+    for (const src of ['const a = "__local__";', "const a = '__local__';", "const a = `__local__`;"]) {
+      expect(stringLiteralHits("probe.ts", src, "__local__"), `认不出 ${src}`).toBe(1);
+    }
+    for (const src of ['// 旧写法 "__local__"', 'const a = "__local__x";']) {
+      expect(stringLiteralHits("probe.ts", src, "__local__"), `误认 ${src}`).toBe(0);
     }
   });
 });
