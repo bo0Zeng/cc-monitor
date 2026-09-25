@@ -388,13 +388,35 @@ pub(crate) const FIND_MAX_LIMIT: usize = 2000;
 /// 的片段）同一份。没有 uuid 的记录不算（跳不过去 —— 列出来就是一条点了没反应的项）。
 /// 只看**完整行**（torn 残尾下一次再看）。空查询 ⇒ 零条。返回 `(count, total)`。
 pub(crate) fn write_session_find<R: std::io::BufRead, W: std::io::Write>(
-    mut r: R,
+    r: R,
     query: &str,
     include_tools: bool,
     limit: usize,
     out: &mut W,
 ) -> std::io::Result<(u64, u64)> {
     writeln!(out, "{{\"kind\":\"session_find\",\"v\":1}}")?;
+    let (count, total) = scan_session_find(r, query, include_tools, limit, |hit| {
+        serde_json::to_writer(&mut *out, hit)?;
+        out.write_all(b"\n")
+    })?;
+    writeln!(
+        out,
+        "{{\"kind\":\"session_find_end\",\"count\":{count},\"total\":{total}}}"
+    )?;
+    Ok((count, total))
+}
+
+/// 〔C4b · 第四波 4B〕[`write_session_find`] 的中段：**逐条命中交给 `on_hit`**（按文件序、最多 `limit` 条），
+/// 回 `(count, total)`。判定一行都不在这一层之外 —— CLI 那一臂（上面，写头尾三段：stdout 要分帧）与帧面那一臂
+/// （`read_face.rs` 的 `history-find`，把同一串命中装成成品 `{total, hits}`）跑的是**同一个**扫描。
+/// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
+pub(crate) fn scan_session_find<R: std::io::BufRead>(
+    mut r: R,
+    query: &str,
+    include_tools: bool,
+    limit: usize,
+    mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
+) -> std::io::Result<(u64, u64)> {
     let q = query.trim().to_lowercase();
     let mut count: u64 = 0;
     let mut total: u64 = 0;
@@ -426,24 +448,16 @@ pub(crate) fn write_session_find<R: std::io::BufRead, W: std::io::Write>(
         total += 1;
         if (count as usize) < limit {
             let (before, matched, after) = search_core::make_snippet(hit, &q);
-            serde_json::to_writer(
-                &mut *out,
-                &serde_json::json!({
-                    "uuid": uuid,
-                    "kind": kind,
-                    "before": before,
-                    "matched": matched,
-                    "after": after,
-                }),
-            )?;
-            out.write_all(b"\n")?;
+            on_hit(&serde_json::json!({
+                "uuid": uuid,
+                "kind": kind,
+                "before": before,
+                "matched": matched,
+                "after": after,
+            }))?;
             count += 1;
         }
     }
-    writeln!(
-        out,
-        "{{\"kind\":\"session_find_end\",\"count\":{count},\"total\":{total}}}"
-    )?;
     Ok((count, total))
 }
 

@@ -38,7 +38,7 @@ import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
 // 〔第三波 S3〕本机那一支新长的字全走文案表（`设计/91 §5.1`）：一处取文，判据按表逐条量。
 import { copyText } from "../copy-table";
-// 〔第三波 S3〕本机建号那一跳：后端那个本机串（与本文件经 `../accounts` 用的 `"__local__"` 不是同一个值），
+// 〔第三波 S3〕本机建号那一跳：后端那个本机串（〔C4b〕账号面那个 `"__local__"` 已退役，本机只剩这一个表示），
 // 以及「本机刻意不开终端窗口」那句话的跨语言标记（唯一住址在 `remote-launch-run.ts`）。
 import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "../backend-policy";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";

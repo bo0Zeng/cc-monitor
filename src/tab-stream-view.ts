@@ -41,6 +41,7 @@ import {
 } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
 import { commands } from "./ipc/commands";
+import { findInSession, readSessionIndex } from "./session-reads";
 import type { Tab } from "./tab-model";
 import { isResumeOnly } from "./tab-session-state";
 import type { TabStore } from "./tab-store";
@@ -139,7 +140,7 @@ export class TabStreamView {
 
     // 〔SE2 · `设计/10 §2.2b ④`〕本 tab 的查找面板：搜索 ／ 大纲两个模式，**跳只有一个住址**（`jumpInTab`）。
     // 原先的独立悬浮层 `.live-user-inputs`（K-R45 乙 · 步 2 止血形）整块由它取代。宿主自己的三件事：
-    // ① 怎么查 —— 问后端（`find_in_session` ⇒ `--find-in-session`），问的是这个 tab 的那份会话；
+    // ① 怎么查 —— 问后端（〔C4b〕经通道直接说帧命令 `history-find`，`session-reads.ts`），问的是这个 tab 的那份会话；
     // ② 怎么跳 —— 见 `jumpInTab`；
     // ③ 跳空了怎么解释 —— 实时这一侧的成因与查看器**不是同一件事**：那边是「渲染时被剥成空卡」
     //    （永久），这边是「还收纳在 `TailWindow` 里没建卡」（**上翻补一批就好了**）。
@@ -149,12 +150,7 @@ export class TabStreamView {
         if (!t?.parentPath) {
           return { available: false, reason: "这个会话的文件位置还没收到", hits: [], total: 0 };
         }
-        return commands.find_in_session({
-          origin: t.origin,
-          jsonlPath: t.parentPath,
-          query,
-          includeTools,
-        });
+        return findInSession(t.origin, t.parentPath, query, includeTools);
       },
       jumpTo: (uuid) => this.jumpInTab(sessionId, streamEl, uuid),
       unjumpableHint: "这一条还没加载出来 —— 往上翻到更早的消息之后再点",
@@ -622,9 +618,9 @@ export class TabStreamView {
     tab.skeletonFetch = "pending";
     const jsonlPath = tab.parentPath;
     const origin = tab.origin;
-    const first = commands.read_session_index({ origin, jsonlPath, fromOffset: 0 });
+    const first = readSessionIndex(origin, jsonlPath, 0);
     // 〔SE2 · `设计/10 §9.5` 欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
-    // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧 `list_user_inputs(0)`。
+    // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧从 0 要一份清单。
     tab.outline.awaitSeed(first.then(outlineSeedFromIndex));
     void first
       .then(async (res) => {
@@ -638,7 +634,7 @@ export class TabStreamView {
         // 索引拉回来之前 tab 可能又长了：floor 之下还有索引没覆盖到的行 ⇒ **续传**（从上次的 end 接着要）
         const floor = tab.window.floorSeq ?? 0;
         if (floor > got.ledger.endSeq) {
-          const more = await commands.read_session_index({ origin, jsonlPath, fromOffset: got.end });
+          const more = await readSessionIndex(origin, jsonlPath, got.end);
           if (more.available) got.ledger.append(more.rows);
         }
         if (this.store.tabs.get(tab.sessionId) !== tab) return;

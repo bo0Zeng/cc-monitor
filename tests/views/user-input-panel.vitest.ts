@@ -34,7 +34,7 @@
  */
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { UserInputPanel } from "../../src/views/user-input-panel";
-import type { UserInputEntry } from "../../src/generated/UserInputEntry";
+import type { UserInputEntry } from "../../src/session-reads";
 
 const HINT = "这一条还没加载出来 —— 上翻到更早的消息之后再点";
 
