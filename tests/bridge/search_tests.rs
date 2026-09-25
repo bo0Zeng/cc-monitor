@@ -1,3 +1,10 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md` 的 `--search` 条（monitor 这一侧与后端同形）＋ `设计/01 §5 D1`
+//!
+//! 核原文：`--search` 条逐字「形状严格对齐 monitor `search::SessionHits`，monitor 补 `origin` 后与本地结果合并」·
+//! 「① **行序 = snippet 预算顺序 = 最近优先**」·「② 每行多一个 **`hitsTruncated: bool`**」—— 本族走本侧真管线判：
+//! 本侧也按最近优先花预算、截断自己说出来、后端那一行反序列化得回 `SessionHits`；`the_snippet_window_comes_from_core` 判
+//! 本侧真用 `search_core` 那一份窗口（`D1`）。与 `crates/search-core/lib_tests.rs` 不重复：本侧写回自己的排序 / 窗口时只有本族红。〔JA1 点址 2026-09-24〕
+
 use super::*;
 
 // ⚠ `K-R100` 的性能台架（同进程配对：`search_core::make_snippet` vs 收口前那份
