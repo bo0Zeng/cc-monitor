@@ -67,6 +67,45 @@ pub(crate) async fn ensure_on(origin: &Origin) -> Result<RelayEnsured, String> {
 pub(crate) const LOCAL_HAS_ITS_OWN: &str =
     "本机的中转住在本机后端进程里（随它起、随它按「退出行为」留或退），不在这里另起一个";
 
+// ═════════════════════════════════════════════════════════════════════════════
+// 〔RL1〕远端「用到才起」的层 1 那一半：在不在 → 起 → 有界地等（组装在 `history::relay_endpoint_on`）
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// 远端「中转在不在」那一问的等法：`relay-ensure` 起了进程却不等它 bind（后端零定时器）⇒ 这里**有界地**再问几次。
+/// 等的是**一次性条件**（那个口起没起来），上限 `ENSURE_WAIT_TRIES × ENSURE_WAIT_INTERVAL`（≈ 2 s：
+/// 回环 bind 是毫秒级，远端多一趟 SSH 往返）；等不到就如实答「没在听」，不无限重试。
+/// 登记住 `rust_timer_registry`（`wait-for-condition`）。
+const ENSURE_WAIT_TRIES: u32 = 10;
+const ENSURE_WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// 那台后端说「口上没人，也没起进程」时的那句为什么（`relay-ensure` 回 `started:false`）。
+pub(crate) const RELAY_NOT_STARTED: &str = "那台的后端没有起中转（口上没人在听，它也没起进程）";
+/// 起了进程、有界地等完了口上仍没人时的那句为什么。
+pub(crate) const RELAY_NEVER_LISTENED: &str =
+    "那台的后端起了一个中转，但等了一会儿它还没在那个口上听";
+
+/// 那台机器的回环口上有没有人在听；没有就起一个、有界地等它。**只对远端**（本机那一个住在常驻后端里）。
+/// `Ok(())` = 在听；`Err(为什么)` = 不在（包括问不到：那台后端太旧 / 没通道）。
+pub(crate) async fn listening_or_started(origin: &Origin) -> Result<(), String> {
+    if running_on(origin).await? {
+        return Ok(());
+    }
+    let e = ensure_on(origin).await?;
+    if e.listening {
+        return Ok(());
+    }
+    if !e.started {
+        return Err(RELAY_NOT_STARTED.to_string());
+    }
+    for _ in 0..ENSURE_WAIT_TRIES {
+        tokio::time::sleep(ENSURE_WAIT_INTERVAL).await;
+        if running_on(origin).await? {
+            return Ok(());
+        }
+    }
+    Err(RELAY_NEVER_LISTENED.to_string())
+}
+
 /// 两条命令共用的入参：只有端口。
 fn port_args() -> Value {
     json!({ "port": crate::backend::control::payload::RELAY_PORT })

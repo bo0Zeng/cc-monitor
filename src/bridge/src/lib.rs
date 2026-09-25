@@ -1263,7 +1263,7 @@ pub fn run() {
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             apikey_routing_for,
-            relay_ensure,
+            relay_endpoint_for_launch,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
             // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
             aliases_render,
@@ -1775,7 +1775,7 @@ struct ApikeyRouting {
 /// 自己答得了：表里有哪几行（账号层，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
 /// 两件事**各问各的**（`apikey_remote::rows_on` / `remote_relay::running_on`，两个模块互不引用），
 /// 只在这里拼成一份给界面。本机那一臂两件事都照旧走 [`history::inject_facts`] 那条缝。
-/// ⚠ 远端那一格 `running` 的射程比本机**宽**：「口上有人在听」，不是「我们起过它、没停过」。
+/// 〔RL1〕两台的 `running` 今天是**同一个判准**：「那个口上有人在听」（本机那一格也改成回环连一次）。
 #[tauri::command]
 async fn apikey_routing_for(
     origin: origin::Origin,
@@ -1789,12 +1789,20 @@ async fn apikey_routing_for(
     })
 }
 
-/// 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个脱离的
-/// `--relay`（帧面 `relay-ensure`）。**本机拒** —— 本机那一个由 monitor 监护，不许再起第二个去抢口。
-/// ⚠ 它今天**没有自动触发点**（远端链路握手完成 / 起远端会话那两处都不在本拍写区），理由住 `remote_relay` 头注。
+/// 〔RL1 · 第四波〕**这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址**（`null` = 不注入）。
+///
+/// 前端拉起远端会话（与本机「就地 resume」那一格）之前问它一次，拿到地址就作为载荷里的一条
+/// `export-relay-base-url` 交给 `render_launch_payload`。判断只在 `payload::relay_endpoint_for` 一处；
+/// 远端那一臂**用到才起**那台的中转（`history::relay_endpoint_on` 头注）。
+/// ⚠ 它接替了 RM1a 那条 `relay_ensure(origin)`（零调用方）：「让那台有一个中转」今天只在「要注入」时才发生，
+/// 不再单独暴露给界面。
 #[tauri::command]
-async fn relay_ensure(origin: origin::Origin) -> Result<remote_relay::RelayEnsured, String> {
-    remote_relay::ensure_on(&origin).await
+async fn relay_endpoint_for_launch(
+    origin: origin::Origin,
+    account: Option<history::LaunchAccount>,
+    sid: Option<String>,
+) -> Result<Option<String>, String> {
+    history::relay_endpoint_on(&origin, account.as_ref(), sid.as_deref()).await
 }
 
 /// `K-H2a` `KS10`：从界面配一把 key。

@@ -1298,3 +1298,6 @@ src/settings/panel.ts:1545	Claude 数据目录	保留	[对外] 落盘失败 / �
 src/settings/panel.ts:1733	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/panel.ts:1763	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/account-new-form.ts:86	Base URL，留空用默认上游	保留	[对外] 加账号表单 apikey 那一支的 Base URL 输入框占位（ST2 · 70 §4.4 线框里那一格）
+src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」层 1 正名、「apikey 端点改写」层 2 正名（terms.json）
+src/bridge/src/remote_relay.rs:82	那台的后端没有起中转（口上没人在听，它也没起进程）	保留	[对外] 〔RL1〕上一句里「为什么」那一格：relay-ensure 回 started:false
+src/bridge/src/remote_relay.rs:85	那台的后端起了一个中转，但等了一会儿它还没在那个口上听	保留	[对外] 〔RL1〕上一句里「为什么」那一格：起了进程、有界地等完了口上仍没人
