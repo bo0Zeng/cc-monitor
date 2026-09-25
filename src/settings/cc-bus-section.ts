@@ -493,7 +493,10 @@ export class CcBusSection {
     // **在线状态默认「未知」**——这是本设计的要点，不是偷懒：名单证明不了在线，
     // 而全量查是 N 次往返。用户想知道哪一个，就点哪一个。
     const stateEl = document.createElement("span");
-    stateEl.className = "cc-bus-online cc-bus-online-unknown";
+    // 〔AR1 · `设计/41 §7` 约定 3：状态用 `data-*`，不用类名〕此前是 `cc-bus-online-<态>` 五个类名，
+    //   CSS 里一条规则都没有（git 史里也从来没有过）⇒ 悬空类；改成 `data-state`，界面上只说那几个字。
+    stateEl.className = "cc-bus-online";
+    stateEl.dataset.state = "unknown";
     stateEl.textContent = "在线未知";
     row.appendChild(stateEl);
 
@@ -550,15 +553,15 @@ export class CcBusSection {
     const origin = this.originSel.value;
     if (!origin) return;
     btn.disabled = true;
-    stateEl.className = "cc-bus-online cc-bus-online-checking";
+    stateEl.dataset.state = "checking";
     stateEl.textContent = "检查中…";
     try {
       const online = await commands.check_cc_bus_agent_online({ origin, id });
-      stateEl.className = `cc-bus-online cc-bus-online-${online ? "yes" : "no"}`;
+      stateEl.dataset.state = online ? "yes" : "no";
       stateEl.textContent = online ? "在线" : "不在线";
     } catch (e) {
       // 查失败 ≠ 不在线，必须区分开，否则会把"网络抖了一下"报成"agent 死了"
-      stateEl.className = "cc-bus-online cc-bus-online-error";
+      stateEl.dataset.state = "error";
       stateEl.textContent = `查不到（${String(e)}）`;
     } finally {
       btn.disabled = false;

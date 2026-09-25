@@ -211,7 +211,7 @@ describe("B03 登记 ≠ 在线", () => {
     const el = row.querySelector(".cc-bus-online")!;
     expect(el.textContent).toContain("查不到");
     expect(el.textContent).not.toBe("不在线");
-    expect(el.className).toContain("cc-bus-online-error");
+    expect((el as HTMLElement).dataset.state).toBe("error"); // 〔AR1〕状态从类名改成 data-state
   });
 });
 
