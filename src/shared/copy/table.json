@@ -12127,6 +12127,367 @@
       "kind": "error",
       "zh": "{what} 第 {line} 行有 cc-monitor BEGIN 标记，但其后找不到配对的 END。可能被手动改坏，或上次安装中断了。为避免误删你的内容，已中止；请手动修好该文件后重试。",
       "args": ["what", "line"]
+    },
+    "rsSkillHost.skills.plannedBuildLabel": {
+      "kind": "action",
+      "zh": "计划",
+      "args": []
+    },
+    "rsSkillHost.skills.plannedBuildNotSupported": {
+      "kind": "body",
+      "zh": "planned-build 暂不支持在这里安装",
+      "args": []
+    },
+    "rsSkillHost.skills.ccBusLabel": {
+      "kind": "action",
+      "zh": "总线",
+      "args": []
+    },
+    "rsSkillHost.write.stale": {
+      "kind": "error",
+      "zh": "收件箱在你打开之后被改过，这次没写，免得冲掉那些改动。多半是 agent 处置了其中几条。先把你的改动复制出来，关掉再打开收件箱，再贴回去。（{why}）",
+      "args": ["why"]
+    },
+    "rsSkillHost.read.missing": {
+      "kind": "error",
+      "zh": "{door} 上没有这份文件：{root}/{rel}（文件必须已存在）",
+      "args": ["door", "root", "rel"]
+    },
+    "rsSkillHost.spec.unknown": {
+      "kind": "error",
+      "zh": "未知 skill：{skillId}",
+      "args": ["skillId"]
+    },
+    "rsSkillHost.target.outside": {
+      "kind": "error",
+      "zh": "拒绝写入：{real} 不在项目目录 {root} 里",
+      "args": ["real", "root"]
+    },
+    "rsSkillHost.target.resolveFailed": {
+      "kind": "error",
+      "zh": "解析项目目录失败：{cwd} — {e}",
+      "args": ["cwd", "e"]
+    },
+    "rsSkillHost.remote.protectedData": {
+      "kind": "error",
+      "zh": "拒绝写入：{requested} 是 Claude Code 的数据文件，cc-monitor 不写它。",
+      "args": ["requested"]
+    },
+    "rsSkillHost.remote.notInSet": {
+      "kind": "error",
+      "zh": "拒绝写入：{requested} 不在 {id} 的可编辑集合里（声明的是 {editable}，相对 {root}）",
+      "args": ["requested", "id", "editable", "root"]
+    },
+    "rsSkillHost.editable.protectedData": {
+      "kind": "error",
+      "zh": "拒绝写入：{real} 是 Claude Code 的数据文件，cc-monitor 不写它。",
+      "args": ["real"]
+    },
+    "rsSkillHost.editable.notInSet": {
+      "kind": "error",
+      "zh": "拒绝写入：{real} 不在 {id} 的可编辑集合里。\n该 skill 声明的可编辑文件是 {editable}（相对 {root}）。",
+      "args": ["real", "id", "editable", "root"]
+    },
+    "rsSkillHost.editable.resolveFailed": {
+      "kind": "error",
+      "zh": "解析路径失败（文件必须已存在）：{requested} — {e}",
+      "args": ["requested", "e"]
+    },
+    "rsSkillHost.describe.missing": {
+      "kind": "body",
+      "zh": "{skill} 的前提没满足：找不到 {expected}",
+      "args": ["skill", "expected"]
+    },
+    "rsSkillHost.describe.present": {
+      "kind": "body",
+      "zh": "在场",
+      "args": []
+    },
+    "rsSkillInstall.preview.sameMachine": {
+      "kind": "error",
+      "zh": "来源与要装的是同一台 —— 换一台机器",
+      "args": []
+    },
+    "rsSkillInstall.apply.stale": {
+      "kind": "error",
+      "zh": "那一份在你看差异之后又被改过了。重新看一次差异再决定",
+      "args": []
+    },
+    "rsSkillInstall.apply.noOriginal": {
+      "kind": "error",
+      "zh": "「{path}」没有原文 —— 两端对不上，停下了",
+      "args": ["path"]
+    },
+    "rsSkillInstall.apply.notInCopy": {
+      "kind": "error",
+      "zh": "「{path}」不在拷出来的那一份里 —— 两端对不上，停下了",
+      "args": ["path"]
+    },
+    "rsSkillInstall.stopped.at": {
+      "kind": "error",
+      "zh": "{machine} 上写「{at}」时停下了：{why}。{done}。",
+      "args": ["machine", "at", "why", "done"]
+    },
+    "rsSkillInstall.stopped.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "rsSkillInstall.stopped.some": {
+      "kind": "body",
+      "zh": "前面已经写了 {list}",
+      "args": ["list"]
+    },
+    "rsSkillInstall.stopped.none": {
+      "kind": "body",
+      "zh": "一个都还没写",
+      "args": []
+    },
+    "rsSkillInstall.reply.unreadable": {
+      "kind": "error",
+      "zh": "后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。",
+      "args": []
+    },
+    "rsSkillInstall.ask.emptyReply": {
+      "kind": "error",
+      "zh": "{who} 的后端回了一条空应答",
+      "args": ["who"]
+    },
+    "rsSkillInstall.ask.internal": {
+      "kind": "error",
+      "zh": "{who}：装 skill 时出了内部错误，没有拿到结果",
+      "args": ["who"]
+    },
+    "rsSkillInstall.ask.tooBig": {
+      "kind": "error",
+      "zh": "这个 skill 的文本合起来太大，一趟装不下。这一趟要 {bytes} 字节，上限 {cap}，一个字节都没动。",
+      "args": ["bytes", "cap"]
+    },
+    "rsSkillInstall.ask.failed": {
+      "kind": "error",
+      "zh": "装不了 skill，一个字节都没动",
+      "args": []
+    },
+    "rsSkillInstall.ask.backendDown": {
+      "kind": "error",
+      "zh": "{who} 的后端没连上（{why}）—— 一个字节都没动",
+      "args": ["who", "why"]
+    },
+    "rsCcBusDeploy.win.ok": {
+      "kind": "body",
+      "zh": "cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{pathCaveat}",
+      "args": ["at", "needs", "pathCaveat"],
+      "waive": {
+        "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
+      }
+    },
+    "rsCcBusDeploy.win.missing": {
+      "kind": "body",
+      "zh": "cc-monitor 装的 ccm（{at}）版本对，但缺少：{list}，cc-spawn 会因此退出。请在设置页重装本机后端。\n{pathCaveat}",
+      "args": ["at", "list", "pathCaveat"],
+      "waive": {
+        "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
+      }
+    },
+    "rsCcBusDeploy.win.stale": {
+      "kind": "body",
+      "zh": "cc-monitor 装的 ccm（{at}）不是这一版：它的版本是 {build}，这一版需要 {wantBuild}。{lack}请在设置页重装本机后端，再装 cc-bus。\n{pathCaveat}",
+      "args": ["at", "build", "wantBuild", "lack", "pathCaveat"]
+    },
+    "rsCcBusDeploy.win.lack": {
+      "kind": "body",
+      "zh": "它还缺少：{list}，cc-spawn 会因此退出。",
+      "args": ["list"],
+      "waive": {
+        "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
+      }
+    },
+    "rsCcBusDeploy.win.unknown": {
+      "kind": "body",
+      "zh": "未知",
+      "args": []
+    },
+    "rsCcBusDeploy.win.noVersion": {
+      "kind": "body",
+      "zh": "问了 cc-monitor 装的 ccm（{at}），它没有回答版本信息，查不了它能不能用。cc-spawn 启动时需要 ccm 支持：{needs}。",
+      "args": ["at", "needs"],
+      "waive": {
+        "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
+      }
+    },
+    "rsCcBusDeploy.win.notInstalled": {
+      "kind": "body",
+      "zh": "本机还没有 cc-monitor 装的 ccm（应在 ~/.cc-monitor/bin/），查不了装出去的 cc-spawn 能不能用。cc-spawn 启动时需要 ccm 支持：{needs}，缺一项就会退出。请先在设置页装好本机后端，再装 cc-bus。",
+      "args": ["needs"],
+      "waive": {
+        "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
+      }
+    },
+    "rsCcBusDeploy.win.pathCaveat": {
+      "kind": "body",
+      "zh": "这里查的是 cc-monitor 自己装的那一份 ccm。cc-spawn 实际调用的是 PATH 上的 ccm，在 Windows 上查不到那一个是哪一份。",
+      "args": [],
+      "waive": {
+        "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
+      }
+    },
+    "rsCcBusDeploy.win.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "rsCcBusDeploy.ccm.tooOld": {
+      "kind": "body",
+      "zh": "本机 ccm 版本太旧，cc-bus 装上后用不了",
+      "args": []
+    },
+    "rsCcBusDeploy.ccm.notFound": {
+      "kind": "body",
+      "zh": "本机探不到 ccm，装出去的 cc-spawn 会报「找不到 ccm」。",
+      "args": [],
+      "waive": {
+        "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
+      }
+    },
+    "rsAcctIsoDeploy.deploy.done": {
+      "kind": "body",
+      "zh": "已部署 cc-acct-iso（{version}）到 {dest}（{reason}）。{pathHint}",
+      "args": ["version", "dest", "reason", "pathHint"]
+    },
+    "rsAcctIsoDeploy.deploy.linkedNotOnPath": {
+      "kind": "body",
+      "zh": "已软链到 ~/.local/bin，但它可能不在你终端的 PATH。在终端里执行 export PATH=\"$HOME/.local/bin:$PATH\"。",
+      "args": []
+    },
+    "rsAcctIsoDeploy.deploy.linked": {
+      "kind": "body",
+      "zh": "已软链到 ~/.local/bin，命令可用。",
+      "args": []
+    },
+    "rsAcctIsoDeploy.deploy.installFailed": {
+      "kind": "error",
+      "zh": "脚本已上传到 {dest}，但 install（建软链）未成功完成——未标记为已装，可重试。远端输出：\n{output}",
+      "args": ["dest", "output"]
+    },
+    "rsAcctIsoDeploy.deploy.upToDate": {
+      "kind": "body",
+      "zh": "远端已是最新 cc-acct-iso（{version}）：{dest}，无需重装。",
+      "args": ["version", "dest"]
+    },
+    "rsAcctIsoDeploy.deploy.unsafe": {
+      "kind": "error",
+      "zh": "部署目录不安全（须绝对、无 ..、非根、且含 cc-acct-iso 或 .cc-monitor）：{dest}",
+      "args": ["dest"]
+    },
+    "rsAcctIsoDeploy.deploy.tilde": {
+      "kind": "error",
+      "zh": "部署目录含 ~（SFTP 不展开 ~），请改用绝对路径",
+      "args": []
+    },
+    "rsAcctIsoDeploy.deploy.noDest": {
+      "kind": "error",
+      "zh": "请先填部署目录（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-acct-iso）",
+      "args": []
+    },
+    "rsAcctIsoDeploy.shellinit.missing": {
+      "kind": "error",
+      "zh": "远端没能产出 rc 片段，输出里没有 {begin}。常见原因：cc-acct-iso 未安装，先在「维护」里部署；或该远端还没跑过 cc-acct-iso init。",
+      "args": ["begin"]
+    },
+    "rsAcctIsoDeploy.shellinit.truncated": {
+      "kind": "error",
+      "zh": "远端产出的 rc 片段不完整：有 {begin} 但没有 {end}，输出可能被截断了。别贴，半截片段会让登录 shell 报错。请重试。",
+      "args": ["begin", "end"]
+    },
+    "rsAcctIsoDeploy.exec.timeout": {
+      "kind": "error",
+      "zh": "远端命令超时（超过 {secs} 秒）",
+      "args": ["secs"]
+    },
+    "rsAcctIsoDeploy.exec.readFailed": {
+      "kind": "error",
+      "zh": "读远端输出失败：{e}",
+      "args": ["e"]
+    },
+    "rsAssetSync.call.emptyReply": {
+      "kind": "error",
+      "zh": "本机后端回了一条空应答",
+      "args": []
+    },
+    "rsAssetSync.call.internal": {
+      "kind": "error",
+      "zh": "本机后端同步资产目录时出了内部错误，没有拿到结果",
+      "args": []
+    },
+    "rsAssetSync.call.failed": {
+      "kind": "error",
+      "zh": "本机后端：{message}",
+      "args": ["message"]
+    },
+    "rsAssetSync.reply.unreadable": {
+      "kind": "error",
+      "zh": "本机后端答的同步结果认不出来，多半是两边版本不一样。",
+      "args": []
+    },
+    "rsUserFiles.list.notArray": {
+      "kind": "error",
+      "zh": "{machine} 的后端答的目录列表不是一个数组",
+      "args": ["machine"]
+    },
+    "rsUserFiles.home.unknown": {
+      "kind": "error",
+      "zh": "{machine} 的后端没答出 home 在哪",
+      "args": ["machine"]
+    },
+    "rsUserFiles.ask.emptyReply": {
+      "kind": "error",
+      "zh": "{who} 的后端回了一条空应答",
+      "args": ["who"]
+    },
+    "rsUserFiles.ask.tooBig": {
+      "kind": "error",
+      "zh": "这份文件太大，一趟装不下。这一趟要 {bytes} 字节，上限 {cap}，一个字节都没动。",
+      "args": ["bytes", "cap"]
+    },
+    "rsUserFiles.ask.notDone": {
+      "kind": "error",
+      "zh": "这一步没做",
+      "args": []
+    },
+    "rsUserFiles.ask.backendDown": {
+      "kind": "error",
+      "zh": "{who} 的后端没连上，这一步要经它来写（{why}）—— 一个字节都没动。先在设置里把这台机器的后端起起来再点一次",
+      "args": ["who", "why"]
+    },
+    "rsUserFiles.rel.outsideHome": {
+      "kind": "error",
+      "zh": "{abs} 不在 home（{home}）底下 —— 只改 home 里的文件",
+      "args": ["abs", "home"]
+    },
+    "rsUserFiles.edit.gaveUp": {
+      "kind": "error",
+      "zh": "{last}\n连着 {attempts} 趟都是读完之后盘上那份又变了，先停下。过一会儿再点一次。",
+      "args": ["last", "attempts"]
+    },
+    "rsVerifiedWrite.verify.lenMismatch": {
+      "kind": "body",
+      "zh": "长度不匹配：期望 {expected} 字节，实际 {actual} 字节。",
+      "args": ["expected", "actual"]
+    },
+    "rsVerifiedWrite.verify.sameLenDiff": {
+      "kind": "body",
+      "zh": "长度相同（{bytes} 字节）但内容不同，首个差异在第 {at} 字节。",
+      "args": ["bytes", "at"]
+    },
+    "rsClaudeDataFence.guard.protectedData": {
+      "kind": "error",
+      "zh": "拒绝写 Claude 数据源文件({path})——管理会话文件请用历史浏览器",
+      "args": ["path"]
+    },
+    "rsPlatformFs.chmod.failed": {
+      "kind": "error",
+      "zh": "置可执行位失败：{e}",
+      "args": ["e"]
     }
   }
 }

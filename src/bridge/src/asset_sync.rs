@@ -21,6 +21,7 @@
 //! - 🔴 真远端：本模块的判据只到「交出去的是什么」「答回来的认不认得」；本机后端那一趟在后端判据里用替身对面验。
 //! - 本机后端不在 ⇒ 报（`D11`，不回落）；连上那一刻它不在 ⇒ 这一次就没同步（下次连上 / 看机器页再来），只记一行 warn。
 
+use crate::copy_table::copy_text;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -76,7 +77,8 @@ pub struct AssetsSynced {
 }
 
 /// 对面后端的应答认不出来时给人的那句话（多半是两边版本不一样）。**不猜默认值**。
-const UNREADABLE_REPLY: &str = "本机后端答的同步结果认不出来，多半是两边版本不一样。";
+static UNREADABLE_REPLY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsAssetSync.reply.unreadable", &[]));
 
 /// 后端应答 → 线上形状。契约对不上 ⇒ 报错，不猜。
 pub(crate) fn parse_reply(v: &Value) -> Result<AssetsSynced, String> {
@@ -154,12 +156,17 @@ impl LocalBackend for ResidentBackend {
     async fn call(&self, args: Value) -> Result<Value, String> {
         let client = crate::dial_host::local_backend_accepting(CMD).await?;
         let data = client.call(CMD, args, BUDGET).await.map_err(|e| {
-            match route_call_error(&e, |_code, message| format!("本机后端：{message}")) {
+            match route_call_error(&e, |_code, message| {
+                copy_text(
+                    "rsAssetSync.call.failed",
+                    &[("message", &message.to_string())],
+                )
+            }) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => "本机后端同步资产目录时出了内部错误，没有拿到结果".to_string(),
+                Routed::Done => copy_text("rsAssetSync.call.internal", &[]),
             }
         })?;
-        data.ok_or_else(|| format!("本机后端对 `{CMD}` 回了一条空应答"))
+        data.ok_or_else(|| copy_text("rsAssetSync.call.emptyReply", &[]))
     }
 }
 

@@ -125,7 +125,7 @@ async fn a_reply_that_breaks_the_contract_is_an_error_not_a_guess() {
         let e = preview_with(&ask, &origin("a"), &origin("b"), "demo")
             .await
             .expect_err("坏应答被收下");
-        assert_eq!(e, UNREADABLE_REPLY, "{bad}");
+        assert_eq!(e, *UNREADABLE_REPLY, "{bad}");
     }
 }
 
