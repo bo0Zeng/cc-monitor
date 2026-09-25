@@ -1029,6 +1029,14 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              门禁沙箱里起不了 sshd ⇒ 进不了门禁。谁什么时候跑：改 `dial_host` / `link_mux` / `ssh_link` / 后端 `dial/` 的那一拍，\
              交付前跑一趟、把输出贴进报告。",
         ),
+        (
+            "a_real_backend_feeds_local_lines_through_the_production_read_loop",
+            "〔CF1 09-24〕不是 e2e：它要一份编好的后端二进制（stdio 载体、起参就是生产的 `LOCAL_STREAM_ARGS`，私有 HOME / \
+             `CLAUDE_CONFIG_DIR` / `TMUX_TMPDIR`）＋ `/proc`（冒充会话的 `sleep` 要有启动时刻）。触发器是读数脚本 \
+             `tests/evidence/CF1-local-lines.py`（设好 `CF1_BACKEND` 再按名字跑这一条，并核输出里那句 `CF1-LOCAL-LINES ok`）。\
+             门禁那一格不先编后端二进制 ⇒ 进不了门禁。谁什么时候跑：改本机内容那条路（`local_lines` · 两条本机读循环 · \
+             `ssh_source::consume_local` / `LineIntake` · 后端 `observe/watcher.rs` 的 tail-only）的那一拍，交付前跑一趟、把输出贴进报告。",
+        ),
     ];
 
     // ── 🔴 第三档触发器：**由同一个 crate 里的判据 spawn 子进程去跑**〔2026-09-21 加〕
