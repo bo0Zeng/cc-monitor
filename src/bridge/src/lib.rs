@@ -1538,9 +1538,10 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 ///   ]
 /// }
 /// ```
-/// **向后兼容**：旧单对象形态 `"remote": { "enabled": true, "host": …, … }`（无 `hosts`
-/// 键）归一成 1 元素列表（`label` 默认 = host）。每台缺必填字段(host/user/backendPath)
-/// 则跳过 + warn；`label` 重复则后缀化 ` (#2)`（保证 by-label 选台 key 唯一）。
+/// 每台缺必填字段(host/user/backendPath) 则跳过 + warn；`label` 重复则后缀化 ` (#2)`（保证 by-label 选台 key 唯一）。
+/// 〔S5 · 第四波 · `99 §1` V41「不为旧配置留兼容」〕旧单对象形态（`"remote": { "enabled": true, "host": …, … }`，
+/// 没有 `hosts` 数组）**不再认**：[`parse_remote_hosts`] 回 `Err`，这里照原样落一条 `error!` 日志、不连任何远端 ——
+/// 不再把它悄悄当成一台，也不装作「没配远端」（D4）。
 pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
     let Some(cfg_path) = paths::resolve_config_path() else {
         return Vec::new();
@@ -1563,19 +1564,29 @@ pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
         return Vec::new();
     }
 
-    parse_remote_hosts(remote)
+    match parse_remote_hosts(remote) {
+        Ok(cfgs) => cfgs,
+        Err(why) => {
+            tracing::error!("{} 的 remote 段：{why}", cfg_path.display());
+            Vec::new()
+        }
+    }
 }
 
-/// 把 `remote` 对象解析成 host 列表（抽出供单测直接喂 JSON 对象）。优先读 `hosts`
-/// 数组；无 `hosts` 但有 `host`（旧单对象）→ 当 1 台。重复 label 后缀化去重。
+/// `remote` 段没有 `hosts` 数组时那句话（旧单对象写法、或者 `hosts` 写成了别的类型）。
+pub(crate) const REMOTE_HOSTS_UNRECOGNIZED: &str =
+    "认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器";
+
+/// 把 `remote` 对象解析成 host 列表（抽出供单测直接喂 JSON 对象）。**只认 `hosts` 数组**；
+/// 没有它 ⇒ `Err`（〔S5〕旧单对象那一支删了，V41）。重复 label 后缀化去重。
 fn parse_remote_hosts(
     remote: &serde_json::Map<String, serde_json::Value>,
-) -> Vec<ssh_source::RemoteConfig> {
+) -> Result<Vec<ssh_source::RemoteConfig>, &'static str> {
+    let Some(arr) = remote.get("hosts").and_then(|v| v.as_array()) else {
+        return Err(REMOTE_HOSTS_UNRECOGNIZED);
+    };
     let host_objs: Vec<&serde_json::Map<String, serde_json::Value>> =
-        match remote.get("hosts").and_then(|v| v.as_array()) {
-            Some(arr) => arr.iter().filter_map(|v| v.as_object()).collect(),
-            None => vec![remote], // 向后兼容：旧单对象
-        };
+        arr.iter().filter_map(|v| v.as_object()).collect();
 
     let mut out: Vec<ssh_source::RemoteConfig> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1599,7 +1610,7 @@ fn parse_remote_hosts(
         }
         out.push(cfg);
     }
-    out
+    Ok(out)
 }
 
 /// 解析单个 host JSON 对象 → RemoteConfig；缺必填字段(host/user/backendPath) → None+warn。
