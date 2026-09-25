@@ -1,0 +1,81 @@
+{
+  "history-find": {
+    "hits": [
+      {
+        "after": "beta",
+        "before": "alpha",
+        "kind": "user",
+        "matched": "zqx",
+        "uuid": "in-1"
+      },
+      {
+        "after": "",
+        "before": "gamma",
+        "kind": "assistant",
+        "matched": "zqx",
+        "uuid": "out-1"
+      }
+    ],
+    "total": 2
+  },
+  "history-index": {
+    "end": 376,
+    "from": 0,
+    "rows": [
+      {
+        "ch": 14,
+        "n": 86,
+        "o": 0,
+        "pl": 1,
+        "t": "user",
+        "ts": "t1",
+        "u": "in-1",
+        "x": "alpha zqx beta"
+      },
+      {
+        "ch": 9,
+        "fd": 1,
+        "n": 137,
+        "o": 86,
+        "pl": 1,
+        "t": "assistant",
+        "u": "out-1"
+      },
+      {
+        "ch": 4,
+        "mt": true,
+        "n": 75,
+        "o": 224,
+        "pl": 1,
+        "t": "user",
+        "u": "meta-1"
+      },
+      {
+        "ch": 5,
+        "n": 77,
+        "o": 299,
+        "pl": 1,
+        "t": "user",
+        "ts": "t2",
+        "u": "in-2",
+        "x": "delta"
+      }
+    ]
+  },
+  "history-user-inputs": {
+    "end": 376,
+    "entries": [
+      {
+        "excerpt": "alpha zqx beta",
+        "timestamp": "t1",
+        "uuid": "in-1"
+      },
+      {
+        "excerpt": "delta",
+        "timestamp": "t2",
+        "uuid": "in-2"
+      }
+    ],
+    "from": 0
+  }
+}

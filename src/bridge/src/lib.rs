@@ -77,7 +77,8 @@ mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（�
 mod parser;
 mod paths;
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
-mod plugins; // P8a：Claude Code marketplace 面的只读枚举（**不声称安装/启用**，见模块头注）
+// 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
+//   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/settings/plugins-section.ts::fetchSurvey`）。
 mod port_forward;
 mod profile_installer;
 mod pubkey;
@@ -195,10 +196,8 @@ mod structural_scan;
 mod subagent;
 // 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」：骨架索引 ＋ 按偏移取一段正文。
 mod session_skeleton;
-// 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源：问后端要「你说过的话」清单。
-mod session_outline;
-// 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）：问后端要这一份会话里的命中。
-mod session_find;
+// 〔C4b · 第四波 4B〕大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
+//   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
 mod tasks;
@@ -1428,13 +1427,10 @@ pub fn run() {
             history::list_history_projects,
             history::stream_history_sessions_in_project,
             history::stream_read_session_jsonl,
-            // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的两个调用点。
-            session_skeleton::read_session_index,
+            // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的调用点（〔C4b〕骨架索引那一条改走通道）。
             session_skeleton::read_session_range,
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
             session_skeleton::replay_keep_tail_only,
-            session_outline::list_user_inputs,
-            session_find::find_in_session,
             remote_history::list_remote_history_projects,
             // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
             // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
@@ -1495,7 +1491,6 @@ pub fn run() {
             skill_host::list_skills,
             skill_host::read_skill_file,
             skill_host::write_skill_file,
-            plugins::list_plugin_marketplaces,
             cc_bus_deploy::deploy_local_cc_bus,
             cc_bus_deploy::cc_bus_install_state,
             panorama::panorama_index,

@@ -82,8 +82,9 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 （`P4b` 删掉「spawn 复用活会话」那一刀实测就卡在这里 —— 两份差的正是它改的那 2 个文件）。
 ⚠ `uninstallable` 仍是 `false`：**卸载没做**，如实声明。
 
-**P8a 插件面枚举是本约「读」面的又一次延伸（澄清，非例外/非松动）**：`src/bridge/src/plugins.rs` 为
-「有哪些 Claude Code marketplace」新增一条**纯只读**的本机查询（`list_plugin_marketplaces`），
+**P8a 插件面枚举是本约「读」面的又一次延伸（澄清，非例外/非松动）**：P8a 为
+「有哪些 Claude Code marketplace」新增一条**纯只读**的本机查询（〔RM1b〕读法搬进后端 `observe/plugins_query.rs`；
+〔C4b〕monitor 那一侧的模块与那条命令已删，界面经通道直接问帧命令 `plugins-marketplaces`），
 **零写入**、**不 shell out**、**不轮询**（按需一次）。它把本机读面从 `projects/` + `sessions/`
 扩到 `<claude_dir>/plugins/`，边界两条：
 ① 只读 `<claude_dir>/plugins/known_marketplaces.json` 与各 marketplace 落点下的 `<落点>/.claude-plugin/marketplace.json`

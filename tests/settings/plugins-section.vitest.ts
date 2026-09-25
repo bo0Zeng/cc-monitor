@@ -10,19 +10,32 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+// 〔C4b · 第四波 4B〕这一问改走通道（`chan.call(origin, "plugins-marketplaces", …)`）。替身仍按「问哪台 ⇒ 回一份 survey」答话：
+//   包装层那一条 `chan_call` 被截下来，替身回的 survey 原样编成后端成品字节（`chan-fake.ts::chanReply`）；替身抛的
+//   ⇒ 通道那一跳的「对端说不行」（原因原样带上）。
 const listPluginMarketplaces = vi.fn();
-vi.mock("../../src/ipc/commands", () => ({
-  commands: {
-    list_plugin_marketplaces: (a: { origin: string }) => listPluginMarketplaces(a),
-  },
-}));
+vi.mock("../../src/ipc/commands", async () => {
+  const { chanReply, refusedReply } = await import("../test-support/chan-fake");
+  return {
+    commands: {
+      chan_call: async (a: { origin: string; op: string }) => {
+        if (a.op !== "plugins-marketplaces") throw new Error(`没料到这一问：${a.op}`);
+        try {
+          return chanReply(await listPluginMarketplaces({ origin: a.origin }));
+        } catch (e) {
+          throw refusedReply("failed", String(e));
+        }
+      },
+    },
+  };
+});
 
-import { PluginsSection, declaredPluginsText, lastUpdatedText } from "../../src/settings/plugins-section";
+import { PluginsSection, declaredPluginsText, decodeSurvey, lastUpdatedText } from "../../src/settings/plugins-section";
 import { __resetMachineContextForTests, setCurrentMachine } from "../../src/settings/machine-context";
 import { LOCAL_ORIGIN } from "../../src/backend-policy";
-import type { MarketplaceEntry } from "../../src/generated/MarketplaceEntry";
+import type { MarketplaceEntry } from "../../src/settings/plugins-section";
 
-import { srcDirOf } from "../test-support/repo-root";
+import { REPO_ROOT, srcDirOf } from "../test-support/repo-root";
 function entry(over: Partial<MarketplaceEntry> = {}): MarketplaceEntry {
   return {
     id: "mk",
@@ -264,5 +277,38 @@ describe("RM1b：跟着「当前在看哪台机器」问那一台", () => {
     await settle();
     expect(s.element.textContent).toContain("devbox-mk");
     expect(s.element.textContent).not.toContain("local-mk");
+  });
+});
+
+// ── 〔C4b · 第四波 4B〕线上形状的收口搬到了唯一的消费者这里（从 monitor `plugins.rs` 的 `parse_survey_lines` 搬来）〔散文墓碑〕 ──
+describe("〔C4b〕plugins-marketplaces 的成品按形状收（`decodeSurvey`）", () => {
+  it("★★ 金样：解码器读得懂后端真出的那一份（逐字段；`null` 过了线还是 `null`，不是 0）", () => {
+    const golden = JSON.parse(
+      readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/plugins-survey.golden.json"), "utf8"),
+    ) as unknown;
+    const s = decodeSurvey(golden);
+    expect(s.file_absent).toBe(false);
+    expect(s.entries.map((e) => [e.id, e.source, e.declared_plugins])).toEqual([
+      ["a-good", "github:o/r", 2],
+      ["b-bad", null, null],
+    ]);
+    expect(s.entries[1].declared_error).toContain("落点里没有");
+    expect(decodeSurvey({ entries: [], file_absent: true })).toEqual({ entries: [], file_absent: true });
+  });
+
+  it("★ 两端一漂就当场报错 —— 多一格、`null` 缺席（不是 `null`）、少 `file_absent`、类型不对都要红", () => {
+    const full = { id: "mk", source: "github:a/b", install_location: "/tmp/mk", last_updated: null, declared_plugins: null, declared_error: "x" };
+    expect(() => decodeSurvey({ entries: [full], file_absent: false })).not.toThrow();
+    const { declared_plugins: _drop, ...missing } = full;
+    for (const [what, bad] of [
+      ["多一格", { entries: [{ ...full, installed: 39 }], file_absent: false }],
+      ["null 缺席", { entries: [missing], file_absent: false }],
+      ["少 file_absent", { entries: [] }],
+      ["顶层多一格", { entries: [], file_absent: true, lines: [] }],
+      ["数不是整数", { entries: [{ ...full, declared_plugins: 1.5 }], file_absent: false }],
+      ["旧的「恰一行」形状", { lines: ["{}"] }],
+    ] as const) {
+      expect(() => decodeSurvey(bad), `${what} 被静默收下了`).toThrow(/形状对不上/);
+    }
   });
 });

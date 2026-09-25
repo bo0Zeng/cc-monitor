@@ -1313,7 +1313,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-find",
         doc_anchor: Some("#### `history-find`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["include_tools", "limit", "lines", "path", "query"],
+        fields: &["hits", "include_tools", "limit", "path", "query", "total"], // 〔C4b〕应答出成品：`lines` ⇒ `total` / `hits`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
@@ -1325,7 +1325,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-index",
         doc_anchor: Some("#### `history-index`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["lines", "offset", "path", "until"],
+        fields: &["end", "from", "offset", "path", "rows", "until"], // 〔C4b〕应答出成品：`lines` ⇒ `from` / `end` / `rows`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
@@ -1337,7 +1337,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-user-inputs",
         doc_anchor: Some("#### `history-user-inputs`"),
         codes: &["bad_args", "failed", "too_large"],
-        fields: &["from", "lines", "path"],
+        fields: &["end", "entries", "from", "path"], // 〔C4b〕应答出成品：`lines` ⇒ `from` / `end` / `entries`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
@@ -1389,12 +1389,12 @@ pub const REGISTRY: &[CommandSpec] = &[
     //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
     // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
     // 〔RM1b · 第四波〕同族第二条：插件市场只读枚举（`parity_ledger` `plugins.marketplaces`）。
-    //   从 monitor `plugins.rs`（`P8a`）原样搬来，三条出口不变；应答恰一行 = 整份 survey。
+    //   从 monitor `plugins.rs`（`P8a`）原样搬来，三条出口不变；〔C4b〕应答 = 整份 survey（成品，不再裹成一行）。
     CommandSpec {
         name: "plugins-marketplaces",
         doc_anchor: Some("#### `plugins-marketplaces`"),
         codes: &["failed", "too_large"],
-        fields: &["lines"],
+        fields: &["entries", "file_absent"],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)
