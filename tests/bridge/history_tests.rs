@@ -2752,7 +2752,7 @@ fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
 ///   **带中转前缀的拉起今天必然落到回落路** ⇒ 本条驱动的正是那条生产可达的路。
 ///   ccm 那一支上「前缀有没有拼」由同一行代码管（合流之后**只有一处**拼接）。
 /// - **送法自己拿到串之后干了什么**：那是 `launch::launch_local_posix` 自己的判据面；
-///   「生产上插进这条缝的就是它」由 `the_production_relay_facts_are_those_two_take_points`
+///   「生产上插进这条缝的就是它」由 `the_production_relay_facts_are_those_take_points`
 ///   末尾那一格按**函数地址**对拍。
 /// - **谁绕开这条缝直接调送法**：由 `payload.rs` 那道人群闸数着（零调用点）。
 #[test]
@@ -3285,7 +3285,7 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
 // # 病是怎么长出来的（`D8 §4` 第 2 条，别只读结论）
 //
 // 本件所有承重的行为判据（[`the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`]
-// / [`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers`]）的
+// / [`the_launch_side_really_asks_the_backend_and_uses_its_answer`]）的
 // **驱动入口都是 [`launch_local`] 或更下游**，而**生产入口在它上面两跳**：
 //
 // ```text

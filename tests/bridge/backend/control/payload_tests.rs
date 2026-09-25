@@ -766,16 +766,16 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
         ("\".cc-monitor/relay-key\"", "crates/relay-route-core/src/lib.rs"),
     ];
     let mut hits = Vec::new();
-    for (p, src) in guard_core::scan_tree_excluding(&root.join("src"), &["rs"], &[]) {
+    for (at, src) in guard_core::scan_tree_excluding(&root.join("src"), &["rs"], &[]) {
         let prod = guard_core::production_code(&src);
         for (w, _) in words {
             if guard_core::contains_word(&prod, w) {
-                hits.push(format!("{} · `{w}`", p.display()));
+                hits.push(format!("{} · `{w}`", at.display()));
             }
         }
         for (l, _) in literals {
             if prod.contains(l) {
-                hits.push(format!("{} · {l}", p.display()));
+                hits.push(format!("{} · {l}", at.display()));
             }
         }
     }
@@ -790,11 +790,11 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
     }
     // 后端那一半：端口与钥匙路径只许 `use` 共享 crate（零字面量）。
     let mut backend_hits = Vec::new();
-    for (p, src) in guard_core::scan_tree_excluding(&root.join("../backend"), &["rs"], &[]) {
+    for (at, src) in guard_core::scan_tree_excluding(&root.join("../backend"), &["rs"], &[]) {
         let prod = guard_core::production_code(&src);
         for l in ["8788", "\".cc-monitor/relay-key\""] {
             if prod.contains(l) {
-                backend_hits.push(format!("{} · {l}", p.display()));
+                backend_hits.push(format!("{} · {l}", at.display()));
             }
         }
     }
@@ -1110,7 +1110,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     for anchor in [
         "let relay = relay_prefix_for_launch(action, account)?;",
         "let identity = launch_identity(action);",
-        "relay_env_prefix_posix(&u)",
+        "relay_env_prefix_posix(u)",
         "let prefix = launch_identity_env_prefix(&token,",
     ] {
         guard_core::find_pinned(&hist, anchor).unwrap_or_else(|e| {

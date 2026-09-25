@@ -6,9 +6,9 @@
 //!
 //! | 件 | monitor 那一份 | 后端那一份 | 先前靠什么对上 |
 //! |---|---|---|---|
-//! | 端口 8788 | `payload::RELAY_PORT` | `relay/server.rs::DEFAULT_PORT` | **什么都没有**（零对拍） |
-//! | 钥匙文件相对路径 | `payload::RELAY_KEY_FILE_REL` | `relay/door.rs::KEY_FILE_REL` | 后端判据现抠 monitor 源码字面量 |
-//! | 两个前缀 · 段闸 · 拼路由 | `payload::relay_route_path_in` 一族 | `relay/route.rs::PREFIXES` / `segment_is_safe` / `parse` | 一行样例两侧各解一次 |
+//! | 端口 8788 | `payload.rs` 里一个字面量 | `relay/server.rs` 里一个字面量 | **什么都没有**（零对拍） |
+//! | 钥匙文件相对路径 | `payload.rs` 里一个字面量 | `relay/door.rs` 里一个字面量 | 后端判据现抠 monitor 源码字面量 |
+//! | 两个前缀 · 段闸 · 拼路由 | `payload.rs` 里那一族构造口 | `relay/route.rs` 里那张前缀表与段闸 | 一行样例两侧各解一次 |
 //!
 //! 两个二进制不共享源码树（后端刻意不在 monitor 的 workspace 里）⇒ 共享 crate 是「一份实现两侧 use」的唯一载体
 //! （同 `shell-quote-core` 的形状）。从此漂开**不可表示**：想不一致得先把 `use` 删掉。

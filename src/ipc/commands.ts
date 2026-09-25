@@ -52,36 +52,9 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * 由 Rust 侧的 `the_ts_view_type_matches_this_struct` 钉住：那条判据读本文件的源码，
  * 逐个字段对拍，漏一个就红。
  */
-/**
- * `K-H2a` `KS6`：apikey 表那把第三方 API key 的**状态**。
- *
- * ⚠⚠ **这个类型里没有明文那个字段 —— 那是本件最要紧的一条，不是省略。**
- * `KS6` 逐字：一旦回显，key 就从「只住在后端」变成「**每次打开那个界面都往前端传一遍**」
- * ⇒ 泄漏面从一次变成无数次，每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
- * ⇒ 要改 key 就**重新输**，前端永远拿不到旧值。
- *
- * ⚠ **本类型是手写的**（不是 ts-rs 生成）—— 照 `SkillView` 的先例。
- * 走手写而不是 `#[ts(export)]` 的理由是现打的（08-27）：`ts-rs` 导出会在 `src/generated/`
- * **新增一个文件**，而那个目录的清单由 `tests/generated-boundary-guard.vitest.ts`
- * 逐项等号对拍，那个文件不在 `K-H2a` 的写区。
- * ⇒ 字段与 Rust 侧 `creds_store::ApikeyCredentialsStatus`（serde 默认 snake_case）
- * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
- *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
- */
-import type { ApikeyRoutingView } from "../accounts";
-
-export interface ApikeyCredentialsStatus {
-  /** 配了没配。 */
-  configured: boolean;
-  /** 掩码形（前后各留几位；短到看不出前后缀的整条遮掉）。没配 = 空串。**永远不是明文。** */
-  masked: string;
-  /** 那份文件在哪 —— 给「我想自己拿编辑器改」的人看。 */
-  path: string;
-  /** 权限过宽 / 查不出来时的提醒（`KS11`：要在界面上显出来）。 */
-  notice: string | null;
-  /** 文件读坏了时的说法（人手编打错一个逗号）。 */
-  problem: string | null;
-}
+// 〔US1 · 第四波 4D〕`ApikeyCredentialsStatus` 与 `ApikeyRoutingView` 两个类型搬进 `src/apikey-reads.ts`（那两问改走通道、后端出成品，
+//   形状由跨语言金样 `tests/__fixtures__/apikey.golden.json` 两侧对拍）；本文件那条 `import type … from "../accounts"`（B-decouple §6
+//   必须拆 4 点名的「闭合类型环的那条边」）随 `apikey_routing_for` 一起走了。
 
 export interface SkillView {
   id: string;
@@ -487,29 +460,13 @@ export const commands = {
   rebuild_search_index: () => invoke<SearchIndexStatus>("rebuild_search_index"),
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
-  /**
-   * `K-H2a` `KS6`：读 apikey 表那把 key 的状态。**返回里永远只有掩码。**
-   * 〔RM1a〕收 `origin`：远端读的是**那台机器上**那一份（问那台的后端 `apikey-read`）。
-   */
-  read_apikey_credentials_status: (args: { origin: Origin }) =>
-    invoke<ApikeyCredentialsStatus>("read_apikey_credentials_status", args),
-
-  /**
-   * `K-H2b` `KH2B7`：问「这几个 configDir 在 apikey 表里有没有行 · 中转在不在」。
-   *
-   * 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**（远端由那台的后端答：
-   * 表里有哪几行 `apikey-read` · 口上有没有人在听 `relay-status`）。先前「只答本机」的理由是
-   * 「本机这一侧在结构上答不了远端那台」—— 今天远端那台自己答。
-   * ⚠ 返回类型是**手写镜像**（`ApikeyRoutingView` 住 `src/accounts.ts`），
-   * 与 Rust 的 `ApikeyRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
-   */
-  apikey_routing_for: (args: { origin: Origin; configDirs: string[] }) =>
-    invoke<ApikeyRoutingView>("apikey_routing_for", args),
+  // 〔US1 · 第四波 4D〕`read_apikey_credentials_status` / `apikey_routing_for` 退役：界面经通道直接问那台后端
+  //   `apikey-read` / `apikey-routing`（`src/apikey-reads.ts`）。
 
   /**
    * 〔RL1 · 第四波〕这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（`null` = 不注入，照旧直连）。
    * 远端那台**用到才起**它的中转；apikey 号的中转起不来 ⇒ reject（拒绝起会话，说得出是哪台）。
-   * 判断只在后端 `payload::relay_endpoint_for` 一处；前端拿到地址原样放进载荷（`export-relay-base-url`）。
+   * 〔US1〕判断在那台机器的后端（`launch-endpoint` 出成品），monitor 只转交、照成品执行；前端拿到地址原样放进载荷（`export-relay-base-url`）。
    * 它接替了 RM1a 那条零调用方的 `relay_ensure`。
    */
   relay_endpoint_for_launch: (args: {

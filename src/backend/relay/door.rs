@@ -21,7 +21,7 @@
 //! monitor 渲染 `export ANTHROPIC_BASE_URL=…` 时，钥匙那一段写成**读这个文件的命令替换**，
 //! 在那台机器的 pane shell 里展开（`src/bridge/src/backend/control/payload.rs::relay_env_prefix_posix`）。
 //! ⇒ 钥匙只从这个文件进 agent 进程自己的 env；载荷、`tmux send-keys` 的 argv、shell 历史、webview 里都只有那几个字。
-//! 两半的相对路径由 `door_tests::the_key_file_is_the_same_path_on_both_halves` 现抠对拍。
+//! 〔US1〕两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
 //!
 //! # 进门三问（[`admit`]，顺序固定，都在读请求体之前）
 //!
