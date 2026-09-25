@@ -604,6 +604,28 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 这一层只把 cc-bus 的**命令**当接口：命令是给外人用的，文件格式是给自己用的。
 由 `control/cc_bus.rs` 里的 `no_cc_bus_data_layout_leaks_into_the_backend` 钉住。
 
+#### `bus-broadcast`：给总线上**在线**的成员群发一条（C4e，09-25）
+
+```text
+→ {"id":"B5","cmd":"bus-broadcast","args":{"text":"门禁全绿了","from":"cc-monitor"}}
+← {"kind":"reply","id":"B5","ok":true,"data":{"sent":7,"skipped_offline":78,"liveness_unknown":false,"failed":[{"id":"x_cc","error":"timed_out","detail":"…"}]}}
+```
+
+`text` 正文（非空）· `from`（**可选**，同 `bus-send`：以谁的身份发，也用来「不发给自己」）。
+它是一个**组合**，住后端这一侧：列名单（与 `bus-list` 同一个函数）→ 挑人 → 逐个投递（与 `bus-send` 同一处起 `cc-send`）。
+此前这个组合住 monitor；界面改成经通道直接说后端之后（`设计/05 §14.3`「业务解释只有一个家」）收进这里，
+界面只收一份成品。
+
+挑人规则（P4f 08-13 实测出来的）：身份空间答得上 ⇒ **只发 `live == true` 的**（老 `cc-broadcast` 发给名册的
+每一行：实测 86 行登记、只有 8 个会话还活着 ⇒ 78 个没人读的收件箱）；全是 `null`（问不到 tmux）⇒ 退回
+「发给所有登记的」并回 `liveness_unknown: true`（「问不到」≠「都不在」）；不发给 `from` 自己。
+
+回值三个数**分开说**：`sent`（投出去几条）· `skipped_offline`（因不在线跳过几个）· `failed`（逐个列，
+`{id, error, detail}`，`error` 是 `bus-send` 那一套码；键刻意不叫 `code` / `message` —— 那一对是整条失败的错误信封）。⚠ **部分失败不整条回错**：已经投出去一部分之后再失败，整条回错会让
+调用方以为一条都没发、再发一遍 ⇒ 一部分人收到两遍。
+
+错误码（整条失败，一条都还没发）：`invalid_args`（`text` 缺 / 空）· `not_installed` · `timed_out` · `failed`（列名单那一步）。
+
 #### `bus-state`：总线名单 ＋ spawn 台账**一次回全**（`K-R113`，09-13）
 
 ```text
@@ -2428,6 +2450,9 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
 **BS1b 追加一条（09-24）**：`--bus-spawn` —— 派生一个协作 agent（见上面它自己那一小节）。
 同上，与帧面同一个 `run`；**读 stdin**（那段 JSON 就是它的 `args`）。⚠ 它**起一个真 agent**。
+
+**C4e 追加一条（09-25）**：`--bus-broadcast` —— 给总线上在线的成员群发一条（见上面它自己那一小节）。
+同上，与帧面同一个 `run`；**读 stdin**（那段 JSON 就是它的 `args`）。
 
 **步 `24f` 追加四条（09-20）**：`--files-ls` / `--files-stat` / `--files-find` /
 `--files-index-status` —— `files-read` 这一族的 CLI 面（逐条见上面各自那一小节）。

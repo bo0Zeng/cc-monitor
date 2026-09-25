@@ -133,6 +133,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "kill"
                 | "bus-list"
                 | "bus-send"
+                | "bus-broadcast"
                 | "bus-kill"
                 | "bus-spawn"
                 | "bus-state"
@@ -255,6 +256,7 @@ fn every_registered_command_declares_its_run_kind() {
         "remote-reach",
         "bus-list",
         "bus-send",
+        "bus-broadcast",
         "bus-kill",
         "bus-spawn",
         "bus-state",

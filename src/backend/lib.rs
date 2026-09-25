@@ -568,6 +568,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
     // ⇒ 现由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
+    // 〔C4e · 第四波 4C〕广播（`inbound::REGISTRY` 的 `bus-broadcast`）：原是 monitor 里的组合（列名单 ＋ 逐个发），
+    //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
+    //   （`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--bus-broadcast",
     "--bus-kill",
     "--bus-list",
     "--bus-send",
