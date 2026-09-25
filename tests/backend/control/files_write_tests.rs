@@ -1116,6 +1116,35 @@ fn copy_lands_a_byte_exact_copy_and_never_overwrites_unless_asked() {
     std::fs::remove_dir_all(&base).ok();
 }
 
+/// 〔W5-FILES〕要求住址：`设计/60 §7 #11`「复制出来的新文件权限位不从源抄」（登记为开着的缺陷）。
+///
+/// 源 `0o751` / `0o600` —— 进程缺省（umask 022 ⇒ `0o644`）给不出来的两个值 ⇒ 抄没抄分得开。
+/// 不覆盖（目标本身新建）与显式覆盖（暂存旁名换名上位）两支各一格；两格目标逐位 == 源。
+#[test]
+#[cfg(unix)]
+fn a_copy_carries_the_source_permission_bits_on_both_branches() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = temp_root("cpm");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    let mode = |p: &Path| std::fs::metadata(p).expect("stat").permissions().mode() & 0o7777;
+    for (src, bits) in [("x.sh", 0o751u32), ("secret", 0o600u32)] {
+        std::fs::write(root.join(src), b"s").expect("铺源");
+        std::fs::set_permissions(root.join(src), std::fs::Permissions::from_mode(bits))
+            .expect("设源权限");
+        let fresh = format!("{src}.new");
+        copy_entry(&root, src, &fresh, false).expect("不覆盖那一支被拒");
+        assert_eq!(mode(&root.join(&fresh)), bits, "不覆盖那一支没抄权限位（{src}）");
+        let old = format!("{src}.old");
+        std::fs::write(root.join(&old), b"o").expect("铺旧目标");
+        std::fs::set_permissions(root.join(&old), std::fs::Permissions::from_mode(0o644))
+            .expect("设旧目标权限");
+        copy_entry(&root, src, &old, true).expect("覆盖那一支被拒");
+        assert_eq!(mode(&root.join(&old)), bits, "覆盖那一支没抄权限位（{src}）");
+    }
+    std::fs::remove_dir_all(&base).ok();
+}
+
 /// ★ 显式覆盖：目标换成新内容，**不留暂存旁名**；目标是一条链接时顶掉的是**链接本身**，
 /// 它指着的那份会话记录一个字节没动（〔FN1〕这一条不是围栏：复制的目标作用在链接本身上，不跟过去）。
 #[test]

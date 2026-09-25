@@ -721,7 +721,7 @@ static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 /// - `to` 与暂存旁名走 [`resolve_in_root`]（只解父目录）：它们都是**作用在链接本身**上的。
 ///
 /// ⚠ 只收**普通文件**：目录递归复制没做（与删除不递归同一条理由：路径解析的射程是一条路径）。
-/// ⚠ 新文件的权限位是进程缺省（受 umask），**不从源那里抄**；覆盖时旧目标的权限位也随它一起换掉。
+/// 〔W5-FILES〕新文件的权限位**从源抄**（[`land_copy`]；此前是进程缺省、受 umask）；覆盖时目标换成源的权限位。
 /// ⚠ TOCTOU 照旧在（同本模块头注诚实边界第 1 条）。
 pub fn copy_entry(
     root: &Path,
@@ -738,17 +738,16 @@ pub fn copy_entry(
             dst.display()
         )));
     }
-    let is_file = std::fs::metadata(&src)
-        .map(|m| m.is_file())
+    let src_md = std::fs::metadata(&src)
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", src.display())))?;
-    if !is_file {
+    if !src_md.is_file() {
         return Err(WriteRefusal::Refused(format!(
-            "refuse write: {} 不是一份普通文件 —— 只复制普通文件（目录复制没做）",
+            "refuse write: {} 不是一份普通文件 —— 不带 `recursive` 只复制普通文件（目录要显式 `recursive: true`）",
             src.display()
         )));
     }
     // 落在哪：不覆盖 ⇒ 直接落目标；显式覆盖 ⇒ 先落同目录的暂存旁名（它自己也过一遍路径解析）。
-    let land = if overwrite {
+    let land_rel = if overwrite {
         let name = to.file_name().ok_or_else(|| {
             WriteRefusal::Refused(format!("refuse write: `{}` 没有文件名", to.display()))
         })?;
@@ -757,11 +756,37 @@ pub fn copy_entry(
         let mut side = std::ffi::OsString::from(".");
         side.push(name);
         side.push(format!(".ccm-copy-{}-{seq}.part", std::process::id()));
-        resolve_in_root(root, to.with_file_name(side)).map_err(WriteRefusal::Refused)?
+        to.with_file_name(side)
     } else {
-        dst.clone()
+        to.to_path_buf()
     };
-    let mut reader = std::fs::File::open(&src)
+    let (land, n) = land_copy(root, &land_rel, &src, src_md.permissions())?;
+    if overwrite {
+        if let Err(e) = std::fs::rename(&land, &dst) {
+            std::fs::remove_file(&land).ok();
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 换名上位 {} 失败：{e}",
+                dst.display()
+            )));
+        }
+    }
+    Ok((dst, n))
+}
+
+/// 〔W5-FILES · 抽出〕把 `src`（已经过了路径解析的真路径）的字节落进 `root ＋ land_rel` 那一格上**新建**的一份：
+/// `O_EXCL` 新建 → 写满 → 抄源的权限位。任一步失败 ⇒ 删掉**我们自己刚建的那一份**，原样带回原因。
+///
+/// 🔴 〔W5-FILES · `设计/60 §7 #11`〕**权限位从源抄**（此前是进程缺省、受 umask —— 那条被登记为开着的缺陷）。
+/// 用的是闭集里已有的「改权限」，落在我们自己刚建的那一份上；`Permissions` 原样搬（unix 是 mode 低 12 位，
+/// 别处是只读位）⇒ 不需要平台分支。单文件复制（[`copy_entry`]）与复制目录共用这一段。
+fn land_copy(
+    root: &Path,
+    land_rel: &Path,
+    src: &Path,
+    perms: std::fs::Permissions,
+) -> Result<(PathBuf, u64), WriteRefusal> {
+    let land = resolve_in_root(root, land_rel).map_err(WriteRefusal::Refused)?;
+    let mut reader = std::fs::File::open(src)
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 打不开源 {}：{e}", src.display())))?;
     let mut writer = std::fs::OpenOptions::new()
         .write(true)
@@ -786,16 +811,14 @@ pub fn copy_entry(
         }
     };
     drop(writer);
-    if overwrite {
-        if let Err(e) = std::fs::rename(&land, &dst) {
-            std::fs::remove_file(&land).ok();
-            return Err(WriteRefusal::Io(format!(
-                "refuse write: 换名上位 {} 失败：{e}",
-                dst.display()
-            )));
-        }
+    if let Err(e) = std::fs::set_permissions(&land, perms) {
+        std::fs::remove_file(&land).ok();
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: 抄权限位到 {} 失败：{e}",
+            land.display()
+        )));
     }
-    Ok((dst, n))
+    Ok((land, n))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
