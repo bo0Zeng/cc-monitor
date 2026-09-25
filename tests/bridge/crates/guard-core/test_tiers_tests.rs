@@ -287,7 +287,7 @@ const SCAN: &[&str] = &[
     "tests/backend/protocol_doc_guard.rs",
     "tests/backend/ratchet_guard.rs",
     "tests/backend/readonly_guard.rs",
-    "tests/backend/relay/account_layer_guard.rs",
+    "tests/backend/relay/upstream_selection_guard.rs",
     "tests/backend/relay/bind_guard.rs",
     "tests/backend/relay/creds_guard.rs",
     "tests/backend/relay/framer_tests.rs",

@@ -2190,7 +2190,7 @@ pub(crate) fn relay_account_slots(
 /// 〔RL1〕一次拉起的中转地址：`None` = 不注入（照旧直连）；`Err` = 该走却走不了（**拒绝起会话**，出声）。
 ///
 /// 住本文件（起会话那一侧）而不住 `remote_relay`：它要同时叫得出层 1（中转在不在）与层 2（apikey 表的行），
-/// 而 `remote_relay` 一个账号层的名字都不许有（`this_module_knows_no_account_layer_name`）。
+/// 而 `remote_relay` 一个账号层的名字都不许有（`this_module_knows_no_upstream_selection_name`）。
 /// **判断只在 `payload::relay_endpoint_for` 一处**（`设计/20 §3.2` 那张表）；本函数只换**事实的来源**：
 /// - 本机：两个事实经起会话那一侧同一条缝（`history::inject_facts`）取 —— 与 `launch_local` 同一份；
 /// - 远端：表里有哪几行问**那台**的账号层（`apikey-read`），中转在不在问**那台**的回环口，

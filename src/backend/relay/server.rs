@@ -49,7 +49,7 @@ use std::sync::Arc;
 
 // ⚠ 上游的环境旋钮与默认值**先搬去层 2**（`20 §4`「常量跟着职责走」），**再被条 59 整删**成
 //   每 agent 一行的表（`accounts::upstream::AGENT_UPSTREAMS`）。层 1 里**没有任何可以回落的默认上游**
-//   —— 这一句由 `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
+//   —— 这一句由 `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（层 1 零处 ＋ 层 2 恰好登记那几处），不是一条散文。
 
 // ══ 下面这三个常量的**职责在 `listen.rs`**（监听面），代码留在这里 ══════════════
@@ -577,7 +577,7 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //    下一条请求触发重载）会挡住其后所有读者；而 `pump` 是流式转发，
     //    一条 SSE 长流可以跑几分钟 ⇒ `pump` 搬进来，「配一次 key」就会被堵在
     //    **最长那条在飞流**后面。⚠ 挂起时长**没实测**，这是读源码得出的形状。
-    //    钉这一条的判据：`table_guard::the_layer_two_lock_does_not_outlive_the_streaming_pump`。
+    //    钉这一条的判据：`table_guard::the_upstream_selection_lock_does_not_outlive_the_streaming_pump`。
     let mut answered: Option<Answered> = None;
     relay.dest.resolve(r.mode, &r.key, &mut |d| {
         answered = Some(match d {

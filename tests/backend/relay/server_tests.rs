@@ -44,7 +44,7 @@ const TEST_AGENT_B: &str = "agentB";
 /// ⚠⚠ 判据**不自己判**「这一行该不该换头 / 要不要丢掉客户端那份」——
 /// 那是层 2 的活（`设计/20 §7` 步 1 之后它整条搬过去了）。判据自己再判一遍，
 /// 量到的就是判据里那份副本，不是生产段那一份。
-fn render_via_layer_two(
+fn render_via_upstream_selection(
     t: &RoutingTable,
     account: &str,
     head: &RequestHead,
@@ -2177,7 +2177,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
     // 两行：一行配了 key，一行没配。**同一张表**里取，走的是生产段那条真实的路。
     let t = table_of(&[("with", &base, Some(MINE)), ("without", &base, None)]);
 
-    let with = render_via_layer_two(&t, "with", &head, "/v1/x", 3);
+    let with = render_via_upstream_selection(&t, "with", &head, "/v1/x", 3);
     // ★ **恰好一个** `Authorization` —— 追加一条会让上游看见两个，那是未定义行为。
     assert_eq!(
         with.matches("Authorization:").count(),
@@ -2191,7 +2191,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
     );
 
     // 非空对照：**这一行没配** key 时是原样转发（不是恒替换）。
-    let without = render_via_layer_two(&t, "without", &head, "/v1/x", 3);
+    let without = render_via_upstream_selection(&t, "without", &head, "/v1/x", 3);
     assert!(without.contains("Authorization: Bearer THEIRS\r\n"));
     assert!(!without.contains(MINE));
 }
@@ -2228,7 +2228,7 @@ fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
         ("xapikey", &base, Some(MINE), AuthStyle::XApiKey),
         ("noauth", &base, None, AuthStyle::NoAuth),
     ]);
-    let render = |id: &str| render_via_layer_two(&t, id, &head, "/v1/x", 3);
+    let render = |id: &str| render_via_upstream_selection(&t, id, &head, "/v1/x", 3);
 
     let b = render("bearer");
     let x = render("xapikey");
@@ -2307,7 +2307,7 @@ fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
     let prefixed = Base::parse("https://gw.example.com/anthropic").expect("带前缀那一形");
     let bare = Base::parse("https://gw.example.com").expect("不带前缀那一形");
     let t = table_of(&[("with-prefix", &prefixed, None), ("no-prefix", &bare, None)]);
-    let render = |id: &str, rest: &str| render_via_layer_two(&t, id, &head, rest, 0);
+    let render = |id: &str, rest: &str| render_via_upstream_selection(&t, id, &head, rest, 0);
 
     // ★★ 承重的那一格排最前：期望值是**手写字面量**的整条请求行。
     let with = render("with-prefix", "/v1/messages");
@@ -2618,7 +2618,7 @@ fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
     let base = Base::parse("https://api.example.com").expect("base");
     // 这一行**没配 key** ⇒ 原样转发那一支（`K-H1` 甲半的形状）。换头那一支见下一条判据。
     let t = table_of(&[("acct", &base, None)]);
-    let out = render_via_layer_two(&t, "acct", &head, "/v1/x", 3);
+    let out = render_via_upstream_selection(&t, "acct", &head, "/v1/x", 3);
     assert!(out.starts_with("POST /v1/x HTTP/1.1\r\n"));
     assert!(out.contains("Host: api.example.com\r\n"));
     assert!(out.contains("Accept-Encoding: identity\r\n"));
@@ -3750,7 +3750,7 @@ fn spawn_relay_with_upstream_deadline(
 ///
 /// 同一个中转、同一张表：表里没这一行 ⇒ 404；上游连不上 ⇒ 504。两个码不同，本条末尾顺带断一次。
 #[test]
-fn layer_one_transport_failures_answer_504_saying_who_and_where() {
+fn relay_transport_failures_answer_504_saying_who_and_where() {
     const STATUS_LINE: &str = "HTTP/1.1 504 Gateway Timeout\r\n";
 
     // ① 建立连接：没人听的端口。

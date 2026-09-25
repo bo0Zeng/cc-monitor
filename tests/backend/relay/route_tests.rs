@@ -299,7 +299,7 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
 /// 而 `route_tests.rs → payload.rs` 这条边**已经登记着**（上面那条对拍用的就是它）。
 /// 在 `table_tests.rs` 里再开一条 = 新登记一条边，而那张表不在本拍的写区。
 /// ⇒ 复用这一条，**边的集合一格不变**。它只读层 2 那一个常量，层 1 的生产段不因此多认识层 2 一个字
-/// （`account_layer_guard` 只扫生产段，判据段不在它的人群里）。
+/// （`upstream_selection_guard` 只扫生产段，判据段不在它的人群里）。
 ///
 /// ⚠ 买不到：monitor 那一侧**真的拿它去判了**。那一格由 monitor 自己的判据量
 /// （`payload_tests::another_agent_with_the_same_account_id_is_not_routed_to_that_row`）。

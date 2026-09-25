@@ -5,7 +5,7 @@
 //! 本模块只做三件事：算出路径 · 读那个文件 · 解析。
 //! 它不依赖任何 IPC / 界面 / 帧 —— 所以「**只放一份文件进去、一次界面都不开**」
 //! 这句话在这里是**结构上成立**的，不是靠一条测试证的。
-//! 判据 `the_apikey_layer_loads_the_key_from_a_hand_written_file_alone` 走的就是这条真实的路。
+//! 判据 `upstream_selection_loads_the_key_from_a_hand_written_file_alone` 走的就是这条真实的路。
 //!
 //! # `KS11`：读之前查权限，**过宽出声、不拒绝**
 //!

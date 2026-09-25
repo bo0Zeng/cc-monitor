@@ -713,10 +713,10 @@ fn population_claimed_in_prose(module_src: &str) -> usize {
 }
 
 /// **层 2 的住址前缀** —— 下面那条「成员资格不传递」判据的人群。
-const LAYER_TWO_PREFIX: &str = "src/backend/accounts/upstream/"; // 〔`A3` 第二波〕层 2 从账号域根收窄到 `apikey/` 子树（`accounts/iso.rs` 不是层 2）
+const UPSTREAM_SELECTION_PREFIX: &str = "src/backend/accounts/upstream/"; // 〔`A3` 第二波〕层 2 从账号域根收窄到 `apikey/` 子树（`accounts/iso.rs` 不是层 2）
 
 /// 层 2 今天有几份文件。**相等，不是地板** —— 多一份就回来改这个数并重读下面那条。
-const LAYER_TWO_FILES: usize = 5; // 〔RM1a · 第四波〕4 → 5：多了 `file_face.rs`（这台机器上那份凭据文件的帧面读写口，层 2 自己的状态）。〔`A3` 第二波〕中途 4 → 5（`acct_iso.rs` 当时落在层 2 根底下）→ 回到 4：层 2 收进 `accounts/upstream/` 子树，`accounts/iso.rs` 不在这个前缀里。
+const UPSTREAM_SELECTION_FILES: usize = 5; // 〔RM1a · 第四波〕4 → 5：多了 `file_face.rs`（这台机器上那份凭据文件的帧面读写口，层 2 自己的状态）。〔`A3` 第二波〕中途 4 → 5（`acct_iso.rs` 当时落在层 2 根底下）→ 回到 4：层 2 收进 `accounts/upstream/` 子树，`accounts/iso.rs` 不在这个前缀里。
 
 /// ★★ **成员资格说的是「这份文件里的代码属于层 1」，不是「它的模块子树都属于层 1」。**
 ///
@@ -733,7 +733,7 @@ const LAYER_TWO_FILES: usize = 5; // 〔RM1a · 第四波〕4 → 5：多了 `fi
 ///
 /// 1. **盘上那一侧**：`accounts/**` 里**一份都没有**自称成员（零命中）；
 /// 2. **登记那一侧**：[`REGISTERED`] 与 `accounts/**` 的**交集为空**；
-/// 3. **反空真**：那个人群**非空且份数相等**（`LAYER_TWO_FILES`）—— 否则前两条
+/// 3. **反空真**：那个人群**非空且份数相等**（`UPSTREAM_SELECTION_FILES`）—— 否则前两条
 ///    是在一个空集上成立的，而「扫不到」与「都合规」在终端上一模一样；
 /// 4. **识别器不是恒假**：拿一段**合成**文本（运行时拼出那枚标记）喂进去必须认出来
 ///    —— 没有这一条，识别器坏掉之后前两条照绿。
@@ -743,21 +743,21 @@ const LAYER_TWO_FILES: usize = 5; // 〔RM1a · 第四波〕4 → 5：多了 `fi
 /// - **不买「层 2 真的没被当成层 1 用」** —— 它只判「有没有盖标记 / 有没有登记」。
 ///   层 1 反手去 `use` 层 2 的类型这一形，挡它的是 `C2` 与 `layering_guard`，不是本条。
 /// - **不买「`accounts/` 就是层 2 的全部」** —— 人群是那个**住址前缀**给的。
-///   层 2 哪天多一个目录，本条一个字都不说（那时 `LAYER_TWO_FILES` 那条相等会先红）。
+///   层 2 哪天多一个目录，本条一个字都不说（那时 `UPSTREAM_SELECTION_FILES` 那条相等会先红）。
 fn assert_membership_does_not_inherit_down_the_module_tree() {
     let all = corpus();
-    let under_layer_two: Vec<&(String, String)> = all
+    let under_upstream_selection: Vec<&(String, String)> = all
         .iter()
-        .filter(|(rel, _)| rel.starts_with(LAYER_TWO_PREFIX))
+        .filter(|(rel, _)| rel.starts_with(UPSTREAM_SELECTION_PREFIX))
         .collect();
 
     // 反空真③：人群非空且**份数相等**（不是地板）。
     assert_eq!(
-        under_layer_two.len(),
-        LAYER_TWO_FILES,
-        "`{LAYER_TWO_PREFIX}` 下现扫到 {} 份文件，而判据里写的是 {LAYER_TWO_FILES} 份 —— \
+        under_upstream_selection.len(),
+        UPSTREAM_SELECTION_FILES,
+        "`{UPSTREAM_SELECTION_PREFIX}` 下现扫到 {} 份文件，而判据里写的是 {UPSTREAM_SELECTION_FILES} 份 —— \
          层 2 加/减了文件就回来改这个数**并重读这一条**（人群缩水与「都合规」在终端上一模一样）",
-        under_layer_two.len()
+        under_upstream_selection.len()
     );
 
     // 反空真④：识别器不是恒假 —— 合成一段**带那枚标记**的文本（运行时拼，本文件不写字面）。
@@ -768,7 +768,7 @@ fn assert_membership_does_not_inherit_down_the_module_tree() {
     );
 
     // ① 盘上那一侧：零命中。
-    let claiming: Vec<&str> = under_layer_two
+    let claiming: Vec<&str> = under_upstream_selection
         .iter()
         .filter(|(_, text)| claims_membership(text))
         .map(|(rel, _)| rel.as_str())
@@ -784,14 +784,14 @@ fn assert_membership_does_not_inherit_down_the_module_tree() {
     );
 
     // ② 登记那一侧：交集为空。
-    let registered_in_layer_two: Vec<&str> = REGISTERED
+    let registered_in_upstream_selection: Vec<&str> = REGISTERED
         .iter()
         .map(|(rel, _)| *rel)
-        .filter(|rel| rel.starts_with(LAYER_TWO_PREFIX))
+        .filter(|rel| rel.starts_with(UPSTREAM_SELECTION_PREFIX))
         .collect();
     assert!(
-        registered_in_layer_two.is_empty(),
-        "登记表里有层 2 的文件：{registered_in_layer_two:?}\n\
+        registered_in_upstream_selection.is_empty(),
+        "登记表里有层 2 的文件：{registered_in_upstream_selection:?}\n\
          ⇒ 同上：入圈只作用于一份文件的文本，不传递。**删掉那几行。**"
     );
 }

@@ -18,7 +18,7 @@
 //! ⚠ 〔2026-09-24〕**那一行已经不在了**：层 2 搬到了 `src/backend/accounts/`
 //! （用户逐字「中转层不要有账号, 账号就账号中转就中转」），本文件一行 `mod accounts;` 都没有了。
 //! 上面那段裁词照原样留着 —— 它记的是那一天为什么照圈，不是今天的状态。
-//! 今天钉「中转层里没有账号」的是 `account_layer_guard`（㈡ ㈢ 零命中）。
+//! 今天钉「中转层里没有账号」的是 `upstream_selection_guard`（㈡ ㈢ 零命中）。
 //!
 //! ## 🔴 而它配了一条硬判据：**成员资格不沿模块树往下传**
 //!
@@ -67,7 +67,7 @@
 //! 是 `creds.rs` 与 `table.rs`……**本轮不搬**」。它们先搬进 `relay/accounts/`，2026-09-24 再搬出中转层、住 `src/backend/accounts/`，
 //! 与 `impl Destinations`（那张决策表的唯一实现）、热重载同一层。
 //! ⚠ 〔2026-09-24 订正〕下面这三行记的是搬出之前那一拍的状态，**今天已不成立**（`relay/` 里一份层 2 文件都没有，
-//! `account_layer_guard` ㈡ 零命中）：「它们**仍在 `relay/` 这棵目录树下** —— 那是写区边界，不是设计终点：
+//! `upstream_selection_guard` ㈡ 零命中）：「它们**仍在 `relay/` 这棵目录树下** —— 那是写区边界，不是设计终点：
 //! `90 §0.5.3` 的目标树要它们**出 `relay/`**，那一步归改名/归属那一路。」
 //!
 //! # 它做四件事（`K9` 裁定二那四条硬要求，逐字）
@@ -245,8 +245,8 @@
 //    「中转层不要有账号, 账号就账号中转就中转」）。本目录里一行 `mod accounts;` 都没有了。
 // 「中转层里没有账号」：四条两向集合相等（残留表已清空 ⇒ 零命中形态）
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/account_layer_guard.rs"]
-mod account_layer_guard;
+#[path = "../../../tests/backend/relay/upstream_selection_guard.rs"]
+mod upstream_selection_guard;
 // ── 层 1 · 搬字节那半 ────────────────────────────────────────────────────────
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/bind_guard.rs"]
@@ -273,7 +273,7 @@ mod upstream;
 mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节金标准（三条线各一份手写期望）
 
 /// `--relay` 的层 1 入口。**层 2 那只手由调用方递进来**（`accounts::upstream::run_relay`）——
-/// 本层叫不出它的名字（`account_layer_guard` ㈢ 零命中）。
+/// 本层叫不出它的名字（`upstream_selection_guard` ㈢ 零命中）。
 pub(crate) use listen::{host, run};
 
 /// 〔RM1a · 第四波〕**第二个口**：帧面 `relay-status` / `relay-ensure` 的两个处理器（这台机器上的中转进程在不在 · 起一个）。
@@ -425,7 +425,7 @@ pub(crate) trait Destinations: Send + Sync {
     ///    下游会拿到一个没有任何 HTTP 响应的 FIN —— 那正是 `阻-3(D3)` 点名的静默拒绝。
     /// 2. **`act` 里不许做流式转发**。层 2 的锁（`RwLock` 写优先）活到 `act` 返回为止；
     ///    把 `pump` 搬进来 = 「配一次 key」会被堵在最长那条在飞流后面（`D2 阻-4`）。
-    ///    钉这一条的判据：`table_guard::the_layer_two_lock_does_not_outlive_the_streaming_pump`。
+    ///    钉这一条的判据：`table_guard::the_upstream_selection_lock_does_not_outlive_the_streaming_pump`。
     fn resolve(&self, mode: Mode, key: &RouteKey, act: &mut dyn FnMut(Destination<'_>));
 }
 

@@ -257,8 +257,8 @@ export const ACCOUNT_NAMES: AccountName[] = [
   {
     old: "a_relay_started_with_only_a_file_on_disk_gets_the_key",
     re: ident("a_relay_started_with_only_a_file_on_disk_gets_the_key"),
-    fresh: "the_apikey_layer_loads_the_key_from_a_hand_written_file_alone",
-    freshRe: ident("the_apikey_layer_loads_the_key_from_a_hand_written_file_alone"),
+    fresh: "upstream_selection_loads_the_key_from_a_hand_written_file_alone",
+    freshRe: ident("upstream_selection_loads_the_key_from_a_hand_written_file_alone"),
     kind: "判据名",
     why: "它量的是层 2 的 `creds::load`，一个中转进程都没起；拿到 key 的也不是层 1",
     state: "done",
