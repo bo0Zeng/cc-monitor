@@ -742,6 +742,73 @@ async fn a_timeout_fires_a_cancel_for_the_abandoned_id() {
     );
 }
 
+/// ★〔RM1f · C4〕**调用方放弃等待**（future 被丢）⇒ 同样补发一条 `cancel{target: 那条 id}`；
+/// 拿到结局之后再丢 ⇒ 一条都不发；超时 ⇒ 恰一条（上面那条钉「有」，这里钉「不多发」）。
+///
+/// 为什么非有它：后端 `panorama` 进了可取消档（`Run::Async`），而界面「取消建索引」在 monitor 这一侧
+/// 落成的是「把等应答的那个 future 丢掉」—— 丢了不发 `cancel`，后端那条建索引照跑到 900 s 期限。
+#[tokio::test]
+async fn abandoning_the_wait_fires_one_cancel_and_finishing_fires_none() {
+    // ① 被丢：已入队、还没结局。
+    let (client, mut peer) = client_on_duplex(&["ping", "cancel"]);
+    let c = client.clone();
+    let caller =
+        tokio::spawn(async move { c.call("ping", Value::Null, Duration::from_secs(60)).await });
+    let first = next_line(&mut peer).await;
+    let ping_id = serde_json::from_str::<Value>(first.trim_end()).expect("JSON")["id"]
+        .as_str()
+        .expect("id")
+        .to_string();
+    caller.abort();
+    assert!(
+        caller.await.is_err_and(|e| e.is_cancelled()),
+        "任务没被撤掉"
+    );
+    let second = next_line(&mut peer).await;
+    let cancel: Value = serde_json::from_str(second.trim_end()).expect("JSON");
+    assert_eq!(cancel["cmd"], "cancel", "被丢之后发的不是 cancel：{second}");
+    assert_eq!(
+        cancel["args"]["target"].as_str(),
+        Some(ping_id.as_str()),
+        "补发的 cancel 没指向被放弃的那条命令"
+    );
+    let mut extra = String::new();
+    let read = tokio::time::timeout(Duration::from_millis(150), peer.read_line(&mut extra)).await;
+    assert!(read.is_err(), "被丢之后发了不止一条：{extra:?}");
+
+    // ② 拿到结局之后：零条。
+    let (client, mut peer) = client_on_duplex(&["ping", "cancel"]);
+    let c = client.clone();
+    let caller =
+        tokio::spawn(async move { c.call("ping", Value::Null, Duration::from_secs(60)).await });
+    let line = next_line(&mut peer).await;
+    let id = serde_json::from_str::<Value>(line.trim_end()).expect("JSON")["id"]
+        .as_str()
+        .expect("id")
+        .to_string();
+    assert!(client.route_reply(&id, true, None, None, None));
+    assert!(caller.await.expect("task").is_ok());
+    let mut extra = String::new();
+    let read = tokio::time::timeout(Duration::from_millis(150), peer.read_line(&mut extra)).await;
+    assert!(read.is_err(), "拿到应答之后还补发了东西：{extra:?}");
+
+    // ③ 超时：恰一条（守卫与超时那一臂不许各发一次）。
+    let (client, mut peer) = client_on_duplex(&["ping", "cancel"]);
+    let c = client.clone();
+    let caller =
+        tokio::spawn(async move { c.call("ping", Value::Null, Duration::from_millis(60)).await });
+    let _first = next_line(&mut peer).await;
+    assert!(matches!(
+        caller.await.expect("task").unwrap_err(),
+        CallError::Timeout { .. }
+    ));
+    let one = next_line(&mut peer).await;
+    assert!(one.contains("\"cmd\":\"cancel\""), "{one}");
+    let mut extra = String::new();
+    let read = tokio::time::timeout(Duration::from_millis(150), peer.read_line(&mut extra)).await;
+    assert!(read.is_err(), "超时补发了不止一条 cancel：{extra:?}");
+}
+
 /// backend 没声明 `cancel` 时不许补发（否则那是一条注定 `unknown_command` 的噪声）。
 #[tokio::test]
 async fn no_cancel_is_fired_when_the_backend_does_not_declare_it() {

@@ -6,9 +6,10 @@
 //!
 //! # 这一拍接谁
 //!
-//! 前端今天只在**远端** origin 上用它（`src/panorama/api.ts`）；本机那一条仍是进程内那 23 条
-//! （`panorama.rs`），第二拍（本机对称、monitor 摘内嵌引擎）才改走这里 —— 那一拍要先答
-//! 「本机的批注写走哪」（记录在 `调研/第四波记录/RM1c.md`）。命令本身对 origin 不做假设。
+//! 〔RM1f · 本机对称〕**本机与远端同一条**：前端全景的每一个入口都经它问那台机器的后端（本机 = `<local>`
+//! 那条长连接），monitor 进程一行引擎都不链。本机那台缺小程序 / 装的太旧 ⇒ 由 monitor 放一份到
+//! `~/.cc-monitor/bin/`（`panorama_bytes::place_local`），与远端「推一份」同一个触发点。
+//! 〔墓碑 —— RM1c 那一版这里写着「前端今天只在**远端** origin 上用它；本机那一条仍是进程内那 23 条（`panorama.rs`（已删））」。〕
 //!
 //! # 期限
 //!
@@ -43,9 +44,17 @@
 //! 码从分流器递回的 `(code, message)` 里认，不自己 match 错误枚举 —— 与 `user_files.rs::BackendDoor::ask` 同形；
 //! 登记在 `backend_route_tests::SENDERS`）。〔墓碑 —— RM1c 那一版经 `frame_query::call` 发，它把码压进了一句话。〕
 //!
+//! # 〔RM1f〕可取消（建索引点下去可以撤）
+//!
+//! `panorama_call` 带一张 `ticket`（界面每一问现造一张）；界面点「取消」⇒ [`panorama_cancel`] 拉那张票的铃 ⇒
+//! 等那一问的 future 被**丢掉** ⇒ `inbound_client::call` 的放弃守卫补发 `cancel{target}` ⇒ 后端 `panorama`
+//! （可取消档）撤掉处理器、小程序连同 `timeout` 前缀那一组子进程一起被杀。界面收到 [`CANCELLED_SAID`]。
+//! ⚠ 撤单是 best-effort 的那一格与超时同一格（`cancel` 那一行入不了写队列就不发）；撤得掉的只有**在后端跑着**
+//! 的那一段 —— 推字节那一段（`push_to`）被丢时上传中途停下，远端留一份暂存旁名，下一次推照常覆盖。
+//!
 //! # 诚实边界
 //!
-//! - 打不断：后端那一侧是阻塞档（`cancel` 回 `not_cancellable`）；这边等到期限为止。
+//! - 〔墓碑 —— RM1c 那一版这里写着「打不断：后端那一侧是阻塞档（`cancel` 回 `not_cancellable`）；这边等到期限为止」。〕
 //! - 〔RM1e〕删批注的 CAS 闭合在后端那一侧（核与删在同一个函数里紧挨着，窗只剩那两行之间 —— 后端写面头注那条 TOCTOU）。
 //!   〔墓碑 —— RM1d 那一版这里写着「删批注**没有 CAS**（`files-delete` 不收 `expect`）：删前 `peek` 核一遍，核与删之间仍有一个窗口」。〕
 
@@ -83,10 +92,17 @@ impl Asked {
 /// 〔RM1e〕问一次；撞上「缺 / 旧」⇒ 推一次、再问一次。**推最多一次，问最多两次。**
 ///
 /// `ask` / `push` 由调用方给（生产侧 = 那台后端 ＋ `panorama_bytes::push_to`；判据用替身数次数）。
-pub(crate) async fn ask_or_push<A, FA, P, FP>(mut ask: A, push: P) -> Result<Value, String>
+/// 〔RM1f〕`announce`：**真要推之前**说一声（生产侧 = 远端健康通道上那句「正在把代码全景组件装到 <机器>」）——
+/// 推是同步等的（发版 20 MB，慢链路上几十秒起），不说的话界面上只有那一问在转圈。恰在推之前、恰一次；不推就不说。
+pub(crate) async fn ask_or_push<A, FA, N, P, FP>(
+    mut ask: A,
+    announce: N,
+    push: P,
+) -> Result<Value, String>
 where
     A: FnMut() -> FA,
     FA: std::future::Future<Output = Result<Value, Asked>>,
+    N: FnOnce(),
     P: FnOnce() -> FP,
     FP: std::future::Future<Output = Result<(), String>>,
 {
@@ -94,6 +110,7 @@ where
         Err(a) if a.wants_bytes() => a,
         other => return other.map_err(|a| a.said),
     };
+    announce();
     push().await.map_err(|e| {
         format!(
             "{}\n—— 试着把代码全景组件推到那台机器上，没成：{e}",
@@ -249,15 +266,87 @@ pub(crate) fn frame_args(op: &str, repo: Option<&str>, args: Option<Value>) -> V
 }
 
 /// 问 `origin` 那台机器的后端做一次全景查询，拿回 `result`。
+///
+/// 〔RM1f〕`ticket`：给了 ⇒ 这一问能被 [`panorama_cancel`] 撤掉（头注「可取消」一节）；不给 ⇒ 等到结局为止。
 #[tauri::command]
 pub async fn panorama_call(
+    app: tauri::AppHandle,
     origin: Origin,
     op: String,
     repo: Option<String>,
     args: Option<Value>,
+    ticket: Option<String>,
 ) -> Result<Value, String> {
     let _ = origin.route("panorama_call")?;
-    ask(&origin, &op, repo.as_deref(), args).await
+    let asked = ask(&app, &origin, &op, repo.as_deref(), args);
+    match ticket {
+        None => asked.await,
+        Some(t) => with_ticket(t, asked).await,
+    }
+}
+
+/// 〔RM1f〕撤掉一张票（界面上「取消」那一下）。回这张票此刻在不在飞（不在 ⇒ 已经有结局了，撤了也没用）。
+#[tauri::command]
+pub fn panorama_cancel(ticket: String) -> bool {
+    let bell = lock_tickets().get(&ticket).cloned();
+    match bell {
+        Some(b) => {
+            // `notify_one` 在还没人等时也会留一张许可 ⇒ 撤单先到、等待后到也撤得掉。
+            b.notify_one();
+            true
+        }
+        None => false,
+    }
+}
+
+/// 〔RM1f〕被撤掉的那一问交给界面的那句话（界面按「是我撤的」认它，不当失败弹）。
+pub(crate) const CANCELLED_SAID: &str = "已取消（后端那一趟已经停下）";
+
+/// 〔RM1f〕在飞的票：票 → 撤单铃。进程内、按票登记、有结局即摘（[`TicketGuard`]）。
+fn lock_tickets() -> std::sync::MutexGuard<
+    'static,
+    std::collections::HashMap<String, std::sync::Arc<tokio::sync::Notify>>,
+> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static TICKETS: OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Notify>>>> = OnceLock::new();
+    TICKETS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// 〔RM1f〕这张票的登记随它一起走（有结局 / 被撤 / 调用方自己被丢，都摘掉）。
+struct TicketGuard(String);
+
+impl Drop for TicketGuard {
+    fn drop(&mut self) {
+        lock_tickets().remove(&self.0);
+    }
+}
+
+/// 〔RM1f〕带票等一问：票被撤 ⇒ `asked` 被**丢掉**（⇒ `inbound_client::call` 的放弃守卫补发 `cancel`
+/// ⇒ 后端撤掉处理器、杀掉小程序那一组子进程），回 [`CANCELLED_SAID`]。
+/// 同一张票同时只许一问（前一问的撤单铃被后一问顶掉，前一问就撤不掉了 ⇒ 当场拒）。
+pub(crate) async fn with_ticket<F>(ticket: String, asked: F) -> Result<Value, String>
+where
+    F: std::future::Future<Output = Result<Value, String>>,
+{
+    let bell = std::sync::Arc::new(tokio::sync::Notify::new());
+    {
+        let mut t = lock_tickets();
+        if t.contains_key(&ticket) {
+            return Err(format!(
+                "代码全景：取消票 `{ticket}` 还有一问在飞，这一问没有发出去（界面应当每一问一张新票）"
+            ));
+        }
+        t.insert(ticket.clone(), bell.clone());
+    }
+    let _registered = TicketGuard(ticket);
+    tokio::select! {
+        r = asked => r,
+        () = bell.notified() => Err(CANCELLED_SAID.to_string()),
+    }
 }
 
 /// 分流器那三态里给人看的那句话。
@@ -317,14 +406,18 @@ async fn ask_once(
 }
 
 /// 问一次（两条命令共用）；远端回「缺 / 旧」⇒ 推字节再问一次（头注〔RM1e〕那一节）。
+/// 〔RM1f〕`app`：推之前在远端健康通道上说一声（[`INSTALL_NOTICE_KIND`]）。
 async fn ask(
+    app: &tauri::AppHandle,
     origin: &Origin,
     op: &str,
     repo: Option<&str>,
     args: Option<Value>,
 ) -> Result<Value, String> {
+    // 〔RM1f〕本机也走这一格：本机后端答「没装 / 装的太旧」⇒ 把这一份产物带着的小程序放到本机后端找得到的地方、再问一次。
+    // 〔墓碑 —— RM1e 那一版这里是 `a.wants_bytes() && !origin.is_local()`：本机不推。〕
     match ask_once(origin, op, repo, args.clone()).await {
-        Err(a) if a.wants_bytes() && !origin.is_local() => {}
+        Err(a) if a.wants_bytes() => {}
         other => return other.map_err(|a| a.said),
     }
     // 拿到锁先**再问一次**（前一个人可能刚推完）—— `ask_or_push` 的第一问就是它。
@@ -332,15 +425,47 @@ async fn ask(
     let _pushing = lock.lock().await;
     ask_or_push(
         || ask_once(origin, op, repo, args.clone()),
+        || announce_install(app, origin.as_wire_str()),
         || crate::panorama_bytes::push_to(origin),
     )
     .await
+}
+
+/// 〔RM1f〕远端健康通道上那一句的 `kind`（前端 `remote-health.ts` 的标题表认它）。
+pub(crate) const INSTALL_NOTICE_KIND: &str = "panorama-install";
+
+/// 〔RM1f〕那一句说什么（纯函数，判据直接比）。
+pub(crate) fn install_notice(origin: &str) -> crate::bridge::RemoteHealthPayload {
+    let message = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
+        // 〔RM1f〕本机那一台不经网络：放到 `~/.cc-monitor/bin/`，一两秒的事。
+        "本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后这一问会自己接着答。"
+            .to_string()
+    } else {
+        let who = crate::backend::control::cc_bus::machine_label(origin);
+        format!(
+            "{who} 上还没有这一版的代码全景组件，正在把它装上去（约 20 MB，慢链路上要等一会儿）。装好之后这一问会自己接着答。"
+        )
+    };
+    crate::bridge::RemoteHealthPayload {
+        origin: origin.to_string(),
+        kind: INSTALL_NOTICE_KIND.to_string(),
+        message,
+    }
+}
+
+/// 〔RM1f〕真要推之前说一声（远端健康通道，一条 toast）。发不出去只记日志 —— 推照推。
+fn announce_install(app: &tauri::AppHandle, origin: &str) {
+    use tauri::Emitter;
+    if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, install_notice(origin)) {
+        tracing::warn!("[{origin}] 「正在装代码全景组件」那一句没发出去：{e}");
+    }
 }
 
 /// 〔RM1d〕写批注 / 文档关联：问那台机器要计划、经那台机器后端的文件管理落盘（头注 ①–⑤）。
 /// `op` 只许 [`EDITS`] 第一列；回的 `value` 与本机进程内那几条写命令的返回值同形（id / 在不在 / `null`）。
 #[tauri::command]
 pub async fn panorama_edit(
+    app: tauri::AppHandle,
     origin: Origin,
     repo: String,
     op: String,
@@ -358,29 +483,17 @@ pub async fn panorama_edit(
         ));
     };
     let door = crate::user_files::BackendDoor::new(origin.clone());
-    // 「算」在哪：远端 = 那台机器的全景小程序；本机 = 进程内引擎的只读那一层（本机对称那一拍之前的过渡，
-    // `panorama.rs::plan_local`）。**落盘两边同一扇门**（那台机器后端的文件管理）。
-    let local = origin.is_local();
+    // 「算」与「写」都在那台机器上：算 = 那台的全景小程序（经那台后端），落盘 = 那台后端的文件管理。本机远端同一条。
+    // 〔墓碑 —— RM1d 那一版本机的「算」住 monitor 进程内（内嵌引擎的只读那一层），本机对称那一拍（RM1f）随内嵌引擎一起删了。〕
     let value = edit_via(&door, &repo, || {
-        let (origin, repo, args) = (origin.clone(), repo.clone(), args.clone());
-        async move {
-            if local {
-                crate::panorama::plan_local(repo, plan_op, args).await
-            } else {
-                ask(&origin, plan_op, Some(&repo), Some(args)).await
-            }
-        }
+        let (app, origin, repo, args) = (app.clone(), origin.clone(), repo.clone(), args.clone());
+        async move { ask(&app, &origin, plan_op, Some(&repo), Some(args)).await }
     })
     .await?;
     if *refresh {
-        let refreshed = if local {
-            crate::panorama::refresh_doc_links_local(repo.clone()).await
-        } else {
-            ask(&origin, REFRESH_DOC_LINKS, Some(&repo), None)
-                .await
-                .map(|_| ())
-        };
-        refreshed.map_err(|e| {
+        ask(&app, &origin, REFRESH_DOC_LINKS, Some(&repo), None)
+            .await
+            .map_err(|e| {
                 format!("文档关联已经写进去了，但全景里的关联没跟着刷新（{e}）—— 点「刷新」重建一次就能看到")
             })?;
     }

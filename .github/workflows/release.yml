@@ -497,6 +497,29 @@ jobs:
           }
           Write-Host ("native backend staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
 
+      # ── 〔RM1f · V108 后半句〕**本机原生的全景小程序** —— monitor 摘掉内嵌引擎之后，本机全景 = 本机后端 → 插件口 → 它 ──
+      #
+      # 远端那两份是 musl Linux（上面 build-backends 那一步产的），Windows 本机跑不了 ⇒ 这一格原生编一份，
+      # 铺进同一个 `native-backend/` 落点（名字定死在 `build.rs::NATIVE_PANORAMA_FILE`，旁挂 `.target` 清单同本机后端那一对；
+      # `build.rs::embed_native_panorama` 内嵌进 exe，monitor 在本机后端答「没装」时把它放到 `~/.cc-monitor/bin/`）。
+      # `--locked` 同 build-backends 那一步的理由（`src/panorama-engine/Cargo.lock` 是它自己的第三份 lock）。
+      # ⚠ Linux 发版**不多编**：本机 Linux 直接用远端那两份 musl 静态字节（`panorama_bytes::local_panorama_binary` 第二个来源）。
+      # ⚠ **诚实边界**：本步买到「编得出 · 铺了 · target 对得上」；买不到「在真 Windows 上被本机后端起起来」—— 那要真机跑一趟。
+      - name: Build local panorama (native)
+        working-directory: src/panorama-engine
+        run: cargo build --release --locked
+      - name: Stage native panorama for self-extract
+        shell: pwsh
+        run: |
+          $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
+          $dst = "src/bridge/native-backend/cc-monitor-panorama"
+          Copy-Item .build/panorama/release/cc-monitor-panorama.exe $dst -Force
+          Set-Content -Path "$dst.target" -Value $triple
+          foreach ($f in $dst, "$dst.target") {
+            if (-not (Test-Path $f)) { Write-Error "本机全景小程序没铺全（缺 $f）——Windows 本机的代码全景会说「这台机器上还没装代码全景组件」"; exit 1 }
+          }
+          Write-Host ("native panorama staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
+
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
       # ⚠ `--config src/bridge/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`

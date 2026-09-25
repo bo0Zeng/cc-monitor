@@ -1147,6 +1147,48 @@ pub fn extract_embedded_to(
     Ok(dest)
 }
 
+/// 〔RM1f〕**把本机的代码全景小程序放到 `dir/<file>`**（`dir` 由调用方给 ＝ `~/.cc-monitor/bin`，
+/// 本机后端找小程序的第二个候选 —— 后端在 monitor 旁边还是在这个目录里，这一格都找得到）。
+///
+/// 与 [`extract_embedded_to`] 同一套落盘：暂存旁名 `.<file>.<pid>.partial` → 置可执行位（平台知识由宿主注入）
+/// → `rename` 上位（半截文件不许被当成可执行的插件起起来）。
+///
+/// # 幂等：盘上那份**逐字节相等**才跳过
+///
+/// 本机后端的释放名带 `build_id`，而小程序**没有身份戳**（不随 `BUILD_ID` 走）⇒ 名字说明不了它是哪一版，
+/// 只能比字节（约 20 MB 的一次顺序读，只在本机后端答「没装 / 装的太旧」时才走到这里）。
+/// 字节不同 ⇒ 覆盖（旧的那份正被起着时 Windows 上 `rename` 会失败 ⇒ 如实报，下次再放）。
+///
+/// # 它不做什么
+///
+/// 不起它、不问它会什么 —— 那是本机后端插件口的事；这里只让「去盘上找」那一格有东西可找。
+pub fn place_local_panorama(
+    dir: &Path,
+    file: &str,
+    bytes: &[u8],
+    make_executable: &dyn Fn(&Path) -> Result<(), String>,
+) -> Result<PathBuf, String> {
+    let dest = dir.join(file);
+    if let Ok(m) = std::fs::metadata(&dest) {
+        if m.is_file()
+            && m.len() == bytes.len() as u64
+            && std::fs::read(&dest).is_ok_and(|on_disk| on_disk == bytes)
+        {
+            return Ok(dest);
+        }
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
+    let tmp = dir.join(format!(".{file}.{}.partial", std::process::id()));
+    sweep_stale_partials(dir, file);
+    std::fs::write(&tmp, bytes).map_err(|e| format!("写 {} 失败: {e}", tmp.display()))?;
+    make_executable(&tmp)?;
+    std::fs::rename(&tmp, &dest).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("rename 到 {} 失败: {e}", dest.display())
+    })?;
+    Ok(dest)
+}
+
 // ── `K-R69`（09-12）：**本机的 `ccm` 入口** ──────────────────────────────
 //
 // 立件时现打（量于 `79bf97d`）：闭集 `tool_registry::TOOLS` 里落点是 `…/ccm` 的**只有一条**，

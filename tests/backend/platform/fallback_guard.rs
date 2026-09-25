@@ -638,7 +638,9 @@ mod g6_reach {
         //    🔴 这一条是 `K-R52` 摘活体那一拍补的：没有它，上面两条在
         //    「判红条件被改松」时也会全绿，而那与「病治好了」在输出上一模一样。
         let discover = production_code(include_str!("../../../src/backend/plugin/discover.rs"));
-        let body = block_of(&discover, "#[cfg(not(unix))]");
+        // 〔RM1f〕Windows 那一臂有了真实现（只认 `.exe`，`windows_launchable_name`）；
+        //   「保守取值」那一臂的门从 `not(unix)` 收窄成 `not(any(unix, windows))`，本条跟着认新门。
+        let body = block_of(&discover, "#[cfg(not(any(unix, windows)))]");
         assert!(
             fabricates(&body).is_empty(),
             "`plugin/discover.rs` 的非 unix 臂又开始编乐观答案了：{body}"

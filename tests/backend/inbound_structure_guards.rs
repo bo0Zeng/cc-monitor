@@ -184,8 +184,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "plugins-marketplaces"
                 | "tasks-list"
-                // 〔RM1c · 第四波〕代码全景：起一个进程、等它退出（建索引可到分钟级）。
-                | "panorama"
+                // 〔RM1f〕`panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
+                //   `cancel` 打得断 ⇒ `Run::Async`。〔墓碑 —— RM1c 那一版在这一档：「起一个进程、等它退出」。〕
                 // 〔RM1a · 第四波〕账号层那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
                 | "apikey-key-set"
                 | "apikey-read"
