@@ -22,8 +22,10 @@
  * # 安全判断**不在这里**
  *
  * 前端不做任何路径判断。写面围栏的真相源只有一处：Rust 侧 `skill_host::resolve_editable`
- * 的三道（路径 `canonicalize` **之后**做集合判定 · 过 Claude 数据保护守卫 · 目标必须已存在），
- * 之后再经 `verified_write` 读回逐字节比对。⇒ 本文件只负责**把后端算好的路径原样送回去**。
+ * 的三道（路径 `canonicalize` **之后**做集合判定 · 过 Claude 数据保护守卫 · 目标必须已存在）；
+ * 〔RW1〕远端是 `skill_host::remote_editable_rel`（逐字集合判定），读写都经那台机器的后端
+ * （回读逐字节比对 · 回滚住后端），写带打开时读到的那一份当 CAS 期望。
+ * ⇒ 本文件只负责**把后端算好的路径原样送回去**。
  *
  * ⚠ `missingReason` 非 null 时**原样显示**（定框 C6）：它是带身份的缺席原因
  * （哪个 skill 的哪条前提没满足）。不许退化成「不可用」——那正是 C6 禁的形状。
@@ -33,7 +35,7 @@
 import { commands, type SkillView } from "../ipc/commands";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
-import { isRemoteOrigin, type Origin } from "../ipc/origin";
+import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 
 type CwdGetter = () => { cwd: string; origin: Origin } | null;
 
@@ -46,6 +48,10 @@ export class InboxView implements OverlayHandle {
   /** 当前编辑对象：`null` = 没有可编辑的文件（skill 不在场 / 该 skill 没声明 editable）。 */
   private target: { skillId: string; path: string } | null = null;
   private cwd = "";
+  /** 〔RW1〕哪台机器（本机 = `LOCAL_ORIGIN`）—— 读写都经那台机器的后端。 */
+  private origin: Origin = LOCAL_ORIGIN;
+  /** 〔RW1〕打开时读到的那一份：写回时交给后端当 CAS 期望（agent 在这之后改过 ⇒ 不写）。 */
+  private loaded = "";
 
   constructor(private getRepo: CwdGetter) {}
 
@@ -60,18 +66,13 @@ export class InboxView implements OverlayHandle {
 
   async open(): Promise<void> {
     const info = this.getRepo();
-    if (!info || isRemoteOrigin(info.origin)) {
-      // 远端会话：计划目录在远端机上，本地读不到。
-      // ⚠ 与 panorama 同一条诚实降级（它对远端也是「不索引 + 说清为什么」）。
-      // 远端项目的收件箱要不要能编辑，`parity_ledger` 里记着 `Undecided`——没人裁定过。
-      showActionFailureToast(
-        "收件箱仅支持本地会话",
-        info !== null && isRemoteOrigin(info.origin)
-          ? `当前会话来自远端机 [${info.origin}]，计划目录在那台机器上，本地读不到。切到一个本地会话再打开。`
-          : "当前 tab 没有工作目录。",
-      );
+    if (!info) {
+      showActionFailureToast("打不开收件箱", "当前 tab 没有工作目录。");
       return;
     }
+    // 〔RW1 · 第四波 09-24〕用户裁：远端项目的收件箱也能编辑 —— 经那台机器的后端读写，
+    //   本机同一条路（从前这里对远端直接拒，`parity_ledger` 记着 `Undecided`）。
+    this.origin = info.origin;
     this.cwd = info.cwd;
     this.ensureDom();
     if (this.root) this.root.style.display = "flex";
@@ -95,7 +96,7 @@ export class InboxView implements OverlayHandle {
 
     let skills: SkillView[];
     try {
-      skills = await commands.list_skills({ cwd: this.cwd });
+      skills = await commands.list_skills({ origin: this.origin, cwd: this.cwd });
     } catch (e) {
       this.statusEl.textContent = `读不到 skill 列表：${String(e)}`;
       return;
@@ -118,11 +119,13 @@ export class InboxView implements OverlayHandle {
     const path = editable.editable[0];
     this.pathEl.textContent = path;
     try {
-      this.textarea.value = await commands.read_skill_file({
+      this.loaded = await commands.read_skill_file({
+        origin: this.origin,
         cwd: this.cwd,
         skillId: editable.id,
         path,
       });
+      this.textarea.value = this.loaded;
     } catch (e) {
       this.statusEl.textContent += ` ｜ 读文件失败：${String(e)}`;
       return;
@@ -136,13 +139,17 @@ export class InboxView implements OverlayHandle {
     if (!this.target || !this.textarea || !this.statusEl || !this.saveBtn) return;
     const { skillId, path } = this.target;
     this.saveBtn.disabled = true;
+    const content = this.textarea.value;
     try {
       await commands.write_skill_file({
+        origin: this.origin,
         cwd: this.cwd,
         skillId,
         path,
-        content: this.textarea.value,
+        content,
+        expected: this.loaded,
       });
+      this.loaded = content;
       this.statusEl.textContent = "已保存（后端已读回逐字节比对）";
     } catch (e) {
       // ⚠ 写面围栏拒绝时后端给的是**带理由的**错误（哪条围栏、为什么）——原样显示。

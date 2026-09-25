@@ -24,6 +24,7 @@ import {
 import { activityLightClass } from "./session-status";
 import { terminalFrontAvailable } from "./terminal-front";
 import { isRemoteOrigin } from "./ipc/origin";
+import { hasTerminal, isLive, isResumeOnly, stateView } from "./tab-session-state";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
@@ -64,7 +65,7 @@ export interface TabBarViewHost {
   bringTerminalToFront(sid: string): Promise<void>;
   /** ↗：远端 tab 切到终端窗口。 */
   bringRemoteTerminalToFront(sid: string): Promise<void>;
-  /** × / 中键：关（只关得掉 archived 的）。 */
+  /** × / 中键：关（只关得掉已结束的）。 */
   closeTab(sid: string): void;
   /** 点按钮：手动切 tab。 */
   switchTo(sid: string): void;
@@ -98,8 +99,8 @@ export class TabBarView {
   //      active tab 会「在你正看着它的时候」掉进折叠的抽屉里 ⇒ 已经为 active 开了例外。
   //      把例外推广到全部，抽屉就没了。
   //
-  // ⚠ **删的是抽屉，不是状态。** `status === "archived"` 照旧存在，那种 tab
-  //   **留在原位灰着**（`.tab.archived` 那条 CSS 本来就有，`§A.3` 逐字「不用新写」）。
+  // ⚠ **删的是抽屉，不是状态。** 已结束（〔U4〕`isResumeOnly(tab.state)`）照旧存在，那种 tab
+  //   **留在原位变淡**（`.tab.ended`，〔U4〕原名 `.tab.archived`，`§A.3` 逐字「不用新写」）。
   //   用户 2026-09-19 逐字：「没有归档这个东西，不要归档，就是灰 tab。」
 
   /**
@@ -150,7 +151,7 @@ export class TabBarView {
       } else if (sub.classList.contains("tab-focus")) {
         // ↗ 拉对应终端窗口。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
         const t = this.store.tabs.get(sid);
-        if (!t || t.status === "archived") return;
+        if (!t || !hasTerminal(t.state)) return; // 〔U4〕活着，或可重连（ssh 窗还在）才拉
         // Feature ②：远端 Tab → 后端唯一分派点（先启动令牌、后 ccm-rbind 标题退路）；
         // 本地 Tab → 走原 sid_hwnd_cache 路径。
         if (isRemoteOrigin(t.origin)) {
@@ -183,10 +184,10 @@ export class TabBarView {
       this.host.beginDrag(e, hit.sid, hit.root);
       return;
     }
-    // 中键点击归档 Tab 也关闭（常见 UX）
+    // 中键点击已结束的 Tab 也关闭（常见 UX）
     if (e.button === 1) {
       const t = this.store.tabs.get(hit.sid);
-      if (t?.status === "archived") {
+      if (t && isResumeOnly(t.state)) {
         e.preventDefault();
         this.host.closeTab(hit.sid);
       }
@@ -206,12 +207,12 @@ export class TabBarView {
    *   1. 删除：tabButtons 缓存里有但 orderedIds 已没的 sid → 摘 DOM + 清缓存
    *   2. 创建：orderedIds 里有但缓存没的 sid → createTabButton 一次（含所有 5 个子
    *      元素 + 事件 listener），visibility 全交 CSS 控制
-   *   3. 更新：updateTabButton 同步 active / archived / has-unread class + label/badge 文本
+   *   3. 更新：updateTabButton 同步 active / ended / reconnectable / has-unread class + label/badge 文本
    *   4. 排序：iterate orderedIds + insertBefore，确保 DOM 顺序 = orderedIds 顺序
    *
    * CSS 配合（styles.css）：
-   *   .tab.archived .live-dot { display: none }
-   *   .tab:not(.archived) .tab-close { display: none }
+   *   .tab.ended .live-dot { display: none }
+   *   .tab:not(.ended) .tab-close { display: none }
    *   .tab .tab-badge { display: none }
    *   .tab.has-unread:not(.active) .tab-badge { display: inline-block }
    */
@@ -469,7 +470,9 @@ export class TabBarView {
     //   直接返回，不跑 update steps、不排 mutation record）；**真在每次整刷里写 DOM 的是 `title`**
     //   （属性赋值不管值变没变都写）。这一段早退省下的是那次写 ＋ 这一堆字符串拼接。
     const active = sid === this.store.activeId;
-    const archived = tab.status === "archived";
+    // 〔U4〕两个轴怎么画（类 · 提示句）只从 `stateView` 取：已结束（只能 resume）· 可重连（死了、容器还在）。
+    const view = stateView(tab.state);
+    const ended = view.ended;
     // 〔步 17·B〕固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
     // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
     const pinned = tab.pinned;
@@ -485,11 +488,15 @@ export class TabBarView {
     // F91：语义抽到 session-status.ts 供 tab-bar 与 mission-control grid 共用（逐字节等价）。
     const actStatus = tab.activity?.status ?? null;
     const lightClass = activityLightClass(actStatus);
-    // audit-fixes F03.2：idle-tmux 灰灯（claude 退但 tmux 会话仍在）。与 archived 正交——
-    // status 仍 live（灯不被 archived 隐藏），tmux-idle 把 .live-dot 覆写为灰、压过红绿黄。
-    const tmuxIdle = tab.tmuxIdle;
+    // audit-fixes F03.2：可重连（claude 退但 tmux 会话仍在）。灯不被 `.ended` 隐藏，
+    // `.reconnectable` 把 .live-dot 覆写成暗色、压过红绿黄。
+    const reconnectable = view.reconnectable;
     const titleParts: string[] = [];
-    if (actStatus === "waiting" && tab.activity?.waitingFor) {
+    // 〔U4〕第一行说状态（活着不说）。
+    if (view.tooltip !== null) titleParts.push(view.tooltip);
+    // 「等待操作」只对活着的会话说：可重连的会话 claude 已经没了，留着的活动信号是陈旧的
+    // （改两轴之前灯被 CSS 盖住了，tooltip 却还挂着这一句）。
+    if (isLive(tab.state) && actStatus === "waiting" && tab.activity?.waitingFor) {
       titleParts.push(`等待操作：${tab.activity.waitingFor}`);
     }
     // issue #63①：fork 会话在 tooltip 里标出血缘(徽标 `↳` 在标题上、来源 sid 在此)。
@@ -503,14 +510,14 @@ export class TabBarView {
 
     const flags = [
       active,
-      archived,
+      ended,
       pinned,
       hasCwd,
       remote,
       bg,
       lightClass === "act-idle",
       lightClass === "act-waiting",
-      tmuxIdle,
+      reconnectable,
       unread,
     ]
       .map((b) => (b ? "1" : "0"))
@@ -519,14 +526,14 @@ export class TabBarView {
     if (refs.drawn !== drawn) {
       refs.drawn = drawn;
       refs.root.classList.toggle("active", active);
-      refs.root.classList.toggle("archived", archived);
+      refs.root.classList.toggle("ended", ended);
       refs.root.classList.toggle("pinned", pinned);
       refs.root.classList.toggle("has-cwd", hasCwd);
       refs.root.classList.toggle("remote", remote);
       refs.root.classList.toggle("tab-bg", bg);
       refs.root.classList.toggle("act-idle", lightClass === "act-idle");
       refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
-      refs.root.classList.toggle("tmux-idle", tmuxIdle);
+      refs.root.classList.toggle("reconnectable", reconnectable);
       if (refs.root.title !== title) refs.root.title = title;
       refs.root.classList.toggle("has-unread", unread);
       if (refs.label.textContent !== tab.title) {

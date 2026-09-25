@@ -1,0 +1,24 @@
+/**
+ * 用量 HUD chip 的样式 —— 本仓第一份 CSS Modules（`设计/41` 件 10「渐进式 CSS Modules」的示范）。
+ *
+ * 类名经 `import s from "./usage-hud.module.css"` 用（`s.chip` / `s.high`），构建时哈希；
+ * 写错名 ⇒ `tsc` 红（类型住隔壁 `usage-hud.module.d.css.ts`，与本文件的类名集合由
+ * `tests/css-modules.vitest.ts` 逐字对拍）。
+ *
+ * 基础外观复用全局的 `.status-tasks`（`className = "status-tasks " + s.chip`）；这里只叠 delta：
+ * 数字等宽（% 抖动不跳宽）＋ ≥80% 的 `.high` 暖色预警（逼近自动 compact）。
+ * ⚠ 与 `.status-tasks` / `.status-tasks:hover` 是**同层同特异度**（`font: inherit` 对 `font-variant-numeric`、
+ *   `:hover` 对 `color` / `background`），靠的是「JS 导入的 module 样式在构建产物里排在 html 链的全局样式之后」——
+ *   这条次序由 `tests/entry-graphs.vitest.ts` 钉着。
+ */
+@layer components {
+  .chip {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chip.high {
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+  }
+}

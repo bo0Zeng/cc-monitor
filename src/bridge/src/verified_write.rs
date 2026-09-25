@@ -69,47 +69,10 @@ pub fn verify_readback(expected: &str, actual: &str) -> WriteVerdict {
     WriteVerdict::Mismatch { detail }
 }
 
-/// **写后校验器**：读回 → 比对 → 不符则回滚。
-///
-/// 两个动作以闭包注入，因为落点各不相同（本机 `std::fs` / 远端 SFTP），
-/// **而"什么时候算失败、失败了要不要回滚"必须是同一套**——那才是这个抽象的内容。
-///
-/// 为什么要做成可注入而不是直接调 `std::fs`：变异测试实测发现，回滚那一步
-/// **没有任何测试走得到**（它只在"真的写了文件且读回损坏"时才执行）。
-/// 不可注入 = 不可测 = 那行代码没有门禁。现在 `rollback` 是否被调用可以直接断言。
-///
-/// ## 原先它还收一个 `write` 闭包，本轮**删掉了**（T01 审计 S7）
-///
-/// 两个真实调用点传的都是 `|| Ok(())` ——写入（含备份与写失败时的恢复）在调用方
-/// 上方已经做完了，因为**那一段各落点不同**：本机侧要 `std::fs::copy` 备份、
-/// 失败时要把备份路径拼进错误文本；远端侧要设权限位、要防传输损坏。
-/// 留着那个参数的后果是：`write` 返回 `Err` 那条分支**生产上不可达**，
-/// 而我为它写的测试看着是绿的——按本模块自己的 ≥2 判据，这个参数不合格。
-/// 于是改名为 `verify_and_rollback`，让签名说的就是它真做的事。
-///
-/// 顺带说清一条**没被这个抽象覆盖**的：`sftp.rs` 那三处读回比对只共用了
-/// [`verify_readback`]（判定），没走这里——它们的回滚是 `async` SFTP 操作，
-/// 塞不进 `impl FnOnce()`。不谎称已统一。
-pub fn verify_and_rollback(
-    expected: &str,
-    read_back: impl FnOnce() -> Result<String, String>,
-    rollback: impl FnOnce(),
-) -> Result<(), String> {
-    let actual = match read_back() {
-        Ok(a) => a,
-        Err(e) => {
-            // 读不回来 = 无法确认写对了 → 也要回滚。**不能当成功**：
-            // "我写了但不知道写成什么样"和"我写对了"是两回事。
-            rollback();
-            return Err(format!("写后回读失败: {e}（已尝试回滚）"));
-        }
-    };
-    if let WriteVerdict::Mismatch { detail } = verify_readback(expected, &actual) {
-        rollback();
-        return Err(format!("写后校验失败：{detail} 已尝试回滚。"));
-    }
-    Ok(())
-}
+// 〔RW1 · 第四波 · 2026-09-24〕这里原来是 `verify_and_rollback`〔散文墓碑〕（写后回读比对、不符就调回滚闭包）。
+// 它最后一个调用方（`skill_host::write_skill_file` 的本机直写）改经后端写之后零调用方 ⇒ 删了。
+// 用户文件「备份 → 写 → 读回比对 → 回滚」那一份规则今天住后端 `control/files_write.rs::put_text`；
+// 本模块只剩判定那一半 [`verify_readback`]（F08 部署物那一条 `fenced_block::apply` 还在用）。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/verified_write_tests.rs"]

@@ -4,7 +4,8 @@
 //!
 //! `src/doc/INVARIANTS.md §4` 逐字写着「**profile 等用户文件**写入 = ReplaceFileW + backup + 写后校验」，
 //! 而两处 `MoveFileExW` 写的都是 **monitor 自己的文件**（`config.json` / 日志轮转）。
-//! `mcp.rs::write_json_atomic` 的头注还专门写着「**不**用 config 的 `MoveFileExW`（§4 明令）」。
+//! `mcp.rs` 从前那个本机写原语的头注还专门写着「**不**用 config 的 `MoveFileExW`（§4 明令）」
+//! （〔RW1 · 第四波 09-24〕那个原语已删：项目 `.mcp.json` 改经后端写）。
 //! ⇒ **这是「两类文件两种语义」的刻意分工，不是无人察觉的漂移。**
 //!
 //! # 那真缺口在哪

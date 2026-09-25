@@ -17,11 +17,12 @@
 //! 只有端口（[`crate::backend::control::payload::RELAY_PORT`]，注入侧与中转侧用同一个值）。
 //! 凭据文件在哪、表里有哪几行，是 `apikey_remote.rs` 的事；两个模块互不引用。
 //!
-//! # 它今天**没有**自动触发点（如实登记，交主会话）
+//! # 触发点〔RL1〕：**起远端会话、且要注入那一刻**（用到才起）
 //!
-//! 本机那一个的触发点是「起本机后端那一刻」。远端的同位点是「那台机器的长连接握手完成那一刻」，
-//! 或「起远端会话、且要注入那一刻」—— 两处都不在本拍写区（链路宿主 / 起会话那一侧）。
-//! ⇒ 本拍交的是**能力**：tauri 命令 `relay_ensure(origin)` ＋ 读口 [`running_on`]（设置里的 `apikey_routing_for` 在用）。
+//! 远端那台的中转只在「这次拉起要往 `ANTHROPIC_BASE_URL` 里写地址」时才起：`history::relay_endpoint_on`
+//! 先按「假如在跑」问一次判断口，要注入才经本模块 `listening_or_started`（在不在 → 起 → 有界等）。
+//! 不挂在「长连接握手完成」上：那会让从不用中转的远端也常驻一个进程。
+//! RM1a 那条单独暴露给界面的 tauri `relay_ensure(origin)`（零调用方）随之退役。
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;

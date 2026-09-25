@@ -81,8 +81,8 @@ Phase D 审计逐条查过，**生产段还有 3 处平台原语在 `platform/` 
 
 | 符号 | 非目标平台的行为 | 真实现 |
 |---|---|---|
-| `pidwatch::watch_pid_until_exit` | **什么都不做** + `tracing::error!`。刻意**不调** `on_dead` —— 与「`poll` 真错误不报死」同一条纪律：宁可让会话留在 live，也不因平台未实现就误归档 | U4b：`OpenProcess` + `WaitForSingleObject` |
-| `proc::pid_alive` | `unimplemented!()` | U4b：`OpenProcess` + 退出码 |
+| `pidwatch::watch_pid_until_exit` | 〔WN1 · 09-24〕**Windows 臂已写**（`pidwatch/win32.rs`：带 `SYNCHRONIZE` 的进程句柄 ＋ 不带超时的等待，与 `linux.rs` 逐形对拍）；其余平台仍是**什么都不做** + `tracing::error!`，刻意**不调** `on_dead` —— 与「`poll` 真错误不报死」同一条纪律 | ⚠ Windows 那一臂同上一行：**编得过 ＋ 源码对拍**，真机零读数 |
+| `proc::pid_alive` · `proc_starttime` · `start_epoch_from_ticks` | 〔WN1 · 09-24〕**Windows 臂已写**（`platform/win_proc.rs`：`OpenProcess` ＋ 退出码 ＋ `GetProcessTimes`；「拒绝访问」算存在，与 Linux 同契约）；其余平台仍是 `unimplemented!()` / `None` | ⚠ **只买到编得过 ＋ 纯换算对拍**，真机零读数（本路不碰 Win11 虚拟机）—— 下面那段「把没做的标成做完」的警告对它**照样适用**：它是「源码写对了」，不是「Windows 上验过了」 |
 | `signal::send_sigusr1` | `false`（**保守方向**：发不出去当没发，调用方本就容忍失败） | U4b 定 Windows 等价物 |
 
 **U4b 需要 Windows 真机**：主计划 U4 行自己写着「`WaitForSingleObject` 换 pidfd —— 等价性

@@ -45,50 +45,9 @@ fn content_differs_at_same_length_is_caught() {
     }
 }
 
-// ===== 统一写入器：回滚这一步此前**没有任何测试走得到** =====
-use std::cell::Cell;
-
-#[test]
-fn rollback_is_called_on_content_mismatch() {
-    let rolled = Cell::new(false);
-    let r = verify_and_rollback(
-        "expected\n",
-        || Ok("expectee\n".to_string()), // 同长度、内容不同
-        || rolled.set(true),
-    );
-    assert!(r.is_err(), "等长损坏必须判失败");
-    assert!(rolled.get(), "校验不过必须回滚");
-    assert!(
-        r.unwrap_err().contains("长度相同"),
-        "错误里要说清是等长损坏"
-    );
-}
-
-#[test]
-fn rollback_is_not_called_on_success() {
-    let rolled = Cell::new(false);
-    let r = verify_and_rollback("same\n", || Ok("same\n".to_string()), || rolled.set(true));
-    assert!(r.is_ok());
-    assert!(!rolled.get(), "写对了不该回滚（回滚会把刚写好的覆盖掉）");
-}
-
-#[test]
-fn readback_failure_also_rolls_back() {
-    // "我写了但读不回来" ≠ "我写对了"。不能当成功放过。
-    let rolled = Cell::new(false);
-    let r = verify_and_rollback(
-        "x\n",
-        || Err("permission denied".into()),
-        || rolled.set(true),
-    );
-    assert!(r.is_err());
-    assert!(rolled.get(), "读不回来也要回滚");
-    assert!(r.unwrap_err().contains("回读失败"));
-}
-
-// 原先这里还有一条 `write_failure_short_circuits_without_rollback`。
-// 它守的是 `write` 闭包返回 `Err` 那条路，而两个真实调用点传的都是 `|| Ok(())`
-// ——**生产不可达**。删参数的同时删掉它：留着就是一条恒绿的装饰（T01 审计 S7）。
+// 〔RW1 · 第四波 09-24〕这里原来有三条回滚判据（内容不符回滚 · 写对了不回滚 · 读不回来也回滚），
+//   守的是 `verify_and_rollback`〔散文墓碑〕。那个函数零调用方删了；同一组性质住到了后端
+//   （`files_write_tests.rs` 的 `put_*` 那一族：CAS · 相同不写 · 回读 · 回滚那一支如实登记为「没量」）。
 
 #[test]
 fn identical_content_passes() {
