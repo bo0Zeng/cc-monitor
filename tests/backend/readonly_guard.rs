@@ -393,7 +393,7 @@ mod tests {
          删文件或空目录 · 改权限 · 覆盖写 · 〔F7a 09-24〕同根内复制（由 `O_EXCL` 新建 ＋ 换名 ＋ \
          删自己刚建的那一份拼成，**不添动词**）· 〔FW5 09-24〕递归删（计划趟逐条目过围栏、\
          执行趟只删计划里的且每条当场再判，由删文件 ＋ 删空目录拼成，**不添动词**）。每一件都先过 Claude 会话数据围栏 \
-         （`agents::claudecode::paths::is_protected_session_path`，与桥那一侧函数体逐字相同）\
+         （`agents::claudecode::paths::is_session_record_path`，与桥那一侧函数体逐字相同）\
          ＋ 词法 ＋ 解 symlink 再判；会跟链接的两件（改权限 · 覆盖写）连最后一段也解到底。\
          线上入口只有 `inbound.rs` 那几条 `files-*` 写命令（`MANAGE_COMMANDS` 逐条登记）",
     ), (
@@ -401,7 +401,7 @@ mod tests {
         //   把暂存件挪进用户目标的**那一下**住这里 —— 同一句用户裁决（「只允许后端的文件管理部分写文件」）。
         "control/files_commit.rs",
         "上传的提交（`设计/60 §13`）：把 `~/.cc-monitor/staging/<key>.part` 改名上位到用户指定的目标。\
-         先过写面那道围栏（`files_write::fenced_target`，借用、不抄）；不覆盖那一支先 `O_EXCL` 占位再改名上位\
+         先过写面那道围栏（`files_write::resolve_in_root`，借用、不抄）；不覆盖那一支先 `O_EXCL` 占位再改名上位\
          （改名失败撤掉自己那个 0 字节占位）。暂存件路径由本模块自己拼、`key` 只收 32 位十六进制 ⇒ \
          调用方指不到暂存区之外的源。〔F9c · 第四波〕存盘装不进一行时的块：`O_EXCL` 新建 \
          `<key>.<seq>.chunk`（暂存区不在就先过围栏再建目录）· 读回拼起来交写面 `overwrite_text` 原地覆盖（不添动词）· \
@@ -413,7 +413,7 @@ mod tests {
         "control/transfer.rs",
         "传输台（`设计/60 §4.2`）：下载的本机落点 —— `O_EXCL` 新建 `<落点>.part`（旧的尾块对不上先删）· \
          续传时接着写那一份（不截断、不新建）· 传完改名上位 · 失败删 `.part`。每一处先过写面那道围栏 \
-         （`files_write::fenced_target`，根 = 落点的父目录，借用、不抄）。远端暂存区那一半一行都不在这里 \
+         （`files_write::resolve_in_root`，根 = 落点的父目录，借用、不抄）。远端暂存区那一半一行都不在这里 \
          （经 `dial/sftp.rs` 的写原语，只许两处）。线上入口只有 `inbound.rs` 那四条 `transfer-*` 硬臂 \
          （`transfer_command_names`）",
     )];
@@ -485,7 +485,11 @@ mod tests {
     /// 它是会话文件围栏**唯一的例外**（只收 sid、落点由适配层按 sid 找），
     /// 所以它**只许出现一处调用**（[`the_session_file_exception_lives_in_exactly_one_place`]）——
     /// 拿它去给别的改动「过围栏」、把例外借给第二个函数，那一条当场红。
-    const FENCE_CALLS: &[&str] = &["fenced_target(", "fenced_existing(", "fenced_session_file("];
+    const FENCE_CALLS: &[&str] = &[
+        "resolve_in_root(",
+        "resolve_existing_in_root(",
+        "fenced_session_file(",
+    ];
 
     /// 目录列举的针。
     const LISTING_CALL: &str = "read_dir(";
@@ -511,13 +515,13 @@ mod tests {
         (
             "control/files_commit.rs",
             "sweep_stale",
-            "暂存区孤儿扫：列暂存区，每一条先 `fenced_target`（以暂存区为根）再删 —— 逐条目先判后删",
+            "暂存区孤儿扫：列暂存区，每一条先 `resolve_in_root`（以暂存区为根）再删 —— 逐条目先判后删",
         ),
         // 〔F9c 与 FW5 合并 · 第四波〕FW5 立本表时 F9c 的 `drop_chunks` 还在另一棵树上 ⇒ 两边各自绿、合起来才红。
         (
             "control/files_commit.rs",
             "drop_chunks",
-            "存盘分块的收尾：列暂存区，只挑这一次的 `<key>.<块号>` 块，每一条先 `fenced_target`（以暂存区为根）、\
+            "存盘分块的收尾：列暂存区，只挑这一次的 `<key>.<块号>` 块，每一条先 `resolve_in_root`（以暂存区为根）、\
              且只删普通文件 —— 与孤儿扫同形，逐条目先判后删",
         ),
         (
@@ -907,7 +911,7 @@ mod tests {
                 }
                 // ⚠ 这一判**剥注释**再判（`guard_core::production_code`），与上面两判不同口径：
                 //   上面两判不剥注释是 fail-closed（写进注释也算，宁可误红）；而这一判找的是
-                //   「围栏调用在改动调用**之前**」——注释里提一句 `fenced_target(` 就能把它喂饱，
+                //   「围栏调用在改动调用**之前**」——注释里提一句 `resolve_in_root(` 就能把它喂饱，
                 //   不剥注释在这一判上是 **fail-open**。现打：第一版没剥，头注里一句散文
                 //   就被判成了「没过围栏的改动」（方向相反的那一形同样会发生）。
                 let bad = unfenced_mutations(&guard_core::production_code(&src));
@@ -915,7 +919,7 @@ mod tests {
                     panic!(
                         "第三层模块 {} 里有改动**没先过围栏**：\n  {}\n\n\
                          判准逐字：「改，但**每一处都先过围栏**、且只从声明过的那一面来」。\n\
-                         ⇒ 在那个函数里、第一个改动之前调一次 `fenced_target(` 或 `fenced_existing(`。",
+                         ⇒ 在那个函数里、第一个改动之前调一次 `resolve_in_root(` 或 `resolve_existing_in_root(`。",
                         path.display(),
                         bad.join("\n  ")
                     );
@@ -1675,7 +1679,7 @@ mod tests {
         // ③ 阴性：先判后动 ⇒ 零条。
         assert!(
             unfenced_mutations(
-                "pub fn f(r: &Path) {\n    let t = fenced_target(r, \"a\")?;\n    std::fs::remove_file(&t).ok();\n}\n"
+                "pub fn f(r: &Path) {\n    let t = resolve_in_root(r, \"a\")?;\n    std::fs::remove_file(&t).ok();\n}\n"
             )
             .is_empty(),
             "先过围栏再动手的样本被误报了 —— 这条判据会逼人去关掉它"
@@ -1683,7 +1687,7 @@ mod tests {
         // ③ 顺序是承重的：先动后判 ⇒ 仍然红。
         assert_eq!(
             unfenced_mutations(
-                "pub fn f(r: &Path) {\n    std::fs::rename(a, b).ok();\n    let _ = fenced_existing(r, \"a\");\n}\n"
+                "pub fn f(r: &Path) {\n    std::fs::rename(a, b).ok();\n    let _ = resolve_existing_in_root(r, \"a\");\n}\n"
             )
             .len(),
             1,
@@ -1692,14 +1696,14 @@ mod tests {
         // ③ 切块是按函数的：第一个函数判过，不许替第二个函数作保。
         assert_eq!(
             unfenced_mutations(
-                "fn a(r: &Path) {\n    fenced_target(r, \"x\").ok();\n}\nfn b() {\n    std::fs::write(p, b).ok();\n}\n"
+                "fn a(r: &Path) {\n    resolve_in_root(r, \"x\").ok();\n}\nfn b() {\n    std::fs::write(p, b).ok();\n}\n"
             )
             .len(),
             1,
             "一个函数里的围栏替另一个函数作了保 —— 切块失效"
         );
         // 〔FW5〕⑤ 列举之后没再过围栏 —— 阳性：顶上判一次、列出来整摞删（③ 对这一形是绿的）。
-        let top_only = "pub fn f(r: &Path) {\n    let t = fenced_target(r, \"a\")?;\n    for e in std::fs::read_dir(&t)? {\n        std::fs::remove_file(e?.path()).ok();\n    }\n}\n";
+        let top_only = "pub fn f(r: &Path) {\n    let t = resolve_in_root(r, \"a\")?;\n    for e in std::fs::read_dir(&t)? {\n        std::fs::remove_file(e?.path()).ok();\n    }\n}\n";
         assert!(
             unfenced_mutations(top_only).is_empty(),
             "样本本身喂歪了：这一形本该骗得过 ③（那正是 ⑤ 存在的理由）"
@@ -1717,7 +1721,7 @@ mod tests {
         // ⑤ 阴性：列出来之后每一条先判后删 ⇒ 零条。
         assert!(
             mutations_after_listing_unfenced(
-                "pub fn f(r: &Path) {\n    for e in std::fs::read_dir(r)? {\n        let t = fenced_target(r, e?.file_name())?;\n        std::fs::remove_file(&t).ok();\n    }\n}\n"
+                "pub fn f(r: &Path) {\n    for e in std::fs::read_dir(r)? {\n        let t = resolve_in_root(r, e?.file_name())?;\n        std::fs::remove_file(&t).ok();\n    }\n}\n"
             )
             .is_empty(),
             "逐条目先判后删的样本被误报了"
@@ -3220,7 +3224,7 @@ mod g6_staged_zero {
         // 用户 09-23 逐字裁「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
         // ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」按丙（统一）裁，统一到**窄的那一档**
         // ⇒ `control/files_write.rs` 的两道围栏从 `is_inside_tree`（拒**整棵 `~/.claude*` 树**）
-        //   换成 `is_protected_session_path`（只拒那几份具体的会话文件），
+        //   换成 `is_session_record_path`（只拒那几份具体的会话文件），
         //   而 `is_inside_tree` 的**唯一生产消费者**就是那两处。
         //
         // ⚠ **为什么不删它**（本仓「不为旧配置留兼容」那条纪律这里不适用）：

@@ -1,19 +1,33 @@
 //! 〔步 23b · 2026-09-19〕**文件管理面的落盘原语** —— `设计/60 §6.5.2 A` 拍板的那个
 //! 「**带围栏的**白名单模块」，`readonly_guard` 写盘白名单上的第二个洞口。
 //!
+//! # 🔴〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕**文件管理面不再有任何数据围栏**
+//!
+//! 用户原话：「**文件管理器全部都可以改. 不需要任何围栏**」。⇒ 会话文件（`projects/<proj>/<sid>.jsonl` ·
+//! `sessions/<x>.json`）、项目目录、subagent 记录、tasks 都能新建 · 改名 · 删 · 改权限 · 覆盖 · 复制 · 读改写，
+//! 递归删也不再因为树里藏着一份会话文件就整趟拒。
+//! **拿掉的**是「不许改这些东西」那一问（从前每一关都问一次适配层的会话形状判定）。
+//! **留着的**是路径解析的正确性 —— 它不限制改什么，只保证改的就是 `root ＋ rel` 说的那一格：
+//! [`lexical_in_root`]（逐段只许普通段，拼出来仍在根下）· [`resolve_parent_in_root`]（父目录解链接后仍在根下）·
+//! [`resolve_existing_in_root`]（跟链接的动词：解到底仍在根下）。三个旧名是 `fence_lexical` / `fence_resolved` /
+//! `fenced_existing`，串起来那个旧名 `fenced_target`，今天叫 [`resolve_in_root`]。
+//! 唯一还在问会话形状的是**删历史会话**那一条（[`delete_session`]，只收 sid）—— 那不是文件管理器，是历史浏览器的
+//! 「删会话」，它问的是「要删的必须**是**一份会话」，方向与从前那道围栏相反，本刀一个字节没动它。
+//! 下面凡说到「围栏拦会话文件」的段落都是**历史**，读现状看这一节。
+//!
 //! # 🔴〔波 5 ㈡ · 2026-09-23〕本模块从白名单层**搬到了第三层**，下面「它刻意不是什么」那一节是**历史**
 //!
 //! 用户逐字：「**现在只允许后端的文件管理部分写文件**」（收窄的是**主语**，不是动作）。
 //! ⇒ `设计/60 §8.6` 第 3 步：新建目录 · 改名 · 删除 · 改权限 · 覆盖写 —— 它们要
 //! **改动既有数据**，正是白名单层的判准（「不改既有数据」）所禁的。
-//! ⇒ `readonly_guard` 长出**第三层**，判准换成「**改，但每一处都先过围栏、
-//! 且只从声明过的那一面来**」，本模块是那一层**唯一**登记的模块。
+//! ⇒ `readonly_guard` 长出**第三层**，判准换成「**改，但每一处都先过路径解析、
+//! 且只从声明过的那一面来**」（〔FN1〕原话是「先过围栏」），本模块是那一层登记的模块之一。
 //!
 //! | 那一层钉的 | 怎么钉 |
 //! |---|---|
 //! | 能用哪几个改动动词 | **闭集**登记（`readonly_guard` 那张表）；表外的改动动词在本模块里照旧红 —— 包括那个「一条路径进、整棵树出」的一步递归删（它的遍历不经过围栏；〔FW5 · 第四波〕递归删由既有动词**逐条拼出**，见 [`delete_tree`]） |
-//! | 〔FW5〕列举之后的改动**在列举之后再过一次围栏** | 出现目录列举的函数恒等于登记的那几个；其中每一处改动之前、列举之后必须有一次围栏调用（顶上判一次、底下整摞删 ⇒ 红） |
-//! | 每一处改动都先过围栏 | 本模块每个含改动动词的函数里，围栏调用必须出现在**第一个改动动词之前** |
+//! | 〔FW5〕列举之后的改动**在列举之后再过一次路径解析** | 出现目录列举的函数恒等于登记的那几个；其中每一处改动之前、列举之后必须有一次路径解析调用（顶上判一次、底下整摞删 ⇒ 红） |
+//! | 每一处改动都先过路径解析 | 本模块每个含改动动词的函数里，路径解析调用必须出现在**第一个改动动词之前** |
 //! | 只从文件管理那一面来 | 后端生产树里引用得到本模块的文件，集合**恒等于**登记的那一扇门（`inbound.rs`）；其余任何一面伸手 ⇒ 红 |
 //! | `O_EXCL` 那一处没变质 | 开句柄的调用与 `O_EXCL` 仍然逐一配对（新建那条路一个字节没松） |
 //!
@@ -40,17 +54,18 @@
 //! （`control/fork_write.rs` 头注记着本仓为这件事栽过四次）。
 //! **要改就改措辞，别去放宽护栏。**
 //!
-//! # 围栏：两道，各治一种逃逸
+//! # 路径解析：两道，各治一种逃逸（〔FN1〕原标题「围栏」）
 //!
 //! `设计/60 §6.5.2 A` 逐字：「写点只许落在**用户指定的文件管理目标**下，
 //! **不许**落进 Claude 那几棵树」。这一句拆成两道能分别单测的关：
 //!
 //! | 道 | 住址 | 它拦的是 | 它**拦不住**的是 |
 //! |---|---|---|---|
-//! | ① 词法 | [`fence_lexical`] | 上跳段 · 绝对路径 · 盘符 · 空段 · 写点本身就是一份会话文件 | 盘上真实的 symlink —— 它根本不碰盘 |
-//! | ② 现打 | [`fence_resolved`] | 目标根里藏一条指向别处的 symlink（**解完再判一次**） | 判定与落盘之间的时间窗（TOCTOU，见下） |
+//! | ① 词法 | [`lexical_in_root`] | 上跳段 · 绝对路径 · 盘符 · 空段（〔FN1〕「写点本身就是一份会话文件」那一格删了） | 盘上真实的 symlink —— 它根本不碰盘 |
+//! | ② 现打 | [`resolve_parent_in_root`] | 目标根里藏一条指向别处的 symlink（**解完再判一次**） | 判定与落盘之间的时间窗（TOCTOU，见下） |
 //!
-//! 🔴 **〔波 5 ㈢ · 2026-09-23〕上面那句「不许落进 Claude 那几棵树」的射程被用户改窄了。**
+//! 🔴 **〔波 5 ㈢ · 2026-09-23〕上面那句「不许落进 Claude 那几棵树」的射程被用户改窄了**
+//! （〔FN1 · 09-25〕又被 V119 整个拿掉：下面那张表「今天」那一栏已经是历史，会话文件那一行今天也**放行**）。
 //!
 //! 用户 09-23 逐字：「文件管理器该不该能改 `~/.claude` 里的东西. **可以.**」
 //! ⇒ `设计/60 §8.7` 那道「两道栅栏宽窄不同」的产品题按**丙**（统一成同一个判定）裁，
@@ -59,7 +74,7 @@
 //!
 //! | | 09-23 之前 | 今天 |
 //! |---|---|---|
-//! | 判定 | `is_inside_tree`（拒**整棵 `~/.claude*` 树**） | `is_protected_session_path`（只拒那几份会话文件） |
+//! | 判定 | `is_inside_tree`（拒**整棵 `~/.claude*` 树**） | `is_session_record_path`（只拒那几份会话文件） |
 //! | `~/.claude/skills/x.md` | **拒** | **放行** |
 //! | `~/.claude/settings.json` | **拒** | **放行**（与桥那一侧逐字同口径） |
 //! | `~/.claude/projects/-x/s.jsonl` | 拒 | **照旧拒** |
@@ -70,12 +85,12 @@
 //!
 //! ⚠ **「哪几份文件算 Claude 的会话数据」这条知识不在本模块**：`control/` 是通用层，
 //! 它不该知道那个目录叫什么（`agent_locality_guard` 的针就钉在这上面）。
-//! 判定的住址是适配层里的 `is_protected_session_path`，本模块只是**调用它**。
+//! 判定的住址是适配层里的 `is_session_record_path`，本模块只是**调用它** ——〔FN1〕今天只剩删会话那一处调用。
 //!
 //! # 🔴 诚实边界 —— 本模块买到的与**买不到**的
 //!
-//! 1. **TOCTOU 仍在**：围栏② 解析父目录与真正落盘之间有一个时间窗，
-//!    有人在这个窗里把父目录换成 symlink，围栏② 看到的就是旧真相。
+//! 1. **TOCTOU 仍在**：路径解析② 解析父目录与真正落盘之间有一个时间窗，
+//!    有人在这个窗里把父目录换成 symlink，解析② 看到的就是旧真相。
 //!    **兜底的是 `O_EXCL` 本身** —— 最后那一段若已存在（含它是一条 symlink），
 //!    开文件这一步直接失败，不会跟随过去写。⇒ 窗里能被利用的只剩「父目录整个被换掉」
 //!    这一形，而那需要对目标根有写权限的本地攻击者。**如实登记为未闭合。**
@@ -94,10 +109,10 @@
 //!    把它接到命令面上要加子命令 ⇒ 要 bump `BUILD_ID` ⇒ 要同拍 re-embed（`99 §4` 条 19c），
 //!    那几处全在本轮写区之外。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
-use crate::agents::claudecode::paths::{is_protected_session_path, session_file_for_delete};
+use crate::agents::claudecode::paths::{is_session_record_path, session_file_for_delete};
 use std::path::{Component, Path, PathBuf};
 
-/// 围栏①（词法）：**纯路径算术，不碰盘**。过了就返回「打算写到哪」。
+/// 路径解析①（词法）：**纯路径算术，不碰盘**。过了就返回「打算写到哪」。
 ///
 /// `rel` 是**相对**目标根的那一段。拒绝的形状逐条：
 ///
@@ -106,15 +121,15 @@ use std::path::{Component, Path, PathBuf};
 /// - 上跳段与当前目录段 —— 上跳是逃出目标根的第一条路；当前目录段本身无害，
 ///   但留着它就等于承认「这里做路径规范化」，而规范化与安全判定混在一起正是
 ///   本仓反复踩的那种坑 ⇒ **一律拒，让调用方送干净的段进来。**
-/// - 过了上面几关之后，再判一次**写点自己是不是一份会话文件**。
-///   ⚠ 〔波 5 ㈢〕这一关此前判的是「目标根自己有没有落在那几棵树里」——
-///   用户 09-23 那一裁之后那一问**不再是拒绝理由**（把文件管理目标指到 `~/.claude`
-///   底下是合法的），换成的是「拼出来的那条路径是不是那几份具体的会话文件」。
+///
+/// 🔴 〔FN1 · V119〕这里原来还有一关「写点自己是不是一份会话文件」（再早是「目标根在不在
+/// `~/.claude*` 那几棵树里」）。用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 那一关删了：
+/// 本函数只答「这一段拼到根上之后还在不在根底下」，**不问落点是谁的数据**。
 ///
 /// 〔FW5 · 第四波〕入参从 `&str` 换成了 `impl AsRef<Path>`：段判定走的是 `Path::components`，
 /// 它本来就**不看编码** ⇒ 非 UTF-8 的名字（乱码文件名）照样逐段判；递归删的子项名字
-/// 也不一定是 UTF-8，逐条目过围栏要的正是这一格。判定一个字没变。
-pub fn fence_lexical(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
+/// 也不一定是 UTF-8，逐条目过路径解析要的正是这一格。判定一个字没变。
+pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
     let rel = rel.as_ref();
     if rel.to_string_lossy().trim().is_empty() {
         return Err("refuse write: 相对路径是空的".to_string());
@@ -146,24 +161,21 @@ pub fn fence_lexical(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Stri
             root.display()
         ));
     }
-    if is_protected_session_path(&target) {
-        return Err(format!(
-            "refuse write: 写点就是一份 Claude 会话数据文件（{}）——\
-             管理会话文件请走历史浏览器，不走文件管理面",
-            target.display()
-        ));
-    }
     Ok(target)
 }
 
-/// 围栏②（现打）：把**父目录**解析成真路径（解 symlink）之后再判一次。
+/// 路径解析②（现打）：把**父目录**解析成真路径（解 symlink）之后再判一次落点。
 ///
-/// 围栏① 是纯字符串算术，它**看不见盘上的 symlink**：目标根里放一条
-/// `docs -> <配置根>`，`root/docs/x.md` 在词法上完全干净，落盘却落进了那棵树。
+/// 解析① 是纯字符串算术，它**看不见盘上的 symlink**：目标根里放一条
+/// `docs -> /别处`，`root/docs/x.md` 在词法上完全干净，落盘却落到了根外面。
 ///
-/// 处置：解父目录（不解最后那一段 —— 它本来就不该存在，`O_EXCL` 会兜），
-/// 然后把「在不在目标根底下」与「是不是那几份会话文件」**在真路径上各判一次**。
+/// 处置：解父目录（不解最后那一段 —— 作用在链接本身上的动词不跟它），
+/// 然后在真路径上判一次「还在不在目标根底下」。
 /// `root` 自己也解一次：两边都解完再比，才比得对。
+///
+/// 🔴 〔FN1 · V119〕这里原来在真路径上还判一次「是不是那几份会话文件」，删了（理由同 [`lexical_in_root`]）。
+/// 留下的这一判**不是**「不许改什么」，是「这一次到底改的是哪一份」的正确性：`root ＋ rel` 说的是根底下那一格，
+/// 一条藏在半路的链接不许把它换成根外面的另一格。
 ///
 /// 🔴 〔波 5 ㈢〕本函数此前还收一个 `claude_home` 并把它也解一次 —— 那是
 /// 「整棵树」那一档的需要。换成结构判定之后**配置根这个入参整个不需要了**：
@@ -172,7 +184,7 @@ pub fn fence_lexical(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Stri
 ///
 /// ⚠ 父目录**必须已经在盘上**。本模块不建目录（那是白名单层明令禁止的），
 /// 所以「父目录不在」是一条正常的拒绝理由，不是内部错误。
-pub fn fence_resolved(root: &Path, target: &Path) -> Result<PathBuf, String> {
+pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<PathBuf, String> {
     let real_root = std::fs::canonicalize(root)
         .map_err(|e| format!("refuse write: 目标根解析不了（{}：{e}）", root.display()))?;
     let parent = target
@@ -184,17 +196,6 @@ pub fn fence_resolved(root: &Path, target: &Path) -> Result<PathBuf, String> {
     let real_parent = std::fs::canonicalize(parent)
         .map_err(|e| format!("refuse write: 父目录解析不了（{}：{e}）", parent.display()))?;
     let resolved = real_parent.join(name);
-    // ★ **顺序是承重的**：先问是不是会话文件，再问有没有跑出目标根。
-    //   一条 symlink 常常同时犯两样（指出去、而且指到一份会话文件上），两条判定谁先答，
-    //   决定了用户看到的是哪一句。**「碰了 Claude 会话数据」这句更要紧**，
-    //   它说的是这条围栏立在这里的**全部理由**；「跑出目标根」只是越界。
-    //   ⚠ 反过来排也仍然会拒 —— 但诊断会把最要紧的那件事盖掉。
-    if is_protected_session_path(&resolved) {
-        return Err(format!(
-            "refuse write: 解完 symlink 之后写点落到了一份 Claude 会话数据文件上（{}）",
-            resolved.display()
-        ));
-    }
     if !real_parent.starts_with(&real_root) {
         return Err(format!(
             "refuse write: 解完 symlink 之后写点跑出了目标根（{} 不在 {} 里）",
@@ -205,20 +206,23 @@ pub fn fence_resolved(root: &Path, target: &Path) -> Result<PathBuf, String> {
     Ok(resolved)
 }
 
-/// 两道围栏串起来跑一遍，返回最终落点。**不碰盘上的内容，只解路径。**
+/// 两道路径解析串起来跑一遍，返回最终落点。**不碰盘上的内容，只解路径。**
 ///
-/// 抽成单独一个函数，是为了让「围栏真的被串起来了」这件事有一个可直接喂参数的入口
-/// —— 判据不必为了验围栏而每次都真写一份文件。
-pub fn fenced_target(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
-    let lexical = fence_lexical(root, rel)?;
-    fence_resolved(root, &lexical)
+/// 抽成单独一个函数，是为了让「两道真的被串起来了」这件事有一个可直接喂参数的入口
+/// —— 判据不必为了验它而每次都真写一份文件。
+///
+/// 〔FN1 · V119〕旧名 `fenced_target`：它今天**不拦任何数据**（用户「不需要任何围栏」），
+/// 只做词法不越根 ＋ 父目录解链接后仍在根下 ⇒ 改成说它真在做的那件事。
+pub fn resolve_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
+    let lexical = lexical_in_root(root, rel)?;
+    resolve_parent_in_root(root, &lexical)
 }
 
 /// 一次落盘没成，**是谁拦的**。
 ///
 /// # 🔴 为什么要分这两档（不是分类癖，是线上那一面分得出码才有意义）
 ///
-/// 接命令面那一拍逼出来的：围栏拒绝与盘上出错是**两件对调用方意义完全不同**的事 ——
+/// 接命令面那一拍逼出来的：参数被拒与盘上出错是**两件对调用方意义完全不同**的事 ——
 /// 前者是「这条路径本来就不许写」（换条路径才有意义），后者是「路径没问题，
 /// 这一次没写成」（重试才有意义）。此前两者都压成一个 `String`，
 /// 线上那一面只能靠**猜字符串前缀**去分它们，而那是会漂的。
@@ -226,9 +230,11 @@ pub fn fenced_target(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Stri
 /// ⚠ 分档**不放宽任何东西**：两档都是 `Err`，两档都不落盘。
 #[derive(Debug)]
 pub enum WriteRefusal {
-    /// 围栏拦的（词法那道 或 解完 symlink 那道）。
-    Fenced(String),
-    /// 围栏放行了，盘上这一步没成（目标已存在 · 父目录不可写 · 盘满 …）。
+    /// 这一次的参数本身不成立（路径解析拒：越根 · 上跳 · 父目录不在 · 解完链接跑出根；
+    /// 或者形状不对：不是普通文件 · 权限位越界）。线上码 `refused`。
+    /// 〔FN1〕旧名 `Fenced`：它今天不代表任何数据围栏，名字跟着线上码走。
+    Refused(String),
+    /// 参数成立，盘上这一步没成（目标已存在 · 父目录不可写 · 盘满 …）。
     Io(String),
     /// 〔FW5 · 第四波〕**这个平台上没有这件事**（非 unix 上改 unix 权限位）。
     ///
@@ -257,17 +263,17 @@ impl WriteRefusal {
     /// ——〔RM1e〕`files-delete` 带 `expect` 那一形也回它，也声明了）。
     pub fn code(&self) -> &'static str {
         match self {
-            WriteRefusal::Fenced(_) => "refused",
+            WriteRefusal::Refused(_) => "refused",
             WriteRefusal::Io(_) => "io_failed",
             WriteRefusal::Unsupported(_) => NO_UNIX_MODE,
             WriteRefusal::Stale(_) => "stale",
         }
     }
 
-    /// 给人看的那句话（原样来自围栏／系统，本层不改写）。
+    /// 给人看的那句话（原样来自路径解析／系统，本层不改写）。
     pub fn message(&self) -> &str {
         match self {
-            WriteRefusal::Fenced(m)
+            WriteRefusal::Refused(m)
             | WriteRefusal::Io(m)
             | WriteRefusal::Unsupported(m)
             | WriteRefusal::Stale(m) => m.as_str(),
@@ -288,7 +294,7 @@ pub fn create_new_file(
     bytes: &[u8],
 ) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
-    let target = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let mut f = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -310,34 +316,28 @@ pub fn create_new_file(
 // 🔴 **这一节才花掉用户那句话**：「现在只允许后端的文件管理部分写文件」。
 //   它们每一件都会改动盘上已经在的东西 ⇒ 本模块因此从白名单层搬到第三层。
 //
-// 🔴 **每个函数的第一件事是过围栏** —— 那不是风格，是 `readonly_guard` 第三层
-//   逐函数扫出来的：函数里第一个改动动词之前，必须已经出现一次围栏调用。
+// 🔴 **每个函数的第一件事是过路径解析** —— 那不是风格，是 `readonly_guard` 第三层
+//   逐函数扫出来的：函数里第一个改动动词之前，必须已经出现一次路径解析调用。
 //   换一种写法（先动手、后判），那一层当场红。
 //
-// ⚠ 围栏分两个入口，差别只在**最后那一段解不解**：
-//   · [`fenced_target`] —— 只解父目录。给「作用在**链接本身**上」的动词用
+// ⚠ 路径解析分两个入口，差别只在**最后那一段解不解**：
+//   · [`resolve_in_root`] —— 只解父目录。给「作用在**链接本身**上」的动词用
 //     （新建 · 建目录 · 改名 · 删除 —— 它们都不跟最后那一段的链接）。
-//   · [`fenced_existing`] —— 连最后那一段也解。给「**跟链接**」的动词用
-//     （改权限 · 覆盖写）：不解的话，根里一条指向会话文件的链接就能把那份文件改坏。
+//   · [`resolve_existing_in_root`] —— 连最后那一段也解。给「**跟链接**」的动词用
+//     （改权限 · 覆盖写）：不解的话，根里一条指向根外的链接就能把根外那一份改掉。
 //
 // ⚠ **TOCTOU 照旧在**（同本模块头注诚实边界第 1 条）：判定与动手之间有一个窗。
 //   第三层钉的是「先判后动」这个**顺序**，钉不了「判完之后世界没变」。如实登记。
 
-/// 围栏③：对一个**已经在盘上**的东西做一次**会跟链接**的写之前，把它**解到底**再判一次。
+/// 路径解析③：对一个**已经在盘上**的东西做一次**会跟链接**的写之前，把它**解到底**再判一次。
 ///
-/// 先走 [`fenced_target`]（词法 ＋ 父目录解开），再把**完整路径**解成真路径：
-/// 解出来是一份会话文件 ⇒ 拒；解出来跑出了目标根 ⇒ 拒。返回解到底的那一个 ——
-/// 动手就动它，不再经过任何一条链接。
-pub fn fenced_existing(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
-    let at = fenced_target(root, rel)?;
+/// 先走 [`resolve_in_root`]（词法 ＋ 父目录解开），再把**完整路径**解成真路径：
+/// 解出来跑出了目标根 ⇒ 拒。返回解到底的那一个 —— 动手就动它，不再经过任何一条链接。
+/// 〔FN1 · V119〕旧名 `fenced_existing`；「解出来是一份会话文件 ⇒ 拒」那一判删了。
+pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
+    let at = resolve_in_root(root, rel)?;
     let real = std::fs::canonicalize(&at)
         .map_err(|e| format!("refuse write: 目标解析不了（{}：{e}）", at.display()))?;
-    if is_protected_session_path(&real) {
-        return Err(format!(
-            "refuse write: 解到底之后落到了一份 Claude 会话数据文件上（{}）",
-            real.display()
-        ));
-    }
     let real_root = std::fs::canonicalize(root)
         .map_err(|e| format!("refuse write: 目标根解析不了（{}：{e}）", root.display()))?;
     if !real.starts_with(&real_root) {
@@ -350,10 +350,10 @@ pub fn fenced_existing(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, St
     Ok(real)
 }
 
-/// 新建一个目录。**只建最后那一段**：父目录不在 ⇒ 围栏② 那一步就拒
+/// 新建一个目录。**只建最后那一段**：父目录不在 ⇒ 路径解析② 那一步就拒
 /// （「顺手把中间几层补出来」是另一件事，没人裁过）。
 pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
-    let target = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     std::fs::create_dir(&target).map_err(|e| {
         WriteRefusal::Io(format!(
             "refuse write: 建目录 {} 失败：{e}",
@@ -365,8 +365,8 @@ pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefu
 
 /// 改名 / 同根内移动。
 ///
-/// 🔴 **两个参数各过一遍围栏** —— 只判 `from` 的话，能把任意文件**改名成**一份会话文件的名字，
-/// 盖掉正在跑的那一场（桥那一侧 `sftp_rename` 当初就是少了这一道被逮住的）。
+/// 🔴 **两个参数各过一遍路径解析** —— 只解 `from` 的话，`to` 那一侧半路一条链接就能把东西搬到根外面去。
+/// 〔FN1 · V119〕从前这一句的理由是「能把任意文件改名成一份会话文件的名字」—— 那一道拦截用户拿掉了。
 ///
 /// 🔴 **目标已经在了就拒**：unix 上系统那一步**会静默顶掉**已有的目标文件 —— 那就是一次
 /// 没人问过的覆盖。⇒ 先看一眼（不跟链接地看），在就拒。
@@ -376,8 +376,8 @@ pub fn rename_entry(
     from: impl AsRef<Path>,
     to: impl AsRef<Path>,
 ) -> Result<PathBuf, WriteRefusal> {
-    let src = fenced_target(root, from).map_err(WriteRefusal::Fenced)?;
-    let dst = fenced_target(root, to).map_err(WriteRefusal::Fenced)?;
+    let src = resolve_in_root(root, from).map_err(WriteRefusal::Refused)?;
+    let dst = resolve_in_root(root, to).map_err(WriteRefusal::Refused)?;
     if std::fs::symlink_metadata(&dst).is_ok() {
         return Err(WriteRefusal::Io(format!(
             "refuse write: 目标已经在了（{}）—— 改名不覆盖，先删掉它或换个名字",
@@ -396,13 +396,13 @@ pub fn rename_entry(
 
 /// 删一个文件或一个**空**目录。**删的是链接本身**（不跟过去）。
 ///
-/// 🔴 **本函数不递归，刻意的**：围栏的射程是**一条路径**，而递归删动的是一整棵子树 ——
-/// 根里一个普通目录底下可以藏着一份会话文件（有人把 `projects/` 拷进了文件管理目标），
-/// 顶上那一条路径过得了围栏，底下那一份却会被一起删掉。非空目录 ⇒ 系统报错、原样带回。
-/// 〔FW5 · 第四波〕递归删是**另一个函数**（[`delete_tree`]），逐条目过围栏；
+/// 🔴 **本函数不递归，刻意的**：路径解析的射程是**一条路径**，而递归删动的是一整棵子树 ——
+/// 顶上那一条解得干净，底下一条链接或一个挂载点照样会被一起动到。非空目录 ⇒ 系统报错、原样带回。
+/// 〔FN1〕从前这里的例子是「底下藏着一份会话文件」，那一道拦截 V119 拿掉了；「每一条自己解一次」这条理由没变。
+/// 〔FW5 · 第四波〕递归删是**另一个函数**（[`delete_tree`]），逐条目过路径解析；
 /// 线上要显式带 `recursive: true` 才走它 —— 不带，本函数的射程一个字节不变。
 pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
-    let target = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let is_dir = std::fs::symlink_metadata(&target)
         .map(|m| m.is_dir())
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", target.display())))?;
@@ -422,15 +422,15 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
 /// 这里把「核」挪到删的同一个进程里、紧贴着删那一下（窗缩到本函数里那两行之间 —— TOCTOU 照旧如实登记，
 /// 同本模块头注诚实边界第 1 条）。
 ///
-/// 目标**必须是普通文件**（不跟链接地看）：是目录 / 链接 / 别的 ⇒ `Fenced`（CAS 比的是一份文件的字节，
+/// 目标**必须是普通文件**（不跟链接地看）：是目录 / 链接 / 别的 ⇒ `Refused`（CAS 比的是一份文件的字节，
 /// 链接的字节是它指向的那一份 —— 删的却是链接本身，两者对不上，不给这一形）。
-/// 不在 ⇒ `Stale`（读的时候还在）；在但不等 ⇒ `Stale`。与 [`delete_entry`] 同一道围栏、同一个删的动词。
+/// 不在 ⇒ `Stale`（读的时候还在）；在但不等 ⇒ `Stale`。与 [`delete_entry`] 同一道路径解析、同一个删的动词。
 pub fn delete_file_expecting(
     root: &Path,
     rel: impl AsRef<Path>,
     expect: &[u8],
 ) -> Result<PathBuf, WriteRefusal> {
-    let target = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let md = match std::fs::symlink_metadata(&target) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -447,7 +447,7 @@ pub fn delete_file_expecting(
         }
     };
     if !md.is_file() {
-        return Err(WriteRefusal::Fenced(format!(
+        return Err(WriteRefusal::Refused(format!(
             "refuse delete: {} 不是一份普通文件 —— 带 `expect` 的删只收普通文件（不收目录、不收链接）",
             target.display()
         )));
@@ -472,13 +472,13 @@ pub fn delete_file_expecting(
     Ok(target)
 }
 
-/// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 [`fenced_existing`]。
+/// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 [`resolve_existing_in_root`]。
 ///
 /// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
 pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<PathBuf, WriteRefusal> {
-    let real = fenced_existing(root, rel).map_err(WriteRefusal::Fenced)?;
+    let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     if mode > 0o7777 {
-        return Err(WriteRefusal::Fenced(format!(
+        return Err(WriteRefusal::Refused(format!(
             "refuse write: 权限位只收低 12 位（给的是 {mode:o}）"
         )));
     }
@@ -500,7 +500,7 @@ pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<Path
     }
 }
 
-/// 覆盖写一份**已经在**的普通文件。**跟链接** ⇒ 走 [`fenced_existing`]。
+/// 覆盖写一份**已经在**的普通文件。**跟链接** ⇒ 走 [`resolve_existing_in_root`]。
 ///
 /// ⚠ 只覆盖**普通文件**：目标是目录或不存在 ⇒ 拒。新建一份请走 [`create_new_file`]
 /// （那条是 `O_EXCL`，两条路刻意分开 —— 「新建」与「改既有」是两件风险不同的事）。
@@ -509,12 +509,12 @@ pub fn overwrite_text(
     rel: impl AsRef<Path>,
     bytes: &[u8],
 ) -> Result<PathBuf, WriteRefusal> {
-    let real = fenced_existing(root, rel).map_err(WriteRefusal::Fenced)?;
+    let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let is_file = std::fs::metadata(&real)
         .map(|m| m.is_file())
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display())))?;
     if !is_file {
-        return Err(WriteRefusal::Fenced(format!(
+        return Err(WriteRefusal::Refused(format!(
             "refuse write: {} 不是一份普通文件 —— 覆盖写只收普通文件",
             real.display()
         )));
@@ -525,18 +525,18 @@ pub fn overwrite_text(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  〔FW5 · 第四波 · 2026-09-24〕**递归删：逐条目过围栏**
+//  〔FW5 · 第四波 · 2026-09-24〕**递归删：逐条目过路径解析**（〔FN1〕原标题「逐条目过围栏」）
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 设计全文住 `调研/第四波记录/FW5.md` 第一节。三件承重的事：
 //
-// 1. **不用那个一步递归删的库函数**（它在第三层禁词表上，留在那儿）：它的遍历不经过我们的围栏，
+// 1. **不用那个一步递归删的库函数**（它在第三层禁词表上，留在那儿）：它的遍历不经过我们的路径解析，
 //    删的是「那一刻盘上的东西」而不是「判过的东西」。
-// 2. **两趟**：计划趟（只读）逐条目过围栏，任一条被拒 ⇒ 整趟拒、一个字节不动；
-//    执行趟**只删计划里的**，每一条**当场再过一次**围栏，只用「删文件」与「删空目录」两个既有动词
-//    ⇒ 计划之外新长出来的东西（含一份新的会话文件）绝不会被连带删掉：它所在的目录不空，删目录那一步失败 ⇒ 停。
-// 3. **列举与改动分住两个函数**（[`plan_tree`] 只列不删；[`remove_planned`] 只删一条、先过它自己那一条的围栏）。
-//    `readonly_guard` 第三层有一条判据钉「列举之后的改动，在列举之后必须再过一次围栏」，
+// 2. **两趟**：计划趟（只读）逐条目过路径解析，任一条被拒 ⇒ 整趟拒、一个字节不动；
+//    执行趟**只删计划里的**，每一条**当场再过一次**路径解析，只用「删文件」与「删空目录」两个既有动词
+//    ⇒ 计划之外新长出来的东西绝不会被连带删掉：它所在的目录不空，删目录那一步失败 ⇒ 停。
+// 3. **列举与改动分住两个函数**（[`plan_tree`] 只列不删；[`remove_planned`] 只删一条、先过它自己那一条的路径解析）。
+//    `readonly_guard` 第三层有一条判据钉「列举之后的改动，在列举之后必须再过一次路径解析」，
 //    顶上判一次、底下整摞删那一形当场红。
 //
 // ⚠ 每一条的「判」与「删」之间仍然有窗（TOCTOU，同本模块头注诚实边界第 1 条）；
@@ -569,10 +569,10 @@ fn kind_and_device(p: &Path) -> std::io::Result<(bool, u64)> {
     std::fs::symlink_metadata(p).map(|m| (m.is_dir(), 0))
 }
 
-/// **计划趟（只读）**：从 `rel` 起、不跟链接地走整棵树，**每一条目各过一次围栏**。
+/// **计划趟（只读）**：从 `rel` 起、不跟链接地走整棵树，**每一条目各过一次路径解析**。
 ///
 /// 回先序表（每一条都排在它所有后代之前 ⇒ 倒过来就是能逐条删空的次序）。
-/// 整趟拒的几形（都**一个字节不动**）：任一条目被围栏拒（`refused`，话里点名是哪一条）·
+/// 整趟拒的几形（都**一个字节不动**）：任一条目被路径解析拒（`refused`，话里点名是哪一条）·
 /// 树里跨了挂载点（`refused`：不走进另一个文件系统去删）· 条目数超过 [`TREE_ENTRY_CAP`]（`refused`）·
 /// 列不出某一层（`io_failed`）。
 ///
@@ -583,7 +583,7 @@ pub fn plan_tree(root: &Path, rel: impl AsRef<Path>) -> Result<Vec<Planned>, Wri
 
 /// [`plan_tree`] 的本体，上限由调用方给（判据拿一个小上限验「超了整趟拒」，不必真铺十万条）。
 pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Planned>, WriteRefusal> {
-    let top = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let top = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let (top_is_dir, top_dev) = kind_and_device(&top)
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", top.display())))?;
     let mut plan = vec![Planned {
@@ -596,7 +596,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
         Vec::new()
     };
     while let Some(dir_rel) = pending.pop() {
-        let dir_at = fenced_target(root, &dir_rel).map_err(WriteRefusal::Fenced)?;
+        let dir_at = resolve_in_root(root, &dir_rel).map_err(WriteRefusal::Refused)?;
         let listing = std::fs::read_dir(&dir_at).map_err(|e| {
             WriteRefusal::Io(format!("refuse write: 列不出 {}：{e}", dir_at.display()))
         })?;
@@ -605,17 +605,17 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
                 WriteRefusal::Io(format!("refuse write: 列 {} 时断了：{e}", dir_at.display()))
             })?;
             let child_rel = dir_rel.join(item.file_name());
-            // ★ **逐条目过围栏**：这一条就是本函数存在的理由。
-            let at = fenced_target(root, &child_rel).map_err(|m| {
-                WriteRefusal::Fenced(format!(
-                    "{m}\n—— 递归删整趟拒：这棵树里有一条过不了围栏，一个字节都没动"
+            // ★ **逐条目过路径解析**：这一条就是本函数存在的理由。
+            let at = resolve_in_root(root, &child_rel).map_err(|m| {
+                WriteRefusal::Refused(format!(
+                    "{m}\n—— 递归删整趟拒：这棵树里有一条路径解析不过，一个字节都没动"
                 ))
             })?;
             let (is_dir, dev) = kind_and_device(&at).map_err(|e| {
                 WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", at.display()))
             })?;
             if dev != top_dev {
-                return Err(WriteRefusal::Fenced(format!(
+                return Err(WriteRefusal::Refused(format!(
                     "refuse write: {} 在另一个文件系统上（挂载点）—— 递归删不走进去，整趟拒、一个字节没动",
                     at.display()
                 )));
@@ -625,7 +625,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
                 is_dir,
             });
             if plan.len() > cap {
-                return Err(WriteRefusal::Fenced(format!(
+                return Err(WriteRefusal::Refused(format!(
                     "refuse write: {} 底下超过 {cap} 条 —— 一次手势不删这么多，整趟拒、一个字节没动",
                     top.display()
                 )));
@@ -638,11 +638,11 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
     Ok(plan)
 }
 
-/// **执行趟的一条**：先过**它自己那一条**的围栏，再核种类没变，才删。
+/// **执行趟的一条**：先过**它自己那一条**的路径解析，再核种类没变，才删。
 ///
 /// 删的是链接本身（不跟过去）；目录只用「删空目录」—— 里面还有计划之外的东西 ⇒ 系统报错、停。
 pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal> {
-    let at = fenced_target(root, &p.rel).map_err(WriteRefusal::Fenced)?;
+    let at = resolve_in_root(root, &p.rel).map_err(WriteRefusal::Refused)?;
     let is_dir = std::fs::symlink_metadata(&at)
         .map(|m| m.is_dir())
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", at.display())))?;
@@ -661,7 +661,7 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
     Ok(at)
 }
 
-/// **递归删**：计划（逐条目过围栏）→ 按计划倒序逐条删（每条当场再过一次围栏）。
+/// **递归删**：计划（逐条目过路径解析）→ 按计划倒序逐条删（每条当场再过一次路径解析）。
 ///
 /// 回 `(目标的落点, 真删掉了几条)`。执行趟中途停下 ⇒ 已删的删掉了（与任何递归删同形），
 /// 话里带「删了几条之后停在哪一条」。计划趟被拒 ⇒ 一条都没删。
@@ -669,7 +669,7 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
 /// 🔴 本函数自己**不含任何改动动词**：删那一下住 [`remove_planned`]，列那一下住 [`plan_tree`]。
 pub fn delete_tree(root: &Path, rel: impl AsRef<Path>) -> Result<(PathBuf, usize), WriteRefusal> {
     let rel = rel.as_ref();
-    let top = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let top = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let plan = plan_tree(root, rel)?;
     let mut removed = 0usize;
     for p in plan.iter().rev() {
@@ -680,7 +680,7 @@ pub fn delete_tree(root: &Path, rel: impl AsRef<Path>) -> Result<(PathBuf, usize
                 plan.len()
             );
             match e {
-                WriteRefusal::Fenced(_) => WriteRefusal::Fenced(said),
+                WriteRefusal::Refused(_) => WriteRefusal::Refused(said),
                 WriteRefusal::Io(_) | WriteRefusal::Unsupported(_) | WriteRefusal::Stale(_) => {
                     WriteRefusal::Io(said)
                 }
@@ -700,8 +700,8 @@ static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 ///
 /// 标准库那个「一步复制」**仍然在第三层的禁词表上**，本函数刻意不用它，两条理由：
 ///
-/// 1. 目标那一格若是一条链接，它**跟过去写**：根里一条指向会话文件的链接，
-///    就能借它把那份会话记录盖成另一份文件的内容 —— 而围栏判的是**链接本身**那条路径。
+/// 1. 目标那一格若是一条链接，它**跟过去写**：根里一条指向根外的链接，
+///    就能借它把根外那一份盖掉 —— 而路径解析判的是**链接本身**那条路径。
 /// 2. 目标已在时它**就地截断重写**：写到一半失败，留下的是半份旧文件、半份新内容。
 ///
 /// ⇒ 拼法（三个动词都早在闭集里，**闭集一个字没变**）：
@@ -713,14 +713,14 @@ static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 ///
 /// 写失败 ⇒ 删掉**我们自己刚建的那一份**（暂存旁名或新目标），原样带回原因。
 ///
-/// # 围栏：三条路径各过一次
+/// # 路径解析：三条路径各过一次
 ///
-/// - `from` 走 [`fenced_existing`]（**解到底**）：复制是一次跟链接的读，
-///   根里一条指向会话文件的链接不许借它把那份会话记录复制走（与桥那一侧旧口径同：
-///   「能把正被 Claude 打开的 `jsonl` 复制走」正是那道围栏当初拦的）。
-/// - `to` 与暂存旁名走 [`fenced_target`]（只解父目录）：它们都是**作用在链接本身**上的。
+/// - `from` 走 [`resolve_existing_in_root`]（**解到底**）：复制是一次跟链接的读，
+///   根里一条指向根外的链接不许借它把根外那一份复制进来。
+///   〔FN1 · V119〕从前这里还拦「把正被 Claude 打开的 `jsonl` 复制走」，那一道用户拿掉了。
+/// - `to` 与暂存旁名走 [`resolve_in_root`]（只解父目录）：它们都是**作用在链接本身**上的。
 ///
-/// ⚠ 只收**普通文件**：目录递归复制没做（与删除不递归同一条理由：围栏射程是一条路径）。
+/// ⚠ 只收**普通文件**：目录递归复制没做（与删除不递归同一条理由：路径解析的射程是一条路径）。
 /// ⚠ 新文件的权限位是进程缺省（受 umask），**不从源那里抄**；覆盖时旧目标的权限位也随它一起换掉。
 /// ⚠ TOCTOU 照旧在（同本模块头注诚实边界第 1 条）。
 pub fn copy_entry(
@@ -730,10 +730,10 @@ pub fn copy_entry(
     overwrite: bool,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
     let to = to.as_ref();
-    let src = fenced_existing(root, from).map_err(WriteRefusal::Fenced)?;
-    let dst = fenced_target(root, to).map_err(WriteRefusal::Fenced)?;
+    let src = resolve_existing_in_root(root, from).map_err(WriteRefusal::Refused)?;
+    let dst = resolve_in_root(root, to).map_err(WriteRefusal::Refused)?;
     if src == dst {
-        return Err(WriteRefusal::Fenced(format!(
+        return Err(WriteRefusal::Refused(format!(
             "refuse write: 复制的源与目标是同一份（{}）",
             dst.display()
         )));
@@ -742,22 +742,22 @@ pub fn copy_entry(
         .map(|m| m.is_file())
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", src.display())))?;
     if !is_file {
-        return Err(WriteRefusal::Fenced(format!(
+        return Err(WriteRefusal::Refused(format!(
             "refuse write: {} 不是一份普通文件 —— 只复制普通文件（目录复制没做）",
             src.display()
         )));
     }
-    // 落在哪：不覆盖 ⇒ 直接落目标；显式覆盖 ⇒ 先落同目录的暂存旁名（它自己也过一遍围栏）。
+    // 落在哪：不覆盖 ⇒ 直接落目标；显式覆盖 ⇒ 先落同目录的暂存旁名（它自己也过一遍路径解析）。
     let land = if overwrite {
         let name = to.file_name().ok_or_else(|| {
-            WriteRefusal::Fenced(format!("refuse write: `{}` 没有文件名", to.display()))
+            WriteRefusal::Refused(format!("refuse write: `{}` 没有文件名", to.display()))
         })?;
         let seq = COPY_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // 〔FW5〕旁名按**原始字节**拼（名字可以不是 UTF-8）：`.` ＋ 原名 ＋ 固定后缀。
         let mut side = std::ffi::OsString::from(".");
         side.push(name);
         side.push(format!(".ccm-copy-{}-{seq}.part", std::process::id()));
-        fenced_target(root, to.with_file_name(side)).map_err(WriteRefusal::Fenced)?
+        resolve_in_root(root, to.with_file_name(side)).map_err(WriteRefusal::Refused)?
     } else {
         dst.clone()
     };
@@ -814,11 +814,13 @@ pub fn copy_entry(
 //
 // 🔴 **闭集一个动词没加**：替换 = `O_EXCL` 新建暂存旁名 ＋ 写满 ＋ 换名上位（与 [`copy_entry`]
 //   覆盖那一支同一个拼法）；备份 = `O_EXCL` 新建一份写进内存里的原文（一步复制那个动词仍在禁表上）；
-//   沿用原权限位 = 改权限；补父目录 = 逐级建目录（每一级各过一遍围栏）。
+//   沿用原权限位 = 改权限；补父目录 = 逐级建目录（每一级各过一遍路径解析）。
 //
-// 🔴 **删会话是会话文件围栏唯一的例外**（[`delete_session`]）：它**只收 sid**，落点由适配层按 sid 找
+// 🔴 **删会话**（[`delete_session`]）：它**只收 sid**，落点由适配层按 sid 找
 //   （`agents::claudecode::paths::session_file_for_delete`），不收路径 ⇒ 调用方表达不出「另一份文件」。
-//   `readonly_guard` 第三层的围栏针因此多一根 `fenced_session_file(`，判据钉它在生产树里恰好被调用一处。
+//   `readonly_guard` 第三层的针因此多一根 `fenced_session_file(`，判据钉它在生产树里恰好被调用一处。
+//   〔FN1 · V119〕它从前的说法是「会话文件围栏唯一的例外」—— 文件管理面的会话文件围栏拿掉之后没有「例外」可言了；
+//   它自己那道（「删的必须**是**一份会话、名字恰是 `<sid>.jsonl`」）一个字节没动。
 
 /// 读改写里**读那一半**交回去的东西。
 #[derive(Debug, PartialEq, Eq)]
@@ -837,13 +839,13 @@ pub struct Peeked {
 /// 更大的文件 ⇒ `too_large`，说清楚，不截断。
 pub const PEEK_MAX_BYTES: usize = 256 * 1024;
 
-/// 一次读改写的**读那一半**：与写**同一道围栏**（词法 ＋ 父目录解开；最后一段在盘上就解到底），
+/// 一次读改写的**读那一半**：与写**同一道路径解析**（词法 ＋ 父目录解开；最后一段在盘上就解到底），
 /// 于是「读的那一份」与「写的那一份」是同一个落点。
 ///
 /// 不在 ⇒ `Ok(text: None)`；在但不是普通文件 / 不是 UTF-8 / 超上限 ⇒ 拒（码见 [`answer_peek`]）。
 pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static str, String)> {
     let rel = rel.as_ref();
-    let at = fenced_target(root, rel).map_err(|m| ("refused", m))?;
+    let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
     match std::fs::symlink_metadata(&at) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(Peeked {
@@ -854,7 +856,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static
         Err(e) => return Err(("io_failed", format!("读不到 {}：{e}", at.display()))),
         Ok(_) => {}
     }
-    let real = fenced_existing(root, rel).map_err(|m| ("refused", m))?;
+    let real = resolve_existing_in_root(root, rel).map_err(|m| ("refused", m))?;
     let md = std::fs::metadata(&real)
         .map_err(|e| ("io_failed", format!("读不到 {}：{e}", real.display())))?;
     if !md.is_file() {
@@ -921,7 +923,7 @@ static PUT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new
 
 /// 🔴 **用户文件整份替换的那一个序列**（从前 monitor 的 `fenced_block::apply`，今天只有这一份）：
 ///
-/// ① 需要时逐级补父目录 → ② 过围栏 → ③ **CAS**：盘上那份必须逐字节等于 `expect`（`None` = 必须不存在）
+/// ① 需要时逐级补父目录 → ② 过路径解析 → ③ **CAS**：盘上那份必须逐字节等于 `expect`（`None` = 必须不存在）
 /// → ④ 与新内容逐字节相同 ⇒ 不写 → ⑤ 要备份就 `O_EXCL` 另存原文 → ⑥ 同目录暂存旁名写满、换名上位
 /// → ⑦ 回读逐字节比对 → 不符就回滚（原来在 ⇒ 把原文换回去；原来不在 ⇒ 删掉刚建的）。
 ///
@@ -939,7 +941,7 @@ pub fn put_text(
     if parents {
         make_parents(root, rel)?;
     }
-    let at = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let existed = match std::fs::symlink_metadata(&at) {
         Ok(_) => true,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
@@ -951,12 +953,12 @@ pub fn put_text(
         }
     };
     let (dst, current, perms) = if existed {
-        let real = fenced_existing(root, rel).map_err(WriteRefusal::Fenced)?;
+        let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
         let md = std::fs::metadata(&real).map_err(|e| {
             WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display()))
         })?;
         if !md.is_file() {
-            return Err(WriteRefusal::Fenced(format!(
+            return Err(WriteRefusal::Refused(format!(
                 "refuse write: {} 不是一份普通文件 —— 整份替换只收普通文件",
                 real.display()
             )));
@@ -1041,7 +1043,7 @@ pub fn put_text(
     })
 }
 
-/// 逐级补出 `rel` 的父目录。**每一级各过一遍围栏**；已经在（目录，或指向目录的链接）就跳过。
+/// 逐级补出 `rel` 的父目录。**每一级各过一遍路径解析**；已经在（目录，或指向目录的链接）就跳过。
 ///
 /// ⚠ 只给 [`put_text`] 用、且只在调用方**显式**要了（`parents: true`）时跑 ——
 /// 「顺手把中间几层补出来」不是缺省行为（`files-mkdir` 照旧只建最后那一段）。
@@ -1052,11 +1054,11 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
     let mut acc = PathBuf::new();
     for comp in parent.components() {
         acc.push(comp);
-        let at = fenced_target(root, &acc).map_err(WriteRefusal::Fenced)?;
+        let at = resolve_in_root(root, &acc).map_err(WriteRefusal::Refused)?;
         match std::fs::metadata(&at) {
             Ok(m) if m.is_dir() => continue,
             Ok(_) => {
-                return Err(WriteRefusal::Fenced(format!(
+                return Err(WriteRefusal::Refused(format!(
                     "refuse write: {} 已经在了、但不是目录",
                     at.display()
                 )))
@@ -1086,9 +1088,9 @@ fn swap_in(
     perms: Option<std::fs::Permissions>,
 ) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
-    let at = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let dst = if std::fs::symlink_metadata(&at).is_ok() {
-        fenced_existing(root, rel).map_err(WriteRefusal::Fenced)?
+        resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?
     } else {
         at
     };
@@ -1105,7 +1107,7 @@ fn swap_in(
         return Ok(dst);
     }
     let name = dst.file_name().ok_or_else(|| {
-        WriteRefusal::Fenced(format!("refuse write: `{}` 没有文件名", rel.display()))
+        WriteRefusal::Refused(format!("refuse write: `{}` 没有文件名", rel.display()))
     })?;
     let seq = PUT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     // 〔FW5 之后〕名字可以不是 UTF-8 ⇒ 旁名按 `OsString` 拼，不经 `str`。
@@ -1160,7 +1162,7 @@ fn land_backup(
 ) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
     let name = rel.file_name().ok_or_else(|| {
-        WriteRefusal::Fenced(format!("refuse write: `{}` 没有文件名", rel.display()))
+        WriteRefusal::Refused(format!("refuse write: `{}` 没有文件名", rel.display()))
     })?;
     let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1170,7 +1172,7 @@ fn land_backup(
     let mut bak_name = name.to_os_string();
     bak_name.push(format!(".ccm-backup-{ms}-{seq}"));
     let bak_rel = rel.with_file_name(bak_name);
-    let bak = fenced_target(root, &bak_rel).map_err(WriteRefusal::Fenced)?;
+    let bak = resolve_in_root(root, &bak_rel).map_err(WriteRefusal::Refused)?;
     let mut f = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -1198,16 +1200,17 @@ fn land_backup(
 
 /// 回滚那一支：删掉**这一趟自己刚建出来**的那一份（只在「原来不存在」时调）。
 fn remove_created(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
-    let at = fenced_target(root, rel).map_err(WriteRefusal::Fenced)?;
+    let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     std::fs::remove_file(&at)
         .map_err(|e| WriteRefusal::Io(format!("refuse write: 删 {} 失败：{e}", at.display())))
 }
 
-/// 🔴 **删一份历史会话 —— 会话文件围栏唯一的例外。只收 sid。**
+/// 🔴 **删一份历史会话 —— 只收 sid。**
 ///
 /// 落点由适配层按 sid 在本机记录树里找（[`session_file_for_delete`]：找 → 解到底 → 恰是
-/// `<项目>/<sid>.jsonl` → 必须是会话文件的形状）。别的写一律不许碰会话文件（[`fenced_target`] 拒），
-/// 这一条是「用户在历史浏览器里明确点了删」那一件事，**也只有这一件**。
+/// `<项目>/<sid>.jsonl` → 必须是会话文件的形状）。这一条是「用户在历史浏览器里明确点了删」那一件事。
+/// 〔FN1 · V119〕从前这里写「别的写一律不许碰会话文件，这一条是唯一的例外」—— 文件管理面今天什么都能改，
+/// 这一条的独特之处只剩「只收 sid、只删恰是那一形的那一份」。
 pub fn delete_session(sid: &str) -> Result<PathBuf, WriteRefusal> {
     delete_session_with(sid, session_file_for_delete)
 }
@@ -1218,7 +1221,7 @@ pub fn delete_session_with(
     sid: &str,
     locate: impl FnOnce(&str) -> Result<PathBuf, String>,
 ) -> Result<PathBuf, WriteRefusal> {
-    let target = fenced_session_file(sid, locate).map_err(WriteRefusal::Fenced)?;
+    let target = fenced_session_file(sid, locate).map_err(WriteRefusal::Refused)?;
     std::fs::remove_file(&target).map_err(|e| {
         WriteRefusal::Io(format!(
             "refuse write: 删会话 {} 失败：{e}",
@@ -1242,7 +1245,7 @@ fn fenced_session_file(
             p.display()
         ));
     }
-    if !is_protected_session_path(&p) {
+    if !is_session_record_path(&p) {
         return Err(format!(
             "refuse delete: {} 不是一份会话记录 —— 这一条只删会话",
             p.display()
@@ -1326,7 +1329,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-rename",
-        what: "改名 / 同根内移动；**两个参数各过一遍围栏**，目标已存在就拒（不覆盖）",
+        what: "改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）",
         args: &["from", "root", "to"],
         fields: &["path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
@@ -1335,7 +1338,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         name: "files-delete",
         what:
             "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；〔FW5〕显式 `recursive: true` \
-               才删整棵树 —— 逐条目过围栏，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \
+               才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \
                ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）",
         args: &["expect", "recursive", "rel", "root"],
         fields: &["path", "removed"],
@@ -1352,7 +1355,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     // ── 〔F7a · 第三波 09-24〕`设计/60 §13`：窗口的「复制」换走通道 ──────────────────
     ManageCommand {
         name: "files-copy",
-        what: "同根内复制一份普通文件；**三条路径各过一遍围栏**；缺省不覆盖（`O_EXCL`），\
+        what: "同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\
                显式 `overwrite` 才经暂存旁名原子顶掉",
         args: &["from", "overwrite", "root", "to"],
         fields: &["bytes", "path"],
@@ -1368,7 +1371,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     // ── 〔RW1 · 第四波 09-24〕用户文件的读改写 ＋ 删历史会话（用户裁「只管用户的文件、本机也管」）──
     ManageCommand {
         name: "files-peek",
-        what: "读改写的**读那一半**：与写同一道围栏；不在 ⇒ `exists: false`（与「读不出来」分得开）",
+        what: "读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）",
         args: &["rel", "root"],
         fields: &["exists", "path", "text"],
         codes: &["bad_args", "bad_path", "io_failed", "not_text", "refused", "too_large"],
@@ -1383,7 +1386,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-delete-session",
-        what: "删一份历史会话 —— **会话文件围栏唯一的例外**；**只收 sid**，落点由后端按 sid 在记录树里找",
+        what: "删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）",
         args: &["sid"],
         fields: &["path"],
         codes: &["bad_args", "io_failed", "refused"],
@@ -1417,10 +1420,10 @@ fn path_of(
     Ok(crate::files::raw::to_path_buf(&bytes))
 }
 
-/// `files-create` —— 把两道围栏与那一处 `O_EXCL` 落盘接到线上。
+/// `files-create` —— 把两道路径解析与那一处 `O_EXCL` 落盘接到线上。
 ///
-/// 〔散文墓碑〕〔FW5 · 第四波〕这里原来写着「`rel` **只收 UTF-8 字符串**」—— 那时 [`fence_lexical`]
-/// 的入参是 `&str`。围栏换成按 `Path` 逐段判之后，相对段与 `root` 同形（字符串或 `{"b16": …}`），
+/// 〔散文墓碑〕〔FW5 · 第四波〕这里原来写着「`rel` **只收 UTF-8 字符串**」—— 那时 [`lexical_in_root`]
+/// 的入参是 `&str`。路径解析换成按 `Path` 逐段判之后，相对段与 `root` 同形（字符串或 `{"b16": …}`），
 /// 取法住 [`rel_of`]。
 fn answer_create(args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
@@ -1446,7 +1449,7 @@ fn answer_create(args: &serde_json::Value) -> Answer {
 /// 取一个**相对段**参数：字符串 或 `{"b16": …}`（与 `root` 同一口径）。
 ///
 /// 〔FW5 · 第四波〕此前只收 UTF-8 字符串 —— 非 UTF-8 的名字（乱码文件名）在写面上**一件都做不了**。
-/// 围栏按 `Path` 逐段判之后这条限制没有理由了。⚠ **空串不在这里拒**：交给围栏①
+/// 路径解析按 `Path` 逐段判之后这条限制没有理由了。⚠ **空串不在这里拒**：交给路径解析①
 /// （它拒空段、码是 `refused`），与此前的行为逐字相同。
 /// 码：缺了 / 形状不对 ⇒ `bad_args`（相对段这一格历来是这个码，与 `root` 的 `bad_path` 刻意不同）。
 fn rel_of(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static str, String)> {
@@ -1639,7 +1642,7 @@ fn answer_put(args: &serde_json::Value) -> Answer {
 }
 
 fn answer_delete_session(args: &serde_json::Value) -> Answer {
-    // 🔴 **只收 sid**：多给任何一个键都拒 —— 这一条是会话文件围栏唯一的例外，
+    // 🔴 **只收 sid**：多给任何一个键都拒 —— 这一条只按 sid 找那一份、从不收路径，
     //    「顺手也收一个路径」那一形连表达的机会都不给。
     if let Some(obj) = args.as_object() {
         if let Some(extra) = obj.keys().find(|k| k.as_str() != "sid") {
