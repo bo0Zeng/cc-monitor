@@ -167,11 +167,7 @@ src/bridge/src/filewin/fonts.rs:287	●＋双另右好己底忙恰标栏自页	�
 src/bridge/src/filewin/fonts.rs:288	处搬板留老	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字）
 src/bridge/src/filewin/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕预览那几个字）
 src/bridge/src/filewin/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
-src/bridge/src/history.rs:1409	旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕	改·§2.1	[可达存疑] OLD_PATH_CANNOT_ATTACH 作 Err 回前端：attach / 拉起器 / 容器路 / K-R106 全是内部说法 兼§2.2 兼§2.4 新词:拉起器 新词:容器路 →「这台机器接不回已有会话，只能新开一个」
-src/bridge/src/history.rs:1520	没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸	改·§2.1	[可达存疑] NO_TMUX_NAME 作 Err：露出前端函数名 mintTmuxName 与「只许由…铸」的内部纪律 兼§2.2 新词:铸 →「缺少会话名，无法启动」
-src/bridge/src/history.rs:1809	这个号走中转，而这一行还没改成「探到 `base-url-across-tmux` 才放行」——\n     转发做到了、也声明了（`src/backend/control/ccm/mod.rs`），\n     差的只是这一行；`K-R61` 只重裁理由，不动行为	改·§2.1	[可达存疑] RELAY_KEEPS_THE_OLD_PATH 作 Err：源码住址 src/backend/control/ccm/mod.rs、探针名 base-url-across-tmux、K-R61 兼§2.2（「差的只是这一行」）兼§2.4
-src/bridge/src/history.rs:1816	attach 不经本机拉起那条路：它 spawn 出去、stdio 全 null，接不上任何终端；     `§1.3` 把最终那次 exec 钉在用户自己的终端进程里 ⇒ 本机后端交的是**那一串**     （`render_local_attach`），不是一次 spawn	改·§2.1	[可达存疑] ATTACH_IS_NOT_A_SPAWN 作 Err：spawn / stdio / exec / §1.3 设计条目全是实现细节 兼§2.2 兼§2.4 →「接回会话需要在终端里执行，已复制命令」一类
-src/bridge/src/history.rs:2644	Windows 上没有 tmux 容器（定框 `C12`〔用 08-12〕逐字「windows不要tmux」）\n     ⇒ 也就没有「把终端接进那个容器」这件事。要翻它先回去翻定框。	改·§2.2	[可达存疑] Windows 下 attach 的拒词 Err：引用内部裁决「定框 C12」与用户原话、「要翻它先回去翻定框」是内部推理 兼§2.5（定框）→「Windows 上不支持接回已有会话」
+src/bridge/src/history.rs:1809	这个号走中转，而这一行还没改成「探到 `base-url-across-tmux` 才放行」——\n     转发做到了、也声明了（`src/backend/control/ccm/mod.rs`），\n     差的只是这一行；`K-R61` 只重裁理由，不动行为	保留	[不对外] 〔CP2b 复核〕RELAY_KEEPS_THE_OLD_PATH 只走 history.rs::launch_local 里 `Err(why) ⇒ tracing::debug!` 那一支（随即走旧路），不回界面；原裁「改·§2.1 [可达存疑]」按可达性复核改记。K-R61 那组对拍（history_tests::r61_sites ①）逐字钉着这句的前提 / 住址 / token
 src/bridge/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] 〔S5 · V41〕REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
 src/bridge/src/local_backend_host.rs:382	这个口上的第一行不是一帧合法的后端帧（{} 字节）	改·§2.1	[可达存疑] HelloVerdict::Stranger 理由，经 Adopt::Refused → note_start_refusal 进启动失败通知正文：「口」「一帧合法的后端帧」是协议实现 新词:口 新词:帧 →「端口 {port} 上的程序不是 cc-monitor 后端」
 src/bridge/src/local_backend_host.rs:392	这个口的首帧不是 hello	改·§2.1	[可达存疑] 同上链路：hello / 首帧 是握手协议实现名 新词:首帧 新词:hello
@@ -190,9 +186,6 @@ src/bridge/src/local_backend_host.rs:1208	已断开与本机常驻后端的连�
 src/bridge/src/local_backend_host.rs:1800	本机后端已停（pid={pid:?}）	改·§2.1	[对外] {pid:?} 是 Option<u32> 的调试格式，界面上会显示 pid=Some(1234) →「本机后端已停止」
 src/bridge/src/local_backend_host.rs:1802	本机后端本来就没在跑	保留	[对外] 短
 src/backend/observe/plugins_query.rs:175	`known_marketplaces.json` 里没记 `installLocation` ⇒ 无从去数	改·§2.1	[对外] 〔RM1b · 第四波〕随插件市场枚举从 monitor `plugins.rs` 原样搬进后端（远端也要答得出），裁词照旧 —— 插件页 declared_error：installLocation 字段名 ＋「⇒ 无从去数」的推导箭头 兼§2.4 →「插件市场记录里缺安装位置，数不出插件数」
-src/bridge/src/remote_history.rs:48	这个会话超过 {MAX_SESSION_BYTES} 字节上限，只读到前 {read_bytes} 字节（{lines_shown} 行）；\n         后面的内容**没有显示**。完整历史仍在远端那个 jsonl 文件里。	内部词→「会话记录文件」	[对外] 会话截断提示；jsonl 是 R1 词 兼§2.4（markdown **）→「会话超过 {} 字节上限，只显示了前 {lines_shown} 行」
-src/bridge/src/subagent.rs:89	本机	保留	[对外] 报错前缀「谁」，短
-src/bridge/src/subagent.rs:90	远端 [{}]	保留	[对外] 报错前缀「远端 [机器名]」
 src/bridge/src/tool_registry.rs:828	Claude Code 自己建、自己写	保留	[对外] 经 source_label 显示为「不由 cc-monitor 提供：Claude Code 自己建、自己写」
 src/bridge/src/tool_registry.rs:831	Claude Code 的数据根（`adapter/claude_code.rs` 的 CLAUDE_LAYOUT.sessions_subdir）	改·§2.1	[可达存疑] ToolDestination 带 serde::Serialize，whose 可能随清单到前端：露出源码住址 adapter/claude_code.rs 与常量名 CLAUDE_LAYOUT.sessions_subdir →「Claude Code 的会话目录」
 src/bridge/src/tool_registry.rs:984	app 自带	保留	[对外] 来源档名，短
@@ -249,7 +242,6 @@ src/accounts.ts:786	可以等它结束后，用右键「把此会话切到账号
 src/backend/accounts/iso.rs:64	这台机器上还没装 cc-acct-iso。	保留	[可达存疑] 本机「找不到 cc-acct-iso」那句话的尾巴（前半「查过哪些地方」由 plugin::discover 拼）；进 --acct-iso-status 的 looked 与 --acct-iso-shellinit 的 not_installed 信封，短而直接
 src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
 src/backend/read_face.rs:149	结果超过 {LINES_CAP_BYTES} 字节上限，没有返回（至少 {size} 字节）	保留	[可达存疑] 帧面只读查询（history-*/accounts-*）按行应答超上限时的命令级报错，monitor 原样带进「远端查询失败」那句；平白说出上限与没返回，无内部词、无论证
-src/bridge/src/backend/control/frame_query.rs:93	查询出了内部错误，没有拿到结果	保留	[可达存疑] 只读查询分流器落到「已完成」那一档时的兜底话（按构造走不到）；平白说出了事、没拿到结果，无内部词
 src/backend/control/exit_policy.rs:105	读 {} 失败：{e}	保留	[不对外] 〔B2〕「读不出来」的原因：只进线上 `reason` 一格与后端日志，界面只说 EXIT_UNREADABLE 那一句、不显示它
 src/backend/control/exit_policy.rs:109	{} 不是 JSON：{e}	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:114	{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
@@ -285,7 +277,6 @@ src/bridge/src/backend_policy.rs:447	从来没起来：{reason}（找过 {} 处�
 src/bridge/src/backend_policy.rs:455	被拒了：它一个字节都没说就自己退出了。原样重连只会发同一个参数、\n             再被拒一次，先看它拒的是什么。	保留	[不对外] death_copy 只落日志；去掉了事故史、markdown、破折号
 src/bridge/src/backend_policy.rs:458	崩了：说过话之后异常终止。重起之前先看是不是每次都停在同一处，\n             同一处反复崩时重起帮不上忙。	保留	[不对外] death_copy 只落日志；去掉了「放大器」「自愈要治的那一格」论证与重复的 exit 码
 src/bridge/src/backend_policy.rs:462	读坏了：{detail}。这是 monitor 这一侧读的时候出错，不算它崩了一次；\n             重新接上它，别去动那个进程。	保留	[不对外] death_copy 只落日志；去掉了源码住址与 markdown
-src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」中转正名、「apikey 端点改写」上游选择正名（terms.json）
 src/backend/control/files_write.rs:724	回读 {} 字节，与写进去的 {} 字节不一致	保留	[对外] files-put 写后校验失败那句的中段（RW1：用户文件的写规则从 monitor 的 fenced_block::apply 搬来后端），两个数都是用户看得懂的字节数
 src/backend/control/files_write.rs:728	写完读不回来（{e}）	保留	[对外] 同上一族；读回失败时带系统原话，短
 src/backend/control/files_write.rs:735	原文件已恢复。	保留	[对外] 同上一族，逐字沿用 fenced_block::undo_note 已裁「保留」的那一句（RW1 把写规则搬到后端，话一个字没换）

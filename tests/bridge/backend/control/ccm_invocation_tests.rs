@@ -263,7 +263,10 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
     let pairs: &[(Refusal, &str)] = &[
         (Refusal::NotInstalled, "远端还没装后端"),
         (Refusal::NotSsh, "Windows 本机不用 ccm 命令起会话"),
-        (Refusal::MissingCap("tmux".into()), "远端的后端太旧，不支持这样起会话（缺 tmux）"),
+        (
+            Refusal::MissingCap("tmux".into()),
+            "远端的后端太旧，不支持这样起会话（缺 tmux）",
+        ),
         (
             Refusal::SendIntoHasNoCliForm,
             "ccm 命令没法在已有的 tmux 会话里就地起新会话",
