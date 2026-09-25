@@ -736,6 +736,41 @@
       "kind": "error",
       "zh": "起分叉会话失败",
       "args": []
+    },
+    "accountPick.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "accountPick.refused.title": {
+      "kind": "error",
+      "zh": "账号现在选不了，没有起会话",
+      "args": []
+    },
+    "accountPick.refused.pinGoneToCurrent": {
+      "kind": "error",
+      "zh": "这个会话上次用的账号「{name}」现在选不了。不换号，就没法续这场会话，所以这次没有起。点这条提示改用当前账号「{current}」起。",
+      "args": ["name", "current"]
+    },
+    "accountPick.refused.pinGoneToBase": {
+      "kind": "error",
+      "zh": "这个会话上次用的账号「{name}」现在选不了。不换号，就没法续这场会话，所以这次没有起。点这条提示改用「不指定账号」起。",
+      "args": ["name"]
+    },
+    "accountPick.refused.explicitGoneToCurrent": {
+      "kind": "error",
+      "zh": "账号「{name}」现在选不了，这次没有起。点这条提示改用当前账号「{current}」起。",
+      "args": ["name", "current"]
+    },
+    "accountPick.refused.explicitGoneToBase": {
+      "kind": "error",
+      "zh": "账号「{name}」现在选不了，这次没有起。点这条提示改用「不指定账号」起。",
+      "args": ["name"]
+    },
+    "accountPick.refused.listUnknown": {
+      "kind": "error",
+      "zh": "读不到{machine}的账号清单，说不清账号「{name}」还能不能用，这次没有起。点这条提示改用「不指定账号」起。",
+      "args": ["machine", "name"]
     }
   }
 }

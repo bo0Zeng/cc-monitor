@@ -615,11 +615,15 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // 三条主路走那个唯一取值口；fork 那条是**用户在小窗里显式选的**，
     // 它有自己的语义（选了账号 0 就要显式 `base`），所以不走这个口 —— 如实记，不强求。
     // 〔U2〕tab 栏那条本机 resume 从 `src/tabs.ts` 搬到了 `src/tab-session-actions.ts`（逐字随行）。
-    // 〔FE1〕tab 栏 · 历史页那两条的编排收进了 `local-resume.ts`（跟随那一态走这个口）。
-    for (const f of ["src/local-resume.ts"]) {
+    // 〔FE1〕tab 栏 · 历史页那两条的编排收进了 `local-resume.ts`；跟随那一态走 `localFollowPlan(`
+    //   （它就是 `localLaunchAccountSync` 那条规则，只多拆出 D-h 的「pin 选不了」一格），它自己住 `accounts.ts`。
+    for (const [f, entry] of [
+      ["src/local-resume.ts", /localFollowPlan\(/g],
+      ["src/accounts.ts", /localLaunchAccountSync\(/g],
+    ] as const) {
       const code = readFileSync(resolve(REPO_ROOT, f), "utf8");
       expect(
-        (code.match(/localLaunchAccountSync\(/g) ?? []).length,
+        (code.match(entry) ?? []).length,
         `${f} 里没调那个唯一取值口`,
       ).toBeGreaterThan(0);
       // 取值是同步的，**不许**有人给它加 `await`（那会多一拍，撞两条只放行一个微任务的判据）。

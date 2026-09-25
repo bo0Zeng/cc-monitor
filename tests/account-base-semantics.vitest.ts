@@ -172,6 +172,14 @@ const WITH_ACCOUNT_SITES: ReadonlyArray<
     "历史里拉起旧会话：同上，有 sid 就跟随；其中一处 `{ follow: {} }` 是「跟随但没有 pin」。",
   ],
   [
+    // 〔FE1 · D-h〕`withAccount` 自己的一处：要的号选不了 ⇒ 不起、给一个显式选择；用户点了 ⇒ 以**显式**选号再走一次。
+    "src/accounts.ts",
+    1,
+    false,
+    "〔FE1 · D-h〕用户点了「改用当前账号 / 不指定账号」那条提示之后的再起：号是用户这一次**点的**，" +
+      "不传 `follow`（再跟随一次就又撞上那个选不了的 pin）。",
+  ],
+  [
     "src/settings/machine-card.ts",
     1,
     false,
@@ -260,9 +268,11 @@ describe("withAccount 的两派调用点（audit-0805 F12：记下分歧，不�
   it("不传 follow 那一派必须写清「为什么不传」，不许只登记文件名", () => {
     for (const [file, , follow, why] of WITH_ACCOUNT_SITES) {
       if (follow) continue;
-      expect(why.includes("没有 sid") || why.includes("新"), `${file} 没说清为什么不传：「${why}」`).toBe(
-        true,
-      );
+      // 〔FE1 · D-h〕不传的理由从一种变两种：没有 sid 可跟随（新会话）· 号是用户这一次显式点的（D-h 那条提示之后的再起）。
+      expect(
+        why.includes("没有 sid") || why.includes("新") || why.includes("这一次**点的**"),
+        `${file} 没说清为什么不传：「${why}」`,
+      ).toBe(true);
       expect(why.length, `${file} 的理由太短，像是占位`).toBeGreaterThan(40);
     }
   });

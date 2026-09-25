@@ -17,6 +17,11 @@
  * | K2 | 本机 resume 编排只有一个家 | 生产段调 `resume_history_session(` 的文件集合 == `{local-resume.ts}`（两向） |
  * | K3 | 列不出 ⇒ 不铸名 | `readTmuxListing` 三态逐格 == 手写表；`mintFreshTmuxName` 在 unknown 上回 `ok:false`；本机 resume 在 unknown 上交 `tmuxName: null` |
  *
+ * | K4 | D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择 | 零次 `resume_history_session` ＋ 一条可点提示；点了 ⇒ 以当前号起；正控：pin 可选 ⇒ 带 pin 起 |
+ *
+ * K4 另守一处住址：主会话 4D 裁 D-h（「选不了原账号时 resume ⇒ 照 `01 §6.2` / D4：不静默换号，拒并说清、给「用当前账号」的显式选择」）
+ * ＋ `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。远端那一半（`withAccount`）住 `accounts.vitest.ts`「〔FE1 · D-h〕」那几条。
+ *
  * K3 的四个远端入口各有一条行为判据，住各自的测试文件（那里有现成的桩）：
  * `remote-launch-run.vitest.ts`「列不出会话 ⇒ 不起、出声」· `settings/remote-section.vitest.ts`「开新 Claude …」·
  * `tabs.vitest.ts`「tmux 全新 resume …」· `fork-start.vitest.ts`「名单没问到（null）…」。每条都配正控。
@@ -42,6 +47,12 @@ import { LOCAL_ORIGIN } from "../src/ipc/origin";
 import { readTmuxListing, mintFreshTmuxName, listingFromFetch } from "../src/tmux-name-mint";
 import { resumeLocalSession } from "../src/local-resume";
 import { showActionFailureToast } from "../src/error-toast";
+import {
+  __resetLocalLaunchSnapshotForTests,
+  __setLocalLaunchSnapshotForTests,
+  type Account,
+  type AccountsState,
+} from "../src/accounts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -155,5 +166,67 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
     ).toBe(false);
     expect(invokeMock).not.toHaveBeenCalled();
     expect(vi.mocked(showActionFailureToast)).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("K4 · D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清、给显式选择", () => {
+  const acct = (name: string, ok: boolean): Account => ({
+    name,
+    email: `${name}@x`,
+    configDir: `/h/${name}`,
+    isDefault: false,
+    mode: "isolated",
+    exists: true,
+    loggedIn: ok,
+  });
+  const snapshot = (accounts: Account[], defaultName: string | null): AccountsState =>
+    ({
+      origin: LOCAL_ORIGIN,
+      available: true,
+      error: null,
+      notice: null,
+      meta: null,
+      accounts,
+      defaultName,
+    }) as unknown as AccountsState;
+  const resumes = (): Array<Record<string, unknown>> =>
+    invokeMock.mock.calls.filter((c) => c[0] === "resume_history_session").map((c) => c[1] as Record<string, unknown>);
+
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockImplementation((cmd: string) => Promise.resolve(cmd === "list_local_tmux" ? [] : undefined));
+    vi.mocked(showActionFailureToast).mockReset();
+    __resetLocalLaunchSnapshotForTests();
+  });
+
+  it("★ pin「z」选不了 ⇒ 零次拉起 ＋ 一条可点提示；点了 ⇒ 以当前号「b」起", async () => {
+    __setLocalLaunchSnapshotForTests(snapshot([acct("z", false), acct("b", true)], "b"), { s1: "z" });
+    expect(await resumeLocalSession({ sid: "s1", cwd: "/home/u/proj", account: { kind: "follow" } })).toBe(false);
+    expect(resumes(), "pin 选不了还起了 —— 落到 shell rc 里的默认号，静默换号（E7 本机那一形）").toEqual([]);
+    const calls = vi.mocked(showActionFailureToast).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe("账号现在选不了，没有起会话");
+    expect(calls[0][1]).toContain("「z」");
+    expect(calls[0][1]).toContain("「b」");
+    calls[0][2]!.onClick!();
+    await vi.waitFor(() => expect(resumes()).toHaveLength(1));
+    expect(resumes()[0].account).toEqual({ kind: "named", configDir: "/h/b", name: "b" });
+  });
+
+  it("正控：pin「z」可选 ⇒ 照起、带 z，不提示", async () => {
+    __setLocalLaunchSnapshotForTests(snapshot([acct("z", true), acct("b", true)], "b"), { s1: "z" });
+    expect(await resumeLocalSession({ sid: "s1", cwd: "/home/u/proj", account: { kind: "follow" } })).toBe(true);
+    expect(resumes()[0].account).toEqual({ kind: "named", configDir: "/h/z", name: "z" });
+    expect(vi.mocked(showActionFailureToast)).not.toHaveBeenCalled();
+  });
+
+  it("没有 pin ⇒ 当前号（没有原账号，谈不上换号）；快照冷 ⇒ 缺席（逐字节旧行为）", async () => {
+    __setLocalLaunchSnapshotForTests(snapshot([acct("b", true)], "b"), {});
+    await resumeLocalSession({ sid: "s1", cwd: "/p", account: { kind: "follow" } });
+    expect(resumes()[0].account).toEqual({ kind: "named", configDir: "/h/b", name: "b" });
+    invokeMock.mockClear();
+    __resetLocalLaunchSnapshotForTests();
+    await resumeLocalSession({ sid: "s1", cwd: "/p", account: { kind: "follow" } });
+    expect(resumes()[0].account).toBeUndefined();
   });
 });

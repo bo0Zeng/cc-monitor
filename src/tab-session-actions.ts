@@ -227,14 +227,8 @@ export class TabSessionActions {
         },
         {
           sessionId: sid,
-          // audit-fixes F07（I 建议）：显式选号解析不到（登出/目录消失且缓存恰过期）→ 提示而非静默
-          // 落基座（对齐 history.ts:1502；此前 resumeTab 缺此回调，用户明点的"用账号 X resume"被无声吞掉）。
-          onUnselectable: (n) =>
-            showActionFailureToast(
-              "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
-              { level: "info", durationMs: 6000 },
-            ),
+          // 〔FE1 · D-h〕要的号（显式点的 / 这条会话的 pin）选不了 ⇒ `withAccount` 自己不起、说清、给「用当前账号」的显式选择
+          //   （三处先前各带一份 `onUnselectable` 提示，提示完按基座起 —— 与提示说的也不一致）。
           // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前账号 → 基座)。显式选号维持 A4。
           // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
           // F01 步骤2:useBase = 显式「用基座 resume」——不注入、不跟随(老会话住基座,别被 follow
@@ -339,13 +333,6 @@ export class TabSessionActions {
         },
         {
           sessionId: sid,
-          // F09：显式选号解析不到 → 提示而非静默落基座（对齐 resumeTab 的同类回调）。
-          onUnselectable: (n) =>
-            showActionFailureToast(
-              "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
-              { level: "info", durationMs: 6000 },
-            ),
           // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
           // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。
           follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
@@ -380,13 +367,6 @@ export class TabSessionActions {
       },
       {
         sessionId: sid,
-        // F09：同上——显式选号解析不到时提示而非静默落基座。
-        onUnselectable: (n) =>
-          showActionFailureToast(
-            "账号不可用",
-            `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
-            { level: "info", durationMs: 6000 },
-          ),
         // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
         // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
         // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。

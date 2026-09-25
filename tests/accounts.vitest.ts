@@ -3,8 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../src/config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
+// 〔FE1 · D-h〕账号选不了的那句提示由 `withAccount` 自己出（先前是调用方各带一个 `onUnselectable`）。
+vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { showActionFailureToast } from "../src/error-toast";
 import { loadConfig, saveConfig } from "../src/config";
 import {
   deriveUi,
@@ -656,20 +659,30 @@ describe("resolveAccount（F05：判别联合形态的账号解析，AccountReso
       configDir: "/h/z",
     });
   });
-  it("跟随解析：lastAccount 不可选 → 下沉 current", () => {
+  // 〔FE1 · D-h〕先前这两条钉的是「pin 选不了 ⇒ 静默下沉到当前号 / 基座」（E7）。
+  //   `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」⇒ 改成 `unavailable`（pinned）。
+  it("★ 〔FE1 · D-h〕跟随解析：lastAccount 不可选 → unavailable（pinned），**不下沉** current", () => {
     const s = state({
       accounts: [acct({ name: "z", loggedIn: false }), acct({ name: "b", configDir: "/h/b" })],
       defaultName: "b",
     });
     expect(resolveAccount(s, { follow: { lastAccount: "z" } })).toEqual({
-      kind: "account",
-      name: "b",
-      configDir: "/h/b",
+      kind: "unavailable",
+      requestedName: "z",
+      pinned: true,
     });
   });
-  it("跟随解析：都不可选 → base（不是 unavailable——跟随下沉是静默语义）", () => {
+  it("★ 〔FE1 · D-h〕跟随解析：pin 指向一个已经不在清单里的号 → 同样 unavailable（pinned）", () => {
+    const s = state({ accounts: [acct({ name: "b", configDir: "/h/b" })], defaultName: "b" });
+    expect(resolveAccount(s, { follow: { lastAccount: "gone" } })).toEqual({
+      kind: "unavailable",
+      requestedName: "gone",
+      pinned: true,
+    });
+  });
+  it("跟随解析：**没有 pin** 且当前号不可选 → base（没有原账号，谈不上换号）", () => {
     const s = state({ accounts: [acct({ name: "z", loggedIn: false })], defaultName: null });
-    expect(resolveAccount(s, { follow: { lastAccount: "z" } })).toEqual({ kind: "base" });
+    expect(resolveAccount(s, { follow: {} })).toEqual({ kind: "base" });
   });
   it("既无 explicit 也无 follow → base（今天「默认起」逐字节旧行为）", () => {
     const s = state({ accounts: [acct({ name: "z", configDir: "/h/z" })] });
@@ -737,24 +750,49 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(historyCalls(invokeMock.mock.calls, "update_history_metadata")).toHaveLength(0);
   });
-  it("不可选账号 → onUnselectable + run({} 三字段皆 undefined)（退化默认）、不记账", async () => {
-    loadCfg.mockResolvedValue({});
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", loggedIn: false })])))));
+  // 〔FE1 · D-h〕先前：显式点号不可选 ⇒ 调用方 toast 后**按基座起**（toast 还说「改用上次的账号 / 当前账号」，与做的不一致）。
+  //   今天：**不起**；提示可点，点了以显式选号用当前账号再起一次（A4 语义记 pin）。
+  const toastMock = (): ReturnType<typeof vi.fn> => vi.mocked(showActionFailureToast) as unknown as ReturnType<typeof vi.fn>;
+  it("★ 〔FE1 · D-h〕不可选账号 → **不起**、一条提示；点提示 ⇒ 改用当前账号起、记 pin", async () => {
+    toastMock().mockReset();
+    loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (
+      okRaw([acct({ name: "z", loggedIn: false }), acct({ name: "b", configDir: "/h/b" })])
+    ))));
     const run = vi.fn().mockResolvedValue(undefined);
-    const onUnsel = vi.fn();
-    await withAccount("devbox", "z", run, { sessionId: "s1", onUnselectable: onUnsel });
-    expect(onUnsel).toHaveBeenCalledWith("z");
-    expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
+    await withAccount("devbox", "z", run, { sessionId: "s1" });
+    expect(run, "选不了的号还起了 —— 静默换号").not.toHaveBeenCalled();
     expect(historyCalls(invokeMock.mock.calls, "update_history_metadata")).toHaveLength(0);
+    expect(toastMock()).toHaveBeenCalledTimes(1);
+    const [title, body, opts] = toastMock().mock.calls[0] as [string, string, { onClick?: () => void }];
+    expect(title).toBe("账号现在选不了，没有起会话");
+    expect(body).toContain("「z」");
+    expect(body).toContain("「b」");
+    // 显式选择：点了才起，起的是当前号。
+    opts.onClick!();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/b", accountName: "b", modelOverride: undefined });
+    await vi.waitFor(() =>
+      expect(historyCalls(invokeMock.mock.calls, "update_history_metadata")).toContainEqual({
+        sessionId: "s1",
+        patch: { lastAccount: "b" },
+      }),
+    );
   });
-  it("账号库不可用（fetch reject）→ 退化默认 run({} 三字段皆 undefined) + onUnselectable", async () => {
+  it("★ 〔FE1 · D-h〕账号库不可用（fetch reject）→ 不起、说清读不到清单；选择只剩「不指定账号」", async () => {
+    toastMock().mockReset();
     loadCfg.mockResolvedValue({});
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (Promise.reject(new Error("boom"))))));
     const run = vi.fn().mockResolvedValue(undefined);
-    const onUnsel = vi.fn();
-    await withAccount("devbox", "z", run, { onUnselectable: onUnsel });
-    expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
-    expect(onUnsel).toHaveBeenCalledWith("z");
+    await withAccount("devbox", "z", run, {});
+    expect(run).not.toHaveBeenCalled();
+    expect(toastMock()).toHaveBeenCalledTimes(1);
+    const [, body, opts] = toastMock().mock.calls[0] as [string, string, { onClick?: () => void }];
+    expect(body).toContain("读不到devbox的账号清单");
+    opts.onClick!();
+    await vi.waitFor(() =>
+      expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined }),
+    );
   });
 
   // ---- account-ux U2：跟随模式（opt-in opts.follow）----
@@ -771,16 +809,23 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
       patch: { lastAccount: "z" },
     });
   });
-  it("follow：既有 pin 不可选 → 下沉 current 起会话，但**不记账**（保住原 pin，U3 审计 重要-1 clobber 防护）", async () => {
+  // 〔FE1 · D-h〕这一条先前钉的是 E7 本身：「既有 pin 不可选 → 下沉 current 起会话」（只防了「不 clobber pin」那一半）。
+  it("★ 〔FE1 · D-h〕follow：既有 pin 不可选 → **不起**、不记账；提示可点，点了才用当前号起", async () => {
+    toastMock().mockReset();
     loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (
       okRaw([acct({ name: "z", loggedIn: false }), acct({ name: "b", configDir: "/h/b" })])
     ))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("devbox", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
-    expect(run).toHaveBeenCalledWith({ configDir: "/h/b", accountName: "b", modelOverride: undefined }); // z 不可选 → 用 current=b 起
-    // 既有 pin=z 存在且解析结果(b)≠pin → **不 clobber**，绝不把粘性从 z 翻成 b。
+    expect(run, "pin 选不了还用别的号续了会话 —— E7").not.toHaveBeenCalled();
     expect(historyCalls(invokeMock.mock.calls, "update_history_metadata")).toHaveLength(0);
+    const [, body, opts] = toastMock().mock.calls[0] as [string, string, { onClick?: () => void }];
+    expect(body).toContain("上次用的账号「z」");
+    opts.onClick!();
+    await vi.waitFor(() =>
+      expect(run).toHaveBeenCalledWith({ configDir: "/h/b", accountName: "b", modelOverride: undefined }),
+    );
   });
   it("follow：无既有 pin（no-owner）→ 落 current → 记 current（become sticky，决策②）", async () => {
     loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
@@ -802,19 +847,29 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     await withAccount("devbox", null, run, { follow: {} });
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
   });
-  it("follow：last 与 current 都不可选 → run({} 三字段皆 undefined) 落基座，不 toast、不记账", async () => {
+  it("★ 〔FE1 · D-h〕follow：last 与 current 都不可选 → 不起；点提示 ⇒ 「不指定账号」起（三字段皆 undefined）", async () => {
+    toastMock().mockReset();
     loadCfg.mockResolvedValue({}); // 无 defaultName
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", loggedIn: false })]))))); // 唯一账号不可选
     const run = vi.fn().mockResolvedValue(undefined);
-    const onUnsel = vi.fn();
-    await withAccount("devbox", null, run, {
-      sessionId: "s1",
-      follow: { lastAccount: "z" },
-      onUnselectable: onUnsel,
-    });
-    expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
-    expect(onUnsel).not.toHaveBeenCalled(); // 跟随下沉不打扰用户
+    await withAccount("devbox", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
+    expect(run).not.toHaveBeenCalled();
+    const [, body, opts] = toastMock().mock.calls[0] as [string, string, { onClick?: () => void }];
+    expect(body).toContain("不指定账号");
+    opts.onClick!();
+    await vi.waitFor(() =>
+      expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined }),
+    );
     expect(historyCalls(invokeMock.mock.calls, "update_history_metadata")).toHaveLength(0);
+  });
+  it("follow：**没有 pin**、当前号也不可选 → 照旧落基座起、不提示（没有原账号，谈不上换号）", async () => {
+    toastMock().mockReset();
+    loadCfg.mockResolvedValue({});
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", loggedIn: false })])))));
+    const run = vi.fn().mockResolvedValue(undefined);
+    await withAccount("devbox", null, run, { sessionId: "s1", follow: {} });
+    expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
+    expect(toastMock()).not.toHaveBeenCalled();
   });
   it("follow：新会话无 sessionId → run({configDir, accountName}) 但不记账", async () => {
     loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
