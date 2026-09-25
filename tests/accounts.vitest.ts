@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../src/config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
-// 〔FE1 · D-h〕账号选不了的那句提示由 `withAccount` 自己出（先前是调用方各带一个 `onUnselectable`）。
+// 〔FE1 · D-h〕账号选不了的那句提示由 `withAccount` 自己出（先前是调用方各带一个「账号不可用」回调）。
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";

@@ -81,7 +81,7 @@ describe("enumerateAccountModifiers", () => {
 
   // F09 Phase D 审计（后端架构，重要）：`isSelectable` 通过但 `configDir` 落空的账号——旧版
   // `appendAccountMenuItems` 会 `continue`（静默隐藏），本函数**有意不**复刻这条过滤，锁定
-  // 当前行为（显示、留给点击后的 `onUnselectable` 反馈），防止以后有人"顺手"补回那条 filter
+  // 当前行为（显示、留给点击后 `withAccount` 的反馈 ——〔FE1 · D-h〕不起、说清、给显式选择），防止以后有人"顺手"补回那条 filter
   // 当成 bug 修。
   it("isSelectable 但 configDir 落空的账号仍出现在选项里（不静默隐藏，交给点击后的反馈）", async () => {
     fetchAccountsMock.mockResolvedValue(state([acct("z"), acct("weird", { configDir: "" })]));

@@ -236,7 +236,7 @@ export class TabSessionActions {
         {
           sessionId: sid,
           // 〔FE1 · D-h〕要的号（显式点的 / 这条会话的 pin）选不了 ⇒ `withAccount` 自己不起、说清、给「用当前账号」的显式选择
-          //   （三处先前各带一份 `onUnselectable` 提示，提示完按基座起 —— 与提示说的也不一致）。
+          //   （三处先前各带一份「账号不可用」回调提示，提示完按基座起 —— 与提示说的也不一致）。
           // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前账号 → 基座)。显式选号维持 A4。
           // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
           // F01 步骤2:useBase = 显式「用基座 resume」——不注入、不跟随(老会话住基座,别被 follow
