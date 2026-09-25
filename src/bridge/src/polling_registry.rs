@@ -90,7 +90,7 @@
 //! 主循环改无超时 `recv()`），于是 4 → 3。
 //! ★ 这条陈账的形状值得记：**A 模块的头注在描述 B 模块的状态，而指针那一侧没有判据。**
 //! F11 只改了 `rust_timer_registry.rs` + `watcher.rs` 两个文件，没人会回来改这里。
-//! ⇒ **别在散文里抄那个数** —— 权威在 `rust_timer_registry::the_ticker_count_is_pinned`
+//! ⇒ **别在散文里抄那个数** —— 权威在 `rust_timer_registry::every_ticker_names_its_event_source_and_owner`
 //! 的 `assert_eq!`，它自己会说话（本文件下面那条 `the_other_half_of_the_sweep_still_has_a_home`
 //! 已经在钉「指针目标存在」，但**没钉那个数**）。
 
