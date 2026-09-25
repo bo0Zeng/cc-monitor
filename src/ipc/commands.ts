@@ -615,12 +615,16 @@ export const commands = {
     invoke<ApikeyRoutingView>("apikey_routing_for", args),
 
   /**
-   * 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个。
-   * **本机拒**（本机那一个由 monitor 监护）。⚠ 今天界面上没有调用方 —— 自动触发点（远端链路握手完成 /
-   * 起远端会话）不在 RM1a 写区，交主会话接。
+   * 〔RL1 · 第四波〕这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（`null` = 不注入，照旧直连）。
+   * 远端那台**用到才起**它的中转；apikey 号的中转起不来 ⇒ reject（拒绝起会话，说得出是哪台）。
+   * 判断只在后端 `payload::relay_endpoint_for` 一处；前端拿到地址原样放进载荷（`export-relay-base-url`）。
+   * 它接替了 RM1a 那条零调用方的 `relay_ensure`。
    */
-  relay_ensure: (args: { origin: Origin }) =>
-    invoke<{ listening: boolean; started: boolean }>("relay_ensure", args),
+  relay_endpoint_for_launch: (args: {
+    origin: Origin;
+    account: { kind: "base" } | { kind: "named"; configDir: string; name?: string } | null;
+    sid: string | null;
+  }) => invoke<string | null>("relay_endpoint_for_launch", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),
