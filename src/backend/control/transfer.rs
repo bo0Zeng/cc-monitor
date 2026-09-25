@@ -389,13 +389,18 @@ pub(crate) async fn download_to_local(
         .await
         .map(|m| m.len())
         .unwrap_or(0);
-    let resume_from = if have > 0 {
+    // 〔FW1 · 第四波〕`rf_at` = 远端句柄此刻停在哪（知道才填）。尾块对上了 ⇒ 探针那一读恰好读满到 `have`，
+    //   句柄就停在 `have` == `resume_from`。
+    let (resume_from, rf_at) = if have > 0 {
         match tokio::fs::File::open(&part_path).await {
-            Ok(mut half) => tails_agree(&mut half, &mut rf, have, total).await,
-            Err(_) => 0,
+            Ok(mut half) => {
+                let r = tails_agree(&mut half, &mut rf, have, total).await;
+                (r, (r == have).then_some(have))
+            }
+            Err(_) => (0, Some(0)),
         }
     } else {
-        0
+        (0, Some(0))
     };
     let std_file = if resume_from > 0 {
         land_carry_over(&root, &part, resume_from)?
@@ -404,9 +409,16 @@ pub(crate) async fn download_to_local(
     };
     // 两种开法回来的游标都停在 `resume_from`（新建 ⇒ 0；抄完前缀 ⇒ 前缀末尾）。
     let mut lf = tokio::fs::File::from_std(std_file);
-    rf.seek(std::io::SeekFrom::Start(resume_from))
-        .await
-        .map_err(|e| format!("远端 {remote_path} 定位到 {resume_from} 失败: {e}"))?;
+    // 🔴〔FW1 · 第四波〕**句柄已经停在 `resume_from` 就不 seek**。russh-sftp 的第一读按服务端肯给的最大包请求
+    //   （约 255 KiB，远大于探针那 32 KiB），多出来的那一截留在它的读缓冲里 —— 正好是续传要的下一段；
+    //   seek 一下（哪怕 seek 到原地）就把缓冲整个扔掉、从 `have` 再请求一遍。DP1 真 sshd 上量到的「一次续传多读
+    //   228 352 字节」= 255 KiB − 32 KiB 就是这一截。病根是 seek 丢缓冲，不是探针与续传共用一个句柄（单开一个句柄，
+    //   它的第一读照样请求那么大）。只有对不上（从 0 来）或探针读坏了（位置说不准）才 seek。
+    if rf_at != Some(resume_from) {
+        rf.seek(std::io::SeekFrom::Start(resume_from))
+            .await
+            .map_err(|e| format!("远端 {remote_path} 定位到 {resume_from} 失败: {e}"))?;
+    }
     let core = async {
         let mut buf = vec![0u8; CHUNK];
         let mut done: u64 = resume_from;
