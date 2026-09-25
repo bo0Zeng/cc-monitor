@@ -249,12 +249,14 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 同族 `apikey-key-set` 要输入（`account` / `key`，key 从 stdin 进），不在表里。
         "apikey-read",
         "files-index-status",
-        "history-projects",
+        // 〔C4d · 第四波 4B〕`history-projects` 出列：它从此收 `origin`（缺席 = 这台），要读 stdin。
         "ping",
         // 〔RM1b · 第四波〕问这台机器登记了哪些插件市场：无入参，输出 `lines`。
         "plugins-marketplaces",
         // 〔AS2 · 第四波 4B〕这台现扫一次资产、记进目录、回整份：无入参。
         "assets-catalog",
+        // 〔C4d · 第四波 4B〕sid → 上次用哪个号起：无入参（读本机那份注解文件）。
+        "history-last-accounts",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

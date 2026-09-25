@@ -17,9 +17,13 @@
 //! - 🔴 真 Windows 远端：不在承诺面（`01 §6.7a`）。
 
 use super::*;
+// 〔C4d〕这三样原先由 `asset_sync.rs` 顺带引入（`Remote` trait 的签名要它们）；那一跳搬去 `remote_ask` 之后测试自己引。
 use crate::asset_catalog::{self as cat, Asset, KIND_SKILL};
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-assetsync-{tag}-{}", std::process::id()));

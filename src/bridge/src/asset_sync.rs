@@ -187,10 +187,47 @@ pub async fn assets_sync(origin: Origin) -> Result<AssetsSynced, String> {
     }
 }
 
-/// 远端那条流握手成功那一刻（`ssh_source.rs::stream_loop`）：那台认得资产目录 ⇒ 后台让本机后端对它做一趟。
-/// 不认 ⇒ 什么都不做（老后端不认一次性子命令会进流模式，不去碰它）。
+/// 〔C4d · 第四波 4B〕本机后端**可达表登记**那条命令（与 `src/backend/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
+///
+/// 「本机后端问远端后端」那一跳（后端 `remote_ask.rs`）有两路在用：资产目录同步（本模块）· 历史跨机 join（后端 `history_join.rs`）。
+/// 前者只在那台认 `assets-catalog-merge` 时才交 `assets-sync`（它顺手登记）；后者问的是老子命令，**老远端也得够得着**
+/// ⇒ 每台远端流握手那一刻**无条件**交一次「怎么够到那台」（与 `assets-sync` 同一份入参），只登记、不拨号。
+pub(crate) const REACH_CMD: &str = "remote-reach";
+
+/// 登记一次的期限：纯内存（后端那一侧一把锁、插一行），给得很短。
+const REACH_BUDGET: Duration = Duration::from_secs(10);
+
+/// 把「怎么够到那台」登记进本机后端的可达表（本机后端太旧不认 ⇒ 报，调用方只记一行 warn）。
+async fn register_reach(cfg: &crate::ssh_source::RemoteConfig) -> Result<(), String> {
+    let args = args_for(cfg)?;
+    let client = crate::dial_host::local_backend_accepting(REACH_CMD).await?;
+    client
+        .call(REACH_CMD, args, REACH_BUDGET)
+        .await
+        .map(|_| ())
+        .map_err(
+            |e| match route_call_error(&e, |_code, message| format!("本机后端：{message}")) {
+                Routed::NoChannel(s) | Routed::Refused(s) => s,
+                Routed::Done => "本机后端登记那台远端时出了内部错误".to_string(),
+            },
+        )
+}
+
+/// 远端那条流握手成功那一刻（`ssh_source.rs::stream_loop`）：
+/// ①〔C4d〕**无条件**把「怎么够到那台」登记进本机后端的可达表（历史跨机 join 要它，老远端也要）；
+/// ② 那台认得资产目录 ⇒ 后台让本机后端对它做一趟同步；不认 ⇒ 不碰（老后端不认一次性子命令会进流模式）。
 pub(crate) fn on_remote_ready(cfg: &crate::ssh_source::RemoteConfig, remote_accepts: bool) {
     let label = cfg.origin_label();
+    {
+        let cfg = cfg.clone();
+        let label = label.clone();
+        tauri::async_runtime::spawn(async move {
+            match register_reach(&cfg).await {
+                Ok(()) => tracing::info!("可达表：[{label}] 已登记进本机后端"),
+                Err(e) => tracing::warn!("可达表：[{label}] 没登记上（历史清单问不到这台）：{e}"),
+            }
+        });
+    }
     if !remote_accepts {
         tracing::info!("资产目录：[{label}] 的后端不认 `{REMOTE_NEEDS}`，这次不同步");
         return;
