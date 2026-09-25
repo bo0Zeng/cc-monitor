@@ -128,6 +128,7 @@ import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import type { UserInputsResult } from "../generated/UserInputsResult";
 import type { FindResult } from "../generated/FindResult";
+import type { SessionRecordProbe } from "../generated/SessionRecordProbe";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -695,6 +696,14 @@ export const commands = {
      */
     tmuxName?: string | null;
   }) => invoke<void>("resume_history_session", args),
+
+  /**
+   * 〔U4b · 第四波〕**resume 之前问：这条会话的记录还在那台机器上吗**（`设计/01 §6.2` 最后一条）。
+   * 判定住那台的后端（`history-record`，只收 sid）；本机与远端同一个口。**问不到 ⇒ reject**：
+   * 调用方当「不知道」，**不当「不在」**。返回值字段被真消费 ⇒ 生成物（桶③）。
+   */
+  probe_session_record: (args: { origin: Origin; sessionId: string }) =>
+    invoke<SessionRecordProbe>("probe_session_record", args),
 
   /** **本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形（本机没有 SSH 那一跳）。
    *

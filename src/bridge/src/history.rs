@@ -1007,6 +1007,41 @@ pub fn resume_history_session(
     )
 }
 
+/// 〔U4b · 第四波 · G1〕resume 之前问「这条会话的记录还在那台机器上吗」的答案。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct SessionRecordProbe {
+    /// `<sid>.jsonl` 在那台机器（那台后端）的记录树里找得到。
+    pub present: bool,
+    /// 查的那棵记录树的根 —— 答「不在」时要说清查的是哪里（`设计/01 §6.9`）。
+    pub root: String,
+}
+
+/// 〔U4b · 第四波 · G1〕**resume 一跳先问：这条会话的记录还在不在。**
+///
+/// `设计/01 §6.2` 最后一条逐字：「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」。
+/// 判定住**那台机器的后端**（`history-record`：只收 sid，找文件与分叉 / 删会话同一份
+/// `branch_core::find_session_file`）；本机与远端同一个口（`frame_query::record`，本机 ＝ `<local>`）。
+/// 前端（`tab-session-actions.ts`）拿到 `present: false` 就不开终端、把原因说出来；
+/// 拿到 `Err`（问不到）当「不知道」、照今天的路走。
+#[tauri::command]
+pub async fn probe_session_record(
+    origin: crate::origin::Origin,
+    session_id: String,
+) -> Result<SessionRecordProbe, String> {
+    // 分本机只经 `route`（空白名当场拒）；两臂问的是同一个口 —— 本机 ＝ `<local>` 那条长连接。
+    let r = match origin.route("probe_session_record")? {
+        crate::origin::Route::Local | crate::origin::Route::Remote(_) => {
+            crate::backend::control::frame_query::record(&origin, &session_id).await?
+        }
+    };
+    Ok(SessionRecordProbe {
+        present: r.present,
+        root: r.root,
+    })
+}
+
 /// F34：用户自定义 resume 启动命令（设置面板「本地 resume 命令」）。
 /// 拼进 shell 前必须校验——只允许命令名+简单参数形态（字母数字 `-_.` 与空格），
 /// 杜绝 `;`/`|`/`$()` 等注入面。空/纯空白视为未设置。
