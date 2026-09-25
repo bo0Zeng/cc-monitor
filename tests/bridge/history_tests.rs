@@ -5109,3 +5109,48 @@ fn a_passthrough_launch_whose_relay_cannot_start_goes_direct_instead_of_failing(
         vec!["apikey-read", "relay-status", "relay-ensure"]
     );
 }
+
+/// 〔C4d · 第四波 4B〕🔴 **「迁移前」那一半：旧读者读结构占位夹具 == 金样**。
+///
+/// 守的要求（用户注解一条不许丢；主会话 09-25 裁，`调研/第四波记录/C4d.md`「主会话裁」第 2 条，逐字）：
+/// 「本机注解（`history-metadata.json`：星标 / 改名 / 隐藏）的**读写者**换成本机常驻后端 —— **文件留在原处、同一路径，
+/// 不迁移、一条不丢**」；判据要钉「迁移前后读出来的注解逐条相等」。
+///
+/// 本条是**旧读者**（monitor 这一侧 [`HistoryMetadata`] 的反序列化 —— `load_metadata` 读完文件就是这一步）
+/// 读 `tests/__fixtures__/history-metadata.fixture.json`（驼峰 / 蛇形别名 · 缺格 · `null` · 条目与顶层认不出的键 ·
+/// 没有 `version`），规范化成 `sid → {starred, customTitle, hidden, updatedAt, lastAccount}` 之后
+/// **逐条等于**金样 `history-metadata.readout.golden.json`。「迁移后」那一半是后端新读者读同一份夹具、对同一份金样
+/// （`tests/backend/history_annotations_tests.rs`）。异源：两份实现、两个 crate、一份金样。
+/// ⚠ 旧读者随后续子步删掉之后，金样就是「迁移前」那一次的冻结读数（本条在它还在的这一拍对过）。
+#[test]
+fn c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/__fixtures__");
+    let raw = std::fs::read_to_string(dir.join("history-metadata.fixture.json")).expect("夹具");
+    let old: HistoryMetadata = serde_json::from_str(&raw).expect("旧读者读不动夹具");
+    let norm: std::collections::BTreeMap<String, serde_json::Value> = old
+        .entries
+        .into_iter()
+        .map(|(sid, e)| {
+            (
+                sid,
+                serde_json::json!({
+                    "starred": e.starred,
+                    "customTitle": e.custom_title,
+                    "hidden": e.hidden,
+                    "updatedAt": e.updated_at,
+                    "lastAccount": e.last_account,
+                }),
+            )
+        })
+        .collect();
+    let golden: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("history-metadata.readout.golden.json")).expect("金样"),
+    )
+    .expect("金样不是 JSON");
+    assert_eq!(norm.len(), 6, "夹具六条，旧读者少读了");
+    assert_eq!(
+        serde_json::to_value(&norm).unwrap(),
+        golden,
+        "旧读者读出来的注解与金样不一致 —— 金样是「迁移前」的读数，不许为了让本条变绿去改它"
+    );
+}

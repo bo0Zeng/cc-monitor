@@ -41,6 +41,7 @@ pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻�
 pub mod footprint; // 〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe`（只读路径事实，判定住 monitor）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
+pub mod history_annotations; // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / `history-last-accounts`（第四层；文件就是 monitor 从前那一份，路径由它交）
 pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
@@ -596,6 +597,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--remote-reach",
+    // 〔C4d · 第四波 4B〕历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
+    // ⚠ 一次性进程多半没被交 `CCM_HISTORY_METADATA` ⇒ 明拒（不猜路径）。加这三行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
+    "--history-annotate",
+    "--history-forget",
+    "--history-last-accounts",
     "--backend-probe",
     // 〔SR1a · 09-24〕`--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。

@@ -1721,6 +1721,59 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
+#### `history-annotate`：改一条历史注解（C4d · 第四波 4B，2026-09-25）
+
+历史注解（星标 / 改名 / 隐藏 / 上次用哪个号起这个会话）的**读写者是本机常驻后端**（主会话 09-25 裁：文件留在原处、同一路径，不迁移、一条不丢）。
+那份文件就是 monitor 从前读写的 `<monitor 数据目录>/history-metadata.json`：路径由 monitor 起本机后端时用环境变量 `CCM_HISTORY_METADATA` 显式交（没交 ⇒ `no_annotations`，不猜路径）。
+写是后端**自有状态**（`readonly_guard` 第四层）：先严格读一遍，读不懂 ⇒ `annotations_unreadable`、原文件一个字节不动；再在原文上只改那一条（其余条目与认不出的键原样留着）→ `O_EXCL` 临时文件 → 原子挪过去。
+
+```text
+→ {"id":"a1","cmd":"history-annotate","args":{"sid":"0f…","patch":{"starred":true}}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"entry":{"starred":true,"customTitle":null,"hidden":false,"updatedAt":1727250000000,"lastAccount":null}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id |
+| `patch` | → | 要改的那几格：`starred` / `customTitle` / `hidden` / `lastAccount`（后两格也认蛇形 `custom_title` / `last_account`）。缺格或 `null` = 不改；标题 / 账号名给空白串 = 清空；多一格 ⇒ `bad_args` |
+| `entry` | ← | 改完的那一条：`starred` · `customTitle`（`null` = 没改过名）· `hidden` · `updatedAt`（毫秒，= 这一次）· `lastAccount`（`null` = 没记过） |
+
+**错误码**：`bad_args` · `no_annotations`（这个后端没被交路径）· `annotations_unreadable`（那份文件读不懂 / 读不动 —— 没有覆盖它）· `io_failed`。
+⚠ **CLI 面也有它**（`--history-annotate`，入参从 stdin 读）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+
+#### `history-forget`：删一条历史注解（C4d · 第四波 4B，2026-09-25）
+
+删会话时连带（monitor 删完那份会话文件之后问本机后端）。写法同 `history-annotate`；那一条不在 ⇒ 不写。
+
+```text
+→ {"id":"f1","cmd":"history-forget","args":{"sid":"0f…"}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"removed":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id |
+| `removed` | ← | 真删了一条没有（`false` = 本来就没有这一条，文件没动） |
+
+**错误码**：同 `history-annotate`。
+⚠ **CLI 面也有它**（`--history-forget`，入参从 stdin 读）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+
+#### `history-last-accounts`：sid → 上次用哪个号起（C4d · 第四波 4B，2026-09-25，**只读**）
+
+账号徽章的回落来源（「上次用本工具带账号起」）与带账号 resume 前的现读。只含真记过账号的那几条。
+
+```text
+→ {"id":"l1","cmd":"history-last-accounts","args":{}}
+← {"kind":"reply","id":"l1","ok":true,"data":{"accounts":{"0f…":"work"}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `accounts` | ← | `{sid: 账号名}` |
+
+**错误码**：`no_annotations` · `annotations_unreadable`（读不懂不说成「一条都没有」）。
+⚠ **CLI 面也有它**（`--history-last-accounts`，不读 stdin）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+
 #### `remote-reach`：本机后端的可达表登记（C4d · 第四波 4B，2026-09-25）
 
 「本机后端问远端后端」那一跳（`设计/01 §3.5`；实现住后端 `remote_ask.rs`，全后端只此一处）要先知道「怎么够到那台」。

@@ -532,6 +532,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔AS2〕skill「装到这台」两条：走目录 ＋ 读原文 ＋ stat。
         "skill-read",
         "skill-install-plan",
+        // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
+        "history-annotate",
+        "history-forget",
+        "history-last-accounts",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
         "files-peek",
         "files-put",
@@ -611,6 +615,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "assets-catalog-merge",
         "skill-read",
         "skill-install-plan",
+        // 〔C4d · 第四波 4B〕历史注解三条，阻塞档。
+        "history-annotate",
+        "history-forget",
+        "history-last-accounts",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
         "files-peek",
         "files-put",

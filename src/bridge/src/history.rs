@@ -2901,7 +2901,10 @@ fn truncate_chars(s: &str, n: usize) -> String {
 
 // === metadata 持久化 ===
 
-fn metadata_path() -> Option<PathBuf> {
+/// 历史注解那份文件的路径 —— **全仓只此一处算它**。〔C4d · 第四波 4B〕读写者换成了本机常驻后端（主会话 09-25 裁：
+/// 文件留在原处、同一路径）：monitor 起本机后端时用 `CCM_HISTORY_METADATA` 把**本函数算出来的这一个**交过去
+/// （`local_backend_host::relay_host_envs`），同一路径因此是构造出来的，不是两侧算法对齐出来的。
+pub(crate) fn metadata_path() -> Option<PathBuf> {
     Some(paths::resolve_monitor_data_dir()?.join("history-metadata.json"))
 }
 
