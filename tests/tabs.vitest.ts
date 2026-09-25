@@ -4969,6 +4969,81 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
   });
 });
 
+/**
+ * 〔GP1 · 第四波〕**远端断连 ⇒ 说不清，不是已结束**（`设计/30 §3.5.7a`「`Unseen` 不许被显示成已结束」·
+ * `调研/第四波记录/GP1.md §1`）。`session-unseen` → `TabManager.markUnseen`，TabManager 真走。
+ */
+describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
+  let tm: TabManager;
+  const tabOf = (sid: string): Tab => home(tm).store.tabs.get(sid)!;
+  const titles = (): string =>
+    [...document.querySelectorAll<HTMLElement>(".tab")].map((b) => b.title).join("\n");
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(() => Promise.resolve(undefined))));
+    tm = makeTM();
+  });
+
+  it("★ 活 / 可重连 ⇒ 说不清（字里零处「已结束」）；已结束 / 记录没了不动", () => {
+    tm.ensureTab("u1", "/x", "p", 0, "pi"); // 活
+    tm.ensureTab("u2", "/x", "p", 0, "pi");
+    tm.markTmuxIdle("u2"); // 可重连
+    tm.markUnseen("u1");
+    tm.markUnseen("u2");
+    expect([tabOf("u1").state, tabOf("u2").state]).toEqual([UNSEEN, UNSEEN]);
+    // 两颗的提示句都说「说不清」、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
+    expect(titles().split("说不清").length - 1).toBe(2);
+    expect(titles()).not.toContain("已结束");
+    // 死透了的不动：已结束 / 记录没了收到 unseen 照旧（正控：这时才出现「已结束」）。
+    tm.ensureTab("u3", "/x", "p", 0, "pi");
+    tm.archiveTab("u3");
+    tm.ensureTab("u4", "/x", "p", 0, "pi");
+    tm.archiveTab("u4");
+    tm.markRecord("u4", false);
+    tm.markUnseen("u3");
+    tm.markUnseen("u4");
+    expect([tabOf("u3").state, tabOf("u4").state]).toEqual([ENDED, GONE]);
+    expect(titles()).toContain("已结束");
+  });
+
+  it("★ 重连之后：重宣告的翻回活；那台报完清单、没有它的 ⇒ 已结束", () => {
+    tm.ensureTab("r1", "/x", "p", 0, "pi");
+    tm.ensureTab("r2", "/x", "p", 0, "pi");
+    tm.markUnseen("r1");
+    tm.markUnseen("r2");
+    expect([tabOf("r1").state, tabOf("r2").state]).toEqual([UNSEEN, UNSEEN]);
+    tm.createSkeletonTab("r1", "/x", "pi"); // 重连后后端初扫重宣告 r1
+    tm.markOriginSeen("pi"); // `sessions_replayed` ⇒ 报完了，没有 r2
+    expect([tabOf("r1").state, tabOf("r2").state]).toEqual([LIVE, ENDED]);
+  });
+
+  it("★ 那台从「报完了」里摘掉：之后才复活的固定 tab 落说不清，不再直接落已结束", async () => {
+    tm.markOriginSeen("pi");
+    tm.ensureTab("s1", "/x", "p", 0, "pi");
+    tm.markUnseen("s1");
+    let disk: Record<string, unknown> = {
+      tabBar: { pinned: [{ sid: "s2", origin: "pi", title: "S", jsonlPath: "/p/s2.jsonl" }] },
+    };
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
+      if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
+      if (cmd === "save_config") {
+        disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    })));
+    await tm.loadPinned();
+    expect(tabOf("s2").state).toEqual(UNSEEN);
+  });
+
+  it("★ 还没建的 tab 收到 unseen ⇒ 什么都不建", () => {
+    tm.markUnseen("nobody");
+    expect(home(tm).store.tabs.has("nobody")).toBe(false);
+  });
+});
+
 // 〔U4b · 第四波〕**接线判据**：`main.ts` 起步那几行（`list_active_sessions` 之后标本机清单报完 ·
 // 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
 describe("〔U4b〕main.ts 接线", () => {
@@ -4980,6 +5055,15 @@ describe("〔U4b〕main.ts 接线", () => {
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
       n("onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin)"),
     ]).toEqual([1, 1, 1]);
+  });
+  // 〔GP1 · 第四波〕「那台机器看不见了」两个窗口各接一处（主窗 ＋ 独立会话窗；入口脚本没有 DOM 判据够得着）。
+  it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 恰一处", () => {
+    const n = (file: string, needle: string): number =>
+      readFileSync(resolve(REPO_ROOT, file), "utf8").split(needle).length - 1;
+    expect([
+      n("src/main.ts", "onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId)"),
+      n("src/entry-viewer.ts", "if (s === sid) tabs.markUnseen(s);"),
+    ]).toEqual([1, 1]);
   });
 });
 

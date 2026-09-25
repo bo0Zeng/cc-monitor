@@ -279,6 +279,19 @@ pub(crate) fn wants_title_prescan(rbind_token: Option<&str>) -> bool {
     rbind_token.is_none()
 }
 
+/// 〔GP1 · 第四波〕发一条「说不清」（`session-unseen`）。三处用它：两个 emitter 的 `Unseen` 臂 · F5 对账里
+/// 「那台还没报完清单」那一摞。**它从不与 `SESSION_ENDED` 同发**（`设计/30 §3.5.7a`：`Unseen` 不许被显示成已结束）。
+fn emit_session_unseen(handle: &tauri::AppHandle, sid: &str) {
+    let payload = bridge::SessionUnseenPayload {
+        session_id: sid.to_string(),
+    };
+    if let Err(e) = handle.emit(bridge::events::SESSION_UNSEEN, &payload) {
+        tracing::warn!("emit session-unseen failed: {e}");
+    } else {
+        tracing::info!("session unseen（那台机器看不见了）: {sid}");
+    }
+}
+
 /// ST1：设置窗的标签（`open_settings_window` 建它时用的同一个串）。
 pub(crate) const SETTINGS_WINDOW_LABEL: &str = "settings";
 /// 主窗的标签（`tauri.conf.json` 里那一个）。
@@ -848,6 +861,12 @@ pub fn run() {
                                             tracing::info!("session ended: {sid}");
                                         }
                                     }
+                                    // 〔GP1〕本机这条流今天产不出 `Unseen`（它只来自远端断连 flush）；
+                                    //   接上是为了「本机 ＝ 不走 ssh 的远端」那一句在这里也成立：同一个裁决、同一个出口。
+                                    ssh_source::RemovedDisposition::Unseen => {
+                                        ssh_source::clear_idle(&sid);
+                                        emit_session_unseen(&handle, &sid);
+                                    }
                                 }
                             }
                             // issue #23：红绿灯——status/waitingFor 变了才会出现在这里
@@ -1040,6 +1059,12 @@ pub fn run() {
                                                 tracing::info!("remote session ended: {sid}");
                                             }
                                         }
+                                        // 〔GP1 · 第四波〕断连 flush：那台机器看不见了 ⇒ 说不清（不是已结束）。
+                                        //   idle 账本同步清（那台的 tmux 状态断连时已忘）；绑定不忘（`apply_remote_disposition`）。
+                                        ssh_source::RemovedDisposition::Unseen => {
+                                            ssh_source::clear_idle(&sid);
+                                            emit_session_unseen(&handle, &sid);
+                                        }
                                     }
                                 }
                                 // Batch9-F27：远端红绿灯——backend session_status 帧/
@@ -1224,13 +1249,18 @@ pub fn run() {
                         // audit-fixes F03.2：idle-tmux sid 不在 remote_active（变 idle 时已移出），若不排除
                         // 会被当"死"补 SESSION_ENDED、F5 后灰灯塌成 archived。故排除 idle sid + 下面重发 SESSION_IDLE。
                         //（`idle_all` 〔U4b〕挪到了本机 stale 那一段之前，两段共用。）
-                        let remote_stale: Vec<String> = {
+                        // 〔GP1 · 第四波〕按 sid 所在的那台分：那台此刻**报完了**清单 ⇒ 已结束（原样）；**没报完**
+                        //   （断着 / 还在初扫）⇒ 说不清 —— 改之前这里对断着的那台也补 ended，正是 `设计/30 §3.5.7a`
+                        //   禁的那一形（`Unseen` 被显示成已结束）。
+                        let listed = ssh_source::listed_origins();
+                        let (remote_stale, remote_unseen): (Vec<String>, Vec<String>) = {
                             let active = remote_active.lock();
-                            replay
-                                .buffered_remote_session_ids()
-                                .into_iter()
-                                .filter(|sid| !active.contains(sid) && !idle_all.contains(sid))
-                                .collect()
+                            ssh_source::split_stale(
+                                replay.buffered_remote_sessions().into_iter().filter(|(sid, _)| {
+                                    !active.contains(sid) && !idle_all.contains(sid)
+                                }),
+                                &listed,
+                            )
                         };
                         // F03.2：F5 后把 idle sid 的灰灯盖回（行重放会把其 tab 建成 live，这次重发再变灰）。
                         for sid in &idle_all {
@@ -1259,6 +1289,22 @@ pub fn run() {
                                 stale.len(),
                                 remote_stale.len()
                             );
+                        }
+                        for sid in &remote_unseen {
+                            emit_session_unseen(&handle, sid);
+                        }
+                        // 〔GP1〕报完了清单的那几台重发一次 `origin-sessions-listed`：F5 之后前端那一格随页面清空了，
+                        //   不重发的话固定复活的 tab 停在说不清，直到那台下一次重连（U4b 留下的缺口）。
+                        //   排在重宣告 ＋ 行 ＋ 上面两摞之后 ⇒ 前端处理它时，活着的已经被翻回活。
+                        for origin in listed {
+                            if let Err(e) = handle.emit(
+                                bridge::events::ORIGIN_SESSIONS_LISTED,
+                                &bridge::OriginSessionsListedPayload {
+                                    origin: crate::origin::Origin(origin),
+                                },
+                            ) {
+                                tracing::warn!("reconcile emit origin-sessions-listed failed: {e}");
+                            }
                         }
                     });
                 });

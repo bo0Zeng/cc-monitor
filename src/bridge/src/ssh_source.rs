@@ -855,10 +855,13 @@ pub fn find_local_tmux_origin_for_sid(sid: &str) -> Option<String> {
 /// 据「该 sid 的 tmux 是否仍在」（`find_tmux_origin_for_sid` 的 Option）择一：
 /// `Idle{origin}`=tmux 会话尚在 → 灰灯（mark_idle + emit SESSION_IDLE + **不 forget**）；
 /// `Archive`=tmux 也没了 → 归档（clear_idle + forget + emit SESSION_ENDED）。
+/// 〔GP1 · 第四波〕`Unseen`=那台机器看不见了（断连）→ 说不清（clear_idle + emit `SESSION_UNSEEN`，**不** forget、
+/// **不**发 `SESSION_ENDED`；`设计/30 §3.5.7a`「`Unseen` 不许被显示成已结束」）。
 #[derive(Debug, PartialEq, Eq)]
 pub enum RemovedDisposition {
     Idle { origin: String },
     Archive,
+    Unseen,
 }
 
 /// **纯决策**（可单测，锁住「Some/None 不写反」——emitter 里的实际接线在 run() 闭包内无法单测，
@@ -871,14 +874,92 @@ pub enum RemovedDisposition {
 ///   在 P5 删掉 8s ticker 之后**没有任何事件路径会因 /branch 去刷新它**。
 ///   ⇒ 判成 Idle 就是一个永远消不掉、也 attach 不上的灰点（用户 2026-07-30 实测）。
 /// - [`RemovalCause::Gone`] ⇒ 维持原语义：Some(origin)→Idle；None→Archive。
+/// - 〔GP1〕[`RemovalCause::Unseen`]（断连 flush）⇒ 恒 `Unseen`，同样**不看 `tmux_origin`**：
+///   那台的快照在断连那一刻已经忘了（`forget_tmux_raw`），拿它判只会恒判成 `Archive` —— 那正是改之前
+///   「断连 ⇒ 全落已结束」的成因。机器看不见，说的就只能是「说不清」。
 pub fn classify_removed(tmux_origin: Option<String>, cause: RemovalCause) -> RemovedDisposition {
-    if cause == RemovalCause::Superseded {
-        return RemovedDisposition::Archive;
+    match cause {
+        RemovalCause::Superseded => return RemovedDisposition::Archive,
+        RemovalCause::Unseen => return RemovedDisposition::Unseen,
+        RemovalCause::Gone => {}
     }
     match tmux_origin {
         Some(origin) => RemovedDisposition::Idle { origin },
         None => RemovedDisposition::Archive,
     }
+}
+
+/// 〔GP1 · 第四波〕**断连 flush 送出去的那一摞**：这条连接宣告过的活会话 ∪ 这台的可重连会话，**一律 `Unseen`**。
+///
+/// 改之前这里是 `RemovedSid::gone` ⇒ emitter 查（已经忘掉的）tmux 快照 ⇒ `Archive` ⇒ 前端「已结束」——
+/// 而那一刻我们知道的只是「那台机器看不见了」（`设计/30 §3.5.7a`）。抽成纯函数是为了给「每一条都是 `Unseen`」
+/// 上一条判据（`run()` 的重连循环单测进不去）。
+pub(crate) fn disconnect_removals(
+    announced: impl IntoIterator<Item = String>,
+    idle: impl IntoIterator<Item = String>,
+) -> Vec<RemovedSid> {
+    announced
+        .into_iter()
+        .chain(idle)
+        .map(|sid| RemovedSid {
+            sid,
+            cause: RemovalCause::Unseen,
+        })
+        .collect()
+}
+
+/// 〔GP1 · 第四波〕**「那台报完了活会话清单」这本账**：origin → 这条连接上收到过 `sessions_replayed`。
+///
+/// 写者只有本模块两处：收 `SessionsReplayed` 那一臂记入（[`note_listed`]）· `run()` 每轮连接结束摘掉（[`forget_listed`]）。
+/// 读者：F5 对账（`lib.rs` frontend-ready）—— 那一刻前端的「报完了」全随页面清空，这本账是它唯一能重建的来处：
+/// ① buffer 里有、已不活跃的远端 sid，属于**报完了**的机器 ⇒ 已结束（原样）；属于**没报完**的（断着 / 还在初扫）⇒ 说不清；
+/// ② 报完了的机器重发一次 `origin-sessions-listed`（否则 F5 之后固定复活的 tab 停在说不清，直到下一次重连）。
+static LISTED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::OnceLock::new();
+
+fn listed_registry() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    LISTED.get_or_init(Default::default)
+}
+
+/// 那台的活会话清单报完了（收到 `sessions_replayed`）。
+pub(crate) fn note_listed(origin: &str) {
+    listed_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(origin.to_string());
+}
+
+/// 那台的连接结束了 ⇒ 它的清单不再算数。
+pub(crate) fn forget_listed(origin: &str) {
+    listed_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(origin);
+}
+
+/// 此刻报完了清单的那几台（只读快照）。
+pub(crate) fn listed_origins() -> std::collections::HashSet<String> {
+    listed_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+/// 〔GP1〕F5 对账的分流（纯函数）：`(sid, origin)` 按 origin 报没报完清单分成 `(已结束, 说不清)` 两摞，各自保持入参顺序。
+pub(crate) fn split_stale(
+    stale: impl IntoIterator<Item = (String, String)>,
+    listed: &std::collections::HashSet<String>,
+) -> (Vec<String>, Vec<String>) {
+    let mut ended = Vec::new();
+    let mut unseen = Vec::new();
+    for (sid, origin) in stale {
+        if listed.contains(&origin) {
+            ended.push(sid);
+        } else {
+            unseen.push(sid);
+        }
+    }
+    (ended, unseen)
 }
 
 // audit-fixes F03.2：`snapshot_announced_by_origin` 已删——其唯一读者是已删的 8s poller。
@@ -2288,18 +2369,20 @@ pub async fn run(
         // 的 idle-tmux sid 也一并归档（断连=tmux 状态已清[上方 :1853]，idle 会话也该 archived；emitter
         // 处理这些 removed 时 tmux_raw 本 host 已空 → find_tmux_origin_for_sid=None → archived+clear_idle）。
         // **§24 单写者不破**：run() 只**读** snapshot_idle_for_origin，REMOTE_IDLE 的写（clear_idle）仍只在 emitter。
+        // 〔GP1 · 第四波〕这台的「报完了清单」随连接一起作废（F5 对账据它分已结束 / 说不清）。
+        forget_listed(&cfg.origin_label());
         let idle_here = snapshot_idle_for_origin(&cfg.origin_label());
         if !announced.is_empty() || !idle_here.is_empty() {
-            let mut removed: Vec<String> = announced.into_keys().collect();
-            removed.extend(idle_here);
+            let removed = disconnect_removals(announced.into_keys(), idle_here);
             tracing::info!(
-                "ssh_source connection ended; archiving {} remote session(s)",
+                "ssh_source connection ended; {} remote session(s) → 说不清（那台机器看不见了）",
                 removed.len()
             );
             if let Err(e) = session_changes.send(SessionChange {
                 added: vec![],
-                // 连接断了兜底归档 = 真死（不是被顶替）。
-                removed: removed.into_iter().map(RemovedSid::gone).collect(),
+                // 〔GP1 · 第四波〕连接断了 ≠ 会话死了：一律 `Unseen`（`设计/30 §3.5.7a`）。
+                // 改之前这里逐字「连接断了兜底归档 = 真死（不是被顶替）」、送的是 `gone`。
+                removed,
                 status_changed: vec![], // 本分支无状态变化（F27 起 status 走 SessionAdded/SessionStatus 臂）
             }) {
                 tracing::warn!("ssh_source final session archival send failed: {e}");
@@ -3391,6 +3474,8 @@ async fn stream_loop(
                 tracing::info!(
                     "sessions-replayed: [{host_label}] 活会话清单报完了 → 已 emit 给前端"
                 );
+                // 〔GP1 · 第四波〕记进「报完了清单」那本账（F5 对账要重建前端这一格；连接结束时摘）。
+                note_listed(&host_label);
                 if let Err(e) = app.emit(
                     crate::bridge::events::ORIGIN_SESSIONS_LISTED,
                     &crate::bridge::OriginSessionsListedPayload {

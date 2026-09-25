@@ -2697,6 +2697,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/bridge/src/event_replay.rs", "keep_tail_only", 1),
         // 〔CF2〕F5 那份重放换成就绪点（`ready_point`）：头注表里 ＋ 新函数的文档里点旧名讲来历。
         ("src/bridge/src/event_replay.rs", "replay_and_mark_ready", 2),
+        // 〔GP1 · 第四波〕F5 对账要按机器分已结束 / 说不清 ⇒ 远端 sid 清单连同 origin 一起交、改名；新函数文档点旧名讲来历。
+        (
+            "src/bridge/src/event_replay.rs",
+            "buffered_remote_session_ids",
+            1,
+        ),
         // 🔴 〔RM1f · V108 后半句〕monitor 摘掉内嵌引擎：`panorama.rs` 与它的判据文件删了，三处散文里的旧名挂墓碑。
         ("src/panorama-engine/main.rs", "collect_symbols_in_file", 1),
         (
@@ -3953,7 +3959,7 @@ fn every_prose_tombstone_mark_is_registered() {
     const REGISTERED: &[(&str, usize)] = &[
         // 〔CF2 · 第四波 4B〕重放缓冲分档取消：头注里旧的登记方法名 ＋ 读数那个旧字段名各一块；
         //   会话流收口成 `subscribe`：头注表里 ＋ `ready_point` 文档里点原来那个重放方法名各一块。
-        ("src/bridge/src/event_replay.rs", 4),
+        ("src/bridge/src/event_replay.rs", 5), // 〔GP1〕+1：远端 sid 清单改名（连同 origin 一起交）那一块
         // 〔CF2〕`jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
         //   状态消费者矩阵那一行一块。
         ("src/bridge/src/bridge.rs", 1),
