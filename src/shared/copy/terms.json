@@ -144,7 +144,7 @@
       "word": "hook",
       "tier": "限用",
       "tally": { "re": "\\bhook\\b|钩子", "flags": "i" },
-      "inTable": 1,
+      "inTable": 6,
       "meaning": "Claude Code 自己的 hooks 配置（settings.json 里的 hooks 段）。",
       "context": "只在讲 Claude Code 的 hooks 配置时许说（中文「钩子」同义）。讲我们内部的回调、tmux-hook 之类不许说。",
       "source": "普查 R1 候选（K-T68 面④附）",
@@ -478,7 +478,7 @@
       "scan": { "re": "\\b[a-z]+(?:[A-Z][a-z0-9]*)+\\b|\\b(?:ADDED|ALREADY|Exact|Heuristic|DynamicGuess|bad_args|bad_path|accounts-meta|agents\\.tsv|__ccm_bind|auto-launch|touches|localStorage|UserDataFolder)\\b|\\.?build_id\\b", "flags": "" },
       "examples": ["backendPath", "cliFlags", "__ccm_bind", ".build_id", "ADDED"],
       "counterExamples": ["API key", "Claude Code"],
-      "ledger": ["backendPath", "claudeDir", "cliFlags", "kind", "错误码bad_args/bad_path", "agents.tsv", "auto-launch", "touches", "build_id"],
+      "ledger": ["backendPath", "claudeDir", "cliFlags", "kind", "错误码bad_args/bad_path", "auto-launch", "touches", "build_id"],
       "source": "设计/91 §7.3（配置键名直出）· CP1 台账",
       "note": "label / jump / kind 是普通英文单词，正则认不出它们是配置键 ⇒ 这三个只靠人工 review。"
     },

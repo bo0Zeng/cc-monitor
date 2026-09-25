@@ -294,7 +294,9 @@ describe("B03 脏数据如实呈现", () => {
     (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
     await flush();
     const metas = [...s.element.querySelectorAll(".cc-bus-meta")].map((e) => e.textContent ?? "");
-    expect(metas[0]).toContain("cc-spawn 派生");
+    // 〔CP2b〕「cc-spawn 派生」改说「派生」（spawn 是术语表禁档的英文实现词）⇒ 区分改成两向：一边有、一边没有。
+    expect(metas[0]).toContain("派生");
+    expect(metas[1]).not.toContain("派生");
     expect(metas[0]).toContain("/home/user/proj");
     expect(metas[1]).toContain("自行登记");
   });
@@ -474,8 +476,8 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
     const s = await load(SKEWED);
     const txt = s.element.querySelector(".cc-bus-status")?.textContent ?? "";
     expect(txt).toContain("登记 2 个");
-    expect(txt).toContain("其中 spawn 派生 1 个"); // 交集是 1，不是 spawned 全集 3
-    expect(txt).toContain("另有 2 个 spawn 过但未登记");
+    expect(txt).toContain("其中派生的 1 个"); // 交集是 1，不是 spawned 全集 3
+    expect(txt).toContain("另有 2 个派生过但未登记");
     expect(txt).not.toContain("其中 spawn 的 3 个");
   });
 
@@ -484,7 +486,7 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
     const ghost = [...s.element.querySelectorAll<HTMLElement>(".cc-bus-row")].find(
       (r) => r.dataset.agentId === "ghost_cc",
     )!;
-    expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain("未在 agents.tsv 登记");
+    expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain("未登记");
     expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain("/d/ghost");
   });
 
