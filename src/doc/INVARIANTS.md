@@ -244,8 +244,8 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 `seq: u64`（`SeqCounter` 跨调用累加、截断不重置；`--tail-only` 下起点是当前完整行数 ⇒ seq 就是行号，
 与 monitor 旁路快照的编号同一个空间，§25a）；〔CF1 · 2026-09-24〕**本机与远端同一个来源**：monitor 自己那套
 jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是本机后端的 `line` 帧（`ssh_source·rs::LineIntake`）。
-`bridge::JsonlLinePayload` 携带该 seq 字段；所有 emit 路径（jsonl-line / jsonl-batch）
-都透传 seq 不变。seq 保证**时序**、不保证**投递次数**——投递语义是 at-least-once
+`bridge::JsonlLinePayload` 携带该 seq 字段；所有交付路径（〔CF2 · 第四波 4B〕会话流经通道 `subscribe`：
+实时逐行 / 成批切块 / 就绪点重放，一格的体是 `bridge::SessionStreamFrame`）都透传 seq 不变。seq 保证**时序**、不保证**投递次数**——投递语义是 at-least-once
 （截断重读会换新 seq 重投整个文件），详 § 25。
 
 **前端契约**：每个 Tab / SessionViewer 持一个 `RecordTimeline`，
@@ -257,7 +257,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 - 之前用"多 flag 协调"路径（PayloadSource batch/live + inPrependMode + pendingPrependFragment
   + EventReplay.replaying 等 5 个 flag）反复出 inter-flag 相位 bug。
   v2.6 B 重构把所有 flag 替换为 seq + binary insert。
-- chunked emit 期间新到的真新行直接走 jsonl-line emit 出去；前端 timeline
+- 重放期间新到的真新行直接当场交出去（〔CF2〕过了就绪点的订阅收实时行）；前端 timeline
   按 seq 把它们放到正确位置——不再需要"replaying 期间 push 等末块后 catch-up"的
   特殊路径。
 
