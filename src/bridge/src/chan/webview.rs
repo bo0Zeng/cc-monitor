@@ -37,7 +37,7 @@
 //!
 //! - **不买对端撤活**：TS 那侧本地撤单是立即的（`Ours{Cancelled}`），而这一跳照跑到「还剩多少」为止
 //!   —— 与回环那条同一条边界（`host.rs` 头注）。补它要一条「撤单」命令 ＋ 在飞编号表，本拍不开。
-//! - **不买 `subscribe`**：webview 这一侧本拍零条流（登记在 `设计` 的 C4a 记录里）。
+//! - **不买 `subscribe`**：webview 这一侧本拍零条流（登记在 `调研/第四波记录/C4a.md` §5.4）。
 
 use super::host::InboundBackends;
 use super::router::{self, Backends};
