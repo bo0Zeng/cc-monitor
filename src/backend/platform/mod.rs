@@ -44,9 +44,9 @@
 //! - [`paths`]：`path_key`（NTFS 大小写折叠 —— **路径**语义，不是 `/proc`）
 //!   ＋ `temp_root` / `current_uid`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉）
 //! - [`pidwatch`]：`pidfd_open` + [`pidwatch::watch_pid_until_exit`]
-//! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）
+//! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）· 〔RM1f〕`kill_group`（插件口可打断的那一形被丢时收掉整组子进程）
 //! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 〔C2〕拨号代理没配私钥路径时用
-//! - [`detach`]：〔RM1a〕把要起的子进程放进自己的进程组（远端那台的中转不许随 SSH 断而没了）
+//! - [`detach`]：〔RM1a〕把要起的子进程放进自己的进程组（远端那台的中转不许随 SSH 断而没了）· 〔RM1f〕插件口可打断的那一形也用它（让「杀一组」有组可杀）
 //! - `win_proc`：〔WN1 · U4b〕Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（`OpenProcess` 一族），
 //!   只在 Windows 编译时存在（刻意不写 intra-doc 链接：本机 Linux 上它不存在，链接会悬空）
 //! - [`shell`]：`posix_shell`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉 ——

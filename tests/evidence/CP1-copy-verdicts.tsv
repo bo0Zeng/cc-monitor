@@ -132,6 +132,7 @@ src/backend/plugin/invoke.rs:102	决定裸调的复用命令连到哪一台服�
 src/backend/plugin/invoke.rs:104	字符编码那一档，三个键一起进（这个优先级最高）	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
 src/backend/plugin/invoke.rs:105	字符编码那一档，三个键一起进	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
 src/backend/plugin/invoke.rs:106	字符编码那一档，三个键一起进（这个优先级最低）	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
+src/backend/plugin/invoke.rs:220	起不来 `{}`：{e}	保留	[可达存疑] 〔RM1f〕起插件失败那一句：原来内联在 `run` 的 `match` 里（普查没把它收进存疑带），抽进两种等法共用的 `not_run` 之后进了带 —— 文字一字未改；调用方各自再包一层自己的话（全景：「代码全景组件没能启动：…」）
 src/backend/plugin/probe.rs:78	找到的这个程序不是 `{want}`：它的身份行报的是 `{saw}`。\n                 ⚠ 这不是「它太旧」，是**找错了程序** —— 多半是 PATH 上有个同名的无关命令。	改·§2.2	[可达存疑] 插件探测被拒的原因，回到界面；⚠ 后那句「这不是『它太旧』」是在反驳一个用户没提的推断，**markdown** 与破折号 兼§2.4 新词:身份行 →「找到的 `{want}` 不对：它报的是 `{saw}`，PATH 上可能有个同名的别的程序」
 src/backend/plugin/probe.rs:86	`{plugin}` 装的这份缺能力 `{token}`（它自己报的版本：{}）。\n                 ⚠ 这**不是**「调用失败」—— 那个程序好好的，是它这一版还不会做这一件事，\n                 换一份新的就行。	改·§2.2	[可达存疑] 同上；「这不是『调用失败』—— 那个程序好好的」是论证，**markdown** 兼§2.4 新词:能力token →「`{plugin}` 这一版不支持 `{token}`（版本 {}），请更新」
 src/backend/plugin/probe.rs:89	<没报>	保留	[可达存疑] 同上一句里的版本占位碎片

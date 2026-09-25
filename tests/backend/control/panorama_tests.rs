@@ -7,6 +7,15 @@
 use super::*;
 use crate::plugin::invoke::Done;
 
+/// 〔RM1f〕`answer_with` 变成了 async（`Run::Async` 那一档）：判据在一个现起的 runtime 上等它。
+fn answer_now(fixed: &[PathBuf], store: &Path, args: &Value) -> Result<Value, CmdErr> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(answer_with(fixed, store, args))
+}
+
 /// 私有临时目录（进程号 ＋ 标签 ＋ 序号）。
 fn scratch(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -124,7 +133,7 @@ fn a_real_process_walks_find_probe_run_and_back() {
             log.display()
         ),
     );
-    let got = answer_with(
+    let got = answer_now(
         &[bin],
         &store,
         &json!({"op": "overview", "repo": "/r e/p", "args": {"budget": 5}}),
@@ -168,12 +177,12 @@ esac"#;
         "status,overview,node,search",
         body,
     );
-    let ask = |args: Value| answer_with(std::slice::from_ref(&bin), &store, &args);
+    let ask = |args: Value| answer_now(std::slice::from_ref(&bin), &store, &args);
     let code_of = |args: Value| ask(args).unwrap_err();
 
     // 词表之外的 op：**不起进程**就拒（候选空也是 bad_args，不是 not_installed）。
     assert_eq!(
-        answer_with(&[], &store, &json!({"op": "vacuum"}))
+        answer_now(&[], &store, &json!({"op": "vacuum"}))
             .unwrap_err()
             .0,
         "bad_args"
@@ -204,7 +213,7 @@ esac"#;
     assert_eq!(c, "unsupported");
     assert!(m.contains("`diagram`"), "缺能力要点名缺的那个：{m}");
     // 找不到：说清查过哪儿。
-    let (c, m) = answer_with(&[dir.join("nowhere")], &store, &json!({"op": "status"})).unwrap_err();
+    let (c, m) = answer_now(&[dir.join("nowhere")], &store, &json!({"op": "status"})).unwrap_err();
     assert_eq!(c, "not_installed");
     assert!(m.contains("查过") && m.contains("nowhere"), "{m}");
     // 不兜 `PATH`（同名的无关程序不该有机会被当成它）：那句话里 PATH 那一格是 0 个目录。
@@ -217,7 +226,7 @@ esac"#;
 fn a_same_named_stranger_is_not_taken_for_the_program() {
     let dir = scratch("stranger");
     let bin = fake_program(&dir, "name=something-else", "status", "exit 0");
-    let (c, m) = answer_with(&[bin], &dir.join("s"), &json!({"op": "status"})).unwrap_err();
+    let (c, m) = answer_now(&[bin], &dir.join("s"), &json!({"op": "status"})).unwrap_err();
     assert_eq!(c, "not_installed");
     assert!(m.contains("something-else"), "{m}");
     let _ = std::fs::remove_dir_all(&dir);
