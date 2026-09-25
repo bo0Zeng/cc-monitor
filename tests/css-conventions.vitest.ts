@@ -332,13 +332,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
   //    （`css-ledger` 的两条棘轮会要求），而那条规则会是一句纯装饰。
   //    ⇒ 没有类 ⇒ 不可能有「自己身上的裸 display」⇒ 这一格在构造上就是安全的。
-  // 〔第四波 ST2〕漂移记账按机器分（这一拍只做本机）：本机那一整套的包装（不挂类名）与远端那一句
-  //    （`settings-hint`，在 `build()` 里挂的，跨方法 ⇒ 这把尺子推不出来；`settings-hint` 没有 display 规则，
-  //    `[hidden]` 不会被压过 —— 与上面 `perMachineFallbackHint` 那两处同一个人工核法）。
-  "src/settings/drift-ledger-section.ts:142":
-    "本机那一整套的显隐包装，刻意不挂类名（远端那一栏收起来）",
-  "src/settings/drift-ledger-section.ts:143":
-    "远端那一句（类名 `settings-hint` 在 build() 里挂，跨方法；该类无 display 规则）",
+  // 〔第四波 ST2〕漂移记账按机器分（这一拍只做本机）那两处（本机那一整套的包装 · 远端那一句）
+  //    〔ST3〕随账按机器分一起退场：本机与远端同一套 DOM，这一块不再切任何显隐 ⇒ 两行删掉。
   // 〔第四波 ST2〕远端也有真栏之后，这个包装本机与远端都用；显隐切两处：`applyOriginGate`（摆出来）
   //    与 `showUnanswered`（远端那台答不了时收起来）。同一个包装、同一个理由。
   // 〔合并 RM1a〕440/447 → 436/443：`readFootprint` 去掉那一道 `as unknown as`（命令签名本来就收 `{ origin }`），上移 4 行。

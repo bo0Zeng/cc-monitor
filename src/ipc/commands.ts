@@ -138,7 +138,7 @@ import type { CcmProbeResult } from "../generated/CcmProbeResult";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
-import type { DriftFaceReport } from "../generated/DriftFaceReport";
+import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
 import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
 import type { CcBusInstallState } from "../generated/CcBusInstallState";
@@ -794,7 +794,9 @@ export const commands = {
   config_surface_report: (args: { origin: Origin }) =>
     invoke<ConfigSurfaceReport>("config_surface_report", args),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
-  drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
+  // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
+  drift_ledger_report: (args: { origin: Origin }) =>
+    invoke<DriftLedgerReport>("drift_ledger_report", args),
   // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。
   // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
   // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。
