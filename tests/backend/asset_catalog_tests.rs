@@ -308,10 +308,25 @@ fn update_writes_only_when_changed_and_keeps_its_id() {
     let id = first["self"].as_str().unwrap().to_string();
     assert_eq!(id.len(), 16);
     let bytes1 = std::fs::read(&f).unwrap();
+    #[cfg(unix)]
+    let ino1 = {
+        use std::os::unix::fs::MetadataExt as _;
+        std::fs::metadata(&f).unwrap().ino()
+    };
     let again = update_at(&f, scan_of(&["a"]), "u@h", None).unwrap();
     assert_eq!(again["changed"], json!(false));
     assert_eq!(again["self"], json!(id), "id 生一次就不变");
     assert_eq!(std::fs::read(&f).unwrap(), bytes1, "没变不许写");
+    // 字节相同也可能是「又整份写了一遍」：写口是换名上位，写过就换了 inode（逐字节比看不出来这一形）
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        assert_eq!(
+            std::fs::metadata(&f).unwrap().ino(),
+            ino1,
+            "没变不许写（inode 换了 = 又写了一遍）"
+        );
+    }
     let inc: BTreeMap<String, Snapshot> = [("r".to_string(), snap(1, &["z"]))].into();
     let merged = update_at(&f, scan_of(&["a"]), "u@h", Some(inc)).unwrap();
     assert_eq!(merged["changed"], json!(true));
