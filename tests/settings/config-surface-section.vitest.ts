@@ -23,6 +23,8 @@ import {
   gapKindOfState,
   promptToInstall,
   summarizeOwedInstallers,
+  owedInstallerNames,
+  UNKNOWN_IS_NOT_ABSENT,
   type ConfigSurfaceReport,
   type SurfaceRow,
 } from "../../src/settings/config-surface-section";
@@ -129,10 +131,11 @@ describe("describeUndo", () => {
     const owed = say("AppShipsNoInstallerYet");
     const theirs = say("UserInstallsWePrompt");
     const notOurs = say("AppOnlyChecks");
-    // 「我们欠的」必须说「该由 cc-monitor 自带」，且**不许**说成「不该由它装」
-    expect(owed).toContain("该由 cc-monitor 自带");
-    expect(owed).toContain("还没写");
+    // 「我们欠的」必须保住「还没有」这个语义，且**不许**说成「不该由它装」（`KR65D2`）。
+    // 〔ST2 · `70 §11.4` #1〕但不再用「谁欠谁」的话说（「该由 cc-monitor 自带 / 还没写」）—— 一格状态。
+    expect(owed).toBe("暂无撤销：还没有安装入口");
     expect(owed).not.toContain("不该");
+    expect(owed).not.toMatch(/该由 cc-monitor 自带|还没写/);
     // 「你自己装」那一档要说清是你自己装
     expect(theirs).toContain("你自己装");
     // 三档措辞两两不同 —— 一句话涵盖三档就等于没有档
@@ -229,9 +232,9 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     // 一项都没有时整行不渲染，不写「0 项」
     expect(summarizeOwedInstallers([prompted()])).toBeNull();
     const txt = summarizeOwedInstallers([owed])!;
-    expect(txt).toContain("1 项");
-    expect(txt).toContain("cc-acct-iso 本机那份");
-    expect(txt).toContain("该由 cc-monitor 自带");
+    // 〔ST2 · `§11.3.1`〕数照旧数得出来，措辞不再说「我们欠」；名单挪进展开。
+    expect(txt).toBe("⚠ 1 项还没有安装入口");
+    expect(owedInstallerNames([owed, prompted()])).toEqual(["cc-acct-iso 本机那份"]);
 
     invokeMock.mockResolvedValue(report({ rows: [owed] }));
     const s = new ConfigSurfaceSection();
@@ -239,7 +242,10 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     const el = s.element.querySelector(".config-surface-owed") as HTMLElement;
     expect(el, "计数行必须在 DOM 里").not.toBeNull();
     expect(el.hidden).toBe(false);
-    expect(el.textContent).toContain("cc-acct-iso 本机那份");
+    expect(el.textContent).toContain("⚠ 1 项还没有安装入口");
+    const which = el.querySelector<HTMLElement>("[data-owed-names]")!;
+    expect(which.querySelector("summary")?.textContent).toBe("哪 1 项");
+    expect(which.textContent).toContain("cc-acct-iso 本机那份");
   });
 
   it("那句话也要进可复制的诊断文本（贴出去的那一份不含它就等于没说）", () => {
@@ -257,7 +263,32 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
       }),
     );
     expect(txt).toContain("自己装");
-    expect(txt).toContain("该由 cc-monitor 自带");
+    // 〔ST2〕计数与名单都进可复制文本（名单不许只在屏幕上）。
+    expect(txt).toContain("⚠ 1 项还没有安装入口：cc-acct-iso 本机那份");
+  });
+
+  it("〔ST2 · 用户 09-24 裁「一起改」〕可复制诊断文本的首行跟块名一致：「足迹」，不再是「配置面审计」", () => {
+    const txt = formatReportText(report());
+    expect(txt.split("\n")[0]).toBe("== cc-monitor 足迹 ==");
+    expect(txt).not.toContain("配置面审计");
+  });
+
+  it("〔ST2 · `§11.4` #3〕「查不动」那一句：前半留在行上，后半（查不动 ≠ 不在）进 ⓘ", async () => {
+    invokeMock.mockResolvedValue(
+      report({ rows: [prompted({ state: { kind: "undetermined", why: "Windows 侧才知道" } })] }),
+    );
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const p = s.element.querySelector<HTMLElement>('.config-surface-prompt[data-gap="unknown"]')!;
+    expect(p.firstChild?.nodeValue).toBe(`${GAP_HEAD.unknown} —— 这一项本机查不动（见上面的原因）`);
+    const why = p.querySelector<HTMLElement>("[aria-label]");
+    expect(why, "区分的后半被一起扫掉了（§2.2：只换位置，不删义）").not.toBeNull();
+    expect(why!.getAttribute("aria-label")).toBe(UNKNOWN_IS_NOT_ABSENT);
+    // 「缺」那一档不挂这个 ⓘ（它说的就是确认没有）。
+    invokeMock.mockResolvedValue(report({ rows: [prompted({ state: { kind: "absent" } })] }));
+    const s2 = new ConfigSurfaceSection();
+    await s2.refresh();
+    expect(s2.element.querySelector('.config-surface-prompt[data-gap="missing"] [aria-label]')).toBeNull();
   });
 });
 

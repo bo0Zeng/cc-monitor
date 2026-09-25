@@ -727,15 +727,11 @@ src/settings/cc-bus-section.ts:627	不指定账号	保留	[对外] 确认文案�
 src/settings/cc_integration.ts:562	请重启 PowerShell，cc 命令立即可用。	保留	[对外] 写完 profile 后用户确实要做的一步，已验证可行（重启 PowerShell 即生效）
 src/settings/cc_integration.ts:563	下一步：[打开 profile]，在自己的 claude wrapper 开头加 __ccm_bind 再重启 PowerShell。	改·§2.3	[对外] 「下一步：」处方，把改 wrapper 的活派给用户 兼§2.1 新词:__ccm_bind →「已写入。自定义 wrapper 需要手动接入，见 profile 说明。」
 src/settings/config-surface-section.ts:83	{…} —— cc-monitor 不装这一项，请你自己装上 `{…}`	保留	[对外] 测过确认缺、且用户确实要自己装：这是已验证可行的提示，不是派内部维护活；反引号会原样显示，CP2 可顺手去掉
-src/settings/config-surface-section.ts:86	{…} —— 这一项本机查不动（见上面的原因），别当成它不在	改·§2.4	[对外] 破折号＋括号补充＋口语「查不动」「别当成」一句三合一 →「本机无法检查这一项，不代表它不存在」
 src/settings/config-surface-section.ts:126	可按围栏/整文件撤销（在对应工具的部署入口里）	内部词→「按片段/整文件撤销」	[对外] 「围栏」是我们对受管片段的内部叫法 新词:围栏 兼§2.4
 src/settings/config-surface-section.ts:129	暂无自动撤销；如需清理请按上面的路径手动处理	保留	[对外] 没有自动撤销时用户确实只能手动处理，说得直接
-src/settings/config-surface-section.ts:132	这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有	改·§2.2	[对外] 把内部欠账（「安装入口还没写」）当文案说给用户 兼§2.4 →「暂不支持自动安装与撤销」
 src/settings/config-surface-section.ts:135	cc-monitor 不装这一项（通用工具，请你自己装），也就无所谓撤销	改·§2.2	[对外] 设计论证当文案（为什么不装、所以无所谓撤）兼§2.4 →「不适用：这一项需自行安装」
 src/settings/config-surface-section.ts:137	cc-monitor 本来就不该装这一项（它不是我们的东西），也就无所谓撤销	改·§2.2	[对外] 设计论证当文案（本来就不该装、不是我们的东西）兼§2.4 →「不适用：cc-monitor 不管理这一项」
 src/settings/config-surface-section.ts:140	这一项的档本前端还不认识 —— 撤销请按上面的路径手动处理	改·§2.1	[对外] 在讲实现（「这一项的档本前端还不认识」）新词:档 兼§2.4 →「撤销方式未知，请按上面的路径手动处理」
-src/settings/config-surface-section.ts:158	其中 {…} 项该由 cc-monitor 自带、而安装入口还没写：{…}	改·§2.2	[对外] 内部欠账当文案（「安装入口还没写」）→「其中 N 项暂不支持自动安装：…」
-src/settings/config-surface-section.ts:164	== cc-monitor 配置面审计 ==	保留	[对外] 可复制诊断文本的标题，读者是把它转贴给开发者的用户
 src/settings/config-surface-section.ts:166	~/.claude 解析为={…}	保留	[对外] 可复制诊断文本的字段行
 src/settings/config-surface-section.ts:176	    位置: {…}	保留	[对外] 可复制诊断文本的字段行
 src/settings/config-surface-section.ts:177	    解析为: {…}	保留	[对外] 可复制诊断文本的字段行
@@ -1196,3 +1192,8 @@ src/settings/panel.ts:179	「日志」—— 让后端把细节写进日志文�
 src/settings/panel.ts:188	【行为】	保留	[对外] 应用页 ⓘ 分节标题
 src/settings/panel.ts:205	日志	保留	[对外] 「应用」下的子页名（ST2 步 15，70 §6 #3 折叠组 → parentId 子项）
 src/settings/panel.ts:206	数据位置	保留	[对外] 「应用」下的子页名（ST2 步 15）
+src/settings/config-surface-section.ts:88	{…} —— 这一项本机查不动（见上面的原因）	保留	[对外] 足迹行上「未测过」那一档（ST2 · 70 §11.4 #3）：对冲的后半挪进 ⓘ，前半留在行上
+src/settings/config-surface-section.ts:95	查不动不等于它不在：只是这台机器上判断不了，不说明它没装。	保留	[对外] 「查不动」那一档的 ⓘ 正文 —— 那条区分（70 §2.2 不许扫掉）只换了位置
+src/settings/config-surface-section.ts:142	暂无撤销：还没有安装入口	保留	[对外] 足迹「能否撤」那一格，欠装口那一档（ST2 · 70 §11.4 #1）：一格状态，「还没有」语义保留（KR65D2）
+src/settings/config-surface-section.ts:171	⚠ {…} 项还没有安装入口	保留	[对外] 足迹计数行（ST2 · 70 §11.4 #2）：数照旧数得出来（KR65D2），名单挪进展开
+src/settings/config-surface-section.ts:183	== cc-monitor 足迹 ==	保留	[对外] 可复制诊断文本首行，跟块名统一（用户 09-24 裁「一起改」，70 §11.6 #4）

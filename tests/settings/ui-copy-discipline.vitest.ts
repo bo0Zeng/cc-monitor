@@ -30,7 +30,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { ipc } = vi.hoisted(() => ({ ipc: { calls: [] as string[] } }));
+const { ipc } = vi.hoisted(() => ({
+  ipc: { calls: [] as string[], replies: new Map<string, unknown>() },
+}));
 
 vi.mock("../../src/ipc/commands", () => ({
   commands: new Proxy(
@@ -38,6 +40,10 @@ vi.mock("../../src/ipc/commands", () => ({
     {
       get: (_t, name: string) => () => {
         ipc.calls.push(name);
+        // 〔ST2 · `70 §11.4` 末〕默认一律 reject（各块自有 catch）；给了答复的命令照答复回 ——
+        //   原来这里**只有** reject ⇒ 足迹那张表一行都不渲染 ⇒ `describeUndo` / `summarizeOwedInstallers`
+        //   的输出**从来没上过被扫的 DOM**（「判据不在执行链上就等于不存在」的一个活例）。
+        if (ipc.replies.has(name)) return Promise.resolve(ipc.replies.get(name));
         return Promise.reject(new Error(`[录音机] ${name} 没有真后端`));
       },
     },
@@ -128,6 +134,13 @@ const SHAPES: ReadonlyArray<{ name: string; re: RegExp; why: string }> = [
     re: /下一步：|放大器|本条不推翻|如实登记|判不了/g,
     why: "写给开发文档看的论证，不该出现在设置面板上（`70 §2.1` #2）",
   },
+  {
+    // 〔ST2 · `70 §11.4` 末那条射程缺口〕五种形状里原来**没有这一种** ⇒ 足迹那两句
+    //   「该由 cc-monitor 自带、而安装入口还没写」这把尺子一条都逮不到。
+    name: "欠账当产品文案",
+    re: /该由 cc-monitor 自带|入口还没写|还没写|我们欠/g,
+    why: "把我们还没做完的实现写成给用户看的话（`70 §11.4` #1 / #2）——要说的是状态（「还没有安装入口」），不是谁欠谁",
+  },
 ];
 
 /** 一段文本犯了哪几条。**判据与正控共用同一个函数** —— 两份实现会各自漂。 */
@@ -184,7 +197,8 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       "崩了：**下一步：这一格才是自愈要治的那一格**，而重起归第二档 —— 判据不可信的时候重起是放大器。\n" +
       "src/bridge/src/backend_policy.rs:371 里那句；monitor 是 GUI 应用（windows_subsystem=windows）。\n" +
       "所有后端 tracing 输出写到文件。\n" +
-      "「[死亡账] origin=<local> 判定=崩了 退出状态=exit -1073741510」";
+      "「[死亡账] origin=<local> 判定=崩了 退出状态=exit -1073741510」\n" +
+      "这一项该由 cc-monitor 自带，而安装入口还没写。";
     const shapes = new Set(violationsOf(sample).map((v) => v.shape));
     expect([...shapes].sort()).toEqual(SHAPES.map((s) => s.name).sort());
   });
@@ -225,6 +239,50 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       `设置面板上出现了 ${bad.length} 处 \`70 §2.4\` 禁的形状。\n` +
         SHAPES.map((s) => `  · ${s.name} —— ${s.why}`).join("\n"),
     ).toEqual([]);
+  });
+
+  it("〔ST2〕足迹那张表**喂一份真 report** 再扫：四档各一行上屏，一条都不许命中", async () => {
+    const row = (tier: string, name: string, state: unknown) => ({
+      tool_id: name,
+      tool_name: name,
+      source_label: "来源",
+      path_declared: `~/${name}`,
+      path_resolved: `/h/${name}`,
+      host_label: "本机",
+      note: null,
+      effect_label: "它做什么",
+      state,
+      installable: tier === "AppInstalls",
+      uninstallable: false,
+      tier,
+    });
+    ipc.replies.set("config_surface_report", {
+      rows: [
+        row("AppInstalls", "甲", { kind: "present", detail: "文件，1 字节" }),
+        row("AppShipsNoInstallerYet", "乙", { kind: "absent" }),
+        row("UserInstallsWePrompt", "丙", { kind: "undetermined", why: "查不动" }),
+        row("AppOnlyChecks", "丁", { kind: "absent" }),
+      ],
+      settings_scopes: [],
+      claude_config_dir: "/h/.claude",
+      home: "/h",
+    });
+    try {
+      const p = new SettingsPanel({ windowMode: true });
+      await p.open();
+      await tick();
+      document.querySelector<HTMLButtonElement>('[id="settings-tab-machine:（本机）"]')?.click();
+      await tick();
+      await tick();
+      const rows = document.querySelectorAll(".config-surface-row");
+      expect(rows.length, "表一行都没上屏 ⇒ 下面的零命中是空转（原来就是这样空转的）").toBe(4);
+      const root = document.querySelector<HTMLElement>(".config-surface-section")!;
+      // 反空真：欠账那一档的状态话**真的在**被扫的文字里。
+      expect(visibleCopy(root)).toContain("还没有安装入口");
+      expect(violationsOf(visibleCopy(root)).map((v) => `${v.shape}: ${v.hit}`)).toEqual([]);
+    } finally {
+      ipc.replies.clear();
+    }
   });
 
   it("后端那一侧的欠账**登记在案**（本条判不了，别把「没提」读成「治好了」）", () => {
