@@ -101,7 +101,6 @@ src/bridge/src/filewin/editor.rs	未抽
 src/bridge/src/filewin/entry.rs	未抽
 src/bridge/src/filewin/find.rs	未抽
 src/bridge/src/filewin/preview.rs	未抽
-src/bridge/src/filewin/proc.rs	未抽
 src/bridge/src/filewin/rows.rs	未抽
 src/bridge/src/filewin/select.rs	未抽
 src/bridge/src/filewin/shell.rs	未抽
@@ -127,12 +126,10 @@ src/bridge/src/panorama_call.rs	未抽
 src/bridge/src/platform_fs.rs	未抽
 src/bridge/src/port_forward.rs	未抽
 src/bridge/src/profile_installer.rs	未抽
-src/bridge/src/pubkey.rs	未抽
 src/bridge/src/remote_branch.rs	C4d 在改这一带，留最后一批
 src/bridge/src/remote_history.rs	C4d 在改这一带，留最后一批
 src/bridge/src/remote_relay.rs	未抽
 src/bridge/src/session_skeleton.rs	未抽
-src/bridge/src/sftp.rs	未抽
 src/bridge/src/sftp_pool.rs	未抽
 src/bridge/src/shell_dialect.rs	未抽
 src/bridge/src/skill_host.rs	未抽

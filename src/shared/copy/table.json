@@ -8840,6 +8840,334 @@
       "kind": "body",
       "zh": "那台机器的后端还不认「退出行为」这一问。重装那台机器的后端就有了。",
       "args": []
+    },
+    "rsPubkey.pushPublicKey.readResultFailed": {
+      "kind": "error",
+      "zh": "读推送结果失败：{e}",
+      "args": ["e"]
+    },
+    "rsPubkey.pushPublicKey.readFailed": {
+      "kind": "error",
+      "zh": "读公钥 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "rsPubkey.pushPublicKey.noKey": {
+      "kind": "error",
+      "zh": "没指定公钥。请在配置里填私钥路径（会取同名的 .pub），或选一个 .pub 文件",
+      "args": []
+    },
+    "rsPubkey.parsePushOutcome.noMarker": {
+      "kind": "error",
+      "zh": "推送没有返回预期的标记，可能失败了（权限或路径）。远端输出：{output}",
+      "args": ["output"]
+    },
+    "rsPubkey.sanitizePublicKey.badBody": {
+      "kind": "error",
+      "zh": "公钥 base64 主体含非法字符",
+      "args": []
+    },
+    "rsPubkey.sanitizePublicKey.noBody": {
+      "kind": "error",
+      "zh": "公钥缺少 base64 主体",
+      "args": []
+    },
+    "rsPubkey.sanitizePublicKey.unknownType": {
+      "kind": "error",
+      "zh": "认不出的公钥类型 {ktype}（是不是误选了私钥？）",
+      "args": ["ktype"]
+    },
+    "rsPubkey.sanitizePublicKey.controlChars": {
+      "kind": "error",
+      "zh": "公钥含控制字符，拒绝推送",
+      "args": []
+    },
+    "rsPubkey.sanitizePublicKey.multiline": {
+      "kind": "error",
+      "zh": "公钥文件有多行内容，拒绝推送（防注入）；一次只推一把公钥",
+      "args": []
+    },
+    "rsPubkey.sanitizePublicKey.empty": {
+      "kind": "error",
+      "zh": "公钥为空",
+      "args": []
+    },
+    "rsFilewinProc.dialBack.failed": {
+      "kind": "error",
+      "zh": "文件窗口连不上主程序：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinProc.open.seeStderr": {
+      "kind": "error",
+      "zh": "{why}。原因在它自己的错误输出里（和界面进程的错误输出在一起）。",
+      "args": ["why"]
+    },
+    "rsFilewinProc.open.failedWhy": {
+      "kind": "error",
+      "zh": "文件窗口没能打开：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinProc.open.failed": {
+      "kind": "error",
+      "zh": "文件窗口没能打开",
+      "args": []
+    },
+    "rsFilewinProc.open.exited": {
+      "kind": "error",
+      "zh": "文件窗口没能打开（进程退出：{st}）",
+      "args": ["st"]
+    },
+    "rsFilewinProc.seed.sendFailed": {
+      "kind": "error",
+      "zh": "启动参数送不进文件窗口进程：{e}\n多半是它一起来就退出了，而不是窗口画不出来；原因在它自己的错误输出里。",
+      "args": ["e"]
+    },
+    "rsFilewinProc.spawn.noStdin": {
+      "kind": "error",
+      "zh": "文件窗口进程起来了，但接不上它（程序内部出错）",
+      "args": []
+    },
+    "rsFilewinProc.spawn.failed": {
+      "kind": "error",
+      "zh": "文件窗口进程起不来（{bin}）：{e}",
+      "args": ["bin", "e"]
+    },
+    "rsFilewinProc.bin.notFound": {
+      "kind": "error",
+      "zh": "找不到文件窗口程序（{binStem}）。看过这几处：{looked}\n安装包里带着它（装完与主程序在同一个目录）。走到这一句多半是两种情形之一：① 手里是 Release 页上那个单文件版，它不带随包程序，出路是装一次安装包；② 开发树里第二个程序还没编译，出路是 cargo build --bin {binStem}。要指定别处的一份，设环境变量 {binEnv}。",
+      "args": ["binStem", "looked", "binEnv"]
+    },
+    "rsFilewinProc.selfPath.failed": {
+      "kind": "error",
+      "zh": "问不到本程序的可执行文件路径：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinProc.seed.unreadable": {
+      "kind": "error",
+      "zh": "启动参数读不懂：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinProc.seed.empty": {
+      "kind": "error",
+      "zh": "没有收到启动参数。这个程序不是给人直接运行的，要由 cc-monitor 从 stdin 把要显示的内容交给它。{binEnv} 指的就是它",
+      "args": ["binEnv"]
+    },
+    "rsFilewinProc.seed.encodeFailed": {
+      "kind": "error",
+      "zh": "文件窗口的启动参数写不出来：{e}",
+      "args": ["e"]
+    },
+    "rsSftp.ccmEntry.what": {
+      "kind": "body",
+      "zh": "远端 ~/{ccmCliRemotePath}",
+      "args": ["ccmCliRemotePath"]
+    },
+    "rsSftp.aliasBlock.written": {
+      "kind": "body",
+      "zh": "别名块已写进 {profile}{backupNote}。重连 ssh 之后，终端里就有 cc / cct，以及「别名」里生成的那几条。",
+      "args": ["profile", "backupNote"]
+    },
+    "rsSftp.aliasBlock.backupNote": {
+      "kind": "body",
+      "zh": "，原文件备份在 {b}",
+      "args": ["b"]
+    },
+    "rsSftp.aliasBlock.upToDate": {
+      "kind": "body",
+      "zh": "{profile} 里的别名块已是最新，没有改动。",
+      "args": ["profile"]
+    },
+    "rsSftp.profile.what": {
+      "kind": "body",
+      "zh": "远端 ~/{profile}",
+      "args": ["profile"]
+    },
+    "rsSftp.aliasBlock.removed": {
+      "kind": "body",
+      "zh": "已从远端 {profile} 删掉别名块。",
+      "args": ["profile"]
+    },
+    "rsSftp.aliasBlock.removedWithBackup": {
+      "kind": "body",
+      "zh": "已从远端 {profile} 删掉别名块（原文件备份在 {b}）。",
+      "args": ["profile", "b"]
+    },
+    "rsSftp.aliasBlock.noBlock": {
+      "kind": "body",
+      "zh": "远端 {profile} 里没有别名块，不用卸载。",
+      "args": ["profile"]
+    },
+    "rsSftp.aliasBlock.noProfile": {
+      "kind": "body",
+      "zh": "远端 {profile} 不存在，没有别名块可卸载。",
+      "args": ["profile"]
+    },
+    "rsSftp.profile.badName": {
+      "kind": "error",
+      "zh": "profile 只能是 home 下的文件名（如 .bashrc / .zshrc）",
+      "args": []
+    },
+    "rsSftp.uninstall.absent": {
+      "kind": "body",
+      "zh": "{path} 不在，可能已经卸载过了。",
+      "args": ["path"]
+    },
+    "rsSftp.uninstall.done": {
+      "kind": "body",
+      "zh": "已删除 {path}。若这台机器仍勾选「启用」，下次连接时会自动装回；彻底移除请取消启用或删除这台机器。",
+      "args": ["path"]
+    },
+    "rsSftp.uninstall.suspicious": {
+      "kind": "error",
+      "zh": "拒绝删除可疑的后端路径（须为含 cc-monitor 的绝对路径、不含 ..）：{path}",
+      "args": ["path"]
+    },
+    "rsSftp.uninstall.tildeRefused": {
+      "kind": "error",
+      "zh": "后端路径里有 ~（SFTP 不展开 ~），请改用绝对路径后再卸载",
+      "args": []
+    },
+    "rsSftp.ccmEntry.placed": {
+      "kind": "body",
+      "zh": "终端里的 ccm 入口已放好（~/.cc-monitor/bin/ccm；装了别名块的终端里直接能用）。",
+      "args": []
+    },
+    "rsSftp.ccmEntry.ready": {
+      "kind": "body",
+      "zh": "终端里的 ccm 入口已就位。",
+      "args": []
+    },
+    "rsSftp.deploy.done": {
+      "kind": "body",
+      "zh": "已安装后端（{buildId}，{machine}）到 {path}（{reason}）。重连远端即可用。",
+      "args": ["buildId", "machine", "path", "reason"]
+    },
+    "rsSftp.deploy.upToDate": {
+      "kind": "body",
+      "zh": "远端已是最新后端（{buildId}，{machine}）：{path}，无需重装。",
+      "args": ["buildId", "machine", "path"]
+    },
+    "rsSftp.deploy.tildeRefused": {
+      "kind": "error",
+      "zh": "后端路径里有 ~（SFTP 不展开 ~），请改用绝对路径",
+      "args": []
+    },
+    "rsSftp.deploy.needPath": {
+      "kind": "error",
+      "zh": "请先填后端路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-backend）",
+      "args": [],
+      "waive": {
+        "C-T1": "例子里是后端程序在盘上的真实文件名 cc-monitor-backend"
+      }
+    },
+    "rsSftp.deploy.noBuildId": {
+      "kind": "error",
+      "zh": "这一版 cc-monitor 带的后端说不出自己是哪一版，没有把它装上去。",
+      "args": []
+    },
+    "rsSftp.deploy.unameFailed": {
+      "kind": "error",
+      "zh": "问 {machine} 是什么机器没问成，没有装后端：{e}",
+      "args": ["machine", "e"]
+    },
+    "rsSftp.deploy.tildePath": {
+      "kind": "error",
+      "zh": "{machine} 的后端路径里有 ~，自动部署不认这种写法，没有装。在机器页把后端路径改成完整路径。",
+      "args": ["machine"]
+    },
+    "rsSftp.identity.undecidable": {
+      "kind": "error",
+      "zh": "判不了 {machine} 的 {path} 是哪一版后端，没有动它：{why}",
+      "args": ["machine", "path", "why"]
+    },
+    "rsSftp.identity.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "rsSftp.identity.multiple": {
+      "kind": "error",
+      "zh": "{machine} 的 {path} 自报了不止一个版本（{ids}），{handsOff}",
+      "args": ["machine", "path", "ids", "handsOff"]
+    },
+    "rsSftp.identity.unstamped": {
+      "kind": "error",
+      "zh": "{machine} 的 {path} 已经有一个文件，它不说自己是哪一版后端，{handsOff}",
+      "args": ["machine", "path", "handsOff"]
+    },
+    "rsSftp.identity.other": {
+      "kind": "body",
+      "zh": "那台上是 {s}，这一版是 {expected}",
+      "args": ["s", "expected"]
+    },
+    "rsSftp.identity.empty": {
+      "kind": "body",
+      "zh": "那台上那一份是 0 字节",
+      "args": []
+    },
+    "rsSftp.identity.missing": {
+      "kind": "body",
+      "zh": "那台上还没有后端",
+      "args": []
+    },
+    "rsSftp.identity.handsOff": {
+      "kind": "body",
+      "zh": "没有覆盖它。要换成这一版：先在机器页点「卸载后端」删掉它，再部署。",
+      "args": []
+    },
+    "rsSftp.stamp.unfinished": {
+      "kind": "body",
+      "zh": "那一问没有答完",
+      "args": []
+    },
+    "rsSftp.deploy.versionMismatch": {
+      "kind": "body",
+      "zh": "版本不符（远端 {remote} ≠ 期望 {expected}）",
+      "args": ["remote", "expected"]
+    },
+    "rsSftp.deploy.missing": {
+      "kind": "body",
+      "zh": "远端还没装后端",
+      "args": []
+    },
+    "rsSftp.profile.notUtf8": {
+      "kind": "error",
+      "zh": "{what} 不是合法 UTF-8（前 {validBytes} 字节合法，之后不是）。ccm 块的合并/删除是按文本做的，按有损文本写回会把这些字节永久换成 U+FFFD，连备份一起坏掉。已取消，未改动任何文件。",
+      "args": ["what", "validBytes"]
+    },
+    "rsSftp.profile.emptyRead": {
+      "kind": "error",
+      "zh": "{what} 在远端有 {n} 字节，但读回来是空的。已取消，未改动任何文件——继续走会用「空内容 + ccm 块」覆盖掉那 {n} 字节。",
+      "args": ["what", "n"]
+    },
+    "rsSftp.profile.unreadable": {
+      "kind": "error",
+      "zh": "读不出 {what}（文件可能存在但无权限 / 被占用 / 传输失败）。已取消，未改动任何文件。",
+      "args": ["what"]
+    },
+    "rsSftp.upload.badKept": {
+      "kind": "error",
+      "zh": "{bad}传坏的这一份没删掉：{e}",
+      "args": ["bad", "e"]
+    },
+    "rsSftp.upload.badRemoved": {
+      "kind": "error",
+      "zh": "{bad}已删掉传坏的这一份，下次连上会重新装。",
+      "args": ["bad"]
+    },
+    "rsSftp.verify.lengthDiffers": {
+      "kind": "error",
+      "zh": "上传后校验失败：{path} 长度不匹配（期望 {expectedLen} 字节，读回 {gotLen} 字节）。",
+      "args": ["path", "expectedLen", "gotLen"]
+    },
+    "rsSftp.verify.contentDiffers": {
+      "kind": "error",
+      "zh": "上传后校验失败：{path} 长度相同（{expectedLen} 字节）但内容不同。首个差异在第 {at} 字节；这类损坏只比长度是查不出来的。",
+      "args": ["path", "expectedLen", "at"]
+    },
+    "rsSftp.verify.unreadable": {
+      "kind": "error",
+      "zh": "上传后读不回 {path}，无法确认写对了。",
+      "args": ["path"]
     }
   }
 }
