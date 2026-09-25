@@ -196,8 +196,20 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         },
     ];
     let mut said = BTreeSet::new();
-    for r in &cases {
-        let s = r.say("aya");
+    // 〔TL1 · 4C〕两件产物各一组话：全景推字节也走 `choose` 之后，同一种拒绝对两件产物说两句（后果不同）。
+    for (r, product) in cases
+        .iter()
+        .flat_map(|r| [(r, Product::Backend), (r, Product::Panorama)])
+    {
+        let s = r.say(product, "aya");
+        let noun = match product {
+            Product::Backend => "后端",
+            Product::Panorama => "代码全景组件",
+        };
+        assert!(s.contains(noun), "{r:?} / {product:?} 没说是哪件东西：{s}");
+        if product == Product::Panorama {
+            assert!(!s.contains("后端"), "全景那一句说成了后端：{s}");
+        }
         assert!(!s.contains('〔'), "{r:?} 的 key 不在文案表里：{s}");
         assert!(s.contains("aya"), "{r:?} 没说是哪台：{s}");
         assert!(!s.contains('{'), "{r:?} 还有没填的占位符：{s}");
@@ -227,7 +239,7 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         // 每一形说的是**自己那一句**（`96 §7.1.4b` 那张表的第一句，各取一个它独有的词）：
         //   只比「五句互不相同」挡不住「一形借了另一形的句子、填了不同的参数」（死值验 K6 首刀没砍中，补这一向）。
         let own = match r {
-            Refusal::UnsupportedMachine { .. } => "不为这种机器准备后端",
+            Refusal::UnsupportedMachine { .. } => "不为这种机器准备",
             Refusal::OsUnknown { .. } => "是什么系统",
             Refusal::ArchUnknown { .. } => "处理器架构",
             Refusal::NotPromisedHere { .. } => "只在本机用得上",
@@ -239,7 +251,11 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         );
         said.insert(s);
     }
-    assert_eq!(said.len(), cases.len(), "五形里有两形说成了同一句");
+    assert_eq!(
+        said.len(),
+        cases.len() * 2,
+        "五形 × 两件产物里有两句说成了同一句"
+    );
 }
 
 // ═══ 槽 ↔ 键 ════════════════════════════════════════════════════════════════════════════

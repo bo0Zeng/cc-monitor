@@ -135,6 +135,7 @@ fn safe_dir_accepts_conventional_paths() {
     assert!(is_safe_remote_acct_iso_dir("/home/z/.cc-monitor/x")); // 含 .cc-monitor
 }
 
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（远端落点路径）。
 #[test]
 fn safe_dir_rejects_dangerous() {
     assert!(!is_safe_remote_acct_iso_dir("")); // 空

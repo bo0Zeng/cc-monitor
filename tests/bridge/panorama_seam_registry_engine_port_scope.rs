@@ -124,7 +124,13 @@ fn ports_in(corpus: &[(String, String)], needle: &str) -> Vec<String> {
     out
 }
 
-/// ★ 正题：**三棵树合起来，取用口的住址表只有那一处。**
+/// ★ 正题：**每一棵我们编的树合起来，取用口的住址表只有那一处。**
+///
+/// 〔TL1 · 4C · 2026-09-25〕**取用面今天只有这一份真相**：后端那侧 `panorama_locus_guard` 原先的正题②（后端树零处）
+/// 与正题③（小程序树恰一处 ＋ monitor 树零处）并进来了 —— 六刀现量，凡红它们的，本条或
+/// `tests::the_engine_is_opened_in_exactly_one_place`（`main.rs` 里恰一次）都红，它们没有独占格（`TL1.md` 件 2）。
+/// 那边只留链接面（lock 登记 · 共享 crate 零依赖声明）。⚠ 本条的「非空」（住址表 == 小程序 `main.rs`）
+/// 就是后端那一格「零」不是空真的证明 —— 原先由那边正题③的「非空的 1」担着。
 #[test]
 fn the_engine_port_is_pinned_across_every_tree_we_compile() {
     let mut corpus: Vec<(String, String)> = Vec::new();

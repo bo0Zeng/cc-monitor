@@ -165,7 +165,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 | job | 套件 |
 |---|---|
 | `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume · ccm-rbind-title |
-| `e2e-tmux-rust` | inbound-frames · backend-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · backend-fork · backend-sessions-rewatch · backend-tmux-late-server · backend-cc-bus |
+| `e2e-tmux-rust` | inbound-frames · backend-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · backend-fork · backend-sessions-rewatch · backend-tmux-late-server · backend-cc-bus · p3t-local-tmux |
 
 > 〔`K-R72` 09-12〕`tmux-guarded-acceptance.sh` **整套删了**：它的输入源是 `tmux.rs` 那两条
 > 桌面侧 SSH 回落的 builder，回落删净之后它连命令串都取不到 ⇒ 跑不起来。三道门的真机覆盖

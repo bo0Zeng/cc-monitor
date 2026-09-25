@@ -66,7 +66,7 @@ mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monito
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 mod launch;
-mod local_accounts; // L3a 起：本机账号层 —— 今天只剩 `acct-iso` 两问的本机对侧（〔C4d〕本机清单的参照实现删了）
+mod local_accounts; // L3a 起：本机账号域 —— 今天只剩 `acct-iso` 两问的本机对侧（〔C4d〕本机清单的参照实现删了）
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
@@ -87,7 +87,7 @@ mod profile_installer;
 mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
 mod remote_history;
-mod remote_relay; // 〔RM1a〕中转（层 1）按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
+mod remote_relay; // 〔RM1a〕中转按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod search;
 mod session_facts; // 〔U4b〕两条后端流交来、要送前端的会话事实（容器 · 本机可重连落已结束）的一个口
@@ -1810,7 +1810,7 @@ struct ApikeyRouting {
 /// # 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**
 ///
 /// 上面「只答本机」那段理由的前提是「本机这一侧在结构上答不了远端那台」—— 今天远端那台的后端
-/// 自己答得了：表里有哪几行（账号层，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
+/// 自己答得了：表里有哪几行（上游选择，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
 /// 两件事**各问各的**（`apikey_remote::rows_on` / `remote_relay::running_on`，两个模块互不引用），
 /// 只在这里拼成一份给界面。本机那一臂两件事都照旧走 [`history::inject_facts`] 那条缝。
 /// 〔RL1〕两台的 `running` 今天是**同一个判准**：「那个口上有人在听」（本机那一格也改成回环连一次）。
@@ -1929,6 +1929,7 @@ async fn aliases_read(
 /// 〔RW1 · 第四波 09-24〕落盘经**本机后端**的文件管理那一面（`user_files::BackendDoor`），
 /// home 也问它 ⇒ 那边的测试拿替身门当后端，结构上碰不到真实家目录。
 /// 〔AL1c〕`shell` 定写哪一种（别名文件 ＋ 它的写法）；`rc_path` 那份文件的方言由它自己的扩展名定。
+/// 〔TL1 · 4C〕`rc_path` 今天**只查**（接没接上），不往里写（`设计/71 §6.1`：source 那一行只住别名块里）。
 #[tauri::command]
 async fn aliases_install(
     aliases: Vec<account_aliases::Alias>,

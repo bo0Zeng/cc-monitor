@@ -13,9 +13,8 @@ use std::path::{Path, PathBuf};
 /// Case-fold the path on Windows so notify's NTFS case variance does not double
 /// emit; on other platforms keep the path verbatim.
 ///
-/// 与 monitor 侧 `src/bridge/src/watcher.rs` 的同名两分支同规则。
-/// **原注释写的是「Mirrors `watcher.rs`」** —— U2 把本函数搬进后端的 `platform/` 之后，
-/// 读者会去看**本 crate** 的 `watcher.rs`，而那里已经没有 `path_key` 了。写全路径，别留悬空指向。
+/// 〔TL1 · 4C〕从前这里写「与 monitor 侧那份 jsonl 读者的同名两分支同规则」—— 那份读者 CF1 删了，
+/// 今天这两个分支只有这一份（调用方是本 crate 的 `observe/watcher.rs`）。
 #[cfg(windows)]
 pub(crate) fn path_key(p: &Path) -> PathBuf {
     PathBuf::from(p.to_string_lossy().to_ascii_lowercase())

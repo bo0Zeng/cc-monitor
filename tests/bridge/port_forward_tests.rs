@@ -42,6 +42,7 @@ fn spec(lp: u16, rh: &str, rp: u16) -> ForwardSpec {
     }
 }
 
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
 #[test]
 fn validate_spec_guards() {
     assert!(validate_spec(&spec(15432, "localhost", 5432)).is_ok());

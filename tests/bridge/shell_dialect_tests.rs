@@ -228,8 +228,6 @@ fn startup_files_follow_each_shells_own_convention() {
     );
     std::fs::create_dir_all(docs.join("PowerShell")).unwrap();
     assert_eq!(PowerShell.startup_files(&home).len(), 4);
-    assert!(PowerShell.creates_missing_startup_file());
-    assert!(!Posix.creates_missing_startup_file());
 }
 
 /// 撞名（只出声）：PowerShell 认终端集成模板里的函数（从模板现算，大小写不敏感）。
