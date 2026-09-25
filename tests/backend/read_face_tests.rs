@@ -92,11 +92,11 @@ fn every_member_has_its_own_arm_and_strangers_do_not() {
     let home = scratch("arms");
     for n in FAMILY {
         if let Err((_, m)) = answer_at(&home, n, &serde_json::json!({})) {
-            assert!(!m.contains("本族不认识"), "`{n}` 落进了兜底臂：{m}");
+            assert!(!m.contains("has no command"), "`{n}` 落进了兜底臂：{m}");
         }
     }
     match answer_at(&home, "history-nope", &serde_json::json!({})) {
-        Err((c, m)) => assert!(c == "bad_args" && m.contains("本族不认识"), "{c}: {m}"),
+        Err((c, m)) => assert!(c == "bad_args" && m.contains("has no command"), "{c}: {m}"),
         Ok(v) => panic!("陌生命令被答了：{v}"),
     }
     let _ = std::fs::remove_dir_all(&home);
