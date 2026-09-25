@@ -517,25 +517,43 @@ fn the_real_adapters_speak_only_through_the_channel() {
     );
 }
 
-/// 🔴 **一个窗口的一趟拖入占不满池子的通道闸。**
+/// 🔴 **一个窗口的一趟拖入：不超过那条连接的传输车道，也要不满整条连接的通道闸。**
 ///
-/// 〔第四波 S4〕这一条原先钉「窗口起几件 == 池里的车道数」（两份副本 ＋ 相等）。车道闸随浏览离开
-/// SFTP 退役了，池里只剩一道通道闸（`SESSION_CHANNEL_CAP`）⇒ 窗口这个数不再是谁的副本，
-/// 它与池子之间剩下的关系是：**一个窗口的一趟拖入不该一口气要满整个通道预算**
-/// （第二个窗口 / 第二趟拖入还要能借到通道，否则它们整趟排在第一趟后面）。
-/// 窗口那个数本身仍钉死 4（改它要回来想清楚这条关系）。
+/// 〔第四波 S4〕这一条原先钉「窗口起几件 == 池里的车道数」（两份副本 ＋ 相等）；车道闸退役之后改钉
+/// 「一个窗口的一趟拖入占不满池子的通道闸」。〔SR1b · 09-24〕池子搬进了本机常驻后端、预算改成**按连接**记
+/// （`dial/pool.rs`：一条连接上 session 通道 `SESSION_CHANNEL_CAP`，其中传输至多 `TRANSFER_LANE_CAP`）⇒ 关系换成两条：
+/// ① 窗口一趟起的件数 ≤ 传输车道（多起的只会在车道前排队，白挂订阅）；
+/// ② 窗口一趟起的件数 < 整条连接的通道闸（同一台远端的会话长流与查询还要有格子）。
+/// 两个数**现读后端源码**（异源：后端那一份常量，不是窗口自己的副本）。窗口那个数本身仍钉死 4。
 #[test]
-fn one_windows_burst_never_fills_the_pools_channel_gate() {
+fn one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection() {
     assert_eq!(
         lanes(),
         4,
         "窗口一趟拖入同时起几件变了 —— 这个数改了要回来重读本条那段关系"
     );
+    let pool = guard_core::production_code(include_str!("../../../src/backend/dial/pool.rs"));
+    let cap_of = |name: &str| -> usize {
+        let line = format!("pub(crate) const {name}: usize = ");
+        let at = guard_core::find_pinned(&pool, &line)
+            .unwrap_or_else(|e| panic!("后端 `dial/pool.rs` 里找不到 `{name}`：{e}"));
+        pool[at + line.len()..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>()
+            .parse()
+            .unwrap_or_else(|_| panic!("`{name}` 的值读不出来"))
+    };
+    let (lane, sessions) = (cap_of("TRANSFER_LANE_CAP"), cap_of("SESSION_CHANNEL_CAP"));
     assert!(
-        lanes() < crate::sftp_pool::SESSION_CHANNEL_CAP,
-        "窗口一趟拖入同时起 {} 件，而池子的通道闸只有 {} 格 —— 一个窗口就能把通道预算要满",
-        lanes(),
-        crate::sftp_pool::SESSION_CHANNEL_CAP
+        lanes() <= lane,
+        "窗口一趟拖入同时起 {} 件，而一条连接的传输车道只有 {lane} 格 —— 多出来的只是在车道前白挂订阅",
+        lanes()
+    );
+    assert!(
+        lanes() < sessions,
+        "窗口一趟拖入同时起 {} 件，而一条连接的通道闸只有 {sessions} 格 —— 一个窗口就能把会话与查询饿死",
+        lanes()
     );
     // 窗口那一侧**只经这一个落点**拿那个数，不自己再写一份。
     let shell =

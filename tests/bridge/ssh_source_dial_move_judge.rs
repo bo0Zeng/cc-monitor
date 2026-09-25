@@ -44,12 +44,12 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
     ),
     (
         "sftp.rs",
-        1,
-        false,
-        "SFTP 会话（部署 / 传文件）。它要的是一个 russh 连接句柄（同一条连接上开多条 sftp 通道），\
-             不是一条字节流 ⇒ 仍在界面进程里拨，用的是 `inproc_dial.rs` 那一份搬来的旧实现。",
-        "`F7c` 把 SFTP 换到拨号代理上（要先裁两件：池预算在「一条通道一条 SSH 连接」下怎么算 · \
-             红线 I7 那一裁 —— 后端的远端写那一层把请求 sftp 子系统判作远端写能力，`设计/05 §13.5`）。",
+        0,
+        true,
+        "〔SR1b 09-24〕**搬走了**：SFTP 进了本机常驻后端（用户 V89），与其它 SSH 同一条连接；\
+             部署经那条 `files` 链路（`dial_host::RemoteFs`），传输经 `transfer-*`。\
+             〔从前：「SFTP 会话要一个 russh 连接句柄，不是一条字节流 ⇒ 仍在界面进程里拨，用 `inproc_dial.rs` 那一份」。〕",
+        "已经是 0。这一行留着是为了让「又长回来一处」当场红（处数钉成 0，不是删行）。",
     ),
     (
         "port_forward.rs",
@@ -58,14 +58,8 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
         "〔C2 09-24〕**搬走了**：绑口与 direct-tcpip 都在拨号代理里（`use: forward`），本文件只剩命令面与转发账。",
         "已经是 0。这一行留着是为了让「又长回来一处」当场红。",
     ),
-    (
-        "inproc_dial.rs",
-        1,
-        false,
-        "〔C2 09-24〕进程内那一份自己的跳板（`connect_via_jump` 递归调 `connect_session` 连跳板那台）—— \
-             整份文件只服务 `sftp.rs`，是它那一处的一部分，不是新长出来的拨号。",
-        "与 `sftp.rs` 那一行同一天删：SFTP 换走 ⇒ 本文件整份删 ⇒ `russh` 出 `Cargo.toml`。",
-    ),
+    // 〔SR1b 09-24〕`inproc_dial.rs` 那一行（进程内那一份自己的跳板，只服务 `sftp.rs`）**兑现了它写的解锁条件**：
+    //   「与 `sftp.rs` 那一行同一天删：SFTP 换走 ⇒ 本文件整份删 ⇒ `russh` 出 `Cargo.toml`」—— 三件同拍。文件不在了，行随之删。
 ];
 
 /// 语料地板：低于这个字节数就判「语料没喂进来」，而不是「一处都没有」。
@@ -91,10 +85,6 @@ fn corpus() -> Vec<(&'static str, String)> {
         (
             "port_forward.rs",
             production_code(include_str!("../../src/bridge/src/port_forward.rs")),
-        ),
-        (
-            "inproc_dial.rs",
-            production_code(include_str!("../../src/bridge/src/inproc_dial.rs")),
         ),
     ]
 }
@@ -236,8 +226,9 @@ fn six_of_the_seven_dial_sites_are_still_in_this_process() {
         total += got;
     }
     assert_eq!(
-        total, 2,
-        "界面侧拨号调用点总数是 {total}，登记的是 **2**（都是 SFTP 那一家：`sftp.rs` 1 ＋ 它用的 `inproc_dial.rs` 跳板 1）。\n\
+        total, 0,
+        "界面侧拨号调用点总数是 {total}，登记的是 **0**（〔SR1b 09-24〕**2 → 0**：SFTP 那一家 —— `sftp.rs` 1 ＋ \
+             它用的 `inproc_dial.rs` 跳板 1 —— 进了本机常驻后端，界面进程零 SSH）。\n\
              ⚠ 〔C2 09-24〕**6 → 2**：`ssh_source.rs` 4 与 `port_forward.rs` 1 搬进拨号代理；\
              `inproc_dial.rs` 那 1 处是 `ssh_source.rs` 原来那 4 处里的跳板一处**原样搬过去**的（只服务 SFTP）。\n\
              这两个数必须一起动 —— 本表就是那句话的家。\n\
@@ -257,8 +248,8 @@ fn six_of_the_seven_dial_sites_are_still_in_this_process() {
     }
     let moved = DIAL_SITES.iter().filter(|(_, _, m, ..)| *m).count();
     assert_eq!(
-        moved, 2,
-        "登记表说有 {moved} 份文件的拨号已经搬走了（C2 之后应当是 `ssh_source.rs` 与 `port_forward.rs` 两份）"
+        moved, 3,
+        "登记表说有 {moved} 份文件的拨号已经搬走了（C2 之后 `ssh_source.rs` 与 `port_forward.rs` 两份；〔SR1b〕+ `sftp.rs`）"
     );
 }
 
@@ -449,33 +440,44 @@ fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
         &["pub async fn connect_and_exec("],
     );
     // ⚠ 本判据的语料是**四份**文件，这里只立了 `ssh_source.rs` 那一份的对照 ——
-    //    另三份（`sftp.rs` / `port_forward.rs` / `inproc_dial.rs`）的针在它们各自第一个测试模块**之前**，
+    //    另两份（`sftp.rs` / `port_forward.rs`；〔SR1b〕`inproc_dial.rs` 那份整份删了）的针在它们各自第一个测试模块**之前**，
     //    便宜近似留得住 ⇒ 立对照会恒真。**那不是「已守住」，是「这一形在那两份上不成立」。**
 }
 
-/// 〔C2 · `设计/05 §13.8 ①`〕**界面 crate 里还在用 `russh` 的文件 == {SFTP 那一家}**（两向）。
+/// 〔C2 · `设计/05 §13.8 ①`〕→〔SR1b · 2026-09-24〕**界面 crate 里点名 `russh` / `russh_sftp` 的文件：零**（带正控）。
 ///
-/// 这是「`russh` 出界面 crate」那一面旗在**过程**上的样子：旗今天还倒不下（`Cargo.toml` 里那一行
-/// 因 SFTP 留着，理由住 `inproc_dial.rs` 头注），但**谁还在用它**是一个闭集，多一份少一份都红。
-/// ⚠ 数的是**代码里点名 `russh::` / `use russh`**（`russh_sftp` 不算 —— 它不依赖 `russh`，传输由调用方喂）。
-/// 买不到：经宏或别名间接用到它；「依赖树里有没有它」那面旗（归 `dial_home_registry::russh_deps_in`）。
+/// C2 那一版钉的是「== {SFTP 那一家}」（`inproc_dial.rs` · `sftp.rs`），逐字写着「SFTP 换走了 ⇒ 把 `inproc_dial.rs` 整份删掉、
+/// `Cargo.toml` 的 `russh` 一起删，本条改成零命中」—— 这一拍就是那一刀（用户 V89：SFTP 进本机常驻后端，界面进程零 SSH）。
+/// 〔墓碑 —— 旧名 `russh_lives_only_where_sftp_still_needs_it`〔散文墓碑〕：名字说的是「只剩 SFTP 还要它」，今天没有谁要它了。〕
+/// ⚠ 数的是**代码里点名**（`russh::` / `use russh` / `russh_sftp`）；买不到：经宏或别名间接用到它。
+/// 清单那一面（manifest 里没有这几条依赖）同条钉；「依赖树里有没有它」那面旗归 `dial_home_registry::russh_deps_in`。
 #[test]
-fn russh_lives_only_where_sftp_still_needs_it() {
+fn russh_is_named_nowhere_in_the_monitor_crate() {
+    // 运行时拼：写成字面量的话本文件自己会被扫进去（虽然本文件整份是测试段、剥法会剥掉，仍按先例从严）。
+    let needles = [
+        format!("russh{}", "::"),
+        format!("use {}", "russh"),
+        format!("russh{}sftp", "_"),
+    ];
+    let hit = |prod: &str| -> bool {
+        prod.lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .any(|l| needles.iter().any(|n| l.contains(n.as_str())))
+    };
+    // 正控：从前那两份的写法，每一形都认得出。
+    for sample in [
+        "use russh::client;\n",
+        "fn f(s: &russh_sftp::client::SftpSession) {}\n",
+        "let h: russh::client::Handle<X>;\n",
+    ] {
+        assert!(hit(sample), "针在正控语料上不亮：{sample:?} —— 本条是瞎的");
+    }
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut users: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut scanned = 0usize;
     for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
         scanned += 1;
-        let prod = production_code(&raw);
-        let hits = prod
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .any(|l| {
-                l.contains("russh::")
-                    || l.trim_start().starts_with("use russh::")
-                    || l.contains("use russh;")
-            });
-        if hits {
+        if hit(&production_code(&raw)) {
             users.insert(
                 path.strip_prefix(&root)
                     .unwrap_or(&path)
@@ -488,14 +490,27 @@ fn russh_lives_only_where_sftp_still_needs_it() {
         scanned >= 100,
         "只扫到 {scanned} 份 `.rs` —— 遍历坏了，本条在空转"
     );
-    let want: std::collections::BTreeSet<String> = ["inproc_dial.rs", "sftp.rs"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(
-        users, want,
-        "界面 crate 里点名 `russh` 的文件变了。\n\
-         多出来的 ⇒ 有人在界面进程里又拨起 SSH 来了 —— 拨号归后端（`设计/05 §13`），走 `dial_host`；\n\
-         少了的 ⇒ SFTP 换走了？那就把 `inproc_dial.rs` 整份删掉、`Cargo.toml` 的 `russh` 一起删，本条改成零命中。"
+    assert!(
+        users.is_empty(),
+        "界面 crate 里又点名了 `russh` / `russh_sftp`：{users:?}\n\
+         ⇒ 有人在界面进程里又拨起 SSH / 开起 SFTP 来了 —— SSH 与 SFTP 都归本机常驻后端（`src/backend/dial/`），\
+         界面经 `dial_host`（链路 · `RemoteFs`）与 `transfer-*` 够到它们。"
+    );
+    // 清单那一面：界面 crate 的依赖段里没有这两条（也没有只为它们而钉的 `primefield`）。
+    let manifest = include_str!("../../src/bridge/Cargo.toml");
+    for dep in ["russh", "russh-sftp", "primefield"] {
+        let line = format!("{dep} = ");
+        assert!(
+            !manifest
+                .lines()
+                .any(|l| l.trim_start().starts_with(line.as_str())),
+            "`src/bridge/Cargo.toml` 里又声明了 `{dep}` —— 界面进程零 SSH（V89）"
+        );
+    }
+    assert!(
+        manifest
+            .lines()
+            .any(|l| l.trim_start().starts_with("tokio = ")),
+        "清单里连 `tokio = ` 都抠不到 —— 读错了文件，上面那条零命中在空转"
     );
 }

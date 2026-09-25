@@ -93,18 +93,18 @@ describe("buildAcctIsoCmd", () => {
   });
 });
 
-describe("deriveAcctIsoDir (F5 部署目录推导)", () => {
+describe("deriveAcctIsoDir (F5 部署目录推导；〔SR1b〕落 .cc-monitor/bin 底下)", () => {
   it("从 backendPath 的 .cc-monitor 根推导（与后端同根）", () => {
     expect(deriveAcctIsoDir("/home/z/.cc-monitor/bin/cc-monitor-backend")).toBe(
-      "/home/z/.cc-monitor/cc-acct-iso",
+      "/home/z/.cc-monitor/bin/cc-acct-iso",
     );
   });
   it("backendPath 以 /.cc-monitor 结尾也处理", () => {
-    expect(deriveAcctIsoDir("/opt/app/.cc-monitor")).toBe("/opt/app/.cc-monitor/cc-acct-iso");
+    expect(deriveAcctIsoDir("/opt/app/.cc-monitor")).toBe("/opt/app/.cc-monitor/bin/cc-acct-iso");
   });
-  it("无 backendPath → 回退 /home/<user>/.cc-monitor/cc-acct-iso", () => {
-    expect(deriveAcctIsoDir("", "user")).toBe("/home/user/.cc-monitor/cc-acct-iso");
-    expect(deriveAcctIsoDir(undefined, "a_b-c.1")).toBe("/home/a_b-c.1/.cc-monitor/cc-acct-iso");
+  it("无 backendPath → 回退 /home/<user>/.cc-monitor/bin/cc-acct-iso", () => {
+    expect(deriveAcctIsoDir("", "user")).toBe("/home/user/.cc-monitor/bin/cc-acct-iso");
+    expect(deriveAcctIsoDir(undefined, "a_b-c.1")).toBe("/home/a_b-c.1/.cc-monitor/bin/cc-acct-iso");
   });
   it("backendPath 与 user 都拿不到 / user 非法 → null", () => {
     expect(deriveAcctIsoDir("", "")).toBeNull();

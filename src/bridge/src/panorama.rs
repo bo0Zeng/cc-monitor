@@ -42,7 +42,7 @@
 //! 函数级调用子图 + 影响面），**整条 issue 没完** —— 缺的正是上面这半。
 
 use code_picture_core::diagram::{self, DiagramKind, DiagramKindInfo, DiagramRequest};
-use code_picture_core::{model, Engine, EngineOpts};
+use code_picture_core::{edits, model, Engine, EngineOpts};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -273,90 +273,112 @@ pub async fn panorama_drift(repo: String) -> Result<Vec<model::DriftItem>, Strin
     with_engine(repo, |e| e.drift()).await
 }
 
-// === F72:批注 + 文档关联写层（只调 core 现成接口，SS-15；写落被分析仓、人手势触发） ===
+// === F72 批注 + 文档关联：〔RM1d · V110「引擎只算、文件管理来写」〕这里**只算不写** ===
+//
+// 原先本机那六条写命令经内嵌引擎的写方法**直写被分析仓**（用户文件）—— 违反 V88，已删：写统一走
+// `panorama_call.rs::panorama_edit`（本机远端同一条命令），落盘经那台机器后端的 `files-put` / `files-delete`。
+// 本机的「算」暂住这里（进程内引擎只调上游 `edits::plan_*`，只读）；远端的「算」在那台机器的全景小程序里。
+// 两处参数形状逐字相同（小程序那一侧是 `src/panorama-engine/main.rs` 里「算」那一组分派）——
+// 本机对称那一拍（monitor 摘内嵌引擎）之后只剩小程序那一份。
 
-/// F72:人写批注(直接 Active——人写永远赢)。落被分析仓 `<repo>/.codepicture/annotations/`(可提交、
-/// 随仓走，F72 分家)。`symbol` = 符号段(如 `f`/`Type::method`)，None = 文件级批注。
-#[tauri::command]
-pub async fn panorama_add_annotation(
-    repo: String,
-    file: String,
-    symbol: Option<String>,
-    body: String,
-    author: String,
-) -> Result<String, String> {
-    with_engine(repo, move |e| {
-        e.add_annotation(&file, symbol.as_deref(), &body, &author)
-            .map_err(|e| e.to_string())
-    })
-    .await?
-}
-
-/// F72:agent 提议批注(Proposed，需人 `approve` 才 Active——人审门禁；对消费者不可见直到批准)。
-#[tauri::command]
-pub async fn panorama_propose_annotation(
-    repo: String,
-    file: String,
-    symbol: Option<String>,
-    body: String,
-    author: String,
-) -> Result<String, String> {
-    with_engine(repo, move |e| {
-        e.propose_annotation(&file, symbol.as_deref(), &body, &author)
-            .map_err(|e| e.to_string())
-    })
-    .await?
-}
-
-/// F72:批准一条 Proposed 批注 → Active(人审门禁)。
-#[tauri::command]
-pub async fn panorama_approve_annotation(repo: String, id: String) -> Result<bool, String> {
-    with_engine(repo, move |e| {
-        e.approve_annotation(&id).map_err(|e| e.to_string())
-    })
-    .await?
-}
-
-/// F72:删批注。
-#[tauri::command]
-pub async fn panorama_remove_annotation(repo: String, id: String) -> Result<bool, String> {
-    with_engine(repo, move |e| {
-        e.remove_annotation(&id).map_err(|e| e.to_string())
-    })
-    .await?
-}
-
-/// F72:列全部批注(含 Proposed，给审批队列)。
+/// 列全部批注(含 Proposed，给审批队列)。**读**。
 #[tauri::command]
 pub async fn panorama_list_annotations(repo: String) -> Result<Vec<model::Annotation>, String> {
     with_engine(repo, |e| e.list_annotations()).await
 }
 
-/// F72:把某 `.md` 关联到某符号(写 doc 的 frontmatter `covers:`，进仓、可提交)。人手势触发——
-/// 绝不接自动流程(融合手册)。
-#[tauri::command]
-pub async fn panorama_write_doc_link(
-    repo: String,
-    doc: String,
-    target: String,
-) -> Result<(), String> {
-    with_engine(repo, move |e| {
-        e.write_doc_link(&doc, &target).map_err(|e| e.to_string())
-    })
-    .await?
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnnotateArgs {
+    file: String,
+    symbol: Option<String>,
+    body: String,
+    author: String,
 }
 
-/// F72:删除某 `.md` 对某符号的关联。
-#[tauri::command]
-pub async fn panorama_remove_doc_link(
-    repo: String,
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IdArgs {
+    id: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocLinkArgs {
     doc: String,
     target: String,
-) -> Result<bool, String> {
-    with_engine(repo, move |e| {
-        e.remove_doc_link(&doc, &target).map_err(|e| e.to_string())
+}
+
+fn take<T: serde::de::DeserializeOwned>(op: &str, args: serde_json::Value) -> Result<T, String> {
+    serde_json::from_value(args).map_err(|e| format!("全景 `{op}` 的参数不合形：{e}"))
+}
+
+fn planned<T: serde::Serialize>(
+    r: Result<edits::Planned<T>, edits::PlanError>,
+) -> Result<serde_json::Value, String> {
+    let p = r.map_err(|e| e.to_string())?;
+    serde_json::to_value(p).map_err(|e| format!("编辑计划序列化失败：{e}"))
+}
+
+/// 〔RM1d〕**本机的「算」**：给定 `plan_op`（`panorama_call::EDITS` 第二列）与参数，读仓里那一两份、
+/// 调上游 `edits::plan_*`，交回 `{value, edit}`。**一个字节不写**（判据
+/// `tests::the_monitor_never_writes_annotations_or_doc_links_itself`）。不开引擎、不碰索引。
+pub(crate) async fn plan_local(
+    repo: String,
+    plan_op: &'static str,
+    args: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || {
+        let canon =
+            std::fs::canonicalize(&repo).map_err(|e| format!("仓路径无效（{repo}）: {e}"))?;
+        let r = canon.as_path();
+        match plan_op {
+            "plan_add_annotation" => {
+                let a: AnnotateArgs = take(plan_op, args)?;
+                planned(edits::plan_add_annotation(
+                    r,
+                    &a.file,
+                    a.symbol.as_deref(),
+                    &a.body,
+                    &a.author,
+                ))
+            }
+            "plan_propose_annotation" => {
+                let a: AnnotateArgs = take(plan_op, args)?;
+                planned(edits::plan_propose_annotation(
+                    r,
+                    &a.file,
+                    a.symbol.as_deref(),
+                    &a.body,
+                    &a.author,
+                ))
+            }
+            "plan_approve_annotation" => {
+                let a: IdArgs = take(plan_op, args)?;
+                planned(edits::plan_approve_annotation(r, &a.id))
+            }
+            "plan_remove_annotation" => {
+                let a: IdArgs = take(plan_op, args)?;
+                planned(edits::plan_remove_annotation(r, &a.id))
+            }
+            "plan_write_doc_link" => {
+                let a: DocLinkArgs = take(plan_op, args)?;
+                planned(edits::plan_write_doc_link(r, &a.doc, &a.target))
+            }
+            "plan_remove_doc_link" => {
+                let a: DocLinkArgs = take(plan_op, args)?;
+                planned(edits::plan_remove_doc_link(r, &a.doc, &a.target))
+            }
+            other => Err(format!("不认识的全景「算」op `{other}`")),
+        }
     })
-    .await?
+    .await
+    .map_err(|e| format!("panorama 任务失败: {e}"))?
+}
+
+/// 〔RM1d〕本机：外面落了 `.md` 之后让索引里的文档关联跟上（只写索引，落数据目录）。
+pub(crate) async fn refresh_doc_links_local(repo: String) -> Result<(), String> {
+    with_engine(repo, |e| e.refresh_doc_links().map_err(|e| e.to_string())).await?
 }
 
 // === PN1b:选图(`设计/97 §7`)—— 图种与图都**原样透出**上游的注册表与 `Diagram` ===

@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §18`（`TaskEntry` 宽容解析）＋ `INVARIANTS §40`（本机也走后端那条路）
+//!
+//! 核原文：`INVARIANTS §18` 逐字「`tasks/<sid>/<id>.json` (`tasks::TaskEntry`) — 已经按宽容处理」—— 解析那两条判它；
+//! `§40` 逐字「一条路径，transport 是它唯一的差异」—— 本模块不再自己读任务文件那一条判它。
+//! 由变更路径反推 sid 与 camelCase 那几条是普通模块行为，没有逐字原文。〔JA1 点址 2026-09-24〕
+//!
 //! 〔RM1b · 第四波〕读任务文件那一段搬进了后端（`src/backend/observe/tasks_query.rs`，
 //! 它的判据在 `tests/backend/observe/tasks_query_tests.rs`：跳旁文件 · 按数字排 · 半截跳过 ·
 //! 目录不在 = 空 · 目录读不了 ≠ 空 · sid 围栏 · 超限跳过）。本文件只剩 monitor 这一侧的三件：

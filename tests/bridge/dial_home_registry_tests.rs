@@ -22,16 +22,11 @@ fn repo_root() -> PathBuf {
 /// 模块头注「两个数别读混」那一节写着为什么不合并。
 const SITES: &[(&str, usize, &str, &str)] = &[
     // 〔C2 09-24〕`ssh_source.rs`（3）与 `port_forward.rs`（1）两行**整行删了**：拨号与端口转发搬进了后端的
-    // 拨号代理（`src/backend/dial/`），这两份文件里一处锚点都不剩。剩下的三处是 `ssh_source.rs` 那三处
-    // **原样搬过去**的（竞速握手 · 跳板上握手 · 跳板开隧道），住 `inproc_dial.rs`、只服务 SFTP。
-    (
-        "inproc_dial.rs",
-        3,
-        "界面进程里**最后一份**跑 SSH 握手的代码（`client::connect(`）· 跳板上跑握手（`client::connect_stream(`）· \
-             跳板开隧道（`channel_open_direct_tcpip(`）—— 原样搬自 `ssh_source.rs`，唯一调用方是 `sftp.rs`（`F7c` 独占）。",
-        "`F7c` 把 SFTP 换到拨号代理上的那天（`设计/05 §13.5`：池预算与红线 I7 那一裁先定）—— \
-             那一天这一行整行删掉，家变成空集，`russh` 同拍从 `src/bridge/Cargo.toml` 里走。",
-    ),
+    // 拨号代理（`src/backend/dial/`），这两份文件里一处锚点都不剩。
+    // 〔SR1b · 2026-09-24〕**家变成空集**：最后一行 `inproc_dial.rs`（3 处：竞速握手 · 跳板上握手 · 跳板开隧道，
+    //   只服务 SFTP）兑现了它写的解锁条件 ——「SFTP 换走那天这一行整行删掉，家变成空集，`russh` 同拍从
+    //   `src/bridge/Cargo.toml` 里走」。三件同拍：SFTP 进本机常驻后端（V89）· 那份文件整份删 · `russh` 出界面清单。
+    //   模块头注那句「家变成空集那一刻，正是二值旗该翻面的那一刻」—— 旗今天翻面了（下面 `the_interface_side_ssh_debt…` 钉）。
 ];
 
 /// 真正把字节交给 SSH 状态机的入口 —— **锚点与 backend `dial_locality` 逐字同一组**。
@@ -435,6 +430,13 @@ fn the_interface_side_ssh_debt_is_one_number_and_it_is_printed() {
              —— 空了才算 `R32` 裁定一那句话成真。"
     );
 
+    // 〔SR1b · 2026-09-24〕**终点到了**：过程那个数归零、终点那面旗翻面（manifest 里零 `russh` 家族依赖）。
+    //   两个都钉成相等 —— 哪一个回弹都红（回弹 = 界面进程又拨起 SSH / 又开起 SFTP）。
+    assert_eq!(truth, 0, "界面侧还没搬走的拨号又不是 0 了：{truth}");
+    assert!(
+        deps.is_empty(),
+        "界面 crate 的 manifest 里又有 `russh` 家族的直接依赖了：{deps:?} —— 界面进程零 SSH（V89）"
+    );
     // 终点与过程咬在一起：数还没归零，旗就必须还立着。
     // 反过来那一半（旗翻面了而数还没归零）由上面的对拍与棘轮各自接住。
     assert!(
