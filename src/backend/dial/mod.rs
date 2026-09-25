@@ -1,48 +1,43 @@
-//! `--dial` 代理进程 —— **SSH 的一切都在这里**（`设计/05 §13`：拨 SSH 归后端）。
+//! **SSH 的一切都在这里**（`设计/05 §13`：拨 SSH 归后端）—— 〔SR1a〕而且只在**本机那一个常驻后端**里。
 //!
 //! # 它是什么
 //!
-//! monitor（界面进程）要跟某台远端说话时，不再自己拨 SSH：它起一个 `<本机后端> --dial`，
-//! 把一份请求放进环境变量 `CCM_DIAL_REQUEST`，然后**只在这个进程的 stdin/stdout 上收发字节**。
-//! 与远端跑 SSH 的每一件事都在本目录：多地址竞速（F45）· 跳板（F56）· host key 校验
-//! （严格 / TOFU，回报实得指纹）· 鉴权（`key_path` 私钥文件 · ssh-agent）· keepalive ·
+//! 〔SR1a · 2026-09-24，用户裁「改成单一常驻后端」〕本机只常驻一个后端；到各远端的 SSH 连接
+//! **由它持有、按拨号身份复用**（[`pool`]）。monitor（界面进程）要跟某台远端说话时，经它与本机后端之间
+//! **那条已有的流**开一条「链路」（`link-open`，[`link`]），把一份拨号请求（[`DialRequest`]）交过来，
+//! 然后**只在这条链路上收发字节**。与远端跑 SSH 的每一件事都在本目录：多地址竞速（F45）· 跳板（F56）·
+//! host key 校验（严格 / TOFU，回报实得指纹）· 鉴权（`key_path` 私钥文件 · ssh-agent）· keepalive ·
 //! 开 channel 之后的三种用法（[`Use`]）。
 //!
+//! 〔墓碑 —— C2 那一版的原话要点：「monitor 起一个 `<本机后端> --dial`，把请求放进环境变量
+//!  `CCM_DIAL_REQUEST`，然后只在这个进程的 stdin/stdout 上收发字节」「一条链路一个代理进程」。
+//!  SR1a 之后这两句都不成立：`--dial` 那条分派臂删了，每链路一个进程的形态退场。〕
+//!
 //! 🔴 **界面那一侧的 `russh` 拨号已经删了**（`设计/05 §13.4`，用户「后端是给定的，不要退路」）：
-//! 没有「拿不到代理就进程内拨」那条回落，也没有「没配 `keyPath` 就进程内拨」那条回落 ——
-//! 后者的根因（代理不会 ssh-agent）在本目录补上了。**唯一的例外**是 SFTP（`F7c` 独占的
-//! `sftp.rs` 仍在进程内拨，登记在界面侧 `inproc_dial.rs`）。
+//! 没有「拿不到常驻后端就进程内拨」那条回落，也没有「起一个一次性代理进程」那条回落 ——
+//! 常驻后端不在 ⇒ monitor **报**（`dial_host.rs`）。**唯一的例外**是 SFTP（仍在界面侧 `inproc_dial.rs`，
+//! 进常驻后端是 SR1b 的事）。
 //!
 //! ⚠ **SFTP 子系统刻意不在本目录的用法里**：`readonly_guard` 的远端写那一层把
 //! 「在 channel 上请求一个子系统」判作「远端文件传输能力」，红线 `I7` 的裁定（`ROADMAP.md#KU31`「远端 rc 能不能
-//! 替用户写」）今天没拍 ⇒ 后端不许长出这条能力。SFTP 走代理要先过那一裁（`设计/05 §13.5`）。
+//! 替用户写」）今天没拍 ⇒ 后端不许长出这条能力。协议上给它留了口（`use:"subsystem"`），
+//! 后端对它回 `unsupported_use`（见 [`link`]）。
 //!
-//! # 线上形状（**不是** `wire.rs` 那套协议 —— 那份一个字节没动）
+//! # 一条链路上的字节（与 C2 拨号代理的 stdout **逐字节同形**，线上帧见 `wire.rs` 的 `LinkData`）
 //!
 //! ```text
-//! 界面 → 代理  环境变量 CCM_DIAL_REQUEST：一份 JSON = DialRequest
-//!              stdin：stream 时**全部**是原始字节，原样写进 SSH channel；
-//!                     capture 时不读；forward 时只等它 EOF（= 界面走了，收工）
-//! 代理 → 界面  stdout：stages=true 时先有若干行 {"stage":{…}}（与界面 `ConnectStage` 同形）
-//!                      然后**恰好一行** ack（DialAck，`\n` 结尾）
-//!                      其后按用法：stream 原样字节 · capture 一行 Captured 后退出 ·
-//!                      forward 每接进一条连接一行 {"accepted":n}
+//! 界面 → 后端  link-open：{"link","window","dial":DialRequest}
+//!              link-data：stream 时是原样写进 SSH channel 的字节；capture 时不读；forward 时不读
+//!              link-close：界面走了，收工
+//! 后端 → 界面  stages=true 时先有若干行 {"stage":{…}}（与界面 `ConnectStage` 同形）
+//!              然后**恰好一行** ack（DialAck，`\n` 结尾）
+//!              其后按用法：stream 原样字节 · capture 一行 Captured 后结束 ·
+//!              forward 每接进一条连接一行 {"accepted":n}
 //! ```
 //!
-//! **为什么配置走环境变量而不走 argv / stdin 第一行**：`argv` 在同机任何用户的 `ps` 里都看得见；
-//! stdin 第一行则要求界面往流里写带外字节，而界面那侧的写半边整个交给了 `inbound_client`。
-//! 私钥**路径**、主机名、用户名不该躺在世界可读的地方；私钥**本体**从不过这条管子（凭据面 `K11`）。
-//!
-//! **为什么 ack 要有**：「连不上」与「连上了但远端还没说话」在管子上一模一样，ack 把它们分开。
-//! **为什么 ack 带 `v` 与 `uses`**：老代理不认 `use` 字段，会把 `capture` 当成长流 ——
-//! 界面据 `uses` 当场认出「这个代理太老」，而不是把一段原始字节当成 JSON 去解。
-//!
-//! # 进程形态（认下来的代价，`设计/05 §13.4`）
-//!
-//! 一条链路一个代理进程：远端长流常驻一个；一次性 exec 起一个短命的。它是界面的子进程，
-//! 界面一退、管子一断，它就收工（Windows 上还有 Job 兜着）。
-//! **更好的形状**（常驻的本机后端持有各远端的 SSH 连接、在已有那条管子上复用）要改 `wire.rs`，
-//! 交用户拍板，本目录不做。
+//! **为什么 ack 要有**：「连不上」与「连上了但远端还没说话」在链路上一模一样，ack 把它们分开。
+//! **为什么 ack 带 `v` 与 `uses`**：界面据 `uses` 当场认出「这个后端不认这种用法」，
+//! 而不是把一段原始字节当成 JSON 去解。
 //!
 //! # 边界（诚实登记）
 //!
@@ -58,15 +53,9 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
 mod connect;
+pub mod link;
+mod pool;
 mod uses;
-
-/// 装那份请求 JSON 的环境变量名。**两端各钉一半**，界面那边钉「写进这个名字」。
-pub const REQUEST_ENV: &str = "CCM_DIAL_REQUEST";
-
-/// 请求读不成 ⇒ 调用错误。与后端别处「一次性查询」的 `exit 2` 同族。
-pub const EXIT_BAD_REQUEST: i32 = 2;
-/// 请求读得懂但拨不通（TCP / 指纹 / 鉴权 / 开 channel 任一步失败）。
-pub const EXIT_DIAL_FAILED: i32 = 3;
 
 /// ack 里的协议版本。**v1** = 只有长流、只有一个地址、只会私钥文件（`K-P6b` 那一版）；
 /// **v2** = 本文件（竞速 · 跳板 · agent · 三种用法 · 阶段行）。
@@ -161,6 +150,14 @@ pub struct DialRequest {
     /// 短命探活（inactivity 拆链）而不是长连接（keepalive 保活）。
     #[serde(default)]
     pub probe: bool,
+    /// 〔SR1a〕ssh-agent 套接字的路径（Unix；界面进程**此刻**的 `SSH_AUTH_SOCK`）。
+    ///
+    /// 为什么要界面交过来而不读本进程的环境：常驻后端**活得比任何一个界面进程都长**（脱离、跨界面重启），
+    /// 它身上那份 `SSH_AUTH_SOCK` 是**第一个**起它的界面给的 —— 用户重新登录之后 agent 换了路径，
+    /// 读自己的环境就会连一个已经不在的套接字。缺席 = 用本进程自己的（C2 那一版的行为）。
+    /// 它是一条路径、不是凭据本体（凭据面 `K11`）；它**不进连接池的身份**（换 agent 不该换连接）。
+    #[serde(default)]
+    pub agent_sock: Option<String>,
 }
 
 impl DialRequest {
@@ -270,10 +267,10 @@ impl StageSink {
     }
 }
 
-/// 解析那份请求 JSON。**抽出来是为了判据够得着它** —— 判据不该去起一个真进程
-/// 才能验「蛇形键读得动」。
-pub(crate) fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error> {
-    serde_json::from_str(raw.trim())
+/// 〔SR1a〕解析 `link-open` 的 `dial` 字段（C2 那一版从环境变量读同一份 JSON）。
+/// **抽出来是为了判据够得着它** —— 判据不该去开一条真链路才能验「蛇形键读得动」。
+pub(crate) fn parse_request_value(v: &serde_json::Value) -> Result<DialRequest, serde_json::Error> {
+    DialRequest::deserialize(v)
 }
 
 /// 写一行 JSON 并 flush。**必须 flush** —— 界面在有界读行上等着它。
@@ -305,43 +302,6 @@ async fn write_stages_then_ack<W: tokio::io::AsyncWrite + Unpin>(
         write_line(w, &serde_json::json!({ "stage": s })).await?;
     }
     write_ack(w, ack).await
-}
-
-/// `--dial` 那条分派臂的实现。**不读 argv** —— 参数只用来在诊断里回显。
-pub async fn run(args: &[String]) -> i32 {
-    tracing::info!("dial: 代理进程起来了（argv={args:?}）");
-    let mut out = tokio::io::stdout();
-
-    let raw = match std::env::var(REQUEST_ENV) {
-        Ok(s) if !s.trim().is_empty() => s,
-        _ => {
-            tracing::error!("dial: 环境变量 {REQUEST_ENV} 没设（或是空的）—— 界面没交请求");
-            return EXIT_BAD_REQUEST;
-        }
-    };
-    let req: DialRequest = match parse_request(&raw) {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!("dial: {REQUEST_ENV} 不是一个合法的 DialRequest: {e}");
-            let _ = write_ack(
-                &mut out,
-                &DialAck::failed(format!("请求解析失败: {e}"), None),
-            )
-            .await;
-            return EXIT_BAD_REQUEST;
-        }
-    };
-
-    let stages = StageSink::new(req.stages);
-    let linked = match connect::establish(&req, &stages).await {
-        Ok(l) => l,
-        Err((e, fp)) => {
-            tracing::error!("dial: 拨号失败: {e}");
-            let _ = write_stages_then_ack(&mut out, &stages, &DialAck::failed(e, fp)).await;
-            return EXIT_DIAL_FAILED;
-        }
-    };
-    uses::serve(&req, linked, &stages, &mut out).await
 }
 
 #[cfg(test)]

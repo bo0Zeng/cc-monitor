@@ -1022,11 +1022,12 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              由 `the_two_thresholds_are_what_the_readings_derive` 每趟钉住「推算式 == 常量」。",
         ),
         (
-            "loopback_roundtrip_through_the_proxy",
-            "〔C2 09-24〕不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd）＋ 一份编好的本机后端当拨号代理。\
-             触发器是读数脚本 `tests/evidence/C2-dial-loopback.py --monitor`（它起 sshd、设好 `CCM_DIAL_PROXY` 与 \
-             `C2_LOOPBACK` 再按名字跑这一条，并核输出里那句 `C2-LOOPBACK-MONITOR ok`）。门禁沙箱里起不了 sshd ⇒ 进不了门禁。\
-             谁什么时候跑：改 `dial_host` / `ssh_link` / 后端 `dial/` 的那一拍，交付前跑一趟、把输出贴进报告。",
+            "loopback_roundtrip_through_the_resident_backend",
+            "〔SR1a 09-24〕不是 e2e：它要一台**真 sshd**（本用户身份的临时回环 sshd）＋ 一份编好的后端二进制（起成本机常驻后端，\
+             stdio 载体、私有 HOME / TMUX_TMPDIR）。触发器是读数脚本 `tests/evidence/SR1a-link-loopback.py --monitor`\
+             （它起 sshd、设好 `SR1A_LOOPBACK` 再按名字跑这一条，并核输出里那句 `SR1A-LOOPBACK-MONITOR ok`）。\
+             门禁沙箱里起不了 sshd ⇒ 进不了门禁。谁什么时候跑：改 `dial_host` / `link_mux` / `ssh_link` / 后端 `dial/` 的那一拍，\
+             交付前跑一趟、把输出贴进报告。",
         ),
     ];
 

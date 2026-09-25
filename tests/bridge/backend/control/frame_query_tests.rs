@@ -13,7 +13,16 @@ const DESIGN_EIGHT: &[&str] = &[
     "--list-accounts",
     "--search",
     "--list-subagents",
+    // 〔SR1a · 09-24〕题面逐字「`--list-user-inputs` 与骨架 `--read-session-from-offset --index` 上帧面」。
+    "--list-user-inputs",
+    "--read-session-from-offset",
+    // 〔SR1a × SE2〕协调方加的：`--find-in-session` 一起搬。
+    "--find-in-session",
 ];
+
+/// 〔SR1a〕拨号那条路从此只放行这两条（题面「`STILL_DIALED` 缩到只剩真该拨号的」—— 点一次换号才发一次）。
+/// **异源**：抄自题面与 `STILL_DIALED` 那两行的理由，不从表派生。
+const STILL_DIALED_WANT: &[&str] = &["--account-trust", "--account-trust-zero"];
 
 fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut v: Vec<String> = v.into_iter().collect();
@@ -39,13 +48,13 @@ fn backend_read_face_commands() -> Vec<String> {
     sorted(got)
 }
 
-/// ★ 两向相等：[`MOVED`] 的左列 == 设计篇那八条；右列 == 后端真登记上帧面、交给只读宿主的那八条。
+/// ★ 两向相等：[`MOVED`] 的左列 == 设计篇那八条 ＋ SR1a 两条；右列 == 后端真登记上帧面、交给只读宿主的那几条。
 #[test]
 fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
     assert_eq!(
         sorted(MOVED.iter().map(|(f, _)| f.to_string())),
         sorted(DESIGN_EIGHT.iter().map(|s| s.to_string())),
-        "搬上帧面的子命令与题面那八条不相等"
+        "搬上帧面的子命令与题面那几条不相等"
     );
     assert_eq!(
         sorted(MOVED.iter().map(|(_, c)| c.to_string())),
@@ -72,6 +81,11 @@ fn the_dial_path_refuses_every_moved_query() {
         assert!(!MOVED.iter().any(|(m, _)| m == f), "`{f}` 同时在两张表里");
     }
     assert!(!dial_allowed("--fork-session"), "没登记的子命令也不许拨");
+    assert_eq!(
+        sorted(STILL_DIALED.iter().map(|(f, _)| f.to_string())),
+        sorted(STILL_DIALED_WANT.iter().map(|s| s.to_string())),
+        "仍拨号的那张表不等于题面要的那两条"
+    );
 }
 
 /// ★ 拨号那条路**真的**先问了 [`dial_allowed`]：`run_list_query` 生产段里有这一问，
@@ -96,7 +110,7 @@ fn run_list_query_asks_before_it_dials() {
     assert!(ask < dial, "先拨号后问，问了等于没问");
 }
 
-/// ★ argv 分流认得本仓今天真在发的形状：区间取正文走帧面；骨架索引落到拨号（且拨号放行它）。
+/// ★ argv 分流认得本仓今天真在发的形状：区间取正文 · 骨架索引 · 大纲清单都走帧面。
 #[test]
 fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
     let range = crate::session_skeleton::range_argv("/p/s.jsonl", 10, 99);
@@ -107,13 +121,36 @@ fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
         }
         _ => panic!("按区间取正文那一形没走帧面"),
     }
-    let index = crate::session_skeleton::index_argv("/p/s.jsonl", 0);
+    // 〔SR1a〕索引与大纲两形：造 argv 的是生产那两个函数（异源），它们都得走帧面、带对参数。
+    let index = crate::session_skeleton::index_argv("/p/s.jsonl", 7);
     let index: Vec<&str> = index.iter().map(String::as_str).collect();
-    assert!(
-        route_argv(&index).is_none(),
-        "索引那一形今天帧面没有对应命令"
-    );
-    assert!(dial_allowed(index[0]), "索引那一形落到拨号，拨号却不放行它");
+    match route_argv(&index) {
+        Some(ArgvRoute::Lines("history-index", args)) => {
+            assert_eq!(args, serde_json::json!({"path": "/p/s.jsonl", "offset": 7}))
+        }
+        _ => panic!("索引那一形没走帧面"),
+    }
+    for tools in [false, true] {
+        let find = crate::session_find::find_argv("/p/s.jsonl", "--force", tools);
+        let find: Vec<&str> = find.iter().map(String::as_str).collect();
+        match route_argv(&find) {
+            Some(ArgvRoute::Lines("history-find", args)) => {
+                assert_eq!(args["path"], "/p/s.jsonl");
+                assert_eq!(args["query"], "--force", "以 -- 起头的查询串要原样到");
+                assert_eq!(args["include_tools"], tools);
+                assert!(args["limit"].as_u64().is_some());
+            }
+            _ => panic!("查找那一形（include_tools={tools}）没走帧面"),
+        }
+    }
+    let outline = crate::session_outline::user_inputs_argv("/p/s.jsonl", 42);
+    let outline: Vec<&str> = outline.iter().map(String::as_str).collect();
+    match route_argv(&outline) {
+        Some(ArgvRoute::Lines("history-user-inputs", args)) => {
+            assert_eq!(args, serde_json::json!({"path": "/p/s.jsonl", "from": 42}))
+        }
+        _ => panic!("大纲那一形没走帧面"),
+    }
     assert!(matches!(
         route_argv(&["--list-subagents", "/p/s.jsonl"]),
         Some(ArgvRoute::Lines("history-subagents", _))

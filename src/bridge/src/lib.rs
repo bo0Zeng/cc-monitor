@@ -106,8 +106,10 @@ mod ssh_source;
 mod ssh_link;
 // 〔C2〕界面进程里最后一份 russh 拨号 —— 只剩 SFTP（`F7c`）一个用户，换走即删。
 mod inproc_dial;
-// 〔C2〕拨号代理的宿主：定位本机后端 · 配置 → 请求 · 起 `--dial` · 管子交给 `ssh_link`。
+// 〔C2 → SR1a〕拨号的宿主：配置 → 请求 · 经本机常驻后端开链路 · 链路交给 `ssh_link`。
 mod dial_host;
+// 〔SR1a〕链路的 monitor 这一侧：在本机后端那条流上多路复用到各远端的字节流（`link-*`）。
+mod link_mux;
 // T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）。
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
