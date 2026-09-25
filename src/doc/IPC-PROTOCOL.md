@@ -2334,10 +2334,14 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   界面侧拿链路的唯一入口是宿主 `dial_host.rs`，读应答的是通信层成员 `ssh_link.rs`。
   **唯一的例外是 SFTP**（`sftp.rs`，第三波 `F7c` 独占）：仍用 `inproc_dial.rs` 那一份进程内拨号，
   理由（池预算 · 红线 I7）写在 `设计/05 §13.5`。
+  〔SR1b · 2026-09-24 订正〕**这个例外没了**：用户 V89 把 SFTP 放进本机常驻后端（`dial/sftp.rs`，与其它 SSH 同一条连接），
+  `inproc_dial.rs` 整份删了，界面进程**零 SSH**（`russh` / `russh-sftp` 出了 monitor 的清单）。传输走入方向「传输四条」，
+  部署走链路 `use:"files"`（见「链路」那一节）；远端写只许 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`。
 - **两条回落都删了**（`D11`「后端是给定的，不要退路」）：拿不到代理二进制 ⇒ **报**；没配 `keyPath` ⇒ 代理自己走 ssh-agent。
 - 请求只**加**了可选字段（v1 那六个一个没改）：`endpoints`（竞速顺序）· `jump`（跳板那一台）·
   `use`（`stream` 缺省 · `capture` · `forward`）· `capture{max_bytes,abort_marker}` · `forward{local_port,remote_host,remote_port}` ·
   `stages` · `probe`。**SFTP 子系统不在 `use` 里**（后端的远端写那一层把它判作远端写能力）。
+  〔SR1b 订正〕`use` 多了 `files`（受限远端文件一问一答，写只许两处）；原始 SFTP 字节（`use:"subsystem"`）照旧不开。
 - 应答：`stages=true` 时 ack 之前先有若干行 `{"stage":{"kind":…}}`（与 `ConnectStage` 同形）；ack 多了
   `endpoint`（竞速胜者）· `v`（`2`）· `uses`（认得的用法）—— **界面据 `uses` 认出老代理并出声**，不去解它的字节；
   `capture` 在 ack 之后回一行 `{"stdout","stderr","exit_status"}`；`forward` 每接一条连接回一行 `{"accepted":n}`，stdin EOF 即收工。
@@ -2533,6 +2537,9 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 > ⚠ **本节其余部分是 `K-R48` 第二拍之后的存量馊话，上面那条对账够不着**：
 > `shared/ccm` 这个文件已经删了，`sftp.rs` 的 `CCM_CLI_SCRIPT` 也已经没了
 > （那里现在是一块墓碑）。`K-R58` 不动它 —— 写在这里，免得被读成「这一节核过了」。
+>
+> 〔SR1b · 2026-09-24〕远端那份入口（三行 shim，转给后端的 `ccm` 子命令）今天落在 **`~/.cc-monitor/bin/ccm`**
+> （部署后端按钮经本机常驻后端的 `files` 链路放，远端写只许 `~/.cc-monitor/{staging,bin}`）；更早放在 `~/.local/bin/ccm` 的那份不删、照旧能用。
 
 ### 注册流程（远端 shell → 本地 HWND 缓存）
 

@@ -412,6 +412,18 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
         &serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": "/home/u/.claude/projects/p/abc-1.jsonl"}),
     ));
     assert_eq!(code.as_deref(), Some("refused"));
+    // 另一向：一个规整的本机落点 ⇒ 开得出单（〔SR1b 死值验〕只判「踩线 ⇒ refused」的话，
+    //   围栏换成「一律拒」本条照绿 —— 那一刀当场没砍中，补这一向）。另起一张台，不动上面那张的册数。
+    let (tx2, _rx2) = mpsc::channel(8);
+    let desk2 = Desk::new(tx2);
+    let (ok, code, data) = reply_of(&desk2.download(
+        "r5b",
+        &serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.0.join("dl.bin").to_string_lossy()}),
+    ));
+    assert!(ok, "规整的下载落点开不出单：{code:?}");
+    assert!(data.unwrap()["id"]
+        .as_str()
+        .is_some_and(|i| i.starts_with("xfer-")));
     // 起跑一张不在册的票。
     let (_, code, _) = reply_of(&desk.start("r6", &serde_json::json!({"id": "xfer-nope"})));
     assert_eq!(code.as_deref(), Some("no_such_transfer"));
