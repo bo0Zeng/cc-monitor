@@ -422,7 +422,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p2z-relay-in-resident**（2026-09-24，第四波 RL1 合并那一拍）：子命令集不变，**行为**变更 ——
 /// 流模式后端被交了 `CCM_RELAY_PORT` 就在本进程里起中转（V107：中转住本机常驻后端，monitor 不再单独起它）。
 /// 旧后端不开中转 ⇒ 本机 apikey 号起会话会被「中转没在跑」拒掉 ⇒ 必须判 stale。照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p2z-relay-in-resident";
+///
+/// ★★★ **p3a-panorama-engine**（2026-09-24，第四波 RM1c 合并那一拍）：子命令 ＋1 —— `panorama`（两个命令面）：
+/// 后端经插件口起独立全景小程序 `cc-monitor-panorama`，只说查询语义（V108）；后端本体仍零 code-picture。
+pub const BUILD_ID: &str = "p3a-panorama-engine";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
