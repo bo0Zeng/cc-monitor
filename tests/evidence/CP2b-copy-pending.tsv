@@ -69,7 +69,5 @@ src/bridge/src/local_backend_host.rs	C4d 在改这一带，留最后一批
 src/bridge/src/remote_history.rs	C4d 在改这一带，留最后一批
 src/bridge/src/subagent.rs	C4d 在改这一带，留最后一批
 src/bridge/src/tool_registry.rs	C4d 在改这一带，留最后一批
-src/history-reads.ts	C4d 新长的文件（历史浏览器一族），随那一族一起抽
 src/panorama-engine/main.rs	射程外：全景独立小程序（另一个可执行文件）
 src/settings/panel.ts	TL1 第 4 件那一句（REMOTE_INFO_TEXT「由远端后端取代本地 jsonl-watcher…」）归 TL1 改，本路跳过；其余已抽
-src/views/history.ts	C4d 在改这一带，留最后一批
