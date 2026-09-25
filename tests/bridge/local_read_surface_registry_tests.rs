@@ -402,20 +402,9 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              它用 `home_dir()` 只是为了「每个用户各一份」。写侧登记在 `write_site_registry` 的\
              `local_backend.rs::extract_embedded_to`；释放出来的文件按 build_id 命名 ⇒ 幂等、不覆盖别版",
     ),
-    (
-        "local_accounts.rs",
-        "local_accts_dir",
-        "账号隔离目录",
-        "账号面；写侧在 `write_site_registry`。\
-             🔴 **`N-F1c`（09-05）起这一处零生产调用方** —— 本机账号读口改成问后端\
-             （`--list-accounts`），账号库在哪由后端自己解析（它还认 `ACCTS_DIR=` 覆盖，\
-             这一处从来不认）。留着不是忘了删：`ACCTS_DIR_NAME` 这个三方共用的契约名\
-             全仓只有一条逐字判据钉着，而那条判据正是靠调用这一处才够得到它 ⇒ \
-             删它 = 删那条判据 = 降强度。**退役条件**：那条契约判据搬进 `acct-core` 之后，\
-             这一处与它一起删，本表这一行同拍去掉。\
-             ⚠ 本表回答的是「有没有人管」，而这一处今天**仍然真的伸手进了 home**\
-             （判据按生产段里的 `home_dir()` 取人群，不按「有没有人调它」）⇒ 它必须留在表里",
-    ),
+    // 〔C4d · 第四波 4B〕`("local_accounts.rs", "local_accts_dir")` 那一行同拍去掉 —— 它自己写的退役条件兑现了：
+    //   钉契约目录名的那条判据搬到了后端（`accounts_query_tests.rs::the_accounts_library_lives_under_the_contract_directory_name`，
+    //   对 `acct-core` 的常量与后端缺省解析那一处），本机那份参照实现连同这一处 `home_dir()` 一起删了。
     (
         "mcp.rs",
         "claude_json_candidates",

@@ -9,8 +9,6 @@
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
 // available:false 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
 import { commands } from "./ipc/commands";
-import type { AuthKind } from "./generated/AuthKind";
-import type { RemoteAccount } from "./generated/RemoteAccount";
 import { loadConfig, saveConfig } from "./config";
 import { isValidModelName } from "./shell-quote";
 import type { LaunchModifiers } from "./launch-plan";
@@ -29,19 +27,35 @@ import { budgetWithin, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-ca
 import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 
-// ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
+// ---- 账号的形状：〔C4d · 第四波 4B〕从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----
 //
-// 这里原先是一份手写 `interface Account` + 一行「对齐 A2（src/bridge/src/accounts.rs）的
-// 返回结构」的注释。那句注释是**纪律，不是判据**：往任一侧加一个字段，全仓没有一条门禁会红
-// （K-A1 Bx 复量确认：`RemoteAccount` 当时没有 `ts_rs::TS` derive，`src/generated/` 底下
-// 也没有对应文件）。现在两侧由 `src/generated/RemoteAccount.ts` 对齐 ——
-// 改 Rust 不跑 `npm run gen:types`，`generated-boundary-guard` 与 CI 的
-// `git diff --exit-code -- src/generated/` 会红。
-//
-// 名字仍叫 `Account`（全仓几十处消费点读作「账号」，而 Rust 那侧叫 `RemoteAccount`
-// 是因为它先有远端那一份）——**别名不是手抄**：字段一个都不在这儿重写。
-export type Account = RemoteAccount;
-export type { AuthKind };
+// K-A1 起这一格是 ts-rs 生成物（`src/generated/RemoteAccount.ts`，Rust 那份在 monitor 的 `accounts.rs`）。
+// C4c 起账号清单由**那台机器的后端出成品**、界面严格收（`accounts-decode.ts::decodeAccountsList`）；
+// monitor 里最后一个产出那份 Rust 结构的是一份零生产调用方的本机参照实现，主会话 09-25 裁删（C4d）⇒ 生成源没了。
+// 形状今天由两样东西钉：后端 `observe/accounts_query.rs::list_product`（产）＋ 跨语言金样
+// `tests/__fixtures__/accounts.golden.json`（Rust 与 TS 两侧同读）＋ 解码器逐键核（多一格 / 缺一格 / 类型不对都抛）。
+// `AuthKind` 那两个字面量是 `acct-core` 的契约常量（`AUTH_KIND_SUBSCRIPTION` / `AUTH_KIND_API_KEY`）；
+// 后端改了它 ⇒ 金样跟着变 ⇒ 解码器认不出 ⇒ `accounts-decode.vitest.ts` 金样那条红。
+/** 一个账号的鉴权方式（`acct-core` 的契约字面量）。 */
+export type AuthKind = "subscription" | "api-key";
+
+/** manifest 里的一个账号（后端已剔除 configDir 不安全的条目；逐键同后端成品）。 */
+export interface Account {
+  name: string;
+  email: string;
+  /** Z01：`null` = 账号 0（「不设 `CLAUDE_CONFIG_DIR`」这个状态）。 */
+  configDir: string | null;
+  isDefault: boolean;
+  /** `isolated`（正常）/ `in-place`（逃生口，前端应拒绝使用）/ `bare`（账号 0）。 */
+  mode: string;
+  exists: boolean;
+  /** 只是 stat 了 `.credentials.json` 在不在，**不代表凭据有效**；可用性走 `authReady`。 */
+  loggedIn: boolean;
+  /** 缺席 = 对面没说（旧后端）⇒ 当订阅号（`KA6d`）。 */
+  authKind?: AuthKind;
+  /** 缺席 = 旧后端 ⇒ 回落到 `loggedIn`（见 [`authReady`]）。 */
+  authReady?: boolean;
+}
 
 /**
  * 那台机器的账号库（manifest）的概况 —— 〔C4c〕后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。
@@ -172,9 +186,9 @@ export function currentWorkingAccount(state: AccountsState): Account | null {
  * 真去验一次凭据归另一件（今天不存在、也没人认领；而且那要联网，撞用户 07-17
  * 「无 API key / 不联网」那条板）。
  * ⚠ 这个标签先前**只落在 Rust 侧 `auth_ready` 字段上**，`logged_in` 那一半只有实质、
- * 没有标签（D 阶段审计 `S3`）⇒ `grep KA6b` 找不到它那一半。Rust 侧那份头注不在第四轮
- * 写区里（改它会连带重写 `src/generated/RemoteAccount.ts` —— ts-rs 把 doc 一起导出），
- * 所以标签先补在 TS 这一侧**唯一读 `loggedIn` 的地方**，Rust 侧那一半交回 PM。
+ * 没有标签（D 阶段审计 `S3`）⇒ `grep KA6b` 找不到它那一半。当年 Rust 侧那份头注不在第四轮
+ * 写区里（改它会连带重写那份生成物），所以标签补在 TS 这一侧**唯一读 `loggedIn` 的地方**。
+ * 〔C4d〕那份 Rust 结构与生成物都退役了，账号形状今天手写在本文件（上面 `Account`）。
  * ⚠ 连带的诚实边界：旧后端那一侧，一个 api-key 号会被判成「未登录的订阅号」
  * ——那是**看得见**的降级（徽章写「未登录」，用户能修：更新远端后端）。
  * 刻意**不**为它加一个 `authKindAware` 能力标记：新后端恒出这两个键，

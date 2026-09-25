@@ -255,13 +255,8 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // ---- P8a：插件面只读枚举 ----
     // 〔RM1b · 第四波〕这两条随读实现搬去了后端（`src/backend/observe/plugins_query.rs`，登记在后端那一段），
     //   monitor 这一侧不再有它们。
-    (
-        "src/bridge/src/local_accounts.rs",
-        "MANIFEST_CAP",
-        8 * 1024 * 1024,
-        "本机读账号 manifest",
-        "降级+说清",
-    ),
+    // 〔C4d · 第四波 4B〕`local_accounts.rs` 的 `MANIFEST_CAP`（本机读账号 manifest，「降级+说清」）那一行出列：
+    //   那份零生产调用方的本机参照实现删了，读 manifest 只剩后端一处（`MAX_MANIFEST_BYTES`，登记在后端那一段）。
     (
         "src/bridge/src/remote_history.rs",
         "MAX_SESSION_BYTES",
@@ -1060,18 +1055,9 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
             .unwrap_or_else(|| panic!("抠不到 `{f}::{n}` —— 本条会零命中地绿"))
     };
 
-    // 对 A：注释逐字「与后端侧**同值**」⇒ 钉相等。
-    let a1 = by("src/bridge/src/local_accounts.rs", "MANIFEST_CAP");
-    let a2 = by(
-        "src/backend/observe/accounts_query.rs",
-        "MAX_MANIFEST_BYTES",
-    );
-    assert_eq!(
-        a1, a2,
-        "两侧读同一份 manifest 的上限漂开了（monitor {a1} / backend {a2}）。\
-             `local_accounts.rs` 的注释逐字写着「与后端侧同值」—— \
-             那句话此前**没有任何东西守着**，靠人抄。"
-    );
+    // 对 A 🔴 **这一对没了，是被解决掉的**〔C4d · 第四波 4B〕：monitor 那一侧（`local_accounts.rs` 的
+    //   `MANIFEST_CAP`，本机账号 manifest 参照实现）随那份实现删了 ⇒ 读 manifest 的上限只剩后端
+    //   `observe/accounts_query.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
 
     // 对 B：两边都是「一整份会话 jsonl」这同一个量 ⇒ 钉相等。
     let b1 = by("src/bridge/src/remote_history.rs", "MAX_SESSION_BYTES");

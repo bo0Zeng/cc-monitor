@@ -1184,8 +1184,8 @@ fn auth_kind_parity_backend_side() {
 /// `acct_core::auth_kind_from_manifest(`。有人在这儿手写一个
 /// `if kind == "api-key" { true } else { … }`，本条红。
 ///
-/// ⚠ 射程如实写：它**只管本文件**（另一个生产者由
-/// `local_accounts_tests.rs::the_auth_dimension_has_exactly_one_computation_path` 守自己那份），
+/// ⚠ 射程如实写：它**只管本文件**（〔C4d〕另一个生产者 —— monitor 那份本机参照实现 —— 已删，
+/// 这一维的生产者今天只剩本文件这一个），
 /// 而且是**字面量扫描** —— 把两个 helper 重新 `use` 成别名就绕得过去。
 /// 真正的地板不是它，是 `acct-core` 里只有一份实现。
 #[test]
@@ -1995,4 +1995,97 @@ fn both_readers_of_the_manifest_see_the_same_accounts() {
         );
         let _ = fs::remove_dir_all(&root);
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// 〔C4d · 第四波 4B〕monitor 那份本机 manifest 参照实现删了 —— 挂在它身上的三个锚点改指这里（现存实现）
+// ════════════════════════════════════════════════════════════════════════════════════════
+//
+// 要求住址：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 3 条，逐字）「`local_accounts.rs` 的 `list_from_dir`〔散文墓碑〕
+// （零生产调用方的本机参照实现）删，**挂着的判据锚点改指现存实现**」。下面三条的断言逐字搬自 monitor
+// `tests/bridge/local_accounts_tests.rs` 那三条（U7-4 / audit-0805），被测对象从那份参照实现换成后端这份真在答账号清单的。
+
+/// ★ 读上限的三种失败（不存在 / 不是普通文件 / 过大）**两两分得开**，过大的那句带实际字节数；
+/// 正好等于上限**放行**（`>` 不是 `>=`），差一个字节就拒。
+#[test]
+fn read_regular_capped_keeps_its_three_failures_distinguishable() {
+    let root = tmpdir("c4d-capped");
+    let missing = root.join("nope.json");
+    let dir = root.join("adir");
+    fs::create_dir_all(&dir).unwrap();
+    let big = root.join("big.json");
+    fs::write(&big, vec![b'x'; 10]).unwrap();
+    let e_missing = read_regular_capped(&missing, 1024).expect_err("不存在的文件必须是 Err");
+    let e_dir = read_regular_capped(&dir, 1024).expect_err("目录必须是 Err");
+    let e_big = read_regular_capped(&big, 4).expect_err("超限必须是 Err");
+    assert!(e_big.contains("10"), "过大那句没带实际字节数：{e_big}");
+    assert!(
+        e_missing != e_dir && e_dir != e_big && e_missing != e_big,
+        "三种失败给了相同的理由串：不存在={e_missing} / 目录={e_dir} / 过大={e_big}"
+    );
+    let exact = root.join("exact.json");
+    fs::write(&exact, vec![b'y'; 8]).unwrap();
+    assert_eq!(
+        read_regular_capped(&exact, 8).expect("正好等于上限应当放行"),
+        vec![b'y'; 8]
+    );
+    assert!(
+        read_regular_capped(&exact, 7).is_err(),
+        "超出一个字节没被拒 —— 上限那一格滑了"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ★ 欺骗字符**按来源分组**各取一个代表，任何一组从 `acct-core` 的内核里掉出去 ⇒ 红（码位表逐字搬自 monitor 那条）。
+#[test]
+fn every_group_of_deceptive_characters_is_rejected_in_a_config_dir() {
+    let groups: &[(char, &str)] = &[
+        ('\u{0085}', "NEL（C1 换行；is_control 已覆盖）"),
+        ('\u{00A0}', "NBSP"),
+        ('\u{1680}', "Ogham space mark"),
+        ('\u{2003}', "各类空格（U+2000..200A）"),
+        ('\u{200B}', "零宽空格/连接符"),
+        ('\u{2028}', "行分隔"),
+        ('\u{202E}', "双向覆盖（RLO）"),
+        ('\u{202F}', "narrow NBSP"),
+        ('\u{205F}', "medium mathematical space"),
+        ('\u{2060}', "word joiner / 不可见运算符"),
+        ('\u{2066}', "双向隔离"),
+        ('\u{3000}', "ideographic space"),
+        ('\u{FEFF}', "ZWNBSP / BOM"),
+    ];
+    assert_eq!(groups.len(), 13, "分组表被削了");
+    for (c, what) in groups {
+        let path = format!("/home/u/.claude-alt/a{c}b");
+        assert!(
+            !is_safe_config_dir(&path),
+            "U+{:04X}（{what}）没被挡下 —— 它能在界面上把账号路径伪造成另一个样子",
+            *c as u32
+        );
+    }
+    assert!(
+        is_safe_config_dir("/home/u/.claude-alt/ab"),
+        "正控失败：干净路径被误判成不安全 —— 上面那些断言全都不算数了"
+    );
+}
+
+/// ★ 账号库目录名是 **bash 写侧 / 后端 / 起会话那一侧三方共用的契约名**，写死成字面量核对；
+/// 而后端缺省解析（没有 `--accts-dir`、没有 `~/.cc-acct-iso/config` 覆盖时）恰经这一个常量拼出来。
+#[test]
+fn the_accounts_library_lives_under_the_contract_directory_name() {
+    assert_eq!(
+        acct_core::ACCTS_DIR_NAME,
+        ".claude-alt",
+        "账号库目录名变了 —— 改了它后端就去别处找账号库，界面上只表现为「一个账号都没有」"
+    );
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/observe/accounts_query.rs"
+    ));
+    let at = guard_core::find_pinned(&prod, "fn resolve_accts_dir(")
+        .unwrap_or_else(|e| panic!("缺省解析那一处找不到（恰好一处）：{e}"));
+    let body_end = prod[at + 1..]
+        .find("\nfn ")
+        .map_or(prod.len(), |k| at + 1 + k);
+    guard_core::find_pinned(&prod[at..body_end], "h.join(ACCTS_DIR_NAME)")
+        .unwrap_or_else(|e| panic!("缺省解析不再经契约常量拼家目录下那一层：{e}"));
 }

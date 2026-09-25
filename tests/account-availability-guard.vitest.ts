@@ -94,7 +94,9 @@ const ALLOWED: Record<string, Record<string, number>> = {
   // `authReady` 5 处（函数名 1 + 那句回落里的 `a.authReady` 1 + 三个消费点
   // `accountStatusBadge` / `accountLoginActionLabel` / `isSelectable` 各 1）·
   // `authKind` 2 处（`accountStatusBadge` 与 `accountLoginActionLabel` 各按 kind 分流一次）。
-  "src/accounts.ts": { loggedIn: 1, authReady: 5, authKind: 2 },
+  // 〔C4d · 第四波 4B〕三格各 +1：账号的形状从生成物（`src/generated/RemoteAccount.ts`，生成物目录不在本条人群里）
+  //   改回手写在本文件（`interface Account` 的三个字段**声明**）—— 声明不是读，但本条按名字数，如实登记。
+  "src/accounts.ts": { loggedIn: 2, authReady: 6, authKind: 3 },
   // 〔C4c · 第四波 4B〕后端 `accounts-list` 成品的**收**口（`decodeAccountsList`）：每个字段各 4 处 ——
   //   键集合清单里的名字 1 · 类型核验 1 · 装回对象时键名 1 · 取值 1。它是**收**（逐格核类型，核不了不许读），
   //   不是**判**：可用性仍只由 `accounts.ts::isSelectable` 答，按 kind 分流的规则仍住 `acct_core::auth_ready`。
