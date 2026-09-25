@@ -1212,7 +1212,8 @@ src/backend/control/exit_policy.rs:114	{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔�
 src/backend/control/exit_policy.rs:118	{} 里没有 `{KEY_KILL_ON_EXIT}` 这一格	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:128	家目录解析不出来（HOME / USERPROFILE 都没有）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示；环境变量名是排障要的原样
 src/backend/dial/link.rs:161	缺 `dial`（一份拨号请求）	改·§2.1	[可达存疑] 〔SR1a〕`link-open` 的协议级回错：只在 monitor 自己发错请求（程序 bug）时出现，会跟着那条远端连接的失败说到用户眼前；`dial` 是字段名 →「本机后端没收到连接参数」
-src/backend/dial/link.rs:169	这台后端还不开子系统（SFTP 进常驻后端是 SR1b 的事）	改·§2.1	[可达存疑] 〔SR1a〕子系统留口不开的回错；今天 monitor 不发这种请求 ⇒ 到不了用户；含内部代号 SR1b 与「子系统」→「这台后端还不支持这种连接」
+src/backend/dial/link.rs:167	这台后端不支持这种连接	保留	[可达存疑] 〔SR1b〕原始子系统字节流不交给界面的回错（SFTP 住本机后端）；今天 monitor 不发这种请求 ⇒ 到不了用户；已按 SR1a 那一行的裁法改成不含内部代号的说法
+src/backend/dial/sftp.rs:622	请求行不是 JSON：{e}	保留	[不对外] 〔SR1b〕部署链路（`use:"files"`）上一行坏请求的应答：读它的是 monitor 的 `dial_host::RemoteFs`（请求也是它自己造的），坏了只会是 bug；不到用户眼前
 src/backend/dial/link.rs:174	拨号请求读不动：{e}	改·§2.1	[可达存疑] 〔SR1a〕程序 bug 才出现；{e} 是反序列化的原文 →「本机后端没看懂连接参数」 兼§2.2
 src/backend/dial/link.rs:183	`window`（初始信用，字节）必须在 [{LINK_CHUNK_BYTES}, {MAX_WINDOW}] 之内	改·§2.1	[可达存疑] 〔SR1a〕程序 bug 才出现（monitor 的窗口是常量，跨 crate 对拍）；整句讲流控实现 →「本机后端拒绝了这次连接（参数不对）」
 src/backend/dial/link.rs:215	这个链路 id 还开着；换一个	改·§2.1	[可达存疑] 〔SR1a〕monitor 生成的 id 进程内唯一 ⇒ 程序 bug 才出现；「链路 id」是实现词 →「本机后端拒绝了这次连接（重复）」 新词:链路

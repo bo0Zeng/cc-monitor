@@ -29,6 +29,8 @@ pub(crate) struct Linked {
     pub(crate) endpoint: String,
     /// 经跳板时跳板那条连接：**必须与目标连接同生命周期**（drop 它 ⇒ 隧道死 ⇒ 目标断）。
     pub(crate) _jump: Option<client::Handle<Checker>>,
+    /// 〔SR1b〕这条连接上的通道预算（`pool::Budget`）：长流 · 查询 · SFTP 同一条连接，同一道闸。
+    pub(crate) budget: super::pool::Budget,
 }
 
 /// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
@@ -386,5 +388,6 @@ pub(crate) async fn establish(
         fingerprint,
         endpoint: label(&winner),
         _jump: jump,
+        budget: super::pool::Budget::new(),
     })
 }

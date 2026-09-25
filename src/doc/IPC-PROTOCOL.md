@@ -1808,11 +1808,16 @@ key_path · host_key_fingerprint · 竞速地址 · 跳板`；最后一条链路
 | `args` | `{"link":"<不透明 id，客户端给、客户端负责唯一>","window":<初始信用，字节；必须在 [32 KiB, 16 MiB] 之内，否则 `invalid_args`>,"dial":{DialRequest}}` |
 | `data` | 无（登记上、任务起了就回 `ok` —— **不等拨通**：拨通与否在链路字节里那一行 ack） |
 
-`dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward）·
+`dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward｜files）·
 capture{max_bytes,abort_marker} · forward{local_port,remote_host,remote_port} · stages · probe`，外加 **`agent_sock`**（Unix：客户端此刻的
 `SSH_AUTH_SOCK` —— 常驻后端活得比任何一个客户端都长，它自己身上那份可能早就不指向活的 agent；缺席 = 用后端自己的环境）。
 `probe` / `stages` 的链路**不进连接池**（测试连接要看的就是一次真拨号）。
-`use:"subsystem"` **留口不开**（SFTP 进常驻后端是 SR1b 的事）⇒ 回 `unsupported_use`。
+〔SR1b · 2026-09-24〕`use:"files"`：在池里那条连接上开 sftp 子系统（`dial/sftp.rs`），ack 之后**一问一答** ——
+上行每一行一个请求 `{"op":…}`，下行每一行一个应答；`op` ∈ `home` · `stat{path}` · `read{path,max}` · `put{path,size,mode,verify}`（该行之后紧跟 `size` 个原始字节，
+上限 64 MiB）· `remove{path}` · `mkdirs{path}`。失败那一形 `{"code","message"}`，`code` ∈ `fenced`（远端写围栏拒）· `io` · `too_big` · `bad_request` · `unknown_op`。
+🔴 **写只许两处**：远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（用户 V89；`INVARIANTS §41.6` 的 SR1b 订正）。读不受限。
+它服务自部署（F08 后端二进制 · `.build_id` · `ccm` 入口 · cc-acct-iso），业务判定在 monitor（`dial_host::RemoteFs`）。
+`use:"subsystem"`（把原始 SFTP 字节交给客户端）**不开** ⇒ 回 `unsupported_use`：SFTP 协议住后端，客户端只有 `files` 与 `transfer-*` 两条路。
 错误 code：`invalid_args` · `unsupported_use` · `duplicate_link` · `too_many_links`（每连接 256 条）。
 
 #### `link-data`：往链路里送一块上行字节

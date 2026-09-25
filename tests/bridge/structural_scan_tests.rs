@@ -2676,6 +2676,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔SR1b · 2026-09-24〕V89「SFTP 进本机常驻后端，只写暂存区」之后，后端**有**远端写了（只在 `dial/sftp.rs`、
+        //   只许两处）⇒ 「今天一处远端写都没有」那条判据换成两条相等（`remote_write_layer`），旧名留墓碑说它为什么不在了。
+        (
+            "tests/backend/readonly_guard.rs",
+            "the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty",
+            1,
+        ),
         // 〔SR1a · 2026-09-24〕`--dial` 那条分派臂删了，守它「接得到」的判据随入口换成链路四条而改名。
         (
             "tests/backend/main_argv_table_guard.rs",
@@ -3673,7 +3680,9 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/settings/accounts-section.ts", 2),
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),
-        ("tests/backend/readonly_guard.rs", 2),
+        // 〔SR1b · 2026-09-24〕2 → 3：远端写那一层「今天一处远端写都没有」那条判据随 V89 改写成
+        //   「只住一份文件、只许两处」，旧名留一块墓碑（`TOMBSTONED` 同拍登记）。
+        ("tests/backend/readonly_guard.rs", 3),
         ("tests/bridge/backend/control/backend_kill_tests.rs", 1),
         ("tests/bridge/backend/control/backend_send_keys_tests.rs", 1),
         ("tests/bridge/backend/control/cc_bus_deploy_tests.rs", 1),

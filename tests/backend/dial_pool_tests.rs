@@ -171,3 +171,48 @@ fn the_identity_ignores_what_a_link_uses_it_for() {
         assert_ne!(with(extra), id0, "`{extra}` 该换一个连接身份");
     }
 }
+
+// ═══ 〔SR1b · 2026-09-24〕一条连接上的通道预算（`Budget`）══════════════════════════════
+
+/// 🔴 **B4**：通道闸 == `SESSION_CHANNEL_CAP`（第 9 条要排队）；传输车道 == `TRANSFER_LANE_CAP`
+/// （第 5 趟传输要排队，**而此时一条 capture 仍拿得到通道**）。读数取自闸本身，不取自常量（异源）。
+#[tokio::test]
+async fn the_budget_queues_the_ninth_channel_and_the_fifth_transfer_but_not_a_query_behind_them() {
+    // 题面里的数（`调研/第四波记录/SR1b.md §1.5`）：8 格通道、其中传输至多 4 格。
+    assert_eq!((SESSION_CHANNEL_CAP, TRANSFER_LANE_CAP), (8, 4));
+    let b = Arc::new(Budget::new());
+    assert_eq!(b.free(), (8, 4));
+
+    // 四趟传输占满车道（同时各占一格通道）。
+    let mut xfers = Vec::new();
+    for _ in 0..4 {
+        xfers.push(b.transfer().await.expect("前四趟传输该当场借到"));
+    }
+    assert_eq!(b.free(), (4, 0));
+    // 第五趟传输：排队（车道满），**而且不占通道格**（先过车道、再过通道闸）。
+    let b5 = Arc::clone(&b);
+    let fifth = tokio::spawn(async move { b5.transfer().await.map(|_| ()) });
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!fifth.is_finished(), "车道满了第五趟传输居然借到了");
+    assert_eq!(b.free(), (4, 0), "排队等车道的传输占了一格通道");
+    // 此刻一条查询（capture / 长流）照样拿得到。
+    let mut sessions = Vec::new();
+    for _ in 0..4 {
+        sessions.push(b.session().await.expect("传输满载时查询该拿得到通道"));
+    }
+    assert_eq!(b.free(), (0, 0));
+    // 第九条通道：排队。
+    let b9 = Arc::clone(&b);
+    let ninth = tokio::spawn(async move { b9.session().await.map(|_| ()) });
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!ninth.is_finished(), "8 格通道用满了第九条居然开得出来");
+    // 还一格通道 ⇒ 第九条走；还一格传输（车道 ＋ 通道）⇒ 第五趟走。
+    drop(sessions.pop());
+    ninth.await.unwrap().expect("还了一格之后第九条该拿到");
+    drop(xfers.pop());
+    fifth.await.unwrap().expect("还了一格车道之后第五趟该拿到");
+}
