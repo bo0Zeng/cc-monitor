@@ -475,3 +475,54 @@ fn a_dial_error_is_bucketed_into_a_stage_label() {
     assert_eq!(classify_stage("Unknown server key"), "hostkey");
     assert_eq!(classify_stage("something else"), "other");
 }
+
+/// ★ 〔NT1〕多开的判准只住一处（`dial/pool.rs`；要求住址 V23，见 `dial_pool_tests.rs` 头注 NT1 那一段 —— 行为判据在那边，这一条是源码面的）：`Family::dial_reason` 是生产段里唯一给出 `Why::` 的地方（`place` 只转述它），
+/// 且 `Extra(` 只在 `place` 里造。针运行时拼。
+#[test]
+fn the_multi_open_judge_lives_in_one_function() {
+    let src = crate::guard_support::production_code(include_str!("../../src/backend/dial/pool.rs"));
+    let body = |name: &str| -> String {
+        let at = src
+            .find(&format!("fn {name}("))
+            .or_else(|| src.find(&format!("fn {name}<")))
+            .unwrap_or_else(|| panic!("找不到 fn {name}"));
+        let rest = &src[at..];
+        let open = rest.find('{').unwrap();
+        let mut depth = 0usize;
+        for (i, ch) in rest[open..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return rest[..open + i + 1].to_string();
+                    }
+                }
+                _ => {}
+            }
+        }
+        panic!("fn {name} 括号不配平");
+    };
+    let why = [
+        format!("{}::{}", "Why", "Full"),
+        format!("{}::{}", "Why", "Bulk"),
+    ];
+    let reason = body("dial_reason");
+    let place_fn = body("place");
+    for w in &why {
+        assert!(reason.contains(w.as_str()), "dial_reason 里没有 {w}");
+        assert!(
+            !place_fn.contains(w.as_str()) || w.ends_with("Bulk"),
+            "place 自己造了 {w}"
+        );
+    }
+    // `Why::Bulk` 在 place 里只许出现在「托住批量连接」那一处比较里。
+    assert_eq!(place_fn.matches(why[1].as_str()).count(), 1);
+    let extra = format!("{}::{}(", "How", "Extra");
+    assert_eq!(
+        src.matches(extra.as_str()).count(),
+        1,
+        "`Extra(` 该只在 place 里造一次"
+    );
+    assert!(place_fn.contains(extra.as_str()));
+}

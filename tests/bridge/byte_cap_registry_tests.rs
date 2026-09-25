@@ -57,6 +57,17 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "COMPRESS_RTT_FLOOR_US",
+        "〔NT1 09-24〕**时间门槛**（微秒）不是体量：后端 `dial/connect·rs::compression_for` 判「这一跳远不远」的往返时间门槛\
+             （内核 `TCP_INFO` 量到的握手往返 ≥ 它才压）。它不限任何字节总量、不截任何东西。",
+    ),
+    (
+        "STATUS_CONTROL_C_EXIT",
+        "〔S5 · 第四波 09-24 · `设计/00 §1.5.3`〕**退出码**不是体量：Windows 的 NTSTATUS \
+             `0xC000013A`（被控制台事件打死）。`backend_policy·rs::exit_status` 拿它认出那一种死法、说人话，\
+             不限任何东西的大小。",
+    ),
+    (
         "PUSH_MODE",
         "〔RM1e 09-24〕**权限位**不是体量：全景小程序推到远端 `~/.cc-monitor/bin/` 时给的 unix 模式（`0o755`，\
              `panorama_bytes·rs::push_to`）。",

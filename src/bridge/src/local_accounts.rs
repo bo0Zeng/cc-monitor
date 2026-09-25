@@ -4,11 +4,18 @@
 //! 本模块是它的本地对侧：**同样的输出类型**（`AccountsResult`），前端拿到的形状逐字段一致
 //! ——那正是 §40「本地 = 不走 ssh 的远端」在这一格上的意思。
 //!
+//! # 〔C4c · 第四波 4B〕本机账号清单与信任预检**不在这里了**
+//!
+//! 两条 Tauri 命令（`list_local_accounts` · 本机那一侧的信任预检）退役：本机与远端同一条路 —— 前端经通道问
+//! `<local>` 那条长连接的 `accounts-list` / `accounts-trust`，后端出成品（并表也在后端）。本文件今天只剩两样：
+//! 下面那份**零生产调用方**的参照实现（`list_from_dir` 一族，理由见它的头注）与 `acct-iso` 的两问（文件末尾）。
+//! 下面 `N-F1c` 那几节记的是来历（「问本机后端 `--list-accounts`」那一跳今天是帧面，不是一次性 exec）。
+//!
 //! # 🔴 `N-F1c`（2026-09-05）：读口**不再自己读磁盘**，改成问本机后端
 //!
 //! 用户拍的板逐字：「claude code 真实运行在哪台机器，他的账号就应该归哪台机器的后端管」。
-//! ⇒ [`list_local_accounts`] 现在 exec 一次本机后端的 `--list-accounts`，
-//! 把它吐的那几行交给 `accounts::parse_accounts_lines`（**与远端那条同一套解析、不同传输**），
+//! ⇒ [`list_local_accounts`] 现在 exec 一次本机后端的 `--list-accounts`，〔散文墓碑〕
+//! 把它吐的那几行交给 `accounts::parse_accounts_lines`（**与远端那条同一套解析、不同传输**），〔散文墓碑〕
 //! 调用形状照同文件 E79 那条先例（〔C4a〕那一条已退役、改走通道），没有另造第二种调用法。
 //!
 //! 落地要先搬开两块石头，两块都在本轮搬掉了：
@@ -348,246 +355,18 @@ fn list_from_dir(accts_dir: &Path) -> AccountsResult {
     }
 }
 
-/// 本机账号清单的**三个结局**（`N-F1c` `NF1cD3`）。
-///
-/// | 结局 | 它是什么 | 界面据此说什么 |
-/// |---|---|---|
-/// | [`Self::Listed`] | 后端答出来了 | 列出来（零个账号也是一个**答案**） |
-/// | [`Self::NoBackend`] | 这台机器上问不到 —— 二进制不在 / 起不来 | 说得出下一步 |
-/// | [`Self::Unreadable`] | 后端在、也答了，但那份答案读不动 | 说得出坏在哪 |
-///
-/// # 为什么是三档而不是 `Result<_, String>`
-///
-/// 与传输那一层 `QueryOutcome` 同一条理由（它的模块头注逐字写过）：
-/// 把「后端不在」与「查询失败了」压成一个 `Err`，就是让上层去猜。
-/// 而本模块还多一格必须守的东西 ——
-/// 🔴 **第二档绝不许渲染成「你没有账号」**：那是把「够不着」说成「没有」。
-/// 开发树里 `externalBin` 现打零命中 ⇒ 那一档在本地是**恒真**的，
-/// 一旦它退化成一张空表，用户看到的就是一句关于自己机器的假话。
-#[derive(Debug)]
-pub(crate) enum LocalAccountsOutcome {
-    Listed {
-        meta: AccountsMeta,
-        accounts: Vec<RemoteAccount>,
-    },
-    NoBackend(String),
-    Unreadable(String),
-}
-
-impl LocalAccountsOutcome {
-    /// 这一档要说的那句话。**三档两两不同**由判据钉着，不是巧合。
-    ///
-    /// ⚠ 射程如实写：`Listed` 那一句今天**只进日志** —— 界面渲染的是列表本身。
-    /// 所以「两两不同」这条判据买到的是「**两个失败档不会退化成同一句**」，
-    /// 别把它读成「三档都在界面上说了话」。
-    pub(crate) fn copy(&self) -> String {
-        match self {
-            Self::Listed { meta, accounts } => format!(
-                "本机后端答出了 {} 个账号（清单 {}，启用={}）",
-                accounts.len(),
-                meta.manifest_path,
-                meta.enabled
-            ),
-            Self::NoBackend(reason) => format!(
-                "本机后端不在，问不出这台机器上有哪些账号：{reason}。\
-                 ⚠ 这**不是**「你没有账号」—— 开发树里本来就没有这个二进制，\
-                 它只在发版构建时才装进安装包；装好之后这一节就会把账号列出来。"
-            ),
-            Self::Unreadable(why) => format!(
-                "本机后端答了，但那份账号数据读不动：{why}。\
-                 多半是后端版本与界面对不上 —— 重装一次本机后端（或更新 cc-monitor）。"
-            ),
-        }
-    }
-
-    /// 折成前端那个形状。**两个失败档一律 `available:false` + `error`**，
-    /// 而不是「空列表 + 成功」—— 后者正是 `NcM4` 那一刀要造的东西。
-    pub(crate) fn into_result(self) -> AccountsResult {
-        let copy = self.copy();
-        match self {
-            Self::Listed { meta, accounts } => AccountsResult {
-                available: true,
-                error: None,
-                meta: Some(meta),
-                accounts,
-                // ⚠ 逐字节保持 `N-F1c` 之前的行为：这条路一直是 `None`。
-                // `accounts::degraded_notice` **刻意不接进来** —— 它那两句话逐字都在说
-                // 「远端 backend / 在远端跑一次」，对一台本机来说有两个字是假的，
-                // 而改那两句要动 `accounts.rs`（本件写区外）。登记为诚实边界，不是遗漏。
-                notice: None,
-            },
-            Self::NoBackend(_) | Self::Unreadable(_) => AccountsResult {
-                available: false,
-                error: Some(copy),
-                meta: None,
-                accounts: Vec::new(),
-                notice: None,
-            },
-        }
-    }
-}
-
-/// 把一次 `--list-accounts` 的结局折成 [`LocalAccountsOutcome`]。
-///
-/// **纯函数**：不 spawn 进程、不碰文件系统 ⇒ 喂一份已知的假清单就能正面断言
-/// 「答出来几个、名字是什么」（`NF1cD1` 的 acceptor 逐字要的那一格）。
-pub(crate) fn classify_local_accounts(outcome: QueryOutcome) -> LocalAccountsOutcome {
-    let stdout = match outcome {
-        QueryOutcome::Ok(s) => s,
-        QueryOutcome::NoBackend(reason) => return LocalAccountsOutcome::NoBackend(reason),
-        QueryOutcome::Failed { code, stderr } => {
-            return LocalAccountsOutcome::Unreadable(format!(
-                "退出码 {code:?}；后端说：{}",
-                stderr.trim()
-            ))
-        }
-    };
-    let lines: Vec<String> = stdout
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect();
-    if lines.is_empty() {
-        // 旧后端不认这个子命令时是 exit 2（走上面那支）；exit 0 却什么都没吐
-        // 是另一种坏，分开说 —— 照 `list_remote_accounts` 那条同形的处理。
-        return LocalAccountsOutcome::Unreadable("它一行都没吐（不认这个子命令？）".into());
-    }
-    // ★ 与远端那条**同一套解析、不同传输**（C1「一份代码两种承载」在这条查询上的落点）。
-    let (meta, accounts) = crate::accounts::parse_accounts_lines(&lines);
-    match meta {
-        Some(meta) => LocalAccountsOutcome::Listed { meta, accounts },
-        None => LocalAccountsOutcome::Unreadable(format!(
-            "{} 行里没有一行是 accounts-meta（版本不匹配？）",
-            lines.len()
-        )),
-    }
-}
-
-/// 〔第三波 S3 · 2026-09-24〕把本机 apikey 表并进清单：**表里有这个号的一行 ⇒ 它是 api-key 号、可选**。
-///
-/// 后端答的清单只看 manifest（cc-acct-iso 没有 apikey 账号这个概念）⇒ 设置页 apikey 那一支建出来的号
-/// 在那里是「订阅 · 没凭据」= 未登录、选不中。apikey 表只在 monitor 这一侧（本机）⇒ 并在这一跳。
-///
-/// - 「哪个号在表里」走全仓那一份规则 `history::apikey_routed_subset`（`apikey_routing_for` 调的同一个）；
-/// - 「在表里 ⇒ 什么种类 / 就不就绪」两条规则住 `acct-core`，这里一格判定都不长（`RemoteAccount::apply_apikey_table`）。
-/// - 只动 `Listed` 那一档；两个失败档原样过（没有清单就没有东西可并）。
-///
-/// **纯函数**：表的行与 agent 名都是入参 ⇒ 判据用真写入口写一份表、用真解析读一份清单来量它。
-pub(crate) fn with_apikey_table(
-    outcome: LocalAccountsOutcome,
-    rows: &[String],
-    agent: &str,
-) -> LocalAccountsOutcome {
-    let LocalAccountsOutcome::Listed { meta, mut accounts } = outcome else {
-        return outcome;
-    };
-    let dirs: Vec<String> = accounts
-        .iter()
-        .filter_map(|a| a.config_dir.clone())
-        .collect();
-    let routed = crate::history::apikey_routed_subset(&dirs, rows, agent);
-    for a in &mut accounts {
-        let in_table = a.config_dir.as_ref().is_some_and(|d| routed.contains(d));
-        a.apply_apikey_table(in_table);
-    }
-    LocalAccountsOutcome::Listed { meta, accounts }
-}
-
-/// L3a：列出**本机**的账号 —— **问本机后端**（`N-F1c`）。
-///
-/// `list_remote_accounts` 的本地对侧，**输出类型完全相同**；从 `N-F1c` 起连
-/// **数据源**也对上了：远端那条走 `ssh host <backend> --list-accounts`，
-/// 本机这条直接 exec 同一个二进制。调用形状照 E79 那条先例（〔C4a〕它已退役、改走通道），
-/// 没有另造第二种调用法。
-///
-/// 只读：不写任何文件、不读凭据内容（那两条现在由后端自己的只读铁律守着）。
-/// ⚠ 它**起一次进程**了 —— 上一版那句「不起任何进程」从此不成立，这一行就是订正。
-#[tauri::command]
-pub async fn list_local_accounts() -> Result<AccountsResult, String> {
-    // exec 是阻塞 IO，挪到阻塞线程池。
-    tokio::task::spawn_blocking(|| {
-        // 〔第三波 S3〕「表里有哪几行」只从那条缝取（`history::inject_facts`，理由见它的头注）。
-        let facts = crate::history::inject_facts();
-        with_apikey_table(
-            classify_local_accounts(run_query(
-                env!("CCM_TARGET_TRIPLE"),
-                &["--list-accounts"],
-                &*crate::spawn_managed::local_backend_one_shot_query(),
-            )),
-            &(facts.rows)(),
-            crate::history::launch_agent_id(),
-        )
-        .into_result()
-    })
-    .await
-    .map_err(|e| format!("枚举本机账号失败：{e}"))
-}
+// 〔C4c · 第四波 4B〕本机账号清单那条 Tauri 命令（`list_local_accounts`）与它的三档结局（`LocalAccountsOutcome`）·
+//   行解析转交（`classify_local_accounts`）· 本机并表（`with_apikey_table`）〔散文墓碑〕一起退役：本机与远端同一条路 ——
+//   前端经通道说 `accounts-list`，那台机器的后端出成品、并它自己那份 apikey 表（规则住 `acct-core`）。
+//   「本机后端不在 ≠ 你没有账号」那一格由通道的失败层级接住（`ipc/chan-caller.ts::saidOf`：够不着 ≠ 答了空表）。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/local_accounts_tests.rs"]
 mod tests;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 〔`A3` 第二波〕本机的「这个账号信任过这个目录吗」—— `accounts.trust` 的本机对侧
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// 本机那一跳的 argv。**不过 shell**：远端那条要 `shell_quote`（`accounts::trust_args`），
-/// 是因为它拼成一整串交给 SSH；本机直接 exec，参数原样是 argv 的一格。
-///
-/// 账号 0（`None`）走 `--account-trust-zero`、**不传路径** —— 与远端那条同一条规矩
-/// （后端那边路径写死 `$HOME/.claude.json`，这条命令连「任意文件读」的面都没有）。
-pub(crate) fn local_trust_argv<'a>(config_dir: Option<&'a str>, cwd: &'a str) -> Vec<&'a str> {
-    match config_dir {
-        None => vec!["--account-trust-zero", cwd],
-        Some(c) => vec!["--account-trust", c, cwd],
-    }
-}
-
-/// 把一次本机 `--account-trust*` 的结局折成 [`crate::accounts::AccountTrustResult`]。
-///
-/// **纯函数**（不起进程）⇒ 三档各能正面断言。解析与远端那条共用
-/// `accounts::trust_from_lines`；差别只在「够不着」与「查询失败」这两档怎么说 ——
-/// **都不许**说成「未信任」：调用方（换号重启）对 `available:false` 只是不提示，不拦。
-pub(crate) fn classify_local_trust(outcome: QueryOutcome) -> crate::accounts::AccountTrustResult {
-    match outcome {
-        QueryOutcome::Ok(stdout) => {
-            let lines: Vec<String> = stdout
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .map(str::to_string)
-                .collect();
-            crate::accounts::trust_from_lines(&lines, "本机后端没有返回信任状态")
-        }
-        QueryOutcome::NoBackend(reason) => crate::accounts::trust_unavailable(format!(
-            "本机后端不在，查不出这个账号是否信任过该目录：{reason}"
-        )),
-        QueryOutcome::Failed { code, stderr } => crate::accounts::trust_unavailable(format!(
-            "本机后端的信任查询失败（退出码 {code:?}）：{}",
-            stderr.trim()
-        )),
-    }
-}
-
-/// 本机那一侧的入口 —— 由 `accounts::check_account_trust` 在 `origin == <local>` 时调。
-///
-/// **不单开一条 Tauri 命令**：远端那条本来就吃 `origin`，本机只是 `origin` 的另一个取值
-/// （`C1`「本地 = 不走 ssh 的远端」；同 `backend_policy::backend_exit_policy` 那一族的形）。
-pub(crate) async fn local_account_trust(
-    config_dir: Option<String>,
-    cwd: String,
-) -> crate::accounts::AccountTrustResult {
-    tokio::task::spawn_blocking(move || {
-        classify_local_trust(run_query(
-            env!("CCM_TARGET_TRIPLE"),
-            &local_trust_argv(config_dir.as_deref(), &cwd),
-            &*crate::spawn_managed::local_backend_one_shot_query(),
-        ))
-    })
-    .await
-    .unwrap_or_else(|e| crate::accounts::trust_unavailable(format!("本机信任查询没能跑完：{e}")))
-}
+// 〔C4c · 第四波 4B〕本机的「这个账号信任过这个目录吗」（`accounts.trust` 的本机对侧）退役〔散文墓碑〕：`local_trust_argv` /
+//   `classify_local_trust` / `local_account_trust` 三个函数随之删了〔散文墓碑〕；信任预检上了帧面（`accounts-trust`），
+//   本机与远端同一条路（前端 `accounts.ts::checkTrust` 经通道问）。
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E79：本机的「某个 sid 现在跑在哪个账号下」

@@ -1586,6 +1586,13 @@ fn every_symbol_address_in_the_sources_still_resolves() {
         ),
         ("foo", "**示例占位符**：同上，讲口径时举的例子"),
         (
+            "discover_profiles",
+            "〔AL1d · 第四波 4B〕**历史句**：`tool_registry.rs` 里 `posix-rc-aliases` 那块墓碑**逐字引用**当年那一行 \
+                 `why:`（「原文逐字：…」），那一行点的就是 `profile_installer.rs` 里这个函数。它今天删了 —— \
+                 `$PROFILE` 在哪只剩 `shell_dialect.rs` 一处答（`调研/第四波记录/AL1d.md §2.3`）。\
+                 改写那段引文等于篡改原文（同上面 `resolve_claude_dir` 那条）。",
+        ),
+        (
             "build_usage_probe_cmd",
             "★〔`K-R104` 09-13〕**历史句**：`payload.rs` 与 `doc_claim_registry.rs` 里\
                  那几句逐字讲的就是「用量探针那条外层 tmux 串**已经退役**」——\
@@ -2714,6 +2721,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_diagram_commands_pass_the_upstream_through_untouched",
             1,
         ),
+        // 〔S5 · 第四波 · V41〕`parse_remote_hosts` 旧单对象那一支删了，守它的测试随之删；
+        //    接替它的判据头注逐字说那条旧测试守的是什么 ⇒ 第②条出路。
+        (
+            "tests/bridge/lib_remote_config_tests.rs",
+            "legacy_single_object_one_host",
+            2, // 〔合并 JA1〕+1：JA1 点址那一行（它当时登记「待主会话裁」，本路裁完挂墓碑）
+        ),
         // 🔴 〔C4b · 第四波 4B〕插件市场那条命令改走通道，monitor `plugins.rs` 连同它的形状收口删了；
         //    收口搬到了界面那一侧（`decodeSurvey`），那一节的标题逐字记着它从哪搬来 ⇒ 第②条出路。
         (
@@ -2989,6 +3003,48 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/settings/panel-deferred-io.vitest.ts",
             "write_account_aliases",
+            1,
+        ),
+        // 〔AL1d · 第四波 4B〕「终端集成」那五条命令并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`）；
+        //   `$PROFILE` 第二份认法 ＋ 它的遗留扫描随「候选只有一份来历」删了（`§2.3`）。散文留着说它们去了哪。
+        (
+            "src/bridge/src/profile_installer.rs",
+            "legacy_profile_paths",
+            1,
+        ),
+        (
+            "src/bridge/src/profile_installer.rs",
+            "scan_legacy_profiles",
+            3,
+        ),
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "cc_integration_preview",
+            1,
+        ),
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "cc_integration_status",
+            1,
+        ),
+        (
+            "tests/bridge/profile_installer_tests.rs",
+            "cc_integration_install",
+            1,
+        ),
+        (
+            "tests/bridge/profile_installer_tests.rs",
+            "cc_integration_scan_path",
+            1,
+        ),
+        (
+            "tests/bridge/profile_installer_tests.rs",
+            "cc_integration_uninstall",
+            1,
+        ),
+        (
+            "tests/bridge/profile_installer_tests.rs",
+            "scan_legacy_profiles",
             1,
         ),
         // 〔MC1 · 2026-09-24〕远端「装/卸 ccm 助手」两条命令改名成 `install_remote_alias_block` /
@@ -3503,6 +3559,33 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔SR1b · 2026-09-24〕`tests/bridge/sftp_pool_tests.rs` 那五块墓碑（`decode_editable_guards` 等五个旧判据名）
         //   随那份判据整份重写摘了：它守的**整根轴**（池子本体的 SFTP 判据）搬进了本机后端，
         //   新文件判的是中继，没有一句还在说那几个旧判据 ⇒ 真该没有，不是删线索。
+        // 🔴 〔C4c · 第四波 4B〕账号清单（远端 / 本机）与信任预检三条 Tauri 命令改走通道、后端出成品：monitor 那一份行解析 ·
+        //    本机并表 · 本机信任预检三件函数随之删了；留下的散文逐字点旧名讲来历 ⇒ 第②条出路（逐处一块）。
+        ("src/backend/read_face.rs", "with_apikey_table", 1),
+        ("src/bridge/src/accounts.rs", "parse_accounts_lines", 1),
+        (
+            "src/bridge/src/local_accounts.rs",
+            "classify_local_accounts",
+            1,
+        ),
+        (
+            "src/bridge/src/local_accounts.rs",
+            "classify_local_trust",
+            1,
+        ),
+        ("src/bridge/src/local_accounts.rs", "local_account_trust", 1),
+        ("src/bridge/src/local_accounts.rs", "local_trust_argv", 1),
+        (
+            "src/bridge/src/local_accounts.rs",
+            "parse_accounts_lines",
+            1,
+        ),
+        ("src/bridge/src/local_accounts.rs", "with_apikey_table", 1),
+        (
+            "tests/bridge/local_accounts_tests.rs",
+            "with_apikey_table",
+            1,
+        ),
     ];
 
     let corpus = dead_name_corpus();
@@ -3737,10 +3820,12 @@ fn every_prose_tombstone_mark_is_registered() {
     /// 不是（量具脚本里的针、讲机制的散文）⇒ 同样记一笔，并在旁边写清它是哪一类。
     /// **不许**为了让本条变绿就把标记删掉 —— 删掉的是账，不是病。
     const REGISTERED: &[(&str, usize)] = &[
+        // 〔S5 · 第四波 · V41〕`parse_remote_hosts` 旧单对象那一支与守它的测试删了，接替它的判据头注挂一块。
+        ("tests/bridge/lib_remote_config_tests.rs", 2), // 〔合并 JA1〕+1：JA1 点址那一行
         // 〔SR1b 子步 3 · 2026-09-24〕`inproc_dial.rs` 整份删了（界面进程零 SSH）⇒ 从界面侧搬来的旧函数名全仓只剩散文：
         ("src/backend/dial/connect.rs", 2), // 头注「搬自」那一句里跳板 · agent 鉴权两个旧名
         ("src/backend/platform/ssh_agent.rs", 1), // 头注「搬自」那一句里 agent 鉴权旧名
-        ("tests/bridge/local_origin_registry_tests.rs", 2), // 地板 17 → 16 · 分诊债 12 → 11 两处（跳板查配置那一处随文件走了）
+        ("tests/bridge/local_origin_registry_tests.rs", 3), // 〔C4c〕+1：分诊债 11 → 10（账号面那一处查远端配置随命令删了）// 地板 17 → 16 · 分诊债 12 → 11 两处（跳板查配置那一处随文件走了）
         // 〔SR1b 子步 3〕`sftp_move_ledger`（SFTP 14 处拨号的挡路石底账）随那 14 处全搬完退役：点它名字的两处旁注各一块。
         ("src/bridge/src/backend/control/mod.rs", 1),
         ("tests/bridge/tool_registry_tests.rs", 1),
@@ -3753,7 +3838,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
         ("src/bridge/src/remote_history.rs", 2), // 远端全文搜索那份 fan-out ·〔合并 RW1〕+1：F11 改经远端后端删，远端那一支的头注一块
-        ("tests/bridge/local_read_surface_registry_tests.rs", 1), // 棘轮史里 E79 那一格
+        ("tests/bridge/local_read_surface_registry_tests.rs", 2), // 〔C4c〕+1：`accounts.rs` 那一行摘掉处的「降级说明」旧名 // 棘轮史里 E79 那一格
         // ▸ 下面这 5 份是 `P14` 立件的**直接证据**：它们在 `TOMBSTONED` 里一行都没有
         //   ⇒ 它们的标记**没有一处**落在死名人群上 ⇒ 在本条之前按构造零判据。
         //   逐份是：本模块生产侧那份（标记的定义处）· 本文件（那一处带标记的墓碑，
@@ -3782,7 +3867,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   （住址并进 FW5 那一行，〔合并〕两边各 +1）。
         // 〔RW1 · 第四波 09-24〕Windows ACL 那条判据从 monitor 搬去后端：两头各一块墓碑。
         ("tests/backend/control/files_write_tests.rs", 1),
-        ("tests/bridge/profile_installer_tests.rs", 1),
+        ("tests/bridge/profile_installer_tests.rs", 5), // 〔AL1d〕1 → 5（`ProfileKind::Custom` · 「终端集成」三条命令名两行 · `scan_legacy_profiles`，逐处挂墓碑）
         // 〔C2 · 2026-09-24〕拨号归后端那一拍：`ssh_source_dial_move_judge.rs` 三块（回落表那条判据 · 请求行那条 ·
         //   解析两处那条，随拨号搬家删掉）。〔SR1b 子步 3〕+1：只剩 SFTP 还要 russh 的那条判据改名成零命中。
         // 〔SR1b 子步 3〕`inproc_dial.rs` 那一行摘了：**那份文件整份删了**（SFTP 进本机常驻后端，界面进程零 SSH），
@@ -3794,8 +3879,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/evidence/C2-dial-loopback.py", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/bridge/src/sftp.rs", 10), // 〔SR1b〕9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
-        ("src/bridge/src/profile_installer.rs", 5), // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
-        ("src/bridge/src/verified_write.rs", 3),    // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
+        ("src/bridge/src/profile_installer.rs", 11), // 〔AL1d〕5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
+        ("src/bridge/src/verified_write.rs", 3), // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
         ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
         // 〔SR1b〕+2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。
         ("tests/bridge/remote_write_registry_tests.rs", 12), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删 · 〔SR1b 子步 3〕+2：写点表整张空了，`sftp.rs` 那一对原语（原子上传 · 入口落点类型）的旧名
@@ -3830,11 +3915,11 @@ fn every_prose_tombstone_mark_is_registered() {
         //   那三个名字同时要进 `TOMBSTONED`，两张表单位不同，各记各的）。
         ("src/bridge/src/filewin/source.rs", 5), // 〔F7c 收尾 09-24〕4 → 5（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
-        ("src/bridge/src/history.rs", 5), // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端
+        ("src/bridge/src/history.rs", 6), // 〔C4c〕+1：记录那一问的 Tauri 命令与答案形状退役，原处留一块 // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端
         ("src/bridge/src/launch.rs", 1),
-        ("src/bridge/src/lib.rs", 4), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
+        ("src/bridge/src/lib.rs", 6), // 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
         ("src/bridge/src/local_backend_host.rs", 1),
-        ("src/bridge/src/local_origin_registry.rs", 1),
+        ("src/bridge/src/local_origin_registry.rs", 2), // 〔C4c〕+1：分诊债表里账号面那一行还掉了
         ("src/bridge/src/spawn_managed.rs", 2),
         ("src/bridge/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 1),
@@ -3880,7 +3965,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔AL1 · 2026-09-24〕+5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
-        ("tests/bridge/parity_ledger_tests.rs", 13), // 〔RM1f〕12 → 13（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("tests/bridge/parity_ledger_tests.rs", 18), // 〔合并 RM1f × 主线 60ace11b〕主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 6b375621〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/bridge/plugin_class_registry_tests.rs", 3), // 〔RM1f〕2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
         ("src/panorama-engine/main.rs", 1), // 〔RM1f〕monitor 那份按文件列符号的旧函数名（随内嵌引擎删了）
         ("tests/bridge/panorama_seam_registry_tests.rs", 1), // 〔RM1f〕PN1b 那一行增量账里的旧命令名（随内嵌引擎退役）
@@ -3900,16 +3985,16 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/evidence/S29-legacy-compat-census.py", 11),
         ("tests/ipc/commands.vitest.ts", 5), // 〔AL1〕+2：K-R49 增量账里 `write_account_aliases` 那两行 // 〔C4b〕+1：「刻意不同」那条判据合并后改名，本机只有一个表示那一节点它旧名
         // 〔C4b · 第四波 4B〕`"__local__"` 合进 `LOCAL_ORIGIN`，「两个同名常量刻意不同」那条判据改成钉合了之后的形状，旧名挂一块。
-        ("tests/bridge/backend_policy_tests.rs", 1),
+        ("tests/bridge/backend_policy_tests.rs", 2), // 〔C4c〕+1：「空 origin 必须拒」那条随命令退役，原处一块
         // 〔C4b · 第四波 4B〕会话读面三条 Tauri 命令（骨架索引 · 大纲清单 · 会话内查找）退役、改走通道：
         //   点它们旧名的来历段各挂一块（包装层两段 · 新住址头注 · 骨架模块头注 · 判据替身头注）。
         ("src/bridge/src/session_skeleton.rs", 1),
         ("src/bridge/src/snapshot_resume.rs", 1),
-        ("src/ipc/commands.ts", 3), // 会话读面两段 ＋ 插件市场一段
-        ("src/session-reads.ts", 1),
+        ("src/ipc/commands.ts", 3),  // 会话读面两段 ＋ 插件市场一段
+        ("src/session-reads.ts", 3), // 〔C4c〕+2：第四问（记录还在不在）头注点名它替掉的命令与发送端
         ("src/settings/plugins-section.ts", 1),
         ("tests/settings/plugins-section.vitest.ts", 1),
-        ("tests/test-support/chan-fake.ts", 1),
+        ("tests/test-support/chan-fake.ts", 2), // 〔C4c〕+1：账号那两问的翻译节点名三条旧命令名
         // 〔F7c 收尾 09-24〕SFTP 那一族收到只剩传输：删掉的命令 / 函数 / 判据名在这几份里逐处挂了墓碑。
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),
@@ -3931,6 +4016,19 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/keybindings/actions.ts", 2),
         ("src/keybindings/editor.ts", 1),
         ("tests/keybindings/actions.vitest.ts", 1),
+        // 〔C4c · 第四波 4B〕账号清单与信任预检改走通道（后端出成品）：monitor 那几件函数与它们的判据删了，
+        //   逐处挂了墓碑（模块头注 · 退役那几节的旁注 · 后端出成品那一臂点名它替掉了谁）。
+        ("src/backend/read_face.rs", 1),
+        ("src/bridge/src/accounts.rs", 3),
+        ("src/bridge/src/local_accounts.rs", 5),
+        ("tests/bridge/accounts_tests.rs", 1),
+        ("tests/bridge/local_accounts_tests.rs", 2),
+        // 〔C4c · 第四波 4B〕记录那一问（`history-record`）改走通道：monitor 的发送端与它的判据删了，原处各一块。
+        ("src/bridge/src/backend/control/frame_query.rs", 1),
+        ("tests/bridge/backend/control/frame_query_tests.rs", 1),
+        // 〔C4c · 第四波 4B〕「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
+        ("src/bridge/src/backend_policy.rs", 2),
+        ("src/settings/backend-section.ts", 1),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

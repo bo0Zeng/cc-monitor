@@ -176,51 +176,41 @@ export function describeHealthDetail(h: BackendHealth): string | null {
     .replace("{misread}", String(h.misread));
 }
 
-/** 后端答的「这一趟我是哪个壳」（`01 §3.3` 那一轴）。今天只有 `standalone` 真的存在。 */
-export type BackendShell = "standalone" | "folded";
-
 /** 那个值现读出来的三态（与后端 `exit_policy::Read::state` 逐字对齐）。 */
 export type ExitPolicyState = "chosen" | "absent" | "unreadable";
 
 /**
  * 一台机此刻的退出行为。
  *
- * - `shell` / `policy` / `killOnExit`：**后端答的**（`exit-policy-read`）；
+ * - `policy` / `killOnExit`：**后端答的**（`exit-policy-read`）；
  * - `detached`：来自 `backend_status`（远端恒 null ⇒ 按未脱离算）。
+ *
+ * 〔S5 · 第四波 · V105 清账〕原来还有一格 `shell`（后端答「这一趟是哪个壳」），
+ * 为的是「折进前端进程」那一档：那一档生命周期没得选，整格说「不适用」（E4）。
+ * 那一档已放弃（`99 §1` V105），壳只剩独立进程 ⇒ 这一格、那一支、判据 E4 同拍删掉。
  */
 export interface ExitState {
-  shell: BackendShell;
   policy: ExitPolicyState;
   killOnExit: boolean;
   detached: boolean;
 }
 
 /**
- * 〔B2 · E4〕**不适用** —— 折进前端进程那一档，生命周期没得选（`01 §3.3b ⑧`）。
- * 它**不是**那四句里的任何一句：界面拿到它就不摆那个开关、也不说那一行。
- */
-export const EXIT_NOT_APPLICABLE = null;
-
-/**
- * 这台机现在**退出时会发生什么** —— 一句话，四档（外加「不适用」）。
+ * 这台机现在**退出时会发生什么** —— 一句话，四档。
  *
  * ★ 它是纯函数：每一档在单测里逐格钉得死，不需要真起一个后端。
  * ⚠ **「无人监护」只许出现在真脱离那一档**（②）——
  * 出现在别处就是承诺一件做不到的事，而那正是 P2s-Y5 当初立禁令要防的东西。
  *
  * ⚠ 判断的**顺序**是承重的：
- * ① 壳是折进前端 ⇒ 不适用（那一档连选择都没有，说哪句都是假的）；
- * ② 读不出来 ⇒ 说读不出来（**不看** `killOnExit` —— 那是套过缺省的值，不是谁选的）；
- * ③ 勾上 ⇒ 会结束它（**不看** `detached`：常驻那条由后端在最后一个客户走时自己退，
+ * ① 读不出来 ⇒ 说读不出来（**不看** `killOnExit` —— 那是套过缺省的值，不是谁选的）；
+ * ② 勾上 ⇒ 会结束它（**不看** `detached`：常驻那条由后端在最后一个客户走时自己退，
  *    被监护那条由 monitor 退出臂收）；
- * ④ 没勾 ⇒ 看它有没有真脱离。
+ * ③ 没勾 ⇒ 看它有没有真脱离。
  * ⚠ 曾经有过一档「已经脱离了 ⇒ 这个勾管不到它」—— 那一档是**一个缺口的产物**，
  * 缺口补上之后它就成了一句假话，随缺口一起删掉了。
  */
-export function describeExitBehavior(
-  s: ExitState,
-): string | typeof EXIT_NOT_APPLICABLE {
-  if (s.shell === "folded") return EXIT_NOT_APPLICABLE;
+export function describeExitBehavior(s: ExitState): string {
   if (s.policy === "unreadable") return EXIT_UNREADABLE;
   if (s.killOnExit) return EXIT_KILLS;
   return s.detached ? EXIT_UNATTENDED : EXIT_SELF_DIES;

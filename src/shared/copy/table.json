@@ -256,6 +256,176 @@
       "kind": "body",
       "zh": "{who} 的 tmux 会话「{name}」已终止。标签稍后显示为已结束。",
       "args": ["who", "name"]
+    },
+    "mcpSync.panel.open": {
+      "kind": "action",
+      "zh": "推到 / 拉自另一台机器",
+      "args": []
+    },
+    "mcpSync.panel.hint": {
+      "kind": "body",
+      "zh": "把这个项目的 MCP 配置推到另一台机器，或从那边拉过来。写之前先看差异，勾了哪几条才写哪几条；不会自动同步，也不会改写任何一条。",
+      "args": []
+    },
+    "mcpSync.direction.push": {
+      "kind": "control",
+      "zh": "推到",
+      "args": []
+    },
+    "mcpSync.direction.pull": {
+      "kind": "control",
+      "zh": "拉自",
+      "args": []
+    },
+    "mcpSync.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "mcpSync.dir.placeholder": {
+      "kind": "control",
+      "zh": "那台机器上的项目目录",
+      "args": []
+    },
+    "mcpSync.dir.missing": {
+      "kind": "error",
+      "zh": "先填那台机器上的项目目录。",
+      "args": []
+    },
+    "mcpSync.machines.none": {
+      "kind": "body",
+      "zh": "还没有配置别的机器。",
+      "args": []
+    },
+    "mcpSync.machines.failed": {
+      "kind": "error",
+      "zh": "读不到机器清单：{reason}",
+      "args": ["reason"]
+    },
+    "mcpSync.preview.action": {
+      "kind": "action",
+      "zh": "看差异",
+      "args": []
+    },
+    "mcpSync.preview.loading": {
+      "kind": "body",
+      "zh": "正在读两边的配置…",
+      "args": []
+    },
+    "mcpSync.preview.failed": {
+      "kind": "error",
+      "zh": "看差异失败：{reason}",
+      "args": ["reason"]
+    },
+    "mcpSync.preview.head": {
+      "kind": "body",
+      "zh": "从 {source} 的 {sourcefile} 拷到 {target} 的 {targetfile}",
+      "args": ["source", "sourcefile", "target", "targetfile"]
+    },
+    "mcpSync.preview.empty": {
+      "kind": "body",
+      "zh": "拷出来的那份配置里没有 MCP 条目。",
+      "args": []
+    },
+    "mcpSync.state.new": {
+      "kind": "body",
+      "zh": "{machine} 上没有",
+      "args": ["machine"]
+    },
+    "mcpSync.state.same": {
+      "kind": "body",
+      "zh": "两边一样",
+      "args": []
+    },
+    "mcpSync.state.differs": {
+      "kind": "body",
+      "zh": "{machine} 上的不一样",
+      "args": ["machine"]
+    },
+    "mcpSync.state.onlyThere": {
+      "kind": "body",
+      "zh": "只在 {machine} 上，不会动它",
+      "args": ["machine"]
+    },
+    "mcpSync.take.copy": {
+      "kind": "control",
+      "zh": "拷过去",
+      "args": []
+    },
+    "mcpSync.take.overwrite": {
+      "kind": "control",
+      "zh": "盖掉 {machine} 上那一条",
+      "args": ["machine"]
+    },
+    "mcpSync.row.showConfig": {
+      "kind": "action",
+      "zh": "看配置",
+      "args": []
+    },
+    "mcpSync.row.sideOf": {
+      "kind": "body",
+      "zh": "{machine} 上的这一条",
+      "args": ["machine"]
+    },
+    "mcpSync.suspect.absPresent": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 上也有这个路径。",
+      "args": ["field", "value", "machine"]
+    },
+    "mcpSync.suspect.absAbsent": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 上没有这个路径。",
+      "args": ["field", "value", "machine"]
+    },
+    "mcpSync.suspect.absForeign": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，{machine} 的系统不认这种写法。",
+      "args": ["field", "value", "machine"]
+    },
+    "mcpSync.suspect.absUnknown": {
+      "kind": "body",
+      "zh": "{field} 里有绝对路径 {value}，查不到 {machine} 上有没有。",
+      "args": ["field", "value", "machine"]
+    },
+    "mcpSync.suspect.commandMissing": {
+      "kind": "body",
+      "zh": "{machine} 的后端在它的 PATH 上找不到 {value}。你登录后的 shell 可能找得到。",
+      "args": ["machine", "value"]
+    },
+    "mcpSync.suspect.commandUnknown": {
+      "kind": "body",
+      "zh": "查不了 {machine} 上有没有 {value}：它的后端没有 PATH。",
+      "args": ["machine", "value"]
+    },
+    "mcpSync.suspect.commandRelative": {
+      "kind": "body",
+      "zh": "命令 {value} 是相对路径，要看 {machine} 那个项目里有没有这个文件。",
+      "args": ["value", "machine"]
+    },
+    "mcpSync.suspect.other": {
+      "kind": "body",
+      "zh": "留意 {field}：{value}",
+      "args": ["field", "value"]
+    },
+    "mcpSync.apply.action": {
+      "kind": "action",
+      "zh": "写到 {machine}（{n} 条）",
+      "args": ["machine", "n"]
+    },
+    "mcpSync.apply.done": {
+      "kind": "body",
+      "zh": "已写到 {path}：{names}",
+      "args": ["path", "names"]
+    },
+    "mcpSync.apply.unchanged": {
+      "kind": "body",
+      "zh": "{machine} 上那份已经是这样了，没有写。",
+      "args": ["machine"]
+    },
+    "mcpSync.apply.failed": {
+      "kind": "error",
+      "zh": "没写成：{reason}",
+      "args": ["reason"]
     }
   }
 }

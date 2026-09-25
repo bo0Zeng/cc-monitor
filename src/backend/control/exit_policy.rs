@@ -50,12 +50,10 @@ pub const KEY_KILL_ON_EXIT: &str = "killOnExit";
 /// 缺省：**不结束**（`C8③` 的前半句，`§3.3b ⑤` 逐字「本条不推翻」）。
 pub const DEFAULT_KILL_ON_EXIT: bool = false;
 
-/// 这一趟后端是哪个壳（`01 §3.3` 那一轴）。
-///
-/// 今天只有「独立进程」这一种（`W20 §二` 三条现打：全仓没有「折进前端进程」的对应物）。
-/// ⚠ 它是**后端自己答**的，不是界面猜的（`§3.3b ⑧` 的前提）：哪天后端库面被 link 进 monitor
-/// 进程内跑，那条路要答 `"folded"`，而界面会据此把「退出行为」整格说成「不适用」（E4）。
-pub const SHELL: &str = "standalone";
+// 〔S5 · 第四波 · V105 清账〕这里原来有 `pub const SHELL: &str = "standalone"`，
+//   随线上 `shell` 那一格一起删了：「折进前端进程」那一档已放弃（`99 §1` V105），壳只剩独立进程，
+//   这一格恒为同一个值、唯一的读者是界面那条永远走不到的「不适用」臂（E4，同拍删）。
+//   线上形状由 `tests::the_wire_shape_is_exactly_the_four_registered_fields` 按键集相等钉住。
 
 /// 现读一次的结果。**三态，不许合并**（`§3.3b ⑤`：「读不出来」与「用户选了默认」不是一回事）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,7 +193,6 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
 /// 一次读数的线上形状（`exit-policy-read` 与 `exit-policy-set` 共用）。
 fn wire(r: &Read, path: Option<&Path>) -> serde_json::Value {
     serde_json::json!({
-        "shell": SHELL,
         "state": r.state(),
         "killOnExit": r.kill_on_exit(),
         "reason": match r { Read::Unreadable(why) => Some(why.clone()), _ => None },

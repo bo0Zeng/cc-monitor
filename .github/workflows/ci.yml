@@ -220,14 +220,15 @@ jobs:
       - run: npx tsc --noEmit
 
       # F08b：ESLint（flat config + typescript-eslint）。**顾问式/不阻断**——同 Rust job 的
-      # clippy 仅报告不强制：既有告警作基线（**7 项**）、不追一次清零。`|| true`
+      # clippy 仅报告不强制：既有告警作基线（**3 项**，〔AL1d 09-24〕7 → 3）、不追一次清零。`|| true`
       # 让告警可见但不红 CI；新代码作者本地 `npm run lint` 自查。
       #
       # **E83（2026-08-01）：作用面从 `eslint src` 放开到 `eslint .`。** 本仓 `eslint.config.js`
       # 的 `ignores` 一直是**仓级**写法（逐条列 dist / node_modules / src/bridge / …），
       # 而脚本只跑 `src` ⇒ 那份意图从没兑现，`tests/e2e/**/*.mjs` 里 39 个 `no-undef` 永远没人看得到，
       # 且它们一个真问题都不是（纯缺一段 node/browser globals）。补完 globals 后
-      # **全仓实测仍是 7 项**，基线数字不变、覆盖面变大。
+      # **全仓实测当时仍是 7 项**，基线数字不变、覆盖面变大。〔AL1d · 第四波 4B · 09-24〕今天全仓 3 项：
+      # `src/settings/machine-aliases.ts` 那四处空 catch 随原「终端集成」记住上次选择的那段代码删了。
       - name: eslint (advisory, baseline)
         run: npm run lint || true
 

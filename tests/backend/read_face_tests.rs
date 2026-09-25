@@ -10,9 +10,12 @@ use std::path::{Path, PathBuf};
 /// `read_face::answer`」，两边必须相等。
 /// 〔SR1a · 09-24〕+2：`history-index` / `history-user-inputs`（题面「`--list-user-inputs` 与骨架
 /// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是题面，不是 `inbound.rs`）。
+/// 〔C4c · 第四波 4B〕+1：`accounts-trust`（主会话裁「仍在拨号的 `--account-trust` / `--account-trust-zero`」
+/// 随账号层一起上帧面 —— 异源是题面 `C4c` 那一句，不是 `inbound.rs`）。
 const FAMILY: &[&str] = &[
     "accounts-list",
     "accounts-sessions",
+    "accounts-trust",
     "history-index",
     "history-user-inputs",
     // 〔SR1a × SE2〕会话内查找。
@@ -571,4 +574,27 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
         Err(("bad_args", _))
     ));
     std::fs::remove_dir_all(&home).ok();
+}
+
+/// 〔C4c · 第四波 4B〕账号那两条的入参闸：`accounts-list` 缺 `agent` ⇒ `bad_args`（不猜是哪一家 ——
+/// 猜错就是把别家的号按 apikey 号报）；`accounts-trust` 缺 `cwd` / `configDir` 类型不对 ⇒ `bad_args`。
+/// 要求住址：`设计/05 §3.3.1`「② 对端错 —— 通道是通的，答案是『不行』」（入参错是对端的明拒，不是一个空答案）。
+#[test]
+fn the_account_pair_refuses_missing_or_mistyped_arguments() {
+    let home = scratch("c4c-args");
+    for (cmd, args) in [
+        ("accounts-list", serde_json::json!({})),
+        ("accounts-list", serde_json::json!({"agent": 7})),
+        ("accounts-trust", serde_json::json!({"configDir": null})),
+        (
+            "accounts-trust",
+            serde_json::json!({"configDir": 3, "cwd": "/w"}),
+        ),
+    ] {
+        match answer_at(&home, cmd, &args) {
+            Err((c, _)) => assert_eq!(c, "bad_args", "{cmd} {args}"),
+            Ok(v) => panic!("{cmd} {args} 被答了：{v}"),
+        }
+    }
+    let _ = std::fs::remove_dir_all(&home);
 }
