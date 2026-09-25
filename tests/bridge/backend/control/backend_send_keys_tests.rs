@@ -42,15 +42,33 @@ fn both_mode_names_are_ones_the_backend_actually_parses() {
 /// 而它守的性质（同一个拒绝只许有一种说法）没有消失 ⇒ 对照面换成 `backend_kill.rs`，
 /// 并收紧成只看**生产段**（原来是整份源码 `contains`，对面的测试里抄一份就能糊弄过去）。
 /// 理由与对照关系的全文住 `backend_kill_tests.rs::the_refusal_wording_matches_the_sibling_command`。
+/// 〔CP2b · 全量抽表〕兄弟文件的拒绝文案进了文案表：「生产段说的话」= 生产段源码 ＋ 它经 `copy_text`
+/// 取的表条目原文（占位符原样）。只看源码的话，抽完表之后这条对照会对着空串零命中地红 / 绿。
+fn spoken(prod: &str) -> String {
+    let mut out = prod.to_string();
+    let mut rest = prod;
+    while let Some(i) = rest.find("copy_text(") {
+        let after = rest[i + "copy_text(".len()..].trim_start();
+        if let Some(body) = after.strip_prefix('"') {
+            if let Some(j) = body.find('"') {
+                out.push('\n');
+                out.push_str(&crate::copy_table::copy_text(&body[..j], &[]));
+            }
+        }
+        rest = &rest[i + 1..];
+    }
+    out
+}
+
 #[test]
 fn the_refusal_wording_matches_the_sibling_command() {
-    let sibling = guard_core::production_code(include_str!(
+    let sibling = spoken(&guard_core::production_code(include_str!(
         "../../../../src/bridge/src/backend/control/backend_kill.rs"
-    ));
+    )));
     for (code, needle) in [
         ("no_tmux", "远端未安装 tmux"),
         ("no_such_session", "远端会话已不存在（可能已被终止）"),
-        ("wrong_owner", "可能不是本工具管理的会话"),
+        ("wrong_owner", "不是本工具开的"),
     ] {
         assert!(
             refusal_text(code, "m").contains(needle),
@@ -63,7 +81,7 @@ fn the_refusal_wording_matches_the_sibling_command() {
     }
     // `typed_unconfirmed` 是后端独有的一档（SSH 那条路分不出来）⇒ 只要求它不被吞掉。
     assert!(
-        refusal_text("typed_unconfirmed", "x").contains("未必"),
+        refusal_text("typed_unconfirmed", "x").contains("可能没送到"),
         "`typed_unconfirmed` 被说成了确定的成功或确定的失败 —— 它是「不确定」那一档"
     );
 }

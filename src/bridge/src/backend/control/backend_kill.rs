@@ -28,6 +28,7 @@
 //! 与 `send-keys` 那条命令共用**一份**（两份必漂，而漂开的后果就是上面那条）。
 //! 本模块只负责「拒绝该怎么对用户说」。
 
+use crate::copy_table::copy_text;
 use std::time::Duration;
 
 use super::backend_route::{no_channel, route_call_error, Routed};
@@ -44,12 +45,18 @@ const CALL_TIMEOUT_SECS: u64 = 10;
 /// 所以调用方必须把它当成 `Refused`（不回落），否则就是在未知状态上再做一次破坏性动作。
 pub(crate) fn killed_from_reply(reply: Option<&serde_json::Value>) -> Result<bool, String> {
     let Some(v) = reply else {
-        return Err("backend 的 kill 应答没有 body（协议漂移？）".into());
+        return Err(copy_text("rsBackendKill.reply.noBody", &[]).into());
     };
     match v.get("killed") {
         Some(serde_json::Value::Bool(b)) => Ok(*b),
-        Some(other) => Err(format!("kill 应答里的 killed 不是 bool：{other}")),
-        None => Err(format!("kill 应答里没有 killed 字段：{v}")),
+        Some(other) => Err(copy_text(
+            "rsBackendKill.reply.killedNotBool",
+            &[("other", &other.to_string())],
+        )),
+        None => Err(copy_text(
+            "rsBackendKill.reply.noKilled",
+            &[("v", &v.to_string())],
+        )),
     }
 }
 
@@ -57,17 +64,23 @@ pub(crate) fn killed_from_reply(reply: Option<&serde_json::Value>) -> Result<boo
 /// 否则同一个拒绝在两条路上说两种话，用户会以为是两个不同的问题。
 fn refusal_text(code: &str, message: &str) -> String {
     match code {
-        "no_tmux" => "远端未安装 tmux".to_string(),
-        "no_such_session" => "远端会话已不存在（可能已被终止）".to_string(),
-        "wrong_owner" => format!(
-            "拒绝 kill：目标未通过身份守卫（{message}）——可能不是本工具管理的会话\
-             （避免误杀你自己的 tmux 会话）"
+        "no_tmux" => copy_text("rsBackendKill.refusal.noTmux", &[]),
+        "no_such_session" => copy_text("rsBackendKill.refusal.gone", &[]),
+        "wrong_owner" => copy_text(
+            "rsBackendKill.refusal.notOurs",
+            &[("message", &message.to_string())],
         ),
-        "too_many_windows" => format!(
-            "拒绝 kill：目标未通过窗口守卫（{message}）——它已被扩展出额外窗口\
-             （请到该 tmux 里自行处理）"
+        "too_many_windows" => copy_text(
+            "rsBackendKill.refusal.extraWindows",
+            &[("message", &message.to_string())],
         ),
-        _ => format!("远端 kill 失败（{code}）：{message}"),
+        _ => copy_text(
+            "rsBackendKill.refusal.other",
+            &[
+                ("code", &code.to_string()),
+                ("message", &message.to_string()),
+            ],
+        ),
     }
 }
 
@@ -87,11 +100,10 @@ pub(crate) async fn backend_kill(origin: &str, name: &str) -> Routed {
         Ok(reply) => match killed_from_reply(reply.as_ref()) {
             // backend 只在真杀掉时回 `killed:true`（`kill.rs::kill_for_inbound`）。
             Ok(true) => Routed::Done,
-            Ok(false) => Routed::Refused(
-                "backend 回报未杀掉，但也没给错误码 —— 协议漂移，不再用另一条路重试".into(),
-            ),
-            Err(e) => Routed::Refused(format!(
-                "{e} —— ⚠ 应答形状不认识时无法判断它杀没杀，因此不再用另一条路重杀"
+            Ok(false) => Routed::Refused(copy_text("rsBackendKill.kill.noReason", &[]).into()),
+            Err(e) => Routed::Refused(copy_text(
+                "rsBackendKill.kill.unknownReply",
+                &[("e", &e.to_string())],
             )),
         },
         Err(e) => route_call_error(&e, refusal_text),

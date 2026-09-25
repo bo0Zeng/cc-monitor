@@ -46,7 +46,7 @@ fn no_control_channel_degrades_honestly_with_a_reason() {
     assert!(!r.typed, "没有通道却报 typed=true —— 调用方会以为已经键入");
     let reason = r.reason.expect("降级必须带理由（前端唯一的回落线索）");
     assert!(
-        reason.contains("控制通道"),
+        reason.contains("后端没连上"), // 〔CP2b · CP1 裁〕「控制通道」是实现名 → 说「后端没连上」
         "理由没说清是通道不在：{reason}"
     );
 }

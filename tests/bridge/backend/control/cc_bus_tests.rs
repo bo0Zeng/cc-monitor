@@ -193,7 +193,7 @@ fn a_read_that_could_not_happen_is_never_rendered_as_an_empty_roster() {
     // ③ 头回来了，而它自己说这个壳里没有 `cat`
     let raw3 = format!("{}\n{CC_BUS_SPLIT_MARKER}\n", head_line(1, 0));
     let e3 = interpret_cc_bus_read("<local>", &raw3).expect_err("cat=0 必须是错");
-    assert!(e3.contains("没有 `cat`"), "{e3}");
+    assert!(e3.contains("没有 cat"), "{e3}");
     assert!(
         e3.contains("不是"),
         "错误里必须写明它不是「一个 agent 都没有」，否则用户读到的还是同一句：{e3}"
@@ -1498,7 +1498,7 @@ fn unknown_liveness_does_not_silently_become_nobody() {
     );
     assert_eq!(plan.skipped_offline, 0);
     let said = describe_broadcast(&plan, 2, &[]);
-    assert!(said.contains("问不到谁在线"), "话没说清：{said}");
+    assert!(said.contains("无法确认谁在线"), "话没说清：{said}");
 }
 
 /// ★ 三个数**分开说**：发到几个 / 跳过几个 / 失败几个。
@@ -1510,7 +1510,7 @@ fn the_broadcast_wording_keeps_the_three_counts_apart() {
         liveness_unknown: false,
     };
     let said = describe_broadcast(&plan, 1, &["b_cc（超时）".to_string()]);
-    assert!(said.contains("1 个**在线**"), "{said}");
+    assert!(said.contains("1 个在线"), "{said}");
     assert!(said.contains("跳过 78 个"), "跳过的没说：{said}");
     assert!(said.contains("1 个失败"), "失败的没说：{said}");
     // 老路那句话的形状（把所有人算成一个 N）不许回来
@@ -1543,7 +1543,7 @@ fn the_delivery_wording_keeps_the_three_states_apart() {
     }
     // 各自要点到实处（不是只要求"不一样"就行）
     assert!(offline.contains("不在线"), "{offline}");
-    assert!(ghost.contains("没在总线上登记过"), "{ghost}");
+    assert!(ghost.contains("没有登记"), "{ghost}");
     assert!(unknown.contains("问不到"), "{unknown}");
     // 四种都得说「已投递」—— 投递是照做的，三态只是附加说明
     for m in [&ok, &offline, &ghost, &unknown] {
@@ -2198,7 +2198,7 @@ fn the_kill_reply_keeps_the_three_states_apart() {
     );
     // 🔴 形状不认识那一档：**不知道它动没动**，不许说成「没杀成」。
     assert_eq!(broken, none, "缺字段与整个 body 缺应当同档");
-    assert!(broken.contains("不知道它到底动没动"), "{broken}");
+    assert!(broken.contains("不确定"), "{broken}"); // 〔CP2b · CP1 裁〕「不确定 {id} 有没有被收掉，先别重试」
     assert!(!broken.contains("已收掉"), "{broken}");
 }
 
@@ -2210,8 +2210,8 @@ fn the_kill_reply_keeps_the_three_states_apart() {
 #[test]
 fn an_unknown_liveness_is_never_rendered_as_dark() {
     let msg = unknown_liveness("h1", "a_cc", "这台的后端通道没起来");
-    assert!(msg.contains("问不到"), "{msg}");
-    assert!(msg.contains("不是**不在线**"), "{msg}");
+    assert!(msg.contains("查不到"), "{msg}");
+    assert!(msg.contains("不是不在线"), "{msg}"); // 〔CP2b · CP1 裁〕去掉 ** 与「灭灯」比喻，这条区分照说
     assert!(msg.contains("h1"), "没说是哪台机器：{msg}");
     // 生产入口：没有通道时它给的是 `Err`（一句「问不到」），**不是** `Ok(false)`。
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -2225,9 +2225,9 @@ fn an_unknown_liveness_is_never_rendered_as_dark() {
     match got {
         Ok(v) => panic!("问不到的时候它答了一个确定的 {v} —— 那正是这一条要拦的"),
         Err(e) => {
-            assert!(e.contains("问不到"), "答不上时没说「问不到」：{e}");
+            assert!(e.contains("查不到"), "答不上时没说「查不到」：{e}");
             assert!(
-                e.contains("不是**不在线**"),
+                e.contains("不是不在线"),
                 "答不上那句话没经 `unknown_liveness` —— 出口不止一处了：{e}"
             );
         }
@@ -2373,7 +2373,7 @@ fn a_bash_that_cannot_be_found_is_a_loud_error_not_a_silent_empty_read() {
     // ① Windows + 一条候选都不在盘上 ⇒ **响亮失败**，且说得出「不是没有 agent」。
     let e = resolve_bash_with(true, &no_env, &nothing_exists)
         .expect_err("找不到 bash 必须是错，不是一个能跑的裸名");
-    assert!(e.contains("找不到可用的 `bash`"), "{e}");
+    assert!(e.contains("找不到可用的 bash"), "{e}");
     assert!(
         e.contains("不是"),
         "错误没写明它不是「一个 agent 都没有」—— 那就是上半场那个缺陷换个地方重演：{e}"

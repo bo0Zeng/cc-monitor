@@ -177,6 +177,41 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
 /// 就是一次**误红**。⇒ 现打：`tmux.rs` 生产段里这样的消息串**零处**
 /// （那两处 `tmux kill-session: {..}` / `tmux send-keys: {..}` 随回落一起走了）。
 /// 哪天又长出来，正确处置是把那句消息改得不含裸动词，**不是**把动词塞进只读表。
+/// `tmux ` 之后的动词：先跳过插值占位（`{UTF8_CLIENT_FLAG}`）与 `-x` 形状的全局旗标。
+///
+/// 〔CP2b 09-25〕原来只看紧跟 `tmux ` 的小写字母 ⇒ 真正发出去的那条
+/// `tmux {UTF8_CLIENT_FLAG} ls -F …` 一直读成空动词、**被跳过**；本条的地板 1 其实是一句报错消息
+/// （`CCM_TMUX_UNPARSABLE … tmux ls …`）撑着的。那句消息抽进文案表以后人群归零、地板红了，
+/// 才看见这个洞：`tmux {旗标} respawn-pane` 这种形状同样会被跳过。⇒ 改成跳过占位与旗标再读动词，
+/// 人群回到真命令本身。
+fn verb_after_tmux(rest: &str) -> String {
+    let mut s = rest;
+    loop {
+        s = s.trim_start_matches(' ');
+        if s.starts_with('{') {
+            match s.find('}') {
+                Some(k) => s = &s[k + 1..],
+                None => return String::new(),
+            }
+        } else if s.starts_with('-') {
+            s = s.trim_start_matches(|c: char| !c.is_whitespace());
+        } else {
+            break;
+        }
+    }
+    s.chars()
+        .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+        .collect()
+}
+
+#[test]
+fn verb_after_tmux_skips_placeholders_and_global_flags() {
+    assert_eq!(verb_after_tmux("{UTF8_CLIENT_FLAG} ls -F x"), "ls");
+    assert_eq!(verb_after_tmux("-u respawn-pane -k"), "respawn-pane");
+    assert_eq!(verb_after_tmux("kill-session -t x"), "kill-session");
+    assert_eq!(verb_after_tmux(">/dev/null"), "");
+}
+
 #[test]
 fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
     let prod = guard_core::production_code(MONITOR_TMUX);
@@ -194,10 +229,7 @@ fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
     while let Some(rel) = prod[from..].find("tmux ") {
         let i = from + rel;
         from = i + "tmux ".len();
-        let verb: String = prod[from..]
-            .chars()
-            .take_while(|c| c.is_ascii_lowercase() || *c == '-')
-            .collect();
+        let verb = verb_after_tmux(&prod[from..]);
         if verb.is_empty() {
             continue;
         }
