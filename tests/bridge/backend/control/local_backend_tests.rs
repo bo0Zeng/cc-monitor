@@ -1424,7 +1424,7 @@ fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
     let r = resolve_or_extract(
         "no-such-target-triple",
         &base,
-        Some(("kr69wire", &bytes)),
+        Ok(("kr69wire", &bytes)),
         &mark,
     );
     // ① 反向自检：真的走到了「释放出来并 Found」那一支。
@@ -1615,7 +1615,7 @@ const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安�
 ///
 /// # 🔴 `K-R42`（09-10 同日）：**换完靶之后一天，被测对象自己变了 —— 本条现在守什么**
 ///
-/// 本件给自释放那条路接上了「产物自己带着的那份」（[`native_embedded_backend`]），
+/// 本件给自释放那条路接上了「产物自己带着的那份」（〔DP1〕那一槽今天住 `byte_table.rs`，由宿主取来交进来），
 /// 〔那条路 `K-R42` 时住 [`start_or_extract`] 体内，`K-R43` 抽进了 [`resolve_or_extract`]〕
 /// 于是要先回答一句：**「找不到本机后端」这一形还存不存在？**
 ///
@@ -1784,7 +1784,7 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
 ///
 /// # 没有这一条会怎样
 ///
-/// [`native_embedded_backend`] 是纯的、[`extraction_failure_reason`] 是纯的 ——
+/// 「产物带没带」那一问（`K-R42` 时住本层，〔DP1〕今天是宿主的 `byte_table::choose`）是纯的、[`extraction_failure_reason`] 是纯的 ——
 /// 两条都测得漂漂亮亮，而**只要没人在生产段里接上它们，整件事就是死代码**，
 /// 上面那几格照样全绿。本仓这一形有名字（`K-R28` 那条「防空转」逐字记着同一件事）。
 ///
@@ -1833,12 +1833,19 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
                  而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（本轮实测过）。\n逐字：{body}"
         )
     });
-    let asked = guard_core::find_pinned(&body, "native_embedded_backend").unwrap_or_else(|e| {
+    // 〔DP1 · 第四波〕「问产物自己带没带」搬去了宿主（`byte_table::choose` 按这台机器的 (OS, arch) 查表，
+    //   `byte_table_tests::the_old_byte_doors_and_the_linux_gate_are_gone` 钉着宿主真的问了）。
+    //   本层只剩「用宿主交进来的那份」：取不到时那句拒绝的话要被接上，不许被丢掉。
+    //   〔墓碑 —— 本条原先在这里钉「问产物带没带」那一次调用恰好一处，那条第二取法随它一起搬走了。〕
+    assert!(
+        !body.contains(&format!("native_embedded_{}", "backend")),
+        "那份共用的解析体又自己问起了「这份产物带没带」—— 那是第二个取字节口（`设计/96 §7.1.1b`）"
+    );
+    let asked = guard_core::find_pinned(&body, "match embedded {").unwrap_or_else(|e| {
         panic!(
-            "那份共用的解析体内 `native_embedded_backend` 不是恰好一处（{e}）——\n\
-                 一处都没有 ⇒「产物自己带着的那份」没有任何生产调用点：\n\
-                 裸 exe 回到 09-10 那个读数（0 个本机后端进程），而本模块每一条判据照样绿。\n\
-                 多于一处 ⇒ 有第二条取法，下面那条顺序断言就说不清它断的是哪一处。\n逐字：{body}"
+            "那份共用的解析体内 `match embedded {{` 不是恰好一处（{e}）——\n\
+                 宿主交进来的那份（或那句拒绝的话）没有被接住：裸 exe 回到 09-10 那个读数，\n\
+                 或者「为什么没有」那句话被丢掉。\n逐字：{body}"
         )
     });
     let beside = guard_core::find_pinned(&body, "resolve_beside_this_exe(")
@@ -1897,16 +1904,16 @@ fn the_native_backend_path_is_spelled_the_same_on_both_sides() {
     };
     let dir = spelled("NATIVE_BACKEND_DIR");
     let file = spelled("NATIVE_BACKEND_FILE");
-    let prod = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/local_backend.rs"
-    ));
+    // 〔DP1 · 第四波〕`include_bytes!` 那一处从 `local_backend.rs` 搬进了 `byte_table.rs`（全仓唯一的取字节口）。
+    let prod =
+        guard_core::production_code(include_str!("../../../../src/bridge/src/byte_table.rs"));
     // 🔴 〔2026-09-18 修笔误〕原来是 `"\"../../..{dir}/{file}\""` —— **`../../..` 与
     // `{dir}` 之间少一个 `/`**，拼出来是 `"../../..native-backend/…"`，而代码里是
     // `"../../../native-backend/…"` ⇒ `contains` 永远不成立。
     // ⚠ 如实说：**我解释不了它以前怎么过的** —— 常量近 6 个提交都是 `"native-backend"`
     // （无前导斜杠），本测试也没有平台门控，而 CI 的 Windows job 会跑它。
     // 可能是那条 job 有一段时间没绿过；没有证据就不编一个说法。
-    let want = format!("\"../../../{dir}/{file}\"");
+    let want = format!("\"../{dir}/{file}\"");
     assert!(
         prod.contains(&want),
         "`build.rs` 铺的是 `src/bridge/{dir}/{file}`，而本文件的 `include_bytes!` \
@@ -3417,4 +3424,30 @@ fn the_local_emitter_classifies_removals_against_the_local_slot_only() {
             && arm.contains("bridge::events::SESSION_ENDED"),
         "本机收割那一臂要清 idle 账本并发已结束：\n{arm}"
     );
+}
+
+/// 〔DP1 · 第四波〕宿主从 `byte_table` 取不到字节时交进来的是**那句拒绝的话**（`Err`）：
+/// `resolve_or_extract` 必须把它接在「旁边没有」那句后面交回，**两件事都说**，而且一个字节都不写。
+///
+/// 要求住址：`设计/96 §7.1.4` 第 2 条「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」。
+/// 夹具：`target_triple` 取盘上必不存在的中性串 ⇒ 旁边必 `Missing`（同上一条的做法）。
+#[test]
+fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing() {
+    let base = std::env::temp_dir().join(format!("ccm-dp1-refuse-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("建夹具目录");
+    let mark = |_: &Path| Ok(());
+    let said = "本机 是 macOS / arm64 的机器（夹具句）";
+    let r = resolve_or_extract("no-such-target-triple", &base, Err(said.to_string()), &mark);
+    let Resolved::Missing { reason, .. } = r else {
+        panic!("取不到字节竟然 Found 了：{r:?}");
+    };
+    assert!(reason.contains(said), "拒绝的话没到 reason 里：{reason}");
+    assert!(
+        reason.contains("旁边没有本机后端"),
+        "「旁边没有」那一句被换掉了（两件事都要说）：{reason}"
+    );
+    // 「一个字节都不写」：空目录才删得掉（`remove_dir` 对非空目录报错）—— 不遍历目录。
+    std::fs::remove_dir(&base)
+        .unwrap_or_else(|e| panic!("拒绝了却往盘上写了东西（目录删不掉：{e}）"));
 }

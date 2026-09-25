@@ -1,8 +1,8 @@
 //! 〔RM1c · 第四波〕**全景小程序的字节从哪来** —— 按那台机器的 (OS, arch) 选内嵌的那一份。
 //!
 //! 只装代码全景引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`，用户 09-24 V108 选 B）
-//! 随后端部署、**只传给开过远端全景的机器**。本模块只答「字节从哪来」：`build.rs::embed_panoramas`
-//! 把两个 musl arch 的字节放进 `OUT_DIR`、置 `embedded_panoramas` cfg，这里 `include_bytes!` 它们。
+//! 随后端部署、**只传给开过远端全景的机器**。字节从哪来：`build.rs::embed_panoramas`
+//! 把两个 musl arch 的字节放进 `OUT_DIR`、置 `embedded_panoramas` cfg；〔DP1〕`include_bytes!` 它们的那两槽住 `byte_table.rs`。
 //!
 //! # 〔RM1e〕推上去（[`push_to`]）
 //!
@@ -15,53 +15,9 @@
 //!
 //! # 为什么按 (OS, arch) 而不是只按 arch
 //!
-//! 后端那两份按 arch 选（`sftp::backend_binary`），因为远端今天只有 Linux。全景小程序是**新**的一类字节，
-//! 从第一天就把 OS 放进键里：远端是 Windows 的那天（`WN1` 那条线），这里答「没有」，
+//! 〔墓碑 —— RM1c 那一版这里写着「后端那两份按 arch 选（`sftp.rs` 里那个只认 arch 的函数），因为远端今天只有 Linux」。〕
+//! 〔DP1〕今天后端与全景小程序都经 `byte_table` 按 (OS, arch) 取：远端是 Windows 的那天，这里答「没有」，
 //! 而不是把一份 Linux ELF 推过去（`build.rs::embed_native_backend` 头注那条真机读数就是这个形状）。
-
-/// 按那台机器的 `uname -s` / `uname -m`（小写、原样）选字节。**只认得出的组合才给**，其余 `None`。
-pub(crate) fn panorama_binary(os: &str, arch: &str) -> Option<&'static [u8]> {
-    let arch = normalize_arch(os, arch)?;
-    #[cfg(embedded_panoramas)]
-    {
-        static X86: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/panorama-x86_64"));
-        static ARM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/panorama-aarch64"));
-        match arch {
-            "x86_64" => Some(X86),
-            "aarch64" => Some(ARM),
-            _ => None,
-        }
-    }
-    #[cfg(not(embedded_panoramas))]
-    {
-        let _ = arch;
-        None
-    }
-}
-
-/// 〔RM1f〕**这一份产物按 `TARGET` 内嵌的原生小程序**（`build.rs::embed_native_panorama`）。
-///
-/// 本机不经推送：monitor 摘掉内嵌引擎之后，本机全景要本机后端在 `~/.cc-monitor/bin/` 找到一份这台机器能跑的
-/// 小程序（`local_backend::place_local_panorama` 放下来）。Windows / macOS 本机只能靠这一份。
-/// 🔴 路径必须是字面量（`cross_half_edge_registry` 不认拼出来的 `include_*!`）⇒ 名字定死在两处：这一行与
-/// `build.rs` 的 `NATIVE_BACKEND_DIR` ＋ `NATIVE_PANORAMA_FILE`（四处同一个串由判据对拍）。
-#[cfg(embedded_native_panorama)]
-pub(crate) fn native_embedded_panorama() -> Option<&'static [u8]> {
-    Some(include_bytes!("../native-backend/cc-monitor-panorama"))
-}
-
-/// 没内嵌那一份时的同名壳 —— 头注在上面那一份上。
-#[cfg(not(embedded_native_panorama))]
-pub(crate) fn native_embedded_panorama() -> Option<&'static [u8]> {
-    None
-}
-
-/// 〔RM1f〕**本机**要放下来的那一份：① 按 `TARGET` 内嵌的原生小程序；② 没有 ⇒ 本机是 Linux 时用远端那两份 musl
-/// 里对得上 arch 的一份（musl 静态字节在任何 Linux 上都跑得起来 —— Linux 发版因此不用多编一件）；③ 都没有 ⇒ `None`。
-pub(crate) fn local_panorama_binary() -> Option<&'static [u8]> {
-    native_embedded_panorama()
-        .or_else(|| panorama_binary(std::env::consts::OS, std::env::consts::ARCH))
-}
 
 /// 〔RM1f〕本机那一份在盘上的文件名：[`PROGRAM_NAME`] ＋ **目标平台**的可执行后缀
 /// （`build.rs` 按 `TARGET` 算好的 `CCM_TARGET_EXE_SUFFIX`，同本机后端释放名那条来路）
@@ -70,18 +26,23 @@ pub(crate) fn local_file_name() -> String {
     format!("{PROGRAM_NAME}{}", env!("CCM_TARGET_EXE_SUFFIX"))
 }
 
-/// (OS, arch) → 内嵌表里的那个 arch 名。**纯函数**（与字节在不在无关，好测）。
+/// 〔RM1f〕**本机**要放下来的那一份（本机不经推送：本机后端在 `~/.cc-monitor/bin/` 找它，`local_backend::place_local_panorama` 放下来）。
 ///
-/// 只认 Linux（musl 静态字节在任何 Linux 上都跑得起来）；arch 认 `uname -m` 的两种常见写法。
-pub(crate) fn normalize_arch(os: &str, arch: &str) -> Option<&'static str> {
-    if !os.eq_ignore_ascii_case("linux") {
-        return None;
-    }
-    match arch {
-        "x86_64" | "amd64" => Some("x86_64"),
-        "aarch64" | "arm64" => Some("aarch64"),
-        _ => None,
-    }
+/// 〔DP1 · 第四波〕字节从 `byte_table` 按**这台机器自己**的 (OS, arch) 取（`设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。
+/// 〔墓碑 —— RM1f 那一版这里自己 `include_bytes!` 按 `TARGET` 内嵌的原生小程序（`build.rs::embed_native_panorama`），
+///  没有就退到本机是 Linux 时 musl 那两份里对得上 arch 的一份；那一槽搬进了 `byte_table.rs`，次序原样（原生先、musl 后，见那边 `pick`）。〕
+pub(crate) fn local_panorama_binary() -> Option<&'static [u8]> {
+    let key = crate::byte_table::Key::this_machine().ok()?;
+    crate::byte_table::pick(crate::byte_table::Product::Panorama, key).map(|p| p.bytes)
+}
+
+/// 按那台机器的 `uname -s` / `uname -m`（原样）选字节。**只认得出、且这一版带着的组合才给**，其余 `None`。
+///
+/// 〔DP1 · 第四波〕只改函数体、签名不动：字节与 (OS, arch) → 键的解析都住 `byte_table`（全仓唯一的取字节口，
+/// `设计/96 §7.1.1b`）。〔墓碑 —— 从前这里自己 `include_bytes!` 两份 musl，并经一个只认 Linux 的 arch 归一函数选。〕
+pub(crate) fn panorama_binary(os: &str, arch: &str) -> Option<&'static [u8]> {
+    let key = crate::byte_table::key_of(os, arch).ok()?;
+    crate::byte_table::pick(crate::byte_table::Product::Panorama, key).map(|p| p.bytes)
 }
 
 /// 〔RM1e〕推到 home 底下哪个目录（相对段）。== 后端 `exit_policy::DIR_NAME` ＋ `bin`，

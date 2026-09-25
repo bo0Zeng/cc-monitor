@@ -1182,7 +1182,7 @@ fn adopt_with(port: u16, home: &str, token: &str, wait_for_bind: bool) -> Adopt 
 /// `the_two_resolution_paths_still_agree_on_the_order` 钉着（它今天钉的是「两条路都走那一份」）。
 fn resolve_backend_bin(
     extract_dir: &std::path::Path,
-    embedded: Option<(&str, &[u8])>,
+    embedded: Result<(&str, &[u8]), String>,
 ) -> Result<std::path::PathBuf, (String, Vec<std::path::PathBuf>)> {
     match local_backend::resolve_or_extract(
         env!("CCM_TARGET_TRIPLE"),
@@ -1431,36 +1431,29 @@ pub fn start_local_backend() -> StartOutcome {
     // 两样宿主知识在这里给（backend 层不认识它们）：
     //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
     //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
-    //   · 当前 arch：`crate::sftp::backend_binary` 按它挑内嵌字节；缺内嵌（`cfg(embedded_backends)`
-    //     未置）时给 None，函数会诚实降级、不伪造理由。
+    //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节（下面那一段）；取不到时交进去的是那句拒绝的话，
+    //     函数把它接在「旁边没有」后面，不伪造理由。
     let extract_dir = dirs::home_dir()
         .map(|h| h.join(".cc-monitor").join("bin"))
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
-    // ★★ **内嵌的那两份是 musl LINUX 二进制，本机不是 Linux 就一份都不能用**
-    // 〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
+    // 〔DP1 · 第四波〕**本机的字节也按 (OS, arch) 从那一张表里取**（`设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。
     //
-    // # 原来错在哪
-    //
-    // `sftp::backend_binary(ARCH)` **只按 arch 分派，不看 OS**；`cfg(embedded_backends)` 也只由
-    // `build.rs` 凭 `embedded-backends/cc-monitor-backend-{x86_64,aarch64}`（musl Linux）在不在决定，
-    // **同样不看目标 OS**。于是在 Windows 构建上：
-    // ① 释放一个 Linux ELF 到 `%USERPROFILE%\.cc-monitor\bin\`（**没有 `.exe` 后缀**，
-    //    `platform_fs::make_executable` 在非 unix 是 no-op）；
-    // ② `start_or_extract` **返回 `Resolved::Found`** ⇒ 日志打「本机后端 local_backend: …」、
-    //    前端回「已起」；③ 真正的失败发生在 supervise 线程里（`spawn` 报错 → `GaveUp` 只进日志）。
-    //
-    // ⇒ **每次启动往用户目录写一份 10MB 级的无用二进制，UI 与日志报告启动成功，进程从来没起来过。**
-    // `Resolved::Found` 在那条路上是一个谎报 —— 它只证明「文件落地了」，不证明「那是本平台能跑的东西」。
-    //
-    // # 为什么过滤放在这里，不放进 `sftp::backend_binary`
-    //
-    // 那个函数**同时供远端部署用**，而远端的目标就是 Linux —— 在那条路上用 musl 二进制是对的。
-    // 「本机是什么 OS」是宿主知识，本模块正是它的家。
-    let embedded = if cfg!(target_os = "linux") {
-        crate::sftp::backend_binary(std::env::consts::ARCH).map(|d| (d.build_id, d.bytes))
-    } else {
-        None
-    };
+    // 〔墓碑 —— 这里原来是一道 `cfg!(target_os = "linux")` 的闸（D 阶段补审 08-11）：远端那两份 musl 只按 arch 取、不认 OS，
+    //  于是在 Windows 构建上会释放一个 Linux ELF、再报「已起」；那道闸挡住了它，代价是非 Linux 本机一份字节都拿不到，
+    //  由 `local_backend` 那一层再问一次「这份产物自己带没带」补上。`设计/96 §7.1.3`：「这道闸要消失 —— 它是
+    //  『表没有 OS 轴』逼出来的补丁」。〕今天 `byte_table::choose` 按这台机器的键查表：Windows 那一格就是这一份产物
+    //  按 `TARGET` 内嵌的那份，Linux 那一格是 musl（开发树只有原生那份时给原生那份），不承诺 / 没带 ⇒ 那句拒绝的话。
+    let this_machine = crate::byte_table::Key::this_machine();
+    let embedded: Result<(&str, &[u8]), String> = crate::byte_table::choose(
+        crate::byte_table::Product::Backend,
+        crate::byte_table::Route::Local,
+        this_machine,
+    )
+    .map_err(|r| r.say("本机"))
+    .and_then(|p| match p.build_id {
+        Some(id) => Ok((id, p.bytes)),
+        None => Err("这一份本机后端的字节说不出自己是哪一版，没有拿它来起".to_string()),
+    });
     // ★★ `K-P1`：**先走常驻那条路** —— 认得出已有实例就接上它，没有就起一个脱离的。
     //
     // 这就是「怎么起」那个注入点：`start_detached` 是**这一层**（宿主知识层）的东西，
@@ -1471,7 +1464,9 @@ pub fn start_local_backend() -> StartOutcome {
     //   由后端自己 `bind`（`relay::listen::host`）。monitor 这一侧只剩一件事 —— 起后端时把
     //   端口与凭据路径交给它（[`relay_host_envs`]），**两条载体同一份**（常驻 / 被监护的 stdio）。
     let relay_envs = relay_host_envs();
-    match start_detached(&|| resolve_backend_bin(&extract_dir, embedded), &relay_envs) {
+    // 〔DP1〕`embedded` 里可能是那句拒绝的话（`String`），不再是 `Copy` ⇒ 常驻那条拿一份拷贝。
+    let resolve = || resolve_backend_bin(&extract_dir, embedded.clone());
+    match start_detached(&resolve, &relay_envs) {
         // ★ `K-P3b`：这是本函数**两个**返回 `Failed` 的出口之一 —— 都从 `note_never_started` 过。
         DetachOutcome::Done(out) => return note_never_started(out),
         DetachOutcome::NotTaken => {}

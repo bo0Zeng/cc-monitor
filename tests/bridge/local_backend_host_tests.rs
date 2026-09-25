@@ -148,11 +148,8 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     let body = &prod[at..];
     let made = guard_core::find_pinned(body, "let relay_envs = relay_host_envs();")
         .unwrap_or_else(|e| panic!("`start_local_backend` 里没有恰好一处算那份环境：{e}"));
-    let detached = guard_core::find_pinned(
-        body,
-        "match start_detached(&|| resolve_backend_bin(&extract_dir, embedded), &relay_envs) {",
-    )
-    .unwrap_or_else(|e| panic!("常驻那条没交那份环境（或交了别的）：{e}"));
+    let detached = guard_core::find_pinned(body, "match start_detached(&resolve, &relay_envs) {")
+        .unwrap_or_else(|e| panic!("常驻那条没交那份环境（或交了别的）：{e}"));
     let supervised = guard_core::find_pinned(body, "relay_envs,\n")
         .unwrap_or_else(|e| panic!("被监护那条没交那份环境：{e}"));
     assert!(
@@ -628,19 +625,18 @@ fn the_stop_command_really_calls_this_module() {
     });
 }
 
-/// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增〕。
+/// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增 · 〔DP1〕换了机制〕。
 ///
-/// 内嵌的两份是 **musl Linux**（`build.rs` 只认 `embedded-backends/cc-monitor-backend-{x86_64,aarch64}`），
-/// 而 `sftp::backend_binary(ARCH)` **只按 arch 分派、不看 OS**。
-/// 少了这道门，Windows/macOS 上会释放一个 Linux ELF、`start_or_extract` 回 `Resolved::Found`
-/// ⇒ **UI 与日志报告「已起」，而进程从来没起来过**（补审阻塞 C1）。
+/// 〔墓碑 —— 原先内嵌的两份 musl Linux 由一个**只按 arch 分派、不看 OS** 的函数取，本条钉的是
+///  `start_local_backend` 在取它之前先问一道 `cfg!(target_os = "linux")`（补审阻塞 C1：少了这道门，
+///  Windows/macOS 上会释放一个 Linux ELF、UI 与日志报告「已起」，而进程从来没起来过）。〕
 ///
-/// # 为什么钉在这里而不是钉 `sftp::backend_binary`
+/// 〔DP1 · 第四波〕今天字节按 (OS, arch) 查表（`byte_table`，`设计/01 §6.7a` 规矩 4）⇒ 「先问 OS」不再是一道闸，
+/// 是**键的一半**。本条钉：本机那条取用点的键是**这台机器自己**（`Key::this_machine()`），走的路是
+/// `Route::Local`，而且键在取字节之前定下。「musl 字节只落在 Linux 格」那一半是表的行为，钉在
+/// `byte_table_tests::musl_bytes_only_ever_land_on_linux_cells`。
 ///
-/// 那个函数**同时供远端部署用**，目标就是 Linux ⇒ 在那条路上用 musl 二进制是对的。
-/// 本条只钉「**本机这条取用点**必须先问 OS」。
-///
-/// ⚠ 射程：它是**源码判据**，只证明那道门写在那里；证明不了「Windows 上真的不会释放」——
+/// ⚠ 射程：它是**源码判据**，只证明取用点这样写着；证明不了「Windows 上真的不会释放」——
 /// 那要一台 Windows（归 `auto-e2e`）。如实登记，不拿源码判据冒充跨平台实测。
 #[test]
 fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
@@ -653,18 +649,18 @@ fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
         .take_while(|l| *l != "\u{7d}")
         .collect::<Vec<_>>()
         .join("\n");
-    let take = guard_core::find_pinned(&body, "backend_binary(").unwrap_or_else(|e| {
+    let take = guard_core::find_pinned(&body, "byte_table::choose(").unwrap_or_else(|e| {
         panic!(
-            "`start_local_backend` 里没有恰好一处 `backend_binary(`（{e}）—— 取用点变了就来改本条"
+            "`start_local_backend` 里没有恰好一处 `byte_table::choose(`（{e}）—— 取用点变了就来改本条"
         )
     });
-    let head = &body[..take];
+    let key = guard_core::find_pinned(&body, "Key::this_machine()")
+        .unwrap_or_else(|e| panic!("`start_local_backend` 取字节的键不是「这台机器自己」（{e}）"));
+    assert!(key < take, "键在取字节之后才定 —— 取用点的形状变了");
+    let tail = &body[take..];
     assert!(
-        head.contains("target_os = \"linux\""),
-        "本机取内嵌二进制之前**没有问 OS**。\n\
-             内嵌的是 musl **Linux** 二进制，而 `backend_binary` 只按 arch 分派 ⇒\n\
-             Windows/macOS 上会释放一个跑不起来的 ELF，然后 `Resolved::Found` 让 UI 报「已起」。\n\
-             ★ 那是一句谎报：它只证明文件落地了，不证明那是本平台能跑的东西。"
+        tail.contains("Route::Local") && tail.contains("Product::Backend"),
+        "本机那条取用点不是「本机 · 后端」那一格：\n{tail}"
     );
 }
 
@@ -1235,7 +1231,8 @@ fn the_listen_env_names_are_the_same_string_on_both_sides() {
 /// ① 那份共用的解析**存在**（切得出体，且体里那三问俱在 —— 反空真）；
 /// ②③ 两条路**各自恰好一处**调它；
 /// ④ 两条路体内**都不再有**自己那套取法（`extract_embedded_to(` /
-///    `native_embedded_backend` / `resolve_beside_this_exe(` 一处都不许剩）——
+///    `resolve_beside_this_exe(` 一处都不许剩；〔DP1〕「问产物带没带」那一问搬去了宿主的 `byte_table::choose`，
+///    两条路共用同一个交进来的 `embedded`）——
 ///    少了④，谁在旁边**再写一份**并列的取法，②③ 照样绿。
 ///
 /// ⚠ **诚实边界**：它是**约定型守卫**（查源码形态）——
@@ -1251,7 +1248,7 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
     let shared = body_of(&theirs, "pub fn resolve_or_extract(");
     for needle in [
         "resolve_beside_this_exe(",
-        "native_embedded_backend",
+        "match embedded {",
         "extract_embedded_to(",
         "extraction_failure_reason(",
     ] {
@@ -1281,7 +1278,7 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
         // ④ 自己那套取法一处都不许剩。
         for own in [
             "extract_embedded_to(",
-            "native_embedded_backend",
+            "byte_table::choose(",
             "resolve_beside_this_exe(",
         ] {
             assert!(
@@ -1301,7 +1298,7 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
 /// 实现只要不接到调用点就是死代码，而那四格照样绿。这一格钉的是**两个落点各自的
 /// 函数体里真的走了那一份**，而且**没有各自留一条裸 `spawn()` 直接放弃的路**。
 ///
-/// 形状照 `sftp_tests.rs::both_backend_deploy_paths_ask_the_file_itself_not_only_the_marker`
+/// 形状照 `sftp_tests.rs::both_backend_deploy_paths_read_the_identity_from_the_bytes_not_from_a_marker`
 /// （`K-W4b` 那一拍也照抄过它）—— **但切函数体那一步复用本文件的 `body_of`，
 /// 不抄第三份切法**：本文件 `block_of` 的头注逐字写着「两种切法迟早在同一段代码上
 /// 给出两个答案」。反向自检因此是**两层**：`body_of` 自带的「窗口有界 + 非空」，

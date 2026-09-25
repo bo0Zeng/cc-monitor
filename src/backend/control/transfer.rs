@@ -25,7 +25,7 @@
 //! | 事件 | 上传的暂存件 | 下载的 `.part` |
 //! |---|---|---|
 //! | 撤（`transfer-stop` / 本机流断了） | **删**（用户说了不要） | **留**（续传的本钱） |
-//! | 失败 | **留**（续传最值钱的正是这一档） | **删**（别在用户目录里堆半成品） |
+//! | 失败 | **留**（续传最值钱的正是这一档） | **留**（〔DP1〕同一条理由；一个字节都没落的空 `.part` 才清） |
 //! | 成功 | 远端后端那次提交把它变成目标 | 改名上位 |
 //!
 //! 判的是**撤的旗**，不是错误文案。续传：两侧都先把**尾块**逐字节对一遍，对得上才接（半成品只记了「写到哪」、
@@ -252,6 +252,23 @@ where
     }
 }
 
+/// 失败之后把**已经发出去的写**一条条等到回话（坏的也要等完），最多这么多轮。
+///
+/// `russh-sftp` 的写是流水线的（一个文件最多 16 条在路上）：第一条坏回话就让 `flush` / `shutdown` 返回，
+/// 后面已发出的写还在路上 —— 它们什么时候落、落不落，取决于对面。不等完就走，半成品的样子就不是「此刻」的样子：
+/// 续传那一趟的尾块对拍只看尾巴，看不见中间被晚到的写留下的洞。每一轮 `flush` 至少收走一条回话，
+/// 16 条在路上 ＋ 一条关文件，这个上限是它的几倍，只防「对面一直答坏」时原地打转（不是定时器，是次数）。
+const DRAIN_ROUNDS: usize = 64;
+
+/// 见 [`DRAIN_ROUNDS`]。
+async fn drain_sent_writes(rf: &mut sftp::RemoteFile) {
+    for _ in 0..DRAIN_ROUNDS {
+        if rf.flush().await.is_ok() {
+            return;
+        }
+    }
+}
+
 /// 🔴 **上传的唯一形状**：本机文件 → 暂存件 `~/.cc-monitor/staging/<key>.part`。回传完的字节数。
 ///
 /// 暂存区不在就建最后那一段（上一级 `~/.cc-monitor` 不在 ⇒ 报错，**不顺手建** —— D11：后端是给定的，提交也要它在）。
@@ -333,6 +350,9 @@ pub(crate) async fn upload_to_staging(
         Ok(done)
     }
     .await;
+    if core.is_err() {
+        drain_sent_writes(&mut rf).await;
+    }
     let _ = rf.shutdown().await;
     drop(rf);
     match core {
@@ -422,8 +442,14 @@ pub(crate) async fn download_to_local(
     let done = match core {
         Ok(d) => d,
         Err(e) => {
-            // 🔴 撤 ⇒ **留着** `.part`（下次续传的本钱）；失败 ⇒ 清掉。
-            if !cancel.is_set() {
+            // 🔴 撤 ⇒ **留着** `.part`（下次续传的本钱）。〔DP1 · 第四波〕失败 ⇒ **也留着**：弱网上「连接没了」就是失败，
+            //   从前这里失败即删，断一次线续传的本钱全没、重下从 0 起（NT1 报备 2 现打）。与上传「失败留」同一条理由
+            //   （`设计/60 §4.3`：「续传最值钱的正是这一档；重拖同一份从尾块接上」）；不按错误文案分「断线 / 别的失败」——
+            //   判的是撤的旗，不是错误文案。唯一还清的一形：一个字节都没落（空 `.part` 没有续传的本钱，只是垃圾）。
+            let landed = tokio::fs::metadata(root.join(&part))
+                .await
+                .map_or(0, |m| m.len());
+            if !cancel.is_set() && landed == 0 {
                 land_discard(&root, &part);
             }
             return Err(e);

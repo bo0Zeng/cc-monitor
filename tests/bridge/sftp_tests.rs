@@ -330,18 +330,23 @@ fn merge_profile_block_aborts_on_orphan_begin() {
 }
 
 /// F08b：仅当交叉编译产物已放进 embedded-backends/（build.rs 置了 `embedded_backends` cfg）
-/// 才编译/运行——证实内嵌真生效：按 arch 取到 ELF 二进制 + build_id 非空。CI 无二进制时
-/// 本测试被 cfg 掉，不误报。
+/// 才编译/运行——证实内嵌真生效：Linux 两格取到 ELF 二进制 + build_id 非空。CI 无二进制时
+/// 本测试被 cfg 掉，不误报。〔DP1〕取字节口是 `byte_table::pick`（按 (OS, arch)）。
 #[cfg(embedded_backends)]
 #[test]
 fn embedded_backend_binaries_present_and_valid() {
+    use crate::byte_table::{key_of, pick, Product};
     for arch in ["x86_64", "aarch64"] {
-        let bin = backend_binary(arch).expect("内嵌二进制应存在");
-        assert!(!bin.build_id.is_empty(), "build_id 非空");
+        let key = key_of("Linux", arch).expect("表 A 认得这一格");
+        let bin = pick(Product::Backend, key).expect("内嵌二进制应存在");
+        assert!(
+            !bin.build_id.unwrap_or_default().is_empty(),
+            "build_id 非空"
+        );
         assert_eq!(&bin.bytes[..4], b"\x7fELF", "{arch} 应是 ELF");
         assert!(bin.bytes.len() > 100_000, "{arch} 体积应非平凡");
     }
-    assert!(backend_binary("riscv64").is_none(), "未知 arch → None");
+    assert!(key_of("Linux", "riscv64").is_err(), "未知 arch → 表外");
 }
 
 /// 🔴 `K-R70`：**那道身份见证真的会咬人** —— 四格（纯函数，不依赖内嵌产物在不在）。
@@ -400,16 +405,21 @@ fn the_build_stamp_witness_actually_bites() {
 /// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在后端源码）。
 ///
 /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
-/// 这里都必须真有一份 `BackendBinary`（漏一个 ⇒ `backend_binary()` 对它返回 `None`，
+/// 〔DP1〕`byte_table.rs` 里都必须真有一槽（漏一个 ⇒ 取字节口对它返回 `None`，
 /// 远端自动部署对那个 arch **悄悄关闭** —— 与上一条判据守的是同一个事故形状的两端）。
 #[test]
 fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let src = std::fs::read_to_string(root.join("src/sftp.rs")).expect("读不到 sftp.rs");
     let prod = guard_core::production_code(&src);
+    // 〔DP1 · 第四波〕两份 musl 的槽与它们的身份取值口搬进了 `byte_table.rs`（全仓唯一的取字节口）；
+    //   「出门前那道见证」仍在本文件（部署路）。①④ 读那一份，② 读这一份，③ 两份都读。
+    let table_src =
+        std::fs::read_to_string(root.join("src/byte_table.rs")).expect("读不到 byte_table.rs");
+    let table = guard_core::production_code(&table_src);
     // 运行时拼，免得命中本条自己的说明文字。
     let field = format!("{}_id:", "build");
-    let inits: Vec<&str> = prod
+    let inits: Vec<&str> = table
         .lines()
         .map(str::trim)
         .filter(|l| l.starts_with(&field) && l.contains("env!"))
@@ -455,6 +465,10 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     // ③ 界标闭集只有一个住址（在后端源码里），本文件只许 `env!` 取。
     for mark in [env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE")] {
         assert!(
+            !table.contains(&format!("\"{mark}\"")),
+            "byte_table.rs 生产段里出现了界标字面量 `{mark}`"
+        );
+        assert!(
             !mark.is_empty(),
             "`BACKEND_STAMP_OPEN/CLOSE` 是空串 —— `build.rs` 从后端源码抠界标失败了，\n\
                  而空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭。"
@@ -491,9 +505,9 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     );
     for arch in &arches {
         assert!(
-            prod.contains(&format!("BACKEND_EMBEDDED_ID_{}", arch.to_uppercase())),
+            table.contains(&format!("BACKEND_EMBEDDED_ID_{}", arch.to_uppercase())),
             "`build.rs` 会为 `{arch}` 嵌入二进制并发 `BACKEND_EMBEDDED_ID_{}`，\n\
-                 而 `sftp.rs` 生产段里没有对应的 `BackendBinary` ⇒ `backend_binary(\"{arch}\")` 返回 `None`，\n\
+                 而 `byte_table.rs` 生产段里没有对应的那一槽 ⇒ 取字节口对 (Linux, {arch}) 返回 `None`，\n\
                  **远端自动部署对这个 arch 悄悄关闭**（`build.rs` 那侧只 `cargo:warning=`，不会红）。\n\
                  与「发版流水线要为每个 arch 备料」那条守的是同一个事故形状的两端。",
             arch.to_uppercase()
@@ -510,7 +524,7 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
 /// > 缺少内嵌 backend {arch} —— 远端自动部署将关闭
 ///
 /// 而它旁边的注释逐字记着这条路的历史：「原来这里**连 warn 都没有** —— 缺二进制就
-/// 静默不置 cfg、`backend_binary()` 返回 None、远端自动部署整个消失而无人知晓。
+/// 静默不置 cfg、取字节那一口返回 None、远端自动部署整个消失而无人知晓。
 /// **那正是 v2.19–v2.22 那批安装包的事故形状**」。
 ///
 /// 警告是**刻意**的（本机开发树本来就常常只有一个 arch —— 今天就是：
@@ -662,160 +676,167 @@ fn deploy_decision_truth_table() {
     );
 }
 
-/// K-W4 `§0c` 那条断裂：`.build_id` 是**目录级**的，光凭它判不出落点那个文件在不在。
-///
-/// 这一格钉的是**两件事不许再压在一个读数上**：喂**同一份**版本事实
-/// （标记在、且与期望相符），只让「落点那个文件」这一侧变，判定必须跟着变。
-/// 它红的时候说明 `deploy_decision_at` 又把 `Missing` 当成了「版本对就跳过」——
-/// 那正是「新名/被删的二进制永远不会上传，而用户看到的是连不上」那个静默。
+// ═══ 〔DP1 · 第四波〕远端判身份认字节（`设计/96 §7.2`）═══════════════════════════════
+//
+// 要求住址：`设计/96 §7.2.1`，逐字：「**读它字节里那段身份戳，不跑它**」；`§7.2.4`：「读不出来时的显式失败 —— 四态，不许合并」；
+// `§7.2.3`：「部署决策的对照物只能是后者」（手上那份字节自报的，不是源码常量）。
+// 〔墓碑 —— 这里原来是 K-W4 `§0c` 那几格：旁挂版本标记（目录级）与「落点那个文件在不在」两个事实合起来判的真值表。
+//  旁挂标记在后端那条路上退役了（它是标签不是指纹），那几格随判定函数一起换成下面这几格。〕
+
+/// I1：六形逐形（期望取自 `96 §7.2.4` 那张表 ＋ 0 字节那一格按「没装」）。
 #[test]
-fn a_matching_marker_no_longer_speaks_for_a_binary_that_is_not_there() {
-    const EXPECT: &str = "p1b-overflow";
-    // 版本这一侧两个世界完全相同（标记在、逐字相符）——只有文件那一侧不同。
+fn identity_decision_answers_each_state_without_merging_them() {
+    const EXPECT: &str = "p9-sample";
+    let d = |id: RemoteIdentity| identity_decision(&id, EXPECT, "devbox", "/h/.cc-monitor/bin/ccm");
+    assert!(
+        matches!(d(RemoteIdentity::Missing), Ok(DeployAction::Deploy(_))),
+        "没装 ⇒ 装"
+    );
+    assert!(
+        matches!(d(RemoteIdentity::Empty), Ok(DeployAction::Deploy(_))),
+        "0 字节 ⇒ 装"
+    );
     assert_eq!(
-        deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Present),
-        DeployAction::Skip,
-        "文件在 + 版本对 ⇒ 仍然跳过（这一半是今天的行为，不许动）"
+        d(RemoteIdentity::Stamp(EXPECT.into())),
+        Ok(DeployAction::Skip),
+        "同一版 ⇒ 复用"
     );
-    let missing = deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Missing);
-    let DeployAction::Deploy(reason) = &missing else {
-        panic!(
-            "标记相符但落点没有二进制，判定仍是 Skip —— \
-                 一个 `.build_id` 又同时替「版本对不对」和「那个文件在不在」两件事说了话"
-        );
+    let Ok(DeployAction::Deploy(why)) = d(RemoteIdentity::Stamp("p8-older".into())) else {
+        panic!("另一版 ⇒ 该换");
     };
-    // 「说得出是哪种坏」：这一句必须谈那个文件，而不是谈版本。
     assert!(
-        reason.contains("落点没有后端二进制"),
-        "原因没说清是「那个文件不在」：{reason}"
+        why.contains("p8-older") && why.contains(EXPECT),
+        "换的理由没说清两边各是哪一版：{why}"
     );
-    assert!(
-        !reason.contains("版本不符"),
-        "版本明明是相符的，别把「文件不在」说成「版本不符」：{reason}"
-    );
-    // 两侧的事实各自有各自的话 —— 同一句里也要说清版本这一侧是什么状态。
-    assert!(
-        reason.contains(EXPECT),
-        "同一句话里没带上版本那一侧的事实：{reason}"
-    );
-    // 三种版本状态下，「文件不在」这句话都要说得出来（不是只在版本相符时才说）。
-    for (marker, what) in [
-        (Some(EXPECT), "版本相符"),
-        (Some("p1a-history"), "版本不符"),
-        (None, "无标记"),
-    ] {
-        let DeployAction::Deploy(r) = deploy_decision_at(marker, EXPECT, TargetBinary::Missing)
-        else {
-            panic!("{what} + 文件不在 ⇒ 竟然跳过");
-        };
-        assert!(r.contains("落点没有后端二进制"), "{what}: {r}");
+    // 三种「判不清它是谁」：显式失败，而且三句话互不相同（下一步不同：一个没身份、一个身份不唯一、一个判不了）。
+    let no = d(RemoteIdentity::NoStamp).unwrap_err();
+    let many = d(RemoteIdentity::Ambiguous(vec!["a1".into(), "b2".into()])).unwrap_err();
+    let cant = d(RemoteIdentity::Unreadable("Permission denied".into())).unwrap_err();
+    for e in [&no, &many, &cant] {
+        assert!(
+            e.contains("devbox") && e.contains("/h/.cc-monitor/bin/ccm"),
+            "没说哪台哪个文件：{e}"
+        );
     }
+    assert!(no.contains("不说自己是哪一版"), "{no}");
+    assert!(many.contains("a1") && many.contains("b2"), "{many}");
+    assert!(
+        cant.contains("判不了") && cant.contains("Permission denied"),
+        "{cant}"
+    );
+    assert!(no != many && many != cant && no != cant);
+    // 出路是一个真存在的动作（机器页「卸载后端」），不是一句空话。
+    assert!(no.contains("卸载后端") && many.contains("卸载后端"));
 }
 
-/// 反向那一刀：**没有顺手改成「每次都重传」**。
-/// `sftp.rs` 那套 Batch8/9 stale 防御是买来的——版本门控必须仍然是承重的，
-/// 且「stat 问不出来」不许被读成「文件不在」（那等于每次连接都重传 2.3MB）。
+/// I2：扫描的回话 → 身份。退出码 0 / 1 / 其它 · 重复戳去重 · 两个不同戳 · 空身份不收。
 #[test]
-fn splitting_the_two_facts_did_not_dismantle_the_version_gate() {
-    const EXPECT: &str = "p1b-overflow";
-    // ① 文件在 + 版本对 ⇒ Skip（门控还在，不是每次都传）
+fn the_stamp_scan_answer_maps_to_exactly_one_identity_state() {
+    let (o, c) = (env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE"));
+    let line = |id: &str| format!("{o}{id}{c}\n");
     assert_eq!(
-        deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Present),
-        DeployAction::Skip
+        interpret_stamp_scan(Some(0), &line("p9-sample"), ""),
+        RemoteIdentity::Stamp("p9-sample".into())
+    );
+    // 同一个戳在字节里出现两次（`grep -o` 逐处吐）⇒ 仍是一个身份。
+    assert_eq!(
+        interpret_stamp_scan(
+            Some(0),
+            &format!("{}{}", line("p9-sample"), line("p9-sample")),
+            ""
+        ),
+        RemoteIdentity::Stamp("p9-sample".into())
     );
     assert_eq!(
-        deploy_decision_at(Some("p1b-overflow\n"), EXPECT, TargetBinary::Present),
-        DeployAction::Skip,
-        "trim 语义不许在合并判定里丢掉"
+        interpret_stamp_scan(Some(0), &format!("{}{}", line("b2"), line("a1")), ""),
+        RemoteIdentity::Ambiguous(vec!["a1".into(), "b2".into()])
     );
-    // ② 问不出来 ⇒ 与今天同答（Skip），不许当成「不在」
     assert_eq!(
-        deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Unknown),
-        DeployAction::Skip,
-        "stat 问不出来被读成「文件不在」⇒ 一次 stat 失败换一次全量重传，门控就废了"
+        interpret_stamp_scan(Some(0), &line(""), ""),
+        RemoteIdentity::NoStamp
     );
-    // ③ 版本不符 ⇒ 照旧 Deploy，且说的是版本（presence 没把版本门控短路掉）
-    let DeployAction::Deploy(reason) =
-        deploy_decision_at(Some("p1a-history"), EXPECT, TargetBinary::Present)
-    else {
-        panic!("版本不符 + 文件在 ⇒ 竟然跳过，stale 防御被拆了");
-    };
-    assert!(
-        reason.contains("版本不符"),
-        "文件在而版本不符，这一句该谈版本：{reason}"
+    assert_eq!(
+        interpret_stamp_scan(Some(1), "", ""),
+        RemoteIdentity::NoStamp
     );
-    // ④ 无标记 ⇒ 照旧 Deploy
     assert!(matches!(
-        deploy_decision_at(None, EXPECT, TargetBinary::Present),
-        DeployAction::Deploy(_)
+        interpret_stamp_scan(Some(2), "", "grep: /x: Permission denied"),
+        RemoteIdentity::Unreadable(w) if w.contains("Permission denied")
+    ));
+    // 没送退出码（链路被掐）≠ 0：不许读成「扫到了」或「没有」。
+    assert!(matches!(
+        interpret_stamp_scan(None, &line("p9-sample"), ""),
+        RemoteIdentity::Unreadable(_)
     ));
 }
 
-/// 0 字节那一格 **不是假想形态**：本模块 `upload_atomic` 里「绝不 set_metadata」
-/// 那条注释记的就是真机 e2e 把后端截成 0 字节、不可 exec 的那次事故。
-/// 而 `try_exists` 会把它算成「在」⇒ 只问存在性的修法在这一形上仍然静默。
+/// I2b：那条命令只读、界标不写字面量、路径过引号、身份至少一个字符（与 `build.rs::bytes_build_id` 同一条纪律）。
 #[test]
-fn a_zero_byte_backend_is_not_a_deployed_backend() {
-    const EXPECT: &str = "p1b-overflow";
-    let DeployAction::Deploy(reason) =
-        deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Empty)
-    else {
-        panic!("标记相符 + 落点是 0 字节 ⇒ 竟然跳过（那个文件不可 exec）");
-    };
+fn the_stamp_scan_command_is_read_only_and_quoted() {
+    let cmd = stamp_scan_cmd("/h/a b/.cc-monitor/bin/ccm");
+    assert!(cmd.starts_with("LC_ALL=C grep -aoE "), "{cmd}");
     assert!(
-        reason.contains("0 字节"),
-        "原因没说清是「那个文件是空的」：{reason}"
+        cmd.ends_with("-- '/h/a b/.cc-monitor/bin/ccm'"),
+        "路径没过引号：{cmd}"
     );
     assert!(
-        !reason.contains("版本不符"),
-        "版本是相符的，别说成版本不符：{reason}"
+        cmd.contains("[[:alnum:]_.-]+"),
+        "身份那一段不是「至少一个字符」：{cmd}"
     );
+    for m in [env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE")] {
+        assert!(cmd.contains(m), "界标没进命令：{m} / {cmd}");
+    }
+    // 只读：引号之外没有任何会写的东西（界标里的 `>>` 在引号里，是正则的一部分）。
+    let unquoted: String = cmd.split('\'').step_by(2).collect();
+    assert!(unquoted.contains("grep"), "拆引号拆歪了：{unquoted}");
+    for w in [">", "rm ", "mv ", "tee", "chmod", "sed -i", ";", "|", "&"] {
+        assert!(!unquoted.contains(w), "扫描命令里有写：{w} / {cmd}");
+    }
 }
 
-/// **防空转**：上面三格全在纯函数上，实现只要不接到调用点就是死代码，而三格照样绿。
-/// 这一格钉的是**两条后端部署路真的去问了那个文件**：
-/// `ensure_backend_deployed`（自动部署）与 `deploy_remote_backend`（手动按钮）。
-///
-/// ⚠ 射程：只到后端那两条路。`acct_iso_deploy` 那条**刻意不在分母里**——
-/// 它的标记落在目录上、内容是同一次上传的一批脚本，是另一种形状（见
-/// `deploy_decision` 的头注）；那条路今天有没有同族的病，本格判不了。
+/// I3：两条后端部署路都读那份字节自报的身份；旁挂标记在这两条路上零命中（带正控）。
 #[test]
-fn both_backend_deploy_paths_ask_the_file_itself_not_only_the_marker() {
-    fn body<'a>(src: &'a str, sig: &str) -> &'a str {
-        let i = src
-            .find(sig)
-            .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
-        &src[i..j]
-    }
-    let src = include_str!("../../src/bridge/src/sftp.rs");
+fn both_backend_deploy_paths_read_the_identity_from_the_bytes_not_from_a_marker() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let marker_forms = |code: &str| -> Vec<&'static str> {
+        [
+            "/.build_id",
+            "read_marker(",
+            "put_marker(",
+            "deploy_decision(",
+        ]
+        .into_iter()
+        .filter(|f| code.contains(f))
+        .collect()
+    };
     for sig in [
         "pub async fn ensure_backend_deployed(",
         "pub async fn deploy_remote_backend(",
+        "pub async fn uninstall_remote_backend(",
     ] {
-        let code = body(src, sig)
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        // 反向自检：真取到函数体了（不然下面两条断言在空串上恒假、这一格变成假红/假绿源）
-        assert!(
-            code.contains("marker_path("),
-            "{sig}: 取到的体里连版本标记都没读，守卫在空转"
+        let code = dp1_body(&prod, sig);
+        assert_eq!(
+            marker_forms(&code),
+            Vec::<&str>::new(),
+            "{sig} 又碰起了旁挂标记：\n{code}"
         );
-        assert!(
-            code.contains("probe_target_binary("),
-            "{sig}: 没有取样落点那个文件在不在 —— 判定只拿到了版本这一半事实"
-        );
-        assert!(
-            code.contains("deploy_decision_at("),
-            "{sig}: 仍在用只看版本的判定"
-        );
-        assert!(
-            !code.contains("deploy_decision("),
-            "{sig}: 还留着裸 `deploy_decision(` 调用 —— 两条判定并存迟早分叉"
-        );
+        if !sig.contains("uninstall") {
+            guard_core::find_pinned(&code, "remote_identity(")
+                .unwrap_or_else(|e| panic!("{sig}：不是恰好一处问那台上那份是谁（{e}）"));
+            guard_core::find_pinned(&code, "identity_decision(")
+                .unwrap_or_else(|e| panic!("{sig}：不是恰好一处按身份判（{e}）"));
+        }
     }
+    // 正控：四种标记写法都认得出来。
+    assert_eq!(
+        marker_forms("read_marker(x) put_marker(y) deploy_decision(z) \"{dir}/.build_id\""),
+        vec![
+            "/.build_id",
+            "read_marker(",
+            "put_marker(",
+            "deploy_decision("
+        ]
+    );
 }
 
 // ── K-W4b：取样层那四个状态的**映射规则**逐格各一条 ─────────────────────
@@ -850,7 +871,7 @@ fn probe_metadata_saying_zero_bytes_maps_to_empty() {
     assert_ne!(
         interpret_target_probe(Some(Some(0)), None),
         interpret_target_probe(Some(Some(1)), None),
-        "0 字节与有字节判成了同一格 ⇒ deploy_decision_at 的 Empty 那一臂永远走不到"
+        "0 字节与有字节判成了同一格 ⇒ 身份那一步的 0 字节那一格（〔DP1〕按没装装）永远走不到"
     );
 }
 
@@ -956,7 +977,7 @@ fn probe_no_cell_answers_in_place_of_another() {
 /// ⇒ 全量 cargo 0 红）。这一格钉的是取样壳**真的走**那个纯解释函数、
 /// 并且**没有**把状态直接写死在 async 体里。
 ///
-/// 形状照抄同文件的 `both_backend_deploy_paths_ask_the_file_itself_not_only_the_marker`
+/// 形状照抄同文件的 `both_backend_deploy_paths_read_the_identity_from_the_bytes_not_from_a_marker`
 /// （含它那种反向自检）。
 ///
 /// ⚠ 射程：它看的是**源码文本**，不是运行期。挡得住「体被换成常量 / 纯函数没接上」，
@@ -1006,11 +1027,7 @@ fn remote_parent_and_marker() {
     assert_eq!(remote_parent("/x"), "/");
     assert_eq!(remote_parent("rel/path"), "rel");
     assert_eq!(remote_parent("noslash"), ".");
-    assert_eq!(
-        marker_path("/home/pi/.cc-monitor/bin/cc-monitor-backend"),
-        "/home/pi/.cc-monitor/bin/.build_id"
-    );
-    assert_eq!(marker_path("/x"), "/.build_id");
+    // 〔DP1〕旁挂标记的路径拼法随标记一起退役（后端那条路读字节自己的身份戳）。
 }
 
 #[test]
@@ -1106,8 +1123,8 @@ fn upload_verify_catches_same_length_corruption() {
         e.contains(&format!("首个差异在第 {k} 字节")),
         "要指出位置：{e}"
     );
-    // **关键**：措辞必须说清标记没写，否则用户不知道下次会重试
-    assert!(e.contains("未写入版本标记"), "{e}");
+    // 〔DP1〕「下次会重来」那半句挪到了 `upload_verified`（它当场删掉传坏的那一份），这里只说坏在哪。
+    assert!(e.contains("/r/x"), "{e}");
 }
 
 #[test]
@@ -1118,7 +1135,7 @@ fn upload_verify_catches_truncation_and_unreadable() {
     // 读不回来 ≠ 写对了
     let e2 = verify_readback("/r/x", 10, None).unwrap_err();
     assert!(e2.contains("读不回"), "{e2}");
-    assert!(e2.contains("未写入版本标记"), "{e2}");
+    assert!(e2.contains("/r/x"), "{e2}");
 }
 
 #[test]
@@ -1416,8 +1433,9 @@ fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
 ///
 /// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
-/// 写不到真 home。买到：部署判定三形（缺 ⇒ 部署 · 装完 ⇒ 跳过 · 截成 0 字节 ⇒ 重部署）· 入口一次写 / 一次不动 ·
-/// 卸载按钮删两份 · 两个写根之外 ⇒ 后端围栏拒、原话带回 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
+/// 写不到真 home。买到：部署判定四形（缺 ⇒ 部署 · 装完 ⇒ 那台 sshd 上真扫出戳、跳过 · 截成 0 字节 ⇒ 重部署 ·
+/// 〔DP1〕无戳的文件 ⇒ 显式失败不覆盖）· 入口一次写 / 一次不动 ·
+/// 卸载按钮删后端那一份 · 两个写根之外 ⇒ 后端围栏拒、原话带回 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
 async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
@@ -1457,41 +1475,67 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     // ① 部署那几问（判定函数原样，执行经后端）
     let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
     assert_eq!(fs.home(), rhome, "起始目录不是 sshd 给的那个");
-    let marker = marker_path(&backend_path);
-    let bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
-    let decide = |id: Option<Vec<u8>>, t| {
-        deploy_decision_at(
-            id.map(|b| String::from_utf8_lossy(&b).trim().to_string())
-                .as_deref(),
-            "sr1b-id",
-            t,
-        )
-    };
-    let t0 = probe_target_binary(&fs, &backend_path).await.unwrap();
-    let d0 = decide(read_marker(&fs, &marker).await.unwrap(), t0);
+    // 〔DP1〕身份读那份字节自己的戳（那台 sshd 上真跑一次只读扫描），不读旁挂标记。
+    //   送去的字节里埋一段戳（界标取自 `build.rs` 交来的 env），其余是 3 MB 的噪声。
+    let stamp = format!(
+        "{}sr1b-id{}",
+        env!("BACKEND_STAMP_OPEN"),
+        env!("BACKEND_STAMP_CLOSE")
+    );
+    let mut bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
+    bytes.splice(1_000_000..1_000_000, stamp.bytes());
+    let decide =
+        |id: RemoteIdentity| identity_decision(&id, "sr1b-id", "sr1b-loopback", &backend_path);
+    // 〔DP1〕读数脚本 ② 在这个落点上留下了一份 3 MB 的随机字节（没有身份戳）⇒ 那台 sshd 上真扫一次：
+    //   显式失败、一个字节都不写（盘上那份原样）；出路是机器页「卸载后端」—— 这里就用那颗按钮的真命令删掉它。
+    let leftover = std::fs::read(&backend_path).expect("读数脚本 ② 留下的那份不在 —— 台架变了");
+    let d_pre = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
     assert!(
-        matches!(d0, DeployAction::Deploy(_)),
+        matches!(&d_pre, Err(e) if e.contains("不说自己是哪一版")),
+        "无戳的旧文件 ⇒ 该显式失败：{d_pre:?}"
+    );
+    assert_eq!(
+        std::fs::read(&backend_path).unwrap(),
+        leftover,
+        "判定之后盘上那份变了"
+    );
+    let msg = uninstall_remote_backend(cfg.clone())
+        .await
+        .expect("卸载（出路）");
+    assert!(msg.starts_with(&format!("已删除 {backend_path}")), "{msg}");
+    let d0 = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
+    assert!(
+        matches!(d0, Ok(DeployAction::Deploy(_))),
         "落点缺 ⇒ 该部署：{d0:?}"
     );
     fs.mkdirs(remote_parent(&backend_path)).await.unwrap();
     upload_verified(&fs, &backend_path, &bytes, 0o700)
         .await
         .expect("上传 ＋ 读回");
-    put_marker(&fs, &marker, b"sr1b-id", 0o600).await.unwrap();
-    let t1 = probe_target_binary(&fs, &backend_path).await.unwrap();
-    let d1 = decide(read_marker(&fs, &marker).await.unwrap(), t1);
-    assert_eq!(d1, DeployAction::Skip, "装完 ⇒ 该跳过");
+    let id1 = remote_identity(&cfg, &fs, &backend_path).await.unwrap();
+    assert_eq!(
+        id1,
+        RemoteIdentity::Stamp("sr1b-id".into()),
+        "那台上那份的戳没被扫出来"
+    );
+    assert_eq!(decide(id1), Ok(DeployAction::Skip), "装完 ⇒ 该跳过");
     assert_eq!(
         std::fs::read(&backend_path).unwrap(),
         bytes,
         "盘上那份不是送去的字节"
     );
     std::fs::write(&backend_path, b"").unwrap();
-    let t2 = probe_target_binary(&fs, &backend_path).await.unwrap();
-    let d2 = decide(read_marker(&fs, &marker).await.unwrap(), t2);
+    let d2 = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
     assert!(
-        matches!(d2, DeployAction::Deploy(_)),
+        matches!(d2, Ok(DeployAction::Deploy(_))),
         "截成 0 字节 ⇒ 该重部署：{d2:?}"
+    );
+    // 落点上是一份不说自己是谁的东西 ⇒ 显式失败、不覆盖（判定层不写；盘上那份原样）。
+    std::fs::write(&backend_path, b"#!/bin/sh\necho not ours\n").unwrap();
+    let d3 = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
+    assert!(
+        matches!(&d3, Err(e) if e.contains("不说自己是哪一版")),
+        "无戳的文件 ⇒ 该显式失败：{d3:?}"
     );
     upload_verified(&fs, &backend_path, &bytes, 0o700)
         .await
@@ -1519,9 +1563,9 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     );
     assert!(!std::path::Path::new(&outside).exists());
     drop(fs);
-    // ④ 卸载按钮（真命令）：删后端 ＋ 标记两份
+    // ④ 卸载按钮（真命令）：〔DP1〕只删后端那一份（旁挂标记退役）
     let msg = uninstall_remote_backend(cfg.clone()).await.expect("卸载");
-    assert!(msg.starts_with("已删除 2 个文件"), "{msg}");
+    assert!(msg.starts_with(&format!("已删除 {backend_path}")), "{msg}");
     assert!(!std::path::Path::new(&backend_path).exists());
     // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份
     let origin = crate::origin::Origin(cfg.origin_label());
@@ -1575,4 +1619,98 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let _ = child.kill();
     let _ = child.wait();
     println!("SR1B-LOOPBACK-MONITOR ok");
+}
+
+// ═══ 〔DP1 · 第四波〕自动部署不再静默 ═══════════════════════════════════════════════════
+//
+// 要求住址：`设计/96 §7.1.4`，逐字：「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」·
+// 「**返回类型上不许有『成功』这一支**：拒绝要与『部署成功』在类型上分得开，界面才显示得出来」。
+
+/// 切出生产段里一个函数的体（到列 0 的 `}` 为止）。
+fn dp1_body(prod: &str, sig: &str) -> String {
+    let at =
+        guard_core::find_pinned(prod, sig).unwrap_or_else(|e| panic!("{sig} 不是恰好一处：{e}"));
+    let rest = &prod[at..];
+    let end = rest.find("\n}\n").unwrap_or(rest.len());
+    rest[..end].to_string()
+}
+
+/// 本条要逮的两种「静默」写法：`Ok(None)`（没部署也算成功）与 `debug!`（只留一行没人看的日志）。
+fn dp1_silent_forms(body: &str) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if body.contains("Ok(None)") {
+        out.push("Ok(None)");
+    }
+    if body.contains("tracing::debug!") || body.contains(" debug!(") {
+        out.push("debug!");
+    }
+    out
+}
+
+/// D1：`ensure_backend_deployed` 的返回类型是 `Result<String, DeployError>`（没有「没部署也算成功」那一支），
+/// 体内零 `Ok(None)` · 零 `debug!`；表拒绝恰好交成 `DeployError::Refused` 一处。
+#[test]
+fn the_auto_deploy_never_refuses_silently() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let body = dp1_body(&prod, "pub async fn ensure_backend_deployed(");
+    let sig = body.lines().next().unwrap_or_default();
+    assert!(
+        sig.contains("-> Result<String, DeployError>"),
+        "返回类型变了：{sig} —— `Option` 回来就是「没部署也算成功」那一支回来了"
+    );
+    assert_eq!(
+        dp1_silent_forms(&body),
+        Vec::<&str>::new(),
+        "体内又有了静默的拒绝：\n{body}"
+    );
+    guard_core::find_pinned(&body, "Err(DeployError::Refused(").unwrap_or_else(|e| {
+        panic!("表拒绝没有恰好一处交成 `DeployError::Refused`（{e}）：\n{body}")
+    });
+    // 正控：两种静默写法都认得出来。
+    assert_eq!(
+        dp1_silent_forms("x => return Ok(None),\n tracing::debug!(\"跳过\");"),
+        vec!["Ok(None)", "debug!"]
+    );
+}
+
+/// D2：调用方拿到 `Err` ⇒ 经远端健康通道恰发一条 `kind = "deploy"`（不阻断，照旧接着试连已有后端）。
+#[test]
+fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    let at = guard_core::find_pinned(&prod, "crate::sftp::ensure_backend_deployed(cfg).await")
+        .unwrap_or_else(|e| panic!("调用处不是恰好一处：{e}"));
+    let rest = &prod[at..];
+    let err_at = rest.find("Err(e) =>").expect("找不到 Err 那一支");
+    let arm = &rest[err_at..];
+    let arm = &arm[..arm.find("\n        }\n").unwrap_or(arm.len())];
+    guard_core::find_pinned(arm, "kind: \"deploy\"")
+        .unwrap_or_else(|e| panic!("Err 那一支没有恰好一条 `kind: \"deploy\"`（{e}）：\n{arm}"));
+    guard_core::find_pinned(arm, "app.emit(crate::bridge::events::REMOTE_HEALTH")
+        .unwrap_or_else(|e| panic!("Err 那一支没有恰好一次发到远端健康通道（{e}）：\n{arm}"));
+    assert!(
+        arm.contains("e.say(&host_label)"),
+        "发出去的不是那句话本身：\n{arm}"
+    );
+    assert!(
+        arm.contains("None"),
+        "Err 那一支不再「不阻断、按没确认处理」：\n{arm}"
+    );
+}
+
+/// 〔DP1 · 第四波〕读回比对不对 ⇒ **当场删掉传坏的那一份**（旁挂标记退役后，断链那一环就是这一删）。
+///
+/// 要求住址：`设计/96 §7.2.3` 部署决策的对照物是那份字节自报的身份 ⇒ 一份传坏却恰好还带着对的戳的字节，
+/// 下次会被判「已是这一版」—— 删掉它，下次就是「落点没有 ⇒ 装」。
+/// 形态判据（`upload_verified` 要经真 `RemoteFs`，单测起不了那条链路；行为那一半在回环 sshd 读数里没有现成的坏读回可造）：
+/// 读回判定的 `Err` 那一支里恰好一次 `fs.remove(remote_path)`，且排在 `fs.put(` 之后。
+#[test]
+fn a_bad_readback_removes_the_upload_it_just_made() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let body = dp1_body(&prod, "pub(crate) async fn upload_verified(");
+    let put = guard_core::find_pinned(&body, "fs.put(remote_path").expect("上传那一问不在了");
+    let bad = guard_core::find_pinned(&body, "let Err(bad) = verify_readback(")
+        .expect("读回判定那一支不在了");
+    let rm = guard_core::find_pinned(&body, "fs.remove(remote_path)")
+        .unwrap_or_else(|e| panic!("读回不对那一支没有恰好一次删掉那一份（{e}）：\n{body}"));
+    assert!(put < bad && bad < rm, "次序不是「传 → 判 → 删」：\n{body}");
 }
