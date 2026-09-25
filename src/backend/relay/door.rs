@@ -39,10 +39,9 @@
 use super::http1::RequestHead;
 use std::path::{Path, PathBuf};
 
-/// 钥匙文件相对家目录的路径。**跨半边字面量**：monitor 那一份是
-/// `src/bridge/src/backend/control/payload.rs::RELAY_KEY_FILE_REL`（渲染器拼 `$(cat "$HOME/…")` 用它），
-/// 由 `door_tests::the_key_file_is_the_same_path_on_both_halves` 现抠对拍。
-pub(crate) const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
+/// 钥匙文件相对家目录的路径。〔US1 · 4D〕值只住共享 crate `relay_route_core::KEY_FILE_REL`：
+/// monitor 渲染 `$(cat "$HOME/…")` 用的 `payload::RELAY_KEY_FILE_REL` 是同一个 const（先前两处各写字面量、判据现抠对拍）。
+pub(crate) const KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
 /// 钥匙的熵：32 字节 = 256 位（题面要 ≥128 位）。落盘是 64 个小写十六进制字符。
 const KEY_BYTES: usize = 32;

@@ -1,0 +1,146 @@
+//! **中转门牌**的唯一住址：这台机器的中转在哪个口 · 进门的钥匙放在哪 · 路由路径长什么样。
+//!
+//! # 它为什么是一个共享 crate（`设计/20 §5` 目标 · `§10` 第 5 条）
+//!
+//! 〔US1 · 第四波 4D〕先前这几样在两个半边**各写一份**：
+//!
+//! | 件 | monitor 那一份 | 后端那一份 | 先前靠什么对上 |
+//! |---|---|---|---|
+//! | 端口 8788 | `payload::RELAY_PORT` | `relay/server.rs::DEFAULT_PORT` | **什么都没有**（零对拍） |
+//! | 钥匙文件相对路径 | `payload::RELAY_KEY_FILE_REL` | `relay/door.rs::KEY_FILE_REL` | 后端判据现抠 monitor 源码字面量 |
+//! | 两个前缀 · 段闸 · 拼路由 | `payload::relay_route_path_in` 一族 | `relay/route.rs::PREFIXES` / `segment_is_safe` / `parse` | 一行样例两侧各解一次 |
+//!
+//! 两个二进制不共享源码树（后端刻意不在 monitor 的 workspace 里）⇒ 共享 crate 是「一份实现两侧 use」的唯一载体
+//! （同 `shell-quote-core` 的形状）。从此漂开**不可表示**：想不一致得先把 `use` 删掉。
+//!
+//! # 它**不是**业务 crate
+//!
+//! 这里一个账号 / 凭据 / 上游的名字都没有：三个段是**位置**（第 1/2/3 段），谁是 agent、谁是账号只在后端上游选择那一层
+//! 才有名字（`设计/20 §0` 条 48）。⇒ 通信层成员 `relay/route.rs` 可以 `use` 它（`设计/05 §2` `C2` 禁的是业务 crate）。
+//!
+//! # 谁用哪几样
+//!
+//! - 后端：中转 `relay/route.rs::parse`（[`parse_target`]）· 中转宿主 `relay/listen.rs`（[`PORT`]）· 门 `relay/door.rs`（[`KEY_FILE_REL`]）·
+//!   上游选择 `accounts/upstream/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）。
+//! - monitor：起本机后端时交的端口（[`PORT`]）· 渲染 `$(cat "$HOME/<钥匙>")` 那一段（[`KEY_FILE_REL`]）·
+//!   载荷里那条中转地址的 fail-closed 校验（[`base_url_shape_ok`]，[`base_url`] 的逆）· 起会话身份 token 的字符集（[`segment_is_safe`]）。
+
+/// 中转在回环上听的那个口。**本机**：monitor 起常驻后端时以 `CCM_RELAY_PORT` 交给它（它在进程里起中转）；
+/// **远端**：`relay-status` / `relay-ensure` 的 `port` 入参。独立 `--relay` 没被交端口时也用它。
+pub const PORT: u16 = 8788;
+
+/// 中转钥匙文件相对家目录的路径（`INVARIANTS §48.1a`）：**中转所在那台机器**上 `0600`，中转绑上口之后自己读回或铸。
+/// 注入的 URL 不带钥匙本身，渲染成 `$(cat "$HOME/<本常量>")` 在那台机器的 pane shell 里展开（RK1）。
+pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
+
+/// 路由路径第一段的两个前缀 = 两种模式（`设计/20 §2`「为什么用两个前缀而不是一个哨兵段」）。
+///
+/// `/s/` 代入：上游选择的表里必须有这一行，没有 ⇒ 404；`/t/` 直通：中转**永不**代入凭据，第 2 段只当标签。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RouteMode {
+    /// `/s/`
+    Substitute,
+    /// `/t/`
+    Passthrough,
+}
+
+impl RouteMode {
+    /// 闭集。**两个前缀的字面量只在 [`RouteMode::prefix`] 里。**
+    pub const ALL: [RouteMode; 2] = [RouteMode::Substitute, RouteMode::Passthrough];
+
+    /// 这个模式的前缀（带前后两个 `/`）。
+    pub fn prefix(self) -> &'static str {
+        match self {
+            RouteMode::Substitute => "/s/",
+            RouteMode::Passthrough => "/t/",
+        }
+    }
+}
+
+/// 一段路由里允许的字符 —— 白名单：ASCII 字母数字与 `-` `_`，1..=128 字节。
+///
+/// `.` 与 `/` 不在里面 ⇒ `..` 构造不出来；路由段要进 tee 行与日志，放开任意字节等于给换行 / 控制字符开一条路。
+/// ⚠ 起会话身份 token（`CCM_LAUNCH_ID`）也用这一条：那个 token 同时是流标签（第 3 段），两件事一个字符集。
+pub fn segment_is_safe(seg: &str) -> bool {
+    !seg.is_empty()
+        && seg.len() <= 128
+        && seg
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// 拼 `/<前缀>/<seg1>/<seg2>/<seg3>`。**任一段过不了 [`segment_is_safe`] ⇒ `None`**（fail-closed：
+/// 拼错一段的症状是中转回一个查不出来的 404，所以宁可当场拒）。
+pub fn route_path(mode: RouteMode, seg1: &str, seg2: &str, seg3: &str) -> Option<String> {
+    [seg1, seg2, seg3]
+        .iter()
+        .all(|s| segment_is_safe(s))
+        .then(|| format!("{}{seg1}/{seg2}/{seg3}", mode.prefix()))
+}
+
+/// 注入给 agent 的 base URL：`http://127.0.0.1:<port>` ＋ [`route_path`]。**恒回环**（回环是自指的：
+/// 同一个字面串写进哪台机器就指哪台）。
+pub fn base_url(port: u16, mode: RouteMode, seg1: &str, seg2: &str, seg3: &str) -> Option<String> {
+    if port == 0 {
+        return None;
+    }
+    route_path(mode, seg1, seg2, seg3).map(|p| format!("http://127.0.0.1:{port}{p}"))
+}
+
+/// [`base_url`] 的**逆**：`http://127.0.0.1:<1–65535>` ＋ 一个前缀 ＋ 恰好三段、每段过闸。别的一律 `false`
+/// （`localhost` · `https` · 查询串 · 尾斜杠 · 少段多段 · 端口前导空）。
+pub fn base_url_shape_ok(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://127.0.0.1:") else {
+        return false;
+    };
+    let Some(slash) = rest.find('/') else {
+        return false;
+    };
+    let (port, path) = rest.split_at(slash);
+    let port_ok = !port.is_empty()
+        && port.bytes().all(|b| b.is_ascii_digit())
+        && port.parse::<u16>().is_ok_and(|p| p != 0);
+    let Some(segs) = RouteMode::ALL
+        .iter()
+        .find_map(|m| path.strip_prefix(m.prefix()))
+    else {
+        return false;
+    };
+    let parts: Vec<&str> = segs.split('/').collect();
+    port_ok && parts.len() == 3 && parts.iter().all(|p| segment_is_safe(p))
+}
+
+/// 请求目标 `/<前缀>/<seg1>/<seg2>/<seg3>/<rest>` 切出来的样子（中转那一侧用）。
+#[derive(Debug, PartialEq, Eq)]
+pub struct Parsed<'a> {
+    pub mode: RouteMode,
+    pub seg1: &'a str,
+    pub seg2: &'a str,
+    pub seg3: &'a str,
+    /// 第 3 段之后的全部（**不带**开头那个 `/`），原样交上游。
+    pub rest: &'a str,
+}
+
+/// 切请求目标。不是这个形状（前缀不认得 · 少段 · 某段过不了闸）⇒ `None`。
+pub fn parse_target(target: &str) -> Option<Parsed<'_>> {
+    let (mode, after) = RouteMode::ALL
+        .iter()
+        .find_map(|m| target.strip_prefix(m.prefix()).map(|r| (*m, r)))?;
+    let (seg1, after) = after.split_once('/')?;
+    let (seg2, after) = after.split_once('/')?;
+    let (seg3, rest) = after.split_once('/')?;
+    [seg1, seg2, seg3]
+        .iter()
+        .all(|s| segment_is_safe(s))
+        .then_some(Parsed {
+            mode,
+            seg1,
+            seg2,
+            seg3,
+            rest,
+        })
+}
+
+#[cfg(test)]
+#[path = "../../../../../tests/bridge/crates/relay-route-core/lib_tests.rs"]
+mod tests;

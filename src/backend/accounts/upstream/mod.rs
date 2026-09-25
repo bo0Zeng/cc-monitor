@@ -55,6 +55,9 @@ pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前�
                       // 上游选择自己的状态文件，不是用户文件 ⇒ `readonly_guard` 第四层登记它，只从 `inbound.rs` 进来。
                       // ⚠ 它**不在** `--relay` 那条启动路径上：中转进程里的上游选择仍然只读（`creds`），写只在流模式的帧面上发生。
 pub(crate) mod file_face;
+// 〔US1 · 4D〕起会话那一发走哪、注入什么（帧面 `launch-endpoint`）· 界面「这几个号在表里有没有行」（`apikey-routing`）——
+// `设计/20 §3.2` 那张表的唯一住址（先前住 monitor `payload::relay_endpoint_for`〔散文墓碑〕）。
+pub(crate) mod endpoint;
 mod policy; // 热重载（`20 §4`：`accounts/policy.rs`；今天住 `accounts/upstream/policy.rs`）
 pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**
 

@@ -17,6 +17,7 @@ members = [
     "crates/creds-core",
     "crates/gate-core",
     "crates/guard-core",
+    "crates/relay-route-core",
     "crates/search-core",
     "crates/shell-quote-core",
     "crates/codex-token-core",
