@@ -29,7 +29,91 @@ fn parse_lock(rel: &str) -> BTreeMap<String, BTreeSet<String>> {
     out
 }
 
+/// 〔SR1b · 2026-09-24〕backend lock 里 `name version` 那一格的**依赖者**（`(包名, 版本)`）。依赖串写成 `"name"`
+/// （全 lock 只有一版时）或 `"name version"`（多版并存时）两种形状 —— 两种都认。
+fn dependents_in_lock(rel: &str, name: &str, version: &str) -> BTreeSet<(String, String)> {
+    let body = std::fs::read_to_string(repo_root().join(rel)).expect("读 lock");
+    let versions = parse_lock(rel).get(name).cloned().unwrap_or_default();
+    let field = |block: &str, key: &str| {
+        block
+            .lines()
+            .find_map(|l| l.strip_prefix(key))
+            .map(|v| v.trim().trim_matches('"').to_string())
+            .unwrap_or_default()
+    };
+    // 按行切块（一行恰好是 `[[package]]` 就起一块）—— 整行相等，不在语料上做子串切分（`needle_anchor_registry`）。
+    let mut blocks: Vec<String> = Vec::new();
+    for row in body.lines() {
+        if row.trim() == "[[package]]" {
+            blocks.push(String::new());
+        } else if let Some(b) = blocks.last_mut() {
+            b.push_str(row);
+            b.push('\n');
+        }
+    }
+    let mut out = BTreeSet::new();
+    for block in &blocks {
+        let hits = block.lines().any(|l| {
+            let dep = l.trim().trim_end_matches(',').trim_matches('"');
+            dep == format!("{name} {version}") || (dep == name && versions.len() == 1)
+        });
+        if hits {
+            out.insert((field(block, "name = "), field(block, "version = ")));
+        }
+    }
+    out
+}
+
 /// ★ 正题：**真冲突集必须为空**。
+///
+/// 〔SR1b · 2026-09-24〕**「真」多了一道条件**：backend 那一版的**依赖者（包名 ＋ 版本）全都不在 monitor lock 里** ⇒ 不算。
+/// 起因：monitor 删了 `russh` / `russh-sftp`（界面进程零 SSH，V89）之后，只有 SSH 那棵树要的几个新版密码学包
+/// （`sha2 0.11` · `digest 0.11` · `rand 0.10` …）只剩 backend 一侧有 —— 而它们的依赖者（`russh` · `ssh-key` ·
+/// 新版 `sha2` …）**monitor 那一侧一份都不编**。本条要防的是「同一份源码（两侧都编的那个包、同一版）在两边拿到
+/// 不同版本的依赖」，那一形要求依赖者那一格（名 ＋ 版）**两侧都有**；只在 backend 的依赖者没有「同一份源码」这回事。
+/// 正控：`the_backend_only_exemption_really_needs_backend_only_dependents`。
+fn only_backend_only_dependents(
+    m: &BTreeMap<String, BTreeSet<String>>,
+    name: &str,
+    version: &str,
+) -> bool {
+    let who = dependents_in_lock("src/backend/Cargo.lock", name, version);
+    // monitor 那一侧**依赖 `name`（任何一版）**的那些格：同一格（名 ＋ 版）两侧都依赖它、版本却不同，才是冲突。
+    // 依赖者两侧都有、但 monitor 那一格压根不依赖 `name` ⇒ 那是 backend 那边多开了一个可选 feature
+    // （`getrandom 0.4.2` 的 `rand_core` 就是这一形），不是「同一份源码拿到两个版本」。
+    let monitor_side: BTreeSet<(String, String)> = m
+        .get(name)
+        .into_iter()
+        .flatten()
+        .flat_map(|mv| dependents_in_lock("src/bridge/Cargo.lock", name, mv))
+        .collect();
+    !who.is_empty() && who.iter().all(|pair| !monitor_side.contains(pair))
+}
+
+/// 〔SR1b〕放行那一格的**正控**：依赖者两侧都有的那种（`tokio` 依赖的任何一版包都是）不许被放行。
+#[test]
+fn the_backend_only_exemption_really_needs_backend_only_dependents() {
+    let m = parse_lock("src/bridge/Cargo.lock");
+    let d = parse_lock("src/backend/Cargo.lock");
+    // `mio` 的依赖者里有 `tokio`（两侧都编）⇒ 无论版本怎样都不许被放行。
+    let v = d["mio"]
+        .iter()
+        .next()
+        .expect("backend lock 里有 mio")
+        .clone();
+    assert!(
+        !only_backend_only_dependents(&m, "mio", &v),
+        "依赖者两侧都有的包被当成了「只有 backend 要」—— 放行口子开大了"
+    );
+    // 反向：`russh` 那棵树里的新版 `sha2` 今天确实只被 backend 独有的包依赖（本拍的放行对象，现打）。
+    if let Some(v) = d
+        .get("sha2")
+        .and_then(|vs| vs.iter().find(|v| !m["sha2"].contains(*v)))
+    {
+        assert!(only_backend_only_dependents(&m, "sha2", v));
+    }
+}
+
 ///
 /// 「真冲突」= 同一个包，**backend 解析出的版本集不是 monitor 的子集**。
 /// 超集（monitor 多持有几版）不算 —— 那不是「同一份源码编两次」。
@@ -49,7 +133,11 @@ fn the_two_lockfiles_have_no_real_version_conflict() {
     let mut conflicts = Vec::new();
     for k in common {
         let (mv, dv) = (&m[k], &d[k]);
-        if !dv.is_subset(mv) {
+        let real = dv
+            .iter()
+            .filter(|v| !mv.contains(*v))
+            .any(|v| !only_backend_only_dependents(&m, k, v));
+        if real {
             conflicts.push(format!(
                 "  {k}: monitor {:?} / backend {:?}",
                 mv.iter().collect::<Vec<_>>(),

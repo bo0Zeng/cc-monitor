@@ -46,9 +46,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::event_replay::EventReplay;
 use crate::ssh_link::ConnectStage;
-// 〔C2〕`sftp.rs`（`F7c` 独占，本拍不许动）从本模块取这两个名字 —— 它们今天住 `inproc_dial.rs`
-// （界面进程里最后一份 russh 拨号，唯一调用方就是 SFTP）。`F7c` 换走那天这一行随那份文件一起删。
-pub(crate) use crate::inproc_dial::{connect_session, ClientHandler};
+// 〔SR1b · 2026-09-24〕从前这里把 `connect_session` / `ClientHandler` 从 `inproc_dial.rs` 再导出给 `sftp.rs`
+//   （界面进程里最后一份 russh 拨号，唯一调用方就是 SFTP）。SFTP 进了本机常驻后端，那份文件整份删了，这一行随之删。
 use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
 
 /// S0 **跨语言双写点**：backend 那侧 `RemovalCause::Superseded` 的 serde 线上名。
@@ -1642,6 +1641,14 @@ pub enum InboundFrame {
     LinkData { link: String, data: Vec<u8> },
     /// 〔SR1a〕一条链路收尾了（后端 `wire::Frame::LinkEnd`）。
     LinkEnd { link: String, error: Option<String> },
+    /// 〔SR1b〕一趟传输此刻的样子（后端 `wire::Frame::Transfer`）。只有**本机后端**那条流上会有
+    /// （传输台住本机后端），交 `sftp_pool::deliver`。`end` 解不动 ⇒ 整帧 `None`（坏帧）。
+    Transfer {
+        id: String,
+        got: u64,
+        total: u64,
+        end: Option<crate::sftp_pool::End>,
+    },
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
@@ -1917,6 +1924,23 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             Some(InboundFrame::LinkEnd { link, error })
         }
 
+        // 〔SR1b〕传输进度 / 终局。`end` 在 ⇒ 必须是后端那三形之一，认不出 ⇒ 整帧 `None`（不猜一个结局）。
+        "transfer" => {
+            let id = obj.get("id")?.as_str()?.to_string();
+            let got = obj.get("got")?.as_u64()?;
+            let total = obj.get("total")?.as_u64()?;
+            let end = match obj.get("end") {
+                None => None,
+                Some(e) => Some(transfer_end(e)?),
+            };
+            Some(InboundFrame::Transfer {
+                id,
+                got,
+                total,
+                end,
+            })
+        }
+
         // ── `turn_end` **认识但刻意不消费**（U7-1）。──────────────────────────
         //
         // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
@@ -1955,8 +1979,23 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "sessions_replayed",
     "tmux_session_closed",
     "tmux_sessions",
+    "transfer",
     "turn_end",
 ];
+
+/// 〔SR1b〕`transfer` 帧的 `end`：后端 `wire::TransferEnd` 那三形之一；认不出 ⇒ `None`（调用方整帧丢）。
+/// 抽出来住 `parse_frame` 外面：那张 match 的臂是帧 kind 的名单（`known_kinds_matches_parse_frame` 按臂抠），
+/// 结局的三个名字不该混进去。
+fn transfer_end(e: &serde_json::Value) -> Option<crate::sftp_pool::End> {
+    Some(match e.get("state")?.as_str()? {
+        "done" => crate::sftp_pool::End::Done {
+            bytes: e.get("bytes")?.as_u64()?,
+        },
+        "failed" => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
+        "cancelled" => crate::sftp_pool::End::Cancelled,
+        _ => return None,
+    })
+}
 
 /// U7-1：**backend 的产出面 ↔ monitor 的消费面**对拍。
 ///
@@ -3099,6 +3138,12 @@ async fn stream_loop(
             Some(InboundFrame::LinkData { link, .. } | InboundFrame::LinkEnd { link, .. }) => {
                 tracing::warn!(
                     "ssh_source [{host_label}] 远端后端发来了链路帧（link={link}）—— monitor 没在远端开过链路，丢掉"
+                );
+            }
+            // 〔SR1b〕传输帧同理：传输台住**本机**后端，远端后端发来 ⇒ 协议对不上，照实说、丢掉。
+            Some(InboundFrame::Transfer { id, .. }) => {
+                tracing::warn!(
+                    "ssh_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
                 );
             }
             None => {
