@@ -465,9 +465,10 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     //   **一处都没多、一处都没少，只是换了文件**：3 = 1 ＋ 2。
     ("src/entry-render-common.ts", "setTimeout", 2, "① ② 1.2s 后把「已复制」/「失败」还原成「复制」。一次性 UI 反馈。"),
     ("src/main.ts", "setTimeout", 1, "0ms 下一拍挂 sftp 主机选择器的关闭监听。一次性 UI 反馈。"),
-    ("src/settings/cc_integration.ts", "setTimeout", 1, "500ms 后撤掉状态徽章的高亮描边。一次性。"),
     ("src/settings/config-surface-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
     ("src/settings/drift-ledger-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
+    // 〔AL1c · 4B〕`cc_integration.ts` 并进 `machine-aliases.ts`（终端集成成了 PowerShell 那一侧的别名块）⇒ 那一处跟着换文件：一处没多一处没少。
+    ("src/settings/machine-aliases.ts", "setTimeout", 1, "500ms 后撤掉状态徽章的高亮描边。一次性。"),
     // 〔U2 · 拆 `tabs.ts` 子步 9〕实时流视图搬进 `tab-stream-view.ts` ⇒ 原 `tabs.ts` 的 rAF ① · rIC ×1 · setTimeout ① 三处跟着走（下三行）：
     //   rAF 4 = 3 ＋ 1 · rIC 1 = 0 ＋ 1（`tabs.ts` 那一行因此整行删掉）· setTimeout 3 = 2 ＋ 1。一处没多一处没少。
     ("src/tab-stream-view.ts", "requestAnimationFrame", 1, "① `fillAbove` 批末复检（间接自链，有队列型守卫）：补完一批下一帧再看一眼，仍在触发区 / 仍不可滚且账本有余就再补；切走了（`activeId` 守卫）或账尽即停。"),

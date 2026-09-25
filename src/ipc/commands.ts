@@ -106,6 +106,7 @@ import type { Alias } from "../generated/Alias";
 import type { AliasInstallReport } from "../generated/AliasInstallReport";
 import type { AliasListing } from "../generated/AliasListing";
 import type { AliasRender } from "../generated/AliasRender";
+import type { Shell } from "../generated/Shell";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
@@ -128,6 +129,7 @@ import type { Origin } from "../generated/Origin";
 import type { SessionIndexResult } from "../generated/SessionIndexResult";
 import type { UserInputsResult } from "../generated/UserInputsResult";
 import type { FindResult } from "../generated/FindResult";
+import type { SessionRecordProbe } from "../generated/SessionRecordProbe";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -395,17 +397,18 @@ export const commands = {
    * 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。
    * 预览与「复制去手贴」都只调这一条，后端一个字节都不写。
    */
-  aliases_render: (args: { aliases: Alias[] }) =>
+  // 〔AL1c〕`shell` 必给：同一份清单渲染 / 读 / 写成哪种 shell 的方言（`71 §4.4`），不留缺省（缺了就是替人猜）。
+  aliases_render: (args: { aliases: Alias[]; shell: Shell }) =>
     invoke<AliasRender>("aliases_render", args),
 
   /** 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。 */
-  aliases_read: () => invoke<AliasListing>("aliases_read"),
+  aliases_read: (args: { shell: Shell }) => invoke<AliasListing>("aliases_read", args),
 
   /**
    * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
    * ⚠ `rcPath` 可选且没有默认值：用户的 shell 配置是哪一份只能由界面上的人选。
    */
-  aliases_install: (args: { aliases: Alias[]; rcPath?: string | null }) =>
+  aliases_install: (args: { aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
     invoke<AliasInstallReport>("aliases_install", args),
 
   /**
@@ -680,6 +683,14 @@ export const commands = {
      */
     tmuxName?: string | null;
   }) => invoke<void>("resume_history_session", args),
+
+  /**
+   * 〔U4b · 第四波〕**resume 之前问：这条会话的记录还在那台机器上吗**（`设计/01 §6.2` 最后一条）。
+   * 判定住那台的后端（`history-record`，只收 sid）；本机与远端同一个口。**问不到 ⇒ reject**：
+   * 调用方当「不知道」，**不当「不在」**。返回值字段被真消费 ⇒ 生成物（桶③）。
+   */
+  probe_session_record: (args: { origin: Origin; sessionId: string }) =>
+    invoke<SessionRecordProbe>("probe_session_record", args),
 
   /** **本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形（本机没有 SSH 那一跳）。
    *

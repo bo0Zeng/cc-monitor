@@ -84,6 +84,8 @@ export interface TabSessionHost {
   sessionAccount(sid: string): SessionAccount | undefined;
   /** 单个 tab 的账号徽章就地重刷（换号重启 in-flight 状态变化时）。 */
   refreshAccountBadgeFor(sid: string): void;
+  /** 〔U4b · G1〕resume 一跳问过那台后端之后，把「记录在不在」落进这条 tab 的状态（`TabManager.markRecord`）。 */
+  markRecord(sid: string, present: boolean): void;
 }
 
 export class TabSessionActions {
@@ -165,6 +167,39 @@ export class TabSessionActions {
   }
 
   /**
+   * 〔U4b · 第四波 · G1〕**resume 一跳先问那台后端：这条会话的记录还在不在**（`设计/01 §6.2` 最后一条
+   * 「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」）。
+   *
+   * - 不在 ⇒ 说清查的是哪台、哪棵记录树（`01 §6.9`），tab 落「记录已不在」，返回 `false`（调用方**不开终端**）；
+   * - 在 ⇒ 「记录已不在」翻回已结束（记录回来了），返回 `true`；
+   * - 问不到（通道没起 / 后端太旧不认 `history-record` / 超时）⇒ 当「不知道」、返回 `true`：照今天的路走，
+   *   **不许把「问不到」当成「不在」**（那会把一条其实接得上的 resume 拦掉）。
+   *
+   * 判定住那台的后端（只收 sid），这里只读答案 —— 前端不做文件存在性探测（`30 §B.6`）。
+   */
+  private async recordStillThere(tab: Tab): Promise<boolean> {
+    let probe: { present: boolean; root: string };
+    try {
+      probe = await commands.probe_session_record({ origin: tab.origin, sessionId: tab.sessionId });
+    } catch {
+      return true;
+    }
+    // 形状不对（旧宿主 / 桩）同「问不到」：只有一个明明白白的 `present: false` 才拦。
+    if (typeof probe?.present !== "boolean") return true;
+    this.host.markRecord(tab.sessionId, probe.present);
+    if (probe.present) return true;
+    showActionFailureToast(
+      copyText("sessionState.recordGone.title"),
+      copyText("sessionState.recordGone.body", {
+        who: isLocalOrigin(tab.origin) ? "本机" : `远端 [${tab.origin}]`,
+        root: probe.root,
+        sid: tab.sessionId,
+      }),
+    );
+    return false;
+  }
+
+  /**
    * F37：手动 resume 一个已结束（灰）的 Tab。与历史浏览器 ↺ 同一套语义：
    * 本地 → 新终端窗口跑 resume（尊重 F34 自定义命令，缺省 cc 检测→claude）；
    * 远端 → F41 一键拉起 wt.exe/PowerShell 跑 `ssh -t …`，失败回退复制命令。
@@ -173,6 +208,8 @@ export class TabSessionActions {
   async resumeTab(sid: string, accountName?: string, useBase = false): Promise<void> {
     const tab = this.host.tab(sid);
     if (!tab) return;
+    // 〔U4b · G1〕先问记录还在不在；不在 ⇒ 已经说过了，不开终端。
+    if (!(await this.recordStillThere(tab))) return;
     const behavior = await getBehavior();
     if (isRemoteOrigin(tab.origin)) {
       // A4：带账号统一走 withAccount（点击时重解析 configDir + 记 lastAccount 源②，与 history 同口径）。
@@ -342,6 +379,9 @@ export class TabSessionActions {
     // E73：明说不可 attach 的会话**不算 idle-tmux** —— 它那个「前台不是 claude」
     // 恰恰是因为里面跑着别的东西（SDK bridge 之类），不是空壳。
     const idle = this.host.isAttachable(sid) ? findIdleTmux(sessions, sid) : undefined;
+    // 〔U4b · G1〕下面两支（就地 resume · 全新 resume）都要起一个新 claude 接那份记录 ⇒ 先问记录还在不在。
+    //   上面那一支（attach 活会话）不问：它不起新进程。
+    if (!(await this.recordStillThere(tab))) return;
     if (idle) {
       await withAccount(
         origin,
