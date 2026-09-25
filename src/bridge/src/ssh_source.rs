@@ -3012,6 +3012,8 @@ async fn stream_loop(
                 .as_ref()
                 .is_some_and(|c| c.accepts(crate::asset_sync::REMOTE_NEEDS));
             crate::asset_sync::on_remote_ready(cfg, accepts);
+            // 〔GP1 · 第四波〕升级那一格：连上那一刻后台看一眼旧版 `~/.local/bin/ccm`，认出是我们放的就删（`ccm_legacy`）。
+            crate::ccm_legacy::on_remote_ready(cfg);
         }
 
         match frame {

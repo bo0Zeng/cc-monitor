@@ -35,6 +35,7 @@ mod bridge;
 // 通信层面 A 的第一个进程外客户端那条路（`设计/05` 末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
+mod ccm_legacy; // 〔GP1 · 第四波〕旧版放在 `~/.local/bin/ccm` 的那一份：认出是我们放的就删（`设计/01 §6.7b` 迁移 ② ③）
 pub mod chan;
 mod claude_data_fence; // 步 H2：Claude 自己的数据不许我们写 —— `INVARIANTS §1` 的 F47/F03b 两段澄清共用的那一个判定（用户 09-21 裁「拆」）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
@@ -58,7 +59,7 @@ mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
-mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写：本机进 creds_store，远端交那台机器的后端
+mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写 ——〔GP1〕写两台同一条路：交那台机器的后端（本机 ＝ 本机常驻后端）
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
 mod copy_table; // 〔DP1 · 第四波〕对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
