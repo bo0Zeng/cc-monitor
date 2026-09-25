@@ -68,14 +68,14 @@ fn creds_fixture(tag: &str) -> std::path::PathBuf {
 }
 
 /// 喂给 `host` 的取值器：端口 ＋ 默认上游 ＋ 凭据路径 ＋〔RK1〕夹具家目录（钥匙文件在它底下，
-/// 预先放好 `door::TEST_KEY` —— 不给的话中转会去用户真实的家目录里铸钥匙）。
+/// 预先放好 `door::door_tests::TEST_KEY` —— 不给的话中转会去用户真实的家目录里铸钥匙）。
 fn env_of(
     port: Option<&str>,
     upstream: Option<String>,
     creds: &std::path::Path,
 ) -> impl Fn(&str) -> Option<String> {
     let port = port.map(str::to_string);
-    let home = door::seed_test_home(creds.parent().expect("夹具目录"))
+    let home = door::door_tests::seed_test_home(creds.parent().expect("夹具目录"))
         .display()
         .to_string();
     let creds = creds.display().to_string();
@@ -97,7 +97,7 @@ fn through(addr: SocketAddr) -> String {
     let req = format!(
         // 〔RK1〕过门：钥匙段挂在最前、`Host` 用回环字面量。
         "POST /{}/s/claude-code/acctA/k-rl1/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-        door::TEST_KEY,
+        door::door_tests::TEST_KEY,
         body.len()
     );
     c.write_all(req.as_bytes()).expect("写请求");
@@ -265,7 +265,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
         .env("CCM_APIKEY_CREDENTIALS", &creds)
         .env("CLAUDE_CONFIG_DIR", &home)
         // 〔RK1〕钥匙文件落在夹具家目录里（预先放好夹具那一把），不碰用户真实的家目录。
-        .env("HOME", door::seed_test_home(&home))
+        .env("HOME", door::door_tests::seed_test_home(&home))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

@@ -392,7 +392,7 @@ fn one_shot(relay: SocketAddr, target: &str) -> String {
         // 〔RK1〕过门：钥匙段挂在最前、`Host` 用回环字面量。金标准比的是**上游那一侧**收到的字节
         //   与下游拿回的字节 —— 钥匙段在门里就被剥掉，所以期望一个字节都不用动（这正是「钥匙不上游」的一格）。
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {CLIENT_TOKEN}\r\nContent-Length: {}\r\n\r\n{CLIENT_BODY}",
-        super::door::TEST_KEY,
+        super::door::door_tests::TEST_KEY,
         CLIENT_BODY.len()
     );
     c.write_all(req.as_bytes()).expect("写请求");
