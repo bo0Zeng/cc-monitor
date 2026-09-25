@@ -595,6 +595,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--list-user-inputs",
     "--list-projects",
     "--list-sessions",
+    // 〔RM1c · 第四波〕`panorama` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
+    // 登记理由同 `--tasks-list` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--panorama",
     "--ping",
     // 〔RM1b · 第四波〕`plugins-marketplaces` 帧命令的 CLI 面（同 `--tasks-list` 那一段的理由）。
     "--plugins-marketplaces",
