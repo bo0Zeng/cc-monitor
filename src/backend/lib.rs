@@ -403,7 +403,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// ＋ `history-index` / `history-user-inputs` / `history-find`（骨架索引 · 大纲清单 · 会话内查找上帧面，CLI 面同名派生）。
 /// 线上多三种出方向帧：`link_data` · `link_end` · `accounts_changed`。
 /// ⚠ 旧本机后端不认 `link-open` ⇒ 界面判「本机后端太旧」、不回落（D11）⇒ **必须**让它被判 stale。
-pub const BUILD_ID: &str = "p2v-resident-link";
+///
+/// ★★★ **p2w-apikey-relay-footprint**（2026-09-24，第四波 C4a ＋ RM1a 合并那一拍）：子命令 ＋5 ——
+/// RM1a `apikey-key-set` / `apikey-read`（账号层那份凭据文件：远端由那台后端读写，第四层）· `relay-status` / `relay-ensure`
+/// （远端中转）· `footprint-probe`（足迹的这台机器那一半），两个命令面都动。
+/// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
+pub const BUILD_ID: &str = "p2w-apikey-relay-footprint";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
