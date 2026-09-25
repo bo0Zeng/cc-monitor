@@ -233,10 +233,14 @@ fn the_gate_matches_what_russh_really_does() {
         .enumerate()
         .map(|(k, &n)| (0..n).map(|i| line[(i + k) % line.len()]).collect())
         .collect();
-    let sound = russh_zlib_round_trips(&compressible) && russh_zlib_stream_round_trips(&stream);
+    let (single, multi) = (
+        russh_zlib_round_trips(&compressible),
+        russh_zlib_stream_round_trips(&stream),
+    );
+    let sound = single && multi;
     assert_eq!(
         RUSSH_ZLIB_SOUND, sound,
-        "闸（RUSSH_ZLIB_SOUND = {RUSSH_ZLIB_SOUND}）与 russh 的解压实况（一来一回对不对 = {sound}）不一致 —— \
+        "闸（RUSSH_ZLIB_SOUND = {RUSSH_ZLIB_SOUND}）与 russh 的解压实况（一来一回对不对 = {sound}：单包 {single} · 多包 {multi}）不一致 —— \
          russh 修好了就开闸（压缩判准的答案才落到连接上）；还坏着就别开（开了每条远端连接都会在第一条通道上卡死）"
     );
     assert!(
