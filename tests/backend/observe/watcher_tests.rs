@@ -1589,6 +1589,15 @@ fn imposter_by_cmdline() {
         AddTimeVerdict::Imposter("cmdline"),
         "time check passing must not mask a non-claude cmdline"
     );
+    // 〔TL1 · 4C〕并进来的样本（原 `agents/claudecode/liveness_tests.rs`，那一族退役）：
+    // 编辑器 · 登录 shell · sshd 会话 —— PID 被复用时最常见的那几种「明显不像」。
+    for foreign in ["/usr/bin/vim", "bash -l", "sshd: u@pts/0"] {
+        assert_eq!(
+            add_time_verdict(None, None, None, None, Some(foreign)),
+            AddTimeVerdict::Imposter("cmdline"),
+            "{foreign}"
+        );
+    }
 }
 
 #[test]
@@ -1623,6 +1632,10 @@ fn claude_like_cmdlines_pass() {
         "claude --resume abc",
         "/usr/bin/node /home/u/.local/bin/claude",
         "NODE_OPTIONS=x node cli.js",
+        // 〔TL1 · 4C〕只看得见解释器那一形（`liveness.rs` 头注：词表里有 `node` 就是为它）——
+        // 解释器不在行首；从前这一格没人量（「`node` 只认行首」那一刀两族都放过）。
+        "/usr/bin/node cli.js",
+        "node index.js",
         "Claude", // case-insensitive
     ] {
         assert_eq!(

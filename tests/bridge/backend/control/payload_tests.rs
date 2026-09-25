@@ -1440,7 +1440,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
              那一格由 `the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` \
              钉着，与本条数的是两件事。";
     const NOT_WIRED_TS: &str =
-        "TS 兜底渲染器服务的是**远端**那族（`tryRenderCli` 拒了之后的回落），\
+        "TS 兜底渲染器服务的是**远端**那族（`ccm …` 调用行渲染拒了之后的回落），\
              而本件 `§0e` 裁四明写只保本机、远端那一半 `判不了`（要先给 `creds.apikey` 找到主人）。";
     const NOT_WIRED_WINDOW: &str =
         "开窗那一跳给的是**终端进程**的 env（`backend_bin_env_for_window`），\

@@ -33,7 +33,7 @@
 2. **远端后端自部署（issue #29，`sftp::ensure_backend_deployed`）**：经 SFTP 写远端 `~/.cc-monitor/bin/`（后端二进制 + `.build_id` 标记）—— **非用户数据、幂等、版本门控**；只写 cc-monitor 自己的 bin 目录，**绝不碰** `~/.claude/`。
 3. **远端历史删除（issue F11）**：〔RW1 · 第四波 2026-09-24〕**已并进第 1 条**（按用户裁「按推荐改」，远端也经那台机器后端的 `files-delete-session`，只收 sid）。
    原文留档：**远端历史删除（issue F11，`history::delete_history_session` 带远端 `origin` → 远端分支 `remote_history::delete_remote_history_session` → `sftp::remove_remote_file`；〔步 12·C 09-20〕本机与远端已合成一条命令）**：用户**主动**点删除 + 前端**二次确认**后，经 SFTP 移除远端 `~/.claude/projects/` 下的 jsonl；**双重路径守卫**（`is_safe_remote_jsonl`〔散文墓碑〕：须 `.jsonl` + 含 `/projects/` + 无 `..`；并 SFTP `canonicalize` 解 symlink 后再校验）。〔RW1 · 第四波 2026-09-24：本条的实现已换 —— 两侧都经那台机器后端的 `files-delete-session`（**只收 sid**，会话文件围栏唯一的例外，落点由后端按 sid 找、解到底必须恰是 `<项目>/<sid>.jsonl`）；SFTP 直删与这道守卫一起走了。〕**注**：标星 / 重命名 / 隐藏是 **monitor 本地元数据**（`history-metadata.json` 按 sid），**不写远端**——唯一写远端的用户数据操作就是删除 jsonl。
-4. **profile 写（F10，本机 `profile_installer` cc 集成 ＋ 别名文件 `~/.cc-monitor/aliases.sh` 与 rc 那一行 source ＋ 远端 `sftp::install_remote_alias_block`/`uninstall_remote_alias_block`，〔MC1 2026-09-24〕从前叫「装/卸 ccm 助手」）**：写用户自己的 shell profile（本机 `~/.bashrc` / `$PROFILE` / **远端 `~/.bashrc`**）装/卸 cc(m) 助手——用户显式触发、BEGIN/END 块 + 备份 + 写后校验回滚。
+4. **profile 写（F10，本机 `profile_installer` cc 集成 ＋ 别名文件 `~/.cc-monitor/aliases.sh`（〔TL1 · 4C〕接上它的那一行 source 只住别名块里，`设计/71 §6.1`；从前另有一处代装进 rc 的，退役）＋ 远端 `sftp::install_remote_alias_block`/`uninstall_remote_alias_block`，〔MC1 2026-09-24〕从前叫「装/卸 ccm 助手」）**：写用户自己的 shell profile（本机 `~/.bashrc` / `$PROFILE` / **远端 `~/.bashrc`**）装/卸 cc(m) 助手——用户显式触发、BEGIN/END 块 + 备份 + 写后校验回滚。
    〔RW1 · 第四波 2026-09-24〕**落盘不在 monitor 进程**：本机与远端都经那台机器的后端（`user_files::edit` → `files-peek` / `files-put`），
    monitor 只算新内容（`fenced_block::splice_in/out`）；备份 · 替换 · 回读 · 回滚那一份规则住后端（见 §4）。**注（batch20 审计修）**：F10 **含远端 `~/.bashrc` 写**（原 `sftp.rs` 头「非远端」措辞已订正）。
 5. **MCP 项目配置写（F87 本机 / F89a 远端；〔RW1 · 第四波 2026-09-24〕**两侧落盘都经那台机器的后端**（`mcp::edit_project_mcp` → `files-peek` / `files-put`），下文「本机 `ReplaceFileW` / 远端 `sftp::upload_atomic`」两处是原文留档；写面仍只 `<dir>/.mcp.json`、坏 JSON 拒覆盖、不再留 `.json.bak`；`mcp::write_project_mcp_server` / `mcp::remove_project_mcp_server` —— 〔步 12·C 收尾 09-20〕**两侧各已合成一条吃 `origin` 的命令**，远端那半 `write_remote_mcp_server` / `remove_remote_mcp_server` 今天是它们的**分支函数**，不再是 IPC）**：用户**显式**点「添加/更新」或「删除」（删带二次确认）后，写**项目** `.mcp.json`（本机 `mcp_json_path` 硬编码 / 远端 `is_safe_remote_mcp_json` 守卫：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；远端经 `sftp::upload_atomic` 原子 tmp+备份+rename）。**SS-14**：写面**只** `.mcp.json`，**绝不**写 `~/.claude.json`/settings.json。`.mcp.json` 是**用户项目配置**（决定项目用哪些 MCP server），**非** Claude 会话数据（jsonl/pidfile）——与本约正交（同 F47 SFTP 面板性质），非驱动运行中会话。
@@ -950,6 +950,23 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 "账号有 configDir 但无名字"（老式直调路径，见 `launch-requests.ts::accountOf` 头注）
 断言 `ok:false` 且**结果里没有 `cmd` 字段**。
 
+### LR1 更新（2026-09-25，U8c-3 前一半）：TS 那份 CLI 渲染器删了，本条今天住在 Rust
+
+上面三段里的 `canRenderCli` / `renderCli` / `tryRenderCli` 与 `tests/launch-render-cli.test.ts`
+都是**当时**的住址 —— 那份 TS 渲染器从 U8c-2c-2 起就零生产调用，LR1 把它连同套件一起删了。
+**不变量本身一个字没松**，今天的住址与验证：
+
+- 实现：`src/bridge/src/backend/control/ccm_invocation.rs::render_ccm_invocation`（生产入口
+  `launch_wire.rs::render_ccm_launch`）。说不出的维度 ⇒ `Refusal::DimensionCannotSpeak`（整条放弃，
+  不跳过）；`send-into` ⇒ `Refusal::SendIntoHasNoCliForm`；attach 分支在维度循环之前 return（豁免照旧）。
+- 验证：`tests/bridge/backend/control/ccm_invocation_tests.rs` 的
+  `a_dimension_that_cannot_speak_abandons_the_whole_line` · `send_into_is_refused_before_any_dimension_runs` ·
+  `attach_reads_the_container_name_and_no_modifiers_at_all`（attach 豁免三道闸一次钉）· `a_triggered_dimension_carries_its_own_capability_requirement`；
+  外加入库夹具 `fixtures/cli-golden.json`（`req` 由生产的 TS 请求构造现产、`out` 是 `src/launch-cli-golden.ts`
+  用例表里的手写期望，`launch_cli_parity.rs` 跑生产命令逐字节比，ok / refusal 两类各自条数恒等）。
+- ⚠ 「两种语言各一份、逐字节对拍」这一层没了（已知代价，理由见 `src/launch-cli-golden.ts` 头注）；
+  「渲染器该做什么」的独立说法只剩上面两份手写期望。
+
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
 **它是什么**：`shared/ccm` 的 `--print` 打印「将要执行的命令」而不执行。整个仓把它当
@@ -1002,14 +1019,15 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 ### 顺带钉住的跨语言契约（同一套件 C 组）
 
 `--ccm-probe` 的首行必须逐字 `name=ccm`（`src/bridge/src/ccm_probe.rs::parse_probe_output`
-靠它判「装没装」），`capabilities=` 必须**覆盖** `src/launch-render-cli.ts::CLI_REQUIRED_CAPS`
+靠它判「装没装」），`capabilities=` 必须**覆盖** `src/bridge/src/backend/control/ccm_invocation.rs::CLI_REQUIRED_CAPS`
+（〔LR1〕原先是 TS `launch-render-cli.ts` 里那一份，随 TS 渲染器删了）
 （少一项 ⇒ app 静默退到兜底渲染器，用户看不见）。覆盖是 `⊇` 不是 `==`
 （ccm 多声明能力是允许的，今天就多 6 项），别有人把它收紧成相等。
 
 ⚠ **精确说法**：这两处的消费方此前只对**手写 fixture** 测过，但真脚本的 probe 输出
 **并非全无覆盖** —— `cc-spawn-uplift` 主流程不设 `CCM_BIN`，`cc-spawn` 因而解析到真
 `shared/ccm` 并对 `detach`/`tmux-size` 两项 fail-closed。**真正零覆盖的是**：
-首行 `name=ccm` · `version=` · `agents=` · TS 侧那 7 项 `CLI_REQUIRED_CAPS`。
+首行 `name=ccm` · `version=` · `agents=` · 渲染器那 7 项 `CLI_REQUIRED_CAPS`。
 
 ## 33b. 载荷编译器搬进 Rust 是**三步**，六条渲染器不变量各自的命运写在这里（U8c / unified-backend）
 
@@ -1049,7 +1067,8 @@ U8c-1 摸底后拆成三步：
 >   「一句真话摆错了尺子」）。
 > · `U8c-3` 状态仍是**待做**：那两个 TS 文件**没删**，它们今天是两份入库夹具的**左边**
 >  （「另一种语言的独立说法」）；删了就把跨语言对拍降级成「Rust 没变」的冻结快照
->  —— `launch-render-cli.ts` 已按同一条先例复裁过两次：不划算，不删。
+>  —— `launch-render-cli.ts` 曾按同一条先例留着；〔LR1 2026-09-25〕它已删（U8c-3 前一半），
+>  夹具的左边换成了用例表里的手写期望（`src/launch-cli-golden.ts` 头注）。兜底这一族仍待做。
 >   逐处住址与「还站不站在生产路上」两把尺子见
 >   `tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs` 的
 >   `TS_FALLBACK_KEEPERS`（尺子A：处数）与 `TS_FALLBACK_REACH`（尺子B：有没有生产调用方），
@@ -1377,7 +1396,8 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 **R07 为什么连 `buildLaunchPlan` 那一遍也删了**：初稿保留它并声称是"一道便宜的一致性检查"，
 但审计实测该声称**零门禁守护**（删掉整段 ctx 构造 + 调用、只留 `void cwd;` → `tsc` 与
 `npm test` 705 全绿；改造前同一变异红 5 条，因为那时返回类型让它在**类型层**承重）。
-而它想验的东西 `launch-render-cli.test.ts` 已在验（`ctxOf({transport:{kind:"local"}})` → `buildLaunchPlan`）。
+而它想验的东西 `launch-render-cli.test.ts` 已在验（`ctxOf({transport:{kind:"local"}})` → `buildLaunchPlan`；
+〔LR1〕那份套件已删，这一格今天由 `tests/launch-requests.vitest.ts`「维度注册表在 transport:local 下的行为」管）。
 生产侧它纯属浪费，且是 **fail-closed 风险**：将来任何对 `transport:local` 抛异常的新维度，
 都会让本地 resume 彻底拉不起来而收益为零。
 
@@ -1418,7 +1438,9 @@ MASTERPLAN §0.1 成功标准②（"加一个新启动维度 = 注册一个 dime
 渲染器——这与 §35 修的坑**外观相似但机制不同**：F05 的坑是"`applies` 恒假导致 null 检查
 根本跑不到"（结构性检测不到）；这里 `applies` 会在配了偏好时正确变真，null 检查确实跑到并
 正确返回 `false`——是"检测到了、诚实报告降级"，不是"检测不到、悄悄放过"。`canRenderCli` 对
-这条降级有专门的端到端测试锁定（`launch-render-cli.test.ts` 的两条 `modelOverride` 用例），
+这条降级有专门的端到端测试锁定（`launch-render-cli.test.ts` 的两条 `modelOverride` 用例；
+〔LR1〕那份套件已删，今天由 `ccm_invocation_tests.rs::model_dimension_is_conditional_by_design` 与夹具
+「已触发的 model 维度要的能力缺失」那条用例管），
 不只是孤立测 `cliFlags()` 的返回值。
 
 ## 38. 一条新正交轴该进 `LAUNCH_DIMENSIONS` 注册表，还是该做 `LaunchPlan`/`LaunchContext` 的硬编码一等字段——三条 checklist（F09 / unify-launch，R12）

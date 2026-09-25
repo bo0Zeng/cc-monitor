@@ -169,8 +169,8 @@ const APPEARANCE_INFO_TEXT =
   "字体（正文 / 等宽 / 字号）+ 颜色（背景 / 卡片 / 文字 / 成功 / 警告 / 错误）。改了当场生效。";
 
 const REMOTE_INFO_TEXT =
-  "「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 " +
-  "jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n" +
+  "「远端 (SSH)」：monitor 经 SSH 连到远端主机，把那台机器上的会话也列进来。" +
+  "远端会话和本机会话显示方式相同。\n\n" +
   "关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。" +
   "配置不完整（缺 host / user / backendPath）时后端自动回退本地模式。";
 

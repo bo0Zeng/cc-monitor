@@ -2,7 +2,7 @@
  * Z02（account-zero）：**跨语言双写点守卫** —— monitor 侧「基座 = 不注入」这套语义，
  * 全部压在一个**没有任何东西钉住**的假设上：
  *
- * > `ACCOUNT_DIMENSION.cliFlags` 对非 `account` 态吐 `--base`，而 `ccm` 收到
+ * > monitor 的 CLI 渲染器（〔LR1〕今天只在 Rust `ccm_invocation.rs`）对非 `account` 态吐 `--base`，而 `ccm` 收到
  * > `--base` 会 **`unset CLAUDE_CONFIG_DIR`**。
  *
  * ## 🔴 `K-R48` 第二拍（2026-09-11）：另一侧换了语言
@@ -19,7 +19,7 @@
  * 钉着这条结构事实）⇒ 那两段不可能分家。「两处都要有」这个要求**被结构吃掉了**，
  * 不是被删掉了。本文件下面因此只钉一处，并单独钉住容器路那一侧。
  *
- * 今天 `launch-dimensions.test.ts:107` 只断言 monitor **发**了 `--base`；
+ * 当时 `launch-dimensions.test.ts` 只断言 monitor **发**了 `--base`（〔LR1〕那一格今天在 Rust `ccm_invocation_tests.rs`）；
  * **没有任何东西断言 ccm 会照它 unset**。这条契约一旦漂（比如 ccm 哪天把 `--base` 改成
  * 「什么都不做」），表现是**静默错**：CLI 路径起出来的会话继承远端 shell 里那句
  * `export CLAUDE_CONFIG_DIR=<默认账号>`（`cc-acct-iso shellinit` 生成的就是这一句），
@@ -39,8 +39,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ACCOUNT_DIMENSION } from "../src/launch-dimensions";
-import type { LaunchContext } from "../src/launch-plan";
 
 const ROOT = resolve(__dirname, "..");
 /** 另一侧的源文件 —— `K-R48` 第二拍起是 Rust，不再是 bash。**只读，不改**。 */
@@ -48,6 +46,15 @@ const CCM_DIR = resolve(ROOT, "src/backend/control/ccm");
 const ccmArgv = readFileSync(resolve(CCM_DIR, "argv.rs"), "utf8");
 const ccmPlan = readFileSync(resolve(CCM_DIR, "plan.rs"), "utf8");
 const ccm = `${ccmArgv}\n${ccmPlan}`;
+// 〔LR1 · U8c-3〕monitor 这一侧「发 `--base`」的那一份今天只在 Rust（`ccm_invocation.rs` 的
+// `account` 维度）—— TS 维度上的 `cliFlags` 随 TS 渲染器删了。这里原来调
+// `ACCOUNT_DIMENSION.cliFlags` 断言它的返回值，那时判的已经是一个不在执行链上的值
+// （生产从 U8c-2c-2 起就走 Rust）；改读生产那一份的源码锚，与本文件读 `ccm/argv.rs` /
+// `plan.rs` 那几条同一做法。行为那一半由 `ccm_invocation_tests.rs::account_dimension_always_speaks_up_and_has_three_shapes` 管。
+/** monitor 侧 CLI 渲染器（生产那一份）。**只读，不改**。 */
+const MONITOR_CLI = readFileSync(resolve(ROOT, "src/bridge/src/backend/control/ccm_invocation.rs"), "utf8");
+/** 锚串在生产那一份里恰好出现一次（0 = 那一臂没了；≥2 = 有第二个家，本条会比到别处去）。 */
+const countIn = (hay: string, needle: string): number => hay.split(needle).length - 1;
 
 /** monitor 侧对非 `account` 态吐的那个 flag。改这里就要改下面的 ccm 锚点。 */
 const BASE_FLAG = "--base";
@@ -60,8 +67,7 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
   });
 
   it(`monitor 对「非选中账号」态吐 ${BASE_FLAG}`, () => {
-    const ctx = { account: { kind: "base" } } as unknown as LaunchContext;
-    expect(ACCOUNT_DIMENSION.cliFlags?.(ctx)).toEqual([BASE_FLAG]);
+    expect(countIn(MONITOR_CLI, `CliAccount::Base => Some(vec!["${BASE_FLAG}".into()]),`)).toBe(1);
   });
 
   it(`ccm 认识 ${BASE_FLAG} 这个参数`, () => {
@@ -96,10 +102,9 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
    * 它已经有一条可靠的注入路径了，不需要再造一个。
    */
   it("account 态照旧走 --account（--base 只留给「不注入」）", () => {
-    const ctx = {
-      account: { kind: "account", name: "z", configDir: "/h/.claude-accts/z" },
-    } as unknown as LaunchContext;
-    expect(ACCOUNT_DIMENSION.cliFlags?.(ctx)).toEqual(["--account", "z"]);
+    expect(
+      countIn(MONITOR_CLI, 'CliAccount::Named { name: Some(n) } => Some(vec!["--account".into(), n.to_string()]),'),
+    ).toBe(1);
   });
 
 /**
