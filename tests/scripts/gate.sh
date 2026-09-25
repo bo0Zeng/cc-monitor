@@ -620,7 +620,7 @@ run_gate() {
 #   cargo warning（`excluded package(s) not found`）⇒ 删了；裸 `--workspace` 现打就是 9 个成员（`monitor` ＋ 8 个共享 crate）。
 #   🔴 **谁在守「vendor 别再被拉回来」**（死值验现打：往 monitor 清单加回那条 path 依赖 ⇒ `cargo metadata` 成员 9 → 10）：
 #   一是 `shared_crate_registry::the_windows_cross_target_signal_covers_only_the_backend` ③（monitor 清单零 vendor 依赖，那一刀当场红）；
-#   二是下面这一格的**包数相等**（`run_gate_sum cargo 9`：成员 10 ⇒ 合计行包数对不上 ⇒ 红）。
+#   二是下面这一格的**包数相等**（那个 9：成员 10 ⇒ 合计行包数对不上 ⇒ 红；⚠ 这里刻意不抄那一行的逐字前缀 —— `find_pinned` 要它全文唯一）。
 #
 # ⚠ **CI 那一侧没跟着改**（`ci.yml` 不在 `K-H2a` 的写区）⇒ 从此**本地门禁比 CI 严**。
 #   别把「本地绿」读成「CI 也会绿」。
