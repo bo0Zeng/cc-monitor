@@ -209,8 +209,8 @@ describe("C01 边界生成物", () => {
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
       "SearchIndexStatus.ts", // C04d 批6c
       "SearchResponse.ts", // C04d 批6c
-      "SessionAccount.ts",
-      "SessionAccountsResult.ts",
+      // 〔C4a · 第四波〕"SessionAccount.ts" / "SessionAccountsResult.ts" 走了：它们的 Rust 源（`accounts.rs` 那两个类型）
+      //   随「会话 ↔ 账号」改走通道一起删了，逐行解释与它的类型只住 `src/accounts.ts`（`parseSessionAccountLines`）。
       "SessionActivityPayload.ts", // C02
       "SessionEndedPayload.ts", //    C02
       "SessionHits.ts", // C04d 批6c

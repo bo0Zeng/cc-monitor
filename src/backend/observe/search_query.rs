@@ -333,7 +333,7 @@ fn build_session_hits(
         "hits": hits,
         // 🔴 `K-R100`：**远端截断从此说得出话。** 收口前这一行不存在 ⇒ 一份
         // `hitCount: 12, hits: []` 与「这个会话没什么可看的」在 monitor 与前端眼里同形，
-        // 而 `merge_search_results` 逐字 `truncated: local.truncated` 把远端那一半整个丢掉。
+        // 而 `merge_search_results`〔散文墓碑〕逐字 `truncated: local.truncated` 把远端那一半整个丢掉。
         "hitsTruncated": session_starved,
     }))
 }

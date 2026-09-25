@@ -29,6 +29,7 @@ import {
   setModelForAccount,
   fetchAccounts,
   fetchSessionAccounts,
+  parseSessionAccountLines,
   invalidateAccountsCache,
   __resetAccountsCacheForTest,
   isAccountZero,
@@ -55,6 +56,7 @@ import {
 } from "../src/accounts";
 import { enumerateAccountModifiers } from "../src/launch-menu";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
+import { chanArgsJson, isChanCall, linesReply, NO_CHANNEL, type ChanCallArgs } from "./test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
@@ -473,15 +475,85 @@ describe("fetchAccounts TTL 缓存", () => {
   });
 });
 
-describe("fetchSessionAccounts", () => {
-  it("available:false → 空数组", async () => {
-    invokeMock.mockResolvedValue({ available: false, error: "x", sessions: [] });
+// 〔C4a · 第四波〕这一组原先驱动两条 Tauri 命令的 `available` 形状；它们退役了，
+//   「会话 ↔ 账号」经通道问后端 `accounts-sessions`（本机与远端同一条路）。量的是那一跳的真实形状。
+describe("fetchSessionAccounts（经通道 `accounts-sessions`）", () => {
+  it("那台没有控制通道 → 空数组（不猜）", async () => {
+    invokeMock.mockRejectedValue(NO_CHANNEL);
     expect(await fetchSessionAccounts("devbox")).toEqual([]);
   });
-  it("available:true → 返回 sessions", async () => {
-    invokeMock.mockResolvedValue({ available: true, error: null, sessions: [{ pid: 1, sessionId: "s", cwd: "/w", configDir: null, account: null, bare: true, alive: true }] });
+  it("后端答了几行 → 解回几行；问的是那台机器、那条帧命令、请求体是空对象", async () => {
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
+      Promise.resolve(
+        isChanCall(cmd, args, "accounts-sessions")
+          ? linesReply([{ pid: 1, sessionId: "s", cwd: "/w", configDir: null, account: null, bare: true, alive: true }])
+          : undefined,
+      ),
+    );
     const s = await fetchSessionAccounts("devbox");
     expect(s).toHaveLength(1);
+    const call = invokeMock.mock.calls.find((c) => c[0] === "chan_call");
+    const args = call?.[1] as ChanCallArgs;
+    expect(args.origin).toBe("devbox");
+    expect(args.op).toBe("accounts-sessions");
+    expect(chanArgsJson(args)).toEqual({});
+    expect(args.leftMs, "期限由调用方给（30 秒那一档），不是库里的默认").toBeGreaterThan(29_000);
+  });
+  it("本机也走同一条路（`<local>` 就是一个 origin）", async () => {
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
+      Promise.resolve(isChanCall(cmd, args, "accounts-sessions") ? linesReply([]) : undefined),
+    );
+    expect(await fetchSessionAccounts("<local>")).toEqual([]);
+    const args = invokeMock.mock.calls.find((c) => c[0] === "chan_call")?.[1] as ChanCallArgs;
+    expect(args.origin).toBe("<local>");
+    expect(
+      invokeMock.mock.calls.some((c) => /session_accounts/.test(String(c[0]))),
+      "退役的那两条 Tauri 命令又被调了",
+    ).toBe(false);
+  });
+});
+
+// 〔C4a〕逐行解释从 Rust（`accounts.rs::SessionAccount` 的 serde）搬到 `parseSessionAccountLines`，
+//   Rust 那侧两条金样（`accounts_tests.rs` 原来那两条）逐字节搬到这里。
+describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
+  it("★ additive（`K-P5f` `KP5FD4`）：老后端的行**逐字节没有 `launchId` 键** ⇒ 读成 null，不是坏行", () => {
+    const rows = parseSessionAccountLines([
+      `{"pid":66936,"sessionId":"9d66c46d","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true}`,
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].pid).toBe(66936);
+    expect(rows[0].bare).toBe(true);
+    expect(rows[0].alive).toBe(true);
+    expect(rows[0].account).toBeNull();
+    expect(rows[0].launchId, "老后端缺 launchId 应读成 null，不是报错").toBeNull();
+  });
+  it("新后端：`launchId` 有值逐字带回；`null` 读成 null", () => {
+    const [withTok, nulled] = parseSessionAccountLines([
+      `{"pid":1,"sessionId":"s","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true,"launchId":"tok-1"}`,
+      `{"pid":1,"sessionId":"s","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true,"launchId":null}`,
+    ]);
+    expect(withTok.launchId).toBe("tok-1");
+    expect(nulled.launchId).toBeNull();
+  });
+  it("坏行跳过、不毁整次：不是 JSON / 不是对象 / 缺 pid / 某格类型不对", () => {
+    const rows = parseSessionAccountLines([
+      "not json",
+      "[1,2]",
+      `{"sessionId":"no-pid"}`,
+      `{"pid":2,"bare":"yes"}`,
+      `{"pid":3}`,
+    ]);
+    expect(rows.map((r) => r.pid)).toEqual([3]);
+    expect(rows[0]).toEqual({
+      pid: 3,
+      sessionId: null,
+      cwd: null,
+      configDir: null,
+      account: null,
+      bare: false,
+      alive: false,
+      launchId: null,
+    });
   });
 });
 
@@ -1220,7 +1292,7 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
 //
 // ★★ 本组的全部意义在于**分得开两件事**：
 //   ㈠「有人**读到**它」—— `K-P5f` 已经买到了（`launchId` 一路解析到前端类型上，
-//      `session_account_row_carries_the_launch_identity` 钉着）。**本组不重复买它。**
+//      本文件「parseSessionAccountLines」那一组钉着 —— 〔C4a〕逐行解释从 Rust 搬到了前端）。**本组不重复买它。**
 //   ㈡「有人**拿它做决定**」—— 输出因这一格而**不同**，而输出里**一个字节都没有它**。
 //      ⇒ 「把读到的值显示出来」这种形态**喂不饱**下面那条 `★★`：token 不在输出里、
 //      输出却因它而变，那就只能是有人拿它分了一次岔。
@@ -1390,11 +1462,14 @@ describe("K-P5h：新会话的账号 pin 靠 token 回填（等多久 / 问几�
     alive: true,
     launchId: token,
   });
-  /** 让 `list_local_session_accounts` 答这批行；别的命令一律记账后回 undefined。 */
+  /**
+   * 让本机后端的 `accounts-sessions`（经通道）答这批行；`available = false` ⇒ 那一跳答不出（没有控制通道）。
+   * 别的命令一律记账后回 undefined。〔C4a〕原先答的是 E79 那条已退役的本机 Tauri 命令。
+   */
   const answerRows = (rows: SessionAccount[], available = true): void => {
-    invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "list_local_session_accounts") {
-        return Promise.resolve({ available, error: null, sessions: rows });
+    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+      if (isChanCall(cmd, args, "accounts-sessions") && args.origin === "<local>") {
+        return available ? Promise.resolve(linesReply(rows)) : Promise.reject(NO_CHANNEL);
       }
       return Promise.resolve(undefined);
     });

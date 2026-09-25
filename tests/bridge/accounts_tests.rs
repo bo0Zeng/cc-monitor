@@ -47,51 +47,9 @@ fn skips_unparsable_lines_instead_of_failing() {
     assert!(!accts[0].logged_in, "缺字段走 default");
 }
 
-#[test]
-fn session_account_row_parses() {
-    let row: SessionAccount = serde_json::from_str(
-        r#"{"pid":66936,"sessionId":"9d66c46d","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true}"#,
-    )
-    .unwrap();
-    assert_eq!(row.pid, 66936);
-    assert!(row.bare);
-    assert!(row.alive);
-    assert!(row.account.is_none());
-    // ★ `K-P5f` `KP5FD4` 的 **additive 那一半**：上面这一行是**老后端的出参**
-    // （逐字节没有 `launchId` 键）。它必须照样解析成功、读成 `None`。
-    // 生产上翻掉它的症状是**整台远端的会话账号映射一条都不剩**（每行解析失败被 warn
-    // 跳过），徽章整片消失且没人说得出为什么。
-    // ⚠ **翻掉它的那一刀不是删 `#[serde(default)]`**（`Option<T>` 缺键 serde 本来就给
-    // `None`，实打过：删掉本条照样绿）——是**加一个非 `Option` 又没有 `default` 的字段**
-    // （实打：临时加 `pub probe_required: bool` ⇒ 本条与下一条当场红
-    // `missing field \`probeRequired\``）。这一格记在 `SessionAccount::launch_id` 头注里。
-    assert!(
-        row.launch_id.is_none(),
-        "老后端的行缺 launchId 应读成 None，不是报错"
-    );
-}
-
-/// `K-P5f`：新后端那一侧 —— `launchId` 有值时逐字带回来，`null` 读成 `None`。
-///
-/// ⚠ 这里刻意**不**判「什么时候该是 null」：那是后端侧
-/// `accounts_query::suppress_inherited_launch_ids` 与它的活体夹具的活。
-/// 本条只买「这条线在 monitor 侧接得住」——一个性质两个量法就是本区最贵那族病。
-#[test]
-fn session_account_row_carries_the_launch_identity() {
-    let with: SessionAccount = serde_json::from_str(
-        r#"{"pid":1,"sessionId":"s","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true,"launchId":"tok-1"}"#,
-    )
-    .unwrap();
-    assert_eq!(with.launch_id.as_deref(), Some("tok-1"));
-    let nulled: SessionAccount = serde_json::from_str(
-        r#"{"pid":1,"sessionId":"s","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true,"launchId":null}"#,
-    )
-    .unwrap();
-    assert!(
-        nulled.launch_id.is_none(),
-        "backend 判「不作数」时发的是 null，monitor 侧必须读成 None"
-    );
-}
+// 〔C4a · 第四波〕「会话账号行的解析」那两条金样判据随 Rust 那份 `SessionAccount` 一起搬走：「会话 ↔ 账号」的逐行解释今天只住
+//   `src/accounts.ts::parseSessionAccountLines`，两条金样行（老后端缺 `launchId` 的 additive 那一行、
+//   新后端带 / 置空 `launchId` 的两行）逐字节搬进了 `tests/accounts.vitest.ts` 同名那一组。
 
 // ---- Z01：账号 0（configDir 缺席）----
 
@@ -342,8 +300,6 @@ fn unavailable_helper_sets_flag_and_reason() {
     assert_eq!(r.error.as_deref(), Some("backend 太旧"));
     assert!(r.accounts.is_empty());
     assert!(r.meta.is_none());
-    let s: SessionAccountsResult = unavailable("x");
-    assert!(!s.available);
     let t: AccountTrustResult = unavailable("y");
     assert!(!t.available);
     assert!(!t.trusted, "不可用时不得默认判为已信任");

@@ -101,7 +101,7 @@ export function deriveForkSource(
 /**
  * 取源会话事实。取数失败一律降级成「不知道」（⇒ 弹窗问一次），**绝不**降级成一个具体值。
  *
- * **本机没有对侧探针**：backend 的 `--session-accounts` 是远端专属，本机侧至今没有
+ * ~~**本机没有对侧探针**~~（〔E79〕之后有了；〔C4a〕与远端同一条路）：backend 的 `--session-accounts` 是远端专属，本机侧至今没有
  * 「某 sid 现在跑在哪个账号下」的查询（`local_accounts.rs` 只枚举账号，不认会话）。
  * 所以本机一律按「查不出来」处理 —— 问一次，而不是拿当前账号顶替。
  */
@@ -111,20 +111,15 @@ export async function collectForkSource(
   cwd: string | null,
 ): Promise<ForkSourceFacts> {
   if (isLocalOrigin(origin)) {
-    // E79：本机侧**现在有对侧探针了**（`list_local_session_accounts`，Linux 才有 ——
+    // E79：本机侧**现在有对侧探针了**（`--session-accounts`，Linux 才有 ——
     // 要读 `/proc/<pid>/environ`）。此前这里硬编码「查不出来」，于是分叉一个**正跑着的**
     // 本机会话也要白弹一次追问小窗，而那个 pidfile 就在本机、monitor 明明够得着。
     //
-    // 平台答不出时（Windows）后端会明说 `available:false` ⇒ 这里照旧落「不知道」，
-    // 走追问那条路。**「查不出来」与「查了但没有」在这里是同一个结论，但理由不同**，
-    // 所以判据看的是 `available` 而不是 `sessions.length`。
-    let rows: SessionAccount[] = [];
-    try {
-      const r = await commands.list_local_session_accounts();
-      if (r.available) rows = r.sessions;
-    } catch {
-      /* 查不到就按「不知道」处理，不猜 */
-    }
+    // 平台答不出时（Windows）后端会明说答不出 ⇒ 这里照旧落「不知道」，走追问那条路。
+    // **「查不出来」与「查了但没有」在这里是同一个结论，但理由不同**（〔C4a〕两种都回空行集）。
+    // 〔C4a〕经通道问本机后端（与远端同一个 `fetchSessionAccounts`；`force`：分叉要此刻的读数）。
+    //   查不到 ⇒ 空行集 ⇒ 「不知道」，不猜。
+    const rows: SessionAccount[] = await fetchSessionAccounts(origin, true);
     // 本机这条路不进 tmux（`fork-start.ts` 已把 tmux 那一格摘掉），所以只用账号那一半。
     const facts = deriveForkSource(rows, null, sid, cwd);
     return {

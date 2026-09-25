@@ -1413,11 +1413,11 @@ pub fn run() {
             // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
             accounts::list_remote_accounts,
             local_accounts::list_local_accounts,
-            local_accounts::list_local_session_accounts, // E79：本机版「某会话属于哪个账号」
+            // 〔C4a · 第四波〕「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：
+            //   本机与远端同一条路 —— 前端经通道 `chan_call` 说 `accounts-sessions`。
             // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧（问本机后端）。
             local_accounts::check_local_acct_iso,
             local_accounts::local_acct_iso_shellinit,
-            accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,
             // 〔F7c 收尾 09-24〕池子的 Tauri 命令只剩 `sftp_copy` 一条（秤 F3 / 门禁 `f3-copy` 那一格还在量它的核心）；
@@ -1474,7 +1474,9 @@ pub fn run() {
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,
-            // issue #6: 历史全文搜索
+            // 〔C4a · 第四波〕**主界面说 `call` 的那一跳**（`设计/05 §3.3`）：webview ⇒ 通道 ⇒ 注入的后端句柄。
+            chan::webview::chan_call,
+            // issue #6: 历史全文搜索（〔C4a〕只剩本机索引；远端那半前端经通道说 `history-search`）
             search::search_history,
             search::get_search_index_status,
             search::rebuild_search_index,

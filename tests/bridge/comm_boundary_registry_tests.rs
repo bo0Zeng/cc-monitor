@@ -173,6 +173,16 @@ const REGISTERED: &[(&str, &str)] = &[
          它收的是一条**已经连好**的流与一把**已经交到手里**的钥匙：不拨号（拨号在 `dial.rs`，不是成员）、\
          不读钥匙、不造期限（`C4`/`C5`/`X2`）。⚠ 它**不买**自动重连：只有交给它的那一条流。",
     ),
+    // ── 〔C4a · 第四波 · 2026-09-24〕通道在 **webview** 手里的那一半（主界面第一次说 `call`）──────
+    (
+        "src/ipc/chan.ts",
+        "`01 §2.2`「前端只有两个动作」在**主界面**（webview）手里的样子 —— 与 `chan/client.rs`（进程外前端那一半）\
+         是同一件东西的两个住址：`call(origin, op, payload, budget)` 参数名与顺序一字不改，`Budget.until` 是绝对时刻、\
+         过线换成「还剩多少」，过期不发；本地撤单立即回；三层错误按 monitor 交回的线上形状解回（解不出就 `Broken`）。\
+         载荷两个方向原样（不 `JSON.parse` / `stringify`，那是调用方 ＋ `ipc/chan-caller.ts` 的事）。\
+         它经包装层 `chan_call` 过 Tauri IPC；那一跳的宿主 `chan/webview.rs` **不是成员**（碰 Tauri、注入生产句柄）。\
+         ⚠ 它**不买**对端撤活与 `subscribe`（webview 这一侧本拍零条流）。",
+    ),
     // ── 〔C2 · 2026-09-24〕`Q6` 选甲的收回：传输面洗干净的那两份（`设计/05 §13.7`）──────────
     //    ⚠ 四份候选里 `ssh_source.rs` / `pubkey.rs` **不收** —— 理由逐份住 `TRANSPORT_LEFT_OUTSIDE`；
     //    `sftp_pool.rs` 是 `F7c` 独占，下一拍。
@@ -213,6 +223,13 @@ const REGISTERED: &[(&str, &str)] = &[
 /// 按语言分人群才不假红。Rust 那一侧的人群是 [`RUST_FRONTENDS`]。
 const ENTRIES: &[(&str, &str, &str)] = &[
     (
+        "chan.call",
+        "ts",
+        "〔C4a · 第四波〕**主界面**（webview）说 `call` 的入口（`src/ipc/chan.ts` 的 `chan.call`）。\
+         入口名带着 `chan.` 前缀，是因为 TS 语料里另有与本通道无关的裸 `call(`（`fn.call(this, …)` 一族）——\
+         按语言分人群之外再按全名收窄，才不假红。期限由调用方给（`Budget.within(…)`）。",
+    ),
+    (
         "call",
         "rs",
         "一次性请求（`05 §3.3.0` 的 `Comms::call`）—— 期限由调用方给（`Budget`，绝对时刻）",
@@ -242,7 +259,10 @@ fn is_frontend_for(rel: &str, lang: &str, member_paths: &BTreeSet<&str>) -> bool
         return false;
     }
     match lang {
-        "ts" => rel.ends_with(".ts"),
+        // 〔C4a · 第四波〕只算**生产**前端：`tests/` 那棵树不是调用方，是判据（`chan.vitest.ts` 自己就说了六次
+        //   `chan.call(`）。测试文件整棵住 `tests/`（仓库重组 `设计/16`：src 与 tests 分离），`src/` 下没有 ——
+        //   所以按第一段路径分就够。TS 人群第一次非空，这一格才第一次有牙。
+        "ts" => rel.ends_with(".ts") && rel.split('/').next() == Some("src"),
         "rs" => {
             rel.ends_with(".rs")
                 && RUST_FRONTENDS.iter().any(|(root, skip, _)| {
@@ -1243,13 +1263,103 @@ fn public_surface_names(prod: &str) -> Vec<(String, String)> {
 
 /// 一份成员的**公开面**上被咬住的那些处 —— `(名字, 判词, 出处那行)`。
 fn public_surface_offences(prod: &str) -> Vec<(String, Vec<&'static str>, String)> {
-    public_surface_names(prod)
+    offences_among(public_surface_names(prod))
+}
+
+fn offences_among(names: Vec<(String, String)>) -> Vec<(String, Vec<&'static str>, String)> {
+    names
         .into_iter()
         .filter_map(|(name, line)| {
             let hits = business_words_in(&name);
             (!hits.is_empty()).then_some((name, hits, line))
         })
         .collect()
+}
+
+/// 〔C4a · 第四波〕按成员的语言取公开面：`.ts` 成员（`src/ipc/chan.ts`）走 [`ts_public_surface_names`]，
+/// 其余走 Rust 的 [`public_surface_names`]。**判词表与匹配单位同一份**（[`business_words_in`]）——
+/// 只有「什么算公开面」随语言的可见性规矩换。
+fn surface_names_of(rel: &str, prod: &str) -> Vec<(String, String)> {
+    if rel.ends_with(".ts") {
+        ts_public_surface_names(prod)
+    } else {
+        public_surface_names(prod)
+    }
+}
+
+fn surface_offences_of(rel: &str, prod: &str) -> Vec<(String, Vec<&'static str>, String)> {
+    offences_among(surface_names_of(rel, prod))
+}
+
+/// TS 那一门的声明关键字（它后面紧跟的标识符是我们起的名字）。
+const TS_DECL_KEYWORDS: &[&str] = &[
+    "function",
+    "const",
+    "let",
+    "class",
+    "interface",
+    "type",
+    "enum",
+];
+
+/// 〔C4a · 第四波〕**TS 成员的公开面** —— TS 的可见性规矩是 `export`：
+///
+/// | 档 | 什么算公开面 |
+/// |---|---|
+/// | `export` 起头的那一行 | 它起的名字（`function` / `const` / `class` / `interface` / `type` / `enum` 之后那个）＋ 同一行上处在绑定位的名字（形参 · 字段） |
+/// | 导出声明的**体**（接口 / 类 / 对象字面量，直接成员那一层） | 成员名（`name:` 形）＋ 方法名（`name(` 形）＋ 方法的形参名 |
+/// | `export type X =` 之后以 `\|` 起头的续行（联合类型） | 那几行上处在绑定位的名字 |
+///
+/// ⚠ 买不到：再往里嵌一层的字面量类型（`at: { idx; tag }` 里的 `idx`/`tag` 在同一行时照收，折行时不收）；
+/// 未导出的东西一律不算（与 Rust 那一门「私有的不算」同一条规矩）。
+fn ts_public_surface_names(prod: &str) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut depth: i32 = 0;
+    let mut body: Option<i32> = None;
+    let mut union = false;
+    for line in prod.lines() {
+        let t = line.trim();
+        let mut names: Vec<String> = Vec::new();
+        if let Some(rest) = t.strip_prefix("export ") {
+            let rest = rest.strip_prefix("default ").unwrap_or(rest);
+            let rest = rest.strip_prefix("async ").unwrap_or(rest);
+            let toks = ident_tokens(rest);
+            let kw = toks.first().map(|(_, _, k)| k.as_str()).unwrap_or("");
+            if TS_DECL_KEYWORDS.contains(&kw) {
+                if let Some((_, _, n)) = toks.get(1) {
+                    names.push(n.clone());
+                }
+            }
+            names.extend(declared_names(rest));
+            if rest.matches('{').count() > rest.matches('}').count() {
+                body = Some(depth);
+            }
+            union = kw == "type" && !rest.contains('{') && rest.trim_end().ends_with('=');
+        } else if body.is_some_and(|d| depth == d + 1) {
+            let toks = ident_tokens(t);
+            if let Some((_, e, first)) = toks.first() {
+                if t[..].chars().nth(*e) == Some('(') {
+                    names.push(first.clone());
+                }
+            }
+            names.extend(declared_names(t));
+        } else if union && t.starts_with('|') {
+            names.extend(declared_names(t));
+        } else {
+            union = false;
+        }
+        for n in names {
+            if !n.is_empty() && seen.insert(n.clone()) {
+                out.push((n, t.to_string()));
+            }
+        }
+        depth += t.matches('{').count() as i32 - t.matches('}').count() as i32;
+        if body.is_some_and(|d| depth <= d) {
+            body = None;
+        }
+    }
+    out
 }
 
 /// ★ `C1` —— **公开面上不许命名业务概念**〔用户 2026-09-21 拍板，`设计/05 §8.1.4`〕。
@@ -1338,7 +1448,7 @@ fn c1_no_business_concept_is_named_on_the_public_surface() {
     let offenders: Vec<String> = pop
         .iter()
         .flat_map(|m| {
-            public_surface_offences(&m.prod)
+            surface_offences_of(&m.rel, &m.prod)
                 .into_iter()
                 .map(move |(name, hits, line)| {
                     format!("  {} —— `{name}` {hits:?}   ← {line}", m.rel)
@@ -1471,12 +1581,36 @@ fn c1_no_business_concept_is_named_on_the_public_surface() {
         "一段**只用位置词**的干净公开面被判成有业务词 —— 假红比不查更坏"
     );
 
+    // ── 🔴〔C4a〕TS 那一门的牙：导出面上的业务名必须咬（函数名 · 形参 · 导出接口的成员）；
+    //    只用位置词的导出面不许咬；**未导出**的不算（与 Rust「私有的不算」同一条规矩）。
+    let ts_bad = "export function sessionFor(account: string): void {}\n\
+                  export interface Face {\n  tmuxName: string;\n}\n";
+    let got: BTreeSet<String> = offences_among(ts_public_surface_names(ts_bad))
+        .into_iter()
+        .map(|(n, _, _)| n)
+        .collect();
+    assert_eq!(
+        got,
+        ["account", "sessionFor", "tmuxName"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>(),
+        "TS 导出面上的业务名没咬全 —— TS 那一门的公开面提取器在空转"
+    );
+    let ts_clean = "export const chan = {\n  call(origin: Origin, op: string, payload: Uint8Array, budget: Budget) {},\n};\n\
+                    function sessionPrivate(account: string) {}\n";
+    assert!(
+        offences_among(ts_public_surface_names(ts_clean)).is_empty(),
+        "只用位置词的 TS 导出面被判成有业务词、或未导出的名字被算进了公开面：{:?}",
+        offences_among(ts_public_surface_names(ts_clean))
+    );
+
     // ── 🔴 提取器自检：**每一份成员**的公开面都非空（不是合计非空）。
     //    射程收窄之后最阴的失效形是「一个名字都抠不出来」—— 那时上面那条相等断言
     //    会拿两个空集比出绿。合计式的地板挡不住「其中一份掉到 0」，而本仓正是栽在地板上。
     let mute: Vec<String> = pop
         .iter()
-        .filter(|m| public_surface_names(&m.prod).is_empty())
+        .filter(|m| surface_names_of(&m.rel, &m.prod).is_empty())
         .map(|m| format!("  {}", m.rel))
         .collect();
     assert!(
@@ -2259,7 +2393,9 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔F7c 09-24〕按入口分开数：`subscribe` 进来了（窗口里第一处），而它**没有期限参数**
     //   （`05 §3.3.0` 签名逐字）⇒ 「显式给 `Budget`」只对带期限的入口判；条数两个入口各自恒等。
     let mut per_entry: std::collections::BTreeMap<&str, usize> = Default::default();
-    const HAS_DEADLINE: &[&str] = &["call"];
+    // 〔C4a · 第四波〕`chan.call`（主界面那一侧）同样带期限 —— 死值验现打：只写 `call` 的话，
+    //   把主界面某处调用的期限换成一个不叫 budget 的东西，本条**照绿**（入口按全名分，`chan.call` 不在这张表里就不判）。
+    const HAS_DEADLINE: &[&str] = &["call", "chan.call"];
     for (entry, lang, _) in ENTRIES {
         for (rel, text) in all
             .iter()
@@ -2289,11 +2425,17 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    〔F7c 09-24〕`subscribe` 恰好 1 处（`filewin/source.rs::watch`）。
     //    变多 ＝ 窗口里长出了第二处说它的地方（期限 / 撤的住址跟着分家）；
     //    变少 ＝ 那一处没了 —— 上面那条零违例会在零个调用点上**恒绿**。
+    // 〔C4a · 第四波〕`chan.call`（TS，主界面）恰好 2 处：`accounts.ts::fetchSessionAccounts`（`accounts-sessions`）·
+    //    `views/history-search.ts` 逐台那一问（`history-search`）。**X6 的 TS 人群第一次非空。**
     assert_eq!(
         per_entry,
-        [("call", 1usize), ("subscribe", 1usize)]
-            .into_iter()
-            .collect(),
+        [
+            ("call", 1usize),
+            ("chan.call", 2usize),
+            ("subscribe", 1usize)
+        ]
+        .into_iter()
+        .collect(),
         "前端对通信层两个入口的调用点不再各恰好一处（共 {sites}）"
     );
     assert_eq!(
@@ -2460,7 +2602,7 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 /// （`E3`：一个事实一个权威源）。自己近似重写一份的话，本条会与那十一条各自漂。
 fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
     let mut out: BTreeSet<&'static str> = BTreeSet::new();
-    if !public_surface_offences(prod).is_empty() {
+    if !surface_offences_of(rel, prod).is_empty() {
         out.insert("C1");
     }
     if !business_crates_in(prod).is_empty() {

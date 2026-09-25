@@ -127,3 +127,201 @@ fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
         })
     ));
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔C4a · 第四波 · 2026-09-24〕八条里哪几条已经**只走通道**（主界面经 `src/ipc/chan.ts`）
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 已迁到通道的帧命令：前端经 `chan.call(origin, "<op>", …)` 直接问那台后端，monitor 那一跳只搬字节。
+/// 迁的判准只有一条（`调研/第四波记录/C4a.md §3.2`）：迁过去之后，**那条应答的解释只有一个家**。
+const CHANNELED: &[(&str, &str)] = &[
+    (
+        "accounts-sessions",
+        "本机与远端都迁：两条 Tauri 命令（远端帧面 · 本机一次性 exec）各在 Rust 里把同一种行解析一遍；\
+         迁过去之后逐行解释只剩 `src/accounts.ts::parseSessionAccountLines` 一处",
+    ),
+    (
+        "history-search",
+        "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/views/history-search.ts`，\
+         每件只有那一个家；本机索引仍是 monitor 进程内的（`search_history` 只剩本机）",
+    ),
+];
+
+/// 还留在 monitor 侧发送的那几条 —— `(帧命令, 为什么今天不迁)`。**不是豁免清单**：
+/// 下面那条判据要求它们**真的**还有 monitor 侧发送点（没了 ⇒ 这一行的理由已经馊了）。
+const HELD_BACK: &[(&str, &str)] = &[
+    (
+        "accounts-list",
+        "行格式的解析（`accounts::parse_accounts_lines`）本机与远端共用，本机那侧还要并 apikey 表\
+         （规则住 `acct-core`）⇒ 只迁远端 = 两个解析器；连本机一起迁 = apikey 合并规则在 TS 再写一份",
+    ),
+    (
+        "history-projects",
+        "每一行要并**本机元数据**（星标 / 隐藏计数，`history_project_from_row`，本机那条路也吃同一份）\
+         ＋ 本机侧的 codex 合成项目与判活 ⇒ 迁过去就是一行解释两个家",
+    ),
+    (
+        "history-sessions",
+        "每一行要并本机元数据（星标 / 改名 / 隐藏，`remote_session_entry`）⇒ 前端要一条新的读元数据口，\
+         而那份行解释今天只有 Rust 一份 —— 本拍不开新读口",
+    ),
+    (
+        "history-read",
+        "应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号（`LineNumberer`），\
+         本机那条路共用同一份 ⇒ TS 再写一份记录解析不可接受",
+    ),
+    (
+        "history-subagents",
+        "列完候选还要挑一个（`choose_subagent`）、再读那份文件并过记录解析（`parse_line`）⇒ 同上",
+    ),
+    (
+        "history-tail",
+        "**不是前端查询**：它只被实时 tab 的快照续点用（`ssh_source` 的流机器，monitor 内部），webview 从不问它",
+    ),
+];
+
+/// monitor 生产段（`src/bridge/src/**/*.rs`，剥注释与 `#[cfg(test)]`）里，一条帧命令的字面量出现几次。
+fn monitor_literal_count(op: &str) -> usize {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let needle = format!("\"{op}\"");
+    guard_core::scan_tree!(&dir, &["rs"])
+        .into_iter()
+        .map(|(_, src)| {
+            guard_core::production_code(&src)
+                .matches(needle.as_str())
+                .count()
+        })
+        .sum()
+}
+
+/// 前端生产 TS（`src/**/*.ts`，剥注释；测试文件整棵住 `tests/`，不在这棵树里）里 `chan.call(` 调用点的操作名 ——
+/// **必须是字面量**。
+/// 回 `(操作名集合, 不是字面量的那几处)`。
+fn frontend_chan_ops() -> (std::collections::BTreeSet<String>, Vec<String>) {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut ops = std::collections::BTreeSet::new();
+    let mut not_literal = Vec::new();
+    for (p, src) in guard_core::scan_tree!(&root.join("src"), &["ts"]) {
+        let rel = p.to_string_lossy().replace('\\', "/");
+        chan_ops_in(
+            &guard_core::strip_comment_lines(&src),
+            &rel,
+            &mut ops,
+            &mut not_literal,
+        );
+    }
+    (ops, not_literal)
+}
+
+/// 一段（已剥注释的）TS 里 `chan.call(` 的操作名。前面紧挨标识符字符的不算（`mychan.call(`）。
+fn chan_ops_in(
+    code: &str,
+    rel: &str,
+    ops: &mut std::collections::BTreeSet<String>,
+    not_literal: &mut Vec<String>,
+) {
+    for (at, _) in code.match_indices("chan.call(") {
+        if code[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
+        {
+            continue;
+        }
+        let args = &code[at + "chan.call(".len()..];
+        // 第二个实参：跳过第一个逗号之前的 origin。
+        let Some(comma) = args.find(',') else {
+            not_literal.push(format!("{rel}: 实参表不完整"));
+            continue;
+        };
+        let second = args[comma + 1..].trim_start();
+        match second.strip_prefix('"').and_then(|r| r.split_once('"')) {
+            Some((op, _)) => {
+                ops.insert(op.to_string());
+            }
+            None => not_literal.push(format!(
+                "{rel}: {}",
+                second.chars().take(40).collect::<String>()
+            )),
+        }
+    }
+}
+
+/// ★★ 八条的分区：[`MOVED`] 右列 == [`CHANNELED`] ⊔ [`HELD_BACK`]（不相交、每行都写了理由）。
+#[test]
+fn the_eight_are_partitioned_into_channeled_and_held_back() {
+    let moved = sorted(MOVED.iter().map(|(_, c)| c.to_string()));
+    let mut both: Vec<String> = CHANNELED
+        .iter()
+        .chain(HELD_BACK)
+        .map(|(c, _)| c.to_string())
+        .collect();
+    let n = both.len();
+    both.sort();
+    both.dedup();
+    assert_eq!(
+        both.len(),
+        n,
+        "同一条帧命令同时在「已迁」与「未迁」两张表里"
+    );
+    assert_eq!(both, moved, "已迁 ⊔ 未迁 != C1 的八条（`MOVED` 右列）");
+    for (c, why) in CHANNELED.iter().chain(HELD_BACK) {
+        assert!(!why.trim().is_empty(), "`{c}` 没写理由");
+    }
+}
+
+/// ★★ **迁过去的只走通道（两向）**：
+/// - 前端 `chan.call(` 的操作名集合 == [`CHANNELED`]（多一条 = 没登记就迁了；少一条 = 登记了却没迁）；
+/// - monitor 生产段里 [`CHANNELED`] 每条的字面量**只剩 `MOVED` 那一行**（= 再没有 monitor 侧发送点）；
+/// - [`HELD_BACK`] 每条**还有** monitor 侧发送点（字面量多于 `MOVED` 那一行）—— 没了就是理由馊了。
+///
+/// 两侧异源：一侧读 TS 语料，一侧读 Rust 生产段。
+#[test]
+fn the_channeled_ops_are_sent_only_through_the_channel() {
+    let (ops, not_literal) = frontend_chan_ops();
+    assert!(
+        not_literal.is_empty(),
+        "这几处 `chan.call(` 的操作名不是字面量 —— 本判据认不出它们说的是哪条：{not_literal:?}"
+    );
+    assert_eq!(
+        ops.iter().cloned().collect::<Vec<_>>(),
+        sorted(CHANNELED.iter().map(|(c, _)| c.to_string())),
+        "前端经通道说的操作名 != 登记的「已迁」"
+    );
+    let mut still_sent_by_monitor: Vec<String> = Vec::new();
+    for (op, _) in MOVED.iter().map(|(_, c)| (*c, ())) {
+        // `MOVED` 那一行自己就是一次字面量出现。
+        if monitor_literal_count(op) > 1 {
+            still_sent_by_monitor.push(op.to_string());
+        }
+    }
+    still_sent_by_monitor.sort();
+    assert_eq!(
+        still_sent_by_monitor,
+        sorted(HELD_BACK.iter().map(|(c, _)| c.to_string())),
+        "monitor 侧还在发的帧命令 != 登记的「未迁」。\n\
+         多出来的：已迁的那条在 monitor 里又长出了发送点（两条路并存）；\n\
+         少了的：未迁那一行的理由已经馊了（它其实没人发了）"
+    );
+    // 反空真 ①：monitor 那一侧的数法认得出一条真有发送点的（快照续点那一处）。
+    assert!(
+        monitor_literal_count("history-tail") > 1,
+        "正控：`history-tail` 必有 monitor 侧发送点 —— 数法坏了"
+    );
+    // 反空真 ②：前端那一侧的识别器认得出字面量、认得出非字面量、不把 `mychan.call(` 当成它。
+    let mut ops = std::collections::BTreeSet::new();
+    let mut bad = Vec::new();
+    chan_ops_in(
+        "await chan.call(o, \"x-op\", p, Budget.within(1));\n\
+         await chan.call(o, OP, p, budget);\n\
+         mychan.call(o, \"nope\", p, b);\n",
+        "probe.ts",
+        &mut ops,
+        &mut bad,
+    );
+    assert_eq!(
+        ops.into_iter().collect::<Vec<_>>(),
+        vec!["x-op".to_string()]
+    );
+    assert_eq!(bad.len(), 1, "非字面量那一处没被认出来：{bad:?}");
+}

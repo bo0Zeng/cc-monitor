@@ -1,7 +1,7 @@
 // audit-0805 F14：**关掉历史视图必须掐断那条 1 秒重试链**。
 //
 // 全文搜索在 `status === "indexing"` 时挂一个 `setTimeout(…, 1000)` 重跑 `runFullTextSearch()`，
-// 而它内含 `search_remote_all` ⇒ 对每台远端各一条 SSH。那个回调的存活判据是 `seq === this.ftSeq`，
+// 而它内含 `远端 fan-out（〔C4a〕今天是 `history-search.ts::searchAllMachines` 经通道逐台问）` ⇒ 对每台远端各一条 SSH。那个回调的存活判据是 `seq === this.ftSeq`，
 // 而 `close()` 此前**不动 ftSeq**（复位在 `open()`）⇒ 视图关掉、root 已 remove() 之后那条链**照跑**，
 // 每秒继续对所有远端扇出，并把结果写进已 detach 的 DOM。
 //
@@ -51,6 +51,9 @@ function setupIndexing(): void {
         builtAtMs: 0,
       });
     if (cmd === "list_history_projects") return Promise.resolve([]);
+    // 〔C4a〕远端全文搜索改由前端经通道逐台问（`history-search.ts::searchAllMachines`）；
+    //   本组不配远端 ⇒ 远端清单为空，一次都不扇出。
+    if (cmd === "list_remote_mcp_origins") return Promise.resolve([]);
     if (cmd === "list_remote_history_projects")
       return Promise.resolve({ projects: [], failedHosts: [] });
     return Promise.resolve(undefined);
@@ -93,7 +96,7 @@ describe("关掉历史视图之后，那条 1 秒远端重试链必须停（audi
     const afterClose = invokeMock.mock.calls.filter((c) => c[0] === "search_history").length;
     expect(
       afterClose,
-      "★ 视图关掉之后那条 1 秒重试链还在跑 —— 它内含 search_remote_all，" +
+      "★ 视图关掉之后那条 1 秒重试链还在跑 —— 它内含 远端 fan-out（〔C4a〕今天是 `history-search.ts::searchAllMachines` 经通道逐台问），" +
         "也就是**对每台远端各一条 SSH**。用户关掉了面板，后台还在替他每秒问所有远端，" +
         "而结果会被写进已经 detach 的 DOM。close() 里递增一次 ftSeq 就能让挂着的回调自行终止。",
     ).toBe(afterFirst);
@@ -128,7 +131,7 @@ describe("关掉历史视图之后，那条 1 秒远端重试链必须停（audi
     ).toBeGreaterThan(statusBefore);
     expect(
       invokeMock.mock.calls.filter((c) => c[0] === "search_history").length,
-      "等待期间又去重跑整条搜索了 —— 那条路含 search_remote_all，等于每秒对每台远端一条 SSH",
+      "等待期间又去重跑整条搜索了 —— 那条路含 远端 fan-out（〔C4a〕今天是 `history-search.ts::searchAllMachines` 经通道逐台问），等于每秒对每台远端一条 SSH",
     ).toBe(searchAfterFirst);
     view.close();
   });
