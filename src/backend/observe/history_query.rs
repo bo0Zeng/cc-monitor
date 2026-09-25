@@ -1122,6 +1122,42 @@ pub(crate) struct ReadPage {
     pub eof: bool,
 }
 
+/// 〔U4b · 第四波〕「这条会话的记录还在不在」—— `history-record` 帧命令的本体（`read_face` 是它的宿主）。
+///
+/// `设计/01 §6.2` 最后一条逐字：「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」。
+/// 前端 resume 一跳（`tab-session-actions.ts`）在开终端之前问一次；答「不在」就不开。
+///
+/// - **只收 sid、不收路径**（`INVARIANTS §41.6` 收窄第 3 条）：找文件那一步是两侧共用的
+///   `branch_core::find_session_file`（与分叉 / 删会话同一份；符号链接不算命中）。
+/// - sid 形状不合法 ⇒ `Err`，**先于任何 IO**；找不到 ⇒ `Ok(present = false)` —— 这是一个答案，不是错误。
+/// - 回 `root`（查的是哪棵记录树）：报错时要说清查了什么（`设计/01 §6.9`）。
+///
+/// ⚠ **射程如实写**：它查的是**这台后端**的记录树（`agent_home()/projects`）。会话若起在另一个
+/// 账号的配置根下（`CLAUDE_CONFIG_DIR` 指向别处），这里答「不在」而那边其实有 —— 调用方拿到「不在」
+/// 时报的话要说清是「这棵树里没有」，不是「世上没有」。
+pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, String> {
+    if !branch_core::is_plain_sid(sid) {
+        return Err(format!(
+            "sid 形状不对（只许字母 / 数字 / 连字符，1..=64）：{sid:?}"
+        ));
+    }
+    let root = projects_root(agent_home);
+    let present = branch_core::find_session_file(&root, sid).is_ok();
+    Ok(RecordProbe {
+        present,
+        root: root.to_string_lossy().into_owned(),
+    })
+}
+
+/// [`record_in`] 的答案。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecordProbe {
+    /// `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
+    pub present: bool,
+    /// 查的那棵记录树的根。
+    pub root: String,
+}
+
 /// 帧面那几条要的「这台的 agent 家目录」—— 与 `main.rs` 那一句**同一个出处**。
 ///
 /// 住这里而不是帧面宿主那边：通用层不许点 agent 的名字（`agent_boundary_guard`），
