@@ -118,6 +118,8 @@ pub const COMMANDS: &[&str] = &[
     "kill",
     "launch",
     "ping",
+    "relay-ensure",
+    "relay-status",
     "resolve",
 ];
 
@@ -633,6 +635,34 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|_r| {
             crate::accounts::apikey::file_face::answer_read()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔RM1a · 第四波〕**中转（层 1）**：这台机器上的 `--relay` 进程在不在 · 没有就起一个脱离的。
+    //   远端那台上的会话要走中转，那台上就得有一个；本机那一个由 monitor 监护，monitor 从不对本机发 `relay-ensure`。
+    //   ⚠ 只收端口，**一个凭据 / 账号的名字都不经过这两条**（「账号就账号, 中转就中转」）。
+    //   ⚠ 阻塞档：回环连一次 / 起一个进程，开跑之后打不断。
+    CommandSpec {
+        name: "relay-status",
+        doc_anchor: Some("#### `relay-status`"),
+        codes: &["bad_args"],
+        fields: &["listening", "port"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::relay::answer_status(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "relay-ensure",
+        doc_anchor: Some("#### `relay-ensure`"),
+        codes: &["bad_args", "spawn_failed", "unsupported"],
+        fields: &["listening", "pid", "port", "started"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::relay::answer_ensure(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

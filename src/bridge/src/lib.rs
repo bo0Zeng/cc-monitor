@@ -80,6 +80,7 @@ mod profile_installer;
 mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
 mod remote_history;
+mod remote_relay; // 〔RM1a〕中转（层 1）按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod search;
 mod session_map;
@@ -1309,6 +1310,7 @@ pub fn run() {
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             apikey_routing_for,
+            relay_ensure,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
             // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
             aliases_render,
@@ -1813,17 +1815,33 @@ struct ApikeyRouting {
 /// **第二个**生产消费方（第一个是起会话那一侧的 `history::relay_prefix_for_launch`），
 /// 两处走同一条缝、各有一条行为判据。直接在这里调那两个函数的写法只能靠「文本在不在」来钉，
 /// 而那一形 `D5` 已经打穿了 —— 整段理由住 `history::InjectFactSources` 的头注。
+///
+/// # 〔RM1a · 第四波〕**收 `origin`**：两件事都问**那台机器**
+///
+/// 上面「只答本机」那段理由的前提是「本机这一侧在结构上答不了远端那台」—— 今天远端那台的后端
+/// 自己答得了：表里有哪几行（账号层，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
+/// 两件事**各问各的**（`apikey_remote::rows_on` / `remote_relay::running_on`，两个模块互不引用），
+/// 只在这里拼成一份给界面。本机那一臂两件事都照旧走 [`history::inject_facts`] 那条缝。
+/// ⚠ 远端那一格 `running` 的射程比本机**宽**：「口上有人在听」，不是「我们起过它、没停过」。
 #[tauri::command]
-fn apikey_routing_for(config_dirs: Vec<String>) -> ApikeyRouting {
-    let facts = history::inject_facts();
-    ApikeyRouting {
-        routed: history::apikey_routed_subset(
-            &config_dirs,
-            &(facts.rows)(),
-            history::launch_agent_id(),
-        ),
-        running: (facts.running)(),
-    }
+async fn apikey_routing_for(
+    origin: origin::Origin,
+    config_dirs: Vec<String>,
+) -> Result<ApikeyRouting, String> {
+    let rows = apikey_remote::rows_on(&origin).await?;
+    let running = remote_relay::running_on(&origin).await?;
+    Ok(ApikeyRouting {
+        routed: history::apikey_routed_subset(&config_dirs, &rows, history::launch_agent_id()),
+        running,
+    })
+}
+
+/// 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个脱离的
+/// `--relay`（帧面 `relay-ensure`）。**本机拒** —— 本机那一个由 monitor 监护，不许再起第二个去抢口。
+/// ⚠ 它今天**没有自动触发点**（远端链路握手完成 / 起远端会话那两处都不在本拍写区），理由住 `remote_relay` 头注。
+#[tauri::command]
+async fn relay_ensure(origin: origin::Origin) -> Result<remote_relay::RelayEnsured, String> {
+    remote_relay::ensure_on(&origin).await
 }
 
 /// `K-H2a` `KS10`：从界面配一把 key。

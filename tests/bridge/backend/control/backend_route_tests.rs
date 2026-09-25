@@ -175,6 +175,10 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   没有第二条路可回落（那份文件只在那台机器上），长连接不在时明说「没有控制通道」；
     //   **照样走分流器**，理由与 `backend_policy.rs` 那条逐字相同。
     ("apikey_remote.rs", Verdict::UsesRouter),
+    // ★ 〔RM1a · 第四波〕中转（层 1）按机器：远端那一臂问 / 交那台机器的后端（`relay-status` / `relay-ensure`），
+    //   都经 `remote_relay.rs::call` 这一口。与上一条**分开两个文件**是刻意的（「账号就账号, 中转就中转」），
+    //   理由与形状逐字同上一条。
+    ("remote_relay.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

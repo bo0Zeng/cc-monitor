@@ -1280,7 +1280,8 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
     );
     const asked = invokeMock.mock.calls.filter(([c]) => c === "apikey_routing_for");
     expect(asked).toHaveLength(1);
-    expect(asked[0][1]).toEqual({ configDirs: [KEYED.configDir] });
+    // 〔RM1a〕那条命令收了 origin；本机这一页问的仍是本机（逐字送后端那个本机串）。
+    expect(asked[0][1]).toEqual({ origin: LOCAL_ORIGIN, configDirs: [KEYED.configDir] });
   });
 
   it("★ 表里有它 ＋ 中转没跑 ⇒ 「中转未运行」；表里没它 ⇒ 说表里没它 —— 三档两两不同", async () => {
