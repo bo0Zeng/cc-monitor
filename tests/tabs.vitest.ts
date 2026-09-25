@@ -4941,3 +4941,17 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     expect(tabOf("g3").state).toEqual(RECONNECTABLE);
   });
 });
+
+// 〔U4b · 第四波〕**接线判据**：`main.ts` 起步那几行（`list_active_sessions` 之后标本机清单报完 ·
+// 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
+describe("〔U4b〕main.ts 接线", () => {
+  it("★ 本机清单报完 · 容器事件 · 远端清单报完，三处接线各恰一处", () => {
+    const main = readFileSync(resolve(REPO_ROOT, "src/main.ts"), "utf8");
+    const n = (needle: string): number => main.split(needle).length - 1;
+    expect([
+      n("tabs.markOriginSeen(LOCAL_ORIGIN, new Set(active.map((s) => s.session_id)))"),
+      n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
+      n("onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin)"),
+    ]).toEqual([1, 1, 1]);
+  });
+});
