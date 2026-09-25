@@ -546,6 +546,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/launch_tests.rs",
     "tests/bridge/local_accounts_tests.rs",
     "tests/bridge/local_backend_host_tests.rs",
+    "tests/bridge/local_lines_tests.rs",
     "tests/bridge/logging_tests.rs",
     "tests/bridge/mcp_tests.rs",
     "tests/bridge/panorama_call_tests.rs",
@@ -564,7 +565,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/subagent_tests.rs",
     "tests/bridge/user_files_tests.rs",
     "tests/bridge/utils_tests.rs",
-    "tests/bridge/watcher_tests.rs",
+    // 〔CF1 · 09-24〕`tests/bridge/watcher_tests.rs` 随 monitor 自己那套 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。
     "tests/copy-verdicts-ledger.vitest.ts",
     "tests/eslint-baseline.vitest.ts",
     "tests/naming/account-vs-relay-naming.vitest.ts",
@@ -715,6 +716,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/bridge/backend/control/local_backend_tests.rs",
         "the_local_tmux_frames_really_land_in_the_ledger",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
+    ),
+    (
+        "tests/bridge/local_lines_tests.rs",
+        "a_real_backend_feeds_local_lines_through_the_production_read_loop",
+        Trigger::Filter { by: "tests/evidence/CF1-local-lines.py", needle: "a_real_backend_feeds_local_lines_through_the_production_read_loop" },
     ),
     (
         "tests/bridge/dial_host_tests.rs",

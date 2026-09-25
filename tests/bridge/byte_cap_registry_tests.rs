@@ -97,6 +97,12 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**条数**不是体量（mpsc 通道能排多少帧）。它的溢出语义由 `Overflow` 帧管，见 F03。",
     ),
     (
+        "LOCAL_LINES_CAPACITY",
+        "〔CF1 · 第四波 09-24〕**件数**不是体量：本机内容通道（`local_lines·rs`）能排多少帧。与 `CHANNEL_CAPACITY` 同族 ——\
+             量的是队列深度。满了是**背压**（读循环停在送上 ⇒ 不再读 ⇒ 本机后端写阻塞），**不丢、不截**，\
+             它不限任何一段用户数据的字节数（一帧的字节上限是 `BACKEND_FRAME_LINE_CAP`，本表 `CAPS` 那一行）。",
+    ),
+    (
         "LIMIT_MAX",
         "〔`K-R100` 09-13〕**条数**不是体量：`search-core` 里 `--limit` / IPC `limit`              能取的最大值 = 一次搜索最多构造多少条 **snippet**，不是任何字节量。             它「超了怎么办」有答案、但不在本表的语义里 —— `clamp_limit` 直接把它夹住，             而被夹掉的那部分由 `SnippetBudget::starved()` ⇒ `SessionHits::hits_truncated`              ⇒ `SearchResponse::truncated` 一路说出来（那正是 `KR100D3` 治的东西）。",
     ),

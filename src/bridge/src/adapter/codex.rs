@@ -25,7 +25,6 @@ static CODEX_LAYOUT: SessionLayout = SessionLayout {
     sid_strategy: SidStrategy::CodexRollout,
     // Codex 子 agent 会话是独立 rollout（谱系在 state_5.thread_spawn_edges）；无 Claude 那样的
     // `/subagents/` 路径段可跳。子 agent 过滤（按 agent_role）留后续 feature。
-    skip_segments: &[],
 };
 
 /// Codex 数据根：`$CODEX_HOME`（若设）→ `~/.codex`。（Claude 侧还有「设置面板手选」一级；Codex 的
