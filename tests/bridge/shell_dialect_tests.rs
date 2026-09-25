@@ -270,7 +270,9 @@ fn needle_hits(code: &str, needle: &str) -> usize {
 
 /// 人群 = `src/` 全树的 `.rs` / `.ts`（生产段：Rust 剥测试模块与注释，TS 剥注释）。
 /// 回：`(仓根相对路径, 记号) → 处数`，只收非零的。
-fn profile_location_census(files: &[(String, String)]) -> std::collections::BTreeMap<(String, String), usize> {
+fn profile_location_census(
+    files: &[(String, String)],
+) -> std::collections::BTreeMap<(String, String), usize> {
     let mut out = std::collections::BTreeMap::new();
     for (rel, src) in files {
         let code = if rel.ends_with(".rs") {
@@ -307,20 +309,24 @@ fn the_profile_location_has_exactly_one_home() {
     ];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let root = root.canonicalize().expect("仓根");
-    let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&root.join("src"), &["rs", "ts"], &[])
-        .into_iter()
-        .map(|(p, s)| {
-            let rel = p
-                .strip_prefix(&root)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .replace('\\', "/");
-            (rel, s)
-        })
-        .collect();
+    let files: Vec<(String, String)> =
+        guard_core::scan_tree_excluding(&root.join("src"), &["rs", "ts"], &[])
+            .into_iter()
+            .map(|(p, s)| {
+                let rel = p
+                    .strip_prefix(&root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (rel, s)
+            })
+            .collect();
     // 抽取器自检：人群塌了 ⇒ 本条零命中地绿。
     assert!(
-        files.len() > 500 && files.iter().any(|(r, _)| r == "src/bridge/src/data_paths.rs"),
+        files.len() > 500
+            && files
+                .iter()
+                .any(|(r, _)| r == "src/bridge/src/data_paths.rs"),
         "`src/` 只扫到 {} 份，或者没扫到 data_paths.rs —— 遍历坏了",
         files.len()
     );
@@ -352,8 +358,14 @@ fn the_profile_location_census_sees_the_old_shapes() {
         ("src/settings/x.ts".into(), old_ts),
     ]);
     let want: std::collections::BTreeMap<(String, String), usize> = [
-        (("src/bridge/src/data_paths.rs".to_string(), n[0].clone()), 1),
-        (("src/bridge/src/data_paths.rs".to_string(), n[2].clone()), 1),
+        (
+            ("src/bridge/src/data_paths.rs".to_string(), n[0].clone()),
+            1,
+        ),
+        (
+            ("src/bridge/src/data_paths.rs".to_string(), n[2].clone()),
+            1,
+        ),
         (("src/settings/x.ts".to_string(), n[1].clone()), 1),
     ]
     .into_iter()

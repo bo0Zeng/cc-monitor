@@ -939,7 +939,7 @@ export const commands = {
 
   /**
    * 〔B2 · 条 66〕问那台机器的后端：「退出行为」那个值现在是什么（值住那台机器上，`设计/01 §3.3b`）。
-   * Rust 那边是后端回的不透明 JSON（`shell` / `state` / `killOnExit` / `reason` / `path`）⇒ **桶②**，
+   * Rust 那边是后端回的不透明 JSON（`state` / `killOnExit` / `reason` / `path`）⇒ **桶②**，
    * 形状由 `settings/backend-section.ts` 的 `readExitAnswer` 逐格取、缺一格就当问不到。
    * `origin` 本机是 `"<local>"`（见 `backend-policy.ts` 的 `LOCAL_ORIGIN`，两侧有判据对拍）。
    */

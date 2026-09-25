@@ -47,19 +47,17 @@ import {
   describeHealthDetail,
   describeExitBehavior,
   type BackendHealth,
-  type BackendShell,
   type ExitPolicyState,
 } from "../backend-policy";
 
-/** 后端 `exit-policy-read` / `exit-policy-set` 回的那一份里，本区要用的三格。 */
+/** 后端 `exit-policy-read` / `exit-policy-set` 回的那一份里，本区要用的两格。 */
 interface ExitAnswer {
-  shell: BackendShell;
   policy: ExitPolicyState;
   killOnExit: boolean;
 }
 
 /**
- * 〔B2〕从后端那份不透明 JSON 里取「退出行为」三格。**缺一格 / 形状不对 ⇒ `null`**（= 问不到）。
+ * 〔B2〕从后端那份不透明 JSON 里取「退出行为」两格。**缺一格 / 形状不对 ⇒ `null`**（= 问不到）。
  *
  * ⚠ 方向与 `readHealth` 一致：**答不出来就说答不出来**，不替后端补一个缺省值 ——
  * 补了就是在一台我们不知道的机器上画一个看起来能用的勾。
@@ -67,11 +65,10 @@ interface ExitAnswer {
 function readExitAnswer(raw: unknown): ExitAnswer | null {
   if (typeof raw !== "object" || raw === null) return null;
   const v = raw as Record<string, unknown>;
-  const shell = v.shell === "standalone" || v.shell === "folded" ? v.shell : null;
   const policy =
     v.state === "chosen" || v.state === "absent" || v.state === "unreadable" ? v.state : null;
-  if (shell === null || policy === null || typeof v.killOnExit !== "boolean") return null;
-  return { shell, policy, killOnExit: v.killOnExit };
+  if (policy === null || typeof v.killOnExit !== "boolean") return null;
+  return { policy, killOnExit: v.killOnExit };
 }
 
 /**
@@ -378,7 +375,8 @@ export class BackendSection {
    * 远端恒 `null` ⇒ 按「没脱离」算，那对远端是**对的**：断流之后那个进程随管道破裂退出。
    *
    * 〔B2〕`answer` 是**后端答的**那一份；`null` = 问不到 ⇒ 勾禁用、那一行不说话。
-   * `describeExitBehavior` 回「不适用」（折进前端那一档）⇒ 勾与那一行**从这一行里拿掉**（E4）。
+   * 〔S5 · V105 清账〕原来还有「不适用」一臂（折进前端那一档：勾、那一行、[起][停] 整个拿掉，E4）——
+   * 那一档已放弃，这一臂随之删了。
    */
   private paintExit(
     origin: string,
@@ -398,16 +396,6 @@ export class BackendSection {
       return;
     }
     const said = describeExitBehavior({ ...answer, detached });
-    if (said === null) {
-      // 「不适用」（折进前端那一档，E4）：那一格**不存在**，勾与那一行都从这一行里拿掉，
-      // 而不是摆一个禁用的开关 —— 那一档连选择都没有。〔壳在一个后端的生命里不会变，拿掉就不用再放回来。〕
-      label.remove();
-      el.remove();
-      // 🔴 `设计/70 §1` 末段 ＋ `01 §6.7a` 规矩 0：折进前端那个壳下 monitor **就是**后端，
-      //   没有第二个进程可起可停 ⇒ [起][停] 也**不存在**（不是禁用）。E4 当时只拿掉了退出那一格。
-      cells?.querySelector<HTMLElement>('[data-col="ops"]')?.replaceChildren();
-      return;
-    }
     el.dataset.exit = answer.policy;
     box.disabled = false;
     box.checked = answer.killOnExit;
@@ -531,8 +519,6 @@ export class BackendSection {
       // K-P1：`detached` 只认后端给的那一格。**缺席 / null ⇒ 按「没脱离」算**
       // （旧后端没有这一格；远端天然没有）—— 保守方向：不脱离那句话是今天一直在说的那句。
       this.paintExit(origin, st.detached === true, answer);
-      // 折进前端那一档：状态那一格说它随 monitor 一起（`70 §2.3` 线框「● 已就绪（后端随 monitor 一起）」）。
-      if (answer?.shell === "folded" && on) state.textContent = "已就绪（随 monitor 一起）";
       // K-P3b：**同一份 JSON**，另一个元素。不新开一次查询，也不接在上面那一行后面。
       this.paintHealth(origin, st.health);
       return on;
