@@ -26,6 +26,8 @@ import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
 import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
+// 〔C4d〕上次账号那一份注解归本机常驻后端（`history-last-accounts` / `history-annotate`）。
+import { annotate, lastAccounts } from "./history-reads";
 
 // ---- 账号的形状：〔C4d · 第四波 4B〕从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----
 //
@@ -428,7 +430,7 @@ export function primeLocalLaunchAccounts(): void {
     try {
       const [state, pins] = await Promise.all([
         fetchLocalAccounts(),
-        commands.list_last_accounts().catch(() => ({}) as Record<string, string>),
+        lastAccounts().catch(() => ({}) as Record<string, string>),
       ]);
       // ⚠ 整份存 `state`，**不是**只存 `accounts` —— 「当前账号」这条规则要读
       //   `state.defaultName`（config.json），只留 accounts 就只剩 manifest 的 `isDefault`，
@@ -1394,7 +1396,7 @@ export function __resetAccountsCacheForTest(): void {
  */
 export async function recordLastAccount(sessionId: string, account: string): Promise<void> {
   try {
-    await commands.update_history_metadata({ sessionId, patch: { lastAccount: account } });
+    await annotate(sessionId, { lastAccount: account });
   } catch (e) {
     console.warn("record lastAccount failed:", e);
   }

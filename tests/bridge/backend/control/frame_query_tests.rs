@@ -211,6 +211,18 @@ const CHANNELED: &[(&str, &str)] = &[
         "后端出成品 `{trusted, known}`（CLI 那一臂同一个函数）；替掉最后两条逐次拨号的 `--account-trust*`，\
          界面经 `src/accounts.ts::checkTrust` 问",
     ),
+    // 〔C4d · 第四波 4B〕历史跨机 join 那两条（主会话 09-25 裁：注解读写者换成本机常驻后端，它经 `remote_ask` 问远端那台、
+    //   并上注解、出成品）—— 从 [`HELD_BACK`] 挪过来：「远端那台的后端出不了成品」那条理由由「问**本机**后端、带 `origin`」解开了。
+    (
+        "history-projects",
+        "本机常驻后端出成品 `{rows, notice}`（`history_join.rs`：记录树 ＋ Codex 合成 ＋ pidfile 判活 ＋ 远端经 `remote_ask`，\
+         并上本机注解）；monitor 那份 join（`history_project_from_row` 一族）与两条 Tauri 命令删了，界面经 `src/history-reads.ts` 问 `<local>`",
+    ),
+    (
+        "history-sessions",
+        "同 `history-projects`：会话行口径收成后端一份（`analyze_session`，本机与远端同一个函数），monitor 那份 `analyze_jsonl` /\
+         `remote_session_entry` 删了",
+    ),
 ];
 
 /// 〔C4b · 第四波 4B〕**帧面只读查询那一族之外**、同样改成「前端经通道直接问、后端出成品」的帧命令 ——
@@ -246,6 +258,20 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "〔AS2 · 4B · V113〕资产目录：生来就走通道（没有过 monitor 那一条）—— 后端应答就是成品（整份目录 ＋「这台缺什么」的判定），\
          界面 `settings/assets-section.ts::decodeCatalog` 按形状收",
     ),
+    // 〔C4d · 第四波 4B〕注解三条：读写者换成本机常驻后端（`history_annotations.rs`，文件原地不动）；monitor 那两条命令
+    //   （`update_history_metadata` / `list_last_accounts`）与删会话时那一句清注解删了，界面经 `src/history-reads.ts` 问 `<local>`。
+    (
+        "history-annotate",
+        "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::decodeEntry` 按形状收）",
+    ),
+    (
+        "history-forget",
+        "删会话之后连带删那一条注解（界面删成功之后交；从前是 monitor 删完顺手清）",
+    ),
+    (
+        "history-last-accounts",
+        "sid → 上次用哪个号起（账号徽章回落 · 带账号 resume 前现读）；从前是 monitor 读那份文件",
+    ),
 ];
 
 /// 〔C4c · 第四波 4B〕**monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
@@ -276,18 +302,10 @@ fn backend_registered_commands() -> std::collections::BTreeSet<String> {
 /// 〔C4c · 第四波 4B〕主会话裁六行的去向：`accounts-list` 做了（挪进 [`CHANNELED`]）；`history-projects` /
 /// `history-sessions` 的设计写在 `调研/第四波记录/C4c.md §3`（「本机后端问远端后端」那一跳今天不存在，报备中）；
 /// `history-read` / `history-subagents` 等后端二次拆包；`history-tail` 归 CF2。⇒ 今天五行。
+/// 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 做了（「本机后端问远端后端」那一跳由 `remote_ask` 造出来）⇒ 今天三行。
 const HELD_BACK: &[(&str, &str)] = &[
     // 〔C4c · 第四波 4B〕`accounts-list` 那一行挪进了 [`CHANNELED`]（账号层搬家做了：后端出成品、并它自己那份表）。
-    (
-        "history-projects",
-        "每一行要并**本机**的注解（星标 / 隐藏计数，`history-metadata.json` 住 monitor 数据目录）＋ 本机判活（`SessionMap`）\
-         ＋ 本机合成的 codex 项目 —— 远端的行要并的是**本机**这一份：跨两台机器的 join，那台的后端出不了成品。\
-         出路是注解本身搬进本机常驻后端、由它去问远端那台（设计题，交主会话）",
-    ),
-    (
-        "history-sessions",
-        "同 `history-projects`：每一行并本机注解（星标 / 改名 / 隐藏，`remote_session_entry`）＋ 判活 —— 跨机 join",
-    ),
+    // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 两行挪进了 [`CHANNELED`]（跨机 join 进了本机常驻后端）。
     // 〔C4c · 第四波 4B〕下面三行按主会话裁决重写：`history-read` / `history-subagents` **等后端二次拆包**，
     //   `history-tail` 归 CF2（`subscribe`）。三行都仍有 monitor 侧发送点（判据照旧要求它们真有）。
     (

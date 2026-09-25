@@ -408,3 +408,40 @@ fn a_session_row_carries_fork_and_annotations() {
     assert_eq!(rows[1]["hidden"], true);
     assert_eq!(rows[1]["isBg"], true);
 }
+
+/// ★ `K-R92`：排序时「不知道」自成一档，夹在「确定有」与「确定没有」之间（从 monitor `unknown_is_its_own_bucket_when_sorting`〔散文墓碑〕搬来）——
+/// 「不知道」既不许冒充「活着」抢到最前，也不许被当成「确定没活」压到最后；星标那一档同理。
+#[test]
+fn projects_sort_unknown_between_known_true_and_known_false() {
+    let row = |dir: &str, live: Value, star: Value, last: i64| json!({"projectDir": dir, "hasLive": live, "starredCount": star, "lastActivity": last});
+    let mut rows = vec![
+        row("dead", json!(false), json!(0), 900),
+        row("unknown", Value::Null, json!(0), 100),
+        row("live", json!(true), json!(0), 1),
+    ];
+    sort_projects(&mut rows);
+    let order: Vec<&str> = rows
+        .iter()
+        .map(|r| r["projectDir"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        order,
+        vec!["live", "unknown", "dead"],
+        "活 > 不知道 > 没活（不看时间）"
+    );
+    let mut rows = vec![
+        row("zero", Value::Null, json!(0), 900),
+        row("unknown", Value::Null, Value::Null, 100),
+        row("starred", Value::Null, json!(2), 1),
+    ];
+    sort_projects(&mut rows);
+    let order: Vec<&str> = rows
+        .iter()
+        .map(|r| r["projectDir"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        order,
+        vec!["starred", "unknown", "zero"],
+        "有星标 > 不知道 > 查过了一个都没有"
+    );
+}

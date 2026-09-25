@@ -42,6 +42,7 @@ import {
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, type RecordProbe } from "./session-reads";
+import { lastAccounts } from "./history-reads";
 import { mintSessionTmuxName } from "./remote-launch";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。〔F7b〕老 SFTP 面板删了。
@@ -152,7 +153,7 @@ export class TabSessionActions {
   /**
    * audit-fixes F01（修 B1，full-audit 阻塞）：resume 前**现读磁盘** pin，不读内存镜像
    * `accountLastByS`。后者是 tab 徽章的 10s 刷新数据源，在①启动首轮刷新前（空 Map）②
-   * `list_last_accounts` 抛错被 main.ts 无条件覆写成空 ③刚显式钉 pin 后 10s 内还没轮询到，
+   * 上次账号那一问（〔C4d〕本机后端 `history-last-accounts`）抛错被 main.ts 无条件覆写成空 ③刚显式钉 pin 后 10s 内还没轮询到，
    * 这三种窗口里读它 → `withAccount` 的不-clobber 守卫拿到假 priorPin=null → 把磁盘真实
    * pin 静默覆盖成全局当前账号。与 history.ts:1489 的「现读」同口径，三处 resume 一致。
    * 读不到（无 pin / 查询失败）→ undefined → withAccount 落全局账号/基座，与旧行为一致
@@ -160,7 +161,7 @@ export class TabSessionActions {
    */
   private async readSessionPin(sid: string): Promise<string | undefined> {
     try {
-      const map = await commands.list_last_accounts();
+      const map = await lastAccounts();
       return map?.[sid];
     } catch {
       return undefined;
@@ -308,7 +309,7 @@ export class TabSessionActions {
         account: localLaunchAccountSync(sid),
       });
       // `D3 阻-2`：**本机这条路也要往 pin 里写** —— 在此之前 `recordLastAccount` 的两个
-      //   生产调用点结构上只走远端 ⇒ 本机 `list_last_accounts` 恒空 ⇒ 上面那句「pin 优先」
+      //   生产调用点结构上只走远端 ⇒ 本机那一份上次账号表恒空 ⇒ 上面那句「pin 优先」
       //   在本机永远走不到。⚠ 不等待（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
       recordLocalLaunchAccount(sid, localLaunchAccountNameSync(sid));
     } catch (err) {

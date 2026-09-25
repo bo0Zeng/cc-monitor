@@ -10,7 +10,7 @@
 //!
 //! 1. **迁移前后读出来的注解逐条相等**：新读者（本模块）读结构占位夹具 `tests/__fixtures__/history-metadata.fixture.json`
 //!    ＝ 金样 `history-metadata.readout.golden.json`；金样由**旧读者**（monitor `history·rs::HistoryMetadata`）读同一份夹具产出、
-//!    monitor 那一侧 `c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden` 在旧读者还在的那一拍对过。异源：两个 crate、两份实现。
+//!    monitor 那一侧 `c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden`〔散文墓碑〕在旧读者还在的那一拍（子步 4）对过、之后随旧读者一起退役。异源：两个 crate、两份实现。
 //! 2. **写一条不丢别的**：夹具拷进临时目录 → 改一条 → 再读：其余每条逐格 == 金样；被改那条只变了 patch 那几格 ＋ `updatedAt`；
 //!    条目里 / 顶层认不出的键原样还在；被改那条身上的蛇形别名摘了（否则下次严格读读不懂）。
 //! 3. **读不懂就不写**：坏 JSON · 字段类型不对 · 同一格驼峰与蛇形都在 · 顶层不是对象 ⇒ 拒，文件逐字节不变。

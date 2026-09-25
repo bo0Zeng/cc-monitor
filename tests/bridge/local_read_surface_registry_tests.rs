@@ -14,24 +14,9 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //    改问本机后端要 `--list-projects`（住 `backend/observe/local_query.rs`）——
     //    这正是那条登记自己写着的退役条件，逐字兑现。⚠ **分条这件事因此付了息**：
     //    它当初就是为了让「迁完了」这件事在账上看得见，而今天它确实少了一行。
-    (
-        "src/history.rs",
-        "fence",
-        2,
-        "`stream_history_sessions_in_project` 的**路径围栏** —— 它解析 records 根，\
-             把前端传回的**编码目录名**落到根之内并验它没跑出去（`refuse: … outside …`），与下面那条同形。\
-             〔`K-R97` 09-12〕入参从绝对路径改成目录名之后**这两行照旧、口径没变**：\
-             解析根是为了**定位与设栏**，不是去读内容。\
-             ⚠ **刻意保留、不属退役范围**（纵深防御，理由同那条 `fence`）。",
-    ),
-    (
-        "src/history.rs",
-        "no-counterpart",
-        1,
-        "`list_history_projects` 的 **codex 变体**(232)。⚠ **不属**「今天能退役」的范围：\
-             实测后端的 `history_query.rs` 里 **codex / kinds / agent_kind 零命中** ——\
-             `--list-projects` 只服务 claude。退役条件 = backend 侧补上 codex 的项目枚举（DG3 那一族）。",
-    ),
+    // 〔C4d · 第四波 4B〕`src/history.rs` 两行摘了：`fence` 2（展开一个项目的路径围栏）与 `no-counterpart` 1（Codex 合成项目）——
+    //   本机历史清单整段搬进本机常驻后端（`history-sessions` 出成品；Codex 枚举进后端 `agents/codex/history.rs`，
+    //   `no-counterpart` 那一行自己写的退役条件「backend 侧补上 codex 的项目枚举」兑现了）。9 → 6。
     (
         "src/history.rs",
         "fence",

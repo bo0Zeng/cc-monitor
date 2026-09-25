@@ -539,7 +539,6 @@ src/bridge/src/filewin/shell.rs:1938	正在复制 {n}	保留	[对外] 〔FW34〕
 src/bridge/src/filewin/shell.rs:1941	正在下载 {n}	保留	[对外] 〔FW34〕同上：一趟下载在跑
 src/bridge/src/filewin/shell.rs:1945	正在上传 {}	保留	[对外] 〔FW34〕同上：列出在传的那几个名字
 src/bridge/src/filewin/shell.rs:1948	有写操作还没回话	保留	[对外] 〔FW34〕同上：删 / 改名 / 建目录 / 改权限那一摞还没回来
-src/bridge/src/history.rs:267	本机项目列表	保留	[不对外] log_unknown_reasons 的日志标签
 src/bridge/src/history.rs:1409	旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕	改·§2.1	[可达存疑] OLD_PATH_CANNOT_ATTACH 作 Err 回前端：attach / 拉起器 / 容器路 / K-R106 全是内部说法 兼§2.2 兼§2.4 新词:拉起器 新词:容器路 →「这台机器接不回已有会话，只能新开一个」
 src/bridge/src/history.rs:1520	没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸	改·§2.1	[可达存疑] NO_TMUX_NAME 作 Err：露出前端函数名 mintTmuxName 与「只许由…铸」的内部纪律 兼§2.2 新词:铸 →「缺少会话名，无法启动」
 src/bridge/src/history.rs:1809	这个号走中转，而这一行还没改成「探到 `base-url-across-tmux` 才放行」——\n     转发做到了、也声明了（`src/backend/control/ccm/mod.rs`），\n     差的只是这一行；`K-R61` 只重裁理由，不动行为	改·§2.1	[可达存疑] RELAY_KEEPS_THE_OLD_PATH 作 Err：源码住址 src/backend/control/ccm/mod.rs、探针名 base-url-across-tmux、K-R61 兼§2.2（「差的只是这一行」）兼§2.4
@@ -581,10 +580,6 @@ src/bridge/src/remote_branch.rs:50	远端后端版本过旧（不支持远端分
 src/bridge/src/remote_branch.rs:167	源会话 id	保留	[对外] validate_fork_id 报错里的对象名
 src/bridge/src/remote_branch.rs:168	消息 uuid	内部词→「消息 ID」	[对外] validate_fork_id 报错里的对象名；uuid 是实现词 新词:uuid
 src/bridge/src/remote_history.rs:48	这个会话超过 {MAX_SESSION_BYTES} 字节上限，只读到前 {read_bytes} 字节（{lines_shown} 行）；\n         后面的内容**没有显示**。完整历史仍在远端那个 jsonl 文件里。	内部词→「会话记录文件」	[对外] 会话截断提示；jsonl 是 R1 词 兼§2.4（markdown **）→「会话超过 {} 字节上限，只显示了前 {lines_shown} 行」
-src/bridge/src/remote_history.rs:242	远端那台的后端没带会话 sid 清单（版本旧）	保留	[不对外] WhyUnknown::reason 今天只进 tracing::info!（log_unknown_reasons）；注释说「将来给界面用」，那天要换掉 sid（R1）
-src/bridge/src/remote_history.rs:243	远端那一行的 sid 清单与 sessionCount 对不上（行坏了）	保留	[不对外] 同上只进日志；将来上界面要换掉 sid / sessionCount
-src/bridge/src/remote_history.rs:244	远端会话的活状态本机答不了（SessionMap 只认本机进程）	保留	[不对外] 同上只进日志；将来上界面要换掉 SessionMap 新词:SessionMap
-src/bridge/src/remote_history.rs:633	远端项目列表	保留	[不对外] log_unknown_reasons 的日志标签
 src/bridge/src/sftp.rs:546	远端无 backend / 无版本标记	内部词→「远端还没装后端」	[对外] Deploy 原因会拼进「已安装后端…（{reason}）」；英文 backend 与「版本标记」是内部叫法 新词:版本标记
 src/bridge/src/sftp.rs:548	版本不符（远端 {} ≠ 期望 {expected}）	保留	[对外] 部署原因：版本不符，括号给两边版本号
 src/bridge/src/sftp.rs:579	且无版本标记	内部词→「版本信息」	[对外] marker_phrase 拼接段（进部署原因）；「版本标记」是内部叫法 新词:版本标记
@@ -667,6 +662,7 @@ src/fork-launch.ts:102	是否在 tmux 里跑	保留	[对外] 分叉启动维度�
 src/fork-launch.ts:102	工作目录	保留	[对外] 分叉启动维度标签
 src/fork-launch.ts:105	{…}：跟原会话一致（据{…}）	保留	[对外] 模板句本身无病（「据」后填充物单独裁）
 src/fork-launch.ts:106	{…}：需要你选一次 —— {…}	保留	[对外] 短句＋破折号接原因，可操作
+src/history-reads.ts:283	本机后端版本旧，还答不了历史清单（重装后端之后就有）	保留	[对外] 〔C4d〕历史清单问本机常驻后端、它不认这条命令时给的那句（经 `saidOf` 进「加载失败：…」/ toast）；说清是谁、为什么、怎么好
 src/ipc/chan.ts:66	通道：{…}	保留	[不对外] 〔C4a〕`ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
 src/ipc/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] 〔C4a〕`describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
 src/ipc/chan.ts:77	对端不认这个操作	保留	[不对外] 〔C4a〕同上（`peer/unsupported` 那一档的日志句）

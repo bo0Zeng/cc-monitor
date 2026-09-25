@@ -144,15 +144,11 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // 〔改前这里 import 那十几个类型给进程内那十七条包装用，`PanoramaStatus` 用生成物；三样都随内嵌引擎退役了。〕
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { TmuxSession } from "../generated/TmuxSession";
-import type { EntryMetadata } from "../generated/EntryMetadata";
 import type { ForwardStatus } from "../generated/ForwardStatus";
-import type { HistoryProject } from "../generated/HistoryProject";
-import type { HistorySessionEntry } from "../generated/HistorySessionEntry";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { PushResult } from "../generated/PushResult";
-import type { RemoteProjectsResult } from "../generated/RemoteProjectsResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
 import type { SearchIndexStatus } from "../generated/SearchIndexStatus";
 import type { SearchResponse } from "../generated/SearchResponse";
@@ -460,18 +456,6 @@ export const commands = {
     jsonlPath: string;
     onChunk: Channel<JsonlLinePayload[]>;
   }) => invoke<number>("stream_read_session_jsonl", args),
-
-  /**
-   * 流式列某项目的会话。
-   *
-   * 🔴 **〔步 12·C〕`stream_remote_history_sessions` 已退役，两条收成这一条。**
-   * `projectDir` 两侧早已同形（`K-R97`：都是**编码目录名**，不是绝对路径）。
-   */
-  stream_history_sessions_in_project: (args: {
-    origin: Origin;
-    projectDir: string;
-    onEntry: Channel<HistorySessionEntry>;
-  }) => invoke<number>("stream_history_sessions_in_project", args),
 
   /**
    * 往远端 tmux 会话发按键。Rust 返回 `Result<(), String>` ⇒ **桶①**。
@@ -810,9 +794,6 @@ export const commands = {
   /** `~/.ssh/config` 里的 host 别名清单（不展开 Include、不解析 Match）。 */
   list_ssh_host_aliases: () => invoke<string[]>("list_ssh_host_aliases"),
 
-  /** 本机历史项目列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  list_history_projects: () => invoke<HistoryProject[]>("list_history_projects"),
-
   /**
    * 有 `.mcp.json` 的项目目录候选（`~/.claude.json` 的 `projects` 键）。
    *
@@ -822,15 +803,6 @@ export const commands = {
    */
   list_mcp_project_dirs: (args: { origin: Origin }) =>
     invoke<string[]>("list_mcp_project_dirs", args),
-
-  /**
-   * 每个 sid 最近一次用的账号（sid → 账号名）。Rust 返回 `HashMap<String, String>`
-   * **无 `Result` 包装** ⇒ `Record<string, string>`，无需生成物。
-   */
-  list_last_accounts: () => invoke<Record<string, string>>("list_last_accounts"),
-
-  /** 远端历史项目列表（含失败主机名单）。 */
-  list_remote_history_projects: () => invoke<RemoteProjectsResult>("list_remote_history_projects"),
 
   /** 批量导入 `~/.ssh/config` 的预览分组（F57）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   import_ssh_hosts: () => invoke<ImportGroup[]>("import_ssh_hosts"),
@@ -961,31 +933,6 @@ export const commands = {
 
   /** 用系统默认程序打开 monitor 的 log 文件。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_file: () => invoke<void>("open_log_file"),
-  /**
-   * 改一条会话的用户元数据（星标 / 自定义标题 / 隐藏 / 上次账号）。
-   *
-   * **`patch` 刻意不用生成物**：Rust 侧 `MetadataPatch` 的字段是 `Option<Option<String>>`
-   * （双层 Option），语义**无法忠实映射到 TS**——`#[serde(default)]`（非 double_option）下
-   * **JSON `null` 到不了 `Some(None)`**，外层直接是 `None`
-   * ⇒ **`null` 的含义是「不改」，不是「清空」**。
-   * 生成一个 `customTitle?: string | null` 会让人以为 `null` 是清空，那是**说谎的类型**。
-   *
-   * **⚠ 已登记的真 bug（BACKLOG E35，本轮刻意不修——修它是行为改动）**：
-   * `views/history.ts` 的「留空恢复默认」传的正是 `null` ⇒ 后端**什么都不做**、标题清不掉。
-   * Rust struct 注释里作者的意图是「清空走空串」，两边不一致。
-   */
-  update_history_metadata: (args: {
-    sessionId: string;
-    patch: {
-      starred?: boolean;
-      /** **注意语义**：`null` = **不改**（不是清空）。清空要传空串 `""`。见 E35。 */
-      customTitle?: string | null;
-      hidden?: boolean;
-      /** 同上：`null` = 不改。 */
-      lastAccount?: string | null;
-    };
-  }) => invoke<EntryMetadata>("update_history_metadata", args),
-
   /**
    * 写项目 `.mcp.json` 的一个 server。**桶①**。
    * `server` 是不透明 JSON（Rust 侧 `serde_json::Value`）⇒ `unknown`，与生成物一致。
