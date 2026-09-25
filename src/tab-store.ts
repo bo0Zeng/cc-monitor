@@ -65,6 +65,12 @@ export class TabStore {
    */
   inBatch = false;
   /**
+   * 〔CF2 · 第四波 4B〕此刻喂进 `onLine` 的是**取回来的历史**（按偏移 / 按行号，`TabStreamView.feedHistoryRows`），
+   * 不是实时行。远端 tab「见行就从死翻回活」（`tabs.ts::ensureTab` 的 `remote-line` 那一格）只认实时行：
+   * 在一个已结束的远端 tab 上往上翻、取回几条旧行，不许把它翻活。
+   */
+  historyFeed = false;
+  /**
    * issue #11: 每个 sid 当前 task 列表（由 ensureTab 拉初次快照 + task-update 事件
    * 更新）。切 Tab 时把对应 sid 的快照喂给全局 TasksPanel。
    */

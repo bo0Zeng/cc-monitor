@@ -285,6 +285,8 @@ export class TabStreamView {
 
   /** 切进来的 tab：物化 / 哨兵 / 骨架索引 / 大纲 / 不可滚时踢一次补批（原是 `switchTo` 中段，逐字）。 */
   activate(next: Tab): void {
+    // 〔CF2〕上次按行号往下问失败了的，切进来时允许再问一次（失败不自动重问，见 `BelowState` 头注）。
+    if (next) next.window.retryBelow();
     // Batch13-F40a:命中 virgin tab(启动重放全收纳,还没建过卡)→ 同步物化尾段,
     // 避免切过去一片空白(R-3:有界循环补到可滚,防工具密集会话一轮近空屏)。
     // 非 virgin tab 不动(上翻补批属 F40b)。
@@ -299,7 +301,8 @@ export class TabStreamView {
     // D 审计 R-2:非 virgin + 不可滚 + 账本有余的 tab 没有 fill 入口(不可滚元素
     // 不产生 scroll 事件,哨兵可见却"上翻物理不可达")——切入时踢一次,rAF 自链
     // 接管直到可滚或账尽。
-    if (next && next.window.pendingCount > 0) {
+    // 〔CF2〕账本空了但下面可能还有（`wantsBelow`）同样没有 scroll 入口 ⇒ 同一脚。
+    if (next && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
       const el = next.streamEl;
       if (el.scrollHeight - el.clientHeight <= 1) this.fillAbove(next);
     }
@@ -774,10 +777,13 @@ export class TabStreamView {
     if (payloads.length === 0) return;
     const wasBatch = this.store.inBatch;
     this.store.inBatch = true;
+    // 〔CF2〕取回来的是历史：远端 tab「见行就翻活」那一格不认它（`TabStore.historyFeed` 头注）。
+    this.store.historyFeed = true;
     tab.branchFolder.setBatchMode(true);
     try {
       for (const p of payloads) this.host.onLine(p);
     } finally {
+      this.store.historyFeed = false;
       this.store.inBatch = wasBatch;
       if (!wasBatch) {
         this.flushMidBatchBuffer(tab);
@@ -785,6 +791,52 @@ export class TabStreamView {
         tab.branchFolder.setBatchMode(false);
       }
     }
+  }
+
+  /**
+   * 〔CF2 · 第四波 4B〕**按行号往下取一批**（`调研/第四波记录/CF2.md §1.4`）：账本空了、渲染窗口最老那一条
+   * 不是第 0 行 ⇒ 问 `[floor − FILL_BATCH, floor)`（`read_session_lines`，后端 `history-lines`）。
+   *
+   * 这是**没接骨架**的 tab 的取回路（接了骨架的按字节取，`fetchMissingRows`）。monitor 的重放缓冲从此每个会话
+   * 只留尾巴（`event_replay·rs::REPLAY_TAIL_KEEP`），F5 之后更早的就从这里要回来；没被修剪过的会话问一次就到顶。
+   *
+   * 回来的行：没见过的 ⇒ `feedHistoryRows`（批语义 ＋ 不复活远端 tab，落进账本）；见过而被修剪出账本的 ⇒
+   * 直接放回账本（`restore`，旁路账早记过了）。然后照旧从账本补到屏上（`fillAbove`）。
+   * 一个 tab 同时只问一批（`fetching`）；失败不自动重问（`BelowState` 头注）。
+   */
+  private fetchBelow(tab: Tab): void {
+    const range = tab.window.belowRange(TabStreamView.FILL_BATCH);
+    if (!range || !tab.parentPath) return;
+    tab.window.markFetchingBelow();
+    this.updateSentinel(tab);
+    void commands
+      .read_session_lines({
+        origin: tab.origin,
+        jsonlPath: tab.parentPath,
+        from: range.from,
+        until: range.until,
+      })
+      .then((page) => {
+        if (this.store.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
+        const fresh = page.payloads.filter((p) => !tab.seenSeqs.has(p.seq));
+        for (const p of page.payloads) {
+          if (tab.seenSeqs.has(p.seq) && routeMetaAndBranch(p, NOOP_META) === "content") {
+            tab.window.restore(p);
+          }
+        }
+        this.feedHistoryRows(tab, fresh);
+        tab.window.markFetchedBelow(range.from);
+        this.updateSentinel(tab);
+        if (this.store.activeId === tab.sessionId && tab.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) {
+          this.fillAbove(tab);
+        }
+      })
+      .catch((e: unknown) => {
+        if (this.store.tabs.get(tab.sessionId) !== tab) return;
+        tab.window.markBelowFailed(e instanceof Error ? e.message : String(e));
+        this.updateSentinel(tab);
+        console.warn(`[tabs] 按行号取更早的消息失败 [${range.from},${range.until})：`, e);
+      });
   }
 
   /**
@@ -817,7 +869,11 @@ export class TabStreamView {
       return;
     }
     if (this.renderingFill) return;
-    if (tab.window.pendingCount === 0) return;
+    if (tab.window.pendingCount === 0) {
+      // 〔CF2〕账本空了、渲染窗口最老那一条不是第 0 行 ⇒ 按行号往下问一批（`fetchBelow`）。
+      if (tab.window.wantsBelow) this.fetchBelow(tab);
+      return;
+    }
     const sel = document.getSelection();
     if (sel && !sel.isCollapsed) return;
     const el = tab.streamEl;
@@ -840,7 +896,7 @@ export class TabStreamView {
     requestAnimationFrame(() => {
       if (this.store.activeId !== tab.sessionId) return;
       const t = this.store.tabs.get(tab.sessionId);
-      if (!t || t.window.pendingCount === 0) return;
+      if (!t || (t.window.pendingCount === 0 && !t.window.wantsBelow)) return;
       const e = t.streamEl;
       if (e.scrollTop <= TabStreamView.TOP_TRIGGER_PX || e.scrollHeight - e.clientHeight <= 1) {
         this.fillAbove(t);
@@ -901,8 +957,21 @@ export class TabStreamView {
     const content = tab.stream.contentElement;
     let el = content.querySelector(":scope > .stream-more-above") as HTMLElement | null;
     const n = tab.window.pendingCount;
+    // 〔CF2〕账本空了：下面还可能有（按行号取）⇒ 哨兵说的是「取」那一格的状态。
+    const below = tab.window.belowState;
+    const floor = tab.window.floorSeq;
+    const belowText =
+      n > 0 || floor === null || floor <= 0
+        ? null
+        : below.kind === "maybe"
+          ? "↑ 更早的消息 · 上翻加载"
+          : below.kind === "fetching"
+            ? "↑ 正在取更早的消息…"
+            : below.kind === "failed"
+              ? `↑ 更早的消息这次没取回来：${below.reason}`
+              : null;
     // 〔`设计/10` 骨架〕接上了 ⇒ 占位本身就是「上面还有」，哨兵退场
-    if (n === 0 || tab.skeleton) {
+    if ((n === 0 && belowText === null) || tab.skeleton) {
       el?.remove();
       return;
     }
@@ -911,7 +980,7 @@ export class TabStreamView {
       el.className = "stream-more-above";
       content.prepend(el);
     }
-    el.textContent = `↑ 还有 ${n} 条更早消息 · 上翻加载`;
+    el.textContent = n > 0 ? `↑ 还有 ${n} 条更早消息 · 上翻加载` : (belowText ?? "");
   }
 
   /** F40a:virgin 后台 tab 的空闲物化队列(串行;rIC 缺失时 setTimeout 兜底) */

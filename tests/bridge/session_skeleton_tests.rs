@@ -218,3 +218,91 @@ fn unreadable_range_lines_are_booked_under_the_asked_origin() {
         "远端取回的行记进了本机那一本"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔CF2 · 第四波 4B〕按行号取回（`read_session_lines` / `frame_query::session_lines`）
+//
+//  要求住址：`设计/99 §4.4`「无索引会话的重放缓冲上界（要先有不依赖索引的取回路）」· `设计/05 §3.3.4`
+//  「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界」—— 取回路的行号若与实时 seq 不在一个空间，
+//  取回的正文就落错位置；那条上界也就只剩「丢」没有「回」。
+// ════════════════════════════════════════════════════════════════════════════
+
+/// ★ L2：后端交来的可计行（`from = 1` 起那一段）⇒ payload 的 seq == 行号，不可显示与非 JSON 的照占号不出。
+/// 期望**手算**（同 `range_payloads_on_the_golden_fixture` 那一行注释：0 user · 1 permission-mode · 2 assistant ·
+/// 3 system · 4 非 JSON · 5 user）；「哪些行可计」按金标准头注手写的四种空行剔掉，不借被测的 `LineNumberer`。
+#[test]
+fn lines_by_number_land_on_their_own_seq() {
+    let text = String::from_utf8_lossy(include_bytes!("../__fixtures__/skeleton-seq-space.jsonl"));
+    let (want, count) = seq_space_golden();
+    let countable: Vec<String> = text
+        .split('\n')
+        .filter(|l| {
+            let b = l.trim_start_matches('\u{feff}');
+            !b.chars().all(|c| c.is_whitespace())
+        })
+        .map(str::to_string)
+        .collect();
+    // torn 残尾（最后一段没有 `\n`）后端不交 ⇒ 这里也不交。
+    let countable = &countable[..count as usize];
+    assert_eq!(
+        countable.len(),
+        want.len(),
+        "夹具的可计行数与金标准对不上 —— 夹具变了"
+    );
+    let page = crate::backend::control::frame_query::LinesPage {
+        from: 1,
+        lines: countable[1..].to_vec(),
+        next: count,
+        eof: true,
+    };
+    let got = lines_page(page, "/p/s.jsonl", &crate::origin::Origin::local());
+    assert_eq!(
+        got.payloads.iter().map(|p| p.seq).collect::<Vec<_>>(),
+        vec![2, 3, 5]
+    );
+    assert!(got.payloads.iter().all(|p| p.session_id == "s"));
+    assert_eq!((got.from, got.next, got.eof), (1, count, true));
+}
+
+/// ★ L2：应答对不上就报错（不落错行号）：缺键 · `from` 不是问的 · `next` 与条数不符 · 没到头却一条没交。
+/// 正控：一份自洽的应答照收。
+#[test]
+fn a_lines_answer_that_contradicts_itself_is_refused() {
+    use crate::backend::control::frame_query::parse_session_lines;
+    use serde_json::json;
+    let o = crate::origin::Origin::local();
+    let ok = json!({"from": 3, "next": 5, "eof": false, "lines": ["a", "b"]});
+    let got = parse_session_lines(&o, 3, &ok).expect("自洽的应答被拒");
+    assert_eq!(
+        (got.from, got.next, got.eof, got.lines.len()),
+        (3, 5, false, 2)
+    );
+    for (bad, why) in [
+        (json!({"from": 3, "next": 5, "eof": false}), "缺 lines"),
+        (
+            json!({"from": 4, "next": 6, "eof": false, "lines": ["a", "b"]}),
+            "from 不是问的",
+        ),
+        (
+            json!({"from": 3, "next": 6, "eof": false, "lines": ["a", "b"]}),
+            "next 与条数不符",
+        ),
+        (
+            json!({"from": 3, "next": 3, "eof": false, "lines": []}),
+            "没到头却一条没交",
+        ),
+        (
+            json!({"from": 3, "next": 5, "eof": false, "lines": ["a", 7]}),
+            "lines 里有非字符串",
+        ),
+    ] {
+        assert!(parse_session_lines(&o, 3, &bad).is_err(), "{why} 被收下了");
+    }
+    // 到头了、一条没交 ⇒ 合法（问的那一行已经在末尾之后）
+    assert!(parse_session_lines(
+        &o,
+        3,
+        &json!({"from": 3, "next": 3, "eof": true, "lines": []})
+    )
+    .is_ok());
+}

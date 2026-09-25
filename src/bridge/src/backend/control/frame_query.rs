@@ -260,6 +260,74 @@ pub(crate) async fn read_page(
     })
 }
 
+/// 〔CF2 · 第四波 4B〕`history-lines` 的一段（字段同后端 `history_query::LinesPage`）。
+pub(crate) struct LinesPage {
+    /// 第一条的行号。
+    pub from: u64,
+    /// 可计行的原文（后端只交可计行；第 k 条是第 `from + k` 行）。
+    pub lines: Vec<String>,
+    /// 下一段从这一行起（恒 `from + lines.len()`）。
+    pub next: u64,
+    /// 读过了最后一个完整行。
+    pub eof: bool,
+}
+
+/// 〔CF2 · 第四波 4B〕按**行号**取回第 `[from, upto)` 行的**一段**（`upto` 缺 ＝ 到末尾）。
+///
+/// 期限同一页 `history-read`（后端要从文件头数到 `from`，与读一页同量级）。
+/// ⚠ 应答自己对不上（`from` 不是问的那个 · `next != from + 条数` · 没到头却一条没交）⇒ 当场报错，
+/// 调用方的循环不会空转、取回的正文不会落错行号。
+pub(crate) async fn session_lines(
+    origin: &Origin,
+    path: &str,
+    from: u64,
+    upto: Option<u64>,
+) -> Result<LinesPage, String> {
+    // 形参叫 `upto`（同 [`read_page`]）：`rust_timer_registry` 的 shell 周期唤醒扫描认「until 空格」。
+    let mut args = json!({"path": path, "from": from});
+    if let Some(u) = upto {
+        args["until"] = json!(u);
+    }
+    let data = call(origin, "history-lines", args, PAGE_BUDGET).await?;
+    parse_session_lines(origin, from, &data)
+}
+
+/// [`session_lines`] 的应答解释（纯函数）。
+pub(crate) fn parse_session_lines(
+    origin: &Origin,
+    asked: u64,
+    data: &Value,
+) -> Result<LinesPage, String> {
+    let origin = origin.as_wire_str();
+    let from = data.get("from").and_then(Value::as_u64);
+    let next = data.get("next").and_then(Value::as_u64);
+    let eof = data.get("eof").and_then(Value::as_bool);
+    let lines = data.get("lines").and_then(Value::as_array);
+    let (Some(from), Some(next), Some(eof), Some(lines)) = (from, next, eof, lines) else {
+        return Err(format!(
+            "[{origin}] `history-lines` 的应答缺 `from`/`next`/`eof`/`lines` —— 两端契约对不上"
+        ));
+    };
+    let lines: Vec<String> = lines
+        .iter()
+        .map(|l| l.as_str().map(str::to_string))
+        .collect::<Option<_>>()
+        .ok_or_else(|| format!("[{origin}] `history-lines` 的 `lines` 里有不是字符串的一格"))?;
+    if from != asked || next != from + lines.len() as u64 || (!eof && lines.is_empty()) {
+        return Err(format!(
+            "[{origin}] `history-lines` 的应答自相矛盾（问第 {asked} 行起，答 from={from} next={next} \
+             条数={} eof={eof}）—— 停下，不落错行号",
+            lines.len()
+        ));
+    }
+    Ok(LinesPage {
+        from,
+        lines,
+        next,
+        eof,
+    })
+}
+
 /// 读整段区间，收成逐行（trim 过、剔空行）—— 与旧 `run_list_query` 读 `--read-session` 的出参同形。
 pub(crate) async fn read_lines(
     origin: &Origin,

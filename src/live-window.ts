@@ -41,15 +41,77 @@ function lowerBound(arr: JsonlLinePayload[], x: number): number {
   return l;
 }
 
+/**
+ * 〔CF2 · 第四波 4B〕**账本之下还有没有行**（`调研/第四波记录/CF2.md §1.4`）。
+ *
+ * seq 就是行号、从 0 起 ⇒ 渲染窗口最老那一条的 seq > 0 且账本空了 ⇒ 下面**可能**还有
+ * （被 monitor 的重放缓冲修剪掉的 · 被本账本修剪掉的 · 或只是几条不显示的记录）。
+ * 不需要谁来告诉「修剪过」：修没修剪，做法一样 —— 按行号问一次（`read_session_lines`）。
+ *
+ * - `maybe`：还没问过（或上次问回来之后还没到 0）；
+ * - `fetching`：问着；
+ * - `none`：问到了第 0 行 —— 到顶了；
+ * - `failed`：问不动（老后端不认 / 断了），带一句给人看的原因。**不自动重问**：上翻是逐 scroll 事件触发的，
+ *   失败了自动重问就是一个无界的重试环；切走再切回来（`retryBelow`）才再问一次。
+ */
+export type BelowState =
+  | { kind: "maybe" }
+  | { kind: "fetching" }
+  | { kind: "none" }
+  | { kind: "failed"; reason: string };
+
 export class TailWindow {
   /** 窗口低水位;null = virgin(该 tab 尚未渲染任何 content 记录) */
   private floor: number | null = null;
   /** 未渲染 payload;尾追加免排序,乱序块标 dirty 惰性 sort */
   private pending: JsonlLinePayload[] = [];
   private dirty = false;
+  /** 〔CF2〕账本之下还有没有（见 {@link BelowState}） */
+  private below: BelowState = { kind: "maybe" };
 
   get floorSeq(): number | null {
     return this.floor;
+  }
+
+  /** 〔CF2〕账本之下的状态（哨兵那句话按它说）。 */
+  get belowState(): BelowState {
+    return this.below;
+  }
+
+  /**
+   * 〔CF2〕该不该按行号往下问：账本空了、渲染窗口最老那一条不是第 0 行、还没问到顶、此刻没在问、上次没失败。
+   * 问的区间是 `[max(0, floor − batch), floor)`（{@link belowRange}）。
+   */
+  get wantsBelow(): boolean {
+    return (
+      this.pending.length === 0 && this.floor !== null && this.floor > 0 && this.below.kind === "maybe"
+    );
+  }
+
+  /** 〔CF2〕要问的那一段 `[from, until)`（`until` = 渲染窗口最老那一条）。没得问 ⇒ `null`。 */
+  belowRange(batch: number): { from: number; until: number } | null {
+    if (!this.wantsBelow || this.floor === null) return null;
+    return { from: Math.max(0, this.floor - Math.max(1, batch)), until: this.floor };
+  }
+
+  /** 〔CF2〕开始问。 */
+  markFetchingBelow(): void {
+    this.below = { kind: "fetching" };
+  }
+
+  /** 〔CF2〕问回来了：问的是从第 `from` 行起 ⇒ `from == 0` 就到顶了，否则还可能有。 */
+  markFetchedBelow(from: number): void {
+    this.below = from <= 0 ? { kind: "none" } : { kind: "maybe" };
+  }
+
+  /** 〔CF2〕问不动。 */
+  markBelowFailed(reason: string): void {
+    this.below = { kind: "failed", reason };
+  }
+
+  /** 〔CF2〕失败过的，允许再问一次（切走再切回来时调；其余状态原样）。 */
+  retryBelow(): void {
+    if (this.below.kind === "failed") this.below = { kind: "maybe" };
   }
 
   /** 压低水位(幂等取 min——物化/直渲只会让窗口向下扩) */
@@ -134,6 +196,17 @@ export class TailWindow {
   dispose(): void {
     this.pending = [];
     this.dirty = false;
+  }
+
+  /**
+   * 〔CF2〕把一条**见过**（`seenSeqs` 里有）而此刻不在账本里的记录放回账本 —— 按行号取回来的那一段里，
+   * 早先被修剪出账本的那些（旁路账早记过了，不能再过一遍 `onLine`）。与 {@link defer} 同一个口，
+   * 只是不许重复：已在渲染窗口里的、已在账本里的同一 seq 都不再放。
+   */
+  restore(p: JsonlLinePayload): void {
+    if (this.floor !== null && p.seq >= this.floor) return;
+    if (this.pending.some((q) => q.seq === p.seq)) return;
+    this.defer(p);
   }
 }
 
