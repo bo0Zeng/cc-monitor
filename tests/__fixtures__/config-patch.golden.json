@@ -37,6 +37,15 @@
       "after": { "accounts": { "defaultName": "a1", "modelByAccount": { "a2": "haiku" } } }
     },
     {
+      "name": "删：路上断了 ⇒ 停在断处的那一层也不许删同名的键",
+      "before": "{\"accounts\":{\"defaultName\":\"a1\"},\"defaultName\":\"顶层那个\"}",
+      "edits": [
+        { "op": "remove", "path": ["accounts", "nope", "defaultName"] },
+        { "op": "remove", "path": ["nope", "defaultName"] }
+      ],
+      "after": { "accounts": { "defaultName": "a1" }, "defaultName": "顶层那个" }
+    },
+    {
       "name": "同一批里后一条盖前一条",
       "before": "{}",
       "edits": [

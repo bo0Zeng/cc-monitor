@@ -2,7 +2,7 @@
 //!
 //! 守的要求（住址）：
 //! - `设计/30 §4`：「两者 …… 各自只写自己那个键」；`§C.3`：「**只动自己那个键** …… 不整段覆盖」。
-//! - `设计/70 §287` 红线 ④：「**读不懂的 `config.json` 不写** …… 盘上一个字节不动（不退回『当成空对象覆盖』，
+//! - `设计/70 §6.3` 红线 ④：「**读不懂的 `config.json` 不写** …… 盘上一个字节不动（不退回『当成空对象覆盖』，
 //!   那会把用户其余配置一起抹掉）」。
 //!
 //! J2（并发不丢）打真文件、真线程；J3（补丁语义）期望全是手写 JSON 字面量，不经被测代码生成。
@@ -169,7 +169,7 @@ fn an_empty_path_refuses_the_whole_batch() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// J3：`70 §287` 红线 ④ —— 读不懂 / 根不是对象 ⇒ `Unreadable`、盘上字节不变、没有临时件。
+/// J3：`70 §6.3` 红线 ④ —— 读不懂 / 根不是对象 ⇒ `Unreadable`、盘上字节不变、没有临时件。
 #[test]
 fn an_unreadable_file_is_left_alone() {
     for (tag, original) in [("bad", r#"{"a":1 "b":2}"#), ("arr", "[1,2]")] {
@@ -220,7 +220,7 @@ fn the_golden_cases_hold() {
     let cases = golden["cases"].as_array().unwrap();
     assert_eq!(
         cases.len(),
-        8,
+        9,
         "金样条数变了 —— 两边（这里与 vitest 那边）一起改"
     );
     for (i, c) in cases.iter().enumerate() {
