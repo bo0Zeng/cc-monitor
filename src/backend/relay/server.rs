@@ -49,7 +49,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 // ⚠ 上游的环境旋钮与默认值**先搬去上游选择**（`20 §4`「常量跟着职责走」），**再被条 59 整删**成
-//   每 agent 一行的表（`accounts::upstream::AGENT_UPSTREAMS`）。中转里**没有任何可以回落的默认上游**
+//   每 agent 一行的表（`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层）。中转里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（中转零处 ＋ 上游选择恰好登记那几处），不是一条散文。
 

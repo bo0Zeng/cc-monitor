@@ -227,6 +227,13 @@ mod tests {
              **零写盘**：注解只读（`history_annotations::load`）",
         ),
         (
+            "stderr_log",
+            "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件（`设计/15 §4.7 S1`）。\
+             它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
+             写的只有那两份诊断文件（当前 ＋ 旧的一份；路径由宿主交 `CCM_BACKEND_STDERR_LOG`，后端**自己的**状态，第四层登记，\
+             见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
+        (
             "remote_ask",
             "〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
              帧面 `remote-reach`。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
@@ -665,7 +672,7 @@ mod tests {
     /// | ① | **按文件**登记（不按目录，同第三层那块墓碑的理由） | 相等断言（扫到的第四层模块数 == 本表条数） |
     /// | ② | 动词**闭集**：建那一层目录 · 原子挪 · 失败时删自己的临时文件 | [`OWN_STATE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only` |
     /// | ③ | 表外写法照旧禁（覆盖写 / 截断 / 追加 / 复制 / 链接 / 改权限 / 删目录） | [`OWN_STATE_STILL_FORBIDDEN`] ＋ `.open(` 与 `O_EXCL` 配对 |
-    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被**它登记的那一扇门**引用（今天两扇：`inbound.rs` 命令注册 ·〔RK1〕`relay/listen.rs` 中转起监听） | `the_own_state_writer_is_reached_through_exactly_one_door` |
+    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被**它自己那扇门**引用（门逐写口登记，今天三扇：`inbound.rs` 命令注册 ·〔RK1〕`relay/listen.rs` 中转起监听 ·〔NT2〕`main.rs` stderr 诊断文件） | `the_own_state_writer_is_reached_through_exactly_one_door` |
     /// | ⑤ | **只写那一份文件**：文件名在全部生产代码里只有这一个家 | `control::exit_policy::tests::the_file_name_has_exactly_one_home_in_all_production_code` |
     ///
     /// ⚠ 漏判面：它判不了「挪进去的那一下落在的就是那个名字」（数据流）——
@@ -709,6 +716,13 @@ mod tests {
              临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；\
              失败删自己的临时文件。入口只有中转**绑上口之后**那一处（`relay/listen.rs::prepare`）—— 不是帧面命令",
         ),
+        (
+            "stderr_log.rs",
+            "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
+             `stderr.old.log`；路径由 monitor 起脱离那条载体时交 `CCM_BACKEND_STDERR_LOG`，目录由它建好）。只有后端写、\
+             是后端自己说的话 ⇒ 后端**自己的**状态，不是用户数据。动词：`O_EXCL` 新建当前那份 · 原子挪成旧的（盖掉上一份旧的）；\
+             不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与〔RK1〕`relay/listen.rs` 一样，是不走 `inbound.rs` 的门）",
+        ),
     ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
@@ -731,24 +745,33 @@ mod tests {
         "create(true)",
     ];
 
-    /// 第四层那扇门：后端生产树里**唯一**被允许引用写口的文件。
+    /// 第四层的门：后端生产树里被允许引用写口的文件。**每个写口恰好一扇**（[`OWN_STATE_WRITERS`] 第三列），
+    /// 本表是门的全集（用到的门 == 本表，两向）。
+    /// 〔NT2 · S1〕先前只有 `inbound.rs` 一扇、所有写口共用（〔RK1〕同波另加了 `relay/listen.rs`，两路合并时并成这一张）；stderr 诊断文件的写口在进程起来那一刻装、此后跟着 `tracing` 滚（没有命令可走）⇒
+    /// 门改成「每个写口自己的那一扇」，`inbound.rs` 那几个写口照旧只许 `inbound.rs` 碰（一格没松）。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
         (
-        "inbound.rs",
-        "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
-         〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）。\
-         前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
-    ),
+            "inbound.rs",
+            "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
+             〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）。\
+             前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
+        ),
         (
             "relay/listen.rs",
             "〔RK1〕中转起监听那一处（`prepare`，本机常驻后端进程内那一形与 `--relay` 那一形共用）：**绑上口之后、说「在听」之前** \
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
+        ),
+        (
+            "main.rs",
+            "〔NT2 · S1〕流模式起来那一刻（一次性子命令全部 `exit` 之后、选载体之前）装 stderr 诊断文件 —— \
+             那一格没有命令可走（要接的正是这个进程此后说的每一句话），宿主交了路径才装",
         ),
     ];
 
     /// 〔RM1a〕第四层每一份模块的**写口**（`模块路径`, `写口的限定名尾巴`）。**与 [`OWN_STATE_MODULES`] 一一对应**
     /// （两向相等，由 `the_own_state_writer_is_reached_through_exactly_one_door` 钉）。
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
+    /// 〔NT2〕第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
     const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
         (
             "control/exit_policy.rs",
@@ -771,6 +794,9 @@ mod tests {
         ),
         // 〔RK1〕中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/door.rs", "door::ensure_key", "relay/listen.rs"),
+        // 〔NT2 · S1〕stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
+        // 针取模块前缀：装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰。
+        ("stderr_log.rs", "stderr_log::", "main.rs"),
     ];
 
     fn is_own_state(rel: &str) -> bool {
@@ -4205,6 +4231,12 @@ mod g6_dependency_signoff {
             DEPS,
             MEASURED_CLEAN,
             "POSIX 单引号 quote 的唯一实现（纯字符串变换）；仓内 crate，现打 0 处写面",
+        ),
+        (
+            "relay-route-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "〔US1〕中转门牌：端口 · 钥匙文件相对路径两个 const ＋ 路由语法（拼 / 拆 / 段闸，纯字符串）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
             "tokio",

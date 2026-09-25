@@ -208,59 +208,75 @@ impl Remote for DialRemote {
             obj.insert("probe".into(), json!(false));
             let req = crate::dial::parse_request_value(&v)
                 .map_err(|e| format!("拨号请求认不出来：{e}"))?;
-            // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
-            let (_up_w, up_r) = tokio::io::duplex(1024);
-            let (mut down_w, down_r) = tokio::io::duplex(64 * 1024);
-            let task = tokio::spawn(async move {
+            pull_over(move |up_r, mut down_w| async move {
                 let stages = crate::dial::StageSink::new(false);
                 crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
-            });
-            let mut rd = BufReader::new(down_r);
-            let result = async {
-                let ack = capped_line(&mut rd, 64 * 1024)
-                    .await?
-                    .ok_or("拨号链路没回 ack 就断了")?;
-                let ack: Value =
-                    serde_json::from_str(&ack).map_err(|e| format!("ack 认不出来：{e}"))?;
-                if ack.get("ok").and_then(Value::as_bool) != Some(true) {
-                    return Err(format!(
-                        "连不上那台：{}",
-                        ack.get("error")
-                            .and_then(Value::as_str)
-                            .unwrap_or("（没说为什么）")
-                    ));
-                }
-                let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
-                    .await?
-                    .ok_or("那台跑完没交结果就断了")?;
-                let got: Value =
-                    serde_json::from_str(&got).map_err(|e| format!("结果认不出来：{e}"))?;
-                let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
-                if stdout.contains(HELLO_MARKER) {
-                    return Err(
-                        "那台的后端太旧，不认资产目录（一次性子命令进了流模式）".to_string()
-                    );
-                }
-                if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
-                    let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
-                    let said = serde_json::from_str::<Value>(stderr.trim())
-                        .ok()
-                        .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
-                        .unwrap_or_else(|| stderr.trim().to_string());
-                    return Err(format!("那台的后端没办成：{said}"));
-                }
-                if stdout.len() >= PULL_MAX_BYTES {
-                    return Err(format!(
-                        "那台的目录超过 {PULL_MAX_BYTES} 字节 —— 拒收，不拿截断的用"
-                    ));
-                }
-                Ok(stdout.to_string())
-            }
-            .await;
-            task.abort();
-            result
+            })
+            .await
         })
     }
+}
+
+/// 〔NT2 · A4〕一个 `spawn` 出去的任务，**句柄被丢 ⇒ 任务被收**。
+///
+/// tokio 的 `JoinHandle` 被丢是**脱钩**（任务照跑），不是收。本模块的内层任务手里攥着池里那条 SSH 连接的一格通道：
+/// 调用方帧期限到点 ⇒ monitor 补发 `cancel` ⇒ 后端打断的是**外层** future（`Run::Async` 那一档）——
+/// 句柄若只是被丢，内层那一格就**永远占着**（远端不答的那一形），`设计/15 §3.2` 第 4 条红线说的正是这个。
+pub(crate) struct AbortOnDrop(pub(crate) tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// 经一条内存链路跑一趟 capture：`serve` 拿上行读端与下行写端（生产 = `dial::uses::run`），这里读 ack 与结果那一行。
+/// **抽出来是为了判据**：「外层被丢 ⇒ 内层一起收」不需要真 SSH 就验得动（`remote_ask_tests` 喂一个永不答的 `serve`）。
+pub(crate) async fn pull_over<F, Fut>(serve: F) -> Result<String, String>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
+    let (_up_w, up_r) = tokio::io::duplex(1024);
+    let (down_w, down_r) = tokio::io::duplex(64 * 1024);
+    // 〔NT2〕随本函数（的 future）一起死：正常答完 / 出错返回 / 被 `cancel` 打断，三种收法同一个 `Drop`。
+    let _task = AbortOnDrop(tokio::spawn(serve(up_r, down_w)));
+    let mut rd = BufReader::new(down_r);
+    let ack = capped_line(&mut rd, 64 * 1024)
+        .await?
+        .ok_or("拨号链路没回 ack 就断了")?;
+    let ack: Value = serde_json::from_str(&ack).map_err(|e| format!("ack 认不出来：{e}"))?;
+    if ack.get("ok").and_then(Value::as_bool) != Some(true) {
+        return Err(format!(
+            "连不上那台：{}",
+            ack.get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("（没说为什么）")
+        ));
+    }
+    let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
+        .await?
+        .ok_or("那台跑完没交结果就断了")?;
+    let got: Value = serde_json::from_str(&got).map_err(|e| format!("结果认不出来：{e}"))?;
+    let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
+    if stdout.contains(HELLO_MARKER) {
+        return Err("那台的后端太旧，不认资产目录（一次性子命令进了流模式）".to_string());
+    }
+    if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
+        let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
+        let said = serde_json::from_str::<Value>(stderr.trim())
+            .ok()
+            .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
+            .unwrap_or_else(|| stderr.trim().to_string());
+        return Err(format!("那台的后端没办成：{said}"));
+    }
+    if stdout.len() >= PULL_MAX_BYTES {
+        return Err(format!(
+            "那台的目录超过 {PULL_MAX_BYTES} 字节 —— 拒收，不拿截断的用"
+        ));
+    }
+    Ok(stdout.to_string())
 }
 
 #[cfg(test)]

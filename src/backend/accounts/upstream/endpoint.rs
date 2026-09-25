@@ -163,7 +163,10 @@ pub(crate) fn answer_launch_with(
         .and_then(Value::as_bool)
         .ok_or(("bad_args", "缺 `allSessions`（要一个布尔）".to_string()))?;
     let account = account_arg(args)?;
-    let registered = crate::agents::default_upstreams().any(|u| u.route_id == agent);
+    // 「这一家登记了默认上游没有」与中转装表同一个出处（`Upstreams::from_env` ← 适配层那一格，NT2 · V25）：
+    //   旋钮认不出那一刻中转也起不来 ⇒ 当「没登记」（`/t/` 不注入；`/s/` 那一格不看它）。
+    let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
+        .is_some_and(|u| u.of(agent).is_some());
     Ok(
         match decide_launch(agent, &account, key, all_sessions, routed, registered) {
             Endpoint::None => json!({
