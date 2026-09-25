@@ -140,3 +140,36 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
     ).toContain("frontend_perf_log 的返回值没有 .catch");
   });
 });
+
+// 〔GP1 · 第四波〕`session-unseen`（那台机器看不见了 ⇒ 说不清）真从 `listen` 进 queue、交给 `onSessionUnseen`，
+// 且与会话流里的行**保序**（断连那一刻之前的行先落）。要求住址：`设计/30 §3.5.7a` · `调研/第四波记录/GP1.md §1`。
+// 入口脚本（`main.ts`）那一跳由 `tabs.vitest.ts`「〔GP1〕session-unseen 接线」数调用点；本条管 events.ts 这一跳。
+describe("〔GP1〕session-unseen 进 queue、交给 onSessionUnseen", () => {
+  beforeEach(() => {
+    subs.clear();
+    streamFake.reset();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("★ 先到的行先落、之后才是那一条 unseen", async () => {
+    const order: string[] = [];
+    await bindEvents({
+      onLine: (e: { seq: number }) => order.push(`line-${e.seq}`),
+      onSessionEnded: vi.fn(),
+      onSessionUnseen: (sid: string) => order.push(`unseen-${sid}`),
+      onBatchStart: vi.fn(),
+      onBatchEnd: vi.fn(),
+    } as never, STREAMS);
+    const cb = subs.get("session-unseen");
+    expect(cb, "没订 `session-unseen` —— 断连那一刻前端什么都收不到").toBeDefined();
+    streamFake.lines([line(1)]);
+    cb?.({ payload: { session_id: "s" } });
+    await vi.runAllTimersAsync();
+    expect(order).toEqual(["line-1", "unseen-s"]);
+  });
+});
