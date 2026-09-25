@@ -4827,7 +4827,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
 describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走", () => {
   let tm: TabManager;
   let disk: Record<string, unknown>;
-  /** `probe_session_record` 的桩答案：`undefined` = 抛错（问不到）。 */
+  /** 记录那一问的桩答案：`undefined` = 抛错（问不到）。〔C4c〕它经通道问 `history-record`，`withSessionReads` 译回旧叫法。 */
   let probe: { present: boolean; root: string } | undefined;
   const tabOf = (sid: string): Tab => home(tm).store.tabs.get(sid)!;
   const btn = (): HTMLElement => document.querySelector<HTMLElement>(".tab")!;
@@ -4837,7 +4837,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     localStorage.clear();
     disk = {};
     probe = { present: true, root: "/h/.claude/projects" };
-    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "save_config") {
         disk = JSON.parse(JSON.stringify((args as { value: unknown }).value));
@@ -4846,7 +4846,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
       if (cmd === "probe_session_record")
         return probe ? Promise.resolve(probe) : Promise.reject(new Error("没有控制通道"));
       return Promise.resolve(undefined);
-    });
+    }));
     tm = makeTM();
   });
 

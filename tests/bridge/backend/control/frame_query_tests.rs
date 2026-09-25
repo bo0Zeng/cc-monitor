@@ -225,11 +225,20 @@ const CHANNELED: &[(&str, &str)] = &[
 /// `(帧命令, 为什么迁、迁了之后解释住哪)`。它们不在 [`MOVED`] 里（不是 `C1` 那一族），但前端 `chan.call` 的
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
-const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[(
-    "plugins-marketplaces",
-    "`feature_face`（RM1b）那一族：后端应答就是整份 survey（成品），monitor 那条命令（`list_plugin_marketplaces`）\
-     只在核「恰一行 ＋ 严格形状」—— 核验搬到唯一的消费者 `settings/plugins-section.ts::decodeSurvey`，命令与 `plugins.rs` 删了",
-)];
+const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    (
+        "plugins-marketplaces",
+        "`feature_face`（RM1b）那一族：后端应答就是整份 survey（成品），monitor 那条命令（`list_plugin_marketplaces`）\
+         只在核「恰一行 ＋ 严格形状」—— 核验搬到唯一的消费者 `settings/plugins-section.ts::decodeSurvey`，命令与 `plugins.rs` 删了",
+    ),
+    // 〔C4c · 第四波 4B〕`C4b.md §6.6` A 组第一批：后端已是成品、monitor 只在转的那一条。
+    (
+        "history-record",
+        "`BORN_ON_FRAME`（U4b）那一条：后端应答就是成品 `{present, root}`，monitor 那条命令（`probe_session_record`）\
+         只在转、核两格 —— 核验搬到唯一的消费者 `src/session-reads.ts::decodeRecord`（缺一格仍是契约坏了，不读成「不在」），\
+         命令与发送端（`frame_query::record`）删了",
+    ),
+];
 
 /// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {
@@ -409,9 +418,11 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             !MOVED.iter().any(|(_, c)| c == op),
             "`{op}` 是 `C1` 那一族的，该登记在 `CHANNELED`"
         );
+        // 〔C4c〕生在帧面上的那几条在 `BORN_ON_FRAME` 里各有一次字面量（判据的一侧，不是发送点）。
+        let on_frame = BORN_ON_FRAME.iter().filter(|c| **c == *op).count();
         assert_eq!(
             monitor_literal_count(op),
-            0,
+            on_frame,
             "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
         );
     }
@@ -455,38 +466,5 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     assert_eq!(bad.len(), 1, "非字面量那一处没被认出来：{bad:?}");
 }
 
-/// 〔U4b · 第四波 · G1〕`history-record` 的应答解释：两个字段齐 ⇒ 原样；缺一个 ⇒ `Err`（**绝不**读成「不在」）。
-#[test]
-fn a_record_reply_missing_a_field_is_an_error_not_absent() {
-    use serde_json::json;
-    assert_eq!(
-        parse_record(
-            &Origin("h".into()),
-            &json!({"present": false, "root": "/r/projects"})
-        )
-        .unwrap(),
-        RecordProbe {
-            present: false,
-            root: "/r/projects".into()
-        }
-    );
-    assert_eq!(
-        parse_record(
-            &Origin("h".into()),
-            &json!({"present": true, "root": "/r/projects"})
-        )
-        .unwrap()
-        .present,
-        true
-    );
-    for bad in [
-        json!({"root": "/r"}),
-        json!({"present": false}),
-        json!({"present": "no", "root": "/r"}),
-    ] {
-        assert!(
-            parse_record(&Origin("h".into()), &bad).is_err(),
-            "{bad} 不许被读成一个答案"
-        );
-    }
-}
+// 〔C4c · 第四波 4B〕`history-record` 应答解释那条判据（`parse_record`〔散文墓碑〕）随发送端删了；同一条口径
+//   「缺一格是契约坏了，**绝不**读成『不在』」搬到 TS 那一侧 `session-reads.ts::decodeRecord`（`tests/session-reads.vitest.ts`）。

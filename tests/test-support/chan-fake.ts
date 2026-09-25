@@ -52,12 +52,14 @@ export function chanArgsJson(args: ChanCallArgs): unknown {
 //   （跨语言金样 `tests/__fixtures__/session-reads.golden.json` 钉着两侧）。
 
 /** 三问各自的名字（判据里的叫法 = 旧命令名，只为让断言读起来是「哪一问」）。 */
-export type SessionRead = "read_session_index" | "list_user_inputs" | "find_in_session";
+export type SessionRead = "read_session_index" | "list_user_inputs" | "find_in_session" | "probe_session_record";
 
 const READ_OPS: Record<string, SessionRead> = {
   "history-index": "read_session_index",
   "history-user-inputs": "list_user_inputs",
   "history-find": "find_in_session",
+  // 〔C4c · 第四波 4B〕第四问：resume 之前问记录还在不在（旧命令 `probe_session_record`）。
+  "history-record": "probe_session_record",
 };
 
 /** 一发 `chan_call` 若是这三问之一 ⇒ `[哪一问, 那一问的参数（旧形参的形状）]`；否则 `null`。 */
@@ -75,6 +77,8 @@ export function sessionReadOf(cmd: string, args: unknown): [SessionRead, Record<
       return [which, { origin, jsonlPath: body.path, fromOffset: body.from }];
     case "find_in_session":
       return [which, { origin, jsonlPath: body.path, query: body.query, includeTools: body.include_tools }];
+    case "probe_session_record":
+      return [which, { origin, sessionId: body.sid }];
   }
 }
 
@@ -103,6 +107,8 @@ export function refusedReply(code: string, message: string): { err: string; body
 export async function sessionReadReply(which: SessionRead, res: unknown): Promise<ArrayBuffer | undefined> {
   const r = (await res) as Record<string, unknown> | undefined;
   if (r === undefined) return undefined;
+  // 〔C4c〕记录那一问的旧回包本来就是成品的形状（`{present, root}`，没有 `available` 那一格）。
+  if (which === "probe_session_record") return chanReply({ present: r.present, root: r.root });
   if (r.available === false) {
     const reason = String(r.reason ?? "");
     if (r.failure === "oldBackend") throw UNSUPPORTED;
@@ -116,6 +122,7 @@ export async function sessionReadReply(which: SessionRead, res: unknown): Promis
     case "find_in_session":
       return chanReply({ total: r.total, hits: r.hits });
   }
+  return undefined;
 }
 
 /**
