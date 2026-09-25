@@ -98,7 +98,7 @@ function renderEnvOps(ops: EnvOp[]): string {
       // 而收窄版 tsc **0 错**且把它静默渲染成嵌套 env 的 unset。
       // 那与 R04 自己的立意（把注释纪律变成类型上做不到）正好相反，故显式补回穷尽性。
       return ((_exhaustive: never): never => {
-        throw new Error(`未处理的 EnvOp: ${JSON.stringify(_exhaustive)}`);
+        throw new Error(`bug: unhandled EnvOp: ${JSON.stringify(_exhaustive)}`); // 〔CP2b〕程序员错误，刻意英文
       })(op);
     })
     .join("");
@@ -148,7 +148,7 @@ function tmuxTarget(container: Extract<LaunchContainer, { kind: "tmux" }>): Tmux
 
 export function renderFallback(plan: LaunchPlan): string {
   if (plan.action.kind === "attach") {
-    if (plan.container.kind !== "tmux") throw new Error("attach 必须是 tmux 容器");
+    if (plan.container.kind !== "tmux") throw new Error("bug: attach needs a tmux container");
     return SESSION_BACKEND.attach(tmuxTarget(plan.container));
   }
 
@@ -175,6 +175,6 @@ export function renderFallback(plan: LaunchPlan): string {
     case "send-into":
       return SESSION_BACKEND.runInExistingAttach({ target, quotedPayload: posixQuote(payload) });
     case "attach-only":
-      throw new Error("不可达：attach-only 应由 action.kind==='attach' 分支处理");
+      throw new Error("unreachable: attach-only is handled by the action.kind === 'attach' branch");
   }
 }

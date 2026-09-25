@@ -33,6 +33,7 @@
  *   自己的宽容读法在管，本条一个字都不说。
  */
 import { loadConfig, unknownConfigKeys, unknownKeysIn } from "../config";
+import { copyText } from "../copy-table";
 
 /**
  * 提示条上那句话。**纯函数**，好让判据直接打在这里（而不是只能隔着 DOM 猜）。
@@ -46,8 +47,7 @@ import { loadConfig, unknownConfigKeys, unknownKeysIn } from "../config";
 export function unknownKeysMessage(keys: readonly string[]): string | null {
   if (keys.length === 0) return null;
   return (
-    `配置文件 config.json 里有 ${keys.length} 个设置项认不出来：${keys.join("、")}。` +
-    `它们不起作用（拼错了，或者是已经取消掉的旧名字）；改对或删掉它们，这条提示才会消失。`
+    copyText("unknownKeysNotice.unknownKeysMessage.message", { keysCount: keys.length, keys: keys.join(copyText("unknownKeysNotice.unknownKeysMessage.listSep")) })
   );
 }
 

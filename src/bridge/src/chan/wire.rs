@@ -41,6 +41,7 @@
 //! - **不买 `HopId.tag` 的开放集合**：线上只认 `open | auth | write | read | wait` 这五个
 //!   （`§3.3.0` 逐字），认不出的标签当作协议坏了，不当作新标签收下。
 
+use crate::copy_table::copy_text;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -220,13 +221,26 @@ impl From<OursFault> for CallError {
 impl std::fmt::Display for CallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CallError::Hop { at, reach, why } => write!(
-                f,
-                "第 {} 跳卡在 `{}`：{why:?}（发出去了没有：{reach:?}）",
-                at.idx, at.tag
-            ),
-            CallError::Peer { why } => write!(f, "对端答「不行」：{why:?}"),
-            CallError::Ours { why } => write!(f, "本侧：{why:?}"),
+            // 〔CP2b〕照 CP1 台账改：不再把「第 N 跳」与枚举名（{:?}）原样上屏，每一格给一句人话；
+            // 跳号与标签留给日志（调用方要细节时自己拿 `at` / `reach`）。
+            CallError::Hop {
+                why,
+                reach: _,
+                at: _,
+            } => f.write_str(&match why {
+                HopFault::Unreachable => copy_text("rsChanWire.hop.unreachable", &[]),
+                HopFault::Dropped => copy_text("rsChanWire.hop.dropped", &[]),
+                HopFault::Overrun => copy_text("rsChanWire.hop.overrun", &[]),
+            }),
+            CallError::Peer { why } => f.write_str(&match why {
+                PeerFault::Unsupported => copy_text("rsChanWire.peer.unsupported", &[]),
+                PeerFault::Refused { .. } => copy_text("rsChanWire.peer.refused", &[]),
+            }),
+            CallError::Ours { why } => f.write_str(&match why {
+                OursFault::Cancelled => copy_text("rsChanWire.ours.cancelled", &[]),
+                OursFault::Misuse => copy_text("rsChanWire.ours.misuse", &[]),
+                OursFault::Broken => copy_text("rsChanWire.ours.broken", &[]),
+            }),
         }
     }
 }
@@ -529,7 +543,10 @@ async fn read_segment<R: AsyncRead + Unpin>(
     }
     let n = u32::from_be_bytes(len) as usize;
     if n > cap {
-        return Err(ReadFault::Bad(format!("一段声称 {n} 字节，超过上限 {cap}")));
+        return Err(ReadFault::Bad(copy_text(
+            "rsChanWire.segment.tooLong",
+            &[("n", &n.to_string()), ("cap", &cap.to_string())],
+        )));
     }
     let mut buf = vec![0u8; n];
     r.read_exact(&mut buf).await.map_err(ReadFault::Io)?;
@@ -543,8 +560,12 @@ pub(crate) async fn read_frame<R: AsyncRead + Unpin>(
 ) -> Result<(Head, Vec<u8>), ReadFault> {
     let head = read_segment(r, cap, true).await?;
     let body = read_segment(r, cap, false).await?;
-    let head: Head =
-        serde_json::from_slice(&head).map_err(|e| ReadFault::Bad(format!("帧头解不出来：{e}")))?;
+    let head: Head = serde_json::from_slice(&head).map_err(|e| {
+        ReadFault::Bad(copy_text(
+            "rsChanWire.frame.badHead",
+            &[("e", &e.to_string())],
+        ))
+    })?;
     Ok((head, body))
 }
 
@@ -556,8 +577,12 @@ pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(
 ) -> std::io::Result<()> {
     let h = serde_json::to_vec(head).map_err(std::io::Error::other)?;
     let too_long = |n: usize| {
-        u32::try_from(n)
-            .map_err(|_| std::io::Error::other(format!("一段 {n} 字节，超出帧长度字段的表示范围")))
+        u32::try_from(n).map_err(|_| {
+            std::io::Error::other(copy_text(
+                "rsChanWire.frame.tooLong",
+                &[("n", &n.to_string())],
+            ))
+        })
     };
     let mut out = Vec::with_capacity(8 + h.len() + body.len());
     out.extend_from_slice(&too_long(h.len())?.to_be_bytes());

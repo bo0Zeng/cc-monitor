@@ -23,6 +23,7 @@
 //!
 //! 全程只读，一个字节都不写；`.gcs-sha` 不解释、不校验（那是上游下载器的账本）。
 
+use copy_core::copy_text;
 use serde::Serialize;
 use std::path::Path;
 
@@ -72,29 +73,50 @@ fn read_capped(path: &Path, cap: u64) -> Result<Option<String>, String> {
     let meta = match std::fs::metadata(path) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("读不到 `{}`：{e}", path.display())),
+        Err(e) => {
+            return Err(copy_text(
+                "bePluginsQuery.readCapped.unreadable",
+                &[
+                    ("path", &(path.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ))
+        }
     };
     if meta.len() > cap {
-        return Err(format!(
-            "`{}` 有 {} 字节，超过上限 {cap} ⇒ 不读",
-            path.display(),
-            meta.len()
+        return Err(copy_text(
+            "bePluginsQuery.readCapped.tooBig",
+            &[
+                ("path", &(path.display()).to_string()),
+                ("size", &(meta.len()).to_string()),
+                ("cap", &cap.to_string()),
+            ],
         ));
     }
     match std::fs::read_to_string(path) {
         Ok(s) => Ok(Some(s)),
-        Err(e) => Err(format!("读不到 `{}`：{e}", path.display())),
+        Err(e) => Err(copy_text(
+            "bePluginsQuery.readCapped.unreadable",
+            &[
+                ("path", &(path.display()).to_string()),
+                ("e", &e.to_string()),
+            ],
+        )),
     }
 }
 
 /// 解析 `known_marketplaces.json`。形状：`{ "<id>": { source:{source,repo}, installLocation, lastUpdated } }`。
 /// ⚠ 解析失败**回 `Err`**，不回空表 —— 见模块头注那张三出口表。
 fn parse_known_marketplaces(raw: &str) -> Result<Vec<MarketplaceEntry>, String> {
-    let v: serde_json::Value = serde_json::from_str(raw)
-        .map_err(|e| format!("`known_marketplaces.json` 解析失败：{e}"))?;
+    let v: serde_json::Value = serde_json::from_str(raw).map_err(|e| {
+        copy_text(
+            "bePluginsQuery.parseKnownMarketplaces.unparsable",
+            &[("e", &e.to_string())],
+        )
+    })?;
     let obj = v
         .as_object()
-        .ok_or_else(|| "`known_marketplaces.json` 的顶层不是一个对象".to_string())?;
+        .ok_or_else(|| copy_text("bePluginsQuery.parseKnownMarketplaces.notObject", &[]))?;
     let mut out: Vec<MarketplaceEntry> = obj
         .iter()
         .map(|(id, val)| MarketplaceEntry {
@@ -137,14 +159,22 @@ fn describe_source(v: Option<&serde_json::Value>) -> Option<String> {
 /// ⚠ 数的是**声明**，不是安装：**不看** `plugins/` 那个目录里有几个文件夹（那是下载快照的内容）。
 fn count_declared_plugins(install_location: &Path, cap: u64) -> Result<u32, String> {
     let manifest = crate::agents::claudecode::paths::marketplace_manifest(install_location);
-    let raw = read_capped(&manifest, cap)?
-        .ok_or_else(|| format!("落点里没有 `{}`", manifest.display()))?;
-    let v: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|e| format!("manifest 解析失败：{e}"))?;
+    let raw = read_capped(&manifest, cap)?.ok_or_else(|| {
+        copy_text(
+            "bePluginsQuery.countDeclaredPlugins.noManifest",
+            &[("manifest", &(manifest.display()).to_string())],
+        )
+    })?;
+    let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
+        copy_text(
+            "bePluginsQuery.countDeclaredPlugins.unparsable",
+            &[("e", &e.to_string())],
+        )
+    })?;
     let arr = v
         .get("plugins")
         .and_then(|x| x.as_array())
-        .ok_or_else(|| "manifest 里没有 `plugins` 数组".to_string())?;
+        .ok_or_else(|| copy_text("bePluginsQuery.countDeclaredPlugins.noPlugins", &[]))?;
     Ok(arr.len() as u32)
 }
 
@@ -171,8 +201,9 @@ pub(crate) fn survey_marketplaces_in(home: &Path) -> Result<MarketplaceSurvey, S
                 Err(why) => e.declared_error = Some(why),
             },
             None => {
-                e.declared_error =
-                    Some("`known_marketplaces.json` 里没记 `installLocation` ⇒ 无从去数".into())
+                e.declared_error = Some(
+                    copy_text("bePluginsQuery.surveyMarketplacesIn.noInstallLocation", &[]).into(),
+                )
             }
         }
     }

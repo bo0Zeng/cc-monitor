@@ -32,6 +32,7 @@
 //! - 两个后端**进程**同时写（常驻那一个 ＋ 一次性 CLI `--history-annotate`）：进程内那把锁挡不住，后写的整份盖掉先写的那一次改动。
 //! - Windows 上「原子挪过去」是 `std::fs::rename`（覆盖既有文件）；monitor 从前用 `ReplaceFileW`。没在真 Windows 上跑过。
 
+use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -107,13 +108,28 @@ fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, String> {
     }
     crate::common::fs::read_regular_capped(path, MAX_BYTES)
         .map(Some)
-        .map_err(|e| format!("读不动注解文件 {}：{e}", path.display()))
+        .map_err(|e| {
+            copy_text(
+                "beHistoryAnnotations.readRaw.unreadable",
+                &[
+                    ("path", &(path.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
+            )
+        })
 }
 
 /// 严格读（与 monitor 从前那份 `serde_json::from_str::<HistoryMetadata>` 同一个口径）。
 fn parse(bytes: &[u8], path: &Path) -> Result<Doc, String> {
-    serde_json::from_slice::<Doc>(bytes)
-        .map_err(|e| format!("注解文件 {} 读不懂（没有覆盖它）：{e}", path.display()))
+    serde_json::from_slice::<Doc>(bytes).map_err(|e| {
+        copy_text(
+            "beHistoryAnnotations.parse.unparsable",
+            &[
+                ("path", &(path.display()).to_string()),
+                ("e", &e.to_string()),
+            ],
+        )
+    })
 }
 
 /// 读一份（给 join 那一层）。
@@ -158,12 +174,17 @@ struct Patch {
 const ALIASES: [&str; 3] = ["custom_title", "updated_at", "last_account"];
 
 fn sid_arg(args: &Value) -> Result<&str, (&'static str, String)> {
-    let sid = args
-        .get("sid")
-        .and_then(Value::as_str)
-        .ok_or(("bad_args", "缺 `sid`（要一个字符串）".to_string()))?;
+    let sid = args.get("sid").and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `sid` (a string)"),
+    ))?;
     if sid.is_empty() || sid.len() > 256 || sid.chars().any(char::is_control) {
-        return Err(("bad_args", format!("`sid` 不像一个会话 id：{sid:?}")));
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "`sid` does not look like a session id: {sid:?}"
+            )),
+        ));
     }
     Ok(sid)
 }
@@ -186,7 +207,10 @@ fn read_for_write(path: &Path) -> Result<(Doc, Value), (&'static str, String)> {
             if !raw.is_object() {
                 return Err((
                     "annotations_unreadable",
-                    format!("注解文件 {} 顶层不是对象（没有覆盖它）", path.display()),
+                    copy_text(
+                        "beHistoryAnnotations.readForWrite.notObject",
+                        &[("path", &(path.display()).to_string())],
+                    ),
                 ));
             }
             Ok((doc, raw))
@@ -230,15 +254,23 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
 /// 序列化口径同 monitor 从前那份（`to_string_pretty`）。
 fn write_at(path: &Path, raw: &Value) -> Result<(), String> {
     use std::io::Write as _;
-    let dir = path
-        .parent()
-        .ok_or_else(|| format!("{} 没有父目录", path.display()))?;
+    let dir = path.parent().ok_or_else(|| {
+        copy_text(
+            "beHistoryAnnotations.writeAt.noParent",
+            &[("path", &(path.display()).to_string())],
+        )
+    })?;
     if let Err(e) = std::fs::create_dir(dir) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(format!("建 {} 失败：{e}", dir.display()));
+            return Err(copy_text(
+                "beHistoryAnnotations.writeAt.mkdirFailed",
+                &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+            ));
         }
     }
-    let body = serde_json::to_string_pretty(raw).map_err(|e| format!("注解序列化失败：{e}"))?;
+    let body = serde_json::to_string_pretty(raw).map_err(|e| {
+        crate::common::contract::malformed(&format!("serializing the annotations failed: {e}"))
+    })?;
     let name = path
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
@@ -249,13 +281,31 @@ fn write_at(path: &Path, raw: &Value) -> Result<(), String> {
             .write(true)
             .create_new(true)
             .open(&tmp)
-            .map_err(|e| format!("建临时文件 {} 失败：{e}", tmp.display()))?;
+            .map_err(|e| {
+                copy_text(
+                    "beHistoryAnnotations.writeAt.tmpCreateFailed",
+                    &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
+                )
+            })?;
         f.write_all(body.as_bytes())
             .and_then(|()| f.sync_all())
-            .map_err(|e| format!("写临时文件 {} 失败：{e}", tmp.display()))?;
+            .map_err(|e| {
+                copy_text(
+                    "beHistoryAnnotations.writeAt.tmpWriteFailed",
+                    &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
+                )
+            })?;
         drop(f);
-        std::fs::rename(&tmp, path)
-            .map_err(|e| format!("把 {} 挪到 {} 失败：{e}", tmp.display(), path.display()))
+        std::fs::rename(&tmp, path).map_err(|e| {
+            copy_text(
+                "beHistoryAnnotations.writeAt.renameFailed",
+                &[
+                    ("tmp", &(tmp.display()).to_string()),
+                    ("path", &(path.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
+            )
+        })
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
@@ -266,7 +316,7 @@ fn write_at(path: &Path, raw: &Value) -> Result<(), String> {
 fn need_path() -> Result<PathBuf, (&'static str, String)> {
     path().ok_or((
         "no_annotations",
-        format!("这个后端不是被界面起的那一个（没有交 `{ENV_PATH}`），不知道注解文件在哪 —— 不猜一个路径去写"),
+        copy_text("beHistoryAnnotations.needPath.unknown", &[]),
     ))
 }
 
@@ -283,9 +333,18 @@ pub fn answer_annotate_at(
 ) -> Result<Value, (&'static str, String)> {
     let sid = sid_arg(args)?;
     let patch: Patch = match args.get("patch") {
-        Some(p @ Value::Object(_)) => serde_json::from_value(p.clone())
-            .map_err(|e| ("bad_args", format!("`patch` 认不出来：{e}")))?,
-        _ => return Err(("bad_args", "缺 `patch`（要一个对象）".to_string())),
+        Some(p @ Value::Object(_)) => serde_json::from_value(p.clone()).map_err(|e| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(&format!("`patch` unreadable: {e}")),
+            )
+        })?,
+        _ => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed("missing `patch` (an object)"),
+            ))
+        }
     };
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let (doc, mut raw) = read_for_write(path)?;
@@ -336,7 +395,7 @@ pub fn last_accounts_of(loaded: Loaded) -> Result<Value, (&'static str, String)>
     match loaded {
         Loaded::NoPath => Err((
             "no_annotations",
-            format!("这个后端不是被界面起的那一个（没有交 `{ENV_PATH}`），不知道注解文件在哪"),
+            copy_text("beHistoryAnnotations.lastAccountsOf.unknown", &[]),
         )),
         Loaded::Unreadable(why) => Err(("annotations_unreadable", why)),
         Loaded::Read(t) => {

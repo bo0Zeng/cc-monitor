@@ -165,88 +165,6 @@ fn path_traversal_cannot_be_smuggled_through_a_segment() {
     );
 }
 
-/// ★★★ `K-H2b` `KH2B4`：**注入侧真的拼出来的那一形，正是本解析器认的那一形。**
-///
-/// # 这一条为什么必须存在（`LEDGER.md#KL7` 第 1 条）
-///
-/// 注入侧拼错一段的症状**不是**「拼错了」，是「一个查不出来的 404」——
-/// 因为老三段形状**不会被本解析器拒掉**（隔壁那条判据实测过：它被重读成另一条四段路由、
-/// 解析成功），挡它的是**表里查不到**，而那在另一个文件里。
-/// ⇒ 两端各写各的，就会各自答错同一个问题，而症状指不向原因。
-///
-/// # ★ 它是**跨半边对拍**，不是「再抄一遍」
-///
-/// 样例**不是**手抄的常量，是**从 monitor 的源码里抠出来的**
-/// （`include_str!` 那份 `payload.rs`，取 `RELAY_ROUTE_SAMPLE` 那一行的字面量）。
-/// 两侧因此被焊成一条链：
-///
-/// | 环 | 谁钉的 |
-/// |---|---|
-/// | 构造口的产物 == `RELAY_ROUTE_SAMPLE` | monitor 侧 `the_relay_route_sample_is_what_the_builder_really_produces` |
-/// | `RELAY_ROUTE_SAMPLE` 落进本解析器的哪几段 | **本条** |
-///
-/// ⇒ monitor 那边改了段序或前缀 ⇒ 抠出来的样例跟着变 ⇒ **本条的槽位断言当场红**；
-/// 本解析器改了切法 ⇒ 同一条样例切出别的段 ⇒ **也是本条红**。
-/// 「两半漂开而两边都不红」这一形，从这一刀起不成立。
-///
-/// ⚠ 这条**跨半边编译期边已登记**在 `src/bridge/src/cross_half_edge_registry.rs`
-/// （那张表默认拒绝：不登记就红），并且它**只长在判据里** ——
-/// `no_cross_half_edge_lives_in_production_code` 钉着「一条都不许长到生产段」。
-#[test]
-fn the_shape_the_injection_side_builds_lands_in_the_slots_this_parser_expects() {
-    // ★ 跨半边：读 monitor 那一侧的**源码**，把它的样例常量抠出来。
-    const MONITOR_PAYLOAD_RS: &str =
-        include_str!("../../../src/bridge/src/backend/control/payload.rs");
-    let key = "pub const RELAY_ROUTE_SAMPLE: &str = \"";
-    let at = MONITOR_PAYLOAD_RS.find(key).expect(
-        "monitor 侧找不到 `RELAY_ROUTE_SAMPLE` —— 抽取器坏了或那个常量被改名了，\n\
-             本条会在一个空串上自问自答（抽取器自检就是为了不让它悄悄变成那样）",
-    );
-    let rest = &MONITOR_PAYLOAD_RS[at + key.len()..];
-    let sample = &rest[..rest.find('"').expect("那个字面量没收尾")];
-    // 抽取器自检：抠出来的必须像一条路由键，不是空串、不是半截。
-    assert!(
-        sample.starts_with("/s/") && sample.len() > 10,
-        "从 monitor 抠出来的样例不像路由键：{sample:?}"
-    );
-
-    // 注入侧给的是 base URL（不带真路径），agent 自己往后接 `/v1/messages`。
-    let target = format!("{sample}/v1/messages");
-    let r = parse(&target).unwrap_or_else(|| {
-        panic!(
-            "monitor 侧真的拼出来的那一形，本解析器解析不了：{target:?}\n\
-                 ⇒ 两半的路由键形状漂开了。注入侧拼错一段在生产上只表现成\n\
-                 「一个查不出来的 404」，指不向原因 —— 所以要在这里当场红。"
-        )
-    });
-    // 期望值全是**手写字面量**（不是拿被测函数算的，否则自证恒绿）。
-    // ⚠ 它们同时是「monitor 那边不许偷偷换段序」的那道闸：换了，下面三条里必有一条红。
-    assert_eq!(
-        r.key.seg1, "claude-code",
-        "第 2 段不是 agent 了 —— 两半漂开"
-    );
-    assert_eq!(r.key.seg2, "acct-a", "账号段没落在第 3 段 —— 表就查错行了");
-    assert_eq!(
-        r.stream, "k-0123456789abcdef",
-        "第 4 段不是 key 了 —— 两半漂开"
-    );
-    assert_eq!(r.rest, "/v1/messages", "真路径没被原样透传");
-
-    // ★ 同一条样例，把**账号段**换掉 ⇒ 切出来的 account 必须跟着变（它是自己一维）。
-    let other = parse("/s/claude-code/acct-b/k-0123456789abcdef/v1/messages").expect("另一行");
-    assert_ne!(r.key.seg2, other.key.seg2);
-    assert_eq!(other.key.seg2, "acct-b");
-    // ★ 段序对调（`<account>` 与 `<key>` 换位）**照样解析得了** ——
-    //   这正是「拼错一段只表现成 404」的机制，本断言把它钉成明文。
-    let swapped =
-        parse("/s/claude-code/k-0123456789abcdef/acct-a/v1/messages").expect("对调也解析得了");
-    assert_eq!(
-        swapped.key.seg2, "k-0123456789abcdef",
-        "对调之后被当成账号的是那个 key —— 解析器拦不住它，只有表能"
-    );
-    assert_ne!(swapped.key.seg2, r.key.seg2);
-}
-
 /// ★ **同一条性质只许有一个实现**：装路由表时判「这个账号 id 当得了路由段吗」
 /// 走的必须是本模块这个 [`segment_is_safe`]，不是另写一份。
 ///
@@ -284,102 +202,30 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
     );
 }
 
-/// ★★★ **跨半边对拍**：「凭据文件那些行属于哪一家」在后端（上游选择的
-/// `accounts::upstream::CREDENTIALS_FILE_AGENT`）与 monitor（起会话时判「要不要改写 apikey 端点」那一格，
-/// `payload.rs::APIKEY_TABLE_AGENT`）**是同一个值**〔条 49〕。
+/// ★★★ 〔US1 · 4D〕**上游选择拼给起会话那一发的 `/t/` 地址**（`accounts::upstream::endpoint::answer_launch_with`，
+/// 路由语法住共享 crate `relay_route_core`）本解析器读成**直通模式**、四段各落各位；再交给**生产段那张决策表**
+/// （`accounts::upstream::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 502。
 ///
-/// 两侧**异源**：本侧是后端那个常量，那一侧是 `payload.rs` 源码里那一行的**字面量**
-/// （`include_str!` 现抠，不是 `use`）。漂开的症状：monitor 给 A 家注入 `/s/A/…`，
-/// 而后端把那些行挂在 B 家名下 ⇒ **每一发 404**。
-///
-/// # ⚠ 它为什么住在**中转**的判据文件里（照实写）
-///
-/// 它钉的是上游选择的一个事实，本该住 `table_tests.rs`。挪过来只为一件事：
-/// **跨半边的编译期边**有一张默认拒绝的登记表（`src/bridge/src/cross_half_edge_registry.rs`），
-/// 而 `route_tests.rs → payload.rs` 这条边**已经登记着**（上面那条对拍用的就是它）。
-/// 在 `table_tests.rs` 里再开一条 = 新登记一条边，而那张表不在本拍的写区。
-/// ⇒ 复用这一条，**边的集合一格不变**。它只读上游选择那一个常量，中转的生产段不因此多认识上游选择一个字
-/// （`upstream_selection_guard` 只扫生产段，判据段不在它的人群里）。
-///
-/// ⚠ 买不到：monitor 那一侧**真的拿它去判了**。那一格由 monitor 自己的判据量
-/// （`payload_tests::another_agent_with_the_same_account_id_is_not_routed_to_that_row`）。
+/// ⇒ 「注入的那一形，中转真的会照直通处理」这一截从成品到决策表一路是真的。先前这里是三条跨半边对拍
+/// （monitor `payload.rs` 的两份样例 · `APIKEY_TABLE_AGENT` · `AGENTS_WITH_DEFAULT_UPSTREAM`〔散文墓碑〕 现抠字面量），
+/// 拼的那一侧搬进后端、语法进共享 crate 之后，两半之间没有第二份可对拍了（`cross_half_edge_registry` 那条边随之出列）。
+/// 买不到的那一截（claude 拿到这个变量之后怎么走）同今天（`C7`）。
 #[test]
-fn the_credentials_file_agent_is_the_same_on_both_halves() {
-    const MONITOR_PAYLOAD_RS: &str =
-        include_str!("../../../src/bridge/src/backend/control/payload.rs");
-    let needle = "pub const APIKEY_TABLE_AGENT: &str = \"";
-    let at = guard_core::find_pinned(MONITOR_PAYLOAD_RS, needle).unwrap_or_else(|e| {
-        panic!("在 monitor 侧 `payload.rs` 里钉不住 `APIKEY_TABLE_AGENT` 那一行：{e}")
-    });
-    let tail = &MONITOR_PAYLOAD_RS[at + needle.len()..];
-    let theirs = &tail[..tail.find('"').expect("那个字面量没有收尾的引号")];
-    assert!(!theirs.is_empty(), "抠出来的是空串 —— 抽取器坏了");
-    let ours = crate::accounts::upstream::CREDENTIALS_FILE_AGENT;
-    assert_eq!(
-        theirs, ours,
-        "monitor 认为凭据文件的行属于 `{theirs}`，后端把它们挂在 `{ours}` 名下"
-    );
-}
-
-/// monitor 侧 `payload.rs` 的源码（跨半边对拍用；这条边已在 `cross_half_edge_registry` 登记，见上一条头注）。
-const MONITOR_PAYLOAD_SRC: &str =
-    include_str!("../../../src/bridge/src/backend/control/payload.rs");
-
-/// ★★★ 🔴 **跨半边对拍**〔`设计/20 §7` 步 4 · 条 59〕：monitor 注入闸认为「登记了默认上游」的那几家
-/// （`payload.rs::AGENTS_WITH_DEFAULT_UPSTREAM`）⇔ 后端 `accounts::upstream::AGENT_UPSTREAMS` 的 agent 列，**两向集合相等**。
-///
-/// 两侧**异源**：本侧是后端运行期那张表，那一侧是 monitor 源码里那一行的**字面量**（现抠，不是 `use`）。
-/// 漂开的两个方向各有各的症状：
-/// - monitor 多一家（比如有人把 codex 加进注入闸而后端没登记）⇒ 那一家注入 `/t/` ⇒ **每一发 502**；
-/// - 后端多一家而 monitor 没跟 ⇒ 那一家永远不注入（「有它更好」白白丢了，不坏事，但与后端说的不一致）。
-#[test]
-fn the_agents_with_a_default_upstream_are_the_same_on_both_halves() {
-    let needle = "pub const AGENTS_WITH_DEFAULT_UPSTREAM: &[&str] = &[";
-    let at = guard_core::find_pinned(MONITOR_PAYLOAD_SRC, needle).unwrap_or_else(|e| {
-        panic!("在 monitor 侧 `payload.rs` 里钉不住 `AGENTS_WITH_DEFAULT_UPSTREAM` 那一行：{e}")
-    });
-    let tail = &MONITOR_PAYLOAD_SRC[at + needle.len()..];
-    let list = &tail[..tail.find(']').expect("那个数组没有收尾的 `]`")];
-    let theirs: std::collections::BTreeSet<String> = list
-        .split(',')
-        .map(|s| s.trim().trim_matches('"').to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    // 抽取器自检：抠出来的每一项都得像一个 agent 名（不是半截、不是空）。
-    assert!(!theirs.is_empty(), "抠出来是空集 —— 抽取器坏了");
-    for a in &theirs {
-        assert!(
-            segment_is_safe(a),
-            "抠出来的 {a:?} 不像一个路由段 —— 抽取器坏了"
-        );
-    }
-    let ours: std::collections::BTreeSet<String> = crate::accounts::upstream::AGENT_UPSTREAMS
-        .iter()
-        .map(|a| a.agent.to_string())
-        .collect();
-    assert_eq!(
-        theirs, ours,
-        "monitor 注入闸认为登记了默认上游的是 {theirs:?}，后端那张表登记的是 {ours:?}"
-    );
-}
-
-/// ★★★ **跨半边对拍**：monitor 真的拼出来的 `/t/` 样例（`payload.rs::RELAY_PASSTHROUGH_SAMPLE`），
-/// 本解析器读成**直通模式**、四段各落各位；再交给**生产段那张决策表**（`accounts::upstream::decide`）：
-/// 那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 502。
-///
-/// ⇒ 「monitor 注入的那一形，后端真的会照直通处理」这一截从源码到决策表一路是真的；
-/// 买不到的那一截（claude 拿到这个变量之后怎么走）见 `payload.rs` 那一段的头注（`C7`）。
-#[test]
-fn the_passthrough_sample_the_monitor_side_builds_parses_as_passthrough() {
-    let key = "pub const RELAY_PASSTHROUGH_SAMPLE: &str = \"";
-    let at = guard_core::find_pinned(MONITOR_PAYLOAD_SRC, key)
-        .unwrap_or_else(|e| panic!("monitor 侧钉不住 `RELAY_PASSTHROUGH_SAMPLE`：{e}"));
-    let rest = &MONITOR_PAYLOAD_SRC[at + key.len()..];
-    let sample = &rest[..rest.find('"').expect("那个字面量没收尾")];
-    assert!(
-        sample.starts_with("/t/") && sample.len() > 10,
-        "从 monitor 抠出来的样例不像直通路由键：{sample:?}"
-    );
+fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
+    let answer = crate::accounts::upstream::endpoint::answer_launch_with(
+        &serde_json::json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/acct-a"},
+            "key":"k-0123456789abcdef","allSessions":true}),
+        &[],
+        &|_| true,
+    )
+    .expect("成品");
+    let url = answer["baseUrl"]
+        .as_str()
+        .expect("开关开、没行 ⇒ 该注入 `/t/`");
+    let sample = url
+        .strip_prefix(&format!("http://127.0.0.1:{}", relay_route_core::PORT))
+        .expect("注入的不是回环那个口");
+    assert!(sample.starts_with("/t/"), "不像直通路由键：{sample:?}");
     let r = parse(&format!("{sample}/v1/messages")).expect("monitor 拼的 `/t/` 那一形解析不了");
     // 期望值全是手写字面量。
     assert_eq!(

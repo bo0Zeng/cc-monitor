@@ -47,6 +47,15 @@ pub(crate) mod resume;
 /// 也该是那个 agent 自己）。
 pub(crate) const AGENT_KIND: &str = "claude";
 
+/// 〔NT2 · V25〕本 agent 的**默认上游**（用户 V25「写死, 跟着适配层」）：路由里叫 `claude-code`；
+/// `CCM_AGENT_UPSTREAM_CLAUDE_CODE` 盖掉它（名字照 `CCM_AGENT_UPSTREAM_<agent>` 的形状，`设计/20` R3）；
+/// 内置默认是 Anthropic 官方端点。上游选择只经 `agents::default_upstreams` 读它。
+pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
+    route_id: "claude-code",
+    env: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
+    fallback: "https://api.anthropic.com",
+};
+
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**〔`S5`〕。
 ///
 /// 「在不在」的判准是通用层的机器（`agents::visible_homes`），不是每家自己定一套 ——

@@ -14,6 +14,7 @@
 //! 用户明确选了「物理删除」。前端二次确认后调 `delete_history_session`，由那台机器的后端删（`files-delete-session`）；
 //! 删完那条注解由界面交本机后端 `history-forget` 连带删。Claude Code 自己也不再能 resume 这个会话。
 
+use crate::copy_table::copy_text;
 use crate::messages::JsonlRecord;
 use crate::paths;
 use serde::Serialize;
@@ -150,8 +151,8 @@ pub async fn stream_read_session_jsonl(
 
 // 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机删除的路径守卫 `validate_delete_target`〔散文墓碑〕（Batch4-F15：
 // canonicalize 两边、`..` 与 symlink 穿越都拒）与本进程那一次 `fs::remove_file`。用户裁「只允许后端的文件管理部分
-// 写文件」也管本机 ⇒ 删历史会话改成那台机器后端的**一条明确的命令** `files-delete-session`（会话文件围栏唯一的例外，
-// **只收 sid**），落点由后端按 sid 在它自己的记录树里找、解到底必须恰是 `<项目>/<sid>.jsonl`
+// 写文件」也管本机 ⇒ 删历史会话改成那台机器后端的**一条明确的命令** `files-delete-session`（**只收 sid**；
+// 〔AR1 · V119〕当时说它是「会话文件围栏唯一的例外」，FN1 之后写面已无那道围栏，这是它自己的限制），落点由后端按 sid 在它自己的记录树里找、解到底必须恰是 `<项目>/<sid>.jsonl`
 // （`src/backend/agents/claudecode/paths.rs::session_file_for_delete`）⇒ 那道路径守卫的活由后端干了，本机这一份零调用方、删了。
 
 /// 🔴 **〔步 12·C 2026-09-20〕本机 ＋ 远端两条删除合成了一条带 `origin` 的。**
@@ -189,9 +190,18 @@ pub(crate) async fn delete_via_backend(
     match crate::remote_history::jsonl_stem(&jsonl_path.replace('\\', "/")) {
         Some(stem) if stem == session_id => {}
         other => {
-            return Err(format!(
-                "拒绝删除：界面给的会话 id（{session_id}）与那份文件的名字（{}）对不上 —— 一个字节都没动",
-                other.as_deref().unwrap_or("不是一份 .jsonl")
+            return Err(copy_text(
+                "rsHistory.delete.idMismatch",
+                &[
+                    ("sessionId", &session_id.to_string()),
+                    (
+                        "fileName",
+                        &(other
+                            .as_deref()
+                            .unwrap_or(&copy_text("rsHistory.delete.notSessionFile", &[])))
+                        .to_string(),
+                    ),
+                ],
             ))
         }
     }
@@ -367,8 +377,9 @@ fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '));
     if !valid {
-        return Err(format!(
-            "refuse resume: 自定义 resume 命令含非法字符（仅允许字母数字、-_.、空格）: {l:?}"
+        return Err(copy_text(
+            "rsHistory.launcher.badChars",
+            &[("launcher", &format!("{:?}", l))],
         ));
     }
     Ok(Some(l.to_string()))
@@ -558,7 +569,10 @@ fn validate_config_dir_posix(dir: &str) -> Result<(), String> {
     if crate::backend::control::payload::config_dir_command_safe(dir) {
         Ok(())
     } else {
-        Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"))
+        Err(copy_text(
+            "rsHistory.configDir.invalid",
+            &[("dir", &format!("{:?}", dir))],
+        ))
     }
 }
 
@@ -582,10 +596,16 @@ fn validate_config_dir_ps(dir: &str) -> Result<(), String> {
         || dir.contains("\\..\\")
         || dir.ends_with("\\..");
     if !absolute || dir == "/" || dotdot {
-        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
+        return Err(copy_text(
+            "rsHistory.configDir.invalid",
+            &[("dir", &format!("{:?}", dir))],
+        ));
     }
     if has_bad_chars(dir, "") {
-        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
+        return Err(copy_text(
+            "rsHistory.configDir.invalid",
+            &[("dir", &format!("{:?}", dir))],
+        ));
     }
     Ok(())
 }
@@ -611,9 +631,7 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
             if d.is_empty() {
-                return Err(
-                    "refuse resume: 具名账号的 configDir 是空的（账号 0 请用 kind=base）".into(),
-                );
+                return Err(copy_text("rsHistory.configDir.empty", &[]).into());
             }
             validate_config_dir_posix(d)?;
             // U8c-1：串本身由内核产出（P4b 起在 `backend::control::payload`），本文件不再自己 format。
@@ -634,9 +652,7 @@ fn config_dir_prefix_ps(account: Option<&LaunchAccount>) -> Result<String, Strin
         Some(LaunchAccount::Named { config_dir, .. }) => {
             let d = config_dir.trim();
             if d.is_empty() {
-                return Err(
-                    "refuse resume: 具名账号的 configDir 是空的（账号 0 请用 kind=base）".into(),
-                );
+                return Err(copy_text("rsHistory.configDir.empty", &[]).into());
             }
             validate_config_dir_ps(d)?;
             Ok(format!("$env:CLAUDE_CONFIG_DIR='{d}'; "))
@@ -661,8 +677,8 @@ enum LocalLaunchChoice {
 /// 与 [`NO_TMUX_NAME`] / [`RELAY_KEEPS_THE_OLD_PATH`] 同一条纪律：
 /// 这条路上「为什么这次没接上」只有降级理由这一个线索。
 #[cfg(not(windows))]
-const OLD_PATH_CANNOT_ATTACH: &str =
-    "旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕";
+static OLD_PATH_CANNOT_ATTACH: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.launch.cannotAttach", &[]));
 
 fn local_launch_choice(
     action: &LocalPsAction,
@@ -675,7 +691,7 @@ fn local_launch_choice(
     //    ⇒ fail-closed。产得出 attach 的只有 ccm 那条容器路（[`render_local_ccm_with`]）。
     #[cfg(not(windows))]
     if matches!(action, LocalPsAction::Attach) {
-        return Err(OLD_PATH_CANNOT_ATTACH.into());
+        return Err(OLD_PATH_CANNOT_ATTACH.to_string());
     }
     if let LocalPsAction::Resume(sid) = action {
         let valid = !sid.is_empty()
@@ -773,7 +789,8 @@ fn build_local_posix_command(
 /// 于是「精心让出 `<sid8>-cc-2`」被直接撞掉。在这里补一个铸造口 = 第三次犯同一个错。
 /// ⇒ 名字由前端传下来（P3t-Y2b 接线）；没传 ⇒ 说不出容器 ⇒ 诚实降级回旧路。
 #[cfg(not(windows))]
-const NO_TMUX_NAME: &str = "没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸";
+static NO_TMUX_NAME: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.launch.noSessionName", &[]));
 
 /// 🔴 `K-R55`（09-11）：**本机 ccm 探测的取值口** —— 与 [`InjectFactSources`] 是同一条缝的形状。
 ///
@@ -858,7 +875,7 @@ fn render_local_ccm(
     //    「最后交出去的是哪一串」的判据会顺带在跑测试的这台机器上起一次 `bash -lic`
     //    —— 那正是本函数与 `render_local_ccm_with` 当初分家要避开的那件事。
     if tmux_name.is_none_or(str::is_empty) {
-        return Err(NO_TMUX_NAME.into());
+        return Err(NO_TMUX_NAME.to_string());
     }
     // ★ 探测与渲染**分家**（P3t-Y3）：探测是这台机器的事实，渲染是纯函数。
     // 合在一起时，判据的结论会跟着「跑测试的机器装没装 ccm」变 —— 而「本机恰好没装
@@ -884,7 +901,7 @@ fn render_local_ccm_with(
     use crate::backend::control::ccm_invocation as ci;
 
     let Some(name) = tmux_name.filter(|n| !n.is_empty()) else {
-        return Err(NO_TMUX_NAME.into());
+        return Err(NO_TMUX_NAME.to_string());
     };
     let sanitized = sanitize_launcher(launcher)?;
     let agent = crate::adapter::active();
@@ -1011,7 +1028,7 @@ fn render_local_ccm_with(
 ///
 /// # ⚠ 本机 `launch` **不经 backend**，而本机 `kill` 经〔E 阶段全局审计 08-12，待决 `U13`〕
 ///
-/// `backend_kill.rs::backend_kill` 那条本机 kill 走的是后端通道（P3 刀 2）；本函数**没有**。
+/// 本机 kill 走的是后端通道（P3 刀 2；当年是 monitor 的 `backend_kill`〔散文墓碑〕，〔C4e〕今天是界面 `src/tmux-control.ts::killSession` 经通道说）；本函数**没有**。
 /// 同一个控制面里两条命令走了两条路，而 `control-parity` 的 `C1` 逐字排除的正是
 /// 「本地直接 `Command::new` spawn」这条今天的做法 —— 也就是**本函数下游那条**。
 ///
@@ -1068,8 +1085,8 @@ const RELAY_KEEPS_THE_OLD_PATH: &str =
 
 /// 🔴 `K-R106`：[`launch_local`] 被要求 attach 时给出的理由（同上，是理由不是 `bool`）。
 #[cfg(not(windows))]
-const ATTACH_IS_NOT_A_SPAWN: &str =
-    "attach 不经本机拉起那条路：它 spawn 出去、stdio 全 null，接不上任何终端；     `§1.3` 把最终那次 exec 钉在用户自己的终端进程里 ⇒ 本机后端交的是**那一串**     （`render_local_attach`），不是一次 spawn";
+static ATTACH_IS_NOT_A_SPAWN: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.launch.attachNeedsTerminal", &[]));
 
 /// ⚠ **`Err` 那一支不回 token**：拉起没成功就没有「刚起的那条」可言，
 /// 回一个 token 会让调用方去等一条根本不存在的会话。
@@ -1107,7 +1124,7 @@ fn launch_local(
         //   ⇒ 现打当场从 `Structural` 翻成 `Closed`（`K-R106` 第一趟门禁真红过一次）。
         //   **改闸的位置，不改那条观测口** —— 改观测口就是「改判据迁就实现」。
         if matches!(action, LocalPsAction::Attach) {
-            return Err(ATTACH_IS_NOT_A_SPAWN.into());
+            return Err(ATTACH_IS_NOT_A_SPAWN.to_string());
         }
         // ★★ `K-H2b`（08-28 第二拍）：**照旧走 ccm 那条容器路，前缀拼在它外面。**
         //
@@ -1213,239 +1230,186 @@ fn launch_local(
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// `K-H2b`：注入侧的三个判断（**账号 id 从哪来 · 表里有没有它 · 中转在不在**）
+// `K-H2b` · 〔US1 · 第四波 4D〕注入侧：**问那台后端要成品，照成品执行**
 // ═════════════════════════════════════════════════════════════════════════════
-
-/// 这次拉起的账号在**apikey 表**里的 id。
-///
-/// # ⚠ 它是**推出来的**，不是传下来的 —— 这一格必须写清楚
-///
-/// [`LaunchAccount::Named`] 只有一个字段 `config_dir`，**没有名字**（`render_local_ccm`
-/// 头注里那条「②有 configDir 没名字 ⇒ 说不出 ⇒ 降级」记的就是这件事）。
-/// 而apikey 表按**账号 id** 索引 ⇒ 这里只能拿 `config_dir` 的**末段目录名**当 id：
-/// `cc-acct-iso` 的布局逐字是 `~/.claude-alt/<名字>`，`local_accounts.rs` 读出来的
-/// 账号名**就是那个目录名**。
-///
-/// **推错了会怎样**：推出一个表里没有的 id ⇒ [`relay_prefix_for`] 回 `None` ⇒
-/// **逐字节走旧路**，不是拼一条会 404 的 URL。⇒ 这一格的失效方向是**保守**的。
-///
-/// - [`LaunchAccount::Base`]（账号 0）⇒ `None`。**说不出 id 就不注入** ——
-///   账号 0 是「显式不注入 `CLAUDE_CONFIG_DIR`」那一档，它在 manifest 里没有目录名。
-/// - 参数缺席（调用方没表态）⇒ `None`，同上。
-fn apikey_account_id(account: Option<&LaunchAccount>) -> Option<String> {
-    match account {
-        Some(LaunchAccount::Named { config_dir, .. }) => apikey_account_id_of_dir(config_dir),
-        _ => None,
-    }
-}
+//
+// 先前这里住着注入侧的三个判断（账号 id 从哪来 · 表里有没有它 · 中转在不在），两样事实 monitor 自己取
+// （`apikey_rows`〔散文墓碑〕读凭据文件 · `local_backend_host::relay_running`〔散文墓碑〕连回环口），判断交 `payload::relay_endpoint_for`〔散文墓碑〕。
+// 人群与后端装表那一步各算一份（B-decouple §2.1 必须拆 1）。今天：那台机器的后端出成品（帧命令 `launch-endpoint`，
+// 上游选择 `accounts/upstream/endpoint.rs`，`设计/20 §3.2` 那张表的唯一实现），这里只**转交入参、执行成品**：
+// 本机与远端同一条路（`INVARIANTS §40`）；远端「中转不在就起、有界等」那一截要定时器（后端零定时器）⇒ 留在这里。
 
 /// 「一个 configDir 对应 apikey 表里哪个 id」。
 ///
-/// 〔C4c · 第四波 4B〕**规则搬进了 `acct-core`**（`acct_core::apikey_account_id_of_dir`）：后端出账号清单时
-/// 并表也要问这一句，而后端不链接本 crate。这里只是把那一份引进来，本 crate 里的调用点（起会话那一侧 ·
-/// `apikey_routing_for` · 写 key 那两处）照旧写 `history::apikey_account_id_of_dir(`，一行判定都不在这里。
+/// 〔C4c · 第四波 4B〕**规则住 `acct-core`**（`acct_core::apikey_account_id_of_dir`）。〔US1〕本 crate 里只剩写 key 那一处
+/// （`apikey_remote::send_key`）调它 —— 起会话那一侧与界面那一侧的「这个号在不在表里」都由那台后端答。
 pub(crate) use acct_core::apikey_account_id_of_dir;
 
-/// `KH2B7` 的**纯派生半**：给一批 configDir 与一张 id 表，答「哪几个在 apikey 表里有行」。
-///
-/// 〔C4c · 第四波 4B〕**规则搬进了 `acct-core`**（`acct_core::apikey_routed_subset`，后端出账号清单时并表调同一份）。
-/// 本函数只绑上一格：本 crate 这一侧「凭据文件里的行属于哪一家」是 `payload::APIKEY_TABLE_AGENT`
-/// （后端那一侧绑它自己的 `CREDENTIALS_FILE_AGENT`，两处字面量由既有判据对拍）。
-///
-/// ⚠ **它答的是「表里有没有这一行」，不是「这个 key 能不能用」**；也不是「这次拉起会不会真的注入」
-/// （那还要过 `relay_running` 那一格，`apikey_endpoint_for`）。
-pub(crate) fn apikey_routed_subset(
-    config_dirs: &[String],
-    rows: &[String],
-    agent: &str,
-) -> Vec<String> {
-    acct_core::apikey_routed_subset(
-        config_dirs,
-        rows,
-        agent,
-        crate::backend::control::payload::APIKEY_TABLE_AGENT,
-    )
-}
-
-/// 起本机会话时写进中转路由键第 1 段的那个 agent 名（适配器的 `id()`；读它的是上游选择）。**起会话那一侧与界面那一侧共用这一处**，
-/// 两边问的是同一件事（「这一家的号走不走 apikey 端点改写」）⇒ 不许各自去问适配层。
+/// 起会话时写进中转路由键第 1 段的那个 agent 名（适配器的 `id()`；读它的是上游选择）。
+/// 〔US1〕它随 `launch-endpoint` 的 `agent` 交给那台后端。
 pub(crate) fn launch_agent_id() -> &'static str {
     crate::adapter::active().id()
 }
 
-/// apikey 凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走 apikey 端点改写）。
-///
-/// ⚠ 「读不到」与「一条都没配」在这里**故意同一处置**：两者的正确行为都是
-/// 「照旧走官方直连」，而把「读文件失败」变成一次起会话失败，是拿一个**能用的**状态
-/// 去换一条错误提示。⇒ 只在日志里留一行。
-pub(crate) fn apikey_rows() -> Vec<String> {
-    let Some(p) = crate::creds_store::resolve_path() else {
-        return Vec::new();
-    };
-    apikey_rows_at(&p)
+/// 那台后端那条帧命令的名字（与 `src/backend/inbound.rs::COMMANDS` 同名）。
+pub(crate) const CMD_LAUNCH_ENDPOINT: &str = "launch-endpoint";
+
+/// 中转不在时成品说的处置（线上 `whenDown`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WhenDown {
+    /// `/s/`：拒绝起会话（非它不可）。
+    Refuse,
+    /// `/t/`：照旧直连（有它更好）。
+    Direct,
 }
 
-/// 上一条剥掉「路径从哪来」之后的那一半〔`D1 阻-6`〕。
-///
-/// ★ 抽出来的理由与 `creds_store::read_status_at` 那次逐字同一条：不抽的话，这段逻辑
-/// **只能对着真实家目录下那份文件跑** —— 而判据不许碰用户的真东西，于是它会变成一格
-/// **永远没人量过**的代码。`D1` 的刀 C 实测过那个后果：把本函数整个换成 `Vec::new()`，
-/// **1221 passed / 0 failed**。
-///
-/// # ⚠ 它与中转那侧的人群**不完全一致**，差在哪要写清楚
-///
-/// 上游选择装表时会把两类行**丢出表**（`accounts::upstream::table::build`）：① 账号 id 当不了路由段；
-/// ② `base_url` 解析不了。本函数**只筛得掉第 ①** 类（`payload::relay_segment_is_safe`
-/// 与 `route::segment_is_safe` 是同一条规则，由 `payload.rs` 那边的头注登记着）。
-/// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住后端那一侧、monitor 够不着
-/// （单向依赖）。
-/// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而上游选择那侧 404。
-/// **如实登记，不假装两侧人群相等。**〔`D1` 点名的那条同族，处置是「筛掉能筛的、写清剩下的」。〕
-pub(crate) fn apikey_rows_at(path: &std::path::Path) -> Vec<String> {
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return Vec::new();
+/// 〔US1〕那台后端答的成品（`launch-endpoint`），**严格收**：四个键恒在、类型逐格核；对不上 ⇒ 「两端契约对不上」。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LaunchEndpoint {
+    /// 注入的地址（不带钥匙）；`None` = 不注入。
+    pub(crate) base_url: Option<String>,
+    /// 那台机器上我们的中转在不在听。
+    pub(crate) listening: bool,
+    /// 中转不在时怎么办（`base_url` 为空时 `None`）。
+    pub(crate) when_down: Option<WhenDown>,
+    /// `/s/` 那一格的表 id（拒绝时点名用）。
+    pub(crate) account: Option<String>,
+}
+
+/// `launch-endpoint` 的应答 → [`LaunchEndpoint`]。`where_` 只进报错那句话（哪台机器答的）。
+pub(crate) fn launch_endpoint_from_wire(
+    where_: &str,
+    d: &serde_json::Value,
+) -> Result<LaunchEndpoint, String> {
+    use serde_json::Value;
+    let bad = |what: &str| {
+        copy_text(
+            "rsHistory.endpoint.badShape",
+            &[
+                ("where", where_),
+                ("cmd", CMD_LAUNCH_ENDPOINT),
+                ("what", what),
+            ],
+        )
     };
-    match creds_core::store::parse(&raw) {
-        Ok(doc) => creds_core::store::read_accounts(&doc)
-            .into_iter()
-            .map(|e| e.id)
-            .filter(|id| crate::backend::control::payload::relay_segment_is_safe(id))
-            .collect(),
-        Err(e) => {
-            tracing::debug!("apikey 凭据文件读不成表（照旧走官方直连）：{e:?}");
-            Vec::new()
+    let Some(o) = d.as_object() else {
+        return Err(bad(&copy_text("rsHistory.endpoint.notObject", &[])));
+    };
+    let mut keys: Vec<&str> = o.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    if keys != ["account", "baseUrl", "listening", "whenDown"] {
+        return Err(bad(&copy_text(
+            "rsHistory.endpoint.keys",
+            &[("keys", &format!("{keys:?}"))],
+        )));
+    }
+    let opt_str = |k: &str| match &o[k] {
+        Value::Null => Ok(None),
+        Value::String(s) => Ok(Some(s.clone())),
+        _ => Err(bad(&copy_text("rsHistory.endpoint.notString", &[("k", k)]))),
+    };
+    let when_down = match &o["whenDown"] {
+        Value::Null => None,
+        Value::String(s) if s == "refuse" => Some(WhenDown::Refuse),
+        Value::String(s) if s == "direct" => Some(WhenDown::Direct),
+        _ => return Err(bad(&copy_text("rsHistory.endpoint.whenDown", &[]))),
+    };
+    let ep = LaunchEndpoint {
+        base_url: opt_str("baseUrl")?,
+        listening: o["listening"]
+            .as_bool()
+            .ok_or_else(|| bad(&copy_text("rsHistory.endpoint.listening", &[])))?,
+        when_down,
+        account: opt_str("account")?,
+    };
+    if ep.base_url.is_some() != ep.when_down.is_some() {
+        return Err(bad(&copy_text("rsHistory.endpoint.pairing", &[])));
+    }
+    Ok(ep)
+}
+
+/// 线上 `account`（`launch-endpoint` 入参）：`{"kind":"named","configDir",…}` · `{"kind":"base"}` · `null`（没表态）。
+fn account_wire(account: Option<&LaunchAccount>) -> serde_json::Value {
+    match account {
+        None => serde_json::Value::Null,
+        Some(LaunchAccount::Base) => serde_json::json!({ "kind": "base" }),
+        Some(LaunchAccount::Named { config_dir, name }) => {
+            serde_json::json!({ "kind": "named", "configDir": config_dir, "name": name })
         }
     }
 }
 
-/// 纯函数半：给定「账号 id / `/t/` 标签 / 表里有哪几行 / 中转在不在 / 全量注入开关」，产出要拼上去的前缀。
-///
-/// 空串 = **不走中转**（逐字节旧路）。`Err` = 该走但走不了（`KH2B2`②，出声不静默）。
-/// 判断本身住 `payload::relay_endpoint_for`（`设计/20 §3.2` 那张表）；本函数只挑平台形态。
-fn relay_prefix_for(
-    account_id: Option<&str>,
-    passthrough_label: Option<&str>,
-    rows: &[String],
-    running: bool,
+/// `launch-endpoint` 的入参。`key` 是这一发的流标签：resume ⇒ sid；新开 ⇒ 现铸的 nonce（与身份 token 同一份铸法）。
+pub(crate) fn launch_endpoint_args(
+    account: Option<&LaunchAccount>,
     sid: Option<&str>,
-    windows: bool,
     all_sessions: bool,
-) -> Result<String, String> {
-    let agent = launch_agent_id();
-    let url = crate::backend::control::payload::relay_endpoint_for(
-        &crate::backend::control::payload::RelayAsk {
-            account_id,
-            passthrough_label,
-            rows,
-            running,
-            sid,
-            agent,
-            all_sessions,
-        },
-    )?;
-    Ok(match url {
-        None => String::new(),
-        Some(u) if windows => crate::backend::control::payload::relay_env_prefix_ps(&u),
-        Some(u) => crate::backend::control::payload::relay_env_prefix_posix(&u),
+) -> serde_json::Value {
+    serde_json::json!({
+        "agent": launch_agent_id(),
+        "account": account_wire(account),
+        "key": crate::backend::control::payload::route_key_for_session(sid),
+        "allSessions": all_sessions,
     })
 }
 
-/// `D5 阻-1`：那两个「本机事实」的**取值口**，收成一条判据能替换的缝。
+/// 纯函数半：成品给的地址（或不注入）→ 要拼上去的前缀。空串 = **不走中转**（逐字节旧路）。
+fn relay_prefix_for(url: Option<&str>, windows: bool) -> String {
+    match url {
+        None => String::new(),
+        Some(u) if windows => crate::backend::control::payload::relay_env_prefix_ps(u),
+        Some(u) => crate::backend::control::payload::relay_env_prefix_posix(u),
+    }
+}
+
+/// 「问那台后端要成品」这一跳的形状（缝里那一格）：`(远端主机名 | None = 本机, 入参)` → 应答 `data`。
+pub(crate) type EndpointAsk = fn(
+    Option<String>,
+    serde_json::Value,
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>,
+>;
+
+/// 生产上那一跳：经那台机器那条长连接问 `launch-endpoint`（本机 ＝ `<local>` 那一条）。
+fn ask_launch_endpoint(
+    host: Option<String>,
+    args: serde_json::Value,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>>
+{
+    Box::pin(async move {
+        let host = host
+            .unwrap_or_else(|| crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string());
+        crate::apikey_remote::call(&host, CMD_LAUNCH_ENDPOINT, args).await
+    })
+}
+
+/// `D5 阻-1`：起会话那一侧的几个「事实」的**取值口**，收成一条判据能替换的缝。
 ///
-/// # 为什么非有这条缝不可（这是本件病史的第五层，别退回去）
+/// # 为什么非有这条缝不可（病史五层，别退回去）
 ///
-/// 先前钉这两个入参的是一条**扫描型**判据：把 [`relay_prefix_for_launch`] 的体切出
-/// 700 字节，断言那个窗口里**有没有**那两段文本。`D5` 现打的读数：在同一个窗口里加一行
-/// 把两段文本原样留住的死赋值（一个用不到的绑定就够），同时把真入参换成空表 / 常量
-/// ⇒ 文本一处不少、锚点命中数一处不少、**全量门禁四个数与干净树逐字相同**，
-/// 而「这个号在不在apikey 表里」「中转在不在跑」两件事**都不再被问**、中转前缀恒空。
+/// 先前钉这几个入参的是**扫描型**判据（切一段源码看文本在不在）；`D5` 现打：文本留住、行为摘掉 ⇒ 全绿。
+/// ⇒ 处置是**不再量文本**：事实一律从本结构取，判据换一份**会记账的替身**进来，断言两件事 ——
+/// ㈠ 它**真的被问过**；㈡ 算出来的前缀**真的随替身给的答案变**（治「问完扔掉」那一形）。
 ///
-/// 病史五层，每一层都是**上一层的修法买到的东西被下一层的量法漏掉**：
-/// ① 参数位没有账号 → ② 参数位有、值恒空 → ③ 值到得了、判据只量文本 →
-/// ④ 判据搬了家（不再把自己算进被测对象）、**仍在量文本** → ⑤ **文本留住、行为摘掉**。
+/// 〔US1 · 4D〕先前的 `rows`（表里有哪几行）与 `running`（中转在不在）两格并成一格 `endpoint`：
+/// 两样事实与那张决策表一起搬进了那台后端，起会话这一侧只剩「问一次、照成品执行」。
+/// 谁绕开这条缝直接问那台后端，由 `payload_tests::nobody_reaches_the_relay_take_points_without_going_through_the_seam` 数着。
 ///
-/// ⇒ 处置**不是**再写一个更聪明的文本判据（那是第六层），是**不再量文本**：
-/// 两个事实一律从本结构取，判据换一份**会记账的替身**进来，断言两件事 ——
-/// ㈠ 它**真的被问过**（替身的计数器涨了）；
-/// ㈡ 算出来的前缀**真的随替身给的答案变**（表里有这一行 ⇒ 非空；没有 ⇒ 空；中转没跑 ⇒ `Err`）。
-/// ★ 第 ㈡ 条正是治第五层的那一格：把答案问完扔掉（`_unused` 那一形），
-///   计数器照样涨，而前缀不再随答案变 ⇒ **红**。
+/// # 仍然没有判据的那一格（照实写）
 ///
-/// # 🔴🔴 谁在用这条缝 —— **由一道人群闸数着，不是由这段头注数着**〔`D6 阻-4`，08-29〕
-///
-/// 先前这里逐字写着「这两个取值口的**生产消费方恰好 2**」，并把那个 2 当成了闸。
-/// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、**绕开这条缝**直接调
-/// `history::apikey_rows()` / `local_backend_host::relay_running()` ⇒ **全量门禁四个数与干净树逐字相同**。
-/// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
-/// ★ 定性（PM `§8 裁四`）：**治一个「今天数出来的 N」的过程中，长出了一个新的「今天数出来的 N」。**
-///
-/// **今天数着这件事的是一道闸**，住 `backend/control/payload.rs::
-/// `nobody_reaches_the_relay_take_points_without_going_through_the_seam`（**目录扫描**
-/// `src/bridge/src`，不是手写名单）。它钉的是**零调用点**：
-/// - `apikey_rows()` / `relay_running()` 的**调用形**在生产段全树**各恰好 1 处**（就是它们自己的定义行）；
-/// - 裸标识符 `apikey_rows` / `relay_running` 各恰好 **2** 处（定义 + 本结构这一处）；
-/// - [`platform_is_windows`] **不再数总数**〔ccbus-win 09-10〕：它从今天起有了第二类消费方
-///   （`cc_bus::resolve_bash` 只要「是不是 Windows」，走缝要顺带付 `apikey_rows()` 读文件
-///   与 `relay_running()` 问后端两笔钱），⇒ 那一格换成**点名住址**（`PLATFORM_TAKE_SITES`），
-///   函数指针那一半改钉**差值**（裸标识符 − 调用形 == 1 = 只有本结构持有它）。
-///   ★ 换制的理由是数个数会**抵消**：「加一处绕缝」＋「删一处正当」总数不变 ⇒ 一声不吭。
-///   PM 09-10 在沙箱里现打过这一刀，住址制两条都逮得住（读数住 `audits/ccbus-win-PM.md`）。
-///
-/// ⇒ 谁绕开这条缝直接调那三个取值口、或把它们的函数指针复制到第二个地方，**当场红**。
-/// 今天的两个生产消费方（起会话侧 [`relay_prefix_for_launch`] · 界面侧 `crate::apikey_routing_for`）
-/// 各有一条行为判据；**闸不数它们有几个**，闸数的是「有没有人绕过去」。
-///
-/// # 它买不到什么（如实写，别读宽）
-///
-/// 本结构只管「**问不问**」与「**答案用不用**」。「那三个取值口自己答得对不对」由它们各自的
-/// 判据买（[`apikey_rows_at`] 那条读真文件的 · `local_backend_host::relay_running_really_asks_the_loopback_port`〔RL1 接替读句柄表那一条〕）。
-/// 而「生产上这条缝里插的**就是**那三个取值口」由 `the_production_relay_facts_are_those_two_take_points`
-/// 按**函数地址**对拍 —— 不是按文本。
-///
-/// ⚠ **仍然没有判据的那两格**（`D6 阻-4` / PM `§8 裁六` 订正过这两栏，别再照旧读）：
-/// ㈠ [`apikey_rows`] 自己那三行胶水（`creds_store::resolve_path()` + [`apikey_rows_at`]）。
-///    `D6` 的刀 `Xa` 把它掏空成 `Vec::new()` ⇒ **全绿、门禁四个数与干净树逐字相同**。
-///    🔴 **先前这里写的理由（「要动真实家目录，红线不许 ⇒ 做不到」）是假的，解锁条件（「要动 `paths.rs`」）也是假的**：
-///    `paths.rs` 从 `dirs::home_dir()` 拼路径 ⇒ 在 Linux 上它读的就是 `$HOME`，
-///    而**本 crate 今天就有这个手法的先例**（`local_backend_host::become_host_with_home` 里那行
-///    `std::env::set_var("HOME", …)`）⇒ **写得出来，一个字节都不用动 `paths.rs`**。
-///    **真代价**是这种判据必须 `--test-threads=1` ⇒ 只能住 `#[ignore]` 的 e2e 那条道
-///    ⇒ **进不了 `tests/scripts/gate.sh`**。重新裁定的落点就是这一栏 + 件文件 `§4`。
-///    🔴 **裁定（`D8 §4` 第 1 条，PM 08-29 采纳，第九轮照抄进这一栏）：
-///    这一格是「买得到」，不是「做不到」。** 买法**不在判据这一侧** ——
-///    是给 `tests/scripts/gate.sh` 加一条**单线程道**，把 `#[ignore]` 那一族纳进第五个数。
-///    🔴 `tests/scripts/gate.sh` **不在 `K-H2b` 的写区** ⇒ 第九轮**没做**，抬给 PM（上报口有一条）。
-///    ⚠ 别再把这一栏读成「做不到」：那正是 `D8 §10 裁一` 判过两次的那一形。
-/// ㈡ [`platform_is_windows`] 自己的体（`cfg!(windows)`）。在 Linux 上把它写死成 `false`
-///    是一次**恒等变换** ⇒ **任何运行时判据都分不出来**（它只在 Windows 上有区别，而
-///    Windows 运行时行为本件本来就在「判不了」里）。**登记，不假装钉住了。**
-///    ⚠ **过一遍 PM 08-29 那道闸**（「标平台判不了要给得出 `cfg`」）：**本函数没有 `cfg`，
-///    在 Linux 上真编译**（`cargo test -p monitor --lib` 跑得到它）⇒ 它**不**属于
-///    「不进编译单元」那一族。它判不了的理由是**另一条**：在 Linux 上 `false` 是它的真值，
-///    换上去是**恒等变换**（`D8 §1` 的排除表逐字：恒等变换不算「剥掉」那张脸）。
-///    ⇒ 两条理由别混：一条是**构造上看不见**，一条是**看得见但换不出第二张脸**。
-///    ⚠ 它与先前那条被删的文本判据的差别在于：**调用点**那一格今天买回来了 ——
-///    调用点走 `(facts.windows)()`，谁在那里写死一个常量，
-///    `the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` 的
-///    「PowerShell 那一格」当场红（`D6` 的刀 `Xb` 打的正是调用点那一格）。
+/// [`platform_is_windows`] 自己的体（`cfg!(windows)`）：在 Linux 上把它写死成 `false` 是恒等变换 ⇒ 任何运行时判据都分不出来。
+/// 调用点那一格买回来了：调用点走 `(facts.windows)()`，写死常量那一形由「PowerShell 那一格」当场红。
 #[derive(Clone, Copy)]
 pub(crate) struct InjectFactSources {
-    /// 「这个号在不在apikey 表里」——生产恒指 [`apikey_rows`]。
-    pub(crate) rows: fn() -> Vec<String>,
-    /// 「中转在不在跑」——生产恒指 [`crate::local_backend_host::relay_running`]。
-    pub(crate) running: fn() -> bool,
+    /// 「那台后端答的成品」—— 生产恒指 [`ask_launch_endpoint`]。
+    pub(crate) endpoint: EndpointAsk,
     /// 🔴 「这台机是不是 Windows」——生产恒指 [`platform_is_windows`]〔`D6 阻-3`，08-29〕。
     ///
-    /// 先前这一格在调用点上逐字写着 `cfg!(windows)`，而**它是一个常量表达式** ——
-    /// 唯一守着它的是那条被删掉的文本判据（反空真①「窗口里有 `cfg!(windows)`」）。
-    /// `D6` 的刀 `Xb`（`cfg!(windows)` → `false`）⇒ 全绿，而生产后果是
-    /// **Windows 上中转前缀渲染成 POSIX 形态**（`export …` 塞进 PowerShell 串）⇒ 注入整个失效。
-    /// ⇒ 收进本结构之后它成了**可翻的一维**：判据喂 `|| true` 就该拿到 PowerShell 形态。
+    /// 写在调用点上的 `cfg!(windows)` 是个**常量表达式**，判据没法让它变；`D6` 的刀 `Xb`（→ `false`）⇒ 全绿，
+    /// 而生产后果是 Windows 上中转前缀渲染成 POSIX 形态。收进本结构之后它成了**可翻的一维**。
     pub(crate) windows: fn() -> bool,
     /// 🔴 「全量注入开关开没开」——生产恒指 [`relay_all_sessions_switch`]〔`设计/20 §7` 步 4〕。
-    ///
-    /// 进缝的理由与 `windows` 那一格同一条：它在生产上是一次环境读取，写在调用点上
-    /// 判据就翻不动它 ⇒ 「开关关着时一个字节都不变 / 开着时订阅号走 `/t/`」两格都量不到。
+    /// 它随 `launch-endpoint` 的 `allSessions` 交给那台后端（决策表在那边）。
     pub(crate) all_sessions: fn() -> bool,
 }
 
@@ -1454,10 +1418,8 @@ pub(crate) struct InjectFactSources {
 /// # 为什么是一个环境变量、为什么默认关（`设计/20 §7` 步 4 逐字「必须带开关，默认关；真机验过再默认开」）
 ///
 /// - **默认关**：没设 / 设成别的值 ⇒ 关 ⇒ 起会话的命令逐字节与本件之前相同。
-/// - **环境变量**：真机验证那一趟要能不重编就翻（`CCM_NO_DEVTOOLS` / `CCM_CJK_FONT` 同形）；
-///   它在 monitor 进程起来时读一次环境（每次拉起都读，不缓存 —— 读一次环境的钱可以忽略）。
-/// - ⚠ 它**不是**设置页上的一个开关：那一页不在本件的写区，而「真机验过再默认开」那一天
-///   要做的是把默认值翻过来，不是加一个界面。
+/// - **环境变量**：真机验证那一趟要能不重编就翻（`CCM_NO_DEVTOOLS` / `CCM_CJK_FONT` 同形）。
+/// - ⚠ 它**不是**设置页上的一个开关：「真机验过再默认开」那一天要做的是把默认值翻过来，不是加一个界面。
 pub(crate) fn relay_all_sessions_switch() -> bool {
     std::env::var(RELAY_ALL_SESSIONS_ENV).is_ok_and(|v| v == "1")
 }
@@ -1476,8 +1438,7 @@ pub(crate) fn platform_is_windows() -> bool {
 
 /// 生产上这条缝里插的那三个取值口。**只有这一处**，判据按地址对拍它。
 pub(crate) const PRODUCTION_INJECT_FACTS: InjectFactSources = InjectFactSources {
-    rows: apikey_rows,
-    running: crate::local_backend_host::relay_running,
+    endpoint: ask_launch_endpoint,
     windows: platform_is_windows,
     all_sessions: relay_all_sessions_switch,
 };
@@ -1505,7 +1466,7 @@ pub(crate) fn override_inject_facts(facts: InjectFactSources) -> InjectFactsGuar
     InjectFactsGuard(INJECT_FACTS_OVERRIDE.with(|c| c.replace(Some(facts))))
 }
 
-/// 这一拍要用的两个取值口。生产上恒是 [`PRODUCTION_INJECT_FACTS`]。
+/// 这一拍要用的取值口。生产上恒是 [`PRODUCTION_INJECT_FACTS`]。
 pub(crate) fn inject_facts() -> InjectFactSources {
     #[cfg(test)]
     if let Some(f) = INJECT_FACTS_OVERRIDE.with(|c| c.get()) {
@@ -1514,122 +1475,98 @@ pub(crate) fn inject_facts() -> InjectFactSources {
     PRODUCTION_INJECT_FACTS
 }
 
-/// 〔RL1〕一次拉起的中转问句里「账号」那两格：apikey 表里的 id · `/t/` 的账号标签。
-///
-/// **本机拉起（[`relay_prefix_for_launch`]）与远端拉起（[`relay_endpoint_on`]）共用这一份** ——
-/// 两边各推一遍，漂开的那天症状是「同一个号本机走中转、远端不走」，而两边看起来都没错。
-/// `/t/` 那一格的标签：`Named` ⇒ 同 id；账号 0 ⇒ 固定标签；没表态 ⇒ 说不出就不走 `/t/`。
-pub(crate) fn relay_account_slots(
-    account: Option<&LaunchAccount>,
-) -> (Option<String>, Option<String>) {
-    let id = apikey_account_id(account);
-    let label = match account {
-        Some(LaunchAccount::Base) => {
-            Some(crate::backend::control::payload::BASE_ACCOUNT_SEGMENT.to_string())
-        }
-        _ => id.clone(),
-    };
-    (id, label)
-}
+/// 本机中转没在听时那句「为什么」（本机那一个住在本机常驻后端里，这里起不了第二个）。
+pub(crate) static LOCAL_RELAY_NOT_LISTENING: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.relay.localNotListening", &[]));
 
-/// 〔RL1〕一次拉起的中转地址：`None` = 不注入（照旧直连）；`Err` = 该走却走不了（**拒绝起会话**，出声）。
+/// 〔RL1 · US1〕一次拉起的中转地址：`None` = 不注入（照旧直连）；`Err` = 该走却走不了（**拒绝起会话**，出声）。
 ///
-/// 住本文件（起会话那一侧）而不住 `remote_relay`：它要同时叫得出中转（在不在）与上游选择（apikey 表的行），
-/// 而 `remote_relay` 一个上游选择的名字都不许有（`this_module_knows_no_upstream_selection_name`）。
-/// **判断只在 `payload::relay_endpoint_for` 一处**（`设计/20 §3.2` 那张表）；本函数只换**事实的来源**：
-/// - 本机：两个事实经起会话那一侧同一条缝（`history::inject_facts`）取 —— 与 `launch_local` 同一份；
-/// - 远端：表里有哪几行问**那台**的上游选择（`apikey-read`），中转在不在问**那台**的回环口，
-///   **用到才起**：先按「假如在跑」问一次判断口，答 `None` ⇒ 一条中转命令都不发；答了地址才 `relay-status` →
-///   没人听 ⇒ `relay-ensure` → 有界等它 bind。起不来 ⇒ 再问一次判断口（「真的没在跑」）：
-///   apikey 行那一格回 `Err`（换成远端的说法）；`/t/` 那一格回 `None`（「有它更好」，照旧直连）。
+/// **本机与远端同一条路**：问那台机器的后端要成品（`launch-endpoint`），照成品执行 ——
+/// - 不注入 ⇒ `None`；注入且那台的中转在听 ⇒ 地址；
+/// - 注入但中转不在：远端 ⇒ **用到才起**（`remote_relay::listening_or_started`：`relay-status` → `relay-ensure` → 有界等）；
+///   本机 ⇒ 起不了第二个（它住在本机后端里）；仍不在 ⇒ 按成品的 `whenDown`：`refuse` ⇒ 拒并说清，`direct` ⇒ 照旧直连。
+/// - 问不到那台后端 ⇒ **拒绝起会话**并说清（D11「后端是给定的、不留退路」：说不出这个号要不要走 API key 那条路，
+///   就不猜；照旧起出去，一个 API 号会以「与网络故障同形」的失败收场）。
 pub(crate) async fn relay_endpoint_on(
     origin: &crate::origin::Origin,
     account: Option<&LaunchAccount>,
     sid: Option<&str>,
 ) -> Result<Option<String>, String> {
-    let (id, label) = relay_account_slots(account);
     let facts = inject_facts();
-    let all_sessions = (facts.all_sessions)();
-    let ask = |rows: &[String], running: bool| {
-        crate::backend::control::payload::relay_endpoint_for(
-            &crate::backend::control::payload::RelayAsk {
-                account_id: id.as_deref(),
-                passthrough_label: label.as_deref(),
-                rows,
-                running,
-                sid,
-                agent: launch_agent_id(),
-                all_sessions,
-            },
-        )
+    let remote = match origin.route("relay_endpoint_for_launch")? {
+        crate::origin::Route::Local => None,
+        crate::origin::Route::Remote(host) => Some(host.to_string()),
     };
-    match origin.route("relay_endpoint_for_launch")? {
-        crate::origin::Route::Local => ask(&(facts.rows)(), (facts.running)()),
-        crate::origin::Route::Remote(host) => {
-            // 表读不出 ⇒ 零行（与本机 `history::apikey_rows` 同一处置：照旧直连，只出声）。
-            let rows = crate::apikey_remote::rows_on(origin)
-                .await
-                .unwrap_or_else(|e| {
-                    tracing::warn!("[{host}] 读不到那台的 apikey 表，按零行办（照旧直连）：{e}");
-                    Vec::new()
-                });
-            let Some(url) = ask(&rows, true)? else {
-                return Ok(None);
-            };
-            let Err(why) = crate::remote_relay::listening_or_started(origin).await else {
-                return Ok(Some(url));
-            };
-            match ask(&rows, false) {
-                Err(_) => Err(remote_relay_refusal(host, id.as_deref(), &why)),
-                Ok(_) => {
-                    tracing::info!(
-                        "[{host}] 中转不在（{why}）⇒ 这一发照旧直连（`/t/` 那一格是「有它更好」）"
-                    );
-                    Ok(None)
-                }
-            }
+    let where_ = remote.as_deref().map_or_else(
+        || copy_text("rsHistory.relay.here", &[]),
+        |h| format!("[{h}] "),
+    );
+    let args = launch_endpoint_args(account, sid, (facts.all_sessions)());
+    let data = (facts.endpoint)(remote.clone(), args).await.map_err(|e| {
+        copy_text(
+            "rsHistory.relay.unreachable",
+            &[("where", &where_), ("e", &e)],
+        )
+    })?;
+    let ep = launch_endpoint_from_wire(&where_, &data)?;
+    let Some(url) = ep.base_url else {
+        return Ok(None);
+    };
+    if ep.listening {
+        return Ok(Some(url));
+    }
+    let why = match &remote {
+        Some(_) => match crate::remote_relay::listening_or_started(origin).await {
+            Ok(()) => return Ok(Some(url)),
+            Err(why) => why,
+        },
+        None => LOCAL_RELAY_NOT_LISTENING.to_string(),
+    };
+    match ep.when_down {
+        Some(WhenDown::Refuse) => Err(relay_down_refusal(&where_, ep.account.as_deref(), &why)),
+        _ => {
+            tracing::info!(
+                "{where_}中转不在（{why}）⇒ 这一发照旧直连（`/t/` 那一格是「有它更好」）"
+            );
+            Ok(None)
         }
     }
 }
 
-/// 远端「非它不可」那一格的说法（本机那一句在 `payload::apikey_endpoint_for`，说的是「先起本机后端」）。
-pub(crate) fn remote_relay_refusal(host: &str, account: Option<&str>, why: &str) -> String {
-    format!(
-        "apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\
-         但那台机器上的中转起不来（{why}）——\n\
-         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\
-         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。"
+/// 「非它不可」那一格起不来时的说法（本机与远端同一句，只差哪台机器）。
+pub(crate) fn relay_down_refusal(where_: &str, account: Option<&str>, why: &str) -> String {
+    copy_text(
+        "rsHistory.relay.downRefused",
+        &[
+            ("account", &format!("{account:?}")),
+            ("where", where_),
+            ("why", why),
+        ],
     )
 }
 
-/// 上一条的**接线半**：这台机器上的两个事实（表里有哪几行 · 中转在不在）在这里读。
+/// 上一条的**本机起会话那一截**（[`launch_local`] 是同步的：两个 `#[tauri::command]` 的同步调用链）：
+/// 在这里等成品（`block_on`），按这台机器是不是 Windows 渲成前缀。
 ///
-/// ⚠ 两个事实**只从 [`inject_facts`] 取**（理由见 [`InjectFactSources`] 头注：
-/// 直接在这里调那两个函数的写法，只能靠「文本在不在」来钉，而那一形 `D5` 已经打穿了）。
+/// ⚠ 事实**只从 [`inject_facts`] 取**（理由见 [`InjectFactSources`] 头注）。
 fn relay_prefix_for_launch(
     action: &LocalPsAction,
     account: Option<&LaunchAccount>,
 ) -> Result<String, String> {
-    let (id, label) = relay_account_slots(account);
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
-        // attach 不起 agent ⇒ 这一跳没有「往中转上指」这个问题。
-        // ⚠ 它今天到不了这里（[`launch_local`] 入口就拒了 attach），本臂是**穷尽性**的一半：
-        //    哪天有人把 attach 接进那条路，编译器会先逼他读一遍上面这句话。
+        // attach 不起 agent ⇒ 这一跳没有「往中转上指」这个问题 ⇒ **不问**那台后端（空前缀）；
+        // [`launch_local`] 随后在渲染那一截拒掉 attach（它不走 spawn 那条路），拒的理由由那里说。
         #[cfg(not(windows))]
-        LocalPsAction::Attach => None,
+        LocalPsAction::Attach => return Ok(String::new()),
     };
-    let facts = inject_facts();
-    relay_prefix_for(
-        id.as_deref(),
-        label.as_deref(),
-        &(facts.rows)(),
-        (facts.running)(),
+    let url = tauri::async_runtime::block_on(relay_endpoint_on(
+        &crate::origin::Origin::local(),
+        account,
         sid,
-        (facts.windows)(),
-        (facts.all_sessions)(),
-    )
+    ))?;
+    Ok(relay_prefix_for(url.as_deref(), (inject_facts().windows)()))
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1907,7 +1844,10 @@ pub fn new_local_session(
     // 移动/删除）就明确报错，别静默在默认目录起会话 + 弹假成功 toast。`launch_powershell_window`
     // 只把存在的 cwd 作窗口起始目录、失效则回落默认，对 resume 无害、对 new-session 是错目录。
     if !cwd.is_empty() && !std::path::Path::new(&cwd).is_dir() {
-        return Err(format!("目录不存在，无法在此起新会话：{cwd}"));
+        return Err(copy_text(
+            "rsHistory.newSession.noDir",
+            &[("cwd", &cwd.to_string())],
+        ));
     }
     // ★★ `K-H2b` `D1 阻-1`：**账号这一格是本轮加的，加它的理由要写清楚。**
     //
@@ -2019,9 +1959,8 @@ pub fn render_local_attach(tmux_name: String) -> Result<String, String> {
 
 /// Windows 上 [`render_local_attach`] 的拒词。**它是定框 `C12` 的字面**，不是一句提示语。
 #[cfg(windows)]
-pub(crate) const WINDOWS_HAS_NO_TMUX_CONTAINER: &str =
-    "Windows 上没有 tmux 容器（定框 `C12`〔用 08-12〕逐字「windows不要tmux」）\
-     ⇒ 也就没有「把终端接进那个容器」这件事。要翻它先回去翻定框。";
+pub(crate) static WINDOWS_HAS_NO_TMUX_CONTAINER: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.attach.windows", &[]));
 
 // === metadata 那份文件在哪（〔C4d〕读写者是本机常驻后端；路径仍由这里算）===
 

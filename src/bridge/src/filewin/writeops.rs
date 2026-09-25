@@ -98,9 +98,11 @@
 //! - ✅〔FW5 · 第四波〕~~目录递归删除没做~~：删**目录**现在带 `recursive: true` 走后端
 //!   `files-delete`（连同里面全部内容；后端逐条目过路径解析 —— 〔FN1〕树里的会话文件照删）。
 //!   原话「`sftp_delete` 的 `is_dir` 走的是 `remove_dir`，递归要一条新的池命令」是 SFTP 那一版的事。
-//! - **改权限没有「当前是多少」可显示**：[`super::source::Row`] 里没有 mode，
-//!   〔FW5 现打〕后端 `files-ls` / `files-stat` 两条读口也都不送权限位 ⇒ 那个框**空着开**，
-//!   刻意不预填一个猜出来的值（预填错了而用户直接点确认 = 静默改坏权限）。补读口在后端 `files/mod.rs`，已报备。
+//! - ✅〔GP1 · 第四波〕~~改权限没有「当前是多少」可显示~~：后端 `files-stat` 从此送 `mode`（unix 权限位低 12 位，
+//!   非 unix 缺席）⇒ 框一摆出来就逐项问一次（[`ModeProbe`] · [`probe_modes`]），答回来之后框上说现值
+//!   （[`mode_readout`]），只有一项或各项相同时**预填**那个值（它是读回来的，不是猜的；用户直接点确认 = 原样不变）。
+//!   问不到 ⇒ 照旧空着开、说「读不到现在的权限」—— 不猜。〔墓碑 —— FW5 那一版这里写着「那个框**空着开**，刻意不预填一个
+//!   猜出来的值」：那句的前提是「没有读口」，读口有了。〕
 //! - ✅〔FW5〕~~多选只有删除~~：多选也给「权限」（一个框、一个八进制数、出 N 件、一次问完）。
 //! - ✅〔FW5〕~~有损名一律不许写~~：带着原始字节（`Listed::raw_name`）的有损名能改名 · 删除 · 改权限（相对段发 b16）；
 //!   **进一个有损名的目录 · 复制 / 下载 / 编辑有损名**仍然做不到（那几条用的是整条路径字符串，要把窗口的路径换成字节，单独一刀）。
@@ -118,6 +120,7 @@
 //!   `remote_write_registry_tests` 那条「窗口用了池子哪几条命令」的相等断言。
 //!   ⇒ 窗口上那颗按钮（住 `rows.rs` / `shell.rs`，不在本路写区）等 F2 接后端时一起落。
 
+use crate::copy_table::copy_text;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -127,13 +130,17 @@ use super::source::{parent_dir, remote_basename, Line, Origin};
 use super::source::Listed;
 
 /// 行上／工具栏上那几颗按钮的字面。**唯一住址** —— 判据按同一个常量去找它画出来的字。
-pub const MKDIR_LABEL: &str = "新建目录";
+pub static MKDIR_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.mkdir", &[]));
 /// 行上那颗「改名」。
-pub const RENAME_LABEL: &str = "改名";
+pub static RENAME_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.rename", &[]));
 /// 行上那颗「删除」。
-pub const DELETE_LABEL: &str = "删除";
+pub static DELETE_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.delete", &[]));
 /// 行上那颗「权限」。
-pub const CHMOD_LABEL: &str = "权限";
+pub static CHMOD_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWriteops.label.chmod", &[]));
 
 /// 这一行能不能被**写**（改名 / 删除 / 改权限）。**唯一住址** ——
 /// 列表画不画那三颗按钮（[`super::rows`]）与状态机接不接那一跳
@@ -210,13 +217,26 @@ impl WriteOp {
     /// 给人看的一句话（确认框 · 结果行都用它）。
     pub fn label(&self) -> String {
         match self {
-            WriteOp::Mkdir { path } => format!("新建目录 {path}"),
+            WriteOp::Mkdir { path } => {
+                copy_text("rsFilewinWriteops.op.mkdir", &[("path", &path.to_string())])
+            }
             WriteOp::Delete {
                 path, is_dir: true, ..
-            } => format!("删除目录 {path}（连同里面全部内容）"),
-            WriteOp::Delete { path, .. } => format!("删除文件 {path}"),
-            WriteOp::Rename { from, to, .. } => format!("改名 {from} → {to}"),
-            WriteOp::Chmod { path, mode, .. } => format!("改权限 {path} → {mode:o}"),
+            } => copy_text("rsFilewinWriteops.op.rmdir", &[("path", &path.to_string())]),
+            WriteOp::Delete { path, .. } => {
+                copy_text("rsFilewinWriteops.op.rm", &[("path", &path.to_string())])
+            }
+            WriteOp::Rename { from, to, .. } => copy_text(
+                "rsFilewinWriteops.op.rename",
+                &[("from", &from.to_string()), ("to", &to.to_string())],
+            ),
+            WriteOp::Chmod { path, mode, .. } => copy_text(
+                "rsFilewinWriteops.op.chmod",
+                &[
+                    ("path", &path.to_string()),
+                    ("mode", &format!("{:o}", mode)),
+                ],
+            ),
         }
     }
 
@@ -331,7 +351,10 @@ pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<
         WriteOp::Rename { from, to, raw } => {
             let root = parent_dir(from);
             if parent_dir(to) != root {
-                return Err(format!("{} 只能在同一个目录里改名", op.label()));
+                return Err(copy_text(
+                    "rsFilewinWriteops.remote.renameSameDir",
+                    &[("op", &(op.label()).to_string())],
+                ));
             }
             (
                 "files-rename",
@@ -420,6 +443,9 @@ pub struct WritePrompt {
     pub src_name: String,
     /// 正在编辑的那几个字。
     pub text: String,
+    /// 〔GP1〕改权限那个框：读回来的现值**已经处理过一次**了（预填过，或决定不预填）。
+    /// 只预填一次 —— 用户清空那一栏之后不再被塞回去。
+    pub prefilled: bool,
 }
 
 impl WritePrompt {
@@ -429,6 +455,7 @@ impl WritePrompt {
             dir: dir.to_string(),
             src_name: String::new(),
             text: String::new(),
+            prefilled: false,
         }
     }
 
@@ -445,14 +472,13 @@ impl WritePrompt {
             dir: dir.to_string(),
             src_name: r.name.clone(),
             text: r.name.clone(),
+            prefilled: false,
         }
     }
 
-    /// 改权限那个框 —— **空着开**。理由住本模块头注最后一节
-    /// （列表里没有 mode 可读，预填一个猜出来的值而用户直接点确认 = 静默改坏权限）。
-    ///
-    /// 🔴〔FW5〕「显示现值」**今天做不到**：后端 `files-ls` / `files-stat` 两条读口都不送权限位
-    /// （现打两条的 `fields`），窗口没有任何一条路拿得到它；补读口在后端 `files/mod.rs`，不在本路写区，已报备。
+    /// 改权限那个框 —— 摆出来时**空着**；现值由 [`ModeProbe`] 逐项问回来之后再说、再预填（[`mode_readout`]）。
+    /// 〔GP1 · 第四波〕后端 `files-stat` 送 `mode` 了。〔墓碑 —— FW5 那一版这里写着「显示现值**今天做不到**：
+    /// 后端 `files-ls` / `files-stat` 两条读口都不送权限位」。〕
     pub fn for_chmod(dir: &str, r: &Listed) -> Self {
         Self::for_chmod_many(dir, &[r])
     }
@@ -478,18 +504,26 @@ impl WritePrompt {
                 _ => String::new(),
             },
             text: String::new(),
+            prefilled: false,
         }
     }
 
     /// 框上那一行提示。
     pub fn heading(&self) -> String {
         match &self.kind {
-            PromptKind::Mkdir => "在这个目录里新建一个目录，叫：".to_string(),
-            PromptKind::Rename { .. } => format!("把 {} 改名为：", self.src_name),
-            PromptKind::Chmod { targets } if targets.len() > 1 => {
-                format!("把这 {} 项的权限改成（八进制）：", targets.len())
-            }
-            PromptKind::Chmod { .. } => format!("把 {} 的权限改成（八进制）：", self.src_name),
+            PromptKind::Mkdir => copy_text("rsFilewinWriteops.heading.mkdir", &[]),
+            PromptKind::Rename { .. } => copy_text(
+                "rsFilewinWriteops.heading.rename",
+                &[("name", &self.src_name.to_string())],
+            ),
+            PromptKind::Chmod { targets } if targets.len() > 1 => copy_text(
+                "rsFilewinWriteops.heading.chmodMany",
+                &[("n", &(targets.len()).to_string())],
+            ),
+            PromptKind::Chmod { .. } => copy_text(
+                "rsFilewinWriteops.heading.chmodOne",
+                &[("name", &self.src_name.to_string())],
+            ),
         }
     }
 
@@ -503,7 +537,10 @@ impl WritePrompt {
         let mut ops = self.to_ops()?;
         match ops.len() {
             1 => Ok(ops.remove(0)),
-            n => Err(format!("这个框一次出 {n} 件，不是一件")),
+            n => Err(copy_text(
+                "rsFilewinWriteops.toOp.notOne",
+                &[("n", &n.to_string())],
+            )),
         }
     }
 
@@ -526,7 +563,10 @@ impl WritePrompt {
                 let to = join_remote(&self.dir, &name);
                 // ⚠ 有损名：显示串相等不等于名字没变（旧名的真字节不是这几个字）⇒ 只对无损名判「就是原名」。
                 if &to == from && raw.is_none() {
-                    return Err(format!("「{name}」就是它现在的名字 —— 改名没有要改的东西"));
+                    return Err(copy_text(
+                        "rsFilewinWriteops.toOps.sameName",
+                        &[("name", &name.to_string())],
+                    ));
                 }
                 Ok(vec![WriteOp::Rename {
                     from: from.clone(),
@@ -537,7 +577,7 @@ impl WritePrompt {
             PromptKind::Chmod { targets } => {
                 let mode = parse_mode(t)?;
                 if targets.is_empty() {
-                    return Err("没有要改权限的项".to_string());
+                    return Err(copy_text("rsFilewinWriteops.toOps.nothingToChmod", &[]));
                 }
                 Ok(targets
                     .iter()
@@ -563,15 +603,19 @@ impl WritePrompt {
 /// 〔F7b〕「新建空文件」（[`super::create`]）问的也是这一个函数 —— 两颗并排的「新建」一套规矩。
 pub(super) fn clean_name(t: &str) -> Result<String, String> {
     if t.is_empty() {
-        return Err("名字是空的".to_string());
+        return Err(copy_text("rsFilewinWriteops.name.empty", &[]));
     }
     if t.contains('/') {
-        return Err(format!(
-            "「{t}」里带 `/` —— 这个框只改名字，不许在这儿写出一条别的路径"
+        return Err(copy_text(
+            "rsFilewinWriteops.name.hasSlash",
+            &[("name", &t.to_string())],
         ));
     }
     if t == "." || t == ".." {
-        return Err(format!("「{t}」不是一个名字，它是目录本身"));
+        return Err(copy_text(
+            "rsFilewinWriteops.name.isDir",
+            &[("name", &t.to_string())],
+        ));
     }
     Ok(t.to_string())
 }
@@ -583,13 +627,18 @@ pub(super) fn clean_name(t: &str) -> Result<String, String> {
 /// 而我们掩成 `644` ⇒ 他以为改的是别的东西。
 fn parse_mode(t: &str) -> Result<u32, String> {
     if t.is_empty() {
-        return Err("权限位是空的 —— 八进制，比如 644".to_string());
+        return Err(copy_text("rsFilewinWriteops.mode.empty", &[]));
     }
-    let mode = u32::from_str_radix(t, 8)
-        .map_err(|_| format!("「{t}」不是一个八进制数 —— 比如 644 或 755"))?;
+    let mode = u32::from_str_radix(t, 8).map_err(|_| {
+        copy_text(
+            "rsFilewinWriteops.mode.notOctal",
+            &[("text", &t.to_string())],
+        )
+    })?;
     if mode > 0o7777 {
-        return Err(format!(
-            "「{t}」超出权限位的范围（最大 7777）—— 文件类型位不许在这儿改"
+        return Err(copy_text(
+            "rsFilewinWriteops.mode.outOfRange",
+            &[("text", &t.to_string())],
         ));
     }
     Ok(mode)
@@ -599,6 +648,143 @@ fn parse_mode(t: &str) -> Result<u32, String> {
 /// 拿 `std::path` 切远端路径，在 Windows 上会把 `\` 也当分隔符）。
 pub(super) fn join_remote(dir: &str, name: &str) -> String {
     format!("{}/{}", dir.trim_end_matches('/'), name)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔GP1 · 第四波〕改权限那个框的**现值**（`设计/60 §7` · `调研/第四波记录/GP1.md §5`）
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 框上那一行说的现值，以及要不要预填。**纯函数**（判据直接喂它）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModeReadout {
+    /// 框上那一行（「现在是 644」/「这几项现在的权限不一样」/「读不到现在的权限」）。
+    pub line: String,
+    /// 预填进那一栏的八进制串；`None` = 不预填（各项不同 / 读不到）。
+    pub prefill: Option<String>,
+}
+
+/// 逐项读回来的权限位（`None` = 那一项没读到）⇒ 框上怎么说。
+///
+/// - 全读到且都一样 ⇒ 「现在是 644」，预填 `644`（一项就是这一形）；
+/// - 全读到但不一样 ⇒ 「这几项现在的权限不一样」，不预填（填哪一个都是替用户挑）；
+/// - 有一项没读到 ⇒ 「读不到现在的权限」，不预填 —— **不猜**：预填一个猜出来的值而用户直接点确认 = 静默改坏权限；
+/// - 空摞 ⇒ 同「读不到」（框本身会被 [`WritePrompt::to_ops`] 拒，不会走到这里）。
+pub fn mode_readout(modes: &[Option<u32>]) -> ModeReadout {
+    let unreadable = || ModeReadout {
+        line: copy_text("rsFilewinWriteops.mode.unreadable", &[]),
+        prefill: None,
+    };
+    let Some(all) = modes.iter().copied().collect::<Option<Vec<u32>>>() else {
+        return unreadable();
+    };
+    let Some(&m) = all.first() else {
+        return unreadable();
+    };
+    if all.iter().any(|x| *x != m) {
+        return ModeReadout {
+            line: copy_text("rsFilewinWriteops.mode.mixed", &[]),
+            prefill: None,
+        };
+    }
+    ModeReadout {
+        line: copy_text("rsFilewinWriteops.mode.now", &[("mode", &format!("{m:o}"))]),
+        prefill: Some(format!("{m:o}")),
+    }
+}
+
+/// `files-stat` 一次应答里的 `mode`（缺席 / 不是非负整数 / 超出低 12 位 ⇒ `None`：当读不到，不猜）。
+pub fn mode_of(reply: &serde_json::Value) -> Option<u32> {
+    reply
+        .get("mode")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|m| u32::try_from(m).ok())
+        .filter(|m| *m <= 0o7777)
+}
+
+/// 逐项问一次 `files-stat`（同 [`super::transfer::probe_remote`] 那一问、同一个期限），按入参顺序交回。
+pub async fn probe_modes(line: &Line, origin: &Origin, paths: &[String]) -> Vec<Option<u32>> {
+    let mut out = Vec::with_capacity(paths.len());
+    for p in paths {
+        let got = super::source::ask(
+            line,
+            origin,
+            "files-stat",
+            &serde_json::json!({ "path": p }),
+            super::transfer::PROBE_BUDGET,
+        )
+        .await;
+        out.push(got.ok().as_ref().and_then(mode_of));
+    }
+    out
+}
+
+/// 现值那一趟的共享落点（UI 线程读，tokio 那条写）。带一个**代数**：框换了（又摆了一个），
+/// 上一个框那一趟晚到的答案不许落到新框上。形状照 [`WriteBoard`]（含「敲窗口的手」）。
+#[derive(Clone, Default)]
+pub struct ModeProbe {
+    inner: Arc<Mutex<ModeProbeInner>>,
+}
+
+#[derive(Default)]
+struct ModeProbeInner {
+    gen: u64,
+    got: Option<Vec<Option<u32>>>,
+    ctx: Option<egui::Context>,
+}
+
+impl ModeProbe {
+    /// 新摆了一个框：代数 +1、清掉上一个框的答案，交回这一趟的代数。
+    pub fn start(&self) -> u64 {
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        g.gen += 1;
+        g.got = None;
+        g.gen
+    }
+
+    /// 答案到了。代数对不上（框已经换了）⇒ 丢掉。
+    pub fn land(&self, gen: u64, modes: Vec<Option<u32>>) {
+        let ctx = {
+            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            if g.gen != gen {
+                return;
+            }
+            g.got = Some(modes);
+            g.ctx.clone()
+        };
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    }
+
+    /// 把窗口交给它（答案到了要敲一下，不然等用户动鼠标才画出来）。
+    pub fn attach(&self, ctx: egui::Context) {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).ctx = Some(ctx);
+    }
+
+    /// 这一个框的现值（还没答回来 ⇒ `None`）。
+    pub fn readout(&self) -> Option<ModeReadout> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .got
+            .as_deref()
+            .map(mode_readout)
+    }
+}
+
+/// 〔GP1〕现值答回来之后，框里那一栏预填**至多一次**（纯函数：判据直接喂它）。
+///
+/// 只在「还没处理过」且「那一栏是空的」时填；填与不填都记「处理过了」—— 用户后来清空那一栏，不再被塞回去。
+pub fn apply_prefill(p: &mut WritePrompt, r: &ModeReadout) {
+    if p.prefilled {
+        return;
+    }
+    p.prefilled = true;
+    if p.text.is_empty() {
+        if let Some(v) = &r.prefill {
+            p.text = v.clone();
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -724,10 +910,13 @@ impl WriteBoard {
             let mut answer: Option<bool> = None;
             let mut changed = false;
             egui::Modal::new(egui::Id::new("filewin-write-confirm")).show(ui.ctx(), |ui| {
-                ui.heading(format!("这 {} 件要做吗？", asking.len()));
+                ui.heading(copy_text(
+                    "rsFilewinWriteops.confirm.ask",
+                    &[("n", &(asking.len()).to_string())],
+                ));
                 ui.colored_label(
                     egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
-                    "⚠ 这一问只出现一次：勾完点确认。删除不可撤销。",
+                    &copy_text("rsFilewinWriteops.confirm.warn", &[]),
                 );
                 for (i, o) in asking.iter().enumerate() {
                     let mut t = ticks[i];
@@ -737,10 +926,16 @@ impl WriteBoard {
                     }
                 }
                 ui.horizontal(|ui| {
-                    if ui.button("做勾上的").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinWriteops.confirm.doChecked", &[]))
+                        .clicked()
+                    {
                         answer = Some(true);
                     }
-                    if ui.button("都别做").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinWriteops.confirm.doNone", &[]))
+                        .clicked()
+                    {
                         answer = Some(false);
                     }
                 });
@@ -756,18 +951,30 @@ impl WriteBoard {
             if !o.failed.is_empty() {
                 ui.colored_label(
                     egui::Color32::RED,
-                    format!(
-                        "上一摞 {} 件没做成：{}",
-                        o.failed.len(),
-                        o.failed
-                            .iter()
-                            .map(|(n, e)| format!("{n}（{e}）"))
-                            .collect::<Vec<_>>()
-                            .join("；")
+                    copy_text(
+                        "rsFilewinWriteops.result.failed",
+                        &[
+                            ("n", &(o.failed.len()).to_string()),
+                            (
+                                "failed",
+                                &(o.failed
+                                    .iter()
+                                    .map(|(n, e)| format!("{n}（{e}）"))
+                                    .collect::<Vec<_>>()
+                                    .join(&copy_text("rsFilewinWriteops.result.failedSep", &[])))
+                                .to_string(),
+                            ),
+                        ],
                     ),
                 );
             } else if o.ok > 0 || o.skipped > 0 {
-                ui.label(format!("上一摞 {} 件做完、{} 件跳过", o.ok, o.skipped));
+                ui.label(copy_text(
+                    "rsFilewinWriteops.result.done",
+                    &[
+                        ("ok", &o.ok.to_string()),
+                        ("skipped", &o.skipped.to_string()),
+                    ],
+                ));
             }
         }
     }

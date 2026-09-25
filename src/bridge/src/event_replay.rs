@@ -671,7 +671,7 @@ impl EventReplay {
     /// （session-ended）不在 buffer、不会重发 → 僵尸 live Tab（还因 closeTab 门控
     /// archived 而关不掉）。frontend-ready 重放后，用本集合 × session_map 当前活跃集
     /// 对账、对已结束的本地 sid 补发 session-ended（issue #19）。**仅本地**：session_map
-    /// 只认本地，远端 sid 不在其中。远端版见 [`Self::buffered_remote_session_ids`]（issue #20）。
+    /// 只认本地，远端 sid 不在其中。远端版见 [`Self::buffered_remote_sessions`]（issue #20）。
     pub fn buffered_local_session_ids(&self) -> Vec<String> {
         let inner = self.inner.lock();
         let mut seen = std::collections::HashSet::new();
@@ -692,13 +692,19 @@ impl EventReplay {
     /// 多机（#30）下仍依赖「sid 全局唯一」—— Claude sid 是 UUID v4，跨机碰撞概率 ≈ 0，
     /// 故按裸 sid 去重/对账安全。**若将来后端改用非 UUID sid（PID/自增），必须把
     /// remote_active / 前端 Tab key / RemoteHwndCache 升为 (origin, sid)**（见 #30 跟进）。
-    pub fn buffered_remote_session_ids(&self) -> Vec<String> {
+    ///
+    /// 〔GP1 · 第四波〕每个 sid 连同它**所在的那台机器**一起交（`(sid, origin)`，origin 取它第一条行上的那一格）：
+    /// F5 对账要按「那台报完清单没有」分已结束 / 说不清（`ssh_source::split_stale`）。
+    /// 〔散文墓碑〕改之前它叫 `buffered_remote_session_ids`、只交 sid。
+    pub fn buffered_remote_sessions(&self) -> Vec<(String, String)> {
         let inner = self.inner.lock();
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
         for p in inner.history.iter() {
-            if p.origin.is_some() && seen.insert(p.session_id.clone()) {
-                out.push(p.session_id.clone());
+            if let Some(origin) = &p.origin {
+                if seen.insert(p.session_id.clone()) {
+                    out.push((p.session_id.clone(), origin.clone()));
+                }
             }
         }
         out

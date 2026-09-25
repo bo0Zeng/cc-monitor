@@ -10,6 +10,7 @@
 // F09：对齐类命令（acct-align-active/acct-align-all）随对齐全套一并删除——批量/一键对齐是
 // 组合层便利，不做等价替代，用户改走 tab 右键的 Restart flyout 逐会话操作。
 import { isSelectable, type Account } from "./accounts";
+import { copyText } from "./copy-table";
 
 /** 与 views/command-bar.ts 的 Command 结构对齐（这里不 import 以免把 DOM 依赖拖进纯函数模块）。 */
 export interface AccountCommand {
@@ -44,8 +45,8 @@ export function buildAccountCommands(input: AccountCommandsInput): AccountComman
       const isCur = snapshot.defaultName === a.name;
       cmds.push({
         id: `acct-default-${a.name}`,
-        title: `账号：设 ${a.name} 为当前账号${isCur ? "（已是当前）" : ""}`,
-        keywords: `account 账号 切换 default 默认 当前账号 ${a.name} ${a.email}`,
+        title: copyText("accountCommands.setDefault.title", { name: a.name, current: isCur ? copyText("accountCommands.setDefault.isCurrent") : "" }),
+        keywords: copyText("accountCommands.setDefault.keywords", { name: a.name, email: a.email }),
         // 教学式发现：把「打开账号菜单」的键位露在这里（用户若绑过）。
         hint: chordHint("account.switch-default"),
         run: () => {
@@ -57,8 +58,8 @@ export function buildAccountCommands(input: AccountCommandsInput): AccountComman
 
   cmds.push({
     id: "acct-manage",
-    title: "账号：管理…",
-    keywords: "account 账号 管理 manage 设置",
+    title: copyText("accountCommands.manage.title"),
+    keywords: copyText("accountCommands.manage.keywords"),
     run: () => input.openSettings(),
   });
 

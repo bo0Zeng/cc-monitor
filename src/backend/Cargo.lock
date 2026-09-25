@@ -227,12 +227,14 @@ dependencies = [
  "acct-core",
  "branch-core",
  "codex-token-core",
+ "copy-core",
  "creds-core",
  "gate-core",
  "guard-core",
  "libc",
  "notify",
  "notify-debouncer-mini",
+ "relay-route-core",
  "ring",
  "russh",
  "russh-sftp",
@@ -319,6 +321,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
+name = "copy-core"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -361,6 +370,7 @@ dependencies = [
 name = "creds-core"
 version = "0.1.0"
 dependencies = [
+ "copy-core",
  "serde_json",
  "windows 0.56.0",
 ]
@@ -1532,6 +1542,10 @@ name = "regex-syntax"
 version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+
+[[package]]
+name = "relay-route-core"
+version = "0.1.0"
 
 [[package]]
 name = "rfc6979"

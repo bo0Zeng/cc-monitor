@@ -15,12 +15,12 @@
 // `fetchLocalAccounts`，并且那几行的徽章带上「这个号走不走 apikey 端点改写」的三态
 // （`accountStatusBadge` 的 `{scope:"local",…}`）。在此之前 `KH2B7` 那三态
 // **在用户看得见的地方一处都没落地**（两个取值函数生产调用方各 0）。
+import type { ApikeyRoutingView } from "./apikey-reads";
 import {
   fetchAccounts,
   fetchLocalAccounts,
   fetchLocalApikeyRouting,
   localApikeyEndpointStateFor,
-  type ApikeyRoutingView,
   deriveUi,
   currentWorkingAccount,
   accountColorsActive,
@@ -35,6 +35,7 @@ import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { showActionFailureToast } from "./error-toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { copyText } from "./copy-table";
 
 // ------------------------------------------------------------ 纯函数（可测）
 
@@ -50,16 +51,16 @@ export function pickPrimaryOrigin(hosts: RemoteHostConfig[]): Origin {
 
 /** chip 文本（不含图标）。纯函数，据 UI 状态 + 当前默认账号算。 */
 export function chipLabel(state: AccountsState | null): string {
-  if (!state) return "未连远端";
+  if (!state) return copyText("accountChip.label.noRemote");
   const ui = deriveUi(state);
   switch (ui.kind) {
     case "needs-update":
-      return "backend 需更新";
+      return copyText("accountChip.label.backendOld");
     case "not-enabled":
-      return "未启用";
+      return copyText("accountChip.label.disabled");
     case "ready": {
       const def = currentWorkingAccount(state);
-      return def ? def.name : "未启用";
+      return def ? def.name : copyText("accountChip.label.disabled");
     }
   }
 }
@@ -92,10 +93,10 @@ export class AccountChip {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "status-account";
-    btn.title = "当前账号（点击切换 / 管理）";
+    btn.title = copyText("accountChip.ctor.hint");
     const icon = document.createElement("span");
     icon.className = "status-account-icon";
-    icon.textContent = "👤";
+    icon.textContent = copyText("accountChip.ctor.icon");
     icon.setAttribute("aria-hidden", "true");
     btn.appendChild(icon);
     this.iconEl = icon;
@@ -160,7 +161,7 @@ export class AccountChip {
     if (cur && accountColorsActive(this.state)) {
       this.iconEl.appendChild(accountAvatarEl(cur.name));
     } else {
-      this.iconEl.textContent = "👤";
+      this.iconEl.textContent = copyText("accountChip.refresh.icon");
     }
     this.element.style.display = "";
   }
@@ -196,10 +197,10 @@ export class AccountChip {
       info.className = "account-picker-info";
       info.textContent =
         ui.kind === "needs-update"
-          ? "远端后端需要更新才能用多账号"
-          : "该远端尚未启用多账号";
+          ? copyText("accountChip.menu.backendOld")
+          : copyText("accountChip.menu.notEnabled");
       menu.appendChild(info);
-      menu.appendChild(this.menuAction("管理 / 部署…", () => this.deps.openSettings()));
+      menu.appendChild(this.menuAction(copyText("accountChip.menu.manageDeploy"), () => this.deps.openSettings()));
     } else {
       const def = currentWorkingAccount(st);
       // F1：chip 是纯全局切换器——只列账号点选切当前账号；批量对齐随 F09 一并删除。
@@ -209,9 +210,9 @@ export class AccountChip {
       const sep = document.createElement("div");
       sep.className = "account-picker-sep";
       menu.appendChild(sep);
-      menu.appendChild(this.menuAction("管理账号…", () => this.deps.openSettings()));
+      menu.appendChild(this.menuAction(copyText("accountChip.menu.manage"), () => this.deps.openSettings()));
       menu.appendChild(
-        this.menuAction("刷新", () => {
+        this.menuAction(copyText("accountChip.menu.refresh"), () => {
           // 〔C4b〕账号缓存的键就是 origin（本机也一样，`"__local__"` 那个第二种写法已退役）⇒ 只清这一台。
           invalidateAccountsCache(this.origin);
           void this.refresh(true);
@@ -248,7 +249,7 @@ export class AccountChip {
 
     const mark = document.createElement("span");
     mark.className = "account-picker-mark";
-    mark.textContent = isCurrent ? "●" : "○";
+    mark.textContent = isCurrent ? copyText("accountChip.row.current") : copyText("accountChip.row.other");
     row.appendChild(mark);
 
     row.appendChild(accountAvatarEl(a.name, { size: 16 }));
@@ -381,12 +382,12 @@ export class AccountChip {
       // 打回刚被切走的旧账号——与用户意图正好相反）。
       this.deps.onDefaultChanged?.();
       showActionFailureToast(
-        "已切当前账号",
-        `以后新会话、以及没指定过账号的 resume 都会用 ${a.name}${a.email ? `（${a.email}）` : ""}；正在跑的会话不受影响（切号不重启任何东西）；已归属别的号的会话保持原号，要换到 ${a.name} 就在那个 tab 上右键选「把此会话切到账号 ${a.name}」。`,
+        copyText("accountChip.selectDefault.done"),
+        copyText("accountChip.selectDefault.doneBody", { name: a.name, email: a.email ? `（${a.email}）` : "" }),
         { level: "info", durationMs: 8000 },
       );
     } catch (e) {
-      showActionFailureToast("切换当前账号失败", String(e), { level: "error" });
+      showActionFailureToast(copyText("accountChip.selectDefault.failed"), String(e), { level: "error" });
     }
   }
 

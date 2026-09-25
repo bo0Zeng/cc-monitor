@@ -120,6 +120,7 @@
 //! （`§9 §四.2` 第 3 条），一行特别长时也买不到东西（第 10 条），留着只会让人以为它还是候选。
 //! 行结构改由 [`super::bigfile::Lines`] 增量维护，判据对着 `str::split('\n')` 钉。
 
+use crate::copy_table::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -231,7 +232,7 @@ pub fn is_sha256_hex(s: &str) -> bool {
 
 /// 〔FW1〕存盘那一问的「盘上那份在你打开之后被改过了」那句（`stale` 那一档；后端原话接在后面）。
 pub fn stale_notice(why: &str) -> String {
-    format!("盘上那份在你打开之后被改过了，这次没有存（{why}）")
+    copy_text("rsFilewinEditor.stale.notice", &[("why", why)])
 }
 
 /// 〔F9c〕一个字放进 JSON 字符串之后占几个字节 —— 与 `serde_json` 的转义**逐码位**相同
@@ -278,25 +279,39 @@ pub fn plan_chunks(content: &str, budget: usize) -> Vec<&str> {
 
 /// 敲超上限、存的时候本地拒那句话（一个字节都没发）。
 pub fn over_cap_notice(len: usize) -> String {
-    format!(
-        "这份有 {len} 字节，超过 {MAX_EDIT_BYTES} 字节的上限，多了 {} 字节，没有发出去。",
-        len.saturating_sub(MAX_EDIT_BYTES)
+    copy_text(
+        "rsFilewinEditor.overCap.notice",
+        &[
+            ("len", &len.to_string()),
+            ("limit", &MAX_EDIT_BYTES.to_string()),
+            ("over", &(len.saturating_sub(MAX_EDIT_BYTES)).to_string()),
+        ],
     )
 }
 
 /// 分块存到一半断了那句话（第几段从 1 数；原话接在后面）。提交那一趟没发 ⇒ 远端那份一个字节没动。
 pub fn chunk_failed_notice(seq: usize, total: usize, why: &str) -> String {
-    format!("存到第 {} 段（共 {total} 段）时断了：{why}", seq + 1)
+    copy_text(
+        "rsFilewinEditor.chunkFailed.notice",
+        &[
+            ("seq", &(seq + 1).to_string()),
+            ("total", &total.to_string()),
+            ("why", &why.to_string()),
+        ],
+    )
 }
 
 use super::source::Row;
 
 /// 行上那颗按钮。
-pub const EDIT_LABEL: &str = "编辑";
+pub static EDIT_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.label.edit", &[]));
 /// 〔FW1 · D-c〕存盘撞上 stale 之后那两颗按钮（住这里：判据按名字点它们，不在画的地方另写一遍）。
-pub const OVERWRITE_LABEL: &str = "仍然覆盖";
+pub static OVERWRITE_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.overwrite", &[]));
 /// 〔FW1 · D-c〕同上，另一颗。
-pub const REOPEN_LABEL: &str = "丢掉改动，重新打开";
+pub static REOPEN_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.reopen", &[]));
 
 /// 这一行**为什么**改不了（`None` = 改得了）。
 ///
@@ -304,11 +319,11 @@ pub const REOPEN_LABEL: &str = "丢掉改动，重新打开";
 ///（见头注「超了怎么办」那一节）。`bool` 只够画一个灰按钮。
 pub fn why_not_editable(r: &Row) -> Option<String> {
     if r.is_dir {
-        return Some("这是一个目录".into());
+        return Some(copy_text("rsFilewinEditor.notEditable.dir", &[]).into());
     }
     if r.lossy_name {
         // 与 `is_copyable` / `is_writable` 同一条：名字不是合法 UTF-8 ⇒ 寻址不到真字节。
-        return Some("这个名字不是合法 UTF-8，寻址不到真字节".into());
+        return Some(copy_text("rsFilewinEditor.notEditable.badName", &[]).into());
     }
     if r.size > MAX_EDIT_BYTES as u64 {
         // 🔴 **报「多了多少」，不是报两个 `human_size`。**
@@ -320,13 +335,17 @@ pub fn why_not_editable(r: &Row) -> Option<String> {
         // ⇒ 换成「多了 N 字节」：它在边界附近**永远不退化**，而且直接答
         //   「我该把文件弄小多少」这个用户真正要问的问题。
         let over = r.size - MAX_EDIT_BYTES as u64;
-        return Some(format!(
-            "这份 {}（{} 字节）超过编辑上限 {}，多了 {} 字节（超限**拒编而非截断** —— \
-             截断过的文本存回去会写坏文件）",
-            super::rows::human_size(r.size),
-            r.size,
-            super::rows::human_size(MAX_EDIT_BYTES as u64),
-            over
+        return Some(copy_text(
+            "rsFilewinEditor.notEditable.tooBig",
+            &[
+                ("size", &(super::rows::human_size(r.size)).to_string()),
+                ("bytes", &r.size.to_string()),
+                (
+                    "limit",
+                    &(super::rows::human_size(MAX_EDIT_BYTES as u64)).to_string(),
+                ),
+                ("over", &over.to_string()),
+            ],
         ));
     }
     None
@@ -349,9 +368,9 @@ pub fn is_editable(r: &Row) -> bool {
 /// ⚠ 它**也可能**是那个竞态（读 `size` 之后文件被换大了）⇒ 这句话里
 /// 把那一形也说了，否则用户会对着一个刚变大的文件反复点。
 pub fn not_text_notice(path: &str) -> String {
-    format!(
-        "{path} 不是一份可编辑的文本（含 NUL 字节、或不是 UTF-8）。\
-         ⚠ 也可能是它刚刚被换成了更大 / 二进制的内容 —— 刷新看看。"
+    copy_text(
+        "rsFilewinEditor.notText.notice",
+        &[("path", &path.to_string())],
     )
 }
 
@@ -635,10 +654,7 @@ pub fn opened_from_reply(
         return Ok(None);
     };
     let sha256 = sha.filter(|s| is_sha256_hex(s)).ok_or_else(|| {
-        format!(
-            "`{CMD_READ_TEXT}` 的应答里没有「这份内容的摘要」（`sha256`）—— 那台后端比这个窗口旧；\
-             没有它存不回去，就不打开了"
-        )
+        copy_text("rsFilewinEditor.reply.noDigest", &[])
     })?;
     Ok(Some(Opened { text, sha256 }))
 }
@@ -658,7 +674,7 @@ pub fn text_from_reply(
             .get("text")
             .and_then(serde_json::Value::as_str)
             .map(|t| Some(t.to_string()))
-            .ok_or_else(|| format!("`{CMD_READ_TEXT}` 的应答里没有 `text`，和约定的不一样")),
+            .ok_or_else(|| copy_text("rsFilewinEditor.reply.noText", &[])),
         Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
         Err(f) => Err(f.said),
     }
@@ -738,10 +754,7 @@ pub fn saved_from_reply(
                 sha256: s.to_string(),
             })
             .ok_or_else(|| {
-                SaveError::Failed(
-                    "存进去了，可后端没交回新内容的摘要 —— 再存一次会被当成「盘上被改过」；关掉重新打开再改"
-                        .to_string(),
-                )
+                SaveError::Failed(copy_text("rsFilewinEditor.saved.noDigest", &[]))
             }),
         Err(f) if f.code.as_deref() == Some("stale") => Err(SaveError::Stale(f.said)),
         Err(f) => Err(SaveError::Failed(f.said)),
@@ -761,14 +774,15 @@ pub async fn overwrite_anyway(
     let now = match read_text(line, origin, path).await {
         Ok(Some(o)) => o.sha256,
         Ok(None) => {
-            return Err(SaveError::Failed(format!(
-                "盘上那份现在不是能编辑的文本（{}），覆盖不了 —— 编辑框里的字还在",
-                not_text_notice(path)
+            return Err(SaveError::Failed(copy_text(
+                "rsFilewinEditor.overwrite.notText",
+                &[("why", &not_text_notice(path))],
             )))
         }
         Err(why) => {
-            return Err(SaveError::Failed(format!(
-                "为了覆盖先读一趟盘上那份，没读到：{why} —— 编辑框里的字还在"
+            return Err(SaveError::Failed(copy_text(
+                "rsFilewinEditor.overwrite.readFailed",
+                &[("why", &why)],
             )))
         }
     };
