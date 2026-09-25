@@ -85,9 +85,10 @@ mod remote_relay; // 〔RM1a〕中转（层 1）按机器：本机由 monitor �
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod search;
 mod session_map;
-// `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
-// 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
-// `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
+mod shell_dialect; // AL1c（第四波 4B）：`设计/71 §4.4` 那组 shell 方言接口 —— POSIX 与 PowerShell 各一份实现，通用层零 shell 文本
+                   // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
+                   // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
+                   // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
 mod spawn_managed;
 // devbench F02：skill 接入面（一份声明 + 通用宿主）。
 // ⚠ **今天零生产消费者**（UI 归 F03）—— 照 `tool_registry` 的先例如实登记并写处置条件：
@@ -1903,29 +1904,37 @@ async fn write_apikey_credentials_key(
 
 /// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。
 /// 预览与「复制去手贴」都只调这一条；`dry_run` 那个布尔从此不需要了（「只生成不写」就是只调这一跳）。
+/// 〔AL1c · 第四波 4B〕多一个 `shell`（`posix` / `powershell`）：同一份清单渲染成哪种 shell 的方言（`71 §4.4`）。
+/// 必给，不留缺省 —— 缺了就是「替人猜一种 shell」。
 #[tauri::command]
-fn aliases_render(aliases: Vec<account_aliases::Alias>) -> account_aliases::AliasRender {
-    account_aliases::render(&aliases)
+fn aliases_render(
+    aliases: Vec<account_aliases::Alias>,
+    shell: shell_dialect::Shell,
+) -> account_aliases::AliasRender {
+    account_aliases::render(&aliases, shell)
 }
 
 /// 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（`设计/70 §3.1` 「列出现在有哪些命令」）。
+/// 〔AL1c〕按 `shell` 读那一种的文件（`aliases.sh` / `aliases.ps1`）与那一种的启动文件候选。
 #[tauri::command]
-fn aliases_read() -> Result<account_aliases::AliasListing, String> {
+fn aliases_read(shell: shell_dialect::Shell) -> Result<account_aliases::AliasListing, String> {
     let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录".to_string())?;
-    account_aliases::read_in(&home)
+    account_aliases::read_in(&home, shell)
 }
 
 /// 〔AL1〕第②跳：**唯一的副作用**。收的是清单不是代码 —— 写进 shell 的文本只由后端渲染
 /// （审计 S-1），而「写的就是预览的那一份」由两跳调同一个 `account_aliases::render` 保证。
 /// 〔RW1 · 第四波 09-24〕落盘经**本机后端**的文件管理那一面（`user_files::BackendDoor`），
 /// home 也问它 ⇒ 那边的测试拿替身门当后端，结构上碰不到真实家目录。
+/// 〔AL1c〕`shell` 定写哪一种（别名文件 ＋ 它的写法）；`rc_path` 那份文件的方言由它自己的扩展名定。
 #[tauri::command]
 async fn aliases_install(
     aliases: Vec<account_aliases::Alias>,
     rc_path: Option<String>,
+    shell: shell_dialect::Shell,
 ) -> Result<account_aliases::AliasInstallReport, String> {
     let door = user_files::BackendDoor::new(origin::Origin::local());
-    account_aliases::install_in(&door, &aliases, rc_path.as_deref()).await
+    account_aliases::install_in(&door, &aliases, rc_path.as_deref(), shell).await
 }
 
 #[tauri::command]
