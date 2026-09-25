@@ -76,7 +76,7 @@ describe("批注审批队列", () => {
       ann("p2", "Proposed"),
     ]);
     await openQueue(v);
-    expect(api.listAnnotations).toHaveBeenCalledWith("/repo");
+    expect(api.listAnnotations).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" });
     expect(ids(v, "proposed")).toEqual(["p1", "p2"]);
     expect(ids(v, "active")).toEqual(["a1"]);
     expect(probe(v).sidebarEl.querySelector(".panorama-sidebar-subtitle")?.textContent).toBe(
@@ -95,7 +95,7 @@ describe("批注审批队列", () => {
     rowBtn(v, "p1", "批准").click();
     await flush();
     await flush();
-    expect(vi.mocked(api.approveAnnotation).mock.calls).toEqual([["/repo", "p1"]]);
+    expect(vi.mocked(api.approveAnnotation).mock.calls).toEqual([[{ origin: LOCAL_ORIGIN, path: "/repo" }, "p1"]]);
     expect(api.removeAnnotation).not.toHaveBeenCalled();
     expect(api.listAnnotations).toHaveBeenCalledTimes(2);
     expect(ids(v, "proposed")).toEqual([]);
@@ -108,7 +108,7 @@ describe("批注审批队列", () => {
     await openQueue(v);
     rowBtn(v, "p2", "驳回").click();
     await flush();
-    expect(vi.mocked(api.removeAnnotation).mock.calls).toEqual([["/repo", "p2"]]);
+    expect(vi.mocked(api.removeAnnotation).mock.calls).toEqual([[{ origin: LOCAL_ORIGIN, path: "/repo" }, "p2"]]);
     expect(api.approveAnnotation).not.toHaveBeenCalled();
   });
 

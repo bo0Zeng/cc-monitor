@@ -88,8 +88,10 @@ pub(crate) const OPS: &[(&str, u64)] = &[
 ];
 
 /// 找不到时那句话的尾巴（这个插件自己的话）。
-const NOT_INSTALLED_HINT: &str =
-    "代码全景的小程序随后端部署，只传给打开过远端全景的机器；重装这台机器的后端就有了。";
+///
+/// ⚠ 只说「没装」，不许说「重装后端就有了」：把字节推到那台机器上的那一步（F08 部署路）
+/// 今天还没接（`调研/第四波记录/RM1c.md §4`），说了就是一句假的出路。
+const NOT_INSTALLED_HINT: &str = "这台机器上还没装代码全景组件。";
 
 /// 命令级错误：`(code, message)`。
 type CmdErr = (&'static str, String);
@@ -208,16 +210,19 @@ fn not_run(bin: &Path, n: NotRun) -> CmdErr {
     match n {
         NotRun::ArgListTooLong => (
             "too_large",
-            "这一次的参数塞不进一次命令调用（单个参数上限 128 KiB）—— 少选几个文件再试".to_string(),
+            "这次要查的文件太多，一次传不过去，少选几个再试".to_string(),
         ),
-        NotRun::Failed(m) => ("failed", format!("起不来 `{}`：{m}", bin.display())),
+        NotRun::Failed(m) => {
+            tracing::warn!("起不来 {}：{m}", bin.display());
+            ("failed", format!("代码全景组件没能启动：{m}"))
+        }
     }
 }
 
 fn describe_exit(code: Option<i32>) -> String {
     match code {
-        Some(c) => format!("退出码 {c}"),
-        None => "被信号打断".to_string(),
+        Some(c) => format!("异常退出，码 {c}"),
+        None => "被中途终止".to_string(),
     }
 }
 
