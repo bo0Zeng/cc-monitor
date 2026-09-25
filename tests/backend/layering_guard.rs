@@ -674,6 +674,10 @@ mod tests {
     /// 先前那张表不存在（口子只靠散文守）；本拍新开了两个口（`relay-*` 帧面那两个处理器），表同拍立起来。
     const RELAY_EXPORTS: &[(&str, &str)] = &[
         (
+            "listen::host",
+            "〔RL1 · V107〕流模式常驻后端**进程内**起中转的层 1 入口；层 2 那只手由 `accounts::apikey::host_relay` 递进来",
+        ),
+        (
             "listen::run",
             "`--relay` 那一臂的层 1 入口；层 2 那只手由 `accounts::apikey::run_relay` 递进来",
         ),
