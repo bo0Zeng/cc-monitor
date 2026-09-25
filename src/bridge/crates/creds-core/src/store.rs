@@ -73,7 +73,7 @@ pub const AUTH_STYLE_FIELD: &str = "auth_style";
 ///   **谁都不许顺手删它**（删掉就是打掉老用户手上那份文件），
 ///   由 `the_legacy_top_level_key_becomes_one_named_row_not_a_default_row` 与
 ///   `an_unconfigured_file_yields_no_rows_at_all` 两条钉着。
-/// - **写**：界面那条路（〔GP1 · 第四波〕每台机器那台后端的写口 `accounts/apikey/file_face.rs`，本机也是）落的是 `accounts.<id>`，
+/// - **写**：界面那条路（〔GP1 · 第四波〕每台机器那台后端的写口 `accounts/upstream/file_face.rs`，本机也是）落的是 `accounts.<id>`，
 ///   **一个字节都不再往顶层那一格写**。机检住后端那一侧的
 ///   `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`。
 ///

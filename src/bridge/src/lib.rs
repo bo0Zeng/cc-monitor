@@ -1893,7 +1893,7 @@ async fn relay_endpoint_for_launch(
 ///
 /// ⚠ **它和人手编是同一份文件的两个写者** —— 写的那一刻才去读盘，
 /// 未知键一个不吃、字段顺序按名字排、原子替换、出生即只给本人。
-/// 〔GP1 · 第四波〕这几条今天由**那台机器的后端**兑现（本机 ＝ 本机常驻后端，`src/backend/accounts/apikey/file_face.rs`）；
+/// 〔GP1 · 第四波〕这几条今天由**那台机器的后端**兑现（本机 ＝ 本机常驻后端，`src/backend/accounts/upstream/file_face.rs`）；
 /// 整段论证住那一份的头注。〔墓碑 —— 从前这里写「整段论证见 `creds_store::write_key`〔散文墓碑〕」：monitor 不再写这份文件。〕
 ///
 /// ⚠ **入参是明文，而它一进来就被包成 `SecretKey`**（在那台后端的写口里）。
