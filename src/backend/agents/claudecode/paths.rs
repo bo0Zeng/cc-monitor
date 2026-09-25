@@ -90,7 +90,17 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
     })
 }
 
-/// 🔴 **一条路径是不是 Claude 的「会话数据」那几份具体文件** —— 写侧围栏的判定。
+/// 🔴 **一条路径是不是 Claude 的「会话记录」那几份具体文件的形状**（`projects/<proj>/<sid>.jsonl` 恰 2 段 ·
+/// `sessions/<x>.json` 恰 1 段）。
+///
+/// # 〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕它**不再是写侧围栏**
+///
+/// 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 文件管理写面（`control/files_write.rs`）
+/// 不再问它。后端里它今天**只有删历史会话那一条**在问（[`session_file_for_delete_in`] 与
+/// `files_write::fenced_session_file`：「要删的必须**是**一份会话记录」—— 方向与从前那道围栏相反）。
+/// 旧名 `is_protected_session_file` / `is_protected_session_path`〔散文墓碑〕：「protected」在后端从此是假的，名字改成它真在答的那一问。
+/// 它仍与桥那一侧 `claude_data_fence::is_protected_claude_data_path`（skill 收件箱编辑那道纵深，F03b，还在「保护」）
+/// **逐字节相同**：两边对「什么算一份会话记录」必须给同一个答案。下面几节是它当写侧围栏那一段的历史。
 ///
 /// 〔波 5 ㈢ · 2026-09-23 · 用户 2026-09-23 逐字裁「文件管理器该不该能改 `~/.claude`
 /// 里的东西. **可以.**」〕
@@ -129,7 +139,7 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// - 它管不着的那几类路径**与桥那一侧逐字同一张表**
 ///   （`claude_data_fence_tests::THE_SHAPES_THIS_FENCE_DOES_NOT_COVER`）——
 ///   本处刻意不抄第二份，抄了就是第二个会漂的住址。
-pub fn is_protected_session_file(path: &str) -> bool {
+pub fn is_session_record_file(path: &str) -> bool {
     let p = path.replace('\\', "/");
     // batch20 审计修：**结构判定**，不靠 `/.claude/` 字面——Claude 数据文件结构为 `<任意>/projects/<proj>/<sid>.jsonl`
     // （projects 下恰 2 段）或 `<任意>/sessions/<x>.json`（sessions 下 1 段）。**闭 `CLAUDE_CONFIG_DIR` 重定位缺口**：
@@ -148,21 +158,21 @@ pub fn is_protected_session_file(path: &str) -> bool {
     jsonl_protected || json_protected
 }
 
-/// [`is_protected_session_file`] 的 `&Path` 门面。
+/// [`is_session_record_file`] 的 `&Path` 门面。
 ///
 /// ⚠ **有损转换如实登记**：非 UTF-8 的路径字节经 `to_string_lossy` 变成 U+FFFD。
 /// 那**不会**造成漏判（受保护那两形要的是段数 ＋ `.jsonl` / `.json` 后缀，
 /// 而替换字符只出现在段**内部**，段数与后缀都活着），但它确实让「那一段原本是什么字节」
 /// 在这一问里不可知。⇒ 判定的语料是**字符串**，这条围栏从此与那一事实对齐。
-pub fn is_protected_session_path(target: &Path) -> bool {
-    is_protected_session_file(&target.to_string_lossy())
+pub fn is_session_record_path(target: &Path) -> bool {
+    is_session_record_file(&target.to_string_lossy())
 }
 
 /// 〔RW1 · 第四波 · 2026-09-24〕「删除历史会话」那一条**要删的那一份在哪** —— 只收 sid。
 ///
 /// 用户裁「只允许后端的文件管理部分写文件」「也管本机」⇒ 删历史会话（本机那一支此前是 monitor
-/// 进程直删，远端那一支是 SFTP 直删）改成后端**一条明确的命令**。那条命令是
-/// 会话文件围栏**唯一的例外**（别的写一律不许碰这几份文件），所以它**不收路径**：
+/// 进程直删，远端那一支是 SFTP 直删）改成后端**一条明确的命令**。它**不收路径**
+/// （〔FN1〕从前的理由是「它是会话文件围栏唯一的例外」，那道围栏 V119 拿掉了；「只收 sid」这件事本身没变）：
 /// 落点由这里按 sid 在本机记录树里找，调用方连表达「另一份文件」的办法都没有。
 ///
 /// 三关，各治一形：
@@ -171,8 +181,8 @@ pub fn is_protected_session_path(target: &Path) -> bool {
 ///    符号链接不算命中）。
 /// 2. **解到底再判一次**：真路径必须在记录树（也解到底）底下、恰好 `<proj>/<sid>.jsonl` 两段 ——
 ///    子代理那种更深的文件、一条指出去的链接，都在这一关被拒。
-/// 3. 解完的那一份**必须是**会话文件围栏认得的形状（[`is_protected_session_path`] 答真）——
-///    这是「例外」的定义：它删的恰恰是围栏保护的那一类，别的一样都删不到。
+/// 3. 解完的那一份**必须是**会话记录的形状（[`is_session_record_path`] 答真）——
+///    它删的恰恰是那一类，别的一样都删不到。
 ///
 /// `home` 由调用方给：生产侧是 [`resolve_home`]（见 [`session_file_for_delete`]），
 /// 判据拿临时目录当 home，不碰真实配置根，也不改测试进程的环境变量。
@@ -207,7 +217,7 @@ pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, Str
             rel.display()
         ));
     }
-    if !is_protected_session_path(&real) {
+    if !is_session_record_path(&real) {
         return Err(format!(
             "删不了会话 {sid}：{} 不是一份会话记录的形状",
             real.display()

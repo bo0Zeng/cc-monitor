@@ -50,6 +50,10 @@ mod tests {
              不含请求头、与任何一把 key 无关 —— 这几格由 `UpstreamFailure` 的字段集兜着",
         ),
         ("a", "监听地址（`local_addr()`）"),
+        (
+            "status",
+            "〔RK1〕门拒绝那一格的**状态行**（`door::FORBIDDEN` / `door::MISDIRECTED` 两个常量之一）—— 不含请求里的任何字节",
+        ),
         ("port", "端口号"),
         (
             "INFLIGHT_CONNECTIONS",
@@ -150,6 +154,16 @@ mod tests {
             "relay/listen.rs",
             "[relay] cannot bind loopback port",
             "端口起不来",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] refusing to listen without a relay key",
+            "〔RK1〕绑上口之后拿不到钥匙（家目录解析不出 / 铸不出 / 写不进）⇒ 不起。只带路径与 io 错误文本，**永远没有钥匙值**",
+        ),
+        (
+            "relay/server.rs",
+            "[relay] refused at the door",
+            "〔RK1〕进门三问拒了一条（Origin / Host 非回环 / 钥匙不对）。只印状态行，**不印请求头与路径**（路径里可能正是一把错钥匙）",
         ),
         (
             "relay/listen.rs",

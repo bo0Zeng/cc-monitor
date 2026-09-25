@@ -860,6 +860,23 @@ export class TabManager {
   }
 
   /**
+   * 〔GP1 · 第四波〕这条会话所在的那台机器**看不见了**（`session-unseen`：到它的连接断了 / F5 时它还没报完清单）。
+   *
+   * 活的 / 可重连的 ⇒ 说不清（`nextState` 的 `unseen`）；已结束 / 记录没了不动。那台机器从「报完了清单」里摘掉 ——
+   * 之后才复活出来的固定 tab 不再直接落已结束，要等那台重连、再报一次（`markOriginSeen`）。
+   * 重连之后：还活着的由重宣告（`remote-session-added` → `ensureTab` 的 `remote-line`）翻回活，其余由
+   * `origin-sessions-listed` 落已结束（`设计/30 §3.5.7a`）。Tab 还没建 ⇒ 什么都不做（它建出来时由行 / 宣告定）。
+   */
+  markUnseen(sessionId: string): void {
+    const tab = this.store.tabs.get(sessionId);
+    if (!tab) return;
+    this.store.seenOrigins.delete(tab.origin);
+    if (!this.applyState(tab, "unseen")) return;
+    this.refreshTabBar();
+    this.emitTabStateProbe(tab);
+  }
+
+  /**
    * 〔U4b · 第四波 · G1〕resume 一跳问过那台后端：这条会话的记录在不在（`history-record`）。
    * 不在 ⇒ 已结束落到「记录没了」；在 ⇒ 「记录没了」翻回已结束（记录回来了，例：同步盘补齐）。
    * 别的态不动（`nextState`：可重连的终端还在，接得回去；活的不走 resume）。

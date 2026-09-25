@@ -109,6 +109,14 @@ const POWERSHELL_TODAY: &[(&str, &str)] = &[
         "tests/e2e/tier2/run-in-session1.ps1",
         "tier2 e2e：跳到已登录 session1 里跑（SSH 落 session0 没有桌面）",
     ),
+    // 〔09-25 MG1 合 RT1〕这一族长大了（2 → 4）：RT1 的 Win11 虚拟机真机台架两份，只在台架里跑、不进产品。
+    // 仍零 lint（`pwsh` 仍不在 PATH）；「要不要引 PSScriptAnalyzer」按上面头注的第 ① 条交主会话重问，
+    // `ci.yml` 那句「两个」同拍改成「四个」。
+    (
+        "tests/evidence/RT1-lib.ps1",
+        "RT1 真机台架：窗口枚举 / DPI / WM_CLOSE / 控制台事件",
+    ),
+    ("tests/evidence/RT1-winwatch.ps1", "RT1 真机台架：窗口哨兵"),
 ];
 
 #[test]

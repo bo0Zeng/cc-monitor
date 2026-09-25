@@ -27,6 +27,8 @@
    交给**那台机器的后端**一条明确的命令 `files-delete-session`：**只收 sid**，落点由后端按 sid 在它自己的记录树里找
    （`agents::claudecode::paths::session_file_for_delete`：解到底必须恰是 `projects/<项目>/<sid>.jsonl`，链接出界不跟），
    删之前再过一次它自己的围栏（`files_write::fenced_session_file`）。它是后端文件管理写面里**会话文件围栏唯一的例外**（§41.6 第三层）。
+   〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119「文件管理器全部都可以改. 不需要任何围栏」〕文件管理写面的会话文件围栏拿掉了，
+   「唯一的例外」这个说法随之作废；这一条本身（只收 sid、自己那一道、二次确认）一个字没动。
    monitor 这一侧只剩一道一致性闸：界面给的 sid 必须恰是那一行文件名的 stem，对不上一个请求都不发。
    〔RW1 · 第四波 2026-09-24：用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 从前本机 `fs::remove_file` ＋ `validate_delete_target`〔散文墓碑〕
    与远端 SFTP 直删两条路合成这一条。〕
@@ -53,6 +55,10 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 **为什么不能松动**：cc-monitor 的核心价值主张是 "看 claude 的输出不破坏它"。一旦允许 monitor 在用户数据上**非显式**写，用户对 "数据源 = 我自己的命令痕迹" 的信任就崩了。上述豁免要么是**非用户数据**（自部署 bin），要么是**用户显式动作**（删除 / metadata），且各带独立 realpath 白名单。
 
 **F47 SFTP 文件面板不在本约管辖内（澄清，非例外/非松动）**：Batch14-F47 起 cc-monitor 挂了一个**用户亲自驱动的通用 SFTP 文件传输面板**（浏览/上传/下载/改名/删除任意用户文件）。它是**独立文件传输功能**，与本约「monitor 作为监视器只读 Claude 数据源」**正交**——它写的是用户浏览到的普通文件，不是 Claude 的 jsonl/pidfile，且每次写都是面板内一次直接用户手势（绝无自动/后台写）。**防误伤守卫**（`claude_data_fence::is_protected_claude_data_path` —— 〔步 H2 2026-09-21，用户裁「拆」〕它已从 `sftp_pool` 搬成**独立一族**，本段与下面 F03b 段共用它这**一个**判定；判定的射程一个字没动）:SFTP 写命令**拒碰** `~/.claude/projects/**/*.jsonl` 与 `~/.claude/sessions/*.json`（往正被 Claude 打开的会话文件写会损坏会话；要管这些用历史浏览器）。SFTP 面板走独立 utility 连接池，与数据源流连接分离。
+> **〔订正 · FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕** 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」。这一段里的「防误伤守卫」**对文件管理器不再成立**：
+> 今天的文件面板就是原生文件窗口 ＋ 后端文件管理写面（`files-*`），会话文件 · 项目目录 · subagent · tasks 都能改名 / 删 / 改权限 / 覆盖；
+> 窗口的本地预判、传输台开下载单那一判、后端写面那一问都删了。「每次写都是一次直接用户手势、绝无自动/后台写」**照旧成立**（那是这一段的正题，不是围栏）。
+> `claude_data_fence::is_protected_claude_data_path` 今天只剩下面 F03b 那一个用户（守它的判据：`claude_data_fence_tests::the_file_manager_no_longer_asks_the_fence_and_only_the_inbox_editor_does`）。
 
 **F03b 收件箱编辑不在本约管辖内（澄清，非例外/非松动）**〔RW1 · 第四波 2026-09-24：本机 ＋ 远端项目都能编辑（用户裁），读写经那台机器的后端（`files-peek` / `files-put`，写带打开时读到的那一份当 CAS 期望，agent 改过 ⇒ 一个字节不写）；下文 `verified_write` 那一跳已并进后端规则〕：devbench-F03b 起 cc-monitor 挂了一个**收件箱编辑面板**（读写用户自己项目里的 `.claude/planned-build/INBOX.txt` —— planned-build skill 的「结构化注入」进件口）。**口径与 F47 逐条对齐**：它写的是**用户自己项目的普通文本文件**，不是 Claude 的 jsonl/pidfile；每次写都是**面板内一次直接用户手势**（点「保存」，绝无自动/后台写）。**围栏三道**（`skill_host::resolve_editable`）：① 路径 `canonicalize` **之后**做**集合判定**，集合来自声明表 `skill_host::SKILLS` 的 `editable`（**不是一串 `if`**，也不是判字符串——`..` 与符号链接都已解开）② 过 `claude_data_fence::is_protected_claude_data_path`（**纵深**：即使声明写歪也不许碰 Claude 数据；与上面 F47 段**同一个**判定，住址见那一段）③ 目标**必须已存在**（本功能是「编辑收件箱」不是「创建任意文件」）。写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回**逐字节**比对 → 不符即回滚），**没有自造第四份写入实现**。⇒ 写面严格等于「声明里那几个真实文件」，今天恰好一个文件名。⚠ **远端项目的收件箱不在此列**：`parity_ledger` 里 `skill.inbox` 记 `Undecided`——「要不要能编辑」没人裁定过，且远端版的第①道（`canonicalize`）在那边不成立。
 
@@ -558,6 +564,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 2. **前端必须把 `session-ended` 与行事件同序处理**（`events.ts` 的 queue，#20 一并改）。ended 若抢在积压重放行之前执行，归档会被后续远端行的 un-archive（`tabs.ts` ensureTab，仅远端）翻回 live，对账等于无效——这正是 #20 初版后端-only 方案被审计打回的原因。
 
 **为什么不能松动**：对账是把"一次性 ended 信号"在重载后重建出来的唯一机制；集合不准 = 要么僵尸 live Tab 复现（漏归档），要么活会话被误杀且无后续行救活（误归档）。断连窗口期的误归档是**有意取舍**（重连后后端重发 added + 重放行 → un-archive 自愈）。
+〔GP1 · 第四波〕上一句那个取舍**收窄了**：断连 flush 送进通道的 removed 一律 `RemovalCause::Unseen` ⇒ emitter 发 `session-unseen`（说不清），不再发 `session-ended`；F5 对账里「buffer 里有、集合里没有」的远端 sid 按所在的那台分 —— 那台此刻**报完了**活会话清单（收到过 `sessions_replayed`，`ssh_source::listed_origins`）⇒ 补 `session-ended`（原样）；**没报完**（断着 / 还在初扫）⇒ 补 `session-unseen`。`设计/30 §3.5.7a`「`Unseen` 不许被显示成『已结束』」；判据 `ssh_source_f032_idle_tests::gp1_*`。集合本身的写法一字未改（removed 照旧先从集合里摘）。
 
 **F74c(#60-A) 补充——tmux 存活对账是 `remote_tx` 的第三生产者**：tmux 存活收割器（带外杀 tmux 后端 → 变灰）与后端帧、断连 flush **并列**为 `remote_tx` 的生产者，**必须**把 retire 的 sid 当 `SessionChange{removed}` 经该通道下发，**绝不**直接写 `remote_active`、**绝不**让前端直接 archive——唯一写者仍是 `remote-session-emitter`。误判防线（`ever_bound` 门 + debounce + 漂移靠 announced_live 剔除 + 空 backend/NO_TMUX 跳过）在 `tmux_reconcile::reconcile_step`（纯函数、source-agnostic），阈值真机标定。**后人给收割器接线时不许把它直连前端或直写集合。**
 
@@ -1833,9 +1840,9 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 > | 白名单层 | `control/fork_write.rs` | 只许 `O_EXCL` 新建（同上表） |
 > | **第三层（文件管理写面）** | **恰好两个模块**：`control/files_write.rs`（写面）· `control/files_commit.rs`（上传的提交，F7c 09-24：SFTP 只写暂存区 `~/.cc-monitor/staging/`，挪进用户目标的那一下在这里） | 改动动词是**闭集**（建目录 · 删文件 · 删空目录 · 改名 · 改权限 · 覆盖写；〔FW5〕递归删不是新动词，由计划趟逐条目过围栏 ＋ 删文件 / 删空目录拼成）· **每一处改动之前先过围栏** · **只从文件管理面来**（后端里引用得到这两个模块的文件 == `{inbound.rs}`，够得到它们的命令 == 两张命令表登记的那几条之并）。〔RW1 · 第四波 09-24〕**用户文件的读改写**也在这一层：`files-peek`（读那一半，与写同一道围栏）· `files-put`（CAS ＋ 备份 ＋ 原子替换 ＋ 回读 ＋ 回滚，由 `O_EXCL` 新建 ＋ 写 ＋ 改名 ＋ 改权限拼成，**闭集一个动词没加**，规则见 §4）；以及**会话文件围栏唯一的例外** `files-delete-session`（见下一段） |
 >
-> ⇒ 本节的**措辞**因此改为：**后端只有文件管理那一面可以改动用户的文件，且每一处先过会话文件围栏；
+> ⇒ 本节的**措辞**因此改为（〔FN1 · V119〕这句已再改，见下面「订正 · FN1」那一段）：**后端只有文件管理那一面可以改动用户的文件，且每一处先过会话文件围栏；
 > 其余后端代码仍不许写，`fork_write` 仍只许 `O_EXCL` 新建。**
-> 围栏（`is_protected_session_file`）只拦正在用的会话记录（`projects/<proj>/<sid>.jsonl`、`sessions/<x>.json`），
+> 围栏（`is_session_record_file`，〔FN1〕今天已不是写侧围栏，见下面「订正 · FN1」那一段）只拦正在用的会话记录（`projects/<proj>/<sid>.jsonl`、`sessions/<x>.json`），
 > `~/.claude` 里的 skills / 配置 / 账号库**可以改**——这是用户那条裁决的原意，不是放松。
 > ⚠ TOCTOU 未闭合（判定与动手之间有窗；改名「目标已在就拒」是先看再改）—— 如实登记，不当成已解。
 >
@@ -1850,7 +1857,27 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 > 这根围栏针在后端生产树里**恰好一处调用**（`readonly_guard::the_session_file_exception_lives_in_exactly_one_place`：
 > 一处调用 · 定位器只写面引用 · `args == ["sid"]` · 多给 `path` 真的回 `bad_args`）—— 例外借给第二个函数当场红。
 > ⇒ 本节措辞再收一句：**用户的文件只有文件管理那一面能改，每一处先过会话文件围栏；唯一的例外是删历史会话那一条，
-> 它只收 sid、只删恰是那一形的那一份。**
+> 它只收 sid、只删恰是那一形的那一份。**（〔FN1 · V119〕这句已再改，见下面「订正 · FN1」那一段）
+
+> **〔订正 · FN1 · 第四波 4C · 2026-09-25 · 用户 V119「文件管理器全部都可以改. 不需要任何围栏」〕第三层拿掉会话文件围栏。**
+> 文件管理器（后端文件管理写面 ＋ 文件窗口）**不再有任何 Claude 数据围栏**：会话文件（`projects/<proj>/<sid>.jsonl` · `sessions/<x>.json`）、
+> 项目目录、subagent 记录、tasks 都能新建 · 改名 · 删 · 改权限 · 覆盖 · 复制 · 读改写；递归删不再因树里藏着一份会话文件就整趟拒。
+> **拿掉的是「不许改这些东西」的限制；保留的是路径解析的正确性**（`files_write::resolve_in_root`：`rel` 逐段只许普通段、拼出来仍在 `root` 下 ＋
+> 父目录解链接后仍在根下；跟链接的动词用 `resolve_existing_in_root`：解到底仍在根下）—— 那不限制改什么，只保证改的就是 `root ＋ rel` 那一格。
+>
+> ⇒ 第三层那一格的判据 ③ 改成：**每一处改动之前先过路径解析**（针 `readonly_guard::RESOLVE_CALLS`，形状一个字没变）。
+> ⇒ 本节措辞今天读成：**用户的文件只有文件管理那一面能改，每一处先过路径解析；那一面不问数据是谁的。**
+> 删历史会话（`files-delete-session`）不是文件管理器，它那一道（只收 sid、必须**是**一份会话记录、`fenced_session_file` 恰好一处调用）一个字节没动；
+> 「唯一的例外」这个说法作废（没有被它例外的围栏了）。
+>
+> | 判据 | 钉什么 |
+> |---|---|
+> | `readonly_guard::the_file_manager_face_never_asks_the_session_shape` | 后端生产树里问会话形状（`is_session_record_*`）的 `(文件, 函数)` == 删会话那一条要的三处（两向，带合成正控）；写面哪个函数再伸手问 ⇒ 红 |
+> | `claude_data_fence_tests::the_file_manager_no_longer_asks_the_fence_and_only_the_inbox_editor_does` | monitor 侧调那道判定的生产文件 == `{skill_host.rs}`（F03b 收件箱纵深，不是文件管理器）；文件窗口 / 传输台零命中 |
+> | `files_write_tests`（行为） | 会话文件那一侧逐动词**做得成**、盘上逐字节核；阴性换成「链接指到根外 ⇒ `refused`、根外一个字节没动」 |
+> | `filewin::shell_tests::a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file` | 真点会话文件那一行的「删除」⇒ 问一次 ⇒ 答做 ⇒ 后端真收到 `files-delete` |
+>
+> ⚠ 后端那份会话形状判定改名 `is_session_record_file` / `is_session_record_path`（「protected」在后端从此是假的），与桥那一侧仍逐字节相同。
 
 > **〔订正 · B2 · 2026-09-24 · 用户裁「只允许后端的文件管理部分写文件」管的是**用户的文件**〕** 第四层：
 > | 层 | 范围 | 判据 |
@@ -2151,11 +2178,37 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 宿主那一半 `local_backend_host_tests.rs::every_token_is_fresh_and_long_enough` · `local_backend_host_tests.rs::the_listen_token_file_is_pinned_cell_by_cell`（`0600` · 竞态支不覆盖 · 空文件支）·
 `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused`（口被别人占着 ⇒ 出声拒，不静默复用）。
 
-**射程**：本条只管**控制口**。常驻后端今天还绑两类口，如实列：
-- **中转口**（`relay/listen.rs`，V107 起住常驻后端）**没有钥匙** —— 它在听的时候，同机任何进程走 `/s/…` 就能让中转代入某个账号的凭据。它不在本条射程里，
-  **也没有别的条管它**；是设计取舍还是缺口，未裁（`IV1` 报主会话）。
+**射程**：上面几段说的是**控制口**。常驻后端今天还绑两类口，如实列：
+- **中转口**（`relay/listen.rs`，V107 起住常驻后端；远端是 `relay-ensure` 起的脱离 `--relay`）**也要钥匙**〔`RK1` · 主会话 2026-09-25 判「缺口，不是取舍」〕，见下面 48.1a。
 - **端口转发**（`dial/uses.rs`）是用户自己配的 `ssh -L` 语义，本就不设钥匙。
 - 文件管理器那条回环通道（`chan/host.rs`）有钥匙，但住 monitor，由 `设计/05 §10.5` 管，是本条的同形邻居。
+
+#### 48.1a 中转口的钥匙
+
+**性质**：中转口（回环；本机常驻后端进程内那一形与远端脱离 `--relay` 那一形同一份代码）每一条请求在读请求体、问上游选择**之前**过三问：
+带 `Origin` ⇒ **403**（浏览器页面发的请求）；`Host` 不是回环字面量（`127.0.0.1` · `localhost` · `[::1]`，可带口）、缺或不止一个 ⇒ **421**（防 DNS rebinding）；
+路径第一段不是钥匙（没有 / 错 / 前缀 / 多一截 / 大小写不同 / 空段）⇒ **403**，比对定长时间（与控制口同一份 `listen::tokens_match`）。
+过了才剥掉那一段交给路由（`/s/` 与 `/t/` 一样要过）⇒ 「钥匙对、表里没这一行」仍是 **404**，与 403 **可分**；三种拒法各带一句说得清是哪一问的话。
+钥匙 256 位（OS 密码学随机数），住**中转所在那台机器**的 `~/.cc-monitor/relay-key`（`0600`），由中转自己在**绑上口之后**读回或铸（只有绑上口的那一个会写）；
+拿不到钥匙 ⇒ **不起**（`--relay` 退 2，进程内那一形出声、后端照常）。钥匙**跨中转重起不变** —— 端口是固定常量，老会话手里的 URL 重起后本来就还有效，换钥匙会打断每一条活会话。
+**钥匙只从那份文件进 agent 进程自己的 env**：注入的 URL 本身不带钥匙，渲染器把钥匙段写成 `$(cat "$HOME/.cc-monitor/relay-key")`、在那台机器的 pane shell 里展开
+⇒ 载荷、`tmux send-keys` 的 argv、shell 历史、终端回滚、webview 里都没有它；后端 / monitor 自己的 argv、env、日志、tee、上游、`relay-status` 应答里也没有它。
+远端 `relay-status` / `relay-ensure` 认「口上是不是**我们的**中转」用差分探针（对的钥匙 ⇒ 404、同形错钥匙 ⇒ 403），对不上 ⇒ `not_ours`，不抢口。
+
+**为什么不能松动**：回环 TCP 没有权限位；中转会**代入账号的凭据**去打上游 —— 门开着，同机任何进程（别的 OS 用户、浏览器里的一张网页）就能以这个账号的额度与身份发请求。
+路由键第三段（会话 id / nonce）是公开可铸的标签，**不是**认证。
+
+**谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` ·
+`door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` ·
+`door_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `door_tests.rs::the_key_file_is_the_same_path_on_both_halves`（跨半边对拍）·
+`server_tests.rs::rk1_the_door_refuses_without_the_key_and_that_is_not_a_404` · `server_tests.rs::rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes` ·
+`server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream`（真子进程 · 零命中带正控）·
+`machine_tests.rs::ensure_starts_nothing_when_our_relay_already_listens` · `machine_tests.rs::a_port_held_by_something_else_is_not_ours_and_ensure_says_so`；
+monitor 那一半 `payload_tests.rs::the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`；
+写口登记 `readonly_guard` 第四层（`relay/door.rs`，门 `relay/listen.rs`）。设计与读数住 `调研/第四波记录/RK1.md`。
+
+**诚实边界**：钥匙挡的是**读不到那份 `0600` 文件**的人 —— 能读你家目录的（root、你自己的进程、你起的 agent）本来就能以你的身份跑东西。
+钥匙文件在中转跑着时被删 / 改 ⇒ 新会话每一发 403（出声），重起中转就好。会话里的 `ccm` 把**继承来的**（已展开、带钥匙的）`ANTHROPIC_BASE_URL` 原样转进新 pane 的载荷，那一跳钥匙会进一次 `tmux send-keys` 的 argv（`control/ccm/plan.rs`，未修，报主会话）。
 
 ### 48.2 脱离后不留僵尸
 

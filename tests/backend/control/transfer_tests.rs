@@ -411,21 +411,22 @@ async fn a_download_cut_off_midway_keeps_its_part_and_the_retry_resumes_from_its
     assert!(!tmp.path("f.bin.part").exists(), "上位之后 `.part` 还在");
 }
 
-/// 🔴 **B6**：本机落点是一份 Claude 会话数据 ⇒ **围栏拒**（开单那一判就拒，一个字节都没碰）。
+/// 🔴 **B6**〔FN1 · V119 翻面〕：本机落点是一份 Claude 会话记录的形状 ⇒ **照样开得出单**。
+///
+/// 从前这一格叫「落点是会话数据 ⇒ 围栏拒」。用户「文件管理器全部都可以改. 不需要任何围栏」⇒
+/// 下载落点只过路径解析（绝对路径 · 有文件名 · 父目录在盘上、解开之后落点仍在它底下）。
 #[test]
-fn a_download_onto_a_session_file_is_refused_by_the_fence() {
-    let protected = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
+fn a_download_onto_a_session_file_is_let_through() {
+    let tmp = Tmp::dir("fence-v119");
+    std::fs::create_dir_all(tmp.path("projects/-x")).expect("铺会话目录");
+    let session = tmp.path("projects/-x/abc-123.jsonl");
     assert!(
-        crate::agents::claudecode::paths::is_protected_session_path(std::path::Path::new(
-            protected
-        )),
-        "夹具那条路径不被判定为受保护 —— 本条此刻在量别的东西"
+        crate::agents::claudecode::paths::is_session_record_path(&session),
+        "夹具那条路径不是会话记录的形状 —— 本条此刻在量别的东西"
     );
-    let e = land_check(protected).expect_err("往会话文件上落地竟然过了围栏");
-    assert!(e.contains("会话数据"), "拒的不是围栏那一句：{e}");
-    // 阴性对照：一个普通的落点过得了（父目录在盘上）。
-    let tmp = Tmp::dir("fence-ok");
-    land_check(&tmp.path("ok.txt").to_string_lossy()).expect("普通落点该过");
+    land_check(&session.to_string_lossy()).expect("🔴 V119：往会话文件那个位置上落地被拒了");
+    // 阴性对照：父目录不在盘上 ⇒ 拒（路径解析那一关）。
+    assert!(land_check(&tmp.path("nope/x.txt").to_string_lossy()).is_err());
     // 相对路径不认。
     assert!(land_check("rel/x.txt").is_err());
 }
@@ -443,7 +444,7 @@ fn reply_of(f: &Frame) -> (bool, Option<String>, Option<serde_json::Value>) {
     }
 }
 
-/// 开单 / 起跑 / 撤的记账：键形状 · 同键第二张票 `busy` · 起跑未知票 · 撤幂等 · 围栏拒的码。
+/// 开单 / 起跑 / 撤的记账：键形状 · 同键第二张票 `busy` · 起跑未知票 · 撤幂等 · 路径解析拒的码。
 #[tokio::test]
 async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     let (tx, _rx) = mpsc::channel(64);
@@ -474,10 +475,10 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
         &serde_json::json!({"dial": dial(), "local_path": tmp.0.to_string_lossy()}),
     ));
     assert_eq!(code.as_deref(), Some("bad_args"));
-    // 下载落点踩线 ⇒ refused。
+    // 下载落点过不了路径解析（父目录不在）⇒ refused。〔FN1〕从前这里的语料是一份会话文件，今天那一形放行。
     let (_, code, _) = reply_of(&desk.download(
         "r5",
-        &serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": "/home/u/.claude/projects/p/abc-1.jsonl"}),
+        &serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.0.join("nope/abc-1.jsonl").to_string_lossy()}),
     ));
     assert_eq!(code.as_deref(), Some("refused"));
     // 另一向：一个规整的本机落点 ⇒ 开得出单（〔SR1b 死值验〕只判「踩线 ⇒ refused」的话，

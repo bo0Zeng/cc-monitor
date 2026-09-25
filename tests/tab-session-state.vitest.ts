@@ -5,6 +5,7 @@
  * 设计与判据编号见 `调研/第四波记录/U4.md §2`。本文件管：
  * - S1 转移表：3 态 × 5 事件 = 15 格，逐格相等。**期望手写自设计表**（`U4.md §1.1`），不从实现生成。
  *   〔U4b · 第四波〕扩成 7 态 × 10 事件 = 70 格（`U4b.md §1.3`，T1）；呈现表 7 态（T2）；T4「说不清不许说成已结束」。
+ *   〔GP1 · 第四波〕加一行事件 `unseen`（那台机器看不见了）⇒ 7 × 11 = 77 格（`调研/第四波记录/GP1.md §1`）。
  * - S2 呈现表：3 态 → {类开关 · 状态名 · 提示句}。期望串是本文件里的字面量（抄自 `设计/30 §3.5.2` 那张表），
  *   被测串从文案表 `src/shared/copy/table.json` 取 —— 两份语料。
  * - S4 两轴是唯一读法：tab 层 ＋ 两个快照消费者里，旧的一轴半写法（`tmuxIdle` · `"archived"` 状态字面量 ·
@@ -49,7 +50,7 @@ const NAME = new Map<SessionState, string>([
 ]);
 const nameOf = (s: SessionState): string => NAME.get(s) ?? `〈不是七个常量之一：${JSON.stringify(s)}〉`;
 
-describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件，逐格 == `U4b.md §1.3`）", () => {
+describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` 一行，逐格 == `U4b.md §1.3` ＋ `GP1.md §1`）", () => {
   // 行 = 事件；列 = 此刻（活·没报 · 活·可接回 · 活·只能重开 · 可重连 · 已结束 · 记录没了 · 说不清）。
   // 「=」表示不变（且必须是同一个对象：调用方靠它判「变没变」）。**手写自设计表，不从实现生成。**
   type Row = [string, string, string, string, string, string, string];
@@ -64,9 +65,11 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件，逐格 == `U4b.md §
     "record-gone": ["=", "=", "=", "=", "记录没了", "=", "="],
     "record-present": ["=", "=", "=", "=", "=", "已结束", "="],
     "seen-absent": ["=", "=", "=", "=", "=", "=", "已结束"],
+    // 〔GP1〕那台机器看不见了：还有终端可去的两态（活 · 可重连）⇒ 说不清；死透了的不动（看不见推翻不了它们的死）。
+    unseen: ["说不清", "说不清", "说不清", "说不清", "=", "=", "="],
   };
 
-  it("★ 70 格两向相等（事件集 == 表的行集；每格结果 == 表）", () => {
+  it("★ 77 格两向相等（事件集 == 表的行集；每格结果 == 表）", () => {
     const events = Object.keys(TABLE) as StateEvent[];
     expect([...events].sort()).toEqual([
       "activity",
@@ -79,6 +82,7 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件，逐格 == `U4b.md §
       "remote-line",
       "seen-absent",
       "started",
+      "unseen",
     ]);
     const got: Record<string, string[]> = {};
     for (const ev of events) {
@@ -128,7 +132,7 @@ describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 =
       { ended: false, reconnectable: true, name: "可重连", tooltip: "程序退了，终端还在 —— 可以接回去" },
       { ended: true, reconnectable: false, name: "已结束", tooltip: "这个会话已结束" },
       { ended: true, reconnectable: false, name: "记录已不在", tooltip: "这个会话已结束，它的记录也不在了，没法 resume" },
-      { ended: true, reconnectable: false, name: "说不清", tooltip: "还没连上那台机器，说不清这个会话还在不在" },
+      { ended: true, reconnectable: false, name: "说不清", tooltip: "现在看不见那台机器，说不清这个会话还在不在" },
     ]);
   });
 

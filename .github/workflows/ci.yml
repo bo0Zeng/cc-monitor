@@ -506,6 +506,8 @@ jobs:
           #   「≥」正是它落后三次的成因 —— 加脚本时它不响，于是没人回来棘。
           # ⚠ 两个 `.ps1` 仍**零 lint**（全仓无 PowerShell linter）：`tests/scripts/run.ps1` 与
           #    `tests/e2e/tier2/run-in-session1.ps1` ⇒ 记为诚实边界（`audit-0805/ROADMAP §5`）。
+          #    〔09-25 MG1 合 RT1〕长到**四个**：`tests/evidence/RT1-lib.ps1` · `RT1-winwatch.ps1`（Win11 虚拟机真机台架，
+          #    只在台架里跑、不进产品）同样零 lint；「要不要引 PSScriptAnalyzer」交主会话重问（`shell_lint_registry` 那张表同拍）。
           # **2026-08-11 P3t-Y5 棘到 46**：新增 `tests/e2e/p3t-local-tmux.sh`（本机拉起真的建出 tmux 会话）。
           # ★ 这次**不是事后补**——改成等号之后它当场就红了，加脚本的同一拍就回来棘。
           #   那正是把「≥」改成等号买到的东西：前三次落后（37→39→41）全是「≥ 不响，没人回来」。
