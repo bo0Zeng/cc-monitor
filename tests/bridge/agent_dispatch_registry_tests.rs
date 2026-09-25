@@ -55,28 +55,9 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
              ⚠ 写面那一处（`relay_prefix_for` 里的 `active().id()`）是 08-28 审计\
              点名「写面没有分派」之后**又长出来的**，十天没有任何东西红过 —— 本条买的就是它",
     ),
-    (
-        "history.rs",
-        Face::Facade,
-        1,
-        "会话记录根 ×3（`records_dir`）+「这个文件是不是会话记录」×4（`has_record_ext`）\
-             ⇒ 全树最重的一处，而它一根针都不在件计划 `§0` 的四把尺子里。\
-             🔴 〔`K-R97` 09-12〕**11 → 8，棘轮往下拧了 3**：`list_history_projects` 改问本机\
-             后端要 `--list-projects`，项目级那一段（`records_dir` ×1 + `has_record_ext` ×1 + \
-             从路径取 sid ×1）连同它唯一的调用点一起删了。⚠ **这不是「收进接口了」那种降** ——\
-             那三处是**整段搬去后端**，桌面侧从此不问这件事；从路径取 sid 那一格因此归零。\
-             🔴 〔`K-R88` 09-13〕**8 → 7**：建分支那条路的源守卫（收路径 → canonicalize → \
-             `has_record_ext`）整个不在了 —— 入参收成 sid，找那份文件走两侧共用的\
-             `branch_core::find_session_file`。⚠ 同样**不是「收进接口了」**：\
-             那一格是**搬进共享 crate**，桌面侧从此不自己问「这个文件是不是会话记录」。\
-             🔴 〔RW1 · 第四波 09-24〕**7 → 5**：本机删会话那道路径守卫（`records_dir` ×1 ＋ `has_record_ext` ×1）\
-             整个不在了 —— 删会话改成后端一条只收 sid 的命令（`files-delete-session`），落点由后端按 sid 找。\
-             ⚠ 同样**不是「收进接口了」**：那一格是**整段搬去后端**，桌面侧从此不问这件事。\
-             🔴 〔RW1 · 第四波 09-24〕**5 → 4**：本机分叉那一支取记录根（`records_dir` ×1）也走了 ——\
-             本机分叉改成 exec 本机后端 `--fork-session`，与远端同一条子命令。\
-             🔴 〔C4d · 第四波 4B〕**4 → 1**：本机历史清单那一段（展开一个项目取记录根 ×1 ＋ 判记录文件 ×1 ＋ Codex 枚举判记录文件 ×1）\
-             整段搬去本机常驻后端（历史跨机 join 的唯一的家）。⚠ 同样**不是「收进接口了」**：桌面侧从此不问这件事",
-    ),
+    // 〔LOC1b · 第四波 4D〕`history.rs` 的 `Facade` 那一行（1 → 0：本机冷读那一支取记录根 `records_dir_for` 的
+    //   门面 `has_record_ext`）摘了 —— 本机冷读改经本机后端的 `history-read`，围栏归后端，桌面侧不再问「这个文件是不是会话记录」。
+    //   ⚠ 与前几笔同形：**不是「收进接口了」**，是整段搬去后端。
     // 〔C4d · 第四波 4B〕`history.rs` 的 `KindLiteral` 那一行（2 处：Codex 枚举里写死 `AgentKind::Codex` 取数据根 ＋ 取 layout）摘了 ——
     //   Codex 合成历史搬进后端的适配层（`src/backend/agents/codex/history.rs`，经注册表 `Adapter.history` 那一格给通用层）。
     (
@@ -118,8 +99,9 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     (
         "history.rs",
         Face::RuntimeDispatch,
-        2,
-        "按路径判出 kind 之后取根与 layout（`kind_of_path` → `for_kind(kind)`）—— 好方向",
+        1,
+        "按文件名形态判出 kind 之后取 layout（`kind_of_record_name` → `for_kind(kind)`）—— 好方向。\
+             〔LOC1b · 第四波 4D〕**2 → 1**：本机那一支取根那一次（`for_kind(kind).data_root()`）随那一支删了",
     ),
 ];
 
@@ -158,7 +140,9 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 /// 🔴 〔C4d · 第四波 4B〕**23 → 18**：`history.rs` 门面 4 → 1、`KindLiteral` 2 → 0 —— 本机历史清单（展开项目 · Codex 枚举）
 /// 整段搬去本机常驻后端。⚠ 同上几笔：**不是「收进接口了」**，是桌面侧不再问这件事（后端那把尺子
 /// `agent_locality_guard` 没涨：Codex 那半进了 `agents/codex/`，经注册表那一格够到）。
-const COUPLING_BASELINE: usize = 18;
+///
+/// 🔴 〔LOC1b · 第四波 4D〕**18 → 17**：`history.rs` 门面 1 → 0 —— 本机冷读改经本机后端的 `history-read`（本机远端一条路）。
+const COUPLING_BASELINE: usize = 17;
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///

@@ -137,6 +137,18 @@ pub fn kind_of_path(p: &Path) -> AgentKind {
     AgentKind::ClaudeCode
 }
 
+/// 〔LOC1b · 4D〕按记录文件的**名字形态**判 [`AgentKind`]：`rollout-<ts>-<uuid>.jsonl` ⇒ Codex，其余 ⇒ Claude。
+///
+/// 与 [`kind_of_path`] 的差别：它不看本机有没有那一家的根 —— 冷读本机远端合成一条之后，远端的路径也要判得对
+/// （那台机器的 Codex 根在哪，本机不知道）。形态口径与 [`session_id_from_path_with`] 的 `CodexRollout` 同一个函数。
+pub fn kind_of_record_name(p: &Path) -> AgentKind {
+    if codex_sid_from_rollout(p).is_some() {
+        AgentKind::Codex
+    } else {
+        AgentKind::ClaudeCode
+    }
+}
+
 /// F-MA:agent 数据根下的**活性 pidfile** 目录(CC = `<root>/sessions`)。
 pub fn liveness_dir(data_root: &Path) -> PathBuf {
     data_root.join(active().layout().liveness_subdir)

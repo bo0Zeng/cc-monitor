@@ -17,16 +17,11 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // 〔C4d · 第四波 4B〕`src/history.rs` 两行摘了：`fence` 2（展开一个项目的路径围栏）与 `no-counterpart` 1（Codex 合成项目）——
     //   本机历史清单整段搬进本机常驻后端（`history-sessions` 出成品；Codex 枚举进后端 `agents/codex/history.rs`，
     //   `no-counterpart` 那一行自己写的退役条件「backend 侧补上 codex 的项目枚举」兑现了）。9 → 6。
-    (
-        "src/history.rs",
-        "fence",
-        1,
-        "`stream_read_session_jsonl`(499) 的**路径围栏** —— 它解析 records 根**只为验\
-             `target.starts_with(&root)`（拒绝越界路径），不读内容。\
-             ⚠ **刻意保留、不属退役范围**：即使把读交给后端，围栏也该两侧各有一道\
-             （backend 侧自己也有 canonicalize 前缀校验）—— 那是纵深防御，同 `remote_branch.rs` \
-             那句「两个 id 已过白名单，仍照常 shell_quote」。",
-    ),
+    // 〔LOC1b · 第四波 4D〕`src/history.rs` 的 `fence` 一行（1 处：`stream_read_session_jsonl` 本机那一支解析 records 根
+    //   只为验 `target.starts_with(&root)`）摘了 —— 那一支删了：本机冷读也经本机后端的 `history-read`，围栏归后端
+    //   （`observe/history_query.rs::validate_session_path`）。那一行写着的「两侧各一道」换成了两侧同一道廉价预检
+    //   （拒 `..` ＋ 必须 `.jsonl`，不解析根）。⚠ 这一行的针只认 `claude_dir` 一族，**从没数到**那一支真正的读
+    //   （`File::open`）—— 那个读者这一拍一起没了（B-decouple §2.2 点名的漏数）。
     // 〔RW1 · 第四波 09-24〕这里原来有 `src/history.rs` 的 `write` 一行（写操作恰好也读 dir 来定位文件：
     //   `delete_history_session` · `create_branch_session`，4 处）。两件都改经后端（删会话 `files-delete-session`
     //   只收 sid · 本机分叉 exec 本机后端 `--fork-session`），本进程不再解析 dir 来定位要写的那一份 ⇒ 4 → 0，摘行。

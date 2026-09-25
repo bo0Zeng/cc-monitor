@@ -258,11 +258,12 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //   monitor 这一侧不再有它们。
     // 〔C4d · 第四波 4B〕`local_accounts.rs` 的 `MANIFEST_CAP`（本机读账号 manifest，「降级+说清」）那一行出列：
     //   那份零生产调用方的本机参照实现删了，读 manifest 只剩后端一处（`MAX_MANIFEST_BYTES`，登记在后端那一段）。
+    // 〔LOC1b · 第四波 4D〕住址 `remote_history.rs` → `history.rs`：本机冷读也经那台后端，本机远端同一条上限。
     (
-        "src/bridge/src/remote_history.rs",
+        "src/bridge/src/history.rs",
         "MAX_SESSION_BYTES",
         256 * 1024 * 1024,
-        "读一整份远端会话 jsonl",
+        "读一整份会话 jsonl（本机远端同一条）",
         "截断+说清",
     ),
     // 🔴〔第十二刀 2026-09-22〕**它管的不是字节，是条目数** —— 如实登记这一点。
@@ -1069,7 +1070,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //   `observe/accounts_query.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
 
     // 对 B：两边都是「一整份会话 jsonl」这同一个量 ⇒ 钉相等。
-    let b1 = by("src/bridge/src/remote_history.rs", "MAX_SESSION_BYTES");
+    let b1 = by("src/bridge/src/history.rs", "MAX_SESSION_BYTES");
     let b2 = by(
         "src/backend/control/fork_write.rs",
         "MAX_SESSION_JSONL_BYTES",
@@ -1603,7 +1604,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     //
     // 漏出来的是活的：逐次拨号那条路 `run_list_query`〔散文墓碑〕（C4d 已删）当年无界 `read_line`
     // （只有外层 30s 超时兜着），三个 `#[tauri::command]` 调用方，生产路径；
-    // 以及 `stream_read_remote_session` —— 它有 `MAX_SESSION_BYTES` 总量，
+    // 以及 `stream_read_remote_session`〔散文墓碑〕 —— 它有 `MAX_SESSION_BYTES` 总量，
     // 但那是**读完再判**，一条超大行在 `read_line` 返回前就把内存吃光了。
     // 两处都已改走 `ssh_source::read_capped_line`。
     //
