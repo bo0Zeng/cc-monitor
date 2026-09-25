@@ -318,12 +318,8 @@ enum Whose {
 
 /// `(文件, 外层 fn, 记在哪台, 理由)`。
 const FEEDERS: &[(&str, &str, Whose, &str)] = &[
-    (
-        "history.rs",
-        "analyze_jsonl",
-        Whose::Local,
-        "本机历史清单：只读本机 jsonl（远端清单由那台后端摘要，不经 monitor 逐行解析）",
-    ),
+    // 〔C4d · 第四波 4B〕`("history.rs", "analyze_jsonl")` 那一行摘了：本机历史清单搬进本机常驻后端（会话行由后端摘要，
+    //   与远端同一个函数），monitor 不再为了列清单逐行解析本机 jsonl。
     (
         "history.rs",
         "stream_read_session_jsonl",

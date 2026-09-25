@@ -56,7 +56,7 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 
 **F03b 收件箱编辑不在本约管辖内（澄清，非例外/非松动）**〔RW1 · 第四波 2026-09-24：本机 ＋ 远端项目都能编辑（用户裁），读写经那台机器的后端（`files-peek` / `files-put`，写带打开时读到的那一份当 CAS 期望，agent 改过 ⇒ 一个字节不写）；下文 `verified_write` 那一跳已并进后端规则〕：devbench-F03b 起 cc-monitor 挂了一个**收件箱编辑面板**（读写用户自己项目里的 `.claude/planned-build/INBOX.txt` —— planned-build skill 的「结构化注入」进件口）。**口径与 F47 逐条对齐**：它写的是**用户自己项目的普通文本文件**，不是 Claude 的 jsonl/pidfile；每次写都是**面板内一次直接用户手势**（点「保存」，绝无自动/后台写）。**围栏三道**（`skill_host::resolve_editable`）：① 路径 `canonicalize` **之后**做**集合判定**，集合来自声明表 `skill_host::SKILLS` 的 `editable`（**不是一串 `if`**，也不是判字符串——`..` 与符号链接都已解开）② 过 `claude_data_fence::is_protected_claude_data_path`（**纵深**：即使声明写歪也不许碰 Claude 数据；与上面 F47 段**同一个**判定，住址见那一段）③ 目标**必须已存在**（本功能是「编辑收件箱」不是「创建任意文件」）。写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回**逐字节**比对 → 不符即回滚），**没有自造第四份写入实现**。⇒ 写面严格等于「声明里那几个真实文件」，今天恰好一个文件名。⚠ **远端项目的收件箱不在此列**：`parity_ledger` 里 `skill.inbox` 记 `Undecided`——「要不要能编辑」没人裁定过，且远端版的第①道（`canonicalize`）在那边不成立。
 
-**A2 多账号只读查询是本约的「读」面延伸（澄清，非例外/非松动）**：`src/backend/observe/accounts_query.rs` + `src/bridge/src/accounts.rs` 为「按会话切账号」新增三条**纯只读**远端查询（`--list-accounts` / `--session-accounts` / `--account-trust`），**零写入**、**不 shell out**。它把后端的读面从 `<claude_dir>` 扩到三处新位置，各自有硬边界:
+**A2 多账号只读查询是本约的「读」面延伸（澄清，非例外/非松动）**：`src/backend/observe/accounts_query.rs`（monitor 那一侧〔C4d〕已无文件：界面经通道问、后端出成品）为「按会话切账号」新增三条**纯只读**远端查询（`--list-accounts` / `--session-accounts` / `--account-trust`），**零写入**、**不 shell out**。它把后端的读面从 `<claude_dir>` 扩到三处新位置，各自有硬边界:
 
 1. **`$ACCTS_DIR/accounts.json`**（cc-acct-iso 的 manifest，契约 v1）—— 只读整份 JSON;`configDir` 视为**不可信字符串**，逐条过 shell-safe 白名单（与 cc-acct-iso 的 `path_shell_safe` 同一套字符集），不合格的账号直接丢弃。
 2. **`/proc/<pid>/environ`** —— **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`），绝不回传整个环境快照（那里面有用户全部的密钥类环境变量）。pid 来自 `<claude_dir>/sessions/<PID>.json` 的文件名。⚠ **第二个键是 `K-P5f` 加的**（会话身份 token，写侧住 `history.rs::LAUNCH_ID_VAR`）；**变的只是那个计数词，这条铁律一格都没松**：键名**不是参数**（后端侧两个常量），所以这条查询仍然不是「任意环境变量读」原语，也仍然绝不回传整个快照。⚠ 这句话在盘上**散着好几份副本**（`src/doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行、后端侧 `accounts_query.rs` 头注、monitor 侧 `local_accounts.rs`）——`K-P5f` 改了其中三处、**漏了本处**，`K-P5g` 补上并把这一族副本登记进 `doc_claim_registry.rs`（那张表的判据从生产代码里数出今天真读几个键，再与每一份副本的计数词对拍）。
@@ -185,7 +185,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | theme/font/claudeDir/keybindings/`remote.hosts[]`(含 label)/resume 命令/诊断开关——全用户手填 |
-| `history-metadata.json` | **真相** | `history.rs::save_metadata` | 按 sid 的 star/重命名/隐藏——用户策展意图 |
+| `history-metadata.json` | **真相** | 〔C4d〕本机常驻后端 `history_annotations.rs::answer_annotate`（路径仍由 `history.rs::metadata_path` 算、起后端时交过去；文件原地不动） | 按 sid 的 star/重命名/隐藏——用户策展意图 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled`=真相；`monitor_exe_path`=派生(每次启动 `current_exe()` 自愈改写) |
 | `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
@@ -674,7 +674,7 @@ Batch8-F25/26 起（p1f 后端 + tail-only）：后端连接时把各文件 seq 
 ### 现状签收（2026-07-16，F64 全库核查，无违反）
 cc-monitor **没有一个**「自铸 opaque id + 落盘/上 wire + 从路径算」的东西。持久身份
 全挂**外部稳定 id**：
-- 会话表 / 历史 metadata / 窗口句柄缓存 key = Claude Code `sessionId`（`session_map.rs`、`history.rs::HistoryMetadata.entries`、`bind.rs::SidHwndBinding`）。
+- 会话表 / 历史 metadata / 窗口句柄缓存 key = Claude Code `sessionId`（`session_map.rs`、〔C4d〕后端 `history_annotations.rs::Table`、`bind.rs::SidHwndBinding`）。
 - ps-registry key = OS `pid`（`bind.rs`）。
 - 唯一自铸的 opaque token = bind 握手 marker `ccm-bind-{PID}-{随机8字符UUID}`（`bind.rs`）——**瞬时握手、用完即删、不从路径算**，不当持久身份，合规。
 - panorama 进程内选 Engine 的 key 用仓根路径，但**纯内存、绝不落盘**（保持现状，别存盘）。持久的节点身份由 **code-picture-core** 写进侧车 DB、守它自己的 uuid 规矩，cc-monitor 只消费不自铸。〔RM1f 09-25：monitor 进程内那个 Engine 池随内嵌引擎删了（本机全景也经本机后端起全景小程序，一问一进程）⇒ 前半句今天**没有对象**；后半句照旧成立 —— 身份仍由小程序里那份 core 写、monitor 只消费。〕

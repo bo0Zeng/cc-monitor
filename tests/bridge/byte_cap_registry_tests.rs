@@ -256,13 +256,8 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // ---- P8a：插件面只读枚举 ----
     // 〔RM1b · 第四波〕这两条随读实现搬去了后端（`src/backend/observe/plugins_query.rs`，登记在后端那一段），
     //   monitor 这一侧不再有它们。
-    (
-        "src/bridge/src/local_accounts.rs",
-        "MANIFEST_CAP",
-        8 * 1024 * 1024,
-        "本机读账号 manifest",
-        "降级+说清",
-    ),
+    // 〔C4d · 第四波 4B〕`local_accounts.rs` 的 `MANIFEST_CAP`（本机读账号 manifest，「降级+说清」）那一行出列：
+    //   那份零生产调用方的本机参照实现删了，读 manifest 只剩后端一处（`MAX_MANIFEST_BYTES`，登记在后端那一段）。
     (
         "src/bridge/src/remote_history.rs",
         "MAX_SESSION_BYTES",
@@ -678,11 +673,21 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "算一个 skill 的摘要时读其中一个文件（超了只记长度，`summary.truncated` 说出来）",
         "降级+说清",
     ),
+    // 〔C4d · 第四波 4B〕历史注解那一份文件（读写者换成本机常驻后端）。超了当读不懂：读回「不知道」、拒写、一个字节不动。
     (
-        "src/backend/asset_sync.rs",
+        "src/backend/history_annotations.rs",
+        "MAX_BYTES",
+        64 * 1024 * 1024,
+        "读一份历史注解文件（星标 / 改名 / 隐藏 / 上次账号；monitor 从前读写的那一份，路径由它交）",
+        "拒收+回错",
+    ),
+    // 〔C4d · 第四波 4B〕住址随「问远端那一跳」搬家（`asset_sync.rs` → `remote_ask.rs`，逻辑一字不改）；
+    //   量从「拉回来的那一份目录」放宽成「经那一跳问回来的任何一份 stdout」（资产目录 · 历史项目 / 会话清单）。
+    (
+        "src/backend/remote_ask.rs",
         "PULL_MAX_BYTES",
         16 * 1024 * 1024,
-        "同步时从远端拉回来的那一份目录（capture 的 stdout）",
+        "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
     ),
     (
@@ -1059,18 +1064,9 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
             .unwrap_or_else(|| panic!("抠不到 `{f}::{n}` —— 本条会零命中地绿"))
     };
 
-    // 对 A：注释逐字「与后端侧**同值**」⇒ 钉相等。
-    let a1 = by("src/bridge/src/local_accounts.rs", "MANIFEST_CAP");
-    let a2 = by(
-        "src/backend/observe/accounts_query.rs",
-        "MAX_MANIFEST_BYTES",
-    );
-    assert_eq!(
-        a1, a2,
-        "两侧读同一份 manifest 的上限漂开了（monitor {a1} / backend {a2}）。\
-             `local_accounts.rs` 的注释逐字写着「与后端侧同值」—— \
-             那句话此前**没有任何东西守着**，靠人抄。"
-    );
+    // 对 A 🔴 **这一对没了，是被解决掉的**〔C4d · 第四波 4B〕：monitor 那一侧（`local_accounts.rs` 的
+    //   `MANIFEST_CAP`，本机账号 manifest 参照实现）随那份实现删了 ⇒ 读 manifest 的上限只剩后端
+    //   `observe/accounts_query.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
 
     // 对 B：两边都是「一整份会话 jsonl」这同一个量 ⇒ 钉相等。
     let b1 = by("src/bridge/src/remote_history.rs", "MAX_SESSION_BYTES");
@@ -1605,7 +1601,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     // 头注把「把一整条流读进内存」（事实）与「`.read_to_end`」（拼法）写成了等号，
     // 而本文件上方刚花十几行论证过同一个病根。**同一个 commit 里，同一句话又犯了一次。**
     //
-    // 漏出来的是活的：`remote_history.rs::run_list_query` 无界 `read_line`
+    // 漏出来的是活的：逐次拨号那条路 `run_list_query`〔散文墓碑〕（C4d 已删）当年无界 `read_line`
     // （只有外层 30s 超时兜着），三个 `#[tauri::command]` 调用方，生产路径；
     // 以及 `stream_read_remote_session` —— 它有 `MAX_SESSION_BYTES` 总量，
     // 但那是**读完再判**，一条超大行在 `read_line` 返回前就把内存吃光了。

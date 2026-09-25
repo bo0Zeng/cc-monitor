@@ -423,7 +423,17 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     // 〔AS2 · 第四波 4B〕`assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
     // 〔RM1f〕`panorama` 起进程，但**异步等**（`plugin::invoke::run_abortable`）⇒ 同在这一档：
     //   不占 worker（等的是子进程退出，不是一段同步计算），`cancel` 命中时 future 被丢、子进程组被杀。
-    for c in ["ping", "resolve", "assets-sync", "panorama"] {
+    // 〔C4d · 第四波 4B〕`remote-reach`：纯内存登记（一把锁、插一行），同 `ping` 在普通 spawn 上。
+    // 〔C4d · 第四波 4B〕历史两条出成品：远端那一支等 `remote_ask`（真异步），本机扫盘那段自己挪到阻塞线程池。
+    for c in [
+        "ping",
+        "resolve",
+        "assets-sync",
+        "panorama",
+        "remote-reach",
+        "history-projects",
+        "history-sessions",
+    ] {
         assert!(
             matches!(d(c), Disposition::Spawn(..)),
             "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
@@ -495,7 +505,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-read-text",
         "files-home",
         // 〔`C1` · 09-24〕只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
-        "history-projects",
+        // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：它们出成品、远端那一支要等 ⇒ 真异步（见上面那一档）。
         "history-index",
         "history-user-inputs",
         "history-find",
@@ -503,7 +513,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-lines",  // 〔CF2〕
         "history-record", // 〔U4b〕
         "history-search",
-        "history-sessions",
         "history-subagents",
         "history-tail",
         "accounts-list",
@@ -532,6 +541,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔AS2〕skill「装到这台」两条：走目录 ＋ 读原文 ＋ stat。
         "skill-read",
         "skill-install-plan",
+        // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
+        "history-annotate",
+        "history-forget",
+        "history-last-accounts",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏 ＋ 读 / 写满换名 / 删）。
         "files-peek",
         "files-put",
@@ -552,6 +565,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ping",
         "resolve",
         "assets-sync",
+        // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
+        "remote-reach",
         "cancel",
         "link-open",
         "link-data",
@@ -610,6 +625,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "assets-catalog-merge",
         "skill-read",
         "skill-install-plan",
+        // 〔C4d · 第四波 4B〕历史注解三条，阻塞档。
+        "history-annotate",
+        "history-forget",
+        "history-last-accounts",
         // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O，阻塞档。
         "files-peek",
         "files-put",

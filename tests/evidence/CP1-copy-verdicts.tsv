@@ -112,6 +112,12 @@ src/backend/files/mod.rs:363	定期重走 ＋ 浏览目录走 ReadDirectoryChang
 src/backend/files/mod.rs:366	**没实测**（本仓的 Windows 虚拟机上没跑过本族）。\n              ⚠ Everything 那套（读 MFT ＋ 订阅 USN Journal）**两段都要管理员**\n              （voidtools FAQ 逐字），而我们的后端不是 ⇒ 那条路对我们关着，\n              这一格拿不到 Everything 那种「整盘一秒」。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:373	定期重走 ＋ 浏览目录走 FSEvents（notify 在这个平台上的后端）	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:376	🟡 **文献读数，没实测**（`设计/96 §2.9` 那张表里这一格逐字就是这么标的）。\n              FSEvents 能无特权递归监听一棵树、Spotlight 的索引普通用户可查（`mdfind`）——\n              两条都**没碰过**。⇒ 这个平台上「保鲜要不要换成另一套机制」判不了。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
+src/backend/history_join.rs:69	那台的后端没带会话 id 清单（版本旧）	保留	[不对外] 〔C4d〕WhyUnknown::reason 只进 tracing::info!（log_unknowns 按理由汇总一条）；搬自 monitor remote_history.rs 那一份，措辞去掉了 sid / sessionCount
+src/backend/history_join.rs:70	那一行的会话 id 清单与会话数对不上（行坏了）	保留	[不对外] 〔C4d〕同上只进日志
+src/backend/history_join.rs:71	这条路上答不了会话此刻活没活	保留	[不对外] 〔C4d〕同上只进日志（远端 / 合成历史判活「不知道」的理由）
+src/backend/history_join.rs:72	星标 / 隐藏的记录读不到	保留	[不对外] 〔C4d〕同上只进日志；给界面的那一句是 notice（annotations() 那两句），不是这一句
+src/backend/history_join.rs:448	本机项目清单	保留	[不对外] 〔C4d〕log_unknowns 的日志标签
+src/backend/history_join.rs:465	远端项目清单	保留	[不对外] 〔C4d〕log_unknowns 的日志标签（搬自 monitor 那一份「远端项目列表」）
 src/backend/inbound.rs:169	单行超过上限 {MAX_LINE_BYTES} 字节，已整行丢弃	改·§2.1	[可达存疑] 常驻后端对帧请求的错误回帧，经 bridge 可能进 toast；「单行」指协议的一行帧，用户不知道这一层
 src/backend/inbound.rs:294	这条命令是同步阻塞的（已经在起进程/动 tmux），停不下来 —— \n                     等它自己的应答，别当它没发生	改·§2.2	[可达存疑] 同上；「同步阻塞」「等它自己的应答，别当它没发生」是写给客户端代码的论证 兼§2.4（括号＋破折号）→「这条命令已经开始执行，取消不了」
 src/backend/inbound.rs:330	内建命令 `{other}` 没有在 dispatch 里被处理 —— 这是本后端的 bug	改·§2.1	[可达存疑] 同上；dispatch 是实现名，「这是本后端的 bug」是给开发者的 新词:dispatch →「后端内部出错：命令 {…} 没有被处理」
@@ -533,7 +539,6 @@ src/bridge/src/filewin/shell.rs:1938	正在复制 {n}	保留	[对外] 〔FW34〕
 src/bridge/src/filewin/shell.rs:1941	正在下载 {n}	保留	[对外] 〔FW34〕同上：一趟下载在跑
 src/bridge/src/filewin/shell.rs:1945	正在上传 {}	保留	[对外] 〔FW34〕同上：列出在传的那几个名字
 src/bridge/src/filewin/shell.rs:1948	有写操作还没回话	保留	[对外] 〔FW34〕同上：删 / 改名 / 建目录 / 改权限那一摞还没回来
-src/bridge/src/history.rs:267	本机项目列表	保留	[不对外] log_unknown_reasons 的日志标签
 src/bridge/src/history.rs:1409	旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕	改·§2.1	[可达存疑] OLD_PATH_CANNOT_ATTACH 作 Err 回前端：attach / 拉起器 / 容器路 / K-R106 全是内部说法 兼§2.2 兼§2.4 新词:拉起器 新词:容器路 →「这台机器接不回已有会话，只能新开一个」
 src/bridge/src/history.rs:1520	没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸	改·§2.1	[可达存疑] NO_TMUX_NAME 作 Err：露出前端函数名 mintTmuxName 与「只许由…铸」的内部纪律 兼§2.2 新词:铸 →「缺少会话名，无法启动」
 src/bridge/src/history.rs:1809	这个号走中转，而这一行还没改成「探到 `base-url-across-tmux` 才放行」——\n     转发做到了、也声明了（`src/backend/control/ccm/mod.rs`），\n     差的只是这一行；`K-R61` 只重裁理由，不动行为	改·§2.1	[可达存疑] RELAY_KEEPS_THE_OLD_PATH 作 Err：源码住址 src/backend/control/ccm/mod.rs、探针名 base-url-across-tmux、K-R61 兼§2.2（「差的只是这一行」）兼§2.4
@@ -548,9 +553,6 @@ src/bridge/src/launch.rs:630	本机不是 Windows：cc-monitor **刻意不替你
 src/bridge/src/lib.rs:611	本机后端没起来	保留	[对外] 系统通知标题，短（「没起来」偏口语，CP2 可换「没有启动」）
 src/bridge/src/lib.rs:1896	cc-monitor 设置	保留	[对外] 设置窗口标题
 src/bridge/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] 〔S5 · V41〕REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
-src/bridge/src/local_accounts.rs:248	manifest 不是合法 JSON：{e}	内部词→「账号清单」（manifest）	[对外] 设置页本机账号一节的错误说明；manifest 是内部对账号清单文件的叫法 新词:manifest
-src/bridge/src/local_accounts.rs:266	manifest schema 版本 {v} 不受支持（本机只认 1）	内部词→「账号清单格式版本」（manifest schema）	[对外] 同上；括号里「本机只认 1」可保留作可核对信息 新词:manifest 新词:schema
-src/bridge/src/local_accounts.rs:281	manifest 缺 version 字段（或不是数字）	内部词→「账号清单」（manifest / version 字段）	[对外] 同上 新词:manifest
 src/bridge/src/local_backend_host.rs:382	这个口上的第一行不是一帧合法的后端帧（{} 字节）	改·§2.1	[可达存疑] HelloVerdict::Stranger 理由，经 Adopt::Refused → note_start_refusal 进启动失败通知正文：「口」「一帧合法的后端帧」是协议实现 新词:口 新词:帧 →「端口 {port} 上的程序不是 cc-monitor 后端」
 src/bridge/src/local_backend_host.rs:392	这个口的首帧不是 hello	改·§2.1	[可达存疑] 同上链路：hello / 首帧 是握手协议实现名 新词:首帧 新词:hello
 src/bridge/src/local_backend_host.rs:396	这个口上的后端是 build_id={build_id}，而本 monitor 期望 {want_build}	改·§2.1	[可达存疑] 同上链路：build_id=… 期望 … 的日志形比对 →「端口上的后端版本与当前 cc-monitor 不一致」新词:build_id
@@ -578,11 +580,6 @@ src/bridge/src/remote_branch.rs:50	远端后端版本过旧（不支持远端分
 src/bridge/src/remote_branch.rs:167	源会话 id	保留	[对外] validate_fork_id 报错里的对象名
 src/bridge/src/remote_branch.rs:168	消息 uuid	内部词→「消息 ID」	[对外] validate_fork_id 报错里的对象名；uuid 是实现词 新词:uuid
 src/bridge/src/remote_history.rs:48	这个会话超过 {MAX_SESSION_BYTES} 字节上限，只读到前 {read_bytes} 字节（{lines_shown} 行）；\n         后面的内容**没有显示**。完整历史仍在远端那个 jsonl 文件里。	内部词→「会话记录文件」	[对外] 会话截断提示；jsonl 是 R1 词 兼§2.4（markdown **）→「会话超过 {} 字节上限，只显示了前 {lines_shown} 行」
-src/bridge/src/remote_history.rs:65	远端后端版本过旧（不支持历史查询）——请按 src/doc/REMOTE-PHASE0-DEPLOY.md 重新构建部署	改·§2.1	[对外] 历史查询失败报错；外泄源码仓内文档路径 src/doc/… 兼§2.3（「重新构建部署」用户做不了）→「远端后端版本过旧，不支持历史查询。请在设置里重装后端」
-src/bridge/src/remote_history.rs:242	远端那台的后端没带会话 sid 清单（版本旧）	保留	[不对外] WhyUnknown::reason 今天只进 tracing::info!（log_unknown_reasons）；注释说「将来给界面用」，那天要换掉 sid（R1）
-src/bridge/src/remote_history.rs:243	远端那一行的 sid 清单与 sessionCount 对不上（行坏了）	保留	[不对外] 同上只进日志；将来上界面要换掉 sid / sessionCount
-src/bridge/src/remote_history.rs:244	远端会话的活状态本机答不了（SessionMap 只认本机进程）	保留	[不对外] 同上只进日志；将来上界面要换掉 SessionMap 新词:SessionMap
-src/bridge/src/remote_history.rs:633	远端项目列表	保留	[不对外] log_unknown_reasons 的日志标签
 src/bridge/src/sftp.rs:358	那一问没有答完	保留	[对外] 〔DP1〕判不了那台上那份后端是谁时的原因（接在「判不了 … 没有动它：」后面）；没有错误输出时如实说没答完
 src/bridge/src/sftp.rs:370	没有覆盖它。要换成这一版：先在机器页点「卸载后端」删掉它，再部署。	保留	[对外] 〔DP1〕那台落点上的东西不肯说自己是谁时的出路；先说结果（没覆盖），第二句是用户做得了、做了真会好的动作（机器页「卸载后端」按钮删掉那个文件 = 明确授权覆盖，已在回环 sshd 上走通）
 src/bridge/src/sftp.rs:372	那台上还没有后端	保留	[对外] 〔DP1〕部署原因（接在「已安装后端（…）到 {path}（…）」的括号里）
@@ -665,6 +662,7 @@ src/fork-launch.ts:102	是否在 tmux 里跑	保留	[对外] 分叉启动维度�
 src/fork-launch.ts:102	工作目录	保留	[对外] 分叉启动维度标签
 src/fork-launch.ts:105	{…}：跟原会话一致（据{…}）	保留	[对外] 模板句本身无病（「据」后填充物单独裁）
 src/fork-launch.ts:106	{…}：需要你选一次 —— {…}	保留	[对外] 短句＋破折号接原因，可操作
+src/history-reads.ts:283	本机后端版本旧，还答不了历史清单（重装后端之后就有）	保留	[对外] 〔C4d〕历史清单问本机常驻后端、它不认这条命令时给的那句（经 `saidOf` 进「加载失败：…」/ toast）；说清是谁、为什么、怎么好
 src/ipc/chan.ts:66	通道：{…}	保留	[不对外] 〔C4a〕`ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
 src/ipc/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] 〔C4a〕`describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
 src/ipc/chan.ts:77	对端不认这个操作	保留	[不对外] 〔C4a〕同上（`peer/unsupported` 那一档的日志句）
@@ -1369,6 +1367,7 @@ src/backend/asset_catalog.rs:536	{} 不是这个后端认得的目录：{e}	保�
 src/backend/asset_sync.rs:162	机器 {id} 的目录太大（{len} 字节，一趟最多 {PUSH_MAX_BYTES}），这一台没推过去	保留	[可达存疑] 〔AS2〕同步时某一台的快照超过一趟能推的上限 ⇒ 那一台不推，进 assets-sync 那一行的 error；{id} 是目录里的机器 id
 src/backend/asset_sync.rs:203	对面答的目录认不出来：{e}	保留	[可达存疑] 〔AS2〕同步时远端答回来的目录不是 JSON ⇒ 那一趟不并不推，进 assets-sync 那一行的 error
 src/bridge/src/asset_sync.rs:76	本机后端答的同步结果认不出来，多半是两边版本不一样。	保留	[可达存疑] 〔AS2〕monitor 读本机后端 assets-sync 应答对不上契约 ⇒ 不猜默认值，原话回机器页；同 AS1 mcp_sync 那一句的形
+src/backend/remote_ask.rs:146	本机后端还不知道怎么连到 [{machine}]：那台还没连上，或本机后端刚重启过（那台下次连上就好了）	保留	[对外] 〔C4d〕本机后端问远端那一跳查不到那台时的报错（历史清单 / 资产目录那一路 toast）；说清是哪台、为什么、怎么会好
 src/backend/skill_install.rs:88	不是文本文件	保留	[可达存疑] 〔AS2〕skill 里某个文件为什么读不出原文（含 NUL 字节）⇒ skill-read 的 files[].why / 这台那一份的 blocked，机器页「资产」那一块照原话列：这一个装不过去
 src/backend/skill_install.rs:91	不是 UTF-8 文本	保留	[可达存疑] 〔AS2〕同上一行：不是 UTF-8 ⇒ 装不过去（写口只收文本）
 src/backend/skill_install.rs:355	不是普通文件	保留	[可达存疑] 〔AS2〕这台 skill 目录里那一处是指向目录的链接 / 特殊文件 ⇒ 盖不了，进那一行的 blocked

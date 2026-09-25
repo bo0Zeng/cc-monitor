@@ -1,0 +1,102 @@
+{
+  "remoteProjects": {
+    "notice": null,
+    "rows": [
+      {
+        "hasLive": null,
+        "hiddenCount": 2,
+        "lastActivity": 1000,
+        "origin": "dev",
+        "projectDir": "-w-alpha",
+        "projectName": "alpha",
+        "projectPath": "/w/alpha",
+        "sessionCount": 4,
+        "starredCount": 2
+      },
+      {
+        "hasLive": null,
+        "hiddenCount": null,
+        "lastActivity": 2000,
+        "origin": "dev",
+        "projectDir": "-w-beta",
+        "projectName": "-w-beta",
+        "projectPath": "",
+        "sessionCount": 1,
+        "starredCount": null
+      },
+      {
+        "hasLive": null,
+        "hiddenCount": null,
+        "lastActivity": 500,
+        "origin": "dev",
+        "projectDir": "-w-gamma",
+        "projectName": "gamma",
+        "projectPath": "C:\\w\\gamma",
+        "sessionCount": 2,
+        "starredCount": null
+      }
+    ]
+  },
+  "remoteSessions": {
+    "notice": null,
+    "rows": [
+      {
+        "aiTitle": "占位标题",
+        "customTitle": "占位标题一",
+        "firstUserExcerpt": "占位",
+        "forkedFromMessageUuid": "m-1",
+        "forkedFromSessionId": "0000aaaa-0000-4000-8000-000000000003",
+        "hidden": false,
+        "isBg": false,
+        "isLive": null,
+        "jsonlPath": "/h/.claude/projects/-w-alpha/0000aaaa-0000-4000-8000-000000000001.jsonl",
+        "messageCountApprox": 7,
+        "origin": "dev",
+        "projectName": "alpha",
+        "projectPath": "/w/alpha",
+        "sessionId": "0000aaaa-0000-4000-8000-000000000001",
+        "starred": true,
+        "startedAt": 10,
+        "updatedAt": 20
+      },
+      {
+        "aiTitle": null,
+        "customTitle": null,
+        "firstUserExcerpt": "",
+        "hidden": true,
+        "isBg": true,
+        "isLive": null,
+        "jsonlPath": "/h/.claude/projects/-w-alpha/0000aaaa-0000-4000-8000-000000000004.jsonl",
+        "messageCountApprox": 1,
+        "origin": "dev",
+        "projectName": "-w-alpha",
+        "projectPath": "",
+        "sessionId": "0000aaaa-0000-4000-8000-000000000004",
+        "starred": true,
+        "startedAt": 30,
+        "updatedAt": 40
+      }
+    ]
+  },
+  "synthSessions": {
+    "notice": null,
+    "rows": [
+      {
+        "aiTitle": null,
+        "customTitle": "codex 会话也按 sid 记",
+        "firstUserExcerpt": "占位摘录",
+        "hidden": false,
+        "isBg": false,
+        "isLive": null,
+        "jsonlPath": "/h/.codex/sessions/2026/09/25/rollout-x.jsonl",
+        "messageCountApprox": 0,
+        "projectName": "delta",
+        "projectPath": "/w/delta",
+        "sessionId": "019a0000-0000-7000-8000-00000000c0de",
+        "starred": true,
+        "startedAt": 777,
+        "updatedAt": 777
+      }
+    ]
+  }
+}

@@ -36,6 +36,8 @@ vi.mock("../../src/behavior", () => ({ getBehavior: () => ({}) }));
 vi.mock("../../src/format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { invoke } from "@tauri-apps/api/core";
+// 〔C4d〕历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
+import { withHistoryReads } from "../test-support/chan-fake";
 import { HistoryView } from "../../src/views/history";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -79,7 +81,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
   });
 
   it("排序：不知道自成一档 —— 排在「确定活着」之后、「确定没活」之前", async () => {
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_history_projects")
         return Promise.resolve([
           proj("确定没活", false, 0),
@@ -89,7 +91,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
       if (cmd === "list_remote_history_projects")
         return Promise.resolve({ projects: [], failedHosts: [] });
       return Promise.resolve(undefined);
-    });
+    }));
     const view = new HistoryView();
     await view.open();
 
@@ -100,7 +102,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
   });
 
   it("排序：星标那一档同样分得开（不知道 > 查过了一个都没有）", async () => {
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_history_projects")
         return Promise.resolve([
           proj("查过了没星标", false, 0),
@@ -109,7 +111,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
       if (cmd === "list_remote_history_projects")
         return Promise.resolve({ projects: [], failedHosts: [] });
       return Promise.resolve(undefined);
-    });
+    }));
     const view = new HistoryView();
     await view.open();
     expect(renderedOrder()).toEqual(["星标不知道", "查过了没星标"]);
@@ -117,13 +119,13 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
   });
 
   it("组头 chip：算过了才说话 —— 不知道那一档不冒出 `★ 0` / `● live`", async () => {
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_history_projects")
         return Promise.resolve([proj("不知道", null, null), proj("有星标", true, 2)]);
       if (cmd === "list_remote_history_projects")
         return Promise.resolve({ projects: [], failedHosts: [] });
       return Promise.resolve(undefined);
-    });
+    }));
     const view = new HistoryView();
     await view.open();
     expect(statsOf("有星标")).toContain("● live");
@@ -135,7 +137,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
   });
 
   it("求和：一次 star 操作不许把「不知道」变成 1", async () => {
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_history_projects")
         return Promise.resolve([proj("不知道", null, null)]);
       if (cmd === "update_history_metadata")
@@ -143,7 +145,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
       if (cmd === "list_remote_history_projects")
         return Promise.resolve({ projects: [], failedHosts: [] });
       return Promise.resolve(undefined);
-    });
+    }));
     const view = new HistoryView();
     await view.open();
     const internals = view as unknown as {
@@ -169,7 +171,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
   });
 
   it("对照组：算过了的那一档照常加减（本族判据不是靠「什么都不做」绿的）", async () => {
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
       if (cmd === "list_history_projects")
         return Promise.resolve([proj("算过了", false, 0)]);
       if (cmd === "update_history_metadata")
@@ -177,7 +179,7 @@ describe("KR92D1 ④：HistoryView 不把「不知道」当 0 读", () => {
       if (cmd === "list_remote_history_projects")
         return Promise.resolve({ projects: [], failedHosts: [] });
       return Promise.resolve(undefined);
-    });
+    }));
     const view = new HistoryView();
     await view.open();
     const internals = view as unknown as {
