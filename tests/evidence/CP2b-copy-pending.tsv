@@ -1,0 +1,247 @@
+文件	理由
+src/account-chip.ts	未抽
+src/account-commands.ts	未抽
+src/account-restart-local.ts	未抽
+src/account-restart.ts	未抽
+src/accounts-decode.ts	未抽
+src/accounts.ts	C4d 在改这一带，留最后一批
+src/agent-profile.ts	未抽
+src/agents-panel.ts	未抽
+src/backend-policy.ts	未抽
+src/backend/accounts/apikey/creds.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/accounts/apikey/file_face.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/accounts/apikey/mod.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/accounts/apikey/table.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/accounts/iso.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/agents/claudecode/assets.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/agents/claudecode/paths.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/asset_catalog.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/asset_sync.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/common/fs.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/common/session_snapshot.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/capture_pane.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/cc_bus.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/ccm/argv.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/ccm/mod.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/ccm/plan.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/cli_control.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/exit_policy.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/files_commit.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/files_write.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/gate.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/kill.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/launch.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/panorama.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/resolve_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/control/transfer.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/dial/connect.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/dial/link.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/dial/sftp.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/dial/uses.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/feature_face.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/files/mod.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/footprint.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/inbound.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/lib.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/listen.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/mcp_sync.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/observe/accounts_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/observe/history_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/observe/plugins_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/observe/tasks_query.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/observe/watcher.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/platform/detach.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/platform/pidwatch/mod.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/platform/ssh_agent.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/plugin/discover.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/plugin/invoke.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/plugin/probe.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/read_face.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/relay/http1.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/relay/listen.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/relay/machine.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/relay/server.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/relay/upstream.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/skill_install.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/backend/wire.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）
+src/branch-button.ts	未抽
+src/branch-fold.ts	未抽
+src/bridge/crates/creds-core/src/perm.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
+src/bridge/crates/creds-core/src/store.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
+src/bridge/crates/guard-core/src/lib.rs	射程外：monitor 的子 crate，够不着 crate::copy_table
+src/bridge/src/account_aliases.rs	未抽
+src/bridge/src/acct_iso_deploy.rs	未抽
+src/bridge/src/apikey_remote.rs	未抽
+src/bridge/src/asset_sync.rs	未抽
+src/bridge/src/backend/control/backend_control.rs	未抽
+src/bridge/src/backend/control/backend_kill.rs	未抽
+src/bridge/src/backend/control/backend_launch.rs	未抽
+src/bridge/src/backend/control/backend_route.rs	未抽
+src/bridge/src/backend/control/backend_send_keys.rs	未抽
+src/bridge/src/backend/control/cc_bus.rs	未抽
+src/bridge/src/backend/control/ccm_invocation.rs	未抽
+src/bridge/src/backend/control/frame_query.rs	C4d 在改这一带，留最后一批
+src/bridge/src/backend/control/inbound_client.rs	未抽
+src/bridge/src/backend/control/launch_wire.rs	未抽
+src/bridge/src/backend/control/local_backend.rs	未抽
+src/bridge/src/backend/control/payload.rs	未抽
+src/bridge/src/backend/control/tmux.rs	未抽
+src/bridge/src/backend/observe/local_query.rs	未抽
+src/bridge/src/backend_policy.rs	未抽
+src/bridge/src/bind.rs	未抽
+src/bridge/src/byte_table.rs	未抽
+src/bridge/src/cc_bus_deploy.rs	未抽
+src/bridge/src/ccm_probe.rs	未抽
+src/bridge/src/chan/host.rs	未抽
+src/bridge/src/chan/wire.rs	未抽
+src/bridge/src/claude_data_fence.rs	未抽
+src/bridge/src/config_surface.rs	未抽
+src/bridge/src/creds_store.rs	未抽
+src/bridge/src/data_paths.rs	未抽
+src/bridge/src/dial_host.rs	未抽
+src/bridge/src/drift_ledger.rs	未抽
+src/bridge/src/fenced_block.rs	未抽
+src/bridge/src/filewin/bigfile.rs	未抽
+src/bridge/src/filewin/bookmarks.rs	未抽
+src/bridge/src/filewin/copy.rs	未抽
+src/bridge/src/filewin/create.rs	未抽
+src/bridge/src/filewin/download.rs	未抽
+src/bridge/src/filewin/editor.rs	未抽
+src/bridge/src/filewin/entry.rs	未抽
+src/bridge/src/filewin/find.rs	未抽
+src/bridge/src/filewin/preview.rs	未抽
+src/bridge/src/filewin/proc.rs	未抽
+src/bridge/src/filewin/rows.rs	未抽
+src/bridge/src/filewin/select.rs	未抽
+src/bridge/src/filewin/shell.rs	未抽
+src/bridge/src/filewin/source.rs	未抽
+src/bridge/src/filewin/transfer.rs	未抽
+src/bridge/src/filewin/upload.rs	未抽
+src/bridge/src/filewin/workspace.rs	未抽
+src/bridge/src/filewin/writeops.rs	未抽
+src/bridge/src/footprint_remote.rs	未抽
+src/bridge/src/history.rs	C4d 在改这一带，留最后一批
+src/bridge/src/hooks_diag.rs	未抽
+src/bridge/src/launch.rs	未抽
+src/bridge/src/lib.rs	未抽
+src/bridge/src/link_mux.rs	未抽
+src/bridge/src/local_accounts.rs	C4d 在改这一带，留最后一批
+src/bridge/src/local_backend_host.rs	C4d 在改这一带，留最后一批
+src/bridge/src/logging.rs	未抽
+src/bridge/src/mcp.rs	未抽
+src/bridge/src/mcp_sync.rs	未抽
+src/bridge/src/origin.rs	未抽
+src/bridge/src/panorama_bytes.rs	未抽
+src/bridge/src/panorama_call.rs	未抽
+src/bridge/src/platform_fs.rs	未抽
+src/bridge/src/port_forward.rs	未抽
+src/bridge/src/profile_installer.rs	未抽
+src/bridge/src/pubkey.rs	未抽
+src/bridge/src/remote_branch.rs	C4d 在改这一带，留最后一批
+src/bridge/src/remote_history.rs	C4d 在改这一带，留最后一批
+src/bridge/src/remote_relay.rs	未抽
+src/bridge/src/session_skeleton.rs	未抽
+src/bridge/src/sftp.rs	未抽
+src/bridge/src/sftp_pool.rs	未抽
+src/bridge/src/shell_dialect.rs	未抽
+src/bridge/src/skill_host.rs	未抽
+src/bridge/src/skill_install.rs	未抽
+src/bridge/src/ssh_link.rs	未抽
+src/bridge/src/ssh_source.rs	C4d 在改这一带，留最后一批
+src/bridge/src/subagent.rs	C4d 在改这一带，留最后一批
+src/bridge/src/tool_registry.rs	C4d 在改这一带，留最后一批
+src/bridge/src/user_files.rs	未抽
+src/bridge/src/verified_write.rs	未抽
+src/cards/api-error.ts	未抽
+src/cards/bash.ts	未抽
+src/cards/compact.ts	未抽
+src/cards/diff.ts	未抽
+src/cards/index.ts	未抽
+src/cards/interactive.ts	未抽
+src/cards/slash.ts	未抽
+src/cards/subagent.ts	未抽
+src/entry-render-common.ts	未抽
+src/entry-viewer.ts	未抽
+src/error-toast.ts	未抽
+src/events.ts	未抽
+src/file-window.ts	未抽
+src/first-run-hint.ts	未抽
+src/fork-ask.ts	未抽
+src/fork-flow.ts	未抽
+src/fork-launch.ts	未抽
+src/format.ts	未抽
+src/ipc/chan-caller.ts	未抽
+src/keybindings/actions.ts	未抽
+src/keybindings/editor.ts	未抽
+src/keybindings/registry.ts	未抽
+src/launch-dimensions.ts	未抽
+src/launch-menu.ts	未抽
+src/launch-render-cli.ts	未抽
+src/launch-render-fallback.ts	未抽
+src/launch-requests.ts	未抽
+src/launcher-diagnostics.ts	未抽
+src/main.ts	未抽
+src/panorama-engine/main.rs	射程外：全景独立小程序（另一个可执行文件）
+src/panorama/agent-clip.ts	未抽
+src/panorama/api.ts	未抽
+src/panorama/diagram-honesty.ts	未抽
+src/panorama/diagram-render.ts	未抽
+src/panorama/diagram-view.ts	未抽
+src/panorama/layout.ts	未抽
+src/paste-block.ts	未抽
+src/remote-config.ts	未抽
+src/remote-health.ts	未抽
+src/remote-launch-run.ts	未抽
+src/render.ts	未抽
+src/session-reads.ts	未抽
+src/settings/account-new-form.ts	未抽
+src/settings/accounts-section.ts	未抽
+src/settings/acct-deploy.ts	未抽
+src/settings/assets-section.ts	未抽
+src/settings/backend-section.ts	未抽
+src/settings/cc-bus-hooks-section.ts	未抽
+src/settings/cc-bus-section.ts	未抽
+src/settings/collapsible-group.ts	未抽
+src/settings/config-surface-section.ts	未抽
+src/settings/data-section.ts	未抽
+src/settings/diagnostics-section.ts	未抽
+src/settings/drift-ledger-section.ts	未抽
+src/settings/machine-aliases.ts	未抽
+src/settings/machine-card.ts	未抽
+src/settings/machine-status.ts	未抽
+src/settings/mcp-section.ts	未抽
+src/settings/mcp-sync.ts	未抽
+src/settings/open-settings.ts	未抽
+src/settings/panel.ts	未抽
+src/settings/plugins-section.ts	未抽
+src/settings/readiness.ts	未抽
+src/settings/remote-section.ts	未抽
+src/settings/restart-notice.ts	未抽
+src/settings/router.ts	未抽
+src/settings/unknown-keys-notice.ts	未抽
+src/shell-quote.ts	未抽
+src/skeleton-view.ts	未抽
+src/tab-bar-drag.ts	未抽
+src/tab-bar-prefs.ts	未抽
+src/tab-bar-view.ts	未抽
+src/tab-drop.ts	未抽
+src/tab-menu.ts	未抽
+src/tab-session-actions.ts	未抽
+src/tab-stream-view.ts	未抽
+src/tasks-panel.ts	未抽
+src/terminal-front.ts	未抽
+src/turn-notify.ts	未抽
+src/usage-hud.ts	未抽
+src/views/cc-bus-view.ts	未抽
+src/views/command-bar.ts	未抽
+src/views/grid-monitor.ts	未抽
+src/views/history-actions.ts	C4d 在改这一带，留最后一批
+src/views/history.ts	C4d 在改这一带，留最后一批
+src/views/inbox-view.ts	未抽
+src/views/outline-source.ts	未抽
+src/views/pane-preview.ts	未抽
+src/views/panorama.ts	未抽
+src/views/port-forward.ts	未抽
+src/views/session-find.ts	未抽
+src/views/session-viewer.ts	未抽
+src/views/user-input-panel.ts	未抽

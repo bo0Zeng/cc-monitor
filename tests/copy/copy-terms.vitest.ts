@@ -26,7 +26,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { REPO_ROOT } from "../test-support/repo-root.ts";
-import { censusList, loadTerms, scannerOf, type Term } from "./copy-support.ts";
+import { censusList, loadTable, loadTerms, scannerOf, tallyOf, type Term } from "./copy-support.ts";
 
 const CENSUS = resolve(REPO_ROOT, "tests", "evidence", "K-T68-A1-outward-copy-census.py");
 const LEDGER = resolve(REPO_ROOT, "tests", "evidence", "CP1-copy-verdicts.tsv");
@@ -62,6 +62,10 @@ export function shapeProblems(terms: Term[]): string[] {
     if (!t.source) p.push(`${at} 没写出处`);
     if (t.tier === "正名" && !t.meaning) p.push(`${at} 是正名却没写 meaning`);
     if (t.tier === "限用" && !t.context) p.push(`${at} 是限用词却没写许说的语境（R1b 第 1 条）`);
+    // 〔CP2b〕限用词计数棘轮：每条限用词都要有计数正则与表里的条数；别的档不许带（棘轮只管限用）。
+    if (t.tier === "限用" && (!t.tally || typeof t.inTable !== "number"))
+      p.push(`${at} 是限用词却没写 tally / inTable（R1b 第 3 条：计数只许变少）`);
+    if (t.tier !== "限用" && (t.tally !== undefined || t.inTable !== undefined)) p.push(`${at} 不是限用词却带了 tally / inTable`);
     if (t.tier === "禁") {
       if (!t.say) p.push(`${at} 是禁词却没写换成什么（say）`);
       if (t.points !== undefined && !named.has(t.points))
@@ -139,6 +143,23 @@ describe("CP2a · 术语对照表", () => {
     expect(ccm?.tier).toBe("限用");
     expect(inPlace?.tier).toBe("限用");
     expect(ccm?.context && inPlace?.context).toBeTruthy();
+    // 〔CP2b · 用户 09-24「继续叫卸载ccm」（99 §1 V80）〕那条 ask 结案了，不许再挂着。
+    expect(ccm?.ask, "ccm 条的 ask 已结案（V80），删掉").toBeUndefined();
+  });
+
+  /**
+   * 〔CP2b〕**限用词计数棘轮**（`91 §4` R1b 第 3 条「计数只许变少，限用不是放行」· `§5.7` 第 4 步）。
+   * 要求住址逐字：`设计/91 §4` R1b「能机检的只有『总数只许变少』」。
+   * 相等、不是地板：表里每多一条带 tmux 的句子，就得回来把 `inTable` 加一 —— 改的时候人会看见它
+   * （`91 §5.6` 引 `launch_payload_parity.rs` 的原话：地板会被静默绕过，相等不会）。
+   */
+  it("★ 限用词计数棘轮：每条限用词在文案表里的命中条数 == inTable", () => {
+    const table = loadTable();
+    const limited = terms.filter((t) => t.tier === "限用");
+    expect(limited.length, "一条限用词都没有 —— 下面的相等零命中地绿").toBeGreaterThan(0);
+    const got = Object.fromEntries(limited.map((t) => [t.word, tallyOf(t, table)]));
+    const pinned = Object.fromEntries(limited.map((t) => [t.word, t.inTable]));
+    expect(got, "限用词在文案表里的条数变了：多了就想想这句话该不该这么说（R1b），确认后把 terms.json 的 inTable 改成实数").toEqual(pinned);
   });
 });
 
@@ -151,6 +172,18 @@ describe("CP2a · 术语表判据自己会不会死（正控）", () => {
     expect(shapeProblems([{ ...base, scan: { re: "daem0n", flags: "" } }]).join()).toMatch(/死正则/);
     expect(shapeProblems([{ ...base, counterExamples: ["daemon"] }]).join()).toMatch(/误中了反例/);
     expect(shapeProblems([{ word: "tmux", tier: "限用", source: "x" }]).join()).toMatch(/许说的语境/);
+    expect(shapeProblems([{ word: "tmux", tier: "限用", source: "x", context: "y" }]).join()).toMatch(/tally/);
+    expect(shapeProblems([{ ...base, tally: { re: "x", flags: "" }, inTable: 0 }]).join()).toMatch(/不是限用词却带了/);
+  });
+
+  it("〔CP2b〕计数棘轮真在数：合成表里两条带 tmux ⇒ 2，占位符名不算", () => {
+    const t: Term = { word: "tmux", tier: "限用", source: "x", tally: { re: "\\btmux\\b", flags: "i" }, inTable: 0 };
+    const table = {
+      "a.b.c": { kind: "body", zh: "tmux 会话", args: [] },
+      "a.b.d": { kind: "body", zh: "在 Tmux 里", args: [] },
+      "a.b.e": { kind: "body", zh: "{tmux} 会话", args: ["tmux"] },
+    };
+    expect(tallyOf(t, table)).toBe(2);
   });
 
   it("两个抽取器在合成语料上各抽得出东西", () => {
