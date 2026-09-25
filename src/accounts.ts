@@ -567,7 +567,7 @@ export function isSelectable(a: Account): boolean {
   //
   // ★ **Z02 订正了 Z01 在这儿写的一句错话**。Z01 写的是「从 UI 起它需要『显式 unset』的
   // 注入路径，而 launch-plan 今天只会 export」——**不对**：那条路径早就有了，两条渲染路各一份
-  //   · CLI 路径：`ACCOUNT_DIMENSION.cliFlags` 对非 account 态吐 `--base`，
+  //   · CLI 路径：CLI 渲染器的 `account` 维度（〔LR1〕今天只在 Rust `ccm_invocation.rs`）对非 account 态吐 `--base`，
   //     而 `shared/ccm` 收到 `--base` 会 `unset CLAUDE_CONFIG_DIR`（两处落点，
   //     由 `base-flag-contract-guard.vitest.ts` 钉住）
   //   · 兜底渲染路径：`ENV_RESET_DIMENSION` 推 `unset-config-dir` op

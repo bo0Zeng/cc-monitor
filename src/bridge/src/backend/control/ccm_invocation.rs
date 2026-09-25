@@ -210,8 +210,9 @@ fn dimension_flags(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String
     Ok(out)
 }
 
-/// 一个维度在 CLI 侧的三个钩子。与 TS `LaunchDimension` 同构（`apply` 那一半不在这里 ——
-/// 它产 `EnvOp`，U8c-1 已经搬进 `render_payload`）。
+/// 一个维度在 CLI 侧的三个钩子。TS `LaunchDimension` 今天只剩 `applies` / `apply` 两格
+/// （`apply` 产 `EnvOp`，渲染那一半 U8c-1 已经搬进 `render_payload`）；
+/// 〔LR1 · U8c-3〕TS 维度上的 `cliFlags` / `requiredCaps` 随 TS 渲染器删了，本表是它们唯一的家。
 struct Dim {
     id: &'static str,
     applies: fn(&CliSpec) -> bool,
