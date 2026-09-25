@@ -706,6 +706,21 @@
       "kind": "action",
       "zh": "取消",
       "args": []
+    },
+    "events.stream.closedTitle": {
+      "kind": "error",
+      "zh": "会话更新停了",
+      "args": []
+    },
+    "events.stream.closedLocal": {
+      "kind": "body",
+      "zh": "本机的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
+      "args": []
+    },
+    "events.stream.closedRemote": {
+      "kind": "body",
+      "zh": "{machine} 上的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
+      "args": ["machine"]
     }
   }
 }

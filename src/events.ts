@@ -1,7 +1,9 @@
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { chan, type Item, type Sub } from "./ipc/chan";
-import type { Origin } from "./ipc/origin";
+import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { copyText } from "./copy-table";
+import { showActionFailureToast } from "./error-toast";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src/bridge/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
@@ -555,6 +557,14 @@ export async function bindEvents(
         console.info(`[events] 会话流 [${origin}]：又看得见了`);
       } else {
         console.warn(`[events] 会话流 [${origin}] 关了：`, it.by);
+        // 〔W5-UI · E §3.3〕这条流是这台机器会话更新的唯一来源；关了之后什么都不会再来 ⇒ 必须让人知道
+        //   （原先只打 console：界面照旧，看起来只是「没动静」）。句柄只在拒绝 / 出错时关，正常收尾不走这里。
+        showActionFailureToast(
+          copyText("events.stream.closedTitle"),
+          isLocalOrigin(origin)
+            ? copyText("events.stream.closedLocal")
+            : copyText("events.stream.closedRemote", { machine: origin }),
+        );
       }
     }
     ensureScheduled();
