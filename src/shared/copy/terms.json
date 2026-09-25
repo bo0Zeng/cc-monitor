@@ -76,7 +76,7 @@
       "word": "tmux",
       "tier": "限用",
       "tally": { "re": "\\btmux\\b", "flags": "i" },
-      "inTable": 73,
+      "inTable": 76,
       "meaning": "用户机器上的终端复用程序。",
       "context": "讲用户自己能 attach / 看得见的 tmux 会话时许说（「tmux 会话」比「终端复用会话」清楚）。我们对 tmux 的用法（send-keys · capture-pane · @ccm_sid 这类会话标记）不许露，见禁档。",
       "source": "设计/91 §4 R1b（2026-09-18 裁定）",
@@ -123,11 +123,10 @@
       "word": "in-place",
       "tier": "限用",
       "tally": { "re": "in-place", "flags": "i" },
-      "inTable": 1,
+      "inTable": 2,
       "meaning": "cc-acct-iso 用 `init --default-in-place` 建出来的那种账号：它的配置目录就是共享库 ~/.claude 本身。",
       "context": "只在说明「这个账号为什么不能按会话切换」时许说，并且说「in-place 账号」。依据：这种账号只有亲手敲过 --default-in-place 才会有（cc-monitor 自己从不建它；manifest 的 mode 字段由 cc-acct-iso 写），cc-acct-iso 自己的提示也叫它 in-place ⇒ 用户认得这个词。",
       "source": "CP1 判不了之二（accounts.ts「in-place 模式」）· src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso 的 init / verify 提示",
-      "ledger": ["in-place"],
       "note": "同一处的徽标字「逃生口」是我们起的比喻（见禁档「逃生口」），与本词无关。"
     },
     {

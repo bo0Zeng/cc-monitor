@@ -14624,6 +14624,226 @@
       "kind": "body",
       "zh": "本机",
       "args": []
+    },
+    "accounts.oldBackend.trust": {
+      "kind": "error",
+      "zh": "那台机器的后端版本过旧，还不认信任预检这一问。重装那台机器的后端就有了",
+      "args": []
+    },
+    "accounts.local.scopeHint": {
+      "kind": "body",
+      "zh": "这一节只把这台机器上的账号清单列出来（只读）；在这里改不了它们。",
+      "args": []
+    },
+    "accounts.local.currentMark": {
+      "kind": "body",
+      "zh": "当前",
+      "args": []
+    },
+    "accounts.local.unknownReason": {
+      "kind": "error",
+      "zh": "后端没有给出原因",
+      "args": []
+    },
+    "accounts.local.loadFailed": {
+      "kind": "error",
+      "zh": "读不出这台机器的账号清单",
+      "args": []
+    },
+    "accounts.local.emptyNext": {
+      "kind": "body",
+      "zh": "下一步：在这台机器上装好 cc-acct-iso，跑一次初始化。现在这个登录态会收进第一个隔离账号。cc-monitor 还不能在本机这一侧替你装，先在终端里做。",
+      "args": []
+    },
+    "accounts.local.emptyTitle": {
+      "kind": "title",
+      "zh": "这台机还没有隔离账号",
+      "args": []
+    },
+    "accounts.local.manifestPrefix": {
+      "kind": "body",
+      "zh": "清单",
+      "args": []
+    },
+    "accounts.local.countSuffix": {
+      "kind": "body",
+      "zh": "个账号",
+      "args": []
+    },
+    "accounts.local.heading": {
+      "kind": "title",
+      "zh": "这台机器上的账号",
+      "args": []
+    },
+    "accounts.oldBackend.accounts": {
+      "kind": "error",
+      "zh": "那台机器的后端版本过旧，还不认账号清单这一问。重装那台机器的后端就有了",
+      "args": []
+    },
+    "accounts.setModel.invalid": {
+      "kind": "error",
+      "zh": "模型名不合法，没有保存：{model}",
+      "args": ["model"]
+    },
+    "accounts.restartLocate.body": {
+      "kind": "body",
+      "zh": "这个会话不在 cc-monitor 的 tmux 里，或无法精确定位（认不出是哪个会话）。{tail}",
+      "args": ["tail"]
+    },
+    "accounts.restartLocate.title": {
+      "kind": "title",
+      "zh": "无法换号重启",
+      "args": []
+    },
+    "accounts.restartLocate.markLost": {
+      "kind": "body",
+      "zh": "这个会话的进程里带着 cc-monitor 起会话时留下的身份标记。但它现在不在 cc-monitor 的 tmux 里，多半是 tmux 会话被重建过。换号重启要往那个 tmux 里发按键，找不到就不能动手，乱猜会动错会话。{tail}",
+      "args": ["tail"]
+    },
+    "accounts.restartLocate.markLostTitle": {
+      "kind": "title",
+      "zh": "无法换号重启：找不到这个会话所在的终端",
+      "args": []
+    },
+    "accounts.restartLocate.tailRemote": {
+      "kind": "body",
+      "zh": "可以等它结束后，用右键「把此会话切到账号 X」。",
+      "args": []
+    },
+    "accounts.restartLocate.tailLocal": {
+      "kind": "body",
+      "zh": "本机会话结束后，Resume 沿用它上次的账号；换号只对本工具在 tmux 里起的会话做得到。",
+      "args": []
+    },
+    "accounts.sessionBadge.noneHint": {
+      "kind": "body",
+      "zh": "该会话不是本工具启动的，或已停止，无法判定账号",
+      "args": []
+    },
+    "accounts.sessionBadge.none": {
+      "kind": "body",
+      "zh": "—",
+      "args": []
+    },
+    "accounts.sessionBadge.last": {
+      "kind": "body",
+      "zh": "账号 {last}{email} · 来源：上次用本工具起",
+      "args": ["last", "email"]
+    },
+    "accounts.sessionBadge.live": {
+      "kind": "body",
+      "zh": "账号 {account}{email} · 来源：实时探测",
+      "args": ["account", "email"]
+    },
+    "accounts.loginAction.loginHint": {
+      "kind": "body",
+      "zh": "用该账号打开一个远端终端（在里面 /login）",
+      "args": []
+    },
+    "accounts.loginAction.goLogin": {
+      "kind": "action",
+      "zh": "去登录",
+      "args": []
+    },
+    "accounts.loginAction.loginTerminal": {
+      "kind": "action",
+      "zh": "登录终端",
+      "args": []
+    },
+    "accounts.loginAction.openTerminalHint": {
+      "kind": "body",
+      "zh": "用该账号打开一个远端终端。API key 号不需要 /login，要在里面配好端点环境变量",
+      "args": []
+    },
+    "accounts.loginAction.openTerminal": {
+      "kind": "action",
+      "zh": "打开终端",
+      "args": []
+    },
+    "accounts.badge.signedIn": {
+      "kind": "body",
+      "zh": "已登录",
+      "args": []
+    },
+    "accounts.badge.notSignedInHint": {
+      "kind": "body",
+      "zh": "该账号尚未登录——请在终端里用它 /login",
+      "args": []
+    },
+    "accounts.badge.notSignedIn": {
+      "kind": "body",
+      "zh": "未登录",
+      "args": []
+    },
+    "accounts.badge.apikeyNoEndpointHint": {
+      "kind": "body",
+      "zh": "这个号用 API key 鉴权，不看 ~/.claude 里的订阅凭据。它可以设为当前账号，会话也起得来；但请求地址不一定配好了：{why}\n没配好就起会话，请求会在 claude 那边报鉴权失败。",
+      "args": ["why"]
+    },
+    "accounts.badge.apikeyNoEndpoint": {
+      "kind": "body",
+      "zh": "API key（未配置端点）",
+      "args": []
+    },
+    "accounts.badge.whyUnknown": {
+      "kind": "body",
+      "zh": "无法判断端点是否已配置。两件事都成立才会替它配好：凭据文件里有这个账号的一行，本机中转在跑。",
+      "args": []
+    },
+    "accounts.badge.whyRemote": {
+      "kind": "body",
+      "zh": "key 可以存到远端那台机器上。但远端起的会话今天还不经中转换上它，只有本机会话会。要用这个号，先在远端那台机器上自己配好第三方端点。",
+      "args": []
+    },
+    "accounts.badge.whyNoRow": {
+      "kind": "body",
+      "zh": "凭据文件里没有这个账号的一行，不会替它配置请求地址。要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在这个账号自己的 shell 环境里配好第三方端点。",
+      "args": []
+    },
+    "accounts.badge.apikeyRelayDownHint": {
+      "kind": "body",
+      "zh": "本机中转没在运行，起会话会被当场拒掉。先启动本机后端。",
+      "args": []
+    },
+    "accounts.badge.apikeyRelayDown": {
+      "kind": "body",
+      "zh": "API key（中转未运行）",
+      "args": []
+    },
+    "accounts.badge.apikeyRelayedHint": {
+      "kind": "body",
+      "zh": "已配置：本机会话的 ANTHROPIC_BASE_URL 指向本机中转。后端按凭据文件里这一行换上 key；key 本身对不对，要到 claude 那边才知道。",
+      "args": []
+    },
+    "accounts.badge.apikeyRelayed": {
+      "kind": "body",
+      "zh": "API key（经本机中转）",
+      "args": []
+    },
+    "accounts.badge.inPlaceHint": {
+      "kind": "body",
+      "zh": "in-place 模式：cc-monitor 不支持对它按会话切号",
+      "args": []
+    },
+    "accounts.badge.inPlace": {
+      "kind": "body",
+      "zh": "不支持切换",
+      "args": []
+    },
+    "accounts.deriveUi.notEnabled": {
+      "kind": "error",
+      "zh": "该远端尚未启用多账号",
+      "args": []
+    },
+    "accounts.deriveUi.unavailable": {
+      "kind": "error",
+      "zh": "账号功能暂不可用",
+      "args": []
+    },
+    "accounts.deriveUi.needsUpdate": {
+      "kind": "error",
+      "zh": "远端后端需要更新",
+      "args": []
     }
   }
 }

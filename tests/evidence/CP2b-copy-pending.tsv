@@ -1,5 +1,4 @@
 文件	理由
-src/accounts.ts	C4d 在改这一带，留最后一批
 src/backend/accounts/iso.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
 src/backend/accounts/upstream/creds.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）
 src/backend/accounts/upstream/file_face.rs	射程外：常驻端 crate（没有文案表读口；题面只要 monitor Rust）—— 常驻端这一族归 CP2c（w4/cp2c）

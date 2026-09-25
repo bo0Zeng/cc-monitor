@@ -318,7 +318,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     const byName = (n: string) =>
       rows.find((r) => r.querySelector(".accounts-row-name")?.textContent === n)!;
     const apiBadge = byName(B).querySelector(".accounts-row-badge")!;
-    expect(apiBadge.textContent).toBe("api-key（未配置端点）");
+    expect(apiBadge.textContent).toBe("API key（未配置端点）");
     expect(apiBadge.textContent).not.toContain("已登录");
     expect(apiBadge.classList.contains("warn")).toBe(true);
     // hover 得把「选得中、起得来、但请求发不出去」说清楚。
