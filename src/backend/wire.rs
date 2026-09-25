@@ -127,6 +127,28 @@ pub struct Unavailable {
     pub code: String,
 }
 
+/// 〔HX2〕hello 回显哪几格宿主交来的环境（[`Frame::Hello`] 的 `host_env`）。**名单只有这三格** —— 中转端口 ·
+/// 凭据文件路径 · 历史注解路径，都是本机 monitor 起常驻后端时交的（monitor 那一侧 `local_backend_host::HANDED_ENVS`，
+/// 两向对拍）。监听口的 token 永远不在这里。
+pub const HOST_ECHO_ENVS: [&str; 3] = [
+    crate::relay::ENV_PORT,
+    crate::accounts::upstream::creds::ENV_CREDENTIALS,
+    crate::history_annotations::ENV_PATH,
+];
+
+/// 按 [`HOST_ECHO_ENVS`] 从环境里取回显的那几格（没被交 / 空串的那一格不回显）。**纯函数**：环境由调用方给。
+pub fn host_env_from(
+    get: impl Fn(&str) -> Option<String>,
+) -> std::collections::BTreeMap<String, String> {
+    HOST_ECHO_ENVS
+        .iter()
+        .filter_map(|name| {
+            let v = get(name).filter(|v| !v.is_empty())?;
+            Some((name.to_string(), v))
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Frame {
@@ -238,6 +260,19 @@ pub enum Frame {
         /// ③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale 重装）。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         unavailable: Vec<Unavailable>,
+        /// 〔HX2 · 第四波 4D，additive〕**起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 [`HOST_ECHO_ENVS`]）。
+        ///
+        /// 它回答的是「这个后端是替**哪个数据目录**干活的」：本机常驻后端被 monitor 起时交了中转端口 ＋ 凭据文件路径 ＋
+        /// 历史注解路径（后两格就是 monitor 数据目录落到后端身上的全部）。常驻后端按 Claude 家目录分口、不按数据目录分
+        /// ⇒ 一个 `CCM_DATA_DIR` 隔离跑的 monitor 会连上真 profile 起的那个；它读完 hello 拿这一格与自己要交的那份比，
+        /// 对不上就拒、出声（`local_backend_host.rs::hello_verdict`）—— 不接一个会把写落进别的数据目录的后端（审计 E10）。
+        ///
+        /// **一格都没被交 ⇒ 省略**（远端 · 被 ssh exec 起的 · aterm 连的那些）⇒ 那些 hello 的线上字节**逐字节不变**
+        /// （`production_hello_bytes_do_not_change_when_nothing_was_handed` 钉）。
+        /// 🔴 **监听口的 token 永远不在这里**：名单只有三格、token 不在名单里（`the_listen_token_is_never_echoed` 钉）——
+        /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
+        #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+        host_env: std::collections::BTreeMap<String, String>,
     },
     /// One raw JSONL line tailed from a session file.
     Line {

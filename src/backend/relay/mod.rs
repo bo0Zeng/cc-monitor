@@ -277,7 +277,7 @@ mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节�
 
 /// `--relay` 的中转入口。**上游选择那只手由调用方递进来**（`accounts::upstream::run_relay`）——
 /// 本层叫不出它的名字（`upstream_selection_guard` ㈢ 零命中）。
-pub(crate) use listen::{host, run};
+pub(crate) use listen::{host, run, ENV_PORT};
 
 /// 〔RM1a · 第四波〕**第二个口**：帧面 `relay-status` / `relay-ensure` 的两个处理器（这台机器上的中转进程在不在 · 起一个）。
 /// 只交出端口这一个入参，一个上游选择的名字都不经过它。对外口的全集由 `layering_guard` 那张登记表两向钉着。

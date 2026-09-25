@@ -367,7 +367,7 @@ fn read_listen_owner(dir: &std::path::Path, port: u16) -> Option<(u32, std::path
 /// 一条 hello 行的裁决。**纯函数**，所以三张脸都测得到。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HelloVerdict {
-    /// 是我们的后端：build_id 与数据目录都对得上。
+    /// 是我们的后端：build_id、Claude 家目录、〔HX2〕宿主交给它的那几格（monitor 数据目录落到它身上的全部）都对得上。
     Ours,
     /// 有人占着这个口，但**不是**我们要找的那个。带上说得清的理由。
     Stranger(String),
@@ -378,7 +378,16 @@ pub(crate) enum HelloVerdict {
 /// ⚠ **`EADDRINUSE` / 连得上，只说明「有人占着这个口」，不说明占着它的是我们的后端。**
 /// ⇒ 连上去**先读 hello 比对**，对不上就出声并拒绝，**不许静默复用**
 /// （`P2t §1` 第 3 问「陈旧端点怎么识别」问的正是这一格）。
-pub(crate) fn hello_verdict(line: &str, want_build: &str, want_home: &str) -> HelloVerdict {
+///
+/// 〔HX2 · 第四波 4D〕第三项：`want_env` = 这一趟要交给后端的那份环境；其中名在 [`HANDED_ENVS`] 的那几格必须与 hello 的
+/// `host_env`（后端原样回显它被交的那几格）**两向相等**。口按 Claude 家目录算、不按数据目录算 ⇒ `CCM_DATA_DIR` 隔离跑的
+/// monitor 会连上真 profile 起的那个后端；不比这一项就会接上它、把凭据与历史注解写进那个数据目录（审计 E10）。
+pub(crate) fn hello_verdict(
+    line: &str,
+    want_build: &str,
+    want_home: &str,
+    want_env: &[(String, String)],
+) -> HelloVerdict {
     let Some(frame) = crate::ssh_source::parse_frame(line) else {
         return HelloVerdict::Stranger(format!(
             "这个口上的第一行不是一帧合法的后端帧（{} 字节）",
@@ -403,7 +412,60 @@ pub(crate) fn hello_verdict(line: &str, want_build: &str, want_home: &str) -> He
             "这个口上的后端看的是 {claude_dir}，而本 monitor 看的是 {want_home}"
         ));
     }
+    if let Some(why) = host_env_mismatch(line, want_env) {
+        return HelloVerdict::Stranger(why);
+    }
     HelloVerdict::Ours
+}
+
+/// 〔HX2〕起本机后端时交给它、且它会在 hello 里原样回显的那几格环境的**名字**（后端那一侧 `wire::HOST_ECHO_ENVS`，
+/// 两向对拍）。[`relay_host_envs`] 交的正是这几格 —— 中转端口 · 凭据文件路径 · 历史注解路径。
+pub(crate) const HANDED_ENVS: [&str; 3] = [
+    "CCM_RELAY_PORT",
+    "CCM_APIKEY_CREDENTIALS",
+    "CCM_HISTORY_METADATA",
+];
+
+/// 〔HX2〕hello 的 `host_env` 与这一趟要交的那几格（名在 [`HANDED_ENVS`] 的）两向比；不等 ⇒ 一句点名哪一格、两边各是什么的话。
+/// hello 里没有 `host_env`（旧后端 / 一格都没被交）⇒ 当空表比。**纯函数**。
+fn host_env_mismatch(line: &str, want_env: &[(String, String)]) -> Option<String> {
+    let theirs: std::collections::BTreeMap<String, String> =
+        serde_json::from_str::<serde_json::Value>(line.trim())
+            .ok()
+            .and_then(|v| v.get("host_env").and_then(|h| h.as_object()).cloned())
+            .map(|m| {
+                m.into_iter()
+                    .filter_map(|(k, v)| Some((k, v.as_str()?.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default();
+    let ours: std::collections::BTreeMap<String, String> = want_env
+        .iter()
+        .filter(|(k, _)| HANDED_ENVS.contains(&k.as_str()))
+        .cloned()
+        .collect();
+    if theirs == ours {
+        return None;
+    }
+    let say = |m: &std::collections::BTreeMap<String, String>, k: &str| {
+        m.get(k).cloned().unwrap_or_else(|| "（没有）".to_string())
+    };
+    let diffs: Vec<String> = HANDED_ENVS
+        .iter()
+        .filter(|k| theirs.get(**k) != ours.get(**k))
+        .map(|k| {
+            format!(
+                "{k}：它用的是 {}，这个 monitor 要的是 {}",
+                say(&theirs, k),
+                say(&ours, k)
+            )
+        })
+        .collect();
+    Some(format!(
+        "这个口上的后端是替另一个数据目录起的（{}）—— 接上它，凭据与历史注解会写进那个数据目录，所以没有接。\
+         多半是用 CCM_DATA_DIR 隔离跑的 monitor 碰上了平常那个 monitor 起的后端：换一个 CLAUDE_CONFIG_DIR 跑，或者先把那个后端停掉",
+        diffs.join("；")
+    ))
 }
 
 /// 探那个口上有没有一个**我们的** backend。
@@ -426,7 +488,7 @@ pub(crate) enum Probe {
 /// 3 秒比它高五六个量级，而它同时保证「起 monitor 时不会被一个哑口卡住」。
 const HANDSHAKE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(3_000);
 
-fn probe_listen_port(port: u16, want_home: &str) -> Probe {
+fn probe_listen_port(port: u16, want_home: &str, want_env: &[(String, String)]) -> Probe {
     let addr = std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), port);
     let sock = match std::net::TcpStream::connect_timeout(&addr, HANDSHAKE_DEADLINE) {
         Ok(s) => s,
@@ -443,7 +505,7 @@ fn probe_listen_port(port: u16, want_home: &str) -> Probe {
         Ok(l) => l,
         Err(e) => return Probe::Stranger(format!("{port} 口连得上，但读不到 hello：{e}")),
     };
-    match hello_verdict(&line, env!("BACKEND_BUILD_ID"), want_home) {
+    match hello_verdict(&line, env!("BACKEND_BUILD_ID"), want_home, want_env) {
         HelloVerdict::Ours => Probe::Ours(sock, line),
         HelloVerdict::Stranger(why) => Probe::Stranger(why),
     }
@@ -1003,7 +1065,7 @@ fn start_detached(
     // ★★ 这一条是硬的：backend 一起来就**无条件**往它连得到的 tmux server 装三条全局 hook、
     //    **固定槽位 `[50]`**、**没有关掉它的开关**，载荷里烤着那一个后端的 pid+starttime。
     //    ⇒ **脱离而不认已有实例 = 每台机 N 个后端互相盖槽位，比今天更糟。**
-    match adopt_existing(port, &home, &token) {
+    match adopt_existing(port, &home, &token, extra_env) {
         Adopt::Attached => {
             let (pid, bin) =
                 read_listen_owner(&dir, port).unwrap_or((0, std::path::PathBuf::new()));
@@ -1069,7 +1131,7 @@ fn start_detached(
         });
     }
     // 起来了之后自己连上去 —— **走与「接管」完全同一条路**，不另写一份。
-    match probe_and_attach_after_spawn(port, &home, &token) {
+    match probe_and_attach_after_spawn(port, &home, &token, extra_env) {
         Ok(()) => DetachOutcome::Done(StartOutcome::Started(bin)),
         Err(e) => {
             // 起来了但连不上 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
@@ -1123,24 +1185,36 @@ enum Adopt {
 ///   才会把那张牌放回去。⇒ 有界重试。**不重试它，用户会看到「换台电脑重开 monitor 就没后端了」。**
 ///
 /// 别的一律不重试 —— token 不对、口上是别人，重试只是把一个确定的坏消息拖晚。
-fn adopt_existing(port: u16, home: &str, token: &str) -> Adopt {
-    adopt_with(port, home, token, false)
+fn adopt_existing(port: u16, home: &str, token: &str, env: &[(String, String)]) -> Adopt {
+    adopt_with(port, home, token, env, false)
 }
 
 /// 刚起完之后连上去。**与接管走同一条路**，差别只有一句：
 /// 这一次「没人在听」是**还没 bind 完**（我们刚亲手起了一个），要等。
-fn probe_and_attach_after_spawn(port: u16, home: &str, token: &str) -> Result<(), String> {
-    match adopt_with(port, home, token, true) {
+fn probe_and_attach_after_spawn(
+    port: u16,
+    home: &str,
+    token: &str,
+    env: &[(String, String)],
+) -> Result<(), String> {
+    match adopt_with(port, home, token, env, true) {
         Adopt::Attached => Ok(()),
         Adopt::Refused(why) => Err(why),
         Adopt::None => Err(format!("{port} 口上始终没人在听 —— 多半是它起来就崩了")),
     }
 }
 
-fn adopt_with(port: u16, home: &str, token: &str, wait_for_bind: bool) -> Adopt {
+/// 〔HX2〕`env` = 这一趟交给（或会交给）后端的那份环境 —— 身份比对的第三项（[`hello_verdict`]）。
+fn adopt_with(
+    port: u16,
+    home: &str,
+    token: &str,
+    env: &[(String, String)],
+    wait_for_bind: bool,
+) -> Adopt {
     let mut last = String::from("那个口上没人");
     for _ in 0..LISTEN_WAIT_TRIES {
-        match probe_listen_port(port, home) {
+        match probe_listen_port(port, home, env) {
             Probe::Stranger(why) => return Adopt::Refused(why),
             Probe::Nobody => {
                 if !wait_for_bind {
@@ -1539,18 +1613,19 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 /// ⚠ 拿不到家目录时凭据那一格**缺席**（不是空串）：后端那时退回它自己那条解析，
 /// 而那正是上面那个静默 404 的成因 ⇒ 缺席这一格不许被读成「安全」。
 pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
+    let [port_env, creds_env, meta_env] = HANDED_ENVS;
     let mut envs = vec![(
-        "CCM_RELAY_PORT".into(),
+        port_env.into(),
         crate::backend::control::payload::RELAY_PORT.to_string(),
     )];
     if let Some(p) = crate::creds_store::resolve_path() {
-        envs.push(("CCM_APIKEY_CREDENTIALS".into(), p.display().to_string()));
+        envs.push((creds_env.into(), p.display().to_string()));
     }
     // 〔C4d · 第四波 4B〕历史注解的读写者换成本机常驻后端（主会话 09-25 裁：文件留在原处、同一路径）——
     //   同上一格的理由：由知道那份文件在哪的那一侧把路径说出来（值就是 monitor 从前读写它的那一个函数算的）。
     //   拿不到数据目录时这一格缺席 ⇒ 后端那一侧明说「不知道注解文件在哪」，不猜。
     if let Some(p) = crate::history::metadata_path() {
-        envs.push(("CCM_HISTORY_METADATA".into(), p.display().to_string()));
+        envs.push((meta_env.into(), p.display().to_string()));
     }
     envs
 }

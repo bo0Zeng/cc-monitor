@@ -363,6 +363,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         // `K-P4`（09-04）：握手帧第四条面。这一格与 `S6` 无关（第三家 agent 不带命令），
         // 空表 ⇒ 省略 ⇒ 下面那串期望字节一个都没动。
         unavailable: vec![],
+        host_env: Default::default(),
     })
     .map_err(|_| Stop::MissingCapability {
         stage: STAGES[1],

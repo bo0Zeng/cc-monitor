@@ -33,7 +33,7 @@ use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 
-pub(super) const ENV_PORT: &str = "CCM_RELAY_PORT";
+pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
 
 // ══════════════════════════════════════════════════════════════════════════
 //  期限的**值**住这一层〔`设计/99 §4 P16`，2026-09-22〕
