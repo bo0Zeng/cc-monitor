@@ -10488,6 +10488,811 @@
       "kind": "error",
       "zh": "第 {i} 条命中的格式不对：只认字符串或 b16 编码的对象",
       "args": ["i"]
+    },
+    "rsCcBus.what.spawn": {
+      "kind": "body",
+      "zh": "派生 agent",
+      "args": []
+    },
+    "rsCcBus.outcome.notSpawned": {
+      "kind": "error",
+      "zh": "没有派生",
+      "args": []
+    },
+    "rsCcBus.spawn.badAccount": {
+      "kind": "error",
+      "zh": "非法账号名，不能交给后端：{name}",
+      "args": ["name"]
+    },
+    "rsCcBus.spawn.noDir": {
+      "kind": "error",
+      "zh": "工作目录为空",
+      "args": []
+    },
+    "rsCcBus.spawn.noAgent": {
+      "kind": "error",
+      "zh": "没选起哪种 agent",
+      "args": []
+    },
+    "rsCcBus.spawn.unknownReply": {
+      "kind": "body",
+      "zh": "派生的回应格式认不出来，不确定会话有没有起来。请先看一眼 cc-bus 名单，不要直接重试。",
+      "args": []
+    },
+    "rsCcBus.spawn.noName": {
+      "kind": "body",
+      "zh": "已派生，但没认出新会话的名字。会话应该已经在运行，请不要重试，到 cc-bus 名单里找它。\n{said}",
+      "args": ["said"]
+    },
+    "rsCcBus.spawn.done": {
+      "kind": "body",
+      "zh": "已派生 {id}\n{said}",
+      "args": ["id", "said"]
+    },
+    "rsCcBus.what.kill": {
+      "kind": "body",
+      "zh": "收掉 agent",
+      "args": []
+    },
+    "rsCcBus.kill.badId": {
+      "kind": "error",
+      "zh": "非法 agent id，不能收掉它：{id}",
+      "args": ["id"]
+    },
+    "rsCcBus.outcome.notKilled": {
+      "kind": "error",
+      "zh": "{id} 没有被收掉",
+      "args": ["id"]
+    },
+    "rsCcBus.kill.unknownReply": {
+      "kind": "error",
+      "zh": "不确定 {id} 有没有被收掉，先别重试。",
+      "args": ["id"]
+    },
+    "rsCcBus.kill.nothing": {
+      "kind": "error",
+      "zh": "{id} 没有被收掉。后端说它既没结束会话、也没摘登记，多半这个名字根本不在总线上。",
+      "args": ["id"]
+    },
+    "rsCcBus.kill.staleOnly": {
+      "kind": "body",
+      "zh": "只摘掉了 {id} 的登记，会话没动：这个名字现在属于别的会话",
+      "args": ["id"]
+    },
+    "rsCcBus.kill.done": {
+      "kind": "body",
+      "zh": "已收掉 {id}（会话与进程树都杀了）",
+      "args": ["id"]
+    },
+    "rsCcBus.broadcast.onlyBackend": {
+      "kind": "error",
+      "zh": "{why}。广播只走后端这一条路，再试一次也过不去。",
+      "args": ["why"]
+    },
+    "rsCcBus.what.readInbox": {
+      "kind": "body",
+      "zh": "读 inbox",
+      "args": []
+    },
+    "rsCcBus.send.doneUnknown": {
+      "kind": "body",
+      "zh": "已投递给 {id}（在不在线：问不到）",
+      "args": ["id"]
+    },
+    "rsCcBus.send.done": {
+      "kind": "body",
+      "zh": "已投递给 {id}",
+      "args": ["id"]
+    },
+    "rsCcBus.send.offline": {
+      "kind": "body",
+      "zh": "已投递给 {id}。它当前不在线，下次上线会读到。",
+      "args": ["id"]
+    },
+    "rsCcBus.send.unregistered": {
+      "kind": "body",
+      "zh": "已投递给 {id}，但这个名字没有登记，没人会读到。名字打错了吗？",
+      "args": ["id"]
+    },
+    "rsCcBus.send.empty": {
+      "kind": "error",
+      "zh": "消息为空",
+      "args": []
+    },
+    "rsCcBus.send.badId": {
+      "kind": "error",
+      "zh": "非法 agent id，不能发给它：{id}",
+      "args": ["id"]
+    },
+    "rsCcBus.outcome.notSent": {
+      "kind": "error",
+      "zh": "{id} 的消息没有发出去",
+      "args": ["id"]
+    },
+    "rsCcBus.busError.internal": {
+      "kind": "error",
+      "zh": "{outcome}（内部错误）",
+      "args": ["outcome"]
+    },
+    "rsCcBus.tooOld.for": {
+      "kind": "error",
+      "zh": "{machine} 的后端版本太旧，不支持这个操作。{outcome}；把这台的后端升到新版就能用。",
+      "args": ["machine", "outcome"]
+    },
+    "rsCcBus.what.send": {
+      "kind": "body",
+      "zh": "发消息",
+      "args": []
+    },
+    "rsCcBus.noChannel.for": {
+      "kind": "error",
+      "zh": "{machine} 的后端没连上，{outcome}。可在设置里启动它。",
+      "args": ["machine", "outcome"]
+    },
+    "rsCcBus.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "rsCcBus.broadcast.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "rsCcBus.broadcast.failed": {
+      "kind": "body",
+      "zh": "；{n} 个失败：{names}",
+      "args": ["n", "names"]
+    },
+    "rsCcBus.broadcast.skipped": {
+      "kind": "body",
+      "zh": "；跳过 {skippedOffline} 个不在线的（它们的收件箱今天没人读）",
+      "args": ["skippedOffline"]
+    },
+    "rsCcBus.broadcast.doneOnline": {
+      "kind": "body",
+      "zh": "已广播给 {ok} 个在线 agent",
+      "args": ["ok"]
+    },
+    "rsCcBus.broadcast.doneRegistered": {
+      "kind": "body",
+      "zh": "已广播给 {ok} 个已登记的 agent（无法确认谁在线）",
+      "args": ["ok"]
+    },
+    "rsCcBus.broadcast.internal": {
+      "kind": "error",
+      "zh": "内部错误：广播的结果不对",
+      "args": []
+    },
+    "rsCcBus.broadcast.listRefused": {
+      "kind": "error",
+      "zh": "列总线成员被拒（{code}）：{message}",
+      "args": ["code", "message"]
+    },
+    "rsCcBus.broadcast.noChannel": {
+      "kind": "error",
+      "zh": "{origin} 的后端没连上",
+      "args": ["origin"]
+    },
+    "rsCcBus.online.notOnBus": {
+      "kind": "error",
+      "zh": "它不在总线名单里，或者后端查不到它的身份",
+      "args": []
+    },
+    "rsCcBus.online.noAgents": {
+      "kind": "error",
+      "zh": "查在线状态的回答里没有 agents 数组，两边版本可能对不上",
+      "args": []
+    },
+    "rsCcBus.online.failed": {
+      "kind": "error",
+      "zh": "这一趟没问到",
+      "args": []
+    },
+    "rsCcBus.online.tooOld": {
+      "kind": "error",
+      "zh": "这台机器的后端版本太旧，不支持查在线状态",
+      "args": []
+    },
+    "rsCcBus.online.noChannel": {
+      "kind": "error",
+      "zh": "这台机器的后端没连上（设置里可以起停每台机器的后端）",
+      "args": []
+    },
+    "rsCcBus.online.badId": {
+      "kind": "error",
+      "zh": "非法 agent id，不能去问它在不在线：{id}",
+      "args": ["id"]
+    },
+    "rsCcBus.liveness.unknown": {
+      "kind": "error",
+      "zh": "{machine}上查不到 {id} 是否在线：{why}。这是查不到，不是不在线。",
+      "args": ["machine", "id", "why"]
+    },
+    "rsCcBus.local.timeout": {
+      "kind": "error",
+      "zh": "本机{what}超时（{secs} 秒）",
+      "args": ["what", "secs"]
+    },
+    "rsCcBus.local.tooBig": {
+      "kind": "error",
+      "zh": "本机{what}的输出超过 {cap} 字节上限，拒收。截断的结果不能当完整的用。",
+      "args": ["what", "cap"]
+    },
+    "rsCcBus.local.failed": {
+      "kind": "error",
+      "zh": "本机{what}失败：{e}",
+      "args": ["what", "e"]
+    },
+    "rsCcBus.local.noOutput": {
+      "kind": "error",
+      "zh": "本机{what}失败：拿不到输出",
+      "args": ["what"]
+    },
+    "rsCcBus.local.spawnFailed": {
+      "kind": "error",
+      "zh": "本机{what}失败（起不了 bash）：{e}",
+      "args": ["what", "e"]
+    },
+    "rsCcBus.bash.overrideMissing": {
+      "kind": "error",
+      "zh": "{var} 指的路径不存在：{path}\n显式指定过就不再去猜：回落到候选表会让你以为自己这条生效了。",
+      "args": ["var", "path"]
+    },
+    "rsCcBus.bash.systemStub": {
+      "kind": "error",
+      "zh": "{var} 指的是系统目录里那个 bash.exe，它是 WSL 的存根，拒绝用它。没装发行版时它什么都不做就退；装了发行版则跑在另一个文件系统里（$HOME 是 Linux 家目录，不是这台机器的）。\n实得：{path}",
+      "args": ["var", "path"]
+    },
+    "rsCcBus.bash.notFound": {
+      "kind": "error",
+      "zh": "这台机器上找不到可用的 bash，cc-bus 在本机读不了。\n⚠ 这不是「一个 agent 都没有」：清单根本没去读，有没有是不知道。\n已经找过（按优先级）：\n{list}\n不会去 PATH 上碰运气：WSL 功能开着却没装发行版时，Windows 会先找到那个什么都不做的 bash.exe 存根。\n装一份 Git for Windows，或把 {var} 指向你要用的那个 bash.exe。",
+      "args": ["list", "var"]
+    },
+    "rsCcBus.remote.notConfigured": {
+      "kind": "error",
+      "zh": "远端「{origin}」未配置或未启用",
+      "args": ["origin"]
+    },
+    "rsCcBus.cfg.localHasNone": {
+      "kind": "error",
+      "zh": "本机没有远端配置，这是远端专属的操作。",
+      "args": []
+    },
+    "rsCcBus.exec.truncated": {
+      "kind": "body",
+      "zh": "\n输出超过 {cap} 字节，后面截掉了。命令已经执行完，不要重试。",
+      "args": ["cap"]
+    },
+    "rsCcBus.exec.timeout": {
+      "kind": "error",
+      "zh": "远端「{machine}」{what}超时（{secs} 秒）",
+      "args": ["machine", "what", "secs"]
+    },
+    "rsCcBus.exec.tooBig": {
+      "kind": "error",
+      "zh": "{what}的输出超过 {cap} 字节上限，拒收。截断的结果不能当完整的用。",
+      "args": ["what", "cap"]
+    },
+    "rsCcBus.exec.failed": {
+      "kind": "error",
+      "zh": "{what}失败：{e}",
+      "args": ["what", "e"]
+    },
+    "rsCcBus.inbox.badId": {
+      "kind": "error",
+      "zh": "非法 agent id，不能拼进命令：{id}",
+      "args": ["id"]
+    },
+    "rsCcBus.what.readHome": {
+      "kind": "body",
+      "zh": "读 ~/.cc-bus",
+      "args": []
+    },
+    "rsCcBus.read.half": {
+      "kind": "error",
+      "zh": "「{origin}」的 cc-bus 登记表只回来了半份：分隔标记 {marker} 没出现。\n打标记的 printf 是 shell 内建、无条件跑，它不在只可能是命令跑到一半断了（输出被截）。\n半份清单会被当完整的用，所以拒收。",
+      "args": ["origin", "marker"]
+    },
+    "rsCcBus.read.noCat": {
+      "kind": "error",
+      "zh": "读不到「{origin}」的 cc-bus 登记表：那个 shell 里没有 cat，两张表一个字节都读不出来。\n⚠ 这不是「一个 agent 都没有」：~/.cc-bus 这个目录{dir}，有没有 agent 是不知道。\n多半是登录 shell 的 PATH 里没有 /usr/bin（bash -lc 会先过 /etc/profile）。",
+      "args": ["origin", "dir"]
+    },
+    "rsCcBus.read.dirAbsent": {
+      "kind": "body",
+      "zh": "不在",
+      "args": []
+    },
+    "rsCcBus.read.dirPresent": {
+      "kind": "body",
+      "zh": "在",
+      "args": []
+    },
+    "rsCcBus.read.noHeader": {
+      "kind": "error",
+      "zh": "读不到「{origin}」的 cc-bus 登记表：那条读命令没有跑起来。自述头 {marker} 没有原样回来。\n⚠ 这不是「一个 agent 都没有」：清单根本没读到，有没有是不知道。\n多半是那台机器上的 bash 跑不了这段语法（Windows 上没装发行版的 WSL 存根 C:\\\\Windows\\\\System32\\\\bash.exe 就是这样），或者登录 shell 中途就退了。",
+      "args": ["origin", "marker"]
+    },
+    "rsCcBus.remote.timeout": {
+      "kind": "error",
+      "zh": "远端「{machine}」读取超时（30 秒）",
+      "args": ["machine"]
+    },
+    "rsCcBus.remote.tooBig": {
+      "kind": "error",
+      "zh": "远端 ~/.cc-bus 的登记表超过 {cap} 字节上限，拒收。截断的清单不能当完整的用。",
+      "args": ["cap"]
+    },
+    "rsCcBus.remote.readFailed": {
+      "kind": "error",
+      "zh": "读取远端 ~/.cc-bus 失败：{e}",
+      "args": ["e"]
+    },
+    "rsPayload.apikey.relayDown": {
+      "kind": "error",
+      "zh": "账号 {id} 配了第三方 API 地址，但本机中转没在跑，这一发起不了。\n照旧起出去的话，claude 那边会报一个和网络故障一样的连接失败，而真正的原因在 cc-monitor 这一侧。\n先起本机后端（设置 → 本机后端），或把这个账号那一行从凭据文件里去掉。",
+      "args": ["id"]
+    },
+    "rsPayload.relayRoute.badSegment": {
+      "kind": "error",
+      "zh": "拼不出中转路由：{what} 段 {seg} 不合法（只许字母数字与 - _，1 到 128 字节）。\n拼错一段的症状是中转回一个查不出原因的 404，所以这里当场拒。",
+      "args": ["what", "seg"]
+    },
+    "rsPayload.outer.attachWithPayload": {
+      "kind": "error",
+      "zh": "接入那一格带了要运行的内容。它只把终端接进一个已经在跑的会话，不起任何 agent 进程；带了说明调用方把格子搞错了。",
+      "args": []
+    },
+    "rsPayload.outer.sendIntoNoPayload": {
+      "kind": "error",
+      "zh": "接进已有会话那一格没带要运行的内容。那会把用户接进一个空 shell。",
+      "args": []
+    },
+    "rsPayload.sessionMark.bad": {
+      "kind": "error",
+      "zh": "会话标记 {value} 含不许的字符（只许 A-Z a-z 0-9 _ -）",
+      "args": ["value"]
+    },
+    "rsPayload.cwd.empty": {
+      "kind": "error",
+      "zh": "工作目录是空串：空值不等于没设",
+      "args": []
+    },
+    "rsPayload.outer.createNoPayload": {
+      "kind": "error",
+      "zh": "新建那一格没带要运行的内容。那会只建一个空会话再接进去。",
+      "args": []
+    },
+    "rsPayload.tmuxName.control": {
+      "kind": "error",
+      "zh": "tmux 会话名 {name} 含控制符或视觉欺骗字符 {c}，不能拼进命令。",
+      "args": ["name", "c"]
+    },
+    "rsPayload.tmuxName.rawBad": {
+      "kind": "error",
+      "zh": "tmux 会话名 {name} 声明成原样拼接，却含不许的字符（只许 A-Z a-z 0-9 _ -）",
+      "args": ["name"]
+    },
+    "rsPayload.tmuxName.empty": {
+      "kind": "error",
+      "zh": "tmux 会话名是空串：空值不等于没设",
+      "args": []
+    },
+    "rsPayload.launcher.injection": {
+      "kind": "error",
+      "zh": "启动命令 {launcher} 含注入字符 {c}，不能拼进命令。它会被键进会话执行，一个 ; 或 | 就能另起一条命令；合法的是命令名或路径（可带空格分段）。",
+      "args": ["launcher", "c"]
+    },
+    "rsPayload.arg.notSafe": {
+      "kind": "error",
+      "zh": "参数 {arg} 不在允许的字符范围里，不能拼进命令。命令是用空格拼起来的：空白会把它拆成几个参数，shell 元字符会另起一条命令。允许的是 A-Z a-z 0-9 与 -_.:/=,@+；非 ASCII 字符也一律拒。",
+      "args": ["arg"]
+    },
+    "rsPayload.nestedEnv.empty": {
+      "kind": "error",
+      "zh": "嵌套环境变量的键表是空的，会渲染出一句空的 unset",
+      "args": []
+    },
+    "rsPayload.relayUrl.bad": {
+      "kind": "error",
+      "zh": "中转地址格式不对，不能拼进命令：{value}（要 http://127.0.0.1:<端口>/s|t/<三段>）",
+      "args": ["value"]
+    },
+    "rsPayload.rbindToken.bad": {
+      "kind": "error",
+      "zh": "CCM_RBIND_TOKEN 格式不对，不能拼进命令：{value}（要 32 个小写十六进制字符）",
+      "args": ["value"]
+    },
+    "rsPayload.configDir.bad": {
+      "kind": "error",
+      "zh": "非法 CLAUDE_CONFIG_DIR，不能拼进命令：{value}",
+      "args": ["value"]
+    },
+    "rsPayload.configDir.emptyString": {
+      "kind": "error",
+      "zh": "配置目录是空串（账号 0 请不设它）",
+      "args": []
+    },
+    "rsPayload.configDir.emptyNamed": {
+      "kind": "error",
+      "zh": "具名账号的配置目录是空的（账号 0 请用 base）",
+      "args": []
+    },
+    "rsLocalBackend.stdio.broken": {
+      "kind": "error",
+      "zh": "和本机后端的连接断了",
+      "args": []
+    },
+    "rsLocalBackend.extraction.failed": {
+      "kind": "error",
+      "zh": "这一份 monitor 自己带着本机后端，但它{marker}：往 {dir} 里写的时候失败了（{err}）。\n这不是「这份产物没有本机后端」，那是另一回事，下一步也不一样。\n下一步挑一条：① 看那个目录是不是只读、或者被杀毒软件挡着，给它写权限；② 让 monitor 跑在一个家目录写得进去的账号下；③ 不想动它就装一次安装包（Releases 页），装出来的那份后端与 monitor 同目录，根本不用写这里。",
+      "args": ["marker", "dir", "err"]
+    },
+    "rsLocalBackend.extraction.refusedMarker": {
+      "kind": "body",
+      "zh": "放不下来",
+      "args": []
+    },
+    "rsLocalBackend.extract.renameFailed": {
+      "kind": "error",
+      "zh": "改名到 {dest} 失败：{e}",
+      "args": ["dest", "e"]
+    },
+    "rsLocalBackend.ccmEntry.copyFailed": {
+      "kind": "error",
+      "zh": "把后端 {bin} 复制成本机 ccm 入口失败：{e}",
+      "args": ["bin", "e"]
+    },
+    "rsLocalBackend.extract.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "rsLocalBackend.ccmEntry.readFailed": {
+      "kind": "error",
+      "zh": "读不到后端程序 {bin}：{e}",
+      "args": ["bin", "e"]
+    },
+    "rsLocalBackend.extract.writeFailed": {
+      "kind": "error",
+      "zh": "写 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "rsLocalBackend.resolve.noSelfPath": {
+      "kind": "error",
+      "zh": "拿不到本程序的可执行文件路径，找不到本机后端",
+      "args": []
+    },
+    "rsLocalBackend.supervise.spawnFailed": {
+      "kind": "error",
+      "zh": "起不来 {bin}：{e}",
+      "args": ["bin", "e"]
+    },
+    "rsLocalBackend.etxtbsy.gaveUp": {
+      "kind": "error",
+      "zh": "起 {bin} 时连着 {tries} 次遇到「文件正被占用」。这个状态会自己过去，再开一次多半就好。最后一次的原话：{last}",
+      "args": ["bin", "tries", "last"]
+    },
+    "rsLocalBackend.decide.crashLoop": {
+      "kind": "error",
+      "zh": "本机后端在 {windowMs} 毫秒内崩了 {recent} 次（上限 {maxCrashes}），不再重起，免得崩溃循环。远端功能不受影响；日志里有每次的退出状态。",
+      "args": ["windowMs", "recent", "maxCrashes"]
+    },
+    "rsLocalBackend.resolve.notBeside": {
+      "kind": "error",
+      "zh": "这一份 monitor 旁边没有本机后端（{stem}）。它随安装包一起发，装完与 monitor 在同一个目录。旁边没有不等于这台机器上没有：产物里内嵌了本机后端时，monitor 会自己释放一份再起它，那一步成没成由它自己报。两条都没有时，装一次安装包（Releases 页）。远端功能不受影响。",
+      "args": ["stem"]
+    },
+    "rsTmux.action.sendKeys": {
+      "kind": "body",
+      "zh": "送不了按键给",
+      "args": []
+    },
+    "rsTmux.action.kill": {
+      "kind": "body",
+      "zh": "杀不了",
+      "args": []
+    },
+    "rsTmux.capture.internal": {
+      "kind": "error",
+      "zh": "抓画面的结果不对（内部错误）",
+      "args": []
+    },
+    "rsTmux.action.capture": {
+      "kind": "body",
+      "zh": "抓不了",
+      "args": []
+    },
+    "rsTmux.capture.noScreen": {
+      "kind": "error",
+      "zh": "抓 {target} 的回答里没有 screen 字段，两边版本可能对不上",
+      "args": ["target"]
+    },
+    "rsTmux.capture.tooOld": {
+      "kind": "error",
+      "zh": "{origin} 的后端版本旧，还不能抓画面。重装那台机器的后端就有了。",
+      "args": ["origin"]
+    },
+    "rsTmux.noChannel.remote": {
+      "kind": "error",
+      "zh": "{origin} 的后端没连上，{action} {target}：{why}",
+      "args": ["origin", "action", "target", "why"]
+    },
+    "rsTmux.noChannel.local": {
+      "kind": "error",
+      "zh": "本机后端没连上，{action} {target}：{why}",
+      "args": ["action", "target", "why"]
+    },
+    "rsTmux.target.empty": {
+      "kind": "error",
+      "zh": "非法 tmux 目标（空）：{target}",
+      "args": ["target"]
+    },
+    "rsTmux.capture.refused": {
+      "kind": "error",
+      "zh": "抓 {target} 那一屏被拒：{other}：{message}",
+      "args": ["target", "other", "message"]
+    },
+    "rsTmux.capture.failed": {
+      "kind": "error",
+      "zh": "抓 {target} 那一屏失败了，tmux 原话：{message}",
+      "args": ["target", "message"]
+    },
+    "rsTmux.capture.badName": {
+      "kind": "error",
+      "zh": "抓不了 {target} 的画面：这个会话名后端不收（{message}）",
+      "args": ["target", "message"]
+    },
+    "rsTmux.capture.gone": {
+      "kind": "error",
+      "zh": "抓不了 {target} 的画面：这个会话不存在，可能刚结束（{message}）",
+      "args": ["target", "message"]
+    },
+    "rsTmux.capture.noServer": {
+      "kind": "error",
+      "zh": "抓不了 {target} 的画面：tmux 在，但没有正在运行的 tmux 服务（{message}）",
+      "args": ["target", "message"]
+    },
+    "rsTmux.capture.noTmux": {
+      "kind": "error",
+      "zh": "抓不了 {target} 的画面：那台机器上起不来 tmux（{message}）",
+      "args": ["target", "message"]
+    },
+    "rsTmux.list.unparsable": {
+      "kind": "error",
+      "zh": "CCM_TMUX_UNPARSABLE 认不出远端 tmux 的会话列表：有一行只切出 {split} 段，少于 {fields} 段。远端 tmux 的输出被改写过（客户端不是 UTF-8 时，TAB 和非 ASCII 字符会变成 _）。这一趟的会话列表整份作废，不当成远端零会话。原样：{bad}",
+      "args": ["split", "fields", "bad"]
+    },
+    "rsTmux.list.failed": {
+      "kind": "error",
+      "zh": "读 tmux 列表失败：{e}",
+      "args": ["e"]
+    },
+    "rsTmux.list.noConfig": {
+      "kind": "error",
+      "zh": "找不到远端配置：{origin}",
+      "args": ["origin"]
+    },
+    "rsBackendLaunch.sendInto.unknownReply": {
+      "kind": "error",
+      "zh": "{e}。认不出后端的回答，没法判断内容有没有进去，所以没有重试。",
+      "args": ["e"]
+    },
+    "rsBackendLaunch.sendInto.noReason": {
+      "kind": "error",
+      "zh": "后端说没键入，却没给原因，没有重试",
+      "args": []
+    },
+    "rsBackendLaunch.sendInto.empty": {
+      "kind": "error",
+      "zh": "会话名或内容为空，没有发送",
+      "args": []
+    },
+    "rsBackendLaunch.refusal.other": {
+      "kind": "error",
+      "zh": "远端就地 resume 失败（{code}）：{message}",
+      "args": ["code", "message"]
+    },
+    "rsBackendLaunch.refusal.keysNotSent": {
+      "kind": "error",
+      "zh": "内容可能没发进去：会话还在，但按键没送到（{message}）",
+      "args": ["message"]
+    },
+    "rsBackendLaunch.refusal.notOurs": {
+      "kind": "error",
+      "zh": "没有就地 resume：目标不是本工具开的会话（{message}）",
+      "args": ["message"]
+    },
+    "rsBackendLaunch.refusal.gone": {
+      "kind": "error",
+      "zh": "远端会话已不存在（可能已被终止）",
+      "args": []
+    },
+    "rsBackendLaunch.refusal.noTmux": {
+      "kind": "error",
+      "zh": "远端未安装 tmux",
+      "args": []
+    },
+    "rsBackendLaunch.reply.noTyped": {
+      "kind": "error",
+      "zh": "启动回答里没有 typed 字段：{v}",
+      "args": ["v"]
+    },
+    "rsBackendLaunch.reply.typedNotBool": {
+      "kind": "error",
+      "zh": "启动回答里的 typed 不是布尔值：{other}",
+      "args": ["other"]
+    },
+    "rsBackendLaunch.reply.noBody": {
+      "kind": "error",
+      "zh": "后端对启动请求的回答里没有内容，两边版本可能对不上",
+      "args": []
+    },
+    "rsBackendKill.kill.unknownReply": {
+      "kind": "error",
+      "zh": "{e}。认不出后端的回答，没法判断会话结束了没有，所以没有重试。",
+      "args": ["e"]
+    },
+    "rsBackendKill.kill.noReason": {
+      "kind": "error",
+      "zh": "后端没说清会话结束了没有，没有重试",
+      "args": []
+    },
+    "rsBackendKill.refusal.other": {
+      "kind": "error",
+      "zh": "远端结束会话失败（{code}）：{message}",
+      "args": ["code", "message"]
+    },
+    "rsBackendKill.refusal.extraWindows": {
+      "kind": "error",
+      "zh": "没有结束这个会话：里面多开了窗口，请在 tmux 里自己关（{message}）",
+      "args": ["message"]
+    },
+    "rsBackendKill.refusal.notOurs": {
+      "kind": "error",
+      "zh": "没有结束这个会话：它不是本工具开的（{message}）",
+      "args": ["message"]
+    },
+    "rsBackendKill.refusal.gone": {
+      "kind": "error",
+      "zh": "远端会话已不存在（可能已被终止）",
+      "args": []
+    },
+    "rsBackendKill.refusal.noTmux": {
+      "kind": "error",
+      "zh": "远端未安装 tmux",
+      "args": []
+    },
+    "rsBackendKill.reply.noKilled": {
+      "kind": "error",
+      "zh": "结束会话的回答里没有 killed 字段：{v}",
+      "args": ["v"]
+    },
+    "rsBackendKill.reply.killedNotBool": {
+      "kind": "error",
+      "zh": "结束会话的回答里 killed 不是布尔值：{other}",
+      "args": ["other"]
+    },
+    "rsBackendKill.reply.noBody": {
+      "kind": "error",
+      "zh": "后端对结束会话的回答里没有内容，两边版本可能对不上",
+      "args": []
+    },
+    "rsBackendControl.handle.missing": {
+      "kind": "error",
+      "zh": "没有这台机器的记录：{origin}（启动时没登记过？）",
+      "args": ["origin"]
+    },
+    "rsBackendControl.lock.poisoned": {
+      "kind": "error",
+      "zh": "内部状态坏了（锁中毒）：{e}",
+      "args": ["e"]
+    },
+    "rsBackendControl.start.notFound": {
+      "kind": "error",
+      "zh": "{reason}；找过 {looked}",
+      "args": ["reason", "looked"]
+    },
+    "rsBackendControl.origin.empty": {
+      "kind": "error",
+      "zh": "机器名不许为空：开关是按机器的，没有全局这一档",
+      "args": []
+    },
+    "rsBackendSendKeys.send.unknownReply": {
+      "kind": "error",
+      "zh": "{e}。认不出后端的回答，没法判断按键有没有进去，所以没有重试。",
+      "args": ["e"]
+    },
+    "rsBackendSendKeys.send.noReason": {
+      "kind": "error",
+      "zh": "后端说没键入，却没给原因，没有重试",
+      "args": []
+    },
+    "rsBackendSendKeys.refusal.other": {
+      "kind": "error",
+      "zh": "远端发送按键失败（{code}）：{message}",
+      "args": ["code", "message"]
+    },
+    "rsBackendSendKeys.refusal.keysNotSent": {
+      "kind": "error",
+      "zh": "按键可能没送到：会话还在（{message}）",
+      "args": ["message"]
+    },
+    "rsBackendSendKeys.refusal.notOurs": {
+      "kind": "error",
+      "zh": "没有发送按键：目标不是本工具开的会话（{message}）",
+      "args": ["message"]
+    },
+    "rsBackendSendKeys.refusal.gone": {
+      "kind": "error",
+      "zh": "远端会话已不存在（可能已被终止）",
+      "args": []
+    },
+    "rsBackendSendKeys.refusal.noTmux": {
+      "kind": "error",
+      "zh": "远端未安装 tmux",
+      "args": []
+    },
+    "rsInboundClient.error.refused": {
+      "kind": "error",
+      "zh": "远端拒绝（{code}）：{message}",
+      "args": ["code", "message"]
+    },
+    "rsInboundClient.error.timeout": {
+      "kind": "error",
+      "zh": "等回答超时（{after} 毫秒）",
+      "args": ["after"]
+    },
+    "rsInboundClient.error.cancelled": {
+      "kind": "error",
+      "zh": "命令已被取消",
+      "args": []
+    },
+    "rsInboundClient.error.closed": {
+      "kind": "error",
+      "zh": "与后端的连接已断开",
+      "args": []
+    },
+    "rsInboundClient.error.tooMany": {
+      "kind": "error",
+      "zh": "同时在等的命令已达上限 {max}，远端可能没在回应",
+      "args": ["max"]
+    },
+    "rsInboundClient.error.unsupported": {
+      "kind": "error",
+      "zh": "远端后端版本旧，不支持这个操作",
+      "args": []
+    },
+    "rsBackendRoute.noChannel.message": {
+      "kind": "error",
+      "zh": "{origin} 的后端没连上",
+      "args": ["origin"]
+    },
+    "rsBackendRoute.route.unsure": {
+      "kind": "error",
+      "zh": "{s}。无法确认远端有没有执行，请刷新会话列表后再决定。",
+      "args": ["s"]
+    },
+    "rsBackendRoute.layer.tooMany": {
+      "kind": "error",
+      "zh": "同时在等的命令已达上限，这一条没排上",
+      "args": []
+    },
+    "rsBackendRoute.layer.unsupported": {
+      "kind": "error",
+      "zh": "远端后端版本旧，不支持这个操作",
+      "args": []
+    },
+    "rsLaunchWire.cwd.both": {
+      "kind": "error",
+      "zh": "同时送了顶层工作目录和外层 tmux 的工作目录。tmux 那两格的工作目录归外层的 new-session -c，内层不加 cd；两个都送说明调用方搞混了，拒绝。",
+      "args": []
+    },
+    "rsLaunchWire.attach.withPayload": {
+      "kind": "error",
+      "zh": "接入那一格带了要运行的内容（env / args / launcher）。它不起任何 agent 进程，这几项会被丢掉；请求格式不对，拒绝。",
+      "args": []
     }
   }
 }

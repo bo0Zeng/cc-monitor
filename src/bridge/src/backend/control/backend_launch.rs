@@ -40,6 +40,7 @@
 //! 用 `Err` 表达它会和「真的发失败了」混成一件事，而那两件在前端要走**同一个**回落分支
 //! 但**不同的**诊断文案。
 
+use crate::copy_table::copy_text;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -139,25 +140,41 @@ impl SendIntoResponse {
 /// 而是诚实报「应答形状不认识」（那是协议漂移，不是「没键入」）；应答体缺失 ⇒ 同理。
 pub(crate) fn typed_from_reply(reply: Option<&serde_json::Value>) -> Result<bool, String> {
     let Some(v) = reply else {
-        return Err("backend 的 launch 应答没有 body（协议漂移？）".into());
+        return Err(copy_text("rsBackendLaunch.reply.noBody", &[]).into());
     };
     match v.get("typed") {
         Some(serde_json::Value::Bool(b)) => Ok(*b),
-        Some(other) => Err(format!("launch 应答里的 typed 不是 bool：{other}")),
-        None => Err(format!("launch 应答里没有 typed 字段：{v}")),
+        Some(other) => Err(copy_text(
+            "rsBackendLaunch.reply.typedNotBool",
+            &[("other", &other.to_string())],
+        )),
+        None => Err(copy_text(
+            "rsBackendLaunch.reply.noTyped",
+            &[("v", &v.to_string())],
+        )),
     }
 }
 
 /// backend 的错误码 → 用户看的话。与 `kill`/`send-keys` 两条同形。
 fn refusal_text(code: &str, message: &str) -> String {
     match code {
-        "no_tmux" => "远端未安装 tmux".to_string(),
-        "no_such_session" => "远端会话已不存在（可能已被终止）".to_string(),
-        "wrong_owner" => {
-            format!("拒绝就地 resume：目标未通过身份守卫（{message}）——可能不是本工具管理的会话")
-        }
-        "typed_unconfirmed" => format!("载荷未必送达（{message}）—— 会话在，但 send-keys 失败"),
-        _ => format!("远端就地 resume 失败（{code}）：{message}"),
+        "no_tmux" => copy_text("rsBackendLaunch.refusal.noTmux", &[]),
+        "no_such_session" => copy_text("rsBackendLaunch.refusal.gone", &[]),
+        "wrong_owner" => copy_text(
+            "rsBackendLaunch.refusal.notOurs",
+            &[("message", &message.to_string())],
+        ),
+        "typed_unconfirmed" => copy_text(
+            "rsBackendLaunch.refusal.keysNotSent",
+            &[("message", &message.to_string())],
+        ),
+        _ => copy_text(
+            "rsBackendLaunch.refusal.other",
+            &[
+                ("code", &code.to_string()),
+                ("message", &message.to_string()),
+            ],
+        ),
     }
 }
 
@@ -168,7 +185,7 @@ fn refusal_text(code: &str, message: &str) -> String {
 pub async fn backend_send_into(req: SendIntoRequest) -> SendIntoResponse {
     if req.name.trim().is_empty() || req.payload.is_empty() {
         // ⚠ **坏数据不许回落**：拿一个空载荷去渲染整串只会产出一条无意义的 shell 命令。
-        return SendIntoResponse::refused("会话名或载荷为空 —— 拒绝发出（坏数据不是缺省）");
+        return SendIntoResponse::refused(&copy_text("rsBackendLaunch.sendInto.empty", &[]));
     }
     let Some(client) = crate::backend::control::inbound_client::client_for(&req.origin) else {
         return SendIntoResponse::from_routed(super::backend_route::no_channel(&req.origin));
@@ -195,11 +212,12 @@ pub async fn backend_send_into(req: SendIntoRequest) -> SendIntoResponse {
             },
             // backend 对 `send-into` 只在真键入时回 `typed:true`，否则回错误码 ⇒
             // `Ok(false)` 是协议漂移，而漂移时**我们不知道它键没键入** ⇒ 不许回落。
-            Ok(false) => SendIntoResponse::refused(
-                "backend 回报未键入却没给错误码 —— 协议漂移，不再用另一条路重做",
-            ),
-            Err(e) => SendIntoResponse::refused(format!(
-                "{e} —— ⚠ 应答形状不认识时无法判断载荷有没有落进去，因此不再用另一条路重键入"
+            Ok(false) => {
+                SendIntoResponse::refused(&copy_text("rsBackendLaunch.sendInto.noReason", &[]))
+            }
+            Err(e) => SendIntoResponse::refused(copy_text(
+                "rsBackendLaunch.sendInto.unknownReply",
+                &[("e", &e.to_string())],
             )),
         },
         Err(e) => {

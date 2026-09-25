@@ -908,7 +908,7 @@ fn the_local_kill_never_falls_back_to_ssh() {
              而真实原因是本机后端通道不在。实得：{err}"
     );
     assert!(
-        err.contains("本机后端通道不在"),
+        err.contains("本机后端没连上"),
         "本机那条早退在，但它没说出真实原因。实得：{err}"
     );
 }
@@ -1006,7 +1006,7 @@ fn the_local_send_keys_never_falls_back_to_ssh() {
              实得：{local}"
     );
     assert!(
-        local.contains("本机后端通道不在"),
+        local.contains("本机后端没连上"),
         "本机那条早退在，但它没说出真实原因。实得：{local}"
     );
     // ③ 远端那条：话必须不一样，而且也说得出下一步。

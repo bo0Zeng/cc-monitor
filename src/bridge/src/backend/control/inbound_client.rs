@@ -38,6 +38,7 @@
 //! ⇒ 同一条 `cancel` 补发（`AbandonGuard`）。对后端的可取消档（`Run::Async`）这一条真能把活停下；
 //! 对阻塞档它照旧回 `not_cancellable`（那条应答落进已登记的 cancel id，不刷 warn）。
 
+use crate::copy_table::copy_text;
 use crate::ssh_source::InboundFrame;
 use serde::Serialize;
 use serde_json::Value;
@@ -81,20 +82,44 @@ pub enum CallError {
 impl std::fmt::Display for CallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CallError::Unsupported { cmd, offered } => write!(
-                f,
-                "远端后端不支持入方向命令 `{cmd}`（它声明的是 {offered:?}）—— 多半是旧版本，请重装该机器的 backend"
-            ),
+            CallError::Unsupported { cmd, offered } => {
+                write!(f, "{}", copy_text("rsInboundClient.error.unsupported", &[]))
+            }
             CallError::TooManyPending => write!(
                 f,
-                "同时在等的入方向命令已达上限 {MAX_PENDING} —— 远端可能没在回应答"
+                "{}",
+                copy_text(
+                    "rsInboundClient.error.tooMany",
+                    &[("max", &MAX_PENDING.to_string())]
+                )
             ),
-            CallError::Disconnected => write!(f, "入方向通道已断开"),
-            CallError::Cancelled => write!(f, "命令已被取消"),
-            CallError::Timeout { after } => {
-                write!(f, "等应答超时（{}ms）", after.as_millis())
+            CallError::Disconnected => {
+                write!(f, "{}", copy_text("rsInboundClient.error.closed", &[]))
             }
-            CallError::Remote { code, message } => write!(f, "远端拒绝（{code}）：{message}"),
+            CallError::Cancelled => {
+                write!(f, "{}", copy_text("rsInboundClient.error.cancelled", &[]))
+            }
+            CallError::Timeout { after } => {
+                write!(
+                    f,
+                    "{}",
+                    copy_text(
+                        "rsInboundClient.error.timeout",
+                        &[("after", &(after.as_millis()).to_string())]
+                    )
+                )
+            }
+            CallError::Remote { code, message } => write!(
+                f,
+                "{}",
+                copy_text(
+                    "rsInboundClient.error.refused",
+                    &[
+                        ("code", &code.to_string()),
+                        ("message", &message.to_string())
+                    ]
+                )
+            ),
         }
     }
 }

@@ -104,9 +104,11 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/backend/control/payload.rs",
         "payload",
-        5,
+        3,
         "只把 `CLAUDE_CONFIG_DIR` 拼进要给别人执行的载荷（`env` 前缀那一段）。\
-             **不读任何文件** ⇒ **不属**读面。它随 F06/F07 走。",
+             **不读任何文件** ⇒ **不属**读面。它随 F06/F07 走。\
+             〔CP2b · 第四波 09-25〕**5 → 3**：少的两处是两句拒收报错里写着的 `CLAUDE_CONFIG_DIR` 字样，\
+             随全量抽表搬进文案表（`rsPayload.*`）；拼载荷的那三处没动。口径没变。",
     ),
     (
         "src/cc_bus_deploy.rs",

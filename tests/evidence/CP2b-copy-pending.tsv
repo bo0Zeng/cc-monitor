@@ -64,19 +64,8 @@ src/bridge/src/account_aliases.rs	未抽
 src/bridge/src/acct_iso_deploy.rs	未抽
 src/bridge/src/apikey_remote.rs	未抽
 src/bridge/src/asset_sync.rs	未抽
-src/bridge/src/backend/control/backend_control.rs	未抽
-src/bridge/src/backend/control/backend_kill.rs	未抽
-src/bridge/src/backend/control/backend_launch.rs	未抽
-src/bridge/src/backend/control/backend_route.rs	未抽
-src/bridge/src/backend/control/backend_send_keys.rs	未抽
-src/bridge/src/backend/control/cc_bus.rs	未抽
 src/bridge/src/backend/control/ccm_invocation.rs	未抽
 src/bridge/src/backend/control/frame_query.rs	C4d 在改这一带，留最后一批
-src/bridge/src/backend/control/inbound_client.rs	未抽
-src/bridge/src/backend/control/launch_wire.rs	未抽
-src/bridge/src/backend/control/local_backend.rs	未抽
-src/bridge/src/backend/control/payload.rs	未抽
-src/bridge/src/backend/control/tmux.rs	未抽
 src/bridge/src/backend/observe/local_query.rs	未抽
 src/bridge/src/backend_policy.rs	未抽
 src/bridge/src/bind.rs	未抽

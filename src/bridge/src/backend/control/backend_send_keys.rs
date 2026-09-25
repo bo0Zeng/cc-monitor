@@ -28,6 +28,7 @@
 //! 分流不在这里写 —— 它住 [`super::backend_route`]，两个命令共用一份
 //! （两份会漂，而漂开的后果是把一次门拒绝洗成另一条路的成功）。
 
+use crate::copy_table::copy_text;
 use std::time::Duration;
 
 /// 一次 `send-keys` 的往返上限。同 `backend_kill` / `backend_launch` 的理由。
@@ -50,14 +51,24 @@ pub(crate) fn mode_for(enter: bool) -> &'static str {
 /// 否则同一个拒绝在两条路上说两种话。
 fn refusal_text(code: &str, message: &str) -> String {
     match code {
-        "no_tmux" => "远端未安装 tmux".to_string(),
-        "no_such_session" => "远端会话已不存在（可能已被终止）".to_string(),
-        "wrong_owner" => {
-            format!("拒绝 send-keys：目标未通过身份守卫（{message}）——可能不是本工具管理的会话")
-        }
+        "no_tmux" => copy_text("rsBackendSendKeys.refusal.noTmux", &[]),
+        "no_such_session" => copy_text("rsBackendSendKeys.refusal.gone", &[]),
+        "wrong_owner" => copy_text(
+            "rsBackendSendKeys.refusal.notOurs",
+            &[("message", &message.to_string())],
+        ),
         // backend 侧的 `typed_unconfirmed`：会话在，但键未必落。**不许当成成功**。
-        "typed_unconfirmed" => format!("按键未必送达（{message}）—— 会话在，但 send-keys 失败"),
-        _ => format!("远端 send-keys 失败（{code}）：{message}"),
+        "typed_unconfirmed" => copy_text(
+            "rsBackendSendKeys.refusal.keysNotSent",
+            &[("message", &message.to_string())],
+        ),
+        _ => copy_text(
+            "rsBackendSendKeys.refusal.other",
+            &[
+                ("code", &code.to_string()),
+                ("message", &message.to_string()),
+            ],
+        ),
     }
 }
 
@@ -91,10 +102,11 @@ pub(crate) async fn backend_send_keys(
         Ok(reply) => match super::backend_launch::typed_from_reply(reply.as_ref()) {
             Ok(true) => super::backend_route::Routed::Done,
             Ok(false) => super::backend_route::Routed::Refused(
-                "backend 回报未键入，但也没给错误码 —— 协议漂移，不再用另一条路重试".into(),
+                copy_text("rsBackendSendKeys.send.noReason", &[]).into(),
             ),
-            Err(e) => super::backend_route::Routed::Refused(format!(
-                "{e} —— ⚠ 应答形状不认识时无法判断键有没有落进去，因此不再用另一条路重发"
+            Err(e) => super::backend_route::Routed::Refused(copy_text(
+                "rsBackendSendKeys.send.unknownReply",
+                &[("e", &e.to_string())],
             )),
         },
         Err(e) => super::backend_route::route_call_error(&e, refusal_text),

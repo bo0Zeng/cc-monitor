@@ -551,15 +551,33 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
 /// ⚠ `too_many_windows` **不参与对照** —— 它是 kill 独有的一档
 /// （send-keys 不删除任何东西，窗口数与它无关，`admit` / `admit_destructive` 是两个入口）。
 /// 它自己那句「下一步该干什么」单独钉。
+/// 〔CP2b · 全量抽表〕兄弟文件的拒绝文案进了文案表：「生产段说的话」= 生产段源码 ＋ 它经 `copy_text`
+/// 取的表条目原文（占位符原样）。只看源码的话，抽完表之后这条对照会对着空串零命中地红 / 绿。
+fn spoken(prod: &str) -> String {
+    let mut out = prod.to_string();
+    let mut rest = prod;
+    while let Some(i) = rest.find("copy_text(") {
+        let after = rest[i + "copy_text(".len()..].trim_start();
+        if let Some(body) = after.strip_prefix('"') {
+            if let Some(j) = body.find('"') {
+                out.push('\n');
+                out.push_str(&crate::copy_table::copy_text(&body[..j], &[]));
+            }
+        }
+        rest = &rest[i + 1..];
+    }
+    out
+}
+
 #[test]
 fn the_refusal_wording_matches_the_sibling_command() {
-    let sibling = guard_core::production_code(include_str!(
+    let sibling = spoken(&guard_core::production_code(include_str!(
         "../../../../src/bridge/src/backend/control/backend_send_keys.rs"
-    ));
+    )));
     for (code, needle) in [
         ("no_tmux", "远端未安装 tmux"),
         ("no_such_session", "远端会话已不存在（可能已被终止）"),
-        ("wrong_owner", "可能不是本工具管理的会话"),
+        ("wrong_owner", "不是本工具开的"),
     ] {
         let mine = refusal_text(code, "m");
         assert!(
@@ -573,7 +591,7 @@ fn the_refusal_wording_matches_the_sibling_command() {
         );
     }
     assert!(
-        refusal_text("too_many_windows", "m").contains("请到该 tmux 里自行处理"),
+        refusal_text("too_many_windows", "m").contains("请在 tmux 里自己关"),
         "`too_many_windows` 少了「下一步该干什么」那半句 —— \
              它是 kill 独有的一档，没有兄弟命令替它兜"
     );

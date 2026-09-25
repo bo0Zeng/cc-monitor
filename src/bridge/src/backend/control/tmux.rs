@@ -9,6 +9,7 @@
 //! `\\t`),`parse_tmux_ls` 按真 TAB `split`。F60 `capture_remote_pane` 已续挂本模块;kill/rename
 //! 明确不做(见 MASTERPLAN 不做清单),F52 短路门未扩本模块。
 
+use crate::copy_table::copy_text;
 use crate::ssh_source;
 use serde::Serialize;
 use tokio::io::{AsyncReadExt, BufReader};
@@ -225,8 +226,12 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
 /// → 返 `None`(前端隐藏 attach 项);有 tmux 但无会话 → `Some(空)`。
 #[tauri::command]
 pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>, String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
+    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+        copy_text(
+            "rsTmux.list.noConfig",
+            &[("origin", &format!("{:?}", origin))],
+        )
+    })?;
     // `tmux ls` 无会话时非零退出("no server running")→ `|| true` 吞掉,得空输出=空列表。
     // K-R12：`-u` 在子命令**之前**（`tmux ls -u -F` 是 rc=1 的响错）。见 `UTF8_CLIENT_FLAG`。
     let cmd = format!(
@@ -239,7 +244,7 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
     reader
         .read_to_end(&mut buf)
         .await
-        .map_err(|e| format!("读 tmux 列表失败: {e}"))?;
+        .map_err(|e| copy_text("rsTmux.list.failed", &[("e", &e.to_string())]))?;
     let out = String::from_utf8_lossy(&buf);
     if out.trim() == "NO_TMUX" {
         return Ok(None);
@@ -255,11 +260,13 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
         .lines()
         .find(|l| !l.trim().is_empty() && tmux_tab_underflow(l, TMUX_LS_FMT_FIELDS))
     {
-        return Err(format!(
-            "CCM_TMUX_UNPARSABLE tmux ls 有行切出 {} 段 < {TMUX_LS_FMT_FIELDS} —— \
-             远端 tmux 的打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 与非 ASCII 变 `_`）。\
-             这一趟的会话列表**整份作废**，不当成「远端零会话」。原样回包：{bad:?}",
-            bad.split('\t').count()
+        return Err(copy_text(
+            "rsTmux.list.unparsable",
+            &[
+                ("split", &(bad.split('\t').count()).to_string()),
+                ("fields", &TMUX_LS_FMT_FIELDS.to_string()),
+                ("bad", &format!("{:?}", bad)),
+            ],
         ));
     }
     Ok(Some(parse_tmux_ls(&out)))
@@ -451,19 +458,52 @@ const CAPTURE_PANE: &str = "capture-pane";
 /// 兜底档（`capture_failed` ＋ stderr 原样回包）写下来要避免的形状 —— 这一侧照抄那条纪律。
 fn describe_capture_refusal(target: &str, code: &str, message: &str) -> String {
     match code {
-        "no_tmux" => format!("抓不了 `{target}` 的画面：那台机器上起不来 tmux（{message}）"),
+        "no_tmux" => copy_text(
+            "rsTmux.capture.noTmux",
+            &[
+                ("target", &target.to_string()),
+                ("message", &message.to_string()),
+            ],
+        ),
         // ⚠ 「tmux 的 server」不是啰嗦：写成「tmux server」会被 `tmux_backend_gate_guard`
         //    那条「远端 tmux 动词」守卫读成一个叫 `server` 的动词（它按字面「tmux 空格 小写词」
         //    取，刻意不问上下文 —— 那是它 fail-closed 的方式）。**说的是同一件事，不许改语义。**
-        "no_server" => format!(
-            "抓不了 `{target}` 的画面：tmux 在，但那台机器上**一个 tmux 的 server 进程都没有**（{message}）"
+        "no_server" => copy_text(
+            "rsTmux.capture.noServer",
+            &[
+                ("target", &target.to_string()),
+                ("message", &message.to_string()),
+            ],
         ),
-        "no_such_session" => {
-            format!("抓不了 `{target}` 的画面：这个会话不存在，可能刚结束（{message}）")
-        }
-        "invalid_args" => format!("抓不了 `{target}` 的画面：这个会话名后端不收（{message}）"),
-        "capture_failed" => format!("抓 `{target}` 那一屏失败了，tmux 原话：{message}"),
-        other => format!("抓 `{target}` 那一屏被拒：{other}：{message}"),
+        "no_such_session" => copy_text(
+            "rsTmux.capture.gone",
+            &[
+                ("target", &target.to_string()),
+                ("message", &message.to_string()),
+            ],
+        ),
+        "invalid_args" => copy_text(
+            "rsTmux.capture.badName",
+            &[
+                ("target", &target.to_string()),
+                ("message", &message.to_string()),
+            ],
+        ),
+        "capture_failed" => copy_text(
+            "rsTmux.capture.failed",
+            &[
+                ("target", &target.to_string()),
+                ("message", &message.to_string()),
+            ],
+        ),
+        other => copy_text(
+            "rsTmux.capture.refused",
+            &[
+                ("target", &target.to_string()),
+                ("other", &other.to_string()),
+                ("message", &message.to_string()),
+            ],
+        ),
     }
 }
 
@@ -509,7 +549,10 @@ fn is_safe_tmux_target(target: &str) -> bool {
 /// 三条路（capture-pane · send-keys · kill）走的是同一份判定、同一句话。
 fn gate1_reject_empty(target: &str) -> Result<(), String> {
     if !is_safe_tmux_target(target) {
-        return Err(format!("非法 tmux 目标（空）：{target:?}"));
+        return Err(copy_text(
+            "rsTmux.target.empty",
+            &[("target", &format!("{:?}", target))],
+        ));
     }
     Ok(())
 }
@@ -582,16 +625,23 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
 /// 它确实是一条远端传输。
 fn no_channel_message(action: &str, origin: &str, target: &str, why: &str) -> String {
     if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        format!(
-            "本机后端通道不在，{action} `{target}`：{why}\n\
-             （抓屏、送键与杀会话只走后端这一条路 —— 先让本机后端跑起来。\
-             K-R72 / K-R112 起没有 SSH 兜底那条路了，所以这不是「再试一次」能过去的）"
+        copy_text(
+            "rsTmux.noChannel.local",
+            &[
+                ("action", &action.to_string()),
+                ("target", &target.to_string()),
+                ("why", &why.to_string()),
+            ],
         )
     } else {
-        format!(
-            "`{origin}` 的后端通道不在，{action} `{target}`：{why}\n\
-             （抓屏、送键与杀会话只走后端这一条路 —— 先让那台机器上的后端连上。\
-             K-R72 / K-R112 起没有 SSH 兜底那条路了，所以这不是「再试一次」能过去的）"
+        copy_text(
+            "rsTmux.noChannel.remote",
+            &[
+                ("origin", &origin.to_string()),
+                ("action", &action.to_string()),
+                ("target", &target.to_string()),
+                ("why", &why.to_string()),
+            ],
         )
     }
 }
@@ -632,9 +682,9 @@ async fn capture_via_backend(
     // 能力协商放在抓之前：抓一屏是 `K-R86`/`K-R104` 之后才有的原语，老后端上没有。
     // **「这台的后端太旧」是问得出答案的**，不许与超时同形（同 `cc_bus::send_via_backend`）。
     if !client.accepts(CAPTURE_PANE) {
-        return Err(Routed::NoChannel(format!(
-            "`{origin}` 的后端没声明 `{CAPTURE_PANE}` 能力 —— \
-             抓一屏是后来才上帧面的原语，**重装那台机器的后端**就有了"
+        return Err(Routed::NoChannel(copy_text(
+            "rsTmux.capture.tooOld",
+            &[("origin", &origin.to_string())],
         )));
     }
     let reply = client
@@ -657,8 +707,9 @@ async fn capture_via_backend(
         .and_then(|v| v.as_str())
         .map(str::to_string)
         .ok_or_else(|| {
-            Routed::Refused(format!(
-                "抓 `{target}` 的应答里没有 `screen` 字段 —— 这一端与那一端的契约漂开了"
+            Routed::Refused(copy_text(
+                "rsTmux.capture.noScreen",
+                &[("target", &target.to_string())],
             ))
         })
 }
@@ -693,10 +744,13 @@ pub async fn capture_remote_pane(origin: String, target: String) -> Result<Strin
     match capture_via_backend(&origin, &target).await {
         Ok(screen) => Ok(screen),
         Err(Routed::Refused(why)) => Err(why),
-        Err(Routed::NoChannel(why)) => Err(no_channel_message("抓不了", &origin, &target, &why)),
-        Err(Routed::Done) => {
-            Err("抓屏的分流器判成「已完成」，这不该发生 —— 那一档没有屏幕内容可回".to_string())
-        }
+        Err(Routed::NoChannel(why)) => Err(no_channel_message(
+            &copy_text("rsTmux.action.capture", &[]),
+            &origin,
+            &target,
+            &why,
+        )),
+        Err(Routed::Done) => Err(copy_text("rsTmux.capture.internal", &[])),
     }
 }
 
@@ -725,9 +779,12 @@ pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), Stri
     match crate::backend::control::backend_kill::backend_kill(&origin, &target).await {
         crate::backend::control::backend_route::Routed::Done => Ok(()),
         crate::backend::control::backend_route::Routed::Refused(why) => Err(why),
-        crate::backend::control::backend_route::Routed::NoChannel(why) => {
-            Err(no_channel_message("杀不了", &origin, &target, &why))
-        }
+        crate::backend::control::backend_route::Routed::NoChannel(why) => Err(no_channel_message(
+            &copy_text("rsTmux.action.kill", &[]),
+            &origin,
+            &target,
+            &why,
+        )),
     }
 }
 
@@ -775,9 +832,12 @@ pub async fn tmux_send_keys(
     {
         crate::backend::control::backend_route::Routed::Done => Ok(()),
         crate::backend::control::backend_route::Routed::Refused(why) => Err(why),
-        crate::backend::control::backend_route::Routed::NoChannel(why) => {
-            Err(no_channel_message("送不了按键给", &origin, &target, &why))
-        }
+        crate::backend::control::backend_route::Routed::NoChannel(why) => Err(no_channel_message(
+            &copy_text("rsTmux.action.sendKeys", &[]),
+            &origin,
+            &target,
+            &why,
+        )),
     }
 }
 

@@ -24,6 +24,8 @@
 /// 而 id 会被拼进命令行（`cc-send <id> …`、`tmux has-session -t =<id>`），
 /// `-` 开头会被下游当成选项解析。ccm 那边同样的理由写着
 /// `""|-*) die "非法 tmux 会话名（空或以 - 开头）"`。
+use crate::copy_table::copy_text;
+
 pub fn is_valid_bus_id(s: &str) -> bool {
     !s.is_empty()
         && !s.starts_with('-')
@@ -239,17 +241,23 @@ async fn fetch_remote_cc_bus(cfg: &crate::ssh_source::RemoteConfig) -> Result<St
             .take(CC_BUS_TSV_CAP + 1)
             .read_to_end(&mut buf)
             .await
-            .map_err(|e| format!("读取远端 ~/.cc-bus 失败: {e}"))?;
+            .map_err(|e| copy_text("rsCcBus.remote.readFailed", &[("e", &e.to_string())]))?;
         if buf.len() as u64 > CC_BUS_TSV_CAP {
-            return Err(format!(
-                "远端 ~/.cc-bus 的登记表超过 {CC_BUS_TSV_CAP} 字节上限 —— 拒收，不拿截断的清单当完整的用"
+            return Err(copy_text(
+                "rsCcBus.remote.tooBig",
+                &[("cap", &CC_BUS_TSV_CAP.to_string())],
             ));
         }
         Ok::<Vec<u8>, String>(buf)
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
         .await
-        .map_err(|_| format!("远端 '{}' 读取超时（30s）", cfg.origin_label()))??;
+        .map_err(|_| {
+            copy_text(
+                "rsCcBus.remote.timeout",
+                &[("machine", &(cfg.origin_label()).to_string())],
+            )
+        })??;
     // 非 UTF-8 不报错：`~/.cc-bus/` 里的目录名实测含各种字节，宽容降级即可。
     Ok(String::from_utf8_lossy(&raw).into_owned())
 }
@@ -312,32 +320,32 @@ pub(crate) fn take_head(raw: &str) -> Option<(CcBusReadHead, &str)> {
 /// 字段并重新生成 `src/generated/`（C05），**不在本件写区内** ⇒ 明写在这里，别当它已经做了。
 fn interpret_cc_bus_read(origin: &str, raw: &str) -> Result<CcBusState, String> {
     let Some((head, body)) = take_head(raw) else {
-        return Err(format!(
-            "读不到 '{origin}' 的 cc-bus 登记表 —— 那条读命令**没有跑起来**\
-             （自述头 `{CC_BUS_HEAD_MARKER} home=<0|1> cat=<0|1>` 没有原样回来）。\n\
-             ⚠ 这**不是**「一个 agent 都没有」：清单根本没读到，有没有是**不知道**。\n\
-             多半是那台机器上的 `bash` 跑不了这段语法（Windows 上 \
-             `C:\\Windows\\System32\\bash.exe` 那个没装发行版的 WSL 存根就是这一形），\
-             或者登录 shell 中途就退了。"
+        return Err(copy_text(
+            "rsCcBus.read.noHeader",
+            &[
+                ("origin", &origin.to_string()),
+                ("marker", &CC_BUS_HEAD_MARKER.to_string()),
+            ],
         ));
     };
     if !head.reader {
-        let dir = if head.home { "**在**" } else { "不在" };
-        return Err(format!(
-            "读不到 '{origin}' 的 cc-bus 登记表 —— 那个壳里**没有 `cat`**\
-             （自述头逐字报的 `cat=0`），两张表一个字节都读不出来。\n\
-             ⚠ 这**不是**「一个 agent 都没有」：`~/.cc-bus` 这个目录{dir}，\
-             有没有 agent 是**不知道**。\n\
-             多半是登录 shell 的 `PATH` 里没有 `/usr/bin`（`bash -lc` 会先过 `/etc/profile`）。"
+        let dir = if head.home {
+            &copy_text("rsCcBus.read.dirPresent", &[])
+        } else {
+            &copy_text("rsCcBus.read.dirAbsent", &[])
+        };
+        return Err(copy_text(
+            "rsCcBus.read.noCat",
+            &[("origin", &origin.to_string()), ("dir", &dir.to_string())],
         ));
     }
     if !body.contains(CC_BUS_SPLIT_MARKER) {
-        return Err(format!(
-            "'{origin}' 的 cc-bus 登记表只回来了半份 —— \
-             分隔标记 `{CC_BUS_SPLIT_MARKER}` 没出现。\n\
-             ⚠ 打标记的 `printf` 是 shell 内建、无条件跑，所以它不在只可能是\
-             「命令跑到一半断了」（流被掐 / 输出被截）。\n\
-             半份清单会被当完整的用，⇒ 拒收。"
+        return Err(copy_text(
+            "rsCcBus.read.half",
+            &[
+                ("origin", &origin.to_string()),
+                ("marker", &CC_BUS_SPLIT_MARKER.to_string()),
+            ],
         ));
     }
     let (a, s) = split_combined(body, CC_BUS_SPLIT_MARKER);
@@ -373,14 +381,18 @@ pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
             CC_BUS_CAT_CMD,
             CC_BUS_TSV_CAP,
             30,
-            "读 ~/.cc-bus",
+            &copy_text("rsCcBus.what.readHome", &[]),
             // 读的是**数据**（清单），半份会被当完整的用 —— 与远端那条同档。
             OnOverflow::Reject,
         )
         .await?
     } else {
-        let cfg = crate::load_remote_config_by_label(&origin)
-            .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+        let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+            copy_text(
+                "rsCcBus.remote.notConfigured",
+                &[("origin", &origin.to_string())],
+            )
+        })?;
         fetch_remote_cc_bus(&cfg).await?
     };
     tokio::task::spawn_blocking(move || interpret_cc_bus_read(&origin, &raw))
@@ -439,7 +451,10 @@ pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<boo
 /// 而驾驶舱只看最近的。
 fn build_inbox_cmd(id: &str) -> Result<String, String> {
     if !is_valid_bus_id(id) {
-        return Err(format!("非法 agent id（拒绝拼入命令）: {id:?}"));
+        return Err(copy_text(
+            "rsCcBus.inbox.badId",
+            &[("id", &format!("{:?}", id))],
+        ));
     }
     Ok(format!(
         "B=\"${{CC_BUS_HOME:-$HOME/.cc-bus}}\"; tail -n 200 \"$B/inbox/{id}.jsonl\" 2>/dev/null; true"
@@ -556,12 +571,18 @@ async fn exec_read(
             .take(cap + 1)
             .read_to_end(&mut buf)
             .await
-            .map_err(|e| format!("{what}失败: {e}"))?;
+            .map_err(|e| {
+                copy_text(
+                    "rsCcBus.exec.failed",
+                    &[("what", &what.to_string()), ("e", &e.to_string())],
+                )
+            })?;
         if buf.len() as u64 > cap {
             match on_overflow {
                 OnOverflow::Reject => {
-                    return Err(format!(
-                        "{what}的输出超过 {cap} 字节上限 —— 拒收，不拿截断的结果当完整的用"
+                    return Err(copy_text(
+                        "rsCcBus.exec.tooBig",
+                        &[("what", &what.to_string()), ("cap", &cap.to_string())],
                     ));
                 }
                 OnOverflow::Truncate => {
@@ -578,14 +599,23 @@ async fn exec_read(
     };
     let (raw, over) = tokio::time::timeout(std::time::Duration::from_secs(secs), read)
         .await
-        .map_err(|_| format!("远端 '{}' {what}超时（{secs}s）", cfg.origin_label()))??;
+        .map_err(|_| {
+            copy_text(
+                "rsCcBus.exec.timeout",
+                &[
+                    ("machine", &(cfg.origin_label()).to_string()),
+                    ("what", &what.to_string()),
+                    ("secs", &secs.to_string()),
+                ],
+            )
+        })??;
     overflowed = over;
     let mut out = String::from_utf8_lossy(&raw).into_owned();
     if overflowed {
         // 说给**用户**听，不只写日志：这条串是要显示出去的。
-        out.push_str(&format!(
-            "\n[cc-monitor] ⚠ 远端输出超过 {cap} 字节上限，以上内容已截断。\
-             命令本身已经执行完毕，**不要重试**。"
+        out.push_str(&copy_text(
+            "rsCcBus.exec.truncated",
+            &[("cap", &cap.to_string())],
         ));
     }
     Ok(out)
@@ -603,12 +633,14 @@ fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
     // 报「远端 `<local>` 未配置或未启用」：一句与真实原因毫无关系的话
     // （`P4d-Y5` 收口的正是这一族，`local_origin_registry` 按**位置**盯着它）。
     if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        return Err("本机没有「远端配置」这种东西 —— 这条路是远端专属的。\n\
-             cc-bus 的读面本机走同一条命令串（只是不包进 ssh）；写面全走后端原语。"
-            .to_string());
+        return Err(copy_text("rsCcBus.cfg.localHasNone", &[]));
     }
-    crate::load_remote_config_by_label(origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))
+    crate::load_remote_config_by_label(origin).ok_or_else(|| {
+        copy_text(
+            "rsCcBus.remote.notConfigured",
+            &[("origin", &origin.to_string())],
+        )
+    })
 }
 
 /// 🔴🔴 **本机那个 `bash` 到底是哪一个** —— 09-10 云端那条红的根因就住在这里〔ccbus-win〕。
@@ -724,14 +756,12 @@ fn no_bash_error(tried: &[std::path::PathBuf]) -> String {
         .map(|p| format!("  · {}", p.display()))
         .collect::<Vec<_>>()
         .join("\n");
-    format!(
-        "这台机器上找不到可用的 `bash` —— cc-bus 的本机读面**跑不起来**。\n\
-         ⚠ 这**不是**「一个 agent 都没有」：清单根本没去读，有没有是**不知道**。\n\
-         已经找过（顺序即优先级）：\n{list}\n\
-         ⚠ **刻意不去 `PATH` 上碰运气**：Windows 的进程创建把 `C:\\Windows\\System32`\
-         排在 `PATH` 之前，而 WSL 功能开着却没装发行版时那里有一个 `bash.exe` 存根 ——\
-         按裸名找到的多半正是它，跑起来什么都不做就退（那正是本件的病根）。\n\
-         装一份 Git for Windows，或把 `{BASH_OVERRIDE_VAR}` 指向你要用的那个 `bash.exe`。"
+    copy_text(
+        "rsCcBus.bash.notFound",
+        &[
+            ("list", &list.to_string()),
+            ("var", &BASH_OVERRIDE_VAR.to_string()),
+        ],
     )
 }
 
@@ -755,20 +785,22 @@ fn resolve_bash_with(
     if let Some(raw) = env(BASH_OVERRIDE_VAR) {
         let p = std::path::PathBuf::from(&raw);
         if is_system_dir_bash(&p) {
-            return Err(format!(
-                "`{BASH_OVERRIDE_VAR}` 指的是系统目录里那个 `bash.exe` —— 那是 WSL 的存根，\
-                 没装发行版时它什么都不做就退，装了发行版则跑在**另一个文件系统**里\
-                 （`$HOME` 是 Linux 家目录，不是这台机器的）。**拒绝用它。**\n\
-                 实得：{}",
-                p.display()
+            return Err(copy_text(
+                "rsCcBus.bash.systemStub",
+                &[
+                    ("var", &BASH_OVERRIDE_VAR.to_string()),
+                    ("path", &(p.display()).to_string()),
+                ],
             ));
         }
         // **不回落到候选表**：用户显式指了一个路径却指错，回落会让他以为自己那条生效了。
         if !exists(&p) {
-            return Err(format!(
-                "`{BASH_OVERRIDE_VAR}` 指的路径不存在：{}\n\
-                 ⚠ 显式指定过就不再去猜 —— 回落到候选表会让你以为自己这条生效了。",
-                p.display()
+            return Err(copy_text(
+                "rsCcBus.bash.overrideMissing",
+                &[
+                    ("var", &BASH_OVERRIDE_VAR.to_string()),
+                    ("path", &(p.display()).to_string()),
+                ],
             ));
         }
         return Ok(raw);
@@ -881,11 +913,16 @@ async fn local_shell_read(
             crate::spawn_managed::Lifetime::JobKillOnClose,
             crate::spawn_managed::StderrSink::Null,
         )
-        .map_err(|e| format!("本机{what}失败（起不了 bash）: {e}"))?;
+        .map_err(|e| {
+            copy_text(
+                "rsCcBus.local.spawnFailed",
+                &[("what", &what.to_string()), ("e", &e.to_string())],
+            )
+        })?;
         let mut out = child
             .stdout
             .take()
-            .ok_or_else(|| format!("本机{what}失败：拿不到 stdout"))?;
+            .ok_or_else(|| copy_text("rsCcBus.local.noOutput", &[("what", &what.to_string())]))?;
         let mut buf = Vec::new();
         // `+ 1` 的用意同远端那条：不多读一个字节就分不清「刚好读满」与「其实还有」，
         // 而分不清就只能静默截断。
@@ -893,15 +930,21 @@ async fn local_shell_read(
             .take(cap + 1)
             .read_to_end(&mut buf)
             .await
-            .map_err(|e| format!("本机{what}失败: {e}"))?;
+            .map_err(|e| {
+                copy_text(
+                    "rsCcBus.local.failed",
+                    &[("what", &what.to_string()), ("e", &e.to_string())],
+                )
+            })?;
         // 读够了就别再等它 —— 否则 `cat` 一个超大文件时我们会陪它跑完。
         let _ = child.start_kill();
         let _ = child.wait().await;
         if buf.len() as u64 > cap {
             match on_overflow {
                 OnOverflow::Reject => {
-                    return Err(format!(
-                        "本机{what}的输出超过 {cap} 字节上限 —— 拒收，不拿截断的当完整的用"
+                    return Err(copy_text(
+                        "rsCcBus.local.tooBig",
+                        &[("what", &what.to_string()), ("cap", &cap.to_string())],
                     ));
                 }
                 OnOverflow::Truncate => {
@@ -914,7 +957,12 @@ async fn local_shell_read(
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(secs), read)
         .await
-        .map_err(|_| format!("本机{what}超时（{secs}s）"))??;
+        .map_err(|_| {
+            copy_text(
+                "rsCcBus.local.timeout",
+                &[("what", &what.to_string()), ("secs", &secs.to_string())],
+            )
+        })??;
     // 非 UTF-8 不报错：理由同远端那条（`~/.cc-bus/` 里的目录名实测含各种字节）。
     Ok(String::from_utf8_lossy(&raw).into_owned())
 }
@@ -949,10 +997,13 @@ pub(crate) fn live_of(agents: &[serde_json::Value], id: &str) -> Option<bool> {
 /// 删掉老探法回落之后，这条路上每一种答不上都从这里出口 ⇒
 /// 「灭灯」这个答案在结构上**没有地方可以被造出来**，而不是靠谁记得别灭灯。
 pub(crate) fn unknown_liveness(origin: &str, id: &str, why: &str) -> String {
-    format!(
-        "{}上问不到 `{id}` 在不在线：{why}\n\
-         ⚠ 这是**问不到**，不是**不在线** —— 别把它读成一盏灭灯。",
-        machine_label(origin)
+    copy_text(
+        "rsCcBus.liveness.unknown",
+        &[
+            ("machine", &(machine_label(origin)).to_string()),
+            ("id", &id.to_string()),
+            ("why", &why.to_string()),
+        ],
     )
 }
 
@@ -964,21 +1015,19 @@ async fn online_via_backend(origin: &str, id: &str) -> Result<bool, String> {
     // ⚠ **校验留在这一侧**（同 [`send_via_backend`]）：id 今天不再被拼进任何命令串，
     //   但「调用方不能靠对端校验」这条规矩不因为注入面没了就作废。
     if !is_valid_bus_id(id) {
-        return Err(format!("非法 agent id（拒绝去问它在不在线）: {id:?}"));
+        return Err(copy_text(
+            "rsCcBus.online.badId",
+            &[("id", &format!("{:?}", id))],
+        ));
     }
     let unknown = |why: String| unknown_liveness(origin, id, &why);
     let Some(client) = crate::backend::control::inbound_client::client_for(origin) else {
-        return Err(unknown(
-            "这台的后端通道没起来（设置里可以起/停每台机器的后端）".to_string(),
-        ));
+        return Err(unknown(copy_text("rsCcBus.online.noChannel", &[])));
     };
     // 能力协商放在问之前 —— 同 `send_via_backend` 那条理由：「这台的后端太旧」
     // 是**问得出答案**的，不许与超时同形。
     if !client.accepts(BUS_LIST) {
-        return Err(unknown(format!(
-            "这台的后端太旧 —— 它没声明 `{BUS_LIST}` 这条命令\
-             （**能力协商**问出来的，不是超时、也不是网络错）"
-        )));
+        return Err(unknown(copy_text("rsCcBus.online.tooOld", &[])));
     }
     let listed = client
         .call(
@@ -987,19 +1036,18 @@ async fn online_via_backend(origin: &str, id: &str) -> Result<bool, String> {
             std::time::Duration::from_secs(15),
         )
         .await
-        .map_err(|e| unknown(describe_bus_error("这一趟没问到", &e)))?;
+        .map_err(|e| {
+            unknown(describe_bus_error(
+                &copy_text("rsCcBus.online.failed", &[]),
+                &e,
+            ))
+        })?;
     let agents = listed
         .as_ref()
         .and_then(|v| v.get("agents"))
         .and_then(|v| v.as_array())
-        .ok_or_else(|| {
-            unknown(format!(
-                "`{BUS_LIST}` 的应答里没有 `agents` 数组 —— 这一端与那一端的契约漂开了"
-            ))
-        })?;
-    live_of(agents, id).ok_or_else(|| {
-        unknown("它不在总线名单里，或者后端问不到身份空间（`live` 是 null）".to_string())
-    })
+        .ok_or_else(|| unknown(copy_text("rsCcBus.online.noAgents", &[])))?;
+    live_of(agents, id).ok_or_else(|| unknown(copy_text("rsCcBus.online.notOnBus", &[])))
 }
 
 /// 广播走后端那条路的两种失败：能不能回落到老路。
@@ -1058,8 +1106,9 @@ pub(crate) struct BroadcastPlan {
 async fn broadcast_via_backend(origin: &str, text: &str) -> Result<String, BroadcastRoute> {
     use crate::backend::control::inbound_client::client_for;
     let Some(client) = client_for(origin) else {
-        return Err(BroadcastRoute::NoChannel(format!(
-            "[{origin}] 没有可用的控制通道"
+        return Err(BroadcastRoute::NoChannel(copy_text(
+            "rsCcBus.broadcast.noChannel",
+            &[("origin", &origin.to_string())],
         )));
     };
     let listed = client
@@ -1075,7 +1124,13 @@ async fn broadcast_via_backend(origin: &str, text: &str) -> Result<String, Broad
         //    就可能被另一条路重做一遍」。逮得对。
         .map_err(|e| {
             match crate::backend::control::backend_route::route_call_error(&e, |code, message| {
-                format!("列总线成员被拒：{code}：{message}")
+                copy_text(
+                    "rsCcBus.broadcast.listRefused",
+                    &[
+                        ("code", &code.to_string()),
+                        ("message", &message.to_string()),
+                    ],
+                )
             }) {
                 // 「证明没发出去」⇒ 远端可以回落到老路
                 crate::backend::control::backend_route::Routed::NoChannel(why) => {
@@ -1085,7 +1140,7 @@ async fn broadcast_via_backend(origin: &str, text: &str) -> Result<String, Broad
                     BroadcastRoute::Failed(why)
                 }
                 crate::backend::control::backend_route::Routed::Done => {
-                    BroadcastRoute::Failed("分流器判成已完成，这不该发生".into())
+                    BroadcastRoute::Failed(copy_text("rsCcBus.broadcast.internal", &[]).into())
                 }
             }
         })?;
@@ -1118,18 +1173,30 @@ async fn broadcast_via_backend(origin: &str, text: &str) -> Result<String, Broad
 /// 合成一个「已向 N 个 agent 发出广播」正是老路的病 —— 那个 N 把 78 个幽灵也算了进去。
 pub(crate) fn describe_broadcast(plan: &BroadcastPlan, ok: usize, failed: &[String]) -> String {
     let mut msg = if plan.liveness_unknown {
-        format!("已广播给 {ok} 个**已登记** agent（问不到谁在线，所以全发了）")
+        copy_text(
+            "rsCcBus.broadcast.doneRegistered",
+            &[("ok", &ok.to_string())],
+        )
     } else {
-        format!("已广播给 {ok} 个**在线** agent")
+        copy_text("rsCcBus.broadcast.doneOnline", &[("ok", &ok.to_string())])
     };
     if plan.skipped_offline > 0 {
-        msg.push_str(&format!(
-            "；跳过 {} 个不在线的（它们的收件箱今天没人读）",
-            plan.skipped_offline
+        msg.push_str(&copy_text(
+            "rsCcBus.broadcast.skipped",
+            &[("skippedOffline", &plan.skipped_offline.to_string())],
         ));
     }
     if !failed.is_empty() {
-        msg.push_str(&format!("；{} 个失败：{}", failed.len(), failed.join("、")));
+        msg.push_str(&copy_text(
+            "rsCcBus.broadcast.failed",
+            &[
+                ("n", &(failed.len()).to_string()),
+                (
+                    "names",
+                    &(failed.join(&copy_text("rsCcBus.broadcast.listSep", &[]))).to_string(),
+                ),
+            ],
+        ));
     }
     msg
 }
@@ -1156,7 +1223,7 @@ const BUS_KILL: &str = "bus-kill";
 /// 而措辞正是用户唯一看得见的那一面。
 pub(crate) fn machine_label(origin: &str) -> String {
     if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        "本机".to_string()
+        copy_text("rsCcBus.machine.local", &[])
     } else {
         origin.to_string()
     }
@@ -1168,16 +1235,22 @@ pub(crate) fn machine_label(origin: &str) -> String {
 /// 收掉 agent 改走原语之后要说同一句话 ⇒ **提参数，不抄第二份**：
 /// 抄一份的代价不是重复，是两份措辞会各自漂，而措辞正是用户唯一看得见的那一面。
 pub(crate) fn describe_no_channel_for(origin: &str, what: &str, outcome: &str) -> String {
-    format!(
-        "{} 的后端通道没起来 —— {what}要经它（设置里可以起/停每台机器的后端）；\
-         {outcome}。",
-        machine_label(origin)
+    copy_text(
+        "rsCcBus.noChannel.for",
+        &[
+            ("machine", &(machine_label(origin)).to_string()),
+            ("outcome", &outcome.to_string()),
+        ],
     )
 }
 
 /// 发消息那一档的说法（输出与提参数之前**逐字节相同**）。
 pub(crate) fn describe_no_channel(origin: &str, id: &str) -> String {
-    describe_no_channel_for(origin, "发消息", &format!("{id} 的消息**没有发出去**"))
+    describe_no_channel_for(
+        origin,
+        &copy_text("rsCcBus.what.send", &[]),
+        &copy_text("rsCcBus.outcome.notSent", &[("id", &id.to_string())]),
+    )
 }
 
 /// 「这台的后端太旧」讲成人话 —— **能力协商的结论**，纯函数，两条路共用这一份。
@@ -1189,16 +1262,22 @@ pub(crate) fn describe_no_channel(origin: &str, id: &str) -> String {
 /// 就是本工作区最贵的那一形 —— **一个值装了两件事**：用户拿到它既不知道该升级，
 /// 也不知道该重试，只能两样都试一遍。
 pub(crate) fn describe_backend_too_old_for(origin: &str, cmd: &str, outcome: &str) -> String {
-    format!(
-        "{} 的后端太旧：它没声明 `{cmd}` 这条命令（这是**能力协商**问出来的，\
-         不是超时、也不是网络错）—— {outcome}；把这台的后端升到新版就能用。",
-        machine_label(origin)
+    copy_text(
+        "rsCcBus.tooOld.for",
+        &[
+            ("machine", &(machine_label(origin)).to_string()),
+            ("outcome", &outcome.to_string()),
+        ],
     )
 }
 
 /// 发消息那一档的说法（输出与提参数之前**逐字节相同**）。
 pub(crate) fn describe_backend_too_old(origin: &str, id: &str) -> String {
-    describe_backend_too_old_for(origin, BUS_SEND, &format!("{id} 的消息**没有发出去**"))
+    describe_backend_too_old_for(
+        origin,
+        BUS_SEND,
+        &copy_text("rsCcBus.outcome.notSent", &[("id", &id.to_string())]),
+    )
 }
 
 /// 发消息那一趟的失败讲成人话 —— 纯函数，两条路共用这一份。
@@ -1217,7 +1296,10 @@ pub(crate) fn describe_bus_error(
     match route_call_error(e, |code, message| format!("{code}：{message}")) {
         Routed::NoChannel(why) => format!("{why}（{outcome}）"),
         Routed::Refused(why) => why,
-        Routed::Done => format!("{outcome} —— 分流器判成已完成，这不该发生"),
+        Routed::Done => copy_text(
+            "rsCcBus.busError.internal",
+            &[("outcome", &outcome.to_string())],
+        ),
     }
 }
 
@@ -1226,7 +1308,10 @@ pub(crate) fn describe_send_error(
     id: &str,
     e: &crate::backend::control::inbound_client::CallError,
 ) -> String {
-    describe_bus_error(&format!("{id} 的消息**没有发出去**"), e)
+    describe_bus_error(
+        &copy_text("rsCcBus.outcome.notSent", &[("id", &id.to_string())]),
+        e,
+    )
 }
 
 /// 发消息：走后端的 `bus-send` 原语（`P4f`）。**本机与远端同一条路**〔`K-R98` 09-13〕。
@@ -1253,10 +1338,13 @@ async fn send_via_backend(origin: &str, id: &str, text: &str) -> Result<String, 
     // ★ 它同时是**两条路等价**的一部分：老远端那条走已删的 shell 构造器，两道校验本来就在；
     //   本机那条**没有** ⇒ 同一条空消息在两台机器上是两种结果。收成一处，这个差别才真没了。
     if !is_valid_bus_id(id) {
-        return Err(format!("非法 agent id（拒绝发给它）: {id:?}"));
+        return Err(copy_text(
+            "rsCcBus.send.badId",
+            &[("id", &format!("{:?}", id))],
+        ));
     }
     if text.trim().is_empty() {
-        return Err("消息为空".to_string());
+        return Err(copy_text("rsCcBus.send.empty", &[]));
     }
     let Some(client) = client_for(origin) else {
         return Err(describe_no_channel(origin, id));
@@ -1294,15 +1382,11 @@ pub(crate) fn describe_send_reply(id: &str, reply: Option<&serde_json::Value>) -
     let registered = get("registered").and_then(|v| v.as_bool());
     let live = get("live").and_then(|v| v.as_bool());
     match (registered, live) {
-        (Some(false), _) => format!(
-            "已投递给 {id}，但**这个名字没在总线上登记过** —— 今天没有任何进程会读它的收件箱（名字打错了吗？）"
-        ),
-        (_, Some(false)) => format!(
-            "已投递给 {id}，但**它当前不在线** —— 消息留在收件箱里，它下次起来才会读到"
-        ),
-        (_, Some(true)) => format!("已投递给 {id}"),
+        (Some(false), _) => copy_text("rsCcBus.send.unregistered", &[("id", &id.to_string())]),
+        (_, Some(false)) => copy_text("rsCcBus.send.offline", &[("id", &id.to_string())]),
+        (_, Some(true)) => copy_text("rsCcBus.send.done", &[("id", &id.to_string())]),
         // backend 问不到身份空间（没装 tmux 等）⇒ **不假装知道**
-        _ => format!("已投递给 {id}（在不在线：问不到）"),
+        _ => copy_text("rsCcBus.send.doneUnknown", &[("id", &id.to_string())]),
     }
 }
 
@@ -1312,7 +1396,14 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
     let cmd = build_inbox_cmd(&id)?;
     // P4a-Y1：本机跑同一条 `build_inbox_cmd` 产出的串（`tail`，零副作用）。
     let raw = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        local_shell_read(&cmd, INBOX_READ_CAP, 30, "读 inbox", OnOverflow::Truncate).await?
+        local_shell_read(
+            &cmd,
+            INBOX_READ_CAP,
+            30,
+            &copy_text("rsCcBus.what.readInbox", &[]),
+            OnOverflow::Truncate,
+        )
+        .await?
     } else {
         let cfg = cfg_of(&origin)?;
         exec_read(
@@ -1320,7 +1411,7 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
             &cmd,
             INBOX_READ_CAP,
             30,
-            "读 inbox",
+            &copy_text("rsCcBus.what.readInbox", &[]),
             OnOverflow::Truncate,
         )
         .await?
@@ -1377,9 +1468,9 @@ pub async fn cc_bus_broadcast(origin: String, text: String) -> Result<String, St
     //   今天远端也没有了，于是这句话不再分本机 / 远端两种写法。
     match broadcast_via_backend(&origin, &text).await {
         Ok(msg) => Ok(msg),
-        Err(BroadcastRoute::NoChannel(why)) => Err(format!(
-            "{why}（没有第二条路可走 —— 广播只走后端这一条；\
-             `K-R112` 起没有 SSH 兜底那条了，所以这不是「再试一次」能过去的）"
+        Err(BroadcastRoute::NoChannel(why)) => Err(copy_text(
+            "rsCcBus.broadcast.onlyBackend",
+            &[("why", &why.to_string())],
         )),
         Err(BroadcastRoute::Failed(why)) => Err(why),
     }
@@ -1397,17 +1488,12 @@ pub async fn cc_bus_broadcast(origin: String, text: String) -> Result<String, St
 pub(crate) fn describe_kill_reply(id: &str, reply: Option<&serde_json::Value>) -> String {
     let get = |k: &str| reply.and_then(|r| r.get(k)).and_then(|v| v.as_bool());
     match (get("killed"), get("stale_only")) {
-        (Some(true), _) => format!("已收掉 {id}（会话与进程树都杀了）"),
-        (Some(false), Some(true)) => format!(
-            "{id} 的**登记摘掉了，会话没动** —— 那个名字今天挂在别人的会话上（身份对不上）"
-        ),
-        (Some(false), Some(false)) => format!(
-            "{id} 没有被收掉：backend 说它既没杀会话、也没摘登记（多半这个名字根本不在总线上）"
-        ),
-        _ => format!(
-            "收掉 {id} 的应答形状不认识（缺 `killed` / `stale_only`）—— 这一端与那一端的契约漂开了；\
-             ⚠ **不知道它到底动没动**，别当成「没杀成」重来一次"
-        ),
+        (Some(true), _) => copy_text("rsCcBus.kill.done", &[("id", &id.to_string())]),
+        (Some(false), Some(true)) => {
+            copy_text("rsCcBus.kill.staleOnly", &[("id", &id.to_string())])
+        }
+        (Some(false), Some(false)) => copy_text("rsCcBus.kill.nothing", &[("id", &id.to_string())]),
+        _ => copy_text("rsCcBus.kill.unknownReply", &[("id", &id.to_string())]),
     }
 }
 
@@ -1429,12 +1515,19 @@ pub(crate) fn describe_kill_reply(id: &str, reply: Option<&serde_json::Value>) -
 /// ⚠ **两道校验留在这一侧**（同 [`send_via_backend`]）：id 今天不再被拼进任何命令串，
 /// 但「调用方不能靠对端校验」这条规矩不因为注入面没了就作废 —— 这一条的后果是**杀掉一棵进程树**。
 async fn kill_via_backend(origin: &str, id: &str) -> Result<String, String> {
-    let outcome = format!("`{id}` **没有被收掉**");
+    let outcome = copy_text("rsCcBus.outcome.notKilled", &[("id", &id.to_string())]);
     if !is_valid_bus_id(id) {
-        return Err(format!("非法 agent id（拒绝收掉它）: {id:?}"));
+        return Err(copy_text(
+            "rsCcBus.kill.badId",
+            &[("id", &format!("{:?}", id))],
+        ));
     }
     let Some(client) = crate::backend::control::inbound_client::client_for(origin) else {
-        return Err(describe_no_channel_for(origin, "收掉 agent", &outcome));
+        return Err(describe_no_channel_for(
+            origin,
+            &copy_text("rsCcBus.what.kill", &[]),
+            &outcome,
+        ));
     };
     // 能力协商放在动手之前：老后端没有这条命令时也回「没发出去」，但那一档经分流器
     // 出来与「入方向排队满了」同形 —— 先问一句，是为了让「这台的后端太旧」说得出口。
@@ -1480,12 +1573,12 @@ pub(crate) fn describe_spawn_reply(reply: Option<&serde_json::Value>) -> String 
         get("spawned").and_then(|v| v.as_bool()),
         get("id").and_then(|v| v.as_str()),
     ) {
-        (Some(true), Some(id)) => format!("已派生 {id}\n{said}"),
-        (Some(true), None) => format!(
-            "已派生，但没认出新会话的名字。会话应该已经在运行，请不要重试，到 cc-bus 名单里找它。\n{said}"
+        (Some(true), Some(id)) => copy_text(
+            "rsCcBus.spawn.done",
+            &[("id", &id.to_string()), ("said", &said.to_string())],
         ),
-        _ => "派生的回应格式认不出来，不确定会话有没有起来。请先看一眼 cc-bus 名单，不要直接重试。"
-            .to_string(),
+        (Some(true), None) => copy_text("rsCcBus.spawn.noName", &[("said", &said.to_string())]),
+        _ => copy_text("rsCcBus.spawn.unknownReply", &[]),
     }
 }
 
@@ -1499,10 +1592,10 @@ pub(crate) fn check_spawn_shape(
     account: Option<&str>,
 ) -> Result<(), String> {
     if tool.trim().is_empty() {
-        return Err("没选起哪种 agent".to_string());
+        return Err(copy_text("rsCcBus.spawn.noAgent", &[]));
     }
     if dir.trim().is_empty() {
-        return Err("工作目录为空".to_string());
+        return Err(copy_text("rsCcBus.spawn.noDir", &[]));
     }
     if let Some(a) = account {
         if a.is_empty()
@@ -1511,7 +1604,10 @@ pub(crate) fn check_spawn_shape(
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
-            return Err(format!("非法账号名（拒绝交给后端）: {a:?}"));
+            return Err(copy_text(
+                "rsCcBus.spawn.badAccount",
+                &[("name", &format!("{:?}", a))],
+            ));
         }
     }
     Ok(())
@@ -1535,10 +1631,14 @@ async fn spawn_via_backend(
     task: &str,
     account: Option<&str>,
 ) -> Result<String, String> {
-    let outcome = "没有派生".to_string();
+    let outcome = copy_text("rsCcBus.outcome.notSpawned", &[]);
     check_spawn_shape(tool, dir, account)?;
     let Some(client) = crate::backend::control::inbound_client::client_for(origin) else {
-        return Err(describe_no_channel_for(origin, "派生 agent", &outcome));
+        return Err(describe_no_channel_for(
+            origin,
+            &copy_text("rsCcBus.what.spawn", &[]),
+            &outcome,
+        ));
     };
     // 能力协商放在动手之前（同收掉那条）：「这台的后端太旧」是问得出答案的，不许与超时同形。
     if !client.accepts(BUS_SPAWN) {

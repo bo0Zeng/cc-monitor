@@ -481,31 +481,29 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             | CallError::Remote { .. } => {}
         }
     }
-    let suffix = " —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；请刷新会话列表后再决定";
+    // 〔CP2b · CP1 裁「改·§2.4」〕说法换了（去掉 ** 与「另一条路」，不点命令名与声明的能力），三态一格没动。
+    let suffix = "。无法确认远端有没有执行，请刷新会话列表后再决定。";
     let table: Vec<(CallError, Routed)> = vec![
         (
             CallError::Unsupported {
                 cmd: "kill".into(),
                 offered: vec!["ping".into(), "cancel".into()],
             },
-            Routed::NoChannel(
-                "远端后端没声明 `kill` 能力（它声明的是 [\"ping\", \"cancel\"]）—— 多半是旧版本"
-                    .into(),
-            ),
+            Routed::NoChannel("远端后端版本旧，不支持这个操作".into()),
         ),
         (
             CallError::TooManyPending,
-            Routed::NoChannel("入方向同时在等的命令已达上限，这条没入队".into()),
+            Routed::NoChannel("同时在等的命令已达上限，这一条没排上".into()),
         ),
         (
             CallError::Disconnected,
-            Routed::Refused(format!("入方向通道已断开{suffix}")),
+            Routed::Refused(format!("与后端的连接已断开{suffix}")),
         ),
         (
             CallError::Timeout {
                 after: Duration::from_millis(1500),
             },
-            Routed::Refused(format!("等应答超时（1500ms）{suffix}")),
+            Routed::Refused(format!("等回答超时（1500 毫秒）{suffix}")),
         ),
         (
             CallError::Cancelled,

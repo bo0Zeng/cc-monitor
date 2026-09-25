@@ -88,6 +88,7 @@
 //! 现在给后端一条**前面挂着 shim 的 PATH**（`tests/e2e/tmux-shim.sh`），它 shell out 的 tmux
 //! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
 
+use crate::copy_table::copy_text;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -163,12 +164,9 @@ pub fn resolve_with(
         }
     }
     Resolved::Missing {
-        reason: format!(
-            "这一份 monitor 旁边没有本机后端（`{LOCAL_BACKEND_STEM}`）。\
-             它**随安装包一起发**（`*-setup.exe` / `*.msi` 里都带，装完与 monitor 同目录）。\
-             ⚠ **「旁边没有」不等于「这台机器上没有本机后端」**：产物里内嵌了本机后端时，\
-             monitor 会自己释放一份再起它 —— 那一步走没走成由**它自己**报，不由本行断言。\
-             ⇒ 两条都没有时的下一步：**装一次安装包**（Releases 页）。远端功能不受影响"
+        reason: copy_text(
+            "rsLocalBackend.resolve.notBeside",
+            &[("stem", &LOCAL_BACKEND_STEM.to_string())],
         ),
         looked_at: cands,
     }
@@ -212,10 +210,13 @@ pub fn decide(crash_times_ms: &[u64], now_ms: u64, limits: CrashLimits) -> Decis
     let recent = crash_times_ms.iter().filter(|t| **t >= floor).count() as u32;
     if recent >= limits.max_crashes {
         return Decision::GiveUp {
-            reason: format!(
-                "本机后端在 {}ms 内崩了 {recent} 次（上限 {}）⇒ 放弃重起，\
-                 避免崩溃循环。远端功能不受影响；日志里有每次的退出状态",
-                limits.window_ms, limits.max_crashes
+            reason: copy_text(
+                "rsLocalBackend.decide.crashLoop",
+                &[
+                    ("windowMs", &limits.window_ms.to_string()),
+                    ("recent", &recent.to_string()),
+                    ("maxCrashes", &limits.max_crashes.to_string()),
+                ],
             ),
         };
     }
@@ -576,11 +577,13 @@ pub fn spawn_with_etxtbsy_retry(
 /// 它与「起不来」那句的分工：这一句必须让用户读得出**再开一次多半就好**，
 /// 那一句必须让用户读得出**这台机器上今天就是起不来**。
 pub fn etxtbsy_gave_up_reason(bin: &Path, tries: u32, last: &str) -> String {
-    format!(
-        "起 {} 时连着 {tries} 次撞上「这个文件正被谁打开着写」（ETXTBSY，os error 26）——\
-         这不是它起不来，是这一刻恰好有别的子进程还攥着我们刚写它时的那个写 fd。\
-         这个状态会自己过去，再开一次多半就好。最后一次逐字：{last}",
-        bin.display()
+    copy_text(
+        "rsLocalBackend.etxtbsy.gaveUp",
+        &[
+            ("bin", &(bin.display()).to_string()),
+            ("tries", &tries.to_string()),
+            ("last", &last.to_string()),
+        ],
     )
 }
 
@@ -752,7 +755,10 @@ pub fn supervise_with_stdio(
                 // 这台机器上它就是起不来 —— **今天那句照旧，一个字不改**。
                 Err(SpawnFailure::Broken(e)) => {
                     on_event(SuperviseEvent::GaveUp {
-                        reason: format!("起不来 {}：{e}", bin.display()),
+                        reason: copy_text(
+                            "rsLocalBackend.supervise.spawnFailed",
+                            &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
+                        ),
                     });
                     return;
                 }
@@ -940,7 +946,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
         Some(d) => d,
         None => {
             return Resolved::Missing {
-                reason: "拿不到自身可执行文件路径 ⇒ 无法定位本机后端 local_backend".into(),
+                reason: copy_text("rsLocalBackend.resolve.noSelfPath", &[]).into(),
                 looked_at: Vec::new(),
             }
         }
@@ -1072,7 +1078,12 @@ pub fn extract_embedded_to(
             return Ok(dest);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
+    std::fs::create_dir_all(dir).map_err(|e| {
+        copy_text(
+            "rsLocalBackend.extract.mkdirFailed",
+            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+        )
+    })?;
     // 先写临时文件再 rename：半截文件不许被当成可执行的后端（rename 在同一文件系统上原子）。
     // ★★ 临时名**带 pid**〔`P2t` 摸底 08-12〕：原来是**固定名**，两个同版本 monitor 同时释放
     // 会写同一个 `.partial` —— 一个写到一半、另一个 `rename` 走，出来的可能是**半截文件**，
@@ -1090,7 +1101,12 @@ pub fn extract_embedded_to(
     // （`bind.rs::is_pid_alive` 在非 Windows 上恒 false，拿来用会误删活的）。
     // ⇒ 按**年龄**判，阈值给得极宽（见常量头注）。
     sweep_stale_partials(dir, &local_extract_name(build_id));
-    std::fs::write(&tmp, bytes).map_err(|e| format!("写 {} 失败: {e}", tmp.display()))?;
+    std::fs::write(&tmp, bytes).map_err(|e| {
+        copy_text(
+            "rsLocalBackend.extract.writeFailed",
+            &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
+        )
+    })?;
     // `backend-split` 的 C10：**「怎么置可执行位」是平台知识，不许住在 backend**。
     // 这里只知道「写完要让它可执行」，那句话在本平台上怎么落由宿主注入
     // （`platform_fs::make_executable`）。原来这处是个 `#[cfg(unix)]` 块，
@@ -1098,7 +1114,13 @@ pub fn extract_embedded_to(
     make_executable(&tmp)?;
     std::fs::rename(&tmp, &dest).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
-        format!("rename 到 {} 失败: {e}", dest.display())
+        copy_text(
+            "rsLocalBackend.extract.renameFailed",
+            &[
+                ("dest", &(dest.display()).to_string()),
+                ("e", &e.to_string()),
+            ],
+        )
     })?;
     Ok(dest)
 }
@@ -1133,14 +1155,30 @@ pub fn place_local_panorama(
             return Ok(dest);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
+    std::fs::create_dir_all(dir).map_err(|e| {
+        copy_text(
+            "rsLocalBackend.extract.mkdirFailed",
+            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+        )
+    })?;
     let tmp = dir.join(format!(".{file}.{}.partial", std::process::id()));
     sweep_stale_partials(dir, file);
-    std::fs::write(&tmp, bytes).map_err(|e| format!("写 {} 失败: {e}", tmp.display()))?;
+    std::fs::write(&tmp, bytes).map_err(|e| {
+        copy_text(
+            "rsLocalBackend.extract.writeFailed",
+            &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
+        )
+    })?;
     make_executable(&tmp)?;
     std::fs::rename(&tmp, &dest).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
-        format!("rename 到 {} 失败: {e}", dest.display())
+        copy_text(
+            "rsLocalBackend.extract.renameFailed",
+            &[
+                ("dest", &(dest.display()).to_string()),
+                ("e", &e.to_string()),
+            ],
+        )
     })?;
     Ok(dest)
 }
@@ -1259,26 +1297,47 @@ pub fn install_local_ccm_entry(
     if dest == backend_bin {
         return Ok(dest);
     }
-    let src_meta = std::fs::metadata(backend_bin)
-        .map_err(|e| format!("读不到后端二进制 {}: {e}", backend_bin.display()))?;
+    let src_meta = std::fs::metadata(backend_bin).map_err(|e| {
+        copy_text(
+            "rsLocalBackend.ccmEntry.readFailed",
+            &[
+                ("bin", &(backend_bin.display()).to_string()),
+                ("e", &e.to_string()),
+            ],
+        )
+    })?;
     if let Ok(m) = std::fs::metadata(&dest) {
         if m.is_file() && m.len() == src_meta.len() && !older_than(&m, &src_meta) {
             return Ok(dest);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
+    std::fs::create_dir_all(dir).map_err(|e| {
+        copy_text(
+            "rsLocalBackend.extract.mkdirFailed",
+            &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+        )
+    })?;
     let tmp = dir.join(format!(".{}.{}.partial", name, std::process::id()));
     sweep_stale_partials(dir, &name);
     std::fs::copy(backend_bin, &tmp).map_err(|e| {
-        format!(
-            "把后端 {} 复制成本机 ccm 入口失败: {e}",
-            backend_bin.display()
+        copy_text(
+            "rsLocalBackend.ccmEntry.copyFailed",
+            &[
+                ("bin", &(backend_bin.display()).to_string()),
+                ("e", &e.to_string()),
+            ],
         )
     })?;
     make_executable(&tmp)?;
     std::fs::rename(&tmp, &dest).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
-        format!("rename 到 {} 失败: {e}", dest.display())
+        copy_text(
+            "rsLocalBackend.extract.renameFailed",
+            &[
+                ("dest", &(dest.display()).to_string()),
+                ("e", &e.to_string()),
+            ],
+        )
     })?;
     Ok(dest)
 }
@@ -1297,7 +1356,8 @@ fn older_than(dest: &std::fs::Metadata, src: &std::fs::Metadata) -> bool {
 /// 分得开」，而分得开这件事得有个不靠措辞的抓手。
 /// 🔴 **刻意不取自任何路径 / 目录名 / 夹具名**（固定项 12 那条 `6g`：诊断把路径原样印进输出，
 /// 于是「输出里含某句话」会**靠路径恒真**，把整支实现换掉都不红）。
-const EXTRACTION_REFUSED_MARKER: &str = "放不下来";
+static EXTRACTION_REFUSED_MARKER: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsLocalBackend.extraction.refusedMarker", &[]));
 
 /// 🔴 `K-R42` 硬要求①：**权限写不进去时响亮失败，不许静默退回「没有后端」。**
 ///
@@ -1321,15 +1381,13 @@ const EXTRACTION_REFUSED_MARKER: &str = "放不下来";
 ///
 /// 不碰文件系统、不碰时钟 ⇒ 两种输入的两句话都测得到（同本模块 [`decide`] 的理由）。
 pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
-    format!(
-        "这一份 monitor **自己带着**本机后端，但它{EXTRACTION_REFUSED_MARKER} —— \
-         往 `{}` 里写的时候失败了（{err}）。\n\
-         🔴 这**不是**「这份产物没有本机后端」：那是另一回事，下一步也不一样。\n\
-         ⇒ 下一步挑一条：① 看那个目录是不是只读、或者被杀毒软件挡着，给它写权限；\
-         ② 让 monitor 跑在一个家目录写得进去的账号下；\
-         ③ 不想动它就**装一次安装包**（Releases 页）—— 装出来的那份后端与 monitor 同目录，\
-         根本不用写这里。",
-        dir.display()
+    copy_text(
+        "rsLocalBackend.extraction.failed",
+        &[
+            ("marker", &EXTRACTION_REFUSED_MARKER.to_string()),
+            ("dir", &(dir.display()).to_string()),
+            ("err", &err.to_string()),
+        ],
     )
 }
 
@@ -1772,9 +1830,9 @@ pub(crate) fn local_stdio_consumer(
 
     // 〔SR1a〕流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
     if let Some(mine) = registered.as_ref() {
-        crate::link_mux::fail_owned_by(mine, "本机后端的流断了（stdio 载体）");
+        crate::link_mux::fail_owned_by(mine, &copy_text("rsLocalBackend.stdio.broken", &[]));
         // 〔SR1b〕经它开的传输也一律收场（后端的票表随那条流一起撤了）。
-        crate::sftp_pool::fail_owned_by(mine, "本机后端的流断了（stdio 载体）");
+        crate::sftp_pool::fail_owned_by(mine, &copy_text("rsLocalBackend.stdio.broken", &[]));
     }
     // 〔CF1〕告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     crate::local_lines::stream_ended_blocking();

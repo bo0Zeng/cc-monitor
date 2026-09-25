@@ -23,6 +23,7 @@
 //! 而那两件事在前端要走**不同的分支**。
 
 use super::ccm_invocation::{render_ccm_invocation, Action, CliAccount, CliSpec, Container};
+use crate::copy_table::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -359,10 +360,10 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
     // （那边也是 `action.kind === "attach"` 第一个判）。
     if let Some(o @ super::payload::TmuxOuter::Attach { .. }) = &outer {
         if !req.env.is_empty() || !req.args.is_empty() || !req.launcher.is_empty() {
-            return Err(super::payload::refuse(
-                "attach 那一格带了载荷字段（env / args / launcher）—— 它一个 agent 进程都不起，\
-                 这几个字段只会被丢掉。请求形状对不上，拒。",
-            ));
+            return Err(super::payload::refuse(&copy_text(
+                "rsLaunchWire.attach.withPayload",
+                &[],
+            )));
         }
         return super::payload::render_tmux_outer(o, None);
     }
@@ -398,10 +399,10 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
     //   `payload.rs::render_payload` 头注逐字写过这一条：「U8c-2 接 tmux 路径时
     //   **必须传 `cwd: None`**，否则会多出一段 `cd`」。这里就是那个落点。
     if outer.is_some() && req.cwd.is_some() {
-        return Err(super::payload::refuse(
-            "同时送了顶层 cwd 与外层容器 —— tmux 那两格的 cwd 归外层的 `new-session -c`，\
-             内层不加 `cd`。两个都送说明调用方把两层的 cwd 搞混了，拒。",
-        ));
+        return Err(super::payload::refuse(&copy_text(
+            "rsLaunchWire.cwd.both",
+            &[],
+        )));
     }
     let payload = super::payload::render_payload(&super::payload::PayloadSpec {
         env: &env,
