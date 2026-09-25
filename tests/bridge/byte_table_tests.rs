@@ -224,6 +224,19 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         ] {
             assert!(!s.contains(banned), "{r:?} 说了禁词 {banned}：{s}");
         }
+        // 每一形说的是**自己那一句**（`96 §7.1.4b` 那张表的第一句，各取一个它独有的词）：
+        //   只比「五句互不相同」挡不住「一形借了另一形的句子、填了不同的参数」（死值验 K6 首刀没砍中，补这一向）。
+        let own = match r {
+            Refusal::UnsupportedMachine { .. } => "不为这种机器准备后端",
+            Refusal::OsUnknown { .. } => "是什么系统",
+            Refusal::ArchUnknown { .. } => "处理器架构",
+            Refusal::NotPromisedHere { .. } => "只在本机用得上",
+            Refusal::NotCarried { .. } => "没有带",
+        };
+        assert!(
+            s.contains(own),
+            "{r:?} 说的不是自己那一句（缺「{own}」）：{s}"
+        );
         said.insert(s);
     }
     assert_eq!(said.len(), cases.len(), "五形里有两形说成了同一句");
