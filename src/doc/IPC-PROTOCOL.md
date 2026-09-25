@@ -932,7 +932,7 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 ```text
 → {"id":"f2","cmd":"files-stat","args":{"path":"/home/u/p/a.rs"}}
 ← {"kind":"reply","id":"f2","ok":true,"data":{
-     "path":"/home/u/p/a.rs","kind":"file","size":1234,"readonly":false,"mtime_secs":1758300000}}
+     "path":"/home/u/p/a.rs","kind":"file","size":1234,"readonly":false,"mode":420,"mtime_secs":1758300000}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -941,6 +941,7 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 | `kind` | ← | 同上那个闭集四个词 |
 | `size` / `mtime_secs` | ← | 字节数 / Unix 纪元秒（`mtime_secs` 拿不到就不出这个键） |
 | `readonly` | ← | 这个路径此刻是不是只读 |
+| `mode` | ← | 〔GP1 · 第四波〕unix 权限位的低 12 位（十进制数；`420` = `0o644`）。**非 unix 平台不出这个键**（不是 `0`：`0` 是一个真能设的值）。文件窗口改权限那个框拿它显示现值（`设计/60 §7`） |
 
 ⚠ **它跟 symlink**（拿的是链接指向的那个东西的元数据）。不跟的那个读法要给后端的
 只读动词白名单**加一个词**，那是**放宽一条红线**，所以没做 —— **这是一条真实的局限**。

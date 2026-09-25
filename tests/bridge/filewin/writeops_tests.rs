@@ -1016,3 +1016,136 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
         WritePrompt::for_chmod_many("/srv/data", &[&a])
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔GP1 · 第四波〕改权限那个框显示现值
+//
+// 要求住址：`设计/60 §7`（改权限时显示现值）· `调研/第四波记录/FW5.md §四`（缺后端读口，已报备）·
+// `调研/第四波记录/GP1.md §5`（P2）。后端那一半（`files-stat` 送 `mode`）的判据住后端
+// `files::tests::gp1_stat_reports_the_declared_fields_and_the_real_mode_bits`。
+// ═══════════════════════════════════════════════════════════════════════
+
+/// P2：现值那一句 ＋ 预填 == 手写表（一项 · 多项同 · 多项不同 · 有一项读不到 · 空摞）。
+#[test]
+fn gp1_the_chmod_box_says_the_current_mode_and_prefills_only_what_it_really_read() {
+    let r = |line: &str, prefill: Option<&str>| ModeReadout {
+        line: line.to_string(),
+        prefill: prefill.map(str::to_string),
+    };
+    let cells: [(&[Option<u32>], ModeReadout); 6] = [
+        (&[Some(0o644)], r("现在是 644", Some("644"))),
+        (&[Some(0o4755)], r("现在是 4755", Some("4755"))),
+        (&[Some(0o750), Some(0o750)], r("现在是 750", Some("750"))),
+        (
+            &[Some(0o750), Some(0o644)],
+            r("这几项现在的权限不一样", None),
+        ),
+        (&[Some(0o644), None], r("读不到现在的权限", None)),
+        (&[], r("读不到现在的权限", None)),
+    ];
+    for (modes, want) in cells {
+        assert_eq!(mode_readout(modes), want, "mode_readout({modes:?})");
+    }
+}
+
+/// P2′：应答里的 `mode` 怎么读 —— 缺席 / 类型不对 / 超出低 12 位 ⇒ 当读不到（不猜一个值）。
+#[test]
+fn gp1_the_mode_is_read_from_the_stat_reply_or_not_at_all() {
+    assert_eq!(mode_of(&serde_json::json!({"mode": 420})), Some(0o644));
+    assert_eq!(
+        mode_of(&serde_json::json!({"size": 1})),
+        None,
+        "非 unix 那台不送 ⇒ 读不到"
+    );
+    assert_eq!(mode_of(&serde_json::json!({"mode": "644"})), None);
+    assert_eq!(mode_of(&serde_json::json!({"mode": -1})), None);
+    assert_eq!(mode_of(&serde_json::json!({"mode": 0o10000})), None);
+}
+
+/// P2″：预填至多一次；用户已经动过那一栏 ⇒ 不盖；清空之后不再被塞回去。
+#[test]
+fn gp1_the_current_mode_is_prefilled_at_most_once_and_never_over_what_you_typed() {
+    let a = row("a.bin", false, false);
+    let got = mode_readout(&[Some(0o640)]);
+    let mut p = WritePrompt::for_chmod("/srv/data", &a);
+    assert_eq!(p.text, "", "框摆出来时空着（现值还没答回来）");
+    apply_prefill(&mut p, &got);
+    assert_eq!(p.text, "640");
+    p.text.clear();
+    apply_prefill(&mut p, &got);
+    assert_eq!(p.text, "", "用户清空之后又被塞回去了");
+    // 用户先动了手 ⇒ 不盖。
+    let mut q = WritePrompt::for_chmod("/srv/data", &a);
+    q.text = "7".into();
+    apply_prefill(&mut q, &got);
+    assert_eq!(q.text, "7");
+    // 各项不同 ⇒ 不预填（替用户挑一个就是猜）。
+    let mut m = WritePrompt::for_chmod_many("/srv/data", &[&a, &a]);
+    apply_prefill(&mut m, &mode_readout(&[Some(0o600), Some(0o644)]));
+    assert_eq!(m.text, "");
+    // 读回来的值原样确认 ⇒ 出的那一件就是原值（点确认 = 不变，不会静默改坏）。
+    p.text = "640".into();
+    assert_eq!(
+        p.to_op().expect("合法"),
+        WriteOp::Chmod {
+            path: "/srv/data/a.bin".into(),
+            mode: 0o640,
+            raw: None,
+        }
+    );
+}
+
+/// P2‴：现值那一趟的代数 —— 框换了之后，上一个框晚到的答案不许落到新框上。
+#[test]
+fn gp1_a_late_answer_for_an_old_box_never_lands_on_the_new_one() {
+    let probe = ModeProbe::default();
+    let old = probe.start();
+    let new = probe.start();
+    probe.land(old, vec![Some(0o777)]);
+    assert_eq!(probe.readout(), None, "旧框那一趟的答案落到了新框上");
+    probe.land(new, vec![Some(0o600)]);
+    assert_eq!(
+        probe.readout().map(|r| r.line),
+        Some("现在是 600".to_string())
+    );
+}
+
+/// P2⁗：现值那一趟**真上线**：挂一台合成后端（它按盘上真文件答 `files-stat`，`mode` 取真权限位），逐项问、按序交回；
+/// 不在的那一项 ⇒ `None`（读不到，不猜）。异源：期望的权限位是本测试自己 `set_permissions` 设下去的。
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = std::env::temp_dir().join(format!("ccm-gp1-modes-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("建夹具目录");
+    let a = dir.join("a.bin");
+    let b = dir.join("b.bin");
+    for (f, m) in [(&a, 0o640_u32), (&b, 0o600)] {
+        std::fs::write(f, b"x").expect("铺文件");
+        std::fs::set_permissions(f, std::fs::Permissions::from_mode(m)).expect("设权限");
+    }
+    let wired = wire_up(
+        "gp1-modes",
+        FakeBackend::new(&["files-stat"], Declared::default()),
+    )
+    .await;
+    let origin = crate::origin::Origin(wired.origin.clone());
+    let paths: Vec<String> = [&a, &b, &dir.join("gone.bin")]
+        .iter()
+        .map(|p| p.to_str().expect("ASCII").to_string())
+        .collect();
+    let got = probe_modes(&wired.line, &origin, &paths).await;
+    assert_eq!(got, vec![Some(0o640), Some(0o600), None]);
+    let asked: Vec<String> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|v| v["cmd"] == "files-stat")
+        .map(|v| v["args"]["path"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert_eq!(asked, paths, "逐项各问一次、按序");
+    std::fs::remove_dir_all(&dir).ok();
+}

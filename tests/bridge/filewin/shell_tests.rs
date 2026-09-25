@@ -2424,3 +2424,20 @@ fn the_open_terminal_command_equals_the_old_panels_byte_for_byte() {
     //   路径里自带的双引号会原样进单引号里 ⇒ 那一形由 `launch.rs` 拒、窗口出声，不在这里兜。
     assert!(!build_open_terminal_cmd("").contains('"'));
 }
+
+/// 〔GP1 · 第四波〕改权限那个框：没有运行时 / 没有通道 ⇒ 现值那一趟**当场**落「读不到」（框上说出来，不静默、不猜），
+/// 框照旧空着开。要求住址：`设计/60 §7` · `调研/第四波记录/GP1.md §5`。
+#[test]
+fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    assert_eq!(w.mode_probe.readout(), None, "还没摆框就有了现值");
+    assert!(w.begin_chmod(0), "权限框没摆出来");
+    assert_eq!(
+        w.mode_probe.readout(),
+        Some(crate::filewin::writeops::ModeReadout {
+            line: "读不到现在的权限".to_string(),
+            prefill: None,
+        })
+    );
+    assert_eq!(w.write_prompt().map(|p| p.text.as_str()), Some(""));
+}
