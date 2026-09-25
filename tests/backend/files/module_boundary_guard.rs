@@ -143,13 +143,19 @@ fn has_prefix(hay: &str, prefix: &str) -> bool {
 /// 模块成员里**不住 `files/` 目录**的那几份（仓相对 `src/backend`）。
 /// 〔F7c · 第三波 09-24〕`control/files_commit.rs`（上传的提交）同一条理由住 `control/`：
 /// 它会改变世界；而 `files/` 那一族的头注逐字「整族纯读」，放进去那句话就当场变假。
-const MEMBERS_ELSEWHERE: &[&str] = &["control/files_commit.rs", "control/files_write.rs"];
+/// 〔SR1b · 第四波 09-24〕`control/transfer.rs`（传输台住本机后端：下载的本机落点在这里写）同一条理由住 `control/`。
+const MEMBERS_ELSEWHERE: &[&str] = &[
+    "control/files_commit.rs",
+    "control/files_write.rs",
+    "control/transfer.rs",
+];
 
 /// 模块在 crate 内的路径前缀（**成员之间**的引用不算一条边）。
 const MODULE_PATHS: &[&str] = &[
     "files::",
     "control::files_commit::",
     "control::files_write::",
+    "control::transfer::",
 ];
 
 fn src_root() -> PathBuf {
@@ -237,6 +243,14 @@ enum Kind {
     /// 这一类的条数被钉死（[`the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis`]），
     /// 多一条就红。搬走它要动 `lib.rs` 的模块层（A1 那一路的写区），本路不做。
     LedgerAxis,
+    /// 🔴 〔SR1b · 第四波 09-24〕**用户那三样之外的第二类**：传输台（`control/transfer.rs`）的**传输**。
+    ///
+    /// 用户 V89「SFTP 进本机常驻后端」：传输台搬进本机后端之后，它要一条 sftp 会话（`dial::sftp`，
+    /// 与其它 SSH 同一条连接）才搬得动字节，要出方向那一种帧（`wire`）才报得出进度 —— 这两样是
+    /// 「传输」这件事本身，不是顺手借用。⇒ 只许 `dial::sftp::` 与 `wire::` 两个前缀，条数钉死
+    /// （[`the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis`]）；传输台**只经** `dial/sftp.rs`
+    /// 够到拨号（手里不拿 `DialRequest`，拿的是那一份包出来的 `Dial`）。
+    Transport,
 }
 
 /// ★ **登记表**：模块生产段够到外面的符号，**逐条**。
@@ -252,6 +266,11 @@ const OUTWARD: &[(&str, Kind)] = &[
     // ── 汇总层的 target 轴（用户那三样之外，条数钉死）─────────────────
     ("TARGETS", Kind::LedgerAxis),
     ("Target", Kind::LedgerAxis),
+    // ── 〔SR1b〕传输台的传输（用户那三样之外，条数钉死）─────────────────
+    ("dial::sftp::Dial", Kind::Transport),
+    ("dial::sftp::Session", Kind::Transport),
+    ("wire::Frame", Kind::Transport),
+    ("wire::TransferEnd", Kind::Transport),
 ];
 
 /// 围栏那一类**只许**是这一个符号（不是「`agents::` 底下随便什么」）。
@@ -325,6 +344,16 @@ const DOORS: &[(&str, &str, Door)] = &[
         "control::files_commit::answer_wire",
         Door::Command,
     ),
+    // 〔SR1b · 第四波 09-24〕传输台（`control/transfer.rs`）：**每条流连接一张票表**（同 `dial::link::Table`）
+    //   ⇒ 这一面的入口是「造表 ＋ 答口」两个函数，外加读循环 / 分派签名里点名的那个表类型。
+    //   四条 `transfer-*` 硬臂**全**经 `answer_wire` 进来（它们是 `Run::Builtin`，要碰本连接的票表与应答通道）。
+    ("inbound.rs", "control::transfer::Desk", Door::Command),
+    ("inbound.rs", "control::transfer::Desk::new", Door::Command),
+    (
+        "inbound.rs",
+        "control::transfer::Desk::answer_wire",
+        Door::Command,
+    ),
     ("lib.rs", "files::capability_names", Door::Ledger),
 ];
 
@@ -371,6 +400,7 @@ fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
             Kind::Common => has_prefix(path, "common::"),
             Kind::Fence => *path == THE_FENCE,
             Kind::LedgerAxis => *path == "Target" || *path == "TARGETS",
+            Kind::Transport => has_prefix(path, "dial::sftp::") || has_prefix(path, "wire::"),
         };
         assert!(
             ok,
@@ -386,6 +416,16 @@ fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
         "用户那三样之外的边从 2 条变成了 {axis} 条 —— **相等，不是上限**。\
          变多 = 模块又长出一条 platform / common / 围栏之外的依赖；\
          变少 = target 轴被搬走了（好事，同拍把这一类删掉）"
+    );
+    // 〔SR1b〕传输那一类：**相等**。变多 = 传输台又伸手够了一样东西；变少 = 同拍删行。
+    let transport = OUTWARD
+        .iter()
+        .filter(|(_, k)| *k == Kind::Transport)
+        .count();
+    assert_eq!(
+        transport, 4,
+        "传输台的外向边从 4 条变成了 {transport} 条 —— 它只该要一条 sftp 会话（经 `dial/sftp.rs` 的 \
+         `Dial` / `Session`）和出方向那一种帧（`Frame` / `TransferEnd`）"
     );
 }
 
@@ -409,10 +449,11 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
     );
     let command = DOORS.iter().filter(|(_, _, d)| *d == Door::Command).count();
     assert_eq!(
-        command, 3,
-        "命令注册那一处够到的入口函数从 3 个变成了 {command} 个 —— \
+        command, 6,
+        "命令注册那一处够到的入口从 6 个变成了 {command} 个 —— \
          三面（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire` ／ \
          上传提交 `control::files_commit::answer_wire`〔F7c 09-24 +1〕）各一个入口，\
+         〔SR1b 09-24 +3〕传输台每连接一张表：表类型 ＋ 造表 `Desk::new` ＋ 答口 `Desk::answer_wire`。\
          多一个就说明有命令绕过了入口、直接调内部"
     );
 }
@@ -426,6 +467,8 @@ fn the_file_backend_is_mounted_from_exactly_its_three_declarations() {
         ("control/mod.rs", "pub mod files_write;"),
         // 〔F7c · 第三波 09-24〕上传的提交那一份。
         ("control/mod.rs", "pub mod files_commit;"),
+        // 〔SR1b · 第四波 09-24〕传输台那一份。
+        ("control/mod.rs", "pub mod transfer;"),
     ] {
         let src = std::fs::read_to_string(root.join(file))
             .unwrap_or_else(|e| panic!("读不到 `{file}`：{e}"));

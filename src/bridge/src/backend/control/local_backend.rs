@@ -1480,6 +1480,7 @@ fn read_capped_line_sync<R: std::io::BufRead>(
 ///   ⚠ **此前本机两条读循环一条都不路由应答**（现打逐行读过）⇒ 在本机那条通道上发出去的入方向命令
 ///   **只会等到超时**。开链路（`link-open`）要这条应答，所以这一格在这一拍补上。
 /// - `link_data` / `link_end` ⇒ 交 [`crate::link_mux`]（链路的 monitor 这一侧）。
+/// - 〔SR1b〕`transfer` ⇒ 交 [`crate::sftp_pool::deliver`]（传输台的中继）。
 pub(crate) fn absorb_local_frame(
     frame: crate::ssh_source::InboundFrame,
     client: Option<&std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
@@ -1519,6 +1520,13 @@ pub(crate) fn absorb_local_frame(
         },
         InboundFrame::LinkData { link, data } => crate::link_mux::deliver_data(&link, data),
         InboundFrame::LinkEnd { link, error } => crate::link_mux::deliver_end(&link, error),
+        // 〔SR1b〕传输台住本机后端：进度 / 终局交中继（`sftp_pool::deliver`，从不阻塞）。
+        InboundFrame::Transfer {
+            id,
+            got,
+            total,
+            end,
+        } => crate::sftp_pool::deliver(&id, got, total, end),
         // 其余帧（会话 / 行 / hello …）本机这条流今天不消费（本机会话走本地 watcher）。
         _ => {}
     }
@@ -1665,6 +1673,8 @@ pub(crate) fn local_stdio_consumer(
     // 〔SR1a〕流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
     if let Some(mine) = registered.as_ref() {
         crate::link_mux::fail_owned_by(mine, "本机后端的流断了（stdio 载体）");
+        // 〔SR1b〕经它开的传输也一律收场（后端的票表随那条流一起撤了）。
+        crate::sftp_pool::fail_owned_by(mine, "本机后端的流断了（stdio 载体）");
     }
     // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
     //   —— 而那一行只在 `BackendHello::from_hello_frame` 给出见证之后才跑得到。

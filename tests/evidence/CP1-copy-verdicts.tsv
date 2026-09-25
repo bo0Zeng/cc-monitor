@@ -1293,3 +1293,8 @@ src/settings/panel.ts:1545	Claude 数据目录	保留	[对外] 落盘失败 / �
 src/settings/panel.ts:1733	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/panel.ts:1763	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/account-new-form.ts:86	Base URL，留空用默认上游	保留	[对外] 加账号表单 apikey 那一支的 Base URL 输入框占位（ST2 · 70 §4.4 线框里那一格）
+src/backend/control/transfer.rs:531	`{other}` 不是传输台的命令	保留	[可达存疑] 〔SR1b〕传输台答口收到一条不是它的命令（分派臂只把那四条交过来，按构造到不了）；短、只点命令名
+src/backend/control/transfer.rs:572	读本地 {local} 失败: {e}	保留	[对外] 〔SR1b〕开单上传时读不到本机那份文件（搬自 monitor 旧传输台同一句）；窗口在传输那一行原样显示；路径与系统原话是用户要的信息
+src/backend/control/transfer.rs:575	{local} 不是一份普通文件	保留	[对外] 〔SR1b〕拖进来的是目录 / 设备（搬自 monitor 旧传输台同一句）；短、无内部词
+src/backend/control/transfer.rs:652	没有这一趟传输（{tid}）	保留	[可达存疑] 〔SR1b〕起跑一张不在册的票（monitor 中继只起跑自己开的票）；短、无内部词
+src/backend/control/transfer.rs:658	这一趟传输已经起跑了（{tid}）	保留	[可达存疑] 〔SR1b〕同一趟起跑两次（monitor 一趟只订阅一次）；短、无内部词
