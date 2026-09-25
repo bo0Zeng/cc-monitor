@@ -265,7 +265,7 @@ describe("A3 本机换号重启（origin = <local>）", () => {
     expect(recordLast).not.toHaveBeenCalled();
     const toasts = vi.mocked(showActionFailureToast).mock.calls;
     const last = toasts.at(-1);
-    expect(last?.[0]).toBe("旧会话已结束，但新会话未能自动拉起");
+    expect(last?.[0]).toBe("旧会话已退出，但新会话没能自动起来");
     expect(String(last?.[1])).not.toContain("剪贴板");
     expect(String(last?.[1])).not.toContain("远端");
     // 本机那一跳自己先说了一次**为什么**没起来（后端的原话）。

@@ -2,7 +2,6 @@
 src/account-chip.ts	未抽
 src/account-commands.ts	未抽
 src/account-restart-local.ts	未抽
-src/account-restart.ts	未抽
 src/accounts-decode.ts	未抽
 src/accounts.ts	C4d 在改这一带，留最后一批
 src/agent-profile.ts	未抽
@@ -167,12 +166,10 @@ src/launch-render-cli.ts	未抽
 src/launch-render-fallback.ts	未抽
 src/launch-requests.ts	未抽
 src/launcher-diagnostics.ts	未抽
-src/main.ts	未抽
 src/panorama-engine/main.rs	射程外：全景独立小程序（另一个可执行文件）
 src/paste-block.ts	未抽
 src/remote-config.ts	未抽
 src/remote-health.ts	未抽
-src/remote-launch-run.ts	未抽
 src/render.ts	未抽
 src/session-reads.ts	未抽
 src/settings/account-new-form.ts	未抽
@@ -206,8 +203,6 @@ src/tab-bar-drag.ts	未抽
 src/tab-bar-prefs.ts	未抽
 src/tab-bar-view.ts	未抽
 src/tab-drop.ts	未抽
-src/tab-menu.ts	未抽
-src/tab-session-actions.ts	未抽
 src/tab-stream-view.ts	未抽
 src/tasks-panel.ts	未抽
 src/terminal-front.ts	未抽

@@ -17,6 +17,7 @@ import { showActionFailureToast } from "./error-toast";
 // 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（〔C4b〕账号面那个第二种写法已退役，只剩这一个）。
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { runLocalRestartResume } from "./account-restart-local";
+import { copyText } from "./copy-table";
 
 export interface RestartWithAccountOpts {
   origin: string;
@@ -74,8 +75,8 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   const configDir = accountConfigDir(state, accountName);
   if (!configDir) {
     showActionFailureToast(
-      "账号不可用",
-      `账号「${accountName}」当前不可选（未登录 / 非隔离 / 目录缺失），无法用它重启。`,
+      copyText("accountRestart.unselectable.title"),
+      copyText("accountRestart.unselectable.body", { name: accountName }),
       { level: "info", durationMs: 6000 },
     );
     return false;
@@ -85,7 +86,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   try {
     const t = await checkTrust(origin, configDir, cwd);
     if (t.available && t.known && !t.trusted) {
-      trustWarn = "\n注意：该账号尚未信任此目录，CC 可能在弹出的终端里询问是否信任。";
+      trustWarn = copyText("accountRestart.confirm.trustWarn");
     }
   } catch {
     /* trust 查询失败不影响主流程 */
@@ -94,20 +95,16 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // ② 破坏性二次确认。
   const confirmFn = opts.confirm ?? ((m: string) => window.confirm(m));
   const msg =
-    `用账号「${accountName}」重启此会话？\n\n` +
-    `会中断当前回合：先请求会话优雅退出（最多等 ~10s），再结束旧进程（tmux 会话 ${tmuxName}），` +
-    `然后用新账号 resume 同一会话。` +
-    (opts.compactFirst
-      ? "\n将先在【旧账号】上 /compact（命中旧缓存更省），可能耗时数分钟。"
-      : "") +
-    trustWarn;
+    copyText("accountRestart.confirm.body", { name: accountName, tmuxName, compact: (opts.compactFirst
+      ? copyText("accountRestart.confirm.compactNote")
+      : ""), trust: trustWarn });
   if (!confirmFn(msg)) return false;
 
   // ③ [可选] 在【旧账号】上 compact（换号前，命中旧缓存——§5.1）。失败/超时不阻断（§5.2）。
   if (opts.compactFirst) {
     showActionFailureToast(
-      "正在压缩上下文…",
-      "已在旧账号上发送 /compact（命中旧缓存更省），完成后换号重启。",
+      copyText("accountRestart.compact.running"),
+      copyText("accountRestart.compact.sent"),
       { level: "info", durationMs: 8000 },
     );
     try {
@@ -117,13 +114,13 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
         : await delay(DEFAULT_COMPACT_WAIT_MS).then(() => false);
       if (!done) {
         showActionFailureToast(
-          "压缩可能未完成",
-          "等待超时——仍继续换号重启（compact 是优化非必需）。",
+          copyText("accountRestart.compact.timeoutTitle"),
+          copyText("accountRestart.compact.timeout"),
           { level: "info", durationMs: 6000 },
         );
       }
     } catch (e) {
-      showActionFailureToast("压缩未执行", `${String(e)}——跳过，继续换号重启。`, {
+      showActionFailureToast(copyText("accountRestart.compact.skippedTitle"), copyText("accountRestart.compact.skipped", { e: String(e) }), {
         level: "info",
         durationMs: 6000,
       });
@@ -158,14 +155,14 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
       : await delay(DEFAULT_EXIT_WAIT_MS).then(() => false);
     if (!exited) {
       showActionFailureToast(
-        "优雅退出超时",
-        "等待会话自行退出超时——改为强制结束（当前回合已中断）。",
+        copyText("accountRestart.exit.timeoutTitle"),
+        copyText("accountRestart.exit.timeout"),
         { level: "info", durationMs: 6000 },
       );
     }
   } catch (e) {
     // send-keys 发不出去（会话已没了 / tmux 异常等）——不中止，交给 ④c kill 收场。
-    showActionFailureToast("优雅退出未完成", `${String(e)}——改为强制结束旧会话。`, {
+    showActionFailureToast(copyText("accountRestart.exit.failedTitle"), copyText("accountRestart.exit.failed", { e: String(e) }), {
       level: "info",
       durationMs: 5000,
     });
@@ -174,8 +171,8 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     await commands.kill_remote_tmux({ origin, target: tmuxName });
   } catch (e) {
     showActionFailureToast(
-      "重启已中止",
-      `结束旧会话失败：${String(e)}。未继续 resume（避免新旧两个进程抢同一会话）。`,
+      copyText("accountRestart.aborted.title"),
+      copyText("accountRestart.aborted.body", { e: String(e) }),
       { level: "error", durationMs: 10000 },
     );
     return false;
@@ -207,20 +204,19 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // 那种情况下会话已被 kill 却没起来,还被钉上"上次用账号 X 起"、被批量对齐计成成功。
   if (!launched) {
     showActionFailureToast(
-      "旧会话已结束，但新会话未能自动拉起",
+      copyText("accountRestart.relaunch.failedTitle"),
       isLocal
         ? // 本机没有剪贴板那条回退 —— 不许照抄远端那句「到远端终端粘贴」。
-          `会话内容不会丢，可以在标签页上右键 Resume 重新拉起。本次没有记下账号归属。`
-        : `已用「${accountName}」的命令回退到剪贴板——请到远端终端粘贴执行，会话内容不会丢（jsonl 续写）。` +
-          `未记账本次账号归属。`,
+          copyText("accountRestart.relaunch.failedBody")
+        : copyText("accountRestart.relaunch.copied", { name: accountName }),
       { level: "error", durationMs: 12000 },
     );
     return false;
   }
   void recordLastAccount(sessionId, accountName);
   showActionFailureToast(
-    "已用新账号重启",
-    `已用「${accountName}」重启此会话；若 CC 询问是否信任该目录，请在弹出的终端里确认。`,
+    copyText("accountRestart.done.title"),
+    copyText("accountRestart.done.body", { name: accountName }),
     { level: "info", durationMs: 8000 },
   );
   return true;

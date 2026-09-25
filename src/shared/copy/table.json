@@ -2761,6 +2761,836 @@
       "kind": "action",
       "zh": "关闭已结束的 Tab",
       "args": []
+    },
+    "remoteLaunchRun.copyFallback.failedManual": {
+      "kind": "error",
+      "zh": "拉起失败，请手动复制以下命令",
+      "args": []
+    },
+    "remoteLaunchRun.attach.failedCopied": {
+      "kind": "error",
+      "zh": "拉起失败，已复制 attach 命令",
+      "args": []
+    },
+    "remoteLaunchRun.attach.startedBody": {
+      "kind": "body",
+      "zh": "新终端窗口正在连接 [{machine}]，attach 到 tmux 会话「{name}」。",
+      "args": ["machine", "name"]
+    },
+    "remoteLaunchRun.attach.started": {
+      "kind": "body",
+      "zh": "已拉起 tmux attach",
+      "args": []
+    },
+    "remoteLaunchRun.attach.buildFailed": {
+      "kind": "error",
+      "zh": "生成不了 attach 命令",
+      "args": []
+    },
+    "remoteLaunchRun.launcher.failedCopied": {
+      "kind": "error",
+      "zh": "拉起失败，已复制命令",
+      "args": []
+    },
+    "remoteLaunchRun.launcher.startedBody": {
+      "kind": "body",
+      "zh": "新终端窗口正在连接 [{machine}]，在 tmux 会话「{name}」里启动 Claude。",
+      "args": ["machine", "name"]
+    },
+    "remoteLaunchRun.launcher.started": {
+      "kind": "body",
+      "zh": "已拉起「开新 Claude」",
+      "args": []
+    },
+    "remoteLaunchRun.launcher.buildFailed": {
+      "kind": "error",
+      "zh": "生成不了启动命令",
+      "args": []
+    },
+    "remoteLaunchRun.inPlaceLocal.manual": {
+      "kind": "body",
+      "zh": "已就地 resume，请手动复制 attach 命令",
+      "args": []
+    },
+    "remoteLaunchRun.inPlaceLocal.copied": {
+      "kind": "body",
+      "zh": "已就地 resume，attach 命令已复制",
+      "args": []
+    },
+    "remoteLaunchRun.inPlaceLocal.doneBody": {
+      "kind": "body",
+      "zh": "已在本机 tmux 会话「{name}」里就地 resume，没有新建。终端窗口正在接上它。",
+      "args": ["name"]
+    },
+    "remoteLaunchRun.inPlaceLocal.done": {
+      "kind": "body",
+      "zh": "已就地 resume",
+      "args": []
+    },
+    "remoteLaunchRun.inPlaceLocal.attachFailedBody": {
+      "kind": "error",
+      "zh": "{err}\n会话已经 resume 了，只是终端没接上。",
+      "args": ["err"]
+    },
+    "remoteLaunchRun.inPlaceLocal.attachFailed": {
+      "kind": "error",
+      "zh": "已就地 resume，但生成不了接终端的命令",
+      "args": []
+    },
+    "remoteLaunchRun.inPlaceLocal.noBackend": {
+      "kind": "error",
+      "zh": "本机后端不在，确认不了有没有执行",
+      "args": []
+    },
+    "remoteLaunchRun.inPlace.notRun": {
+      "kind": "error",
+      "zh": "就地 resume 未执行",
+      "args": []
+    },
+    "remoteLaunchRun.inPlace.buildFailed": {
+      "kind": "error",
+      "zh": "生成不了就地 resume 命令",
+      "args": []
+    },
+    "remoteLaunchRun.inPlace.failedCopied": {
+      "kind": "error",
+      "zh": "拉起失败，已复制就地 resume 命令",
+      "args": []
+    },
+    "remoteLaunchRun.inPlace.doneBody": {
+      "kind": "body",
+      "zh": "新终端窗口正在连接 [{machine}]，在原来的 tmux 会话「{name}」里 resume，不新建。",
+      "args": ["machine", "name"]
+    },
+    "remoteLaunchRun.inPlace.doneByBackend": {
+      "kind": "body",
+      "zh": "已在 tmux 会话「{name}」里就地 resume，没有新建。新终端窗口正在连接 [{machine}] 接上它。",
+      "args": ["name", "machine"]
+    },
+    "remoteLaunchRun.inPlace.done": {
+      "kind": "body",
+      "zh": "已在原来的 tmux 里就地 resume",
+      "args": []
+    },
+    "remoteLaunchRun.inPlace.refusedUnsure": {
+      "kind": "error",
+      "zh": "远端拒绝了，也确认不了有没有执行",
+      "args": []
+    },
+    "remoteLaunchRun.sendInto.noReason": {
+      "kind": "error",
+      "zh": "后端没说明原因",
+      "args": []
+    },
+    "remoteLaunchRun.resumeTmux.failedCopied": {
+      "kind": "error",
+      "zh": "拉起失败，已复制 tmux resume 命令",
+      "args": []
+    },
+    "remoteLaunchRun.resumeTmux.startedBody": {
+      "kind": "body",
+      "zh": "新终端窗口正在连接 [{machine}]，在 tmux 会话里 resume 这个会话。",
+      "args": ["machine"]
+    },
+    "remoteLaunchRun.resumeTmux.started": {
+      "kind": "body",
+      "zh": "已在 tmux 里 resume",
+      "args": []
+    },
+    "remoteLaunchRun.resumeTmux.buildFailed": {
+      "kind": "error",
+      "zh": "生成不了 tmux resume 命令",
+      "args": []
+    },
+    "remoteLaunchRun.resume.failedCopied": {
+      "kind": "error",
+      "zh": "拉起失败，已复制 resume 命令",
+      "args": []
+    },
+    "remoteLaunchRun.resume.startedBody": {
+      "kind": "body",
+      "zh": "新终端窗口正在连接 [{machine}] 并 resume 这个会话。",
+      "args": ["machine"]
+    },
+    "remoteLaunchRun.resume.started": {
+      "kind": "body",
+      "zh": "已在远端 resume",
+      "args": []
+    },
+    "remoteLaunchRun.resume.buildFailed": {
+      "kind": "error",
+      "zh": "生成不了 resume 命令",
+      "args": []
+    },
+    "remoteLaunchRun.copyFallback.runRemote": {
+      "kind": "body",
+      "zh": "到远端 [{machine}] 的 ssh 终端粘贴执行：",
+      "args": ["machine"]
+    },
+    "remoteLaunchRun.copyFallback.runLocal": {
+      "kind": "body",
+      "zh": "在你自己的 bash 里执行：",
+      "args": []
+    },
+    "remoteLaunchRun.copyFallback.noWindowManual": {
+      "kind": "body",
+      "zh": "本机不开终端窗口，请手动复制以下命令",
+      "args": []
+    },
+    "remoteLaunchRun.copyFallback.noWindowCopied": {
+      "kind": "body",
+      "zh": "本机不开终端窗口，命令已复制",
+      "args": []
+    },
+    "remoteLaunchRun.renderCli.fallback": {
+      "kind": "error",
+      "zh": "后端生成命令失败，改用本机的写法：{e}",
+      "args": ["e"]
+    },
+    "remoteLaunchRun.renderCli.noReason": {
+      "kind": "error",
+      "zh": "后端没说明原因",
+      "args": []
+    },
+    "remoteLaunchRun.render.outerRefused": {
+      "kind": "error",
+      "zh": "后端生成不了 tmux 命令：{e}",
+      "args": ["e"]
+    },
+    "remoteLaunchRun.render.payloadRefused": {
+      "kind": "error",
+      "zh": "后端生成不了启动命令：{e}",
+      "args": ["e"]
+    },
+    "remoteLaunchRun.token.badShape": {
+      "kind": "error",
+      "zh": "生成的启动令牌格式不对：{token}",
+      "args": ["token"]
+    },
+    "remoteLaunchRun.token.noRandom": {
+      "kind": "error",
+      "zh": "生成不了启动令牌：这个环境没有安全随机数。",
+      "args": []
+    },
+    "main.sftp.noMachineHint": {
+      "kind": "error",
+      "zh": "先在设置 → 连接 配好 host / user，再打开文件窗口。",
+      "args": []
+    },
+    "main.sftp.noMachine": {
+      "kind": "error",
+      "zh": "没有可用的远端机器",
+      "args": []
+    },
+    "main.cmdk.hint": {
+      "kind": "body",
+      "zh": "打开命令面板：搜索并执行所有操作",
+      "args": []
+    },
+    "main.cmdk.label": {
+      "kind": "action",
+      "zh": "命令",
+      "args": []
+    },
+    "main.cmd.switchSessionKeywords": {
+      "kind": "body",
+      "zh": "switch session 切换 会话 {cwd} {machine}",
+      "args": ["cwd", "machine"]
+    },
+    "main.cmd.switchSession": {
+      "kind": "action",
+      "zh": "切到会话：{originTag}{title}",
+      "args": ["originTag", "title"]
+    },
+    "main.cmd.tabPrevKeywords": {
+      "kind": "body",
+      "zh": "prev tab 上一个",
+      "args": []
+    },
+    "main.cmd.tabPrev": {
+      "kind": "action",
+      "zh": "切到上一个 Tab",
+      "args": []
+    },
+    "main.cmd.tabNextKeywords": {
+      "kind": "body",
+      "zh": "next tab 下一个",
+      "args": []
+    },
+    "main.cmd.tabNext": {
+      "kind": "action",
+      "zh": "切到下一个 Tab",
+      "args": []
+    },
+    "main.cmd.tasksKeywords": {
+      "kind": "body",
+      "zh": "task 任务 panel",
+      "args": []
+    },
+    "main.cmd.tasks": {
+      "kind": "action",
+      "zh": "开 / 关 Task 面板",
+      "args": []
+    },
+    "main.cmd.terminalFrontKeywords": {
+      "kind": "body",
+      "zh": "terminal 终端 front",
+      "args": []
+    },
+    "main.cmd.terminalFront": {
+      "kind": "action",
+      "zh": "把对应终端窗口切到前台",
+      "args": []
+    },
+    "main.cmd.fullscreenKeywords": {
+      "kind": "body",
+      "zh": "fullscreen 全屏",
+      "args": []
+    },
+    "main.cmd.fullscreen": {
+      "kind": "action",
+      "zh": "切换全屏",
+      "args": []
+    },
+    "main.cmd.minimizeKeywords": {
+      "kind": "body",
+      "zh": "minimize 最小化",
+      "args": []
+    },
+    "main.cmd.minimize": {
+      "kind": "action",
+      "zh": "最小化窗口",
+      "args": []
+    },
+    "main.cmd.filesKeywords": {
+      "kind": "body",
+      "zh": "sftp file 文件 传输",
+      "args": []
+    },
+    "main.cmd.openFiles": {
+      "kind": "action",
+      "zh": "打开文件窗口",
+      "args": []
+    },
+    "main.cmd.settingsKeywords": {
+      "kind": "body",
+      "zh": "settings 设置 preferences",
+      "args": []
+    },
+    "main.cmd.openSettings": {
+      "kind": "action",
+      "zh": "打开设置",
+      "args": []
+    },
+    "main.cmd.gridKeywords": {
+      "kind": "body",
+      "zh": "grid monitor 监控 agent 并排",
+      "args": []
+    },
+    "main.cmd.openGrid": {
+      "kind": "action",
+      "zh": "打开多 agent 监控",
+      "args": []
+    },
+    "main.cmd.ccBusKeywords": {
+      "kind": "body",
+      "zh": "cc-bus bus agent 驾驶舱 通信",
+      "args": []
+    },
+    "main.cmd.openCcBus": {
+      "kind": "action",
+      "zh": "打开 cc-bus 驾驶舱",
+      "args": []
+    },
+    "main.cmd.inboxKeywords": {
+      "kind": "body",
+      "zh": "inbox 收件箱 计划 planned-build 注入",
+      "args": []
+    },
+    "main.cmd.openInbox": {
+      "kind": "action",
+      "zh": "打开收件箱",
+      "args": []
+    },
+    "main.cmd.panoramaKeywords": {
+      "kind": "body",
+      "zh": "panorama 全景 code",
+      "args": []
+    },
+    "main.cmd.openPanorama": {
+      "kind": "action",
+      "zh": "打开代码全景",
+      "args": []
+    },
+    "main.cmd.historyKeywords": {
+      "kind": "body",
+      "zh": "history 历史",
+      "args": []
+    },
+    "main.cmd.openHistory": {
+      "kind": "action",
+      "zh": "打开历史浏览器",
+      "args": []
+    },
+    "main.topbar.filesHint": {
+      "kind": "body",
+      "zh": "远端文件（浏览 / 上传 / 下载）",
+      "args": []
+    },
+    "main.topbar.gridHint": {
+      "kind": "body",
+      "zh": "多 agent 监控（跨机器只读并排）",
+      "args": []
+    },
+    "main.topbar.panoramaHint": {
+      "kind": "body",
+      "zh": "代码全景 (G)",
+      "args": []
+    },
+    "main.topbar.openHistory": {
+      "kind": "action",
+      "zh": "打开历史会话浏览器",
+      "args": []
+    },
+    "main.topbar.historyHint": {
+      "kind": "body",
+      "zh": "历史会话浏览器 (H)",
+      "args": []
+    },
+    "main.topbar.settingsHint": {
+      "kind": "body",
+      "zh": "设置 (,)",
+      "args": []
+    },
+    "main.tabBar.resizeHint": {
+      "kind": "body",
+      "zh": "拖拽调整 tab 栏宽度",
+      "args": []
+    },
+    "main.subagent.loadFailed": {
+      "kind": "error",
+      "zh": "加载 subagent 记录失败",
+      "args": []
+    },
+    "main.status.waiting": {
+      "kind": "body",
+      "zh": "等待活跃 Claude Code 会话…",
+      "args": []
+    },
+    "main.status.watching": {
+      "kind": "body",
+      "zh": "监听中",
+      "args": []
+    },
+    "main.status.count": {
+      "kind": "body",
+      "zh": "活跃 {live}",
+      "args": ["live"]
+    },
+    "main.empty.noSessions": {
+      "kind": "body",
+      "zh": "暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>",
+      "args": []
+    },
+    "tabMenu.restart.menu": {
+      "kind": "action",
+      "zh": "换号重启",
+      "args": []
+    },
+    "tabMenu.restart.compactFirstHint": {
+      "kind": "body",
+      "zh": "先在旧账号上压缩上下文再换号重启，更省",
+      "args": []
+    },
+    "tabMenu.restart.compactFirst": {
+      "kind": "action",
+      "zh": "先压缩上下文再重启",
+      "args": []
+    },
+    "tabMenu.restart.directHint": {
+      "kind": "body",
+      "zh": "杀掉旧进程，用账号「{name}」resume 同一会话（中断当前回合、丢进程内状态）",
+      "args": ["name"]
+    },
+    "tabMenu.restart.direct": {
+      "kind": "action",
+      "zh": "直接重启",
+      "args": []
+    },
+    "tabMenu.restart.accountHint": {
+      "kind": "body",
+      "zh": "用账号「{label}」重启这个会话",
+      "args": ["label"]
+    },
+    "tabMenu.containerLeaves.direct": {
+      "kind": "action",
+      "zh": "直连 · 不建 tmux 会话",
+      "args": []
+    },
+    "tabMenu.kill.idle": {
+      "kind": "action",
+      "zh": "杀死会话 · 空的 tmux 会话 {name}",
+      "args": ["name"]
+    },
+    "tabMenu.attach.idle": {
+      "kind": "action",
+      "zh": "Attach · 空的 tmux 会话 {name}",
+      "args": ["name"]
+    },
+    "tabMenu.kill.plain": {
+      "kind": "action",
+      "zh": "杀死会话",
+      "args": []
+    },
+    "tabMenu.kill.dupes": {
+      "kind": "action",
+      "zh": "杀死会话 · 有 {n} 个同身份会话，请到终端里处理",
+      "args": ["n"]
+    },
+    "tabMenu.resolveAttachMenuItem.preview": {
+      "kind": "action",
+      "zh": "预览画面",
+      "args": []
+    },
+    "tabMenu.dupes.body": {
+      "kind": "error",
+      "zh": "这个会话同时活在 {n} 个 tmux 会话里，这次接的是「{name}」。其余几个要不要清理，请到终端里看。",
+      "args": ["n", "name"]
+    },
+    "tabMenu.dupes.title": {
+      "kind": "error",
+      "zh": "检测到多个同身份会话",
+      "args": []
+    },
+    "tabMenu.attach.dupes": {
+      "kind": "action",
+      "zh": "Attach · tmux {name} · ⚠ 还有 {others} 个同身份会话",
+      "args": ["name", "others"]
+    },
+    "tabMenu.kill.named": {
+      "kind": "action",
+      "zh": "杀死会话 · tmux 会话 {name}",
+      "args": ["name"]
+    },
+    "tabMenu.kill.dupesRefused": {
+      "kind": "action",
+      "zh": "杀死会话 · 有 {n} 个同身份会话，不能杀",
+      "args": ["n"]
+    },
+    "tabMenu.inPlace.idle": {
+      "kind": "action",
+      "zh": "就地 resume · 用空的 tmux 会话 {name}",
+      "args": ["name"]
+    },
+    "tabMenu.inPlace.probing": {
+      "kind": "action",
+      "zh": "就地 resume · 正在找 tmux 会话…",
+      "args": []
+    },
+    "tabMenu.kill.probing": {
+      "kind": "action",
+      "zh": "杀死会话 · 正在找 tmux 会话…",
+      "args": []
+    },
+    "tabMenu.preview.probing": {
+      "kind": "action",
+      "zh": "预览画面 · 正在找 tmux 会话…",
+      "args": []
+    },
+    "tabMenu.attach.probing": {
+      "kind": "action",
+      "zh": "Attach · 正在找 tmux 会话…",
+      "args": []
+    },
+    "tabMenu.open.preview": {
+      "kind": "action",
+      "zh": "预览画面",
+      "args": []
+    },
+    "tabMenu.open.panoramaHighlight": {
+      "kind": "action",
+      "zh": "在全景高亮本会话改动",
+      "args": []
+    },
+    "tabMenu.collection.remove": {
+      "kind": "action",
+      "zh": "移出「{name}」",
+      "args": ["name"]
+    },
+    "tabMenu.pin.pin": {
+      "kind": "action",
+      "zh": "📌 固定此标签",
+      "args": []
+    },
+    "tabMenu.pin.unpin": {
+      "kind": "action",
+      "zh": "取消固定",
+      "args": []
+    },
+    "tabMenu.collection.add": {
+      "kind": "action",
+      "zh": "加入集合",
+      "args": []
+    },
+    "tabMenu.collection.namePrompt": {
+      "kind": "body",
+      "zh": "新集合名：",
+      "args": []
+    },
+    "tabMenu.collection.new": {
+      "kind": "action",
+      "zh": "新建集合…",
+      "args": []
+    },
+    "tabMenu.open.openInWindow": {
+      "kind": "action",
+      "zh": "在新窗口打开",
+      "args": []
+    },
+    "tabMenu.cwdFallback.body": {
+      "kind": "error",
+      "zh": "这个 tmux 会话是按工作目录认出来的。可能是同目录里的另一个会话。",
+      "args": []
+    },
+    "tabMenu.cwdFallback.title": {
+      "kind": "error",
+      "zh": "认不出这是哪个会话",
+      "args": []
+    },
+    "tabSessionActions.front.failed": {
+      "kind": "error",
+      "zh": "切到终端窗口失败",
+      "args": []
+    },
+    "tabSessionActions.front.timeout": {
+      "kind": "error",
+      "zh": "切到终端窗口超时",
+      "args": []
+    },
+    "tabSessionActions.openCwd.body": {
+      "kind": "error",
+      "zh": "这个会话在远端机器 [{machine}]，工作目录 {cwd} 不在本机；{why}。",
+      "args": ["machine", "cwd", "why"]
+    },
+    "tabSessionActions.openCwd.title": {
+      "kind": "error",
+      "zh": "远端目录没法在本机打开",
+      "args": []
+    },
+    "tabSessionActions.openCwd.noConfig": {
+      "kind": "body",
+      "zh": "找不到这台机器的连接配置（到设置 → 连接里添加）",
+      "args": []
+    },
+    "tabSessionActions.openCwd.incomplete": {
+      "kind": "body",
+      "zh": "这台机器的连接配置缺 host 或 user（到设置 → 连接里补全）",
+      "args": []
+    },
+    "tabSessionActions.kill.failed": {
+      "kind": "error",
+      "zh": "杀死会话失败",
+      "args": []
+    },
+    "tabSessionActions.kill.done": {
+      "kind": "body",
+      "zh": "已杀死会话",
+      "args": []
+    },
+    "tabSessionActions.who.remote": {
+      "kind": "body",
+      "zh": "远端 [{machine}]",
+      "args": ["machine"]
+    },
+    "tabSessionActions.who.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "tabSessionActions.kill.confirm": {
+      "kind": "body",
+      "zh": "杀死会话「{name}」（机器 {machine}）？\n\n{body}\n此操作不可恢复。{caveat}",
+      "args": ["name", "machine", "body", "caveat"]
+    },
+    "tabSessionActions.kill.body": {
+      "kind": "body",
+      "zh": "将终止{where}这个 tmux 会话里正在运行的 Claude，没保存的交互会中断。",
+      "args": ["where"]
+    },
+    "tabSessionActions.who.remoteShort": {
+      "kind": "body",
+      "zh": "远端",
+      "args": []
+    },
+    "tabSessionActions.kill.cwdCaveat": {
+      "kind": "body",
+      "zh": "\n\n⚠ 认不出这是哪个会话：「{name}」是按工作目录认出来的，可能是同目录里另一个正在运行的 Claude。",
+      "args": ["name"]
+    },
+    "tabSessionActions.restart.dupes": {
+      "kind": "error",
+      "zh": "这个会话同时活在 {n} 个 tmux 会话里，分不清该重启哪一个。请到终端里看过再试。",
+      "args": ["n"]
+    },
+    "tabSessionActions.restart.refusedTitle": {
+      "kind": "error",
+      "zh": "不能换号重启",
+      "args": []
+    },
+    "tabSessionActions.restart.busy": {
+      "kind": "error",
+      "zh": "这个会话上一次换号重启还没完成，请稍候再试。",
+      "args": []
+    },
+    "tabSessionActions.restart.busyTitle": {
+      "kind": "error",
+      "zh": "正在重启中",
+      "args": []
+    },
+    "tabSessionActions.unselectable.body": {
+      "kind": "error",
+      "zh": "账号「{name}」现在选不了，可能没登录、不是隔离账号或目录缺失。改用这个会话上次的账号或当前账号 resume。",
+      "args": ["name"]
+    },
+    "tabSessionActions.unselectable.title": {
+      "kind": "error",
+      "zh": "账号不可用",
+      "args": []
+    },
+    "tabSessionActions.dupes.body": {
+      "kind": "error",
+      "zh": "这个会话同时活在 {n} 个 tmux 会话里，这次接的是「{name}」。其余几个要不要清理，请到终端里看。",
+      "args": ["n", "name"]
+    },
+    "tabSessionActions.dupes.title": {
+      "kind": "error",
+      "zh": "检测到多个同身份会话",
+      "args": []
+    },
+    "tabSessionActions.resume.failed": {
+      "kind": "error",
+      "zh": "恢复失败",
+      "args": []
+    },
+    "tabSessionActions.resume.buildFailed": {
+      "kind": "error",
+      "zh": "生成不了 resume 命令",
+      "args": []
+    },
+    "tabSessionActions.openInWindow.failed": {
+      "kind": "error",
+      "zh": "打开新窗口失败",
+      "args": []
+    },
+    "accountRestart.done.body": {
+      "kind": "body",
+      "zh": "已用「{name}」重启这个会话。如果 Claude Code 问要不要信任这个目录，请在弹出的终端里确认。",
+      "args": ["name"]
+    },
+    "accountRestart.done.title": {
+      "kind": "body",
+      "zh": "已用新账号重启",
+      "args": []
+    },
+    "accountRestart.relaunch.copied": {
+      "kind": "error",
+      "zh": "用「{name}」的命令已复制到剪贴板，请到远端终端粘贴执行。会话内容不会丢。这次没有记下账号归属。",
+      "args": ["name"]
+    },
+    "accountRestart.relaunch.failedBody": {
+      "kind": "error",
+      "zh": "会话内容不会丢，可以在标签页上右键 Resume 重新拉起。本次没有记下账号归属。",
+      "args": []
+    },
+    "accountRestart.relaunch.failedTitle": {
+      "kind": "error",
+      "zh": "旧会话已退出，但新会话没能自动起来",
+      "args": []
+    },
+    "accountRestart.aborted.body": {
+      "kind": "error",
+      "zh": "结束旧会话失败：{e}。没有继续 resume，免得新旧两个进程抢同一个会话。",
+      "args": ["e"]
+    },
+    "accountRestart.aborted.title": {
+      "kind": "error",
+      "zh": "重启已中止",
+      "args": []
+    },
+    "accountRestart.exit.failed": {
+      "kind": "error",
+      "zh": "{e}。改为强制结束旧会话。",
+      "args": ["e"]
+    },
+    "accountRestart.exit.failedTitle": {
+      "kind": "error",
+      "zh": "没能让会话自己退出",
+      "args": []
+    },
+    "accountRestart.exit.timeout": {
+      "kind": "error",
+      "zh": "等会话自己退出超时了，改为强制结束。当前回合已中断。",
+      "args": []
+    },
+    "accountRestart.exit.timeoutTitle": {
+      "kind": "error",
+      "zh": "会话没有自己退出",
+      "args": []
+    },
+    "accountRestart.compact.skipped": {
+      "kind": "error",
+      "zh": "{e}。跳过压缩，继续换号重启。",
+      "args": ["e"]
+    },
+    "accountRestart.compact.skippedTitle": {
+      "kind": "error",
+      "zh": "压缩未执行",
+      "args": []
+    },
+    "accountRestart.compact.timeout": {
+      "kind": "error",
+      "zh": "等压缩超时了，仍继续换号重启。",
+      "args": []
+    },
+    "accountRestart.compact.timeoutTitle": {
+      "kind": "error",
+      "zh": "压缩可能未完成",
+      "args": []
+    },
+    "accountRestart.compact.sent": {
+      "kind": "body",
+      "zh": "已在旧账号上发出 /compact，完成后换号重启。",
+      "args": []
+    },
+    "accountRestart.compact.running": {
+      "kind": "body",
+      "zh": "正在压缩上下文…",
+      "args": []
+    },
+    "accountRestart.confirm.body": {
+      "kind": "body",
+      "zh": "用账号「{name}」重启这个会话？\n\n会中断当前回合。先请会话自己退出，最多等 10 秒；再结束旧进程（tmux 会话 {tmuxName}）；然后用新账号 resume 同一个会话。{compact}{trust}",
+      "args": ["name", "tmuxName", "compact", "trust"]
+    },
+    "accountRestart.confirm.compactNote": {
+      "kind": "body",
+      "zh": "\n会先在旧账号上 /compact，这样更省；可能要几分钟。",
+      "args": []
+    },
+    "accountRestart.confirm.trustWarn": {
+      "kind": "body",
+      "zh": "\n注意：这个账号还没信任这个目录，Claude Code 可能会在弹出的终端里问要不要信任。",
+      "args": []
+    },
+    "accountRestart.unselectable.body": {
+      "kind": "error",
+      "zh": "账号「{name}」现在选不了，可能没登录、不是隔离账号或目录缺失。没法用它重启。",
+      "args": ["name"]
+    },
+    "accountRestart.unselectable.title": {
+      "kind": "error",
+      "zh": "账号不可用",
+      "args": []
     }
   }
 }
