@@ -1169,7 +1169,12 @@ describe("RL1 中转地址进远端载荷", () => {
       }
       // tmux 那几格整条载荷被再 quote 一层塞进外层命令 ⇒ 只认「那个变量名 ＋ 那一串地址」都在。
       expect(launched.join("\n"), what).toContain("export ANTHROPIC_BASE_URL=");
-      expect(launched.join("\n"), what).toContain(URL_FROM_BACKEND);
+      // 〔RK1〕地址在渲染串里拆成两半，中间是现读钥匙文件的命令替换（`payload.rs::relay_env_prefix_posix`）。
+      const origin = URL_FROM_BACKEND.slice(0, "http://127.0.0.1:8788/".length);
+      const routePart = URL_FROM_BACKEND.slice("http://127.0.0.1:8788".length);
+      expect(launched.join("\n"), what).toContain(origin);
+      expect(launched.join("\n"), what).toContain(routePart);
+      expect(launched.join("\n"), what).toContain(".cc-monitor/relay-key");
     }
   });
 

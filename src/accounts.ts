@@ -369,7 +369,7 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
  * `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。
  */
 export type LocalFollowPlan =
-  | { kind: "named"; name: string; wire: LocalLaunchAccountWire }
+  | { kind: "named"; name: string; configDir: string; wire: LocalLaunchAccountWire }
   | { kind: "silent" }
   /**
    * `alternative`：当前可选的号（名字 ＋ 目录）；`null` = 没有 ⇒ 给的选择是「不指定账号」。
@@ -402,7 +402,8 @@ export function localFollowPlan(sid: string): LocalFollowPlan {
   }
   const wire = localLaunchAccountSync(sid);
   const name = localLaunchAccountNameSync(sid);
-  return wire && name ? { kind: "named", name, wire } : { kind: "silent" };
+  const configDir = localLaunchConfigDirSync(sid);
+  return wire && name && configDir ? { kind: "named", name, configDir, wire } : { kind: "silent" };
 }
 
 /**
@@ -429,6 +430,18 @@ export type LocalLaunchAccountWire = Record<
 > &
   Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.configDir, string> &
   Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.name, string>;
+
+/**
+ * 〔GP1 · 第四波〕本机这次起会话**要用的账号配置目录**（[`localLaunchAccountSync`] 载荷里 `configDir` 那一格的同一个值，
+ * 同一个快照、同一条规则）。说不出 ⇒ `undefined`（基座）。resume 之前问记录还在不在，要查的就是这棵树
+ * （`tab-session-actions.ts::recordStillThere`；`设计/30 §8` 第 4 条）。
+ */
+export function localLaunchConfigDirSync(sid: string | null): string | undefined {
+  const snap = localLaunchSnapshot;
+  const name = localLaunchAccountNameSync(sid);
+  if (!snap || !name) return undefined;
+  return snap.state.accounts.find((a) => a.name === name)?.configDir || undefined;
+}
 
 export function localLaunchAccountSync(sid: string | null): LocalLaunchAccountWire | undefined {
   const snap = localLaunchSnapshot;

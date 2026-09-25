@@ -1218,44 +1218,8 @@ fn finishing_a_write_round_triggers_exactly_one_reload() {
     assert!(!w.settle_finished_writes(), "同一摞重列了第二次");
 }
 
-/// 🔴 **被围栏挡住那句话真的被画在窗口上**（不是 `tracing`）。
-///
-/// 判据从 egui 这一帧真的交出去的 galley 里把那句话读回来 ——
-/// 一条 `assert!(src.contains("colored_label"))` 在那一行被 `if false` 包住时照样绿
-/// （量具与它买不到什么住 `copy::testing`）。
-///
-/// ⚠ 这一条是完成判据「围栏那一条要有阴性对照 …… 而且窗口上**要出声**」的那半。
-#[test]
-fn the_fence_line_really_gets_painted_on_the_window() {
-    // ⚠ 换了构造器（本机侧退役）。本条要的只是「有一个窗口能画一帧」。
-    let mut w = remote_window_with_rows("/srv/data", Vec::new());
-    let ctx = egui::Context::default();
-    let blocked = crate::filewin::writeops::fence_notice(
-        &crate::filewin::writeops::WriteOp::Delete {
-            path: "/home/u/.claude/projects/p/s.jsonl".into(),
-            is_dir: false,
-            raw: None,
-        },
-        "/home/u/.claude/projects/p/s.jsonl",
-    );
-    // 先跑一帧把字体图集建起来（同 `rows_tests` 那条口径）。
-    let _ = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    w.write_board
-        .finish(crate::filewin::writeops::WriteOutcome {
-            blocked: vec![blocked.clone()],
-            ..Default::default()
-        });
-    let painted = crate::filewin::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    assert!(
-        painted.iter().any(|t| t == &blocked),
-        "这一帧上没有被挡那句话。画出来的是：{painted:?}"
-    );
-    // 反空真：这把尺子不是「凡什么话都说画出来了」。
-    assert!(
-        !painted.iter().any(|t| t.contains("这句话根本没人画过它")),
-        "量具在乱认"
-    );
-}
+// 〔FN1 · V119〕这里原来有一条「被围栏挡住那句话真的被画在窗口上」（从 egui 这一帧的 galley 里把那句话读回来）。
+//   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 那句话与画它的那一段一起删了，靶子不在，这一条随之退役。
 
 /// 🔴 **命中那一摞交不出任何一个下标** —— 那三条写胶水索引的是另一摞东西。
 ///
@@ -1353,7 +1317,10 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
     }
 }
 
-/// 🔴🔴 **整条链一趟走完**：真点一下行上那颗「删除」→ 围栏挡住 → 屏幕上有话。
+/// 🔴🔴 **整条链一趟走完**：真点一下会话文件那一行的「删除」→ 问一次 → 答做 → 后端真收到 `files-delete`。
+///
+/// 〔FN1 · V119 翻面〕从前这一条是「→ 围栏挡住 → 屏幕上有话」，而且断「后端一行都没收到」。
+/// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 同一行、同一次真点击，今天必须**走到后端**。
 ///
 /// # 它是这一摞里唯一一条**不跳任何一跳**的判据
 ///
@@ -1365,18 +1332,17 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
 /// 本条走的是生产那一条：
 /// `frame_body` → `show_file_rows`（真合成事件）→ `RenderTally::delete_clicked`
 /// → `apply_write_clicks` → `begin_delete` → `start_writes` → `run_writes`
-/// → 围栏 → `WriteBoard::finish`。
+/// → 一次问完 → `apply_remote` → `WriteBoard::finish`。
 ///
-/// # 🔴 为什么它不需要一条连接（而仍然是真读数）
+/// # 为什么它不需要一条真连接（而仍然是真读数）
 ///
-/// 喂的那一行是一条**受保护路径**（`projects/<proj>/<sid>.jsonl`）⇒ `run_writes`
-/// 的第一段在本地就把它挡了，`apply` 一次都不被调 ⇒ **一个 packet 都不发**。
-/// ⇒ 这一条同时是完成判据里「对一个受保护路径发删除 ⇒ 必须被挡」的**端到端**那一版。
+/// 喂的那一行是一条会话记录（`projects/<proj>/<sid>.jsonl`）；写面走通道，挂的是一台合成后端
+/// （它声明了 `files-delete`、只记下收到了什么、不落盘）⇒ 断的是「那一行真的上了线、上的是哪条命令」。
 ///
 /// ⚠ 买不到：真机上鼠标点得到（本机无图形会话，喂的是合成事件）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
-    use crate::filewin::writeops::{DELETE_LABEL, FENCE_PREFIX};
+async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
+    use crate::filewin::writeops::DELETE_LABEL;
     let jsonl = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
     let mut w = FileWindow::seeded(
         Source::remote(synth_cfg("e2e-fence")),
@@ -1391,8 +1357,8 @@ async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
         }],
     );
     assert!(w.rt.is_some(), "这一条要一个运行时，否则它卡在另一支上");
-    // 〔F2〕写面走通道 ⇒ 挂一台合成后端（它声明了 `files-delete`）。本条要证的是
-    //   **本地那道预判把它挡在上线之前** ⇒ 最后断这台后端一行都没收到。
+    // 〔F2〕写面走通道 ⇒ 挂一台合成后端（它声明了 `files-delete`）。
+    //   〔FN1〕本条从前证的是「本地那道预判把它挡在上线之前」；今天证的是它**上了线**。
     let wired = crate::filewin::find::testing::wire_up(
         "e2e-fence",
         crate::filewin::find::testing::FakeBackend::new(
@@ -1438,39 +1404,49 @@ async fn a_real_click_on_delete_walks_the_whole_chain_and_the_fence_stops_it() {
         |ui| w.frame_body(ui),
     );
 
-    // 那一摞是异步跑的 ⇒ 等它落地（**不靠睡一个猜出来的时长**：等那个可观测的数）。
+    // 那一摞是异步跑的 ⇒ 先等那一问摆出来（**不靠睡一个猜出来的时长**：等那个可观测的状态）。
+    for _ in 0..200 {
+        if w.write_board.is_asking() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(
+        w.write_board.is_asking(),
+        "点了会话文件那一行的「删除」，那一问没摆出来 —— 有东西在问答之前把它拦了，\
+         或者胶水那一跳断了（`apply_write_clicks` 没接上 / `frame_body` 没调它）"
+    );
+    assert_eq!(
+        w.write_board
+            .asking()
+            .iter()
+            .map(|o| o.label())
+            .collect::<Vec<_>>(),
+        vec![format!("删除文件 {jsonl}")],
+        "摆到人面前的不是那一件"
+    );
+    assert!(w.write_board.settle(true), "答复没送出去");
     for _ in 0..200 {
         if w.write_board.rounds() > 0 {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    let out = w.write_board.last().expect(
-        "点了「删除」，那一摞一趟都没跑完 —— 胶水那一跳断了（`apply_write_clicks` 没接上），\
-                 或者 `frame_body` 没调它",
-    );
+    let out = w
+        .write_board
+        .last()
+        .expect("答了「做」，那一摞一趟都没跑完");
     assert_eq!(
-        out.blocked.len(),
-        1,
-        "受保护路径上那一件没被挡，实得 {out:?} —— \
-         围栏那一段要么被绕过了，要么它没看这条路径"
+        (out.asked, out.ok, out.skipped),
+        (1, 1, 0),
+        "🔴 V119：会话文件那一件没有做成，实得 {out:?}"
     );
-    assert!(
-        out.blocked[0].starts_with(FENCE_PREFIX) && out.blocked[0].contains(jsonl),
-        "被挡那句话不对：{}",
-        out.blocked[0]
-    );
-    // 🔴 一个字节都没动过对面的盘：`apply` 一次都没被调 ⇒ 既没成功也没失败。
-    assert_eq!(out.ok, 0);
     assert!(out.failed.is_empty(), "实得 {:?}", out.failed);
-    // 而且**没问过人**：那一问会教用户「这是可以删的」，答完了它照样做不了。
-    assert_eq!(out.asked, 0, "受保护的那一件被摆到人面前问了");
-    assert!(!w.write_board.is_asking());
-    // 〔F2〕线上一行都没有 —— 挡在上线之前，不是后端替它挡的。
-    assert!(
-        wired.cmds().is_empty(),
-        "受保护那一件上了线：{:?}",
-        wired.cmds()
+    // 线上真到了一行，而且恰是那一条命令。
+    assert_eq!(
+        wired.cmds(),
+        ["files-delete"],
+        "会话文件那一件没有上线（或者上的不是 `files-delete`）"
     );
 }
 
@@ -2423,4 +2399,61 @@ fn the_open_terminal_command_equals_the_old_panels_byte_for_byte() {
     // ⚠ 双引号那一条：模板自己**一个都不带**（`launch.rs` 拒掉含双引号的 `remote_cmd`）；
     //   路径里自带的双引号会原样进单引号里 ⇒ 那一形由 `launch.rs` 拒、窗口出声，不在这里兜。
     assert!(!build_open_terminal_cmd("").contains('"'));
+}
+
+/// 〔GP1 · 第四波〕改权限那个框：没有运行时 / 没有通道 ⇒ 现值那一趟**当场**落「读不到」（框上说出来，不静默、不猜），
+/// 框照旧空着开。要求住址：`设计/60 §7` · `调研/第四波记录/GP1.md §5`。
+#[test]
+fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
+    assert_eq!(w.mode_probe.readout(), None, "还没摆框就有了现值");
+    assert!(w.begin_chmod(0), "权限框没摆出来");
+    assert_eq!(
+        w.mode_probe.readout(),
+        Some(crate::filewin::writeops::ModeReadout {
+            line: "读不到现在的权限".to_string(),
+            prefill: None,
+        })
+    );
+    assert_eq!(w.write_prompt().map(|p| p.text.as_str()), Some(""));
+}
+
+/// 〔GP1 · 第四波〕P2⁗（`设计/60 §7` · `GP1.md §5`）：现值那一趟**真上线**：挂一台合成后端（它按盘上真文件答 `files-stat`，`mode` 取真权限位），逐项问、按序交回；
+/// 不在的那一项 ⇒ `None`（读不到，不猜）。异源：期望的权限位是本测试自己 `set_permissions` 设下去的。
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
+    use crate::filewin::find::testing::{wire_up, Declared, FakeBackend};
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = std::env::temp_dir().join(format!("ccm-gp1-modes-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).expect("建夹具目录");
+    let a = dir.join("a.bin");
+    let b = dir.join("b.bin");
+    for (f, m) in [(&a, 0o640_u32), (&b, 0o600)] {
+        std::fs::write(f, b"x").expect("铺文件");
+        std::fs::set_permissions(f, std::fs::Permissions::from_mode(m)).expect("设权限");
+    }
+    let wired = wire_up(
+        "gp1-modes",
+        FakeBackend::new(&["files-stat"], Declared::default()),
+    )
+    .await;
+    let origin = crate::origin::Origin(wired.origin.clone());
+    let paths: Vec<String> = [&a, &b, &dir.join("gone.bin")]
+        .iter()
+        .map(|p| p.to_str().expect("ASCII").to_string())
+        .collect();
+    let got = crate::filewin::writeops::probe_modes(&wired.line, &origin, &paths).await;
+    assert_eq!(got, vec![Some(0o640), Some(0o600), None]);
+    let asked: Vec<String> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|v| v["cmd"] == "files-stat")
+        .map(|v| v["args"]["path"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert_eq!(asked, paths, "逐项各问一次、按序");
+    std::fs::remove_dir_all(&dir).ok();
 }

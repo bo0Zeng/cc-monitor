@@ -903,10 +903,46 @@ pub fn route_key_for_session(sid: Option<&str>) -> String {
 /// 其余命中全是判据字面量 / 测试期望 / 散文（非空对照：同一把尺子量
 /// `ANTHROPIC_BASE_URL` 命中 **6** 个文件）。
 pub fn relay_env_prefix_posix(base_url: &str) -> String {
+    // 〔RK1〕钥匙那一段是**读钥匙文件的命令替换**（见 [`RELAY_KEY_FILE_REL`]）：两段常量各自单引号，
+    //   中间只有那一个固定的 `$(cat …)` 会被 shell 展开 ⇒ URL 里别的字节一个都不会被解释。
+    let (origin, path) = relay_url_halves(base_url);
     format!(
-        "export ANTHROPIC_BASE_URL={}; ",
-        shell_quote_core::posix_quote(base_url)
+        "export ANTHROPIC_BASE_URL={}\"$(cat \"$HOME/{RELAY_KEY_FILE_REL}\")\"{}; ",
+        shell_quote_core::posix_quote(origin),
+        shell_quote_core::posix_quote(path),
     )
+}
+
+/// 〔RK1 · `INVARIANTS §48.1`〕**中转钥匙文件**相对家目录的路径 —— 中转口进门要出示的那一把就住这里
+/// （**中转所在那台机器**上，`0600`，中转绑上口之后自己读回或铸：`src/backend/relay/door.rs::ensure_key`）。
+///
+/// # 为什么 URL 里不放钥匙本身，而放「去读这个文件」
+///
+/// 注入的 URL 今天**不是**直接进 agent 的 env：它渲染成 shell 文本，经 `tmux send-keys` 的 **argv** 打进 pane 的交互 shell
+/// （[`render_tmux_outer`]），会进 shell 历史、界面的终端回滚；远端那一形还绕 webview 一圈（`relay_endpoint_for_launch`）。
+/// 钥匙字面拼进去，就会出现在同机别的用户 `ps` 看得见的 argv 里。⇒ URL 本身**不带钥匙**（构造口、形状闸、TS 那一圈一字不改），
+/// 渲染器把钥匙段写成 `$(cat "$HOME/<本常量>")`，在**那台机器的 pane shell 里**展开 ——
+/// 钥匙只从 `0600` 文件进 agent 进程自己的 env。`$HOME` 在哪台上展开就读哪台的钥匙（与「回环地址是自指的」同一个道理）。
+///
+/// ⚠ **跨半边字面量**：后端那一份是 `src/backend/relay/door.rs::KEY_FILE_REL`，
+/// 由后端 `door_tests::the_key_file_is_the_same_path_on_both_halves` 现抠**本行**对拍。
+pub const RELAY_KEY_FILE_REL: &str = ".cc-monitor/relay-key";
+
+/// 中转 URL 拆成「`http://主机:口/`」与「`/s/…` 那一截」两半，钥匙段插在中间。
+/// 拆不开（不是 [`relay_base_url_in`] 的产物形状）⇒ 整条当前半、后半空 —— 渲染出来的请求会被中转以 403 拒（出声），
+/// **不会**退回直连。调用方今天都先过了形状闸（[`relay_base_url_shape_ok`] · 构造口），这一支走不到。
+fn relay_url_halves(base_url: &str) -> (&str, &str) {
+    let Some(rest) = base_url.strip_prefix("http://") else {
+        return (base_url, "");
+    };
+    match rest.find('/') {
+        // 那个 `/` 两半各带一份：前半以它收尾（钥匙段接在它后面），后半以它开头（钥匙段之后的分隔）。
+        Some(i) => {
+            let at = "http://".len() + i;
+            (&base_url[..=at], &base_url[at..])
+        }
+        None => (base_url, ""),
+    }
 }
 
 /// **Windows 命令面**的中转前缀。形状照 `history.rs::config_dir_prefix_ps`（PowerShell
@@ -918,7 +954,12 @@ pub fn relay_env_prefix_posix(base_url: &str) -> String {
 /// Windows 那一侧，所以要说清它没被放宽：本函数**不**给本地渲染器补一段读 `plan.env`
 /// 的代码，它只把一个调用方已经算好的串拼上去。
 pub fn relay_env_prefix_ps(base_url: &str) -> String {
-    format!("$env:ANTHROPIC_BASE_URL='{base_url}'; ")
+    // 〔RK1〕与 POSIX 那一形同构：钥匙段现读 `$HOME` 底下那一份（PowerShell 的 `$HOME` 即 `USERPROFILE`，
+    //   与后端 `door::key_path` 的退路同一个）。仍只到「编得过」。
+    let (origin, path) = relay_url_halves(base_url);
+    format!(
+        "$env:ANTHROPIC_BASE_URL='{origin}' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '{RELAY_KEY_FILE_REL}')).Trim() + '{path}'; "
+    )
 }
 
 /// apikey 凭据文件里那些行**属于哪一家 agent**〔条 49〕。
@@ -1023,7 +1064,7 @@ fn endpoint_in(
 /// 但「注入之后每一发都 502」对用户而言与「会话起不来」同形 ⇒ **注入闸在这一侧就不注**：
 /// 不在这张表里的 agent 一个字节都不注入，照旧直连。
 ///
-/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::upstream::AGENT_UPSTREAMS` 那张表的 agent 列，
+/// ⚠ 它是一个事实的两处写法之一：后端那一份是适配层注册表里填了默认上游那一格（`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层）的各家路由名，
 /// 由后端那条 `the_agents_with_a_default_upstream_are_the_same_on_both_halves` 现抠**本行的字面量**
 /// 做两向集合相等（异源：一侧是后端运行期的表，一侧是本文件的源码文本）。
 /// ⚠ codex **刻意不在这里**：它的默认上游本仓零证据（后端那张表头注逐字）。

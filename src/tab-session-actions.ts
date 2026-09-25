@@ -171,12 +171,16 @@ export class TabSessionActions {
    *   **不许把「问不到」当成「不在」**（那会把一条其实接得上的 resume 拦掉）。
    *
    * 判定住那台的后端（只收 sid），这里只读答案 —— 前端不做文件存在性探测（`30 §B.6`）。
+   *
+   * 〔GP1 · 第四波〕`configDir` = **这次 resume 要用的那个账号配置目录**（远端：`withAccount` 解析出的 `mods.configDir`；
+   * 本机：`localLaunchConfigDirSync`）。那台后端就在那棵树里找；不带（基座）⇒ 查它自己的家目录。
+   * 因此这一问挪到了账号解析**之后**：改之前它先于解析、只查家目录 ⇒ 会话起在另一个账号根下时误拦（`设计/30 §8` 第 4 条）。
    */
-  private async recordStillThere(tab: Tab): Promise<boolean> {
+  private async recordStillThere(tab: Tab, configDir?: string): Promise<boolean> {
     let probe: RecordProbe;
     try {
       // 〔C4c · 第四波 4B〕经通道直接问那台后端的 `history-record`（`session-reads.ts::probeSessionRecord`）。
-      probe = await probeSessionRecord(tab.origin, tab.sessionId);
+      probe = await probeSessionRecord(tab.origin, tab.sessionId, configDir);
     } catch {
       // 问不到 / 形状不对（旧后端）同「不知道」：只有一个明明白白的 `present: false` 才拦。
       return true;
@@ -204,7 +208,7 @@ export class TabSessionActions {
     const tab = this.host.tab(sid);
     if (!tab) return;
     // 〔U4b · G1〕先问记录还在不在；不在 ⇒ 已经说过了，不开终端。
-    if (!(await this.recordStillThere(tab))) return;
+    // 〔GP1〕问的是**这次要用的那个账号根**：远端在 `withAccount` 解析之后问（下面 `run` 里），本机拿本机那一份。
     const behavior = await getBehavior();
     if (isRemoteOrigin(tab.origin)) {
       // A4：带账号统一走 withAccount（点击时重解析 configDir + 记 lastAccount 源②，与 history 同口径）。
@@ -217,6 +221,7 @@ export class TabSessionActions {
         // `runRemoteResume` 现在返回 boolean（Phase G：别把失败读成成功）。这条路的
         // 反馈由它自己的 toast 承担，`withAccount` 只要 `void` ⇒ 显式丢弃。
         async (mods) => {
+          if (!(await this.recordStillThere(tab, mods.configDir))) return;
           await runRemoteResume(
             origin,
             sid,
@@ -246,6 +251,8 @@ export class TabSessionActions {
       cwd: tab.cwd ?? "",
       account: { kind: "follow" },
       launcher: behavior.resumeCommandLocal,
+      // 〔GP1〕记录还在不在，问的是**这次要用的那个账号根**（账号解析之后、拉起之前；远端那条在 `withAccount` 的 run 里问）。
+      preflight: (configDir) => this.recordStillThere(tab, configDir),
     });
   }
 
@@ -317,12 +324,13 @@ export class TabSessionActions {
     const idle = this.host.isAttachable(sid) ? findIdleTmux(sessions, sid) : undefined;
     // 〔U4b · G1〕下面两支（就地 resume · 全新 resume）都要起一个新 claude 接那份记录 ⇒ 先问记录还在不在。
     //   上面那一支（attach 活会话）不问：它不起新进程。
-    if (!(await this.recordStillThere(tab))) return;
+    //   〔GP1〕问在各自 `withAccount` 解析出账号之后（`mods.configDir` 就是这次 resume 用的那棵树）。
     if (idle) {
       await withAccount(
         origin,
         accountName ?? null,
         async (mods) => {
+          if (!(await this.recordStillThere(tab, mods.configDir))) return;
           await runRemoteResumeIntoExistingTmux(
             origin,
             sid,
@@ -356,6 +364,7 @@ export class TabSessionActions {
       // runRemoteResumeTmux 现在返回 boolean（Phase G）；withAccount 的 run 要 Promise<void>，
       // 这条归档 resume 路径不消费成败（失败已由它自己 toast + 剪贴板回退），故丢弃返回值。
       async (mods) => {
+        if (!(await this.recordStillThere(tab, mods.configDir))) return;
         await runRemoteResumeTmux(
           origin,
           sid,

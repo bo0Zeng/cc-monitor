@@ -62,6 +62,11 @@ export interface LocalResumeRequest {
   launcher?: string;
   /** 拉起失败那句提示的标题；缺席 ⇒ 「恢复失败」。 */
   failureTitle?: string;
+  /**
+   * 账号定下来之后、拉起之前问一句（〔GP1〕tab 栏那条：「记录还在不在」要问**这次要用的那个账号根**）。
+   * 收到的是这次要用的 `CLAUDE_CONFIG_DIR`（`undefined` = 基座 / 没表态）；回 `false` ⇒ 不起（它自己已经说过了）。
+   */
+  preflight?: (configDir: string | undefined) => Promise<boolean>;
 }
 
 /**
@@ -100,6 +105,15 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
       },
     });
     return false;
+  }
+  if (req.preflight) {
+    const configDir =
+      req.account.kind === "follow"
+        ? plan?.kind === "named"
+          ? plan.configDir
+          : undefined
+        : (req.account.configDir ?? undefined);
+    if (!(await req.preflight(configDir))) return false;
   }
   try {
     const launcher = req.launcher ?? (await getBehavior()).resumeCommandLocal;

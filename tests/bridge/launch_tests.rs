@@ -904,8 +904,19 @@ fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
         prefix.contains("ANTHROPIC_BASE_URL") && !prefix.is_empty(),
         "生产那一处渲染器没渲出中转注入 —— 本条按红处理：{prefix:?}"
     );
+    // 〔RK1〕注入的 URL 里钥匙那一段是「读 `$HOME/.cc-monitor/relay-key`」的命令替换 ⇒ 给这一趟一个夹具家目录、
+    //   放一把夹具钥匙，期望值是**展开之后**那条带钥匙的 URL（不碰用户真实的家目录）。
+    let fixture_key = "5eed".repeat(16);
+    std::fs::create_dir_all(dir.join(".cc-monitor")).expect("夹具 .cc-monitor");
+    std::fs::write(
+        dir.join(crate::backend::control::payload::RELAY_KEY_FILE_REL),
+        &fixture_key,
+    )
+    .expect("夹具钥匙");
+    let expanded = url.replacen("8788/", &format!("8788/{fixture_key}/"), 1);
     let payload = format!(
-        "{prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}",
+        "HOME='{}'; {prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}",
+        dir.display(),
         seen.display()
     );
     // 反空真②：观测点在**进程那一侧**，起手它必须不存在。
@@ -922,12 +933,12 @@ fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
     let _ = std::fs::remove_dir_all(&dir);
     assert!(landed, "5s 内那个进程什么都没写下来 —— spawn 那半没真跑");
     assert_eq!(
-        got, url,
+        got, expanded,
         "\n★★ **起出去的那个进程没拿到中转注入** —— 这是第九层（刀 `Z1c`）的形状：\n\
              `local_posix_spawn_plan` 返回之后那 3 行里把 `export ANTHROPIC_BASE_URL=…; `\n\
              从 argv 里剥掉，纯函数一字不动、全仓锚点一处不少，而上一版全绿。\n\
              生产后果：claude 直连官方端点，第三方 key 用不上，而门禁四个数一格不动。\n\
-             实得 = {got:?} · 期望 = {url:?}"
+             实得 = {got:?} · 期望 = {expanded:?}"
     );
 }
 

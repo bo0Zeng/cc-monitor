@@ -251,7 +251,9 @@ pub fn attach_verdict(line: &str, expected: &str) -> Verdict {
 /// 定长时间的字节比对：**跑完全部**，不提前返回。
 ///
 /// 长度不同直接判不等（长度本来就藏不住，它在 `read_line` 的字节数里）。
-fn tokens_match(a: &str, b: &str) -> bool {
+///
+/// 〔RK1〕中转口的门（`relay/door.rs::admit`）比钥匙也用这一份 —— 定长比对只许有一个住址。
+pub(crate) fn tokens_match(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
     if a.len() != b.len() || a.is_empty() {
         return false;
