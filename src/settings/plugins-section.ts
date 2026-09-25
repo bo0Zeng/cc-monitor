@@ -16,7 +16,7 @@
 // | 后端 | 这里显示成 |
 // |---|---|
 // | `file_absent: true` | 「这台机器**没有**登记任何 marketplace」 |
-// | `invoke` 抛错 | 「**读不到**……（这不等于「没有」）」 |
+// | 这一问失败（〔C4b〕经通道） | 「**读不到**……（这不等于「没有」）」 |
 // | `declared_plugins: null` | 「**读不到**插件数：<理由>」，**不是「0 个」** |
 //
 // 中间那条的措辞抄的是 `drift-ledger-section` 那句「读不到就说读不到 ——
@@ -24,19 +24,93 @@
 //
 // ## 只读、按需
 //
-// 一次 `invoke`，**不轮询**（红线，同 `config-surface-section.ts` / `drift-ledger-section.ts`）。
+// 一次问询，**不轮询**（红线，同 `config-surface-section.ts` / `drift-ledger-section.ts`）。
 //
 // ## 〔RM1b · 第四波〕跟着「当前在看哪台机器」走
 //
 // 读法搬进了后端（`plugins-marketplaces`，本机后端与远端后端同一个二进制），命令收 `origin` ⇒
 // 本节与 MCP 那节一样订阅 `machine-context`：切到哪台就问哪台（切换即重读一次，不轮询）。
 // 「这台机器」这几个字说的就是被选中的那一台 —— 本机页与远端页同一套话。
-import { commands } from "../ipc/commands";
+//
+// ## 〔C4b · 第四波 4B〕经通道直接问那台机器的后端
+//
+// 此前是 monitor 的一条 Tauri 命令（`list_plugin_marketplaces`〔散文墓碑〕）：它问那台后端要「恰一行」，
+// 再在 Rust 里核一遍形状（拒收未知字段 · 每个字段必填）。今天后端的帧应答**就是成品**（整份 survey），
+// 本文件经 `chan.call` 直接问、按形状收（[`decodeSurvey`]：同一套严格口径，挪到了唯一的消费者这里），
+// monitor 那条命令与那份核验一起删了。本机与远端同一条路。
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import type { MarketplaceEntry } from "../generated/MarketplaceEntry";
-import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
+import { chan } from "../ipc/chan";
+import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
+import type { Origin } from "../ipc/origin";
 
-export type { MarketplaceEntry, MarketplaceSurvey };
+/**
+ * 一个 marketplace（后端 `plugins_query::MarketplaceEntry`，键名一字不差）。**每个字段读不出就是 `null`，不编默认值。**
+ * 跨语言金样：`tests/__fixtures__/plugins-survey.golden.json`（后端写、[`decodeSurvey`] 读）。
+ */
+export interface MarketplaceEntry {
+  id: string;
+  /** 形如 `github:anthropics/claude-plugins-official`。 */
+  source: string | null;
+  install_location: string | null;
+  last_updated: string | null;
+  /** 这个 marketplace **声明**的插件数。★★ `null` 的意思是**读不到**，**不是 0**。 */
+  declared_plugins: number | null;
+  /** `declared_plugins` 为 `null` 时**为什么**读不到 —— 装的就是那条错误原文。 */
+  declared_error: string | null;
+}
+
+/** 一次枚举的结果。 */
+export interface MarketplaceSurvey {
+  entries: MarketplaceEntry[];
+  /** `known_marketplaces.json` **不存在** ⇒ 这台机器一个 marketplace 都没有（**诚实的空**）。「读不到」到不了这里。 */
+  file_absent: boolean;
+}
+
+const ENTRY_KEYS = ["declared_error", "declared_plugins", "id", "install_location", "last_updated", "source"];
+
+/**
+ * 后端的成品 ⇒ [`MarketplaceSurvey`]。口径与它上一个住址（monitor `plugins.rs` 的 `deny_unknown_fields` ＋ 必填）逐格相同：
+ * **多一格、少一格（缺席不等于 `null`）、类型不对** ⇒ 抛「两端契约对不上」—— 两端一漂当场报错，不静默少一格。
+ * 给人看的那句不带键名；哪一格不对只进日志。
+ */
+export function decodeSurvey(v: unknown): MarketplaceSurvey {
+  const bad = (what: string): never => {
+    console.warn(`[plugins-section] plugins-marketplaces 的应答形状不对：${what}`);
+    throw new Error("插件市场清单的形状对不上（后端与界面版本不一致？重装那台机器的后端试试）");
+  };
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return bad("不是一个对象");
+  const o = v as Record<string, unknown>;
+  if (Object.keys(o).sort().join(",") !== "entries,file_absent") return bad(`顶层的键是 ${Object.keys(o).sort().join(",")}`);
+  if (typeof o.file_absent !== "boolean" || !Array.isArray(o.entries)) return bad("顶层两格的类型不对");
+  const optStr = (x: unknown): x is string | null => x === null || typeof x === "string";
+  const entries = o.entries.map((raw, i): MarketplaceEntry => {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return bad(`第 ${i} 条不是对象`);
+    const e = raw as Record<string, unknown>;
+    if (Object.keys(e).sort().join(",") !== ENTRY_KEYS.join(",")) return bad(`第 ${i} 条的键是 ${Object.keys(e).sort().join(",")}`);
+    const n = e.declared_plugins;
+    const nOk = n === null || (typeof n === "number" && Number.isInteger(n) && n >= 0);
+    if (typeof e.id !== "string" || !nOk || ![e.source, e.install_location, e.last_updated, e.declared_error].every(optStr)) {
+      return bad(`第 ${i} 条有一格类型不对`);
+    }
+    return e as unknown as MarketplaceEntry;
+  });
+  return { entries, file_absent: o.file_absent };
+}
+
+/** 这一问的期限：与它上一个住址（monitor `frame_query::LINES_BUDGET`）同值 —— 读两份小 JSON ＋ 回程。 */
+const SURVEY_BUDGET_MS = 30_000;
+
+/** 问那台机器的后端：登记了哪些 marketplace。失败抛一句给人看的话（这一节把它挂在「读不到」那一行）。 */
+export async function fetchSurvey(origin: Origin): Promise<MarketplaceSurvey> {
+  try {
+    const budget = budgetWithin(SURVEY_BUDGET_MS);
+    const body = jsonBody({});
+    const reply = await chan.call(origin, "plugins-marketplaces", body, budget);
+    return decodeSurvey(readJson(reply));
+  } catch (e) {
+    throw new Error(saidOf(e, "那台机器上的后端版本旧，还读不了插件市场（重装后端之后就有）"));
+  }
+}
 
 /**
  * 插件数那一格的文案。**纯函数，可单测。**
@@ -129,14 +203,14 @@ export class PluginsSection {
     const mine = ++this.seq;
     let survey: MarketplaceSurvey;
     try {
-      survey = await commands.list_plugin_marketplaces({ origin: this.wanted });
+      survey = await fetchSurvey(this.wanted);
     } catch (e) {
       if (mine !== this.seq) return; // 迟到的失败也不许盖掉新结果
       // 读不到就说读不到 —— **不显示成「一个都没有」**（那是对用户撒谎）。
       this.body.textContent = "";
       const err = document.createElement("div");
       err.className = "settings-hint plugins-error";
-      err.textContent = `读不到 marketplace 登记表：${String(e)}（这不等于「没有」）`;
+      err.textContent = `读不到 marketplace 登记表：${e instanceof Error ? e.message : String(e)}（这不等于「没有」）`;
       this.body.appendChild(err);
       return;
     }

@@ -200,7 +200,8 @@ fn the_snapshot_path_is_wired_through_the_cursor() {
         "let Some(seq) = walk.step() else {",
         "crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);",
         "crate::snapshot_resume::note_flushed(",
-        "crate::snapshot_resume::forget(&crate::origin::Origin(host_label.clone()), &sid);",
+        // 〔CF1〕「会话结束真的忘」搬进了 `LineIntake::removed`（远端与本机两个帧源共用那一处）。
+        "crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);",
     ] {
         guard_core::find_pinned(&prod, anchor)
             .unwrap_or_else(|e| panic!("ssh_source 生产段里 `{anchor}` 不是恰好一处：{e}"));

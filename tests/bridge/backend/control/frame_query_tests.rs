@@ -30,19 +30,29 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
     v
 }
 
-/// 后端 `inbound.rs` 生产段里把活交给 `read_face::answer` 的帧命令名（**从后端源码数**）。
-fn backend_read_face_commands() -> Vec<String> {
+/// 后端 `inbound.rs` 生产段里的每一块 `CommandSpec`：`(帧命令名, 那一块的原文)`（**从后端源码数**）。
+/// 〔C4b〕抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
+fn backend_command_blocks() -> Vec<(String, String)> {
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/inbound.rs");
     let src = std::fs::read_to_string(&p).expect("读后端 inbound.rs");
     let prod = guard_core::production_code(&src);
-    let got: Vec<String> = prod
+    let blocks: Vec<(String, String)> = prod
         .split("CommandSpec {")
         .skip(1)
-        .filter(|blk| blk.contains("read_face::answer"))
         .filter_map(|blk| {
             let at = blk.find("name: \"")? + "name: \"".len();
-            Some(blk[at..].split('"').next()?.to_string())
+            Some((blk[at..].split('"').next()?.to_string(), blk.to_string()))
         })
+        .collect();
+    blocks
+}
+
+/// 后端 `inbound.rs` 生产段里把活交给 `read_face::answer` 的帧命令名（**从后端源码数**）。
+fn backend_read_face_commands() -> Vec<String> {
+    let got: Vec<String> = backend_command_blocks()
+        .into_iter()
+        .filter(|(_, blk)| blk.contains("read_face::answer"))
+        .map(|(name, _)| name)
         .collect();
     assert!(!got.is_empty(), "从后端源码一条都没数到 —— 抽取坏了");
     sorted(got)
@@ -116,7 +126,7 @@ fn run_list_query_asks_before_it_dials() {
     assert!(ask < dial, "先拨号后问，问了等于没问");
 }
 
-/// ★ argv 分流认得本仓今天真在发的形状：区间取正文 · 骨架索引 · 大纲清单都走帧面。
+/// ★ argv 分流认得本仓今天真在发的形状：区间取正文走帧面（〔C4b〕索引 · 查找 · 大纲三形改走通道，不再认）。
 #[test]
 fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
     let range = crate::session_skeleton::range_argv("/p/s.jsonl", 10, 99);
@@ -127,35 +137,17 @@ fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
         }
         _ => panic!("按区间取正文那一形没走帧面"),
     }
-    // 〔SR1a〕索引与大纲两形：造 argv 的是生产那两个函数（异源），它们都得走帧面、带对参数。
-    let index = crate::session_skeleton::index_argv("/p/s.jsonl", 7);
-    let index: Vec<&str> = index.iter().map(String::as_str).collect();
-    match route_argv(&index) {
-        Some(ArgvRoute::Lines("history-index", args)) => {
-            assert_eq!(args, serde_json::json!({"path": "/p/s.jsonl", "offset": 7}))
-        }
-        _ => panic!("索引那一形没走帧面"),
-    }
-    for tools in [false, true] {
-        let find = crate::session_find::find_argv("/p/s.jsonl", "--force", tools);
-        let find: Vec<&str> = find.iter().map(String::as_str).collect();
-        match route_argv(&find) {
-            Some(ArgvRoute::Lines("history-find", args)) => {
-                assert_eq!(args["path"], "/p/s.jsonl");
-                assert_eq!(args["query"], "--force", "以 -- 起头的查询串要原样到");
-                assert_eq!(args["include_tools"], tools);
-                assert!(args["limit"].as_u64().is_some());
-            }
-            _ => panic!("查找那一形（include_tools={tools}）没走帧面"),
-        }
-    }
-    let outline = crate::session_outline::user_inputs_argv("/p/s.jsonl", 42);
-    let outline: Vec<&str> = outline.iter().map(String::as_str).collect();
-    match route_argv(&outline) {
-        Some(ArgvRoute::Lines("history-user-inputs", args)) => {
-            assert_eq!(args, serde_json::json!({"path": "/p/s.jsonl", "from": 42}))
-        }
-        _ => panic!("大纲那一形没走帧面"),
+    // 〔C4b · 第四波 4B〕索引 · 查找 · 大纲三形随那三条命令改走通道删了 —— 它们的 argv 造器一起删了，
+    //   这里改成反向：那三个子命令**不再被认**（认得就说明 monitor 里又长出了一条发它们的路）。
+    for gone in [
+        &["--read-session-from-offset", "--index", "/p/s.jsonl", "7"][..],
+        &["--find-in-session", "--limit", "500", "--query", "q", "/p/s.jsonl"][..],
+        &["--list-user-inputs", "--from", "42", "/p/s.jsonl"][..],
+    ] {
+        assert!(
+            route_argv(gone).is_none(),
+            "{gone:?} 又被分流认出来了 —— 那一条已经只走通道"
+        );
     }
     assert!(matches!(
         route_argv(&["--list-subagents", "/p/s.jsonl"]),
@@ -188,53 +180,79 @@ const CHANNELED: &[(&str, &str)] = &[
         "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/views/history-search.ts`，\
          每件只有那一个家；本机索引仍是 monitor 进程内的（`search_history` 只剩本机）",
     ),
-];
-
-/// 还留在 monitor 侧发送的那几条 —— `(帧命令, 为什么今天不迁)`。**不是豁免清单**：
-/// 下面那条判据要求它们**真的**还有 monitor 侧发送点（没了 ⇒ 这一行的理由已经馊了）。
-const HELD_BACK: &[(&str, &str)] = &[
-    (
-        "accounts-list",
-        "行格式的解析（`accounts::parse_accounts_lines`）本机与远端共用，本机那侧还要并 apikey 表\
-         （规则住 `acct-core`）⇒ 只迁远端 = 两个解析器；连本机一起迁 = apikey 合并规则在 TS 再写一份",
-    ),
-    (
-        "history-projects",
-        "每一行要并**本机元数据**（星标 / 隐藏计数，`history_project_from_row`，本机那条路也吃同一份）\
-         ＋ 本机侧的 codex 合成项目与判活 ⇒ 迁过去就是一行解释两个家",
-    ),
-    (
-        "history-sessions",
-        "每一行要并本机元数据（星标 / 改名 / 隐藏，`remote_session_entry`）⇒ 前端要一条新的读元数据口，\
-         而那份行解释今天只有 Rust 一份 —— 本拍不开新读口",
-    ),
-    (
-        "history-read",
-        "应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号（`LineNumberer`），\
-         本机那条路共用同一份 ⇒ TS 再写一份记录解析不可接受",
-    ),
-    (
-        "history-subagents",
-        "列完候选还要挑一个（`choose_subagent`）、再读那份文件并过记录解析（`parse_line`）⇒ 同上",
-    ),
-    (
-        "history-tail",
-        "**不是前端查询**：它只被实时 tab 的快照续点用（`ssh_source` 的流机器，monitor 内部），webview 从不问它",
-    ),
-    // 〔C4a 与 SR1a 合并 · 第四波〕SR1a 同波把这三条搬上帧面（进了 `MOVED`），C4a 立本表时它们还在另一棵树上。
-    //   三条今天都由 monitor 侧经 `frame_query` 发，前端没经通道说 —— 迁不迁归 C4b，理由同上面那几条：
+    // 〔C4b · 第四波 4B〕会话读面那三条：**解释挪进后端、直接出成品**（`read_face.rs`），monitor 那一份
+    //   「核头尾、剥行、失败分档」删了；界面经 `src/session-reads.ts` 问，本机与远端同一条路。
     (
         "history-index",
-        "骨架索引的应答要进 monitor 侧的骨架账（`session_skeleton` 的行号编排，本机那条路共用）⇒ 同 `history-read`",
+        "后端出成品 `{from, end, rows}`；行本身前端不解释（`SkeletonFacts`）；monitor 那份核头尾删了",
     ),
     (
         "history-user-inputs",
-        "大纲清单的应答要过 `session_outline` 的解析与分档（`QueryError` 三档），本机那条路共用 ⇒ TS 再写一份不可接受",
+        "后端出成品 `{from, end, entries}`；「什么算一条用户输入」只住后端，失败分档只住 `session-reads.ts::failureOf`",
     ),
     (
         "history-find",
-        "会话内查找的应答要过 `session_find::parse_find_output` 的头尾核验，本机那条路共用 ⇒ 同上",
+        "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search-core`），monitor 那份核头尾删了",
     ),
+];
+
+/// 〔C4b · 第四波 4B〕**帧面只读查询那一族之外**、同样改成「前端经通道直接问、后端出成品」的帧命令 ——
+/// `(帧命令, 为什么迁、迁了之后解释住哪)`。它们不在 [`MOVED`] 里（不是 `C1` 那一族），但前端 `chan.call` 的
+/// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
+/// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
+const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[(
+    "plugins-marketplaces",
+    "`feature_face`（RM1b）那一族：后端应答就是整份 survey（成品），monitor 那条命令（`list_plugin_marketplaces`）\
+     只在核「恰一行 ＋ 严格形状」—— 核验搬到唯一的消费者 `settings/plugins-section.ts::decodeSurvey`，命令与 `plugins.rs` 删了",
+)];
+
+/// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
+fn backend_registered_commands() -> std::collections::BTreeSet<String> {
+    backend_command_blocks()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// 还留在 monitor 侧发送的那几条 —— `(帧命令, 为什么今天不迁)`。**不是豁免清单**：
+/// 下面那条判据要求它们**真的**还有 monitor 侧发送点（没了 ⇒ 这一行的理由已经馊了）。
+///
+/// 〔C4b · 第四波 4B〕逐行重裁过（`调研/第四波记录/C4b.md §1`）：判准照旧是「业务解释只有一个家」，
+/// 正路是「解释挪进后端、直接出成品」。九行里三行做到了（挪进了 [`CHANNELED`]）；下面六行**逐条写清卡在哪**。
+const HELD_BACK: &[(&str, &str)] = &[
+    (
+        "accounts-list",
+        "行解析与降级说明挪得进后端，卡在**本机那一侧要并 apikey 表**：并的规则（`history::apikey_routed_subset`）\
+         与「这次起会话的是哪一家 agent」住 monitor 起会话那一侧；挪进后端 = 规则搬进 `acct-core`、agent 随请求带过去、\
+         本机后端读它自己那份凭据文件（V107：账号层住本机常驻后端）—— 是账号层的一次搬家，不是本拍能顺手做的",
+    ),
+    (
+        "history-projects",
+        "每一行要并**本机**的注解（星标 / 隐藏计数，`history-metadata.json` 住 monitor 数据目录）＋ 本机判活（`SessionMap`）\
+         ＋ 本机合成的 codex 项目 —— 远端的行要并的是**本机**这一份：跨两台机器的 join，那台的后端出不了成品。\
+         出路是注解本身搬进本机常驻后端、由它去问远端那台（设计题，交主会话）",
+    ),
+    (
+        "history-sessions",
+        "同 `history-projects`：每一行并本机注解（星标 / 改名 / 隐藏，`remote_session_entry`）＋ 判活 —— 跨机 join",
+    ),
+    (
+        "history-read",
+        "应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号（`LineNumberer`）—— 两样住 monitor crate，\
+         后端是独立 crate、不链接它 ⇒ 出成品 = 把 `messages.rs` / `parser.rs` 搬进两边共用的 crate（`00 §1.5.4` 的\
+         `backend-core`）。另两个发送点（实时 tab 的快照续点 · 按区间取正文）同样吃这两样",
+    ),
+    (
+        "history-subagents",
+        "列完候选还要挑一个（`choose_subagent`）、再读那份文件并过记录解析（`parse_line`）⇒ 同 `history-read`",
+    ),
+    (
+        "history-tail",
+        "**不是前端查询**：它只被实时 tab 的快照续点用（`ssh_source` 的流机器，monitor 内部），webview 从不问它 ——\
+         属于「流那半收口成 `subscribe`」（`设计/05 §8` 步 6），不属于 `call`",
+    ),
+    // 〔C4a 与 SR1a 合并〕SR1a 同波搬上来的 `history-index` / `history-user-inputs` / `history-find` 三行
+    // 〔C4b · 第四波 4B〕挪进了 [`CHANNELED`]（后端出成品）。
 ];
 
 /// monitor 生产段（`src/bridge/src/**/*.rs`，剥注释与 `#[cfg(test)]`）里，一条帧命令的字面量出现几次。
@@ -343,9 +361,34 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     );
     assert_eq!(
         ops.iter().cloned().collect::<Vec<_>>(),
-        sorted(CHANNELED.iter().map(|(c, _)| c.to_string())),
-        "前端经通道说的操作名 != 登记的「已迁」"
+        sorted(
+            CHANNELED
+                .iter()
+                .chain(CHANNELED_ELSEWHERE)
+                .map(|(c, _)| c.to_string())
+        ),
+        "前端经通道说的操作名 != 登记的「已迁」（`CHANNELED` ⊔ `CHANNELED_ELSEWHERE`）"
     );
+    // 〔C4b〕那一族之外的已迁：真是后端的帧命令（异源）· 不在 `MOVED` 里 · monitor 生产段零字面量。
+    let registered = backend_registered_commands();
+    assert!(
+        registered.len() > 20,
+        "从后端 `inbound.rs` 只数到 {} 条帧命令 —— 抽取坏了",
+        registered.len()
+    );
+    for (op, why) in CHANNELED_ELSEWHERE {
+        assert!(!why.trim().is_empty(), "`{op}` 没写理由");
+        assert!(registered.contains(*op), "`{op}` 不是后端登记的帧命令");
+        assert!(
+            !MOVED.iter().any(|(_, c)| c == op),
+            "`{op}` 是 `C1` 那一族的，该登记在 `CHANNELED`"
+        );
+        assert_eq!(
+            monitor_literal_count(op),
+            0,
+            "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
+        );
+    }
     let mut still_sent_by_monitor: Vec<String> = Vec::new();
     for (op, _) in MOVED.iter().map(|(_, c)| (*c, ())) {
         // `MOVED` 那一行自己就是一次字面量出现。

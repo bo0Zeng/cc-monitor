@@ -40,6 +40,7 @@
  * 会逼出一个参数越加越多的壳，那是另一种漂。
  */
 import { expect, vi } from "vitest";
+import { withSessionReads } from "./chan-fake";
 
 /** 灌给 `invoke` 的那一整块 chunk。每个用例在 `mount()` 里塞，`installViewerRig()` 清空。 */
 export const viewerRig: { chunk: unknown[]; index?: unknown } = { chunk: [] };
@@ -109,7 +110,8 @@ export function tauriCoreMock(): Record<string, unknown> {
     Channel: class {
       onmessage: ((v: unknown) => void) | null = null;
     },
-    invoke: vi.fn(async (cmd: string, args: Record<string, unknown>) => {
+    // 〔C4b〕会话读面三问改走通道：`withSessionReads` 把 `chan_call` 译回「哪一问 ＋ 旧形参」、回包译成后端成品字节。
+    invoke: vi.fn(withSessionReads(async (cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_user_inputs") return answerListUserInputs(args as { fromOffset: number });
       if (cmd === "stream_read_session_jsonl") {
         const ch = args.onChunk as { onmessage?: ((v: unknown) => void) | null };
@@ -119,7 +121,7 @@ export function tauriCoreMock(): Record<string, unknown> {
       // 〔U3b〕骨架索引：没塞就回 undefined（== 今天所有既有用例的形状：查看器不接骨架）
       if (cmd === "read_session_index") return viewerRig.index;
       return undefined;
-    }),
+    })),
   };
 }
 

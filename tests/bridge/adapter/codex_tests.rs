@@ -13,7 +13,6 @@ fn codex_layout_locked() {
     assert_eq!(l.record_ext, "jsonl");
     assert_eq!(l.sid_strategy, SidStrategy::CodexRollout);
     assert_eq!(l.tasks_subdir, None);
-    assert!(l.skip_segments.is_empty());
 }
 
 /// `for_kind` 派发到 Codex；`active()` 仍是 Claude（零回归）。

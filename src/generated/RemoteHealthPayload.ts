@@ -2,8 +2,9 @@
 
 /**
  * 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label
- * （`None` 理论不该出现——远端事件总带 origin；保留 Option 以与其它 payload 一致）；
+ * （〔C4b · 第四波〕从 `Option<String>` 改成 `String`：五个发射点全在 `ssh_source.rs`、全都带着那台的 label，
+ * 「没有 origin」从来不是一个会发生的值 —— 类型里就不给它留格子，TS 那侧随之不再装得下 `null`）；
  * `kind` = 类别（"overflow" / "version" / …）供前端节流键与图标选择；`message` =
  * 直接展示给用户的人读说明。
  */
-export type RemoteHealthPayload = { origin: string | null, kind: string, message: string, };
+export type RemoteHealthPayload = { origin: string, kind: string, message: string, };

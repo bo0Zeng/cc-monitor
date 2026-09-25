@@ -212,8 +212,8 @@ export class AccountChip {
       menu.appendChild(this.menuAction("管理账号…", () => this.deps.openSettings()));
       menu.appendChild(
         this.menuAction("刷新", () => {
-          // 本机那一半照旧清全部（账号面的本机缓存键是 `accounts.ts` 自己那个 `"__local__"`，不是 origin）。
-          invalidateAccountsCache(this.local ? undefined : this.origin);
+          // 〔C4b〕账号缓存的键就是 origin（本机也一样，`"__local__"` 那个第二种写法已退役）⇒ 只清这一台。
+          invalidateAccountsCache(this.origin);
           void this.refresh(true);
         }),
       );

@@ -199,7 +199,7 @@ const WRAPPER_FILE = "src/ipc/commands.ts";
 // `aggregate_remote_usage_all` / `account_usage` / `account_usage_local` 四条同拍退役  〔散文墓碑〕
 //（用量 ②③ 两轴整轴不做了）。**这是本常量第一次往下走** —— 命令数变小要跟着改三个数：
 // 本常量 · `TS_LITERAL_COMMAND_COUNT` · 下面包装层覆盖数（141 → 137）。
-const RUST_COMMAND_COUNT = 137; // **〔AL1d · 第四波 4B〕−2（aliases_block_render / aliases_block_install / aliases_block_remove 三条进，「终端集成」那五条 cc_integration_* 退役（状态与扫一份并进 aliases_read）；都在包装层里，所以本文件那**三个**数一起 −2；合并主线按两边增量相加 139 − 2）** // **〔RM1d · 第四波〕−5（本机六条全景写命令退役 −6 · `panorama_edit` ＋1；落进了包装层，所以本文件那**三个**数一起 −5）**（合并主线按两边增量相加） // **〔U4b · 第四波〕+1（probe_session_record：resume 之前问记录还在不在；落进了包装层，所以本文件那**三个**数一起 +1；合并 RM1c 按两边增量相加）** // **〔RM1c · 第四波〕+1（panorama_call：代码全景经那台机器的后端走；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔RM1a · 第四波〕+1（relay_ensure：让远端那台上有一个中转在跑）** // **〔合并 C4a〕−1（「某会话属哪个账号」两条退役 −2、`chan_call` ＋1；与 SE2 ＋1 / S4 −1 按两边增量相加 ⇒ 141，跑出来核过）** // **〔SE2〕+1（find_in_session：会话内查找，后端 `--find-in-session`；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔第四波 S4〕−1（sftp_copy：零流量复制随门禁 `f3-copy` 那一格退役；它在包装层里，所以本文件那**三个**数一起 −1）** // **〔F7c 收尾 09-24〕−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔B2 · 条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **〔合并 AL1〕+2（aliases_render / aliases_read / aliases_install 进，write_account_aliases 退役；都在包装层里 ⇒ 三个数一起 +2）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **〔A3 第二波〕+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **〔SE1〕+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **〔U3b〕+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **〔`设计/60 §4 戊` · `24e` 第二刀 · 09-20〕+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C 收尾 · 09-20〕−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **〔`设计/60 §5.4c` · 09-20〕+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C · 09-20〕−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // **〔步 23b · 09-20〕+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）**
+const RUST_COMMAND_COUNT = 133; // **〔AL1d · 第四波 4B〕−2（aliases_block_* 三条进，「终端集成」五条 cc_integration_* 退役；都在包装层里，所以本文件那**三个**数一起 −2；合并主线 d07c6d14 按两边增量相加 135 − 2）** // **〔合并 C4b × 主线〕两边各 −4 ⇒ 143 − 8 = 135（跑出来核过）** // **〔C4b · 第四波 4B〕−1（list_plugin_marketplaces：插件市场改走通道、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // **〔C4b · 第四波 4B〕−3（read_session_index / list_user_inputs / find_in_session：会话读面三条改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // **〔RM1d · 第四波〕−5（本机六条全景写命令退役 −6 · `panorama_edit` ＋1；落进了包装层，所以本文件那**三个**数一起 −5）**（合并主线按两边增量相加） // **〔U4b · 第四波〕+1（probe_session_record：resume 之前问记录还在不在；落进了包装层，所以本文件那**三个**数一起 +1；合并 RM1c 按两边增量相加）** // **〔RM1c · 第四波〕+1（panorama_call：代码全景经那台机器的后端走；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔RM1a · 第四波〕+1（relay_ensure：让远端那台上有一个中转在跑）** // **〔合并 C4a〕−1（「某会话属哪个账号」两条退役 −2、`chan_call` ＋1；与 SE2 ＋1 / S4 −1 按两边增量相加 ⇒ 141，跑出来核过）** // **〔SE2〕+1（find_in_session：会话内查找，后端 `--find-in-session`；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔第四波 S4〕−1（sftp_copy：零流量复制随门禁 `f3-copy` 那一格退役；它在包装层里，所以本文件那**三个**数一起 −1）** // **〔F7c 收尾 09-24〕−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔B2 · 条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **〔合并 AL1〕+2（aliases_render / aliases_read / aliases_install 进，write_account_aliases 退役；都在包装层里 ⇒ 三个数一起 +2）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **〔A3 第二波〕+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **〔SE1〕+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **〔U3b〕+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **〔`设计/60 §4 戊` · `24e` 第二刀 · 09-20〕+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C 收尾 · 09-20〕−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **〔`设计/60 §5.4c` · 09-20〕+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C · 09-20〕−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // **〔步 23b · 09-20〕+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）**
 // **K-R109 +1**（render_local_attach：本机后端产 `ccm attach <名>` 那一句，`R61` 裁定三；
 // 它与 `generate_handler!` 那一行、`parity_ledger::LEDGER` 那一行**必须同一拍**）。
 // **K-R49 +1**（write_account_aliases〔散文墓碑〕：加了账号就把 `alphacc` / `betacc` 那条命令落盘；〔AL1〕已退役）。
@@ -211,7 +211,7 @@ const RUST_COMMAND_COUNT = 137; // **〔AL1d · 第四波 4B〕−2（aliases_bl
 // **K-H2b +1**（apikey_routing_for：界面问「这几个**本机**账号走不走 apikey 端点改写」）。
 
 /** TS 侧**字面量** `invoke("…")` 里出现过的唯一命令名个数。 */
-const TS_LITERAL_COMMAND_COUNT = 137; // **〔AL1d · 第四波 4B〕−2（同上）** // **〔RM1d · 第四波〕−5（同上）**（合并主线按两边增量相加） // **〔U4b〕+1（probe_session_record 落进包装层）** // **〔RM1c · 第四波〕+1（panorama_call 落进包装层）** // **〔RM1a · 第四波〕+1（relay_ensure 落进包装层）** // **〔合并 C4a〕−1（同上）** // **〔SE2〕+1（find_in_session：会话内查找，后端 `--find-in-session`；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔第四波 S4〕−1（sftp_copy：零流量复制随门禁 `f3-copy` 那一格退役；它在包装层里，所以本文件那**三个**数一起 −1）** // **〔F7c 收尾 09-24〕−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔B2 · 条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **〔合并 AL1〕+2（同上）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **〔A3 第二波〕+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **〔SE1〕+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **〔U3b〕+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **〔`设计/60 §4 戊` · `24e` 第二刀 · 09-20〕+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C 收尾 · 09-20〕−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **〔`设计/60 §5.4c` · 09-20〕+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C · 09-20〕−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // `设计/50` −4，见 `RUST_COMMAND_COUNT` 上面那段 // **〔步 23b · 09-20〕+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）**
+const TS_LITERAL_COMMAND_COUNT = 133; // **〔AL1d · 第四波 4B〕−2（同上）** // **〔合并 C4b × 主线〕两边各 −4 ⇒ 143 − 8 = 135（跑出来核过）** // **〔C4b · 第四波 4B〕−1（list_plugin_marketplaces：插件市场改走通道、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // **〔C4b · 第四波 4B〕−3（read_session_index / list_user_inputs / find_in_session：会话读面三条改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // **〔RM1d · 第四波〕−5（同上）**（合并主线按两边增量相加） // **〔U4b〕+1（probe_session_record 落进包装层）** // **〔RM1c · 第四波〕+1（panorama_call 落进包装层）** // **〔RM1a · 第四波〕+1（relay_ensure 落进包装层）** // **〔合并 C4a〕−1（同上）** // **〔SE2〕+1（find_in_session：会话内查找，后端 `--find-in-session`；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔第四波 S4〕−1（sftp_copy：零流量复制随门禁 `f3-copy` 那一格退役；它在包装层里，所以本文件那**三个**数一起 −1）** // **〔F7c 收尾 09-24〕−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔B2 · 条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **〔合并 AL1〕+2（同上）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **〔A3 第二波〕+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **〔SE1〕+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **〔U3b〕+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **〔`设计/60 §4 戊` · `24e` 第二刀 · 09-20〕+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C 收尾 · 09-20〕−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **〔`设计/60 §5.4c` · 09-20〕+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C · 09-20〕−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // `设计/50` −4，见 `RUST_COMMAND_COUNT` 上面那段 // **〔步 23b · 09-20〕+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）**
 // **K-R109 +1**（render_local_attach —— 它落进了包装层，所以这个数也 +1）。
 // **K-R49 +1**（write_account_aliases〔散文墓碑〕，同上 —— 它落进了包装层，所以 `keys.length` 那个数也 +1）。
 // 增量账：**K-H2a +2**（同上）；devbench F03 +3（skill 接入面三条）；U8c-2c-2 +1；
@@ -393,7 +393,7 @@ describe("C04a 命令名钉死", () => {
     }
 
     // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(137) // **〔AL1d · 第四波 4B〕−2（同上）** // **〔RM1d · 第四波〕−5（同上）**（合并主线按两边增量相加） // **〔U4b〕+1（probe_session_record）** // **〔RM1c · 第四波〕+1（panorama_call 落进包装层，所以本文件那**三个**数一起 +1）** // **〔RM1a · 第四波〕+1（relay_ensure 落进包装层，所以本文件那**三个**数一起 +1）** // **〔合并 C4a〕子步 2 ＋10（裸 invoke 那十条补进包装层）、子步 3 −1（同 `RUST_COMMAND_COUNT`）⇒ 与 SE2 ＋1 / S4 −1 相加 = 141 == Rust 命令数** // **〔SE2〕+1（find_in_session：会话内查找，后端 `--find-in-session`；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔第四波 S4〕−1（sftp_copy：零流量复制随门禁 `f3-copy` 那一格退役；它在包装层里，所以本文件那**三个**数一起 −1）** // **〔F7c 收尾 09-24〕−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔B2 · 条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **〔合并 AL1〕+2（同上）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **〔A3 第二波〕+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **〔SE1〕+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **〔U3b〕+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **〔`设计/60 §4 戊` · `24e` 第二刀 · 09-20〕+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C 收尾 · 09-20〕−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **〔`设计/60 §5.4c` · 09-20〕+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C · 09-20〕−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // ／／ **〔步 23b · 09-20〕+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** //；**`设计/50` −4（那四条用量命令的声明整块删了）** //；**K-R109 +1（render_local_attach）—— ⚠ 本文件里跟着新命令走的是**三个**数，不是两个：`RUST_COMMAND_COUNT` · `TS_LITERAL_COMMAND_COUNT` · 这一个。派工单只点了前两个** //；**K-R69 +1（local_ccm_entry_status）**//；**K-R49 +1（write_account_aliases）**//；**K-H2b +1（apikey_routing_for：本件把它落进包装层而不是散在 `accounts.ts` —— 落哪儿会不会红是两个不同的数：散在别处只动上面那两个，进包装层**多动这一个**）** //；**K-H2a +2（read_apikey_credentials_status / write_apikey_credentials_key）** // P4c +2（cc_bus_broadcast / cc_bus_kill）; // devbench F03 +3（list_skills/read_skill_file/write_skill_file）；U8a-2c-1 +1（backend_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）；**P2s +5（set_backend_kill_on_exit / backend_status / backend_start / backend_stop / backend_machines：每台机一个后端开关，C8）** P3t-Y2b +1（local_tmux_names）；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**；**`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove：用户级 PATH 那一格，`R85`/`R87`/`R88`）**
+    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(133) // **〔AL1d · 第四波 4B〕−2（同上）** // **〔合并 C4b × 主线〕两边各 −4 ⇒ 143 − 8 = 135（跑出来核过）** // **〔C4b · 第四波 4B〕−1（list_plugin_marketplaces：插件市场改走通道、Rust 命令删了；它在包装层里，所以本文件那**三个**数一起 −1）** // **〔C4b · 第四波 4B〕−3（read_session_index / list_user_inputs / find_in_session：会话读面三条改走通道、Rust 命令删了；都在包装层里，所以本文件那**三个**数一起 −3）** // **〔RM1d · 第四波〕−5（同上）**（合并主线按两边增量相加） // **〔U4b〕+1（probe_session_record）** // **〔RM1c · 第四波〕+1（panorama_call 落进包装层，所以本文件那**三个**数一起 +1）** // **〔RM1a · 第四波〕+1（relay_ensure 落进包装层，所以本文件那**三个**数一起 +1）** // **〔合并 C4a〕子步 2 ＋10（裸 invoke 那十条补进包装层）、子步 3 −1（同 `RUST_COMMAND_COUNT`）⇒ 与 SE2 ＋1 / S4 −1 相加 = 141 == Rust 命令数** // **〔SE2〕+1（find_in_session：会话内查找，后端 `--find-in-session`；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔第四波 S4〕−1（sftp_copy：零流量复制随门禁 `f3-copy` 那一格退役；它在包装层里，所以本文件那**三个**数一起 −1）** // **〔F7c 收尾 09-24〕−12（池子那十二条 sftp_* 命令随老面板与窗口改走通道删了；都在包装层里，所以本文件那**三个**数一起 −12）** // **〔B2 · 条 66〕+1（推生效值那一条命令退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 进 +2：「退出行为」那个值搬到后端那台机器上，前端改走问 / 交写两条；都落进了包装层，所以本文件那**三个**数一起 +1）** // **〔合并 AL1〕+2（同上）** // **〔PN1b 选图〕+2（panorama_diagram_kinds / panorama_diagram，都 Local；归已有能力 `panorama.code-graph`）** // **〔A3 第二波〕+2（check_local_acct_iso / local_acct_iso_shellinit；与 SE1/U3b 合并时按两边增量相加）** // **〔SE1〕+1（list_user_inputs：大纲的数据源，后端 `--list-user-inputs`；落进了包装层）** // **〔U3b〕+1（replay_keep_tail_only：接上骨架的会话重放缓冲只留尾巴；落进了包装层，所以本文件那**三个**数一起 +1）** // **〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range：`--read-session-from-offset` 在 monitor 侧的两个调用点；都落进了包装层，所以本文件那**三个**数一起 +2）** // **〔`设计/60 §4 戊` · `24e` 第二刀 · 09-20〕+1（open_file_window：原生文件管理窗口那条入口；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C 收尾 · 09-20〕−2（`origin` 归一的最后两对：退役 `write_remote_mcp_server` / `remove_remote_mcp_server`。两条退役的**都在包装层里**，所以本文件那**三个**数一起 −2）** // **〔`设计/60 §5.4c` · 09-20〕+1（sftp_chmod：`SETSTAT` 改权限那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** // **〔步 12·C · 09-20〕−5（`origin` 归一：5 对同义双份合成一条带 origin 的 ⇒ 退役 `create_remote_branch_session` / `delete_remote_history_session` / `stream_remote_history_sessions` / `stream_read_remote_session` / `list_remote_mcp_project_dirs`。五条退役的**都在包装层里**，所以本文件那**三个**数一起 −5）** // ／／ **〔步 23b · 09-20〕+1（sftp_copy：零流量复制那一条；它落进了包装层，所以本文件那**三个**数一起 +1）** //；**`设计/50` −4（那四条用量命令的声明整块删了）** //；**K-R109 +1（render_local_attach）—— ⚠ 本文件里跟着新命令走的是**三个**数，不是两个：`RUST_COMMAND_COUNT` · `TS_LITERAL_COMMAND_COUNT` · 这一个。派工单只点了前两个** //；**K-R69 +1（local_ccm_entry_status）**//；**K-R49 +1（write_account_aliases）**//；**K-H2b +1（apikey_routing_for：本件把它落进包装层而不是散在 `accounts.ts` —— 落哪儿会不会红是两个不同的数：散在别处只动上面那两个，进包装层**多动这一个**）** //；**K-H2a +2（read_apikey_credentials_status / write_apikey_credentials_key）** // P4c +2（cc_bus_broadcast / cc_bus_kill）; // devbench F03 +3（list_skills/read_skill_file/write_skill_file）；U8a-2c-1 +1（backend_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）；**P2s +5（set_backend_kill_on_exit / backend_status / backend_start / backend_stop / backend_machines：每台机一个后端开关，C8）** P3t-Y2b +1（local_tmux_names）；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**；**`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove：用户级 PATH 那一格，`R85`/`R87`/`R88`）**
   });
 
   // 标题里的数原先写着 112，而断言早就是 119 了（Z05 起 120；local-as-remote L3a 起 121）——**标题也是记录**，
@@ -965,14 +965,14 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
 // | ② 生成物面 | `src/generated/Origin.ts` 的**正文** | `ts-rs` 从 Rust 的 `origin::Origin` 生成 | 有人手写一处 `origin: string \| null` ⇒ 生成物一个字不动，而本条照绿 |
 //
 // ⚠ **它们买不到**：① 换个名字传同一件事（`host: string | null`）——
-//   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` /
-//   `RemoteHealthPayload` 一族仍是 `origin: string | null`，`null` = 本机）——
+//   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` 一族仍是可缺省的 `origin`，缺省 = 本机；
+//   〔C4b〕`RemoteHealthPayload.origin` 已改成恒有值的 `string`）——
 //   那几份住 `src/bridge/src/{bridge,history,search}.rs` 与 `lib.rs`，
 //   不在步 2 的写区里，逐份读数在交回件里。**别把这一节读成「全仓没有 `null` 了」。**
 // ══════════════════════════════════════════════════════════════════════════
 
 /** `origin` 参数现打的处数。**恒等**，不是地板 —— 地板在「变少」方向是瞎的。 */
-const ORIGIN_PARAM_COUNT = 51; // 〔RM1d · 第四波〕+1（`panorama_edit` 带一个 `origin: Origin`：批注写本机远端同一条）；（合并主线按两边增量相加） // 〔U4b · 第四波〕+1（probe_session_record 带一个 `origin: Origin`：resume 之前问那台后端记录还在不在）； // 〔ST3 · 第四波 4B〕+1（drift_ledger_report 带一个 `origin: Origin`：「未识别的数据」按机器分，问哪台答哪台）； // 〔RM1c · 第四波〕+1（panorama_call 带一个 `origin: Origin`：全景按 origin 问那台后端）；// 〔RW1 · 第四波 09-24〕+3（list_skills / read_skill_file / write_skill_file 各带一个 `origin: Origin`：远端项目的收件箱也能编辑，读写经那台机器的后端）； // 〔RM1a · 第四波〕+5（`read_apikey_credentials_status` / `write_apikey_credentials_key` / `apikey_routing_for` / `relay_ensure` / `config_surface_report` 各带一个 `origin: Origin`：账号层那份文件 · 中转 · 足迹都按机器）；// 〔合并 C4a〕+3（子步 2：list_remote_accounts · list_remote_session_accounts · check_account_trust ＋3；子步 3：远端会话账号那条退役 −1、`chan_call` ＋1）；与 RM1b ＋2 / SE2 ＋1 相加，跑出来核过；// 〔RM1b · 第四波〕+1（list_plugin_marketplaces 带一个 `origin: Origin`：插件市场按 origin 问那台后端）；// 〔RM1b · 第四波〕+1（get_session_tasks 带一个 `origin: Origin`：任务列表按 origin 问那台后端）；// 〔SE2〕+1（find_in_session 带一个 `origin: Origin`）；// 〔B2 · 条 66〕+1（推生效值那一条退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 各带一个 `origin` +2）； 〔SE1〕+1（list_user_inputs 带一个 `origin: Origin`）； 〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range 各带一个 `origin: Origin`）
+const ORIGIN_PARAM_COUNT = 47; // 〔合并 C4b × 主线〕49 − 4 ＋ 2 = 47（跑出来核过）； // 〔C4b · 第四波 4B〕−1（list_plugin_marketplaces 包装退役）； // 〔C4b · 第四波 4B〕−3（read_session_index / list_user_inputs / find_in_session 三条包装退役，各带一个 `origin: Origin`）； 〔RM1d · 第四波〕+1（`panorama_edit` 带一个 `origin: Origin`：批注写本机远端同一条）；（合并主线按两边增量相加） // 〔U4b · 第四波〕+1（probe_session_record 带一个 `origin: Origin`：resume 之前问那台后端记录还在不在）； // 〔ST3 · 第四波 4B〕+1（drift_ledger_report 带一个 `origin: Origin`：「未识别的数据」按机器分，问哪台答哪台）； // 〔RM1c · 第四波〕+1（panorama_call 带一个 `origin: Origin`：全景按 origin 问那台后端）；// 〔RW1 · 第四波 09-24〕+3（list_skills / read_skill_file / write_skill_file 各带一个 `origin: Origin`：远端项目的收件箱也能编辑，读写经那台机器的后端）； // 〔RM1a · 第四波〕+5（`read_apikey_credentials_status` / `write_apikey_credentials_key` / `apikey_routing_for` / `relay_ensure` / `config_surface_report` 各带一个 `origin: Origin`：账号层那份文件 · 中转 · 足迹都按机器）；// 〔合并 C4a〕+3（子步 2：list_remote_accounts · list_remote_session_accounts · check_account_trust ＋3；子步 3：远端会话账号那条退役 −1、`chan_call` ＋1）；与 RM1b ＋2 / SE2 ＋1 相加，跑出来核过；// 〔RM1b · 第四波〕+1（list_plugin_marketplaces 带一个 `origin: Origin`：插件市场按 origin 问那台后端）；// 〔RM1b · 第四波〕+1（get_session_tasks 带一个 `origin: Origin`：任务列表按 origin 问那台后端）；// 〔SE2〕+1（find_in_session 带一个 `origin: Origin`）；// 〔B2 · 条 66〕+1（推生效值那一条退役 −1，`backend_exit_policy` / `set_backend_exit_policy` 各带一个 `origin` +2）； 〔SE1〕+1（list_user_inputs 带一个 `origin: Origin`）； 〔`设计/10` 骨架 · 子步 3〕+2（read_session_index / read_session_range 各带一个 `origin: Origin`）
 
 /**
  * 从一段包装层文本里摘出每一处 `origin` 参数：`{ optional, type }`。
@@ -1099,7 +1099,7 @@ describe("`设计/05 §8` 步 2：origin 去 null 化（入方向）", () => {
  *
  * # 判据（零命中带正控；人群恒等）
  *
- * 1. 违例集合 == [`PENDING`]（两向）—— 今天只剩生成物一处，住址与解锁条件写在表里；
+ * 1. 违例集合 == [`PENDING`]（两向）—— 〔C4b〕待办表今天为空（生成物那一处已改 `string`）；
  * 2. 人群条数**恒等**（不是地板）—— 塌成 0 与「全都合规」在终端上一模一样；
  * 3. 识别器阳性对照五形 ＋ 阴性对照三形（`originalType` 不算、值不算、干净类型不算）；
  * 4. 真语料锚点：`Tab.origin`（`tab-model.ts`）与 `pickPrimaryOrigin` 的返回（`account-chip.ts`）
@@ -1111,9 +1111,8 @@ describe("`设计/05 §8` 步 2：origin 去 null 化（入方向）", () => {
  *   `SessionHits` 一族，Rust 侧 `skip_serializing_if`）用「缺省 = 本机」，那是 Rust 出方向的事，
  *   在 TS 这边只在消费处经 `ipc/origin.ts::originFromWire` 收成一个表示。
  * - 换个名字装同一件事（`host: string | null`）—— 词是 `origin`，改名就出人群。
- * - `accounts.ts` 自己那个 `LOCAL_ORIGIN = "__local__"`（账号面的缓存键）**仍在**：
- *   `backend_policy_tests.rs::the_two_same_named_local_origin_constants_stay_deliberately_different`
- *   逐字钉着「两者刻意不同、合并是一次设计变更」，那条判据不在本拍写区 —— 登记给主会话拍板。
+ * - 〔C4b 订正〕上一版这里记着「`accounts.ts` 自己那个 `LOCAL_ORIGIN = "__local__"`（账号面的缓存键）**仍在**」——
+ *   C4b 按 `设计/00 §2.5 ①` 裁「合」：它已退役，判据住本文件下一节（「本机只有一个表示」）。
  */
 
 /**
@@ -1121,11 +1120,8 @@ describe("`设计/05 §8` 步 2：origin 去 null 化（入方向）", () => {
  * 它与盘上的违例两向相等，修好了不摘 ⇒ 红；新长一处 ⇒ 红。
  */
 const PENDING: Record<string, string> = {
-  "src/generated/RemoteHealthPayload.ts::RemoteHealthPayload.origin":
-    "Rust 出方向 `bridge.rs::RemoteHealthPayload.origin` 仍是 `Option<String>`（头注自认「`None` 理论不该出现」，" +
-    "五个发射点现打全是 `Some(host)`）。改成 `String` 要动那五个发射点，而它们全住 `ssh_source.rs` —— " +
-    "第四波 SR1a 的写区（单一常驻后端正在重写它）。解锁：SR1a 合并后同拍把字段改成 `String`、" +
-    "五处 `Some(x.clone())` 改成 `x.clone()`、重生成绑定，再摘这一行。",
+  // 〔C4b · 第四波 4B〕最后一行摘了：`RemoteHealthPayload.origin` Rust 侧改成 `String`（五个发射点全带 label），
+  //   生成物随之是 `origin: string`。本表从此是空表 —— 判据照旧两向相等：新长一处装得下 null 的 origin ⇒ 红。
 };
 
 /** 基线之后现打的人群条数（带类型标注、名字带 origin 的声明）。 */
@@ -1236,7 +1232,7 @@ function originCorpus(): Decl[] {
 }
 
 describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ 生成物）", { timeout: 30_000 }, () => {
-  it("★★ 装得下 `null` 的 origin 声明 == 登记的待办（两向；今天只剩生成物一处）", () => {
+  it("★★ 装得下 `null` 的 origin 声明 == 登记的待办（两向；〔C4b〕待办表今天为空）", () => {
     const found = originCorpus()
       .filter((d) => d.nullable)
       .map((d) => d.key)
@@ -1300,6 +1296,68 @@ describe("〔C4a〕TS 侧 origin 去 null（`设计/05 §8` 步 2，全 TS ＋ �
         originDecls("probe.ts", src).filter((d) => d.nullable),
         `干净写法 ${src} 被判成违例 —— 假红比不查更坏`,
       ).toEqual([]);
+    }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+//  〔C4b · 第四波 4B〕**本机只有一个表示** —— `"__local__"` 零命中带正控
+//
+// C4a 之后 TS 侧本机只剩 `LOCAL_ORIGIN`（`"<local>"`，住 `backend-policy.ts`），唯一的例外是
+// `accounts.ts` 自己那个同名的 `"__local__"`（账号缓存键 ＋ 本机 `AccountsState.origin`）。它的来历：
+// 账号面本机 / 远端各走一条命令，本机那条的结果需要一个缓存键，而那时本机还没有具名的 origin。
+// `设计/00 §2.5 ①`（账号面本机与远端同一条路、一个 Origin 类型）之下它装的就是「哪台机器」本身 ⇒ 合。
+// 旧判据 `backend_policy_tests.rs::the_two_same_named_local_origin_constants_stay_deliberately_different`〔散文墓碑〕
+// 钉的是「合并之前别顺手改」—— 合并就是它要等的那一次设计变更，它随之改成下面这两条的 Rust 那一侧。
+//
+// 判据（按 TS 语法树认**字符串字面量**，注释与模板里的字不算 —— 注释里讲历史是正当的）：
+// 1. `"__local__"` 字面量在全部前端 TS（含生成物）里**零命中**；
+// 2. `"<local>"` 字面量所在的文件 == `{ src/backend-policy.ts }`（**正控 ＋ 唯一家**：同一识别器在真树上认得出本机那个值，
+//    而且它只有一个家 —— 哪个调用点自己再写一遍 `"<local>"` 也红）；
+// 3. 识别器阳性 / 阴性对照。
+// ══════════════════════════════════════════════════════════════════════════
+
+/** 一段 TS 里值恰为 `want` 的字符串字面量（`"…"` / `'…'` / 无插值模板）处数 —— 按语法树认，注释不算。 */
+function stringLiteralHits(rel: string, src: string, want: string): number {
+  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+  let n = 0;
+  const visit = (node: ts.Node): void => {
+    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && node.text === want) n += 1;
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return n;
+}
+
+/** 全部前端 TS（含生成物）里，值恰为 `want` 的字符串字面量落在哪几份文件。复用本文件的 `walk`。 */
+function filesWithLiteral(want: string): string[] {
+  const out: string[] = [];
+  for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+    const rel = f.slice(REPO_ROOT.length + 1);
+    if (rel.startsWith("src/bridge/") || rel.startsWith("src/backend/")) continue;
+    if (stringLiteralHits(rel, readFileSync(f, "utf8"), want) > 0) out.push(rel);
+  }
+  return out.sort();
+}
+
+describe("〔C4b〕本机只有一个表示（`\"__local__\"` 退役）", { timeout: 30_000 }, () => {
+  it("★★ `\"__local__\"` 字面量零命中；`\"<local>\"` 字面量恰好住一个家（正控）", () => {
+    expect(
+      filesWithLiteral("__local__"),
+      "本机的第二种写法又长出来了 —— 本机只有 `LOCAL_ORIGIN`（经 `ipc/origin.ts` 导），账号缓存键也用它",
+    ).toEqual([]);
+    expect(
+      filesWithLiteral(LOCAL_ORIGIN),
+      "本机 origin 的字面量不止一个家（或识别器在真树上瞎了）—— 调用点一律导 `LOCAL_ORIGIN`，不许再写一遍",
+    ).toEqual(["src/backend-policy.ts"]);
+  });
+
+  it("★ 识别器阳性三形 ＋ 阴性两形", () => {
+    for (const src of ['const a = "__local__";', "const a = '__local__';", "const a = `__local__`;"]) {
+      expect(stringLiteralHits("probe.ts", src, "__local__"), `认不出 ${src}`).toBe(1);
+    }
+    for (const src of ['// 旧写法 "__local__"', 'const a = "__local__x";']) {
+      expect(stringLiteralHits("probe.ts", src, "__local__"), `误认 ${src}`).toBe(0);
     }
   });
 });

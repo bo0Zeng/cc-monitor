@@ -198,43 +198,11 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/control/ccm/plan.rs",
         "★★〔`K-R106` 09-13 新增〕上一条的**下半程**：读懂之后它接进**哪一个**会话。         钉的是 `Plan::Attach` 那一行的**整行渲染**，而承重的不只是 `tmux attach` 四个字，         还有 `=名:` 那个**精确匹配形** —— 裸 `-t <名>` 按「精确名 → 名字开头 → glob」解析，         会打到兄弟会话上（`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 实测）。         ⇒ 「接进刚建的那个会话」这句话的后半截只有读后端源码才验得了。",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/session_outline_tests.rs",
-        "src/backend/observe/user_inputs.rs",
-        "★〔SE1 · `设计/10 §2.2b ⑥` 09-24 新增〕**大纲清单的线上词两侧同形** —— \
-         `session_outline::tests::the_wire_words_match_what_the_backend_source_writes`。\
-         头尾的 `kind`（`user_inputs` / `user_inputs_end`）与行上的三个键，写侧是后端 \
-         `write_user_inputs` 的 `writeln!` 与 `UserInputRow`，读侧是 monitor 的 \
-         `parse_user_inputs_output` 与 `UserInputEntry`。失效方向**很安静**：后端改一个字， \
-         monitor 把每一份真清单都认成「老后端」⇒ 大纲永远灰着，而两侧各自的判据全绿。",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/session_outline_tests.rs",
-        "src/backend/observe/history_query.rs",
-        "★〔SE1 09-24 新增〕上一条的**argv 那一半**：monitor 的 `user_inputs_argv` 发的 \
-         子命令名与 `--from`，必须是后端 `history_query::run` 那条臂与 \
-         `parse_user_inputs_args` 真认的那两个字面量 —— 两处各写一份，只有同时读两侧才验得了。",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/session_find_tests.rs",
-        "src/backend/observe/search_query.rs",
-        "★〔SE2 · `设计/10 §6 步 6` 09-24 新增〕**会话内查找的线上词两侧同形** —— \
-         `session_find::tests::the_wire_words_match_what_the_backend_source_writes`。\
-         头尾的 `kind`（`session_find` / `session_find_end`）、尾行的 `total`、行上的五个键与缺省上限， \
-         写侧是后端 `write_session_find`，读侧是 monitor 的 `parse_find_output` 与 `FindHit`。 \
-         失效方向**很安静**：后端改一个字，monitor 把每一次真查找都认成「老后端」而两侧各自的判据全绿。",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/session_find_tests.rs",
-        "src/backend/observe/history_query.rs",
-        "★〔SE2 09-24 新增〕上一条的**argv 那一半**：monitor 的 `find_argv` 发的子命令名与 \
-         `--query` / `--include-tools` / `--limit`，必须是后端 `history_query::run` 那条臂与 \
-         `parse_find_args` 真认的那几个字面量 —— 两处各写一份，只有同时读两侧才验得了。",
-    ),
+    // 〔C4b · 第四波 4B〕这里原有四条边（`session_outline_tests.rs` / `session_find_tests.rs` 各两条：
+    //   大纲清单与会话内查找的**线上词**、monitor 造的 **argv** 两侧同形）。monitor 那一侧的读者（核头尾、造 argv）
+    //   随两条命令改走通道一起删了 ⇒ 四条边没有读者了。两侧同形的牙换到了**帧面成品**上：
+    //   后端 `read_face_tests::the_frame_products_carry_exactly_the_rows_the_cli_arm_prints`（成品 == CLI 臂中段）
+    //   ＋ 跨语言金样（`tests/__fixtures__/session-reads.golden.json`，后端写、TS 解码器读）—— 那两条都不是编译期边。
     (
         "monitor→backend",
         "tests/bridge/dial_host_tests.rs",

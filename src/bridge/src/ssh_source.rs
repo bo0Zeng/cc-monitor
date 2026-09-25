@@ -3,9 +3,11 @@
 //! 本模块是**活代码**：从 lib.rs 的 `setup()` 调用（`remote.enabled=true` 且配置完整时）。
 //! 它提供三块能力：
 //! - **russh client 数据源**：[`run`] 连远端、exec backend、把 backend stdout 的
-//!   line-delimited JSON 帧解析后走与本地 watcher 相同的出口（`batch_to_payloads` →
-//!   `on_line_batch`），session 增减走专用 `session_changes` 通道。与本地 jsonl-watcher
+//!   line-delimited JSON 帧解析后，内容那一半交 [`LineIntake`]（`batch_to_payloads` →
+//!   `on_line_batch_awaited`），session 增减走专用 `session_changes` 通道。与本机那条流
 //!   **并行**作为附加数据源（远端行带 origin=host 标签）。
+//! - 〔CF1 · 2026-09-24〕**本机会话内容的消费者** [`consume_local`]：本机常驻后端的内容帧经
+//!   `local_lines` 送来，进**同一个** [`LineIntake`] —— 本机与远端走同一条帧路（`设计/01 §6.1`）。
 //! - **ssh-config 导入**：[`list_ssh_host_aliases`] / [`resolve_ssh_host`]（`ssh -G`）
 //!   供前端「从 ~/.ssh/config 导入」自动填连接参数。
 //! - **测试连接**：[`test_remote_connection`] 实连一次，回 SSH ✓/✗ + host key 指纹 +
@@ -53,7 +55,20 @@ use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
 /// S0 **跨语言双写点**：backend 那侧 `RemovalCause::Superseded` 的 serde 线上名。
 /// 改这里必须同步 `src/backend/wire.rs`（同 `TMUX_LS_FMT` 的纪律）。
 const REMOVAL_CAUSE_SUPERSEDED: &str = "superseded";
-use crate::watcher::JsonlLine;
+
+/// 一行会话记录的原文 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。
+///
+/// 〔CF1 · 2026-09-24〕它原先住 monitor 自己的 jsonl watcher（`watcher.rs`，已删）。
+/// 本机那条流改走后端的 `line` 帧之后，**所有**行都从后端的帧来（远端流 · 本机流 · 旁路快照），
+/// 造它的只剩本模块 ⇒ 搬到这里。`seq` 是后端给的行号（`--tail-only` 下与快照同处一个行号空间），
+/// 前端按 `(session_id, seq)` 去重、按 `seq` 排序（`INVARIANTS §5` / `§9`）。
+#[derive(Debug, Clone)]
+pub struct JsonlLine {
+    pub session_id: String,
+    pub path: std::path::PathBuf,
+    pub seq: u64,
+    pub raw: String,
+}
 
 /// 重连退避下界：每次连接掉线后至少等这么久再重连（也是连上过之后的快速重连值）。
 const RECONNECT_MIN: Duration = Duration::from_secs(2);
@@ -1073,7 +1088,7 @@ async fn snapshot_dispatcher(
                 }
             }
             let payload = crate::bridge::RemoteHealthPayload {
-                origin: Some(host_label.clone()),
+                origin: host_label.clone(),
                 kind: "snapshot".to_string(),
                 message: format!(
                     "会话 {sid_short} 的历史快照拉取失败（{last_err}）——该 Tab 暂只有实时消息，可从历史浏览器查看完整内容。"
@@ -1235,12 +1250,14 @@ async fn fetch_snapshot(
         }
     }
     if cancelled || q.is_cancelled(sid) {
-        // 补偿归档（见 doc comment）；丢弃未 flush 的 chunk。
-        let payload = crate::bridge::SessionEndedPayload {
-            session_id: sid.to_string(),
-        };
-        if let Err(e) = app.emit(crate::bridge::events::SESSION_ENDED, payload) {
-            tracing::warn!("snapshot 补偿归档 emit failed: {e}");
+        // 补偿归档（见 doc comment）；丢弃未 flush 的 chunk。〔CF1〕只对远端补（[`compensates_on_cancel`]）。
+        if compensates_on_cancel(&origin) {
+            let payload = crate::bridge::SessionEndedPayload {
+                session_id: sid.to_string(),
+            };
+            if let Err(e) = app.emit(crate::bridge::events::SESSION_ENDED, payload) {
+                tracing::warn!("snapshot 补偿归档 emit failed: {e}");
+            }
         }
         return Ok(FetchOutcome::Cancelled);
     }
@@ -1266,6 +1283,15 @@ async fn fetch_snapshot(
     // `[0, total)` 全到了（整份：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。
     crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
     Ok(FetchOutcome::Done(arrived))
+}
+
+/// 〔CF1〕快照中途被撤时要不要补一个 `session-ended`：**远端补、本机不补。**
+///
+/// 补偿治的是「已 flush 的那一块把刚归档的 tab 见行复活」—— 而**只有远端的行会复活 tab**
+/// （前端 `tabs.ts` 只有 `remote-line` 那一格；本机 tab 的活与死只由 PID 探活那一路翻）。
+/// 本机再补一个 `session-ended`，没有要治的病，反倒会把本机那边刚判成「可重连」的会话压成「已结束」。
+pub(crate) fn compensates_on_cancel(origin: &crate::origin::Origin) -> bool {
+    !origin.is_local()
 }
 
 /// 两段编号映射（纯函数，与测试共用——审计 D：原测试在测试体内重实现映射，
@@ -1537,7 +1563,7 @@ pub enum InboundFrame {
         /// 两者正交。旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
         commands: Vec<String>,
     },
-    /// 一行从远端 session jsonl 尾随读到的原始行。字段语义与本地 `watcher::JsonlLine` 对齐。
+    /// 一行从后端 session jsonl 尾随读到的原始行（远端流与〔CF1〕本机流同一种帧）。字段语义见 [`JsonlLine`]。
     Line {
         session_id: String,
         path: String,
@@ -2177,9 +2203,9 @@ fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Opt
 /// 连接远端、exec backend、把 backend stdout 的 line-delimited JSON 帧逐行解析后分发：
 /// - `hello` → log（证明 backend runtime 起来了）+ 置 `connected`（标记本次连接已健康，
 ///   供重连循环判定是否重置退避）。
-/// - `line` → 组 [`JsonlLine`] 走 **与本地 watcher 完全相同的出口**：
-///   `crate::batch_to_payloads(...)` → `replay.on_line_batch(&app, ...)`。Phase-0 用最简正确
-///   做法：每帧一条 batch（前端按 seq 自动排序，单条 emit 语义与本地小 batch 一致）。
+/// - `line` → 组 [`JsonlLine`] 交 [`LineIntake`]（〔CF1〕本机那条流用的是同一个）：
+///   攒批后 `crate::batch_to_payloads(...)` → `replay.on_line_batch_awaited(&app, ...)`
+///   （前端按 seq 自动排序）。
 /// - `session_added` / `session_removed` → 走**专用** remote `session_changes` 通道
 ///   （`SessionChange{added,removed}`），由 lib.rs 那个 remote-session-emitter 线程消费：
 ///   removed → emit session-ended（远端 Tab 归档）；added 无操作（远端 Tab 由 line 帧
@@ -2301,12 +2327,12 @@ pub async fn run(
 /// Line 帧攒批缓冲（Batch5-F17）。
 ///
 /// backend 线协议没有批量帧（一行一帧），首连 snapshot 的几千行历史若逐帧调
-/// `on_line_batch(vec![1条])`，恒 1 < INCREMENTAL_BATCH_THRESHOLD → 全部走
+/// 一批一条地交重放缓冲，恒 1 < INCREMENTAL_BATCH_THRESHOLD → 全部走
 /// 逐条 jsonl-line live 渲染管线（v2.4.2 给本地修掉的逐行刷屏在远端重现）。
-/// 客户端把**连续到达**的 Line 帧聚合成批再交 on_line_batch：snapshot 密集
-/// 连发天然聚成大批 → 自动跨过阈值复用本地 chunked 回放路径；日常单行增量
-/// 只多一个静默窗口（~30ms）的延迟。时序判定（静默窗口）留在 stream_loop 的
-/// `tokio::time::timeout` 里；本结构只管容量与顺序，纯逻辑可直测。
+/// 客户端把**连续到达**的 Line 帧聚合成批再交重放缓冲：snapshot 密集
+/// 连发天然聚成大批 → 自动跨过阈值复用 chunked 回放路径；日常单行增量
+/// 只多一个静默窗口（~30ms）的延迟。时序判定（静默窗口）留在 [`LineIntake::recv_or_flush`]
+/// 的 `tokio::time::timeout` 里；本结构只管容量与顺序，纯逻辑可直测。
 struct Batcher {
     pending: Vec<JsonlLine>,
     cap: usize,
@@ -2359,8 +2385,8 @@ const BATCH_CAP: usize = 600;
 /// 批龄上限：无论帧流多密集，首行入缓冲后最迟这么久必 flush（见 Batcher.born）。
 const BATCH_MAX_AGE_MS: u64 = 200;
 
-/// 攒批出口（Batch5-F17）：与本地 watcher 完全相同（batch_to_payloads →
-/// on_line_batch），但用 **awaited 变体**——大批的块序列发完才返回，保证行
+/// 攒批出口（Batch5-F17）：〔CF1〕远端流、本机流、旁路快照三路的行**都**从这里出去
+/// （`batch_to_payloads` → `on_line_batch_awaited`），用 **awaited 变体**——大批的块序列发完才返回，保证行
 /// emit 严格先于随后的 SessionRemoved/断连归档（审计 R1：spawn 化的行若晚于
 /// session-ended 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
 /// backend 帧流形成天然背压。
@@ -2380,6 +2406,268 @@ async fn flush_lines(
     replay.on_line_batch_awaited(app, payloads).await;
     // 〔C2〕发出去了才推续点（连续才推，见 `snapshot_resume::note_flushed`）。
     crate::snapshot_resume::note_flushed(&origin, flushed.iter().map(|(s, q)| (s.as_str(), *q)));
+}
+
+/// 〔CF1 · 2026-09-24〕**内容那一半的唯一收口** —— 远端每条连接一个、本机每条流一个。
+///
+/// # 为什么要它
+///
+/// `设计/01 §6.1`「一条流，一个来源；本机与远端走同一条帧路」。本机那条流改走后端的 `line` 帧之后，
+/// 「行怎么攒批、什么时候冲、历史怎么旁路补、会话走了撤什么」这几件事若在本机再写一份，
+/// 就又是两份实现（`真相源/10 §7.2` 那一形）。⇒ 收成一个结构，**两个帧源各构造一次**：
+/// [`stream_loop`]（远端）与 [`consume_local`]（本机）。判据钉的就是「构造点恰好这两处」。
+///
+/// # 它管什么、不管什么
+///
+/// 管：[`Batcher`] ＋ 带静默窗的收（[`LineIntake::recv_or_flush`]）· 旁路快照队列与分发器（`tail_only` 时起）·
+/// 续点（`snapshot_resume`）。**不管会话的起停**：宣告 / 归档 / 灯 / 令牌是远端 `stream_loop` 自己那几条臂的事，
+/// 本机的起停今天归 `session_map`（本路不碰）。
+///
+/// 丢掉它 ⇒ 快照队列当场关（与原来 `stream_loop` 里那个 `SnapshotQueueCloser` 同一个时机）。
+pub(crate) struct LineIntake {
+    origin_label: String,
+    replay: Arc<EventReplay>,
+    app: tauri::AppHandle,
+    batcher: Batcher,
+    snapshots: std::sync::Arc<SnapshotQueue>,
+    tail_only: bool,
+    _closer: SnapshotQueueCloser,
+}
+
+impl LineIntake {
+    /// `tail_only`：这条流的后端是不是按「不重放历史」起的 —— 是 ⇒ 历史走旁路快照（起分发器）。
+    fn open(
+        origin_label: String,
+        tail_only: bool,
+        replay: &Arc<EventReplay>,
+        app: &tauri::AppHandle,
+    ) -> Self {
+        let snapshots = SnapshotQueue::new();
+        if tail_only {
+            tauri::async_runtime::spawn(snapshot_dispatcher(
+                snapshots.clone(),
+                replay.clone(),
+                app.clone(),
+                origin_label.clone(),
+            ));
+        }
+        LineIntake {
+            origin_label,
+            replay: replay.clone(),
+            app: app.clone(),
+            batcher: Batcher::new(BATCH_CAP),
+            _closer: SnapshotQueueCloser(snapshots.clone()),
+            snapshots,
+            tail_only,
+        }
+    }
+
+    /// 带静默窗地收下一件：手里攒着行时最多等 [`BATCH_QUIET_MS`]，窗内没来新东西就先把攒的冲掉再回去等。
+    ///
+    /// ⚠ 超时打在 `recv` 上（cancel-safe），不打在读行上 —— 理由见 `stream_loop` 里那个读帧任务的注释。
+    async fn recv_or_flush<T>(&mut self, rx: &mut tokio::sync::mpsc::Receiver<T>) -> Option<T> {
+        loop {
+            if self.batcher.pending.is_empty() {
+                return rx.recv().await;
+            }
+            match tokio::time::timeout(Duration::from_millis(BATCH_QUIET_MS), rx.recv()).await {
+                Ok(m) => return m,
+                Err(_) => self.flush().await,
+            }
+        }
+    }
+
+    /// 收一行（达容量 / 批龄就整批冲出去）。
+    async fn line(&mut self, line: JsonlLine) {
+        if let Some(full) = self.batcher.push(line) {
+            flush_lines(&self.replay, &self.app, &self.origin_label, full).await;
+        }
+    }
+
+    /// 把攒着的行冲出去（攒批边界：会话走了 / 流断了 / 静默窗到了）。
+    async fn flush(&mut self) {
+        if let Some(lines) = self.batcher.take() {
+            flush_lines(&self.replay, &self.app, &self.origin_label, lines).await;
+        }
+    }
+
+    /// 一个会话被宣告了：tail-only 下带 `path` 就排一份旁路快照（无 path = 会话刚起还没写 jsonl ⇒ 无历史可拉）。
+    fn announced(&self, sid: &str, path: Option<String>, lines: Option<u64>) {
+        if !self.tail_only {
+            return;
+        }
+        if let Some(p) = path {
+            self.snapshots.push(SnapshotItem {
+                sid: sid.to_string(),
+                path: p,
+                expected_lines: lines,
+            });
+        }
+    }
+
+    /// 一个会话走了：撤它的快照（排队的摘掉、在飞的打取消标记）、续点作废（再宣告时整份拉）。
+    fn removed(&self, sid: &str) {
+        self.snapshots.cancel(sid);
+        crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);
+    }
+}
+
+/// 〔CF1〕本机那条流交进来的东西（`local_lines` 通道上的一件）。
+#[derive(Debug)]
+pub(crate) enum LocalItem {
+    /// 读循环从 `absorb_local_frame` 手里接回的内容帧（`line` / `session_added` / `session_removed`）。
+    Frame(InboundFrame),
+    /// 这条流结束了（两条读循环的收尾各送一次）。
+    StreamEnded,
+}
+
+/// 〔CF1〕本机消费者对一件东西的处置 —— **纯函数**的输出，异步那半只照做。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum LocalStep {
+    /// 进 [`LineIntake::line`]。
+    Line {
+        session_id: String,
+        path: String,
+        seq: u64,
+        raw: String,
+    },
+    /// 进 [`LineIntake::announced`]。
+    Announce {
+        sid: String,
+        path: Option<String>,
+        lines: Option<u64>,
+    },
+    /// 冲掉残批，再进 [`LineIntake::removed`]。
+    Remove { sid: String },
+    /// 这一件不进内容流（被藏起来的 bg 会话的行 / 宣告，或不是内容帧）。
+    Skip,
+    /// 冲掉残批、换一个新的 [`LineIntake`]（下一条流从头来）。
+    StreamEnded,
+}
+
+/// 〔CF1〕`bg` 会话要不要藏：口径与 `session_map::is_interactive` 逐字同一条 ——
+/// `kind` 在且不是 `interactive` 才算非交互；旧 CC 不写 kind ⇒ 当交互。
+fn local_hides(kind: Option<&str>, show_bg: bool) -> bool {
+    !show_bg && kind.is_some_and(|k| k != "interactive")
+}
+
+/// 〔CF1〕本机消费者的**纯分派核**：一件东西 × 「显示 bg 吗」× 「藏起来的 sid」⇒ 怎么处置。
+///
+/// 为什么 bg 在这里藏而不在后端那边按旗标分：本机常驻后端**跨 monitor 存活**，`adopt` 只比
+/// `build_id` 与家目录、不比起参 ⇒ 起参里的 `--with-bg` 挡不住「用户关了 bg 显示、却接上了一个按开着起的后端」。
+/// 于是两条载体一律带 `--with-bg`，显示与否在这一侧按 `session_added.session_kind` 定（协议序保证宣告先于行）。
+pub(crate) fn local_step(
+    item: LocalItem,
+    show_bg: bool,
+    hidden: &mut std::collections::HashSet<String>,
+) -> LocalStep {
+    match item {
+        LocalItem::StreamEnded => {
+            hidden.clear();
+            LocalStep::StreamEnded
+        }
+        LocalItem::Frame(InboundFrame::Line {
+            session_id,
+            path,
+            seq,
+            raw,
+        }) => {
+            if hidden.contains(&session_id) {
+                LocalStep::Skip
+            } else {
+                LocalStep::Line {
+                    session_id,
+                    path,
+                    seq,
+                    raw,
+                }
+            }
+        }
+        LocalItem::Frame(InboundFrame::SessionAdded {
+            sid,
+            session_kind,
+            path,
+            lines,
+            ..
+        }) => {
+            if local_hides(session_kind.as_deref(), show_bg) {
+                hidden.insert(sid);
+                LocalStep::Skip
+            } else {
+                // 同一个 sid 原地翻回交互（极少见）⇒ 不再藏。
+                hidden.remove(&sid);
+                LocalStep::Announce { sid, path, lines }
+            }
+        }
+        LocalItem::Frame(InboundFrame::SessionRemoved { sid, .. }) => {
+            hidden.remove(&sid);
+            LocalStep::Remove { sid }
+        }
+        LocalItem::Frame(_) => LocalStep::Skip,
+    }
+}
+
+/// 〔CF1〕本机常驻后端两种载体的起参里**恒有** `--tail-only` ⇒ 本机那条流的历史一律走旁路快照。
+/// 两份起参与本常量的一致性由判据对拍（`local_lines_tests`），不靠这句注释。
+pub(crate) const LOCAL_STREAM_TAIL_ONLY: bool = true;
+
+/// 〔CF1 · 2026-09-24〕**本机会话内容的消费者**：吃 `local_lines` 通道，交给与远端同一个 [`LineIntake`]。
+///
+/// 每条流一个 `LineIntake`：收到 [`LocalItem::StreamEnded`] ⇒ 冲掉残批、丢掉它（快照队列随之关）、
+/// 下一条流换新的 —— 与远端「每条连接一套」同形。本机后端重连之后会重新宣告每个活会话，
+/// 旁路快照按续点接着拉（`snapshot_resume`）。
+///
+/// ⚠ **本机流断不归档会话**（远端那条 `run` 会）：本机会话的起停今天归 `session_map`，本路只改内容行从哪来。
+/// ⚠ 本任务**绝不**等一个经本机通道的应答（快照那几问在分发器的任务里）：读循环可能正停在往本通道送东西上，
+///   这里要是也等它 ⇒ 互等。
+pub(crate) async fn consume_local(
+    mut rx: tokio::sync::mpsc::Receiver<LocalItem>,
+    replay: Arc<EventReplay>,
+    app: tauri::AppHandle,
+) {
+    let show_bg = crate::load_show_bg_sessions();
+    let label = crate::origin::LOCAL.to_string();
+    let mut hidden: std::collections::HashSet<String> = std::collections::HashSet::new();
+    loop {
+        let mut intake = LineIntake::open(label.clone(), LOCAL_STREAM_TAIL_ONLY, &replay, &app);
+        loop {
+            let Some(item) = intake.recv_or_flush(&mut rx).await else {
+                // 发送端全没了（进程收摊）：残批照发，然后退出。
+                intake.flush().await;
+                return;
+            };
+            match local_step(item, show_bg, &mut hidden) {
+                LocalStep::Line {
+                    session_id,
+                    path,
+                    seq,
+                    raw,
+                } => {
+                    intake
+                        .line(JsonlLine {
+                            session_id,
+                            path: std::path::PathBuf::from(path),
+                            seq,
+                            raw,
+                        })
+                        .await
+                }
+                LocalStep::Announce { sid, path, lines } => intake.announced(&sid, path, lines),
+                LocalStep::Remove { sid } => {
+                    intake.flush().await;
+                    intake.removed(&sid);
+                }
+                LocalStep::Skip => {}
+                LocalStep::StreamEnded => {
+                    intake.flush().await;
+                    tracing::info!(
+                        "本机那条流结束：内容收口换新（下一条流重新宣告、快照按续点接着拉）"
+                    );
+                    break;
+                }
+            }
+        }
+    }
 }
 
 /// [`run`] 的内层流循环：connect → exec backend → 逐帧 dispatch。**所有**提前返回
@@ -2507,17 +2795,9 @@ async fn stream_loop(
     let mut inbound_guard = InboundCloser(host_label.clone(), None);
 
     // Batch8-F26：旁路快照基础设施（仅 tail-only 生效；每连接一套，函数任何
-    // 退出路径经 guard 关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
-    let snapshots = SnapshotQueue::new();
-    let _snapshots_guard = SnapshotQueueCloser(snapshots.clone());
-    if tail_only {
-        tauri::async_runtime::spawn(snapshot_dispatcher(
-            snapshots.clone(),
-            replay.clone(),
-            app.clone(),
-            host_label.clone(),
-        ));
-    }
+    // 退出路径随 `intake` 被丢掉而关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
+    // 〔CF1〕攒批 ＋ 静默窗 ＋ 旁路快照收成 [`LineIntake`]，本机那条流用的是同一个。
+    let mut intake = LineIntake::open(host_label.clone(), tail_only, replay, app);
 
     // Batch5-F17：帧读取挪进独立 task、经 channel 交回——攒批需要"带静默窗口
     // 的读"，而 tokio 的 read_line **不是 cancellation-safe**（timeout 取消会
@@ -2554,7 +2834,7 @@ async fn stream_loop(
                          (cap {BACKEND_FRAME_LINE_CAP}); line dropped"
                     );
                     let payload = crate::bridge::RemoteHealthPayload {
-                        origin: Some(reader_host.clone()),
+                        origin: reader_host.clone(),
                         kind: "line_too_long".to_string(),
                         message: line_too_long_health_message(&reader_host, bytes),
                     };
@@ -2583,7 +2863,6 @@ async fn stream_loop(
         }
     });
 
-    let mut batcher = Batcher::new(BATCH_CAP);
     // audit-fixes F03.2：收帧驱动的 tmux 存活收割器状态（跨帧累计缺失，随本连接存活；断连=函数返回、
     // 自然重置=清账）。取代已删的 8s poller（甲-evented 零轮询）。
     let mut reconcile_state = crate::tmux_reconcile::ReconcileState::default();
@@ -2592,30 +2871,10 @@ async fn stream_loop(
     let mut last_observation_kind: Option<String> = None;
 
     loop {
-        // pending 非空 → 带静默窗口收帧：窗口内没有新帧就先 flush 再回到阻塞收。
-        let msg = if batcher.pending.is_empty() {
-            frame_rx.recv().await
-        } else {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(BATCH_QUIET_MS),
-                frame_rx.recv(),
-            )
-            .await
-            {
-                Ok(m) => m,
-                Err(_) => {
-                    if let Some(lines) = batcher.take() {
-                        flush_lines(replay, app, &host_label, lines).await;
-                    }
-                    continue;
-                }
-            }
-        };
-        let Some(msg) = msg else {
+        // pending 非空 → 带静默窗口收帧：窗口内没有新帧就先 flush 再回到阻塞收（`LineIntake::recv_or_flush`）。
+        let Some(msg) = intake.recv_or_flush(&mut frame_rx).await else {
             // reader task 没投 Err 就消失（理论不可达）——同样明确报错走重连。
-            if let Some(lines) = batcher.take() {
-                flush_lines(replay, app, &host_label, lines).await;
-            }
+            intake.flush().await;
             return Err("ssh backend frame channel closed".to_string());
         };
         let line = match msg {
@@ -2624,9 +2883,7 @@ async fn stream_loop(
                 // EOF/读错：flush 残余（at-least-once 安全；重连会从 seq 0 重放，
                 // 但没有理由主动丢已收到的行）**并等它发完**再报错——run() 随后的
                 // 断连归档（announced 清算）必须晚于这些行到达前端（审计 R1）。
-                if let Some(lines) = batcher.take() {
-                    flush_lines(replay, app, &host_label, lines).await;
-                }
+                intake.flush().await;
                 return Err(e);
             }
         };
@@ -2638,9 +2895,7 @@ async fn stream_loop(
         // Hello / Overflow / 坏帧**不再**作边界——多小会话的 snapshot 才能聚
         // 成大批跨过阈值（行先于 Added 到达无妨：前端 ensureTab 见行即建）。
         if matches!(frame, Some(InboundFrame::SessionRemoved { .. })) {
-            if let Some(lines) = batcher.take() {
-                flush_lines(replay, app, &host_label, lines).await;
-            }
+            intake.flush().await;
         }
 
         // U8a-2a：**握手完成 ⇒ 写半边解冻。** 放在 match 之前是因为 Hello 那条臂按值解构了帧。
@@ -2690,7 +2945,7 @@ async fn stream_loop(
                 if let Some(msg) = version_warning(v, &build_id, &host_label) {
                     tracing::warn!("ssh_source remote [{host_label}] version: {msg}");
                     let payload = crate::bridge::RemoteHealthPayload {
-                        origin: Some(host_label.clone()),
+                        origin: host_label.clone(),
                         kind: "version".to_string(),
                         message: msg,
                     };
@@ -2741,7 +2996,7 @@ async fn stream_loop(
                 if !tail_only {
                     if capabilities.is_empty() {
                         let payload = crate::bridge::RemoteHealthPayload {
-                            origin: Some(host_label.clone()),
+                            origin: host_label.clone(),
                             kind: "degraded".to_string(),
                             message: format!(
                                 "远端后端为旧版本({build_id},当前 {EXPECTED_BACKEND_BUILD_ID}),本连接降级运行:后台(bg)会话不可见、历史全量推流(易拥塞)。请在设置里重装该机器的后端。"
@@ -2761,14 +3016,14 @@ async fn stream_loop(
             }) => {
                 // Batch5-F17：进攒批缓冲（达 cap/批龄立即整批出）；静默窗口/
                 // SessionRemoved 边界触发的 flush 在循环头。
-                if let Some(full) = batcher.push(JsonlLine {
-                    session_id,
-                    path: std::path::PathBuf::from(path),
-                    seq,
-                    raw,
-                }) {
-                    flush_lines(replay, app, &host_label, full).await;
-                }
+                intake
+                    .line(JsonlLine {
+                        session_id,
+                        path: std::path::PathBuf::from(path),
+                        seq,
+                        raw,
+                    })
+                    .await;
             }
             Some(InboundFrame::SessionAdded {
                 sid,
@@ -2845,15 +3100,7 @@ async fn stream_loop(
                 // Batch8-F26：tail-only 下历史改走旁路快照——宣告带 path 即入队
                 // （无 path = 会话刚起还没写 jsonl → 无历史可拉，后续行天然从
                 // tail 全量到达，无需快照）。队列按 sid 幂等（重复宣告不重拉）。
-                if tail_only {
-                    if let Some(p) = path {
-                        snapshots.push(SnapshotItem {
-                            sid: sid.clone(),
-                            path: p,
-                            expected_lines: lines,
-                        });
-                    }
-                }
+                intake.announced(&sid, path, lines);
                 // FIX 2：记下已宣告的 sid + 元数据（Batch9：连接结束统一归档 +
                 // F28 frontend-ready 重发数据源；F27 status 后续变化写回）。
                 announced.insert(
@@ -2937,9 +3184,8 @@ async fn stream_loop(
                 }
                 // Batch8 D-B1：摘除排队中的快照 + 标记 inflight 取消——归档后
                 // 迟到的快照行会经"见行复活"造出关不掉的僵尸 live tab。
-                snapshots.cancel(&sid);
-                // 〔C2〕会话真结束 ⇒ 续点作废（再宣告时整份拉，与今天同）。
-                crate::snapshot_resume::forget(&crate::origin::Origin(host_label.clone()), &sid);
+                // 〔C2〕会话真结束 ⇒ 续点作废（再宣告时整份拉，与今天同）。〔CF1〕两件都在 `LineIntake::removed`。
+                intake.removed(&sid);
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![],
                     // ★ S0：cause 由后端说了算，monitor 不猜（原先靠查会陈旧的 tmux 快照）。
@@ -2970,7 +3216,7 @@ async fn stream_loop(
                 );
                 let message = overflow_health_message(&host_label, dropped, &lost, lost_truncated);
                 let payload = crate::bridge::RemoteHealthPayload {
-                    origin: Some(host_label.clone()),
+                    origin: host_label.clone(),
                     kind: "overflow".to_string(),
                     message,
                 };

@@ -82,8 +82,9 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 （`P4b` 删掉「spawn 复用活会话」那一刀实测就卡在这里 —— 两份差的正是它改的那 2 个文件）。
 ⚠ `uninstallable` 仍是 `false`：**卸载没做**，如实声明。
 
-**P8a 插件面枚举是本约「读」面的又一次延伸（澄清，非例外/非松动）**：`src/bridge/src/plugins.rs` 为
-「有哪些 Claude Code marketplace」新增一条**纯只读**的本机查询（`list_plugin_marketplaces`），
+**P8a 插件面枚举是本约「读」面的又一次延伸（澄清，非例外/非松动）**：P8a 为
+「有哪些 Claude Code marketplace」新增一条**纯只读**的本机查询（〔RM1b〕读法搬进后端 `observe/plugins_query.rs`；
+〔C4b〕monitor 那一侧的模块与那条命令已删，界面经通道直接问帧命令 `plugins-marketplaces`），
 **零写入**、**不 shell out**、**不轮询**（按需一次）。它把本机读面从 `projects/` + `sessions/`
 扩到 `<claude_dir>/plugins/`，边界两条：
 ① 只读 `<claude_dir>/plugins/known_marketplaces.json` 与各 marketplace 落点下的 `<落点>/.claude-plugin/marketplace.json`
@@ -239,8 +240,10 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 
 ## 5. JSONL 单一时序由 seq 字段 + RecordTimeline binary insert 共同保证（v2.6 B 重构）
 
-**后端契约**：`watcher.rs::process_file` 给每读出的一行分配 per-file 单调递增的
-`seq: u64`（`seqs: HashMap<PathBuf, u64>` 跨 process_file 调用累加）；
+**后端契约**：后端的 `watcher.rs::read_new_lines`（`src/backend/observe/`）给每读出的一行分配 per-file 单调递增的
+`seq: u64`（`SeqCounter` 跨调用累加、截断不重置；`--tail-only` 下起点是当前完整行数 ⇒ seq 就是行号，
+与 monitor 旁路快照的编号同一个空间，§25a）；〔CF1 · 2026-09-24〕**本机与远端同一个来源**：monitor 自己那套
+jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是本机后端的 `line` 帧（`ssh_source·rs::LineIntake`）。
 `bridge::JsonlLinePayload` 携带该 seq 字段；所有 emit 路径（jsonl-line / jsonl-batch）
 都透传 seq 不变。seq 保证**时序**、不保证**投递次数**——投递语义是 at-least-once
 （截断重读会换新 seq 重投整个文件），详 § 25。
@@ -254,7 +257,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 - 之前用"多 flag 协调"路径（PayloadSource batch/live + inPrependMode + pendingPrependFragment
   + EventReplay.replaying 等 5 个 flag）反复出 inter-flag 相位 bug。
   v2.6 B 重构把所有 flag 替换为 seq + binary insert。
-- chunked emit 期间 watcher push 的真新行直接走 jsonl-line emit 出去；前端 timeline
+- chunked emit 期间新到的真新行直接走 jsonl-line emit 出去；前端 timeline
   按 seq 把它们放到正确位置——不再需要"replaying 期间 push 等末块后 catch-up"的
   特殊路径。
 
@@ -314,7 +317,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 - **Win32 同步调用**：`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` / `OpenProcess` 等（窗口枚举 / 进程查询 / shell execute 可能数十 ms 到秒级）
 - **文件系统 IO**：`history.rs` 全部 IPC（`list_history_projects` / `stream_history_sessions_in_project` / `stream_read_session_jsonl`）也走 spawn_blocking —— 扫几十个项目 / 读几 MB jsonl 都属此类
 - **`std::process::Command::spawn`**：spawn 外部进程（如 resume 的 wt.exe / powershell.exe 跑 `cc`/`claude --resume`，v2.8.1 起）
-- **async task 内禁止 `std::thread::sleep` / 同步阻塞**（issue #20 增补）：`tauri::async_runtime::spawn` 的 task 里节流用 `tokio::time::sleep(..).await`，真长阻塞走 spawn_blocking。一次同步 sleep 压住一个 tokio worker，worker 数有限，攒多了饿死全部 async 任务（`replay_and_mark_ready` 为此 async 化；`on_line_batch` 大 batch 路径的 sleep 已于 Batch5-F17 一并移除——块序列 spawn + `tokio::time::sleep`。**附带顺序契约**：spawn 入口返回≠emit 完成，与其他通道的相对顺序不保证——顺序敏感调用方（ssh_source 攒批 flush，行 emit 必须先于 SessionRemoved 归档）必须用 `on_line_batch_awaited`）
+- **async task 内禁止 `std::thread::sleep` / 同步阻塞**（issue #20 增补）：`tauri::async_runtime::spawn` 的 task 里节流用 `tokio::time::sleep(..).await`，真长阻塞走 spawn_blocking。一次同步 sleep 压住一个 tokio worker，worker 数有限，攒多了饿死全部 async 任务（`replay_and_mark_ready` 为此 async 化；重放缓冲的入口 `on_line_batch_awaited` 大 batch 路径块间用 `tokio::time::sleep`、**发完才返回** —— 行 emit 因此严格先于随后的 SessionRemoved 归档。〔CF1 · 2026-09-24〕原先还有一份把块序列 spawn 出去、「返回≠emit 完成」的孪生入口，只供本机 watcher 用，随它一起删了）
 
 **为什么不能松动**：Tauri 的 `#[tauri::command] fn`（非 async）跑在 IPC 派发线程上。一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）。即便代码"看起来快"（如 read_dir + stat 几百次），磁盘冷状态下也能轻松超过 100ms 阈值。
 
@@ -606,8 +609,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 后端到前端的 jsonl 行投递**不保证 exactly-once**。已知重投路径：
 
-- **本地 watcher 截断重读**（`watcher.rs::process_file`：`len < cursor.seen_len → start=0`）：整个文件**换新 seq** 重投（seq 不重置，见 § 5）；触发时有 `jsonl truncated` warn 留痕。**已知静默缺口**：截断到空（len==0）那一轮刻意不喊（无重读发生），文件随后重新长出内容的全量重投也无 warn——排查重投时「日志无 truncated」不能排除此路径；
-- **远端后端截断重读**（`src/backend watcher.rs::read_new_lines`，Batch4-F14 起与本地同判定、同 warn）：同样换新 seq 重投整个文件；
+- **后端截断重读**（`src/backend` 的 `watcher.rs::read_new_lines`：`len < cursor.seen_len → start=0`）：整个文件**换新 seq** 重投（seq 不重置，见 § 5）；触发时有 `jsonl truncated` warn 留痕。**已知静默缺口**：截断到空（len==0）那一轮刻意不喊（无重读发生），文件随后重新长出内容的全量重投也无 warn——排查重投时「日志无 truncated」不能排除此路径。〔CF1 · 2026-09-24〕本机与远端是**同一份**实现（monitor 自己那套本地 watcher 已删，原先它与后端各一份、靠注释对齐）；
 - **远端后端重连重放**（issue #17）：从 seq 0 重发整个活跃会话（**通常同 seq**——后端 SeqCounter 是进程内存态，重连即新进程从 0 起编号。**已知缺口**：若断连前发生过远端截断重读，旧 seq 已爬过文件行数，重连后前端 `tab.seenSeqs`（重连不清空）会把断连期间新增行的 seq 误判为已见而拒渲染，直到 seq 超过旧高水位——三条件叠加的低概率场景，后端转正前需修：重连时按 origin 清 seenSeqs 或 uuid 去重前置，见 Batch4 Phase G 验收记录）。
 
 Batch4-F14 起两端只消费以 `\n` 结尾的**完整行**（torn tail 延迟到补全，offset 按实际消费推进，截断判定用 seen_len 高水位）——"读中文件增长导致 offset 回退换 seq 重投"这条历史路径已消除。**已接受的取舍**：①最后一行是完整 JSON 但永远等不到尾 `\n`（写端在两次 write 之间被 kill 且文件从此不再增长）→ 该行永不投递、无日志；实测 Claude Code 每条记录以 `\n` 收尾（2026-07-03 抽查 8/8），此情形视为非标准写端。②长度基截断检测的固有盲区：两次事件之间文件先长到 X > seen_len 再被重写为 Y ∈ [seen_len, X) → 任何仅凭长度的方案都检不出（pre-F14 同样检不出，非回归）；需内容指纹才能封死，成本不值。
@@ -1619,7 +1621,7 @@ Linux 本地是 POSIX + tmux + `ccm`，跟远端那条路**只差一跳 ssh**。
 
 - **SFTP 文件面板** —— 本地有操作系统的文件管理器，不需要它
 - **端口转发管理台** —— 本地没有「转发到自己」这个需求
-- **后端部署 / 版本协商** —— 本地会话由 `watcher.rs` 直接读 jsonl，不需要后端
+- **后端部署 / 版本协商** —— 〔CF1 · 2026-09-24 订正〕原话「本地会话由 monitor 直接读 jsonl，不需要后端」今天不成立：本机会话内容就是本机后端的 `line` 帧。真正的不对称只剩「本机那份后端不经一条 IPC 命令部署」（宿主启动时自己释放），账在 `parity_ledger` 的 `backend.deploy` 那一行
 - **多地址故障切换（happy-eyeballs 竞速）** —— 本地没有地址
 
 **机制（让这条原则有牙，不只是一句好话）**
