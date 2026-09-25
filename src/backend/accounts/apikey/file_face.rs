@@ -92,26 +92,38 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
             "`key` 是空的 —— 空 key 等于「没配」，不写".to_string(),
         ));
     }
-    write_at(path, account, &key)?;
-    // 回的是**盘上的事实**：写完再读一遍，取这一行的掩码。
-    let masked = read_doc(path)?
-        .and_then(|doc| {
-            store::read_accounts(&doc)
-                .into_iter()
-                .find(|e| e.id == account)
-                .and_then(|e| e.key.map(|k| k.masked()))
-        })
-        .ok_or((
-            "io_failed",
-            format!(
-                "写完读回，{} 里找不到 {account:?} 那一行的 key",
-                path.display()
-            ),
-        ))?;
+    // 〔ST2 × RM1a〕Base URL（加账号表单 apikey 那一支的第二格）：缺席 / null / 空串 = **不碰那一格**
+    //   （只配 key 时已有端点原样留着）；给了就先过**与本机那一侧同一条**形状关（`creds_core` 那一份），
+    //   不对 ⇒ 整次不写（key 也不落）。
+    let base_url = match args.get("baseUrl") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) if s.trim().is_empty() => None,
+        Some(Value::String(s)) => Some(s.trim()),
+        Some(_) => return Err(("bad_args", "`baseUrl` 要一个字符串（或不给）".to_string())),
+    };
+    if let Some(url) = base_url {
+        store::check_base_url_shape(url).map_err(|e| ("bad_args", e))?;
+    }
+    write_at(path, account, &key, base_url)?;
+    // 回的是**盘上的事实**：写完再读一遍，取这一行的掩码与端点。
+    let row = read_doc(path)?.and_then(|doc| {
+        store::read_accounts(&doc)
+            .into_iter()
+            .find(|e| e.id == account)
+    });
+    let base_url_now = row.as_ref().and_then(|e| e.base_url.clone());
+    let masked = row.and_then(|e| e.key.map(|k| k.masked())).ok_or((
+        "io_failed",
+        format!(
+            "写完读回，{} 里找不到 {account:?} 那一行的 key",
+            path.display()
+        ),
+    ))?;
     Ok(json!({
         "account": account,
         "path": path.display().to_string(),
         "masked": masked,
+        "baseUrl": base_url_now,
     }))
 }
 
@@ -181,7 +193,12 @@ fn notice_of(v: &Verdict) -> Option<String> {
 }
 
 /// **这台机器上唯一的写者**（第四层：动词只有建那一层目录 · 原子改名 · 删自己的临时文件）。
-fn write_at(path: &Path, id: &str, key: &SecretKey) -> Result<(), (&'static str, String)> {
+fn write_at(
+    path: &Path,
+    id: &str,
+    key: &SecretKey,
+    base_url: Option<&str>,
+) -> Result<(), (&'static str, String)> {
     use std::io::Write as _;
     let dir = path
         .parent()
@@ -194,7 +211,13 @@ fn write_at(path: &Path, id: &str, key: &SecretKey) -> Result<(), (&'static str,
     }
     // ★ 写的这一刻读盘。解析不了 ⇒ `bad_file`，**不覆盖**。
     let current = read_doc(path)?.unwrap_or_default();
-    let text = store::to_pretty_json(&store::merge_account_key(&current, id, key));
+    let merged = store::merge_account_key(&current, id, key);
+    // 同 monitor 那一侧 `creds_store::write_key_at`：同一个合并函数、只改这一条的那一格。
+    let merged = match base_url {
+        Some(url) => store::merge_account_base_url(&merged, id, url),
+        None => merged,
+    };
+    let text = store::to_pretty_json(&merged);
     let tmp = dir.join(format!("{}.{}.tmp", store::FILE_NAME, std::process::id()));
     let result = (|| {
         // ★ 出生即只给本人（O_EXCL）：先按 umask 建出来再收窄，中间那一段里已经有明文了。

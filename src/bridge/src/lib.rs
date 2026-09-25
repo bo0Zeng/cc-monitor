@@ -190,6 +190,8 @@ mod subagent;
 mod session_skeleton;
 // 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源：问后端要「你说过的话」清单。
 mod session_outline;
+// 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）：问后端要这一份会话里的命中。
+mod session_find;
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
 mod tasks;
@@ -1389,6 +1391,7 @@ pub fn run() {
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
             session_skeleton::replay_keep_tail_only,
             session_outline::list_user_inputs,
+            session_find::find_in_session,
             remote_history::list_remote_history_projects,
             // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
             // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
@@ -1424,9 +1427,8 @@ pub fn run() {
             accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,
-            // 〔F7c 收尾 09-24〕池子的 Tauri 命令只剩 `sftp_copy` 一条（秤 F3 / 门禁 `f3-copy` 那一格还在量它的核心）；
-            //   其余十二条〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）。
-            sftp_pool::sftp_copy, // 步 23b：零流量复制（`copy-data`），退不了路要出声
+            // 〔F7c 收尾 09-24〕池子那十二条 Tauri 命令〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）；
+            //   〔第四波 S4〕最后一条（零流量复制）随门禁那一格退役一起删了 ⇒ 池子零条 Tauri 命令。
             // 🔴 `24e` 第二刀（`设计/60 §4 戊` / `§5` 第三段）：**原生文件管理窗口的入口。**
             //    它不是「又一条 sftp 命令」—— 它开的是那个 egui 窗口（同进程、次线程，
             //    进程形态见 `filewin/mod.rs` 头注）。先真的列一趟目录，列不出来就带原文报错，
@@ -1887,8 +1889,11 @@ async fn write_apikey_credentials_key(
     origin: origin::Origin,
     key: String,
     config_dir: String,
+    // 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL。缺席 = 用默认上游（不碰那一格）。
+    // 〔RM1a〕它与 key 一起按 origin 走：本机进 `creds_store`，远端交那台机器的后端（`apikey-key-set` 的 `baseUrl`）。
+    base_url: Option<String>,
 ) -> Result<(), String> {
-    apikey_remote::write_key_on(&origin, &config_dir, key).await
+    apikey_remote::write_key_on(&origin, &config_dir, key, base_url).await
 }
 
 /// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。

@@ -858,6 +858,9 @@ pub struct ConfigSurfaceReport {
     /// 解析基准，展示用（让用户知道 `~/.claude` 被解释成了哪里）。
     pub claude_config_dir: String,
     pub home: String,
+    /// 〔RM1a 合并 ST2〕**这份报告答的是哪台**（本机 `"<local>"`、远端那台的名字）。
+    /// 界面拿它做回声校验（`config-surface-section.ts::answersFor`）：问的是 aya、回的不是 aya ⇒ 不画。
+    pub origin: crate::origin::Origin,
 }
 
 /// 扫一次配置面。**只读、一次性**（不新增轮询）。
@@ -920,6 +923,8 @@ async fn local_report() -> Result<ConfigSurfaceReport, String> {
             ),
             claude_config_dir: cfg_dir.to_string_lossy().into_owned(),
             home: home.to_string_lossy().into_owned(),
+            // 本机那一臂：答的就是本机。
+            origin: crate::origin::Origin::local(),
         })
     })
     .await

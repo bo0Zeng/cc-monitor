@@ -78,7 +78,10 @@ pub(crate) async fn report_of(host: &str) -> Result<ConfigSurfaceReport, String>
         "hooks": { "paths": asked.hooks.iter().collect::<Vec<_>>(), "needles": HOOK_PROGRAMS },
     });
     let answers = answers_from_wire(host, &call(host, args).await?)?;
-    Ok(build(&env, &answers).0)
+    Ok(ConfigSurfaceReport {
+        origin: crate::origin::Origin(host.to_string()),
+        ..build(&env, &answers).0
+    })
 }
 
 /// 第 2 步：记账的探针（一律答「不在」）跑一遍，记下想问的路径。
@@ -158,6 +161,8 @@ fn run(
         settings_scopes,
         claude_config_dir: wire_path(&cfg_dir),
         home: wire_path(&env.home),
+        // 由 [`report_of`] 填实（那台的名字）；这一趟单跑（判据）时它就是一个空名。
+        origin: crate::origin::Origin(String::new()),
     }
 }
 

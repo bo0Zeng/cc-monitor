@@ -13,11 +13,13 @@ import { resolve } from "node:path";
 const listPluginMarketplaces = vi.fn();
 vi.mock("../../src/ipc/commands", () => ({
   commands: {
-    list_plugin_marketplaces: () => listPluginMarketplaces(),
+    list_plugin_marketplaces: (a: { origin: string }) => listPluginMarketplaces(a),
   },
 }));
 
 import { PluginsSection, declaredPluginsText, lastUpdatedText } from "../../src/settings/plugins-section";
+import { __resetMachineContextForTests, setCurrentMachine } from "../../src/settings/machine-context";
+import { LOCAL_ORIGIN } from "../../src/backend-policy";
 import type { MarketplaceEntry } from "../../src/generated/MarketplaceEntry";
 
 import { srcDirOf } from "../test-support/repo-root";
@@ -40,6 +42,7 @@ async function settle(): Promise<void> {
 
 beforeEach(() => {
   listPluginMarketplaces.mockReset();
+  __resetMachineContextForTests();
 });
 
 describe("P8a-Y2：null 不是 0", () => {
@@ -154,11 +157,14 @@ describe("P8a-Y4：不留零消费者", () => {
   it("★ section 真的挂进了设置页", () => {
     const panel = readFileSync(resolve(srcDirOf(__dirname), "panel.ts"), "utf8");
     expect(panel).toContain("PluginsSection");
-    // 且挂的是**本机专属**：远端今天没有这条口，挂成 both 会出现一个恒失败的块。
+    // 〔RM1b〕挂成**两页都有**：后端补了 `plugins-marketplaces`，远端那一页不再是恒失败的块。
     const at = panel.indexOf("new PluginsSection()");
     expect(at).toBeGreaterThan(0);
-    const block = panel.slice(Math.max(0, at - 400), at);
-    expect(block).toContain('appliesTo: "local"');
+    // 只看**这一块**那个对象字面量（从它自己的 `{` 起）—— 400 字的窗口会读到上一块的 `appliesTo`。
+    const blockStart = panel.lastIndexOf("      {\n", at);
+    const block = panel.slice(blockStart, at);
+    expect(block).toContain('appliesTo: "both"');
+    expect(block).not.toContain('appliesTo: "local"');
   });
 
   it("★ 渲染路径上真的调了那条命令 —— 而且是在 `loadNow()` 之后，不是构造期（ST1 延后加载）", async () => {
@@ -218,3 +224,45 @@ function loaded<T extends { loadNow(): void }>(s: T): T {
   s.loadNow();
   return s;
 }
+
+describe("RM1b：跟着「当前在看哪台机器」问那一台", () => {
+  it("本机 ⇒ 逐字送 LOCAL_ORIGIN；切到 aya ⇒ 当场问 aya 一次", async () => {
+    listPluginMarketplaces.mockResolvedValue({ entries: [], file_absent: true });
+    const s = new PluginsSection();
+    s.loadNow();
+    await settle();
+    expect(listPluginMarketplaces.mock.calls.map((c) => c[0])).toEqual([{ origin: LOCAL_ORIGIN }]);
+    setCurrentMachine("aya");
+    await settle();
+    expect(listPluginMarketplaces.mock.calls.map((c) => c[0])).toEqual([
+      { origin: LOCAL_ORIGIN },
+      { origin: "aya" },
+    ]);
+  });
+
+  it("★ 还没放第一发之前切机器 ⇒ 只记不读；放的那一发问的是最后选中的那台", async () => {
+    listPluginMarketplaces.mockResolvedValue({ entries: [], file_absent: true });
+    const s = new PluginsSection();
+    setCurrentMachine("aya");
+    await settle();
+    expect(listPluginMarketplaces, "机器子页还没可见就读了").toHaveBeenCalledTimes(0);
+    s.loadNow();
+    await settle();
+    expect(listPluginMarketplaces.mock.calls.map((c) => c[0])).toEqual([{ origin: "aya" }]);
+  });
+
+  it("★ 切走之后，上一台迟到的结果不许盖掉这一台的", async () => {
+    let releaseLocal!: (v: unknown) => void;
+    listPluginMarketplaces.mockImplementationOnce(() => new Promise((r) => (releaseLocal = r)));
+    listPluginMarketplaces.mockResolvedValueOnce({ entries: [entry({ id: "aya-mk" })], file_absent: false });
+    const s = new PluginsSection();
+    s.loadNow();
+    setCurrentMachine("aya");
+    await settle();
+    expect(s.element.textContent).toContain("aya-mk");
+    releaseLocal({ entries: [entry({ id: "local-mk" })], file_absent: false });
+    await settle();
+    expect(s.element.textContent).toContain("aya-mk");
+    expect(s.element.textContent).not.toContain("local-mk");
+  });
+});

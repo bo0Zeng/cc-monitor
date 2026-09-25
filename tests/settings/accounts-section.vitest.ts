@@ -774,9 +774,9 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     );
     // ★ 正题的另一半：那条命令**确实**收到了 configDir（不是「什么都没传所以没推 id」）。
     expect(
-      /write_apikey_credentials_key\(\{\s*origin:\s*this\.machineOrigin\(\),\s*key,\s*configDir\s*\}\)/.test(
-        code,
-      ),
+      // 〔ST2〕参数里可以多一格 baseUrl（表单那一路）；〔RM1a〕打头的是 origin（按这一页那台机器），
+      // 接着照旧是 key 与它自己的 configDir。
+      /write_apikey_credentials_key\(\{\s*origin:\s*this\.machineOrigin\(\),\s*key,\s*configDir\b/.test(code),
       "那条写命令没把 configDir 一起交出去 —— 后端就只能落到顶层那一格",
     ).toBe(true);
   });
@@ -1617,7 +1617,7 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     return calls;
   }
 
-  async function submitApikey(el: HTMLElement, name: string, key: string): Promise<void> {
+  async function submitApikey(el: HTMLElement, name: string, key: string, baseUrl?: string): Promise<void> {
     const form = el.querySelector<HTMLElement>(".accounts-new")!;
     const nameIn = form.querySelector<HTMLInputElement>("input.accounts-maint-name")!;
     nameIn.value = name;
@@ -1625,7 +1625,12 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     const r = form.querySelector<HTMLInputElement>('input[type=radio][value="apikey"]')!;
     r.checked = true;
     r.dispatchEvent(new Event("change"));
-    const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input")!;
+    if (baseUrl !== undefined) {
+      const baseIn = form.querySelector<HTMLInputElement>('.accounts-new-key input[data-field="base-url"]')!;
+      baseIn.value = baseUrl;
+      baseIn.dispatchEvent(new Event("input"));
+    }
+    const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input[type=password]")!;
     keyIn.value = key;
     keyIn.dispatchEvent(new Event("input"));
     [...form.querySelectorAll("button")].find((b) => b.textContent === "创建")!.click();
@@ -1663,6 +1668,24 @@ describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次�
     expect(writes.map(([, a]) => a)).toEqual([{ origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR }]);
     expect(el.querySelector(".accounts-new-pending"), "写完了还挂着「等」那一行").toBeNull();
     expect(el.querySelector("select")).toBeNull();
+  });
+
+  it("★ 〔ST2 · `70 §4.4`〕填了 Base URL ⇒ 号出现之后连同 key 一起写给**它的** configDir（一次操作）", async () => {
+    const calls = wire();
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    await submitApikey(el, "b", "sk-ant-FOR-B", "https://api.example.com/v1");
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
+    );
+    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
+    for (let i = 0; i < 6; i++) await tick();
+    const writes = calls.filter(([c]) => c === "write_apikey_credentials_key");
+    expect(writes.map(([, a]) => a)).toEqual([
+      // 〔RM1a 合并〕key 与 Base URL 一起落在建号的那台机器上（这一页站在 aya）。
+      { origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR, baseUrl: "https://api.example.com/v1" },
+    ]);
+    expect(el.textContent, "Base URL 输入框没清空、还挂在屏上").not.toContain("api.example.com");
   });
 
   it("终端没拉起来 ⇒ 不留那把 key（那个号不会出现，留着就是一把永远等不到主人的明文）", async () => {
@@ -1767,7 +1790,7 @@ describe("S3：本机页新建账号", () => {
       const r = form.querySelector<HTMLInputElement>('input[type=radio][value="apikey"]')!;
       r.checked = true;
       r.dispatchEvent(new Event("change"));
-      const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input")!;
+      const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input[type=password]")!;
       keyIn.value = key;
       keyIn.dispatchEvent(new Event("input"));
     }

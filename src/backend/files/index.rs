@@ -88,6 +88,28 @@ use std::time::SystemTime;
 /// 在机械盘上把盘吵起来」这件事**没有读数**。`秤 F2` 的冷档那一格逐字登记着这件事。
 pub const REWALK_INTERVAL_SECS: u64 = 300;
 
+/// 🔴 **冷启动首建那一趟大约要多久** —— 与上面那个周期**分开钉的另一个数**（`设计/99 §2 Q5`，用户 2026-09-24 裁
+/// 「单列一个数并在搜索界面显示」）。
+///
+/// # 为什么要单列
+///
+/// 上面那个周期的下界（秤 `F2`）用的是**热**缓存的数 —— 周期性重走每 300 秒一趟，缓存不会凉。
+/// 而**后端刚起来那一趟**是冷的：目录项与 inode 元数据都不在缓存里。那一趟用户**看得见**
+/// （搜索框里敲了字、结果要等它走完），所以界面要能先说一句「大概要等多久」。
+///
+/// # 这个数是怎么来的（逐条，别读宽）
+///
+/// - `真相源/103 §P10` 冷缓存现打（`drop_caches=3` 之后）：**8.88 / 9.44 / 9.63 秒**，
+///   739 782 条 · NVMe · ext4；同日热基线 0.56–0.73 秒。取最大那个的上整 ⇒ **10**。
+/// - ⚠ 那是 `find ~ -xdev` 的读数（**代理指标**），不是本文件 [`build`] 的读数；
+///   真索引器的冷态**没量过**（`drop_caches` 要 root）。
+/// - ⚠ 只量了一台机器、一个 home；机械盘 / 别的文件系统 / 条目多一个数量级 —— 都没有读数。
+///
+/// ⇒ 它是一个**有出处的估计**，界面上说「约」；**不是**这台机器的实测。
+/// ⚠ 它经 [`status`] 交出去（[`Status::cold_first_build_secs`]），客户端一个字节都不持有它
+/// （`设计/01 §5 D2`；住址唯一由 `filewin/find.rs` 那条 `no_rewalk_period_literal_lives_on_this_side` 一并钉着）。
+pub const COLD_FIRST_BUILD_SECS: u64 = 10;
+
 /// 一次遍历的读数 —— `秤 F2 ①` 与 [`status`] 共用同一份。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Stats {
@@ -458,6 +480,8 @@ pub struct Status {
     pub browse_watches: usize,
     /// 挂 watch 的上限（[`super::browse_watch::MAX_BROWSE_WATCHES`]）。
     pub browse_watch_cap: usize,
+    /// 后端**声明**的冷启动首建大约要几秒（[`COLD_FIRST_BUILD_SECS`]）。界面在首建那一趟里显示它。
+    pub cold_first_build_secs: u64,
 }
 
 pub fn status() -> Status {
@@ -487,6 +511,7 @@ pub fn status() -> Status {
             stale: !missing && is_stale(age),
             browse_watches: super::browse_watch::watched_count(),
             browse_watch_cap: super::browse_watch::MAX_BROWSE_WATCHES,
+            cold_first_build_secs: COLD_FIRST_BUILD_SECS,
         }
     })
 }

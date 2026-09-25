@@ -19,7 +19,6 @@
 // **绝不显示成"缺失"**。远端路径、相对项目目录的 `.mcp.json`、Windows 侧 `$PROFILE`
 // 本机都查不到，把它们画成红叉就是对能用的安装报假警报——B04 审计已经抓过一次同型病。
 import { commands } from "../ipc/commands";
-import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "../backend-policy";
 import { showActionFailureToast } from "../error-toast";
 
 // C04d 批 2：**四个线上类型全部改用生成物**（`config_surface.rs` 是源）。
@@ -42,6 +41,7 @@ export type { ConfigSurfaceReport, EnvTier, SettingsScope, SurfaceRow, SurfaceSt
 import { GAP_HEAD, type GapKind } from "./readiness";
 import { makeInfoIcon } from "./info-icon";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
+import { LOCAL_ORIGIN } from "../backend-policy";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import { withPending } from "./pending";
 
@@ -84,8 +84,16 @@ export function promptToInstall(row: SurfaceRow): string | null {
     return `${GAP_HEAD.missing} —— cc-monitor 不装这一项，请你自己装上 \`${row.path_declared}\``;
   }
   // **查不动**：说「缺」就是替用户下一个他没做过的结论（`readiness.ts` 头注逐字）。
-  return `${GAP_HEAD.unknown} —— 这一项本机查不动（见上面的原因），别当成它不在`;
+  // 〔ST2 · `70 §11.4` #3〕原文后半「别当成它不在」是**开发者的认识论对冲**（`§2.1` 第 ④ 种）——
+  //   区分本身是对的（`§2.2`：不许扫掉），只换位置：前半留在行上，后半进 ⓘ（`UNKNOWN_IS_NOT_ABSENT`）。
+  return `${GAP_HEAD.unknown} —— 这一项本机查不动（见上面的原因）`;
 }
+
+/**
+ * 〔ST2 · `70 §11.3.1`〕「查不动」那一句的后半，挪进 ⓘ 的那一段 —— **那条区分的全部内容住这里**。
+ */
+export const UNKNOWN_IS_NOT_ABSENT =
+  "查不动不等于它不在：只是这台机器上判断不了，不说明它没装。";
 
 /** 一态 → 文案 + 三档语气。**`undetermined` 必须中性且带出理由**，不能借"缺失"的红。 */
 export function describeSurfaceState(st: SurfaceState): {
@@ -129,8 +137,10 @@ export function describeUndo(row: SurfaceRow): string {
     case "AppInstalls":
       return "暂无自动撤销；如需清理请按上面的路径手动处理";
     // **我们欠的实现** —— 不许说成「不该由它装」（`KR65D2` 逐字）。
+    // 〔ST2 · `70 §11.4` #1 · `§11.3.1`〕原文「这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有」
+    //   是**我们欠的实现写成产品文案**。改成一格状态；⚠ 「还没有」这个语义必须留（`KR65D2`：不许说成「不该由它装」）。
     case "AppShipsNoInstallerYet":
-      return "这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有";
+      return "暂无撤销：还没有安装入口";
     // `K38` 裁的那一档：不该我们装，所以也无所谓撤。
     case "UserInstallsWePrompt":
       return "cc-monitor 不装这一项（通用工具，请你自己装），也就无所谓撤销";
@@ -150,19 +160,28 @@ export function describeUndo(row: SurfaceRow): string {
  * **必须能被数出来**（不是红，是**能报出来**）」——**报出来的地方就是这里**，
  * 用户在这一页上看得见这个数，不用去读判据。
  *
+ * 〔ST2 · `70 §11.4` #2 · `§11.3.1`〕原文「其中 N 项该由 cc-monitor 自带、而安装入口还没写：…」
+ * 是「谁欠谁」的话。改成**一格状态 ＋ 展开看哪几项**：数照旧数得出来（`KR65D2` **不许删这一行**），
+ * 名单挪进 `[哪 N 项]`（`owedInstallerNames`）。
+ *
  * 返回 `null` = 一项都没有（那时整句不渲染，不写「0 项」）。
  */
 export function summarizeOwedInstallers(rows: SurfaceRow[]): string | null {
-  const owed = rows.filter((r) => r.tier === "AppShipsNoInstallerYet");
-  if (owed.length === 0) return null;
-  const names = [...new Set(owed.map((r) => r.tool_name))];
-  return `其中 ${names.length} 项该由 cc-monitor 自带、而安装入口还没写：${names.join("、")}`;
+  const names = owedInstallerNames(rows);
+  if (names.length === 0) return null;
+  return `⚠ ${names.length} 项还没有安装入口`;
+}
+
+/** 〔ST2〕`[哪 N 项]` 里那张名单（去重、按出现顺序）。 */
+export function owedInstallerNames(rows: SurfaceRow[]): string[] {
+  return [...new Set(rows.filter((r) => r.tier === "AppShipsNoInstallerYet").map((r) => r.tool_name))];
 }
 
 /** 生成一段可复制的纯文本诊断，便于用户贴给我或存档。 */
 export function formatReportText(r: ConfigSurfaceReport): string {
   const lines: string[] = [];
-  lines.push("== cc-monitor 配置面审计 ==");
+  // 〔ST2 · 用户 09-24 裁「一起改」· `70 §11.6` #4〕跟块名统一：「配置面审计」→「足迹」。
+  lines.push("== cc-monitor 足迹 ==");
   lines.push(`HOME=${r.home}`);
   lines.push(`~/.claude 解析为=${r.claude_config_dir}`);
   lines.push("");
@@ -186,7 +205,7 @@ export function formatReportText(r: ConfigSurfaceReport): string {
   const owed = summarizeOwedInstallers(r.rows);
   if (owed) {
     lines.push("");
-    lines.push(`  ${owed}`);
+    lines.push(`  ${owed}：${owedInstallerNames(r.rows).join("、")}`);
   }
   lines.push("");
   lines.push("== settings.json 的各作用域（会影响钩子诊断结论）==");
@@ -204,6 +223,33 @@ export function formatReportText(r: ConfigSurfaceReport): string {
   return lines.join("\n");
 }
 
+/**
+ * 〔第四波 ST2 · 用户 09-24 裁「远端也有真栏」· `设计/70 §10.1` ② · `§8` #12〕**按机器去问足迹**。
+ *
+ * 读口是 RM1a 那一路补的（后端 `config_surface` 收 origin）；本路只接界面。约定的形状：
+ * `config_surface_report({ origin })`，本机传 `LOCAL_ORIGIN`，回来的报告**带回它答的是哪台**（`origin`）。
+ *
+ * ⚠⚠ **回声校验是这一格的全部重量**：读口合进来之前，包装层那条命令不收参数 ——
+ *   参数会被**静默丢掉**，后端照旧回本机那一份。那时候照原样画，就是拿本机的答案冒充 aya 的
+ *   （`§10.1` 逐字要防的那一形）。⇒ 远端那一台：报告里的 `origin` 与所问**相等**才算数，
+ *   否则当作「这台还答不了」；本机：没带 `origin`（旧读口）或带的是本机，才算数。
+ *
+ * 〔RM1a 合并〕包装层那条的签名就是 `{ origin }`，报告里的 `origin` 由后端那一侧填（本机 `"<local>"`、远端那台的名字）。
+ */
+export async function readFootprint(origin: string | null): Promise<ConfigSurfaceReport> {
+  return commands.config_surface_report({ origin: origin ?? LOCAL_ORIGIN });
+}
+
+/** 这份报告是不是**所问那台**的答复（见 `readFootprint` 的头注）。 */
+export function answersFor(r: ConfigSurfaceReport, origin: string | null): boolean {
+  const said = (r as { origin?: unknown }).origin;
+  if (origin === null) return said === undefined || said === null || said === LOCAL_ORIGIN;
+  return said === origin;
+}
+
+/** 远端那一台答不了时那一句的 ⓘ —— 区分（答不出来 ≠ 没动过）只换位置（`§11.4` #4）。 */
+export const REMOTE_UNANSWERED_WHY = "「答不出来」不等于「它没动过你的文件」。";
+
 export class ConfigSurfaceSection {
   readonly element: HTMLElement;
   private body!: HTMLElement;
@@ -213,15 +259,21 @@ export class ConfigSurfaceSection {
   private owed!: HTMLElement;
   private copyBtn!: HTMLButtonElement;
   /**
-   * 本机那一整套（工具栏 / 概览 / 表 / 作用域）的包装。
+   * 那一整套（工具栏 / 概览 / 表 / 作用域）的包装 ——〔ST2〕本机与远端都用它；远端答不了时收起来。
    * **刻意不挂类名**：它只负责显隐，不需要任何样式；挂了类就得在 CSS 里给它写规则，
    * 而 `css-ledger` 会要求每个类说得出谁在用它、每处类引用都有规则。
    */
   private localOnly!: HTMLElement;
-  /** 远端子页上那一句「这台机器还查不了，为什么」。本机页上是空的。 */
+  /** 远端那一台答不了时那一句「这台机器还查不了，为什么」（`showUnanswered`）。平时是空的。 */
   private notForThisMachine!: HTMLElement;
   private last: ConfigSurfaceReport | null = null;
   private unsubscribeMachine?: () => void;
+  /** 〔ST2〕宿主放过第一发没有（放过之后切机器才由订阅重读）。 */
+  private started = false;
+  /** 〔ST2〕第几趟读 —— 晚到的旧答复认得出来。 */
+  private seq = 0;
+  /** 〔ST2〕本机那一套里最后一格：装终端集成时留下的 `$PROFILE` 备份在哪。 */
+  private backups!: HTMLElement;
 
   constructor() {
     this.element = this.build();
@@ -271,9 +323,10 @@ export class ConfigSurfaceSection {
     );
     root.appendChild(honesty);
 
-    // 步 14a：远端子页上那一句「这台机器还查不了，为什么」（见 `applyOriginGate` 头注）。
+    // 步 14a：远端那一台答不了时那一句「这台机器还查不了，为什么」（见 `showUnanswered`）。
     this.notForThisMachine = document.createElement("div");
     this.notForThisMachine.className = "settings-hint";
+    this.notForThisMachine.dataset.footprintUnanswered = "";
     this.notForThisMachine.hidden = true;
     root.appendChild(this.notForThisMachine);
 
@@ -334,6 +387,13 @@ export class ConfigSurfaceSection {
     this.scopesBox.className = "config-surface-scopes";
     host.appendChild(this.scopesBox);
 
+    // 〔ST2 · `70 §10.2` / `§11.3.2`〕「PowerShell profile 备份」从「数据位置」搬到这里：
+    //   它和上面那张表里的 `$PROFILE` 行讲的是同一件事（cc-monitor 动过你哪些文件），
+    //   原来住在两个不同的顶层页。没备份过就整块不出现。
+    this.backups = document.createElement("div");
+    this.backups.dataset.profileBackups = "";
+    host.appendChild(this.backups);
+
     return root;
   }
 
@@ -344,40 +404,25 @@ export class ConfigSurfaceSection {
   }
 
   /**
-   * 步 2：宿主在「这一块所在的那一页首次可见」时调它。**幂等**。
+   * 步 2：宿主在「per-machine 那几块第一次放 I/O」时调它（一次打开里一次，`panel.ts::loadPerMachineOnce`）。
+   * 之后切机器由这一块自己的 `machine-context` 订阅重读（与账号 / MCP 那几块同一个形状）。
    *
-   * ⚠ 它只在**本机**那一页上真发 I/O —— 见 `applyOriginGate` 的头注。
+   * 〔ST2〕原来它在远端页上**直接不读**（读口不收 origin）。今天远端页照样去问 —— 答没答对由回声判。
    */
   loadNow(): void {
-    if (getCurrentMachine() !== null) return;
+    this.started = true;
     void this.refresh();
   }
 
   /**
-   * 🔴 `70 §10.1` ②：**今天这一页结构性地只答得了本机。**
+   * 这一页现在该长什么样：本机 / 远端都先摆那张表（骨架）；远端答不了时换成一句为什么。
    *
-   * 现打的三条（都在写区之外，本件不改它们，只如实把话说出来）：
-   * - `config_surface_report()` **不收 origin 参数**（`ipc/commands.ts` · `config_surface.rs`）；
-   * - 远端那一族**一律**落成「未确定」，理由逐字「远端路径（…）——本页不连 SSH」；
-   * - 行上那个「远端」徽章是**静态的档**（`HostScope`），不是某一台机器。
-   *
-   * ⇒ 搬进机器子页之后，**在一台远端机器的子页上照原样画这张表就是骗人**：
-   * 用户点的是 aya 的「足迹」，看到的却是本机的那一张。
-   * `70 §10.1` 把这件事拆成两步、并且逐字写明「① 搬页」与「② 让远端行真查出来」
-   * **不许捆成一步**，而 ② 要后端先有 per-origin 读口 —— 今天没有。
-   *
-   * ⇒ 本件只做 ①。远端子页上这一块**不画表、不放按钮**，只说一句为什么答不出来
-   *（`设计/70 §2.3` 的形状：**区分保留，用界面状态表达，不用散文表达**；
-   *  同 `readiness.ts` 那对「缺」vs「未测过」的分法：**答不出来 ≠ 没有**）。
-   * ⚠ 这一格**不许**被读成「判据 #12 绿了」——`§10.1` 逐字：「只做 ① 不许声称它绿了」。
+   * 〔ST2〕今天它只管**切到哪台时先长什么样**；「这台答不了」那一格由 `refresh` 看回声之后定
+   * （`showUnanswered`）。⚠ 这一格**不许**被读成「判据 #12 绿了」—— 只有回声对上、表真画出来才算。
    */
   private applyOriginGate(): void {
-    const remote = getCurrentMachine();
-    this.notForThisMachine.textContent =
-      remote === null
-        ? ""
-        : `这台机器（${remote}）的足迹还查不了：读配置面那条命令今天不收「哪台机器」这个参数，` +
-          `本页也不连 SSH。——「答不出来」不等于「它没动过你的文件」。`;
+    this.notForThisMachine.replaceChildren();
+    this.notForThisMachine.hidden = true;
     // ⚠ 只切**两个**节点的显隐，不逐块切。
     // 理由是一条实打出来的判据：`css-conventions.vitest.ts` 的 S30 ⑦ ——
     // 「会被 `hidden` 切的元素，CSS 不许在它自己身上裸写 `display`」。
@@ -385,22 +430,37 @@ export class ConfigSurfaceSection {
     // ⇒ 直接把 `hidden` 写到那条工具栏上是一句**空写**（作者样式压过 UA 的 `[hidden]`），
     //   ⚠ 这一句**刻意不写出那个赋值的字面形状** —— 那把尺子是词法的，
     //     散文里出现一次同形的字面量就会被它当成第 N 处真调用点（它自己的头注也栽过）。
-    //   屏幕上它照样在。所以本机那一整套装进一个**不挂任何类**的包装里，切包装。
-    this.notForThisMachine.hidden = remote === null;
-    this.localOnly.hidden = remote !== null;
+    //   屏幕上它照样在。所以那一整套装进一个**不挂任何类**的包装里，切包装。
+    this.localOnly.hidden = false;
+  }
+
+  /** 远端那一台答不了（读口没合进来 / 后端太旧 / 答的不是它）⇒ 表收起来，说一句为什么。 */
+  private showUnanswered(origin: string): void {
+    this.last = null;
+    this.copyBtn.disabled = true;
+    this.localOnly.hidden = true;
+    this.notForThisMachine.hidden = false;
+    this.notForThisMachine.replaceChildren(
+      `这台机器（${origin}）的足迹还查不了：要那台机器上的后端来答，它这一版还答不了。`,
+      makeInfoIcon(REMOTE_UNANSWERED_WHY),
+    );
   }
 
   private onMachineChanged(_origin: string | null): void {
-    // 只管**这一页现在该长什么样**。「要不要现在去读」由宿主的「这一页首次可见」
-    // 那张登记表决定（`panel.ts::flushPage`）—— 两处都决定就会重复发。
     this.applyOriginGate();
+    // 〔ST2〕切了机器 ⇒ 这一块讲的是另一台了 ⇒ 重读（只在已经放过第一发之后；第一发归宿主）。
+    if (this.started) void this.refresh();
   }
 
   async refresh(): Promise<void> {
+    const origin = getCurrentMachine();
+    // 切机器快过答复时，晚到的那一份不许盖掉当前这台的（与 `cc-bus-section` 那处同一个病）。
+    const my = ++this.seq;
+    this.applyOriginGate();
     this.body.replaceChildren(makeSkeleton("footprint", "正在扫这台机器上的足迹…"));
     try {
-      // 〔RM1a〕命令收了 origin；这一块今天只在本机那一页发（远端那一栏归 ST2 接，见 `applyOriginGate`）。
-      const r = await commands.config_surface_report({ origin: BACKEND_LOCAL_ORIGIN });
+      const r = await readFootprint(origin);
+      if (my !== this.seq) return;
       // **校验自己 IPC 的返回形状**（B03 的真 bug：`invoke` 可能 resolve 成 undefined，
       // 于后续 `.length` 当场抛，把整个 section 挂掉）。
       if (!r || !Array.isArray(r.rows) || !Array.isArray(r.settings_scopes)) {
@@ -408,10 +468,21 @@ export class ConfigSurfaceSection {
           "后端返回的形状不对（rows / settings_scopes 不是数组）",
         );
       }
+      if (!answersFor(r, origin)) {
+        if (origin !== null) {
+          this.showUnanswered(origin);
+          return;
+        }
+        throw new Error("后端答的不是本机这一份");
+      }
       this.last = r;
       this.copyBtn.disabled = false;
       this.render(r);
+      // `$PROFILE` 备份只在本机那一页（`data_paths.rs` 只答本机）。
+      if (origin === null) await this.loadBackups();
+      else this.backups.replaceChildren();
     } catch (e) {
+      if (my !== this.seq) return;
       this.last = null;
       this.copyBtn.disabled = true;
       this.body.textContent = `扫描失败：${String(e)}`;
@@ -419,11 +490,59 @@ export class ConfigSurfaceSection {
     }
   }
 
+  /**
+   * 〔ST2〕`$PROFILE` 备份那一格。数据来自同一条 `get_data_paths`（`data_paths.rs` 是逐个落盘位置的唯一权威枚举点）。
+   * 读不到 ⇒ 说读不到（不许拿「没有备份」糊过去 —— 那是替用户下一个没做过的结论）；
+   * 一个备份都没有 ⇒ 整块不出现。
+   */
+  private async loadBackups(): Promise<void> {
+    this.backups.replaceChildren();
+    let dirs: { path: string }[];
+    try {
+      const d = await commands.get_data_paths();
+      dirs = Array.isArray(d?.profileBackupDirs) ? d.profileBackupDirs : [];
+    } catch (e) {
+      const why = document.createElement("div");
+      why.className = "settings-hint";
+      why.textContent = `读不到 PowerShell profile 备份在哪：${String(e)}`;
+      this.backups.appendChild(why);
+      return;
+    }
+    if (dirs.length === 0) return;
+    const title = document.createElement("div");
+    title.className = "settings-subtitle";
+    title.textContent = "PowerShell profile 备份";
+    const note = document.createElement("div");
+    note.className = "settings-hint";
+    note.textContent = "装终端集成时，原来的 profile 先备份到同目录的 .ccm-backup-<时间戳>。想撤回就用它。";
+    const list = document.createElement("ul");
+    for (const d of dirs) {
+      const li = document.createElement("li");
+      li.textContent = d.path;
+      list.appendChild(li);
+    }
+    this.backups.append(title, note, list);
+  }
+
   private render(r: ConfigSurfaceReport): void {
     this.meta.textContent = `HOME=${r.home} · ~/.claude 解析为 ${r.claude_config_dir}`;
     // `KR65D2`：「app 该自带而还没有装口」那一格**在屏幕上数得出来**。
-    this.owed.textContent = summarizeOwedInstallers(r.rows) ?? "";
-    this.owed.hidden = this.owed.textContent === "";
+    // 〔ST2 · `§11.3.1`〕一格状态 ＋ `[哪 N 项]` 展开看名单。
+    const owed = summarizeOwedInstallers(r.rows);
+    this.owed.replaceChildren();
+    if (owed !== null) {
+      const names = owedInstallerNames(r.rows);
+      this.owed.append(owed, " ");
+      const which = document.createElement("details");
+      which.dataset.owedNames = "";
+      const sum = document.createElement("summary");
+      sum.textContent = `哪 ${names.length} 项`;
+      const list = document.createElement("span");
+      list.textContent = names.join("、");
+      which.append(sum, list);
+      this.owed.appendChild(which);
+    }
+    this.owed.hidden = owed === null;
     this.body.textContent = "";
     let lastTool = "";
     for (const row of r.rows) {
@@ -517,6 +636,8 @@ export class ConfigSurfaceSection {
       p.className = "config-surface-prompt";
       p.dataset.gap = gapKindOfState(row.state) ?? "";
       p.textContent = prompt;
+      // 〔ST2 · `§11.4` #3〕「查不动」那一档：区分的后半在 ⓘ 里（只换位置，不删义）。
+      if (p.dataset.gap === "unknown") p.appendChild(makeInfoIcon(UNKNOWN_IS_NOT_ABSENT));
       el.appendChild(p);
     }
 

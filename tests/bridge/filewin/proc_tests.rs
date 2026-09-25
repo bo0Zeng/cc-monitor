@@ -65,20 +65,29 @@ fn synthetic_request() -> OpenRequest {
                 },
                 link: true,
                 mtime_secs: Some(1_700_000_000),
+                raw_name: None,
             },
-            Listed::plain(Row {
-                // 🔴 有损那一格**必须进种子对拍**：它是一个**事实**（那串字节不是合法
-                //    UTF-8），而 JSON 只装得下 `String` ⇒ 不把这一格带过去，
-                //    窗口那侧就会把一个有损名字画成一个正常名字。
-                name: "坏\u{FFFD}名字".to_string(),
-                path: "/home/zbl/带空格 的目录/坏\u{FFFD}名字".to_string(),
-                is_dir: false,
-                size: 4_097,
-                lossy_name: true,
-            }),
+            Listed {
+                // 〔FW5〕有损名的**原始字节**也要过这条边界：丢了它，窗口那侧这一行退回「不许写」。
+                raw_name: Some(b"\xe5\x9d\x8f\xff\xe5\x90\x8d\xe5\xad\x97".to_vec()),
+                ..Listed::plain(Row {
+                    // 🔴 有损那一格**必须进种子对拍**：它是一个**事实**（那串字节不是合法
+                    //    UTF-8），而 JSON 只装得下 `String` ⇒ 不把这一格带过去，
+                    //    窗口那侧就会把一个有损名字画成一个正常名字。
+                    name: "坏\u{FFFD}名字".to_string(),
+                    path: "/home/zbl/带空格 的目录/坏\u{FFFD}名字".to_string(),
+                    is_dir: false,
+                    size: 4_097,
+                    lossy_name: true,
+                })
+            },
         ],
         reveal: Some("坏\u{FFFD}名字".to_string()),
         handoff: synthetic_handoff(),
+        // 〔FW34〕书签文件那一格也进种子对拍（带空格 ＋ 多字节，同 `cwd` 那一格的理由）。
+        bookmarks: Some(std::path::PathBuf::from(
+            "/tmp/书签 目录/filewin-bookmarks.json",
+        )),
     }
 }
 
@@ -104,6 +113,12 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     assert_eq!(got.cwd, want.cwd, "cwd 漂了 —— 窗口会开在别处");
     assert_eq!(got.reveal, want.reveal, "reveal 漂了 —— 高亮落在别的行上");
     assert_eq!(got.rows, want.rows, "那一屏漂了");
+    // 〔FW34〕书签文件那一格：漂了 ⇒ 窗口读写的是另一份书签。
+    assert_eq!(got.bookmarks, want.bookmarks, "书签文件的路径漂了");
+    assert!(
+        want.bookmarks.is_some(),
+        "夹具里这一格得是 `Some`，否则两侧都是 `None` 恒相等"
+    );
     // 🔴〔2026-09-23 本机侧退役〕**这里少了一次「判别式过得去吗」的比对。**
     //    从前 `Source` 是个两格枚举，这一段要先 `match` 出两侧都是 `Remote`
     //    （对不上就 `panic!("源的判别式没过得去")`），下面还单独喂一份
@@ -148,7 +163,7 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     );
     // ★ 反向自检：**线上那份字节里真的装着那几个值**。
     //   少了这一比，一个「原样回传入参」的假实现照样绿（encode/decode 都不走 serde）。
-    for needle in ["10.0.0.7", "带空格 的目录", "id_ed25519"] {
+    for needle in ["10.0.0.7", "带空格 的目录", "id_ed25519", "书签 目录"] {
         assert!(
             wire.contains(needle),
             "线上那份字节里找不到 {needle:?} —— encode/decode 可能压根没经过 serde：{wire}"
@@ -274,6 +289,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         rows: Vec::new(),
         reveal: None,
         handoff: synthetic_handoff(),
+        bookmarks: None,
     };
     let mut pids: Vec<u32> = Vec::new();
     let mut codes: Vec<String> = Vec::new();
@@ -406,6 +422,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
         rows: Vec::new(),
         reveal: None,
         handoff: synthetic_handoff(),
+        bookmarks: None,
     })
     .expect_err("拿一个不是二进制的文件当窗口进程，居然报了成功");
     println!("  现打：{e}");
@@ -519,6 +536,13 @@ async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it()
         at_dial < at_open,
         "开窗排在拨通道之前 —— 拨不通时窗口已经开了"
     );
+    // ⑤〔FW34〕种子里每一格都真的交给了开窗那一下（漏交一格 ＝ 那一格在窗口那侧恒是默认值，
+    //    种子对拍照样绿 —— 它只判「过得了进程边界」，判不了「过去之后有人接」）。
+    for f in ["source", "cwd", "rows", "reveal", "bookmarks"] {
+        let at = guard_core::find_pinned(&prod, &format!("req.{f},"))
+            .unwrap_or_else(|e| panic!("child_main 没把种子里的 `{f}` 交给开窗那一下：{e}"));
+        assert!(at > at_open, "`req.{f}` 不在开窗那一下的实参里");
+    }
 }
 
 /// 把 `find::testing::FakeBackend` 挂成宿主句柄的最小包装（`wire_up` 那一份不交出句柄本身）。

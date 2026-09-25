@@ -219,6 +219,31 @@ fn build_corpus() -> Corpus {
 /// ⚠ 写成**一个** `#[test]` 而不是三个：语料造一遍要几千个 inode，
 /// 拆成三条就是造三遍（而且它们会抢同一个常驻索引）。
 /// 三样读数各自的断言在函数体里逐段分开，失败文案分得清是哪一样。
+/// 〔第四波 S4 · `设计/99 §2 Q5`〕秤 `F2 ①` 的**冷档另立一格**：冷启动首建那个数与热档**分开钉**。
+///
+/// `真相源/103 §P10` 把冷缓存现打出来之后（8.88–9.63 秒，代理指标），Q5 问的是「那条闸该用哪个数」。
+/// 用户裁「单列一个数并在搜索界面显示」⇒ 周期性那条（上面那个 `#[test]` 的硬判 ①）照旧用热的；
+/// 这一格只管冷的那一个：**声明的首建估计也必须严格小于重走周期**（同一条判法 —— 单次耗时 < 周期，
+/// 照 Prometheus 那一条；不加系数）。
+///
+/// ⚠ 它判的是**声明值**，不是实测：真索引器的冷态今天量不了（本文件头注「冷档判不了」那三条仍成立）。
+/// 它买的是「那两个数各有各的家、而且冷的那个没把周期顶穿」，买不到「冷启动真的只要这么久」。
+#[test]
+fn f2_cold_first_build_is_its_own_number_and_fits_inside_the_period() {
+    let cold_ms = crate::files::index::COLD_FIRST_BUILD_SECS * 1000;
+    let interval_ms = crate::files::index::REWALK_INTERVAL_SECS * 1000;
+    assert!(
+        cold_ms < interval_ms,
+        "🔴 冷启动首建估计 {cold_ms} ms 不小于重走周期 {interval_ms} ms ——\n\
+         后端刚起那一趟还没走完，下一趟就到点了。两条出路：把周期调大，或者把遍历改快。\n\
+         ⚠ **不许在这里加系数放宽**（理由同上面那条硬判 ①）。"
+    );
+    eprintln!(
+        "F2 冷档：首建估计 {cold_ms} ms / 周期 {interval_ms} ms ⇒ 占空比 {:.2}%（声明值，不是实测）",
+        cold_ms as f64 / interval_ms as f64 * 100.0
+    );
+}
+
 #[test]
 fn f2_the_three_costs_of_the_search_family() {
     let _lock = resident_lock();
@@ -336,6 +361,10 @@ fn f2_the_three_costs_of_the_search_family() {
         ref_build_ms
     );
     eprintln!("║   **冷档：判不了**（`drop_caches` 要 root）—— 缺什么见本文件头注那三条");
+    eprintln!(
+        "║   冷档首建**声明值**（代理指标上整，不是本机实测）：{} 秒 —— 见 `f2_cold_first_build_is_its_own_number_and_fits_inside_the_period`",
+        crate::files::index::COLD_FIRST_BUILD_SECS
+    );
     eprintln!("║ ② 索引常驻字节");
     eprintln!(
         "║   {} 字节 / {} 条 ⇒ {:.1} 字节每条",

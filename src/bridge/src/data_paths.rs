@@ -37,6 +37,11 @@ use tauri::{AppHandle, Manager};
 pub struct DataPathInfo {
     /// 用户可见的简短名字（如 "config.json"）
     pub label: String,
+    /// 〔第四波 ST2 · 用户 09-24 裁「提前做」· `INVARIANTS §2.1` 末条〕**真相还是缓存**。
+    ///
+    /// **非可选**：[`probe_file`] / [`probe_dir`] 不收它就编不过 ⇒ 「新文件必须选类」由类型系统兜住，
+    /// 不再只靠 `INVARIANTS §2.1` 那张散文表。设置面板「数据位置」每一行照它说「删了会丢 / 可随手删」。
+    pub class: DataClass,
     /// 绝对路径
     pub path: String,
     /// "file" | "dir"
@@ -88,6 +93,21 @@ pub struct DataPathInfo {
     pub size_bytes: Option<u64>,
 }
 
+/// 〔ST2〕`INVARIANTS §2.1` 那两类：**真相**（用户手写 / 意图，删了丢东西）与**缓存 / 派生**（能从别处重建，随便删）。
+///
+/// ⚠ 只有两档，没有「混」：`auto-launch.json` 那种「一个文件里既有真相又有派生」按**真相**记 ——
+/// 这一格回答的是「删了会不会丢东西」，混着真相的文件删了就会丢。
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub enum DataClass {
+    /// 用户手写 / 意图：删了丢东西，要备份。
+    Truth,
+    /// 能从别处重建：随手删，下次用到时重建。
+    Cache,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
@@ -102,48 +122,17 @@ pub struct DataPathsResponse {
     pub profile_backup_dirs: Vec<DataPathInfo>,
 }
 
+/// 日志目录那一行的名字。〔ST2 · `70 §11.3.2`〕设置面板认它：那一行不自带 [打开]，改成指向「日志」那一块
+/// （越界是界面层的重复，修在界面层 —— **不许**从这份枚举里删掉它，`INVARIANTS §2.1` 的唯一权威枚举点）。
+/// ⚠ 跨语言常量：TS 那侧 `settings/data-section.ts::LOGS_DIR_LABEL` 同名同值，由那边的 vitest 读本文件对拍。
+pub const LOGS_DIR_LABEL: &str = "logs/";
+
 /// 收集所有 monitor 写到磁盘的数据路径。需要 AppHandle 才能拿 LocalAppData 推断 WebView2 路径。
 pub fn collect(handle: &AppHandle) -> DataPathsResponse {
     let monitor_data_dir =
         crate::paths::resolve_monitor_data_dir().unwrap_or_else(|| PathBuf::from("(unknown)"));
 
-    let entries = vec![
-        probe_file(
-            monitor_data_dir.join("config.json"),
-            "config.json",
-            "主题 / 字体 / claudeDir override / 诊断开关",
-        ),
-        probe_file(
-            monitor_data_dir.join("sid-hwnd-cache.json"),
-            "sid-hwnd-cache.json",
-            "cc 集成的 sid → 终端 HWND 持久绑定",
-        ),
-        probe_file(
-            monitor_data_dir.join("auto-launch.json"),
-            "auto-launch.json",
-            "auto-launch monitor 开关 + 当前 monitor exe 路径",
-        ),
-        probe_file(
-            monitor_data_dir.join("history-metadata.json"),
-            "history-metadata.json",
-            "历史浏览器：star / 重命名 / 隐藏",
-        ),
-        probe_dir(
-            monitor_data_dir.join("ps-await"),
-            "ps-await/",
-            "cc 集成短期 IPC：PS 通知 monitor 找窗口（写时存在，握手后被删）",
-        ),
-        probe_dir(
-            monitor_data_dir.join("ps-registry"),
-            "ps-registry/",
-            "cc 集成短期 IPC：monitor 把绑定结果告诉 PS（PS 进程同寿）",
-        ),
-        probe_dir(
-            monitor_data_dir.join("logs"),
-            "logs/",
-            "诊断日志（按天滚动，保留 3 天）",
-        ),
-    ];
+    let entries = monitor_entries(&monitor_data_dir);
 
     let webview_user_data_dir = detect_webview_data_dir(handle);
     let profile_backup_dirs = detect_profile_backup_dirs();
@@ -156,7 +145,59 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
     }
 }
 
-fn probe_file(path: PathBuf, label: &str, description: &str) -> DataPathInfo {
+/// monitor data dir 下逐个文件 / 目录的枚举 —— **唯一权威枚举点**（`INVARIANTS §2.1`）。
+/// 〔ST2〕从 [`collect`] 里抽出来，只为让「每一项是哪一类」能不带 `AppHandle` 地被判据逐项对拍。
+fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
+    vec![
+        probe_file(
+            monitor_data_dir.join("config.json"),
+            "config.json",
+            "主题 / 字体 / claudeDir override / 诊断开关",
+            DataClass::Truth,
+        ),
+        // 🔴 〔ST2 · `70 §10.2` 差项 4〕原文「cc 集成的 sid → 终端 HWND 持久绑定」—— `sid` / `HWND`
+        //   都在 `91 §4` R1 的词表里（我们这侧的词）。换成用户看得懂的说法。
+        probe_file(
+            monitor_data_dir.join("sid-hwnd-cache.json"),
+            "sid-hwnd-cache.json",
+            "每个会话在哪个终端窗口里（cc 集成用来拉前终端）",
+            DataClass::Cache,
+        ),
+        probe_file(
+            monitor_data_dir.join("auto-launch.json"),
+            "auto-launch.json",
+            "auto-launch monitor 开关 + 当前 monitor exe 路径",
+            // 开关是你选的（真相）；exe 路径每次启动自愈重写（派生）⇒ 整份按真相记（见 `DataClass`）。
+            DataClass::Truth,
+        ),
+        probe_file(
+            monitor_data_dir.join("history-metadata.json"),
+            "history-metadata.json",
+            "历史浏览器：star / 重命名 / 隐藏",
+            DataClass::Truth,
+        ),
+        probe_dir(
+            monitor_data_dir.join("ps-await"),
+            "ps-await/",
+            "cc 集成短期 IPC：PS 通知 monitor 找窗口（写时存在，握手后被删）",
+            DataClass::Cache,
+        ),
+        probe_dir(
+            monitor_data_dir.join("ps-registry"),
+            "ps-registry/",
+            "cc 集成短期 IPC：monitor 把绑定结果告诉 PS（PS 进程同寿）",
+            DataClass::Cache,
+        ),
+        probe_dir(
+            monitor_data_dir.join("logs"),
+            LOGS_DIR_LABEL,
+            "诊断日志（按天滚动，保留 3 天）",
+            DataClass::Cache,
+        ),
+    ]
+}
+
+fn probe_file(path: PathBuf, label: &str, description: &str, class: DataClass) -> DataPathInfo {
     let exists = path.is_file();
     let size_bytes = if exists {
         std::fs::metadata(&path).ok().map(|m| m.len())
@@ -165,6 +206,7 @@ fn probe_file(path: PathBuf, label: &str, description: &str) -> DataPathInfo {
     };
     DataPathInfo {
         label: label.to_string(),
+        class,
         path: path.display().to_string(),
         kind: "file".to_string(),
         description: description.to_string(),
@@ -173,12 +215,13 @@ fn probe_file(path: PathBuf, label: &str, description: &str) -> DataPathInfo {
     }
 }
 
-fn probe_dir(path: PathBuf, label: &str, description: &str) -> DataPathInfo {
+fn probe_dir(path: PathBuf, label: &str, description: &str, class: DataClass) -> DataPathInfo {
     let exists = path.is_dir();
     // 不递归算 dir 大小：避免大日志目录 / WebView2 cache 让 IPC 阻塞数秒。
     // 前端如果想看大小，自己通过 [打开] 进资源管理器查。
     DataPathInfo {
         label: label.to_string(),
+        class,
         path: path.display().to_string(),
         kind: "dir".to_string(),
         description: description.to_string(),
@@ -202,6 +245,8 @@ fn detect_webview_data_dir(handle: &AppHandle) -> Option<DataPathInfo> {
         webview_dir,
         "WebView2 / EBWebView/",
         "WebView2 cache / localStorage / IndexedDB / cookies。由 WebView2 Runtime 管理。",
+        // 里面有 localStorage（界面偏好）⇒ 删了会丢东西，按真相记。
+        DataClass::Truth,
     ))
 }
 
@@ -222,6 +267,8 @@ fn detect_profile_backup_dirs() -> Vec<DataPathInfo> {
                 dir,
                 "PowerShell profile 备份目录",
                 "v1.7.10+ 装 cc 集成时自动备份到 <profile>.ccm-backup-<时间戳>",
+                // 你原来那份 profile 的唯一副本 ⇒ 删了就回不去了。
+                DataClass::Truth,
             ));
         }
         if out.len() >= 3 {

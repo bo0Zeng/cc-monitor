@@ -2,6 +2,9 @@
 
 /**
  * 一个 marketplace。**每个字段读不出就是 `null`，不编默认值。**
+ *
+ * 〔RM1b〕线上契约：**拒收未知字段、每个字段必填**（`Option` 也必须以 `null` 显式出现）——
+ * 后端 `plugins_query::MarketplaceEntry` 多一格、少一格、改一个名，这里当场反序列化失败。
  */
 export type MarketplaceEntry = { id: string, 
 /**

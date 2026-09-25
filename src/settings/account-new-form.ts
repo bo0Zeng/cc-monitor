@@ -40,7 +40,36 @@ export type AccountAccess = "subscription" | "apikey";
 
 export type NewAccountRequest =
   | { name: string; access: "subscription"; credFile?: string }
-  | { name: string; access: "apikey"; key: string };
+  // 〔第四波 ST2 · `70 §4.4`〕`baseUrl` 缺席 = 用这个 agent 的默认上游（后端那一格不写）。
+  | { name: string; access: "apikey"; key: string; baseUrl?: string };
+
+/**
+ * 〔第四波 ST2 · `70 §4.4` 线框里那一格〕Base URL 的**表单侧**形状关：留空合法（= 默认上游）；
+ * 要写就得是 `https://…`，或者连本机回环的 `http://…`（明文 http 发出去的是那把 key ——
+ * 账号层装表时的同一条规矩，`apikey/table.rs` 那句「base_url 是明文 http 而主机不是本机回环」）。
+ *
+ * ⚠ 这是**提前说**，不是唯一的关：后端写口还有一道形状关，账号层装表时还会再判一次并出声。
+ * 这里只为让「创建」在填错时是灰的，不让用户建完号才发现端点没配上。
+ */
+export function checkBaseUrl(raw: string): { ok: true; value: string | undefined } | { ok: false; reason: string } {
+  const s = raw.trim();
+  if (s === "") return { ok: true, value: undefined };
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return { ok: false, reason: "Base URL 要写成 https://主机[:端口][/路径]，留空就用默认上游" };
+  }
+  if (u.protocol === "https:") return { ok: true, value: s };
+  if (u.protocol === "http:") {
+    const h = u.hostname.replace(/^\[|\]$/g, "");
+    const loopback = h === "localhost" || h === "::1" || /^127(\.\d{1,3}){3}$/.test(h);
+    return loopback
+      ? { ok: true, value: s }
+      : { ok: false, reason: "明文 http 只许连本机回环（127.0.0.1 / localhost）：要不就换 https" };
+  }
+  return { ok: false, reason: "Base URL 只认 https://（或连本机回环的 http://）" };
+}
 
 /** 表单上给用户看的字。集中在一处，判据按这张表逐条对（不在断言里手抄第二份）。 */
 export const NEW_ACCOUNT_COPY = {
@@ -54,6 +83,7 @@ export const NEW_ACCOUNT_COPY = {
     "创建后弹出终端建好账号目录；这个号出现在下面的账号列表里时（终端跑完点「刷新」），" +
     "这把 key 自动写进 apikey 表。在那之前 key 只留在这个窗口里，关掉 monitor 就没了。",
   keyPlaceholder: "粘贴 API key",
+  baseUrlPlaceholder: "Base URL，留空用默认上游",
   advanced: "高级：从旧凭据快照导入（免重登）",
   credPlaceholder: "旧凭据快照路径",
   previewHead: "将在终端里运行：",
@@ -138,6 +168,14 @@ export function renderNewAccountForm(
   // ---- apikey 那一支（选了才显示）----
   const keyBox = document.createElement("div");
   keyBox.className = "accounts-new-key";
+  // 〔ST2 · `70 §4.4`〕线框里 apikey 那一支是两格：Base URL ＋ API key。
+  const baseIn = document.createElement("input");
+  baseIn.type = "text";
+  baseIn.className = "accounts-maint-cred";
+  baseIn.placeholder = C.baseUrlPlaceholder;
+  baseIn.autocomplete = "off";
+  baseIn.dataset.field = "base-url";
+  keyBox.appendChild(baseIn);
   const keyIn = document.createElement("input");
   keyIn.type = "password";
   keyIn.className = "accounts-maint-cred";
@@ -189,9 +227,13 @@ export function renderNewAccountForm(
     const built = buildAcctIsoCmd({ kind: "add-apply", name, credFile });
     if (!built.ok) return { why: built.reason };
     if (chosen() === "apikey") {
+      const base = checkBaseUrl(baseIn.value);
+      if (!base.ok) return { why: base.reason };
       const key = keyIn.value.trim();
       if (!key) return { why: "" };
-      return { req: { name, access: "apikey", key }, cmd: built.cmd };
+      const req: NewAccountRequest = { name, access: "apikey", key };
+      if (base.value !== undefined) req.baseUrl = base.value;
+      return { req, cmd: built.cmd };
     }
     return { req: { name, access: "subscription", credFile }, cmd: built.cmd };
   };
@@ -222,12 +264,13 @@ export function renderNewAccountForm(
     }
   };
 
-  for (const el of [nameIn, keyIn, credIn]) el.addEventListener("input", sync);
+  for (const el of [nameIn, keyIn, baseIn, credIn]) el.addEventListener("input", sync);
   for (const r of radios.values()) r.addEventListener("change", sync);
 
   cancel.addEventListener("click", () => {
     nameIn.value = "";
     keyIn.value = "";
+    baseIn.value = "";
     credIn.value = "";
     sync();
   });
@@ -236,6 +279,7 @@ export function renderNewAccountForm(
     if (!("req" in cur)) return;
     // 先清空再交出去：明文在 DOM 里停留的时间越短越好（`KS6`）。
     keyIn.value = "";
+    baseIn.value = "";
     nameIn.value = "";
     credIn.value = "";
     sync();
