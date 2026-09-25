@@ -42,7 +42,7 @@ const captured = vi.hoisted(() => ({
       id: string,
       title: string,
       el: HTMLElement,
-      parts?: { connection: HTMLElement; components: HTMLElement },
+      parts?: { connection: HTMLElement; components: HTMLElement; tools: HTMLElement },
     ) => void;
     removeMachinePage: (id: string) => void;
     navigateToMachinePage: (id: string) => void;
@@ -67,6 +67,7 @@ vi.mock("../../src/settings/remote-section", () => ({
         opts?.pages?.addMachinePage(REMOTE_PAGE, "devbox", remote, {
           connection: document.createElement("div"),
           components: document.createElement("div"),
+          tools: document.createElement("div"), // 〔ST2〕那台机器自己的别名（「工具」栏最前面）
         });
       }, 0);
     }

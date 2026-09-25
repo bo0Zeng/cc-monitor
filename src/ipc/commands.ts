@@ -373,7 +373,8 @@ export const commands = {
    * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
    * 漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
    */
-  write_apikey_credentials_key: (args: { key: string; configDir: string }) =>
+  // 〔第四波 ST2〕`baseUrl`：加账号表单 apikey 那一支的 Base URL（`设计/70 §4.4`）；缺席 = 用默认上游。
+  write_apikey_credentials_key: (args: { key: string; configDir: string; baseUrl?: string | null }) =>
     invoke<void>("write_apikey_credentials_key", args),
 
   write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>

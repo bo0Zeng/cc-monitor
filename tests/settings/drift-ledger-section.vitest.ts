@@ -136,3 +136,71 @@ describe("DriftLedgerSection（DOM）", () => {
     expect(text).toContain("不显示、不进搜索、不计费");
   });
 });
+
+describe("〔ST2 · 漂移记账按机器分：这一拍只做本机〕", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = "";
+  });
+
+  async function mount(): Promise<{
+    calls: string[];
+    s: InstanceType<typeof import("../../src/settings/drift-ledger-section").DriftLedgerSection>;
+    mod: typeof import("../../src/settings/drift-ledger-section");
+    ctx: typeof import("../../src/settings/machine-context");
+  }> {
+    const calls: string[] = [];
+    vi.doMock("../../src/ipc/commands", () => ({
+      commands: {
+        drift_ledger_report: () => {
+          calls.push("drift_ledger_report");
+          return Promise.resolve([]);
+        },
+      },
+    }));
+    const ctx = await import("../../src/settings/machine-context");
+    ctx.__resetMachineContextForTests();
+    const mod = await import("../../src/settings/drift-ledger-section");
+    const s = new mod.DriftLedgerSection();
+    document.body.appendChild(s.element);
+    return { calls, s, mod, ctx };
+  }
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("★★ 远端那一栏：一发都不放，照实说读不到；本机那一整套收起来", async () => {
+    const { calls, s, mod, ctx } = await mount();
+    ctx.setCurrentMachine("devbox");
+    s.loadNow();
+    await flush();
+    expect(calls, "远端那一栏去读了那本不分机器的账 —— 那是拿本机的账冒充它").toEqual([]);
+    const note = s.element.querySelector<HTMLElement>("[data-drift-remote]")!;
+    expect(note.hidden).toBe(false);
+    expect(note.textContent).toBe(mod.DRIFT_REMOTE_UNREADABLE);
+    expect(s.element.querySelector<HTMLElement>("[data-drift-mixed]")!.closest("[hidden]")).not.toBeNull();
+  });
+
+  it("★★ 本机那一栏：读一发，并当场说清「这本账里也有远端来的」", async () => {
+    const { calls, s, mod } = await mount();
+    s.loadNow();
+    await flush();
+    expect(calls).toEqual(["drift_ledger_report"]);
+    expect(s.element.querySelector<HTMLElement>("[data-drift-remote]")!.hidden).toBe(true);
+    const mixed = s.element.querySelector<HTMLElement>("[data-drift-mixed]")!;
+    expect(mixed.closest("[hidden]"), "本机那一栏把「账不分机器」那句藏起来了").toBeNull();
+    expect(mixed.textContent).toBe(mod.DRIFT_LOCAL_MIXED);
+  });
+
+  it("★ 切机器跟着换：远端 → 本机（放过第一发之后）⇒ 读一发；本机 → 远端 ⇒ 不读", async () => {
+    const { calls, s, ctx } = await mount();
+    ctx.setCurrentMachine("devbox");
+    s.loadNow();
+    await flush();
+    expect(calls).toEqual([]);
+    ctx.setCurrentMachine(null);
+    await flush();
+    expect(calls).toEqual(["drift_ledger_report"]);
+    ctx.setCurrentMachine("devbox");
+    await flush();
+    expect(calls, "切到远端又读了一趟").toEqual(["drift_ledger_report"]);
+  });
+});
