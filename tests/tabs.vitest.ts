@@ -5163,3 +5163,28 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     expect(t.state, "正控：实时远端行照旧翻活").not.toBe(ENDED);
   });
 });
+
+/**
+ * 〔CF2 · 第四波 4B〕**前端账本有上界**（`live-window.ts::PENDING_CAP` / `PENDING_KEEP`）。
+ *
+ * 要求住址：`设计/05 §3.3.4`「⇒ **级 3 是判据**：任何一个订阅侧缓冲都要有上界，满了必须落级 1 或级 2，
+ * **不许静默堆**」—— 出账的那些往上翻时按行号取回（上面那一组 L3），所以这是级 2 不是「丢了就没了」。
+ */
+describe("〔CF2〕前端账本的上界", () => {
+  it("★ 超过 CAP 就只留 seq 最高的 KEEP 条（乱序到达也按 seq 留）；「到顶了」随之回到「下面可能还有」", async () => {
+    const { TailWindow, PENDING_CAP, PENDING_KEEP } = await import("../src/live-window");
+    expect(PENDING_KEEP).toBeLessThan(PENDING_CAP);
+    const w = new TailWindow();
+    w.pinFloor(100_000);
+    w.markFetchedBelow(0); // 先当作「到顶了」
+    expect(w.belowState).toEqual({ kind: "none" });
+    const mk = (seq: number) => ({ session_id: "s", cwd: null, path: "/p/s.jsonl", seq, message: {} }) as never;
+    // 尾部优先那种到达序：高的一段先到，低的一段后到
+    for (let s = PENDING_CAP; s < PENDING_CAP * 2; s++) w.defer(mk(s));
+    expect(w.pendingCount, "刚好 CAP 条不修").toBe(PENDING_CAP);
+    w.defer(mk(0)); // 第 CAP + 1 条（最低的）⇒ 修
+    expect(w.pendingCount).toBe(PENDING_KEEP);
+    expect(w.peek(1)[0].seq, "留下的不是 seq 最高的那些").toBe(PENDING_CAP * 2 - PENDING_KEEP);
+    expect(w.belowState, "出过账了却还说「到顶了」—— 往上翻不会去取").toEqual({ kind: "maybe" });
+  });
+});
