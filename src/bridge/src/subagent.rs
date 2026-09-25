@@ -26,7 +26,7 @@
 //! 同向：「有哪些候选」是**后端**回答的问题，本侧只负责在候选里挑。
 //!
 //! ⚠ **两条 transport 之间一条如实登记的差别**（不在本模块能收的范围里）：
-//! 远端那条（`run_list_query`）带 **30s 整体超时**与**单行上限**；本机那条
+//! 远端那条（〔C4d〕今天是长连接的帧命令，`frame_query` 按行那一档 30s 期限 ＋ 单帧上限）有期限与上限；本机那条
 //! （`local_query::run_query`）**两样都没有** —— 那一层刻意把超时留给调用方（见它自己的头注）。
 //! subagent 通常是短命的侧任务、文件很小，但一个长跑的 subagent 可能撞上远端那 30s。
 //! 真要收，得把本命令改成**流式**（同 `stream_read_remote_session` 那条 channel 路），
@@ -98,7 +98,7 @@ impl Backend {
     /// 跑一条一次性查询。`argv[0]` 是子命令，其余是它的参数。
     ///
     /// 出的是**逐行、已 trim、已剔空行**的输出 —— 两条路形状一致
-    /// （远端那条由 `run_list_query` 保证，本机这条在 [`run_local_query`] 里对齐）。
+    /// （远端那条由 `frame_query` 的按行那一档保证，本机这条在 [`run_local_query`] 里对齐）。
     ///
     /// 〔C2 · SE1 欠账〕失败带**种类**（[`QueryFailure`]）：调用方据种类决定「还要不要再要」，
     /// 不解析 `message` 的文字。种类**在失败发生的那一层当场定**，不事后按文字猜：
@@ -109,7 +109,7 @@ impl Backend {
             Backend::Local => run_local_query(argv),
             Backend::Remote(cfg) => {
                 // 〔`C1` · 09-24〕认得的形状走长连接（`frame_query::route_argv`）；
-                // 认不出的落到拨号那条路 —— 而那条路只放行 `STILL_DIALED` 登记的子命令。
+                // 认不出的当场说（下面那一支；〔C4d〕逐次拨号那条路删了）。
                 if let Some(route) = crate::backend::control::frame_query::route_argv(argv) {
                     let origin = crate::origin::Origin(cfg.origin_label());
                     // 长连接在、却不认这条帧命令 ⇒ 对面的后端比这条查询老（结构性，再要也一样）。
@@ -124,13 +124,14 @@ impl Backend {
                         .await
                         .map_err(QueryError::transport);
                 }
-                // 自由文本（路径）逐个过 `shell_quote`；子命令本身是字面量。
-                let mut args = argv[0].to_string();
-                for a in &argv[1..] {
-                    args.push(' ');
-                    args.push_str(&crate::ssh_source::shell_quote(a));
-                }
-                crate::remote_history::run_list_query(cfg, &args).await
+                // 〔C4d · 第四波 4B〕认不出的形状从前落到逐次拨号那条路（`run_list_query`〔散文墓碑〕），而那条路的
+                //   放行表 C4c 起就是空的 ⇒ 结局本来就是被拒。主会话 09-25 裁删那条路：这里**当场说**，不拨号、不回落。
+                //   这是本程序的 bug（调用方造了一条没上帧面的查询），不是远端的问题 ⇒ 结构性，再要也一样。
+                Err(QueryError::transport(format!(
+                    "`{}` 没有对应的帧命令，不再为它单拨一条 SSH（这是本程序的 bug，不是远端 [{}] 的问题）",
+                    argv.first().copied().unwrap_or_default(),
+                    cfg.origin_label()
+                )))
             }
         }
     }
@@ -140,13 +141,14 @@ impl Backend {
 ///
 /// | 种类 | 在哪一层定 | 含义 |
 /// |---|---|---|
-/// | `OldBackend` | 本机：退出码 2 ＋ 后端自己印的 `unknown argument: <子命令>` · 远端拨号：首行是 hello（很老的后端掉进流模式）· 帧面：长连接不认这条命令 | **结构性**：同一台后端再要一次还是这样 |
-/// | `Truncated` | 远端拨号：单行超上限被整行拒收 | 输出没收全，不当全量用 |
-/// | `Transport` | 其余：起不了本机后端 · SSH 连不上 · 超时 · 没有控制通道 · 后端退出码非 0（非上面那一形） | **瞬时**：下一次触发再要 |
+/// | `OldBackend` | 本机：退出码 2 ＋ 后端自己印的 `unknown argument: <子命令>` · 帧面：长连接不认这条命令 | **结构性**：同一台后端再要一次还是这样 |
+/// | `Transport` | 其余：起不了本机后端 · 超时 · 没有控制通道 · 后端退出码非 0（非上面那一形）· 没有帧命令的查询 | **瞬时**：下一次触发再要 |
+///
+/// 〔C4d · 第四波 4B〕原先还有一档 `Truncated`（「远端拨号：单行超上限被整行拒收」）与「远端拨号：首行是 hello」那一形 ——
+/// 两样都只在逐次拨号那条路上产出，那条路删了，它们随之没有产出者 ⇒ 摘掉（帧面的「装不下」是后端的 `too_large` 明拒，走 `Transport`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QueryFailure {
     OldBackend,
-    Truncated,
     Transport,
 }
 
@@ -161,12 +163,6 @@ impl QueryError {
     pub(crate) fn old_backend(message: String) -> Self {
         Self {
             kind: QueryFailure::OldBackend,
-            message,
-        }
-    }
-    pub(crate) fn truncated(message: String) -> Self {
-        Self {
-            kind: QueryFailure::Truncated,
             message,
         }
     }
@@ -236,7 +232,7 @@ fn run_local_query(argv: &[&str]) -> Result<Vec<String>, QueryError> {
     }
 }
 
-/// 与 `run_list_query` 的出参形状对齐：逐行、trim 过、空行剔掉。
+/// 与帧面按行那一档（`frame_query::lines`）的出参形状对齐：逐行、trim 过、空行剔掉。
 fn nonempty_lines(stdout: &str) -> Vec<String> {
     stdout
         .lines()

@@ -11,20 +11,8 @@ fn jsonl_stem_basics() {
     assert_eq!(jsonl_stem(""), None);
 }
 
-#[test]
-fn old_backend_hello_detected() {
-    assert!(is_old_backend_hello(
-        r#"{"kind":"hello","v":1,"build_id":"phase0-proto","host_arch":"aarch64","claude_dir":"/home/pi/.claude"}"#
-    ));
-    // 查询模式的正常输出不含 kind
-    assert!(!is_old_backend_hello(
-        r#"{"dirName":"-home-pi-proj","projectPath":"/home/pi/proj","sessionCount":3,"lastActivityMs":1}"#
-    ));
-    // jsonl 正文里聊到 hello 不该误判（必须是 kind 字段形态）
-    assert!(!is_old_backend_hello(
-        r#"{"type":"user","message":{"content":"say hello"}}"#
-    ));
-}
+// 〔C4d · 第四波 4B〕「首行是 hello ⇒ 老后端」那条识别（`is_old_backend_hello`〔散文墓碑〕）随逐次拨号那条路删了：
+// 帧面的老后端由能力协商说「还不认」（`frame_query::call` 发之前先问 `accepts`）。
 
 #[test]
 fn shell_quote_via_ssh_source() {

@@ -23,10 +23,7 @@ const DESIGN_EIGHT: &[&str] = &[
     "--account-trust-zero",
 ];
 
-/// 〔SR1a〕拨号那条路从此只放行这两条（题面「`STILL_DIALED` 缩到只剩真该拨号的」—— 点一次换号才发一次）。
-/// 〔C4c · 第四波 4B〕**零条**：那两条随账号层上了帧面（题面 C4c「仍在拨号的 `--account-trust` / `--account-trust-zero`」）。
-/// **异源**：抄自题面，不从表派生。
-const STILL_DIALED_WANT: &[&str] = &[];
+// 〔C4d · 第四波 4B〕这里原先还有一张「仍拨号」的题面表（C4c 起零条）—— 逐次拨号那条路删了，表随之摘掉。
 
 fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut v: Vec<String> = v.into_iter().collect();
@@ -86,51 +83,42 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
     );
 }
 
-/// ★ 拨号那条路只放行 [`STILL_DIALED`]：八条里**一条都过不去**（零命中），登记的那几条过得去（正控）。
+/// ★〔C4d · 第四波 4B〕**逐次拨号那条路不存在了**（零命中 ＋ 正控）。
+///
+/// 守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 4 条，逐字）「`run_list_query`〔散文墓碑〕（逐次拨号那条路，
+/// 今天零放行）删，同拍动 `subagent.rs` 的回落」。原先这里两条判据钉「那条路只放行登记表 ＋ 先问后拨」——
+/// 那张表 C4c 起是空的，路本身删了 ⇒ 改钉「它在 monitor 生产段里一个标识符都不剩」：
+/// 函数名 · 闸门名 · 放行表名，按**整词**、剥注释之后数（散文里的墓碑不算）。
+/// 正控：同一识别器在同一份语料上认得出今天真在的出口 `run_routed`（识别器没瞎）。
 #[test]
-fn the_dial_path_refuses_every_moved_query() {
-    let leaked: Vec<&str> = MOVED
-        .iter()
-        .map(|(f, _)| *f)
-        .filter(|f| dial_allowed(f))
-        .collect();
-    assert!(
-        leaked.is_empty(),
-        "这几条已上帧面，拨号那条路却还放行：{leaked:?}"
-    );
-    for (f, why) in STILL_DIALED {
-        assert!(dial_allowed(f), "`{f}` 登记为仍拨号，却被拒了");
-        assert!(!why.trim().is_empty(), "`{f}` 没写为什么还在拨");
-        assert!(!MOVED.iter().any(|(m, _)| m == f), "`{f}` 同时在两张表里");
+fn the_dial_per_query_path_is_gone() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut corpus = String::new();
+    let mut files = 0usize;
+    for (_, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        files += 1;
+        let prod = guard_core::production_code(&src);
+        corpus.push_str(&guard_core::strip_trailing_comments(
+            &guard_core::strip_comment_lines(&prod),
+        ));
+        corpus.push('\n');
     }
-    assert!(!dial_allowed("--fork-session"), "没登记的子命令也不许拨");
-    assert_eq!(
-        sorted(STILL_DIALED.iter().map(|(f, _)| f.to_string())),
-        sorted(STILL_DIALED_WANT.iter().map(|s| s.to_string())),
-        "仍拨号的那张表不等于题面要的那两条"
+    assert!(files > 100, "只扫到 {files} 份 monitor 源码 —— 遍历坏了");
+    let dead = [
+        ["run", "list", "query"].join("_"),
+        ["dial", "allowed"].join("_"),
+        ["STILL", "DIALED"].join("_"),
+    ];
+    for name in &dead {
+        assert!(
+            !guard_core::contains_word(&corpus, name),
+            "`{name}` 又出现在 monitor 生产段里 —— 逐次拨号那条路（或它的闸门 / 放行表）回来了"
+        );
+    }
+    assert!(
+        guard_core::contains_word(&corpus, "run_routed"),
+        "正控失败：识别器在同一份语料上认不出帧面出口 `run_routed` —— 上面的零命中不可信"
     );
-}
-
-/// ★ 拨号那条路**真的**先问了 [`dial_allowed`]：`run_list_query` 生产段里有这一问，
-/// 且在它的 `connect_and_exec_cmd(` 之前（锚串恰好一处）。
-#[test]
-fn run_list_query_asks_before_it_dials() {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/remote_history.rs");
-    let prod = guard_core::production_code(&std::fs::read_to_string(p).unwrap());
-    let at = prod
-        .find("async fn run_list_query(")
-        .expect("找不到 run_list_query");
-    let body_end = prod[at + 1..]
-        .find("\nasync fn ")
-        .map_or(prod.len(), |k| at + 1 + k);
-    let body = &prod[at..body_end];
-    // 恰好一处、两侧有边界（`find_pinned`）—— 裸 `find`/`matches` 在 needle 被撑大时照样绿。
-    let ask = guard_core::find_pinned(body, "dial_allowed(")
-        .unwrap_or_else(|e| panic!("run_list_query 没（恰好一次地）问 dial_allowed：{e}"));
-    let dial = body
-        .find("connect_and_exec_cmd(")
-        .expect("run_list_query 里没有拨号 —— 本条的前提变了");
-    assert!(ask < dial, "先拨号后问，问了等于没问");
 }
 
 /// ★ argv 分流认得本仓今天真在发的形状：区间取正文走帧面（〔C4b〕索引 · 查找 · 大纲三形改走通道，不再认）。

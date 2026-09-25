@@ -3586,6 +3586,36 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "with_apikey_table",
             1,
         ),
+        (
+            "src/bridge/src/backend/control/frame_query.rs",
+            "run_list_query",
+            1,
+        ), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/remote_branch.rs", "is_old_backend_hello", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/remote_history.rs", "run_list_query", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/ssh_source.rs", "run_list_query", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/subagent.rs", "run_list_query", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/tool_registry.rs", "run_list_query", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        (
+            "tests/bridge/backend/control/frame_query_tests.rs",
+            "run_list_query",
+            1,
+        ), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        (
+            "tests/bridge/byte_cap_registry_tests.rs",
+            "run_list_query",
+            1,
+        ), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        (
+            "tests/bridge/exec_site_registry_tests.rs",
+            "run_list_query",
+            1,
+        ), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        (
+            "tests/bridge/remote_history_tests.rs",
+            "is_old_backend_hello",
+            1,
+        ), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
     ];
 
     let corpus = dead_name_corpus();
@@ -3837,7 +3867,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/naming/account-vs-relay-naming.vitest.ts", 1),
         // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
-        ("src/bridge/src/remote_history.rs", 2), // 远端全文搜索那份 fan-out ·〔合并 RW1〕+1：F11 改经远端后端删，远端那一支的头注一块
+        ("src/bridge/src/remote_history.rs", 3), // 远端全文搜索那份 fan-out ·〔合并 RW1〕+1：F11 改经远端后端删，远端那一支的头注一块 ·〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/bridge/local_read_surface_registry_tests.rs", 2), // 〔C4c〕+1：`accounts.rs` 那一行摘掉处的「降级说明」旧名 // 棘轮史里 E79 那一格
         // ▸ 下面这 5 份是 `P14` 立件的**直接证据**：它们在 `TOMBSTONED` 里一行都没有
         //   ⇒ 它们的标记**没有一处**落在死名人群上 ⇒ 在本条之前按构造零判据。
@@ -3854,7 +3884,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/fenced_block.rs", 4),
         // 〔RW1 · 第四波 09-24〕F11 改经远端后端删：远端那一支的头注一块（住址并进 C4a 那一行，〔合并〕两边各 +1）。
         // 〔RW1 · 第四波 09-24〕本机分叉改成 exec 本机后端 `--fork-session`：本机那一支的头注一块。
-        ("src/bridge/src/remote_branch.rs", 1),
+        ("src/bridge/src/remote_branch.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔RW1 · 第四波 09-24〕远端删会话那道结构守卫随 F11 改经后端删走了：方向相反那一问的两处说明。
         ("src/backend/agents/claudecode/paths.rs", 1),
         ("src/bridge/src/claude_data_fence.rs", 2),
@@ -3945,7 +3975,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ),
         ("tests/bridge/backend/control/tmux_tests.rs", 3),
         ("tests/bridge/backend_tests.rs", 1),
-        ("tests/bridge/byte_cap_registry_tests.rs", 1),
+        ("tests/bridge/byte_cap_registry_tests.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/bridge/capability_registry_tests.rs", 1),
         ("tests/bridge/ccm_cli_contract_tests.rs", 1),
         // 🔴 〔波 1/2 合并时补〕`P16㈢` 那一拍把「十一条全绿而归属待裁」那张表退役了，
@@ -4024,11 +4054,16 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/accounts_tests.rs", 1),
         ("tests/bridge/local_accounts_tests.rs", 2),
         // 〔C4c · 第四波 4B〕记录那一问（`history-record`）改走通道：monitor 的发送端与它的判据删了，原处各一块。
-        ("src/bridge/src/backend/control/frame_query.rs", 1),
-        ("tests/bridge/backend/control/frame_query_tests.rs", 1),
+        ("src/bridge/src/backend/control/frame_query.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("tests/bridge/backend/control/frame_query_tests.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔C4c · 第四波 4B〕「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
         ("src/bridge/src/backend_policy.rs", 2),
         ("src/settings/backend-section.ts", 1),
+        ("src/bridge/src/ssh_source.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/subagent.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/tool_registry.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("tests/bridge/exec_site_registry_tests.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("tests/bridge/remote_history_tests.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

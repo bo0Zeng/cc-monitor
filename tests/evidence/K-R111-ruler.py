@@ -36,7 +36,7 @@
 
 # ⚠ 射程，逐条如实写（`brief` 硬规则 12：给不出分母就别写全称）
 
-1. **只看被点名的那一个函数体，不追调用链。** 追了的话 `run_list_query` 的体里有
+1. **只看被点名的那一个函数体，不追调用链。** 追了的话 `run_list_query`（〔C4d〕已删）的体里有
    `connect_and_exec_cmd`，于是「走远端后端协议」会被读成「自己拼 shell」——
    两件事在字面上一模一样。⇒ 射程换成「谁被点名」，而点名是手写的（上表第一行）。
 2. **针是闭集，住在 [`NEEDLES`]**，散文里不复述成员。它认不出「换个名字做同一件事」
@@ -234,7 +234,8 @@ NEEDLES: dict[str, tuple[str, ...]] = {
         #    `use …local_query::{run_query, …}` 放在**模块顶**，函数体里只剩裸调用。
         #    首跑因此把一条真·已完的命令现打成「一根针都没中」。
         "run_query(",
-        "run_list_query",
+        # 〔C4d · 第四波 4B〕逐次拨号那条路（`run_list_query`）删了 ⇒ 这根针摘掉；远端那一跳今天是帧面
+        #   （`frame_query::run_routed` / `frame_query::lines`），不是本尺子认的「前端自己的实现」。
         "daemon_route",
         "daemon_kill::daemon_kill",
         "daemon_send_keys::daemon_send_keys",
