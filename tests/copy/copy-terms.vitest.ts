@@ -129,7 +129,9 @@ describe("CP2a · 术语对照表", () => {
     // 正控：锚两个裁文案时一定标过的词。
     // 〔第二波 T4 09-24〕第二个锚从「拉前」换成「围栏」：标「新词:拉前」的那四行随原文（E73 那段）一起删了，
     //   台账里已经没有它 —— 锚一个真没了的词，这条正控会把「删对了」读成「抽取器坏了」。
-    expect(marks.has("backend") && marks.has("围栏"), "台账标记一个都没抽到 —— 抽取器坏了").toBe(true);
+    // 〔CP2b · 全量抽表〕对外的行随字面量进表一行行走掉（它们的 新词: 由文案表的 C-T1 接着管），锚改成
+    //   两个 [不对外] 行上的标记 —— 那些行留在台账里、不随抽表走（backend_control.rs 那几句只进 console.info）。
+    expect(marks.has("C8①") && marks.has("流"), "台账标记一个都没抽到 —— 抽取器坏了").toBe(true);
     const ours = terms.flatMap((t) => t.ledger ?? []);
     expect(diff(marks, new Set(ours)), "台账标了新词，术语表没收（去 terms.json 给它一个处置）").toEqual([]);
     expect(diff(ours, marks), "术语表认领了一个台账里已经没有的标记").toEqual([]);

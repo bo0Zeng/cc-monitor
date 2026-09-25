@@ -5274,6 +5274,669 @@
       "kind": "body",
       "zh": "▶",
       "args": []
+    },
+    "machineCard.test.pinned": {
+      "kind": "body",
+      "zh": "已固化为严格校验",
+      "args": []
+    },
+    "machineCard.test.backendDown": {
+      "kind": "error",
+      "zh": "后端未响应或未安装",
+      "args": []
+    },
+    "machineCard.test.backendOk": {
+      "kind": "body",
+      "zh": "后端响应正常{hello}",
+      "args": ["hello"]
+    },
+    "machineCard.test.unverified": {
+      "kind": "body",
+      "zh": "⚠ 此指纹未经验证：首次连接可能被中间人篡改。建议在远端用 ssh-keyscan 核对（见部署文档 step 6）后再固化。",
+      "args": []
+    },
+    "machineCard.test.pinSave": {
+      "kind": "action",
+      "zh": "保存为严格校验",
+      "args": []
+    },
+    "machineCard.test.pinUpdate": {
+      "kind": "action",
+      "zh": "更新为这个指纹，严格校验",
+      "args": []
+    },
+    "machineCard.test.fingerprint": {
+      "kind": "body",
+      "zh": "主机指纹：{fingerprint}",
+      "args": ["fingerprint"]
+    },
+    "machineCard.test.sshFailed": {
+      "kind": "error",
+      "zh": "SSH 连接失败",
+      "args": []
+    },
+    "machineCard.test.sshOk": {
+      "kind": "body",
+      "zh": "SSH 连接成功{via}",
+      "args": ["via"]
+    },
+    "machineCard.test.via": {
+      "kind": "body",
+      "zh": " · 经 {endpoint}",
+      "args": ["endpoint"]
+    },
+    "machineCard.status.uninstalled": {
+      "kind": "body",
+      "zh": "已卸载",
+      "args": []
+    },
+    "machineCard.aliases.uninstalling": {
+      "kind": "body",
+      "zh": "卸载别名块中",
+      "args": []
+    },
+    "machineCard.aliases.uninstallConfirm": {
+      "kind": "body",
+      "zh": "确认从 {host} 的 ~/.bashrc 删掉别名块？\n（只删 cc-monitor 那一小块，块外内容不动，会先备份原文件。）",
+      "args": ["host"]
+    },
+    "machineCard.aliases.uninstallNeedHost": {
+      "kind": "error",
+      "zh": "请先填好 host / user 再卸载别名块。",
+      "args": []
+    },
+    "machineCard.uninstall.running": {
+      "kind": "body",
+      "zh": "卸载后端中",
+      "args": []
+    },
+    "machineCard.uninstall.confirm": {
+      "kind": "body",
+      "zh": "确认从 {host} 删除后端？\n会删：{path}\n（若该机器仍勾选启用，下次连接会自动装回。）",
+      "args": ["host", "path"]
+    },
+    "machineCard.uninstall.needFields": {
+      "kind": "error",
+      "zh": "请先填好主机、用户和后端路径再卸载后端。",
+      "args": []
+    },
+    "machineCard.status.installFailed": {
+      "kind": "error",
+      "zh": "装失败",
+      "args": []
+    },
+    "machineCard.status.installed": {
+      "kind": "body",
+      "zh": "已装",
+      "args": []
+    },
+    "machineCard.deploy.running": {
+      "kind": "body",
+      "zh": "部署中",
+      "args": []
+    },
+    "machineCard.deploy.needFields": {
+      "kind": "error",
+      "zh": "请先填好主机、用户和后端路径再部署后端。",
+      "args": []
+    },
+    "machineCard.launch.start": {
+      "kind": "action",
+      "zh": "开始",
+      "args": []
+    },
+    "machineCard.launch.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "machineCard.launch.accountBase": {
+      "kind": "control",
+      "zh": "不指定账号 · 用远端 ~/.claude 那套凭据，会清掉继承的 CLAUDE_CONFIG_DIR",
+      "args": []
+    },
+    "machineCard.launch.account": {
+      "kind": "control",
+      "zh": "账号 · 默认是当前账号",
+      "args": []
+    },
+    "machineCard.launch.tmuxNameAuto": {
+      "kind": "body",
+      "zh": "留空则按工作目录名自动生成",
+      "args": []
+    },
+    "machineCard.launch.tmuxNameDerived": {
+      "kind": "body",
+      "zh": "留空则用 {name}",
+      "args": ["name"]
+    },
+    "machineCard.launch.commandHint": {
+      "kind": "control",
+      "zh": "claude，可自定义，如 claude --model opus",
+      "args": []
+    },
+    "machineCard.launch.command": {
+      "kind": "control",
+      "zh": "启动命令",
+      "args": []
+    },
+    "machineCard.launch.tmuxNameHint": {
+      "kind": "control",
+      "zh": "留空则按工作目录名自动生成",
+      "args": []
+    },
+    "machineCard.launch.tmuxName": {
+      "kind": "control",
+      "zh": "tmux 会话名",
+      "args": []
+    },
+    "machineCard.launch.cwdHint": {
+      "kind": "control",
+      "zh": "远端绝对路径，如 /home/<你的用户名>/proj；留空就是登录后的默认目录",
+      "args": []
+    },
+    "machineCard.launch.cwd": {
+      "kind": "control",
+      "zh": "工作目录",
+      "args": []
+    },
+    "machineCard.launch.title": {
+      "kind": "title",
+      "zh": "在 {machine} 开新 Claude",
+      "args": ["machine"]
+    },
+    "machineCard.launch.needHost": {
+      "kind": "error",
+      "zh": "请先填好 host / user 再开新 Claude。",
+      "args": []
+    },
+    "machineCard.pushKey.already": {
+      "kind": "body",
+      "zh": "公钥已存在，无需重复推送：{path}",
+      "args": ["path"]
+    },
+    "machineCard.pushKey.added": {
+      "kind": "body",
+      "zh": "公钥已推送：{path}",
+      "args": ["path"]
+    },
+    "machineCard.pushKey.pushing": {
+      "kind": "body",
+      "zh": "推送公钥中",
+      "args": []
+    },
+    "machineCard.pushKey.filterName": {
+      "kind": "body",
+      "zh": "公钥",
+      "args": []
+    },
+    "machineCard.pushKey.dialogTitle": {
+      "kind": "body",
+      "zh": "选择要推送的公钥 (.pub)",
+      "args": []
+    },
+    "machineCard.pushKey.needHost": {
+      "kind": "error",
+      "zh": "请先填好 host / user 再推送公钥。",
+      "args": []
+    },
+    "machineCard.aliases.installing": {
+      "kind": "body",
+      "zh": "装别名块中",
+      "args": []
+    },
+    "machineCard.aliases.needHost": {
+      "kind": "error",
+      "zh": "请先填好 host / user 再装别名块。",
+      "args": []
+    },
+    "machineCard.test.unreachable": {
+      "kind": "body",
+      "zh": "连不上",
+      "args": []
+    },
+    "machineCard.test.failed": {
+      "kind": "error",
+      "zh": "测试失败：{e}",
+      "args": ["e"]
+    },
+    "machineCard.test.silent": {
+      "kind": "body",
+      "zh": "没响应",
+      "args": []
+    },
+    "machineCard.test.alive": {
+      "kind": "body",
+      "zh": "在跑",
+      "args": []
+    },
+    "machineCard.test.running": {
+      "kind": "action",
+      "zh": "测试中…",
+      "args": []
+    },
+    "machineCard.test.needFields": {
+      "kind": "error",
+      "zh": "请先填好主机、用户和后端路径再测试。",
+      "args": []
+    },
+    "machineCard.displayName.unnamed": {
+      "kind": "body",
+      "zh": "未命名机器",
+      "args": []
+    },
+    "machineCard.resetFingerprint.done": {
+      "kind": "body",
+      "zh": "已重置主机指纹，下次连接会重新记下。测试连接之后记得再固化。",
+      "args": []
+    },
+    "machineCard.resetFingerprint.confirm": {
+      "kind": "body",
+      "zh": "确认重置 {host} 的主机指纹？\n\n清除后下次连接会重新记下主机密钥并接受它。\n⚠ 若此刻网络正被中间人攻击，重置会让 monitor 信任攻击者的密钥。\n仅在你确知服务器合法更换过 host key（重装系统 / 轮换密钥）时才重置。",
+      "args": ["host"]
+    },
+    "machineCard.resetFingerprint.thisHost": {
+      "kind": "body",
+      "zh": "该主机",
+      "args": []
+    },
+    "machineCard.build.expandedIcon": {
+      "kind": "body",
+      "zh": "▾",
+      "args": []
+    },
+    "machineCard.collapsed.icon": {
+      "kind": "body",
+      "zh": "▸",
+      "args": []
+    },
+    "machineCard.aliases.uninstallHint": {
+      "kind": "body",
+      "zh": "从远端 ~/.bashrc 删掉 cc-monitor 那一块（先备份；块外内容不动）",
+      "args": []
+    },
+    "machineCard.aliases.uninstall": {
+      "kind": "action",
+      "zh": "卸载别名块",
+      "args": []
+    },
+    "machineCard.aliases.installHint": {
+      "kind": "body",
+      "zh": "把 cc / cct 那一块装进远端 ~/.bashrc（幂等，可重装）",
+      "args": []
+    },
+    "machineCard.aliases.install": {
+      "kind": "action",
+      "zh": "装别名块",
+      "args": []
+    },
+    "machineCard.aliases.intro": {
+      "kind": "body",
+      "zh": "别名块把 cc / cct 和「接上别名文件」那一行装进这台机器的 ~/.bashrc。只动 cc-monitor 那一小块，写前先备份，写完回读比对。你自己的别名清单今天只能在本机写好、复制过来贴上。",
+      "args": []
+    },
+    "machineCard.aliases.title": {
+      "kind": "title",
+      "zh": "别名",
+      "args": []
+    },
+    "machineCard.deploy.uninstallHint": {
+      "kind": "body",
+      "zh": "删除远端后端（机器仍启用的话，下次连接会自动装回）",
+      "args": []
+    },
+    "machineCard.deploy.uninstall": {
+      "kind": "action",
+      "zh": "卸载后端",
+      "args": []
+    },
+    "machineCard.deploy.installHint": {
+      "kind": "body",
+      "zh": "按远端架构把后端装到后端路径，再放好 ccm 入口。后端随 cc-monitor 一起带着；版本已是最新、文件也在时跳过。",
+      "args": []
+    },
+    "machineCard.deploy.install": {
+      "kind": "action",
+      "zh": "部署后端",
+      "args": []
+    },
+    "machineCard.deploy.intro": {
+      "kind": "body",
+      "zh": "把后端装到上面「后端路径」那一格，终端里的 ccm 入口（~/.cc-monitor/bin/ccm）一起放好。启用这台机器之后，连上时也会自动装后端；这里是手动的那一下。",
+      "args": []
+    },
+    "machineCard.deploy.title": {
+      "kind": "title",
+      "zh": "部署后端",
+      "args": []
+    },
+    "machineCard.field.resumeCmdHint": {
+      "kind": "control",
+      "zh": "留空 = 用全局默认",
+      "args": []
+    },
+    "machineCard.field.resumeCmd": {
+      "kind": "control",
+      "zh": "resume 命令 · 这台机器",
+      "args": []
+    },
+    "machineCard.build.launchHint": {
+      "kind": "body",
+      "zh": "在这台机器的 tmux 会话里启动一个全新的 Claude。要填工作目录、会话名和启动命令。",
+      "args": []
+    },
+    "machineCard.build.launch": {
+      "kind": "action",
+      "zh": "开新 Claude",
+      "args": []
+    },
+    "machineCard.build.filesNeedHost": {
+      "kind": "error",
+      "zh": "请先填好 host / user 再打开文件窗口。",
+      "args": []
+    },
+    "machineCard.build.filesHint": {
+      "kind": "body",
+      "zh": "在文件窗口里打开这台机器（浏览 / 上传 / 下载 / 管理远端文件）",
+      "args": []
+    },
+    "machineCard.build.files": {
+      "kind": "action",
+      "zh": "文件",
+      "args": []
+    },
+    "machineCard.build.pushKeyHint": {
+      "kind": "body",
+      "zh": "把本地公钥追加到远端 ~/.ssh/authorized_keys（免密登录）；已填私钥则取同名 .pub，否则弹框选文件",
+      "args": []
+    },
+    "machineCard.build.pushKey": {
+      "kind": "action",
+      "zh": "推送公钥",
+      "args": []
+    },
+    "machineCard.build.testHint": {
+      "kind": "body",
+      "zh": "测试 SSH 连接 / 主机指纹 / 后端是否在线",
+      "args": []
+    },
+    "machineCard.build.test": {
+      "kind": "action",
+      "zh": "测试连接",
+      "args": []
+    },
+    "machineCard.field.jumpHint": {
+      "kind": "control",
+      "zh": "另一台已配置机器的名称，留空为直连",
+      "args": []
+    },
+    "machineCard.field.jump": {
+      "kind": "control",
+      "zh": "跳板机（可选）",
+      "args": []
+    },
+    "machineCard.field.addressesHint": {
+      "kind": "control",
+      "zh": "10.0.0.2\npi.example.com:2222\n[fe80::1]:22\n首选地址填在上方的主机里",
+      "args": []
+    },
+    "machineCard.field.addresses": {
+      "kind": "control",
+      "zh": "备用地址（可选）",
+      "args": []
+    },
+    "machineCard.field.resetFingerprintHint": {
+      "kind": "body",
+      "zh": "清除已固化的主机指纹，下次连接重新记下。只在你确知服务器合法换过 host key 时用。",
+      "args": []
+    },
+    "machineCard.field.resetFingerprint": {
+      "kind": "action",
+      "zh": "重置主机指纹",
+      "args": []
+    },
+    "machineCard.field.fingerprintHint": {
+      "kind": "control",
+      "zh": "SHA256:…，留空则首次连接时记下",
+      "args": []
+    },
+    "machineCard.field.fingerprint": {
+      "kind": "control",
+      "zh": "主机指纹（可选）",
+      "args": []
+    },
+    "machineCard.field.keyPath": {
+      "kind": "control",
+      "zh": "私钥路径（可选）",
+      "args": []
+    },
+    "machineCard.field.backendPathHint": {
+      "kind": "body",
+      "zh": "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-backend）；SSH 直接执行、不经 shell，~ 不会被展开。",
+      "args": [],
+      "waive": {
+        "C-T1": "例子里是后端程序在盘上的真实文件名 cc-monitor-backend，用户要照着填"
+      }
+    },
+    "machineCard.field.backendPath": {
+      "kind": "control",
+      "zh": "后端路径",
+      "args": []
+    },
+    "machineCard.field.userHint": {
+      "kind": "control",
+      "zh": "如 ubuntu / pi / root",
+      "args": []
+    },
+    "machineCard.field.user": {
+      "kind": "control",
+      "zh": "用户 (user)",
+      "args": []
+    },
+    "machineCard.field.port": {
+      "kind": "control",
+      "zh": "端口 (port)",
+      "args": []
+    },
+    "machineCard.field.hostHint": {
+      "kind": "control",
+      "zh": "raspberrypi.local 或 192.168.1.10",
+      "args": []
+    },
+    "machineCard.field.host": {
+      "kind": "control",
+      "zh": "主机 (host)",
+      "args": []
+    },
+    "machineCard.field.labelHint": {
+      "kind": "control",
+      "zh": "pi / nano，留空用主机名",
+      "args": []
+    },
+    "machineCard.field.label": {
+      "kind": "control",
+      "zh": "名称（可选）",
+      "args": []
+    },
+    "machineCard.build.deleteHint": {
+      "kind": "body",
+      "zh": "从列表移除这台机器",
+      "args": []
+    },
+    "machineCard.build.delete": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
+    },
+    "machineCard.stage.otherIcon": {
+      "kind": "body",
+      "zh": "·",
+      "args": []
+    },
+    "machineCard.stage.ready": {
+      "kind": "body",
+      "zh": "连接就绪",
+      "args": []
+    },
+    "machineCard.stage.readyIcon": {
+      "kind": "body",
+      "zh": "●",
+      "args": []
+    },
+    "machineCard.stage.authFailed": {
+      "kind": "body",
+      "zh": "鉴权失败：{detail}",
+      "args": ["detail"]
+    },
+    "machineCard.stage.failIcon": {
+      "kind": "body",
+      "zh": "✗",
+      "args": []
+    },
+    "machineCard.stage.authOk": {
+      "kind": "body",
+      "zh": "鉴权通过",
+      "args": []
+    },
+    "machineCard.stage.okIcon": {
+      "kind": "body",
+      "zh": "✓",
+      "args": []
+    },
+    "machineCard.stage.won": {
+      "kind": "body",
+      "zh": "{endpoint} 胜出（其余地址已取消）",
+      "args": ["endpoint"]
+    },
+    "machineCard.stage.failed": {
+      "kind": "body",
+      "zh": "{endpoint} 失败：{reason}",
+      "args": ["endpoint", "reason"]
+    },
+    "machineCard.stage.fingerprint": {
+      "kind": "body",
+      "zh": "{endpoint} 主机指纹 {fingerprint}",
+      "args": ["endpoint", "fingerprint"]
+    },
+    "machineCard.stage.fingerprintIcon": {
+      "kind": "body",
+      "zh": "🔑",
+      "args": []
+    },
+    "machineCard.stage.dial": {
+      "kind": "body",
+      "zh": "拨号 {endpoint}",
+      "args": ["endpoint"]
+    },
+    "machineCard.stage.dialIcon": {
+      "kind": "body",
+      "zh": "→",
+      "args": []
+    },
+    "machineCard.statusLine.fail": {
+      "kind": "body",
+      "zh": "✗",
+      "args": []
+    },
+    "machineCard.statusLine.ok": {
+      "kind": "body",
+      "zh": "✓",
+      "args": []
+    },
+    "accountNewForm.aliasHintFor.aliasHint": {
+      "kind": "body",
+      "zh": "这个号的命令名会是 {alias}",
+      "args": ["alias"]
+    },
+    "accountNewForm.form.create": {
+      "kind": "action",
+      "zh": "创建",
+      "args": []
+    },
+    "accountNewForm.form.clear": {
+      "kind": "action",
+      "zh": "清空",
+      "args": []
+    },
+    "accountNewForm.form.willRunEmpty": {
+      "kind": "body",
+      "zh": "填好账号名后，这里显示将运行的命令",
+      "args": []
+    },
+    "accountNewForm.form.willRun": {
+      "kind": "body",
+      "zh": "将在终端里运行：",
+      "args": []
+    },
+    "accountNewForm.form.snapshot": {
+      "kind": "control",
+      "zh": "旧凭据快照路径",
+      "args": []
+    },
+    "accountNewForm.form.advanced": {
+      "kind": "title",
+      "zh": "高级：从旧凭据快照导入，免重登",
+      "args": []
+    },
+    "accountNewForm.form.baseUrl": {
+      "kind": "control",
+      "zh": "Base URL，留空用默认上游",
+      "args": []
+    },
+    "accountNewForm.form.key": {
+      "kind": "control",
+      "zh": "粘贴 API key",
+      "args": []
+    },
+    "accountNewForm.form.apikeyHint": {
+      "kind": "body",
+      "zh": "创建后弹出终端建好账号目录；这个号出现在下面的账号列表里时（终端跑完点「刷新」），这把 key 自动写进 API key 表。在那之前 key 只留在这个窗口里，关掉 monitor 就没了。",
+      "args": []
+    },
+    "accountNewForm.form.apikey": {
+      "kind": "control",
+      "zh": "第三方 API key",
+      "args": []
+    },
+    "accountNewForm.form.subscriptionHint": {
+      "kind": "body",
+      "zh": "创建后弹出终端，在那个终端里用这个号 /login。",
+      "args": []
+    },
+    "accountNewForm.form.subscription": {
+      "kind": "control",
+      "zh": "订阅",
+      "args": []
+    },
+    "accountNewForm.form.accessMode": {
+      "kind": "control",
+      "zh": "接入方式",
+      "args": []
+    },
+    "accountNewForm.form.nameHint": {
+      "kind": "control",
+      "zh": "账号名，如 b",
+      "args": []
+    },
+    "accountNewForm.form.title": {
+      "kind": "title",
+      "zh": "新建账号",
+      "args": []
+    },
+    "accountNewForm.baseUrl.scheme": {
+      "kind": "error",
+      "zh": "Base URL 只认 https://（或连本机回环的 http://）",
+      "args": []
+    },
+    "accountNewForm.baseUrl.plainHttp": {
+      "kind": "error",
+      "zh": "明文 http 只许连本机回环（127.0.0.1 / localhost）：要不就换 https",
+      "args": []
+    },
+    "accountNewForm.baseUrl.shape": {
+      "kind": "error",
+      "zh": "Base URL 要写成 https://主机[:端口][/路径]，留空就用默认上游",
+      "args": []
     }
   }
 }

@@ -715,40 +715,6 @@ src/settings/drift-ledger-section.ts:76	  后果：{…}	保留	[对外] 诊断�
 src/settings/drift-ledger-section.ts:95	数据面漂移记账（{…} · 本进程内，重启归零）\n\n{…}	内部词→「格式兼容记录」	[对外] 自造概念名＋「本进程内」实现词 兼§2.5 新词:数据面漂移记账 →「格式兼容记录（重启后清空）」〔ST3：首行多了「是哪台」，裁词照旧〕
 src/settings/drift-ledger-section.ts:125	读取中…	保留	[对外] 按钮忙碌态
 src/settings/drift-ledger-section.ts:133	复制中…	保留	[对外] 按钮忙碌态
-src/settings/machine-card.ts:334	名称 (label，可选)	内部词→「名称（可选）」	[对外] 表单标签括号里挂的是配置文件键名 label，用户不需要 新词:label（配置键）
-src/settings/machine-card.ts:335	pi / nano（留空用主机名）	保留	[对外] 占位符举例
-src/settings/machine-card.ts:340	主机 (host)	保留	[对外] 表单标签；host 是 ssh 用户自己也这么叫的词（R1b）
-src/settings/machine-card.ts:341	raspberrypi.local 或 192.168.1.10	保留	[对外] 占位符举例
-src/settings/machine-card.ts:344	端口 (port)	保留	[对外] 表单标签；port 同 ssh 语境
-src/settings/machine-card.ts:348	用户 (user)	保留	[对外] 表单标签；user 同 ssh 语境
-src/settings/machine-card.ts:349	如 ubuntu / pi / root	保留	[对外] 占位符举例
-src/settings/machine-card.ts:354	backend 路径 (backendPath)	内部词→「后端路径」	[对外] 英文 backend 与配置键名 backendPath 都是我们这一侧的词（91 §3.1 定对外说「后端」）新词:backend（英文） 新词:backendPath
-src/settings/machine-card.ts:374	私钥路径 (keyPath，可选)	内部词→「私钥路径（可选）」	[对外] 括号里是配置键名 keyPath 新词:keyPath
-src/settings/machine-card.ts:380	主机指纹 (hostKeyFingerprint，可选)	内部词→「主机指纹（可选）」	[对外] 括号里是配置键名 hostKeyFingerprint 新词:hostKeyFingerprint
-src/settings/machine-card.ts:381	SHA256:…（留空则首连 TOFU）	内部词→「留空则首次连接时记下」	[对外] TOFU 是安全圈缩写，用户不会这么叫 新词:TOFU
-src/settings/machine-card.ts:426	跳板 (jump，可选)	内部词→「跳板机（可选）」	[对外] 括号里是配置键名 jump 新词:jump（配置键）
-src/settings/machine-card.ts:427	另一台已配置主机的 label（空=直连；经该跳板隧道连本机）	内部词→「另一台已配置机器的名称（留空为直连）」	[对外] 占位符里用了配置键名 label，括号里再塞一段隧道原理 兼§2.4
-src/settings/machine-card.ts:449	resume 命令（这台机器）	保留	[对外] 表单标签；resume 是 claude CLI 用户自己敲的子命令
-src/settings/machine-card.ts:450	留空 = 用全局默认	保留	[对外] 占位符
-src/settings/machine-card.ts:609	该主机	保留	[对外] 确认框里主机名的兜底
-src/settings/machine-card.ts:662	（未命名机器）	保留	[对外] 未命名机器的显示名
-src/settings/machine-card.ts:682	请先填好 host / user / backendPath 再测试。	内部词→「请先填好主机、用户和后端路径再测试。」	[对外] 用配置键名 backendPath 指字段 新词:backendPath
-src/settings/machine-card.ts:715	测试失败：{…}	保留	[对外] 失败前缀＋原因
-src/settings/machine-card.ts:785	选择要推送的公钥 (.pub)	保留	[对外] 文件选择框标题
-src/settings/machine-card.ts:789	公钥	保留	[对外] 文件类型过滤名
-src/settings/machine-card.ts:794	推送公钥中	保留	[对外] 按钮忙碌态
-src/settings/machine-card.ts:797	公钥已推送（ADDED）：{…}	内部词→「公钥已推送：…」	[对外] 括号里是后端返回的原始枚举 ADDED 新词:ADDED
-src/settings/machine-card.ts:798	公钥已存在，无需重复（ALREADY）：{…}	内部词→「公钥已存在，无需重复推送：…」	[对外] 括号里是后端返回的原始枚举 ALREADY 新词:ALREADY
-src/settings/machine-card.ts:1027	已装	保留	[对外] 组件状态小标
-src/settings/machine-card.ts:1027	装失败	保留	[对外] 组件状态小标
-src/settings/machine-card.ts:1047	卸载后端中	保留	[对外] 按钮忙碌态
-src/settings/machine-card.ts:1152	backend 响应正常{…}	内部词→「后端响应正常」	[对外] 英文 backend，91 §3.1 定对外说「后端」新词:backend（英文）
-src/settings/machine-card.ts:1153	backend 未响应 / 未部署	内部词→「后端未响应或未安装」	[对外] 英文 backend 新词:backend（英文）
-src/settings/machine-card.ts:758	装别名块中	保留	[对外] 按钮进度态
-src/settings/machine-card.ts:1028	部署中	保留	[对外] 按钮进度态
-src/settings/machine-card.ts:1030	装失败	保留	[对外] 机器列表行状态格的结论词
-src/settings/machine-card.ts:1030	已装	保留	[对外] 机器列表行状态格的结论词
-src/settings/machine-card.ts:1079	卸载别名块中	保留	[对外] 按钮进度态
 src/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
 src/settings/mcp-section.ts:74	(未知形态)	保留	[对外] MCP server 连接方式读不出时的占位
 src/settings/mcp-section.ts:112	用户	保留	[对外] 作用域名
@@ -845,22 +811,6 @@ src/backend/relay/server.rs:454	读响应	保留	[可达存疑] 中转（relay�
 src/backend/relay/server.rs:454	一直不给最终响应	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体与 stderr 那一句（server.rs::UpstreamFailure::sentence，设计/20 §3.1a「why 两句：上游是谁 · 卡在哪一跳」）的碎片，运行期拼进「上游 主机:端口 {结果}。卡在{哪一跳}这一步。」；结果那半（上游只回 1xx 中间响应的那一形）
 src/backend/relay/server.rs:472	上游 {}:{} {result}。卡在{hop}这一步。	保留	[可达存疑] 中转（relay）层 1 传输失败时回给 agent 的 504 响应体（claude 那一侧可能原样显示）与 stderr 那一句的骨架（设计/20 §3.1a）；两句：先说谁出了什么结果，再说卡在哪一步，无内部词、无处方
 src/bridge/src/backend/control/backend_route.rs:207	{s} —— ⚠ 无法确认远端是否已经执行过这条命令，因此**不**再用另一条路重做一次；\n             请刷新会话列表后再决定	改·§2.4	[对外] markdown `**不**` ＋ 破折号 ＋ 发生了什么/我们不做什么/你该做什么 三合一 兼§2.2（另一条路） 新词:另一条路 →「不确定远端有没有执行。请刷新会话列表后再决定。」（F3 回修：分层判定之后 {e}→{s}，裁词照搬）
-src/settings/account-new-form.ts:46	新建账号	保留	[对外] 表单标题，名词短语（设计/70 §4.4）
-src/settings/account-new-form.ts:47	账号名，如 b	保留	[对外] 输入框占位，给一个例子
-src/settings/account-new-form.ts:48	接入方式	保留	[对外] 单选组的读屏标签（设计/70 §4.4 原词）
-src/settings/account-new-form.ts:49	订阅	保留	[对外] 单选项，用户自己也这么叫
-src/settings/account-new-form.ts:50	创建后弹出终端，在那个终端里用这个号 /login。	保留	[对外] 选了订阅之后的一句说明：会发生什么、用户要做什么；/login 是 claude 自己的命令名
-src/settings/account-new-form.ts:51	第三方 apikey	保留	[对外] 单选项；「中转」不指账号（用户裁：账号就账号、中转就中转）
-src/settings/account-new-form.ts:53	创建后弹出终端建好账号目录；这个号出现在下面的账号列表里时（终端跑完点「刷新」），	保留	[对外] apikey 那一支的说明前半：key 什么时候写进去（与后半同一句，运行期拼接）
-src/settings/account-new-form.ts:54	这把 key 自动写进 apikey 表。在那之前 key 只留在这个窗口里，关掉 monitor 就没了。	保留	[对外] apikey 那一支的说明后半：key 在写进去之前住哪、会不会丢
-src/settings/account-new-form.ts:55	粘贴 API key	保留	[对外] 密码框占位
-src/settings/account-new-form.ts:56	高级：从旧凭据快照导入（免重登）	保留	[对外] 折叠标题，沿用旧维护区的叫法
-src/settings/account-new-form.ts:57	旧凭据快照路径	保留	[对外] 输入框占位
-src/settings/account-new-form.ts:58	将在终端里运行：	保留	[对外] 命令预览的头一行，先说在哪跑
-src/settings/account-new-form.ts:59	（填好账号名后显示将运行的命令）	保留	[对外] 预览区空态
-src/settings/account-new-form.ts:60	清空	保留	[对外] 按钮：清掉表单三格
-src/settings/account-new-form.ts:61	创建	保留	[对外] 主按钮（非红色，设计/70 §4.3 ②）
-src/settings/account-new-form.ts:69	这个号的命令名会是 {…}	保留	[对外] 表单里的一行提示，取代原先那句「去设置 → 行为」的散文导航（设计/70 §4.3 ⑤）
 src/settings/panel.ts:912	账号	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
 src/settings/panel.ts:940	插件（marketplace）	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
 src/settings/panel.ts:947	cc-bus 钩子	保留	[对外] 设置面板里一块的标题（名词短语）；ST1 延后加载把它从 safeBlock( 挪进 loadableBlock(，文字没变
@@ -1007,7 +957,6 @@ src/settings/panel.ts:744	Claude 数据目录	保留	[对外] 落盘失败 / 重
 src/settings/panel.ts:1545	Claude 数据目录	保留	[对外] 落盘失败 / 重启条那一格的名字（ST2 步 9：全即时，每一格改了就落）
 src/settings/panel.ts:1733	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
 src/settings/panel.ts:1763	外观	保留	[对外] 落盘失败时说是哪一格（ST2 步 9）
-src/settings/account-new-form.ts:86	Base URL，留空用默认上游	保留	[对外] 加账号表单 apikey 那一支的 Base URL 输入框占位（ST2 · 70 §4.4 线框里那一格）
 src/bridge/src/history.rs:2360	apikey 端点改写不可用：账号 {account:?} 在 [{host}] 的 apikey 表里有一行，\n         但那台机器上的中转起不来（{why}）——\n\n         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败。\n\n         ⇒ 重装那台机器的后端再试，或把该账号那一行从那台机器的凭据文件里去掉。	保留	[对外] 〔RL1〕远端 apikey 号的中转起不来 ⇒ 拒绝起会话（toast「无法构造…」的第二行）；说的是结果＋原因＋下一步，点名那台机器。「中转」层 1 正名、「apikey 端点改写」层 2 正名（terms.json）
 src/bridge/src/remote_relay.rs:82	那台的后端没有起中转（口上没人在听，它也没起进程）	保留	[对外] 〔RL1〕上一句里「为什么」那一格：relay-ensure 回 started:false
 src/bridge/src/remote_relay.rs:85	那台的后端起了一个中转，但等了一会儿它还没在那个口上听	保留	[对外] 〔RL1〕上一句里「为什么」那一格：起了进程、有界地等完了口上仍没人
@@ -1103,11 +1052,3 @@ src/bridge/src/filewin/writeops.rs:810	；	保留	[对外] 纯符号串（99 §1
 src/bridge/src/skill_install.rs:261	、	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：列表分隔符（join），换语言时跟着换
 src/settings/data-section.ts:208	🛈 	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：提示图标
 src/settings/data-section.ts:390	…	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：截断省略号
-src/settings/machine-card.ts:127	→	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：状态行前的图标
-src/settings/machine-card.ts:129	🔑	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：状态行前的图标
-src/settings/machine-card.ts:131	✗	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：状态行前的图标
-src/settings/machine-card.ts:133	✓	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：状态行前的图标
-src/settings/machine-card.ts:136	✓	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：状态行前的图标
-src/settings/machine-card.ts:137	✗	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：状态行前的图标
-src/settings/machine-card.ts:139	●	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：状态行前的图标
-src/settings/machine-card.ts:144	·	保留	[对外] 纯符号串（99 §1 V99「符号也进表」）：状态行前的图标
