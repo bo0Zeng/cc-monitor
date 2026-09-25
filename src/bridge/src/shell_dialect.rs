@@ -481,8 +481,13 @@ impl ShellDialect for PowerShell {
     }
 
     /// `$PROFILE` 的四种取值里、这台机器上有意义的那几份：PS 5.1（Windows 自带）两份恒列；
-    /// PS 7 两份只在 `Documents/PowerShell` 这个目录在时列（说明装过且至少跑过一次 —— 与
-    /// `profile_installer::discover_profiles` 同一条认法）。**文件不在也列**：`$PROFILE` 通常要装的时候才建。
+    /// PS 7 两份只在 `Documents/PowerShell` 这个目录在时列（说明装过且至少跑过一次）。
+    /// **文件不在也列**：`$PROFILE` 通常要装的时候才建。
+    ///
+    /// 🔴 〔AL1d · 第四波 4B〕**全仓只有这里答「`$PROFILE` 在哪」**（`调研/第四波记录/AL1d.md §2.3`）：
+    /// 从前另有四处认法（终端集成的两份发现表、TS 自己换文件名推 AllHosts、数据页探备份目录那张表），
+    /// 其中一份还把 `profile.ps1` 判成「装错了的遗留」而这里把它列成合法候选 —— 同一个事实三种说法。
+    /// 判据 `shell_dialect_tests.rs::the_profile_location_has_exactly_one_home` 数着这几个文件名 / 目录名只在这里出现。
     ///
     /// 「文档」目录优先问系统（OneDrive 会把它挪走），问到的不在这个 home 底下时退回 `home/Documents`
     /// （判据拿临时目录当 home，结构上碰不到真实家目录）。

@@ -252,7 +252,7 @@ fn detect_webview_data_dir(handle: &AppHandle) -> Option<DataPathInfo> {
 
 /// 扫 PowerShell profile 的备份目录（profile_installer 写入 `<profile>.ccm-backup-<ms>`）。
 ///
-/// monitor 不持久化备份位置——这里只在 5 个标准 profile 位置探一遍。
+/// monitor 不持久化备份位置——这里只在 `$PROFILE` 的候选目录里探一遍。
 fn detect_profile_backup_dirs() -> Vec<DataPathInfo> {
     let candidates = candidate_profile_dirs();
     let mut seen = std::collections::HashSet::new();
@@ -278,25 +278,25 @@ fn detect_profile_backup_dirs() -> Vec<DataPathInfo> {
     out
 }
 
+/// 〔AL1d · 第四波 4B〕`$PROFILE` 在哪**只问一处**：`shell_dialect.rs` 的 PowerShell 那一臂（`startup_files`），
+/// 这里取它那几份的父目录（去重）。从前这里自己写着一张表（`home/Documents/{WindowsPowerShell,PowerShell}`
+/// ＋ `$OneDrive/Documents/…`），是全仓第五份认法（`调研/第四波记录/AL1d.md §1.3`）。
+/// 「文档目录被 OneDrive 挪走」那一格由那边问系统（`dirs::document_dir()`）答。
+/// ⚠ 读法换了带来的一格差别（如实写）：从前 `$OneDrive/Documents` 与 `home/Documents` **两处都探**，
+///   今天只探系统说的那一处 —— 文档目录**改过位置之前**留在旧位置的备份，这一页不再列出。
 fn candidate_profile_dirs() -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    if let Some(home) = dirs::home_dir() {
-        // PS 5.1 默认位置
-        out.push(home.join("Documents").join("WindowsPowerShell"));
-        // PS 7.x 默认位置
-        out.push(home.join("Documents").join("PowerShell"));
-        // OneDrive 重定向场景
-        if let Ok(onedrive) = std::env::var("OneDrive") {
-            out.push(
-                PathBuf::from(&onedrive)
-                    .join("Documents")
-                    .join("WindowsPowerShell"),
-            );
-            out.push(
-                PathBuf::from(&onedrive)
-                    .join("Documents")
-                    .join("PowerShell"),
-            );
+    let Some(home) = dirs::home_dir() else {
+        return Vec::new();
+    };
+    let mut out: Vec<PathBuf> = Vec::new();
+    for f in crate::shell_dialect::Shell::PowerShell
+        .dialect()
+        .startup_files(&home)
+    {
+        if let Some(d) = f.parent() {
+            if !out.iter().any(|x| x == d) {
+                out.push(d.to_path_buf());
+            }
         }
     }
     out
