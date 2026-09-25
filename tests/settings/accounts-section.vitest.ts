@@ -318,7 +318,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     const byName = (n: string) =>
       rows.find((r) => r.querySelector(".accounts-row-name")?.textContent === n)!;
     const apiBadge = byName(B).querySelector(".accounts-row-badge")!;
-    expect(apiBadge.textContent).toBe("api-key（未配置端点）");
+    expect(apiBadge.textContent).toBe("API key（未配置端点）");
     expect(apiBadge.textContent).not.toContain("已登录");
     expect(apiBadge.classList.contains("warn")).toBe(true);
     // hover 得把「选得中、起得来、但请求发不出去」说清楚。
@@ -458,7 +458,7 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
     const el = await mount();
     const dirs = [...el.querySelectorAll(".accounts-row-dir")].map((d) => d.textContent);
     expect(dirs).toHaveLength(2);
-    expect(dirs[1]).toBe("（不设 CLAUDE_CONFIG_DIR）");
+    expect(dirs[1]).toBe("不设 CLAUDE_CONFIG_DIR");
     expect(dirs[1]).not.toBe("");
   });
 
@@ -706,9 +706,9 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
   });
 
   it("KH2C1：状态那一行说的是**这个号**配没配；顶层那一把只在文件那一块 —— 两处分开", () => {
-    expect(renderApikeyEditor(ACCTS[0], () => {}).editor.textContent).toContain("n1：apikey 表里已经有它那一行");
+    expect(renderApikeyEditor(ACCTS[0], () => {}).editor.textContent).toContain("n1：API key 表里已经有它那一行");
     // 非空对照：routed=false 那个必须翻面（这把尺子分得出两种结局）。
-    expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).toContain("n2：apikey 表里还没有它那一行");
+    expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).toContain("n2：API key 表里还没有它那一行");
     const legacy = renderApikeyFileBlock(status()).querySelector(".apikey-file-legacy");
     expect(legacy?.textContent, "顶层那一把没有单独显").toContain("sk-a**********WXYZ");
     expect(legacy!.textContent).toContain("不再往那一格写");
@@ -740,7 +740,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(el.querySelector("select"), "账号分节里又长出了一个下拉").toBeNull();
     // 有 configDir 的两个号各有一颗按钮、一格编辑器；账号 0 没有（配了也不会被用上）。
     const toggles = [...el.querySelectorAll<HTMLButtonElement>("button.accounts-row-apikey-toggle")];
-    expect(toggles.map((b) => b.textContent)).toEqual(["换 apikey", "配 apikey"]);
+    expect(toggles.map((b) => b.textContent)).toEqual(["换 API key", "配 API key"]);
     const editors = [...el.querySelectorAll<HTMLElement>(".accounts-row-apikey")];
     expect(editors.length).toBe(2);
     expect(editors.every((e) => e.hidden)).toBe(true);
@@ -1525,7 +1525,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
         ),
       ),
       "老后端那一支",
-    ).toEqual({ accounts: { kind: "fail", detail: "backend 需更新" } });
+    ).toEqual({ accounts: { kind: "fail", detail: "后端需更新" } });
 
     expect(
       await remote(() => fetchAccountsMock.mockResolvedValue(state({ accounts: [] }))),

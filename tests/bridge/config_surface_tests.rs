@@ -718,7 +718,7 @@ fn host_is_not_a_function_of_destination() {
 fn host_labels_are_distinct_and_truthful() {
     use HostScope::*;
     let all = [Client, Remote, Either, ProjectDir];
-    let labels: Vec<&str> = all.iter().map(|h| host_label(*h)).collect();
+    let labels: Vec<String> = all.iter().map(|h| host_label(*h)).collect();
     // 四个标签互不相同——相同就说明该合并了
     let uniq: std::collections::HashSet<_> = labels.iter().collect();
     assert_eq!(uniq.len(), 4, "四个 host 标签必须互不相同，实得 {labels:?}");
@@ -791,7 +791,8 @@ fn host_projection_preserves_the_richer_resolution() {
     .unwrap();
     match r {
         PathResolution::NeedsUserConfig { what } => {
-            assert!(what.contains("backend"), "实得 {what}");
+            // 〔CP2b〕界面上那一格的名字是「后端路径」（话进了文案表，按界面上的叫法认）。
+            assert!(what.contains("后端路径"), "实得 {what}");
         }
         other => panic!("远端投影把 NeedsUserConfig 吞成了 {other:?}"),
     }
@@ -933,7 +934,7 @@ fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
                 n += 1;
                 assert!(token.starts_with('$'), "{}: {token:?} 不像占位符", t.id);
                 assert!(
-                    !what.trim().is_empty(),
+                    !what.get().trim().is_empty(),
                     "{}: 得告诉用户去哪儿看这个值",
                     t.id
                 );
@@ -1112,7 +1113,9 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     let (_, blind) = observe_unmanaged(
         "tmux",
         EnvProbe::CannotProbe {
-            why: "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」",
+            why: crate::tool_registry::Text(|| {
+                "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」".to_string()
+            }),
         },
         &env,
     );
@@ -1175,7 +1178,10 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
     assert!(!owed.is_empty(), "这一页上一行「欠装口」都没有 —— 先查闭集");
     for r in &owed {
         assert!(
-            r.source_label.contains("该由 cc-monitor 自带"),
+            // 〔CP2b〕措辞照 CP1 台账改成「应随 cc-monitor 一起安装，暂未提供」（去掉内部编号 K38 与「装口」）；
+            // 两半仍都在：「应随 cc-monitor」＝该我们带，「暂未提供」＝还欠着。
+            r.source_label.contains("应随 cc-monitor 一起安装")
+                && r.source_label.contains("暂未提供"),
             "`{}` 的「从哪来」没说清这是我们该自带的东西，实得 {:?}",
             r.tool_id,
             r.source_label
@@ -1256,7 +1262,7 @@ fn rows_carry_the_host_label() {
         assert!(!r.host_label.is_empty(), "{} 缺 host 标签", r.path_declared);
     }
     // 四档措辞各不相同，且能看出"哪台"
-    let labels: std::collections::HashSet<_> = rows.iter().map(|r| r.host_label).collect();
+    let labels: std::collections::HashSet<_> = rows.iter().map(|r| r.host_label.as_str()).collect();
     assert!(
         labels.len() >= 3,
         "至少三种 host 出现在表里，实得 {labels:?}"
@@ -1495,6 +1501,8 @@ fn this_module_only_reads() {
     assert_eq!(
         uses_lines,
         vec![
+            // 〔CP2b〕文案表的取文口：只读编译期内嵌的那张表，不碰 fs。
+            "use crate::copy_table::copy_text;",
             "use crate::tool_registry::{",
             "use std::path::{Path, PathBuf};",
         ],

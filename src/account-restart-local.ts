@@ -22,6 +22,7 @@ import { commands } from "./ipc/commands";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
 import type { LocalLaunchAccountWire } from "./accounts";
 import { showActionFailureToast } from "./error-toast";
+import { copyText } from "./copy-table";
 
 /** 用户点的那个具名账号 → 本机载荷上的 `account`。键名与判别值都来自生成物（`K-R95`），不写字面量。 */
 export function namedLocalAccountWire(configDir: string, name: string): LocalLaunchAccountWire {
@@ -60,7 +61,7 @@ export async function runLocalRestartResume(req: LocalRestartResume): Promise<bo
     });
     return true;
   } catch (e) {
-    showActionFailureToast("本机没能用新账号拉起会话", String(e), {
+    showActionFailureToast(copyText("accountRestartLocal.runLocalRestartResume.failed"), String(e), {
       level: "error",
       durationMs: 10000,
     });

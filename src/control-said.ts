@@ -53,7 +53,7 @@ export function machineName(origin: Origin): string {
 
 /** 应答形状不对 ⇒ 抛（哪一格不对只进 `detail`）。 */
 export function unreadable(origin: Origin, op: string, what: string): ControlError {
-  return new ControlError(copyText("control.reply.unreadable", { machine: machineName(origin) }), `${op} 的应答${what}`);
+  return new ControlError(copyText("control.reply.unreadable", { machine: machineName(origin) }), `${op} reply ${what}`);
 }
 
 /**
@@ -96,13 +96,13 @@ export async function settle(origin: Origin, op: string, sent: Promise<Uint8Arra
     const err = e.error;
     if (err.layer === "peer" && err.why === "refused") {
       const r = refusalOf(err.body);
-      throw new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), `${op} 被拒：${r ? r.code : "拒绝体读不出来"}`, err);
+      throw new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), `${op} refused: ${r ? r.code : "unreadable refusal body"}`, err);
     }
     throw new ControlError(saidOfTransport(origin, err), `${op}：${e.message}`, err);
   }
   try {
     return readJson(body);
   } catch {
-    throw unreadable(origin, op, "不是 JSON");
+    throw unreadable(origin, op, "is not JSON");
   }
 }

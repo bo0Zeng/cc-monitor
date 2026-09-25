@@ -42,6 +42,7 @@
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;
+use crate::copy_table::copy_text;
 use crate::creds_store::ApikeyCredentialsStatus;
 use crate::origin::{Origin, Route};
 use serde_json::{json, Value};
@@ -76,9 +77,8 @@ const LOCAL: &str = crate::backend::control::inbound_client::LOCAL_ORIGIN;
 
 /// 本 monitor 认的那份本机凭据文件（`CCM_DATA_DIR` 隔离跑时跟着它走）。说不出 ⇒ 不写（不猜一个路径让后端去写）。
 fn local_file() -> Result<std::path::PathBuf, String> {
-    crate::creds_store::resolve_path().ok_or_else(|| {
-        "说不出本机那份凭据文件该在哪（找不到 monitor 的数据目录）—— 没有写".to_string()
-    })
+    crate::creds_store::resolve_path()
+        .ok_or_else(|| copy_text("rsApikeyRemote.local.noDataDir", &[]))
 }
 
 /// 推账号 id（全仓唯一那份规则）→（本机：先核那台后端写的就是 `same_file`）→ 装进 `args.key` → 交那台机器的后端。
@@ -94,20 +94,24 @@ pub(crate) async fn send_key(
     same_file: Option<std::path::PathBuf>,
 ) -> Result<(), String> {
     let account = crate::history::apikey_account_id_of_dir(config_dir).ok_or_else(|| {
-        format!(
-            "说不出这是哪个账号（configDir 是 {config_dir:?}）—— 不往 [{host}] 的表里写：\
-             写进去的那一行谁也命中不了"
+        copy_text(
+            "rsApikeyRemote.send.noAccount",
+            &[
+                ("dir", &format!("{:?}", config_dir)),
+                ("host", &host.to_string()),
+            ],
         )
     })?;
     if let Some(want) = same_file {
         let got = path_from_wire(host, &call(host, CMD_READ, json!({})).await?)?;
         if got != want {
-            return Err(format!(
-                "[{host}] 的后端写的是 {}，而这个 monitor 用的是 {} —— 两份不是同一个文件，没有写。\
-                 多半是这个 monitor 隔离跑（`CCM_DATA_DIR`）而接上了别的数据目录起的那个后端；\
-                 停掉那个后端、让这个 monitor 自己起一个，再配",
-                got.display(),
-                want.display()
+            return Err(copy_text(
+                "rsApikeyRemote.send.notSameFile",
+                &[
+                    ("host", &host.to_string()),
+                    ("got", &got.display().to_string()),
+                    ("want", &want.display().to_string()),
+                ],
             ));
         }
     }
@@ -125,9 +129,7 @@ fn path_from_wire(host: &str, d: &Value) -> Result<std::path::PathBuf, String> {
     d.get("path")
         .and_then(Value::as_str)
         .map(std::path::PathBuf::from)
-        .ok_or_else(|| {
-            format!("[{host}] `{CMD_READ}` 的应答里没有 `path` —— 说不出它写哪一份，没有写")
-        })
+        .ok_or_else(|| copy_text("rsApikeyRemote.read.noPath", &[("host", &host.to_string())]))
 }
 
 /// 读那台机器上那份文件的状态（只回掩码）。
@@ -149,22 +151,30 @@ pub(crate) async fn rows_on(origin: &Origin) -> Result<Vec<String>, String> {
 
 /// `apikey-read` 的应答 → 界面那份状态。形状不对 ⇒ 报错（**不许**退化成「没配」）。
 pub(crate) fn status_from_wire(host: &str, d: &Value) -> Result<ApikeyCredentialsStatus, String> {
-    let bad =
-        |what: &str| format!("[{host}] `{CMD_READ}` 的应答形状不对：{what} —— 两端契约对不上");
+    let bad = |what: &str| {
+        copy_text(
+            "rsApikeyRemote.wire.badShape",
+            &[("host", &host.to_string()), ("what", &what.to_string())],
+        )
+    };
     let opt_str = |k: &str| -> Result<Option<String>, String> {
         match d.get(k) {
             None | Some(Value::Null) => Ok(None),
             Some(Value::String(s)) => Ok(Some(s.clone())),
-            Some(_) => Err(bad(&format!("`{k}` 不是字符串"))),
+            Some(_) => Err(bad(&copy_text(
+                "rsApikeyRemote.wire.notString",
+                &[("k", &k.to_string())],
+            ))),
         }
     };
     Ok(ApikeyCredentialsStatus {
         configured: d
             .get("configured")
             .and_then(Value::as_bool)
-            .ok_or_else(|| bad("缺 `configured`"))?,
-        masked: opt_str("masked")?.ok_or_else(|| bad("缺 `masked`"))?,
-        path: opt_str("path")?.ok_or_else(|| bad("缺 `path`"))?,
+            .ok_or_else(|| bad(&copy_text("rsApikeyRemote.wire.noConfigured", &[])))?,
+        masked: opt_str("masked")?
+            .ok_or_else(|| bad(&copy_text("rsApikeyRemote.wire.noMasked", &[])))?,
+        path: opt_str("path")?.ok_or_else(|| bad(&copy_text("rsApikeyRemote.wire.noPath", &[])))?,
         notice: opt_str("notice")?,
         problem: opt_str("problem")?,
     })
@@ -180,7 +190,10 @@ pub(crate) fn rows_from_wire(host: &str, d: &Value) -> Result<Vec<String>, Strin
                 .collect::<Option<Vec<_>>>()
         })
         .ok_or_else(|| {
-            format!("[{host}] `{CMD_READ}` 的应答里 `rows` 不是字符串数组 —— 两端契约对不上")
+            copy_text(
+                "rsApikeyRemote.wire.rowsNotArray",
+                &[("host", &host.to_string())],
+            )
         })
 }
 
@@ -190,24 +203,30 @@ async fn call(host: &str, cmd: &str, args: Value) -> Result<Value, String> {
         return Err(said(no_channel(host)));
     };
     if !client.accepts(cmd) {
-        return Err(format!(
-            "[{host}] 的后端还不认 `{cmd}` —— 上游选择那份凭据文件按机器读写之后才有这条命令，\
-             重装那台机器的后端就有了"
+        return Err(copy_text(
+            "rsApikeyRemote.call.tooOld",
+            &[("host", &host.to_string())],
         ));
     }
     let data = client.call(cmd, args, BUDGET).await.map_err(|e| {
-        said(route_call_error(&e, |code, message| {
-            format!("[{host}] `{cmd}` 失败（{code}）：{message}")
+        said(route_call_error(&e, |_code, message| {
+            copy_text(
+                "rsApikeyRemote.call.failed",
+                &[
+                    ("host", &host.to_string()),
+                    ("message", &message.to_string()),
+                ],
+            )
         }))
     })?;
-    data.ok_or_else(|| format!("[{host}] `{cmd}` 的应答没有 data —— 两端契约对不上"))
+    data.ok_or_else(|| copy_text("rsApikeyRemote.call.noData", &[("host", &host.to_string())]))
 }
 
 /// 三态里给人看的那句话（同 `backend_policy::said`）。`Done` 在本族走不到。
 fn said(r: Routed) -> String {
     match r {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => "读写第三方 API key 时出了内部错误，没有拿到结果".to_string(),
+        Routed::Done => copy_text("rsApikeyRemote.call.internal", &[]),
     }
 }
 

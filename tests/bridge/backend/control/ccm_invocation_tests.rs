@@ -261,24 +261,27 @@ fn refusal_variants() -> Vec<String> {
 #[test]
 fn every_refusal_reason_is_pinned_byte_for_byte() {
     let pairs: &[(Refusal, &str)] = &[
-        (Refusal::NotInstalled, "远端未装 ccm"),
-        (Refusal::NotSsh, "本地路径不走 CLI 渲染器"),
-        (Refusal::MissingCap("tmux".into()), "远端 ccm 缺能力 tmux"),
+        (Refusal::NotInstalled, "远端还没装后端"),
+        (Refusal::NotSsh, "Windows 本机不用 ccm 命令起会话"),
+        (
+            Refusal::MissingCap("tmux".into()),
+            "远端的后端太旧，不支持这样起会话（缺 tmux）",
+        ),
         (
             Refusal::SendIntoHasNoCliForm,
-            "send-into（idle-tmux 就地复用）无 CLI 等价语法，诚实降级",
+            "ccm 命令没法在已有的 tmux 会话里就地起新会话",
         ),
-        (Refusal::AttachNeedsTmux, "attach 必须是 tmux 容器"),
+        (Refusal::AttachNeedsTmux, "只能接入 tmux 里的会话"),
         (
             Refusal::DimensionCannotSpeak("account".into()),
-            "维度 account 无法用 CLI 语法表达（cliFlags 返回 null）",
+            "这一项设置（account）写不成 ccm 参数",
         ),
         (
             Refusal::DimensionNeedsCap {
                 dim: "model".into(),
                 cap: "model".into(),
             },
-            "维度 model 需要远端 ccm 能力 model，但它不支持",
+            "远端的后端太旧，不认 model 这一项设置（缺 model）",
         ),
     ];
     // ★ 人群**从枚举派生**，不再手写「七个」这个数。

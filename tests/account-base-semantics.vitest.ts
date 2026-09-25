@@ -32,6 +32,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
+import { copyTableTextsIn } from "./test-support/copy-refs.ts";
 
 const REPO = resolve(__dirname, "..");
 const read = (rel: string): string => readFileSync(resolve(REPO, rel), "utf8");
@@ -57,7 +58,9 @@ function uiStrings(src: string): string[] {
       return !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"));
     })
     .join("\n");
-  return [...prod.matchAll(/"([^"\\\n]*不指定账号[^"\\\n]*)"/g)].map((m) => m[1]);
+  const literal = [...prod.matchAll(/"([^"\\\n]*不指定账号[^"\\\n]*)"/g)].map((m) => m[1]);
+  // 〔CP2b〕抽表之后这句话住文案表，文件里只剩 copyText("key") ⇒ 表条目一起算（否则抽完就零命中地绿）。
+  return [...literal, ...copyTableTextsIn(prod).filter((zh) => zh.includes("不指定账号"))];
 }
 
 /** 「不指定账号」这句话的两份副本。加第三份时把它登记进来。 */

@@ -36,6 +36,7 @@
 // 只产出待贴文本 + 复制到剪贴板。写用户的 `~/.bashrc` / `~/.claude/settings.json`
 // 是用户明确定过调的红线，有测试守着。
 import { showActionFailureToast } from "./error-toast";
+import { copyText } from "./copy-table";
 
 export interface PasteSpec {
   /** 待贴文本。**实时求值**——别名随表单变、钩子随形态选择变、wrapper 恒定。 */
@@ -77,7 +78,7 @@ function requireThreeSentences(spec: PasteSpec): void {
   ] as const) {
     if (!v || !v.trim()) {
       throw new Error(
-        `PasteSpec.${k} 不能为空——「贴到哪 / 怎么合并 / 怎样才生效」三句话是这个组件存在的理由`,
+        `bug: PasteSpec.${k} is empty — where / how to merge / when it takes effect are the reason this component exists`, // 〔CP2b〕程序员错误，刻意英文
       );
     }
   }
@@ -102,7 +103,7 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
   // （T02 教训：纯函数被断言 ≠ 它上了屏——两个核心列删掉，15 条测试全绿）。
   const where = document.createElement("div");
   where.className = "paste-block-target";
-  where.textContent = `贴到：${spec.target}`;
+  where.textContent = copyText("pasteBlock.buildPasteBlock.target", { target: spec.target });
   root.appendChild(where);
 
   const merge = document.createElement("div");
@@ -112,7 +113,7 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
 
   const act = document.createElement("div");
   act.className = "paste-block-activation";
-  act.textContent = `生效条件：${spec.activation}`;
+  act.textContent = copyText("pasteBlock.buildPasteBlock.activation", { activation: spec.activation });
   root.appendChild(act);
 
   const btnRow = document.createElement("div");
@@ -120,7 +121,7 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
   const copyBtn = document.createElement("button");
   copyBtn.type = "button";
   copyBtn.className = "settings-btn settings-btn-secondary paste-block-copy";
-  copyBtn.textContent = "复制";
+  copyBtn.textContent = copyText("pasteBlock.buildPasteBlock.copy");
   btnRow.appendChild(copyBtn);
   root.appendChild(btnRow);
 
@@ -133,7 +134,7 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
     const bad = spec.invalidReason?.(v) ?? null;
     if (bad !== null) {
       // **拒绝时绝不碰剪贴板**：把中文提示或半成品写进剪贴板，用户粘出去就是坏配置。
-      showActionFailureToast("还不能贴", bad, {
+      showActionFailureToast(copyText("pasteBlock.buildPasteBlock.notReady"), bad, {
         level: "info",
         durationMs: 4000,
       });
@@ -141,7 +142,7 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
     }
     const clip = navigator.clipboard;
     if (!clip) {
-      showActionFailureToast("复制失败", "剪贴板不可用，手动选中复制。", {
+      showActionFailureToast(copyText("pasteBlock.buildPasteBlock.copyFailed"), copyText("pasteBlock.buildPasteBlock.noClipboard"), {
         level: "error",
       });
       return;
@@ -149,13 +150,13 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
     void clip.writeText(v).then(
       () =>
         showActionFailureToast(
-          "已复制",
-          `贴到 ${spec.target}。${spec.mergeNote} 生效条件：${spec.activation}`,
+          copyText("pasteBlock.buildPasteBlock.copied"),
+          copyText("pasteBlock.buildPasteBlock.copiedBody", { target: spec.target, mergeNote: spec.mergeNote, activation: spec.activation }),
           { level: "info", durationMs: 6000 },
         ),
       // **不许吞进 console**（这就是 A3 的缺陷）——用户点了按钮就得知道结果。
       () =>
-        showActionFailureToast("复制失败", "剪贴板不可用，手动选中复制。", {
+        showActionFailureToast(copyText("pasteBlock.buildPasteBlock.copyFailed"), copyText("pasteBlock.buildPasteBlock.noClipboard"), {
           level: "error",
         }),
     );

@@ -17,6 +17,8 @@
 //! 契约：**跳过坏行并计数，永不 panic、永不因坏行丢掉好行**。`skipped` 如实回报给 UI，
 //! 显示「N 条无法解析」而不是假装干净。
 
+use crate::copy_table::copy_text;
+
 /// cc-bus id 合法性。**照抄 `shared/ccm:358-362` 的判据，不另发明一套。**
 ///
 /// 关键的一条是 **拒绝前导 `-`**：写这段时我第一版用的是「只含 `[A-Za-z0-9_-]`」，
@@ -239,17 +241,23 @@ async fn fetch_remote_cc_bus(cfg: &crate::ssh_source::RemoteConfig) -> Result<St
             .take(CC_BUS_TSV_CAP + 1)
             .read_to_end(&mut buf)
             .await
-            .map_err(|e| format!("读取远端 ~/.cc-bus 失败: {e}"))?;
+            .map_err(|e| copy_text("rsCcBus.remote.readFailed", &[("e", &e.to_string())]))?;
         if buf.len() as u64 > CC_BUS_TSV_CAP {
-            return Err(format!(
-                "远端 ~/.cc-bus 的登记表超过 {CC_BUS_TSV_CAP} 字节上限 —— 拒收，不拿截断的清单当完整的用"
+            return Err(copy_text(
+                "rsCcBus.remote.tooBig",
+                &[("cap", &CC_BUS_TSV_CAP.to_string())],
             ));
         }
         Ok::<Vec<u8>, String>(buf)
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
         .await
-        .map_err(|_| format!("远端 '{}' 读取超时（30s）", cfg.origin_label()))??;
+        .map_err(|_| {
+            copy_text(
+                "rsCcBus.remote.timeout",
+                &[("machine", &(cfg.origin_label()).to_string())],
+            )
+        })??;
     // 非 UTF-8 不报错：`~/.cc-bus/` 里的目录名实测含各种字节，宽容降级即可。
     Ok(String::from_utf8_lossy(&raw).into_owned())
 }
@@ -312,32 +320,32 @@ pub(crate) fn take_head(raw: &str) -> Option<(CcBusReadHead, &str)> {
 /// 字段并重新生成 `src/generated/`（C05），**不在本件写区内** ⇒ 明写在这里，别当它已经做了。
 fn interpret_cc_bus_read(origin: &str, raw: &str) -> Result<CcBusState, String> {
     let Some((head, body)) = take_head(raw) else {
-        return Err(format!(
-            "读不到 '{origin}' 的 cc-bus 登记表 —— 那条读命令**没有跑起来**\
-             （自述头 `{CC_BUS_HEAD_MARKER} home=<0|1> cat=<0|1>` 没有原样回来）。\n\
-             ⚠ 这**不是**「一个 agent 都没有」：清单根本没读到，有没有是**不知道**。\n\
-             多半是那台机器上的 `bash` 跑不了这段语法（Windows 上 \
-             `C:\\Windows\\System32\\bash.exe` 那个没装发行版的 WSL 存根就是这一形），\
-             或者登录 shell 中途就退了。"
+        return Err(copy_text(
+            "rsCcBus.read.noHeader",
+            &[
+                ("origin", &origin.to_string()),
+                ("marker", &CC_BUS_HEAD_MARKER.to_string()),
+            ],
         ));
     };
     if !head.reader {
-        let dir = if head.home { "**在**" } else { "不在" };
-        return Err(format!(
-            "读不到 '{origin}' 的 cc-bus 登记表 —— 那个壳里**没有 `cat`**\
-             （自述头逐字报的 `cat=0`），两张表一个字节都读不出来。\n\
-             ⚠ 这**不是**「一个 agent 都没有」：`~/.cc-bus` 这个目录{dir}，\
-             有没有 agent 是**不知道**。\n\
-             多半是登录 shell 的 `PATH` 里没有 `/usr/bin`（`bash -lc` 会先过 `/etc/profile`）。"
+        let dir = if head.home {
+            &copy_text("rsCcBus.read.dirPresent", &[])
+        } else {
+            &copy_text("rsCcBus.read.dirAbsent", &[])
+        };
+        return Err(copy_text(
+            "rsCcBus.read.noCat",
+            &[("origin", &origin.to_string()), ("dir", &dir.to_string())],
         ));
     }
     if !body.contains(CC_BUS_SPLIT_MARKER) {
-        return Err(format!(
-            "'{origin}' 的 cc-bus 登记表只回来了半份 —— \
-             分隔标记 `{CC_BUS_SPLIT_MARKER}` 没出现。\n\
-             ⚠ 打标记的 `printf` 是 shell 内建、无条件跑，所以它不在只可能是\
-             「命令跑到一半断了」（流被掐 / 输出被截）。\n\
-             半份清单会被当完整的用，⇒ 拒收。"
+        return Err(copy_text(
+            "rsCcBus.read.half",
+            &[
+                ("origin", &origin.to_string()),
+                ("marker", &CC_BUS_SPLIT_MARKER.to_string()),
+            ],
         ));
     }
     let (a, s) = split_combined(body, CC_BUS_SPLIT_MARKER);
@@ -373,14 +381,18 @@ pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
             CC_BUS_CAT_CMD,
             CC_BUS_TSV_CAP,
             30,
-            "读 ~/.cc-bus",
+            &copy_text("rsCcBus.what.readHome", &[]),
             // 读的是**数据**（清单），半份会被当完整的用 —— 与远端那条同档。
             OnOverflow::Reject,
         )
         .await?
     } else {
-        let cfg = crate::load_remote_config_by_label(&origin)
-            .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+        let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+            copy_text(
+                "rsCcBus.remote.notConfigured",
+                &[("origin", &origin.to_string())],
+            )
+        })?;
         fetch_remote_cc_bus(&cfg).await?
     };
     tokio::task::spawn_blocking(move || interpret_cc_bus_read(&origin, &raw))
@@ -418,7 +430,10 @@ pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
 /// 而驾驶舱只看最近的。
 fn build_inbox_cmd(id: &str) -> Result<String, String> {
     if !is_valid_bus_id(id) {
-        return Err(format!("非法 agent id（拒绝拼入命令）: {id:?}"));
+        return Err(copy_text(
+            "rsCcBus.inbox.badId",
+            &[("id", &format!("{:?}", id))],
+        ));
     }
     Ok(format!(
         "B=\"${{CC_BUS_HOME:-$HOME/.cc-bus}}\"; tail -n 200 \"$B/inbox/{id}.jsonl\" 2>/dev/null; true"
@@ -536,12 +551,18 @@ async fn exec_read(
             .take(cap + 1)
             .read_to_end(&mut buf)
             .await
-            .map_err(|e| format!("{what}失败: {e}"))?;
+            .map_err(|e| {
+                copy_text(
+                    "rsCcBus.exec.failed",
+                    &[("what", &what.to_string()), ("e", &e.to_string())],
+                )
+            })?;
         if buf.len() as u64 > cap {
             match on_overflow {
                 OnOverflow::Reject => {
-                    return Err(format!(
-                        "{what}的输出超过 {cap} 字节上限 —— 拒收，不拿截断的结果当完整的用"
+                    return Err(copy_text(
+                        "rsCcBus.exec.tooBig",
+                        &[("what", &what.to_string()), ("cap", &cap.to_string())],
                     ));
                 }
                 OnOverflow::Truncate => {
@@ -558,14 +579,23 @@ async fn exec_read(
     };
     let (raw, over) = tokio::time::timeout(std::time::Duration::from_secs(secs), read)
         .await
-        .map_err(|_| format!("远端 '{}' {what}超时（{secs}s）", cfg.origin_label()))??;
+        .map_err(|_| {
+            copy_text(
+                "rsCcBus.exec.timeout",
+                &[
+                    ("machine", &(cfg.origin_label()).to_string()),
+                    ("what", &what.to_string()),
+                    ("secs", &secs.to_string()),
+                ],
+            )
+        })??;
     overflowed = over;
     let mut out = String::from_utf8_lossy(&raw).into_owned();
     if overflowed {
         // 说给**用户**听，不只写日志：这条串是要显示出去的。
-        out.push_str(&format!(
-            "\n[cc-monitor] ⚠ 远端输出超过 {cap} 字节上限，以上内容已截断。\
-             命令本身已经执行完毕，**不要重试**。"
+        out.push_str(&copy_text(
+            "rsCcBus.exec.truncated",
+            &[("cap", &cap.to_string())],
         ));
     }
     Ok(out)
@@ -583,12 +613,14 @@ fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
     // 报「远端 `<local>` 未配置或未启用」：一句与真实原因毫无关系的话
     // （`P4d-Y5` 收口的正是这一族，`local_origin_registry` 按**位置**盯着它）。
     if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        return Err("本机没有「远端配置」这种东西 —— 这条路是远端专属的。\n\
-             cc-bus 的读面本机走同一条命令串（只是不包进 ssh）；写面全走后端原语。"
-            .to_string());
+        return Err(copy_text("rsCcBus.cfg.localHasNone", &[]));
     }
-    crate::load_remote_config_by_label(origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))
+    crate::load_remote_config_by_label(origin).ok_or_else(|| {
+        copy_text(
+            "rsCcBus.remote.notConfigured",
+            &[("origin", &origin.to_string())],
+        )
+    })
 }
 
 /// 🔴🔴 **本机那个 `bash` 到底是哪一个** —— 09-10 云端那条红的根因就住在这里〔ccbus-win〕。
@@ -704,14 +736,12 @@ fn no_bash_error(tried: &[std::path::PathBuf]) -> String {
         .map(|p| format!("  · {}", p.display()))
         .collect::<Vec<_>>()
         .join("\n");
-    format!(
-        "这台机器上找不到可用的 `bash` —— cc-bus 的本机读面**跑不起来**。\n\
-         ⚠ 这**不是**「一个 agent 都没有」：清单根本没去读，有没有是**不知道**。\n\
-         已经找过（顺序即优先级）：\n{list}\n\
-         ⚠ **刻意不去 `PATH` 上碰运气**：Windows 的进程创建把 `C:\\Windows\\System32`\
-         排在 `PATH` 之前，而 WSL 功能开着却没装发行版时那里有一个 `bash.exe` 存根 ——\
-         按裸名找到的多半正是它，跑起来什么都不做就退（那正是本件的病根）。\n\
-         装一份 Git for Windows，或把 `{BASH_OVERRIDE_VAR}` 指向你要用的那个 `bash.exe`。"
+    copy_text(
+        "rsCcBus.bash.notFound",
+        &[
+            ("list", &list.to_string()),
+            ("var", &BASH_OVERRIDE_VAR.to_string()),
+        ],
     )
 }
 
@@ -735,20 +765,22 @@ fn resolve_bash_with(
     if let Some(raw) = env(BASH_OVERRIDE_VAR) {
         let p = std::path::PathBuf::from(&raw);
         if is_system_dir_bash(&p) {
-            return Err(format!(
-                "`{BASH_OVERRIDE_VAR}` 指的是系统目录里那个 `bash.exe` —— 那是 WSL 的存根，\
-                 没装发行版时它什么都不做就退，装了发行版则跑在**另一个文件系统**里\
-                 （`$HOME` 是 Linux 家目录，不是这台机器的）。**拒绝用它。**\n\
-                 实得：{}",
-                p.display()
+            return Err(copy_text(
+                "rsCcBus.bash.systemStub",
+                &[
+                    ("var", &BASH_OVERRIDE_VAR.to_string()),
+                    ("path", &(p.display()).to_string()),
+                ],
             ));
         }
         // **不回落到候选表**：用户显式指了一个路径却指错，回落会让他以为自己那条生效了。
         if !exists(&p) {
-            return Err(format!(
-                "`{BASH_OVERRIDE_VAR}` 指的路径不存在：{}\n\
-                 ⚠ 显式指定过就不再去猜 —— 回落到候选表会让你以为自己这条生效了。",
-                p.display()
+            return Err(copy_text(
+                "rsCcBus.bash.overrideMissing",
+                &[
+                    ("var", &BASH_OVERRIDE_VAR.to_string()),
+                    ("path", &(p.display()).to_string()),
+                ],
             ));
         }
         return Ok(raw);
@@ -861,11 +893,16 @@ async fn local_shell_read(
             crate::spawn_managed::Lifetime::JobKillOnClose,
             crate::spawn_managed::StderrSink::Null,
         )
-        .map_err(|e| format!("本机{what}失败（起不了 bash）: {e}"))?;
+        .map_err(|e| {
+            copy_text(
+                "rsCcBus.local.spawnFailed",
+                &[("what", &what.to_string()), ("e", &e.to_string())],
+            )
+        })?;
         let mut out = child
             .stdout
             .take()
-            .ok_or_else(|| format!("本机{what}失败：拿不到 stdout"))?;
+            .ok_or_else(|| copy_text("rsCcBus.local.noOutput", &[("what", &what.to_string())]))?;
         let mut buf = Vec::new();
         // `+ 1` 的用意同远端那条：不多读一个字节就分不清「刚好读满」与「其实还有」，
         // 而分不清就只能静默截断。
@@ -873,15 +910,21 @@ async fn local_shell_read(
             .take(cap + 1)
             .read_to_end(&mut buf)
             .await
-            .map_err(|e| format!("本机{what}失败: {e}"))?;
+            .map_err(|e| {
+                copy_text(
+                    "rsCcBus.local.failed",
+                    &[("what", &what.to_string()), ("e", &e.to_string())],
+                )
+            })?;
         // 读够了就别再等它 —— 否则 `cat` 一个超大文件时我们会陪它跑完。
         let _ = child.start_kill();
         let _ = child.wait().await;
         if buf.len() as u64 > cap {
             match on_overflow {
                 OnOverflow::Reject => {
-                    return Err(format!(
-                        "本机{what}的输出超过 {cap} 字节上限 —— 拒收，不拿截断的当完整的用"
+                    return Err(copy_text(
+                        "rsCcBus.local.tooBig",
+                        &[("what", &what.to_string()), ("cap", &cap.to_string())],
                     ));
                 }
                 OnOverflow::Truncate => {
@@ -894,7 +937,12 @@ async fn local_shell_read(
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(secs), read)
         .await
-        .map_err(|_| format!("本机{what}超时（{secs}s）"))??;
+        .map_err(|_| {
+            copy_text(
+                "rsCcBus.local.timeout",
+                &[("what", &what.to_string()), ("secs", &secs.to_string())],
+            )
+        })??;
     // 非 UTF-8 不报错：理由同远端那条（`~/.cc-bus/` 里的目录名实测含各种字节）。
     Ok(String::from_utf8_lossy(&raw).into_owned())
 }
@@ -921,7 +969,7 @@ async fn local_shell_read(
 /// 而措辞正是用户唯一看得见的那一面。
 pub(crate) fn machine_label(origin: &str) -> String {
     if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        "本机".to_string()
+        copy_text("rsCcBus.machine.local", &[])
     } else {
         origin.to_string()
     }
@@ -938,11 +986,13 @@ pub(crate) fn machine_label(origin: &str) -> String {
 /// 而「超时」「连接断了」是**问不出答案**的事。把它们压成同一句「发消息失败」，
 /// 就是本工作区最贵的那一形 —— **一个值装了两件事**：用户拿到它既不知道该升级，
 /// 也不知道该重试，只能两样都试一遍。
-pub(crate) fn describe_backend_too_old_for(origin: &str, cmd: &str, outcome: &str) -> String {
-    format!(
-        "{} 的后端太旧：它没声明 `{cmd}` 这条命令（这是**能力协商**问出来的，\
-         不是超时、也不是网络错）—— {outcome}；把这台的后端升到新版就能用。",
-        machine_label(origin)
+pub(crate) fn describe_backend_too_old_for(origin: &str, _cmd: &str, outcome: &str) -> String {
+    copy_text(
+        "rsCcBus.tooOld.for",
+        &[
+            ("machine", &(machine_label(origin)).to_string()),
+            ("outcome", &outcome.to_string()),
+        ],
     )
 }
 
@@ -952,7 +1002,14 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
     let cmd = build_inbox_cmd(&id)?;
     // P4a-Y1：本机跑同一条 `build_inbox_cmd` 产出的串（`tail`，零副作用）。
     let raw = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        local_shell_read(&cmd, INBOX_READ_CAP, 30, "读 inbox", OnOverflow::Truncate).await?
+        local_shell_read(
+            &cmd,
+            INBOX_READ_CAP,
+            30,
+            &copy_text("rsCcBus.what.readInbox", &[]),
+            OnOverflow::Truncate,
+        )
+        .await?
     } else {
         let cfg = cfg_of(&origin)?;
         exec_read(
@@ -960,7 +1017,7 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
             &cmd,
             INBOX_READ_CAP,
             30,
-            "读 inbox",
+            &copy_text("rsCcBus.what.readInbox", &[]),
             OnOverflow::Truncate,
         )
         .await?

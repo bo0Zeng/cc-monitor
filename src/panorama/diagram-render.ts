@@ -30,6 +30,7 @@ import type {
   TypeGraphBody,
   TypeNode,
 } from "./types";
+import { copyText } from "../copy-table";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -85,8 +86,8 @@ export function edgeConf(c: Confidence): LineConf {
 
 /** 一条符号级边的标签：「N 选 1」要印在脸上（上游要求）。 */
 export function edgeLabel(e: CallEdge): string {
-  const base = e.confidence === "Dispatch" ? "派发" : edgeConf(e.confidence) === "guess" ? "分不清?" : "";
-  if (base && e.candidates != null) return `${base} ${e.candidates} 选 1`;
+  const base = e.confidence === "Dispatch" ? copyText("diagramRender.edge.dispatch") : edgeConf(e.confidence) === "guess" ? copyText("diagramRender.edge.guess") : "";
+  if (base && e.candidates != null) return copyText("diagramRender.edge.pick", { base, candidates: e.candidates });
   return base;
 }
 
@@ -108,14 +109,14 @@ export function linkLabel(l: ClusterLink): string {
     case "exact":
       return `${total}×`;
     case "dispatch":
-      return `${total}×派发`;
+      return copyText("diagramRender.link.dispatch", { total });
     case "guess":
-      return `${total}×分不清?`;
+      return copyText("diagramRender.link.guess", { total });
     case "mixed": {
       const parts: string[] = [];
-      if (l.exact > 0) parts.push(`${l.exact} 确定`);
-      if (l.dispatch > 0) parts.push(`${l.dispatch} 派发`);
-      if (l.guess > 0) parts.push(`${l.guess} 分不清`);
+      if (l.exact > 0) parts.push(copyText("diagramRender.link.exactPart", { exact: l.exact }));
+      if (l.dispatch > 0) parts.push(copyText("diagramRender.link.dispatchPart", { dispatch: l.dispatch }));
+      if (l.guess > 0) parts.push(copyText("diagramRender.link.guessPart", { guess: l.guess }));
       return `${total}×（${parts.join("+")}）`;
     }
   }
@@ -358,7 +359,7 @@ export function renderClusters(body: ClustersBody, ctx: RenderContext): SVGSVGEl
   body.nodes.forEach((n, i) => {
     const focus = !!ctx.focusFile && n.member_files.includes(ctx.focusFile);
     svg.appendChild(
-      nodeGroup(boxes[i], [n.label, `${n.size} 符号 / ${n.files} 文件`], () => ctx.onNode({ shape: "clusters", node: n }), focus),
+      nodeGroup(boxes[i], [n.label, copyText("diagramRender.cluster.size", { n: n.size, files: n.files })], () => ctx.onNode({ shape: "clusters", node: n }), focus),
     );
   });
   return svg;
@@ -392,7 +393,7 @@ export function renderTypeGraph(body: TypeGraphBody, ctx: RenderContext): SVGSVG
   for (const r of body.relations) {
     const a = byId.get(r.from);
     const b = byId.get(r.to);
-    if (a && b) svg.appendChild(edge(a, b, r.kind, r.label ?? (r.kind === "implements" ? "实现" : ""), r.from, r.to));
+    if (a && b) svg.appendChild(edge(a, b, r.kind, r.label ?? (r.kind === "implements" ? copyText("diagramRender.typeGraph.implements") : ""), r.from, r.to));
   }
   body.types.forEach((t, i) => {
     const members = [
@@ -400,7 +401,7 @@ export function renderTypeGraph(body: TypeGraphBody, ctx: RenderContext): SVGSVG
       ...t.methods.map((m) => `${m.name}()`),
     ];
     const shown = members.slice(0, TYPE_MEMBER_LINES - 1);
-    if (members.length > shown.length) shown.push(`…还有 ${members.length - shown.length} 项`);
+    if (members.length > shown.length) shown.push(copyText("diagramRender.typeGraph.more", { n: members.length - shown.length }));
     svg.appendChild(nodeGroup(boxes[i], [t.name, ...shown], () => ctx.onNode({ shape: "type_graph", node: t })));
   });
   return svg;
@@ -416,21 +417,21 @@ export function legendFor(shape: string): { conf: string; text: string }[] {
   switch (shape) {
     case "clusters":
       return [
-        { conf: "exact", text: "粗实线：全部确定" },
-        { conf: "dispatch", text: "虚线：动态派发" },
-        { conf: "guess", text: "点线加 ?：按名字凑的候选" },
-        { conf: "mixed", text: "细实线：混着的一捆，标签写出成分" },
+        { conf: "exact", text: copyText("diagramRender.legend.certain") },
+        { conf: "dispatch", text: copyText("diagramRender.legend.dispatch") },
+        { conf: "guess", text: copyText("diagramRender.legend.guess") },
+        { conf: "mixed", text: copyText("diagramRender.legend.mixed") },
       ];
     case "call_graph":
       return [
-        { conf: "exact", text: "粗实线：确定" },
-        { conf: "dispatch", text: "虚线：动态派发" },
-        { conf: "guess", text: "点线加 ?：按名字凑（N 选 1）" },
+        { conf: "exact", text: copyText("diagramRender.legend.certainSym") },
+        { conf: "dispatch", text: copyText("diagramRender.legend.dispatch") },
+        { conf: "guess", text: copyText("diagramRender.legend.guessSym") },
       ];
     case "type_graph":
       return [
-        { conf: "implements", text: "虚线：实现 / 继承" },
-        { conf: "composes", text: "实线：组合（字段类型）" },
+        { conf: "implements", text: copyText("diagramRender.legend.implements") },
+        { conf: "composes", text: copyText("diagramRender.legend.compose") },
       ];
     default:
       return [];

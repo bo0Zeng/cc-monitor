@@ -290,7 +290,8 @@ async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
     .await
     .expect_err("老后端不该开得了单");
     assert_eq!(code, "backend_unavailable");
-    assert!(e.contains("太旧") && e.contains("transfer-upload"), "{e}");
+    // 〔CP2b〕内部命令名（transfer-upload）不再上屏；「太旧」与出路（重开 monitor）留着。
+    assert!(e.contains("太旧"), "{e}");
     assert!(rig.seen.try_recv().is_err(), "对老后端发了请求");
 }
 

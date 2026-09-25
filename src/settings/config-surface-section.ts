@@ -44,6 +44,7 @@ import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import { withPending } from "./pending";
+import { copyText } from "../copy-table";
 
 /**
  * 一态 → 它在「还差什么」那套口径里算哪一种缺口。`present` 不是缺口 ⇒ `null`。
@@ -81,19 +82,19 @@ export function promptToInstall(row: SurfaceRow): string | null {
   if (kind === null) return null;
   if (kind === "missing") {
     // **测过、确认没有** —— 这一句就是本件的正题：产品说得出「你缺这个，去装」。
-    return `${GAP_HEAD.missing} —— cc-monitor 不装这一项，请你自己装上 \`${row.path_declared}\``;
+    return copyText("configSurface.install.prompt", { missing: GAP_HEAD.missing, path: row.path_declared });
   }
   // **查不动**：说「缺」就是替用户下一个他没做过的结论（`readiness.ts` 头注逐字）。
   // 〔ST2 · `70 §11.4` #3〕原文后半「别当成它不在」是**开发者的认识论对冲**（`§2.1` 第 ④ 种）——
   //   区分本身是对的（`§2.2`：不许扫掉），只换位置：前半留在行上，后半进 ⓘ（`UNKNOWN_IS_NOT_ABSENT`）。
-  return `${GAP_HEAD.unknown} —— 这一项本机查不动（见上面的原因）`;
+  return copyText("configSurface.install.unknown", { unknown: GAP_HEAD.unknown });
 }
 
 /**
  * 〔ST2 · `70 §11.3.1`〕「查不动」那一句的后半，挪进 ⓘ 的那一段 —— **那条区分的全部内容住这里**。
  */
-export const UNKNOWN_IS_NOT_ABSENT =
-  "查不动不等于它不在：只是这台机器上判断不了，不说明它没装。";
+// 〔CP2b〕做成函数、用到时才取文（顶层不留取文口调用，同 remote-section）。
+export const UNKNOWN_IS_NOT_ABSENT = (): string => copyText("configSurface.gap.unknownIsNotAbsent");
 
 /** 一态 → 文案 + 三档语气。**`undetermined` 必须中性且带出理由**，不能借"缺失"的红。 */
 export function describeSurfaceState(st: SurfaceState): {
@@ -104,14 +105,14 @@ export function describeSurfaceState(st: SurfaceState): {
     case "present":
       return { text: st.detail, tone: "ok" };
     case "absent":
-      return { text: "不存在", tone: "bad" };
+      return { text: copyText("configSurface.state.absent"), tone: "bad" };
     case "undetermined":
-      return { text: `未确定 —— ${st.why}`, tone: "unknown" };
+      return { text: copyText("configSurface.state.undetermined", { why: st.why }), tone: "unknown" };
     default: {
       // 后端将来加第四态时**不许整页炸掉**（B03 踩过：`invoke` 返回形状没校验，
       // `origins.length` 当场抛，整个 section 挂掉）。
       const k = (st as { kind?: string } | null)?.kind ?? "?";
-      return { text: `未知状态（${k}）`, tone: "unknown" };
+      return { text: copyText("configSurface.state.unknown", { kind: k }), tone: "unknown" };
     }
   }
 }
@@ -132,23 +133,23 @@ export function describeSurfaceState(st: SurfaceState): {
  * 档进线上形状之后，这里按**值**分档，不再和稀泥。
  */
 export function describeUndo(row: SurfaceRow): string {
-  if (row.uninstallable) return "可按围栏/整文件撤销（在对应工具的部署入口里）";
+  if (row.uninstallable) return copyText("configSurface.undo.fenced");
   switch (row.tier) {
     case "AppInstalls":
-      return "暂无自动撤销；如需清理请按上面的路径手动处理";
+      return copyText("configSurface.undo.manual");
     // **我们欠的实现** —— 不许说成「不该由它装」（`KR65D2` 逐字）。
     // 〔ST2 · `70 §11.4` #1 · `§11.3.1`〕原文「这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有」
     //   是**我们欠的实现写成产品文案**。改成一格状态；⚠ 「还没有」这个语义必须留（`KR65D2`：不许说成「不该由它装」）。
     case "AppShipsNoInstallerYet":
-      return "暂无撤销：还没有安装入口";
+      return copyText("configSurface.undo.noInstaller");
     // `K38` 裁的那一档：不该我们装，所以也无所谓撤。
     case "UserInstallsWePrompt":
-      return "cc-monitor 不装这一项（通用工具，请你自己装），也就无所谓撤销";
+      return copyText("configSurface.undo.userInstalls");
     case "AppOnlyChecks":
-      return "cc-monitor 本来就不该装这一项（它不是我们的东西），也就无所谓撤销";
+      return copyText("configSurface.undo.notOurs");
     default:
       // 后端加第五档时**不许整页炸掉**，也不许假装认识它。
-      return "这一项的档本前端还不认识 —— 撤销请按上面的路径手动处理";
+      return copyText("configSurface.undo.unknownKind");
   }
 }
 
@@ -169,7 +170,7 @@ export function describeUndo(row: SurfaceRow): string {
 export function summarizeOwedInstallers(rows: SurfaceRow[]): string | null {
   const names = owedInstallerNames(rows);
   if (names.length === 0) return null;
-  return `⚠ ${names.length} 项还没有安装入口`;
+  return copyText("configSurface.summarizeOwedInstallers.owed", { namesCount: names.length });
 }
 
 /** 〔ST2〕`[哪 N 项]` 里那张名单（去重、按出现顺序）。 */
@@ -181,9 +182,9 @@ export function owedInstallerNames(rows: SurfaceRow[]): string[] {
 export function formatReportText(r: ConfigSurfaceReport): string {
   const lines: string[] = [];
   // 〔ST2 · 用户 09-24 裁「一起改」· `70 §11.6` #4〕跟块名统一：「配置面审计」→「足迹」。
-  lines.push("== cc-monitor 足迹 ==");
+  lines.push(copyText("configSurface.report.head"));
   lines.push(`HOME=${r.home}`);
-  lines.push(`~/.claude 解析为=${r.claude_config_dir}`);
+  lines.push(copyText("configSurface.report.claudeDir", { claudeConfigDir: r.claude_config_dir }));
   lines.push("");
   let lastTool = "";
   for (const row of r.rows) {
@@ -193,10 +194,10 @@ export function formatReportText(r: ConfigSurfaceReport): string {
     }
     const st = describeSurfaceState(row.state);
     lines.push(`  ${row.path_declared}${row.note ? `（${row.note}）` : ""}`);
-    lines.push(`    位置: ${row.host_label}`);
-    if (row.path_resolved) lines.push(`    解析为: ${row.path_resolved}`);
-    lines.push(`    我们做什么: ${row.effect_label}`);
-    lines.push(`    现状: ${st.text}`);
+    lines.push(copyText("configSurface.report.where", { hostLabel: row.host_label }));
+    if (row.path_resolved) lines.push(copyText("configSurface.report.resolved", { pathResolved: row.path_resolved }));
+    lines.push(copyText("configSurface.report.effect", { effectLabel: row.effect_label }));
+    lines.push(copyText("configSurface.report.state", { text: st.text }));
     // `KR65D1`：那句话**也要进这份可复制的诊断文本** —— 用户贴出来的那一份
     // 如果不含它，「产品说得出「你缺这个，去装」」就只在屏幕上成立。
     const prompt = promptToInstall(row);
@@ -208,15 +209,15 @@ export function formatReportText(r: ConfigSurfaceReport): string {
     lines.push(`  ${owed}：${owedInstallerNames(r.rows).join("、")}`);
   }
   lines.push("");
-  lines.push("== settings.json 的各作用域（会影响钩子诊断结论）==");
+  lines.push(copyText("configSurface.report.scopesHead"));
   for (const s of r.settings_scopes) {
     const st = describeSurfaceState(s.state);
     const hooks =
       s.has_cc_bus_hooks === null
-        ? "读不到，不猜"
+        ? copyText("configSurface.report.unreadable")
         : s.has_cc_bus_hooks
-          ? "含 cc-bus 钩子字样"
-          : "不含 cc-bus 钩子字样";
+          ? copyText("configSurface.report.hasHook")
+          : copyText("configSurface.report.noHook");
     lines.push(`  [${s.scope}] ${s.path}`);
     lines.push(`    ${st.text} · ${hooks} · ${s.precedence_note}`);
   }
@@ -250,7 +251,8 @@ export function answersFor(r: ConfigSurfaceReport, origin: Origin): boolean {
 }
 
 /** 远端那一台答不了时那一句的 ⓘ —— 区分（答不出来 ≠ 没动过）只换位置（`§11.4` #4）。 */
-export const REMOTE_UNANSWERED_WHY = "「答不出来」不等于「它没动过你的文件」。";
+// 〔CP2b〕做成函数、用到时才取文（顶层不留取文口调用，同 remote-section）。
+export const REMOTE_UNANSWERED_WHY = (): string => copyText("configSurface.remote.unansweredWhy");
 
 export class ConfigSurfaceSection {
   readonly element: HTMLElement;
@@ -300,10 +302,10 @@ export class ConfigSurfaceSection {
     // ⇒ 只留「这一页是什么」，承诺收进 ⓘ。
     const hint = document.createElement("div");
     hint.className = "settings-hint";
-    hint.textContent = "cc-monitor 会碰你哪些文件、对它做什么、现在什么状态、还能不能撤。";
+    hint.textContent = copyText("configSurface.build.intro");
     hint.appendChild(
       makeInfoIcon(
-        "只读：这一页不会写任何东西，也不在后台轮询——每次打开或点「重新扫描」才读一次。",
+        copyText("configSurface.build.readOnly"),
       ),
     );
     root.appendChild(hint);
@@ -315,12 +317,10 @@ export class ConfigSurfaceSection {
     //   自己的 `why` 与 host 徽章，所以这里这段**通用免责**收进 ⓘ，不占正文一整段。
     const honesty = document.createElement("div");
     honesty.className = "settings-hint config-surface-honesty";
-    honesty.textContent = "查不了的写成「未确定」并说明原因，不画成红叉。";
+    honesty.textContent = copyText("configSurface.build.undetermined");
     honesty.appendChild(
       makeInfoIcon(
-        "远端路径要 SSH（请到部署向导里查）、项目里的 .mcp.json 得先知道是哪个项目、" +
-          "Windows 的 $PROFILE 由 PowerShell 决定——这三类本机无从判断，" +
-          "报成「缺失」会是假警报。",
+        copyText("configSurface.build.whyUndetermined"),
       ),
     );
     root.appendChild(honesty);
@@ -342,19 +342,19 @@ export class ConfigSurfaceSection {
     const rescan = document.createElement("button");
     rescan.type = "button";
     rescan.className = "btn";
-    rescan.textContent = "重新扫描";
+    rescan.textContent = copyText("configSurface.build.rescan");
     // 步 4·E（`70 §1.3 E`）：扫一趟是一次真往返 —— 期间按住这个按钮，
     // 否则连点两下就是两趟，而第二趟的结果会盖掉第一趟、屏幕上看不出来。
-    rescan.addEventListener("click", () => void withPending(rescan, "扫描中…", () => this.refresh()));
+    rescan.addEventListener("click", () => void withPending(rescan, copyText("configSurface.build.scanning"), () => this.refresh()));
     bar.appendChild(rescan);
 
     this.copyBtn = document.createElement("button");
     this.copyBtn.type = "button";
     this.copyBtn.className = "btn";
-    this.copyBtn.textContent = "复制诊断文本";
+    this.copyBtn.textContent = copyText("configSurface.build.copyReport");
     this.copyBtn.disabled = true;
     this.copyBtn.addEventListener("click", () =>
-      void withPending(this.copyBtn, "复制中…", () => this.copy()),
+      void withPending(this.copyBtn, copyText("configSurface.build.copying"), () => this.copy()),
     );
     bar.appendChild(this.copyBtn);
     host.appendChild(bar);
@@ -377,13 +377,12 @@ export class ConfigSurfaceSection {
 
     const scopesT = document.createElement("div");
     scopesT.className = "settings-subtitle";
-    scopesT.textContent = "settings.json 的各作用域";
+    scopesT.textContent = copyText("configSurface.scopes.title");
     host.appendChild(scopesT);
     const scopesHint = document.createElement("div");
     scopesHint.className = "settings-hint";
     scopesHint.textContent =
-      "钩子可以写在多个作用域里，优先级从低到高。钩子诊断读的是「用户级」那一份——" +
-      "所以如果你把钩子写在了别处，那边报的「未装」可能是错的。";
+      copyText("configSurface.scopes.intro");
     host.appendChild(scopesHint);
     this.scopesBox = document.createElement("div");
     this.scopesBox.className = "config-surface-scopes";
@@ -443,8 +442,8 @@ export class ConfigSurfaceSection {
     this.localOnly.hidden = true;
     this.notForThisMachine.hidden = false;
     this.notForThisMachine.replaceChildren(
-      `这台机器（${origin}）的足迹还查不了：要那台机器上的后端来答，它这一版还答不了。`,
-      makeInfoIcon(REMOTE_UNANSWERED_WHY),
+      copyText("configSurface.remote.unanswered", { machine: origin }),
+      makeInfoIcon(REMOTE_UNANSWERED_WHY()),
     );
   }
 
@@ -459,7 +458,7 @@ export class ConfigSurfaceSection {
     // 切机器快过答复时，晚到的那一份不许盖掉当前这台的（与 `cc-bus-section` 那处同一个病）。
     const my = ++this.seq;
     this.applyOriginGate();
-    this.body.replaceChildren(makeSkeleton("footprint", "正在扫这台机器上的足迹…"));
+    this.body.replaceChildren(makeSkeleton("footprint", copyText("configSurface.refresh.scanningMachine")));
     try {
       const r = await readFootprint(origin);
       if (my !== this.seq) return;
@@ -467,7 +466,7 @@ export class ConfigSurfaceSection {
       // 于后续 `.length` 当场抛，把整个 section 挂掉）。
       if (!r || !Array.isArray(r.rows) || !Array.isArray(r.settings_scopes)) {
         throw new Error(
-          "后端返回的形状不对（rows / settings_scopes 不是数组）",
+          copyText("configSurface.refresh.badShape"),
         );
       }
       if (!answersFor(r, origin)) {
@@ -475,7 +474,7 @@ export class ConfigSurfaceSection {
           this.showUnanswered(origin);
           return;
         }
-        throw new Error("后端答的不是本机这一份");
+        throw new Error(copyText("configSurface.refresh.wrongMachine"));
       }
       this.last = r;
       this.copyBtn.disabled = false;
@@ -487,8 +486,8 @@ export class ConfigSurfaceSection {
       if (my !== this.seq) return;
       this.last = null;
       this.copyBtn.disabled = true;
-      this.body.textContent = `扫描失败：${String(e)}`;
-      showActionFailureToast("扫描配置面", String(e));
+      this.body.textContent = copyText("configSurface.refresh.failed", { e: String(e) });
+      showActionFailureToast(copyText("configSurface.refresh.failedTitle"), String(e));
     }
   }
 
@@ -506,17 +505,17 @@ export class ConfigSurfaceSection {
     } catch (e) {
       const why = document.createElement("div");
       why.className = "settings-hint";
-      why.textContent = `读不到 PowerShell profile 备份在哪：${String(e)}`;
+      why.textContent = copyText("configSurface.backups.failed", { e: String(e) });
       this.backups.appendChild(why);
       return;
     }
     if (dirs.length === 0) return;
     const title = document.createElement("div");
     title.className = "settings-subtitle";
-    title.textContent = "PowerShell profile 备份";
+    title.textContent = copyText("configSurface.backups.title");
     const note = document.createElement("div");
     note.className = "settings-hint";
-    note.textContent = "装终端集成时，原来的 profile 先备份到同目录的 .ccm-backup-<时间戳>。想撤回就用它。";
+    note.textContent = copyText("configSurface.backups.intro");
     const list = document.createElement("ul");
     for (const d of dirs) {
       const li = document.createElement("li");
@@ -527,7 +526,7 @@ export class ConfigSurfaceSection {
   }
 
   private render(r: ConfigSurfaceReport): void {
-    this.meta.textContent = `HOME=${r.home} · ~/.claude 解析为 ${r.claude_config_dir}`;
+    this.meta.textContent = copyText("configSurface.render.home", { home: r.home, claudeConfigDir: r.claude_config_dir });
     // `KR65D2`：「app 该自带而还没有装口」那一格**在屏幕上数得出来**。
     // 〔ST2 · `§11.3.1`〕一格状态 ＋ `[哪 N 项]` 展开看名单。
     const owed = summarizeOwedInstallers(r.rows);
@@ -538,9 +537,9 @@ export class ConfigSurfaceSection {
       const which = document.createElement("details");
       which.dataset.owedNames = "";
       const sum = document.createElement("summary");
-      sum.textContent = `哪 ${names.length} 项`;
+      sum.textContent = copyText("configSurface.render.owedHead", { n: names.length });
       const list = document.createElement("span");
-      list.textContent = names.join("、");
+      list.textContent = names.join(copyText("configSurface.render.listSep"));
       which.append(sum, list);
       this.owed.appendChild(which);
     }
@@ -577,10 +576,10 @@ export class ConfigSurfaceSection {
       detail.className = "config-surface-scope-detail";
       const hooks =
         s.has_cc_bus_hooks === null
-          ? "钩子字样：读不到，不猜"
+          ? copyText("configSurface.render.hookUnreadable")
           : s.has_cc_bus_hooks
-            ? "含 cc-bus 钩子字样"
-            : "不含 cc-bus 钩子字样";
+            ? copyText("configSurface.report.hasHook")
+            : copyText("configSurface.report.noHook");
       detail.textContent = `${st.text} · ${hooks} · ${s.precedence_note}`;
       el.appendChild(detail);
       this.scopesBox.appendChild(el);
@@ -615,7 +614,7 @@ export class ConfigSurfaceSection {
     if (row.path_resolved) {
       const rp = document.createElement("div");
       rp.className = "config-surface-resolved";
-      rp.textContent = `解析为 ${row.path_resolved}`;
+      rp.textContent = copyText("configSurface.row.resolved", { pathResolved: row.path_resolved });
       el.appendChild(rp);
     }
 
@@ -639,7 +638,7 @@ export class ConfigSurfaceSection {
       p.dataset.gap = gapKindOfState(row.state) ?? "";
       p.textContent = prompt;
       // 〔ST2 · `§11.4` #3〕「查不动」那一档：区分的后半在 ⓘ 里（只换位置，不删义）。
-      if (p.dataset.gap === "unknown") p.appendChild(makeInfoIcon(UNKNOWN_IS_NOT_ABSENT));
+      if (p.dataset.gap === "unknown") p.appendChild(makeInfoIcon(UNKNOWN_IS_NOT_ABSENT()));
       el.appendChild(p);
     }
 
@@ -655,12 +654,12 @@ export class ConfigSurfaceSection {
     if (!this.last) return;
     try {
       await navigator.clipboard.writeText(formatReportText(this.last));
-      this.copyBtn.textContent = "已复制";
+      this.copyBtn.textContent = copyText("configSurface.copy.done");
       setTimeout(() => {
-        this.copyBtn.textContent = "复制诊断文本";
+        this.copyBtn.textContent = copyText("configSurface.copy.copyReport");
       }, 1500);
     } catch (e) {
-      showActionFailureToast("复制诊断文本", String(e));
+      showActionFailureToast(copyText("configSurface.copy.failedTitle"), String(e));
     }
   }
 }

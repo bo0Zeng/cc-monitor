@@ -44,6 +44,7 @@ import {
   AGENT_PROFILE_TABLE,
   type AgentProfileRow,
 } from "./generated/agent-profile-table";
+import { copyText } from "./copy-table";
 
 export { ACTIVE_AGENT };
 export type { AgentProfileRow };
@@ -71,10 +72,10 @@ export function lookupAgentProfile(
   const facts = table.find((row) => row.agent === agent);
   if (facts) return { known: true, facts };
   const known = listAgents(table);
-  const roster = known.length > 0 ? known.join(" / ") : "（一个都没有）";
+  const roster = known.length > 0 ? known.join(" / ") : copyText("agentProfile.lookup.none");
   return {
     known: false,
-    message: `问不到 agent「${agent}」的画像：后端那张表里没有它（表里有：${roster}）。`,
+    message: copyText("agentProfile.lookup.unknown", { agent, roster }),
   };
 }
 
@@ -131,8 +132,7 @@ export function fullAgentProfile(
   const researched = (cell: string[] | null, key: string): Set<string> => {
     if (cell === null) {
       throw new Error(
-        `后端那张表里「${agent}」的 ${key} 是 null＝这一格今天没人考据过 ——` +
-          " 不许拿别的 agent 那一份顶上（KR93D3）。",
+        copyText("agentProfile.researched.null", { agent, key }),
       );
     }
     return new Set(cell);
