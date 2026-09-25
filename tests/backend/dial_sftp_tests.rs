@@ -505,3 +505,118 @@ fn the_sftp_dependency_is_really_on_russh_sftp_three() {
          只钉一侧的话，另一侧掉下去是无声的"
     );
 }
+
+// ═══ 〔HX2 · 主会话 D-b「临时件名唯一」〕两个部署者同一个落点 ═══════════════════════════════
+//
+// 要求住址：主会话 4D 裁 D-b 逐字「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序），临时件名唯一」；
+// 审计 `E-compat.md §2.7` 冲突场景 2（「B 删掉 A 正在写的 `.tmp`」）。
+
+/// 🔴 B3a：落点旁边已经躺着**别人的**固定名 `.tmp` / `.bak`（另一个部署者正在写的那一份）⇒ 这一趟一个都不碰：
+/// 改动表里零处固定名（正控：带这一趟后缀的临时件与备份件各数得到一处），完了之后自己的临时件 / 备份件一个不剩。
+#[tokio::test]
+async fn hx2_a_deploy_never_touches_another_deployers_temp_or_backup() {
+    let fs = rig::home(true, false);
+    let target = ".cc-monitor/bin/cc-monitor-backend";
+    let (their_tmp, their_bak) = (format!("{target}.tmp"), format!("{target}.bak"));
+    {
+        let mut g = fs.lock().unwrap();
+        for (p, b) in [
+            (target.to_string(), b"old".to_vec()),
+            (their_tmp.clone(), b"theirs".to_vec()),
+            (their_bak.clone(), b"theirs".to_vec()),
+        ] {
+            g.files.insert(p, rig::Entry { bytes: b });
+        }
+    }
+    let s = rig::session_on(fs.clone()).await;
+    super::put_atomic(&s, target, b"new", 0o700)
+        .await
+        .expect("放不上");
+    let g = fs.lock().unwrap();
+    assert_eq!(g.bytes(target), Some(b"new".to_vec()));
+    assert_eq!(
+        g.bytes(&their_tmp),
+        Some(b"theirs".to_vec()),
+        "别人的临时件被动了"
+    );
+    assert_eq!(
+        g.bytes(&their_bak),
+        Some(b"theirs".to_vec()),
+        "别人的备份件被动了"
+    );
+    let touched = g.touched();
+    assert!(
+        !touched.contains(&their_tmp) && !touched.contains(&their_bak),
+        "这一趟碰了固定名：{touched:?}"
+    );
+    let ours = |suffix: &str| {
+        touched
+            .iter()
+            .filter(|p| {
+                p.starts_with(&format!("{target}."))
+                    && p.ends_with(suffix)
+                    && p.len() > target.len() + suffix.len() + 1
+            })
+            .count()
+    };
+    assert_eq!(
+        ours(".tmp"),
+        1,
+        "这一趟的临时件（带后缀）该恰一处：{touched:?}"
+    );
+    assert_eq!(
+        ours(".bak"),
+        1,
+        "这一趟的备份件（带后缀）该恰一处：{touched:?}"
+    );
+    let left: Vec<&String> = g
+        .files
+        .keys()
+        .filter(|k| k.starts_with(&format!("{target}.")) && *k != &their_tmp && *k != &their_bak)
+        .collect();
+    assert!(
+        left.is_empty(),
+        "这一趟留下了自己的临时件 / 备份件：{left:?}"
+    );
+}
+
+/// 🔴 B3b：两个部署者**真交错**（台架每条写让出几次）往同一个落点放不同的字节 ⇒ 至少一趟成；落点上是两份之一、逐字节；
+/// 目录里一个临时件 / 备份件都不剩（失败那一趟把自己挪走的旧件挪回或删掉）。
+#[tokio::test]
+async fn hx2_two_interleaved_deploys_leave_one_whole_copy_and_no_litter() {
+    let fs = rig::home(true, false);
+    let target = ".cc-monitor/bin/cc-monitor-backend";
+    {
+        let mut g = fs.lock().unwrap();
+        g.files.insert(
+            target.to_string(),
+            rig::Entry {
+                bytes: b"old".to_vec(),
+            },
+        );
+        g.yield_per_write = 3;
+    }
+    let (a_bytes, b_bytes) = (rig::corpus(200_000), vec![7u8; 150_000]);
+    let (sa, sb) = (
+        rig::session_on(fs.clone()).await,
+        rig::session_on(fs.clone()).await,
+    );
+    let (ra, rb) = tokio::join!(
+        super::put_atomic(&sa, target, &a_bytes, 0o700),
+        super::put_atomic(&sb, target, &b_bytes, 0o700)
+    );
+    assert!(ra.is_ok() || rb.is_ok(), "两趟都没成：{ra:?} / {rb:?}");
+    let g = fs.lock().unwrap();
+    let on_disk = g.bytes(target).expect("落点空了");
+    assert!(
+        on_disk == a_bytes || on_disk == b_bytes,
+        "落点上不是两份之一（{} 字节）",
+        on_disk.len()
+    );
+    let litter: Vec<&String> = g
+        .files
+        .keys()
+        .filter(|k| k.starts_with(&format!("{target}.")))
+        .collect();
+    assert!(litter.is_empty(), "留下了临时件 / 备份件：{litter:?}");
+}
