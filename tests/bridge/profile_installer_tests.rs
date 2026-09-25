@@ -296,7 +296,7 @@ fn find_conflict_in_user_function() {
 function Get-Stuff { Write-Host x }
 function cc { Write-Host my-cc }
 "#;
-    let conflicts = find_conflicting_functions(ProfileFlavor::PowerShell, content, "cc");
+    let conflicts = find_conflicting_functions(Shell::PowerShell, content, "cc");
     assert_eq!(conflicts, vec!["cc".to_string()]);
 }
 
@@ -309,7 +309,7 @@ function Get-Stuff { Write-Host x }
 function cc { __ccm_bind; & claude $args }
 # === cc-monitor END ===
 "#;
-    let conflicts = find_conflicting_functions(ProfileFlavor::PowerShell, content, "cc");
+    let conflicts = find_conflicting_functions(Shell::PowerShell, content, "cc");
     assert!(conflicts.is_empty());
 }
 
@@ -602,8 +602,7 @@ gs() { git status; }
 fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
     let what = "/home/u/.bashrc";
     for existing in ["", "export A=1\n", BARE_RC] {
-        let got = plan_install(ProfileFlavor::PosixRc, existing, "cc", true, what)
-            .expect("本机 POSIX 装口");
+        let got = plan_install(Shell::Posix, existing, "cc", true, what).expect("本机 POSIX 装口");
         let want =
             crate::sftp::merge_profile_block(existing, crate::sftp::CCM_WRAPPER_SNIPPET, what)
                 .expect("远端那个口");
@@ -614,7 +613,7 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
                  若这里改成了一份自己的 snippet / 一套自己的 merge，就把 `K-R62 §0c` 那三套变成了四套。"
         );
         // 卸那一半同样恒等（装了又卸回得去，是同一对围栏才可能成立）。
-        let back = plan_uninstall(ProfileFlavor::PosixRc, &got, what).expect("本机 POSIX 卸口");
+        let back = plan_uninstall(Shell::Posix, &got, what).expect("本机 POSIX 卸口");
         assert_eq!(
             back,
             crate::sftp::strip_profile_block(&got, what).expect("远端卸口"),
@@ -736,7 +735,7 @@ fn the_flavour_follows_the_file_not_the_machine() {
         "/home/u/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
         "C:/x/profile.PS1",
     ] {
-        assert_eq!(flavor_of(Path::new(ps)), ProfileFlavor::PowerShell, "{ps}");
+        assert_eq!(Shell::of_target(Path::new(ps)), Shell::PowerShell, "{ps}");
     }
     for rc in [
         "/home/u/.bashrc",
@@ -744,7 +743,7 @@ fn the_flavour_follows_the_file_not_the_machine() {
         "/home/u/.profile",
         "/home/u/.config/fish/config.fish",
     ] {
-        assert_eq!(flavor_of(Path::new(rc)), ProfileFlavor::PosixRc, "{rc}");
+        assert_eq!(Shell::of_target(Path::new(rc)), Shell::Posix, "{rc}");
     }
 }
 
@@ -823,8 +822,7 @@ fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
 #[test]
 fn our_own_fenced_block_is_never_reported_as_the_users_old_lines() {
     let what = "/home/u/.bashrc";
-    let installed =
-        plan_install(ProfileFlavor::PosixRc, "export A=1\n", "cc", true, what).expect("装一次");
+    let installed = plan_install(Shell::Posix, "export A=1\n", "cc", true, what).expect("装一次");
     let hits = scan_legacy_rc_lines(&installed);
     assert!(
         hits.is_empty(),
@@ -1562,7 +1560,7 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
 ///
 /// # 死值验（`KR132D2` 刀②）
 ///
-/// 把 [`encode_for_disk`] 的 PowerShell 那一支改成原样返回 ⇒ 本条红。
+/// 把 `shell_dialect.rs` 里 PowerShell 那一臂的 `encode_for_disk` 改成原样返回 ⇒ 本条红。
 #[test]
 fn the_powershell_profile_lands_with_a_bom_and_the_posix_rc_never_does() {
     let td = tmpdir("bom");
