@@ -132,72 +132,9 @@ pub(crate) async fn run_list_query(
         })?
 }
 
-/// 远端全文搜索 fan-out（issue #28）：对所有已配置远端各 exec 一次 `<backend> --search`，
-/// 把每行 camelCase `SessionHits` JSON 反序列化、补 `origin = 该台 label`。无远端 → 空；
-/// 逐台失败 warn + 跳过（不拖垮其余台）。复用 `run_list_query`（连接/超时/旧后端检测）。
-///
-/// `scope` 透传原始字符串（"user"/"assistant"/其它=不限）；只对后端认的两值下发。
-pub async fn search_remote_all(
-    query: &str,
-    include_tools: bool,
-    scope: Option<&str>,
-    after_ms: i64,
-    limit: usize,
-) -> Vec<crate::search::SessionHits> {
-    let cfgs = crate::load_remote_configs();
-    if cfgs.is_empty() {
-        return Vec::new();
-    }
-    // 参数对所有台一致（不含 cfg），构建一次。〔`C1`〕走长连接的 `history-search`，
-    // 选项是 JSON 字段、不再拼 shell 串（后端把它们摊回 CLI 那一臂同一个解析）。
-    let mut args = serde_json::json!({ "query": query, "limit": limit });
-    if include_tools {
-        args["include_tools"] = serde_json::json!(true);
-    }
-    if let Some(s) = scope {
-        if s == "user" || s == "assistant" {
-            args["scope"] = serde_json::json!(s);
-        }
-    }
-    if after_ms > 0 {
-        args["after_ms"] = serde_json::json!(after_ms);
-    }
-
-    // R9：并发 fan-out——各台查询独立、无序要求，join_all 同时查所有台（墙钟从 Σ 降到 max）。
-    // 逐台错误仍隔离。〔`C1`〕每台走它自己那条长连接，不再各拨一条 SSH。
-    let results =
-        futures::future::join_all(cfgs.iter().map(|cfg| {
-            let origin = crate::origin::Origin(cfg.origin_label());
-            let args = args.clone();
-            async move {
-                crate::backend::control::frame_query::lines(&origin, "history-search", args).await
-            }
-        }))
-        .await;
-    let mut out = Vec::new();
-    for (cfg, res) in cfgs.iter().zip(results) {
-        let origin = cfg.origin_label();
-        match res {
-            Ok(lines) => {
-                for line in lines {
-                    match serde_json::from_str::<crate::search::SessionHits>(&line) {
-                        Ok(mut sh) => {
-                            sh.origin = Some(origin.clone());
-                            out.push(sh);
-                        }
-                        Err(e) => {
-                            tracing::warn!("远端 [{origin}] --search 行解析失败（跳过）: {e}");
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::warn!("远端 [{origin}] --search 失败（跳过该台）: {e}");
-            }
-        }
-    }
-    out
-}
+// 〔C4a · 第四波〕远端全文搜索的 fan-out（issue #28）**搬到前端**：`src/views/history-search.ts`
+//   对每台远端经通道说帧命令 `history-search`、逐行解释、补 `origin`、与本机索引合并 ——
+//   三件事在那边各只有一个家，这里的那一份〔散文墓碑〕同拍删掉（旧名 `search_remote_all`）。
 
 /// `K-R83`（09-12）：backend 那一行里装着**每项目会话 sid 清单**的字段名。
 ///

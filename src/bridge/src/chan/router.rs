@@ -289,6 +289,28 @@ fn overrun(cancel: &CancelToken) -> CallError {
     }
 }
 
+/// 句柄那一跳的**期限执行 ＋ 本地撤单** —— 一次 `call` 在第 1 跳上的全部结局。
+///
+/// 〔C4a · 2026-09-24〕从 [`run_call`] 里抽出来，让第二条进来的路（webview 那一侧，`chan/webview.rs`）
+/// **用同一份**：两处各写一份 `timeout(left, …)` ＋「超了拨撤单、回 `Hop{1 wait, Unknown, Overrun}`」，
+/// 迟早一份改了另一份没改（`D1`：一个判定只有一个家）。它不认识帧、编号、连接 —— 只认句柄那一跳。
+pub(crate) async fn settle(
+    call: BoxFuture<'static, Result<Body, CallError>>,
+    left: Duration,
+    cancel: CancelToken,
+) -> Result<Body, CallError> {
+    tokio::select! {
+        r = tokio::time::timeout(left, call) => match r {
+            Ok(r) => r,
+            // 句柄那一跳在「还剩多少」之内没回来：它收到了没有、做了没有，路由器都不知道。
+            // 它的撤单手柄同时拨下去（对端撤活，尽力）—— 客户端随后补发的那一帧撤单
+            // 到的时候这个编号已经摘掉了，不靠这一下就没人通知句柄。
+            Err(_elapsed) => Err(overrun(&cancel)),
+        },
+        () = cancel.cancelled() => Err(CallError::Ours { why: OursFault::Cancelled }),
+    }
+}
+
 /// 跑一次 `call` 并把结局送回去。
 async fn run_call(
     id: u64,
@@ -298,16 +320,7 @@ async fn run_call(
     tx: mpsc::Sender<Out>,
     inflight: Inflight,
 ) {
-    let outcome = tokio::select! {
-        r = tokio::time::timeout(left, call) => match r {
-            Ok(r) => r,
-            // 句柄那一跳在「还剩多少」之内没回来：它收到了没有、做了没有，路由器都不知道。
-            // 它的撤单手柄同时拨下去（对端撤活，尽力）—— 客户端随后补发的那一帧撤单
-            // 到的时候这个编号已经摘掉了，不靠这一下就没人通知句柄。
-            Err(_elapsed) => Err(overrun(&cancel)),
-        },
-        () = cancel.cancelled() => Err(CallError::Ours { why: OursFault::Cancelled }),
-    };
+    let outcome = settle(call, left, cancel).await;
     lock(&inflight).remove(&id);
     let out = match outcome {
         Ok(body) => (Head::Done { id }, body.0),

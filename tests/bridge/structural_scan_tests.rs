@@ -2676,6 +2676,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 🔴 〔C4a · 第四波 · 2026-09-24〕远端全文搜索的合并搬去了前端（`views/history-search.ts::mergeSearchResults`），
+        //    Rust 那一份删了；后端那句病史（「收口前它逐字 `truncated: local.truncated`」）说的正是它为什么被改 ⇒ 第②条出路。
+        (
+            "src/backend/observe/search_query.rs",
+            "merge_search_results",
+            1,
+        ),
         // 🔴 〔C2 · 2026-09-24〕拨号搬进后端的拨号代理之后，界面侧 `K-P6b` 那一版的三条判据随它们守的东西一起删了：
         //    回落登记（回落删了，`D11`）· 请求行按蛇形键写（请求改由宿主 `dial_host` 造，判据搬去那边且改成与后端异源）·
         //    代理只从两处解析（解析多了「自释放那一份」一处）。留下的那几句说的正是「它们为什么不在了」⇒ 第②条出路。
@@ -3584,6 +3591,10 @@ fn every_prose_tombstone_mark_is_registered() {
     /// 不是（量具脚本里的针、讲机制的散文）⇒ 同样记一笔，并在旁边写清它是哪一类。
     /// **不许**为了让本条变绿就把标记删掉 —— 删掉的是账，不是病。
     const REGISTERED: &[(&str, usize)] = &[
+        // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
+        ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
+        ("src/bridge/src/remote_history.rs", 1),    // 远端全文搜索那份 fan-out
+        ("tests/bridge/local_read_surface_registry_tests.rs", 1), // 棘轮史里 E79 那一格
         // ▸ 下面这 5 份是 `P14` 立件的**直接证据**：它们在 `TOMBSTONED` 里一行都没有
         //   ⇒ 它们的标记**没有一处**落在死名人群上 ⇒ 在本条之前按构造零判据。
         //   逐份是：本模块生产侧那份（标记的定义处）· 本文件（那一处带标记的墓碑，
@@ -3680,7 +3691,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/filewin/source_tests.rs", 2), // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔AL1 · 2026-09-24〕+5：`write_account_aliases` 退役那一行 ＋ 增量账里它那一行 ＋ 合并主线时
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
-        ("tests/bridge/parity_ledger_tests.rs", 11), // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("tests/bridge/parity_ledger_tests.rs", 12), // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/bridge/plugin_class_registry_tests.rs", 2),
         ("tests/bridge/polling_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。

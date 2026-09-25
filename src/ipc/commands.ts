@@ -186,7 +186,6 @@ import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { RestartHint } from "../generated/RestartHint";
-import type { SessionAccountsResult } from "../generated/SessionAccountsResult";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 import type { TaskEntry } from "../generated/TaskEntry";
@@ -751,13 +750,8 @@ export const commands = {
     messageUuid: string;
   }) => invoke<BranchResult>("create_branch_session", args),
 
-  /**
-   * E79：**本机**版「某会话现在跑在哪个账号下」——远端 `--session-accounts` 的对侧。
-   * **Linux 才有**（要读 `/proc/<pid>/environ`）；别的平台返回 `available:false` + 原因，
-   * 不是静默空表。返回值字段被真消费 ⇒ 生成物（桶③）。
-   */
-  list_local_session_accounts: () =>
-    invoke<SessionAccountsResult>("list_local_session_accounts"),
+  // 〔C4a · 子步 3〕E79 那条本机版「某会话跑在哪个账号下」退役：
+  //   本机与远端同一条路 —— `accounts.ts::fetchSessionAccounts` 经通道 `chan.call(origin, "accounts-sessions", …)`。
 
   /**
    * 删历史会话。**桶①**。
@@ -1129,9 +1123,7 @@ export const commands = {
   /** 本机账号清单（问本机后端 `--list-accounts`）。**桶③**，同上。 */
   list_local_accounts: () => invoke<RawAccountsResult>("list_local_accounts"),
 
-  /** 某台远端上正在跑的会话各属于哪个账号。**桶③**（生成物）。 */
-  list_remote_session_accounts: (args: { origin: Origin }) =>
-    invoke<SessionAccountsResult>("list_remote_session_accounts", args),
+  // 〔C4a · 子步 3〕远端那条「某会话跑在哪个账号下」退役（子步 2 刚收进来，子步 3 连同本机那条一起改走通道）。
 
   /**
    * 换号前的目录信任预检。**桶③**（手写 `TrustResult`，住 `accounts.ts`）。
@@ -1142,4 +1134,13 @@ export const commands = {
 
   /** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。**桶③**（生成物）。 */
   list_session_activity: () => invoke<SessionActivityPayload[]>("list_session_activity"),
+
+  /**
+   * 〔C4a · 子步 3〕**通道在 Tauri IPC 这一跳上的那条命令**（`chan/webview.rs`）。
+   * ⚠ 调用方**不直接用它**：一律经 `src/ipc/chan.ts` 的 `chan.call(origin, op, payload, budget)`
+   * （期限换算、本地撤单、三层错误解码都住那里）。载荷去程是字节数组、回程是原样字节（`ArrayBuffer`）。
+   * **桶②**：回的是不透明字节，本表不认识它的形状。
+   */
+  chan_call: (args: { origin: Origin; op: string; payload: number[]; leftMs: number }) =>
+    invoke<ArrayBuffer>("chan_call", args),
 } as const;

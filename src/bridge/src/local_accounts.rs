@@ -9,7 +9,7 @@
 //! 用户拍的板逐字：「claude code 真实运行在哪台机器，他的账号就应该归哪台机器的后端管」。
 //! ⇒ [`list_local_accounts`] 现在 exec 一次本机后端的 `--list-accounts`，
 //! 把它吐的那几行交给 `accounts::parse_accounts_lines`（**与远端那条同一套解析、不同传输**），
-//! 调用形状照同文件 [`list_local_session_accounts`] 那个先例，没有另造第二种调用法。
+//! 调用形状照同文件 E79 那条先例（〔C4a〕那一条已退役、改走通道），没有另造第二种调用法。
 //!
 //! 落地要先搬开两块石头，两块都在本轮搬掉了：
 //! - backend 那份 `is_safe_config_dir` 第一条是 `p.starts_with('/')` ⇒ Windows 的账号目录
@@ -498,14 +498,14 @@ pub(crate) fn with_apikey_table(
 ///
 /// `list_remote_accounts` 的本地对侧，**输出类型完全相同**；从 `N-F1c` 起连
 /// **数据源**也对上了：远端那条走 `ssh host <backend> --list-accounts`，
-/// 本机这条直接 exec 同一个二进制。调用形状照 [`list_local_session_accounts`]
-/// 那个先例，没有另造第二种调用法。
+/// 本机这条直接 exec 同一个二进制。调用形状照 E79 那条先例（〔C4a〕它已退役、改走通道），
+/// 没有另造第二种调用法。
 ///
 /// 只读：不写任何文件、不读凭据内容（那两条现在由后端自己的只读铁律守着）。
 /// ⚠ 它**起一次进程**了 —— 上一版那句「不起任何进程」从此不成立，这一行就是订正。
 #[tauri::command]
 pub async fn list_local_accounts() -> Result<AccountsResult, String> {
-    // exec 是阻塞 IO，挪到阻塞线程池（与 `list_local_session_accounts` 同处理）。
+    // exec 是阻塞 IO，挪到阻塞线程池。
     tokio::task::spawn_blocking(|| {
         // 〔第三波 S3〕「表里有哪几行」只从那条缝取（`history::inject_facts`，理由见它的头注）。
         let facts = crate::history::inject_facts();
@@ -596,99 +596,25 @@ pub(crate) async fn local_account_trust(
 // 〔F10b 第二批·下半〕`MAX_LOCAL_SESSION_FILES` / `MAX_LOCAL_SESSION_FILE_BYTES` **已删** ——
 // 它们是后端侧同名上限的**第二份**（`accounts_query.rs::MAX_SESSION_FILES` 与
 // `accounts_query.rs::MAX_SESSION_FILE_BYTES`，值逐字相同：
-// 500 个文件 / 1 MiB）。唯一的用处随 `list_local_session_accounts` 改走本机后端一起消失
+// 500 个文件 / 1 MiB）。唯一的用处随 E79 那条本机查询改走本机后端一起消失（〔C4a〕那条查询后来也退役了）
 // ⇒ 留着就是「同一个数两处各写一份」（定框 §4）。上限现在只有一个家：backend 那边，
 // 且由它自己的测试与 `read_regular_capped` 钉着。
 
 // 〔F10b 第二批〕`proc_claude_config_dir` 与 `pid_alive` **已删** ——
 // 它们是后端侧 `platform/proc.rs` 那两个（`:19` / `:80`）的**第二份实现**，
 // 而本文件的头注原本就写着「判据与后端侧逐字同源」。
-// 唯一的调用方（`list_local_session_accounts`）已改走本机后端的 `--session-accounts`
+// 唯一的调用方（E79 那条本机查询，〔C4a〕已退役）当时已改走本机后端的 `--session-accounts`
 // ⇒ 留着就是「同一件事两处各写一份」（定框 §4），且平台原语该住 `platform/`（C10）。
 // ⚠ 不是「暂时没人用就删」（铁律 13 禁的那种）：它们没有判据、没有测试、
 //   也不是任何东西的唯一锚点 —— 语义的家在后端那边，且由它自己的测试钉着。
 
-/// E79：**本机**版的「某会话跑在哪个账号下」——`--session-accounts` 的对侧实现。
-///
-/// # F10b 第二批：**它不再自己读 `~/.claude` 与 `/proc`**（C1 / C7）
-///
-/// 从前这里自己 `resolve_claude_dir()` + 读 `sessions/` 的 pidfile + 从
-/// `/proc/<pid>/environ` 抠 `CLAUDE_CONFIG_DIR`。现在**问本机后端**：
-/// exec 一次 local_backend `--session-accounts`，逐行 JSON 反序列化成 [`crate::accounts::SessionAccount`]。
-///
-/// ★ 这一迁把 **C1「一份代码、两种承载」在这条查询上做实了**：
-/// 本函数与 `accounts::list_remote_session_accounts` 现在是**同一套解析、不同传输** ——
-/// 远端那条走 `ssh host <backend> --session-accounts`，本机这条直接 exec 同一个二进制。
-/// 类型（`SessionAccount` / `SessionAccountsResult`）与逐行跳过坏行的做法都照它抄，没新造。
-///
-/// # 平台差异搬到了该管它的那一侧
-///
-/// 「Linux 有 `/proc`、Windows 没有」这件事**从此由后端回答**，不再在 monitor 里判
-/// （从前这里有一句 `if !cfg!(target_os = "linux")`）。backend 侧读 `/proc/<pid>/environ`
-/// 的那段在 `platform/proc.rs`，而 `platform/fallback_guard` 逐字禁止非目标平台的分支
-/// 凭空返回成功值 ⇒ Windows 上它诚实说「观测不到」而不是伪造空表。
-/// ⚠ **如实说**：本轮**没有**在真 Windows 上跑过这条（F05b 那次真机验的是 `--list-accounts`
-/// 与流模式）⇒ Windows 行为是**从那条护栏推出来的**，不是实测。已进 `ROADMAP §5`。
-///
-/// # 边界（`available:false` + `error` 这个形状本来就是为这类事准备的）
-///
-/// - **local_backend 不在**（开发树）⇒ `available:false` + 「本机后端不在…（找过哪些路径）」。
-/// - **查询失败** ⇒ `available:false` + 退出码与 stderr 原样带出（定框 §5：诚实降级）。
-/// - 零行是合法的（本机没有活会话）—— 同远端那条的判断，不额外区分「旧后端」。
-/// - ⚠ 只抠**两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`）、`configDir` 过白名单
-///   —— 那两条现在由后端侧守（它的 `observe/accounts_query.rs` 头注逐字写着同一套边界）。
-///   🔴 **第二个键是 `K-P5f` 加的**（身份 token 读回来那一侧）；这句话原先逐字写着
-///   「只抠 `CLAUDE_CONFIG_DIR` **一个键**」，**不同拍改它就是在盘上留一句假话** ——
-///   而它这一处**没有任何机检看着**（路② 撞 0 道机检，`K-P5f §7 二㈡` 现打），
-///   全靠人记得来改。同族病史见 `K-P5c §7 上报-3`「写着有、其实没有」。
-///   键名**不是参数**（backend 侧两个常量），所以「两个键」与「整个环境快照」的界没有松动。
-#[tauri::command]
-pub async fn list_local_session_accounts() -> Result<crate::accounts::SessionAccountsResult, String>
-{
-    use crate::backend::observe::local_query::{run_query, QueryOutcome};
-    tokio::task::spawn_blocking(|| {
-        let unavailable = |msg: String| crate::accounts::SessionAccountsResult {
-            available: false,
-            error: Some(msg),
-            sessions: Vec::new(),
-        };
-        let stdout = match run_query(
-            env!("CCM_TARGET_TRIPLE"),
-            &["--session-accounts"],
-            &*crate::spawn_managed::local_backend_one_shot_query(),
-        ) {
-            QueryOutcome::Ok(s) => s,
-            QueryOutcome::NoBackend(reason) => {
-                return unavailable(format!("本机后端不在，查不出会话属于哪个账号：{reason}"));
-            }
-            QueryOutcome::Failed { code, stderr } => {
-                return unavailable(format!(
-                    "本机后端的会话账号查询失败（退出码 {code:?}）：{}",
-                    stderr.trim()
-                ));
-            }
-        };
-        let mut sessions = Vec::new();
-        for line in stdout.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            match serde_json::from_str::<crate::accounts::SessionAccount>(line) {
-                Ok(s) => sessions.push(s),
-                // 单行坏了不该毁掉整次查询（照远端那条的做法）。
-                Err(e) => tracing::warn!("本机 session-accounts 行解析失败（跳过）: {e}"),
-            }
-        }
-        crate::accounts::SessionAccountsResult {
-            available: true,
-            error: None,
-            sessions,
-        }
-    })
-    .await
-    .map_err(|e| format!("list_local_session_accounts join 失败: {e}"))
-}
+// 〔C4a · 第四波〕E79 那条本机版「某会话跑在哪个账号下」的 Tauri 命令**退役**：
+//   它每问一次 exec 一个本机后端 `--session-accounts`、再把行解析一遍 —— 与远端那条
+//   （`accounts.rs` 里 A2 那条，同拍退役）是**同一套解析、两种传输**。
+//   现在两侧收成一条路：前端经通道（`chan::webview::chan_call`）问那台机器的后端 `accounts-sessions`
+//   （本机由 `<local>` 那条长连接答），逐行解释只剩 `src/accounts.ts::parseSessionAccountLines` 一处。
+//   上一版头注里记着的边界（本机后端不在 ⇒ 说原因、不伪造空表；Windows 上后端明说观测不到）
+//   换成通道的三层错误：没有控制通道 / 后端不认 / 对端说不行，前端一律按「这一次没问出来」。
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧

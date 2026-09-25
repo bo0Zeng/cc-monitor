@@ -270,7 +270,8 @@ pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
             json!({"parent": parent}),
         )),
         ["--list-accounts"] => Some(ArgvRoute::Lines("accounts-list", json!({}))),
-        ["--session-accounts"] => Some(ArgvRoute::Lines("accounts-sessions", json!({}))),
+        // 〔C4a · 第四波〕`--session-accounts` 那一形删了：「会话 ↔ 账号」前端经通道直接说 `accounts-sessions`，
+        //   monitor 这一侧再没有任何一条路发它（`frame_query_tests` 那条「迁过去的只走通道」钉着）。
         ["--read-session", path] => Some(ArgvRoute::Read {
             path: path.to_string(),
             from: 0,

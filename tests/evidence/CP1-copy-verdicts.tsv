@@ -671,6 +671,11 @@ src/fork-launch.ts:102	是否在 tmux 里跑	保留	[对外] 分叉启动维度�
 src/fork-launch.ts:102	工作目录	保留	[对外] 分叉启动维度标签
 src/fork-launch.ts:105	{…}：跟原会话一致（据{…}）	保留	[对外] 模板句本身无病（「据」后填充物单独裁）
 src/fork-launch.ts:106	{…}：需要你选一次 —— {…}	保留	[对外] 短句＋破折号接原因，可操作
+src/ipc/chan.ts:66	通道：{…}	保留	[不对外] 〔C4a〕`ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
+src/ipc/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] 〔C4a〕`describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
+src/ipc/chan.ts:77	对端不认这个操作	保留	[不对外] 〔C4a〕同上（`peer/unsupported` 那一档的日志句）
+src/ipc/chan.ts:77	对端答「不行」	保留	[不对外] 〔C4a〕同上（`peer/refused` 那一档的日志句）
+src/ipc/chan.ts:79	本侧：{…}	保留	[不对外] 〔C4a〕同上（`ours` 那一档的日志句）
 src/keybindings/actions.ts:96	已上线：H 打开历史后切「全文」模式（暂无独立快捷键）	保留	[对外] 快捷键编辑器里的说明，可操作
 src/keybindings/actions.ts:149	标签页	保留	[对外] 快捷键分类表头
 src/keybindings/actions.ts:150	终端	保留	[对外] 快捷键分类表头

@@ -612,7 +612,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 // **`Either`**——这一条我改了两次，第二次也不对（T04 审计重要 2）。
                 //
                 // 第一版标 `Client`：错，`accounts.rs` 的账号库列举全是
-                // `list_remote_accounts(origin)` / `list_remote_session_accounts(origin)`，走 ssh exec。
+                // `list_remote_accounts(origin)` 与「某会话属哪个账号」那一条（〔C4a〕今天经通道 `accounts-sessions`），走 ssh exec。
                 // 第二版改 `Remote`：也不对——本机 `CLAUDE_CONFIG_DIR` 会**指进这个目录**
                 // （这台机器上就是 `~/.claude-accts/z`），`hooks_diag::claude_config_dir` 与
                 // `config_surface` 自己都在读它，`ConfigSurfaceReport.claude_config_dir` 更是
