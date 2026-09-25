@@ -202,6 +202,10 @@
   text-align: left;
 }
 
+.account-picker-action {
+  color: var(--text-2);
+}
+
 .account-picker-item:hover,
 .account-picker-action:hover {
   background: var(--bg-2, #26231f);
@@ -285,9 +289,5 @@
   height: 1px;
   margin: 3px 4px;
   background: var(--border, #3a342e);
-}
-
-.account-picker-action {
-  color: var(--text-2);
 }
 }

@@ -95,6 +95,7 @@ mod spawn_managed;
 // 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
 mod skill_host;
+mod user_files; // RW1（第四波）：monitor 够用户文件的唯一开口 —— 读·算·交给那台机器的后端，自己一个字节不落盘
 mod verified_write; // T01：统一的「备份→写→读回比对→回滚」；本机侧从长度比对升级为内容比对
                     // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
@@ -1870,14 +1871,15 @@ fn aliases_read() -> Result<account_aliases::AliasListing, String> {
 
 /// 〔AL1〕第②跳：**唯一的副作用**。收的是清单不是代码 —— 写进 shell 的文本只由后端渲染
 /// （审计 S-1），而「写的就是预览的那一份」由两跳调同一个 `account_aliases::render` 保证。
-/// home 在这里解析、那边当参数收 ⇒ 那边的测试用临时目录当 home，结构上碰不到真实家目录。
+/// 〔RW1 · 第四波 09-24〕落盘经**本机后端**的文件管理那一面（`user_files::BackendDoor`），
+/// home 也问它 ⇒ 那边的测试拿替身门当后端，结构上碰不到真实家目录。
 #[tauri::command]
-fn aliases_install(
+async fn aliases_install(
     aliases: Vec<account_aliases::Alias>,
     rc_path: Option<String>,
 ) -> Result<account_aliases::AliasInstallReport, String> {
-    let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何文件".to_string())?;
-    account_aliases::install_in(&home, &aliases, rc_path.as_deref())
+    let door = user_files::BackendDoor::new(origin::Origin::local());
+    account_aliases::install_in(&door, &aliases, rc_path.as_deref()).await
 }
 
 #[tauri::command]
@@ -2276,12 +2278,10 @@ async fn cc_integration_install(
     command_name: String,
     include_cc_function: bool,
 ) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let p = profile_installer::fence_profile_path(&path)?;
-        profile_installer::install_to_profile(&p, &command_name, include_cc_function)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    // 〔RW1 · 第四波 09-24〕落盘经本机后端的文件管理那一面（`user_files::BackendDoor`），本进程不写。
+    let p = profile_installer::fence_profile_path(&path)?;
+    let door = user_files::BackendDoor::new(origin::Origin::local());
+    profile_installer::install_to_profile(&door, &p, &command_name, include_cc_function).await
 }
 
 /// 扫单个 path 的安装状态（前端用户改了路径后调）。
@@ -2315,12 +2315,10 @@ fn cc_set_auto_launch(enabled: bool) -> Result<(), String> {
 /// 卸载 cc function（删除 BEGIN/END 块；用户其他内容不动）。
 #[tauri::command]
 async fn cc_integration_uninstall(path: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let p = profile_installer::fence_profile_path(&path)?;
-        profile_installer::uninstall_from_profile(&p)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    // 〔RW1 · 第四波 09-24〕同 `cc_integration_install`：经本机后端写。
+    let p = profile_installer::fence_profile_path(&path)?;
+    let door = user_files::BackendDoor::new(origin::Origin::local());
+    profile_installer::uninstall_from_profile(&door, &p).await
 }
 
 // ===== 🔴 `K-R135`（`R85` / `R87` / `R88`）：用户级 PATH 那一格 =====

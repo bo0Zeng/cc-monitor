@@ -10,7 +10,9 @@
  * 会话动作与 tmux 缓存换成 `this.actions.…` —— **都在点击 / 就绪那一刻现读**，与原先读字段的时机相同。
  */
 import { showActionFailureToast } from "./error-toast";
-import type { TabStatus, Tab } from "./tab-model";
+import type { Tab } from "./tab-model";
+import { hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
+import { copyText } from "./copy-table";
 import {
   addMember,
   collectionOf,
@@ -111,9 +113,10 @@ export class TabMenu {
     if (t && this.host.pinnedLoaded()) {
       items.push({
         label: t.pinned ? "取消固定" : "📌 固定此标签",
+        // 〔U4〕说到会话状态的句子住文案表 `sessionState.*`；原句里的「变灰」「灰着」是禁用词（`设计/91 §4`）。
         title: t.pinned
-          ? "取消后：这个会话变灰之后，关掉 app 再打开就没了"
-          : "固定后：关掉 app 再打开它还在（灰着，可 resume）。位置不变 —— pin 管的是「别丢」，不是「排前面」",
+          ? copyText("sessionState.pin.unpinHint")
+          : copyText("sessionState.pin.pinHint"),
         onClick: () => this.host.togglePin(sid),
       });
     }
@@ -138,7 +141,7 @@ export class TabMenu {
     // 行为逐字节保持）；账号项（基座/具名账号，各自再嵌一层容器子选择）由 showTabContextMenu
     // 后**异步追加**（appendAccountMenuItems→updateTabContextMenuItem，复用 F51 代次守卫），
     // 消除同步 peek 的冷缓存分裂。本地归档仍单「Resume」（无容器/账号轴）。
-    if (t?.status === "archived") {
+    if (t && isResumeOnly(t.state)) {
       if (isRemoteOrigin(t.origin)) {
         items.push({
           id: "resume",
@@ -257,7 +260,7 @@ export class TabMenu {
     //（前者要本机 attach 路径、后者要 `capture_remote_pane` 的本机对侧），归后面的刀。
     // 一次只开一格，是为了让「哪一格已经通了」这件事在菜单上就是可见的。
     let needAsyncLocalKill = false;
-    if (t !== undefined && isLocalOrigin(t.origin) && t.status !== "archived") {
+    if (t !== undefined && isLocalOrigin(t.origin) && hasTerminal(t.state)) {
       items.push({
         id: "kill",
         label: "杀死会话（检测 tmux…）",
@@ -283,7 +286,7 @@ export class TabMenu {
     }
     // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
     // 〔`A3` 第二波〕本机 tab 也进来（`<local>`）—— 只拿「换号重启」那一项，见 appendAccountMenuItems。
-    if (t) void this.appendAccountMenuItems(t.origin, sid, t.status);
+    if (t) void this.appendAccountMenuItems(t.origin, sid, t.state);
   }
 
   /**
@@ -529,15 +532,17 @@ export class TabMenu {
   private async appendAccountMenuItems(
     origin: string,
     sid: string,
-    status: TabStatus,
+    state: SessionState,
   ): Promise<void> {
-    // 〔`A3` 第二波〕本机归档 tab 不带账号选择（本机 Resume 走那条会话上次的号，
+    // 〔U4〕「给 Resume 还是给换号重启」按 `isResumeOnly` 分，与菜单主体那一格同一个谓词（原先是 `status === "archived"`）。
+    const resumeOnly = isResumeOnly(state);
+    // 〔`A3` 第二波〕本机已结束的 tab 不带账号选择（本机 Resume 走那条会话上次的号，
     // 见 `accounts.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
-    if (origin === LOCAL_ORIGIN && status === "archived") return;
+    if (origin === LOCAL_ORIGIN && resumeOnly) return;
     const gen = menuGeneration(); // 捕获这一代菜单
     const accountOptions = await enumerateAccountModifiers(origin);
     if (gen !== menuGeneration()) return; // 菜单已换/已关
-    if (status === "archived") {
+    if (resumeOnly) {
       updateTabContextMenuItem("resume", {
         id: "resume",
         label: "Resume",
