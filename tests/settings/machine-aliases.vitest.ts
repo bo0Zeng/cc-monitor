@@ -104,15 +104,21 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
   let problems: Array<{ name: string; message: string }>;
   /** 替身盘面：哪几份候选里装着别名块（装 / 卸会改它，读回口照它答）。 */
   let blockAt: Set<string>;
+  /** 〔TL1〕装着旧版别名块的那几份（装一次 = 换成新版 ⇒ 从这里摘掉）。 */
+  let oldAt: Set<string>;
 
   /** 〔AL1d〕一份候选（别名文件那一行与别名块共用）；`block` 是后端那一次扫描带回来的别名块现状。 */
-  const cand = (path: string, over: { exists?: boolean; present?: boolean; hint?: string } = {}) => ({
+  const cand = (
+    path: string,
+    over: { exists?: boolean; present?: boolean; hint?: string; outdated?: boolean } = {},
+  ) => ({
     path,
     sourced: false,
     exists: over.exists ?? true,
     block: {
       present: over.present ?? false,
-      version: null,
+      version: over.outdated ? "v2" : null,
+      outdated: over.outdated ?? false,
       conflictingFunctions: [],
       manualCleanupHint: over.hint ?? "",
     },
@@ -126,6 +132,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     ];
     problems = [];
     blockAt = new Set();
+    oldAt = new Set();
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
     vi.doMock("../../src/ipc/commands", () => ({
@@ -144,7 +151,11 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
             aliases: disk.map((x) => ({ ...x, args: [...x.args] })),
             unparsed: ["alias x=ls（不是 `名字() { … }` 的形状）"],
             rcCandidates: [
-              cand("/h/rc-a", { present: blockAt.has("/h/rc-a"), hint: "第 3 行 ccm" }),
+              cand("/h/rc-a", {
+                present: blockAt.has("/h/rc-a"),
+                hint: "第 3 行 ccm",
+                outdated: oldAt.has("/h/rc-a"),
+              }),
               cand("/h/rc-b", { exists: false, present: blockAt.has("/h/rc-b") }),
               ...(other ? [cand(other, { present: blockAt.has(other) })] : []),
             ],
@@ -173,6 +184,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
         aliases_block_install: (a: { rcPath: string; withCc: boolean }) => {
           seen.push({ cmd: "aliases_block_install", args: a });
           blockAt.add(a.rcPath);
+          oldAt.delete(a.rcPath);
           return Promise.resolve();
         },
         aliases_block_remove: (a: { rcPath: string }) => {
@@ -404,6 +416,21 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     await flush();
     expect(seen.find((c) => c.cmd === "aliases_block_remove")!.args).toEqual({ rcPath: "/h/rc-a" });
     expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain("还没有别名块");
+  });
+
+  it("〔TL1〕旧版别名块：说清是旧版、点「重装别名块」换新；装过之后那句话没了", async () => {
+    blockAt.add("/h/rc-a");
+    oldAt.add("/h/rc-a");
+    const el = await mount();
+    await open(el);
+    await pick(el, "/h/rc-a");
+    const status = () => el.querySelector(".ccm-rc-block-status")!.textContent!;
+    expect(status()).toContain("已经装了");
+    expect(status()).toContain("旧版");
+    clickText(el, "重装别名块");
+    await flush();
+    expect(status()).toContain("已经装了");
+    expect(status(), "重装之后还说是旧版").not.toContain("旧版");
   });
 
   it("预览别名块：交给后端的是选中那份文件（方言由后端按扩展名定，前端不判）", async () => {
