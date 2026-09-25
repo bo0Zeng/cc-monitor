@@ -1772,7 +1772,7 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 
 ```text
 → {"id":"q9","cmd":"history-index","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","offset":0}}
-← {"kind":"reply","id":"q9","ok":true,"data":{"lines":["{\"kind\":\"session_index\",\"v\":1,\"from\":0}","{\"o\":0,\"n\":812,…}","…","{\"kind\":\"session_index_end\",\"count\":1200,\"end\":5120088}"]}}
+← {"kind":"reply","id":"q9","ok":true,"data":{"from":0,"end":5120088,"rows":[{"o":0,"n":812,…},…]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1780,23 +1780,23 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `offset` | → | 从哪个字节起（缺省 0；续传带上次尾行的 `end`） |
 | `until` | → | 可选：只收起点 `< until` 的行 |
-| `lines` | ← | 与 `--read-session-from-offset --index` 的 stdout **逐行相同**（三段：头 · 每个可计行一行 · 尾；形状见 §10.3）—— 同一个函数的两个宿主 |
+| `from` / `end` / `rows` | ← | 〔C4b〕**成品**：`rows` 是每个可计行一条（形状见 §10.3 的行），`end` = 下一次续传该带的 `offset`。与 `--read-session-from-offset --index` 的 stdout **中段逐行相同**（同一个扫描；CLI 那一臂照旧写头尾三段，帧面这一臂不写 —— 一帧是原子的，没有「有头没尾」这一形） |
 
 **为什么上帧面**：它是**每开一个大会话就要一次**的查询（骨架），此前在远端走逐次拨号（`frame_query::STILL_DIALED` 那一行）。
-整份超过 32 MiB ⇒ `too_large`（不截断）；没有尾行这件事照 §10.3 的口径判「截断」。
+整份超过 32 MiB ⇒ `too_large`（不截断）。〔C4b〕界面经通道直接问（`src/session-reads.ts`），本机与远端同一条路。
 
 #### `history-user-inputs`：「你说过的话」清单（〔SR1a〕2026-09-24 上帧面）
 
 ```text
 → {"id":"q10","cmd":"history-user-inputs","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","from":0}}
-← {"kind":"reply","id":"q10","ok":true,"data":{"lines":["{\"kind\":\"user_inputs\",\"v\":1,\"from\":0}","{\"uuid\":…,\"timestamp\":…,\"excerpt\":…}","{\"kind\":\"user_inputs_end\",\"count\":1,\"end\":5120088}"]}}
+← {"kind":"reply","id":"q10","ok":true,"data":{"from":0,"end":5120088,"entries":[{"uuid":…,"timestamp":…,"excerpt":…}]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `from` | → | 增量起点（缺省 0；传上次尾行的 `end`）。超过文件长度 ⇒ `failed`（文件被截断或重写过） |
-| `lines` | ← | 与 `--list-user-inputs` 的 stdout **逐行相同**（三段，口径见 §10.4）—— 同一个函数的两个宿主 |
+| `from` / `end` / `entries` | ← | 〔C4b〕**成品**（口径见 §10.4）：与 `--list-user-inputs` 的 stdout **中段逐行相同**（同一个扫描；头尾只属于 CLI 那一臂） |
 
 **为什么上帧面**：大纲同样是每开一个会话就要一次（此前远端走逐次拨号）。⚠ CLI 面随之自动多两条
 `--history-index` / `--history-user-inputs`（从 `REGISTRY` 派生，stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。
@@ -1829,12 +1829,12 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 
 ```text
 → {"id":"p1","cmd":"plugins-marketplaces","args":{}}
-← {"kind":"reply","id":"p1","ok":true,"data":{"lines":["{\"entries\":[{\"id\":\"mk\",\"declared_plugins\":276,…}],\"file_absent\":false}"]}}
+← {"kind":"reply","id":"p1","ok":true,"data":{"entries":[{"id":"mk","declared_plugins":276,…}],"file_absent":false}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `lines` | ← | **恰一行**：整份 survey `{entries, file_absent}`，每条 entry 六个字段 `id` / `source` / `install_location` / `last_updated` / `declared_plugins` / `declared_error`（读不出就是 `null`，不编默认值） |
+| `entries` / `file_absent` | ← | 〔C4b〕**成品**：整份 survey 就是 `data`（此前裹成「恰一行」的 `lines`）。每条 entry 六个字段 `id` / `source` / `install_location` / `last_updated` / `declared_plugins` / `declared_error`（读不出就是 `null`，不编默认值；界面按形状收，多一格 / 少一格都当契约对不上） |
 
 - 读的是 `<home>/plugins/known_marketplaces.json` 与 `<各落点>/.claude-plugin/marketplace.json`；它回答「有哪些 marketplace、从哪来、**声明**了几个插件」，**不是**「装了 / 启用了哪些」。
 - 三条出口分开：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；某一条数不出 ⇒ 那一条 `declared_plugins: null` ＋ `declared_error` 理由，整张表照出。
@@ -1872,7 +1872,7 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 
 ```text
 → {"id":"q11","cmd":"history-find","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","query":"--force","include_tools":false,"limit":500}}
-← {"kind":"reply","id":"q11","ok":true,"data":{"lines":["{\"kind\":\"session_find\",\"v\":1}","{\"uuid\":…,\"kind\":…,\"before\":…,\"matched\":…,\"after\":…}","{\"kind\":\"session_find_end\",\"count\":1,\"total\":1}"]}}
+← {"kind":"reply","id":"q11","ok":true,"data":{"total":1,"hits":[{"uuid":…,"kind":…,"before":…,"matched":…,"after":…}]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1881,7 +1881,7 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `query` | → | 查询串（原样；以 `--` 起头也照样是查询，不是选项） |
 | `include_tools` | → | 可选，缺省 `false`：工具结果也搜 |
 | `limit` | → | 可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量） |
-| `lines` | ← | 与 `--find-in-session` 的 stdout **逐行相同**（三段，口径见 §10.5）—— 同一个函数的两个宿主 |
+| `total` / `hits` | ← | 〔C4b〕**成品**（口径见 §10.5）：`hits` 与 `--find-in-session` 的 stdout **中段逐行相同**（同一个扫描；头尾只属于 CLI 那一臂），`total` = 全量命中数 |
 
 **为什么上帧面**：与上面两条同一个处境（新子命令、此前在远端逐次拨号）；用户每按一次 Enter 就要一次。
 CLI 面随之自动多一条 `--history-find`。
@@ -2503,7 +2503,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 - 选项写在**后面** ⇒ 老后端照旧把**整份会话**透传回来（现打：基线 `3662e17` 的 release 后端，50 955 695 字节的会话
   ⇒ stdout 50 955 695 字节、退出 0）—— 弱网上几十 MB，只为让客户端看一眼首行认出「它不会」；
 - 选项写在**前面** ⇒ 老后端拿路径当 offset 解析（`--index` 形）或拿 `--until` 当路径（`--until` 形）⇒ **stdout 0 字节、退出 2**（同一份会话现打）。
-⇒ **客户端一律把选项写在前面**（monitor 侧 `session_skeleton::index_argv` / `range_argv`，有判据钉着）。
+⇒ **客户端一律把选项写在前面**（monitor 侧 `session_skeleton::range_argv`，有判据钉着；〔C4b〕索引那一形 monitor 不再经 argv 发，界面经通道说帧命令 `history-index`）。
 无论哪种失败，客户端都认「**首行不是 `session_index` 头**」⇒ 判「对面不会出索引」并**诚实降级**（不许把 jsonl 行当索引行解析）；
 万一拿到超出 `end` 的正文（老后端不认 `--until`），客户端按索引给的行数自己截掉。
 新后端上写错的 `--选项` 与多余的位置参数都**报错退出 2**，不静默忽略。
@@ -2519,7 +2519,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 |---|---|
 | `--list-user-inputs [--from <offset>] <p>` | 从字节 `offset`（缺省 0）起的清单，逐行 JSON，见下 |
 
-选项在位置参数前后都认；**客户端写在前面**（monitor 侧 `session_outline::user_inputs_argv`，有判据钉着，与 §10.3 同一条纪律）。
+选项在位置参数前后都认；**客户端写在前面**（与 §10.3 同一条纪律；〔C4b〕monitor 不再经 argv 发它 —— 界面经通道说帧命令 `history-user-inputs`）。
 
 **口径**（四条同时满足才算一条）：`type == "user"` · `isMeta != true` · `isSidechain != true`（子 agent 的 prompt 不算 —— 选出来的，不是漏的）·
 `message.content` 抽出的**纯文本**（字符串本身，或 `type:"text"` 块用 `\n` 拼）trim 后非空（工具结果回灌靠这条排除）。**没有 uuid 的不要。**
@@ -2557,7 +2557,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 - `--query <q>`：**必填**，查询串是这个选项的**值**（不是位置参数）⇒ 以 `--` 起头的查询（`--force`）不会被当成选项。
   大小写不敏感子串；trim 后为空 ⇒ 零条。
 - `--limit <n>`：最多列几条，缺省 500、封顶 2000（超出按封顶）；`0` ⇒ 只数不列。
-- 选项在位置参数前后都认；**客户端写在前面**（monitor 侧 `session_find::find_argv`，有判据钉着）。
+- 选项在位置参数前后都认；**客户端写在前面**（〔C4b〕monitor 不再经 argv 发它 —— 界面经通道说帧命令 `history-find`）。
   未知的 `--选项`、缺 `--query`、位置参数不是恰好一个 ⇒ **报错退出 2**（不静默忽略）。
 
 **三段**：

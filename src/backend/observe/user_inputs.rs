@@ -11,6 +11,8 @@
 //!
 //! ⇒ 判定（四条口径）从 TS 搬到这里，**全仓只剩这一个住址**；两个宿主都经 monitor 的
 //!   `list_user_inputs`（走 `subagent::Backend` 的本机/远端分流）来要，TS 那份删掉。
+//!   〔C4b · 第四波 4B〕monitor 那条命令也退役了：界面经通道直接说帧命令 `history-user-inputs`，
+//!   本文件的扫描直接出成品（`read_face.rs`），本机与远端同一条路。
 //!
 //! # 口径（四条，逐字从被删掉的 `user-input-index.ts::collectUserInputs` 搬过来）
 //!
@@ -154,11 +156,30 @@ pub(crate) fn excerpt(text: &str) -> String {
 /// 只看**完整行**（`\n` 收尾）；torn 残尾不看、不计进 `end` —— 下一次从 `end` 接着要时它已写完。
 /// 返回出了几条（不含头尾）。
 pub(crate) fn write_user_inputs<R: std::io::BufRead, W: std::io::Write>(
-    mut r: R,
+    r: R,
     from: u64,
     out: &mut W,
 ) -> std::io::Result<u64> {
     writeln!(out, "{{\"kind\":\"user_inputs\",\"v\":1,\"from\":{from}}}")?;
+    let (count, end) = scan_user_inputs(r, from, |row| {
+        serde_json::to_writer(&mut *out, row)?;
+        out.write_all(b"\n")
+    })?;
+    writeln!(
+        out,
+        "{{\"kind\":\"user_inputs_end\",\"count\":{count},\"end\":{end}}}"
+    )?;
+    Ok(count)
+}
+
+/// 〔C4b · 第四波 4B〕[`write_user_inputs`] 的中段：逐条交给 `on_row`，回 `(count, end)`（`end` = 最后一个
+/// 完整行的末字节）。CLI 那一臂（写头尾三段）与帧面那一臂（`read_face.rs` 的 `history-user-inputs`，
+/// 装成成品 `{from, end, entries}`）跑的是**同一个**扫描 —— 「什么算一条用户输入」仍只住 [`user_input_of`]。
+pub(crate) fn scan_user_inputs<R: std::io::BufRead>(
+    mut r: R,
+    from: u64,
+    mut on_row: impl FnMut(&UserInputRow) -> std::io::Result<()>,
+) -> std::io::Result<(u64, u64)> {
     let mut end = from;
     let mut count: u64 = 0;
     let mut buf: Vec<u8> = Vec::new();
@@ -170,16 +191,11 @@ pub(crate) fn write_user_inputs<R: std::io::BufRead, W: std::io::Write>(
         }
         end += read as u64;
         if let Some(row) = user_input_row(&buf[..buf.len() - 1]) {
-            serde_json::to_writer(&mut *out, &row)?;
-            out.write_all(b"\n")?;
+            on_row(&row)?;
             count += 1;
         }
     }
-    writeln!(
-        out,
-        "{{\"kind\":\"user_inputs_end\",\"count\":{count},\"end\":{end}}}"
-    )?;
-    Ok(count)
+    Ok((count, end))
 }
 
 #[cfg(test)]

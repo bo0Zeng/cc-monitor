@@ -1073,7 +1073,7 @@ async fn snapshot_dispatcher(
                 }
             }
             let payload = crate::bridge::RemoteHealthPayload {
-                origin: Some(host_label.clone()),
+                origin: host_label.clone(),
                 kind: "snapshot".to_string(),
                 message: format!(
                     "会话 {sid_short} 的历史快照拉取失败（{last_err}）——该 Tab 暂只有实时消息，可从历史浏览器查看完整内容。"
@@ -2554,7 +2554,7 @@ async fn stream_loop(
                          (cap {BACKEND_FRAME_LINE_CAP}); line dropped"
                     );
                     let payload = crate::bridge::RemoteHealthPayload {
-                        origin: Some(reader_host.clone()),
+                        origin: reader_host.clone(),
                         kind: "line_too_long".to_string(),
                         message: line_too_long_health_message(&reader_host, bytes),
                     };
@@ -2690,7 +2690,7 @@ async fn stream_loop(
                 if let Some(msg) = version_warning(v, &build_id, &host_label) {
                     tracing::warn!("ssh_source remote [{host_label}] version: {msg}");
                     let payload = crate::bridge::RemoteHealthPayload {
-                        origin: Some(host_label.clone()),
+                        origin: host_label.clone(),
                         kind: "version".to_string(),
                         message: msg,
                     };
@@ -2741,7 +2741,7 @@ async fn stream_loop(
                 if !tail_only {
                     if capabilities.is_empty() {
                         let payload = crate::bridge::RemoteHealthPayload {
-                            origin: Some(host_label.clone()),
+                            origin: host_label.clone(),
                             kind: "degraded".to_string(),
                             message: format!(
                                 "远端后端为旧版本({build_id},当前 {EXPECTED_BACKEND_BUILD_ID}),本连接降级运行:后台(bg)会话不可见、历史全量推流(易拥塞)。请在设置里重装该机器的后端。"
@@ -2970,7 +2970,7 @@ async fn stream_loop(
                 );
                 let message = overflow_health_message(&host_label, dropped, &lost, lost_truncated);
                 let payload = crate::bridge::RemoteHealthPayload {
-                    origin: Some(host_label.clone()),
+                    origin: host_label.clone(),
                     kind: "overflow".to_string(),
                     message,
                 };

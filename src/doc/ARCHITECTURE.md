@@ -365,7 +365,7 @@ replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue
 
 **为什么**：旧内容逐条插到贴底视口上方会让浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下 ±0.5px 高频抖动（deferMode 时代实测 66→1 帧）；F40a 让**启动重放**的上方插入为 0，且 9.4k 条重放只建 ~尾块+150×tabs 张卡（建卡是重放期最大成本——markdown/DOMPurify/pretext 全免）。历史方案 deferMode/`flushDeferred`/`attachBatch` 已退役。大增量批（>600 行切块落已渲染 tab）的老块由 F40b `midBatchBuffer` 缓冲、批末一次挂载。
 
-〔2026-09-24 · `设计/10` 骨架〕**上面「尾部优先收纳」与下面「上翻补批」只对没接上骨架的 tab 逐字成立**（单洞后缀）。拿得到索引（`read_session_index` = 后端 `--read-session-from-offset --index`）的 tab 与历史查看器接上 `SkeletonView`：没物化的 seq 区间由**占位**顶住（高 = 索引里宽度无关料的第一级粗估）⇒ 一接上滚动条就是全会话的；每次滚动只物化与视口 ±0.5 屏相交的那段；已渲染集 = 尾后缀 ∪ 岛。接上之后正文不再驻留：`TailWindow` 只留 200 条、`EventReplay.history` 对该会话只留尾巴 600 条，其余按偏移取回（`read_session_range`）。不变量全文在 INVARIANTS § 21 第 3b 条。
+〔2026-09-24 · `设计/10` 骨架〕**上面「尾部优先收纳」与下面「上翻补批」只对没接上骨架的 tab 逐字成立**（单洞后缀）。拿得到索引（〔C4b〕界面经通道说帧命令 `history-index`，后端出成品；CLI 那一臂是 `--read-session-from-offset --index`）的 tab 与历史查看器接上 `SkeletonView`：没物化的 seq 区间由**占位**顶住（高 = 索引里宽度无关料的第一级粗估）⇒ 一接上滚动条就是全会话的；每次滚动只物化与视口 ±0.5 屏相交的那段；已渲染集 = 尾后缀 ∪ 岛。接上之后正文不再驻留：`TailWindow` 只留 200 条、`EventReplay.history` 对该会话只留尾巴 600 条，其余按偏移取回（`read_session_range`）。不变量全文在 INVARIANTS § 21 第 3b 条。
 
 F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 200 条/批渲染（`unwrapAll`→`batchInsert`→reconcile(空组壳连根摘并出账)→`rebuildNow`→同步手动补偿 scrollTop），顶端 `.stream-more-above` 哨兵显示剩余条数；选区进行中暂缓；不可滚+账本有余的 tab 在 switchTo 时踢一次 fill 自链（INVARIANTS § 21.3）。
 

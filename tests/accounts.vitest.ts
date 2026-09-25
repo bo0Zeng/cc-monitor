@@ -422,7 +422,7 @@ describe("modelByAccount config 读写（F07）", () => {
 
 describe("fetchAccounts TTL 缓存", () => {
   // 〔`A3` 第二波〕backend 的本机 origin（`<local>`）⇒ 问本机后端，不拿它去问远端。
-  // 死值验对照：把 `fetchAccounts` 开头那条 `if (origin === BACKEND_LOCAL_ORIGIN)` 摘掉 ⇒
+  // 死值验对照：把 `fetchAccounts` 开头那条 `if (isLocalOrigin(origin))` 摘掉 ⇒
   // 第一次发的是 `list_remote_accounts`、带着 `{ origin: "<local>" }`，本条红。
   it("A3：`<local>` 走本机那条（`list_local_accounts`），不是拿 `<local>` 去问远端", async () => {
     __resetAccountsCacheForTest();

@@ -17,7 +17,7 @@
 //! （续点那份 `(total, end)` · 这一次的 `(tail_from, split_at)`）挑**行号不超过 `next`** 的最近一个，
 //! 只读 `[锚的字节, end)`，锚到 `next` 之间的行本地数掉、不发。续点对不上（换了路径 · 文件变短）⇒ 整份。
 //!
-//! ⚠ **不用 `read_session_index`**：它今天不在帧面（`frame_query::STILL_DIALED` 那一形）⇒
+//! ⚠ **不用骨架索引**（当时的 `read_session_index`〔散文墓碑〕）：它那时不在帧面（`frame_query::STILL_DIALED` 那一形）⇒
 //! 用它续传等于每次重连多拨一条 SSH，与 `C1`「去掉逐次拨号」方向相反。帧面的 `history-tail` ＋
 //! `history-read` 已经是「按偏移」—— 续传要的两样（行号 ↔ 字节的锚 · 按字节区间读）都在。
 //! 设计住 `设计/05 §13.6 ①`。
