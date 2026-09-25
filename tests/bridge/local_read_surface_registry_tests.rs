@@ -232,8 +232,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/skill_host.rs",
         "non-read",
-        5,
-        "★ **devbench F02 新增，且这条登记本身逮到了一个真缺陷** ——\
+        7,
+        "〔RW1 · 第四波 09-24〕**5 → 7**：远端版 `remote_views` 里一处 `claude_dir` 局部变量 ＋ 它的一次使用\
+             （远端配置根按 `<后端的 home>/.claude` 算，问的是**那台机器的后端**，本机零读）。\n\
+             ★ **devbench F02 新增，且这条登记本身逮到了一个真缺陷** ——\
              不是「记上账」那么简单，值得写清楚：\n\
              五处命中（**F03 从 3 涨到 5**：新增 IPC 层的 `views()` 里一处\
              `paths::resolve_claude_dir()` 调用 + 一处 `claude_dir` 局部变量）：\

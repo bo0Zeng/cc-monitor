@@ -42,13 +42,18 @@ pub(crate) struct Landed {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Refused {
     Stale(String),
+    /// 对端说了话、给了一个码（`stale` 之外的那些：`refused` / `unreadable` / …）。
+    Peer {
+        code: String,
+        said: String,
+    },
     Other(String),
 }
 
 impl Refused {
     pub(crate) fn said(self) -> String {
         match self {
-            Refused::Stale(s) | Refused::Other(s) => s,
+            Refused::Stale(s) | Refused::Other(s) | Refused::Peer { said: s, .. } => s,
         }
     }
 }
@@ -78,6 +83,11 @@ pub(crate) trait Door {
     async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String>;
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
     async fn delete_session(&self, sid: &str) -> Result<String, String>;
+    /// 一个路径**在不在**（`files-stat`）：在 ⇒ `Some(kind)`；对端答「读不到」⇒ `None`。
+    /// ⚠ 「读不到」与「不存在」在这一问上分不开（权限不够也是 `None`）—— 只给「在不在场」那种展示用。
+    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String>;
+    /// 列一个目录（`files-ls`）：`(名字, 是不是目录)`。
+    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String>;
 }
 
 /// 读改写一次最多重来几趟（`stale` 才重来：盘上那份在读与写之间被别人改了）。
@@ -119,7 +129,7 @@ pub(crate) async fn edit<D: Door>(
             Ok(landed) if landed.changed => return Ok(Edited::Written(landed)),
             Ok(_) => return Ok(Edited::Unchanged),
             Err(Refused::Stale(s)) => last = s,
-            Err(Refused::Other(s)) => return Err(s),
+            Err(e @ (Refused::Other(_) | Refused::Peer { .. })) => return Err(e.said()),
         }
     }
     Err(format!(
@@ -192,7 +202,8 @@ impl BackendDoor {
                 line.len()
             )));
         }
-        let stale = std::cell::Cell::new(false);
+        // 对端说了话时它给的那个码（分流器递回来的 `(code, message)` 里认，不自己 match 错误枚举）。
+        let peer_code: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
         match client.call(cmd, args, DOOR_TIMEOUT).await {
             Ok(Some(v)) => Ok(v),
             Ok(None) => Err(Refused::Other(format!(
@@ -200,19 +211,17 @@ impl BackendDoor {
             ))),
             Err(e) => {
                 let said = match route_call_error(&e, |code, message| {
-                    if code == "stale" {
-                        stale.set(true);
-                    }
+                    *peer_code.borrow_mut() = Some(code.to_string());
                     format!("{who}：{message}")
                 }) {
                     Routed::NoChannel(s) | Routed::Refused(s) => s,
                     Routed::Done => String::new(),
                 };
-                if stale.get() {
-                    Err(Refused::Stale(said))
-                } else {
-                    Err(Refused::Other(said))
-                }
+                Err(match peer_code.into_inner() {
+                    Some(c) if c == "stale" => Refused::Stale(said),
+                    Some(code) => Refused::Peer { code, said },
+                    None => Refused::Other(said),
+                })
             }
         }
     }
@@ -332,7 +341,50 @@ impl Door for BackendDoor {
             .map_err(Refused::said)?;
         Ok(path_text(v.get("path").unwrap_or(&serde_json::Value::Null)))
     }
+
+    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
+        match self
+            .ask("files-stat", serde_json::json!({ "path": path }))
+            .await
+        {
+            Ok(v) => Ok(Some(
+                v.get("kind")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            )),
+            Err(Refused::Peer { code, .. }) if code == "unreadable" => Ok(None),
+            Err(e) => Err(e.said()),
+        }
+    }
+
+    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String> {
+        let v = self
+            .ask(
+                "files-ls",
+                serde_json::json!({ "path": path, "limit": LIST_LIMIT }),
+            )
+            .await
+            .map_err(Refused::said)?;
+        let entries = v
+            .get("entries")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| format!("{} 的后端答的目录列表不是一个数组", self.machine()))?;
+        Ok(entries
+            .iter()
+            .map(|e| {
+                let p = path_text(e.get("path").unwrap_or(&serde_json::Value::Null));
+                let name = p.rsplit(['/', '\\']).next().unwrap_or("").to_string();
+                let is_dir = e.get("kind").and_then(serde_json::Value::as_str) == Some("dir");
+                (name, is_dir)
+            })
+            .filter(|(n, _)| !n.is_empty())
+            .collect())
+    }
 }
+
+/// [`Door::list_dir`] 一次最多要多少项（skill 的实例目录是几个到几十个，不是一个大目录）。
+const LIST_LIMIT: usize = 1000;
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/user_files_tests.rs"]

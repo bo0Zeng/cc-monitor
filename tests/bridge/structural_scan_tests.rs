@@ -2612,12 +2612,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "locality_is_derivable_from_destination_today",
             1,
         ),
-        (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
-            "tests/bridge/verified_write_tests.rs",
-            "write_failure_short_circuits_without_rollback",
-            1,
-        ),
+        // 〔RW1 · 第四波 09-24〕这里原来有 `verified_write_tests.rs` 里一条存量（一条早删的判据名）：
+        //   那句话所在的那一组判据随 `verify_and_rollback` 一起走了（零调用方），那句话也就没了 ⇒ 摘行。
         (
             "tests/agent-profile-parity.vitest.ts",
             "the_gaps_are_named_not_forgotten",
@@ -3637,7 +3633,8 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/bridge/src/sftp.rs", 6), // 〔F7c 收尾 09-24〕4 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("src/bridge/src/profile_installer.rs", 5), // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
-        ("src/bridge/src/verified_write.rs", 2),
+        ("src/bridge/src/verified_write.rs", 3),    // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
+        ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
         ("tests/bridge/remote_write_registry_tests.rs", 7), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
         ("tests/bridge/backend/control/local_backend_tests.rs", 1),
