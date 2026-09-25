@@ -28,6 +28,7 @@ import {
   type MachineStatus,
 } from "./machine-status";
 import type { HostOs } from "./host-os";
+import { copyText } from "../copy-table";
 
 export type GapKind = "missing" | "unknown";
 
@@ -45,9 +46,9 @@ export type GapKind = "missing" | "unknown";
  */
 export const GAP_HEAD: Record<GapKind, string> = {
   /** **测过、确认没有** —— 可以理直气壮说「缺」。 */
-  missing: "缺",
+  missing: copyText("readiness.gapHead.missing"),
   /** **从没测过 / 查不动** —— 说「缺」就是替用户下一个他没做过的结论。 */
-  unknown: "未测过",
+  unknown: copyText("readiness.gapHead.untested"),
 };
 
 export interface Gap {
@@ -83,23 +84,23 @@ const FACET_MEANING: Record<
   { consequence: string; severity: "blocking" | "optional" }
 > = {
   connection: {
-    consequence: "连不上这台机器，它上面的会话都看不到",
+    consequence: copyText("readiness.meaning.connection"),
     severity: "blocking",
   },
   backend: {
-    consequence: "没有数据源，这台机器的会话不会出现在 tab 里",
+    consequence: copyText("readiness.meaning.source"),
     severity: "blocking",
   },
   ccm: {
-    consequence: "终端里没有 cc 命令；从终端起的会话 app 也认不出",
+    consequence: copyText("readiness.meaning.cc"),
     severity: "optional",
   },
   acctIso: {
-    consequence: "不能在这台机器上按账号隔离地起会话",
+    consequence: copyText("readiness.meaning.accountIso"),
     severity: "optional",
   },
   accounts: {
-    consequence: "还没读过这台机器上有哪些账号",
+    consequence: copyText("readiness.meaning.accounts"),
     severity: "optional",
   },
 };
@@ -204,14 +205,14 @@ export function summarizeGaps(gaps: Gap[]): string | null {
   const unknown = gaps.length - missing;
   const parts: string[] = [];
   // **措辞刻意区分**：确认缺的说「缺」，没测过的说「没测过」。
-  if (missing > 0) parts.push(`${missing} 项确认缺`);
-  if (unknown > 0) parts.push(`${unknown} 项还没测过`);
-  return parts.join("，");
+  if (missing > 0) parts.push(copyText("readiness.gaps.missing", { missing }));
+  if (unknown > 0) parts.push(copyText("readiness.gaps.unknown", { unknown }));
+  return parts.join(copyText("readiness.gaps.sep"));
 }
 
 /** 一条条目的显示文案。 */
 export function describeGap(g: Gap): string {
-  const who = g.origin === LOCAL_MACHINE_KEY ? "本机" : g.origin;
+  const who = g.origin === LOCAL_MACHINE_KEY ? copyText("readiness.gap.local") : g.origin;
   const what = FACET_LABELS[g.facet];
   // 措辞取自 [`GAP_HEAD`]，**不在这里再写一遍**（`K-R65`：那一对词有两个读者了）。
   const head = GAP_HEAD[g.kind];

@@ -489,7 +489,7 @@ export class McpSyncPanel {
       done.written
         ? copyText("mcpSync.apply.done", {
             path: done.path,
-            names: done.names.join("、"),
+            names: done.names.join(copyText("mcpSync.apply.listSep")),
           })
         : copyText("mcpSync.apply.unchanged", { machine: machineName(p.to) }),
     );
