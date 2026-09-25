@@ -185,8 +185,7 @@ async fn read_profile_text(
     interpret_profile_read(what, bytes.as_deref(), exists, size)
 }
 
-/// 内嵌的后端二进制（F08b 由 `include_bytes!` 填充）。`build_id` 与
-/// `ssh_source::EXPECTED_BACKEND_BUILD_ID` 同源（SS-B）。
+/// 远端那台要的那一份后端（〔DP1〕字节从 `byte_table` 按那台的 (OS, arch) 取，`include_bytes!` 不在本文件）。
 pub struct BackendBinary {
     /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
     /// 得来，不是从旁边那个 `.build_id` 文本文件抄的）。
@@ -199,6 +198,29 @@ pub struct BackendBinary {
     ///  它守的那件事换成了 [`bytes_carry_build_stamp`] 在部署路上**无条件**跑一遍。〕
     pub build_id: &'static str,
     pub bytes: &'static [u8],
+    /// 那台机器是哪一格（说给人听：「Linux / x86_64」）。
+    pub machine: String,
+}
+
+/// 〔DP1 · 第四波〕远端那台要哪一份后端：**先问它是什么机器**（`uname -s -m`，`byte_table::probe_key`），
+/// 再查表（`byte_table::choose`）。三种结果分得开：链路没通（`Err`）· 表拒绝了（`Ok(Err(拒绝))`）· 拿到字节。
+///
+/// 〔墓碑 —— 从前这里只问 `uname -m`、再按 arch 取字节（不认 OS）：Windows 远端若恰好答得出 `uname -m`，
+///  会被推一份 Linux 字节（`设计/96 §7.3` 第二条）。〕
+async fn remote_backend_binary(
+    cfg: &RemoteConfig,
+) -> Result<Result<BackendBinary, crate::byte_table::Refusal>, String> {
+    use crate::byte_table::{choose, probe_key, Product, Route};
+    let key = probe_key(cfg).await?;
+    let machine = key.as_ref().map(|k| k.label()).unwrap_or_default();
+    Ok(
+        choose(Product::Backend, Route::Remote, key).map(|p| BackendBinary {
+            // 后端那几槽的身份由 `build.rs` 从字节里扫出（`K-R70`）；空串过不了下面那道 `bytes_carry_build_stamp`。
+            build_id: p.build_id.unwrap_or_default(),
+            bytes: p.bytes,
+            machine,
+        }),
+    )
 }
 
 /// 部署决策（纯函数，可单测）。
@@ -378,27 +400,10 @@ async fn probe_target_binary(fs: &RemoteFs, path: &str) -> Result<TargetBinary, 
     Ok(interpret_target_probe(metadata_size, exists))
 }
 
-/// 探测远端 CPU 架构（`uname -m`）以选对应的内嵌后端二进制（F08b）。一次性 exec。
-async fn probe_remote_arch(cfg: &RemoteConfig) -> Result<String, String> {
-    use tokio::io::{AsyncBufReadExt, BufReader};
-    let stream = crate::ssh_source::connect_and_exec_cmd(cfg, "uname -m").await?;
-    let mut reader = BufReader::new(stream);
-    let mut line = String::new();
-    reader
-        .read_line(&mut line)
-        .await
-        .map_err(|e| format!("读 uname -m 失败: {e}"))?;
-    let arch = line.trim().to_string();
-    if arch.is_empty() {
-        return Err("uname -m 空输出".to_string());
-    }
-    Ok(arch)
-}
-
 /// 连接前确保远端后端已（自动）部署到 `cfg.backend_path`（issue #29）。
 ///
-/// 流程：① S-2 守卫（backend_path 含 `~` → 跳过，SFTP 不展开 `~`）；② 探测远端 arch 选内嵌
-/// 二进制（[`backend_binary`]）——无对应 arch 内嵌（F08b 未嵌入该 arch）则**优雅 no-op**；
+/// 流程：① S-2 守卫（backend_path 含 `~` → 跳过，SFTP 不展开 `~`）；② 〔DP1〕问远端是什么机器、查表选内嵌
+/// 二进制（[`remote_backend_binary`]）——表拒绝则说那句拒绝的话；
 /// ③ 开 SFTP、读版本标记、[`deploy_decision`]、需要则 mkdir -p + 原子上传 + 写标记。
 ///
 /// **best-effort**：调用方（ssh_source::run）对 Err 仅 warn 不阻断——手动部署的后端仍可连。
@@ -417,17 +422,17 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String
         );
         return Ok(None);
     }
-    // 探测 arch 选内嵌二进制；探测失败 / 无该 arch 内嵌 → 优雅 no-op（沿用手动部署）。
-    let arch = match probe_remote_arch(cfg).await {
-        Ok(a) => a,
-        Err(e) => {
-            tracing::debug!("远端 arch 探测失败，跳过自动部署: {e}");
+    // 〔DP1〕先问那台是什么机器、再查表；表拒绝 ⇒ 那句话（`byte_table::Refusal::say`）。
+    let bin = match remote_backend_binary(cfg).await {
+        Ok(Ok(b)) => b,
+        Ok(Err(refusal)) => {
+            tracing::warn!("{}", refusal.say(&cfg.origin_label()));
             return Ok(None);
         }
-    };
-    let Some(bin) = backend_binary(&arch) else {
-        tracing::debug!("无 {arch} 的内嵌后端二进制（F08b 未嵌入该 arch?），跳过自动部署");
-        return Ok(None);
+        Err(e) => {
+            tracing::debug!("问远端是什么机器没问成，跳过自动部署: {e}");
+            return Ok(None);
+        }
     };
     // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**
     //
@@ -518,46 +523,8 @@ pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
     bytes_contain(bytes, stamp.as_bytes())
 }
 
-/// 按远端 arch 选内嵌的后端二进制（F08b）。build.rs 把交叉编译的 musl 二进制复制进
-/// OUT_DIR 并置 `embedded_backends` cfg 时，这里 `include_bytes!` 内嵌并按 arch 返回；二进制
-/// 未就位（无 cfg）→ 返回 None（ensure_backend_deployed 优雅跳过，沿用手动部署）。
-/// `build_id` 取编译期 env —— 🔴 `K-R70` 起那个 env 由 `build.rs` **从二进制字节里扫出来**。
-pub fn backend_binary(arch: &str) -> Option<&'static BackendBinary> {
-    #[cfg(embedded_backends)]
-    {
-        // 🔴 `K-R70`：`BACKEND_EMBEDDED_ID_<ARCH>` = `build.rs` 从**这份字节**里扫出的身份戳。
-        //
-        // 〔墓碑 —— 原来这里有一个 `pick()`：清单为空就退回 `env!("BACKEND_BUILD_ID")`（源码 id）。
-        //  那是「问不出来就拿源码的答案顶上」——把一个失败面换成一个假答案（`brief` 里
-        //  已删的那条按需拉取路的禁词表逐字点名的第三条）。今天它不需要了：
-        //  `build.rs` 在**任一 arch 的字节里扫不出身份时当场 panic**，扫得出才置
-        //  `embedded_backends` cfg ⇒ 走到这里的路径上，这两个 env 结构上不可能是空串。
-        //  「结构上不可能」不许当成不检查的理由 ⇒ 下面 `deploy_embedded_backend` 出门前
-        //  仍无条件跑一遍 `bytes_carry_build_stamp`，本文件的判据也钉住这两处取值口。〕
-        //
-        // 身份与期望（`EXPECTED_BACKEND_BUILD_ID` = 源码）**仍然分离**：陈旧内嵌 =
-        // 身份 p1f ≠ 期望 p1g → 部署照做（远端至少拿到 p1f）但 confirmed=p1f
-        // → 降级不传新 flag，比「拒部署」更平滑。
-        static X86: BackendBinary = BackendBinary {
-            build_id: env!("BACKEND_EMBEDDED_ID_X86_64"),
-            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/backend-x86_64")),
-        };
-        static ARM: BackendBinary = BackendBinary {
-            build_id: env!("BACKEND_EMBEDDED_ID_AARCH64"),
-            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/backend-aarch64")),
-        };
-        match arch {
-            "x86_64" | "amd64" => Some(&X86),
-            "aarch64" | "arm64" => Some(&ARM),
-            _ => None,
-        }
-    }
-    #[cfg(not(embedded_backends))]
-    {
-        let _ = arch;
-        None
-    }
-}
+// 〔DP1 · 第四波〕这里原来是按 arch 取字节的那个函数：两份 musl 的 `include_bytes!` 与一个只认 arch 的 `match`。
+//   槽与它们的 `K-R70` 身份取值口（`BACKEND_EMBEDDED_ID_<ARCH>`）逐字搬进了 `byte_table.rs`（全仓唯一的取字节口）。
 
 // ============================================================================
 // F08c：手动安装 / 卸载后端（设置面板两个按钮）。安装逻辑同自动部署、但返回人读结果；
@@ -600,13 +567,10 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     if path.contains('~') {
         return Err("backend 路径含 ~（SFTP 不展开 ~），请改用绝对路径".into());
     }
-    let arch = probe_remote_arch(&cfg)
-        .await
-        .map_err(|e| format!("探测远端架构失败（uname -m）: {e}"))?;
-    let Some(bin) = backend_binary(&arch) else {
-        return Err(format!(
-            "本 monitor 构建未内嵌 {arch} 架构的后端，无法一键安装。请用内嵌了该架构的发布版，或手动把后端放到 {path}。"
-        ));
+    // 〔DP1〕与自动部署同一个取字节口、同一句拒绝的话。
+    let bin = match remote_backend_binary(&cfg).await? {
+        Ok(b) => b,
+        Err(refusal) => return Err(refusal.say(&cfg.origin_label())),
     };
     // 〔SR1b〕经本机常驻后端那条 `files` 链路；`path` 不在 `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒、原话带回。
     let fs = RemoteFs::open(&cfg).await?;
@@ -619,8 +583,8 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     let target = probe_target_binary(&fs, &path).await?;
     let backend_msg = match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
         DeployAction::Skip => format!(
-            "远端已是最新后端（{}，{arch}）：{path}，无需重装。",
-            bin.build_id
+            "远端已是最新后端（{}，{}）：{path}，无需重装。",
+            bin.build_id, bin.machine
         ),
         DeployAction::Deploy(reason) => {
             fs.mkdirs(remote_parent(&path)).await?;
@@ -632,8 +596,8 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
                 bin.build_id
             );
             format!(
-                "已安装后端（{}，{arch}）到 {path}（{reason}）。重连远端即可用。",
-                bin.build_id
+                "已安装后端（{}，{}）到 {path}（{reason}）。重连远端即可用。",
+                bin.build_id, bin.machine
             )
         }
     };

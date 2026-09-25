@@ -107,7 +107,7 @@ fn should_reset_backoff(saw_hello: bool, lived: Duration) -> bool {
 ///
 /// | # | 连接 | 谁发起 |
 /// |---|---|---|
-/// | ① | `uname -m` 一次性 exec（选内嵌二进制的 arch） | `sftp::probe_remote_arch` |
+/// | ① | `uname -m` 一次性 exec（选内嵌二进制的 arch；〔DP1〕今天问 `uname -s -m`） | `byte_table::probe_key` |
 /// | ② | SFTP 连接（读远端 `.build_id` marker） | `sftp::connect_sftp` |
 /// | ③ | exec backend 起流 | `connect_and_exec` |
 ///
@@ -2699,7 +2699,7 @@ async fn stream_loop(
     let t_connect_start = std::time::Instant::now();
 
     // issue #29（F08）：连接前确保远端后端已（自动）部署到 cfg.backend_path。
-    // 嵌入二进制就位前（F08b 未做）backend_binary() 返回 None → ensure_backend_deployed
+    // 嵌入二进制就位前（F08b 未做）〔DP1〕`byte_table::choose` 回「这一版没带」→ ensure_backend_deployed
     // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的后端仍可连。
     // ★ F05 下半：**上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接**。
     // 判据与记忆的语义见 `VERIFIED_BUILD` 头注（记的是 hello 自证，不是预检结论）。

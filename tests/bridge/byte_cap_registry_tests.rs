@@ -1364,15 +1364,9 @@ const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
         "远端 `ccm` 探针的 stdout",
         "同上一条。**退役归 F10d**。",
     ),
-    (
-        "src/bridge/src/sftp.rs",
-        "远端 `uname -m` 架构探针的 stdout（`probe_remote_arch`）",
-        "★〔G 审计扩针后才进人群〕同上一条族。预期输出 ~8 字节，但**没有上限**。\
-             ⚠ 它此前不在人群里，因为第一版的针只认 `.read_to_end` / `.read_to_string`，\
-             而它用的是 `.read_line` ——**判据的人群恰好排除了触发本件立项的那种拼法**。\
-             ⚠ 注意 `sftp.rs` 同时也在 `REMOTE_WRITES` 里，两张表管的是它的两个不同面\
-             （这张管「读进内存多少」，那张管「往谁的机器写」）。**退役归 F10d**。",
-    ),
+    // 〔DP1 · 第四波〕`sftp.rs` 那一条（远端 `uname -m` 架构探针，`.read_line` 无上限地读一行）走了：
+    //   问那台是什么机器改成 `byte_table::probe_key`，走 `connect_and_exec_capture`（stdout / stderr 各有上限、带退出码），
+    //   不再是一处无上限的流读 ⇒ 按上面几条同一个理由摘掉。
     (
         "src/bridge/src/pubkey.rs",
         "远端读公钥的 stdout",

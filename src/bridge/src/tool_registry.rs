@@ -305,7 +305,7 @@ pub enum TouchEffect {
 /// 而在这一层立起来之前，[`ToolSpec`] 是「一个源 + 一个落点 + 一串 touch」：
 /// **同一个后端有三种载体、四个落点，而闭集只表达得了一个半**（`K-R68` 现打）。
 /// 三种载体逐条是：① 这一份产物自己带着、要用时自释放的那份（`native-backend/`，
-/// `local_backend::native_embedded_backend` 的 `include_bytes!`）·
+/// `byte_table.rs` 的 `include_bytes!`，〔DP1〕按这一份产物的 `TARGET` 那一格取）·
 /// ② 内嵌、推给远端那台机器的那份（`embedded-backends/`）·
 /// ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）。
 ///
@@ -685,7 +685,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 }],
             },
             Carrier {
-                what: "这一份产物**自己带着**、旁边没有本机后端时自释放出来的那一份（`build.rs::embed_native_backend` ⇒ `local_backend::native_embedded_backend` 的 `include_bytes!`）",
+                what: "这一份产物**自己带着**、旁边没有本机后端时自释放出来的那一份（`build.rs::embed_native_backend` ⇒ `byte_table.rs` 的 `include_bytes!`）",
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "src/bridge/native-backend/cc-monitor-native",
                 },

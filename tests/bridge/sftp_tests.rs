@@ -330,18 +330,23 @@ fn merge_profile_block_aborts_on_orphan_begin() {
 }
 
 /// F08b：仅当交叉编译产物已放进 embedded-backends/（build.rs 置了 `embedded_backends` cfg）
-/// 才编译/运行——证实内嵌真生效：按 arch 取到 ELF 二进制 + build_id 非空。CI 无二进制时
-/// 本测试被 cfg 掉，不误报。
+/// 才编译/运行——证实内嵌真生效：Linux 两格取到 ELF 二进制 + build_id 非空。CI 无二进制时
+/// 本测试被 cfg 掉，不误报。〔DP1〕取字节口是 `byte_table::pick`（按 (OS, arch)）。
 #[cfg(embedded_backends)]
 #[test]
 fn embedded_backend_binaries_present_and_valid() {
+    use crate::byte_table::{key_of, pick, Product};
     for arch in ["x86_64", "aarch64"] {
-        let bin = backend_binary(arch).expect("内嵌二进制应存在");
-        assert!(!bin.build_id.is_empty(), "build_id 非空");
+        let key = key_of("Linux", arch).expect("表 A 认得这一格");
+        let bin = pick(Product::Backend, key).expect("内嵌二进制应存在");
+        assert!(
+            !bin.build_id.unwrap_or_default().is_empty(),
+            "build_id 非空"
+        );
         assert_eq!(&bin.bytes[..4], b"\x7fELF", "{arch} 应是 ELF");
         assert!(bin.bytes.len() > 100_000, "{arch} 体积应非平凡");
     }
-    assert!(backend_binary("riscv64").is_none(), "未知 arch → None");
+    assert!(key_of("Linux", "riscv64").is_err(), "未知 arch → 表外");
 }
 
 /// 🔴 `K-R70`：**那道身份见证真的会咬人** —— 四格（纯函数，不依赖内嵌产物在不在）。
@@ -400,16 +405,21 @@ fn the_build_stamp_witness_actually_bites() {
 /// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在后端源码）。
 ///
 /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
-/// 这里都必须真有一份 `BackendBinary`（漏一个 ⇒ `backend_binary()` 对它返回 `None`，
+/// 〔DP1〕`byte_table.rs` 里都必须真有一槽（漏一个 ⇒ 取字节口对它返回 `None`，
 /// 远端自动部署对那个 arch **悄悄关闭** —— 与上一条判据守的是同一个事故形状的两端）。
 #[test]
 fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let src = std::fs::read_to_string(root.join("src/sftp.rs")).expect("读不到 sftp.rs");
     let prod = guard_core::production_code(&src);
+    // 〔DP1 · 第四波〕两份 musl 的槽与它们的身份取值口搬进了 `byte_table.rs`（全仓唯一的取字节口）；
+    //   「出门前那道见证」仍在本文件（部署路）。①④ 读那一份，② 读这一份，③ 两份都读。
+    let table_src =
+        std::fs::read_to_string(root.join("src/byte_table.rs")).expect("读不到 byte_table.rs");
+    let table = guard_core::production_code(&table_src);
     // 运行时拼，免得命中本条自己的说明文字。
     let field = format!("{}_id:", "build");
-    let inits: Vec<&str> = prod
+    let inits: Vec<&str> = table
         .lines()
         .map(str::trim)
         .filter(|l| l.starts_with(&field) && l.contains("env!"))
@@ -455,6 +465,10 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     // ③ 界标闭集只有一个住址（在后端源码里），本文件只许 `env!` 取。
     for mark in [env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE")] {
         assert!(
+            !table.contains(&format!("\"{mark}\"")),
+            "byte_table.rs 生产段里出现了界标字面量 `{mark}`"
+        );
+        assert!(
             !mark.is_empty(),
             "`BACKEND_STAMP_OPEN/CLOSE` 是空串 —— `build.rs` 从后端源码抠界标失败了，\n\
                  而空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭。"
@@ -491,9 +505,9 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     );
     for arch in &arches {
         assert!(
-            prod.contains(&format!("BACKEND_EMBEDDED_ID_{}", arch.to_uppercase())),
+            table.contains(&format!("BACKEND_EMBEDDED_ID_{}", arch.to_uppercase())),
             "`build.rs` 会为 `{arch}` 嵌入二进制并发 `BACKEND_EMBEDDED_ID_{}`，\n\
-                 而 `sftp.rs` 生产段里没有对应的 `BackendBinary` ⇒ `backend_binary(\"{arch}\")` 返回 `None`，\n\
+                 而 `byte_table.rs` 生产段里没有对应的那一槽 ⇒ 取字节口对 (Linux, {arch}) 返回 `None`，\n\
                  **远端自动部署对这个 arch 悄悄关闭**（`build.rs` 那侧只 `cargo:warning=`，不会红）。\n\
                  与「发版流水线要为每个 arch 备料」那条守的是同一个事故形状的两端。",
             arch.to_uppercase()
@@ -510,7 +524,7 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
 /// > 缺少内嵌 backend {arch} —— 远端自动部署将关闭
 ///
 /// 而它旁边的注释逐字记着这条路的历史：「原来这里**连 warn 都没有** —— 缺二进制就
-/// 静默不置 cfg、`backend_binary()` 返回 None、远端自动部署整个消失而无人知晓。
+/// 静默不置 cfg、取字节那一口返回 None、远端自动部署整个消失而无人知晓。
 /// **那正是 v2.19–v2.22 那批安装包的事故形状**」。
 ///
 /// 警告是**刻意**的（本机开发树本来就常常只有一个 arch —— 今天就是：
