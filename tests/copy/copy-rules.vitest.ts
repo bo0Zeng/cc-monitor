@@ -120,7 +120,8 @@ export const CHECKS: Record<string, Check> = {
   "C-L3": (e) => {
     const groups = [...speech(e.zh).matchAll(PAREN)].map((m) => m[1] ?? m[2] ?? "");
     if (NARROW.has(e.kind)) {
-      const g = groups.find((x) => hanCount(x) >= 2);
+      // 〔CP2b〕「（可选）」标的是选填，不是说明（rules.json C-L3 的规矩文字同拍改）。
+      const g = groups.find((x) => hanCount(x) >= 2 && x.trim() !== "可选");
       return g !== undefined ? `${e.kind} 档的括号里装了说明「${g}」` : null;
     }
     const n = groups.filter((x) => x.trim().length >= 2).length;
