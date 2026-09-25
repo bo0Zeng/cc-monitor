@@ -329,3 +329,140 @@ fn base_url_is_written_with_the_key_and_left_alone_when_only_the_key_changes() {
     }
     let _ = std::fs::remove_dir_all(&home);
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// 〔GP1 · 第四波〕本机那一份的写者也换成了本机常驻后端（主会话裁「每台机器一个写者 ＝ 那台的后端」）⇒
+// monitor 那侧 `creds_store::write_key_at`〔散文墓碑〕删了，它身上三条**本侧没有同形**的写路判据逐条搬到这里
+// （写的是同一份 `creds_core::store` 规则，被测换成这一侧唯一那个写口）。其余几条本侧早有同形：
+// 写的那一刻读盘 / 别的行不动（`other_rows_and_unknown_keys_survive_…`）· 出生即只给本人（`the_written_file_is_owner_only_…`）·
+// Base URL（`base_url_is_written_with_the_key_…`）· 说不出账号拒写（`bad_arguments_are_refused_…`）。
+// 要求住址：`调研/第四波记录/GP1.md §3` · `INVARIANTS §42`（每台机器上的程序写者恰好一个）。
+// ════════════════════════════════════════════════════════════════════════════
+
+/// ★★ `KS10` 行为那一半（原 monitor `a_program_write_keeps_everything_the_human_put_there`〔散文墓碑〕）：
+/// 人手编的顶层键 · 顶层那一把旧 key（`KH2C3`：读得出来的一行，但**不再是写进去的地方**）一个字节不动；
+/// 新的那一把落在 `accounts.<id>`；落盘按键名排序（`KS10②`）。期望全是手写字面量。
+#[test]
+fn gp1_a_program_write_keeps_everything_the_human_put_there() {
+    let home = temp_dir("gp1-interleave");
+    let f = file_in(&home);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    std::fs::write(
+        &f,
+        b"{\n  \"_note\": \"human changed this\",\n  \"my_own\": \"keep me\",\n  \"brand_new\": 7,\n  \"api_key\": \"OLD\"\n}\n",
+    )
+    .unwrap();
+    answer_set_at(&f, &json!({"account": "acct-x", "key": "NEW-KEY"})).expect("写");
+    let text = std::fs::read_to_string(&f).unwrap();
+    let back: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(back["_note"], "human changed this", "人的编辑被盖掉了");
+    assert_eq!(back["brand_new"], 7, "人新加的键被吃掉了");
+    assert_eq!(back["my_own"], "keep me");
+    assert_eq!(back["accounts"]["acct-x"][store::KEY_FIELD], "NEW-KEY");
+    assert_eq!(
+        back[store::KEY_FIELD],
+        "OLD",
+        "写侧把顶层那一把盖掉了 —— 那是老用户手上那份文件里唯一那把 key"
+    );
+    // 顺序稳定：四个各恰好出现一处的键按名字排。
+    let at = |k: &str| {
+        let hits: Vec<usize> = text
+            .match_indices(&format!("\"{k}\""))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(hits.len(), 1, "`{k}` 不是恰好出现一处：{text}");
+        hits[0]
+    };
+    let (ia, ib, ic, id) = (at("_note"), at("accounts"), at("brand_new"), at("my_own"));
+    assert!(
+        ia < ib && ib < ic && ic < id,
+        "落盘不是按键名排序的：{text}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★★★ `K-R1` 写侧那一格（原 monitor `a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style`〔散文墓碑〕）：
+/// 配一次 key 不许吃掉**同一行**上人手编的 `auth_style` / `base_url` / 未知键；别的行一个字节不动，
+/// 也不许凭空给别的行加 `auth_style`。并且装回账号层之后那两格真的读得出来（不只是「JSON 里还在」）。
+#[test]
+fn gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
+    let home = temp_dir("gp1-keep-row");
+    let f = file_in(&home);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    std::fs::write(
+        &f,
+        b"{\n  \"accounts\": {\n    \"acct-x\": {\n      \"api_key\": \"OLD\",\n      \"auth_style\": \"x-api-key\",\n      \"base_url\": \"https://gw.example.com/anthropic\",\n      \"my_own\": \"keep me\"\n    },\n    \"acct-y\": {\n      \"api_key\": \"Y\"\n    }\n  }\n}\n",
+    )
+    .unwrap();
+    answer_set_at(&f, &json!({"account": "acct-x", "key": "NEW-KEY"})).expect("写");
+    let back: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+    let row = &back["accounts"]["acct-x"];
+    assert_eq!(
+        row[store::AUTH_STYLE_FIELD],
+        "x-api-key",
+        "auth_style 被吃了：{back}"
+    );
+    assert_eq!(
+        row[store::BASE_URL_FIELD],
+        "https://gw.example.com/anthropic",
+        "base_url 被吃了：{back}"
+    );
+    assert_eq!(row[store::KEY_FIELD], "NEW-KEY", "key 没换：{back}");
+    assert_eq!(row["my_own"], "keep me");
+    assert_eq!(back["accounts"]["acct-y"][store::KEY_FIELD], "Y");
+    assert!(
+        back["accounts"]["acct-y"]
+            .get(store::AUTH_STYLE_FIELD)
+            .is_none(),
+        "给没写过 auth_style 的那一行凭空加了一格：{back}"
+    );
+    let doc = store::parse(&std::fs::read_to_string(&f).unwrap()).expect("解析");
+    let rows = store::read_accounts(&doc);
+    let x = rows
+        .iter()
+        .find(|e| e.id == "acct-x")
+        .expect("acct-x 该读得出来");
+    assert_eq!(
+        x.auth_style,
+        store::AuthStyleSetting::Known(store::AuthStyle::XApiKey)
+    );
+    assert_eq!(
+        x.base_url.as_deref(),
+        Some("https://gw.example.com/anthropic")
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★★★ `KH2C3` 后半（原 monitor `the_write_side_no_longer_targets_the_legacy_top_level_slot`〔散文墓碑〕）：
+/// 结构 —— 这一侧写口生产段里 `store::merge_key(`（写顶层那一格的唯一入口）零处，`merge_account_key(` 在（正控）；
+/// 行为 —— 全新文件写一次，顶层那一格根本不被创建。
+#[test]
+fn gp1_the_write_side_never_targets_the_legacy_top_level_slot() {
+    let src = guard_core::production_code(include_str!(
+        "../../../../src/backend/accounts/apikey/file_face.rs"
+    ));
+    assert!(
+        src.contains("merge_account_key("),
+        "连新那个写口都没有 —— 取法坏了，下面恒 0"
+    );
+    assert_eq!(
+        src.matches("store::merge_key(").count(),
+        0,
+        "写侧还有一处在写顶层那一格（`{}` 那一行谁的会话都命中得了）",
+        store::LEGACY_ACCOUNT_ID
+    );
+    let home = temp_dir("gp1-legacy-slot");
+    let f = file_in(&home);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    answer_set_at(&f, &json!({"account": "acct-fresh", "key": "KEY-FRESH"})).expect("写");
+    let back: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+    assert!(
+        back.get(store::KEY_FIELD).is_none(),
+        "全新文件被写出了顶层那一格：{back}"
+    );
+    assert_eq!(
+        back["accounts"]["acct-fresh"][store::KEY_FIELD],
+        "KEY-FRESH"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

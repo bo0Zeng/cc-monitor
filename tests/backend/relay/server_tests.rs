@@ -3333,7 +3333,8 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
 /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
 ///
-/// ⇒ 这里调的是 `creds_store::write_key_at` 生产段里逐字那两个纯函数
+/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（〔GP1 · 第四波〕写侧 ＝ 每台机器那台后端的 `accounts/apikey/file_face.rs`，
+/// 本机也是；monitor 那侧当年的写口 `write_key_at`〔散文墓碑〕删了）
 /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
 /// 这个共同祖先上会合**：backend 单向依赖 `src/bridge/crates/*`，够得着它们。
 ///
@@ -3344,7 +3345,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 ///
 /// ⇒ **两条 DoD 合起来才是那条链**，各自都别读宽。这里没有被证到的两跳是：
 /// ① 界面那条 IPC 命令真的被点出去（`KH2C1` 前端那两堵墙，住 `accounts-section` 那一侧）；
-/// ② `write_key_at` 里**写盘那一段**（tmp / 原子替换 / 收窄）——
+/// ② 写口里**写盘那一段**（tmp / 原子替换 / 收窄）——
 ///    本条只走它算内容的那两步，写盘由 monitor 侧那几条既有判据分管。
 ///
 /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
