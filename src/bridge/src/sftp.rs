@@ -742,7 +742,8 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Strin
 // ============================================================================
 // F11：远端用户数据写（删除远端历史 jsonl）。
 // 〔RW1 · 第四波 · 2026-09-24〕**这一段整个搬走了**：F11 按用户裁「按推荐改」经那台远端的后端删
-// （`files-delete-session`，只收 sid —— 会话文件围栏唯一的例外，落点由远端后端按 sid 在它自己的记录树里找），
+// （`files-delete-session`，只收 sid —— 〔AR1 · V119〕当时说「会话文件围栏唯一的例外」，FN1 之后写面已无那道围栏；
+// 落点由远端后端按 sid 在它自己的记录树里找），
 // 从前这里那道结构守卫 `is_safe_remote_jsonl`〔散文墓碑〕与 SFTP 直删 `remove_remote_file`〔散文墓碑〕零调用方 ⇒ 删了。
 // 「哪几份才许删」那一问的住址从此是 `src/backend/agents/claudecode/paths.rs::session_file_for_delete`。
 // ============================================================================
