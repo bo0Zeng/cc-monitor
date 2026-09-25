@@ -1,3 +1,9 @@
+//! # 要求住址：`INVARIANTS §41.1`（多会话里杀掉其中一个 ⇒ tmux hook 通知后端，零轮询）
+//!
+//! 核原文：`INVARIANTS §41.1` 四路事件表逐字「tmux `session-created/closed/renamed[50]` hook → `--tmux-notify` → SIGUSR1」——
+//! 三个事件缺一不可与 hook 参数形状判的是它；starttime 校验对 `§41.2`（starttime 不符即静默 no-op）；hook 里不许出现会话 sid 选项
+//! 对 `§41.5` 逐字「在 hook 上下文会解析到**别的会话**」；零写盘对 `§41.6`（真保障是 `readonly_guard.rs` 的白名单，本族那张黑名单只是纵深）。〔JA1 点址 2026-09-24〕
+
 use super::*;
 use std::path::PathBuf;
 
