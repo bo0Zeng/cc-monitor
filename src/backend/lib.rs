@@ -44,6 +44,7 @@ pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消�
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
 pub mod listen; // K-P1：常驻监听口 —— 脱离宿主之后还能被找到 / 被问到 / 被接上（纯判定住这里，接受循环住 main.rs）
+pub mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面 `mcp-sync-plan`（差异 · 可疑项 · 写哪几条；只读，写经文件管理那一面）
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -558,6 +559,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--relay-status",
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
     "--footprint-probe",
+    // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
+    // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--mcp-sync-plan",
     "--backend-probe",
     // 〔SR1a · 09-24〕`--dial`（拨号代理，`K-P6b` / C2）**从本表摘掉了**：拨号挪进本机那一个常驻后端、
     // 经流上的链路（`link-*` 四条，`dial/link.rs`）做，不再每条链路起一个进程。
