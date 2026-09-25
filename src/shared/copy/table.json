@@ -602,6 +602,141 @@
       "zh": "{side}不是合法的 JSON（{e}），没拿它比，也没动它",
       "args": ["side", "e"]
     },
+    "beReadFace.tooLarge.say": {
+      "kind": "error",
+      "zh": "结果太大（至少 {size} 字节，上限 {cap}），没有返回",
+      "args": ["size", "cap"]
+    },
+    "beInbound.spawnHandler.crashed": {
+      "kind": "error",
+      "zh": "后端内部出错，这条命令没做完。后端还在运行。",
+      "args": []
+    },
+    "beInbound.dispatch.unknown": {
+      "kind": "error",
+      "zh": "这台后端不认得 {other} 这个操作，可能版本太旧",
+      "args": ["other"]
+    },
+    "beInbound.dispatch.unhandled": {
+      "kind": "error",
+      "zh": "后端内部出错，没处理 {other} 这条命令",
+      "args": ["other"]
+    },
+    "beInbound.dispatch.cannotCancel": {
+      "kind": "error",
+      "zh": "这条命令已经开始做了，停不下来。等它做完。",
+      "args": []
+    },
+    "beInbound.handleLine.internal": {
+      "kind": "error",
+      "zh": "后端内部出错，这条命令没做完：{e}",
+      "args": ["e"]
+    },
+    "beAccountsQuery.trustProductAt.unparsable": {
+      "kind": "error",
+      "zh": "读不懂信任状态：{e}",
+      "args": ["e"]
+    },
+    "beAccountsQuery.accountTrustZero.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录，定位不了默认账号的配置文件",
+      "args": []
+    },
+    "beAccountsQuery.accountTrust.notListed": {
+      "kind": "error",
+      "zh": "这个配置目录不在账号清单里，没有读",
+      "args": []
+    },
+    "beAccountsQuery.accountTrust.unsafeDir": {
+      "kind": "error",
+      "zh": "账号的配置目录含不安全字符，或不是绝对路径",
+      "args": []
+    },
+    "beAccountsQuery.loadManifest.noVersion": {
+      "kind": "error",
+      "zh": "账号清单缺版本号",
+      "args": []
+    },
+    "beAccountsQuery.loadManifest.badVersion": {
+      "kind": "error",
+      "zh": "账号清单的格式版本 {v} 这台后端不认（只认 1）",
+      "args": ["v"]
+    },
+    "beAccountsQuery.loadManifest.badJson": {
+      "kind": "error",
+      "zh": "账号清单不是合法 JSON：{e}",
+      "args": ["e"]
+    },
+    "beAccountsQuery.loadManifest.unreadable": {
+      "kind": "error",
+      "zh": "账号清单读不了（{path}）：{e}",
+      "args": ["path", "e"]
+    },
+    "beTasksQuery.sessionTaskLines.unreadable": {
+      "kind": "error",
+      "zh": "读不了任务目录 {dir}：{e}",
+      "args": ["dir", "e"]
+    },
+    "bePanorama.classify.failed": {
+      "kind": "error",
+      "zh": "代码全景「{op}」没做成（{how}）：{message}",
+      "args": ["op", "how", "message"]
+    },
+    "bePanorama.classify.timedOut": {
+      "kind": "error",
+      "zh": "代码全景「{op}」超过 {deadline} 秒没做完，已经停掉",
+      "args": ["op", "deadline"]
+    },
+    "bePanorama.classify.tooLarge": {
+      "kind": "error",
+      "zh": "代码全景「{op}」的结果太大（{size} 字节，上限 {cap}），没有返回",
+      "args": ["op", "size", "cap"]
+    },
+    "bePanorama.describeExit.signal": {
+      "kind": "body",
+      "zh": "被中途终止",
+      "args": []
+    },
+    "bePanorama.describeExit.code": {
+      "kind": "body",
+      "zh": "异常退出，码 {c}",
+      "args": ["c"]
+    },
+    "bePanorama.notRun.spawnFailed": {
+      "kind": "error",
+      "zh": "代码全景组件没能启动：{m}",
+      "args": ["m"]
+    },
+    "bePanorama.notRun.tooManyFiles": {
+      "kind": "error",
+      "zh": "这次要查的文件太多，一次传不过去，少选几个再试",
+      "args": []
+    },
+    "bePanorama.answerWith.probeFailed": {
+      "kind": "error",
+      "zh": "{bin} 没答上它会做什么（{how}）：{detail}",
+      "args": ["bin", "how", "detail"]
+    },
+    "bePanorama.answer.noHome": {
+      "kind": "error",
+      "zh": "这台机器上找不到家目录（HOME 和 USERPROFILE 都没设），不知道把索引放哪",
+      "args": []
+    },
+    "bePanorama.notInstalledHint.say": {
+      "kind": "error",
+      "zh": "这台机器上还没装代码全景组件。",
+      "args": []
+    },
+    "beAccountsQuery.listProductAt.noDefault": {
+      "kind": "body",
+      "zh": "这台机器的账号清单里缺默认账号。重新部署 cc-acct-iso 后可以补上。",
+      "args": []
+    },
+    "bePanorama.classify.badReply": {
+      "kind": "error",
+      "zh": "代码全景「{op}」说做完了，但交回的结果读不懂：{said}",
+      "args": ["op", "said"]
+    },
     "panePreview.head.title": {
       "kind": "title",
       "zh": "预览画面 · [{origin}] tmux: {target}",

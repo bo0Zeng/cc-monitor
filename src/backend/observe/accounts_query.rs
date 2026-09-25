@@ -68,6 +68,7 @@ use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, is_deceptive_char,
     ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
 };
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// manifest 读取上限。账号数有限，几 MB 足矣，此处宽松给 8MB 兜底。
@@ -293,18 +294,31 @@ pub(crate) fn default_manifest_path() -> PathBuf {
 /// manifest，与 cc-acct-iso 写侧「丢单条」策略一致（避免手改 manifest 时一坏全灭）。
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
-    let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES)
-        .map_err(|e| format!("manifest 不可读（{}）：{e}", p.display()))?;
+    let bytes = read_regular_capped(&p, MAX_MANIFEST_BYTES).map_err(|e| {
+        copy_text(
+            "beAccountsQuery.loadManifest.unreadable",
+            &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
+        )
+    })?;
     // 〔S5 · 第四波〕UTF-8 BOM 剥掉再解析：PowerShell 5.1 `-Encoding UTF8` 与记事本默认写 BOM，
     //   `serde_json` 不吃它 ⇒ 不剥就是整份「不是合法 JSON」、账号页整块空（`control/ccm/plan.rs::AccountTable::load`
     //   09-21 修过同一份文件的另一个读者；两个读者读出同一张表由 `tests::both_readers_of_the_manifest_see_the_same_accounts` 钉）。
     let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
-    let root: serde_json::Value =
-        serde_json::from_slice(body).map_err(|e| format!("manifest 不是合法 JSON：{e}"))?;
+    let root: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
+        copy_text(
+            "beAccountsQuery.loadManifest.badJson",
+            &[("e", &e.to_string())],
+        )
+    })?;
     match root.get("version").and_then(|v| v.as_u64()) {
         Some(SUPPORTED_SCHEMA) => {}
-        Some(v) => return Err(format!("manifest schema 版本 {v} 不受支持（本后端只认 1）")),
-        None => return Err("manifest 缺 version 字段（或不是数字）".into()),
+        Some(v) => {
+            return Err(copy_text(
+                "beAccountsQuery.loadManifest.badVersion",
+                &[("v", &v.to_string())],
+            ))
+        }
+        None => return Err(copy_text("beAccountsQuery.loadManifest.noVersion", &[]).into()),
     }
     let mut accounts = Vec::new();
     if let Some(arr) = root.get("accounts").and_then(|a| a.as_array()) {
@@ -539,7 +553,7 @@ fn scan_accounts(
                 updated_at: serde_json::Value,
                 shared_store: serde_json::Value,
                 count: usize,
-                error: serde_json::Value| {
+                err_text: serde_json::Value| {
         let mut m = serde_json::Map::new();
         m.insert("enabled".into(), enabled.into());
         m.insert("acctsDir".into(), accts_dir.to_string_lossy().into());
@@ -547,7 +561,7 @@ fn scan_accounts(
         m.insert("updatedAt".into(), updated_at);
         m.insert("sharedStore".into(), shared_store);
         m.insert("count".into(), count.into());
-        m.insert("error".into(), error);
+        m.insert("error".into(), err_text);
         m
     };
     match load_manifest(accts_dir) {
@@ -664,10 +678,8 @@ pub(crate) fn list_product_at(
     };
     let (meta, accounts) = scan_accounts(accts_dir, &routed);
     let enabled = meta.get("enabled") == Some(&serde_json::Value::Bool(true));
-    let notice = (enabled && !accounts.iter().any(|a| a["configDir"].is_null())).then_some(
-        "这台机器上的 cc-acct-iso 版本较旧：它的 accounts.json 里没有账号 0（不指定配置目录的那个默认登录）。\
-         在这台机器上跑一次 'cc-acct-iso sync --apply'（或重新部署 cc-acct-iso）即可补上。",
-    );
+    let notice = (enabled && !accounts.iter().any(|a| a["configDir"].is_null()))
+        .then(|| copy_text("beAccountsQuery.listProductAt.noDefault", &[]));
     serde_json::json!({ "meta": meta, "accounts": accounts, "notice": notice })
 }
 
@@ -889,7 +901,7 @@ fn account_trust(
     if !is_safe_config_dir(config_dir) {
         return Err((
             "unsafe_config_dir".into(),
-            "configDir 含不安全字符或不是绝对路径".into(),
+            copy_text("beAccountsQuery.accountTrust.unsafeDir", &[]).into(),
         ));
     }
     let m = load_manifest(accts_dir).map_err(|e| ("manifest_unavailable".to_string(), e))?;
@@ -901,7 +913,7 @@ fn account_trust(
     }) {
         return Err((
             "unknown_config_dir".into(),
-            "该 configDir 不在 manifest 的账号列表里，拒绝读取".into(),
+            copy_text("beAccountsQuery.accountTrust.notListed", &[]).into(),
         ));
     }
     cc_accounts::trust_of_config(&cc_accounts::config_path_in(Path::new(want)), cwd)
@@ -918,7 +930,7 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
     let home = home_dir().ok_or_else(|| {
         (
             "no_home".to_string(),
-            "拿不到 $HOME，无法定位账号 0 的配置文件".to_string(),
+            copy_text("beAccountsQuery.accountTrustZero.noHome", &[]),
         )
     })?;
     cc_accounts::trust_of_config(&cc_accounts::config_path_in(&home), cwd)
@@ -963,7 +975,10 @@ pub(crate) fn trust_product_at(
     let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
         (
             "failed".to_string(),
-            format!("信任状态那一行不是 JSON：{e}"),
+            copy_text(
+                "beAccountsQuery.trustProductAt.unparsable",
+                &[("e", &e.to_string())],
+            ),
         )
     })?;
     match (v["trusted"].as_bool(), v["known"].as_bool()) {
@@ -972,7 +987,7 @@ pub(crate) fn trust_product_at(
         }
         _ => Err((
             "failed".to_string(),
-            "信任状态那一行缺 `trusted` / `known`".to_string(),
+            crate::common::contract::malformed("trust line lacks `trusted` / `known`"),
         )),
     }
 }

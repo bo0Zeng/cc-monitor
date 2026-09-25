@@ -187,24 +187,20 @@ pub fn mode_from(get: &dyn Fn(&str) -> Option<String>) -> Result<Mode, String> {
     let raw_token = get(ENV_TOKEN).filter(|s| !s.trim().is_empty());
     match (raw_port, raw_token) {
         (None, None) => Ok(Mode::Stdio),
-        (None, Some(_)) => Err(format!(
-            "设了 {ENV_TOKEN} 却没设 {ENV_PORT} —— 监听口的配置只写了一半。\n\
-             不静默退回 stdio：那会让「我明明开了常驻」变成一个查不出来的谜。"
-        )),
-        (Some(_), None) => Err(format!(
-            "设了 {ENV_PORT} 却没设 {ENV_TOKEN} —— 拒绝起一个不设防的口。\n\
-             回环 TCP 上同机任何本地进程都连得上，而流那一档能发 `launch`/`kill`。\n\
-             token 由宿主生成并用 {ENV_TOKEN} 传进来（backend 只读，自己造不出它）。"
-        )),
+        (None, Some(_)) => Err(crate::common::contract::malformed(&format!(
+            "{ENV_TOKEN} is set but {ENV_PORT} is not; refusing to fall back to stdio"
+        ))),
+        (Some(_), None) => Err(crate::common::contract::malformed(&format!(
+            "{ENV_PORT} is set but {ENV_TOKEN} is not; refusing to open an unauthenticated port"
+        ))),
         (Some(p), Some(t)) => {
-            let port: u16 = p
-                .trim()
-                .parse()
-                .map_err(|e| format!("{ENV_PORT}={p:?} 不是一个端口号: {e}"))?;
+            let port: u16 = p.trim().parse().map_err(|e| {
+                crate::common::contract::malformed(&format!(
+                    "{ENV_PORT}={p:?} is not a port number: {e}"
+                ))
+            })?;
             if port == 0 {
-                return Err(format!(
-                    "{ENV_PORT}=0 —— 0 会让内核随机挑一个口，而宿主正等在它算好的那个口上。"
-                ));
+                return Err(crate::common::contract::malformed(&format!("{ENV_PORT}=0 would let the kernel pick a random port, but the host waits on the one it chose")));
             }
             Ok(Mode::Listen {
                 port,
