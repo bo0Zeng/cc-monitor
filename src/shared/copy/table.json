@@ -13536,6 +13536,246 @@
       "kind": "error",
       "zh": "[{machine}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
       "args": ["machine"]
+    },
+    "rsSshSource.control.unsupported": {
+      "kind": "body",
+      "zh": "control=unsupported：后端太旧，不能在远端起会话",
+      "args": []
+    },
+    "rsSshSource.hello.notHello": {
+      "kind": "body",
+      "zh": "后端的第一条回应认不出：{other}",
+      "args": ["other"]
+    },
+    "rsSshSource.probe.readFailed": {
+      "kind": "error",
+      "zh": "读后端输出出错：{e}",
+      "args": ["e"]
+    },
+    "rsSshSource.test.probeFailed": {
+      "kind": "error",
+      "zh": "SSH 连上了，但后端探测失败：{e}",
+      "args": ["e"]
+    },
+    "rsSshSource.test.noHello": {
+      "kind": "body",
+      "zh": "SSH 连上了，但后端没响应（可能没装或没启动）",
+      "args": []
+    },
+    "rsSshSource.test.controlDown": {
+      "kind": "body",
+      "zh": "后端连上了，但不能在远端起会话",
+      "args": []
+    },
+    "rsSshSource.test.noControl": {
+      "kind": "body",
+      "zh": "后端版本过旧，不能在远端起会话。请在设置里重装这台机器的后端",
+      "args": []
+    },
+    "rsSshSource.test.ok": {
+      "kind": "body",
+      "zh": "SSH 与后端均正常。",
+      "args": []
+    },
+    "rsSshSource.test.sshFailed": {
+      "kind": "error",
+      "zh": "SSH 连接/鉴权失败：{e}",
+      "args": ["e"]
+    },
+    "rsSshSource.host.sshGExit": {
+      "kind": "error",
+      "zh": "ssh -G {alias} 退出非 0：{detail}",
+      "args": ["alias", "detail"]
+    },
+    "rsSshSource.host.sshGFailed": {
+      "kind": "error",
+      "zh": "运行 ssh -G 失败（OpenSSH 客户端装了吗？）：{e}",
+      "args": ["e"]
+    },
+    "rsSshSource.host.sshGNotRun": {
+      "kind": "error",
+      "zh": "ssh -G 没能运行：{e}",
+      "args": ["e"]
+    },
+    "rsSshSource.host.dashAlias": {
+      "kind": "error",
+      "zh": "host 别名不能以 '-' 开头",
+      "args": []
+    },
+    "rsSshSource.host.badAlias": {
+      "kind": "error",
+      "zh": "非法的 host 别名（含不安全字符）：{alias}",
+      "args": ["alias"]
+    },
+    "rsSshSource.aliases.readFailed": {
+      "kind": "error",
+      "zh": "读取 ~/.ssh/config 失败：{e}",
+      "args": ["e"]
+    },
+    "rsSshSource.health.degraded": {
+      "kind": "body",
+      "zh": "远端后端是旧版本（{build}，当前 {expected}），本连接降级运行。后台会话不可见，历史全量推送容易拥塞。请在设置里重装这台机器的后端。",
+      "args": ["build", "expected"]
+    },
+    "rsSshSource.upgrade.reconnect": {
+      "kind": "error",
+      "zh": "后端的能力有更新，重新连接一次",
+      "args": []
+    },
+    "rsSshSource.version.protoMismatch": {
+      "kind": "body",
+      "zh": "远端 [{label}] 的后端版本不兼容，请在设置里更新",
+      "args": ["label"]
+    },
+    "rsSshSource.version.buildMismatch": {
+      "kind": "body",
+      "zh": "远端 [{label}] 的后端版本过旧（{reported}），请在设置里更新",
+      "args": ["label", "reported"]
+    },
+    "rsSshSource.health.overflowLost": {
+      "kind": "body",
+      "zh": "远端 [{host}] 连接拥塞，{count} 个会话的状态可能没更新{named}。这部分重开会话补不回来，请刷新这台机器{truncatedNote}。",
+      "args": ["host", "count", "named", "truncatedNote"]
+    },
+    "rsSshSource.health.overflowTruncated": {
+      "kind": "body",
+      "zh": "；受影响的会话清单不全",
+      "args": []
+    },
+    "rsSshSource.health.overflowLines": {
+      "kind": "body",
+      "zh": "远端 [{host}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。",
+      "args": ["host", "dropped"]
+    },
+    "rsSshSource.health.lineTooLong": {
+      "kind": "body",
+      "zh": "远端 [{host}] 有一条记录过大（{bytes} 字节），已跳过。重开会话可看完整历史",
+      "args": ["host", "bytes"]
+    },
+    "rsSshSource.snapshot.incompletePlan": {
+      "kind": "error",
+      "zh": "快照不完整：{total}/{expected} 行（连接中断或后端报错）",
+      "args": ["total", "expected"]
+    },
+    "rsSshSource.snapshot.incomplete": {
+      "kind": "error",
+      "zh": "快照不完整：{arrived}/{want} 行（连接中断或后端报错）",
+      "args": ["arrived", "want"]
+    },
+    "rsSshSource.snapshot.failed": {
+      "kind": "body",
+      "zh": "会话 {sid} 的历史快照没拉下来（{err}）。这个标签页暂时只有实时消息，完整内容可到历史浏览器查看。",
+      "args": ["sid", "err"]
+    },
+    "rsRemoteBranch.local.backendDown": {
+      "kind": "error",
+      "zh": "本机后端不在，分叉要经它来写 —— 一个字节都没动（{why}）",
+      "args": ["why"]
+    },
+    "rsRemoteBranch.what.messageId": {
+      "kind": "body",
+      "zh": "消息 ID",
+      "args": []
+    },
+    "rsRemoteBranch.what.sourceId": {
+      "kind": "body",
+      "zh": "源会话 id",
+      "args": []
+    },
+    "rsRemoteBranch.fork.timeout": {
+      "kind": "error",
+      "zh": "远端分叉超时（{secs} 秒）",
+      "args": ["secs"]
+    },
+    "rsRemoteBranch.remote.notConfigured": {
+      "kind": "error",
+      "zh": "远端「{machine}」未配置或未启用",
+      "args": ["machine"]
+    },
+    "rsRemoteBranch.fork.noExitCode": {
+      "kind": "error",
+      "zh": "远端分叉失败：没收到退出码，连接可能中断",
+      "args": []
+    },
+    "rsRemoteBranch.fork.noExitCodeWith": {
+      "kind": "error",
+      "zh": "远端分叉失败（没收到退出码，连接可能中断）：{d}",
+      "args": ["d"]
+    },
+    "rsRemoteBranch.fork.failedNoReason": {
+      "kind": "error",
+      "zh": "远端分叉失败（后端退出码 {code}，且没有给出原因）",
+      "args": ["code"]
+    },
+    "rsRemoteBranch.fork.failed": {
+      "kind": "error",
+      "zh": "远端分叉失败：{d}",
+      "args": ["d"]
+    },
+    "rsRemoteBranch.fork.noOutput": {
+      "kind": "error",
+      "zh": "远端分叉：后端报成功却没有输出结果",
+      "args": []
+    },
+    "rsRemoteBranch.fork.noResultJson": {
+      "kind": "error",
+      "zh": "远端分叉：后端报成功，但输出里找不到结果 JSON。远端 shell 是不是打了 banner？",
+      "args": []
+    },
+    "rsRemoteBranch.forkId.badChar": {
+      "kind": "error",
+      "zh": "{what} 含非法字符（只许字母/数字/连字符）",
+      "args": ["what"]
+    },
+    "rsRemoteBranch.forkId.badLength": {
+      "kind": "error",
+      "zh": "{what} 长度非法（1..=64）",
+      "args": ["what"]
+    },
+    "rsRemoteBranch.fork.oldBackend": {
+      "kind": "error",
+      "zh": "远端后端版本过旧，不支持分叉。请在设置里重装这台机器的后端",
+      "args": []
+    },
+    "historyActions.menu.delete": {
+      "kind": "action",
+      "zh": "删除…",
+      "args": []
+    },
+    "historyActions.menu.hide": {
+      "kind": "action",
+      "zh": "隐藏",
+      "args": []
+    },
+    "historyActions.menu.unhide": {
+      "kind": "action",
+      "zh": "取消隐藏",
+      "args": []
+    },
+    "historyActions.menu.rename": {
+      "kind": "action",
+      "zh": "重命名",
+      "args": []
+    },
+    "historyActions.menu.star": {
+      "kind": "action",
+      "zh": "标星",
+      "args": []
+    },
+    "historyActions.menu.unstar": {
+      "kind": "action",
+      "zh": "取消标星",
+      "args": []
+    },
+    "historyActions.menu.newInDir": {
+      "kind": "action",
+      "zh": "在该目录起新会话",
+      "args": []
+    },
+    "historyActions.menu.resume": {
+      "kind": "action",
+      "zh": "在新终端 resume",
+      "args": []
     }
   }
 }
