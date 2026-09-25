@@ -268,11 +268,8 @@ pub(crate) fn refuses(origin: &Origin, route: &ArgvRoute) -> bool {
 
 pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
     match argv {
-        ["--list-projects"] => Some(ArgvRoute::Lines("history-projects", json!({}))),
-        ["--list-sessions", dir] => Some(ArgvRoute::Lines(
-            "history-sessions",
-            json!({"project_dir": dir}),
-        )),
+        // 〔C4d · 第四波 4B〕`--list-projects` / `--list-sessions` 两形删了：历史清单前端经通道问**本机**常驻后端
+        //   （`history-projects` / `history-sessions` 带 `origin`，它沿池里那条 SSH 去问那台），monitor 这一侧不再有路发它们。
         ["--list-subagents", parent] => Some(ArgvRoute::Lines(
             "history-subagents",
             json!({"parent": parent}),

@@ -192,6 +192,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/copy-table.ts", // 〔U4〕杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/error-toast.ts",
     "src/file-window.ts", // F78：远端会话「打开工作目录」（〔F7b〕老 SFTP 面板删了，改开文件窗口）
+    "src/history-reads.ts", // 〔C4d〕resume 前现读那条会话的 pin（上次账号表归本机常驻后端，经通道问 `history-last-accounts`）
     "src/ipc/commands.ts",
     "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各走哪条动作
     "src/launch-requests.ts",

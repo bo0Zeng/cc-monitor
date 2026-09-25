@@ -44,6 +44,8 @@ vi.mock("../../src/behavior", () => ({ getBehavior: () => ({}) }));
 vi.mock("../../src/format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { invoke } from "@tauri-apps/api/core";
+// 〔C4d〕历史清单改走通道（问本机常驻后端）：旧命令名照旧当「哪一问」的名字，译法住 chan-fake。
+import { withHistoryReads } from "../test-support/chan-fake";
 import { HistoryView } from "../../src/views/history";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -72,7 +74,7 @@ function setup(projectCount: number): { release: () => void; inFlight: () => num
     updatedAt: 0,
   }));
   invokeMock.mockReset();
-  invokeMock.mockImplementation((cmd: string) => {
+  invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
     if (cmd === "list_history_projects") return Promise.resolve(projects);
     if (cmd === "list_remote_history_projects")
       return Promise.resolve({ projects: [], failedHosts: [] });
@@ -86,7 +88,7 @@ function setup(projectCount: number): { release: () => void; inFlight: () => num
       );
     }
     return Promise.resolve(undefined);
-  });
+  }));
   return {
     release: () => {
       while (pending.length) pending.shift()?.();

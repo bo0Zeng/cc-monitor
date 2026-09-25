@@ -185,7 +185,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | theme/font/claudeDir/keybindings/`remote.hosts[]`(含 label)/resume 命令/诊断开关——全用户手填 |
-| `history-metadata.json` | **真相** | `history.rs::save_metadata` | 按 sid 的 star/重命名/隐藏——用户策展意图 |
+| `history-metadata.json` | **真相** | 〔C4d〕本机常驻后端 `history_annotations.rs::answer_annotate`（路径仍由 `history.rs::metadata_path` 算、起后端时交过去；文件原地不动） | 按 sid 的 star/重命名/隐藏——用户策展意图 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled`=真相；`monitor_exe_path`=派生(每次启动 `current_exe()` 自愈改写) |
 | `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
@@ -674,7 +674,7 @@ Batch8-F25/26 起（p1f 后端 + tail-only）：后端连接时把各文件 seq 
 ### 现状签收（2026-07-16，F64 全库核查，无违反）
 cc-monitor **没有一个**「自铸 opaque id + 落盘/上 wire + 从路径算」的东西。持久身份
 全挂**外部稳定 id**：
-- 会话表 / 历史 metadata / 窗口句柄缓存 key = Claude Code `sessionId`（`session_map.rs`、`history.rs::HistoryMetadata.entries`、`bind.rs::SidHwndBinding`）。
+- 会话表 / 历史 metadata / 窗口句柄缓存 key = Claude Code `sessionId`（`session_map.rs`、〔C4d〕后端 `history_annotations.rs::Table`、`bind.rs::SidHwndBinding`）。
 - ps-registry key = OS `pid`（`bind.rs`）。
 - 唯一自铸的 opaque token = bind 握手 marker `ccm-bind-{PID}-{随机8字符UUID}`（`bind.rs`）——**瞬时握手、用完即删、不从路径算**，不当持久身份，合规。
 - panorama 进程内选 Engine 的 key 用仓根路径，但**纯内存、绝不落盘**（保持现状，别存盘）。持久的节点身份由 **code-picture-core** 写进侧车 DB、守它自己的 uuid 规矩，cc-monitor 只消费不自铸。〔RM1f 09-25：monitor 进程内那个 Engine 池随内嵌引擎删了（本机全景也经本机后端起全景小程序，一问一进程）⇒ 前半句今天**没有对象**；后半句照旧成立 —— 身份仍由小程序里那份 core 写、monitor 只消费。〕
