@@ -1148,6 +1148,18 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
                  删掉这句话，读的人只会看见「三道门少了一层真机验收」而不知道为什么",
         ),
         (
+            "src/launch-render-cli.ts",
+            "**历史句**〔LR1 · U8c-3 09-25〕：`INVARIANTS §33` 背景段逐字讲「F03 当时有两个渲染器、\
+                 各住哪」—— TS 那份 CLI 渲染器已删，§33 末尾的 LR1 更新段给了今天的住址\
+                 （`ccm_invocation.rs`）。改写背景段会丢掉「这条铁律当初是对着哪一份立的」",
+        ),
+        (
+            "tests/launch-render-cli.test.ts",
+            "**历史句**〔LR1 · U8c-3 09-25〕：`INVARIANTS §33` 三处「验证」逐字记着当时那几刀下在\
+                 哪套测试上（R04① · #76 防线）。套件随 TS 渲染器删了，今天的验证住址逐条写在\
+                 §33 末尾的 LR1 更新段",
+        ),
+        (
             "src/cards/memory-recall.ts",
             "**示例占位**：原文是「通常新建 `…`」，教人照着建一个，本就不指向现存文件",
         ),

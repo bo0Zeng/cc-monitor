@@ -213,6 +213,8 @@ fn ccm_tmux_name_whitelist() {
 /// 含 glob/元字符但非空的 target **不**在这一层被拒（`shell_quote` 已安全引号化，
 /// 字符集收紧是 TS 侧 `isValidNewTmuxName`/`isValidTmuxName` 的职责，
 /// 见 `is_safe_tmux_target` 头注）。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（attach 目标只拒空）。
 #[test]
 fn gate1_rejects_only_empty_target() {
     // ① 谓词本体（正反各一格 —— 只钉「空的被拒」的话，把它焊死成恒拒也能绿）
@@ -286,6 +288,8 @@ fn gate1_rejects_only_empty_target() {
 /// ⚠ **本条扫的是源码**（那条串拼在 `async fn` 里、外面取不到），如实标注：
 /// **盘上有 ≠ 被走到**。行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md` ②/S5
 /// （真 tmux 3.4，改前段数 1 / 改后段数 6）。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand() {
     let prod = guard_core::production_code(include_str!(
@@ -360,6 +364,8 @@ const BACKEND_KOU_JING_HOME: &str = "src/backend/common/tmux_utf8.rs";
 ///   🔴 只动 ① 会让那张表的条数当场对不上 —— 它是**两个方向都查**的。
 /// - **不管什么**：它不证明「那个旗真的被走到了」（「盘上有 ≠ 被走到」）。
 ///   行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`（真 tmux 3.4 私有 socket）。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）（跨仓对拍）。
 #[test]
 fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     let prod = guard_core::production_code(include_str!(
@@ -499,6 +505,8 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
 /// 这一条同时把 `§5.4` 点名的那条**误伤**钉成一个可见的读数：**过溢的行今天照样被丢掉**。
 /// 处置本拍**刻意没改**（理由见 [`parse_tmux_ls`] 头注），所以这里断言的是**现状**——
 /// 哪天有人去修那条误伤，本条会红，那正是它该红的时候。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today() {
     const DIRTY: &str = "kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1";

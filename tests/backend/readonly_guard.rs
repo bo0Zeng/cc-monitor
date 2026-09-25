@@ -2,7 +2,7 @@
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
 //!
-//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过 Claude 会话数据围栏、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔B2 · 条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json` · 〔RM1a〕账号层那份凭据文件，都不是用户数据）只许在逐文件登记的那几份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
+//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过 Claude 会话数据围栏、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔B2 · 条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json` · 〔RM1a〕上游选择那份凭据文件，都不是用户数据）只许在逐文件登记的那几份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
 //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Command::new` 的起进程点。
 //!
 //! ⚠ **这两行今天不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
@@ -163,9 +163,9 @@ mod tests {
     const BACKEND_CORE_MODULES: &[(&str, &str)] = &[
         (
             "accounts",
-            "账号层（apikey 端点改写）：那张 `(agent, 账号)` 表 · 每 agent 一行的默认上游 · \
-             中转进程里**只读**那份凭据文件 · 热重载。〔RM1a〕另有 `apikey/file_face.rs` 那一份\
-             在帧面上写**这台机器上**的那份凭据文件（账号层自己的状态，第四层登记）。\
+            "上游选择（apikey 端点改写）：那张 `(agent, 账号)` 表 · 每 agent 一行的默认上游 · \
+             中转进程里**只读**那份凭据文件 · 热重载。〔RM1a〕另有 `upstream/file_face.rs` 那一份\
+             在帧面上写**这台机器上**的那份凭据文件（上游选择自己的状态，第四层登记）。\
              2026-09-24 从 `relay/` 底下搬出来（「中转层不要有账号」），在那之前它就在本护栏的人群里",
         ),
         (
@@ -673,9 +673,9 @@ mod tests {
          线上入口只有 `inbound.rs` 的 `exit-policy-set`（＋ 派生的 CLI 面）",
         ),
         (
-            "accounts/apikey/file_face.rs",
-            "〔RM1a · 第四波〕账号层（层 2）那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
-             文件名 / 格式 / 落点都是本仓定的、只有中转进程里的账号层读它 ⇒ 账号层**自己的**状态，\
+            "accounts/upstream/file_face.rs",
+            "〔RM1a · 第四波〕上游选择那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
+             文件名 / 格式 / 落点都是本仓定的、只有中转进程里的上游选择读它 ⇒ 上游选择**自己的**状态，\
              不是用户数据（判清全文 `调研/第四波记录/RM1a.md §1`）。写的那一刻读盘 → 只改一条账号那一格 → \
              临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；\
              只建 `work/` 那一层目录；失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `apikey-key-set`",
@@ -754,7 +754,7 @@ mod tests {
             "inbound.rs",
         ),
         (
-            "accounts/apikey/file_face.rs",
+            "accounts/upstream/file_face.rs",
             "file_face::answer_set",
             "inbound.rs",
         ),
@@ -2313,7 +2313,7 @@ mod spawn_registry {
              ⚠⚠ 而这正是这条键的病在**第二个使用者**身上复发：\
              键仍是 `<非字面量>`、仍分不出是哪个插件 ⇒ **加这一条不会红**，\
              是人回来读了这一段才写下的。下一个使用者同理。\
-             ★★ **〔`A3` 第二波 09-24〕第三个使用者到了，逐条记在这里** —— 账号层 \
+             ★★ **〔`A3` 第二波 09-24〕第三个使用者到了，逐条记在这里** —— 上游选择 \
              `accounts/iso.rs`经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
              写面：**只读** —— `cmd_shellinit` 全是 `printf`，不写任何文件（vendored 那份 \
              `src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso` 逐行可查）；它读 manifest 与 \
@@ -2357,7 +2357,7 @@ mod spawn_registry {
         (
             "relay/machine.rs",
             "<非字面量>",
-            "〔RM1a · 第四波〕远端那台机器上的中转（层 1）由那台的后端起：**本后端这个二进制自己**\
+            "〔RM1a · 第四波〕远端那台机器上的中转由那台的后端起：**本后端这个二进制自己**\
              （`current_exe`）带 `--relay`，stdio 全接空、自成一个进程组（`platform::detach`）。\
              被起的那个进程就是 `--relay` 那一臂 —— 它自己的写面由本护栏照样管（同一个二进制、同一份生产段），\
              **不是**后端进程自身写用户既有数据。程序名走变量（`current_exe`）⇒ 抽取器记成 `<非字面量>`。\
@@ -2747,6 +2747,8 @@ mod capture_is_read_only {
     }
 
     /// ★★ 正题①（**值级**）：这一处发出去的 argv 逐元素就是那条只读形。
+    ///
+    /// 〔IV1 · V121〕`INVARIANTS §49`（tmux 打印通道必须是 UTF-8）的邻居：`capture-pane` 实测不在那一条的人群里，这里钉着的第一个元素（那个旗）是额外的；本条的主住址仍是只读铁律。
     #[test]
     fn the_argv_this_site_emits_is_read_only_element_by_element() {
         let argv = crate::control::capture_pane::capture_argv("=某会话:");
@@ -3644,10 +3646,10 @@ mod error_envelope_registry {
             "accounts/iso.rs",
             "serde_json::json!({\"code\": code, \"message\": message})",
             "〔`A3` 第二波〕本机 `cc-acct-iso` 两问的失败信封（一个闭包 `fail`，四档码共用）",
-            "与 `observe/accounts_query.rs` 那份**同形不同家**：它住账号层（`accounts/`），\
+            "与 `observe/accounts_query.rs` 那份**同形不同家**：它住账号域（`accounts/`），\
              而那份住 observe、`control/` 的出口按分层它也引不到 ⇒ 收成一份要先动分层，\
              同 `K-R103`「不收」那条的理由。⚠ 它**只产出**信封、不自己写 stderr —— \
-             写出去那一下在 `main.rs::emit_answer`（账号层的输出受中转日志白名单管，查询输出不是日志）。",
+             写出去那一下在 `main.rs::emit_answer`（账号域的输出受中转日志白名单管 —— 其中上游选择那块挂在中转进程上，查询输出不是日志）。",
         ),
         (
             "dial/sftp.rs",
@@ -3996,7 +3998,7 @@ mod g6_dependency_signoff {
              ★ **它自己有两处写面**：`perm.rs` 的 `make_private`（收窄既有文件的权限）与 \
              `create_private`（建一个只给本人的新文件），都在那个 feature 后面。\
              〔RM1a · 第四波〕本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
-             （账号层自己的状态文件，第四层登记的 `accounts/apikey/file_face.rs`），\
+             （上游选择自己的状态文件，第四层登记的 `accounts/upstream/file_face.rs`），\
              「出生即只给本人」只有 `create_private` 这一份实现 ⇒ 就是要它写。\
              先前「编译器保证写不了」那一格换成下面这条判据：写半边在本 crate 生产段的引用处 == 那一份。\
              边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",
@@ -4052,7 +4054,9 @@ mod g6_dependency_signoff {
              **我没有扫过它的源码** —— backend 侧这条路不传 known_hosts 路径、\
              host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
-             ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做",
+             ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做。\
+             〔CZ1 · 2026-09-25〕今天链的是仓内补过的副本（`[patch.crates-io]` → `src/bridge/vendor/russh`，只改了 \
+             `compression.rs` 解压收尾那一段、没碰任何 IO）⇒ 源码进了树、**可以**量了，但本档仍是「未量」：本轮没扫它的写面",
         ),
         (
             "russh-sftp",
@@ -4084,6 +4088,14 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "JSON 编解码；同 `serde`，只在内存里把字节变成结构体、再变回去",
+        ),
+        (
+            "sha2",
+            DEV_DEPS,
+            UNMEASURED,
+            "〔CZ1 · 2026-09-25〕只给 vendored russh 副本算指纹（`dial_compress_tests` 的 V1：盘上每一份 == `VENDOR.md` 登记的 sha256）。\
+             **只在测试期链接**，不进发布二进制；版本是 russh 那棵树早已锁着的 `0.11.0`（不新增包）。纯内存摘要 —— 它不开文件，\
+             读副本的是判据自己（经 `guard_core::scan_tree_excluding`）",
         ),
         (
             "shell-quote-core",
@@ -4516,7 +4528,7 @@ mod g6_dependency_signoff {
 
     /// 🔴 〔RM1a · 第四波〕**`creds-core` 那条「就是要它写」的边界判据**：它的写半边
     /// （`perm::create_private` · `perm::make_private`）在本 crate 生产段里的引用处，
-    /// **恰好**是第四层登记的那一份 `accounts/apikey/file_face.rs`（两向集合相等）。
+    /// **恰好**是第四层登记的那一份 `accounts/upstream/file_face.rs`（两向集合相等）。
     ///
     /// # 它顶替的是哪一格
     ///
@@ -4561,9 +4573,10 @@ mod g6_dependency_signoff {
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
-        let want: std::collections::BTreeSet<String> = ["accounts/apikey/file_face.rs".to_string()]
-            .into_iter()
-            .collect();
+        let want: std::collections::BTreeSet<String> =
+            ["accounts/upstream/file_face.rs".to_string()]
+                .into_iter()
+                .collect();
         assert_eq!(
             found, want,
             "`creds-core` 的写半边（建私有文件 / 收窄权限）在本 crate 生产段里的引用处对不上：\n\

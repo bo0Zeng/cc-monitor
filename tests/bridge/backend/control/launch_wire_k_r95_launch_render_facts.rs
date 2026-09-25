@@ -3,49 +3,31 @@
 //!
 //! # 为什么走生成物，而不是再开一条 IPC
 //!
-//! 与上一件 `K-R93` 同一个理由，逐字照它的范例做：这几格的消费点
-//! （`launch-render-cli.ts::tryRenderCli` 的降级理由、
-//! `accounts.ts::localLaunchAccountSync` 的载荷键名）**都是同步纯函数**，
-//! 而 IPC 是异步的 —— 改成 IPC 要连它们的调用链一起翻成 async，
-//! 触及 `remote-launch-run.ts` / `launch-cli-golden.ts` / `tabs.ts` /
-//! `views/history.ts` **四个本件写区没给的文件**。
-//! ⇒ 选生成物那条：**同样做到「后端改一处，前端手里那份跟着变」**，而写区一格没越。
+//! 与上一件 `K-R93` 同一个理由：消费点（`accounts.ts::localLaunchAccountSync` 的载荷键名）
+//! 是**同步纯函数**，而 IPC 是异步的。⇒ 选生成物那条：
+//! **同样做到「后端改一处，前端手里那份跟着变」**。
 //!
-//! # 三格分别是什么
+//! # 今天只剩一格
 //!
-//! | 格 | 前端此前哪一处自己写 | 现在的源 | 前端改读了吗 |
-//! |---|---|---|---|
-//! | 每次调用无条件要求的能力集 | `launch-render-cli.ts::CLI_REQUIRED_CAPS` | [`super::super::ccm_invocation::CLI_REQUIRED_CAPS`] | ❌ 见下 |
-//! | 八句降级理由的措辞 | `launch-render-cli.ts` 里八处字面量 | [`super::super::ccm_invocation::Refusal::reason`] ＋ 本模块的 [`PROBE_UNKNOWN_REASON`] | ✅ 八句里的六句 |
-//! | 本机拉起载荷「哪个号」那一格的 wire 键名 | `accounts.ts` 里 `{ kind: "named", configDir, name }` | [`crate::history::LaunchAccount`] 的 serde 契约 | ✅ |
+//! | 格 | 前端此前哪一处自己写 | 现在的源 |
+//! |---|---|---|
+//! | 本机拉起载荷「哪个号」那一格的 wire 键名 | `accounts.ts` 里 `{ kind: "named", configDir, name }` | [`crate::history::LaunchAccount`] 的 serde 契约 |
 //!
-//! # 🔴 没搬动的那三处，卡的是**判据**不是设计
+//! 〔LR1 · U8c-3〕原来还有两格 —— `ccm …` 调用行每次都要的能力集、八句降级理由的措辞 ——
+//! 唯一的消费者是 TS 那份 `ccm …` 渲染器；它删了（生产从 U8c-2c-2 起只走 Rust），
+//! 两格与它们的生成段、`KR95D3` 那句「没探出来 ≠ 没装」一起退役。
+//! ⚠ 那一句**生产上本来就说不出来**：线上 `CliRenderRequest.caps` 只有两态（见
+//! [`super::CliRenderRequest::caps`] 上登记的缺口 R95b）。它的下一次出生应当在修 R95b 的那一拍、
+//! 住进 `ccm_invocation::Refusal`，由 Rust 判据管。
 //!
-//! 能力清单 ＋ 两条「维度 …」闸门的措辞，各自被一条**按源码字面量/措辞 grep** 的判据
-//! 钉在 `src/launch-render-cli.ts` 里：`tests/e2e/ccm-contract-parity.sh:291`（按文件路径 ＋
-//! 单行数组字面量抽清单，还配了「抽到 ≥5 项」的自检）· `tests/launch-render-cli.vitest.ts`
-//! （两条闸门各按措辞钉「恰好一处」）。**两个文件都不在本件写区**，搬走会让它们假红。
-//! ⇒ 处置：留在前端，但由 `launch_cli_parity.rs` 那两条判据**逐字节钉在后端这一份上**
-//! （它们此前一条判据都没有，只有两侧互指的注释）。这一条报给 PM，不许自己解开。
-//!
-//! ⚠ **第三格的诚实边界**：`LaunchAccount` 今天只派生 `Deserialize`（它是命令入参），
+//! ⚠ **这一格的诚实边界**：`LaunchAccount` 今天只派生 `Deserialize`（它是命令入参），
 //! 序列化不出来 ⇒ 键名在本模块里仍是**写出来的**，但它们**每次生成都跑一遍生产
 //! 反序列化器验一次**（还配了阴性对照：换一个名字必须被拒）。
-//! ⇒ `history.rs` 那边改名 ⇒ `npm run gen:types` 当场 panic，而不是悄悄生成一份旧的
-//! —— 那正是 `KR95D3` 要的「**不许悄悄回落到一份写死的默认**」。
+//! ⇒ `history.rs` 那边改名 ⇒ `npm run gen:types` 当场 panic，而不是悄悄生成一份旧的。
 
-use super::super::ccm_invocation::{Refusal, CLI_REQUIRED_CAPS};
-
-/// 🔴 `KR95D3`：「**没探出来**」那一句。`{error}` 是占位。
-///
-/// 它**不进** [`Refusal`]：那个枚举答的是「渲染器为什么渲不出来」，而渲染器手上
-/// 根本没有「探测出没出错」这个概念（它只拿到 `caps` 与 `installed`）。
-/// 这一格丢在**线上** —— 见 [`super::CliRenderRequest::caps`] 上那段登记在案的缺口。
-///
-/// ⚠ 措辞与前端此前那一句**逐字相同**（`launch-render-cli.ts` 的
-/// `` `探测没得出答案（不等于没装）：${probe.error}` ``）—— 本件把它搬到这里，
-/// 前端改读生成物。**全仓只此一处写这句话。**
-const PROBE_UNKNOWN_REASON: &str = "探测没得出答案（不等于没装）：{error}";
+/// 🔴 `K-R95`：本机拉起载荷里「哪个号」那一格的**取值口**（〔LR1〕随下面那条判据从
+/// `launch_cli_parity.rs` 搬来 —— 它与 `ccm …` 渲染器无关）。
+const TS_ACCOUNTS: &str = include_str!("../../../../src/accounts.ts");
 
 /// 生成物的头。`generated-boundary-guard.vitest.ts` 认两样东西：
 /// 「谁生成的」那一行 ＋「不许手改」那句话。
@@ -56,8 +38,6 @@ const HEADER: &str = "\
 // `K-R95`：**「要跑什么」只有后端一份说法**（定框 `K28`：前端不许自己发明对外行为）。
 // 下面每一格都是生成时**跑一遍后端生产代码现算的**，不是照抄一遍常量 ——
 // 改后端那一处、跑 `npm run gen:types`，前端手里这一份就跟着变。
-//
-// ⚠ 带 `{…}` 的是**占位**：调用方原样替换掉，措辞本身不许在前端改。
 ";
 
 /// TS 字符串字面量。走 `serde_json` 而不是自己拼引号：转义规则一次到位，
@@ -73,56 +53,6 @@ fn lines(s: &mut String, ts: &[&str]) {
         s.push_str(t);
         s.push('\n');
     }
-}
-
-/// 八句降级理由：`(TS 侧的键, 后端现场产出的措辞, 给读的人的一句注)`。
-fn refusal_reasons() -> Vec<(&'static str, String, &'static str)> {
-    vec![
-        (
-            "notInstalled",
-            Refusal::NotInstalled.reason(),
-            "探到了，它**真的**没装",
-        ),
-        (
-            "notSsh",
-            Refusal::NotSsh.reason(),
-            "本机那条路不走这个渲染器",
-        ),
-        (
-            "missingCap",
-            Refusal::MissingCap("{cap}".into()).reason(),
-            "`{cap}` = 缺的那个能力名",
-        ),
-        (
-            "sendIntoHasNoCliForm",
-            Refusal::SendIntoHasNoCliForm.reason(),
-            "#76 防线：idle-tmux 就地复用没有 CLI 等价语法",
-        ),
-        (
-            "attachNeedsTmux",
-            Refusal::AttachNeedsTmux.reason(),
-            "attach 只有 tmux 一种容器",
-        ),
-        (
-            "dimensionCannotSpeak",
-            Refusal::DimensionCannotSpeak("{dim}".into()).reason(),
-            "`{dim}` = 维度 id",
-        ),
-        (
-            "dimensionNeedsCap",
-            Refusal::DimensionNeedsCap {
-                dim: "{dim}".into(),
-                cap: "{cap}".into(),
-            }
-            .reason(),
-            "`{dim}` / `{cap}` 两个占位",
-        ),
-        (
-            "probeUnknown",
-            PROBE_UNKNOWN_REASON.to_string(),
-            "🔴 `KR95D3`：**没探出来 ≠ 没装**；`{error}` 是唯一线索",
-        ),
-    ]
 }
 
 /// 本机拉起载荷里「哪个号」那一格的 wire 键名 —— **每次生成都跑生产反序列化器验一遍**。
@@ -181,52 +111,6 @@ fn render_launch_render_facts() -> String {
         &[
             "",
             "/**",
-            " * `ccm` 调用行**每次调用都无条件要求**的能力集。",
-            " *",
-            " * 源：`ccm_invocation::CLI_REQUIRED_CAPS`。",
-            " *",
-            " * ⚠ `K-R95` 交回时**前端还没能改读这一格**：`tests/e2e/ccm-contract-parity.sh`",
-            " * 按 `src/launch-render-cli.ts` 的单行数组字面量抽它，搬走那条 e2e 当场红，",
-            " * 而那个文件不在本件写区。⇒ 前端那一份今天由",
-            " * `launch_cli_parity.rs` 逐字节（含顺序）钉在后端这一份上。",
-            " */",
-            "export const CLI_REQUIRED_CAPS: readonly string[] = [",
-        ],
-    );
-    for c in CLI_REQUIRED_CAPS {
-        lines(&mut s, &[&format!("  {},", ts_str(c))]);
-    }
-    lines(&mut s, &["];"]);
-
-    lines(
-        &mut s,
-        &[
-            "",
-            "/**",
-            " * 八句**降级理由**的措辞。前七句由 `ccm_invocation::Refusal::reason()` 现场产出，",
-            " * 第八句由 `launch_wire` 里那个 `PROBE_UNKNOWN_REASON` 给出。",
-            " *",
-            " * ⚠ 「渲染不出来」**不是错误，是诚实降级** —— 这几句是生产文案，用户会看到。",
-            " */",
-            "export const CLI_REFUSAL_REASON = {",
-        ],
-    );
-    for (key, text, note) in refusal_reasons() {
-        lines(
-            &mut s,
-            &[
-                &format!("  /** {note} */"),
-                &format!("  {key}: {},", ts_str(&text)),
-            ],
-        );
-    }
-    lines(&mut s, &["} as const;"]);
-
-    lines(
-        &mut s,
-        &[
-            "",
-            "/**",
             " * 本机拉起载荷里「哪个号」那一格的 **wire 键名**。",
             " *",
             " * 源：`history.rs::LaunchAccount` 的 serde 契约，生成时**跑一遍生产反序列化器**",
@@ -257,43 +141,17 @@ fn export_bindings_launch_render_facts() {
     std::fs::write(&out, body).unwrap_or_else(|e| panic!("写不进 {}：{e}", out.display()));
 }
 
-/// ★★ 🔴 `KR95D3`：**「没探出来」不许和「它真的没装」是同一句话。**
+/// ★★ 🔴 `KR95D1`：生成物里那一格**真的是跑后端算出来的**，不是一份写死的表。
 ///
-/// 这一格今天的后果是真的去跑一条错命令：读到「远端未装 ccm」的人会去装一遍 ccm，
-/// 而真相可能只是一次 ssh 抖动。死值验：把 `PROBE_UNKNOWN_REASON` 改成
-/// `Refusal::NotInstalled.reason()` 那句（= 悄悄回落）⇒ 本条红。
-#[test]
-fn not_knowing_is_never_spelled_the_same_way_as_knowing_it_is_absent() {
-    assert_ne!(
-        PROBE_UNKNOWN_REASON,
-        Refusal::NotInstalled.reason(),
-        "「没探出来」被写成了「远端未装 ccm」—— 那是把「不知道」伪装成「知道」"
-    );
-    assert!(
-        PROBE_UNKNOWN_REASON.contains("{error}"),
-        "这一句没带 `{{error}}` 占位 ⇒ 那条唯一线索传不下去，\
-             用户只会看到一句没有出处的「不知道」：{PROBE_UNKNOWN_REASON:?}"
-    );
-}
-
-/// ★★ 🔴 `KR95D1`：生成物里那三格**真的是跑后端算出来的**，不是一份写死的表。
-///
-/// 本条不查「前端源码里还有没有那几个字符串」（那是**判写法**，`KR95D1` 点名的失效方向），
-/// 它查的是**产出**：拿后端此刻的值现算一遍，与写进生成物的那份逐字节比。
-/// ⇒ 改后端一处而没跑 `npm run gen:types` ⇒ 本条红（门禁第六格 `generated` 是它的复核）。
+/// 本条查的是**产出**：拿后端此刻验过的值现算一遍，与写进生成物的那份逐字节比。
+/// ⇒ 改后端一处而没跑 `npm run gen:types` ⇒ 门禁第六格 `generated` 的 `git diff` 红。
 #[test]
 fn the_facts_the_frontend_holds_are_recomputed_from_the_backend_every_time() {
     let body = render_launch_render_facts();
-    for c in CLI_REQUIRED_CAPS {
+    for (key, wire) in local_launch_account_wire() {
         assert!(
-            body.contains(&format!("  {},", ts_str(c))),
-            "能力 {c} 没进生成物 —— 前端手里那份就不是后端这一份"
-        );
-    }
-    for (key, text, _) in refusal_reasons() {
-        assert!(
-            body.contains(&format!("  {key}: {},", ts_str(&text))),
-            "降级理由 {key} 没进生成物（后端现场产出的是 {text:?}）"
+            body.contains(&format!("  {key}: {},", ts_str(wire))),
+            "wire 键名 {key} 没进生成物（后端验过的是 {wire:?}）"
         );
     }
     // 反向自检：随便编一个后端说不出的值，必须**不在**里面（否则上面几条恒真）。
@@ -301,4 +159,41 @@ fn the_facts_the_frontend_holds_are_recomputed_from_the_backend_every_time() {
         !body.contains("\"没有人说过这句话\""),
         "生成物里出现了后端说不出的值 —— 上面那几条此刻恒真"
     );
+    // 〔LR1〕退役的两格不许回来（它们没有消费者了）。
+    for gone in ["CLI_REQUIRED_CAPS", "CLI_REFUSAL_REASON"] {
+        assert!(
+            !body.contains(gone),
+            "生成物里又出现了 `{gone}` —— 它唯一的消费者（TS 那份 `ccm …` 渲染器）已删"
+        );
+    }
+}
+
+/// ★★ 🔴 `K-R95` `KR95D1` **刀③**（「前端退回自己拼 ⇒ 必须红」）：
+/// `accounts.ts` 真的用**计算键**读生成物那张表，而不是把三个键名再写一遍。
+///
+/// # ⚠ 本条是**判写法**，登记在案 —— 别把它当成 `KR95D1` 的主判据
+///
+/// 主判据是**产出**那一侧：`launch_wire.rs` 的
+/// `the_facts_the_frontend_holds_are_recomputed_from_the_backend_every_time`
+/// （拿后端此刻的值现算一遍去比生成物）＋ 门禁第六格 `generated` 的
+/// `git diff --exit-code`（改后端不重生成 ⇒ 红）。
+///
+/// 本条只补 **刀③** 那一格，而那一格在**同步纯函数**上除了源码层没有别的抓手：
+/// 前端把 `{ kind: "named", configDir, name }` 三个字面量写回去，产出与今天**逐字节相同**
+/// ⇒ 任何按产出判的东西都看不见它，直到某天 `history.rs` 改名才一起爆。
+/// ⇒ 判据体系里必须有一条**看得见「它是从哪儿拿的」**，代价是它按写法判。
+#[test]
+fn the_frontend_reads_the_account_wire_table_instead_of_writing_the_keys_out_again() {
+    for needle in [
+        "[LOCAL_LAUNCH_ACCOUNT_WIRE.tag]:",
+        "[LOCAL_LAUNCH_ACCOUNT_WIRE.configDir]:",
+        "[LOCAL_LAUNCH_ACCOUNT_WIRE.name]:",
+    ] {
+        assert!(
+            TS_ACCOUNTS.contains(needle),
+            "`src/accounts.ts` 里没有 `{needle}` —— 本机拉起载荷「哪个号」那一格\n\
+                 又变回前端自己拼了（`K28`：前端不许自己发明对外行为）。\n\
+                 ⚠ 产出**逐字节相同**，所以除了本条没有任何东西看得见它。"
+        );
+    }
 }

@@ -106,7 +106,7 @@ fn every_fence_shape_names_code_addresses() {
 /// ★★ **围栏标记指常量，不抄字面量** —— 而且「哪两套该共用、哪两套不许共用」判得出来。
 ///
 /// 共用错了的后果不是难看，是**装一个把另一个整块替换掉**
-/// （`account_aliases` 那对标记刻意不同前缀，理由逐字写在它头上）。
+/// （〔TL1〕从前 `account_aliases` 那对标记刻意不同前缀；那一对随代装 rc 那一行退役了）。
 #[test]
 fn the_markers_are_shared_exactly_where_they_should_be() {
     let by = |id: &str| {
@@ -117,7 +117,7 @@ fn the_markers_are_shared_exactly_where_they_should_be() {
     };
     let remote = by("remote-posix-block");
     let local_block = by("local-posix-block");
-    let local_line = by("local-posix-source-line");
+    // 〔TL1 · 4C〕从前还有 `local-posix-source-line` 那一家（rc 里包一行 source 的第三对围栏），那一步退役、账降一行。
     let windows = by("local-windows-ps");
 
     // ① 两套「整块进 POSIX rc」必须是同一对围栏 —— 那是 `KR62D1`「不是第四套」的一半。
@@ -130,12 +130,8 @@ fn the_markers_are_shared_exactly_where_they_should_be() {
         local_block.pairing, remote.pairing,
         "本机 POSIX 那一套的配对判定不再与远端同一份"
     );
-    // ② 三个**家族**的标记必须两两不同（同族内共用不算）。
-    let families = [
-        remote.begin_marker,
-        windows.begin_marker,
-        local_line.begin_marker,
-    ];
+    // ② 各**家族**的标记必须两两不同（同族内共用不算）。
+    let families = [remote.begin_marker, windows.begin_marker];
     for (i, a) in families.iter().enumerate() {
         for b in families.iter().skip(i + 1) {
             assert_ne!(
@@ -147,7 +143,6 @@ fn the_markers_are_shared_exactly_where_they_should_be() {
     // ③ 标记确实是那几个常量本身（指过去，不是抄一份长得一样的）。
     assert_eq!(remote.begin_marker, crate::sftp::CCM_PROFILE_BEGIN);
     assert_eq!(windows.begin_marker, crate::profile_installer::BEGIN_MARKER);
-    assert_eq!(local_line.begin_marker, crate::account_aliases::RC_BEGIN);
 }
 
 /// ★★ 「判定已经收了，装与卸还没收」这句话是**数出来的**。
@@ -169,17 +164,18 @@ fn the_pairing_half_is_converged_and_the_install_half_is_not() {
     let mut installs: Vec<&str> = FENCE_SHAPES.iter().map(|s| s.install_site).collect();
     installs.sort_unstable();
     installs.dedup();
+    // 〔TL1 · 4C〕3 → 2：「本机 POSIX 那一行 source」那一套退役（`71 §6.1`：接上别名文件的那一行只住别名块里）。
     assert_eq!(
         installs.len(),
-        3,
-        "「装」那一半今天有 {} 处独立实现（`§0c` 那三套：远端 SFTP · 本机 PowerShell · \
-             本机 POSIX 那一行 source；`K-R62` 新加的那条路**借的是本机 PowerShell 那一台安装器**，\
-             所以没有变成第 4 处）。这个数变了就来改它 —— 变小 = 有人收敛了（好事，顺手降账）；\
-             变大 = 又长出一套（`KR62D1` 的失效方向）。实得：{installs:?}",
+        2,
+        "「装」那一半今天有 {} 处独立实现（远端 SFTP · 本机 PowerShell；`K-R62` 新加的那条路**借的是本机 \
+             PowerShell 那一台安装器**，所以不是另一处；原先的第三处「本机 POSIX 那一行 source」〔TL1〕退役了）。\
+             这个数变了就来改它 —— 变小 = 有人收敛了（好事，顺手降账）；变大 = 又长出一套（`KR62D1` 的失效方向）。实得：{installs:?}",
         installs.len()
     );
 
-    // 「有装口没卸口」的那几套，逐条点得出名字 —— 这一格今天恰好一条。
+    // 「有装口没卸口」的那几套，逐条点得出名字 —— 〔TL1 · 4C〕这一格今天**零条**（原先唯一那条
+    //   `local-posix-source-line` 随那一步退役了）。再长出一条 ⇒ 红。
     let no_uninstall: Vec<&str> = FENCE_SHAPES
         .iter()
         .filter(|s| s.uninstall_site.is_none())
@@ -187,7 +183,7 @@ fn the_pairing_half_is_converged_and_the_install_half_is_not() {
         .collect();
     assert_eq!(
         no_uninstall,
-        vec!["local-posix-source-line"],
+        Vec::<&str>::new(),
         "「装得进去卸不掉」的那一批变了 —— 它是这张账里最贵的一格，别让它静默增减"
     );
 }
@@ -198,10 +194,6 @@ const SHAPE_FILES: &[(&str, &str)] = &[
     (
         "profile_installer.rs",
         include_str!("../../src/bridge/src/profile_installer.rs"),
-    ),
-    (
-        "account_aliases.rs",
-        include_str!("../../src/bridge/src/account_aliases.rs"),
     ),
     (
         "fenced_block.rs",
@@ -227,6 +219,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 /// （下面的计数自检钉死「一行都不许跳过」）。
 ///
 /// 它今天**绿**，而绿的理由写清楚：本条判的是「**申报 ↔ 现实一致**」，
+/// 〔TL1 · 4C 补〕那一行后来整行退役了（`71 §6.1`），今天账上没有 `None` 那一格 —— 下面 `None` 那一臂是给下一条长出来的留的。
 /// 而那一行的申报（`None`）与现实（`account_aliases.rs` 生产段里
 /// 一个 `fn uninstall… / remove… / strip… / purge…` 都没有）**是一致的** ——
 /// 它是**缺实现**，不是**假申报**。要它红需要的是另一条性质
@@ -497,8 +490,9 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
 /// 「配对 ＋ 读回比对」的原语**零命中**，全部经 `fenced_block`；正控是 `fenced_block` 自己
 /// 恰好一处 `verify_readback(` 调用。
 ///
-/// 死值验：往 `account_aliases.rs::ensure_rc_source_line` 里放回一行
+/// 死值验：往 `account_aliases.rs` 的写别名文件那一跳里放回一行
 /// `crate::verified_write::verify_and_rollback(` ⇒ 本条红在第一个断言。
+/// 〔TL1 · 4C〕原句点的是代装 rc 那一行的那一跳（`ensure_rc_source_line`〔散文墓碑〕），那一跳退役了。
 #[test]
 fn the_write_rule_has_exactly_one_home() {
     let root = crate::guard_support::repo_root().join("src/bridge/src");
