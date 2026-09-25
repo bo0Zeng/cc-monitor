@@ -234,8 +234,8 @@ fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
             return Ok(t);
         }
     }
-    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
-    let token = fresh_token();
+    ensure_private_dir(dir)?;
+    let token = fresh_token()?;
     // `create_new` = O_EXCL：两个 monitor 同时起时只有一个写得成，另一个回头读它写的那份。
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create_new(true);
@@ -278,36 +278,39 @@ fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
     }
 }
 
-/// 造一个新 token。
+/// 造一个新 token：**内核密码学随机数** 16 字节 ⇒ 32 位十六进制（`INVARIANTS §48.1`「新生成时 128 位随机」）。
 ///
-/// ⚠ **这里不用 `rand`，而理由不是「我们很克制、省下一棵依赖树」** ——
-/// 先前这一行逐字写的是「没有引入 `rand`：本仓的依赖面是有代价的
-/// （`C18` 依赖树零 C / 二进制量级）」，那句话今天**两头都不成立**：
-/// ① `C18` 已被推翻 —— 盘上逐字「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」
-///    （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`
-///    「装到任意 agent 机器就能跑」，不是「零 C」）。而且它逐字只约束 **backend** 那一侧，
-///    本文件却编在 **monitor** 里 —— 这条从一开始就够不着这儿；
-/// ② `rand` **早就在本 crate 的依赖图里**：`src/bridge/Cargo.lock` 现打两份
-///    （`0.9.4` 与 `0.10.1`），直接依赖它的 4 个包是 `russh` · `internal-russh-num-bigint` ·
-///    `pageant` · `tauri-plugin-notification` ⇒ 不写它，一棵依赖树也省不下来。
-/// 真正的理由是下面那一段：这个 token 要挡的东西**不需要密码学随机数**。
-/// 取的熵是三样：进程 id · 纳秒时钟 · 一个每次调用都变的进程内计数器。
-/// 这**不是密码学随机数**，如实登记 —— 它挡的是「同机另一个用户想连上这个口」，
-/// 而那需要猜中一个 128 位十六进制串；它挡不住能读到这台机内存或 `/proc` 的人，
-/// 而那种人本来就已经能以你的身份跑东西了。
-fn fresh_token() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0);
-    let a = nanos ^ (u64::from(std::process::id()) << 32);
-    let b = nanos.rotate_left(17).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-        ^ SEQ
-            .fetch_add(1, Ordering::SeqCst)
-            .wrapping_mul(0xff51_afd7_ed55_8ccd);
-    format!("{a:016x}{b:016x}")
+/// 🔴〔HX1 · RK1 报 3〕此前取的熵是「纳秒时钟 ⊕ pid ⊕ 进程内计数器」（头注自认非密码学随机）—— 而 token 文件的
+/// mtime 就是纳秒量级的铸造时刻，同机另一个用户 `stat` 得到它，猜的空间远小于 128 位。
+/// 🪦〔散文墓碑〕原头注那一段「这里不用 `rand` …… 这个 token 要挡的东西**不需要密码学随机数**」不再成立，整段删。
+/// ⇒ 换成与中转钥匙（后端 `relay/door.rs::mint`，`ring` 的 `SystemRandom`，Linux 上是 `getrandom(2)`）**同一个内核池**：
+/// monitor 没有 `ring` / `getrandom` 直接依赖，而本函数唯一的用处（脱离那条路）只在 Linux ⇒ 读 `/dev/urandom`，不加依赖。
+/// 读不出 ⇒ `Err`，调用方拒绝起（与空 token 那一支同一个 fail-closed 方向：不起一个不设防的口）。
+fn fresh_token() -> Result<String, String> {
+    use std::io::Read as _;
+    let mut buf = [0u8; 16];
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut buf))
+        .map_err(|e| format!("取不到系统随机数（/dev/urandom：{e}），铸不出监听口的钥匙"))?;
+    Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// 〔HX1 · RK1 小尾巴〕`~/.cc-monitor` 这一层（token · 「谁在听」· 释放出来的后端二进制都住这里）**建的那一下**就只给本人：
+/// unix 上 `0700`（`DirBuilder` 的 mode 在创建时生效，没有「先按 umask 建出来、再收窄」的那一段）。**已在的不动**
+/// —— 那可能是用户自己设的。别的平台照旧（那边不是 unix 权限位这一问）。
+fn ensure_private_dir(dir: &std::path::Path) -> Result<(), String> {
+    if dir.is_dir() {
+        return Ok(());
+    }
+    let mut b = std::fs::DirBuilder::new();
+    b.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        b.mode(0o700);
+    }
+    b.create(dir)
+        .map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))
 }
 
 /// 记下「谁在听那个口」。**只有起它的那个宿主写**。
@@ -327,7 +330,7 @@ fn write_listen_pid(
     pid: u32,
     bin: &std::path::Path,
 ) -> Result<(), String> {
-    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
+    ensure_private_dir(dir)?;
     let p = pid_path(dir, port);
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
@@ -1449,6 +1452,13 @@ pub fn start_local_backend() -> StartOutcome {
     let extract_dir = dirs::home_dir()
         .map(|h| h.join(".cc-monitor").join("bin"))
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
+    // 〔HX1 · RK1 小尾巴〕本机上第一个建 `~/.cc-monitor` 的就是这里（释放后端二进制之前）⇒ 先把这一层按「只给本人」建好；
+    //   `bin/` 那一层由释放那一步照旧建。建不了不挡起后端（释放那一步会出声说它自己的失败）。
+    if let Some(home_dir) = extract_dir.parent() {
+        if let Err(e) = ensure_private_dir(home_dir) {
+            tracing::warn!("{e}");
+        }
+    }
     // 〔DP1 · 第四波〕**本机的字节也按 (OS, arch) 从那一张表里取**（`设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。
     //
     // 〔墓碑 —— 这里原来是一道 `cfg!(target_os = "linux")` 的闸（D 阶段补审 08-11）：远端那两份 musl 只按 arch 取、不认 OS，
