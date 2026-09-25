@@ -522,6 +522,21 @@ pub(crate) fn parse_user_inputs_args(rest: &[String]) -> Result<(u64, &String), 
 /// `from` 超过文件长度 ⇒ **报错**（文件被截断或重写过 —— 调用方手上的 `end` 已经不指向这份文件），
 /// 不回一份空清单假装「没有新的」。路径守卫与 `--read-session` 同一套。
 fn list_user_inputs(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<(), String> {
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    list_user_inputs_into(agent_home, jsonl_path, from, &mut out)?;
+    out.flush().map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// `--list-user-inputs` 的本体，出口是参数 ——〔SR1a · 2026-09-24〕帧面那条（`history-user-inputs`）
+/// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答（同 `list_projects_into`）。
+pub(crate) fn list_user_inputs_into(
+    agent_home: &Path,
+    jsonl_path: &str,
+    from: u64,
+    mut out: &mut dyn Write,
+) -> Result<(), String> {
     use std::io::{Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
@@ -533,11 +548,8 @@ fn list_user_inputs(agent_home: &Path, jsonl_path: &str, from: u64) -> Result<()
     }
     f.seek(SeekFrom::Start(from))
         .map_err(|e| format!("seek failed: {e}"))?;
-    let stdout = std::io::stdout();
-    let mut out = std::io::BufWriter::new(stdout.lock());
     crate::observe::user_inputs::write_user_inputs(std::io::BufReader::new(f), from, &mut out)
         .map_err(|e| format!("stream failed: {e}"))?;
-    out.flush().map_err(|e| format!("stream failed: {e}"))?;
     Ok(())
 }
 
@@ -558,16 +570,29 @@ fn session_index(
     offset: u64,
     until: Option<u64>,
 ) -> Result<(), String> {
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    session_index_into(agent_home, jsonl_path, offset, until, &mut out)?;
+    out.flush().map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// 骨架索引的本体，出口是参数 ——〔SR1a · 2026-09-24〕帧面那条（`history-index`）
+/// 与 CLI 这条（`--read-session-from-offset --index`）**跑的是同一个函数**（同 `list_projects_into`）。
+pub(crate) fn session_index_into(
+    agent_home: &Path,
+    jsonl_path: &str,
+    offset: u64,
+    until: Option<u64>,
+    mut out: &mut dyn Write,
+) -> Result<(), String> {
     use std::io::{Seek, SeekFrom};
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     f.seek(SeekFrom::Start(offset))
         .map_err(|e| format!("seek failed: {e}"))?;
-    let stdout = std::io::stdout();
-    let mut out = std::io::BufWriter::new(stdout.lock());
     write_session_index(std::io::BufReader::new(f), offset, until, &mut out)
         .map_err(|e| format!("stream failed: {e}"))?;
-    out.flush().map_err(|e| format!("stream failed: {e}"))?;
     Ok(())
 }
 

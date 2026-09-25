@@ -107,12 +107,14 @@ pub const COMMANDS: &[&str] = &[
     "files-rename",
     "files-stat",
     "files-write-text",
+    "history-index",
     "history-projects",
     "history-read",
     "history-search",
     "history-sessions",
     "history-subagents",
     "history-tail",
+    "history-user-inputs",
     "kill",
     "launch",
     // 〔SR1a〕链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
@@ -973,6 +975,32 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `history-read`"),
         codes: &["bad_args", "failed", "oversized_line", "refused"],
         fields: &["eof", "next", "offset", "path", "text", "until"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔SR1a · 2026-09-24〕骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
+    // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
+    CommandSpec {
+        name: "history-index",
+        doc_anchor: Some("#### `history-index`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["lines", "offset", "path", "until"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-user-inputs",
+        doc_anchor: Some("#### `history-user-inputs`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["from", "lines", "path"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)

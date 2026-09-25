@@ -8,9 +8,13 @@ use std::path::{Path, PathBuf};
 /// 本族的八条帧命令 —— **题面给的那八条**（`设计/15 §3.2` 那一串 ＋ `99 §4.19.2 ⑥`），
 /// 写成帧面名。它是判据的**异源**那一侧：下面那条从 `inbound.rs` 源码里数「谁把活交给了
 /// `read_face::answer`」，两边必须相等。
+/// 〔SR1a · 09-24〕+2：`history-index` / `history-user-inputs`（题面「`--list-user-inputs` 与骨架
+/// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是题面，不是 `inbound.rs`）。
 const FAMILY: &[&str] = &[
     "accounts-list",
     "accounts-sessions",
+    "history-index",
+    "history-user-inputs",
     "history-projects",
     "history-read",
     "history-search",
@@ -62,7 +66,7 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
     want.sort();
     assert_eq!(
         got, want,
-        "交给 `read_face::answer` 的帧命令与题面那八条不相等"
+        "交给 `read_face::answer` 的帧命令与题面那几条不相等"
     );
     // 那八条也都真在帧面的镜子里（`hello.commands` 从它出）。
     for n in FAMILY {
@@ -257,4 +261,107 @@ fn an_oversized_listing_is_refused_not_truncated() {
     })
     .unwrap();
     assert_eq!(ok, serde_json::json!({"lines": ["a", "b"]}));
+}
+
+/// ★ F2（〔SR1a〕）：骨架索引与大纲清单两条帧命令的 `lines`，与**夹具算出来的**三段逐行相等
+/// （异源：期望的偏移 / 行长 / uuid 从夹具字节自己数，不借被测函数）。
+#[test]
+fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
+    let home = scratch("sr1a-index");
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    // 结构占位：一条用户输入（uuid 命名 `in-*`）、一条 meta 用户行、一条助手行 —— 不采任何真会话正文。
+    let rows = [
+        r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"content":"ask"}}"#,
+        r#"{"type":"user","uuid":"out-meta","isMeta":true,"message":{"content":"x"}}"#,
+        r#"{"type":"assistant","uuid":"out-asst","message":{"content":[]}}"#,
+    ];
+    let body: String = rows.iter().map(|r| format!("{r}\n")).collect();
+    std::fs::write(&p, &body).unwrap();
+    let path = p.to_string_lossy().to_string();
+
+    let v = answer_at(
+        &home,
+        "history-index",
+        &serde_json::json!({"path": path, "offset": 0}),
+    )
+    .unwrap();
+    let lines: Vec<serde_json::Value> = v["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| serde_json::from_str(l.as_str().unwrap()).unwrap())
+        .collect();
+    assert_eq!(lines.first().unwrap()["kind"], "session_index");
+    let mut o = 0u64;
+    let want: Vec<(u64, u64)> = rows
+        .iter()
+        .map(|r| {
+            let n = r.len() as u64 + 1;
+            let at = o;
+            o += n;
+            (at, n)
+        })
+        .collect();
+    let got: Vec<(u64, u64)> = lines[1..lines.len() - 1]
+        .iter()
+        .map(|r| (r["o"].as_u64().unwrap(), r["n"].as_u64().unwrap()))
+        .collect();
+    assert_eq!(got, want, "索引行的偏移 / 行长与夹具对不上");
+    let tail = lines.last().unwrap();
+    assert_eq!(
+        (
+            tail["kind"].as_str(),
+            tail["count"].as_u64(),
+            tail["end"].as_u64()
+        ),
+        (Some("session_index_end"), Some(3), Some(body.len() as u64))
+    );
+
+    let v = answer_at(
+        &home,
+        "history-user-inputs",
+        &serde_json::json!({"path": path}),
+    )
+    .unwrap();
+    let lines: Vec<serde_json::Value> = v["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| serde_json::from_str(l.as_str().unwrap()).unwrap())
+        .collect();
+    assert_eq!(lines.first().unwrap()["kind"], "user_inputs");
+    let uuids: Vec<&str> = lines[1..lines.len() - 1]
+        .iter()
+        .map(|r| r["uuid"].as_str().unwrap())
+        .collect();
+    assert_eq!(uuids, ["in-1"], "清单里的 uuid 与夹具里的 `in-*` 不相等");
+    assert_eq!(
+        lines.last().unwrap()["end"].as_u64(),
+        Some(body.len() as u64)
+    );
+    // 起点越过文件尾 ⇒ failed（不回一份空清单冒充「没有新的」）。
+    let e = answer_at(
+        &home,
+        "history-user-inputs",
+        &serde_json::json!({"path": path, "from": body.len() as u64 + 1}),
+    )
+    .unwrap_err();
+    assert_eq!(e.0, "failed");
+    // 围栏：同一套（围栏外 ⇒ 拒）。
+    let outside = home.join("outside.jsonl");
+    std::fs::write(&outside, "{}\n").unwrap();
+    for cmd in ["history-index", "history-user-inputs"] {
+        assert!(
+            answer_at(
+                &home,
+                cmd,
+                &serde_json::json!({"path": outside.to_string_lossy()})
+            )
+            .is_err(),
+            "`{cmd}` 读了围栏外的文件"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&home);
 }

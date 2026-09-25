@@ -104,10 +104,7 @@ src/backend/dial/connect.rs:250	agent 身份被拒（user={user}）	改·§2.1	[
 src/backend/dial/connect.rs:251	agent 签名鉴权出错: {e}	保留	[可达存疑] 〔C2〕搬自 ssh_source.rs:846 同句同裁：鉴权失败原因，ssh-agent 是用户认得的词（R1b 语境内）
 src/backend/dial/connect.rs:284	跳板 {hop_name}	保留	[对外] 〔C2〕搬自 ssh_source.rs:655 同裁：连接阶段显示的端点名；跳板是用户自己配的 ssh 跳板
 src/backend/dial/connect.rs:316	{}:{}（经跳板）	保留	[对外] 〔C2〕搬自 ssh_source.rs:679 同裁：连接阶段显示的端点
-src/backend/dial/mod.rs:328	请求解析失败: {e}	改·§2.1	[可达存疑] 〔C2〕拨号代理读不懂界面交来的请求（两端版本错配）时 ack 的 error，界面原样冒泡进连接失败报错；整句在讲实现 →「本机后端与界面版本不一致，重装后再试」
-src/backend/dial/uses.rs:39	打开 session channel 失败: {e}	改·§2.1	[可达存疑] 〔C2〕拨号代理 ack 的 error，界面原样冒泡进连接失败报错；session channel 是 SSH 实现词 →「连上了，但远端不让开新通道：{e}」
 src/backend/dial/uses.rs:84	请求里 use=capture 却没给 capture 参数	改·§2.1	[可达存疑] 〔C2〕两端契约坏了的兜底话（按构造走不到），ack 的 error 会冒泡；use=capture 是线上字段名 →「本机后端与界面版本不一致」
-src/backend/dial/uses.rs:95	打开 session channel 失败: {e}	改·§2.1	[可达存疑] 〔C2〕拨号代理 ack 的 error，界面原样冒泡进连接失败报错；session channel 是 SSH 实现词 →「连上了，但远端不让开新通道：{e}」
 src/backend/dial/uses.rs:105	exec {} 失败: {e}	改·§2.1	[可达存疑] 〔C2〕拨号代理 ack 的 error，界面原样冒泡；exec 是实现词、{} 是整条命令行 →「远端命令没能启动：{e}」
 src/backend/dial/uses.rs:127	请求里 use=forward 却没给 forward 参数	改·§2.1	[可达存疑] 〔C2〕两端契约坏了的兜底话（按构造走不到），ack 的 error 会冒泡；use=forward 是线上字段名 →「本机后端与界面版本不一致」
 src/backend/dial/uses.rs:141	绑定本地端口 127.0.0.1:{} 失败: {e}	保留	[对外] 〔C2〕端口转发起不来的原因，toast 直接给用户；本地端口是用户自己填的，无内部词（搬自 port_forward.rs 同句）
@@ -1122,8 +1119,6 @@ src/bridge/src/cc_bus_deploy.rs:471	cc-monitor 装的 ccm（{at}）是这一版�
 src/backend/read_face.rs:149	结果超过 {LINES_CAP_BYTES} 字节上限，没有返回（至少 {size} 字节）	保留	[可达存疑] 帧面只读查询（history-*/accounts-*）按行应答超上限时的命令级报错，monitor 原样带进「远端查询失败」那句；平白说出上限与没返回，无内部词、无论证
 src/bridge/src/backend/control/frame_query.rs:49	换号前的信任预检：不在题面八条里；用户点一次换号才发一次，不在任何轮询上	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
 src/bridge/src/backend/control/frame_query.rs:51	同上一行（账号 0 那一形）	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
-src/bridge/src/backend/control/frame_query.rs:54	只剩 `--index` 那一形（会话骨架索引）：不在题面八条里、帧面没有对应命令。\n         同一个子命令的 `--until` 那一形（按区间取正文）已经走 `history-read`，不在这里拨	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
-src/bridge/src/backend/control/frame_query.rs:60	〔C2 · 补第二波的集成缝〕会话大纲（SE1）：与本表同波落地，既不在题面八条里、帧面也没有对应命令 \n         ⇒ 此前在这里被当场拒，远端大纲**每次**都拿到「这是本程序的 bug」。上帧面要加一条帧命令 \n         （= 后端子命令面 ＋1，要 bump），另拍；今天先让它照旧拨	保留	[不对外] frame_query::STILL_DIALED 登记表的理由栏，生产段只拿第一栏判放不放行，这一栏只被判据读
 src/bridge/src/backend/control/frame_query.rs:93	查询出了内部错误，没有拿到结果	保留	[可达存疑] 只读查询分流器落到「已完成」那一档时的兜底话（按构造走不到）；平白说出了事、没拿到结果，无内部词
 src/panorama/agent-clip.ts:81	分不清：本符号 {…} 条直接边里 {…} 条按名字凑	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；CP4「分不清」行，只计数
 src/panorama/agent-clip.ts:82	（启发 {…} · 动态猜测 {…}），动态派发 {…} 条，确定 {…} 条	保留	[可达存疑] 「复制给 agent」拼出的剪贴板文本，读者是 agent、用户粘贴时看得见；「分不清」的分项计数，动态派发单列（候选完整，不算分不清）
@@ -1189,3 +1184,26 @@ src/backend/control/exit_policy.rs:109	{} 不是 JSON：{e}	保留	[不对外] �
 src/backend/control/exit_policy.rs:114	{} 里 `{KEY_KILL_ON_EXIT}` 不是布尔（实得 {other}）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:118	{} 里没有 `{KEY_KILL_ON_EXIT}` 这一格	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
 src/backend/control/exit_policy.rs:128	家目录解析不出来（HOME / USERPROFILE 都没有）	保留	[不对外] 同上：`reason` 一格与日志，界面不显示；环境变量名是排障要的原样
+src/backend/dial/link.rs:161	缺 `dial`（一份拨号请求）	改·§2.1	[可达存疑] 〔SR1a〕`link-open` 的协议级回错：只在 monitor 自己发错请求（程序 bug）时出现，会跟着那条远端连接的失败说到用户眼前；`dial` 是字段名 →「本机后端没收到连接参数」
+src/backend/dial/link.rs:169	这台后端还不开子系统（SFTP 进常驻后端是 SR1b 的事）	改·§2.1	[可达存疑] 〔SR1a〕子系统留口不开的回错；今天 monitor 不发这种请求 ⇒ 到不了用户；含内部代号 SR1b 与「子系统」→「这台后端还不支持这种连接」
+src/backend/dial/link.rs:174	拨号请求读不动：{e}	改·§2.1	[可达存疑] 〔SR1a〕程序 bug 才出现；{e} 是反序列化的原文 →「本机后端没看懂连接参数」 兼§2.2
+src/backend/dial/link.rs:183	`window`（初始信用，字节）必须在 [{LINK_CHUNK_BYTES}, {MAX_WINDOW}] 之内	改·§2.1	[可达存疑] 〔SR1a〕程序 bug 才出现（monitor 的窗口是常量，跨 crate 对拍）；整句讲流控实现 →「本机后端拒绝了这次连接（参数不对）」
+src/backend/dial/link.rs:215	这个链路 id 还开着；换一个	改·§2.1	[可达存疑] 〔SR1a〕monitor 生成的 id 进程内唯一 ⇒ 程序 bug 才出现；「链路 id」是实现词 →「本机后端拒绝了这次连接（重复）」 新词:链路
+src/backend/dial/link.rs:221	这条连接上已经开着 {MAX_LINKS_PER_CONNECTION} 条链路	改·§2.1	[可达存疑] 〔SR1a〕同时开到上限才会撞，会跟着那条远端连接的失败说到用户眼前；「链路」是实现词 →「同时开着的远端连接太多了（{N} 条）」 新词:链路
+src/backend/dial/link.rs:264	缺 `data`（base64 串）	改·§2.1	[可达存疑] 〔SR1a〕`link-data` 的协议级回错，程序 bug 才出现；会变成那条连接的读写错误 →「和本机后端之间的数据坏了」
+src/backend/dial/link.rs:274	一块 {} 字节，超过 {LINK_CHUNK_BYTES}	改·§2.1	[可达存疑] 〔SR1a〕程序 bug 才出现（monitor 按同一个数切块，跨 crate 对拍）；讲实现 →「和本机后端之间的数据坏了」
+src/backend/dial/link.rs:279	没有这条链路（已经结束了？）	改·§2.1	[可达存疑] 〔SR1a〕上行写到一条已经收尾的链路：多半是远端刚断，会变成那条连接的写错误 →「和远端的连接已经断了」 新词:链路
+src/backend/dial/link.rs:286	这条链路上一块还没写完 —— 等它的应答再发下一块	改·§2.1	[可达存疑] 〔SR1a〕monitor 一次只送一块 ⇒ 程序 bug 才出现；讲协议 →「和本机后端之间的数据坏了」 兼§2.4 新词:链路
+src/backend/dial/link.rs:289	这条链路的上行已经收工	改·§2.1	[可达存疑] 〔SR1a〕远端那头已经走了还在写；会变成那条连接的写错误 →「和远端的连接已经断了」 新词:链路
+src/backend/dial/link.rs:301	缺 `bytes`（非负整数）	保留	[不对外] 〔SR1a〕`link-credit` 的协议级回错：monitor 还信用失败只记一条 debug 日志，不说到用户眼前
+src/backend/dial/link.rs:305	没有这条链路（已经结束了？）	保留	[不对外] 〔SR1a〕`link-credit` 落到一条已经收尾的链路（正常竞态）；monitor 只记 debug 日志
+src/backend/dial/link.rs:313	还了 {bytes} 字节信用，累计会超过上限 {MAX_WINDOW}（手里已有 {have}）	保留	[不对外] 〔SR1a〕`link-credit` 超上限（对端不守约）的回错；monitor 只记 debug 日志
+src/backend/dial/link.rs:352	链路的信用闸被关了	改·§2.1	[可达存疑] 〔SR1a〕`link_end` 的 error：链路非正常收尾时交给读那条连接的一方，会变成连接错误 →「和远端的连接断了」 新词:链路
+src/backend/dial/link.rs:359	读链路下行失败：{e}	改·§2.1	[可达存疑] 〔SR1a〕`link_end` 的 error，同上 →「和远端的连接断了：{e}」 新词:链路
+src/backend/dial/link.rs:365	链路的信用记账对不上（不该发生）	改·§2.1	[可达存疑] 〔SR1a〕`link_end` 的 error，本程序 bug 才出现 →「和远端的连接断了（本程序出错）」 兼§2.2 新词:链路
+src/backend/dial/link.rs:399	这条链路的上行已经收工：{e}	改·§2.1	[可达存疑] 〔SR1a〕`link-data` 写进链路失败（远端那头已经走了），会变成那条连接的写错误 →「和远端的连接已经断了」 新词:链路
+src/bridge/src/link_mux.rs:48	本机后端拒了（{code}）：{message}	改·§2.1	[可达存疑] 〔SR1a〕链路命令被后端拒时的外壳，{code} 是协议错误码 →「本机后端拒绝了这次连接：{message}」
+src/bridge/src/link_mux.rs:51	链路命令出了内部错误	改·§2.1	[可达存疑] 〔SR1a〕分流器三态里走不到的那一格的兜底说法 →「连接出错了（本程序出错）」 新词:链路
+src/bridge/src/link_mux.rs:133	本机后端在链路 {link} 上发了 {now} 字节却没等信用（窗口 {LINK_WINDOW_BYTES}）—— 协议对不上，链路已断开	改·§2.1	[可达存疑] 〔SR1a〕对端不守流控时读那条连接的一方拿到的错，会变成连接错误；整句讲流控实现 →「本机后端版本不对，这条远端连接断了；重开 monitor 后再试」 兼§2.4 新词:链路
+src/bridge/src/backend/control/local_backend.rs:1667	本机后端的流断了（stdio 载体）	改·§2.1	[可达存疑] 〔SR1a〕本机后端那条连接断了时，经它开的远端连接一起结束的原因，会变成那几条连接的错误；「流」「载体」是实现词 →「和本机后端的连接断了」
+src/bridge/src/local_backend_host.rs:923	本机后端的流断了（常驻载体）	改·§2.1	[可达存疑] 〔SR1a〕同上一行（常驻那条载体）→「和本机后端的连接断了」

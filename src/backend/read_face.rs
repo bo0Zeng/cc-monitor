@@ -110,6 +110,25 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 "eof": page.eof,
             }))
         }
+        // 〔SR1a · 2026-09-24〕`frame_query::STILL_DIALED` 缩到只剩真该拨号的那两条：骨架索引与大纲清单
+        // 是**每开一个大会话就要一次**的查询，不是「点一次才发一次」。与 CLI 那一臂同一个函数。
+        "history-index" => {
+            let path = str_arg(args, "path")?;
+            let offset = u64_arg(args, "offset")?.unwrap_or(0);
+            let until = u64_arg(args, "until")?;
+            lines(|out| {
+                history_query::session_index_into(home, path, offset, until, out)
+                    .map_err(|e| ("failed", e))
+            })
+        }
+        "history-user-inputs" => {
+            let path = str_arg(args, "path")?;
+            let from = u64_arg(args, "from")?.unwrap_or(0);
+            lines(|out| {
+                history_query::list_user_inputs_into(home, path, from, out)
+                    .map_err(|e| ("failed", e))
+            })
+        }
         "history-tail" => {
             let path = str_arg(args, "path")?;
             let n = u64_arg(args, "n")?.ok_or(("bad_args", "缺 `n`".to_string()))?;
