@@ -682,7 +682,8 @@ export const commands = {
   local_ccm_entry_status: () => invoke<LocalCcmEntry>("local_ccm_entry_status"),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
-  get_session_tasks: (args: { sessionId: string }) =>
+  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `tasks-list`（本机逐字 `LOCAL_ORIGIN`）。
+  get_session_tasks: (args: { origin: Origin; sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
 
   /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。
@@ -763,7 +764,9 @@ export const commands = {
   // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。
   // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
   // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。
-  list_plugin_marketplaces: () => invoke<MarketplaceSurvey>("list_plugin_marketplaces"),
+  // 〔RM1b · 第四波〕收 `origin`：问那台机器的后端 `plugins-marketplaces`（本机逐字 `LOCAL_ORIGIN`）。
+  list_plugin_marketplaces: (args: { origin: Origin }) =>
+    invoke<MarketplaceSurvey>("list_plugin_marketplaces", args),
   // PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。
   // ⚠ **只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）⇒ 它是本仓**唯一**往
   // `<claude_dir>` 写的口子，必须由**用户显式点击**触发，绝不放进任何自动路径。

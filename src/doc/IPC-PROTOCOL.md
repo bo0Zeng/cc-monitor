@@ -266,7 +266,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 - `<sid>/.highwatermark` — 下一个 id 的计数器，非 task 数据
 
 **写入方**：Claude Code CLI（`TaskCreate` / `TaskUpdate` / `TaskStop` 工具）
-**读取方**：monitor `tasks.rs::read_session_tasks`（变更时由 watcher 触发整目录重读）
+**读取方**：〔RM1b · 第四波〕那台机器的后端 `observe/tasks_query.rs::session_task_lines`（帧命令 `tasks-list`，本机与远端同一条路）；本机另由 monitor 的 watcher（`tasks.rs::spawn_task_watcher`）在变更时经本机后端重读那个 sid
 
 **Schema**：
 
@@ -1561,6 +1561,44 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `end` | ← | 最后一个完整行之后的字节位置 |
 
 客户端先读 `[split_at, end)`（最新 N 行）再读 `[0, split_at)`（回填），都走 `history-read` 带 `until`；与 `--read-session-tail` 一趟印出的两段**逐字节相同**（扫的是同一个函数）。
+
+#### 功能侧只读查询（RM1b，第四波）—— 远端会话的任务 · 远端插件市场
+
+出处：`parity_ledger` 的 `session.tasks` / `plugins.marketplaces` 两笔 `ParityDebt`。这几样此前只有 monitor **直读本机**那一条路，远端机器上的同一份数据答不出来。本机后端与远端后端是同一个二进制 ⇒ 读法搬进后端，monitor 按 origin 问那一台（**本机也走这里**，monitor 的直读实现随之退役）。
+
+- 宿主是 `feature_face`（不是 `read_face`，理由在它头注），本体在 `observe/`。
+- 应答一律**按行**：`data = {"lines": [...]}`；整份超过 32 MiB ⇒ `too_large`（与 `C1` 同一个口径、同一个常量）。
+- CLI 面同样自动派生（`--tasks-list` · `--plugins-marketplaces`），已进 `SUBCOMMANDS`。
+- 全在阻塞档（同步文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
+
+#### `tasks-list`：一个会话的任务列表
+
+```text
+→ {"id":"t1","cmd":"tasks-list","args":{"sid":"0c1d…"}}
+← {"kind":"reply","id":"t1","ok":true,"data":{"lines":["{\"id\":\"1\",\"subject\":…}", …]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id。只许一段普通路径名（空 / 含分隔符 / `.` / `..` ⇒ `bad_args`） |
+| `lines` | ← | 每个任务一行：`<tasks>/<sid>/<数字>.json` 里那个 JSON 对象**原样**（后端不认字段），按那个数字升序 |
+
+- 那个 sid **没有任务目录** ⇒ 空 `lines`（诚实的空）；目录**在但读不了** ⇒ `failed`（不说成「没有任务」）。
+- 半截 / 解不成对象的文件跳过（写者持锁那一刻读到半截是正常时序）；单个文件超过 1 MiB ⇒ 跳过并 `warn!` 点名。
+
+#### `plugins-marketplaces`：这台机器登记的插件市场（**不读 stdin**）
+
+```text
+→ {"id":"p1","cmd":"plugins-marketplaces","args":{}}
+← {"kind":"reply","id":"p1","ok":true,"data":{"lines":["{\"entries\":[{\"id\":\"mk\",\"declared_plugins\":276,…}],\"file_absent\":false}"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `lines` | ← | **恰一行**：整份 survey `{entries, file_absent}`，每条 entry 六个字段 `id` / `source` / `install_location` / `last_updated` / `declared_plugins` / `declared_error`（读不出就是 `null`，不编默认值） |
+
+- 读的是 `<home>/plugins/known_marketplaces.json` 与 `<各落点>/.claude-plugin/marketplace.json`；它回答「有哪些 marketplace、从哪来、**声明**了几个插件」，**不是**「装了 / 启用了哪些」。
+- 三条出口分开：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；某一条数不出 ⇒ 那一条 `declared_plugins: null` ＋ `declared_error` 理由，整张表照出。
 
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
