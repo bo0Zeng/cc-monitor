@@ -1406,7 +1406,7 @@ export async function recordLastAccount(sessionId: string, account: string): Pro
  * F05：判别联合形态的账号解析结果——`AccountResolver` 目标（MASTERPLAN §3 账本）。取代
  * "只吐 configDir、名字在解析完就被丢弃"的旧口径：`kind==="account"` 时同时带 `name` 和
  * `configDir`——线通给调用方后，`name` 才能继续往下传进 `LaunchContext`（F05 的核心交付：
- * 让 `ACCOUNT_DIMENSION.cliFlags` 吐得出 `--account <名>`）。
+ * 让 Rust `ccm_invocation.rs::DIMENSION_ORDER` 里 `account` 那一维说得出 `--account <名>`）。
  */
 export type AccountResolution =
   | { kind: "account"; name: string; configDir: string }

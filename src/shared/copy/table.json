@@ -13751,6 +13751,41 @@
       "kind": "body",
       "zh": "本机",
       "args": []
+    },
+    "rsCcmInvocation.refusal.dimensionNeedsCap": {
+      "kind": "error",
+      "zh": "远端的后端太旧，不认 {dim} 这一项设置（缺 {cap}）",
+      "args": ["dim", "cap"]
+    },
+    "rsCcmInvocation.refusal.cannotSpeak": {
+      "kind": "error",
+      "zh": "这一项设置（{id}）写不成 ccm 参数",
+      "args": ["id"]
+    },
+    "rsCcmInvocation.refusal.attachNeedsTmux": {
+      "kind": "error",
+      "zh": "只能接入 tmux 里的会话",
+      "args": []
+    },
+    "rsCcmInvocation.refusal.sendInto": {
+      "kind": "error",
+      "zh": "ccm 命令没法在已有的 tmux 会话里就地起新会话",
+      "args": []
+    },
+    "rsCcmInvocation.refusal.missingCap": {
+      "kind": "error",
+      "zh": "远端的后端太旧，不支持这样起会话（缺 {c}）",
+      "args": ["c"]
+    },
+    "rsCcmInvocation.refusal.windowsLocal": {
+      "kind": "error",
+      "zh": "Windows 本机不用 ccm 命令起会话",
+      "args": []
+    },
+    "rsCcmInvocation.refusal.notInstalled": {
+      "kind": "error",
+      "zh": "远端还没装后端",
+      "args": []
     }
   }
 }
