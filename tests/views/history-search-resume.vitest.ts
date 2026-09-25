@@ -35,7 +35,7 @@ vi.mock("../../src/format", () => ({ formatTimestampSmart: () => "时间" }));
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../src/views/history";
 import { runRemoteResume } from "../../src/remote-launch-run";
-import { invalidateAccountsCache } from "../../src/accounts";
+import { invalidateAccountsCache } from "../../src/account-reads";
 import { withAccountReads } from "../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;

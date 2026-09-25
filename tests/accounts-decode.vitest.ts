@@ -22,7 +22,8 @@ vi.mock("../src/config", () => ({ loadConfig: vi.fn().mockResolvedValue({}), sav
 
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAccountsList, decodeTrust } from "../src/accounts-decode";
-import { __resetAccountsCacheForTest, checkTrust, deriveUi, fetchAccounts } from "../src/accounts";
+import { deriveUi } from "../src/accounts";
+import { __resetAccountsCacheForTest, checkTrust, fetchAccounts } from "../src/account-reads";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
 import { REPO_ROOT } from "./test-support/repo-root";
 import {

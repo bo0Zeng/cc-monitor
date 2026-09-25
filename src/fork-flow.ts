@@ -22,14 +22,8 @@ import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
 import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
-import {
-  fetchAccounts,
-  fetchLocalAccounts,
-  fetchSessionAccounts,
-  isSelectable,
-  type Account,
-  type SessionAccount,
-} from "./accounts";
+import { isSelectable, type Account, type SessionAccount } from "./accounts";
+import { fetchAccounts, fetchLocalAccounts, fetchSessionAccounts } from "./account-reads";
 import { findClaudeTmuxMatches, type TmuxSession } from "./tmux-sessions";
 import { resumeLocalSession } from "./local-resume";
 import { copyText } from "./copy-table";

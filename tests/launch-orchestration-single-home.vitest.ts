@@ -47,12 +47,8 @@ import { LOCAL_ORIGIN } from "../src/ipc/origin";
 import { readTmuxListing, mintFreshTmuxName, listingFromFetch } from "../src/tmux-name-mint";
 import { resumeLocalSession } from "../src/local-resume";
 import { showActionFailureToast } from "../src/error-toast";
-import {
-  __resetLocalLaunchSnapshotForTests,
-  __setLocalLaunchSnapshotForTests,
-  type Account,
-  type AccountsState,
-} from "../src/accounts";
+import type { Account, AccountsState } from "../src/accounts";
+import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../src/launch-account";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 

@@ -24,14 +24,15 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 // 那是把本节从「DOM 行为」测成「accounts 的缓存」）；② 没有给它补一条判据钉住
 // 「测试侧不许再手抄纯函数」—— 那要一条新的扫描面（人群是 `.vitest.` 文件本身），
 // 不在本轮写区，`account-availability-guard.vitest.ts` 头注第 5 条已把这条边界写明。
-vi.mock("../../src/accounts", async () => ({
-  ...(await vi.importActual<typeof import("../../src/accounts")>("../../src/accounts")),
+// 〔FE1〕`fetchAccounts` 拆去了 `account-reads.ts`（规则仍在 `accounts.ts`，用真身）。
+vi.mock("../../src/account-reads", async () => ({
+  ...(await vi.importActual<typeof import("../../src/account-reads")>("../../src/account-reads")),
   fetchAccounts: vi.fn(),
 }));
 
 import { CcBusSection } from "../../src/settings/cc-bus-section";
 import { invoke } from "@tauri-apps/api/core";
-import { fetchAccounts } from "../../src/accounts";
+import { fetchAccounts } from "../../src/account-reads";
 import { LOCAL_ORIGIN } from "../../src/backend-policy";
 import { __resetMachineContextForTests } from "../../src/settings/machine-context";
 

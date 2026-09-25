@@ -187,7 +187,6 @@ const DEPS: Record<string, readonly string[]> = {
   "src/tab-session-actions.ts": [
     "npm:@tauri-apps/plugin-opener",
     "src/account-restart.ts",
-    "src/accounts.ts",
     "src/behavior.ts",
     "src/copy-table.ts", // 〔U4〕杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/error-toast.ts",
@@ -195,6 +194,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/history-reads.ts", // 〔C4d〕resume 前现读那条会话的 pin（上次账号表归本机常驻后端，经通道问 `history-last-accounts`）
     "src/ipc/commands.ts",
     "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各走哪条动作
+    // 〔FE1 子步 5〕`withAccount` 随起停那一格从 `accounts.ts` 拆去了 `launch-account.ts`（本份对 `accounts.ts` 只剩 type-only）。
+    "src/launch-account.ts",
     // 〔FE1〕本机 resume 的编排收进 `local-resume.ts`（校验 sid · 铸名 · 账号 · 记 pin 都在里面）
     //   ⇒ 本份不再直接要 `launch-requests.ts`（sid 校验）与 `remote-launch.ts`（内联铸名那六行）。
     "src/local-resume.ts",

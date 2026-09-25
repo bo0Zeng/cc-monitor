@@ -39,15 +39,10 @@ import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
 import { validateLocalLaunch } from "../launch-requests";
-import {
-  fetchAccounts,
-  isSelectable,
-  withAccount,
-  localLaunchAccountSync,
-  localLaunchAccountNameSync,
-  primeLocalLaunchAccounts,
-  rememberLocalLaunch,
-} from "../accounts";
+import { isSelectable } from "../accounts";
+import { fetchAccounts } from "../account-reads";
+import { withAccount, localLaunchAccountSync, localLaunchAccountNameSync, primeLocalLaunchAccounts } from "../launch-account";
+import { rememberLocalLaunch } from "../local-launch-backfill";
 import {
   actionsFor,
   type HistoryActionCtx,

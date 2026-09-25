@@ -9,54 +9,12 @@ vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { showActionFailureToast } from "../src/error-toast";
 import { loadConfig, saveConfig } from "../src/config";
-import {
-  deriveUi,
-  effectiveDefault,
-  currentWorkingAccount,
-  currentAccountForBadge,
-  accountColorsActive,
-  selectableAccounts,
-  resolveFollowAccount,
-  detectAccountMismatch,
-  isSelectable,
-  accountConfigDir,
-  badgeText,
-  sessionBadge,
-  shouldShowAccountBadge,
-  recordLastAccount,
-  resolveAccount,
-  withAccount,
-  getDefaultName,
-  setDefaultName,
-  getModelForAccount,
-  setModelForAccount,
-  fetchAccounts,
-  fetchSessionAccounts,
-  parseSessionAccountLines,
-  invalidateAccountsCache,
-  __resetAccountsCacheForTest,
-  isAccountZero,
-  accountStatusBadge,
-  localLaunchAccountSync,
-  localLaunchAccountNameSync,
-  __setLocalLaunchSnapshotForTests,
-  __resetLocalLaunchSnapshotForTests,
-  fetchLocalApikeyRouting,
-  localApikeyEndpointStateFor,
-  accountLoginActionLabel,
-  restartLocateFailureMessage,
-  sidOfLaunch,
-  rememberLocalLaunch,
-  resolvePendingLocalLaunches,
-  __resetPendingLocalLaunchesForTests,
-  __pendingLocalLaunchCountForTests,
-  PENDING_LAUNCH_TTL_MS,
-  PENDING_LAUNCH_MAX_ASKS,
-  PENDING_LAUNCH_CAP,
-  type AccountsState,
-  type Account,
-  type SessionAccount,
-} from "../src/accounts";
+import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, resolveFollowAccount, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, resolveAccount, isAccountZero, accountStatusBadge, localApikeyEndpointStateFor, accountLoginActionLabel, type AccountsState, type Account, type SessionAccount } from "../src/accounts";
+import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchLocalApikeyRouting } from "../src/account-reads";
+import { getDefaultName, setDefaultName, getModelForAccount, setModelForAccount } from "../src/account-prefs";
+import { recordLastAccount, withAccount, localLaunchAccountSync, localLaunchAccountNameSync, __setLocalLaunchSnapshotForTests, __resetLocalLaunchSnapshotForTests } from "../src/launch-account";
+import { sidOfLaunch, rememberLocalLaunch, resolvePendingLocalLaunches, __resetPendingLocalLaunchesForTests, __pendingLocalLaunchCountForTests, PENDING_LAUNCH_TTL_MS, PENDING_LAUNCH_MAX_ASKS, PENDING_LAUNCH_CAP } from "../src/local-launch-backfill";
+import { restartLocateFailureMessage } from "../src/account-restart";
 import { enumerateAccountModifiers } from "../src/launch-menu";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
 import {

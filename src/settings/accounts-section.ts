@@ -9,28 +9,9 @@
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
 import { commands, type ApikeyCredentialsStatus } from "../ipc/commands";
-import {
-  fetchAccounts,
-  // `N-F1b`：本机那条路。**读口与文案都不是本件新造的** —— `fetchLocalAccounts` 自
-  // `a354c83` 起就在盘上（状态栏那个 chip 现在就在用它），空的只有这一节。
-  fetchLocalAccounts,
-  LOCAL_ACCOUNTS_COPY,
-  deriveUi,
-  currentWorkingAccount,
-  isSelectable,
-  accountStatusBadge,
-  accountLoginActionLabel,
-  setDefaultName,
-  // K-H2c：「这几个号在不在apikey 表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
-  fetchLocalApikeyRouting,
-  localApikeyEndpointStateFor,
-  type ApikeyEndpointState,
-  getModelForAccount,
-  setModelForAccount,
-  invalidateAccountsCache,
-  type AccountsState,
-  type Account,
-} from "../accounts";
+import { LOCAL_ACCOUNTS_COPY, deriveUi, currentWorkingAccount, isSelectable, accountStatusBadge, accountLoginActionLabel, localApikeyEndpointStateFor, type ApikeyEndpointState, type AccountsState, type Account } from "../accounts";
+import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, invalidateAccountsCache } from "../account-reads";
+import { setDefaultName, getModelForAccount, setModelForAccount } from "../account-prefs";
 import type { ApikeyRoutingView } from "../apikey-routing-view";
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";

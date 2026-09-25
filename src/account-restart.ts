@@ -13,7 +13,10 @@
 //      **同一批原语**（fetchAccounts / accountConfigDir / recordLastAccount），无逻辑漂移。故维持分离。
 import { commands } from "./ipc/commands";
 import { runRemoteResumeTmux } from "./remote-launch-run";
-import { fetchAccounts, accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "./accounts";
+import { accountConfigDir, type SessionAccount } from "./accounts";
+import { fetchAccounts, checkTrust } from "./account-reads";
+import { getModelForAccount } from "./account-prefs";
+import { recordLastAccount } from "./launch-account";
 import { showActionFailureToast } from "./error-toast";
 // 〔`A3` 第二波〕本机那一侧：`origin` 是 backend 的 `<local>`（〔C4b〕账号面那个第二种写法已退役，只剩这一个）。
 import { LOCAL_ORIGIN } from "./backend-policy";
@@ -243,3 +246,72 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   );
   return true;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔FE1 · 第四波 4D〕从 `accounts.ts` 搬来：换号重启定位不到会话时的那句话（起停域）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * `K-P5g`：**读回来的身份 token 的第一个生产消费者。**
+ * 换号重启定位不到 tmux 时，用它在**两条互斥的成因**里选一条说给用户听。
+ *
+ * # 它买的是「决定」，不是「显示」
+ *
+ * `K-P5f` 把 `launchId` 从 `/proc/<pid>/environ` 一路读到了前端类型上，交回时自己逐字写着
+ * 「有人读、没人用 —— 没有任何生产代码拿它做决定」。本函数是那最后一跳：
+ * 它**不把 token 显示出来**（那是个内部 nonce，给用户看毫无意义），而是拿它**判一件
+ * token 里没有的事**——这条会话是从哪条路起来的——再据此改口。
+ *
+ * # 为什么这件事今天只有 token 答得出
+ *
+ * `CCM_LAUNCH_ID` 全树**只有一处写**（`src/bridge/src/history.rs` 里那个
+ * `LAUNCH_ID_VAR`，`launcher_identity_registry` 那张棘轮表数着它，多一处就红）
+ * ⇒ 进程环境里带着它，就说明这条会话是从本工具这条路起来的。
+ * 而 `--session-accounts` 出参里其余每一格（`configDir` / `account` / `bare` /
+ * `alive` / `cwd` / `pid`）**一格都答不了这个问题**：它们说的是「跑在哪个账号下、
+ * 活没活着」，不是「谁把它拉起来的」。⇒ 掐掉这一格，下面那句话就只能回到
+ * 「不在 tmux 里**或**不是本工具起的」这种**两条成因并排摆着**的说法。
+ *
+ * # ⚠ 它答不到的（照抄 `K-P5f` 已登记的那格残留洞，别在这里悄悄拓宽）
+ *
+ * `launchId` 是**继承型**环境变量：在一条本工具起的会话里手敲 `claude` 起出来的孩子
+ * 也带着同一个 token。backend 挡得住「同一个 token 同时落在一条以上活会话上」
+ * （那种涉事的全置 `null`），**挡不住父会话已经退出**的那一格。
+ * ⇒ 本函数的「是」精确读作「**这个进程的环境里带着本工具铸的身份标记**」，
+ * 不读作「一定是本工具直接拉起的」。文案也按这个强度写，不许写强。
+ */
+export function restartLocateFailureMessage(
+  row: SessionAccount | undefined,
+  opts: { local?: boolean } = {},
+): {
+  title: string;
+  body: string;
+} {
+  // ⚠ `undefined`（老后端不出这个键）与 `null`（backend 说「不作数」）在这里是同一件事。
+  const carriesOurLaunchMark = Boolean(row && row.alive && row.launchId);
+  // 〔`A3` 第二波〕最后那句补救**只对远端成立**：本机归档 tab 的 Resume 不带账号选择
+  // （走 `localLaunchAccountSync`，沿用这条会话上次的号），「把此会话切到账号 X」在本机不存在。
+  // 对本机说那句话，是在指一条走不通的路。
+  const tail = opts.local
+    ? "本机会话结束后，Resume 沿用它上次的账号；换号只对本工具在 tmux 里起的会话做得到。"
+    : "可以等它结束后，用右键「把此会话切到账号 X」。";
+  if (carriesOurLaunchMark) {
+    return {
+      title: "无法换号重启：tmux 标记丢了",
+      body:
+        "这条会话的进程里带着本工具铸的身份标记，说明它是从本工具这条路起来的；" +
+        "但它现在不在本工具的 tmux 里——多半是 tmux 会话被重建过、或 @ccm_sid 标记丢了。" +
+        "换号重启要往那个 tmux 里发按键，定位不到就不能动手（乱猜会杀错会话）。" +
+        tail,
+    };
+  }
+  return {
+    title: "无法换号重启",
+    body:
+      "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——" + tail,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-P5h`：**拿身份 token 反查出新会话的 sid**（`KP5HD2` / `KP5HD3`）
+// ═══════════════════════════════════════════════════════════════════════════

@@ -142,12 +142,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../src/views/history";
 import { TabManager } from "../../src/tabs";
 import type { TabSessionActions } from "../../src/tab-session-actions";
-import {
-  primeLocalLaunchAccounts,
-  __resetLocalLaunchSnapshotForTests,
-  __resetAccountsCacheForTest,
-  type Account,
-} from "../../src/accounts";
+import type { Account } from "../../src/accounts";
+import { __resetAccountsCacheForTest } from "../../src/account-reads";
+import { primeLocalLaunchAccounts, __resetLocalLaunchSnapshotForTests } from "../../src/launch-account";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 import { historyCalls, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 
@@ -616,10 +613,11 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     // 它有自己的语义（选了账号 0 就要显式 `base`），所以不走这个口 —— 如实记，不强求。
     // 〔U2〕tab 栏那条本机 resume 从 `src/tabs.ts` 搬到了 `src/tab-session-actions.ts`（逐字随行）。
     // 〔FE1〕tab 栏 · 历史页那两条的编排收进了 `local-resume.ts`；跟随那一态走 `localFollowPlan(`
-    //   （它就是 `localLaunchAccountSync` 那条规则，只多拆出 D-h 的「pin 选不了」一格），它自己住 `accounts.ts`。
+    //   （它就是 `localLaunchAccountSync` 那条规则，只多拆出 D-h 的「pin 选不了」一格），它自己住 `launch-account.ts`
+    //   （〔FE1 子步 5〕起停那一格从 `accounts.ts` 拆出来的住址）。
     for (const [f, entry] of [
       ["src/local-resume.ts", /localFollowPlan\(/g],
-      ["src/accounts.ts", /localLaunchAccountSync\(/g],
+      ["src/launch-account.ts", /localLaunchAccountSync\(/g],
     ] as const) {
       const code = readFileSync(resolve(REPO_ROOT, f), "utf8");
       expect(

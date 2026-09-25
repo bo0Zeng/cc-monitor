@@ -55,12 +55,9 @@ import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
 import { buildAccountCommands } from "./account-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
-import {
-  fetchSessionAccounts,
-  fetchAccounts,
-  currentAccountForBadge,
-  resolvePendingLocalLaunches,
-} from "./accounts";
+import { currentAccountForBadge } from "./accounts";
+import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
+import { resolvePendingLocalLaunches } from "./local-launch-backfill";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
