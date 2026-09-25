@@ -469,6 +469,8 @@ pub fn effect_label(e: TouchEffect) -> &'static str {
         TouchEffect::IndirectWrite => {
             "我们不直接写它；但你在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）"
         }
+        // 〔GP1 · 第四波〕旧版放的那一份：我们不再写它，只在认出是我们放的时删掉。
+        TouchEffect::RetiredLegacy => "cc-monitor 旧版放的：认出是它放的就删，认不出的不动",
     }
 }
 

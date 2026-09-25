@@ -39,7 +39,7 @@ fn buffered_local_session_ids_dedups_and_skips_remote() {
 }
 
 #[test]
-fn buffered_remote_session_ids_dedups_and_skips_local() {
+fn buffered_remote_sessions_dedups_skips_local_and_carries_the_origin() {
     let replay = EventReplay::new();
     {
         let mut inner = replay.inner.lock();
@@ -54,9 +54,16 @@ fn buffered_remote_session_ids_dedups_and_skips_local() {
         r2.origin = Some("rk3576".to_string()); // 不同 host 也收
         inner.history.push_back(r2);
     }
-    let mut ids = replay.buffered_remote_session_ids();
+    let mut ids = replay.buffered_remote_sessions();
     ids.sort();
-    assert_eq!(ids, vec!["r1".to_string(), "r2".to_string()]);
+    // 〔GP1〕每个 sid 带着它那台机器（F5 对账据此分已结束 / 说不清）。
+    assert_eq!(
+        ids,
+        vec![
+            ("r1".to_string(), "nanopi".to_string()),
+            ("r2".to_string(), "rk3576".to_string())
+        ]
+    );
 }
 
 // === Batch5-F19：build_priority_chunks ===

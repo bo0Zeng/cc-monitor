@@ -1296,6 +1296,32 @@ pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, Str
     })
 }
 
+/// 〔GP1 · 第四波〕[`record_in`] 按**这次 resume 要用的那个账号配置目录**查（`history-record` 的 `configDir`）。
+///
+/// 会话起在另一个账号根下（`CLAUDE_CONFIG_DIR` 指别处）时，只查这台后端自己的家目录会答「不在」、误拦 resume
+/// （`设计/30 §8` 第 4 条；上面那段「射程如实写」）。monitor 把这次 resume 交给起会话那一格的同一个目录带过来，
+/// 这里就在那棵树里找。
+/// - `None` ⇒ 这台的家目录（与改之前逐字同一问）；
+/// - `Some(d)` ⇒ 先过账号库那一个形状关（`accounts_query::is_safe_config_dir`：绝对 · 不上跳 · 无 shell 元字符与
+///   欺骗字符），不过 ⇒ `Err`，**一次 IO 都不做**；过了 ⇒ 查 `<d>/projects`。
+/// 只答在不在、查的是哪棵树 —— 不回内容，不收别的路径。
+pub(crate) fn record_for(
+    agent_home: &Path,
+    config_dir: Option<&str>,
+    sid: &str,
+) -> Result<RecordProbe, String> {
+    let tree = match config_dir {
+        None => agent_home.to_path_buf(),
+        Some(d) if super::accounts_query::is_safe_config_dir(d) => std::path::PathBuf::from(d),
+        Some(d) => {
+            return Err(format!(
+                "configDir 不是一个能查的账号配置目录（要绝对路径，不许上跳、不许 shell 元字符）：{d:?}"
+            ))
+        }
+    };
+    record_in(&tree, sid)
+}
+
 /// [`record_in`] 的答案。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RecordProbe {

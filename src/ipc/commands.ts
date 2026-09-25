@@ -161,6 +161,7 @@ import type { SkillFile } from "../generated/SkillFile";
 import type { SkillInstallApplied } from "../generated/SkillInstallApplied";
 import type { SkillInstallPreview } from "../generated/SkillInstallPreview";
 import type { SkillTargetText } from "../generated/SkillTargetText";
+import type { SkillUninstallApplied } from "../generated/SkillUninstallApplied";
 import type { McpSyncPreview } from "../generated/McpSyncPreview";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
@@ -988,6 +989,19 @@ export const commands = {
     take: string[];
     overwrite: string[];
   }) => invoke<SkillInstallApplied>("skill_install_apply", args),
+
+  /**
+   * 〔SU1 · 第四波 4C · V116〕skill 卸：`to` 那台装记录里 `dir` 那一条，把勾的那几个文件删掉（只删装时写进去的）。
+   * `seen` 原样送回看的时候那台后端回的现有原文（CAS 期望：那之后又被改过 ⇒ 停下，说清删了哪几个）；
+   * `confirm` = 勾了的里「要问」的那几个（装完改过 / 装之前就在）。目录留着。
+   */
+  skill_uninstall_apply: (args: {
+    to: Origin;
+    dir: string;
+    seen: SkillTargetText[];
+    take: string[];
+    confirm: string[];
+  }) => invoke<SkillUninstallApplied>("skill_uninstall_apply", args),
 
   // ════════════════════════════════════════════════════════════════════════
   // 〔C4a · 子步 2〕**最后十条**：原先在 `tab-session-actions.ts`（tab 层）与 `accounts.ts`

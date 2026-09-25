@@ -674,6 +674,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
+    // 〔SU1 · 第四波 4C〕skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
+    (
+        "src/backend/skill_ledger.rs",
+        "MAX_BYTES",
+        4 * 1024 * 1024,
+        "后端自有的 skill 装记录 `~/.cc-monitor/skill-installs.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
     (
         "src/backend/asset_catalog.rs",
         "SKILL_MAX_FILE_BYTES",
@@ -697,6 +705,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         16 * 1024 * 1024,
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
+    ),
+    // 〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的 stderr 诊断文件：满了换份，旧的留一份，再早的丢 ——
+    //   丢要带身份：新那份第一行写「上一份挪去了哪、再早的那一份丢了」（`stderr_log::roll_note`）。
+    (
+        "src/backend/stderr_log.rs",
+        "CAP_BYTES",
+        4 * 1024 * 1024,
+        "脱离常驻那条载体的本机后端 stderr 诊断文件每一份的大小（当前 ＋ 旧的一份 ⇒ 盘上 ≤ 两倍）",
+        "丢弃+带身份报告",
     ),
     (
         "src/backend/asset_sync.rs",

@@ -35,6 +35,7 @@ mod bridge;
 // 通信层面 A 的第一个进程外客户端那条路（`设计/05` 末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
+mod ccm_legacy; // 〔GP1 · 第四波〕旧版放在 `~/.local/bin/ccm` 的那一份：认出是我们放的就删（`设计/01 §6.7b` 迁移 ② ③）
 pub mod chan;
 mod claude_data_fence; // 步 H2：Claude 自己的数据不许我们写 —— `INVARIANTS §1` 的 F47/F03b 两段澄清共用的那一个判定（用户 09-21 裁「拆」）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
@@ -58,7 +59,7 @@ mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
-mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写：本机进 creds_store，远端交那台机器的后端
+mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写 ——〔GP1〕写两台同一条路：交那台机器的后端（本机 ＝ 本机常驻后端）
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
 mod copy_table; // 〔DP1 · 第四波〕对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
@@ -277,6 +278,19 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
 /// 没令牌（老后端 / 不是 cc-monitor 启动的）⇒ 照旧预扫：标题路是它唯一的路。
 pub(crate) fn wants_title_prescan(rbind_token: Option<&str>) -> bool {
     rbind_token.is_none()
+}
+
+/// 〔GP1 · 第四波〕发一条「说不清」（`session-unseen`）。三处用它：两个 emitter 的 `Unseen` 臂 · F5 对账里
+/// 「那台还没报完清单」那一摞。**它从不与 `SESSION_ENDED` 同发**（`设计/30 §3.5.7a`：`Unseen` 不许被显示成已结束）。
+fn emit_session_unseen(handle: &tauri::AppHandle, sid: &str) {
+    let payload = bridge::SessionUnseenPayload {
+        session_id: sid.to_string(),
+    };
+    if let Err(e) = handle.emit(bridge::events::SESSION_UNSEEN, &payload) {
+        tracing::warn!("emit session-unseen failed: {e}");
+    } else {
+        tracing::info!("session unseen（那台机器看不见了）: {sid}");
+    }
 }
 
 /// ST1：设置窗的标签（`open_settings_window` 建它时用的同一个串）。
@@ -848,6 +862,12 @@ pub fn run() {
                                             tracing::info!("session ended: {sid}");
                                         }
                                     }
+                                    // 〔GP1〕本机这条流今天产不出 `Unseen`（它只来自远端断连 flush）；
+                                    //   接上是为了「本机 ＝ 不走 ssh 的远端」那一句在这里也成立：同一个裁决、同一个出口。
+                                    ssh_source::RemovedDisposition::Unseen => {
+                                        ssh_source::clear_idle(&sid);
+                                        emit_session_unseen(&handle, &sid);
+                                    }
                                 }
                             }
                             // issue #23：红绿灯——status/waitingFor 变了才会出现在这里
@@ -1040,6 +1060,12 @@ pub fn run() {
                                                 tracing::info!("remote session ended: {sid}");
                                             }
                                         }
+                                        // 〔GP1 · 第四波〕断连 flush：那台机器看不见了 ⇒ 说不清（不是已结束）。
+                                        //   idle 账本同步清（那台的 tmux 状态断连时已忘）；绑定不忘（`apply_remote_disposition`）。
+                                        ssh_source::RemovedDisposition::Unseen => {
+                                            ssh_source::clear_idle(&sid);
+                                            emit_session_unseen(&handle, &sid);
+                                        }
                                     }
                                 }
                                 // Batch9-F27：远端红绿灯——backend session_status 帧/
@@ -1224,13 +1250,18 @@ pub fn run() {
                         // audit-fixes F03.2：idle-tmux sid 不在 remote_active（变 idle 时已移出），若不排除
                         // 会被当"死"补 SESSION_ENDED、F5 后灰灯塌成 archived。故排除 idle sid + 下面重发 SESSION_IDLE。
                         //（`idle_all` 〔U4b〕挪到了本机 stale 那一段之前，两段共用。）
-                        let remote_stale: Vec<String> = {
+                        // 〔GP1 · 第四波〕按 sid 所在的那台分：那台此刻**报完了**清单 ⇒ 已结束（原样）；**没报完**
+                        //   （断着 / 还在初扫）⇒ 说不清 —— 改之前这里对断着的那台也补 ended，正是 `设计/30 §3.5.7a`
+                        //   禁的那一形（`Unseen` 被显示成已结束）。
+                        let listed = ssh_source::listed_origins();
+                        let (remote_stale, remote_unseen): (Vec<String>, Vec<String>) = {
                             let active = remote_active.lock();
-                            replay
-                                .buffered_remote_session_ids()
-                                .into_iter()
-                                .filter(|sid| !active.contains(sid) && !idle_all.contains(sid))
-                                .collect()
+                            ssh_source::split_stale(
+                                replay.buffered_remote_sessions().into_iter().filter(|(sid, _)| {
+                                    !active.contains(sid) && !idle_all.contains(sid)
+                                }),
+                                &listed,
+                            )
                         };
                         // F03.2：F5 后把 idle sid 的灰灯盖回（行重放会把其 tab 建成 live，这次重发再变灰）。
                         for sid in &idle_all {
@@ -1259,6 +1290,22 @@ pub fn run() {
                                 stale.len(),
                                 remote_stale.len()
                             );
+                        }
+                        for sid in &remote_unseen {
+                            emit_session_unseen(&handle, sid);
+                        }
+                        // 〔GP1〕报完了清单的那几台重发一次 `origin-sessions-listed`：F5 之后前端那一格随页面清空了，
+                        //   不重发的话固定复活的 tab 停在说不清，直到那台下一次重连（U4b 留下的缺口）。
+                        //   排在重宣告 ＋ 行 ＋ 上面两摞之后 ⇒ 前端处理它时，活着的已经被翻回活。
+                        for origin in listed {
+                            if let Err(e) = handle.emit(
+                                bridge::events::ORIGIN_SESSIONS_LISTED,
+                                &bridge::OriginSessionsListedPayload {
+                                    origin: crate::origin::Origin(origin),
+                                },
+                            ) {
+                                tracing::warn!("reconcile emit origin-sessions-listed failed: {e}");
+                            }
                         }
                     });
                 });
@@ -1348,6 +1395,7 @@ pub fn run() {
             // 〔AS2〕skill「装到这台」：看差异 ＋ 写（来源那台读、被写那台判、经被写那台后端 files-put 写）。
             skill_install::skill_install_preview,
             skill_install::skill_install_apply,
+            skill_install::skill_uninstall_apply,
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
@@ -1845,10 +1893,11 @@ async fn relay_endpoint_for_launch(
 /// `K-H2a` `KS10`：从界面配一把 key。
 ///
 /// ⚠ **它和人手编是同一份文件的两个写者** —— 写的那一刻才去读盘，
-/// 未知键一个不吃、字段顺序按名字排、原子替换、写完立刻收窄成只给本人。
-/// 整段论证见 `creds_store::write_key`。
+/// 未知键一个不吃、字段顺序按名字排、原子替换、出生即只给本人。
+/// 〔GP1 · 第四波〕这几条今天由**那台机器的后端**兑现（本机 ＝ 本机常驻后端，`src/backend/accounts/upstream/file_face.rs`）；
+/// 整段论证住那一份的头注。〔墓碑 —— 从前这里写「整段论证见 `creds_store::write_key`〔散文墓碑〕」：monitor 不再写这份文件。〕
 ///
-/// ⚠ **入参是明文，而它一进来就被包成 `SecretKey`**（在 `write_key` 里）。
+/// ⚠ **入参是明文，而它一进来就被包成 `SecretKey`**（在那台后端的写口里）。
 /// 这一层的签名收 `String` 是没办法的事：IPC 边界上只有 JSON。
 ///
 /// ⚠⚠ **订正措辞〔D1，08-27，PM 采纳审计改判〕**：先前这里写的是「那一段**不在本件的判据面里**」
@@ -1876,8 +1925,8 @@ async fn relay_endpoint_for_launch(
 ///
 /// # 〔RM1a · 第四波〕**收 `origin`**：key 落在会话跑的那台机器上
 ///
-/// 本机那一臂只进 `creds_store`（原样）；远端那一臂由 monitor 推出账号 id、交**那台机器的后端**写
-/// （帧面 `apikey-key-set`，后端账号域那一份是那台机器上唯一的写者）。分派住 `apikey_remote::write_key_on`。
+/// 两臂同一条路：monitor 推出账号 id、交**那台机器的后端**写（帧面 `apikey-key-set`，后端账号域那一份是那台机器上唯一的写者；
+/// 〔GP1 · 第四波〕本机 ＝ 本机常驻后端，先核它写的就是本 monitor 认的那一份）。分派住 `apikey_remote::write_key_on`。
 /// 明文在本函数体里仍然**只被往下传一次**（`PLAINTEXT_HOPS` 那一行跟着改了住址）。
 #[tauri::command]
 async fn write_apikey_credentials_key(
@@ -1885,7 +1934,7 @@ async fn write_apikey_credentials_key(
     key: String,
     config_dir: String,
     // 〔第四波 ST2 · `设计/70 §4.4`〕加账号表单 apikey 那一支的 Base URL。缺席 = 用默认上游（不碰那一格）。
-    // 〔RM1a〕它与 key 一起按 origin 走：本机进 `creds_store`，远端交那台机器的后端（`apikey-key-set` 的 `baseUrl`）。
+    // 〔RM1a〕它与 key 一起按 origin 走，交那台机器的后端（`apikey-key-set` 的 `baseUrl`；〔GP1〕本机也是）。
     base_url: Option<String>,
 ) -> Result<(), String> {
     apikey_remote::write_key_on(&origin, &config_dir, key, base_url).await

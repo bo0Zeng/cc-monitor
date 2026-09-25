@@ -409,6 +409,8 @@ pub struct FileWindow {
     /// 「叫什么名字 / 改成什么权限」那个框。`None` = 没在问。
     /// **UI 线程自己的**（理由见 [`WritePrompt`]）。
     write_prompt: Option<WritePrompt>,
+    /// 〔GP1 · 第四波〕改权限那个框的**现值**那一趟（UI 线程读，tokio 那条写；`writeops::ModeProbe`）。
+    pub mode_probe: super::writeops::ModeProbe,
     /// 已经消化过几摞写操作（同 [`Self::seen_rounds`]，每条路各一个数）。
     seen_write_rounds: u64,
     /// 🔴〔第八刀〕**往外拖**那一趟的共享落点（进度 · 结局）。
@@ -550,6 +552,7 @@ impl FileWindow {
             query: String::new(),
             write_board: WriteBoard::default(),
             write_prompt: None,
+            mode_probe: super::writeops::ModeProbe::default(),
             seen_write_rounds: 0,
             pull: super::download::DownloadBoard::default(),
             pull_ask: None,
@@ -1229,7 +1232,25 @@ impl FileWindow {
         };
         let refs: Vec<&super::source::Listed> = rows.iter().collect();
         self.write_prompt = Some(WritePrompt::for_chmod_many(&self.cwd, &refs));
+        // 〔GP1 · 第四波〕框一摆出来就逐项问现值（`files-stat` 的 `mode`）；答回来之后框上说、只预填一次。
+        let paths: Vec<String> = rows.iter().map(|r| r.path.clone()).collect();
+        self.start_mode_probe(paths);
         !refs.is_empty()
+    }
+
+    /// 〔GP1〕起「现值」那一趟。没有运行时 / 没有通道 ⇒ 当场落「全读不到」（框上说「读不到现在的权限」，不猜、不静默）。
+    fn start_mode_probe(&mut self, paths: Vec<String>) {
+        let gen = self.mode_probe.start();
+        let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) else {
+            self.mode_probe.land(gen, vec![None; paths.len()]);
+            return;
+        };
+        let board = self.mode_probe.clone();
+        let origin = self.source.origin();
+        h.spawn(async move {
+            let modes = super::writeops::probe_modes(&line, &origin, &paths).await;
+            board.land(gen, modes);
+        });
     }
 
     /// 🔴 **删除不经那个框** —— 它不向用户要任何输入，它要的是一次**确认**，
@@ -1884,8 +1905,25 @@ impl FileWindow {
             return;
         };
         let (mut go, mut cancel) = (false, false);
+        // 〔GP1 · 第四波〕改权限那个框：现值答回来了 ⇒ 预填至多一次（`writeops::apply_prefill`）。
+        let readout = matches!(p.kind, super::writeops::PromptKind::Chmod { .. }).then(|| {
+            self.mode_probe.attach(ui.ctx().clone());
+            self.mode_probe.readout()
+        });
+        if let Some(Some(r)) = &readout {
+            super::writeops::apply_prefill(&mut p, r);
+        }
         egui::Modal::new(egui::Id::new("filewin-write-prompt")).show(ui.ctx(), |ui| {
             ui.heading(p.heading());
+            match &readout {
+                Some(Some(r)) => {
+                    ui.label(r.line.as_str());
+                }
+                Some(None) => {
+                    ui.label("正在读现在的权限…");
+                }
+                None => {}
+            }
             ui.text_edit_singleline(&mut p.text);
             ui.label("⚠ 只在这一个目录里 —— 不许带 `/`。");
             ui.horizontal(|ui| {
