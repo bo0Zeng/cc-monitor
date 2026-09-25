@@ -294,3 +294,257 @@ fn the_read_side_answers_the_asked_machine_and_echoes_it() {
         "拒收的话没点名是哪条命令：{err}"
     );
 }
+
+// ── 〔ST3〕J3：喂账调用点登记表 ──────────────────────────────────────────────
+//
+// 🔴 **它的人群**：`src/bridge/src` 生产段里，调了「喂账入口」的函数（`文件, 外层 fn`）。
+// 喂账入口 ＝ 直接写账的 `drift_ledger::record` ＋ 把 `origin` 一路交给它的那几个
+// （`parse_line` / `parse_for_kind` / `batch_to_payloads` / `range_payloads` / `note_unknown_capabilities`）。
+// 判法两条，都不是地板：
+//   ① 人群 == `FEEDERS` 的键（两向）：新长一个喂账点 ⇒ 红，必须来这里说清它记在哪台名下；
+//      删了一个 ⇒ 死条目 ⇒ 红。
+//   ② `Local` 那几行体里**有** `Origin::local()`；`Given` 那几行体里 `Origin::local()` **零命中** ——
+//      拦的是「远端那条路上写死本机」（改签名之后「没说」写不出来，剩下的就是这一形）。
+// ⚠ 同波别的路新写一处 `parse_line(…)`（或新调 `record`）⇒ 合并那一拍 ① 红：按它记在哪台补一行。
+
+/// 记在哪台名下、凭什么。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Whose {
+    /// 写死本机：它只碰本机的东西（理由写在 `FEEDERS` 那一行）。
+    Local,
+    /// 随调用方给的 origin（参数 / `route` 过的 / 那台的配置名），体里不许出现写死的本机。
+    Given,
+}
+
+/// `(文件, 外层 fn, 记在哪台, 理由)`。
+const FEEDERS: &[(&str, &str, Whose, &str)] = &[
+    (
+        "history.rs",
+        "analyze_jsonl",
+        Whose::Local,
+        "本机历史清单：只读本机 jsonl（远端清单由那台后端摘要，不经 monitor 逐行解析）",
+    ),
+    (
+        "history.rs",
+        "stream_read_session_jsonl",
+        Whose::Given,
+        "`route` 之后的本机那一支，交出去的是已分过的 `origin`",
+    ),
+    (
+        "lib.rs",
+        "batch_to_payloads",
+        Whose::Given,
+        "参数 `origin`：本机 watcher 与远端流共用的出口",
+    ),
+    (
+        "lib.rs",
+        "run",
+        Whose::Local,
+        "本机 jsonl watcher 那一批（只读本机 `~/.claude/projects`）",
+    ),
+    (
+        "parser.rs",
+        "parse_for_kind",
+        Whose::Given,
+        "参数 `origin`，原样交给 `parse_line`",
+    ),
+    (
+        "parser.rs",
+        "parse_line",
+        Whose::Given,
+        "参数 `origin`，原样交给 `record`",
+    ),
+    (
+        "remote_history.rs",
+        "stream_read_remote_session",
+        Whose::Given,
+        "那台的配置名（`cfg.origin_label()`）",
+    ),
+    (
+        "search.rs",
+        "build_one",
+        Whose::Local,
+        "本机搜索索引：只读本机 jsonl",
+    ),
+    (
+        "session_map.rs",
+        "is_interactive",
+        Whose::Local,
+        "pidfile 只在本机 `~/.claude/sessions` 扫",
+    ),
+    (
+        "session_skeleton.rs",
+        "range_payloads",
+        Whose::Given,
+        "参数 `origin`",
+    ),
+    (
+        "session_skeleton.rs",
+        "read_session_range",
+        Whose::Given,
+        "命令参数 `origin`",
+    ),
+    (
+        "ssh_source.rs",
+        "flush_lines",
+        Whose::Given,
+        "那台的 `host_label`",
+    ),
+    (
+        "ssh_source.rs",
+        "note_unknown_capabilities",
+        Whose::Given,
+        "参数 `origin`",
+    ),
+    (
+        "ssh_source.rs",
+        "stream_loop",
+        Whose::Given,
+        "hello 那一段：那台的 `host_label`",
+    ),
+    (
+        "subagent.rs",
+        "load_subagent",
+        Whose::Given,
+        "命令参数 `origin`（行是那台后端给的）",
+    ),
+];
+
+/// 喂账入口（调用形）。
+const FEED_ENTRIES: &[&str] = &[
+    "drift_ledger::record(",
+    "parse_line(",
+    "parse_for_kind(",
+    "batch_to_payloads(",
+    "range_payloads(",
+    "note_unknown_capabilities(",
+];
+
+/// 与签名那一行同缩进的收尾 `}` 在哪一行（rustfmt 保证）。
+fn fn_end(lines: &[&str], start: usize) -> usize {
+    let indent: String = lines[start].chars().take_while(|c| *c == ' ').collect();
+    let close = format!("{indent}}}");
+    (start..lines.len())
+        .find(|&k| lines[k] == close)
+        .unwrap_or(lines.len() - 1)
+}
+
+/// 某一行**所在**的函数：往回找 `fn <名>`，且它的体要把这一行包住
+/// （外层 fn 里先定义过一个嵌套 `fn drop` 之类、体已收尾的，不算 —— `ssh_source·rs::stream_loop` 现打过）。
+fn enclosing_fn_of(lines: &[&str], at: usize) -> Option<(String, usize)> {
+    for i in (0..=at).rev() {
+        let l = lines[i];
+        let rest = l
+            .split(" fn ")
+            .nth(1)
+            .or_else(|| l.trim_start().strip_prefix("fn "));
+        if let Some(rest) = rest {
+            let n: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !n.is_empty() && fn_end(lines, i) >= at {
+                return Some((n, i));
+            }
+        }
+    }
+    None
+}
+
+/// 函数体：从签名那一行起，到与它同缩进的 `}` 那一行。
+fn fn_body(lines: &[&str], start: usize) -> String {
+    lines[start..=fn_end(lines, start)].join("\n")
+}
+
+/// 从一份生产段里摘 (外层 fn, 体)：调了喂账入口的那些。`own_parse_line` = 这份文件自己定义了
+/// 一个同名的 `fn parse_line`（与 `parser·rs` 那个无关），那时裸 `parse_line(` 不算。
+fn feeders_in(prod: &str, own_parse_line: bool) -> Vec<(String, String)> {
+    let lines: Vec<&str> = prod.lines().collect();
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        let hit = FEED_ENTRIES.iter().any(|needle| {
+            l.match_indices(needle).any(|(k, _)| {
+                let before = &l[..k];
+                let bare_parse_line = *needle == "parse_line(" && !before.ends_with("parser::");
+                let prev = before.chars().next_back();
+                !before.ends_with("fn ")
+                    && !prev.is_some_and(|c| c.is_alphanumeric() || c == '_')
+                    && !(own_parse_line && bare_parse_line)
+            })
+        });
+        if !hit {
+            continue;
+        }
+        let (name, at) = enclosing_fn_of(&lines, i).expect("喂账调用不在任何 fn 里 —— 抽取坏了");
+        if !out.iter().any(|(n, _)| *n == name) {
+            out.push((name, fn_body(&lines, at)));
+        }
+    }
+    out
+}
+
+#[test]
+fn every_ledger_feeder_is_registered_with_whose_book_it_writes() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut found: std::collections::BTreeMap<(String, String), String> = Default::default();
+    for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
+        let prod = guard_core::production_code(&raw);
+        let file = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let own = file != "parser.rs" && prod.contains("fn parse_line(");
+        for (name, body) in feeders_in(&prod, own) {
+            found.insert((file.clone(), name), body);
+        }
+    }
+    let got: std::collections::BTreeSet<(String, String)> = found.keys().cloned().collect();
+    let want: std::collections::BTreeSet<(String, String)> = FEEDERS
+        .iter()
+        .map(|(f, n, _, _)| (f.to_string(), n.to_string()))
+        .collect();
+    assert_eq!(
+        got, want,
+        "**喂漂移账的调用点与 `FEEDERS` 两向对不上。**\n\
+         · 只在左边 ＝ 新长了一个喂账点：说清它记在哪台名下（`Local` 写死本机 / `Given` 随调用方），补一行；\n\
+         · 只在右边 ＝ 那个点没了（或改名）：删掉那一行。"
+    );
+    let local_ctor = "Origin::local()";
+    for (f, n, whose, why) in FEEDERS {
+        let body = &found[&(f.to_string(), n.to_string())];
+        match whose {
+            Whose::Local => assert!(
+                body.contains(local_ctor),
+                "`{f}::{n}` 登记为写死本机（{why}），体里却没有 `{local_ctor}` —— 登记过期了"
+            ),
+            Whose::Given => assert!(
+                !body.contains(local_ctor),
+                "`{f}::{n}` 登记为随调用方的 origin（{why}），体里却写死了 `{local_ctor}` —— \
+                 远端那条路上的行会被记成本机的"
+            ),
+        }
+    }
+}
+
+/// 阳性对照：抽取器认得出「新喂账点」「写死本机」「定义行不算」「别家同名 fn 不算」。
+#[test]
+fn the_feeder_scanner_sees_what_it_claims_to_see() {
+    let src = "fn a(o: &Origin) {\n    let _ = parse_line(o, x);\n}\n\
+               fn b() {\n    crate::parser::parse_line(&Origin::local(), x);\n}\n\
+               pub fn parse_line(raw: &str) -> R {\n    todo!()\n}\n\
+               fn c() {\n    let _ = numbered_parse_line(x);\n}\n";
+    let got = feeders_in(src, false);
+    let names: Vec<&str> = got.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, vec!["a", "b"], "定义行或子串被当成了调用：{names:?}");
+    assert!(
+        got[1].1.contains("Origin::local()") && !got[0].1.contains("Origin::local()"),
+        "体切错了"
+    );
+    // 别家同名：文件自己定义了 `fn parse_line` ⇒ 裸调用不算，带 `parser::` 前缀的仍算。
+    let own = feeders_in(src, true);
+    assert_eq!(
+        own.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        vec!["b"]
+    );
+}
