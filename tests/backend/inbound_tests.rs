@@ -522,6 +522,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-peek",
         "files-put",
         "files-delete-session",
+        // 〔AS1 · 第四波 4B〕MCP 同步的判定：逐条 stat ＋ PATH 上找名字。
+        "mcp-sync-plan",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -589,6 +591,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-peek",
         "files-put",
         "files-delete-session",
+        // 〔AS1 · 第四波 4B〕MCP 同步的判定，阻塞档。
+        "mcp-sync-plan",
     ];
     let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
     assert!(

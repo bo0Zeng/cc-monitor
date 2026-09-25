@@ -1619,6 +1619,36 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 **错误码**：`bad_args`（不是数组 / 相对路径 / 给了路径没给字样）· `too_large`（超过条数上限）。
 ⚠ **CLI 面也有它**（`--footprint-probe`），入参从 stdin 读。
 
+#### `mcp-sync-plan`：MCP 资产同步的判定（AS1 · 第四波 4B，2026-09-24，**只读**）
+
+用户裁（`设计/96` 的 B）：「各管各的，只有显式推 / 拉」· 推 / 拉之前先给看差异，对面有不同就问盖不盖 ·
+「内容，原样拷过去并标出可疑项」、不替用户改写。本条是那一件的**判定**：两份原文进，差异 ＋ 可疑项 ＋「写哪几条」出。
+由**要被写的那一台**的后端跑 —— 可疑项里「有没有这个路径 / 这个命令」是那台机器上的事实。
+原文由调用方经 `files-peek` 读来，写经 `files-put`（`expect` = 看差异时读到的那一份）；**本条一个字节都不读、不写用户文件**。
+
+```text
+→ {"id":"m1","cmd":"mcp-sync-plan","args":{"source":"{\"mcpServers\":{\"fs\":{\"command\":\"/opt/fs\"}}}","target":null}}
+← {"kind":"reply","id":"m1","ok":true,"data":{"rows":[{"name":"fs","state":"new","suspects":[{"kind":"abs-path","field":"command","value":"/opt/fs","there":"absent"}]}],"write":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `source` | → | 拷出来的那一份原文（字符串，必给） |
+| `target` | → | 要写进去的那一份原文；那份文件不存在 ⇒ `null`（**必给**：缺席不当成不存在） |
+| `take` | → | 可缺席。用户勾了哪几条（条目名数组）；给了才答 `write` |
+| `overwrite` | → | 可缺席。`take` 里哪几条**说了要盖掉对面不同的那一条**；给了它就必须给 `take`，且是它的子集 |
+| `rows` | ← | 每个条目名一行 `{name, state, suspects}`。`state` 闭集：`new`（对面没有）· `same`（值相等，键序无关）· `differs` · `only-there`（只在对面，**永远不碰**）。`suspects` 只在 `new` / `differs` 上有：`{kind, field, value, there}` —— `kind` 闭集 `abs-path` · `command-missing` · `command-relative`；`field` 是 `command` / `args[i]` / `env.<键>` / `cwd`；`there` 闭集 `present` · `absent` · `foreign`（不是这台那种系统的路径写法）· `unknown`，`command-relative` 那种是 `null` |
+| `write` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要写的条目名（排序）：`same` 不写、`new` 写、`differs` 在 `overwrite` 里才写 |
+
+可疑项的规则：只看 stdio 那四个字段（`url` / `headers` 不看）。`abs-path` = 字段值是绝对路径（POSIX `/…` 或 Windows `X:\…` / `X:/…` / `\\…`），或 `--opt=<绝对路径>` 的右边是；
+`command-missing` = `command` 是裸名字、且这个**后端进程**的 `PATH` 上找不到同名文件（有 `PATHEXT` 就按它补后缀；找得到不标）；
+`command-relative` = `command` 带分隔符却不是绝对路径。⚠ `PATH` 是后端进程的，不是用户登录 shell 的。
+
+**错误码**：`bad_args`（缺 / 类型不对 · `take` 里有拷出来那一份里没有的名字 · `overwrite` 不是 `take` 的子集）·
+`bad_file`（任一份不是合法 JSON / 最外层不是对象 / `mcpServers` 不是对象 —— 不拿骨架比、也不覆盖）·
+`needs_consent`（`take` 里有 `differs` 的一条没在 `overwrite` 里点名 —— **整趟拒**，不静默跳过）。
+⚠ **CLI 面也有它**（`--mcp-sync-plan`），入参从 stdin 读。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。
