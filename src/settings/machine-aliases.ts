@@ -687,6 +687,8 @@ export function buildAliasManager(opts: {
     const b = c.block;
     if (b.present) {
       rcStatus.textContent = `✓ ${c.path}：别名块已经装了${b.version ? `（${b.version}）` : ""}`;
+      // 〔TL1 · 4C〕旧版块（PowerShell v2）没有接上别名文件那一行 —— 重装一次就带上（`71 §6.1`）。
+      if (b.outdated) rcStatus.textContent += "。这是旧版的别名块，点「重装别名块」换成新版（新版会自动接上你的别名）";
       rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-ok";
     } else if (!c.exists) {
       rcStatus.textContent = `○ ${c.path} 还不存在（装的时候新建）`;
