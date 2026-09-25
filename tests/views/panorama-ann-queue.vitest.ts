@@ -133,7 +133,7 @@ describe("批注审批队列", () => {
       (n) => n.textContent,
     );
     expect(notes.filter((t) => t?.startsWith("另有 "))).toEqual([
-      "另有 1 条批注的状态本页不认识（core 新加的档？），未列出。",
+      "另有 1 条批注的状态这里认不出来，没有列出。",
     ]);
   });
 

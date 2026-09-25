@@ -17,6 +17,7 @@
 
 // F-MA：agent-profile 是纯常量模块（无 DOM/render），不破坏本文件"可 tsx 独立单测"的性质。
 import { AGENT_PROFILE } from "../agent-profile.ts";
+import { copyText } from "../copy-table";
 
 // === 类型（纯数据，无 DOM） ===
 
@@ -70,7 +71,7 @@ function splitLines(normalized: string): string[] {
 
 /** 单行截断到 cap 字符，超出加 '…'。 */
 function capLine(text: string, cap: number): string {
-  return text.length > cap ? text.slice(0, cap) + "…" : text;
+  return text.length > cap ? copyText("diff.capLine.ellipsis", { text: text.slice(0, cap) }) : text;
 }
 
 /** 把一组同类型行构造成 DiffResult（用于 all-ctx / all-add / all-del 快路径）。 */
@@ -382,7 +383,7 @@ export function buildDiffBody(toolName: string, input: unknown): HTMLElement | n
     if (tally.truncated) {
       const btn = document.createElement("button");
       btn.className = "block-body-show-full";
-      btn.textContent = `↕ 显示完整 diff（+${tally.addCount} −${tally.delCount}）`;
+      btn.textContent = copyText("diff.buildDiffBody.showAll", { addCount: tally.addCount, delCount: tally.delCount });
       btn.addEventListener(
         "click",
         () => {

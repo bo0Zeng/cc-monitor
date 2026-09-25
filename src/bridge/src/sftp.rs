@@ -35,6 +35,7 @@
 //! ⇒ 落点变了一格：`ccm` 入口从 `~/.local/bin/ccm` 挪到 **`~/.cc-monitor/bin/ccm`**（两个写根之内；也正是
 //! `设计/01 §6.7b` 用户 09-18 拍的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
 
+use crate::copy_table::copy_text;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::dial_host::{Readback, RemoteFs};
@@ -48,19 +49,31 @@ use crate::ssh_source::RemoteConfig;
 /// 它交回的是**比对的事实**（读回长度 · 首个差异的偏移，读不回 ⇒ `None`）；判不判通过、话怎么说仍住这里。
 pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Result<(), String> {
     let Some((got_len, first_diff)) = readback else {
-        return Err(format!("上传后读不回 {path}，无法确认写对了。"));
+        return Err(copy_text(
+            "rsSftp.verify.unreadable",
+            &[("path", &path.to_string())],
+        ));
     };
     if got_len == expected_len {
         let Some(at) = first_diff else {
             return Ok(());
         };
-        return Err(format!(
-            "上传后校验失败：{path} 长度相同（{expected_len} 字节）但内容不同，首个差异在第 {at} 字节。\
-             这类损坏（传输截断后补齐 / 编码变形）只比长度是查不出来的。"
+        return Err(copy_text(
+            "rsSftp.verify.contentDiffers",
+            &[
+                ("path", &path.to_string()),
+                ("expectedLen", &expected_len.to_string()),
+                ("at", &at.to_string()),
+            ],
         ));
     }
-    Err(format!(
-        "上传后校验失败：{path} 长度不匹配（期望 {expected_len} 字节，读回 {got_len} 字节）。"
+    Err(copy_text(
+        "rsSftp.verify.lengthDiffers",
+        &[
+            ("path", &path.to_string()),
+            ("expectedLen", &expected_len.to_string()),
+            ("gotLen", &got_len.to_string()),
+        ],
     ))
 }
 
@@ -95,8 +108,11 @@ pub(crate) async fn upload_verified(
         return Ok(());
     };
     Err(match fs.remove(remote_path).await {
-        Ok(_) => format!("{bad}已删掉传坏的这一份，下次连上会重新装。"),
-        Err(e) => format!("{bad}传坏的这一份没删掉：{e}"),
+        Ok(_) => copy_text("rsSftp.upload.badRemoved", &[("bad", &bad.to_string())]),
+        Err(e) => copy_text(
+            "rsSftp.upload.badKept",
+            &[("bad", &bad.to_string()), ("e", &e.to_string())],
+        ),
     })
 }
 
@@ -152,25 +168,28 @@ pub(crate) fn interpret_profile_read(
         return if exists == Some(false) {
             Ok(None)
         } else {
-            Err(format!(
-                "读不出 {what}（文件可能存在但无权限 / 被占用 / 传输失败）。已取消，未改动任何文件。"
+            Err(copy_text(
+                "rsSftp.profile.unreadable",
+                &[("what", &what.to_string())],
             ))
         };
     };
     if bytes.is_empty() {
         if let Some(n) = size.filter(|n| *n > 0) {
-            return Err(format!(
-                "{what} 在远端有 {n} 字节，但读回来是空的。已取消，未改动任何文件——\
-                 继续走会用「空内容 + ccm 块」覆盖掉那 {n} 字节。"
+            return Err(copy_text(
+                "rsSftp.profile.emptyRead",
+                &[("what", &what.to_string()), ("n", &n.to_string())],
             ));
         }
         return Ok(Some(String::new()));
     }
     String::from_utf8(bytes.to_vec()).map(Some).map_err(|e| {
-        format!(
-            "{what} 不是合法 UTF-8（前 {} 字节合法，之后不是）。ccm 块的合并/删除是按文本做的，\
-             按有损文本写回会把这些字节永久换成 U+FFFD，连备份一起坏掉。已取消，未改动任何文件。",
-            e.utf8_error().valid_up_to()
+        copy_text(
+            "rsSftp.profile.notUtf8",
+            &[
+                ("what", &what.to_string()),
+                ("validBytes", &(e.utf8_error().valid_up_to()).to_string()),
+            ],
         )
     })
 }
@@ -246,10 +265,14 @@ pub enum DeployAction {
 /// 那里是一批脚本（没有身份戳可读），标记与内容同一次上传，且落点是目录不是单个文件。
 pub fn deploy_decision(remote_build_id: Option<&str>, expected: &str) -> DeployAction {
     match remote_build_id {
-        None => DeployAction::Deploy("远端无 backend / 无版本标记".to_string()),
-        Some(r) if r.trim() != expected => {
-            DeployAction::Deploy(format!("版本不符（远端 {} ≠ 期望 {expected}）", r.trim()))
-        }
+        None => DeployAction::Deploy(copy_text("rsSftp.deploy.missing", &[])),
+        Some(r) if r.trim() != expected => DeployAction::Deploy(copy_text(
+            "rsSftp.deploy.versionMismatch",
+            &[
+                ("remote", &(r.trim()).to_string()),
+                ("expected", &expected.to_string()),
+            ],
+        )),
         Some(_) => DeployAction::Skip,
     }
 }
@@ -353,7 +376,7 @@ pub(crate) fn interpret_stamp_scan(
         Some(1) => RemoteIdentity::NoStamp,
         // 退出码不进这句话（`Some(..)` / `None` 是实现的形状）：没有错误输出时只说「没答完」。
         _ => RemoteIdentity::Unreadable(match stderr.trim() {
-            "" => "那一问没有答完".to_string(),
+            "" => copy_text("rsSftp.stamp.unfinished", &[]),
             said => said.to_string(),
         }),
     }
@@ -368,23 +391,45 @@ pub(crate) fn identity_decision(
     machine: &str,
     path: &str,
 ) -> Result<DeployAction, String> {
-    let hands_off = "没有覆盖它。要换成这一版：先在机器页点「卸载后端」删掉它，再部署。";
+    let hands_off = copy_text("rsSftp.identity.handsOff", &[]);
     match id {
-        RemoteIdentity::Missing => Ok(DeployAction::Deploy("那台上还没有后端".to_string())),
-        RemoteIdentity::Empty => Ok(DeployAction::Deploy("那台上那一份是 0 字节".to_string())),
-        RemoteIdentity::Stamp(s) if s == expected => Ok(DeployAction::Skip),
-        RemoteIdentity::Stamp(s) => Ok(DeployAction::Deploy(format!(
-            "那台上是 {s}，这一版是 {expected}"
+        RemoteIdentity::Missing => Ok(DeployAction::Deploy(copy_text(
+            "rsSftp.identity.missing",
+            &[],
         ))),
-        RemoteIdentity::NoStamp => Err(format!(
-            "{machine} 的 {path} 已经有一个文件，它不说自己是哪一版后端，{hands_off}"
+        RemoteIdentity::Empty => Ok(DeployAction::Deploy(copy_text(
+            "rsSftp.identity.empty",
+            &[],
+        ))),
+        RemoteIdentity::Stamp(s) if s == expected => Ok(DeployAction::Skip),
+        RemoteIdentity::Stamp(s) => Ok(DeployAction::Deploy(copy_text(
+            "rsSftp.identity.other",
+            &[("s", &s.to_string()), ("expected", &expected.to_string())],
+        ))),
+        RemoteIdentity::NoStamp => Err(copy_text(
+            "rsSftp.identity.unstamped",
+            &[
+                ("machine", &machine.to_string()),
+                ("path", &path.to_string()),
+                ("handsOff", &hands_off.to_string()),
+            ],
         )),
-        RemoteIdentity::Ambiguous(ids) => Err(format!(
-            "{machine} 的 {path} 自报了不止一个版本（{}），{hands_off}",
-            ids.join("、")
+        RemoteIdentity::Ambiguous(ids) => Err(copy_text(
+            "rsSftp.identity.multiple",
+            &[
+                ("machine", &machine.to_string()),
+                ("path", &path.to_string()),
+                ("ids", &ids.join(&copy_text("rsSftp.identity.listSep", &[]))),
+                ("handsOff", &hands_off.to_string()),
+            ],
         )),
-        RemoteIdentity::Unreadable(why) => Err(format!(
-            "判不了 {machine} 的 {path} 是哪一版后端，没有动它：{why}"
+        RemoteIdentity::Unreadable(why) => Err(copy_text(
+            "rsSftp.identity.undecidable",
+            &[
+                ("machine", &machine.to_string()),
+                ("path", &path.to_string()),
+                ("why", &why.to_string()),
+            ],
         )),
     }
 }
@@ -508,9 +553,9 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
     // S-2（审计）：SFTP 无 shell 不展开 `~`，而 backend exec 路径会展开——backend_path 含 `~`
     // 会两边错位。含 `~` 不装（用户应填完整路径），手动部署的后端仍可连 —— 〔DP1〕但要说出来。
     if cfg.backend_path.contains('~') {
-        return Err(DeployError::Failed(format!(
-            "{} 的后端路径里有 ~，自动部署不认这种写法，没有装。在机器页把后端路径改成完整路径。",
-            cfg.origin_label()
+        return Err(DeployError::Failed(copy_text(
+            "rsSftp.deploy.tildePath",
+            &[("machine", &(cfg.origin_label()).to_string())],
         )));
     }
     // 〔DP1〕先问那台是什么机器、再查表；表拒绝 ⇒ `Refused`（那句话由 `byte_table::Refusal::say` 说）。
@@ -518,9 +563,12 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
         Ok(Ok(b)) => b,
         Ok(Err(refusal)) => return Err(DeployError::Refused(refusal)),
         Err(e) => {
-            return Err(DeployError::Failed(format!(
-                "问 {} 是什么机器没问成，没有装后端：{e}",
-                cfg.origin_label()
+            return Err(DeployError::Failed(copy_text(
+                "rsSftp.deploy.unameFailed",
+                &[
+                    ("machine", &(cfg.origin_label()).to_string()),
+                    ("e", &e.to_string()),
+                ],
             )))
         }
     };
@@ -541,9 +589,10 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
              （这份字节不是这套源码编出来的，或它太旧、还没有身份戳；重跑 zigbuild 重铺）",
             bin.build_id
         );
-        return Err(DeployError::Failed(
-            "这一版 cc-monitor 带的后端说不出自己是哪一版，没有把它装上去。".to_string(),
-        ));
+        return Err(DeployError::Failed(copy_text(
+            "rsSftp.deploy.noBuildId",
+            &[],
+        )));
     }
     // 〔SR1b〕经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区；`backend_path` 不在
     //   `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒，这里原话往上报 —— 调用方对 Err 只 warn，手动部署的后端照旧能连）。
@@ -646,12 +695,10 @@ fn is_safe_remote_backend_path(path: &str) -> bool {
 pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
     let path = cfg.backend_path.trim().to_string();
     if path.is_empty() {
-        return Err(
-            "请先填后端路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-backend）".into(),
-        );
+        return Err(copy_text("rsSftp.deploy.needPath", &[]).into());
     }
     if path.contains('~') {
-        return Err("backend 路径含 ~（SFTP 不展开 ~），请改用绝对路径".into());
+        return Err(copy_text("rsSftp.deploy.tildeRefused", &[]).into());
     }
     // 〔DP1〕与自动部署同一个取字节口、同一句拒绝的话。
     let bin = match remote_backend_binary(&cfg).await? {
@@ -665,9 +712,13 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     // 〔DP1〕与自动部署同一条判定：读那台上那一份字节自报的身份，不读旁挂标记。
     let id = remote_identity(&cfg, &fs, &path).await?;
     let backend_msg = match identity_decision(&id, bin.build_id, &cfg.origin_label(), &path)? {
-        DeployAction::Skip => format!(
-            "远端已是最新后端（{}，{}）：{path}，无需重装。",
-            bin.build_id, bin.machine
+        DeployAction::Skip => copy_text(
+            "rsSftp.deploy.upToDate",
+            &[
+                ("buildId", &bin.build_id.to_string()),
+                ("machine", &bin.machine.to_string()),
+                ("path", &path.to_string()),
+            ],
         ),
         DeployAction::Deploy(reason) => {
             fs.mkdirs(remote_parent(&path)).await?;
@@ -677,9 +728,14 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
                 cfg.origin_label(),
                 bin.build_id
             );
-            format!(
-                "已安装后端（{}，{}）到 {path}（{reason}）。重连远端即可用。",
-                bin.build_id, bin.machine
+            copy_text(
+                "rsSftp.deploy.done",
+                &[
+                    ("buildId", &bin.build_id.to_string()),
+                    ("machine", &bin.machine.to_string()),
+                    ("path", &path.to_string()),
+                    ("reason", &reason.to_string()),
+                ],
             )
         }
     };
@@ -689,19 +745,20 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     //   （[`ensure_backend_deployed`]）不碰入口 —— 那是用户点了才发生的事。
     //   〔SR1b〕入口落在 `~/.cc-monitor/bin/ccm`（两个写根之内；`设计/01 §6.7b` 的落点）。
     let entry = match put_ccm_entry(&fs, &path).await? {
-        crate::fenced_block::Applied::Unchanged => "终端里的 ccm 入口已就位。",
-        crate::fenced_block::Applied::Written { .. } => {
-            "终端里的 ccm 入口已放好（~/.cc-monitor/bin/ccm；装了别名块的终端里直接能用）。"
-        }
+        crate::fenced_block::Applied::Unchanged => copy_text("rsSftp.ccmEntry.ready", &[]),
+        crate::fenced_block::Applied::Written { .. } => copy_text("rsSftp.ccmEntry.placed", &[]),
     };
     // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删
     //   （经那台的后端、带 CAS；那一格在 SFTP 两个写根之外）。没东西 ⇒ 不多说一句；查不成 ⇒ 说出来，不挡部署。
     let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
     let legacy = match crate::ccm_legacy::sweep(&door).await {
         Ok(s) => s.say(),
-        Err(e) => format!(
-            "旧版入口 ~/{} 这一次没查成：{e}",
-            crate::ccm_legacy::LEGACY_REL
+        Err(e) => copy_text(
+            "rsSftp.ccmLegacy.checkFailed",
+            &[
+                ("rel", &crate::ccm_legacy::LEGACY_REL.to_string()),
+                ("e", &e.to_string()),
+            ],
         ),
     };
     Ok(format!("{backend_msg}{entry}{legacy}"))
@@ -715,11 +772,12 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
 pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
     let path = cfg.backend_path.trim().to_string();
     if path.contains('~') {
-        return Err("backend 路径含 ~（SFTP 不展开），请改用绝对路径后再卸载".into());
+        return Err(copy_text("rsSftp.uninstall.tildeRefused", &[]).into());
     }
     if !is_safe_remote_backend_path(&path) {
-        return Err(format!(
-            "拒绝删除可疑后端路径（须为含 cc-monitor 的绝对路径、无 ..）: {path}"
+        return Err(copy_text(
+            "rsSftp.uninstall.suspicious",
+            &[("path", &path.to_string())],
         ));
     }
     // 〔SR1b〕经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
@@ -731,11 +789,15 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Strin
         if removed { "已删" } else { "本来就不在" }
     );
     if removed {
-        Ok(format!(
-            "已删除 {path}。若这台机器仍勾选「启用」，下次连接时会自动装回；彻底移除请取消启用或删除这台机器。"
+        Ok(copy_text(
+            "rsSftp.uninstall.done",
+            &[("path", &path.to_string())],
         ))
     } else {
-        Ok(format!("{path} 不在，可能已经卸载过了。"))
+        Ok(copy_text(
+            "rsSftp.uninstall.absent",
+            &[("path", &path.to_string())],
+        ))
     }
 }
 
@@ -968,7 +1030,7 @@ fn remote_profile_name(profile: &str) -> Result<String, String> {
     let p = profile.trim();
     let p = if p.is_empty() { ".bashrc" } else { p };
     if p.contains('/') || p.contains('\\') || p.contains("..") {
-        return Err("profile 只能是 home 下的文件名（如 .bashrc / .zshrc）".to_string());
+        return Err(copy_text("rsSftp.profile.badName", &[]));
     }
     Ok(p.to_string())
 }
@@ -990,7 +1052,7 @@ pub async fn uninstall_remote_alias_block(
     //   备份 · 原子替换 · 回读 · 回滚那一份规则住后端（`files-put`），与本机同一条路、只差 origin。
     let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
     let home = crate::user_files::Door::home(&door).await?;
-    let what = format!("远端 ~/{profile}");
+    let what = copy_text("rsSftp.profile.what", &[("profile", &profile.to_string())]);
     let mut missing = false;
     let done =
         crate::user_files::edit(
@@ -1010,15 +1072,27 @@ pub async fn uninstall_remote_alias_block(
         .await?;
     let crate::user_files::Edited::Written(landed) = done else {
         return Ok(if missing {
-            format!("远端 {profile} 不存在，没有别名块可卸载。")
+            copy_text(
+                "rsSftp.aliasBlock.noProfile",
+                &[("profile", &profile.to_string())],
+            )
         } else {
-            format!("远端 {profile} 里没有别名块，不用卸载。")
+            copy_text(
+                "rsSftp.aliasBlock.noBlock",
+                &[("profile", &profile.to_string())],
+            )
         });
     };
     tracing::info!("远端 [{}] 已卸载别名块（{profile}）", cfg.origin_label());
     Ok(match landed.backup {
-        Some(b) => format!("已从远端 {profile} 删掉别名块（原文件备份在 {b}）。"),
-        None => format!("已从远端 {profile} 删掉别名块。"),
+        Some(b) => copy_text(
+            "rsSftp.aliasBlock.removedWithBackup",
+            &[("profile", &profile.to_string()), ("b", &b.to_string())],
+        ),
+        None => copy_text(
+            "rsSftp.aliasBlock.removed",
+            &[("profile", &profile.to_string())],
+        ),
     })
 }
 
@@ -1045,22 +1119,28 @@ pub async fn install_remote_alias_block(
     // 损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件。
     let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
     let home = crate::user_files::Door::home(&door).await?;
-    let what = format!("远端 ~/{profile}");
+    let what = copy_text("rsSftp.profile.what", &[("profile", &profile.to_string())]);
     let done = crate::user_files::edit(&door, &home, &profile, true, false, |existing| {
         merge_profile_block(existing.unwrap_or(""), CCM_WRAPPER_SNIPPET, &what).map(Some)
     })
     .await?;
     let crate::user_files::Edited::Written(landed) = done else {
-        return Ok(format!("{profile} 里的别名块已是最新，没有改动。"));
+        return Ok(copy_text(
+            "rsSftp.aliasBlock.upToDate",
+            &[("profile", &profile.to_string())],
+        ));
     };
     let backup_note = landed
         .backup
-        .map(|b| format!("（原文件备份在 {b}）"))
+        .map(|b| copy_text("rsSftp.aliasBlock.backupNote", &[("b", &b.to_string())]))
         .unwrap_or_default();
     tracing::info!("远端 [{}] 已装别名块到 {profile}", cfg.origin_label());
-    Ok(format!(
-        "别名块已写进 {profile}{backup_note}。重连 ssh 之后，终端里就有 cc / cct，\
-         以及「别名」里生成的那几条。"
+    Ok(copy_text(
+        "rsSftp.aliasBlock.written",
+        &[
+            ("profile", &profile.to_string()),
+            ("backupNote", &backup_note.to_string()),
+        ],
     ))
 }
 
@@ -1080,7 +1160,10 @@ async fn put_ccm_entry(
         fs,
         path: CCM_CLI_REMOTE_PATH.to_string(),
         mode: 0o755,
-        what: format!("远端 ~/{CCM_CLI_REMOTE_PATH}"),
+        what: copy_text(
+            "rsSftp.ccmEntry.what",
+            &[("ccmCliRemotePath", &CCM_CLI_REMOTE_PATH.to_string())],
+        ),
     };
     // 走同一个序列：从前它写完只比对、**不回滚**（坏的入口会留在远端）；
     // 今天比对不上就恢复成原来那份（原来没有就删掉）。入口是我们自己的文件 ⇒ 不留备份。

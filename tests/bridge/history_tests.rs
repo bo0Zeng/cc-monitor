@@ -336,14 +336,14 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
     // ④ fail-closed：旧路与 spawn 那条路被要求 attach 时**拒**。
     let old = build_local_posix_command(&LocalPsAction::Attach, None, None);
     assert!(
-        old.as_ref().is_err_and(|e| e.contains("旧路产不出 attach")),
+        old.as_ref().is_err_and(|e| e.contains("接不回已有会话")),
         "\n★ 旧路（`build_local_posix_command`）居然给 attach 渲出了东西：{old:?}\n\
              它只会拼一个**拉起器** ⇒ 渲出来的是「另起一条 claude」。\n\
              **静默产出比拒绝坏得多**：用户以为接回了原会话，实际两条都在跑。"
     );
     let spawned = launch_local(&LocalPsAction::Attach, None, None, None, Some(NAME));
     assert!(
-        spawned.as_ref().is_err_and(|e| e.contains("stdio 全 null")),
+        spawned.as_ref().is_err_and(|e| e.contains("自己的终端")),
         "\n★ `launch_local` 收下了 attach：{spawned:?}\n\
              那条路把命令 spawn 出去、stdio 全 null ⇒ 一个接不上任何终端的 attach 进程，\n\
              而它**还会静默成功**。attach 的正题是把用户自己的终端接进去（`§1.3`）。"
@@ -445,7 +445,7 @@ fn the_local_renderer_refuses_every_shape_the_front_end_can_send_today() {
             true,
         );
         assert!(
-            r.as_ref().is_err_and(|e| e.contains("tmux 会话名")),
+            r.as_ref().is_err_and(|e| e.contains("缺少会话名")),
             "没有会话名时必须拒 —— 在 Rust 里铸一个名字就是 F13 修掉的撞名坑第三次。实得：{r:?}"
         );
     }
@@ -4453,7 +4453,7 @@ fn an_apikey_row_whose_machine_cannot_start_a_relay_refuses_the_launch() {
         remote_relay_refusal(
             "rl1-host-dead",
             Some("acct-a"),
-            crate::remote_relay::RELAY_NOT_STARTED
+            &crate::remote_relay::RELAY_NOT_STARTED
         )
     );
     assert_eq!(

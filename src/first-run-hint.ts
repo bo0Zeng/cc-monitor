@@ -60,12 +60,13 @@
 import { computeGaps, summarizeGaps } from "./settings/readiness";
 import type { MachineStatus } from "./settings/machine-status";
 import type { HostOs } from "./settings/host-os";
+import { copyText } from "./copy-table";
 
 /**
  * 〔ST2〕指路那一行的前缀 —— 与设置面板机器列表页那一块的标题（`remote-section.ts` 里的「诊断」）同一个词。
  * 由 `first-run-hint.vitest.ts` 读 `remote-section.ts` 对拍。
  */
-export const FIRST_RUN_HINT_PREFIX = "诊断：";
+export const FIRST_RUN_HINT_PREFIX = copyText("firstRunHint.firstRunHintPrefix.prefix");
 
 /** 那条指路的容器 class。判据与样式共用这一个名字，别在第二处写字面量。 */
 export const FIRST_RUN_HINT_CLASS = "status-first-run";
@@ -167,17 +168,17 @@ export class FirstRunHint {
       //   「设置 → 远端」这一页**不存在**（S2 起那块在「机器」页，落地页就是它），
       //   「还差什么」是 `§5.3` 已改名的旧说法（用户逐字「这种说法太口语了」）。
       open.title =
-        "打开设置 → 机器：「诊断」那一块逐条列着缺哪几项、缺了有什么后果、点哪里补齐。";
+        copyText("firstRunHint.mount.body");
       open.addEventListener("click", () => this.deps.openList());
       box.appendChild(open);
 
       const close = document.createElement("button");
       close.type = "button";
       close.className = `${FIRST_RUN_HINT_CLASS}-dismiss`;
-      close.textContent = "×";
+      close.textContent = copyText("firstRunHint.mount.close");
       // 措辞刻意写「这次」：它下次还会来，直到那几项真被补齐。
-      close.title = "这次先不看（下次启动还会提示，直到补齐）";
-      close.setAttribute("aria-label", "关掉这次的提示");
+      close.title = copyText("firstRunHint.mount.closeHint");
+      close.setAttribute("aria-label", copyText("firstRunHint.mount.closeLabel"));
       close.addEventListener("click", () => this.dismissThisRun());
       box.appendChild(close);
 

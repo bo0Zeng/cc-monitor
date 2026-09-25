@@ -57,7 +57,7 @@ export function isValidBusId(id: string): boolean {
 }
 
 function refuseBadId(id: string): void {
-  if (!isValidBusId(id)) throw new ControlError(copyText("ccBus.id.invalid", { id }), `非法 agent id：${JSON.stringify(id)}`);
+  if (!isValidBusId(id)) throw new ControlError(copyText("ccBus.id.invalid", { id }), `invalid agent id: ${JSON.stringify(id)}`);
 }
 
 // ─── 查在线（`bus-list`）───
@@ -75,7 +75,7 @@ export interface BusAgent {
 /** `bus-list` 的成品 ⇒ 名单。形状不对 ⇒ 抛。 */
 export function decodeAgents(origin: Origin, v: unknown): BusAgent[] {
   if (!isObj(v) || !exactKeys(v, ["agents"]) || !Array.isArray(v.agents)) {
-    throw unreadable(origin, "bus-list", "不是恰好 `{agents}` 一格数组");
+    throw unreadable(origin, "bus-list", "is not exactly {agents} (one array)");
   }
   return v.agents.map((a): BusAgent => {
     if (
@@ -87,7 +87,7 @@ export function decodeAgents(origin: Origin, v: unknown): BusAgent[] {
       !(a.live === null || typeof a.live === "boolean") ||
       !(a.ccm_sid === null || typeof a.ccm_sid === "string")
     ) {
-      throw unreadable(origin, "bus-list", "里有一行不是那五格");
+      throw unreadable(origin, "bus-list", "has a row that is not the five fields");
     }
     return { id: a.id, target: a.target, unread: a.unread, live: a.live, ccm_sid: a.ccm_sid };
   });
@@ -121,7 +121,7 @@ export async function agentOnline(origin: Origin, id: string): Promise<boolean> 
   const v = await settle(origin, "bus-list", chan.call(origin, "bus-list", payload, budget), listRefusals(id));
   const hit = decodeAgents(origin, v).find((a) => a.id === id);
   if (hit === undefined || hit.live === null) {
-    throw new ControlError(copyText("ccBus.online.unknown", { id, machine: machineName(origin) }), "不在名单里，或 live 是 null");
+    throw new ControlError(copyText("ccBus.online.unknown", { id, machine: machineName(origin) }), "not in the roster, or live is null");
   }
   return hit.live;
 }
@@ -163,7 +163,7 @@ export function saidOfDelivery(origin: Origin, id: string, v: unknown): string {
     !(v.live === null || typeof v.live === "boolean") ||
     !(v.from === null || typeof v.from === "string")
   ) {
-    throw unreadable(origin, "bus-send", "不是那五格（或 `sent` 不为真）");
+    throw unreadable(origin, "bus-send", "is not the five fields (or sent is not true)");
   }
   if (!v.registered) return copyText("ccBus.send.ghost", { id });
   if (v.live === false) return copyText("ccBus.send.offline", { id });
@@ -174,7 +174,7 @@ export function saidOfDelivery(origin: Origin, id: string, v: unknown): string {
 /** 给 `origin` 上的 agent `id` 发一条消息（以 cc-monitor 的身份）。回那一句；失败 ⇒ 抛 [`ControlError`]。 */
 export async function sendMessage(origin: Origin, id: string, text: string): Promise<string> {
   refuseBadId(id);
-  if (text.trim() === "") throw new ControlError(copyText("ccBus.send.empty"), "消息为空，一个字节都没发");
+  if (text.trim() === "") throw new ControlError(copyText("ccBus.send.empty"), "empty message, nothing sent");
   const payload = jsonBody({ to: id, text, from: MONITOR_BUS_ID });
   const budget = budgetWithin(WRITE_BUDGET_MS);
   const v = await settle(origin, "bus-send", chan.call(origin, "bus-send", payload, budget), sendRefusals(id));
@@ -207,7 +207,7 @@ function killRefusals(id: string): Refusals {
  */
 export function saidOfKill(origin: Origin, id: string, v: unknown): string {
   if (!isObj(v) || !exactKeys(v, ["id", "killed", "stale_only"]) || typeof v.killed !== "boolean" || typeof v.stale_only !== "boolean") {
-    throw new ControlError(copyText("ccBus.kill.unsure", { id, machine: machineName(origin) }), "bus-kill 的应答不是那三格");
+    throw new ControlError(copyText("ccBus.kill.unsure", { id, machine: machineName(origin) }), "bus-kill reply is not exactly {id, killed, stale_only}");
   }
   if (v.killed) return copyText("ccBus.kill.killed", { id });
   if (v.stale_only) return copyText("ccBus.kill.staleOnly", { id });
@@ -238,11 +238,11 @@ export interface SpawnRequest {
  * ⚠ **刻意不白名单 `tool`**：认不认归 `cc-spawn`（后端那侧同一条）。过不了 ⇒ 抛那一句。
  */
 export function checkSpawnShape(req: SpawnRequest): void {
-  if (req.tool.trim() === "") throw new ControlError(copyText("ccBus.spawn.noTool"), "没选 tool");
-  if (req.dir.trim() === "") throw new ControlError(copyText("ccBus.spawn.noDir"), "工作目录为空");
+  if (req.tool.trim() === "") throw new ControlError(copyText("ccBus.spawn.noTool"), "no tool chosen");
+  if (req.dir.trim() === "") throw new ControlError(copyText("ccBus.spawn.noDir"), "empty working directory");
   const a = req.account;
   if (a !== undefined && a !== "" && !isValidBusId(a)) {
-    throw new ControlError(copyText("ccBus.spawn.badAccount", { account: a }), `非法账号名：${JSON.stringify(a)}`);
+    throw new ControlError(copyText("ccBus.spawn.badAccount", { account: a }), `invalid account name: ${JSON.stringify(a)}`);
   }
 }
 
@@ -276,7 +276,7 @@ export function saidOfSpawn(v: unknown): string {
     !(v.id === null || typeof v.id === "string") ||
     typeof v.said !== "string"
   ) {
-    throw new ControlError(copyText("ccBus.spawn.unsure"), "bus-spawn 的应答不是那三格（或 `spawned` 不为真）");
+    throw new ControlError(copyText("ccBus.spawn.unsure"), "bus-spawn reply is not exactly {spawned, id, said} (or spawned is not true)");
   }
   const said = v.said.trim();
   return v.id === null ? copyText("ccBus.spawn.noName", { said }) : copyText("ccBus.spawn.done", { id: v.id, said });
@@ -327,11 +327,11 @@ export function saidOfBroadcast(origin: Origin, v: unknown): string {
     typeof v.liveness_unknown !== "boolean" ||
     !Array.isArray(v.failed)
   ) {
-    throw unreadable(origin, "bus-broadcast", "不是那四格");
+    throw unreadable(origin, "bus-broadcast", "is not the four fields");
   }
   const failed = v.failed.map((f) => {
     if (!isObj(f) || !exactKeys(f, ["id", "error", "detail"]) || typeof f.id !== "string" || typeof f.error !== "string") {
-      throw unreadable(origin, "bus-broadcast", "的 `failed` 里有一条不是那三格");
+      throw unreadable(origin, "bus-broadcast", "has a failed entry that is not the three fields");
     }
     return `${f.id}（${f.error}）`;
   });
@@ -340,16 +340,16 @@ export function saidOfBroadcast(origin: Origin, v: unknown): string {
   if (v.liveness_unknown) {
     return failed.length === 0
       ? copyText("ccBus.broadcast.doneUnknown", { sent })
-      : copyText("ccBus.broadcast.doneUnknownFailed", { sent, failed: failed.length, who: failed.join("、") });
+      : copyText("ccBus.broadcast.doneUnknownFailed", { sent, failed: failed.length, who: failed.join(copyText("ccBus.broadcast.listSep")) });
   }
   return failed.length === 0
     ? copyText("ccBus.broadcast.done", { sent, skipped })
-    : copyText("ccBus.broadcast.doneFailed", { sent, skipped, failed: failed.length, who: failed.join("、") });
+    : copyText("ccBus.broadcast.doneFailed", { sent, skipped, failed: failed.length, who: failed.join(copyText("ccBus.broadcast.listSep")) });
 }
 
 /** 向 `origin` 上**在线**的 agent 广播一条（以 cc-monitor 的身份；挑人规则住后端）。回那一句；失败 ⇒ 抛 [`ControlError`]。 */
 export async function broadcast(origin: Origin, text: string): Promise<string> {
-  if (text.trim() === "") throw new ControlError(copyText("ccBus.broadcast.empty"), "广播正文为空，一个字节都没发");
+  if (text.trim() === "") throw new ControlError(copyText("ccBus.broadcast.empty"), "empty broadcast text, nothing sent");
   const payload = jsonBody({ text, from: MONITOR_BUS_ID });
   const budget = budgetWithin(WRITE_BUDGET_MS);
   const v = await settle(origin, "bus-broadcast", chan.call(origin, "bus-broadcast", payload, budget), broadcastRefusals());

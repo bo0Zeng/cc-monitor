@@ -37,6 +37,7 @@ import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import type { DataClass } from "../generated/DataClass";
 import type { DataPathInfo } from "../generated/DataPathInfo";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
+import { copyText } from "../copy-table";
 
 /**
  * 〔第四波 ST2 · 用户 09-24 裁「真相 / 缓存列提前做」〕每一行那一格「删了会怎样」。
@@ -57,11 +58,11 @@ export const LOGS_DIR_LABEL = "logs/";
 export function describeDataClass(c: DataClass): string {
   switch (c) {
     case "truth":
-      return "删了会丢";
+      return copyText("data.class.keep");
     case "cache":
-      return "可随手删";
+      return copyText("data.class.disposable");
     default:
-      return `类别未知（${String(c)}）`;
+      return copyText("data.class.unknown", { kind: String(c) });
   }
 }
 
@@ -95,7 +96,7 @@ export class DataSection {
       // 是**同组重名**：同一个折叠组里已经有一块叫「Claude 数据目录」（`panel.ts`），
       // 两个「数据」并排；而这一块的全部内容是**路径 + 大小 + 打开** —— 说的是位置，
       // 不是存储策略。
-      heading.textContent = "数据位置";
+      heading.textContent = copyText("data.ctor.title");
       this.root.appendChild(heading);
     }
 
@@ -145,7 +146,7 @@ export class DataSection {
     //   换成新类名会当场让那条规则变成死规则，撞 `css-ledger` 的「每个 CSS 类名都说得出
     //   谁在用它」。骨架多出来的那一维（高度、身份）走 `data-*`，不新造类。
     this.mainBody.appendChild(
-      makeSkeleton("data-places", "正在读这台机器上的数据位置…", "settings-data-loading"),
+      makeSkeleton("data-places", copyText("data.renderPlaceholder.loading"), "settings-data-loading"),
     );
   }
 
@@ -159,7 +160,7 @@ export class DataSection {
       this.mainBody.replaceChildren();
       const err = document.createElement("div");
       err.className = "settings-data-error";
-      err.textContent = `加载失败：${String(e)}`;
+      err.textContent = copyText("data.load.failed", { e: String(e) });
       this.mainBody.appendChild(err);
     }
   }
@@ -171,7 +172,7 @@ export class DataSection {
     // 卡片 1：monitor 持久化数据
     this.mainBody.appendChild(
       this.buildBlock({
-        title: "monitor 持久化",
+        title: copyText("data.card.own"),
         subtitle: data.monitorDataDir,
         subtitlePath: data.monitorDataDir,
         items: data.entries,
@@ -182,8 +183,8 @@ export class DataSection {
     if (data.webviewUserDataDir) {
       this.mainBody.appendChild(
         this.buildBlock({
-          title: "WebView2 用户数据",
-          subtitle: "由 WebView2 Runtime 管理，含 cache / localStorage / IndexedDB / cookies",
+          title: copyText("data.card.webview"),
+          subtitle: copyText("data.card.webviewHint"),
           items: [data.webviewUserDataDir],
         }),
       );
@@ -205,13 +206,13 @@ export class DataSection {
     const note = document.createElement("div");
     note.className = "settings-data-note";
     note.append(
-      "🛈 ",
-      strong("卸载 monitor"),
-      " 默认",
-      strong("不清"),
-      "这些数据。想彻底清除（星标 / 颜色配置 / WebView2 cache 等）请手动删除上面的目录。",
+      copyText("data.note.icon"),
+      strong(copyText("data.note.uninstall")),
+      copyText("data.note.byDefault"),
+      strong(copyText("data.note.notCleared")),
+      copyText("data.note.howToClear"),
       // 〔ST2〕那一格怎么读：只想腾空间的话，删「可随手删」的就够了。
-      "标着「可随手删」的下次用到时会重建；标着「删了会丢」的是你设过的东西。",
+      copyText("data.note.classes"),
     );
     this.mainBody.appendChild(note);
   }
@@ -284,9 +285,9 @@ export class DataSection {
       // 不是这里的巧合——`ts-rs` 默认会把 `u64` 映射成 `bigint`，而 Tauri 的 JSON IPC
       // 到 TS 侧是 number，那个默认值对运行时是错的。详见 `data_paths.rs` 该字段的注释。
       meta.textContent =
-        info.sizeBytes !== undefined ? formatBytes(info.sizeBytes) : "已创建";
+        info.sizeBytes !== undefined ? formatBytes(info.sizeBytes) : copyText("data.item.created");
     } else {
-      meta.textContent = "(尚未创建)";
+      meta.textContent = copyText("data.item.notCreated");
     }
     li.appendChild(meta);
 
@@ -294,7 +295,7 @@ export class DataSection {
       // 〔ST2〕日志目录：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
       const see = document.createElement("span");
       see.dataset.seeAlso = "logs";
-      see.textContent = "在「日志」页里打开";
+      see.textContent = copyText("data.item.inLogsPage");
       li.appendChild(see);
     } else {
       li.appendChild(this.buildOpenButton(info));
@@ -314,9 +315,9 @@ export class DataSection {
     const open = document.createElement("button");
     open.type = "button";
     open.className = "settings-data-item-open";
-    open.textContent = info.exists ? "打开" : "—";
+    open.textContent = info.exists ? copyText("data.item.open") : copyText("data.item.openNone");
     open.disabled = !info.exists;
-    open.title = info.exists ? `打开 ${info.path}` : "文件 / 目录不存在";
+    open.title = info.exists ? copyText("data.item.openHint", { path: info.path }) : copyText("data.item.missing");
     if (info.exists) {
       open.addEventListener("click", () => void openItem(info.path));
     }
@@ -333,14 +334,14 @@ export class DataSection {
     head.className = "settings-data-block-head";
     const title = document.createElement("span");
     title.className = "settings-data-block-title";
-    title.textContent = "浏览器 localStorage";
+    title.textContent = copyText("data.localStorage.title");
     head.appendChild(title);
     const sub = document.createElement("span");
     sub.className = "settings-data-block-subtitle";
     sub.textContent =
       keys.length > 0
-        ? "前端持久化的 UI 偏好（折叠 / 渲染模式 / profile 选项等）"
-        : "尚无任何 cc-monitor.* key";
+        ? copyText("data.localStorage.hint")
+        : copyText("data.localStorage.empty");
     head.appendChild(sub);
     block.appendChild(head);
 
@@ -381,11 +382,11 @@ async function openItem(path: string): Promise<void> {
     await openPath(path);
   } catch (e) {
     console.warn(`[data-section] openPath ${path} failed:`, e);
-    showActionFailureToast("打开失败", String(e));
+    showActionFailureToast(copyText("data.open.failed"), String(e));
   }
 }
 
 function truncateValue(v: string): string {
   if (v.length <= 60) return v;
-  return v.slice(0, 57) + "…";
+  return copyText("data.truncate.ellipsis", { text: v.slice(0, 57) });
 }

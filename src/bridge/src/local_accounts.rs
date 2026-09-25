@@ -16,6 +16,7 @@
 
 // `N-F1c`：本机那两问的传输。**只做调用方**，一个字都不改它的语义。
 use crate::backend::observe::local_query::{run_query, QueryOutcome};
+use crate::copy_table::copy_text;
 
 // 〔C4c · 第四波 4B〕本机账号清单那条 Tauri 命令（`list_local_accounts`）与它的三档结局（`LocalAccountsOutcome`）·
 //   行解析转交（`classify_local_accounts`）· 本机并表（`with_apikey_table`）〔散文墓碑〕一起退役：本机与远端同一条路 ——
@@ -89,23 +90,31 @@ pub(crate) fn classify_local_acct_iso(
     let stdout = match outcome {
         QueryOutcome::Ok(s) => s,
         QueryOutcome::NoBackend(reason) => {
-            return Err(format!(
-                "本机后端不在，查不出这台机器装没装 cc-acct-iso：{reason}"
+            return Err(copy_text(
+                "rsLocalAccounts.acctIso.noBackend",
+                &[("reason", &reason.to_string())],
             ))
         }
         QueryOutcome::Failed { code, stderr } => {
-            return Err(format!(
-                "本机后端查不出 cc-acct-iso 装没装（退出码 {code:?}）：{}",
-                backend_message(&stderr)
+            return Err(copy_text(
+                "rsLocalAccounts.acctIso.failed",
+                &[
+                    ("code", &format!("{:?}", code)),
+                    ("message", &(backend_message(&stderr)).to_string()),
+                ],
             ))
         }
     };
-    let v: serde_json::Value = serde_json::from_str(stdout.trim())
-        .map_err(|e| format!("本机后端回的 cc-acct-iso 状态读不懂：{e}"))?;
+    let v: serde_json::Value = serde_json::from_str(stdout.trim()).map_err(|e| {
+        copy_text(
+            "rsLocalAccounts.acctIso.unreadable",
+            &[("e", &e.to_string())],
+        )
+    })?;
     let installed = v
         .get("installed")
         .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| "本机后端回的 cc-acct-iso 状态里没有 installed".to_string())?;
+        .ok_or_else(|| copy_text("rsLocalAccounts.acctIso.noInstalled", &[]))?;
     Ok(crate::acct_iso_deploy::AcctIsoStatus {
         installed,
         path: v.get("path").and_then(|p| p.as_str()).map(str::to_string),
@@ -124,7 +133,12 @@ pub async fn check_local_acct_iso() -> Result<crate::acct_iso_deploy::AcctIsoSta
         ))
     })
     .await
-    .map_err(|e| format!("本机 cc-acct-iso 查询没能跑完：{e}"))?
+    .map_err(|e| {
+        copy_text(
+            "rsLocalAccounts.acctIso.notFinished",
+            &[("e", &e.to_string())],
+        )
+    })?
 }
 
 /// `--acct-iso-shellinit` 的结局 → 片段 —— **纯函数**。
@@ -138,24 +152,30 @@ pub(crate) fn classify_local_shellinit(outcome: QueryOutcome) -> Result<String, 
     let out = match outcome {
         QueryOutcome::Ok(s) => s,
         QueryOutcome::NoBackend(reason) => {
-            return Err(format!("本机后端不在，拿不到这台机器的 rc 片段：{reason}"))
+            return Err(copy_text(
+                "rsLocalAccounts.shellinit.noBackend",
+                &[("reason", &reason.to_string())],
+            ))
         }
         QueryOutcome::Failed { stderr, .. } => {
-            return Err(format!(
-                "本机没能产出 rc 片段：{}",
-                backend_message(&stderr)
+            return Err(copy_text(
+                "rsLocalAccounts.shellinit.failed",
+                &[("message", &(backend_message(&stderr)).to_string())],
             ))
         }
     };
     match shellinit_fence_state(&out) {
         FenceState::Complete => Ok(out),
-        FenceState::Truncated => Err(format!(
-            "本机产出的 rc 片段不完整（有 {SHELLINIT_FENCE_BEGIN:?} 但没有 {SHELLINIT_FENCE_END:?}），\
-             可能被截断了。别贴：半截片段会让登录 shell 报错。请重试。"
+        FenceState::Truncated => Err(copy_text(
+            "rsLocalAccounts.shellinit.incomplete",
+            &[
+                ("begin", &format!("{:?}", SHELLINIT_FENCE_BEGIN)),
+                ("end", &format!("{:?}", SHELLINIT_FENCE_END)),
+            ],
         )),
-        FenceState::Missing => Err(format!(
-            "本机没能产出 rc 片段（输出里没有 {SHELLINIT_FENCE_BEGIN:?}）。\
-             常见原因：这台机器还没跑过 `cc-acct-iso init`。"
+        FenceState::Missing => Err(copy_text(
+            "rsLocalAccounts.shellinit.noFence",
+            &[("begin", &format!("{:?}", SHELLINIT_FENCE_BEGIN))],
         )),
     }
 }
@@ -171,5 +191,10 @@ pub async fn local_acct_iso_shellinit() -> Result<String, String> {
         ))
     })
     .await
-    .map_err(|e| format!("本机 rc 片段查询没能跑完：{e}"))?
+    .map_err(|e| {
+        copy_text(
+            "rsLocalAccounts.shellinit.notFinished",
+            &[("e", &e.to_string())],
+        )
+    })?
 }

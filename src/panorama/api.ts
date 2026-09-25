@@ -31,6 +31,7 @@ import type {
   SubGraph,
   Symbol as PanoramaSymbol,
 } from "./types";
+import { copyText } from "../copy-table";
 
 /** 哪台机器上的哪个仓。`path` 是**那台机器上**的绝对路径。 */
 export type RepoAt = { origin: Origin; path: string };
@@ -82,7 +83,7 @@ export const sameRepo = (a: RepoAt | null, b: RepoAt | null): boolean =>
 
 /** 界面上与「复制给 agent」里说这个仓的那一串：本机就是路径，远端带上机器名。 */
 export const repoLabel = (at: RepoAt): string =>
-  isLocalOrigin(at.origin) ? at.path : `${at.path}（远端 ${at.origin}）`;
+  isLocalOrigin(at.origin) ? at.path : copyText("api.repoLabel.remote", { path: at.path, machine: at.origin });
 
 /** 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。〔RM1f〕`cancel` 拨下 ⇒ 撤（本机远端都撤得掉）。 */
 export const index = (at: RepoAt, cancel?: AbortSignal): Promise<IndexStats> =>
