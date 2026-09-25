@@ -347,6 +347,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "link_end",
         ),
+        (Frame::SessionsReplayed, "sessions_replayed"),
     ];
 
     // ★ 人群自检：**样本必须覆盖 `Frame` 的每一个变体**〔audit-0805 08-06〕。
@@ -1073,5 +1074,15 @@ fn session_added_container_is_additive_with_two_literals() {
     assert_eq!(
         frame(Some(crate::wire::SessionContainer::None)),
         "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":\"none\"}\n"
+    );
+}
+
+/// 〔U4b · 第四波〕`sessions_replayed` 的**逐字节**金标准：无载荷，只有 kind。
+/// monitor `ssh_source::parse_frame` 照这个字面量认它。
+#[test]
+fn sessions_replayed_has_exactly_these_bytes() {
+    assert_eq!(
+        to_line(&Frame::SessionsReplayed).unwrap(),
+        "{\"kind\":\"sessions_replayed\"}\n"
     );
 }
