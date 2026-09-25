@@ -272,3 +272,20 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
 guard-core = { path = "../bridge/crates/guard-core" }
+# 〔CZ1 · 2026-09-25〕vendored russh 副本的指纹对拍（`dial_compress_tests::the_vendored_russh_differs_from_the_crate_only_where_registered`）：
+# 盘上每一份与 `VENDOR.md` 里取自 `.crate` 的 sha256 逐份相等。**只在测试期链接**；版本就是 lock 里 russh 那棵树
+# 早已解析的 `sha2 0.11.0`（离线可用、不新增包）。
+sha2 = "0.11"
+
+# ── 〔CZ1 · 2026-09-25〕**打补丁版 russh**（用户 V118〔选〕「打补丁版 russh，现在就开」）─────────────
+#
+# 上面那一行依赖声明**一个字不动**（`russh = { version = "0.61.1", … }`）；这里把 crates.io 那份换成仓内副本。
+# 副本 = 本机缓存里那份 `russh-0.61.1.crate` 原样解开（其 sha256 == 本 lock 原先锁的 checksum）＋ 只改
+# `src/compression.rs::Decompress::decompress` 的收尾判断（用本轮调用**之后**的进度；上游用调用之前的 ⇒
+# 一包最多交出 ≈ 2 × 包长，真 sshd 上一开压缩第一条通道就卡死 —— `调研/第四波记录/NT1.md §1.1a`）。
+# 来历、改了哪几行、上游修好之后怎么撤：`../bridge/vendor/russh/VENDOR.md`。
+# 判据：`dial_compress_tests`（闸 == russh 一来一回对不对 · 副本只改了登记的那一份 · 补丁真接上了）。
+# ⚠ 住 `src/bridge/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_support::src_root()` 递归收 `.rs`，
+#   第三方八十多份源码放进来会淹掉那一族人群（与上面 `benches` 那段同一条理由）。
+[patch.crates-io]
+russh = { path = "../bridge/vendor/russh" }

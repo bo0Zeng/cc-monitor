@@ -321,10 +321,21 @@ impl Decompress {
                     let d = z.decompress(&input[n_in_..], &mut output[n_out_..], flush);
                     match d? {
                         flate2::Status::Ok | flate2::Status::BufError => {
+                            // CZ1 PATCH（cc-monitor 2026-09-25，Apache-2.0 §4(b)：本文件被改过；原样见 VENDOR.md）
+                            // 收尾判断改用**本轮调用之后**的进度。上游 0.61.1 用的是调用之前取的 `n_in_` / `n_out_`
+                            // ⇒ 输出缓冲扩过一次之后，第二次撑满那一刻就收工：一包最多交出 ≈ 2 × 包长，
+                            // 余下的留在解压器里、拼进下一包（包流错位）。
+                            let (before_in, before_out) = (n_in_, n_out_);
+                            let n_in_ = z.total_in() as usize - n_in;
+                            let n_out_ = z.total_out() as usize - n_out;
                             let consumed_all_input = n_in_ == input.len();
                             let output_full = n_out_ == output.len();
 
                             if !output_full && consumed_all_input {
+                                break;
+                            }
+                            // 还有空位而这一轮一字未动（输入被截断、解压器在等不存在的下文）⇒ 收工，别空转。
+                            if !output_full && n_in_ == before_in && n_out_ == before_out {
                                 break;
                             }
 

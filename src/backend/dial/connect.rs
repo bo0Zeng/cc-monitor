@@ -134,17 +134,18 @@ pub(crate) const COMPRESS_ON: &[russh::compression::Name] = &[
 /// 压缩偏好序：**不压**。
 pub(crate) const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compression::NONE];
 
-/// 🔴 **闸：russh 自己的 zlib 解压今天是坏的**（NT1 现打，`russh 0.61.1` 与 `0.61.2` 的 `compression.rs` 逐字相同）。
+/// 🔴 **闸：russh 自己的 zlib 解压对不对**。〔CZ1 · 2026-09-25〕**开了**（用户 V118〔选〕「打补丁版 russh，现在就开」）。
 ///
-/// `Decompress::decompress` 的收尾判断用的是**本轮调用之前**的进度（`n_in_` / `n_out_`）⇒ 解出来的字节比输入多一倍以上时，
-/// 它在输出缓冲第二次撑满的那一刻提前收工：一包只交出 ≈ 2 × 包长，余下的留在解压器里、拼进**下一包** ⇒ 包流错位。
-/// 真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上的样子：鉴权过了、第一条通道的确认被吃掉、会话卡死
-/// （keepalive 的回包又让它判不出超时）。会话 jsonl 的压缩比 3–5 倍（`设计/15 §3.3`）⇒ 几乎每一包都中。
+/// 来历（NT1 现打）：上游 `russh 0.61.1` / `0.61.2` 的 `Decompress::decompress` 收尾判断用的是**本轮调用之前**的进度
+/// （`n_in_` / `n_out_`）⇒ 解出来的字节比输入多一倍以上时，它在输出缓冲第二次撑满的那一刻提前收工：一包只交出 ≈ 2 × 包长，
+/// 余下的留在解压器里、拼进**下一包** ⇒ 包流错位。真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上的样子：鉴权过了、
+/// 第一条通道的确认被吃掉、会话卡死。
 ///
-/// ⇒ 判准照问、日志照写它的答案，**答案今天不落到连接上**。开闸的条件是 russh 的解压真的对了（升级 / 打补丁）：
-/// `dial_compress_tests::the_gate_matches_what_russh_really_does` 两向钉着 —— russh 修好了而闸没开 ⇒ 红（该开了）；
-/// 闸开了而 russh 还坏 ⇒ 红。
-pub(crate) const RUSSH_ZLIB_SOUND: bool = false;
+/// 今天链的是仓内补过的那一份（`Cargo.toml` 末尾 `[patch.crates-io]` → `../bridge/vendor/russh`，改了哪几行见那里的 `VENDOR.md`）
+/// ⇒ 闸开：判准的答案落到连接上。
+/// `dial_compress_tests::the_gate_matches_what_russh_really_does` 两向钉着「闸 == russh 一来一回对不对」：
+/// 谁把补丁撤了（或换回一份还坏着的 russh）而闸还开着 ⇒ 红；russh 对着而闸被关回去 ⇒ 红。
+pub(crate) const RUSSH_ZLIB_SOUND: bool = true;
 
 /// 🔴 **判准只此一处**：这一跳（`peer` ＋ 内核量到的往返微秒）要不要开 SSH 压缩。
 ///
