@@ -848,7 +848,7 @@ fn listing_with_an_apikey_made_account() -> String {
 fn apikey_rows_written_for(sb: &Sandbox, config_dirs: &[&str]) -> Vec<String> {
     let path = sb.0.join("apikey-table.json");
     for d in config_dirs {
-        crate::creds_store::write_key_at(&path, d, "sk-test-fixture-not-a-real-key")
+        crate::creds_store::write_key_at(&path, d, "sk-test-fixture-not-a-real-key", None)
             .expect("真写入口写不进沙箱");
     }
     crate::history::apikey_rows_at(&path)

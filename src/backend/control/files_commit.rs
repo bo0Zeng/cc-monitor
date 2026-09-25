@@ -40,7 +40,28 @@
 //!   那个窗里的东西是「一份刚出现、0 字节起步的文件」，不是用户既有数据 —— 如实登记。
 //! - **Windows 远端**：改名覆盖的语义不同（目标在就失败），`overwrite: true` 那一支在那边会拒。没量过。
 
-use crate::control::files_write::{fenced_target, Answer, ManageCommand, WriteRefusal};
+//!
+//! # 〔F9c · 第四波 · 2026-09-24〕第二种件：**存盘的块**（`files-stage-chunk` ＋ `files-commit-text`）
+//!
+//! 文件窗口存一份装不进一条请求行的文本（后端入方向一行 1 MiB，`inbound.rs::MAX_LINE_BYTES`）时，
+//! 把它切成几块逐块送进暂存区（`<key>.<seq>.chunk`，**`O_EXCL` 新建**：一块只写一次），
+//! 再由 `files-commit-text` 按块号读回、拼起来、核总长，交给写面那一份原地覆盖
+//! （`files_write::overwrite_text`，**一字不抄**）。设计全文住 `调研/第四波记录/F9c.md`。
+//!
+//! ⚠ 为什么不是「改名上位」（上面那种件的提交）：存盘是**改一份已经在的文件**，原地覆盖保留
+//! 权限位 / 属主 / 硬链接、链接跟过去写、跨盘照常；改名上位三样全换掉（`EXDEV` 还会失败）。
+//! 同一份文件 1 MiB 上下存出两种结果不行 ⇒ 提交这一下与 `files-write-text` 走**同一个原语**。
+//! ⚠ 为什么一块一份文件、不往一份上续写：续写、截断、「在就打开不在就建」那几种开法都在第三层禁表上，
+//! 而且每开一个写句柄都得配一个 `O_EXCL` ⇒ 「一块一份、`O_EXCL` 新建」**一个动词不加**。
+//! （护栏是不剥注释的子串扫描，这里刻意不写那几种开法的字面名字 —— 同 `files_write` 头注那条。）
+//! ⚠ 块数没有单独的上限：每块至少 1 字节（空块拒）⇒ 块数 ≤ 总长 ≤ `files::READ_TEXT_MAX_BYTES`
+//! （存得回的就读得回来：窗口的编辑上限与它对拍相等）。
+//! ⚠ 清理：提交**不论成败**都删掉这一次的块（窗口手上还有全文，重存换新键）；中途断掉留下的块
+//! 由 [`sweep_stale`] 按同一个期限收（它认得两种形状）。
+
+use crate::control::files_write::{
+    fenced_target, overwrite_text, Answer, ManageCommand, WriteRefusal,
+};
 use std::path::{Path, PathBuf};
 
 /// 暂存区相对 `$HOME` 的那一段。
@@ -56,15 +77,55 @@ pub const KEY_LEN: usize = 32;
 /// 暂存件的后缀。
 pub const PART_SUFFIX: &str = ".part";
 
+/// 〔F9c〕存盘块的后缀（`<key>.<seq>.chunk`）。与 [`PART_SUFFIX`] 刻意不同名：两种件的消耗方式不同
+/// （上传件改名上位、块读回后删），混一个名字，提交与孤儿扫就得去猜它是哪一种。
+pub const CHUNK_SUFFIX: &str = ".chunk";
+
+/// 〔F9c〕第 `seq` 块的文件名。
+pub fn chunk_name(key: &str, seq: u64) -> String {
+    format!("{key}.{seq}{CHUNK_SUFFIX}")
+}
+
+/// 〔F9c〕这个名字是不是一块（回 `(键, 块号)`）。块号只认**规范**十进制（`0` 或不以 `0` 开头），
+/// 否则 `a.01.chunk` 与 `a.1.chunk` 会是同一块的两个名字。
+pub fn parse_chunk_name(name: &str) -> Option<(&str, u64)> {
+    let (key, seq) = name.strip_suffix(CHUNK_SUFFIX)?.split_once('.')?;
+    let canonical = !seq.is_empty()
+        && seq.bytes().all(|b| b.is_ascii_digit())
+        && (seq == "0" || !seq.starts_with('0'));
+    if !is_key(key) || !canonical {
+        return None;
+    }
+    Some((key, seq.parse().ok()?))
+}
+
 /// 🔴 **本面的命令表**（形状借写面那一个类型，理由同它：线上契约的数据形态）。
-pub const COMMIT_COMMANDS: &[ManageCommand] = &[ManageCommand {
-    name: "files-commit-upload",
-    what:
-        "把暂存区里一份传完的上传件挪进用户指定的目标（先过围栏；不覆盖时 `O_EXCL` 占位再改名上位）",
-    args: &["key", "overwrite", "rel", "root"],
-    fields: &["bytes", "path"],
-    codes: &["bad_args", "bad_path", "io_failed", "refused"],
-}];
+pub const COMMIT_COMMANDS: &[ManageCommand] = &[
+    ManageCommand {
+        name: "files-commit-upload",
+        what:
+            "把暂存区里一份传完的上传件挪进用户指定的目标（先过围栏；不覆盖时 `O_EXCL` 占位再改名上位）",
+        args: &["key", "overwrite", "rel", "root"],
+        fields: &["bytes", "path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+    // ── 〔F9c · 第四波〕存盘装不进一行时的两步（头注「第二种件」一节）──────────────
+    ManageCommand {
+        name: "files-stage-chunk",
+        what: "把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）",
+        args: &["content", "key", "seq"],
+        fields: &["bytes"],
+        codes: &["bad_args", "io_failed", "refused"],
+    },
+    ManageCommand {
+        name: "files-commit-text",
+        what: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再原地覆盖目标（与 \
+               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；不论成败都删掉这些块",
+        args: &["bytes", "chunks", "key", "rel", "root"],
+        fields: &["bytes", "path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+];
 
 /// 本面命令名（给 `readonly_guard` 第三层那条「门里够得到的命令」对拍用）。
 pub fn commit_command_names() -> Vec<&'static str> {
@@ -146,6 +207,160 @@ pub fn commit_upload(
     Ok((dest, bytes))
 }
 
+// ═══════════════ 〔F9c · 第四波〕存盘的块：写一块 · 读回拼起来提交 · 删掉 ═══════════════
+
+/// 暂存区在盘上的位置；不在就建（两层：`~/.cc-monitor` 与它底下的 `staging`，已在不算错）。
+///
+/// 每一层**先过围栏**（以上一层为根）再建 —— 第三层 ③ 逐函数扫这个顺序。
+/// ⚠ `~/.cc-monitor` 若是用户自己放的一条链接，跟过去（后端自己的家，与第四层 `exit_policy` 同一个家）。
+fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
+    let mut at = home.to_path_buf();
+    for seg in STAGING_DIR.split('/') {
+        let next = fenced_target(&at, seg).map_err(WriteRefusal::Fenced)?;
+        if let Err(e) = std::fs::create_dir(&next) {
+            if e.kind() != std::io::ErrorKind::AlreadyExists {
+                return Err(WriteRefusal::Io(format!(
+                    "refuse write: 建暂存区 {} 失败：{e}",
+                    next.display()
+                )));
+            }
+        }
+        if !std::fs::metadata(&next).is_ok_and(|m| m.is_dir()) {
+            return Err(WriteRefusal::Fenced(format!(
+                "refuse write: {} 在，但不是一个目录 —— 暂存区放不进去",
+                next.display()
+            )));
+        }
+        at = next;
+    }
+    Ok(at)
+}
+
+/// **写一块**：`<key>.<seq>.chunk`，`O_EXCL` 新建。回写进去的字节数。
+///
+/// 同一块已经在（重发 / 两次存盘撞了键）⇒ 拒，一个字节不盖。写到一半失败 ⇒ 删掉自己刚建的那一份。
+pub fn stage_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Result<u64, WriteRefusal> {
+    use std::io::Write as _;
+    if !is_key(key) {
+        return Err(WriteRefusal::Fenced(format!(
+            "refuse write: 暂存件的键只收 {KEY_LEN} 位小写十六进制（给的是 {key:?}）"
+        )));
+    }
+    let dir = ensure_staging(home)?;
+    let at = fenced_target(&dir, &chunk_name(key, seq)).map_err(WriteRefusal::Fenced)?;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&at)
+        .map_err(|e| {
+            WriteRefusal::Io(format!(
+                "refuse write: 第 {seq} 块建不了（{}：{e}）—— 同一块只写一次，已经在就是重发了",
+                at.display()
+            ))
+        })?;
+    if let Err(e) = f.write_all(bytes) {
+        drop(f);
+        let _ = std::fs::remove_file(&at);
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: 第 {seq} 块写到一半断了（{}：{e}）",
+            at.display()
+        )));
+    }
+    Ok(bytes.len() as u64)
+}
+
+/// 按块号读回 `0..chunks`，拼起来。总长必须**恰好**等于 `bytes`，多出第 `chunks` 块也拒。
+/// **纯读**（不跟链接地看每一块一眼：它必须是一份普通文件）。
+fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<u8>, WriteRefusal> {
+    if !is_key(key) {
+        return Err(WriteRefusal::Fenced(format!(
+            "refuse write: 暂存件的键只收 {KEY_LEN} 位小写十六进制（给的是 {key:?}）"
+        )));
+    }
+    let dir = home.join(STAGING_DIR);
+    let want = usize::try_from(bytes).unwrap_or(usize::MAX);
+    let mut out: Vec<u8> = Vec::with_capacity(want.min(crate::files::READ_TEXT_MAX_BYTES));
+    for seq in 0..chunks {
+        let p = dir.join(chunk_name(key, seq));
+        let meta = std::fs::symlink_metadata(&p).map_err(|e| {
+            WriteRefusal::Io(format!(
+                "refuse write: 第 {seq} 块不在（共 {chunks} 块；{}：{e}）—— 没送到，或者已经被提交过",
+                p.display()
+            ))
+        })?;
+        if !meta.file_type().is_file() {
+            return Err(WriteRefusal::Fenced(format!(
+                "refuse write: 第 {seq} 块不是一份普通文件（{}）",
+                p.display()
+            )));
+        }
+        if out.len() as u64 + meta.len() > bytes {
+            return Err(WriteRefusal::Io(format!(
+                "refuse write: 读到第 {seq} 块就超过了说好的 {bytes} 字节 —— 块对不上，一个字节没写"
+            )));
+        }
+        let got = std::fs::read(&p).map_err(|e| {
+            WriteRefusal::Io(format!(
+                "refuse write: 第 {seq} 块读不出来（{}：{e}）",
+                p.display()
+            ))
+        })?;
+        out.extend_from_slice(&got);
+    }
+    if out.len() as u64 != bytes {
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: {chunks} 块拼回来 {} 字节，说好的是 {bytes} —— 块对不上，一个字节没写",
+            out.len()
+        )));
+    }
+    if std::fs::symlink_metadata(dir.join(chunk_name(key, chunks))).is_ok() {
+        return Err(WriteRefusal::Io(format!(
+            "refuse write: 说好 {chunks} 块，暂存区里还有第 {chunks} 块 —— 块对不上，一个字节没写"
+        )));
+    }
+    Ok(out)
+}
+
+/// 删掉这个键的**全部**块（列暂存区、按名字认 —— 不按块号数：说错块数、中间缺一块时照样删干净）。
+/// 尽力而为，删不掉不挡调用方（孤儿扫会收）。每一处删之前先过以暂存区为根的围栏；链接不删
+/// （那不是我们放的一块）。
+fn drop_chunks(home: &Path, key: &str) {
+    let dir = home.join(STAGING_DIR);
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if parse_chunk_name(&name).is_none_or(|(k, _)| k != key) {
+            continue;
+        }
+        let Ok(at) = fenced_target(&dir, &name) else {
+            continue;
+        };
+        if std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_file()) {
+            let _ = std::fs::remove_file(&at);
+        }
+    }
+}
+
+/// **提交存盘**：读回 `0..chunks` 块 ⇒ 原地覆盖 `root/rel`（写面那一份原语，围栏在它里面）。
+/// 回 `(落点, 字节数)`。**不论成败**都删掉这一次的块。
+pub fn commit_text(
+    home: &Path,
+    key: &str,
+    chunks: u64,
+    bytes: u64,
+    root: &Path,
+    rel: &str,
+) -> Result<(PathBuf, u64), WriteRefusal> {
+    let r = gather_chunks(home, key, chunks, bytes)
+        .and_then(|body| overwrite_text(root, rel, &body).map(|at| (at, body.len() as u64)));
+    drop_chunks(home, key);
+    r
+}
+
 /// 多久没动过的暂存件算**孤儿**（秒）。
 ///
 /// 孤儿只有两种来路：上传失败之后再没重试的（失败**刻意留着**给续传）· 传完了窗口却没来得及提交的。
@@ -159,7 +374,8 @@ pub const STAGING_STALE_SECS: u64 = 7 * 24 * 3600;
 
 /// **孤儿扫**：暂存区里修改时间早于 `now - STAGING_STALE_SECS` 的暂存件删掉。回删掉的名字。
 ///
-/// - 只认**我们自己的形状**：`<32 位十六进制>.part`；别的名字一个不碰（那不是我们放的）。
+/// - 只认**我们自己的形状**：`<32 位十六进制>.part` 与〔F9c〕`<32 位十六进制>.<块号>.chunk`；
+///   别的名字一个不碰（那不是我们放的）。
 /// - `keep` 那一个不碰（调用方此刻手上的那一份）。
 /// - 每一处删之前**先过围栏**（以暂存区为根的 [`fenced_target`]）—— 第三层 ③ 逐函数扫这个顺序；
 ///   它在这里拦的是「暂存区里被人放了一条指出去的链接」那一形（解父目录之后跑出了暂存区 ⇒ 不删）。
@@ -176,7 +392,11 @@ pub fn sweep_stale(home: &Path, now_secs: u64, keep: &str) -> Vec<String> {
         let Some(name) = entry.file_name().to_str().map(str::to_string) else {
             continue;
         };
-        let Some(key) = name.strip_suffix(PART_SUFFIX) else {
+        // 两种形状：上传件 `<key>.part` · 〔F9c〕存盘块 `<key>.<seq>.chunk`。
+        let Some(key) = name
+            .strip_suffix(PART_SUFFIX)
+            .or_else(|| parse_chunk_name(&name).map(|(k, _)| k))
+        else {
             continue;
         };
         if !is_key(key) || key == keep {
@@ -228,11 +448,7 @@ fn str_arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, (&'sta
 }
 
 fn answer_commit(args: &serde_json::Value) -> Answer {
-    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or((
-        "io_failed",
-        "这台后端不知道自己的 home（没有 `HOME`）—— 暂存区拼不出来".to_string(),
-    ))?;
-    answer_commit_at(&home, args)
+    answer_commit_at(&home_dir()?, args)
 }
 
 /// [`answer_commit`] 去掉「家在哪」那一问之后的全部 —— 判据从这里进（不改进程的 `HOME`：
@@ -263,10 +479,86 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
     }))
 }
 
+/// 取一个非负整数参数。
+fn u64_arg(args: &serde_json::Value, key: &str) -> Result<u64, (&'static str, String)> {
+    args.get(key)
+        .and_then(serde_json::Value::as_u64)
+        .ok_or(("bad_args", format!("少了 `{key}`，或者它不是一个非负整数")))
+}
+
+/// 这台后端的家（暂存区拼在它底下）。
+fn home_dir() -> Result<PathBuf, (&'static str, String)> {
+    std::env::var_os("HOME").map(PathBuf::from).ok_or((
+        "io_failed",
+        "这台后端不知道自己的 home（没有 `HOME`）—— 暂存区拼不出来".to_string(),
+    ))
+}
+
+/// 〔F9c〕`files-stage-chunk`。
+fn answer_stage_at(home: &Path, args: &serde_json::Value) -> Answer {
+    let key = str_arg(args, "key")?.to_string();
+    let seq = u64_arg(args, "seq")?;
+    let v = args
+        .get("content")
+        .ok_or(("bad_args", "少了 `content` —— 一块至少 1 字节".to_string()))?;
+    let bytes = crate::files::raw::from_json(v).ok_or((
+        "bad_args",
+        "`content` 的形状不对 —— 只认字符串或 `{\"b16\": \"<十六进制>\"}`".to_string(),
+    ))?;
+    if bytes.is_empty() {
+        return Err((
+            "bad_args",
+            "空块 —— 每块至少 1 字节（块数的上界就靠这一条：块数 ≤ 总长）".to_string(),
+        ));
+    }
+    let n =
+        stage_chunk(home, &key, seq, &bytes).map_err(|e| (e.code(), e.message().to_string()))?;
+    Ok(serde_json::json!({ "bytes": n }))
+}
+
+/// 〔F9c〕`files-commit-text`。
+fn answer_commit_text_at(home: &Path, args: &serde_json::Value) -> Answer {
+    let root = path_arg(args, "root")?;
+    let rel = str_arg(args, "rel")?.to_string();
+    let key = str_arg(args, "key")?.to_string();
+    let chunks = u64_arg(args, "chunks")?;
+    let bytes = u64_arg(args, "bytes")?;
+    let cap = crate::files::READ_TEXT_MAX_BYTES as u64;
+    if bytes > cap {
+        return Err((
+            "bad_args",
+            format!(
+                "`bytes` 是 {bytes}，超过 {cap}（`files-read-text` 一趟的天花板：存得回的要读得回来），多了 {} 字节",
+                bytes - cap
+            ),
+        ));
+    }
+    if chunks == 0 || chunks > bytes {
+        return Err((
+            "bad_args",
+            format!("`chunks` 是 {chunks}、`bytes` 是 {bytes} —— 每块至少 1 字节，块数只能在 1..=总长 之间"),
+        ));
+    }
+    let (landed, n) = commit_text(home, &key, chunks, bytes, &root, &rel)
+        .map_err(|e| (e.code(), e.message().to_string()))?;
+    // 提交成功 ⇒ 顺手扫孤儿（同上传那一条的事件）。
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    sweep_stale(home, now, &key);
+    Ok(serde_json::json!({
+        "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
+        "bytes": n,
+    }))
+}
+
 /// 这一面的**唯一入口**（形状照写面那一个）。
 pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
     match wire_name {
         "files-commit-upload" => answer_commit(args),
+        "files-stage-chunk" => answer_stage_at(&home_dir()?, args),
+        "files-commit-text" => answer_commit_text_at(&home_dir()?, args),
         other => Err(("bad_args", format!("`{other}` 不是上传提交那一面的命令"))),
     }
 }

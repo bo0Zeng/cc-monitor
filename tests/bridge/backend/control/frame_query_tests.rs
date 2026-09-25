@@ -16,6 +16,8 @@ const DESIGN_EIGHT: &[&str] = &[
     // 〔SR1a · 09-24〕题面逐字「`--list-user-inputs` 与骨架 `--read-session-from-offset --index` 上帧面」。
     "--list-user-inputs",
     "--read-session-from-offset",
+    // 〔SR1a × SE2〕协调方加的：`--find-in-session` 一起搬。
+    "--find-in-session",
 ];
 
 /// 〔SR1a〕拨号那条路从此只放行这两条（题面「`STILL_DIALED` 缩到只剩真该拨号的」—— 点一次换号才发一次）。
@@ -127,6 +129,19 @@ fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
             assert_eq!(args, serde_json::json!({"path": "/p/s.jsonl", "offset": 7}))
         }
         _ => panic!("索引那一形没走帧面"),
+    }
+    for tools in [false, true] {
+        let find = crate::session_find::find_argv("/p/s.jsonl", "--force", tools);
+        let find: Vec<&str> = find.iter().map(String::as_str).collect();
+        match route_argv(&find) {
+            Some(ArgvRoute::Lines("history-find", args)) => {
+                assert_eq!(args["path"], "/p/s.jsonl");
+                assert_eq!(args["query"], "--force", "以 -- 起头的查询串要原样到");
+                assert_eq!(args["include_tools"], tools);
+                assert!(args["limit"].as_u64().is_some());
+            }
+            _ => panic!("查找那一形（include_tools={tools}）没走帧面"),
+        }
     }
     let outline = crate::session_outline::user_inputs_argv("/p/s.jsonl", 42);
     let outline: Vec<&str> = outline.iter().map(String::as_str).collect();

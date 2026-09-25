@@ -15,6 +15,8 @@ const FAMILY: &[&str] = &[
     "accounts-sessions",
     "history-index",
     "history-user-inputs",
+    // 〔SR1a × SE2〕会话内查找。
+    "history-find",
     "history-projects",
     "history-read",
     "history-search",
@@ -363,5 +365,63 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
             "`{cmd}` 读了围栏外的文件"
         );
     }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ 〔SR1a × SE2〕`history-find` 的 `lines`：命中集合 == 夹具里 `hit-*` 那几条（异源：期望取自夹具的 uuid 命名），
+/// 头尾两段在；围栏同一套。
+#[test]
+fn the_find_answer_hits_exactly_the_fixture_hits() {
+    let home = scratch("sr1a-find");
+    let dir = home.join("projects").join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    // 结构占位：只有 `hit-*` 那几条的正文里有那个词 —— 不采任何真会话正文。
+    let rows = [
+        r#"{"type":"user","uuid":"hit-1","message":{"content":"zqxneedle one"}}"#,
+        r#"{"type":"user","uuid":"miss-1","message":{"content":"nothing here"}}"#,
+        r#"{"type":"user","uuid":"hit-2","message":{"content":"two zqxneedle"}}"#,
+    ];
+    let body: String = rows.iter().map(|r| format!("{r}\n")).collect();
+    std::fs::write(&p, &body).unwrap();
+    let path = p.to_string_lossy().to_string();
+    let v = answer_at(
+        &home,
+        "history-find",
+        &serde_json::json!({"path": path, "query": "zqxneedle"}),
+    )
+    .unwrap();
+    let lines: Vec<serde_json::Value> = v["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| serde_json::from_str(l.as_str().unwrap()).unwrap())
+        .collect();
+    assert_eq!(lines.first().unwrap()["kind"], "session_find");
+    assert_eq!(lines.last().unwrap()["kind"], "session_find_end");
+    let hits: Vec<&str> = lines[1..lines.len() - 1]
+        .iter()
+        .map(|r| r["uuid"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        hits,
+        ["hit-1", "hit-2"],
+        "命中集合与夹具里的 `hit-*` 不相等"
+    );
+    assert_eq!(
+        answer_at(&home, "history-find", &serde_json::json!({"path": path}))
+            .unwrap_err()
+            .0,
+        "bad_args",
+        "缺 query 该是 bad_args"
+    );
+    let outside = home.join("outside.jsonl");
+    std::fs::write(&outside, "{}\n").unwrap();
+    assert!(answer_at(
+        &home,
+        "history-find",
+        &serde_json::json!({"path": outside.to_string_lossy(), "query": "x"})
+    )
+    .is_err());
     let _ = std::fs::remove_dir_all(&home);
 }

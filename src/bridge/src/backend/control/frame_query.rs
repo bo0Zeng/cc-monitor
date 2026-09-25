@@ -46,6 +46,8 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     //   两形都上了帧面，这个子命令从此一条拨号都不剩。
     ("--read-session-from-offset", "history-index"),
     ("--list-user-inputs", "history-user-inputs"),
+    // 〔SR1a × SE2〕会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
+    ("--find-in-session", "history-find"),
 ];
 
 /// 仍然逐次拨号的一次性查询 —— `(子命令, 为什么今天还拨)`。**只有它们**过得了拨号那条路。
@@ -58,6 +60,7 @@ pub(crate) const STILL_DIALED: &[(&str, &str)] = &[
     // 〔SR1a · 09-24〕`--read-session-from-offset`（`--index` 那一形）与 `--list-user-inputs` 两行**摘了**：
     //   上了帧面（`history-index` / `history-user-inputs`，见 [`MOVED`]）。拨号 = 经本机常驻后端开一条 capture 链路，
     //   同一台远端已经有长流时不再握手；但查询本身仍是一次性进程 —— 能走帧面的就走帧面。
+    // 〔SR1a × SE2 · 09-24〕`--find-in-session`（会话内查找，SE2）那一行也**摘了**：随另两条一起上了帧面（`history-find`）。
 ];
 
 /// 拨号那条路放不放行这条子命令（`args` 的第一个 token）。
@@ -273,6 +276,17 @@ pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
             Some(ArgvRoute::Lines(
                 "history-index",
                 json!({"path": path, "offset": off}),
+            ))
+        }
+        // 〔SR1a × SE2〕`session_find::find_argv` 那两形（选项在前，`--include-tools` 可有可无）。
+        ["--find-in-session", "--limit", n, "--query", q, path] => Some(ArgvRoute::Lines(
+            "history-find",
+            json!({"path": path, "query": q, "limit": n.parse::<u64>().ok()?, "include_tools": false}),
+        )),
+        ["--find-in-session", "--include-tools", "--limit", n, "--query", q, path] => {
+            Some(ArgvRoute::Lines(
+                "history-find",
+                json!({"path": path, "query": q, "limit": n.parse::<u64>().ok()?, "include_tools": true}),
             ))
         }
         // 〔SR1a〕`session_outline::user_inputs_argv` 那一形（选项在前）。

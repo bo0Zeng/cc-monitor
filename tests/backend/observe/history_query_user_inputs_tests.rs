@@ -73,3 +73,90 @@ fn run_dispatches_the_subcommand() {
     );
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+// ── 〔SE2〕`--find-in-session` 的 argv 与文件那一层（内核的判据在 `search_query_find_tests.rs`）──
+
+#[test]
+fn find_argv_takes_the_query_as_an_option_value_and_rejects_anything_else() {
+    let parse = |v: &[&str]| {
+        let a = s(v);
+        parse_find_args(&a).map(|f| (f.path.clone(), f.query.clone(), f.include_tools, f.limit))
+    };
+    let d = crate::observe::search_query::FIND_DEFAULT_LIMIT;
+    // monitor 的写法：选项在前
+    assert_eq!(
+        parse(&[
+            "--include-tools",
+            "--limit",
+            "7",
+            "--query",
+            "abc",
+            "/p.jsonl"
+        ])
+        .unwrap(),
+        ("/p.jsonl".into(), "abc".into(), true, 7)
+    );
+    assert_eq!(
+        parse(&["/p.jsonl", "--query", "abc"]).unwrap(),
+        ("/p.jsonl".into(), "abc".into(), false, d)
+    );
+    // 🔴 查询串本身以 `--` 起头：它是 `--query` 的值，不是一个写错的选项
+    assert_eq!(
+        parse(&["--query", "--force", "/p.jsonl"]).unwrap().1,
+        "--force"
+    );
+    // 上限封顶
+    assert_eq!(
+        parse(&["--limit", "999999", "--query", "a", "/p.jsonl"])
+            .unwrap()
+            .3,
+        crate::observe::search_query::FIND_MAX_LIMIT
+    );
+    assert!(parse(&["/p.jsonl"]).is_err(), "缺 --query");
+    assert!(parse(&["--query"]).is_err(), "--query 缺值");
+    assert!(parse(&["--query", "a"]).is_err(), "缺路径");
+    assert!(
+        parse(&["--query", "a", "/a.jsonl", "/b.jsonl"]).is_err(),
+        "多余的位置参数"
+    );
+    assert!(
+        parse(&["--limit", "x", "--query", "a", "/p.jsonl"]).is_err(),
+        "--limit 不是数"
+    );
+    assert!(
+        parse(&["--scope", "user", "--query", "a", "/p.jsonl"]).is_err(),
+        "别的子命令的选项"
+    );
+}
+
+/// 分派 ＋ 路径守卫：`run` 认得这条子命令；`projects/` 之外的文件拒。
+#[test]
+fn run_dispatches_find_and_keeps_the_path_fence() {
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-find-run-{}", std::process::id()));
+    let dir = tmp.join("projects").join("proj");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.jsonl");
+    std::fs::write(
+        &p,
+        "{\"type\":\"user\",\"uuid\":\"a\",\"message\":{\"content\":\"x\"}}\n",
+    )
+    .unwrap();
+    let ps = p.to_string_lossy().into_owned();
+    assert_eq!(
+        run(&tmp, &s(&["--find-in-session", "--query", "x", &ps])),
+        0
+    );
+    // 对照：同一份参数换个错名 ⇒ 2
+    assert_eq!(
+        run(&tmp, &s(&["--find-in-sessionz", "--query", "x", &ps])),
+        2
+    );
+    let outside = tmp.join("secret.jsonl");
+    std::fs::write(&outside, "x\n").unwrap();
+    let os = outside.to_string_lossy().into_owned();
+    assert_eq!(
+        run(&tmp, &s(&["--find-in-session", "--query", "x", &os])),
+        2
+    );
+    std::fs::remove_dir_all(&tmp).ok();
+}

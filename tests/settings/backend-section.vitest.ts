@@ -80,7 +80,7 @@ vi.mock("../../src/remote-config", () => ({
 
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: () => {} }));
 
-import { BackendSection } from "../../src/settings/backend-section";
+import { BACKEND_COLUMNS, BackendSection } from "../../src/settings/backend-section";
 import { srcDirOf } from "../test-support/repo-root";
 import {
   EXIT_KILLS,
@@ -90,11 +90,14 @@ import {
   EXIT_UNREADABLE,
   HEALTH_CLEAN,
   HEALTH_CRASHED,
+  HEALTH_DETAIL,
   HEALTH_LAST_MISSING,
   HEALTH_UNKNOWN,
+  HEALTH_UNKNOWN_WHY,
   LOCAL_ORIGIN,
   describeBackendHealth,
   describeExitBehavior,
+  describeHealthDetail,
 } from "../../src/backend-policy";
 
 /** 人群：这一区的用户可见文案今天住在哪几个文件里。**扩人群是翻转的一半。** */
@@ -187,6 +190,9 @@ describe("P2s backend 开关区", () => {
       HEALTH_CLEAN,
       HEALTH_CRASHED,
       HEALTH_LAST_MISSING,
+      // 〔ST2 · 步 6〕长的那一半挪进 ⓘ / `[详情]` 之后多出来的两句，同一条规矩。
+      HEALTH_UNKNOWN_WHY,
+      HEALTH_DETAIL,
     ];
     for (const lit of literals) {
       const homes = files.filter((f) => visibleOf(f.src).includes(lit)).map((f) => f.name);
@@ -513,7 +519,104 @@ describe("P2s backend 开关区", () => {
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
     expect(row.querySelector(".backend-row-kill"), "折进前端那一档还摆着一个开关").toBeNull();
     expect(row.querySelector(".backend-row-exit"), "折进前端那一档还说了一句退出行为").toBeNull();
-    // 起停与健康那几格不受影响（E4 只拿掉「退出行为」这一格）。
+    // 🔴 〔ST2 · `设计/70 §1` 末段 ＋ `01 §6.7a` 规矩 0〕折进前端那个壳下 monitor 就是后端：
+    //   [起][停] 也**不存在**（E4 当时只拿掉了退出那一格；那一半今天补上）。
+    expect(
+      row.querySelectorAll("button").length,
+      "折进前端那一档还摆着起 / 停 —— 没有第二个进程可起可停",
+    ).toBe(0);
+    expect(row.querySelector(".backend-row-state")?.textContent).toBe("已就绪（随 monitor 一起）");
+    // 健康那一格不受影响。
     expect(row.querySelector(".backend-row-health")).not.toBeNull();
+  });
+
+  it("★ 〔ST2 · 反向对照〕独立进程那一档照旧有 [起][停]、状态照实说「已连上」", async () => {
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const row = s.element.querySelector<HTMLElement>(".backend-row")!;
+    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["起", "停"]);
+    expect(row.querySelector(".backend-row-state")?.textContent).toBe("已连上（pid 42）");
+  });
+});
+
+describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：长文案进 ⓘ / [详情]", () => {
+  it("★ 每一行恰好四格、顺序与表头一致（状态 / 操作 / 退出行为 / 健康）", async () => {
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const want = BACKEND_COLUMNS.map(([c]) => c);
+    expect(want).toEqual(["state", "ops", "exit", "health"]);
+    const head = s.element.querySelector<HTMLElement>('[data-backend-columns="head"]')!;
+    expect([...head.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);
+    expect([...head.children].map((c) => c.textContent)).toEqual(["状态", "操作", "退出行为", "健康"]);
+    const rows = [...s.element.querySelectorAll<HTMLElement>(".backend-row")];
+    expect(rows.length, "一行都没有 —— 下面的逐行比在空人群上恒绿").toBe(2);
+    for (const r of rows) {
+      const cells = r.querySelector<HTMLElement>("[data-backend-cells]")!;
+      expect(cells.dataset.backendCells).toBe(r.dataset.origin);
+      expect([...cells.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);
+      // 控件各归各格：按钮在「操作」、勾在「退出行为」、读数在「健康」。
+      expect(cells.querySelector('[data-col="ops"]')!.querySelectorAll("button").length).toBe(2);
+      expect(cells.querySelector('[data-col="exit"] .backend-row-kill')).not.toBeNull();
+      expect(cells.querySelector('[data-col="health"] .backend-row-health')).not.toBeNull();
+    }
+  });
+
+  it("★★ 无记录 ⇒ 格子里只写「— 无记录」，那条区分进 ⓘ（`§2.2`：只换位置，不删义）", async () => {
+    status = { channel: true, pid: 42 };
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
+    expect(col.querySelector(".backend-row-health")?.textContent).toBe(HEALTH_UNKNOWN);
+    const why = col.querySelector<HTMLElement>('[data-health-extra="why"]');
+    expect(why, "无记录那一格没有 ⓘ —— 「无记录 ≠ 没崩过」那条区分被一起扫掉了").not.toBeNull();
+    expect(why!.getAttribute("aria-label")).toBe(HEALTH_UNKNOWN_WHY);
+    expect(HEALTH_UNKNOWN_WHY).toContain("不等于「没崩过」");
+    expect(col.querySelector('[data-health-extra="detail"]'), "无记录却给了 [详情]").toBeNull();
+  });
+
+  it("★★ 崩过 ⇒ 格子里一句短话 ＋ [详情] 分开列四个计数；账行 / markdown 一个都不上屏", async () => {
+    const health = { crashed: 4, refused: 1, neverStarted: 0, misread: 2, last: "崩了，exit -1073741510" };
+    status = { channel: true, pid: 42, health };
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
+    expect(col.querySelector(".backend-row-health")?.textContent).toBe(
+      "⚠ 崩过 4 次 · 最后一次：崩了，exit -1073741510",
+    );
+    const more = col.querySelector<HTMLElement>('[data-health-extra="detail"]')!;
+    expect(more.tagName).toBe("DETAILS");
+    expect(more.querySelector("summary")?.textContent).toBe("详情");
+    expect(more.textContent).toContain(describeHealthDetail(health)!);
+    expect(col.querySelector('[data-health-extra="why"]'), "有记录还挂着「无记录」的 ⓘ").toBeNull();
+    // `70 §2.1` 那五种里后端曾经带进来的三种：markdown · 日志行格式 · 设计论证。
+    expect(col.textContent).not.toMatch(/\*\*|\[死亡账\]|origin=|下一步：|放大器/);
+  });
+
+  it("★ 重画很多遍（起完轮询到落定）⇒ 附件不累积：始终恰好一个", async () => {
+    status = { channel: true, pid: 42, health: { crashed: 1, refused: 0, neverStarted: 0, misread: 0, last: "崩了，exit 3" } };
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    statusQueue = [{ ...status, channel: false }, { ...status, channel: false }];
+    s.element.querySelector<HTMLButtonElement>('[data-col="ops"] button')!.click();
+    await new Promise((r) => setTimeout(r, 400));
+    const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
+    expect(col.querySelectorAll("[data-health-extra]").length).toBe(1);
+  });
+});
+
+describe("〔ST2〕（原 describe 的收尾占位，保持文件结构）", () => {
+  it("详情那一段按四个计数分开填，占位符全被填掉", () => {
+    const d = describeHealthDetail({ crashed: 1, refused: 2, neverStarted: 3, misread: 4, last: null })!;
+    expect(d).toContain("崩了 1 次");
+    expect(d).toContain("被拒 2 次");
+    expect(d).toContain("没起来 3 次");
+    expect(d).toContain("读坏了 4 次");
+    expect(d).not.toMatch(/\{\w+\}/);
+    expect(describeHealthDetail({ crashed: 0, refused: 0, neverStarted: 0, misread: 0, last: null })).toBeNull();
   });
 });

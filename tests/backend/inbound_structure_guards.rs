@@ -140,6 +140,9 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-browse"
                 | "files-create"
                 | "files-commit-upload"
+                // 〔F9c · 第四波〕存盘的两步同档（同步文件 I/O ＋ 围栏的 `canonicalize`）。
+                | "files-stage-chunk"
+                | "files-commit-text"
                 | "files-chmod"
                 | "files-delete"
                 | "files-mkdir"
@@ -159,6 +162,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-projects"
                 | "history-index"
                 | "history-user-inputs"
+                | "history-find"
                 | "history-read"
                 | "history-search"
                 | "history-sessions"
@@ -170,6 +174,9 @@ fn every_registered_command_declares_its_run_kind() {
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
                 | "exit-policy-set"
+                // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
+                | "plugins-marketplaces"
+                | "tasks-list"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -212,6 +219,8 @@ fn every_registered_command_declares_its_run_kind() {
         "files-browse",
         "files-create",
         "files-commit-upload",
+        "files-stage-chunk",
+        "files-commit-text",
         "files-chmod",
         "files-delete",
         "files-mkdir",
@@ -228,6 +237,7 @@ fn every_registered_command_declares_its_run_kind() {
         "history-projects",
         "history-index",
         "history-user-inputs",
+        "history-find",
         "history-read",
         "history-search",
         "history-sessions",
@@ -237,6 +247,8 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-sessions",
         "exit-policy-read",
         "exit-policy-set",
+        "plugins-marketplaces",
+        "tasks-list",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()

@@ -24,7 +24,6 @@ import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
-import type { TabCollection } from "./tab-collections";
 import { turnEndNotifier } from "./turn-notify";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
 import { contextPercent } from "./views/context-limit";
@@ -36,7 +35,6 @@ import {
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
 // 〔U2〕`Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
 export type { Tab, TabStatus, TabsSummary } from "./tab-model";
-import type { DropTarget, TabRect } from "./tab-drop";
 // 〔U2〕落点算术搬去了 `tab-drop.ts`；原样 re-export，`tabs.vitest.ts` 的 import 面零改动。
 export {
   moveTabBlock,
@@ -55,7 +53,7 @@ import { TabStore } from "./tab-store";
 import { TabStreamView } from "./tab-stream-view";
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabBarDrag } from "./tab-bar-drag";
-import { TabBarView, type TabButtonRefs } from "./tab-bar-view";
+import { TabBarView } from "./tab-bar-view";
 import { TabRouter } from "./tab-router";
 import {
   abortRunningAgents,
@@ -105,31 +103,6 @@ export class TabManager {
    */
   private readonly router = new TabRouter(this.store);
 
-  // ── 〔U2〕判据探针：这几样拆之前是本类的私有字段，`tabs.vitest.ts` 按名字直读（`activeId` 还直写）。
-  //    值住 store，这里只是同名别名；`protected` 只为不让 `noUnusedLocals` 把「只被判据读」的访问器当死代码。
-  protected get tabs(): Map<string, Tab> {
-    return this.store.tabs;
-  }
-  protected get activeId(): string | null {
-    return this.store.activeId;
-  }
-  protected set activeId(v: string | null) {
-    this.store.activeId = v;
-  }
-  protected get orderedIds(): string[] {
-    return this.store.orderedIds;
-  }
-  protected get pendingArchive(): Set<string> {
-    return this.store.pendingArchive;
-  }
-  protected get pendingTmuxIdle(): Set<string> {
-    return this.store.pendingTmuxIdle;
-  }
-
-
-
-
-
   /**
    * 〔U2 · ③〕实时流视图住 `tab-stream-view.ts`。**在构造体里建，不写成字段初始化**：
    * 它要 `streamRootEl`，而字段初始化在参数属性赋值之前跑（esbuild 出原生 class field 时就是这个序），
@@ -138,8 +111,8 @@ export class TabManager {
   private readonly view: TabStreamView;
 
   constructor(
-    /** 〔U2〕`protected`：本类自己只把它交给 tab 栏视图与拖拽；`tabs.vitest.ts` 按名字直读它。 */
-    protected barEl: HTMLElement,
+    /** tab 栏容器：本类只把它交给 tab 栏视图与拖拽（判据要它时读 `bar` / `dragger` 那两份，或用自己传进来的那个元素）。 */
+    barEl: HTMLElement,
     streamRootEl: HTMLElement,
     /** 任何 Tab 增/减/状态变化后回调；宿主用它驱动状态栏等外部 UI。〔U2〕它是 store 那一份订阅的第一个订阅者。 */
     onTabsChanged?: (summary: TabsSummary) => void,
@@ -181,7 +154,7 @@ export class TabManager {
     refreshTabBar: () => this.refreshTabBar(),
     createSkeletonTab: (sid, cwd, origin, kind, name) =>
       this.createSkeletonTab(sid, cwd, origin, kind, name),
-    resumeTab: (sid) => this.resumeTab(sid),
+    resumeTab: (sid) => this.actions.resumeTab(sid),
   });
 
   /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
@@ -212,44 +185,6 @@ export class TabManager {
    * 而且判据会把实例上的 `refreshTabBar` 换成计数替身 —— 帧末合批那一刷必须经它。
    */
   private readonly bar: TabBarView;
-
-  // ── 〔U2〕判据探针（tab 栏视图那一份）：`tabs.vitest.ts` 直读这张按钮表。
-  protected get tabButtons(): Map<string, TabButtonRefs> {
-    return this.bar.tabButtons;
-  }
-
-  // ── 〔U2〕判据探针（拖拽那一份）：`tabs.vitest.ts` 直调这两个旧私有名。
-  protected tabRects(): TabRect[] {
-    return this.dragger.tabRects();
-  }
-  protected applyDrop(sid: string, target: DropTarget): void {
-    this.dragger.applyDrop(sid, target);
-  }
-
-  // ── 〔U2〕判据探针（落盘偏好那一份）：`tabs.vitest.ts` 直读 / 直写这三个旧私有名。
-  protected get collections(): TabCollection[] {
-    return this.prefs.collections;
-  }
-  protected set collections(v: TabCollection[]) {
-    this.prefs.collections = v;
-  }
-  protected get collectionsLoaded(): boolean {
-    return this.prefs.collectionsLoaded;
-  }
-  protected set collectionsLoaded(v: boolean) {
-    this.prefs.collectionsLoaded = v;
-  }
-  protected get pinnedLoaded(): boolean {
-    return this.prefs.pinnedLoaded;
-  }
-
-  // ── 〔U2〕判据探针（流视图那一份）：`tabs.vitest.ts` 按名字直调 `updateSentinel`、直读 `materializeQueue`。
-  protected updateSentinel(tab: Tab): void {
-    this.view.updateSentinel(tab);
-  }
-  protected get materializeQueue(): string[] {
-    return this.view.materializeQueue;
-  }
 
   /**
    * F40c DEV 探针用:active tab 状态一行 JSON（形状、口径与秤 6 的三个账本见 `tab-stream-view.ts` 那一份）。
@@ -284,44 +219,6 @@ export class TabManager {
     this.actions,
   );
 
-  // ── 〔U2〕判据探针：拆之前这几个是 `TabManager` 的私有成员，`tabs.vitest.ts` 按名字直调 / 直读。
-  //    搬家之后留一层同名转交（不加 `async`、不包一层 `await` —— 那会多一拍微任务，
-  //    而有几条 DOM 判据只放行一个微任务）。`protected` 只是为了不让 `noUnusedLocals`
-  //    把「只被判据读」的成员当死代码；它们不是对外 API。
-  protected get tmuxCache(): Map<string, { ts: number; sessions: TmuxSession[] | null }> {
-    return this.actions.tmuxCache;
-  }
-  protected get restartingSids(): Set<string> {
-    return this.actions.restartingSids;
-  }
-  protected fetchTmuxFresh(origin: string): Promise<TmuxSession[] | null | undefined> {
-    return this.actions.fetchTmuxFresh(origin);
-  }
-  protected resumeTab(sid: string, accountName?: string, useBase?: boolean): Promise<void> {
-    return this.actions.resumeTab(sid, accountName, useBase);
-  }
-  protected resumeTabTmux(sid: string, accountName?: string, useBase?: boolean): Promise<void> {
-    return this.actions.resumeTabTmux(sid, accountName, useBase);
-  }
-  protected restartTabWithAccount(
-    sid: string,
-    accountName: string,
-    compactFirst: boolean,
-    confirmFn?: (msg: string) => boolean,
-  ): Promise<boolean> {
-    return this.actions.restartTabWithAccount(sid, accountName, compactFirst, confirmFn);
-  }
-  protected awaitCompactFor(sid: string, timeoutMs?: number): () => Promise<boolean> {
-    return this.actions.awaitCompactFor(sid, timeoutMs);
-  }
-  protected killRemoteTmux(
-    origin: string,
-    tmuxName: string,
-    viaCwd: boolean,
-    opts?: { confirm?: (message: string) => boolean; idle?: boolean },
-  ): void {
-    this.actions.killRemoteTmux(origin, tmuxName, viaCwd, opts);
-  }
   private openTabCwd(sid: string): Promise<void> {
     return this.actions.openTabCwd(sid);
   }
@@ -697,7 +594,7 @@ export class TabManager {
 
     // v2.3.0 issue #11: 异步 fetch 初始 task 快照。task-update 事件路径并行更新
     // tasksBySid，两路收敛到同一份数据；若 sid 是 active 同步推给全局 panel。
-    void fetchSessionTasks(sessionId).then((tasks) => {
+    void fetchSessionTasks(sessionId, origin).then((tasks) => {
       this.store.tasksBySid.set(sessionId, tasks);
       if (this.store.activeId === sessionId) {
         this.tasksPanel?.setSession(sessionId, tasks);
@@ -1114,6 +1011,11 @@ export class TabManager {
     } else {
       void bringTerminalToFront(this.store.activeId);
     }
+  }
+
+  /** 〔SE2〕快捷键 Ctrl+F（`session.find`）：当前 tab 的查找面板打开到「搜索」。实现在流视图。 */
+  openFind(): void {
+    this.view.openFind();
   }
 
   /** 快捷键 Ctrl+Shift+E：打开当前活跃 Tab 的工作目录到系统文件管理器 */
