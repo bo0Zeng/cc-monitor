@@ -249,7 +249,13 @@ fn local_and_remote_are_exactly_complementary() {
 //      · 读进程内那张表的 `kill_on_exit(origin: &str)` 退役。
 //    新的两条命令（`backend_exit_policy` / `set_backend_exit_policy`）与退出臂那一问**一开始就收 `Origin`**，
 //    不进本条人群。⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 83 处，上限 0」。
-const ORIGIN_MIGRATION_CEILING: usize = 83;
+//
+// 🔴 **〔ST3 · 第四波 4B 2026-09-24〕83 → 81**：
+//    · 基线 `9b04a54b` 上现打就是 **82**（上限 83 那一格富余不是本路造成的，本路起步时就在；来历没追）；
+//    · 本路降 1 处：`lib·rs::batch_to_payloads`（`origin: Option<String>`，`None` = 本机）→ `origin: &Origin` ——
+//      它同时是漂移记账的那台，缺省当本机正是「没说被悄悄当成本机」那一形（`调研/第四波记录/ST3.md §1.1`）。
+// ⚠ 这个数是跑出来的：上限临时改成 0，现打那一行逐字「裸字符串 origin 参数现打 81 处，上限 0」。
+const ORIGIN_MIGRATION_CEILING: usize = 81;
 
 #[test]
 fn no_new_raw_string_origin_parameters() {

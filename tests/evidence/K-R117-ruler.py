@@ -184,9 +184,10 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("creds.apikey", (NA, "—", "账号的第三方 API key —— 账号层自己的状态文件（本机 monitor 写，远端那台的后端写，〔RM1a〕），不是往用户环境里装东西")),
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
-    ("relay.machine", (NA, "—",
-                       "〔RM1a〕问 / 起**远端那台**的中转进程（`relay_ensure`）—— 同 `backend.lifecycle`，是**跑**它，"
-                       "不是**装**它：起的是那台已部署后端的 `--relay`，一个字节都不往用户环境里落")),
+    # 〔RL1 · 第四波〕`relay.machine`（`relay_ensure`）退役，换成 `relay.launch-endpoint`：
+    ("relay.launch-endpoint", (NA, "—",
+                               "〔RL1〕起会话前问「这一条要不要注入中转地址、注哪个」，远端用到才起那台的中转"
+                               "（`relay_endpoint_for_launch`）—— 是**跑**它、拼一条命令的前缀，不往用户环境里落任何东西")),
     ("comm.face-a.call", (NA, "—",
                           "〔C4a〕通信层面 A 在 Tauri IPC 那一跳的命令（`chan_call`）—— 只搬不透明字节，"
                           "装什么、查什么装态都不是它的事")),
@@ -206,6 +207,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("mcp.list-project-dirs", (NA, "—", "列项目目录 —— 读")),
     ("mcp.read", (NA, "—", "读 MCP 配置")),
     ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
+    ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
     ("plugins.marketplaces", (NA, "—", "列插件市场 —— 只读枚举")),
     ("port-forward", (NA, "—", "端口转发")),
     ("apikey.routing", (NA, "—", "问这几个本机账号在 apikey 表里有没有行（＋本机中转在不在跑）")),
@@ -395,8 +397,10 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
     ("S2", (("src/ccm-probe.ts",
-             "src/settings/cc_integration.ts",
              "src/settings/machine-aliases.ts"),
+            "〔AL1c · 第四波 4B · 2026-09-24〕**3 → 2**：`src/settings/cc_integration.ts` 并进了 "
+            "`src/settings/machine-aliases.ts`（`设计/71 §7` W5：界面合成一份，终端集成成了 PowerShell 那一侧的别名块），"
+            "它那几处 `cc_integration_*` 调用换到同一份文件里 ⇒ 落点少一份。"
             "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/launcher-diagnostics.ts` → "
             "`src/settings/machine-aliases.ts`：本机别名块的装 / 卸 / 扫（`cc_integration_*`）· "
             "`local_ccm_entry_status` · 用户级 PATH 那三条（`ccm_user_path_*`）整块搬去了机器页「别名」。"

@@ -82,6 +82,15 @@
 #   · `--check-dev`：开发构建的判词。与 `--check` 同一套，唯一的差别是
 #     **本机那一份缺席 = 红**（`--check` 里缺席是 `skip` —— 那是给 CI / 没铺字节的树的）。
 #
+# ── 〔RM1c · 第四波〕同一条配方也编**全景小程序** ────────────────────────────────
+#
+# 只装代码全景引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`，用户 09-24 V108 选 B）
+# 与后端那两份 musl 字节**同一个落点、同一对 target、同一串旗标**（`release.yml` 的
+# `Cross-compile panorama for both musl targets`，判据 ⑬b 两向对拍）。
+# ⚠ 它**没有身份戳**（不随 `BUILD_ID` 走）⇒ 「这份字节与源码是不是同一代」换一种问法：
+#   能在这台机器上跑的那个 arch **真起一趟 `--probe`**，它报的 `capabilities=` 必须与源码那张
+#   op 表（`src/panorama-engine/main.rs` 的 `OPS`）**两向相等**；跑不了的那个 arch 如实 skip。
+#
 # ── 跑法 ──────────────────────────────────────────────────────────────────────
 #
 #   bash tests/scripts/re-embed.sh             # 重编两份 musl 字节并铺回落点，铺完自检
@@ -106,6 +115,8 @@ IDENTITY_SRC="$ROOT/src/backend/lib.rs"
 #: 内嵌落点 —— 名字定死在 `build.rs` 的 `EMBEDDED_BACKENDS_DIR` / `NATIVE_BACKEND_DIR`
 #: （判据 ⑬c/⑬d 把这两处与本文件、与 `src/bridge/.gitignore` 三向钉在一起）。
 EMBEDDED_DIR="$ROOT/src/bridge/embedded-backends"
+#: 〔RM1c〕全景小程序的源码树与它那张 op 表的住址（`--check` 拿它与字节自报的能力对拍）。
+PANORAMA_SRC="$ROOT/src/panorama-engine"
 NATIVE_DIR="$ROOT/src/bridge/native-backend"
 
 pass=0
@@ -147,13 +158,41 @@ do_build() {
     printf '==> cargo zigbuild %s --target %s\n' "${REEMBED_BUILD_FLAGS[*]}" "$t"
     ( cd "$ROOT/src/backend" && cargo zigbuild "${REEMBED_BUILD_FLAGS[@]}" --target "$t" )
   done
+  # 〔RM1c〕全景小程序：同一对 target、同一串旗标。
+  for t in "${REEMBED_TARGETS[@]}"; do
+    printf '==> cargo zigbuild %s --target %s（src/panorama-engine）\n' "${REEMBED_BUILD_FLAGS[*]}" "$t"
+    ( cd "$PANORAMA_SRC" && cargo zigbuild "${REEMBED_BUILD_FLAGS[@]}" --target "$t" )
+  done
   mkdir -p "$EMBEDDED_DIR"
   for t in "${REEMBED_TARGETS[@]}"; do
     arch="${t%%-*}"
     cp "$ROOT/.build/backend/$t/release/cc-monitor-backend" \
        "$EMBEDDED_DIR/cc-monitor-backend-$arch"
     printf '==> 铺好 src/bridge/embedded-backends/cc-monitor-backend-%s\n' "$arch"
+    cp "$ROOT/.build/panorama/$t/release/cc-monitor-panorama" \
+       "$EMBEDDED_DIR/cc-monitor-panorama-$arch"
+    printf '==> 铺好 src/bridge/embedded-backends/cc-monitor-panorama-%s\n' "$arch"
   done
+}
+
+# 〔RM1c〕源码那张 op 表（`OPS` 里 `("<op>", Need::…)` 那几行），排序后逗号连起来。
+panorama_src_ops() {
+  [ -f "$PANORAMA_SRC/main.rs" ] || return 0
+  sed -nE 's/^[[:space:]]*\("([a-z_]+)", Need::[A-Za-z]+\),.*/\1/p' "$PANORAMA_SRC/main.rs" | sort | paste -sd, -
+}
+
+# 〔RM1c〕真起一趟全景小程序的 `--probe`，回它报的能力（排序后逗号连起来；起不来回空串）。
+# 隔离同 `native_starts`：`env -i`、空 HOME —— 它只打三行字，一个文件都不该碰。
+panorama_probe_caps() {
+  local f="$1" sandbox caps
+  sandbox="$(mktemp -d)"
+  cp "$f" "$sandbox/panorama-under-test"
+  chmod +x "$sandbox/panorama-under-test"
+  caps="$(env -i HOME="$sandbox" PATH="/usr/bin:/bin" LANG=C.UTF-8 \
+            timeout 20 "$sandbox/panorama-under-test" --probe </dev/null 2>/dev/null \
+          | sed -n 's/^capabilities=//p' | tr ',' '\n' | sort | paste -sd, - || true)"
+  rm -rf "$sandbox"
+  printf '%s' "$caps"
 }
 
 # 本机那一份（裸 exe 自己带着的后端）。与 `release.yml` 的
@@ -257,6 +296,38 @@ do_check() {
     else
       bad "内嵌 backend $arch 与源码同一版" \
           "字节自报 [$got]，源码是 [$id] —— **半 bump**：装上去会被判 StaleBuild 并无限重装"
+    fi
+  done
+
+  # 〔RM1c〕全景小程序：人群同样从 `REEMBED_TARGETS` 派生（不扫目录）。
+  #   ⚠ 源码那张 op 表**只在真要比的时候才抠**（铺了、而且是这台能跑的 arch）：
+  #     没铺字节的树上没有东西可比，抠它只会让一棵没有全景源码的沙箱树无端红。
+  #     而一旦要比，抠不出来就是红（判不了按红记，不退化成「没得比，于是绿」）。
+  local want_ops host_arch caps
+  host_arch="$(uname -m)"
+  for t in "${REEMBED_TARGETS[@]}"; do
+    arch="${t%%-*}"
+    f="$EMBEDDED_DIR/cc-monitor-panorama-$arch"
+    if [ ! -f "$f" ]; then
+      printf 'skip  内嵌全景小程序 %s :: 没铺（远端全景那一台就没有字节可推）\n' "$arch"
+      continue
+    fi
+    present=$((present + 1))
+    if [ "$arch" != "$host_arch" ]; then
+      printf 'skip  内嵌全景小程序 %s 与源码同一代 :: 它是给 %s 编的、这台是 %s —— 起不了，问不出能力表（如实跳过）\n' "$arch" "$arch" "$host_arch"
+      continue
+    fi
+    want_ops="$(panorama_src_ops)"
+    if [ -z "$want_ops" ]; then
+      bad "全景小程序的 op 表抠得出" "在 src/panorama-engine/main.rs 里抠不出 OPS 那几行 —— 写法变了，与字节的比对判不了，按红记"
+      continue
+    fi
+    caps="$(panorama_probe_caps "$f")"
+    if [ -n "$caps" ] && [ "$caps" = "$want_ops" ]; then
+      ok "内嵌全景小程序 $arch 与源码同一代（真起一趟 --probe）" "字节自报能力 [$caps] == 源码 op 表"
+    else
+      bad "内嵌全景小程序 $arch 与源码同一代（真起一趟 --probe）" \
+          "字节自报能力 [$caps]，源码 op 表 [$want_ops] —— 旧字节（或起不来）：远端那台会拿到一份不认新 op 的小程序"
     fi
   done
 

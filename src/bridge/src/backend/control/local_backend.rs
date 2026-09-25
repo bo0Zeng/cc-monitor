@@ -81,7 +81,7 @@
 //! · ③ 放不放得下来（[`extraction_failure_reason`]）。09-10 那一形的病根就是把三件事说成一件。
 //!
 //! 真进程行为由 `tests/e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
-//! [`supervise`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
+//! [`supervise_with_stdio`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
 //! ⚠ 〔`P0e` 08-12〕隔离**换过机制**：原来靠私有 `TMUX_TMPDIR`，而 `$TMUX` 一有值就压过它
 //! （08-11 就是这么打没用户 9 个真实会话的）⇒ `C7i` 逐字禁掉那条路。
 //! 现在给后端一条**前面挂着 shim 的 PATH**（`tests/e2e/tmux-shim.sh`），它 shell out 的 tmux
@@ -670,19 +670,9 @@ pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u
     }
 }
 
-pub fn supervise(
-    bin: PathBuf,
-    args: Vec<String>,
-    envs: Vec<(String, String)>,
-    limits: CrashLimits,
-    now_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
-    on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
-    spawn: Arc<crate::spawn_managed::ManagedSpawn>,
-) -> SuperviseHandle {
-    supervise_with_stdio(bin, args, envs, limits, now_ms, on_event, None, spawn)
-}
-
-/// 见 [`StdioSink`]。`stdio` 为 `None` 时与 [`supervise`] 逐字等价。
+/// 见 [`StdioSink`]。`stdio` 为 `None` ⇒ 不接消费者（stdin 恒 `null`）。
+/// 〔RL1 · V107〕先前还有一个 `stdio=None` 的薄壳入口，它唯一的生产客户是 monitor 另起的本机中转；
+/// 中转并进本机常驻后端之后那个薄壳没了客户，随之删掉 —— 生产上只剩这一个入口。
 #[allow(clippy::too_many_arguments)]
 pub fn supervise_with_stdio(
     bin: PathBuf,
@@ -1003,7 +993,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 /// # 它不做什么
 ///
 /// **不校验写完的字节是不是真能跑** —— `deploy_decision` 只回答「要不要装」，不回答「装完对不对」。
-/// 起不起得来由监护层（[`supervise`]）的崩溃计数说话。
+/// 起不起得来由监护层（[`supervise_with_stdio`]）的崩溃计数说话。
 /// 本机释放的**文件名**（唯一真相源）。
 ///
 /// ⚠ 抽成函数不是为了好看：判据 `the_local_extract_path_is_build_id_scoped` 要断言这条命名规则，
@@ -1937,6 +1927,8 @@ pub fn start_or_extract(
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,
+    // 〔RL1 · V107〕交给后端的环境（中转端口 ＋ 凭据路径）由**宿主**给 —— 本层不认识中转，只原样转交。
+    envs: Vec<(String, String)>,
 ) -> (Resolved, Option<SuperviseHandle>) {
     let resolved = resolve_or_extract(target_triple, extract_dir, embedded, make_executable);
     let Resolved::Found(bin) = resolved else {
@@ -1948,7 +1940,7 @@ pub fn start_or_extract(
     let h = supervise_with_stdio(
         bin.clone(),
         vec!["--tail-only".into()],
-        Vec::new(),
+        envs,
         CrashLimits::default(),
         Arc::new(|| {
             std::time::SystemTime::now()

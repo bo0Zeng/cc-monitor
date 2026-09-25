@@ -6,11 +6,11 @@ import type { AliasProblem } from "./AliasProblem";
  */
 export type AliasRender = { 
 /**
- * 整份文件（写入那一跳原样落盘的就是它；手贴的人复制它或 `lines`）。
+ * 整份文件（写入那一跳原样落盘的就是它 —— PowerShell 多一个 BOM；手贴的人复制它或 `lines`）。
  */
 code: string, 
 /**
- * 每条合格别名的那一行，按清单顺序。
+ * 每条合格别名的写法，按清单顺序（POSIX 一行；PowerShell 一个函数块，含换行）。
  */
 lines: Array<string>, 
 /**

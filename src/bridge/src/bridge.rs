@@ -214,7 +214,8 @@ pub struct SessionContainerPayload {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct OriginSessionsListedPayload {
-    pub origin: String,
+    /// 用 `Origin`，不用裸字符串（`origin_tests::no_new_raw_string_origin_parameters` 那条棘轮）；线上逐字同一个字符串。
+    pub origin: crate::origin::Origin,
 }
 
 /// `frontend-ready` 事件的 payload（Batch5-F19）。前端 emit 时携带 localStorage

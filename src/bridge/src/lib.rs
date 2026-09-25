@@ -71,6 +71,8 @@ mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod messages;
 mod panorama;
+mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序的字节从哪来：按 (OS, arch) 选内嵌的那一份（推上去归 F08 部署路 / SR1b）
+mod panorama_call; // 〔RM1c · 第四波〕代码全景经那台机器的后端走（V108 选 B）：`panorama_call(origin, op, repo, args)`
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
 mod parser;
 mod paths;
@@ -86,9 +88,10 @@ mod remote_write_registry; // devbench F10c：远端写面登记（接三张表�
 mod search;
 mod session_facts; // 〔U4b〕两条后端流交来、要送前端的会话事实（容器 · 本机可重连落已结束）的一个口
 mod session_map;
-// `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
-// 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
-// `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
+mod shell_dialect; // AL1c（第四波 4B）：`设计/71 §4.4` 那组 shell 方言接口 —— POSIX 与 PowerShell 各一份实现，通用层零 shell 文本
+                   // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
+                   // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
+                   // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
 mod spawn_managed;
 // devbench F02：skill 接入面（一份声明 + 通用宿主）。
 // ⚠ **今天零生产消费者**（UI 归 F03）—— 照 `tool_registry` 的先例如实登记并写处置条件：
@@ -293,61 +296,9 @@ pub(crate) fn windows_to_destroy_after<'a>(destroyed: &str, alive: &[&'a str]) -
         .collect()
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// `D7 阻-3`：**退出时收哪几个进程**，收成一条判据能替换的缝
-// ═════════════════════════════════════════════════════════════════════════════
-
-/// 退出时**那一条自己不会死的起法**的收口点 —— 今天只剩本机中转。
-///
-/// # 为什么非有这条缝不可
-///
-/// 守着退出臂的判据原先是「那个窗口里有没有这几段文本」，`D7` 的刀 `T13`
-/// （`if kill {` → `if kill && !kill {`，收口那段文本一字不动）⇒ 全绿，而用户勾了「退出时结束它」、
-/// 退出，**本机中转还在那儿听着那个口**。⇒ 收口点进本结构，判据装一份**会记账的替身**，
-/// 断言**两支**：勾了 ⇒ 被调恰好一次；没勾 ⇒ 一次都没调。
-///
-/// # 〔B2 · 条 66〕原来这里有两个收口点，**常驻（脱离）那一个退役了**
-///
-/// 那个值搬到了后端所在那台机器上（`设计/01 §3.3b`），而**常驻那条起法的后端自己就是读它的人**：
-/// 最后一个客户（这个 monitor 的那条流）一断，它现读、选了「结束」就退（后端 `main.rs::serve_listening`）。
-/// monitor 再在退出臂里替它决定一次 = 两个决策处，而且 monitor 那一处违背 `§3.3b ⑥`
-/// （「不是『起我的那个 monitor 退了』」）。⇒ 那个收口点连同它的判据一起删掉。
-///
-/// 🔴 **中转为什么还归 monitor 收**：它的 stdin 是 null（`local_backend::supervise` 不接消费者），
-/// 它自己**感觉不到**宿主离开 ⇒ 它的去留只能由宿主决定；而宿主手里已经没有那个值 ⇒
-/// 退出臂在决定那一刻**现问**本机后端一次（`backend_policy::kill_on_exit_now`），两半共用那一个答案。
-///
-/// # ⚠ 它还买不到什么（射程边缘，如实写）
-///
-/// - 本结构管的是「**收不收**」。收口点自己收干净了没有是它自己的活（`stop_local_relay` 的头注与判据）。
-/// - 🔴 `RunEvent::Exit` 那个闭包**本身驱动不了** —— 那要真跑一次 tauri app（红线内够不着）。
-///   ⇒ 臂里那几行由 `local_backend_host_tests.rs::the_exit_arm_hands_the_relay_to_the_seam`
-///   的**零命中守卫**看着（谁在臂里另起一条收法就红）。
-#[derive(Clone, Copy)]
-pub(crate) struct ExitShutdownSinks {
-    /// 🔴 **第三个进程**：本机中转 —— 生产恒指 [`local_backend_host::stop_relay_on_exit`]。
-    /// 返回「这一趟真的收到了一个在跑的中转没有」。
-    pub(crate) relay: fn() -> bool,
-}
-
-/// 生产上这条缝里插的那个口。**只有这一处**，判据按函数地址对拍它。
-pub(crate) const PRODUCTION_EXIT_SHUTDOWN: ExitShutdownSinks = ExitShutdownSinks {
-    relay: local_backend_host::stop_relay_on_exit,
-};
-
-/// 退出臂的下半：**中转那条自己不会死的起法**，勾了就收掉。
-///
-/// ⚠ `kill` 是**入参**，不是在这里再问一次 —— 退出臂现问一次、两半共用同一个答案
-///（问两次 = 两条路可能拿到不同的答案，中间它是可以被别的 monitor 改的）。
-pub(crate) fn shutdown_relay_on_exit(kill: bool, sinks: ExitShutdownSinks) {
-    if !kill {
-        // 缺省不杀（`P2s` C8②③）：中转不会自己死 —— 那正是「勾了才收」这条策略的意义所在。
-        tracing::info!("退出：kill_on_exit=false —— 本机中转不收");
-        return;
-    }
-    let relay = (sinks.relay)();
-    tracing::info!("退出：本机中转收了没={relay}");
-}
+// 〔RL1 · V107〕这里先前是 `D7 阻-3` 那条缝（`ExitShutdownSinks` ＋ 它的收口点）：退出臂按现问的「退出行为」
+// 收掉 monitor 另起的那个本机中转。中转并进本机常驻后端之后，本机固定两个进程（monitor ＋ 常驻后端），
+// 中转随后端按「退出行为」留或退（`设计/01 §3.3b`）⇒ 退出臂里不再有第三个进程要收，那条缝连同它的判据一起删掉。
 
 pub fn run() {
     // 启动 perf 测量起点
@@ -773,9 +724,11 @@ pub fn run() {
             let on_batch: watcher::BatchHandler = {
                 let replay = replay.clone();
                 let handle = app.handle().clone();
+                // 〔ST3〕本机 watcher 只读本机的 jsonl ⇒ 看不懂的东西记在本机名下（载荷上不带 origin，线上形状不变）。
+                let local = crate::origin::Origin::local();
                 Arc::new(move |lines: Vec<watcher::JsonlLine>| {
-                    // 本地行无 origin（None）；远端行由 ssh_source 传 Some(host)。
-                    let payloads = batch_to_payloads(lines, None);
+                    // 本地行载荷无 origin；远端行由 ssh_source 传那台的 origin。
+                    let payloads = batch_to_payloads(lines, &local);
                     replay.on_line_batch(&handle, payloads);
                 })
             };
@@ -1403,7 +1356,7 @@ pub fn run() {
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走 apikey 端点改写」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             apikey_routing_for,
-            relay_ensure,
+            relay_endpoint_for_launch,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
             // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
             aliases_render,
@@ -1568,6 +1521,7 @@ pub fn run() {
             panorama::panorama_remove_doc_link,
             panorama::panorama_diagram_kinds,
             panorama::panorama_diagram,
+            panorama_call::panorama_call,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,
@@ -1601,7 +1555,7 @@ pub fn run() {
                 //
                 // 〔B2 · 条 66 · `设计/01 §3.3b ④`〕那个值住后端所在那台机器上 ⇒ 这里**在决定那一刻现问**
                 // 本机后端一次（`kill_on_exit_now`），不再读一张启动时推进来的表（那张表删了）。
-                // 问不到就按缺省（不结束）办并出声。**只问一次**，下面两半共用同一个答案。
+                // 问不到就按缺省（不结束）办并出声。**只问一次**。
                 //
                 // ⚠ 常驻（脱离）那条起法**不在这里收** —— 它自己就是读那个值的人：
                 //   这个 monitor 的那条流一断，它现读、选了「结束」就退（后端 `main.rs::serve_listening`）。
@@ -1625,10 +1579,8 @@ pub fn run() {
                         }
                     }
                 }
-                // ── 🔴 本机中转（`D2 阻-5`）走缝 ──
-                // ⚠ **不许在这条臂里再就地收第二样东西** ——
-                //   `the_exit_arm_hands_the_relay_to_the_seam` 的零命中守卫数着这件事。
-                shutdown_relay_on_exit(kill, PRODUCTION_EXIT_SHUTDOWN);
+                // 〔RL1 · V107〕本机中转住在上面那个后端进程里 ⇒ 这里**没有**第三个进程要收
+                //   （`the_exit_arm_collects_no_relay` 的零命中守卫数着这件事）。
             }
         });
 }
@@ -1820,16 +1772,18 @@ pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::Rem
 /// 这一个自由函数，保持 parse → is_displayable 过滤 → extract_cwd → 组 payload
 /// 的行为唯一。过滤次序、解析错误 warn-then-continue、`seq` 透传都必须与历史一致。
 ///
-/// `origin`：数据来源标签。`None` = 本地（前端 Tab 标题不加前缀，与历史一致）；
-/// `Some(host)` = 远端（issue #15，前端 Tab 标题加 `[host]` 前缀以区分本地/远端）。
-/// 透传到每条 payload，让前端按 sid 分流时知道该 Tab 是本地还是哪台远端主机。
+/// `origin`：数据来源。载荷上的 `origin` 字段由它派生（与 `session_skeleton·rs::range_payloads` 同一口径）：
+/// 本机 ⇒ 不带（前端 Tab 标题不加前缀，与历史一致）；远端 ⇒ 那台的名字（issue #15，前端 Tab 标题加
+/// `[host]` 前缀以区分本地/远端）。透传到每条 payload，让前端按 sid 分流时知道该 Tab 是本地还是哪台远端主机。
+/// 〔ST3〕它同时是记账的那台：看不懂的行记在 `origin` 名下（原先收 `Option<String>`，`None` = 本机）。
 pub(crate) fn batch_to_payloads(
     lines: Vec<watcher::JsonlLine>,
-    origin: Option<String>,
+    origin: &crate::origin::Origin,
 ) -> Vec<bridge::JsonlLinePayload> {
+    let label = origin.host_name().map(str::to_string);
     let mut payloads = Vec::with_capacity(lines.len());
     for line in lines {
-        match parser::parse_line(&line.raw) {
+        match parser::parse_line(origin, &line.raw) {
             Ok(Some(record)) if record.is_displayable() => {
                 let cwd = extract_cwd(&record);
                 payloads.push(bridge::JsonlLinePayload {
@@ -1838,7 +1792,7 @@ pub(crate) fn batch_to_payloads(
                     path: line.path.to_string_lossy().into_owned(),
                     // P5.1：watcher 给每行单调编号；前端按 seq 排到 timeline
                     seq: line.seq,
-                    origin: origin.clone(),
+                    origin: label.clone(),
                     message: record,
                 });
             }
@@ -1918,7 +1872,7 @@ struct ApikeyRouting {
 /// 自己答得了：表里有哪几行（账号层，`apikey-read`）· 那个口上有没有人在听（中转，`relay-status`）。
 /// 两件事**各问各的**（`apikey_remote::rows_on` / `remote_relay::running_on`，两个模块互不引用），
 /// 只在这里拼成一份给界面。本机那一臂两件事都照旧走 [`history::inject_facts`] 那条缝。
-/// ⚠ 远端那一格 `running` 的射程比本机**宽**：「口上有人在听」，不是「我们起过它、没停过」。
+/// 〔RL1〕两台的 `running` 今天是**同一个判准**：「那个口上有人在听」（本机那一格也改成回环连一次）。
 #[tauri::command]
 async fn apikey_routing_for(
     origin: origin::Origin,
@@ -1932,12 +1886,20 @@ async fn apikey_routing_for(
     })
 }
 
-/// 〔RM1a · 第四波〕让**那台远端机器**上有一个中转（层 1）在跑：口上没人听就由那台的后端起一个脱离的
-/// `--relay`（帧面 `relay-ensure`）。**本机拒** —— 本机那一个由 monitor 监护，不许再起第二个去抢口。
-/// ⚠ 它今天**没有自动触发点**（远端链路握手完成 / 起远端会话那两处都不在本拍写区），理由住 `remote_relay` 头注。
+/// 〔RL1 · 第四波〕**这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址**（`null` = 不注入）。
+///
+/// 前端拉起远端会话（与本机「就地 resume」那一格）之前问它一次，拿到地址就作为载荷里的一条
+/// `export-relay-base-url` 交给 `render_launch_payload`。判断只在 `payload::relay_endpoint_for` 一处；
+/// 远端那一臂**用到才起**那台的中转（`history::relay_endpoint_on` 头注）。
+/// ⚠ 它接替了 RM1a 那条 `relay_ensure(origin)`（零调用方）：「让那台有一个中转」今天只在「要注入」时才发生，
+/// 不再单独暴露给界面。
 #[tauri::command]
-async fn relay_ensure(origin: origin::Origin) -> Result<remote_relay::RelayEnsured, String> {
-    remote_relay::ensure_on(&origin).await
+async fn relay_endpoint_for_launch(
+    origin: origin::Origin,
+    account: Option<history::LaunchAccount>,
+    sid: Option<String>,
+) -> Result<Option<String>, String> {
+    history::relay_endpoint_on(&origin, account.as_ref(), sid.as_deref()).await
 }
 
 /// `K-H2a` `KS10`：从界面配一把 key。
@@ -1991,29 +1953,37 @@ async fn write_apikey_credentials_key(
 
 /// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。
 /// 预览与「复制去手贴」都只调这一条；`dry_run` 那个布尔从此不需要了（「只生成不写」就是只调这一跳）。
+/// 〔AL1c · 第四波 4B〕多一个 `shell`（`posix` / `powershell`）：同一份清单渲染成哪种 shell 的方言（`71 §4.4`）。
+/// 必给，不留缺省 —— 缺了就是「替人猜一种 shell」。
 #[tauri::command]
-fn aliases_render(aliases: Vec<account_aliases::Alias>) -> account_aliases::AliasRender {
-    account_aliases::render(&aliases)
+fn aliases_render(
+    aliases: Vec<account_aliases::Alias>,
+    shell: shell_dialect::Shell,
+) -> account_aliases::AliasRender {
+    account_aliases::render(&aliases, shell)
 }
 
 /// 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（`设计/70 §3.1` 「列出现在有哪些命令」）。
+/// 〔AL1c〕按 `shell` 读那一种的文件（`aliases.sh` / `aliases.ps1`）与那一种的启动文件候选。
 #[tauri::command]
-fn aliases_read() -> Result<account_aliases::AliasListing, String> {
+fn aliases_read(shell: shell_dialect::Shell) -> Result<account_aliases::AliasListing, String> {
     let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录".to_string())?;
-    account_aliases::read_in(&home)
+    account_aliases::read_in(&home, shell)
 }
 
 /// 〔AL1〕第②跳：**唯一的副作用**。收的是清单不是代码 —— 写进 shell 的文本只由后端渲染
 /// （审计 S-1），而「写的就是预览的那一份」由两跳调同一个 `account_aliases::render` 保证。
 /// 〔RW1 · 第四波 09-24〕落盘经**本机后端**的文件管理那一面（`user_files::BackendDoor`），
 /// home 也问它 ⇒ 那边的测试拿替身门当后端，结构上碰不到真实家目录。
+/// 〔AL1c〕`shell` 定写哪一种（别名文件 ＋ 它的写法）；`rc_path` 那份文件的方言由它自己的扩展名定。
 #[tauri::command]
 async fn aliases_install(
     aliases: Vec<account_aliases::Alias>,
     rc_path: Option<String>,
+    shell: shell_dialect::Shell,
 ) -> Result<account_aliases::AliasInstallReport, String> {
     let door = user_files::BackendDoor::new(origin::Origin::local());
-    account_aliases::install_in(&door, &aliases, rc_path.as_deref()).await
+    account_aliases::install_in(&door, &aliases, rc_path.as_deref(), shell).await
 }
 
 #[tauri::command]

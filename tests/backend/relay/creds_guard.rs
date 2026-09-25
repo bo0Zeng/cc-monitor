@@ -58,6 +58,12 @@ mod tests {
         ("p", "凭据文件读不动 / 解析不了时的说法（`store::StoreError` 的文本，不含 key）"),
         ("how", "权限过宽宽在哪 —— `perm::judge` 造的句子，只含 mode 位 / SDDL 主体名"),
         ("fix", "怎么修 —— 一句固定的指引"),
+        (
+            "reason",
+            "〔RL1〕常驻后端进程内中转起不来的那句「为什么」（`relay::listen::Hosted::Failed`）：\
+             只由 `listen::prepare` / `listen::host` 造，内容是端口号、`CCM_RELAY_PORT` 那一格的原串与 io 错误文本 —— \
+             不经过任何请求、不碰凭据文件内容",
+        ),
         ("why", "为什么查不出权限 —— 只含平台与构建 feature"),
         (
             "loaded.path.display()",
@@ -154,6 +160,26 @@ mod tests {
             "relay/listen.rs",
             "[relay] listening (addr unknown",
             "起来了但问不到地址",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] not hosted",
+            "〔RL1〕常驻后端被交了一个认不出的中转端口 ⇒ 不开中转、后端照常",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] cannot spawn accept thread",
+            "〔RL1〕常驻后端进程内中转的接受线程起不来",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] 中转住本进程，听",
+            "〔RL1〕`Hosted` 的说法（`Display`）：进程内中转在听哪个地址 —— 宿主（`main.rs` 流模式那一处）记进它的日志",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] 被交了中转端口却起不来",
+            "〔RL1〕`Hosted` 的说法（`Display`）：进程内中转起不来、后端照常服务",
         ),
         (
             // ⚠ 〔`设计/20 §7` 步 1〕它**搬家了**：热重载整块归层 2，住址从

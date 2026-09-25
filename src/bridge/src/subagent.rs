@@ -285,7 +285,8 @@ pub async fn load_subagent(
     let raw = backend.query(&read_argv).await?;
     let mut records = Vec::new();
     for line in &raw {
-        match parse_line(line) {
+        // 〔ST3〕这些行是 `origin` 那台后端给的 ⇒ 看不懂的记在那台名下。
+        match parse_line(&origin, line) {
             Ok(Some(rec)) => records.push(rec),
             Ok(None) => {}
             Err(e) => tracing::warn!("subagent parse skip: {e}"),

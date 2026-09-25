@@ -470,13 +470,15 @@ fn build_one(path: &Path) -> Option<SessionDoc> {
     let mut cwd: Option<String> = None;
     let mut ai_title: Option<String> = None;
     let mut first_user_excerpt = String::new();
+    // 〔ST3〕本机搜索索引只读本机文件 ⇒ 看不懂的行记在本机名下。
+    let local = crate::origin::Origin::local();
 
     for line in reader.lines().map_while(Result::ok) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        let rec = match parse_line(trimmed) {
+        let rec = match parse_line(&local, trimmed) {
             Ok(Some(r)) => r,
             _ => continue,
         };

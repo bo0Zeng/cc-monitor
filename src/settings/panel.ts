@@ -22,7 +22,6 @@ import {
   type ThemeConfig,
 } from "../theme";
 import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
-import { CcIntegrationSection } from "./cc_integration";
 import { AccountsSection } from "./accounts-section";
 import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
 import { PluginsSection } from "./plugins-section"; // P8a：marketplace 只读枚举（**不声称安装/启用**）
@@ -35,7 +34,6 @@ import { SettingsRouter } from "./router";
 // E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { createUnknownKeysBar } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
-import { hostOsAllows, type HostOs } from "./host-os"; // S9：本机 OS 门
 import { setCurrentMachine } from "./machine-context";
 import { LOCAL_ORIGIN } from "../ipc/origin";
 import {
@@ -54,7 +52,7 @@ import {
 } from "../behavior";
 import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
 import { fetchLocalAccounts } from "../accounts"; // K-R49：别名是给**这台机器**的 shell 用的
-import { buildAliasManager } from "./machine-aliases"; // 〔AL1〕机器页 ②「别名」
+import { buildAliasManager, localShell } from "./machine-aliases"; // 〔AL1〕机器页 ②「别名」（〔AL1c〕两个平台一份，含 PowerShell 的终端集成）
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
@@ -160,8 +158,10 @@ const KEYBINDINGS_INFO_TEXT =
 const DATA_DIR_INFO_TEXT =
   "「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。" +
   "默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。";
+// 〔AL1c · 4B〕「终端集成」并进了「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块），说明跟着改口。
 const TERMINAL_INTEGRATION_INFO_TEXT =
-  "「终端集成」—— 把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 " +
+  "「别名」—— 一个名字加一组 ccm 参数，在终端里敲这个名字就等于敲 ccm 加上这组参数。" +
+  "Windows 上这一块还管终端集成：把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 " +
   "Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。";
 
 const APPEARANCE_INFO_TEXT =
@@ -190,7 +190,7 @@ const APP_PAGE_INFO_TEXT =
   "【行为】" + BEHAVIOR_INFO_TEXT + "\n\n【快捷键】" + KEYBINDINGS_INFO_TEXT;
 // S2：机器页的文案 = 怎么连上远端 + 这台机上的启动器集成。
 const MACHINES_PAGE_INFO_TEXT =
-  REMOTE_INFO_TEXT + "\n\n【终端集成】" + TERMINAL_INTEGRATION_INFO_TEXT;
+  REMOTE_INFO_TEXT + "\n\n【别名】" + TERMINAL_INTEGRATION_INFO_TEXT;
 // S2 删除：原 `REMOTE_GROUP_INFO_TEXT` 描述的是那个「留空占位」的空组（F82b 拍板的 4 组之一，
 // 后被 A3 借去放账号）。它逐字写着「当前尚无独立项…留空占位」「在上面的『连接』组」——
 // 那个组和那个「上面」都不存在了，留着就是一句会误导人的话。
@@ -259,16 +259,6 @@ export class SettingsPanel {
   private readonly pageLoaders = new Map<string, Array<() => void>>();
   /** 本次打开以来，哪几页已经放过 I/O 了。`open()` 会清空它（重开要看新读数）。 */
   private readonly pagesLoaded = new Set<string>();
-  /**
-   * S9：本机页上按 OS 显隐的块（今天只有「终端集成」）。
-   *
-   * **不是「构造了再藏」**：`CcIntegrationSection` 的构造函数就会发两次
-   * Windows 专用 IPC（`cc_integration_status` / `cc_get_auto_launch`），
-   * 藏起来那两次照发。所以门开在**建不建**这一层。
-   */
-  private static readonly CC_INTEGRATION_HOST_OS: readonly HostOs[] = [
-    "windows",
-  ];
   /** S4b-3b-2：pageId → 该页「账号 / 工具 / 足迹」三栏的容器。 */
   private machineTabSlots = new Map<
     string,
@@ -968,7 +958,7 @@ export class SettingsPanel {
 
     // ---- 机器：改**某一台机器**的状态 ----
     //
-    // 下面四块（账号 / 终端集成 / MCP / cc-bus 钩子）之所以归这里：**它们各自都维护着
+    // 下面四块（账号 / 别名（〔AL1c〕含从前的终端集成）/ MCP / cc-bus 钩子）之所以归这里：**它们各自都维护着
     // 一份自己的 origin 选择器**（主计划 §5-4 点名 `accounts`/`mcp`/`cc-bus`/`cc-bus-hooks`
     // 四份互不同步）。有 origin 选择器 = 它改的是某台机器的状态。
     // S4 会把这四份选择器换成「当前在哪台机器页」这个上下文。
@@ -1080,18 +1070,9 @@ export class SettingsPanel {
         tab: "acct",
         ...this.loadableBlock("账号", () => new AccountsSection()),
       },
-      {
-        // PowerShell $PROFILE 注入 —— 只对**本机**有意义；远端的对应物是
-        // 机器详情页「组件」栏里的「装 / 卸别名块」（〔MC1〕从前叫「装/卸 ccm」；主计划 §2.4 那张表的「启动器」一行）。
-        //
-        // S9：而且只对**跑在 Windows 上的**本机有意义。非 Windows 上换成一行说明，
-        // **整块不构造**（构造即发两次 Windows 专用 IPC）。
-        appliesTo: "local",
-        tab: "tools",
-        ...(hostOsAllows(SettingsPanel.CC_INTEGRATION_HOST_OS)
-          ? this.loadableBlock("终端集成", () => new CcIntegrationSection())
-          : { el: SettingsPanel.ccIntegrationNotApplicable() }),
-      },
+      // 〔AL1c · 第四波 4B〕这里原来是本机页上单独一块「终端集成」（PowerShell `$PROFILE` 注入，S9 只在 Windows 上构造）。
+      // 它并进了下面「别名」那一块（`设计/71 §7` W5：界面合成一份，平台是它的一个输入）——
+      // Windows 上是 PowerShell 那一侧的「别名块」，第一次展开才构造（构造即发 Windows 专用 IPC 那条纪律跟着过去了）。
       // 〔AL1 · 2026-09-24〕机器页 ②「别名」（`设计/71 §13`）。本机那一格在这里；远端那一格在
       // `MachineCard` 的「组件」栏里（它只给得出待贴文本 ＋ 装 / 卸别名块，理由见那边）。
       // 构造零 I/O：它是个 `<details>`，第一次展开才读盘（`70 §8` #3）。
@@ -1100,6 +1081,7 @@ export class SettingsPanel {
         tab: "tools",
         el: this.safeBlock("别名", () =>
           buildAliasManager({
+            platform: localShell(),
             loadAccounts: async () => (await fetchLocalAccounts()).accounts.map((a) => a.name),
           }),
         ),
@@ -1148,8 +1130,8 @@ export class SettingsPanel {
         ...this.loadableBlock("足迹", () => new ConfigSurfaceSection()),
       },
       // 〔ST2 · 协调方转主会话裁「改动足迹并进机器页、漂移记账按机器分」〕原顶层「改动足迹」页剩下的那一块。
-      //   与足迹同栏：两块答的都是「这台机器上发生了什么」。今天只有本机那一栏读得到（账不分机器），
-      //   远端那一栏如实说读不到 —— 形状与理由在 `drift-ledger-section.ts` 的 `DRIFT_*` 头注。
+      //   与足迹同栏：两块答的都是「这台机器上发生了什么」。〔ST3〕账按机器分了：每台问自己那一本、
+      //   回声对上才画（形状与理由在 `drift-ledger-section.ts` 头注「按机器分」一节）。
       {
         appliesTo: "both",
         tab: "footprint",
@@ -1655,33 +1637,6 @@ export class SettingsPanel {
       wrap.appendChild(out);
       return wrap;
     }
-  }
-
-  /**
-   * S9：非 Windows 本机上「终端集成」那一格的替身。
-   *
-   * **不能就这么少一块**：主计划 §2.4 那张表里「本机 · 启动器」写的是
-   * 「PowerShell 集成（未来 POSIX ccm）」—— Linux 上这一格**确实还空着**，
-   * 空着的原因得说出来，否则用户只能猜是不是自己装漏了什么。
-   *
-   * 沿用 S5 `readiness.ts` 立的那条区分：**不适用 ≠ 缺**。所以这是一行
-   * **静态说明**而不是 ⚠ —— S7 的判据表里静态说明本就不该做成警告。
-   */
-  private static ccIntegrationNotApplicable(): HTMLElement {
-    const wrap = document.createElement("div");
-    wrap.className = "settings-group";
-    wrap.dataset.naBlock = "终端集成";
-    const heading = document.createElement("div");
-    heading.className = "settings-group-title";
-    heading.textContent = "终端集成";
-    wrap.appendChild(heading);
-    const msg = document.createElement("div");
-    msg.className = "settings-hint";
-    msg.textContent =
-      "本机不是 Windows，PowerShell 集成不适用。" +
-      "POSIX 这边的终端集成（ccm）目前只在远端机器的「组件」栏提供安装入口。";
-    wrap.appendChild(msg);
-    return wrap;
   }
 
   private titledSection(title: string, body: HTMLElement): HTMLElement {

@@ -19,16 +19,23 @@
 // 一次 `invoke` 读一个进程内的账本快照。**不轮询**（红线，同 `config-surface-section.ts`）。
 // 计数是**本进程内**的，重启 cc-monitor 就归零 —— 这一点必须在页面上说，
 // 否则用户会把它当成历史统计。
+//
+// ## 〔ST3〕按机器分
+//
+// 账本第一层键是 origin（`drift_ledger·rs` 头注）：远端的记录本来就在 monitor 里解析、在这个进程里记账，
+// 缺的只是「这一行从哪台来」—— ST3 把它一路带到了写点。⇒ 每台机器子页的「足迹」栏问的就是**这一台**，
+// 回包带回它答的是哪台，**相等才画**（回声，同足迹那一格）。本机与远端同一套 DOM、同一条路。
 import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 import { withPending } from "./pending";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
+import { isLocalOrigin, type Origin } from "../ipc/origin";
 import type { DriftEntry } from "../generated/DriftEntry";
 import type { DriftFace } from "../generated/DriftFace";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
+import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 
-export type { DriftEntry, DriftFace, DriftFaceReport };
+export type { DriftEntry, DriftFace, DriftFaceReport, DriftLedgerReport };
 
 /** 面 → 给人看的标题。**后端加了新面而这里没跟 ⇒ 显示原始枚举名，不隐藏。** */
 export function faceTitle(face: DriftFace): string {
@@ -68,10 +75,16 @@ export function formatEntry(face: DriftFace, e: DriftEntry): string {
   return `  ${e.key} —— ${e.count} ${countUnit(face)}${sample}`;
 }
 
-/** 整份报告 → 可粘贴的纯文本（提 issue 时直接贴）。 */
-export function formatReport(report: DriftFaceReport[]): string {
+/** 〔ST3〕诊断文本里那台机器怎么称呼（贴进 issue 时要分得清是哪台的账）。 */
+function machineName(origin: Origin): string {
+  return isLocalOrigin(origin) ? "本机" : origin;
+}
+
+/** 整份报告 → 可粘贴的纯文本（提 issue 时直接贴）。〔ST3〕首行带上是哪台机器的。 */
+export function formatReport(report: DriftFaceReport[], origin: Origin): string {
+  const where = machineName(origin);
   if (report.length === 0) {
-    return "数据面漂移记账：本次运行期间没有遇到任何看不懂的东西。";
+    return `数据面漂移记账（${where}）：本次运行期间没有遇到任何看不懂的东西。`;
   }
   const parts = report.map((f) => {
     const head = `${faceTitle(f.face)}（${f.entries.length} 种${f.overflowed ? "，已触顶" : ""}）`;
@@ -79,40 +92,35 @@ export function formatReport(report: DriftFaceReport[]): string {
     const rows = f.entries.map((e) => formatEntry(f.face, e)).join("\n");
     return `${head}\n${why}\n${rows}`;
   });
-  return `数据面漂移记账（本进程内，重启归零）\n\n${parts.join("\n\n")}`;
+  return `数据面漂移记账（${where} · 本进程内，重启归零）\n\n${parts.join("\n\n")}`;
 }
 
 /**
- * 〔第四波 ST2 · 协调方转主会话裁「漂移记账按机器分」〕远端那一栏那句话。
- *
- * 今天这本账是 monitor 进程内一本、**不分机器**（远端的记录也是在 monitor 里解析的，但写点不知道是哪台）。
- * 按机器分要把 origin 一路带进写点（设计在 `调研/第四波记录/ST2.md §3`，写区外）。
- * ⇒ 这一拍**只做本机**：远端那一栏不发 I/O，照实说读不到；本机那一栏照读，并说清里面也有远端来的。
+ * 〔ST3〕回声：回包里的 `origin` 与所问**相等**才算这台的答复。
+ * 读口是 monitor 自己的命令、今天不会答错台 —— 这一格防的是**以后**有人把它改回一本不分机器的账，
+ * 界面还照画不误。ST2 那一拍账不分机器，只能在界面上照实说两句「分不开」；ST3 把账分开、那两句删了，
+ * 「不拿一台的账冒充另一台」这件事由这一格接着守。
  */
-// ⚠ 不说「漂移记账」：那是我们给这本账起的名（`terms.json` 自造概念名那一族），块名对外叫「未识别的数据」。
-export const DRIFT_REMOTE_UNREADABLE =
-  "这台机器单独的那一份还读不到：这本账今天不分机器，都在本机那一栏里。";
-/** 本机那一栏那一句 —— 账不分机器，这一点必须当场说（否则会被当成「本机这台」的账）。 */
-export const DRIFT_LOCAL_MIXED =
-  "这本账是 monitor 这次运行的全部：从远端读来的记录也记在这里，今天还分不开是哪台机器。";
+export function answersFor(r: DriftLedgerReport, origin: Origin): boolean {
+  return r.origin === origin;
+}
 
 export class DriftLedgerSection {
   readonly element: HTMLElement;
   private body!: HTMLElement;
   private copyBtn!: HTMLButtonElement;
   private last: DriftFaceReport[] = [];
-  /** 〔ST2〕本机那一整套（说明 / 工具条 / 账）—— 远端页上收起来。不挂类名（只管显隐）。 */
-  private localOnly!: HTMLElement;
-  /** 〔ST2〕远端页上那一句（`DRIFT_REMOTE_UNREADABLE`）。 */
-  private remoteNote!: HTMLElement;
-  /** 宿主放过第一发没有（放过之后切回本机才由订阅重读）。 */
+  /** 〔ST3〕`last` 是哪台的（复制诊断文本时写进首行）。 */
+  private lastOrigin: Origin = getCurrentMachine();
+  /** 宿主放过第一发没有（放过之后切机器才由订阅重读）。 */
   private started = false;
+  /** 〔ST3〕切机器快过答复时，晚到的那一份不许盖掉当前这台的（同足迹那一格）。 */
+  private seq = 0;
 
   constructor() {
     this.element = this.build();
     // 〔ST2〕跟着「当前在看哪台机器」走（它住机器子页的「足迹」栏，是 per-machine 那一批单例之一）。
-    subscribeMachine((origin) => this.onMachineChanged(origin));
-    this.applyMachine(getCurrentMachine());
+    subscribeMachine(() => this.onMachineChanged());
     // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
     // 这一块原住「改动足迹」页（〔ST2〕今天在每台机器子页的「足迹」栏里，跟 per-machine 那一批一起放），
     // 而落地页是「机器」⇒ 原来那句 `void this.refresh()`
@@ -127,49 +135,30 @@ export class DriftLedgerSection {
    */
   loadNow(): void {
     this.started = true;
-    // 〔ST2〕远端那一栏读不到 ⇒ 一发都不放（账不分机器，拿本机那本冒充它就是撒谎）。
-    if (isRemoteOrigin(getCurrentMachine())) return;
+    // 〔ST3〕本机、远端同一条路：问的就是当前这台。
     void this.refresh();
   }
 
-  private onMachineChanged(origin: Origin): void {
-    this.applyMachine(origin);
-    if (this.started && isLocalOrigin(origin)) void this.refresh();
-  }
-
-  /** 本机 ⇒ 摆那一整套；远端 ⇒ 收起来，只留那一句。只切两个节点（S30 ⑦：切不挂类的包装）。 */
-  private applyMachine(origin: Origin): void {
-    this.localOnly.hidden = isRemoteOrigin(origin);
-    this.remoteNote.hidden = isLocalOrigin(origin);
+  private onMachineChanged(): void {
+    // 切了机器 ⇒ 这一块讲的是另一台了 ⇒ 重读（只在已经放过第一发之后；第一发归宿主）。
+    if (this.started) void this.refresh();
   }
 
   private build(): HTMLElement {
     const root = document.createElement("div");
     root.className = "settings-group settings-headless drift-ledger-section";
-
-    this.remoteNote = document.createElement("div");
-    this.remoteNote.className = "settings-hint";
-    this.remoteNote.dataset.driftRemote = "";
-    this.remoteNote.textContent = DRIFT_REMOTE_UNREADABLE;
-    root.appendChild(this.remoteNote);
-    this.localOnly = document.createElement("div");
-    root.appendChild(this.localOnly);
-    const host = this.localOnly;
+    const host = root;
 
     const hint = document.createElement("div");
     hint.className = "settings-hint";
     // 〔ST2〕顶层「改动足迹」页删了，这一块搬到机器列表页 ⇒ 不再说「这一页」；
     //   「只读、按需读一次，不后台轮询」是**我们的设计承诺**（`70 §10.1` 差项 3 同一种病）⇒ 拿掉。
     //   「计数在本进程内，重启归零」留着 —— 头注逐字：这一点必须在页面上说，否则会被当成历史统计。
+    // 〔ST3〕账按机器分了 ⇒「遇到的」→「从这台机器读到的」（ST2 那两句「今天不分机器」随之删掉）。
     hint.textContent =
-      "cc-monitor 这次运行里遇到的、没认出来的数据（多半是 Claude Code 出了新格式）。" +
+      "cc-monitor 这次运行里从这台机器读到的、没认出来的数据（多半是 Claude Code 出了新格式）。" +
       "没认出来的部分照常降级显示，这里把它们列出来。计数只算这次运行，重启 monitor 就归零。";
     host.appendChild(hint);
-    const mixed = document.createElement("div");
-    mixed.className = "settings-hint";
-    mixed.dataset.driftMixed = "";
-    mixed.textContent = DRIFT_LOCAL_MIXED;
-    host.appendChild(mixed);
 
     const bar = document.createElement("div");
     bar.className = "settings-row";
@@ -198,9 +187,24 @@ export class DriftLedgerSection {
   }
 
   private async refresh(): Promise<void> {
+    const origin = getCurrentMachine();
+    const my = ++this.seq;
+    // 换了台 ⇒ 上一台的账先撤下（答复到之前不许顶着别台的数）。
+    if (origin !== this.lastOrigin) {
+      this.last = [];
+      this.lastOrigin = origin;
+      this.body.textContent = "";
+    }
     try {
-      this.last = await commands.drift_ledger_report();
+      const r = await commands.drift_ledger_report({ origin });
+      if (my !== this.seq) return;
+      if (!r || !Array.isArray(r.faces)) throw new Error("返回的形状不对（faces 不是数组）");
+      // 〔ST3〕回声对不上 ⇒ 当读不到（拿另一台的账冒充这台，比读不到更糟）。
+      if (!answersFor(r, origin)) throw new Error(`答的不是这台机器（答的是 ${String(r.origin)}）`);
+      this.last = r.faces;
+      this.lastOrigin = origin;
     } catch (e) {
+      if (my !== this.seq) return;
       // 读不到就说读不到 —— **不显示成「没有漂移」**（那是对用户撒谎）。
       this.last = [];
       this.body.textContent = "";
@@ -260,7 +264,7 @@ export class DriftLedgerSection {
   }
 
   private async copy(): Promise<void> {
-    const text = formatReport(this.last);
+    const text = formatReport(this.last, this.lastOrigin);
     try {
       await navigator.clipboard.writeText(text);
       this.copyBtn.textContent = "已复制";

@@ -124,7 +124,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     ("local_backend.rs", "supervise_with_stdio", "被监护的后端二进制",
      "本机后端监护：二进制路径来自 `candidates`（有 `candidates_never_point_into_a_build_tree` 守着）。\
           ⚠ P2 起它的 stdin 可能是 `piped()` 而不再恒为 `null` —— 那是本机入方向通道的管子\
-          （`local_stdio_consumer`）。`supervise` 只是它 `stdio=None` 的薄壳，真正 spawn 的是这一个
+          （`local_stdio_consumer`）。〔RL1〕先前那个 `stdio=None` 的薄壳随本机中转并进常驻后端删了，spawn 只剩这一个入口
           ★ 三条策略为什么是这三格：🔴 `设计/00 §1.5.2` 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
      "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
     ("local_query.rs", "run_query", "backend 二进制 + 只读子命令",

@@ -296,3 +296,27 @@ fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
         "升级判定前面被短路了：{line}"
     );
 }
+
+/// 〔ST3〕★ 接缝：hello 里不认识的能力 token 记在**那台远端**名下；认识的一个都不记。
+#[test]
+fn unknown_capabilities_are_booked_under_that_remote() {
+    use crate::drift_ledger::{snapshot, DriftFace};
+    let devbox = crate::origin::Origin("st3-hello-probe".into());
+    super::note_unknown_capabilities(&devbox, &caps(&["bg", "st3-cap-probe"]), "b1");
+    let keys = |o: &crate::origin::Origin| -> Vec<String> {
+        snapshot(o)
+            .into_iter()
+            .filter(|f| f.face == DriftFace::UnknownBackendToken)
+            .flat_map(|f| f.entries.into_iter().map(|e| e.key))
+            .collect()
+    };
+    assert_eq!(
+        keys(&devbox),
+        vec!["capabilities:st3-cap-probe".to_string()],
+        "那台名下该恰好是那个不认识的 token"
+    );
+    assert!(
+        !keys(&crate::origin::Origin::local()).contains(&"capabilities:st3-cap-probe".to_string()),
+        "远端 hello 的 token 记进了本机那一本"
+    );
+}
