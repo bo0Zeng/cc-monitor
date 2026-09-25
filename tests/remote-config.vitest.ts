@@ -265,7 +265,12 @@ describe("S1：整表覆盖那条路必须**不可达**", () => {
 
   it("〔CFG1〕读盘失败 ⇒ `patchRemoteConfig` 抛、一个字节不写（从前读失败回空表，再把空表写回去 ⇒ 机器全没）", async () => {
     vi.resetAllMocks();
-    vi.mocked(loadConfig).mockRejectedValue(new Error("盘坏了"));
+    // 第一次读失败、之后读得到（瞬时失败）：旧写法第一次那一读被吞成空表，随后照样写 ⇒ B 被删掉。
+    vi.mocked(loadConfig)
+      .mockRejectedValueOnce(new Error("盘坏了"))
+      .mockResolvedValue({ remote: { enabled: true, hosts: [B] } } as unknown as Awaited<
+        ReturnType<typeof loadConfig>
+      >);
     await expect(patchRemoteConfig({ upsert: [{ key: null, value: A }] })).rejects.toThrow("盘坏了");
     expect(saveConfig).not.toHaveBeenCalled();
   });
