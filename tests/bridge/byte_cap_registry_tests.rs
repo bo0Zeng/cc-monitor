@@ -545,6 +545,21 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`tasks-list` 读单个任务文件（本机实测几百字节量级）",
         "跳过+说清",
     ),
+    // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`footprint-probe`，只读）那两个数。
+    (
+        "src/backend/footprint.rs",
+        "MAX_ENTRIES",
+        4096,
+        "`footprint-probe` 里一个目录交几个文件名（monitor 拿它数 glob 那一族）",
+        "降级+说清",
+    ),
+    (
+        "src/backend/footprint.rs",
+        "MAX_HOOK_FILE_BYTES",
+        1 << 20,
+        "`footprint-probe` 查钩子字样时读的那份 settings 文件多大",
+        "降级+说清",
+    ),
     // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：backend 的 Claude 知识搬进
     // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
     // 两格同时红（「有上限没登记」+「登记的那个算不出值」）。**登记表的键随搬迁同轮改。**

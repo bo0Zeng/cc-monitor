@@ -2,7 +2,7 @@
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
 //!
-//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过 Claude 会话数据围栏、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔B2 · 条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json`，不是用户数据）只许在逐文件登记的那一份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
+//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过 Claude 会话数据围栏、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔B2 · 条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json` · 〔RM1a〕账号层那份凭据文件，都不是用户数据）只许在逐文件登记的那几份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
 //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Command::new` 的起进程点。
 //!
 //! ⚠ **这两行今天不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
@@ -164,7 +164,8 @@ mod tests {
         (
             "accounts",
             "账号层（apikey 端点改写）：那张 `(agent, 账号)` 表 · 每 agent 一行的默认上游 · \
-             **只读**那份凭据文件（`creds-core` 的 `harden` 不开，写不了）· 热重载。\
+             中转进程里**只读**那份凭据文件 · 热重载。〔RM1a〕另有 `apikey/file_face.rs` 那一份\
+             在帧面上写**这台机器上**的那份凭据文件（账号层自己的状态，第四层登记）。\
              2026-09-24 从 `relay/` 底下搬出来（「中转层不要有账号」），在那之前它就在本护栏的人群里",
         ),
         (
@@ -192,6 +193,11 @@ mod tests {
             "feature_face",
             "〔RM1b · 第四波〕功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
              本体在 `observe/`，它只解 `args`、装应答。**零写盘**",
+        ),
+        (
+            "footprint",
+            "〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe` —— 这台机器的环境 · 一批路径的 stat · \
+             一批文件里有没有某几个字样。它归 backend-core 是因为那些事实**只在那台机器上**；判定仍只住 monitor。**零写盘**",
         ),
         ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
         ("inbound", "流连接上的入方向（信封 / 分派 / 取消）"),
@@ -253,7 +259,7 @@ mod tests {
     ///
     /// 🔴 **派生而不是第二次走目录**：两份账必漂（本仓反复治的那个毛病）。
     /// 一个模块可以是 `<名>.rs`，也可以是 `<名>/` 目录（里面递归）。
-    fn core_files() -> Vec<std::path::PathBuf> {
+    pub(super) fn core_files() -> Vec<std::path::PathBuf> {
         let root = crate::guard_support::src_root();
         let mut out = Vec::new();
         for (m, _) in BACKEND_CORE_MODULES {
@@ -582,18 +588,28 @@ mod tests {
     /// | ① | **按文件**登记（不按目录，同第三层那块墓碑的理由） | 相等断言（扫到的第四层模块数 == 本表条数） |
     /// | ② | 动词**闭集**：建那一层目录 · 原子挪 · 失败时删自己的临时文件 | [`OWN_STATE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only` |
     /// | ③ | 表外写法照旧禁（覆盖写 / 截断 / 追加 / 复制 / 链接 / 改权限 / 删目录） | [`OWN_STATE_STILL_FORBIDDEN`] ＋ `.open(` 与 `O_EXCL` 配对 |
-    /// | ④ | **只从一扇门进来**：写口 `answer_set` 只被 `inbound.rs` 引用 | `the_own_state_writer_is_reached_through_exactly_one_door` |
+    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被 `inbound.rs` 引用 | `the_own_state_writer_is_reached_through_exactly_one_door` |
     /// | ⑤ | **只写那一份文件**：文件名在全部生产代码里只有这一个家 | `control::exit_policy::tests::the_file_name_has_exactly_one_home_in_all_production_code` |
     ///
     /// ⚠ 漏判面：它判不了「挪进去的那一下落在的就是那个名字」（数据流）——
     /// 那一半靠那个模块自己的行为判据（写完读回、目录里只剩那一份）。
-    pub(super) const OWN_STATE_MODULES: &[(&str, &str)] = &[(
+    pub(super) const OWN_STATE_MODULES: &[(&str, &str)] = &[
+        (
         "control/exit_policy.rs",
         "「退出行为」那个值（`设计/01 §3.3b` 条 66）：后端**自己的**状态文件 \
          `~/.cc-monitor/backend.json`，一格布尔。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；\
          目录不在就建那一层（父目录是家目录）；失败删掉自己的临时文件。\
          线上入口只有 `inbound.rs` 的 `exit-policy-set`（＋ 派生的 CLI 面）",
-    )];
+        ),
+        (
+            "accounts/apikey/file_face.rs",
+            "〔RM1a · 第四波〕账号层（层 2）那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
+             文件名 / 格式 / 落点都是本仓定的、只有中转进程里的账号层读它 ⇒ 账号层**自己的**状态，\
+             不是用户数据（判清全文 `调研/第四波记录/RM1a.md §1`）。写的那一刻读盘 → 只改一条账号那一格 → \
+             临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；\
+             只建 `work/` 那一层目录；失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `apikey-key-set`",
+        ),
+    ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
     const OWN_STATE_VERBS: &[&str] = &["create_dir", "remove_file", "rename"];
@@ -618,9 +634,17 @@ mod tests {
     /// 第四层那扇门：后端生产树里**唯一**被允许引用写口的文件。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[(
         "inbound.rs",
-        "命令注册那一处 —— `exit-policy-set` 一条（帧面与派生的 CLI 面共用）。\
-         前端改那个值只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
+        "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）。\
+         前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
     )];
+
+    /// 〔RM1a〕第四层每一份模块的**写口**（`模块路径`, `写口的限定名尾巴`）。**与 [`OWN_STATE_MODULES`] 一一对应**
+    /// （两向相等，由 `the_own_state_writer_is_reached_through_exactly_one_door` 钉）。
+    /// 读口不在这里 —— 读不改世界，别处引用它合法。
+    const OWN_STATE_WRITERS: &[(&str, &str)] = &[
+        ("control/exit_policy.rs", "exit_policy::answer_set"),
+        ("accounts/apikey/file_face.rs", "file_face::answer_set"),
+    ];
 
     fn is_own_state(rel: &str) -> bool {
         OWN_STATE_MODULES.iter().any(|(p, _)| *p == rel)
@@ -1072,17 +1096,36 @@ mod tests {
 
     /// 🔴 〔B2〕**第四层判据 ④：写口只从一扇门进来 —— 零命中守卫。**
     ///
-    /// 针是写口的**限定名**（`exit_policy::answer_set`，运行时拼）。读口（`exit_policy::last_client_left` /
-    /// `answer_read`）不在针里 —— 读不改世界，`main.rs` 流结束那一臂正是读口的合法调用点。
+    /// 针是写口的**限定名**（[`OWN_STATE_WRITERS`] 那张表，逐份一根）。读口（`exit_policy::last_client_left` /
+    /// `answer_read` · `file_face::answer_read`）不在针里 —— 读不改世界，`main.rs` 流结束那一臂正是读口的合法调用点。
+    /// 〔RM1a〕第四层从一份变成两份：每一根针各自的引用处都必须**恰好**是那扇门（逐根两向相等），
+    /// 而写口表与模块表两向相等（多登一份模块而没说写口是谁 ⇒ 红）。
     #[test]
     fn the_own_state_writer_is_reached_through_exactly_one_door() {
         let root = crate::guard_support::src_root();
-        let needle = format!("exit_policy::{}", "answer_set");
+        let modules: std::collections::BTreeSet<&str> =
+            OWN_STATE_MODULES.iter().map(|(p, _)| *p).collect();
+        let writers: std::collections::BTreeSet<&str> =
+            OWN_STATE_WRITERS.iter().map(|(p, _)| *p).collect();
+        assert_eq!(
+            modules, writers,
+            "第四层登记的模块与写口表对不上 —— 每一份都得说清它的写口是哪个函数"
+        );
+        for (_, needle) in OWN_STATE_WRITERS {
+            own_state_door_matches(&root, needle);
+        }
+        for (p, why) in OWN_STATE_MODULES.iter().chain(OWN_STATE_DOORS) {
+            assert!(why.trim().chars().count() >= 20, "`{p}` 没写清为什么");
+        }
+    }
+
+    /// 一根写口针在后端生产树里的引用处 == 登记的那扇门（零命中守卫的本体）。
+    fn own_state_door_matches(root: &std::path::Path, needle: &str) {
         let mut scanned = 0usize;
         let mut found: std::collections::BTreeSet<String> = Default::default();
         for path in core_files() {
             let rel = path
-                .strip_prefix(&root)
+                .strip_prefix(root)
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
@@ -1093,13 +1136,13 @@ mod tests {
             }
             scanned += 1;
             let src = std::fs::read_to_string(&path).expect("read rs file");
-            if guard_core::production_code(&src).contains(needle.as_str()) {
+            if guard_core::production_code(&src).contains(needle) {
                 found.insert(rel);
             }
         }
         // `main.rs` 不在 `core_files()` 里（它不属于任何模块）⇒ 单独看一眼，它也不许碰写口。
         let main = std::fs::read_to_string(root.join("main.rs")).expect("读 main.rs");
-        if guard_core::production_code(&main).contains(needle.as_str()) {
+        if guard_core::production_code(&main).contains(needle) {
             found.insert("main.rs".into());
         }
         assert!(
@@ -1113,13 +1156,10 @@ mod tests {
         assert_eq!(
             found,
             want,
-            "够得到后端自有状态文件写口的文件与登记的那扇门对不上。\n  多出来的：{:?}\n  少了的：{:?}",
+            "够得到后端自有状态文件写口 `{needle}` 的文件与登记的那扇门对不上。\n  多出来的：{:?}\n  少了的：{:?}",
             found.difference(&want).collect::<Vec<_>>(),
             want.difference(&found).collect::<Vec<_>>()
         );
-        for (p, why) in OWN_STATE_MODULES.iter().chain(OWN_STATE_DOORS) {
-            assert!(why.trim().chars().count() >= 20, "`{p}` 没写清为什么");
-        }
     }
 
     /// ★★ 反向那半：**表里每一条都得对得上一份真的在写的文件**（幽灵检查）。
@@ -2016,6 +2056,18 @@ mod spawn_registry {
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第三种用途 —— \
              要加就先回来把这一栏的「恰好两处」重新数一遍。",
         ),
+        (
+            "relay/machine.rs",
+            "<非字面量>",
+            "〔RM1a · 第四波〕远端那台机器上的中转（层 1）由那台的后端起：**本后端这个二进制自己**\
+             （`current_exe`）带 `--relay`，stdio 全接空、自成一个进程组（`platform::detach`）。\
+             被起的那个进程就是 `--relay` 那一臂 —— 它自己的写面由本护栏照样管（同一个二进制、同一份生产段），\
+             **不是**后端进程自身写用户既有数据。程序名走变量（`current_exe`）⇒ 抽取器记成 `<非字面量>`。\
+             只从帧面 `relay-ensure` 一条进来，monitor 从不对本机发它（本机那一个由 monitor 监护）。",
+            "缩性质",
+            "远端的中转改由别的东西起（比如常驻后端自己带着它）的那天摘掉。\
+             ⚠ 在那之前**不许**往这一处起法底下加第二种用途 —— 它起的永远是本二进制的 `--relay`。",
+        ),
     ];
 
     /// ★ 生产段的每一处起进程都必须在 [`ALLOWED`] 里。
@@ -2125,7 +2177,9 @@ mod spawn_registry {
         //    `Command::new(<非字面量>)`）一起没了，`ALLOWED` 里那两条同拍摘掉。
         //    ⚠ **变少这一次是真的少了，不是抽取坏了**：`control/capture_pane.rs` 那一处还在
         //    （拉屏预览在用），下面 `found` 的实测清单里看得见。
-        const SPAWN_SITES_TODAY: usize = 11;
+        // 〔RM1a · 第四波〕**11 → 12**：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）。
+        //    ⚠ 真的新面，不是搬家：远端起中转这件事此前后端侧一处都没有（`ALLOWED` 里那条新登记写了它起什么）。
+        const SPAWN_SITES_TODAY: usize = 12;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
@@ -3634,12 +3688,15 @@ mod g6_dependency_signoff {
         (
             GATED_CRATE,
             DEPS,
-            MEASURED_WRITES,
+            MEASURED_WRITES_ON_PURPOSE,
             "第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。\
              ★ **它自己有两处写面**：`perm.rs` 的 `make_private`（收窄既有文件的权限）与 \
-             `create_private`（建一个只给本人的新文件）。两处**都在那个 feature 后面**，\
-             而本清单**刻意不开**它（清单那段注释逐字写着理由：backend 只许读那份文件）\
-             ⇒ 今天编不进来。这条前提由本模块那条 feature 判据钉着，不靠纪律",
+             `create_private`（建一个只给本人的新文件），都在那个 feature 后面。\
+             〔RM1a · 第四波〕本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
+             （账号层自己的状态文件，第四层登记的 `accounts/apikey/file_face.rs`），\
+             「出生即只给本人」只有 `create_private` 这一份实现 ⇒ 就是要它写。\
+             先前「编译器保证写不了」那一格换成下面这条判据：写半边在本 crate 生产段的引用处 == 那一份。\
+             边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",
         ),
         (
             "gate-core",
@@ -4073,25 +4130,38 @@ mod g6_dependency_signoff {
         }
     }
 
-    /// ★★ 那条**有写面**的签字，它的前提是「那个 feature 本清单没开」—— 把前提钉住。
+    /// ★★ 那条**有写面**的签字，它的前提是「那个 feature 本清单开着、而且就是要它写」—— 把前提钉住。
     ///
     /// 这一条是本模块里唯一**不只钉「说得出来」**的判据：它钉的是那句话赖以成立的那个事实。
-    /// feature 一开，两处写面就真进了本 crate 的依赖树，而那时签字里那句
-    /// 「今天编不进来」当场变成假话 —— 本仓最高频的病是「代码订正了，盘没跟着改」，
-    /// 这一条挡的正是它的反面：**盘上写着的前提被代码改掉了而盘不知道。**
+    /// 〔RM1a · 第四波〕前提翻了一次：先前是「那个 feature 本清单没开 ⇒ 今天编不进来」
+    /// （`已量·有写面`），今天是「开了、写面就是账号域那一份要用的」（`已量·有写面·就是要它写`）。
+    /// ⇒ 两个方向都钉：feature 被关掉了而签字还说「就是要它写」⇒ 红；
+    ///   `已量·有写面`（「凭什么进不来」那一档）今天**零成员** —— 有人把它签回那一档而 feature 还开着 ⇒ 红。
+    /// 本仓最高频的病是「代码订正了，盘没跟着改」，这一条挡的正是它的反面：
+    /// **盘上写着的前提被代码改掉了而盘不知道。**
     #[test]
-    fn the_only_signed_write_surface_still_rides_on_a_feature_this_manifest_leaves_off() {
-        let with_surface: Vec<&str> = SIGNED
+    fn the_credentials_crate_is_signed_as_a_purposeful_writer_and_its_feature_is_really_on() {
+        let gated: Vec<&str> = SIGNED
             .iter()
             .filter(|(_, _, v, _)| *v == MEASURED_WRITES)
             .map(|(n, ..)| *n)
             .collect();
         assert_eq!(
-            with_surface,
+            gated,
+            Vec::<&str>::new(),
+            "「有写面、但被一个没开的 feature 关着」那一档今天应当零成员，实得 {gated:?}\n\
+             新来一条这样的依赖 ⇒ 先回答「它凭什么进不来」「那个前提谁钉着」，再改这里。"
+        );
+        let purposeful: Vec<&str> = SIGNED
+            .iter()
+            .filter(|(_, _, v, _)| *v == MEASURED_WRITES_ON_PURPOSE)
+            .map(|(n, ..)| *n)
+            .collect();
+        assert_eq!(
+            purposeful,
             vec![GATED_CRATE],
-            "「有写面」那一档的成员变了：{with_surface:?}\n\
-             本条只钉得住 `{GATED_CRATE}` 那一条的前提（它的写面在一个 feature 后面）。\n\
-             新来一条有写面的依赖 ⇒ 先回答「它凭什么进不来」「那个前提谁钉着」，再改这里。"
+            "「就是要它写」那一档的成员变了：{purposeful:?}\n\
+             本条只钉得住 `{GATED_CRATE}` 那一条的前提（feature 开着）。"
         );
         // 针**运行时拼**：清单的注释里逐字写着这个词，而下面只看那一行、不看注释。
         let feature = format!("har{}", "den");
@@ -4102,12 +4172,11 @@ mod g6_dependency_signoff {
             )
         });
         assert!(
-            !guard_core::contains_word(&line, &feature),
-            "本清单给 `{GATED_CRATE}` 开了 `{feature}`：{line}\n\
-             ⇒ 那个 feature 才带「把文件收窄 / 建私有文件」的平台原语，一开，\
-             它那两处写面就真编进本 crate 的依赖树了。\n\
-             **这不是改个断言的事**：`SIGNED` 里那一行的签字前提当场作废，回来重签，\
-             并回答「backend 现在算不算自己在写用户既有数据」。"
+            guard_core::contains_word(&line, &feature),
+            "本清单没给 `{GATED_CRATE}` 开 `{feature}`：{line}\n\
+             ⇒ 签字说「就是要它写」（账号域那一份写口要 `create_private`），而 feature 关着 —— \
+             要么写口已经退役（那就回来把签字降回 `已量·有写面` 并答「凭什么进不来」），\
+             要么这一行被改坏了（那么后端根本编不过）。**这不是改个断言的事**：回来重签。"
         );
         // 反空真：探针对「开着」的写法必须认得出来，否则上面那条零命中断言什么也不说明。
         //
@@ -4125,6 +4194,69 @@ mod g6_dependency_signoff {
             guard_core::contains_word(&sample_with_it, &feature),
             "探针连样本 `{sample_with_it}` 都认不出来 —— 上面那条零命中断言此刻是空转的。\
              （两处若漂开了，先核**清单里那个 feature 今天叫什么**，别顺手把针改成样本。）"
+        );
+    }
+
+    /// 🔴 〔RM1a · 第四波〕**`creds-core` 那条「就是要它写」的边界判据**：它的写半边
+    /// （`perm::create_private` · `perm::make_private`）在本 crate 生产段里的引用处，
+    /// **恰好**是第四层登记的那一份 `accounts/apikey/file_face.rs`（两向集合相等）。
+    ///
+    /// # 它顶替的是哪一格
+    ///
+    /// 先前「backend 写不了那份凭据文件」是**编译器**兜的（feature 没开 ⇒ 那两个函数不存在）。
+    /// 远端那台机器上的 key 只能由那台的后端写 ⇒ feature 开了，编译器那一格没了，由本条接住：
+    /// 谁在别处顺手调一次 `create_private` 建个文件 ⇒ 当场红。
+    ///
+    /// # 反空真
+    ///
+    /// 期望集合非空（那一份自己必须真的引用它 —— 写口被换掉了本条也红）；
+    /// 针在一份合成源码上认得出（样本是**独立字面量**，不由针拼出来）。
+    ///
+    /// # 买不到
+    ///
+    /// 经宏 / 别名间接够到那两个函数的写法（`use creds_core::perm::create_private as c;` 之后只写 `c(`）——
+    /// `use` 那一行本身带着名字，所以「引入」这件事照样看得见；再往外一层的重导出看不见。
+    #[test]
+    fn the_credentials_write_half_is_reached_only_from_the_account_file_face() {
+        let root = crate::guard_support::src_root();
+        let needles = [
+            format!("create_{}", "private"),
+            format!("make_{}", "private"),
+        ];
+        let mut found: std::collections::BTreeSet<String> = Default::default();
+        let mut scanned = 0usize;
+        let mut files = super::tests::core_files();
+        files.push(root.join("main.rs"));
+        for path in files {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if path.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs") {
+                continue;
+            }
+            scanned += 1;
+            let src = std::fs::read_to_string(&path).expect("read rs file");
+            let prod = guard_core::production_code(&src);
+            if needles.iter().any(|n| guard_core::contains_word(&prod, n)) {
+                found.insert(rel);
+            }
+        }
+        assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
+        let want: std::collections::BTreeSet<String> = ["accounts/apikey/file_face.rs".to_string()]
+            .into_iter()
+            .collect();
+        assert_eq!(
+            found, want,
+            "`creds-core` 的写半边（建私有文件 / 收窄权限）在本 crate 生产段里的引用处对不上：\n\
+             应当**恰好**是第四层登记的账号域那一份。多出来的 = 写凭据的能力扩散了；\n\
+             少了 = 那一份不再用它（写口被换掉了？那就回来重签 `{GATED_CRATE}`）。"
+        );
+        let sample = "let f = creds_core::perm::create_private(&tmp)?;";
+        assert!(
+            needles.iter().any(|n| guard_core::contains_word(sample, n)),
+            "针连样本 `{sample}` 都认不出 —— 上面那条相等此刻在空转"
         );
     }
 
@@ -4234,18 +4366,20 @@ mod g6_dependency_signoff {
     /// ★★ `K-R29` 非空对照：**同一把尺子**必须在真有写面的那一条上亮。
     ///
     /// 上面那条断言的是「命中 0」，而**零命中既可能是干净、也可能是尺子瞎了** ——
-    /// 两者在终端上一模一样。本条把它们分开：同一把尺子扫 `{MEASURED_WRITES}` 那一档
-    /// （今天唯一成员 [`GATED_CRATE`]，它的签字里点名了 `perm.rs` 那两处写面），必须 > 0。
+    /// 两者在终端上一模一样。本条把它们分开：同一把尺子扫**有写面**的那两档
+    /// （`{MEASURED_WRITES}` ∪ `{MEASURED_WRITES_ON_PURPOSE}`；今天唯一成员 [`GATED_CRATE`]，
+    /// 它的签字里点名了 `perm.rs` 那两处写面 —— 〔RM1a〕它换了档、写面一处没少），必须 > 0。
     ///
     /// ⚠ 哪天那一条也变干净了，本条会红 —— **那是对的**：回来重挑一个非空对照，
     /// 不许把本条删掉了事（删掉之后上面那条就退回成一句空真）。
     #[test]
     fn the_same_ruler_still_lights_up_on_the_crate_that_really_writes() {
         let ruler = resident_ruler();
-        let with_surface = crates_with_verdict(MEASURED_WRITES);
+        let mut with_surface = crates_with_verdict(MEASURED_WRITES);
+        with_surface.extend(crates_with_verdict(MEASURED_WRITES_ON_PURPOSE));
         assert!(
             !with_surface.is_empty(),
-            "`{MEASURED_WRITES}` 这一档今天一条成员都没有 —— 上面那条零命中断言从此没有对照，\
+            "`{MEASURED_WRITES}` / `{MEASURED_WRITES_ON_PURPOSE}` 这两档今天一条成员都没有 —— 上面那条零命中断言从此没有对照，\
              它是「真干净」还是「尺子瞎了」分不出来了。回来重挑对照。"
         );
         let (scannable, out_of_reach) = split_by_reachability(&with_surface);
@@ -4258,7 +4392,7 @@ mod g6_dependency_signoff {
             let hits = write_surface_hits(dir, &ruler);
             assert!(
                 !hits.is_empty(),
-                "同一把尺子在 `{name}`（`{rel}`）上命中 **0** —— 而它的判档是 `{MEASURED_WRITES}`。\n\
+                "同一把尺子在 `{name}`（`{rel}`）上命中 **0** —— 而它的判档是有写面的那两档之一。\n\
                  两种可能，都得有人看一眼：\n\
                  ① 尺子瞎了（模式表被掏空 / 扫描面画错 / 路径解析歪了）⇒ 那么上面那条\n\
                  「六棵全 0」的绿**此刻什么也不说明**；\n\
@@ -4325,7 +4459,7 @@ mod g6_dependency_signoff {
     //
     // ⚠ **三档各自怎么红，逐档写清**（`KR79D2` 的死值验口径）：
     // 一条「有写面而且就是要它写」的依赖塞进现有三档中的任何一档，红的不是同一条判据——
-    // 塞进 `已量·有写面` ⇒ [`the_only_signed_write_surface_still_rides_on_a_feature_this_manifest_leaves_off`]
+    // 塞进 `已量·有写面` ⇒ [`the_credentials_crate_is_signed_as_a_purposeful_writer_and_its_feature_is_really_on`]
     // （那一档的成员集是**相等**断言）；塞进 `已量·未见写面` ⇒
     // [`the_clean_verdict_is_re_measured_on_the_tree_every_run`]（第三方 crate 没有 `path =`，
     // 落进「本判据扫不了」那一格）；塞进 `未量·靠用法签字` ⇒ **在本件之前一条都不红**，

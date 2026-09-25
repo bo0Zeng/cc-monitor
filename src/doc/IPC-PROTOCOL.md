@@ -1434,6 +1434,120 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 ⚠ **远端**那一行的值写得进去、读得回来，但今天**没有任何进程按它动手**：远端后端只走 stdio（SSH exec），
 它没有「最后一个客户走了」那一臂，SSH 一断它本来就随管道破裂退出。
 
+#### 账号层那份凭据文件在「这台机器」上的读写（RM1a · 第四波，2026-09-24）—— **账号层自己的状态，不是用户文件**
+
+第三方 API key 那份文件（`apikey-credentials.json`）归**账号层（层 2）**：名字、格式、落点都是本仓定的，
+只有中转进程里的账号层读它 ⇒ 它**不走**文件管理那一面（那一面是给用户文件的），
+写口登记在后端 `readonly_guard` 的**第四层**（后端自有状态文件），只从下面 `apikey-key-set` 一条进来。
+判清的全文住 `调研/第四波记录/RM1a.md §1`。
+
+- **每台机器上的程序写者恰好一个**：monitor 所在那台是 monitor 自己；其余每台是那台的后端（本节两条）。
+  monitor **从不**把 `apikey-key-set` 发给本机那条连接。
+- **路径**与那台机器上 `--relay` 进程的账号层**同一个出处**（`accounts::apikey::creds::resolve_path` ＋ 同一个家目录）。
+- 🔴 **明文只在 `apikey-key-set` 的 `args.key` 里**：不进 argv、不进 env、不进任何日志；两条的应答都只有**掩码**。
+- 两条都**不起中转**；中转那两条（`relay-*`）也**不碰凭据**。
+
+#### `apikey-key-set`：给一个账号写 key，写完读回
+
+```text
+→ {"id":"k1","cmd":"apikey-key-set","args":{"account":"work","key":"<明文>","baseUrl":"https://api.example.com"}}
+← {"kind":"reply","id":"k1","ok":true,"data":{"account":"work","path":"/home/u/.claude/work/apikey-credentials.json","masked":"sk-a****wxyz","baseUrl":"https://api.example.com"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `account` | ↔ | 账号 id（monitor 用全仓唯一那份规则从账号目录推出来，后端不再推）。必须当得了路由段 —— 与账号层装表时**同一个谓词**，写得进去却装不进表 = 那一行永远 404 |
+| `key` | → | 明文。空串拒 |
+| `baseUrl` | ↔ | 入（可选）：这个账号的第三方端点。缺席 / `null` / 空串 = **不碰那一格**（只配 key 时已有端点原样留着）；给了就先过与本机那一侧**同一条**形状关（`creds_core::store::check_base_url_shape`），不对 ⇒ `bad_args`、整次不写。出：写完读回这一行的端点（没有 ⇒ `null`） |
+| `masked` | ← | 写完**再读一遍**、这一行 key 的掩码（盘上的事实） |
+| `path` | ← | 那份文件的绝对路径 |
+
+写法：**写的那一刻读盘** → 只改 `accounts.<account>` 的 `api_key`（与给了的 `base_url`）那一两格（别的行与未知键一个不动）→ 临时文件**出生即只给本人**（O_EXCL）→ 写满 → 落盘 → 原子改名；失败删自己的临时文件。
+**错误码**：`bad_args`（缺字段 / 账号 id 当不了路由段 / key 空）· `bad_file`（现有文件解析不了 ⇒ **不覆盖**，人手编的内容不许被抹掉）· `io_failed`。
+
+#### `apikey-read`：文件级的状态 ＋ 表里有哪几行（**不读 stdin**）
+
+```text
+→ {"id":"k2","cmd":"apikey-read"}
+← {"kind":"reply","id":"k2","ok":true,"data":{"configured":false,"masked":"","path":"…/apikey-credentials.json","notice":null,"problem":null,"rows":["work"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `configured` · `masked` | ← | **顶层那一把**（历史格式那一行）配没配、掩码 —— 与 monitor 那一侧 `ApikeyCredentialsStatus` 同名同义 |
+| `path` | ← | 那份文件的绝对路径 |
+| `notice` | ← | 权限过宽 / 查不出来时的一句话（文件不在时 `null`）|
+| `problem` | ← | 读不动 / 解析不了时的一句话。🔴 **解析不了不退化成「没配」** |
+| `rows` | ← | 表里有哪几条账号 id（筛掉当不了路由段的；`base_url` 解析不了的那一类**筛不掉**，同 monitor 那一侧的口径）|
+
+**没有错误码**：读不动是一个**状态**（`problem`），照样 `ok:true`。
+
+⚠ **CLI 面也有它们**（`--apikey-key-set` / `--apikey-read`），从 `inbound::REGISTRY` 派生；`--apikey-key-set` 的入参**从 stdin 读**。
+
+#### 中转（层 1）在「这台机器」上的进程（RM1a · 第四波，2026-09-24）
+
+本机的中转由 monitor 起本机后端时顺手监护；**远端那台机器上的中转由那台的后端起**（下面两条）。
+两条都**只收端口**，一个凭据 / 账号的名字都不经过它们（账号层那份文件由上面 `apikey-*` 两条管）。
+monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个有监护者，不许再起第二个去抢口）。
+
+起出来的 `--relay` 继承后端的环境，它里面的账号层与后端账号域那份写口按同一个函数、同一个家目录出处解凭据路径
+⇒ 两边是同一份文件，不必在这两条命令里传路径。
+
+#### `relay-status`：这个口上有没有人在听（只读）
+
+```text
+→ {"id":"r1","cmd":"relay-status","args":{"port":8788}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"port":8788,"listening":false}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `port` | ↔ | 中转的端口（monitor 那边的 `payload::RELAY_PORT` 是权威，入参给出） |
+| `listening` | ← | 回环上连一次那个口，连得上 = **有人在听**。⚠ 答不了「听的那个是不是我们的中转」 |
+
+**错误码**：`bad_args`（`port` 缺了或不在 1–65535）。
+
+#### `relay-ensure`：没人在听就起一个脱离的中转
+
+```text
+→ {"id":"r2","cmd":"relay-ensure","args":{"port":8788}}
+← {"kind":"reply","id":"r2","ok":true,"data":{"port":8788,"listening":false,"started":true,"pid":4242}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `port` | ↔ | 同上 |
+| `listening` | ← | 起之前那一刻口上有没有人（有 ⇒ 什么都不做，`started:false`） |
+| `started` | ← | 这一趟起了一个进程。⚠ **不等它 bind**（后端零定时器）：`true` 只说「进程起了」，要知道口上有没有人再问一次 `relay-status` |
+| `pid` | ← | 只在 `started:true` 时有 |
+
+起法：本后端这个二进制自己带 `--relay`，环境多一格 `CCM_RELAY_PORT`，stdio 全接空，自成一个进程组（SSH 断了它不跟着走）。
+⚠ 它的诊断因此到不了人（远端那台上没有监护者收它的 stderr）。
+**错误码**：`bad_args` · `spawn_failed`（找不到自己 / 起不动）· `unsupported`（非 unix：不知道怎么起成脱离的一组，没起）。
+
+⚠ **CLI 面也有它们**（`--relay-status` / `--relay-ensure`），入参从 stdin 读。
+
+#### `footprint-probe`：「足迹」的这台机器那一半（RM1a · 第四波，2026-09-24，**只读**）
+
+设置里「足迹」那一块（cc-monitor 在这台机器上碰过哪些文件）的远端那一半：**判定只住 monitor**
+（`config_surface::build_rows`：哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分），后端只交**路径事实**。
+monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~/…`），再把解出来的路径一次问完。
+
+```text
+→ {"id":"f1","cmd":"footprint-probe","args":{"stat":["/home/u/.local/bin/ccm"],"hooks":{"paths":["/home/u/.claude/settings.json"],"needles":["cc-register"]}}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"env":{"home":"/home/u","path":"/usr/bin:/bin","agentHome":"/home/u/.claude","agentHomeIsDir":true},"stat":{"/home/u/.local/bin/ccm":{"kind":"file","size":1234}},"hooks":{"/home/u/.claude/settings.json":true}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `stat` | ↔ | 入：一组**绝对**路径（最多 256 条）。出：逐条 `{kind:"file",size}` / `{kind:"dir",size:0,entries:[一层文件名]}` / `null`（不在或读不动）。目录名字超过 4096 个 / 列不动 ⇒ `entries:null` ＋ `notice`（**不截断**） |
+| `hooks` | ↔ | 入：`{paths, needles}`（一组绝对路径 · 最多 16 个非空字样）。出：逐条文件**有没有**任何一个字样（`true`/`false`），读不动 / 超过 1 MiB / 不是文件 ⇒ `null`。**文件内容一个字节都不回** |
+| `notices` | ← | `hooks` 里答 `null` 的那几条各自为什么（不在 / 太大 / 读不动）。`stat` 里列不动的目录那一格自带 `notice` |
+| `env` | ← | 这个**后端进程**看到的 `home`（`HOME`，没有再退 `USERPROFILE`）· `path`（`PATH`）· `agentHome`（agent 的家目录，同帧面其余几条的出处）· `agentHomeIsDir`。⚠ 用户交互 shell 的 rc 改过的环境这里看不见 |
+
+**错误码**：`bad_args`（不是数组 / 相对路径 / 给了路径没给字样）· `too_large`（超过条数上限）。
+⚠ **CLI 面也有它**（`--footprint-probe`），入参从 stdin 读。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。

@@ -3835,7 +3835,12 @@ fn the_ui_status_side_asks_those_two_take_points_and_uses_their_answers() {
 
     // ① 表里只有 `acct-a` + 中转在跑 ⇒ 只有那一个 configDir 被判「走中转」，`running` 为真。
     answer(&["acct-a"], true);
-    let got = crate::apikey_routing_for(dirs.clone());
+    // 〔RM1a〕命令收了 origin、变成异步：本机那一臂两件事照旧只走那条缝（本条量的正是它）。
+    let routing = |d: Vec<String>| {
+        tauri::async_runtime::block_on(crate::apikey_routing_for(crate::origin::Origin::local(), d))
+            .expect("本机那一臂不该失败")
+    };
+    let got = routing(dirs.clone());
     assert!(
         ROWS_CALLS.with(Cell::get) >= 1 && RUNNING_CALLS.with(Cell::get) >= 1,
         "界面这一侧**没问**那两件事（rows={} running={}）—— 那两格成了常量",
@@ -3852,12 +3857,12 @@ fn the_ui_status_side_asks_those_two_take_points_and_uses_their_answers() {
     // ② **只**把表翻过来 ⇒ 一个都不走（不是「随便回一份」）。
     answer(&[], true);
     assert!(
-        crate::apikey_routing_for(dirs.clone()).routed.is_empty(),
+        routing(dirs.clone()).routed.is_empty(),
         "表空了界面还说有号走中转"
     );
     // ③ **只**把「在不在跑」翻过来 ⇒ `running` 跟着变（且 `routed` 不受它影响，两格分开）。
     answer(&["acct-b"], false);
-    let flipped = crate::apikey_routing_for(dirs);
+    let flipped = routing(dirs);
     assert!(!flipped.running, "中转没跑，界面还说在跑");
     assert_eq!(
         flipped.routed,

@@ -10,10 +10,13 @@
 //! 而那正是本工作区在治的那族病（守卫的人群对不上它守的性质）。
 //! ⇒ 写盘留在这里：在人群里、要申报。〔洞本身另立跟进件 `己1-f8`，本件不修。〕
 //!
-//! # `K-H2a` 裁四：**backend 只读，写只有这一侧**
+//! # `K-H2a` 裁四：**本机这一份只有这一侧写**
 //!
-//! 本模块整个不存在于 backend crate 里，而 `creds-core` 那半「把文件收窄」的平台原语
-//! 挂在 `harden` feature 上、**只有 monitor 开** ⇒ 「backend 写不了这份文件」是**编译器**兜的。
+//! 本模块只写 **monitor 所在那台机器**上的那一份。〔RM1a · 第四波〕裁四原话「backend 只读」收窄了：
+//! 远端那台机器上的那一份由那台的后端写（`src/backend/accounts/apikey/file_face.rs`，帧面 `apikey-key-set`），
+//! 后端因此也开了 `harden`，「backend 写不了这份文件」不再是编译器兜的。
+//! ⇒ 每台机器上的程序写者仍然恰好一个；monitor **从不**让本机后端写本机这一份
+//! （`lib.rs::write_apikey_credentials_key` 按 origin 分两臂，本机那一臂只进本模块）。
 //!
 //! # 这一档保什么、不保什么
 //!
@@ -199,20 +202,13 @@ pub(crate) fn write_key(
     )
 }
 
-/// 〔第四波 ST2 · `设计/70 §4.4`〕`base_url` 那一格在**写之前**的形状关：只认 `https://` / `http://` 开头、
-/// 中间没有空白。更细的（明文 http 只许回环、带路径前缀的提示）由账号层装表时判并出声 ——
-/// 那一层有 `Base::parse`，本侧不另写一份解析器（同一条规则一个家）。
+/// 〔第四波 ST2 · `设计/70 §4.4`〕`base_url` 那一格在**写之前**的形状关。
+///
+/// 〔RM1a〕规则本身搬进了 `creds_core::store::check_base_url_shape`：远端那一份由那台的后端写
+/// （`accounts/apikey/file_face.rs`），两个写者要**同一条**形状关，不许各写一份。本函数只转一手。
 /// ⚠ 形状不对 ⇒ **整次写都不做**（key 也不落）：半截写进去，用户看到的是「key 配上了、端点没配上」。
 fn check_base_url(raw: &str) -> Result<(), String> {
-    let s = raw.trim();
-    let scheme_ok = s.starts_with("https://") || s.starts_with("http://");
-    let host_ok = s.split("://").nth(1).is_some_and(|rest| !rest.is_empty());
-    if !scheme_ok || !host_ok || s.chars().any(char::is_whitespace) {
-        return Err(format!(
-            "Base URL 的形状不对：{s:?} —— 要写成 https://主机[:端口][/路径] 这样，留空就用默认上游"
-        ));
-    }
-    Ok(())
+    store::check_base_url_shape(raw)
 }
 
 /// `write_key` 剥掉「路径从哪来」之后的那一半 —— **`KS10` 的行为判据打的就是它**。
