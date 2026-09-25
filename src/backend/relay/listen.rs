@@ -29,6 +29,7 @@
 
 use super::server::{self, Relay, DEFAULT_PORT, INFLIGHT_CONNECTIONS, LOOPBACK};
 use super::{tee::TeeSink, Startup};
+use copy_core::copy_text;
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
@@ -273,13 +274,16 @@ fn prepare(
     //   那句为什么，今天是真的印出去了（上游选择装表时）。
     let Some(ready) = startup.check(get) else {
         eprintln!("[relay] bad upstream base url");
-        return Err("上游基址认不出（上游选择拒了启动配置）".to_string());
+        return Err(copy_text("beRelayListen.prepare.badUpstream", &[]));
     };
     let listener = match listen(port) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("[relay] cannot bind loopback port {port}: {e}");
-            return Err(format!("绑不上回环口 {port}：{e}"));
+            return Err(copy_text(
+                "beRelayListen.prepare.bindFailed",
+                &[("port", &port.to_string()), ("e", &e.to_string())],
+            ));
         }
     };
     match listener.local_addr() {

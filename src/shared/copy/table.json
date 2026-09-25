@@ -737,6 +737,287 @@
       "zh": "代码全景「{op}」说做完了，但交回的结果读不懂：{said}",
       "args": ["op", "said"]
     },
+    "beHttp1.readExactBody.shortBody": {
+      "kind": "error",
+      "zh": "请求体比 Content-Length 说的短",
+      "args": []
+    },
+    "beRelayListen.prepare.bindFailed": {
+      "kind": "error",
+      "zh": "占不到本机端口 {port}：{e}",
+      "args": ["port", "e"]
+    },
+    "beRelayListen.prepare.badUpstream": {
+      "kind": "error",
+      "zh": "上游地址认不出，中转没有起来",
+      "args": []
+    },
+    "beMachine.start.spawnFailed": {
+      "kind": "error",
+      "zh": "起不来 {program}：{e}",
+      "args": ["program", "e"]
+    },
+    "beMachine.answerEnsure.noSelf": {
+      "kind": "error",
+      "zh": "找不到后端程序自己：{e}",
+      "args": ["e"]
+    },
+    "beRelayUpstream.normalizePrefix.doubleSlash": {
+      "kind": "error",
+      "zh": "base_url 的路径前缀以 // 开头，那在请求里会被读成另一个主机名",
+      "args": []
+    },
+    "beRelayUpstream.parse.hasQuery": {
+      "kind": "error",
+      "zh": "base_url 里带了查询串或 # 片段。基址只能是「协议 + 主机 + 可选的路径前缀」",
+      "args": []
+    },
+    "beRelayUpstream.parse.noHost": {
+      "kind": "error",
+      "zh": "base_url 里没有主机名",
+      "args": []
+    },
+    "beRelayUpstream.parse.badPort": {
+      "kind": "error",
+      "zh": "base_url 的端口读不懂（要 0-65535 的十进制数）",
+      "args": []
+    },
+    "beRelayUpstream.parse.badScheme": {
+      "kind": "error",
+      "zh": "base_url 的协议不认得（只认 https:// 和 http://）",
+      "args": []
+    },
+    "beRelayUpstream.parse.notUrl": {
+      "kind": "error",
+      "zh": "base_url 不是一个网址（要以 https:// 或 http:// 开头）",
+      "args": []
+    },
+    "beIso.shellinitOutcome.argsTooLong": {
+      "kind": "error",
+      "zh": "{tool} shellinit 没能起来：参数过长",
+      "args": ["tool"]
+    },
+    "beIso.shellinitOutcome.noOutput": {
+      "kind": "error",
+      "zh": "{tool} shellinit 什么都没输出（退出码 {exit}）：{detail}",
+      "args": ["tool", "exit", "detail"]
+    },
+    "beIso.shellinitOutcome.timedOut": {
+      "kind": "error",
+      "zh": "{tool} shellinit 超过 {secs} 秒没有返回",
+      "args": ["tool", "secs"]
+    },
+    "beIso.locate.notInstalled": {
+      "kind": "error",
+      "zh": "这台机器上还没装 cc-acct-iso。",
+      "args": []
+    },
+    "beUpstreamCreds.load.unreadable": {
+      "kind": "error",
+      "zh": "读不了凭据文件：{e}",
+      "args": ["e"]
+    },
+    "beUpstreamTable.noteAuthStyleNoAuth.say": {
+      "kind": "body",
+      "zh": "这一条一个鉴权头都不发，客户端自带的那份也不转发。这是给不校验凭据的本地部署用的。",
+      "args": []
+    },
+    "beUpstreamTable.noteAuthStyleXApiKey.say": {
+      "kind": "body",
+      "zh": "这一条用 x-api-key 头把 key 交给上游，不是默认那种。客户端自带的鉴权头会被丢掉。",
+      "args": [],
+      "waive": {
+        "C-T1": "x-api-key 是 HTTP 头的真名，用户在凭据文件里写的就是它"
+      }
+    },
+    "beUpstreamTable.noteAuthStyleBearer.say": {
+      "kind": "body",
+      "zh": "这一条用 Authorization: Bearer 头把 key 交给上游，而客户端自带的鉴权头会被丢掉",
+      "args": []
+    },
+    "beUpstreamTable.notePathPrefix.say": {
+      "kind": "body",
+      "zh": "base_url 带了路径前缀：上游收到的是「前缀 + 客户端自己的路径」。前缀若与客户端路径的头一段重了，上游会看到重复的那一段，中转不替你合并。",
+      "args": []
+    },
+    "beUpstreamTable.whyNoAuthWithKey.say": {
+      "kind": "error",
+      "zh": "这一条的 auth_style 说不发鉴权头，同一条却配了 api_key。两句话相反，删掉其中一句。",
+      "args": [],
+      "waive": {
+        "C-T1": "api_key 是用户手编凭据文件里的字段名"
+      }
+    },
+    "beUpstreamTable.whyAuthStyleUnknown.say": {
+      "kind": "error",
+      "zh": "auth_style 写的值不认得，认得的几个见下一行",
+      "args": []
+    },
+    "beUpstreamTable.whyPlaintextOffLoopback.say": {
+      "kind": "error",
+      "zh": "base_url 是明文 http，而主机不是本机。那会把这一行的 key 明着发上网线；要么换 https，要么把上游放到本机上。",
+      "args": []
+    },
+    "beUpstreamTable.whyIdUnusable.say": {
+      "kind": "error",
+      "zh": "账号 id 用不进请求地址（只许字母、数字、- 和 _，最长 128 字节）",
+      "args": []
+    },
+    "beUpstream.decide.noRow": {
+      "kind": "error",
+      "zh": "这个账号在凭据文件里没有配置",
+      "args": []
+    },
+    "beUpstream.decide.agentNotRegistered": {
+      "kind": "error",
+      "zh": "这个 agent 没有登记上游",
+      "args": []
+    },
+    "beServer.words.cantConnect": {
+      "kind": "body",
+      "zh": "连不上",
+      "args": []
+    },
+    "beServer.words.closedBeforeAnswer": {
+      "kind": "body",
+      "zh": "没回应就断开了",
+      "args": []
+    },
+    "beServer.words.noAnswer": {
+      "kind": "body",
+      "zh": "没有回应",
+      "args": []
+    },
+    "beServer.words.notHttp": {
+      "kind": "body",
+      "zh": "回的不是 HTTP 响应",
+      "args": []
+    },
+    "beServer.words.onlyInterim": {
+      "kind": "body",
+      "zh": "一直不给最终响应",
+      "args": []
+    },
+    "beServer.words.hopConnect": {
+      "kind": "body",
+      "zh": "建立连接",
+      "args": []
+    },
+    "beServer.words.hopWait": {
+      "kind": "body",
+      "zh": "等响应",
+      "args": []
+    },
+    "beServer.words.hopRead": {
+      "kind": "body",
+      "zh": "读响应",
+      "args": []
+    },
+    "beServer.sentence.say": {
+      "kind": "error",
+      "zh": "上游 {host}:{port} {result}。卡在{hop}这一步。",
+      "args": ["host", "port", "result", "hop"]
+    },
+    "credsPerm.windowsProbe.toText": {
+      "kind": "error",
+      "zh": "它的访问权限转不成文字",
+      "args": []
+    },
+    "credsPerm.windowsProbe.unreadable": {
+      "kind": "error",
+      "zh": "读不到它的访问权限（Windows 错误码 {rc}）",
+      "args": ["rc"]
+    },
+    "credsPerm.windowsSetOwnerOnlyDacl.failed": {
+      "kind": "error",
+      "zh": "设不了只给本人读的访问权限（Windows 错误码 {rc}）",
+      "args": ["rc"]
+    },
+    "credsPerm.windowsSetOwnerOnlyDacl.noList": {
+      "kind": "error",
+      "zh": "设不了只给本人读的访问权限",
+      "args": []
+    },
+    "credsPerm.windowsSetOwnerOnlyDacl.parse": {
+      "kind": "error",
+      "zh": "设不了只给本人读的访问权限：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.currentUserSid.notUtf16": {
+      "kind": "error",
+      "zh": "当前用户的身份不是合法文字：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.currentUserSid.toText": {
+      "kind": "error",
+      "zh": "当前用户的身份转不成文字：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.currentUserSid.noUser": {
+      "kind": "error",
+      "zh": "取不到当前用户的身份：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.currentUserSid.noToken": {
+      "kind": "error",
+      "zh": "读不了当前用户的身份：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.createPrivate.unsupported": {
+      "kind": "error",
+      "zh": "这个系统上不知道怎么建只给本人读的文件（{path}），没做到。",
+      "args": ["path"]
+    },
+    "credsPerm.makePrivate.unsupported": {
+      "kind": "error",
+      "zh": "这个系统上不知道怎么把 {path} 收成只给本人读，没做到。",
+      "args": ["path"]
+    },
+    "credsPerm.makePrivate.failed": {
+      "kind": "error",
+      "zh": "把凭据文件收成只给本人读失败：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.probe.unsupported": {
+      "kind": "error",
+      "zh": "这个平台上不知道怎么量文件权限",
+      "args": []
+    },
+    "credsPerm.probe.notHardened": {
+      "kind": "error",
+      "zh": "这一份构建读不了 Windows 的文件权限",
+      "args": []
+    },
+    "credsPerm.probe.noMetadata": {
+      "kind": "error",
+      "zh": "读不到它的元数据：{e}",
+      "args": ["e"]
+    },
+    "credsPerm.judge.undetermined": {
+      "kind": "error",
+      "zh": "查不出这份文件的权限（{why}）。这不等于它没问题，请自己确认一次只有你读得到它。",
+      "args": ["why"]
+    },
+    "credsPerm.judge.fixWindows": {
+      "kind": "body",
+      "zh": "在资源管理器的「属性 → 安全」里删掉 Everyone / Users 这类条目。或者让程序重写一次它。",
+      "args": []
+    },
+    "credsPerm.judge.tooWideWindows": {
+      "kind": "body",
+      "zh": "这份文件的权限列表里有对所有人开放的条目：{who}",
+      "args": ["who"]
+    },
+    "credsPerm.judge.fixUnix": {
+      "kind": "body",
+      "zh": "跑 chmod 600 <这份文件>，或者让程序重写一次它",
+      "args": []
+    },
+    "credsPerm.judge.tooWideUnix": {
+      "kind": "body",
+      "zh": "同机器上的别人也读得到它（权限 {mode}，本人之外还开着 {extra}）",
+      "args": ["mode", "extra"]
+    },
     "panePreview.head.title": {
       "kind": "title",
       "zh": "预览画面 · [{origin}] tmux: {target}",

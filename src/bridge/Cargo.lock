@@ -996,6 +996,7 @@ dependencies = [
 name = "creds-core"
 version = "0.1.0"
 dependencies = [
+ "copy-core",
  "guard-core",
  "serde_json",
  "windows 0.56.0",

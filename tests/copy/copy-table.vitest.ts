@@ -111,6 +111,8 @@ export function refsIn(file: string, text: string): { refs: Ref[]; problems: str
 /** Rust 取文口自己住的文件：它里头的 `copy_text` 是定义，不是引用。 */
 const RS_HOME = "src/bridge/src/copy_table.rs";
 const RS_FN = "copy_text";
+/** 〔CP2c〕同一个取文口的 `&'static str` 形（`copy-core` 的宏）。 */
+const RS_STATIC = "copy_static";
 /**
  * 〔CP2c〕取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
  * key 不是字面量 —— 它是转发，不是引用）。它们不进「引用」一侧。
@@ -209,6 +211,17 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
     }
     refs.push({ file: `${file}:${lineOf(at)}`, key: km[1], args });
   }
+  // 〔CP2c〕`copy_static!("…")`：同一条文案给成 `&'static str`（后端几处类型刻意是 `&'static str`，
+  //   见 `copy-core` 那个宏的头注）。没有参数；key 必须是紧跟的字符串字面量，别的写法一律报「绕过」。
+  for (const m of code.matchAll(new RegExp(`\\b${RS_STATIC}!`, "g"))) {
+    const at = m.index ?? 0;
+    const km = /^\(\s*"([^"\\]*)"\s*\)/.exec(code.slice(at + RS_STATIC.length + 1));
+    if (!km) {
+      problems.push(`${file}:${lineOf(at)}：${RS_STATIC}! 的 key 不是字面量（或带了参数）`);
+      continue;
+    }
+    refs.push({ file: `${file}:${lineOf(at)}`, key: km[1], args: [] });
+  }
   return { refs, problems };
 }
 
@@ -257,7 +270,7 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
   ];
   const rsAll = rsFiles
     .filter((f) => !RS_DEFINITIONS.has(f.file))
-    .filter((f) => new RegExp(`\\b${RS_FN}\\b`).test(f.text))
+    .filter((f) => new RegExp(`\\b(?:${RS_FN}\\b|${RS_STATIC}!)`).test(f.text))
     .map((f) => rustRefsIn(f.file, f.text));
   const rsRefs = rsAll.flatMap((x) => x.refs);
   const refs = [...all.flatMap((x) => x.refs), ...rsRefs];
@@ -332,6 +345,10 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
     expect(rustRefsIn("x.rs", 'copy_text("a.b.c", &[(name, n)]);').problems.join()).toMatch(/参数项/);
     expect(rustRefsIn("x.rs", "use crate::copy_table::copy_text;").problems).toEqual([]);
     expect(rustRefsIn("x.rs", "ui.ctx().copy_text(s.to_string());").refs).toEqual([]);
+    // 〔CP2c〕`&'static str` 形：字面量 key 认得出；非字面 key / 带参数 各被逮住。
+    expect(rustRefsIn("x.rs", 'let w = copy_static!("a.b.c");').refs.map((r) => [r.key, r.args])).toEqual([["a.b.c", []]]);
+    expect(rustRefsIn("x.rs", "copy_static!(KEY);").problems.join()).toMatch(/不是字面量/);
+    expect(rustRefsIn("x.rs", 'copy_static!("a.b.c", x);').problems.join()).toMatch(/不是字面量/);
   });
 
   it("对拍：表里多一条 / 代码多引一条 / 参数给错 —— 各红一次", () => {

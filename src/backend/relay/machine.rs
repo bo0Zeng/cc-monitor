@@ -28,6 +28,7 @@
 //! 只说「进程起了」，要知道口上有没有人，再问一次 `relay-status`。
 //! ⚠ 它的诊断（起不来 · 凭据文件在哪 · 表里几行）因此**到不了人** —— 远端那台上没有监护者收它的 stderr。
 
+use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::path::Path;
@@ -47,8 +48,12 @@ pub(crate) fn answer_ensure(args: &Value) -> MachineAnswer {
     if listening(port) {
         return Ok(json!({ "port": port, "listening": true, "started": false }));
     }
-    let exe = std::env::current_exe()
-        .map_err(|e| ("spawn_failed", format!("找不到本后端自己这个二进制：{e}")))?;
+    let exe = std::env::current_exe().map_err(|e| {
+        (
+            "spawn_failed",
+            copy_text("beMachine.answerEnsure.noSelf", &[("e", &e.to_string())]),
+        )
+    })?;
     let pid = start(&exe, &["--relay"], port)?;
     Ok(json!({ "port": port, "listening": false, "started": true, "pid": pid }))
 }
@@ -77,7 +82,13 @@ pub(crate) fn start(
     cmd.spawn().map(|c| c.id()).map_err(|e| {
         (
             "spawn_failed",
-            format!("起 {} 失败：{e}", program.display()),
+            copy_text(
+                "beMachine.start.spawnFailed",
+                &[
+                    ("program", &(program.display()).to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ),
         )
     })
 }
@@ -88,7 +99,12 @@ fn port_arg(args: &Value) -> Result<u16, (&'static str, String)> {
         .and_then(Value::as_u64)
         .and_then(|p| u16::try_from(p).ok())
         .filter(|p| *p != 0)
-        .ok_or(("bad_args", "缺 `port`，或它不是 1–65535 的整数".to_string()))
+        .ok_or((
+            "bad_args",
+            crate::common::contract::malformed(
+                "missing `port`, or it is not an integer in 1-65535",
+            ),
+        ))
 }
 
 #[cfg(test)]

@@ -231,8 +231,8 @@ fn a_row_whose_auth_style_makes_no_sense_is_rejected_out_loud() {
             .map(|r| r.why)
             .unwrap_or_else(|| panic!("{id} 没被说出去"))
     };
-    assert_eq!(why("typo"), WHY_AUTH_STYLE_UNKNOWN);
-    assert_eq!(why("contradiction"), WHY_NO_AUTH_WITH_KEY);
+    assert_eq!(why("typo"), WHY_AUTH_STYLE_UNKNOWN.as_str());
+    assert_eq!(why("contradiction"), WHY_NO_AUTH_WITH_KEY.as_str());
     assert_ne!(why("typo"), why("contradiction"));
 }
 
@@ -278,7 +278,7 @@ fn a_plaintext_upstream_is_only_allowed_on_loopback() {
             .iter()
             .find(|r| r.id == id)
             .unwrap_or_else(|| panic!("{id} 没被说出去"));
-        assert_eq!(r.why, WHY_PLAINTEXT_OFF_LOOPBACK);
+        assert_eq!(r.why, WHY_PLAINTEXT_OFF_LOOPBACK.as_str());
     }
 }
 
@@ -319,8 +319,8 @@ fn a_row_that_still_works_but_behaves_differently_gets_a_note() {
         "默认那一行也出声了 ⇒ 全是噪音：{:?}",
         of("plain")
     );
-    assert_eq!(of("prefixed"), vec![NOTE_PATH_PREFIX]);
-    assert_eq!(of("xapikey"), vec![NOTE_AUTH_STYLE_X_API_KEY]);
+    assert_eq!(of("prefixed"), vec![NOTE_PATH_PREFIX.as_str()]);
+    assert_eq!(of("xapikey"), vec![NOTE_AUTH_STYLE_X_API_KEY.as_str()]);
     assert_eq!(notes.len(), 2, "note 的条数不对：{}", notes.len());
 }
 

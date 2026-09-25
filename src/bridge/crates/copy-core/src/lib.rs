@@ -52,6 +52,23 @@ pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
     out
 }
 
+/// 同一条文案，但要一个 `&'static str`（**没有参数**的那种）。
+///
+/// 后端有几处的类型刻意是 `&'static str`（例：`accounts::upstream::table::Rejected::why` ——
+/// 「进日志是安全的由类型兜着，不是由记得别把文件内容塞进来兜着」）。句子进表之后不许为了它
+/// 把类型放宽成 `String`：每个调用点展开成一个自己的 `static LazyLock<String>`，取一次、住一辈子。
+///
+/// 判据（`tests/copy/copy-table.vitest.ts::rustRefsIn`）把 `copy_static!("…")` 与 `copy_text("…", &[…])`
+/// 一样收进「引用」一侧：key 必须是紧跟的字符串字面量，没有参数。
+#[macro_export]
+macro_rules! copy_static {
+    ($key:literal) => {{
+        static TEXT: ::std::sync::LazyLock<::std::string::String> =
+            ::std::sync::LazyLock::new(|| $crate::copy_text($key, &[]));
+        TEXT.as_str()
+    }};
+}
+
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/crates/copy-core/lib_tests.rs"]
 mod tests;
