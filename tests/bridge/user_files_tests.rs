@@ -29,6 +29,8 @@ pub(crate) struct DiskDoor {
     pub puts: RefCell<Vec<PutCall>>,
     /// 删会话那一条收到的 sid。
     pub deleted_sids: RefCell<Vec<String>>,
+    /// 〔RM1d〕`delete`（`files-delete`）收到的相对段。
+    pub deleted: RefCell<Vec<String>>,
     /// `list_dir` 的答案，由判据**事先摆好**（替身不去遍历盘上的目录 ——
     /// `scanning_guard_registry` 不许测试段裸遍历目录）。键是目录的绝对路径。
     pub listings: RefCell<std::collections::BTreeMap<String, Vec<(String, bool)>>>,
@@ -41,6 +43,7 @@ impl DiskDoor {
             interfere: RefCell::new(Vec::new()),
             puts: RefCell::new(Vec::new()),
             deleted_sids: RefCell::new(Vec::new()),
+            deleted: RefCell::new(Vec::new()),
             listings: RefCell::new(std::collections::BTreeMap::new()),
         }
     }
@@ -132,6 +135,12 @@ impl Door for DiskDoor {
             return Err(format!("替身：{} 已经在了", b.display()));
         }
         std::fs::rename(&a, &b).map_err(|e| e.to_string())
+    }
+
+    async fn delete(&self, root: &str, rel: &str) -> Result<(), String> {
+        let p = Self::at(root, rel);
+        self.deleted.borrow_mut().push(rel.to_string());
+        std::fs::remove_file(&p).map_err(|e| format!("替身：删 {} 失败：{e}", p.display()))
     }
 
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
@@ -363,6 +372,7 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
         );
     }
     // 写面里门会发的那几条，恰好是这一集合（多发一条写面命令 ⇒ 先回答它为什么经门）。
+    // 〔RM1d · 第四波〕+`files-delete`：全景删批注侧车（V110「引擎只算、文件管理来写」；计划里 `after = null`）。
     let sent_writes: std::collections::BTreeSet<&str> = sent
         .iter()
         .filter(|c| write_face.contains(*c))
@@ -372,6 +382,7 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
         sent_writes,
         [
             "files-chmod",
+            "files-delete",
             "files-delete-session",
             "files-peek",
             "files-put",

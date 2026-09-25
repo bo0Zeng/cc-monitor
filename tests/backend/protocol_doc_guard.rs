@@ -317,6 +317,15 @@ mod tests {
         "list_annotations",
         "diagram_kinds",
         "diagram",
+        // 〔RM1d · V110〕「算」：给定盘上现状，算出批注 / 文档关联的新内容（不写，落盘归文件管理）。
+        "plan_add_annotation",
+        "plan_propose_annotation",
+        "plan_approve_annotation",
+        "plan_remove_annotation",
+        "plan_write_doc_link",
+        "plan_remove_doc_link",
+        // 〔RM1d〕外面写了 `.md` 之后让文档关联的查询跟上（建索引一族，不暴露存储）。
+        "refresh_doc_links",
     ];
 
     /// 生产段里含「全景」那个词的字符串字面量（去重）。

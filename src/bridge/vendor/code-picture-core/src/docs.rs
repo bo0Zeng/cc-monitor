@@ -96,7 +96,7 @@ fn parse_target(raw: &str) -> Option<(String, Option<String>)> {
 }
 
 /// 从 frontmatter(开头 `---` 到下一个 `---`)提取 `covers:` 列表(支持 `- item` 与 `[a, b]`)。
-fn frontmatter_covers(content: &str) -> Vec<String> {
+pub fn frontmatter_covers(content: &str) -> Vec<String> {
     let mut lines = content.lines();
     if lines.next().map(|l| l.trim_end()) != Some("---") {
         return vec![];
@@ -412,7 +412,7 @@ pub fn remove_covers(content: &str, target: &str) -> String {
 /// 写 IO 前的路径守卫:拒绝绝对路径(含 Windows 盘符 `C:\`)与含 `..` 的越界路径。
 /// **纵深防御**:即便调用方绕过 `Engine::guard_rel` 直调本模块,也绝不写到仓库外
 /// —— 守住「非侵入:只写 `.codepicture/` 与被显式指定的仓内 .md」这条底线。
-fn guard_doc_rel(doc_rel: &str) -> std::io::Result<()> {
+pub fn guard_doc_rel(doc_rel: &str) -> std::io::Result<()> {
     let is_abs = doc_rel.starts_with('/')
         || doc_rel.starts_with('\\')
         || doc_rel.chars().nth(1) == Some(':'); // Windows 盘符 C:\ / D:/
@@ -425,33 +425,44 @@ fn guard_doc_rel(doc_rel: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// 写 IO:读指定 .md → add_covers → 写回(不存在则以纯 frontmatter 创建)。docs.rs 的写 IO 面。
+/// 写 IO:读指定 .md → add_covers → 写回(不存在则以纯 frontmatter 创建)。
+/// = [`crate::edits::plan_write_doc_link`](读 + 算)+ [`apply`](写)。读失败(非不存在)向上抛,**绝不覆写**。
 pub fn write_doc_link(repo: &Path, doc_rel: &str, target: &str) -> std::io::Result<()> {
-    guard_doc_rel(doc_rel)?;
-    let p = repo.join(doc_rel);
-    // 只在「不存在」时新建;其它读错误(权限/编码)向上抛,**绝不覆写**
-    let content = match std::fs::read_to_string(&p) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(e),
-    };
-    std::fs::write(&p, add_covers(&content, target))
+    let planned = crate::edits::plan_write_doc_link(repo, doc_rel, target).map_err(plan_io)?;
+    if let Some(edit) = &planned.edit {
+        apply(repo, edit)?;
+    }
+    Ok(())
 }
 
 /// 写 IO:删一条 covers。返回原本是否存在(存在才写回)。读失败(非不存在)向上抛。
 pub fn remove_doc_link(repo: &Path, doc_rel: &str, target: &str) -> std::io::Result<bool> {
-    guard_doc_rel(doc_rel)?;
-    let p = repo.join(doc_rel);
-    let content = match std::fs::read_to_string(&p) {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(e) => return Err(e),
-    };
-    let had = frontmatter_covers(&content).iter().any(|c| c == target);
-    if had {
-        std::fs::write(&p, remove_covers(&content, target))?;
+    let planned = crate::edits::plan_remove_doc_link(repo, doc_rel, target).map_err(plan_io)?;
+    if let Some(edit) = &planned.edit {
+        apply(repo, edit)?;
     }
-    Ok(had)
+    Ok(planned.value)
+}
+
+fn plan_io(e: crate::edits::PlanError) -> std::io::Error {
+    match e {
+        crate::edits::PlanError::Io(e) => e,
+        crate::edits::PlanError::Invalid(m) => {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, m)
+        }
+    }
+}
+
+/// **写盘那一层**(文档):把 [`crate::edits`] 算好的一份改动落到 `repo` 上 —— 与拆开前同法:
+/// **就地写**(`.md` 是一条链接时改的是链接指向的那份,不把链接换成普通文件);不建父目录。
+/// 落点同样过 [`guard_doc_rel`](纵深防御)。
+pub fn apply(repo: &Path, edit: &crate::edits::FileEdit) -> std::io::Result<()> {
+    guard_doc_rel(&edit.rel)?;
+    let p = repo.join(&edit.rel);
+    match &edit.after {
+        Some(text) => std::fs::write(&p, text),
+        None => std::fs::remove_file(&p),
+    }
 }
 
 #[cfg(test)]

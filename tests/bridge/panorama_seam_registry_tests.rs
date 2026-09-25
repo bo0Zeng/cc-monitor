@@ -40,8 +40,10 @@ fn the_panorama_command_surface_leaks_no_storage_or_parser_detail() {
     let prod = prod();
     let sigs = command_signatures(&prod);
     // 反向自检：抽取坏了的话下面的空集会"恰好通过"。
+    // 〔RM1d〕地板 20 → 15：六条写命令删了（写改走 `panorama_call.rs::panorama_edit`），今天 17 条。
+    //   这是反空真的自检地板（抽取坏了会塌到个位数），不是判据；判据是下面那条恒等计数。
     assert!(
-        sigs.len() >= 20,
+        sigs.len() >= 15,
         "只抽到 {} 条命令签名 —— 抽取坏了，本断言在空转",
         sigs.len()
     );
@@ -85,7 +87,10 @@ fn adding_a_panorama_command_forces_a_look_at_this_seam() {
     // 〔PN1b 09-24〕21 → 23：多了 `panorama_diagram_kinds`（注册表原样透出）与
     // `panorama_diagram`（画一张图）—— 都是查询语义：说的是「代码里有什么结构」，
     // 参数是图种 id ＋ 画图旋钮，没有一个字关于存储或解析。
-    const COMMANDS_TODAY: usize = 23;
+    // 〔RM1d 09-24〕23 → 17：少了六条**写**命令（人写 / 提议 / 批准 / 删批注、写 / 删文档关联）——
+    // 它们经内嵌引擎直写被分析仓（V88），改成「算（`plan_local`，不是命令）＋ 那台后端的文件管理写」，
+    // 命令入口挪到 `panorama_call.rs::panorama_edit`（本机远端同一条）。只减不加，没有新面要看。
+    const COMMANDS_TODAY: usize = 17;
     let n = prod().matches(cmd_attr().as_str()).count();
     assert_eq!(
         n, COMMANDS_TODAY,

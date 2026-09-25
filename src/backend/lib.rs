@@ -428,7 +428,11 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p3b-session-facts**（2026-09-24，第四波 U4b 合并那一拍）：子命令 ＋1 —— `history-record`（`{sid}` → 记录在不在，两个命令面）。
 /// ＋ 线上：`session_added` 多一个可选字段 `container`（tmux / none）· 新出方向帧 `sessions_replayed`。
-pub const BUILD_ID: &str = "p3b-session-facts";
+///
+/// ★★★ **p3c-panorama-plan**（2026-09-24，第四波 RM1d 合并那一拍）：子命令集不变，**行为**变更 ——
+/// 后端 `panorama` 的 op 表 ＋7（六个 `plan_*` 只回算好的新内容、不写盘 ＋ `refresh_doc_links`）；
+/// 旧后端不认 ⇒ 写批注会回 `unsupported` ⇒ 必须判 stale。照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p3c-panorama-plan";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
