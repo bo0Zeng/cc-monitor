@@ -824,10 +824,6 @@
   background: var(--overlay-hover);
 }
 
-.history-origin-group[open] > .history-origin-header .history-group-indicator {
-  transform: rotate(90deg);
-}
-
 .history-origin-name {
   color: var(--text);
   font-size: var(--font-size-base);
@@ -919,6 +915,10 @@
 }
 
 .history-group[open] > .history-group-header .history-group-indicator {
+  transform: rotate(90deg);
+}
+
+.history-origin-group[open] > .history-origin-header .history-group-indicator {
   transform: rotate(90deg);
 }
 
