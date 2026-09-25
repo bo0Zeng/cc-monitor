@@ -4270,6 +4270,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/remote-launch-run.ts", 2),
         ("src/bridge/src/tmux_backend_gate_guard.rs", 3),
         ("tests/bridge/launcher_identity_registry_tests.rs", 2),
+        // 〔C4e 批 3〕广播收进后端：后端那一节头注点 monitor 里那份组合（`broadcast_via_backend`，同批随后删掉）。
+        ("src/backend/control/cc_bus.rs", 1),
         //   几份 vitest 的 invoke 替身换成通道那一跳的翻译（`chan-fake.ts::tmuxControlShim`），头注点旧命令名。
         ("tests/account-restart.vitest.ts", 1),
         ("tests/remote-launch-run.vitest.ts", 3),
