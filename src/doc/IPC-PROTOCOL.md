@@ -1720,6 +1720,48 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
+#### `skill-read`：读来源那台上的一个 skill（AS2 · 第四波 4B，2026-09-25，**只读**）
+
+「装要用户点」（V113）那一步的读半边：在**来源那台**跑，交出 `<skill 根>/<名>/` 下每个文件的原文（V112「内容，原样拷过去」）。
+
+```text
+→ {"id":"k1","cmd":"skill-read","args":{"name":"demo"}}
+← {"kind":"reply","id":"k1","ok":true,"data":{"root":"/home/u/.claude/skills","dir":"/home/u/.claude/skills/demo","files":[{"path":"SKILL.md","text":"---\n…","bytes":120,"exec":false,"why":null},{"path":"bin/tool","text":null,"bytes":90210,"exec":true,"why":"不是文本文件"}],"skipped":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | skill 的目录名（一段：不许分隔符 / `..` / 点开头） |
+| `root` / `dir` | ← | 这台 skill 的根 / 这个 skill 的目录（绝对路径） |
+| `files` | ← | 每个普通文件一条 `{path, text, bytes, exec, why}`：`path` 是 skill 里的相对路径（`/` 分段）；`text` 是原文，**不是文本 / 超 4 MiB / 读不出来 ⇒ `null` ＋ `why`**（这一个装不过去：今天的写口只收文本）；`exec` 执行位（非 unix 恒 `false`） |
+| `skipped` | ← | 没读的那几处（指向目录的链接 / 特殊文件） |
+
+**错误码**：`bad_args`（名字不对）· `not_found`（这台没有这个 skill）· `too_large`（文件超过 512 个 —— 装一半比不装更坏，整趟不读）· `io_failed`。
+⚠ **CLI 面也有它**（`--skill-read`），入参从 stdin 读。
+
+#### `skill-install-plan`：在要被写的那一台判 skill 装不装得过来（AS2 · 第四波 4B，2026-09-25，**只读**）
+
+在**要被写的那一台**跑（事实是那台的）。差异四态与「不同的要显式说盖、不然整趟拒」那道闸**原样用** `mcp-sync-plan` 的那一份（键 = 文件相对路径，值 = `{text, exec}`）。
+一个字节都不写：写经调用方 → 那台后端 `files-put`（`expect` = 这里回的 `target` 里那一份，不存在 = `null`，`parents: true`）＋ `files-chmod`。
+
+```text
+→ {"id":"k2","cmd":"skill-install-plan","args":{"name":"demo","source":[{"path":"SKILL.md","text":"---\n…","exec":false}]}}
+← {"kind":"reply","id":"k2","ok":true,"data":{"root":"…/skills","dir":"…/skills/demo","rows":[{"path":"SKILL.md","state":"new","suspects":[],"blocked":null}],"target":[],"write":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | skill 的目录名 |
+| `source` | → | `skill-read` 读到的 `[{path, text, exec}]`（`text` 可为 `null` = 装不过去的那一个） |
+| `take` / `overwrite` | → | 可缺席，语义同 `mcp-sync-plan`（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名） |
+| `root` / `dir` | ← | 这台 skill 的根 / 要写进去的目录 |
+| `rows` | ← | 每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集同 `mcp-sync-plan`；`suspects` 只在 `new` / `differs` 上有 `{kind, value, there}` —— `kind` 闭集 `executable`（有执行位或 `#!` 开头）· `binary`（来源读不出原文）· `abs-path`（文本里的绝对路径，`there` 闭集同 `mcp-sync-plan`）· `command-missing`（`#!/usr/bin/env X` 的 `X` 在这台后端的 `PATH` 上找不到）；`blocked` = 这台上那一份盖不了的原因（不是文本等），否则 `null` |
+| `target` | ← | 这一趟拷的那几个路径在这台上现有的原文 `[{path, text}]` —— 写的时候当 CAS 期望 |
+| `write` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序） |
+
+**错误码**：`bad_args`（名字 / 路径不对 · `take` 里有不在 `source` 里的 · `take` 了来源读不出原文的那一个）· `bad_file`（`take` 了这台上盖不了的那一个）· `needs_consent`（同 `mcp-sync-plan`）· `too_large` · `io_failed`。
+⚠ **CLI 面也有它**（`--skill-install-plan`），入参从 stdin 读。
+
 #### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
 
 出处 `设计/15 §3.2` 层 1 ＋ `设计/99 §4.19.2 ⑥`。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。

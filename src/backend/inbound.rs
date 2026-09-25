@@ -147,6 +147,9 @@ pub const COMMANDS: &[&str] = &[
     "relay-ensure",
     "relay-status",
     "resolve",
+    // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
+    "skill-install-plan",
+    "skill-read",
     "tasks-list",
     // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
     "transfer-download",
@@ -925,6 +928,49 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
+        }),
+    },
+    // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
+    //   `skill-install-plan` 在要被写的那一台判 —— 差异四态与「不同的要显式说盖」那道闸原样用 AS1 的 `mcp_sync::{diff, plan}`，
+    //   可疑项（可执行 · 二进制 · 绝对路径 · `#!` 要的命令）带那台的事实。两条都只读；写经 `files-put`（CAS）。阻塞档（扫盘）。
+    CommandSpec {
+        name: "skill-read",
+        doc_anchor: Some("#### `skill-read`"),
+        codes: &["bad_args", "io_failed", "not_found", "too_large"],
+        fields: &["dir", "files", "name", "root", "skipped"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::skill_install::answer_read(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-install-plan",
+        doc_anchor: Some("#### `skill-install-plan`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "io_failed",
+            "needs_consent",
+            "too_large",
+        ],
+        fields: &[
+            "dir",
+            "name",
+            "overwrite",
+            "root",
+            "rows",
+            "source",
+            "take",
+            "target",
+            "write",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::skill_install::answer_plan(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
