@@ -222,11 +222,15 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 
 两条**改状态**的远端 tmux 命令都已切到后端：`kill_remote_tmux` → `control/kill.rs` ·
 `tmux_send_keys` → `control/launch.rs` 的 `send-into` / `send-keys-raw`。
+〔C4e · 第四波 4C〕再往前一步：那两条（连同抓屏、就地 resume）不再是 monitor 的 Tauri 命令 ——
+界面经通道直接说后端的 `kill` / `launch` / `capture-pane`（`src/tmux-control.ts`），monitor 那一跳只搬字节；
+「能不能回落」那条判定在界面那一侧同义一份（`src/ipc/chan-caller.ts::provablyNotSent`），
+与 Rust `backend_route::route_call_error` 由跨语言金样 `tests/__fixtures__/reach-collapse.golden.json` 对拍。
 
 🔴 **订正（`K-R106` 2026-09-13 现打）**：这里原来写着「一次性 SSH 那两条降为**过渡期**的
 第二条路」—— 那两条 **`K-R72`（2026-09-12）整块删了**（`K-R54` 裁定表第 1 · 2 处），
 今天**盘上只有后端这一条**；回潮闸住 `tmux_backend_gate_guard.rs`
-（那两条命令的生产段里再出现 `connect_and_exec_cmd` 就红）。
+（〔C4e〕monitor 生产段里再出现 `kill-session` 就红；界面只经 `src/tmux-control.ts` 一处说这几条）。
 「通道不在时怎么办」的判定**只有一份**（`backend/control/backend_route.rs`，三态
 `Done` / `Refused` / `NoChannel`），而**过门被拒绝一律不另找一条路**
 （另找一条 = 把一次被门拒绝洗成另一条路的成功）。

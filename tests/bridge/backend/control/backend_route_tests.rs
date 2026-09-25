@@ -89,7 +89,7 @@ fn an_old_backend_rejecting_the_new_mode_is_not_a_reason_to_fall_back() {
 ///
 /// 第一版是**手写的两条清单**（`backend_kill.rs` / `backend_send_keys.rs`）——
 /// Phase G 的 `/full-audit` 当场指出：同一个目录里**第三个**走后端的发送端
-/// `backend_launch.rs::backend_send_into`（U8a-2c-1，早于本工作区）**不在清单里**，
+/// `backend_launch.rs` 里的 `backend_send_into`〔散文墓碑〕（U8a-2c-1，早于本工作区；〔C4e〕随就地 resume 迁到界面删了）**不在清单里**，
 /// 于是它自己 match 一整套 `CallError`、把**每一档**都折成「诚实降级」，
 /// 而调用方拿到降级就**回落到 TS 渲染的整串**（那条串没有 §34 的 Gate 2）。
 ///
@@ -103,13 +103,13 @@ fn an_old_backend_rejecting_the_new_mode_is_not_a_reason_to_fall_back() {
 /// 目录里每个 `.call(` 的文件都必须在下表里，要么用分流器、要么是**带理由的刻意例外**。
 #[cfg(test)]
 const SENDERS: &[(&str, Verdict)] = &[
-    ("backend_kill.rs", Verdict::UsesRouter),
-    ("backend_send_keys.rs", Verdict::UsesRouter),
-    // ✅ **F14 已收进来**：`SendIntoResponse` 加了第三个字段 `may_fall_back`
-    // （两态表达不出「不许回落」），分流本体改调 `route_call_error`。
-    // ⚠ 上一版把它记成 `ExemptPendingF14`，而那条判据断言例外那格**不**用分流器
-    // ⇒ 改好的当天它**如设计般红了一次**，逼人回来把登记改对。**那是它的岗位。**
-    ("backend_launch.rs", Verdict::UsesRouter),
+    // 〔C4e · 第四波 4C〕这里原来头三行是 `backend_kill.rs` / `backend_send_keys.rs` / `backend_launch.rs`
+    //   （杀会话 · 送键 · 就地 resume 三个发送端，都 `UsesRouter`；`backend_launch` 那一行还记着 F14 的
+    //   「`may_fall_back` 第三个字段 · 上一版误记成例外、改好当天如设计般红过一次」）。三条 Tauri 命令迁到界面
+    //   （`src/tmux-control.ts` 经通道直接说 `kill` / `launch`），发送端整份删了，发现阶段扫不到它们 ⇒ 三行摘掉。
+    //   它们守的那件事没丢：Rust 这一侧的分层判定照旧只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
+    //   F14 那条「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
+    //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
     // ★ 08-08 扩面当场逮出来的**第四个真实发送端**（此前整个在扫描面之外）。
     // 它发的是 `probe_backend` 里那条 `ping`：只把成败渲染成 `control=ok(..ms)` /
     // `control=failed(..)` 的诊断串，**不做任何回落决策** ⇒ 没有「该不该回落」这个问题。

@@ -9,5 +9,16 @@
     "request": { "name": "demo-cc" },
     "reply": { "name": "demo-cc", "screen": "line one\nline two\n" },
     "codes": ["invalid_args", "no_tmux", "no_server", "no_such_session", "capture_failed"]
+  },
+  "kill": {
+    "request": { "name": "demo-cc" },
+    "reply": { "session": "demo-cc", "killed": true },
+    "codes": ["invalid_args", "no_tmux", "no_such_session", "wrong_owner", "too_many_windows", "kill_failed"]
+  },
+  "launch": {
+    "request": { "mode": "send-into", "name": "demo-cc", "payload": "/compact" },
+    "requestRaw": { "mode": "send-keys-raw", "name": "demo-cc", "payload": "Escape" },
+    "reply": { "session": "demo-cc", "created": false, "typed": true },
+    "codes": ["invalid_args", "no_tmux", "no_such_session", "create_failed", "typed_unconfirmed"]
   }
 }

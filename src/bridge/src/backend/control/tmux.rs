@@ -466,8 +466,10 @@ fn is_safe_tmux_target(target: &str) -> bool {
 /// ⚠ `K-R72`（09-12）把它从 [`exact_target`] 里**分出来（不是复制一份）**：
 /// `exact_target` 产的是**给 shell 用的**精确串 `'=<名>:'`，而送键 / 杀会话今天走后端、
 /// 不拼任何 shell 串 —— 让它们为了一次校验去要一个用不上的串，就是本区反复判过的那条
-/// 「一个值装了两件事」。⇒ **谓词一份，住这里**；[`exact_target`] 调它，
-/// 三条路（capture-pane · send-keys · kill）走的是同一份判定、同一句话。
+/// 「一个值装了两件事」。⇒ **谓词一份，住这里**；[`exact_target`] 调它。
+/// 〔C4e · 第四波 4C〕三条路（抓屏 · 送键 · 杀会话）整条迁到界面之后，它们的 Gate 1 住
+/// `src/tmux-control.ts::rejectEmptyTarget`（同一个判定：只拒空串）；本侧这一份只剩 [`exact_target`] 这个
+/// 跨轨对拍锚点在用（下面那段写着为什么锚点还得留着）。
 fn gate1_reject_empty(target: &str) -> Result<(), String> {
     if !is_safe_tmux_target(target) {
         return Err(format!("非法 tmux 目标（空）：{target:?}"));
@@ -486,9 +488,9 @@ fn gate1_reject_empty(target: &str) -> Result<(), String> {
 // 「Gate 1（`=name:` 精确匹配）—— 裸 `-t <名>` 会被 tmux 按『精确名 → 名字开头 → glob』解析」，
 // 它调的是后端自己那份 `launch::exact_target`，与 `kill` 共用同一份。
 //
-// **Gate 1 的空目标那一格仍留在本侧**（[`gate1_reject_empty`]）：`=:` 会被 tmux 解析成
-// 「当前会话」，而**空目标不该先花一次往返**才被拒 —— 三条命令（抓屏 / 送键 / 杀会话）
-// 今天都在本地就地判它，同一份判定、同一句话。
+// **Gate 1 的空目标那一格仍在调用方那一侧就地判**：`=:` 会被 tmux 解析成「当前会话」，
+// 而**空目标不该先花一次往返**才被拒。〔C4e〕三条命令（抓屏 / 送键 / 杀会话）迁到界面之后，
+// 那一格住 `src/tmux-control.ts::rejectEmptyTarget`，同一个判定。
 
 /// F04：`exact_target` 是 fallible——Gate 1 折进这一个函数本身。
 ///
@@ -515,47 +517,10 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
     Ok(ssh_source::shell_quote(&format!("={target}:")))
 }
 
-/// 「后端通道不在」这一档的**唯一一份**用户可见文案（`K-R72`，09-12）。
-///
-/// # 它是那笔代价的出口
-///
-/// ⚠〔`K-R112` 09-13〕**第三个消费者进来过**：抓屏也走过这一份（〔C4e〕抓屏迁到界面，这一句随它搬进文案表 `tmuxControl.channel.*`）。
-/// 它的代价与那两条不同、要单记：抓屏此前对 `<local>` 是**一句「还看不了」**（根本没有那条路），
-/// 今天两侧同一条路 ⇒ 本机从「做不到」变成「做得到，除非后端没起来」。
-///
-/// 送键与杀会话删掉过渡期 SSH 回落之后，`NoChannel` 从「换条路悄悄做掉」变成**明确失败**
-/// （`K-R54` 表第 1 处逐字点的代价）。受影响的真实动作是换号重启那三处
-/// （`src/account-restart.ts` 的 `/compact` · `Escape` · `/exit`）加上 kill 那处，
-/// 它们**各自把这个串原样弹成 toast** ⇒ **这一句就是用户看得见的那句话**，
-/// 不许让它静默、也不许让它说一件与真实原因无关的事。
-///
-/// # 为什么两条路的话不一样
-///
-/// 先前那条 SSH 回落对 `<local>` 会去 `load_remote_config_by_label("<local>")` 拿不到东西，
-/// 报一句 **「未找到远端配置: `"<local>"`」** —— 与真实原因（本机后端通道不在）毫无关系。
-/// **错的诊断比没有诊断更贵**：那正是 [`tests::the_local_kill_never_falls_back_to_ssh`]
-/// 与 [`tests::the_local_send_keys_never_falls_back_to_ssh`] 当初买下来的东西。
-/// 今天那条 SSH 路整个没了，两条判据改钉「**盘上没有第二条路**」，而这里保住它们买到的
-/// 另一半：**本机与远端的下一步不同，话就不许一样**。
-///
-/// ⚠ 射程与那两条判据同源：比的是 **origin 逐字节等于哨兵串**，不是 target 会话名。
-/// 一台 label 起成 `localhost` / 本机主机名的**远端**走的是下面那半 —— 那是对的，
-/// 它确实是一条远端传输。
-fn no_channel_message(action: &str, origin: &str, target: &str, why: &str) -> String {
-    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        format!(
-            "本机后端通道不在，{action} `{target}`：{why}\n\
-             （抓屏、送键与杀会话只走后端这一条路 —— 先让本机后端跑起来。\
-             K-R72 / K-R112 起没有 SSH 兜底那条路了，所以这不是「再试一次」能过去的）"
-        )
-    } else {
-        format!(
-            "`{origin}` 的后端通道不在，{action} `{target}`：{why}\n\
-             （抓屏、送键与杀会话只走后端这一条路 —— 先让那台机器上的后端连上。\
-             K-R72 / K-R112 起没有 SSH 兜底那条路了，所以这不是「再试一次」能过去的）"
-        )
-    }
-}
+// 〔C4e · 第四波 4C〕这里原来住着「后端通道不在」那一档的用户可见文案 `no_channel_message`〔散文墓碑〕（`K-R72` / `K-R112`）：
+//   本机与远端两句话不同（下一步不同），抓屏 · 送键 · 杀会话三条共用。三条都迁到界面之后，
+//   那两句随之搬进文案表（`tmuxControl.channel.localDown` / `remoteDown`），「本机与远端的话不许一样」
+//   由 `tests/tmux-control.vitest.ts`「通道不在」那一条钉着。
 
 // ★★ `K-R72`（09-12）：**这里原来住着送键与杀会话那两条桌面侧回落的执行面。**
 //
@@ -569,11 +534,11 @@ fn no_channel_message(action: &str, origin: &str, target: &str, why: &str) -> St
 // 1、2 删完它自动成为死代码」。而 `KR72D1` 逐字禁止「把回落改成恒失败的桩留在原地」——
 // **那不是删，那是把一份实现变成一句谎话**。
 //
-// **§34 那三道门没有消失，只是只剩一个家**：Gate 1 住 [`gate1_reject_empty`]
-// （本文件，三条路共用）· Gate 2 / Gate 3 住后端的 `control/gate.rs`
+// **§34 那三道门没有消失，只是只剩一个家**：Gate 1 住调用方那一侧（〔C4e〕`src/tmux-control.ts::rejectEmptyTarget`，
+// 三条路共用）· Gate 2 / Gate 3 住后端的 `control/gate.rs`
 // （`admit` / `admit_destructive`，判定本体转调 `gate-core`，金表 `gate2-golden.tsv`
 // 由后端侧与 `backend/control/gate2_parity.rs` 两条轨道共读）。
-// 回潮闸在 `tmux_backend_gate_guard`：那两条命令里**再出现** `connect_and_exec_cmd` 就红。
+// 回潮闸在 `tmux_backend_gate_guard`：〔C4e〕monitor 生产段里再长出一处破坏性的 tmux 动词（`kill-session` / `send-keys`）就红。
 
 // 〔C4e · 第四波 4C〕这里原来住着抓屏的发送端 `capture_via_backend` 与 Tauri 命令 `capture_remote_pane`〔散文墓碑〕：
 //   空目标先拒 · 预问那台后端认不认 · 转 `capture-pane` · 取 `screen`。那四件事今天只在界面一处
@@ -581,86 +546,11 @@ fn no_channel_message(action: &str, origin: &str, target: &str, why: &str) -> St
 //   `K-R112` 买到的三样（本机也能预览 · 五档分开 · 精确形态只剩后端一份）一样没丢：本机仍经 `<local>` 那条长连接、
 //   五档在 TS 逐码分开、`=name:` 仍只住后端 `control/capture_pane.rs::capture_on`。
 
-/// F79(#38)：杀死远端 tmux 会话。**破坏性操作**——前端二次确认后才调。
-/// 杀完 tab 变灰由 #60-A 的 tmux 存活对账兜（本命令不主动 archive，守 §24）。
-///
-/// # ★★ `K-R72`（09-12）：**只剩后端这一条路**（`C7` 的过渡期 SSH 回落已删）
-///
-/// `F04b` 把主路切到后端时留了一条「monitor 自己拼一条 SSH 串杀会话」的过渡期回落
-/// （`C7`）。`K-R54` 的逐处裁定表第 2 处判它**留后端、删回落**，理由是实的：
-/// backend 那条先 `admit_destructive` 拿 `#{session_id}` **句柄**再杀，而那条 SSH 串杀的是
-/// `=name:`（**名字**）—— 破坏性动作对名字下手就把 TOCTOU 窗口留着。
-///
-/// ⚠ **代价如实写**：远端后端通道不在时，杀会话从「换一条路悄悄做掉」变成**明确失败**。
-/// 它会被 `src/account-restart.ts` 原样弹成 `level: "error"` 的「重启已中止」，
-/// 所以这一句必须说得出真实原因与下一步，出口是 [`no_channel_message`]。
-///
-/// ⚠ **三态分流仍在，而且今天三条都 `return`**：`Refused` 是**门做的决定**
-/// （`wrong_owner` / `too_many_windows`），`NoChannel` 是**通道不在**。
-/// 先前那条回落最危险的形状正是把 `Refused` 洗成另一条路的成功；今天连那条路都没有了，
-/// 但两个读数仍然不许合并 —— 由 `tmux_backend_gate_guard` 那条同名判据钉着。
-#[tauri::command]
-pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), String> {
-    // Gate 1 仍在**本地就地**判（同 `tmux_send_keys`）。
-    gate1_reject_empty(&target)?;
-    match crate::backend::control::backend_kill::backend_kill(&origin, &target).await {
-        crate::backend::control::backend_route::Routed::Done => Ok(()),
-        crate::backend::control::backend_route::Routed::Refused(why) => Err(why),
-        crate::backend::control::backend_route::Routed::NoChannel(why) => {
-            Err(no_channel_message("杀不了", &origin, &target, &why))
-        }
-    }
-}
-
-/// A5：向远端 tmux 会话发按键（换号重启前在旧号上 send `/compact`、优雅退出的 `Escape`/`/exit`）。
-/// **只发按键、不杀不建。**
-///
-/// # ★★ `K-R72`（09-12）：**只剩后端这一条路**（`C7` 的过渡期 SSH 回落已删）
-///
-/// `F04c` 把主路切到后端时留了一条「monitor 自己拼一条 SSH 串往别人会话里打字」的
-/// 过渡期回落（`C7`）。`K-R54` 的逐处裁定表第 1 处判它**留后端、删回落**：
-/// 那条回落在 `cc-*` 形状名上 `need_sid`/`need_windows` 双 false ⇒ 落退化分支，
-/// 而后端的 `control/gate.rs::admit` 恒先 `probe` 拿 `#{session_id}` 句柄。
-/// `K-R56`（09-11）先把「探了没有」这一维补齐、让两条路等价，本件才删得掉第二条。
-///
-/// `enter` 落在后端的**两个 mode 名**上，不是一个字段：
-/// `true` → 既有的 `send-into` · `false` → `F04c` 新增的 `send-keys-raw`。
-/// **为什么不能是字段**：backend 的 `parse_request` 手工取键、不 deny unknown fields ⇒
-/// 旧版本会**静默忽略**它、照样附 `Enter` ⇒ 把「打断当前回合」变成
-/// 「**提交用户输入框里排队的文本**」。新 mode 名则天然 fail-closed：旧后端回
-/// `invalid_args`，我们拿到明确错误。
-///
-/// ⚠ **代价如实写**（`K-R54` 表第 1 处逐字点的那一条）：远端后端通道不在时，送键从
-/// 「悄悄发出去」变成**明确失败**。受影响的真实动作是换号重启那三处
-/// （`src/account-restart.ts` 里 `/compact` · `Escape` · `/exit`）—— 它们各自把这里的
-/// 错误串原样弹成 toast，所以这一句必须说得出真实原因，出口是 [`no_channel_message`]。
-///
-/// ⚠ **三态分流仍在，而且今天三条都 `return`**：`Refused` 是**门做的决定**，
-/// `NoChannel` 是**通道不在**。压成一句就等于把「你不能往那个会话里打字」与
-/// 「后端没连上」混成一个读数。
-#[tauri::command]
-pub async fn tmux_send_keys(
-    origin: String,
-    target: String,
-    keys: String,
-    enter: Option<bool>,
-) -> Result<(), String> {
-    // 缺省（前端旧调用不传）→ true，与 A5 原行为逐字节等价。
-    let enter = enter.unwrap_or(true);
-    // Gate 1 仍在**本地就地**判：空目标不该先花一次往返（`=:` 会被 tmux 解析成「当前会话」）。
-    gate1_reject_empty(&target)?;
-    match crate::backend::control::backend_send_keys::backend_send_keys(
-        &origin, &target, &keys, enter,
-    )
-    .await
-    {
-        crate::backend::control::backend_route::Routed::Done => Ok(()),
-        crate::backend::control::backend_route::Routed::Refused(why) => Err(why),
-        crate::backend::control::backend_route::Routed::NoChannel(why) => {
-            Err(no_channel_message("送不了按键给", &origin, &target, &why))
-        }
-    }
-}
+// 〔C4e · 第四波 4C〕这里原来住着杀会话与送键两条 Tauri 命令 `kill_remote_tmux` / `tmux_send_keys`〔散文墓碑〕
+//   （F79 / A5；`K-R72` 起只剩后端一条路、三态分流）。两条迁到界面：`src/tmux-control.ts::killSession` /
+//   `sendKeys` 经通道直接说后端的 `kill` / `launch`（`send-into` · `send-keys-raw` 两个 mode 名的理由随之搬过去）。
+//   **它们买到的东西一样没丢**：Gate 1 空目标仍就地拒（TS 那一份）· Gate 2 / 3 仍只在后端 `control/gate.rs` ·
+//   `Refused` 与 `NoChannel` 仍是两句话 · 仍然没有第二条路（界面那一侧结构上没有 SSH）。
 
 /// 本工具建的 tmux 会话名判定：`<X>-cc[-N]` 后缀形（今天产的那种）**或**老的 `cc-` 前缀形，
 /// 且只含 `[A-Za-z0-9_-]`。

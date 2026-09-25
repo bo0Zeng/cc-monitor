@@ -482,3 +482,82 @@ export function withHistoryReads(
     return answer(cmd, (args ?? {}) as Record<string, unknown>);
   };
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔C4e · 第四波 4C〕tmux 控制类（抓屏 · 杀会话 · 送键 · 就地 resume）改走通道之后，判据那一侧的翻译
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 它们从前是四条 Tauri 命令（`capture_remote_pane` / `kill_remote_tmux` / `tmux_send_keys` / `backend_send_into`〔散文墓碑〕），
+// 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `capture-pane` / `kill` / `launch`）⇒ 本节把一发 `chan_call`
+// 译回「哪一问 ＋ 旧形参」交给判据手里那个 `invoke` 替身，再把它的旧回包译成**后端的成品字节**（或通道的失败）。
+// ⚠ 译法逐格照生产：请求体键名是 `src/tmux-control.ts` 发的那几个，成品键名是后端那三个构造器出的那几个
+//   （跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着两侧）。
+// ⚠ `launch` 一个 op 有两个叫法（送键 · 就地 resume），调用方说这份判据里它该译成哪一个（同一份判据里只会出现其中一种）。
+
+/** 旧回包里的失败（`Error` / 字符串）⇒ 那句原话。 */
+function wordsOf(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * 一个「按旧命令名答话」的 `invoke` 替身 ⇒ 生产 `invoke` 该有的样子：tmux 控制类那几发 `chan_call` 译过去再译回来，
+ * 其余一切原样交给它。判据对 `inner` 的断言（`toHaveBeenCalledWith("kill_remote_tmux", …)`）照旧成立。
+ * 旧回包 ⇒ 通道结局：
+ * - `kill_remote_tmux` / `tmux_send_keys`：解析成功 ⇒ 成品（`killed` / `typed` 为真）；抛 ⇒ 对端说「不行」（原话原样带上）。
+ * - `backend_send_into`：`{typed:true}` ⇒ 成品；`mayFallBack:true` ⇒ 「那台没有控制通道」（能证明没发出去）；
+ *   其余 `typed:false` ⇒ 对端说「键入没确认」（原因原样）；抛 ⇒ 原样抛（那一跳自己坏了 ⇒ 界面拿不准，按不回落处置）。
+ * - `capture_remote_pane`：字符串 ⇒ 成品；抛 ⇒ 对端说「抓屏失败」（原话原样）。
+ */
+export function tmuxControlShim(
+  inner: (cmd: string, args?: unknown) => unknown,
+  launchAs: "tmux_send_keys" | "backend_send_into",
+): (cmd: string, args?: unknown) => Promise<unknown> {
+  return async (cmd, args) => {
+    if (cmd !== "chan_call") return inner(cmd, args);
+    const a = args as ChanCallArgs;
+    if (a.op !== "kill" && a.op !== "launch" && a.op !== "capture-pane") return inner(cmd, args);
+    const body = chanArgsJson(a) as Record<string, unknown>;
+    const name = body.name;
+    if (a.op === "kill") {
+      try {
+        await inner("kill_remote_tmux", { origin: a.origin, target: name });
+      } catch (e) {
+        throw refusedReply("kill_failed", wordsOf(e));
+      }
+      return chanReply({ session: name, killed: true });
+    }
+    if (a.op === "capture-pane") {
+      let screen: unknown;
+      try {
+        screen = await inner("capture_remote_pane", { origin: a.origin, target: name });
+      } catch (e) {
+        throw refusedReply("capture_failed", wordsOf(e));
+      }
+      return chanReply({ name, screen });
+    }
+    if (launchAs === "tmux_send_keys") {
+      try {
+        await inner("tmux_send_keys", { origin: a.origin, target: name, keys: body.payload, enter: body.mode === "send-into" });
+      } catch (e) {
+        throw refusedReply("typed_unconfirmed", wordsOf(e));
+      }
+      return chanReply({ session: name, created: false, typed: true });
+    }
+    const res = (await inner("backend_send_into", { req: { origin: a.origin, name, payload: body.payload } })) as
+      | { typed?: unknown; mayFallBack?: unknown; reason?: unknown }
+      | undefined;
+    if (res?.typed === true) return chanReply({ session: name, created: false, typed: true });
+    if (res?.mayFallBack === true) throw NO_CHANNEL;
+    throw refusedReply("typed_unconfirmed", String(res?.reason ?? ""));
+  };
+}
+
+/** 一串 `invoke` 调用里「杀会话」那几发 `chan_call`（op `kill`）⇒ 旧形参 `["kill_remote_tmux", {origin, target}]`（判据按旧叫法断言）。 */
+export function killCallsOf(calls: ReadonlyArray<readonly unknown[]>): [string, { origin: string; target: unknown }][] {
+  return calls
+    .filter(([cmd, args]) => isChanCall(String(cmd), args, "kill"))
+    .map(([, args]) => {
+      const a = args as ChanCallArgs;
+      return ["kill_remote_tmux", { origin: a.origin, target: (chanArgsJson(a) as Record<string, unknown>).name }];
+    });
+}

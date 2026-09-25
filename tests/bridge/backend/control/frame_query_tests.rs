@@ -279,7 +279,36 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          把五个拒绝码说成人话 —— 那一份解释搬到唯一的消费者那一侧 `src/tmux-control.ts::capturePane`\
          （预览窗 `views/pane-preview.ts` 调它），命令与发送端（`capture_via_backend`〔散文墓碑〕）删了",
     ),
+    // 〔C4e · 第四波 4C〕`tmux.manage` 其余两格（杀会话 · 送键）＋ `launch.send-into`（就地 resume）：
+    //   三条 Tauri 命令（`kill_remote_tmux` / `tmux_send_keys` / `backend_send_into`〔散文墓碑〕）同拍迁完 ——
+    //   `launch` 这条帧命令当年有两个 monitor 发送端（送键 · 就地 resume），只迁一个的话本表就得为过渡态开一格。
+    (
+        "kill",
+        "后端应答就是成品 `{session, killed}`（身份门 ＋ 窗口门在后端先过、对句柄下手）；monitor 那条命令只在拒空目标、\
+         转、核 `killed`、按三态说人话 —— 那一份解释搬到 `src/tmux-control.ts::killSession`，命令与发送端\
+         （`backend_kill.rs`）删了",
+    ),
+    (
+        "launch",
+        "界面只说它的 `send-into` / `send-keys-raw` 两个 mode（送键 · 就地 resume；`create-or-attach` 归 ccm）；\
+         后端应答就是成品 `{session, created, typed}`。monitor 那两个发送端（`backend_send_keys.rs` / `backend_launch.rs`）\
+         只在拒空目标 / 空载荷、把 `enter` 翻成 mode 名、核 `typed`、按三态说人话、给就地 resume 判「能不能回落」—— \
+         那一份搬到 `src/tmux-control.ts::sendKeys` / `sendInto`（F14 那条规则住 `ipc/chan-caller.ts::provablyNotSent`，\
+         与 Rust `route_call_error` 跨语言金样对拍）",
+    ),
 ];
+
+/// 〔C4e · 第四波 4C〕monitor 生产段里**拼写与某条已迁帧命令相同、却不是发送点**的字面量 —— `(拼写, 处数, 为什么)`。
+///
+/// 下面那条判据按字面量 `"<op>"` 数 monitor 里还剩几个发送点；`kill` 这个词在 monitor 里另有一处正当的用法
+/// （起系统的 `kill` 进程），它与帧命令 `kill` 同拼写、不同义。两向相等：多一处 = 又长出一个发送点（或又一处同拼写，
+/// 要来这里表态）；少一处 = 那一处用法没了，这一行馊了。
+const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[(
+    "kill",
+    1,
+    "`local_backend_host.rs::signal_term` 起系统的 `kill` 进程（`kill -TERM <pid>`，Linux 上给一个进程发 SIGTERM）—— \
+     与后端的帧命令 `kill`（结束 tmux 会话）同一个拼写，不是发送点",
+)];
 
 /// 〔C4c · 第四波 4B〕**monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
 ///
@@ -456,6 +485,14 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
         "从后端 `inbound.rs` 只数到 {} 条帧命令 —— 抽取坏了",
         registered.len()
     );
+    for (op, n, why) in SAME_SPELLING_NOT_A_SEND {
+        assert!(!why.trim().is_empty(), "`{op}` 没写理由");
+        assert!(*n > 0, "`{op}` 登记了 0 处同拼写 —— 那就不该在这张表里");
+        assert!(
+            CHANNELED_ELSEWHERE.iter().any(|(c, _)| c == op),
+            "`{op}` 登记成「同拼写、不是发送点」，却不是已迁到通道的帧命令"
+        );
+    }
     for (op, _, why) in ASKED_BY_MONITOR_ITSELF {
         assert!(!why.trim().is_empty(), "`{op}` 没写理由");
         assert!(
@@ -478,9 +515,14 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             .filter(|(c, _, _)| c == op)
             .map(|(_, n, _)| *n)
             .sum();
+        let homonyms: usize = SAME_SPELLING_NOT_A_SEND
+            .iter()
+            .filter(|(c, _, _)| c == op)
+            .map(|(_, n, _)| *n)
+            .sum();
         assert_eq!(
             monitor_literal_count(op),
-            on_frame + itself,
+            on_frame + itself + homonyms,
             "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
         );
     }

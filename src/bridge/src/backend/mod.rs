@@ -154,7 +154,7 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "control",
         "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\
          backend 流通道的 wire 客户端 —— `C1`「一份代码两种承载」里「本机进程」那一半的传输层，\
-         被 `backend_kill` / `backend_launch` / `backend_send_keys` 共同依赖。\
+         被 `frame_query` / `cc_bus` / `backend_control` 与通道宿主依赖（〔C4e〕杀会话 · 就地 resume · 送键三个发送端迁到界面删了）。\
          它此前住 `src/` 顶层，靠那张「表外但归这一半」的登记表（`EXTRA_BACKEND_FILES`，已随本拍整张删除）\
          「表外但归这一半」的登记**纳入管辖**；那张表的头注逐字写着理由是\
          「挪文件半径远大于收益 …… **先把它纳入管辖，挪不挪是另一件事**\
@@ -172,11 +172,6 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "`env 前缀 → cd → argv → wrap` 载荷编译器。P4b 从共享 crate 搬回归属地",
     ),
     (
-        "control/backend_launch.rs",
-        "control",
-        "U8a-2c-1：backend `launch` 的发送端（`send-into` 那半边；attach 留在用户终端）",
-    ),
-    (
         "control/frame_query.rs",
         "control",
         "〔`C1` · 2026-09-24〕**只读查询走已有长连接的发送端**（`history-*` / `accounts-*` 八条帧命令）。\
@@ -185,38 +180,12 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
          住 `observe/` 会凭空造出 `observe → control` 的边（它要 `inbound_client` 与 `backend_route`）",
     ),
     (
-        "control/command_args.rs",
-        "control",
-        "🔴 〔`设计/05 §8.1` 步 3.5 · 2026-09-21〕**从 `control/inbound_client.rs` 剥出来的业务契约** —— \
-         `launch` 的**参数构造器**（`launch_args` / `LaunchExtras`；〔C4e〕`capture-pane` 那个随抓屏迁到界面删了）。\
-         剥的理由不是整理：`设计/05 §2` 的 `C1`（零业务语义）在 `inbound_client.rs` 上咬到 \
-         `sid` 与 `agent` 两个词，**两处都在这三样身上**（`ccm_sid` 参数 · `extras.agent` 字段）。\
-         「一条命令要带哪几个业务字段」是**载荷的内容**，而 `inbound_client.rs` 只该管载荷的搬运 —— \
-         它是 `§8` 步 3 点名要圈进通信层的传输面之一。\
-         ⇒ 剥完现打：那一份从 `C1 · X4`（13/2）变成 `X4` 独咬（14/1）。\
-         ⚠ 它自己**不是**通信层成员，也不该是：这里就是那些业务词的家。",
-    ),
-    (
         "control/backend_route.rs",
         "control",
-        "F04c：「这条命令能不能回落」的**唯一**判定（`kill` 与 `send-keys` 共用）。\
+        "F04c：「这条命令能不能回落」的**唯一**判定（Rust 侧；〔C4e〕`kill` / `send-keys` 迁到界面后，\
+         界面那一侧同一条规则住 `src/ipc/chan-caller.ts::provablyNotSent`，跨语言金样钉两份）。\
          分界线是「能不能**证明**这条命令根本没发出去」，不是「成功/失败」。\
          两份实现必漂，而漂开的后果是把一次**被门拒绝**洗成另一条路的成功",
-    ),
-    (
-        "control/backend_send_keys.rs",
-        "control",
-        "F04c：backend `send-keys` 的发送端。★ `enter` 落在**两个 mode 名**上而不是一个字段 —— \
-         `parse_request` 不 deny unknown fields ⇒ 旧后端会静默忽略字段照样附 `Enter`，\
-         把「打断当前回合」变成「提交用户输入框里排队的文本」",
-    ),
-    (
-        "control/backend_kill.rs",
-        "control",
-        "F04b：backend `kill` 的发送端（C6 那条顺序的最后一步）。★ 结局是**三态**而不是两态 —— \
-         分界线是「能不能证明这条命令根本没发出去」：能证明才许回落到过渡期的 SSH 路（C7），\
-         否则一律不回落。把 `wrong_owner`/`too_many_windows` 当成「backend 不可用」而回落，\
-         等于把一次**被门拒绝**洗成另一条路的成功",
     ),
     (
         "control/local_backend.rs",

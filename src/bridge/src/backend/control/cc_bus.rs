@@ -1392,7 +1392,7 @@ pub async fn cc_bus_broadcast(origin: String, text: String) -> Result<String, St
 /// 真杀了会话 · 身份对不上**只摘了陈旧登记而会话没动** · 两样都没发生。
 ///
 /// ⚠ 第四档是**应答形状不认识**：那时我们**不知道它动没动**，所以不许说成「没杀成」——
-/// 同 `backend_kill::killed_from_reply` 的那条理由（破坏性动作上把未知说成否定，
+/// 同 `backend_kill::killed_from_reply`〔散文墓碑〕（〔C4e〕今天那条理由住界面 `src/tmux-control.ts::decodeKilled`）的那条理由（破坏性动作上把未知说成否定，
 /// 下一步就是在未知状态上再做一次）。
 pub(crate) fn describe_kill_reply(id: &str, reply: Option<&serde_json::Value>) -> String {
     let get = |k: &str| reply.and_then(|r| r.get(k)).and_then(|v| v.as_bool());

@@ -204,11 +204,10 @@ fn ccm_tmux_name_whitelist() {
 /// `build_send_keys_remote_cmd` 不在了 —— 但 Gate 1 **不是那两条回落的东西**：  〔散文墓碑〕
 /// 它守的是「任何拿 target 去做事的入口，都得先把空目标拒掉」。⇒ 本条改打
 /// **今天三条路各自真正的入口**，一条都没少：
-/// ① 谓词本体 [`gate1_reject_empty`]（`exact_target` 与两条后端命令共用的那一份）；
-/// ② `capture-pane` 构造器（经 [`exact_target`]，今天唯一还在拼 shell 串的那条）；
-/// ③④ 两条后端命令的**生产入口本体** —— 真调 [`tmux_send_keys`] / [`kill_remote_tmux`]，
-///    断言它在**任何 IO 之前**就地拒。那一句同时是「本地校验先于一切往返」这条性质的读数：
-///    它报的若是「后端通道不在」，就说明 Gate 1 跑到 IO 后面去了。
+/// ① 谓词本体 [`gate1_reject_empty`]（今天只剩 [`exact_target`] 这个跨轨锚点在用）；
+/// ②③④〔C4e · 第四波 4C〕三条路（抓屏 · 送键 · 杀会话）的生产入口原本也在这里真跑一遍、断言在任何 IO 之前就地拒；
+///    三条整条迁到界面之后（`src/tmux-control.ts`），那一格随入口搬过去：`tests/tmux-control.vitest.ts`
+///    「空目标就地拒，一个字节都不发」三个入口各一条（Tauri 命令 `tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕删了）。
 ///
 /// 含 glob/元字符但非空的 target **不**在这一层被拒（`shell_quote` 已安全引号化，
 /// 字符集收紧是 TS 侧 `isValidNewTmuxName`/`isValidTmuxName` 的职责，
@@ -224,38 +223,6 @@ fn gate1_rejects_only_empty_target() {
         gate1_reject_empty("cc-a b").is_ok(),
         "非空 target 不该被 Gate 1 拒绝（谓词本体）"
     );
-    // ②③ 两条后端命令：**真跑生产入口**〔`K-R112` 09-13：抓屏曾从「构造器那一格」挪进这一段；
-    //     〔C4e〕抓屏整条迁到界面，这一段剩送键与杀会话两条〕。
-    // ⚠ 不必登记入方向通道 —— Gate 1 在 `backend_*` 之前，根本走不到那一步。
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .expect("建不出 runtime —— 本条无从判断，别读成绿");
-    let sk = rt
-        .block_on(tmux_send_keys(
-            "no-such-origin".to_string(),
-            String::new(),
-            "/exit".to_string(),
-            Some(true),
-        ))
-        .expect_err("空 target 的 send-keys 不该报成功");
-    let kill = rt
-        .block_on(kill_remote_tmux(
-            "no-such-origin".to_string(),
-            String::new(),
-        ))
-        .expect_err("空 target 的 kill 不该报成功");
-    // 〔C4e · 第四波 4C〕抓屏那一格搬去界面：`src/tmux-control.ts::capturePane` 空目标就地拒、一个字节都不发
-    //   （`tests/tmux-control.vitest.ts`「空目标」那一条）。
-    for (label, err) in [("send-keys", &sk), ("kill", &kill)] {
-        assert!(
-            err.contains("非法 tmux 目标（空）"),
-            "{label} 的空 target 没被 Gate 1 就地拒。实得：{err}"
-        );
-        assert!(
-            !err.contains("后端通道不在"),
-            "{label} 走到后端那一步才失败 —— Gate 1 不再先于一切 IO 了。实得：{err}"
-        );
-    }
     // 非空、含元字符/glob 的 target 不被 Gate 1 拒（谓词本体那一格已在 ① 里断过；
     // 这里补一批真实形状 —— 收紧字符集是**另一层**的职责，不许在 Gate 1 顺手做）。
     for safe_nonempty in ["cc-a b", "cc-a;rm", "cc-a$x", "si*", "a'b"] {
@@ -677,185 +644,12 @@ fn the_monitor_has_no_capture_path_any_more() {
     );
 }
 
-/// ★ **P3 刀 2：本机 kill 不许回落到 SSH**〔08-11〕。
-///
-/// # ⚠ `K-R72`（09-12）：性质**变强了**，判法跟着换 —— 不是这一条死了
-///
-/// 它原来钉的是「那条 SSH 回落**之前**有本机的早退」（比的是两个位置的先后）。
-/// 今天那条 SSH 回落整个没了 ⇒ **「本机不许回落到 SSH」从一条纪律变成一条结构事实**。
-/// 位置判据在一个不存在的东西上无从谈起，但它买的那两件事一件都不许丢：
-/// ① **盘上没有第二条路** —— 生产段里再出现 `connect_and_exec_cmd` 就红（**回潮闸**）；
-/// ② **说的是真实原因** —— 对 `<local>` 报的不许是「未找到远端配置」那句与真实原因
-///    毫无关系的话。**错的诊断比没有诊断更贵。**
-///
-/// ⚠ 射程：本条**不证明**本机 kill 真的杀得掉（那要后端在、且有一个真 tmux 会话）。
-/// 后者今天没有 UI 入口（见 `K-R56#§0j`），所以也没有实测。
-#[test]
-fn the_local_kill_never_falls_back_to_ssh() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/tmux.rs"
-    ));
-    let at =
-        guard_core::find_pinned(&prod, "pub async fn kill_remote_tmux(").expect("kill 入口不在了");
-    let body: String = prod[at..]
-        .lines()
-        .skip(1)
-        .take_while(|l| *l != "\u{7d}")
-        .collect::<Vec<_>>()
-        .join("\n");
-    // 抽取器自检：抽空了下面那条就恒绿。
-    assert!(
-        body.contains("backend_kill::backend_kill("),
-        "抽到的 `kill_remote_tmux` 函数体里连主路都没有 —— 抽取器坏了，本条此刻空转。\n\
-             实得 {} 字节",
-        body.len()
-    );
-    // ① 回潮闸：这条命令里**不许再有** SSH 那条路。
-    assert!(
-        !body.contains("connect_and_exec_cmd"),
-        "`kill_remote_tmux` 里又出现了 `connect_and_exec_cmd` —— 那条一次性 SSH 回落回潮了。\n\
-             `K-R54` 表第 2 处判它删：backend 那条先 `admit_destructive` 拿 `#{{session_id}}`\n\
-             **句柄**再杀，而 SSH 那条杀的是 `=name:`（**名字**）—— 破坏性动作对名字下手\n\
-             就把 TOCTOU 窗口留着。要恢复它先回 `K-R54` 重新裁定。"
-    );
-    // ② 真实原因：本机那句话不许说成「未找到远端配置」。
-    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
-    assert!(
-        crate::backend::control::inbound_client::client_for(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN
-        )
-        .is_none(),
-        "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面那句会空转"
-    );
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .expect("建不出 runtime —— 本条无从判断，别读成绿");
-    let err = rt
-        .block_on(kill_remote_tmux(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string(),
-            "cc-abc12345".to_string(),
-        ))
-        .expect_err("本机后端通道不在，这一趟不该报成功");
-    assert!(
-        !err.contains("未找到远端配置"),
-        "本机 kill 报的是「未找到远端配置」—— 那是 SSH 回落那条路的话，\n\
-             而真实原因是本机后端通道不在。实得：{err}"
-    );
-    assert!(
-        err.contains("本机后端通道不在"),
-        "本机那条早退在，但它没说出真实原因。实得：{err}"
-    );
-}
-
-/// ★★ **`send-keys` 这条路上，本机也不许悄悄回落到一次性 SSH**（`K-R56`，09-11 买到）。
-///
-/// # ⚠ `K-R72`（09-12）：性质**变强了**，判法跟着换 —— 不是这一条死了
-///
-/// `K-R56` 立它时，`tmux_send_keys` 有一条 SSH 回落，而 `<local>` 会掉进
-/// `load_remote_config_by_label("<local>")`，报 **「未找到远端配置: `"<local>"`」** ——
-/// 一句与真实原因（本机后端通道不在）毫无关系的话。**错的诊断比没有诊断更贵。**
-/// 今天那条回落整个删了 ⇒ 「本机不许回落到 SSH」从一条纪律变成一条**结构事实**。
-/// 本条因此加一格、并把原来那格保住：
-/// ① **回潮闸**（新）：生产段里再出现 `connect_and_exec_cmd` 就红；
-/// ② **说的是真实原因**（原有那格，一个字没改判法）：真调生产入口 [`tmux_send_keys`]，
-///    看它到底报了哪句话；
-/// ③ **本机与远端的话不许一样**（新）：两条路的下一步不同 —— 一个是「先让本机后端跑起来」，
-///    另一个是「先让那台机器上的后端连上」。压成一句就等于把两个处置合并成一个读数。
-///
-/// # ⚠ 射程，逐条说清（`brief` 12：报一个性质就要说清尺子）
-///
-/// - 钉的是「它报的是真实原因、而且盘上没有第二条路」。
-///   **不证明**本机 send-keys 真的送得到 —— 那要后端在 + 一个真 tmux 会话，
-///   而真 tmux 本区口径禁（`K-R56#§0d`）。
-/// - 🔴 **②③ 比的是 `origin`，不是 `target` 会话名**：判据逐字是
-///   `origin == LOCAL_ORIGIN`（**逐字节相等**）。⇒
-///   · **拦得住**：唯一那个前端/后端约定的哨兵串（`inbound_client::LOCAL_ORIGIN`，
-///     由 `inbound_client_tests.rs::the_local_origin_is_the_same_string_on_both_sides`
-///     钉着它与前端 `backend-policy.ts` 那份逐字相同）。
-///   · **拦不住**：一台 label 起成 `localhost` / `127.0.0.1` / 本机主机名的**远端**
-///     （即便它就是这台机器）—— 走的是远端那句话。⚠ 那**是对的**：它确实是一条远端传输。
-///   · **也拦不住**：大小写 / 前后空白不同的写法（`<LOCAL>`、`" <local>"`）——
-///     但那些今天进不来，`LOCAL_ORIGIN` 是常量、不是用户输入。
-///     真正的撞名口子是 `LOCAL_ORIGIN` 自己头注逐字承认的那条：
-///     「用户理论上可以把某台远端机器的 label 起成这个名字……**不做防御**」。
-///   ⚠ **09-11 自查回打（`K-R56`）**：这一段第一版点的是一个**编出来的**判据名（盘上零处），
-///     被 `structural_scan.rs` 那条「散文点名的名字必须在代码里」的机检当场逮住。
-///     🔴 那个假名字与两趟判定行逐字抄在 `tests/evidence/K-R56-deathvalue.md`，
-///     刻意不抄在这里：抄回来就又是一处「散文点名一个不存在的名字」。
-#[test]
-fn the_local_send_keys_never_falls_back_to_ssh() {
-    // ① 回潮闸：这条命令里**不许再有** SSH 那条路。
-    let prod = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/tmux.rs"
-    ));
-    let at = guard_core::find_pinned(&prod, "pub async fn tmux_send_keys(")
-        .expect("send-keys 入口不在了");
-    let body: String = prod[at..]
-        .lines()
-        .skip(1)
-        .take_while(|l| *l != "\u{7d}")
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        body.contains("backend_send_keys::backend_send_keys("),
-        "抽到的 `tmux_send_keys` 函数体里连主路都没有 —— 抽取器坏了，本条此刻空转。\n\
-             实得 {} 字节",
-        body.len()
-    );
-    assert!(
-        !body.contains("connect_and_exec_cmd"),
-        "`tmux_send_keys` 里又出现了 `connect_and_exec_cmd` —— 那条一次性 SSH 回落回潮了。\n\
-             `K-R54` 表第 1 处判它删（`K-R56` 先把两条路的「探了没有」补齐才删得掉）。\n\
-             要恢复它先回 `K-R54` 重新裁定。"
-    );
-
-    // ②③ 行为：真调生产入口，看它报了哪句话。
-    // 登记表是**进程内全局**的 ⇒ 与别的会在 `<local>` 键上登记通道的用例串起来跑。
-    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
-    // 前提自检：本条靠「`<local>` 上没有通道」才走得到 `NoChannel` 那一臂。
-    assert!(
-        crate::backend::control::inbound_client::client_for(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN
-        )
-        .is_none(),
-        "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面那句会空转"
-    );
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .build()
-        .expect("建不出 runtime —— 本条无从判断，别读成绿");
-    let send = |origin: &str| {
-        rt.block_on(tmux_send_keys(
-            origin.to_string(),
-            "cc-abc12345".to_string(),
-            "/compact".to_string(),
-            Some(true),
-        ))
-        .expect_err("后端通道不在，这一趟不该报成功")
-    };
-    let local = send(crate::backend::control::inbound_client::LOCAL_ORIGIN);
-    assert!(
-        !local.contains("未找到远端配置"),
-        "本机 send-keys 报的是「未找到远端配置」—— 那是 SSH 回落那条路的话，\n\
-             而真实原因是本机后端通道不在。**错的诊断比没有诊断更贵。**\n\
-             实得：{local}"
-    );
-    assert!(
-        local.contains("本机后端通道不在"),
-        "本机那条早退在，但它没说出真实原因。实得：{local}"
-    );
-    // ③ 远端那条：话必须不一样，而且也说得出下一步。
-    let remote = send("some-remote-label");
-    assert_ne!(
-        local, remote,
-        "本机与远端的「通道不在」共用了同一句话 —— 处置相同没问题，\n\
-             **下一步不同却说同一句**就等于把两件事压成一个读数（本机是「本机后端没起来」，\n\
-             远端是「那台机器上的后端没连上」）。"
-    );
-    assert!(
-        remote.contains("some-remote-label") && !remote.contains("本机"),
-        "远端那句话没点出是哪台机器、或者错用了本机那半。实得：{remote}"
-    );
-}
+// 〔C4e · 第四波 4C〕这里原来住着「本机杀会话 / 送键不许回落到 SSH」两条（`the_local_kill_never_falls_back_to_ssh`〔散文墓碑〕 /
+//   `the_local_send_keys_never_falls_back_to_ssh`〔散文墓碑〕，P3 刀 2 · K-R56 · K-R72）：回潮闸（生产段里不许再有
+//   `connect_and_exec_cmd`）＋「说真实原因」（对 `<local>` 不报「未找到远端配置」、本机与远端两句话不同）。
+//   两条命令整条迁到界面之后：
+//   ① 回潮闸 ⇒ `tmux_backend_gate_guard` 那两条改钉「monitor 生产段里一处破坏性 tmux 动词都没有」（界面那一侧结构上没有 SSH）；
+//   ② 说真实原因 ⇒ `tests/tmux-control.vitest.ts`「通道不在：本机与远端两句话不同」（结束会话 · 发按键各一遍）。
 
 /// F01 回归：tmux `-t` 目标**必须**精确匹配（`'=<名>:'`），绝不留裸目标。
 ///

@@ -67,7 +67,7 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
 )];
 
 /// ★★ **本轮没有逐条量过的存量**（`P4d-Y5` 08-12 立表 19 条；`P4a` 08-12 还掉 3 条 ⇒ 16；
-/// `K-R56` 09-11 还掉 1 条 —— `tmux.rs::tmux_send_keys`，它是 `K-R54` 逐处裁定表第 1 处
+/// `K-R56` 09-11 还掉 1 条 —— `tmux_send_keys`〔散文墓碑〕（〔C4e〕这条命令整个迁到界面了），它是 `K-R54` 逐处裁定表第 1 处
 /// 点名的那一条「`kill` 有的『本机不许回落』保护，`send-keys` 没有」⇒ **15**）。
 ///
 /// # 为什么它不是 [`REMOTE_ONLY`] 的一部分
@@ -110,9 +110,9 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
     //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
     ("backend/control/tmux.rs", "list_remote_tmux"),
-    // `K-R56`（09-11）：`tmux.rs::tmux_send_keys` 从这里**还掉了** —— 它现在在
+    // `K-R56`（09-11）：`tmux_send_keys`〔散文墓碑〕从这里**还掉了** —— 它当时在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
-    // 行为那一半由 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh` 钉着。
+    // 〔C4e · 第四波 4C〕那条命令整个迁到界面（`src/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。
 ];
 
 #[cfg(test)]

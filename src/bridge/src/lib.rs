@@ -1325,7 +1325,6 @@ pub fn run() {
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
-            backend::control::backend_launch::backend_send_into,
             backend::control::launch_wire::render_ccm_launch,
             backend::control::launch_wire::render_launch_payload,
             hooks_diag::diagnose_local_cc_bus_hooks,
@@ -1429,8 +1428,6 @@ pub fn run() {
             pubkey::push_public_key,
             backend::control::tmux::list_remote_tmux,
             backend::control::tmux::list_local_tmux,
-            backend::control::tmux::kill_remote_tmux,
-            backend::control::tmux::tmux_send_keys,
             ccm_probe::probe_ccm_cli,
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
