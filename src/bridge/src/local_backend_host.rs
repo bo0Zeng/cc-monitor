@@ -1549,6 +1549,12 @@ pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
     if let Some(p) = crate::creds_store::resolve_path() {
         envs.push(("CCM_APIKEY_CREDENTIALS".into(), p.display().to_string()));
     }
+    // 〔C4d · 第四波 4B〕历史注解的读写者换成本机常驻后端（主会话 09-25 裁：文件留在原处、同一路径）——
+    //   同上一格的理由：由知道那份文件在哪的那一侧把路径说出来（值就是 monitor 从前读写它的那一个函数算的）。
+    //   拿不到数据目录时这一格缺席 ⇒ 后端那一侧明说「不知道注解文件在哪」，不猜。
+    if let Some(p) = crate::history::metadata_path() {
+        envs.push(("CCM_HISTORY_METADATA".into(), p.display().to_string()));
+    }
     envs
 }
 

@@ -209,6 +209,12 @@ mod tests {
              `inbound.rs` 递进来，本模块不直呼它（第四层 ④）。〔C4d〕跑远端那一跳与可达表搬去了 `remote_ask`",
         ),
         (
+            "history_annotations",
+            "〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / \
+             `history-last-accounts`。它归 backend-core 是因为主会话 09-25 裁「读写者换成本机常驻后端」；写的只有那一份 \
+             注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
+        (
             "remote_ask",
             "〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
              帧面 `remote-reach`。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
@@ -669,6 +675,14 @@ mod tests {
              `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有 `inbound.rs` 的 \
              `assets-catalog` / `assets-catalog-merge`（＋ 派生的 CLI 面）",
         ),
+        (
+            "history_annotations.rs",
+            "〔C4d · 第四波 4B〕**历史注解**那一份文件（星标 / 改名 / 隐藏 / 上次账号；就是 monitor 从前读写的 \
+             `<monitor 数据目录>/history-metadata.json`，路径由 monitor 起本机后端时交 `CCM_HISTORY_METADATA`）。主会话 09-25 裁 \
+             「读写者换成本机常驻后端、文件留在原处」：它是界面的注解、只有我们读写 ⇒ 后端**自己的**状态，不是用户数据\
+             （会话记录本身一个字节不碰）。读不懂就拒写 → 只改那一条 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建那一层目录；\
+             失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `history-annotate` / `history-forget`（＋ 派生的 CLI 面）",
+        ),
     ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
@@ -695,7 +709,7 @@ mod tests {
     const OWN_STATE_DOORS: &[(&str, &str)] = &[(
         "inbound.rs",
         "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
-         〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）。\
+         〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）。\
          前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
     )];
 
@@ -708,6 +722,8 @@ mod tests {
         // 〔AS2〕三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
         // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许 `inbound.rs` 碰。
         ("asset_catalog.rs", "asset_catalog::answer_"),
+        // 〔C4d〕两条写口同一个前缀（`answer_annotate` · `answer_forget`）⇒ 针取前缀；读口 `last_accounts` / `load` 不在针上。
+        ("history_annotations.rs", "history_annotations::answer_"),
     ];
 
     fn is_own_state(rel: &str) -> bool {

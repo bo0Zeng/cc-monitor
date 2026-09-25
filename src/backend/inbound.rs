@@ -122,8 +122,12 @@ pub const COMMANDS: &[&str] = &[
     "files-stat",
     "files-write-text",
     "footprint-probe",
+    // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）的读写者换成本机常驻后端（第四层；文件原地不动）。
+    "history-annotate",
     "history-find",
+    "history-forget",
     "history-index",
+    "history-last-accounts",
     "history-projects",
     "history-read",
     // 〔U4b · 第四波〕这条会话的记录还在不在（resume 一跳先问，`设计/01 §6.2` 最后一条）。
@@ -950,6 +954,64 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
+        }),
+    },
+    // 〔C4d · 第四波 4B〕**历史注解**（星标 / 改名 / 隐藏 / 上次用哪个号起）的读写者换成本机常驻后端 ——
+    //   主会话 09-25 裁「文件留在原处、同一路径，不迁移、一条不丢」：路径由 monitor 起本机后端时显式交（`CCM_HISTORY_METADATA`），
+    //   写是第四层（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
+    CommandSpec {
+        name: "history-annotate",
+        doc_anchor: Some("#### `history-annotate`"),
+        codes: &[
+            "annotations_unreadable",
+            "bad_args",
+            "io_failed",
+            "no_annotations",
+        ],
+        fields: &[
+            "customTitle",
+            "entry",
+            "hidden",
+            "lastAccount",
+            "patch",
+            "sid",
+            "starred",
+            "updatedAt",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::history_annotations::answer_annotate(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-forget",
+        doc_anchor: Some("#### `history-forget`"),
+        codes: &[
+            "annotations_unreadable",
+            "bad_args",
+            "io_failed",
+            "no_annotations",
+        ],
+        fields: &["removed", "sid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::history_annotations::answer_forget(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-last-accounts",
+        doc_anchor: Some("#### `history-last-accounts`"),
+        codes: &["annotations_unreadable", "no_annotations"],
+        fields: &["accounts"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::history_annotations::last_accounts(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
