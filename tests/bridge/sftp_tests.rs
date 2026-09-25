@@ -1383,7 +1383,7 @@ fn safe_backend_path_accepts_convention_rejects_suspicious() {
 /// 全文件生产段里推入口的原语（`ccm_entry_shim(`）**恰好一处**、就住 `put_ccm_entry` 里 ——
 /// 装别名块那条（`install_remote_alias_block`）**零命中**（从前它一次做两件事，`71 §13.1` 那个 ① ②）。
 ///
-/// 死值验：把 `deploy_remote_backend` 里那一句 `put_ccm_entry(sftp, &path)` 摘掉 ⇒ 第一条红。
+/// 死值验：把 `deploy_remote_backend` 里那一句 `put_ccm_entry(&fs, &path)` 摘掉 ⇒ 第一条红。
 #[test]
 fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
@@ -1409,4 +1409,170 @@ fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
         .unwrap_or_else(|e| panic!("put_ccm_entry 里推的不是那三行入口（{e}）"));
     guard_core::find_pinned(&prod, "ccm_entry_shim(")
         .unwrap_or_else(|e| panic!("推入口的原语不是恰好一处（{e}）"));
+}
+
+/// 〔SR1b · 2026-09-24〕**界面那一侧对着真后端 ＋ 真 sshd**：部署那几问经 `RemoteFs`（`files` 链路）、
+/// 传输经中继（`sftp_pool::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
+///
+/// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
+/// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
+/// 写不到真 home。买到：部署判定三形（缺 ⇒ 部署 · 装完 ⇒ 跳过 · 截成 0 字节 ⇒ 重部署）· 入口一次写 / 一次不动 ·
+/// 卸载按钮删两份 · 两个写根之外 ⇒ 后端围栏拒、原话带回 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
+async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
+    use futures::StreamExt;
+    let _local = crate::backend::control::inbound_client::local_origin_test_lock();
+    let raw = std::env::var("SR1B_LOOPBACK").expect("没有 SR1B_LOOPBACK —— 这条只该由读数脚本来跑");
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let s = |k: &str| v[k].as_str().unwrap().to_string();
+    let home = s("home");
+    let rhome = s("rhome");
+    let mut child = std::process::Command::new(s("backend"))
+        .env("HOME", &home)
+        .env("TMUX_TMPDIR", &home)
+        .env_remove("TMUX")
+        .env_remove("CCM_LISTEN_PORT")
+        .env_remove("CCM_LISTEN_TOKEN")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("起不了后端");
+    let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
+    std::thread::spawn(move || {
+        crate::backend::control::local_backend::local_stdio_consumer(stdin, stdout)
+    });
+    let backend_path = format!("{rhome}/.cc-monitor/bin/cc-monitor-backend");
+    let cfg = crate::ssh_source::RemoteConfig {
+        host: s("host"),
+        label: "sr1b-loopback".into(),
+        port: v["port"].as_u64().unwrap() as u16,
+        user: s("user"),
+        key_path: Some(s("key_path")),
+        backend_path: backend_path.clone(),
+        host_key_fingerprint: None,
+        addresses: vec![],
+        jump: None,
+    };
+    // ① 部署那几问（判定函数原样，执行经后端）
+    let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
+    assert_eq!(fs.home(), rhome, "起始目录不是 sshd 给的那个");
+    let marker = marker_path(&backend_path);
+    let bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
+    let decide = |id: Option<Vec<u8>>, t| {
+        deploy_decision_at(
+            id.map(|b| String::from_utf8_lossy(&b).trim().to_string())
+                .as_deref(),
+            "sr1b-id",
+            t,
+        )
+    };
+    let t0 = probe_target_binary(&fs, &backend_path).await.unwrap();
+    let d0 = decide(read_marker(&fs, &marker).await.unwrap(), t0);
+    assert!(
+        matches!(d0, DeployAction::Deploy(_)),
+        "落点缺 ⇒ 该部署：{d0:?}"
+    );
+    fs.mkdirs(remote_parent(&backend_path)).await.unwrap();
+    upload_verified(&fs, &backend_path, &bytes, 0o700)
+        .await
+        .expect("上传 ＋ 读回");
+    put_marker(&fs, &marker, b"sr1b-id", 0o600).await.unwrap();
+    let t1 = probe_target_binary(&fs, &backend_path).await.unwrap();
+    let d1 = decide(read_marker(&fs, &marker).await.unwrap(), t1);
+    assert_eq!(d1, DeployAction::Skip, "装完 ⇒ 该跳过");
+    assert_eq!(
+        std::fs::read(&backend_path).unwrap(),
+        bytes,
+        "盘上那份不是送去的字节"
+    );
+    std::fs::write(&backend_path, b"").unwrap();
+    let t2 = probe_target_binary(&fs, &backend_path).await.unwrap();
+    let d2 = decide(read_marker(&fs, &marker).await.unwrap(), t2);
+    assert!(
+        matches!(d2, DeployAction::Deploy(_)),
+        "截成 0 字节 ⇒ 该重部署：{d2:?}"
+    );
+    upload_verified(&fs, &backend_path, &bytes, 0o700)
+        .await
+        .unwrap();
+    // ② 入口：第一次写、第二次不动
+    let e1 = put_ccm_entry(&fs, &backend_path).await.unwrap();
+    let e2 = put_ccm_entry(&fs, &backend_path).await.unwrap();
+    assert!(
+        matches!(e1, crate::fenced_block::Applied::Written { .. }),
+        "{e1:?}"
+    );
+    assert!(
+        matches!(e2, crate::fenced_block::Applied::Unchanged),
+        "{e2:?}"
+    );
+    assert!(std::path::Path::new(&format!("{rhome}/.cc-monitor/bin/ccm")).is_file());
+    // ③ 两个写根之外 ⇒ 后端围栏拒、原话带回、盘上零改动
+    let outside = format!("{rhome}/.cc-monitor/elsewhere/cc-monitor-backend");
+    let e = upload_verified(&fs, &outside, b"x", 0o700)
+        .await
+        .unwrap_err();
+    assert!(
+        e.contains("~/.cc-monitor/bin/"),
+        "拒绝的话没说只许哪两处：{e}"
+    );
+    assert!(!std::path::Path::new(&outside).exists());
+    drop(fs);
+    // ④ 卸载按钮（真命令）：删后端 ＋ 标记两份
+    let msg = uninstall_remote_backend(cfg.clone()).await.expect("卸载");
+    assert!(msg.starts_with("已删除 2 个文件"), "{msg}");
+    assert!(!std::path::Path::new(&backend_path).exists());
+    // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份
+    let origin = crate::origin::Origin(cfg.origin_label());
+    let up = s("up");
+    let r = crate::sftp_pool::transfer_call(
+        cfg.clone(),
+        crate::sftp_pool::TRANSFER_UPLOAD,
+        &serde_json::json!({ "local_path": up }),
+    )
+    .await
+    .expect("开单（上传）");
+    let (id, key) = (r["id"].as_str().unwrap(), r["key"].as_str().unwrap());
+    let last = crate::sftp_pool::watch_ticket(&origin, id)
+        .expect("订阅")
+        .collect::<Vec<_>>()
+        .await
+        .pop()
+        .unwrap();
+    let want = std::fs::read(&up).unwrap();
+    assert_eq!(
+        last.end,
+        Some(crate::sftp_pool::End::Done {
+            bytes: want.len() as u64
+        })
+    );
+    let staged = std::fs::read(format!("{rhome}/.cc-monitor/staging/{key}.part")).unwrap();
+    assert!(staged == want, "暂存件不是本机那份的字节");
+    // ⑥ 下载经中继
+    let dl_local = s("dl_local");
+    let r = crate::sftp_pool::transfer_call(
+        cfg.clone(),
+        crate::sftp_pool::TRANSFER_DOWNLOAD,
+        &serde_json::json!({ "remote_path": s("dl_remote"), "local_path": dl_local }),
+    )
+    .await
+    .expect("开单（下载）");
+    let last = crate::sftp_pool::watch_ticket(&origin, r["id"].as_str().unwrap())
+        .expect("订阅")
+        .collect::<Vec<_>>()
+        .await
+        .pop()
+        .unwrap();
+    assert!(
+        matches!(last.end, Some(crate::sftp_pool::End::Done { .. })),
+        "{last:?}"
+    );
+    assert!(
+        std::fs::read(&dl_local).unwrap() == std::fs::read(s("dl_remote")).unwrap(),
+        "下载落地的字节不对"
+    );
+    let _ = child.kill();
+    let _ = child.wait();
+    println!("SR1B-LOOPBACK-MONITOR ok");
 }
