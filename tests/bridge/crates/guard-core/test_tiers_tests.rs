@@ -1771,6 +1771,12 @@ fn scan_tier_every_root_anchored_path_literal_resolves() {
             }
         }
     }
+    // 抽取器自检：一处都没抽到 ⇒ 抽取器在真文件上瞎了（合成夹具那条管不到真文件的写法漂移）⇒ 下面的零命中不携带信息。
+    assert!(
+        checked > 0,
+        "扫描层的路径抽取器在 {} 份真文件上一处都没抽到 —— 它瞎了，本条此刻在空转",
+        UNIT.len() + SCAN.len() + INTEGRATION.len()
+    );
     assert!(
         !SCAN.is_empty() && bad.is_empty(),
         "扫描层（{} 份；路径字面量在单元 / 扫描 / 集成三层的 Rust 文件里都核，本趟核了 {checked} 处）：\n{}\n\n\
