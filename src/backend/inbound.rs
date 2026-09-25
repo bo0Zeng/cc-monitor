@@ -109,14 +109,22 @@ pub const COMMANDS: &[&str] = &[
     "files-stage-chunk",
     "files-stat",
     "files-write-text",
+    "history-find",
+    "history-index",
     "history-projects",
     "history-read",
     "history-search",
     "history-sessions",
     "history-subagents",
     "history-tail",
+    "history-user-inputs",
     "kill",
     "launch",
+    // 〔SR1a〕链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
+    "link-close",
+    "link-credit",
+    "link-data",
+    "link-open",
     "ping",
     "plugins-marketplaces",
     "resolve",
@@ -154,6 +162,9 @@ where
 {
     tokio::spawn(async move {
         let running: Running = Arc::new(Mutex::new(HashMap::new()));
+        // 〔SR1a〕本连接的链路表：随本读循环一起死 ⇒ monitor 走了，它开的链路一条不留
+        // （`dial::link::Table` 的 `Drop`）。
+        let links = crate::dial::link::Table::new(replies.clone());
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
@@ -204,7 +215,7 @@ where
                 .await;
                 overflowed = false;
             } else {
-                handle_line(&buf, &replies, &running).await;
+                handle_line(&buf, &replies, &running, &links).await;
             }
             buf.clear();
         }
@@ -320,7 +331,12 @@ fn sniff_id(head: &[u8]) -> Option<String> {
 }
 
 /// 处理一行。**任何失败都只回一条错误应答，绝不 panic、绝不结束读循环。**
-async fn handle_line(raw: &[u8], replies: &mpsc::Sender<Frame>, running: &Running) {
+async fn handle_line(
+    raw: &[u8],
+    replies: &mpsc::Sender<Frame>,
+    running: &Running,
+    links: &crate::dial::link::Table,
+) {
     if raw.is_empty() {
         return; // 空行（含 CRLF 的裸 \r 之后）静默跳过
     }
@@ -332,7 +348,7 @@ async fn handle_line(raw: &[u8], replies: &mpsc::Sender<Frame>, running: &Runnin
             return;
         }
     };
-    match dispatch(req, replies, running) {
+    match dispatch(req, replies, running, links) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
@@ -402,8 +418,23 @@ enum Disposition {
 }
 
 /// 命令表。**非 async —— 见 [`Disposition`]。**
-fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> Disposition {
+fn dispatch(
+    req: Request,
+    replies: &mpsc::Sender<Frame>,
+    running: &Running,
+    links: &crate::dial::link::Table,
+) -> Disposition {
     match req.cmd.as_str() {
+        // 〔SR1a〕链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
+        // ★ `link-data` **必须就地**（不 `spawn`）：同一条链路的上行块按到达顺序进队，
+        //   交给独立 task 就不再保序。它成功时的应答由上行泵在写进管子之后发（背压）。
+        "link-open" => Disposition::Reply(links.open(&req.id, &req.args)),
+        "link-data" => match links.data(&req.id, &req.args) {
+            Some(f) => Disposition::Reply(f),
+            None => Disposition::Done,
+        },
+        "link-credit" => Disposition::Reply(links.credit(&req.id, &req.args)),
+        "link-close" => Disposition::Reply(links.close(&req.id, &req.args)),
         "cancel" => {
             let target = req
                 .args
@@ -485,7 +516,7 @@ fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> D
 /// - [`Run::Blocking`]：**同步阻塞**（起进程 / 扫全库）⇒ 进 `spawn_blocking` 的专用线程池。
 ///   ⚠ 它**开跑之后打不断** —— 这一档不是「修好了取消」，是**停止假装能取消**：
 ///   `cancel` 命中它时回 `not_cancellable`，而不是撒一条 `cancelled` 的谎。
-/// - [`Run::Builtin`]：`dispatch` 里的硬臂（今天只有 `cancel`）。它要 `replies`/`running`，
+/// - [`Run::Builtin`]：`dispatch` 里的硬臂（`cancel` ＋ 〔SR1a〕链路四条）。它要 `replies`/`running`，
 ///   与别的命令签名不同 —— 硬塞进统一签名等于给每条命令都递上「自己发帧 / 碰登记表」的能力，
 ///   而那条性质今天是成立的，不该为了整齐拆掉。**但它仍要在注册表里占一行**，
 ///   否则「镜子 == 注册表」覆盖不到它。
@@ -1106,6 +1137,45 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔SR1a · 2026-09-24〕骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
+    // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
+    // 〔SR1a × SE2〕会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
+    CommandSpec {
+        name: "history-find",
+        doc_anchor: Some("#### `history-find`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["include_tools", "limit", "lines", "path", "query"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-index",
+        doc_anchor: Some("#### `history-index`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["lines", "offset", "path", "until"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "history-user-inputs",
+        doc_anchor: Some("#### `history-user-inputs`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["from", "lines", "path"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "history-tail",
         doc_anchor: Some("#### `history-tail`"),
@@ -1213,6 +1283,47 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
+    },
+    // 〔SR1a · 2026-09-24〕**链路四条** —— 用户裁「改成单一常驻后端」：本机只常驻一个后端，
+    // 到各远端的 SSH 连接由它持有、按拨号身份复用（`dial/pool.rs`）；monitor 经这条流开「链路」，
+    // 链路上的字节与 C2 那个 `--dial` 子进程的 stdout 逐字节同形（`dial/mod.rs` 头注）。
+    // 四条都是 `Run::Builtin`：要碰本连接的链路表 ⇒ **只在帧面**，CLI 面不派生（一次性进程没有「连接」可言）。
+    CommandSpec {
+        name: "link-open",
+        doc_anchor: Some("#### `link-open`"),
+        codes: &[
+            "invalid_args",
+            "unsupported_use",
+            "duplicate_link",
+            "too_many_links",
+        ],
+        fields: &["dial", "link", "window"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "link-data",
+        doc_anchor: Some("#### `link-data`"),
+        codes: &["invalid_args", "no_such_link", "link_busy", "link_closed"],
+        fields: &["data", "link"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "link-credit",
+        doc_anchor: Some("#### `link-credit`"),
+        codes: &["invalid_args", "no_such_link"],
+        fields: &["bytes", "link"],
+        takes_input: true,
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "link-close",
+        doc_anchor: Some("#### `link-close`"),
+        codes: &["invalid_args"],
+        fields: &["link"],
+        takes_input: true,
+        run: Run::Builtin,
     },
     CommandSpec {
         name: "ping",

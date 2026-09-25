@@ -280,6 +280,12 @@ fn manifest_path(accts_dir: &Path) -> PathBuf {
     accts_dir.join(MANIFEST_NAME)
 }
 
+/// 〔SR1a · 2026-09-24〕**这台机器上**那份账号 manifest 在哪（没有 `--accts-dir` 时的那条解析，
+/// 与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `accounts_changed`（`设计/05 §13.6 ③`）。
+pub(crate) fn default_manifest_path() -> PathBuf {
+    manifest_path(&resolve_accts_dir(&[]))
+}
+
 /// 读 + 解析 manifest。缺文件/坏 JSON/不支持的 schema 都是 `Err(人话原因)`——
 /// 调用方据此输出 `enabled:false` 而**不是**失败退出（"没启用多账号"是正常状态）。
 ///

@@ -17,6 +17,11 @@
 
 use super::*;
 
+/// 从一行 JSON 文本读一份请求（与生产 `parse_request_value` 同一份反序列化）。
+fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error> {
+    parse_request_value(&serde_json::from_str(raw.trim())?)
+}
+
 /// 真正把字节交给 SSH 状态机的入口。**这三条就是判据的锚点。**
 ///
 /// 为什么是这三条：`connect` = 自己建 TCP 再跑传输层握手；`connect_stream` = 在别人给的
@@ -147,56 +152,60 @@ fn the_dial_only_happens_under_dial_home() {
     }
 }
 
-/// ★ **这条代理真的接得到 —— 不只是「代码住在这儿」。**
+/// ★ **拨号真的接得到 —— 不只是「代码住在这儿」**（`7u` 探针逮出来的那一格，〔SR1a〕换了入口）。
 ///
-/// 🔴 **它是本轮 `7u` 探针逮出来的一格，不是设计时想到的。**
-/// 实打：把 `main.rs` 里那条 `--dial` 分派臂**整条摘掉**（`dial/` 的代码一个字不动），
-/// backend 侧 **596 条判据一条都不红** —— 上面那条 `the_dial_only_happens_under_dial_home`
-/// 断的是**住在哪**（locality），断不了**接没接上**（reachability），
-/// 而 `argv_table_guard` 那条只看「存在的臂调不调实现」，摘掉的臂它看不见。
-///
-/// 那时的运行期形状：`--dial` 还在 `SUBCOMMANDS` 里 ⇒ `is_query_mode` 判真 ⇒
-/// 落进 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2。
-/// **那正是 v3.4.0 `--account-trust-zero` 漏登记那次事故的形状**（只不过方向反过来：
-/// 那次是表里漏、这次是臂里漏）。端到端不静默（界面会看到「代理一个字节都没回」），
-/// 但**源码级的这次退化没有任何判据拦得住** —— 本条就是补上的那一刀。
+/// C2 那一版的入口是 `main.rs` 里那条 `--dial` 分派臂（实打：摘掉那条臂，`dial/` 一个字不动，
+/// backend 侧判据一条都不红 —— 「住在哪」断不了「接没接上」）。SR1a 之后入口换成**流上的链路四条**：
+/// `inbound::dispatch` 里四条硬臂各调 `dial::link::Table` 的一个方法。本条钉两件：
+/// ① 四条硬臂各恰好调一次它那个方法（摘掉任一条 ⇒ 那条命令落进 `lookup` 的 `Run::Builtin` 兜底臂、回 `unknown_command`）；
+/// ② `--dial` 那条老入口**零处**（它删了；留着一半 = `is_query_mode` 认它却没有臂接，v3.4.0 那一形）。
 #[test]
-fn the_dial_arm_is_actually_wired_into_the_dispatch() {
-    let main_prod =
-        // 〔步 9 · 09-19〕那 2 处如今**一处一份文件**：`SUBCOMMANDS` 在 `lib.rs`、
-        // `match` 那条臂在 `main.rs` ⇒ 扫描面必须取两份的全集，否则恒等 2 永远凑不齐。
-        crate::guard_support::production_code(&crate::guard_support::backend_root_source());
+fn the_link_arms_are_actually_wired_into_the_dispatch() {
+    let inbound_prod =
+        crate::guard_support::production_code(include_str!("../../src/backend/inbound.rs"));
     assert!(
-        main_prod.len() > 3_000,
-        "剥完 main.rs 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",
-        main_prod.len()
+        inbound_prod.len() > 3_000,
+        "剥完 inbound.rs 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",
+        inbound_prod.len()
     );
     // 运行时拼，免得本模块自己的文本被别的扫描器命中。
+    let arms = [
+        ("link-open", "open"),
+        ("link-data", "data"),
+        ("link-credit", "credit"),
+        ("link-close", "close"),
+    ];
+    for (cmd, method) in arms {
+        let arm = format!("\"{cmd}\" => ");
+        let call = format!("links.{method}(&req.id, &req.args)");
+        assert_eq!(
+            inbound_prod.matches(arm.as_str()).count(),
+            1,
+            "`inbound.rs` 生产段里 `{arm}` 不是恰好 1 条硬臂"
+        );
+        assert_eq!(
+            inbound_prod.matches(call.as_str()).count(),
+            1,
+            "`inbound.rs` 生产段里 `{call}` 不是恰好 1 处 —— `{cmd}` 那条臂没接到链路表上"
+        );
+        // 反向自检：把这一处调用剔掉，本条必须看得见（否则它在测「文本里有这个词」）。
+        let without = inbound_prod.replace(call.as_str(), "nothing_at_all(");
+        assert_eq!(without.matches(call.as_str()).count(), 0);
+    }
+    let root_prod =
+        crate::guard_support::production_code(&crate::guard_support::backend_root_source());
     let flag = format!("{}{}", "\"--", "dial\"");
-    let call = format!("dial::{}(", "run");
     assert_eq!(
-        main_prod.matches(flag.as_str()).count(),
-        2,
-        "`main.rs` 生产段里 `{flag}` 不是恰好 **2** 处。\
-             那 2 处各有各的活，缺一个后果都不一样：\
-             ① `SUBCOMMANDS` 那张表 —— `is_query_mode` 的闸门读它，不在表里就被当未知 flag \
-             **静默进流模式**（v3.4.0 `--account-trust-zero` 那次事故的形状）；\
-             ② `match` 那条分派臂 —— 不在就落进 `_` 臂走历史查询、`unknown argument` + exit 2。\
-             ≥3 处 ⇒ 有第三个地方在认这个 token，先说清那是谁。"
-    );
-    assert_eq!(
-        main_prod.matches(call.as_str()).count(),
-        1,
-        "`main.rs` 生产段里 `{call}` 不是恰好 1 处 —— \
-             **分派臂被摘掉了**：代理的代码还在 `dial/`，但没有任何人调得到它。\
-             那时 `--dial` 会落进 `_` 臂走历史查询，`unknown argument` + exit 2。"
-    );
-    // 反向自检：把臂那一行从语料里剔掉，本条必须红（否则它在测「文本里有这个词」）。
-    let without_arm = main_prod.replace(call.as_str(), "nothing_at_all(");
-    assert_eq!(
-        without_arm.matches(call.as_str()).count(),
+        root_prod.matches(flag.as_str()).count(),
         0,
-        "剔不掉那条臂 —— 本条的反向自检此刻是空转的"
+        "`main.rs` / `lib.rs` 生产段里还有 `{flag}` —— 那条老入口删了（SR1a），\
+         留着一半就是 `is_query_mode` 认它、却没有臂接它（v3.4.0 `--account-trust-zero` 那一形）"
+    );
+    // 正控：同一把尺子在别的子命令上量得到（不是「这把尺子什么都量不到」）。
+    let other = format!("{}{}", "\"--", "relay\"");
+    assert!(
+        root_prod.matches(other.as_str()).count() >= 1,
+        "正控 `{other}` 一处都没量到 —— 本条在空转"
     );
 }
 

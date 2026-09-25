@@ -409,7 +409,8 @@ fn req(id: &str, cmd: &str) -> Request {
 fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
-    let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running);
+    let links = crate::dial::link::Table::new(tx.clone());
+    let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running, &links);
 
     // `launch` 起进程、同步阻塞 ⇒ 必须是 SpawnBlocking（不占 tokio worker + 不可取消）。
     assert!(
@@ -426,6 +427,17 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     }
     assert!(matches!(d("cancel"), Disposition::Done));
     assert!(matches!(d("nope"), Disposition::Reply(..)));
+    // 〔SR1a〕链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，
+    // 另三条只碰本连接的链路表。空 `args` ⇒ 当场回一条 `invalid_args` 应答（不起任务）。
+    for c in ["link-open", "link-data", "link-credit", "link-close"] {
+        assert!(
+            matches!(
+                d(c),
+                Disposition::Reply(Frame::Reply { code: Some(ref code), .. }) if code == "invalid_args"
+            ),
+            "`{c}` 没有就地回应答 —— 它该是硬臂，不该进 spawn 档"
+        );
+    }
 
     // P4f：两条 cc-bus 命令**要起子进程并等它退出** ⇒ 与 `launch`/`kill` 同档。
     // `K-R104`：那两条 tmux 原语同理（抓一屏 / 建会话都要起 tmux 并等它退出）。
@@ -480,6 +492,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-home",
         // 〔`C1` · 09-24〕只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
         "history-projects",
+        "history-index",
+        "history-user-inputs",
+        "history-find",
         "history-read",
         "history-search",
         "history-sessions",
@@ -507,6 +522,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ping",
         "resolve",
         "cancel",
+        "link-open",
+        "link-data",
+        "link-credit",
+        "link-close",
         "bus-list",
         "bus-send",
         "bus-kill",
@@ -532,6 +551,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-read-text",
         "files-home",
         "history-projects",
+        "history-index",
+        "history-user-inputs",
+        "history-find",
         "history-read",
         "history-search",
         "history-sessions",
@@ -573,6 +595,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
 fn every_registered_command_is_reachable_through_the_real_dispatch() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
+    let links = crate::dial::link::Table::new(tx.clone());
     assert!(
         REGISTRY.len() >= 4,
         "注册表只有 {} 条 —— 本条在空转",
@@ -583,7 +606,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running),
+                dispatch(req("x", name), &tx, &running, &links),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -600,7 +623,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -632,10 +655,12 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
     .await;
 
     // 对它发 cancel。
+    let links = crate::dial::link::Table::new(tx.clone());
     handle_line(
         br#"{"id":"c1","cmd":"cancel","args":{"target":"blk"}}"#,
         &tx,
         &running,
+        &links,
     )
     .await;
 

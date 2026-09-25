@@ -915,15 +915,12 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
             let Some(f) = crate::ssh_source::parse_frame(line) else {
                 continue;
             };
-            // 本机的 tmux 帧也要收（`P3` 刀 1）—— 理由与前置条件写在
-            // `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
-            if let crate::ssh_source::InboundFrame::TmuxSessions { raw, .. } = &f {
-                crate::ssh_source::record_tmux_raw(
-                    crate::backend::control::inbound_client::LOCAL_ORIGIN,
-                    raw.clone(),
-                );
-            }
+            // 本机的 tmux 帧（`P3` 刀 1）·〔SR1a〕应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
+            // 理由与前置条件写在 `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
+            crate::backend::control::local_backend::absorb_local_frame(f, Some(&client));
         }
+        // 〔SR1a〕流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
+        crate::link_mux::fail_owned_by(&client, "本机后端的流断了（常驻载体）");
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client；那份陈旧的 tmux 原文也要清
         // （留着它 `find_tmux_origin_for_sid` 仍会回 `Some(<local>)` ⇒ 那个永远消不掉的灰点）。
         crate::backend::control::inbound_client::unregister(

@@ -542,7 +542,7 @@ fn every_host_declaration_is_pinned() {
         //    **不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
         //    ⚠ 标 `Either` 会说假话：①② 那两份远端那台上没有。
         ("backend", "$APP_DIR", Client),
-        ("backend", "~/.cc-monitor/bin/cc-monitor-local-*", Client),
+        ("backend", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
         ("backend", "$BACKEND_PATH", Remote),
         ("project-mcp", ".mcp.json", ProjectDir),
         ("powershell-profile", "$PROFILE", Client),

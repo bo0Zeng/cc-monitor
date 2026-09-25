@@ -160,6 +160,9 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
                 | "history-projects"
+                | "history-index"
+                | "history-user-inputs"
+                | "history-find"
                 | "history-read"
                 | "history-search"
                 | "history-sessions"
@@ -182,10 +185,15 @@ fn every_registered_command_declares_its_run_kind() {
             spec.name
         );
         let is_builtin = matches!(spec.run, Run::Builtin);
+        // 〔SR1a〕链路四条也是硬臂：要碰**本连接的链路表**与应答通道（`dial/link.rs`），
+        // 而且 `link-data` 必须在读循环里就地分派（保序）—— 交给独立 task 就不再保序。
+        let expected_builtin = matches!(
+            spec.name,
+            "cancel" | "link-open" | "link-data" | "link-credit" | "link-close"
+        );
         assert_eq!(
-            is_builtin,
-            spec.name == "cancel",
-            "`{}` 的 Builtin 档位不对 —— 只有 `cancel` 该是硬臂",
+            is_builtin, expected_builtin,
+            "`{}` 的 Builtin 档位不对 —— 只有 `cancel` 与链路四条该是硬臂",
             spec.name
         );
     }
@@ -196,6 +204,10 @@ fn every_registered_command_declares_its_run_kind() {
         "cancel",
         "kill",
         "launch",
+        "link-close",
+        "link-credit",
+        "link-data",
+        "link-open",
         "ping",
         "resolve",
         "bus-list",
@@ -223,6 +235,9 @@ fn every_registered_command_declares_its_run_kind() {
         "files-read-text",
         "files-home",
         "history-projects",
+        "history-index",
+        "history-user-inputs",
+        "history-find",
         "history-read",
         "history-search",
         "history-sessions",

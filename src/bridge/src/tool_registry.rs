@@ -690,9 +690,9 @@ pub const TOOLS: &[ToolSpec] = &[
                 // 落点带 build_id（`local_backend::local_extract_name`）—— 那不是命名品味：
                 // 远端自部署落的也是这个目录，两边对同一个文件名有不同期望就会互判 stale、
                 // 无限重装。glob 只在末段、只有一个 `*`（`resolve_local_home` 的两条校验）。
-                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/cc-monitor-local-*"),
+                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/cc-monitor-backend-*"),
                 touches: &[TouchedFile {
-                    path: "~/.cc-monitor/bin/cc-monitor-local-*",
+                    path: "~/.cc-monitor/bin/cc-monitor-backend-*",
                     host: HostScope::Client,
                     note: Some(
                         "本机自释放出来的那份后端，文件名带 build_id（`local_extract_name`）——\
