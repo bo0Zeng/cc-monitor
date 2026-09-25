@@ -249,10 +249,17 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //    ⇒ 这一条补的是「本机也问得出同一张名片」，不是一条新的单侧能力。
     ("local_ccm_entry_status", "ccm.status", Side::Local),
     ("probe_ccm_cli", "ccm.status", Side::Remote),
-    ("install_remote_alias_block", "ccm.install", Side::Remote), // 〔MC1〕改名，从前叫「装 ccm 助手」
+    // 〔DP1 · 第四波〕别名块那三格能力 id 按 `设计/71 §5` 改名改归（别名块是「② 别名」，不是装后端）：
+    //   `ccm.install` → `alias.block-install` · `ccm.uninstall` → `alias.block-remove` · `ccm.install-ui` → `alias.block-preview`
+    //   （「ccm 助手」年代的遗名，`AL1d.md §5` 第 2 条交主会话、题面指给本路）。`K-R117` 的归档表同拍从 ① 挪到 ②。
+    (
+        "install_remote_alias_block",
+        "alias.block-install",
+        Side::Remote,
+    ), // 〔MC1〕改名，从前叫「装 ccm 助手」
     (
         "uninstall_remote_alias_block",
-        "ccm.uninstall",
+        "alias.block-remove",
         Side::Remote,
     ),
     // 🔴 `K-R135`（`R85`/`R87`）：用户级 PATH 那一格。只有本机一侧，理由见
@@ -266,10 +273,11 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //   （远端 `install_remote_alias_block` / `uninstall_remote_alias_block`）⇒ 并过去会让 `alias.manage`
     //   变成「两侧都有」、那行 `ParityDebt` 被表自动抹掉，而清单在远端的写与读回一分没还 —— 正是
     //   `KR53D4` 禁的「靠删掉记录兑现」。⇒ 命令面一族、账本两格，各归各的平价。
-    //   （`ccm.*` 这几个 id 是「ccm 助手」年代的遗名，MC1 改了命令名没改 id；改 id 要动 `K-R117` 的归档表，交主会话。）
-    ("aliases_block_render", "ccm.install-ui", Side::Local),
-    ("aliases_block_install", "ccm.install", Side::Local),
-    ("aliases_block_remove", "ccm.uninstall", Side::Local),
+    //   〔墓碑 —— 原话「`ccm.*` 这几个 id 是『ccm 助手』年代的遗名，MC1 改了命令名没改 id；改 id 要动 `K-R117` 的归档表，交主会话」。
+    //    〔DP1〕改了：`alias.block-*`，归档表同拍挪到 ②。〕
+    ("aliases_block_render", "alias.block-preview", Side::Local),
+    ("aliases_block_install", "alias.block-install", Side::Local),
+    ("aliases_block_remove", "alias.block-remove", Side::Local),
     // G6：远端分叉落地 ⇒ `history.branch` 从 ParityDebt 变成两侧都有（该行的
     // 不对称理由已从 `ASYMMETRY_REASONS` 删除——留着就是宣称一条已经补上的欠账）。
     // 〔步 12·C 2026-09-20〕**两条并成一条**（上面那五行的第五条）——
@@ -469,7 +477,7 @@ const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
     // 〔RM1a · 第四波〕`audit.config-surface` 那一行（`ParityDebt`：「本地能答、远端答不出，本页明写不连 SSH」）**结清、删掉**：
     //   远端那一栏由那台机器的后端答路径事实（`footprint-probe`），用户裁「补后端读口，远端也有真栏」。
     ("cc-bus.cockpit", Asym::ParityDebt, "★ **P4c 订正（08-12）：原理由已经过期，而过期的正是 `P4a` 那一刀造成的。** 原文写「cc_bus.rs 的 **5 个 IPC** 全走 origin+ssh、**零本机读取路径**」——`P4a`（08-12）把**读面三条**（`read_cc_bus_state` / `check_cc_bus_agent_online` / `read_cc_bus_inbox`）做成了本机可用（同一条命令串，只是不包进 ssh；本机 `~/.cc-bus/agents.tsv` 实测 86 行），它们今天是 `Both`。⇒ 「零本机读取路径」是假的，「5 个」也变成了 7 个（`P4c` 加了 `cc_bus_broadcast` / `cc_bus_kill`）。**今天真正的欠账只剩写面里的三条**：`cc_bus_spawn` / `cc_bus_kill` 对 `<local>` 走 `refuse_local_write`（本机没有对侧），`cc_bus_broadcast` 的本机路走后端组合但**没有回落**（`P4a §0c` 量过代价：本机写面归 `P4b`，而 `P4b` 签收的是 cc-spawn 的复用那一刀，没交付写面）。★★ **`K-R98` 订正（09-13）：原文说的是「四条」，而其中两条早已不成立** —— `cc_bus_send` 的本机路 `P4f`（08-13）就改走了后端的 `bus-send` 原语、`cc_bus_broadcast` 的本机路同日改走 `bus-list` + 逐个 `bus-send` 的组合，两条都**不再**经 `refuse_local_write`；而这一行从那天起一个字没改。⇒ 这已经是本条第 **2** 次因为「改了行为没回来改理由」而订正（第一次是 `P4c` 订 `P4a`，那段就在上面）。本次同时把 `cc_bus_send` 的 `Side` 从 `Remote` 改成 `Both`（远端那半也改走同一条原语，`cc_bus.rs::send_via_backend` 是那唯一一处），登记见 `ORIGIN_TAKING_BOTH` 里那一行。★ 这条订正本身是 `P3b §0b` 的 **A 类（过期）**活样本，而制造它的是 `P4a` —— **改了行为没回来改理由，账本当天就开始撒谎**，本轮第二次（第一次是 `P4d-Y5` 改 `capture_remote_pane` 那次）。★★★ **BS1b 订正（09-24）**：写面最后一条 `cc_bus_spawn` 也改走后端原语 `bus-spawn` 了（`cc_bus.rs::spawn_via_backend`），对 `<local>` 的那句公共拒绝整块删了 ⇒ 上文「今天真正的欠账只剩写面里的三条」**全部不成立**；这一族今天剩下的欠账只是 `Side` 栏没翻（kill / broadcast / spawn 三行记在 `FRAME_PLANE_VERDICTS`，理由是 monitor 那一跳没在真机的 app 里跑过）。"),
-    ("ccm.install-ui", Asym::Undecided, "本机安装向导有「扫 PATH 选装到哪」+「预览要写的文本」两步；远端 `install_remote_alias_block(cfg, profile)` 一步到位、没有这两步。**是欠账还是刻意简化，需要产品判断**——本表不替它裁定。〔AL1d · 第四波 4B〕这一格今天只剩**预览**那一步（`aliases_block_render`）：「扫、选装到哪」并进了 `aliases_read`（`alias.manage`，远端的读回本来就记在那一行的欠账里）。⚠ 预览本身是纯的、收的是目标文件的路径（方言按扩展名定）⇒ 远端 POSIX 那一块拿 `.bashrc` 当目标就能预览到逐字同一份（`CCM_WRAPPER_SNIPPET` 两侧共用）——欠的只是远端机器卡上没接这一下，那是界面的题，产品判断仍悬着。"),
+    ("alias.block-preview", Asym::Undecided, "〔DP1〕能力 id 从前叫 `ccm.install-ui`。本机安装向导有「扫 PATH 选装到哪」+「预览要写的文本」两步；远端 `install_remote_alias_block(cfg, profile)` 一步到位、没有这两步。**是欠账还是刻意简化，需要产品判断**——本表不替它裁定。〔AL1d · 第四波 4B〕这一格今天只剩**预览**那一步（`aliases_block_render`）：「扫、选装到哪」并进了 `aliases_read`（`alias.manage`，远端的读回本来就记在那一行的欠账里）。⚠ 预览本身是纯的、收的是目标文件的路径（方言按扩展名定）⇒ 远端 POSIX 那一块拿 `.bashrc` 当目标就能预览到逐字同一份（`CCM_WRAPPER_SNIPPET` 两侧共用）——欠的只是远端机器卡上没接这一下，那是界面的题，产品判断仍悬着。"),
     ("backend.deploy", Asym::NaturallyAsymmetric, "★★ **P3b 结清（08-12）：理由整个换掉 —— 原来那句是假的。** 原文写「§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 backend**」，被 P2z + P2 + P2s 三件直接证伪：本机**需要** backend（入方向通道、每台机开关、tmux 帧都靠它），而且**已经会自部署** —— `local_backend.rs::extract_embedded_to`（exe 旁没有本机后端就把内嵌那份释放到 `~/.cc-monitor/bin`）。真正的不对称只剩一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。⇒ 记 `natural` 记的是「不需要一条命令」，不是「不需要后端」。"),
     ("launch.render-payload", Asym::NaturallyAsymmetric, "兜底那支（`container:\"none\"`）的载荷渲染。**记 `natural` 记的是命令面这一格**：远端那侧要一条 IPC（`render_launch_payload`）才问得到宿主，而本机**自己就是宿主** —— `history.rs::launch_local` 直接在进程内调 `build_local_*_command`，没有「绕一圈问自己」这一步（同形的话 `launch_wire.rs` 的头注里逐字写着）。⚠⚠ **`K-R53`（09-11）撤掉原文那半句**：原文写「P3t 之后那是**渲染器拒了才走的回落**」——**按调用点分母那是假的**：盘上四个本机拉起入口里有三个（`src/tabs.ts` 一处 + `src/views/history.ts` 两处，人群由 `tests/ipc/commands.vitest.ts` 那条「恰好 4 处」钉着）只说得出**具名账号**，而具名账号在 `K-R53` 之前必然 §35 短路 ⇒ **那三条只能走它**。一条 3/4 的分母不叫回落。`K-R53` 把具名那一格接上之后（`LaunchAccount::Named::name`），今天真正还会落到它的是：账号未表态（继承 —— 见下一行）· 只说得出目录没有名字 · 没有 tmux 名 · 这个号走中转（`history.rs::RELAY_KEEPS_THE_OLD_PATH`）· 这台机没装 ccm · Windows。逐格读数住 `history.rs::tests::every_local_account_shape_gets_a_named_verdict_from_the_backend_path`。★★ 🔴 **`K-R89`（09-13）：这六格今天只剩五格，而且「今天各自是什么」由一张**可执行**的表说了算** —— `history.rs::tests::THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`（六格逐格由 `every_one_of_the_six_cells_is_measured_not_narrated` **真去驱动一遍**，改了行为不改说法当场红 ⇒ 本行这句散文再腐一次，那边会先响）。关掉的是**账号未表态（继承）**：用户 09-12 `DECISIONS.md#R28` 裁定了「省略 `--account`」的语义，并已落地在 `src/backend/control/ccm/plan.rs::resolve_account`（两支：`CLAUDE_CONFIG_DIR` 非空 ⇒ 保留不覆盖〔`R08` 那道 `-z` 闸〕· 裸终端 ⇒ 落 manifest `isDefault`）⇒ 本机那一态渲染得出来了。⚠ **只关了本机那半** —— 远端是 ssh 过去、那台机器上的继承态不是 monitor 的环境（`R28` 裁定四），`WireAccount` 刻意没有对应变体，那半归 `K-R90`。⚠ 同拍另一处现打订正：「没有 tmux 名」那一格今天是**半开**的 —— resume 那条前端已接线（`K-R89` 现打），而 `new_local_session` 的 Rust 签名里**根本没有 `tmux_name` 这一格** ⇒ 只有起新会话恒短路。⚠ P3t-Y4 订正保留：原文引 §36 当依据，那是把一条讲 **Windows**、逐字禁「本地渲染器读 `plan.env`」的窄铁律读宽了。"),
     ("launch.render-attach", Asym::NaturallyAsymmetric, "🔴 `K-R109`（09-13）：**本机后端产「把终端接进那个会话」那一句**（`history.rs::render_local_attach` ⇒ `ccm attach <名>`，`R61` 裁定三）。⚠ **记 `natural` 记的是「远端那一侧不需要一条独立命令」，不是「远端还没做」** —— 远端的 attach 那一句由 `render_ccm_launch` 的 `WireAction::Attach` **一并产**（记在 `launch.render-cli` 那一格，同一条 IPC 覆盖 new / resume / attach 三个动作）⇒ 远端不缺这项能力，缺的只是**一个单独的命令名**。反过来本机**不能复用那条 IPC**，两条都是结构性的：① 那条 wire 的 `is_ssh` 与前端那道闸（`ctx.transport.kind === \"ssh\"`）说的是同一件事 —— 本机就是宿主，绕一圈 IPC 问自己拿不到新东西（同 `launch.render-payload` 那一行的理由）；② `WireAccount` 刻意少一态（没有 `Inherit`，`launch_wire.rs` 头注逐字），而本机的账号态是 `render_local_ccm` 在**进程内**探出来的（`CcmProbeSource` 那条缝）。⚠ **它不是 `session.launch` 的一部分**：那一格的人群由 `launcher_identity_registry::LAUNCH_CAPS` 读走当「起会话方」，而本命令接的是一条**已经在跑**的会话，一个 agent 进程都不出生 —— 09-13 挂错过一次，门禁当场逮住（读数住 `tests/evidence/K-R109-deathvalue.md`）。**这一格什么时候能结清**：远端那一句 attach 也长出自己的命令名的那天（那要先有人问「为什么要拆」），或者本机这一条被并进一条统一的渲染 IPC 的那天（`U8c-3` 那一侧）。"),
@@ -1036,16 +1044,16 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
 /// 两边异源：左边是本表（人手写的能力归属），右边是 `generate_handler!`（`lib.rs` 里真注册了哪几条、叫什么）。
 /// **别名那几格能力的本机侧命令集合 == 注册表里以 `aliases_` 打头的命令集合**（两向）：
 /// 别名 / 别名块再长一条不叫 `aliases_*` 的本机命令 ⇒ 红；起了个 `aliases_*` 名字却归到别的能力 ⇒ 也红。
-/// ⚠ 能力 id 为什么是两格（清单 `alias.manage` ／ 块 `ccm.*`）写在 `LEDGER` 那几行上：并成一格会把清单的远端欠账抹掉。
+/// ⚠ 能力 id 为什么是两格（清单 `alias.manage` ／ 块 `alias.block-*`，〔DP1〕从前叫 `ccm.*`）写在 `LEDGER` 那几行上：并成一格会把清单的远端欠账抹掉。
 /// ⚠ 远端那两条块命令（`install_remote_alias_block` / `uninstall_remote_alias_block`）不在左边：它们住 `sftp.rs`、
 ///   经 SSH 那条路，不是本机命令面的一员 —— 本条只管本机这一族。
 #[test]
 fn the_alias_capabilities_speak_through_one_command_family() {
     const ALIAS_CAPS: [&str; 4] = [
         "alias.manage",
-        "ccm.install",
-        "ccm.uninstall",
-        "ccm.install-ui",
+        "alias.block-install",
+        "alias.block-remove",
+        "alias.block-preview",
     ];
     let by_ledger: BTreeSet<String> = LEDGER
         .iter()

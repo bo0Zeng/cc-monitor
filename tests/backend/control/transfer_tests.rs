@@ -132,6 +132,14 @@ async fn the_bytes_land_at_the_staging_part_verbatim() {
 }
 
 /// 失败 ⇒ **留**暂存件；重拖同一份 ⇒ 从尾块接上（服务端记下的第一个写偏移 == 续传起点）。
+///
+/// 〔DP1 · 第四波〕这一条在负载 ~18 的机器上全量跑时红过一次（单跑绿）。病根不是墙钟，是**在路上的写**：
+/// `russh-sftp` 的写是流水线的，第一条坏回话就让上传返回，后面已发出的写还没被服务端处理；本条随即把
+/// `fail_write_after` 清掉 ⇒ 那几条晚到的写**成功**落盘（`write_offsets` 第一格不再是续传起点，暂存件中间留一个洞）。
+/// 调度快的时候它们恰好在返回之前处理完 —— 所以只在负载高时现形。
+/// ⇒ 产品侧修（上传失败后把已发出的写全部等到回话再走，`transfer.rs::drain_sent_writes`），台架侧把那个竞态
+/// 从运气变成设定（`yield_per_write`：服务端每条写先让出几次），并**按事件判**：上传返回的那一刻，服务端已经看到
+/// 客户端发出的全部写（盖到整份的长度）—— 不看墙钟、不 sleep。
 #[tokio::test]
 async fn a_failed_upload_keeps_the_part_and_the_retry_resumes_from_its_tail() {
     let fs = rig::home(false, true);
@@ -139,10 +147,19 @@ async fn a_failed_upload_keeps_the_part_and_the_retry_resumes_from_its_tail() {
     let tmp = Tmp::dir("resume-up");
     let body = rig::corpus(200_000);
     let local = tmp.file("c.bin", &body);
-    fs.lock().unwrap().fail_write_after = Some(2);
+    {
+        let mut g = fs.lock().unwrap();
+        g.fail_write_after = Some(2);
+        g.yield_per_write = 8;
+    }
     upload_to_staging(&s, &local, KEY, &Cancel::default(), &no_progress)
         .await
         .expect_err("第 3 块坏");
+    assert_eq!(
+        fs.lock().unwrap().seen_write_end,
+        body.len() as u64,
+        "上传返回时还有写在路上（服务端没看到的那几条会在之后落盘 —— 暂存件中间留洞）"
+    );
     let have = fs
         .lock()
         .unwrap()
@@ -153,6 +170,7 @@ async fn a_failed_upload_keeps_the_part_and_the_retry_resumes_from_its_tail() {
     {
         let mut g = fs.lock().unwrap();
         g.fail_write_after = None;
+        g.yield_per_write = 0;
         g.write_offsets.clear();
     }
     upload_to_staging(&s, &local, KEY, &Cancel::default(), &no_progress)
@@ -316,9 +334,9 @@ async fn a_download_with_a_mismatched_part_starts_over_instead_of_stitching() {
     assert_eq!(seen.into_inner().unwrap().first(), Some(&0));
 }
 
-/// 撤 ⇒ **留** `.part`（续传的本钱）；失败 ⇒ 删 `.part`。
+/// 撤 ⇒ **留** `.part`（续传的本钱）。〔DP1〕失败（读到半路那台答坏 / 连接没了）⇒ **也留**；只有一个字节都没落的空 `.part` 才清。
 #[tokio::test]
-async fn a_cancelled_download_keeps_its_part_and_a_failed_one_cleans_up() {
+async fn a_cancelled_or_failed_download_keeps_its_part_unless_nothing_landed() {
     let fs = rig::home(false, false);
     remote_file(&fs, "srv/d.bin", rig::corpus(60_000));
     let s = rig::session_on(fs.clone()).await;
@@ -331,16 +349,66 @@ async fn a_cancelled_download_keeps_its_part_and_a_failed_one_cleans_up() {
         .expect_err("撤了");
     assert!(tmp.path("d.bin.part").exists(), "撤了 `.part` 却没了");
     assert!(!tmp.path("d.bin").exists());
-    // 失败：读到第 2 块就坏（`.part` 已经建出来、写进了一块）⇒ 报错且 `.part` 被收掉。
+    // 失败，一个字节都没落（第一读就坏）⇒ 空 `.part` 清掉。
     remote_file(&fs, "srv/e.bin", rig::corpus(200_000));
-    fs.lock().unwrap().fail_read_after = Some(1);
+    fs.lock().unwrap().fail_read_after = Some(0);
     let local2 = tmp.path("e.bin").to_string_lossy().into_owned();
-    let seen = std::sync::Mutex::new(0u64);
-    let sink = |a: u64, _b: u64| *seen.lock().unwrap() = a;
-    let r = download_to_local(&s, "srv/e.bin", &local2, &Cancel::default(), &sink).await;
+    let r = download_to_local(&s, "srv/e.bin", &local2, &Cancel::default(), &no_progress).await;
     assert!(r.is_err(), "读坏了竟然成了");
-    assert!(!tmp.path("e.bin.part").exists(), "失败之后 `.part` 还在");
+    assert!(
+        !tmp.path("e.bin.part").exists(),
+        "一个字节都没落，空 `.part` 却留着"
+    );
     assert!(!tmp.path("e.bin").exists());
+}
+
+/// 〔DP1 · 第四波〕**T1：下载读到半路断了 ⇒ `.part` 留着，重拖同一份从它的尾巴接上**（`设计/60 §4.3`「失败留」· NT1 报备 2）。
+///
+/// 判据全用字节数的相等：① 留下的 `.part` 恰是那一份的前缀（长度 L > 0，逐字节 == 源的前 L 字节）；
+/// ② 重拖那一趟，服务端（台架自己记，异源）收到的偏移 < L 的读 **恰好**是尾块对拍那一格（`L − min(L, 块)`）——
+/// 前缀没有被重新读一遍；③ 落地逐字节 == 源。
+#[tokio::test]
+async fn a_download_cut_off_midway_keeps_its_part_and_the_retry_resumes_from_its_tail() {
+    let fs = rig::home(false, false);
+    // 远大于一趟读回来的量（客户端一次读请求可以要很多块）：两趟读之后就坏，落下的必是半截。
+    let body = rig::corpus(4_000_000);
+    remote_file(&fs, "srv/f.bin", body.clone());
+    let s = rig::session_on(fs.clone()).await;
+    let tmp = Tmp::dir("dl-cut");
+    let local = tmp.path("f.bin").to_string_lossy().into_owned();
+    fs.lock().unwrap().fail_read_after = Some(2);
+    download_to_local(&s, "srv/f.bin", &local, &Cancel::default(), &no_progress)
+        .await
+        .expect_err("读到半路坏了");
+    let part = std::fs::read(tmp.path("f.bin.part")).expect("断了之后 `.part` 该留着");
+    let l = part.len();
+    assert!(l > 0 && l < body.len(), "`.part` 长度 {l} 不是半截");
+    assert_eq!(part, body[..l], "`.part` 不是源的前缀");
+    assert!(!tmp.path("f.bin").exists(), "半截就上位了");
+    {
+        let mut g = fs.lock().unwrap();
+        g.fail_read_after = None;
+        g.read_offsets.clear();
+    }
+    download_to_local(&s, "srv/f.bin", &local, &Cancel::default(), &no_progress)
+        .await
+        .expect("续传该成");
+    let probe = (l as u64).min(CHUNK as u64);
+    let below: Vec<u64> = fs
+        .lock()
+        .unwrap()
+        .read_offsets
+        .iter()
+        .copied()
+        .filter(|o| *o < l as u64)
+        .collect();
+    assert_eq!(
+        below,
+        vec![l as u64 - probe],
+        "前缀被重新读了（或尾块没对）"
+    );
+    assert_eq!(std::fs::read(&local).unwrap(), body, "落地不是源的字节");
+    assert!(!tmp.path("f.bin.part").exists(), "上位之后 `.part` 还在");
 }
 
 /// 🔴 **B6**：本机落点是一份 Claude 会话数据 ⇒ **围栏拒**（开单那一判就拒，一个字节都没碰）。
