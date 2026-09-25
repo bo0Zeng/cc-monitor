@@ -14,6 +14,8 @@
 //!
 //! 剩下的**只有「删 TS 那两个渲染器」**，而那是 U8c-3 的题目、不是 F07 的
 //! —— F07 要的是「走 backend」，不是「删旧的」。
+//! 〔LR1 · U8c-3 前一半〕`ccm …` 调用行那一份（`launch-render-cli.ts`）已删，它的夹具换成
+//! 「生产请求 ＋ 手写期望」（`src/launch-cli-golden.ts` 头注）；兜底那一族（本文件下面几张表管的）还在。
 //!
 //! # ⚠ 摸底在 `src/doc/INVARIANTS.md §33b` 里抓到**两处过期陈述**
 //!
@@ -177,7 +179,7 @@ const TS_FALLBACK_KEEPERS: &[(&str, &str, usize, &str, &str)] = &[
     // ⇒ **「掉到 0 那天就是这条路能删的那天」这句话，今天只对了一半**：
     //   `renderFallback` 的**生产**消费者确实掉到 0 了，而它**没删** ——
     //   剩下两个消费者都是金样本发生器，那是「另一种语言的独立说法」这个结构性用途
-    //   （与 `launch-render-cli.ts` 同一条先例，那一份零生产调用也留着）。
+    //   （`launch-render-cli.ts` 曾按同一条先例留着；〔LR1〕它已删，夹具左边换成了手写期望）。
     //   逐条见 `TS_FALLBACK_REACH` 的头注与 `the_two_reasons_…still_hold` 的依据一 c。
     (
         "SESSION_BACKEND",
@@ -297,7 +299,7 @@ const TS_FALLBACK_REACH: &[(&str, &[&str], Reach, &str)] = &[
              它连着 `session-backend.ts` 一起留下的理由**只剩一条**：\
              那两份入库夹具的**左边**要是「另一种语言的独立实现」；\
              换成 Rust 自产自比，跨语言对拍就退化成「Rust 没变」的冻结快照\
-             （`launch-render-cli.ts` 已经按同一条先例复裁过两次：不划算，不删）。",
+             （`launch-render-cli.ts` 曾按同一条先例留着；〔LR1〕它已删，夹具左边换成了手写期望）。",
     ),
 ];
 
@@ -482,7 +484,7 @@ fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
     // 依据一 a 翻面之后，「U8c-3 删不得」少了它原来的支点。**新的支点是结构性的**：
     // 两份入库夹具的**左边**必须是「另一种语言的独立实现」——
     // 删掉 TS 那两份，跨语言对拍就退化成「Rust 没变」的冻结快照
-    //（`launch-render-cli.ts` 已按同一条先例复裁过两次：不划算，不删）。
+    //（`launch-render-cli.ts` 曾按同一条先例留着；〔LR1〕它已删，夹具左边换成了手写期望）。
     // ⇒ 本格钉住那个支点**今天真的在盘上**：两个发生器各自还在调 `renderFallback(`，
     //   而它们产的两份夹具也还在。任一处没了 ⇒ 红，那时回 `U8c-3` 重裁「删它」的代价。
     for (gen, fixture) in [
@@ -1457,14 +1459,10 @@ fn the_byte_for_byte_parity_still_has_two_independent_sides() {
 /// 🔴 **条数写成恒等**（[`the_launch_renderers_on_disk_are_exactly_these`]）：
 /// 地板在「变少」方向是瞎的，而本表整个存在的理由就是**看着它变少**。
 /// 加一份、删一份都必须回来改这张表 —— 改的时候人会看见 `LAUNCH_RENDERER_TARGET`。
+// 🔴 〔LR1 · U8c-3 前一半〕**5 → 4**：原第一行 `("src/launch-render-cli.ts", "tryRenderCli",
+// "TS · ccm 调用行", …)` 删了 —— 零生产调用，最后只剩「产 `cli-golden.json` 的 `out`」一个用途，
+// 那一格换成了用例表里的手写期望（`src/launch-cli-golden.ts` 头注写了为什么夹具本身不删）。
 const LAUNCH_RENDERERS: &[(&str, &str, &str, &str)] = &[
-    (
-        "src/launch-render-cli.ts",
-        "tryRenderCli",
-        "TS · ccm 调用行",
-        "**零生产调用**（U8c-2c-2 起生产走 Rust）。它今天是 `cli-golden.json` 的唯一生成者 \
-         —— 删它是拿一份独立说法换 ~500 行非生产代码，本仓已复裁过两次：不划算，不删。",
-    ),
     (
         "src/launch-render-fallback.ts",
         "renderFallback",
@@ -1473,7 +1471,7 @@ const LAUNCH_RENDERERS: &[(&str, &str, &str, &str)] = &[
          `remote-launch-run.ts::renderLaunchCommand` 最后那一行」—— `设计/90 §4 E` 收官之后\
          那一行改问 `commands.render_launch_payload` 要了。它今天是两份入库夹具\
          （`payload-golden.json` 内层 · `tmux-outer-golden.json` 外层三格）的**左边** ——\
-         那是「另一种语言的独立说法」，与 `launch-render-cli.ts` 同一条先例：不划算，不删。\
+         那是「另一种语言的独立说法」（`launch-render-cli.ts` 曾按同一条先例留着，〔LR1〕已删）。\
          逐处与处数见 `TS_FALLBACK_KEEPERS`，站不站在生产路上见 `TS_FALLBACK_REACH`\
          （那一格本刀 `On` → `Off`）。",
     ),
@@ -1514,7 +1512,7 @@ fn the_launch_renderers_on_disk_are_exactly_these() {
     // ① 条数恒等。⚠ 不是地板 —— 本表要看的就是它变少。
     assert_eq!(
         LAUNCH_RENDERERS.len(),
-        5,
+        4, // 〔LR1〕5 → 4：TS 那份 `ccm …` 调用行渲染器删了
         "盘上的渲染实现份数变了。这不是把数字改一改就行的事：\n\
          · **多了一份** ⇒ 先问「为什么同一件事要有第二个家」（`设计/00 §2.5 ④` 的整个要点就是消灭副本）；\n\
          · **少了一份** ⇒ 好事，把这张表与 `设计/00 §2.5 ④` 一起改，并在 commit 里写清删的是哪一份。"
@@ -1526,7 +1524,7 @@ fn the_launch_renderers_on_disk_are_exactly_these() {
     );
 
     // ② 每一份的住址在盘上，且入口符号真的在它的**生产段**里。
-    //    没有这一步，上面那个 5 只是一个数字 —— 把五行路径全改成 `a.ts` 它照样绿。
+    //    没有这一步，上面那个 4 只是一个数字 —— 把四行路径全改成 `a.ts` 它照样绿。
     for (path, symbol, what, _) in LAUNCH_RENDERERS {
         let full = repo_root().join(path);
         assert!(full.is_file(), "登记的渲染实现 {path}（{what}）不在盘上");

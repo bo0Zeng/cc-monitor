@@ -137,9 +137,9 @@ async fn main() {
             // **backend 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
             Some("--fork-session") => control::fork_write::run(&agent_home, &args),
             // K-H1：HTTP 中转。**常驻**，起来就不返回；配置面只有环境变量。
-            // K-H2a：多传一个 `agent_home` —— 这个进程的账号层（层 2）要从 `<home>/work/` 下
+            // K-H2a：多传一个 `agent_home` —— 这个进程的上游选择要从 `<home>/work/` 下
             // 读那份凭据文件。**不新开子命令、不动 `SUBCOMMANDS`** ⇒ 不逼出 BUILD_ID bump。
-            Some("--relay") => accounts::apikey::run_relay(&agent_home, &args),
+            Some("--relay") => accounts::upstream::run_relay(&agent_home, &args),
             // 〔SR1a〕`--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
@@ -148,7 +148,7 @@ async fn main() {
             // 而 monitor 的账号 0 路径**真的在发这条命令**。
             // 测试当时抓不到，是因为它们直接调 `observe::accounts_query::run`、**绕过了本处调度**。
             // 现由 `observe::accounts_query::tests::main_dispatches_every_subcommand_we_handle` 钉住。
-            // 〔`A3` 第二波〕本机那一侧的 `cc-acct-iso` 两问 —— 住账号层（不住 `observe/`：shellinit 要起进程）。
+            // 〔`A3` 第二波〕本机那一侧的 `cc-acct-iso` 两问 —— 住账号域（不住 `observe/`：shellinit 要起进程）。
             // ⚠ 两条臂各写一行（不合成 `A | B`）：合起来超宽，`cargo fmt` 会把臂体折成块，
             //   而 `argv_table_guard` 按行取臂体、块体会被判成「不是一次调用」。
             Some("--acct-iso-status") => emit_answer(accounts::iso::answer(&args)),
@@ -177,11 +177,11 @@ async fn main() {
     // 「错误 exit2 + stderr 纯 {code,message} JSON」，客户端可整段 JSON-parse stderr）。
     tracing::info!("agent_home = {}", agent_home.display());
 
-    // 〔RL1 · V107〕**中转（层 1）＋ 账号层（层 2）住本机常驻后端这个进程**：宿主交了端口才开
+    // 〔RL1 · V107〕**中转 ＋ 上游选择住本机常驻后端这个进程**：宿主交了端口才开
     //   （monitor 起本机后端时交；远端经 SSH exec 起的流模式没人交 ⇒ 不开，远端中转另有住处）。
     //   放在选载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
     //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
-    tracing::info!("{}", accounts::apikey::host_relay(&agent_home));
+    tracing::info!("{}", accounts::upstream::host_relay(&agent_home));
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
     //
@@ -252,9 +252,9 @@ async fn main() {
 
 /// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
 /// 两份 hello 会各自漂，而这一帧是仓外 aterm 按精确字节在读的东西。
-/// 〔`A3` 第二波〕把账号层产出的一次查询答案写出去 —— 进程的 stdout / stderr 归入口这一处。
+/// 〔`A3` 第二波〕把账号域产出的一次查询答案写出去 —— 进程的 stdout / stderr 归入口这一处。
 ///
-/// 账号层（`accounts/`）不自己 `print`：它同时是 `--relay` 进程的层 2，那一层的每一条输出都在
+/// 账号域（`accounts/`）不自己 `print`：其中的上游选择同时挂在 `--relay` 进程上，它的每一条输出都在
 /// 中转日志白名单底下（`relay::creds_guard`），而查询的输出不是日志。理由全文见
 /// `accounts::iso::Answer` 头注。
 fn emit_answer(a: accounts::iso::Answer) -> i32 {

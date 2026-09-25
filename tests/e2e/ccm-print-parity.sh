@@ -1,6 +1,9 @@
 #!/bin/bash
-# F03「--print 平价预言机」：验证 renderCli 产出的 `ccm …` 调用行，被真 shared/ccm 解析后，
-# 展开结果里确实含有 renderCli 想表达的每个意图（sid / tmux 名 / cwd / launcher / ccm-sid）。
+# F03「--print 平价预言机」：验证**生产渲染器**产出的 `ccm …` 调用行，被真 ccm 解析后，
+# 展开结果里确实含有渲染器想表达的每个意图（sid / tmux 名 / cwd / launcher / ccm-sid）。
+# 〔LR1 · U8c-3〕生产渲染器是 Rust（`ccm_invocation::render_ccm_invocation`）；那几行从入库夹具
+# `cli-golden.json` 取（cargo 逐字节保证它们 == 生产产出，来历链见 `ccm-print-parity-emit.mts` 头注）。
+# 原先现场跑 TS 渲染器 `renderCli`（已删，零生产调用）。**12 条断言一个字没改。**
 #
 # 这是唯一能在没有真远端机器的场景下验证「CLI 渲染器真的会让 ccm 干对事」的手段——
 # tests/e2e/resume-suite.sh / restart-suite.sh 的 shim 对未知 invoke 一律走 default 分支（等价于
@@ -39,7 +42,7 @@ BIN="$(mktemp -d)"; trap 'rm -rf "$BIN"' EXIT
 ln -s "$CCM_NATIVE" "$BIN/ccm"
 export PATH="$BIN:$PATH"
 
-echo "===== 生产命令行（来自真 renderCli，不手搓）====="
+echo "===== 生产命令行（入库夹具里 cargo 对过生产渲染器的那四行，不手搓）====="
 TSV="$(cd "$REPO" && npx tsx tests/e2e/ccm-print-parity-emit.mts)"
 echo "$TSV" | sed 's/^/  /'
 

@@ -33,7 +33,7 @@
 2. **远端后端自部署（issue #29，`sftp::ensure_backend_deployed`）**：经 SFTP 写远端 `~/.cc-monitor/bin/`（后端二进制 + `.build_id` 标记）—— **非用户数据、幂等、版本门控**；只写 cc-monitor 自己的 bin 目录，**绝不碰** `~/.claude/`。
 3. **远端历史删除（issue F11）**：〔RW1 · 第四波 2026-09-24〕**已并进第 1 条**（按用户裁「按推荐改」，远端也经那台机器后端的 `files-delete-session`，只收 sid）。
    原文留档：**远端历史删除（issue F11，`history::delete_history_session` 带远端 `origin` → 远端分支 `remote_history::delete_remote_history_session` → `sftp::remove_remote_file`；〔步 12·C 09-20〕本机与远端已合成一条命令）**：用户**主动**点删除 + 前端**二次确认**后，经 SFTP 移除远端 `~/.claude/projects/` 下的 jsonl；**双重路径守卫**（`is_safe_remote_jsonl`〔散文墓碑〕：须 `.jsonl` + 含 `/projects/` + 无 `..`；并 SFTP `canonicalize` 解 symlink 后再校验）。〔RW1 · 第四波 2026-09-24：本条的实现已换 —— 两侧都经那台机器后端的 `files-delete-session`（**只收 sid**，会话文件围栏唯一的例外，落点由后端按 sid 找、解到底必须恰是 `<项目>/<sid>.jsonl`）；SFTP 直删与这道守卫一起走了。〕**注**：标星 / 重命名 / 隐藏是 **monitor 本地元数据**（`history-metadata.json` 按 sid），**不写远端**——唯一写远端的用户数据操作就是删除 jsonl。
-4. **profile 写（F10，本机 `profile_installer` cc 集成 ＋ 别名文件 `~/.cc-monitor/aliases.sh` 与 rc 那一行 source ＋ 远端 `sftp::install_remote_alias_block`/`uninstall_remote_alias_block`，〔MC1 2026-09-24〕从前叫「装/卸 ccm 助手」）**：写用户自己的 shell profile（本机 `~/.bashrc` / `$PROFILE` / **远端 `~/.bashrc`**）装/卸 cc(m) 助手——用户显式触发、BEGIN/END 块 + 备份 + 写后校验回滚。
+4. **profile 写（F10，本机 `profile_installer` cc 集成 ＋ 别名文件 `~/.cc-monitor/aliases.sh`（〔TL1 · 4C〕接上它的那一行 source 只住别名块里，`设计/71 §6.1`；从前另有一处代装进 rc 的，退役）＋ 远端 `sftp::install_remote_alias_block`/`uninstall_remote_alias_block`，〔MC1 2026-09-24〕从前叫「装/卸 ccm 助手」）**：写用户自己的 shell profile（本机 `~/.bashrc` / `$PROFILE` / **远端 `~/.bashrc`**）装/卸 cc(m) 助手——用户显式触发、BEGIN/END 块 + 备份 + 写后校验回滚。
    〔RW1 · 第四波 2026-09-24〕**落盘不在 monitor 进程**：本机与远端都经那台机器的后端（`user_files::edit` → `files-peek` / `files-put`），
    monitor 只算新内容（`fenced_block::splice_in/out`）；备份 · 替换 · 回读 · 回滚那一份规则住后端（见 §4）。**注（batch20 审计修）**：F10 **含远端 `~/.bashrc` 写**（原 `sftp.rs` 头「非远端」措辞已订正）。
 5. **MCP 项目配置写（F87 本机 / F89a 远端；〔RW1 · 第四波 2026-09-24〕**两侧落盘都经那台机器的后端**（`mcp::edit_project_mcp` → `files-peek` / `files-put`），下文「本机 `ReplaceFileW` / 远端 `sftp::upload_atomic`」两处是原文留档；写面仍只 `<dir>/.mcp.json`、坏 JSON 拒覆盖、不再留 `.json.bak`；`mcp::write_project_mcp_server` / `mcp::remove_project_mcp_server` —— 〔步 12·C 收尾 09-20〕**两侧各已合成一条吃 `origin` 的命令**，远端那半 `write_remote_mcp_server` / `remove_remote_mcp_server` 今天是它们的**分支函数**，不再是 IPC）**：用户**显式**点「添加/更新」或「删除」（删带二次确认）后，写**项目** `.mcp.json`（本机 `mcp_json_path` 硬编码 / 远端 `is_safe_remote_mcp_json` 守卫：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；远端经 `sftp::upload_atomic` 原子 tmp+备份+rename）。**SS-14**：写面**只** `.mcp.json`，**绝不**写 `~/.claude.json`/settings.json。`.mcp.json` 是**用户项目配置**（决定项目用哪些 MCP server），**非** Claude 会话数据（jsonl/pidfile）——与本约正交（同 F47 SFTP 面板性质），非驱动运行中会话。
@@ -950,6 +950,23 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 "账号有 configDir 但无名字"（老式直调路径，见 `launch-requests.ts::accountOf` 头注）
 断言 `ok:false` 且**结果里没有 `cmd` 字段**。
 
+### LR1 更新（2026-09-25，U8c-3 前一半）：TS 那份 CLI 渲染器删了，本条今天住在 Rust
+
+上面三段里的 `canRenderCli` / `renderCli` / `tryRenderCli` 与 `tests/launch-render-cli.test.ts`
+都是**当时**的住址 —— 那份 TS 渲染器从 U8c-2c-2 起就零生产调用，LR1 把它连同套件一起删了。
+**不变量本身一个字没松**，今天的住址与验证：
+
+- 实现：`src/bridge/src/backend/control/ccm_invocation.rs::render_ccm_invocation`（生产入口
+  `launch_wire.rs::render_ccm_launch`）。说不出的维度 ⇒ `Refusal::DimensionCannotSpeak`（整条放弃，
+  不跳过）；`send-into` ⇒ `Refusal::SendIntoHasNoCliForm`；attach 分支在维度循环之前 return（豁免照旧）。
+- 验证：`tests/bridge/backend/control/ccm_invocation_tests.rs` 的
+  `a_dimension_that_cannot_speak_abandons_the_whole_line` · `send_into_is_refused_before_any_dimension_runs` ·
+  `attach_reads_the_container_name_and_no_modifiers_at_all`（attach 豁免三道闸一次钉）· `a_triggered_dimension_carries_its_own_capability_requirement`；
+  外加入库夹具 `fixtures/cli-golden.json`（`req` 由生产的 TS 请求构造现产、`out` 是 `src/launch-cli-golden.ts`
+  用例表里的手写期望，`launch_cli_parity.rs` 跑生产命令逐字节比，ok / refusal 两类各自条数恒等）。
+- ⚠ 「两种语言各一份、逐字节对拍」这一层没了（已知代价，理由见 `src/launch-cli-golden.ts` 头注）；
+  「渲染器该做什么」的独立说法只剩上面两份手写期望。
+
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
 **它是什么**：`shared/ccm` 的 `--print` 打印「将要执行的命令」而不执行。整个仓把它当
@@ -1002,14 +1019,15 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 ### 顺带钉住的跨语言契约（同一套件 C 组）
 
 `--ccm-probe` 的首行必须逐字 `name=ccm`（`src/bridge/src/ccm_probe.rs::parse_probe_output`
-靠它判「装没装」），`capabilities=` 必须**覆盖** `src/launch-render-cli.ts::CLI_REQUIRED_CAPS`
+靠它判「装没装」），`capabilities=` 必须**覆盖** `src/bridge/src/backend/control/ccm_invocation.rs::CLI_REQUIRED_CAPS`
+（〔LR1〕原先是 TS `launch-render-cli.ts` 里那一份，随 TS 渲染器删了）
 （少一项 ⇒ app 静默退到兜底渲染器，用户看不见）。覆盖是 `⊇` 不是 `==`
 （ccm 多声明能力是允许的，今天就多 6 项），别有人把它收紧成相等。
 
 ⚠ **精确说法**：这两处的消费方此前只对**手写 fixture** 测过，但真脚本的 probe 输出
 **并非全无覆盖** —— `cc-spawn-uplift` 主流程不设 `CCM_BIN`，`cc-spawn` 因而解析到真
 `shared/ccm` 并对 `detach`/`tmux-size` 两项 fail-closed。**真正零覆盖的是**：
-首行 `name=ccm` · `version=` · `agents=` · TS 侧那 7 项 `CLI_REQUIRED_CAPS`。
+首行 `name=ccm` · `version=` · `agents=` · 渲染器那 7 项 `CLI_REQUIRED_CAPS`。
 
 ## 33b. 载荷编译器搬进 Rust 是**三步**，六条渲染器不变量各自的命运写在这里（U8c / unified-backend）
 
@@ -1049,7 +1067,8 @@ U8c-1 摸底后拆成三步：
 >   「一句真话摆错了尺子」）。
 > · `U8c-3` 状态仍是**待做**：那两个 TS 文件**没删**，它们今天是两份入库夹具的**左边**
 >  （「另一种语言的独立说法」）；删了就把跨语言对拍降级成「Rust 没变」的冻结快照
->  —— `launch-render-cli.ts` 已按同一条先例复裁过两次：不划算，不删。
+>  —— `launch-render-cli.ts` 曾按同一条先例留着；〔LR1 2026-09-25〕它已删（U8c-3 前一半），
+>  夹具的左边换成了用例表里的手写期望（`src/launch-cli-golden.ts` 头注）。兜底这一族仍待做。
 >   逐处住址与「还站不站在生产路上」两把尺子见
 >   `tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs` 的
 >   `TS_FALLBACK_KEEPERS`（尺子A：处数）与 `TS_FALLBACK_REACH`（尺子B：有没有生产调用方），
@@ -1377,7 +1396,8 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 **R07 为什么连 `buildLaunchPlan` 那一遍也删了**：初稿保留它并声称是"一道便宜的一致性检查"，
 但审计实测该声称**零门禁守护**（删掉整段 ctx 构造 + 调用、只留 `void cwd;` → `tsc` 与
 `npm test` 705 全绿；改造前同一变异红 5 条，因为那时返回类型让它在**类型层**承重）。
-而它想验的东西 `launch-render-cli.test.ts` 已在验（`ctxOf({transport:{kind:"local"}})` → `buildLaunchPlan`）。
+而它想验的东西 `launch-render-cli.test.ts` 已在验（`ctxOf({transport:{kind:"local"}})` → `buildLaunchPlan`；
+〔LR1〕那份套件已删，这一格今天由 `tests/launch-requests.vitest.ts`「维度注册表在 transport:local 下的行为」管）。
 生产侧它纯属浪费，且是 **fail-closed 风险**：将来任何对 `transport:local` 抛异常的新维度，
 都会让本地 resume 彻底拉不起来而收益为零。
 
@@ -1418,7 +1438,9 @@ MASTERPLAN §0.1 成功标准②（"加一个新启动维度 = 注册一个 dime
 渲染器——这与 §35 修的坑**外观相似但机制不同**：F05 的坑是"`applies` 恒假导致 null 检查
 根本跑不到"（结构性检测不到）；这里 `applies` 会在配了偏好时正确变真，null 检查确实跑到并
 正确返回 `false`——是"检测到了、诚实报告降级"，不是"检测不到、悄悄放过"。`canRenderCli` 对
-这条降级有专门的端到端测试锁定（`launch-render-cli.test.ts` 的两条 `modelOverride` 用例），
+这条降级有专门的端到端测试锁定（`launch-render-cli.test.ts` 的两条 `modelOverride` 用例；
+〔LR1〕那份套件已删，今天由 `ccm_invocation_tests.rs::model_dimension_is_conditional_by_design` 与夹具
+「已触发的 model 维度要的能力缺失」那条用例管），
 不只是孤立测 `cliFlags()` 的返回值。
 
 ## 38. 一条新正交轴该进 `LAUNCH_DIMENSIONS` 注册表，还是该做 `LaunchPlan`/`LaunchContext` 的硬编码一等字段——三条 checklist（F09 / unify-launch，R12）
@@ -1833,7 +1855,7 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 > **〔订正 · B2 · 2026-09-24 · 用户裁「只允许后端的文件管理部分写文件」管的是**用户的文件**〕** 第四层：
 > | 层 | 范围 | 判据 |
 > |---|---|---|
-> | **第四层（后端自有状态文件）** | **按文件登记**（`readonly_guard` 第四层表，相等断言）。今天三份：`control/exit_policy.rs` 只写 `~/.cc-monitor/backend.json`（B2）· `accounts/apikey/file_face.rs` 只写账号层那份凭据文件（〔RM1a〕远端那台由它写）· `asset_catalog.rs` 只写 `~/.cc-monitor/assets-catalog.json`（〔AS2〕资产目录，V113） | 动词只许建目录 · `O_EXCL` 临时文件 ＋ 原子改名 · 失败删自己的临时文件；写入口只从 `inbound.rs` 进 |
+> | **第四层（后端自有状态文件）** | **按文件登记**（`readonly_guard` 第四层表，相等断言）。今天三份：`control/exit_policy.rs` 只写 `~/.cc-monitor/backend.json`（B2）· `accounts/upstream/file_face.rs` 只写上游选择那份凭据文件（〔RM1a〕远端那台由它写）· `asset_catalog.rs` 只写 `~/.cc-monitor/assets-catalog.json`（〔AS2〕资产目录，V113） | 动词只许建目录 · `O_EXCL` 临时文件 ＋ 原子改名 · 失败删自己的临时文件；写入口只从 `inbound.rs` 进 |
 >
 > ⇒ 上面那段措辞改读成：**用户的文件只有文件管理那一面能改；后端自己的状态文件另立一档、恰好一份。** 两档互不借用。
 
@@ -2046,3 +2068,165 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
   那时要做的是给它立一张同形的表，不是指望现有六张覆盖它。
 - 设计篇那一族（`design_doc_registry`）是 2026-09-24 才补齐三档的；它里面那条对真 `调研/` 的 `#[ignore]`
   正是按本条登记的（手动档，写清了解锁条件）。
+
+---
+
+## 47. 外部来的值拼进 shell、或交给对端之前，**本侧**先过放行判定 —— 不许拿「对端会校验」「这是我们自己的数据」免检（`V121` 升格 · 用户 2026-09-25 拍板）
+
+**性质**：一个值只要**从本进程外面来**（盘上文件 · manifest · 对端回话 · 用户输入 · 远端目录名），
+在它被**拼进 shell 命令串**、或被**交给对端去执行 / 去寻址**之前，**本侧**先过一道按这个值的种类写成的放行判定；
+判不过就在本侧拒，带着「哪个值、为什么」出声，**一个请求都不发出去**。放行判定分两形，按值的种类选，不按口味：
+
+- **① 标识符类**（cc-bus agent id · 账号名 · 分叉的 sid / 消息 uuid · ccm 建的 tmux 会话名 · ssh 别名 · 端口转发规格）：
+  **字符集白名单**（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界。
+- **② 自由文本类**（路径 · 用户已有 tmux 会话的 attach 目标）：字符集**放不成闭集**（路径里中文、空格是合法的；已有会话名里真有 glob 字符）
+  ⇒ 走**唯一的 quote**（`设计/00 §1.2`）＋ 这一种值的**形式判定**（绝对路径 · 不含 `..` · 不空）＋ 那一张**拒绝集**权威表
+  （控制字符 · shell 元字符 · 视觉欺骗字符，住 `payload.rs::config_dir_command_safe` 那一族）。
+  🔴 这一形**是拒绝集、不是白名单**，如实写在这里：别把「②」读成「白名单已经覆盖了」。
+
+**本侧判的是形状，不是成员资格**：「这个 agent 种类认不认」「这个账号存不存在」归**拥有那份名单的一方**
+（cc-spawn · 上游选择的那张表），本侧不维护第二份合法值名单 —— 后端那条「后端不许再白名单 agent 种类」判据钉的正是这条边。
+
+**为什么不能松动**：
+- **「对端会校验」不是理由**：对端校验的是它自己的入口；本侧不判，拼错的那一段就已经在路上了 ——
+  而收掉一个 agent 的后果是**杀掉一棵进程树**（`cc_bus_tests.rs::the_kill_entry_still_refuses_bad_ids_before_it_asks_anyone` 里逐字「**不能靠对端校验**，这一条的后果是杀掉一棵进程树」）。
+  把命令串换成后端原语之后，**注入面没了，这一条没作废**：校验从「拼命令之前」挪到「交给后端之前」（BS1b · `K-R98` · `K-R112` 三次搬家，判据逐次跟着换住址）。
+- **「这是我们自己的数据」不是理由**：盘上真出现过没人预料的 id —— `~/.cc-bus/inbox/--help.jsonl`（188 字节）是真实存在的文件，
+  那个 id 一拼进 `cc-send` 就被当成一个 flag（B03 审计）。manifest 是我们自己维护的，账号名照样要过字符集。
+- **拒过头也算违反**：放行判定写错成「恒拒」，功能在那个平台上就整条没了（见下「违反过几次」第 3 条）。
+  ⇒ 守本条的判据都要**正反各一格**（坏值拒、真实好值放），只断「坏的被拒」的判据，把判定焊成恒拒也能绿。
+
+**谁在守**（按值；每一格都是那个值自己那一族判据，**没有一张全集登记表**，见「买不到」）：
+
+| 值 | 本侧放行判定 | 判据 |
+|---|---|---|
+| cc-bus agent id（①） | `cc_bus.rs::is_valid_bus_id` | `cc_bus_tests.rs::rejects_leading_dash_ids_from_real_disk` · `cc_bus_tests.rs::rejects_shell_metachars_and_control` · `cc_bus_tests.rs::accepts_real_ids` · `cc_bus_tests.rs::builders_reject_bad_ids_at_the_call_site` · `cc_bus_tests.rs::the_kill_entry_still_refuses_bad_ids_before_it_asks_anyone`（真调生产入口，拒在问通道之前，并断合法 id 走得过去） |
+| 派生时的账号名（①，交后端之前） | `cc_bus.rs::check_spawn_shape` | `cc_bus_tests.rs::spawn_shape_is_checked_on_this_side_before_the_backend`（含「不许白名单 agent 种类」那一格） |
+| 唯一的 quote（②） | `ssh_source.rs::shell_quote` | `cc_bus_tests.rs::quote_roundtrip_is_the_real_property` |
+| ccm 建的 tmux 会话名（①，后端） | `plan.rs::validate_tmux_name` | `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` |
+| 分叉的 sid / 消息 uuid（①） | `remote_branch.rs::validate_fork_id` | `remote_branch_tests.rs::fork_ids_are_whitelisted` |
+| ssh 别名（①；`-` 开头另挡） | `ssh_source.rs::is_safe_alias` | `ssh_source_tier1_tests.rs::is_safe_alias_allowlist` |
+| 端口转发规格（①） | `port_forward.rs::validate_spec` | `port_forward_tests.rs::validate_spec_guards` |
+| 账号配置目录（②） | `payload.rs::config_dir_command_safe` · `history.rs::validate_config_dir_ps` · 后端 `accounts_query.rs::is_safe_config_dir` | `history_tests.rs::the_config_dir_validator_rejects_every_injection_shape` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `accounts_query_tests.rs::every_group_of_deceptive_characters_is_rejected_in_a_config_dir` |
+| 远端落点路径（②） | `mcp.rs::is_safe_remote_mcp_json` · `acct_iso_deploy.rs::is_safe_remote_acct_iso_dir` | `mcp_tests.rs::remote_mcp_path_guard_rejects_traversal_and_nonabsolute` · `acct_iso_deploy_tests.rs::safe_dir_rejects_dangerous` |
+| tmux attach 目标（②，只拒空） | `tmux.rs::is_safe_tmux_target` | `tmux_tests.rs::gate1_rejects_only_empty_target` |
+
+**与邻居的关系**：`设计/00 §1.2` 管「quote 只有一份」—— 它是②形的一半，不管①形，也不管「本侧先判」；
+`§34` 管 tmux 破坏性命令的三道门 —— 那是**动作**的门，本条是**值**的门；`§31a` 管 tmux 目标的精确形态 `=<名>:`。三条都不是本条。
+
+**违反过几次**（每一次都是人或审计发现的）：
+1. **`--help` 当 id**：盘上真有 `--help.jsonl`，拼进 `cc-send` 就是一个 flag（B03 审计；此后「真实盘面数据」进了判据夹具）。
+2. **拒绝集那张表漂过两次**：`payload.rs` 的不可见字符表、`history.rs` 的旧 `SPOOFABLE`（18 项）都缺 `U+1680` · `U+2000..200A` · `U+202F` · `U+205F` · `U+2060..2064` · `U+3000`，
+   拼命令那条路漏了 U7-3 给读 manifest 那两处的并集（U8c-1 · audit-0805 收成一张权威表）。定级是纵深防御缺口，不是当时可利用的洞。
+3. **拒过头**：配置目录的判定照抄 `starts_with('/')`，Windows 上每个真实账号目录（`C:\Users\…`）必被拒 ⇒「本机分叉时选一个具名账号」在主平台 100% 失败（Phase G 审计）；
+   `N-F1c` 让 monitor 的本机账号清单也来问后端时，后端 `is_safe_config_dir` 面对同一形（不拆就清单恒空），拆成「平台无关的安全性质 ＋ 平台相关的形式」两半。
+
+⚠ **它买不到的**：
+- **没有人群判据**。上表每一格是那个值自己那一族判据；**第 N+1 个外部值新长出来、没过任何判定就拼进了命令串，一条都不会红** ——
+  本条今天是「每个已知入口各有人守」，不是「全部入口都被数过」（`设计/01 §5 D5` 那条纪律在这里没落地）。
+- **②形不是白名单**：拒绝集只挡表里有的；表外的新危险字符（新的 Unicode 视觉欺骗段）要人补表。
+- **不判「这个值是不是外部来的」**：判据按已知入口写，一个被误认成「内部值」而免检的值，本条看不见。
+- **消息正文**（cc-bus 发的那段话）不在本条的放行判定里 —— 它经原语交给后端、不拼命令串，唯一的要求是「不空」。
+
+---
+
+## 48. 本机常驻后端的宿主三条：**监听口要钥匙 · 脱离后不留僵尸 · 测试里起真后端必须 fail-closed 地隔离用户 tmux**（`V121` 升格 · 用户 2026-09-25 拍板）
+
+三条是同一件事的三个面：常驻后端（`设计/01 §3.3`「前端不在也活着，前端起来能**接回去**」· V107）一旦**脱离**了起它的那个 monitor，
+**它能做的事就不再有一个父进程看着** —— 谁能连上它、它死了谁收、测试里起的那一个会不会碰到用户的东西，必须各有一条硬规矩。
+
+### 48.1 监听口要钥匙
+
+**性质**：常驻后端对外开的**控制口**（回环 TCP；`listen.rs`）只有出示了钥匙的连接才能拿到**流**（能发 `launch` / `kill` 的那一档）。
+「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对（前缀 / 后缀 / 大小写都不算）；
+钥匙不对、形状不对、口被占着 —— 三种拒法**出声且彼此可分**。钥匙由宿主生成（新生成时 128 位随机）、写进 `0600` 的文件、经 env 交给后端（后端只读铁律不许它自己写文件）。
+不认证的只有 hello 那一档（只读、读完即关），它泄露 `claude_dir` / `build_id` / 能力集，这是有意的取舍（`listen.rs` 头注「诚实边界」第 1 条）。
+
+**为什么不能松动**：回环 TCP **没有权限位** —— 同机任何本地进程（**含别的用户**）连得上那个口，
+没有钥匙就能以本账号的身份起会话、杀会话。Unix socket 的文件权限在这条路上没有，补回来的**只有这一把钥匙**。
+
+**谁在守**：后端 `listen_tests.rs::a_port_without_a_token_is_refused` · `listen_tests.rs::a_token_without_a_port_is_refused_loudly` ·
+`listen_tests.rs::empty_strings_count_as_unset` · `listen_tests.rs::an_empty_token_never_matches` · `listen_tests.rs::tokens_match_is_exact` ·
+`listen_tests.rs::attach_verdicts_are_three_distinct_faces` · `listen_tests.rs::the_two_tier_split_is_pinned_cell_by_cell`；
+宿主那一半 `local_backend_host_tests.rs::every_token_is_fresh_and_long_enough` · `local_backend_host_tests.rs::the_listen_token_file_is_pinned_cell_by_cell`（`0600` · 竞态支不覆盖 · 空文件支）·
+`local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused`（口被别人占着 ⇒ 出声拒，不静默复用）。
+
+**射程**：本条只管**控制口**。常驻后端今天还绑两类口，如实列：
+- **中转口**（`relay/listen.rs`，V107 起住常驻后端）**没有钥匙** —— 它在听的时候，同机任何进程走 `/s/…` 就能让中转代入某个账号的凭据。它不在本条射程里，
+  **也没有别的条管它**；是设计取舍还是缺口，未裁（`IV1` 报主会话）。
+- **端口转发**（`dial/uses.rs`）是用户自己配的 `ssh -L` 语义，本就不设钥匙。
+- 文件管理器那条回环通道（`chan/host.rs`）有钥匙，但住 monitor，由 `设计/05 §10.5` 管，是本条的同形邻居。
+
+### 48.2 脱离后不留僵尸
+
+**性质**：脱离起的后端（Linux 上 `process_group`，**不改父子关系**）无论怎么死 —— 被外面结束、自己崩 —— 进程表里那个 pid 都要**消失**，
+不许停在 `Z`；收尸走宿主自己那条线（`local_backend_host.rs::reap_detached`），收完之后 pid 与二进制路径仍留在句柄里（「停」那一步还有凭据核身份）。
+
+**为什么不能松动**：不 `wait` 就留僵尸，而我们自己的事件（EOF）**早就到了** —— 断言落在「消费者收到 EOF」上会绿着放过整个缺陷；
+僵尸要等 monitor 退出才被 init 收走，而 monitor 是一直开着的那个进程。
+
+**谁在守**：`local_backend_host_tests.rs::e2e_a_detached_backend_that_dies_leaves_no_zombie`（断言落在 `/proc/<pid>/stat` 的状态字上，不落在自己的事件上；
+`#[ignore]`，由 `tests/e2e/local-backend-supervise.sh` 第二趟拉起，CI「本机后端监护真进程验收」一步地板 14 ⇒ 在执行链上，按 `§46` 登记）。
+
+### 48.3 测试里起真后端必须 fail-closed 地隔离用户 tmux
+
+**性质**：任何一条起**真后端二进制**的测试 / e2e 套件，都必须经**唯一的口**拿到私有 tmux 隔离（shim 放进后端 `PATH` 最前、强插 `-L`），
+**拿不到就炸，不许降级裸跑**。人群按「那个二进制从哪来」派生，不按测试属性（`#[ignore]` 是可以不写的）。
+只 `env_remove("TMUX")` 不算（`TMUX` 一空就回落到默认 socket，**正是**用户那台）；靠 `TMUX_TMPDIR` 不算（`$TMUX` 一有值就压过它）。
+
+**为什么不能松动**：后端一上来就**无条件**往它连得到的 tmux server 装三条全局 hook（固定槽位 `[50]`，没有关掉的开关）⇒ 不隔离就是去改用户真实 tmux 的状态。
+
+**谁在守**：`local_backend_host_tests.rs::every_test_that_starts_the_real_backend_demands_a_private_tmux`（正题：人群按二进制来历派生，两个文件一起扫）·
+`local_backend_host_tests.rs::the_one_shim_gate_really_fails_closed`（那个口在默认门禁里真跑一遍：缺变量必炸、有值原样交出）·
+`local_backend_host_tests.rs::every_ignored_test_here_that_spawns_a_real_backend_demands_private_tmux` · `local_backend_tests.rs::every_real_backend_e2e_demands_a_private_tmux_dir`（两条窄的，守 `#[ignore]` 那一族的形状）；
+shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tmux_tmpdir` · `e2e_gate_registry_tests.rs::the_tmux_shim_primitive_has_exactly_one_home`。
+
+**违反过几次**（三条合计）：
+1. **tmux 隔离**：08-11 同族事故打没了用户 **9 个**真实会话（`TMUX_TMPDIR=… tmux kill-server`，被 `$TMUX` 压过）；08-13 `backend-cc-bus.sh` 照着过期注释省掉 shim，
+   两个夹具会话落到用户默认 socket；08-26 实现常驻后端期间手工起真后端做冒烟，把用户那台 server 的 `[50]` 整个盖成了那个进程的 pid；08-27 / 08-29 各又盖过一次。
+2. **钥匙**：真放进来过的 0 次；「没人守」被量到过一次（`K-P1` 回修 `阻-4`）：钥匙文件的 `0600` · 竞态支 · 空文件支三格零覆盖，
+   空文件那一支两条路合成闭环、每次都交出空钥匙（后端按「有口没钥匙」拒起 —— 方向是 fail-closed，代价是常驻起不来且自己好不了）。
+3. **僵尸**：未见真违反的记录；这一条是 `KPY3` 立的 DoD。
+
+⚠ **它买不到的**：
+- **中转口没有钥匙**（见 48.1 射程），本条对它不说话。
+- **只量了 Linux**：僵尸那条是 `#[cfg(target_os = "linux")]`；Windows 上脱离的形态与收尸没有真机判据（`RT1` 虚拟机那一路的射程）。
+- 48.3 的人群是「起**真后端二进制**的测试」。直接起 tmux server 而不起后端的测试（例：`watcher_tests.rs` 那条 pidfd 判据自带 `-L`）不在人群里，各自隔离、没有一条人群判据管。
+- 48.3 自己的头注登记着若干条「手滑」形状的诚实边界（块注释包住取 shim 那一句 · `catch_unwind` 接住那声炸 ⋯⋯）—— 它防的是手滑，不是恶意。
+
+---
+
+## 49. tmux 的**打印通道必须是 UTF-8**，按 TAB 切出来的段数**下溢必须出声**（`V121` 升格 · 用户 2026-09-25 拍板）
+
+**性质**：本仓每一处**按格式串读 tmux 打印通道**的调用点（`list-sessions -F` · `ls -F` · `display-message -p`），
+起的 tmux 客户端都必须是 UTF-8 客户端（`capture-pane -p` 实测吐原始字节、不在这个人群里；后端那一处照样带旗，由 `readonly_guard.rs::the_argv_this_site_emits_is_read_only_element_by_element` 逐元素钉着 —— 那是邻居，不是本条的判据）：
+- 本机 argv 直传与跨 SSH 的命令串用**旗**（`UTF8_CLIENT_FLAG`，且**必须排在子命令之前**）；
+- `sh -c '<可能有多条分支的脚本>'` 用 **env**（`UTF8_CLIENT_ENV`，挂在起 `sh` 的那个 `Command` 上，一行盖住全部分支）；
+- 按 TAB 切的，切出的段数 **< 预期 N** ⇒ 出声 ＋ 这一行**不许当好数据**（`tab_underflow`）。
+口径只有一个家：后端 `common/tmux_utf8.rs`；monitor 是另一个二进制，它那一份经跨仓对拍焊住。
+
+**为什么不能松动**：tmux 判「客户端是不是 UTF-8」**从不问 glibc**，只对 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值做 `UTF-8` 子串匹配 ⇒
+**从配置推不出结果**。一旦是非 UTF-8 客户端，输出里的 TAB 与非 ASCII **全部**被改写成 `_`，**退出码仍是 0** ——
+会话名变成整行、会话从列表里静默消失、字段读成空，没有一处报错。改写是**每客户端全有全无**的，所以下溢是完备检测器：脏通道必然把 N 段塌成 1 段。
+（与 `§3` 不是一件事：`§3` 管跨进程 JSON 文件的编码，本条管一个外部程序的打印通道。）
+
+**谁在守**：
+- 调用点带没带 UTF-8：`gate_tests.rs::both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand` ·
+  `watcher_tests.rs::every_sh_call_site_in_this_module_carries_the_utf8_env` ·
+  `session_snapshot_tests.rs::the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand` ·
+  monitor 跨 SSH 那一处 `tmux_tests.rs::the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand`。
+- 下溢出声：`gate_tests.rs::the_underflow_predicate_catches_the_real_dirty_bytes` · `watcher_tests.rs::the_underflow_predicate_only_fires_downward` ·
+  `session_snapshot_tests.rs::a_tab_starved_line_is_dropped_instead_of_becoming_a_session` · `tmux_tests.rs::a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today`。
+- 口径一个家：`tmux_utf8_tests.rs::each_kou_jing_has_exactly_one_home_and_it_is_this_file` · `tmux_utf8_tests.rs::both_consumer_layers_reference_the_home_instead_of_declaring_their_own` ·
+  `tmux_utf8_tests.rs::the_one_home_scan_actually_bites`（量具）· monitor 侧 `tmux_tests.rs::utf8_client_kou_jing_has_one_home_and_this_side_matches_it`（跨仓对拍）。
+
+**违反过几次**：`K-R12`（09-04）在无挂载容器里量：当时**六处**读 tmux 的调用点，在 POSIX 客户端 locale 下**六处全部被改写**，一处不剩（`tests/evidence/K-R12-deathvalue.md`）。
+同一趟逮到一条真缺陷：monitor 送键前远端核验那条串用 `cut -f` 取 sid，没有分隔符的整行被原样放行 ⇒ sid 变成整行 ⇒ `[ -n "$sid" ]` 恒真 ⇒ **远端核验被静默绕过**（fail-open）。
+都是量出来的，不是用户报的。
+
+⚠ **它买不到的**：
+- **没有人群判据**：每条判据只管它自己那个模块里的调用点；**新长一处读 tmux 的调用点不带 UTF-8，一条都不会红**。
+  〔`IV1` 升格当天现打〕后端 `ccm/plan.rs` 拼给终端的那段脚本里就有一条 `tmux list-panes … -F '#{pane_id}'` 不带旗 ——
+  今天无害（单列、`pane_id` 是 ASCII、不按 TAB 切），但它正是「人群外」那一形的活样本。
+- **上溢今天仍被丢弃**：`pane_current_path` 里的真 TAB 会多切一段，monitor 的 `!= N` 判法会把那个会话静默丢掉（`tmux_tests.rs::a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today` 的名字就写着「今天仍丢」）。本条只要求下溢出声，不管上溢。
+- 旗放错位置是 `rc=1 + unknown flag -u` 的**响错**，而几处调用点刻意不看退出码 ⇒ 那一声在生产里会被压成「一个会话都没有」。位置由各调用点判据单独钉，不由本条的家管。

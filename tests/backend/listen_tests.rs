@@ -1,3 +1,10 @@
+//! # 要求住址：`INVARIANTS §48.1`（本机常驻后端的监听口要钥匙；V121，用户 2026-09-25 拍板）
+//!
+//! 核原文：`§48.1` 逐字「「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对」「三种拒法**出声且彼此可分**」——
+//! 本族 `a_port_without_a_token_is_refused` · `empty_strings_count_as_unset` · `an_empty_token_never_matches` · `tokens_match_is_exact` ·
+//! `attach_verdicts_are_three_distinct_faces` · `the_two_tier_split_is_pinned_cell_by_cell` 逐格判它。
+//! 只听回环、拒绝理由闭集、握手行上界、退出码那几条是同一个监听口的形状，住生产侧 `listen.rs` 头注（「诚实边界」三条），本条不另点。〔IV1 点址 2026-09-25〕
+
 use super::*;
 
 fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
