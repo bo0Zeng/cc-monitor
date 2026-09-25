@@ -33,12 +33,12 @@ fn tmpdir(tag: &str) -> PathBuf {
     d
 }
 
-/// ★★ **`KS9②` 的正主**：只往盘上放一份文件，**一次界面都不开**，账号层就拿到了 key。
+/// ★★ **`KS9②` 的正主**：只往盘上放一份文件，**一次界面都不开**，上游选择就拿到了 key。
 ///
 /// 走的是**生产段那条真实的路**（`resolve_path` → `load`），
 /// 文件是用**裸 `fs::write` 写的**（不是本仓的写入器）—— 那正是「人拿编辑器写了一份」。
 #[test]
-fn the_apikey_layer_loads_the_key_from_a_hand_written_file_alone() {
+fn upstream_selection_loads_the_key_from_a_hand_written_file_alone() {
     let home = tmpdir("only-file");
     let p = store::path_under_claude_home(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");

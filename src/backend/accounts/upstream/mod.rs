@@ -1,19 +1,20 @@
-//! 层 2 · **账号层**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**（`设计/20 §3.1`）。
+//! **上游选择**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**（`设计/20 §3.1`）。
+//! 〔V114 · 2026-09-25〕原叫「层 2 / 账号层」、模块名 `apikey`，改名上游选择 / `upstream`；纯命名，行为不变。〔散文墓碑〕
 //!
-//! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/apikey/`：`accounts/` 是账号**域**，
-//! 它下面「挂在 `--relay` 进程上当层 2 的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
+//! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/upstream/`：`accounts/` 是账号**域**，
+//! 它下面「挂在 `--relay` 进程上当上游选择的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
 //! 不共用一张登记表（用户「账号就账号, 中转就中转」）。两块互不引用，由
-//! `account_layer_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
+//! `upstream_selection_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
 //!
 //! # 它知道什么、不知道什么
 //!
 //! | | |
 //! |---|---|
 //! | **知道** | 账号模型 · `apikey-credentials.json` · 上游 · `auth_style` · 热重载 · 哪个账号走哪个模式 |
-//! | **也管** | 〔RM1a〕这台机器上那份凭据文件的写与文件级读（[`file_face`]，帧面两条命令）—— 账号层自己的状态 |
-//! | **不知道** | HTTP 怎么发、字节怎么泵 —— 那是层 1（`server.rs` / `listen.rs` / `http1.rs`） |
+//! | **也管** | 〔RM1a〕这台机器上那份凭据文件的写与文件级读（[`file_face`]，帧面两条命令）—— 上游选择自己的状态 |
+//! | **不知道** | HTTP 怎么发、字节怎么泵 —— 那是中转（`server.rs` / `listen.rs` / `http1.rs`） |
 //!
-//! ⇒ **「agent」与「账号」这两个业务词只在这一层出现。** 层 1 手里只有
+//! ⇒ **「agent」与「账号」这两个业务词只在这一层出现。** 中转手里只有
 //! `RouteKey{ seg1, seg2 }` 两个不透明段（条 48 · `01 §2.1 C1`）——
 //! 把它们读成 agent 与账号是**本模块**的事，就在下面 [`Accounts::resolve`] 里。
 //!
@@ -49,12 +50,12 @@
 //! （`decide` 被直接问，不经网络）；`wire_golden` 那一格用的 `seg1` 是一个**未登记**的名字，
 //! 仍钉着 502 那一半。
 
-pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（层 2 搬家带过来的）
+pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（上游选择搬家带过来的）
                       // 〔RM1a · 第四波〕这台机器上那份凭据文件的**帧面读写口**（`apikey-key-set` / `apikey-read`）。
-                      // 账号层自己的状态文件，不是用户文件 ⇒ `readonly_guard` 第四层登记它，只从 `inbound.rs` 进来。
-                      // ⚠ 它**不在** `--relay` 那条启动路径上：中转进程里的账号层仍然只读（`creds`），写只在流模式的帧面上发生。
+                      // 上游选择自己的状态文件，不是用户文件 ⇒ `readonly_guard` 第四层登记它，只从 `inbound.rs` 进来。
+                      // ⚠ 它**不在** `--relay` 那条启动路径上：中转进程里的上游选择仍然只读（`creds`），写只在流模式的帧面上发生。
 pub(crate) mod file_face;
-mod policy; // 热重载（`20 §4`：`accounts/policy.rs`；今天住 `accounts/apikey/policy.rs`）
+mod policy; // 热重载（`20 §4`：`accounts/policy.rs`；今天住 `accounts/upstream/policy.rs`）
 pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**
 
 pub(crate) use policy::Reload;
@@ -80,7 +81,7 @@ use table::{RoutingTable, Row};
 /// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
 pub(crate) const CREDENTIALS_FILE_AGENT: &str = "claude-code";
 
-/// 一家 agent 在层 2 里登记的那一行：**它的默认上游从哪儿来**〔条 59 / 条 60〕。
+/// 一家 agent 在上游选择里登记的那一行：**它的默认上游从哪儿来**〔条 59 / 条 60〕。
 ///
 /// 三格焊在一起，理由与 `table::Row` 把上游、key、鉴权头形状焊在一起是同一条：
 /// 分开取就写得出「A 家的旋钮配 B 家的默认值」。
@@ -96,12 +97,12 @@ pub(crate) struct AgentUpstream {
 /// ★★ **每 agent 一行的默认上游表**。不在这里的 agent = **未登记** ⇒ `/t/` 无行回 502。
 ///
 /// 🔴 **它替掉的是一个进程级常量**（先前的 `DEFAULT_UPSTREAM`）：那一个值对每个 `seg1` 都成立，
-/// 于是「codex 的请求发给 Anthropic」在层 2 里写得出来。今天那个 URL 字面量只作为
-/// **claude-code 这一行的一格**存在 —— `table_guard::layer_one_has_no_default_upstream_to_fall_back_to`
-/// 数着它的处数（层 2 恰好登记那几处，层 1 零处）。
+/// 于是「codex 的请求发给 Anthropic」在上游选择里写得出来。今天那个 URL 字面量只作为
+/// **claude-code 这一行的一格**存在 —— `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
+/// 数着它的处数（上游选择恰好登记那几处，中转零处）。
 ///
 /// 环境变量名 `CCM_AGENT_UPSTREAM_CLAUDE_CODE`〔R3 改名；先前叫中转的名字 —— 旧名见 `设计/20` R3 那一段〕：
-/// 它是**本表里 claude-code 那一行**的旋钮，不是中转的配置（层 1 没有默认上游）。名字照本表的形状起：
+/// 它是**本表里 claude-code 那一行**的旋钮，不是中转的配置（中转没有默认上游）。名字照本表的形状起：
 /// `CCM_AGENT_UPSTREAM_<agent>`，哪天登记第二家就照这个形状加一行。
 /// `src/doc/IPC-PROTOCOL.md` 那一行逐字点着这个名字，同拍改。
 pub(crate) const AGENT_UPSTREAMS: &[AgentUpstream] = &[AgentUpstream {
@@ -148,33 +149,33 @@ impl Upstreams {
     }
 }
 
-/// **`--relay` 这个进程的装配口**：层 1 的入口 ＋ 层 2 那只手。`main.rs` 的 `--relay` 那一臂调它。
+/// **`--relay` 这个进程的装配口**：中转的入口 ＋ 上游选择那只手。`main.rs` 的 `--relay` 那一臂调它。
 ///
-/// # 它为什么住层 2（而不是层 1）
+/// # 它为什么住上游选择（而不是中转）
 ///
-/// 装配要同时叫得出两层的名字。依赖方向只许层 2 → 层 1（层 2 本来就用层 1 的契约类型），
+/// 装配要同时叫得出两层的名字。依赖方向只许上游选择 → 中转（上游选择本来就用中转的契约类型），
 /// 反过来就是「中转层里有账号」—— 那正是用户 2026-09-24 那句话要拆掉的。
-/// ⇒ 层 1 的 `run` 收一个 `&dyn Startup`，本函数把 [`Boot`] 递进去；层 1 的生产段里
-///   **一个层 2 的名字都没有**（`relay::account_layer_guard` ㈢ 零命中）。
+/// ⇒ 中转的 `run` 收一个 `&dyn Startup`，本函数把 [`Boot`] 递进去；中转的生产段里
+///   **一个上游选择的名字都没有**（`relay::upstream_selection_guard` ㈢ 零命中）。
 ///
 /// ⚠ 它**不是**第二条入口：`--relay` 只有这一臂，本函数一行逻辑都没有，只做接线。
 pub fn run_relay(home: &std::path::Path, args: &[String]) -> i32 {
     crate::relay::run(home, args, &Boot)
 }
 
-/// 〔RL1 · V107〕**流模式常驻后端里的中转装配口**：层 1 的 `host` ＋ 层 2 那只手。`main.rs` 流模式那一处调它。
+/// 〔RL1 · V107〕**流模式常驻后端里的中转装配口**：中转的 `host` ＋ 上游选择那只手。`main.rs` 流模式那一处调它。
 ///
-/// 与 [`run_relay`] 同一条理由住层 2：装配要同时叫得出两层，依赖只许层 2 → 层 1。
-/// 交没交端口、起没起来由层 1 答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
+/// 与 [`run_relay`] 同一条理由住上游选择：装配要同时叫得出两层，依赖只许上游选择 → 中转。
+/// 交没交端口、起没起来由中转答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
 /// 取值器是**真环境**（与 `--relay` 那条 `run` 同一个来源）。回一句给宿主日志看的话。
 pub fn host_relay(home: &std::path::Path) -> String {
     crate::relay::host(&|k| std::env::var(k).ok(), home, &Boot).to_string()
 }
 
-/// 层 2 在 `--relay` 启动路径上交给层 1 的那一只手（[`Startup`]）。
+/// 上游选择在 `--relay` 启动路径上交给中转的那一只手（[`Startup`]）。
 ///
-/// ★ 层 1 **叫不出**它的名字：[`run_relay`] 把它递进层 1 的 `run`，层 1 只见得到
-/// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`account_layer_guard`（㈢ 零命中）。
+/// ★ 中转**叫不出**它的名字：[`run_relay`] 把它递进中转的 `run`，中转只见得到
+/// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`upstream_selection_guard`（㈢ 零命中）。
 pub(crate) struct Boot;
 
 impl Startup for Boot {
@@ -184,9 +185,9 @@ impl Startup for Boot {
 }
 
 impl Ready for Upstreams {
-    /// 读一次凭据 → 装表 → 出声 → 起账号层 → 接上热重载。
+    /// 读一次凭据 → 装表 → 出声 → 起上游选择 → 接上热重载。
     ///
-    /// ⚠ 这五步先前**长在层 1 的 `run_with` 里**（逐个直呼本层的名字）；今天是本层的私事。
+    /// ⚠ 这五步先前**长在中转的 `run_with` 里**（逐个直呼本层的名字）；今天是本层的私事。
     fn into_destinations(
         self: Box<Self>,
         get: &dyn Fn(&str) -> Option<String>,
@@ -202,10 +203,10 @@ impl Ready for Upstreams {
     }
 }
 
-/// 层 2 的实现：一张**可重载**的路由表。
+/// 上游选择的实现：一张**可重载**的路由表。
 ///
-/// ⚠ 这两个字段先前住 `struct Relay`（层 1）。搬过来之后层 1 那个结构体里
-/// 只剩下一个 `dest: Arc<dyn Destinations>` —— 层 2 整块藏在它后面（`20 §4`）。
+/// ⚠ 这两个字段先前住 `struct Relay`（中转）。搬过来之后中转那个结构体里
+/// 只剩下一个 `dest: Arc<dyn Destinations>` —— 上游选择整块藏在它后面（`20 §4`）。
 pub(crate) struct Accounts {
     /// `(agent, 账号)` → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
     ///
@@ -219,7 +220,7 @@ pub(crate) struct Accounts {
 }
 
 impl Accounts {
-    /// 从一张已经装好的表 ＋ 那张每 agent 一行的默认上游起一层账号层。
+    /// 从一张已经装好的表 ＋ 那张每 agent 一行的默认上游起一层上游选择。
     pub(crate) fn new(table: RoutingTable, upstreams: Upstreams) -> Self {
         Self {
             table: std::sync::RwLock::new(table),
@@ -236,11 +237,11 @@ impl Accounts {
 
     /// 每条请求进来先问一次：那份凭据文件动过没有？动过就重读。
     ///
-    /// ⚠ **它从层 1 搬过来了，位置也跟着变了一格**，如实写：先前 `handle` 在
+    /// ⚠ **它从中转搬过来了，位置也跟着变了一格**，如实写：先前 `handle` 在
     /// **读请求体之前**调它，现在它在 [`Accounts::resolve`] 的开头 ⇒ 落在**读完请求体之后**。
     /// 差别只有「那一次 `stat` 发生在哪一刻」，**线上一个字节都不变**
-    /// （`wire_golden` 那三条线的金标准逐字节钉着）。搬的理由：热重载是**层 2 的私事**，
-    /// 留在层 1 就等于层 1 认识「凭据文件」这个东西。
+    /// （`wire_golden` 那三条线的金标准逐字节钉着）。搬的理由：热重载是**上游选择的私事**，
+    /// 留在中转就等于中转认识「凭据文件」这个东西。
     ///
     /// # 为什么按 mtime 而不是「每次都读」
     ///
@@ -299,7 +300,7 @@ impl Accounts {
 }
 
 impl Destinations for Accounts {
-    /// ★★★ **`20 §3.1` 那张决策表的唯一实现。** 层 1 不许在别处再判一次。
+    /// ★★★ **`20 §3.1` 那张决策表的唯一实现。** 中转不许在别处再判一次。
     ///
     /// # 这里把两个不透明段读成业务名 —— 就这一处
     ///
@@ -321,11 +322,11 @@ impl Destinations for Accounts {
     }
 }
 
-/// 层 2 `Refuse` 的两个码 —— **只有这一处**〔`设计/20 §3.1a` ②〕。
+/// 上游选择 `Refuse` 的两个码 —— **只有这一处**〔`设计/20 §3.1a` ②〕。
 ///
-/// ⚠ 它们与层 1 自己造的那几个码（503 在飞上界 · 504 传输失败，住 `relay` 那一侧）
+/// ⚠ 它们与中转自己造的那几个码（503 在飞上界 · 504 传输失败，住 `relay` 那一侧）
 /// **必须两两不相交**（`D7`：同码 ⇒ agent 分不清是我们配错了还是上游挂了）。
-/// 钉这一条的判据住层 1 那边（`server_tests::every_status_we_make_has_one_home_and_the_three_groups_are_disjoint`，
+/// 钉这一条的判据住中转那边（`server_tests::every_status_we_make_has_one_home_and_the_three_groups_are_disjoint`，
 /// 它扫整个 crate 的生产段，本文件在它的人群里）。
 ///
 /// `/s/` 表里没这一行（`§3.1` 第 2 行）。
@@ -359,8 +360,8 @@ pub(crate) fn decide(
             //     · 不许回落到别的账号的 key —— 那是**拿 A 的 key 发 B 的请求**；
             //     · 不许回落到默认上游 —— 「配错了」与「没配」会变成同一个结果；
             //     · 不许在这里「顺手补一行」。
-            //   今天这三条靠的是：本支**只答 `Refuse`**，而层 1 手里没有任何可以回落的值
-            //   （每 agent 一行的默认上游住本层，层 1 一个上游字面量都没有，`table_guard` 那条两向相等断言钉着）。
+            //   今天这三条靠的是：本支**只答 `Refuse`**，而中转手里没有任何可以回落的值
+            //   （每 agent 一行的默认上游住本层，中转一个上游字面量都没有，`table_guard` 那条两向相等断言钉着）。
             act(Destination::Refuse {
                 status: NO_ROW,
                 why: "代入模式要求表里有这一行",
@@ -371,7 +372,7 @@ pub(crate) fn decide(
         (Mode::Passthrough, Some(row)) => {
             // ⚠⚠ **这一支刻意不走 [`dispatch_auth`]**，而那正是它的全部意义：
             //   那个函数会在「这一行有 key」时答 `Substitute`（代入）。
-            //   `/t/` 逐字是「**层 1 永不代入 auth**」⇒ 同一行在 `/s/` 与 `/t/` 下
+            //   `/t/` 逐字是「**中转永不代入 auth**」⇒ 同一行在 `/s/` 与 `/t/` 下
             //   发出去的字节**必须不同**，下游那份鉴权头在这里逐字节原样上去。
             //   钉这一条的是 `wire_golden` 那一格：同一个 `acctA`（表里配着 key），
             //   走 `/t/` 时上游收到的是**客户端那把**，不是表里那把。
@@ -420,10 +421,10 @@ pub(crate) fn decide(
 ///
 /// ⇒ 处置是把 `Substitute` 的含义写准：「**这一行的鉴权由表说了算**（先把下游那份剥掉）」，
 /// [`AuthSwap::write`] 给 `None` 表示「剥掉之后什么都不写」。`Passthrough` 仍然逐字是「原样转发」。
-/// 层 1 那边因此简化成一句话：`drop_client_auth == 这是不是 Substitute`
+/// 中转那边因此简化成一句话：`drop_client_auth == 这是不是 Substitute`
 /// —— 先前那个 `(key.is_some() && …) || style == NoAuth` 的复合条件（`K-R1` 头注
 /// 逐字警告过「只看前者的话 `NoAuth` 那一行会把客户端的真 key 原样送给一个声明了
-/// 不校验凭据的本地端点」）**整条搬到了这里**，层 1 再也没有第二处可以判错。
+/// 不校验凭据的本地端点」）**整条搬到了这里**，中转再也没有第二处可以判错。
 fn dispatch_auth(row: &Row, act: &mut dyn FnMut(Destination<'_>)) {
     let style = row.auth_style();
     let clear = headers_to_clear();
@@ -432,14 +433,14 @@ fn dispatch_auth(row: &Row, act: &mut dyn FnMut(Destination<'_>)) {
         (Some(k), Some((name, prefix))) => {
             // ★★ **这是整个后端生产段里唯一一处把明文取出来的地方**（`KS2`）。
             //    它就在「拼这一行要写的那个鉴权头值」这一句上。
-            //    ⚠⚠ 〔`P16` 2026-09-22〕它**从层 1 搬到了这里**，而搬的是**住址不是处数**：
+            //    ⚠⚠ 〔`P16` 2026-09-22〕它**从中转搬到了这里**，而搬的是**住址不是处数**：
             //      `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`
             //      那条「恰好 1 处」的相等断言**一个字节都没动**（它扫整个 crate，不写死文件名），
             //      `creds_store_tests::PLAINTEXT_EXIT_SITES` 那一行只改了住址栏。
             //      加第二处仍然是**放宽**，不许在实现里顺手把那条断言改大。
-            //    ⚠ 为什么搬：层 1 的类型面上不许再出现 `creds-core` 的类型（`C2`）
-            //      ⇒ 「把 `AuthStyle` 翻成 HTTP」与「把 key 拼成头值」**同属层 2 的判断**，
-            //      层 1 只拿到一个 `(头名, 完整头值)` 照写。
+            //    ⚠ 为什么搬：中转的类型面上不许再出现 `creds-core` 的类型（`C2`）
+            //      ⇒ 「把 `AuthStyle` 翻成 HTTP」与「把 key 拼成头值」**同属上游选择的判断**，
+            //      中转只拿到一个 `(头名, 完整头值)` 照写。
             let value = format!("{prefix}{}", k.expose_for_auth_header());
             act(Destination::Substitute {
                 upstream: row.base(),
@@ -465,15 +466,15 @@ fn dispatch_auth(row: &Row, act: &mut dyn FnMut(Destination<'_>)) {
 
 /// 一种鉴权头形状 → `(头名, 值前缀)`；`None` = **不发鉴权头**。
 ///
-/// # ★ 它是 `AuthStyle` → HTTP 的映射，而它今天住**层 2**〔`P16` 2026-09-22 搬过来的〕
+/// # ★ 它是 `AuthStyle` → HTTP 的映射，而它今天住**上游选择**〔`P16` 2026-09-22 搬过来的〕
 ///
-/// 先前它住 `server.rs`（层 1），理由是「`creds-core` 那一侧刻意不认识 HTTP ⇒ 头名与前缀
-/// 不许写在那边」。**那条理由今天仍然成立，而它并不推出「所以该住层 1」** ——
-/// `creds-core` 与层 1 之间还有层 2，而层 2 正是「认识账号、也认识这一行要什么鉴权形状」
-/// 的那一层。它收 `AuthStyle`（一个 `creds-core` 的类型）⇒ 按 `C2` 它**不可能**住层 1。
+/// 先前它住 `server.rs`（中转），理由是「`creds-core` 那一侧刻意不认识 HTTP ⇒ 头名与前缀
+/// 不许写在那边」。**那条理由今天仍然成立，而它并不推出「所以该住中转」** ——
+/// `creds-core` 与中转之间还有上游选择，而上游选择正是「认识账号、也认识这一行要什么鉴权形状」
+/// 的那一层。它收 `AuthStyle`（一个 `creds-core` 的类型）⇒ 按 `C2` 它**不可能**住中转。
 ///
 /// ⇒ 今天的分工是三段而不是两段：`creds-core` 管**格式**（文件里那个词是什么）·
-/// 本层管**翻译**（那个词对应哪个头、值前面加什么）· 层 1 管**照写**（它只看见一个串）。
+/// 本层管**翻译**（那个词对应哪个头、值前面加什么）· 中转管**照写**（它只看见一个串）。
 ///
 /// ⚠ 穷尽 `match`：加一个成员**编译不过** —— 这一格是编译器买的，不是一条文本判据买的。
 pub(crate) fn auth_header_of(style: AuthStyle) -> Option<(&'static str, &'static str)> {
@@ -488,9 +489,9 @@ pub(crate) fn auth_header_of(style: AuthStyle) -> Option<(&'static str, &'static
 ///
 /// # 🔴 它为什么不是一份手写名单（这一条是硬的）
 ///
-/// 先前层 1 有一个手写的 `AUTH_HEADER_NAMES = ["authorization", "x-api-key"]`，
-/// 靠一条判据与 [`auth_header_of`] 焊在一起。`P16` 把头材料改成由层 2 交下来之后，
-/// 那条焊缝的两端会**分居两层**（集合在层 1、映射在层 2）——
+/// 先前中转有一个手写的 `AUTH_HEADER_NAMES = ["authorization", "x-api-key"]`，
+/// 靠一条判据与 [`auth_header_of`] 焊在一起。`P16` 把头材料改成由上游选择交下来之后，
+/// 那条焊缝的两端会**分居两层**（集合在中转、映射在上游选择）——
 /// 而缺焊的症状是**同名鉴权头出现两次，上游谁赢没有定义**。
 /// ⇒ 处置不是把焊缝拉长，是**取消焊缝**：名单由映射**派生**，天然只有一个家（`D1`）。
 ///
