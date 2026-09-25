@@ -225,7 +225,7 @@ export class PanoramaView implements OverlayHandle {
       return;
     }
     // 〔RM1c · 第四波〕远端会话不再挡在门外：索引与图在那台机器上算（那台的后端起全景小程序），
-    // 线上只回结构化结果。远端仓第一拍只读（批注写入口当场拒并说清，`panorama/api.ts`）。
+    // 线上只回结构化结果。〔RM1d〕批注 / 文档关联的写本机远端同一条（那台算、那台后端的文件管理写）。
     await this.showRepo(info.cwd, info.origin);
   }
 
@@ -1186,7 +1186,6 @@ export class PanoramaView implements OverlayHandle {
 
   /** F72：批注区——列已有批注（Active）+ 每条删除 + 添加表单（人写=Active，落仓可提交）。 */
   private annotationSection(nv: NodeView, s: Symbol): HTMLElement {
-    const writable = api.canWriteAnnotations(this.at(this.repo ?? ""));
     const sec = document.createElement("div");
     sec.className = "panorama-node-section";
     const h = document.createElement("div");
@@ -1206,23 +1205,16 @@ export class PanoramaView implements OverlayHandle {
       author.className = "panorama-ann-author";
       author.textContent = `${a.author} · ${originLabel(a.origin)}` + (a.status === "Proposed" ? " · 待批准" : "");
       foot.appendChild(author);
-      if (writable) {
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "panorama-btn panorama-ann-del";
-        del.textContent = "删除";
-        del.addEventListener("click", () =>
-          void this.mutateAnnotation(() => api.removeAnnotation(this.at(this.repo ?? ""), a.id), s.id),
-        );
-        foot.appendChild(del);
-      }
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "panorama-btn panorama-ann-del";
+      del.textContent = "删除";
+      del.addEventListener("click", () =>
+        void this.mutateAnnotation(() => api.removeAnnotation(this.at(this.repo ?? ""), a.id), s.id),
+      );
+      foot.appendChild(del);
       row.appendChild(foot);
       sec.appendChild(row);
-    }
-    // 〔RM1c〕远端仓：写入口不给，换成一句为什么（`api.REMOTE_WRITE_REFUSED`）。
-    if (!writable) {
-      sec.appendChild(makeReadOnlyNote());
-      return sec;
     }
     // 添加表单（人写 = Active）。symbol 段取 s.id 的 `#` 后半（annotations_for 用全 id 查得到）。
     const form = document.createElement("div");
@@ -1256,10 +1248,6 @@ export class PanoramaView implements OverlayHandle {
     h.className = "panorama-node-section-title";
     h.textContent = "关联文档";
     sec.appendChild(h);
-    if (!api.canWriteAnnotations(this.at(this.repo ?? ""))) {
-      sec.appendChild(makeReadOnlyNote());
-      return sec;
-    }
     const form = document.createElement("div");
     form.className = "panorama-ann-form";
     const input = document.createElement("input");
@@ -1595,13 +1583,10 @@ export class PanoramaView implements OverlayHandle {
   private renderAnnotationQueue(repo: string, all: Annotation[]): void {
     const proposed = all.filter((a) => a.status === "Proposed");
     const active = all.filter((a) => a.status === "Active");
-    const writable = api.canWriteAnnotations(this.at(repo));
     this.sidebarEl.replaceChildren();
     this.sidebarEl.appendChild(
       this.sidebarHeader("批注审批", `${proposed.length} 条待审 · ${active.length} 条已生效`),
     );
-    // 〔RM1c〕远端仓：列得出来（读），批准 / 驳回 / 删除不给。
-    if (!writable) this.sidebarEl.appendChild(makeReadOnlyNote());
     this.sidebarEl.appendChild(
       makeSideNote("待审 = agent 提议的；批准前 agent 看不见它。驳回会直接删掉那条（core 没有「驳回」状态）。"),
     );
@@ -1644,11 +1629,6 @@ export class PanoramaView implements OverlayHandle {
           `${a.author} · ${originLabel(a.origin)} · ` +
           (a.symbol ? `${a.file}#${a.symbol}` : `${a.file}（文件级）`);
         foot.appendChild(who);
-        if (!writable) {
-          row.appendChild(foot);
-          sec.appendChild(row);
-          continue;
-        }
         if (pending) {
           const ok = document.createElement("button");
           ok.type = "button";
@@ -1873,13 +1853,6 @@ function appendMetaRow(parent: HTMLElement, label: string, value: string, mono: 
   v.title = value;
   row.appendChild(v);
   parent.appendChild(row);
-}
-
-/** 〔RM1c〕远端仓只读那一句（写入口不给，换成这句话；文案只住 `panorama/api.ts` 一处）。 */
-function makeReadOnlyNote(): HTMLElement {
-  const note = makeSideNote(api.REMOTE_WRITE_REFUSED);
-  note.dataset.pano = "remote-readonly";
-  return note;
 }
 
 function makeSideNote(text: string): HTMLElement {
