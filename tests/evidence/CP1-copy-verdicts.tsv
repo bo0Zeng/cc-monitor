@@ -405,6 +405,7 @@ src/bridge/src/filewin/fonts.rs:271	么反变号控收斜杠至	保留	[不对�
 src/bridge/src/filewin/fonts.rs:277	×★☆书加懂找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕书签栏那几个字）
 src/bridge/src/filewin/fonts.rs:287	●＋双另右好己底忙恰标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字）
 src/bridge/src/filewin/fonts.rs:288	处搬板留老	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字）
+src/bridge/src/filewin/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕预览那几个字）
 src/bridge/src/filewin/proc.rs:297	那个进程在开窗预算内就退了（{st}）	改·§2.1	[对外] open_in_new_process 的 Err 回给打开文件窗口的调用方；「开窗预算」是内部参数 新词:开窗预算 →「文件窗口没能打开（进程退出：{st}）」
 src/bridge/src/filewin/proc.rs:298	那个进程既没退也没在跑 —— 这一形说明上面那一跳的判法坏了	改·§2.2	[对外] 同上 Err；「这一形说明上面那一跳的判法坏了」是内部推理 →「文件窗口没能打开」
 src/bridge/src/filewin/proc.rs:299	问不到那个进程的死活：{e}	改·§2.1	[对外] 同上 Err；「问不到进程的死活」讲实现 →「文件窗口没能打开：{e}」
@@ -1208,6 +1209,17 @@ src/bridge/src/filewin/workspace.rs:296	{name} 复制不了：只能复制文件
 src/bridge/src/filewin/workspace.rs:303	两栏是同一个目录，复制过去就是它自己	保留	[对外] 〔FW34〕复制到另一栏：源与目标同目录
 src/bridge/src/filewin/workspace.rs:405	关掉这个标签页	保留	[对外] 〔FW34〕标签上「×」的悬停提示
 src/bridge/src/filewin/workspace.rs:413	新标签页	保留	[对外] 〔FW34〕标签栏「＋」的悬停提示
+src/bridge/src/filewin/workspace.rs:69	预览	保留	[对外] 〔FW34〕工具条开关 ＋ 预览面板的标题
+src/bridge/src/filewin/preview.rs:83	选中一个文件，这里显示它的内容	保留	[对外] 〔FW34〕预览面板：什么都没选时那一句（说清怎么用）
+src/bridge/src/filewin/preview.rs:117	{} 不是文本（含 NUL 字节、或不是 UTF-8），或者刚变大了，不预览	保留	[对外] 〔FW34〕预览面板：后端说不是文本（not_text / too_large 两形同一句，后一形是读 size 之后文件变大的竞态）
+src/bridge/src/filewin/preview.rs:120	读不出来：{why}	保留	[对外] 〔FW34〕预览面板：没走通，后端那句原话接在后面
+src/bridge/src/filewin/preview.rs:146	选中了 {n} 项，预览只看一个文件	保留	[对外] 〔FW34〕预览面板：选了几项时
+src/bridge/src/filewin/preview.rs:151	列表里已经没有 {name} 了	保留	[对外] 〔FW34〕预览面板：选中那一项刚被重列掉了（与「复制到另一栏」那一句同文）
+src/bridge/src/filewin/preview.rs:155	{name} 是一个目录	保留	[对外] 〔FW34〕预览面板：选中的是目录
+src/bridge/src/filewin/preview.rs:159	{name} 的名字不是合法 UTF-8，读不到它	保留	[对外] 〔FW34〕预览面板：有损名（与编辑 / 复制那几道同一条判定）；「UTF-8」是用户在文件名语境里也这么叫的词
+src/bridge/src/filewin/preview.rs:164	{name} 有 {}，预览只看 {} 以内的文件（可以点「编辑」打开）	保留	[对外] 〔FW34〕预览面板：超上限不读；结果 ＋ 上限 ＋ 用户做得到的一步
+src/bridge/src/filewin/preview.rs:206	预览	保留	[对外] 〔FW34〕工具条开关 ＋ 预览面板的标题
+src/bridge/src/filewin/preview.rs:214	正在读 {}…	保留	[对外] 〔FW34〕预览面板：在飞指示（带转圈）
 src/backend-policy.ts:74	那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过	保留	[对外] 〔B2 · 条 66〕EXIT_UNREADABLE：措辞是 `设计/01 §3.3b ⑤` 逐字定下的那一句；说清会怎样（按默认不结束）与它不是什么（不是谁选的），与 HEALTH_UNKNOWN 同形
 src/bridge/src/backend_policy.rs:70	那台机器上的退出策略读不出来，按默认（不结束）办 —— 这不等于有人这么选过	保留	[对外] 同上 EXIT_UNREADABLE 的 Rust 镜像，只为逐字对拍存在
 src/bridge/src/backend_policy.rs:161	问退出策略出了内部错误，没有拿到结果	保留	[可达存疑] 分流器三态里走不到的那一档（Done）的兜底话；真到了用户眼前也只说「没拿到」，不带实现词
