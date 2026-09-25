@@ -191,6 +191,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
     //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
     ("footprint_remote.rs", Verdict::UsesRouter),
+    // ★ 〔AS1 · 第四波 4B〕MCP 推 / 拉：请**要被写的那一台**的后端判（`mcp-sync-plan`），经 `mcp_sync.rs::BackendJudge::plan`
+    //   这一口；读 / 写那两跳走 `user_files.rs::BackendDoor`（已登记）。形状与理由逐字同上几条。
+    ("mcp_sync.rs", Verdict::UsesRouter),
     // ★ 〔AS2 · 第四波 4B〕资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
     ("asset_sync.rs", Verdict::UsesRouter),
