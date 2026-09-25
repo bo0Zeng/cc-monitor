@@ -652,7 +652,7 @@ mod tests {
     /// | ① | **按文件**登记（不按目录，同第三层那块墓碑的理由） | 相等断言（扫到的第四层模块数 == 本表条数） |
     /// | ② | 动词**闭集**：建那一层目录 · 原子挪 · 失败时删自己的临时文件 | [`OWN_STATE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only` |
     /// | ③ | 表外写法照旧禁（覆盖写 / 截断 / 追加 / 复制 / 链接 / 改权限 / 删目录） | [`OWN_STATE_STILL_FORBIDDEN`] ＋ `.open(` 与 `O_EXCL` 配对 |
-    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被 `inbound.rs` 引用 | `the_own_state_writer_is_reached_through_exactly_one_door` |
+    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被**它登记的那一扇门**引用（今天两扇：`inbound.rs` 命令注册 ·〔RK1〕`relay/listen.rs` 中转起监听） | `the_own_state_writer_is_reached_through_exactly_one_door` |
     /// | ⑤ | **只写那一份文件**：文件名在全部生产代码里只有这一个家 | `control::exit_policy::tests::the_file_name_has_exactly_one_home_in_all_production_code` |
     ///
     /// ⚠ 漏判面：它判不了「挪进去的那一下落在的就是那个名字」（数据流）——
@@ -689,6 +689,13 @@ mod tests {
              （会话记录本身一个字节不碰）。读不懂就拒写 → 只改那一条 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建那一层目录；\
              失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `history-annotate` / `history-forget`（＋ 派生的 CLI 面）",
         ),
+        (
+            "relay/door.rs",
+            "〔RK1 · `INVARIANTS §48.1`〕**中转钥匙** `~/.cc-monitor/relay-key`：中转口进门要出示的那一把。文件名 / 格式 / 落点 \
+             都是本仓定的、只有中转与起会话那一侧的 shell 读它 ⇒ 中转**自己的**状态，不是用户数据。读回；读不出或形状不对才铸 → \
+             临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；\
+             失败删自己的临时文件。入口只有中转**绑上口之后**那一处（`relay/listen.rs::prepare`）—— 不是帧面命令",
+        ),
     ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
@@ -712,24 +719,45 @@ mod tests {
     ];
 
     /// 第四层那扇门：后端生产树里**唯一**被允许引用写口的文件。
-    const OWN_STATE_DOORS: &[(&str, &str)] = &[(
+    const OWN_STATE_DOORS: &[(&str, &str)] = &[
+        (
         "inbound.rs",
         "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
          〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）。\
          前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
-    )];
+    ),
+        (
+            "relay/listen.rs",
+            "〔RK1〕中转起监听那一处（`prepare`，本机常驻后端进程内那一形与 `--relay` 那一形共用）：**绑上口之后、说「在听」之前** \
+             拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
+        ),
+    ];
 
     /// 〔RM1a〕第四层每一份模块的**写口**（`模块路径`, `写口的限定名尾巴`）。**与 [`OWN_STATE_MODULES`] 一一对应**
     /// （两向相等，由 `the_own_state_writer_is_reached_through_exactly_one_door` 钉）。
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
-    const OWN_STATE_WRITERS: &[(&str, &str)] = &[
-        ("control/exit_policy.rs", "exit_policy::answer_set"),
-        ("accounts/upstream/file_face.rs", "file_face::answer_set"),
+    const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
+        (
+            "control/exit_policy.rs",
+            "exit_policy::answer_set",
+            "inbound.rs",
+        ),
+        (
+            "accounts/upstream/file_face.rs",
+            "file_face::answer_set",
+            "inbound.rs",
+        ),
         // 〔AS2〕三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
         // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许 `inbound.rs` 碰。
-        ("asset_catalog.rs", "asset_catalog::answer_"),
+        ("asset_catalog.rs", "asset_catalog::answer_", "inbound.rs"),
         // 〔C4d〕两条写口同一个前缀（`answer_annotate` · `answer_forget`）⇒ 针取前缀；读口 `last_accounts` / `load` 不在针上。
-        ("history_annotations.rs", "history_annotations::answer_"),
+        (
+            "history_annotations.rs",
+            "history_annotations::answer_",
+            "inbound.rs",
+        ),
+        // 〔RK1〕中转钥匙：门是中转起监听那一处，不是命令注册。
+        ("relay/door.rs", "door::ensure_key", "relay/listen.rs"),
     ];
 
     fn is_own_state(rel: &str) -> bool {
@@ -1192,21 +1220,30 @@ mod tests {
         let modules: std::collections::BTreeSet<&str> =
             OWN_STATE_MODULES.iter().map(|(p, _)| *p).collect();
         let writers: std::collections::BTreeSet<&str> =
-            OWN_STATE_WRITERS.iter().map(|(p, _)| *p).collect();
+            OWN_STATE_WRITERS.iter().map(|(p, _, _)| *p).collect();
         assert_eq!(
             modules, writers,
             "第四层登记的模块与写口表对不上 —— 每一份都得说清它的写口是哪个函数"
         );
-        for (_, needle) in OWN_STATE_WRITERS {
-            own_state_door_matches(&root, needle);
+        for (_, needle, door) in OWN_STATE_WRITERS {
+            own_state_door_matches(&root, needle, door);
         }
+        // 〔RK1〕门表与写口表里出现的门两向相等：登记了一扇没人走的门 / 写口指着一扇没登记的门 ⇒ 红。
+        let doors_used: std::collections::BTreeSet<&str> =
+            OWN_STATE_WRITERS.iter().map(|(_, _, d)| *d).collect();
+        let doors_registered: std::collections::BTreeSet<&str> =
+            OWN_STATE_DOORS.iter().map(|(d, _)| *d).collect();
+        assert_eq!(
+            doors_used, doors_registered,
+            "第四层的门表与写口表里用到的门对不上"
+        );
         for (p, why) in OWN_STATE_MODULES.iter().chain(OWN_STATE_DOORS) {
             assert!(why.trim().chars().count() >= 20, "`{p}` 没写清为什么");
         }
     }
 
     /// 一根写口针在后端生产树里的引用处 == 登记的那扇门（零命中守卫的本体）。
-    fn own_state_door_matches(root: &std::path::Path, needle: &str) {
+    fn own_state_door_matches(root: &std::path::Path, needle: &str, door: &str) {
         let mut scanned = 0usize;
         let mut found: std::collections::BTreeSet<String> = Default::default();
         for path in core_files() {
@@ -1235,10 +1272,7 @@ mod tests {
             scanned >= 60,
             "只扫到 {scanned} 份后端源文件 —— 遍历坏了，零命中守卫在空人群上恒绿"
         );
-        let want: std::collections::BTreeSet<String> = OWN_STATE_DOORS
-            .iter()
-            .map(|(p, _)| (*p).to_string())
-            .collect();
+        let want: std::collections::BTreeSet<String> = [door.to_string()].into_iter().collect();
         assert_eq!(
             found,
             want,
@@ -4530,10 +4564,13 @@ mod g6_dependency_signoff {
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
-        let want: std::collections::BTreeSet<String> =
-            ["accounts/upstream/file_face.rs".to_string()]
-                .into_iter()
-                .collect();
+        // 〔RK1〕第二份：中转钥匙那一份（`relay/door.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
+        let want: std::collections::BTreeSet<String> = [
+            "accounts/upstream/file_face.rs".to_string(),
+            "relay/door.rs".to_string(),
+        ]
+        .into_iter()
+        .collect();
         assert_eq!(
             found, want,
             "`creds-core` 的写半边（建私有文件 / 收窄权限）在本 crate 生产段里的引用处对不上：\n\
