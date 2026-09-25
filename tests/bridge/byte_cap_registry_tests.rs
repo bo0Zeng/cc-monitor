@@ -57,6 +57,11 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "COMPRESS_RTT_FLOOR_US",
+        "〔NT1 09-24〕**时间门槛**（微秒）不是体量：后端 `dial/connect·rs::compression_for` 判「这一跳远不远」的往返时间门槛\
+             （内核 `TCP_INFO` 量到的握手往返 ≥ 它才压）。它不限任何字节总量、不截任何东西。",
+    ),
+    (
         "LINK_STEP",
         "〔SR1a 09-24〕**步长**不是体量：monitor 往链路里送上行字节时一次切多大（`link_mux·rs::LinkStream` 的 \
              `poll_write`）。多出来的留给调用方下一次写 —— **不丢、不截**，它不限任何总量。\
