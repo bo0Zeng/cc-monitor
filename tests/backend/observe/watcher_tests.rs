@@ -303,6 +303,7 @@ fn arm_pid_watcher_is_a_noop_without_sender() {
 /// 另一半也一起修：注释若被重排/改写，原实现会红在一个**与语义无关**的位置上
 /// （把注入挪到注释之后、真扫描之前，语义完全正确却会红）。
 /// 现在锚在 `WalkDir::new(&sessions)`（生产段唯一一处，扫描真正开始的地方）。
+/// 〔U4b〕扫描抽成 `initial_session_scan` 之后，锚点换成 `watch_loop` 里它的调用点（见函数体）。
 #[test]
 fn events_channel_is_created_before_the_initial_scan() {
     let src = crate::guard_support::production_code(include_str!(
@@ -311,12 +312,15 @@ fn events_channel_is_created_before_the_initial_scan() {
     let tx_at = src
         .find("state.events_tx = Some(events_tx.clone());")
         .expect("找不到 events_tx 注入点——守卫锚点漂了，先修锚点别改断言");
-    let scan_at = src
-        .find("WalkDir::new(&sessions)")
-        .expect("找不到初始扫描的锚点（`WalkDir::new(&sessions)`）——扫描改写了就把本条一起改");
+    // 〔U4b · 第四波〕扫描那一块抽成了 `initial_session_scan`（为了「清单报完了」那一帧的位置可验），
+    //   它的**定义**住在文件后段 ⇒ 锚点从扫描本体（`WalkDir::new(&sessions)`）换到 `watch_loop` 里的**调用点**
+    //   —— 那才是执行顺序上「扫描真正开始」的地方。
+    let scan_at = src.find("initial_session_scan(&sessions").expect(
+        "找不到初始扫描的锚点（`initial_session_scan(&sessions` 调用点）——扫描改写了就把本条一起改",
+    );
     // 锚点唯一性：两个都必须**恰好一处**，否则「谁在前」比的可能是别处那一份。
     assert_eq!(
-        src.matches("WalkDir::new(&sessions)").count(),
+        src.matches("initial_session_scan(&sessions").count(),
         1,
         "初始扫描的锚点在生产段里不止一处 —— 本条会比到别的那一份上去"
     );
@@ -2562,6 +2566,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "b".into(),
@@ -2576,6 +2581,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     assert_eq!(
         sink.dropped, 0,
@@ -2596,6 +2602,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "d".into(),
@@ -2610,6 +2617,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     sink.send(Frame::SessionAdded {
         sid: "e".into(),
@@ -2624,6 +2632,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     assert_eq!(sink.dropped, 3);
 
@@ -2661,6 +2670,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         status: None,
         waiting_for: None,
         rbind_token: None,
+        container: None,
     });
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
 }
@@ -3254,4 +3264,103 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
         .map(|k| ask + k)
         .expect("问完之后没有逐条处理事件的 for —— 结构变了");
     assert!(ask < emit && emit < per_event, "问与发要排在逐条处理之前");
+}
+
+/// 〔U4b · 第四波 · B3〕**「清单报完了」那一帧的位置**：Phase 1 的每一帧 `session_added` 之后、恰好一帧。
+///
+/// 两趟：
+/// - 有两个活 pidfile（真起两个 `sleep`，合成 pidfile 带真 procStart —— 与令牌那条判据同一个夹具形）
+///   ⇒ 帧 kind 序列 == `[session_added, session_added, sessions_replayed]`；
+/// - `sessions/` 压根不在 ⇒ 序列 == `[sessions_replayed]`（空清单也是说完了）。
+///
+/// 期望是手写的序列（不从实现生成）。子进程摘掉 `TMUX_PANE`：打标那一步不会去碰真机 tmux。
+#[test]
+fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
+    fn sleeper() -> std::process::Child {
+        let kid = std::process::Command::new("sleep")
+            .arg("60")
+            .env_remove("TMUX_PANE")
+            .env_remove("TMUX")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("起不来 `sleep` —— 夹具坏了");
+        for _ in 0..500 {
+            match std::fs::read(format!("/proc/{}/environ", kid.id())) {
+                Ok(b) if !b.is_empty() => break,
+                _ => std::thread::yield_now(),
+            }
+        }
+        kid
+    }
+    fn kinds(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
+        let mut out = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            out.push(f.loss_identity().kind.to_string());
+        }
+        out
+    }
+
+    // ① 两个活会话。
+    let dir = std::env::temp_dir().join(format!("ccm-u4b-replayed-{}", std::process::id()));
+    let sessions = dir.join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let mut kids = vec![sleeper(), sleeper()];
+    for (i, kid) in kids.iter().enumerate() {
+        let pid = kid.id();
+        let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
+        std::fs::write(
+            sessions.join(format!("{pid}.json")),
+            format!(
+                r#"{{"pid":{pid},"sessionId":"u4b-{i}","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#
+            ),
+        )
+        .unwrap();
+    }
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    initial_session_scan(&sessions, &mut state, &mut sink);
+    let mut frames = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        frames.push(f);
+    }
+    // 〔U4b · G3〕顺带钉容器那一格的**生产接线**：两个 `sleep` 都摘了 `TMUX_PANE`、环境读得到
+    //   ⇒ 帧上 `container` == `none`（不是缺席）。结局 → 容器那张表另有一条逐格判；这一格判的是
+    //   `process_session_added` 真把打标的结局接到了帧上。
+    let containers: Vec<Option<crate::wire::SessionContainer>> = frames
+        .iter()
+        .filter_map(|f| match f {
+            Frame::SessionAdded { container, .. } => Some(*container),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        containers,
+        vec![Some(crate::wire::SessionContainer::None); 2],
+        "没有 TMUX_PANE、环境读得到的会话，帧上要说 `none`"
+    );
+    let got: Vec<String> = frames
+        .iter()
+        .map(|f| f.loss_identity().kind.to_string())
+        .collect();
+    for k in kids.iter_mut() {
+        let _ = k.kill();
+        let _ = k.wait();
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        got,
+        vec!["session_added", "session_added", "sessions_replayed"],
+        "「清单报完了」要恰好一帧、排在 Phase 1 每一帧 `session_added` 之后"
+    );
+
+    // ② `sessions/` 不在：空清单也要说完。
+    let empty = std::env::temp_dir().join(format!("ccm-u4b-replayed-empty-{}", std::process::id()));
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(8);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(empty.join("projects"), false, false);
+    initial_session_scan(&empty.join("sessions"), &mut state, &mut sink);
+    assert_eq!(kinds(&mut rx), vec!["sessions_replayed"]);
 }
