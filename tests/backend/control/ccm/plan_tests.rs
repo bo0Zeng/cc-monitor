@@ -1075,3 +1075,63 @@ fn the_direct_print_does_not_change_with_ccm_sid_or_the_token() {
         );
     }
 }
+
+/// 〔US1 · RK1 报 2〕E10：继承来的中转地址（钥匙已展开）不许原样进载荷 —— 渲回 `$(cat "$HOME/…")` 形，
+/// 真 `sh` 在夹具家目录下展开后 == 原地址；认不出的（用户自己的端点 · 形状不对的）原样。
+/// 守的要求：`INVARIANTS §48.1a`（中转钥匙不进 argv）· RK1 记录 §5.7 第 3 条（主会话交本路）。
+#[test]
+fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() {
+    let key = "0123456789abcdef".repeat(4);
+    let home = tempdir();
+    let key_file = std::path::Path::new(&home).join(relay_route_core::KEY_FILE_REL);
+    std::fs::create_dir_all(key_file.parent().unwrap()).unwrap();
+    std::fs::write(&key_file, &key).unwrap();
+    let keyed = format!("http://127.0.0.1:8788/{key}/t/claude-code/_/k-1");
+    let payload_of = |v: &str| -> String {
+        let mut e = env();
+        e.anthropic_base_url = Some(v.to_string());
+        let Plan::Container(c) =
+            plan_of(&["--tmux=n1", "--cwd", "/p"], &e, &AccountTable::default())
+        else {
+            panic!("该是容器路")
+        };
+        c.payload
+    };
+    let p = payload_of(&keyed);
+    assert!(
+        !p.contains(&key),
+        "钥匙原样进了载荷（会进 tmux send-keys 的 argv）：{p}"
+    );
+    assert!(
+        p.contains("\"$(cat \"$HOME/.cc-monitor/relay-key\")\""),
+        "没渲成现读钥匙文件那一形：{p}"
+    );
+    // 真 shell：取载荷里那一句 export，在夹具家目录下跑、印出来 == 原地址。
+    let export = &p[..p.find("; ").unwrap() + 2];
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("{export}printf %s \"$ANTHROPIC_BASE_URL\""))
+        .env("HOME", &home)
+        .output()
+        .expect("起 sh");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        keyed,
+        "展开之后不是原地址"
+    );
+    // 认不出 ⇒ 原样（期望 == 输入经 sq 的那一形）。
+    for v in [
+        "https://relay.example/v1".to_string(),
+        format!("http://127.0.0.1:8788/{}/t/claude-code/_/k-1", &key[..63]),
+        format!(
+            "http://127.0.0.1:8788/{}/t/claude-code/_/k-1",
+            key.to_uppercase()
+        ),
+        format!("http://10.0.0.1:8788/{key}/t/claude-code/_/k-1"),
+    ] {
+        assert!(
+            payload_of(&v).starts_with(&format!("export ANTHROPIC_BASE_URL={}; ", sq(&v))),
+            "认不出的地址没有原样转：{v}"
+        );
+    }
+}

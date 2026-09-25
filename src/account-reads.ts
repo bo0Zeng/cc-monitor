@@ -7,14 +7,14 @@
  * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求 `设计/01 §5` D1「一个判定只有一个家」）：
  * 形状与规则留在 `accounts.ts`（纯），这里只管「去问、收、缓存」。
  */
-import { commands } from "./ipc/commands";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
 import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
-import type { ApikeyRoutingView } from "./apikey-routing-view";
+// 〔US1〕API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
+import { fetchApikeyRouting, type ApikeyRoutingView } from "./apikey-reads";
 import { getDefaultName } from "./account-prefs";
 import { copyText } from "./copy-table";
 
@@ -101,8 +101,12 @@ function launchAgentId(): string {
 
 
 export async function fetchLocalApikeyRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
-  // 〔RM1a〕那条命令收了 origin；本函数照旧只问本机（名字里的 `Local` 就是这一格）。
-  return await commands.apikey_routing_for({ origin: LOCAL_ORIGIN, configDirs });
+  return await fetchMachineApikeyRouting(LOCAL_ORIGIN, configDirs);
+}
+
+/** 〔US1〕那台机器的那两格事实（`apikey-routing`，本机由 `<local>` 那条长连接答）；`agent` 与账号清单同一个出处（后端不猜是哪一家）。 */
+export async function fetchMachineApikeyRouting(origin: Origin, configDirs: string[]): Promise<ApikeyRoutingView> {
+  return await fetchApikeyRouting(origin, launchAgentId(), configDirs);
 }
 
 /**

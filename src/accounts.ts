@@ -13,9 +13,9 @@
 //   - 换号重启定位不到时的那句话 → `account-restart.ts`
 // 本文件从此**不 import 任何有 IO 的模块**（不碰通道、不碰 config、不碰历史注解）。
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-// 〔FE1〕`ApikeyRoutingView`（`apikey_routing_for` 的线上形状）住零 import 的叶子 `apikey-routing-view.ts`：
-//   它是 `ipc/commands.ts` 的返回类型，先前住在这里 ⇒ 通信层在类型上依赖账号域，七个模块的类型环就靠这一条边闭合。
-import type { ApikeyRoutingView } from "./apikey-routing-view";
+// 〔US1〕API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`（经通道、后端出成品）；本文件只把那份读数落到账号上。
+//   〔FE1〕先前这个类型住本文件、是 `ipc/commands.ts` 的返回类型 ⇒ 通信层在类型上依赖账号域，七模块类型环靠这一条边闭合。
+import type { ApikeyRoutingView } from "./apikey-reads";
 import { copyText } from "./copy-table";
 
 // ---- 账号的形状：〔C4d · 第四波 4B〕从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----

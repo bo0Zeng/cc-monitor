@@ -309,7 +309,7 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
     expect(
       got,
       "import 全图（含 `import type`）的环变了。新长的那一个：类型该住**被依赖的一侧**" +
-        "（通常是挪进一个零 import 的叶子，照 `src/apikey-routing-view.ts` 的做法），别在两个域之间来回 import。",
+        "（通常是挪进一个零 import 的叶子，照 `src/apikey-reads.ts` 收 `ApikeyRoutingView` 的做法），别在两个域之间来回 import。",
     ).toEqual(want);
   });
 

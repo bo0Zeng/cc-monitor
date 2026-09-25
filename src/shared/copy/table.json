@@ -152,6 +152,11 @@
       "zh": "{reason}\n在这台机器的 bash 里执行：\n{cmd}",
       "args": ["reason", "cmd"]
     },
+    "sessionState.live.name": {
+      "kind": "body",
+      "zh": "运行中",
+      "args": []
+    },
     "sessionState.ended.name": {
       "kind": "body",
       "zh": "已结束",
@@ -10969,16 +10974,6 @@
       "zh": "读取远端 ~/.cc-bus 失败：{e}",
       "args": ["e"]
     },
-    "rsPayload.apikey.relayDown": {
-      "kind": "error",
-      "zh": "账号 {id} 配了第三方 API 地址，但本机中转没在跑，这一发起不了。\n照旧起出去的话，claude 那边会报一个和网络故障一样的连接失败，而真正的原因在 cc-monitor 这一侧。\n先起本机后端（设置 → 本机后端），或把这个账号那一行从凭据文件里去掉。",
-      "args": ["id"]
-    },
-    "rsPayload.relayRoute.badSegment": {
-      "kind": "error",
-      "zh": "拼不出中转路由：{what} 段 {seg} 不合法（只许字母数字与 - _，1 到 128 字节）。\n拼错一段的症状是中转回一个查不出原因的 404，所以这里当场拒。",
-      "args": ["what", "seg"]
-    },
     "rsPayload.outer.attachWithPayload": {
       "kind": "error",
       "zh": "接入那一格带了要运行的内容。它只把终端接进一个已经在跑的会话，不起任何 agent 进程；带了说明调用方把格子搞错了。",
@@ -12774,50 +12769,10 @@
       "zh": "[{host}] 读写 API key 失败：{message}",
       "args": ["host", "message"]
     },
-    "rsApikeyRemote.wire.rowsNotArray": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里 rows 不是字符串数组，两端版本对不上",
-      "args": ["host"]
-    },
-    "rsApikeyRemote.wire.noPath": {
-      "kind": "error",
-      "zh": "缺 path",
-      "args": []
-    },
-    "rsApikeyRemote.wire.noMasked": {
-      "kind": "error",
-      "zh": "缺 masked",
-      "args": []
-    },
-    "rsApikeyRemote.wire.noConfigured": {
-      "kind": "error",
-      "zh": "缺 configured",
-      "args": []
-    },
-    "rsApikeyRemote.wire.notString": {
-      "kind": "error",
-      "zh": "{k} 不是字符串",
-      "args": ["k"]
-    },
-    "rsApikeyRemote.wire.badShape": {
-      "kind": "body",
-      "zh": "[{host}] 的后端回的内容不对：{what}。两端版本对不上",
-      "args": ["host", "what"]
-    },
     "rsApikeyRemote.send.noAccount": {
       "kind": "error",
       "zh": "说不出这是哪个账号（配置目录是 {dir}），不往 [{host}] 的表里写。写进去的那一行谁也命中不了",
       "args": ["dir", "host"]
-    },
-    "rsCredsStore.notice.howFix": {
-      "kind": "body",
-      "zh": "{how}。怎么修：{fix}",
-      "args": ["how", "fix"]
-    },
-    "rsCredsStore.status.unreadable": {
-      "kind": "error",
-      "zh": "读不动这份文件：{e}",
-      "args": ["e"]
     },
     "rsRemoteRelay.call.internal": {
       "kind": "error",
@@ -14410,10 +14365,75 @@
       "zh": "目录不存在，起不了新会话：{cwd}",
       "args": ["cwd"]
     },
-    "rsHistory.relay.remoteRefused": {
+    "rsHistory.endpoint.badShape": {
+      "kind": "body",
+      "zh": "{where}后端回的「这一发走哪」（{cmd}）不对：{what}。两端版本对不上",
+      "args": ["where", "cmd", "what"]
+    },
+    "rsHistory.endpoint.notObject": {
       "kind": "error",
-      "zh": "起不了会话：账号 {account} 在 [{host}] 上配了 API key，但那台机器上的中转起不来（{why}）。\n照旧起出去的话，claude 那边会报一个像网络故障的连接失败。\n重装那台机器的后端再试，或把这个账号那一行从那台机器的凭据文件里去掉。",
-      "args": ["account", "host", "why"]
+      "zh": "不是一个对象",
+      "args": []
+    },
+    "rsHistory.endpoint.keys": {
+      "kind": "error",
+      "zh": "键是 {keys}",
+      "args": ["keys"]
+    },
+    "rsHistory.endpoint.notString": {
+      "kind": "error",
+      "zh": "{k} 不是字符串或 null",
+      "args": ["k"]
+    },
+    "rsHistory.endpoint.whenDown": {
+      "kind": "error",
+      "zh": "「中转不在时怎么办」那一格认不出",
+      "args": []
+    },
+    "rsHistory.endpoint.listening": {
+      "kind": "error",
+      "zh": "listening 不是布尔",
+      "args": []
+    },
+    "rsHistory.endpoint.pairing": {
+      "kind": "error",
+      "zh": "「注入的地址」与「中转不在时怎么办」该同有同无",
+      "args": []
+    },
+    "rsHistory.relay.localNotListening": {
+      "kind": "body",
+      "zh": "本机后端里的中转没在听。多半是口被别的程序占着，原因在本机后端的日志里",
+      "args": []
+    },
+    "rsHistory.relay.here": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "rsHistory.relay.unreachable": {
+      "kind": "error",
+      "zh": "起不了会话：问不到{where}后端这一发该走哪（{e}）。\n说不出这个号要不要经中转换上第三方 key，照旧起出去的话，一个 API 号会以一个像网络故障的失败收场。\n等那台机器的后端连上再试。",
+      "args": ["where", "e"]
+    },
+    "rsHistory.relay.downRefused": {
+      "kind": "error",
+      "zh": "起不了会话：账号 {account} 在{where}的 API key 表里有一行，但{where}的中转没在听（{why}）。\n照旧起出去的话，claude 那边会报一个像网络故障的连接失败，而真正的原因在 cc-monitor 这一侧。\n先让那台机器的后端（本机：设置 → 本机后端）与它的中转起来再试，或把这个账号那一行从那台机器的凭据文件里去掉。",
+      "args": ["account", "where", "why"]
+    },
+    "apikeyReads.status.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的凭据文件状态，两端版本对不上",
+      "args": []
+    },
+    "apikeyReads.routing.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的账号表情况，两端版本对不上",
+      "args": []
+    },
+    "apikeyReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
+      "args": []
     },
     "rsHistory.launch.attachNeedsTerminal": {
       "kind": "error",
@@ -16453,6 +16473,41 @@
       "kind": "error",
       "zh": "base_url 是明文 http，而主机不是本机。那会把这一行的 key 明着发上网线；要么换 https，要么把上游放到本机上。",
       "args": []
+    },
+    "beUpstreamEndpoint.key.notSegment": {
+      "kind": "error",
+      "zh": "流标签 {key} 里有不许用的字符（只许字母数字与 - _，1 到 128 个字节）",
+      "args": ["key"]
+    },
+    "beUpstreamEndpoint.args.missingBool": {
+      "kind": "error",
+      "zh": "缺 {k}（要一个布尔）",
+      "args": ["k"]
+    },
+    "beUpstreamEndpoint.args.missingString": {
+      "kind": "error",
+      "zh": "缺 {k}（要一个字符串）",
+      "args": ["k"]
+    },
+    "beUpstreamEndpoint.args.missingStrings": {
+      "kind": "error",
+      "zh": "缺 {k}（要一个字符串数组）",
+      "args": ["k"]
+    },
+    "beUpstreamEndpoint.account.namedNoDir": {
+      "kind": "error",
+      "zh": "{field} 说是具名账号，却没给配置目录",
+      "args": ["field"]
+    },
+    "beUpstreamEndpoint.account.badKind": {
+      "kind": "error",
+      "zh": "{field} 的种类只认具名账号与账号 0",
+      "args": ["field"]
+    },
+    "beUpstreamEndpoint.account.badShape": {
+      "kind": "error",
+      "zh": "{field} 要一个对象或空",
+      "args": ["field"]
     },
     "beUpstreamTable.whyIdUnusable.say": {
       "kind": "error",

@@ -605,8 +605,8 @@ mod tests {
     // ⚠ 分母先说清：`relay/` 今天是 **12 个 `.rs`**（09-02 现打，`ls -1 src/relay/*.rs | wc -l`）。
     // 件文件 `§0` 写的「8 个文件」量于 **08-26**，此后长了 4 个 ⇒ **那个数已经馊了，别沿用**。
     //
-    // ⚠ **别与 `relay/bind_guard` · `relay/nodelay_guard` 混起来**（件文件 `§0a`）：
-    // 那两条护的是**中转自己的行为**（绑哪个口、开不开 Nagle），
+    // ⚠ **别与 `relay/bind_guard` · 〔AR1 已退役〕`relay/nodelay_guard` 混起来**（件文件 `§0a`）：
+    // 那两条护的是**中转自己的行为**（绑哪个口、开不开 Nagle；后者今天由 `server_tests.rs` 的行为格判），
     // 与「**层与层之间谁能引谁**」不是一回事。拿它们答「已经有护栏了」，
     // 正是本区「量具的作用域对不上事实」那一族。
     // ══════════════════════════════════════════════════════════════════════
@@ -718,6 +718,10 @@ mod tests {
         (
             "machine::answer_status",
             "〔RM1a〕帧面 `relay-status`：这台机器上那个口有没有人在听（只收端口）",
+        ),
+        (
+            "machine::our_relay_listening",
+            "〔US1〕上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 与 `relay-status` 同一个判准，只收端口、只回布尔",
         ),
         (
             "route::segment_is_safe",

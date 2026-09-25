@@ -870,18 +870,12 @@ fn observe_one_cell(name: &str) -> CellToday {
                 config_dir: "/home/u/.claude-accts/acct-a".into(),
                 name: Some("acct-a".into()),
             };
-            fn rows() -> Vec<String> {
-                vec!["acct-a".to_string()]
-            }
-            fn running() -> bool {
-                true
-            }
             fn not_win() -> bool {
                 false
             }
+            fake_table(&["acct-a"], true);
             let _facts = override_inject_facts(InjectFactSources {
-                rows,
-                running,
+                endpoint: fake_ep,
                 windows: not_win,
                 all_sessions: all_sessions_off,
             });
@@ -1059,19 +1053,13 @@ fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
         name: Some("acct-b".into()),
     };
 
-    // 中转事实由替身给：表里只有 acct-a、中转在跑、不是 Windows。
-    fn rows_with_only_acct_a() -> Vec<String> {
-        vec!["acct-a".to_string()]
-    }
-    fn relay_is_running() -> bool {
-        true
-    }
+    // 中转事实由替身给：那台后端的表里只有 acct-a、中转在听、不是 Windows。
     fn not_windows() -> bool {
         false
     }
+    fake_table(&["acct-a"], true);
     let _guard = override_inject_facts(InjectFactSources {
-        rows: rows_with_only_acct_a,
-        running: relay_is_running,
+        endpoint: fake_ep,
         windows: not_windows,
         all_sessions: all_sessions_off,
     });
@@ -2428,485 +2416,186 @@ fn unified_builder_byte_identical_to_pre_f06_new_session_output() {
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// `K-H2b`：接上注入点 —— 注入侧那三个判断
+// `K-H2b` · 〔US1〕接上注入点 —— 起会话那一侧：问那台后端要成品、照成品执行
 // ═════════════════════════════════════════════════════════════════════
 
-/// ★★★ `KH2B5`（`§0e` 裁一）**在这一层的对照** —— 同一条起会话路径、同一个函数，
-/// 只有「这个号在不在apikey 表里」不同：
-/// api-key 号（表里有行）的命令**带**那个 env，官方号的命令里**一个字节都没有**。
+/// ★★★ `KH2B5`（`§0e` 裁一）**渲染那一半**：成品说不注入 ⇒ 前缀是**空串**（命令逐字节与本件之前相同）；
+/// 给了地址 ⇒ POSIX / PowerShell 两形（钥匙段读文件，RK1）。期望手写。
 #[test]
-fn only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix() {
-    let rows = vec!["acct-a".to_string()];
-    let named = |d: &str| LaunchAccount::Named {
-        config_dir: d.to_string(),
-        name: None,
-    };
-    // ① 表里有行 ⇒ 前缀在（非空对照：证明这把尺子不是恒空串）。
-    let id = apikey_account_id(Some(&named("/home/u/.claude-accts/acct-a")));
-    assert_eq!(id.as_deref(), Some("acct-a"), "账号 id 是从末段目录名推的");
-    let p = relay_prefix_for(
-        id.as_deref(),
-        id.as_deref(),
-        &rows,
-        true,
-        Some("sid-1"),
-        false,
-        false,
-    )
-    .unwrap();
+fn the_relay_prefix_is_rendered_from_the_answer_by_platform() {
+    let url = "http://127.0.0.1:8788/s/claude-code/acct-a/sid-1";
+    assert_eq!(relay_prefix_for(None, false), "");
+    assert_eq!(relay_prefix_for(None, true), "");
     assert_eq!(
-        p, "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/claude-code/acct-a/sid-1'; ",
-        "api-key 号的命令没带上中转 base URL —— 那条线还是没接"
+        relay_prefix_for(Some(url), false),
+        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/claude-code/acct-a/sid-1'; ",
     );
-    // ② 表里没有这一行（订阅号）⇒ **空串**，命令逐字节与本件之前相同。
-    let other = apikey_account_id(Some(&named("/home/u/.claude-accts/acct-b")));
     assert_eq!(
-        relay_prefix_for(
-            other.as_deref(),
-            other.as_deref(),
-            &rows,
-            true,
-            Some("sid-1"),
-            false,
-            false
-        )
-        .unwrap(),
-        "",
-        "没配第三方 key 的号被接进了中转 —— `§0e` 裁一逐字禁这一形"
-    );
-    // ③ 账号 0 / 没表态 ⇒ 说不出 id ⇒ 空串。
-    assert_eq!(apikey_account_id(Some(&LaunchAccount::Base)), None);
-    assert_eq!(apikey_account_id(None), None);
-    assert_eq!(
-        relay_prefix_for(None, None, &rows, true, None, false, false).unwrap(),
-        ""
-    );
-    // ④ Windows 那一侧渲的是 PowerShell 形态（**只到「编得过」**，运行时没量过）。
-    let ps = relay_prefix_for(
-        id.as_deref(),
-        id.as_deref(),
-        &rows,
-        true,
-        Some("sid-1"),
-        true,
-        false,
-    )
-    .unwrap();
-    assert_eq!(
-        ps,
+        relay_prefix_for(Some(url), true),
         "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/claude-code/acct-a/sid-1'; "
     );
 }
 
-// ★★★ `D5 阻-1`：**那条扫描型判据（`the_two_inputs_at_the_call_site_are_still_the_two_take_points`）
-//    整条删了**，换成下面**三条**判据（两条行为 + 一条按函数地址对拍）。
-//    删它的理由是一个实测读数，不是风格：
-//
-// 它先前住 `local_backend_host.rs`（`D4` 搬过去的，为的是「判据与被扫的代码不同文件」），
-// 而它量的仍然是「`relay_prefix_for_launch` 的体切出 700 字节，窗口里**有没有**那两段文本」。
-// `D5` 现打：在同一个窗口里加一行把那两段文本原样留住的死赋值，同时把真入参换成空表 / 常量
-// ⇒ 文本一处不少、**全量门禁四个数与干净树逐字相同**，而中转注入在生产上被整个摘掉。
-// ⇒ 按铁律 13「删之前先证明它恒绿」——`D5` 那一刀就是那份证明。
-//
-// ★ 本件病史五层，每层都是**上一层的修法买到的东西被下一层的量法漏掉**：
-//   ① 参数位没有账号 → ② 值恒空 → ③ 只量文本 → ④ 判据搬了家、仍只量文本 → ⑤ 文本留住、行为摘掉。
-//   ⇒ **第六层的出路不是更聪明的文本判据，是不量文本。**见 `InjectFactSources` 头注。
-
-/// ★★★ `D5 阻-1` + `D6 阻-2` + `D6 阻-3`：**那次拉起真的问了那三件事，而且真的用了答案。**
+/// ★★★ `D5 阻-1` + `D6 阻-2/3` + `D7 阻-4`（〔US1〕换了被问的对象）：**那次拉起真的问了那台后端，而且真的用了答案。**
 ///
-/// # 它怎么挡住第五层那一刀
+/// 病史（别退回去）：先前量「源码里有没有那段文本」⇒ 文本留住、行为摘掉照绿（第五层）。今天替身在缝上
+/// （[`InjectFactSources::endpoint`]）记下**每一次被问、问的入参**，承重的是第二半：**前缀必须随替身的答案变** ——
+/// 有行 / 没行 / 中转不在 / 平台 / 哪个号 / 哪一次拉起（resume 的 sid · 新开的 nonce）各自落到不同的脸上。
+/// 把任何一维写死成常量，这几格里至少一格当场不同。
 ///
-/// 替身把「被问了几次」记下来，但**光有计数不够** —— 第五层那一刀（问完把答案扔掉）
-/// 会让计数照涨。⇒ 承重的是第二半：**算出来的前缀必须与「拿替身那几个答案直接喂纯函数」
-/// 逐字节相同**，并且几种答案组合各自落到不同的脸上（非空 / 空 / `Err` / PowerShell 形态）。
-/// 把任何一个入参换成常量，这几格里至少一格当场不同。
-///
-/// # 🔴🔴 `D6 阻-2`：**「哪个号」也是一维，而它先前的输入域是 1**
-///
-/// 第一版只喂**一个**账号（`acct-a`）⇒ `D6` 的刀 `E6` 把 [`apikey_account_id`] 的答案
-/// `.map(|_| "acct-a")` 写死（那段文本一字不动）⇒ **全绿、门禁四个数与干净树逐字相同**。
-/// 生产后果是**路由键的 `<account>` 段恒是一个号** ⇒ 上游选择按它取 key ⇒
-/// **acct-b 的会话拿着 acct-a 的那把 key 发请求，两边都显示成功** ——
-/// 正是整个多账号工作要防的最坏那一形。
-/// ⇒ 本条**至少喂两个不同的号**，并断言前缀里的 `<account>` 段跟着变。
-///
-/// # 🔴 `D6 阻-3`：**平台开关也收进了这条缝**
-///
-/// `cfg!(windows)` 写在调用点上时是个常量表达式，判据翻不动它 ——
-/// `D6` 的刀 `Xb`（把它写死成 `false`）全绿，而生产后果是 Windows 上渲成 POSIX 形态。
-/// 收进 [`InjectFactSources`] 之后，本条第 ④ 格喂 `|| true` 就该拿到 PowerShell 形态。
-/// ⚠ **它守的是调用点那一格**；[`platform_is_windows`] 自己的体在 Linux 上判不了
-///（登记在 [`InjectFactSources`] 的**结构头注** ㈡ 那一栏里 —— 不在 [`platform_is_windows`]
-/// 自己的头注里，`D7` 逐字订正过这一处指偏）。
-///
-/// # 🔴🔴 `D7 阻-4`：**「哪一次拉起」（`action` / `sid`）也是一维，先前它的取值域是 1**
-///
-/// 第 ①–④ 格把 `rows` / `running` / `windows` / `account` 四维都打开了，
-/// **而 `action` 从头到尾只喂过 `Resume("sid-1")`**。`D7` 两刀实打：
-/// - 刀 `S2`（`LocalPsAction::New => return Ok(String::new())`）⇒ **`1229` 全绿**，
-///   生产后果是**新开会话那条路上中转注入恒空**，而 `KH2B6` 逐字写着那条路今天生产可达；
-/// - 刀 `S1`（`Resume(_sid) => Some("sid-1")`）⇒ 也全绿，那一维什么都没买。
-/// ⇒ 第 ⑤ 格喂**两个不同的 sid**、第 ⑥ 格喂 **`New`**，两支都断。
-///
-/// # 它买不到什么
-///
-/// 它不管那几个取值口**自己答得对不对**（那是 [`apikey_rows_at`] 那条读真文件的判据、
-/// 与 `local_backend_host::relay_running_really_asks_the_loopback_port`〔RL1 接替读句柄表那一条〕 的活），
-/// 也不管**生产上插进那条缝的是不是它们**（那是下一条判据按函数地址对拍的活）。
-/// **三条合起来才等于「这条线真的在问那几件事」。**
+/// 买不到：后端那张决策表答得对不对（`endpoint_tests`）；生产上缝里插的是不是真的那一跳（下一条按函数地址对拍）。
 #[test]
-fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
-    use std::cell::{Cell, RefCell};
+fn the_launch_side_really_asks_the_backend_and_uses_its_answer() {
+    use std::cell::Cell;
     thread_local! {
-        static ROWS_CALLS: Cell<u32> = const { Cell::new(0) };
-        static RUNNING_CALLS: Cell<u32> = const { Cell::new(0) };
-        static ROWS_ANSWER: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-        static RUNNING_ANSWER: Cell<bool> = const { Cell::new(false) };
         static WINDOWS_ANSWER: Cell<bool> = const { Cell::new(false) };
-    }
-    fn spy_rows() -> Vec<String> {
-        ROWS_CALLS.with(|c| c.set(c.get() + 1));
-        ROWS_ANSWER.with(|v| v.borrow().clone())
-    }
-    fn spy_running() -> bool {
-        RUNNING_CALLS.with(|c| c.set(c.get() + 1));
-        RUNNING_ANSWER.with(Cell::get)
     }
     fn spy_windows() -> bool {
         WINDOWS_ANSWER.with(Cell::get)
     }
-    fn answer(rows: &[&str], running: bool, windows: bool) {
-        ROWS_ANSWER.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
-        RUNNING_ANSWER.with(|c| c.set(running));
-        WINDOWS_ANSWER.with(|c| c.set(windows));
-    }
-
     let acct_a = LaunchAccount::Named {
         config_dir: "/h/.claude-accts/acct-a".to_string(),
         name: None,
     };
-    // 🔴 `D6 阻-2`：**第二个号**。「哪个号」这一维的输入域从 1 变成 2。
     let acct_b = LaunchAccount::Named {
         config_dir: "/h/.claude-accts/acct-b".to_string(),
         name: None,
     };
     let action = LocalPsAction::Resume("sid-1".to_string());
     let _guard = override_inject_facts(InjectFactSources {
-        rows: spy_rows,
-        running: spy_running,
+        endpoint: fake_ep,
         windows: spy_windows,
         all_sessions: all_sessions_off,
     });
+    let s_url = |id: &str, key: &str| format!("http://127.0.0.1:8788/s/claude-code/{id}/{key}");
 
-    // ① 表里有这一行 + 中转在跑 ⇒ 前缀 = 纯函数在**替身给的那几个答案**上算出来的那一份。
-    answer(&["acct-a", "acct-b"], true, false);
-    let want = relay_prefix_for(
-        Some("acct-a"),
-        Some("acct-a"),
-        &["acct-a".to_string(), "acct-b".to_string()],
-        true,
-        Some("sid-1"),
-        false,
-        false,
-    )
-    .expect("纯函数在这组输入上不该报错");
-    // 反空真：这组输入下期望值本来就该是非空的，否则下面那条 `assert_eq!` 是「空 == 空」。
-    assert!(
-        !want.is_empty(),
-        "期望值是空串 —— 那下面那条相等断言就是空真，本条按红处理"
-    );
+    // ① 有行 ＋ 在听 ⇒ 前缀 == 纯函数拿那个地址渲出来的；问了恰好一次、问的是本机、入参逐格对。
+    fake_table(&["acct-a", "acct-b"], true);
+    let _ = fake_asks();
     let got = relay_prefix_for_launch(&action, Some(&acct_a)).expect("这一档不该报错");
-    assert!(
-        ROWS_CALLS.with(Cell::get) >= 1,
-        "这次拉起**没问**「这个号在不在apikey 表里」—— 那一格成了常量"
-    );
-    assert!(
-        RUNNING_CALLS.with(Cell::get) >= 1,
-        "这次拉起**没问**「中转在不在跑」—— 那一格成了常量"
-    );
+    let want = relay_prefix_for(Some(&s_url("acct-a", "sid-1")), false);
+    assert!(!want.is_empty(), "期望值是空串 —— 下面那条相等断言是空真");
+    assert_eq!(got, want, "问是问了，**答案没被用上**（`D5` 那一刀的形状）");
+    let asks = fake_asks();
     assert_eq!(
-        got, want,
-        "\n问是问了，**答案没被用上** —— 这正是 `D5` 那一刀的形状：\n\
-             把两个事实算出来扔掉（一个用不到的绑定），入参换成空表 / 常量，\n\
-             两段文本原地留着 ⇒ 上一版那条「窗口里有没有这段文本」的判据照绿，\n\
-             而中转前缀恒空、本件的正题被整个摘掉。"
+        asks,
+        vec![(
+            None,
+            serde_json::json!({"agent":"claude-code",
+                "account":{"kind":"named","configDir":"/h/.claude-accts/acct-a","name":null},
+                "key":"sid-1","allSessions":false})
+        )],
+        "这次拉起没问那台后端 / 问了不止一次 / 问的入参不对"
     );
 
-    // ①b 🔴 `D6 阻-2`：**同一张表、只换一个号** ⇒ 路由键的 `<account>` 段必须跟着变。
+    // ①b 只换一个号 ⇒ 路由键的账号段跟着变（`D6 阻-2`：acct-b 的会话不许拿 acct-a 的 key）。
     let got_b = relay_prefix_for_launch(&action, Some(&acct_b)).expect("这一档不该报错");
-    assert_ne!(
-        got, got_b,
-        "\n换一个号，拼出来的前缀一个字节都没变 —— 「这次拉起是哪个号」这一维成了常量。\n\
-             生产后果：路由键的 `<account>` 段恒指一个号 ⇒ 上游选择按它取 key ⇒\n\
-             **acct-b 的会话拿着 acct-a 的那把 key 发请求，而两边都显示成功。**"
-    );
     assert!(
         got.contains("/acct-a/") && got_b.contains("/acct-b/"),
-        "路由键里的账号段不是这次拉起的那个号：acct-a ⇒ {got:?} · acct-b ⇒ {got_b:?}"
+        "{got:?} · {got_b:?}"
     );
 
-    // ② **只**把「表里有没有这一行」翻过来 ⇒ 前缀空（不注入，逐字节旧路）。
-    answer(&["someone-else"], true, false);
-    assert_eq!(
-        relay_prefix_for_launch(&action, Some(&acct_a)).expect("不该报错"),
-        "",
-        "表里没有这个号，却仍然拼出了前缀 —— 「在不在表里」这个答案没被用上"
-    );
+    // ② 只把「表里有没有这一行」翻过来 ⇒ 空串（不注入，逐字节旧路）。
+    fake_table(&["someone-else"], true);
+    assert_eq!(relay_prefix_for_launch(&action, Some(&acct_a)).unwrap(), "");
 
-    // ③ **只**把「中转在不在跑」翻过来 ⇒ `Err`（`KH2B2`②：不许静默）。
-    answer(&["acct-a"], false, false);
+    // ③ 只把「中转在不在」翻过来 ⇒ `Err`，话里说得出是哪个号、为什么（`KH2B2`②：不许静默）。
+    fake_table(&["acct-a"], false);
+    let e = relay_prefix_for_launch(&action, Some(&acct_a)).expect_err("中转不在却照旧起出去了");
+    assert!(e.contains("acct-a") && e.contains("中转没在听"), "{e}");
+
+    // ④ 只把「这台机是不是 Windows」翻过来 ⇒ PowerShell 形态（`D6 阻-3`）。
+    fake_table(&["acct-a"], true);
+    WINDOWS_ANSWER.with(|c| c.set(true));
+    let ps = relay_prefix_for_launch(&action, Some(&acct_a)).unwrap();
+    assert_eq!(ps, relay_prefix_for(Some(&s_url("acct-a", "sid-1")), true));
+    WINDOWS_ANSWER.with(|c| c.set(false));
+    assert_ne!(relay_prefix_for_launch(&action, Some(&acct_a)).unwrap(), ps);
+
+    // ⑤ 「哪一次拉起」：resume 的 `key` 是这一次的 sid（`D7 阻-4` 刀 `S1`）。
+    let _ = fake_asks();
+    let r9 = relay_prefix_for_launch(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a))
+        .unwrap();
+    assert_eq!(r9, relay_prefix_for(Some(&s_url("acct-a", "sid-9")), false));
+    // ⑥ 新开：也真的问、也真的注入（刀 `S2`），`key` 是一次性 nonce（两次不同，也不是哪个 sid）。
+    let n1 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a)).unwrap();
+    let n2 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a)).unwrap();
+    let keys: Vec<String> = fake_asks()
+        .into_iter()
+        .map(|(_, a)| a["key"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(keys.len(), 3, "三次拉起问了 {} 次", keys.len());
+    assert_eq!(keys[0], "sid-9");
     assert!(
-        relay_prefix_for_launch(&action, Some(&acct_a)).is_err(),
-        "中转没在跑却照旧起出去了 —— 「在不在跑」这个答案没被用上，\n\
-             症状会长成「claude 连不上 API」，与网络故障同形，而原因在我们这一侧"
+        keys[1] != keys[2] && !keys[1].starts_with("sid-"),
+        "新开的 key 不是 nonce：{keys:?}"
     );
-
-    // ④ 🔴 `D6 阻-3`：**只**把「这台机是不是 Windows」翻过来 ⇒ 渲成 PowerShell 形态。
-    //    先前这一格是调用点上的 `cfg!(windows)`（常量表达式），刀 `Xb` 把它写死成 `false`
-    //    ⇒ 全绿。收进缝之后，写死常量就意味着**这一格的答案没被用上**。
-    answer(&["acct-a"], true, true);
-    let ps = relay_prefix_for_launch(&action, Some(&acct_a)).expect("这一档不该报错");
-    assert_eq!(
-        ps, "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/claude-code/acct-a/sid-1'; ",
-        "\n「这台机是不是 Windows」这个答案没被用上 —— 调用点把那一格写死了。\n\
-             生产后果：Windows 上中转前缀渲染成 POSIX 形态（`export …` 塞进 PowerShell 串）\n\
-             ⇒ 中转注入在 Windows 上整个失效，而 Windows 运行时行为本件在「判不了」里\n\
-             ⇒ **判据是那一格唯一的守卫**。"
-    );
-    // 阴性对照：同一组输入只翻这一格，答案必须真的不同（否则上面那条是「两张脸长一样」）。
-    answer(&["acct-a"], true, false);
-    assert_ne!(
-        relay_prefix_for_launch(&action, Some(&acct_a)).expect("不该报错"),
-        ps,
-        "两个平台渲出来的前缀一模一样 —— 这把尺子分不出 PowerShell 与 POSIX"
-    );
-
-    // ═══════════════════════════════════════════════════════════════════
-    // ⑤⑥ 🔴 `D7 阻-4`：**「哪一次拉起」（`action` / `sid`）也是一维，它的取值域一直是 1**
-    // ═══════════════════════════════════════════════════════════════════
-    //
-    // 上一轮这条判据在 `rows` / `running` / `windows` / `account` 四维上各喂了 ≥2 个值，
-    // **而 `action` 只喂过 `LocalPsAction::Resume("sid-1")` 一个**。`D7` 打了两刀：
-    // - 刀 `S2`：`LocalPsAction::New => return Ok(String::new())` ⇒ **`1229` 全绿**。
-    //   生产后果：**新开会话那条路上中转注入恒空** —— 一个 api-key 号新开一个会话，
-    //   claude 直连官方端点、第三方 key 用不上，而门禁四个数一格不动。
-    //   ⚠ 而件文件 `§3a` 的 `KH2B6` 逐字写着「新开会话这条路**现在生产可达**」。
-    // - 刀 `S1`：`Resume(_sid) => Some("sid-1")`（把 `<key>` 段写死）⇒ 也全绿。
-    //   后果轻（`mint_route_key` 头注登记着这一段对路由惰性），**但那一维什么都没买**。
-    //
-    // ⇒ 与 `term` 那条链同一条纪律：**分叉点上的两支都要喂**，不许只买一支。
-    let key_seg = |prefix: &str| -> String {
-        // 〔RK1〕钥匙段插在两段单引号之间（`'http://…/'"$(cat …)"'/s/…'`）⇒ 路由那一截是**最后**一段被单引号包住的。
-        let url = prefix
-            .split('\'')
-            .rev()
-            .nth(1)
-            .unwrap_or_else(|| panic!("前缀里没有被单引号包住的 URL：{prefix:?}"));
-        url.rsplit('/')
-            .next()
-            .expect("URL 一个路径段都没有")
-            .to_string()
-    };
-
-    answer(&["acct-a"], true, false);
-    // ⑤ **`Resume` 那一支**：`<key>` 段必须是**这一次**的 sid，不是一个写死的串。
-    let resumed_1 = relay_prefix_for_launch(&action, Some(&acct_a)).expect("不该报错");
-    let resumed_2 =
-        relay_prefix_for_launch(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a))
-            .expect("不该报错");
-    assert_eq!(
-        key_seg(&resumed_1),
-        "sid-1",
-        "路由键的 `<key>` 段不是这次的 sid"
-    );
-    assert_eq!(
-        key_seg(&resumed_2),
-        "sid-9",
-        "\n换一个会话 id，路由键的 `<key>` 段没跟着变 —— 刀 `S1` 的形状：\n\
-             `Resume(_sid) => Some(\"sid-1\")` 把这一段写死，那一维什么都没买。\n\
-             实得 = {:?}",
-        key_seg(&resumed_2)
-    );
-
-    // ⑥ 🔴 **`New` 那一支**：新开会话**也真的走中转**，而它的 `<key>` 段是一次性 nonce。
-    let new_1 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a))
-        .expect("新开会话这一档不该报错");
-    assert!(
-        !new_1.is_empty() && new_1.contains("ANTHROPIC_BASE_URL"),
-        "\n★★ **新开会话那条路上中转前缀是空的** —— 这正是刀 `S2` 的形状：\n\
-             `LocalPsAction::New => return Ok(String::new())`，而件文件 `§3a` 的 `KH2B6`\n\
-             逐字写着这条路**现在生产可达**。\n\
-             生产后果：一个 api-key 号新开一个会话 ⇒ **claude 直连官方端点、第三方 key 用不上**，\n\
-             而门禁四个数一格不动。实得 = {new_1:?}"
-    );
-    assert!(
-        new_1.contains("/acct-a/"),
-        "新开会话拼出来的路由键里没有这次的账号段：{new_1:?}"
-    );
-    let new_key = key_seg(&new_1);
-    assert_ne!(
-        new_key,
-        key_seg(&resumed_1),
-        "新开会话拿到了 resume 那一支的 `<key>` 段 —— 这一维被抹平了"
-    );
-    // 反空真：nonce 那一支**每次都不同**（`route_key_for_session(None)` → `mint_route_key`）。
-    // 恒定的 `<key>` 意味着这一支被换成了一个常量，而上面那条 `assert_ne!` 分不出来。
-    let new_2 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a)).expect("不该报错");
-    assert_ne!(
-        new_key,
-        key_seg(&new_2),
-        "两次新开会话拿到同一个 `<key>` 段 —— 那一段不是 nonce，是一个常量"
-    );
+    assert!(n1.contains("ANTHROPIC_BASE_URL") && n1.contains(&keys[1]) && n2.contains(&keys[2]));
 }
 
-/// ★★★ `D5 阻-1` 的**同职第二处**：界面那一侧（`KH2B7` 的 `apikey_routing_for`）
-/// **也真的问了那两件事，而且真的用了答案。**
-///
-/// # 为什么它非有不可（分母在这里）
-///
-/// 那两个取值口的生产消费方**恰好 2**：起会话那一侧（上一条）与本条这一侧。
-/// 上一条只买了第一处 —— 而「只覆盖了那条病的一个动词」正是本区最近四次打回的形状。
-/// 本条把第二处也钉住：把 `routed` 写死成空表 / 把 `running` 写死成常量，界面就会
-/// **说反**（「这个号走中转」和「中转在跑」两句都是用户唯一看得见的说法），而没有别的判据会红。
+/// 〔US1〕D11：**问不到那台后端 ⇒ 拒绝起会话并说清**（不退回「自己读文件」、不猜成「不注入」）。
+/// 期望手写；正控：同一个号、替身答得了 ⇒ 不报错。
 #[test]
-fn the_ui_status_side_asks_those_two_take_points_and_uses_their_answers() {
-    use std::cell::{Cell, RefCell};
-    thread_local! {
-        static ROWS_CALLS: Cell<u32> = const { Cell::new(0) };
-        static RUNNING_CALLS: Cell<u32> = const { Cell::new(0) };
-        static ROWS_ANSWER: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-        static RUNNING_ANSWER: Cell<bool> = const { Cell::new(false) };
+fn a_launch_whose_backend_cannot_be_asked_is_refused_not_guessed() {
+    fn not_win() -> bool {
+        false
     }
-    fn spy_rows() -> Vec<String> {
-        ROWS_CALLS.with(|c| c.set(c.get() + 1));
-        ROWS_ANSWER.with(|v| v.borrow().clone())
+    let acct = LaunchAccount::Named {
+        config_dir: "/h/.claude-accts/acct-a".to_string(),
+        name: None,
+    };
+    let action = LocalPsAction::Resume("sid-1".to_string());
+    {
+        let _g = override_inject_facts(InjectFactSources {
+            endpoint: fake_ep_unreachable,
+            windows: not_win,
+            all_sessions: all_sessions_off,
+        });
+        let e = relay_prefix_for_launch(&action, Some(&acct)).expect_err("问不到却起出去了");
+        assert!(
+            e.contains("问不到本机后端") && e.contains("没有控制通道"),
+            "{e}"
+        );
     }
-    fn spy_running() -> bool {
-        RUNNING_CALLS.with(|c| c.set(c.get() + 1));
-        RUNNING_ANSWER.with(Cell::get)
-    }
-    fn answer(rows: &[&str], running: bool) {
-        ROWS_ANSWER.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
-        RUNNING_ANSWER.with(|c| c.set(running));
-    }
-
-    let dirs = vec![
-        "/h/.claude-accts/acct-a".to_string(),
-        "/h/.claude-accts/acct-b".to_string(),
-    ];
-    let _guard = override_inject_facts(InjectFactSources {
-        rows: spy_rows,
-        running: spy_running,
-        // 界面那一侧不看平台（徽章文案两个平台同一份）⇒ 这一格照生产那个取值口，不装替身。
-        windows: platform_is_windows,
+    let _g = override_inject_facts(InjectFactSources {
+        endpoint: fake_ep,
+        windows: not_win,
         all_sessions: all_sessions_off,
     });
-
-    // ① 表里只有 `acct-a` + 中转在跑 ⇒ 只有那一个 configDir 被判「走中转」，`running` 为真。
-    answer(&["acct-a"], true);
-    // 〔RM1a〕命令收了 origin、变成异步：本机那一臂两件事照旧只走那条缝（本条量的正是它）。
-    let routing = |d: Vec<String>| {
-        tauri::async_runtime::block_on(crate::apikey_routing_for(crate::origin::Origin::local(), d))
-            .expect("本机那一臂不该失败")
-    };
-    let got = routing(dirs.clone());
-    assert!(
-        ROWS_CALLS.with(Cell::get) >= 1 && RUNNING_CALLS.with(Cell::get) >= 1,
-        "界面这一侧**没问**那两件事（rows={} running={}）—— 那两格成了常量",
-        ROWS_CALLS.with(Cell::get),
-        RUNNING_CALLS.with(Cell::get)
-    );
-    assert_eq!(
-        got.routed,
-        vec!["/h/.claude-accts/acct-a".to_string()],
-        "问是问了，**答案没被用上** —— 界面会把「走不走中转」说反"
-    );
-    assert!(got.running, "「中转在不在跑」的答案没被用上");
-
-    // ② **只**把表翻过来 ⇒ 一个都不走（不是「随便回一份」）。
-    answer(&[], true);
-    assert!(
-        routing(dirs.clone()).routed.is_empty(),
-        "表空了界面还说有号走中转"
-    );
-    // ③ **只**把「在不在跑」翻过来 ⇒ `running` 跟着变（且 `routed` 不受它影响，两格分开）。
-    answer(&["acct-b"], false);
-    let flipped = routing(dirs);
-    assert!(!flipped.running, "中转没跑，界面还说在跑");
-    assert_eq!(
-        flipped.routed,
-        vec!["/h/.claude-accts/acct-b".to_string()],
-        "两格串了 —— `routed` 不该跟着「在不在跑」变"
-    );
+    fake_table(&[], true);
+    assert_eq!(relay_prefix_for_launch(&action, Some(&acct)).unwrap(), "");
 }
 
-/// ★★★ `D5 阻-1` 的第三格：**生产上插进那条缝的，就是那两个真取值口。**
-///
-/// 上一条把替身换进去量行为 ⇒ 它量不到「生产那一份指的是谁」。
-/// 这一条按**函数地址**对拍（不是按文本）：把 [`PRODUCTION_INJECT_FACTS`] 里任何一格
-/// 换成一个返回常量的闭包 / 别的函数，本条当场红。
-///
-/// # 🔴🔴 第二半是**我自己找第六层时找出来的**，别删
-///
-/// 只对拍那个 `const` **不够**：`inject_facts()` 才是生产真正取值的那一跳。
-/// 有人把 `inject_facts()` 改成「不装替身时也回一份写死的」而**一个字节不动那个 `const`**
-/// ⇒ 地址对拍照绿（它读的是 `const`）、行为判据也照绿（它们装了替身、走的是另一支）
-/// ⇒ **又是一次「文本/形状留住、行为摘掉」，全绿。**
-/// ⇒ 所以下面**先在没装替身的状态下调一次 `inject_facts()`**，按地址断言它交出来的就是那两个真取值口。
+/// ★★★ `D5 阻-1` 的第三格：**生产上插进那条缝的，就是那几个真取值口**（按函数地址，两跳都拍：
+/// `const` 与没装替身时 `inject_facts()` 交出来的那一跳 —— 只拍 `const` 时，把 `inject_facts()` 改成「不装替身也回一份写死的」就绕过去了）。
 #[test]
-fn the_production_relay_facts_are_those_two_take_points() {
-    // 反空真排最前：这把尺子**分得出**「不是那个函数」，否则下面两条是恒真。
+fn the_production_relay_facts_are_those_take_points() {
     fn not_it() -> bool {
         true
     }
     assert!(
-        !std::ptr::fn_addr_eq(PRODUCTION_INJECT_FACTS.running, not_it as fn() -> bool),
+        !std::ptr::fn_addr_eq(PRODUCTION_INJECT_FACTS.windows, not_it as fn() -> bool),
         "这把尺子对任何同型函数都说「是」—— 它恒真，本条按红处理"
     );
-    // ★★ 第二半：**没装替身**的那一跳（= 生产那一跳）交出来的必须就是那两个真取值口。
-    //    ⚠ 本条**刻意不装替身**；替身住 thread-local ⇒ 别的判据装的那份影响不到这里。
     let live = inject_facts();
+    // 〔US1〕「那台后端答的成品」那一格：生产恒指 `ask_launch_endpoint`（经那条长连接问 `launch-endpoint`）。
     assert!(
-        std::ptr::fn_addr_eq(live.rows, apikey_rows as fn() -> Vec<String>),
-        "没装替身时 `inject_facts()` 交出来的「表从哪来」不是 `apikey_rows` ——\n\
-             生产那一跳被换掉了，而只对拍那个 `const` 的判据看不见（第六层的形状）"
+        std::ptr::fn_addr_eq(live.endpoint, ask_launch_endpoint as EndpointAsk)
+            && std::ptr::fn_addr_eq(PRODUCTION_INJECT_FACTS.endpoint, ask_launch_endpoint as EndpointAsk),
+        "生产上「问那台后端要成品」不再是 `ask_launch_endpoint` —— 换成一份写死的答案，谁都不走中转 / 谁都走，行为判据看不见"
     );
     assert!(
-        std::ptr::fn_addr_eq(
-            live.running,
-            crate::local_backend_host::relay_running as fn() -> bool
-        ),
-        "没装替身时 `inject_facts()` 交出来的「中转在不在跑」不是 `local_backend_host::relay_running`"
+        !std::ptr::fn_addr_eq(live.endpoint, fake_ep as EndpointAsk),
+        "反空真：替身与生产那一跳分得开"
     );
-    assert!(
-        std::ptr::fn_addr_eq(
-            PRODUCTION_INJECT_FACTS.rows,
-            apikey_rows as fn() -> Vec<String>
-        ),
-        "生产上「这个号在不在apikey 表里」不再由 `apikey_rows` 答 ——\n\
-             换成一个恒空的东西，谁都不走中转，而行为判据（喂替身的那条）照绿"
-    );
-    assert!(
-        std::ptr::fn_addr_eq(
-            PRODUCTION_INJECT_FACTS.running,
-            crate::local_backend_host::relay_running as fn() -> bool
-        ),
-        "生产上「中转在不在跑」不再由 `local_backend_host::relay_running` 答 ——\n\
-             换成恒真，`KH2B2`② 那道「起不来就当场拒」的闸整个失效，而行为判据照绿"
-    );
-    // 🔴 `D6 阻-3`：第三格（平台开关）同样按地址对拍，两跳都拍。
     assert!(
         std::ptr::fn_addr_eq(live.windows, platform_is_windows as fn() -> bool)
             && std::ptr::fn_addr_eq(
                 PRODUCTION_INJECT_FACTS.windows,
                 platform_is_windows as fn() -> bool
             ),
-        "生产上「这台机是不是 Windows」不再由 `platform_is_windows` 答 ——\n\
-             换成一个恒假的东西，Windows 上前缀渲成 POSIX 形态、注入整个失效，\n\
-             而 Windows 运行时在本件的「判不了」里 ⇒ 这一格只有判据这一个守卫"
+        "生产上「这台机是不是 Windows」不再由 `platform_is_windows` 答"
     );
-    // 🔴 〔`设计/20 §7` 步 4〕第四格（全量注入开关）同样按地址对拍，两跳都拍。
-    //    换成恒真 ⇒ 开关形同虚设（默认就全量注入）；换成恒假 ⇒ 开关打不开。两形行为判据都看不见。
     assert!(
         std::ptr::fn_addr_eq(live.all_sessions, relay_all_sessions_switch as fn() -> bool)
             && std::ptr::fn_addr_eq(
@@ -2915,9 +2604,7 @@ fn the_production_relay_facts_are_those_two_take_points() {
             ),
         "生产上「全量注入开关开没开」不再由 `relay_all_sessions_switch` 答"
     );
-
-    // ★★ `D6 阻-1`：**送出去**那条缝同样按地址对拍（同样两跳：`const` 与没装替身的那一跳）。
-    //    只对拍 `const` 不够的理由与上面第二半逐字同一条。
+    // ★★ `D6 阻-1`：**送出去**那条缝同样按地址对拍。
     let sink = launch_sink();
     #[cfg(not(windows))]
     let production_sink =
@@ -2928,9 +2615,7 @@ fn the_production_relay_facts_are_those_two_take_points() {
     assert!(
         std::ptr::fn_addr_eq(sink.0, production_sink)
             && std::ptr::fn_addr_eq(PRODUCTION_LAUNCH_SINK.0, production_sink),
-        "没装替身时最后送出去的那一步不是 `launch::launch_local_posix` / \
-             `launch::launch_powershell_window` ——\n\
-             生产那一跳被换掉了，而驱动 `launch_local` 的那条行为判据装了替身、看不见这件事"
+        "没装替身时最后送出去的那一步不是 `launch::launch_local_posix` / `launch::launch_powershell_window`"
     );
 }
 
@@ -2979,212 +2664,77 @@ fn the_local_launch_really_asks_the_production_ccm_probe() {
     );
 }
 
-/// ★★★ `D1 阻-6` 刀 C 的反面：**`apikey_rows` 真的去读那份文件、真的解析出行。**
+/// ★★ 〔C4c · US1〕**「configDir → 表里的 id」与「哪几个号在表里有行」两条规则只有一个家：`acct-core`**。
 ///
-/// `D1` 实测过：把它整个换成 `Vec::new()`，**1221 passed / 0 failed** ——
-/// 也就是说「这个号在不在apikey 表里」这个**取值口**当时一条判据都没有，
-/// 而它一旦恒空，整件事的表现就是「谁都不走中转」，**而且全绿**。
-#[test]
-fn the_rows_really_come_from_that_file_not_from_a_constant() {
-    let dir = std::env::temp_dir().join(format!(
-        "ccm-rows-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&dir).expect("建临时目录");
-    let f = dir.join("apikey-credentials.json");
-
-    // ① 文件不在 ⇒ 零条（**不是**报错：读不到与一条没配的正确行为都是「照旧直连」）。
-    assert!(apikey_rows_at(&f).is_empty(), "文件不在却读出了行");
-    // ② 真写一份（裸 `fs::write` = 人拿编辑器写的那一份）⇒ 逐条读出来。
-    std::fs::write(
-        &f,
-        b"{\n  \"accounts\": {\n    \"acct-a\": { \"api_key\": \"K1\" },\n    \"acct-b\": {}\n  }\n}\n",
-    )
-    .expect("写夹具");
-    let mut got = apikey_rows_at(&f);
-    got.sort();
-    assert_eq!(
-        got,
-        vec!["acct-a".to_string(), "acct-b".to_string()],
-        "没把那份文件里的行读出来 —— 这个取值口恒空的话，谁都不会走中转，而且全绿"
-    );
-    // ③ 当不了路由段的 id **筛掉**（与上游选择装表那一侧同一条规则）。
-    std::fs::write(
-        &f,
-        b"{\n  \"accounts\": {\n    \"ok-1\": {},\n    \"has.dot\": {},\n    \"has/slash\": {}\n  }\n}\n",
-    )
-    .expect("写夹具");
-    assert_eq!(
-        apikey_rows_at(&f),
-        vec!["ok-1".to_string()],
-        "界面这一侧收下了上游选择装表时会丢掉的行 —— 那会让界面说「经本机中转」而上游选择 404"
-    );
-    // ④ 文件坏了 ⇒ 零条 + 不 panic（人手编打错一个逗号是常态）。
-    std::fs::write(&f, b"{ not json").expect("写夹具");
-    assert!(apikey_rows_at(&f).is_empty());
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// ★★ `KH2B7` 的产出方：**界面问的那个「有没有行」，与起会话那一侧问的是同一个规则。**
-///
-/// 两处各写一个 basename 规则，漂开的那天症状是「设置里说走 apikey 端点改写、起会话时没走」，
-/// 而两边看起来都没错。⇒ 本条把它钉成**同一个函数的两个调用方**。
-#[test]
-fn the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule() {
-    let rows = vec!["acct-a".to_string()];
-    let dirs = vec![
-        "/home/u/.claude-accts/acct-a".to_string(),
-        "/home/u/.claude-accts/acct-b".to_string(),
-        // 末段带尾斜杠 / 带空白的写法也要落到同一个 id 上。
-        "  /home/u/.claude-accts/acct-a/  ".to_string(),
-    ];
-    // 非空对照排最前：先证明这把尺子不是恒空。
-    assert_eq!(
-        apikey_routed_subset(&dirs, &rows, "claude-code"),
-        vec![
-            "/home/u/.claude-accts/acct-a".to_string(),
-            "  /home/u/.claude-accts/acct-a/  ".to_string()
-        ],
-        "界面那一侧筛出来的不是「表里有行」的那几个"
-    );
-    // ★ 与起会话那一侧**同一个规则**：同一个目录，两条路推出同一个 id。
-    let named = LaunchAccount::Named {
-        config_dir: "/home/u/.claude-accts/acct-a".to_string(),
-        name: None,
-    };
-    assert_eq!(
-        apikey_account_id(Some(&named)),
-        apikey_account_id_of_dir("/home/u/.claude-accts/acct-a"),
-        "两个调用方推出来的账号 id 不一样 —— 那正是「设置里说走 apikey 端点改写、起会话时没走」的形状"
-    );
-    // 表里没有的行一个都不许混进来（`KL7` 第 2 条的界面侧倒影）。
-    assert!(
-        apikey_routed_subset(&dirs, &[], "claude-code").is_empty(),
-        "空表却筛出了行"
-    );
-    // 账号 0 / 空 configDir 推不出 id ⇒ 不在结果里（说不出就不表态）。
-    assert!(apikey_routed_subset(&["".to_string()], &rows, "claude-code").is_empty());
-}
-
-/// ★★ 〔C4c · 第四波 4B〕**那两条 apikey 规则只有一个家：`acct-core`**。
-///
-/// 要求住址：`设计/01 §5` D1「**一个判定只有一个家**」。C4c 之前它们住本文件，后端出账号清单要并表时
-/// 够不着（后端不链接 monitor）⇒ 搬进两边都链接的 `acct-core`。本条钉搬完之后的形状（两半异源地扫）：
-/// - monitor 与后端两棵生产树里 `fn apikey_account_id_of_dir` 的**定义**零处（monitor 只 `use` 进来）；
-/// - `fn apikey_routed_subset` 的定义在两棵树里恰好一处（本 crate 的 `history.rs`），且它的函数体
-///   **调** `acct_core::apikey_routed_subset(`（只绑「表属于哪一家」那一格，自己不比表）；
-/// - 反空真：同一个识别器在 `acct-core` 的源码上两条定义各数得出恰好 1。
+/// 要求住址：`设计/01 §5` D1「**一个判定只有一个家**」。〔US1〕monitor 那一个绑定（`history::apikey_routed_subset`〔散文墓碑〕）
+/// 随界面那一问搬进后端一起删了 ⇒ 两棵生产树里两条规则的**定义**都零处；反空真：同一个识别器在 `acct-core` 上各数得出恰好 1。
 #[test]
 fn the_two_apikey_rules_are_defined_only_in_acct_core() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let id_def = "fn apikey_account_id_of_dir".to_string();
-    let subset_def = "fn apikey_routed_subset".to_string();
-    let mut id_defs = Vec::new();
-    let mut subset_defs = Vec::new();
+    let defs = ["fn apikey_account_id_of_dir", "fn apikey_routed_subset"];
+    let mut found = Vec::new();
     for dir in [root.join("src"), root.join("../backend")] {
         for (p, rule_src) in guard_core::scan_tree!(&dir, &["rs"]) {
             let rule_prod = guard_core::production_code(&rule_src);
-            if guard_core::contains_word(&rule_prod, &id_def) {
-                id_defs.push(p.clone());
-            }
-            if guard_core::contains_word(&rule_prod, &subset_def) {
-                subset_defs.push((p.clone(), rule_prod));
+            for d in defs {
+                if guard_core::contains_word(&rule_prod, d) {
+                    found.push((p.clone(), d));
+                }
             }
         }
     }
     assert!(
-        id_defs.is_empty(),
-        "「configDir → id」那条规则在两半里又长出了定义：{id_defs:?}"
+        found.is_empty(),
+        "两条 apikey 规则在两半里又长出了定义：{found:?}"
     );
-    assert_eq!(
-        subset_defs.len(),
-        1,
-        "`apikey_routed_subset` 在两半里的定义不是恰好一个文件：{:?}",
-        subset_defs.iter().map(|(p, _)| p).collect::<Vec<_>>()
-    );
-    let (at, subset_prod) = &subset_defs[0];
-    assert_eq!(
-        at.file_name().and_then(|n| n.to_str()),
-        Some("history.rs"),
-        "那一处不在 history.rs：{at:?}"
-    );
-    let def_at = guard_core::find_pinned(subset_prod, &subset_def)
-        .unwrap_or_else(|e| panic!("history.rs 里那一个定义不是恰好一处：{e}"));
-    let subset_body: String = subset_prod[def_at..]
-        .lines()
-        .take_while(|l| *l != "}")
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        guard_core::contains_word(&subset_body, "acct_core::apikey_routed_subset"),
-        "monitor 那一个不再是调 acct-core 的绑定 —— 它自己在比表：{subset_body}"
-    );
-    // 反空真：识别器在规则真正的家上认得出两条定义（各恰好一处）。
     let core_prod = guard_core::production_code(
         &std::fs::read_to_string(root.join("crates/acct-core/src/lib.rs")).unwrap(),
     );
-    guard_core::find_pinned(&core_prod, &id_def).expect("acct-core 里那条 id 规则的定义");
-    guard_core::find_pinned(&core_prod, &subset_def).expect("acct-core 里那条子集规则的定义");
-}
-
-/// ★★★ 〔条 49 · `设计/90 §1.2`〕**界面那一侧判「有行」也看 agent**，与起会话那一侧逐格同答。
-///
-/// 量法是**对照**：同一张表、同一批 configDir，只有 agent 不同；再拿起会话那一侧的判断口
-/// （`payload::apikey_endpoint_for`）在同样的输入上问一遍，两边说的必须一样（异源：两个函数）。
-#[test]
-fn the_ui_side_routed_subset_looks_at_the_agent_like_the_launch_side_does() {
-    let rows = vec!["acct-a".to_string()];
-    let dirs = vec!["/home/u/.claude-accts/acct-a".to_string()];
-    for (agent, want_routed) in [("claude-code", true), ("codex", false)] {
-        let ui = !apikey_routed_subset(&dirs, &rows, agent).is_empty();
-        let launch = crate::backend::control::payload::apikey_endpoint_for(
-            Some("acct-a"),
-            &rows,
-            true,
-            None,
-            agent,
-        )
-        .unwrap()
-        .is_some();
-        assert_eq!(ui, want_routed, "{agent}：界面那一侧判错了（期望值手写）");
-        assert_eq!(
-            ui, launch,
-            "{agent}：界面说 {ui}、起会话那一侧说 {launch} —— 两侧漂开"
-        );
+    for d in defs {
+        guard_core::find_pinned(&core_prod, d)
+            .unwrap_or_else(|e| panic!("acct-core 里 `{d}` 不是恰好一处：{e}"));
     }
 }
 
-/// ★★ `KH2B2`②在这一层：中转没在跑 ⇒ **起会话这一侧当场说话**，
-/// 不许渲染成一条指向没人听的口的 URL（那会长成「claude 连不上 API」）。
+/// ★★ `KH2B2`②在这一层（〔US1〕照成品执行）：`/s/`（`whenDown: refuse`）而中转不在 ⇒ **当场说话**；
+/// `/t/`（`direct`）而中转不在 ⇒ **照旧直连**（空串）—— 两种降级不许写成一样（`设计/20 §3.2` ⚠）。
 #[test]
 fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
-    let rows = vec!["acct-a".to_string()];
-    let e = relay_prefix_for(
-        Some("acct-a"),
-        Some("acct-a"),
-        &rows,
-        false,
-        Some("sid-1"),
-        false,
-        false,
-    )
-    .expect_err("中转没起来却照旧渲染 —— 症状会与网络故障同形");
-    assert!(e.contains("中转没在跑"), "错误得说出真正的原因：{e}");
-    // 非空对照：只把「中转在跑」翻过来，同一条路径就不再报错。
-    assert!(relay_prefix_for(
-        Some("acct-a"),
-        Some("acct-a"),
-        &rows,
-        true,
-        Some("sid-1"),
-        false,
+    fn not_win() -> bool {
         false
-    )
-    .is_ok());
+    }
+    fn on() -> bool {
+        true
+    }
+    let action = LocalPsAction::Resume("sid-1".to_string());
+    let acct_a = LaunchAccount::Named {
+        config_dir: "/h/.claude-accts/acct-a".to_string(),
+        name: None,
+    };
+    let _g = override_inject_facts(InjectFactSources {
+        endpoint: fake_ep,
+        windows: not_win,
+        all_sessions: on,
+    });
+    fake_table(&["acct-a"], false);
+    let e = relay_prefix_for_launch(&action, Some(&acct_a)).expect_err("中转没起来却照旧渲染");
+    assert!(
+        e.contains("中转没在听") && e.contains(LOCAL_RELAY_NOT_LISTENING.as_str()),
+        "错误得说出真正的原因：{e}"
+    );
+    // `/t/` 那一格（账号 0、开关开）同样不在 ⇒ 直连，不拒。
+    assert_eq!(
+        relay_prefix_for_launch(&action, Some(&LaunchAccount::Base)).unwrap(),
+        ""
+    );
+    // 非空对照：只把「中转在不在」翻过来，两格都注入。
+    fake_table(&["acct-a"], true);
+    assert!(relay_prefix_for_launch(&action, Some(&acct_a))
+        .unwrap()
+        .contains("/s/"));
+    assert!(relay_prefix_for_launch(&action, Some(&LaunchAccount::Base))
+        .unwrap()
+        .contains("/t/claude-code/0/"));
 }
 
 /// ★★★ **接线判据**：`launch_local` **真正交出去的那一串**以中转前缀打头。
@@ -3228,30 +2778,21 @@ fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
 ///   **带中转前缀的拉起今天必然落到回落路** ⇒ 本条驱动的正是那条生产可达的路。
 ///   ccm 那一支上「前缀有没有拼」由同一行代码管（合流之后**只有一处**拼接）。
 /// - **送法自己拿到串之后干了什么**：那是 `launch::launch_local_posix` 自己的判据面；
-///   「生产上插进这条缝的就是它」由 `the_production_relay_facts_are_those_two_take_points`
+///   「生产上插进这条缝的就是它」由 `the_production_relay_facts_are_those_take_points`
 ///   末尾那一格按**函数地址**对拍。
 /// - **谁绕开这条缝直接调送法**：由 `payload.rs` 那道人群闸数着（零调用点）。
 #[test]
 fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
-    use std::cell::{Cell, RefCell};
+    use std::cell::RefCell;
     thread_local! {
         static SENT: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-        static ROWS_ANSWER: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-        static RUNNING_ANSWER: Cell<bool> = const { Cell::new(false) };
     }
     fn recorder(cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
         SENT.with(|v| v.borrow_mut().push(cmd.to_string()));
         Ok(())
     }
-    fn spy_rows() -> Vec<String> {
-        ROWS_ANSWER.with(|v| v.borrow().clone())
-    }
-    fn spy_running() -> bool {
-        RUNNING_ANSWER.with(Cell::get)
-    }
     fn answer(rows: &[&str], running: bool) {
-        ROWS_ANSWER.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
-        RUNNING_ANSWER.with(|c| c.set(running));
+        fake_table(rows, running);
     }
     fn last_sent() -> String {
         SENT.with(|v| v.borrow().last().cloned().expect("这一趟什么都没送出去"))
@@ -3259,8 +2800,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
 
     let _sink = override_launch_sink(LaunchSink(recorder));
     let _facts = override_inject_facts(InjectFactSources {
-        rows: spy_rows,
-        running: spy_running,
+        endpoint: fake_ep,
         // 平台那一格照生产那个取值口（本条不翻它 —— 翻它的是上面那条判据的第 ④ 格）。
         windows: platform_is_windows,
         all_sessions: all_sessions_off,
@@ -3295,16 +2835,11 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
 
         // ② 表里有这个号 ⇒ 送出去的那一串**逐字节等于**「前缀 + 基准串」。
         answer(&["acct-a", "acct-b"], true);
+        // 〔US1〕期望的前缀 = 纯函数拿「那台后端该答的那个地址」渲出来的（地址手写，不由被测函数现算）。
         let prefix = relay_prefix_for(
-            Some(id),
-            Some(id),
-            &["acct-a".to_string(), "acct-b".to_string()],
-            true,
-            Some("sid-1"),
+            Some(&format!("http://127.0.0.1:8788/s/claude-code/{id}/sid-1")),
             cfg!(windows),
-            false,
-        )
-        .expect("纯函数在这组输入上不该报错");
+        );
         // 反空真：期望的前缀本来就该是非空的，否则下面那条相等断言是「x == x」。
         assert!(!prefix.is_empty(), "期望前缀是空串 —— 本条按红处理");
         launch_local(&action, None, None, Some(&account), None).expect("走中转这一趟不该失败");
@@ -3460,12 +2995,6 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
         SENT.with(|v| v.borrow_mut().push(cmd.to_string()));
         Ok(())
     }
-    fn no_rows() -> Vec<String> {
-        Vec::new()
-    }
-    fn relay_up() -> bool {
-        true
-    }
     fn spy_windows() -> bool {
         WINDOWS_ANSWER.with(Cell::get)
     }
@@ -3475,9 +3004,9 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
 
     let _sink = override_launch_sink(LaunchSink(recorder));
     // 表里一行都没有 ⇒ 中转前缀恒空 ⇒ 本条量到的只有身份那一段（两件事分开量）。
+    fake_table(&[], true);
     let _facts = override_inject_facts(InjectFactSources {
-        rows: no_rows,
-        running: relay_up,
+        endpoint: fake_ep,
         windows: spy_windows,
         all_sessions: all_sessions_off,
     });
@@ -3564,7 +3093,7 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
     let bad = "a".repeat(129);
     let bad = bad.as_str();
     assert!(
-        !crate::backend::control::payload::relay_segment_is_safe(bad),
+        !relay_route_core::segment_is_safe(bad),
         "夹具选错了：这个 sid 过得了白名单 ⇒ 下面那条断言是空真"
     );
     launch_local(
@@ -3670,12 +3199,6 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
     fn boom(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
         Err("拉起失败（判据夹具）".to_string())
     }
-    fn no_rows() -> Vec<String> {
-        Vec::new()
-    }
-    fn relay_up() -> bool {
-        true
-    }
     fn not_windows() -> bool {
         false
     }
@@ -3686,9 +3209,9 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
     let _sink = override_launch_sink(LaunchSink(recorder));
     // 表里一行都没有 ⇒ 中转前缀恒空 ⇒ ④ 那一格量的是「身份 + 基准串」这两段，
     // 中转那一段由它自己那条判据管（两件事分开量）。
+    fake_table(&[], true);
     let _facts = override_inject_facts(InjectFactSources {
-        rows: no_rows,
-        running: relay_up,
+        endpoint: fake_ep,
         windows: not_windows,
         all_sessions: all_sessions_off,
     });
@@ -3788,7 +3311,7 @@ fn the_minted_identity_token_is_handed_back_to_the_caller() {
 // # 病是怎么长出来的（`D8 §4` 第 2 条，别只读结论）
 //
 // 本件所有承重的行为判据（[`the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`]
-// / [`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers`]）的
+// / [`the_launch_side_really_asks_the_backend_and_uses_its_answer`]）的
 // **驱动入口都是 [`launch_local`] 或更下游**，而**生产入口在它上面两跳**：
 //
 // ```text
@@ -3838,9 +3361,6 @@ thread_local! {
     /// **线程局部** ⇒ 三条判据并行跑互不干扰（`cargo test` 一测一线程）。
     static ENTRY_SENT: std::cell::RefCell<Vec<(String, Option<String>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
-    /// 这一拍apikey 表里有哪几行（探针自己写）。
-    static ENTRY_ROWS: std::cell::RefCell<Vec<String>> =
-        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 fn entry_recorder(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
@@ -3850,21 +3370,15 @@ fn entry_recorder(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
     });
     Ok(())
 }
-fn entry_rows() -> Vec<String> {
-    ENTRY_ROWS.with(|v| v.borrow().clone())
-}
-fn entry_running() -> bool {
-    true
-}
+
 /// 装台：一条会记账的送法 + 一组答案由探针写死的取值口。两个守卫掉出作用域自动还原。
 fn entry_stage() -> (LaunchSinkGuard, InjectFactsGuard) {
     ENTRY_SENT.with(|v| v.borrow_mut().clear());
-    ENTRY_ROWS.with(|v| v.borrow_mut().clear());
+    fake_table(&[], true);
     (
         override_launch_sink(LaunchSink(entry_recorder)),
         override_inject_facts(InjectFactSources {
-            rows: entry_rows,
-            running: entry_running,
+            endpoint: fake_ep,
             // 平台那一格照生产那个取值口（翻它的是别处那条判据的第 ④ 格）。
             windows: platform_is_windows,
             all_sessions: all_sessions_off,
@@ -3872,7 +3386,7 @@ fn entry_stage() -> (LaunchSinkGuard, InjectFactsGuard) {
     )
 }
 fn entry_answer(rows: &[&str]) {
-    ENTRY_ROWS.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
+    fake_table(rows, true);
 }
 fn entry_last() -> (String, Option<String>) {
     ENTRY_SENT.with(|v| v.borrow().last().cloned().expect("这一趟什么都没送出去"))
@@ -4116,6 +3630,73 @@ fn all_sessions_off() -> bool {
     false
 }
 
+// ── 〔US1 · 第四波 4D〕替身：「那台后端答的成品」（缝上 `endpoint` 那一格） ─────────────────────────
+//
+// 决策表今天住后端（`accounts/upstream/endpoint.rs::decide_launch`，它自己的判据在 `endpoint_tests`）。
+// 这边量的是**起会话那一侧**：真的问了、问的入参对、照成品执行（拼上 / 不拼 / 拒）。替身照后端那张表的
+// 几格作答（表的行与「中转在不在」由 [`fake_table`] 设），**它不是被测对象**，只为让这一侧有真答案可用。
+
+thread_local! {
+    static FAKE_ROWS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+    static FAKE_LISTENING: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+    static FAKE_ASKS: std::cell::RefCell<Vec<(Option<String>, serde_json::Value)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// 替身那张表：哪几行 · 那台的中转在不在听。
+fn fake_table(rows: &[&str], listening: bool) {
+    FAKE_ROWS.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
+    FAKE_LISTENING.with(|c| c.set(listening));
+}
+
+/// 替身被问过的每一次：`(主机 | None = 本机, 入参)`，取走即清。
+fn fake_asks() -> Vec<(Option<String>, serde_json::Value)> {
+    FAKE_ASKS.with(|v| std::mem::take(&mut *v.borrow_mut()))
+}
+
+type EpFut =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<serde_json::Value, String>> + Send>>;
+
+/// 替身本体：照后端决策表的几格作答（`/s/` 有行 ⇒ refuse；开关开且登记 ⇒ `/t/` direct；撞名 ⇒ 不注入）。
+fn fake_ep(host: Option<String>, a: serde_json::Value) -> EpFut {
+    FAKE_ASKS.with(|v| v.borrow_mut().push((host, a.clone())));
+    let rows = FAKE_ROWS.with(|v| v.borrow().clone());
+    let listening = FAKE_LISTENING.with(std::cell::Cell::get);
+    let agent = a["agent"].as_str().unwrap_or_default().to_string();
+    let key = a["key"].as_str().unwrap_or_default().to_string();
+    let id = a["account"]["configDir"]
+        .as_str()
+        .and_then(apikey_account_id_of_dir);
+    let has = |x: &str| agent == "claude-code" && rows.iter().any(|r| r == x);
+    let none = serde_json::json!({"baseUrl":null,"listening":false,"whenDown":null,"account":null});
+    let answer = if let Some(id) = id.as_deref().filter(|i| has(i)) {
+        serde_json::json!({"baseUrl": format!("http://127.0.0.1:8788/s/{agent}/{id}/{key}"),
+            "listening": listening, "whenDown": "refuse", "account": id})
+    } else if a["allSessions"] == serde_json::json!(true) && agent == "claude-code" {
+        let label = match a["account"]["kind"].as_str() {
+            Some("named") => id.clone(),
+            Some("base") => Some("0".to_string()),
+            _ => Some("_".to_string()),
+        };
+        match label.filter(|l| !has(l)) {
+            Some(l) => {
+                serde_json::json!({"baseUrl": format!("http://127.0.0.1:8788/t/{agent}/{l}/{key}"),
+                "listening": listening, "whenDown": "direct", "account": null})
+            }
+            None => none,
+        }
+    } else {
+        none
+    };
+    Box::pin(async move { Ok(answer) })
+}
+
+/// 替身：那台后端问不到。
+fn fake_ep_unreachable(host: Option<String>, a: serde_json::Value) -> EpFut {
+    FAKE_ASKS.with(|v| v.borrow_mut().push((host, a)));
+    Box::pin(async move { Err("没有控制通道".to_string()) })
+}
+
 /// ★★★ 〔`设计/20 §7` 步 4〕**开关由环境变量那一个值说了算，默认关。**
 ///
 /// 本条只量取值口自己（缝上那一格由上面按地址对拍）。⚠ 它**不去改进程环境**：
@@ -4137,19 +3718,13 @@ fn the_all_sessions_switch_is_off_unless_that_one_variable_says_1() {
     }
 }
 
-/// ★★★ 〔`设计/20 §7` 步 4〕**起会话那一侧真的问了开关、并且用了它的答案**（接线判据）。
+/// ★★★ 〔`设计/20 §7` 步 4〕**起会话那一侧真的问了开关、并且把它的答案交给了那台后端**（接线判据）。
 ///
-/// 同一个账号（表里没它这一行，即订阅号）、同一个「中转在跑」，只把开关翻过来：
-/// 关 ⇒ 前缀空串（逐字节与本件之前相同）；开 ⇒ `/t/claude-code/<账号>/…`。
-/// ⇒ 谁把 `(facts.all_sessions)()` 换成一个常量，两格里必有一格红。
+/// 〔US1〕开关之后那几格（`/t/` · 账号 0 的 `0` · 没表态的 `_`）是后端决策表的事（`endpoint_tests`）；这一侧量的是：
+/// 同一个号、同一个「中转在听」，只把开关翻过来 ⇒ 交出去的 `allSessions` 跟着翻、前缀跟着变（关 ⇒ 空串）。
+/// 谁把 `(facts.all_sessions)()` 换成一个常量，两格里必有一格红。
 #[test]
 fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
-    fn no_rows() -> Vec<String> {
-        Vec::new()
-    }
-    fn up() -> bool {
-        true
-    }
     fn not_win() -> bool {
         false
     }
@@ -4161,22 +3736,19 @@ fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
         config_dir: "/h/.claude-accts/acct-sub".to_string(),
         name: None,
     };
+    fake_table(&[], true);
     {
         let _f = override_inject_facts(InjectFactSources {
-            rows: no_rows,
-            running: up,
+            endpoint: fake_ep,
             windows: not_win,
             all_sessions: all_sessions_off,
         });
-        assert_eq!(
-            relay_prefix_for_launch(&action, Some(&named)).unwrap(),
-            "",
-            "开关关着，订阅号却被注入了 —— 默认关那一格破了"
-        );
+        let _ = fake_asks();
+        assert_eq!(relay_prefix_for_launch(&action, Some(&named)).unwrap(), "");
+        assert_eq!(fake_asks()[0].1["allSessions"], serde_json::json!(false));
     }
     let _f = override_inject_facts(InjectFactSources {
-        rows: no_rows,
-        running: up,
+        endpoint: fake_ep,
         windows: not_win,
         all_sessions: on,
     });
@@ -4185,22 +3757,20 @@ fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
         "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/t/claude-code/acct-sub/sid-1'; ",
         "开关开着，订阅号该走 `/t/`"
     );
-    // 账号 0 走固定标签；调用方没表态 ⇒ 说不出是哪个号 ⇒ 不注入。
-    assert_eq!(
-        relay_prefix_for_launch(&action, Some(&LaunchAccount::Base)).unwrap(),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/t/claude-code/0/sid-1'; "
-    );
-    assert_eq!(relay_prefix_for_launch(&action, None).unwrap(), "");
+    assert_eq!(fake_asks()[0].1["allSessions"], serde_json::json!(true));
+    // F5：没表态也交出去（`account: null`），由后端答 `_` 那一格。
+    let _ = relay_prefix_for_launch(&action, None).unwrap();
+    assert_eq!(fake_asks()[0].1["account"], serde_json::Value::Null);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 〔RL1 · 第四波〕R1：`relay_endpoint_on` —— 远端「用到才起」＋ 注入地址；判断只在 `payload::relay_endpoint_for`
+// 〔RL1 · US1〕R1：`relay_endpoint_on` —— 问那台后端要成品（`launch-endpoint`）＋ 远端「用到才起」
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // 台架：一条内存管道两头 —— monitor 这头是**真的** `InboundClient`（`park → into_client`），登记在一个
 // 假主机名下；对面是一个**照脚本答**的假后端（记下每条请求的 `cmd`，按脚本回 `data`）。
-// 异源在哪：期望的地址不抄字面量，由构造口 `payload::relay_base_url_in` 现算前缀；
-// 「发了哪几条命令、什么顺序」数的是假后端那一侧收到的（不是被测函数自己说的）。
+// 缝上那一格装的是**生产那一跳**（`PRODUCTION_INJECT_FACTS.endpoint`）⇒ 转交那一截也在射程里。
+// 异源在哪：期望的地址手写；「发了哪几条命令、什么顺序」数的是假后端那一侧收到的（不是被测函数自己说的）。
 
 mod relay_endpoint_rig {
     use crate::backend::control::inbound_client::{
@@ -4235,7 +3805,7 @@ mod relay_endpoint_rig {
             claude_dir: "/tmp".into(),
             homes: vec![],
             capabilities: vec![],
-            commands: ["apikey-read", "relay-status", "relay-ensure"]
+            commands: ["launch-endpoint", "relay-status", "relay-ensure"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -4286,9 +3856,19 @@ mod relay_endpoint_rig {
     }
 }
 
-fn rl1_rows_json(rows: &[&str]) -> serde_json::Value {
-    serde_json::json!({"configured": !rows.is_empty(), "masked": "", "path": "/x", "notice": null, "problem": null, "rows": rows})
+/// 〔US1〕那台后端答的成品（`launch-endpoint`）。
+fn rl1_answer(
+    url: Option<&str>,
+    listening: bool,
+    when_down: Option<&str>,
+    account: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({"baseUrl": url, "listening": listening, "whenDown": when_down, "account": account})
 }
+
+const RL1_S_URL: &str =
+    "http://127.0.0.1:8788/s/claude-code/acct-a/11111111-2222-3333-4444-555555555555";
+const RL1_T_URL: &str = "http://127.0.0.1:8788/t/claude-code/0/k-1";
 
 fn rl1_named(id: &str) -> LaunchAccount {
     LaunchAccount::Named {
@@ -4298,18 +3878,11 @@ fn rl1_named(id: &str) -> LaunchAccount {
 }
 
 fn rl1_facts(all_sessions: fn() -> bool) -> InjectFactsGuard {
-    fn no_rows() -> Vec<String> {
-        Vec::new()
-    }
-    fn down() -> bool {
-        false
-    }
     fn not_win() -> bool {
         false
     }
     override_inject_facts(InjectFactSources {
-        rows: no_rows,
-        running: down,
+        endpoint: PRODUCTION_INJECT_FACTS.endpoint,
         windows: not_win,
         all_sessions,
     })
@@ -4318,18 +3891,14 @@ fn rl1_facts(all_sessions: fn() -> bool) -> InjectFactsGuard {
 fn rl1_off() -> bool {
     false
 }
-fn rl1_on() -> bool {
-    true
-}
 
-/// R1 ①：**不注入的那几格一条中转命令都不发**（用到才起）：表里没这一行、全量开关关着 ⇒ `None`，
-/// 假后端只收到 `apikey-read` 一条。
+/// R1 ①：**不注入 ⇒ 一条中转命令都不发**（用到才起）：假后端只收到 `launch-endpoint` 一条。
 #[test]
 fn a_launch_that_needs_no_relay_sends_no_relay_command() {
     let _f = rl1_facts(rl1_off);
     let rig = relay_endpoint_rig::rig(
         "rl1-host-none",
-        vec![("apikey-read", rl1_rows_json(&["other"]))],
+        vec![("launch-endpoint", rl1_answer(None, false, None, None))],
     );
     let got = tauri::async_runtime::block_on(relay_endpoint_on(
         &crate::origin::Origin(rig.host.clone()),
@@ -4339,24 +3908,21 @@ fn a_launch_that_needs_no_relay_sends_no_relay_command() {
     assert_eq!(got, Ok(None));
     assert_eq!(
         *rig.seen.lock().expect("lock"),
-        vec!["apikey-read"],
+        vec!["launch-endpoint"],
         "不注入却发了中转命令"
     );
 }
 
-/// R1 ②：apikey 行在、那台口上已有人 ⇒ 注入 `/s/` 地址；**不起第二个**（零条 `relay-ensure`）。
+/// R1 ②：成品说「注入 `/s/`、那台的中转在听」⇒ 原样交出地址；**不起第二个**（零条 `relay-*`）。
 #[test]
 fn an_apikey_row_on_a_listening_machine_gets_the_substitute_url_without_an_ensure() {
     let _f = rl1_facts(rl1_off);
     let rig = relay_endpoint_rig::rig(
         "rl1-host-up",
-        vec![
-            ("apikey-read", rl1_rows_json(&["acct-a"])),
-            (
-                "relay-status",
-                serde_json::json!({"port": 8788, "listening": true}),
-            ),
-        ],
+        vec![(
+            "launch-endpoint",
+            rl1_answer(Some(RL1_S_URL), true, Some("refuse"), Some("acct-a")),
+        )],
     );
     let got = tauri::async_runtime::block_on(relay_endpoint_on(
         &crate::origin::Origin(rig.host.clone()),
@@ -4364,29 +3930,21 @@ fn an_apikey_row_on_a_listening_machine_gets_the_substitute_url_without_an_ensur
         Some("11111111-2222-3333-4444-555555555555"),
     ))
     .expect("不该拒");
-    let want = crate::backend::control::payload::relay_base_url_in(
-        crate::backend::control::payload::RouteMode::Substitute,
-        crate::backend::control::payload::RELAY_PORT,
-        launch_agent_id(),
-        "acct-a",
-        "11111111-2222-3333-4444-555555555555",
-    )
-    .expect("构造口");
-    assert_eq!(got.as_deref(), Some(want.as_str()));
-    assert_eq!(
-        *rig.seen.lock().expect("lock"),
-        vec!["apikey-read", "relay-status"]
-    );
+    assert_eq!(got.as_deref(), Some(RL1_S_URL));
+    assert_eq!(*rig.seen.lock().expect("lock"), vec!["launch-endpoint"]);
 }
 
-/// R1 ③：口上没人 ⇒ `relay-ensure` 起一个 ⇒ **有界地**再问 ⇒ 在了就注入。顺序逐条相等。
+/// R1 ③：成品说中转不在 ⇒ `relay-status` → `relay-ensure` 起一个 ⇒ **有界地**再问 ⇒ 在了就注入。顺序逐条相等。
 #[test]
 fn a_silent_machine_gets_its_relay_started_and_waited_for_before_the_url_is_handed_out() {
     let _f = rl1_facts(rl1_off);
     let rig = relay_endpoint_rig::rig(
         "rl1-host-start",
         vec![
-            ("apikey-read", rl1_rows_json(&["acct-a"])),
+            (
+                "launch-endpoint",
+                rl1_answer(Some(RL1_S_URL), false, Some("refuse"), Some("acct-a")),
+            ),
             (
                 "relay-status",
                 serde_json::json!({"port": 8788, "listening": false}),
@@ -4411,11 +3969,11 @@ fn a_silent_machine_gets_its_relay_started_and_waited_for_before_the_url_is_hand
         None,
     ))
     .expect("不该拒");
-    assert!(got.is_some_and(|u| crate::backend::control::payload::relay_base_url_shape_ok(&u)));
+    assert_eq!(got.as_deref(), Some(RL1_S_URL));
     assert_eq!(
         *rig.seen.lock().expect("lock"),
         vec![
-            "apikey-read",
+            "launch-endpoint",
             "relay-status",
             "relay-ensure",
             "relay-status",
@@ -4424,14 +3982,17 @@ fn a_silent_machine_gets_its_relay_started_and_waited_for_before_the_url_is_hand
     );
 }
 
-/// R1 ④：apikey 行在、那台的中转起不来 ⇒ **拒绝起会话**（「非它不可」），说法点名那台机器。
+/// R1 ④：成品说 `refuse`、那台的中转起不来 ⇒ **拒绝起会话**（「非它不可」），说法点名那台机器与那个号。
 #[test]
 fn an_apikey_row_whose_machine_cannot_start_a_relay_refuses_the_launch() {
     let _f = rl1_facts(rl1_off);
     let rig = relay_endpoint_rig::rig(
         "rl1-host-dead",
         vec![
-            ("apikey-read", rl1_rows_json(&["acct-a"])),
+            (
+                "launch-endpoint",
+                rl1_answer(Some(RL1_S_URL), false, Some("refuse"), Some("acct-a")),
+            ),
             (
                 "relay-status",
                 serde_json::json!({"port": 8788, "listening": false}),
@@ -4450,27 +4011,30 @@ fn an_apikey_row_whose_machine_cannot_start_a_relay_refuses_the_launch() {
     .expect_err("中转起不来还放行了一个 apikey 号");
     assert_eq!(
         err,
-        remote_relay_refusal(
-            "rl1-host-dead",
+        relay_down_refusal(
+            "[rl1-host-dead] ",
             Some("acct-a"),
             &crate::remote_relay::RELAY_NOT_STARTED
         )
     );
     assert_eq!(
         *rig.seen.lock().expect("lock"),
-        vec!["apikey-read", "relay-status", "relay-ensure"],
+        vec!["launch-endpoint", "relay-status", "relay-ensure"],
         "`started:false` 之后还在等 —— 那是空等"
     );
 }
 
-/// R1 ⑤：`/t/` 那一格（全量开关开、表里无行）中转起不来 ⇒ **照旧直连**（`None`），不拒 —— 「有它更好」。
+/// R1 ⑤：成品说 `direct`（`/t/`）、中转起不来 ⇒ **照旧直连**（`None`），不拒 —— 「有它更好」。
 #[test]
 fn a_passthrough_launch_whose_relay_cannot_start_goes_direct_instead_of_failing() {
-    let _f = rl1_facts(rl1_on);
+    let _f = rl1_facts(rl1_off);
     let rig = relay_endpoint_rig::rig(
         "rl1-host-t",
         vec![
-            ("apikey-read", rl1_rows_json(&[])),
+            (
+                "launch-endpoint",
+                rl1_answer(Some(RL1_T_URL), false, Some("direct"), None),
+            ),
             (
                 "relay-status",
                 serde_json::json!({"port": 8788, "listening": false}),
@@ -4489,6 +4053,29 @@ fn a_passthrough_launch_whose_relay_cannot_start_goes_direct_instead_of_failing(
     assert_eq!(got, Ok(None));
     assert_eq!(
         *rig.seen.lock().expect("lock"),
-        vec!["apikey-read", "relay-status", "relay-ensure"]
+        vec!["launch-endpoint", "relay-status", "relay-ensure"]
     );
+}
+
+/// R1 ⑥〔US1〕：成品形状对不上（多一格 · 缺一格 · `whenDown` 认不出 · `baseUrl` 与 `whenDown` 不同有无）⇒ 抛「两端契约对不上」，
+/// 不猜成「不注入」。期望手写；正控：四个键恰好那一形照收。
+#[test]
+fn a_launch_endpoint_answer_of_the_wrong_shape_is_refused_not_guessed() {
+    let ok = rl1_answer(Some(RL1_T_URL), true, Some("direct"), None);
+    assert!(launch_endpoint_from_wire("本机", &ok).is_ok());
+    let mut extra = ok.clone();
+    extra["rows"] = serde_json::json!([]);
+    let mut missing = ok.clone();
+    missing.as_object_mut().unwrap().remove("listening");
+    for bad in [
+        extra,
+        missing,
+        rl1_answer(Some(RL1_T_URL), true, Some("maybe"), None),
+        rl1_answer(Some(RL1_T_URL), true, None, None),
+        rl1_answer(None, false, Some("refuse"), None),
+        serde_json::json!("x"),
+    ] {
+        let e = launch_endpoint_from_wire("本机", &bad).expect_err("坏形被收了");
+        assert!(e.contains("两端版本对不上"), "{bad} ⇒ {e}");
+    }
 }

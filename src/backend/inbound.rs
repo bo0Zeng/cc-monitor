@@ -87,6 +87,8 @@ pub const COMMANDS: &[&str] = &[
     "accounts-trust",
     "apikey-key-set",
     "apikey-read",
+    // 〔US1 · 第四波 4D〕界面「这几个号在这台的表里有没有行 · 这台的中转在不在」（成品，界面经 `chan.call` 直接问）。
+    "apikey-routing",
     // 〔AS2 · 第四波 4B · V113〕资产目录（后端自有状态，第四层）：现扫 ＋ 记 · 并进别处的整份。
     "assets-catalog",
     "assets-catalog-merge",
@@ -143,6 +145,8 @@ pub const COMMANDS: &[&str] = &[
     "history-user-inputs",
     "kill",
     "launch",
+    // 〔US1 · 第四波 4D〕「这个号这一发走哪、注入什么」（上游选择出成品，`设计/20 §3.2` 那张表搬进后端）。
+    "launch-endpoint",
     // 〔SR1a〕链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
     "link-close",
     "link-credit",
@@ -862,10 +866,37 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "apikey-read",
         doc_anchor: Some("#### `apikey-read`"),
         codes: &[],
-        fields: &["configured", "masked", "notice", "path", "problem", "rows"],
+        // 〔US1〕`rows` 退出线上：「表里有哪几行」只在这台后端里用（`file_face::rows_at`，三处读者同一份）。
+        fields: &["configured", "masked", "notice", "path", "problem"],
         takes_input: false,
         run: Run::Blocking(|_r| {
             crate::accounts::upstream::file_face::answer_read()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔US1 · 第四波 4D〕上游选择出的两份成品（`accounts/upstream/endpoint.rs`）。
+    //   阻塞档：读一次凭据文件、装一次表；要注入时在回环上探一次中转（RK1 的差分探针，每发一次读期限）。
+    CommandSpec {
+        name: "launch-endpoint",
+        doc_anchor: Some("#### `launch-endpoint`"),
+        codes: &["bad_args"],
+        fields: &["account", "baseUrl", "listening", "whenDown"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::accounts::upstream::endpoint::answer_launch(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "apikey-routing",
+        doc_anchor: Some("#### `apikey-routing`"),
+        codes: &["bad_args"],
+        fields: &["routed", "running"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::accounts::upstream::endpoint::answer_routing(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1270,7 +1301,9 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 🔴 用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管** ⇒ monitor 进程
     //   不再直接写用户文件；本机与远端都经这三条（`call(origin, …)`，同一条路）。处理器同住
     //   `control/files_write.rs`（第三层），本文件照旧是那一层唯一的门。阻塞档（同步文件 I/O）。
-    //   `files-delete-session` 是会话文件围栏**唯一的例外**，只收 sid（理由住那个模块的 `delete_session`）。
+    //   `files-delete-session` 只收 sid（理由住那个模块的 `delete_session`）。
+    //   〔AR1 · V119〕上一版说它是「会话文件围栏**唯一的例外**」—— FN1 之后文件管理写面已不设会话文件围栏，
+    //   这一条「只许删会话形状那一份」的限制是它自己的，不是谁的例外。
     CommandSpec {
         name: "files-peek",
         doc_anchor: Some("#### `files-peek`"),

@@ -149,7 +149,7 @@ const FLOORS = {
  *   `cc-bus-hooks-ok`、`history-chip`…）在别处有**直接字面量**住址，`literal` 那一档先接住了。
  *
  * ⇒ 真正需要靠前缀才解释得通的，现打就是下面这 **10** 条（比那份 11 个清单还少一条：
- * `paste-block` 不在这里，理由见 `KNOWN_DEAD`）。**每条都带住址与理由，缺一条本表就不该有它。**
+ * `paste-block` 不在这里，当时的理由见 `KNOWN_DEAD` —— 那条死规则〔AR1〕已删）。**每条都带住址与理由，缺一条本表就不该有它。**
  *
  * ⚠ 本表有两条自检（见「登记表不许有死条目」那一格）：
  * ① 每条前缀今天仍要在代码里派生得出来（候选表里有）；
@@ -205,19 +205,12 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
  * 登记在这儿不是赦免，是**把它变成一条会红的欠账**：修掉（删那几行 CSS）之后
  * 这张表里的条目会变成死条目，下面那条自检会红并叫人来删登记。
  *
- * ⚠ 本轮**不能自己修** —— `src/styles.css` 在明令禁碰之列（另有一路正在改它）。
+ * ⚠ 〔当时〕本轮**不能自己修** —— `src/styles.css` 在明令禁碰之列（另有一路正在改它）。
  */
-const KNOWN_DEAD: readonly { name: string; why: string }[] = [
-  {
-    name: "paste-block-warning",
-    why:
-      "`src/paste-block.ts:25-31` 的模块头逐字写着：「原先这里有个 `warning` 槽，T03 审计后**移回消费者自己那儿**」——" +
-      "槽拆了，`.paste-block-warning`（`src/styles.css:6748`）留在原地。" +
-      "现打三把尺子同口径：`src/**` 零引用 · `tests/**` 零引用 · 生产 bundle `.build/dist/assets/*.js` 零命中" +
-      "（同一把 bundle 尺子对活类 `paste-block-copy` 读出 1，所以它不是一把永远说 0 的坏尺子）。" +
-      "⇒ 真死规则，交给 `src/styles.css` 的所有者删。删完把本条一起删掉。",
-  },
-];
+// 〔AR1 · D §D8〕唯一那条 `.paste-block-warning` 删了（规则在 `src/styles/settings.css`，
+//   它的 `warning` 槽早先已移回消费者那儿，`src/paste-block.ts` 头注写着）⇒ 规则与登记同拍删，本表空。
+//   空的是人群不是判据：② 那一格仍是**恒等**（未解释的类名 == 本表），再冒出一条死规则当场红。
+const KNOWN_DEAD: readonly { name: string; why: string }[] = [];
 
 /**
  * ★ **`npx stylelint "src/**\/*.css"` 的报错总数上限**。现打 **47**（`S21 §5` 同数）。
@@ -252,9 +245,10 @@ const STYLELINT_CEILING = 36;
  * - `list`：同一条规则的选择器列表内部（声明一模一样，谁赢都一样）；
  * - `harmless`：逐条看过，结构上打不到同一个元素，或打到了也是作者要的结果（理由写在 `why`）；
  * - `defect?`：**真冲突，缺陷候选**，交主会话拍（改了会改变可见样式，本机无图形会话不能目视）；
- * - `U4` / `ST3`：在同波别的路的写区里（tab 规则 · `settings.css`），本路**没逐条判**，照实登记为「未判」。
+ * - 〔历史〕`U4` / `ST3` 两档：当时在同波别的路的写区里、没逐条判的「未判」。U4 那 10 条 U4 自己判了，
+ *   ST3 那 15 条〔AR1〕逐条判完（全是 `harmless`），这两档从类型里删了 —— 今天没有「未判」。
  *
- * ⚠ 并发：U4 改 tab 规则、ST3 改 `settings.css` 时，这张表会在合并那一拍红（多了或少了条目）——
+ * ⚠ 并发：别的路改到这些规则时，这张表会在合并那一拍红（多了或少了条目）——
  *   那是本条要的红：按现打把对应条目增删并写理由即可。
  */
 const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
@@ -262,7 +256,7 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
   later: string;
   earlier: string;
   n?: number;
-  kind: "list" | "harmless" | "defect?" | "ST3";
+  kind: "list" | "harmless" | "defect?";
   why: string;
 }[] = [
   // ── src/styles.css：本路判过的 7 条 ──
@@ -322,32 +316,115 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
   { file: "src/styles.css", later: ".tab-focus:hover", earlier: ".tab.ended .tab-focus", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
   { file: "src/styles.css", later: ".tab-cwd", earlier: ".tab.ended .tab-cwd", n: 2, kind: "harmless", why: "〔U4 判〕同属性只有 `display`（`n: 2` 里另一处是只设 `font-size` 的那条，不相交）；高特异度那条赢正是作者要的：× 只在已结束时露出，已结束时 ↗ / 📂 藏起来" },
   { file: "src/styles.css", later: ".tab-cwd:hover", earlier: ".tab.ended .tab-cwd", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
-  // ── src/styles/settings.css（ST3 写区，未判）──
-  ...(
-    [
-      [".settings-data-item-open:disabled", ".settings-data-item-open:hover:not(:disabled)"],
-      [".remote-machine-legend", ".remote-machine-row .remote-machine-legend"],
-      [".kb-editor-btn-record:disabled", ".kb-editor-btn-record:hover:not(:disabled)"],
-      [".kb-editor-btn-reset:disabled", ".kb-editor-btn-reset:hover:not(:disabled)"],
-      [".accounts-new-adv > summary", ".accounts-maint-wrap > summary:hover"],
-      [".accounts-new-adv > summary::before", ".accounts-maint-wrap[open] > summary::before"],
-      [".accounts-maint", ".accounts-maint-wrap .accounts-maint"],
-      [".ccm-alias-gen > summary", ".accounts-maint-wrap > summary:hover"],
-      [".ccm-alias-gen > summary::before", ".accounts-maint-wrap[open] > summary::before"],
-      [".accounts-wiz-btns button", ".accounts-row-actions button:hover"],
-      [".accounts-wiz-copyrow button", ".accounts-row-actions button:hover"],
-      [".accounts-maint button", ".accounts-row-actions button:hover"],
-      [".accounts-wiz-btns button:disabled", ".accounts-wiz-btns button:hover:not(:disabled)"],
-      [".accounts-maint button:disabled", ".accounts-wiz-btns button:hover:not(:disabled)"],
-      [".paste-block-out", ".ccm-alias-gen-out > .paste-block-out"],
-    ] as const
-  ).map(([later, earlier]) => ({
+  // ── src/styles/settings.css：〔AR1 · C §2.2 · `设计/41 §12` 待拍 2〕ST3 那 15 条逐条判完 ──
+  //   读法：两条规则的声明逐条对（`postcss` 现打），再到 TS 里核两个选择器能不能落在同一个元素上。
+  //   结论 15 条全是 `harmless`（互斥伪类 / 属性不相交 / 结构上打不到同一元素 / 高特异度那条正是作者要的），
+  //   没有一条改变可见样式 ⇒ 不改 CSS。⚠ 视觉没目视（本机无图形会话），判的是级联，不是像素。
+  {
     file: "src/styles/settings.css",
-    later,
-    earlier,
-    kind: "ST3" as const,
-    why: "未判：`settings.css` 在 ST3 写区",
-  })),
+    later: ".settings-data-item-open:disabled",
+    earlier: ".settings-data-item-open:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥（同一颗按钮同一刻只落一边），且两边属性不相交（前者只设底色 / 字色 / 边框色，后者只设 `cursor` / `opacity`）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".remote-machine-legend",
+    earlier: ".remote-machine-row .remote-machine-legend",
+    kind: "harmless",
+    why: "〔AR1 判〕同属性只有 `gap`（与 `display` / `align-items`，值相同）：列表里的机器行（`remote-section.ts` 两处 `.remote-machine-row` 里的 legend）取 6px，机器卡（`machine-card.ts` 的 `fieldset.remote-machine`，不在 row 里）取 8px —— 高特异度那条赢正是作者要的（它头注「S4b：列表里的机器行」就是为行单写的收紧）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".kb-editor-btn-record:disabled",
+    earlier: ".kb-editor-btn-record:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥（同一颗按钮同一刻只落一边），且两边属性不相交（前者只设底色 / 字色 / 边框色，后者只设 `cursor` / `opacity`）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".kb-editor-btn-reset:disabled",
+    earlier: ".kb-editor-btn-reset:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥（同一颗按钮同一刻只落一边），且两边属性不相交（前者只设底色 / 字色 / 边框色，后者只设 `cursor` / `opacity`）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-new-adv > summary",
+    earlier: ".accounts-maint-wrap > summary:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕结构上打不到同一个元素：`.accounts-maint-wrap`（`accounts-section.ts::renderMaintenance` 的 details）与 `.accounts-new-adv`（`account-new-form.ts` 的 details）是两颗不同的 details，子选择器 `>` 只认各自的直接子 summary",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-new-adv > summary::before",
+    earlier: ".accounts-maint-wrap[open] > summary::before",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条：两颗不同的 details，各自的 summary 各归各",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-maint",
+    earlier: ".accounts-maint-wrap .accounts-maint",
+    kind: "harmless",
+    why: "〔AR1 判〕同属性只有 `margin-top`：`.accounts-maint` 全仓只一处（`renderMaintenance` 里挂在 `.accounts-maint-wrap` 之内）⇒ 恒取 6px；高特异度那条赢正是作者要的（它头注逐字「折叠容器已给了标题，里面那块就不必再顶一个 margin」）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".ccm-alias-gen > summary",
+    earlier: ".accounts-maint-wrap > summary:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕结构上打不到同一个元素：`.ccm-alias-gen` 是 `machine-aliases.ts` 自己建的 details，与 `.accounts-maint-wrap` 不是同一颗，子选择器 `>` 只认各自的 summary",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".ccm-alias-gen > summary::before",
+    earlier: ".accounts-maint-wrap[open] > summary::before",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-wiz-btns button",
+    earlier: ".accounts-row-actions button:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕结构上打不到同一个元素：`.accounts-row-actions` 是账号行的动作条（`accounts-section.ts` 里只装模型输入 / 设默认 / 复制 / 登录 / 展开钮），向导（`.accounts-wizard`）与维护块（`.accounts-maint`）挂在面板 body / 维护折叠里，不在任何一行的动作条之内",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-wiz-copyrow button",
+    earlier: ".accounts-row-actions button:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-maint button",
+    earlier: ".accounts-row-actions button:hover",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-wiz-btns button:disabled",
+    earlier: ".accounts-wiz-btns button:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥，且属性不相交（前者只设 `border-color`，后者只设 `opacity` / `cursor`）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".accounts-maint button:disabled",
+    earlier: ".accounts-wiz-btns button:hover:not(:disabled)",
+    kind: "harmless",
+    why: "〔AR1 判〕同上一条（跨两个容器也一样：两个伪类互斥）",
+  },
+  {
+    file: "src/styles/settings.css",
+    later: ".paste-block-out",
+    earlier: ".ccm-alias-gen-out > .paste-block-out",
+    kind: "harmless",
+    why: "〔AR1 判〕属性不相交：前者只设 `color`，后者设字体 / 宽度 / 换行 / 横向滚动，先后翻转不改变任何一个声明的胜负",
+  },
 ];
 
 const NDS = "no-descending-specificity";
@@ -378,9 +455,10 @@ const PREFIX_COVERAGE_CEILING = 35;
  * **只许降。** 这 163 个是**混合人群**，如实说清楚，别当成 163 个缺陷：
  * - 大部分是**纯 JS 钩子** —— 挂上去只为 `querySelector` / 事件代理找得到它
  *   （`.sftp-close` · `.pf-start` · `.panorama-back` 这一族），本来就不需要样式；
- * - 一部分是**真悬空** —— 比如 `.settings-btn-secondary`（`src/launcher-diagnostics.ts:693,698`
- *   两处在挂它）与 `.cc-bus-online-unknown`，CSS 里一条规则都没有，
- *   而同族的 `.settings-btn` / `.cc-bus-online` 都styled ⇒ 多半是改名只改了一边。
+ * - 一部分是**真悬空** —— 比如 `.settings-btn-secondary`（`src/settings/**` 53 处在挂它），
+ *   CSS 里一条规则都没有。〔AR1 现打订正〕上一版说「同族的 `.settings-btn` / `.cc-bus-online` 都 styled ⇒
+ *   多半是改名只改了一边」：`git log -S` 两个名字在 CSS 里**从来没有过规则**，`.cc-bus-online` 也没有 ——
+ *   不是改名漏了一边，是一开始就只当标记挂。`cc-bus-online-*` 那几个状态类〔AR1〕已改成 `data-state`。
  *
  * ⇒ 本格**不区分这两者**（机械上区分不了：「钩子」与「忘了写样式」在语法上一模一样），
  * 它买的只有一件事：**这个数不许再涨**。涨了就说明又多了一个挂着却没规则的类名，
@@ -388,7 +466,11 @@ const PREFIX_COVERAGE_CEILING = 35;
  *
  * ⚠ 它也会在**另一个方向**红：有人删掉了一条 CSS 规则而代码还在挂那个类。那种红是对的。
  */
-const DANGLING_CEILING = 163;
+// 〔AR1 · D §D8 · 09-25 棘 163 → 147〕起步现打 150（D 审计同数）；`cc-bus-section.ts` 在线状态那三个
+//   从没有过规则的类名（`cc-bus-online-unknown` / `-checking` / `-error`）按 `设计/41 §7` 约定 3 改成 `data-state`
+//   ⇒ 现打 147（少的就是这三个；`-yes` / `-no` 由模板拼、本来就不进这一数）。
+//   `.settings-btn-secondary`（53 处挂、git 史里从没有过规则、外观即 `.settings-btn` 默认）仍在这 147 里，理由见 `AR1.md §2`。
+const DANGLING_CEILING = 147;
 
 /** 本文件只在这儿读一次盘，后面各格共用。 */
 let cached: Ledger | null = null;
