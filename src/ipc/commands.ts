@@ -98,8 +98,6 @@ import type {
   CliRenderRequest,
   CliRenderResponse,
   PayloadRenderRequest,
-  SendIntoRequest,
-  SendIntoResponse,
 } from "../launch-cli-wire.ts";
 
 import type { Alias } from "../generated/Alias";
@@ -454,13 +452,6 @@ export const commands = {
     onChunk: Channel<JsonlLinePayload[]>;
   }) => invoke<number>("stream_read_session_jsonl", args),
 
-  /**
-   * 往远端 tmux 会话发按键。Rust 返回 `Result<(), String>` ⇒ **桶①**。
-   * `enter` 缺省时 Rust 侧按 true 处理（`account-restart.ts` 有一处显式传 `false`）。
-   */
-  tmux_send_keys: (args: { origin: string; target: string; keys: string; enter?: boolean }) =>
-    invoke<void>("tmux_send_keys", args),
-
   /** 读某 agent 的 inbox。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   read_cc_bus_inbox: (args: { origin: string; id: string }) =>
     invoke<CcBusMessage[]>("read_cc_bus_inbox", args),
@@ -713,12 +704,6 @@ export const commands = {
   render_local_attach: (args: { tmuxName: string }) =>
     invoke<string>("render_local_attach", args),
 
-  // U8a-2c-1：**「控制搬进后端」的第一条生产通道** —— 往已存在的远端 tmux 会话键入载荷
-  // （`send-keys` 那半边）。`attach` 那半边**不走它**：§1.3 要求最终 exec 落在用户自己的
-  // 终端进程里，backend 在远端、开不了你面前的窗。
-  backend_send_into: (args: { req: SendIntoRequest }) =>
-    invoke<SendIntoResponse>("backend_send_into", args),
-
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
     invoke<string>("deploy_remote_acct_iso", args),
@@ -812,10 +797,6 @@ export const commands = {
 
   /** 搜索索引状态。Rust 签名**无 `Result` 包装**（`-> SearchIndexStatus`）。 */
   get_search_index_status: () => invoke<SearchIndexStatus>("get_search_index_status"),
-
-  /** 杀掉远端某个 tmux 会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  kill_remote_tmux: (args: { origin: string; target: string }) =>
-    invoke<void>("kill_remote_tmux", args),
 
   /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   list_forwards: () => invoke<ForwardStatus[]>("list_forwards"),

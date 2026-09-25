@@ -197,6 +197,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   accountReadCalls,
   historyCalls,
+  killCallsOf,
   sessionReadCalls,
   withAccountReads,
   withHistoryReads,
@@ -2436,8 +2437,9 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
     await Promise.resolve();
     await Promise.resolve();
   };
-  const killCalls = (): unknown[] =>
-    vi.mocked(invoke).mock.calls.filter((c) => c[0] === "kill_remote_tmux");
+  // 〔C4e · 第四波 4C〕杀会话从 Tauri 命令 `kill_remote_tmux`〔散文墓碑〕改成界面经通道直接说后端的 `kill`
+  //   （`src/tmux-control.ts::killSession`）⇒ 这里数的是那一发 `chan_call`，译回旧形参 `[旧名, {origin, target}]`。
+  const killCalls = (): unknown[] => killCallsOf(vi.mocked(invoke).mock.calls);
 
   it("killRemoteTmux 默认（不传 opts）→ 仍调 window.confirm（默认交互零变化）", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
@@ -2575,7 +2577,7 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", false);
     await Promise.resolve();
-    const call = vi.mocked(invoke).mock.calls.find((c) => c[0] === "kill_remote_tmux");
+    const call = killCallsOf(vi.mocked(invoke).mock.calls)[0];
     expect(call).toBeTruthy();
     expect(call![1]).toMatchObject({ origin: "hostA", target: "cc-abc" });
     confirmSpy.mockRestore();
@@ -2584,9 +2586,7 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const tm = home(makeTM()).actions;
     tm.killRemoteTmux("hostA", "cc-abc", false);
-    expect(
-      vi.mocked(invoke).mock.calls.some((c) => c[0] === "kill_remote_tmux"),
-    ).toBe(false);
+    expect(killCallsOf(vi.mocked(invoke).mock.calls)).toHaveLength(0);
     confirmSpy.mockRestore();
   });
   it("F79 审计修复：cwd 回退命中（viaCwd）→ 二次确认加强 caveat（可能杀同目录别的会话）", () => {

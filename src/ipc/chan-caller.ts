@@ -10,7 +10,7 @@
  *
  * ⚠ 本文件**不是**通信层成员（它造期限、解释载荷）；也不认识任何一条具体命令 —— 那是各调用方的事。
  */
-import { ChanError, type Budget } from "./chan";
+import { ChanError, type Budget, type CallError } from "./chan";
 
 /**
  * 造一个期限：从现在起 `ms` 毫秒（`performance.now()` 钟面的绝对时刻）。
@@ -83,5 +83,27 @@ export function saidOf(e: unknown, oldBackendSays: string): string {
         : "现在够不着那台机器的后端（连接不在或断了），这次先不显示";
     case "ours":
       return err.why === "Cancelled" ? "这次查询已撤回" : "查询没有完成（本程序内部出错）";
+  }
+}
+
+/**
+ * 〔C4e · 第四波 4C〕这一次失败能不能**证明一个字节都没到对端**（F14 那条安全判定：只有这时才许换一条路重做）。
+ *
+ * 判准与 Rust `backend_route::route_call_error` 那一收拢**同一条**（跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`
+ * 钉着两份：Rust 侧把 inbound 的每一种失败分层上线、连同它判出的「可回落」写成金样，本函数读同一份逐行判）：
+ * - `hop` 且 `reach == NotSent`（没有控制通道 · 在飞上限顶满 · 期限在发之前就过了）⇒ 能证明；
+ * - `peer/unsupported`（对端**事前**就说不认这条命令，一个字节没发）⇒ 能证明；
+ * - 其余（`reach` 是 `Unknown` / `Sent` · 对端说了「不行」· 撤了 · 本侧坏了）⇒ **拿不准就按最坏算**，不能证明。
+ *
+ * ⚠ 它**不认识任何一条具体命令**：说的只是通道那一跳的归因（`D7`），不是业务判断。
+ */
+export function provablyNotSent(err: CallError): boolean {
+  switch (err.layer) {
+    case "hop":
+      return err.reach === "NotSent";
+    case "peer":
+      return err.why === "unsupported";
+    case "ours":
+      return false;
   }
 }

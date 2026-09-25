@@ -3,7 +3,6 @@ use super::*;
 // （`C1` 在 `inbound_client.rs` 上咬的 `sid` / `agent` 两处全在它们身上）。
 // 下面那三条判据**刻意留在这里** —— 理由（跨半边 include 被别人的登记表按文件路径钉着）
 // 写在 `command_args` 的头注里，不在这里抄第二份。
-use crate::backend::control::command_args::{launch_args, LaunchExtras};
 use tokio::io::AsyncBufReadExt;
 
 fn hello_frame(commands: &[&str]) -> InboundFrame {
@@ -360,9 +359,10 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
 /// ★ U8a-2c-1：同上，但钉的是**业务命令**那一行。
 ///
 /// ping 那条证明「backend 认得 monitor 编的信封」；这条证明的是
-/// **monitor 真正会发的那条 `launch`**（`backend_send_into` 唯一会说的 `send-into`）。
+/// **界面真正会发的那条 `launch`**（〔C4e〕此前是 monitor 的 `backend_send_into`〔散文墓碑〕，今天是
+/// `src/tmux-control.ts::sendInto` / `sendKeys` 说的 `send-into`）。
 /// 少了它，那套 e2e 只验证了「backend 认得我手写的 launch 形状」——
-/// 而 `launch_args` 的键名/键序一改，e2e 会继续全绿而生产里一条命令都发不出去。
+/// 而发送那一侧的键名一改，e2e 会继续全绿而生产里一条命令都发不出去。
 #[test]
 fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
     const SUITE: &str = include_str!("../../../e2e/inbound-backend-frames.sh");
@@ -376,23 +376,38 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
         literal.len() > 40,
         "抽到的字面量太短（{literal:?}）—— 抽取坏了"
     );
+    // 〔C4e · 第四波 4C〕这一格原来比的是「e2e 那一行 == monitor 编码器 `launch_args`〔散文墓碑〕的产物」。
+    //   就地 resume / 送键迁到界面之后，发这条的是 `src/tmux-control.ts`（经通道，monitor 那一跳只把 JSON 原样
+    //   转成 `args`）⇒ 「真在发的形状」的真相源换成跨语言金样 `tests/__fixtures__/tmux-control.golden.json`
+    //   里 `launch` 的请求样例（TS 那侧逐字断言它发的就是这一份）。本格比：e2e 那一行的 `args` 键集合 == 金样那一份，
+    //   mode 是 `send-into`，且信封是 monitor 那一跳会产出的那一行（`encode_request` 重编一遍逐字节相等）。
+    let line: serde_json::Value = serde_json::from_str(literal).expect("e2e 那一行不是 JSON");
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../__fixtures__/tmux-control.golden.json"
+    ))
+    .expect("金样读不出来");
+    let keys = |v: &serde_json::Value| -> Vec<String> {
+        let mut k: Vec<String> = v
+            .as_object()
+            .expect("args 不是对象")
+            .keys()
+            .cloned()
+            .collect();
+        k.sort();
+        k
+    };
+    assert_eq!(line["cmd"], "launch", "e2e 那一行不是 `launch`");
+    assert_eq!(
+        keys(&line["args"]),
+        keys(&golden["launch"]["request"]),
+        "\ne2e 脚本喂给真后端的 send-into 行，键与界面真在发的那一份（金样）不一致 ——\n\
+             它们必须是同一份事实，否则 e2e 在验证一个界面永远不会发的形状。"
+    );
+    assert_eq!(line["args"]["mode"], "send-into");
     assert_eq!(
         format!("{literal}\n"),
-        encode_request(
-            "e2e-si-1",
-            "launch",
-            &launch_args(
-                "send-into",
-                "e2e-si-fixed-cc",
-                "true",
-                None,
-                None,
-                Default::default(),
-            )
-        ),
-        "\ne2e 脚本喂给真后端的 send-into 行与 monitor 编码器的产物不一致。\n\
-             `launch_args` 的键名/键序改了就把脚本里那条 `INBOUND_SEND_INTO_LINE` 一起改 ——\n\
-             它们必须是同一份事实，否则 e2e 在验证一个 monitor 永远不会发的形状。"
+        encode_request(line["id"].as_str().expect("id"), "launch", &line["args"]),
+        "e2e 那一行的信封不是 monitor 那一跳会产出的那一行（键序 / 空白对不上）"
     );
 }
 
@@ -465,88 +480,10 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
 //   `capture_pane_tests.rs::the_capture_product_matches_the_cross_language_golden`（请求样例过生产解析器 · 成品 == 生产构造器 ·
 //   码集合 == `REGISTRY`），界面侧 `tests/tmux-control.vitest.ts`（请求体 · 解码器读同一份）。
 
-/// ★ 跨轨对拍：`launch_args` 吐的键名必须**恰好**是后端解析器认的那几个。
-///
-/// 漂开的症状是「命令发出去了、backend 回 `bad_request` 说缺字段」，而两边各自看都对。
-#[test]
-fn launch_args_field_names_match_the_backend_parser() {
-    const BACKEND_LAUNCH: &str = include_str!("../../../../src/backend/control/launch.rs");
-    let prod = guard_core::production_code(BACKEND_LAUNCH);
-    // backend 侧逐个 `get_str("<key>")` 抠出来。
-    let key = "get_str(\"";
-    let mut wanted: Vec<String> = Vec::new();
-    let mut from = 0usize;
-    while let Some(rel) = prod[from..].find(key) {
-        let at = from + rel + key.len();
-        let end = prod[at..].find('"').map(|k| at + k).unwrap_or(at);
-        wanted.push(prod[at..end].to_string());
-        from = end;
-    }
-    wanted.sort();
-    wanted.dedup();
-    assert!(
-        wanted.len() >= 5,
-        "只从后端解析器抠到 {} 个字段 —— 抽取坏了，本断言在空转：{wanted:?}",
-        wanted.len()
-    );
-
-    // ⚠ **每个可选字段都要给**：漏一个，`got` 就少一个键，而 `wanted` 是从 backend
-    //   解析器抠的 —— 这条 `assert_eq!` 会当场红。那正是它该有的样子（`K-P2` `D3`
-    //   加 `agent`/`width`/`height` 时它逐字红过一次）。
-    let full = launch_args(
-        "create-or-attach",
-        "cc-x",
-        "true",
-        Some("/tmp"),
-        Some("sid-1"),
-        LaunchExtras {
-            agent: Some("claude"),
-            width: Some("220"),
-            height: Some("50"),
-        },
-    );
-    let mut got: Vec<String> = full
-        .as_object()
-        .expect("对象")
-        .keys()
-        .map(String::from)
-        .collect();
-    got.sort();
-    assert_eq!(
-        got, wanted,
-        "\nmonitor 的 `launch_args` 与后端的解析器字段名对不上。\n\
-             两边必须同时改 —— 否则症状是「backend 回 bad_request 说缺字段」，很难归因。"
-    );
-
-    // 可选字段真的可选：不传就不出现（backend 侧 `cwd`/`ccm_sid` 都是 `Option`）。
-    let minimal = launch_args("send-into", "cc-x", "true", None, None, Default::default());
-    let keys: Vec<&String> = minimal.as_object().expect("对象").keys().collect();
-    assert_eq!(
-        keys.len(),
-        3,
-        "最小形态应当只有 mode/name/payload：{keys:?}"
-    );
-    // ★〔`K-P2` `D3`〕**半个尺寸不许上线**：只给 `width` 时两个都不发 ——
-    //   让「一半的修饰」在**发出去之前**就不存在，而不是等后端回 `invalid_args`。
-    let half = launch_args(
-        "create-or-attach",
-        "cc-x",
-        "true",
-        None,
-        None,
-        LaunchExtras {
-            agent: None,
-            width: Some("220"),
-            height: None,
-        },
-    );
-    let half_keys: Vec<&String> = half.as_object().expect("对象").keys().collect();
-    assert_eq!(
-        half_keys.len(),
-        3,
-        "只给了 width 而 height 缺席时，两个都不该发：{half_keys:?}"
-    );
-}
+// 〔C4e · 第四波 4C〕这里原来住着「`launch_args`〔散文墓碑〕吐的键名恰好是后端解析器认的那几个」（跨轨读后端 `control/launch.rs`）。
+//   monitor 侧那个构造器随发送端迁到界面删了；「发出去的键 == 后端解析器认的键」改由跨语言金样钉：
+//   后端侧 `tests/backend/control/launch_tests.rs` 让金样的请求样例（两个 mode 各一份）过**生产**解析器，
+//   界面侧 `tests/tmux-control.vitest.ts` 断言它发的就是那一份。
 
 #[test]
 fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {

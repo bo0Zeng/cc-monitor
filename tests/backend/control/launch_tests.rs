@@ -699,7 +699,7 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
                 "`{f}` 里出现了 `{confirm}` —— 看起来加了第二种确认。\n\
                      ★ 那是**好事**，但契约与注释此刻还写着「只有退出码那么强」：\n\
                      `src/doc/IPC-PROTOCOL.md` 的 `typed` 那几行 · 本文件 `LaunchOutcome::typed` \n\
-                     · monitor 侧 `backend_launch.rs::SendIntoResponse::typed`。**一起改。**"
+                     · 界面 `src/tmux-control.ts::decodeTyped`（〔C4e〕此前是 monitor 的 `SendIntoResponse::typed`）。**一起改。**"
             );
         }
     }
@@ -743,10 +743,9 @@ fn the_contract_says_how_strong_typed_actually_is() {
 fn no_doc_claims_the_payload_really_landed() {
     let root = crate::guard_support::repo_root();
     let overclaim = format!("{}键入了", "真的");
-    let files = [
-        "src/doc/IPC-PROTOCOL.md",
-        "src/bridge/src/backend/control/backend_launch.rs",
-    ];
+    // 〔C4e · 第四波 4C〕第二份原是 monitor 的就地 resume 发送端（`backend_launch.rs`，逐字转发 `typed`）；
+    //   它迁到界面删了，今天读 `typed` 的是 `src/tmux-control.ts::decodeTyped` / `sendInto` ⇒ 换成那一份。
+    let files = ["src/doc/IPC-PROTOCOL.md", "src/tmux-control.ts"];
     let mut total = 0usize;
     let mut hits = Vec::new();
     for f in files {
@@ -772,4 +771,60 @@ fn no_doc_claims_the_payload_really_landed() {
              而那要真 tmux 才验得了 —— 登记在 `ROADMAP §5`，留给 e2e tier2。",
         hits.join("\n")
     );
+}
+
+/// ★★〔C4e · 第四波 4C〕**跨语言金样**：界面直接说的 `launch`（送键 · 就地 resume）请求与成品，
+/// 两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
+///
+/// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：……线上形状由一份跨语言金样钉住
+/// （后端测试产出 == 金样 · TS 解码器读同一份）」。送键 / 就地 resume 从这一拍起由界面经通道直接说
+/// （`src/tmux-control.ts::sendKeys` / `sendInto`），monitor 那一跳只搬字节。
+///
+/// 四格各自异源：两个 mode 的请求样例（`send-into` · `send-keys-raw`）都过**生产**解析器 [`parse_request`]、
+/// 且解出来是它自称的那个 mode · 成品 == 生产构造器 [`reply`] · 码集合 == 后端登记表 `inbound::REGISTRY` 那一块。
+/// ⚠ `REGISTRY` 那一块今天**没列 `wrong_owner`**，而 [`run`] 经 `gate::admit` 真会回它 —— 界面那张表单独接住了它；
+/// 登记表漏列这一格报给主会话（C4e 记录），本条照登记表比，不替它补。
+#[test]
+fn the_launch_request_and_product_match_the_cross_language_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/tmux-control.golden.json"))
+            .expect("金样读不出来");
+    let l = &g["launch"];
+    let into = parse_request(&l["request"]).expect("金样的 send-into 请求样例过不了生产解析器");
+    assert_eq!(
+        into.mode,
+        Mode::SendInto,
+        "金样的 send-into 样例没被解成 send-into"
+    );
+    let raw =
+        parse_request(&l["requestRaw"]).expect("金样的 send-keys-raw 请求样例过不了生产解析器");
+    assert_eq!(
+        raw.mode,
+        Mode::SendKeysRaw,
+        "金样的 send-keys-raw 样例没被解成 send-keys-raw"
+    );
+    let r = &l["reply"];
+    assert_eq!(
+        reply(
+            r["session"].as_str().expect("session"),
+            r["created"].as_bool().expect("created"),
+            r["typed"].as_bool().expect("typed"),
+        ),
+        *r,
+        "后端出的 launch 成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「不知道送到没有」"
+    );
+    let spec = crate::inbound::REGISTRY
+        .iter()
+        .find(|s| s.name == "launch")
+        .expect("后端登记表里没有 `launch`");
+    let mut want: Vec<&str> = spec.codes.to_vec();
+    want.sort_unstable();
+    let mut got: Vec<&str> = l["codes"]
+        .as_array()
+        .expect("金样缺 `codes`")
+        .iter()
+        .map(|v| v.as_str().expect("码不是字符串"))
+        .collect();
+    got.sort_unstable();
+    assert_eq!(got, want, "金样里的拒绝码与后端登记的不相等");
 }

@@ -307,10 +307,8 @@ const SCAN: &[&str] = &[
     "tests/bridge/atomic_replace_registry_tests.rs",
     "tests/bridge/backend/control/agent_profile_parity_tests.rs",
     "tests/bridge/backend/control/backend_control_tests.rs",
-    "tests/bridge/backend/control/backend_kill_tests.rs",
-    "tests/bridge/backend/control/backend_launch_tests.rs",
+    "tests/bridge/backend/control/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
     "tests/bridge/backend/control/backend_route_tests.rs",
-    "tests/bridge/backend/control/backend_send_keys_tests.rs",
     "tests/bridge/backend/control/ccm_invocation_tests.rs",
     "tests/bridge/backend/control/frame_query_tests.rs",
     "tests/bridge/backend/control/gate2_parity_tests.rs",

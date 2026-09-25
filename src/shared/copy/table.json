@@ -751,6 +751,101 @@
       "kind": "error",
       "zh": "抓取 {target} 的画面被拒，没有给出原因。",
       "args": ["target"]
+    },
+    "tmuxControl.kill.badName": {
+      "kind": "error",
+      "zh": "结束不了 {target}：后端不接受这个会话名（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.noTmux": {
+      "kind": "error",
+      "zh": "结束不了 {target}：那台机器上起不来 tmux（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.noSuchSession": {
+      "kind": "error",
+      "zh": "{target} 已经不在了，可能已经结束（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.wrongOwner": {
+      "kind": "error",
+      "zh": "没有结束 {target}：认不出它是 cc-monitor 管理的会话。为了不误伤你自己的 tmux 会话，这次拒绝了（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.tooManyWindows": {
+      "kind": "error",
+      "zh": "没有结束 {target}：它里面多开了别的窗口。为了不丢掉那些窗口，这次拒绝了（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.failed": {
+      "kind": "error",
+      "zh": "结束 {target} 失败了，tmux 的原话：{detail}",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.kill.otherCode": {
+      "kind": "error",
+      "zh": "结束 {target} 被拒：{code}：{detail}",
+      "args": ["target", "code", "detail"]
+    },
+    "tmuxControl.kill.noReason": {
+      "kind": "error",
+      "zh": "结束 {target} 被拒，没有给出原因。",
+      "args": ["target"]
+    },
+    "tmuxControl.kill.notConfirmed": {
+      "kind": "error",
+      "zh": "{machine} 的后端没有确认 {target} 已经结束。这次按没结束处理，刷新会话列表后再决定要不要重试。",
+      "args": ["machine", "target"]
+    },
+    "tmuxControl.keys.badRequest": {
+      "kind": "error",
+      "zh": "发送不了按键给 {target}：后端不接受这个请求（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.noTmux": {
+      "kind": "error",
+      "zh": "发送不了按键给 {target}：那台机器上起不来 tmux（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.noSuchSession": {
+      "kind": "error",
+      "zh": "发送不了按键给 {target}：这个会话不存在，可能刚结束（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.createFailed": {
+      "kind": "error",
+      "zh": "发送不了按键给 {target}：那台机器上建会话失败了（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.unconfirmed": {
+      "kind": "error",
+      "zh": "按键未必送到了 {target}：会话在，但发送失败（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.wrongOwner": {
+      "kind": "error",
+      "zh": "没有发送按键给 {target}：认不出它是 cc-monitor 管理的会话。为了不误伤你自己的 tmux 会话，这次拒绝了（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.otherCode": {
+      "kind": "error",
+      "zh": "发送按键给 {target} 被拒：{code}：{detail}",
+      "args": ["target", "code", "detail"]
+    },
+    "tmuxControl.keys.noReason": {
+      "kind": "error",
+      "zh": "发送按键给 {target} 被拒，没有给出原因。",
+      "args": ["target"]
+    },
+    "tmuxControl.keys.notConfirmed": {
+      "kind": "error",
+      "zh": "{machine} 的后端没有确认按键已经送到 {target}。这次按没送到处理，不会换一条路重发。",
+      "args": ["machine", "target"]
+    },
+    "tmuxControl.resume.emptyInput": {
+      "kind": "error",
+      "zh": "会话名或要键入的内容是空的，这次没有发出去。",
+      "args": []
     }
   }
 }
