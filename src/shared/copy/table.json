@@ -8312,6 +8312,534 @@
       "kind": "body",
       "zh": "{missing} —— cc-monitor 不装这一项，请你自己装上 {path}",
       "args": ["missing", "path"]
+    },
+    "diagnostics.openDir.failed": {
+      "kind": "error",
+      "zh": "打开日志目录失败",
+      "args": []
+    },
+    "diagnostics.openFile.failed": {
+      "kind": "error",
+      "zh": "打开日志文件失败",
+      "args": []
+    },
+    "diagnostics.save.failed": {
+      "kind": "error",
+      "zh": "保存日志设置失败",
+      "args": []
+    },
+    "diagnostics.save.restartNeeded": {
+      "kind": "body",
+      "zh": "改「日志文件」这一项要重启 monitor 才生效。",
+      "args": []
+    },
+    "diagnostics.save.done": {
+      "kind": "body",
+      "zh": "设置已保存",
+      "args": []
+    },
+    "diagnostics.save.fileSwitch": {
+      "kind": "body",
+      "zh": "日志文件开关",
+      "args": []
+    },
+    "diagnostics.refresh.dirUnreadable": {
+      "kind": "error",
+      "zh": "读不到日志目录：{e}",
+      "args": ["e"]
+    },
+    "diagnostics.refresh.empty": {
+      "kind": "body",
+      "zh": "—",
+      "args": []
+    },
+    "diagnostics.refresh.noFileYet": {
+      "kind": "body",
+      "zh": "日志目录：{dir}。还没产生日志文件",
+      "args": ["dir"]
+    },
+    "diagnostics.refresh.settingsUnreadable": {
+      "kind": "error",
+      "zh": "读不到当前的日志设置（{e}），下面三项先不能改。点「刷新信息」重试。",
+      "args": ["e"]
+    },
+    "diagnostics.build.reading": {
+      "kind": "action",
+      "zh": "读取中…",
+      "args": []
+    },
+    "diagnostics.build.refreshHint": {
+      "kind": "body",
+      "zh": "重新读日志目录看当前文件大小",
+      "args": []
+    },
+    "diagnostics.build.refresh": {
+      "kind": "action",
+      "zh": "刷新信息",
+      "args": []
+    },
+    "diagnostics.build.opening": {
+      "kind": "action",
+      "zh": "打开中…",
+      "args": []
+    },
+    "diagnostics.build.openDir": {
+      "kind": "action",
+      "zh": "打开日志目录",
+      "args": []
+    },
+    "diagnostics.build.openFile": {
+      "kind": "action",
+      "zh": "打开日志文件",
+      "args": []
+    },
+    "diagnostics.build.empty": {
+      "kind": "body",
+      "zh": "—",
+      "args": []
+    },
+    "diagnostics.file.size": {
+      "kind": "title",
+      "zh": "当前文件大小",
+      "args": []
+    },
+    "diagnostics.file.location": {
+      "kind": "title",
+      "zh": "文件位置",
+      "args": []
+    },
+    "diagnostics.toast.enableHint": {
+      "kind": "body",
+      "zh": "勾选后，后端报错时右下角弹一条红色提示。6 秒自动消失，点它直接打开日志文件。\n限频：60 秒内最多 20 条，免得错误多时屏幕被刷满。\n改这一项立即生效，不用重启。",
+      "args": []
+    },
+    "diagnostics.toast.enable": {
+      "kind": "control",
+      "zh": "错误提示",
+      "args": []
+    },
+    "diagnostics.level.hint": {
+      "kind": "body",
+      "zh": "info（默认）：每个关键步骤都记一行。\ndebug：加细节，大约 10 倍体积。查疑难问题时短期开启用。\nwarn / error：只记问题。\noff：完全不记。\n✓ 切换立即生效，无需重启。",
+      "args": []
+    },
+    "diagnostics.build.level": {
+      "kind": "control",
+      "zh": "日志级别",
+      "args": []
+    },
+    "diagnostics.file.enableHint": {
+      "kind": "body",
+      "zh": "按天滚动写入 monitor.YYYY-MM-DD.log，保留最近 3 天。\n关闭后已存在的日志文件不会被删除，但不再写新内容。\n改这一项要重启 monitor 才生效。",
+      "args": []
+    },
+    "diagnostics.file.enable": {
+      "kind": "control",
+      "zh": "日志文件",
+      "args": []
+    },
+    "diagnostics.build.title": {
+      "kind": "title",
+      "zh": "日志",
+      "args": []
+    },
+    "diagnostics.info.logs": {
+      "kind": "body",
+      "zh": "后端日志写在：\n~/.claude/claudecode-frontend/logs/monitor.YYYY-MM-DD.log。\n出错时同时在右下角弹一条提示，点它直接打开日志文件。",
+      "args": []
+    },
+    "driftLedger.copy.failed": {
+      "kind": "error",
+      "zh": "复制诊断文本失败",
+      "args": []
+    },
+    "driftLedger.copy.copyReport": {
+      "kind": "action",
+      "zh": "复制诊断文本",
+      "args": []
+    },
+    "driftLedger.copy.done": {
+      "kind": "action",
+      "zh": "已复制",
+      "args": []
+    },
+    "driftLedger.render.consequence": {
+      "kind": "body",
+      "zh": "后果：{consequence}",
+      "args": ["consequence"]
+    },
+    "driftLedger.face.head": {
+      "kind": "body",
+      "zh": "{faceTitle}（{n} 种{overflow}）",
+      "args": ["faceTitle", "n", "overflow"]
+    },
+    "driftLedger.face.overflowed": {
+      "kind": "body",
+      "zh": "，已触顶",
+      "args": []
+    },
+    "driftLedger.render.clean": {
+      "kind": "body",
+      "zh": "本次运行没有遇到无法识别的数据。这不代表历史上没有：计数重启后清零。",
+      "args": []
+    },
+    "driftLedger.refresh.failed": {
+      "kind": "error",
+      "zh": "读不到格式兼容记录：{e}（这不等于「没有」）",
+      "args": ["e"]
+    },
+    "driftLedger.refresh.wrongMachine": {
+      "kind": "error",
+      "zh": "答的不是这台机器（答的是 {machine}）",
+      "args": ["machine"]
+    },
+    "driftLedger.refresh.badShape": {
+      "kind": "error",
+      "zh": "返回的形状不对（faces 不是数组）",
+      "args": []
+    },
+    "driftLedger.build.copying": {
+      "kind": "action",
+      "zh": "复制中…",
+      "args": []
+    },
+    "driftLedger.build.copyReport": {
+      "kind": "action",
+      "zh": "复制诊断文本",
+      "args": []
+    },
+    "driftLedger.build.reading": {
+      "kind": "action",
+      "zh": "读取中…",
+      "args": []
+    },
+    "driftLedger.build.reread": {
+      "kind": "action",
+      "zh": "重新读取",
+      "args": []
+    },
+    "driftLedger.build.intro": {
+      "kind": "body",
+      "zh": "cc-monitor 这次运行里从这台机器读到、但没认出来的数据。多半是 Claude Code 出了新格式；没认出来的部分照常降级显示，这里把它们列出来。计数只算这次运行，重启 monitor 就清零。",
+      "args": []
+    },
+    "driftLedger.report.head": {
+      "kind": "body",
+      "zh": "格式兼容记录（{where} · 重启后清空）\n\n{parts}",
+      "args": ["where", "parts"]
+    },
+    "driftLedger.report.consequence": {
+      "kind": "body",
+      "zh": "  后果：{consequence}",
+      "args": ["consequence"]
+    },
+    "driftLedger.report.clean": {
+      "kind": "body",
+      "zh": "格式兼容记录（{where}）：本次运行没有遇到无法识别的数据。",
+      "args": ["where"]
+    },
+    "driftLedger.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "driftLedger.entry.firstSample": {
+      "kind": "body",
+      "zh": "\n      首见：{firstSample}",
+      "args": ["firstSample"]
+    },
+    "driftLedger.unit.times": {
+      "kind": "body",
+      "zh": "次",
+      "args": []
+    },
+    "driftLedger.unit.connections": {
+      "kind": "body",
+      "zh": "次连接",
+      "args": []
+    },
+    "driftLedger.unit.observations": {
+      "kind": "body",
+      "zh": "次观测（每次重扫一次，不是会话数）",
+      "args": []
+    },
+    "driftLedger.unit.records": {
+      "kind": "body",
+      "zh": "条记录",
+      "args": []
+    },
+    "driftLedger.face.unnamed": {
+      "kind": "title",
+      "zh": "未知类别（{face}）",
+      "args": ["face"]
+    },
+    "driftLedger.face.unknownCapability": {
+      "kind": "title",
+      "zh": "远端后端有本版本不认识的功能",
+      "args": []
+    },
+    "driftLedger.face.unknownSessionKind": {
+      "kind": "title",
+      "zh": "未知会话类型",
+      "args": []
+    },
+    "driftLedger.face.parseFailed": {
+      "kind": "title",
+      "zh": "已知类型解析失败",
+      "args": []
+    },
+    "driftLedger.face.unknownRecord": {
+      "kind": "title",
+      "zh": "未知记录类型",
+      "args": []
+    },
+    "data.truncate.ellipsis": {
+      "kind": "body",
+      "zh": "{text}…",
+      "args": ["text"]
+    },
+    "data.open.failed": {
+      "kind": "error",
+      "zh": "打开失败",
+      "args": []
+    },
+    "data.localStorage.empty": {
+      "kind": "body",
+      "zh": "尚无任何 cc-monitor.* key",
+      "args": []
+    },
+    "data.localStorage.hint": {
+      "kind": "body",
+      "zh": "界面自己存下的偏好（折叠、渲染模式、profile 选项等）",
+      "args": []
+    },
+    "data.localStorage.title": {
+      "kind": "title",
+      "zh": "浏览器本地存储",
+      "args": []
+    },
+    "data.item.missing": {
+      "kind": "body",
+      "zh": "文件 / 目录不存在",
+      "args": []
+    },
+    "data.item.openHint": {
+      "kind": "body",
+      "zh": "打开 {path}",
+      "args": ["path"]
+    },
+    "data.item.openNone": {
+      "kind": "action",
+      "zh": "—",
+      "args": [],
+      "waive": {
+        "C-L2": "文件不存在时按钮上的占位符号（不给打开），不是破折号"
+      }
+    },
+    "data.item.open": {
+      "kind": "action",
+      "zh": "打开",
+      "args": []
+    },
+    "data.item.inLogsPage": {
+      "kind": "body",
+      "zh": "在「日志」页里打开",
+      "args": []
+    },
+    "data.item.notCreated": {
+      "kind": "body",
+      "zh": "尚未创建",
+      "args": []
+    },
+    "data.item.created": {
+      "kind": "body",
+      "zh": "已创建",
+      "args": []
+    },
+    "data.note.classes": {
+      "kind": "body",
+      "zh": "标着「可随手删」的下次用到时会重建；标着「删了会丢」的是你设过的东西。",
+      "args": []
+    },
+    "data.note.howToClear": {
+      "kind": "body",
+      "zh": "这些数据。想彻底清除（星标、颜色配置、界面缓存等）请手动删除上面的目录。",
+      "args": []
+    },
+    "data.note.notCleared": {
+      "kind": "body",
+      "zh": "不清",
+      "args": []
+    },
+    "data.note.byDefault": {
+      "kind": "body",
+      "zh": " 默认",
+      "args": []
+    },
+    "data.note.uninstall": {
+      "kind": "body",
+      "zh": "卸载 monitor",
+      "args": []
+    },
+    "data.note.icon": {
+      "kind": "body",
+      "zh": "🛈 ",
+      "args": []
+    },
+    "data.card.webviewHint": {
+      "kind": "title",
+      "zh": "由系统的网页引擎管理，含缓存、本地存储、IndexedDB 和 cookies",
+      "args": []
+    },
+    "data.card.webview": {
+      "kind": "title",
+      "zh": "界面数据",
+      "args": []
+    },
+    "data.card.own": {
+      "kind": "title",
+      "zh": "cc-monitor 自己的数据",
+      "args": []
+    },
+    "data.load.failed": {
+      "kind": "error",
+      "zh": "加载失败：{e}",
+      "args": ["e"]
+    },
+    "data.renderPlaceholder.loading": {
+      "kind": "body",
+      "zh": "正在读这台机器上的数据位置…",
+      "args": []
+    },
+    "data.ctor.title": {
+      "kind": "title",
+      "zh": "数据位置",
+      "args": []
+    },
+    "data.class.unknown": {
+      "kind": "body",
+      "zh": "类别未知（{kind}）",
+      "args": ["kind"]
+    },
+    "data.class.disposable": {
+      "kind": "body",
+      "zh": "可随手删",
+      "args": []
+    },
+    "data.class.keep": {
+      "kind": "body",
+      "zh": "删了会丢",
+      "args": []
+    },
+    "backend.status.unknown": {
+      "kind": "body",
+      "zh": "状态查不到",
+      "args": []
+    },
+    "backend.status.notConnected": {
+      "kind": "body",
+      "zh": "未连上",
+      "args": []
+    },
+    "backend.status.connected": {
+      "kind": "body",
+      "zh": "已连上{pid}",
+      "args": ["pid"]
+    },
+    "backend.policy.saveFailed": {
+      "kind": "error",
+      "zh": "保存后端策略失败",
+      "args": []
+    },
+    "backend.policy.badShape": {
+      "kind": "error",
+      "zh": "后端写完回来的内容格式不对，两边版本可能对不上",
+      "args": []
+    },
+    "backend.stop.failed": {
+      "kind": "error",
+      "zh": "停后端失败",
+      "args": []
+    },
+    "backend.start.failed": {
+      "kind": "error",
+      "zh": "起后端失败",
+      "args": []
+    },
+    "backend.health.detail": {
+      "kind": "title",
+      "zh": "详情",
+      "args": []
+    },
+    "backend.buildCells.exitKills": {
+      "kind": "control",
+      "zh": "monitor 退出时结束它",
+      "args": []
+    },
+    "backend.buildCells.stop": {
+      "kind": "action",
+      "zh": "停",
+      "args": []
+    },
+    "backend.buildCells.start": {
+      "kind": "action",
+      "zh": "起",
+      "args": []
+    },
+    "backend.buildCells.querying": {
+      "kind": "body",
+      "zh": "查询中…",
+      "args": []
+    },
+    "backend.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "backend.paintUnregistered.unregistered": {
+      "kind": "body",
+      "zh": "未登记",
+      "args": []
+    },
+    "backend.ctor.intro": {
+      "kind": "body",
+      "zh": "每台机各一行。「退出行为」那一格写着 monitor 退出时这台机会怎样。",
+      "args": []
+    },
+    "backend.ctor.title": {
+      "kind": "title",
+      "zh": "后端",
+      "args": []
+    },
+    "backend.unregistered.why": {
+      "kind": "body",
+      "zh": "monitor 这次启动时没有为这台机器登记后端。可能是远端模式没开，或者这台是启动之后才加的；重启 monitor 之后才能在这里起停。",
+      "args": []
+    },
+    "backend.column.health": {
+      "kind": "title",
+      "zh": "健康",
+      "args": []
+    },
+    "backend.column.exit": {
+      "kind": "title",
+      "zh": "退出行为",
+      "args": []
+    },
+    "backend.column.actions": {
+      "kind": "title",
+      "zh": "操作",
+      "args": []
+    },
+    "backend.column.status": {
+      "kind": "title",
+      "zh": "状态",
+      "args": []
+    },
+    "backend.exitPolicy.oldBackend": {
+      "kind": "body",
+      "zh": "那台机器的后端还不认「退出行为」这一问。重装那台机器的后端就有了。",
+      "args": []
     }
   }
 }
