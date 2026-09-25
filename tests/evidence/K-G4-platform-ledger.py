@@ -5,24 +5,26 @@
 
 # 它买什么
 
-`设计/01 §7.3` 逐字：「**两个壳都要编得过**，且这条要在门禁里 —— 独立进程那个壳要为
-**每一个我们发布的平台**编得过，折进前端那个壳要能链接进前端。」
+`设计/01 §7.3` 逐字：「独立进程那个壳要为**每一个我们发布的平台**编得过，且这条要在门禁里。」
+（「折进前端那个壳要能链接进前端」那一半随那一档放弃（`99 §1` V105）作废 —— 见下面 `P4` 的墓志。）
 行数由 **条 63** 定：承诺的是**三格**（本机 Windows x86_64 · 远端 Linux · 本机 Linux），
 (Windows, aarch64) **显式拒绝**。
 
-⇒ 本文件判四条：
+⇒ 本文件判三条：
 
   · `P1` **承诺表 ↔ 门禁格**两向集合相等 —— 承诺了却没门禁的格、有门禁却没登记的格，都红
   · `P2` 每一格登记的**逐字锚点**在 `gate.sh` 里 `count() == 1`（登记指得到真东西）
   · `P3` **显式拒绝的那格真的零脚印** —— `aarch64-pc-windows` 全仓命中必须是 0
-  · `P4` 「壳-折」那一维**有被检查的对象** —— 后端 crate 得有 `[lib]`，且盘上真有
-    一个不经 `main.rs` 就 link 它的目标
+  · ~~`P4`~~ 「壳-折」那一维有被检查的对象 —— 〔S5 · 第四波 · V105 清账〕**删了**：
+    「折进前端进程」那一档已放弃，那一维没有对象，判它「有对象」等于替一个不建的东西守门。
+    `[lib]` 本身还在 —— 它是 `4a`（库化）的产物，有自己的住址（`readonly_guard` 的
+    `BACKEND_CORE_MODULES`），不靠这里活着。
 
 # 🔴 反空真：绿从哪来
 
 `P1` 是**集合相等**，不是「承诺表里每条都能找到」。后者在承诺表被清空时恒真。
 死值验：摘掉任一格的登记 ⇒ `P1` 红；把锚点写错 ⇒ `P2` 红；
-往仓里塞一个 `aarch64-pc-windows` 字样 ⇒ `P3` 红；删掉 `[lib]` ⇒ `P4` 红。
+往仓里塞一个 `aarch64-pc-windows` 字样 ⇒ `P3` 红。
 
 # ⚠ 诚实边界（写死，别读宽）
 
@@ -110,24 +112,7 @@ def main():
                 f"{hits[:5]} —— 要么那一票被推翻了（回来改这张表 ＋ 给它一条产线与一格门禁），"
                 f"要么有人顺手加了个跑不起来的 target。**两种都要人回来裁。**")
 
-    # ── P4：「壳-折」那一维有被检查的对象 ───────────────────────────────
-    manifest = (ROOT / "src" / "backend" / "Cargo.toml").read_text(encoding="utf-8")
-    if "[lib]" not in manifest:
-        fails.append(
-            "P4 后端 crate 没有 `[lib]` —— 「折进前端那个壳」**连被检查的对象都不存在**"
-            "（`真相源/92 §2.2` 逐字登记过这个空洞）。步 9 加的那个 `[lib]` 被删了？")
-    lib_rs = ROOT / "src" / "backend" / "lib.rs"
-    if not lib_rs.exists():
-        fails.append("P4 `src/backend/lib.rs` 不在盘上 —— 同上")
-    else:
-        # 库面得真的装着身份，否则 in-process 那条路拿不到「我是谁」
-        src = lib_rs.read_text(encoding="utf-8")
-        if not re.search(r"^pub const BUILD_ID", src, re.M):
-            fails.append(
-                "P4 `lib.rs` 里没有 `pub const BUILD_ID` —— 身份又跑回只有一个宿主"
-                "看得见的地方了（`设计/00 §1.5.4` 前置 2 治的正是这个）")
-
-    checks = 1 + len(PROMISED) + len(REFUSED) + 3
+    checks = 1 + len(PROMISED) + len(REFUSED)
     if fails:
         print(f"KG4D1: FAIL={len(fails)}")
         for f in fails:
@@ -149,9 +134,8 @@ def main():
           "（两格 Windows 走 `-gnu`；`ci.yml` 自陈不证那一格）。真机行为仍是**判不了**。")
     print()
     print(f"platform: {checks} passed（分母 = P1 两向集合相等 1 ＋ "
-          f"P2 逐字锚点 {len(PROMISED)} 条 ＋ P3 显式拒绝 {len(REFUSED)} 格零脚印 ＋ "
-          f"P4 壳-折那一维的三条现物：`[lib]` · `lib.rs` · 它装着身份）")
-    print("KG4D1: OK —— P1..P4 全过（⚠ 它判的是「门禁盖到了哪些平台」，"
+          f"P2 逐字锚点 {len(PROMISED)} 条 ＋ P3 显式拒绝 {len(REFUSED)} 格零脚印）")
+    print("KG4D1: OK —— P1..P3 全过（⚠ 它判的是「门禁盖到了哪些平台」，"
           "**不判那些平台上真的跑得起来**）")
     return 0
 

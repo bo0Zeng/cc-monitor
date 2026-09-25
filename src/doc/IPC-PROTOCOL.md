@@ -1462,11 +1462,10 @@ CAS → 相同不写 → 备份 → 同目录 `O_EXCL` 暂存旁名写满、换�
 **只有后端写**。前端要读要改都经下面两条命令；monitor 自己的 `config.json` 里**不再有它**，
 monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改动时把生效值推给 monitor」的 tauri 命令整条退役）。
 
-两条命令回同一个形状：
+两条命令回同一个形状（〔S5 · 第四波〕原来还有一格 `shell`，恒 `"standalone"`；「折进前端进程」那一档已放弃（V105），那一格随之删掉）：
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `shell` | ← | 这一趟后端是哪个壳。今天恒 `"standalone"`（独立进程）；折进前端进程的那一档今天不存在，哪天有了它要答 `"folded"`，界面据此把整格说成「不适用」 |
 | `state` | ← | 三态：`"chosen"`（有人选过）· `"absent"`（文件不在 = 没人选过）· `"unreadable"`（文件在但读不出来 / 家目录解析不出来）。🔴 后两态**不许合并** —— 「读不出来」不等于「有人选了默认」 |
 | `killOnExit` | ↔ | 生效值。`chosen` 时是选的那个；另两态是缺省 `false`（不结束）。`exit-policy-set` 的入参也是它 |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来。其余为 `null` |
@@ -1476,7 +1475,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 ```text
 → {"id":"x1","cmd":"exit-policy-read"}
-← {"kind":"reply","id":"x1","ok":true,"data":{"shell":"standalone","state":"absent","killOnExit":false,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
+← {"kind":"reply","id":"x1","ok":true,"data":{"state":"absent","killOnExit":false,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
 ```
 
 **没有错误码**：读不出来是一个**状态**，照样 `ok:true` 回 `state:"unreadable"` ＋ `reason`。
@@ -1486,7 +1485,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 ```text
 → {"id":"x2","cmd":"exit-policy-set","args":{"killOnExit":true}}
-← {"kind":"reply","id":"x2","ok":true,"data":{"shell":"standalone","state":"chosen","killOnExit":true,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
+← {"kind":"reply","id":"x2","ok":true,"data":{"state":"chosen","killOnExit":true,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
 ```
 
 回的是**写完之后再读一遍**的那一份（盘上的事实，不是「我以为写进去了」）。
