@@ -61,21 +61,8 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
         "远端",
         "删远端后端二进制。路径**由代码定**（`backend_binary()` 的落点），不接受用户输入。",
     ),
-    (
-        "sftp.rs",
-        "remove_remote_file",
-        "远端",
-        "删一份远端会话 jsonl。★ 它有**自己的**围栏 `is_safe_remote_jsonl`\
-             （`projects/` 前缀 + `.jsonl` 后缀 + 无 `..`），而**不是** \
-             `claude_data_fence::is_protected_claude_data_path` ——\
-             因为它的正题恰恰是「删 Claude 的会话文件」，那是历史浏览器的功能。\
-             **路径由用户选**（在历史浏览器里点某一份会话），但选的范围被那道围栏收在\
-             `projects/**/*.jsonl` 之内。⚠ **两道围栏方向相反，别互相替代、也别合并** ——\
-             〔步 H2 09-21〕这件事从此有牙了：\
-             `claude_data_fence_tests::the_protected_path_judgement_has_exactly_one_home` \
-             把「全仓谁在读 Claude 的数据布局」钉成相等断言，本文件这一份与那一份\
-             逐条对得上（它那张 `LAYOUT_READERS` 里这一道单列一行）。",
-    ),
+    // 〔RW1 · 第四波 09-24〕这里原来有 `sftp.rs` 的 `remove_remote_file`〔散文墓碑〕一行（F11：删一份远端会话 jsonl，自带一道
+    //   方向相反的结构守卫）。F11 改经远端后端删（`files-delete-session`，只收 sid）之后它零调用方、删了 ⇒ 摘行。
     // 〔AL1 · 2026-09-24〕从前这里是 `install_remote_ccm_helper`〔散文墓碑〕一行（它自己逐级 `create_dir`）。
     // 「备份 → 原子写 → 回读 → 回滚」收成 `fenced_block::apply` 一份之后，远端 rc / 入口的
     // 写盘只剩 `SftpFile` 的两个原语 —— 装/卸两个命令一个裸写原语都不再有。
@@ -585,11 +572,8 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
         ("sftp.rs", "deploy_remote_backend", "upload_atomic"),
         // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写那一行走了：F89a 按用户裁「按推荐改」改经远端后端写，
         //   那个分支函数（`write_remote_mcp_server`）今天一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
-        (
-            "remote_history.rs",
-            "delete_remote_history_session",
-            "remove_remote_file",
-        ),
+        // 〔RW1 · 第四波 09-24〕`remote_history.rs::delete_remote_history_session` 那一行走了：它今天经远端后端删
+        //   （`files-delete-session`），一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
         // ★〔G 审计补的两条〕它们都持会话 / 往用户给的路径写远端，却因为
         // 「自己不调裸写原语」而进不了按能力边界派生的人群 ——
         // **正是本条（接线层）存在的理由**：两个层，一条边。

@@ -1788,9 +1788,9 @@ export class HistoryView {
     if (!e || !proj) return;
     const label = e.customTitle ?? e.aiTitle ?? e.sessionId.slice(0, 8);
     if (e.origin) {
-      // 远端删除更危险（经 SFTP 删远端文件）→ 二次确认。
+      // 远端删除更危险（删的是别人机器上的文件）→ 二次确认。〔RW1〕删那一下由那台机器的后端做。
       const ok1 = window.confirm(
-        `删除远端会话「${label}」（机器 ${e.origin}）？\n\n将经 SFTP 物理删除远端 jsonl 文件，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
+        `删除远端会话「${label}」（机器 ${e.origin}）？\n\n将由那台机器的后端物理删除这份会话记录，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
       );
       if (!ok1) return;
       const ok2 = window.confirm(

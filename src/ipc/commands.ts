@@ -767,8 +767,8 @@ export const commands = {
    * 删历史会话。**桶①**。
    *
    * 🔴 **〔步 12·C〕`delete_remote_history_session` 已退役，两条收成这一条。**
-   * 本机那一侧带 projects 目录内的路径守卫，远端那一侧走 `sftp::remove_remote_file`
-   * 的双重守卫 —— **同一个动作、两种介质**，不是两件能力。
+   * 〔RW1 · 第四波〕两侧都经那台机器的后端删（`files-delete-session`，只收 sid）；
+   * `jsonlPath` 是一致性闸的另一半：`sessionId` 必须恰是那份文件名的 stem。
    */
   delete_history_session: (args: {
     origin: Origin;
