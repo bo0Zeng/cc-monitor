@@ -2089,3 +2089,30 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
     guard_core::find_pinned(&prod[at..body_end], "h.join(ACCTS_DIR_NAME)")
         .unwrap_or_else(|e| panic!("缺省解析不再经契约常量拼家目录下那一层：{e}"));
 }
+
+/// ★〔C4d · 第四波 4B〕**本机判活真相源**（历史跨机 join 用）：pidfile 里的会话 id ＋ 那个进程还在（同 watcher 那一道平台原语）。
+///
+/// 要求住址：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条）「本机后端 … 并上注解、出成品」—— 本机那一支的
+/// 「活没活」从 monitor 的 `SessionMap` 换到这台后端自己答，答错就是历史列表上一个活会话不亮 / 一个死会话亮着。
+/// 夹具：本测试进程自己的 pid（活）· 一个超出 pid 上限的 pid（死）· 没有 `sessionId` 的（不算）· 文件名不是 pid 的（不看）。
+#[cfg(unix)]
+#[test]
+fn live_session_ids_are_the_pidfiles_whose_process_is_still_there() {
+    let home = tmpdir("c4d-live");
+    let sessions = home.join("sessions");
+    fs::create_dir_all(&sessions).unwrap();
+    let me = std::process::id();
+    fs::write(sessions.join(format!("{me}.json")), r#"{"sessionId":"live-sid","cwd":"/w"}"#).unwrap();
+    fs::write(sessions.join("4194304.json"), r#"{"sessionId":"dead-sid","cwd":"/w"}"#).unwrap();
+    fs::write(sessions.join("notapid.json"), r#"{"sessionId":"ignored","cwd":"/w"}"#).unwrap();
+    let got = live_session_ids(&home);
+    assert_eq!(
+        got,
+        ["live-sid".to_string()].into_iter().collect(),
+        "活着的那一个要在、死了的那一个不许在"
+    );
+    // 没有 sessionId 的活进程不算（它说不出是哪个会话）。
+    fs::write(sessions.join(format!("{me}.json")), r#"{"cwd":"/w"}"#).unwrap();
+    assert!(live_session_ids(&home).is_empty());
+    let _ = fs::remove_dir_all(&home);
+}
