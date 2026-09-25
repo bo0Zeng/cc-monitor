@@ -204,6 +204,7 @@ export class TabManager {
     isAttachable: (sid) => this.isAttachable(sid),
     sessionAccount: (sid) => this.store.sessionAccountsByS.get(sid),
     refreshAccountBadgeFor: (sid) => this.bar.refreshAccountBadgeFor(sid),
+    markRecord: (sid, present) => this.markRecord(sid, present),
   });
 
   /** 〔U2 · ⑤〕右键菜单里放哪几项住 `tab-menu.ts`；点下去做事直接交给上面那份 `actions`。 */
@@ -659,9 +660,16 @@ export class TabManager {
       tab.state = ENDED;
       tab.activity = null; // 同 archiveTab：死会话不留陈旧灯/tooltip
       this.store.pendingTmuxIdle.delete(sessionId); // 已结束优先：真 tmux 没了，暂存的可重连作废
+      this.store.pendingContainer.delete(sessionId); // 〔U4b〕死了 ⇒ 容器一格由死的那一刻说了算
     } else if (this.store.pendingTmuxIdle.delete(sessionId)) {
       // audit-fixes F03.2：可重连信号早于建 Tab（F5 重放乱序）→ 落实。
       tab.state = RECONNECTABLE;
+      this.store.pendingContainer.delete(sessionId);
+    } else {
+      // 〔U4b · G3〕容器事实早于建 Tab ⇒ 落实（建出来就是活的，转移只经 `nextState`）。
+      const c = this.store.pendingContainer.get(sessionId);
+      this.store.pendingContainer.delete(sessionId);
+      if (c) tab.state = nextState(tab.state, c === "tmux" ? "container-tmux" : "container-none");
     }
     this.store.tabs.set(sessionId, tab);
     this.store.placeInOrder(tab);
@@ -743,6 +751,7 @@ export class TabManager {
       this.store.pendingArchive.add(sessionId);
       this.store.pendingActivity.delete(sessionId); // issue #23：死会话的暂存灯一并清
       this.store.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：已结束优先，清暂存的可重连
+      this.store.pendingContainer.delete(sessionId); // 〔U4b〕死了 ⇒ 暂存的容器事实作废
       return;
     }
     // 活 / 可重连 ⇒ 已结束；已经是已结束 ⇒ 不变（`nextState`）。
@@ -799,6 +808,57 @@ export class TabManager {
     if (!this.applyState(tab, "idle")) return;
     this.refreshTabBar();
     this.emitTabStateProbe(tab); // F-E1:可重连(claude 退但 tmux 在)
+  }
+
+  /**
+   * 〔U4b · 第四波 · G3〕后端报来这条活会话的容器（`session-container`：`"tmux"` / `"none"`）。
+   * Tab 还没建 ⇒ 暂存（同 `pendingActivity`），建 Tab 时落实；不认识的取值当没报（丢掉）。
+   * 只落在活着的会话上（`nextState`）：死了的那一格由死的那一刻的裁决说了算。
+   */
+  noteContainer(sessionId: string, container: string): void {
+    if (container !== "tmux" && container !== "none") return;
+    const tab = this.store.tabs.get(sessionId);
+    if (!tab) {
+      this.store.pendingContainer.set(sessionId, container);
+      return;
+    }
+    if (!this.applyState(tab, container === "tmux" ? "container-tmux" : "container-none")) return;
+    this.refreshTabBar();
+  }
+
+  /**
+   * 〔U4b · 第四波 · 说不清〕这台机器的活会话清单报完了（远端 `origin-sessions-listed`；本机 `list_active_sessions`）。
+   *
+   * 这台的「说不清」（固定复活、还没被报过）逐条落地：`liveSids` 里有 ⇒ 活（本机那条路给清单；远端的清单
+   * 早已经由 `remote-session-added` 把 tab 建成活的了，不传）；没有 ⇒ 已结束（`设计/30 §3.5.7a`
+   * 「A 看得见却没报这条」）。记下这台已报完 ⇒ 之后才复活出来的固定 tab 直接落已结束。
+   */
+  markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
+    this.store.seenOrigins.add(origin);
+    let changed = false;
+    for (const tab of this.store.tabs.values()) {
+      if (tab.origin !== origin || tab.state.liveness !== "unseen") continue;
+      const ev: StateEvent = liveSids?.has(tab.sessionId) ? "started" : "seen-absent";
+      if (this.applyState(tab, ev)) {
+        changed = true;
+        if (ev === "started") this.prefs.clearPinHint(tab.sessionId);
+        this.emitTabStateProbe(tab);
+      }
+    }
+    if (changed) this.refreshTabBar();
+  }
+
+  /**
+   * 〔U4b · 第四波 · G1〕resume 一跳问过那台后端：这条会话的记录在不在（`history-record`）。
+   * 不在 ⇒ 已结束落到「记录没了」；在 ⇒ 「记录没了」翻回已结束（记录回来了，例：同步盘补齐）。
+   * 别的态不动（`nextState`：可重连的终端还在，接得回去；活的不走 resume）。
+   */
+  markRecord(sessionId: string, present: boolean): void {
+    const tab = this.store.tabs.get(sessionId);
+    if (!tab) return;
+    if (!this.applyState(tab, present ? "record-present" : "record-gone")) return;
+    this.refreshTabBar();
+    this.emitTabStateProbe(tab);
   }
 
   /**
