@@ -50,7 +50,7 @@ pub(super) const PENDING_WRITERS: &[(&str, &str)] = &[];
 
 /// 传输核心里碰远端写原语的函数。
 ///
-/// 〔SR1b · 2026-09-24〕**零**：传输核心（连同那两个只写暂存区的函数 —— 建暂存区那一个〔散文墓碑〕与
+/// 〔SR1b · 2026-09-24〕**零**：传输核心（连同那两个只写暂存区的函数 —— 建暂存区那一个与
 /// `upload_to_staging`）整段搬进了本机常驻后端（`control/transfer.rs` ＋ `dial/sftp.rs` 的写原语，
 /// 那一侧的「只许两处」由后端 `readonly_guard::remote_write_layer` 钉）。本文件只剩中继 ⇒ 一处远端写都没有。
 const STAGING_WRITERS: &[&str] = &[];

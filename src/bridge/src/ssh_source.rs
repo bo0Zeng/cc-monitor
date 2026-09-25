@@ -1901,20 +1901,6 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
     }
 }
 
-/// 〔SR1b〕`transfer` 帧的 `end`：后端 `wire::TransferEnd` 那三形之一；认不出 ⇒ `None`（调用方整帧丢）。
-/// 抽出来住 `parse_frame` 外面：那张 match 的臂是帧 kind 的名单（`known_kinds_matches_parse_frame` 按臂抠），
-/// 结局的三个名字不该混进去。
-fn transfer_end(e: &serde_json::Value) -> Option<crate::sftp_pool::End> {
-    Some(match e.get("state")?.as_str()? {
-        "done" => crate::sftp_pool::End::Done {
-            bytes: e.get("bytes")?.as_u64()?,
-        },
-        "failed" => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
-        "cancelled" => crate::sftp_pool::End::Cancelled,
-        _ => return None,
-    })
-}
-
 /// 本 monitor **认识**的全部帧 kind（消费 + 刻意不消费）。
 ///
 /// 与 `parse_frame` 的 match 臂是同一份事实 —— 由
@@ -1938,6 +1924,20 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "transfer",
     "turn_end",
 ];
+
+/// 〔SR1b〕`transfer` 帧的 `end`：后端 `wire::TransferEnd` 那三形之一；认不出 ⇒ `None`（调用方整帧丢）。
+/// 抽出来住 `parse_frame` 外面：那张 match 的臂是帧 kind 的名单（`known_kinds_matches_parse_frame` 按臂抠），
+/// 结局的三个名字不该混进去。
+fn transfer_end(e: &serde_json::Value) -> Option<crate::sftp_pool::End> {
+    Some(match e.get("state")?.as_str()? {
+        "done" => crate::sftp_pool::End::Done {
+            bytes: e.get("bytes")?.as_u64()?,
+        },
+        "failed" => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
+        "cancelled" => crate::sftp_pool::End::Cancelled,
+        _ => return None,
+    })
+}
 
 /// U7-1：**backend 的产出面 ↔ monitor 的消费面**对拍。
 ///

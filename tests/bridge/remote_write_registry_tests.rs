@@ -31,7 +31,9 @@ fn write_prims() -> Vec<String> {
 }
 
 /// 落地何方。**刻意是封闭集合** —— 多出第三种就得回来论证。
-const LANDINGS: &[&str] = &["远端", "本机"];
+/// 〔SR1b · 2026-09-24〕「本机」那一档摘了：它唯一的成员（下载落地）随传输台搬进了本机常驻后端 ——
+/// 持 SFTP 会话的文件里今天没有一处写本机（「封闭集合不许长草」那条逐字要这一刀）。
+const LANDINGS: &[&str] = &["远端"];
 
 /// `(相对 src 的文件, 函数, 落地何方, 写什么 + 路径由谁定 + 什么围栏着)`
 ///
@@ -86,39 +88,10 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
     //   〔已删：`sftp_mkdir` · `sftp_rename` · `sftp_delete` · `sftp_chmod`〕（老面板删了、窗口改走后端写面）。
     // 〔第四波 S4〕零流量复制的核心那一行随它的命令与秤 F3 一起退役了（窗口的复制走后端 `files-copy`）。
     // ---- 〔F7c · 第三波 09-24〕`设计/60 §13`：上传**只写暂存区**，路径**由代码定** ----
-    (
-        "sftp_pool.rs",
-        "upload_to_staging",
-        "远端",
-        "上传的唯一新形状：本机文件 → `~/.cc-monitor/staging/<key>.part`（相对 SFTP 起始目录）。\
-             **路径由代码定**（`staging_part(key)`，`key` 由本机路径 · 大小 · 修改时间派生；\
-             函数签名里**没有目标路径**）⇒ 不需要 Claude 数据围栏 —— 它写不到用户目录里去。\
-             撤 ⇒ 删自己那份暂存件；失败 ⇒ 留着给续传。落进用户目标的那一下归后端 \
-             `files-commit-upload`（先过围栏）。「暂存区之外零写」另有一条行为判据\
-             （`sftp_staging_tests::a_staging_upload_writes_nothing_outside_the_staging_area`）。",
-    ),
-    (
-        "sftp_pool.rs",
-        "ensure_staging_dir",
-        "远端",
-        "建暂存区**最后那一段**（`.cc-monitor/staging`）。**路径由代码定**；上一级 \
-             `~/.cc-monitor`（后端的家）不在 ⇒ 报错，**不顺手建**（`D11`：后端是给定的）。",
-    ),
-    (
-        "sftp_pool.rs",
-        "download_inner",
-        "本机",
-        "★ **这是超集里唯一的本机项**，也正是「机器分不清 handle 来历」的实例：\
-             它和 `upload_inner` 在同一个文件、用同一个方法名 `.write_all(`，\
-             但 handle 来自 `tokio::fs::File`（下载落地）而不是 `sftp.create` ⇒ 写的是**本机**。\
-             ⇒ 不需要**远端**围栏。\
-             🔴〔订正 2026-09-21〕这里原先接着写「它另有一个本机侧的问题（用户选的本机落点\
-             由前端对话框给），那属 `write_site_registry` 的管辖面，不在本表」——\
-             **那是这条推诿链的第二站**（第一站在 `NON_WRITING_COMMANDS` 的墓碑里，\
-             第三站是 `write_site_registry` 里那句「本地缓存 / 不是用户既有环境」，假的）。\
-             ⇒ 本机落点现在**真的有围栏**了：`sftp_download` 第一行 `guard_write(&local_path)`，\
-             与远端那七条同一个家、同一道判定。本表这一行说的仍然只是「它写本机」这个事实。",
-    ),
+    // 〔SR1b · 2026-09-24〕`sftp_pool.rs` 那三行（`upload_to_staging`〔散文墓碑〕 · 建暂存区那一个 · `download_inner`〔散文墓碑〕）
+    //   随传输台**整段搬进了本机常驻后端**：远端那两处写经 `dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`，
+    //   后端 `readonly_guard::remote_write_layer` 钉），本机落地那一处进了第三层 `control/transfer.rs`。
+    //   `sftp_pool.rs` 今天只剩中继，一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
 ];
 
 /// 从三个「持有 SFTP 会话」的文件里抠出 `(文件, 函数)` —— 函数体内调了写原语。
@@ -224,9 +197,10 @@ fn capability_holders() -> Vec<String> {
 fn every_write_primitive_in_a_capability_holder_is_classified() {
     let sites = write_sites();
     assert!(
-        sites.len() >= 8,
+        sites.len() >= 5,
         "只抠到 {} 处写点（08-10 实测 10；〔步 23b 09-20〕+1 = 11；\
-             〔`设计/60 §5.4c` 09-20〕`sftp_chmod` +1 = **12**）—— 抽取器坏了，本条此刻是空转的",
+             〔`设计/60 §5.4c` 09-20〕`sftp_chmod` +1 = **12**；〔RW1 / SR1b 09-24〕远端三族与传输台搬走之后现打 **6**，地板 8 → 5）\
+             —— 抽取器坏了，本条此刻是空转的",
         sites.len()
     );
     let missing: Vec<String> = sites
@@ -574,7 +548,7 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
     const ROUTES: &[(&str, &str, &str)] = &[
         // 〔F7c 收尾 09-24〕池子那两条 IPC 写入口〔已删：`sftp_write_text` · `sftp_upload`〕删了；
         //   上传今天的入口是传输台的开单口（窗口经通道说 `transfer-upload`），它转发到只写暂存区的那一个写点。
-        ("sftp_pool.rs", "transfer_call", "upload_to_staging"),
+        // 〔SR1b〕`transfer_call → upload_to_staging` 那条边随两头搬进本机后端摘了（中继零 SFTP 会话）。
         ("sftp.rs", "deploy_remote_backend", "upload_atomic"),
         // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写那一行走了：F89a 按用户裁「按推荐改」改经远端后端写，
         //   那个分支函数（`write_remote_mcp_server`）今天一个 SFTP 会话都不拿 ⇒ 不再是本表的人群。
@@ -652,11 +626,11 @@ fn the_remote_write_capability_is_still_confined_to_three_files() {
     let holders = capability_holders();
     assert_eq!(
         holders,
+        // 〔SR1b〕4 → 3：`sftp_pool.rs` 走了（传输台进本机常驻后端，它只剩中继）。
         vec![
             "acct_iso_deploy.rs".to_string(),
             "mcp.rs".to_string(),
             "sftp.rs".to_string(),
-            "sftp_pool.rs".to_string()
         ],
         "持有 SFTP 会话的文件变了（实得 {holders:?}）。\n\n\
                      ★ **那是本表人群的根** —— 多一个文件就意味着「往别人机器上写」这个能力\n\
@@ -1166,8 +1140,12 @@ enum RemoteLands {
     /// F08：我们的部署物（后端二进制 · 标记 · 入口 shim · 我们的脚本目录）—— 用户裁「留在 SFTP」。
     OwnDeployment,
     /// 我们自己的暂存区（`~/.cc-monitor/staging/`），落进用户目标的那一下在后端提交。
+    /// 〔SR1b〕今天零成员（暂存区的写搬进了本机后端）；留着这一档是闭集的形状，不是豁免。
+    #[allow(dead_code)]
     OwnStaging,
     /// **是**用户文件，但有主、在别的路收：`(谁来收, 为什么不在本路)`。
+    /// 〔SR1b〕今天零成员（唯一那一格下载落地被 SR1b 收了）；形态留着，下一格要落时有地方落。
+    #[allow(dead_code)]
     Pending(&'static str),
 }
 
@@ -1183,17 +1161,8 @@ const REMOTE_CLASS: &[(&str, &str, RemoteLands)] = &[
     ("sftp.rs", "put_atomic", RemoteLands::OwnDeployment),
     ("sftp.rs", "delete_created", RemoteLands::OwnDeployment),
     // 〔合并 S4〕`sftp_pool.rs` 那一行复制核心（`sftp_copy` 的 SFTP 零流量复制）的待收已兑现：S4 删了那套裸通道件。
-    ("sftp_pool.rs", "upload_to_staging", RemoteLands::OwnStaging),
-    (
-        "sftp_pool.rs",
-        "ensure_staging_dir",
-        RemoteLands::OwnStaging,
-    ),
-    (
-        "sftp_pool.rs",
-        "download_inner",
-        RemoteLands::Pending("SR1b：SFTP 进本机常驻后端，下载的本机落地改由本机后端提交"),
-    ),
+    // 〔SR1b · 2026-09-24〕`sftp_pool.rs` 三行（暂存区两处 `OwnStaging` · 下载落地那一格 `Pending`，指名 SR1b）**兑现**：
+    //   传输台整段搬进了本机常驻后端（暂存区的写只许经 `dial/sftp.rs`；本机落地进了第三层 `control/transfer.rs`）。
 ];
 
 #[test]

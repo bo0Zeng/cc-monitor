@@ -1312,9 +1312,9 @@ mod tests {
         };
         // 函数体到第一行顶格的 `}` 为止（逐行判相等，不按子串切）。
         let mut body_len = 0usize;
-        for row in prod[start..].split_inclusive('\n') {
-            body_len += row.len();
-            if row.trim_end() == "}" {
+        for src_row in prod[start..].split_inclusive('\n') {
+            body_len += src_row.len();
+            if src_row.trim_end() == "}" {
                 break;
             }
         }
@@ -1322,12 +1322,12 @@ mod tests {
         // 臂头：一行（去缩进后）以 `"` 起头、且在本行里出现 `=>`。
         let mut heads: Vec<usize> = Vec::new();
         let mut at = 0usize;
-        for row in body.split_inclusive('\n') {
-            let head_text = row.trim_start();
+        for src_row in body.split_inclusive('\n') {
+            let head_text = src_row.trim_start();
             if head_text.starts_with('"') && guard_core::contains_word(head_text, "=>") {
                 heads.push(at);
             }
-            at += row.len();
+            at += src_row.len();
         }
         let mut names = std::collections::BTreeSet::new();
         for (i, h) in heads.iter().enumerate() {
@@ -5386,9 +5386,9 @@ mod remote_write_layer {
     pub(super) fn fn_blocks(prod: &str) -> Vec<(String, String)> {
         let mut out: Vec<(String, String)> = Vec::new();
         let mut cur: Option<(String, String)> = None;
-        for row in prod.split_inclusive('\n') {
-            let at_col0 = !row.starts_with(' ') && !row.starts_with('\t');
-            let words: Vec<&str> = row.split_whitespace().collect();
+        for src_row in prod.split_inclusive('\n') {
+            let at_col0 = !src_row.starts_with(' ') && !src_row.starts_with('\t');
+            let words: Vec<&str> = src_row.split_whitespace().collect();
             let fn_at = words.iter().position(|w| *w == "fn");
             let head = at_col0
                 && fn_at.is_some_and(|k| {
@@ -5407,7 +5407,7 @@ mod remote_write_layer {
                 cur = Some((name, String::new()));
             }
             if let Some((_, body)) = cur.as_mut() {
-                body.push_str(row);
+                body.push_str(src_row);
             }
         }
         if let Some(done) = cur.take() {
