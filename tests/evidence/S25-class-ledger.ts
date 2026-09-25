@@ -65,7 +65,13 @@
  * - 两边都只看 `src/`。`tests/` 里出现的类名**不算**用户 —— 那正是上一轮
  *   `.settings-group-empty` 那个例子要的：测试里有一条"它不该存在"的正面断言，
  *   把 `tests/` 收进语料就会让它自己把自己救活。
- * - 不认 CSS-in-JS、不认 CSS Modules（`设计/41` 件 10 摊开做，真做起来这本账要跟着改）。
+ * - 不认 CSS-in-JS。
+ * - 〔UC2 · `设计/41` 件 10〕**CSS Modules（`*.module.css`）不进本账的全局命名空间**：它们的类名构建时哈希，
+ *   代码经 `import s from "./x.module.css"` 取 `s.xxx`，一个字面量都不写 ⇒ 按本账「字面量出现过才算活」
+ *   的判准会全部被判死。所以 `cssClasses` 只收全局样式文件的类名，module 的类名另收进 `moduleClasses`，
+ *   它们的两个方向由 `tests/css-modules.vitest.ts` 判（TS → CSS 由 `tsc` 吃逐文件类型，CSS → TS 由那份判据现扫）。
+ *   `cssFiles` 仍是 `src/**\/*.css` 全体（与 stylelint 的 glob 对拍、层与 z-index 两格照样管 module）。
+ *   逐文件类型声明 `x.module.d.css.ts` 不是代码，不进 `codeFiles`。
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -501,8 +507,10 @@ export interface Ledger {
   codeFiles: string[];
   /** 从 `src` 的 TS 里现读到的第三方 CSS 规格串（如 `katex/dist/katex.min.css`）。 */
   vendorSpecs: string[];
-  /** CSS 选择器里的类名 → 住址。 */
+  /** **全局**样式文件（非 `.module.css`）选择器里的类名 → 住址。 */
   cssClasses: SiteMap;
+  /** 〔UC2〕`*.module.css` → 它的类名 → 住址（构建时哈希、只经 TS 导入对象用，不进全局命名空间）。 */
+  moduleClasses: Map<string, SiteMap>;
   /** 第三方 CSS 自己产出的类名 → 是哪份第三方 CSS。 */
   vendorClasses: Map<string, string>;
   /** 代码里**直接**出现的类名形 token → 住址。 */
@@ -526,18 +534,24 @@ export function buildLedger(root: string): Ledger {
 
   const cssPaths = walk(srcDir, (p) => p.endsWith(".css"));
   const cssClasses: SiteMap = new Map();
+  const moduleClasses = new Map<string, SiteMap>();
   const zIndexDecls: ZIndexDecl[] = [];
   for (const p of cssPaths) {
     const text = readFileSync(p, "utf8");
+    zIndexDecls.push(...zIndexDeclsOf(text, rel(p)));
+    if (p.endsWith(".module.css")) {
+      moduleClasses.set(rel(p), cssClassesOf(text, rel(p)));
+      continue;
+    }
     for (const [name, sites] of cssClassesOf(text, rel(p))) {
       const list = cssClasses.get(name) ?? [];
       list.push(...sites);
       cssClasses.set(name, list);
     }
-    zIndexDecls.push(...zIndexDeclsOf(text, rel(p)));
   }
 
-  const tsPaths = walk(srcDir, (p) => p.endsWith(".ts") && !p.endsWith(".d.ts"));
+  // `x.d.ts` 与 `x.d.<扩展名>.ts`（后者是 `allowArbitraryExtensions` 下 CSS Modules 的逐文件类型）都是声明，不是代码。
+  const tsPaths = walk(srcDir, (p) => p.endsWith(".ts") && !/\.d(?:\.[\w-]+)?\.ts$/.test(p));
   const codePaths = [...tsPaths, join(root, "index.html")];
   const sources = codePaths.map((p) => ({ rel: rel(p), text: readFileSync(p, "utf8") }));
 
@@ -584,6 +598,7 @@ export function buildLedger(root: string): Ledger {
     codeFiles: codePaths.map(rel),
     vendorSpecs: [...vendorSpecs],
     cssClasses,
+    moduleClasses,
     vendorClasses,
     literals,
     constConcat,
