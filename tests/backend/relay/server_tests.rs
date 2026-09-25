@@ -2645,6 +2645,7 @@ fn response_head_keeps_framing_and_forces_close() {
 ///
 /// # 为什么源码扫描不够
 ///
+/// 〔AR1：那条源码扫描 `nodelay_guard` 已按 `设计/15 §2.1` B3 退役，本格是「关了 Nagle」唯一的判据〕
 /// `nodelay_guard` 数的是**文本**：`production_code()` 只剥掉 `#[cfg(test)]` 段与**行首**
 /// `//` 的行，字符串字面量 / 行尾注释 / 块注释里的同形文本**照样被数进去**。
 /// D2 实测（`D2NG1`）：把 `handle` 里真的 `down.set_nodelay(true)?;` **整个删掉**、

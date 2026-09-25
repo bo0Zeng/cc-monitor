@@ -2,7 +2,7 @@
 //!
 //! # 为什么单住一个文件
 //!
-//! 与隔壁 `bind_guard.rs` / `nodelay_guard.rs` 同一个理由，它的头注逐字写着：
+//! 与隔壁 `bind_guard.rs`（以及〔AR1〕已退役的 `nodelay_guard.rs`）同一个理由，它的头注逐字写着：
 //! monitor 侧 `scanning_guard_registry` 立过一条递减棘轮 —— 扫描型判据不许裸遍历目录，
 //! 要走 `guard_core::scan_tree!`。
 //!
