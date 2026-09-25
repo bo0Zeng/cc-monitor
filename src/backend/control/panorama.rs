@@ -24,8 +24,11 @@
 //! # 写面
 //!
 //! 后端进程自己**零写盘**。被起的那个进程只写**索引**，落 [`store_dir`]
-//! （那台机器上后端自己的数据目录 `<家>/.cc-monitor/panorama/`，不是用户文件）；
-//! 写用户文件的那几样（批注 / 文档关联）小程序**一样都没有**（第一拍只读，写面归 RW1 那一路）。
+//! （那台机器上后端自己的数据目录 `<家>/.cc-monitor/panorama/`，不是用户文件）。
+//! 〔RM1d · 用户 09-24 V110「引擎只算、文件管理来写」〕批注 / 文档关联：小程序只有 `plan_*`
+//! （读盘上现状 ＋ 算出新内容，交回 `{value, edit: {rel, before, after, parents}}`）；
+//! 落盘是**另一条**命令 —— monitor 拿着计划去问同一台后端的 `files-put`（带 `expect = before`）/
+//! `files-delete`，本命令里一个字节都不写。
 //!
 //! # 诚实边界
 //!
@@ -85,6 +88,15 @@ pub(crate) const OPS: &[(&str, u64)] = &[
     ("list_annotations", QUERY_DEADLINE_SECS),
     ("diagram_kinds", QUERY_DEADLINE_SECS),
     ("diagram", QUERY_DEADLINE_SECS),
+    // 〔RM1d〕只算不写：小程序读盘上那一两份、回一份编辑计划；落盘不在这条命令里（头注「写面」）。
+    ("plan_add_annotation", QUERY_DEADLINE_SECS),
+    ("plan_propose_annotation", QUERY_DEADLINE_SECS),
+    ("plan_approve_annotation", QUERY_DEADLINE_SECS),
+    ("plan_remove_annotation", QUERY_DEADLINE_SECS),
+    ("plan_write_doc_link", QUERY_DEADLINE_SECS),
+    ("plan_remove_doc_link", QUERY_DEADLINE_SECS),
+    // 〔RM1d〕外面落了 `.md` 之后让索引里的文档关联跟上（写的是索引，建索引那一档）。
+    ("refresh_doc_links", BUILD_DEADLINE_SECS),
 ];
 
 /// 找不到时那句话的尾巴（这个插件自己的话）。

@@ -60,41 +60,43 @@ use std::io::Write;
 /// SSE 拆行器 —— 增量喂字节，吐出 `data:` 行的载荷。
 ///
 /// 它只认 SSE 的**分帧**（行、`data:` 前缀），不认里面是什么。
-#[derive(Default)]
+/// 切行交给 [`super::framer::LineFramer`]（`relay/` 里唯一的增量分帧器，`设计/17 §3.7`）——
+/// 这里只剩 SSE 自己的那一层：`data:` 前缀、`[DONE]`、上限。
 pub(crate) struct SseSplitter {
-    partial: Vec<u8>,
+    pub(super) framer: super::framer::LineFramer,
     /// 超 `cap` 时丢掉的字节数（累计，由 `take_dropped` 取走）。
     dropped: u64,
+}
+
+impl Default for SseSplitter {
+    fn default() -> Self {
+        Self {
+            framer: super::framer::LineFramer::new(b"\n"),
+            dropped: 0,
+        }
+    }
 }
 
 impl SseSplitter {
     /// # `cap` 管的是**半行**〔回修轮之五 08-25，`阻-1(D3)` 的同职面〕
     ///
-    /// `partial` 只在**还没遇到 `\n`** 的时候留着字节。上游发一条永不换行的 `data:` 行，
+    /// 分帧器只在**还没遇到 `\n`** 的时候留着字节。上游发一条永不换行的 `data:` 行，
     /// 它就一直涨 —— 与 `ChunkedView::feed` 那条同族（**按真实字节增长**，不是「拿一个数去分配」）。
     ///
     /// 超了怎么办：**丢掉这条半行并计数**，其后的字节从下一个 `\n` 重新开始拆
     /// —— tee 少一行，**下游的字节一个不少**（tee 是抄一份，不在转发那条路上）。
     /// 计数由 `server.rs::handle` 取走并写进 tee 流的 `__dropped__` 行 ⇒ **不是静默丢**。
     pub(crate) fn feed(&mut self, decoded: &[u8], cap: usize) -> Vec<String> {
-        self.partial.extend_from_slice(decoded);
+        self.framer.push(decoded);
         // 只量**第一行**：它才是那条「攒着还没成形」的。其后的完整行照常拆，不许被连坐。
-        let head_len = self
-            .partial
-            .iter()
-            .position(|b| *b == b'\n')
-            .map_or(self.partial.len(), |p| p + 1);
+        let head_len = self.framer.head_len();
         if head_len > cap {
             self.dropped += head_len as u64;
-            self.partial.drain(..head_len);
+            self.framer.skip(head_len);
         }
         let mut out = Vec::new();
-        loop {
-            let Some(pos) = self.partial.iter().position(|b| *b == b'\n') else {
-                break;
-            };
-            let line: Vec<u8> = self.partial.drain(..=pos).collect();
-            let line = String::from_utf8_lossy(&line);
+        while let Some(line) = self.framer.next_line() {
+            let line = String::from_utf8_lossy(line);
             let line = line.trim_end_matches(['\r', '\n']);
             let Some(payload) = line.strip_prefix("data:") else {
                 continue;

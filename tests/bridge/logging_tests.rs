@@ -1,3 +1,11 @@
+//! # 要求住址：`设计/70 §6.3`（日志那一块：三个开关 ＋ 文件位置）＋ `INVARIANTS §2.1`（`config.json` 是真相）
+//!
+//! 核原文：`设计/70 §6.3` 逐字「日志文件开关（改了要重启）· 级别（立即生效）· 错误提示开关 · 文件位置 ＋ 大小」
+//! —— 本族判诊断配置的默认值、`logging.rs::build_env_filter` 认哪些级别、`logging.rs::find_latest_log_file` 指到哪一份；
+//! 写回 `diagnostics` 不丢同文件别的字段，对 `INVARIANTS §2.1` 那张表里 `config.json` 的「真相 · 全用户手填」。
+//! ⚠ `diagnostics_legacy_config_missing_field_uses_defaults` 在测试里把 `logging.rs::read_diagnostics_from_config`
+//! 那条链逐字重写了一遍，没调生产函数 ⇒ **它不在执行链上**（记在 `JA1.md`，断言本路不动）。〔JA1 点址 2026-09-24〕
+
 use super::*;
 
 #[test]

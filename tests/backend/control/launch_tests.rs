@@ -1,3 +1,10 @@
+//! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md §10` 的 `launch` 节（平面 ② 真建 tmux 会话的线上契约）
+//!
+//! 核原文：`launch` 节逐字「`send-into` / `send-keys-raw` 时不新建会话」·「`typed:true` 只有 `send-keys` 的退出码那么强」；
+//! 同节写明它刻意不做的三件（不 attach · 不过 shell · 不顺手建会话）、`created` / `typed` 结局表、`send-keys-raw` 不附 `Enter` —— 本族逐格判的就是那一节。
+//! 先过门再键入对 `INVARIANTS §34` Gate 2；精确目标形态对 `INVARIANTS §31a`。
+//! ⚠ `§42` 的机检只核字段名落节、不核行为；契约里行为句不漂靠的是本族（射程待主会话确认，见 `JA1.md`）。〔JA1 点址 2026-09-24〕
+
 use super::*;
 
 fn args(v: serde_json::Value) -> serde_json::Value {

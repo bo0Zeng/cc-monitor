@@ -377,3 +377,53 @@ fn the_shared_stripper_keeps_the_registry_writes_this_guard_must_scan() {
         &["tmux_raw_registry()", "record_tmux_raw("],
     );
 }
+
+/// 〔U4b · 第四波 · M2〕本机那一臂**只查本机那一格**：`<local>` 原文里有 ⇒ `Some("<local>")`；
+/// 只在别的 origin 的原文里有 ⇒ `None`（不跨机器猜）；那一格压根没有 ⇒ `None`。
+/// 再与 `classify_removed` 连起来：`Superseded` 恒归档（`/branch` 那一形）。
+#[test]
+fn the_local_arm_only_looks_at_the_local_slot() {
+    let local = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+    let here = crate::origin::Origin(local.to_string());
+    let by = HashMap::from([
+        (local.to_string(), raw("proj-cc", "bash", "sid-local")),
+        ("remote-a".to_string(), raw("proj-cc", "bash", "sid-remote")),
+    ]);
+    assert_eq!(
+        tmux_origin_for_sid_at(&by, &here, "sid-local"),
+        Some(local.to_string())
+    );
+    assert_eq!(tmux_origin_for_sid_at(&by, &here, "sid-remote"), None);
+    assert_eq!(
+        tmux_origin_for_sid_at(&HashMap::new(), &here, "sid-local"),
+        None
+    );
+    // 对照：跨 origin 的那个查法会在远端那一格里找到它 —— 本机那一臂不许用它。
+    assert_eq!(
+        tmux_origin_for_sid(&by, "sid-remote"),
+        Some("remote-a".to_string())
+    );
+    assert_eq!(
+        classify_removed(
+            tmux_origin_for_sid_at(&by, &here, "sid-local"),
+            RemovalCause::Gone
+        ),
+        RemovedDisposition::Idle {
+            origin: local.to_string()
+        }
+    );
+    assert_eq!(
+        classify_removed(
+            tmux_origin_for_sid_at(&by, &here, "sid-local"),
+            RemovalCause::Superseded
+        ),
+        RemovedDisposition::Archive
+    );
+    assert_eq!(
+        classify_removed(
+            tmux_origin_for_sid_at(&by, &here, "sid-remote"),
+            RemovalCause::Gone
+        ),
+        RemovedDisposition::Archive
+    );
+}

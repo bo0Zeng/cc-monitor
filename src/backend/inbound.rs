@@ -119,6 +119,8 @@ pub const COMMANDS: &[&str] = &[
     "history-index",
     "history-projects",
     "history-read",
+    // 〔U4b · 第四波〕这条会话的记录还在不在（resume 一跳先问，`设计/01 §6.2` 最后一条）。
+    "history-record",
     "history-search",
     "history-sessions",
     "history-subagents",
@@ -1253,6 +1255,20 @@ pub const REGISTRY: &[CommandSpec] = &[
             "write_failed",
         ],
         fields: &["lines", "parent"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔U4b · 第四波〕resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
+    // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `branch_core::find_session_file`）。
+    CommandSpec {
+        name: "history-record",
+        doc_anchor: Some("#### `history-record`"),
+        codes: &["bad_args"],
+        fields: &["present", "root", "sid"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)

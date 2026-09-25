@@ -746,6 +746,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
     // audit-fixes F03.2：远端 claude 退但 tmux 会话仍在 → 灰灯（idle-tmux 第三态，非归档）。
     onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
+    // 〔U4b · 第四波〕活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
+    onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
+    onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
     // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
@@ -828,6 +831,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         s.name ?? null,
       );
     }
+    // 〔U4b · 说不清〕这就是本机的活会话清单（`session_map` 初扫完了）⇒ 本机的固定 tab 从说不清落地：
+    //   清单里有 ⇒ 活，没有 ⇒ 已结束。拉失败（下面 catch）⇒ 不标，照旧说不清 —— 说不清就说说不清。
+    tabs.markOriginSeen(LOCAL_ORIGIN, new Set(active.map((s) => s.session_id)));
   } catch (e) {
     console.warn("[skeleton] list_active_sessions failed:", e);
   }

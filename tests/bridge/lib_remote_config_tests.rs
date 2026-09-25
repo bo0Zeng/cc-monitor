@@ -1,3 +1,10 @@
+//! # 要求住址：`INVARIANTS §28`（`origin` 边界：label 是那台机器唯一的 key）
+//!
+//! 核原文：`INVARIANTS §28` 逐字「`RemoteConfig.label`（`ssh_source.rs`，空则回退 `host`）是唯一
+//! 「持久（config.json）+ 上 wire（每条远端行带 `origin`）+ 名字派生」的 key」—— 本族判
+//! `lib.rs::parse_remote_hosts` 缺 label 回退 host、重复 label 加后缀保住唯一。缺必填跳过 / `jump` 空串 / 空数组三条没有逐字住址。
+//! 🔴 `legacy_single_object_one_host` 钉的是旧单对象配置的兼容支，与 V41「不为任何盘上旧状态留兼容层」相抵 —— 待主会话裁（断言本路不动）。〔JA1 点址 2026-09-24〕
+
 use super::parse_remote_hosts;
 use serde_json::json;
 
