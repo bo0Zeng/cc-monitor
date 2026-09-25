@@ -746,7 +746,7 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
     let req = format!(
         // 〔RK1〕过门：路径前面挂上夹具那把钥匙、`Host` 用回环字面量（门那三问见 `door.rs`）。
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\n{extra}Content-Length: {}\r\n\r\n{body}",
-        door::TEST_KEY,
+        door::door_tests::TEST_KEY,
         body.len()
     );
     c.write_all(req.as_bytes()).expect("write req");
@@ -1431,7 +1431,7 @@ fn relay_child_process_entry_point() {
 struct RelayChild {
     child: std::process::Child,
     addr: SocketAddr,
-    /// 〔RK1〕子进程的**夹具家目录**（钥匙文件在它底下，预先放好 `door::TEST_KEY`）。
+    /// 〔RK1〕子进程的**夹具家目录**（钥匙文件在它底下，预先放好 `door::door_tests::TEST_KEY`）。
     home: std::path::PathBuf,
     out: Arc<std::sync::Mutex<String>>,
     err: Arc<std::sync::Mutex<String>>,
@@ -1480,7 +1480,7 @@ fn spawn_relay_child(up: SocketAddr) -> RelayChild {
 fn spawn_relay_child_with_creds(up: SocketAddr, creds_path: &std::path::Path) -> RelayChild {
     // 〔RK1〕中转绑上口之后会去 `$HOME/.cc-monitor/relay-key` 拿钥匙（没有就铸一把落盘）——
     //   **不给夹具家目录，子进程就会去用户真实的家目录里写**。⇒ 一律给，并预先放好夹具那一把。
-    let home = door::seed_test_home(&tmpdir(&format!("child-home-{}", up.port())));
+    let home = door::door_tests::seed_test_home(&tmpdir(&format!("child-home-{}", up.port())));
     spawn_relay_child_at(up, creds_path, home)
 }
 
@@ -4092,7 +4092,7 @@ fn rk1_send(addr: SocketAddr, target: &str, headers: &str) -> String {
 fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
     let up = spawn_fake_upstream(None);
     let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
-    let k = door::TEST_KEY;
+    let k = door::door_tests::TEST_KEY;
     let wrong = format!("{}0", &k[..k.len() - 1]);
     let host = "Host: 127.0.0.1\r\n";
     for target in [
@@ -4157,7 +4157,10 @@ fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
 fn rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes() {
     let up = spawn_fake_upstream(None);
     let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
-    let target = format!("/{}/s/agentA/acctA/sid-1/v1/messages", door::TEST_KEY);
+    let target = format!(
+        "/{}/s/agentA/acctA/sid-1/v1/messages",
+        door::door_tests::TEST_KEY
+    );
     let origin = rk1_send(
         relay_addr,
         &target,
@@ -4250,7 +4253,7 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
     assert!(door::key_shape_ok(&key), "子进程铸出来的钥匙形状不对");
     assert_ne!(
         key,
-        door::TEST_KEY,
+        door::door_tests::TEST_KEY,
         "这一条要的是**现铸**的那把，不是夹具值"
     );
     let good_req = format!(

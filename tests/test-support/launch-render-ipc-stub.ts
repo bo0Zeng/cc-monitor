@@ -70,8 +70,12 @@ function renderInner(req: PayloadRenderRequest): string {
         case "export-rbind-token":
           return `export CCM_RBIND_TOKEN=${q(op.value)}; `;
         // 〔RL1〕同上口径：桩不模拟 `relay_base_url_shape_ok` 那道形状闸。
-        case "export-relay-base-url":
-          return `export ANTHROPIC_BASE_URL=${q(op.value)}; `;
+        // 〔RK1〕钥匙段是读钥匙文件的命令替换（与真命令 `payload.rs::relay_env_prefix_posix` 同形）。
+        case "export-relay-base-url": {
+          const m = /^(http:\/\/[^/]*\/)(.*)$/.exec(op.value);
+          const [origin, path] = m ? [m[1], `/${m[2]}`] : [op.value, ""];
+          return `export ANTHROPIC_BASE_URL=${q(origin)}"$(cat "$HOME/.cc-monitor/relay-key")"${q(path)}; `;
+        }
         case "unset-config-dir":
           return "unset CLAUDE_CONFIG_DIR; ";
         case "unset-nested-env":

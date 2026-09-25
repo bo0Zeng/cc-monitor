@@ -238,29 +238,8 @@ fn port_ok(tail: &str) -> bool {
     })
 }
 
-/// 判据用的那一把（形状合法、一眼认得出是测试值）。**只在测试段存在**。
-#[cfg(test)]
-pub(crate) const TEST_KEY: &str =
-    "7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57";
-
-#[cfg(test)]
-impl Key {
-    /// 判据用：[`TEST_KEY`] 那一把。
-    pub(crate) fn for_tests() -> Key {
-        Key(TEST_KEY.to_string())
-    }
-}
-
-/// 判据用：在一个**夹具家目录**里预先放好 [`TEST_KEY`]（`0600`），回这个家目录。
-/// 起真子进程中转的判据都要它 —— 不给的话子进程会去**用户真实的家目录**里铸钥匙。
-#[cfg(test)]
-pub(crate) fn seed_test_home(home: &Path) -> PathBuf {
-    let p = home.join(KEY_FILE_REL);
-    // `write_key` 自己会建 `.cc-monitor` 那一层（家目录由调用方建好）。
-    write_key(&p, &Key::for_tests()).expect("写夹具钥匙");
-    home.to_path_buf()
-}
-
+// 判据 ＋ 同层判据共用的夹具（`TEST_KEY` · `Key::for_tests` · `seed_test_home`）都住这一份测试文件里，
+// 生产文件里不留 `#[cfg(test)]` 支撑项（`structural_scan` 那条只许降的计数）。
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/door_tests.rs"]
-mod door_tests;
+pub(super) mod door_tests;

@@ -8,6 +8,25 @@
 use super::*;
 use crate::relay::http1;
 
+/// 判据用的那一把（形状合法、一眼认得出是测试值）。同层判据（`server_tests` · `host_tests` · `wire_golden`）经
+/// `super::door::door_tests::TEST_KEY` 取。
+pub(crate) const TEST_KEY: &str =
+    "7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57";
+
+impl Key {
+    /// 判据用：[`TEST_KEY`] 那一把。
+    pub(crate) fn for_tests() -> Key {
+        Key(TEST_KEY.to_string())
+    }
+}
+
+/// 判据用：在一个**夹具家目录**里预先放好 [`TEST_KEY`]（`0600`，走生产段那一份落盘），回这个家目录。
+/// 起真中转的判据都要它 —— 不给的话中转会去**用户真实的家目录**里铸钥匙。
+pub(crate) fn seed_test_home(home: &Path) -> PathBuf {
+    write_key(&home.join(KEY_FILE_REL), &Key::for_tests()).expect("写夹具钥匙");
+    home.to_path_buf()
+}
+
 /// 用一段请求头原文造 `RequestHead`（走生产段那一份解析，不手搓结构体）。
 fn head(raw: &str) -> RequestHead {
     http1::parse_request(raw.as_bytes()).unwrap_or_else(|| panic!("夹具请求头不成形：{raw:?}"))
@@ -205,16 +224,12 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
     std::fs::write(&p, "").expect("清空");
     let b = ensure_key(&p).expect("b");
     assert_ne!(a.expose(), b.expose(), "两次铸出同一把 —— 随机源是死的");
-    // 目录里只剩那一份（临时文件都挪走了）。
-    let left: Vec<_> = std::fs::read_dir(p.parent().expect("父"))
-        .expect("列目录")
-        .map(|e| e.expect("项").file_name().to_string_lossy().to_string())
-        .collect();
-    assert_eq!(
-        left,
-        vec!["relay-key".to_string()],
-        "目录里留了临时文件：{left:?}"
-    );
+    // 临时文件都挪走了（本进程那一个临时名不在盘上）。
+    let tmp = p
+        .parent()
+        .expect("父")
+        .join(format!("relay-key.{}.tmp", std::process::id()));
+    assert!(!tmp.exists(), "临时文件留在盘上了：{}", tmp.display());
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -240,4 +255,23 @@ fn a_key_never_prints_its_value() {
     let shown = format!("{:?}", Key::for_tests());
     assert_eq!(shown, "Key(…)");
     assert!(!shown.contains(TEST_KEY));
+}
+
+/// ⑦ 钥匙文件的相对路径两半同一个串：后端 [`KEY_FILE_REL`]（中转读 / 铸）↔ monitor
+/// `payload.rs::RELAY_KEY_FILE_REL`（渲染器拼 `$(cat "$HOME/…")`）。两边漂了**不会报错**：
+/// shell 读一个不在的文件 ⇒ 空段 ⇒ 每一发 403，与「钥匙不对」同形。现抠 monitor 那一行的字面量（异源：源码文本 vs 本 crate 常量）。
+#[test]
+fn the_key_file_is_the_same_path_on_both_halves() {
+    const PAYLOAD: &str = include_str!("../../../src/bridge/src/backend/control/payload.rs");
+    const ANCHOR: &str = "pub const RELAY_KEY_FILE_REL: &str = \"";
+    let hits: Vec<&str> = PAYLOAD
+        .match_indices(ANCHOR)
+        .map(|(i, _)| &PAYLOAD[i..])
+        .collect();
+    assert_eq!(hits.len(), 1, "monitor 那一行锚点应恰好一处");
+    let lit = hits[0][ANCHOR.len()..]
+        .split('"')
+        .next()
+        .expect("字面量收尾的引号");
+    assert_eq!(lit, KEY_FILE_REL, "两半的钥匙文件路径漂开了");
 }
