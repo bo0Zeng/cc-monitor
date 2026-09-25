@@ -8,7 +8,6 @@
 //
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
 // available:false 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
-import { commands } from "./ipc/commands";
 import { loadConfig, saveConfig } from "./config";
 import { isValidModelName } from "./shell-quote";
 import type { LaunchModifiers } from "./launch-plan";
@@ -28,6 +27,9 @@ import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 // 〔C4d〕上次账号那一份注解归本机常驻后端（`history-last-accounts` / `history-annotate`）。
 import { annotate, lastAccounts } from "./history-reads";
+// 〔US1〕API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只落到账号上。
+import type { ApikeyRoutingView } from "./apikey-reads";
+import { fetchApikeyRouting } from "./apikey-reads";
 import { copyText } from "./copy-table";
 
 // ---- 账号的形状：〔C4d · 第四波 4B〕从生成物改回手写，形状由后端成品 ＋ 跨语言金样定 ----
@@ -256,31 +258,8 @@ export type ApikeyEndpointState =
   /** 本机那一半：两个前置各自成不成立。 */
   | { scope: "local"; hasRow: boolean; running: boolean };
 
-/**
- * `K-H2b` `KH2B7` 的**产出方**：问后端「这几个**本机** configDir 在 apikey 表里有没有行（走不走 apikey 端点改写）」。
- *
- * # 它为什么是一条只答本机的命令（而不是账号列表上的两个字段）
- *
- * 中转是**每台机器自己的一个进程**，注入的又是回环地址（自指）⇒ 「本机这台的中转
- * 在不在跑」这个问题，本机这一侧**在结构上答不了远端那台**。往账号列表里加字段，
- * 就是让远端那些行也带上两个这一侧答不出来的值。
- * 命令面的登记（`apikey.routing`，`NaturallyAsymmetric`）写着同一条理由。
- *
- * ★〔第四拍〕**取数那一跳接上了**：走包装层 `commands.apikey_routing_for`。
- * ⚠ 经过如实记：第三拍它退回过一次 —— 注册一条命令会同时动两个钉死计数
- * （`parity_ledger.rs` 5 个数 + `tests/ipc/commands.vitest.ts` 两处 `144`），
- * 而后者当时不在写区。**那两个数是联动的**：注册了不调 ⇒ 前一个红；调了没注册 ⇒ 编不过。
- *
- * ⚠ **两个字段各自的射程，别读宽**：`routed` 说的是「apikey 表里有这一行」，
- * **不是**「那把 key 能用」；`running` 说的是「我们起过它而且没停过」，
- * **不是**「那个口上真有人听」。
- */
-export interface ApikeyRoutingView {
-  /** 传进去的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回）。 */
-  routed: string[];
-  /** 本机中转在不在跑。 */
-  running: boolean;
-}
+// 〔US1 · 第四波 4D〕`ApikeyRoutingView` 与它的取数搬进 `src/apikey-reads.ts`（经通道问那台后端 `apikey-routing`，后端出成品）。
+//   这里只留下「把那份读数落到一个账号上」（`localApikeyEndpointStateFor`）与本机那一问的薄包装。
 
 /**
  * `K-H2b` `D1 阻-1`：**本机起会话时把账号说出来** —— 三条主路共用的唯一取值口。
@@ -469,8 +448,12 @@ export function __setLocalLaunchSnapshotForTests(
 }
 
 export async function fetchLocalApikeyRouting(configDirs: string[]): Promise<ApikeyRoutingView> {
-  // 〔RM1a〕那条命令收了 origin；本函数照旧只问本机（名字里的 `Local` 就是这一格）。
-  return await commands.apikey_routing_for({ origin: LOCAL_ORIGIN, configDirs });
+  return await fetchMachineApikeyRouting(LOCAL_ORIGIN, configDirs);
+}
+
+/** 〔US1〕那台机器的那两格事实（`apikey-routing`，本机由 `<local>` 那条长连接答）；`agent` 与账号清单同一个出处（后端不猜是哪一家）。 */
+export async function fetchMachineApikeyRouting(origin: Origin, configDirs: string[]): Promise<ApikeyRoutingView> {
+  return await fetchApikeyRouting(origin, launchAgentId(), configDirs);
 }
 
 /**

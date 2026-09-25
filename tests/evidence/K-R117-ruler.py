@@ -227,7 +227,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
     #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
     ("port-forward", (NA, "—", "端口转发")),
-    ("apikey.routing", (NA, "—", "问这几个本机账号在 apikey 表里有没有行（＋本机中转在不在跑）")),
+    # 〔墓碑 · 第四波 4D US1〕`apikey.routing` 随「这几个账号在 apikey 表里有没有行」改由界面经通道直问后端 `apikey-routing`
+    #   （`src/apikey-reads.ts`，跨语言金样 `tests/__fixtures__/apikey.golden.json`）退役；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("search.history", (NA, "—", "搜索")),
     ("search.index", (NA, "—", "搜索索引（app 自己的索引，不落用户环境）")),
     ("session.activity", (NA, "—", "会话")),

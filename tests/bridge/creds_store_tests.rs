@@ -3,8 +3,8 @@
 //! 核原文：该节逐字「**每台机器上的程序写者恰好一个**」·「**路径**与那台机器上 `--relay` 进程的上游选择**同一个出处**」。
 //! 〔GP1 · 第四波〕主会话 09-25 裁那一个写者 ＝ **那台的后端**（本机 ＝ 本机常驻后端），monitor 不再写本机那一份
 //! （`调研/第四波记录/GP1.md §3`）。本族今天判 monitor 这一侧剩下的：与后端算同一份文件并显式交出去 ·
-//! 读侧三态与权限提醒 · 明文只往下传登记过的那几跳 · 写半边零调用 · 账号 id 只有一份规则 ·
-//! 写下的那一行正是起会话那一侧找的那一行（跨两半）。写路那几条性质（写的那一刻读盘 · 未知键一个不吃 ·
+//! 明文只往下传登记过的那几跳 · 写半边零调用 · 账号 id 只有一份规则。〔US1〕读侧（三态 · 权限提醒）与「写下的那一行
+//! 正是起会话那一侧找的那一行」随读者换成那台后端一起搬去后端那一份判据。写路那几条性质（写的那一刻读盘 · 未知键一个不吃 ·
 //! 出生即只给本人 · Base URL 形状错整次不写）住后端那一份写口的判据（`tests/backend/accounts/upstream/file_face_tests.rs`）。
 //! 明文出口跨三棵树逐处计数那几条守 `设计/20 §6` 第 4 行逐字「明文只有一个出口」（原文点一个，判据登记两个 —— 原文比判据窄）。
 //! ⚠ 「key 不进 `config.json`」与 TS 状态类型对拍那几条没有逐字原文。
@@ -107,168 +107,22 @@ fn brace_block(src: &str, at: usize) -> Option<&str> {
     None
 }
 
-/// 一个只属于本判据的临时目录。**名字中性**（不含任何被断言的字面）——
-/// 诊断常把路径原样印进输出，那时「输出里含某句话」会靠路径恒真。
-fn tmpdir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "ccm-cs-{}-{}-{tag}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|x| x.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&d).expect("建临时目录");
-    d
-}
-
 // 〔GP1 · 第四波〕这里原来是两条写路判据（`KS10` 交错写不吃人手编的 · `K-R1` 配 key 不吃同一行的
 // `auth_style` / `base_url`），打的是 monitor 那侧的写口。写者换成了那台的后端 ⇒ 两条原样搬去后端那一份写口：
 // `file_face_tests::gp1_a_program_write_keeps_everything_the_human_put_there` ·
 // `file_face_tests::gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style`。
 
-/// `KS11` 门①那半：那份文件被放宽了，读入口**出声**；只给本人时**不出声**（两向）。
-/// 〔GP1 · 第四波〕「写完立刻只给本人」那一半随写口去了后端（`file_face_tests::the_written_file_is_owner_only_and_no_temp_file_is_left`）；
-/// 这里用人手放在盘上的一份（裸 `fs::write` ＝ 拿编辑器写的）量读入口。
-#[cfg(unix)]
-#[test]
-fn a_widened_file_is_called_out_and_an_owner_only_one_is_not() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = tmpdir("perm");
-    let p = dir.join("apikey-credentials.json");
-    std::fs::write(&p, b"{\n  \"api_key\": \"sk-ant-HAND-PLACED\"\n}\n").expect("写夹具");
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).expect("收窄");
-    assert!(
-        read_status_at(&p).expect("读").notice.is_none(),
-        "只给本人的文件被报了权限问题 —— 那条提醒会变成噪音"
-    );
-    // ★ 非空对照：**放宽它，读入口必须出声**（否则上面那条 `is_none` 证不了什么）。
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("放宽");
-    let notice = read_status_at(&p)
-        .expect("读")
-        .notice
-        .expect("过宽了必须出声");
-    assert!(notice.contains("chmod 600"), "没说清怎么修：{notice}");
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// 三态：没配 · 配了 · 文件读坏了。**「读坏了」不许退化成「没配」**。
-///
-/// ⚠ 订正〔`K-H2c`〕：第 ② 步先前是 `write_key_at(…)`〔散文墓碑〕（monitor 那侧当年的写口）—— 而写侧今天落的是
-/// `accounts.<id>`，本函数读的是**顶层那一把** ⇒ 那样写这一步会读成「没配」。
-/// ⇒ 第 ② 步改成**人手编那一份**（裸 `fs::write` 一个顶层 `api_key`），
-/// 那恰好就是本函数今天答的那件事：`KS9` 逐字要的「脱离这个前端也能配」的那条路，
-/// 以及老用户手上那份文件。**这不是把判据改弱，是把它对准它真正守的那一格。**
-#[test]
-fn a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
-    let dir = tmpdir("three-states");
-    let p = dir.join("apikey-credentials.json");
-
-    // ① 文件不存在 ⇒ 没配、无问题、无提醒。
-    let s0 = read_status_at(&p).expect("读");
-    assert!(!s0.configured && s0.problem.is_none() && s0.notice.is_none());
-
-    // ② 配了（顶层那一把 —— 手编 / 老文件那一条路）⇒ 只回掩码。
-    std::fs::write(&p, b"{\n  \"api_key\": \"sk-ant-0123456789ABCDEF\"\n}\n").expect("写夹具");
-    let s1 = read_status_at(&p).expect("读");
-    assert!(s1.configured);
-    assert!(!s1.masked.contains("0123456789"), "回了明文：{}", s1.masked);
-    assert!(s1.masked.contains('*'), "掩码里没有遮蔽符：{}", s1.masked);
-
-    // ③ 人手编打错一个逗号 ⇒ **出声**，不是「没配」。
-    std::fs::write(&p, b"{\"api_key\": }").expect("改坏");
-    let s2 = read_status_at(&p).expect("读");
-    assert!(!s2.configured);
-    assert!(
-        s2.problem.expect("读坏了必须有说法").contains("手编"),
-        "没告诉人这是一份手编的文件"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
+// 〔US1 · 第四波 4D〕读侧那两条（`KS11` 权限放宽出声 · 三态「读坏了不许退化成没配」）打的是 monitor 那一份状态读者
+//   （`creds_store::read_status_at`〔散文墓碑〕）。读者换成那台的后端（`apikey-read`）⇒ 两条原样搬去后端那一份读口：
+//   `file_face_tests::us1_a_widened_file_is_called_out_and_an_owner_only_one_is_not` ·
+//   `file_face_tests::us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured`。
 
 // ============================================================ `K-H2c` `KH2C1` / `KH2C3`
 
-/// 〔GP1 · 第四波〕**写侧今天是两半**：monitor 推账号 id（`apikey_remote::send_key` 装进 `args.account` 的那一个，
-/// 全仓唯一那份规则 `history::apikey_account_id_of_dir`）· 那台的后端按那个 id 落盘（`file_face::write_at`：
-/// `store::merge_account_key` ＋ `store::to_pretty_json`）。这里照那两半造文件 —— 期望的不是字面量，是**起会话那一侧**读出来的。
-fn written_by_the_write_side(p: &std::path::Path, config_dir: &str, key: &str) {
-    let id = crate::history::apikey_account_id_of_dir(config_dir)
-        .expect("夹具的 configDir 说得出账号 id");
-    let current = std::fs::read_to_string(p)
-        .ok()
-        .map(|t| store::parse(&t).expect("夹具文件解析"))
-        .unwrap_or_default();
-    let doc = store::merge_account_key(&current, &id, &creds_core::SecretKey::new(key));
-    std::fs::write(p, store::to_pretty_json(&doc)).expect("写夹具");
-}
-
-/// ★★★ **`KH2C1` 的行为那一半，而且它是跨两半的**：
-/// 写侧落下的那一行，**正是起会话那一侧会去找的那一行**。
-///
-/// # 它为什么不是「写完能读回来」
-///
-/// 「读回来」用的是本文件自己的读法 ⇒ 两边同错就同绿（本仓判过的那族）。
-/// 这里**换一侧的取值口来读**：`history::apikey_rows_at` 是起会话那一侧
-/// **生产上真正用的那一个**（`PRODUCTION_INJECT_FACTS.rows` 指的就是它的无参半），
-/// 判断也用那一侧的 `history::apikey_routed_subset`（`KH2B7` 与徽章共用的那一条）。
-/// ⇒ 绿的含义是「**界面写下的那一行，起会话那一刻找得到**」，不是「我写了我读得到」。
-///
-/// # ⚠ 它买不到什么
-///
-/// 买不到「点了保存按钮之后」那一跳（那是 IPC 与 UI 那两堵墙，由
-/// `the_ui_hands_the_write_command_a_config_dir_not_a_name` 与 `PLAINTEXT_HOPS` 那条分管），
-/// 也买不到「那一发请求真的到了上游」（那是 `KH2C2`，住 `src/backend`）。
-#[test]
-fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
-    let dir = tmpdir("same-source");
-    let p = dir.join("apikey-credentials.json");
-    // ⚠ 目录名取中性名：断言里用的是**它派生出来的那个 id**，
-    //   而 `brief` 12 逐字点名过「断言用的子串取自夹具的名字」那一形。
-    let one = "/h/.claude-alt/acct-one";
-    let two = "/h/.claude-alt/acct-two";
-
-    // 非空对照**排最前**：还没写的时候，起会话那一侧说「这个号没有行」。
-    assert!(
-        crate::history::apikey_routed_subset(
-            &[one.to_string()],
-            &crate::history::apikey_rows_at(&p),
-            "claude-code",
-        )
-        .is_empty(),
-        "文件还不存在就说这个号有行了 —— 这把尺子恒真，下面全是空真"
-    );
-
-    written_by_the_write_side(&p, one, "KEY-FOR-ONE");
-
-    // ★ 正题：用**起会话那一侧**的取值口 + 它的判断读这份文件。
-    let rows = crate::history::apikey_rows_at(&p);
-    assert_eq!(
-        crate::history::apikey_routed_subset(&[one.to_string()], &rows, "claude-code"),
-        vec![one.to_string()],
-        "界面写下的那一行，起会话那一侧找不到 —— 「设置里说走 apikey 端点改写、起会话时没走」\n\
-             正是 `apikey_account_id_of_dir` 头注逐字点名的那一形。表里现在是：{rows:?}"
-    );
-    // 只配了一个号 ⇒ 另一个号**不许**被顺带配上（「拿 A 的 key 发 B 的请求」的反面）。
-    assert!(
-        crate::history::apikey_routed_subset(&[two.to_string()], &rows, "claude-code").is_empty(),
-        "只配了一个号，另一个号也说在 apikey 表里有行了：{rows:?}"
-    );
-    // ⚠ 而且它落的**不是** `default` 那一行 —— 那一行谁的会话都命中得了。
-    assert!(
-        !rows.iter().any(|r| r == store::LEGACY_ACCOUNT_ID),
-        "写侧仍然落在 `{}` 那一行上：{rows:?}",
-        store::LEGACY_ACCOUNT_ID
-    );
-
-    // 盘上那一格逐字在 `accounts.<末段名>` 底下（形状那一维，与上面的行为那一维分开）。
-    let back: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-    assert_eq!(
-        back[store::ACCOUNTS_FIELD]["acct-one"][store::KEY_FIELD],
-        "KEY-FOR-ONE"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
+// 〔US1 · 第四波 4D〕「写侧落下的那一行，正是起会话那一侧会去找的那一行」那条跨两半的判据
+//   （`what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for`〔散文墓碑〕）挪去后端：起会话那一侧找行的读者
+//   今天是那台后端的 `file_face::rows_at`（`launch-endpoint` · `apikey-routing` 读同一份），与写口同一个模块 ⇒
+//   `file_face_tests::us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses`（写口真写 → 成品真答 `/s/`）。
 
 /// ★★ **`KH2C1` 的机检那一半**：写侧**没有第二份**「取末段名」的实现。
 ///
@@ -590,95 +444,9 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
     );
 }
 
-/// ★ 手写 TS 类型与本结构体**双向**对拍（`KS6` 前端那一半的地基）。
-///
-/// # 它比 `SkillView` 那条现成先例强在哪（如实写，不是贬低那条）
-///
-/// `skill_host::the_ts_view_type_matches_this_struct` 的字段人群是一张**手写清单**
-/// （`for field in ["id", "label", …]`），而它的注释写着「人群从 Rust 这一侧派生」——
-/// **那句话与它的实现对不上**：往 Rust 结构体加一个字段，那条判据不会红。
-/// ⇒ 这里两边都**真派生**，而且**条数相等**：Rust 多一个字段 ⇒ 红；TS 多一个 ⇒ 也红。
-/// 后者是承重的：TS 侧偷偷多一个 `plaintext` 字段，正是 `KS6` 要挡的那一形。
-#[test]
-fn the_ts_status_type_matches_this_struct() {
-    // Rust 侧：从本文件的**生产段**里切出结构体体，派生字段名。
-    let rust_src = guard_core::production_code(include_str!("../../src/bridge/src/creds_store.rs"));
-    // ⚠ 用 `find_pinned` 而不是裸 `.find("…")`：本仓 `needle_anchor_registry` 立着一条递减棘轮
-    //   （语料变量上的裸匹配「与 `contains` 同族同险：needle 被撑大时照样绿」）。
-    //   它额外买两样：**恰好一处** + 两侧有边界。〔08-27 我第一版写裸 `.find` 撞红过它。〕
-    let at = guard_core::find_pinned(&rust_src, "pub struct ApikeyCredentialsStatus {")
-        .expect("切不出结构体 —— 本条按红处理，不是绿");
-    let body = brace_block(&rust_src, at).expect("结构体没闭合 —— 按红处理");
-    let rust_fields: Vec<String> = body
-        .lines()
-        .filter_map(|l| l.trim().strip_suffix(','))
-        .filter_map(|l| l.split_once(':'))
-        .map(|(n, _)| n.trim().trim_start_matches("pub ").to_string())
-        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
-        .collect();
-    assert!(
-        rust_fields.len() >= 4,
-        "只派生出 {} 个 Rust 字段 —— 抽取器坏了，本条会零命中地绿：{rust_fields:?}",
-        rust_fields.len()
-    );
-
-    // TS 侧：从 `src/ipc/commands.ts` 里切出接口体，派生字段名。
-    let ts = std::fs::read_to_string(crate::guard_support::repo_src_root().join("ipc/commands.ts"))
-        .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
-    let tat = guard_core::find_pinned(&ts, "export interface ApikeyCredentialsStatus {")
-        .expect("TS 侧找不到那个接口 —— 它被改名或删了");
-    let tbody = brace_block(&ts, tat).expect("接口没闭合 —— 按红处理");
-    assert!(
-        tbody.len() > 120,
-        "切出来的 TS 接口体只有 {} 字节 —— 切歪了，本条会零命中地绿",
-        tbody.len()
-    );
-    let ts_fields: Vec<String> = tbody
-        .lines()
-        .filter_map(|l| l.trim().strip_suffix(';'))
-        .filter_map(|l| l.split_once(':'))
-        .map(|(n, _)| n.trim().to_string())
-        .filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
-        .collect();
-
-    // ★ **双向**：两边各自缺什么都点名，再加一条条数相等。
-    for f in &rust_fields {
-        assert!(
-            ts_fields.contains(f),
-            "TS 的 `ApikeyCredentialsStatus` 缺字段 `{f}` —— 它是手写类型，没有编译器管：\nRust={rust_fields:?}\nTS={ts_fields:?}"
-        );
-    }
-    for f in &ts_fields {
-        assert!(
-            rust_fields.contains(f),
-            "TS 的 `ApikeyCredentialsStatus` 多了字段 `{f}`，Rust 侧没有它。\n\
-                 ⚠ 这一格是承重的：TS 侧偷偷多一个装明文的字段，正是 `KS6` 要挡的那一形。\nRust={rust_fields:?}\nTS={ts_fields:?}"
-        );
-    }
-    assert_eq!(rust_fields.len(), ts_fields.len(), "两侧字段条数不等");
-}
-
-/// `KS6` 的后端那一半：**回帧里装不下明文**。
-#[test]
-fn the_status_type_cannot_carry_the_plaintext() {
-    let s = ApikeyCredentialsStatus {
-        configured: true,
-        masked: creds_core::SecretKey::new("sk-ant-PLAINTEXT-NEVER-ECHOED").masked(),
-        path: "/somewhere/apikey-credentials.json".to_string(),
-        notice: None,
-        problem: None,
-    };
-    let json = serde_json::to_string(&s).expect("序列化");
-    assert!(
-        !json.contains("sk-ant-PLAINTEXT-NEVER-ECHOED"),
-        "回给前端的帧里出现了明文：{json}"
-    );
-    // 非空对照：它确实带了掩码（不是把整条抹成空串就算过）。
-    assert!(json.contains("sk-a"), "掩码里连前缀都没有：{json}");
-    assert!(json.contains('*'), "掩码里没有遮蔽符：{json}");
-    // `Debug` 也不许漏（错误路径最爱 `{:?}`）。
-    assert!(!format!("{s:?}").contains("sk-ant-PLAINTEXT-NEVER-ECHOED"));
-}
+// 〔US1 · 第四波 4D〕`ApikeyCredentialsStatus` 那两条（TS 手写类型双向对拍 · 类型装不下明文）随结构体一起退役：
+//   状态由那台后端出成品（`apikey-read`），「装不下明文」由后端应答的形状（`file_face_tests` · 跨语言金样
+//   `tests/__fixtures__/apikey.golden.json` 的零明文断言）与 TS 解码器的严格收（`tests/apikey-reads.vitest.ts`：多一格就抛）钉着。
 
 // ================================================================ `K-H2` `KH7`
 

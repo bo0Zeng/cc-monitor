@@ -278,6 +278,9 @@ mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节�
 /// 本层叫不出它的名字（`upstream_selection_guard` ㈢ 零命中）。
 pub(crate) use listen::{host, run};
 
+/// 〔US1 · 4D〕「这台机器上我们的中转在不在听」—— 上游选择出成品时问它（`launch-endpoint` · `apikey-routing`）。
+/// 与 `relay-status` 同一个判准；只收端口、只回布尔。
+pub(crate) use machine::our_relay_listening;
 /// 〔RM1a · 第四波〕**第二个口**：帧面 `relay-status` / `relay-ensure` 的两个处理器（这台机器上的中转进程在不在 · 起一个）。
 /// 只交出端口这一个入参，一个上游选择的名字都不经过它。对外口的全集由 `layering_guard` 那张登记表两向钉着。
 pub(crate) use machine::{answer_ensure, answer_status};

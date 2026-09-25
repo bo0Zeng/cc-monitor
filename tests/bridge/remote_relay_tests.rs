@@ -15,7 +15,6 @@
 //! - 触发点：本拍没有自动触发（模块头注），那一格交主会话。
 
 use super::*;
-use crate::history::{override_inject_facts, InjectFactSources};
 
 fn own_production() -> String {
     guard_core::production_code(include_str!("../../src/bridge/src/remote_relay.rs"))
@@ -43,34 +42,13 @@ fn the_local_arm_never_starts_a_second_relay() {
     );
 }
 
+/// 〔US1 · 4D〕本机「中转在不在」**不再由 monitor 问**（本机那一个住在本机后端里，它在 `launch-endpoint` 的成品里答）：
+/// `running_on` 本机那一臂与 `ensure_on` 一样当场拒、一帧都不发。期望手写（那句拒绝）。
 #[test]
-fn the_local_running_fact_comes_through_the_seam() {
-    fn no_rows() -> Vec<String> {
-        Vec::new()
-    }
-    fn up() -> bool {
-        true
-    }
-    fn down() -> bool {
-        false
-    }
-    fn off() -> bool {
-        false
-    }
-    for (running, want) in [(up as fn() -> bool, true), (down as fn() -> bool, false)] {
-        let _g = override_inject_facts(InjectFactSources {
-            rows: no_rows,
-            running,
-            windows: off,
-            all_sessions: off,
-        });
-        let got = tauri::async_runtime::block_on(running_on(&Origin::local()))
-            .expect("本机那一臂不该失败");
-        assert_eq!(
-            got, want,
-            "本机的「在不在」没走那条缝（替身答 {want}，实得 {got}）"
-        );
-    }
+fn the_local_arm_of_running_on_refuses_like_ensure_on() {
+    let e =
+        tauri::async_runtime::block_on(running_on(&Origin::local())).expect_err("本机那一臂答了");
+    assert_eq!(e, *LOCAL_HAS_ITS_OWN);
 }
 
 #[test]

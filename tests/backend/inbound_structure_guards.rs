@@ -191,6 +191,9 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔RM1a · 第四波〕上游选择那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
                 | "apikey-key-set"
                 | "apikey-read"
+                // 〔US1 · 第四波 4D〕上游选择出的两份成品：读一份凭据文件 ＋ 装表 ＋ 回环上探一次中转（每发有读期限），同步阻塞。
+                | "apikey-routing"
+                | "launch-endpoint"
                 // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程，同步阻塞。
                 | "relay-ensure"
                 | "relay-status"
@@ -304,6 +307,8 @@ fn every_registered_command_declares_its_run_kind() {
         "panorama",
         "apikey-key-set",
         "apikey-read",
+        "apikey-routing",  // 〔US1〕
+        "launch-endpoint", // 〔US1〕
         "relay-ensure",
         "relay-status",
         "footprint-probe",
