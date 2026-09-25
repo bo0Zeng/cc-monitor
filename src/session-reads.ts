@@ -23,7 +23,7 @@
  * 盖的是「那台后端扫一遍会话 ＋ 回程」，不含握手（长连接早就连着）。
  */
 import { chan, ChanError, type CallError } from "./ipc/chan";
-import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";
 
@@ -158,23 +158,12 @@ export function decodeIndex(v: unknown): { from: number; end: number; rows: Skel
 
 // ─── 失败怎么说（唯一住址）───
 
-/** 对端「不行」的那份体（后端 `{code, message}`）⇒ `(code, message)`；解不出 ⇒ `null`。 */
-function refusal(body: Uint8Array): { code: string; message: string } | null {
-  try {
-    const v = readJson(body);
-    if (isObj(v) && isStr(v.code) && isStr(v.message)) return { code: v.code, message: v.message };
-  } catch {
-    // 体不是 JSON ⇒ 当成没说原因
-  }
-  return null;
-}
-
 /** 通道的三层错误 ⇒ 大纲的种类。**穷尽**、不看文字。 */
 export function failureOf(e: CallError): OutlineFailure {
   switch (e.layer) {
     case "peer":
       if (e.why === "unsupported") return "oldBackend";
-      return refusal(e.body)?.code === "too_large" ? "truncated" : "transport";
+      return refusalOf(e.body)?.code === "too_large" ? "truncated" : "transport";
     case "hop":
     case "ours":
       return "transport";
@@ -182,25 +171,12 @@ export function failureOf(e: CallError): OutlineFailure {
 }
 
 /**
- * 一次失败 ⇒ 给人看的那句话。`oldBackendSays` 是各条查询自己那句「后端版本旧」的话（它们说的功能不同）。
+ * 一次失败 ⇒ 给人看的那句话。按层说的那一份住 `ipc/chan-caller.ts::saidOf`（各调用方共用）；
+ * 本文件只加一格：应答形状不对时，哪一格不对进日志（给人看的那句不带内部名）。
  */
 export function reasonOf(e: unknown, oldBackendSays: string): string {
   if (e instanceof ShapeError) console.warn(`[session-reads] ${e.detail}`);
-  if (!(e instanceof ChanError)) return e instanceof Error ? e.message : String(e);
-  const err = e.error;
-  switch (err.layer) {
-    case "peer": {
-      if (err.why === "unsupported") return oldBackendSays;
-      const r = refusal(err.body);
-      return r ? `那台机器的后端没有答出来（${r.code}）：${r.message}` : "那台机器的后端没有答出来";
-    }
-    case "hop":
-      return err.why === "Overrun"
-        ? "等那台机器的后端答复超时了，这次先不显示"
-        : "现在够不着那台机器的后端（连接不在或断了），这次先不显示";
-    case "ours":
-      return err.why === "Cancelled" ? "这次查询已撤回" : "查询没有完成（本程序内部出错）";
-  }
+  return saidOf(e, oldBackendSays);
 }
 
 // ─── 三问 ───

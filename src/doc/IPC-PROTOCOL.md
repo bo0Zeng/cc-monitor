@@ -1811,12 +1811,12 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 
 ```text
 → {"id":"p1","cmd":"plugins-marketplaces","args":{}}
-← {"kind":"reply","id":"p1","ok":true,"data":{"lines":["{\"entries\":[{\"id\":\"mk\",\"declared_plugins\":276,…}],\"file_absent\":false}"]}}
+← {"kind":"reply","id":"p1","ok":true,"data":{"entries":[{"id":"mk","declared_plugins":276,…}],"file_absent":false}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `lines` | ← | **恰一行**：整份 survey `{entries, file_absent}`，每条 entry 六个字段 `id` / `source` / `install_location` / `last_updated` / `declared_plugins` / `declared_error`（读不出就是 `null`，不编默认值） |
+| `entries` / `file_absent` | ← | 〔C4b〕**成品**：整份 survey 就是 `data`（此前裹成「恰一行」的 `lines`）。每条 entry 六个字段 `id` / `source` / `install_location` / `last_updated` / `declared_plugins` / `declared_error`（读不出就是 `null`，不编默认值；界面按形状收，多一格 / 少一格都当契约对不上） |
 
 - 读的是 `<home>/plugins/known_marketplaces.json` 与 `<各落点>/.claude-plugin/marketplace.json`；它回答「有哪些 marketplace、从哪来、**声明**了几个插件」，**不是**「装了 / 启用了哪些」。
 - 三条出口分开：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；某一条数不出 ⇒ 那一条 `declared_plugins: null` ＋ `declared_error` 理由，整张表照出。

@@ -2428,12 +2428,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔C4a · 第四波〕`chan.call`（TS，主界面）恰好 2 处：`accounts.ts::fetchSessionAccounts`（`accounts-sessions`）·
     //    `views/history-search.ts` 逐台那一问（`history-search`）。**X6 的 TS 人群第一次非空。**
     // 〔C4b · 第四波 4B〕2 → 5：`session-reads.ts` 的三问（`history-index` / `history-user-inputs` / `history-find`，
-    //    会话读面那三条从 monitor 的 Tauri 命令改走通道；每处显式给期限）。
+    //    会话读面那三条从 monitor 的 Tauri 命令改走通道；每处显式给期限）。5 → 6：`settings/plugins-section.ts::fetchSurvey`
+    //    （`plugins-marketplaces`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 5usize),
+            ("chan.call", 6usize),
             ("subscribe", 1usize)
         ]
         .into_iter()

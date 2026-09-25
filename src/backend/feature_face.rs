@@ -18,8 +18,9 @@
 //!
 //! - 住顶层、不住 `observe/`：`inbound.rs` 不许出现 `observe::`；本文件只做换壳，
 //!   读的本体在 `observe/`（那一层今天就是 Claude 专属的）。
-//! - 应答一律**按行**：`{"lines": [...]}` —— monitor 侧用既有的 `frame_query::lines` 收，
-//!   **不新增发送端**。整份超过 [`crate::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
+//! - `tasks-list` 的应答**按行**：`{"lines": [...]}` —— monitor 侧用既有的 `frame_query::lines` 收，
+//!   **不新增发送端**。〔C4b〕`plugins-marketplaces` 的应答是**成品**（整份 survey），界面经通道直接问。
+//!   整份超过 [`crate::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
 
 use serde_json::{json, Value};
@@ -42,15 +43,27 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 .ok_or(("bad_args", "缺 `sid`（要一个字符串）".to_string()))?;
             lines(crate::observe::tasks_query::session_task_lines(home, sid)?)
         }
-        // 应答恰一行：整份 survey（形状同 monitor 的 `MarketplaceSurvey`）。
+        // 〔C4b · 第四波 4B〕应答**就是成品**：整份 survey `{entries, file_absent}`（此前是「恰一行」的 `lines`，
+        //   monitor 那一侧再核一遍「恰一行 ＋ 拒收未知字段 ＋ 必填」—— 那一份解释删了，界面经通道直接问、按形状收，
+        //   `settings/plugins-section.ts::decodeSurvey`）。
         // 三条出口：文件不在 ⇒ `file_absent: true`（诚实的空）；读 / 解析失败 ⇒ `failed`；
         // 某一条数不出 ⇒ 那一条 `declared_plugins: null` ＋ 理由（整张表照出）。
         "plugins-marketplaces" => {
             let survey = crate::observe::plugins_query::survey_marketplaces_in(home)
                 .map_err(|e| ("failed", e))?;
-            let line = serde_json::to_string(&survey)
+            let v = serde_json::to_value(&survey)
                 .map_err(|e| ("failed", format!("序列化 marketplace 清单失败：{e}")))?;
-            lines(vec![line])
+            let size = v.to_string().len();
+            if size > crate::read_face::LINES_CAP_BYTES {
+                return Err((
+                    "too_large",
+                    format!(
+                        "结果超过 {} 字节上限，没有返回（{size} 字节）",
+                        crate::read_face::LINES_CAP_BYTES
+                    ),
+                ));
+            }
+            Ok(v)
         }
         other => Err(("bad_args", format!("本族不认识 `{other}`"))),
     }

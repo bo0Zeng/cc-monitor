@@ -77,7 +77,8 @@ mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（�
 mod parser;
 mod paths;
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
-mod plugins; // P8a：Claude Code marketplace 面的只读枚举（**不声称安装/启用**，见模块头注）
+// 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
+//   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/settings/plugins-section.ts::fetchSurvey`）。
 mod port_forward;
 mod profile_installer;
 mod pubkey;
@@ -1402,7 +1403,6 @@ pub fn run() {
             skill_host::list_skills,
             skill_host::read_skill_file,
             skill_host::write_skill_file,
-            plugins::list_plugin_marketplaces,
             cc_bus_deploy::deploy_local_cc_bus,
             cc_bus_deploy::cc_bus_install_state,
             panorama::panorama_index,

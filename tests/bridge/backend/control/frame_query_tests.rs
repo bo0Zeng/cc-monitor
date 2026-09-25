@@ -30,19 +30,29 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
     v
 }
 
-/// 后端 `inbound.rs` 生产段里把活交给 `read_face::answer` 的帧命令名（**从后端源码数**）。
-fn backend_read_face_commands() -> Vec<String> {
+/// 后端 `inbound.rs` 生产段里的每一块 `CommandSpec`：`(帧命令名, 那一块的原文)`（**从后端源码数**）。
+/// 〔C4b〕抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
+fn backend_command_blocks() -> Vec<(String, String)> {
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/inbound.rs");
     let src = std::fs::read_to_string(&p).expect("读后端 inbound.rs");
     let prod = guard_core::production_code(&src);
-    let got: Vec<String> = prod
+    let blocks: Vec<(String, String)> = prod
         .split("CommandSpec {")
         .skip(1)
-        .filter(|blk| blk.contains("read_face::answer"))
         .filter_map(|blk| {
             let at = blk.find("name: \"")? + "name: \"".len();
-            Some(blk[at..].split('"').next()?.to_string())
+            Some((blk[at..].split('"').next()?.to_string(), blk.to_string()))
         })
+        .collect();
+    blocks
+}
+
+/// 后端 `inbound.rs` 生产段里把活交给 `read_face::answer` 的帧命令名（**从后端源码数**）。
+fn backend_read_face_commands() -> Vec<String> {
+    let got: Vec<String> = backend_command_blocks()
+        .into_iter()
+        .filter(|(_, blk)| blk.contains("read_face::answer"))
+        .map(|(name, _)| name)
         .collect();
     assert!(!got.is_empty(), "从后端源码一条都没数到 —— 抽取坏了");
     sorted(got)
@@ -179,6 +189,24 @@ const CHANNELED: &[(&str, &str)] = &[
         "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search-core`），monitor 那份核头尾删了",
     ),
 ];
+
+/// 〔C4b · 第四波 4B〕**帧面只读查询那一族之外**、同样改成「前端经通道直接问、后端出成品」的帧命令 ——
+/// `(帧命令, 为什么迁、迁了之后解释住哪)`。它们不在 [`MOVED`] 里（不是 `C1` 那一族），但前端 `chan.call` 的
+/// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
+/// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
+const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[(
+    "plugins-marketplaces",
+    "`feature_face`（RM1b）那一族：后端应答就是整份 survey（成品），monitor 那条命令（`list_plugin_marketplaces`）\
+     只在核「恰一行 ＋ 严格形状」—— 核验搬到唯一的消费者 `settings/plugins-section.ts::decodeSurvey`，命令与 `plugins.rs` 删了",
+)];
+
+/// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
+fn backend_registered_commands() -> std::collections::BTreeSet<String> {
+    backend_command_blocks()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
+}
 
 /// 还留在 monitor 侧发送的那几条 —— `(帧命令, 为什么今天不迁)`。**不是豁免清单**：
 /// 下面那条判据要求它们**真的**还有 monitor 侧发送点（没了 ⇒ 这一行的理由已经馊了）。
@@ -327,9 +355,34 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     );
     assert_eq!(
         ops.iter().cloned().collect::<Vec<_>>(),
-        sorted(CHANNELED.iter().map(|(c, _)| c.to_string())),
-        "前端经通道说的操作名 != 登记的「已迁」"
+        sorted(
+            CHANNELED
+                .iter()
+                .chain(CHANNELED_ELSEWHERE)
+                .map(|(c, _)| c.to_string())
+        ),
+        "前端经通道说的操作名 != 登记的「已迁」（`CHANNELED` ⊔ `CHANNELED_ELSEWHERE`）"
     );
+    // 〔C4b〕那一族之外的已迁：真是后端的帧命令（异源）· 不在 `MOVED` 里 · monitor 生产段零字面量。
+    let registered = backend_registered_commands();
+    assert!(
+        registered.len() > 20,
+        "从后端 `inbound.rs` 只数到 {} 条帧命令 —— 抽取坏了",
+        registered.len()
+    );
+    for (op, why) in CHANNELED_ELSEWHERE {
+        assert!(!why.trim().is_empty(), "`{op}` 没写理由");
+        assert!(registered.contains(*op), "`{op}` 不是后端登记的帧命令");
+        assert!(
+            !MOVED.iter().any(|(_, c)| c == op),
+            "`{op}` 是 `C1` 那一族的，该登记在 `CHANNELED`"
+        );
+        assert_eq!(
+            monitor_literal_count(op),
+            0,
+            "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
+        );
+    }
     let mut still_sent_by_monitor: Vec<String> = Vec::new();
     for (op, _) in MOVED.iter().map(|(_, c)| (*c, ())) {
         // `MOVED` 那一行自己就是一次字面量出现。
