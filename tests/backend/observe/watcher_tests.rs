@@ -3322,7 +3322,29 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(dir.join("projects"), false, false);
     initial_session_scan(&sessions, &mut state, &mut sink);
-    let got = kinds(&mut rx);
+    let mut frames = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        frames.push(f);
+    }
+    // 〔U4b · G3〕顺带钉容器那一格的**生产接线**：两个 `sleep` 都摘了 `TMUX_PANE`、环境读得到
+    //   ⇒ 帧上 `container` == `none`（不是缺席）。结局 → 容器那张表另有一条逐格判；这一格判的是
+    //   `process_session_added` 真把打标的结局接到了帧上。
+    let containers: Vec<Option<crate::wire::SessionContainer>> = frames
+        .iter()
+        .filter_map(|f| match f {
+            Frame::SessionAdded { container, .. } => Some(*container),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        containers,
+        vec![Some(crate::wire::SessionContainer::None); 2],
+        "没有 TMUX_PANE、环境读得到的会话，帧上要说 `none`"
+    );
+    let got: Vec<String> = frames
+        .iter()
+        .map(|f| f.loss_identity().kind.to_string())
+        .collect();
     for k in kids.iter_mut() {
         let _ = k.kill();
         let _ = k.wait();

@@ -3335,3 +3335,69 @@ fn the_local_reaper_retires_only_idle_sids_after_the_debounce() {
         assert!(local_idle_retirements(&mut st2, "", Some("zero_sessions"), &empty).is_empty());
     }
 }
+
+/// 〔U4b · 第四波 · G3〕本机那条流上的 `session_added` 把容器事实交给 `session_facts`（与远端流同一个口）：
+/// 真走 `absorb_local_frame`，读账本（本测试专用的 sid，不与别的测试相撞）。判不了 ⇒ 账本里忘掉它。
+#[test]
+fn the_local_stream_hands_session_added_containers_to_session_facts() {
+    let frame = |c: &str| {
+        crate::ssh_source::parse_frame(&format!(
+            r#"{{"kind":"session_added","sid":"u4b-absorb-1"{c}}}"#
+        ))
+        .expect("session_added 要解得出")
+    };
+    let mine = || -> Vec<(String, crate::session_facts::Container)> {
+        crate::session_facts::containers_snapshot()
+            .into_iter()
+            .filter(|(s, _)| s == "u4b-absorb-1")
+            .collect()
+    };
+    absorb_local_frame(frame(r#","container":"tmux""#), None);
+    assert_eq!(
+        mine(),
+        vec![(
+            "u4b-absorb-1".to_string(),
+            crate::session_facts::Container::Tmux
+        )]
+    );
+    absorb_local_frame(frame(""), None);
+    assert_eq!(mine(), vec![], "判不了 ⇒ 忘掉，旧值不许粘着");
+}
+
+/// 〔U4b · 第四波 · G2〕**接线判据**：本机 removed 臂真的走 `classify_removed`、且只查本机那一格；
+/// 两个 emitter 的 removed 臂都忘容器；出口装在 setup 里、`LocalIdleGone` 那一臂真落 `clear_idle` ＋ `SESSION_ENDED`。
+///
+/// 那几段住在 `lib.rs` 的 setup 闭包里（拿着 `AppHandle`，单测进不去）⇒ 行为判据够不着，只能读源码数调用点。
+/// 两向：`classify_removed(` 恰 2 处（本机 ＋ 远端）· `find_local_tmux_origin_for_sid(` 恰 1 处 ·
+/// `find_tmux_origin_for_sid(` 恰 1 处（远端那一臂；本机若退回它就是跨 origin 猜）· `session_facts::forget(` 恰 2 处。
+#[test]
+fn the_local_emitter_classifies_removals_against_the_local_slot_only() {
+    let lib = guard_core::production_code(include_str!("../../../../src/bridge/src/lib.rs"));
+    let n = |needle: &str| lib.matches(needle).count();
+    assert_eq!(n("ssh_source::classify_removed("), 2, "本机 ＋ 远端各一处");
+    assert_eq!(
+        n("ssh_source::find_local_tmux_origin_for_sid("),
+        1,
+        "本机那一臂只查 <local>"
+    );
+    assert_eq!(
+        n("ssh_source::find_tmux_origin_for_sid("),
+        1,
+        "跨 origin 的查法只许远端那一臂用"
+    );
+    assert_eq!(
+        n("crate::session_facts::forget("),
+        2,
+        "两个 removed 臂都忘容器"
+    );
+    let sink_at = lib
+        .find("crate::session_facts::Fact::LocalIdleGone { sid } =>")
+        .expect("出口里没有本机收割那一臂");
+    let arm = &lib[sink_at..];
+    let arm = &arm[..arm.find("});").expect("出口闭包没收尾")];
+    assert!(
+        arm.contains("ssh_source::clear_idle(&sid)")
+            && arm.contains("bridge::events::SESSION_ENDED"),
+        "本机收割那一臂要清 idle 账本并发已结束：\n{arm}"
+    );
+}
