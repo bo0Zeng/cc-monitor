@@ -480,6 +480,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/agents/fake_tests.rs",
     "tests/backend/agents_tests.rs",
     "tests/backend/asset_catalog_tests.rs", // 〔AS2〕
+    "tests/backend/asset_sync_tests.rs",    // 〔AS2〕
     "tests/backend/common/fs_tests.rs",
     "tests/backend/control/capture_pane_tests.rs",
     "tests/backend/control/ccm/plan_tests.rs",

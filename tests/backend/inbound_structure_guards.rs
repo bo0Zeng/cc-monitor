@@ -238,6 +238,8 @@ fn every_registered_command_declares_its_run_kind() {
         "link-open",
         "ping",
         "resolve",
+        // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
+        "assets-sync",
         "bus-list",
         "bus-send",
         "bus-kill",
