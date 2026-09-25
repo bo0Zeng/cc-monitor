@@ -94,30 +94,6 @@ pub struct FsProbe<'a> {
     pub list: &'a dyn Fn(&Path) -> Option<Vec<String>>,
 }
 
-/// 把申报路径解析成本机可查的形态。
-///
-/// **「本机还是远端」从 `dest` 推导，不新增字段**（`TouchedFile` 的文档写了理由）。
-/// `~/.claude/...` 走 [`crate::hooks_diag::claude_config_dir`]——那条 `CLAUDE_CONFIG_DIR`
-/// 规则只准解释一次。
-pub fn resolve_touched_path(
-    declared: &str,
-    dest: &ToolDestination,
-    host: HostScope,
-    home: &Path,
-    cfg_dir_env: Option<&Path>,
-    is_dir: &dyn Fn(&Path) -> bool,
-) -> Result<PathResolution, String> {
-    resolve_touched_path_from(
-        Vantage::Monitor,
-        declared,
-        dest,
-        host,
-        home,
-        cfg_dir_env,
-        is_dir,
-    )
-}
-
 /// 〔RM1a · 第四波〕**从哪台机器上看**这张表 —— 「足迹」per-origin 那一维。
 ///
 /// | 取值 | `home` / `cfg_dir_env` / 探针是谁的 | 远端落点（`HostScope::Remote`）| monitor 那台的落点（`HostScope::Client`）|
@@ -135,8 +111,14 @@ pub enum Vantage {
     Remote,
 }
 
-/// [`resolve_touched_path`] 带视角的那一版。
-pub fn resolve_touched_path_from(
+/// 把申报路径解析成本机可查的形态。
+///
+/// **「本机还是远端」从 `dest` 推导，不新增字段**（`TouchedFile` 的文档写了理由）。
+/// `~/.claude/...` 走 [`crate::hooks_diag::claude_config_dir`]——那条 `CLAUDE_CONFIG_DIR`
+/// 规则只准解释一次。
+///
+/// 〔RM1a〕第一个参数是视角（[`Vantage`]）：本机视角与先前逐字同一个行为，判据一律显式写 `Vantage::Monitor`。
+pub fn resolve_touched_path(
     vantage: Vantage,
     declared: &str,
     dest: &ToolDestination,
@@ -537,7 +519,7 @@ fn row(
         vantage,
         ..
     } = *env;
-    let resolved = resolve_touched_path_from(
+    let resolved = resolve_touched_path(
         vantage,
         f.path,
         &c.destination,
