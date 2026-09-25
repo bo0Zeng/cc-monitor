@@ -595,6 +595,11 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "归档在 `SITE_ARCHIVE`）—— `posix-rc-aliases` / `powershell-profile` 两个工具共用它",
     "profile_installer.rs::uninstall_from_profile":
         "同上，摘那一侧",
+    # 〔TL1 · 4C〕全景小程序进 `tool_registry::TOOLS`（`id: "panorama"`）时它的装口登记进对拍表。
+    "panorama_bytes.rs::push_to":
+        "代码全景小程序的**装口**（本机那一臂放到 `~/.cc-monitor/bin/`、远端那一臂经那台后端的文件链路推），"
+        "本来就不是 Tauri 命令：没有用户按钮，触发点是 `panorama_call.rs` 在那台后端答「没装 / 太旧」时调它"
+        "（V108「只传给开过远端全景的机器」）",
 }
 
 # `src/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
