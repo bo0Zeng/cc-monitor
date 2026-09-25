@@ -10,8 +10,9 @@
  *   第二拍（本机也改走本机后端、monitor 摘内嵌引擎）才换 —— 那一拍先要答「本机的批注写走哪」。
  * - **远端**：`panorama_call(origin, op, …)` ⇒ 那台机器的后端 `panorama` 帧命令 ⇒ 后端经插件口起
  *   只装引擎的独立小程序，索引与图都在那台机器上算，线上只回结构化结果（不传源码、不传索引）。
- * - **远端第一拍只读**：批注 / 文档关联的写入口在远端**当场拒**并说清为什么
- *   （远端仓里的那些文件是那台机器上的用户文件，要等后端文件管理那一面接上才经它写）。
+ * - 〔RM1d · V110「引擎只算、文件管理来写」〕批注 / 文档关联的**写**本机远端同一条：
+ *   `panorama_edit(origin, repo, op, args)` ⇒ 那台机器算出编辑计划（新内容），落盘经那台机器后端的
+ *   文件管理（`files-put` 带 CAS / `files-delete`）。RM1c 那一拍的「远端仓只读、写入口当场拒」随之取消。
  */
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
@@ -35,22 +36,15 @@ import type {
 /** 哪台机器上的哪个仓。`path` 是**那台机器上**的绝对路径。 */
 export type RepoAt = { origin: Origin; path: string };
 
-/** 远端仓上写入口的那句拒绝（`设计/97 §6` ③）。**只有这一处**说这句话。 */
-export const REMOTE_WRITE_REFUSED =
-  "远端仓的批注和文档关联暂时只能看、不能改：这一版还不支持改远端机器上的这些文件。";
-
 /** 远端：问那台机器的后端（`result` 的形状由 op 定，与本机那条同形）。 */
 function remote<T>(at: { origin: Origin; path: string | null }, op: string, args?: object): Promise<T> {
   return commands.panorama_call({ origin: at.origin, op, repo: at.path, args: args ?? null }) as Promise<T>;
 }
 
-/** 远端的写入口：当场拒（不发任何请求）。 */
-function refuseRemoteWrite<T>(): Promise<T> {
-  return Promise.reject(new Error(REMOTE_WRITE_REFUSED));
+/** 〔RM1d〕写：本机远端同一条（`op` 是 monitor `panorama_call.rs::EDITS` 第一列）。 */
+function edit<T>(at: RepoAt, op: string, args: object): Promise<T> {
+  return commands.panorama_edit({ origin: at.origin, repo: at.path, op, args }) as Promise<T>;
 }
-
-/** 这个仓能不能写批注 / 文档关联（界面据此决定要不要给写入口）。 */
-export const canWriteAnnotations = (at: RepoAt): boolean => isLocalOrigin(at.origin);
 
 /** 两个 `RepoAt` 说的是不是同一个仓（同一台机器、同一个路径；两个都没有也算同一个）。 */
 export const sameRepo = (a: RepoAt | null, b: RepoAt | null): boolean =>
@@ -157,46 +151,36 @@ export const symbolsInFile = (at: RepoAt, file: string): Promise<PanoramaSymbol[
 export const drift = (at: RepoAt): Promise<DriftItem[]> =>
   isLocalOrigin(at.origin) ? commands.panorama_drift({ repo: at.path }) : remote(at, "drift");
 
-// === F72：批注 + 文档关联写（落被分析仓、人手势触发）。core 现成接口，不自造存储（SS-15）。 ===
-// 〔RM1c〕远端仓上这几样一律当场拒（`REMOTE_WRITE_REFUSED`）。
+// === F72：批注 + 文档关联写（落被分析仓、人手势触发）。存储格式只在上游定义（SS-15）。 ===
+// 〔RM1d〕本机远端同一条 `panorama_edit`：那台机器算、那台机器后端的文件管理写。
 
-/** F72：人写批注（直接 Active）。`symbol` = 符号段（如 `f`），null = 文件级。 */
+/** F72：人写批注（直接 Active）。`symbol` = 符号段（如 `f`），null = 文件级。回批注 id。 */
 export const addAnnotation = (
   at: RepoAt,
   file: string,
   symbol: string | null,
   body: string,
   author: string,
-): Promise<string> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_add_annotation({ repo: at.path, file, symbol, body, author })
-    : refuseRemoteWrite();
+): Promise<string> => edit(at, "add_annotation", { file, symbol, body, author });
 
-/** F72：agent 提议批注（Proposed，需人 approve 才 Active）。 */
+/** F72：agent 提议批注（Proposed，需人 approve 才 Active）。回批注 id。 */
 export const proposeAnnotation = (
   at: RepoAt,
   file: string,
   symbol: string | null,
   body: string,
   author: string,
-): Promise<string> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_propose_annotation({ repo: at.path, file, symbol, body, author })
-    : refuseRemoteWrite();
+): Promise<string> => edit(at, "propose_annotation", { file, symbol, body, author });
 
-/** F72：批准一条 Proposed 批注 → Active。 */
+/** F72：批准一条 Proposed 批注 → Active。回它在不在。 */
 export const approveAnnotation = (at: RepoAt, id: string): Promise<boolean> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_approve_annotation({ repo: at.path, id })
-    : refuseRemoteWrite();
+  edit(at, "approve_annotation", { id });
 
-/** F72：删批注。 */
+/** F72：删批注。回它原本在不在。 */
 export const removeAnnotation = (at: RepoAt, id: string): Promise<boolean> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_remove_annotation({ repo: at.path, id })
-    : refuseRemoteWrite();
+  edit(at, "remove_annotation", { id });
 
-/** F72：列全部批注（含 Proposed，审批队列用）。**读**，远端也能看。 */
+/** F72：列全部批注（含 Proposed，审批队列用）。**读**。 */
 export const listAnnotations = (at: RepoAt): Promise<Annotation[]> =>
   isLocalOrigin(at.origin)
     ? commands.panorama_list_annotations({ repo: at.path })
@@ -204,15 +188,11 @@ export const listAnnotations = (at: RepoAt): Promise<Annotation[]> =>
 
 /** F72：把某 `.md` 关联到某符号（写 doc 的 frontmatter covers:，进仓可提交）。 */
 export const writeDocLink = (at: RepoAt, doc: string, target: string): Promise<void> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_write_doc_link({ repo: at.path, doc, target })
-    : refuseRemoteWrite();
+  edit<unknown>(at, "write_doc_link", { doc, target }).then(() => undefined);
 
-/** F72：删除某 `.md` 对某符号的关联。 */
+/** F72：删除某 `.md` 对某符号的关联。回它原本在不在。 */
 export const removeDocLink = (at: RepoAt, doc: string, target: string): Promise<boolean> =>
-  isLocalOrigin(at.origin)
-    ? commands.panorama_remove_doc_link({ repo: at.path, doc, target })
-    : refuseRemoteWrite();
+  edit(at, "remove_doc_link", { doc, target });
 
 /**
  * ⭐ P3 护城河缝：一组文件/行 → 命中的符号 id。`ranges` 空 → 整文件所有符号。
