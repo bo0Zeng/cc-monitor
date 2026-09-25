@@ -35,7 +35,7 @@ fn synth_cfg() -> RemoteConfig {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot() {
     let before = crate::filewin::shell::open_requested();
-    let e = open_file_window(synth_cfg(), "   ".into(), None)
+    let e = open_file_window(synth_cfg(), "   ".into(), None, None)
         .await
         .expect_err("问不到 home 竟然过了");
     // 🔴〔订正 2026-09-21〕这里原先断的是「报错里含 `realpath`」，**那买不到**：
@@ -72,7 +72,7 @@ async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_directory_we_cannot_list_is_an_error_not_a_blank_window() {
     let before = crate::filewin::shell::open_requested();
-    let e = open_file_window(synth_cfg(), "/srv/whatever".into(), None)
+    let e = open_file_window(synth_cfg(), "/srv/whatever".into(), None, None)
         .await
         .expect_err("连不上的远端竟然列出了目录");
     assert!(
@@ -314,4 +314,62 @@ fn a_reveal_request_we_cannot_split_is_an_error_not_a_silent_home() {
     // 阴性对照：一条**正常**的文件路径不会走这一支
     //（少了这一半，上面那一比可以靠「什么都报错」全绿）。
     assert!(plan_target("", Some("/a/b.txt")).is_ok());
+}
+
+// ═══════════════ 〔FW34〕〔待退役〕老面板书签的搬家那一跳 ═══════════════
+
+/// 🔴 搬家落到书签**唯一那个写口**上：盘上那一份逐格相等；搬两次与搬一次逐字节相同；
+/// 数据目录解不出来 ⇒ 报错且那句话说清旧书签还在原处（webview 那侧据此不删旧键）。
+#[test]
+fn carrying_the_old_panels_bookmarks_lands_in_the_one_bookmark_file() {
+    let dir = std::env::temp_dir().join(format!(
+        "ccm-fw34-carry-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
+    let file = crate::filewin::bookmarks::file_in(&dir);
+    let legacy: crate::filewin::bookmarks::Book = [
+        (
+            "devbox".to_string(),
+            vec!["/home/user/".to_string(), "/srv".to_string()],
+        ),
+        ("laptop".to_string(), vec!["/data".to_string()]),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(carry_legacy(Some(&file), &legacy).unwrap(), 3);
+    let first = std::fs::read(&file).unwrap();
+    let want: crate::filewin::bookmarks::Book = [
+        (
+            "devbox".to_string(),
+            vec!["/home/user".to_string(), "/srv".to_string()],
+        ),
+        ("laptop".to_string(), vec!["/data".to_string()]),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(crate::filewin::bookmarks::read_book(&file).unwrap(), want);
+    assert_eq!(carry_legacy(Some(&file), &legacy).unwrap(), 0);
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        first,
+        "搬两次与搬一次盘上逐字节相同"
+    );
+    let e = carry_legacy(None, &legacy).unwrap_err();
+    assert!(e.contains("旧书签还留在原处"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 🔴 入口那条命令里**先搬、再列、再开窗**；搬不成就在开窗之前回错（`?` 就在那一行上）。
+#[test]
+fn the_entry_command_carries_before_it_lists_or_opens() {
+    let prod =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/entry.rs"));
+    let carry = guard_core::find_pinned(&prod, "carry_legacy(bookmarks.as_deref(), &legacy)?;")
+        .expect("入口里没有搬家那一下（或者它不再在失败时回错）");
+    let list = guard_core::find_pinned(&prod, "list_first_screen(&source, &path).await?")
+        .expect("入口里找不到列第一屏那一下 —— 锚漂了");
+    let open = guard_core::find_pinned(&prod, "open_in_new_process(&OpenRequest {")
+        .expect("入口里找不到开窗那一下 —— 锚漂了");
+    assert!(carry < list && list < open, "顺序不是「搬 → 列 → 开」");
 }

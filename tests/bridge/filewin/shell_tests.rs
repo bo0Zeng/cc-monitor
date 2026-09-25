@@ -517,6 +517,7 @@ fn xvfb_worker_opens_a_real_window() {
         None,
         rows.iter().cloned().map(Into::into).collect(),
         None,
+        None,
     );
 
     let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 20_000);
@@ -636,6 +637,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         None,
         None,
         vec![file_row("f.txt").into()],
+        None,
         None,
     );
     let (verdict, why) = join_verdict(h, 30_000);
