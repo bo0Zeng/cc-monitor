@@ -76,9 +76,7 @@ vi.mock("../../src/settings/plugins-section", () => ({
 vi.mock("../../src/settings/cc-bus-hooks-section", () => ({
   CcBusHooksSection: class { element = document.createElement("div"); loadNow() {} },
 }));
-vi.mock("../../src/settings/cc_integration", () => ({
-  CcIntegrationSection: class { element = document.createElement("div"); loadNow() {} },
-}));
+// 〔AL1c · 4B〕`cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
 vi.mock("../../src/keybindings/editor", () => ({
   KeybindingsEditor: class { element = document.createElement("div"); },
 }));

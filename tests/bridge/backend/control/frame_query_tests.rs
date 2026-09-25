@@ -56,8 +56,14 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
         sorted(DESIGN_EIGHT.iter().map(|s| s.to_string())),
         "搬上帧面的子命令与题面那几条不相等"
     );
+    // 〔U4b〕右边还要并上「生在帧面上」的那几条（没有被替掉的拨号子命令，见 `BORN_ON_FRAME`）。
     assert_eq!(
-        sorted(MOVED.iter().map(|(_, c)| c.to_string())),
+        sorted(
+            MOVED
+                .iter()
+                .map(|(_, c)| c.to_string())
+                .chain(BORN_ON_FRAME.iter().map(|c| c.to_string()))
+        ),
         backend_read_face_commands(),
         "monitor 这边以为搬上去的帧命令，与后端真登记的对不上"
     );
@@ -376,4 +382,40 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
         vec!["x-op".to_string()]
     );
     assert_eq!(bad.len(), 1, "非字面量那一处没被认出来：{bad:?}");
+}
+
+/// 〔U4b · 第四波 · G1〕`history-record` 的应答解释：两个字段齐 ⇒ 原样；缺一个 ⇒ `Err`（**绝不**读成「不在」）。
+#[test]
+fn a_record_reply_missing_a_field_is_an_error_not_absent() {
+    use serde_json::json;
+    assert_eq!(
+        parse_record(
+            &Origin("h".into()),
+            &json!({"present": false, "root": "/r/projects"})
+        )
+        .unwrap(),
+        RecordProbe {
+            present: false,
+            root: "/r/projects".into()
+        }
+    );
+    assert_eq!(
+        parse_record(
+            &Origin("h".into()),
+            &json!({"present": true, "root": "/r/projects"})
+        )
+        .unwrap()
+        .present,
+        true
+    );
+    for bad in [
+        json!({"root": "/r"}),
+        json!({"present": false}),
+        json!({"present": "no", "root": "/r"}),
+    ] {
+        assert!(
+            parse_record(&Origin("h".into()), &bad).is_err(),
+            "{bad} 不许被读成一个答案"
+        );
+    }
 }
