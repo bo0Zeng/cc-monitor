@@ -260,17 +260,19 @@ windows = { version = "0.56", features = [
     #   不加这一行时 `windows::Win32::System::JobObjects` 是 `E0432 unresolved import`，
     #   编译器自己指出「the item is gated behind the `Win32_System_JobObjects` feature」。
     "Win32_System_JobObjects",
+    # 〔US1 · 第四波 4D〕`CreateJobObjectW` 的签名收 `Option<*const SECURITY_ATTRIBUTES>` ⇒ 要 `Win32_Security`。
+    #   先前它是从 `creds-core` 的 `harden` 那边 feature 合并**顺带**开的（下面那段 `KS5` 注释说的「事实上是开的」）；
+    #   monitor 不开 `harden` 之后那条顺带没了，`cargo check -p monitor --target x86_64-pc-windows-gnu` 现打
+    #   `E0432 unresolved import …CreateJobObjectW` ⇒ 在真用它的这一侧显式声明。
+    "Win32_Security",
     "Win32_UI_WindowsAndMessaging",
     # v2.4.2 issue #2: keybd_event 模拟 Alt 按键让 OS 视当前进程为
     # "刚有用户输入"，配合 AttachThreadInput 突破 Win10/11 前台抢焦限制。
     "Win32_UI_Input_KeyboardAndMouse",
 ] }
-# K-H2a `KS5`：`Win32_Security` / `Win32_Security_Authorization` 两个 feature **不加在这里**。
-# 用到它们的 Win32 调用（设 / 读凭据文件的 DACL）住 `crates/creds-core`——
-# 那是「一个安全性质只许有一个实现」的落点（`K-H2a` 裁三），monitor 与后端共用同一份。
-# 本 crate 只是它的**调用点之一**（`src/platform_fs.rs`），不直接碰 Win32。
-# ⚠ cargo 对同一版本的 `windows` 做 feature 合并 ⇒ 本 crate 的构建里那两个 feature 事实上是开的，
-# 但**声明住在真正用它的那个 crate**，别在这里重复一份（两处声明 = 下一个漂移源）。
+# K-H2a `KS5`：`Win32_Security_Authorization` **不加在这里** —— 设 / 读凭据文件 DACL 的 Win32 调用住 `crates/creds-core`
+# （「一个安全性质只许有一个实现」）。〔US1〕monitor 今天既不读也不写那份文件、不开 `harden`；`Win32_Security` 上面那一条是
+# Job Object 的签名要的，与凭据文件无关。
 # issue #9：single-instance lock。第二个 cc-monitor 实例启动时立即退出，
 # 第一个窗口拉到前台。Tauri 官方 plugin，user-scoped mutex，跨 user session 不冲突。
 tauri-plugin-single-instance = "2"
