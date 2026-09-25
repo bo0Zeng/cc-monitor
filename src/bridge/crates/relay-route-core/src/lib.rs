@@ -33,6 +33,28 @@ pub const PORT: u16 = 8788;
 /// 注入的 URL 不带钥匙本身，渲染成 `$(cat "$HOME/<本常量>")` 在那台机器的 pane shell 里展开（RK1）。
 pub const KEY_FILE_REL: &str = ".cc-monitor/relay-key";
 
+/// 钥匙的形状：恰好 64 个小写十六进制字符（32 字节 = 256 位，中转 `relay/door.rs` 铸的就是这一形）。
+pub fn key_shape_ok(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// 一条**已经把钥匙段展开进去**的中转地址（`http://127.0.0.1:<口>/<钥匙>/<前缀>/…`，pane shell 展开
+/// `$(cat "$HOME/<KEY_FILE_REL>")` 之后 agent 进程环境里的那一形）切成「钥匙之前」「钥匙之后」两半：
+/// `("http://127.0.0.1:<口>/", "/<前缀>/<seg1>/<seg2>/<seg3>")`。
+///
+/// 认的条件全在这里一处：钥匙段过 [`key_shape_ok`] · 两半拼回去（去掉钥匙段）过 [`base_url_shape_ok`]。
+/// 认不出 ⇒ `None`（那就不是我们注入的地址，原样对待）。读者：`ccm` 把继承来的地址转进新 pane 时
+/// 渲回 `$(cat …)` 形、不把钥匙本身写进 `tmux send-keys` 的 argv（RK1 报 2）。
+pub fn split_keyed_base_url(url: &str) -> Option<(&str, &str)> {
+    let after_scheme = url.strip_prefix("http://127.0.0.1:")?;
+    let head_len = "http://127.0.0.1:".len() + after_scheme.find('/')? + 1;
+    let (head, keyed) = url.split_at(head_len);
+    let slash = keyed.find('/')?;
+    let (key, tail) = keyed.split_at(slash);
+    (key_shape_ok(key) && base_url_shape_ok(&format!("{head}{}", &tail[1..])))
+        .then_some((head, tail))
+}
+
 /// 路由路径第一段的两个前缀 = 两种模式（`设计/20 §2`「为什么用两个前缀而不是一个哨兵段」）。
 ///
 /// `/s/` 代入：上游选择的表里必须有这一行，没有 ⇒ 404；`/t/` 直通：中转**永不**代入凭据，第 2 段只当标签。

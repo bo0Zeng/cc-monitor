@@ -68,3 +68,26 @@ fn the_two_prefixes_are_a_closed_distinct_set() {
     assert_eq!(p, vec!["/s/", "/t/"]);
     assert_ne!(RouteMode::ALL[0], RouteMode::ALL[1]);
 }
+
+/// 展开过钥匙的地址：切得开的恰是「构造口产物 ＋ 一段形状对的钥匙」；别的都切不开。
+#[test]
+fn a_keyed_url_splits_only_when_the_key_and_the_route_both_have_our_shape() {
+    let key = "0123456789abcdef".repeat(4);
+    let url = base_url(PORT, RouteMode::Passthrough, "claude-code", "_", "k1").unwrap();
+    let (head, tail) = url.split_at("http://127.0.0.1:8788/".len());
+    let keyed = format!("{head}{key}/{tail}");
+    assert_eq!(split_keyed_base_url(&keyed), Some((head, &format!("/{tail}")[..])));
+    assert_eq!(format!("{head}{key}/{tail}"), keyed, "两半拼回去（插回钥匙）== 原串");
+    for bad in [
+        url.clone(),                                           // 没有钥匙段
+        format!("{head}{}/{tail}", &key[..63]),               // 短一个字符
+        format!("{head}{}/{tail}", key.to_uppercase()),       // 大写
+        format!("{head}{key}/x/a/b/c"),                        // 前缀不认得
+        format!("http://localhost:8788/{key}/{tail}"),         // 非字面回环
+        format!("https://127.0.0.1:8788/{key}/{tail}"),
+        "https://api.example.com/v1".to_string(),              // 用户自己的端点
+    ] {
+        assert_eq!(split_keyed_base_url(&bad), None, "{bad}");
+    }
+    assert!(key_shape_ok(&key) && !key_shape_ok(&key[..63]) && !key_shape_ok(&key.to_uppercase()));
+}
