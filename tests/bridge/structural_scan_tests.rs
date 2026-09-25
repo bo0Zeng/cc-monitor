@@ -2967,6 +2967,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "is_safe_remote_jsonl",
             1,
         ),
+        // 〔FN1 · 第四波 4C · V119〕后端那份会话形状判定不再是写侧围栏，改名成它真在答的那一问（`is_session_record_*`）；
+        //   新名字的文档点两个旧名讲来历（同一行、同一块墓碑）。
+        (
+            "src/backend/agents/claudecode/paths.rs",
+            "is_protected_session_file",
+            1,
+        ),
+        (
+            "src/backend/agents/claudecode/paths.rs",
+            "is_protected_session_path",
+            1,
+        ),
         ("src/bridge/README.md", "is_safe_remote_jsonl", 1),
         (
             "src/bridge/src/claude_data_fence.rs",
@@ -4003,7 +4015,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔RW1 · 第四波 09-24〕本机分叉改成 exec 本机后端 `--fork-session`：本机那一支的头注一块。
         ("src/bridge/src/remote_branch.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔RW1 · 第四波 09-24〕远端删会话那道结构守卫随 F11 改经后端删走了：方向相反那一问的两处说明。
-        ("src/backend/agents/claudecode/paths.rs", 1),
+        ("src/backend/agents/claudecode/paths.rs", 2), // 〔FN1〕+1：会话形状判定改名（`is_session_record_*`），旧名挂一块
         ("src/bridge/src/claude_data_fence.rs", 2),
         ("tests/bridge/history_tests.rs", 11), // 〔RW1〕+2：本机分叉那几组判据换掉时留的块 ·〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // 〔RW1 · 第四波 09-24〕项目 `.mcp.json` 的本机写原语删了（改经后端写）。
@@ -4030,7 +4042,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/verified_write.rs", 3), // 〔RW1〕+1：`verify_and_rollback` 零调用方删了
         ("tests/bridge/verified_write_tests.rs", 1), // 〔RW1〕那三条回滚判据随它走了
         // 〔SR1b〕+2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。
-        ("tests/bridge/remote_write_registry_tests.rs", 12), // 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删 · 〔SR1b 子步 3〕+2：写点表整张空了，`sftp.rs` 那一对原语（原子上传 · 入口落点类型）的旧名
+        ("tests/bridge/remote_write_registry_tests.rs", 11), // 〔FN1 · V119〕−1：双路径写入口那张表整条判据退役，表里那块墓碑（一个旧池命令名）随之走了 · 〔F7c 收尾 09-24〕1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕+1：F11 那条 SFTP 直删 · 〔SR1b 子步 3〕+2：写点表整张空了，`sftp.rs` 那一对原语（原子上传 · 入口落点类型）的旧名
         // 〔MC1 · 2026-09-24〕`CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
         ("tests/bridge/backend/control/local_backend_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·

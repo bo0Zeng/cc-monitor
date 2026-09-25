@@ -745,6 +745,7 @@ pub const READ_TEXT_MAX_BYTES: usize = 8 * 1024 * 1024;
 /// 读 —— 最多只多读一个字节就知道「超了」，不会把一个刚变成几个 G 的文件整个读进内存。
 /// ⚠ 它**不过会话数据围栏**：那道围栏立在写侧（「不许改坏正被 Claude 打开的那份」），
 /// 读一份会话记录进编辑框不改任何东西；存回去那一下才过围栏（写面那条会拒）。
+/// 〔FN1 · 第四波 4C · 用户 V119「文件管理器全部都可以改. 不需要任何围栏」〕写侧那道也拿掉了：存得回去。
 fn answer_read_text(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
     let max = args

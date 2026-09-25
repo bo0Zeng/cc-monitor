@@ -233,6 +233,8 @@ enum Kind {
     #[allow(dead_code)]
     Common,
     /// Claude 会话数据围栏（适配层里那一个判定，与桥那一侧函数体逐字相同）。
+    /// 〔FN1 · V119〕文件管理写面不再有这道围栏；这一类今天只剩**删历史会话**那一条要的两样
+    /// （「要删的必须**是**一份会话记录」· 「按 sid 找那一份」），名字沿用，因为它们仍是那个布局知识、仍住适配层。
     Fence,
     /// 🔴 **用户那三样之外的唯一一类**：`lib.rs` 顶层的 target 轴（`Target` / `TARGETS`）。
     ///
@@ -260,10 +262,10 @@ enum Kind {
 const OUTWARD: &[(&str, Kind)] = &[
     // ── 围栏 ────────────────────────────────────────────────────────
     (
-        "agents::claudecode::paths::is_protected_session_path",
+        "agents::claudecode::paths::is_session_record_path",
         Kind::Fence,
     ),
-    // 〔RW1 · 第四波 09-24〕同一道围栏的**另一面**：删历史会话那一条（会话文件围栏唯一的例外）
+    // 〔RW1 · 第四波 09-24〕同一道围栏的**另一面**：删历史会话那一条（〔FN1〕上一行今天也只剩它在用）
     //   的落点由适配层按 sid 找 —— 「哪一份算会话、它在哪」仍是适配层的知识，写面只调用。
     (
         "agents::claudecode::paths::session_file_for_delete",
@@ -280,10 +282,11 @@ const OUTWARD: &[(&str, Kind)] = &[
 ];
 
 /// 围栏那一类**只许**是这两个符号（不是「`agents::` 底下随便什么」）：
-/// 写面「不许碰会话文件」那一问 ＋ 〔RW1 · 第四波 09-24〕删历史会话那一条「要删的是哪一份」那一问。
+/// 写面「不许碰会话文件」那一问（〔FN1 · V119〕那一问拿掉了，今天是删会话那一条「要删的必须**是**会话」）＋
+/// 〔RW1 · 第四波 09-24〕删历史会话那一条「要删的是哪一份」那一问。
 /// 两个都是会话文件围栏的知识，住适配层；多出第三个 ⇒ 红。
 const THE_FENCES: &[&str] = &[
-    "agents::claudecode::paths::is_protected_session_path",
+    "agents::claudecode::paths::is_session_record_path",
     "agents::claudecode::paths::session_file_for_delete",
 ];
 
