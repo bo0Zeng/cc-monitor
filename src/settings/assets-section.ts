@@ -292,11 +292,11 @@ export class AssetsSection {
       const label = reach.reachable ? machineName(reach.at) : (cat.labels.get(f.machine) ?? f.machine);
       const line = el("div", "settings-hint plugins-row-meta");
       const where = f.project ? copyText("assets.from.project", { machine: label, project: f.project }) : copyText("assets.from.machine", { machine: label });
-      line.textContent = [where, summaryText(row, f)].filter((x) => x).join(" · ");
+      line.textContent = [where, summaryText(row, f)].filter((x) => x).join(copyText("assets.row.sep"));
       box.appendChild(line);
       const slot = el("div", "assets-install");
       if (!reach.reachable) {
-        line.appendChild(document.createTextNode(" · " + copyText("assets.from.unreachable")));
+        line.appendChild(document.createTextNode(copyText("assets.row.unreachable", { reason: copyText("assets.from.unreachable") })));
       } else if (reach.at !== here) {
         const from = reach.at;
         box.appendChild(slot);
@@ -429,7 +429,7 @@ export class AssetsSection {
           const done = await this.apiOf().skillApply({ to, name, source: p.source, target: p.target, take, overwrite });
           result.textContent = copyText("assets.apply.skillDone", { dir: done.dir, n: String(done.written.length) });
           if (done.chmodFailed.length > 0) {
-            result.textContent += " " + copyText("assets.apply.chmodFailed", { paths: done.chmodFailed.join("、") });
+            result.textContent += " " + copyText("assets.apply.chmodFailed", { paths: done.chmodFailed.join(copyText("assets.skill.listSep")) });
           }
         } catch (e) {
           result.textContent = copyText("assets.apply.failed", { reason: e instanceof Error ? e.message : String(e) });

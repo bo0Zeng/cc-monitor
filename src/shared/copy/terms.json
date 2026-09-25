@@ -76,7 +76,7 @@
       "word": "tmux",
       "tier": "限用",
       "tally": { "re": "\\btmux\\b", "flags": "i" },
-      "inTable": 39,
+      "inTable": 46,
       "meaning": "用户机器上的终端复用程序。",
       "context": "讲用户自己能 attach / 看得见的 tmux 会话时许说（「tmux 会话」比「终端复用会话」清楚）。我们对 tmux 的用法（send-keys · capture-pane · @ccm_sid 这类会话标记）不许露，见禁档。",
       "source": "设计/91 §4 R1b（2026-09-18 裁定）",
@@ -86,7 +86,7 @@
       "word": "SSH",
       "tier": "限用",
       "tally": { "re": "\\bssh\\b", "flags": "i" },
-      "inTable": 1,
+      "inTable": 2,
       "meaning": "连远端用的 ssh。",
       "context": "讲连接、主机、密钥、主机指纹时许说。",
       "source": "设计/91 §4 R1b"
@@ -95,7 +95,7 @@
       "word": "git",
       "tier": "限用",
       "tally": { "re": "\\bgit\\b", "flags": "i" },
-      "inTable": 0,
+      "inTable": 1,
       "meaning": "版本控制程序。",
       "context": "讲仓库、分支时许说。",
       "source": "设计/91 §4 R1b"
@@ -104,7 +104,7 @@
       "word": "PowerShell",
       "tier": "限用",
       "tally": { "re": "powershell", "flags": "i" },
-      "inTable": 0,
+      "inTable": 12,
       "meaning": "Windows 上的 shell。",
       "context": "讲终端集成、$PROFILE 时许说；不许缩写成 PS。",
       "source": "设计/91 §4 R1b"
@@ -113,7 +113,7 @@
       "word": "ccm",
       "tier": "限用",
       "tally": { "re": "(?<![\\w-])ccm(?![\\w-])", "flags": "i" },
-      "inTable": 1,
+      "inTable": 8,
       "meaning": "用户在 shell 里敲的那个命令；它就是后端程序本身（设计/01 §6.7b）。",
       "context": "只在讲「shell 里敲的命令」时许说（ccm 的参数、别名、写进 ~/.bashrc 的那一段）。讲「机器上装的那个程序」时说「后端」。「ccm 助手」「ccm wrapper」是我们起的名，禁。",
       "source": "设计/01 §6.7b · 设计/70 §5（MC1：「ccm 助手」删掉）· CP1 判不了之一（settings/machine-card.ts「卸载 ccm 中」）· 用户 09-24「继续叫卸载ccm」（99 §1 V80：原先那条 ask 结案删掉）",
@@ -479,7 +479,7 @@
       "scan": { "re": "\\b[a-z]+(?:[A-Z][a-z0-9]*)+\\b|\\b(?:ADDED|ALREADY|Exact|Heuristic|DynamicGuess|bad_args|bad_path|accounts-meta|agents\\.tsv|__ccm_bind|auto-launch|touches|localStorage|UserDataFolder)\\b|\\.?build_id\\b", "flags": "" },
       "examples": ["backendPath", "cliFlags", "__ccm_bind", ".build_id", "ADDED"],
       "counterExamples": ["API key", "Claude Code"],
-      "ledger": ["backendPath", "keyPath", "hostKeyFingerprint", "claudeDir", "cliFlags", "label", "jump", "kind", "ADDED", "ALREADY", "错误码bad_args/bad_path", "agents.tsv", "__ccm_bind", "auto-launch", "touches", "localStorage", "UserDataFolder", "build_id"],
+      "ledger": ["backendPath", "keyPath", "hostKeyFingerprint", "claudeDir", "cliFlags", "label", "jump", "kind", "ADDED", "ALREADY", "错误码bad_args/bad_path", "agents.tsv", "auto-launch", "touches", "localStorage", "UserDataFolder", "build_id"],
       "source": "设计/91 §7.3（配置键名直出）· CP1 台账",
       "note": "label / jump / kind 是普通英文单词，正则认不出它们是配置键 ⇒ 这三个只靠人工 review。"
     },

@@ -146,29 +146,18 @@ src/bridge/src/verified_write.rs	未抽
 src/panorama-engine/main.rs	射程外：全景独立小程序（另一个可执行文件）
 src/settings/account-new-form.ts	未抽
 src/settings/accounts-section.ts	未抽
-src/settings/acct-deploy.ts	未抽
-src/settings/assets-section.ts	未抽
 src/settings/backend-section.ts	未抽
 src/settings/cc-bus-hooks-section.ts	未抽
 src/settings/cc-bus-section.ts	未抽
-src/settings/collapsible-group.ts	未抽
 src/settings/config-surface-section.ts	未抽
 src/settings/data-section.ts	未抽
 src/settings/diagnostics-section.ts	未抽
 src/settings/drift-ledger-section.ts	未抽
-src/settings/machine-aliases.ts	未抽
 src/settings/machine-card.ts	未抽
-src/settings/machine-status.ts	未抽
 src/settings/mcp-section.ts	未抽
-src/settings/mcp-sync.ts	未抽
-src/settings/open-settings.ts	未抽
 src/settings/panel.ts	未抽
 src/settings/plugins-section.ts	未抽
-src/settings/readiness.ts	未抽
 src/settings/remote-section.ts	未抽
-src/settings/restart-notice.ts	未抽
-src/settings/router.ts	未抽
-src/settings/unknown-keys-notice.ts	未抽
 src/views/history-actions.ts	C4d 在改这一带，留最后一批
 src/views/history.ts	C4d 在改这一带，留最后一批
 src/launch-render-cli.ts	K-R95：两句 fallback 理由由 Rust ccm_invocation.rs 与 cli-golden.json 跨语言逐字节钉着 —— 随 Rust 那一侧（backend/control/ccm_invocation.rs）同拍进表
