@@ -74,6 +74,7 @@
 //!   是个恒 `None` 的桩。判据能验的是**平台无关**的那两段（marker 解令牌 · 表里查得到），
 //!   Win32 那一跳仍只有 `remote_bind_finds_real_ccm_rbind_window` 那条手动 smoke。
 
+use crate::copy_table::copy_text;
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use parking_lot::RwLock;
@@ -684,14 +685,17 @@ pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), String> {
     unsafe {
         let hwnd = HWND(binding.hwnd);
         if !IsWindow(hwnd).as_bool() {
-            return Err("窗口已不存在（被关闭或 HWND 被回收）".to_string());
+            return Err(copy_text("rsBind.verify.windowGone", &[]));
         }
         let mut cur_owner: u32 = 0;
         let _ = GetWindowThreadProcessId(hwnd, Some(&mut cur_owner));
         if cur_owner != binding.owner_pid {
-            return Err(format!(
-                "HWND 复用：当前属主 PID {} ≠ 绑定时 PID {}",
-                cur_owner, binding.owner_pid
+            return Err(copy_text(
+                "rsBind.verify.windowReused",
+                &[
+                    ("curOwner", &cur_owner.to_string()),
+                    ("ownerPid", &binding.owner_pid.to_string()),
+                ],
             ));
         }
         if binding.owner_proc_start != 0 {
@@ -700,7 +704,7 @@ pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), String> {
                 .map(|ft| ft.0)
                 .unwrap_or(0);
             if cur_proc_start != 0 && cur_proc_start != binding.owner_proc_start {
-                return Err("属主进程 PID 复用（procStart 不一致）".to_string());
+                return Err(copy_text("rsBind.verify.pidReused", &[]));
             }
         }
         Ok(())
@@ -727,10 +731,7 @@ pub fn activate(hwnd: isize) -> Result<(), String> {
         if SetForegroundWindow(h).as_bool() {
             Ok(())
         } else {
-            Err(
-                "SetForegroundWindow 被拒绝（窗口可能在任务栏闪烁；用户需要先点 monitor 窗口）"
-                    .into(),
-            )
+            Err(copy_text("rsBind.activate.refused", &[]).into())
         }
     }
 }
@@ -1051,10 +1052,11 @@ fn binding_from_entry(e: HwndEntry) -> SidHwndBinding {
 /// 🔴 两句话的**开头**是分派的对外面：前端不再猜（E73 那次远端 RPC 已删），用户读到的就是这里。
 /// ⚠ 措辞过 `设计/91` 的术语表：不说「令牌」「拉前」「拉起」（前两个是内部词，后一个是禁档），
 ///   说用户看得见的那件事 —— 「是不是 cc-monitor 启动的」。
-pub(crate) const FRONT_FAIL_WITH_TOKEN: &str = "这个会话是 cc-monitor 启动的，但找不到它的终端窗口";
+pub(crate) static FRONT_FAIL_WITH_TOKEN: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsBind.front.failWithToken", &[]));
 /// 没有令牌时说的话。
-pub(crate) const FRONT_FAIL_WITHOUT_TOKEN: &str =
-    "这个会话不是 cc-monitor 启动的，找不到它的终端窗口";
+pub(crate) static FRONT_FAIL_WITHOUT_TOKEN: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsBind.front.failWithoutToken", &[]));
 
 /// ↗ 远端那一格的**唯一分派点**。平台相关的两跳（校验窗口、现扫标题）由调用方注入，
 /// 好让分派本身在任何机器上都验得了（`entry_from_marker_hit` 同一个理由）。
@@ -1103,14 +1105,20 @@ pub fn resolve_remote_front(
     title.map_err(|title_err| {
         // ③ 归因：**只看 `token.is_some()`**。
         let head = match (token.is_some(), &token_window_gone) {
-            (true, Some(why)) => format!("{FRONT_FAIL_WITH_TOKEN}：{why}。"),
-            (true, None) => format!("{FRONT_FAIL_WITH_TOKEN}，它可能已经关了。"),
-            (false, _) => format!("{FRONT_FAIL_WITHOUT_TOKEN}。"),
+            (true, Some(why)) => format!("{}：{why}。", FRONT_FAIL_WITH_TOKEN.as_str()),
+            (true, None) => copy_text(
+                "rsBind.remote.mayBeClosed",
+                &[("fail", &FRONT_FAIL_WITH_TOKEN.to_string())],
+            ),
+            (false, _) => format!("{}。", FRONT_FAIL_WITHOUT_TOKEN.as_str()),
         };
         let tail = if title_err.is_empty() {
-            "按 tmux 窗口标题也没找到。".to_string()
+            copy_text("rsBind.remote.titleNotFound", &[])
         } else {
-            format!("按 tmux 窗口标题找到的窗口已经不能用了：{title_err}。")
+            copy_text(
+                "rsBind.remote.titleStale",
+                &[("titleErr", &title_err.to_string())],
+            )
         };
         format!("{head}{tail}")
     })
