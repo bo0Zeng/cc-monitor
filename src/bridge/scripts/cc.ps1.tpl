@@ -99,4 +99,7 @@ function __ccm_bind {
     }
 }
 {{CC_FUNCTION_BLOCK}}
+# 这一行让 cc-monitor「别名」那一块写的那份文件自动接上（它是 cc-monitor 自己的文件，随时可删；没生成过就什么都不做）。
+# 与 POSIX 别名块最后那一行同一件事：接上别名文件的那一行只住别名块里，cc-monitor 不另往 $PROFILE 里写第二处。
+if (Test-Path -LiteralPath "$HOME\.cc-monitor\aliases.ps1") { . "$HOME\.cc-monitor\aliases.ps1" }
 # === cc-monitor END ===

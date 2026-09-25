@@ -233,12 +233,12 @@ fn mentions_ccm(line: &str) -> bool {
     false
 }
 
-/// 这一行是不是 cc-monitor 自己的围栏标记（三对全认）。
+/// 这一行是不是 cc-monitor 自己的围栏标记（每一对都认）。
 ///
-/// 认的是**共同前缀** `# === cc-monitor`，而不是三对里的某一对 —— 三对分别是
-/// `profile_installer` 的 `BEGIN_MARKER`、`sftp` 的 `CCM_PROFILE_BEGIN`、
-/// `account_aliases` 的 `RC_BEGIN`。这一格问的是「这一行是不是**我们的**边界」，
-/// 那个答案对三对是同一个。
+/// 认的是**共同前缀** `# === cc-monitor`，而不是某一对 —— 今天是 `profile_installer` 的 `BEGIN_MARKER`
+/// 与 `sftp` 的 `CCM_PROFILE_BEGIN` 两对；〔TL1 · 4C〕从前还有 `account_aliases` 包 rc 里那一行 source 的第三对
+/// （那一步退役了，用户盘上可能还留着那一块 —— 共同前缀照样认得它是**我们的**边界，不当成用户的裸行）。
+/// 这一格问的是「这一行是不是**我们的**边界」，那个答案对每一对是同一个。
 fn fence_marker(line: &str) -> Option<bool> {
     let l = line.trim_start();
     if !l.starts_with("# === cc-monitor") {

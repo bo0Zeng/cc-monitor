@@ -167,7 +167,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
           return Promise.resolve({
             aliasPath: "/h/.cc-monitor/aliases.x",
             wroteAliasFile: true,
-            wroteRc: false,
             notes: ["新开一个终端就能用"],
           });
         },
