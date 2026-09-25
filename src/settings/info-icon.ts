@@ -1,5 +1,5 @@
 /**
- * 设置面板用的 `?` 信息图标组件 + 路径工具函数。
+ * 设置面板用的 `?` 信息图标组件。
  *
  * v1.7.13: 从 cc_integration.ts 拆出来。tooltip 用 portal 模式
  * （`position: fixed` + 加到 document.body + JS 算位置 + 边界感知），
@@ -7,16 +7,8 @@
  * `transform` 对 fixed containing block 的重置。
  */
 
-/**
- * 替换路径的文件名部分。
- * 用来从 Microsoft.PowerShell_profile.ps1 推 profile.ps1（AllHosts 选项）。
- * 兼容 Windows `\` 和 POSIX `/` 分隔符。
- */
-export function swapFileName(path: string, newName: string): string {
-  const lastSep = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
-  if (lastSep < 0) return newName;
-  return path.slice(0, lastSep + 1) + newName;
-}
+// 〔DP1 · 第四波〕这里原来还有一个换文件名的路径小工具（从 `Microsoft.PowerShell_profile.ps1` 推 `profile.ps1`，给「终端集成」页的
+//   AllHosts 选项用）。那一页退役之后它零生产调用方、只剩自己的测试（`AL1d.md §5` 第 6 条）⇒ 连同测试删掉。
 
 /**
  * 创建一个 `?` 信息图标，鼠标悬停显示 tooltip。

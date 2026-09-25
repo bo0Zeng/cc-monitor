@@ -170,6 +170,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-user-inputs"
                 | "history-find"
                 | "history-read"
+                | "history-lines" // 〔CF2〕按行号取回：从文件头数，同档
                 | "history-record" // 〔U4b〕记录还在不在：一次目录枚举，同档
                 | "history-search"
                 | "history-subagents"
@@ -281,6 +282,7 @@ fn every_registered_command_declares_its_run_kind() {
         "history-user-inputs",
         "history-find",
         "history-read",
+        "history-lines",  // 〔CF2〕
         "history-record", // 〔U4b〕
         "history-search",
         "history-sessions",

@@ -15,8 +15,8 @@
       "tier": "正名",
       "meaning": "每台机器上跑的那个 cc-monitor 程序（本机与远端同一个，落在 ~/.cc-monitor/bin/ccm；设计/01 §6.7b）。",
       "source": "设计/91 §3.1 · 用户 2026-09-17「现在没有 daemon，只有 backend」",
-      "ledger": ["二进制"],
-      "note": "「后端二进制」「后端程序」对外一律说「后端」；要强调是那个文件时说「后端程序」。台账里「二进制」一词也归这里。"
+      "ledger": [],
+      "note": "「后端二进制」「后端程序」对外一律说「后端」；要强调是那个文件时说「后端程序」。台账里「二进制」一词原先也归这里（〔DP1〕标它的那几行部署原因改写后退役，ledger 随之清空）。"
     },
     {
       "word": "中转",
@@ -461,7 +461,7 @@
       "scan": { "re": "\\b[a-z]+(?:[A-Z][a-z0-9]*)+\\b|\\b(?:ADDED|ALREADY|Exact|Heuristic|DynamicGuess|bad_args|bad_path|accounts-meta|agents\\.tsv|__ccm_bind|auto-launch|touches|localStorage|UserDataFolder)\\b|\\.?build_id\\b", "flags": "" },
       "examples": ["backendPath", "cliFlags", "__ccm_bind", ".build_id", "ADDED"],
       "counterExamples": ["API key", "Claude Code"],
-      "ledger": ["backendPath", "keyPath", "hostKeyFingerprint", "claudeDir", "cliFlags", "label", "jump", "kind", "ADDED", "ALREADY", "Exact/Heuristic/DynamicGuess", "错误码bad_args/bad_path", "agents.tsv", "__ccm_bind", "auto-launch", "touches", "localStorage", "UserDataFolder", "build_id", ".build_id"],
+      "ledger": ["backendPath", "keyPath", "hostKeyFingerprint", "claudeDir", "cliFlags", "label", "jump", "kind", "ADDED", "ALREADY", "Exact/Heuristic/DynamicGuess", "错误码bad_args/bad_path", "agents.tsv", "__ccm_bind", "auto-launch", "touches", "localStorage", "UserDataFolder", "build_id"],
       "source": "设计/91 §7.3（配置键名直出）· CP1 台账",
       "note": "label / jump / kind 是普通英文单词，正则认不出它们是配置键 ⇒ 这三个只靠人工 review。"
     },

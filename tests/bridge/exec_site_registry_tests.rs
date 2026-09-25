@@ -38,7 +38,8 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks", Origin::Const, "`REMOTE_HOOKS_CMD`：只读探测"),
     ("mcp.rs", "fetch_remote_claude_json", Origin::Const, "`CMD`：读远端 ~/.claude.json"),
     ("ccm_probe.rs", "probe_ccm_cli", Origin::Const, "`CCM_PROBE_CMD`：字面量，零插值。P3t-Y2 起本机探针与它**共用同一个常量**"),
-    ("sftp.rs", "probe_remote_arch", Origin::Const, "`\"uname -m\"` 直接当实参"),
+    // 〔DP1 · 第四波〕`sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
+    //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
     // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
     ("pubkey.rs", "push_public_key", Origin::Builder("build_authorized_keys_cmd"), "公钥经 shell_quote"),
     // 🔴 **`K-R112`（09-13）：这里原来有两行，两行都出去了** ——
@@ -185,12 +186,13 @@ fn every_remote_exec_declares_where_its_command_came_from() {
         }
     }
     assert!(
-        // 〔C4d · 第四波 4B〕12 → 11：逐次拨号那条路（`remote_history.rs` 那一处）删了。
-        found.len() >= 11,
+        // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 cf3277f4〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
+        found.len() >= 10,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
              **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
              **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
-             **`C4d` 09-25 现打 11** —— 逐次拨号那条路删了）\
+             **`DP1` 09-25 现打 11** —— 部署前问机器那一处改走 `connect_and_exec_capture`；\
+             **`C4d` 09-25 合并后现打 10** —— 逐次拨号那条路删了）\
              —— 抽取器坏了，本条此刻无效",
         found.len()
     );

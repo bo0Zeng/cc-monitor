@@ -44,6 +44,13 @@ pub(crate) struct Fs {
     read_calls: usize,
     /// 每一次 `WRITE` 的偏移（续传那一格判「从哪儿接上的」）。
     pub(crate) write_offsets: Vec<u64>,
+    /// 〔DP1〕服务端**看到过**的写（含回坏的那几条）盖到的最远字节 —— 「客户端发出去的写，走之前是不是都有了回话」。
+    pub(crate) seen_write_end: u64,
+    /// 〔DP1〕每条 `WRITE` 处理之前让出几次（`yield_now`）：把「写还在路上、客户端已经拿到第一条坏回话」那一形
+    /// 从调度的运气变成台架的设定（负载高时才碰得上的那个竞态，在这里每次都碰上）。
+    pub(crate) yield_per_write: usize,
+    /// 〔DP1〕每一次 `READ` 的偏移（下载续传那一格判「前缀没有被重新读一遍」）。
+    pub(crate) read_offsets: Vec<u64>,
 }
 
 impl Fs {
@@ -229,6 +236,7 @@ impl russh_sftp::server::Handler for Server {
         let fs = self.fs.clone();
         async move {
             let mut fs = fs.lock().unwrap();
+            fs.read_offsets.push(offset);
             fs.read_calls += 1;
             if fs.fail_read_after.is_some_and(|n| fs.read_calls > n) {
                 return Err(StatusCode::Failure);
@@ -256,9 +264,15 @@ impl russh_sftp::server::Handler for Server {
     ) -> impl std::future::Future<Output = Result<Status, Self::Error>> + Send {
         let fs = self.fs.clone();
         async move {
+            let yields = fs.lock().unwrap().yield_per_write;
+            for _ in 0..yields {
+                tokio::task::yield_now().await;
+            }
             let mut fs = fs.lock().unwrap();
             let path = fs.handles.get(&handle).ok_or(StatusCode::Failure)?.clone();
             fs.touch("write", &path);
+            let end = offset + data.len() as u64;
+            fs.seen_write_end = fs.seen_write_end.max(end);
             fs.write_calls += 1;
             if fs.fail_write_after.is_some_and(|n| fs.write_calls > n) {
                 return Err(StatusCode::Failure);

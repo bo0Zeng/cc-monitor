@@ -510,6 +510,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-user-inputs",
         "history-find",
         "history-read",
+        "history-lines",  // 〔CF2〕
         "history-record", // 〔U4b〕
         "history-search",
         "history-subagents",
@@ -600,6 +601,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-user-inputs",
         "history-find",
         "history-read",
+        "history-lines",  // 〔CF2〕
         "history-record", // 〔U4b〕
         "history-search",
         "history-sessions",

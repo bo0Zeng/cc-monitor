@@ -34,10 +34,8 @@ export const LS_KEYS = {
   historyExpandedForks: "cc-monitor.history.expanded-forks",
   /** v2.3.0：tool result 渲染模式偏好（per tool name）。 */
   toolRender: (toolName: string) => `cc-monitor.tool-render.${toolName}`,
-  /** v1.7：cc 集成 PowerShell profile 选择 + 自定义路径。
-   *  下划线命名保留避免改 key 时丢用户已存数据（迁移成本大于收益）。 */
-  profilePreset: "cc-monitor.profile_preset",
-  profilePath: "cc-monitor.profile_path",
+  // 〔DP1 · 第四波〕v1.7 那两个键（cc 集成的 PowerShell profile 选择 + 自定义路径）删掉 —— 「终端集成」页随 AL1c / AL1d 退役之后
+  //    零读写（`AL1d.md §5` 第 6 条）。盘上遗留的值无人再读（条 80：不为盘上已有状态留兼容 ⇒ 不写清理，让它自然作废）。
   /** Batch5-F19：上次所在 tab 的 sid——启动 active 选择 + replay 优先级。 */
   lastActiveSid: "cc-monitor.last-active-sid",
   /** F86(#45)：历史来源筛选——被隐藏的来源 key 列表（origin ?? ""），跨重启保持。 */

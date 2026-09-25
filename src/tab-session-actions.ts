@@ -140,6 +140,7 @@ export class TabSessionActions {
     try {
       await commands.open_session_in_new_window({
         sessionId: sid,
+        origin: tab.origin,
         title: tab.title,
         ...(screenX !== undefined && screenY !== undefined
           ? { x: screenX, y: screenY }

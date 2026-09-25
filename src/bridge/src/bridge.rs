@@ -1,18 +1,18 @@
 //! 前后端契约的单一来源：Tauri 事件名常量 + emit payload schema。
 //!
-//! `events` 子模块定义所有 `emit` 事件名（jsonl-line / jsonl-batch / session-ended /
-//! task-update）；payload 结构体（如 `JsonlLinePayload`，携带 per-file 单调 `seq`，
-//! 前端 RecordTimeline 据此排序）也在本文件。前端 `events.ts` 的 TS 接口须与此保持一致。
+//! `events` 子模块定义所有 `emit` 事件名（session-ended / task-update …）；payload 结构体
+//! （如 `JsonlLinePayload`，携带 per-file 单调 `seq`，前端 RecordTimeline 据此排序）也在本文件。
+//! 前端 `events.ts` 的 TS 接口须与此保持一致。
+//!
+//! 〔CF2 · 第四波 4B〕**会话内容不再是 Tauri 事件**：原来的 `jsonl-line` / `jsonl-batch` 两个事件
+//! （与载荷 `JsonlBatchPayload`〔散文墓碑〕）退役，会话内容改走通道的 `subscribe`
+//! （`chan/webview.rs` · `event_replay·rs` 头注「订阅」）；流里每一格的体是 [`SessionStreamFrame`]。
 //!
 //! 改任何事件名 / payload 字段都要同步前端订阅与类型；删事件名前 grep 确认无 emit/listen。
 
 use serde::Serialize;
 
 pub mod events {
-    pub const JSONL_LINE: &str = "jsonl-line";
-    /// v1.7.13：replay 时一次性发整个 history（Vec<JsonlLinePayload>）。
-    /// 避免单条 emit N 次累计的 IPC 序列化 + 派发 overhead（3000 条曾经 ~400ms）。
-    pub const JSONL_BATCH: &str = "jsonl-batch";
     pub const SESSION_ENDED: &str = "session-ended";
     /// v2.3.0 issue #11：tasks 目录监听到变更（含初次创建 / 文件改 / 删除）→
     /// 后端重读 `<claude_dir>/tasks/<sid>/` 整目录后 emit 该 sid 的完整 task 列表。
@@ -117,24 +117,31 @@ pub struct JsonlLinePayload {
     pub message: crate::messages::JsonlRecord,
 }
 
-/// v2.3.1 issue #1 启动加速：jsonl-batch 把一次 replay 切成多块 emit（每块一次），
-/// 避免一次性灌入 N 千行卡死前端渲染管线。
+/// 〔CF2 · 第四波 4B〕会话内容流（`subscribe(origin, "session-lines"[/<sid>])`）里**一格的体**。
 ///
-/// **v2.6 B 重构起**：前端**不再**用 `chunk_index`/`chunk_total` 做 prepend/append 排序
-/// ——每个 payload 一律按自身 `seq` 二分插入 RecordTimeline（INVARIANTS § 5「seq 单调」/
-/// § 9「禁止按到达顺序排序」）。这两个字段保留仅为兼容/诊断：前端读但不据此决定位置
-/// （见 events.ts「chunkIndex/chunkTotal 元数据仍在 payload，但不再做 prepend/append 决策」）。
-/// `chunk_total == 1` = 不切块（小数据单次 emit，无切块开销）。
+/// 通道只搬不透明字节（`设计/05 §3.3.0`）；读它的是两端的业务那一侧（这里造、`src/events.ts` 读）。
+///
+/// - `{"line": JsonlLinePayload}`：一行记录（seq = 行号，与实时 / 快照 / 按行号取回同一个空间）。
+/// - `{"batch": "start" | "end"}`：一段**成批**的行（F5 重放 · 一次攒出 ≥ 50 行的大增量）的边界。
+///   前端据此进 / 出批模式（原来由 `jsonl-batch` 事件本身表达；那个事件退役之后，边界就是流里的一格）。
+///   ⚠ 它们也占 credit、占位置：没 credit 时同样可能被丢（前端有「队列清空就补排结束」的兜底）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct JsonlBatchPayload {
-    /// 0-based 块序号
-    pub chunk_index: u32,
-    /// 总块数（前端判断"是不是最后一块"用）
-    pub chunk_total: u32,
-    pub payloads: Vec<JsonlLinePayload>,
+#[serde(rename_all = "snake_case")]
+pub enum SessionStreamFrame {
+    Line(JsonlLinePayload),
+    Batch(BatchEdge),
+}
+
+/// 〔CF2〕成批那一段的哪一头。
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub enum BatchEdge {
+    Start,
+    End,
 }
 
 #[derive(Debug, Serialize, Clone)]

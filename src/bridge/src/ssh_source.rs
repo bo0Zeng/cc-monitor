@@ -107,7 +107,7 @@ fn should_reset_backoff(saw_hello: bool, lived: Duration) -> bool {
 ///
 /// | # | 连接 | 谁发起 |
 /// |---|---|---|
-/// | ① | `uname -m` 一次性 exec（选内嵌二进制的 arch） | `sftp::probe_remote_arch` |
+/// | ① | `uname -m` 一次性 exec（选内嵌二进制的 arch；〔DP1〕今天问 `uname -s -m`） | `byte_table::probe_key` |
 /// | ② | SFTP 连接（读远端 `.build_id` marker） | `sftp::connect_sftp` |
 /// | ③ | exec backend 起流 | `connect_and_exec` |
 ///
@@ -1240,7 +1240,7 @@ async fn fetch_snapshot(
                         cancelled = true;
                         break 'read;
                     }
-                    flush_lines(replay, app, host_label, std::mem::take(&mut chunk)).await;
+                    flush_lines(replay, host_label, std::mem::take(&mut chunk)).await;
                 }
             }
             offset = page.next;
@@ -1262,7 +1262,7 @@ async fn fetch_snapshot(
         return Ok(FetchOutcome::Cancelled);
     }
     if !chunk.is_empty() {
-        flush_lines(replay, app, host_label, chunk).await;
+        flush_lines(replay, host_label, chunk).await;
     }
     // 完整性校验：`total` 精确对账（F30）—— 续传时对的是「锚之后那一截」。
     let (arrived, want) = (walk.arrived(), walk.want());
@@ -2269,6 +2269,8 @@ pub async fn run(
             &mut hello_confirmed,
         )
         .await;
+        // 〔CF2〕这条连接没了 ⇒ 订了这台会话流的那些订阅原位收一格 `Unseen`（不是终点，`05 §4.5.2`）。
+        replay.origin_seen(&crate::origin::Origin(cfg.origin_label()), false);
         if hello_confirmed.is_some() && !connected.load(Ordering::Acquire) {
             tracing::warn!("ssh_source hello 自愈轮未收到 hello,回退降级模式(backend 可能被换旧)");
             hello_confirmed = None;
@@ -2390,12 +2392,7 @@ const BATCH_MAX_AGE_MS: u64 = 200;
 /// emit 严格先于随后的 SessionRemoved/断连归档（审计 R1：spawn 化的行若晚于
 /// session-ended 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
 /// backend 帧流形成天然背压。
-async fn flush_lines(
-    replay: &Arc<EventReplay>,
-    app: &tauri::AppHandle,
-    host_label: &str,
-    lines: Vec<JsonlLine>,
-) {
+async fn flush_lines(replay: &Arc<EventReplay>, host_label: &str, lines: Vec<JsonlLine>) {
     let flushed: Vec<(String, u64)> = lines
         .iter()
         .map(|l| (l.session_id.clone(), l.seq))
@@ -2403,7 +2400,8 @@ async fn flush_lines(
     // 〔ST3〕同一个 origin 既是载荷上的机器名、也是看不懂的行记账的那台。
     let origin = crate::origin::Origin(host_label.to_string());
     let payloads = crate::batch_to_payloads(lines, &origin);
-    replay.on_line_batch_awaited(app, payloads).await;
+    // 〔CF2〕交给订了它的那些会话流（`event_replay` 头注「订阅」）；出口在它手里，不再经 `app` 广播。
+    replay.on_line_batch_awaited(payloads).await;
     // 〔C2〕发出去了才推续点（连续才推，见 `snapshot_resume::note_flushed`）。
     crate::snapshot_resume::note_flushed(&origin, flushed.iter().map(|(s, q)| (s.as_str(), *q)));
 }
@@ -2427,7 +2425,6 @@ async fn flush_lines(
 pub(crate) struct LineIntake {
     origin_label: String,
     replay: Arc<EventReplay>,
-    app: tauri::AppHandle,
     batcher: Batcher,
     snapshots: std::sync::Arc<SnapshotQueue>,
     tail_only: bool,
@@ -2454,7 +2451,6 @@ impl LineIntake {
         LineIntake {
             origin_label,
             replay: replay.clone(),
-            app: app.clone(),
             batcher: Batcher::new(BATCH_CAP),
             _closer: SnapshotQueueCloser(snapshots.clone()),
             snapshots,
@@ -2480,14 +2476,14 @@ impl LineIntake {
     /// 收一行（达容量 / 批龄就整批冲出去）。
     async fn line(&mut self, line: JsonlLine) {
         if let Some(full) = self.batcher.push(line) {
-            flush_lines(&self.replay, &self.app, &self.origin_label, full).await;
+            flush_lines(&self.replay, &self.origin_label, full).await;
         }
     }
 
     /// 把攒着的行冲出去（攒批边界：会话走了 / 流断了 / 静默窗到了）。
     async fn flush(&mut self) {
         if let Some(lines) = self.batcher.take() {
-            flush_lines(&self.replay, &self.app, &self.origin_label, lines).await;
+            flush_lines(&self.replay, &self.origin_label, lines).await;
         }
     }
 
@@ -2630,12 +2626,18 @@ pub(crate) async fn consume_local(
     let mut hidden: std::collections::HashSet<String> = std::collections::HashSet::new();
     loop {
         let mut intake = LineIntake::open(label.clone(), LOCAL_STREAM_TAIL_ONLY, &replay, &app);
+        // 〔CF2〕这条流交来第一件东西 ⇒ 本机那台「看得见」（订阅原位收 `Seen`）；流结束 ⇒ `Unseen`。
+        let mut seen = false;
         loop {
             let Some(item) = intake.recv_or_flush(&mut rx).await else {
                 // 发送端全没了（进程收摊）：残批照发，然后退出。
                 intake.flush().await;
                 return;
             };
+            if !seen && !matches!(item, LocalItem::StreamEnded) {
+                seen = true;
+                replay.origin_seen(&crate::origin::Origin(label.clone()), true);
+            }
             match local_step(item, show_bg, &mut hidden) {
                 LocalStep::Line {
                     session_id,
@@ -2660,6 +2662,7 @@ pub(crate) async fn consume_local(
                 LocalStep::Skip => {}
                 LocalStep::StreamEnded => {
                     intake.flush().await;
+                    replay.origin_seen(&crate::origin::Origin(label.clone()), false);
                     tracing::info!(
                         "本机那条流结束：内容收口换新（下一条流重新宣告、快照按续点接着拉）"
                     );
@@ -2699,7 +2702,7 @@ async fn stream_loop(
     let t_connect_start = std::time::Instant::now();
 
     // issue #29（F08）：连接前确保远端后端已（自动）部署到 cfg.backend_path。
-    // 嵌入二进制就位前（F08b 未做）backend_binary() 返回 None → ensure_backend_deployed
+    // 嵌入二进制就位前（F08b 未做）〔DP1〕`byte_table::choose` 回「这一版没带」→ ensure_backend_deployed
     // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的后端仍可连。
     // ★ F05 下半：**上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接**。
     // 判据与记忆的语义见 `VERIFIED_BUILD` 头注（记的是 hello 自证，不是预检结论）。
@@ -2711,11 +2714,22 @@ async fn stream_loop(
         Some(EXPECTED_BACKEND_BUILD_ID.to_string())
     } else {
         match crate::sftp::ensure_backend_deployed(cfg).await {
-            Ok(c) => c,
+            Ok(c) => Some(c),
             Err(e) => {
+                // 〔DP1 · 第四波〕**不阻断**（手动部署的后端照样能连），但那句话要到界面上 ——
+                //   从前这里只 `warn!`、拒绝那几形更是 `debug!` ＋ `Ok(None)`，用户看到的是「什么都没发生」（`设计/96 §7.1.4`）。
+                let msg = e.say(&host_label);
                 tracing::warn!(
-                    "ssh_source [{host_label}] backend 自动部署失败（继续尝试连接已有后端）: {e}"
+                    "ssh_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {msg}"
                 );
+                let payload = crate::bridge::RemoteHealthPayload {
+                    origin: host_label.clone(),
+                    kind: "deploy".to_string(),
+                    message: msg,
+                };
+                if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                    tracing::warn!("ssh_source remote-health (deploy) emit failed: {e}");
+                }
                 None
             }
         }
@@ -2945,6 +2959,8 @@ async fn stream_loop(
                 );
                 // 标记本次连接已健康(收到 backend hello)，供 run() 重连循环判定是否重置退避。
                 connected.store(true, Ordering::Release);
+                // 〔CF2〕订了这台会话流的那些订阅原位收一格 `Seen`（`05 §3.3.4` 的 `Item::Seen`）。
+                replay.origin_seen(&crate::origin::Origin(host_label.clone()), true);
                 // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端
                 // headlineFor 已含 version case，零前端改动）。不 hard-disconnect（向前兼容）。
                 if let Some(msg) = version_warning(v, &build_id, &host_label) {

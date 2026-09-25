@@ -276,20 +276,14 @@ fn the_edge_scan_sees_both_trees_and_actually_parses() {
 fn every_non_literal_include_is_registered_with_a_reason() {
     /// 解析不出字面量路径的 `include_*!`：`(文件, 处数, 为什么不是跨界边)`。
     const NON_LITERAL_INCLUDES: &[(&str, usize, &str)] = &[(
-        "src/bridge/src/sftp.rs",
-        2,
-        "`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/backend-<arch>\"))` —— 读的是 \
-             build script 放进 `OUT_DIR` 的**产物**（内嵌后端二进制），\
+        "src/bridge/src/byte_table.rs",
+        4,
+        "〔DP1 · 第四波〕`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/backend-<arch>\" | \"/panorama-<arch>\"))` —— \
+             读的是 build script 放进 `OUT_DIR` 的**产物**（远端那两份 musl 后端 · 全景小程序两份 musl），\
              不是对面那一半的**源码** ⇒ 不属两半编译期互咬。\
              ⚠ 但它确实是一条编译期边：`OUT_DIR` 里没有那个文件就编不过 —— \
-             那条边由 `build.rs` 与 `shared_crate_registry` 的 CI 步骤那侧管。",
-    ), (
-        "src/bridge/src/panorama_bytes.rs",
-        2,
-        "〔RM1c · 第四波〕`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/panorama-<arch>\"))` —— \
-             同上一行的形状：读的是 `build.rs::embed_panoramas` 放进 `OUT_DIR` 的**产物**\
-             （内嵌的全景小程序两个 musl arch），不是对面那一半的源码 ⇒ 不属两半编译期互咬。\
-             只在 `embedded_panoramas` cfg 下编译（字节缺席时这两处不进构建）。",
+             那条边由 `build.rs`（`embedded_backends` / `embedded_panoramas` 两个 cfg）与 `shared_crate_registry` 的 CI 步骤那侧管。\
+             〔从前这四处分住 `sftp.rs`（后端 2）与 `panorama_bytes.rs`（全景 2），全仓唯一的取字节口立起来之后收进这一份。〕",
     )];
     let mut found: Vec<(String, usize)> = Vec::new();
     let mut total_invocations = 0usize;

@@ -739,9 +739,16 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // await：保证 listener 注册完成再 emit frontend-ready（否则后端 replay 可能早于
-  // 监听就绪而丢事件 —— 主窗口此前靠往返延迟侥幸不触发，显式 await 更稳，也跟
-  // viewer 路径一致）。
+  // 〔CF2 · 第四波 4B〕会话内容经通道 `subscribe` 来：每台机器一条 `session-lines`。哪几台由后端注册表说了算
+  //   （`backend_machines`：本机恒第一，远端是起步时各起了一条流的那几台）。问不到 ⇒ 至少订本机。
+  let machines: string[] = [LOCAL_ORIGIN];
+  try {
+    machines = await commands.backend_machines();
+  } catch (e) {
+    console.warn("[events] backend_machines 失败，只订本机的会话流：", e);
+  }
+  // await：保证 listener 注册完成、会话流订阅在 monitor 那一侧登记好，再 emit frontend-ready
+  // （它就是这些订阅的就绪点：后端先重发宣告、再按 credit 交留存、再对账 —— 顺序见 `event_replay·rs::ready_point`）。
   await bindEvents({
     // P5.2 B 重构：onLine 不再带 source 参数（前端按 seq timeline 排，不分 batch/live）
     onLine: (e) => tabs.onLine(e),
@@ -806,6 +813,10 @@ window.addEventListener("DOMContentLoaded", async () => {
         }
       }
     },
+    // 〔CF2〕那台机器的会话流丢了几格 ⇒ 那台的每个 tab 按行号补（`TabManager.onStreamGap`）。
+    onStreamGap: (origin) => tabs.onStreamGap(origin),
+  }, {
+    streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
   });
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast

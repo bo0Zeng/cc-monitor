@@ -227,7 +227,8 @@ describe("三入口 · 住址对账（html ↔ 入口模块 ↔ vite input ↔ T
     const rs = readFileSync(resolve(REPO_ROOT, "src/bridge/src/lib.rs"), "utf8");
     const urls = [...rs.matchAll(/WebviewUrl::App\(\s*(?:format!\()?"([^"]+)"/g)].map((m) => m[1]);
     // 分母：今天恰好两处开窗（设置窗 ＋ viewer 窗）。多了少了都要有人来看一眼。
-    expect(urls.sort()).toEqual(["settings.html", "viewer.html?viewer={session_id}"]);
+    // 〔CF2 · 第四波 4B〕viewer 的 URL 多带一个 `origin`：独立窗口自己订 `session-lines/<sid>`，要知道会话在哪台机器上。
+    expect(urls.sort()).toEqual(["settings.html", "viewer.html?viewer={session_id}&origin={origin_q}"]);
     const htmls = new Set<string>(Object.values(WINDOWS).map((w) => w.html));
     for (const u of urls) expect(htmls.has(u.split("?")[0]), `lib.rs 开窗指向 ${u}，它不是构建输入之一`).toBe(true);
     // 主窗口由 tauri.conf.json 的 windows[0] 开，不写 url ＝ 默认 index.html。

@@ -261,6 +261,16 @@ export class TabManager {
   }
 
   /**
+   * 〔CF2 · 第四波 4B〕那台机器的会话流**丢了几格**（`gap`：前端落后超过一整个 credit 窗口，句柄丢了、原位报）。
+   * 丢的是哪几个会话的哪几行流里说不出来 ⇒ 那台机器上的**每个** tab 都按行号补（`TabStreamView.recoverFromGap`）。
+   */
+  onStreamGap(origin: Origin): void {
+    for (const t of this.store.tabs.values()) {
+      if (t.origin === origin) this.view.recoverFromGap(t);
+    }
+  }
+
+  /**
    * G6：分叉产出新会话文件之后 —— **起它**。
    *
    * 「不杀旧会话、起新会话」是用户对这个功能的原话，所以这里对源会话一个字都不碰：
@@ -552,7 +562,8 @@ export class TabManager {
       //
       // 〔U4〕上面两件事原先是两段（`status` 翻 live · `tmuxIdle` 清 false），因为两个轴挤在两个字段里；
       //   两轴之后它们是同一条转移：「远端见行」把**死了的**（已结束 / 可重连）翻回活（`nextState`）。
-      if (isRemoteOrigin(tab.origin) && this.applyState(tab, "remote-line")) {
+      // 〔CF2〕取回来的历史行不算「远端见行」（`TabStore.historyFeed` 头注）。
+      if (isRemoteOrigin(tab.origin) && !this.store.historyFeed && this.applyState(tab, "remote-line")) {
         this.prefs.clearPinHint(sessionId); // 〔步 17·B〕远端复活：空态提示的对象没了
         this.refreshTabBar();
         this.emitTabStateProbe(tab); // F-E1:远端复活(死 → 活)

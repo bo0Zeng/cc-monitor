@@ -1988,6 +1988,24 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 🔴 **为什么分页**：一帧应答要整个进内存、整个过线；本仓见过 270 MB 的会话，而 monitor 单帧上限 64 MiB。单行比一页还长时续读到行尾，但超过 32 MiB ⇒ `oversized_line`（不叫 `line_too_long`：那是入方向信封的协议级 code）。
 
+#### `history-lines`：按行号取回一段（〔CF2 · 第四波 4B〕不依赖骨架索引）
+
+```text
+→ {"id":"q13","cmd":"history-lines","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","from":1200,"until":1400}}
+← {"kind":"reply","id":"q13","ok":true,"data":{"from":1200,"next":1400,"eof":false,"lines":["{…}","{…}"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`） |
+| `from` | → | 第一行的行号（缺省 0） |
+| `until` | → | 可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止 |
+| `lines` | ← | 可计行的原文（UTF-8 有损解码；不含行尾 `\n`）。第 k 条就是第 `from + k` 行 |
+| `next` | ← | 下一段从这一行起（恒 ＝ `from` ＋ `lines` 的条数） |
+| `eof` | ← | 读到了最后一个完整行之后 |
+
+**行号口径**：与实时 `line` 帧的 `seq`、`history-tail` 的 `total`、`history-index` 的行同一个空间 —— BOM 与全空白的行不占号、没 `\n` 收尾的残尾不计（判定只住 `history_query::line_counts`）。**一帧装得下**：交出的原文累计到 1 MiB 就停（至少一行）；单行超过 32 MiB ⇒ `oversized_line`。**代价**：后端零状态、每次从文件头数（O(`from` 之前的字节)），依据与读数见 `调研/第四波记录/CF2.md §1`。CLI 面随之自动多一条 `--history-lines`。
+
 #### `history-record`：这条会话的记录还在不在（〔U4b · 第四波〕resume 之前问）
 
 ```text
@@ -2243,7 +2261,7 @@ monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux
 窗口那一侧的 `call(transfer-upload | transfer-download)` / `subscribe(transfer/<id>)` 一个字不变，monitor 只做中继。
 **上传只写远端暂存区** `~/.cc-monitor/staging/<key>.part`（落进用户目录由远端后端 `files-commit-upload` 做）；**下载远端只读**，
 本机落点 `<落点>.part` ＋ 改名上位（本机那一下写是文件管理那一面的写，先过会话文件围栏）。
-存亡规矩：**撤** ⇒ 上传删暂存件、下载留 `.part`；**失败** ⇒ 上传留暂存件、下载删 `.part`；续传两侧都先对尾块。
+存亡规矩：**撤** ⇒ 上传删暂存件、下载留 `.part`；**失败** ⇒ 上传留暂存件、下载**也留** `.part`（〔DP1〕弱网断线就是失败，删了续传的本钱就没了；一个字节都没落的空 `.part` 才清）；续传两侧都先对尾块。上传失败之后先把已发出的写全部等到回话再走（不留晚到的写）。
 票表**每条流连接一张**：连接没了（monitor 走了）⇒ 在册的一律撤。四条都是 `Run::Builtin`，**只在帧面**。
 一条连接上的通道预算按连接记：session 通道 8 格（长流 · 查询 · sftp 同一道闸），其中传输至多 4 格（排队，不报错）。
 

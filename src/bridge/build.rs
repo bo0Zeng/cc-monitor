@@ -463,8 +463,7 @@ fn extract_capabilities(src: &str) -> Option<String> {
 
 /// 把交叉编译好的 musl backend 二进制
 /// （`src/bridge/embedded-backends/cc-monitor-backend-<arch>`）复制进 OUT_DIR 并置
-/// `embedded_backends` cfg；任一缺失则不置 cfg（`sftp::backend_binary` 返回 None → 自动部署
-/// 优雅 no-op，沿用手动部署）。
+/// `embedded_backends` cfg；任一缺失则不置 cfg（〔DP1〕`byte_table::pick` 对 Linux 两格返回 None → 部署那一步说「这一版没带」）。
 ///
 /// 🔴 〔步 `19c` · 09-19〕**这两份字节从哪来，只有两个地方**：发版那趟是 `release.yml` 的
 /// `Cross-compile backend for both musl targets`，本机那趟是 [`REEMBED_CMD`]，
@@ -610,7 +609,7 @@ fn embed_backends() {
             std::fs::copy(&src, &dst).expect("copy embedded backend binary");
         } else {
             // U-1：原来这里**连 warn 都没有** —— 缺二进制就静默不置 cfg，
-            // `sftp::backend_binary()` 返回 None、远端自动部署整个消失而无人知晓。
+            // 取字节那一口返回 None、远端自动部署整个消失而无人知晓。
             // 那正是 v2.19–v2.22 那批安装包的事故形状（见 release.yml 的账）。
             println!(
                 "cargo:warning=缺少内嵌 backend {arch}（{}）——远端自动部署将关闭（embedded_backends cfg 不置）。要它就跑 `{REEMBED_CMD}`",
@@ -678,7 +677,7 @@ fn target_exe_suffix(target: &str) -> &'static str {
 }
 
 /// 本机内嵌后端的落点 —— `release.yml` 那一步按同一条路径铺，
-/// `local_backend::native_embedded_backend` 用**同一条路径的字面量** `include_bytes!` 它。
+/// `byte_table.rs`（〔DP1〕全仓唯一的取字节口）用**同一条路径的字面量** `include_bytes!` 它。
 ///
 /// # 🔴 为什么是**定死的名字**，而不是像 `embedded-backends/` 那样把 triple 编进文件名
 ///
@@ -735,7 +734,7 @@ const NATIVE_BACKEND_FILE: &str = "cc-monitor-native";
 /// # 缺席 = 不置 cfg + **可见的** warning
 ///
 /// 沿用 `embed_backends` 的 U-1 那条账：**静默不置 cfg 正是 v2.19–v2.22 那批安装包的事故形状**。
-/// 缺席时 `local_backend::native_embedded_backend()` 返回 `None`，自释放这条路诚实关掉。
+/// 缺席时 `byte_table::pick` 在这一格给不出本机原生那份（〔DP1〕Linux 构建上还有 musl 那份可给），自释放那条路说「这一版没带」。
 fn embed_native_backend() {
     // 允许自定义 cfg（Rust 1.80+ unexpected_cfgs 检查）。
     println!("cargo:rustc-check-cfg=cfg(embedded_native_backend)");
@@ -847,7 +846,7 @@ fn embed_native_backend() {
 }
 
 /// 〔RM1f〕本机原生全景小程序的文件名（落点目录同 [`NATIVE_BACKEND_DIR`]，旁挂 `.target` 清单同那一对）。
-/// `panorama_bytes::native_embedded_panorama` 用**同一条路径的字面量** `include_bytes!` 它
+/// `byte_table.rs`（〔DP1〕全仓唯一的取字节口）用**同一条路径的字面量** `include_bytes!` 它
 /// （四处同一个串：本常量 · 那个字面量 · `re-embed.sh --native` · `release.yml` 的 Windows 那一格 —— 判据对拍）。
 const NATIVE_PANORAMA_FILE: &str = "cc-monitor-panorama";
 

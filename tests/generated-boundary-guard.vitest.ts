@@ -114,7 +114,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件份数被钉住（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(30); // 〔C4d · 第四波 4B〕子步 6 −1（`remote_history.rs` 不再派生：`RemoteProjectsResult` 随远端项目清单那条命令删了；`history.rs` 仍派生 `BranchResult`，照旧在列） // 〔C4d · 第四波 4B〕子步 3 −1（`accounts.rs` 整份删了：`AuthKind` / `RemoteAccount` 两个生成物没了产出者、同拍出列，形状手写在 `src/accounts.ts`） // 〔合并 AS2 × RM1f〕主线 31 ＋ AS2 +2 ＋ RM1f −1 ⇒ 32（跑出来核过） // 〔AS2〕+1（`skill_install.rs`：skill「装到这台」的六个形状） // 〔合并 AS2〕主线 31 ＋ AS2 +1（`asset_sync.rs`：`AssetsSynced` / `AssetsSyncRow` / `AssetsReach`） // 〔合并 AL1d × AS1〕主线 31 ＋ AL1d -1 ＋ AS1 +1 ⇒ 31（跑出来核过；AS1：mcp_sync_preview / mcp_sync_apply，Both，新能力 `mcp.sync`） // **〔AL1d · 4B〕`lib.rs` −1**（「终端集成」五条命令退役，`CcStatusResponse` / `LegacyProfileEntry` / `CcPreviewResponse` 随之删了，`lib.rs` 从此不派生 TS 类型；合并主线 d07c6d14 按两边增量相加 31 − 1）； // **〔C4b · 第四波 4B〕`plugins.rs` 删了 −1（`MarketplaceSurvey` / `MarketplaceEntry` 两个生成物同拍出列，形状改住 `settings/plugins-section.ts`）** // **〔C4b · 第四波 4B〕`session_find.rs` / `session_outline.rs` 删了 −2、`session_skeleton.rs` 不再派生（`SessionIndexResult` 随骨架索引那条命令删了）−1** // **〔AL1c · 4B〕`shell_dialect.rs` +1**（`Shell`：别名三条命令的方言入参）； **〔SE2〕`session_find.rs` +1**（`FindResult` / `FindHit`）； **〔第四波 S4〕`sftp_pool.rs` −1**（`TransferProgress` 随池子最后那条命令删了，那份文件从此不派生任何 TS 类型）； **〔C2〕`ssh_link.rs` +1**（`ConnectStage` 从 `ssh_source.rs` 搬过去；`ssh_source.rs` 自己还派生别的几个，照旧在列）； **〔SE1〕`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔`设计/10` 骨架 · 子步 3〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **〔步 12 · 09-20〕`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；**`设计/50` −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(31); // 〔合并 C4d × 主线 cf3277f4〕主线 33 ＋ 本路 -2 ⇒ 31 // 〔C4d · 第四波 4B〕子步 6 −1（`remote_history.rs` 不再派生：`RemoteProjectsResult` 随远端项目清单那条命令删了；`history.rs` 仍派生 `BranchResult`，照旧在列） // 〔C4d · 第四波 4B〕子步 3 −1（`accounts.rs` 整份删了：`AuthKind` / `RemoteAccount` 两个生成物没了产出者、同拍出列，形状手写在 `src/accounts.ts`） // 〔合并 CF2 × 主线 28a5f652〕主线 32 ＋ 本路 `session_skeleton.rs` ＋1（`SessionLinesPage`）⇒ 33 // 〔合并 AS2 × RM1f〕主线 31 ＋ AS2 +2 ＋ RM1f −1 ⇒ 32（跑出来核过） // 〔AS2〕+1（`skill_install.rs`：skill「装到这台」的六个形状） // 〔合并 AS2〕主线 31 ＋ AS2 +1（`asset_sync.rs`：`AssetsSynced` / `AssetsSyncRow` / `AssetsReach`） // 〔合并 AL1d × AS1〕主线 31 ＋ AL1d -1 ＋ AS1 +1 ⇒ 31（跑出来核过；AS1：mcp_sync_preview / mcp_sync_apply，Both，新能力 `mcp.sync`） // **〔AL1d · 4B〕`lib.rs` −1**（「终端集成」五条命令退役，`CcStatusResponse` / `LegacyProfileEntry` / `CcPreviewResponse` 随之删了，`lib.rs` 从此不派生 TS 类型；合并主线 d07c6d14 按两边增量相加 31 − 1）； // **〔C4b · 第四波 4B〕`plugins.rs` 删了 −1（`MarketplaceSurvey` / `MarketplaceEntry` 两个生成物同拍出列，形状改住 `settings/plugins-section.ts`）** // **〔C4b · 第四波 4B〕`session_find.rs` / `session_outline.rs` 删了 −2、`session_skeleton.rs` 不再派生（`SessionIndexResult` 随骨架索引那条命令删了）−1** // **〔AL1c · 4B〕`shell_dialect.rs` +1**（`Shell`：别名三条命令的方言入参）； **〔SE2〕`session_find.rs` +1**（`FindResult` / `FindHit`）； **〔第四波 S4〕`sftp_pool.rs` −1**（`TransferProgress` 随池子最后那条命令删了，那份文件从此不派生任何 TS 类型）； **〔C2〕`ssh_link.rs` +1**（`ConnectStage` 从 `ssh_source.rs` 搬过去；`ssh_source.rs` 自己还派生别的几个，照旧在列）； **〔SE1〕`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔`设计/10` 骨架 · 子步 3〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **〔步 12 · 09-20〕`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；**`设计/50` −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -148,6 +148,7 @@ describe("C01 边界生成物", () => {
       // 加它之前 `RemoteAccount` 压根没有 ts_rs derive，两侧靠一行注释对齐 ⇒
       // 往一侧加字段没有任何门禁会红。
       "AutoLaunchConfig.ts", // C04d 批5a
+      "BatchEdge.ts", //              〔CF2 · 第四波 4B〕会话流里成批那一段的边界（`SessionStreamFrame` 的传递依赖）
       "BlockState.ts", //             〔AL1d · 4B〕一份启动文件里别名块的现状（`StartupFile.block`）
       "BranchResult.ts", // C04d 批6a
       "CcBusAgent.ts", // C04d 批5a（CcBusState 的传递依赖）
@@ -183,7 +184,8 @@ describe("C01 边界生成物", () => {
       "HooksReport.ts", //            C04d 批3
       "ImportGroup.ts", // C04d 批5c
       "ImportMember.ts", // C04d 批5c（ImportGroup 的传递依赖）
-      "JsonlBatchPayload.ts", //      C04c
+      // 〔CF2 · 第四波 4B〕"JsonlBatchPayload.ts" 走了：`jsonl-batch` 事件退役，会话内容改走通道 `subscribe`
+      //   （流里一格的体是 `SessionStreamFrame`）。
       "JsonlLinePayload.ts", //       C04c
       "JsonlRecord.ts", //            C04c（**线定义本身**：wire == serde_json::to_string(它)）
       "LocalCcmEntry.ts", // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）
@@ -218,9 +220,11 @@ describe("C01 边界生成物", () => {
       "SessionEndedPayload.ts", //    C02
       "SessionHits.ts", // C04d 批6c
       "SessionIdlePayload.ts", //     C02
+      "SessionLinesPage.ts", //       〔CF2 · 第四波 4B〕按行号取回的那一段（`read_session_lines`）
       // 〔C4c · 第四波 4B〕`SessionRecordProbe.ts`（〔U4b〕resume 之前问记录还在不在的答案）出列：那条命令退役、界面经通道
       //   直接问后端 `history-record`，形状改住 `src/session-reads.ts::RecordProbe`（手写，跨语言由后端判据钉）。
       "SessionStartedPayload.ts", //  C02
+      "SessionStreamFrame.ts", //     〔CF2 · 第四波 4B〕会话内容流里一格的体（`{"line": …}` / `{"batch": …}`）
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
       "SkillFile.ts", // 〔AS2〕skill「装到这台」的形状
@@ -456,7 +460,7 @@ describe("C01 边界生成物", () => {
     //    （`UsageTotals` 的 `input`/`cache_creation`/`cache_read`/`output`）。
     //    ⚠ **这个数变小不是放宽**：它是「有多少个大整数字段被 `ts(type=…)` 策略盖住」，
     //    人群小了是因为被盖的对象少了，策略本身一个字没松。
-    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(12); // 〔C4d · 第四波 4B〕−4（`HistoryProject.last_activity` · `HistorySessionEntry.started_at` / `.updated_at` · `EntryMetadata.updated_at`：随那三个形状删了） // 〔合并 AS2 × RM1f〕主线 16 ＋ AS2 +1 ＋ RM1f −1 ⇒ 16（跑出来核过） // 〔合并 AS2〕主线 16 ＋ AS2 +1（`AssetsSyncRow.pushed`：推过去几台快照，量纲是「机器台数」） // 〔AL1d · 4B〕−1（`ProfileScan.size_bytes` 随那个类型删了；合并主线 d07c6d14 按两边增量相加 17 − 1） // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
+    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(14); // 〔合并 C4d × 主线 cf3277f4〕主线 18 ＋ 本路 -4 ⇒ 14 // 〔C4d · 第四波 4B〕−4（`HistoryProject.last_activity` · `HistorySessionEntry.started_at` / `.updated_at` · `EntryMetadata.updated_at`：随那三个形状删了） // 〔合并 CF2 × 主线 28a5f652〕主线 16 ＋ 本路 ＋2（`SessionLinesPage.from` / `.next`）⇒ 18 // 〔合并 AS2 × RM1f〕主线 16 ＋ AS2 +1 ＋ RM1f −1 ⇒ 16（跑出来核过） // 〔合并 AS2〕主线 16 ＋ AS2 +1（`AssetsSyncRow.pushed`：推过去几台快照，量纲是「机器台数」） // 〔AL1d · 4B〕−1（`ProfileScan.size_bytes` 随那个类型删了；合并主线 d07c6d14 按两边增量相加 17 − 1） // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
@@ -623,7 +627,9 @@ describe("C02 事件名钉死", () => {
     // 握手完成。前端 `main.ts` 订阅它，替掉那个 10 秒账号轮询（改事件驱动）。
     // 〔U4b · 第四波〕12 → 14：`SESSION_CONTAINER`（"session-container"，活会话的容器）·
     // `ORIGIN_SESSIONS_LISTED`（"origin-sessions-listed"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
-    expect(pairs.length, `期望恰好 14 个事件名常量，实得 ${pairs.length}`).toBe(14);
+    // 〔CF2 · 第四波 4B〕14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
+    //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/ipc/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
+    expect(pairs.length, `期望恰好 12 个事件名常量，实得 ${pairs.length}`).toBe(12);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
     const tsFiles = ["src/events.ts", "src/main.ts", "src/remote-health.ts"];
