@@ -396,7 +396,13 @@ pub const PROTO_VERSION: u32 = 1;
 /// RM1b `tasks-list` / `plugins-marketplaces`（两个命令面都动）。
 /// ＋ 行为：FW5 递归删非空目录（逐条目过围栏）与批量改权限 · F9c 超长请求行的应答从前 4 KiB 抠回 `id` ·
 /// S4 冷启动首建索引的读数进 `files.index.status`。
-pub const BUILD_ID: &str = "p2u-stage-find-tasks";
+///
+/// ★★★ **p2v-resident-link**（2026-09-24，第四波 SR1a 合并那一拍）：子命令集大改 ——
+/// `--dial` 删（界面进程不再起拨号代理）；入方向 ＋ `link-open` / `link-data` / `link-credit` / `link-close`（只在帧面），
+/// ＋ `history-index` / `history-user-inputs` / `history-find`（骨架索引 · 大纲清单 · 会话内查找上帧面，CLI 面同名派生）。
+/// 线上多三种出方向帧：`link_data` · `link_end` · `accounts_changed`。
+/// ⚠ 旧本机后端不认 `link-open` ⇒ 界面判「本机后端太旧」、不回落（D11）⇒ **必须**让它被判 stale。
+pub const BUILD_ID: &str = "p2v-resident-link";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
