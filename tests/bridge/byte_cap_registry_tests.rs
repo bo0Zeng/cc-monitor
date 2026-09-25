@@ -194,20 +194,8 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
 const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // ---- monitor 侧 ----
     // ---- P8a：插件面只读枚举 ----
-    (
-        "src/bridge/src/plugins.rs",
-        "KNOWN_MARKETPLACES_CAP",
-        4 * 1024 * 1024,
-        "读 marketplace 登记表（本机实测 206 字节）",
-        "硬报错",
-    ),
-    (
-        "src/bridge/src/plugins.rs",
-        "MARKETPLACE_MANIFEST_CAP",
-        32 * 1024 * 1024,
-        "读单个 marketplace 的 manifest（本机实测 161 KB / 声明 276 个插件）",
-        "降级+说清",
-    ),
+    // 〔RM1b · 第四波〕这两条随读实现搬去了后端（`src/backend/observe/plugins_query.rs`，登记在后端那一段），
+    //   monitor 这一侧不再有它们。
     (
         "src/bridge/src/local_accounts.rs",
         "MANIFEST_CAP",
@@ -496,6 +484,30 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         32 << 20,
         "按行那六条帧查询（`history-projects` 等）整份输出",
         "拒收+回错",
+    ),
+    // 〔RM1b · 第四波〕插件市场枚举搬进后端（`plugins-marketplaces`）：两个上限原样随行
+    //   （量、值、超限语义都与搬家前 monitor 那两条逐字相同；monitor 那两条已随本机读实现退役摘掉）。
+    (
+        "src/backend/observe/plugins_query.rs",
+        "KNOWN_MARKETPLACES_CAP",
+        4 * 1024 * 1024,
+        "读 marketplace 登记表（`P8a` 本机实测 206 字节）",
+        "硬报错",
+    ),
+    (
+        "src/backend/observe/plugins_query.rs",
+        "MARKETPLACE_MANIFEST_CAP",
+        32 * 1024 * 1024,
+        "读单个 marketplace 的 manifest（`P8a` 本机实测 161 KB / 声明 276 个插件）",
+        "降级+说清",
+    ),
+    // 〔RM1b · 第四波〕任务列表搬进后端（`tasks-list`）：单个任务文件的读上限。
+    (
+        "src/backend/observe/tasks_query.rs",
+        "TASK_FILE_CAP_BYTES",
+        1 << 20,
+        "`tasks-list` 读单个任务文件（本机实测几百字节量级）",
+        "跳过+说清",
     ),
     // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：backend 的 Claude 知识搬进
     // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
@@ -1045,6 +1057,8 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
             //     落进了同一个窗口。⇒ 本条对「同一个 `match` 里有多条臂」这种形状
             //     **钉不住**，别读成「降级一定被说清了」；那一层今天靠站点自己的
             //     行为判据兜（`plugins.rs` 那两条当场红）。
+            //     〔RM1b · 第四波〕那个站点连同那两条行为判据随读实现搬去了后端
+            //     （`observe/plugins_query.rs` · `tests/backend/observe/plugins_query_tests.rs`），形状照旧。
             // 两种都靠人读诊断分辨。已登记进 `ROADMAP §5`。
             const WINDOW: usize = 10;
             let window = lines[i..(i + WINDOW).min(lines.len())].join("\n");

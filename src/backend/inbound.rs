@@ -118,7 +118,9 @@ pub const COMMANDS: &[&str] = &[
     "kill",
     "launch",
     "ping",
+    "plugins-marketplaces",
     "resolve",
+    "tasks-list",
 ];
 
 /// 在跑的命令登记表：`id` → 取消句柄。
@@ -1136,6 +1138,39 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // ── 〔RM1b · 第四波〕功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
+    //
+    // 🔴 此前只有 monitor 直读**本机** `tasks/<sid>/` 那一条路，远端 tab 永远拿不到任务。
+    //   本机后端与远端后端是同一个二进制 ⇒ 读法搬到这里，monitor 按 origin 问（本机也走这里）。
+    // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
+    //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
+    // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
+    // 〔RM1b · 第四波〕同族第二条：插件市场只读枚举（`parity_ledger` `plugins.marketplaces`）。
+    //   从 monitor `plugins.rs`（`P8a`）原样搬来，三条出口不变；应答恰一行 = 整份 survey。
+    CommandSpec {
+        name: "plugins-marketplaces",
+        doc_anchor: Some("#### `plugins-marketplaces`"),
+        codes: &["failed", "too_large"],
+        fields: &["lines"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "tasks-list",
+        doc_anchor: Some("#### `tasks-list`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["lines", "sid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

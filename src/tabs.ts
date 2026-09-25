@@ -594,7 +594,7 @@ export class TabManager {
 
     // v2.3.0 issue #11: 异步 fetch 初始 task 快照。task-update 事件路径并行更新
     // tasksBySid，两路收敛到同一份数据；若 sid 是 active 同步推给全局 panel。
-    void fetchSessionTasks(sessionId).then((tasks) => {
+    void fetchSessionTasks(sessionId, origin).then((tasks) => {
       this.store.tasksBySid.set(sessionId, tasks);
       if (this.store.activeId === sessionId) {
         this.tasksPanel?.setSession(sessionId, tasks);

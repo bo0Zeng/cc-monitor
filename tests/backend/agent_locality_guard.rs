@@ -322,6 +322,13 @@ mod tests {
         ),
         ("observe/search_query.rs", 2, "会话记录根 + 会话文件判定"),
         (
+            "observe/plugins_query.rs",
+            1,
+            "〔RM1b · 第四波〕插件市场清单的住址（`marketplace_manifest`）。**新长的一处，如实登记**：\
+             插件市场只读枚举从 monitor 搬进后端（远端也要答得出），清单目录名带 agent 的名字 ⇒ \
+             知识进适配层、调用留在 observe。总数 25 → 26，没抬 `NEW_AGENT_GAP_BASELINE`（26）",
+        ),
+        (
             "observe/watcher.rs",
             4,
             "会话记录根 + pidfile 目录 + 判活 cmdline + 会话文件判定",
@@ -381,6 +388,7 @@ mod tests {
         ("会话记录根", "control/fork_write.rs", 1, "fork 落盘时用 Claude 的 `projects/` 拼路径 ⇒ 写到一个这家根本不用的目录下"),
         ("会话记录根", "observe/history_query.rs", 1, "报错，但措辞是 Claude 的布局（`read_dir <home>/projects failed`）—— 说得出话，说的是别人的话"),
         ("会话记录根", "observe/search_query.rs", 1, "**静默**：rc=0、零输出"),
+        ("插件市场清单", "observe/plugins_query.rs", 1, "〔RM1b〕`plugins-marketplaces` 只认 Claude 的清单住址 ⇒ 换一家 agent，每一行都降级成「读不到插件数：落点里没有 …marketplace.json」—— **说得出话，说的是别人的布局**"),
         ("会话记录根", "observe/watcher.rs", 1, "流式 watcher 只 inotify Claude 的两个根 ⇒ 这家的会话永远不出现（DG1 那半本来就没接线）"),
         ("会话文件判定", "observe/history_query.rs", 3, "`.jsonl` 判定把 `.ndjson` 全过滤掉 ⇒ **静默**当成空项目目录"),
         ("会话文件判定", "observe/search_query.rs", 1, "同上，**静默**"),

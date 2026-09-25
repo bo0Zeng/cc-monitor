@@ -1055,11 +1055,11 @@ export class SettingsPanel {
         ...this.loadableBlock("MCP", () => new McpSection()),
       },
       // P8a：插件面（marketplace）只读枚举。
-      // ⚠ `appliesTo: "local"` —— 它今天**只有本机口**（远端要等后端的
-      // `--list-marketplaces`，欠账记在 `parity_ledger::plugins.marketplaces` 那行）。
-      // 挂成 `both` 会让远端机器上出现一个恒失败的块，那是骗人。
+      // 〔RM1b · 第四波〕`appliesTo: "local"` → `"both"`：后端补了 `plugins-marketplaces`
+      // （本机与远端同一条路），`PluginsSection` 跟着「当前在看哪台机器」问那一台 ——
+      // 原先那句「挂成 both 会出现一个恒失败的块」的前提（远端没有口）不在了。
       {
-        appliesTo: "local",
+        appliesTo: "both",
         tab: "tools",
         ...this.loadableBlock("插件（marketplace）", () => new PluginsSection()),
       },
