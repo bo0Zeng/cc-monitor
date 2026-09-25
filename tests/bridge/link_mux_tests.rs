@@ -140,6 +140,10 @@ fn the_link_codec_matches_the_rfc_4648_test_vectors() {
         assert_eq!(b64_encode(plain.as_bytes()), enc, "编 {plain:?}");
         assert_eq!(b64_decode(enc).unwrap(), plain.as_bytes(), "解 {enc:?}");
     }
+    // 字母表最后两位（`+` `/`，RFC 4648 §4 表 1 的 62 / 63）：§10 那七条向量一个都用不到它们 ——
+    // 死值验 K20 首跑实测：把字母表尾巴换成 URL 安全版（`-_`）七条照样绿。0xfb 0xff ⇒ 62 · 63 · 60。
+    assert_eq!(b64_encode(&[0xfb, 0xff]), "+/8=");
+    assert_eq!(b64_decode("+/8=").unwrap(), [0xfb, 0xff]);
     let all: Vec<u8> = (0..=255u8).collect();
     assert_eq!(b64_decode(&b64_encode(&all)).unwrap(), all);
     for bad in ["A", "AA=", "A===", "Zg==Zg==", "Zm9v!A==", "===="] {
