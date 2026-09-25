@@ -193,7 +193,7 @@ fn a_read_that_could_not_happen_is_never_rendered_as_an_empty_roster() {
     // ③ 头回来了，而它自己说这个壳里没有 `cat`
     let raw3 = format!("{}\n{CC_BUS_SPLIT_MARKER}\n", head_line(1, 0));
     let e3 = interpret_cc_bus_read("<local>", &raw3).expect_err("cat=0 必须是错");
-    assert!(e3.contains("没有 `cat`"), "{e3}");
+    assert!(e3.contains("没有 cat"), "{e3}");
     assert!(
         e3.contains("不是"),
         "错误里必须写明它不是「一个 agent 都没有」，否则用户读到的还是同一句：{e3}"
@@ -1517,7 +1517,7 @@ fn a_bash_that_cannot_be_found_is_a_loud_error_not_a_silent_empty_read() {
     // ① Windows + 一条候选都不在盘上 ⇒ **响亮失败**，且说得出「不是没有 agent」。
     let e = resolve_bash_with(true, &no_env, &nothing_exists)
         .expect_err("找不到 bash 必须是错，不是一个能跑的裸名");
-    assert!(e.contains("找不到可用的 `bash`"), "{e}");
+    assert!(e.contains("找不到可用的 bash"), "{e}");
     assert!(
         e.contains("不是"),
         "错误没写明它不是「一个 agent 都没有」—— 那就是上半场那个缺陷换个地方重演：{e}"

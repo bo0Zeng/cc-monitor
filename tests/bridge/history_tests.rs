@@ -336,14 +336,14 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
     // ④ fail-closed：旧路与 spawn 那条路被要求 attach 时**拒**。
     let old = build_local_posix_command(&LocalPsAction::Attach, None, None);
     assert!(
-        old.as_ref().is_err_and(|e| e.contains("旧路产不出 attach")),
+        old.as_ref().is_err_and(|e| e.contains("接不回已有会话")),
         "\n★ 旧路（`build_local_posix_command`）居然给 attach 渲出了东西：{old:?}\n\
              它只会拼一个**拉起器** ⇒ 渲出来的是「另起一条 claude」。\n\
              **静默产出比拒绝坏得多**：用户以为接回了原会话，实际两条都在跑。"
     );
     let spawned = launch_local(&LocalPsAction::Attach, None, None, None, Some(NAME));
     assert!(
-        spawned.as_ref().is_err_and(|e| e.contains("stdio 全 null")),
+        spawned.as_ref().is_err_and(|e| e.contains("自己的终端")),
         "\n★ `launch_local` 收下了 attach：{spawned:?}\n\
              那条路把命令 spawn 出去、stdio 全 null ⇒ 一个接不上任何终端的 attach 进程，\n\
              而它**还会静默成功**。attach 的正题是把用户自己的终端接进去（`§1.3`）。"
@@ -445,7 +445,7 @@ fn the_local_renderer_refuses_every_shape_the_front_end_can_send_today() {
             true,
         );
         assert!(
-            r.as_ref().is_err_and(|e| e.contains("tmux 会话名")),
+            r.as_ref().is_err_and(|e| e.contains("缺少会话名")),
             "没有会话名时必须拒 —— 在 Rust 里铸一个名字就是 F13 修掉的撞名坑第三次。实得：{r:?}"
         );
     }
@@ -2719,7 +2719,7 @@ fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
     fake_table(&["acct-a"], false);
     let e = relay_prefix_for_launch(&action, Some(&acct_a)).expect_err("中转没起来却照旧渲染");
     assert!(
-        e.contains("中转没在听") && e.contains(LOCAL_RELAY_NOT_LISTENING),
+        e.contains("中转没在听") && e.contains(LOCAL_RELAY_NOT_LISTENING.as_str()),
         "错误得说出真正的原因：{e}"
     );
     // `/t/` 那一格（账号 0、开关开）同样不在 ⇒ 直连，不拒。
@@ -4014,7 +4014,7 @@ fn an_apikey_row_whose_machine_cannot_start_a_relay_refuses_the_launch() {
         relay_down_refusal(
             "[rl1-host-dead] ",
             Some("acct-a"),
-            crate::remote_relay::RELAY_NOT_STARTED
+            &crate::remote_relay::RELAY_NOT_STARTED
         )
     );
     assert_eq!(
@@ -4076,6 +4076,6 @@ fn a_launch_endpoint_answer_of_the_wrong_shape_is_refused_not_guessed() {
         serde_json::json!("x"),
     ] {
         let e = launch_endpoint_from_wire("本机", &bad).expect_err("坏形被收了");
-        assert!(e.contains("两端契约对不上"), "{bad} ⇒ {e}");
+        assert!(e.contains("两端版本对不上"), "{bad} ⇒ {e}");
     }
 }

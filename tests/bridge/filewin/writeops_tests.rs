@@ -188,7 +188,8 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
     )
     .await
     .expect_err("后端没声明 `files-chmod`，却成了");
-    assert!(e.contains("files-chmod"), "没说是哪条命令不认：`{e}`");
+    // 〔CP2b · CP1 裁「改·§2.1」〕对外那句不再点内部命令名 ⇒ 认「版本旧了，不支持这个操作」那一句。
+    assert!(e.contains("不支持这个操作"), "没说后端不支持：`{e}`");
     assert_eq!(
         wired.cmds(),
         ["files-mkdir", "files-mkdir"],

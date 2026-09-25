@@ -60,6 +60,7 @@
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client::client_for;
+use crate::copy_table::copy_text;
 use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -112,15 +113,15 @@ where
     };
     announce();
     push().await.map_err(|e| {
-        format!(
-            "{}\n—— 试着把代码全景组件推到那台机器上，没成：{e}",
-            first.said
+        copy_text(
+            "rsPanoramaCall.push.failed",
+            &[("said", &first.said.to_string()), ("e", &e.to_string())],
         )
     })?;
     match ask().await {
-        Err(again) if again.wants_bytes() => Err(format!(
-            "已经把这一版的代码全景组件推过去了，那台机器仍然说：{}",
-            again.said
+        Err(again) if again.wants_bytes() => Err(copy_text(
+            "rsPanoramaCall.push.stillSays",
+            &[("said", &again.said.to_string())],
         )),
         other => other.map_err(|a| a.said),
     }
@@ -206,7 +207,10 @@ where
     for _ in 0..EDIT_ATTEMPTS {
         let raw = plan().await?;
         let planned: Planned = serde_json::from_value(raw.clone()).map_err(|e| {
-            format!("代码全景组件交回的编辑计划形状不对（{e}）—— 两端版本对不上：{raw}")
+            copy_text(
+                "rsPanoramaCall.edit.badPlan",
+                &[("e", &e.to_string()), ("raw", &raw.to_string())],
+            )
         })?;
         let Some(edit) = planned.edit else {
             return Ok(planned.value);
@@ -248,8 +252,12 @@ where
             }
         }
     }
-    Err(format!(
-        "{last}（连着 {EDIT_ATTEMPTS} 趟都是算完之后盘上那份又变了，先停下 —— 过一会儿再点一次）"
+    Err(copy_text(
+        "rsPanoramaCall.edit.gaveUp",
+        &[
+            ("last", &last.to_string()),
+            ("attempts", &EDIT_ATTEMPTS.to_string()),
+        ],
     ))
 }
 
@@ -300,7 +308,8 @@ pub fn panorama_cancel(ticket: String) -> bool {
 }
 
 /// 〔RM1f〕被撤掉的那一问交给界面的那句话（界面按「是我撤的」认它，不当失败弹）。
-pub(crate) const CANCELLED_SAID: &str = "已取消（后端那一趟已经停下）";
+pub(crate) static CANCELLED_SAID: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsPanoramaCall.cancel.done", &[]));
 
 /// 〔RM1f〕在飞的票：票 → 撤单铃。进程内、按票登记、有结局即摘（[`TicketGuard`]）。
 fn lock_tickets() -> std::sync::MutexGuard<
@@ -336,8 +345,9 @@ where
     {
         let mut t = lock_tickets();
         if t.contains_key(&ticket) {
-            return Err(format!(
-                "代码全景：取消票 `{ticket}` 还有一问在飞，这一问没有发出去（界面应当每一问一张新票）"
+            return Err(copy_text(
+                "rsPanoramaCall.ticket.busy",
+                &[("ticket", &ticket.to_string())],
             ));
         }
         t.insert(ticket.clone(), bell.clone());
@@ -353,7 +363,7 @@ where
 fn routed_text(r: Routed) -> String {
     match r {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-        Routed::Done => "代码全景这一问出了内部错误，没有拿到结果".to_string(),
+        Routed::Done => copy_text("rsPanoramaCall.call.internal", &[]),
     }
 }
 
@@ -374,7 +384,7 @@ async fn ask_once(
             crate::backend::control::cc_bus::describe_backend_too_old_for(
                 wire,
                 FRAME_CMD,
-                "代码全景在这台上用不了",
+                &copy_text("rsPanoramaCall.call.unavailable", &[]),
             ),
         ));
     }
@@ -385,17 +395,26 @@ async fn ask_once(
         .await
     {
         Ok(Some(data)) => data.get("result").cloned().ok_or_else(|| {
-            Asked::plain(format!(
-                "{who} 的 `panorama` 应答没有 `result` —— 两端契约对不上"
+            Asked::plain(copy_text(
+                "rsPanoramaCall.call.noResult",
+                &[("who", &who.to_string())],
             ))
         }),
-        Ok(None) => Err(Asked::plain(format!(
-            "{who} 的 `panorama` 回了一条空应答 —— 两端契约对不上"
+        Ok(None) => Err(Asked::plain(copy_text(
+            "rsPanoramaCall.call.emptyReply",
+            &[("who", &who.to_string())],
         ))),
         Err(e) => {
             let said = routed_text(route_call_error(&e, |code, message| {
                 *peer_code.borrow_mut() = Some(code.to_string());
-                format!("{who} 的代码全景没答上来（{code}）：{message}")
+                copy_text(
+                    "rsPanoramaCall.call.failed",
+                    &[
+                        ("who", &who.to_string()),
+                        ("code", &code.to_string()),
+                        ("message", &message.to_string()),
+                    ],
+                )
             }));
             Err(Asked {
                 code: peer_code.into_inner(),
@@ -438,12 +457,12 @@ pub(crate) const INSTALL_NOTICE_KIND: &str = "panorama-install";
 pub(crate) fn install_notice(origin: &str) -> crate::bridge::RemoteHealthPayload {
     let message = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         // 〔RM1f〕本机那一台不经网络：放到 `~/.cc-monitor/bin/`，一两秒的事。
-        "本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后这一问会自己接着答。"
-            .to_string()
+        copy_text("rsPanoramaCall.install.local", &[])
     } else {
         let who = crate::backend::control::cc_bus::machine_label(origin);
-        format!(
-            "{who} 上还没有这一版的代码全景组件，正在把它装上去（约 20 MB，慢链路上要等一会儿）。装好之后这一问会自己接着答。"
+        copy_text(
+            "rsPanoramaCall.install.remote",
+            &[("who", &who.to_string())],
         )
     };
     crate::bridge::RemoteHealthPayload {
@@ -473,13 +492,20 @@ pub async fn panorama_edit(
 ) -> Result<Value, String> {
     let _ = origin.route("panorama_edit")?;
     let Some((_, plan_op, refresh)) = EDITS.iter().find(|(n, ..)| *n == op) else {
-        return Err(format!(
-            "不认识的全景写入 `{op}`（认得的：{}）",
-            EDITS
-                .iter()
-                .map(|(n, ..)| *n)
-                .collect::<Vec<_>>()
-                .join(" · ")
+        return Err(copy_text(
+            "rsPanoramaCall.edit.unknownOp",
+            &[
+                ("op", &op.to_string()),
+                (
+                    "edits",
+                    &(EDITS
+                        .iter()
+                        .map(|(n, ..)| *n)
+                        .collect::<Vec<_>>()
+                        .join(&copy_text("rsPanoramaCall.edit.opSep", &[])))
+                    .to_string(),
+                ),
+            ],
         ));
     };
     let door = crate::user_files::BackendDoor::new(origin.clone());
@@ -493,9 +519,7 @@ pub async fn panorama_edit(
     if *refresh {
         ask(&app, &origin, REFRESH_DOC_LINKS, Some(&repo), None)
             .await
-            .map_err(|e| {
-                format!("文档关联已经写进去了，但全景里的关联没跟着刷新（{e}）—— 点「刷新」重建一次就能看到")
-            })?;
+            .map_err(|e| copy_text("rsPanoramaCall.edit.notRefreshed", &[("e", &e.to_string())]))?;
     }
     Ok(value)
 }

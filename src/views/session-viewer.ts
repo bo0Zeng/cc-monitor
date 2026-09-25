@@ -40,6 +40,7 @@ import type { BranchResult } from "../generated/BranchResult";
 import { OutlineSource } from "./outline-source";
 // K-R45：清单界面两条路共用一份，只有一个住址
 import { UserInputPanel } from "./user-input-panel";
+import { copyText } from "../copy-table";
 
 /**
  * **在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠、滚过去并闪一下。**
@@ -218,7 +219,7 @@ export class SessionViewer {
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
 
-    this.statusEl.textContent = "加载中…";
+    this.statusEl.textContent = copyText("sessionViewer.load.loading");
 
     // Batch13-F39:lazy hljs(此前 viewer eager 全量高亮,是 65s 的组成部分)
     const ctx: RenderContext = {
@@ -288,7 +289,7 @@ export class SessionViewer {
         this.payloads.push(p); // 占位必须 push:下标与 finalCount 对齐(meta 也占位)
       }
       totalRecords += chunk.length;
-      this.statusEl.textContent = `接收中 · 已 ${totalRecords} 条…`;
+      this.statusEl.textContent = copyText("sessionViewer.load.receiving", { totalRecords });
     };
 
     try {
@@ -355,7 +356,7 @@ export class SessionViewer {
       // 〔U3b〕索引到了就接骨架（首屏已经在了，不等它）
       void indexP.then((res) => this.attachSkeleton(gen, res));
     } catch (e) {
-      this.statusEl.textContent = `加载失败：${String(e)}`;
+      this.statusEl.textContent = copyText("sessionViewer.load.failed", { e: String(e) });
     }
   }
 
@@ -524,16 +525,16 @@ export class SessionViewer {
     const left = this.unrendered?.remaining ?? 0;
     const shown = total - left;
     const err =
-      this.renderErrors > 0 ? `（${this.renderErrors} 条渲染失败，首个 ${this.firstError}）` : "";
-    const ms = this.lastFirstScreenMs !== null ? ` · 首屏 ${this.lastFirstScreenMs}ms` : "";
+      this.renderErrors > 0 ? copyText("sessionViewer.status.renderErrors", { renderErrors: this.renderErrors, firstError: this.firstError }) : "";
+    const ms = this.lastFirstScreenMs !== null ? copyText("sessionViewer.status.firstScreen", { ms: this.lastFirstScreenMs }) : "";
     // 顶部还有洞 → "上翻加载";只剩深链岛-尾段之间的内部缝 → 如实说(上翻无洞可补)
     const fillable = this.unrendered
       ? this.unrendered.gapAbove(this.unrendered.lowestRenderedIdx()) !== null
       : false;
     this.statusEl.textContent =
       left > 0
-        ? `已显示 ${shown}/${total} 条${ms} · ${fillable ? "上翻加载更早" : "中部有未加载段（搜索跳转缝）"}${err}`
-        : `${total} 条记录${ms} · 只读历史视图${err}`;
+        ? copyText("sessionViewer.status.partial", { shown, total, ms, hint: fillable ? copyText("sessionViewer.status.fillable") : copyText("sessionViewer.status.gap"), err })
+        : copyText("sessionViewer.status.full", { total, ms, err });
   }
 
   /** R1:触发判定——不足一屏(无滚动条,事件永远不来)或滚近顶部 */
@@ -565,7 +566,7 @@ export class SessionViewer {
     if (!gap) return;
     const gen = this.loadGeneration;
     this.renderingBatch = true;
-    this.statusEl.textContent = "加载更早消息…";
+    this.statusEl.textContent = copyText("sessionViewer.maybeFillAbove.loadingEarlier");
     try {
       // 让状态文先绘一帧再做同步渲染批
       await new Promise((r) => requestAnimationFrame(() => r(null)));
@@ -691,7 +692,7 @@ export class SessionViewer {
     const backBtn = document.createElement("button");
     backBtn.type = "button";
     backBtn.className = "history-back";
-    backBtn.textContent = "← 返回历史";
+    backBtn.textContent = copyText("sessionViewer.build.back");
     backBtn.addEventListener("click", () => this.onBack());
     bar.appendChild(backBtn);
 
@@ -701,7 +702,7 @@ export class SessionViewer {
       jumpTo: (uuid) => this.scrollToMessage(uuid),
       // 查看器这一侧落空的成因是自陈的那条不等价：渲染会再剥一层 `stripInternalNoise`，
       // 剥空了**不建卡**（后端 `observe/user_inputs.rs` 头注那条「已知不等价」）。`scrollToMessage` 会退到底部。
-      unjumpableHint: "这条在渲染时被剥成了空卡，跳不过去（已退到会话末尾）",
+      unjumpableHint: copyText("sessionViewer.build.unjumpable"),
     });
     this.outline = new OutlineSource(this.inputs, () => this.outlineWhere);
     // 开关塞在顶栏标题右边（标题那块 flex:1 会吃掉余量）。

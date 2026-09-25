@@ -39,6 +39,7 @@
 use super::copy::{is_copyable, CopyJob};
 use super::shell::FileWindow;
 use super::source::Listed;
+use crate::copy_table::copy_text;
 
 /// 一个标签页：一个目录视图。
 pub struct Tab {
@@ -65,13 +66,19 @@ pub struct Workspace {
 }
 
 /// 工具条上那几颗 —— **唯一住址**（判据按同一个常量去找它画出来的字）。
-pub const SPLIT_LABEL: &str = "双栏";
-pub const PREVIEW_LABEL: &str = "预览";
-pub const COPY_ACROSS_LABEL: &str = "复制到另一栏";
-pub const NEW_TAB_LABEL: &str = "＋";
-pub const CLOSE_TAB_LABEL: &str = "×";
+pub static SPLIT_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.split", &[]));
+pub static PREVIEW_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.preview", &[]));
+pub static COPY_ACROSS_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.copyAcross", &[]));
+pub static NEW_TAB_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.newTab", &[]));
+pub static CLOSE_TAB_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.closeTab", &[]));
 /// 后台标签手上有事等你（有一问摆着 / 有活在跑）时，标签名前那个记号。
-pub const BUSY_MARK: &str = "● ";
+pub static BUSY_MARK: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.busyMark", &[]));
 
 impl Workspace {
     /// 从开窗那一个标签页起步（它身上已经挂好了通道 · 运行时 · 书签 · 字体）。
@@ -233,11 +240,14 @@ impl Workspace {
             return false;
         }
         if self.sides[side].tabs.len() == 1 {
-            self.notice = Some("这是这一栏最后一个标签页".into());
+            self.notice = Some(copy_text("rsFilewinWorkspace.closeTab.last", &[]).into());
             return false;
         }
         if let Some(why) = self.sides[side].tabs[i].pane.busy_reason() {
-            self.notice = Some(format!("这个标签页还没忙完（{why}），先别关"));
+            self.notice = Some(copy_text(
+                "rsFilewinWorkspace.closeTab.busy",
+                &[("why", &why.to_string())],
+            ));
             return false;
         }
         let s = &mut self.sides[side];
@@ -261,7 +271,10 @@ impl Workspace {
             }
             (false, 2) => {
                 if let Some(why) = self.sides[1].tabs.iter().find_map(|t| t.pane.busy_reason()) {
-                    self.notice = Some(format!("右栏还没忙完（{why}），先别收"));
+                    self.notice = Some(copy_text(
+                        "rsFilewinWorkspace.setSplit.busy",
+                        &[("why", &why.to_string())],
+                    ));
                     return false;
                 }
                 self.sides.pop();
@@ -286,31 +299,38 @@ impl Workspace {
     /// ⇒ 问与结局画在目标那一侧，跑完那一栏重列目录。回值 ＝ 真的起来了。
     pub fn copy_to_other(&mut self, ctx: Option<egui::Context>) -> bool {
         if self.sides.len() != 2 {
-            self.notice = Some("要先开双栏".into());
+            self.notice = Some(copy_text("rsFilewinWorkspace.copyToOther.needSplit", &[]).into());
             return false;
         }
         let from = self.pane_on(self.focus);
         let name = match from.picked_name() {
             Ok(n) => n,
             Err(n) => {
-                self.notice = Some(format!("要选中恰好一个文件（现在选中了 {n} 项）"));
+                self.notice = Some(copy_text(
+                    "rsFilewinWorkspace.copyToOther.needOne",
+                    &[("n", &n.to_string())],
+                ));
                 return false;
             }
         };
         let Some(row) = from.row_named(&name) else {
-            self.notice = Some(format!("列表里已经没有 {name} 了"));
+            self.notice = Some(copy_text(
+                "rsFilewinWorkspace.copyToOther.gone",
+                &[("name", &name.to_string())],
+            ));
             return false;
         };
         if !is_copyable(&row) {
-            self.notice = Some(format!(
-                "{name} 复制不了：只能复制文件（名字要是合法 UTF-8）"
+            self.notice = Some(copy_text(
+                "rsFilewinWorkspace.copyToOther.notFile",
+                &[("name", &name.to_string())],
             ));
             return false;
         }
         let other = 1 - self.focus;
         let dest_dir = self.pane_on(other).cwd.clone();
         if dest_dir == from.cwd {
-            self.notice = Some("两栏是同一个目录，复制过去就是它自己".into());
+            self.notice = Some(copy_text("rsFilewinWorkspace.copyToOther.sameDir", &[]).into());
             return false;
         }
         let job = CopyJob {
@@ -327,7 +347,7 @@ impl Workspace {
         let tail = super::source::remote_basename(&pane.cwd);
         let tail = if tail.is_empty() { "/" } else { tail };
         let mark = if pane.busy_reason().is_some() {
-            BUSY_MARK
+            BUSY_MARK.as_str()
         } else {
             ""
         };
@@ -342,14 +362,14 @@ impl Workspace {
         let mut across = false;
         ui.horizontal(|ui| {
             let two = self.sides.len() == 2;
-            if ui.selectable_label(two, SPLIT_LABEL).clicked() {
+            if ui.selectable_label(two, SPLIT_LABEL.as_str()).clicked() {
                 split = Some(!two);
             }
             let on = self.preview.is_some();
-            if ui.selectable_label(on, PREVIEW_LABEL).clicked() {
+            if ui.selectable_label(on, PREVIEW_LABEL.as_str()).clicked() {
                 preview = Some(!on);
             }
-            if two && ui.button(COPY_ACROSS_LABEL).clicked() {
+            if two && ui.button(COPY_ACROSS_LABEL.as_str()).clicked() {
                 across = true;
             }
             if let Some(n) = &self.notice {
@@ -431,16 +451,16 @@ impl Workspace {
                 }
                 if many
                     && ui
-                        .small_button(CLOSE_TAB_LABEL)
-                        .on_hover_text("关掉这个标签页")
+                        .small_button(CLOSE_TAB_LABEL.as_str())
+                        .on_hover_text(&copy_text("rsFilewinWorkspace.sideUi.closeHint", &[]))
                         .clicked()
                 {
                     close = Some(i);
                 }
             }
             if ui
-                .small_button(NEW_TAB_LABEL)
-                .on_hover_text("新标签页")
+                .small_button(NEW_TAB_LABEL.as_str())
+                .on_hover_text(&copy_text("rsFilewinWorkspace.sideUi.newTabHint", &[]))
                 .clicked()
             {
                 new_tab = true;
@@ -493,7 +513,12 @@ pub fn across_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, 
         p.strip_prefix(root.as_str())
             .map(|r| r.trim_start_matches('/').to_string())
             .filter(|r| !r.is_empty())
-            .ok_or_else(|| format!("{p} 不在 {root} 底下，复制不过去"))
+            .ok_or_else(|| {
+                copy_text(
+                    "rsFilewinWorkspace.acrossArgs.notUnder",
+                    &[("path", &p.to_string()), ("root", &root.to_string())],
+                )
+            })
     };
     Ok(serde_json::json!({
         "root": root,
@@ -521,12 +546,7 @@ pub async fn copy_across(
     .await?;
     d.get("bytes")
         .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| {
-            format!(
-                "`{}` 的应答里没有 `bytes`，和约定的不一样",
-                super::copy::CMD_COPY
-            )
-        })
+        .ok_or_else(|| copy_text("rsFilewinWorkspace.copyAcross.noBytes", &[]))
 }
 
 impl eframe::App for Workspace {

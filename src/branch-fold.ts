@@ -27,6 +27,7 @@
  */
 
 import { computeMainBranch, exemptQueuedLeaves, setsEqual, type BranchRecord } from "./branching";
+import { copyText } from "./copy-table";
 
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
 const FOLD_HEADER_CLASS = "branch-fold-header";
@@ -477,12 +478,12 @@ export class BranchFolder {
 
     const arrow = document.createElement("span");
     arrow.className = FOLD_ARROW_CLASS;
-    arrow.textContent = "▶";
+    arrow.textContent = copyText("branchFold.wrapRun.arrow");
     header.appendChild(arrow);
 
     const title = document.createElement("span");
     title.className = "branch-fold-title";
-    title.textContent = `已被 ESC 回退（含 ${uuids.length} 条消息）`;
+    title.textContent = copyText("branchFold.wrapRun.summary", { n: uuids.length });
     header.appendChild(title);
 
     const toggleFn = () => {

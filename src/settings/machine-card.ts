@@ -36,6 +36,7 @@ import {
 import { runRemoteLauncher } from "../remote-launch-run";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
+import { copyText } from "../copy-table";
 
 /** 一行：label（上）+ 宽文本 input（下）。change 触发 onChange。 */
 function buildTextRow(
@@ -93,7 +94,7 @@ function makeStatusLine(ok: boolean, text: string): HTMLElement {
   line.className = `remote-test-line ${ok ? "remote-test-ok" : "remote-test-err"}`;
   const mark = document.createElement("span");
   mark.className = "remote-test-mark";
-  mark.textContent = ok ? "✓" : "✗";
+  mark.textContent = ok ? copyText("machineCard.statusLine.ok") : copyText("machineCard.statusLine.fail");
   line.appendChild(mark);
   const label = document.createElement("span");
   label.textContent = text;
@@ -124,24 +125,24 @@ export function describeStage(st: ConnectStage): {
 } {
   switch (st.kind) {
     case "dialing":
-      return { icon: "→", text: `拨号 ${st.endpoint}` };
+      return { icon: copyText("machineCard.stage.dialIcon"), text: copyText("machineCard.stage.dial", { endpoint: st.endpoint }) };
     case "hostKey":
-      return { icon: "🔑", text: `${st.endpoint} 主机指纹 ${st.fingerprint}` };
+      return { icon: copyText("machineCard.stage.fingerprintIcon"), text: copyText("machineCard.stage.fingerprint", { endpoint: st.endpoint, fingerprint: st.fingerprint }) };
     case "failed":
-      return { icon: "✗", text: `${st.endpoint} 失败：${st.reason}` };
+      return { icon: copyText("machineCard.stage.failIcon"), text: copyText("machineCard.stage.failed", { endpoint: st.endpoint, reason: st.reason }) };
     case "won":
-      return { icon: "✓", text: `${st.endpoint} 胜出（其余地址已取消）` };
+      return { icon: copyText("machineCard.stage.okIcon"), text: copyText("machineCard.stage.won", { endpoint: st.endpoint }) };
     case "auth":
       return st.ok
-        ? { icon: "✓", text: "鉴权通过" }
-        : { icon: "✗", text: `鉴权失败：${st.detail ?? ""}` };
+        ? { icon: copyText("machineCard.stage.okIcon"), text: copyText("machineCard.stage.authOk") }
+        : { icon: copyText("machineCard.stage.failIcon"), text: copyText("machineCard.stage.authFailed", { detail: st.detail ?? "" }) };
     case "established":
-      return { icon: "●", text: "连接就绪" };
+      return { icon: copyText("machineCard.stage.readyIcon"), text: copyText("machineCard.stage.ready") };
     default: {
       // F46 建议 E：穷尽性兜底——未来新增 ConnectStage 变体时编译期(never)即报错。
       const _never: never = st;
       return {
-        icon: "·",
+        icon: copyText("machineCard.stage.otherIcon"),
         text: String((_never as { kind?: string }).kind ?? ""),
       };
     }
@@ -296,7 +297,7 @@ export class MachineCard {
     // 折叠指示符（▸ 折叠 / ▾ 展开）。点 legend（非删除按钮）切换折叠。
     this.toggleIndicator = document.createElement("span");
     this.toggleIndicator.className = "remote-machine-toggle";
-    this.toggleIndicator.textContent = "▾";
+    this.toggleIndicator.textContent = copyText("machineCard.build.expandedIcon");
     legend.appendChild(this.toggleIndicator);
 
     // 机器名（label || host）—— 独立 span（不靠脆弱的 firstChild 文本节点）。flex:1 把删除推到右侧。
@@ -309,8 +310,8 @@ export class MachineCard {
     removeBtn.type = "button";
     removeBtn.className =
       "settings-btn settings-btn-secondary remote-machine-remove";
-    removeBtn.textContent = "删除";
-    removeBtn.title = "从列表移除这台机器";
+    removeBtn.textContent = copyText("machineCard.build.delete");
+    removeBtn.title = copyText("machineCard.build.deleteHint");
     removeBtn.addEventListener("click", (ev) => {
       ev.stopPropagation(); // 别让删除点击冒泡到 legend 触发折叠
       this.hooks.onRemove(this);
@@ -356,34 +357,34 @@ export class MachineCard {
 
     this.labelInput = buildTextRow(
       body,
-      "名称 (label，可选)",
-      "pi / nano（留空用主机名）",
+      copyText("machineCard.field.label"),
+      copyText("machineCard.field.labelHint"),
       onChange,
     );
     this.hostInput = buildTextRow(
       body,
-      "主机 (host)",
-      "raspberrypi.local 或 192.168.1.10",
+      copyText("machineCard.field.host"),
+      copyText("machineCard.field.hostHint"),
       onChange,
     );
-    this.portInput = buildNumberRow(body, "端口 (port)", 22, onChange);
+    this.portInput = buildNumberRow(body, copyText("machineCard.field.port"), 22, onChange);
     // 占位符举**多个**例子，别只写一个 —— 只写 "pi" 会让人以为这里非填树莓派默认用户不可。
     this.userInput = buildTextRow(
       body,
-      "用户 (user)",
-      "如 ubuntu / pi / root",
+      copyText("machineCard.field.user"),
+      copyText("machineCard.field.userHint"),
       onChange,
     );
     this.backendPathInput = buildTextRow(
       body,
-      "backend 路径 (backendPath)",
+      copyText("machineCard.field.backendPath"),
       BACKEND_PATH_PLACEHOLDER,
       onChange,
     );
     const backendHint = document.createElement("div");
     backendHint.className = "settings-hint";
     backendHint.textContent =
-      "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-backend）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
+      copyText("machineCard.field.backendPathHint");
     body.appendChild(backendHint);
     // F13：手动填完 user（change = 失焦提交，避免逐键拿半截用户名）后，backendPath
     // 为空则按约定路径预填——与 ssh config 导入（applyResolved）同一兜底；已有值不覆盖。
@@ -396,14 +397,14 @@ export class MachineCard {
     });
     this.keyPathInput = buildTextRow(
       body,
-      "私钥路径 (keyPath，可选)",
+      copyText("machineCard.field.keyPath"),
       "C:\\Users\\me\\.ssh\\id_ed25519",
       onChange,
     );
     this.fingerprintInput = buildTextRow(
       body,
-      "主机指纹 (hostKeyFingerprint，可选)",
-      "SHA256:…（留空则首连 TOFU）",
+      copyText("machineCard.field.fingerprint"),
+      copyText("machineCard.field.fingerprintHint"),
       onChange,
     );
     // F43：重置指纹入口——补 aterm 自曝的坑（服务器合法换 host key 后严格校验会永久
@@ -411,9 +412,9 @@ export class MachineCard {
     const resetFpBtn = document.createElement("button");
     resetFpBtn.type = "button";
     resetFpBtn.className = "settings-btn settings-btn-secondary";
-    resetFpBtn.textContent = "重置为 TOFU";
+    resetFpBtn.textContent = copyText("machineCard.field.resetFingerprint");
     resetFpBtn.title =
-      "清除已固化的主机指纹，下次连接重新捕获（仅在你确知服务器合法换过 host key 时用）";
+      copyText("machineCard.field.resetFingerprintHint");
     resetFpBtn.addEventListener("click", () => this.onResetFingerprint());
     this.fingerprintInput.parentElement?.appendChild(resetFpBtn);
     const syncResetVisibility = (): void => {
@@ -433,14 +434,14 @@ export class MachineCard {
     addrRow.className = "settings-row settings-row-stack";
     const addrLabel = document.createElement("span");
     addrLabel.className = "settings-label";
-    addrLabel.textContent = "备用地址 (addresses，可选，每行一个)";
+    addrLabel.textContent = copyText("machineCard.field.addresses");
     addrRow.appendChild(addrLabel);
     this.addressesInput = document.createElement("textarea");
     this.addressesInput.className = "settings-input settings-input-wide";
     this.addressesInput.rows = 2;
     this.addressesInput.spellcheck = false;
     this.addressesInput.placeholder =
-      "10.0.0.2\npi.example.com:2222\n[fe80::1]:22（首选地址填上方 host）";
+      copyText("machineCard.field.addressesHint");
     this.addressesInput.addEventListener("change", onChange);
     addrRow.appendChild(this.addressesInput);
     body.appendChild(addrRow);
@@ -448,8 +449,8 @@ export class MachineCard {
     // F56：跳板 ProxyJump——填另一台已配置主机的 label（空=直连）。经该跳板机隧道连本机。
     this.jumpInput = buildTextRow(
       body,
-      "跳板 (jump，可选)",
-      "另一台已配置主机的 label（空=直连；经该跳板隧道连本机）",
+      copyText("machineCard.field.jump"),
+      copyText("machineCard.field.jumpHint"),
       onChange,
     );
 
@@ -488,30 +489,30 @@ export class MachineCard {
     const connRow = document.createElement("div");
     connRow.className = "settings-row settings-row-actions";
     this.testButton = mkBtn(
-      "测试连接",
+      copyText("machineCard.build.test"),
       "settings-btn-primary",
-      "测试 SSH 连接 / 主机指纹 / 后端是否在线",
+      copyText("machineCard.build.testHint"),
       () => void this.onTestConnection(),
     );
     connRow.appendChild(this.testButton);
     // F50：一键把本地公钥推到远端 authorized_keys（onboarding 免密）。
     const pushKeyBtn = mkBtn(
-      "推送公钥",
+      copyText("machineCard.build.pushKey"),
       "settings-btn-secondary",
-      "把本地公钥追加到远端 ~/.ssh/authorized_keys（免密登录）；已填私钥则取同名 .pub，否则弹框选文件",
+      copyText("machineCard.build.pushKeyHint"),
       () => void this.onPushPubkey(pushKeyBtn),
     );
     connRow.appendChild(pushKeyBtn);
     // F48：在原生文件窗口里打开这一台（〔F7b〕老 SFTP 面板退役，终点换成 `file-window.ts`）。
     connRow.appendChild(
       mkBtn(
-        "文件",
+        copyText("machineCard.build.files"),
         "",
-        "在文件窗口里打开这台机器（浏览 / 上传 / 下载 / 管理远端文件）",
+        copyText("machineCard.build.filesHint"),
         () => {
           const cfg = this.collect();
           if (!cfg.host || !cfg.user) {
-            this.renderTestResult(null, "请先填好 host / user 再打开文件窗口。");
+            this.renderTestResult(null, copyText("machineCard.build.filesNeedHost"));
             return;
           }
           void openFileWindow(cfg);
@@ -521,9 +522,9 @@ export class MachineCard {
     // F53：在这台机开新 Claude——填工作目录/tmux 名/命令，在远端 tmux 里启动全新会话。
     connRow.appendChild(
       mkBtn(
-        "开新 Claude",
+        copyText("machineCard.build.launch"),
         "settings-btn-secondary",
-        "在这台远端机的 tmux 会话里启动一个全新 Claude（填工作目录 + 会话名 + 启动命令）",
+        copyText("machineCard.build.launchHint"),
         () => this.openLauncherDialog(),
       ),
     );
@@ -542,36 +543,35 @@ export class MachineCard {
     // 空 = 沿用全局默认，所以没填过的机器行为一字不变。
     this.resumeCmdInput = buildTextRow(
       body,
-      "resume 命令（这台机器）",
-      "留空 = 用全局默认",
+      copyText("machineCard.field.resumeCmd"),
+      copyText("machineCard.field.resumeCmdHint"),
       onChange,
     );
 
     // ── ① 部署后端 ──
     const deployTitle = document.createElement("div");
     deployTitle.className = "settings-label";
-    deployTitle.textContent = "部署后端";
+    deployTitle.textContent = copyText("machineCard.deploy.title");
     body.appendChild(deployTitle);
     const deployHint = document.createElement("div");
     deployHint.className = "settings-hint remote-install-info";
     deployHint.textContent =
-      "把后端装到上面「backend 路径」那一格，终端里的 ccm 入口（~/.cc-monitor/bin/ccm）一起放好。" +
-      "启用这台机器之后，连上时也会自动装后端；这里是手动的那一下。";
+      copyText("machineCard.deploy.intro");
     body.appendChild(deployHint);
     const deployRow = document.createElement("div");
     deployRow.className = "settings-row settings-row-actions";
     this.backendInstallButton = mkBtn(
-      "部署后端",
+      copyText("machineCard.deploy.install"),
       "settings-btn-primary",
       // K-W4 §0c：跳过的条件是两条（版本已是最新、且落点那个文件在），两个事实各自说话。
-      "按远端架构把内嵌的后端装到 backend 路径（版本已是最新、且那个文件在，才跳过），再放好 ccm 入口",
+      copyText("machineCard.deploy.installHint"),
       () => void this.onDeployBackend(),
     );
     deployRow.appendChild(this.backendInstallButton);
     this.backendUninstallButton = mkBtn(
-      "卸载后端",
+      copyText("machineCard.deploy.uninstall"),
       "settings-btn-secondary",
-      "删除远端后端（机器仍启用的话，下次连接会自动装回）",
+      copyText("machineCard.deploy.uninstallHint"),
       () => void this.onUninstallBackend(),
     );
     deployRow.appendChild(this.backendUninstallButton);
@@ -588,27 +588,26 @@ export class MachineCard {
     // ── ② 别名 ──
     const aliasTitle = document.createElement("div");
     aliasTitle.className = "settings-label";
-    aliasTitle.textContent = "别名";
+    aliasTitle.textContent = copyText("machineCard.aliases.title");
     body.appendChild(aliasTitle);
     const aliasHint = document.createElement("div");
     aliasHint.className = "settings-hint remote-install-info";
     aliasHint.textContent =
-      "别名块把 cc / cct 和「接上别名文件」那一行装进这台机器的 ~/.bashrc：只动 cc-monitor 那一小块，" +
-      "写前先备份，写完回读比对。你自己的别名清单今天只能在本机写好、复制过来贴上。";
+      copyText("machineCard.aliases.intro");
     body.appendChild(aliasHint);
     const aliasRow = document.createElement("div");
     aliasRow.className = "settings-row settings-row-actions";
     this.installButton = mkBtn(
-      "装别名块",
+      copyText("machineCard.aliases.install"),
       "settings-btn-secondary",
-      "把 cc / cct 那一块装进远端 ~/.bashrc（幂等，可重装）",
+      copyText("machineCard.aliases.installHint"),
       () => void this.onInstallAliasBlock(),
     );
     aliasRow.appendChild(this.installButton);
     this.ccmUninstallButton = mkBtn(
-      "卸载别名块",
+      copyText("machineCard.aliases.uninstall"),
       "settings-btn-secondary",
-      "从远端 ~/.bashrc 删掉 cc-monitor 那一块（先备份；块外内容不动）",
+      copyText("machineCard.aliases.uninstallHint"),
       () => void this.onUninstallAliasBlock(),
     );
     aliasRow.appendChild(this.ccmUninstallButton);
@@ -626,7 +625,7 @@ export class MachineCard {
   private setCollapsed(next: boolean): void {
     this.collapsed = next;
     this.element.classList.toggle("is-collapsed", next);
-    this.toggleIndicator.textContent = next ? "▸" : "▾";
+    this.toggleIndicator.textContent = next ? copyText("machineCard.collapsed.icon") : copyText("machineCard.build.expandedIcon");
     this.legend.setAttribute("aria-expanded", next ? "false" : "true");
   }
 
@@ -650,13 +649,10 @@ export class MachineCard {
    */
   private onResetFingerprint(): void {
     const host =
-      this.hostInput.value.trim() || this.labelInput.value.trim() || "该主机";
+      this.hostInput.value.trim() || this.labelInput.value.trim() || copyText("machineCard.resetFingerprint.thisHost");
     if (
       !window.confirm(
-        `确认重置 ${host} 的主机指纹？\n\n` +
-          "清除后下次连接将以 TOFU 重新捕获并接受主机密钥。\n" +
-          "⚠ 若此刻网络正被中间人攻击，重置会让 monitor 信任攻击者的密钥。\n" +
-          "仅在你确知服务器合法更换过 host key（重装系统 / 轮换密钥）时才重置。",
+        copyText("machineCard.resetFingerprint.confirm", { host }),
       )
     ) {
       return;
@@ -674,7 +670,7 @@ export class MachineCard {
     const line = document.createElement("div");
     line.className = "remote-test-line remote-test-caution";
     line.textContent =
-      "已重置为 TOFU：下次连接将重新捕获主机指纹（记得测试连接后重新固化）。";
+      copyText("machineCard.resetFingerprint.done");
     this.testResult.appendChild(line);
   }
 
@@ -710,7 +706,7 @@ export class MachineCard {
     return (
       this.labelInput.value.trim() ||
       this.hostInput.value.trim() ||
-      "（未命名机器）"
+      copyText("machineCard.displayName.unnamed")
     );
   }
 
@@ -730,12 +726,12 @@ export class MachineCard {
   private async onTestConnection(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user || !cfg.backendPath) {
-      this.renderTestResult(null, "请先填好 host / user / backendPath 再测试。");
+      this.renderTestResult(null, copyText("machineCard.test.needFields"));
       return;
     }
     this.testButton.disabled = true;
     const prevLabel = this.testButton.textContent;
-    this.testButton.textContent = "测试中…";
+    this.testButton.textContent = copyText("machineCard.test.running");
     // F46：连接分阶段事件泳道——测试开始即清空日志区、随 Channel 事件实时追加。
     this.testResult.innerHTML = "";
     this.testResult.style.display = "block";
@@ -758,13 +754,13 @@ export class MachineCard {
       if (res.sshOk) {
         this.recordFacet("backend", {
           kind: res.backendOk ? "ok" : "fail",
-          detail: res.backendOk ? "在跑" : "没响应",
+          detail: res.backendOk ? copyText("machineCard.test.alive") : copyText("machineCard.test.silent"),
         });
       }
     } catch (e) {
       console.warn("test_remote_connection failed:", e);
-      this.renderTestResult(null, `测试失败：${String(e)}`, stageLog);
-      this.recordFacet("connection", { kind: "fail", detail: "连不上" });
+      this.renderTestResult(null, copyText("machineCard.test.failed", { e: String(e) }), stageLog);
+      this.recordFacet("connection", { kind: "fail", detail: copyText("machineCard.test.unreachable") });
     } finally {
       this.testButton.disabled = false;
       this.testButton.textContent = prevLabel;
@@ -785,15 +781,15 @@ export class MachineCard {
   private async onInstallAliasBlock(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.showResultText("请先填好 host / user 再装别名块。", "tools");
+      this.showResultText(copyText("machineCard.aliases.needHost"), "tools");
       return;
     }
     // 别名块由后端拥有（写进 ~/.bashrc 的是被 shell 执行的代码，不让前端注入）。
     await this.runRemoteAction(
       this.installButton,
-      "装别名块中",
+      copyText("machineCard.aliases.installing"),
       () => commands.install_remote_alias_block({ cfg, profile: ".bashrc" }),
-      { facet: "ccm", ok: "已装", fail: "装失败" },
+      { facet: "ccm", ok: copyText("machineCard.status.installed"), fail: copyText("machineCard.status.installFailed") },
       "tools",
     );
     invalidateCcmProbeCache(cfg.label);
@@ -803,7 +799,7 @@ export class MachineCard {
   private async onPushPubkey(btn: HTMLButtonElement): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.showResultText("请先填好 host / user 再推送公钥。");
+      this.showResultText(copyText("machineCard.pushKey.needHost"));
       return;
     }
     let pubKeyPath: string | null = null;
@@ -817,20 +813,20 @@ export class MachineCard {
         /* 拿不到 home → 不设 defaultPath,dialog 用系统默认起点 */
       }
       const picked = await open({
-        title: "选择要推送的公钥 (.pub)",
+        title: copyText("machineCard.pushKey.dialogTitle"),
         multiple: false,
         directory: false,
         defaultPath,
-        filters: [{ name: "公钥", extensions: ["pub"] }],
+        filters: [{ name: copyText("machineCard.pushKey.filterName"), extensions: ["pub"] }],
       });
       if (typeof picked !== "string") return; // 取消 / 多选保护
       pubKeyPath = picked;
     }
-    await this.runRemoteAction(btn, "推送公钥中", async () => {
+    await this.runRemoteAction(btn, copyText("machineCard.pushKey.pushing"), async () => {
       const r = await commands.push_public_key({ cfg, pubKeyPath });
       return r.outcome === "added"
-        ? `公钥已推送（ADDED）：${r.pubPath}`
-        : `公钥已存在，无需重复（ALREADY）：${r.pubPath}`;
+        ? copyText("machineCard.pushKey.added", { path: r.pubPath })
+        : copyText("machineCard.pushKey.already", { path: r.pubPath });
     });
   }
 
@@ -842,7 +838,7 @@ export class MachineCard {
   private openLauncherDialog(): void {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.showResultText("请先填好 host / user 再开新 Claude。");
+      this.showResultText(copyText("machineCard.launch.needHost"));
       return;
     }
     const origin = cfg.label.trim() || cfg.host;
@@ -853,7 +849,7 @@ export class MachineCard {
     box.className = "launcher-box";
     const title = document.createElement("div");
     title.className = "launcher-title";
-    title.textContent = `在 ${origin} 开新 Claude`;
+    title.textContent = copyText("machineCard.launch.title", { machine: origin });
     box.appendChild(title);
 
     const mkField = (
@@ -873,19 +869,19 @@ export class MachineCard {
       return input;
     };
     const cwdInput = mkField(
-      "工作目录",
-      "远端绝对路径，如 /home/<你的用户名>/proj（留空=登录默认目录）",
+      copyText("machineCard.launch.cwd"),
+      copyText("machineCard.launch.cwdHint"),
     );
-    const nameInput = mkField("tmux 会话名", "留空则按工作目录名自动生成");
+    const nameInput = mkField(copyText("machineCard.launch.tmuxName"), copyText("machineCard.launch.tmuxNameHint"));
     const cmdInput = mkField(
-      "启动命令",
-      "claude（可自定义，如 claude --model opus）",
+      copyText("machineCard.launch.command"),
+      copyText("machineCard.launch.commandHint"),
     );
     // 工作目录变化 → 实时预览留空时将用的派生名(placeholder)。
     cwdInput.addEventListener("input", () => {
       nameInput.placeholder = cwdInput.value.trim()
-        ? `留空则用 ${deriveTmuxName(cwdInput.value)}`
-        : "留空则按工作目录名自动生成";
+        ? copyText("machineCard.launch.tmuxNameDerived", { name: deriveTmuxName(cwdInput.value) })
+        : copyText("machineCard.launch.tmuxNameAuto");
     });
 
     // A4：账号下拉。异步填充——账号库不可用（旧 backend / 未启用）则整行不显 → 不注入
@@ -894,7 +890,7 @@ export class MachineCard {
     acctRow.className = "launcher-field";
     acctRow.style.display = "none";
     const acctSpan = document.createElement("span");
-    acctSpan.textContent = "账号（默认＝当前账号）";
+    acctSpan.textContent = copyText("machineCard.launch.account");
     const acctSelect = document.createElement("select");
     acctSelect.className = "launcher-acct-select";
     acctRow.append(acctSpan, acctSelect);
@@ -923,7 +919,7 @@ export class MachineCard {
         // ⚠ 兜底渲染路（不发 `--base`）才是**真的不注入**（继承 rc / tmux server 的值）；
         //   文案按**主路径**（CLI 渲染，`ACCOUNT_DIMENSION.applies` 恒真 ⇒ 必发 flag）写。
         none.textContent =
-          "不指定账号（用远端 ~/.claude 那套凭据 —— 会清掉继承的 CLAUDE_CONFIG_DIR）";
+          copyText("machineCard.launch.accountBase");
         acctSelect.appendChild(none);
         for (const a of sel) {
           const opt = document.createElement("option");
@@ -945,12 +941,12 @@ export class MachineCard {
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.className = "settings-btn";
-    cancel.textContent = "取消";
+    cancel.textContent = copyText("machineCard.launch.cancel");
     cancel.addEventListener("click", () => back.remove());
     const start = document.createElement("button");
     start.type = "button";
     start.className = "settings-btn settings-btn-primary";
-    start.textContent = "开始";
+    start.textContent = copyText("machineCard.launch.start");
     start.addEventListener("click", () => {
       void (async () => {
       const cwd = cwdInput.value.trim();
@@ -1056,14 +1052,14 @@ export class MachineCard {
   private async onDeployBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user || !cfg.backendPath) {
-      this.showResultText("请先填好 host / user / backendPath 再部署后端。", "comp");
+      this.showResultText(copyText("machineCard.deploy.needFields"), "comp");
       return;
     }
     await this.runRemoteAction(
       this.backendInstallButton,
-      "部署中",
+      copyText("machineCard.deploy.running"),
       () => commands.deploy_remote_backend({ cfg }),
-      { facet: "backend", ok: "已装", fail: "装失败" },
+      { facet: "backend", ok: copyText("machineCard.status.installed"), fail: copyText("machineCard.status.installFailed") },
       "comp",
     );
     // F08：入口放好之后立即失效探测缓存 —— 免得要等最多 5 分钟 TTL 才切到 CLI 渲染器。
@@ -1074,51 +1070,51 @@ export class MachineCard {
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user || !cfg.backendPath) {
-      this.showResultText("请先填好 host / user / backendPath 再卸载后端。", "comp");
+      this.showResultText(copyText("machineCard.uninstall.needFields"), "comp");
       return;
     }
     if (
       !window.confirm(
-        `确认从 ${cfg.host} 删除后端？\n会删：${cfg.backendPath}\n（若该机器仍勾选启用，下次连接会自动装回。）`,
+        copyText("machineCard.uninstall.confirm", { host: cfg.host, path: cfg.backendPath }),
       )
     ) {
       return;
     }
     await this.runRemoteAction(
       this.backendUninstallButton,
-      "卸载后端中",
+      copyText("machineCard.uninstall.running"),
       () => commands.uninstall_remote_backend({ cfg }),
       // 卸载**成功**意味着这台机器现在没有 backend —— 结论是 `fail`（缺组件），不是 `ok`。
       // 这里刻意不用 ledger 参数：它把「动作成功」映射成 `ok`，而本例正好相反。
       undefined,
       "comp",
     );
-    this.recordFacet("backend", { kind: "fail", detail: "已卸载" });
+    this.recordFacet("backend", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
   }
 
   /** ②「卸载别名块」—— 从远端 ~/.bashrc 删掉 cc-monitor 那一块（二次确认）。 */
   private async onUninstallAliasBlock(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
-      this.showResultText("请先填好 host / user 再卸载别名块。", "tools");
+      this.showResultText(copyText("machineCard.aliases.uninstallNeedHost"), "tools");
       return;
     }
     if (
       !window.confirm(
-        `确认从 ${cfg.host} 的 ~/.bashrc 删掉别名块？\n（只删 cc-monitor 那一小块，块外内容不动，会先备份原文件。）`,
+        copyText("machineCard.aliases.uninstallConfirm", { host: cfg.host }),
       )
     ) {
       return;
     }
     await this.runRemoteAction(
       this.ccmUninstallButton,
-      "卸载别名块中",
+      copyText("machineCard.aliases.uninstalling"),
       () => commands.uninstall_remote_alias_block({ cfg, profile: ".bashrc" }),
       undefined,
       "tools",
     );
     // 同后端卸载：动作成功 = 组件不在了。
-    this.recordFacet("ccm", { kind: "fail", detail: "已卸载" });
+    this.recordFacet("ccm", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
   }
 
   /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、backend ✓/✗（+hello）。
@@ -1147,8 +1143,8 @@ export class MachineCard {
       makeStatusLine(
         res.sshOk,
         res.sshOk
-          ? `SSH 连接成功${res.endpoint ? `（经 ${res.endpoint}）` : ""}`
-          : "SSH 连接失败",
+          ? copyText("machineCard.test.sshOk", { via: res.endpoint ? copyText("machineCard.test.via", { endpoint: res.endpoint }) : "" })
+          : copyText("machineCard.test.sshFailed"),
       ),
     );
 
@@ -1157,7 +1153,7 @@ export class MachineCard {
       fpLine.className = "remote-test-line";
       const fpText = document.createElement("span");
       fpText.className = "remote-test-fp";
-      fpText.textContent = `主机指纹：${res.fingerprint}`;
+      fpText.textContent = copyText("machineCard.test.fingerprint", { fingerprint: res.fingerprint });
       fpLine.appendChild(fpText);
 
       const current = this.fingerprintInput.value.trim();
@@ -1166,8 +1162,8 @@ export class MachineCard {
         saveBtn.type = "button";
         saveBtn.className = "settings-btn";
         saveBtn.textContent = current
-          ? "更新为该指纹（严格校验）"
-          : "保存为严格校验";
+          ? copyText("machineCard.test.pinUpdate")
+          : copyText("machineCard.test.pinSave");
         const fp = res.fingerprint;
         saveBtn.addEventListener(
           "click",
@@ -1181,21 +1177,21 @@ export class MachineCard {
           const caution = document.createElement("div");
           caution.className = "remote-test-line remote-test-caution";
           caution.textContent =
-            "⚠ 此指纹未经验证 —— 首次连接可能被中间人篡改。建议在远端用 `ssh-keyscan` 核对（见部署文档 step 6）后再固化。";
+            copyText("machineCard.test.unverified");
           fpLine.appendChild(caution);
         }
       } else {
         const ok = document.createElement("span");
         ok.className = "remote-test-ok";
-        ok.textContent = "（已固化为严格校验）";
+        ok.textContent = copyText("machineCard.test.pinned");
         fpLine.appendChild(ok);
       }
       this.testResult.appendChild(fpLine);
     }
 
     const backendText = res.backendOk
-      ? `backend 响应正常${res.backendHello ? `（${res.backendHello}）` : ""}`
-      : "backend 未响应 / 未部署";
+      ? copyText("machineCard.test.backendOk", { hello: res.backendHello ? `（${res.backendHello}）` : "" })
+      : copyText("machineCard.test.backendDown");
     this.testResult.appendChild(makeStatusLine(res.backendOk, backendText));
 
     if (res.message) {
@@ -1218,7 +1214,7 @@ export class MachineCard {
       if (btn) btn.remove();
       const ok = document.createElement("span");
       ok.className = "remote-test-ok";
-      ok.textContent = "（已固化为严格校验）";
+      ok.textContent = copyText("machineCard.test.pinned");
       fpLine.parentElement.appendChild(ok);
     }
   }

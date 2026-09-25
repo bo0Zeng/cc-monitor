@@ -39,6 +39,7 @@ import { askForkLaunch, type ForkAccountOption } from "./fork-ask";
 import { startForkedSession, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
 import type { ForkLaunchInput } from "./fork-launch";
 import { runRemoteResume, runRemoteResumeTmux } from "./remote-launch-run";
+import { copyText } from "./copy-table";
 
 export interface ForkFlowInput {
   /** 哪台机器（本机 = `LOCAL_ORIGIN`）。 */
@@ -248,8 +249,8 @@ export async function runForkFlow(input: ForkFlowInput): Promise<ForkStartOutcom
     );
     if (outcome === "started") {
       showActionFailureToast(
-        "✓ 已从这一轮分叉并起新会话",
-        `新会话 ${input.newSessionId.slice(0, 8)} 正在起来——原会话不受影响，两条都活着。`,
+        copyText("forkFlow.done.title"),
+        copyText("forkFlow.done.body", { id: input.newSessionId.slice(0, 8) }),
         { level: "info", durationMs: 8000 },
       );
     }
@@ -258,7 +259,7 @@ export async function runForkFlow(input: ForkFlowInput): Promise<ForkStartOutcom
   } catch (err) {
     // 抛出来的（本机 sid 校验失败、IPC reject…）在这里变成 toast；返回 `failed` 而不是
     // `cancelled` —— 调用方据此区分「出错了」与「用户自己收手」。
-    showActionFailureToast("起分叉会话失败", String(err));
+    showActionFailureToast(copyText("forkFlow.runForkFlow.failed"), String(err));
     return "failed";
   }
 }

@@ -18,6 +18,7 @@
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
+import { copyText } from "./copy-table";
 
 /**
  * 那份凭据文件的状态（**只有掩码**，前端永远拿不到明文：`KS6`）。
@@ -67,7 +68,7 @@ export function decodeApikeyStatus(v: unknown): ApikeyCredentialsStatus {
     !nullableStr(v.notice) ||
     !nullableStr(v.problem)
   ) {
-    throw new Error("凭据文件状态的应答形状不对 —— 两端契约对不上");
+    throw new Error(copyText("apikeyReads.status.badShape"));
   }
   return {
     configured: v.configured,
@@ -87,9 +88,7 @@ export function decodeApikeyRouting(v: unknown): ApikeyRoutingView {
     !v.routed.every((d) => typeof d === "string") ||
     typeof v.running !== "boolean"
   ) {
-    throw new Error(
-      "「这几个号在表里有没有行」的应答形状不对 —— 两端契约对不上",
-    );
+    throw new Error(copyText("apikeyReads.routing.badShape"));
   }
   return { routed: v.routed as string[], running: v.running };
 }
@@ -101,8 +100,7 @@ export function decodeApikeyRouting(v: unknown): ApikeyRoutingView {
 const APIKEY_BUDGET_MS = 10_000;
 
 /** 那台后端比这两问老（不认这条命令）时的那句话。 */
-const APIKEY_OLD_BACKEND =
-  "那台机器的后端版本过旧，还不认这一问（API key 那两问上帧面之后才有）—— 重装那台机器的后端就有了";
+const APIKEY_OLD_BACKEND = copyText("apikeyReads.backend.tooOld");
 
 /** 那台机器上那份凭据文件的状态。问不到 / 形状不对 ⇒ 抛一句人话（不退化成「没配」）。 */
 export async function readApikeyStatus(

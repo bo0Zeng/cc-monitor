@@ -34,6 +34,7 @@ import type { DriftEntry } from "../generated/DriftEntry";
 import type { DriftFace } from "../generated/DriftFace";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
+import { copyText } from "../copy-table";
 
 export type { DriftEntry, DriftFace, DriftFaceReport, DriftLedgerReport };
 
@@ -41,16 +42,16 @@ export type { DriftEntry, DriftFace, DriftFaceReport, DriftLedgerReport };
 export function faceTitle(face: DriftFace): string {
   switch (face) {
     case "unknown_record_type":
-      return "看不懂的记录类型";
+      return copyText("driftLedger.face.unknownRecord");
     case "known_type_parse_failed":
-      return "已知类型解析失败";
+      return copyText("driftLedger.face.parseFailed");
     case "unknown_session_kind":
-      return "未登记的会话 kind";
+      return copyText("driftLedger.face.unknownSessionKind");
     case "unknown_backend_token":
-      return "远端后端声明了我们不认识的能力";
+      return copyText("driftLedger.face.unknownCapability");
     default:
       // 后端加第五个面时**不许整页炸掉**，也不许静默吞掉 —— 显示原名。
-      return `未命名的面（${String(face)}）`;
+      return copyText("driftLedger.face.unnamed", { face: String(face) });
   }
 }
 
@@ -59,40 +60,40 @@ export function countUnit(face: DriftFace): string {
   switch (face) {
     case "unknown_record_type":
     case "known_type_parse_failed":
-      return "条记录";
+      return copyText("driftLedger.unit.records");
     case "unknown_session_kind":
-      return "次观测（每次重扫一次，不是会话数）";
+      return copyText("driftLedger.unit.observations");
     case "unknown_backend_token":
-      return "次握手";
+      return copyText("driftLedger.unit.connections");
     default:
-      return "次";
+      return copyText("driftLedger.unit.times");
   }
 }
 
 /** 一行的可读摘要（供复制诊断文本用，纯函数、可单测）。 */
 export function formatEntry(face: DriftFace, e: DriftEntry): string {
-  const sample = e.first_sample ? `\n      首见：${e.first_sample}` : "";
+  const sample = e.first_sample ? copyText("driftLedger.entry.firstSample", { firstSample: e.first_sample }) : "";
   return `  ${e.key} —— ${e.count} ${countUnit(face)}${sample}`;
 }
 
 /** 〔ST3〕诊断文本里那台机器怎么称呼（贴进 issue 时要分得清是哪台的账）。 */
 function machineName(origin: Origin): string {
-  return isLocalOrigin(origin) ? "本机" : origin;
+  return isLocalOrigin(origin) ? copyText("driftLedger.machine.local") : origin;
 }
 
 /** 整份报告 → 可粘贴的纯文本（提 issue 时直接贴）。〔ST3〕首行带上是哪台机器的。 */
 export function formatReport(report: DriftFaceReport[], origin: Origin): string {
   const where = machineName(origin);
   if (report.length === 0) {
-    return `数据面漂移记账（${where}）：本次运行期间没有遇到任何看不懂的东西。`;
+    return copyText("driftLedger.report.clean", { where });
   }
   const parts = report.map((f) => {
-    const head = `${faceTitle(f.face)}（${f.entries.length} 种${f.overflowed ? "，已触顶" : ""}）`;
-    const why = `  后果：${f.consequence}`;
+    const head = copyText("driftLedger.face.head", { faceTitle: faceTitle(f.face), n: f.entries.length, overflow: f.overflowed ? copyText("driftLedger.face.overflowed") : "" });
+    const why = copyText("driftLedger.report.consequence", { consequence: f.consequence });
     const rows = f.entries.map((e) => formatEntry(f.face, e)).join("\n");
     return `${head}\n${why}\n${rows}`;
   });
-  return `数据面漂移记账（${where} · 本进程内，重启归零）\n\n${parts.join("\n\n")}`;
+  return copyText("driftLedger.report.head", { where, parts: parts.join("\n\n") });
 }
 
 /**
@@ -156,26 +157,25 @@ export class DriftLedgerSection {
     //   「计数在本进程内，重启归零」留着 —— 头注逐字：这一点必须在页面上说，否则会被当成历史统计。
     // 〔ST3〕账按机器分了 ⇒「遇到的」→「从这台机器读到的」（ST2 那两句「今天不分机器」随之删掉）。
     hint.textContent =
-      "cc-monitor 这次运行里从这台机器读到的、没认出来的数据（多半是 Claude Code 出了新格式）。" +
-      "没认出来的部分照常降级显示，这里把它们列出来。计数只算这次运行，重启 monitor 就归零。";
+      copyText("driftLedger.build.intro");
     host.appendChild(hint);
 
     const bar = document.createElement("div");
     bar.className = "settings-row";
     const refreshBtn = document.createElement("button");
     refreshBtn.className = "btn";
-    refreshBtn.textContent = "重新读取";
+    refreshBtn.textContent = copyText("driftLedger.build.reread");
     // 步 4·E（`70 §1.3 E`）：读一趟账本是一次真往返，期间按住。
     refreshBtn.addEventListener("click", () =>
-      void withPending(refreshBtn, "读取中…", () => this.refresh()),
+      void withPending(refreshBtn, copyText("driftLedger.build.reading"), () => this.refresh()),
     );
     bar.appendChild(refreshBtn);
 
     this.copyBtn = document.createElement("button");
     this.copyBtn.className = "btn";
-    this.copyBtn.textContent = "复制诊断文本";
+    this.copyBtn.textContent = copyText("driftLedger.build.copyReport");
     this.copyBtn.addEventListener("click", () =>
-      void withPending(this.copyBtn, "复制中…", () => this.copy()),
+      void withPending(this.copyBtn, copyText("driftLedger.build.copying"), () => this.copy()),
     );
     bar.appendChild(this.copyBtn);
     host.appendChild(bar);
@@ -198,9 +198,9 @@ export class DriftLedgerSection {
     try {
       const r = await commands.drift_ledger_report({ origin });
       if (my !== this.seq) return;
-      if (!r || !Array.isArray(r.faces)) throw new Error("返回的形状不对（faces 不是数组）");
+      if (!r || !Array.isArray(r.faces)) throw new Error(copyText("driftLedger.refresh.badShape"));
       // 〔ST3〕回声对不上 ⇒ 当读不到（拿另一台的账冒充这台，比读不到更糟）。
-      if (!answersFor(r, origin)) throw new Error(`答的不是这台机器（答的是 ${String(r.origin)}）`);
+      if (!answersFor(r, origin)) throw new Error(copyText("driftLedger.refresh.wrongMachine", { machine: String(r.origin) }));
       this.last = r.faces;
       this.lastOrigin = origin;
     } catch (e) {
@@ -210,7 +210,7 @@ export class DriftLedgerSection {
       this.body.textContent = "";
       const err = document.createElement("div");
       err.className = "settings-hint";
-      err.textContent = `读不到漂移账本：${String(e)}（这不等于「没有漂移」）`;
+      err.textContent = copyText("driftLedger.refresh.failed", { e: String(e) });
       this.body.appendChild(err);
       return;
     }
@@ -223,7 +223,7 @@ export class DriftLedgerSection {
       const ok = document.createElement("div");
       ok.className = "settings-hint";
       ok.textContent =
-        "本次运行期间没有遇到看不懂的东西。（不代表历史上没有 —— 计数重启归零。）";
+        copyText("driftLedger.render.clean");
       this.body.appendChild(ok);
       return;
     }
@@ -233,12 +233,12 @@ export class DriftLedgerSection {
 
       const h = document.createElement("div");
       h.className = "drift-face-title";
-      h.textContent = `${faceTitle(f.face)}（${f.entries.length} 种${f.overflowed ? "，已触顶" : ""}）`;
+      h.textContent = copyText("driftLedger.face.head", { faceTitle: faceTitle(f.face), n: f.entries.length, overflow: f.overflowed ? copyText("driftLedger.face.overflowed") : "" });
       box.appendChild(h);
 
       const why = document.createElement("div");
       why.className = "settings-hint drift-face-consequence";
-      why.textContent = `后果：${f.consequence}`;
+      why.textContent = copyText("driftLedger.render.consequence", { consequence: f.consequence });
       box.appendChild(why);
 
       for (const e of f.entries) {
@@ -267,10 +267,10 @@ export class DriftLedgerSection {
     const text = formatReport(this.last, this.lastOrigin);
     try {
       await navigator.clipboard.writeText(text);
-      this.copyBtn.textContent = "已复制";
-      setTimeout(() => (this.copyBtn.textContent = "复制诊断文本"), 1500);
+      this.copyBtn.textContent = copyText("driftLedger.copy.done");
+      setTimeout(() => (this.copyBtn.textContent = copyText("driftLedger.copy.copyReport")), 1500);
     } catch (e) {
-      showActionFailureToast("复制诊断文本失败", String(e));
+      showActionFailureToast(copyText("driftLedger.copy.failed"), String(e));
     }
   }
 }

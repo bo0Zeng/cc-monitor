@@ -28,6 +28,7 @@ import { hasTerminal, isLive, isResumeOnly, stateView } from "./tab-session-stat
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
+import { copyText } from "./copy-table";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -318,15 +319,15 @@ export class TabBarView {
       name.className = "tab-group-name";
       name.addEventListener("click", () => {
         const cur = this.prefs.collections.find((x) => x.id === col.id);
-        const next = window.prompt("集合名:", cur?.name ?? "");
+        const next = window.prompt(copyText("tabBarView.group.namePrompt"), cur?.name ?? "");
         if (next === null) return;
         void this.prefs.commitCollections(renameCollection(this.prefs.collections, col.id, next));
       });
       const del = document.createElement("button");
       del.type = "button";
       del.className = "tab-group-del";
-      del.textContent = "×";
-      del.title = "解散这个集合（只去掉分组，会话一个都不会关）";
+      del.textContent = copyText("tabBarView.group.dissolve");
+      del.title = copyText("tabBarView.group.dissolveHint");
       del.addEventListener("click", () => {
         void this.prefs.commitCollections(deleteCollection(this.prefs.collections, col.id));
       });
@@ -401,7 +402,7 @@ export class TabBarView {
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
     refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost }));
-    refs.acctBadge.title = mismatch ? `${b.tooltip} · 与当前账号「${current}」不一致` : b.tooltip;
+    refs.acctBadge.title = mismatch ? copyText("tabBarView.badge.mismatch", { tooltip: b.tooltip, current: String(current) }) : b.tooltip;
     refs.acctBadge.style.display = "";
   }
 
@@ -434,30 +435,30 @@ export class TabBarView {
     // 可见性交给 class」的形状（见 `.tab .tab-badge` 那条注释）。
     const pinBadge = document.createElement("span");
     pinBadge.className = "tab-pin";
-    pinBadge.textContent = "📌";
-    pinBadge.title = "已固定：关掉 app 再打开它还在";
+    pinBadge.textContent = copyText("tabBarView.tab.pinIcon");
+    pinBadge.title = copyText("tabBarView.tab.pinHint");
     root.appendChild(pinBadge);
 
     // 📂 打开工作目录（cwd）—— 系统默认文件管理器
     const cwdBtn = document.createElement("span");
     cwdBtn.className = "tab-cwd";
-    cwdBtn.textContent = "📂";
-    cwdBtn.title = "打开工作目录 (E)";
+    cwdBtn.textContent = copyText("tabBarView.tab.cwdIcon");
+    cwdBtn.title = copyText("tabBarView.tab.cwdHint");
     root.appendChild(cwdBtn);
 
     // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）。
     if (terminalFrontAvailable()) {
       const focusBtn = document.createElement("span");
       focusBtn.className = "tab-focus";
-      focusBtn.textContent = "↗";
-      focusBtn.title = "调出对应终端 (`)";
+      focusBtn.textContent = copyText("tabBarView.tab.terminalIcon");
+      focusBtn.title = copyText("tabBarView.tab.terminalHint");
       root.appendChild(focusBtn);
     }
 
     const closeBtn = document.createElement("span");
     closeBtn.className = "tab-close";
-    closeBtn.textContent = "×";
-    closeBtn.title = "关闭 Tab";
+    closeBtn.textContent = copyText("tabBarView.tab.closeIcon");
+    closeBtn.title = copyText("tabBarView.tab.closeHint");
     root.appendChild(closeBtn);
 
     return { root, label, badge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
@@ -497,11 +498,11 @@ export class TabBarView {
     // 「等待操作」只对活着的会话说：可重连的会话 claude 已经没了，留着的活动信号是陈旧的
     // （改两轴之前灯被 CSS 盖住了，tooltip 却还挂着这一句）。
     if (isLive(tab.state) && actStatus === "waiting" && tab.activity?.waitingFor) {
-      titleParts.push(`等待操作：${tab.activity.waitingFor}`);
+      titleParts.push(copyText("tabBarView.tab.waiting", { waitingFor: tab.activity.waitingFor }));
     }
     // issue #63①：fork 会话在 tooltip 里标出血缘(徽标 `↳` 在标题上、来源 sid 在此)。
     if (tab.forkedFromSessionId) {
-      titleParts.push(`↳ 从 ${tab.forkedFromSessionId.slice(0, 8)} fork 而来`);
+      titleParts.push(copyText("tabBarView.tab.forkedFrom", { id: tab.forkedFromSessionId.slice(0, 8) }));
     }
     const title = titleParts.join("\n");
     const unread = tab.unread > 0 && !active;

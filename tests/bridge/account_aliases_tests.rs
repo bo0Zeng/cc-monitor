@@ -277,7 +277,7 @@ fn the_rc_path_cannot_escape_home() {
     for bad in ["/etc/profile", "/tmp/x.rc", ".bashrc"] {
         let e =
             run(install_in(&door(&h), &[al("zcc", &[])], Some(bad), P)).expect_err("该被围栏拒");
-        assert!(e.starts_with("refuse profile path"), "{bad}：{e}");
+        assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
         assert!(
             !alias_file_in(&h.0, P).exists(),
             "围栏拒了还写了别名文件：{bad}"
@@ -925,14 +925,14 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
     assert!(hit.sourced, "{hit:?}");
 }
 
-/// 🔴 **P6**（读回口那一半）：人另指的「其它文件」过围栏 —— 跑出 home 的一律拒、原话带「refuse profile path」；
+/// 🔴 **P6**（读回口那一半）：人另指的「其它文件」过围栏 —— 跑出 home 的一律拒、原话带「拒绝写这个配置文件」；
 /// home 之内的并进候选、带回过了围栏之后的绝对路径（界面拿它认出刚指的是哪一份）。
 #[test]
 fn another_startup_file_goes_through_the_fence_before_it_is_read() {
     let h = tmp_home("other-rc");
     for bad in ["/etc/profile", "relative.rc", "~/../x.rc"] {
         let e = read_in(&h.0, P, Some(bad), 0).expect_err(bad);
-        assert!(e.starts_with("refuse profile path"), "{bad}：{e}");
+        assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
     }
     let ok = read_in(&h.0, P, Some("~/.config/x.rc"), 7).expect("home 之内的放行");
     let want = h.0.join(".config/x.rc").display().to_string();

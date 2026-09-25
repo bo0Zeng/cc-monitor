@@ -23,6 +23,7 @@
 //!   [`read_session_range`] 就是按偏移续拉）都在，剩下的是在 `ssh_source` 的重连处把「从 seq 0 重发」换成调这两条。
 //! - **远端整体 30s 超时**（帧面按行那一档的期限）：弱网上超大的一段可能撞上。
 
+use crate::copy_table::copy_text;
 use crate::parser::parse_line;
 use crate::subagent::Backend;
 
@@ -43,7 +44,10 @@ pub(crate) fn range_argv(jsonl_path: &str, offset: u64, until: u64) -> Vec<Strin
 /// 真正的越权读由后端 `fence_under_projects` 兜底。
 fn precheck(jsonl_path: &str) -> Result<(), String> {
     if jsonl_path.contains("..") || !jsonl_path.ends_with(".jsonl") {
-        return Err(format!("非法会话路径: {jsonl_path}"));
+        return Err(copy_text(
+            "rsSessionSkeleton.precheck.badPath",
+            &[("path", &jsonl_path.to_string())],
+        ));
     }
     Ok(())
 }

@@ -39,6 +39,7 @@
 //!
 //! - 🔴 真远端 / 真 Windows：判据用替身门 ＋ 替身后端；Windows 那一台上 `files-chmod` 恒失败 ⇒ 执行位落进 `chmodFailed`（不算整趟失败）。
 
+use crate::copy_table::copy_text;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -160,38 +161,52 @@ impl Ask for BackendAsk {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
                 Routed::Done => String::new(),
             };
-            return Err(format!("{who} 的后端没连上（{why}）—— 一个字节都没动"));
+            return Err(copy_text(
+                "rsSkillInstall.ask.backendDown",
+                &[("who", &who.to_string()), ("why", &why.to_string())],
+            ));
         };
         if !client.accepts(cmd) {
             // 〔SU1〕卸那两条说「卸」（记那一条在装之后问，装已经成了 ⇒ 由 `record_written` 包成「装好了，但没记下来」）。
             let what = if cmd == UNINSTALL_PLAN {
-                "卸不了 skill，一个字节都没动"
+                copy_text("rsSkillInstall.ask.uninstallFailed", &[])
             } else {
-                "装不了 skill，一个字节都没动"
+                copy_text("rsSkillInstall.ask.failed", &[])
             };
             return Err(
-                crate::backend::control::cc_bus::describe_backend_too_old_for(wire, cmd, what),
+                crate::backend::control::cc_bus::describe_backend_too_old_for(wire, cmd, &what),
             );
         }
         let line = encode_request("0", cmd, &args);
         if line.len() > REQUEST_LINE_CAP {
-            return Err(format!(
-                "这个 skill 的文本合起来太大，一趟装不下（请求一行 {} 字节，上限 {REQUEST_LINE_CAP}）—— 一个字节都没动",
-                line.len()
+            return Err(copy_text(
+                "rsSkillInstall.ask.tooBig",
+                &[
+                    ("bytes", &(line.len()).to_string()),
+                    ("cap", &REQUEST_LINE_CAP.to_string()),
+                ],
             ));
         }
         let data = client.call(cmd, args, BUDGET).await.map_err(|e| {
             match route_call_error(&e, |_code, message| format!("{who}：{message}")) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => format!("{who}：装 skill 时出了内部错误，没有拿到结果"),
+                Routed::Done => {
+                    copy_text("rsSkillInstall.ask.internal", &[("who", &who.to_string())])
+                }
             }
         })?;
-        data.ok_or_else(|| format!("{who} 的后端对 `{cmd}` 回了一条空应答"))
+        data.ok_or_else(|| {
+            copy_text(
+                "rsSkillInstall.ask.emptyReply",
+                &[("who", &who.to_string())],
+            )
+        })
     }
 }
 
 /// 后端应答认不出来时的那句话（多半是两边版本不一样）。**不猜默认值**。
-const UNREADABLE_REPLY: &str = "后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。";
+static UNREADABLE_REPLY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsSkillInstall.reply.unreadable", &[]));
 
 fn broken() -> String {
     UNREADABLE_REPLY.to_string()
@@ -291,11 +306,25 @@ pub(crate) async fn preview_with(
 /// 写到一半停下时的那句话：说清停在哪、前面写了哪几个。
 fn stopped_said(machine: &str, at: &str, why: &str, written: &[String]) -> String {
     let done = if written.is_empty() {
-        "一个都还没写".to_string()
+        copy_text("rsSkillInstall.stopped.none", &[])
     } else {
-        format!("前面已经写了 {}", written.join("、"))
+        copy_text(
+            "rsSkillInstall.stopped.some",
+            &[(
+                "list",
+                &(written.join(&copy_text("rsSkillInstall.stopped.listSep", &[]))).to_string(),
+            )],
+        )
     };
-    format!("{machine} 上写「{at}」时停下了：{why}。{done}。")
+    copy_text(
+        "rsSkillInstall.stopped.at",
+        &[
+            ("machine", &machine.to_string()),
+            ("at", &at.to_string()),
+            ("why", &why.to_string()),
+            ("done", &done.to_string()),
+        ],
+    )
 }
 
 /// 写（可测的那一半）。
@@ -343,13 +372,17 @@ pub(crate) async fn apply_with(
     let mut stopped: Option<String> = None;
     for path in &write {
         let Some(file) = source.iter().find(|f| &f.path == path) else {
-            stopped = Some(format!(
-                "「{path}」不在拷出来的那一份里 —— 两端对不上，停下了"
+            stopped = Some(copy_text(
+                "rsSkillInstall.apply.notInCopy",
+                &[("path", &path.to_string())],
             ));
             break;
         };
         let Some(text) = file.text.as_deref() else {
-            stopped = Some(format!("「{path}」没有原文 —— 两端对不上，停下了"));
+            stopped = Some(copy_text(
+                "rsSkillInstall.apply.noOriginal",
+                &[("path", &path.to_string())],
+            ));
             break;
         };
         let expect = target
@@ -363,7 +396,7 @@ pub(crate) async fn apply_with(
                 stopped = Some(stopped_said(
                     &door.machine(),
                     path,
-                    "那一份在你看差异之后又被改过了，重新看一次差异再决定",
+                    &copy_text("rsSkillInstall.apply.stale", &[]),
                     &written,
                 ));
                 break;
@@ -411,8 +444,9 @@ async fn record_written(
                 files.insert(p.clone(), v.clone());
             }
             None => {
-                return Some(format!(
-                    "装好了，但「{p}」这台没说该怎么记 —— 这一趟装的文件卸不掉。"
+                return Some(copy_text(
+                    "rsSkillInstall.record.noLedger",
+                    &[("path", &p.to_string())],
                 ))
             }
         }
@@ -426,8 +460,9 @@ async fn record_written(
         .await
     {
         Ok(_) => None,
-        Err(e) => Some(format!(
-            "装好了，但没记下来（{e}）—— 这一趟装的文件卸不掉。"
+        Err(e) => Some(copy_text(
+            "rsSkillInstall.record.failed",
+            &[("e", &e.to_string())],
         )),
     }
 }
@@ -461,8 +496,9 @@ pub(crate) async fn uninstall_with(
     let mut stopped: Option<String> = None;
     for path in &delete {
         let Some(expect) = seen.iter().find(|t| &t.path == path) else {
-            stopped = Some(format!(
-                "「{path}」你看的时候没有它的原文 —— 两端对不上，停下了"
+            stopped = Some(copy_text(
+                "rsSkillInstall.uninstall.noSeen",
+                &[("path", &path.to_string())],
             ));
             break;
         };
@@ -472,7 +508,7 @@ pub(crate) async fn uninstall_with(
                 stopped = Some(unstopped_said(
                     &door.machine(),
                     path,
-                    "那一份在你看过之后又被改过了（或已经不在了），重新看一次再决定",
+                    &copy_text("rsSkillInstall.uninstall.stale", &[]),
                     &deleted,
                 ));
                 break;
@@ -496,7 +532,12 @@ pub(crate) async fn uninstall_with(
         )
         .await
         .err()
-        .map(|e| format!("删掉的没从装记录里摘掉（{e}）—— 下次看它们会显示「已经不在」。"))
+        .map(|e| {
+            copy_text(
+                "rsSkillInstall.uninstall.dropFailed",
+                &[("e", &e.to_string())],
+            )
+        })
     };
     if let Some(why) = stopped {
         return Err(match record_failed {
@@ -514,11 +555,25 @@ pub(crate) async fn uninstall_with(
 /// 卸到一半停下时的那句话：说清停在哪、前面删了哪几个。
 fn unstopped_said(machine: &str, at: &str, why: &str, deleted: &[String]) -> String {
     let done = if deleted.is_empty() {
-        "一个都还没删".to_string()
+        copy_text("rsSkillInstall.uninstall.noneDeleted", &[])
     } else {
-        format!("前面已经删了 {}", deleted.join("、"))
+        copy_text(
+            "rsSkillInstall.uninstall.someDeleted",
+            &[(
+                "paths",
+                &deleted.join(&copy_text("rsSkillInstall.uninstall.listSep", &[])),
+            )],
+        )
     };
-    format!("{machine} 上删「{at}」时停下了：{why}。{done}。")
+    copy_text(
+        "rsSkillInstall.uninstall.stopped",
+        &[
+            ("machine", &machine.to_string()),
+            ("at", &at.to_string()),
+            ("why", &why.to_string()),
+            ("done", &done),
+        ],
+    )
 }
 
 /// 看差异：`from` 那台的 skill「name」装到 `to` 那台会发生什么（判定由 `to` 那台的后端做）。
@@ -529,7 +584,7 @@ pub async fn skill_install_preview(
     name: String,
 ) -> Result<SkillInstallPreview, String> {
     if from == to {
-        return Err("来源与要装的是同一台 —— 换一台机器".to_string());
+        return Err(copy_text("rsSkillInstall.preview.sameMachine", &[]));
     }
     preview_with(&BackendAsk, &from, &to, &name).await
 }

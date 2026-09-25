@@ -146,8 +146,10 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
     if (file === RS_HOME && before === "fn ") continue;
     // 别人的同名**方法**（`ui.ctx().copy_text(…)`，egui 的剪贴板）不是我们的取文口。
     if (before.endsWith(".")) continue;
-    if (/^\s*[;,}]/.test(after) || /^::/.test(after) || /use\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) {
-      if (/use\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) continue;
+    // 〔CP2b〕`\buse`：原先裸 `use\s` 把「OursFault::Misuse => copy_text(…)」这一行当成了 `use` 导入 ⇒ 那个调用点
+    //   从「引用」一侧漏掉、表里那条被报成死文案（现打逮到：filewin/source.rs 的 said.internal）。
+    if (/^\s*[;,}]/.test(after) || /^::/.test(after) || /\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) {
+      if (/\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) continue;
       problems.push(`${file}:${lineOf(at)}：${RS_FN} 被当值用了（不是直接调用）`);
       continue;
     }
@@ -313,6 +315,8 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
     expect(rustRefsIn("x.rs", 'copy_text("a.b.c", &[(name, n)]);').problems.join()).toMatch(/参数项/);
     expect(rustRefsIn("x.rs", "use crate::copy_table::copy_text;").problems).toEqual([]);
     expect(rustRefsIn("x.rs", "ui.ctx().copy_text(s.to_string());").refs).toEqual([]);
+    // 〔CP2b〕行里前面有个以 use 结尾的标识符（Misuse）不是 `use` 导入 —— 这个调用点照样得认出来。
+    expect(rustRefsIn("x.rs", 'Fault::Misuse => copy_text("a.b.c", &[]),').refs.map((r) => r.key)).toEqual(["a.b.c"]);
   });
 
   it("对拍：表里多一条 / 代码多引一条 / 参数给错 —— 各红一次", () => {

@@ -14,6 +14,7 @@
 //! 用户明确选了「物理删除」。前端二次确认后调 `delete_history_session`，由那台机器的后端删（`files-delete-session`）；
 //! 删完那条注解由界面交本机后端 `history-forget` 连带删。Claude Code 自己也不再能 resume 这个会话。
 
+use crate::copy_table::copy_text;
 use crate::messages::JsonlRecord;
 use crate::paths;
 use serde::Serialize;
@@ -189,9 +190,18 @@ pub(crate) async fn delete_via_backend(
     match crate::remote_history::jsonl_stem(&jsonl_path.replace('\\', "/")) {
         Some(stem) if stem == session_id => {}
         other => {
-            return Err(format!(
-                "拒绝删除：界面给的会话 id（{session_id}）与那份文件的名字（{}）对不上 —— 一个字节都没动",
-                other.as_deref().unwrap_or("不是一份 .jsonl")
+            return Err(copy_text(
+                "rsHistory.delete.idMismatch",
+                &[
+                    ("sessionId", &session_id.to_string()),
+                    (
+                        "fileName",
+                        &(other
+                            .as_deref()
+                            .unwrap_or(&copy_text("rsHistory.delete.notSessionFile", &[])))
+                        .to_string(),
+                    ),
+                ],
             ))
         }
     }
@@ -367,8 +377,9 @@ fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '));
     if !valid {
-        return Err(format!(
-            "refuse resume: 自定义 resume 命令含非法字符（仅允许字母数字、-_.、空格）: {l:?}"
+        return Err(copy_text(
+            "rsHistory.launcher.badChars",
+            &[("launcher", &format!("{:?}", l))],
         ));
     }
     Ok(Some(l.to_string()))
@@ -558,7 +569,10 @@ fn validate_config_dir_posix(dir: &str) -> Result<(), String> {
     if crate::backend::control::payload::config_dir_command_safe(dir) {
         Ok(())
     } else {
-        Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"))
+        Err(copy_text(
+            "rsHistory.configDir.invalid",
+            &[("dir", &format!("{:?}", dir))],
+        ))
     }
 }
 
@@ -582,10 +596,16 @@ fn validate_config_dir_ps(dir: &str) -> Result<(), String> {
         || dir.contains("\\..\\")
         || dir.ends_with("\\..");
     if !absolute || dir == "/" || dotdot {
-        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
+        return Err(copy_text(
+            "rsHistory.configDir.invalid",
+            &[("dir", &format!("{:?}", dir))],
+        ));
     }
     if has_bad_chars(dir, "") {
-        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
+        return Err(copy_text(
+            "rsHistory.configDir.invalid",
+            &[("dir", &format!("{:?}", dir))],
+        ));
     }
     Ok(())
 }
@@ -611,9 +631,7 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
             if d.is_empty() {
-                return Err(
-                    "refuse resume: 具名账号的 configDir 是空的（账号 0 请用 kind=base）".into(),
-                );
+                return Err(copy_text("rsHistory.configDir.empty", &[]).into());
             }
             validate_config_dir_posix(d)?;
             // U8c-1：串本身由内核产出（P4b 起在 `backend::control::payload`），本文件不再自己 format。
@@ -634,9 +652,7 @@ fn config_dir_prefix_ps(account: Option<&LaunchAccount>) -> Result<String, Strin
         Some(LaunchAccount::Named { config_dir, .. }) => {
             let d = config_dir.trim();
             if d.is_empty() {
-                return Err(
-                    "refuse resume: 具名账号的 configDir 是空的（账号 0 请用 kind=base）".into(),
-                );
+                return Err(copy_text("rsHistory.configDir.empty", &[]).into());
             }
             validate_config_dir_ps(d)?;
             Ok(format!("$env:CLAUDE_CONFIG_DIR='{d}'; "))
@@ -661,8 +677,8 @@ enum LocalLaunchChoice {
 /// 与 [`NO_TMUX_NAME`] / [`RELAY_KEEPS_THE_OLD_PATH`] 同一条纪律：
 /// 这条路上「为什么这次没接上」只有降级理由这一个线索。
 #[cfg(not(windows))]
-const OLD_PATH_CANNOT_ATTACH: &str =
-    "旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕";
+static OLD_PATH_CANNOT_ATTACH: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.launch.cannotAttach", &[]));
 
 fn local_launch_choice(
     action: &LocalPsAction,
@@ -675,7 +691,7 @@ fn local_launch_choice(
     //    ⇒ fail-closed。产得出 attach 的只有 ccm 那条容器路（[`render_local_ccm_with`]）。
     #[cfg(not(windows))]
     if matches!(action, LocalPsAction::Attach) {
-        return Err(OLD_PATH_CANNOT_ATTACH.into());
+        return Err(OLD_PATH_CANNOT_ATTACH.to_string());
     }
     if let LocalPsAction::Resume(sid) = action {
         let valid = !sid.is_empty()
@@ -773,7 +789,8 @@ fn build_local_posix_command(
 /// 于是「精心让出 `<sid8>-cc-2`」被直接撞掉。在这里补一个铸造口 = 第三次犯同一个错。
 /// ⇒ 名字由前端传下来（P3t-Y2b 接线）；没传 ⇒ 说不出容器 ⇒ 诚实降级回旧路。
 #[cfg(not(windows))]
-const NO_TMUX_NAME: &str = "没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸";
+static NO_TMUX_NAME: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.launch.noSessionName", &[]));
 
 /// 🔴 `K-R55`（09-11）：**本机 ccm 探测的取值口** —— 与 [`InjectFactSources`] 是同一条缝的形状。
 ///
@@ -858,7 +875,7 @@ fn render_local_ccm(
     //    「最后交出去的是哪一串」的判据会顺带在跑测试的这台机器上起一次 `bash -lic`
     //    —— 那正是本函数与 `render_local_ccm_with` 当初分家要避开的那件事。
     if tmux_name.is_none_or(str::is_empty) {
-        return Err(NO_TMUX_NAME.into());
+        return Err(NO_TMUX_NAME.to_string());
     }
     // ★ 探测与渲染**分家**（P3t-Y3）：探测是这台机器的事实，渲染是纯函数。
     // 合在一起时，判据的结论会跟着「跑测试的机器装没装 ccm」变 —— 而「本机恰好没装
@@ -884,7 +901,7 @@ fn render_local_ccm_with(
     use crate::backend::control::ccm_invocation as ci;
 
     let Some(name) = tmux_name.filter(|n| !n.is_empty()) else {
-        return Err(NO_TMUX_NAME.into());
+        return Err(NO_TMUX_NAME.to_string());
     };
     let sanitized = sanitize_launcher(launcher)?;
     let agent = crate::adapter::active();
@@ -1068,8 +1085,8 @@ const RELAY_KEEPS_THE_OLD_PATH: &str =
 
 /// 🔴 `K-R106`：[`launch_local`] 被要求 attach 时给出的理由（同上，是理由不是 `bool`）。
 #[cfg(not(windows))]
-const ATTACH_IS_NOT_A_SPAWN: &str =
-    "attach 不经本机拉起那条路：它 spawn 出去、stdio 全 null，接不上任何终端；     `§1.3` 把最终那次 exec 钉在用户自己的终端进程里 ⇒ 本机后端交的是**那一串**     （`render_local_attach`），不是一次 spawn";
+static ATTACH_IS_NOT_A_SPAWN: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.launch.attachNeedsTerminal", &[]));
 
 /// ⚠ **`Err` 那一支不回 token**：拉起没成功就没有「刚起的那条」可言，
 /// 回一个 token 会让调用方去等一条根本不存在的会话。
@@ -1107,7 +1124,7 @@ fn launch_local(
         //   ⇒ 现打当场从 `Structural` 翻成 `Closed`（`K-R106` 第一趟门禁真红过一次）。
         //   **改闸的位置，不改那条观测口** —— 改观测口就是「改判据迁就实现」。
         if matches!(action, LocalPsAction::Attach) {
-            return Err(ATTACH_IS_NOT_A_SPAWN.into());
+            return Err(ATTACH_IS_NOT_A_SPAWN.to_string());
         }
         // ★★ `K-H2b`（08-28 第二拍）：**照旧走 ccm 那条容器路，前缀拼在它外面。**
         //
@@ -1266,37 +1283,47 @@ pub(crate) fn launch_endpoint_from_wire(
 ) -> Result<LaunchEndpoint, String> {
     use serde_json::Value;
     let bad = |what: &str| {
-        format!("{where_}后端 `{CMD_LAUNCH_ENDPOINT}` 的应答形状不对：{what} —— 两端契约对不上")
+        copy_text(
+            "rsHistory.endpoint.badShape",
+            &[
+                ("where", where_),
+                ("cmd", CMD_LAUNCH_ENDPOINT),
+                ("what", what),
+            ],
+        )
     };
     let Some(o) = d.as_object() else {
-        return Err(bad("不是对象"));
+        return Err(bad(&copy_text("rsHistory.endpoint.notObject", &[])));
     };
     let mut keys: Vec<&str> = o.keys().map(String::as_str).collect();
     keys.sort_unstable();
     if keys != ["account", "baseUrl", "listening", "whenDown"] {
-        return Err(bad(&format!("键是 {keys:?}")));
+        return Err(bad(&copy_text(
+            "rsHistory.endpoint.keys",
+            &[("keys", &format!("{keys:?}"))],
+        )));
     }
     let opt_str = |k: &str| match &o[k] {
         Value::Null => Ok(None),
         Value::String(s) => Ok(Some(s.clone())),
-        _ => Err(bad(&format!("`{k}` 不是字符串或 null"))),
+        _ => Err(bad(&copy_text("rsHistory.endpoint.notString", &[("k", k)]))),
     };
     let when_down = match &o["whenDown"] {
         Value::Null => None,
         Value::String(s) if s == "refuse" => Some(WhenDown::Refuse),
         Value::String(s) if s == "direct" => Some(WhenDown::Direct),
-        _ => return Err(bad("`whenDown` 只认 refuse / direct / null")),
+        _ => return Err(bad(&copy_text("rsHistory.endpoint.whenDown", &[]))),
     };
     let ep = LaunchEndpoint {
         base_url: opt_str("baseUrl")?,
         listening: o["listening"]
             .as_bool()
-            .ok_or_else(|| bad("`listening` 不是布尔"))?,
+            .ok_or_else(|| bad(&copy_text("rsHistory.endpoint.listening", &[])))?,
         when_down,
         account: opt_str("account")?,
     };
     if ep.base_url.is_some() != ep.when_down.is_some() {
-        return Err(bad("`baseUrl` 与 `whenDown` 该同有同无"));
+        return Err(bad(&copy_text("rsHistory.endpoint.pairing", &[])));
     }
     Ok(ep)
 }
@@ -1449,8 +1476,8 @@ pub(crate) fn inject_facts() -> InjectFactSources {
 }
 
 /// 本机中转没在听时那句「为什么」（本机那一个住在本机常驻后端里，这里起不了第二个）。
-pub(crate) const LOCAL_RELAY_NOT_LISTENING: &str =
-    "本机后端里的中转没在那个口上听（多半是口被别的程序占着，原因在本机后端的日志里）";
+pub(crate) static LOCAL_RELAY_NOT_LISTENING: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.relay.localNotListening", &[]));
 
 /// 〔RL1 · US1〕一次拉起的中转地址：`None` = 不注入（照旧直连）；`Err` = 该走却走不了（**拒绝起会话**，出声）。
 ///
@@ -1470,14 +1497,15 @@ pub(crate) async fn relay_endpoint_on(
         crate::origin::Route::Local => None,
         crate::origin::Route::Remote(host) => Some(host.to_string()),
     };
-    let where_ = remote
-        .as_deref()
-        .map_or_else(|| "本机".to_string(), |h| format!("[{h}] "));
+    let where_ = remote.as_deref().map_or_else(
+        || copy_text("rsHistory.relay.here", &[]),
+        |h| format!("[{h}] "),
+    );
     let args = launch_endpoint_args(account, sid, (facts.all_sessions)());
     let data = (facts.endpoint)(remote.clone(), args).await.map_err(|e| {
-        format!(
-            "问不到{where_}后端这一发该走哪（{e}）—— 没有起会话：说不出这个号要不要经中转换上第三方 key，\
-             照旧起出去的话，一个 API 号会以一个与网络故障同形的失败收场。等那台机器的后端连上再试"
+        copy_text(
+            "rsHistory.relay.unreachable",
+            &[("where", &where_), ("e", &e)],
         )
     })?;
     let ep = launch_endpoint_from_wire(&where_, &data)?;
@@ -1507,11 +1535,13 @@ pub(crate) async fn relay_endpoint_on(
 
 /// 「非它不可」那一格起不来时的说法（本机与远端同一句，只差哪台机器）。
 pub(crate) fn relay_down_refusal(where_: &str, account: Option<&str>, why: &str) -> String {
-    format!(
-        "apikey 端点改写不可用：账号 {account:?} 在{where_}的 apikey 表里有一行，\
-         但{where_}的中转没在听（{why}）——\n\
-         这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败，而真正的原因在我们这一侧。\n\
-         ⇒ 先让那台机器的后端（本机：设置 → 本机后端）与它的中转起来再试，或把该账号那一行从那台机器的凭据文件里去掉。"
+    copy_text(
+        "rsHistory.relay.downRefused",
+        &[
+            ("account", &format!("{account:?}")),
+            ("where", where_),
+            ("why", why),
+        ],
     )
 }
 
@@ -1814,7 +1844,10 @@ pub fn new_local_session(
     // 移动/删除）就明确报错，别静默在默认目录起会话 + 弹假成功 toast。`launch_powershell_window`
     // 只把存在的 cwd 作窗口起始目录、失效则回落默认，对 resume 无害、对 new-session 是错目录。
     if !cwd.is_empty() && !std::path::Path::new(&cwd).is_dir() {
-        return Err(format!("目录不存在，无法在此起新会话：{cwd}"));
+        return Err(copy_text(
+            "rsHistory.newSession.noDir",
+            &[("cwd", &cwd.to_string())],
+        ));
     }
     // ★★ `K-H2b` `D1 阻-1`：**账号这一格是本轮加的，加它的理由要写清楚。**
     //
@@ -1926,9 +1959,8 @@ pub fn render_local_attach(tmux_name: String) -> Result<String, String> {
 
 /// Windows 上 [`render_local_attach`] 的拒词。**它是定框 `C12` 的字面**，不是一句提示语。
 #[cfg(windows)]
-pub(crate) const WINDOWS_HAS_NO_TMUX_CONTAINER: &str =
-    "Windows 上没有 tmux 容器（定框 `C12`〔用 08-12〕逐字「windows不要tmux」）\
-     ⇒ 也就没有「把终端接进那个容器」这件事。要翻它先回去翻定框。";
+pub(crate) static WINDOWS_HAS_NO_TMUX_CONTAINER: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.attach.windows", &[]));
 
 // === metadata 那份文件在哪（〔C4d〕读写者是本机常驻后端；路径仍由这里算）===
 

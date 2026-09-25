@@ -1180,7 +1180,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     // F07：显式选号解析不到 → 提示，别静默落基座（对齐 history.ts）。变异锚点：删 onUnselectable 回调 → 此测红。
     expect(showActionFailureToast).toHaveBeenCalledWith(
       "账号不可用",
-      expect.stringContaining("账号「z」当前不可选"),
+      expect.stringContaining("账号「z」现在选不了"),
       expect.anything(),
     );
   });
@@ -1521,7 +1521,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     ));
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
-    expect(killBtn()?.textContent).toContain("检测 tmux");
+    expect(killBtn()?.textContent).toContain("正在找 tmux 会话");
     await flush();
     expect(killBtn()).toBeNull();
   });
@@ -1570,7 +1570,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     await flush();
     expect(resumeIntoBtn()?.textContent).toContain("i1-cc");
-    expect(killBtn()?.textContent).toContain("空 tmux");
+    expect(killBtn()?.textContent).toContain("空的 tmux 会话");
   });
 
   it("P3 刀3 反面：会话里还跑着 claude → **不给**就地 resume（别往活会话再送一遍载荷）", async () => {
@@ -1585,7 +1585,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     await flush();
     expect(resumeIntoBtn()).toBeNull();
-    expect(killBtn()?.textContent).toContain("kill tmux i1-cc");
+    expect(killBtn()?.textContent).toContain("tmux 会话 i1-cc");
   });
 
   it("P3 刀2-UI 本机 tab 右键：同身份命中 2 个 → 拒绝，不折叠成第一个", async () => {
@@ -1600,7 +1600,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
-    expect(killBtn()?.textContent).toContain("拒绝");
+    expect(killBtn()?.textContent).toContain("不能杀");
     expect(killBtn()?.disabled).toBe(true);
   });
 
@@ -1662,7 +1662,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("A", "/a", "p", 0, "hostA");
     rightClick("A");
     await flush();
-    expect(attachBtn()?.textContent).toContain("空 tmux cc-A1");
+    expect(attachBtn()?.textContent).toContain("空的 tmux 会话 cc-A1");
     expect(attachBtn()?.disabled).toBe(false);
   });
 
@@ -1750,7 +1750,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     const labels = menuLabels();
     expect(labels).toContain("Resume");
     expect(labels).toContain("tmux");
-    expect(labels).toContain("直连（不建 tmux）");
+    expect(labels).toContain("直连 · 不建 tmux 会话");
     expect(labels).not.toContain("Resume（直连）");
     expect(labels).not.toContain("Resume（tmux）");
     // tmux 叶子 → 先查 list_remote_tmux(默认 mock 返 undefined = 无活会话)→ 起全新 resume,
@@ -1766,7 +1766,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     });
     // 直连叶子 → runRemoteResume
     rightClick("r1");
-    clickItem("直连（不建 tmux）");
+    clickItem("直连 · 不建 tmux 会话");
     await flushMicro();
     // A4：默认 resume（无账号）→ 第 5 参 configDir=undefined（不注入，行为与旧版等价）。
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", { configDir: undefined, accountName: undefined, modelOverride: undefined });
@@ -1840,10 +1840,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     const labels = menuLabels();
     expect(labels).toContain("Resume");
     expect(labels).not.toContain("tmux");
-    expect(labels).not.toContain("直连（不建 tmux）");
+    expect(labels).not.toContain("直连 · 不建 tmux 会话");
   });
 
-  it("F09：账号数据就绪后（恰好 1 个可选账号）→ Resume flyout 追加「不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）」，不追加具名账号", async () => {
+  it("F09：账号数据就绪后（恰好 1 个可选账号）→ Resume flyout 追加「不指定账号 · 用远端 ~/.claude 那套凭据」，不追加具名账号", async () => {
     invalidateAccountsCache(); // 防陈旧缓存命中挡住下面的自定义 mock
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts"
@@ -1861,10 +1861,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     await flushMicro();
     await flushMicro();
     const labels = menuLabels();
-    expect(labels).toContain("不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）");
+    expect(labels).toContain("不指定账号 · 用远端 ~/.claude 那套凭据");
     // 只有 1 个可选账号 → 不追加具名账号项（同旧版阈值，见 launch-menu.ts）。
     expect(labels).not.toContain("z");
-    clickItem("不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）");
+    clickItem("不指定账号 · 用远端 ~/.claude 那套凭据");
     // 基座项本身也带 submenu（tmux/直连），点它只展开/切换，不直接执行——不该调用任何 resume。
     expect(runRemoteResumeTmux).not.toHaveBeenCalled();
     expect(runRemoteResume).not.toHaveBeenCalled();
@@ -1896,7 +1896,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     expect(labels).toContain("b");
     // 具名账号项各自也带 tmux/直连子选择——用 querySelectorAll 能拿到的叶子总数量佐证（顶层
     // tmux/直连 2 个 + 基座下 2 个 + z 下 2 个 + b 下 2 个 = 8 个 container 叶子）。
-    const containerLeafCount = labels.filter((l) => l === "tmux" || l === "直连（不建 tmux）").length;
+    const containerLeafCount = labels.filter((l) => l === "tmux" || l === "直连 · 不建 tmux 会话").length;
     expect(containerLeafCount).toBe(8);
     invalidateAccountsCache();
   });
@@ -1944,11 +1944,11 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     await flushMicro();
   };
 
-  it("R05：点「不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）」下的直连 → useBase 生效（configDir 为空），#75 逃生口不退化", async () => {
+  it("R05：点「不指定账号 · 用远端 ~/.claude 那套凭据」下的直连 → useBase 生效（configDir 为空），#75 逃生口不退化", async () => {
     invalidateAccountsCache();
     twoAccounts();
     await openArchivedMenu();
-    clickLeafUnder("不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）", "直连（不建 tmux）");
+    clickLeafUnder("不指定账号 · 用远端 ~/.claude 那套凭据", "直连 · 不建 tmux 会话");
     await flushMicro();
     expect(runRemoteResume).toHaveBeenCalledWith(
       "aya", "r1", "/home/pi/proj", "cct",
@@ -1961,7 +1961,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     invalidateAccountsCache();
     twoAccounts();
     await openArchivedMenu();
-    clickLeafUnder("b", "直连（不建 tmux）");
+    clickLeafUnder("b", "直连 · 不建 tmux 会话");
     await flushMicro();
     expect(runRemoteResume).toHaveBeenCalledWith(
       "aya", "r1", "/home/pi/proj", "cct",
@@ -1995,7 +1995,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     invalidateAccountsCache();
     twoAccounts("__base__");
     await openArchivedMenu();
-    clickLeafUnder("__base__", "直连（不建 tmux）");
+    clickLeafUnder("__base__", "直连 · 不建 tmux 会话");
     await flushMicro();
     expect(runRemoteResume).toHaveBeenCalledWith(
       "aya", "r1", "/home/pi/proj", "cct",
@@ -2011,7 +2011,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     rightClick("r2");
     await flushMicro();
     await flushMicro();
-    expect(menuLabels()).toContain("Restart（换号重启）");
+    expect(menuLabels()).toContain("换号重启");
     invalidateAccountsCache();
   });
 
@@ -2165,7 +2165,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
     rightClick("m1");
     await flushMicro();
     await flushMicro();
-    expect(menuLabels()).not.toContain("Restart（换号重启）");
+    expect(menuLabels()).not.toContain("换号重启");
   });
 
   it("≥2 可选账号 → 「Restart」一级项 + 每账号 flyout（直接重启/先压缩再重启），无 tmux/直连子选择", async () => {
@@ -2189,12 +2189,12 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
     await flushMicro();
     await flushMicro();
     const labels = menuLabels();
-    expect(labels).toContain("Restart（换号重启）");
+    expect(labels).toContain("换号重启");
     expect(labels).toContain("z");
     expect(labels).toContain("b");
     expect(labels).not.toContain("tmux");
-    expect(labels).not.toContain("直连（不建 tmux）");
-    expect(labels).not.toContain("不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）"); // restart 从不给基座逃生口（旧版行为）
+    expect(labels).not.toContain("直连 · 不建 tmux 会话");
+    expect(labels).not.toContain("不指定账号 · 用远端 ~/.claude 那套凭据"); // restart 从不给基座逃生口（旧版行为）
     expect(labels).toContain("直接重启");
     expect(labels).toContain("先压缩上下文再重启");
 
@@ -2230,7 +2230,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
     await flushMicro();
     const restartBtn = [
       ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
-    ].find((b) => b.textContent === "Restart（换号重启）") as HTMLButtonElement | undefined;
+    ].find((b) => b.textContent === "换号重启") as HTMLButtonElement | undefined;
     expect(restartBtn).not.toBeUndefined();
     expect(restartBtn?.disabled).toBe(true);
   });
@@ -2318,8 +2318,8 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
   it("★★ 带着身份 token ⇒ 提示换了一条，且 token 一个字节都没进提示", async () => {
     const TOKEN = "0198f0d2-1111-4222-8333-444455556666";
     const [title, body] = await restartAndCatchToast(TOKEN);
-    expect(title).toBe("无法换号重启：tmux 标记丢了");
-    expect(body).toContain("带着本工具铸的身份标记");
+    expect(title).toBe("无法换号重启：找不到这个会话所在的终端");
+    expect(body).toContain("带着 cc-monitor 起会话时留下的身份标记");
     expect(body).not.toContain("或无法精确定位");
     // 🔴 死值验的落点：把生产段那一行改回写死的老文案（不读 `sessionAccountsByS`），
     //    本条当场红；而 `K-P5f` 已经买到的「读到了」那一族一条都不会红。
@@ -2872,7 +2872,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     await flushMicro();
     await flushMicro();
     await flushMicro();
-    expect(menuItems().map((b) => b.textContent)).toContain("Restart（换号重启）");
+    expect(menuItems().map((b) => b.textContent)).toContain("换号重启");
     // 账号清单那一跳问的是**本机**，不是拿 `<local>` 去问远端。
     // 〔C4c〕经通道问 `<local>` 那条长连接的 `accounts-list`（`accountReadCalls` 把一发 `chan_call` 译回旧叫法）。
     const calls = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls;
@@ -2894,7 +2894,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     expect(
       accountReadCalls((invoke as unknown as ReturnType<typeof vi.fn>).mock.calls, "list_local_accounts"),
     ).toHaveLength(0);
-    expect(menuItems().map((b) => b.textContent)).not.toContain("Restart（换号重启）");
+    expect(menuItems().map((b) => b.textContent)).not.toContain("换号重启");
   });
 
   it("本机会话精确 @ccm_sid 命中 → 编排器拿到 `<local>` ＋ 本机 resume 命令 ＋ 本机 tmux 名", async () => {
@@ -2990,7 +2990,7 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
     await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(restartSpy).not.toHaveBeenCalled();
     expect(showActionFailureToast).toHaveBeenCalledWith(
-      "换号重启拒绝",
+      "不能换号重启",
       expect.stringContaining("2"),
       expect.objectContaining({ level: "info" }),
     );

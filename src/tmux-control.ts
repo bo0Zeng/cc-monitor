@@ -63,7 +63,7 @@ const CONTROL_BUDGET_MS = 10_000;
 
 /** 空目标先拒（Gate 1 的本地那一格）。 */
 function rejectEmptyTarget(target: string): void {
-  if (target === "") throw new ControlError(copyText("tmuxControl.target.empty"), "空的 tmux 目标，一个字节都没发");
+  if (target === "") throw new ControlError(copyText("tmuxControl.target.empty"), "empty tmux target, nothing sent");
 }
 
 // ─── 抓一屏 ───
@@ -94,7 +94,7 @@ function captureRefusals(target: string): Refusals {
 /** `capture-pane` 的成品 ⇒ 那一屏。形状不对 ⇒ 抛。**空屏是合法的成功**（刚建起来、什么都没打印的 pane）。 */
 export function decodeCapture(origin: Origin, v: unknown): string {
   if (!isObj(v) || !exactKeys(v, ["name", "screen"]) || typeof v.name !== "string" || typeof v.screen !== "string") {
-    throw unreadable(origin, "capture-pane", "不是恰好 `{name, screen}` 两格字符串");
+    throw unreadable(origin, "capture-pane", "is not exactly {name, screen} (two strings)");
   }
   return v.screen;
 }
@@ -144,12 +144,12 @@ function killRefusals(target: string): Refusals {
  */
 export function decodeKilled(origin: Origin, target: string, v: unknown): void {
   if (!isObj(v) || !exactKeys(v, ["session", "killed"]) || typeof v.session !== "string" || typeof v.killed !== "boolean") {
-    throw unreadable(origin, "kill", "不是恰好 `{session, killed}` 两格");
+    throw unreadable(origin, "kill", "is not exactly {session, killed}");
   }
   if (!v.killed) {
     throw new ControlError(
       copyText("tmuxControl.kill.notConfirmed", { machine: machineName(origin), target }),
-      "kill 的应答 killed=false 却没给拒绝码",
+      "kill reply has killed=false but no refusal code",
     );
   }
 }
@@ -206,12 +206,12 @@ export function decodeTyped(origin: Origin, target: string, v: unknown): void {
     typeof v.created !== "boolean" ||
     typeof v.typed !== "boolean"
   ) {
-    throw unreadable(origin, "launch", "不是恰好 `{session, created, typed}` 三格");
+    throw unreadable(origin, "launch", "is not exactly {session, created, typed}");
   }
   if (!v.typed) {
     throw new ControlError(
       copyText("tmuxControl.keys.notConfirmed", { machine: machineName(origin), target }),
-      "launch 的应答 typed=false 却没给拒绝码",
+      "launch reply has typed=false but no refusal code",
     );
   }
 }

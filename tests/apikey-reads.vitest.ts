@@ -62,7 +62,7 @@ describe("金样：后端出的成品，TS 这一侧读得懂", () => {
   });
 });
 
-describe("严格收：形状不对 ⇒ 抛「两端契约对不上」", () => {
+describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
   const st = golden["apikey-read"] as Record<string, unknown>;
   const rt = golden["apikey-routing"] as Record<string, unknown>;
   it.each([
@@ -72,7 +72,7 @@ describe("严格收：形状不对 ⇒ 抛「两端契约对不上」", () => {
     ["老后端还回 rows", { ...st, rows: [] }],
     ["不是对象", "x"],
   ])("apikey-read · %s", (_n, v) => {
-    expect(() => decodeApikeyStatus(v)).toThrow(/两端契约对不上/);
+    expect(() => decodeApikeyStatus(v)).toThrow(/两端版本对不上/);
   });
   it.each([
     ["多一格", { ...rt, x: 1 }],
@@ -80,7 +80,7 @@ describe("严格收：形状不对 ⇒ 抛「两端契约对不上」", () => {
     ["routed 里不是字符串", { routed: [1], running: true }],
     ["running 不是布尔", { routed: [], running: 1 }],
   ])("apikey-routing · %s", (_n, v) => {
-    expect(() => decodeApikeyRouting(v)).toThrow(/两端契约对不上/);
+    expect(() => decodeApikeyRouting(v)).toThrow(/两端版本对不上/);
   });
 });
 
@@ -115,7 +115,7 @@ describe("请求：经通道问那台机器的后端", () => {
 describe("失败：一句人话，不退化成「没配」/「没行」", () => {
   it("那台后端不认这一问 ⇒ 说后端太旧", async () => {
     invokeMock.mockRejectedValue(UNSUPPORTED);
-    await expect(readApikeyStatus("host-a")).rejects.toThrow(/版本过旧/);
+    await expect(readApikeyStatus("host-a")).rejects.toThrow(/太旧/);
   });
   it("没有控制通道 ⇒ 说够不着（不是空表）", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);

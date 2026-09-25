@@ -434,7 +434,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
     const s = loaded(new CcBusHooksSection());
     document.body.appendChild(s.element);
     await flush();
-    expect(s.element.textContent).toContain("待贴片段（基于本机盘面）");
+    expect(s.element.textContent).toContain("待贴片段 · 按本机现状生成");
   });
 
   it("两份都没 warning → 一开始就隐藏（不许留一个空框占位）", async () => {
