@@ -3698,21 +3698,18 @@ fn the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule() {
 #[test]
 fn the_two_apikey_rules_are_defined_only_in_acct_core() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let count_def = |src: &str, name: &str| {
-        guard_core::production_code(src)
-            .matches(&format!("fn {name}("))
-            .count()
-    };
+    let id_def = "fn apikey_account_id_of_dir".to_string();
+    let subset_def = "fn apikey_routed_subset".to_string();
     let mut id_defs = Vec::new();
     let mut subset_defs = Vec::new();
     for dir in [root.join("src"), root.join("../backend")] {
-        for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
-            let rel = p.to_string_lossy().replace('\\', "/");
-            for _ in 0..count_def(&src, "apikey_account_id_of_dir") {
-                id_defs.push(rel.clone());
+        for (p, rule_src) in guard_core::scan_tree!(&dir, &["rs"]) {
+            let rule_prod = guard_core::production_code(&rule_src);
+            if guard_core::contains_word(&rule_prod, &id_def) {
+                id_defs.push(p.clone());
             }
-            for _ in 0..count_def(&src, "apikey_routed_subset") {
-                subset_defs.push((rel.clone(), src.clone()));
+            if guard_core::contains_word(&rule_prod, &subset_def) {
+                subset_defs.push((p.clone(), rule_prod));
             }
         }
     }
@@ -3723,23 +3720,32 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
     assert_eq!(
         subset_defs.len(),
         1,
-        "`apikey_routed_subset` 在两半里的定义不是恰好一处：{:?}",
+        "`apikey_routed_subset` 在两半里的定义不是恰好一个文件：{:?}",
         subset_defs.iter().map(|(p, _)| p).collect::<Vec<_>>()
     );
-    let (at, src) = &subset_defs[0];
-    assert!(at.ends_with("src/history.rs"), "那一处不在 history.rs：{at}");
-    let prod = guard_core::production_code(src);
-    let body_at = prod.find("fn apikey_routed_subset(").unwrap();
-    let body = &prod[body_at..];
-    let body = &body[..body.find("\n}\n").unwrap_or(body.len())];
-    assert!(
-        body.contains("acct_core::apikey_routed_subset("),
-        "monitor 那一个不再是调 acct-core 的绑定 —— 它自己在比表：{body}"
+    let (at, subset_prod) = &subset_defs[0];
+    assert_eq!(
+        at.file_name().and_then(|n| n.to_str()),
+        Some("history.rs"),
+        "那一处不在 history.rs：{at:?}"
     );
-    // 反空真：识别器在规则真正的家上认得出两条定义。
-    let core = std::fs::read_to_string(root.join("crates/acct-core/src/lib.rs")).unwrap();
-    assert_eq!(count_def(&core, "apikey_account_id_of_dir"), 1);
-    assert_eq!(count_def(&core, "apikey_routed_subset"), 1);
+    let def_at = guard_core::find_pinned(subset_prod, &subset_def)
+        .unwrap_or_else(|e| panic!("history.rs 里那一个定义不是恰好一处：{e}"));
+    let subset_body: String = subset_prod[def_at..]
+        .lines()
+        .take_while(|l| *l != "}")
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        guard_core::contains_word(&subset_body, "acct_core::apikey_routed_subset"),
+        "monitor 那一个不再是调 acct-core 的绑定 —— 它自己在比表：{subset_body}"
+    );
+    // 反空真：识别器在规则真正的家上认得出两条定义（各恰好一处）。
+    let core_prod = guard_core::production_code(
+        &std::fs::read_to_string(root.join("crates/acct-core/src/lib.rs")).unwrap(),
+    );
+    guard_core::find_pinned(&core_prod, &id_def).expect("acct-core 里那条 id 规则的定义");
+    guard_core::find_pinned(&core_prod, &subset_def).expect("acct-core 里那条子集规则的定义");
 }
 
 /// ★★★ 〔条 49 · `设计/90 §1.2`〕**界面那一侧判「有行」也看 agent**，与起会话那一侧逐格同答。

@@ -48,6 +48,10 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--list-user-inputs", "history-user-inputs"),
     // 〔SR1a × SE2〕会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
     ("--find-in-session", "history-find"),
+    // 〔C4c · 第四波 4B〕换号前的信任预检（主会话裁：随账号层一起上帧面）。两形合进**一条**帧命令
+    //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
+    ("--account-trust", "accounts-trust"),
+    ("--account-trust-zero", "accounts-trust"),
 ];
 
 /// 〔U4b · 第四波〕**生在帧面上**的只读查询：交给后端只读宿主（`read_face::answer`），但**没有**
@@ -60,12 +64,12 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
 ];
 
 /// 仍然逐次拨号的一次性查询 —— `(子命令, 为什么今天还拨)`。**只有它们**过得了拨号那条路。
+///
+/// 〔C4c · 第四波 4B〕**今天是空表**：最后两行（`--account-trust` / `--account-trust-zero`）随账号层上了帧面
+/// （`accounts-trust`，见 [`MOVED`]）⇒ 拨号那条路（`remote_history::run_list_query`）从此一条都放不过去。
+/// 表与闸门留着：它们是「新长一条逐次拨号的查询」时第一个要表态的地方（判据按两向相等管它）。
 pub(crate) const STILL_DIALED: &[(&str, &str)] = &[
-    (
-        "--account-trust",
-        "换号前的信任预检：不在题面八条里；用户点一次换号才发一次，不在任何轮询上",
-    ),
-    ("--account-trust-zero", "同上一行（账号 0 那一形）"),
+    // 〔C4c〕`--account-trust` / `--account-trust-zero` 两行**摘了**：上了帧面（`accounts-trust`）。
     // 〔SR1a · 09-24〕`--read-session-from-offset`（`--index` 那一形）与 `--list-user-inputs` 两行**摘了**：
     //   上了帧面（`history-index` / `history-user-inputs`，见 [`MOVED`]）。拨号 = 经本机常驻后端开一条 capture 链路，
     //   同一台远端已经有长流时不再握手；但查询本身仍是一次性进程 —— 能走帧面的就走帧面。
@@ -325,7 +329,7 @@ pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
             "history-subagents",
             json!({"parent": parent}),
         )),
-        ["--list-accounts"] => Some(ArgvRoute::Lines("accounts-list", json!({}))),
+        // 〔C4c · 第四波 4B〕`--list-accounts` 那一形删了：账号清单前端经通道直接说 `accounts-list`（后端出成品）。
         // 〔C4b · 第四波 4B〕骨架索引 · 会话内查找 · 大纲清单三形删了（原是 SR1a / SE2 加的三臂）：
         //   界面经通道直接说 `history-index` / `history-find` / `history-user-inputs`，后端出成品，
         //   monitor 这一侧再没有任何一条路发它们（`frame_query_tests` 那条「迁过去的只走通道」钉着）。

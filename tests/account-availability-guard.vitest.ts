@@ -95,6 +95,11 @@ const ALLOWED: Record<string, Record<string, number>> = {
   // `accountStatusBadge` / `accountLoginActionLabel` / `isSelectable` 各 1）·
   // `authKind` 2 处（`accountStatusBadge` 与 `accountLoginActionLabel` 各按 kind 分流一次）。
   "src/accounts.ts": { loggedIn: 1, authReady: 5, authKind: 2 },
+  // 〔C4c · 第四波 4B〕后端 `accounts-list` 成品的**收**口（`decodeAccountsList`）：每个字段各 4 处 ——
+  //   键集合清单里的名字 1 · 类型核验 1 · 装回对象时键名 1 · 取值 1。它是**收**（逐格核类型，核不了不许读），
+  //   不是**判**：可用性仍只由 `accounts.ts::isSelectable` 答，按 kind 分流的规则仍住 `acct_core::auth_ready`。
+  //   单独一个文件、单独一行，两件事分得开（`src/accounts-decode.ts` 头注）。
+  "src/accounts-decode.ts": { loggedIn: 4, authReady: 4, authKind: 4 },
 };
 
 /** 被钉的三个字段名。 */

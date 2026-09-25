@@ -82,6 +82,8 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 pub const COMMANDS: &[&str] = &[
     "accounts-list",
     "accounts-sessions",
+    // 〔C4c · 第四波 4B〕换号前的信任预检（替掉最后两条仍逐次拨号的 `--account-trust*`）。
+    "accounts-trust",
     "apikey-key-set",
     "apikey-read",
     "bus-kill",
@@ -1357,12 +1359,13 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔C4c · 第四波 4B〕出成品：`{meta, accounts, notice}`，并上这台机器自己那份 apikey 表；`agent` 随请求带（必填）。
     CommandSpec {
         name: "accounts-list",
         doc_anchor: Some("#### `accounts-list`"),
-        codes: &["too_large"],
-        fields: &["lines"],
-        takes_input: false,
+        codes: &["bad_args", "too_large"],
+        fields: &["accounts", "agent", "meta", "notice"],
+        takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
                 .map(Some)
@@ -1375,6 +1378,27 @@ pub const REGISTRY: &[CommandSpec] = &[
         codes: &["too_large"],
         fields: &["lines"],
         takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔C4c · 第四波 4B〕换号前的信任预检：`configDir`（缺席 / null = 账号 0）＋ `cwd` → `{trusted, known}`。
+    //   同族同档（读一份 manifest ＋ 一份 `.claude.json` ⇒ 阻塞档）、同一个只读宿主。
+    CommandSpec {
+        name: "accounts-trust",
+        doc_anchor: Some("#### `accounts-trust`"),
+        codes: &[
+            "bad_args",
+            "failed",
+            "manifest_unavailable",
+            "no_home",
+            "unknown_config_dir",
+            "unsafe_config_dir",
+        ],
+        fields: &["configDir", "cwd", "known", "trusted"],
+        takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
                 .map(Some)

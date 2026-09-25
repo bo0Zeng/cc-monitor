@@ -65,8 +65,8 @@
 //!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
 
 use acct_core::{
-    auth_kind_from_manifest, auth_ready, is_deceptive_char, ACCTS_DIR_NAME, CREDENTIALS_NAME,
-    MANIFEST_NAME, SUPPORTED_SCHEMA,
+    auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, is_deceptive_char,
+    ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
 };
 use std::path::{Path, PathBuf};
 
@@ -496,25 +496,67 @@ fn suppress_inherited_launch_ids(rows: &mut [SessionRow]) {
 // ---------------------------------------------------------------- 命令
 
 /// `--list-accounts`：meta 行 + 每账号一行。永远 exit 0（"未启用"是正常状态，不是错误）。
+///
+/// 〔C4c · 第四波 4B〕扫描本体挪进 [`scan_accounts`]（帧面 `accounts-list` 出成品那一臂共用同一个扫描）；
+/// 本函数只把它摊成 CLI 那几行（meta 行多两格分帧用的 `kind` 与 `accountZeroAware`，逐字节同旧形状）。
+/// CLI 这一臂**不并 apikey 表**（`in_table` 恒假 ⇒ 分类逐格是 manifest 那一份）。
 fn list_accounts(accts_dir: &Path) -> Vec<String> {
-    let mut out = Vec::new();
+    let (meta, rows) = scan_accounts(accts_dir, &|_| false);
+    let enabled = meta.get("enabled") == Some(&serde_json::Value::Bool(true));
+    let mut line = serde_json::Map::new();
+    line.insert("kind".into(), "accounts-meta".into());
+    line.extend(meta);
+    if enabled {
+        // Z01 能力标记：本后端认识「configDir 缺席 = 账号 0」。
+        // **旧后端不会出这个键**（它把账号 0 当坏数据跳过了）⇒ 读这几行的人 default=false ⇒ 能**明说**
+        // 「后端太旧，列表里少了账号 0」，而不是让用户看着一个静默少一行的列表。
+        line.insert("accountZeroAware".into(), true.into());
+    }
+    let mut out = vec![serde_json::Value::Object(line).to_string()];
+    out.extend(rows.iter().map(serde_json::Value::to_string));
+    out
+}
+
+/// 〔C4c · 第四波 4B〕清单的**扫描本体**：`(meta, 账号们)`。CLI 那一臂（[`list_accounts`]）与帧面成品
+/// （[`list_product_at`]）两个出口共用它 —— 「一份扫描、两个出口」，读 manifest / 判安全 / 判鉴权方式一行不重写。
+///
+/// `in_table(configDir)`：这个号在**这台机器**的 apikey 表里有没有行（帧面那一臂由调用方按
+/// `acct_core::apikey_routed_subset` 答；CLI 那一臂恒答没有）。它是鉴权方式的**第二个输入**，
+/// 进的是同一条计算路径（`auth_kind_with_apikey_table` → `auth_ready`，各只一处）。
+fn scan_accounts(
+    accts_dir: &Path,
+    in_table: &dyn Fn(&str) -> bool,
+) -> (
+    serde_json::Map<String, serde_json::Value>,
+    Vec<serde_json::Value>,
+) {
     let mpath = manifest_path(accts_dir);
+    let meta = |enabled: bool,
+                updated_at: serde_json::Value,
+                shared_store: serde_json::Value,
+                count: usize,
+                error: serde_json::Value| {
+        let mut m = serde_json::Map::new();
+        m.insert("enabled".into(), enabled.into());
+        m.insert("acctsDir".into(), accts_dir.to_string_lossy().into());
+        m.insert("manifestPath".into(), mpath.to_string_lossy().into());
+        m.insert("updatedAt".into(), updated_at);
+        m.insert("sharedStore".into(), shared_store);
+        m.insert("count".into(), count.into());
+        m.insert("error".into(), error);
+        m
+    };
     match load_manifest(accts_dir) {
-        Err(e) => {
-            out.push(
-                serde_json::json!({
-                    "kind": "accounts-meta",
-                    "enabled": false,
-                    "acctsDir": accts_dir.to_string_lossy(),
-                    "manifestPath": mpath.to_string_lossy(),
-                    "updatedAt": serde_json::Value::Null,
-                    "sharedStore": serde_json::Value::Null,
-                    "count": 0,
-                    "error": e,
-                })
-                .to_string(),
-            );
-        }
+        Err(e) => (
+            meta(
+                false,
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+                0,
+                e.into(),
+            ),
+            Vec::new(),
+        ),
         Ok(m) => {
             let mut lines = Vec::new();
             for a in &m.accounts {
@@ -551,9 +593,13 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
                 // K-A1：鉴权方式这一维。分类与就绪**各只有一处实现**，都住 `acct-core`
                 // ——本文件与 `local_accounts.rs` 都调它，所以「两个生产者各填一个不同的
                 // 默认值」在结构上不可表示（`KAY1` 那条 acceptor 的失效模式就是这个）。
-                let auth_kind = auth_kind_from_manifest(a.auth_kind.as_deref());
-                lines.push(
-                    serde_json::json!({
+                // 〔C4c〕第二个输入：这台机器的 apikey 表里有没有它（帧面那一臂才问；CLI 那一臂恒没有）。
+                let in_apikey_table = cfg_out.as_str().is_some_and(in_table);
+                let auth_kind = auth_kind_with_apikey_table(
+                    auth_kind_from_manifest(a.auth_kind.as_deref()),
+                    in_apikey_table,
+                );
+                lines.push(serde_json::json!({
                         "name": a.name,
                         "email": a.email.clone().unwrap_or_default(),
                         "configDir": cfg_out,
@@ -572,32 +618,53 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
                         // K-A1：「鉴权方式这一维不再阻塞它被选中」。**不等于真能连上**
                         // （api-key 号还没有配端点的路 ⇒ `KA6a`，UI 必须把这个状态说出来）。
                         "authReady": auth_ready(auth_kind, credentials_present),
-                    })
-                    .to_string(),
-                );
+                }));
             }
-            out.push(
-                serde_json::json!({
-                    "kind": "accounts-meta",
-                    "enabled": true,
-                    "acctsDir": accts_dir.to_string_lossy(),
-                    "manifestPath": mpath.to_string_lossy(),
-                    "updatedAt": json_str(m.updated_at.as_deref()),
-                    "sharedStore": json_str(m.shared_store.as_deref()),
-                    "count": lines.len(),
-                    "error": serde_json::Value::Null,
-                    // Z01 能力标记：本后端认识「configDir 缺席 = 账号 0」。
-                    // **旧后端不会出这个键**（它把账号 0 当坏数据跳过了）⇒ monitor 侧
-                    // default=false ⇒ 能**明说**「远端后端太旧，列表里少了账号 0」，
-                    // 而不是让用户看着一个静默少一行的列表。
-                    "accountZeroAware": true,
-                })
-                .to_string(),
-            );
-            out.extend(lines);
+            let count = lines.len();
+            (
+                meta(
+                    true,
+                    json_str(m.updated_at.as_deref()),
+                    json_str(m.shared_store.as_deref()),
+                    count,
+                    serde_json::Value::Null,
+                ),
+                lines,
+            )
         }
     }
-    out
+}
+
+/// 〔C4c · 第四波 4B〕帧面 `accounts-list` 的**成品**（主会话裁：账号层读自己那台的 apikey 表，agent 随请求带）。
+///
+/// `{meta, accounts, notice}`：清单同 CLI 那一臂同一个扫描（[`scan_accounts`]），并上**这台机器自己**那份 apikey 表
+/// （`rows`：表里有哪几条账号 id，调用方从 `accounts::apikey::file_face` 读来 —— 与中转里的账号层同一个出处）；
+/// 「哪几个号在表里有行」只问 `acct_core::apikey_routed_subset`（`table_agent`：这台机器上那份文件属于哪一家）。
+///
+/// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（cc-acct-iso 写侧旧）。
+/// 措辞不说「远端」：本机远端同一条路（此前那句写着「远端」，本机那条路因此刻意不出它）。
+/// 〔旧那一句「后端太旧、不认账号 0」删了：出成品的后端按构造认得账号 0；老后端回的是旧形状，界面当场认出。〕
+pub(crate) fn list_product(rows: &[String], agent: &str, table_agent: &str) -> serde_json::Value {
+    list_product_at(&resolve_accts_dir(&[]), rows, agent, table_agent)
+}
+
+/// [`list_product`] 的本体，账号库目录是参数（判据拿夹具喂它，不碰真家目录）。
+pub(crate) fn list_product_at(
+    accts_dir: &Path,
+    rows: &[String],
+    agent: &str,
+    table_agent: &str,
+) -> serde_json::Value {
+    let routed = |dir: &str| {
+        !acct_core::apikey_routed_subset(&[dir.to_string()], rows, agent, table_agent).is_empty()
+    };
+    let (meta, accounts) = scan_accounts(accts_dir, &routed);
+    let enabled = meta.get("enabled") == Some(&serde_json::Value::Bool(true));
+    let notice = (enabled && !accounts.iter().any(|a| a["configDir"].is_null())).then_some(
+        "这台机器上的 cc-acct-iso 版本较旧：它的 accounts.json 里没有账号 0（不指定配置目录的那个默认登录）。\
+         在这台机器上跑一次 'cc-acct-iso sync --apply'（或重新部署 cc-acct-iso）即可补上。",
+    );
+    serde_json::json!({ "meta": meta, "accounts": accounts, "notice": notice })
 }
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
@@ -833,6 +900,47 @@ pub(crate) fn lines_for_frame(agent_home: &Path, which: FrameAccounts) -> Vec<St
     match which {
         FrameAccounts::List => list_accounts(&accts_dir),
         FrameAccounts::BySession => session_accounts(agent_home, &accts_dir),
+    }
+}
+
+/// 〔C4c · 第四波 4B〕帧面 `accounts-trust`：换号前的信任预检 —— 替掉仍在逐次拨号的
+/// `--account-trust` / `--account-trust-zero`（此前远端每问一次经本机后端开一条链路、在那台 exec 一次本二进制）。
+///
+/// `config_dir == None` ⇒ 账号 0（同 `--account-trust-zero`：路径写死在 `$HOME`，不收路径参数）；
+/// 否则同 `--account-trust`（必须 ∈ manifest，否则就成了任意文件读原语）。两形各调 CLI 那一臂**同一个函数**，
+/// 拒绝码原样上交。成品 `{trusted, known}`。
+pub(crate) fn trust_product(
+    config_dir: Option<&str>,
+    cwd: &str,
+) -> Result<serde_json::Value, (String, String)> {
+    trust_product_at(&resolve_accts_dir(&[]), config_dir, cwd)
+}
+
+/// [`trust_product`] 的本体，账号库目录是参数（判据拿夹具喂它）。账号 0 那一形仍读真 `$HOME`（它不收路径）。
+pub(crate) fn trust_product_at(
+    accts_dir: &Path,
+    config_dir: Option<&str>,
+    cwd: &str,
+) -> Result<serde_json::Value, (String, String)> {
+    let line = match config_dir {
+        None => account_trust_zero(cwd)?,
+        Some(c) => account_trust(accts_dir, c, cwd)?,
+    };
+    // CLI 那一臂的出参是一行 JSON（`trust_of_config` 造的）；帧面只取那两格。缺一格 ⇒ 契约坏了，不猜。
+    let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
+        (
+            "failed".to_string(),
+            format!("信任状态那一行不是 JSON：{e}"),
+        )
+    })?;
+    match (v["trusted"].as_bool(), v["known"].as_bool()) {
+        (Some(trusted), Some(known)) => {
+            Ok(serde_json::json!({ "trusted": trusted, "known": known }))
+        }
+        _ => Err((
+            "failed".to_string(),
+            "信任状态那一行缺 `trusted` / `known`".to_string(),
+        )),
     }
 }
 
