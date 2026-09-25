@@ -78,7 +78,8 @@ export function sessionReadOf(cmd: string, args: unknown): [SessionRead, Record<
     case "find_in_session":
       return [which, { origin, jsonlPath: body.path, query: body.query, includeTools: body.include_tools }];
     case "probe_session_record":
-      return [which, { origin, sessionId: body.sid }];
+      // 〔GP1 · 第四波〕这次 resume 要用的账号根（基座不带 ⇒ `undefined`）。
+      return [which, { origin, sessionId: body.sid, configDir: body.configDir }];
   }
 }
 

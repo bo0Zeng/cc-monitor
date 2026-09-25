@@ -370,6 +370,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
             table,
             crate::accounts::upstream::Upstreams::from_env(&|_| None).expect("内置默认"),
         )),
+        super::door::Key::for_tests(),
         TeeSink::new(Box::new(Sink(Arc::clone(&buf), tick))),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -388,7 +389,10 @@ fn one_shot(relay: SocketAddr, target: &str) -> String {
     c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
         .expect("读期限");
     let req = format!(
-        "POST {target} HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer {CLIENT_TOKEN}\r\nContent-Length: {}\r\n\r\n{CLIENT_BODY}",
+        // 〔RK1〕过门：钥匙段挂在最前、`Host` 用回环字面量。金标准比的是**上游那一侧**收到的字节
+        //   与下游拿回的字节 —— 钥匙段在门里就被剥掉，所以期望一个字节都不用动（这正是「钥匙不上游」的一格）。
+        "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {CLIENT_TOKEN}\r\nContent-Length: {}\r\n\r\n{CLIENT_BODY}",
+        super::door::door_tests::TEST_KEY,
         CLIENT_BODY.len()
     );
     c.write_all(req.as_bytes()).expect("写请求");

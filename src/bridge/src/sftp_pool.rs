@@ -32,7 +32,6 @@ use tokio::sync::watch;
 
 use crate::backend::control::backend_route::{route_call_error, Routed};
 use crate::backend::control::inbound_client::InboundClient;
-use crate::claude_data_fence::guard_write;
 use crate::ssh_source::RemoteConfig;
 
 /// 开单：上传。载荷 `{"local_path"}`，回 `{"id","key"}`（`key` 是暂存件的键，提交时交给远端后端）。
@@ -129,12 +128,13 @@ pub async fn transfer_call(
     let dial = crate::dial_host::transfer_dial(&cfg).map_err(|e| ("bad_args".to_string(), e))?;
     let args = match op {
         TRANSFER_UPLOAD => serde_json::json!({ "dial": dial, "local_path": text("local_path")? }),
-        TRANSFER_DOWNLOAD => {
-            let local = text("local_path")?;
-            // 本机落点那道围栏：开单时就在这一侧判一次（出声早，形状同从前）；权威在后端（起跑时它再判）。
-            guard_write(&local).map_err(|e| ("refused".to_string(), e))?;
-            serde_json::json!({ "dial": dial, "remote_path": text("remote_path")?, "local_path": local })
-        }
+        // 〔FN1 · V119〕这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
+        //   不需要任何围栏」⇒ 删了；落点的路径解析（绝对路径 · 父目录在盘上）在本机常驻后端 `transfer-download` 开单那一判。
+        TRANSFER_DOWNLOAD => serde_json::json!({
+            "dial": dial,
+            "remote_path": text("remote_path")?,
+            "local_path": text("local_path")?,
+        }),
         other => {
             return Err((
                 "bad_args".to_string(),

@@ -7,10 +7,18 @@
 //! 下面第一节讲的是「经池子那四条 SFTP 命令调下去」—— **那是上一版**。窗口成了独立进程、
 //! 后端写面（`files-mkdir` / `files-delete` / `files-rename` / `files-chmod`，F1 落的）上线之后，
 //! [`apply_remote`] 改成经 [`super::source::ask`] 说那四条命令：`root` ＝ 那一行所在的目录，
-//! `rel` ＝ 名字（后端围栏按段判 `rel`）。**围栏的权威在后端那一侧**（与桥那一份函数体逐字节
-//! 相同）；本层那道本地预判（[`fenced_path`]）照旧留着 —— 它让踩线的那一件**一个字节都不上线**，
-//! 而那一格今天还有一条写区外的判据钉着它（`claude_data_fence_tests` 那条「旧住址最后一个消费者」）。
+//! `rel` ＝ 名字（后端路径解析按段判 `rel`）。
 //! ⚠ 下面讲池子那几节的每一句都当成**历史**读（`guard_write`、车道预算、池里那条连接）。
+//!
+//! # 🔴〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕**本层那道本地预判删了**
+//!
+//! 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 会话文件（`projects/<proj>/<sid>.jsonl` ·
+//! `sessions/<x>.json`）、项目目录、subagent、tasks 在窗口上都能改名 / 删 / 改权限。
+//! 从前的第一段（`fenced_path` 判一遍、踩线的不问不做、窗口上画一句「挡住了」）与
+//! 后端写面那道会话文件围栏**一起**拿掉了；[`run_writes`] 今天只剩两段：**一次问完 → 才动手**。
+//! 删除 / 改权限照旧问一次 —— 那一问是「不可撤销 / 不显眼」（§四那张表），**不是围栏**。
+//! 后端那一侧仍会拒的只有路径解析那几形（上跳 · 父目录不在 · 解完链接跑出根），拒的那句原话照旧
+//! 经 [`WriteOutcome::failed`] 画到窗口上。下面 §一 · §二讲「两道围栏」的段落是**历史**。
 //!
 //! # 🔴 一、这一层**没有**一行写代码
 //!
@@ -29,9 +37,11 @@
 //! | 一格通道预算（`设计/60 §5.4a` 的 `6 − 4 = 2` 格永远留给浏览） | 那条不变量被拆成两份互不知情的预算 |
 //! | 池里那条连接 | 同一台远端被拨第二条 SSH（`super` 头注那一节） |
 //!
-//! # 🔴 二、围栏这一刀是**两道，刻意重复** —— 但判定只有一份
+//! # 二、〔FN1 · V119 · **整节是历史**〕围栏这一刀是**两道，刻意重复** —— 但判定只有一份
 //!
-//! - **第一道在本层**（[`fenced_path`]）：发往返**之前**就把踩线的挑出去，
+//! 〔FN1〕两道今天都没有了：本层那道（`fenced_path`）与后端写面那道一起删。下面是原话。
+//!
+//! - **第一道在本层**（`fenced_path`）：发往返**之前**就把踩线的挑出去，
 //!   并且在窗口上出声。它买到的是两件事：① 用户看得见为什么没做；
 //!   ② 「被挡」这件事在**一台没有连接的机器上判得动**（本仓红线不许起真连接）。
 //! - **第二道在池子入口**（那四条命令各自的 `guard_write`）。它是承重的那一道：
@@ -44,16 +54,17 @@
 //! ⚠ **本模块一个字节都不改那道围栏** —— 「要不要把它拆成独立一族」是
 //! `设计/99 §2 Q2`，用户还没拍板。这一刀只**用**它。
 //!
-//! # 🔴 三、三段的顺序**就是 [`run_writes`] 的结构** —— 照 [`super::transfer::run_drop`] 办
+//! # 🔴 三、两段（〔FN1〕原来三段）的顺序**就是 [`run_writes`] 的结构** —— 照 [`super::transfer::run_drop`] 办
 //!
 //! ```text
-//! ① fence    —— 围栏（本地、不过网）。踩线的**一件都不交给 apply**，也不进问答
-//! ② confirm  —— 要动的那几件**一次**交给人（`FnOnce` ⇒ 一半由编译器守）
-//! ③ apply    —— 才动手
+//! ① confirm  —— 要动的那几件**一次**交给人（`FnOnce` ⇒ 一半由编译器守）
+//! ② apply    —— 才动手
 //! ```
 //!
+//! 〔FN1 · V119〕原来排在最前面的「① fence —— 围栏（本地、不过网）」那一段删了（理由住本模块头注 FN1 那一节）。
+//!
 //! ⚠ `confirm` 回来的那一摞由 `ops.iter().filter(|o| allowed.contains(o))` 过一遍
-//! （同 `run_drop` 那一行）⇒ **它没法凭空塞进一件没过围栏的操作**：
+//! （同 `run_drop` 那一行）⇒ **它没法凭空塞进一件调用方没交给它的操作**：
 //! 回值只起「准不准」的作用，不起「做什么」的作用。
 //!
 //! ## 为什么 ③ 是**串行**的（与 `run_drop` 刻意不同形）
@@ -85,11 +96,13 @@
 //!   而**生产路径上今天喂不出 N > 1**。如实记成一条边界：本刀买的是
 //!   「多选长出来那天，它自动落在一次问完这条路上」，不是「今天已经多选了」。
 //! - ✅〔FW5 · 第四波〕~~目录递归删除没做~~：删**目录**现在带 `recursive: true` 走后端
-//!   `files-delete`（连同里面全部内容；后端逐条目过围栏，树里藏着会话文件 ⇒ 整趟拒）。
+//!   `files-delete`（连同里面全部内容；后端逐条目过路径解析 —— 〔FN1〕树里的会话文件照删）。
 //!   原话「`sftp_delete` 的 `is_dir` 走的是 `remove_dir`，递归要一条新的池命令」是 SFTP 那一版的事。
-//! - **改权限没有「当前是多少」可显示**：[`super::source::Row`] 里没有 mode，
-//!   〔FW5 现打〕后端 `files-ls` / `files-stat` 两条读口也都不送权限位 ⇒ 那个框**空着开**，
-//!   刻意不预填一个猜出来的值（预填错了而用户直接点确认 = 静默改坏权限）。补读口在后端 `files/mod.rs`，已报备。
+//! - ✅〔GP1 · 第四波〕~~改权限没有「当前是多少」可显示~~：后端 `files-stat` 从此送 `mode`（unix 权限位低 12 位，
+//!   非 unix 缺席）⇒ 框一摆出来就逐项问一次（[`ModeProbe`] · [`probe_modes`]），答回来之后框上说现值
+//!   （[`mode_readout`]），只有一项或各项相同时**预填**那个值（它是读回来的，不是猜的；用户直接点确认 = 原样不变）。
+//!   问不到 ⇒ 照旧空着开、说「读不到现在的权限」—— 不猜。〔墓碑 —— FW5 那一版这里写着「那个框**空着开**，刻意不预填一个
+//!   猜出来的值」：那句的前提是「没有读口」，读口有了。〕
 //! - ✅〔FW5〕~~多选只有删除~~：多选也给「权限」（一个框、一个八进制数、出 N 件、一次问完）。
 //! - ✅〔FW5〕~~有损名一律不许写~~：带着原始字节（`Listed::raw_name`）的有损名能改名 · 删除 · 改权限（相对段发 b16）；
 //!   **进一个有损名的目录 · 复制 / 下载 / 编辑有损名**仍然做不到（那几条用的是整条路径字符串，要把窗口的路径换成字节，单独一刀）。
@@ -98,7 +111,7 @@
 //!   后者要一个编辑器面，而 `设计/60 §5.4b`（大文件编辑改流式）至今没做、形状没定。
 //! - 🔴〔F1 · 波 5 · 2026-09-24〕**新建空文件：后端那一半有了，窗口这一半刻意没接。**
 //!   后端文件管理写面今天有 `files-create`（`O_EXCL` 新建，不给 `content` 就是空文件，
-//!   过 Claude 会话数据围栏；`src/doc/IPC-PROTOCOL.md` §10 那一节），另有
+//!   过路径解析；`src/doc/IPC-PROTOCOL.md` §10 那一节），另有
 //!   `files-mkdir` / `-rename` / `-delete` / `-chmod` / `-write-text` 五条。
 //!   **本模块没有加第五种 [`WriteOp`]**，理由两条：① 窗口这一波**够不着后端**
 //!   （独立进程里客户端登记表是空的；接通道归 F3、接窗口归 F2）；
@@ -172,7 +185,7 @@ pub enum WriteOp {
     /// 在当前目录里新建一个目录。
     Mkdir { path: String },
     /// 删一项。〔FW5〕`is_dir` ⇒ **连同里面全部内容**（后端 `files-delete` 带 `recursive: true`，
-    /// 逐条目过围栏，树里藏着会话文件 ⇒ 整趟拒）；文件 / 链接 ⇒ 只删它自己。
+    /// 逐条目过路径解析；〔FN1〕树里的会话文件照删）；文件 / 链接 ⇒ 只删它自己。
     Delete {
         path: String,
         is_dir: bool,
@@ -192,24 +205,11 @@ pub enum WriteOp {
     },
 }
 
-impl WriteOp {
-    /// 这一件碰到的**每一条路径**。
-    ///
-    /// 🔴 **改名回两条，这是本函数存在的全部理由。** 围栏要「两个参数各过一遍」
-    /// （`remote_write_registry::a_two_path_write_entry_fences_both_of_its_paths`
-    /// 就是为这一形立的，而它当初立起来时逮到了 `sftp_rename` 自己少一道围栏）。
-    /// 把围栏写成「看 `op` 的第一条路径」⇒ 能把任意文件**改名成**
-    /// `<远端>/projects/<proj>/<sid>.jsonl`，盖掉那台机器上正被 Claude 打开的会话。
-    pub fn paths(&self) -> Vec<&str> {
-        match self {
-            WriteOp::Mkdir { path } => vec![path.as_str()],
-            WriteOp::Delete { path, .. } => vec![path.as_str()],
-            WriteOp::Chmod { path, .. } => vec![path.as_str()],
-            WriteOp::Rename { from, to, .. } => vec![from.as_str(), to.as_str()],
-        }
-    }
+// 〔FN1 · V119〕这里原来有 `WriteOp::paths`（「这一件碰到的每一条路径」，改名回两条），
+//   它唯一的读者是本地那道围栏预判 —— 预判删了，它也一起删了（没有读者的公开函数是死值）。
 
-    /// 给人看的一句话（确认框 · 结果行 · 被挡那句话都用它）。
+impl WriteOp {
+    /// 给人看的一句话（确认框 · 结果行都用它）。
     pub fn label(&self) -> String {
         match self {
             WriteOp::Mkdir { path } => format!("新建目录 {path}"),
@@ -231,28 +231,9 @@ impl WriteOp {
     }
 }
 
-/// 逐字出现在**被围栏挡住**那一句里的前缀 —— 判据按它去找那句话。
-pub const FENCE_PREFIX: &str = "⚠ 挡住了：";
-
-/// 这一件踩到 Claude 数据围栏的**那一条路径**（`None` = 一条都没踩）。
-///
-/// 🔴 它**逐条问** [`WriteOp::paths`]，而不是只问第一条 —— 理由逐字住那个函数。
-/// 🔴 判定走的是 `claude_data_fence::is_protected_claude_data_path`，**全仓那一个**
-/// （本模块不许有第二份判定；池子入口那道 `guard_write` 问的也是它）。
-pub fn fenced_path(op: &WriteOp) -> Option<&str> {
-    op.paths()
-        .into_iter()
-        .find(|p| crate::claude_data_fence::is_protected_claude_data_path(p))
-}
-
-/// 被挡住那一句话。**画在窗口上**，不是 `tracing`。
-pub fn fence_notice(op: &WriteOp, path: &str) -> String {
-    format!(
-        "{FENCE_PREFIX}{} —— `{path}` 是 Claude 的会话数据，\
-         动它会弄坏正在跑的那场会话。要管这些用历史浏览器。",
-        op.label()
-    )
-}
+// 〔FN1 · V119〕这里原来有本地那道围栏预判的三样：被挡那句话的前缀常量 · 「这一件踩到 Claude 数据围栏的
+//   那一条路径」· 被挡那一句话（窗口上画成红字，「是 Claude 的会话数据，动它会弄坏正在跑的那场会话」）。
+//   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 三样一起删；那句话随之从文案台账退役。
 
 /// 一摞写操作跑完之后的读数。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -261,15 +242,13 @@ pub struct WriteOutcome {
     pub asked: usize,
     /// 人答「不做」而没做的件数。
     pub skipped: usize,
-    /// 被 Claude 数据围栏挡住的那几件（那句话原文）。**一个字节都没动过对面的盘。**
-    pub blocked: Vec<String>,
     /// 做成了的件数。
     pub ok: usize,
     /// 失败的那几件（说明 ＋ 池子给的报错原文）。
     pub failed: Vec<(String, String)>,
 }
 
-/// 🔴 **正题**：一摞写操作的全过程。三段的顺序就是这个函数的结构。
+/// 🔴 **正题**：一摞写操作的全过程。两段的顺序就是这个函数的结构（〔FN1〕原来是三段，围栏那一段删了）。
 ///
 /// - `confirm`：**一次**拿到「要问的那几件」，回「这几件准做」。⚠ 它是 `FnOnce`
 ///   —— 类型上就不许被调第二次，「一次问完」这件事有一半是编译器在守。
@@ -289,26 +268,10 @@ where
     if ops.is_empty() {
         return out;
     }
-    // ── ① 围栏（本地、不过网）───────────────────────────────────────────
-    //    踩线的**一件都不往下走**：不进问答、更不进 `apply`。
-    let mut clean: Vec<WriteOp> = Vec::new();
-    for op in ops {
-        match fenced_path(&op) {
-            Some(p) => out.blocked.push(fence_notice(&op, p)),
-            None => clean.push(op),
-        }
-    }
-    if clean.is_empty() {
-        return out;
-    }
-
-    // ── ② 一次问完 ────────────────────────────────────────────────────
+    // ── ① 一次问完 ────────────────────────────────────────────────────
     //    没有要问的就**不问** —— 弹一个空框是噪音，不是慎重（同 `run_drop`）。
-    let asking: Vec<WriteOp> = clean
-        .iter()
-        .filter(|o| o.needs_confirm())
-        .cloned()
-        .collect();
+    //    〔FN1 · V119〕这一段之前原来还有「围栏（本地、不过网）」一段，删了。
+    let asking: Vec<WriteOp> = ops.iter().filter(|o| o.needs_confirm()).cloned().collect();
     out.asked = asking.len();
     let allowed: Vec<WriteOp> = if asking.is_empty() {
         Vec::new()
@@ -319,14 +282,14 @@ where
     // 准做的那一摞 = 不用问的全部 ＋ 人点了「做」的那几件。
     //
     // 🔴 `allowed.contains(o)` 这一行是**承重的**（同 `run_drop` 那一行）：
-    //    回值只起「准不准」的作用 ⇒ `confirm` 没法凭空塞进一件**没过围栏**的操作。
-    let go: Vec<WriteOp> = clean
+    //    回值只起「准不准」的作用 ⇒ `confirm` 没法凭空塞进一件调用方**没交给它**的操作。
+    let go: Vec<WriteOp> = ops
         .into_iter()
         .filter(|o| !o.needs_confirm() || allowed.contains(o))
         .collect();
     out.skipped = out.asked - go.iter().filter(|o| o.needs_confirm()).count();
 
-    // ── ③ 才动手。**串行**，理由住本模块头注 §三那一段。 ──────────────────
+    // ── ② 才动手。**串行**，理由住本模块头注 §三那一段。 ──────────────────
     for op in go {
         match apply(op.clone()).await {
             Ok(()) => out.ok += 1,
@@ -342,13 +305,13 @@ where
 
 /// 真做一件 —— 经通道说后端写面那四条命令（`files-mkdir` / `-delete` / `-rename` / `-chmod`）。
 ///
-/// 🔴 **路径切成 `(root, rel)`**：后端写面按「一个根 ＋ 一段相对名」收参（围栏逐段判 `rel`，
+/// 🔴 **路径切成 `(root, rel)`**：后端写面按「一个根 ＋ 一段相对名」收参（路径解析逐段判 `rel`，
 /// 拒 `..` / 盘符 / 空段）。窗口上的写操作全都发生在**当前目录里**（改名只许同目录，
 /// 由 `clean_name` 那道闸先挡：名字里不许带 `/`），所以切法恒是「上一级 ＋ 尾段」，走
 /// [`parent_dir`] / [`remote_basename`] 那一对（不另写一份切法）。
 /// ⚠ 改名两端**不在同一个目录** ⇒ 这里当场拒（后端那一格只有一个 `root`），不猜。
 ///
-/// ⚠ 回来的 `Err` **原样**带出去（后端围栏那句拒绝经 [`super::source::said`] 翻成人话），
+/// ⚠ 回来的 `Err` **原样**带出去（后端路径解析那句拒绝经 [`super::source::said`] 翻成人话），
 /// 由 [`WriteBoard::ui`] 画到窗口上 —— 这一层不改写、不摘要。
 pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<(), String> {
     let (cmd, args) = match op {
@@ -356,7 +319,7 @@ pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<
             "files-mkdir",
             serde_json::json!({ "root": parent_dir(path), "rel": remote_basename(path) }),
         ),
-        // 〔FW5〕目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过围栏）；文件 ⇒ 不带（射程同此前）。
+        // 〔FW5〕目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过路径解析）；文件 ⇒ 不带（射程同此前）。
         WriteOp::Delete { path, is_dir, raw } => {
             let mut a = serde_json::json!({
                 "root": parent_dir(path),
@@ -404,7 +367,7 @@ pub fn budget_for(op: &WriteOp) -> std::time::Duration {
 }
 
 /// 〔FW5〕删一整棵树的往返上限。后端那一趟在阻塞档（开跑之后打不断），上限十万条、
-/// 每条两次围栏 ⇒ 给它比单件写宽一档的等待；**这个数只管「窗口等多久」**，不管后端跑多久。
+/// 每条两次路径解析 ⇒ 给它比单件写宽一档的等待；**这个数只管「窗口等多久」**，不管后端跑多久。
 pub const TREE_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// 〔FW5〕删这一行的那一件（有损名带着原始字节）。窗口上「删除」那一跳（单删 · 批量删）只经这一处拼。
@@ -459,6 +422,9 @@ pub struct WritePrompt {
     pub src_name: String,
     /// 正在编辑的那几个字。
     pub text: String,
+    /// 〔GP1〕改权限那个框：读回来的现值**已经处理过一次**了（预填过，或决定不预填）。
+    /// 只预填一次 —— 用户清空那一栏之后不再被塞回去。
+    pub prefilled: bool,
 }
 
 impl WritePrompt {
@@ -468,6 +434,7 @@ impl WritePrompt {
             dir: dir.to_string(),
             src_name: String::new(),
             text: String::new(),
+            prefilled: false,
         }
     }
 
@@ -484,14 +451,13 @@ impl WritePrompt {
             dir: dir.to_string(),
             src_name: r.name.clone(),
             text: r.name.clone(),
+            prefilled: false,
         }
     }
 
-    /// 改权限那个框 —— **空着开**。理由住本模块头注最后一节
-    /// （列表里没有 mode 可读，预填一个猜出来的值而用户直接点确认 = 静默改坏权限）。
-    ///
-    /// 🔴〔FW5〕「显示现值」**今天做不到**：后端 `files-ls` / `files-stat` 两条读口都不送权限位
-    /// （现打两条的 `fields`），窗口没有任何一条路拿得到它；补读口在后端 `files/mod.rs`，不在本路写区，已报备。
+    /// 改权限那个框 —— 摆出来时**空着**；现值由 [`ModeProbe`] 逐项问回来之后再说、再预填（[`mode_readout`]）。
+    /// 〔GP1 · 第四波〕后端 `files-stat` 送 `mode` 了。〔墓碑 —— FW5 那一版这里写着「显示现值**今天做不到**：
+    /// 后端 `files-ls` / `files-stat` 两条读口都不送权限位」。〕
     pub fn for_chmod(dir: &str, r: &Listed) -> Self {
         Self::for_chmod_many(dir, &[r])
     }
@@ -517,6 +483,7 @@ impl WritePrompt {
                 _ => String::new(),
             },
             text: String::new(),
+            prefilled: false,
         }
     }
 
@@ -641,6 +608,143 @@ pub(super) fn join_remote(dir: &str, name: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// 〔GP1 · 第四波〕改权限那个框的**现值**（`设计/60 §7` · `调研/第四波记录/GP1.md §5`）
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 框上那一行说的现值，以及要不要预填。**纯函数**（判据直接喂它）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModeReadout {
+    /// 框上那一行（「现在是 644」/「这几项现在的权限不一样」/「读不到现在的权限」）。
+    pub line: String,
+    /// 预填进那一栏的八进制串；`None` = 不预填（各项不同 / 读不到）。
+    pub prefill: Option<String>,
+}
+
+/// 逐项读回来的权限位（`None` = 那一项没读到）⇒ 框上怎么说。
+///
+/// - 全读到且都一样 ⇒ 「现在是 644」，预填 `644`（一项就是这一形）；
+/// - 全读到但不一样 ⇒ 「这几项现在的权限不一样」，不预填（填哪一个都是替用户挑）；
+/// - 有一项没读到 ⇒ 「读不到现在的权限」，不预填 —— **不猜**：预填一个猜出来的值而用户直接点确认 = 静默改坏权限；
+/// - 空摞 ⇒ 同「读不到」（框本身会被 [`WritePrompt::to_ops`] 拒，不会走到这里）。
+pub fn mode_readout(modes: &[Option<u32>]) -> ModeReadout {
+    let unreadable = || ModeReadout {
+        line: "读不到现在的权限".to_string(),
+        prefill: None,
+    };
+    let Some(all) = modes.iter().copied().collect::<Option<Vec<u32>>>() else {
+        return unreadable();
+    };
+    let Some(&m) = all.first() else {
+        return unreadable();
+    };
+    if all.iter().any(|x| *x != m) {
+        return ModeReadout {
+            line: "这几项现在的权限不一样".to_string(),
+            prefill: None,
+        };
+    }
+    ModeReadout {
+        line: format!("现在是 {m:o}"),
+        prefill: Some(format!("{m:o}")),
+    }
+}
+
+/// `files-stat` 一次应答里的 `mode`（缺席 / 不是非负整数 / 超出低 12 位 ⇒ `None`：当读不到，不猜）。
+pub fn mode_of(reply: &serde_json::Value) -> Option<u32> {
+    reply
+        .get("mode")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|m| u32::try_from(m).ok())
+        .filter(|m| *m <= 0o7777)
+}
+
+/// 逐项问一次 `files-stat`（同 [`super::transfer::probe_remote`] 那一问、同一个期限），按入参顺序交回。
+pub async fn probe_modes(line: &Line, origin: &Origin, paths: &[String]) -> Vec<Option<u32>> {
+    let mut out = Vec::with_capacity(paths.len());
+    for p in paths {
+        let got = super::source::ask(
+            line,
+            origin,
+            "files-stat",
+            &serde_json::json!({ "path": p }),
+            super::transfer::PROBE_BUDGET,
+        )
+        .await;
+        out.push(got.ok().as_ref().and_then(mode_of));
+    }
+    out
+}
+
+/// 现值那一趟的共享落点（UI 线程读，tokio 那条写）。带一个**代数**：框换了（又摆了一个），
+/// 上一个框那一趟晚到的答案不许落到新框上。形状照 [`WriteBoard`]（含「敲窗口的手」）。
+#[derive(Clone, Default)]
+pub struct ModeProbe {
+    inner: Arc<Mutex<ModeProbeInner>>,
+}
+
+#[derive(Default)]
+struct ModeProbeInner {
+    gen: u64,
+    got: Option<Vec<Option<u32>>>,
+    ctx: Option<egui::Context>,
+}
+
+impl ModeProbe {
+    /// 新摆了一个框：代数 +1、清掉上一个框的答案，交回这一趟的代数。
+    pub fn start(&self) -> u64 {
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        g.gen += 1;
+        g.got = None;
+        g.gen
+    }
+
+    /// 答案到了。代数对不上（框已经换了）⇒ 丢掉。
+    pub fn land(&self, gen: u64, modes: Vec<Option<u32>>) {
+        let ctx = {
+            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            if g.gen != gen {
+                return;
+            }
+            g.got = Some(modes);
+            g.ctx.clone()
+        };
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
+    }
+
+    /// 把窗口交给它（答案到了要敲一下，不然等用户动鼠标才画出来）。
+    pub fn attach(&self, ctx: egui::Context) {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).ctx = Some(ctx);
+    }
+
+    /// 这一个框的现值（还没答回来 ⇒ `None`）。
+    pub fn readout(&self) -> Option<ModeReadout> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .got
+            .as_deref()
+            .map(mode_readout)
+    }
+}
+
+/// 〔GP1〕现值答回来之后，框里那一栏预填**至多一次**（纯函数：判据直接喂它）。
+///
+/// 只在「还没处理过」且「那一栏是空的」时填；填与不填都记「处理过了」—— 用户后来清空那一栏，不再被塞回去。
+pub fn apply_prefill(p: &mut WritePrompt, r: &ModeReadout) {
+    if p.prefilled {
+        return;
+    }
+    p.prefilled = true;
+    if p.text.is_empty() {
+        if let Some(v) = &r.prefill {
+            p.text = v.clone();
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // 窗口那一侧的状态：**问什么 · 上一摞做完了什么**
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -752,10 +856,8 @@ impl WriteBoard {
 
     /// 画确认框与上一趟的结果。**模态** —— 有问题在等的时候，列表那边不接受点击。
     ///
-    /// 🔴 `blocked` 那一段是这一刀的承重墙：被围栏挡住的那几件**必须在屏幕上出声**。
-    /// 删掉它 ⇒ 用户点了删除、什么都没发生、也没有任何一句话，
-    /// 而那与「删掉了」在屏幕上分不开（`INVARIANTS §1` 的 F47 那一段逐字要求
-    /// 每一次写都是一次看得见的用户手势）。
+    /// 〔FN1 · V119〕原来这里还先画「被围栏挡住的那几件」（红字，`blocked` 那一段）；围栏拿掉之后那一段删了。
+    /// 失败那几件（含后端路径解析拒的）照旧必须在屏幕上出声 —— 「什么都没发生」与「做完了」在屏幕上分不开。
     pub fn ui(&self, ui: &mut egui::Ui) {
         let (asking, mut ticks, last) = {
             let b = self.inner.lock().unwrap();
@@ -794,9 +896,6 @@ impl WriteBoard {
             }
         }
         if let Some(o) = &last {
-            for line in &o.blocked {
-                ui.colored_label(egui::Color32::RED, line);
-            }
             if !o.failed.is_empty() {
                 ui.colored_label(
                     egui::Color32::RED,
