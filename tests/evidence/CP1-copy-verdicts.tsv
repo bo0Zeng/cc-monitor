@@ -387,9 +387,6 @@ src/bridge/src/filewin/fonts.rs:277	×★☆书加懂找移签	保留	[不对外
 src/bridge/src/filewin/fonts.rs:287	●＋双另右好己底忙恰标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字）
 src/bridge/src/filewin/fonts.rs:288	处搬板留老	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字）
 src/bridge/src/filewin/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕预览那几个字）
-src/bridge/src/filewin/proc.rs:297	那个进程在开窗预算内就退了（{st}）	改·§2.1	[对外] open_in_new_process 的 Err 回给打开文件窗口的调用方；「开窗预算」是内部参数 新词:开窗预算 →「文件窗口没能打开（进程退出：{st}）」
-src/bridge/src/filewin/proc.rs:298	那个进程既没退也没在跑 —— 这一形说明上面那一跳的判法坏了	改·§2.2	[对外] 同上 Err；「这一形说明上面那一跳的判法坏了」是内部推理 →「文件窗口没能打开」
-src/bridge/src/filewin/proc.rs:299	问不到那个进程的死活：{e}	改·§2.1	[对外] 同上 Err；「问不到进程的死活」讲实现 →「文件窗口没能打开：{e}」
 src/bridge/src/filewin/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
 src/bridge/src/filewin/shell.rs:570	搜索要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] 搜索栏 say() 直接显示；整句讲实现（tokio 运行时），换词治不好 新词:tokio运行时 →「搜索启动不了，请重开这个窗口」
 src/bridge/src/filewin/shell.rs:625	上传要一个 tokio 运行时，这个窗口没拿到	改·§2.1	[对外] listing.error 画在窗口上；整句讲实现 新词:tokio运行时 →「上传启动不了」
@@ -568,28 +565,6 @@ src/bridge/src/remote_history.rs:242	远端那台的后端没带会话 sid 清�
 src/bridge/src/remote_history.rs:243	远端那一行的 sid 清单与 sessionCount 对不上（行坏了）	保留	[不对外] 同上只进日志；将来上界面要换掉 sid / sessionCount
 src/bridge/src/remote_history.rs:244	远端会话的活状态本机答不了（SessionMap 只认本机进程）	保留	[不对外] 同上只进日志；将来上界面要换掉 SessionMap 新词:SessionMap
 src/bridge/src/remote_history.rs:633	远端项目列表	保留	[不对外] log_unknown_reasons 的日志标签
-src/bridge/src/sftp.rs:358	那一问没有答完	保留	[对外] 〔DP1〕判不了那台上那份后端是谁时的原因（接在「判不了 … 没有动它：」后面）；没有错误输出时如实说没答完
-src/bridge/src/sftp.rs:370	没有覆盖它。要换成这一版：先在机器页点「卸载后端」删掉它，再部署。	保留	[对外] 〔DP1〕那台落点上的东西不肯说自己是谁时的出路；先说结果（没覆盖），第二句是用户做得了、做了真会好的动作（机器页「卸载后端」按钮删掉那个文件 = 明确授权覆盖，已在回环 sshd 上走通）
-src/bridge/src/sftp.rs:372	那台上还没有后端	保留	[对外] 〔DP1〕部署原因（接在「已安装后端（…）到 {path}（…）」的括号里）
-src/bridge/src/sftp.rs:373	那台上那一份是 0 字节	保留	[对外] 〔DP1〕部署原因（同上一条）；0 字节是用户看得懂的事实
-src/bridge/src/sftp.rs:376	那台上是 {s}，这一版是 {expected}	保留	[对外] 〔DP1〕部署原因：两边各是哪一版（身份戳里的版本名，与「后端版本不对」那族同一个对外概念）
-src/bridge/src/sftp.rs:722	已删除 {path}。若这台机器仍勾选「启用」，下次连接时会自动装回；彻底移除请取消启用或删除这台机器。	保留	[对外] 〔DP1〕卸载后端的结果（旁挂标记退役后只删一份）；先说结果，第二句是已验证的下一步（启用勾选在机器页上）
-src/bridge/src/sftp.rs:725	{path} 不在，可能已经卸载过了。	保留	[对外] 〔DP1〕卸载时那个文件本来就不在；「可能」是如实的不确定
-src/bridge/src/sftp.rs:546	远端无 backend / 无版本标记	内部词→「远端还没装后端」	[对外] Deploy 原因会拼进「已安装后端…（{reason}）」；英文 backend 与「版本标记」是内部叫法 新词:版本标记
-src/bridge/src/sftp.rs:548	版本不符（远端 {} ≠ 期望 {expected}）	保留	[对外] 部署原因：版本不符，括号给两边版本号
-src/bridge/src/sftp.rs:584	远端已是最新后端（{}，{}）：{path}，无需重装。	保留	[对外] 手动安装后端的结果，结论清楚
-src/bridge/src/sftp.rs:597	已安装后端（{}，{}）到 {path}（{reason}）。重连远端即可用。	保留	[对外] 安装结果＋下一步（重连即可用，已验证可行）
-src/bridge/src/sftp.rs:1272	远端 ~/{profile}	保留	[对外] 拼进报错的对象名（远端 profile 路径）
-src/bridge/src/sftp.rs:1406	远端 ~/{profile}	保留	[对外] 拼进报错的对象名
-src/bridge/src/sftp.rs:967	终端里的 ccm 入口已就位。	保留	[对外] 部署后端结果的后半句（入口没变，没写）；ccm 是用户自己敲的命令（R1b）
-src/bridge/src/sftp.rs:648	终端里的 ccm 入口已放好（~/.cc-monitor/bin/ccm；装了别名块的终端里直接能用）。	保留	[对外] 部署后端结果的后半句，括号给落点 〔SR1b 09-24：入口落点从 ~/.local/bin 挪进后端只许写的 ~/.cc-monitor/bin；补半句说怎么用上它〕
-src/bridge/src/sftp.rs:1332	远端 {profile} 不存在，没有别名块可卸载。	保留	[对外] 卸载别名块结果，先说结果
-src/bridge/src/sftp.rs:1334	远端 {profile} 里没有别名块，不用卸载。	保留	[对外] 卸载别名块结果
-src/bridge/src/sftp.rs:1339	已从远端 {profile} 删掉别名块（原文件备份在 {b}）。	保留	[对外] 卸载别名块结果，括号给备份路径
-src/bridge/src/sftp.rs:1340	已从远端 {profile} 删掉别名块。	保留	[对外] 卸载别名块结果（原文件为空时没有备份）
-src/bridge/src/sftp.rs:1376	{profile} 里的别名块已是最新，没有改动。	保留	[对外] 装别名块结果（没写）
-src/bridge/src/sftp.rs:1379	（原文件备份在 {b}）	保留	[对外] 装别名块结果的拼接段（备份路径）
-src/bridge/src/sftp.rs:1383	别名块已写进 {profile}{backup_note}。重连 ssh 之后，终端里就有 cc / cct，\n         以及「别名」里生成的那几条。	保留	[对外] 装别名块结果：先说结果，再说生效之后能用什么；ssh 是用户自己也这么叫的词（R1b）
 src/bridge/src/chan/host.rs:325	传输进度不支持从某一格续看	保留	[可达存疑] 传输进度流带了续传游标时原位回的那句（窗口的 source::watch 从不带，只有协议用错才会看到）；短、无内部词
 src/bridge/src/sftp_pool.rs:1560	这一趟传输的状态丢了	保留	[可达存疑] 传输台的快照流发送端没了才走到（发送端在票里、票在守卫里，按构造到不了）；窗口若收到会原样画在失败那一行；短、无内部词
 src/bridge/src/skill_host.rs:147	planned-build 今天不在 tool_registry 那张表里（那张表收哪几条，\n             唯一住址是 `tool_registry::TOOLS`）。把它变成可装归 devbench F06。	改·§2.1	[对外] skill 不支持安装的说明（源码注释自己写着「这一句是用户看得见的」）：露出 tool_registry::TOOLS 源码住址与内部工单 devbench F06 兼§2.2 →「planned-build 暂不支持在这里安装」
