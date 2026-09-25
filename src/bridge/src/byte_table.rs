@@ -178,12 +178,12 @@ pub(crate) fn key_of(os: &str, arch: &str) -> Result<Key, Refusal> {
     let (os, arch) = (os.trim(), arch.trim());
     if os.is_empty() {
         return Err(Refusal::OsUnknown {
-            why: "它没有答".to_string(),
+            why: copy_text("rsByteTable.key.noAnswer", &[]),
         });
     }
     if arch.is_empty() {
         return Err(Refusal::ArchUnknown {
-            why: "它没有答".to_string(),
+            why: copy_text("rsByteTable.key.noAnswer", &[]),
         });
     }
     match (os_of(os), arch_of(arch)) {
@@ -418,9 +418,9 @@ pub(crate) fn key_from_uname(
         let said = stderr.trim();
         return Err(Refusal::OsUnknown {
             why: if said.is_empty() {
-                "它没有答".to_string()
+                copy_text("rsByteTable.key.noAnswer", &[])
             } else {
-                format!("它答「{said}」")
+                copy_text("rsByteTable.key.said", &[("said", &said.to_string())])
             },
         });
     }
@@ -430,7 +430,10 @@ pub(crate) fn key_from_uname(
         [os] => key_of(os, ""),
         [os, arch] => key_of(os, arch),
         _ => Err(Refusal::OsUnknown {
-            why: format!("它的回答认不出：「{}」", stdout.trim()),
+            why: copy_text(
+                "rsByteTable.key.unreadable",
+                &[("reply", &(stdout.trim()).to_string())],
+            ),
         }),
     }
 }

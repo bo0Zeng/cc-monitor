@@ -63,16 +63,9 @@ src/bridge/crates/guard-core/src/lib.rs	射程外：monitor 的子 crate，够�
 src/bridge/src/backend/control/ccm_invocation.rs	未抽
 src/bridge/src/backend/control/frame_query.rs	C4d 在改这一带，留最后一批
 src/bridge/src/backend_policy.rs	未抽
-src/bridge/src/byte_table.rs	未抽
-src/bridge/src/ccm_probe.rs	未抽
-src/bridge/src/footprint_remote.rs	未抽
 src/bridge/src/history.rs	C4d 在改这一带，留最后一批
-src/bridge/src/launch.rs	未抽
-src/bridge/src/lib.rs	未抽
 src/bridge/src/local_accounts.rs	C4d 在改这一带，留最后一批
 src/bridge/src/local_backend_host.rs	C4d 在改这一带，留最后一批
-src/bridge/src/panorama_bytes.rs	未抽
-src/bridge/src/panorama_call.rs	未抽
 src/bridge/src/remote_branch.rs	C4d 在改这一带，留最后一批
 src/bridge/src/remote_history.rs	C4d 在改这一带，留最后一批
 src/bridge/src/ssh_source.rs	C4d 在改这一带，留最后一批
