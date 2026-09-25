@@ -422,7 +422,7 @@ def main():
             last = be.end_of(xid, 600)
             print(f"  read 下载 16 MiB 期间长流回声：p50 {pct(busy, 50):.0f} ms · p95 {pct(busy, 95):.0f} ms · max {max(busy):.0f} ms（下载收场 {last and last['end'].get('state')}，余下 {time.monotonic() - t0:.1f} s）")
             smalls = []
-            sub0 = a.text().count("subsystem request for sftp")
+            sub0 = a.text().count("Starting session: subsystem 'sftp'")
             for i in range(6):
                 src = os.path.join(rhome, f"small{i}.txt")
                 with open(src, "w") as fh:
@@ -432,7 +432,7 @@ def main():
                 be.end_of(xid, 60)
                 smalls.append((time.monotonic() - t0) * 1000)
             print(f"  read 顺序下载 6 个 1 KB 小文件（长流在）：每件 {', '.join(f'{x:.0f}' for x in smalls)} ms（中位 {statistics.median(smalls):.0f} ms；RTT {DELAY * 2000:.0f} ms）")
-            subs = a.text().count("subsystem request for sftp") - sub0
+            subs = a.text().count("Starting session: subsystem 'sftp'") - sub0
             check("顺序 6 趟小下载 ⇒ sshd 记下的 sftp 子系统请求恰好 1 次（空闲会话复用；基线 6 次）", subs == 1, subs)
             be.call("link-close", {"link": "s5"})
         if compress_mode:
