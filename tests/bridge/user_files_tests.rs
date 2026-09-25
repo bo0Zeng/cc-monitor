@@ -104,7 +104,8 @@ impl Door for DiskDoor {
         }
         if parents {
             if let Some(d) = p.parent() {
-                std::fs::create_dir_all(d).expect("替身补父目录");
+                std::fs::create_dir_all(d)
+                    .map_err(|e| Refused::Other(format!("替身：建 {} 失败：{e}", d.display())))?;
             }
         } else if !p.parent().is_some_and(Path::exists) {
             return Err(Refused::Other(format!(
@@ -114,7 +115,8 @@ impl Door for DiskDoor {
         }
         let changed = current.as_deref() != Some(content);
         if changed {
-            std::fs::write(&p, content).expect("替身写");
+            std::fs::write(&p, content)
+                .map_err(|e| Refused::Other(format!("替身：写 {} 失败：{e}", p.display())))?;
         }
         Ok(Landed {
             path: p.display().to_string(),
