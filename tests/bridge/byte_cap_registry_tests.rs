@@ -1667,7 +1667,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     //    ⚠ **这不是「挡路就放宽」**：地板守的是「抽取器还够得到东西」，
     //    而人群真的少了一个成员时，不跟着改这个数才是让它继续替真判据挡枪（`K-G8`）。
     // 🔴 `K-R112`（09-13）：地板 13 → **11**，理由与上面 `K-R104` 那一段**同形**：
-    //    `cc_bus.rs::check_cc_bus_agent_online` 与 `tmux.rs::capture_remote_pane`
+    //    `check_cc_bus_agent_online`〔散文墓碑〕（`cc_bus.rs`，〔C4e〕已迁到界面）与 `capture_remote_pane`〔散文墓碑〕（`tmux.rs`，〔C4e〕已迁到界面）
     //    那两处 `read_to_end`（一次性 SSH 的 stdout）随两条命令改走后端帧面而
     //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
     assert!(

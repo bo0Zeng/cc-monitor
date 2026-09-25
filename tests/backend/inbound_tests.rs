@@ -459,6 +459,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     for c in [
         "bus-list",
         "bus-send",
+        "bus-broadcast",
         "bus-kill",
         "bus-spawn",
         "bus-state",
@@ -578,6 +579,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "link-close",
         "bus-list",
         "bus-send",
+        "bus-broadcast",
         "bus-kill",
         "bus-spawn",
         "bus-state",

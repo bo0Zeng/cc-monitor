@@ -5,7 +5,15 @@
 //   ③ 脏数据的 skipped 计数如实显示，不假装干净。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { componentSources } from "../test-support/component-sources";
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// 〔C4e · 第四波 4C〕查在线 / 发消息 / 收掉 / 派生 / 广播从五条 Tauri 命令改成界面经通道直接说后端的 `bus-*`
+//   （`src/cc-bus-control.ts`）。本文件判的是驾驶舱的 **DOM 行为**（两步确认 · 登记 ≠ 在线 · 如实呈现），不是通道那一跳 ⇒
+//   生产 `invoke` 换成一层翻译（`chan-fake.ts::ccBusControlShim`）：那几发 `chan_call` 照旧按旧名字交给 `mockInvoke`，
+//   「一条都不发」那几条断言因此仍然数得到真发出去的那一发（通道那一跳的判据在 `tests/cc-bus-control.vitest.ts`）。
+const mockInvoke = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", async () => {
+  const { ccBusControlShim } = await import("../test-support/chan-fake");
+  return { invoke: ccBusControlShim(mockInvoke) };
+});
 // **只 mock `fetchAccounts` 这一个导出**：它带 TTL 缓存，跨测试会泄漏上一条的结果
 // （实测：第一条测试的账号列表会被后面"取不到账号"那条读到）。它自己有测试，
 // 这里只需要它的返回值，不该顺带重测它的缓存。
@@ -30,12 +38,10 @@ vi.mock("../../src/accounts", async () => ({
 }));
 
 import { CcBusSection } from "../../src/settings/cc-bus-section";
-import { invoke } from "@tauri-apps/api/core";
 import { fetchAccounts } from "../../src/accounts";
 import { LOCAL_ORIGIN } from "../../src/backend-policy";
 import { __resetMachineContextForTests } from "../../src/settings/machine-context";
 
-const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 const mockFetchAccounts = fetchAccounts as unknown as ReturnType<typeof vi.fn>;
 
 const STATE = {
@@ -185,8 +191,10 @@ describe("B03 登记 ≠ 在线", () => {
 
   it("点某一行的「检查」只查那一行", async () => {
     const s = await setup();
+    // 〔C4e〕查在线问的是整份名单（`bus-list` 请求体里没有 id，挑人在界面）⇒ 替身按人答 `live`；
+    //   两人答得不一样，挑错了人那一行就会显示「不在线」—— 「只查那一行」的 id 那一格由此判。
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "check_cc_bus_agent_online") return true;
+      if (cmd === "check_cc_bus_agent_online") return { proj_cc: false, KVM_cc: true };
       throw new Error(cmd);
     });
     const rows = [...s.element.querySelectorAll<HTMLElement>(".cc-bus-row")];
@@ -194,7 +202,7 @@ describe("B03 登记 ≠ 在线", () => {
     await flush();
     const checks = mockInvoke.mock.calls.filter((c) => c[0] === "check_cc_bus_agent_online");
     expect(checks).toHaveLength(1);
-    expect(checks[0][1]).toEqual({ origin: "devbox", id: "KVM_cc" });
+    expect(checks[0][1]).toEqual({ origin: "devbox" });
     expect(rows[1].querySelector(".cc-bus-online")?.textContent).toBe("在线");
     // 另一行不受影响，仍是未知
     expect(rows[0].querySelector(".cc-bus-online")?.textContent).toBe("在线未知");

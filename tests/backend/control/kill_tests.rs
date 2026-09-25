@@ -71,3 +71,42 @@ fn kill_uses_the_destructive_gate_not_the_plain_one() {
         "kill 走了非破坏性的 `admit`（没有 Gate 3）—— 多窗口会话会被误杀"
     );
 }
+
+/// ★★〔C4e · 第四波 4C〕**跨语言金样**：界面直接收的 `kill` 成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
+///
+/// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
+/// （后端测试产出 == 金样 · TS 解码器读同一份）」。杀会话从这一拍起由界面经通道直接说（`src/tmux-control.ts::killSession`），
+/// monitor 那一跳只搬字节 —— 成品的键、拒绝码的集合从此只有后端这一侧与金样说了算。
+///
+/// 三格各自异源：请求样例过**生产**解析器 [`parse_name`] · 成品 == 生产构造器 [`reply`] ·
+/// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `inbound.rs`，不从本文件派生）。
+#[test]
+fn the_kill_product_matches_the_cross_language_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/tmux-control.golden.json"))
+            .expect("金样读不出来");
+    let k = &g["kill"];
+    let name = parse_name(&k["request"]).expect("金样的请求样例过不了生产解析器");
+    assert_eq!(
+        reply(&name),
+        k["reply"],
+        "后端出的 kill 成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「不知道结束了没有」"
+    );
+    let spec = crate::inbound::REGISTRY
+        .iter()
+        .find(|s| s.name == "kill")
+        .expect("后端登记表里没有 `kill`");
+    let mut want: Vec<&str> = spec.codes.to_vec();
+    want.sort_unstable();
+    let mut got: Vec<&str> = k["codes"]
+        .as_array()
+        .expect("金样缺 `codes`")
+        .iter()
+        .map(|v| v.as_str().expect("码不是字符串"))
+        .collect();
+    got.sort_unstable();
+    assert_eq!(
+        got, want,
+        "金样里的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
+    );
+}
