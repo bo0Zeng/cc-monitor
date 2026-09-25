@@ -19,8 +19,11 @@
 //! # 远端路径的分隔符
 //!
 //! 判定那一侧用 `PathBuf::join` 拼路径 —— monitor 跑在 Windows 上时拼出来的是 `\`。远端是 POSIX，
-//! ⇒ 过线前（与查答案时）一律把 `\` 换成 `/`（[`wire_path`]）。⚠ 代价：远端文件名里真带 `\` 的那种会被问错
-//! （POSIX 允许、极少见），如实登记。`PATH` 同理：远端按 `:` 切，再按本机规矩合回去，`resolves_on_path` 才切得对。
+//! ⇒ 过线前（与查答案时）把**本机分隔符** `\` 换成 `/`（[`wire_path`]）。只在分隔符本来就是 `\` 的平台换：
+//! Linux / macOS 上的 monitor 拼不出 `\`，那里出现的 `\` 只能是远端文件名里真带的那个，原样过线
+//! 〔W5-UI · `设计/70 §10 #6`〕。⚠ 余下的代价：**Windows 上的 monitor** 仍分不开「拼进来的 `\`」与「名字里的 `\`」
+//! （POSIX 允许、极少见）—— 要判定那一侧不用本机 `PathBuf` 拼远端路径，如实登记。
+//! `PATH` 同理：远端按 `:` 切，再按本机规矩合回去，`resolves_on_path` 才切得对。
 
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;
@@ -39,9 +42,14 @@ pub(crate) const CMD: &str = "footprint-probe";
 /// 一趟往返的上限。
 const BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// 过线的路径形：`\` 一律换成 `/`（见模块头注）。
+/// 过线的路径形：本机分隔符是 `\` 时换成 `/`；别的平台原样（见模块头注）。
 pub(crate) fn wire_path(p: &Path) -> String {
-    p.to_string_lossy().replace('\\', "/")
+    let s = p.to_string_lossy();
+    if std::path::MAIN_SEPARATOR == '\\' {
+        s.replace('\\', "/")
+    } else {
+        s.into_owned()
+    }
 }
 
 /// 那台后端进程看到的环境。
