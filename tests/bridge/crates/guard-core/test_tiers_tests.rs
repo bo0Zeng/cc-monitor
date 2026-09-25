@@ -314,7 +314,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/backend/control/gate2_parity_tests.rs",
     "tests/bridge/backend/control/inbound_client_tests.rs",
     "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-    "tests/bridge/backend/control/payload_tests.rs",
     "tests/bridge/backend/control/tmux_tests.rs",
     "tests/bridge/backend/observe/local_query_tests.rs",
     "tests/bridge/backend_policy_tests.rs",
@@ -529,6 +528,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/plugin/invoke_tests.rs",
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/read_face_tests.rs",
+    // 〔MG1 合 RK1〕中转口的门（403 / 421）：铺真钥匙文件、起真监听 ⇒ 判别器判集成层。
+    "tests/backend/relay/door_tests.rs",
     "tests/backend/relay/host_tests.rs",
     "tests/backend/relay/machine_tests.rs",
     "tests/backend/relay/server_tests.rs",
@@ -541,6 +542,9 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/backend/control/cc_bus_tests.rs",
     "tests/bridge/backend/control/launch_wire_k_r95_launch_render_facts.rs",
     "tests/bridge/backend/control/local_backend_tests.rs",
+    // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
+    // 铺夹具家目录、起真 `sh` 展开 `$(cat …)` ⇒ 判别器判集成层，照挪。
+    "tests/bridge/backend/control/payload_tests.rs",
     "tests/bridge/backend_layering.rs",
     "tests/bridge/bind_tests.rs",
     "tests/bridge/capability_registry_tests.rs",
