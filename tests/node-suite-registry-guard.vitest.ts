@@ -95,7 +95,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // 🔴 〔`设计/80 §8` 步 1 · 2026-09-23〕**28 → 38**：启动期令牌那一族 +10
   //    （形状闸逐格 · `""` 是坏数据不是「没有」· attach 不带 · cliFlags 恒 null ·
   //     两条顺序不变量 · buildLaunchPlan 数组顺序 · renderFallback 逐字节 · applies 两态）。
-  ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 38],
+  // 🔴 〔LR1 · U8c-3〕**38 → 33**：`cliFlags` / `requiredCaps` 两格随 TS 渲染器从维度上删了
+  //    （−5：account 两条 · model 两条 · rbind-token 一条；identity 那条只删了 cliFlags 那一行断言）。
+  ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 33],
   // 🔴 〔LR1 · U8c-3〕原先这里有 `["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30]`。
   // TS 那份 `ccm …` 调用行渲染器删了 ⇒ 套件整删（**被测对象没了**）；它测的行为逐条由
   // Rust `ccm_invocation_tests.rs` 与入库夹具 `cli-golden.json` 接着（对照见 `调研/第四波记录/LR1.md`）。
@@ -119,7 +121,8 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // 🔴 〔LR1 · U8c-3〕**250 → 221**，往下走的第二次，理由同上一次（**被测对象没了**）：
 // `tests/launch-render-cli.test.ts` 整份删除（30 条，TS 那份 `ccm …` 渲染器删了）；
 // 删前现打 251（地板比现打落后 1），删后现打 221 ⇒ 棘到现打值。
-const TOTAL_FLOOR = 221;
+// 〔LR1 子步 2〕**221 → 216**：`launch-dimensions.test.ts` −5（维度上的 `cliFlags` / `requiredCaps` 删了）。
+const TOTAL_FLOOR = 216;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;
