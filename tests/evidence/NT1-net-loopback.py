@@ -480,7 +480,7 @@ def main():
             be.wait(lambda: any(f["got"] > 2 * 1024 * 1024 for f in be.xfer.get(xid, [])) or None, 120)
             px7.cut()
             last = be.end_of(xid, 300)
-            print(f"  read 下载中途断线 ⇒ 终局 {last and last['end']} · .part 还在：{os.path.exists(dl7 + '.part')}（设计/60 §4.3：失败删 .part —— 弱网上断线就是失败，续传的本钱没了）")
+            print(f"  read 下载中途断线 ⇒ 终局 {last and last['end']} · .part 还在：{os.path.exists(dl7 + '.part')}（〔DP1〕失败也留 .part —— 弱网上断线就是失败；NT1 现打时是 False，DP1 之后该是 True）")
             up7 = os.path.join(d, "up7.bin")
             with open(up7, "wb") as fh:
                 fh.write(os.urandom(8 * 1024 * 1024))
