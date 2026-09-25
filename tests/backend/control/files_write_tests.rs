@@ -1894,7 +1894,7 @@ fn the_read_modify_write_commands_answer_with_their_declared_fields() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-// ── 删历史会话：会话文件围栏唯一的例外 ────────────────────────────────────────
+// ── 删历史会话：只收 sid（〔FN1〕原标题「会话文件围栏唯一的例外」，那道围栏 V119 拿掉了） ────────────────────────────────────────
 
 /// 一个假的配置根：`projects/-p/<sid>.jsonl` ＋ 一份子代理那种更深的同名文件。
 fn plant_home(base: &Path, sid: &str) -> PathBuf {
