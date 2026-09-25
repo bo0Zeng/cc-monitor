@@ -1,5 +1,5 @@
 /**
- * launch-dimensions.ts / launch-plan.ts 纯函数断言：每个维度的 applies/apply/cliFlags 独立行为
+ * launch-dimensions.ts / launch-plan.ts 纯函数断言：每个维度的 applies/apply 独立行为（〔LR1〕cliFlags 那一格随 TS 渲染器删了）
  * + 顺序不变量 + buildLaunchPlan 端到端摊平。跑法：`tsx tests/launch-dimensions.test.ts`。
  */
 import {
@@ -56,13 +56,12 @@ const baseCtx: LaunchContext = {
 test("identity：无 ccmSid → 不生效", () => {
   eq(IDENTITY_DIMENSION.applies(baseCtx), false);
 });
-test("identity：有 ccmSid → 设 plan.identity + 给出 --ccm-sid flag", () => {
+test("identity：有 ccmSid → 设 plan.identity", () => {
   const ctx: LaunchContext = { ...baseCtx, ccmSid: "abc-123" };
   eq(IDENTITY_DIMENSION.applies(ctx), true);
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
   IDENTITY_DIMENSION.apply(plan, ctx);
   eq(plan.identity, { ccmSid: "abc-123" });
-  eq(IDENTITY_DIMENSION.cliFlags!(ctx), ["--ccm-sid=abc-123"]);
 });
 test("identity：非法 ccmSid → throw（拒绝拼入命令）", () => {
   const ctx: LaunchContext = { ...baseCtx, ccmSid: "; rm -rf /" };
@@ -101,13 +100,8 @@ test("account：非法 configDir → throw", () => {
 test("account：applies 恒真（base 态也生效，不再「只在具名账号时才触发」）", () => {
   eq(ACCOUNT_DIMENSION.applies(baseCtx), true, "base 态也要 applies=true");
 });
-test("account：cliFlags 对具名账号吐 --account <名>", () => {
-  const ctx: LaunchContext = { ...baseCtx, account: { kind: "account", name: "z", configDir: "/x" } };
-  eq(ACCOUNT_DIMENSION.cliFlags!(ctx), ["--account", "z"]);
-});
-test("account：cliFlags 对 base 态吐 --base（不再返回 null——R11 同型 bug 修复）", () => {
-  eq(ACCOUNT_DIMENSION.cliFlags!(baseCtx), ["--base"]);
-});
+// 〔LR1 · U8c-3〕这里原来有两条测 `ACCOUNT_DIMENSION.cliFlags`（具名 ⇒ `--account <名>` · base ⇒ `--base`）。
+// 那一格随 TS 渲染器删了；同一件事今天只在 Rust：`ccm_invocation_tests.rs::account_dimension_always_speaks_up_and_has_three_shapes`。
 
 // F07：模型偏好维度——applies 是条件式（不是恒真，见 launch-dimensions.ts 头注对比 F05 的教训）。
 test("model：applies 恒假当无 modelOverride", () => {
@@ -128,14 +122,9 @@ test("model：非法模型名 → throw（拒绝拼入命令）", () => {
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
   throws(() => MODEL_DIMENSION.apply(plan, ctx));
 });
-// F08：ccm 学会了 --model，关闭 R14①——cliFlags 从恒 null 改成真吐 flag。
-test("model：cliFlags 对配了偏好的会话吐 --model <名>", () => {
-  const ctx: LaunchContext = { ...baseCtx, modelOverride: "opus" };
-  eq(MODEL_DIMENSION.cliFlags!(ctx), ["--model", "opus"]);
-});
-test("model：applies 恒假时 cliFlags 不会被问到（无偏好场景不受影响）", () => {
-  eq(MODEL_DIMENSION.applies(baseCtx), false);
-});
+// 〔LR1 · U8c-3〕这里原来有两条测 `MODEL_DIMENSION.cliFlags`（`--model <名>` · 无偏好不被问到）。
+// 前者随 TS 渲染器删了（今天在 `ccm_invocation_tests.rs::model_dimension_is_conditional_by_design`），
+// 后者与上面「applies 恒假当无 modelOverride」逐字重复。
 // F07 §4 步骤2：renderFallback 整体黄金串——不只锁孤立的 apply() 输出，锁 order=25 在真实渲染
 // 管线里的实际效果（子串位置在 export CLAUDE_CONFIG_DIR 之后、启动命令之前）。
 test("renderFallback：账号 + 模型偏好 → 渲染出的字符串精确含 export ANTHROPIC_MODEL='opus'; ", () => {
@@ -399,12 +388,9 @@ test("rbind-token：形状闸逐格 —— 大写 / 长度差一 / 非 hex / 空
   }
 });
 
-test("rbind-token：cliFlags 恒 null —— `ccm` 说不出它 ⇒ 整条降级，不近似（INVARIANTS §33）", () => {
-  eq(RBIND_TOKEN_DIMENSION.cliFlags?.(tokCtx()), null);
-  // ⚠ 若哪天它开始吐 flag，这条会红 —— 那一拍要同时给它 `requiredCaps`
-  //   并把 `remote-launch-run.ts` 里那道分派闸一起改，否则会渲出一条 ccm 不认的 flag。
-  eq(RBIND_TOKEN_DIMENSION.requiredCaps, undefined, "今天不该声明 cap：我们根本不吐 flag");
-});
+// 〔LR1 · U8c-3〕这里原来有一条「rbind-token：cliFlags 恒 null」。那一格是 TS 渲染器那一侧的闸，
+// 随它删了；生产那道闸（带令牌就不试 `ccm …`）由 `tests/remote-launch-run.vitest.ts`
+// 「带令牌 ⇒ 一次 `render_ccm_launch` 都不发」钉着。
 
 test("顺序不变量：rbind-token 排在 nested-env-reset 之后（真实注册表）", () => {
   const idx = (id: string): number => LAUNCH_DIMENSIONS.findIndex((d) => d.id === id);

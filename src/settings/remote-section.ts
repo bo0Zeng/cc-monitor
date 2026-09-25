@@ -2,7 +2,7 @@
  * 设置面板「远端 (SSH)」区（SSH-remote issue #15 / 多机 #30）。
  *
  * 让用户配置 + 启用「远端模式」：monitor 通过 SSH 连到 **0..N 台** 远端主机，由各台的
- * backend 作为额外数据源（与本地 jsonl-watcher 聚合）。配置写入 config.json 的 `remote`
+ * backend 作为额外数据源（与本机后端那一路聚合 ——〔TL1 · 4C〕本机会话内容 CF1 起也走本机后端，不再是 monitor 自己读）。配置写入 config.json 的 `remote`
  * 子对象（`{ enabled, hosts: [...] }`），由 Rust 侧 `lib.rs::load_remote_configs` 启动时读。
  *
  * **camelCase key 必须与 Rust reader 严格一致**（否则后端读不到）：

@@ -625,7 +625,7 @@ fn embed_backends() {
 
 /// 〔RM1c · 第四波〕把交叉编译好的**全景小程序**（`src/panorama-engine`，只装代码全景引擎的
 /// 独立二进制，用户 09-24 V108 选 B）两个 musl arch 复制进 OUT_DIR，置 `embedded_panoramas` cfg；
-/// 任一缺失 ⇒ 不置 cfg ＋ **可见的** warning（`panorama_bytes::panorama_binary` 返回 `None`，
+/// 任一缺失 ⇒ 不置 cfg ＋ **可见的** warning（`byte_table::choose` 那一格答「这一版没带」〔TL1：原先点的是 `panorama_bytes` 里一个按两个词取字节的函数，删了〕，
 /// 远端全景那一台就只能报「这台机器上还没装」）。
 ///
 /// # 与 [`embed_backends`] 同一个落点、同一条配方，**不同的一件事**

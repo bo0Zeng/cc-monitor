@@ -137,7 +137,7 @@ pub fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
 ///
 /// 「有行」说的是 **(agent, 账号) 这一对**〔条 49 · `设计/90 §1.2`〕：凭据文件里的行只属于
 /// `table_agent` 那一家（monitor 传 `payload::APIKEY_TABLE_AGENT`、后端传
-/// `accounts::apikey::CREDENTIALS_FILE_AGENT`，两处字面量由既有判据对拍）⇒ `agent` 不是那一家 ⇒ 空集。
+/// `accounts::upstream::CREDENTIALS_FILE_AGENT`，两处字面量由既有判据对拍）⇒ `agent` 不是那一家 ⇒ 空集。
 ///
 /// ⚠ 它答的是「表里有没有这一行」，**不是**「这个 key 能不能用」，也不是「这次拉起会不会真的注入」
 /// （那还要过「中转在不在跑」那一格）。

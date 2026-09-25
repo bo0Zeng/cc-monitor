@@ -110,6 +110,8 @@ fn the_liveness_answer_comes_from_this_moment_not_from_a_cache() {
 /// - 正向：子命令那个字面量，与**它所属的那个 `.args([`** 之间，必须出现 `UTF8_CLIENT_FLAG`
 ///   （中间不许隔着 `]` —— 隔着就说明它压根不在那个数组里，本条在空转）；
 /// - 反向：把源码**全部空白删掉**之后，不许出现 `"<verb>",UTF8_CLIENT_FLAG`。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
     // 本条数的是**源码文本**，所以要的是那个常量的**名字**，不是它的值。
@@ -172,6 +174,8 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
 /// ⚠ 过溢那一档**不在这里**：`PROBE_FMT`/`LIST_FMT` 的列里没有路径，
 /// 三列的取值域都排除真 TAB ⇒ 合法内容推不高段数（理由见 `PROBE_FMT_FIELDS` 头注）。
 /// 但判据仍写成「下溢」而不是「不等于」，与另外两处同一口径 —— **口径一致本身是要买的东西**。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
 #[test]
 fn the_underflow_predicate_catches_the_real_dirty_bytes() {
     assert!(
