@@ -2791,7 +2791,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // 🔴 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端（V107），monitor 另起中转那一族删了；
-        //    层 1 名字登记表里那一行注释逐字记着「哪两个名字被谁接替」⇒ 第②条出路。
+        //    中转名字登记表里那一行注释逐字记着「哪两个名字被谁接替」⇒ 第②条出路。
         (
             "tests/naming/account-vs-relay-naming.vitest.ts",
             "start_local_relay",
@@ -3972,7 +3972,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/dial/sftp.rs", 1),
         // 〔SR1b · 2026-09-24〕creds-core 头注里「远端那一侧」那段：原子上传与读回比对的住址搬了，两处旧名挂墓碑。
         ("src/bridge/crates/creds-core/src/lib.rs", 2),
-        // 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端，monitor 另起中转那一族删了；层 1 名字表那一行注释挂一块。
+        // 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端，monitor 另起中转那一族删了；中转名字表那一行注释挂一块。
         ("tests/naming/account-vs-relay-naming.vitest.ts", 1),
         // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
@@ -4167,6 +4167,10 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔C4c · 第四波 4B〕「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
         ("src/bridge/src/backend_policy.rs", 2),
         ("src/settings/backend-section.ts", 1),
+        // 〔RN1 · 第四波 4C · V114〕改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
+        //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的 V114 那张表按这块标记放行这两行）。
+        ("src/backend/accounts/upstream/mod.rs", 1),
+        ("src/backend/relay/mod.rs", 1),
         ("src/bridge/src/ssh_source.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("src/bridge/src/subagent.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("src/bridge/src/tool_registry.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
