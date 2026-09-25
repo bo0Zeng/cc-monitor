@@ -402,9 +402,12 @@ fn what_can_be_done_matches_a_hand_written_table() {
 #[test]
 fn menu_labels_are_the_row_buttons_labels() {
     use Action::*;
-    assert_eq!(Edit.label(1), crate::filewin::editor::EDIT_LABEL);
-    assert_eq!(Copy.label(1), crate::filewin::copy::COPY_LABEL);
-    assert_eq!(Download.label(1), crate::filewin::download::DOWNLOAD_LABEL);
+    assert_eq!(Edit.label(1), crate::filewin::editor::EDIT_LABEL.as_str());
+    assert_eq!(Copy.label(1), crate::filewin::copy::COPY_LABEL.as_str());
+    assert_eq!(
+        Download.label(1),
+        crate::filewin::download::DOWNLOAD_LABEL.as_str()
+    );
     assert_eq!(
         Rename.label(1),
         crate::filewin::writeops::RENAME_LABEL.as_str()
@@ -419,7 +422,7 @@ fn menu_labels_are_the_row_buttons_labels() {
     );
     assert_eq!(Delete.label(3), "删除这 3 项");
     assert_eq!(Chmod.label(3), "改这 3 项的权限");
-    assert_eq!(Open.label(1), OPEN_LABEL);
+    assert_eq!(Open.label(1), OPEN_LABEL.as_str());
 }
 
 /// 做不了的每一形都有一句话（非空、互不相同的几档各说各的）。

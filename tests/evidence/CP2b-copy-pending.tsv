@@ -92,20 +92,6 @@ src/bridge/src/data_paths.rs	未抽
 src/bridge/src/dial_host.rs	未抽
 src/bridge/src/drift_ledger.rs	未抽
 src/bridge/src/fenced_block.rs	未抽
-src/bridge/src/filewin/bigfile.rs	未抽
-src/bridge/src/filewin/bookmarks.rs	未抽
-src/bridge/src/filewin/copy.rs	未抽
-src/bridge/src/filewin/create.rs	未抽
-src/bridge/src/filewin/download.rs	未抽
-src/bridge/src/filewin/editor.rs	未抽
-src/bridge/src/filewin/entry.rs	未抽
-src/bridge/src/filewin/find.rs	未抽
-src/bridge/src/filewin/preview.rs	未抽
-src/bridge/src/filewin/rows.rs	未抽
-src/bridge/src/filewin/select.rs	未抽
-src/bridge/src/filewin/transfer.rs	未抽
-src/bridge/src/filewin/upload.rs	未抽
-src/bridge/src/filewin/workspace.rs	未抽
 src/bridge/src/footprint_remote.rs	未抽
 src/bridge/src/history.rs	C4d 在改这一带，留最后一批
 src/bridge/src/hooks_diag.rs	未抽
