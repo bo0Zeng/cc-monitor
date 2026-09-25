@@ -5,7 +5,7 @@
 //!
 //! 引擎 ≈19.6 MB / 架构（`调研/第四波记录/RM1b.md §3`）。编进后端本体 = 每一台远端都背它，
 //! 且与 `C21`「code-picture 走独立二进制……**也不编进 backend**」、`95 §0`「不并进后端本体」正面相撞；
-//! 那两条由 `plugin_class_registry` ②③ 与 `panorama_locus_guard` 正题② 钉着，本模块一条都不碰。
+//! 那两条由 `plugin_class_registry` ②③ 与 `panorama_locus_guard` 正题①（链接面）· monitor 侧 `panorama_seam_registry::engine_port_scope`（取用面，〔TL1〕原 `panorama_locus_guard` 正题② 并进去了）钉着，本模块一条都不碰。
 //! ⇒ 解析发生在**被起的那个进程**里；本模块只做插件口的四段里**属于这个插件**的那几样：
 //!
 //! | 段 | 本模块给的 |
