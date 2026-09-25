@@ -261,7 +261,10 @@ async fn a_target_changed_after_the_preview_stops_the_write_and_names_what_was_w
     )
     .await;
     let e = e.expect_err("stale 仍被当成写成");
-    assert!(e.contains("run.sh") && e.contains("一个都还没写"), "{e}");
+    assert!(
+        e.contains("run.sh") && e.contains("一个都还没写") && e.contains("重新看一次差异"),
+        "stale 要说清是「看差异之后又被改过」，并指出停在哪：{e}"
+    );
     assert_eq!(ask.asked.borrow().len(), 1, "stale 不许重读重算");
     let _ = std::fs::remove_dir_all(&home);
 }
