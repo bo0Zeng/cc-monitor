@@ -328,7 +328,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
   //    （`css-ledger` 的两条棘轮会要求），而那条规则会是一句纯装饰。
   //    ⇒ 没有类 ⇒ 不可能有「自己身上的裸 display」⇒ 这一格在构造上就是安全的。
-  "src/settings/config-surface-section.ts:398":
+  "src/settings/config-surface-section.ts:417":
     "本机那一套的显隐包装，刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
   "src/views/history.ts:1631":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",

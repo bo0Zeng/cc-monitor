@@ -83,8 +83,16 @@ export function promptToInstall(row: SurfaceRow): string | null {
     return `${GAP_HEAD.missing} —— cc-monitor 不装这一项，请你自己装上 \`${row.path_declared}\``;
   }
   // **查不动**：说「缺」就是替用户下一个他没做过的结论（`readiness.ts` 头注逐字）。
-  return `${GAP_HEAD.unknown} —— 这一项本机查不动（见上面的原因），别当成它不在`;
+  // 〔ST2 · `70 §11.4` #3〕原文后半「别当成它不在」是**开发者的认识论对冲**（`§2.1` 第 ④ 种）——
+  //   区分本身是对的（`§2.2`：不许扫掉），只换位置：前半留在行上，后半进 ⓘ（`UNKNOWN_IS_NOT_ABSENT`）。
+  return `${GAP_HEAD.unknown} —— 这一项本机查不动（见上面的原因）`;
 }
+
+/**
+ * 〔ST2 · `70 §11.3.1`〕「查不动」那一句的后半，挪进 ⓘ 的那一段 —— **那条区分的全部内容住这里**。
+ */
+export const UNKNOWN_IS_NOT_ABSENT =
+  "查不动不等于它不在：只是这台机器上判断不了，不说明它没装。";
 
 /** 一态 → 文案 + 三档语气。**`undetermined` 必须中性且带出理由**，不能借"缺失"的红。 */
 export function describeSurfaceState(st: SurfaceState): {
@@ -128,8 +136,10 @@ export function describeUndo(row: SurfaceRow): string {
     case "AppInstalls":
       return "暂无自动撤销；如需清理请按上面的路径手动处理";
     // **我们欠的实现** —— 不许说成「不该由它装」（`KR65D2` 逐字）。
+    // 〔ST2 · `70 §11.4` #1 · `§11.3.1`〕原文「这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有」
+    //   是**我们欠的实现写成产品文案**。改成一格状态；⚠ 「还没有」这个语义必须留（`KR65D2`：不许说成「不该由它装」）。
     case "AppShipsNoInstallerYet":
-      return "这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有";
+      return "暂无撤销：还没有安装入口";
     // `K38` 裁的那一档：不该我们装，所以也无所谓撤。
     case "UserInstallsWePrompt":
       return "cc-monitor 不装这一项（通用工具，请你自己装），也就无所谓撤销";
@@ -149,19 +159,28 @@ export function describeUndo(row: SurfaceRow): string {
  * **必须能被数出来**（不是红，是**能报出来**）」——**报出来的地方就是这里**，
  * 用户在这一页上看得见这个数，不用去读判据。
  *
+ * 〔ST2 · `70 §11.4` #2 · `§11.3.1`〕原文「其中 N 项该由 cc-monitor 自带、而安装入口还没写：…」
+ * 是「谁欠谁」的话。改成**一格状态 ＋ 展开看哪几项**：数照旧数得出来（`KR65D2` **不许删这一行**），
+ * 名单挪进 `[哪 N 项]`（`owedInstallerNames`）。
+ *
  * 返回 `null` = 一项都没有（那时整句不渲染，不写「0 项」）。
  */
 export function summarizeOwedInstallers(rows: SurfaceRow[]): string | null {
-  const owed = rows.filter((r) => r.tier === "AppShipsNoInstallerYet");
-  if (owed.length === 0) return null;
-  const names = [...new Set(owed.map((r) => r.tool_name))];
-  return `其中 ${names.length} 项该由 cc-monitor 自带、而安装入口还没写：${names.join("、")}`;
+  const names = owedInstallerNames(rows);
+  if (names.length === 0) return null;
+  return `⚠ ${names.length} 项还没有安装入口`;
+}
+
+/** 〔ST2〕`[哪 N 项]` 里那张名单（去重、按出现顺序）。 */
+export function owedInstallerNames(rows: SurfaceRow[]): string[] {
+  return [...new Set(rows.filter((r) => r.tier === "AppShipsNoInstallerYet").map((r) => r.tool_name))];
 }
 
 /** 生成一段可复制的纯文本诊断，便于用户贴给我或存档。 */
 export function formatReportText(r: ConfigSurfaceReport): string {
   const lines: string[] = [];
-  lines.push("== cc-monitor 配置面审计 ==");
+  // 〔ST2 · 用户 09-24 裁「一起改」· `70 §11.6` #4〕跟块名统一：「配置面审计」→「足迹」。
+  lines.push("== cc-monitor 足迹 ==");
   lines.push(`HOME=${r.home}`);
   lines.push(`~/.claude 解析为=${r.claude_config_dir}`);
   lines.push("");
@@ -185,7 +204,7 @@ export function formatReportText(r: ConfigSurfaceReport): string {
   const owed = summarizeOwedInstallers(r.rows);
   if (owed) {
     lines.push("");
-    lines.push(`  ${owed}`);
+    lines.push(`  ${owed}：${owedInstallerNames(r.rows).join("、")}`);
   }
   lines.push("");
   lines.push("== settings.json 的各作用域（会影响钩子诊断结论）==");
@@ -464,8 +483,22 @@ export class ConfigSurfaceSection {
   private render(r: ConfigSurfaceReport): void {
     this.meta.textContent = `HOME=${r.home} · ~/.claude 解析为 ${r.claude_config_dir}`;
     // `KR65D2`：「app 该自带而还没有装口」那一格**在屏幕上数得出来**。
-    this.owed.textContent = summarizeOwedInstallers(r.rows) ?? "";
-    this.owed.hidden = this.owed.textContent === "";
+    // 〔ST2 · `§11.3.1`〕一格状态 ＋ `[哪 N 项]` 展开看名单。
+    const owed = summarizeOwedInstallers(r.rows);
+    this.owed.replaceChildren();
+    if (owed !== null) {
+      const names = owedInstallerNames(r.rows);
+      this.owed.append(owed, " ");
+      const which = document.createElement("details");
+      which.dataset.owedNames = "";
+      const sum = document.createElement("summary");
+      sum.textContent = `哪 ${names.length} 项`;
+      const list = document.createElement("span");
+      list.textContent = names.join("、");
+      which.append(sum, list);
+      this.owed.appendChild(which);
+    }
+    this.owed.hidden = owed === null;
     this.body.textContent = "";
     let lastTool = "";
     for (const row of r.rows) {
@@ -559,6 +592,8 @@ export class ConfigSurfaceSection {
       p.className = "config-surface-prompt";
       p.dataset.gap = gapKindOfState(row.state) ?? "";
       p.textContent = prompt;
+      // 〔ST2 · `§11.4` #3〕「查不动」那一档：区分的后半在 ⓘ 里（只换位置，不删义）。
+      if (p.dataset.gap === "unknown") p.appendChild(makeInfoIcon(UNKNOWN_IS_NOT_ABSENT));
       el.appendChild(p);
     }
 
