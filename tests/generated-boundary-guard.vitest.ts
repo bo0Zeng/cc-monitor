@@ -160,6 +160,8 @@ describe("C01 边界生成物", () => {
       "ConfigSurfaceReport.ts", //    C04d 批2
       "ConnTestResult.ts", // C04d 批5c
       "ConnectStage.ts", // C04d 批5c（**让 describeStage 的 `never` 兜底真正对 Rust 有牙**）
+      // 〔第四波 ST2〕数据位置那一格「真相 / 缓存」（`INVARIANTS §2.1`，用户 09-24 裁提前做）。
+      "DataClass.ts",
       "DataPathInfo.ts", //           C01
       "DataPathsResponse.ts", //      C01
       "DiagnosticsConfig.ts", // C04d 批4

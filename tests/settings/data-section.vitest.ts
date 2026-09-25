@@ -24,7 +24,7 @@ vi.mock("../../src/ipc/commands", () => ({
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
-import { DataSection } from "../../src/settings/data-section";
+import { DataSection, LOGS_DIR_LABEL, describeDataClass } from "../../src/settings/data-section";
 
 const SRC = "src/settings/data-section.ts";
 
@@ -90,6 +90,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
   it("② 每一条的路径都以纯文本上屏；按钮上没有「删 / 清」", async () => {
     const item = (label: string, path: string) => ({
       label,
+      class: "truth" as const,
       path,
       kind: "file",
       description: `${label} 是什么`,
@@ -115,9 +116,102 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     const shown = [...sec.element.querySelectorAll(".settings-data-item-path")].map(
       (e) => e.textContent,
     );
-    expect(shown).toEqual([...entries, webview, backup].map((e) => e.path));
+    // 〔ST2 · 步 15〕「PowerShell profile 备份」那张卡片搬去了本机「足迹」栏 ⇒ 这里不再有它。
+    expect(shown).toEqual([...entries, webview].map((e) => e.path));
+    expect(shown, "备份目录还在「数据位置」里 —— 两个顶层页讲同一件事").not.toContain(backup.path);
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
     expect(buttons.length, "一颗按钮都没有 —— 下面的「没有删」是空真").toBeGreaterThan(0);
     expect(buttons.filter((t) => /删|清/.test(t))).toEqual([]);
   });
 });
+
+describe("〔ST2 · 用户 09-24 裁〕数据位置「真相 / 缓存」那一格", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const mk = (label: string, cls: string) => ({
+    label,
+    class: cls,
+    path: `/h/.claude/claudecode-frontend/${label}`,
+    kind: "file",
+    description: `${label} 是什么`,
+    exists: true,
+    sizeBytes: 1,
+  });
+
+  it("★★ 每一行都说得出删了会怎样，且说的是**它自己那一类**（两向：行 ↔ 类）", async () => {
+    const entries = [
+      mk("config.json", "truth"),
+      mk("history-metadata.json", "truth"),
+      mk("sid-hwnd-cache.json", "cache"),
+      mk("logs/", "cache"),
+    ];
+    paths.value = { monitorDataDir: "/h", entries, webviewUserDataDir: null, profileBackupDirs: [] };
+    const sec = new DataSection({ headless: true });
+    document.body.appendChild(sec.element);
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
+    expect(rows.length, "一行都没挂上类 —— 下面的逐行比在空人群上恒绿").toBe(entries.length);
+    const got = rows.map((r) => [
+      r.querySelector(".settings-data-item-label")!.textContent,
+      r.querySelector<HTMLElement>("[data-data-class]")!.textContent,
+    ]);
+    expect(got).toEqual([
+      ["config.json", "删了会丢"],
+      ["history-metadata.json", "删了会丢"],
+      ["sid-hwnd-cache.json", "可随手删"],
+      ["logs/", "可随手删"],
+    ]);
+  });
+
+  it("★ 后端将来加第三类 ⇒ 原样说出来，不整页炸、也不假装认识", () => {
+    expect(describeDataClass("truth")).toBe("删了会丢");
+    expect(describeDataClass("cache")).toBe("可随手删");
+    expect(describeDataClass("archive" as never)).toBe("类别未知（archive）");
+  });
+});
+
+describe("〔ST2 · `70 §11.3.2` · 步 15〕logs/ 那一行指向「日志」、不再自带 [打开]", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  it("★ 跨语言常量对拍：TS 的 LOGS_DIR_LABEL == Rust 的 data_paths.rs::LOGS_DIR_LABEL", () => {
+    const rs = readFileSync("src/bridge/src/data_paths.rs", "utf8");
+    const m = /pub const LOGS_DIR_LABEL: &str = "([^"]*)";/.exec(rs);
+    expect(m, "Rust 那侧找不到 LOGS_DIR_LABEL —— 名字改了就来改这条").not.toBeNull();
+    expect(LOGS_DIR_LABEL).toBe(m![1]);
+    // 那一行真的还在后端枚举里（修在界面层，**不许**从唯一权威枚举点删掉它）。
+    expect(rs).toContain("LOGS_DIR_LABEL,");
+  });
+
+  it("★★ logs/ 那一行：路径照给、没有 [打开]、说去「日志」页；别的行照旧有 [打开]（两向）", async () => {
+    const mk = (label: string) => ({
+      label,
+      class: "cache",
+      path: `/h/.claude/claudecode-frontend/${label}`,
+      kind: "dir",
+      description: `${label} 是什么`,
+      exists: true,
+    });
+    paths.value = {
+      monitorDataDir: "/h",
+      entries: [mk("ps-registry/"), mk(LOGS_DIR_LABEL)],
+      webviewUserDataDir: null,
+      profileBackupDirs: [],
+    };
+    const sec = new DataSection({ headless: true });
+    document.body.appendChild(sec.element);
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
+    expect(rows.length).toBe(2);
+    const byLabel = (l: string) =>
+      rows.find((r) => r.querySelector(".settings-data-item-label")!.textContent === l)!;
+    const logs = byLabel(LOGS_DIR_LABEL);
+    expect(logs.querySelector("button"), "logs/ 那一行还自带按钮 —— 与「日志」页的「打开日志目录」重复").toBeNull();
+    expect(logs.querySelector('[data-see-also="logs"]')?.textContent).toBe("在「日志」页里打开");
+    expect(logs.querySelector(".settings-data-item-path")?.textContent).toBe("/h/.claude/claudecode-frontend/logs/");
+    // 反向对照：别的行照旧能打开（否则「logs/ 没按钮」可能是整张表都没按钮）。
+    expect(byLabel("ps-registry/").querySelector("button")?.textContent).toBe("打开");
+  });
+});
+

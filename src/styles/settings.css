@@ -1030,14 +1030,6 @@ body.settings-window-mode .settings-panel {
   border-color: var(--border-strong);
 }
 
-.settings-footer {
-  display: flex;
-  gap: 8px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--border-strong);
-  justify-content: flex-end;
-}
-
 .settings-btn-primary {
   background: var(--accent);
   border-color: var(--accent);

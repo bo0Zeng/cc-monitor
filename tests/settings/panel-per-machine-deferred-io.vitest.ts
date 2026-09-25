@@ -81,6 +81,7 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  */
 const LOCAL_PAGE_IPC = [
   "config_surface_report", // 足迹（步 14a）
+  "drift_ledger_report", // 〔ST2〕未识别的数据（原顶层「改动足迹」那一块；只有本机那一栏读）
   "load_config", // 账号：先读远端清单（落地页也读它 —— 这里量的是「新增」那一段）
   "list_local_accounts", // 账号（本机那一支）
   "cc_integration_status", // 终端集成（Windows）
@@ -96,13 +97,15 @@ const LOCAL_PAGE_IPC = [
  * 已经放过一次之后切到 aya：只有**跟着机器走、切换即重读**的那一块（MCP）重读。
  * 账号那块也订阅了机器，但它只认「已加载的远端清单里有的那台」—— 录音机下清单是空的 ⇒ 不读；
  * cc-bus 钩子切机器**刻意不发**（它的既有语义：远端诊断只在点「检查远端」时发）。
- * 足迹在远端页上不发（`applyOriginGate`：今天的读口不收 origin）。
+ * 〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹在远端页上**也去问**（按 aya 那台，回声不对就说答不了）——
+ *   它并进了 per-machine 那一批单例，切机器由它自己的订阅重读，恰好一发。
  */
 const SWITCH_TO_AYA_IPC: readonly string[] = [
   "list_mcp_project_dirs",
   "read_remote_mcp_servers",
   // 〔RM1b · 第四波〕插件那块也跟着机器走了（`plugins-marketplaces` 按 origin 问那台后端）。
   "list_plugin_marketplaces",
+  "config_surface_report",
 ];
 /**
  * 第一次可见就是 aya：per-machine 那一批放一次，**每一发恰好一次**。
@@ -111,6 +114,7 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
  *   〔RM1b · 第四波〕「插件」那块不再是本机专属：它问的是**当前那台**（这里就是 aya），同样恰好一次。
  */
 const FIRST_VISIT_AYA_IPC: readonly string[] = [
+  "config_surface_report", // 足迹：〔ST2〕按 aya 去问
   "load_config", // 账号：读远端清单
   "list_remote_accounts", // 账号：aya 那一台
   "cc_integration_status",
