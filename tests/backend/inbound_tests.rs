@@ -459,6 +459,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     for c in [
         "bus-list",
         "bus-send",
+        "bus-broadcast",
         "bus-kill",
         "bus-spawn",
         "bus-state",
@@ -544,6 +545,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔AS2〕skill「装到这台」两条：走目录 ＋ 读原文 ＋ stat。
         "skill-read",
         "skill-install-plan",
+        // 〔SU1 · 第四波 4C〕skill 卸三条：原子写装记录 · 读装记录 · 逐个读盘比摘要。
+        "skill-install-record",
+        "skill-installs",
+        "skill-uninstall-plan",
         // 〔C4d · 第四波 4B〕历史注解三条：读 / 原子写一份小文件（同步文件 I/O）。
         "history-annotate",
         "history-forget",
@@ -577,6 +582,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "link-close",
         "bus-list",
         "bus-send",
+        "bus-broadcast",
         "bus-kill",
         "bus-spawn",
         "bus-state",
@@ -630,6 +636,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "assets-catalog-merge",
         "skill-read",
         "skill-install-plan",
+        // 〔SU1 · 第四波 4C〕skill 卸三条，阻塞档。
+        "skill-install-record",
+        "skill-installs",
+        "skill-uninstall-plan",
         // 〔C4d · 第四波 4B〕历史注解三条，阻塞档。
         "history-annotate",
         "history-forget",

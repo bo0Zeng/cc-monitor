@@ -205,7 +205,15 @@ mod tests {
             "skill_install",
             "〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台读 skill 的文件原文）· `skill-install-plan`\
              （要被写的那一台判：差异与闸原样用 `mcp_sync`，可疑项带那台的事实）。它归 backend-core 是因为文件与事实都在那台机器上。\
-             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）",
+             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）。〔SU1 · 第四波 4C · V116〕又多两条只读帧命令：\
+             `skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（被卸那台逐文件比摘要、判删哪几个）；\
+             删经 monitor → 那台后端 `files-delete`（CAS），本模块仍零写盘",
+        ),
+        (
+            "skill_ledger",
+            "〔SU1 · 第四波 4C · V116〕skill 装记录：帧面 `skill-install-record`（装完记下写了哪几个文件 · 卸掉的摘掉）。\
+             它归 backend-core 是因为「这台上哪几个文件是装写进去的」是**那台机器上**的事实；写的只有后端**自己的**记录文件 \
+             `~/.cc-monitor/skill-installs.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
             "asset_sync",
@@ -723,6 +731,14 @@ mod tests {
              是后端自己说的话 ⇒ 后端**自己的**状态，不是用户数据。动词：`O_EXCL` 新建当前那份 · 原子挪成旧的（盖掉上一份旧的）；\
              不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与〔RK1〕`relay/listen.rs` 一样，是不走 `inbound.rs` 的门）",
         ),
+        (
+            "skill_ledger.rs",
+            "〔SU1 · 第四波 4C · V116〕**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
+             （各自的摘要 ＋ 装之前在不在）。用户裁「要，只删装时写进去的文件」—— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
+             只有后端读它 ⇒ 后端**自己的**状态，不是用户数据（skill 目录里的文件本模块一个字节都不写不删）。`O_EXCL` 建临时文件 → \
+             写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有 `inbound.rs` 的 \
+             `skill-install-record`（＋ 派生的 CLI 面）",
+        ),
     ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
@@ -753,7 +769,8 @@ mod tests {
         (
             "inbound.rs",
             "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
-             〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）。\
+             〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）；\
+             〔SU1〕skill 装记录那一条（`skill-install-record`）。\
              前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
         ),
         (
@@ -797,6 +814,8 @@ mod tests {
         // 〔NT2 · S1〕stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
         // 针取模块前缀：装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰。
         ("stderr_log.rs", "stderr_log::", "main.rs"),
+        // 〔SU1〕一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
+        ("skill_ledger.rs", "skill_ledger::answer_", "inbound.rs"),
     ];
 
     fn is_own_state(rel: &str) -> bool {

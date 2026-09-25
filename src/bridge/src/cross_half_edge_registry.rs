@@ -73,13 +73,11 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/bridge/backend/control/backend_kill_tests.rs",
         "src/backend/control/kill.rs",
-        "拒绝文案两侧逐字同形：backend 那边改了措辞，monitor 的用户可见提示就跟着变",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/backend/control/backend_launch_tests.rs",
-        "src/backend/inbound.rs",
-        "本通道发的字段由后端的登记表说了算 —— 读它才能断言两侧字段集一致",
+        "创建路径不许铸出后端 kill 形状门拒的名字：字符集的来源必须从后端 `parse_name` 现抠 \
+         （本侧手抄一份就成了两侧同源的恒等）。〔C4e〕原理由「拒绝文案两侧逐字同形」随 monitor 的杀会话发送端迁到界面退役；\
+         同拍删掉的三条边（`backend_launch_tests.rs` → `inbound.rs` · `backend_send_keys_tests.rs` → `launch.rs` · \
+         `inbound_client_tests.rs` → `launch.rs`）守的「发出去的字段 / mode 名 == 后端解析器认的」改由跨语言金样 \
+         `tests/__fixtures__/tmux-control.golden.json` 钉（后端侧让请求样例过生产解析器，界面侧逐字断言发的就是那一份）",
     ),
     (
         "monitor→backend",
@@ -126,22 +124,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/bridge/backend/control/backend_send_keys_tests.rs",
-        "src/backend/control/launch.rs",
-        "两个 mode 名必须是后端真能 parse 的那两个（`parse_request` 不 deny unknown \
-         fields ⇒ 打错字会被静默忽略、照样附 Enter）",
-    ),
-    (
-        "monitor→backend",
         "tests/bridge/backend/control/inbound_client_tests.rs",
         "src/backend/inbound.rs",
         "入方向帧的种类与错误码两侧同形",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/backend/control/inbound_client_tests.rs",
-        "src/backend/control/launch.rs",
-        "launch 请求的字段名两侧同形",
     ),
     (
         "monitor→backend",

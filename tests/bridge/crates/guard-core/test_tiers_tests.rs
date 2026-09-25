@@ -307,10 +307,8 @@ const SCAN: &[&str] = &[
     "tests/bridge/atomic_replace_registry_tests.rs",
     "tests/bridge/backend/control/agent_profile_parity_tests.rs",
     "tests/bridge/backend/control/backend_control_tests.rs",
-    "tests/bridge/backend/control/backend_kill_tests.rs",
-    "tests/bridge/backend/control/backend_launch_tests.rs",
+    "tests/bridge/backend/control/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
     "tests/bridge/backend/control/backend_route_tests.rs",
-    "tests/bridge/backend/control/backend_send_keys_tests.rs",
     "tests/bridge/backend/control/ccm_invocation_tests.rs",
     "tests/bridge/backend/control/frame_query_tests.rs",
     "tests/bridge/backend/control/gate2_parity_tests.rs",
@@ -447,6 +445,8 @@ const SCAN: &[&str] = &[
     "tests/session-backend-gate.vitest.ts",
     "tests/session-backend.test.ts",
     "tests/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
+    "tests/tmux-control.vitest.ts", // 〔C4e〕读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
+    "tests/cc-bus-control.vitest.ts", // 〔C4e 批 3b〕读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
     "tests/settings/accounts-section.vitest.ts",
     "tests/settings/backend-section.vitest.ts",
     "tests/settings/base-wording-guard.vitest.ts",
@@ -539,6 +539,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/relay/server_tests.rs",
     "tests/backend/relay/wire_golden.rs",
     // 〔NT2 · S1〕L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
+    // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。
+    "tests/backend/skill_ledger_tests.rs",
     "tests/backend/stderr_log_tests.rs",
     "tests/backend/wire_tests.rs",
     "tests/bridge/account_aliases_tests.rs",

@@ -1,7 +1,7 @@
 /**
  * F60：远端 tmux 画面预览（只读快照）。轻量 overlay（照 pf 范式，body-level fixed，
- * 点外关 + Esc + ✕，z-index 200）——invoke `capture_remote_pane` 抓 `tmux capture-pane -p`
- * 的屏幕文本，等宽 `<pre>` 展示；失败弹 toast。**非 attach、不接管终端；只读快照非实时**
+ * 点外关 + Esc + ✕，z-index 200）——经 `src/tmux-control.ts::capturePane` 问那台机器的后端抓 `tmux capture-pane -p`
+ * 的屏幕文本，等宽 `<pre>` 展示；失败弹 toast。〔C4e · 第四波 4C〕此前经 monitor 的 `capture_remote_pane`〔散文墓碑〕。**非 attach、不接管终端；只读快照非实时**
  * （「重新抓取」按钮手动刷新，要动态看去 attach）。一次只开一个。
  *
  * 〔CP2a〕本文件是抽表的**样板区**：它的对外文案全部住 `src/shared/copy/table.json` 的
@@ -9,7 +9,7 @@
  */
 import { copyText } from "../copy-table";
 import { showActionFailureToast } from "../error-toast";
-import { commands } from "../ipc/commands";
+import { capturePane, saidOfControl } from "../tmux-control";
 
 let current: HTMLElement | null = null;
 
@@ -76,13 +76,13 @@ export async function openPanePreview(origin: string, target: string): Promise<v
     refreshBtn.disabled = true;
     if (!loaded) pre.textContent = copyText("panePreview.body.loading");
     try {
-      const text = await commands.capture_remote_pane({ origin, target });
+      const text = await capturePane(origin, target);
       if (current !== overlay) return; // 抓取途中被关/换
       pre.textContent = text.length > 0 ? text : copyText("panePreview.body.empty");
       loaded = true;
     } catch (e) {
       if (current !== overlay) return;
-      showActionFailureToast(copyText("panePreview.capture.failed"), String(e), { level: "info" });
+      showActionFailureToast(copyText("panePreview.capture.failed"), saidOfControl(e), { level: "info" });
       if (!loaded) closePanePreview(); // 首次失败无内容可留 → 关
     } finally {
       if (current === overlay) refreshBtn.disabled = false; // overlay 已关/换则别碰旧按钮

@@ -1359,16 +1359,10 @@ pub fn run() {
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             backend::control::cc_bus::read_cc_bus_state,
-            backend::control::cc_bus::check_cc_bus_agent_online,
             backend::control::cc_bus::read_cc_bus_inbox,
-            backend::control::cc_bus::cc_bus_send,
-            backend::control::cc_bus::cc_bus_broadcast,
-            backend::control::cc_bus::cc_bus_kill,
-            backend::control::cc_bus::cc_bus_spawn,
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
-            backend::control::backend_launch::backend_send_into,
             backend::control::launch_wire::render_ccm_launch,
             backend::control::launch_wire::render_launch_payload,
             hooks_diag::diagnose_local_cc_bus_hooks,
@@ -1391,6 +1385,7 @@ pub fn run() {
             // 〔AS2〕skill「装到这台」：看差异 ＋ 写（来源那台读、被写那台判、经被写那台后端 files-put 写）。
             skill_install::skill_install_preview,
             skill_install::skill_install_apply,
+            skill_install::skill_uninstall_apply,
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
@@ -1472,9 +1467,6 @@ pub fn run() {
             pubkey::push_public_key,
             backend::control::tmux::list_remote_tmux,
             backend::control::tmux::list_local_tmux,
-            backend::control::tmux::capture_remote_pane,
-            backend::control::tmux::kill_remote_tmux,
-            backend::control::tmux::tmux_send_keys,
             ccm_probe::probe_ccm_cli,
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,

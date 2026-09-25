@@ -77,6 +77,7 @@ pub mod remote_ask; // 〔C4d · 第四波 4B〕本机后端问远端后端的�
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 pub mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
+pub mod skill_ledger; // 〔SU1 · 第四波 4C · V116〕skill 装记录（后端自有状态 `~/.cc-monitor/skill-installs.json`，第四层）：帧面 `skill-install-record`（装完记 / 卸掉摘）。一个用户文件都不写
 pub mod stderr_log; // 〔NT2 · S1〕脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
 pub mod wire;
 
@@ -270,7 +271,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   起因是产品裁定：用量的**聚合轴**（后端服务端聚合 `--usage`）与**探针轴**
 ///   （一次性会话跑 `/usage` 抓屏）两轴整轴不做了；`oneshot-session` 这条原语当初
 ///   （`K-R87`）就是为探针建的，探针没了它零生产调用方 ⇒ 随之退役。
-///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（`tmux.rs::capture_via_backend`）。
+///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（〔C4e〕今天由界面 `src/tmux-control.ts::capturePane` 经通道直接问）。
 ///   ⚠ **必须 bump，而这一次的理由与前九次相反**：前九次是「新能力在旧后端上休眠」，
 ///   这一次是**旧后端上那三条还在**，而新 monitor 不再调它们 ——
 ///   真正会出事的是**反向**：一台装着新后端的远端，旧 monitor 仍会去调
@@ -569,6 +570,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
     // ⇒ 现由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
+    // 〔C4e · 第四波 4C〕广播（`inbound::REGISTRY` 的 `bus-broadcast`）：原是 monitor 里的组合（列名单 ＋ 逐个发），
+    //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
+    //   （`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--bus-broadcast",
     "--bus-kill",
     "--bus-list",
     "--bus-send",
@@ -614,6 +619,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔AS2〕skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     "--skill-read",
     "--skill-install-plan",
+    // 〔SU1 · 第四波 4C〕skill 卸那三条（`skill-install-record` / `skill-installs` / `skill-uninstall-plan`）派生的 CLI 面。
+    // 加这三行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    "--skill-install-record",
+    "--skill-installs",
+    "--skill-uninstall-plan",
     // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--remote-reach",

@@ -3,11 +3,18 @@
 // tabs.vitest 只测了 resumeTab 的委派分流,这里补 runner 本体。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// 〔C4e · 第四波 4C〕就地 resume 那一次键入从 Tauri 命令 `backend_send_into`〔散文墓碑〕改成界面经通道直接说后端的
+//   `launch{mode:"send-into"}`（`src/tmux-control.ts::sendInto`）。本文件判的是起会话那几条路的**编排**与 F14 的三态处置 ⇒
+//   生产 `invoke` 换成一层翻译（`chan-fake.ts::tmuxControlShim`）：那一发 `chan_call` 照旧按旧名字 `backend_send_into`
+//   交给 `invokeMock`，旧回包（`{typed, mayFallBack, reason}`）译成通道那一跳的结局。
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", async () => {
+  const { tmuxControlShim } = await import("./test-support/chan-fake");
+  return { invoke: tmuxControlShim(invokeMock, "backend_send_into") };
+});
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../src/behavior", () => ({ getBehavior: vi.fn().mockResolvedValue({ forceLaunchPayloadRenderer: false }) }));
 
-import { invoke } from "@tauri-apps/api/core";
 import { showActionFailureToast } from "../src/error-toast";
 import {
   runRemoteResume,
@@ -27,7 +34,6 @@ import { planAttach } from "../src/launch-requests";
 import { renderLaunchPayloadStub } from "./test-support/launch-render-ipc-stub.ts";
 import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
 
-const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
 
 function stubClipboard(writeText: (t: string) => Promise<void>): void {
@@ -184,7 +190,8 @@ describe("F41 runRemoteResume", () => {
     const ok = await runLocalResumeIntoExistingTmux("sid-l1", "l1-cc", "");
     expect(ok).toBe(false);
     expect(toastMock.mock.calls[0][0]).toBe("就地 resume 未执行");
-    expect(String(toastMock.mock.calls[0][1])).toContain("本机后端通道不在");
+    // 〔C4e〕那句话今天出自文案表（`tmuxControl.channel.localDown`），不再是 monitor 那句「本机后端通道不在」。
+    expect(String(toastMock.mock.calls[0][1])).toContain("本机后端没有运行");
     // ★ 最要紧的一格：**一次拉起都没发起**。发起了就说明它去走了第二条路，
     //   而那条路会把可能已经键入过的载荷再提交给正在跑的 claude 一次（F14）。
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
@@ -294,13 +301,16 @@ describe("F41 runRemoteResume", () => {
     expect(remoteCmds.join("\n")).toContain("proj-cc");
   });
 
-  it("★ P1 对照：IPC 异常（无 REFUSE 标）→ 仍然回落，行为逐字不变", async () => {
+  // 〔C4e · 第四波 4C〕对照那一格换了造法：原来让 `backend_send_into`〔散文墓碑〕的 IPC 抛一个不带标的错（那时它等于
+  //   「monitor 那条命令根本没跑」）。键入改走通道之后，**能证明没发出去**的那一档是「那台没有控制通道」
+  //   （`hop/NotSent`）；IPC 自己坏了那一种今天拿不准、不回落（`send-into-backend.vitest.ts` ② 那一条）。
+  it("★ P1 对照：通道问题（能证明没发出去）→ 仍然回落，行为逐字不变", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
       // 通道问题，与载荷本身无关 ⇒ 重做是安全的、且兜底那条路能成
-      if (cmd === "backend_send_into") return Promise.reject("ipc closed");
+      if (cmd === "backend_send_into") return Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" });
       return Promise.resolve(undefined);
     });
     stubClipboard(vi.fn().mockResolvedValue(undefined));
@@ -392,7 +402,13 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
   });
 
   it("runRemoteResumeIntoExistingTmux 成功 → toast「已在原 tmux 就地 resume」+ 返回 true", async () => {
+    // 〔C4e〕键入那一跳答「没有控制通道」（能证明没发出去）⇒ 回落到整串、终端拉起成功。原来这一格靠 `backend_send_into`
+    //   〔散文墓碑〕回 `undefined` 时读 `.typed` 抛出来的那个 TypeError 碰巧走到回落 —— 那是一次意外，不是它要测的东西。
     mockInvoke(() => Promise.resolve(undefined));
+    const base = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation((cmd: string, args?: unknown) =>
+      cmd === "backend_send_into" ? Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" }) : base(cmd, args),
+    );
     const ok = await runRemoteResumeIntoExistingTmux("devbox", "sid-1", "cc-sid1", "");
     expect(ok).toBe(true);
     expect(toastMock.mock.calls[0][0]).toBe("已在原 tmux 就地 resume");
@@ -400,6 +416,11 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
   });
   it("runRemoteResumeIntoExistingTmux 失败 → toast「拉起失败，已复制就地 resume 命令」+ 返回 false", async () => {
     mockInvoke(() => Promise.reject("boom"));
+    // 〔C4e〕同上一条：键入那一跳答「没有控制通道」⇒ 回落到整串，终端那一下才失败（本条要测的是那一下）。
+    const base = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation((cmd: string, args?: unknown) =>
+      cmd === "backend_send_into" ? Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" }) : base(cmd, args),
+    );
     stubClipboard(vi.fn().mockResolvedValue(undefined));
     const ok = await runRemoteResumeIntoExistingTmux("devbox", "sid-1", "cc-sid1", "");
     expect(ok).toBe(false);
