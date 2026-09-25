@@ -3425,3 +3425,29 @@ fn the_local_emitter_classifies_removals_against_the_local_slot_only() {
         "本机收割那一臂要清 idle 账本并发已结束：\n{arm}"
     );
 }
+
+/// 〔DP1 · 第四波〕宿主从 `byte_table` 取不到字节时交进来的是**那句拒绝的话**（`Err`）：
+/// `resolve_or_extract` 必须把它接在「旁边没有」那句后面交回，**两件事都说**，而且一个字节都不写。
+///
+/// 要求住址：`设计/96 §7.1.4` 第 2 条「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」。
+/// 夹具：`target_triple` 取盘上必不存在的中性串 ⇒ 旁边必 `Missing`（同上一条的做法）。
+#[test]
+fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing() {
+    let base = std::env::temp_dir().join(format!("ccm-dp1-refuse-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("建夹具目录");
+    let mark = |_: &Path| Ok(());
+    let said = "本机 是 macOS / arm64 的机器（夹具句）";
+    let r = resolve_or_extract("no-such-target-triple", &base, Err(said.to_string()), &mark);
+    let Resolved::Missing { reason, .. } = r else {
+        panic!("取不到字节竟然 Found 了：{r:?}");
+    };
+    assert!(reason.contains(said), "拒绝的话没到 reason 里：{reason}");
+    assert!(
+        reason.contains("旁边没有本机后端"),
+        "「旁边没有」那一句被换掉了（两件事都要说）：{reason}"
+    );
+    let left: Vec<_> = std::fs::read_dir(&base).unwrap().collect();
+    assert!(left.is_empty(), "拒绝了却往盘上写了东西：{left:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
