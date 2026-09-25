@@ -36,10 +36,11 @@ fn claude_dir() -> PathBuf {
             return PathBuf::from(p);
         }
     }
-    let home = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".claude")
+    // ⚠ 与真 claude 刻意不同：没给 `CLAUDE_CONFIG_DIR` 时**不**落到 `~\.claude`（那是用户真 profile，
+    // V115 只许动临时目录），而落到台架的临时目录 —— 日志里 `CLAUDE_CONFIG_DIR=None` 那一行照实记下
+    // 「这一层环境没传到」（Windows Terminal 新标签会从注册表重载环境，是要量的那件事）。
+    let local = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".into());
+    PathBuf::from(local).join("Temp").join("rt1").join("claude")
 }
 
 /// claude 的项目目录名：非字母数字一律换成 `-`。
@@ -259,7 +260,7 @@ fn main() {
     let pid = std::process::id();
     let log_dir = std::env::var("RT1_LOG_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| dir.clone());
+        .unwrap_or_else(|_| dir.parent().map(|p| p.join("logs")).unwrap_or_else(|| dir.clone()));
     let _ = std::fs::create_dir_all(&log_dir);
     let mut log = Log(std::fs::File::create(log_dir.join(format!("fake-claude-{pid}.log"))).ok());
     let cwd = std::env::current_dir()
@@ -365,6 +366,12 @@ fn main() {
             println!("经 ANTHROPIC_BASE_URL 发了 {n} 条流，逐字节相等 {ok} 条");
         }
         None => println!("没有 ANTHROPIC_BASE_URL（直连，未注入中转）"),
+    }
+    // 台架用：`RT1_EXIT_AFTER=1` ⇒ 流发完就干净退出（并发几十个替身时不留一屋子挂着的进程）。
+    if std::env::var("RT1_EXIT_AFTER").as_deref() == Ok("1") {
+        let _ = std::fs::remove_file(&pidfile);
+        log.line("RT1_EXIT_AFTER=1：流发完就退，pidfile 已删");
+        return;
     }
     println!("敲 /exit 退出；直接关窗口 = 控制台事件（0xC000013A）");
     let _ = std::io::stdout().flush();
