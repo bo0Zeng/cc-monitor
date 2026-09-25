@@ -1001,9 +1001,7 @@ class PsTerminalIntegration {
       try {
         safeSet(LS_KEYS.profilePath, this.pathInput.value.trim());
         safeSet(LS_KEYS.profilePreset, "Custom");
-      } catch {
-      // localStorage 不可用只是记不住上次的选择，不影响装 / 卸（`local-storage.ts` 头注那条）。
-    }
+      } catch {}
       void this.scanCurrentPath();
     });
     rowPath.appendChild(this.pathInput);
@@ -1196,9 +1194,7 @@ class PsTerminalIntegration {
       try {
         savedPreset = safeGet(LS_KEYS.profilePreset) as PresetId | null;
         savedPath = safeGet(LS_KEYS.profilePath);
-      } catch {
-      // localStorage 不可用只是记不住上次的选择，不影响装 / 卸（`local-storage.ts` 头注那条）。
-    }
+      } catch {}
       if (savedPreset && PRESET_OPTIONS.some((o) => o.id === savedPreset)) {
         this.versionSelect.value = savedPreset;
         if (savedPreset === "Custom" && savedPath) {
@@ -1332,9 +1328,7 @@ class PsTerminalIntegration {
     // 持久化用户选择，下次打开面板恢复
     try {
       safeSet(LS_KEYS.profilePreset, id);
-    } catch {
-      // localStorage 不可用只是记不住上次的选择，不影响装 / 卸（`local-storage.ts` 头注那条）。
-    }
+    } catch {}
     if (id === "Custom") {
       // Custom 不强填路径，让用户自己输
       this.pathInput.focus();
@@ -1345,9 +1339,7 @@ class PsTerminalIntegration {
       this.pathInput.value = path;
       try {
         safeSet(LS_KEYS.profilePath, path);
-      } catch {
-      // localStorage 不可用只是记不住上次的选择，不影响装 / 卸（`local-storage.ts` 头注那条）。
-    }
+      } catch {}
       void this.scanCurrentPath();
     } else {
       this.pathInput.value = "";
