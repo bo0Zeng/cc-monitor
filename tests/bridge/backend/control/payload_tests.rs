@@ -747,23 +747,51 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
 #[test]
 fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let read = |rel: &str| guard_core::production_code(&std::fs::read_to_string(root.join(rel)).unwrap());
+    let read =
+        |rel: &str| guard_core::production_code(&std::fs::read_to_string(root.join(rel)).unwrap());
     // (名字, 它今天的家)
     let words: [(&str, &str); 8] = [
-        ("APIKEY_TABLE_AGENT", "../backend/accounts/upstream/mod.rs::CREDENTIALS_FILE_AGENT"),
-        ("AGENTS_WITH_DEFAULT_UPSTREAM", "../backend/agents/mod.rs::default_upstreams"),
-        ("apikey_endpoint_for", "../backend/accounts/upstream/endpoint.rs::decide_launch"),
-        ("relay_endpoint_for", "../backend/accounts/upstream/endpoint.rs::decide_launch"),
-        ("RelayAsk", "../backend/accounts/upstream/endpoint.rs::decide_launch"),
-        ("apikey_rows", "../backend/accounts/upstream/file_face.rs::rows_at"),
-        ("read_accounts", "../backend/accounts/upstream/file_face.rs::read_at"),
-        ("apikey_routed_subset", "../backend/accounts/upstream/endpoint.rs::answer_routing_with"),
+        (
+            "APIKEY_TABLE_AGENT",
+            "../backend/accounts/upstream/mod.rs::CREDENTIALS_FILE_AGENT",
+        ),
+        (
+            "AGENTS_WITH_DEFAULT_UPSTREAM",
+            "../backend/agents/mod.rs::default_upstreams",
+        ),
+        (
+            "apikey_endpoint_for",
+            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+        ),
+        (
+            "relay_endpoint_for",
+            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+        ),
+        (
+            "RelayAsk",
+            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+        ),
+        (
+            "apikey_rows",
+            "../backend/accounts/upstream/file_face.rs::rows_at",
+        ),
+        (
+            "read_accounts",
+            "../backend/accounts/upstream/file_face.rs::read_at",
+        ),
+        (
+            "apikey_routed_subset",
+            "../backend/accounts/upstream/endpoint.rs::answer_routing_with",
+        ),
     ];
     let literals: [(&str, &str); 4] = [
         ("\"/s/\"", "crates/relay-route-core/src/lib.rs"),
         ("\"/t/\"", "crates/relay-route-core/src/lib.rs"),
         ("8788", "crates/relay-route-core/src/lib.rs"),
-        ("\".cc-monitor/relay-key\"", "crates/relay-route-core/src/lib.rs"),
+        (
+            "\".cc-monitor/relay-key\"",
+            "crates/relay-route-core/src/lib.rs",
+        ),
     ];
     let mut hits = Vec::new();
     for (at, src) in guard_core::scan_tree_excluding(&root.join("src"), &["rs"], &[]) {
@@ -779,14 +807,24 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
             }
         }
     }
-    assert!(hits.is_empty(), "monitor 生产树里又长出了上游选择 / 路由语法 / 门牌字面量：\n  {}", hits.join("\n  "));
+    assert!(
+        hits.is_empty(),
+        "monitor 生产树里又长出了上游选择 / 路由语法 / 门牌字面量：\n  {}",
+        hits.join("\n  ")
+    );
     // 正控：家里数得到（名字那一张：家文件里那个「今天的名字」在；字面量那一张：共享 crate 里在）。
     for (w, home) in words {
         let (file, sym) = home.split_once("::").unwrap();
-        assert!(guard_core::contains_word(&read(file), sym), "`{w}` 的家 {home} 里数不到 `{sym}` —— 尺子或住址坏了");
+        assert!(
+            guard_core::contains_word(&read(file), sym),
+            "`{w}` 的家 {home} 里数不到 `{sym}` —— 尺子或住址坏了"
+        );
     }
     for (l, home) in literals {
-        assert!(read(home).contains(l), "共享 crate 里数不到 {l} —— 尺子是瞎的");
+        assert!(
+            read(home).contains(l),
+            "共享 crate 里数不到 {l} —— 尺子是瞎的"
+        );
     }
     // 后端那一半：端口与钥匙路径只许 `use` 共享 crate（零字面量）。
     let mut backend_hits = Vec::new();
@@ -798,7 +836,10 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
             }
         }
     }
-    assert!(backend_hits.is_empty(), "后端生产树里还有门牌字面量（该 use relay_route_core）：{backend_hits:?}");
+    assert!(
+        backend_hits.is_empty(),
+        "后端生产树里还有门牌字面量（该 use relay_route_core）：{backend_hits:?}"
+    );
 }
 
 /// ★ `KH2B6`：`<key>` 段那条**写下来的规则**只有一份实现。
@@ -976,8 +1017,16 @@ fn forwarded_by_container_path(plan_rs: &str) -> Vec<String> {
         if name.contains('{') {
             continue;
         }
+        // 〔US1 · RK1 报 2〕中转地址那一条的值经 `base_url_word`：认出是我们注入的（钥匙已展开）就渲回
+        //   `sq(钥匙之前)"$(cat …)"sq(钥匙之后)`，认不出就是 `sq(v)` —— 两段常量仍都经 `sq`（`plan_tests::
+        //   us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key` 用真 shell 钉住）。别的变量照旧只许 `sq(v)`。
+        let want_tail = if name == "ANTHROPIC_BASE_URL" {
+            "{}; {payload}\", base_url_word(v));"
+        } else {
+            "{}; {payload}\", sq(v));"
+        };
         assert_eq!(
-            tail, "{}; {payload}\", sq(v));",
+            tail, want_tail,
             "\n★ 容器路那条转发的形状跑偏了：{line:?}\n\
                  要的是 `payload = format!(\"export <VAR>={{}}; {{payload}}\", sq(v));` —— \
                  值必须经 `sq`，且拼在载荷**内侧**（前缀，不是后缀）。"

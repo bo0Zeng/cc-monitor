@@ -301,7 +301,7 @@ fn every_registered_command_declares_its_run_kind() {
         "panorama",
         "apikey-key-set",
         "apikey-read",
-        "apikey-routing", // 〔US1〕
+        "apikey-routing",  // 〔US1〕
         "launch-endpoint", // 〔US1〕
         "relay-ensure",
         "relay-status",

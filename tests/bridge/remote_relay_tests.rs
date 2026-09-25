@@ -46,7 +46,8 @@ fn the_local_arm_never_starts_a_second_relay() {
 /// `running_on` 本机那一臂与 `ensure_on` 一样当场拒、一帧都不发。期望手写（那句拒绝）。
 #[test]
 fn the_local_arm_of_running_on_refuses_like_ensure_on() {
-    let e = tauri::async_runtime::block_on(running_on(&Origin::local())).expect_err("本机那一臂答了");
+    let e =
+        tauri::async_runtime::block_on(running_on(&Origin::local())).expect_err("本机那一臂答了");
     assert_eq!(e, LOCAL_HAS_ITS_OWN);
 }
 

@@ -15,13 +15,22 @@ fn what_base_url_builds_the_inverse_accepts_and_parse_restores() {
     for m in RouteMode::ALL {
         for (a, b, c) in segs {
             let url = base_url(PORT, m, a, b, c).expect("合法段拼不出来");
-            assert_eq!(url, format!("http://127.0.0.1:8788{}{a}/{b}/{c}", m.prefix()));
+            assert_eq!(
+                url,
+                format!("http://127.0.0.1:8788{}{a}/{b}/{c}", m.prefix())
+            );
             assert!(base_url_shape_ok(&url), "构造口的产物被逆拒了：{url}");
             let path = route_path(m, a, b, c).unwrap();
             let target = format!("{path}/v1/messages?beta=true");
             assert_eq!(
                 parse_target(&target),
-                Some(Parsed { mode: m, seg1: a, seg2: b, seg3: c, rest: "v1/messages?beta=true" })
+                Some(Parsed {
+                    mode: m,
+                    seg1: a,
+                    seg2: b,
+                    seg3: c,
+                    rest: "v1/messages?beta=true"
+                })
             );
         }
     }
@@ -54,9 +63,18 @@ fn bad_shapes_and_bad_segments_are_refused_on_both_sides() {
             assert_eq!(route_path(m, "a", "b", seg), None);
         }
     }
-    assert!(segment_is_safe(&"x".repeat(128)), "正好 128 字节该过（正控）");
+    assert!(
+        segment_is_safe(&"x".repeat(128)),
+        "正好 128 字节该过（正控）"
+    );
     assert_eq!(base_url(0, RouteMode::Substitute, "a", "b", "c"), None);
-    for bad in ["/s/a/b", "/q/a/b/c/x", "/s/a/b/c", "/s/a/b./c/x", "s/a/b/c/x"] {
+    for bad in [
+        "/s/a/b",
+        "/q/a/b/c/x",
+        "/s/a/b/c",
+        "/s/a/b./c/x",
+        "s/a/b/c/x",
+    ] {
         assert_eq!(parse_target(bad), None, "{bad} 被切出来了");
     }
 }
@@ -76,16 +94,23 @@ fn a_keyed_url_splits_only_when_the_key_and_the_route_both_have_our_shape() {
     let url = base_url(PORT, RouteMode::Passthrough, "claude-code", "_", "k1").unwrap();
     let (head, tail) = url.split_at("http://127.0.0.1:8788/".len());
     let keyed = format!("{head}{key}/{tail}");
-    assert_eq!(split_keyed_base_url(&keyed), Some((head, &format!("/{tail}")[..])));
-    assert_eq!(format!("{head}{key}/{tail}"), keyed, "两半拼回去（插回钥匙）== 原串");
+    assert_eq!(
+        split_keyed_base_url(&keyed),
+        Some((head, &format!("/{tail}")[..]))
+    );
+    assert_eq!(
+        format!("{head}{key}/{tail}"),
+        keyed,
+        "两半拼回去（插回钥匙）== 原串"
+    );
     for bad in [
-        url.clone(),                                           // 没有钥匙段
-        format!("{head}{}/{tail}", &key[..63]),               // 短一个字符
-        format!("{head}{}/{tail}", key.to_uppercase()),       // 大写
-        format!("{head}{key}/x/a/b/c"),                        // 前缀不认得
-        format!("http://localhost:8788/{key}/{tail}"),         // 非字面回环
+        url.clone(),                                    // 没有钥匙段
+        format!("{head}{}/{tail}", &key[..63]),         // 短一个字符
+        format!("{head}{}/{tail}", key.to_uppercase()), // 大写
+        format!("{head}{key}/x/a/b/c"),                 // 前缀不认得
+        format!("http://localhost:8788/{key}/{tail}"),  // 非字面回环
         format!("https://127.0.0.1:8788/{key}/{tail}"),
-        "https://api.example.com/v1".to_string(),              // 用户自己的端点
+        "https://api.example.com/v1".to_string(), // 用户自己的端点
     ] {
         assert_eq!(split_keyed_base_url(&bad), None, "{bad}");
     }

@@ -40,29 +40,92 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
     // (agent, 账号, 开关, 登记了没有, 期望)
     let cases: Vec<(&str, LaunchAccount, bool, bool, Endpoint)> = vec![
         // ① 有行 ⇒ /s/，开关关着也一样（非它不可不看开关）
-        ("claude-code", named("/h/.claude-accts/acct-a"), false, true, inject(&format!("{s}/acct-a/k1"), WhenDown::Refuse, Some("acct-a"))),
-        ("claude-code", named("/h/.claude-accts/acct-a"), true, true, inject(&format!("{s}/acct-a/k1"), WhenDown::Refuse, Some("acct-a"))),
+        (
+            "claude-code",
+            named("/h/.claude-accts/acct-a"),
+            false,
+            true,
+            inject(&format!("{s}/acct-a/k1"), WhenDown::Refuse, Some("acct-a")),
+        ),
+        (
+            "claude-code",
+            named("/h/.claude-accts/acct-a"),
+            true,
+            true,
+            inject(&format!("{s}/acct-a/k1"), WhenDown::Refuse, Some("acct-a")),
+        ),
         // 别家 agent 拿同一个 id：表里那一行不是它的 ⇒ 不走 /s/；开关开且登记了 ⇒ /t/ 但撞名 ⇒ 不注
-        ("codex", named("/h/.claude-accts/acct-a"), true, false, Endpoint::None),
+        (
+            "codex",
+            named("/h/.claude-accts/acct-a"),
+            true,
+            false,
+            Endpoint::None,
+        ),
         // ② 开关关 ⇒ 不注
-        ("claude-code", named("/h/.claude-accts/acct-b"), false, true, Endpoint::None),
-        ("claude-code", LaunchAccount::Base, false, true, Endpoint::None),
-        ("claude-code", LaunchAccount::Undeclared, false, true, Endpoint::None),
+        (
+            "claude-code",
+            named("/h/.claude-accts/acct-b"),
+            false,
+            true,
+            Endpoint::None,
+        ),
+        (
+            "claude-code",
+            LaunchAccount::Base,
+            false,
+            true,
+            Endpoint::None,
+        ),
+        (
+            "claude-code",
+            LaunchAccount::Undeclared,
+            false,
+            true,
+            Endpoint::None,
+        ),
         // ③ 没登记默认上游 ⇒ 不注
         ("codex", LaunchAccount::Base, true, false, Endpoint::None),
         // ④ ⑥ 标签三态
-        ("claude-code", named("/h/.claude-accts/acct-b"), true, true, inject(&format!("{t}/acct-b/k1"), WhenDown::Direct, None)),
-        ("claude-code", LaunchAccount::Base, true, true, inject(&format!("{t}/0/k1"), WhenDown::Direct, None)),
+        (
+            "claude-code",
+            named("/h/.claude-accts/acct-b"),
+            true,
+            true,
+            inject(&format!("{t}/acct-b/k1"), WhenDown::Direct, None),
+        ),
+        (
+            "claude-code",
+            LaunchAccount::Base,
+            true,
+            true,
+            inject(&format!("{t}/0/k1"), WhenDown::Direct, None),
+        ),
         // E11 F5：没表态 ⇒ `_`
-        ("claude-code", LaunchAccount::Undeclared, true, true, inject(&format!("{t}/_/k1"), WhenDown::Direct, None)),
+        (
+            "claude-code",
+            LaunchAccount::Undeclared,
+            true,
+            true,
+            inject(&format!("{t}/_/k1"), WhenDown::Direct, None),
+        ),
         // ④ 推不出 id（空 configDir）⇒ 不注
         ("claude-code", named(""), true, true, Endpoint::None),
         // ④/⑥ 标签当不了路由段 ⇒ 不注（有它更好，不为它拒）
-        ("claude-code", named("/h/.claude-accts/名字"), true, true, Endpoint::None),
+        (
+            "claude-code",
+            named("/h/.claude-accts/名字"),
+            true,
+            true,
+            Endpoint::None,
+        ),
     ];
     for (agent, account, all, reg, want) in cases {
         let got = decide_launch(agent, &account, "k1", all, &rows, reg);
-        assert_eq!(got, want, "agent={agent} account={account:?} 开关={all} 登记={reg}");
+        assert_eq!(
+            got, want,
+            "agent={agent} account={account:?} 开关={all} 登记={reg}"
+        );
     }
     // ⑤ 撞名：标签与某一行同名 ⇒ 不注（`0` · `_` 两个固定标签各一次）
     for (label_row, account) in [("0", LaunchAccount::Base), ("_", LaunchAccount::Undeclared)] {
@@ -75,7 +138,14 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
     }
     // 正控：同一张表、不撞名的那一格照样注入（上面那两条的 None 不是因为别的原因）
     assert_ne!(
-        decide_launch("claude-code", &LaunchAccount::Base, "k1", true, &["x".to_string()], true),
+        decide_launch(
+            "claude-code",
+            &LaunchAccount::Base,
+            "k1",
+            true,
+            &["x".to_string()],
+            true
+        ),
         Endpoint::None
     );
 }
@@ -103,7 +173,10 @@ fn us1_the_launch_answer_always_has_the_same_four_keys_and_probes_only_when_inje
     )
     .unwrap();
     assert_eq!(keys(&none), want_keys);
-    assert_eq!(none, json!({"baseUrl":null,"listening":false,"whenDown":null,"account":null}));
+    assert_eq!(
+        none,
+        json!({"baseUrl":null,"listening":false,"whenDown":null,"account":null})
+    );
     assert_eq!(probes.get(), 0, "不注入也去探了中转");
     let s = answer_launch_with(
         &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/acct-a","name":"a"},"key":"k1","allSessions":false}),
@@ -155,15 +228,33 @@ fn us1_the_routing_answer_is_the_routed_dirs_and_the_probe() {
     let rows = vec!["acct-a".to_string()];
     let dirs = json!(["/h/.claude-accts/acct-a", "/h/.claude-accts/acct-b"]);
     assert_eq!(
-        answer_routing_with(&json!({"agent":"claude-code","configDirs":dirs}), &rows, &|_| true).unwrap(),
+        answer_routing_with(
+            &json!({"agent":"claude-code","configDirs":dirs}),
+            &rows,
+            &|_| true
+        )
+        .unwrap(),
         json!({"routed":["/h/.claude-accts/acct-a"],"running":true})
     );
     assert_eq!(
-        answer_routing_with(&json!({"agent":"codex","configDirs":dirs}), &rows, &|_| false).unwrap(),
+        answer_routing_with(&json!({"agent":"codex","configDirs":dirs}), &rows, &|_| {
+            false
+        })
+        .unwrap(),
         json!({"routed":[],"running":false})
     );
-    for bad in [json!({"configDirs":[]}), json!({"agent":"claude-code"}), json!({"agent":"claude-code","configDirs":[1]})] {
-        assert!(matches!(answer_routing_with(&bad, &rows, &|_| true), Err(("bad_args", _))), "{bad}");
+    for bad in [
+        json!({"configDirs":[]}),
+        json!({"agent":"claude-code"}),
+        json!({"agent":"claude-code","configDirs":[1]}),
+    ] {
+        assert!(
+            matches!(
+                answer_routing_with(&bad, &rows, &|_| true),
+                Err(("bad_args", _))
+            ),
+            "{bad}"
+        );
     }
 }
 
@@ -191,10 +282,20 @@ fn us1_the_apikey_products_match_the_cross_language_golden() {
             &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/work","name":"work"},"key":"k-1","allSessions":false}),
             &rows, &|_| false).unwrap(),
     });
-    let got: Value =
-        serde_json::from_str(&got.to_string().replace(&root.to_string_lossy().to_string(), "<root>")).unwrap();
-    let want: Value = serde_json::from_str(include_str!("../../../__fixtures__/apikey.golden.json")).expect("金样不是合法 JSON");
+    let got: Value = serde_json::from_str(
+        &got.to_string()
+            .replace(&root.to_string_lossy().to_string(), "<root>"),
+    )
+    .unwrap();
+    let want: Value =
+        serde_json::from_str(include_str!("../../../__fixtures__/apikey.golden.json"))
+            .expect("金样不是合法 JSON");
     let _ = std::fs::remove_dir_all(&root);
     assert!(!got.to_string().contains("sk-golden"), "明文进了成品");
-    assert_eq!(got, want, "帧面成品与跨语言金样不一致。现打：\n{}", serde_json::to_string_pretty(&got).unwrap());
+    assert_eq!(
+        got,
+        want,
+        "帧面成品与跨语言金样不一致。现打：\n{}",
+        serde_json::to_string_pretty(&got).unwrap()
+    );
 }
